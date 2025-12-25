@@ -1,0 +1,9 @@
+build
+*.tar.xz
+/sysroot-*
+/linux-*
+/gcc-*
+/glibc-*
+/llvm-*
+/make-*
+/zlib-*
