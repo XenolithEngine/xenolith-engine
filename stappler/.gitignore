@@ -1,0 +1,5 @@
+xcuserdata
+.DS_Store
+/.build_number
+
+**/.cache

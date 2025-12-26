@@ -1,0 +1,11 @@
+.DS_Store
+xcuserdata
+stappler-build
+/.build_number
+**/.cproject
+**/.project
+**/.settings
+**/compile_commands.json
+**/.cache
+**/.clangd
+**/.clang-format

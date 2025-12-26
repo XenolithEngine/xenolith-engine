@@ -1,0 +1,73 @@
+// Copyright (c) 2024 Stappler LLC <admin@stappler.dev>
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
+/* @import */ interface filesystem {
+	use core.{bytes, time};
+
+	enum seek-pos {
+		set,
+		current,
+		end,
+	}
+
+	record stat-rec {
+		size: u64,
+		atime: time,
+		ctime : time,
+		mtime : time,
+		is-dir : bool,
+	}
+
+	resource file {
+		read: func(buf: list<u8>) -> u32;
+		seek: func(offset: u64, pos: seek-pos) -> u64;
+
+		tell: func() -> u64;
+		size: func() -> u64;
+
+		xsgetc: func() -> s32;
+		xsputc: func(ch: s32) -> s32;
+
+		xsputn: func(buf: list<u8>) -> u32;
+		xsgetn: func(buf: list<u8>) -> u32;
+
+		is-open: func() -> bool;
+		eof: func() -> bool;
+		close: func();
+		close-remove: func();
+		close-rename: func(path: string);
+
+		get-tmp-path: func(buf: string) -> u32;
+	}
+
+	open: func(str: string) -> file;
+	open-tmp: func(prefix: string, del-on-close: bool) -> file;
+
+	exists: func(str: string) -> bool;
+	stat: func(str: string) -> result<stat-rec>;
+
+	get-writable-path: func(str: string, rel: bool, read-only: bool) -> string;
+	get-documents-path: func(str: string, rel: bool, read-only: bool) -> string;
+	get-caches-path: func(str: string, rel: bool, read-only: bool) -> string;
+	get-current-work-dir: func(str: string, rel: bool) -> string;
+
+	ftw: func(str: string, fn: u32, arg: u32, depth: s32, dir-first: bool);
+	ftw-b: func(str: string, fn: u32, arg: u32, depth: s32, dir-first: bool) -> bool;
+}

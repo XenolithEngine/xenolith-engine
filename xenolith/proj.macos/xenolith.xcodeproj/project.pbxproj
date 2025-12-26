@@ -1,0 +1,2428 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXAggregateTarget section */
+		268C47242CCA31D3006E6D5D /* libstappler-xenolith */ = {
+			isa = PBXAggregateTarget;
+			buildConfigurationList = 268C47272CCA31D3006E6D5D /* Build configuration list for PBXAggregateTarget "libstappler-xenolith" */;
+			buildPhases = (
+			);
+			dependencies = (
+				268C47292CCA31DF006E6D5D /* PBXTargetDependency */,
+				268C472B2CCA31DF006E6D5D /* PBXTargetDependency */,
+				268C472D2CCA31DF006E6D5D /* PBXTargetDependency */,
+				268C472F2CCA31DF006E6D5D /* PBXTargetDependency */,
+				268C47312CCA31DF006E6D5D /* PBXTargetDependency */,
+				268C47332CCA31DF006E6D5D /* PBXTargetDependency */,
+				268C47352CCA31DF006E6D5D /* PBXTargetDependency */,
+				268C47372CCA31DF006E6D5D /* PBXTargetDependency */,
+				268C47392CCA31DF006E6D5D /* PBXTargetDependency */,
+				268C473B2CCA31DF006E6D5D /* PBXTargetDependency */,
+				268C473D2CCA31DF006E6D5D /* PBXTargetDependency */,
+				268C473F2CCA31DF006E6D5D /* PBXTargetDependency */,
+			);
+			name = "libstappler-xenolith";
+			packageProductDependencies = (
+			);
+			productName = "libstappler-xenolith";
+		};
+/* End PBXAggregateTarget section */
+
+/* Begin PBXContainerItemProxy section */
+		268C47282CCA31DF006E6D5D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 268C43102CC945CA006E6D5D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 268C45412CC987D1006E6D5D;
+			remoteInfo = application;
+		};
+		268C472A2CCA31DF006E6D5D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 268C43102CC945CA006E6D5D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 268C454F2CC9882F006E6D5D;
+			remoteInfo = backend_vk;
+		};
+		268C472C2CCA31DF006E6D5D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 268C43102CC945CA006E6D5D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 268C455D2CC9887D006E6D5D;
+			remoteInfo = backend_vkgui;
+		};
+		268C472E2CCA31DF006E6D5D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 268C43102CC945CA006E6D5D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 268C43352CC98717006E6D5D;
+			remoteInfo = core;
+		};
+		268C47302CCA31DF006E6D5D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 268C43102CC945CA006E6D5D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 268C458C2CC98B1B006E6D5D;
+			remoteInfo = font;
+		};
+		268C47322CCA31DF006E6D5D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 268C43102CC945CA006E6D5D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 268C456B2CC988FF006E6D5D;
+			remoteInfo = renderer_basic2d;
+		};
+		268C47342CCA31DF006E6D5D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 268C43102CC945CA006E6D5D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 268C457B2CC98A94006E6D5D;
+			remoteInfo = renderer_material2d;
+		};
+		268C47362CCA31DF006E6D5D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 268C43102CC945CA006E6D5D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 268C45A82CC98BAE006E6D5D;
+			remoteInfo = resources_assets;
+		};
+		268C47382CCA31DF006E6D5D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 268C43102CC945CA006E6D5D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 268C45B52CC98BBC006E6D5D;
+			remoteInfo = resources_icons;
+		};
+		268C473A2CCA31DF006E6D5D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 268C43102CC945CA006E6D5D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 268C45C22CC98BCB006E6D5D;
+			remoteInfo = resources_network;
+		};
+		268C473C2CCA31DF006E6D5D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 268C43102CC945CA006E6D5D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 268C45CF2CC98BDA006E6D5D;
+			remoteInfo = resources_storage;
+		};
+		268C473E2CCA31DF006E6D5D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 268C43102CC945CA006E6D5D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 268C45992CC98B25006E6D5D;
+			remoteInfo = scene;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		268C43242CC945FA006E6D5D /* macos.projectconfig.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = macos.projectconfig.xcconfig; sourceTree = "<group>"; };
+		268C43252CC945FA006E6D5D /* xenolith_application.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xenolith_application.xcconfig; sourceTree = "<group>"; };
+		268C43262CC945FA006E6D5D /* xenolith_backend_vk.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xenolith_backend_vk.xcconfig; sourceTree = "<group>"; };
+		268C43272CC945FA006E6D5D /* xenolith_backend_vkgui.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xenolith_backend_vkgui.xcconfig; sourceTree = "<group>"; };
+		268C43282CC945FA006E6D5D /* xenolith_core.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xenolith_core.xcconfig; sourceTree = "<group>"; };
+		268C43292CC945FA006E6D5D /* xenolith_font.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xenolith_font.xcconfig; sourceTree = "<group>"; };
+		268C432A2CC945FA006E6D5D /* xenolith_renderer_basic2d.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xenolith_renderer_basic2d.xcconfig; sourceTree = "<group>"; };
+		268C432B2CC945FA006E6D5D /* xenolith_renderer_material2d.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xenolith_renderer_material2d.xcconfig; sourceTree = "<group>"; };
+		268C432C2CC945FA006E6D5D /* xenolith_resources_assets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xenolith_resources_assets.xcconfig; sourceTree = "<group>"; };
+		268C432D2CC945FA006E6D5D /* xenolith_resources_icons.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xenolith_resources_icons.xcconfig; sourceTree = "<group>"; };
+		268C432E2CC945FA006E6D5D /* xenolith_resources_network.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xenolith_resources_network.xcconfig; sourceTree = "<group>"; };
+		268C432F2CC945FA006E6D5D /* xenolith_resources_storage.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xenolith_resources_storage.xcconfig; sourceTree = "<group>"; };
+		268C43302CC945FA006E6D5D /* xenolith_scene.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = xenolith_scene.xcconfig; sourceTree = "<group>"; };
+		268C43362CC98717006E6D5D /* xenolith_core.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = xenolith_core.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		268C45422CC987D1006E6D5D /* application.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = application.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		268C45502CC9882F006E6D5D /* backend_vk.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = backend_vk.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		268C455E2CC9887D006E6D5D /* backend_vkgui.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = backend_vkgui.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		268C456C2CC988FF006E6D5D /* renderer_basic2d.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = renderer_basic2d.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		268C457C2CC98A94006E6D5D /* renderer_material2d.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = renderer_material2d.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		268C458D2CC98B1B006E6D5D /* xenolith_font.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = xenolith_font.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		268C459A2CC98B25006E6D5D /* scene.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = scene.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		268C45A92CC98BAE006E6D5D /* resources_assets.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = resources_assets.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		268C45B62CC98BBC006E6D5D /* resources_icons.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = resources_icons.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		268C45C32CC98BCB006E6D5D /* resources_network.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = resources_network.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		268C45D02CC98BDA006E6D5D /* resources_storage.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = resources_storage.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		261311142CD3A514008E4213 /* Exceptions for "application" folder in "application" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				XLApplication.scu.cpp,
+			);
+			target = 268C45412CC987D1006E6D5D /* application */;
+		};
+		261311162CD3A526008E4213 /* Exceptions for "backend" folder in "backend_vk" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				vk/XLVk.scu.cpp,
+			);
+			target = 268C454F2CC9882F006E6D5D /* backend_vk */;
+		};
+		261311182CD3A52F008E4213 /* Exceptions for "backend" folder in "backend_vkgui" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				vkgui/XLVkGui.scu.cpp,
+			);
+			target = 268C455D2CC9887D006E6D5D /* backend_vkgui */;
+		};
+		2613111A2CD3A53B008E4213 /* Exceptions for "core" folder in "xenolith-core" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				XLCore.scu.cpp,
+			);
+			target = 268C43352CC98717006E6D5D /* xenolith-core */;
+		};
+		2613111C2CD3A54B008E4213 /* Exceptions for "font" folder in "xenolith-font" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				XLFont.cpp,
+			);
+			target = 268C458C2CC98B1B006E6D5D /* xenolith-font */;
+		};
+		2613111E2CD3A561008E4213 /* Exceptions for "platform" folder in "xenolith-core" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				macos/XLPlatformMacosApplication.mm,
+				macos/XLPlatformMacosInit.mm,
+				XLPlatform.scu.cpp,
+			);
+			target = 268C43352CC98717006E6D5D /* xenolith-core */;
+		};
+		261311202CD3A582008E4213 /* Exceptions for "renderer" folder in "renderer_basic2d" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				basic2d/glsl/XL2dShaders.cpp,
+				basic2d/XL2d.cpp,
+			);
+			target = 268C456B2CC988FF006E6D5D /* renderer_basic2d */;
+		};
+		261311222CD3A58A008E4213 /* Exceptions for "renderer" folder in "renderer_material2d" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				material2d/Material.scu.cpp,
+				material2d/MaterialComponents.scu.cpp,
+			);
+			target = 268C457B2CC98A94006E6D5D /* renderer_material2d */;
+		};
+		261311252CD3A598008E4213 /* Exceptions for "scene" folder in "scene" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				XLScene.scu.cpp,
+			);
+			target = 268C45992CC98B25006E6D5D /* scene */;
+		};
+		261311272CD3A5A4008E4213 /* Exceptions for "resources" folder in "resources_assets" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				assets/XLAssets.cpp,
+			);
+			target = 268C45A82CC98BAE006E6D5D /* resources_assets */;
+		};
+		261311292CD3A5AF008E4213 /* Exceptions for "resources" folder in "resources_icons" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				icons/XLIcons.cpp,
+			);
+			target = 268C45B52CC98BBC006E6D5D /* resources_icons */;
+		};
+		2613112B2CD3A5B9008E4213 /* Exceptions for "resources" folder in "resources_network" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				network/XLNetwork.cpp,
+			);
+			target = 268C45C22CC98BCB006E6D5D /* resources_network */;
+		};
+		2613112D2CD3A5C3008E4213 /* Exceptions for "resources" folder in "resources_storage" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				storage/XLStorage.cpp,
+			);
+			target = 268C45CF2CC98BDA006E6D5D /* resources_storage */;
+		};
+		261315822CD4EDE3008E4213 /* Exceptions for "thirdparty" folder in "xenolith-core" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				XLThirdparty.scu.cpp,
+			);
+			target = 268C43352CC98717006E6D5D /* xenolith-core */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		26130F2D2CD3A508008E4213 /* application */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				261311142CD3A514008E4213 /* Exceptions for "application" folder in "application" target */,
+			);
+			name = application;
+			path = ../application;
+			sourceTree = SOURCE_ROOT;
+		};
+		26130F7B2CD3A508008E4213 /* backend */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				261311162CD3A526008E4213 /* Exceptions for "backend" folder in "backend_vk" target */,
+				261311182CD3A52F008E4213 /* Exceptions for "backend" folder in "backend_vkgui" target */,
+			);
+			name = backend;
+			path = ../backend;
+			sourceTree = SOURCE_ROOT;
+		};
+		26130FB42CD3A508008E4213 /* core */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				2613111A2CD3A53B008E4213 /* Exceptions for "core" folder in "xenolith-core" target */,
+			);
+			name = core;
+			path = ../core;
+			sourceTree = SOURCE_ROOT;
+		};
+		26130FC72CD3A508008E4213 /* font */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				2613111C2CD3A54B008E4213 /* Exceptions for "font" folder in "xenolith-font" target */,
+			);
+			name = font;
+			path = ../font;
+			sourceTree = SOURCE_ROOT;
+		};
+		261310142CD3A508008E4213 /* platform */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				2613111E2CD3A561008E4213 /* Exceptions for "platform" folder in "xenolith-core" target */,
+			);
+			name = platform;
+			path = ../platform;
+			sourceTree = SOURCE_ROOT;
+		};
+		261310B82CD3A508008E4213 /* renderer */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				261311202CD3A582008E4213 /* Exceptions for "renderer" folder in "renderer_basic2d" target */,
+				261311222CD3A58A008E4213 /* Exceptions for "renderer" folder in "renderer_material2d" target */,
+			);
+			name = renderer;
+			path = ../renderer;
+			sourceTree = SOURCE_ROOT;
+		};
+		261310D82CD3A508008E4213 /* resources */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				261311272CD3A5A4008E4213 /* Exceptions for "resources" folder in "resources_assets" target */,
+				261311292CD3A5AF008E4213 /* Exceptions for "resources" folder in "resources_icons" target */,
+				2613112B2CD3A5B9008E4213 /* Exceptions for "resources" folder in "resources_network" target */,
+				2613112D2CD3A5C3008E4213 /* Exceptions for "resources" folder in "resources_storage" target */,
+			);
+			name = resources;
+			path = ../resources;
+			sourceTree = SOURCE_ROOT;
+		};
+		261311092CD3A508008E4213 /* scene */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				261311252CD3A598008E4213 /* Exceptions for "scene" folder in "scene" target */,
+			);
+			name = scene;
+			path = ../scene;
+			sourceTree = SOURCE_ROOT;
+		};
+		261311122CD3A508008E4213 /* thirdparty */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				261315822CD4EDE3008E4213 /* Exceptions for "thirdparty" folder in "xenolith-core" target */,
+			);
+			name = thirdparty;
+			path = ../thirdparty;
+			sourceTree = SOURCE_ROOT;
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		268C43332CC98717006E6D5D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C453F2CC987D1006E6D5D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C454D2CC9882F006E6D5D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C455B2CC9887D006E6D5D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45692CC988FF006E6D5D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45792CC98A94006E6D5D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C458A2CC98B1B006E6D5D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45972CC98B25006E6D5D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45A62CC98BAE006E6D5D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45B32CC98BBC006E6D5D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45C02CC98BCB006E6D5D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45CD2CC98BDA006E6D5D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		268C430F2CC945CA006E6D5D = {
+			isa = PBXGroup;
+			children = (
+				268C43242CC945FA006E6D5D /* macos.projectconfig.xcconfig */,
+				268C43252CC945FA006E6D5D /* xenolith_application.xcconfig */,
+				268C43262CC945FA006E6D5D /* xenolith_backend_vk.xcconfig */,
+				268C43272CC945FA006E6D5D /* xenolith_backend_vkgui.xcconfig */,
+				268C43282CC945FA006E6D5D /* xenolith_core.xcconfig */,
+				268C43292CC945FA006E6D5D /* xenolith_font.xcconfig */,
+				268C432A2CC945FA006E6D5D /* xenolith_renderer_basic2d.xcconfig */,
+				268C432B2CC945FA006E6D5D /* xenolith_renderer_material2d.xcconfig */,
+				268C432C2CC945FA006E6D5D /* xenolith_resources_assets.xcconfig */,
+				268C432D2CC945FA006E6D5D /* xenolith_resources_icons.xcconfig */,
+				268C432E2CC945FA006E6D5D /* xenolith_resources_network.xcconfig */,
+				268C432F2CC945FA006E6D5D /* xenolith_resources_storage.xcconfig */,
+				268C43302CC945FA006E6D5D /* xenolith_scene.xcconfig */,
+				26130F2D2CD3A508008E4213 /* application */,
+				26130F7B2CD3A508008E4213 /* backend */,
+				26130FB42CD3A508008E4213 /* core */,
+				26130FC72CD3A508008E4213 /* font */,
+				261310142CD3A508008E4213 /* platform */,
+				261310B82CD3A508008E4213 /* renderer */,
+				261310D82CD3A508008E4213 /* resources */,
+				261311092CD3A508008E4213 /* scene */,
+				261311122CD3A508008E4213 /* thirdparty */,
+				268C431A2CC945CA006E6D5D /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		268C431A2CC945CA006E6D5D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				268C43362CC98717006E6D5D /* xenolith_core.framework */,
+				268C45422CC987D1006E6D5D /* application.framework */,
+				268C45502CC9882F006E6D5D /* backend_vk.framework */,
+				268C455E2CC9887D006E6D5D /* backend_vkgui.framework */,
+				268C456C2CC988FF006E6D5D /* renderer_basic2d.framework */,
+				268C457C2CC98A94006E6D5D /* renderer_material2d.framework */,
+				268C458D2CC98B1B006E6D5D /* xenolith_font.framework */,
+				268C459A2CC98B25006E6D5D /* scene.framework */,
+				268C45A92CC98BAE006E6D5D /* resources_assets.framework */,
+				268C45B62CC98BBC006E6D5D /* resources_icons.framework */,
+				268C45C32CC98BCB006E6D5D /* resources_network.framework */,
+				268C45D02CC98BDA006E6D5D /* resources_storage.framework */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXHeadersBuildPhase section */
+		268C43312CC98717006E6D5D /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C453D2CC987D1006E6D5D /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C454B2CC9882F006E6D5D /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45592CC9887D006E6D5D /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45672CC988FF006E6D5D /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45772CC98A94006E6D5D /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45882CC98B1B006E6D5D /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45952CC98B25006E6D5D /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45A42CC98BAE006E6D5D /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45B12CC98BBC006E6D5D /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45BE2CC98BCB006E6D5D /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45CB2CC98BDA006E6D5D /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXHeadersBuildPhase section */
+
+/* Begin PBXNativeTarget section */
+		268C43352CC98717006E6D5D /* xenolith-core */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 268C433B2CC98717006E6D5D /* Build configuration list for PBXNativeTarget "xenolith-core" */;
+			buildPhases = (
+				268C43312CC98717006E6D5D /* Headers */,
+				268C43322CC98717006E6D5D /* Sources */,
+				268C43332CC98717006E6D5D /* Frameworks */,
+				268C43342CC98717006E6D5D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "xenolith-core";
+			packageProductDependencies = (
+			);
+			productName = core;
+			productReference = 268C43362CC98717006E6D5D /* xenolith_core.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		268C45412CC987D1006E6D5D /* application */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 268C45472CC987D1006E6D5D /* Build configuration list for PBXNativeTarget "application" */;
+			buildPhases = (
+				268C453D2CC987D1006E6D5D /* Headers */,
+				268C453E2CC987D1006E6D5D /* Sources */,
+				268C453F2CC987D1006E6D5D /* Frameworks */,
+				268C45402CC987D1006E6D5D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = application;
+			packageProductDependencies = (
+			);
+			productName = application;
+			productReference = 268C45422CC987D1006E6D5D /* application.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		268C454F2CC9882F006E6D5D /* backend_vk */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 268C45552CC9882F006E6D5D /* Build configuration list for PBXNativeTarget "backend_vk" */;
+			buildPhases = (
+				268C454B2CC9882F006E6D5D /* Headers */,
+				268C454C2CC9882F006E6D5D /* Sources */,
+				268C454D2CC9882F006E6D5D /* Frameworks */,
+				268C454E2CC9882F006E6D5D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = backend_vk;
+			packageProductDependencies = (
+			);
+			productName = backend_vk;
+			productReference = 268C45502CC9882F006E6D5D /* backend_vk.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		268C455D2CC9887D006E6D5D /* backend_vkgui */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 268C45632CC9887D006E6D5D /* Build configuration list for PBXNativeTarget "backend_vkgui" */;
+			buildPhases = (
+				268C45592CC9887D006E6D5D /* Headers */,
+				268C455A2CC9887D006E6D5D /* Sources */,
+				268C455B2CC9887D006E6D5D /* Frameworks */,
+				268C455C2CC9887D006E6D5D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = backend_vkgui;
+			packageProductDependencies = (
+			);
+			productName = backend_vkgui;
+			productReference = 268C455E2CC9887D006E6D5D /* backend_vkgui.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		268C456B2CC988FF006E6D5D /* renderer_basic2d */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 268C45712CC988FF006E6D5D /* Build configuration list for PBXNativeTarget "renderer_basic2d" */;
+			buildPhases = (
+				268C45672CC988FF006E6D5D /* Headers */,
+				268C45762CC98A28006E6D5D /* ShellScript */,
+				268C45682CC988FF006E6D5D /* Sources */,
+				268C45692CC988FF006E6D5D /* Frameworks */,
+				268C456A2CC988FF006E6D5D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = renderer_basic2d;
+			packageProductDependencies = (
+			);
+			productName = renderer_basic2d;
+			productReference = 268C456C2CC988FF006E6D5D /* renderer_basic2d.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		268C457B2CC98A94006E6D5D /* renderer_material2d */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 268C45812CC98A94006E6D5D /* Build configuration list for PBXNativeTarget "renderer_material2d" */;
+			buildPhases = (
+				268C45772CC98A94006E6D5D /* Headers */,
+				268C45782CC98A94006E6D5D /* Sources */,
+				268C45792CC98A94006E6D5D /* Frameworks */,
+				268C457A2CC98A94006E6D5D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = renderer_material2d;
+			packageProductDependencies = (
+			);
+			productName = renderer_material2d;
+			productReference = 268C457C2CC98A94006E6D5D /* renderer_material2d.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		268C458C2CC98B1B006E6D5D /* xenolith-font */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 268C45922CC98B1B006E6D5D /* Build configuration list for PBXNativeTarget "xenolith-font" */;
+			buildPhases = (
+				268C45882CC98B1B006E6D5D /* Headers */,
+				268C45892CC98B1B006E6D5D /* Sources */,
+				268C458A2CC98B1B006E6D5D /* Frameworks */,
+				268C458B2CC98B1B006E6D5D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "xenolith-font";
+			packageProductDependencies = (
+			);
+			productName = font;
+			productReference = 268C458D2CC98B1B006E6D5D /* xenolith_font.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		268C45992CC98B25006E6D5D /* scene */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 268C459F2CC98B25006E6D5D /* Build configuration list for PBXNativeTarget "scene" */;
+			buildPhases = (
+				268C45952CC98B25006E6D5D /* Headers */,
+				268C45962CC98B25006E6D5D /* Sources */,
+				268C45972CC98B25006E6D5D /* Frameworks */,
+				268C45982CC98B25006E6D5D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = scene;
+			packageProductDependencies = (
+			);
+			productName = scene;
+			productReference = 268C459A2CC98B25006E6D5D /* scene.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		268C45A82CC98BAE006E6D5D /* resources_assets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 268C45AE2CC98BAE006E6D5D /* Build configuration list for PBXNativeTarget "resources_assets" */;
+			buildPhases = (
+				268C45A42CC98BAE006E6D5D /* Headers */,
+				268C45A52CC98BAE006E6D5D /* Sources */,
+				268C45A62CC98BAE006E6D5D /* Frameworks */,
+				268C45A72CC98BAE006E6D5D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = resources_assets;
+			packageProductDependencies = (
+			);
+			productName = resources_assets;
+			productReference = 268C45A92CC98BAE006E6D5D /* resources_assets.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		268C45B52CC98BBC006E6D5D /* resources_icons */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 268C45BB2CC98BBC006E6D5D /* Build configuration list for PBXNativeTarget "resources_icons" */;
+			buildPhases = (
+				268C45B12CC98BBC006E6D5D /* Headers */,
+				268C45B22CC98BBC006E6D5D /* Sources */,
+				268C45B32CC98BBC006E6D5D /* Frameworks */,
+				268C45B42CC98BBC006E6D5D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = resources_icons;
+			packageProductDependencies = (
+			);
+			productName = resources_icons;
+			productReference = 268C45B62CC98BBC006E6D5D /* resources_icons.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		268C45C22CC98BCB006E6D5D /* resources_network */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 268C45C82CC98BCB006E6D5D /* Build configuration list for PBXNativeTarget "resources_network" */;
+			buildPhases = (
+				268C45BE2CC98BCB006E6D5D /* Headers */,
+				268C45BF2CC98BCB006E6D5D /* Sources */,
+				268C45C02CC98BCB006E6D5D /* Frameworks */,
+				268C45C12CC98BCB006E6D5D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = resources_network;
+			packageProductDependencies = (
+			);
+			productName = resources_network;
+			productReference = 268C45C32CC98BCB006E6D5D /* resources_network.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		268C45CF2CC98BDA006E6D5D /* resources_storage */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 268C45D52CC98BDA006E6D5D /* Build configuration list for PBXNativeTarget "resources_storage" */;
+			buildPhases = (
+				268C45CB2CC98BDA006E6D5D /* Headers */,
+				268C45CC2CC98BDA006E6D5D /* Sources */,
+				268C45CD2CC98BDA006E6D5D /* Frameworks */,
+				268C45CE2CC98BDA006E6D5D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = resources_storage;
+			packageProductDependencies = (
+			);
+			productName = resources_storage;
+			productReference = 268C45D02CC98BDA006E6D5D /* resources_storage.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		268C43102CC945CA006E6D5D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1610;
+				TargetAttributes = {
+					268C43352CC98717006E6D5D = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					268C45412CC987D1006E6D5D = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					268C454F2CC9882F006E6D5D = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					268C455D2CC9887D006E6D5D = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					268C456B2CC988FF006E6D5D = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					268C457B2CC98A94006E6D5D = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					268C458C2CC98B1B006E6D5D = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					268C45992CC98B25006E6D5D = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					268C45A82CC98BAE006E6D5D = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					268C45B52CC98BBC006E6D5D = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					268C45C22CC98BCB006E6D5D = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					268C45CF2CC98BDA006E6D5D = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					268C47242CCA31D3006E6D5D = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = 268C43132CC945CA006E6D5D /* Build configuration list for PBXProject "xenolith" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 268C430F2CC945CA006E6D5D;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 268C431A2CC945CA006E6D5D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				268C43352CC98717006E6D5D /* xenolith-core */,
+				268C45412CC987D1006E6D5D /* application */,
+				268C454F2CC9882F006E6D5D /* backend_vk */,
+				268C455D2CC9887D006E6D5D /* backend_vkgui */,
+				268C456B2CC988FF006E6D5D /* renderer_basic2d */,
+				268C457B2CC98A94006E6D5D /* renderer_material2d */,
+				268C458C2CC98B1B006E6D5D /* xenolith-font */,
+				268C45992CC98B25006E6D5D /* scene */,
+				268C45A82CC98BAE006E6D5D /* resources_assets */,
+				268C45B52CC98BBC006E6D5D /* resources_icons */,
+				268C45C22CC98BCB006E6D5D /* resources_network */,
+				268C45CF2CC98BDA006E6D5D /* resources_storage */,
+				268C47242CCA31D3006E6D5D /* libstappler-xenolith */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		268C43342CC98717006E6D5D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45402CC987D1006E6D5D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C454E2CC9882F006E6D5D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C455C2CC9887D006E6D5D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C456A2CC988FF006E6D5D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C457A2CC98A94006E6D5D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C458B2CC98B1B006E6D5D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45982CC98B25006E6D5D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45A72CC98BAE006E6D5D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45B42CC98BBC006E6D5D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45C12CC98BCB006E6D5D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45CE2CC98BDA006E6D5D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		268C45762CC98A28006E6D5D /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nmake -C .. mac-shaders RELEASE=1\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		268C43322CC98717006E6D5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C453E2CC987D1006E6D5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C454C2CC9882F006E6D5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C455A2CC9887D006E6D5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45682CC988FF006E6D5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45782CC98A94006E6D5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45892CC98B1B006E6D5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45962CC98B25006E6D5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45A52CC98BAE006E6D5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45B22CC98BBC006E6D5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45BF2CC98BCB006E6D5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		268C45CC2CC98BDA006E6D5D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		268C47292CCA31DF006E6D5D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 268C45412CC987D1006E6D5D /* application */;
+			targetProxy = 268C47282CCA31DF006E6D5D /* PBXContainerItemProxy */;
+		};
+		268C472B2CCA31DF006E6D5D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 268C454F2CC9882F006E6D5D /* backend_vk */;
+			targetProxy = 268C472A2CCA31DF006E6D5D /* PBXContainerItemProxy */;
+		};
+		268C472D2CCA31DF006E6D5D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 268C455D2CC9887D006E6D5D /* backend_vkgui */;
+			targetProxy = 268C472C2CCA31DF006E6D5D /* PBXContainerItemProxy */;
+		};
+		268C472F2CCA31DF006E6D5D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 268C43352CC98717006E6D5D /* xenolith-core */;
+			targetProxy = 268C472E2CCA31DF006E6D5D /* PBXContainerItemProxy */;
+		};
+		268C47312CCA31DF006E6D5D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 268C458C2CC98B1B006E6D5D /* xenolith-font */;
+			targetProxy = 268C47302CCA31DF006E6D5D /* PBXContainerItemProxy */;
+		};
+		268C47332CCA31DF006E6D5D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 268C456B2CC988FF006E6D5D /* renderer_basic2d */;
+			targetProxy = 268C47322CCA31DF006E6D5D /* PBXContainerItemProxy */;
+		};
+		268C47352CCA31DF006E6D5D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 268C457B2CC98A94006E6D5D /* renderer_material2d */;
+			targetProxy = 268C47342CCA31DF006E6D5D /* PBXContainerItemProxy */;
+		};
+		268C47372CCA31DF006E6D5D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 268C45A82CC98BAE006E6D5D /* resources_assets */;
+			targetProxy = 268C47362CCA31DF006E6D5D /* PBXContainerItemProxy */;
+		};
+		268C47392CCA31DF006E6D5D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 268C45B52CC98BBC006E6D5D /* resources_icons */;
+			targetProxy = 268C47382CCA31DF006E6D5D /* PBXContainerItemProxy */;
+		};
+		268C473B2CCA31DF006E6D5D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 268C45C22CC98BCB006E6D5D /* resources_network */;
+			targetProxy = 268C473A2CCA31DF006E6D5D /* PBXContainerItemProxy */;
+		};
+		268C473D2CCA31DF006E6D5D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 268C45CF2CC98BDA006E6D5D /* resources_storage */;
+			targetProxy = 268C473C2CCA31DF006E6D5D /* PBXContainerItemProxy */;
+		};
+		268C473F2CCA31DF006E6D5D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 268C45992CC98B25006E6D5D /* scene */;
+			targetProxy = 268C473E2CCA31DF006E6D5D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		268C43222CC945CA006E6D5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Debug;
+		};
+		268C43232CC945CA006E6D5D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Release;
+		};
+		268C433C2CC98717006E6D5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C43282CC945FA006E6D5D /* xenolith_core.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = org.stappler.xenolith.core;
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+		268C433D2CC98717006E6D5D /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C43282CC945FA006E6D5D /* xenolith_core.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = org.stappler.xenolith.core;
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+		268C45482CC987D1006E6D5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C43252CC945FA006E6D5D /* xenolith_application.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = org.stappler.xenolith.application;
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+		268C45492CC987D1006E6D5D /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C43252CC945FA006E6D5D /* xenolith_application.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = org.stappler.xenolith.application;
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+		268C45562CC9882F006E6D5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C43262CC945FA006E6D5D /* xenolith_backend_vk.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.backend-vk";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+		268C45572CC9882F006E6D5D /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C43262CC945FA006E6D5D /* xenolith_backend_vk.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.backend-vk";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+		268C45642CC9887D006E6D5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C43262CC945FA006E6D5D /* xenolith_backend_vk.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.backend-vkgui";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+		268C45652CC9887D006E6D5D /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C43272CC945FA006E6D5D /* xenolith_backend_vkgui.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.backend-vkgui";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+		268C45722CC988FF006E6D5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C432A2CC945FA006E6D5D /* xenolith_renderer_basic2d.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.renderer-basic2d";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+		268C45732CC988FF006E6D5D /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C432A2CC945FA006E6D5D /* xenolith_renderer_basic2d.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.renderer-basic2d";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+		268C45822CC98A94006E6D5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C432B2CC945FA006E6D5D /* xenolith_renderer_material2d.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.renderer-material2d";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+		268C45832CC98A94006E6D5D /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C432B2CC945FA006E6D5D /* xenolith_renderer_material2d.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.renderer-material2d";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+		268C45932CC98B1B006E6D5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C43292CC945FA006E6D5D /* xenolith_font.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = org.stappler.xenolith.font;
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+		268C45942CC98B1B006E6D5D /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C43292CC945FA006E6D5D /* xenolith_font.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = org.stappler.xenolith.font;
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+		268C45A02CC98B25006E6D5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C43302CC945FA006E6D5D /* xenolith_scene.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = org.stappler.xenolith.scene;
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+		268C45A12CC98B25006E6D5D /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C43302CC945FA006E6D5D /* xenolith_scene.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = org.stappler.xenolith.scene;
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+		268C45AF2CC98BAE006E6D5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C432C2CC945FA006E6D5D /* xenolith_resources_assets.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.resources-assets";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+		268C45B02CC98BAE006E6D5D /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C432C2CC945FA006E6D5D /* xenolith_resources_assets.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.resources-assets";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+		268C45BC2CC98BBC006E6D5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C432D2CC945FA006E6D5D /* xenolith_resources_icons.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.resources-icons";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+		268C45BD2CC98BBC006E6D5D /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C432D2CC945FA006E6D5D /* xenolith_resources_icons.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.resources-icons";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+		268C45C92CC98BCB006E6D5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C432E2CC945FA006E6D5D /* xenolith_resources_network.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.resources-network";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+		268C45CA2CC98BCB006E6D5D /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C432E2CC945FA006E6D5D /* xenolith_resources_network.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.resources-network";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+		268C45D62CC98BDA006E6D5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C432F2CC945FA006E6D5D /* xenolith_resources_storage.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.resources-storage";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+		268C45D72CC98BDA006E6D5D /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 268C432F2CC945FA006E6D5D /* xenolith_resources_storage.xcconfig */;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = NO;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MARKETING_VERSION = 1.0;
+				MODULE_VERIFIER_SUPPORTED_LANGUAGES = "objective-c objective-c++";
+				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.stappler.xenolith.resources-storage";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = auto;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_VERSION = 5.0;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+		268C47252CCA31D3006E6D5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		268C47262CCA31D3006E6D5D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		268C43132CC945CA006E6D5D /* Build configuration list for PBXProject "xenolith" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				268C43222CC945CA006E6D5D /* Debug */,
+				268C43232CC945CA006E6D5D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		268C433B2CC98717006E6D5D /* Build configuration list for PBXNativeTarget "xenolith-core" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				268C433C2CC98717006E6D5D /* Debug */,
+				268C433D2CC98717006E6D5D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		268C45472CC987D1006E6D5D /* Build configuration list for PBXNativeTarget "application" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				268C45482CC987D1006E6D5D /* Debug */,
+				268C45492CC987D1006E6D5D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		268C45552CC9882F006E6D5D /* Build configuration list for PBXNativeTarget "backend_vk" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				268C45562CC9882F006E6D5D /* Debug */,
+				268C45572CC9882F006E6D5D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		268C45632CC9887D006E6D5D /* Build configuration list for PBXNativeTarget "backend_vkgui" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				268C45642CC9887D006E6D5D /* Debug */,
+				268C45652CC9887D006E6D5D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		268C45712CC988FF006E6D5D /* Build configuration list for PBXNativeTarget "renderer_basic2d" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				268C45722CC988FF006E6D5D /* Debug */,
+				268C45732CC988FF006E6D5D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		268C45812CC98A94006E6D5D /* Build configuration list for PBXNativeTarget "renderer_material2d" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				268C45822CC98A94006E6D5D /* Debug */,
+				268C45832CC98A94006E6D5D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		268C45922CC98B1B006E6D5D /* Build configuration list for PBXNativeTarget "xenolith-font" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				268C45932CC98B1B006E6D5D /* Debug */,
+				268C45942CC98B1B006E6D5D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		268C459F2CC98B25006E6D5D /* Build configuration list for PBXNativeTarget "scene" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				268C45A02CC98B25006E6D5D /* Debug */,
+				268C45A12CC98B25006E6D5D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		268C45AE2CC98BAE006E6D5D /* Build configuration list for PBXNativeTarget "resources_assets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				268C45AF2CC98BAE006E6D5D /* Debug */,
+				268C45B02CC98BAE006E6D5D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		268C45BB2CC98BBC006E6D5D /* Build configuration list for PBXNativeTarget "resources_icons" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				268C45BC2CC98BBC006E6D5D /* Debug */,
+				268C45BD2CC98BBC006E6D5D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		268C45C82CC98BCB006E6D5D /* Build configuration list for PBXNativeTarget "resources_network" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				268C45C92CC98BCB006E6D5D /* Debug */,
+				268C45CA2CC98BCB006E6D5D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		268C45D52CC98BDA006E6D5D /* Build configuration list for PBXNativeTarget "resources_storage" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				268C45D62CC98BDA006E6D5D /* Debug */,
+				268C45D72CC98BDA006E6D5D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		268C47272CCA31D3006E6D5D /* Build configuration list for PBXAggregateTarget "libstappler-xenolith" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				268C47252CCA31D3006E6D5D /* Debug */,
+				268C47262CCA31D3006E6D5D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 268C43102CC945CA006E6D5D /* Project object */;
+}

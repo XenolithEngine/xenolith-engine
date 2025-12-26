@@ -1,0 +1,11 @@
+.settings
+.project
+.cproject
+stappler-build
+.DS_Store
+xcuserdata
+**/.idea
+**/compile_commands.json
+**/.cache
+**/.clangd
+**/.vscode

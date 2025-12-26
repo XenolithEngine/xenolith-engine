@@ -1,0 +1,166 @@
+// Copyright (c) 2024 Stappler LLC <admin@stappler.dev>
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
+/* @import */ interface data {
+	enum foreach-result {
+		continue,
+		stop,
+		drop
+	}
+
+	enum value-type {
+		empty,
+		integer,
+		double,
+		boolean,
+		charstring,
+		bytestring,
+		array,
+		dictionary,
+		none,
+	}
+
+	resource value {
+		constructor();
+
+		copy: func(source: value) -> value;
+		write-to-file: func(path: string, format: u32) -> bool;
+		write-to-memory: func(format: u32) -> list<u8>;
+		to-string: func(format: u32) -> string;
+
+		is-read-only: func() -> bool;
+		size: func() -> u32;
+		empty: func() -> bool;
+		clear: func();
+
+		is-null: func() -> bool;
+		is-basic-type: func() -> bool;
+		is-array: func() -> bool;
+		is-dictionary: func() -> bool;
+		is-bool: func() -> bool;
+		is-integer: func() -> bool;
+		is-double: func() -> bool;
+		is-string: func() -> bool;
+		is-bytes: func() -> bool;
+		get-type: func() -> value-type;
+
+		is-null-by-idx: func(idx: u32) -> bool;
+		is-basic-type-by-idx: func(idx: u32) -> bool;
+		is-array-by-idx: func(idx: u32) -> bool;
+		is-dictionary-by-idx: func(idx: u32) -> bool;
+		is-bool-by-idx: func(idx: u32) -> bool;
+		is-integer-by-idx: func(idx: u32) -> bool;
+		is-double-by-idx: func(idx: u32) -> bool;
+		is-string-by-idx: func(idx: u32) -> bool;
+		is-bytes-by-idx: func(idx: u32) -> bool;
+		get-type-by-idx: func(idx: u32) -> value-type;
+		has-value-by-idx: func(idx: u32) -> bool;
+
+		is-null-by-key: func(key: string) -> bool;
+		is-basic-type-by-key: func(key: string) -> bool;
+		is-array-by-key: func(key: string) -> bool;
+		is-dictionary-by-key: func(key: string) -> bool;
+		is-bool-by-key: func(key: string) -> bool;
+		is-integer-by-key: func(key: string) -> bool;
+		is-double-by-key: func(key: string) -> bool;
+		is-string-by-key: func(key: string) -> bool;
+		is-bytes-by-key: func(key: string) -> bool;
+		get-type-by-key: func(key: string) -> value-type;
+		has-value-by-key: func(key: string) -> bool;
+
+		get-integer: func(def: s64) -> s64;
+		get-double: func(def: f64) -> f64;
+		get-bool: func() -> bool;
+		get-string: func() -> string;
+		get-bytes: func() -> list<u8>;
+		foreach-array: func(callback: u32, userdata: u32) -> bool;
+		foreach-dict: func(callback: u32, userdata: u32) -> bool;
+
+		get-value-by-idx: func(idx: u32) -> value;
+		get-integer-by-idx: func(idx: u32, def: s64) -> s64;
+		get-double-by-idx: func(idx: u32, def: f64) -> f64;
+		get-bool-by-idx: func(idx: u32) -> bool;
+		get-string-by-idx: func(idx: u32) -> string;
+		get-bytes-by-idx: func(idx: u32) -> list<u8>;
+		foreach-array-by-idx: func(idx: u32, callback: u32, userdata: u32) -> bool;
+		foreach-dict-by-idx: func(idx: u32, callback: u32, userdata: u32) -> bool;
+
+		get-value-by-key: func(key: string) -> value;
+		get-integer-by-key: func(key: string, def: s64) -> s64;
+		get-double-by-key: func(key: string, def: f64) -> f64;
+		get-bool-by-key: func(key: string) -> bool;
+		get-string-by-key: func(key: string) -> string;
+		get-bytes-by-key: func(key: string) -> list<u8>;
+		foreach-array-by-key: func(key: string, callback: u32, userdata: u32) -> bool;
+		foreach-dict-by-key: func(key: string, callback: u32, userdata: u32) -> bool;
+
+		set-null: func();
+		set-bool: func(value: bool);
+		set-integer: func(value: s64);
+		set-double: func(value: f64);
+		set-string: func(value: string);
+		set-bytes: func(value: list<u8>);
+		set-dict: func();
+		set-array: func();
+		set-value-copy: func(value: borrow<value>);
+
+		set-null-for-idx: func(idx: u32);
+		set-bool-for-idx: func(value: bool, idx: u32);
+		set-integer-for-idx: func(value: s64, idx: u32);
+		set-double-for-idx: func(value: f64, idx: u32);
+		set-string-for-idx: func(value: string, idx: u32);
+		set-bytes-for-idx: func(value: list<u8>, idx: u32);
+		set-dict-for-idx: func(idx: u32) -> value;
+		set-array-for-idx: func(idx: u32) -> value;
+		set-value-for-idx: func(idx: u32) -> value;
+		set-value-copy-for-idx: func(value: borrow<value>, idx: u32) -> value;
+
+		set-null-for-key: func(key: string);
+		set-bool-for-key: func(value: bool, key: string);
+		set-integer-for-key: func(value: s64, key: string);
+		set-double-for-key: func(value: f64, key: string);
+		set-string-for-key: func(value: string, key: string);
+		set-bytes-for-key: func(value: list<u8>, key: string);
+		set-dict-for-key: func(key: string) -> value;
+		set-array-for-key: func(key: string) -> value;
+		set-value-for-key: func(key: string) -> value;
+		set-value-copy-for-key: func(value: borrow<value>, key: string) -> value;
+
+		add-null: func();
+		add-bool: func(value: bool);
+		add-integer: func(value: s64);
+		add-double: func(value: f64);
+		add-string: func(value: string);
+		add-bytes: func(value: list<u8>);
+		add-dict: func() -> value;
+		add-array: func() -> value;
+		add-value: func() -> value;
+		add-value-copy: func(value: borrow<value>) -> value;
+
+		erase-for-idx: func(idx: u32) -> bool;
+		erase-for-key: func(key: string) -> bool;
+
+		is-equal: func(value: borrow<value>) -> bool;
+		is-not-equal: func(value: borrow<value>) -> bool;
+	}
+
+	read: func(buf: list<u8>, key: string) -> value;
+	read-file: func(buf: string, key: string) -> value;
+}

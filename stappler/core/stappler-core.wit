@@ -1,0 +1,52 @@
+// Copyright (c) 2024 Stappler LLC <admin@stappler.dev>
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
+/* @import */ interface core {
+	type time = u64;
+	type wide-string = list<u16>;
+	type bytes = list<u8>;
+	
+	itoa-u8: func(number: s64, target: string) -> u32;
+	itoa-u16: func(number: s64, target: wide-string) -> u32;
+	itoa-len: func(number: s64) -> u32;
+
+	dtoa-u8: func(number: f64, target: string) -> u32;
+	dtoa-u16: func(number: f64, target: wide-string) -> u32;
+	dtoa-len: func(number: f64) -> u32;
+
+	to-utf8: func(str: wide-string) -> string;
+	to-utf16: func(str: string) -> wide-string;
+
+	toupper-u8: func(str: string) -> string;
+	tolower-u8: func(str: string) -> string;
+	totitle-u8: func(str: string) -> string;
+
+	toupper-u16: func(str: wide-string) -> wide-string;
+	tolower-u16: func(str: wide-string) -> wide-string;
+	totitle-u16: func(str: wide-string) -> wide-string;
+
+	time-now: func() -> time;
+	time-to-http: func(t: time, target: string) -> u32;
+	time-to-atom-xml: func(t: time, target: string) -> u32;
+	time-to-rfc822: func(t: time, target: string) -> u32;
+	time-to-ctime: func(t: time, target: string) -> u32;
+	time-to-iso8601: func(t: time, precision: u8, target: string) -> u32;
+	time-to-format: func(t: time, fmt: string, target: string) -> u32;
+}
