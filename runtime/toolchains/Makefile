@@ -99,9 +99,9 @@ TOOLCHAIN_TARGETS := $(abspath $(LIBS_MAKE_ROOT))/targets
 prepare:
 	$(PREPARE)
 
-all: $(ALL_SRC)
+download: $(ALL_SRC)
 
-all: prepare
+download: prepare
 	rm -rf $(TMP_DIR)
 
 clean:
@@ -116,32 +116,35 @@ ANDROID_TARGETS_TOOLCHAINS := $(addprefix $(TOOLCHAIN_TARGETS)/,\
 	aarch64-linux-android armv7a-linux-androideabi i686-linux-android x86_64-linux-android)
 
 $(ANDROID_INTERMEDIATE_TOOLCHAINS):
+	mkdir -p $(TOOLCHAIN_INTERMEDIATE)
 	make -C android TOOLCHAIN_OUTPUT_DIR=$(abspath $(LIBS_MAKE_ROOT))/intermediate all
 
-android: $(ANDROID_INTERMEDIATE_TOOLCHAINS)
+$(TOOLCHAIN_TARGETS)/android: $(ANDROID_INTERMEDIATE_TOOLCHAINS)
 	$(MAKE) -f android.mk TOOLCHAIN_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE) TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS)
+	touch $@
+
+$(TOOLCHAIN_INTERMEDIATE)/x86_64-unknown-linux-gnu:
+	mkdir -p $(TOOLCHAIN_INTERMEDIATE)
+	make -C toolchain-linux-glibc OUT_SYSROOT=$(LIBS_MAKE_ROOT)/intermediate/x86_64-unknown-linux-gnu out
+	make -C linux x86_64 OUT_SYSROOT=$(LIBS_MAKE_ROOT)/intermediate/x86_64-unknown-linux-gnu
+
+$(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu: $(TOOLCHAIN_INTERMEDIATE)/x86_64-unknown-linux-gnu
+	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/x86_64-unknown-linux-gnu \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu
+
+android: $(TOOLCHAIN_TARGETS)/android
 
 android-clean:
 	-rm -rf $(ANDROID_INTERMEDIATE_TOOLCHAINS) $(TOOLCHAIN_TARGETS)/android
 
-linux-glibc-x86_64:
-	make -C toolchain-linux-glibc OUT_SYSROOT=$(LIBS_MAKE_ROOT)/intermediate/x86_64-unknown-linux-gnu out
-	make -C linux x86_64 OUT_SYSROOT=$(LIBS_MAKE_ROOT)/intermediate/x86_64-unknown-linux-gnu
+linux-glibc-x86_64: $(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu
 
-x86_64-unknown-linux-gnu.tar.xz: x86_64-unknown-linux-gnu
-	rm -f $</bin/c_rehash
-	rm -f $</lib/*.la
-	rm -rf $</lib/pkgconfig
-	rm -rf $</lib/cmake
-	rm -rf $</lib/icu
+android.tar.xz: $(TOOLCHAIN_TARGETS)/android
 	tar -cJf $@ $<
 
 compress: \
-	aarch64-linux-android.tar.xz \
-	armv7a-linux-androideabi.tar.xz \
-	i686-linux-android.tar.xz \
-	x86_64-linux-android.tar.xz \
+	android.tar.xz \
 	x86_64-unknown-linux-gnu.tar.xz
 
-.PHONY: all clean prepare compress xwin android
+.PHONY: all clean prepare compress xwin android android-clean linux-glibc-x86_64
 .DEFAULT_GOAL := all
