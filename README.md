@@ -128,7 +128,7 @@ LOCAL_EXECUTABLE := helloworld
 
 # Пути к наборам модулей
 LOCAL_MODULES_PATHS = \
-	$(STAPPLER_ROOT)/core/stappler-modules.mk
+	$(STAPPLER_ROOT)/stappler/stappler-modules.mk
 
 # Используемые модули
 LOCAL_MODULES := \

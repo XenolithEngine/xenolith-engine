@@ -29,22 +29,20 @@ LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 LOCAL_OUTDIR := stappler-build
 
 LOCAL_MODULES_PATHS = \
-	core/stappler-modules.mk \
-	xenolith/xenolith-modules.mk \
-	extra/webserver/webserver-modules.mk
+	stappler/stappler-modules.mk \
+	xenolith/xenolith-modules.mk
 
 ifeq ($(LOCAL_BUILD_TARGET),runtime)
 
 # Modules to distribute with precompiled toolchain
 LOCAL_MODULES := \
-	stappler_core \
-	stappler_data \
-	stappler_event
+	runtime
 
 else
 
 LOCAL_MODULES ?= \
-	stappler_core \
+	runtime \
+#	stappler_core \
 	stappler_brotli_lib \
 	stappler_data \
 	stappler_bitmap \
@@ -102,4 +100,6 @@ tar: $(LOCAL_LIBRARY)-$(LOCAL_VERSION).tar
 
 .PHONY: tar
 
-include build/make/shared.mk
+verbose := 1
+
+include make/shared.mk
