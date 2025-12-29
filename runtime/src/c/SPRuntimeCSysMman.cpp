@@ -22,13 +22,13 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include <c/sys/__sprt_mman.h>
-#include <c/__sprt_string.h>
-#include <c/__sprt_stdio.h>
-#include <c/__sprt_errno.h>
-#include <c/__sprt_stdarg.h>
+#include <sprt/c/sys/__sprt_mman.h>
+#include <sprt/c/__sprt_string.h>
+#include <sprt/c/__sprt_stdio.h>
+#include <sprt/c/__sprt_errno.h>
+#include <sprt/c/__sprt_stdarg.h>
 
-#include "SPRuntimeLog.h"
+#include <sprt/runtime/log.h>
 #include "private/SPRTPrivate.h"
 
 #include <sys/mman.h>

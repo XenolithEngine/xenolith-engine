@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/sys/__sprt_stat.h>
+#include <sprt/c/sys/__sprt_stat.h>
 
 #ifndef S_IFMT
 #define S_IFMT __SPRT_S_IFMT

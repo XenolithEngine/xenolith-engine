@@ -22,10 +22,10 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include <c/sys/__sprt_select.h>
-#include <c/__sprt_errno.h>
+#include <sprt/c/sys/__sprt_select.h>
+#include <sprt/c/__sprt_errno.h>
 
-#include "SPRuntimeLog.h"
+#include <sprt/runtime/log.h>
 
 #include <sys/select.h>
 

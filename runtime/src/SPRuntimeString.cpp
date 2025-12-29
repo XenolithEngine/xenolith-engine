@@ -20,10 +20,13 @@
  THE SOFTWARE.
  **/
 
-#include "SPRuntimeString.h"
-#include "SPRuntimeFloat.h"
+#include <sprt/runtime/string.h>
+#include <sprt/runtime/float.h>
+#include <sprt/runtime/math.h>
 
-#include <c/__sprt_string.h>
+#include <sprt/c/__sprt_string.h>
+#include <sprt/c/__sprt_ctype.h>
+#include <sprt/c/__sprt_wchar.h>
 
 #include <math.h>
 
@@ -919,15 +922,30 @@ bool istpunct(char c) {
 	return smart_lookup_table[((const uint8_t *)&c)[0]] & toInt(SmartType::TextPunctuation);
 }
 
-size_t strlen(const char *str) { return ::__sprt_strlen(str); }
+char tolower_c(char c) { return __sprt_tolower(c); }
 
-size_t strlen(const char16_t *str) {
-	if (str == nullptr) {
-		return 0;
-	}
-	const char16_t *end = str;
-	while (*end != u'\0') { ++end; }
-	return static_cast<size_t>(end - str);
+char16_t tolower_c(char16_t c) {
+	return static_cast<char16_t>(__sprt_towlower(static_cast<__sprt_wint_t>(c)));
+}
+
+char32_t tolower_c(char32_t c) {
+	return static_cast<char32_t>(__sprt_towlower(static_cast<__sprt_wint_t>(c)));
+}
+
+char toupper_c(char c) { return __sprt_toupper(c); }
+
+char16_t toupper_c(char16_t c) {
+	return static_cast<char16_t>(__sprt_towupper(static_cast<__sprt_wint_t>(c)));
+}
+
+char32_t toupper_c(char32_t c) {
+	return static_cast<char32_t>(__sprt_towupper(static_cast<__sprt_wint_t>(c)));
+}
+
+void nullify(const char *ptr, size_t size) { __sprt_memset((void *)ptr, 0, size * sizeof(char)); }
+
+void nullify(const char16_t *ptr, size_t size) {
+	__sprt_memset((void *)ptr, 0, size * sizeof(char16_t));
 }
 
 char *_makeCharBuffer(size_t size) {

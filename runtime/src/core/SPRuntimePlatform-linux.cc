@@ -20,11 +20,17 @@
  THE SOFTWARE.
  **/
 
-#include "SPRuntimeUnicode.h"
-#include "private/SPRTDso.h"
-#include <stdlib.h>
+#include <sprt/runtime/init.h>
 
 #if SPRT_LINUX
+
+#include <sprt/runtime/unicode.h>
+
+#include "private/SPRTDso.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <limits.h>
 
 #if STAPPLER_STATIC_TOOLCHAIN
 
@@ -368,19 +374,15 @@ struct i18n {
 				for (int32_t i = 0; (paramName = getSystemParameterNameByIndex(i)) != nullptr;
 						++i) {
 					getSystemParameterValueByIndex(i, buf, 256, &status);
-					if (__sprt_strcmp(paramName, "version") == 0) {
+					if (StringView(paramName) == "version") {
 						break;
 					}
 				}
 			}
 		}
 
-		if (::__sprt_strcmp(paramName, "version") == 0) {
-			StringView tmp(buf, ::__sprt_strlen(buf));
-			while (!tmp.empty() && !tmp.is('.')) { tmp.offset(1); }
-			if (tmp.is('.')) {
-				verSuffix = StringView(buf, tmp.ptr - buf);
-			}
+		if (StringView(paramName) == "version") {
+			verSuffix = StringView(buf).readUntil<StringView::Chars<'.'>>();
 		}
 
 		_handle = Dso("libicuuc.so");
@@ -778,6 +780,10 @@ bool idnToUnicode(const callback<void(StringView)> &cb, StringView source) {
 
 namespace sprt::platform {
 
+static char s_uniqueIdBuf[64] = {0};
+static char s_execPath[__SPRT_PATH_MAX] = {0};
+static char s_homePath[__SPRT_PATH_MAX] = {0};
+
 size_t makeRandomBytes(uint8_t *buf, size_t count) {
 	size_t generated = 0;
 	auto ret = ::getrandom(buf, count, GRND_RANDOM | GRND_NONBLOCK);
@@ -804,7 +810,21 @@ StringView getOsLocale() {
 	return StringView(locale, ::__sprt_strlen(locale));
 }
 
-bool initialize(int &resultCode) { return true; }
+StringView getUniqueDeviceId() { return StringView(s_uniqueIdBuf, 32); }
+
+StringView getExecPath() { return s_execPath; }
+
+bool initialize(int &resultCode) {
+	if (auto f = fopen("/etc/machine-id", "f")) {
+		auto ret = fread(s_uniqueIdBuf, 32, 1, f);
+		if (ret == 1) {
+			s_uniqueIdBuf[32] = 0;
+		}
+		fclose(f);
+	}
+
+	return true;
+}
 
 void terminate() { }
 

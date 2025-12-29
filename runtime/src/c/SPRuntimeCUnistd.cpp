@@ -22,14 +22,15 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include <c/__sprt_errno.h>
-#include <c/__sprt_unistd.h>
-#include <c/__sprt_stdio.h>
-#include <c/__sprt_string.h>
-#include <c/__sprt_stdarg.h>
+#include <sprt/c/__sprt_errno.h>
+#include <sprt/c/__sprt_unistd.h>
+#include <sprt/c/__sprt_stdio.h>
+#include <sprt/c/__sprt_string.h>
+#include <sprt/c/__sprt_stdarg.h>
 
-#include "SPRuntimePlatform.h"
-#include "SPRuntimeLog.h"
+#include <sprt/runtime/hash.h>
+#include <sprt/runtime/platform.h>
+#include <sprt/runtime/log.h>
 #include "private/SPRTFilename.h"
 #include "private/SPRTPrivate.h"
 
@@ -678,8 +679,13 @@ __SPRT_C_FUNC int __SPRT_ID(unlinkat)(int __dirfd, const char *__path, int __fla
 }
 
 __SPRT_C_FUNC long __SPRT_ID(gethostid)(void) {
-#warning TODO
-	return 0;
+	auto dev = platform::getUniqueDeviceId();
+
+	if constexpr (sizeof(long) == 4) {
+		return hash32(dev.data(), dev.size());
+	} else {
+		return hash64(dev.data(), dev.size());
+	}
 }
 
 } // namespace sprt

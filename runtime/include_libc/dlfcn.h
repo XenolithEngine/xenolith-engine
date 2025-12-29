@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_dlfcn.h>
+#include <sprt/c/__sprt_dlfcn.h>
 
 #define RTLD_LAZY __SPRT_RTLD_LAZY
 #define RTLD_NOW __SPRT_RTLD_NOW

@@ -20,12 +20,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#include "SPRuntimeUuid.h"
-#include "SPRuntimePlatform.h"
-#include "SPRuntimeHash.h"
+#include <sprt/runtime/uuid.h>
+#include <sprt/runtime/platform.h>
+#include <sprt/runtime/hash.h>
 
-#include <c/__sprt_unistd.h>
-#include <c/__sprt_string.h>
+#include <sprt/c/__sprt_unistd.h>
+#include <sprt/c/__sprt_string.h>
 
 #if SPRT_WINDOWS
 #include <winsock.h>

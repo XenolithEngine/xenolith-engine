@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#include "SPRuntimeBacktrace.h"
+#include <sprt/runtime/backtrace.h>
 #include <stdlib.h>
 #include <stdio.h>
 

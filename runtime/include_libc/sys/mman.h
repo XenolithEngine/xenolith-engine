@@ -29,8 +29,8 @@ THE SOFTWARE.
 
 #else
 
-#include <c/sys/__sprt_mman.h>
-#include <c/__sprt_stdarg.h>
+#include <sprt/c/sys/__sprt_mman.h>
+#include <sprt/c/__sprt_stdarg.h>
 
 #define MAP_FAILED __SPRT_MAP_FAILED
 

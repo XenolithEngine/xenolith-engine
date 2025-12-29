@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_errno.h>
+#include <sprt/c/__sprt_errno.h>
 
 #define errno __sprt_errno
 

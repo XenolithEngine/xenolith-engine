@@ -22,18 +22,19 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include <c/__sprt_assert.h>
-#include <c/__sprt_errno.h>
-#include <c/__sprt_fenv.h>
-#include <c/__sprt_signal.h>
-#include <c/__sprt_setjmp.h>
-#include <c/__sprt_utime.h>
-#include <c/__sprt_stdio.h>
-#include <c/__sprt_locale.h>
-#include <c/__sprt_nl_types.h>
+#include <sprt/c/__sprt_assert.h>
+#include <sprt/c/__sprt_errno.h>
+#include <sprt/c/__sprt_fenv.h>
+#include <sprt/c/__sprt_signal.h>
+#include <sprt/c/__sprt_setjmp.h>
+#include <sprt/c/__sprt_utime.h>
+#include <sprt/c/__sprt_stdio.h>
+#include <sprt/c/__sprt_locale.h>
+#include <sprt/c/__sprt_nl_types.h>
 
-#include "SPRuntimeLog.h"
-#include "SPRuntimeStringBuffer.h"
+#include <sprt/runtime/log.h>
+#include <sprt/runtime/stringbuffer.h>
+#include <sprt/runtime/source_location.h>
 #include "private/SPRTFilename.h"
 
 #include <locale.h>
@@ -63,12 +64,12 @@ __SPRT_C_FUNC void __sprt_assert_fail(const char *cond, const char *file, unsign
 	StringView sFn = fn ? StringView(fn) : StringView("<function>");
 
 	if (text && text[0] != 0) {
-		log::vprint(sprt::log::LogType::Fatal, log::SourceLocation{file, fn, line}, "Assert", sFn,
-				": (", sCond, ") failed: ", text, " ", features.underline, features.dim, sFile, ":",
-				line, features.drop);
+		log::vprint(sprt::log::LogType::Fatal, source_location_ext{file, fn, line, 0}, "Assert",
+				sFn, ": (", sCond, ") failed: ", text, " ", features.underline, features.dim, sFile,
+				":", line, features.drop);
 	} else {
-		log::vprint(sprt::log::LogType::Fatal, log::SourceLocation{file, fn, line}, "Assert", sFn,
-				": (", sCond, ") failed: ", features.underline, features.dim, sFile, ":", line,
+		log::vprint(sprt::log::LogType::Fatal, source_location_ext{file, fn, line, 0}, "Assert",
+				sFn, ": (", sCond, ") failed: ", features.underline, features.dim, sFile, ":", line,
 				features.drop);
 	}
 	::abort();

@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_math.h>
+#include <sprt/c/__sprt_math.h>
 
 #ifndef FP_NAN
 #define FP_NAN __SPRT_FP_NAN

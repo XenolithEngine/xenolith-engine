@@ -20,8 +20,9 @@
  THE SOFTWARE.
  **/
 
-#include "SPRuntimeHash.h"
-#include <c/__sprt_string.h>
+#include <sprt/runtime/hash.h>
+#include <sprt/runtime/endian.h>
+#include <sprt/c/__sprt_string.h>
 
 namespace sprt::sha1 {
 

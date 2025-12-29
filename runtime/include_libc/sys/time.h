@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/sys/__sprt_time.h>
+#include <sprt/c/sys/__sprt_time.h>
 
 __SPRT_BEGIN_DECL
 

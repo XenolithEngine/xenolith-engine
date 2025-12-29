@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_signal.h>
+#include <sprt/c/__sprt_signal.h>
 
 #endif
 

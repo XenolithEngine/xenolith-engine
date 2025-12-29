@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_pthread.h>
+#include <sprt/c/__sprt_pthread.h>
 
 #include <time.h>
 #include <sched.h>
@@ -450,11 +450,6 @@ SPRT_FORCEINLINE inline int pthread_setconcurrency(int v) {
 SPRT_FORCEINLINE inline int pthread_getcpuclockid(pthread_t thread, clockid_t *clock) {
 	return __sprt_pthread_getcpuclockid(thread, clock);
 }
-
-SPRT_FORCEINLINE inline void pthread_cleanup_push(void (*cb)(void *), void *v) {
-	__sprt_pthread_cleanup_push(cb, v);
-}
-SPRT_FORCEINLINE inline void pthread_cleanup_pop(int exec) { __sprt_pthread_cleanup_pop(exec); }
 
 SPRT_FORCEINLINE inline int pthread_getaffinity_np(pthread_t thread, size_t n, cpu_set_t *set) {
 	return __sprt_pthread_getaffinity_np(thread, n, set);

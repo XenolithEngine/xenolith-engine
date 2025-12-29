@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include <c/__sprt_pthread.h>
+#include <sprt/c/__sprt_pthread.h>
 
 #include <pthread.h>
 
@@ -451,13 +451,6 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_setconcurrency)(int v) { return ::pthread_se
 __SPRT_C_FUNC int __SPRT_ID(
 		pthread_getcpuclockid)(__SPRT_ID(pthread_t) thread, __SPRT_ID(clockid_t) * clock) {
 	return ::pthread_getcpuclockid(thread, clock);
-}
-
-__SPRT_C_FUNC void __SPRT_ID(pthread_cleanup_push)(void (*cb)(void *), void *v) {
-#warning TODO
-}
-__SPRT_C_FUNC void __SPRT_ID(pthread_cleanup_pop)(int exec) {
-#warning TODO
 }
 
 __SPRT_C_FUNC int __SPRT_ID(pthread_getaffinity_np)(__SPRT_ID(pthread_t) thread,

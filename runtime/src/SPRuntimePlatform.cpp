@@ -20,9 +20,9 @@
  THE SOFTWARE.
  **/
 
-#include "SPRuntimeString.h"
+#include <sprt/runtime/string.h>
+#include <sprt/runtime/new.h>
 #include "private/SPRTPrivate.h"
-#include <locale.h>
 
 #if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
 #include "core/SPRuntimePlatform-posix.cc"
@@ -38,6 +38,8 @@
 #endif
 
 namespace sprt {
+
+const nothrow_t nothrow;
 
 bool initialize(int &resultCode) {
 #if SPRT_WINDOWS

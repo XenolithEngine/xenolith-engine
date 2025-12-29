@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_locale.h>
+#include <sprt/c/__sprt_locale.h>
 
 #define LC_CTYPE __SPRT_LC_CTYPE
 #define LC_NUMERIC __SPRT_LC_NUMERIC

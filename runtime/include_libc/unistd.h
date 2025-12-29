@@ -29,8 +29,8 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_unistd.h>
-#include <c/__sprt_stdarg.h>
+#include <sprt/c/__sprt_unistd.h>
+#include <sprt/c/__sprt_stdarg.h>
 
 #ifndef SEEK_SET
 #define SEEK_SET __SPRT_SEEK_SET

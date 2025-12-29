@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_nl_types.h>
+#include <sprt/c/__sprt_nl_types.h>
 
 #define NL_SETD __SPRT_NL_SETD
 #define NL_CAT_LOCALE __SPRT_NL_CAT_LOCALE

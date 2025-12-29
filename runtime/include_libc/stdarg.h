@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_stdarg.h>
+#include <sprt/c/__sprt_stdarg.h>
 
 typedef __SPRT_ID(va_list) va_list;
 

@@ -20,7 +20,8 @@
  THE SOFTWARE.
  **/
 
-#include "SPRuntimeUnicode.h"
+#include <sprt/runtime/stringview.h>
+#include <sprt/runtime/unicode.h>
 
 #include <stdlib.h>
 

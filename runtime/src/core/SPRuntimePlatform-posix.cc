@@ -20,9 +20,9 @@
  THE SOFTWARE.
  **/
 
-#include "SPRuntimePlatform.h"
-#include <c/__sprt_unistd.h>
-#include <c/__sprt_time.h>
+#include <sprt/runtime/platform.h>
+#include <sprt/c/__sprt_unistd.h>
+#include <sprt/c/__sprt_time.h>
 
 #if __SSE__
 #include <x86intrin.h>

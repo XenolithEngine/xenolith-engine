@@ -20,8 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#include "SPRuntimeTime.h"
-#include <c/__sprt_time.h>
+#include <sprt/runtime/time.h>
+#include <sprt/c/__sprt_time.h>
 
 #include <math.h>
 #include <stdlib.h>

@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_string.h>
+#include <sprt/c/__sprt_string.h>
 
 __SPRT_BEGIN_DECL
 

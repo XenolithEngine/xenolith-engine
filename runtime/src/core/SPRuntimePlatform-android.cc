@@ -21,7 +21,7 @@
  THE SOFTWARE.
  **/
 
-#include "SPRuntimeInit.h"
+#include <sprt/runtime/init.h>
 
 #if SPRT_ANDROID
 

@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_stddef.h>
+#include <sprt/c/__sprt_stddef.h>
 
 typedef __SPRT_ID(max_align_t) max_align_t;
 

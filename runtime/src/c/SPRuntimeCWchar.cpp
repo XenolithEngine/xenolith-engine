@@ -22,10 +22,11 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include <c/__sprt_wchar.h>
-#include <c/__sprt_stdarg.h>
+#include <sprt/c/__sprt_wchar.h>
+#include <sprt/c/__sprt_stdarg.h>
 
 #include <wchar.h>
+#include <wctype.h>
 #include <time.h>
 
 #include "private/SPRTTime.h"
@@ -441,5 +442,8 @@ __SPRT_C_FUNC int __SPRT_ID(wcwidth)(__SPRT_WCHAR_T c) { return ::wcwidth(c); }
 __SPRT_C_FUNC int __SPRT_ID(wcswidth)(const __SPRT_WCHAR_T *ptr, __SPRT_ID(size_t) s) {
 	return ::wcswidth(ptr, s);
 }
+
+__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(towlower)(__SPRT_ID(wint_t) wc) { return ::towlower(wc); }
+__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(towupper)(__SPRT_ID(wint_t) wc) { return ::towupper(wc); }
 
 } // namespace sprt

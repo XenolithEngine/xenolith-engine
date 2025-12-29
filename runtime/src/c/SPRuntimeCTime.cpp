@@ -22,19 +22,18 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include <c/__sprt_errno.h>
-#include <c/__sprt_time.h>
+#include <sprt/c/__sprt_errno.h>
+#include <sprt/c/__sprt_time.h>
 
-#include "SPRuntimeLog.h"
+#include <sprt/runtime/log.h>
+#include "private/SPRTPrivate.h"
+#include "private/SPRTTime.h"
 
 #if SPRT_ANDROID && !defined(__LP64__)
 #include <time64.h>
 #else
 #include <time.h>
 #endif
-
-#include "private/SPRTPrivate.h"
-#include "private/SPRTTime.h"
 
 namespace sprt {
 
@@ -245,7 +244,7 @@ __SPRT_C_FUNC int __SPRT_ID(clock_getres)(__SPRT_ID(clockid_t) clock, __SPRT_TIM
 
 __SPRT_C_FUNC int __SPRT_ID(clock_gettime)(__SPRT_ID(clockid_t) clock, __SPRT_TIMESPEC_NAME *out) {
 	struct timespec rem;
-	auto ret = ::clock_getres(clock, &rem);
+	auto ret = ::clock_gettime(clock, &rem);
 	if (out) {
 		out->tv_nsec = rem.tv_nsec;
 		out->tv_sec = rem.tv_sec;

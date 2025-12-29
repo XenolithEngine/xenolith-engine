@@ -20,8 +20,8 @@
  THE SOFTWARE.
  **/
 
-#include "SPRuntimeStatus.h"
-#include "SPRuntimeStream.h"
+#include <sprt/runtime/status.h>
+#include <sprt/runtime/stream.h>
 
 #define STATUS_DESC_BUFFER_SIZE 512
 

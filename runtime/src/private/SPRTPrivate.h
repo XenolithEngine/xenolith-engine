@@ -23,7 +23,7 @@
 #ifndef CORE_RUNTIME_PRIVATE_SPRTPRIVATE_H_
 #define CORE_RUNTIME_PRIVATE_SPRTPRIVATE_H_
 
-#include "SPRuntimeInt.h"
+#include <sprt/runtime/int.h>
 
 #if SPRT_ANDROID
 #include <time.h>

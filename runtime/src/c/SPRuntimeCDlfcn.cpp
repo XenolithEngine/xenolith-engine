@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include <c/__sprt_dlfcn.h>
+#include <sprt/c/__sprt_dlfcn.h>
 
 #include "private/SPRTFilename.h"
 

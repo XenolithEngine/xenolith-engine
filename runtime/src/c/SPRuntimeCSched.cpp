@@ -22,8 +22,8 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include <c/__sprt_sched.h>
-#include <c/__sprt_string.h>
+#include <sprt/c/__sprt_sched.h>
+#include <sprt/c/__sprt_string.h>
 
 #include <sched.h>
 

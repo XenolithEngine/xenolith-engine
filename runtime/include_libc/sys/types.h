@@ -29,14 +29,14 @@ THE SOFTWARE.
 
 #else
 
-#include <c/cross/__sprt_pthread.h>
-#include <c/cross/__sprt_socket.h>
-#include <c/bits/__sprt_size_t.h>
-#include <c/bits/__sprt_time_t.h>
-#include <c/bits/__sprt_ssize_t.h>
-#include <c/bits/__sprt_time_t.h>
-#include <c/bits/__sprt_sigset_t.h>
-#include <c/bits/fdset.h>
+#include <sprt/c/cross/__sprt_pthread.h>
+#include <sprt/c/cross/__sprt_socket.h>
+#include <sprt/c/bits/__sprt_size_t.h>
+#include <sprt/c/bits/__sprt_time_t.h>
+#include <sprt/c/bits/__sprt_ssize_t.h>
+#include <sprt/c/bits/__sprt_time_t.h>
+#include <sprt/c/bits/__sprt_sigset_t.h>
+#include <sprt/c/bits/fdset.h>
 
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(rsize_t) rsize_t;

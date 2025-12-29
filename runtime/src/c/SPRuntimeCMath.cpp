@@ -22,9 +22,9 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include <c/__sprt_math.h>
-#include <c/__sprt_string.h>
-#include <c/__sprt_stdio.h>
+#include <sprt/c/__sprt_math.h>
+#include <sprt/c/__sprt_string.h>
+#include <sprt/c/__sprt_stdio.h>
 
 #include <math.h>
 

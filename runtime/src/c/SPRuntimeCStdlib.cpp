@@ -23,10 +23,10 @@ THE SOFTWARE.
 #include "private/SPRTFilename.h"
 #define __SPRT_BUILD 1
 
-#include <c/__sprt_stdlib.h>
-#include <c/__sprt_errno.h>
+#include <sprt/c/__sprt_stdlib.h>
+#include <sprt/c/__sprt_errno.h>
 
-#include "SPRuntimeLog.h"
+#include <sprt/runtime/log.h>
 
 #include <stdlib.h>
 

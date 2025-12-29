@@ -23,12 +23,13 @@
 #ifndef CORE_RUNTIME_PRIVATE_SPRTTIME_H_
 #define CORE_RUNTIME_PRIVATE_SPRTTIME_H_
 
-#include <c/__sprt_time.h>
+#include <sprt/runtime/init.h>
+#include <sprt/c/__sprt_time.h>
 #include <time.h>
 
 namespace sprt::internal {
 
-static struct tm getNativeTm(const struct __SPRT_TM_NAME *_tm) {
+SPRT_UNUSED static struct tm getNativeTm(const struct __SPRT_TM_NAME *_tm) {
 	struct tm target{
 		.tm_sec = _tm->tm_sec,
 		.tm_min = _tm->tm_min,
@@ -45,7 +46,7 @@ static struct tm getNativeTm(const struct __SPRT_TM_NAME *_tm) {
 	return target;
 }
 
-static void getRuntimeTm(struct __SPRT_TM_NAME *_tm, const struct tm &native) {
+SPRT_UNUSED static void getRuntimeTm(struct __SPRT_TM_NAME *_tm, const struct tm &native) {
 #if !defined(SPRT_ANDROID) && !defined(SPRT_LINUX)
 	_tm->tm_sec = native.tm_sec;
 #else

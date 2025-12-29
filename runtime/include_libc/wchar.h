@@ -29,8 +29,8 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_wchar.h>
-#include <c/__sprt_stdarg.h>
+#include <sprt/c/__sprt_wchar.h>
+#include <sprt/c/__sprt_stdarg.h>
 
 #ifndef __cplusplus
 typedef __SPRT_ID(wchar_t) wchar_t;

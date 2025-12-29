@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/sys/__sprt_socket.h>
+#include <sprt/c/sys/__sprt_socket.h>
 
 typedef __SPRT_ID(socklen_t) socklen_t;
 typedef __SPRT_ID(sa_family_t) sa_family_t;

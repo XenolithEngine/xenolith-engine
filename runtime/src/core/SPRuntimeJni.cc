@@ -21,7 +21,7 @@
  THE SOFTWARE.
  **/
 
-#include "jni/SPRuntimeJni.h"
+#include <sprt/jni/jni.h>
 
 #if SPRT_ANDROID
 
@@ -33,7 +33,6 @@
 #include <android/native_activity.h>
 
 #include <math.h>
-#include <mutex>
 
 namespace sprt::jni {
 
@@ -343,7 +342,7 @@ GlobalClass RefClass::getGlobal() const { return GlobalClass(*this); }
 
 static std::mutex s_infoMutex;
 
-App *App::alloc(const RefClass &cl) { return new (std::nothrow) App(cl); }
+App *App::alloc(const RefClass &cl) { return new (sprt::nothrow) App(cl); }
 
 App::~App() {
 	auto env = Env::getEnv();
@@ -766,7 +765,7 @@ ClassProxy::ClassProxy(const char *name) {
 	}
 }
 
-ApplicationInfo *ApplicationInfo::alloc() { return new (std::nothrow) ApplicationInfo; }
+ApplicationInfo *ApplicationInfo::alloc() { return new (sprt::nothrow) ApplicationInfo; }
 
 bool ApplicationInfo::init(const jni::Ref &ref) {
 	jConfig = ref;

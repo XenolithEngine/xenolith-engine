@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_limits.h>
+#include <sprt/c/__sprt_limits.h>
 
 #define CHAR_MIN __SPRT_CHAR_MIN
 #define CHAR_MAX __SPRT_CHAR_MAX

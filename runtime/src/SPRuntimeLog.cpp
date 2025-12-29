@@ -20,9 +20,10 @@
  THE SOFTWARE.
  **/
 
-#include "SPRuntimeLog.h"
-#include "SPRuntimeStringBuffer.h"
-#include <c/__sprt_stdlib.h>
+#include <sprt/runtime/log.h>
+#include <sprt/runtime/stringbuffer.h>
+#include <sprt/runtime/math.h>
+#include <sprt/c/__sprt_stdlib.h>
 #include <stdio.h>
 
 #if SPRT_ANDROID
@@ -30,7 +31,7 @@
 #endif
 
 #if SPRT_LINUX
-#include <c/sys/__sprt_stat.h>
+#include <sprt/c/sys/__sprt_stat.h>
 #endif
 
 #if SPRT_WINDOWS

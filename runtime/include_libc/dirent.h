@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_dirent.h>
+#include <sprt/c/__sprt_dirent.h>
 
 typedef __SPRT_ID(ssize_t) ssize_t;
 typedef __SPRT_ID(off_t) off_t;

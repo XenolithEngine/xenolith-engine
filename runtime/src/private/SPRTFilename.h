@@ -23,11 +23,11 @@
 #ifndef CORE_RUNTIME_PRIVATE_SPRTFILENAME_H_
 #define CORE_RUNTIME_PRIVATE_SPRTFILENAME_H_
 
-#include <c/__sprt_string.h>
-#include <c/__sprt_stdio.h>
-#include <c/__sprt_errno.h>
+#include <sprt/c/__sprt_string.h>
+#include <sprt/c/__sprt_stdio.h>
+#include <sprt/c/__sprt_errno.h>
 
-#include "SPRuntimeInvoke.h"
+#include <sprt/runtime/invoke.h>
 
 namespace sprt::internal {
 

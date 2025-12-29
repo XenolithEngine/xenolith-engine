@@ -22,8 +22,8 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include <c/__sprt_string.h>
-#include "SPRuntimeInt.h"
+#include <sprt/c/__sprt_string.h>
+#include <sprt/runtime/int.h>
 
 // clang-format off
 #ifdef __STDC_VERSION__

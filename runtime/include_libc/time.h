@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_time.h>
+#include <sprt/c/__sprt_time.h>
 
 #define CLOCKS_PER_SEC __SPRT_CLOCKS_PER_SEC
 #define TIME_UTC __SPRT_TIME_UTC

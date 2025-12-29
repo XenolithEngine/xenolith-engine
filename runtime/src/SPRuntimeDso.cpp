@@ -20,13 +20,16 @@
  THE SOFTWARE.
  **/
 
-#include "SPRuntimeDso.h"
+#include <sprt/runtime/dso.h>
+#include "private/SPRTDso.h"
 
 #if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
 
-#include <c/__sprt_dlfcn.h>
+#include <sprt/c/__sprt_dlfcn.h>
 
 namespace sprt {
+
+void _sprt_null_fn() { }
 
 void *dso_open(StringView name, DsoFlags flags, const char **err) {
 	void *h = nullptr;

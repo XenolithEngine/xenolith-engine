@@ -29,9 +29,9 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_stdio.h>
-#include <c/__sprt_stdarg.h>
-#include <c/bits/__sprt_null.h>
+#include <sprt/c/__sprt_stdio.h>
+#include <sprt/c/__sprt_stdarg.h>
+#include <sprt/c/bits/__sprt_null.h>
 
 #ifndef EOF
 #define EOF __SPRT_EOF

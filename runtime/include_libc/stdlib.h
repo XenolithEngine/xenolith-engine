@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <c/__sprt_stdlib.h>
+#include <sprt/c/__sprt_stdlib.h>
 
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(div_t) div_t;
