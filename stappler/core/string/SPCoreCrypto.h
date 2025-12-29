@@ -25,8 +25,8 @@ THE SOFTWARE.
 #define STAPPLER_CORE_STRING_SPCRYPTO_H_
 
 #include "SPIO.h"
-#include "SPBytesView.h"
-#include "SPRuntimeHash.h"
+#include "SPStringView.h"
+#include <sprt/runtime/hash.h>
 
 namespace STAPPLER_VERSIONIZED stappler {
 
@@ -42,7 +42,7 @@ struct SP_PUBLIC CoderSource {
 	CoderSource(const typename memory::PoolInterface::StringType &d);
 	CoderSource(const typename memory::StandartInterface::StringType &d);
 
-	template <Endian Order>
+	template <sprt::endian Order>
 	CoderSource(const BytesViewTemplate<Order> &d);
 
 	CoderSource(const BytesReader<uint8_t> &d);
@@ -59,14 +59,14 @@ struct SP_PUBLIC CoderSource {
 	CoderSource &operator=(const CoderSource &) = delete;
 	CoderSource &operator=(CoderSource &&) = delete;
 
-	BytesViewTemplate<Endian::Network> _data;
+	BytesViewTemplate<sprt::endian::network> _data;
 	size_t _offset = 0;
 
 	const uint8_t *data() const;
 	size_t size() const;
 	bool empty() const;
 
-	BytesViewTemplate<Endian::Network> view() const;
+	BytesViewTemplate<sprt::endian::network> view() const;
 
 	uint8_t operator[](size_t s) const;
 
@@ -283,7 +283,7 @@ inline CoderSource::CoderSource(const typename memory::PoolInterface::StringType
 inline CoderSource::CoderSource(const typename memory::StandartInterface::StringType &d)
 : _data((const uint8_t *)d.data(), d.size()) { }
 
-template <Endian Order>
+template <sprt::endian Order>
 inline CoderSource::CoderSource(const BytesViewTemplate<Order> &d) : _data(d.data(), d.size()) { }
 
 inline CoderSource::CoderSource(const BytesReader<uint8_t> &d) : _data(d.data(), d.size()) { }
@@ -301,7 +301,7 @@ inline const uint8_t *CoderSource::data() const { return _data.data() + _offset;
 inline size_t CoderSource::size() const { return _data.size() - _offset; }
 inline bool CoderSource::empty() const { return _data.empty() || _offset == _data.size(); }
 
-inline BytesViewTemplate<Endian::Network> CoderSource::view() const { return _data; }
+inline BytesViewTemplate<sprt::endian::network> CoderSource::view() const { return _data; }
 
 inline uint8_t CoderSource::operator[](size_t s) const { return _data[s + _offset]; }
 

@@ -47,7 +47,7 @@ struct SP_PUBLIC CustomLog {
 		Format
 	};
 
-	using log_fn = bool (*)(LogType, StringView, const SourceLocation &, Type, VA &);
+	using log_fn = bool (*)(LogType, StringView, const sprt::source_location &, Type, VA &);
 
 	CustomLog(log_fn fn);
 	~CustomLog();
@@ -73,49 +73,50 @@ SP_PUBLIC void setLogFilterMask(std::bitset<6> &&);
 SP_PUBLIC void setLogFilterMask(InitializerList<LogType>);
 SP_PUBLIC std::bitset<6> getlogFilterMask();
 
-SP_PUBLIC void format(LogType, StringView tag, const SourceLocation &, const char *, ...)
+SP_PUBLIC void format(LogType, StringView tag, const sprt::source_location &, const char *, ...)
 		SPPRINTF(4, 5);
-SP_PUBLIC void text(LogType, StringView tag, StringView, const SourceLocation & = SP_LOCATION);
+SP_PUBLIC void text(LogType, StringView tag, StringView,
+		const sprt::source_location & = __SPRT_LOCATION);
 
 template <typename... Args>
 void verbose(StringView tag, Args &&...args) {
 	text(LogType::Verbose, tag, StringView(mem_std::toString(std::forward<Args>(args)...)),
-			SourceLocation());
+			sprt::source_location());
 }
 
 template <typename... Args>
 void debug(StringView tag, Args &&...args) {
 	text(LogType::Debug, tag, StringView(mem_std::toString(std::forward<Args>(args)...)),
-			SourceLocation());
+			sprt::source_location());
 }
 
 template <typename... Args>
 void info(StringView tag, Args &&...args) {
 	text(LogType::Info, tag, StringView(mem_std::toString(std::forward<Args>(args)...)),
-			SourceLocation());
+			sprt::source_location());
 }
 
 template <typename... Args>
 void warn(StringView tag, Args &&...args) {
 	text(LogType::Warn, tag, StringView(mem_std::toString(std::forward<Args>(args)...)),
-			SourceLocation());
+			sprt::source_location());
 }
 
 template <typename... Args>
 void error(StringView tag, Args &&...args) {
 	text(LogType::Error, tag, StringView(mem_std::toString(std::forward<Args>(args)...)),
-			SourceLocation());
+			sprt::source_location());
 }
 
 template <typename... Args>
 void fatal(StringView tag, Args &&...args) {
 	text(LogType::Fatal, tag, StringView(mem_std::toString(std::forward<Args>(args)...)),
-			SourceLocation());
+			sprt::source_location());
 }
 
 // Wrap current source location to forward it into log entry
 struct SP_PUBLIC SourceWapper {
-	constexpr SourceWapper(const SourceLocation &loc = SP_LOCATION) : source(loc) { }
+	constexpr SourceWapper(const sprt::source_location &loc = __SPRT_LOCATION) : source(loc) { }
 
 	template <typename... Args>
 	void verbose(StringView tag, Args &&...args) {
@@ -153,10 +154,10 @@ struct SP_PUBLIC SourceWapper {
 				source);
 	}
 
-	SourceLocation source;
+	sprt::source_location source;
 };
 
-SP_PUBLIC inline SourceWapper source(const SourceLocation &loc = SP_LOCATION) {
+SP_PUBLIC inline SourceWapper source(const sprt::source_location &loc = __SPRT_LOCATION) {
 	return SourceWapper(loc);
 }
 
@@ -164,9 +165,9 @@ SP_PUBLIC inline SourceWapper source(const SourceLocation &loc = SP_LOCATION) {
 
 namespace STAPPLER_VERSIONIZED stappler {
 
-SP_PUBLIC inline auto plog() { return log::SourceWapper(SourceLocation()); }
+SP_PUBLIC inline auto plog() { return log::SourceWapper(sprt::source_location()); }
 
-SP_PUBLIC inline auto slog(const SourceLocation &loc = SP_LOCATION) {
+SP_PUBLIC inline auto slog(const sprt::source_location &loc = __SPRT_LOCATION) {
 	return log::SourceWapper(loc);
 }
 

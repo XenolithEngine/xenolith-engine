@@ -30,6 +30,8 @@ THE SOFTWARE.
 
 namespace STAPPLER_VERSIONIZED stappler {
 
+namespace chars = sprt::chars;
+
 using Scheme = chars::Compose<char, chars::CharGroup<char, CharGroupId::Alphanumeric>,
 		chars::Chars<char, '+', '-', '.'>>;
 using Ipv6 = chars::Compose<char, chars::CharGroup<char, CharGroupId::Hexadecimial>,

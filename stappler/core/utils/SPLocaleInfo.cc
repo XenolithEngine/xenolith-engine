@@ -21,8 +21,7 @@ THE SOFTWARE.
 **/
 
 #include "SPLocaleInfo.h"
-#include "SPBytesReader.h"
-#include "SPSpanView.h"
+#include "SPStringView.h"
 #include "SPString.h"
 #include "SPLog.h"
 

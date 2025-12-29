@@ -24,7 +24,7 @@ THE SOFTWARE.
 #ifndef STAPPLER_DATA_SPDATACBOR_H_
 #define STAPPLER_DATA_SPDATACBOR_H_
 
-#include "SPBytesView.h"
+#include "SPStringView.h"
 #include "SPHalfFloat.h"
 
 namespace STAPPLER_VERSIONIZED stappler::data::cbor {

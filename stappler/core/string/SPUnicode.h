@@ -25,7 +25,7 @@
 #ifndef STAPPLER_CORE_STRING_SPUNICODE_H_
 #define STAPPLER_CORE_STRING_SPUNICODE_H_
 
-#include "SPRuntimeUnicode.h"
+#include <sprt/runtime/unicode.h>
 #include "SPMemString.h"
 
 namespace STAPPLER_VERSIONIZED stappler::unicode {

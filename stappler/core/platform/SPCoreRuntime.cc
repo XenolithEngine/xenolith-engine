@@ -21,7 +21,7 @@
  **/
 
 #include "SPString.h" // IWYU pragma: keep
-#include "SPRuntimeUnicode.h"
+#include <sprt/runtime/unicode.h>
 
 namespace STAPPLER_VERSIONIZED stappler::platform {
 
@@ -132,7 +132,7 @@ int compare_u(StringView l, StringView r) {
 	if (sprt::unicode::compare(l, r, &result)) {
 		return result;
 	}
-	return string::detail::compare_c(l, r);
+	return sprt::detail::compare_c(l, r);
 }
 
 int compare_u(WideStringView l, WideStringView r) {
@@ -140,7 +140,7 @@ int compare_u(WideStringView l, WideStringView r) {
 	if (sprt::unicode::compare(l, r, &result)) {
 		return result;
 	}
-	return string::detail::compare_c(l, r);
+	return sprt::detail::compare_c(l, r);
 }
 
 int caseCompare_u(StringView l, StringView r) {
@@ -148,7 +148,7 @@ int caseCompare_u(StringView l, StringView r) {
 	if (sprt::unicode::caseCompare(l, r, &result)) {
 		return result;
 	}
-	return string::detail::caseCompare_c(l, r);
+	return sprt::detail::caseCompare_c(l, r);
 }
 
 int caseCompare_u(WideStringView l, WideStringView r) {
@@ -156,7 +156,7 @@ int caseCompare_u(WideStringView l, WideStringView r) {
 	if (sprt::unicode::caseCompare(l, r, &result)) {
 		return result;
 	}
-	return string::detail::caseCompare_c(l, r);
+	return sprt::detail::caseCompare_c(l, r);
 }
 
 } // namespace stappler::platform

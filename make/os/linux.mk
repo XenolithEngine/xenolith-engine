@@ -57,12 +57,6 @@ OSTYPE_GENERAL_LDFLAGS :=
 OSTYPE_EXEC_LDFLAGS := 
 OSTYPE_LIB_LDFLAGS := -rdynamic -Wl,--exclude-libs,ALL
 
-ifdef TOOLCHAIN_SYSROOT
-OSTYPE_GENERAL_CFLAGS += --sysroot $(TOOLCHAIN_SYSROOT)
-OSTYPE_GENERAL_CXXFLAGS += --sysroot $(TOOLCHAIN_SYSROOT)
-OSTYPE_GENERAL_LDFLAGS += --sysroot $(TOOLCHAIN_SYSROOT)
-endif
-
 # ldgold only tested for x86_64 linux
 # For others - use default ld
 ifndef TOOLCHAIN_TARGET

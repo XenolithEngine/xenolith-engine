@@ -30,9 +30,9 @@ THE SOFTWARE.
 namespace STAPPLER_VERSIONIZED stappler::memory {
 
 template <typename Type>
-class vector : public AllocPool {
+class vector : public sprt::memory::AllocPool {
 public:
-	using allocator_type = detail::Allocator<Type>;
+	using allocator_type = sprt::memory::detail::Allocator<Type>;
 
 	using pointer = Type *;
 	using const_pointer = const Type *;

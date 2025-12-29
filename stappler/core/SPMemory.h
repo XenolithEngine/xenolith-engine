@@ -27,7 +27,6 @@ THE SOFTWARE.
 
 #include "SPMemFunction.h"
 #include "SPMemInterface.h"
-#include "SPSpanView.h" // IWYU pragma: keep
 #include "SPString.h" // IWYU pragma: keep
 #include "SPStringView.h"
 #include "SPTime.h"
@@ -86,14 +85,14 @@ public:
 
 class SP_PUBLIC AllocRef : public Ref {
 public:
-	virtual ~AllocRef() { memory::allocator::destroy(_allocator); }
+	virtual ~AllocRef() { sprt::memory::allocator::destroy(_allocator); }
 
-	AllocRef() { _allocator = memory::allocator::create(); }
+	AllocRef() { _allocator = sprt::memory::allocator::create(); }
 
 	memory::allocator_t *getAllocator() const { return _allocator; }
 
-	void setOwner(memory::pool_t *p) { memory::allocator::owner_set(_allocator, p); }
-	memory::pool_t *getOwner() const { return memory::allocator::owner_get(_allocator); }
+	void setOwner(memory::pool_t *p) { sprt::memory::allocator::owner_set(_allocator, p); }
+	memory::pool_t *getOwner() const { return sprt::memory::allocator::owner_get(_allocator); }
 
 protected:
 	memory::allocator_t *_allocator = nullptr;
@@ -105,7 +104,7 @@ public:
 		if (_ownsAllocator) {
 			_allocator->setOwner(nullptr);
 		}
-		memory::pool::destroy(_pool);
+		sprt::memory::pool::destroy(_pool);
 		_pool = nullptr;
 		_allocator = nullptr;
 		_ownsAllocator = false;
@@ -117,7 +116,7 @@ public:
 			_allocator = Rc<AllocRef>::alloc();
 			_ownsAllocator = true;
 		}
-		_pool = memory::pool::create(_allocator->getAllocator());
+		_pool = sprt::memory::pool::create(_allocator->getAllocator());
 		if (_ownsAllocator) {
 			_allocator->setOwner(_pool);
 		}
@@ -126,12 +125,12 @@ public:
 	PoolRef(PoolRef *pool) {
 		_ownsAllocator = false;
 		_allocator = pool->_allocator;
-		_pool = memory::pool::create(_allocator->getAllocator());
+		_pool = sprt::memory::pool::create(_allocator->getAllocator());
 	}
 
 	memory::pool_t *getPool() const { return _pool; }
 
-	void *palloc(size_t size) { return memory::pool::palloc(_pool, size); }
+	void *palloc(size_t size) { return sprt::memory::pool::palloc(_pool, size); }
 
 	template <typename Callable>
 	auto perform(const Callable &cb) {
@@ -148,8 +147,8 @@ protected:
 
 namespace STAPPLER_VERSIONIZED stappler::mem_pool {
 
-namespace pool = memory::pool;
-namespace allocator = memory::allocator;
+namespace pool = sprt::memory::pool;
+namespace allocator = sprt::memory::allocator;
 
 using CharGroupId = stappler::CharGroupId;
 
@@ -200,7 +199,6 @@ using stappler::makeSpanView;
 using memory::perform;
 using memory::perform_clear;
 using memory::perform_temporary;
-using memory::perform_main;
 using memory::makeCallback;
 
 template <typename Container, typename T>
@@ -214,8 +212,8 @@ bool exists_ordered(const Container &vec, const T &val);
 
 namespace STAPPLER_VERSIONIZED stappler::mem_std {
 
-namespace pool = memory::pool;
-namespace allocator = memory::allocator;
+namespace pool = sprt::memory::pool;
+namespace allocator = sprt::memory::allocator;
 
 using memory::allocator_t;
 using memory::pool_t;
@@ -267,7 +265,6 @@ using stappler::makeSpanView;
 using memory::perform;
 using memory::perform_clear;
 using memory::perform_temporary;
-using memory::perform_main;
 using memory::makeCallback;
 
 template <typename Container, typename T>

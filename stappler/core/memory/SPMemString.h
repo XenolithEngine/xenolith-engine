@@ -61,9 +61,9 @@ template <typename CharType, typename InputIterator, bool IsIntegral>
 struct __basic_string_fill;
 
 template <typename CharType>
-class basic_string : public AllocPool {
+class basic_string : public sprt::memory::AllocPool {
 public:
-	using allocator_type = detail::Allocator<CharType>;
+	using allocator_type = sprt::memory::detail::Allocator<CharType>;
 
 	using pointer = CharType *;
 	using const_pointer = const CharType *;
@@ -999,26 +999,25 @@ namespace std {
 
 template <>
 struct hash<STAPPLER_VERSIONIZED_NAMESPACE::memory::basic_string<char>> {
-	size_t operator()(
+	constexpr size_t operator()(
 			const STAPPLER_VERSIONIZED_NAMESPACE::memory::basic_string<char> &s) const noexcept {
 		if (sizeof(size_t) == 8) {
-			return STAPPLER_VERSIONIZED_NAMESPACE::hash::hash64(s.data(), s.size());
+			return sprt::hash64(s.data(), s.size());
 		} else {
-			return STAPPLER_VERSIONIZED_NAMESPACE::hash::hash32(s.data(), s.size());
+			return sprt::hash32(s.data(), s.size());
 		}
 	}
 };
 
 template <>
 struct hash<STAPPLER_VERSIONIZED_NAMESPACE::memory::basic_string<char16_t>> {
-	size_t operator()(const STAPPLER_VERSIONIZED_NAMESPACE::memory::basic_string<char16_t> &s)
+	constexpr size_t operator()(
+			const STAPPLER_VERSIONIZED_NAMESPACE::memory::basic_string<char16_t> &s)
 			const noexcept {
 		if (sizeof(size_t) == 8) {
-			return STAPPLER_VERSIONIZED_NAMESPACE::hash::hash64((char *)s.data(),
-					s.size() * sizeof(char16_t));
+			return sprt::hash64((char *)s.data(), s.size() * sizeof(char16_t));
 		} else {
-			return STAPPLER_VERSIONIZED_NAMESPACE::hash::hash32((char *)s.data(),
-					s.size() * sizeof(char16_t));
+			return sprt::hash32((char *)s.data(), s.size() * sizeof(char16_t));
 		}
 	}
 };

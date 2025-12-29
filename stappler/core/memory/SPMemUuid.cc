@@ -22,9 +22,9 @@ THE SOFTWARE.
 **/
 
 #include "SPMemUuid.h"
-#include "SPRuntimeUuid.h"
 #include "SPString.h"
 #include "SPTime.h"
+#include <sprt/runtime/uuid.h>
 
 namespace STAPPLER_VERSIONIZED stappler::memory {
 

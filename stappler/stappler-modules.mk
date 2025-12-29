@@ -50,5 +50,4 @@ TOOLKIT_MODULE_LIST += \
 	$(STAPPLER_MODULE_DIR)/pug/pug.mk \
 	$(STAPPLER_MODULE_DIR)/document/document.mk \
 	$(STAPPLER_MODULE_DIR)/layout/layout.mk \
-	$(STAPPLER_MODULE_DIR)/experimental/abi/abi.mk \
-	$(STAPPLER_MODULE_DIR)/runtime/runtime.mk
+	$(STAPPLER_MODULE_DIR)/experimental/abi/abi.mk

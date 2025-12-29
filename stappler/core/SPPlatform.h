@@ -25,7 +25,7 @@
 #define CORE_CORE_SPPLATFORM_H_
 
 #include "SPCore.h"
-#include "SPRuntimePlatform.h"
+#include <sprt/runtime/platform.h>
 
 namespace STAPPLER_VERSIONIZED stappler {
 

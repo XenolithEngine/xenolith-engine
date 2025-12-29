@@ -46,7 +46,7 @@ public:
 	using const_reference = const Type &;
 
 	using size_type = size_t;
-	using allocator = Allocator<Type>;
+	using allocator = sprt::memory::detail::Allocator<Type>;
 
 	using iterator = pointer_iterator<Type, pointer, reference>;
 	using const_iterator = pointer_iterator<Type, const_pointer, const_reference>;

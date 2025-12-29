@@ -25,7 +25,7 @@ THE SOFTWARE.
 #define STAPPLER_CORE_UTILS_SPTIME_H_
 
 #include "SPStringView.h"
-#include "SPRuntimeTime.h"
+#include <sprt/runtime/time.h>
 
 #define SP_COMPILE_TIME (STAPPLER_VERSIONIZED_NAMESPACE::Time::fromCompileTime(__DATE__, __TIME__))
 

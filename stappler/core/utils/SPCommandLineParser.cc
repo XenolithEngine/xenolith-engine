@@ -159,23 +159,23 @@ bool CommandLinePatternParsingData::parseWhitespace() {
 
 CommandLineParserBase::~CommandLineParserBase() {
 	if (_pool) {
-		memory::pool::destroy(_pool);
+		sprt::memory::pool::destroy(_pool);
 	}
 	if (_alloc) {
-		memory::allocator::destroy(_alloc);
+		sprt::memory::allocator::destroy(_alloc);
 	}
-	memory::pool::terminate();
+	sprt::memory::pool::terminate();
 }
 
 CommandLineParserBase::CommandLineParserBase() {
-	memory::pool::initialize();
-	_alloc = memory::allocator::create();
-	_pool = memory::pool::create(_alloc);
+	sprt::memory::pool::initialize();
+	_alloc = sprt::memory::allocator::create();
+	_pool = sprt::memory::pool::create(_alloc);
 
 	mem_pool::perform([&] {
-		_stringPatterns = new (std::nothrow) Vector<CommandLinePatternData>;
-		_charPatterns = new (std::nothrow) Vector<CommandLinePatternData>;
-		_options = new (std::nothrow) Vector<CommandLineParamData *>;
+		_stringPatterns = new (sprt::nothrow) Vector<CommandLinePatternData>;
+		_charPatterns = new (sprt::nothrow) Vector<CommandLinePatternData>;
+		_options = new (sprt::nothrow) Vector<CommandLineParamData *>;
 	}, _pool);
 }
 

@@ -20,9 +20,9 @@
 
 // clang-format off
 
-#include <c/__sprt_stddef.h>
-#include <c/__sprt_stdint.h>
-#include <c/__sprt_string.h>
+#include <sprt/c/__sprt_stddef.h>
+#include <sprt/c/__sprt_stdint.h>
+#include <sprt/c/__sprt_string.h>
 
 __sprt_size_t num_ids = 2557;
 

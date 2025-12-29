@@ -24,11 +24,7 @@
 #define CORE_CORE_DETAIL_SPLOGINIT_H_
 
 #include "SPPlatformInit.h"
-#include "SPRuntimeLog.h"
-
-#if __cplusplus >= 202'002L
-#include <source_location>
-#endif
+#include <sprt/runtime/log.h>
 
 // GCC-specific formatting attribute
 #if defined(__GNUC__) && (__GNUC__ >= 4)
@@ -44,35 +40,14 @@
 #define SP_COVERAGE_TRIVIAL
 #endif
 
-namespace STAPPLER_VERSIONIZED stappler {
-
-// Initialize this with SP_LOCATION
-struct SourceLocation {
-	const char *fileName = nullptr;
-	const char *functionName = nullptr;
-	unsigned line = 0;
-
-	constexpr bool empty() const {
-		return line == 0 && fileName == nullptr && functionName == nullptr;
-	}
-
-	constexpr SourceLocation() = default;
-#if __cplusplus >= 202'002L
-	constexpr SourceLocation(const std::source_location &loc)
-	: fileName(loc.file_name()), functionName(loc.function_name()), line(loc.line()) { }
-#endif
-};
-
-} // namespace STAPPLER_VERSIONIZED stappler
-
 namespace STAPPLER_VERSIONIZED stappler::log {
 
 using LogType = sprt::log::LogType;
 using enum LogType;
 
-SP_PUBLIC void format(LogType, const char *tag, const SourceLocation &source, const char *, ...)
-		SPPRINTF(4, 5);
-SP_PUBLIC void text(LogType, const char *tag, const SourceLocation &source, const char *);
+SP_PUBLIC void format(LogType, const char *tag, const sprt::source_location &source, const char *,
+		...) SPPRINTF(4, 5);
+SP_PUBLIC void text(LogType, const char *tag, const sprt::source_location &source, const char *);
 
 } // namespace stappler::log
 

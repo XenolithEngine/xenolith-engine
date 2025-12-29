@@ -25,7 +25,7 @@ THE SOFTWARE.
 #define STAPPLER_BITMAP_SPBITMAPFORMAT_H_
 
 #include "SPIO.h"
-#include "SPBytesView.h"
+#include "SPStringView.h"
 #include "SPFilepath.h"
 
 namespace STAPPLER_VERSIONIZED stappler::bitmap {

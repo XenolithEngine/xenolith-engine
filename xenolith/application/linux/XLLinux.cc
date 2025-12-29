@@ -22,7 +22,7 @@
 
 #include "XLLinux.h"
 #include "SPCore.h"
-#include "SPSpanView.h"
+#include "SPStringView.h"
 #include "XLContextInfo.h"
 
 #include <X11/keysym.h>

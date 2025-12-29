@@ -26,7 +26,7 @@ THE SOFTWARE.
 #define STAPPLER_CORE_MEMORY_DETAIL_SPMEMSTORAGEMEMIMPL_H_
 
 #include "detail/SPLogInit.h"
-#include "SPMemAlloc.h"
+#include <sprt/runtime/mem/detail/alloc.h>
 
 namespace STAPPLER_VERSIONIZED stappler::memory::detail {
 
@@ -37,7 +37,7 @@ struct mem_small {
 	using pointer = Type *;
 	using const_pointer = const Type *;
 	using size_type = size_t;
-	using allocator = Allocator<Type>;
+	using allocator = sprt::memory::detail::Allocator<Type>;
 
 	static constexpr size_type max_capacity() {
 		return (sizeof(Type) < ByteCount) ? ((ByteCount - 1) / sizeof(Type)) : 0;
@@ -99,7 +99,7 @@ public:
 	using pointer = Type *;
 	using const_pointer = const Type *;
 	using size_type = size_t;
-	using allocator = Allocator<Type>;
+	using allocator = sprt::memory::detail::Allocator<Type>;
 
 	mem_large() = default;
 	mem_large(const self &) = default;
@@ -301,7 +301,7 @@ public:
 	// this memory block can be reused by next temporary buffer of same size
 	// so, no pool memory will be leaked
 	pointer reserve_block_optimal() {
-		auto target = config::BlockThreshold / sizeof(Type) + 1;
+		auto target = sprt::memory::config::BlockThreshold / sizeof(Type) + 1;
 		return reserve(target);
 	}
 
@@ -353,7 +353,7 @@ public:
 	using const_pointer = const Type *;
 
 	using size_type = size_t;
-	using allocator = Allocator<Type>;
+	using allocator = sprt::memory::detail::Allocator<Type>;
 
 	using large_mem = mem_large<Type, Extra>;
 	using small_mem = mem_small<Type, sizeof(large_mem)>;
@@ -386,9 +386,9 @@ public:
 				large_mem new_large;
 				new_large.assign(_allocator, ptr, size);
 				set_large_flag_force();
-				_large = sp::move_unsafe(new_large);
+				_large = sprt::move_unsafe(new_large);
 			} else {
-				large_mem old_large(sp::move_unsafe(_large));
+				large_mem old_large(sprt::move_unsafe(_large));
 				_small.force_clear();
 				set_small_flag();
 				_small.assign(_allocator, ptr, size);
@@ -428,7 +428,7 @@ public:
 	// this memory block can be reused by next temporary buffer of same size
 	// so, no pool memory will be leaked
 	pointer reserve_block_optimal() {
-		auto target = config::BlockThreshold / sizeof(Type) + 1;
+		auto target = sprt::memory::config::BlockThreshold / sizeof(Type) + 1;
 		return reserve(target);
 	}
 

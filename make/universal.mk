@@ -40,81 +40,81 @@ clean: host-debug-clean
 install: host-install
 
 host-install:
-	@$(MAKE) $(call sp_detect_platform,host) install
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) install
 
 host-debug:
-	@$(MAKE) $(call sp_detect_platform,host) all
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) all
 
 host-debug-clean:
-	@$(MAKE) $(call sp_detect_platform,host) clean
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) clean
 
 host-release:
-	@$(MAKE) $(call sp_detect_platform,host) RELEASE=1
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) RELEASE=1
 
 host-release-clean:
-	@$(MAKE) $(call sp_detect_platform,host) RELEASE=1 clean
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) RELEASE=1 clean
 
 host-coverage:
-	@$(MAKE) $(call sp_detect_platform,host) COVERAGE=1 all
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) COVERAGE=1 all
 
 host-coverage-clean:
-	@$(MAKE) $(call sp_detect_platform,host) COVERAGE=1 clean
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) COVERAGE=1 clean
 
 host-report:
-	@$(MAKE) $(call sp_detect_platform,host) COVERAGE=1 report
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) COVERAGE=1 report
 
 android: android-debug
 android-clean: android-debug-clean
 
 android-export:
-	@$(MAKE) ANDROID_EXPORT=1 $(call sp_detect_platform,android) android-export
-	@$(MAKE) ANDROID_EXPORT=1 RELEASE=1 $(call sp_detect_platform,android) android-export
+	@$(MAKE) -f $(LOCAL_MAKEFILE) ANDROID_EXPORT=1 $(call sp_detect_platform,android) android-export
+	@$(MAKE) -f $(LOCAL_MAKEFILE) ANDROID_EXPORT=1 RELEASE=1 $(call sp_detect_platform,android) android-export
 
 android-debug:
-	@$(MAKE) ANDROID_EXPORT=1 $(call sp_detect_platform,android) android-export
-	@$(MAKE) $(call sp_detect_platform,android) all
+	@$(MAKE) -f $(LOCAL_MAKEFILE) ANDROID_EXPORT=1 $(call sp_detect_platform,android) android-export
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,android) all
 
 android-debug-clean:
 	@$(MAKE) $(call sp_detect_platform,android) clean
 
 android-release:
-	@$(MAKE) ANDROID_EXPORT=1 $(call sp_detect_platform,android) android-export
-	@$(MAKE) $(call sp_detect_platform,android) RELEASE=1 all
+	@$(MAKE) -f $(LOCAL_MAKEFILE) ANDROID_EXPORT=1 $(call sp_detect_platform,android) android-export
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,android) RELEASE=1 all
 
 android-release-clean:
-	@$(MAKE) $(call sp_detect_platform,android) RELEASE=1 clean
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,android) RELEASE=1 clean
 
 ios: ios-debug
 ios-clean: ios-debug-clean
 
 ios-export:
-	@$(MAKE) $(call sp_detect_platform,ios) IOS_ARCH=export ios-export
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,ios) IOS_ARCH=export ios-export
 
 mac-export:
-	@$(MAKE) $(call sp_detect_platform,host) RELEASE=1 mac-export
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) RELEASE=1 mac-export
 
 xwin: xwin-debug
 xwin-clean: xwin-debug-clean
 
 xwin-debug:
-	@$(MAKE) $(call sp_detect_platform,xwin) all
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) all
 
 xwin-debug-clean:
-	@$(MAKE) $(call sp_detect_platform,xwin) clean
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) clean
 
 xwin-release:
-	@$(MAKE) $(call sp_detect_platform,xwin) RELEASE=1 all
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) RELEASE=1 all
 
 xwin-release-clean:
-	@$(MAKE) $(call sp_detect_platform,xwin) RELEASE=1 clean
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) RELEASE=1 clean
 
 xwin-all:
-	@$(MAKE) $(call sp_detect_platform,xwin) xwin
-	@$(MAKE) $(call sp_detect_platform,xwin) RELEASE=1 xwin
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) xwin
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) RELEASE=1 xwin
 
 xwin-all-clean:
-	@$(MAKE) $(call sp_detect_platform,xwin) xwin-clean
-	@$(MAKE) $(call sp_detect_platform,xwin) RELEASE=1 xwin-clean
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) xwin-clean
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) RELEASE=1 xwin-clean
 
 .PHONY: clean install
 .PHONY: host host-clean host-debug host-debug-clean host-release host-release-clean host-install host-coverage host-report

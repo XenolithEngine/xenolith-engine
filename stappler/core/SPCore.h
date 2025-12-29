@@ -49,8 +49,11 @@ constexpr auto MODULE_APPCOMMON_NAME = "appcommon";
 
 } // namespace stappler::buildconfig
 
+// Link sprt iterators with std iterators
+#define __SPRT_USE_LIBCXX_ITERATOR_TAGS 1
+
 #include "detail/SPPlatformInit.h"
-#include "SPRuntimeNotNull.h"
+#include <sprt/runtime/notnull.h>
 #include <assert.h>
 
 // From C++ standard library:
@@ -97,10 +100,6 @@ constexpr auto MODULE_APPCOMMON_NAME = "appcommon";
 #include <variant> // IWYU pragma: keep
 #include <chrono> // IWYU pragma: keep
 #include <compare> // IWYU pragma: keep
-
-#if __cplusplus >= 202'002L
-#include <source_location> // IWYU pragma: keep
-#endif
 
 #include "detail/SPHash.h" // IWYU pragma: keep
 #include "detail/SPMath.h" // IWYU pragma: keep
@@ -231,6 +230,23 @@ SP_PUBLIC void terminate();
 // `init` will be called in FIFO order, `term` - in reverse (LIFO) order
 // if `initialize` was already called, `init` will be called in place
 SP_PUBLIC bool addInitializer(void *ptr, NotNull<void(void *)> init, NotNull<void(void *)> term);
+
+/*
+	'perform_main' is intended to be called at the entry point into program execution.
+	It correctly initializes and deinitializes all stappler systems,
+*/
+template <typename Callback>
+inline int perform_main(int argc, const char *argv[], const Callback &cb) {
+	int resultCode = 0;
+	if (initialize(argc, argv, resultCode)) {
+		auto ret = cb();
+
+		terminate();
+		return ret;
+	} else {
+		return resultCode;
+	}
+}
 
 /*
  * SDK Version API

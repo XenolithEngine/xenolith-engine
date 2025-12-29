@@ -43,11 +43,13 @@ endif
 ifdef TOOLCHAIN_TARGET
 GLOBAL_GENERAL_CFLAGS += --target=$(TOOLCHAIN_TARGET)
 GLOBAL_GENERAL_CXXFLAGS += --target=$(TOOLCHAIN_TARGET)
+GLOBAL_GENERAL_LDFLAGS += --target=$(TOOLCHAIN_TARGET)
 endif
 
 ifdef TOOLCHAIN_SYSROOT
 GLOBAL_GENERAL_CFLAGS += --sysroot=$(TOOLCHAIN_SYSROOT)
 GLOBAL_GENERAL_CXXFLAGS += --sysroot=$(TOOLCHAIN_SYSROOT)
+GLOBAL_GENERAL_LDFLAGS += --sysroot=$(TOOLCHAIN_SYSROOT)
 endif
 
 ifdef TOOLCHAIN_GENERAL_CFLAGS
@@ -101,7 +103,6 @@ $(call print_verbose,(apply-toolchain.mk) GLOBAL_LIB_CFLAGS: $(GLOBAL_LIB_CFLAGS
 $(call print_verbose,(apply-toolchain.mk) GLOBAL_LIB_CXXFLAGS: $(GLOBAL_LIB_CXXFLAGS))
 $(call print_verbose,(apply-toolchain.mk) GLOBAL_GENERAL_LDFLAGS: $(GLOBAL_GENERAL_LDFLAGS))
 $(call print_verbose,(apply-toolchain.mk) GLOBAL_LIB_LDFLAGS: $(GLOBAL_LIB_LDFLAGS))
-$(call print_verbose,(apply-toolchain.mk) GLOBAL_EXEC_LDFLAGS: $(GLOBAL_EXEC_LDFLAGS))
 $(call print_verbose,(apply-toolchain.mk) GLOBAL_EXEC_LDFLAGS: $(GLOBAL_EXEC_LDFLAGS))
 $(call print_verbose,(apply-toolchain.mk) GLOBAL_COMPILER_IS_CLANG: $(GLOBAL_COMPILER_IS_CLANG))
 

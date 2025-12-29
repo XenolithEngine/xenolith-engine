@@ -24,7 +24,7 @@ THE SOFTWARE.
 #ifndef STAPPLER_ZIP_SPZIP_H_
 #define STAPPLER_ZIP_SPZIP_H_
 
-#include "SPBytesView.h" // IWYU pragma: keep
+#include "SPStringView.h" // IWYU pragma: keep
 #include "SPBuffer.h"
 #include "SPTime.h"
 

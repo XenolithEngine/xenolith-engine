@@ -427,7 +427,7 @@ inline bool RefAlloc::decrementReferenceCount() {
 template <typename T>
 template <typename... Args>
 auto SharedRef<T>::create(Args &&...args) -> SharedRef * {
-	auto pool = memory::pool::create((memory::pool_t *)nullptr);
+	auto pool = sprt::memory::pool::create((memory::pool_t *)nullptr);
 
 	SharedRef *shared = nullptr;
 	memory::perform([&] {
@@ -442,7 +442,7 @@ auto SharedRef<T>::create(Args &&...args) -> SharedRef * {
 template <typename T>
 template <typename... Args>
 auto SharedRef<T>::create(memory::pool_t *p, Args &&...args) -> SharedRef * {
-	auto pool = memory::pool::create(p);
+	auto pool = sprt::memory::pool::create(p);
 
 	SharedRef *shared = nullptr;
 	memory::perform([&] {
@@ -452,7 +452,7 @@ auto SharedRef<T>::create(memory::pool_t *p, Args &&...args) -> SharedRef * {
 		}
 		if (p) {
 			shared->_parent = p;
-			memory::pool::pre_cleanup_register(shared->_parent, shared, &invaldate);
+			sprt::memory::pool::pre_cleanup_register(shared->_parent, shared, &invaldate);
 		}
 	}, pool);
 	return shared;
@@ -465,10 +465,10 @@ auto SharedRef<T>::create(SharedRefMode mode, Args &&...args) -> SharedRef * {
 	memory::pool_t *pool = nullptr;
 
 	switch (mode) {
-	case SharedRefMode::Pool: pool = memory::pool::create((memory::pool_t *)nullptr); break;
+	case SharedRefMode::Pool: pool = sprt::memory::pool::create((memory::pool_t *)nullptr); break;
 	case SharedRefMode::Allocator:
-		alloc = memory::allocator::create();
-		pool = memory::pool::create(alloc);
+		alloc = sprt::memory::allocator::create();
+		pool = sprt::memory::pool::create(alloc);
 		break;
 	}
 
@@ -505,7 +505,7 @@ SharedRef<T>::~SharedRef() {
 	auto parent = _parent;
 
 	if (parent) {
-		memory::pool::cleanup_kill(parent, this, &invaldate);
+		sprt::memory::pool::cleanup_kill(parent, this, &invaldate);
 		parent = nullptr;
 	}
 

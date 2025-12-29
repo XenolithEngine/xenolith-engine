@@ -25,7 +25,7 @@ THE SOFTWARE.
 #include "SPSubscription.h"
 #include "SPTime.h"
 #include "SPDso.h" // IWYU pragma: keep
-#include "SPRuntimeBacktrace.h"
+#include <sprt/runtime/backtrace.h>
 
 #ifdef __cpp_lib_stacktrace
 #warning Has stacktrace
@@ -49,14 +49,14 @@ struct RefAllocData {
 
 	void clear() {
 		while (!delayedPools.empty()) {
-			memory::pool::destroy(delayedPools.front());
+			sprt::memory::pool::destroy(delayedPools.front());
 			delayedPools.pop_front();
 		}
 
 		delayedPools.clear();
 
 		while (!delayedAllocs.empty()) {
-			memory::allocator::destroy(delayedAllocs.front());
+			sprt::memory::allocator::destroy(delayedAllocs.front());
 			delayedAllocs.pop_front();
 		}
 
@@ -67,7 +67,7 @@ struct RefAllocData {
 void *RefAlloc::operator new(size_t size, memory::pool_t *pool) noexcept {
 	sprt_passert(pool, "Context pool should be defined for allocation");
 
-	auto ptr = memory::pool::palloc(pool, size);
+	auto ptr = sprt::memory::pool::palloc(pool, size);
 	RefAllocData::get()->lastPtr = ptr;
 	return ptr;
 }

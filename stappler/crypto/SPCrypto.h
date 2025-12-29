@@ -26,7 +26,7 @@ THE SOFTWARE.
 #define STAPPLER_CRYPTO_SPCRYPTO_H_
 
 #include "SPIO.h"
-#include "SPBytesView.h"
+#include "SPStringView.h"
 #include "SPCoreCrypto.h"
 
 namespace STAPPLER_VERSIONIZED stappler::crypto {

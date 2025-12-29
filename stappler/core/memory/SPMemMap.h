@@ -30,13 +30,13 @@ THE SOFTWARE.
 namespace STAPPLER_VERSIONIZED stappler::memory {
 
 template <typename Key, typename Value, typename Comp = std::less<>>
-class map : public AllocPool {
+class map : public sprt::memory::AllocPool {
 public:
 	using key_type = Key;
 	using mapped_type = Value;
 	using value_type = Pair<const Key, Value>;
 	using key_compare = Comp;
-	using allocator_type = detail::Allocator<value_type>;
+	using allocator_type = sprt::memory::detail::Allocator<value_type>;
 
 	using pointer = value_type *;
 	using const_pointer = const value_type *;

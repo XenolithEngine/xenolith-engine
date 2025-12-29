@@ -24,68 +24,21 @@
 #define CORE_CORE_UTILS_SPSTATUS_H_
 
 #include "SPCore.h"
-#include "SPRuntimeStatus.h"
+#include <sprt/runtime/status.h>
+#include <type_traits>
 
 namespace STAPPLER_VERSIONIZED stappler {
 
 using sprt::Status;
-
-/** Result is a helper class for functions, that returns some result
- * or fails and returns nothing. It defines several mechanisms to handle
- * error state:
- * - get with default value in case of failure (`get`)
- * - grab value into object, provided by reference, if value is valid (`grab`)
- * - call a callback with value, if it's valid (`unwrap`)
- */
-template <typename T>
-struct Result {
-	Status status = Status::ErrorUnknown;
-	T result;
-
-	static Result<T> error() { return Result(); }
-	static Result<T> error(Status st) { return Result{st}; }
-
-	Result(T &&t, Status s = Status::Ok) noexcept : status(s), result(move(t)) { }
-	Result(const T &t, Status s = Status::Ok) noexcept : status(s), result(t) { }
-
-	Result() noexcept = default;
-	Result(const Result &) noexcept = default;
-	Result(Result &&) noexcept = default;
-	Result &operator=(const Result &) noexcept = default;
-	Result &operator=(Result &&) noexcept = default;
-
-	bool valid() const { return isSuccessful(status); }
-
-	explicit operator bool() const { return valid(); }
-
-	template <typename Callback>
-	bool unwrap(const Callback &cb) const {
-		static_assert(std::is_invocable_v<Callback, const T &>, "Invalid callback type");
-		if (isSuccessful(status)) {
-			cb(result);
-			return true;
-		}
-		return false;
-	}
-
-	bool grab(T &value) {
-		if (isSuccessful(status)) {
-			value = move(result);
-			return true;
-		}
-		return false;
-	}
-
-	const T &get() const { return result; }
-	const T &get(const T &def) const { return (isSuccessful(status)) ? result : def; }
-};
 
 // Type, that use negative Status values on failure, or positive int values on success
 template <typename T = int32_t>
 struct StatusValue {
 	static_assert(sizeof(T) == sizeof(Status) && (std::is_integral_v<T> or std::is_enum_v<T>));
 
-	static T max() { return T(std::min(uint32_t(maxOf<T>()), uint32_t(maxOf<Status>()))); }
+	static T max() {
+		return T(std::min(uint32_t(maxOf<T>()), uint32_t(maxOf<std::underlying_type_t<Status>>())));
+	}
 
 	union {
 		Status status = Status::Ok;

@@ -33,11 +33,11 @@ constexpr size_t basic_ostringbuf_bufsize = 256;
 
 template <typename CharType>
 class basic_ostringbuf final : public std::basic_streambuf<CharType, std::char_traits<CharType>>,
-							   public AllocPool {
+							   public sprt::memory::AllocPool {
 public:
 	using storage_type = detail::storage_mem<CharType>;
-	using allocator_type = detail::Allocator<CharType>;
-	using storage_allocator_type = detail::Allocator<detail::storage_mem<CharType>>;
+	using allocator_type = sprt::memory::detail::Allocator<CharType>;
+	using storage_allocator_type = sprt::memory::detail::Allocator<detail::storage_mem<CharType>>;
 	using traits_type = std::char_traits<CharType>;
 	using size_type = size_t;
 	using string_type = basic_string<CharType>;
@@ -142,13 +142,14 @@ protected:
 
 
 template <typename CharType>
-class basic_ostringstream final : public std::basic_ostream<CharType>, public AllocPool {
+class basic_ostringstream final : public std::basic_ostream<CharType>,
+								  public sprt::memory::AllocPool {
 public:
 	// Types:
 	using char_type = CharType;
 	using traits_type = std::char_traits<CharType>;
 
-	using allocator_type = detail::Allocator<CharType>;
+	using allocator_type = sprt::memory::detail::Allocator<CharType>;
 	using int_type = typename traits_type::int_type;
 	using pos_type = typename traits_type::pos_type;
 	using off_type = typename traits_type::off_type;

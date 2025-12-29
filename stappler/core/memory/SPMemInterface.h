@@ -35,6 +35,19 @@ THE SOFTWARE.
 
 namespace STAPPLER_VERSIONIZED stappler::memory {
 
+using sprt::memory::allocator_t;
+using sprt::memory::pool_t;
+using sprt::memory::AllocPool;
+
+using sprt::memory::perform;
+using sprt::memory::perform_conditional;
+using sprt::memory::perform_clear;
+using sprt::memory::perform_temporary;
+
+} // namespace stappler::memory
+
+namespace STAPPLER_VERSIONIZED stappler::memory {
+
 struct SP_PUBLIC PoolInterface final {
 	using AllocBaseType = memory::AllocPool;
 	using StringType = memory::string;

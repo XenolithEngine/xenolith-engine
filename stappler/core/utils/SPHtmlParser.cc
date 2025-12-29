@@ -25,17 +25,17 @@ THE SOFTWARE.
 
 namespace STAPPLER_VERSIONIZED stappler::html {
 
-using HtmlIdentifier16 = chars::Compose<char16_t, chars::Range<char16_t, u'0', u'9'>,
-		chars::Range<char16_t, u'A', u'Z'>, chars::Range<char16_t, u'a', u'z'>,
-		chars::Chars<char16_t, u'_', u'-', u'!', u'/', u':'> >;
+using HtmlIdentifier16 = sprt::chars::Compose<char16_t, sprt::chars::Range<char16_t, u'0', u'9'>,
+		sprt::chars::Range<char16_t, u'A', u'Z'>, sprt::chars::Range<char16_t, u'a', u'z'>,
+		sprt::chars::Chars<char16_t, u'_', u'-', u'!', u'/', u':'> >;
 
-using HtmlIdentifier32 = chars::Compose<char32_t, chars::Range<char32_t, u'0', u'9'>,
-		chars::Range<char32_t, u'A', u'Z'>, chars::Range<char32_t, u'a', u'z'>,
-		chars::Chars<char32_t, u'_', u'-', u'!', u'/', u':'> >;
+using HtmlIdentifier32 = sprt::chars::Compose<char32_t, sprt::chars::Range<char32_t, u'0', u'9'>,
+		sprt::chars::Range<char32_t, u'A', u'Z'>, sprt::chars::Range<char32_t, u'a', u'z'>,
+		sprt::chars::Chars<char32_t, u'_', u'-', u'!', u'/', u':'> >;
 
-using HtmlIdentifier8 =
-		chars::Compose<char, chars::Range<char, u'0', u'9'>, chars::Range<char, u'A', u'Z'>,
-				chars::Range<char, u'a', u'z'>, chars::Chars<char, u'_', u'-', u'!', u'/', u':'> >;
+using HtmlIdentifier8 = sprt::chars::Compose<char, sprt::chars::Range<char, u'0', u'9'>,
+		sprt::chars::Range<char, u'A', u'Z'>, sprt::chars::Range<char, u'a', u'z'>,
+		sprt::chars::Chars<char, u'_', u'-', u'!', u'/', u':'> >;
 
 
 template <>

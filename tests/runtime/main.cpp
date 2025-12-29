@@ -1,7 +1,5 @@
 /**
-Copyright (c) 2020-2022 Roman Katuntsev <sbkarr@stappler.org>
-Copyright (c) 2023-2025 Stappler LLC <admin@stappler.dev>
-Copyright (c) 2025 Stappler Team <admin@stappler.org>
+Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,12 +20,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef STAPPLER_CORE_STRING_SPSPANVIEW_H_
-#define STAPPLER_CORE_STRING_SPSPANVIEW_H_
+#include "SPCommon.h"
+#include "SPMemInterface.h"
+#include "SPTime.h"
 
-// Umbrella header for SpanView implementation
+using namespace stappler;
 
-#include "SPMemInterface.h" // IWYU pragma: keep
-#include "SPBytesView.h" // IWYU pragma: keep
+int main(int argc, const char *argv[]) {
+	auto time = Time::now();
 
-#endif /* STAPPLER_CORE_STRING_SPSPANVIEW_H_ */
+	std::cout << time.toRfc822<memory::StandartInterface>() << "\n";
+
+	return 0;
+}

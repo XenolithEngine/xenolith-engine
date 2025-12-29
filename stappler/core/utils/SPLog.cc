@@ -69,13 +69,13 @@ struct CustomLogManager {
 
 	void insert(CustomLog::log_fn fn);
 	void remove(CustomLog::log_fn fn);
-	void log(LogType type, StringView tag, const SourceLocation &source, CustomLog::Type t,
+	void log(LogType type, StringView tag, const sprt::source_location &source, CustomLog::Type t,
 			CustomLog::VA &va);
 };
 
 static CustomLogManager s_logManager;
 
-static void DefaultLog2(LogType type, StringView tag, const SourceLocation &source,
+static void DefaultLog2(LogType type, StringView tag, const sprt::source_location &source,
 		StringView text) {
 	std::stringstream prefixStream;
 
@@ -122,10 +122,9 @@ static void DefaultLog2(LogType type, StringView tag, const SourceLocation &sour
 	auto prefix = prefixStream.str();
 
 #if SP_SOURCE_DEBUG
-	if (!source.empty()) {
+	if (auto f = source.file_name()) {
 		auto textToLog = mem_std::toString(text, " ", s_logManager.features.underline,
-				s_logManager.features.dim, source.fileName, ":", source.line,
-				s_logManager.features.drop);
+				s_logManager.features.dim, f, ":", source.line(), s_logManager.features.drop);
 		sprt::log::print(type, sprt::StringView(prefix.data(), prefix.size()),
 				sprt::StringView(tag.data(), tag.size()),
 				sprt::StringView(textToLog.data(), textToLog.size()));
@@ -140,7 +139,7 @@ static void DefaultLog2(LogType type, StringView tag, const SourceLocation &sour
 #endif
 }
 
-static void DefaultLog(LogType type, StringView tag, const SourceLocation &source,
+static void DefaultLog(LogType type, StringView tag, const sprt::source_location &source,
 		CustomLog::Type t, CustomLog::VA &va) {
 	if (t == CustomLog::Text) {
 		DefaultLog2(type, tag, source, va.text);
@@ -194,7 +193,7 @@ void CustomLogManager::remove(CustomLog::log_fn fn) {
 	logFuncMutex.unlock();
 }
 
-void CustomLogManager::log(LogType type, StringView tag, const SourceLocation &source,
+void CustomLogManager::log(LogType type, StringView tag, const sprt::source_location &source,
 		CustomLog::Type t, CustomLog::VA &va) {
 	if (s_logMask.test(toInt(type))) {
 		return;
@@ -278,7 +277,8 @@ void setLogFilterMask(InitializerList<LogType> types) { setLogFilterMask(makeFil
 
 std::bitset<6> getlogFilterMask() { return s_logMask; }
 
-void format(LogType type, const char *tag, const SourceLocation &source, const char *fmt, ...) {
+void format(LogType type, const char *tag, const sprt::source_location &source, const char *fmt,
+		...) {
 	CustomLog::VA va;
 	va_start(va.format.args, fmt);
 	va.format.format = fmt;
@@ -288,7 +288,8 @@ void format(LogType type, const char *tag, const SourceLocation &source, const c
 	va_end(va.format.args);
 }
 
-void format(LogType type, StringView tag, const SourceLocation &source, const char *fmt, ...) {
+void format(LogType type, StringView tag, const sprt::source_location &source, const char *fmt,
+		...) {
 	CustomLog::VA va;
 	va_start(va.format.args, fmt);
 	va.format.format = fmt;
@@ -298,13 +299,13 @@ void format(LogType type, StringView tag, const SourceLocation &source, const ch
 	va_end(va.format.args);
 }
 
-void text(LogType type, const char *tag, const SourceLocation &source, const char *text) {
+void text(LogType type, const char *tag, const sprt::source_location &source, const char *text) {
 	CustomLog::VA va;
 	va.text = StringView(text);
 	s_logManager.log(type, tag, source, CustomLog::Text, va);
 }
 
-void text(LogType type, StringView tag, StringView text, const SourceLocation &source) {
+void text(LogType type, StringView tag, StringView text, const sprt::source_location &source) {
 	CustomLog::VA va;
 	va.text = text;
 	s_logManager.log(type, tag, source, CustomLog::Text, va);

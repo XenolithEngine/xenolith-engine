@@ -25,7 +25,7 @@ THE SOFTWARE.
 #define STAPPLER_CORE_UTILS_SPVALID_H_
 
 #include "SPStringView.h"
-#include "SPBytesView.h"
+#include "SPStringView.h"
 
 namespace STAPPLER_VERSIONIZED stappler::valid {
 
@@ -52,9 +52,11 @@ template <typename Interface>
 SP_PUBLIC auto makeRandomBytes(size_t) -> typename Interface::BytesType;
 
 template <typename Interface>
-SP_PUBLIC auto makePassword(const StringView &str, const StringView &key = StringView()) -> typename Interface::BytesType;
+SP_PUBLIC auto makePassword(const StringView &str, const StringView &key = StringView()) ->
+		typename Interface::BytesType;
 
-SP_PUBLIC bool validatePassord(const StringView &str, const BytesView &passwd, const StringView &key = StringView());
+SP_PUBLIC bool validatePassord(const StringView &str, const BytesView &passwd,
+		const StringView &key = StringView());
 
 static constexpr size_t MIN_GENPASSWORD_LENGTH = 6;
 
@@ -66,6 +68,6 @@ SP_PUBLIC uint32_t readIp(StringView r);
 SP_PUBLIC uint32_t readIp(StringView r, bool &err);
 SP_PUBLIC Pair<uint32_t, uint32_t> readIpRange(StringView r);
 
-}
+} // namespace stappler::valid
 
 #endif /* STAPPLER_CORE_UTILS_SPVALID_H_ */

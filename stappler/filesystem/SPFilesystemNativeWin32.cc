@@ -21,7 +21,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#include "SPBytesView.h"
+#include "SPStringView.h"
 #include "SPCore.h"
 #include "SPFilepath.h"
 #include "SPFilesystem.h"

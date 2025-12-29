@@ -23,7 +23,7 @@ THE SOFTWARE.
 **/
 
 #include "SPBitmap.h"
-#include "SPBytesView.h"
+#include "SPStringView.h"
 #include "SPFilepath.h"
 #include "SPString.h"
 #include "SPBuffer.h"

@@ -27,7 +27,7 @@ This file was modified for stappler project
 #define STAPPLER_GEOM_SPVEC2_H_
 
 #include "SPGeom.h"
-#include "SPSpanView.h"
+#include "SPStringView.h"
 
 namespace STAPPLER_VERSIONIZED stappler::geom {
 

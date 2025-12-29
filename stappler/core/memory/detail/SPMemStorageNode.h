@@ -23,7 +23,8 @@ THE SOFTWARE.
 #ifndef STAPPLER_CORE_MEMORY_DETAIL_SPMEMSTORAGENODE_H_
 #define STAPPLER_CORE_MEMORY_DETAIL_SPMEMSTORAGENODE_H_
 
-#include "SPMemAlloc.h"
+#include "SPCore.h"
+#include <sprt/runtime/mem/detail/alloc.h>
 
 namespace STAPPLER_VERSIONIZED stappler::memory::detail {
 
@@ -70,7 +71,7 @@ struct SP_PUBLIC RbTreeNodeFlag<size_t(8)> {
 
 template <typename Node>
 struct NodeBlockAllocatorHelper {
-	using allocator_type = Allocator<Node>;
+	using allocator_type = sprt::memory::detail::Allocator<Node>;
 
 	// Callback in form [] (Node *, size_t) ->  bool {}
 	// return true if node should not be placed in list by allocator

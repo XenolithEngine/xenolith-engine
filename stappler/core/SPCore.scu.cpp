@@ -24,18 +24,10 @@ THE SOFTWARE.
 #include "SPCommon.h" // IWYU pragma: keep
 
 #include "SPIO.cc"
-#include "detail/SPMemPoolAllocator.cc"
-#include "detail/SPMemPoolApr.cc"
-#include "detail/SPMemPoolHash.cc"
-#include "detail/SPMemPoolInterface.cc"
-#include "detail/SPMemPoolPool.cc"
-#include "detail/SPMemPoolUtils.cc"
 #include "detail/SPMemAlloc.cc"
 #include "detail/SPMemRbtree.cc"
-#include "detail/SPMemUserData.cc"
 #include "SPMemUuid.cc"
 #include "SPBase64.cc"
-#include "SPCharGroup.cc"
 #include "SPSha2.cc"
 #include "SPGost3411-2012.cc"
 #include "SPString.cc"
@@ -62,7 +54,7 @@ THE SOFTWARE.
 #include "SPIdnTld.cc"
 
 #include "SPMetastring.h"
-#include "SPRuntimePlatform.h"
+#include <sprt/runtime/platform.h>
 
 #if LINUX
 #ifdef MODULE_STAPPLER_ABI
@@ -99,23 +91,13 @@ InitializerManager &InitializerManager::get() {
 }
 
 bool initialize(int argc, const char *argv[], int &resultCode) {
-#if LINUX
-#ifdef MODULE_STAPPLER_ABI
-	abi::initialize(argc, argv);
-	platform::s_instance = platform::i18n::getInstance();
-#endif
-#endif
-
-	memory::pool::initialize();
-
-	auto pool = memory::pool::create(memory::app_root_pool);
-
-	memory::pool::push(pool);
-
+	// runtime will initialize memory pool subsystems
 	if (!sprt::initialize(resultCode)) {
-		memory::pool::pop(pool, nullptr);
 		return false;
 	}
+
+	auto pool = sprt::memory::pool::create(sprt::memory::app_root_pool);
+	sprt::memory::pool::push(pool);
 
 	auto &m = InitializerManager::get();
 	std::unique_lock lock(m.mutex);
@@ -135,10 +117,11 @@ void terminate() {
 
 	m.list.clear();
 
-	sprt::terminate();
+	sprt::memory::pool::pop(m.pool, nullptr);
+	sprt::memory::pool::terminate();
 
-	memory::pool::pop(m.pool, nullptr);
-	memory::pool::terminate();
+	// runtime will terminate memory pool subsystems
+	sprt::terminate();
 }
 
 bool addInitializer(void *ptr, NotNull<void(void *)> init, NotNull<void(void *)> term) {

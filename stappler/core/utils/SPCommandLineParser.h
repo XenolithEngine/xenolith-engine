@@ -25,7 +25,7 @@
 #define CORE_CORE_UTILS_SPCOMMANDLINEPARSER_H_
 
 #include "SPString.h"
-#include "SPSpanView.h"
+#include "SPStringView.h"
 #include "SPMemory.h"
 
 namespace STAPPLER_VERSIONIZED stappler {

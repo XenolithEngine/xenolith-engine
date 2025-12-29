@@ -49,6 +49,9 @@ LOCAL_ROOT ?= .
 LOCAL_OUTDIR ?= stappler-build
 LOCAL_EXEC_LIVE_RELOAD ?= 0
 
+ifneq ($(filter %/,$(LOCAL_ROOT)),)
+LOCAL_ROOT := $(patsubst %/,%,$(LOCAL_ROOT))
+endif
 
 $(call print_verbose,(defaults.mk) LOCAL_ROOT: $(LOCAL_ROOT))
 $(call print_verbose,(defaults.mk) LOCAL_OUTDIR: $(LOCAL_OUTDIR))
@@ -270,30 +273,11 @@ $(call print_verbose,(defaults.mk) STAPPLER_TARGET_FULL: $(STAPPLER_TARGET_FULL)
 
 $(info Build for $(STAPPLER_TARGET_FULL))
 
-# Check for in-tree runtime
 
-GLOBAL_HAS_RUNTIME := 0
-GLOBAL_RUNTIME_PATH :=
+# Сперва пробуем загрузить тулчейн, чтобы у рантайма была информация, как связываться со стандартной библиотекой
 
-LOCAL_USE_RUNTIME_FROM_TOOLCHAIN ?= 0
-$(call print_verbose,(defaults.mk) LOCAL_USE_RUNTIME_FROM_TOOLCHAIN: $(LOCAL_USE_RUNTIME_FROM_TOOLCHAIN))
-
-ifneq ($(LOCAL_USE_RUNTIME_FROM_TOOLCHAIN),1)
 LOCAL_RUNTIME_PATH ?= $(abspath $(GLOBAL_ROOT))/runtime
-
-$(call print_verbose,(defaults.mk) Try to use in-tree runtime (LOCAL_RUNTIME_PATH): $(LOCAL_RUNTIME_PATH)/runtime.mk)
-
--include $(LOCAL_RUNTIME_PATH)/runtime.mk
-
-ifeq ($(filter runtime,$(TOOLKIT_ALL_MODULES)),)
-$(call print_verbose,(defaults.mk) No runtime found in path: $(LOCAL_RUNTIME_PATH)/runtime.mk, try to use runtime from toolchain)
-else
-GLOBAL_RUNTIME_PATH := $(LOCAL_RUNTIME_PATH)
-GLOBAL_HAS_RUNTIME := 1
-$(call print_verbose,(defaults.mk) GLOBAL_RUNTIME_PATH: $(GLOBAL_RUNTIME_PATH))
-endif
-endif
-
+$(call print_verbose,(defaults.mk) LOCAL_RUNTIME_PATH: $(LOCAL_RUNTIME_PATH))
 
 ifdef LOCAL_TOOLCHAIN
 
@@ -316,33 +300,65 @@ $(call print_verbose,(defaults.mk) Try to load internal toolchain: $(STAPPLER_TA
 -include $(STAPPLER_TARGET_ROOT)/$(STAPPLER_TARGET_FULL)/toolchain.mk
 
 ifndef TOOLCHAIN_SYSROOT
-ifeq ($(GLOBAL_HAS_RUNTIME),1)
-$(call print_verbose,(defaults.mk) Fail to load internal toolchain from main source tree; try runtime source tree)
+$(call print_verbose,(defaults.mk) Fail to load internal toolchain (LOCAL_USE_INTERNAL_TOOLCHAIN: $(LOCAL_USE_INTERNAL_TOOLCHAIN)))
 
-STAPPLER_TARGET_ROOT := $(abspath $(GLOBAL_RUNTIME_PATH))/toolchains/targets
+# Try runtime in-tree toolchain
 
-$(call print_verbose,(defaults.mk) Try to load internal toolchain: $(STAPPLER_TARGET_ROOT)/$(STAPPLER_TARGET_FULL)/toolchain.mk)
+STAPPLER_TARGET_ROOT := $(abspath $(LOCAL_RUNTIME_PATH))/toolchains/targets
 
 -include $(STAPPLER_TARGET_ROOT)/$(STAPPLER_TARGET_FULL)/toolchain.mk
 
-endif # ($(GLOBAL_HAS_RUNTIME),1)
-endif # TOOLCHAIN_SYSROOT
-
-
-
-
-ifeq ($(LOCAL_USE_INTERNAL_TOOLCHAIN),required)
 ifndef TOOLCHAIN_SYSROOT
-$(error Fail to load internal toolchain (LOCAL_USE_INTERNAL_TOOLCHAIN: $(LOCAL_USE_INTERNAL_TOOLCHAIN)))
+$(call print_verbose,(defaults.mk) Fail to load internal toolchain (LOCAL_USE_INTERNAL_TOOLCHAIN: $(LOCAL_USE_INTERNAL_TOOLCHAIN)))
 endif
-else
-ifndef TOOLCHAIN_SYSROOT
-$(info Fail to load internal toolchain (LOCAL_USE_INTERNAL_TOOLCHAIN: $(LOCAL_USE_INTERNAL_TOOLCHAIN)))
-endif
+
 endif # ($(LOCAL_USE_INTERNAL_TOOLCHAIN),required)
 
 endif # ($(LOCAL_USE_INTERNAL_TOOLCHAIN),0)
 endif # LOCAL_TOOLCHAIN
+
+
+# Fail if toolchain is required
+ifeq ($(LOCAL_USE_INTERNAL_TOOLCHAIN),required)
+ifndef TOOLCHAIN_SYSROOT
+$(error Fail to load internal toolchain (LOCAL_USE_INTERNAL_TOOLCHAIN: $(LOCAL_USE_INTERNAL_TOOLCHAIN)))
+endif
+endif
+
+
+
+# Загружаем рантайм
+
+GLOBAL_HAS_RUNTIME := 0
+GLOBAL_RUNTIME_PATH :=
+
+LOCAL_USE_RUNTIME_FROM_TOOLCHAIN ?= 0
+
+$(call print_verbose,(defaults.mk) LOCAL_USE_RUNTIME_FROM_TOOLCHAIN: $(LOCAL_USE_RUNTIME_FROM_TOOLCHAIN))
+
+ifeq ($(LOCAL_USE_RUNTIME_FROM_TOOLCHAIN),1)
+
+ifndef TOOLCHAIN_SYSROOT
+$(error Fail to load runtime from toolchain: toolchain was not loaded)
+endif # TOOLCHAIN_SYSROOT
+
+$(call print_verbose,(defaults.mk) Try to use runtime from toolchain: $(TOOLCHAIN_SYSROOT)/share/stappler/runtime.mk)
+
+include $(TOOLCHAIN_SYSROOT)/share/stappler/runtime.mk
+
+GLOBAL_RUNTIME_PATH := $(TOOLCHAIN_SYSROOT)/share/stappler
+GLOBAL_HAS_RUNTIME := 1
+
+else # ifeq ($(LOCAL_USE_RUNTIME_FROM_TOOLCHAIN),1)
+
+$(call print_verbose,(defaults.mk) Try to use local runtime (LOCAL_RUNTIME_PATH): $(LOCAL_RUNTIME_PATH)/runtime.mk)
+
+include $(LOCAL_RUNTIME_PATH)/runtime.mk
+
+GLOBAL_RUNTIME_PATH := $(LOCAL_RUNTIME_PATH)
+GLOBAL_HAS_RUNTIME := 1
+
+endif # ifeq ($(LOCAL_USE_RUNTIME_FROM_TOOLCHAIN),1)
 
 
 ifdef TOOLCHAIN_SYSROOT

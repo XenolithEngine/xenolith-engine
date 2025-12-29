@@ -30,7 +30,7 @@ THE SOFTWARE.
 // Implemented buffer usage counter and support for different char types
 
 #include "SPString.h"
-#include "SPStringDetail.h"
+#include "SPStringView.h"
 
 #if LINUX || ANDROID || MACOS
 #include <cxxabi.h>

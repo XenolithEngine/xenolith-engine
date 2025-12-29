@@ -27,31 +27,501 @@ THE SOFTWARE.
 
 // Umbrella header for StringView implementation
 
-#include "SPBytesReader.h"
-#include "SPStringDetail.h" // IWYU pragma: keep
+#include "SPMemInterface.h"
+#include <sprt/runtime/stringbuffer.h>
+#include <sprt/runtime/stringview.h>
 
 namespace STAPPLER_VERSIONIZED stappler {
 
-// Fast reader for char string
-// Matching function based on templates
-//
-// Usage:
-//   using StringView::Chars;
-//   using StringView::Range;
-//
-//   reader.readUntil<Chars<' ', '\n', '\r', '\t'>>();
-//   reader.readChars<Chars<'-', '+', '.', 'e'>, Range<'0', '9'>>();
-//
+using sprt::BytesReader;
+using sprt::StringViewBase;
+using sprt::StringView;
+using sprt::StringViewUtf8;
+using sprt::WideStringView;
+using sprt::BytesViewTemplate;
+using sprt::BytesView;
+using sprt::BytesViewNetwork;
+using sprt::BytesViewHost;
+using sprt::SpanView;
+
+using sprt::CharGroupId;
 
 using CallbackStream = Callback<void(StringView)>;
 
-SP_PUBLIC StringView getStatusName(Status);
+} // namespace STAPPLER_VERSIONIZED stappler
 
-// Returns status description (strerror), thread-safe
-// Callback will be called exactly one time, do not store StringView from it directly!
-SP_PUBLIC void getStatusDescription(Status, const Callback<void(StringView)> &cb);
+namespace STAPPLER_VERSIONIZED stappler::string::detail {
+
+template <typename FunctionalStreamArg>
+struct FunctionalStreamCharTraits { };
+
+template <typename Char>
+struct FunctionalStreamCharTraits<StringViewBase<Char>> {
+	using CharType = Char;
+};
+
+template <>
+struct FunctionalStreamCharTraits<StringViewUtf8> {
+	using CharType = StringViewUtf8::CharType;
+};
+
+template <sprt::endian E>
+struct FunctionalStreamCharTraits<BytesViewTemplate<E>> {
+	using CharType = BytesViewTemplate<E>::CharType;
+};
+
+template <typename FunctionalStream>
+struct FunctionalStreamTraits { };
+
+template <typename Arg>
+struct FunctionalStreamTraits<Callback<void(Arg)>> {
+	using ArgType = Arg;
+	using CharType = typename FunctionalStreamCharTraits<ArgType>::CharType;
+};
+
+template <typename Arg>
+struct FunctionalStreamTraits<std::function<void(Arg)>> {
+	using ArgType = Arg;
+	using CharType = typename FunctionalStreamCharTraits<ArgType>::CharType;
+};
+
+template <typename Arg>
+struct FunctionalStreamTraits<memory::function<void(Arg)>> {
+	using ArgType = Arg;
+	using CharType = typename FunctionalStreamCharTraits<ArgType>::CharType;
+};
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream,
+		typename FunctionalStreamTraits<FunctionalStream>::ArgType str) {
+	stream(str);
+}
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream,
+		const typename FunctionalStreamTraits<FunctionalStream>::CharType *str) {
+	streamWrite(stream, typename FunctionalStreamTraits<FunctionalStream>::ArgType(str));
+}
+
+template <typename FunctionalStream, size_t N>
+inline void streamWrite(const FunctionalStream &stream,
+		const typename FunctionalStreamTraits<FunctionalStream>::CharType str[N]) {
+	streamWrite(stream, typename FunctionalStreamTraits<FunctionalStream>::ArgType(str, N));
+}
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream, double d) {
+	std::array<typename FunctionalStreamTraits<FunctionalStream>::CharType, sprt::DOUBLE_MAX_DIGITS>
+			buf = {0};
+	auto ret = sprt::dtoa(d, buf.data(), buf.size());
+	streamWrite(stream,
+			typename FunctionalStreamTraits<FunctionalStream>::ArgType(buf.data(), ret));
+}
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream, float f) {
+	streamWrite(stream, double(f));
+}
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream, int64_t i) {
+	std::array<typename FunctionalStreamTraits<FunctionalStream>::CharType,
+			std::numeric_limits<int64_t>::digits10 + 2>
+			buf = {0};
+	auto ret = sprt::itoa(sprt::int64_t(i), buf.data(), buf.size());
+	streamWrite(stream,
+			typename FunctionalStreamTraits<FunctionalStream>::ArgType(
+					buf.data() + buf.size() - ret, ret));
+}
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream, uint64_t i) {
+	std::array<typename FunctionalStreamTraits<FunctionalStream>::CharType,
+			std::numeric_limits<int64_t>::digits10 + 2>
+			buf = {0};
+	auto ret = sprt::itoa(sprt::uint64_t(i), buf.data(), buf.size());
+	streamWrite(stream,
+			typename FunctionalStreamTraits<FunctionalStream>::ArgType(
+					buf.data() + buf.size() - ret, ret));
+}
+
+#if SP_HAVE_DEDICATED_SIZE_T
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream, size_t i) {
+	std::array<typename FunctionalStreamTraits<FunctionalStream>::CharType,
+			std::numeric_limits<int64_t>::digits10 + 2>
+			buf = {0};
+	auto ret = string::detail::itoa(sprt::uint64_t(i), buf.data(), buf.size());
+	streamWrite(stream,
+			typename FunctionalStreamTraits<FunctionalStream>::ArgType(
+					buf.data() + buf.size() - ret, ret));
+}
+
+#endif
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream, int32_t i) {
+	streamWrite(stream, int64_t(i));
+}
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream, uint32_t i) {
+	streamWrite(stream, uint64_t(i));
+}
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream, int16_t i) {
+	streamWrite(stream, int64_t(i));
+}
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream, uint16_t i) {
+	streamWrite(stream, uint64_t(i));
+}
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream, int8_t i) {
+	streamWrite(stream, int64_t(i));
+}
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream, uint8_t i) {
+	streamWrite(stream, uint64_t(i));
+}
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream, char32_t c) {
+	if constexpr (sizeof(typename FunctionalStreamTraits<FunctionalStream>::CharType) == 1) {
+		std::array<typename FunctionalStreamTraits<FunctionalStream>::CharType, 6> buf = {0};
+		streamWrite(stream,
+				typename FunctionalStreamTraits<FunctionalStream>::ArgType(buf.data(),
+						sprt::unicode::utf8EncodeBuf(buf.data(), buf.size(), c)));
+	} else {
+		std::array<typename FunctionalStreamTraits<FunctionalStream>::CharType, 6> buf = {0};
+		streamWrite(stream,
+				typename FunctionalStreamTraits<FunctionalStream>::ArgType(buf.data(),
+						sprt::unicode::utf16EncodeBuf(buf.data(), buf.size(), c)));
+	}
+}
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream, char16_t c) {
+	if constexpr (sizeof(typename FunctionalStreamTraits<FunctionalStream>::CharType) == 1) {
+		std::array<typename FunctionalStreamTraits<FunctionalStream>::CharType, 4> buf = {0};
+		streamWrite(stream,
+				typename FunctionalStreamTraits<FunctionalStream>::ArgType(buf.data(),
+						sprt::unicode::utf8EncodeBuf(buf.data(), buf.size(), c)));
+	} else {
+		streamWrite(stream, typename FunctionalStreamTraits<FunctionalStream>::ArgType(&c, 1));
+	}
+}
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream, char c) {
+	if constexpr (sizeof(typename FunctionalStreamTraits<FunctionalStream>::CharType) == 1) {
+		streamWrite(stream, typename FunctionalStreamTraits<FunctionalStream>::ArgType(&c, 1));
+	} else {
+		char16_t ch = c;
+		streamWrite(stream, typename FunctionalStreamTraits<FunctionalStream>::ArgType(&ch, 1));
+	}
+}
+
+SP_PUBLIC void streamWrite(const Callback<void(WideStringView)> &stream, const StringView &c);
+SP_PUBLIC void streamWrite(const std::function<void(WideStringView)> &stream, const StringView &c);
+SP_PUBLIC void streamWrite(const memory::function<void(WideStringView)> &stream,
+		const StringView &c);
+
+inline void streamWrite(const Callback<void(StringViewUtf8)> &stream, const StringView &c) {
+	stream(StringViewUtf8(c.data(), c.size()));
+}
+inline void streamWrite(const std::function<void(StringViewUtf8)> &stream, const StringView &c) {
+	stream(StringViewUtf8(c.data(), c.size()));
+}
+inline void streamWrite(const memory::function<void(StringViewUtf8)> &stream, const StringView &c) {
+	stream(StringViewUtf8(c.data(), c.size()));
+}
+
+SP_PUBLIC void streamWrite(const Callback<void(StringView)> &stream, const std::type_info &c);
+SP_PUBLIC void streamWrite(const Callback<void(WideStringView)> &stream, const std::type_info &c);
+SP_PUBLIC void streamWrite(const Callback<void(StringViewUtf8)> &stream, const std::type_info &c);
+SP_PUBLIC void streamWrite(const std::function<void(StringView)> &stream, const std::type_info &c);
+SP_PUBLIC void streamWrite(const std::function<void(WideStringView)> &stream,
+		const std::type_info &c);
+SP_PUBLIC void streamWrite(const std::function<void(StringViewUtf8)> &stream,
+		const std::type_info &c);
+SP_PUBLIC void streamWrite(const memory::function<void(StringView)> &stream,
+		const std::type_info &c);
+SP_PUBLIC void streamWrite(const memory::function<void(WideStringView)> &stream,
+		const std::type_info &c);
+SP_PUBLIC void streamWrite(const memory::function<void(StringViewUtf8)> &stream,
+		const std::type_info &c);
+
+inline void streamWrite(const Callback<void(BytesView)> &cb, const BytesView &val) { cb(val); }
+inline void streamWrite(const Callback<void(BytesView)> &cb, const uint8_t &val) {
+	cb(BytesView(&val, 1));
+}
+
+} // namespace stappler::string::detail
+
+inline auto convertIntToTwc(int v) {
+	if (v < 0) {
+		return std::partial_ordering::less;
+	} else if (v > 0) {
+		return std::partial_ordering::greater;
+	} else {
+		return std::partial_ordering::equivalent;
+	}
+}
+
+template <typename Compare>
+inline auto compareDataRanges(const uint8_t *l, size_t __lsize, const uint8_t *r, size_t __rsize,
+		const Compare &cmp) {
+	return std::lexicographical_compare_three_way(l, l + __lsize, r, r + __rsize, cmp);
+}
+
+namespace STAPPLER_VERSIONIZED stappler {
+
+template <typename C>
+inline std::basic_ostream<C> &operator<<(std::basic_ostream<C> &os, const StringViewBase<C> &str) {
+	return os.write(str.data(), str.size());
+}
+
+inline std::basic_ostream<char> &operator<<(std::basic_ostream<char> &os,
+		const sprt::StringView &str) {
+	return os.write(str.data(), str.size());
+}
+
+inline std::basic_ostream<char> &operator<<(std::basic_ostream<char> &os,
+		const StringViewUtf8 &str) {
+	return os.write(str.data(), str.size());
+}
+
+template <typename Type>
+auto makeSpanView(const std::vector<Type> &vec) -> SpanView<Type> {
+	return SpanView<Type>(vec);
+}
+
+template <typename Type>
+auto makeSpanView(const memory::vector<Type> &vec) -> SpanView<Type> {
+	return SpanView<Type>(vec);
+}
+
+template <typename Type, size_t Size>
+auto makeSpanView(const std::array<Type, Size> &vec) -> SpanView<Type> {
+	return SpanView<Type>(vec);
+}
+
+template <typename Type>
+auto makeSpanView(const Type *ptr, size_t size) -> SpanView<Type> {
+	return SpanView<Type>(ptr, size);
+}
+
+template <typename Type, size_t Size>
+auto makeSpanView(const Type (&array)[Size]) -> SpanView<Type> {
+	return SpanView<Type>(array, Size);
+}
+
+template <typename CharType>
+inline auto operator<=>(const memory::StandartInterface::BasicStringType<CharType> &l,
+		const StringViewBase<CharType> &r) {
+	return convertIntToTwc(sprt::detail::compare_c(l, r));
+}
+
+template <typename CharType>
+inline auto operator<=>(const memory::PoolInterface::BasicStringType<CharType> &l,
+		const StringViewBase<CharType> &r) {
+	return convertIntToTwc(sprt::detail::compare_c(l, r));
+}
+
+template <typename CharType>
+inline auto operator<=>(const StringViewBase<CharType> &l,
+		const memory::StandartInterface::BasicStringType<CharType> &r) {
+	return convertIntToTwc(sprt::detail::compare_c(l, r));
+}
+
+template <typename CharType>
+inline auto operator<=>(const StringViewBase<CharType> &l,
+		const memory::PoolInterface::BasicStringType<CharType> &r) {
+	return convertIntToTwc(sprt::detail::compare_c(l, r));
+}
+
+inline auto operator<=>(const memory::StandartInterface::BasicStringType<char> &l,
+		const StringViewUtf8 &r) {
+	return convertIntToTwc(sprt::detail::compare_u(l, r));
+}
+
+inline auto operator<=>(const memory::PoolInterface::BasicStringType<char> &l,
+		const StringViewUtf8 &r) {
+	return convertIntToTwc(sprt::detail::compare_u(l, r));
+}
+
+inline auto operator<=>(const StringViewUtf8 &l,
+		const memory::StandartInterface::BasicStringType<char> &r) {
+	return convertIntToTwc(sprt::detail::compare_u(l, r));
+}
+
+inline auto operator<=>(const StringViewUtf8 &l,
+		const memory::PoolInterface::BasicStringType<char> &r) {
+	return convertIntToTwc(sprt::detail::compare_u(l, r));
+}
+
+template <sprt::endian Endianess>
+inline auto operator<=>(const BytesViewTemplate<Endianess> &l,
+		const memory::PoolInterface::BytesType &r) {
+	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
+
+template <sprt::endian Endianess>
+inline auto operator<=>(const memory::PoolInterface::BytesType &l,
+		const BytesViewTemplate<Endianess> &r) {
+	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
+
+template <sprt::endian Endianess>
+inline auto operator<=>(const BytesViewTemplate<Endianess> &l,
+		const memory::StandartInterface::BytesType &r) {
+	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
+
+template <sprt::endian Endianess>
+inline auto operator<=>(const memory::StandartInterface::BytesType &l,
+		const BytesViewTemplate<Endianess> &r) {
+	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
 
 } // namespace STAPPLER_VERSIONIZED stappler
+
+namespace sprt {
+
+template <typename CharType>
+inline auto operator<=>(const StringViewBase<CharType> &l, const StringViewBase<CharType> &r) {
+	return convertIntToTwc(sprt::detail::compare_c(l, r));
+}
+
+template <typename CharType>
+inline auto operator<=>(const StringViewBase<CharType> &l, const CharType *r) {
+	return convertIntToTwc(sprt::detail::compare_c(l, StringViewBase<CharType>(r)));
+}
+
+template <typename CharType>
+inline auto operator<=>(const CharType *l, const StringViewBase<CharType> &r) {
+	return convertIntToTwc(sprt::detail::compare_c(StringViewBase<CharType>(l), r));
+}
+
+inline auto operator<=>(const StringViewUtf8 &l, const StringViewUtf8 &r) {
+	return convertIntToTwc(sprt::detail::compare_u(l, r));
+}
+
+inline auto operator<=>(const StringViewUtf8 &l, const char *r) {
+	return convertIntToTwc(sprt::detail::compare_u(l, StringViewUtf8(r)));
+}
+
+inline auto operator<=>(const char *l, const StringViewUtf8 &r) {
+	return convertIntToTwc(sprt::detail::compare_u(StringViewUtf8(l), r));
+}
+
+template <sprt::endian Endianess, size_t Size>
+inline auto operator<=>(const BytesViewTemplate<Endianess> &l,
+		const sprt::array<uint8_t, Size> &r) {
+	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
+
+template <sprt::endian Endianess, size_t Size>
+inline auto operator<=>(const sprt::array<uint8_t, Size> &l,
+		const BytesViewTemplate<Endianess> &r) {
+	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
+
+template <sprt::endian Endianess, size_t Size>
+inline auto operator<=>(const BytesViewTemplate<Endianess> &l, const std::array<uint8_t, Size> &r) {
+	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
+
+template <sprt::endian Endianess, size_t Size>
+inline auto operator<=>(const std::array<uint8_t, Size> &l, const BytesViewTemplate<Endianess> &r) {
+	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
+
+template <sprt::endian Endianess>
+inline auto operator<=>(const BytesViewTemplate<Endianess> &l,
+		const BytesViewTemplate<Endianess> &r) {
+	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
+
+template <typename _Tp>
+inline auto operator<=>(const SpanView<_Tp> &__x, const SpanView<_Tp> &__y) {
+	return std::lexicographical_compare_three_way(__x.begin(), __x.end(), __y.begin(), __y.end());
+}
+
+} // namespace sprt
+
+namespace std {
+
+template <>
+struct hash<STAPPLER_VERSIONIZED_NAMESPACE::StringView> {
+	hash() { }
+
+	size_t operator()(const STAPPLER_VERSIONIZED_NAMESPACE::StringView &value) const noexcept {
+		return hash<string_view>()(string_view(value.data(), value.size()));
+	}
+};
+
+template <>
+struct hash<STAPPLER_VERSIONIZED_NAMESPACE::StringViewUtf8> {
+	hash() { }
+
+	size_t operator()(const STAPPLER_VERSIONIZED_NAMESPACE::StringViewUtf8 &value) const noexcept {
+		return hash<string_view>()(string_view(value.data(), value.size()));
+	}
+};
+
+template <>
+struct hash<STAPPLER_VERSIONIZED_NAMESPACE::WideStringView> {
+	hash() { }
+
+	size_t operator()(const STAPPLER_VERSIONIZED_NAMESPACE::WideStringView &value) const noexcept {
+		return hash<u16string_view>()(u16string_view(value.data(), value.size()));
+	}
+};
+
+template <>
+struct hash<STAPPLER_VERSIONIZED_NAMESPACE::BytesViewTemplate< sprt::endian::little>> {
+	hash() { }
+
+	constexpr size_t operator()(
+			const STAPPLER_VERSIONIZED_NAMESPACE::BytesViewTemplate< sprt::endian::little> &value)
+			const noexcept {
+		if constexpr (sizeof(size_t) == 4) {
+			return sprt::hash32((const char *)value.data(), value.size());
+		} else {
+			return sprt::hash64((const char *)value.data(), value.size());
+		}
+	}
+};
+
+template <>
+struct hash< STAPPLER_VERSIONIZED_NAMESPACE::BytesViewTemplate< sprt::endian::big>> {
+	hash() { }
+
+	constexpr size_t operator()(
+			const STAPPLER_VERSIONIZED_NAMESPACE::BytesViewTemplate< sprt::endian::big> &value)
+			const noexcept {
+		if constexpr (sizeof(size_t) == 4) {
+			return sprt::hash32((const char *)value.data(), value.size());
+		} else {
+			return sprt::hash64((const char *)value.data(), value.size());
+		}
+	}
+};
+
+template <typename Value>
+struct hash<STAPPLER_VERSIONIZED_NAMESPACE::SpanView<Value>> {
+	size_t operator()(const STAPPLER_VERSIONIZED_NAMESPACE::SpanView<Value> &value) {
+		return value.hash();
+	}
+};
+
+} // namespace std
 
 namespace STAPPLER_VERSIONIZED stappler::memory {
 

@@ -22,18 +22,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#include "SPMemPoolStruct.h"
-#include "SPMemAlloc.h"
+#include "SPMemPriorityQueue.h"
 
 namespace STAPPLER_VERSIONIZED stappler::memory {
-
-bool AllocPool::isStapplerPool(pool_t *p) {
-	if (p && ((custom::Pool *)p)->magic == static_cast<uintptr_t>(config::POOL_MAGIC)) {
-		return true;
-	} else {
-		return false;
-	}
-}
 
 SP_PUBLIC void PriorityQueue_lock_noOp(void *) {
 	// no-op, really!

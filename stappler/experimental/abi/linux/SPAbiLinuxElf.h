@@ -23,7 +23,7 @@
 #ifndef CORE_ABI_LINUX_SPABILINUXELF_H_
 #define CORE_ABI_LINUX_SPABILINUXELF_H_
 
-#include "SPBytesView.h" // IWYU pragma: keep
+#include "SPStringView.h" // IWYU pragma: keep
 #include "SPFilesystem.h"
 #include "SPDso.h"
 

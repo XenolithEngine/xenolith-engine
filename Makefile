@@ -100,6 +100,4 @@ tar: $(LOCAL_LIBRARY)-$(LOCAL_VERSION).tar
 
 .PHONY: tar
 
-verbose := 1
-
 include make/shared.mk

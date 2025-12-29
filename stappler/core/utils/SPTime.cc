@@ -73,7 +73,7 @@ TimeInterval &TimeInterval::operator=(nullptr_t) {
 }
 
 
-Time Time::now() { return Time(platform::clock(ClockType::Monotonic)); }
+Time Time::now() { return Time(platform::clock(ClockType::Realtime)); }
 
 Time Time::microseconds(uint64_t mksec) { return Time(mksec); }
 Time Time::milliseconds(uint64_t msec) { return Time(msec * 1'000ULL); }

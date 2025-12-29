@@ -29,7 +29,7 @@
 #include "SPFilesystem.h"
 #include "SPString.h"
 #include "SPThreadTask.h"
-#include "SPSpanView.h"
+#include "SPStringView.h"
 #include "SPLog.h"
 #include "SPHashTable.h"
 #include "SPPlatform.h"

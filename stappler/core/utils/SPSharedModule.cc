@@ -43,9 +43,9 @@ struct SharedModuleManager {
 	const SharedModule *openModule(StringView, uint32_t version) const;
 
 	const void *acquireSymbol(const char *module, uint32_t version, const char *symbol,
-			const SourceLocation &loc) const;
+			const sprt::source_location &loc) const;
 	const void *acquireSymbol(const char *module, uint32_t version, const char *symbol,
-			const std::type_info *, const SourceLocation &loc) const;
+			const std::type_info *, const sprt::source_location &loc) const;
 
 	void enumerateModules(void *userdata, void (*)(void *userdata, const char *name));
 
@@ -165,7 +165,7 @@ const SharedModule *SharedModuleManager::openModule(StringView module, uint32_t 
 }
 
 const void *SharedModuleManager::acquireSymbol(const char *module, uint32_t version,
-		const char *symbol, const SourceLocation &loc) const {
+		const char *symbol, const sprt::source_location &loc) const {
 	std::unique_lock lock(_mutex);
 	auto mod = openModule(module, version);
 	if (!mod) {
@@ -177,7 +177,7 @@ const void *SharedModuleManager::acquireSymbol(const char *module, uint32_t vers
 }
 
 const void *SharedModuleManager::acquireSymbol(const char *module, uint32_t version,
-		const char *symbol, const std::type_info *t, const SourceLocation &loc) const {
+		const char *symbol, const std::type_info *t, const sprt::source_location &loc) const {
 	std::unique_lock lock(_mutex);
 	auto mod = openModule(module, version);
 	if (!mod) {
@@ -235,25 +235,25 @@ const SharedModule *SharedModule::openModule(const char *module) {
 }
 
 const void *SharedModule::acquireSymbol(const char *module, uint32_t version, const char *symbol,
-		const SourceLocation &loc) {
+		const sprt::source_location &loc) {
 	auto manager = SharedModuleManager::getInstance();
 	return manager->acquireSymbol(module, version, symbol, loc);
 }
 
 const void *SharedModule::acquireSymbol(const char *module, uint32_t version, const char *symbol,
-		const std::type_info &info, const SourceLocation &loc) {
+		const std::type_info &info, const sprt::source_location &loc) {
 	auto manager = SharedModuleManager::getInstance();
 	return manager->acquireSymbol(module, version, symbol, &info, loc);
 }
 
 const void *SharedModule::acquireSymbol(const char *module, const char *symbol,
-		const SourceLocation &loc) {
+		const sprt::source_location &loc) {
 	auto manager = SharedModuleManager::getInstance();
 	return manager->acquireSymbol(module, VersionLatest, symbol, loc);
 }
 
 const void *SharedModule::acquireSymbol(const char *module, const char *symbol,
-		const std::type_info &info, const SourceLocation &loc) {
+		const std::type_info &info, const sprt::source_location &loc) {
 	auto manager = SharedModuleManager::getInstance();
 	return manager->acquireSymbol(module, VersionLatest, symbol, &info, loc);
 }
@@ -283,7 +283,8 @@ SharedModule::SharedModule(const char *n, SharedSymbol *s, size_t count, SharedM
 
 SharedModule::~SharedModule() { SharedModuleManager::getInstance()->removeModule(this); }
 
-const void *SharedModule::acquireSymbol(const char *symbol, const SourceLocation &loc) const {
+const void *SharedModule::acquireSymbol(const char *symbol,
+		const sprt::source_location &loc) const {
 	StringView symbolView(symbol);
 
 	SharedSymbol *s = nullptr;
@@ -306,7 +307,7 @@ const void *SharedModule::acquireSymbol(const char *symbol, const SourceLocation
 }
 
 const void *SharedModule::acquireSymbol(const char *symbol, const std::type_info &t,
-		const SourceLocation &loc) const {
+		const sprt::source_location &loc) const {
 	StringView symbolView(symbol);
 	bool found = false;
 

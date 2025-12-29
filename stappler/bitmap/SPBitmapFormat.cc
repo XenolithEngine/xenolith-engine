@@ -22,7 +22,7 @@ THE SOFTWARE.
 **/
 
 #include "SPBitmapFormat.h"
-#include "SPBytesView.h"
+#include "SPStringView.h"
 #include "SPFilepath.h"
 #include "SPFilesystem.h"
 
@@ -33,13 +33,19 @@ static std::unique_lock<std::mutex> lockFormatList();
 static void addCustomFormat(BitmapFormat &&fmt);
 static const std::vector<BitmapFormat *> &getCustomFormats();
 
-void BitmapFormat::add(BitmapFormat &&fmt) {
-	addCustomFormat(move(fmt));
-}
+void BitmapFormat::add(BitmapFormat &&fmt) { addCustomFormat(move(fmt)); }
 
 BitmapFormat::BitmapFormat(FileFormat f, const check_fn &c, const size_fn &s, const info_fn &i,
 		const load_fn &l, const write_fn &wr, const save_fn &sv)
-: check_ptr(c), size_ptr(s), info_ptr(i), load_ptr(l), write_ptr(wr), save_ptr(sv), _format(f), _name(), _mime(getMimeType(f)) {
+: check_ptr(c)
+, size_ptr(s)
+, info_ptr(i)
+, load_ptr(l)
+, write_ptr(wr)
+, save_ptr(sv)
+, _format(f)
+, _name()
+, _mime(getMimeType(f)) {
 	assert(f != FileFormat::Custom);
 	if (check_ptr && size_ptr) {
 		_flags |= Recognizable;
@@ -63,9 +69,17 @@ BitmapFormat::BitmapFormat(FileFormat f, const check_fn &c, const size_fn &s, co
 	}
 }
 
-BitmapFormat::BitmapFormat(StringView n, StringView mime, const check_fn &c, const size_fn &s, const info_fn &i,
-		const load_fn &l, const write_fn &wr, const save_fn &sv)
-: check_ptr(c), size_ptr(s), info_ptr(i), load_ptr(l), write_ptr(wr), save_ptr(sv), _format(FileFormat::Custom), _name(n), _mime(mime) {
+BitmapFormat::BitmapFormat(StringView n, StringView mime, const check_fn &c, const size_fn &s,
+		const info_fn &i, const load_fn &l, const write_fn &wr, const save_fn &sv)
+: check_ptr(c)
+, size_ptr(s)
+, info_ptr(i)
+, load_ptr(l)
+, write_ptr(wr)
+, save_ptr(sv)
+, _format(FileFormat::Custom)
+, _name(n)
+, _mime(mime) {
 	if (check_ptr && size_ptr) {
 		_flags |= Recognizable;
 	}
@@ -77,23 +91,18 @@ BitmapFormat::BitmapFormat(StringView n, StringView mime, const check_fn &c, con
 	}
 }
 
-bool BitmapFormat::isRecognizable() const {
-	return (_flags & Recognizable) != None;
-}
-bool BitmapFormat::isReadable() const {
-	return (_flags & Readable) != None;
-}
-bool BitmapFormat::isWritable() const {
-	return (_flags & Writable) != None;
-}
+bool BitmapFormat::isRecognizable() const { return (_flags & Recognizable) != None; }
+bool BitmapFormat::isReadable() const { return (_flags & Readable) != None; }
+bool BitmapFormat::isWritable() const { return (_flags & Writable) != None; }
 
-bool BitmapFormat::is(const uint8_t * data, size_t dataLen) const {
+bool BitmapFormat::is(const uint8_t *data, size_t dataLen) const {
 	if (check_ptr) {
 		return check_ptr(data, dataLen);
 	}
 	return false;
 }
-bool BitmapFormat::getSize(const io::Producer &file, StackBuffer<512> &buf, uint32_t &width, uint32_t &height) const {
+bool BitmapFormat::getSize(const io::Producer &file, StackBuffer<512> &buf, uint32_t &width,
+		uint32_t &height) const {
 	if (size_ptr) {
 		return size_ptr(file, buf, width, height);
 	}
@@ -121,7 +130,8 @@ bool BitmapFormat::write(const uint8_t *data, BitmapWriter &state, bool invert) 
 	return false;
 }
 
-bool BitmapFormat::save(const FileInfo &path, const uint8_t *data, BitmapWriter &state, bool invert) const {
+bool BitmapFormat::save(const FileInfo &path, const uint8_t *data, BitmapWriter &state,
+		bool invert) const {
 	if (save_ptr) {
 		return save_ptr(path, data, state, invert);
 	}
@@ -141,7 +151,8 @@ bool getImageSize(const io::Producer &file, uint32_t &width, uint32_t &height) {
 	}
 
 	for (int i = 0; i < toInt(FileFormat::Custom); ++i) {
-		if (getDefaultFormat(i).isRecognizable() && getDefaultFormat(i).getSize(file, data, width, height)) {
+		if (getDefaultFormat(i).isRecognizable()
+				&& getDefaultFormat(i).getSize(file, data, width, height)) {
 			return true;
 		}
 	}
@@ -213,7 +224,7 @@ bool isImage(const io::Producer &file, bool readable) {
 	return isImage(data.data(), data.size(), readable);
 }
 
-bool isImage(const uint8_t * data, size_t dataLen, bool readable) {
+bool isImage(const uint8_t *data, size_t dataLen, bool readable) {
 	for (int i = 0; i < toInt(FileFormat::Custom); ++i) {
 		if (getDefaultFormat(i).isRecognizable() && (!readable || getDefaultFormat(i).isReadable())
 				&& getDefaultFormat(i).is(data, dataLen)) {
@@ -257,7 +268,7 @@ Pair<FileFormat, StringView> detectFormat(const io::Producer &file) {
 	return detectFormat(data.data(), data.size());
 }
 
-Pair<FileFormat, StringView> detectFormat(const uint8_t * data, size_t dataLen) {
+Pair<FileFormat, StringView> detectFormat(const uint8_t *data, size_t dataLen) {
 	for (int i = 0; i < toInt(FileFormat::Custom); ++i) {
 		if (getDefaultFormat(i).isRecognizable() && getDefaultFormat(i).is(data, dataLen)) {
 			return pair(getDefaultFormat(i).getFormat(), getDefaultFormat(i).getName());
@@ -316,12 +327,12 @@ StringView getMimeType(StringView name) {
 	return StringView();
 }
 
-bool check(FileFormat fmt, const uint8_t * data, size_t dataLen) {
+bool check(FileFormat fmt, const uint8_t *data, size_t dataLen) {
 	assert(fmt != FileFormat::Custom);
 	return getDefaultFormat(toInt(fmt)).is(data, dataLen);
 }
 
-bool check(StringView name, const uint8_t * data, size_t dataLen) {
+bool check(StringView name, const uint8_t *data, size_t dataLen) {
 	memory::vector<BitmapFormat::check_fn> fns;
 
 	auto lock = lockFormatList();
@@ -344,148 +355,170 @@ bool check(StringView name, const uint8_t * data, size_t dataLen) {
 	return false;
 }
 
-template<>
-void convertLine<PixelFormat::RGB888, PixelFormat::RGBA8888>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
+template <>
+void convertLine<PixelFormat::RGB888, PixelFormat::RGBA8888>(const uint8_t *in, uint8_t *out,
+		uint32_t ins, uint32_t outs) {
 	for (size_t i = 0, l = ins - 2; i < l; i += 3) {
-		*out++ = in[i];			//R
-		*out++ = in[i + 1];		//G
-		*out++ = in[i + 2];		//B
-		*out++ = 0xFF;			//A
+		*out++ = in[i]; //R
+		*out++ = in[i + 1]; //G
+		*out++ = in[i + 2]; //B
+		*out++ = 0xFF; //A
 	}
 }
 
-template<>
-void convertLine<PixelFormat::I8, PixelFormat::RGB888>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
-    for (size_t i = 0; i < ins; ++i) {
-        *out++ = in[i];     //R
-        *out++ = in[i];     //G
-        *out++ = in[i];     //B
-    }
-}
-
-template<>
-void convertLine<PixelFormat::IA88, PixelFormat::RGB888>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
-    for (size_t i = 0, l = ins - 1; i < l; i += 2) {
-        *out++ = in[i];     //R
-        *out++ = in[i];     //G
-        *out++ = in[i];     //B
-    }
-}
-
-template<>
-void convertLine<PixelFormat::I8, PixelFormat::RGBA8888>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
+template <>
+void convertLine<PixelFormat::I8, PixelFormat::RGB888>(const uint8_t *in, uint8_t *out,
+		uint32_t ins, uint32_t outs) {
 	for (size_t i = 0; i < ins; ++i) {
-        *out++ = in[i];     //R
-        *out++ = in[i];     //G
-        *out++ = in[i];     //B
-        *out++ = 0xFF;      //A
-    }
+		*out++ = in[i]; //R
+		*out++ = in[i]; //G
+		*out++ = in[i]; //B
+	}
 }
 
-template<>
-void convertLine<PixelFormat::IA88, PixelFormat::RGBA8888>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
-    for (size_t i = 0, l = ins - 1; i < l; i += 2) {
-        *out++ = in[i];     //R
-        *out++ = in[i];     //G
-        *out++ = in[i];     //B
-        *out++ = in[i + 1]; //A
-    }
+template <>
+void convertLine<PixelFormat::IA88, PixelFormat::RGB888>(const uint8_t *in, uint8_t *out,
+		uint32_t ins, uint32_t outs) {
+	for (size_t i = 0, l = ins - 1; i < l; i += 2) {
+		*out++ = in[i]; //R
+		*out++ = in[i]; //G
+		*out++ = in[i]; //B
+	}
 }
 
-template<>
-void convertLine<PixelFormat::I8, PixelFormat::IA88>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
-    for (size_t i = 0; i < ins; ++i) {
-        *out++ = in[i];
+template <>
+void convertLine<PixelFormat::I8, PixelFormat::RGBA8888>(const uint8_t *in, uint8_t *out,
+		uint32_t ins, uint32_t outs) {
+	for (size_t i = 0; i < ins; ++i) {
+		*out++ = in[i]; //R
+		*out++ = in[i]; //G
+		*out++ = in[i]; //B
+		*out++ = 0xFF; //A
+	}
+}
+
+template <>
+void convertLine<PixelFormat::IA88, PixelFormat::RGBA8888>(const uint8_t *in, uint8_t *out,
+		uint32_t ins, uint32_t outs) {
+	for (size_t i = 0, l = ins - 1; i < l; i += 2) {
+		*out++ = in[i]; //R
+		*out++ = in[i]; //G
+		*out++ = in[i]; //B
+		*out++ = in[i + 1]; //A
+	}
+}
+
+template <>
+void convertLine<PixelFormat::I8, PixelFormat::IA88>(const uint8_t *in, uint8_t *out, uint32_t ins,
+		uint32_t outs) {
+	for (size_t i = 0; i < ins; ++i) {
+		*out++ = in[i];
 		*out++ = 0xFF;
-    }
+	}
 }
 
-template<>
-void convertLine<PixelFormat::IA88, PixelFormat::A8>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
-    for (size_t i = 1; i < ins; i += 2) {
-        *out++ = in[i]; //A
-    }
+template <>
+void convertLine<PixelFormat::IA88, PixelFormat::A8>(const uint8_t *in, uint8_t *out, uint32_t ins,
+		uint32_t outs) {
+	for (size_t i = 1; i < ins; i += 2) {
+		*out++ = in[i]; //A
+	}
 }
 
-template<>
-void convertLine<PixelFormat::IA88, PixelFormat::I8>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
-    for (size_t i = 0, l = ins - 1; i < l; i += 2) {
-        *out++ = in[i]; //R
-    }
+template <>
+void convertLine<PixelFormat::IA88, PixelFormat::I8>(const uint8_t *in, uint8_t *out, uint32_t ins,
+		uint32_t outs) {
+	for (size_t i = 0, l = ins - 1; i < l; i += 2) {
+		*out++ = in[i]; //R
+	}
 }
 
-template<>
-void convertLine<PixelFormat::RGBA8888, PixelFormat::RGB888>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
-    for (size_t i = 0, l = ins - 3; i < l; i += 4) {
-        *out++ = in[i];         //R
-        *out++ = in[i + 1];     //G
-        *out++ = in[i + 2];     //B
-    }
+template <>
+void convertLine<PixelFormat::RGBA8888, PixelFormat::RGB888>(const uint8_t *in, uint8_t *out,
+		uint32_t ins, uint32_t outs) {
+	for (size_t i = 0, l = ins - 3; i < l; i += 4) {
+		*out++ = in[i]; //R
+		*out++ = in[i + 1]; //G
+		*out++ = in[i + 2]; //B
+	}
 }
 
-template<>
-void convertLine<PixelFormat::RGB888, PixelFormat::I8>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
-    for (size_t i = 0, l = ins - 2; i < l; i += 3) {
-        *out++ = (in[i] * 299 + in[i + 1] * 587 + in[i + 2] * 114 + 500) / 1000;  //I =  (R*299 + G*587 + B*114 + 500) / 1000
-    }
+template <>
+void convertLine<PixelFormat::RGB888, PixelFormat::I8>(const uint8_t *in, uint8_t *out,
+		uint32_t ins, uint32_t outs) {
+	for (size_t i = 0, l = ins - 2; i < l; i += 3) {
+		*out++ = (in[i] * 299 + in[i + 1] * 587 + in[i + 2] * 114 + 500)
+				/ 1'000; //I =  (R*299 + G*587 + B*114 + 500) / 1000
+	}
 }
 
-template<>
-void convertLine<PixelFormat::RGBA8888, PixelFormat::I8>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
-    for (size_t i = 0, l = ins - 3; i < l; i += 4) {
-        *out++ = (in[i] * 299 + in[i + 1] * 587 + in[i + 2] * 114 + 500) / 1000;  //I =  (R*299 + G*587 + B*114 + 500) / 1000
-    }
+template <>
+void convertLine<PixelFormat::RGBA8888, PixelFormat::I8>(const uint8_t *in, uint8_t *out,
+		uint32_t ins, uint32_t outs) {
+	for (size_t i = 0, l = ins - 3; i < l; i += 4) {
+		*out++ = (in[i] * 299 + in[i + 1] * 587 + in[i + 2] * 114 + 500)
+				/ 1'000; //I =  (R*299 + G*587 + B*114 + 500) / 1000
+	}
 }
 
-template<>
-void convertLine<PixelFormat::RGBA8888, PixelFormat::A8>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
-    for (size_t i = 0, l = ins -3; i < l; i += 4) {
-        *out++ = in[i + 3]; //A
-    }
+template <>
+void convertLine<PixelFormat::RGBA8888, PixelFormat::A8>(const uint8_t *in, uint8_t *out,
+		uint32_t ins, uint32_t outs) {
+	for (size_t i = 0, l = ins - 3; i < l; i += 4) {
+		*out++ = in[i + 3]; //A
+	}
 }
 
-template<>
-void convertLine<PixelFormat::RGB888, PixelFormat::IA88>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
-    for (size_t i = 0, l = ins - 2; i < l; i += 3) {
-        *out++ = (in[i] * 299 + in[i + 1] * 587 + in[i + 2] * 114 + 500) / 1000;  //I =  (R*299 + G*587 + B*114 + 500) / 1000
-        *out++ = 0xFF;
-    }
+template <>
+void convertLine<PixelFormat::RGB888, PixelFormat::IA88>(const uint8_t *in, uint8_t *out,
+		uint32_t ins, uint32_t outs) {
+	for (size_t i = 0, l = ins - 2; i < l; i += 3) {
+		*out++ = (in[i] * 299 + in[i + 1] * 587 + in[i + 2] * 114 + 500)
+				/ 1'000; //I =  (R*299 + G*587 + B*114 + 500) / 1000
+		*out++ = 0xFF;
+	}
 }
 
-template<>
-void convertLine<PixelFormat::RGBA8888, PixelFormat::IA88>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
-    for (size_t i = 0, l = ins - 3; i < l; i += 4) {
-        *out++ = (in[i] * 299 + in[i + 1] * 587 + in[i + 2] * 114 + 500) / 1000;  //I =  (R*299 + G*587 + B*114 + 500) / 1000
-        *out++ = in[i + 3];
-    }
+template <>
+void convertLine<PixelFormat::RGBA8888, PixelFormat::IA88>(const uint8_t *in, uint8_t *out,
+		uint32_t ins, uint32_t outs) {
+	for (size_t i = 0, l = ins - 3; i < l; i += 4) {
+		*out++ = (in[i] * 299 + in[i + 1] * 587 + in[i + 2] * 114 + 500)
+				/ 1'000; //I =  (R*299 + G*587 + B*114 + 500) / 1000
+		*out++ = in[i + 3];
+	}
 }
 
-template<>
-void convertLine<PixelFormat::A8, PixelFormat::IA88>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
-    for (size_t i = 0; i < ins; ++i) {
-        *out++ = 0xFF;
-        *out++ = in[i];
-    }
+template <>
+void convertLine<PixelFormat::A8, PixelFormat::IA88>(const uint8_t *in, uint8_t *out, uint32_t ins,
+		uint32_t outs) {
+	for (size_t i = 0; i < ins; ++i) {
+		*out++ = 0xFF;
+		*out++ = in[i];
+	}
 }
 
-template<>
-void convertLine<PixelFormat::A8, PixelFormat::RGB888>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
+template <>
+void convertLine<PixelFormat::A8, PixelFormat::RGB888>(const uint8_t *in, uint8_t *out,
+		uint32_t ins, uint32_t outs) {
 	memset(out, 0, outs);
 }
 
-template<>
-void convertLine<PixelFormat::A8, PixelFormat::RGBA8888>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
-    for (size_t i = 0; i < ins; ++i) {
-        *out++ = 0x00;
-        *out++ = 0x00;
-        *out++ = 0x00;
-        *out++ = in[i];
-    }
+template <>
+void convertLine<PixelFormat::A8, PixelFormat::RGBA8888>(const uint8_t *in, uint8_t *out,
+		uint32_t ins, uint32_t outs) {
+	for (size_t i = 0; i < ins; ++i) {
+		*out++ = 0x00;
+		*out++ = 0x00;
+		*out++ = 0x00;
+		*out++ = in[i];
+	}
 }
 
-template<>
-void convertLine<PixelFormat::RGB888, PixelFormat::A8>(const uint8_t *in, uint8_t *out, uint32_t ins, uint32_t outs) {
+template <>
+void convertLine<PixelFormat::RGB888, PixelFormat::A8>(const uint8_t *in, uint8_t *out,
+		uint32_t ins, uint32_t outs) {
 	memset(out, 0, outs);
 }
 
-}
+} // namespace stappler::bitmap

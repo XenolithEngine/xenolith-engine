@@ -28,6 +28,39 @@ THE SOFTWARE.
 #include "SPCoreCrypto.h"
 #include "SPStringStream.h"
 
+namespace STAPPLER_VERSIONIZED stappler::platform {
+
+SP_PUBLIC char32_t tolower(char32_t c);
+
+SP_PUBLIC char32_t toupper(char32_t c);
+
+SP_PUBLIC char32_t totitle(char32_t c);
+
+template <typename Interface>
+SP_PUBLIC auto tolower(StringView data) -> typename Interface::StringType;
+
+template <typename Interface>
+SP_PUBLIC auto toupper(StringView data) -> typename Interface::StringType;
+
+template <typename Interface>
+SP_PUBLIC auto totitle(StringView data) -> typename Interface::StringType;
+
+template <typename Interface>
+SP_PUBLIC auto tolower(WideStringView data) -> typename Interface::WideStringType;
+
+template <typename Interface>
+SP_PUBLIC auto toupper(WideStringView data) -> typename Interface::WideStringType;
+
+template <typename Interface>
+SP_PUBLIC auto totitle(WideStringView data) -> typename Interface::WideStringType;
+
+SP_PUBLIC int compare_u(StringView l, StringView r);
+SP_PUBLIC int compare_u(WideStringView l, WideStringView r);
+SP_PUBLIC int caseCompare_u(StringView l, StringView r);
+SP_PUBLIC int caseCompare_u(WideStringView l, WideStringView r);
+
+} // namespace stappler::platform
+
 namespace STAPPLER_VERSIONIZED stappler {
 
 inline uint32_t SP_MAKE_API_VERSION(StringView version) {
@@ -210,9 +243,9 @@ using Sha512 = crypto::Sha512;
 
 /* Very simple and quick hasher, do NOT use it in collision-sensative cases */
 inline uint32_t hash32(const StringView &key) {
-	return hash::hash32(key.data(), uint32_t(key.size()));
+	return sprt::hash32(key.data(), uint32_t(key.size()));
 }
-inline uint64_t hash64(const StringView &key) { return hash::hash64(key.data(), key.size()); }
+inline uint64_t hash64(const StringView &key) { return sprt::hash64(key.data(), key.size()); }
 
 /* default stdlib hash 32/64-bit, platform depended, unsigned variant (do NOT use for storage) */
 template <typename StringType>
@@ -635,32 +668,44 @@ auto StringTraits<Interface>::toKoi8r(const WideStringView &str) -> String {
 
 template <typename Interface>
 auto StringTraits<Interface>::tolower(const WideStringView &str) -> WideString {
-	return platform::tolower<Interface>(str);
+	WideString ret;
+	sprt::unicode::tolower([&](WideStringView str) { ret = str.str<Interface>(); });
+	return ret;
 }
 
 template <typename Interface>
 auto StringTraits<Interface>::toupper(const WideStringView &str) -> WideString {
-	return platform::toupper<Interface>(str);
+	WideString ret;
+	sprt::unicode::toupper([&](WideStringView str) { ret = str.str<Interface>(); });
+	return ret;
 }
 
 template <typename Interface>
 auto StringTraits<Interface>::totitle(const WideStringView &str) -> WideString {
-	return platform::totitle<Interface>(str);
+	WideString ret;
+	sprt::unicode::totitle([&](WideStringView str) { ret = str.str<Interface>(); });
+	return ret;
 }
 
 template <typename Interface>
 auto StringTraits<Interface>::tolower(const StringView &str) -> String {
-	return platform::tolower<Interface>(str);
+	String ret;
+	sprt::unicode::tolower([&](StringView str) { ret = str.str<Interface>(); });
+	return ret;
 }
 
 template <typename Interface>
 auto StringTraits<Interface>::toupper(const StringView &str) -> String {
-	return platform::toupper<Interface>(str);
+	String ret;
+	sprt::unicode::toupper([&](StringView str) { ret = str.str<Interface>(); });
+	return ret;
 }
 
 template <typename Interface>
 auto StringTraits<Interface>::totitle(const StringView &str) -> String {
-	return platform::totitle<Interface>(str);
+	String ret;
+	sprt::unicode::totitle([&](StringView str) { ret = str.str<Interface>(); });
+	return ret;
 }
 
 template <typename Interface>

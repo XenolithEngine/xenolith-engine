@@ -25,7 +25,7 @@
 #define CORE_CORE_UTILS_SPDSO_H_
 
 #include "SPStringView.h" // IWYU pragma: keep
-#include "SPRuntimeDso.h"
+#include <sprt/runtime/dso.h>
 
 namespace STAPPLER_VERSIONIZED stappler {
 

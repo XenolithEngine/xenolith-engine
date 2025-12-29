@@ -1502,7 +1502,7 @@ struct TldList {
 static TldList s_tldList;
 
 bool isKnownTld(StringView data) {
-	if (string::detail::caseCompare_c(StringView("XN--"), data.sub(0, 4)) == 0) {
+	if (sprt::detail::caseCompare_c(StringView("XN--"), data.sub(0, 4)) == 0) {
 		std::string d = data.str<memory::StandartInterface>();
 		return s_tldList.has(d);
 	} else {

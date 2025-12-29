@@ -310,7 +310,7 @@ void FilesystemResourceData::enumeratePaths(FileCategory cat, StringView filenam
 }
 
 void FilesystemResourceData::init() {
-	_pool = memory::pool::acquire();
+	_pool = sprt::memory::pool::acquire();
 
 	for (auto it : each<FileCategory>()) {
 		auto &loc = _resourceLocations[toInt(it)];

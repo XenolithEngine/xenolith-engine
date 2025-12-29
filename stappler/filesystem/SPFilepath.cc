@@ -22,7 +22,7 @@ THE SOFTWARE.
 **/
 
 #include "SPFilepath.h"
-#include "SPBytesView.h"
+#include "SPStringView.h"
 #include "SPFilesystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler {

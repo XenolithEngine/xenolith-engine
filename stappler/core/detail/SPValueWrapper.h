@@ -53,15 +53,6 @@ template <class T, class Flag>
 struct ValueWrapper {
 	using Type = T;
 
-	static constexpr ValueWrapper<T, Flag> max() {
-		return ValueWrapper<T, Flag>(NumericLimits<T>::max());
-	}
-	static constexpr ValueWrapper<T, Flag> min() {
-		return ValueWrapper<T, Flag>(NumericLimits<T>::min());
-	}
-	static constexpr ValueWrapper<T, Flag> epsilon() {
-		return ValueWrapper<T, Flag>(NumericLimits<T>::epsilon());
-	}
 	static constexpr ValueWrapper<T, Flag> zero() { return ValueWrapper<T, Flag>(0); }
 
 	inline constexpr ValueWrapper() noexcept = default;

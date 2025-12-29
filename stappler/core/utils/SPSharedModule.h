@@ -71,13 +71,13 @@ public:
 	static const SharedModule *openModule(const char *module, uint32_t version);
 
 	static const void *acquireSymbol(const char *module, uint32_t version, const char *symbol,
-			const SourceLocation & = SP_LOCATION);
+			const sprt::source_location & = __SPRT_LOCATION);
 	static const void *acquireSymbol(const char *module, uint32_t version, const char *symbol,
-			const std::type_info &, const SourceLocation & = SP_LOCATION);
+			const std::type_info &, const sprt::source_location & = __SPRT_LOCATION);
 
 	template <typename T = const void *>
 	static auto acquireTypedSymbol(const char *module, uint32_t version, const char *symbol,
-			const SourceLocation &loc = SP_LOCATION) {
+			const sprt::source_location &loc = __SPRT_LOCATION) {
 		return reinterpret_cast<T>(const_cast<void *>(acquireSymbol(module, version, symbol,
 				typeid(std::remove_pointer_t<typename std::remove_cv<T>::type>), loc)));
 	}
@@ -89,13 +89,13 @@ public:
 	static const SharedModule *openModule(const char *module);
 
 	static const void *acquireSymbol(const char *module, const char *symbol,
-			const SourceLocation & = SP_LOCATION);
+			const sprt::source_location & = __SPRT_LOCATION);
 	static const void *acquireSymbol(const char *module, const char *symbol, const std::type_info &,
-			const SourceLocation & = SP_LOCATION);
+			const sprt::source_location & = __SPRT_LOCATION);
 
 	template <typename T = const void *>
 	static auto acquireTypedSymbol(const char *module, const char *symbol,
-			const SourceLocation &loc = SP_LOCATION) {
+			const sprt::source_location &loc = __SPRT_LOCATION) {
 		return reinterpret_cast<T>(const_cast<void *>(acquireSymbol(module, symbol,
 				typeid(std::remove_pointer_t<typename std::remove_cv<T>::type>), loc)));
 	}
@@ -109,12 +109,14 @@ public:
 
 	uint32_t getVersion() const { return _version; }
 
-	const void *acquireSymbol(const char *symbol, const SourceLocation & = SP_LOCATION) const;
+	const void *acquireSymbol(const char *symbol,
+			const sprt::source_location & = __SPRT_LOCATION) const;
 	const void *acquireSymbol(const char *symbol, const std::type_info &,
-			const SourceLocation & = SP_LOCATION) const;
+			const sprt::source_location & = __SPRT_LOCATION) const;
 
 	template <typename T = const void *>
-	auto acquireTypedSymbol(const char *symbol, const SourceLocation &loc = SP_LOCATION) const {
+	auto acquireTypedSymbol(const char *symbol,
+			const sprt::source_location &loc = __SPRT_LOCATION) const {
 		return reinterpret_cast<T>(const_cast<void *>(acquireSymbol(symbol,
 				typeid(std::remove_pointer_t<typename std::remove_cv<T>::type>), loc)));
 	}

@@ -25,8 +25,8 @@
 #define CORE_CORE_STRING_SPSTRINGSTREAM_H_
 
 #include "SPStringView.h" // IWYU pragma: keep
-#include "SPBytesView.h" // IWYU pragma: keep
-#include "SPStringDetail.h"
+#include "SPUnicode.h"
+#include "SPStatus.h"
 #include <type_traits>
 
 namespace STAPPLER_VERSIONIZED stappler::string {
@@ -96,11 +96,6 @@ inline size_t toStringValue(char *target, char16_t val) {
 inline size_t toStringValue(char *target, char val) {
 	*target = val;
 	return 1;
-}
-
-inline size_t toStringValue(char *target, const sprt::StringView &val) {
-	memcpy(target, val.data(), val.size());
-	return val.size();
 }
 
 inline size_t toStringValue(char *target, const StringView &val) {
@@ -174,7 +169,6 @@ struct IsFastToStringAvailableValue {
 
 template <size_t N> struct IsFastToStringAvailableValue<char[N]> { static constexpr bool value = true; };
 template <> struct IsFastToStringAvailableValue<char *> { static constexpr bool value = true; };
-template <> struct IsFastToStringAvailableValue<sprt::StringView> { static constexpr bool value = true; };
 template <> struct IsFastToStringAvailableValue<StringView> { static constexpr bool value = true; };
 template <> struct IsFastToStringAvailableValue<std::string> { static constexpr bool value = true; };
 template <> struct IsFastToStringAvailableValue<memory::string> { static constexpr bool value = true; };
@@ -208,7 +202,6 @@ struct IsFastToStringAvailable<T> {
 
 inline size_t getBufferSizeValue(const char *value) { return ::strlen(value); }
 template <size_t N> inline size_t getBufferSizeValue(const char value[N]) { return N; }
-inline size_t getBufferSizeValue(const sprt::StringView &value) { return value.size(); }
 inline size_t getBufferSizeValue(const StringView &value) { return value.size(); }
 inline size_t getBufferSizeValue(const StringViewUtf8 &value) { return value.size(); }
 inline size_t getBufferSizeValue(const std::string &value) { return value.size(); }
@@ -286,11 +279,6 @@ static void toStringStream(Stream &stream, const WideStringView &val) {
 			d = nullptr;
 		}
 	}
-}
-
-template <typename Stream>
-static void toStringStream(Stream &stream, const sprt::WideStringView &val) {
-	toStringStream(stream, WideStringView(val.data(), val.size()));
 }
 
 template <typename Stream>
@@ -390,7 +378,7 @@ static auto pdupString(Args &&...args) -> StringView {
 
 		auto size = detail::getBufferSize(std::forward<Args>(args)...);
 
-		auto str = (char *)memory::pool::palloc(memory::pool::acquire(), size);
+		auto str = (char *)sprt::memory::pool::palloc(sprt::memory::pool::acquire(), size);
 
 		auto s = detail::writeBuffer(str, std::forward<Args>(args)...);
 		if (s != size) {
@@ -417,7 +405,7 @@ static auto pdupString(memory::pool_t *p, Args &&...args) -> StringView {
 
 		auto size = detail::getBufferSize(std::forward<Args>(args)...);
 
-		auto str = (char *)memory::pool::palloc(p, size);
+		auto str = (char *)sprt::memory::pool::palloc(p, size);
 
 		auto s = detail::writeBuffer(str, std::forward<Args>(args)...);
 		if (s != size) {
@@ -480,13 +468,8 @@ inline size_t toStringValue(char16_t *target, const WideStringView &val) {
 	return val.size();
 }
 
-inline size_t toStringValue(char16_t *target, const sprt::WideStringView &val) {
-	memcpy(target, val.data(), val.size() * sizeof(char16_t));
-	return val.size();
-}
-
 inline size_t toStringValue(char16_t *target, const char16_t *val) {
-	auto len = string::detail::length<char16_t>(val);
+	auto len = sprt::detail::length<char16_t>(val);
 	if (len) {
 		memcpy(target, val, len * sizeof(char16_t));
 	}
@@ -512,11 +495,6 @@ inline size_t toStringValue(char16_t *target, const memory::u16string &val) {
 template <typename Interface>
 inline auto toStringType(const char *val) -> typename Interface::WideStringType {
 	return string::toUtf16<Interface>(StringView(val));
-}
-
-template <typename Interface>
-static auto toStringType(const sprt::StringView &val) -> typename Interface::WideStringType {
-	return string::toUtf16<Interface>(StringView(val.data(), val.size()));
 }
 
 template <typename Interface>
@@ -550,7 +528,6 @@ struct IsFastToStringAvailableValue {
 
 template <size_t N> struct IsFastToStringAvailableValue<char[N]> { static constexpr bool value = true; };
 template <> struct IsFastToStringAvailableValue<char16_t *> { static constexpr bool value = true; };
-template <> struct IsFastToStringAvailableValue<sprt::WideStringView> { static constexpr bool value = true; };
 template <> struct IsFastToStringAvailableValue<WideStringView> { static constexpr bool value = true; };
 template <> struct IsFastToStringAvailableValue<std::u16string> { static constexpr bool value = true; };
 template <> struct IsFastToStringAvailableValue<memory::u16string> { static constexpr bool value = true; };
@@ -582,9 +559,8 @@ struct IsFastToStringAvailable<T> {
 	static constexpr bool value = IsFastToStringAvailableValue<std::remove_cv_t<std::remove_reference_t<T>>>::value;
 };
 
-inline size_t getBufferSizeValue(const char16_t *value) { return string::detail::length(value); }
+inline size_t getBufferSizeValue(const char16_t *value) { return sprt::detail::length(value); }
 template <size_t N> inline size_t getBufferSizeValue(const char16_t value[N]) { return N; }
-inline size_t getBufferSizeValue(const sprt::WideStringView &value) { return value.size(); }
 inline size_t getBufferSizeValue(const WideStringView &value) { return value.size(); }
 inline size_t getBufferSizeValue(const std::u16string &value) { return value.size(); }
 inline size_t getBufferSizeValue(const memory::u16string &value) { return value.size(); }
@@ -745,7 +721,7 @@ static auto pdupWideString(Args &&...args) -> WideStringView {
 
 		auto size = wdetail::getBufferSize(std::forward<Args>(args)...);
 		auto str = reinterpret_cast<char16_t *>(
-				memory::pool::palloc(memory::pool::acquire(), size * sizeof(char16_t)));
+				sprt::memory::pool::palloc(sprt::memory::pool::acquire(), size * sizeof(char16_t)));
 		auto s = wdetail::writeBuffer(str, std::forward<Args>(args)...);
 		if (s != size) {
 			::perror("[core]: Invalid buffer size for pdupWideString<fast>");
@@ -770,7 +746,8 @@ static auto pdupWideString(memory::pool_t *p, Args &&...args) -> WideStringView 
 		// fast toString with preallocated buffer
 
 		auto size = wdetail::getBufferSize(std::forward<Args>(args)...);
-		auto str = reinterpret_cast<char16_t *>(memory::pool::palloc(p, size * sizeof(char16_t)));
+		auto str = reinterpret_cast<char16_t *>(
+				sprt::memory::pool::palloc(p, size * sizeof(char16_t)));
 		auto s = wdetail::writeBuffer(str, std::forward<Args>(args)...);
 		if (s != size) {
 			::perror("[core]: Invalid buffer size for pdupWideString<fast>");

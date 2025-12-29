@@ -25,7 +25,7 @@
 #define CORE_CORE_UTILS_SPENUM_H_
 
 #include "SPPlatformInit.h" // IWYU pragma: keep
-#include "SPRuntimeInt.h"
+#include <sprt/runtime/int.h>
 
 #include <iterator>
 #include <bit>

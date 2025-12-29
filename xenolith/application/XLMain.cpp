@@ -21,7 +21,7 @@
  **/
 
 #include "SPCommon.h" // IWYU pragma: keep
-#include "SPBytesView.h" // IWYU pragma: keep
+#include "SPStringView.h" // IWYU pragma: keep
 #include "SPSharedModule.h"
 #include "SPLog.h"
 

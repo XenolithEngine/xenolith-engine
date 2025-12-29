@@ -163,15 +163,15 @@ struct Parser {
 	using Tag = TagType;
 
 	template <CharType... Args>
-	using Chars = chars::Chars<CharType, Args...>;
+	using Chars = sprt::chars::Chars<CharType, Args...>;
 
 	template <CharType First, CharType Last>
-	using Range = chars::Chars<CharType, First, Last>;
+	using Range = sprt::chars::Chars<CharType, First, Last>;
 
 	using GroupId = CharGroupId;
 
 	template <GroupId G>
-	using Group = chars::CharGroup<CharType, G>;
+	using Group = sprt::chars::CharGroup<CharType, G>;
 
 	using LtChar = Chars<CharType('<')>;
 

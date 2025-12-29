@@ -25,7 +25,7 @@ THE SOFTWARE.
 #ifndef STAPPLER_CORE_MEMORY_DETAIL_SPMEMRBTREE_H_
 #define STAPPLER_CORE_MEMORY_DETAIL_SPMEMRBTREE_H_
 
-#include "SPMemAlloc.h"
+#include "SPCore.h"
 #include "SPMemStorageNode.h"
 
 #define SP_MEM_RBTREE_DEBUG 0
@@ -38,9 +38,9 @@ enum RbTreeNodeColor : uintptr_t {
 };
 
 template <typename Value>
-using RbTreeNodeStorage = Storage<Value>;
+using RbTreeNodeStorage = sprt::memory::detail::Storage<Value>;
 
-struct SP_PUBLIC RbTreeNodeBase : public AllocPool {
+struct SP_PUBLIC RbTreeNodeBase : public sprt::memory::AllocPool {
 	using Flag = RbTreeNodeFlag<sizeof(uintptr_t)>;
 
 	RbTreeNodeBase *parent = nullptr;
@@ -317,7 +317,7 @@ template <typename T>
 using RbTreeDetectTransparent = typename T::is_transparent;
 
 template <typename Key, typename Value, typename Comp = std::less<>>
-class RbTree : public AllocPool {
+class RbTree : public sprt::memory::AllocPool {
 public:
 	using value_type = Value;
 	using node_type = RbTreeNode<Value>;
@@ -325,8 +325,8 @@ public:
 	using base_type = RbTreeNodeBase *;
 	using const_node_ptr = const node_type *;
 
-	using node_allocator_type = Allocator<node_type>;
-	using value_allocator_type = Allocator<value_type>;
+	using node_allocator_type = sprt::memory::detail::Allocator<node_type>;
+	using value_allocator_type = sprt::memory::detail::Allocator<value_type>;
 	using comparator_type = Comp;
 
 	using iterator = RbTreeIterator<Value>;
