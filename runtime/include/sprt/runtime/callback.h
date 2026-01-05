@@ -24,7 +24,8 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_CALLBACK_H_
 
 #include <sprt/runtime/array.h>
-#include <string.h>
+#include <sprt/runtime/detail/constexpr.h>
+#include <sprt/runtime/detail/invoke.h>
 
 namespace sprt {
 
@@ -119,12 +120,12 @@ public:
 
 	constexpr bool operator==(const static_function &other) const noexcept {
 		return mCallback == other.mCallback
-				&& ::memcmp(mBuffer.data(), other.mBuffer.data(), mBuffer.size()) == 0;
+				&& __constexpr_memcmp(mBuffer.data(), other.mBuffer.data(), mBuffer.size()) == 0;
 	}
 
 	constexpr bool operator!=(const static_function &other) const noexcept {
 		return mCallback != other.mCallback
-				|| ::memcmp(mBuffer.data(), other.mBuffer.data(), mBuffer.size()) == 0;
+				|| __constexpr_memcmp(mBuffer.data(), other.mBuffer.data(), mBuffer.size()) == 0;
 	}
 
 private:
@@ -244,6 +245,7 @@ public:
 	callback &operator=(callback &&other) noexcept = delete;
 
 	ReturnType operator()(ArgumentTypes... args) const {
+		static_assert(is_invocable_v<decltype(mcallback), decltype(mFunctor), ArgumentTypes...>);
 		return mcallback(mFunctor, sprt::forward<ArgumentTypes>(args)...);
 	}
 

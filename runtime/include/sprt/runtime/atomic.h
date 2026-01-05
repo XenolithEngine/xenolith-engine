@@ -25,7 +25,7 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_ATOMIC_H_
 
 #include <sprt/runtime/int.h>
-#include <sprt/runtime/constructable.h>
+#include <sprt/runtime/detail/constructable.h>
 
 namespace sprt {
 
@@ -270,6 +270,36 @@ struct atomic<Type *> : public __atomic_base<Type *> {
 
 	atomic &operator=(const atomic &) = delete;
 	atomic &operator=(const atomic &) volatile = delete;
+};
+
+struct atomic_flag {
+	_Atomic(bool) __a_;
+
+	bool test(memory_order __m = memory_order::seq_cst) const volatile noexcept {
+		return true == __c11_atomic_load(&__a_, toInt(__m));
+	}
+	bool test(memory_order __m = memory_order::seq_cst) const noexcept {
+		return true == __c11_atomic_load(&__a_, toInt(__m));
+	}
+
+	bool test_and_set(memory_order __m = memory_order::seq_cst) volatile noexcept {
+		return __c11_atomic_exchange(&__a_, true, toInt(__m));
+	}
+	bool test_and_set(memory_order __m = memory_order::seq_cst) noexcept {
+		return __c11_atomic_exchange(&__a_, true, toInt(__m));
+	}
+	void clear(memory_order __m = memory_order::seq_cst) volatile noexcept {
+		__c11_atomic_store(&__a_, false, toInt(__m));
+	}
+	void clear(memory_order __m = memory_order::seq_cst) noexcept {
+		__c11_atomic_store(&__a_, false, toInt(__m));
+	}
+
+	constexpr atomic_flag() noexcept : __a_(false) { }
+
+	atomic_flag(const atomic_flag &) = delete;
+	atomic_flag &operator=(const atomic_flag &) = delete;
+	atomic_flag &operator=(const atomic_flag &) volatile = delete;
 };
 
 } // namespace sprt

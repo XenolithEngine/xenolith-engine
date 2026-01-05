@@ -28,8 +28,10 @@ THE SOFTWARE.
 #endif
 
 #include <sprt/runtime/unicode.h>
-#include <sprt/runtime/compare.h>
 #include <sprt/runtime/halffloat.h>
+#include <sprt/runtime/detail/compare.h>
+#include <sprt/runtime/detail/operations.h>
+#include <sprt/runtime/detail/constexpr.h>
 
 namespace sprt::detail {
 
@@ -65,7 +67,7 @@ constexpr size_t length(const _CharT *__p) {
 		return 0;
 	}
 
-	return strlen(__p);
+	return __constexpr_strlen(__p);
 }
 
 // Limited length function
@@ -78,7 +80,7 @@ constexpr size_t length(const _CharT *__p, size_t max) {
 	}
 
 	if (max == Max<size_t>) {
-		return strlen(__p);
+		return __constexpr_strlen(__p);
 	} else {
 		size_t __i = 0;
 		while (__i < max && __p[__i] != _CharT(0)) { ++__i; }
@@ -130,7 +132,7 @@ inline auto readNumber(const Char *ptr, size_t len, int base, uint8_t &offset) -
 template <typename CharType>
 inline int compare_c(const CharType *lPtr, size_t lSize, const CharType *rPtr, size_t rSize) {
 	auto __len = min(lSize, rSize);
-	auto ret = strcompare(lPtr, rPtr, __len);
+	auto ret = __constexpr_strcompare(lPtr, rPtr, __len);
 	if (!ret) {
 		if (lSize < rSize) {
 			return -1;
@@ -265,6 +267,26 @@ inline bool operator!=(const char *l, const StringViewUtf8 &r) {
 	return detail::compare_c(StringViewUtf8(l), r) != 0;
 }
 
+template <typename CharType>
+inline bool operator<(const StringViewBase<CharType> &l, const StringViewBase<CharType> &r) {
+	return sprt::detail::compare_c(l, r) < 0;
+}
+
+template <typename CharType>
+inline bool operator<=(const StringViewBase<CharType> &l, const StringViewBase<CharType> &r) {
+	return sprt::detail::compare_c(l, r) <= 0;
+}
+
+template <typename CharType>
+inline bool operator>=(const StringViewBase<CharType> &l, const StringViewBase<CharType> &r) {
+	return sprt::detail::compare_c(l, r) >= 0;
+}
+
+template <typename CharType>
+inline bool operator>(const StringViewBase<CharType> &l, const StringViewBase<CharType> &r) {
+	return sprt::detail::compare_c(l, r) > 0;
+}
+
 template <typename CharT>
 template <typename Comparator>
 inline bool BytesReader<CharT>::equals(const CharType *d, size_t l) const {
@@ -357,6 +379,15 @@ auto StringViewBase<_CharType>::merge(Args &&...args) ->
 	return ret;
 }
 
+template <typename _CharType>
+template <typename Interface, typename... Args>
+void StringViewBase<_CharType>::merge(const callback<void(StringViewBase<CharType>)> &,
+		Args &&...args) { }
+
+template <typename _CharType>
+template <typename Interface, _CharType c, typename... Args>
+void StringViewBase<_CharType>::merge(const callback<void(StringViewBase<CharType>)> &,
+		Args &&...args) { }
 
 template <typename _CharType>
 template <typename T>
@@ -366,7 +397,7 @@ inline size_t StringViewBase<_CharType>::__size(const T &t) {
 
 template <typename _CharType>
 inline size_t StringViewBase<_CharType>::__size(const CharType *c) {
-	return strlen(c);
+	return __constexpr_strlen(c);
 }
 
 template <typename _CharType>
@@ -501,7 +532,7 @@ auto StringViewBase<_CharType>::pdup(memory::pool_t *p) const -> Self {
 	if (this->size() > 0) {
 		auto buf =
 				(_CharType *)sprt::memory::pool::palloc(p, (this->size() + 1) * sizeof(_CharType));
-		memcpy(buf, this->data(), this->size() * sizeof(_CharType));
+		__constexpr_memcpy(buf, this->data(), this->size() * sizeof(_CharType));
 		buf[this->size()] = 0;
 		return Self(buf, this->size());
 	}
@@ -583,7 +614,7 @@ auto StringViewBase<_CharType>::is(const CharType &c) const -> bool {
 
 template <typename _CharType>
 auto StringViewBase<_CharType>::is(const CharType *c) const -> bool {
-	return this->prefix(c, strlen(c));
+	return this->prefix(c, __constexpr_strlen(c));
 }
 
 template <typename _CharType>
@@ -663,7 +694,7 @@ auto StringViewBase<_CharType>::readInteger(int base) -> Result<int64_t> {
 	Self tmp = *this;
 	tmp.skipChars<typename Self::template CharGroup<CharGroupId::WhiteSpace>>();
 	uint8_t offset = 0;
-	auto ret = detail::readNumber<int64_t>(tmp.ptr, tmp.len, 0, offset);
+	auto ret = detail::readNumber<int64_t>(tmp.ptr, tmp.len, base, offset);
 	this->ptr += offset;
 	this->len -= offset;
 	return ret;
@@ -838,7 +869,7 @@ inline bool StringViewUtf8::is(const char32_t &c) const {
 	return len > 0 && len >= sprt::unicode::utf8_length_data[uint8_t(*ptr)]
 			&& sprt::unicode::utf8Decode32(ptr, len) == c;
 }
-inline bool StringViewUtf8::is(const char *c) const { return prefix(c, strlen(c)); }
+inline bool StringViewUtf8::is(const char *c) const { return prefix(c, __constexpr_strlen(c)); }
 inline bool StringViewUtf8::is(const Self &c) const { return prefix(c.data(), c.size()); }
 
 template <char32_t C>
@@ -1547,4 +1578,91 @@ auto makeSpanView(const Type (&array)[Size]) -> SpanView<Type> {
 } // namespace sprt
 
 
+#if __SPRT_USE_STL_COMPARATORS
+
+#include <algorithm>
+
+namespace sprt {
+
+inline auto __convertIntToTwc(int v) {
+	if (v < 0) {
+		return std::partial_ordering::less;
+	} else if (v > 0) {
+		return std::partial_ordering::greater;
+	} else {
+		return std::partial_ordering::equivalent;
+	}
+}
+
+template <typename Compare>
+inline auto __compareDataRanges(const uint8_t *l, size_t __lsize, const uint8_t *r, size_t __rsize,
+		const Compare &cmp) {
+	return std::lexicographical_compare_three_way(l, l + __lsize, r, r + __rsize, cmp);
+}
+
+
+template <typename CharType>
+inline auto operator<=>(const StringViewBase<CharType> &l, const StringViewBase<CharType> &r) {
+	return __convertIntToTwc(sprt::detail::compare_c(l, r));
+}
+
+template <typename CharType>
+inline auto operator<=>(const StringViewBase<CharType> &l, const CharType *r) {
+	return __convertIntToTwc(sprt::detail::compare_c(l, StringViewBase<CharType>(r)));
+}
+
+template <typename CharType>
+inline auto operator<=>(const CharType *l, const StringViewBase<CharType> &r) {
+	return __convertIntToTwc(sprt::detail::compare_c(StringViewBase<CharType>(l), r));
+}
+
+inline auto operator<=>(const StringViewUtf8 &l, const StringViewUtf8 &r) {
+	return __convertIntToTwc(sprt::detail::compare_u(l, r));
+}
+
+inline auto operator<=>(const StringViewUtf8 &l, const char *r) {
+	return __convertIntToTwc(sprt::detail::compare_u(l, StringViewUtf8(r)));
+}
+
+inline auto operator<=>(const char *l, const StringViewUtf8 &r) {
+	return __convertIntToTwc(sprt::detail::compare_u(StringViewUtf8(l), r));
+}
+
+template <sprt::endian Endianess, size_t Size>
+inline auto operator<=>(const BytesViewTemplate<Endianess> &l,
+		const sprt::array<uint8_t, Size> &r) {
+	return __compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
+
+template <sprt::endian Endianess, size_t Size>
+inline auto operator<=>(const sprt::array<uint8_t, Size> &l,
+		const BytesViewTemplate<Endianess> &r) {
+	return __compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
+
+template <sprt::endian Endianess, size_t Size>
+inline auto operator<=>(const BytesViewTemplate<Endianess> &l, const std::array<uint8_t, Size> &r) {
+	return __compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
+
+template <sprt::endian Endianess, size_t Size>
+inline auto operator<=>(const std::array<uint8_t, Size> &l, const BytesViewTemplate<Endianess> &r) {
+	return __compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
+
+template <sprt::endian Endianess>
+inline auto operator<=>(const BytesViewTemplate<Endianess> &l,
+		const BytesViewTemplate<Endianess> &r) {
+	return __compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
+
+template <typename _Tp>
+inline auto operator<=>(const SpanView<_Tp> &__x, const SpanView<_Tp> &__y) {
+	return std::lexicographical_compare_three_way(__x.begin(), __x.end(), __y.begin(), __y.end());
+}
+
+} // namespace sprt
+
 #endif
+
+#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_STRINGVIEW_H_

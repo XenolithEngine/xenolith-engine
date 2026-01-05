@@ -24,7 +24,6 @@ THE SOFTWARE.
 
 #include "private/SPRTMemStruct.h"
 #include <sprt/runtime/platform.h>
-#include <sprt/runtime/new.h>
 #include <sprt/c/__sprt_stdio.h>
 
 #include <stdlib.h>
@@ -78,7 +77,16 @@ static MemNode *Allocator_malloc(size_t size, uint32_t index) {
 		ptr = reinterpret_cast<uint8_t *>(::malloc(size));
 	}
 
-	return new (ptr) MemNode{nullptr, nullptr, mapped, index, 0, ptr + SIZEOF_MEMNODE, ptr + size};
+	return new (ptr) MemNode{
+		{},
+		nullptr,
+		nullptr,
+		mapped,
+		index,
+		0,
+		ptr + SIZEOF_MEMNODE,
+		ptr + size,
+	};
 }
 
 static void Allocator_free(MemNode *ptr) {

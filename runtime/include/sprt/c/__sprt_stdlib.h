@@ -24,6 +24,7 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_STDLIB_H_
 
 #include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/bits/__sprt_uint32_t.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_null.h>
 #include <sprt/c/cross/__sprt_locale.h>
@@ -39,11 +40,6 @@ __SPRT_BEGIN_DECL
 #define __SPRT_WIFEXITED(s) (!__SPRT_WTERMSIG(s))
 #define __SPRT_WIFSTOPPED(s) ((short)((((s)&0xffff)*0x1'0001U)>>8) > 0x7f00)
 #define __SPRT_WIFSIGNALED(s) (((s)&0xffff)-1U < 0xffu)
-
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_alloca)
-void *__SPRT_ID(alloca)(__SPRT_ID(size_t));
-#define __sprt_alloca __builtin_alloca
-#endif
 
 
 #ifndef __clang__
@@ -248,6 +244,58 @@ SPRT_API double __SPRT_ID(
 		strtod_l)(const char *__SPRT_RESTRICT, char **__SPRT_RESTRICT, __SPRT_ID(locale_t));
 SPRT_API long double __SPRT_ID(
 		strtold_l)(const char *__SPRT_RESTRICT, char **__SPRT_RESTRICT, __SPRT_ID(locale_t));
+
+
+/*
+	SPRT implements the _malloca/_freea interface similar to UCRT
+	It allocates no more than __SPRT_MALLOCA_THRESHOLD bytes from the stack, elsewhere - from the heap
+
+	See: https://learn.microsoft.com/ru-ru/cpp/c-runtime-library/reference/malloca?view=msvc-170
+*/
+
+#if __SPRT_HAS_BUILTIN(__builtin_alloca)
+
+// clang-format off
+// We store the dynamic memory allocation flag in the first bytes of the real allocation;
+// We shift the visible part of the allocation accessible to the user. The offset size 
+// must correspond to the maximum stack alignment on the target machine for the behavior
+// to strictly correspond to what is expected from alloca
+#define __SPRT_MALLOCA_OFFSET 16
+#define __SPRT_MALLOCA_THRESHOLD (4096 - __SPRT_MALLOCA_OFFSET)
+// clang-format on
+
+// Checking if we can allocate memory on the stack
+// TODO: We can fortify stack control if we add control based on the current available stack space
+SPRT_FORCEINLINE inline int __sprt_is_alloca_allowed(__SPRT_ID(size_t) sz) {
+	return sz < __SPRT_MALLOCA_THRESHOLD;
+}
+
+// Marks a block of memory as allocated from the stack and returns the user portion of memory
+SPRT_FORCEINLINE inline void *__sprt_alloca_wrapper(void *ptr) {
+	*((__SPRT_ID(uint32_t) *)ptr) = 0;
+	return (void *)((const char *)ptr + __SPRT_MALLOCA_OFFSET);
+}
+
+// We allocate a block from the heap, mark it and return the user part
+SPRT_FORCEINLINE inline void *__sprt_alloca_malloc(__SPRT_ID(size_t) sz) {
+	auto ptr = __SPRT_ID(malloc_impl)(sz + __SPRT_MALLOCA_OFFSET);
+	*((__SPRT_ID(uint32_t) *)ptr) = 1;
+	return (void *)((const char *)ptr + __SPRT_MALLOCA_OFFSET);
+}
+
+// We check whether the memory block is marked as allocated from the heap, and, if so, free it
+SPRT_FORCEINLINE inline void __sprt_alloca_freea(void *ptr) {
+	auto orig = ((const char *)ptr) - __SPRT_MALLOCA_OFFSET;
+	if (*((__SPRT_ID(uint32_t) *)orig) == 1) {
+		__SPRT_ID(free_impl)((void *)orig);
+	}
+}
+
+#define __sprt_malloca(Sz) (__sprt_is_alloca_allowed(Sz) ? \
+	__sprt_alloca_wrapper(__builtin_alloca((Sz) + __SPRT_MALLOCA_OFFSET)) : __sprt_alloca_malloc((Sz)))
+#define __sprt_freea(Ptr) __sprt_alloca_freea(Ptr)
+
+#endif
 
 __SPRT_END_DECL
 

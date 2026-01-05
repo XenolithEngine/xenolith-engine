@@ -38,6 +38,9 @@ THE SOFTWARE.
 #define __SPRT_F_TLOCK 2	/* Test and lock a region for exclusive use.  */
 #define __SPRT_F_TEST  3	/* Test a region for other processes locks.  */
 
+#define __SPRT_PC_NAME_MAX	3
+#define __SPRT_PC_PATH_MAX	4
+#define __SPRT_PC_PIPE_BUF	5
 
 #define __SPRT_SC_PAGE_SIZE	30
 #define __SPRT_SC_PAGESIZE	30

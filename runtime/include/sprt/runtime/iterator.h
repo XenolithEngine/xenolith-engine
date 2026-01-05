@@ -25,13 +25,13 @@ THE SOFTWARE.
 
 #include <sprt/runtime/int.h>
 
-#if __SPRT_USE_LIBCXX_ITERATOR_TAGS
+#if __SPRT_USE_STL_ITERATOR_TAGS
 #include <iterator>
 #endif
 
 namespace sprt {
 
-#if __SPRT_USE_LIBCXX_ITERATOR_TAGS
+#if __SPRT_USE_STL_ITERATOR_TAGS
 using input_iterator_tag = std::input_iterator_tag;
 using output_iterator_tag = std::output_iterator_tag;
 using forward_iterator_tag = std::forward_iterator_tag;

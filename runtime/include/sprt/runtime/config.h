@@ -20,22 +20,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_NEW_UTILS_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_NEW_UTILS_H_
+#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_CONFIG_H_
+#define RUNTIME_INCLUDE_SPRT_RUNTIME_CONFIG_H_
 
-#include <sprt/runtime/int.h>
+#ifndef __SPRT_RUNTIME_CONFIG_HAVE_ICU
+#define __SPRT_RUNTIME_CONFIG_HAVE_ICU 1
+#endif
 
-namespace sprt {
-
-struct nothrow_t {
-	explicit nothrow_t() = default;
-};
-
-extern const nothrow_t nothrow;
-
-enum class align_val_t : size_t {
-};
-
-} // namespace sprt
-
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_NEW_UTILS_H_
+#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_CONFIG_H_

@@ -65,7 +65,7 @@ __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 
 	return internal::performWithNativePath(path, [&](const char *target) {
 		// call with native path
-		return ::open64(target, __mode);
+		return ::open64(target, __flags, __mode);
 	}, -1);
 }
 
@@ -81,7 +81,7 @@ __SPRT_C_FUNC int __SPRT_ID(openat)(int __dir_fd, const char *path, int __flags,
 
 	return internal::performWithNativePath(path, [&](const char *target) {
 		// call with native path
-		return ::openat64(__dir_fd, target, __mode);
+		return ::openat64(__dir_fd, target, __flags, __mode);
 	}, -1);
 }
 

@@ -73,7 +73,7 @@ static constexpr size_t align_default(size_t size) {
 }
 
 // Adapted for 16k pages
-static constexpr uint32_t BOUNDARY_INDEX(14);
+static constexpr uint32_t BOUNDARY_INDEX(13);
 static constexpr uint32_t BOUNDARY_SIZE(1 << BOUNDARY_INDEX);
 
 static constexpr uint32_t MIN_ALLOC(2 * BOUNDARY_SIZE);
@@ -102,13 +102,26 @@ using allocator_t = OpaqueAllocator;
 
 using cleanup_fn = Status (*)(void *);
 
-// use when you need to create pool from application root pool
+// Use when you need to create pool from application root pool
 constexpr pool_t *app_root_pool = nullptr;
+
+// Allocator to use if you want to create an self-contained memory pool
+constexpr allocator_t *self_contained_allocator = nullptr;
 
 // Use this for a static init with memory::* types
 SPRT_API pool_t *get_zero_pool();
 
-// Check if Apache portale runtime is enabled in runtime
+// This pool can be used to store thread-associated data
+// It will be destroyed when the thread finishes executing
+// For the main thread, it will be zero_pool (see above)
+//
+// This pool is lazy-init and self-contained
+// You SHOULD NOT clear this pool, it can store critical execution data.
+// You SHOULD NOT call this function during static initialization, because
+// ordering of thread_local and static initializatiors is not defined.
+SPRT_API pool_t *get_thread_support_pool();
+
+// Check if Apache portale runtime is available at runtime
 SPRT_API bool is_apr_available();
 
 } // namespace sprt::memory

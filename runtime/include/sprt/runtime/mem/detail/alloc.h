@@ -25,8 +25,10 @@ THE SOFTWARE.
 
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/runtime/mem/context.h>
-#include <sprt/runtime/new_utils.h>
-#include <sprt/runtime/constructable.h>
+#include <sprt/runtime/new.h>
+#include <sprt/runtime/detail/constructable.h>
+#include <sprt/runtime/detail/operations.h>
+#include <sprt/c/__sprt_assert.h>
 
 namespace sprt::memory {
 
@@ -36,6 +38,7 @@ struct SPRT_GLOBAL AllocPool {
 	static void *operator new(size_t size, const nothrow_t &tag) noexcept;
 	static void *operator new(size_t size, align_val_t al, const nothrow_t &tag) noexcept;
 	static void *operator new(size_t size, void *ptr) noexcept;
+	static void *operator new(size_t size, void *ptr, const nothrow_t &tag) noexcept;
 	static void *operator new(size_t size, memory::pool_t *ptr) noexcept;
 
 	static void operator delete(void *ptr) noexcept;
@@ -297,7 +300,7 @@ inline void Allocator<T>::construct(pointer p, Args &&...args) const noexcept {
 			if constexpr (is_trivially_copyable<T>::value
 					&& is_convertible_v<typename Allocator_SelectFirst<Args...>::type, const T &>) {
 				auto construct_memcpy = [](pointer p, const T &source) {
-					memcpy(p, &source, sizeof(T));
+					__constexpr_memcpy(p, &source, 1);
 				};
 
 				construct_memcpy(p, sprt::forward<Args>(args)...);
@@ -306,11 +309,12 @@ inline void Allocator<T>::construct(pointer p, Args &&...args) const noexcept {
 		}
 
 		if constexpr (Allocator_protect_construct<T>::value) {
-			perform_conditional([&] { new ((T *)p) T(sprt::forward<Args>(args)...); },
-					pool_ptr(pool));
+			perform_conditional([&] {
+				new ((T *)p, sprt::nothrow) T(sprt::forward<Args>(args)...);
+			}, pool_ptr(pool));
 			return;
 		}
-		new ((T *)p) T(sprt::forward<Args>(args)...);
+		new ((T *)p, sprt::nothrow) T(sprt::forward<Args>(args)...);
 	}
 }
 
@@ -362,7 +366,7 @@ inline pool_t *Allocator<T>::getPool() const noexcept {
 template <typename T>
 inline void Allocator<T>::copy(T *dest, const T *source, size_t count) noexcept {
 	if constexpr (is_trivially_copyable<T>::value) {
-		memmove(dest, source, count * sizeof(T));
+		__constexpr_memmove(dest, source, count);
 	} else {
 		if (dest == source) {
 			return;
@@ -405,9 +409,9 @@ inline void Allocator<T>::copy_rewrite(T *dest, size_t dcount, const T *source,
 template <typename T>
 inline void Allocator<T>::move(T *dest, T *source, size_t count) noexcept {
 	if constexpr (is_trivially_copyable<T>::value) {
-		memmove(dest, source, count * sizeof(T));
+		__constexpr_memmove(dest, source, count);
 	} else if constexpr (is_trivially_move_constructible<T>::value) {
-		memmove((void *)dest, source, count * sizeof(T));
+		__constexpr_memmove((void *)dest, source, count);
 	} else {
 		if (dest == source) {
 			return;
@@ -428,9 +432,9 @@ inline void Allocator<T>::move(T *dest, T *source, size_t count) noexcept {
 template <typename T>
 inline void Allocator<T>::move_rewrite(T *dest, size_t dcount, T *source, size_t count) noexcept {
 	if constexpr (is_trivially_copyable<T>::value) {
-		memmove(dest, source, count * sizeof(T));
+		__constexpr_memmove(dest, source, count);
 	} else if constexpr (is_trivially_move_constructible<T>::value) {
-		memmove(dest, source, count * sizeof(T));
+		__constexpr_memmove(dest, source, count);
 	} else {
 		if (dest == source) {
 			return;
@@ -501,6 +505,10 @@ inline void *AllocPool::operator new(size_t size, pool_t *pool) noexcept {
 }
 
 inline void *AllocPool::operator new(size_t size, void *mem) noexcept { return mem; }
+
+inline void *AllocPool::operator new(size_t size, void *mem, const nothrow_t &tag) noexcept {
+	return mem;
+}
 
 inline void AllocPool::operator delete(void *) noexcept {
 	// APR doesn't require to free object's memory

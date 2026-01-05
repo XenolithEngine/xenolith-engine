@@ -26,13 +26,17 @@ THE SOFTWARE.
 #include <sprt/runtime/mem/context.h>
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/new.h>
+#include <sprt/c/__sprt_assert.h>
 #include <sprt/runtime/mem/detail/alloc.h>
 
-namespace sprt::memory::apr {
+namespace sprt::memory {
 
-static AprInterface s_aprInterface;
+static apr::AprInterface s_aprInterface;
 
-}
+bool is_apr_available() { return s_aprInterface ? true : false; }
+
+} // namespace sprt::memory
+
 
 namespace sprt::memory::apr::allocator {
 
@@ -132,9 +136,6 @@ static void initialize() {
 static void terminate() {
 	if (s_aprInterface) {
 		s_aprInterface.apr_pool_terminate();
-	} else {
-		log::vprint(log::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
 	}
 }
 
@@ -255,7 +256,7 @@ static void *calloc(apr_pool_t *p, size_t count, size_t eltsize) {
 	size_t s = count * eltsize;
 	auto ptr = pool::alloc(p, s);
 	if (ptr) {
-		memset(ptr, 0, s);
+		__builtin_memset(ptr, 0, s);
 	}
 	return ptr;
 }
@@ -439,7 +440,7 @@ namespace sprt::memory {
 
 SPRT_UNUSED static inline bool isStappler(allocator_t *alloc) {
 	if constexpr (config::AprCompatible) {
-		if (alloc && *((uintptr_t *)alloc) == static_cast<uintptr_t>(config::POOL_MAGIC)) {
+		if (!alloc || *((uintptr_t *)alloc) == static_cast<uintptr_t>(config::POOL_MAGIC)) {
 			return true;
 		} else {
 			return false;
@@ -450,7 +451,7 @@ SPRT_UNUSED static inline bool isStappler(allocator_t *alloc) {
 
 SPRT_UNUSED static inline bool isStappler(pool_t *p) {
 	if constexpr (config::AprCompatible) {
-		if (p && ((impl::Pool *)p)->magic == static_cast<uintptr_t>(config::POOL_MAGIC)) {
+		if (!p || ((impl::Pool *)p)->magic == static_cast<uintptr_t>(config::POOL_MAGIC)) {
 			return true;
 		} else {
 			return false;
@@ -585,7 +586,7 @@ static void popPoolInfo(pool_t *pool) {
 void initialize() {
 	auto self = Dso(StringView(), DsoFlags::Self);
 
-	apr::s_aprInterface.load(sprt::move(self));
+	s_aprInterface.load(sprt::move(self));
 
 	if constexpr (config::AprCompatible) {
 		apr::pool::initialize();
@@ -685,6 +686,7 @@ void destroy(pool_t *p) {
 }
 
 void clear(pool_t *p) {
+	sprt_passert(p, "Memory pool can not be NULL");
 #if DEBUG
 	// Clearing or destruction of a pool, that currently on stack, is an error,
 	// That can not be tracked another way
@@ -711,6 +713,7 @@ void clear(pool_t *p) {
 }
 
 void *alloc(pool_t *pool, size_t &size) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			return apr::pool::alloc((apr_pool_t *)pool, size);
@@ -720,6 +723,7 @@ void *alloc(pool_t *pool, size_t &size) {
 }
 
 void *alloc(pool_t *pool, size_t &size, uint32_t alignment) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			log::vprint(log::LogType::Error, __SPRT_LOCATION, "memory",
@@ -731,6 +735,7 @@ void *alloc(pool_t *pool, size_t &size, uint32_t alignment) {
 }
 
 void *palloc(pool_t *pool, size_t size) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			return apr::pool::palloc((apr_pool_t *)pool, size);
@@ -740,6 +745,7 @@ void *palloc(pool_t *pool, size_t size) {
 }
 
 void *palloc(pool_t *pool, size_t size, uint32_t alignment) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			log::vprint(log::LogType::Error, __SPRT_LOCATION, "memory",
@@ -751,6 +757,7 @@ void *palloc(pool_t *pool, size_t size, uint32_t alignment) {
 }
 
 void *calloc(pool_t *pool, size_t count, size_t eltsize) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			return apr::pool::calloc((apr_pool_t *)pool, count, eltsize);
@@ -760,6 +767,7 @@ void *calloc(pool_t *pool, size_t count, size_t eltsize) {
 }
 
 void free(pool_t *pool, void *ptr, size_t size) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			apr::pool::free((apr_pool_t *)pool, ptr, size);
@@ -770,6 +778,7 @@ void free(pool_t *pool, void *ptr, size_t size) {
 }
 
 void cleanup_kill(pool_t *pool, void *ptr, cleanup_fn cb) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			apr::pool::cleanup_kill((apr_pool_t *)pool, ptr, (apr_status_t (*)(void *))cb);
@@ -780,6 +789,7 @@ void cleanup_kill(pool_t *pool, void *ptr, cleanup_fn cb) {
 }
 
 void cleanup_register(pool_t *pool, void *ptr, cleanup_fn cb) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			apr::pool::cleanup_register((apr_pool_t *)pool, ptr, (apr_status_t (*)(void *))cb);
@@ -790,6 +800,7 @@ void cleanup_register(pool_t *pool, void *ptr, cleanup_fn cb) {
 }
 
 void pre_cleanup_register(pool_t *pool, void *ptr, cleanup_fn cb) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			apr::pool::pre_cleanup_register((apr_pool_t *)pool, ptr, (apr_status_t (*)(void *))cb);
@@ -800,6 +811,7 @@ void pre_cleanup_register(pool_t *pool, void *ptr, cleanup_fn cb) {
 }
 
 Status userdata_set(const void *data, const char *key, cleanup_fn cb, pool_t *pool) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			return Status(apr::pool::userdata_set(data, key, cb, (apr_pool_t *)pool));
@@ -809,6 +821,7 @@ Status userdata_set(const void *data, const char *key, cleanup_fn cb, pool_t *po
 }
 
 Status userdata_setn(const void *data, const char *key, cleanup_fn cb, pool_t *pool) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			return Status(apr::pool::userdata_setn(data, key, cb, (apr_pool_t *)pool));
@@ -818,6 +831,7 @@ Status userdata_setn(const void *data, const char *key, cleanup_fn cb, pool_t *p
 }
 
 Status userdata_get(void **data, const char *key, pool_t *pool) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			return Status(apr::pool::userdata_get(data, key, (apr_pool_t *)pool));
@@ -827,13 +841,14 @@ Status userdata_get(void **data, const char *key, pool_t *pool) {
 }
 
 Status userdata_get(void **data, const char *key, size_t klen, pool_t *pool) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			if (key[klen]) {
 				return Status(apr::pool::userdata_get(data, key, (apr_pool_t *)pool));
 			} else {
 				char buf[klen + 1];
-				memcpy(buf, key, klen);
+				__builtin_memcpy(buf, key, klen);
 				buf[klen] = 0;
 				return Status(apr::pool::userdata_get(data, key, (apr_pool_t *)pool));
 			}
@@ -862,6 +877,7 @@ size_t get_return_bytes(pool_t *pool) {
 }
 
 allocator_t *get_allocator(pool_t *pool) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			return (allocator_t *)apr::pool::get_allocator((apr_pool_t *)pool);
@@ -871,6 +887,7 @@ allocator_t *get_allocator(pool_t *pool) {
 }
 
 void *pmemdup(pool_t *pool, const void *m, size_t n) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			return apr::pool::pmemdup((apr_pool_t *)pool, m, n);
@@ -880,6 +897,7 @@ void *pmemdup(pool_t *pool, const void *m, size_t n) {
 }
 
 char *pstrdup(pool_t *pool, const char *s) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			return apr::pool::pstrdup((apr_pool_t *)pool, s);
@@ -901,6 +919,7 @@ const char *get_tag(pool_t *pool) {
 }
 
 void set_pool_info(pool_t *pool, uint32_t tag, const void *ptr) {
+	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
 			apr::pool::set_pool_info((apr_pool_t *)pool, tag, ptr);
@@ -915,28 +934,6 @@ void set_pool_info(pool_t *pool, uint32_t tag, const void *ptr) {
 		mngr->ptr = ptr;
 	}
 }
-/*
-static Status cleanup_register_fn(void *ptr) {
-	if (auto fn = (memory::function<void()> *)ptr) {
-		(*fn)();
-	}
-	return Status::Ok;
-}
-
-void cleanup_register(pool_t *p, memory::function<void()> &&cb) {
-	perform_conditional([&] {
-		auto fn = new (p) memory::function<void()>(move(cb));
-		pool::cleanup_register(p, fn, &cleanup_register_fn);
-	}, p);
-}
-
-void pre_cleanup_register(pool_t *p, memory::function<void()> &&cb) {
-	perform_conditional([&] {
-		auto fn = new (p) memory::function<void()>(move(cb));
-		pool::pre_cleanup_register(p, fn, &cleanup_register_fn);
-	}, p);
-}
-*/
 
 size_t get_active_count() { return s_activePools.load(); }
 

@@ -24,15 +24,27 @@
 
 #if SPRT_LINUX
 
+#include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/runtime/unicode.h>
+#include <sprt/runtime/platform.h>
+#include <sprt/runtime/mutex.h>
+#include <sprt/c/__sprt_errno.h>
+#include <sprt/c/__sprt_stdio.h>
+#include <sprt/c/__sprt_locale.h>
 
 #include "private/SPRTDso.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <sys/stat.h>
+#include <sys/random.h>
+#include <fcntl.h>
+#include <unistd.h>
 
-#if STAPPLER_STATIC_TOOLCHAIN
+#if __SPRT_RUNTIME_CONFIG_HAVE_ICU
+
+#define U_SHOW_CPLUSPLUS_API 0
 
 #include <unicode/uchar.h>
 #include <unicode/ustring.h>
@@ -42,6 +54,7 @@
 
 constexpr sprt::uint32_t U_COMPARE_CODE_POINT_ORDER = 0x8000;
 constexpr int U_ZERO_ERROR = 0;
+constexpr int U_BUFFER_OVERFLOW_ERROR = 15;
 using UErrorCode = int;
 using UBreakIterator = void;
 using UIDNA = void;
@@ -52,8 +65,6 @@ struct UIDNAInfo {
 };
 
 #endif
-
-#include <sys/random.h>
 
 namespace sprt::unicode {
 
@@ -230,7 +241,7 @@ struct icu_iface {
 	}
 
 	void load(Dso &handle, StringView verSuffix) {
-#if STAPPLER_STATIC_TOOLCHAIN
+#if __SPRT_RUNTIME_CONFIG_HAVE_ICU
 		tolower_fn = &::u_tolower;
 		toupper_fn = &::u_toupper;
 		totitle_fn = &::u_totitle;
@@ -319,7 +330,7 @@ struct i18n {
 	}
 
 	i18n() {
-#if STAPPLER_STATIC_TOOLCHAIN
+#if __SPRT_RUNTIME_CONFIG_HAVE_ICU
 		icu.load(_handle, StringView());
 		if (!icu) {
 			icu.clear();
@@ -349,6 +360,10 @@ struct i18n {
 						_idnHandle.close();
 					}
 				}
+
+				// We have to set locale for unistring to work
+				auto loc = sprt::platform::getOsLocale();
+				__sprt_setlocale(__SPRT_LC_ALL, loc.data());
 				return;
 			} else {
 				unistring.clear();
@@ -429,17 +444,18 @@ struct i18n {
 	bool applyIcuFunction(const callback<void(WideStringView)> &cb, WideStringView data,
 			icu_iface::case_fn icuFn) {
 		bool ret = false;
-		auto targetBuf = new char16_t[data.size() + 1];
 
-		UErrorCode status;
-		auto len = icuFn(targetBuf, data.size(), data.data(), data.size(), nullptr, &status);
-		if (len <= int32_t(data.size())) {
-			cb(WideStringView(targetBuf, len));
-			ret = true;
-		} else {
-			delete[] targetBuf;
-			targetBuf = new char16_t[len + 1];
-			len = icuFn(targetBuf, len, data.data(), data.size(), nullptr, &status);
+		UErrorCode status = U_ZERO_ERROR;
+		auto len = icuFn(nullptr, 0, data.data(), data.size(), nullptr, &status);
+		if (status != U_ZERO_ERROR && status != U_BUFFER_OVERFLOW_ERROR) {
+			perror(icu.u_errorName_fn(status));
+			return false;
+		}
+
+		status = U_ZERO_ERROR;
+		auto targetBuf = new char16_t[len + 1];
+		len = icuFn(targetBuf, len + 1, data.data(), data.size(), nullptr, &status);
+		if (len <= int32_t(len)) {
 			cb(WideStringView(targetBuf, len));
 			ret = true;
 		}
@@ -551,19 +567,20 @@ struct i18n {
 	bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
 		if (icu.u_strToTitle_fn) {
 			bool ret = false;
-			auto targetBuf = new char16_t[data.size() + 1];
+			UErrorCode status = U_ZERO_ERROR;
+			auto len = icu.u_strToTitle_fn(nullptr, 0, data.data(), data.size(), nullptr, nullptr,
+					&status);
+			if (status != U_ZERO_ERROR && status != U_BUFFER_OVERFLOW_ERROR) {
+				perror(icu.u_errorName_fn(status));
+				return false;
+			}
 
-			UErrorCode status;
-			auto len = icu.u_strToTitle_fn(targetBuf, data.size(), data.data(), data.size(),
-					nullptr, nullptr, &status);
+			auto targetBuf = new char16_t[len + 1];
+			status = U_ZERO_ERROR;
+
+			len = icu.u_strToTitle_fn(targetBuf, len + 1, data.data(), data.size(), nullptr,
+					nullptr, &status);
 			if (len <= int32_t(data.size())) {
-				cb(WideStringView(targetBuf, len));
-				ret = true;
-			} else {
-				delete[] targetBuf;
-				targetBuf = new char16_t[len + 1];
-				icu.u_strToTitle_fn(targetBuf, len, data.data(), data.size(), nullptr, nullptr,
-						&status);
 				cb(WideStringView(targetBuf, len));
 				ret = true;
 			}
@@ -619,18 +636,25 @@ struct i18n {
 		}
 
 		if (unistring.u8_casecoll) {
-			int32_t ret = 0;
-			if (unistring.u8_casecoll((const uint8_t *)l.data(), l.size(),
-						(const uint8_t *)r.data(), r.size(), unistring.uc_locale_language(),
-						nullptr, &ret)
-					== 0) {
-				return ret;
+			int ret = 0;
+			auto lang = unistring.uc_locale_language();
+			auto err = unistring.u8_casecoll((const uint8_t *)l.data(), l.size() + 1,
+					(const uint8_t *)r.data(), r.size() + 1, lang, nullptr, &ret);
+			if (err == 0) {
+				*result = ret;
+				return true;
+			} else {
+				auto st = status::errnoToStatus(__sprt_errno);
+				status::getStatusDescription(st, [](StringView str) {
+					fwrite(str.data(), str.size(), 1, __sprt_stdout_impl());
+				});
+				fwrite("\n", 1, 1, __sprt_stdout_impl());
 			}
 		} else if (icu.u_strCaseCompare_fn) {
 			bool ret = false;
 			unicode::toUtf16([&](WideStringView lStr) {
 				unicode::toUtf16([&](WideStringView rStr) {
-					UErrorCode status;
+					UErrorCode status = U_ZERO_ERROR;
 					*result = icu.u_strCaseCompare_fn(lStr.data(), lStr.size(), rStr.data(),
 							rStr.size(), U_COMPARE_CODE_POINT_ORDER, &status);
 					ret = status == U_ZERO_ERROR;
@@ -647,16 +671,22 @@ struct i18n {
 		}
 
 		if (unistring.u16_casecoll) {
-			int32_t ret = 0;
-			if (unistring.u16_casecoll((const uint16_t *)l.data(), l.size(),
-						(const uint16_t *)r.data(), r.size(), unistring.uc_locale_language(),
-						nullptr, &ret)
-					== 0) {
+			int ret = 0;
+			auto lang = unistring.uc_locale_language();
+			auto err = unistring.u16_casecoll((const uint16_t *)l.data(), l.size(),
+					(const uint16_t *)r.data(), r.size(), lang, nullptr, &ret);
+			if (err == 0) {
 				*result = ret;
 				return true;
+			} else {
+				auto st = status::errnoToStatus(__sprt_errno);
+				status::getStatusDescription(st, [](StringView str) {
+					fwrite(str.data(), str.size(), 1, __sprt_stdout_impl());
+				});
+				fwrite("\n", 1, 1, __sprt_stdout_impl());
 			}
 		} else if (icu.u_strCaseCompare_fn) {
-			UErrorCode status;
+			UErrorCode status = U_ZERO_ERROR;
 			*result = icu.u_strCaseCompare_fn(l.data(), l.size(), r.data(), r.size(),
 					U_COMPARE_CODE_POINT_ORDER, &status);
 			return status == U_ZERO_ERROR;
@@ -733,7 +763,7 @@ bool idnToAscii(const callback<void(StringView)> &cb, StringView source) {
 		UErrorCode err = U_ZERO_ERROR;
 		auto idna = s_instance->icu.uidna_openUTS46_fn(
 				icu_iface::UIDNA_CHECK_BIDI | icu_iface::UIDNA_NONTRANSITIONAL_TO_ASCII, &err);
-		if (err == 0) {
+		if (err == U_ZERO_ERROR) {
 			UIDNAInfo info = {0, 0};
 			char buffer[1_KiB] = {0};
 			auto retLen = s_instance->icu.uidna_nameToASCII_UTF8_fn(idna, source.data(),
@@ -758,7 +788,7 @@ bool idnToUnicode(const callback<void(StringView)> &cb, StringView source) {
 			return true;
 		}
 	} else if (s_instance->icu) {
-		UErrorCode err;
+		UErrorCode err = U_ZERO_ERROR;
 		auto idna = s_instance->icu.uidna_openUTS46_fn(
 				icu_iface::UIDNA_CHECK_BIDI | icu_iface::UIDNA_NONTRANSITIONAL_TO_UNICODE, &err);
 		if (err == U_ZERO_ERROR) {
@@ -780,9 +810,20 @@ bool idnToUnicode(const callback<void(StringView)> &cb, StringView source) {
 
 namespace sprt::platform {
 
-static char s_uniqueIdBuf[64] = {0};
-static char s_execPath[__SPRT_PATH_MAX] = {0};
-static char s_homePath[__SPRT_PATH_MAX] = {0};
+struct GlobalConfig {
+	qmutex s_infoMutex;
+	StringView uniqueIdBuf;
+	StringView execPathBuf;
+	StringView homePathBuf;
+
+	AppConfig config;
+
+	filesystem::LocationInfo current;
+
+	memory::pool_t *_pool = memory::pool::create(memory::self_contained_allocator);
+};
+
+static GlobalConfig s_globalConfig;
 
 size_t makeRandomBytes(uint8_t *buf, size_t count) {
 	size_t generated = 0;
@@ -810,24 +851,94 @@ StringView getOsLocale() {
 	return StringView(locale, ::__sprt_strlen(locale));
 }
 
-StringView getUniqueDeviceId() { return StringView(s_uniqueIdBuf, 32); }
+StringView getUniqueDeviceId() {
+	if (s_globalConfig.uniqueIdBuf.empty()) {
+		// optimistic multithreaded lazy-init
+		// it can allocate more-then needed memory but protected from general lock
 
-StringView getExecPath() { return s_execPath; }
-
-bool initialize(int &resultCode) {
-	if (auto f = fopen("/etc/machine-id", "f")) {
-		auto ret = fread(s_uniqueIdBuf, 32, 1, f);
-		if (ret == 1) {
-			s_uniqueIdBuf[32] = 0;
+		struct __SPRT_STAT_NAME st;
+		if (stat("/etc/machine-id", &st) == 0) {
+			auto buf = __sprt_malloca(st.st_size + 1);
+			auto fd = open("/etc/machine-id", 0);
+			if (fd > 0) {
+				auto v = ::read(fd, buf, st.st_size);
+				if (v == st.st_size) {
+					auto id = StringView((const char *)buf, v);
+					id.trimChars<StringView::WhiteSpace>();
+					unique_lock lock(s_globalConfig.s_infoMutex);
+					s_globalConfig.uniqueIdBuf = id.pdup(s_globalConfig._pool);
+				}
+			}
+			__sprt_freea(buf);
 		}
-		fclose(f);
 	}
+
+	return s_globalConfig.uniqueIdBuf;
+}
+
+StringView getExecPath() {
+	if (s_globalConfig.execPathBuf.empty()) {
+		// optimistic multithreaded lazy-init
+		// it can allocate more-then needed memory but protected from general lock
+
+		auto buf = (char *)__sprt_malloca(PATH_MAX);
+		auto v = ::readlink("/proc/self/exe", buf, PATH_MAX);
+		if (v > 0) {
+			unique_lock lock(s_globalConfig.s_infoMutex);
+			s_globalConfig.execPathBuf = StringView(buf, v).pdup(s_globalConfig._pool);
+		}
+		__sprt_freea(buf);
+	}
+
+	return s_globalConfig.execPathBuf;
+}
+
+StringView getHomePath() {
+	if (s_globalConfig.homePathBuf.empty()) {
+		// optimistic multithreaded lazy-init
+		// it can allocate more-then needed memory but protected from general lock
+
+		auto path = StringView(getenv("HOME"));
+
+		unique_lock lock(s_globalConfig.s_infoMutex);
+		s_globalConfig.homePathBuf = path.pdup(s_globalConfig._pool);
+	}
+	return s_globalConfig.homePathBuf;
+}
+
+bool initialize(AppConfig &&cfg, int &resultCode) {
+	s_globalConfig.config.bundleName = cfg.bundleName.pdup(s_globalConfig._pool);
+	s_globalConfig.config.bundlePath = cfg.bundlePath.pdup(s_globalConfig._pool);
+	s_globalConfig.config.pathScheme = cfg.pathScheme;
+
+	s_globalConfig.current.lookupType = filesystem::LookupFlags::Public
+			| filesystem::LookupFlags::Shared | filesystem::LookupFlags::Writable;
+	s_globalConfig.current.locationFlags = filesystem::LocationFlags::Writable;
+	s_globalConfig.current.interface = filesystem::getDefaultInterface();
+
+	filesystem::getCurrentDir([&](StringView path) {
+		s_globalConfig.current.path = path.pdup(s_globalConfig._pool);
+	});
 
 	return true;
 }
 
 void terminate() { }
 
+memory::pool_t *getConfigPool() { return s_globalConfig._pool; }
+
 } // namespace sprt::platform
+
+namespace sprt {
+
+const AppConfig &getAppConfig() { return platform::s_globalConfig.config; }
+
+} // namespace sprt
+
+namespace sprt::filesystem {
+
+const LocationInfo &getCurrentLocation() { return platform::s_globalConfig.current; }
+
+} // namespace sprt::filesystem
 
 #endif

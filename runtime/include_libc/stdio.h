@@ -51,7 +51,7 @@ __SPRT_BEGIN_DECL
 
 #define stdin  __SPRT_ID(stdin_impl)()
 #define stdout  __SPRT_ID(stdout_impl)()
-#define stderr  __SPRT_ID(stdin_impl)()
+#define stderr  __SPRT_ID(stderr_impl)()
 
 typedef __SPRT_ID(FILE) FILE;
 typedef __SPRT_ID(size_t) size_t;

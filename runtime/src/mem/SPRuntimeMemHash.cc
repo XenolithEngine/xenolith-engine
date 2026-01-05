@@ -115,7 +115,7 @@ static void expand_array(HashTable *ht) {
 
 static uint32_t s_hashfunc_default(const char *char_key, size_t *klen, uint32_t hash) {
 	if (*klen == Max<size_t>) {
-		*klen = strlen(char_key);
+		*klen = __builtin_strlen(char_key);
 	}
 
 	return sprt::hash32(char_key, uint32_t(*klen), 0);
@@ -133,7 +133,7 @@ static HashEntry **find_entry(HashTable *ht, const void *key, size_t klen, const
 
 	/* scan linked list */
 	for (hep = &ht->array[hash & ht->max], he = *hep; he; hep = &he->next, he = *hep) {
-		if (he->hash == hash && he->klen == klen && memcmp(he->key, key, klen) == 0) {
+		if (he->hash == hash && he->klen == klen && __builtin_memcmp(he->key, key, klen) == 0) {
 			break;
 		}
 	}
@@ -282,7 +282,8 @@ HashTable *HashTable::merge(Pool *p, const HashTable *overlay, merge_fn merger,
 			}
 			i = hash & res->max;
 			for (ent = res->array[i]; ent; ent = ent->next) {
-				if ((ent->klen == iter->klen) && (memcmp(ent->key, iter->key, iter->klen) == 0)) {
+				if ((ent->klen == iter->klen)
+						&& (__builtin_memcmp(ent->key, iter->key, iter->klen) == 0)) {
 					if (merger) {
 						ent->val = (*merger)(p, iter->key, iter->klen, iter->val, ent->val, data);
 					} else {

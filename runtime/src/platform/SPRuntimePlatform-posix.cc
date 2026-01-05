@@ -25,7 +25,7 @@
 #include <sprt/c/__sprt_time.h>
 
 #if __SSE__
-#include <x86intrin.h>
+//#include <x86intrin.h>
 #define SP_HAS_RDTSC 1
 static inline sprt::uint64_t rdtsc() { return __rdtsc(); }
 #elif __aarch64__

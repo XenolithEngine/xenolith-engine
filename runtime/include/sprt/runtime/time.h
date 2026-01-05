@@ -25,36 +25,37 @@ THE SOFTWARE.
 
 #include <sprt/runtime/int.h>
 #include <sprt/runtime/stringview.h>
+#include <sprt/c/__sprt_time.h>
 
 namespace sprt::time {
 
 static constexpr uint64_t USEC_PER_SEC(1'000'000);
 
-struct SPRT_API time_exp_t {
-	enum tm_gmt_e {
-		gmt_unset,
-		gmt_local,
-		gmt_set,
-	};
+struct SPRT_API time_exp_t : public __SPRT_TM_NAME {
+	static constexpr size_t Rfc822BufferSize = 32;
+	static constexpr size_t CTimeBufferSize = 25;
+	static constexpr size_t Iso8601BufferSize = 33; // with max 6 precision signs
 
-	int32_t tm_usec; /** microseconds past tm_sec */
-	int32_t tm_sec; /** (0-61) seconds past tm_min */
-	int32_t tm_min; /** (0-59) minutes past tm_hour */
-	int32_t tm_hour; /** (0-23) hours past midnight */
-	int32_t tm_mday; /** (1-31) day of the month */
-	int32_t tm_mon; /** (0-11) month of the year */
-	int32_t tm_year; /** year since 1900 */
-	int32_t tm_wday; /** (0-6) days since Sunday */
-	int32_t tm_yday; /** (0-365) days since January 1 */
-	int32_t tm_isdst; /** daylight saving time */
-	int32_t tm_gmtoff; /** seconds east of UTC */
-	tm_gmt_e tm_gmt_type = gmt_unset;
+	static constexpr auto gmt_unset = __SPRT_ID(gmt_unset);
+	static constexpr auto gmt_local = __SPRT_ID(gmt_local);
+	static constexpr auto gmt_set = __SPRT_ID(gmt_set);
+
+	static time_exp_t get(bool localtime = false);
 
 	time_exp_t();
-	time_exp_t(int64_t t, int32_t offset, bool use_localtime);
-	time_exp_t(int64_t t, int32_t offs);
+
+	// Convert UTC time in microseconds to tm
 	time_exp_t(int64_t t);
+
+	// Convert UTC time in microseconds to tm in UTC or local timezone
 	time_exp_t(int64_t t, bool use_localtime);
+
+	// Convert UTC time in microseconds to tm in UTC or local timezone, then set GMT offet to value specified
+	time_exp_t(int64_t t, int32_t offset_seconds, bool use_localtime);
+
+	// Convert UTC time in microseconds to tm in UTC, then set GMT offet to value specified
+	time_exp_t(int64_t t, int32_t offset_seconds);
+
 
 	/*
 	 * Parses an HTTP date in one of three standard forms:
@@ -64,15 +65,17 @@ struct SPRT_API time_exp_t {
 	 *     Sun Nov  6 08:49:37 1994       ; ANSI C's asctime() format
 	 *     2011-04-28T06:34:00+09:00      ; Atom time format
 	 */
+	time_exp_t(StringView);
+
 	bool read(StringView);
 
 	int64_t geti() const;
 	int64_t gmt_geti() const;
 	int64_t ltz_geti() const;
 
-	size_t encodeRfc822(char *) const;
-	size_t encodeCTime(char *) const;
-	size_t encodeIso8601(char *, size_t precision) const;
+	size_t encodeRfc822(char *, size_t) const;
+	size_t encodeCTime(char *, size_t) const;
+	size_t encodeIso8601(char *, size_t, size_t precision) const;
 };
 
 SPRT_API size_t strftime(char *buf, size_t maxsize, const char *format, uint64_t usec);

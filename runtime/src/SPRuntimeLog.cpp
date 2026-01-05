@@ -24,7 +24,7 @@
 #include <sprt/runtime/stringbuffer.h>
 #include <sprt/runtime/math.h>
 #include <sprt/c/__sprt_stdlib.h>
-#include <stdio.h>
+#include <sprt/c/__sprt_stdio.h>
 
 #if SPRT_ANDROID
 #include <android/log.h>
@@ -216,12 +216,12 @@ static bool checkLogFeatureWithFilename(StringView str, LogFeaturesInit &ret) {
 	auto r = ::__sprt_stat(str.data(), &s);
 	if (r == 0 && s.st_size > 0) {
 		uint8_t buf[s.st_size];
-		auto f = fopen(str.data(), "r");
+		auto f = __sprt_fopen(str.data(), "r");
 		if (f) {
-			if (fread(buf, s.st_size, 1, f) > 0) {
+			if (__sprt_fread(buf, s.st_size, 1, f) > 0) {
 				result = parseLogFeatures(BytesView(buf, s.st_size), ret);
 			}
-			fclose(f);
+			__sprt_fclose(f);
 		}
 	}
 	return result;
@@ -465,8 +465,8 @@ void print(LogType type, StringView prefix, StringView tag, StringView text) {
 	target = strappend(target, &freeSize, "\n", 1);
 #endif
 
-	::fwrite(buf, target - buf, 1, stderr);
-	::fflush(stderr);
+	::__sprt_fwrite(buf, target - buf, 1, __sprt_stderr_impl());
+	::__sprt_fflush(__sprt_stderr_impl());
 #endif // platform switch
 }
 

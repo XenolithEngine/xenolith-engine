@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_null.h>
 #include <sprt/c/bits/__sprt_time_t.h>
 #include <sprt/c/bits/__sprt_size_t.h>
+#include <sprt/c/bits/__sprt_int32_t.h>
 #include <sprt/c/cross/__sprt_locale.h>
 #include <sprt/c/cross/__sprt_sysid.h>
 
@@ -50,19 +51,29 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
+enum __SPRT_ID(tm_gmt_e) {
+	// We do not know if time is local or UTC, we do not know what tm_gmtoff means to us
+	__SPRT_ID(gmt_unset),
+	// Time is local, tm_gmtoff contains valid offset, tm itself contains local time
+	__SPRT_ID(gmt_local),
+	// Time is UTC, tm_gmtoff should be ignored, tm itself contains UTC time
+	__SPRT_ID(gmt_set),
+};
+
 struct __SPRT_TM_NAME {
-	int tm_usec; /** microseconds past tm_sec */
-	int tm_sec; /** (0-61) seconds past tm_min */
-	int tm_min; /** (0-59) minutes past tm_hour */
-	int tm_hour; /** (0-23) hours past midnight */
-	int tm_mday; /** (1-31) day of the month */
-	int tm_mon; /** (0-11) month of the year */
-	int tm_year; /** year since 1900 */
-	int tm_wday; /** (0-6) days since Sunday */
-	int tm_yday; /** (0-365) days since January 1 */
-	int tm_isdst; /** daylight saving time */
-	long tm_gmtoff; /** seconds east of UTC */
+	__SPRT_ID(int32_t) tm_usec; /** microseconds past tm_sec */
+	__SPRT_ID(int32_t) tm_sec; /** (0-61) seconds past tm_min */
+	__SPRT_ID(int32_t) tm_min; /** (0-59) minutes past tm_hour */
+	__SPRT_ID(int32_t) tm_hour; /** (0-23) hours past midnight */
+	__SPRT_ID(int32_t) tm_mday; /** (1-31) day of the month */
+	__SPRT_ID(int32_t) tm_mon; /** (0-11) month of the year */
+	__SPRT_ID(int32_t) tm_year; /** year since 1900 */
+	__SPRT_ID(int32_t) tm_wday; /** (0-6) days since Sunday */
+	__SPRT_ID(int32_t) tm_yday; /** (0-365) days since January 1 */
+	__SPRT_ID(int32_t) tm_isdst; /** daylight saving time */
+	__SPRT_ID(int32_t) tm_gmtoff; /** seconds east of UTC */
 	const char *tm_zone;
+	__SPRT_ID(tm_gmt_e) tm_gmt_type; /** do we know if time is local or GMT?  */
 };
 
 SPRT_API __SPRT_ID(clock_t) __SPRT_ID(clock)(void);

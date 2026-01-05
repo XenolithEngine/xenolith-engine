@@ -30,6 +30,8 @@ THE SOFTWARE.
 #include <sprt/runtime/string.h>
 #include <sprt/runtime/hash.h>
 #include <sprt/runtime/endian.h>
+#include <sprt/runtime/detail/operations.h>
+#include <sprt/runtime/detail/constexpr.h>
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/runtime/mem/context.h>
 #include <sprt/runtime/mem/detail/pointer_iterator.h>
@@ -149,22 +151,24 @@ public:
 
 	constexpr size_t size() const { return len; }
 
-	size_t find(const CharType *s, size_t pos, size_t n) const;
-	size_t find(CharType c, size_t pos = 0) const;
+	constexpr size_t find(const CharType *s, size_t pos, size_t n) const;
+	constexpr size_t find(CharType c, size_t pos = 0) const;
 
-	size_t rfind(const CharType *s, size_t pos, size_t n) const;
-	size_t rfind(CharType c, size_t pos = Max<size_t>) const;
+	constexpr size_t rfind(const CharType *s, size_t pos, size_t n) const;
+	constexpr size_t rfind(CharType c, size_t pos = Max<size_t>) const;
 
-	size_t find(const BytesReader<CharType> &str, size_t pos = 0) const {
+	constexpr size_t find(const BytesReader<CharType> &str, size_t pos = 0) const {
 		return this->find(str.data(), pos, str.size());
 	}
-	size_t find(const CharType *s, size_t pos = 0) const { return this->find(s, pos, strlen(s)); }
+	constexpr size_t find(const CharType *s, size_t pos = 0) const {
+		return this->find(s, pos, __constexpr_strlen(s));
+	}
 
-	size_t rfind(const BytesReader<CharType> &str, size_t pos = Max<size_t>) const {
+	constexpr size_t rfind(const BytesReader<CharType> &str, size_t pos = Max<size_t>) const {
 		return this->rfind(str.data(), pos, str.size());
 	}
-	size_t rfind(const CharType *s, size_t pos = Max<size_t>) const {
-		return this->rfind(s, pos, strlen(s));
+	constexpr size_t rfind(const CharType *s, size_t pos = Max<size_t>) const {
+		return this->rfind(s, pos, __constexpr_strlen(s));
 	}
 
 	bool is(const CharType &c) const { return len > 0 && *ptr == c; };
@@ -174,12 +178,12 @@ public:
 	bool operator<(const size_t &val) const { return len < val; }
 	bool operator<=(const size_t &val) const { return len <= val; }
 
-	const CharType &front() const { return *ptr; }
-	const CharType &back() const { return ptr[len - 1]; }
+	CharType front() const { return *ptr; }
+	CharType back() const { return ptr[len - 1]; }
 
-	const CharType &at(const size_t &s) const { return ptr[s]; }
-	const CharType &operator[](const size_t &s) const { return ptr[s]; }
-	const CharType &operator*() const { return *ptr; }
+	CharType at(const size_t &s) const { return s < len ? ptr[s] : 0; }
+	CharType operator[](const size_t &s) const { return s < len ? ptr[s] : 0; }
+	CharType operator*() const { return *ptr; }
 
 	void clear() { len = 0; }
 	bool empty() const { return len == 0 || !ptr; }
@@ -193,18 +197,11 @@ public:
 		if (terminated()) {
 			cb(data(), size());
 		} else {
-#if __SPRT_CONFIG_USE_ALLOCA_FOR_TEMPORRY
-			auto buf = (char *)__builtin_alloca((size() + 1) * sizeof(CharType));
+			auto buf = (char *)__sprt_malloca((size() + 1) * sizeof(CharType));
 			__sprt_memcpy(buf, data(), size() * sizeof(CharType));
 			buf[size()] = 0;
 			cb((const CharType *)buf, size());
-#else
-			auto buf = new CharType[size() + 1];
-			__sprt_memcpy(buf, data(), size() * sizeof(CharType));
-			buf[size()] = 0;
-			cb((const CharType *)buf, size());
-			delete[] buf;
-#endif
+			__sprt_freea(buf);
 		}
 	}
 
@@ -250,6 +247,12 @@ public:
 
 	template <typename Interface, _CharType c, typename... Args>
 	static auto merge(Args &&...args) -> typename Interface::template BasicStringType<CharType>;
+
+	template <typename Interface, typename... Args>
+	static void merge(const callback<void(StringViewBase<CharType>)> &, Args &&...args);
+
+	template <typename Interface, _CharType c, typename... Args>
+	static void merge(const callback<void(StringViewBase<CharType>)> &, Args &&...args);
 
 	constexpr StringViewBase() = default;
 	constexpr StringViewBase(const CharType *ptr, size_t len = Max<size_t>);
@@ -898,7 +901,8 @@ SPRT_API void getStatusDescription(Status st, const callback<void(StringView)> &
 //
 
 template <typename CharType>
-inline size_t BytesReader<CharType>::find(const CharType *__s, size_t __pos, size_t __n) const {
+constexpr inline size_t BytesReader<CharType>::find(const CharType *__s, size_t __pos,
+		size_t __n) const {
 	const size_t __size = this->size();
 	const CharType *__data = data();
 
@@ -906,8 +910,8 @@ inline size_t BytesReader<CharType>::find(const CharType *__s, size_t __pos, siz
 		return __pos <= __size ? __pos : Max<size_t>;
 	} else if (__n <= __size) {
 		for (; __pos <= __size - __n; ++__pos) {
-			if (chareq(__data[__pos], __s[0])
-					&& strcompare(__data + __pos + 1, __s + 1, __n - 1) == 0) {
+			if (__constexpr_chareq(__data[__pos], __s[0])
+					&& __constexpr_strcompare(__data + __pos + 1, __s + 1, __n - 1) == 0) {
 				return __pos;
 			}
 		}
@@ -916,13 +920,13 @@ inline size_t BytesReader<CharType>::find(const CharType *__s, size_t __pos, siz
 }
 
 template <typename CharType>
-inline size_t BytesReader<CharType>::find(CharType __c, size_t __pos) const {
+constexpr inline size_t BytesReader<CharType>::find(CharType __c, size_t __pos) const {
 	size_t __ret = Max<size_t>;
 	const size_t __size = this->size();
 	if (__pos < __size) {
 		const CharType *__data = data();
 		const size_t __n = __size - __pos;
-		const CharType *__p = strfind(__data + __pos, __n, __c);
+		const CharType *__p = __constexpr_strfind(__data + __pos, __n, __c);
 		if (__p) {
 			__ret = __p - __data;
 		}
@@ -931,13 +935,14 @@ inline size_t BytesReader<CharType>::find(CharType __c, size_t __pos) const {
 }
 
 template <typename CharType>
-inline size_t BytesReader<CharType>::rfind(const CharType *__s, size_t __pos, size_t __n) const {
+constexpr inline size_t BytesReader<CharType>::rfind(const CharType *__s, size_t __pos,
+		size_t __n) const {
 	const size_t __size = this->size();
 	if (__n <= __size) {
 		__pos = min(size_t(__size - __n), __pos);
 		const CharType *__data = data();
 		do {
-			if (strcompare(__data + __pos, __s, __n) == 0) {
+			if (__constexpr_strcompare(__data + __pos, __s, __n) == 0) {
 				return __pos;
 			}
 		} while (__pos-- > 0);
@@ -946,14 +951,14 @@ inline size_t BytesReader<CharType>::rfind(const CharType *__s, size_t __pos, si
 }
 
 template <typename CharType>
-inline size_t BytesReader<CharType>::rfind(CharType __c, size_t __pos) const {
+constexpr inline size_t BytesReader<CharType>::rfind(CharType __c, size_t __pos) const {
 	size_t __size = this->size();
 	if (__size) {
 		if (--__size > __pos) {
 			__size = __pos;
 		}
 		for (++__size; __size-- > 0;) {
-			if (chareq(data()[__size], __c)) {
+			if (__constexpr_chareq(data()[__size], __c)) {
 				return __size;
 			}
 		}

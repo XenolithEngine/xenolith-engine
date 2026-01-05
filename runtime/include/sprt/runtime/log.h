@@ -90,8 +90,7 @@ SPRT_API void print(LogType type, StringView prefix, StringView tag, StringView 
 template <typename... Args>
 SPRT_API void vprint(LogType type, const source_location &loc, StringView tag, Args &&...args) {
 	LogFeatures features;
-	size_t bufSize = 0;
-	__processArgs<char>([&](StringView str) { bufSize += str.size(); }, forward<Args>(args)...);
+	size_t bufSize = StreamTraits<char>::calculateSize(sprt::forward<Args>(args)...);
 
 	if (auto name = loc.file_name()) {
 		auto fileNameLen = __builtin_strlen(name);
@@ -105,7 +104,7 @@ SPRT_API void vprint(LogType type, const source_location &loc, StringView tag, A
 	bufSize += 1; // nullterm
 
 	if (bufSize > 0) {
-		auto buf = _makeCharBuffer(bufSize + 1);
+		auto buf = (char *)__sprt_malloca(bufSize + 1);
 		auto target = buf;
 		auto targetSize = bufSize;
 		__processArgs<char>([&](StringView str) {
@@ -125,6 +124,7 @@ SPRT_API void vprint(LogType type, const source_location &loc, StringView tag, A
 		}
 
 		print(type, StringView(), tag, StringView(buf, bufSize - targetSize));
+		__sprt_freea(buf);
 	}
 }
 

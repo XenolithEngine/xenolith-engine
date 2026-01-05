@@ -31,12 +31,7 @@ THE SOFTWARE.
 */
 
 #include <sprt/c/bits/__sprt_def.h>
-
-#ifdef SPRT_WINDOWS
-#define SPRT_REF_SAFE_INSTANIATION 1
-#else
-#define SPRT_REF_SAFE_INSTANIATION 0
-#endif
+#include <sprt/runtime/config.h>
 
 #define SPRT_UNUSED [[maybe_unused]]
 #define SPRT_INLINE [[gnu::always_inline]]
@@ -66,7 +61,7 @@ namespace sprt {
 
 using nullptr_t = decltype(nullptr);
 
-template <class...>
+template <typename...>
 using void_t = void;
 
 struct __nat {
@@ -322,26 +317,6 @@ inline constexpr bool is_base_of_v = __is_base_of(Base, Derived);
 
 
 /*
-	less
-*/
-
-template <typename Type>
-struct less {
-	constexpr bool operator()(const Type &l, const Type &r) const noexcept {
-		return l < r;
-	} // namespace sprt
-};
-
-template <>
-struct less<void> {
-	template <typename Type1, typename Type2>
-	constexpr bool operator()(const Type1 &l, const Type2 &r) const noexcept {
-		return l < r;
-	}
-};
-
-
-/*
 	is_same / is_same_v
 */
 
@@ -418,46 +393,6 @@ inline constexpr void swap(Type &left, Type &right) noexcept {
 	right = move(tmp);
 }
 
-
-/*
-	min
-*/
-
-template <typename Type, typename Compare>
-[[nodiscard]]
-inline constexpr const Type &min(const Type &l, const Type &r, Compare comp) {
-	return comp(r, l) ? r : l;
-}
-
-template <typename Type>
-[[nodiscard]]
-inline constexpr const Type &min(const Type &l, const Type &r) {
-	return min(l, r, less<void>());
-}
-
-
-/*
-	max
-*/
-
-template <typename Type, typename Compare>
-[[nodiscard]]
-inline constexpr const Type &max(const Type &l, const Type &r, Compare comp) {
-	return comp(l, r) ? r : l;
-}
-
-template <typename Type>
-[[nodiscard]]
-inline constexpr const Type &max(const Type &l, const Type &r) {
-	return max(l, r, less<void>());
-}
-
-
-#ifndef __BYTE_ORDER__
-#error "__BYTE_ORDER__ is not defined"
-#endif
-
-
 template <typename Type>
 constexpr inline Type *addressof(Type &__x) noexcept {
 	return __builtin_addressof(__x);
@@ -491,14 +426,57 @@ struct is_scalar : bool_constant<__is_scalar(Type)> { };
 template <typename Type>
 inline constexpr bool is_scalar_v = __is_scalar(Type);
 
-template <typename _Tp>
-_Tp &&__declval(int);
-template <typename _Tp>
-_Tp __declval(long);
+template <typename Type>
+struct is_volatile : bool_constant<__is_volatile(Type)> { };
 
-template <typename _Tp>
-decltype(sprt::__declval<_Tp>(0)) declval() noexcept {
-	static_assert(!__is_same(_Tp, _Tp),
+template <typename Type>
+inline constexpr bool is_volatile_v = __is_volatile(Type);
+
+template <typename Type>
+struct is_signed : bool_constant<__is_signed(Type)> { };
+
+template <typename Type>
+inline constexpr bool is_signed_v = __is_signed(Type);
+
+
+template <class _Tp>
+struct __is_identity : false_type { };
+
+struct __identity {
+	template <class _Tp>
+	[[nodiscard]]
+	constexpr _Tp &&operator()(_Tp &&__t) const noexcept {
+		return sprt::forward<_Tp>(__t);
+	}
+
+	using is_transparent = void;
+};
+
+template <>
+struct __is_identity<__identity> : true_type { };
+
+struct identity {
+	template <class _Tp>
+	[[nodiscard]]
+	constexpr _Tp &&operator()(_Tp &&__t) const noexcept {
+		return sprt::forward<_Tp>(__t);
+	}
+
+	using is_transparent = void;
+};
+
+template <>
+struct __is_identity<identity> : true_type { };
+
+
+template <typename Type>
+Type &&__declval(int);
+template <typename Type>
+Type __declval(long);
+
+template <typename Type>
+decltype(sprt::__declval<Type>(0)) declval() noexcept {
+	static_assert(!__is_same(Type, Type),
                 "std::declval can only be used in an unevaluated context. "
                 "It's likely that your current usage is trying to extract a value from the function.");
 }

@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_POINTER_ITERATOR_H_
 
 #include <sprt/runtime/iterator.h>
-#include <sprt/runtime/constructable.h>
+#include <sprt/runtime/detail/constructable.h>
 
 namespace sprt::memory::detail {
 
@@ -112,7 +112,6 @@ protected:
 	pointer current;
 };
 
-
 template <typename _Iter>
 class pointer_reverse_iterator {
 public:
@@ -198,6 +197,75 @@ protected:
 	_Iter current;
 };
 
+template <typename _Iter>
+class common_reverse_iterator {
+public:
+	using iterator_type = _Iter;
+	using iterator_category = _Iter::iterator_category;
+
+	using pointer = typename _Iter::pointer;
+	using value_type = typename _Iter::value_type;
+	using difference_type = typename _Iter::difference_type;
+	using reference = typename _Iter::reference;
+
+	constexpr common_reverse_iterator() : current() { }
+
+	constexpr explicit common_reverse_iterator(_Iter __x) : current(__x) { }
+
+	template <class _Up,
+			enable_if_t<!is_same<_Up, _Iter>::value && is_convertible<_Up const &, _Iter>::value,
+					int> = 0>
+	constexpr common_reverse_iterator(const common_reverse_iterator<_Up> &__u)
+	: current(__u.base()) { }
+
+	template <class _Up,
+			enable_if_t<!is_same<_Up, _Iter>::value && is_convertible<_Up const &, _Iter>::value
+							&& is_assignable<_Iter &, _Up const &>::value,
+					int> = 0>
+	constexpr common_reverse_iterator &operator=(const common_reverse_iterator<_Up> &__u) {
+		return *this;
+	}
+
+	constexpr _Iter base() const { return current; }
+	constexpr reference operator*() const {
+		_Iter __tmp = current;
+		return *--__tmp;
+	}
+
+	constexpr pointer operator->() const
+			requires is_pointer_v<_Iter> || requires(const _Iter __i) { __i.operator->(); }
+	{
+		_Iter __tmp = current;
+		--__tmp;
+		if constexpr (is_pointer_v<_Iter>) {
+			return __tmp;
+		} else {
+			return __tmp.operator->();
+		}
+	}
+
+	constexpr common_reverse_iterator &operator++() {
+		--current;
+		return *this;
+	}
+	constexpr common_reverse_iterator operator++(int) {
+		common_reverse_iterator __tmp(*this);
+		--current;
+		return __tmp;
+	}
+	constexpr common_reverse_iterator &operator--() {
+		++current;
+		return *this;
+	}
+	constexpr common_reverse_iterator operator--(int) {
+		common_reverse_iterator __tmp(*this);
+		++current;
+		return __tmp;
+	}
+
+protected:
+	_Iter current;
+};
 
 } // namespace sprt::memory::detail
 

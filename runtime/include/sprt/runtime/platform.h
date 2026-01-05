@@ -49,10 +49,9 @@ enum class ClockType {
 	Hardware
 };
 
-
 SPRT_API size_t makeRandomBytes(uint8_t *buf, size_t count);
 
-// current time in microseconds
+// current time in microseconds (with except for Hardware, see above)
 SPRT_API uint64_t clock(ClockType = ClockType::Default);
 
 // current time in nanoseconds
@@ -71,14 +70,54 @@ SPRT_API StringView getUniqueDeviceId();
 // Path to running executable
 SPRT_API StringView getExecPath();
 
+// User shared home path (/home/<user> or С:\users\<user>)
+SPRT_API StringView getHomePath();
+
 } // namespace sprt::platform
 
 
 namespace sprt {
 
-SPRT_API bool initialize(int &resultCode);
+/**
+	Method for determining standard paths to application files.
+
+	ExecutableRelative - search for files and resources in directories
+	located next to the executable file
+
+	SystemRelative - use standard common system paths (XDG on Linux,
+	AppData on Windows)
+
+	ContainerRelative - use paths inside the application container. If the application
+	is not in a container, simulate the container environment if possible
+
+	ForceContainer - if possible, pack the application into a container at startup.
+	If not possible, it works similarly to ContainerRelative
+
+	If the application is running in a container and it knows about it,
+	the ContainerRelative scheme will be used. Note, that some container engines
+	are invisible for applications, in this cases you should use ExecutableRelative
+	or SystemRelative schemes.
+
+	Default scheme defined with APPCONFIG_APP_PATH_COMMON when building application.
+*/
+enum class AppLocationScheme {
+	ExecutableRelative = 0,
+	SystemRelative = 1,
+	ContainerRelative = 2,
+	ForceContainer = 3,
+};
+
+struct AppConfig {
+	StringView bundleName;
+	StringView bundlePath;
+	AppLocationScheme pathScheme = AppLocationScheme::ExecutableRelative;
+};
+
+SPRT_API bool initialize(AppConfig &&, int &resultCode);
 
 SPRT_API void terminate();
+
+SPRT_API const AppConfig &getAppConfig();
 
 } // namespace sprt
 

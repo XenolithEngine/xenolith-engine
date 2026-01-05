@@ -26,7 +26,9 @@
 #include <sprt/runtime/int.h>
 #include <sprt/runtime/string.h>
 #include <sprt/runtime/callback.h>
-#include <sprt/runtime/invoke.h>
+#include <sprt/runtime/math.h>
+#include <sprt/runtime/detail/operations.h>
+#include <sprt/runtime/detail/invoke.h>
 
 namespace sprt::status {
 
@@ -231,6 +233,51 @@ struct Result {
 	const T &get() const { return result; }
 	const T &get(const T &def) const { return (isSuccessful(status)) ? result : def; }
 };
+
+
+// Type, that use negative Status values on failure, or positive int values on success
+template <typename T = int32_t>
+struct StatusValue {
+	static_assert(sizeof(T) == sizeof(Status) && (is_integral_v<T> or is_enum_v<T>));
+
+	static T max() {
+		return T(sprt::min(uint32_t(Max<T>), uint32_t(Max<underlying_type_t<Status>>)));
+	}
+
+	union {
+		Status status = Status::Ok;
+		T value;
+	};
+
+	StatusValue(Status s) : status(s) { }
+	StatusValue(const T &v) : value(v) {
+		sprt_passert(value >= 0 && uint32_t(value) <= uint32_t(Max<underlying_type_t<Status>>),
+				"Value should be in positive range of int32_t");
+	}
+
+	Status getStatus() const {
+		if (toInt(status) <= 0) {
+			return status;
+		} else {
+			return Status::Ok;
+		}
+	}
+
+	T getValue() const {
+		if (toInt(status) <= 0) {
+			return T(0);
+		} else {
+			return value;
+		}
+	}
+
+	operator Status() const { return getStatus(); }
+
+	operator T() const { return getValue(); }
+
+	explicit operator bool() const { return toInt(status) >= 0; }
+};
+
 
 } // namespace sprt
 

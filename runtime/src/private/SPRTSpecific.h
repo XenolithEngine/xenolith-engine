@@ -81,4 +81,26 @@ void setFutexVersion(int v);
 
 #endif
 
+#if SPRT_ANDROID
+
+namespace sprt::platform {
+
+extern int (*_timespec_get)(struct timespec *__ts, int __base);
+extern int (*_timespec_getres)(struct timespec *__ts, int __base);
+extern int (*_getlogin_r)(char *__buffer, size_t __buffer_size);
+extern ssize_t (*_copy_file_range)(int __fd_in, off_t *__off_in, int __fd_out, off_t *__off_out,
+		size_t __length, unsigned int __flags);
+
+extern int (*_futimes)(int __fd, const struct timeval __times[2]);
+extern int (*_lutimes)(const char *__path, const struct timeval __times[2]);
+extern int (*_futimesat)(int __dir_fd, const char *__path, const struct timeval __times[2]);
+
+extern int (*_sync_file_range)(int __fd, off64_t __offset, off64_t __length, unsigned int __flags);
+
+extern int (*_mlock2)(const void *__addr, size_t __size, int __flags);
+
+} // namespace sprt::platform
+
+#endif
+
 #endif // RUNTIME_SRC_PRIVATE_SPRTSPECIFIC_H_

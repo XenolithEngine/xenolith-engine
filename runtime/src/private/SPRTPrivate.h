@@ -23,7 +23,9 @@
 #ifndef CORE_RUNTIME_PRIVATE_SPRTPRIVATE_H_
 #define CORE_RUNTIME_PRIVATE_SPRTPRIVATE_H_
 
+#include <sprt/runtime/mem/pool.h>
 #include <sprt/runtime/int.h>
+#include <sprt/runtime/platform.h>
 
 #if SPRT_ANDROID
 #include <time.h>
@@ -31,8 +33,10 @@
 
 namespace sprt::platform {
 
-SPRT_LOCAL bool initialize(int &);
+SPRT_LOCAL bool initialize(AppConfig &&cfg, int &);
 SPRT_LOCAL void terminate();
+
+SPRT_LOCAL memory::pool_t *getConfigPool();
 
 } // namespace sprt::platform
 
@@ -43,26 +47,11 @@ SPRT_LOCAL void terminate();
 
 } // namespace sprt::backtrace
 
-#if SPRT_ANDROID
+namespace sprt::filesystem {
 
-namespace sprt::platform {
+SPRT_LOCAL void initialize();
+SPRT_LOCAL void terminate();
 
-extern int (*_timespec_get)(struct timespec *__ts, int __base);
-extern int (*_timespec_getres)(struct timespec *__ts, int __base);
-extern int (*_getlogin_r)(char *__buffer, size_t __buffer_size);
-extern ssize_t (*_copy_file_range)(int __fd_in, off_t *__off_in, int __fd_out, off_t *__off_out,
-		size_t __length, unsigned int __flags);
-
-extern int (*_futimes)(int __fd, const struct timeval __times[2]);
-extern int (*_lutimes)(const char *__path, const struct timeval __times[2]);
-extern int (*_futimesat)(int __dir_fd, const char *__path, const struct timeval __times[2]);
-
-extern int (*_sync_file_range)(int __fd, off64_t __offset, off64_t __length, unsigned int __flags);
-
-extern int (*_mlock2)(const void *__addr, size_t __size, int __flags);
-
-} // namespace sprt::platform
-
-#endif
+} // namespace sprt::filesystem
 
 #endif // CORE_RUNTIME_PRIVATE_SPRTPRIVATE_H_

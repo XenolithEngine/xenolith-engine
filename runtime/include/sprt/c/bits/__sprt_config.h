@@ -49,13 +49,6 @@ THE SOFTWARE.
 #endif
 
 /*
-	Use alloca or new[] for temporary allocations
-*/
-#ifndef __SPRT_CONFIG_USE_ALLOCA_FOR_TEMPORRY
-#define __SPRT_CONFIG_USE_ALLOCA_FOR_TEMPORRY 1
-#endif
-
-/*
 	Define library functions as inlined builtins where possible
 */
 #ifndef __SPRT_CONFIG_BUILTIN_INLINES
@@ -82,8 +75,28 @@ THE SOFTWARE.
 #endif
 
 /*
-	If 1, use <iterator> include to specify iterator tags on sprt iterators
+	Use STL headers for integration with standard library functions
+	(three-way comparison, iterator categories, etc.)
+
+	By default, SPRT does not require an STL to build; STL functions may be
+	required for ease of use in application code that already uses the STL.
 */
-#ifndef __SPRT_USE_LIBCXX_ITERATOR_TAGS
-#define __SPRT_USE_LIBCXX_ITERATOR_TAGS 0
+#ifndef __SPRT_USE_STL
+#define __SPRT_USE_STL 0
+#endif
+
+/*
+	If 1, use <iterator> include to specify iterator tags on sprt iterators.
+	You can define it before SPRT includes.
+*/
+#ifndef __SPRT_USE_STL_ITERATOR_TAGS
+#define __SPRT_USE_STL_ITERATOR_TAGS __SPRT_USE_STL
+#endif
+
+/*
+	If 1, use STL-based comparators for SPRT types.
+	You can define it before SPRT includes.
+*/
+#ifndef __SPRT_USE_STL_COMPARATORS
+#define __SPRT_USE_STL_COMPARATORS __SPRT_USE_STL
 #endif

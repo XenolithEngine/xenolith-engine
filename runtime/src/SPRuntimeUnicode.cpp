@@ -219,7 +219,7 @@ Status toUtf16(char16_t *ibuf, size_t bufSize, const StringView &utf8_str, size_
 	auto ptr = utf8_str.data();
 	auto end = ptr + utf8_str.size();
 	while (ptr < end) {
-		auto ch = utf8Decode32(ptr, offset);
+		auto ch = utf8Decode32(ptr, end - ptr, offset);
 		if (bufEnd - buf < utf16EncodeLength(ch)) {
 			return Status::ErrorBufferOverflow;
 		}

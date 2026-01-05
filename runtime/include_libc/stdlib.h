@@ -36,8 +36,9 @@ typedef __SPRT_ID(div_t) div_t;
 typedef __SPRT_ID(ldiv_t) ldiv_t;
 typedef __SPRT_ID(lldiv_t) lldiv_t;
 
-#ifndef alloca
-#define alloca __sprt_alloca
+#ifdef __sprt_malloca
+#define _malloca(Sz) __sprt_malloca(Sz)
+#define _freea(Ptr) __sprt_freea(Ptr)
 #endif
 
 __SPRT_BEGIN_DECL

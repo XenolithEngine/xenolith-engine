@@ -144,9 +144,8 @@ __SPRT_C_FUNC struct __SPRT_TM_NAME *__SPRT_ID(
 #endif
 	if (ret) {
 		internal::getRuntimeTm(_tm, *ret);
-#if SPRT_WINDOWS
 		_tm->tm_gmtoff = 0;
-#endif
+		_tm->tm_gmt_type = __SPRT_ID(gmt_set);
 		return _tm;
 	}
 	return nullptr;
@@ -157,7 +156,6 @@ __SPRT_C_FUNC struct __SPRT_TM_NAME *__SPRT_ID(
 	if (!t || !_tm) {
 		return nullptr;
 	}
-
 
 	auto native = internal::getNativeTm(_tm);
 #if SPRT_WINDOWS
@@ -192,6 +190,7 @@ __SPRT_C_FUNC struct __SPRT_TM_NAME *__SPRT_ID(
 
 		_tm->tm_gmtoff = -bias * 60;
 #endif
+		_tm->tm_gmt_type = __SPRT_ID(gmt_local);
 
 		return _tm;
 	}

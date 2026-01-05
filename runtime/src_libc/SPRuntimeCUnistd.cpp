@@ -606,15 +606,7 @@ __SPRT_C_FUNC void __SPRT_ID(swab)(const void *__SPRT_RESTRICT __from, void *__S
 	return ::swab(__from, __to, __n);
 }
 __SPRT_C_FUNC int __SPRT_ID(getentropy)(void *__buffer, __SPRT_ID(size_t) __length) {
-#if SPRT_ANDROID
-	if (platform::makeRandomBytes((uint8_t *)__buffer, __length) == __length) {
-		return 0;
-	}
-	*__sprt___errno_location() = EINVAL;
-	return -1;
-#else
 	return ::getentropy(__buffer, __length);
-#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(

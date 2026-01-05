@@ -209,7 +209,7 @@ void getStatusDescription(Status st, const callback<void(StringView)> &cb) {
 		outCb << ": ";
 
 		auto err = status::toErrno(st);
-		auto len = strlen(strerrBuffer);
+		auto len = __constexpr_strlen(strerrBuffer);
 		auto target = &strerrBuffer[len];
 
 		::__sprt_strerror_s(target, STATUS_DESC_BUFFER_SIZE - len - 1, err);
@@ -231,7 +231,7 @@ void getStatusDescription(Status st, const callback<void(StringView)> &cb) {
 		outCb << ": No description found";
 	}
 
-	cb(StringView(strerrBuffer, strlen(strerrBuffer)));
+	cb(StringView(strerrBuffer, __constexpr_strlen(strerrBuffer)));
 }
 
 } // namespace sprt::status

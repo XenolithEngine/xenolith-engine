@@ -26,7 +26,9 @@ THE SOFTWARE.
 #include <sprt/runtime/mem/context.h>
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/new.h>
+#include <sprt/runtime/detail/operations.h>
 #include <sprt/c/__sprt_assert.h>
+#include <sprt/c/__sprt_unistd.h>
 
 namespace sprt::memory {
 
@@ -45,6 +47,35 @@ pool_t *get_zero_pool() {
 	static ZeroPoolStruct s_struct;
 	return (pool_t *)s_struct._pool;
 }
+
+static __sprt_pid_t s_mainThread = __sprt_gettid();
+
+struct ThreadLocalPoolStorage {
+	~ThreadLocalPoolStorage() {
+		if (_pool) {
+			pool::destroy(_pool);
+		}
+	}
+
+	pool_t *get() {
+		if (s_mainThread == owner) {
+			return get_zero_pool();
+		}
+
+		if (!_pool) [[unlikely]] {
+			_pool = pool::create((allocator_t *)&_alloc);
+		}
+		return _pool;
+	}
+
+	pool_t *_pool = nullptr;
+	impl::Allocator _alloc;
+	__sprt_pid_t owner = __sprt_gettid();
+};
+
+thread_local ThreadLocalPoolStorage tl_poolStorage;
+
+pool_t *get_thread_support_pool() { return tl_poolStorage.get(); }
 
 } // namespace sprt::memory
 
@@ -200,7 +231,7 @@ void *Pool::palloc_self(size_t in_size) {
 void *Pool::calloc(size_t count, size_t eltsize) {
 	size_t s = count * eltsize;
 	auto ptr = alloc(s);
-	memset(ptr, 0, s);
+	__builtin_memset(ptr, 0, s);
 	return ptr;
 }
 
@@ -209,7 +240,7 @@ void *Pool::pmemdup(const void *m, size_t n) {
 		return nullptr;
 	}
 	void *res = palloc(n);
-	memcpy(res, m, n);
+	__builtin_memcpy(res, m, n);
 	return res;
 }
 
@@ -217,7 +248,7 @@ char *Pool::pstrdup(const char *s) {
 	if (s == nullptr) {
 		return nullptr;
 	}
-	size_t len = strlen(s) + 1;
+	size_t len = __builtin_strlen(s) + 1;
 	char *res = (char *)pmemdup(s, len);
 	return res;
 }
@@ -272,15 +303,15 @@ void Pool::destroy(Pool *pool) {
 
 size_t Pool::getPoolsCount() { return s_nPools.load(); }
 
-Pool::Pool() : allocmngr{this} { ++s_nPools; }
+Pool::Pool() : allocmngr{{}, this} { ++s_nPools; }
 
 Pool::Pool(Allocator *alloc, MemNode *node)
-: allocator(alloc), active(node), self(node), allocmngr{this} {
+: allocator(alloc), active(node), self(node), allocmngr{{}, this} {
 	++s_nPools;
 }
 
 Pool::Pool(Pool *p, Allocator *alloc, MemNode *node)
-: allocator(alloc), active(node), self(node), allocmngr{this} {
+: allocator(alloc), active(node), self(node), allocmngr{{}, this} {
 	if ((parent = p) != nullptr) {
 		unique_lock<Allocator> lock(*allocator);
 		sibling = parent->child;

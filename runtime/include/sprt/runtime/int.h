@@ -183,6 +183,42 @@ inline bool hasFlagAll(T mask, T flag) {
 	return (mask & flag) == T(flag);
 }
 
+
+template <typename _Tp>
+inline const bool is_signed_integer_v = false;
+template <>
+inline const bool is_signed_integer_v<signed char> = true;
+template <>
+inline const bool is_signed_integer_v<signed short> = true;
+template <>
+inline const bool is_signed_integer_v<signed int> = true;
+template <>
+inline const bool is_signed_integer_v<signed long> = true;
+template <>
+inline const bool is_signed_integer_v<signed long long> = true;
+
+template <typename _Tp>
+inline const bool is_unsigned_integer_v = false;
+template <>
+inline const bool is_unsigned_integer_v<unsigned char> = true;
+template <>
+inline const bool is_unsigned_integer_v<unsigned short> = true;
+template <>
+inline const bool is_unsigned_integer_v<unsigned int> = true;
+template <>
+inline const bool is_unsigned_integer_v<unsigned long> = true;
+template <>
+inline const bool is_unsigned_integer_v<unsigned long long> = true;
+
+template <typename _Tp>
+concept signed_integer = is_signed_integer_v<_Tp>;
+
+template <typename _Tp>
+concept unsigned_integer = is_unsigned_integer_v<_Tp>;
+
+template <typename _Tp>
+concept signed_or_unsigned_integer = signed_integer<_Tp> || unsigned_integer<_Tp>;
+
 } // namespace sprt
 
 /** SPRT_DEFINE_ENUM_AS_MASK is utility to make a bitwise-mask from typed enum

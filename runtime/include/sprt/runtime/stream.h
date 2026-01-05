@@ -210,6 +210,83 @@ void __processArgs(const callback<void(StringViewBase<CharType>)> &cb, Type &&ar
 	__processArgs(cb, forward<Args>(args)...);
 }
 
+template <typename Container, typename ValueType>
+concept TypedContainer =
+		is_same_v<remove_cv_t<remove_reference_t<decltype(*(Container().data()))>>, ValueType>;
+
+template <typename CharType>
+struct StreamTraits {
+	static constexpr inline size_t getSizeFor(const CharType *value) {
+		return __constexpr_strlen(value);
+	}
+
+	template <size_t N>
+	static constexpr inline size_t getSizeFor(const CharType (&str)[N]) {
+		return N;
+	}
+
+	static constexpr inline size_t getSizeFor(const CharType &value) { return 1; }
+
+	static constexpr inline size_t getSizeFor(const int64_t &value) {
+		return sprt::itoa(sprt::int64_t(value), (CharType *)nullptr, 0);
+	}
+	static constexpr inline size_t getSizeFor(const uint64_t &value) {
+		return sprt::itoa(sprt::uint64_t(value), (CharType *)nullptr, 0);
+	}
+	static constexpr inline size_t getSizeFor(const int32_t &value) {
+		return sprt::itoa(sprt::int64_t(value), (CharType *)nullptr, 0);
+	}
+	static constexpr inline size_t getSizeFor(const uint32_t &value) {
+		return sprt::itoa(sprt::uint64_t(value), (CharType *)nullptr, 0);
+	}
+	static constexpr inline size_t getSizeFor(const int16_t &value) {
+		return sprt::itoa(sprt::int64_t(value), (CharType *)nullptr, 0);
+	}
+	static constexpr inline size_t getSizeFor(const uint16_t &value) {
+		return sprt::itoa(sprt::uint64_t(value), (CharType *)nullptr, 0);
+	}
+	static constexpr inline size_t getSizeFor(const int8_t &value) {
+		return sprt::itoa(sprt::int64_t(value), (CharType *)nullptr, 0);
+	}
+	static constexpr inline size_t getSizeFor(const uint8_t &value) {
+		return sprt::itoa(sprt::uint64_t(value), (CharType *)nullptr, 0);
+	}
+	static constexpr inline size_t getSizeFor(const double &value) {
+		return sprt::dtoa(value, (CharType *)nullptr, 0);
+	}
+	static constexpr inline size_t getSizeFor(const float &value) {
+		return sprt::dtoa(value, (CharType *)nullptr, 0);
+	}
+
+	template <typename Container>
+	requires TypedContainer<Container, CharType>
+	static constexpr inline size_t getSizeFor(const Container &c) {
+		return c.size();
+	}
+
+	template <typename... Args>
+	static constexpr size_t calculateSize(Args &&...args) {
+		return (1 + ... + getSizeFor(args));
+	}
+
+	template <typename... Args>
+	static constexpr void merge(const callback<void(StringView)> &cb, Args &&...args) {
+		auto bufferSize = calculateSize(forward<Args>(args)...);
+
+		auto buf = (CharType *)__sprt_malloca(bufferSize * sizeof(CharType));
+
+		auto target = buf;
+		auto targetSize = bufferSize;
+		__processArgs<CharType>([&](StringView str) {
+			target = strappend(target, &targetSize, str.data(), str.size());
+		}, forward<Args>(args)...);
+
+		cb(StringView(buf, target - buf));
+
+		__sprt_freea(buf);
+	}
+};
+
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_STREAM_H_

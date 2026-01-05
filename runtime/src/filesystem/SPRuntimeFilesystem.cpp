@@ -1,0 +1,279 @@
+/**
+ Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
+
+#include <sprt/runtime/mem/pool.h>
+#include <sprt/runtime/mem/string.h>
+#include <sprt/runtime/log.h>
+#include <sprt/runtime/enum.h>
+#include <sprt/runtime/stringview.h>
+#include "private/SPRTFilesystem.h"
+#include "private/SPRTPrivate.h"
+
+#include <sys/stat.h>
+#include <unistd.h>
+#include <errno.h>
+#include <limits.h>
+
+#if SPRT_LINUX
+#include "SPRuntimeFilesystem-linux.cc"
+#endif
+
+namespace sprt::filesystem {
+
+bool getCurrentDir(const callback<void(StringView)> &cb, StringView path) {
+	if (!path.empty() && filepath::isAbsolute((path))) {
+		filepath::reconstructPath(cb, path);
+		return true;
+	}
+
+	char buf[PATH_MAX];
+	if (getcwd(buf, PATH_MAX)) {
+		auto len = sprt::detail::length(buf, PATH_MAX);
+		if (path.empty()) {
+			if (len < PATH_MAX) {
+				buf[len] = 0;
+			}
+			cb(StringView(buf, len));
+			return true;
+		} else if (PATH_MAX - len > path.size() + 2) {
+			auto bufferSize = PATH_MAX - len - 1;
+			auto target = &buf[len];
+
+			if (buf[len - 1] != '/' && path.at(0) != '/') {
+				strappend(target, &bufferSize, "/", 1);
+			}
+			strappend(target, &bufferSize, path.data(), path.size());
+			target[0] = 0;
+
+			filepath::reconstructPath([&](StringView path) { cb(path); },
+					StringView(buf, target - buf));
+			return true;
+		}
+	}
+	return false;
+}
+
+static void readSingleQuoted(StringView &str, const callback<void(StringView)> &writeCb) {
+	++str;
+	while (!str.empty()) {
+		auto v = str.readUntil<StringView::Chars<'\'', '\\'>>();
+		if (!v.empty()) {
+			writeCb << v;
+		}
+		if (str.is('\\')) {
+			++str;
+			writeCb << str[0];
+			++str;
+		} else if (str.is<'\''>()) {
+			++str;
+			return;
+		}
+	}
+}
+
+static void readDoubleQuoted(memory::pool_t *pool, StringView &str,
+		const callback<void(StringView)> &writeCb) {
+	++str;
+	while (!str.empty()) {
+		auto v = str.readUntil<StringView::Chars<'"', '\\', '$', '\''>>();
+		if (!v.empty()) {
+			writeCb << v;
+		}
+		if (str.is('\\')) {
+			++str;
+			writeCb << str[0];
+			++str;
+		} else if (str.is('$')) {
+			++str;
+			auto v =
+					str.readUntil<StringView::Chars<'"', '\'', '$', '/'>, StringView::WhiteSpace>();
+			if (!v.empty()) {
+				// we need null-terminated string
+				auto env = detail::_readEnvExt(pool, v);
+				if (!env.empty()) {
+					writeCb << env;
+				}
+			}
+		} else if (str.is('\'')) {
+			readSingleQuoted(str, writeCb);
+		} else if (str.is<'"'>()) {
+			++str;
+			return;
+		}
+	}
+}
+
+StringView readVariable(memory::pool_t *pool, StringView str) {
+	StringView result;
+	memory::perform_temporary([&](memory::pool_t *tmpPool) {
+		memory::string out;
+
+		auto writer = [&](StringView s) {
+			out.append(s.data(), s.size()); //
+		};
+
+		callback<void(StringView)> writeCb(writer);
+
+		str.trimChars<StringView::WhiteSpace>();
+		while (!str.empty()) {
+			if (str.is('"')) {
+				readDoubleQuoted(tmpPool, str, writeCb);
+			} else if (str.is('\'')) {
+				readSingleQuoted(str, writeCb);
+			} else if (str.is('$')) {
+				++str;
+				auto v = str.readUntil<StringView::Chars<'"', '\'', '$', '/'>,
+						StringView::WhiteSpace>();
+				if (!v.empty()) {
+					// we need null-terminated string
+					auto env = detail::_readEnvExt(tmpPool, v);
+					if (!env.empty()) {
+						writeCb << env;
+					}
+				}
+			} else {
+				auto v = str.readUntil<StringView::Chars<'"', '\'', '$'>>();
+				if (!v.empty()) {
+					writeCb << v;
+				}
+			}
+		}
+
+		auto ret = StringView(out);
+		ret.backwardSkipChars<StringView::Chars<'/'>>();
+		result = ret.pdup(pool);
+	}, pool);
+	return result;
+}
+
+static StringView getResourcePrefix(LocationCategory cat) {
+	switch (cat) {
+	case LocationCategory::Exec: return StringView("%EXEC%:"); break;
+	case LocationCategory::Library: return StringView("%LIBRARY%:"); break;
+	case LocationCategory::Fonts: return StringView("%FONTS%:"); break;
+
+	case LocationCategory::UserHome: return StringView("%USER_HOME%:"); break;
+	case LocationCategory::UserDesktop: return StringView("%USER_DESKTOP%:"); break;
+	case LocationCategory::UserDownload: return StringView("%USER_DOWNLOAD%:"); break;
+	case LocationCategory::UserDocuments: return StringView("%USER_DOCUMENTS%:"); break;
+	case LocationCategory::UserMusic: return StringView("%USER_MUSIC%:"); break;
+	case LocationCategory::UserPictures: return StringView("%USER_PICTURES%:"); break;
+	case LocationCategory::UserVideos: return StringView("%USER_VIDEOS%:"); break;
+
+	case LocationCategory::CommonData: return StringView("%COMMON_DATA%:"); break;
+	case LocationCategory::CommonConfig: return StringView("%COMMON_CONFIG%:"); break;
+	case LocationCategory::CommonState: return StringView("%COMMON_STATE%:"); break;
+	case LocationCategory::CommonCache: return StringView("%COMMON_CACHE%:"); break;
+	case LocationCategory::CommonRuntime: return StringView("%COMMON_RUNTIME%:"); break;
+
+	case LocationCategory::AppData: return StringView("%APP_DATA%:"); break;
+	case LocationCategory::AppConfig: return StringView("%APP_CONFIG%:"); break;
+	case LocationCategory::AppState: return StringView("%APP_STATE%:"); break;
+	case LocationCategory::AppCache: return StringView("%APP_CACHE%:"); break;
+	case LocationCategory::AppRuntime: return StringView("%APP_RUNTIME%:"); break;
+
+	case LocationCategory::Bundled: return StringView("%PLATFORM%:"); break;
+	case LocationCategory::Max: break;
+	}
+	return StringView();
+}
+
+static detail::LookupData *s_resourceData = nullptr;
+
+void initialize() {
+	auto pool = platform::getConfigPool();
+
+	memory::perform([&] {
+		s_resourceData = new (pool) detail::LookupData;
+		s_resourceData->_pool = pool;
+
+		for (auto it : each<LocationCategory>()) {
+			auto &loc = s_resourceData->_resourceLocations[toInt(it)];
+			loc.category = it;
+			loc.prefix = getResourcePrefix(it);
+		}
+
+		detail::_initSystemPaths(*s_resourceData);
+
+		for (auto it : each<LocationCategory>()) {
+			auto &loc = s_resourceData->_resourceLocations[toInt(it)];
+
+			for (auto &it : loc.paths) { it.path.backwardSkipChars<StringView::Chars<'/'>>(); }
+		}
+
+		s_resourceData->_initialized = true;
+	}, pool);
+}
+
+void terminate() {
+	for (auto it : each<LocationCategory>()) {
+		s_resourceData->_resourceLocations[toInt(it)].paths.clear();
+	}
+
+	detail::_termSystemPaths(*s_resourceData);
+}
+
+LocationCategory getResourceCategoryByPrefix(StringView prefix) {
+	auto data = detail::LookupData::get();
+	for (auto it : each<LocationCategory>()) {
+		if (prefix.starts_with(data->_resourceLocations[toInt(it)].prefix)) {
+			return data->_resourceLocations[toInt(it)].category;
+		}
+	}
+
+	return LocationCategory::Max;
+}
+
+const LookupInfo *getLookupInfo(LocationCategory cat) {
+	if (toInt(cat) < toInt(LocationCategory::Custom)) {
+		return &detail::LookupData::get()->_resourceLocations[toInt(cat)];
+	}
+	return nullptr;
+}
+
+} // namespace sprt::filesystem
+
+namespace sprt::filesystem::detail {
+
+LookupData *LookupData::get() { return s_resourceData; }
+
+void LookupData::initAppPaths(StringView root) {
+	auto makeLocation = [&](LocationCategory cat, StringView subname) {
+		auto &res = _resourceLocations[toInt(cat)];
+		filepath::merge([&](StringView path) {
+			res.paths.emplace_back(LocationInfo{
+				path.pdup(_pool),
+				LookupFlags::Private | LookupFlags::Public | LookupFlags::Writable,
+				LocationFlags::Locateable | LocationFlags::Writable,
+				getDefaultInterface(),
+			});
+		}, root, "AppData", subname);
+	};
+
+	makeLocation(LocationCategory::AppData, "data");
+	makeLocation(LocationCategory::AppConfig, "config");
+	makeLocation(LocationCategory::AppState, "state");
+	makeLocation(LocationCategory::AppCache, "cache");
+	makeLocation(LocationCategory::AppRuntime, "runtime");
+}
+
+} // namespace sprt::filesystem::detail

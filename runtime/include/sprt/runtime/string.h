@@ -23,44 +23,77 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_STRING_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_STRING_H_
 
+#include <sprt/runtime/callback.h>
 #include <sprt/runtime/int.h>
 #include <sprt/runtime/array.h>
 #include <sprt/runtime/notnull.h>
+#include <sprt/runtime/detail/itoa.h>
+#include <sprt/runtime/detail/dtoa.h>
 
 #include <sprt/c/__sprt_string.h>
 
 namespace sprt {
 
-SPRT_API char *strappend(char SPRT_NONNULL *buf, size_t *bufSize, const char SPRT_NONNULL *str,
-		size_t strSize);
+/*
+	Fast itoa implementation
 
-SPRT_API char *strappend(char SPRT_NONNULL *buf, size_t *bufSize, int64_t);
-SPRT_API char *strappend(char SPRT_NONNULL *buf, size_t *bufSize, uint64_t);
-SPRT_API char *strappend(char SPRT_NONNULL *buf, size_t *bufSize, double);
+	Data will be written at the end of buffer, no trailing zero (do not try to use strlen on it!);
+	Designed to be used with StringView: StringView(buf + bufSize - ret, ret)
 
-// fast itoa implementation
-// data will be written at the end of buffer, no trailing zero (do not try to use strlen on it!)
-// designed to be used with StringView: StringView(buf + bufSize - ret, ret)
+	Returns number size on symbols
+	Use nullptr buffer to calculate expected buffer length.
 
-// use nullptr buffer to calculate expected buffer length
+	No buffer size control - use INT_MAX_DIGITS or precalculated length
+*/
 
-SPRT_API size_t itoa(int64_t number, char *buffer, size_t bufSize);
-SPRT_API size_t itoa(uint64_t number, char *buffer, size_t bufSize);
+static constexpr size_t INT_MAX_DIGITS = 22; // Safe buffer size
 
-SPRT_API size_t itoa(int64_t number, char16_t *buffer, size_t bufSize);
-SPRT_API size_t itoa(uint64_t number, char16_t *buffer, size_t bufSize);
+template <typename CharType>
+constexpr inline size_t itoa(int64_t number, CharType *buffer, size_t bufSize) {
+	if (buffer == nullptr) {
+		return _itoa::_itoa_len(number);
+	}
 
-// fast dtoa implementation
-// data will be written from beginning, no trailing zero (do not try to use strlen on it!)
-// designed to be used with StringView: StringView(buf, ret)
+	if (number < 0) {
+		auto ret = _itoa::unsigned_to_decimal(buffer, uint64_t(-number), bufSize);
+		buffer[bufSize - ret - 1] = '-';
+		return ret + 1;
+	} else {
+		return _itoa::unsigned_to_decimal(buffer, uint64_t(number), bufSize);
+	}
+}
 
-// use nullptr buffer to calculate expected buffer length
+template <typename CharType>
+constexpr inline size_t itoa(uint64_t number, CharType *buffer, size_t bufSize) {
+	if (buffer == nullptr) {
+		return _itoa::_itoa_len(number);
+	}
 
-static constexpr size_t INT_MAX_DIGITS = 22;
-static constexpr size_t DOUBLE_MAX_DIGITS = 27;
+	return _itoa::unsigned_to_decimal(buffer, uint64_t(number), bufSize);
+}
 
-SPRT_API size_t dtoa(double number, char *buffer, size_t bufSize);
-SPRT_API size_t dtoa(double number, char16_t *buffer, size_t bufSize);
+/*
+	Fast dtoa implementation
+
+	Data will be written from beginning, no trailing zero (do not try to use strlen on it!);
+	Designed to be used with StringView: StringView(buf, ret)
+
+	Returns number size on symbols
+	Use nullptr buffer to calculate expected buffer length.
+
+	No buffer size control - use DOUBLE_MAX_DIGITS or precalculated length
+*/
+
+static constexpr size_t DOUBLE_MAX_DIGITS = 27; // Safe buffer size
+
+template <typename CharType>
+constexpr inline size_t dtoa(double number, CharType *buffer, size_t bufSize) {
+	if (buffer == nullptr) {
+		return _dtoa::dtoa_len(number);
+	}
+
+	return _dtoa::dtoa_milo(number, buffer);
+}
 
 SPRT_API bool ispunct(char c);
 SPRT_API bool isdigit(char c);
@@ -81,99 +114,92 @@ SPRT_API char toupper_c(char);
 SPRT_API char16_t toupper_c(char16_t);
 SPRT_API char32_t toupper_c(char32_t);
 
-inline constexpr size_t strlen(const char *str) {
-	if (is_constant_evaluated()) {
-		if (str == nullptr) {
-			return 0;
-		}
-		const char *end = str;
-		while (*end != u'\0') { ++end; }
-		return static_cast<size_t>(end - str);
-	} else {
-		return ::__sprt_strlen(str);
-	}
-}
-
-inline constexpr size_t strlen(const char16_t *str) {
-	if (str == nullptr) {
-		return 0;
-	}
-	const char16_t *end = str;
-	while (*end != u'\0') { ++end; }
-	return static_cast<size_t>(end - str);
-}
-
-inline constexpr size_t strlen(const char32_t *str) {
-	if (str == nullptr) {
-		return 0;
-	}
-	const char32_t *end = str;
-	while (*end != u'\0') { ++end; }
-	return static_cast<size_t>(end - str);
-}
-
 SPRT_API void nullify(const char *, size_t);
 SPRT_API void nullify(const char16_t *, size_t);
 
-SPRT_API char *_makeCharBuffer(size_t);
-SPRT_API char16_t *_makeChar16Buffer(size_t);
+/*
+	Safe strcat-like function for char buffer filling.
+	Writes buffer str with strSize chars into buf with initial free space in *bufSize
+	*bufSize then decremented for number of chars written.
 
-template <typename Type>
-auto newCharBuffer(size_t) -> Type *;
+	Buffer should contain space for null-termination
 
-template <>
-inline auto newCharBuffer<char>(size_t size) -> char * {
-	return _makeCharBuffer(size);
-}
+	Returns: pointer to next free space in buffer
 
-template <>
-inline auto newCharBuffer<char16_t>(size_t size) -> char16_t * {
-	return _makeChar16Buffer(size);
-}
+	On overflow, *bufSize set to 0, and only non-overlow chars written
 
-SPRT_API void freeCharBuffer(char *);
-SPRT_API void freeCharBuffer(char16_t *);
+	Designed for chained usage like:
 
+		auto buf = (char *)__sprt_malloca(bufSize + 1);
+
+		auto target = buf;
+		auto targetSize = bufSize;
+
+		target = strappend(target, &targetSize, " ", 1);
+		target = strappend(target, &targetSize, data, datalen);
+		...
+		target = strappend(target, &targetSize, "\n", 1);
+
+		target[0] = 0; // null termination
+
+		... // use filled buffer
+
+		__sprt_freea(buf);
+*/
 template <typename CharType>
-constexpr inline bool chareq(CharType c1, CharType c2) {
-	return c1 == c2;
-}
-
-template <>
-constexpr inline bool chareq<char>(char c1, char c2) {
-	return static_cast<unsigned char>(c1) == static_cast<unsigned char>(c2);
-}
-
-template <typename CharType>
-constexpr inline bool charlt(CharType c1, CharType c2) {
-	return c1 < c2;
-}
-
-template <>
-constexpr inline bool charlt<char>(char c1, char c2) {
-	return static_cast<unsigned char>(c1) < static_cast<unsigned char>(c2);
-}
-
-template <typename CharType>
-constexpr inline int strcompare(const CharType *s1, const CharType *s2, size_t count) {
-	return __sprt_memcmp(s1, s2, count);
-}
-
-template <typename CharType>
-constexpr inline const CharType *strfind(const CharType *ptr, size_t count, const CharType &ch) {
-	auto end = ptr + count;
-
-	while (ptr != end) {
-		if (*ptr++ == ch) {
-			return ptr - 1;
-		}
+constexpr inline auto strappend(CharType SPRT_NONNULL *buf, size_t *bufSize,
+		const CharType SPRT_NONNULL *str, size_t strSize) -> CharType * {
+	if (!bufSize) {
+		return buf;
 	}
-	return nullptr;
+
+	if (strSize < *bufSize) {
+		__constexpr_memcpy(buf, str, strSize);
+		buf += strSize;
+		*bufSize -= strSize;
+		*buf = 0;
+		return buf;
+	} else if (*bufSize > 1) {
+		__constexpr_memcpy(buf, str, *bufSize - 1);
+		buf += (*bufSize - 1);
+		*bufSize = 1;
+		*buf = 0;
+		return buf;
+	} else {
+		return buf;
+	}
 }
 
-template <>
-constexpr inline const char *strfind<char>(const char *ptr, size_t count, const char &ch) {
-	return (const char *)__sprt_memchr((void *)ptr, ch, count);
+/*
+	strappend overload to write integer decimial value into string
+*/
+template <typename CharType>
+constexpr inline auto strappend(CharType SPRT_NONNULL *buf, size_t *bufSize, int64_t val)
+		-> CharType * {
+	CharType tmp[INT_MAX_DIGITS];
+	auto ret = sprt::itoa(val, tmp, INT_MAX_DIGITS);
+	return strappend(buf, bufSize, tmp + INT_MAX_DIGITS - ret, ret);
+}
+
+/*
+	strappend overload to write integer decimial value into string
+*/
+template <typename CharType>
+constexpr inline auto strappend(char SPRT_NONNULL *buf, size_t *bufSize, uint64_t val)
+		-> CharType * {
+	CharType tmp[INT_MAX_DIGITS];
+	auto ret = sprt::itoa(val, tmp, INT_MAX_DIGITS);
+	return strappend(buf, bufSize, tmp + INT_MAX_DIGITS - ret, ret);
+}
+
+/*
+	strappend overload to write float value into string
+*/
+template <typename CharType>
+constexpr inline auto strappend(char SPRT_NONNULL *buf, size_t *bufSize, double val) -> CharType * {
+	CharType tmp[DOUBLE_MAX_DIGITS];
+	auto ret = sprt::dtoa(val, tmp, DOUBLE_MAX_DIGITS);
+	return strappend(buf, bufSize, tmp, ret);
 }
 
 } // namespace sprt

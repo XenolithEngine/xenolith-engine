@@ -26,8 +26,9 @@
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_stdio.h>
 #include <sprt/c/__sprt_errno.h>
+#include <sprt/c/__sprt_stdlib.h>
 
-#include <sprt/runtime/invoke.h>
+#include <sprt/runtime/detail/invoke.h>
 
 namespace sprt::internal {
 
@@ -46,20 +47,11 @@ static inline auto performWithNativePath(const char *path, const Callback &cb,
 	if (!path || isNative) {
 		return cb(path);
 	} else {
-#if __SPRT_CONFIG_USE_ALLOCA_FOR_TEMPORRY
-		auto buf = (char *)__builtin_alloca(pathlen + 1);
+		auto buf = (char *)__sprt_malloca(pathlen + 1);
 		if (__sprt_fpath_to_native(path, pathlen, buf, pathlen + 1) > 0) {
 			return cb(buf);
 		}
-#else
-		auto buf = new char[pathlen + 1];
-		if (__sprt_fpath_to_native(path, pathlen, buf, pathlen + 1) > 0) {
-			auto ret = cb(buf);
-			delete[] buf;
-			return ret;
-		}
-		delete[] buf;
-#endif
+		__sprt_freea(buf);
 	}
 	*__sprt___errno_location() = EINVAL;
 	return error;
@@ -75,20 +67,11 @@ static inline auto performWithPosixePath(const char *path, const Callback &cb,
 	if (!path || isPosix) {
 		return cb(path);
 	} else {
-#if __SPRT_CONFIG_USE_ALLOCA_FOR_TEMPORRY
-		auto buf = (char *)__builtin_alloca(pathlen + 1);
+		auto buf = (char *)__sprt_malloca(pathlen + 1);
 		if (__sprt_fpath_to_posix(path, pathlen, buf, pathlen + 1) > 0) {
 			return cb(buf);
 		}
-#else
-		auto buf = new char[pathlen + 1];
-		if (__sprt_fpath_to_posix(path, pathlen, buf, pathlen + 1) > 0) {
-			auto ret = cb(buf);
-			delete[] buf;
-			return ret;
-		}
-		delete[] buf;
-#endif
+		__sprt_freea(buf);
 	}
 	*__sprt___errno_location() = EINVAL;
 	return error;

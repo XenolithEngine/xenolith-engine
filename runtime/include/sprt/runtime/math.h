@@ -146,9 +146,16 @@ inline constexpr uint32_t Min<int32_t> = __SPRT_INT32_C(-1) - __SPRT_INT32_C(__S
 template <>
 inline constexpr uint64_t Min<int64_t> = __SPRT_INT64_C(-1) - __SPRT_INT64_C(__SPRT_INT64_MAX);
 
+template <signed_or_unsigned_integer T>
+static constexpr const int Digits =
+		static_cast<int>(sizeof(T) * __CHAR_BIT__ - is_signed_integer_v<T> ? 1 : 0);
+
+template <signed_or_unsigned_integer T>
+static constexpr const int Digits10 = Digits<T> * 3 / 10;
+
 template <typename T, typename V>
 struct HasMultiplication {
-	template <class A, class B>
+	template <typename A, typename B>
 	static auto test(A *, B *) -> decltype(declval<A>() * declval<B>());
 
 	template <typename, typename>
@@ -157,9 +164,45 @@ struct HasMultiplication {
 	using type = typename is_same<T, decltype(test<T, V>(0, 0))>::type;
 };
 
-template <class T>
+template <typename T>
 constexpr inline T progress(const T &a, const T &b, float p) {
 	return (a * (1.0f - p) + b * p);
+}
+
+template <typename Type>
+constexpr int __countl_zero(Type __t) noexcept {
+	static_assert(is_unsigned_integer_v<Type>, "__countl_zero requires an unsigned integer type");
+	return __builtin_clzg(__t, Digits<Type>);
+}
+
+template <unsigned_integer Type>
+[[nodiscard]]
+constexpr int countl_zero(Type __t) noexcept {
+	return sprt::__countl_zero(__t);
+}
+
+template <unsigned_integer Type>
+[[nodiscard]]
+constexpr int countl_one(Type __t) noexcept {
+	return __t != Max<Type> ? sprt::countl_zero(static_cast<Type>(~__t)) : Digits<Type>;
+}
+
+template <typename Type>
+constexpr int __countr_zero(Type __t) noexcept {
+	static_assert(is_unsigned_integer_v<Type>, "__countr_zero only works with unsigned types");
+	return __builtin_ctzg(__t, Digits<Type>);
+}
+
+template <unsigned_integer Type>
+[[nodiscard]]
+constexpr int countr_zero(Type __t) noexcept {
+	return sprt::__countr_zero(__t);
+}
+
+template <unsigned_integer Type>
+[[nodiscard]]
+constexpr int countr_one(Type __t) noexcept {
+	return __t != Max<Type> ? sprt::countr_zero(static_cast<Type>(~__t)) : Digits<Type>;
 }
 
 template <typename T>

@@ -34,9 +34,15 @@ THE SOFTWARE.
 
 namespace sprt {
 
-__SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(stdin_impl)() { return ::stdin; }
-__SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(stdout_impl)() { return ::stdout; }
-__SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(stderr_impl)() { return ::stderr; }
+__SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(stdin_impl)() {
+	return ::stdin; //
+}
+__SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(stdout_impl)() {
+	return ::stdout; //
+}
+__SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(stderr_impl)() {
+	return ::stderr; //
+}
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_posix)(const char *__SPRT_RESTRICT path,
 		__SPRT_ID(size_t) pathSize, char *buf, __SPRT_ID(size_t) bufSize) {

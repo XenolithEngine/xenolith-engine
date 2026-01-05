@@ -26,13 +26,14 @@ THE SOFTWARE.
 #define RUNTIME_SRC_PRIVATE_SPRTMEMSTRUCT_H_
 
 #include <sprt/runtime/mem/pool.h>
+#include <sprt/runtime/new.h>
 #include <sprt/runtime/atomic.h>
 #include <sprt/runtime/mutex.h>
 
 #include "private/SPRTDso.h"
 
 using apr_status_t = int;
-using apr_size_t = size_t;
+using apr_size_t = sprt::size_t;
 using apr_abortfunc_t = int (*)(int retcode);
 
 typedef struct apr_allocator_t apr_allocator_t;
@@ -119,7 +120,7 @@ struct SPRT_LOCAL MemAddr {
 	void *address = nullptr;
 };
 
-struct SPRT_LOCAL AllocManager {
+struct SPRT_LOCAL AllocManager : public AllocPlacement {
 	using AllocFn = void *(*)(void *, size_t, uint32_t);
 	void *pool = nullptr;
 	MemAddr *buffered = nullptr;
@@ -151,7 +152,7 @@ struct SPRT_LOCAL AllocManager {
 struct Pool;
 struct HashTable;
 
-struct SPRT_LOCAL MemNode {
+struct SPRT_LOCAL MemNode : public AllocPlacement {
 	MemNode *next; // next memnode
 	MemNode **ref; // reference to self
 	uint32_t mapped : 1;
@@ -204,7 +205,7 @@ struct SPRT_LOCAL Allocator {
 	void unlock();
 };
 
-struct SPRT_LOCAL Pool {
+struct SPRT_LOCAL Pool : public AllocPlacement {
 	Pool *parent = nullptr;
 	Pool *child = nullptr;
 	Pool *sibling = nullptr;

@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_STRINGBUFFER_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_STRINGBUFFER_H_
 
-#include <sprt/runtime/string.h>
+#include <sprt/runtime/stringview.h>
 
 namespace sprt {
 
@@ -51,7 +51,8 @@ struct StringBuffer {
 
 	~StringBuffer() {
 		if (_buffer) {
-			freeCharBuffer(_buffer);
+			delete[] _buffer;
+			_buffer = nullptr;
 		}
 	}
 
@@ -99,7 +100,7 @@ struct StringBuffer {
 
 	void clear() {
 		if (_buffer) {
-			freeCharBuffer(_buffer);
+			delete[] _buffer;
 			_buffer = nullptr;
 			_capacity = 0;
 			_length = 0;
@@ -109,7 +110,8 @@ struct StringBuffer {
 	CharType *prepare(size_t &size) {
 		if (_capacity < size) {
 			clear();
-			_buffer = newCharBuffer<CharType>(size + 1);
+			_buffer = new CharType[size + 1];
+			_buffer[0] = 0;
 			_capacity = size;
 			_length = 0;
 		}

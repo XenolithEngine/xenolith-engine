@@ -21,40 +21,48 @@
  **/
 
 #include <sprt/runtime/string.h>
-#include <sprt/runtime/new.h>
+#include <sprt/runtime/detail/new.h>
 #include "private/SPRTPrivate.h"
 
 #if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
-#include "core/SPRuntimePlatform-posix.cc"
+#include "SPRuntimePlatform-posix.cc"
 #endif
 
 #if SPRT_LINUX
-#include "core/SPRuntimePlatform-linux.cc"
+#include "SPRuntimePlatform-linux.cc"
 #endif
 
 #if SPRT_ANDROID
-#include "core/SPRuntimePlatform-android.cc"
-#include "core/SPRuntimeJni.cc"
+#include "SPRuntimePlatform-android.cc"
+#include "SPRuntimeJni.cc"
 #endif
+
+#include <locale.h>
 
 namespace sprt {
 
 const nothrow_t nothrow;
 
-bool initialize(int &resultCode) {
+bool initialize(AppConfig &&cfg, int &resultCode) {
 #if SPRT_WINDOWS
 	// force Windows to use UTF-8
-	::setlocale(LC_ALL, ".UTF8");
+	::setlocale(LC_ALL, "*.UTF8");
 #endif
-	if (platform::initialize(resultCode)) {
+
+	memory::pool::initialize();
+	if (platform::initialize(sprt::move(cfg), resultCode)) {
 		backtrace::initialize();
+		filesystem::initialize();
 		return true;
 	}
+	memory::pool::terminate();
 	return false;
 }
 
 void terminate() {
+	filesystem::terminate();
 	backtrace::terminate();
+	memory::pool::terminate();
 	platform::terminate();
 }
 

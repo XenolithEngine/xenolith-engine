@@ -21,6 +21,7 @@ THE SOFTWARE.
 **/
 
 #include <sprt/runtime/time.h>
+#include <sprt/runtime/platform.h>
 #include <sprt/c/__sprt_time.h>
 
 #include <math.h>
@@ -28,6 +29,22 @@ THE SOFTWARE.
 #include <time.h>
 
 namespace sprt::time {
+
+time_exp_t time_exp_t::get(bool localtime) {
+	time_exp_t ret;
+	auto clock = platform::clock(platform::ClockType::Realtime);
+	time_t time = clock / USEC_PER_SEC;
+	auto usec = clock % USEC_PER_SEC;
+
+	if (localtime) {
+		__sprt_localtime_r(&time, &ret);
+	} else {
+		__sprt_gmtime_r(&time, &ret);
+	}
+
+	ret.tm_usec = usec;
+	return ret;
+}
 
 time_exp_t::time_exp_t() {
 	tm_usec = 0;
@@ -43,36 +60,26 @@ time_exp_t::time_exp_t() {
 	tm_gmtoff = 0;
 }
 
-time_exp_t::time_exp_t(int64_t t, int32_t offset, bool use_localtime) {
-	struct __SPRT_TM_NAME tm;
+time_exp_t::time_exp_t(int64_t t, int32_t offset, bool use_localtime)
+: time_exp_t(t, use_localtime) {
+	tm_gmtoff = offset;
+	tm_gmt_type = (offset == 0) ? gmt_set : gmt_local;
+}
+
+time_exp_t::time_exp_t(int64_t t, int32_t offs) : time_exp_t(t, offs, false) { }
+
+time_exp_t::time_exp_t(int64_t t) : time_exp_t(t, false) { }
+
+time_exp_t::time_exp_t(int64_t t, bool use_localtime) {
 	__sprt_time_t tt = __sprt_time_t(t / int64_t(USEC_PER_SEC));
 	tm_usec = t % int64_t(USEC_PER_SEC);
 
 	if (use_localtime) {
-		__sprt_localtime_r(&tt, &tm);
-		tm_gmt_type = gmt_local;
+		__sprt_localtime_r(&tt, this);
 	} else {
-		__sprt_gmtime_r(&tt, &tm);
-		tm_gmt_type = gmt_set;
+		__sprt_gmtime_r(&tt, this);
 	}
-
-	tm_sec = tm.tm_sec;
-	tm_min = tm.tm_min;
-	tm_hour = tm.tm_hour;
-	tm_mday = tm.tm_mday;
-	tm_mon = tm.tm_mon;
-	tm_year = tm.tm_year;
-	tm_wday = tm.tm_wday;
-	tm_yday = tm.tm_yday;
-	tm_isdst = tm.tm_isdst;
-	tm_gmtoff = int32_t(tm.tm_gmtoff);
 }
-
-time_exp_t::time_exp_t(int64_t t, int32_t offs) : time_exp_t(t, offs, false) { tm_gmtoff = offs; }
-
-time_exp_t::time_exp_t(int64_t t) : time_exp_t(t, 0, false) { tm_gmtoff = 0; }
-
-time_exp_t::time_exp_t(int64_t t, bool use_localtime) : time_exp_t(t, 0, use_localtime) { }
 
 int64_t time_exp_t::geti() const {
 	auto year = tm_year;
@@ -124,41 +131,41 @@ static bool sp_date_checkmask(StringView data, StringView mask) {
 		case '*': return true;
 
 		case '@':
-			if (!isupper(d)) {
+			if (!chars::isupper(d)) {
 				return false;
 			}
 			break;
 		case '$':
-			if (!islower(d)) {
+			if (!chars::islower(d)) {
 				return false;
 			}
 			break;
 		case '#':
-			if (!isdigit(d)) {
+			if (!chars::isdigit(d)) {
 				return false;
 			}
 			break;
 		case '&':
-			if (!isxdigit(d)) {
+			if (!chars::isxdigit(d)) {
 				return false;
 			}
 			break;
 		case '~':
-			if ((d != ' ') && !isdigit(d)) {
+			if ((d != ' ') && !chars::isdigit(d)) {
 				return false;
 			}
 			break;
 		default:
-			if (mask.at(0) != d) {
+			if (*mask != d) {
 				return false;
 			}
 			break;
 		}
-		mask.offset(1);
-		data.offset(1);
+		++mask;
+		++data;
 	}
 
-	while (data.empty() && mask.is('*')) { mask.offset(1); }
+	while (data.empty() && mask.is('*')) { ++mask; }
 
 	return mask.empty() && data.empty();
 }
@@ -290,99 +297,47 @@ static inline bool sp_time_exp_read_mon(time_exp_t &ds, StringView monstr) {
 	return true;
 }
 
-static StringView readNumbers(StringView &str) {
-	auto ptr = str.data();
-	size_t len = 0;
-	while (isdigit(str.at(0))) {
-		str.offset(1);
-		++len;
-	}
-	return StringView(ptr, len);
-}
-
-static StringView readUntilNumbers(StringView &str) {
-	auto ptr = str.data();
-	size_t len = 0;
-	while (!str.empty() && !isdigit(str.at(0))) {
-		str.offset(1);
-		++len;
-	}
-	return StringView(ptr, len);
-}
-
-static StringView readSpace(StringView &str) {
-	auto ptr = str.data();
-	size_t len = 0;
-	while (isspace(str.at(0))) {
-		str.offset(1);
-		++len;
-	}
-	return StringView(ptr, len);
-}
-
-static long readNumber(StringView &str) {
-	auto ptr = new char[str.size() + 1];
-	::__sprt_memcpy(ptr, str.data(), str.size());
-	ptr[str.size()] = 0;
-
-	char *endptr = ptr;
-	auto ret = ::strtol(ptr, &endptr, 10);
-
-	str.offset(endptr - ptr);
-	return ret;
-}
-
-static double readDouble(StringView &str) {
-	auto ptr = new char[str.size() + 1];
-	::__sprt_memcpy(ptr, str.data(), str.size());
-	ptr[str.size()] = 0;
-
-	char *endptr = ptr;
-	auto d = ::strtod(ptr, &endptr);
-
-	str.offset(endptr - ptr);
-	return d;
-}
-
 static inline bool sp_time_exp_read_gmt(time_exp_t &ds, StringView gmtstr) {
 	ds.tm_gmtoff = 0;
+	ds.tm_gmt_type = time_exp_t::gmt_unset;
+
 	/* Do we have a timezone ? */
 	if (!gmtstr.empty()) {
-		if (::__sprt_strncmp(gmtstr.data(), "GMT", gmtstr.size()) == 0) {
+		if (gmtstr == "GMT") {
 			ds.tm_gmt_type = time_exp_t::gmt_set;
 			return true;
 		}
 		int sign = 0;
-		switch (gmtstr.at(0)) {
+		switch (*gmtstr) {
 		case '-': sign = -1; break;
 		case '+': sign = 1; break;
 		case 'Z': ds.tm_gmt_type = time_exp_t::gmt_set; break;
 		default: break;
 		}
 
-		gmtstr.offset(1);
 
-		auto off1 = readNumbers(gmtstr);
+		++gmtstr;
+		auto off1 = gmtstr.readChars<StringView::CharGroup<CharGroupId::Numbers>>();
 		if (off1.size() == 2 && gmtstr.is(':')) {
-			gmtstr.offset(1);
-			auto off2 = readNumbers(gmtstr);
+			++gmtstr;
+			auto off2 = gmtstr.readChars<StringView::CharGroup<CharGroupId::Numbers>>();
 			if (off2.size() == 2) {
-				ds.tm_gmtoff += sign * readNumber(off1) * 60 * 60;
-				ds.tm_gmtoff += sign * readNumber(off2) * 60;
-				ds.tm_gmt_type = time_exp_t::gmt_set;
+				ds.tm_gmtoff += sign * off1.readInteger(10).get() * 60 * 60;
+				ds.tm_gmtoff += sign * off2.readInteger(10).get() * 60;
+				ds.tm_gmt_type = (ds.tm_gmtoff != 0) ? time_exp_t::gmt_local : time_exp_t::gmt_set;
 			}
 		} else if (off1.size() == 4) {
-			auto offset = readNumber(off1);
+			auto offset = off1.readInteger().get();
 			ds.tm_gmtoff += sign * (offset / 100) * 60 * 60;
 			ds.tm_gmtoff += sign * (offset % 100) * 60;
-			ds.tm_gmt_type = time_exp_t::gmt_set;
+			ds.tm_gmt_type = (ds.tm_gmtoff != 0) ? time_exp_t::gmt_local : time_exp_t::gmt_set;
 		}
-	} else {
-		ds.tm_gmt_type = time_exp_t::gmt_local;
 	}
 	return true;
 }
 
+
+time_exp_t::time_exp_t(StringView str) { read(str); }
 /*
  * Parses an HTTP date in one of three standard forms:
  *
@@ -395,14 +350,14 @@ static inline bool sp_time_exp_read_gmt(time_exp_t &ds, StringView gmtstr) {
 bool time_exp_t::read(StringView r) {
 	StringView monstr, timstr, gmtstr;
 
-	readSpace(r);
+	r.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
 
 	if (r.empty()) {
 		return false;
 	}
 
 	auto tmp = r;
-	while (!tmp.empty() && !tmp.is(' ')) { tmp.offset(1); }
+	tmp.skipUntil<StringView::Chars<' '>>();
 
 	tm_gmt_type = gmt_unset;
 	if (!tmp.is(' ')) {
@@ -417,17 +372,17 @@ bool time_exp_t::read(StringView r) {
 			tm_mon = ((r[5] - '0') * 10) + (r[6] - '0') - 1;
 			tm_mday = ((r[8] - '0') * 10) + (r[9] - '0');
 
-			r.offset(11);
+			r += 11;
 			if (!sp_time_exp_read_time(*this, r.sub(0, 8))) {
 				return false;
 			}
 			if (!sp_time_exp_check_mon(*this)) {
 				return false;
 			}
-			r.offset(8);
+			r += 8;
 
 			if (r.is('.')) {
-				double v = readDouble(r);
+				double v = r.readDouble().get();
 				tm_usec = 1'000'000 * v;
 			}
 			return sp_time_exp_read_gmt(*this, r.empty() ? "Z" : r);
@@ -444,7 +399,7 @@ bool time_exp_t::read(StringView r) {
 			if (!sp_time_exp_check_mon(*this)) {
 				return false;
 			}
-			r.offset(10);
+			r += "####-##-##"_len;
 			return sp_time_exp_read_gmt(*this, r.empty() ? "Z" : r);
 		} else if (sp_date_checkmask(r, "##.##.####")) {
 			// 12.03.2010
@@ -467,7 +422,7 @@ bool time_exp_t::read(StringView r) {
 	if (sp_date_checkmask(r, "@$$ @$$ ~# ##:##:## *")) {
 		// Sun Nov  6 08:49:37 1994       ; ANSI C's asctime() format
 		auto ydate = r.sub(20); // StringView(r.data() + 20, r.size() - 20);
-		readUntilNumbers(ydate);
+		ydate.skipUntil<StringView::CharGroup<CharGroupId::Numbers>>();
 		if (ydate.size() < 4) {
 			return false;
 		}
@@ -491,11 +446,10 @@ bool time_exp_t::read(StringView r) {
 
 		tm_usec = 0;
 		tm_gmtoff = 0;
-		tm_gmt_type = gmt_local;
 		return true;
 	}
 
-	readUntilNumbers(r);
+	r.skipUntil<StringView::CharGroup<CharGroupId::Numbers>>();
 
 	if (sp_date_checkmask(r, "## @$$ #### ##:##:## *")) {
 		// Sun, 06 Nov 1994 08:49:37 GMT  ; RFC 822, updated by RFC 1123
@@ -563,52 +517,71 @@ static const char sp_month_snames[12][4] = {"Jan", "Feb", "Mar", "Apr", "May", "
 	"Sep", "Oct", "Nov", "Dec"};
 static const char sp_day_snames[7][4] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
-size_t time_exp_t::encodeRfc822(char *date_str) const {
+size_t time_exp_t::encodeRfc822(char *date_str, size_t bufSize) const {
 	auto start = date_str;
 	const char *s;
 	int real_year;
+
+	auto push = [&](char c) {
+		if (bufSize > 0) {
+			*date_str = c;
+			++date_str;
+			--bufSize;
+		}
+	};
 
 	/* example: "Sat, 08 Jan 2000 18:31:41 GMT" */
 	/*           12345678901234567890123456789  */
 
 	s = &sp_day_snames[tm_wday][0];
-	*date_str++ = *s++;
-	*date_str++ = *s++;
-	*date_str++ = *s++;
-	*date_str++ = ',';
-	*date_str++ = ' ';
-	*date_str++ = tm_mday / 10 + '0';
-	*date_str++ = tm_mday % 10 + '0';
-	*date_str++ = ' ';
+	push(*s++);
+	push(*s++);
+	push(*s++);
+	push(',');
+	push(' ');
+	push(tm_mday / 10 + '0');
+	push(tm_mday % 10 + '0');
+	push(' ');
 	s = &sp_month_snames[tm_mon][0];
-	*date_str++ = *s++;
-	*date_str++ = *s++;
-	*date_str++ = *s++;
-	*date_str++ = ' ';
+	push(*s++);
+	push(*s++);
+	push(*s++);
+	push(' ');
 	real_year = 1'900 + tm_year;
 	/* This routine isn't y10k ready. */
-	*date_str++ = real_year / 1'000 + '0';
-	*date_str++ = real_year % 1'000 / 100 + '0';
-	*date_str++ = real_year % 100 / 10 + '0';
-	*date_str++ = real_year % 10 + '0';
-	*date_str++ = ' ';
-	*date_str++ = tm_hour / 10 + '0';
-	*date_str++ = tm_hour % 10 + '0';
-	*date_str++ = ':';
-	*date_str++ = tm_min / 10 + '0';
-	*date_str++ = tm_min % 10 + '0';
-	*date_str++ = ':';
-	*date_str++ = tm_sec / 10 + '0';
-	*date_str++ = tm_sec % 10 + '0';
-	*date_str++ = ' ';
-	*date_str++ = 'G';
-	*date_str++ = 'M';
-	*date_str++ = 'T';
-	*date_str++ = 0;
+	push(real_year / 1'000 + '0');
+	push(real_year % 1'000 / 100 + '0');
+	push(real_year % 100 / 10 + '0');
+	push(real_year % 10 + '0');
+	push(' ');
+	push(tm_hour / 10 + '0');
+	push(tm_hour % 10 + '0');
+	push(':');
+	push(tm_min / 10 + '0');
+	push(tm_min % 10 + '0');
+	push(':');
+	push(tm_sec / 10 + '0');
+	push(tm_sec % 10 + '0');
+	push(' ');
+	if (tm_gmtoff == 0) {
+		push('G');
+		push('M');
+		push('T');
+	} else {
+		push((tm_gmtoff > 0) ? '+' : '-');
+		auto gmtHours = tm_gmtoff / (60 * 60);
+		auto gmtMins = (tm_gmtoff % (60 * 60)) / 60;
+
+		push(gmtHours / 10 + '0');
+		push(gmtHours % 10 + '0');
+		push(gmtMins / 10 + '0');
+		push(gmtMins % 10 + '0');
+	}
+	push(0);
 	return date_str - start - 1;
 }
 
-size_t time_exp_t::encodeCTime(char *date_str) const {
+size_t time_exp_t::encodeCTime(char *date_str, size_t bufSize) const {
 	auto start = date_str;
 	const char *s;
 	int real_year;
@@ -616,61 +589,77 @@ size_t time_exp_t::encodeCTime(char *date_str) const {
 	/* example: "Wed Jun 30 21:49:08 1993" */
 	/*           123456789012345678901234  */
 
+	auto push = [&](char c) {
+		if (bufSize > 0) {
+			*date_str = c;
+			++date_str;
+			--bufSize;
+		}
+	};
+
 	s = &sp_day_snames[tm_wday][0];
-	*date_str++ = *s++;
-	*date_str++ = *s++;
-	*date_str++ = *s++;
-	*date_str++ = ' ';
+	push(*s++);
+	push(*s++);
+	push(*s++);
+	push(' ');
 	s = &sp_month_snames[tm_mon][0];
-	*date_str++ = *s++;
-	*date_str++ = *s++;
-	*date_str++ = *s++;
-	*date_str++ = ' ';
-	*date_str++ = tm_mday / 10 + '0';
-	*date_str++ = tm_mday % 10 + '0';
-	*date_str++ = ' ';
-	*date_str++ = tm_hour / 10 + '0';
-	*date_str++ = tm_hour % 10 + '0';
-	*date_str++ = ':';
-	*date_str++ = tm_min / 10 + '0';
-	*date_str++ = tm_min % 10 + '0';
-	*date_str++ = ':';
-	*date_str++ = tm_sec / 10 + '0';
-	*date_str++ = tm_sec % 10 + '0';
-	*date_str++ = ' ';
+	push(*s++);
+	push(*s++);
+	push(*s++);
+	push(' ');
+	push(tm_mday / 10 + '0');
+	push(tm_mday % 10 + '0');
+	push(' ');
+	push(tm_hour / 10 + '0');
+	push(tm_hour % 10 + '0');
+	push(':');
+	push(tm_min / 10 + '0');
+	push(tm_min % 10 + '0');
+	push(':');
+	push(tm_sec / 10 + '0');
+	push(tm_sec % 10 + '0');
+	push(' ');
 	real_year = 1'900 + tm_year;
-	*date_str++ = real_year / 1'000 + '0';
-	*date_str++ = real_year % 1'000 / 100 + '0';
-	*date_str++ = real_year % 100 / 10 + '0';
-	*date_str++ = real_year % 10 + '0';
-	*date_str++ = 0;
+	push(real_year / 1'000 + '0');
+	push(real_year % 1'000 / 100 + '0');
+	push(real_year % 100 / 10 + '0');
+	push(real_year % 10 + '0');
+	push(0);
 	return date_str - start - 1;
 }
 
-size_t time_exp_t::encodeIso8601(char *date_str, size_t precision) const {
+size_t time_exp_t::encodeIso8601(char *date_str, size_t bufSize, size_t precision) const {
 	auto start = date_str;
 	int real_year;
 
+	auto push = [&](char c) {
+		if (bufSize > 0) {
+			*date_str = c;
+			++date_str;
+			--bufSize;
+		}
+	};
+
 	real_year = 1'900 + tm_year;
-	*date_str++ = real_year / 1'000 + '0'; // 1
-	*date_str++ = real_year % 1'000 / 100 + '0'; // 2
-	*date_str++ = real_year % 100 / 10 + '0'; // 3
-	*date_str++ = real_year % 10 + '0'; // 4
-	*date_str++ = '-'; // 5
-	*date_str++ = (tm_mon + 1) / 10 + '0'; // 6
-	*date_str++ = (tm_mon + 1) % 10 + '0'; // 7
-	*date_str++ = '-'; // 8
-	*date_str++ = tm_mday / 10 + '0'; // 9
-	*date_str++ = tm_mday % 10 + '0'; // 10
-	*date_str++ = 'T'; // 11
-	*date_str++ = tm_hour / 10 + '0'; // 12
-	*date_str++ = tm_hour % 10 + '0'; // 13
-	*date_str++ = ':'; // 14
-	*date_str++ = tm_min / 10 + '0'; // 15
-	*date_str++ = tm_min % 10 + '0'; // 16
-	*date_str++ = ':'; // 17
-	*date_str++ = tm_sec / 10 + '0'; // 18
-	*date_str++ = tm_sec % 10 + '0'; // 19
+	push(real_year / 1'000 + '0'); // 1
+	push(real_year % 1'000 / 100 + '0'); // 2
+	push(real_year % 100 / 10 + '0'); // 3
+	push(real_year % 10 + '0'); // 4
+	push('-'); // 5
+	push((tm_mon + 1) / 10 + '0'); // 6
+	push((tm_mon + 1) % 10 + '0'); // 7
+	push('-'); // 8
+	push(tm_mday / 10 + '0'); // 9
+	push(tm_mday % 10 + '0'); // 10
+	push('T'); // 11
+	push(tm_hour / 10 + '0'); // 12
+	push(tm_hour % 10 + '0'); // 13
+	push(':'); // 14
+	push(tm_min / 10 + '0'); // 15
+	push(tm_min % 10 + '0'); // 16
+	push(':'); // 17
+	push(tm_sec / 10 + '0'); // 18
+	push(tm_sec % 10 + '0'); // 19
 
 	if (precision > 0 && precision <= 6) {
 		auto intpow = [](int val, int p) {
@@ -682,19 +671,31 @@ size_t time_exp_t::encodeIso8601(char *date_str, size_t precision) const {
 			return ret;
 		};
 
-		*date_str++ = '.';
+		push('.');
 		const int desc = USEC_PER_SEC / intpow(10, int(precision));
 		auto val = int32_t(::round(tm_usec / double(desc)));
 		while (precision > 0) {
 			auto d = val / intpow(10, int(precision - 1));
-			*date_str++ = '0' + d;
+			push('0' + d);
 			val = val % intpow(10, int(precision - 1));
 			--precision;
 		}
 	}
 
-	*date_str++ = 'Z'; // 20
-	*date_str++ = 0;
+	if (tm_gmtoff != 0) {
+		push((tm_gmtoff > 0) ? '+' : '-');
+		auto gmtHours = tm_gmtoff / (60 * 60);
+		auto gmtMins = (tm_gmtoff % (60 * 60)) / 60;
+
+		push(gmtHours / 10 + '0');
+		push(gmtHours % 10 + '0');
+		push(':');
+		push(gmtMins / 10 + '0');
+		push(gmtMins % 10 + '0');
+	} else {
+		push('Z'); // 20
+	}
+	push(0);
 	return date_str - start - 1;
 }
 

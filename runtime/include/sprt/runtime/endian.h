@@ -61,6 +61,11 @@ namespace sprt {
 	endian
 */
 
+
+#ifndef __BYTE_ORDER__
+#error "__BYTE_ORDER__ is not defined"
+#endif
+
 enum class endian {
 	little = 0xDEAD,
 	big = 0xFACE,

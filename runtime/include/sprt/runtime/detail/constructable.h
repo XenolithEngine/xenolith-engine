@@ -20,8 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_CONSTRUCTABLE_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_CONSTRUCTABLE_H_
+#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_CONSTRUCTABLE_H_
+#define RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_CONSTRUCTABLE_H_
 
 #include <sprt/runtime/init.h>
 
@@ -84,6 +84,36 @@ struct is_move_constructible
 template <typename Type>
 inline constexpr bool is_move_constructible_v = is_move_constructible<Type>::value;
 
+
+template < class _Tp, class... _Args>
+struct is_nothrow_constructible
+: integral_constant<bool, __is_nothrow_constructible(_Tp, _Args...)> { };
+
+template <class _Tp, class... _Args>
+inline constexpr bool is_nothrow_constructible_v = is_nothrow_constructible<_Tp, _Args...>::value;
+
+template <class _Tp>
+struct is_nothrow_copy_constructible
+: integral_constant<bool, __is_nothrow_constructible(_Tp, add_lvalue_reference_t<const _Tp>)> { };
+
+template <class _Tp>
+inline constexpr bool is_nothrow_copy_constructible_v = is_nothrow_copy_constructible<_Tp>::value;
+
+template <class _Tp>
+struct is_nothrow_move_constructible
+: integral_constant<bool, __is_nothrow_constructible(_Tp, add_rvalue_reference_t<_Tp>)> { };
+
+template <class _Tp>
+inline constexpr bool is_nothrow_move_constructible_v = is_nothrow_move_constructible<_Tp>::value;
+
+template <class _Tp>
+struct is_nothrow_default_constructible : integral_constant<bool, __is_nothrow_constructible(_Tp)> {
+};
+
+template <class _Tp>
+inline constexpr bool is_nothrow_default_constructible_v = __is_nothrow_constructible(_Tp);
+
+
 template <typename Type>
 struct is_default_constructible : integral_constant<bool, __is_constructible(Type)> { };
 
@@ -119,6 +149,69 @@ struct is_move_assignable
 template <class _Tp>
 inline constexpr bool is_move_assignable_v = is_move_assignable<_Tp>::value;
 
+
+template <class _Tp, class _Arg>
+struct is_nothrow_assignable : integral_constant<bool, __is_nothrow_assignable(_Tp, _Arg)> { };
+
+template <class _Tp, class _Arg>
+inline constexpr bool is_nothrow_assignable_v = __is_nothrow_assignable(_Tp, _Arg);
+
+template <class _Tp>
+struct is_nothrow_copy_assignable
+: integral_constant<bool,
+		  __is_nothrow_assignable(add_lvalue_reference_t<_Tp>, add_lvalue_reference_t<const _Tp>)> {
+};
+
+template <class _Tp>
+inline constexpr bool is_nothrow_copy_assignable_v = is_nothrow_copy_assignable<_Tp>::value;
+
+template <class _Tp>
+struct is_nothrow_move_assignable
+: integral_constant<bool,
+		  __is_nothrow_assignable(add_lvalue_reference_t<_Tp>, add_rvalue_reference_t<_Tp>)> { };
+
+template <class _Tp>
+inline constexpr bool is_nothrow_move_assignable_v = is_nothrow_move_assignable<_Tp>::value;
+
+
+template <class _Tp>
+void __test_implicit_default_constructible(_Tp);
+
+template <class _Tp, class = void, class = typename is_default_constructible<_Tp>::type>
+struct __is_implicitly_default_constructible : false_type { };
+
+template <class _Tp>
+struct __is_implicitly_default_constructible<_Tp,
+		decltype(sprt::__test_implicit_default_constructible<_Tp const &>({})), true_type>
+: true_type { };
+
+template <class _Tp>
+struct __is_implicitly_default_constructible<_Tp,
+		decltype(sprt::__test_implicit_default_constructible<_Tp const &>({})), false_type>
+: false_type { };
+
+// A type is replaceable if, with `x` and `y` being different objects, `x = std::move(y)` is equivalent to:
+//
+//  std::destroy_at(&x)
+//  std::construct_at(&x, std::move(y))
+//
+// This allows turning a move-assignment into a sequence of destroy + move-construct, which
+// is often more efficient. This is especially relevant when the move-construct is in fact
+// part of a trivial relocation from somewhere else, in which case there is a huge win.
+//
+// Note that this requires language support in order to be really effective, but we
+// currently emulate the base template with something very conservative.
+template <class _Tp, class = void>
+struct __is_replaceable : is_trivially_copyable<_Tp> { };
+
+template <class _Tp>
+struct __is_replaceable<_Tp, enable_if_t<is_same<_Tp, typename _Tp::__replaceable>::value> >
+: true_type { };
+
+template <class _Tp>
+inline const bool __is_replaceable_v = __is_replaceable<_Tp>::value;
+
+
 } // namespace sprt
 
-#endif
+#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_CONSTRUCTABLE_H_
