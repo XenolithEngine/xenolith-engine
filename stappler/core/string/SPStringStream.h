@@ -122,7 +122,7 @@ inline size_t toStringValue(char *target, const std::string &val) {
 	return val.size();
 }
 
-inline size_t toStringValue(char *target, const memory::string &val) {
+inline size_t toStringValue(char *target, const sprt::memory::string &val) {
 	memcpy(target, val.data(), val.size());
 	return val.size();
 }
@@ -148,7 +148,7 @@ static auto toStringType(const std::u16string &val) -> typename Interface::Strin
 }
 
 template <typename Interface>
-static auto toStringType(const memory::u16string &val) -> typename Interface::StringType {
+static auto toStringType(const sprt::memory::u16string &val) -> typename Interface::StringType {
 	return string::toUtf8<Interface>(val);
 }
 
@@ -171,7 +171,7 @@ template <size_t N> struct IsFastToStringAvailableValue<char[N]> { static conste
 template <> struct IsFastToStringAvailableValue<char *> { static constexpr bool value = true; };
 template <> struct IsFastToStringAvailableValue<StringView> { static constexpr bool value = true; };
 template <> struct IsFastToStringAvailableValue<std::string> { static constexpr bool value = true; };
-template <> struct IsFastToStringAvailableValue<memory::string> { static constexpr bool value = true; };
+template <> struct IsFastToStringAvailableValue<sprt::memory::string> { static constexpr bool value = true; };
 template <> struct IsFastToStringAvailableValue<char> { static constexpr bool value = true; };
 template <> struct IsFastToStringAvailableValue<char16_t> { static constexpr bool value = true; };
 template <> struct IsFastToStringAvailableValue<char32_t> { static constexpr bool value = true; };

@@ -25,8 +25,9 @@
 #ifndef STAPPLER_CORE_STRING_SPUNICODE_H_
 #define STAPPLER_CORE_STRING_SPUNICODE_H_
 
+#include "SPCore.h"
 #include <sprt/runtime/unicode.h>
-#include "SPMemString.h"
+#include <sprt/runtime/mem/string.h>
 
 namespace STAPPLER_VERSIONIZED stappler::unicode {
 
@@ -50,11 +51,11 @@ inline uint8_t utf8Encode(std::string &str, char32_t ch) {
 	return utf8EncodeCb([&](char c) SPINLINE { str.push_back(c); }, ch);
 }
 
-inline uint8_t utf8Encode(memory::string &str, char16_t ch) {
+inline uint8_t utf8Encode(sprt::memory::string &str, char16_t ch) {
 	return utf8EncodeCb([&](char c) SPINLINE { str.push_back(c); }, ch);
 }
 
-inline uint8_t utf8Encode(memory::string &str, char32_t ch) {
+inline uint8_t utf8Encode(sprt::memory::string &str, char32_t ch) {
 	return utf8EncodeCb([&](char c) SPINLINE { str.push_back(c); }, ch);
 }
 
@@ -77,7 +78,7 @@ inline uint8_t utf16Encode(std::u16string &str, char32_t ch) {
 	return utf16EncodeCb([&](char16_t c) SPINLINE { str.push_back(c); }, ch);
 }
 
-inline uint8_t utf16Encode(memory::u16string &str, char32_t ch) {
+inline uint8_t utf16Encode(sprt::memory::u16string &str, char32_t ch) {
 	return utf16EncodeCb([&](char16_t c) SPINLINE { str.push_back(c); }, ch);
 }
 

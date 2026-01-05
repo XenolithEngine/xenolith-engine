@@ -1,6 +1,7 @@
 /**
-Copyright (c) 2019-2022 Roman Katuntsev <sbkarr@stappler.org>
+Copyright (c) 2017-2022 Roman Katuntsev <sbkarr@stappler.org>
 Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
+Copyright (c) 2025 Stappler Team <admin@stappler.org>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,12 +22,36 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+#include "SPMemPriorityQueue.h"
 #include "SPMemUuid.h"
 #include "SPString.h"
-#include "SPTime.h"
 #include <sprt/runtime/uuid.h>
 
 namespace STAPPLER_VERSIONIZED stappler::memory {
+
+SP_PUBLIC void PriorityQueue_lock_noOp(void *) {
+	// no-op, really!
+}
+
+SP_PUBLIC void PriorityQueue_lock_std_mutex(void *ptr) {
+	std::mutex *mutex = (std::mutex *)ptr;
+	mutex->lock();
+}
+
+SP_PUBLIC void PriorityQueue_unlock_std_mutex(void *ptr) {
+	std::mutex *mutex = (std::mutex *)ptr;
+	mutex->unlock();
+}
+
+SP_PUBLIC void PriorityQueue_lock_qmutex(void *ptr) {
+	sprt::qmutex *mutex = (sprt::qmutex *)ptr;
+	mutex->lock();
+}
+
+SP_PUBLIC void PriorityQueue_unlock_qmutex(void *ptr) {
+	sprt::qmutex *mutex = (sprt::qmutex *)ptr;
+	mutex->unlock();
+}
 
 uuid uuid::generate() {
 	uuid_t d;

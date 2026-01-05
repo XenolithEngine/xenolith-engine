@@ -25,8 +25,9 @@ THE SOFTWARE.
 #ifndef STAPPLER_CORE_MEMORY_SPMEMUUID_H_
 #define STAPPLER_CORE_MEMORY_SPMEMUUID_H_
 
-#include "SPMemString.h"
-#include "SPMemVector.h"
+#include "SPCore.h"
+#include <sprt/runtime/mem/string.h>
+#include <sprt/runtime/mem/vector.h>
 #include "SPStringView.h" // IWYU pragma: keep
 
 namespace STAPPLER_VERSIONIZED stappler::memory {
@@ -58,7 +59,7 @@ struct SP_PUBLIC uuid : AllocPool {
 		return *this;
 	}
 
-	uuid &operator=(const memory::string &str) noexcept {
+	uuid &operator=(const sprt::memory::string &str) noexcept {
 		parse(_uuid, str.data());
 		return *this;
 	}
@@ -68,7 +69,7 @@ struct SP_PUBLIC uuid : AllocPool {
 		return *this;
 	}
 
-	uuid &operator=(const memory::vector<uint8_t> &b) noexcept {
+	uuid &operator=(const sprt::memory::vector<uint8_t> &b) noexcept {
 		if (b.size() == 16) {
 			memcpy(_uuid.data(), b.data(), 16);
 		}
@@ -82,14 +83,14 @@ struct SP_PUBLIC uuid : AllocPool {
 		return *this;
 	}
 
-	template <typename Str = string>
+	template <typename Str = sprt::memory::string>
 	auto str() const -> Str {
 		char buf[FormattedLength] = {0};
 		format(buf, _uuid);
 		return Str(buf, FormattedLength);
 	}
 
-	template <typename B = memory::vector<uint8_t>>
+	template <typename B = sprt::memory::vector<uint8_t>>
 	auto bytes() const -> B {
 		return B(_uuid.data(), _uuid.data() + 16);
 	}

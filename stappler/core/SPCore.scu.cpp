@@ -24,9 +24,7 @@ THE SOFTWARE.
 #include "SPCommon.h" // IWYU pragma: keep
 
 #include "SPIO.cc"
-#include "detail/SPMemAlloc.cc"
-#include "detail/SPMemRbtree.cc"
-#include "SPMemUuid.cc"
+#include "SPMem.cc"
 #include "SPBase64.cc"
 #include "SPSha2.cc"
 #include "SPGost3411-2012.cc"
@@ -34,7 +32,6 @@ THE SOFTWARE.
 #include "SPUnicode.cc"
 #include "SPHtmlParser.cc"
 #include "SPLog.cc"
-#include "SPRef.cc"
 #include "SPTime.cc"
 #include "SPDso.cc"
 #include "SPSharedModule.cc"
@@ -55,12 +52,6 @@ THE SOFTWARE.
 
 #include "SPMetastring.h"
 #include <sprt/runtime/platform.h>
-
-#if LINUX
-#ifdef MODULE_STAPPLER_ABI
-#include "linux/SPAbiLinuxElf.h"
-#endif
-#endif
 
 #include <list>
 
@@ -92,7 +83,19 @@ InitializerManager &InitializerManager::get() {
 
 bool initialize(int argc, const char *argv[], int &resultCode) {
 	// runtime will initialize memory pool subsystems
-	if (!sprt::initialize(resultCode)) {
+
+	auto scheme = SharedModule::acquireTypedSymbol<int *>(buildconfig::MODULE_APPCONFIG_NAME,
+			"APPCONFIG_APP_PATH_COMMON");
+
+	if (!sprt::initialize(
+				sprt::AppConfig{
+					SharedModule::acquireTypedSymbol<const char *>(
+							buildconfig::MODULE_APPCONFIG_NAME, "APPCONFIG_BUNDLE_NAME"),
+					SharedModule::acquireTypedSymbol<const char *>(
+							buildconfig::MODULE_APPCONFIG_NAME, "APPCONFIG_BUNDLE_PATH"),
+					sprt::AppLocationScheme(scheme ? *scheme : 0),
+				},
+				resultCode)) {
 		return false;
 	}
 
@@ -118,7 +121,6 @@ void terminate() {
 	m.list.clear();
 
 	sprt::memory::pool::pop(m.pool, nullptr);
-	sprt::memory::pool::terminate();
 
 	// runtime will terminate memory pool subsystems
 	sprt::terminate();

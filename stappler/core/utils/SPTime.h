@@ -160,15 +160,17 @@ public:
 	template <typename Interface>
 	auto toRfc822() const -> typename Interface::StringType {
 		sprt::time::time_exp_t xt(this->toMicroseconds());
-		char buf[30] = {0};
-		return typename Interface::StringType(buf, xt.encodeRfc822(buf));
+		char buf[sprt::time::time_exp_t::Rfc822BufferSize] = {0};
+		return typename Interface::StringType(buf,
+				xt.encodeRfc822(buf, sprt::time::time_exp_t::Rfc822BufferSize));
 	}
 
 	template <typename Interface>
 	auto toCTime() const -> typename Interface::StringType {
 		sprt::time::time_exp_t xt(this->toMicroseconds(), true);
-		char buf[25] = {0};
-		return typename Interface::StringType(buf, xt.encodeCTime(buf));
+		char buf[sprt::time::time_exp_t::CTimeBufferSize] = {0};
+		return typename Interface::StringType(buf,
+				xt.encodeCTime(buf, sprt::time::time_exp_t::CTimeBufferSize));
 	}
 
 	// ISO 8601 dateTime format, used by XML/Atom
@@ -180,8 +182,9 @@ public:
 	template <typename Interface>
 	auto toIso8601(size_t precision = 0) const -> typename Interface::StringType {
 		sprt::time::time_exp_t xt(this->toMicroseconds(), false);
-		char buf[30] = {0};
-		return typename Interface::StringType(buf, xt.encodeIso8601(buf, precision));
+		char buf[sprt::time::time_exp_t::Iso8601BufferSize] = {0};
+		return typename Interface::StringType(buf,
+				xt.encodeIso8601(buf, sprt::time::time_exp_t::Iso8601BufferSize, precision));
 	}
 
 	template <typename Interface>

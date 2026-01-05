@@ -25,8 +25,8 @@ THE SOFTWARE.
 #ifndef STAPPLER_COMMON_MEMORY_SPMEMDICT_H_
 #define STAPPLER_COMMON_MEMORY_SPMEMDICT_H_
 
-#include "SPMemString.h" // IWYU pragma: keep
-#include "SPMemVector.h" // IWYU pragma: keep
+#include "SPCore.h" // IWYU pragma: keep
+#include <sprt/runtime/mem/vector.h> // IWYU pragma: keep
 
 namespace STAPPLER_VERSIONIZED stappler::memory {
 
@@ -45,7 +45,7 @@ public:
 	using reference = value_type &;
 	using const_reference = const value_type &;
 
-	using vector_type = detail::storage_mem<value_type>;
+	using vector_type = sprt::memory::detail::storage_mem<value_type>;
 
 	using iterator = typename vector_type::iterator;
 	using const_iterator = typename vector_type::const_iterator;

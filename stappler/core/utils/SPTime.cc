@@ -24,8 +24,6 @@ THE SOFTWARE.
 #include "SPTime.h"
 #include "SPPlatform.h"
 
-inline time_t _time() { return time(NULL); }
-
 namespace STAPPLER_VERSIONIZED stappler {
 
 using sp_time_t = uint32_t;

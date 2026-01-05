@@ -25,12 +25,10 @@ THE SOFTWARE.
 #ifndef STAPPLER_CORE_SPMEMORY_H_
 #define STAPPLER_CORE_SPMEMORY_H_
 
-#include "SPMemFunction.h"
 #include "SPMemInterface.h"
 #include "SPString.h" // IWYU pragma: keep
 #include "SPStringView.h"
 #include "SPTime.h"
-#include "SPRef.h"
 
 #ifdef MODULE_STAPPLER_DATA
 #include "SPData.h" // IWYU pragma: keep

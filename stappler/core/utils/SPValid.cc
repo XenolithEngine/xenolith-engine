@@ -24,6 +24,8 @@ THE SOFTWARE.
 #include "SPValid.h"
 #include "SPUrl.h"
 #include "SPIdn.h"
+#include "SPString.h"
+#include <sprt/runtime/platform.h>
 
 namespace STAPPLER_VERSIONIZED stappler::platform {
 
@@ -33,7 +35,9 @@ size_t makeRandomBytes(uint8_t *buf, size_t count);
 
 namespace STAPPLER_VERSIONIZED stappler::valid {
 
-inline auto Config_getInternalPasswordKey() { return "Serenity Password Salt"_weak; }
+namespace chars = sprt::chars;
+
+inline auto Config_getInternalPasswordKey() { return StringView("Serenity Password Salt"); }
 
 /** Identifier starts with [a-zA-Z_] and can contain [a-zA-Z0-9_\-.@] */
 bool validateIdentifier(StringView str) {

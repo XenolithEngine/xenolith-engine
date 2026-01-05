@@ -30,50 +30,8 @@
 namespace STAPPLER_VERSIONIZED stappler {
 
 using sprt::Status;
-
-// Type, that use negative Status values on failure, or positive int values on success
-template <typename T = int32_t>
-struct StatusValue {
-	static_assert(sizeof(T) == sizeof(Status) && (std::is_integral_v<T> or std::is_enum_v<T>));
-
-	static T max() {
-		return T(std::min(uint32_t(maxOf<T>()), uint32_t(maxOf<std::underlying_type_t<Status>>())));
-	}
-
-	union {
-		Status status = Status::Ok;
-		T value;
-	};
-
-	StatusValue(Status s) : status(s) { }
-	StatusValue(const T &v) : value(v) {
-		sprt_passert(value >= 0
-						&& uint32_t(value) <= uint32_t(maxOf<std::underlying_type_t<Status>>()),
-				"Value should be in positive range of int32_t");
-	}
-
-	Status getStatus() const {
-		if (toInt(status) <= 0) {
-			return status;
-		} else {
-			return Status::Ok;
-		}
-	}
-
-	T getValue() const {
-		if (toInt(status) <= 0) {
-			return T(0);
-		} else {
-			return value;
-		}
-	}
-
-	operator Status() const { return getStatus(); }
-
-	operator T() const { return getValue(); }
-
-	explicit operator bool() const { return toInt(status) >= 0; }
-};
+using sprt::Result;
+using sprt::StatusValue;
 
 SP_PUBLIC std::ostream &operator<<(std::ostream &, Status);
 

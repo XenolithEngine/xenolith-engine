@@ -24,7 +24,7 @@ THE SOFTWARE.
 #ifndef STAPPLER_CORE_UTILS_SPREFCONTAINER_H_
 #define STAPPLER_CORE_UTILS_SPREFCONTAINER_H_
 
-#include "SPRef.h"
+#include "SPMemInterface.h"
 
 namespace STAPPLER_VERSIONIZED stappler {
 

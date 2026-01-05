@@ -500,7 +500,7 @@ static StringView getWindowStyleFlagName(DWORD value) {
 	return StringView();
 }
 
-SP_UNUSED static String getWindowStyleName(DWORD value) {
+SPUNUSED static String getWindowStyleName(DWORD value) {
 	StringStream out;
 	for (auto v : flags(value)) { out << " " << getWindowStyleFlagName(v); }
 	return out.str();
@@ -535,7 +535,7 @@ static StringView getWindowExStyleFlagName(DWORD value) {
 	return StringView();
 }
 
-SP_UNUSED static String getWindowExStyleName(DWORD value) {
+SPUNUSED static String getWindowExStyleName(DWORD value) {
 	StringStream out;
 	for (auto v : flags(value)) { out << " " << getWindowExStyleFlagName(v); }
 	return out.str();
@@ -1014,7 +1014,7 @@ LRESULT WindowsWindow::handleHitTest(WPARAM wParam, LPARAM lParam) {
 	return res;
 }
 
-SP_UNUSED static StringView getCommandName(WPARAM cmd) {
+SPUNUSED static StringView getCommandName(WPARAM cmd) {
 	switch (cmd) {
 	case SC_CLOSE: return StringView("SC_CLOSE"); break;
 	case SC_CONTEXTHELP: return StringView("SC_CONTEXTHELP"); break;

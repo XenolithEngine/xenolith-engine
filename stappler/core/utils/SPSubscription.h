@@ -23,36 +23,47 @@ THE SOFTWARE.
 #ifndef STAPPLER_CORE_UTILS_SPSUBSCRIPTION_H_
 #define STAPPLER_CORE_UTILS_SPSUBSCRIPTION_H_
 
-#include "SPRef.h"
+#include "SPMemInterface.h"
 
 namespace STAPPLER_VERSIONIZED stappler {
 
 using SubscriptionId = ValueWrapper<uint64_t, class SubscriptionIdClassFlag>;
 
-struct SP_PUBLIC SubscriptionFlags : public ValueWrapper<uint64_t, class SubscriptionFlagsClassFlag> {
+struct SP_PUBLIC SubscriptionFlags
+: public ValueWrapper<uint64_t, class SubscriptionFlagsClassFlag> {
 	using Super = ValueWrapper<uint64_t, class SubscriptionFlagsClassFlag>;
 
 	inline constexpr explicit SubscriptionFlags(const Type &val) : Super(val) { }
 	inline constexpr explicit SubscriptionFlags(Type &&val) : Super(sp::move(val)) { }
 
 	inline constexpr SubscriptionFlags(const SubscriptionFlags &other) { value = other.value; }
-	inline constexpr SubscriptionFlags &operator=(const SubscriptionFlags &other) { value = other.value; return *this; }
+	inline constexpr SubscriptionFlags &operator=(const SubscriptionFlags &other) {
+		value = other.value;
+		return *this;
+	}
 	inline constexpr SubscriptionFlags(SubscriptionFlags &&other) { value = sp::move(other.value); }
-	inline constexpr SubscriptionFlags &operator=(SubscriptionFlags &&other) { value = sp::move(other.value); return *this; }
+	inline constexpr SubscriptionFlags &operator=(SubscriptionFlags &&other) {
+		value = sp::move(other.value);
+		return *this;
+	}
 
 	inline constexpr SubscriptionFlags(const Super &other) { value = other.value; }
-	inline constexpr SubscriptionFlags &operator=(const Super &other) { value = other.value; return *this; }
+	inline constexpr SubscriptionFlags &operator=(const Super &other) {
+		value = other.value;
+		return *this;
+	}
 	inline constexpr SubscriptionFlags(Super &&other) { value = sp::move(other.value); }
-	inline constexpr SubscriptionFlags &operator=(Super &&other) { value = sp::move(other.value); return *this; }
+	inline constexpr SubscriptionFlags &operator=(Super &&other) {
+		value = sp::move(other.value);
+		return *this;
+	}
 
 	template <typename T>
 	inline constexpr bool hasFlag(T f) const {
 		return (toInt(f) & value) != 0;
 	}
 
-	inline constexpr bool initial() const {
-		return (value & 1) != 0;
-	}
+	inline constexpr bool initial() const { return (value & 1) != 0; }
 };
 
 /* Subscription is a refcounted class, that allow
@@ -76,19 +87,22 @@ public:
 	// initial flags value, every new subscriber receive this on first call of 'check'
 	static constexpr Flags Initial = Flags(1);
 
-	virtual ~SubscriptionTemplate() {
-		setForwardedSubscription(nullptr);
-	}
+	virtual ~SubscriptionTemplate() { setForwardedSubscription(nullptr); }
 
 	// safe way to get Flag with specific bit set, prevents UB
 	template <class T>
-	static Flags _Flag(T idx) { return ((uint8_t)idx == 0 || (uint8_t)idx > (sizeof(Flags) * 8))?Flags(0):Flags(1 << (uint8_t)idx); }
+	static Flags _Flag(T idx) {
+		return ((uint8_t)idx == 0 || (uint8_t)idx > (sizeof(Flags) * 8)) ? Flags(0)
+																		 : Flags(1 << (uint8_t)idx);
+	}
 
 	inline static Flags Flag() { return Flags(0); }
 
 	// Variadic way to get specific bits set via multiple arguments of different integral types
 	template <class T, class... Args>
-	static Flags Flag(T val, Args&&... args) { return _Flag(val) | Flag(args...); }
+	static Flags Flag(T val, Args &&...args) {
+		return _Flag(val) | Flag(args...);
+	}
 
 	// Set subscription dirty flags
 	void setDirty(Flags flags = Initial, bool forwardedOnly = false);
@@ -130,17 +144,17 @@ public:
 	~Binding();
 
 	Binding(const Binding<T> &);
-	Binding &operator= (const Binding<T> &);
+	Binding &operator=(const Binding<T> &);
 
 	Binding(Binding<T> &&);
-	Binding &operator= (Binding<T> &&);
+	Binding &operator=(Binding<T> &&);
 
-	inline operator T * () { return get(); }
-	inline operator T * () const { return get(); }
-	inline explicit operator bool () const { return _subscription; }
+	inline operator T *() { return get(); }
+	inline operator T *() const { return get(); }
+	inline explicit operator bool() const { return _subscription; }
 
-	inline T * operator->() { return get(); }
-	inline const T * operator->() const { return get(); }
+	inline T *operator->() { return get(); }
+	inline const T *operator->() const { return get(); }
 
 	Flags check();
 
@@ -165,9 +179,7 @@ void SubscriptionTemplate<Interface>::setDirty(Flags flags, bool forwardedOnly) 
 			}
 		}
 	} else {
-		for (auto &it : _flags) {
-			it.second |= flags;
-		}
+		for (auto &it : _flags) { it.second |= flags; }
 	}
 }
 
@@ -233,9 +245,7 @@ template <typename Interface>
 void SubscriptionTemplate<Interface>::setForwardedSubscription(SubscriptionTemplate *sub) {
 	if (_forwardedFlags) {
 		// erase forwarded items from sub
-		for (auto &it : _flags) {
-			_forwardedFlags->erase(it.first);
-		}
+		for (auto &it : _flags) { _forwardedFlags->erase(it.first); }
 	}
 	_forwardedFlags = nullptr;
 	_forwarded = sub;
@@ -263,14 +273,15 @@ Binding<T>::~Binding() {
 }
 
 template <class T>
-Binding<T>::Binding(const Binding<T> &other) : _id(T::getNextId()), _subscription(other._subscription) {
+Binding<T>::Binding(const Binding<T> &other)
+: _id(T::getNextId()), _subscription(other._subscription) {
 	if (_subscription) {
 		_subscription->subscribe(_id);
 	}
 }
 
 template <class T>
-Binding<T>& Binding<T>::operator= (const Binding<T> &other) {
+Binding<T> &Binding<T>::operator=(const Binding<T> &other) {
 	if (_subscription) {
 		_subscription->unsubscribe(_id);
 	}
@@ -288,7 +299,7 @@ Binding<T>::Binding(Binding &&other) {
 }
 
 template <class T>
-Binding<T> &Binding<T>::operator= (Binding<T> &&other) {
+Binding<T> &Binding<T>::operator=(Binding<T> &&other) {
 	if (_subscription) {
 		_subscription->unsubscribe(_id);
 	}
@@ -321,7 +332,7 @@ T *Binding<T>::get() const {
 	return _subscription ? _subscription.get() : nullptr;
 }
 
-}
+} // namespace STAPPLER_VERSIONIZED stappler
 
 namespace STAPPLER_VERSIONIZED stappler::mem_std {
 

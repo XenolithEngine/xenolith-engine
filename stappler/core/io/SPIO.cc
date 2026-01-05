@@ -33,9 +33,7 @@ size_t Producer::read(const Buffer &buf, size_t nbytes) const {
 	return size;
 }
 
-size_t Consumer::write(const Buffer &buf) const {
-	return write_ptr(ptr, buf.data(), buf.size());
-}
+size_t Consumer::write(const Buffer &buf) const { return write_ptr(ptr, buf.data(), buf.size()); }
 
 size_t read(const Producer &from, const Callback<void(const Buffer &)> &f) {
 	StackBuffer<(size_t)1_KiB> buf;
@@ -71,7 +69,7 @@ size_t read(const Producer &from, const Buffer &buf, const Callback<void(const B
 }
 
 size_t read(const Producer &from, const Consumer &to) {
-	StackBuffer<(size_t)1_KiB> buf;
+	StackBuffer<(size_t)4_KiB> buf;
 	size_t ret = 0;
 	size_t cap = buf.capacity();
 	size_t c = cap;
@@ -85,10 +83,10 @@ size_t read(const Producer &from, const Consumer &to) {
 	return ret;
 }
 size_t read(const Producer &from, const Consumer &to, const Callback<void(const Buffer &)> &f) {
-	StackBuffer<(size_t)1_KiB> buf;
+	StackBuffer<(size_t)4_KiB> buf;
 	return io::read(from, to, buf, f);
 }
-size_t read(const Producer &from, const Consumer &to, const Buffer & buf) {
+size_t read(const Producer &from, const Consumer &to, const Buffer &buf) {
 	size_t ret = 0;
 	size_t cap = buf.capacity();
 	size_t c = cap;
@@ -101,7 +99,8 @@ size_t read(const Producer &from, const Consumer &to, const Buffer & buf) {
 	}
 	return ret;
 }
-size_t read(const Producer &from, const Consumer &to, const Buffer & buf, const Callback<void(const Buffer &)> &f) {
+size_t read(const Producer &from, const Consumer &to, const Buffer &buf,
+		const Callback<void(const Buffer &)> &f) {
 	size_t ret = 0;
 	size_t cap = buf.capacity();
 	size_t c = cap;
@@ -118,4 +117,4 @@ size_t read(const Producer &from, const Consumer &to, const Buffer & buf, const 
 	return ret;
 }
 
-}
+} // namespace stappler::io

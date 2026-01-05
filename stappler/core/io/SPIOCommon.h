@@ -25,35 +25,39 @@ THE SOFTWARE.
 #define STAPPLER_CORE_IO_SPIOCOMMON_H_
 
 #include "SPCore.h"
+#include <sprt/c/bits/seek.h>
 
 namespace STAPPLER_VERSIONIZED stappler::io {
 
 enum class Seek {
-	Set,
-	Current,
-	End,
+	Set = __SPRT_SEEK_SET,
+	Current = __SPRT_SEEK_CUR,
+	End = __SPRT_SEEK_END,
 };
 
-using read_fn = size_t (*) (void *, uint8_t *buf, size_t nbytes);
-using seek_fn = size_t (*) (void *, int64_t offset, Seek);
-using size_fn = size_t (*) (void *);
+using read_fn = size_t (*)(void *, uint8_t *buf, size_t nbytes);
+using seek_fn = size_t (*)(void *, int64_t offset, Seek);
+using size_fn = size_t (*)(void *);
 
-using write_fn = size_t (*) (void *, const uint8_t *buf, size_t nbytes);
-using flush_fn = void (*) (void *);
-using clear_fn = void (*) (void *);
-using data_fn = uint8_t * (*) (void *);
+using write_fn = size_t (*)(void *, const uint8_t *buf, size_t nbytes);
+using flush_fn = void (*)(void *);
+using clear_fn = void (*)(void *);
+using data_fn = uint8_t *(*)(void *);
 
-using prepare_fn = uint8_t * (*) (void *, size_t &);
-using save_fn = void (*) (void *, uint8_t *, size_t, size_t);
+using prepare_fn = uint8_t *(*)(void *, size_t &);
+using save_fn = void (*)(void *, uint8_t *, size_t, size_t);
 
-template <typename T> struct ProducerTraits;
-template <typename T> struct ConsumerTraits;
-template <typename T> struct BufferTraits;
+template <typename T>
+struct ProducerTraits;
+template <typename T>
+struct ConsumerTraits;
+template <typename T>
+struct BufferTraits;
 
 struct Producer;
 struct Consumer;
 struct Buffer;
 
-}
+} // namespace stappler::io
 
 #endif /* STAPPLER_CORE_IO_SPIOCOMMON_H_ */

@@ -25,7 +25,8 @@ THE SOFTWARE.
 #ifndef STAPPLER_CORE_MEMORY_SPMEMSTRINGSTREAM_H_
 #define STAPPLER_CORE_MEMORY_SPMEMSTRINGSTREAM_H_
 
-#include "SPMemString.h"
+#include "SPCore.h"
+#include <sprt/runtime/mem/string.h>
 
 namespace STAPPLER_VERSIONIZED stappler::memory {
 
@@ -35,13 +36,14 @@ template <typename CharType>
 class basic_ostringbuf final : public std::basic_streambuf<CharType, std::char_traits<CharType>>,
 							   public sprt::memory::AllocPool {
 public:
-	using storage_type = detail::storage_mem<CharType>;
+	using storage_type = sprt::memory::detail::storage_mem<CharType>;
 	using allocator_type = sprt::memory::detail::Allocator<CharType>;
-	using storage_allocator_type = sprt::memory::detail::Allocator<detail::storage_mem<CharType>>;
+	using storage_allocator_type =
+			sprt::memory::detail::Allocator<sprt::memory::detail::storage_mem<CharType>>;
 	using traits_type = std::char_traits<CharType>;
 	using size_type = size_t;
-	using string_type = basic_string<CharType>;
-	using mem_type = detail::storage_mem<CharType, 1>;
+	using string_type = sprt::memory::basic_string<CharType>;
+	using mem_type = sprt::memory::detail::storage_mem<CharType, 1>;
 	using char_type = CharType;
 	using int_type = typename traits_type::int_type;
 	using streambuf_type = std::basic_streambuf<CharType, std::char_traits<CharType>>;
@@ -156,7 +158,7 @@ public:
 	using size_type = size_t;
 
 	// Non-standard types:
-	using string_type = basic_string<CharType>;
+	using string_type = sprt::memory::basic_string<CharType>;
 	using stringbuf_type = basic_ostringbuf<CharType>;
 	using ostream_type = std::basic_ostream<char_type>;
 

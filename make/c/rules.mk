@@ -79,11 +79,23 @@ sp_toolkit_include_flags = \
 
 # $(1) - module
 # $(2) - filename
+# $(3) - build path
 sp_toolkit_private_flags = \
 	$(if $(filter %.c,$(2)),$($(1)_PRIVATE_CFLAGS)) \
 	$(if $(filter %.cpp,$(2)),$($(1)_PRIVATE_CXXFLAGS)) \
 	$(if $(filter %.mm,$(2)),$($(1)_PRIVATE_CXXFLAGS)) \
+	$(addprefix -include-pch$(space)$(3)/,$(addsuffix $(OSTYPE_GCH_SUFFIX),$($(1)_PRIVATE_INCLUDE_PCH))) \
 	$(addprefix -I,$(call sp_toolkit_include_list,,$($(1)_PRIVATE_INCLUDES)))
+
+# $(1) - filename
+# $(2) - build path
+sp_local_private_flags = \
+	$(if $(filter %.c,$(1)),$(LOCAL_PRIVATE_CFLAGS)) \
+	$(if $(filter %.cpp,$(1)),$(LOCAL_PRIVATE_CXXFLAGS)) \
+	$(if $(filter %.mm,$(1)),$(LOCAL_PRIVATE_CXXFLAGS)) \
+	$(addprefix -include-pch$(space)$(2)/,$(addsuffix $(OSTYPE_GCH_SUFFIX),$(LOCAL_PRIVATE_INCLUDE_PCH))) \
+	$(addprefix -I,$(call sp_toolkit_include_list,,$(LOCAL_PRIVATE_INCLUDES)))
+
 
 sp_local_source_list_c = $(call sp_make_general_source_list,$(1),$(2),$(LOCAL_ROOT),\
 	*.cpp *.c *.S $(if $(BUILD_OBJC),*.mm),\
@@ -142,7 +154,7 @@ endef
 # $(2) - compilation flags
 # $(3) - extra deps
 define BUILD_gch_rule
-$(abspath $(1)): $(patsubst %.h.gch,%.h,$(1)) $$(LOCAL_MAKEFILE) $$($TOOLKIT_MODULES) $(3)
+$(abspath $(1)): $(patsubst %.h$(OSTYPE_GCH_SUFFIX),%.h,$(1)) $$(LOCAL_MAKEFILE) $$($TOOLKIT_MODULES) $(3)
 	$$(call sp_compile_gch,$(2))
 endef
 

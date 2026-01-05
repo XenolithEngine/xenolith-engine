@@ -28,7 +28,4 @@
 
 #endif
 
-#define SPUNUSED [[maybe_unused]]
-#define SPINLINE __attribute__((always_inline))
-
 #endif // CORE_CORE_DETAIL_SPPLATFORMCLEANUP_H_

@@ -23,11 +23,4 @@
 #include "SPStatus.h"
 #include "SPStringView.h"
 
-namespace STAPPLER_VERSIONIZED stappler {
-
-std::ostream &operator<<(std::ostream &stream, Status st) {
-	sprt::status::getStatusDescription(st, [&](StringView str) { stream << str; });
-	return stream;
-}
-
-} // namespace STAPPLER_VERSIONIZED stappler
+namespace STAPPLER_VERSIONIZED stappler { } // namespace STAPPLER_VERSIONIZED stappler

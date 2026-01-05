@@ -43,7 +43,7 @@ static bool isPng(const uint8_t *data, size_t dataLen) {
 	return memcmp(PNG_SIGNATURE, data, sizeof(PNG_SIGNATURE)) == 0;
 }
 
-SP_UNUSED static bool getPngImageSize(const io::Producer &file, StackBuffer<512> &data,
+SPUNUSED static bool getPngImageSize(const io::Producer &file, StackBuffer<512> &data,
 		uint32_t &width, uint32_t &height) {
 	if (isPng(data.data(), data.size()) && data.size() >= 24) {
 		auto reader = BytesViewNetwork(data.data() + 16, 8);
@@ -316,23 +316,23 @@ struct PngWriteStruct {
 	}
 };
 
-SP_UNUSED static bool infoPng(const uint8_t *inputData, size_t size, ImageInfo &outputData) {
+SPUNUSED static bool infoPng(const uint8_t *inputData, size_t size, ImageInfo &outputData) {
 	PngReadStruct pngStruct;
 	return pngStruct.init(inputData, size) && pngStruct.info(outputData);
 }
 
-SP_UNUSED static bool loadPng(const uint8_t *inputData, size_t size, BitmapWriter &outputData) {
+SPUNUSED static bool loadPng(const uint8_t *inputData, size_t size, BitmapWriter &outputData) {
 	PngReadStruct pngStruct;
 	return pngStruct.init(inputData, size) && pngStruct.load(outputData);
 }
 
-SP_UNUSED static bool savePng(const FileInfo &filename, const uint8_t *data, BitmapWriter &state,
+SPUNUSED static bool savePng(const FileInfo &filename, const uint8_t *data, BitmapWriter &state,
 		bool invert) {
 	PngWriteStruct s(filename);
 	return s.write(data, state, invert);
 }
 
-SP_UNUSED static bool writePng(const uint8_t *data, BitmapWriter &state, bool invert) {
+SPUNUSED static bool writePng(const uint8_t *data, BitmapWriter &state, bool invert) {
 	PngWriteStruct s(&state);
 	return s.write(data, state, invert);
 }

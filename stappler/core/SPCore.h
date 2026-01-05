@@ -49,8 +49,8 @@ constexpr auto MODULE_APPCOMMON_NAME = "appcommon";
 
 } // namespace stappler::buildconfig
 
-// Link sprt iterators with std iterators
-#define __SPRT_USE_LIBCXX_ITERATOR_TAGS 1
+// Link sprt with STL
+#define __SPRT_USE_STL 1
 
 #include "detail/SPPlatformInit.h"
 #include <sprt/runtime/notnull.h>

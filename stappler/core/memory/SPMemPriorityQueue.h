@@ -24,7 +24,8 @@
 #ifndef STAPPLER_CORE_MEMORY_SPMEMPRIORITYQUEUE_H_
 #define STAPPLER_CORE_MEMORY_SPMEMPRIORITYQUEUE_H_
 
-#include "SPMemFunction.h"
+#include "SPMemInterface.h"
+#include <sprt/runtime/mutex.h>
 
 #define SP_PRIORITY_QUEUE_RANGE_DEBUG 0
 
@@ -33,6 +34,8 @@ namespace STAPPLER_VERSIONIZED stappler::memory {
 SP_PUBLIC void PriorityQueue_lock_noOp(void *);
 SP_PUBLIC void PriorityQueue_lock_std_mutex(void *);
 SP_PUBLIC void PriorityQueue_unlock_std_mutex(void *);
+SP_PUBLIC void PriorityQueue_lock_qmutex(void *);
+SP_PUBLIC void PriorityQueue_unlock_qmutex(void *);
 
 // Real-time task priority queue
 // It's designed for relatively low pending tasks (below PreallocatedNodes),
@@ -43,7 +46,7 @@ public:
 	static constexpr size_t PreallocatedNodes = 8;
 	static constexpr size_t StorageNodes = 64;
 
-	using LockFnPtr = void (*) (void *);
+	using LockFnPtr = void (*)(void *);
 	using PriorityType = int32_t;
 
 	struct StorageBlock;
@@ -76,13 +79,9 @@ public:
 			unlockFn = &PriorityQueue_lock_noOp;
 		}
 
-		void lock() {
-			lockFn(lockPtr);
-		}
+		void lock() { lockFn(lockPtr); }
 
-		void unlock() {
-			unlockFn(lockPtr);
-		}
+		void unlock() { unlockFn(lockPtr); }
 
 		bool operator==(const LockInterface &other) const {
 			return lockPtr == other.lockPtr && lockFn == other.lockFn && unlockFn == other.unlockFn;
@@ -112,7 +111,7 @@ public:
 
 		auto n = _queue.first;
 		while (n) {
-			Value * val = (Value *)(n->storage.buffer);
+			Value *val = (Value *)(n->storage.buffer);
 			val->~Value();
 			freeNode(n);
 			n = n->next;
@@ -125,16 +124,14 @@ public:
 	PriorityQueue(PriorityQueue &&) = delete;
 	PriorityQueue &operator=(PriorityQueue &&) = delete;
 
-	size_t capacity() const {
-		return _capacity;
-	}
+	size_t capacity() const { return _capacity; }
 
 	size_t free_capacity() {
 		std::unique_lock<LockInterface> lock(_free.lock);
 		size_t ret = 0;
 		auto node = _free.first;
 		while (node) {
-			++ ret;
+			++ret;
 			node = node->next;
 		}
 		return ret;
@@ -169,6 +166,18 @@ public:
 		_free.lock.lockPtr = &mutex;
 	}
 
+	void setQueueLocking(sprt::qmutex &mutex) {
+		_queue.lock.lockFn = PriorityQueue_lock_qmutex;
+		_queue.lock.unlockFn = PriorityQueue_unlock_qmutex;
+		_queue.lock.lockPtr = &mutex;
+	}
+
+	void setFreeLocking(sprt::qmutex &mutex) {
+		_free.lock.lockFn = PriorityQueue_lock_qmutex;
+		_free.lock.unlockFn = PriorityQueue_unlock_qmutex;
+		_free.lock.lockPtr = &mutex;
+	}
+
 	void setLocking(std::mutex &mutex) {
 		setQueueLocking(mutex);
 		setFreeLocking(mutex);
@@ -189,7 +198,7 @@ public:
 		}
 
 		while (auto node = popNode()) {
-			Value * val = (Value *)(node->storage.buffer);
+			Value *val = (Value *)(node->storage.buffer);
 			val->~Value();
 			freeNode(node);
 		}
@@ -216,8 +225,8 @@ public:
 		return _queue.first == nullptr;
 	}
 
-	template <typename ... Args>
-	void push(PriorityType p, bool insertFirst, Args && ... args) {
+	template <typename... Args>
+	void push(PriorityType p, bool insertFirst, Args &&...args) {
 		auto node = allocateNode();
 		node->priority = p;
 		new (node->storage.buffer) Value(std::forward<Args>(args)...);
@@ -226,10 +235,11 @@ public:
 
 	// pop node, move value into temporary, then free node, then call callback
 	// optimized for long callbacks and simple move constructor
-	bool pop_prefix(std::unique_lock<LockInterface> &lock, const callback<void(PriorityType, Value &&)> &cb) {
+	bool pop_prefix(std::unique_lock<LockInterface> &lock,
+			const callback<void(PriorityType, Value &&)> &cb) {
 		if (auto node = popNode(lock)) {
 			auto p = node->priority;
-			Value * val = (Value *)(node->storage.buffer);
+			Value *val = (Value *)(node->storage.buffer);
 			Value tmp(sp::move_unsafe(*val));
 			val->~Value();
 			freeNode(node);
@@ -242,7 +252,7 @@ public:
 	bool pop_prefix(const callback<void(PriorityType, Value &&)> &cb) {
 		if (auto node = popNode()) {
 			auto p = node->priority;
-			Value * val = (Value *)(node->storage.buffer);
+			Value *val = (Value *)(node->storage.buffer);
 			Value tmp(sp::move_unsafe(*val));
 			val->~Value();
 			freeNode(node);
@@ -254,9 +264,10 @@ public:
 
 	// pop node, run callback on value, directly stored in node, then free node
 	// no additional move, but with extra cost for detached node, that blocked until callback ends
-	bool pop_direct(std::unique_lock<LockInterface> &lock, const callback<void(PriorityType, Value &&)> &cb) {
+	bool pop_direct(std::unique_lock<LockInterface> &lock,
+			const callback<void(PriorityType, Value &&)> &cb) {
 		if (auto node = popNode(lock)) {
-			Value * val = (Value *)(node->storage.buffer);
+			Value *val = (Value *)(node->storage.buffer);
 			cb(node->priority, sp::move_unsafe(*val));
 			val->~Value();
 			freeNode(node);
@@ -267,7 +278,7 @@ public:
 
 	bool pop_direct(const callback<void(PriorityType, Value &&)> &cb) {
 		if (auto node = popNode()) {
-			Value * val = (Value *)(node->storage.buffer);
+			Value *val = (Value *)(node->storage.buffer);
 			cb(node->priority, sp::move_unsafe(*val));
 			val->~Value();
 			freeNode(node);
@@ -276,7 +287,7 @@ public:
 		return false;
 	}
 
-	void foreach(const callback<void(PriorityType, const Value &)> &cb) {
+	void foreach (const callback<void(PriorityType, const Value &)> &cb) {
 		std::unique_lock<LockInterface> lock(_queue.lock);
 
 		auto node = _queue.first;
@@ -349,9 +360,7 @@ protected:
 					_queue.last = node;
 				} else {
 					Node *n = _queue.first;
-					while (n->next && n->next->priority < node->priority) {
-						n = n->next;
-					}
+					while (n->next && n->next->priority < node->priority) { n = n->next; }
 					node->next = n->next;
 					n->next = node;
 				}
@@ -364,9 +373,7 @@ protected:
 					_queue.last = node;
 				} else {
 					Node *n = _queue.first;
-					while (n->next && n->next->priority <= node->priority) {
-						n = n->next;
-					}
+					while (n->next && n->next->priority <= node->priority) { n = n->next; }
 					node->next = n->next;
 					n->next = node;
 				}
@@ -400,7 +407,7 @@ protected:
 		}
 		ret->next = nullptr;
 		if (ret->block) {
-			++ ret->block->used;
+			++ret->block->used;
 		}
 		return ret;
 	}
@@ -411,7 +418,7 @@ protected:
 			std::unique_lock<LockInterface> lock(_free.lock);
 			node->next = nullptr;
 
-			-- node->block->used;
+			--node->block->used;
 			if (node->block->used == 0) {
 				auto blockToRemove = node->block;
 				// remove all nodes from this block from free list
@@ -429,9 +436,7 @@ protected:
 
 				do {
 					// read nodes from target block
-					while (n && n->block == blockToRemove) {
-						n = n->next;
-					}
+					while (n && n->block == blockToRemove) { n = n->next; }
 
 					// n points to first foreign block
 					if (last) {
@@ -525,6 +530,6 @@ protected:
 #endif
 };
 
-}
+} // namespace stappler::memory
 
 #endif /* STAPPLER_CORE_MEMORY_SPMEMPRIORITYQUEUE_H_ */

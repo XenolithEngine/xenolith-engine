@@ -86,14 +86,19 @@ $(if $(filter-out $(LOCAL_BUILD_SHARED),3), \
 $(SRC),\
 $(call sp_build_target_path,$(SRC),$(BUILD_LIB_OUTDIR)), \
 $($(MOD)_PRIVATE_DEPS), \
-$(call sp_toolkit_private_flags,$(MOD),$(SRC)) \
+$(call sp_toolkit_private_flags,$(MOD),$(SRC),$(BUILD_LIB_OUTDIR)/include) \
 			) \
 		) \
 	) \
 )
 
 $(foreach SRC,$(BUILD_SRCS),\
-		$(call sp_build_$(suffix $(SRC))_lib_rule_counted,$(SRC),$(call sp_build_target_path,$(SRC),$(BUILD_LIB_OUTDIR))) \
+		$(call sp_build_$(suffix $(SRC))_lib_rule_counted,\
+$(SRC),\
+$(call sp_build_target_path,$(SRC),$(BUILD_LIB_OUTDIR)),\
+$(LOCAL_PRIVATE_DEPS), \
+$(call sp_local_private_flags,$(SRC),$(BUILD_LIB_OUTDIR)/include) \
+		) \
 	)
 
 BUILD_CDB_TARGET_SRCS += $(BUILD_LIB_SRCS)

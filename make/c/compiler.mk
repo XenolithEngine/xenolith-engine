@@ -44,10 +44,11 @@ endif
 
 endif # LOCAL_LOG_LEVEL
 
-OSTYPE_GCH_FILE := -x c++-header
+OSTYPE_GCH_FILE := -x c++-header -Xclang -emit-pch
 OSTYPE_C_FILE := -x c
 OSTYPE_CPP_FILE := -x c++
 OSTYPE_MM_FILE := -x objective-c++
+OSTYPE_GCH_SUFFIX := .pch
 
 # загружаем предустановки для систем
 ifeq ($(STAPPLER_TARGET),android)

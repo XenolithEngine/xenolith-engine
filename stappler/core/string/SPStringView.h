@@ -44,6 +44,11 @@ using sprt::BytesViewNetwork;
 using sprt::BytesViewHost;
 using sprt::SpanView;
 
+using sprt::StringComparator;
+using sprt::StringCaseComparator;
+using sprt::StringUnicodeComparator;
+using sprt::StringUnicodeCaseComparator;
+
 using sprt::CharGroupId;
 
 using CallbackStream = Callback<void(StringView)>;
@@ -86,7 +91,7 @@ struct FunctionalStreamTraits<std::function<void(Arg)>> {
 };
 
 template <typename Arg>
-struct FunctionalStreamTraits<memory::function<void(Arg)>> {
+struct FunctionalStreamTraits<sprt::memory::function<void(Arg)>> {
 	using ArgType = Arg;
 	using CharType = typename FunctionalStreamCharTraits<ArgType>::CharType;
 };
@@ -228,7 +233,7 @@ inline void streamWrite(const FunctionalStream &stream, char c) {
 
 SP_PUBLIC void streamWrite(const Callback<void(WideStringView)> &stream, const StringView &c);
 SP_PUBLIC void streamWrite(const std::function<void(WideStringView)> &stream, const StringView &c);
-SP_PUBLIC void streamWrite(const memory::function<void(WideStringView)> &stream,
+SP_PUBLIC void streamWrite(const sprt::memory::function<void(WideStringView)> &stream,
 		const StringView &c);
 
 inline void streamWrite(const Callback<void(StringViewUtf8)> &stream, const StringView &c) {
@@ -237,7 +242,8 @@ inline void streamWrite(const Callback<void(StringViewUtf8)> &stream, const Stri
 inline void streamWrite(const std::function<void(StringViewUtf8)> &stream, const StringView &c) {
 	stream(StringViewUtf8(c.data(), c.size()));
 }
-inline void streamWrite(const memory::function<void(StringViewUtf8)> &stream, const StringView &c) {
+inline void streamWrite(const sprt::memory::function<void(StringViewUtf8)> &stream,
+		const StringView &c) {
 	stream(StringViewUtf8(c.data(), c.size()));
 }
 
@@ -249,11 +255,11 @@ SP_PUBLIC void streamWrite(const std::function<void(WideStringView)> &stream,
 		const std::type_info &c);
 SP_PUBLIC void streamWrite(const std::function<void(StringViewUtf8)> &stream,
 		const std::type_info &c);
-SP_PUBLIC void streamWrite(const memory::function<void(StringView)> &stream,
+SP_PUBLIC void streamWrite(const sprt::memory::function<void(StringView)> &stream,
 		const std::type_info &c);
-SP_PUBLIC void streamWrite(const memory::function<void(WideStringView)> &stream,
+SP_PUBLIC void streamWrite(const sprt::memory::function<void(WideStringView)> &stream,
 		const std::type_info &c);
-SP_PUBLIC void streamWrite(const memory::function<void(StringViewUtf8)> &stream,
+SP_PUBLIC void streamWrite(const sprt::memory::function<void(StringViewUtf8)> &stream,
 		const std::type_info &c);
 
 inline void streamWrite(const Callback<void(BytesView)> &cb, const BytesView &val) { cb(val); }
@@ -263,23 +269,7 @@ inline void streamWrite(const Callback<void(BytesView)> &cb, const uint8_t &val)
 
 } // namespace stappler::string::detail
 
-inline auto convertIntToTwc(int v) {
-	if (v < 0) {
-		return std::partial_ordering::less;
-	} else if (v > 0) {
-		return std::partial_ordering::greater;
-	} else {
-		return std::partial_ordering::equivalent;
-	}
-}
-
-template <typename Compare>
-inline auto compareDataRanges(const uint8_t *l, size_t __lsize, const uint8_t *r, size_t __rsize,
-		const Compare &cmp) {
-	return std::lexicographical_compare_three_way(l, l + __lsize, r, r + __rsize, cmp);
-}
-
-namespace STAPPLER_VERSIONIZED stappler {
+namespace sprt {
 
 template <typename C>
 inline std::basic_ostream<C> &operator<<(std::basic_ostream<C> &os, const StringViewBase<C> &str) {
@@ -296,13 +286,17 @@ inline std::basic_ostream<char> &operator<<(std::basic_ostream<char> &os,
 	return os.write(str.data(), str.size());
 }
 
+} // namespace sprt
+
+namespace STAPPLER_VERSIONIZED stappler {
+
 template <typename Type>
 auto makeSpanView(const std::vector<Type> &vec) -> SpanView<Type> {
 	return SpanView<Type>(vec);
 }
 
 template <typename Type>
-auto makeSpanView(const memory::vector<Type> &vec) -> SpanView<Type> {
+auto makeSpanView(const sprt::memory::vector<Type> &vec) -> SpanView<Type> {
 	return SpanView<Type>(vec);
 }
 
@@ -324,136 +318,72 @@ auto makeSpanView(const Type (&array)[Size]) -> SpanView<Type> {
 template <typename CharType>
 inline auto operator<=>(const memory::StandartInterface::BasicStringType<CharType> &l,
 		const StringViewBase<CharType> &r) {
-	return convertIntToTwc(sprt::detail::compare_c(l, r));
+	return sprt::__convertIntToTwc(sprt::detail::compare_c(l, r));
 }
 
 template <typename CharType>
 inline auto operator<=>(const memory::PoolInterface::BasicStringType<CharType> &l,
 		const StringViewBase<CharType> &r) {
-	return convertIntToTwc(sprt::detail::compare_c(l, r));
+	return sprt::__convertIntToTwc(sprt::detail::compare_c(l, r));
 }
 
 template <typename CharType>
 inline auto operator<=>(const StringViewBase<CharType> &l,
 		const memory::StandartInterface::BasicStringType<CharType> &r) {
-	return convertIntToTwc(sprt::detail::compare_c(l, r));
+	return sprt::__convertIntToTwc(sprt::detail::compare_c(l, r));
 }
 
 template <typename CharType>
 inline auto operator<=>(const StringViewBase<CharType> &l,
 		const memory::PoolInterface::BasicStringType<CharType> &r) {
-	return convertIntToTwc(sprt::detail::compare_c(l, r));
+	return sprt::__convertIntToTwc(sprt::detail::compare_c(l, r));
 }
 
 inline auto operator<=>(const memory::StandartInterface::BasicStringType<char> &l,
 		const StringViewUtf8 &r) {
-	return convertIntToTwc(sprt::detail::compare_u(l, r));
+	return sprt::__convertIntToTwc(sprt::detail::compare_u(l, r));
 }
 
 inline auto operator<=>(const memory::PoolInterface::BasicStringType<char> &l,
 		const StringViewUtf8 &r) {
-	return convertIntToTwc(sprt::detail::compare_u(l, r));
+	return sprt::__convertIntToTwc(sprt::detail::compare_u(l, r));
 }
 
 inline auto operator<=>(const StringViewUtf8 &l,
 		const memory::StandartInterface::BasicStringType<char> &r) {
-	return convertIntToTwc(sprt::detail::compare_u(l, r));
+	return sprt::__convertIntToTwc(sprt::detail::compare_u(l, r));
 }
 
 inline auto operator<=>(const StringViewUtf8 &l,
 		const memory::PoolInterface::BasicStringType<char> &r) {
-	return convertIntToTwc(sprt::detail::compare_u(l, r));
+	return sprt::__convertIntToTwc(sprt::detail::compare_u(l, r));
 }
 
 template <sprt::endian Endianess>
 inline auto operator<=>(const BytesViewTemplate<Endianess> &l,
 		const memory::PoolInterface::BytesType &r) {
-	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
+	return sprt::__compareDataRanges(l.data(), l.size(), r.data(), r.size());
 }
 
 template <sprt::endian Endianess>
 inline auto operator<=>(const memory::PoolInterface::BytesType &l,
 		const BytesViewTemplate<Endianess> &r) {
-	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
+	return sprt::__compareDataRanges(l.data(), l.size(), r.data(), r.size());
 }
 
 template <sprt::endian Endianess>
 inline auto operator<=>(const BytesViewTemplate<Endianess> &l,
 		const memory::StandartInterface::BytesType &r) {
-	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
+	return sprt::__compareDataRanges(l.data(), l.size(), r.data(), r.size());
 }
 
 template <sprt::endian Endianess>
 inline auto operator<=>(const memory::StandartInterface::BytesType &l,
 		const BytesViewTemplate<Endianess> &r) {
-	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
+	return sprt::__compareDataRanges(l.data(), l.size(), r.data(), r.size());
 }
 
 } // namespace STAPPLER_VERSIONIZED stappler
-
-namespace sprt {
-
-template <typename CharType>
-inline auto operator<=>(const StringViewBase<CharType> &l, const StringViewBase<CharType> &r) {
-	return convertIntToTwc(sprt::detail::compare_c(l, r));
-}
-
-template <typename CharType>
-inline auto operator<=>(const StringViewBase<CharType> &l, const CharType *r) {
-	return convertIntToTwc(sprt::detail::compare_c(l, StringViewBase<CharType>(r)));
-}
-
-template <typename CharType>
-inline auto operator<=>(const CharType *l, const StringViewBase<CharType> &r) {
-	return convertIntToTwc(sprt::detail::compare_c(StringViewBase<CharType>(l), r));
-}
-
-inline auto operator<=>(const StringViewUtf8 &l, const StringViewUtf8 &r) {
-	return convertIntToTwc(sprt::detail::compare_u(l, r));
-}
-
-inline auto operator<=>(const StringViewUtf8 &l, const char *r) {
-	return convertIntToTwc(sprt::detail::compare_u(l, StringViewUtf8(r)));
-}
-
-inline auto operator<=>(const char *l, const StringViewUtf8 &r) {
-	return convertIntToTwc(sprt::detail::compare_u(StringViewUtf8(l), r));
-}
-
-template <sprt::endian Endianess, size_t Size>
-inline auto operator<=>(const BytesViewTemplate<Endianess> &l,
-		const sprt::array<uint8_t, Size> &r) {
-	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
-}
-
-template <sprt::endian Endianess, size_t Size>
-inline auto operator<=>(const sprt::array<uint8_t, Size> &l,
-		const BytesViewTemplate<Endianess> &r) {
-	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
-}
-
-template <sprt::endian Endianess, size_t Size>
-inline auto operator<=>(const BytesViewTemplate<Endianess> &l, const std::array<uint8_t, Size> &r) {
-	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
-}
-
-template <sprt::endian Endianess, size_t Size>
-inline auto operator<=>(const std::array<uint8_t, Size> &l, const BytesViewTemplate<Endianess> &r) {
-	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
-}
-
-template <sprt::endian Endianess>
-inline auto operator<=>(const BytesViewTemplate<Endianess> &l,
-		const BytesViewTemplate<Endianess> &r) {
-	return compareDataRanges(l.data(), l.size(), r.data(), r.size());
-}
-
-template <typename _Tp>
-inline auto operator<=>(const SpanView<_Tp> &__x, const SpanView<_Tp> &__y) {
-	return std::lexicographical_compare_three_way(__x.begin(), __x.end(), __y.begin(), __y.end());
-}
-
-} // namespace sprt
 
 namespace std {
 

@@ -149,13 +149,18 @@ $(foreach MOD,$(TOOLKIT_MODULE_VARS), \
 $(SRC),\
 $(call sp_build_target_path,$(SRC),$(BUILD_EXEC_OUTDIR)), \
 $($(MOD)_PRIVATE_DEPS), \
-$(call sp_toolkit_private_flags,$(MOD),$(SRC)) \
+$(call sp_toolkit_private_flags,$(MOD),$(SRC),$(BUILD_EXEC_OUTDIR)/include) \
 		) \
 	))
 
 $(if $(filter-out $(LOCAL_EXEC_LIVE_RELOAD),1),\
 	$(foreach SRC,$(BUILD_SRCS) $(BUILD_MAIN_SRC) $(BUILD_APP_CONFIG_SOURCE),\
-		$(call sp_build_$(suffix $(SRC))_exec_rule_counted,$(SRC),$(call sp_build_target_path,$(SRC),$(BUILD_EXEC_OUTDIR))) \
+		$(call sp_build_$(suffix $(SRC))_exec_rule_counted,\
+$(SRC),\
+$(call sp_build_target_path,$(SRC),$(BUILD_EXEC_OUTDIR)),\
+$(LOCAL_PRIVATE_DEPS), \
+$(call sp_local_private_flags,$(SRC),$(BUILD_EXEC_OUTDIR)/include) \
+		) \
 	))
 
 BUILD_CDB_TARGET_SRCS += $(BUILD_EXEC_SRCS)

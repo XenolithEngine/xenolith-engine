@@ -569,7 +569,7 @@ void XcbWindow::handlePropertyNotify(xcb_property_notify_event_t *ev) {
 				_xinfo.window, ev->atom, XCB_ATOM_CARDINAL, 0, 32);
 		auto reply = _connection->perform(_xcb->xcb_get_property_reply, cookie);
 		if (reply) {
-			SP_UNUSED auto values = (uint32_t *)_xcb->xcb_get_property_value(reply);
+			SPUNUSED auto values = (uint32_t *)_xcb->xcb_get_property_value(reply);
 
 			XL_X11_LOG("XcbWindow: handlePropertyNotify: %s %d %d %d %d",
 					_connection->getAtomName(ev->atom).data(), values[0], values[1], values[2],
@@ -609,7 +609,7 @@ void XcbWindow::handlePropertyNotify(xcb_property_notify_event_t *ev) {
 	} else if (ev->atom == _connection->getAtom(XcbAtomIndex::_NET_WM_USER_TIME)) {
 		// do nothing
 	} else {
-		SP_UNUSED auto name = _connection->getAtomName(ev->atom);
+		SPUNUSED auto name = _connection->getAtomName(ev->atom);
 		XL_X11_LOG("XcbWindow: handlePropertyNotify: %s", name.data());
 	}
 }

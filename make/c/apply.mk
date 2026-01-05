@@ -53,8 +53,8 @@ TOOLKIT_LIB_H_GCH := $(call sp_toolkit_prefix_files_list,$(BUILD_С_OUTDIR)/lib_
 TOOLKIT_EXEC_H_GCH := $(call sp_toolkit_prefix_files_list,$(BUILD_С_OUTDIR)/exec_objs,$(TOOLKIT_PRECOMPILED_HEADERS))
 
 # Список финальных предкомпилированных заголовков
-TOOLKIT_LIB_GCH := $(addsuffix .gch,$(TOOLKIT_LIB_H_GCH))
-TOOLKIT_EXEC_GCH := $(addsuffix .gch,$(TOOLKIT_EXEC_H_GCH))
+TOOLKIT_LIB_GCH := $(addsuffix $(OSTYPE_GCH_SUFFIX),$(TOOLKIT_LIB_H_GCH))
+TOOLKIT_EXEC_GCH := $(addsuffix $(OSTYPE_GCH_SUFFIX),$(TOOLKIT_EXEC_H_GCH))
 
 TOOLKIT_LIB_GCH_DIRS = $(sort $(dir $(TOOLKIT_LIB_GCH)))
 TOOLKIT_EXEC_GCH_DIRS = $(sort $(dir $(TOOLKIT_EXEC_GCH)))
@@ -246,7 +246,7 @@ endif
 
 # include dependencies
 -include $(patsubst %.o,%.o.d,$(BUILD_EXEC_OBJS) $(BUILD_LIB_OBJS))
--include $(patsubst %.h.gch,%.h.gch.d,$(TOOLKIT_EXEC_GCH) $(TOOLKIT_LIB_GCH))
+-include $(patsubst %.h$(OSTYPE_GCH_SUFFIX),%.h$(OSTYPE_GCH_SUFFIX).d,$(TOOLKIT_EXEC_GCH) $(TOOLKIT_LIB_GCH))
 
 BUILD_CDB_TARGET_JSON := $(addsuffix .json,$(filter-out %.S.o,$(BUILD_CDB_TARGET_OBJS)))
 

@@ -26,6 +26,8 @@ STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../../make
 LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
 LOCAL_EXECUTABLE := runtimetest
 
+LOCAL_PRIVATE_INCLUDE_PCH := SPCommon.h
+
 LOCAL_MODULES_PATHS = stappler/stappler-modules.mk
 
 LOCAL_MODULES ?= \

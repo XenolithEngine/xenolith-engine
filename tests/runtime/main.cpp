@@ -21,15 +21,116 @@ THE SOFTWARE.
 **/
 
 #include "SPCommon.h"
+#include "SPString.h"
 #include "SPMemInterface.h"
 #include "SPTime.h"
 
+#include "SPFilesystem.h"
+
+#include <sprt/runtime/backtrace.h>
+#include <sprt/runtime/platform.h>
+
 using namespace stappler;
 
+static void performPathTests() {
+	std::cout << "UniqueDeviceId: " << sprt::platform::getUniqueDeviceId() << "\n";
+	std::cout << "ExecPath: " << sprt::platform::getExecPath() << "\n";
+	std::cout << "HomePath: " << sprt::platform::getHomePath() << "\n";
+
+	for (auto it : each<LocationCategory>()) {
+		filesystem::enumeratePaths(it, [&](const LocationInfo &, StringView path) {
+			std::cout << it << ": " << path << "\n";
+			return true;
+		});
+	}
+
+	auto execDir = filepath::root(sprt::platform::getExecPath());
+
+	filesystem::copy(FileInfo("exec_objs", LocationCategory::Bundled),
+			FileInfo("", LocationCategory::AppRuntime));
+
+	filesystem::move(FileInfo("exec_objs", LocationCategory::AppRuntime),
+			FileInfo("exec_objs", LocationCategory::AppCache));
+
+	filesystem::remove(FileInfo("exec_objs", LocationCategory::AppCache), true);
+
+	filesystem::ftw(FileInfo(execDir), [](const FileInfo &info, FileType t) {
+		std::cout << info << " (" << t << ")\n";
+		return true;
+	});
+
+	filesystem::ftw(FileInfo("exec_objs", LocationCategory::Bundled),
+			[](const FileInfo &info, FileType t) {
+		std::cout << info << " (" << t << ")\n";
+		return true;
+	});
+}
+
+static void performTimeTests() {
+	char timebuf[sprt::time::time_exp_t::Iso8601BufferSize] = {0};
+	auto tm1 = sprt::time::time_exp_t::get(false);
+	tm1.encodeIso8601(timebuf, sprt::time::time_exp_t::Iso8601BufferSize, 6);
+	std::cout << timebuf << "\n";
+	tm1.encodeRfc822(timebuf, sprt::time::time_exp_t::Iso8601BufferSize);
+	std::cout << timebuf << "\n";
+
+	auto tm2 = sprt::time::time_exp_t::get(true);
+	tm2.encodeIso8601(timebuf, sprt::time::time_exp_t::Iso8601BufferSize, 6);
+	std::cout << timebuf << "\n";
+	tm2.encodeRfc822(timebuf, sprt::time::time_exp_t::Iso8601BufferSize);
+	std::cout << timebuf << "\n";
+
+	auto tnow = sprt::platform::clock(sprt::platform::ClockType::Realtime);
+	sprt::time::time_exp_t tm3(tnow);
+	tm3.encodeIso8601(timebuf, sprt::time::time_exp_t::Iso8601BufferSize, 6);
+	std::cout << timebuf << "\n";
+	tm3.encodeRfc822(timebuf, sprt::time::time_exp_t::Iso8601BufferSize);
+	std::cout << timebuf << "\n";
+
+	sprt::time::time_exp_t tm4(tnow, true);
+	tm4.encodeIso8601(timebuf, sprt::time::time_exp_t::Iso8601BufferSize, 6);
+	std::cout << timebuf << "\n";
+	tm4.encodeRfc822(timebuf, sprt::time::time_exp_t::Iso8601BufferSize);
+	std::cout << timebuf << "\n";
+
+	sprt::time::time_exp_t tm5("2025-12-31T20:21:28.039509+08:00");
+	tm5.encodeIso8601(timebuf, sprt::time::time_exp_t::Iso8601BufferSize, 6);
+	std::cout << timebuf << "\n";
+}
+
+static void performUnicodeTests() {
+	StringView test1 = "Тест1";
+	StringView test2 = "ТЕСТ1";
+	StringView test3 = "ТЕСТ3asd";
+
+	WideStringView wtest1 = u"Тест1";
+	WideStringView wtest2 = u"ТЕСТ1";
+
+	std::cout << platform::toupper<memory::StandartInterface>(test1) << "\n";
+	std::cout << platform::tolower<memory::StandartInterface>(test2) << "\n";
+	std::cout << platform::totitle<memory::StandartInterface>(test2) << "\n";
+
+	std::cout << "StringUnicodeCaseComparator: "
+			  << test1.equals<sprt::StringUnicodeCaseComparator>(test2) << "\n";
+	std::cout << "StringCaseComparator: " << test1.equals<sprt::StringCaseComparator>(test2)
+			  << "\n";
+
+	std::cout << "StringUnicodeCaseComparator: "
+			  << wtest1.equals<sprt::StringUnicodeCaseComparator>(wtest2) << "\n";
+	std::cout << "StringCaseComparator: " << wtest1.equals<sprt::StringCaseComparator>(wtest2)
+			  << "\n";
+
+	std::cout << (test3 < test1) << " " << (test3 > test1) << '\n';
+}
+
 int main(int argc, const char *argv[]) {
-	auto time = Time::now();
+	return perform_main(argc, argv, []() {
+		performPathTests();
+		performTimeTests();
+		performUnicodeTests();
 
-	std::cout << time.toRfc822<memory::StandartInterface>() << "\n";
+		sprt::backtrace::getBacktrace(0, [](StringView str) { std::cout << str << "\n"; });
 
-	return 0;
+		return 0;
+	});
 }

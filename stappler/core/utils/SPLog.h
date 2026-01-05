@@ -27,7 +27,6 @@ THE SOFTWARE.
 
 #include "SPString.h"
 #include "SPStringView.h" // IWYU pragma: keep
-#include "SPRef.h" // IWYU pragma: keep
 
 namespace STAPPLER_VERSIONIZED stappler::log {
 

@@ -118,7 +118,8 @@
 #define SP_USED
 #endif
 
-#define SP_UNUSED [[maybe_unused]]
+#define SPUNUSED [[maybe_unused]]
+#define SPINLINE __attribute__((always_inline))
 
 // Add debug flag if none is specified
 #ifndef DEBUG

@@ -52,7 +52,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::platform {
 
-SP_UNUSED static const char *s_XenolithWaylandTag = "org.stappler.xenolith.wayland";
+SPUNUSED static const char *s_XenolithWaylandTag = "org.stappler.xenolith.wayland";
 
 class WaylandLibrary;
 

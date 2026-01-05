@@ -23,17 +23,8 @@ THE SOFTWARE.
 
 #include "SPCommon.h"
 
-#include "detail/SPFilesystemResourceData.cc"
-
+#include "SPFilesystemLookup.cc"
 #include "SPFilepath.cc"
-#include "SPFilesystemNativePosix.cc"
-#include "SPFilesystemNativeWin32.cc"
 #include "SPFilesystem.cc"
-#include "SPFilesystemMime.cc"
-
-#include "platform/SPFilesystem-android.cc"
-#include "platform/SPFilesystem-linux.cc"
-#include "platform/SPFilesystem-win32.cc"
-
-#include "platform/SPFilesystemMmap-posix.cc"
-#include "platform/SPFilesystemMmap-win32.cc"
+#include "SPFilesystemFile.cc"
+#include "SPFilesystemMap.cc"

@@ -36,31 +36,31 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::platform::dbus {
 
-SP_UNUSED static constexpr auto NM_SERVICE_NAME = "org.freedesktop.NetworkManager";
-SP_UNUSED static constexpr auto NM_SERVICE_CONNECTION_NAME =
+SPUNUSED static constexpr auto NM_SERVICE_NAME = "org.freedesktop.NetworkManager";
+SPUNUSED static constexpr auto NM_SERVICE_CONNECTION_NAME =
 		"org.freedesktop.NetworkManager.Connection.Active";
-SP_UNUSED static constexpr auto NM_SERVICE_VPN_NAME = "org.freedesktop.NetworkManager.VPN.Plugin";
-SP_UNUSED static constexpr auto NM_SERVICE_FILTER =
+SPUNUSED static constexpr auto NM_SERVICE_VPN_NAME = "org.freedesktop.NetworkManager.VPN.Plugin";
+SPUNUSED static constexpr auto NM_SERVICE_FILTER =
 		"type='signal',path='/org/freedesktop/"
 		"NetworkManager',interface='org.freedesktop.DBus.Properties'";
-SP_UNUSED static constexpr auto NM_SERVICE_CONNECTION_FILTER =
+SPUNUSED static constexpr auto NM_SERVICE_CONNECTION_FILTER =
 		"type='signal',interface='org.freedesktop.NetworkManager.Connection.Active'";
-SP_UNUSED static constexpr auto NM_SERVICE_VPN_FILTER =
+SPUNUSED static constexpr auto NM_SERVICE_VPN_FILTER =
 		"type='signal',interface='org.freedesktop.NetworkManager.VPN.Plugin'";
-SP_UNUSED static constexpr auto NM_SERVICE_PATH = "/org/freedesktop/NetworkManager";
-SP_UNUSED static constexpr auto NM_SIGNAL_STATE_CHANGED = "StateChanged";
-SP_UNUSED static constexpr auto NM_SIGNAL_PROPERTIES_CHANGED = "PropertiesChanged";
+SPUNUSED static constexpr auto NM_SERVICE_PATH = "/org/freedesktop/NetworkManager";
+SPUNUSED static constexpr auto NM_SIGNAL_STATE_CHANGED = "StateChanged";
+SPUNUSED static constexpr auto NM_SIGNAL_PROPERTIES_CHANGED = "PropertiesChanged";
 
-SP_UNUSED static constexpr auto DESKTOP_PORTAL_SERVICE_NAME = "org.freedesktop.portal.Desktop";
-SP_UNUSED static constexpr auto DESKTOP_PORTAL_SERVICE_PATH = "/org/freedesktop/portal/desktop";
-SP_UNUSED static constexpr auto DESKTOP_PORTAL_SETTINGS_INTERFACE =
+SPUNUSED static constexpr auto DESKTOP_PORTAL_SERVICE_NAME = "org.freedesktop.portal.Desktop";
+SPUNUSED static constexpr auto DESKTOP_PORTAL_SERVICE_PATH = "/org/freedesktop/portal/desktop";
+SPUNUSED static constexpr auto DESKTOP_PORTAL_SETTINGS_INTERFACE =
 		"org.freedesktop.portal.Settings";
-SP_UNUSED static constexpr auto DESKTOP_PORTAL_SERVICE_FILTER =
+SPUNUSED static constexpr auto DESKTOP_PORTAL_SERVICE_FILTER =
 		"type='signal',interface='org.freedesktop.portal.Settings'";
 
-SP_UNUSED static constexpr auto GNOME_DISPLAY_CONFIG_SERVICE = "org.gnome.Mutter.DisplayConfig";
+SPUNUSED static constexpr auto GNOME_DISPLAY_CONFIG_SERVICE = "org.gnome.Mutter.DisplayConfig";
 
-SP_UNUSED static constexpr auto KSCREEN_SERVICE = "org.kde.KScreen";
+SPUNUSED static constexpr auto KSCREEN_SERVICE = "org.kde.KScreen";
 
 Controller::Controller(NotNull< Library> dbus, NotNull<event::Looper> looper,
 		NotNull<LinuxContextController> c) {
