@@ -124,15 +124,15 @@ static bool Handle_setPrivateKeyAuth(HandleData<Interface> &iface, BytesView dat
 }
 
 #if MODULE_STAPPLER_BITMAP
-static Pair<bitmap::FileFormat, StringView> Handle_detectFormat(const FileInfo &path) {
-	decltype(static_cast<Pair<bitmap::FileFormat, StringView> (*)(const FileInfo &)>(
+static sprt::pair<bitmap::FileFormat, StringView> Handle_detectFormat(const FileInfo &path) {
+	decltype(static_cast<sprt::pair<bitmap::FileFormat, StringView> (*)(const FileInfo &)>(
 			bitmap::detectFormat)) bitmap_detectFormat;
 	bitmap_detectFormat = SharedModule::acquireTypedSymbol<decltype(bitmap_detectFormat)>(
 			buildconfig::MODULE_STAPPLER_BITMAP_NAME, "detectFormat");
 	if (!bitmap_detectFormat) {
 		log::source().error("network",
 				"Module MODULE_STAPPLER_BITMAP declared, but not available in runtime");
-		return Pair<bitmap::FileFormat, StringView>(bitmap::FileFormat::Custom, StringView());
+		return sprt::pair<bitmap::FileFormat, StringView>(bitmap::FileFormat::Custom, StringView());
 	}
 	return bitmap_detectFormat(path);
 }
@@ -165,7 +165,8 @@ static StringView Handle_getMimeType(StringView name) {
 
 template <typename Interface>
 static void Handle_setSendFile(HandleData<Interface> &iface, const FileInfo &str, StringView type) {
-	filesystem::enumeratePaths(str, filesystem::Access::Read, [&](StringView path, FileFlags) {
+	filesystem::enumeratePaths(str, filesystem::Access::Read,
+			[&](const LocationInfo &, StringView path) {
 		iface.send.data = path.str<Interface>();
 		iface.send.size = 0;
 		return false;
@@ -286,8 +287,10 @@ HANDLE_NAME_CONST(long, getResponseCode) { return process.responseCode; }
 HANDLE_NAME_CONST(long, getErrorCode) { return process.errorCode; }
 HANDLE_NAME_CONST(StringView, getError) { return process.error; }
 HANDLE_NAME(void, setCookieFile, const FileInfo &info) {
-	filesystem::enumerateWritablePaths(info, [&](StringView path, FileFlags) {
-		process.cookieFile = filesystem::native::posixToNative<HANDLE_INTERFACE>(path);
+	filesystem::enumerateWritablePaths(info, [&](const LocationInfo &, StringView path) {
+		process.cookieFile = path.str<HANDLE_INTERFACE>();
+		__sprt_fpath_to_native(process.cookieFile.data(), process.cookieFile.size(),
+				process.cookieFile.data(), process.cookieFile.size() + 1);
 		return false;
 	});
 }
@@ -316,7 +319,7 @@ HANDLE_NAME(void, setProxy, StringView proxy, StringView authData) {
 	auth.proxyAuth = authData.str<HANDLE_INTERFACE>();
 }
 HANDLE_NAME(void, setReceiveFile, const FileInfo &info, bool resumeDownload) {
-	filesystem::enumerateWritablePaths(info, [&](StringView path, FileFlags) {
+	filesystem::enumerateWritablePaths(info, [&](const LocationInfo &, StringView path) {
 		receive.data = path.str<HANDLE_INTERFACE>();
 		receive.resumeDownload = resumeDownload;
 		return false;
@@ -393,8 +396,10 @@ HANDLE_NAME_CONST(long, getResponseCode) { return process.responseCode; }
 HANDLE_NAME_CONST(long, getErrorCode) { return process.errorCode; }
 HANDLE_NAME_CONST(StringView, getError) { return process.error; }
 HANDLE_NAME(void, setCookieFile, const FileInfo &info) {
-	filesystem::enumerateWritablePaths(info, [&](StringView path, FileFlags) {
-		process.cookieFile = filesystem::native::posixToNative<HANDLE_INTERFACE>(path);
+	filesystem::enumerateWritablePaths(info, [&](const LocationInfo &, StringView path) {
+		process.cookieFile = path.str<HANDLE_INTERFACE>();
+		__sprt_fpath_to_native(process.cookieFile.data(), process.cookieFile.size(),
+				process.cookieFile.data(), process.cookieFile.size() + 1);
 		return false;
 	});
 }
@@ -423,7 +428,7 @@ HANDLE_NAME(void, setProxy, StringView proxy, StringView authData) {
 	auth.proxyAuth = authData.str<HANDLE_INTERFACE>();
 }
 HANDLE_NAME(void, setReceiveFile, const FileInfo &info, bool resumeDownload) {
-	filesystem::enumerateWritablePaths(info, [&](StringView path, FileFlags) {
+	filesystem::enumerateWritablePaths(info, [&](const LocationInfo &, StringView path) {
 		receive.data = path.str<HANDLE_INTERFACE>();
 		receive.resumeDownload = resumeDownload;
 		return false;

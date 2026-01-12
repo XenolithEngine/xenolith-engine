@@ -25,7 +25,7 @@
 namespace STAPPLER_VERSIONIZED stappler::font {
 
 inline static bool isSpaceOrLineBreak(char32_t c) {
-	return c == char32_t(0x0A) || chars::isspace(c);
+	return c == char32_t(0x0A) || sprt::chars::isspace(c);
 }
 
 template <typename Interface>

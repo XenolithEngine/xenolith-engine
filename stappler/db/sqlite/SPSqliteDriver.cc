@@ -29,6 +29,8 @@
 #include "SPDbFieldExtensions.h"
 #include "sqlite3.h"
 
+#include <sprt/runtime/mem/userdata.h>
+
 namespace STAPPLER_VERSIONIZED stappler::db::sqlite {
 
 static void sp_ts_update_xFunc(sqlite3_context *ctx, int nargs, sqlite3_value **args);
@@ -143,7 +145,7 @@ void Driver::performWithStorage(Handle handle,
 
 	cb(storage);
 
-	auto stack = stappler::memory::pool::get<db::Transaction::Stack>(targetPool,
+	auto stack = sprt::memory::pool::get<db::Transaction::Stack>(targetPool,
 			config::STORAGE_TRANSACTION_STACK_KEY);
 	if (stack) {
 		for (auto &it : stack->stack) {
@@ -201,7 +203,7 @@ static Driver::Handle Driver_setupDriver(const Driver *d, DriverSym *_handle, po
 			dbname = StringView(filepath::merge<Interface>(app->getDocumentRoot(), dbname)).pdup();
 		} else {
 			filesystem::enumerateWritablePaths(FileInfo{dbname, stappler::FileCategory::AppData},
-					[&](StringView path, FileFlags) {
+					[&](const LocationInfo &, StringView path) {
 				dbname = path.pdup();
 				return false;
 			});
@@ -475,7 +477,7 @@ void Driver::setUserId(Handle h, int64_t userId) const {
 uint64_t Driver::insertWord(Handle h, StringView word) const {
 	auto data = (DriverHandle *)h.get();
 
-	uint64_t hash = hash::hash32(word.data(), uint32_t(word.size()), 0) << 16;
+	uint64_t hash = sprt::hash32(word.data(), uint32_t(word.size()), 0) << 16;
 
 	std::unique_lock lock(data->mutex);
 	bool success = false;

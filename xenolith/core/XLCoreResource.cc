@@ -412,7 +412,7 @@ const BufferData *Resource::Builder::addBuffer(StringView key, BufferInfo &&info
 
 	String npath;
 	filesystem::enumeratePaths(path, filesystem::Access::Read,
-			[&](StringView resourcePath, FileFlags) {
+			[&](const LocationInfo &, StringView resourcePath) {
 		npath = resourcePath.str<Interface>();
 		return false;
 	});
@@ -592,7 +592,7 @@ const ImageData *Resource::Builder::addImage(StringView key, ImageInfo &&img, co
 
 	String npath;
 	filesystem::enumeratePaths(path, filesystem::Access::Read,
-			[&](StringView resourcePath, FileFlags) {
+			[&](const LocationInfo &, StringView resourcePath) {
 		npath = resourcePath.str<Interface>();
 		return false;
 	});
@@ -648,7 +648,7 @@ const ImageData *Resource::Builder::addImage(StringView key, ImageInfo &&img,
 	for (auto &it : data) {
 		String npath;
 		filesystem::enumeratePaths(it, filesystem::Access::Read,
-				[&](StringView resourcePath, FileFlags) {
+				[&](const LocationInfo &, StringView resourcePath) {
 			npath = resourcePath.str<Interface>();
 			return false;
 		});

@@ -67,9 +67,38 @@ using sprt::memory::map;
 using sprt::memory::set;
 using sprt::memory::vector;
 using sprt::memory::forward_list;
+using sprt::memory::context;
 using sprt::callback;
 
 } // namespace stappler::memory
+
+namespace STAPPLER_VERSIONIZED stappler::memory::allocator {
+
+using sprt::memory::allocator::create;
+using sprt::memory::allocator::owner_set;
+using sprt::memory::allocator::owner_get;
+using sprt::memory::allocator::max_free_set;
+using sprt::memory::allocator::destroy;
+
+} // namespace stappler::memory::allocator
+
+namespace STAPPLER_VERSIONIZED stappler::memory::pool {
+
+using sprt::memory::pool::acquire;
+using sprt::memory::pool::create;
+using sprt::memory::pool::create_tagged;
+using sprt::memory::pool::destroy;
+using sprt::memory::pool::clear;
+using sprt::memory::pool::cleanup_register;
+using sprt::memory::pool::pre_cleanup_register;
+using sprt::memory::pool::alloc;
+using sprt::memory::pool::palloc;
+using sprt::memory::pool::calloc;
+using sprt::memory::pool::free;
+using sprt::memory::pool::userdata_get;
+using sprt::memory::pool::userdata_set;
+
+} // namespace stappler::memory::pool
 
 namespace STAPPLER_VERSIONIZED stappler::memory {
 

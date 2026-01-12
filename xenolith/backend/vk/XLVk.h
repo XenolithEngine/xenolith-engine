@@ -84,27 +84,8 @@ using core::DescriptorData;
 
 class Instance;
 
-enum class SurfaceBackend {
-	Surface,
-	Android,
-	Wayland,
-	Win32,
-	Xcb,
-	XLib,
-	DirectFb,
-	Fuchsia,
-	GoogleGames,
-	IOS,
-	MacOS,
-	VI,
-	Metal,
-	QNX,
-	OpenHarmony,
-	Display,
-	Max
-};
-
-using SurfaceBackendMask = std::bitset<toInt(SurfaceBackend::Max)>;
+using sprt::window::SurfaceBackend;
+using sprt::window::SurfaceBackendMask;
 
 static const char * const s_requiredExtension[] = {
 	VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
@@ -345,8 +326,6 @@ SP_PUBLIC bool checkIfExtensionAvailable(uint32_t apiVersion, const char *name,
 		Vector<StringView> &promoted, std::bitset<toInt(OptionalDeviceExtension::Max)> &flags);
 
 SP_PUBLIC bool isPromotedExtension(uint32_t apiVersion, StringView name);
-
-SP_PUBLIC size_t getFormatBlockSize(VkFormat);
 
 SP_PUBLIC VkPresentModeKHR getVkPresentMode(core::PresentMode presentMode);
 

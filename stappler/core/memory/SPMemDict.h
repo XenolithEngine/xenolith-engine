@@ -30,7 +30,7 @@ THE SOFTWARE.
 
 namespace STAPPLER_VERSIONIZED stappler::memory {
 
-template <typename Key, typename Value, typename Comp = std::less<>>
+template <typename Key, typename Value, typename Comp = sprt::less<void>>
 class dict : public sprt::memory::AllocPool {
 public:
 	using key_type = Key;
@@ -45,7 +45,7 @@ public:
 	using reference = value_type &;
 	using const_reference = const value_type &;
 
-	using vector_type = sprt::memory::detail::storage_mem<value_type>;
+	using vector_type = sprt::memory::detail::storage_mem<value_type, 0, allocator_type>;
 
 	using iterator = typename vector_type::iterator;
 	using const_iterator = typename vector_type::const_iterator;

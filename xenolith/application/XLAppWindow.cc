@@ -26,10 +26,15 @@
 #include "XLContextInfo.h"
 #include "XLCoreEnum.h"
 #include "XLCorePresentationEngine.h"
+#include "XLCoreDevice.h"
 #include "XlCoreMonitorInfo.h"
-#include "platform/XLContextNativeWindow.h"
 #include "director/XLDirector.h"
 #include "input/XLInputDispatcher.h"
+
+#if MODULE_XENOLITH_BACKEND_VK
+#include "XLVkInstance.h"
+#include "XLVkSwapchain.h"
+#endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -42,7 +47,7 @@ bool AppWindow::init(NotNull<Context> ctx, NotNull<AppThread> app, NotNull<Nativ
 	_application = app;
 	_window = w;
 	_capabilities = _window->getInfo()->capabilities;
-	_windowId = _window->getInfo()->id;
+	_windowId = StringView(_window->getInfo()->id).str<String>();
 
 	_presentationEngine =
 			_context->getGlLoop()->makePresentationEngine(this, w->getPreferredOptions());
@@ -149,7 +154,7 @@ void AppWindow::close(bool graceful) {
 	}
 }
 
-void AppWindow::handleInputEvents(Vector<InputEventData> &&events) {
+void AppWindow::handleInputEvents(sprt::memory::dynvector<InputEventData> &&events) {
 	if (!_presentationEngine) {
 		return;
 	}
@@ -202,7 +207,16 @@ core::ImageInfo AppWindow::getSwapchainImageInfo(const core::SwapchainConfig &cf
 core::SurfaceInfo AppWindow::getSurfaceOptions(const core::Device &dev,
 		NotNull<core::Surface> surface) const {
 	if (_window) {
-		return _window->getSurfaceOptions(dev, surface);
+		auto ifaceInfo = _window->getSurfaceInterfaceInfo();
+		auto info = surface->getSurfaceOptions(dev, ifaceInfo.fullscreenMode,
+				ifaceInfo.fullscreenHandle);
+		if (info.fullscreenHandle == ifaceInfo.fullscreenHandle
+				&& info.fullscreenMode == ifaceInfo.fullscreenMode) {
+			return _window->getSurfaceOptions(sp::move(info));
+		} else {
+			return _window->getSurfaceOptions(surface->getSurfaceOptions(dev,
+					sprt::window::FullScreenExclusiveMode::Default, nullptr));
+		}
 	}
 	return core::SurfaceInfo();
 }
@@ -245,12 +259,64 @@ void AppWindow::acquireFrameData(NotNull<core::PresentationFrame> frame,
 
 void AppWindow::handleFramePresented(NotNull<core::PresentationFrame> frame) {
 	if (_window) {
-		_window->handleFramePresented(frame);
+		_window->handleFramePresented(frame->getInfo());
 	}
 }
 
-Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> instance) {
-	return _window->makeSurface(instance);
+Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
+	auto info = _window->getSurfaceInterfaceInfo();
+#if MODULE_XENOLITH_BACKEND_VK
+	if (cinstance->getApi() != core::InstanceApi::Vulkan) {
+		return nullptr;
+	}
+
+	auto instance = static_cast<vk::Instance *>(cinstance.get());
+
+	VkSurfaceKHR surface = VK_NULL_HANDLE;
+
+	switch (info.backend) {
+	case sprt::window::SurfaceBackend::Xcb: {
+#if defined(VK_KHR_xcb_surface)
+		VkXcbSurfaceCreateInfoKHR createInfo{
+			VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
+			nullptr,
+			0,
+			(xcb_connection_t *)info.xcb.connection,
+			info.xcb.window,
+		};
+		if (instance->vkCreateXcbSurfaceKHR(instance->getInstance(), &createInfo, nullptr, &surface)
+				!= VK_SUCCESS) {
+			return nullptr;
+		}
+#endif
+		break;
+	}
+	case sprt::window::SurfaceBackend::Wayland: {
+#if defined(VK_KHR_wayland_surface)
+		VkWaylandSurfaceCreateInfoKHR createInfo{
+			VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
+			nullptr,
+			0,
+			(struct wl_display *)info.wayland.display,
+			(struct wl_surface *)info.wayland.surface,
+		};
+		if (instance->vkCreateWaylandSurfaceKHR(instance->getInstance(), &createInfo, nullptr,
+					&surface)
+				!= VK_SUCCESS) {
+			return nullptr;
+		}
+#endif
+		break;
+	}
+	default: break;
+	}
+
+	if (surface != VK_NULL_HANDLE) {
+		return Rc<vk::Surface>::create(instance, surface, this);
+	}
+#endif
+	slog().error("XcbWindow", "No available GAPI found for a surface");
+	return nullptr;
 }
 
 core::FrameConstraints AppWindow::exportConstraints() const { return _window->exportConstraints(); }
@@ -399,7 +465,7 @@ void AppWindow::releaseTextInput() {
 	}, this);
 }
 
-void AppWindow::updateLayers(Vector<WindowLayer> &&layers) {
+void AppWindow::updateLayers(sprt::window::Vector<WindowLayer> &&layers) {
 	_context->performOnThread([this, layers = sp::move(layers)]() mutable {
 		if (_window) {
 			_window->updateLayers(sp::move(layers));

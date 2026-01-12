@@ -128,6 +128,10 @@ struct SP_PUBLIC Padding {
 
 	constexpr Padding() = default;
 	constexpr Padding(const Padding &) = default;
+	constexpr Padding(const sprt::Padding &p)
+	: top(p.top), right(p.right), bottom(p.bottom), left(p.left) { }
+
+	constexpr operator sprt::Padding() const { return sprt::Padding{top, right, bottom, left}; }
 
 	constexpr bool operator==(const Padding &p) const {
 		return std::fabs(top - p.top) < std::numeric_limits<float>::epsilon()

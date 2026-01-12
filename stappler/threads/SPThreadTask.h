@@ -25,7 +25,6 @@ THE SOFTWARE.
 #define STAPPLER_THREADS_SPTHREADTASK_H_
 
 #include "SPMemPriorityQueue.h"
-#include "SPRef.h"
 #include "SPMemory.h"
 #include "SPStringView.h"
 

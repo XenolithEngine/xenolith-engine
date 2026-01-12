@@ -647,8 +647,8 @@ Vector<const core::CommandBuffer *> FontRenderPassHandle::doPrepareCommands(Fram
 
 		Buffer *buffers[] = {_targetAtlas};
 
-		(void)allocator->emplaceObjects(AllocationUsage::DeviceLocal, makeSpanView(images),
-				makeSpanView(buffers));
+		(void)allocator->emplaceObjects(AllocationUsage::DeviceLocal, sprt::makeSpanView(images),
+				sprt::makeSpanView(buffers));
 	} else {
 		_targetImage = allocator->spawnPersistent(AllocationUsage::DeviceLocal, info.key, info,
 				false, instance->data.image->getIndex());

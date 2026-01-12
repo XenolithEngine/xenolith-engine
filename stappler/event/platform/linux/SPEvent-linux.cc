@@ -24,18 +24,18 @@
 #include "SPEventQueue.h"
 #include "SPEventThreadHandle.h"
 #include "detail/SPEventQueueData.h"
-#include "platform/uring/SPEvent-uring.h"
+#include "SPMemory.h"
 
 #if LINUX
 
 #include "../fd/SPEventFd.h"
 #include "../fd/SPEventTimerFd.h"
-#include "../fd/SPEventDirFd.h"
 #include "../fd/SPEventPollFd.h"
 #include "../epoll/SPEvent-epoll.h"
 #include "../epoll/SPEventThreadHandle-epoll.h"
 #include "../uring/SPEventThreadHandle-uring.h"
 #include "../uring/SPEventTimer-uring.h"
+#include "../android/SPEventThreadHandle-alooper.h"
 
 #include <signal.h>
 
@@ -44,16 +44,65 @@ namespace STAPPLER_VERSIONIZED stappler::event {
 static int SignalsToIntercept[] = {SIGUSR1, SIGUSR2};
 
 Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags) {
-	if (hasFlag(info.engineMask, QueueEngine::URing) && URingData::checkSupport()) {
 
+	if (hasFlag(info.flags, QueueFlags::ThreadNative)
+			&& hasFlag(info.engineMask, QueueEngine::ALooper)
+			&& !hasFlag(info.flags, QueueFlags::Protected) && ALooperData::checkSupport()) {
+
+		setupALooperHandleClass<TimerFdALooperHandle, TimerFdSource>(&_info, &_alooperTimerFdClass,
+				true);
+		setupALooperHandleClass<ThreadALooperHandle, EventFdSource>(&_info, &_alooperThreadClass,
+				true);
+		setupALooperHandleClass<EventFdALooperHandle, EventFdSource>(&_info, &_alooperEventFdClass,
+				true);
+		setupALooperHandleClass<SignalFdALooperHandle, SignalFdSource>(&_info,
+				&_alooperSignalFdClass, true);
+		setupALooperHandleClass<PollFdALooperHandle, PollFdSource>(&_info, &_alooperPollFdClass,
+				true);
+
+		auto alooper = new (memory::pool::acquire())
+				ALooperData(_info.queue, this, info, SignalsToIntercept);
+		if (alooper->_looper != nullptr) {
+			_submit = [](void *ptr) { return reinterpret_cast<ALooperData *>(ptr)->submit(); };
+			_poll = [](void *ptr) { return reinterpret_cast<ALooperData *>(ptr)->poll(); };
+			_wait = [](void *ptr, TimeInterval ival) {
+				return reinterpret_cast<ALooperData *>(ptr)->wait(ival);
+			};
+			_run = [](void *ptr, TimeInterval ival, QueueWakeupInfo &&info) {
+				return reinterpret_cast<ALooperData *>(ptr)->run(ival, info.flags, info.timeout);
+			};
+			_wakeup = [](void *ptr, WakeupFlags flags) {
+				return reinterpret_cast<ALooperData *>(ptr)->wakeup(flags);
+			};
+			_cancel = [](void *ptr) { reinterpret_cast<ALooperData *>(ptr)->cancel(); };
+			_destroy = [](void *ptr) { delete reinterpret_cast<ALooperData *>(ptr); };
+
+			_timer = [](QueueData *d, void *ptr, TimerInfo &&info) -> Rc<TimerHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<TimerFdEPollHandle>::create(&data->_alooperTimerFdClass, move(info));
+			};
+
+			_thread = [](QueueData *d, void *ptr) -> Rc<ThreadHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<ThreadEPollHandle>::create(&data->_alooperThreadClass);
+			};
+
+			_platformQueue = alooper;
+			alooper->runInternalHandles();
+			_engine = QueueEngine::ALooper;
+			return;
+		} else {
+			alooper->~ALooperData();
+		}
+	}
+
+	if (hasFlag(info.engineMask, QueueEngine::URing) && URingData::checkSupport()) {
 		setupUringHandleClass<TimerFdURingHandle, TimerFdSource>(&_info, &_uringTimerFdClass, true);
 		setupUringHandleClass<TimerURingHandle, TimerUringSource>(&_info, &_uringTimerClass, true);
 		setupUringHandleClass<ThreadEventFdHandle, EventFdSource>(&_info, &_uringThreadEventFdClass,
 				true);
-#ifdef SP_URING_THREAD_FENCE_HANDLE
 		setupUringHandleClass<ThreadUringHandle, ThreadUringSource>(&_info, &_uringThreadFenceClass,
 				true);
-#endif
 		setupUringHandleClass<EventFdURingHandle, EventFdSource>(&_info, &_uringEventFdClass, true);
 		setupUringHandleClass<SignalFdURingHandle, SignalFdSource>(&_info, &_uringSignalFdClass,
 				true);

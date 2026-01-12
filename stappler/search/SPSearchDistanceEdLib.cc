@@ -29,7 +29,7 @@ namespace STAPPLER_VERSIONIZED stappler::search {
 
 // from https://github.com/Martinsos/edlib
 
-using bytes = memory::bytes;
+using bytes = sprt::memory::bytes;
 
 typedef uint64_t Word;
 static const int WORD_SIZE = sizeof(Word) * 8; // Size of Word in bits
@@ -1340,13 +1340,13 @@ static std::string transformSequences(const char *const queryOriginal, const int
 
 class MemPoolHolder {
 public:
-	MemPoolHolder() { memory::pool::initialize(); }
+	MemPoolHolder() { sprt::memory::pool::initialize(); }
 
 	~MemPoolHolder() {
 		if (pool) {
 			memory::pool::destroy(pool);
 		}
-		memory::pool::terminate();
+		sprt::memory::pool::terminate();
 	}
 
 	memory::pool_t *getPool() {

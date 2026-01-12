@@ -86,6 +86,7 @@ struct SP_PUBLIC Size2 {
 
 	constexpr Size2() = default;
 	constexpr Size2(float w, float h) : width(w), height(h) { }
+	constexpr Size2(const sprt::Size2 &s) : width(s.width), height(s.height) { }
 
 	template <typename Functor>
 	constexpr Size2(const Size2 &v, const Functor &f) : width(f(v.width)), height(f(v.height)) { }
@@ -94,6 +95,8 @@ struct SP_PUBLIC Size2 {
 	constexpr explicit Size2(const Vec2 &point) : width(point.x), height(point.y) { }
 
 	constexpr operator Vec2() const { return Vec2(width, height); }
+
+	constexpr operator sprt::Size2() const { return sprt::Size2(width, height); }
 
 	constexpr Size2 &operator=(const Size2 &other) = default;
 	constexpr Size2 &operator=(const Vec2 &point) {
@@ -113,8 +116,7 @@ struct SP_PUBLIC Size2 {
 
 	constexpr void setSize(float w, float h) { }
 
-	constexpr bool fuzzyEquals(const Size2 &target,
-			float var = NumericLimits<float>::epsilon()) const {
+	constexpr bool fuzzyEquals(const Size2 &target, float var = sprt::Epsilon<float>) const {
 		return (std::fabs(this->width - target.width) < var)
 				&& (std::fabs(this->height - target.height) < var);
 	}
@@ -180,8 +182,7 @@ struct SP_PUBLIC Size3 {
 		return ret;
 	}
 
-	constexpr bool fuzzyEquals(const Size3 &target,
-			float var = NumericLimits<float>::epsilon()) const {
+	constexpr bool fuzzyEquals(const Size3 &target, float var = sprt::Epsilon<float>) const {
 		return (std::fabs(this->width - target.width) < var)
 				&& (std::fabs(this->height - target.height) < var)
 				&& (std::fabs(this->depth - target.depth) < var);
@@ -199,12 +200,15 @@ struct SP_PUBLIC Extent2 {
 
 	constexpr Extent2() = default;
 	constexpr Extent2(uint32_t w, uint32_t h) : width(w), height(h) { }
+	constexpr Extent2(const sprt::Extent2 &e) : width(e.width), height(e.height) { }
 
 	constexpr Extent2(const Extent2 &other) = default;
 	constexpr Extent2 &operator=(const Extent2 &other) = default;
 
 	constexpr explicit Extent2(const Size2 &size) : width(size.width), height(size.height) { }
 	constexpr explicit Extent2(const Vec2 &point) : width(point.x), height(point.y) { }
+
+	constexpr operator sprt::Extent2() const { return sprt::Extent2(width, height); }
 
 	constexpr Extent2 &operator=(const Size2 &size) {
 		width = size.width;
@@ -233,6 +237,7 @@ struct SP_PUBLIC Extent3 {
 	constexpr Extent3() = default;
 	constexpr Extent3(uint32_t w, uint32_t h, uint32_t d) : width(w), height(h), depth(d) { }
 	constexpr Extent3(Extent2 e, uint32_t d) : width(e.width), height(e.height), depth(d) { }
+	constexpr Extent3(const sprt::Extent3 &e) : width(e.width), height(e.height), depth(e.depth) { }
 
 	constexpr Extent3(const Extent3 &other) = default;
 	constexpr Extent3 &operator=(const Extent3 &other) = default;
@@ -249,6 +254,8 @@ struct SP_PUBLIC Extent3 {
 	: width(size.width), height(size.height), depth(size.depth) { }
 	constexpr explicit Extent3(const Vec3 &point)
 	: width(point.x), height(point.y), depth(point.z) { }
+
+	constexpr operator sprt::Extent3() const { return sprt::Extent3(width, height, depth); }
 
 	constexpr Extent3 &operator=(const Size3 &size) {
 		width = size.width;
@@ -280,6 +287,8 @@ struct SP_PUBLIC Rect {
 	: origin(x, y), size(width, height) { }
 	constexpr Rect(const Vec2 &o, const Size2 &s) : origin(o), size(s) { }
 
+	constexpr Rect(const sprt::Rect &r) : origin(r.origin), size(r.size) { }
+
 	template <typename Functor>
 	constexpr Rect(const Rect &v, const Functor &f)
 	: origin(Vec2(v.origin, f)), size(Size2(v.size, f)) { }
@@ -287,6 +296,8 @@ struct SP_PUBLIC Rect {
 	constexpr Rect(const Rect &other) = default;
 
 	constexpr Rect &operator=(const Rect &other) = default;
+
+	constexpr operator sprt::Rect() const { return sprt::Rect{origin, size}; }
 
 	constexpr float getMaxX() const { return origin.x + size.width; }
 	constexpr float getMidX() const { return origin.x + size.width / 2.0f; }

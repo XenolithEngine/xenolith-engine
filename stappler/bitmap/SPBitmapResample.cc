@@ -296,7 +296,7 @@ static constexpr Resampler::Real CATMULL_ROM_SUPPORT(2.0f);
 static Resampler::Real catmull_rom_filter(Resampler::Real t) { return mitchell(t, 0.0f, .5f); }
 
 static double sinc(double x) {
-	x = (x * numbers::pi);
+	x = (x * sprt::numbers::Pi<double>);
 
 	if ((x < 0.01f) && (x > -0.01f)) {
 		return 1.0f + x * x * (-1.0f / 6.0f + x * x * 1.0f / 120.0f);
@@ -319,8 +319,8 @@ static Resampler::Real clean(double t) {
 //}
 
 static double blackman_exact_window(double x) {
-	return 0.42659071f + 0.49656062f * cos(numbers::pi * x)
-			+ 0.07684867f * cos(2.0f * numbers::pi * x);
+	return 0.42659071f + 0.49656062f * cos(sprt::numbers::Pi<double> * x)
+			+ 0.07684867f * cos(2.0f * sprt::numbers::Pi<double> * x);
 }
 
 static constexpr Resampler::Real BLACKMAN_SUPPORT(3.0f);
@@ -343,7 +343,7 @@ static Resampler::Real gaussian_filter(Resampler::Real t) { // with blackman win
 		t = -t;
 	}
 	if (t < GAUSSIAN_SUPPORT) {
-		return clean(exp(-2.0f * t * t) * sqrt(2.0f / numbers::pi)
+		return clean(exp(-2.0f * t * t) * sqrt(2.0f / sprt::numbers::Pi<double>)
 				* blackman_exact_window(t / GAUSSIAN_SUPPORT));
 	} else {
 		return 0.0f;

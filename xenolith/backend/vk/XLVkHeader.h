@@ -22,12 +22,13 @@
  THE SOFTWARE.
 **/
 
+#ifndef XENOLITH_BACKEND_VK_XLVKHEADER_H
+#define XENOLITH_BACKEND_VK_XLVKHEADER_H
+
 #include "XLCommon.h"
 
-#if LINUX
-#define VK_USE_PLATFORM_XCB_KHR 1
-#define VK_USE_PLATFORM_WAYLAND_KHR 1
-#endif
+// we don't need function prototypes, we generate them as tables
+#define VK_NO_PROTOTYPES 1
 
 #if MACOS
 #define VK_USE_PLATFORM_METAL_EXT 1
@@ -44,3 +45,19 @@
 #endif
 
 #include <vulkan/vulkan.h>
+
+#if LINUX
+
+// When building the engine, we do not have the Wayland and XCB headers,
+// here we simulate their presence for the needs of Vulkan
+
+typedef void xcb_connection_t;
+typedef uint32_t xcb_window_t;
+typedef uint32_t xcb_visualid_t;
+
+#include <vulkan/vulkan_xcb.h>
+#include <vulkan/vulkan_wayland.h>
+
+#endif
+
+#endif

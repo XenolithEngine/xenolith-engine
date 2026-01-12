@@ -218,7 +218,7 @@ public:
 
 	Vec3 getNormalized() const;
 
-	constexpr bool fuzzyEquals(const Vec3 &b, float var = NumericLimits<float>::epsilon()) const {
+	constexpr bool fuzzyEquals(const Vec3 &b, float var = sprt::Epsilon<float>) const {
 		return (x - var <= b.x && b.x <= x + var) && (y - var <= b.y && b.y <= y + var)
 				&& (z - var <= b.z && b.z <= z + var);
 	}

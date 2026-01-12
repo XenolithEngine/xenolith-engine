@@ -24,7 +24,6 @@ THE SOFTWARE.
 #ifndef STAPPLER_TESS_SPTESS_H_
 #define STAPPLER_TESS_SPTESS_H_
 
-#include "SPRef.h"
 #include "SPVec2.h"
 
 namespace STAPPLER_VERSIONIZED stappler::geom {
@@ -50,8 +49,8 @@ struct SP_PUBLIC TessResult {
 	uint32_t nfaces = 0;
 
 	void *target = nullptr;
-	void (*pushVertex) (void *, uint32_t, const Vec2 &pt, float vertexValue, const Vec2 &norm);
-	void (*pushTriangle) (void *, uint32_t[3]);
+	void (*pushVertex)(void *, uint32_t, const Vec2 &pt, float vertexValue, const Vec2 &norm);
+	void (*pushTriangle)(void *, uint32_t[3]);
 };
 
 class SP_PUBLIC Tesselator : public Ref {
@@ -150,6 +149,6 @@ protected:
 	Data *_data = nullptr;
 };
 
-}
+} // namespace stappler::geom
 
 #endif /* STAPPLER_TESS_SPTESS_H_ */

@@ -32,6 +32,7 @@ namespace STAPPLER_VERSIONIZED stappler::event {
 
 enum class QueueFlags : uint32_t {
 	None,
+
 	// try to protect operations from interrupting with signals
 	Protected = 1 << 0,
 

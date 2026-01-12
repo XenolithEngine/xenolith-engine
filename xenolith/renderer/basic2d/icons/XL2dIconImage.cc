@@ -53,7 +53,7 @@ static void drawIcon_Dynamic_Nav(vg::VectorImage &image, float pr) {
 	float p = pr;
 
 	if (p <= 1.0f) {
-		t.rotateZ(pr * numbers::pi);
+		t.rotateZ(pr * sprt::numbers::Pi<float>);
 		t.translate(-12, -12, 0);
 
 		image.addPath("")
@@ -89,7 +89,7 @@ static void drawIcon_Dynamic_Nav(vg::VectorImage &image, float pr) {
 	} else {
 		p = p - 1.0f;
 
-		t.rotateZ((1.0f + 0.25f * p) * numbers::pi);
+		t.rotateZ((1.0f + 0.25f * p) * sprt::numbers::Pi<float>);
 		t.translate(-12, -12, 0);
 
 		image.addPath("")

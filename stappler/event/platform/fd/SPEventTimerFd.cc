@@ -23,8 +23,10 @@
 #include "SPEventTimerFd.h"
 
 #include "../uring/SPEvent-uring.h"
+#include "../epoll/SPEvent-epoll.h"
+#include "../android/SPEvent-alooper.h"
 
-#include <sys/timerfd.h>
+#include <sprt/c/sys/__sprt_timerfd.h>
 
 namespace STAPPLER_VERSIONIZED stappler::event {
 
@@ -53,7 +55,7 @@ bool TimerFdSource::init(const TimerInfo &info) {
 	}
 
 	if (fd < 0) {
-		fd = ::timerfd_create(clockid, TFD_NONBLOCK | TFD_CLOEXEC);
+		fd = ::__sprt_timerfd_create(clockid, __SPRT_TFD_NONBLOCK | __SPRT_TFD_CLOEXEC);
 	}
 
 	if (fd < 0) {
@@ -74,7 +76,7 @@ bool TimerFdSource::init(const TimerInfo &info) {
 		setNanoTimespec(spec.it_interval, info.interval);
 	}
 
-	::timerfd_settime(fd, 0, &spec, nullptr);
+	::__sprt_timerfd_settime(fd, 0, &spec, nullptr);
 
 	value = 0;
 	count = info.count;
@@ -123,7 +125,6 @@ Status TimerFdHandle::read(uint64_t *target) {
 	return Status::Declined;
 }
 
-#ifdef SP_EVENT_URING
 Status TimerFdURingHandle::rearm(URingData *uring, TimerFdSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
@@ -184,13 +185,12 @@ void TimerFdURingHandle::notify(URingData *uring, TimerFdSource *source, const N
 
 	sendCompletion(source->value, _status == Status::Suspended ? Status::Ok : _status);
 }
-#endif
 
 Status TimerFdEPollHandle::rearm(EPollData *epoll, TimerFdSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
 		source->event.data.ptr = this;
-		source->event.events = EPOLLIN;
+		source->event.events = __SPRT_EPOLLIN;
 
 		status = epoll->add(source->fd, source->event);
 	}
@@ -213,7 +213,7 @@ void TimerFdEPollHandle::notify(EPollData *epoll, TimerFdSource *source, const N
 		return;
 	}
 
-	if (data.queueFlags & EPOLLIN) {
+	if (data.queueFlags & __SPRT_EPOLLIN) {
 		auto count = source->count;
 		auto current = source->value;
 
@@ -235,16 +235,15 @@ void TimerFdEPollHandle::notify(EPollData *epoll, TimerFdSource *source, const N
 		}
 	}
 
-	if ((data.queueFlags & EPOLLERR) || (data.queueFlags & EPOLLHUP)) {
+	if ((data.queueFlags & __SPRT_EPOLLERR) || (data.queueFlags & __SPRT_EPOLLHUP)) {
 		cancel();
 	}
 }
 
-#if ANDROID
 Status TimerFdALooperHandle::rearm(ALooperData *alooper, TimerFdSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
-		status = alooper->add(source->fd, ALOOPER_EVENT_INPUT, this);
+		status = alooper->add(source->fd, __SPRT_ALOOPER_EVENT_INPUT, this);
 	}
 	return status;
 }
@@ -266,7 +265,7 @@ void TimerFdALooperHandle::notify(ALooperData *alooper, TimerFdSource *source,
 		return;
 	}
 
-	if (data.queueFlags & ALOOPER_EVENT_INPUT) {
+	if (data.queueFlags & __SPRT_ALOOPER_EVENT_INPUT) {
 		auto count = source->count;
 		auto current = source->value;
 
@@ -288,11 +287,11 @@ void TimerFdALooperHandle::notify(ALooperData *alooper, TimerFdSource *source,
 		}
 	}
 
-	if ((data.queueFlags & ALOOPER_EVENT_ERROR) || (data.queueFlags & ALOOPER_EVENT_HANGUP)
-			|| (data.queueFlags & ALOOPER_EVENT_INVALID)) {
+	if ((data.queueFlags & __SPRT_ALOOPER_EVENT_ERROR)
+			|| (data.queueFlags & __SPRT_ALOOPER_EVENT_HANGUP)
+			|| (data.queueFlags & __SPRT_ALOOPER_EVENT_INVALID)) {
 		cancel();
 	}
 }
-#endif
 
 } // namespace stappler::event

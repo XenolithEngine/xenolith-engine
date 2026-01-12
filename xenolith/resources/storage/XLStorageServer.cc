@@ -29,6 +29,8 @@
 #include "SPThread.h"
 #include "SPSqlDriver.h"
 
+#include <sprt/runtime/thread/info.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::storage {
 
 struct ServerComponentData : public db::AllocBase {
@@ -817,7 +819,7 @@ Server::ServerData::ServerData() {
 	storage->queue.setQueueLocking(mutexQueue);
 	storage->queue.setFreeLocking(mutexFree);
 
-	filesystem::enumeratePaths(FileCategory::AppData, [&](StringView str, FileFlags) {
+	filesystem::enumeratePaths(FileCategory::AppData, [&](const LocationInfo &, StringView str) {
 		storage->documentRoot = str.str<db::Interface>();
 		return false;
 	});
@@ -900,7 +902,7 @@ void Server::ServerData::threadInit() {
 	runAsync();
 
 	if (!storage->serverName.empty()) {
-		thread::ThreadInfo::setThreadInfo(storage->serverName);
+		sprt::thread::info::set(storage->serverName);
 	}
 
 	now = sp::platform::clock(ClockType::Monotonic);

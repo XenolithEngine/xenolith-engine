@@ -137,7 +137,7 @@ const ImageData *DynamicImage::Builder::setImage(StringView key, ImageInfo &&inf
 		const FileInfo &path, Rc<DataAtlas> &&atlas) {
 	String npath;
 	filesystem::enumeratePaths(path, filesystem::Access::Read,
-			[&](StringView resourcePath, FileFlags) {
+			[&](const LocationInfo &, StringView resourcePath) {
 		npath = resourcePath.str<Interface>();
 		return false;
 	});

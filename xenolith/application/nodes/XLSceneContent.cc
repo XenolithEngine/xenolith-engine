@@ -156,7 +156,7 @@ Padding SceneContent::getDecorationPadding() const {
 		return Padding();
 	}
 	auto &c = _scene->getFrameConstraints();
-	auto padding = c.contentPadding / c.density;
+	auto padding = Padding(c.contentPadding) / c.density;
 	if (_userDecorations && _userDecorations->isVisible()) {
 		padding += _userDecorations->getPadding();
 	}

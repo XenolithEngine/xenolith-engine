@@ -36,14 +36,14 @@ template <typename CharType>
 class basic_ostringbuf final : public std::basic_streambuf<CharType, std::char_traits<CharType>>,
 							   public sprt::memory::AllocPool {
 public:
-	using storage_type = sprt::memory::detail::storage_mem<CharType>;
 	using allocator_type = sprt::memory::detail::Allocator<CharType>;
-	using storage_allocator_type =
-			sprt::memory::detail::Allocator<sprt::memory::detail::storage_mem<CharType>>;
+	using storage_type = sprt::memory::detail::storage_mem<CharType, 0, allocator_type>;
+	using storage_allocator_type = sprt::memory::detail::Allocator<
+			sprt::memory::detail::storage_mem<CharType, 0, allocator_type>>;
 	using traits_type = std::char_traits<CharType>;
 	using size_type = size_t;
 	using string_type = sprt::memory::basic_string<CharType>;
-	using mem_type = sprt::memory::detail::storage_mem<CharType, 1>;
+	using mem_type = sprt::memory::detail::storage_mem<CharType, 1, allocator_type>;
 	using char_type = CharType;
 	using int_type = typename traits_type::int_type;
 	using streambuf_type = std::basic_streambuf<CharType, std::char_traits<CharType>>;

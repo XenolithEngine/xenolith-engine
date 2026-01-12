@@ -256,12 +256,15 @@ struct JpegWriteStruct {
 
 	JpegWriteStruct(const FileInfo &filename) : JpegWriteStruct() {
 		filesystem::enumerateWritablePaths(filename, filesystem::Access::None,
-				[&](StringView str, FileFlags) {
-			fp = filesystem::native::fopen_fn(str, "wb");
-			if (fp) {
-				return false;
+				[&](const LocationInfo &loc, StringView str) {
+			auto file = loc.interface->_open(loc, str, filesystem::OpenFlags::Override, nullptr);
+			if (file) {
+				fp = loc.interface->_fdopen(file, "wb", nullptr);
+				if (fp) {
+					return false;
+				}
 			}
-			return true;
+			return false;
 		});
 
 		if (!fp) {

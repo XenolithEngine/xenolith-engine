@@ -31,11 +31,12 @@ static Mat4 svg_parseTransform(StringView &r) {
 		r.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
 		if (r.is("matrix(")) {
 			r += "matrix("_len;
-			float values[6] = { 0 };
+			float values[6] = {0};
 
 			uint16_t i = 0;
-			for (; i < 6; ++ i) {
-				r.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>, StringView::Chars<','>>();
+			for (; i < 6; ++i) {
+				r.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>,
+						StringView::Chars<','>>();
 				if (!r.readFloat().grab(values[i])) {
 					break;
 				}
@@ -101,7 +102,8 @@ static Mat4 svg_parseTransform(StringView &r) {
 					break;
 				}
 
-				r.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>, StringView::Chars<','>>();
+				r.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>,
+						StringView::Chars<','>>();
 
 				if (!r.readFloat().grab(cy)) {
 					break;
@@ -146,17 +148,17 @@ static Mat4 svg_parseTransform(StringView &r) {
 		if (!r.is(')')) {
 			break;
 		} else {
-			++ r;
+			++r;
 		}
 	}
 	return ret;
 }
 
 static Rect svg_readViewBox(StringView &r) {
-	float values[4] = { 0 };
+	float values[4] = {0};
 
 	uint16_t i = 0;
-	for (; i < 4; ++ i) {
+	for (; i < 4; ++i) {
 		r.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>, StringView::Chars<','>>();
 		if (!r.readFloat().grab(values[i])) {
 			return Rect();
@@ -167,17 +169,13 @@ static Rect svg_readViewBox(StringView &r) {
 }
 
 static float svg_readCoordValue(StringView &source, float origin) {
-	Metric m; m.metric = Metric::Px;
+	Metric m;
+	m.metric = Metric::Px;
 	if (m.readStyleValue(source, false, true)) {
 		switch (m.metric) {
-		case Metric::Px:
-			return m.value;
-			break;
-		case Metric::Percent:
-			return m.value * origin;
-			break;
-		default:
-			break;
+		case Metric::Px: return m.value; break;
+		case Metric::Percent: return m.value * origin; break;
+		default: break;
 		}
 	}
 	return nan();
@@ -204,9 +202,7 @@ static void svg_readPointCoords(PathWriter &target, StringView &source) {
 	}
 }
 
-VectorPath &SvgTag::getPath() {
-	return rpath;
-}
+VectorPath &SvgTag::getPath() { return rpath; }
 
 PathWriter &SvgTag::getWriter() {
 	if (!writer) {
@@ -252,24 +248,29 @@ void SvgReader::onEndTag(Parser &p, Tag &tag, bool isClosed) {
 
 	switch (tag.shape) {
 	case SvgTag::Rect:
-		if (!isnan(tag.mat.m[0]) && !isnan(tag.mat.m[1])
-				&& !isnan(tag.mat.m[2]) && tag.mat.m[2] > 0.0f && !isnan(tag.mat.m[3]) && tag.mat.m[3] > 0.0f
-				&& (isnan(tag.mat.m[4]) || tag.mat.m[4] >= 0.0f) && (isnan(tag.mat.m[5]) || tag.mat.m[5] >= 0.0f)) {
-			tag.getWriter().addRect(tag.mat.m[0], tag.mat.m[1], tag.mat.m[2], tag.mat.m[3], tag.mat.m[4], tag.mat.m[5]);
+		if (!isnan(tag.mat.m[0]) && !isnan(tag.mat.m[1]) && !isnan(tag.mat.m[2])
+				&& tag.mat.m[2] > 0.0f && !isnan(tag.mat.m[3]) && tag.mat.m[3] > 0.0f
+				&& (isnan(tag.mat.m[4]) || tag.mat.m[4] >= 0.0f)
+				&& (isnan(tag.mat.m[5]) || tag.mat.m[5] >= 0.0f)) {
+			tag.getWriter().addRect(tag.mat.m[0], tag.mat.m[1], tag.mat.m[2], tag.mat.m[3],
+					tag.mat.m[4], tag.mat.m[5]);
 		}
 		break;
 	case SvgTag::Circle:
-		if (!isnan(tag.mat.m[0]) && !isnan(tag.mat.m[1]) && !isnan(tag.mat.m[2]) && tag.mat.m[2] >= 0.0f) {
+		if (!isnan(tag.mat.m[0]) && !isnan(tag.mat.m[1]) && !isnan(tag.mat.m[2])
+				&& tag.mat.m[2] >= 0.0f) {
 			tag.getWriter().addCircle(tag.mat.m[0], tag.mat.m[1], tag.mat.m[2]);
 		}
 		break;
 	case SvgTag::Ellipse:
-		if (!isnan(tag.mat.m[0]) && !isnan(tag.mat.m[1]) && !isnan(tag.mat.m[2]) && !isnan(tag.mat.m[3]) && tag.mat.m[2] >= 0.0f && tag.mat.m[3] >= 0.0f) {
+		if (!isnan(tag.mat.m[0]) && !isnan(tag.mat.m[1]) && !isnan(tag.mat.m[2])
+				&& !isnan(tag.mat.m[3]) && tag.mat.m[2] >= 0.0f && tag.mat.m[3] >= 0.0f) {
 			tag.getWriter().addEllipse(tag.mat.m[0], tag.mat.m[1], tag.mat.m[2], tag.mat.m[3]);
 		}
 		break;
 	case SvgTag::Line:
-		if (!isnan(tag.mat.m[0]) && !isnan(tag.mat.m[1]) && !isnan(tag.mat.m[2]) && !isnan(tag.mat.m[3])) {
+		if (!isnan(tag.mat.m[0]) && !isnan(tag.mat.m[1]) && !isnan(tag.mat.m[2])
+				&& !isnan(tag.mat.m[3])) {
 			tag.getWriter().moveTo(tag.mat.m[0], tag.mat.m[1]);
 			tag.getWriter().lineTo(tag.mat.m[2], tag.mat.m[3]);
 		}
@@ -279,14 +280,13 @@ void SvgReader::onEndTag(Parser &p, Tag &tag, bool isClosed) {
 			tag.getWriter().closePath();
 		}
 		break;
-	default:
-		break;
+	default: break;
 	}
 }
 
 void SvgReader::onStyleParameter(Tag &tag, StringReader &name, StringReader &value) {
 	if (name.equals("opacity")) {
-		value.readFloat().unwrap([&] (float op) {
+		value.readFloat().unwrap([&](float op) {
 			if (op <= 0.0f) {
 				tag.getPath().setFillOpacity(0);
 				tag.getPath().setStrokeOpacity(0);
@@ -315,7 +315,7 @@ void SvgReader::onStyleParameter(Tag &tag, StringReader &name, StringReader &val
 			tag.getPath().setWindingRule(Winding::EvenOdd);
 		}
 	} else if (name.equals("fill-opacity")) {
-		value.readFloat().unwrap([&] (float op) {
+		value.readFloat().unwrap([&](float op) {
 			if (op <= 0.0f) {
 				tag.getPath().setFillOpacity(0);
 			} else if (op >= 1.0f) {
@@ -335,7 +335,7 @@ void SvgReader::onStyleParameter(Tag &tag, StringReader &name, StringReader &val
 			}
 		}
 	} else if (name.equals("stroke-opacity")) {
-		value.readFloat().unwrap([&] (float op) {
+		value.readFloat().unwrap([&](float op) {
 			if (op <= 0.0f) {
 				tag.getPath().setStrokeOpacity(0);
 			} else if (op >= 1.0f) {
@@ -366,7 +366,7 @@ void SvgReader::onStyleParameter(Tag &tag, StringReader &name, StringReader &val
 			tag.getPath().setLineJoin(LineJoin::Bevel);
 		}
 	} else if (name.equals("stroke-miterlimit")) {
-		value.readFloat().unwrap([&] (float op) {
+		value.readFloat().unwrap([&](float op) {
 			if (op > 1.0f) {
 				tag.getPath().setMiterLimit(op);
 			}
@@ -389,10 +389,10 @@ void SvgReader::onStyle(Tag &tag, StringReader &value) {
 		auto n = value.readUntil<StringReader::Chars<':'>>();
 		n.trimChars<StringReader::WhiteSpace>();
 		if (value.is(':')) {
-			++ value;
+			++value;
 			auto v = value.readUntil<StringReader::Chars<';'>>();
 			if (value.is(';')) {
-				++ value;
+				++value;
 			}
 			if (!n.empty() && !v.empty()) {
 				onStyleParameter(tag, n, v);
@@ -403,19 +403,19 @@ void SvgReader::onStyle(Tag &tag, StringReader &value) {
 
 void SvgReader::onTagAttribute(Parser &p, Tag &tag, StringReader &name, StringReader &value) {
 	if (tag.name.equals("svg")) {
-		if (string::detail::caseCompare_c(name, StringView("height")) == 0) {
+		if (name.equals<StringCaseComparator>("height")) {
 			auto val = svg_readCoordValue(value, 0.0f);
 			if (!isnan(val)) {
 				_height = val;
 			}
-		} else if (string::detail::caseCompare_c(name, StringView("width")) == 0) {
+		} else if (name.equals<StringCaseComparator>("width")) {
 			auto val = svg_readCoordValue(value, 0.0f);
 			if (!isnan(val)) {
 				_width = val;
 			}
-		} else if (string::detail::caseCompare_c(name, StringView("viewbox")) == 0) {
+		} else if (name.equals<StringCaseComparator>("viewbox")) {
 			_viewBox = svg_readViewBox(value);
-		} else if (string::detail::caseCompare_c(name, StringView("style")) == 0) {
+		} else if (name.equals<StringCaseComparator>("style")) {
 			onStyle(tag, value);
 		}
 		return;
@@ -425,9 +425,10 @@ void SvgReader::onTagAttribute(Parser &p, Tag &tag, StringReader &name, StringRe
 		}
 	}
 
-	if (name.equals("fill") || name.equals("fill-rule") || name.equals("fill-opacity") || name.equals("stroke")
-			|| name.equals("stroke-opacity") || name.equals("stroke-width") || name.equals("stroke-linecap")
-			|| name.equals("stroke-linejoin") || name.equals("stroke-miterlimit") || name.equals("opacity")) {
+	if (name.equals("fill") || name.equals("fill-rule") || name.equals("fill-opacity")
+			|| name.equals("stroke") || name.equals("stroke-opacity") || name.equals("stroke-width")
+			|| name.equals("stroke-linecap") || name.equals("stroke-linejoin")
+			|| name.equals("stroke-miterlimit") || name.equals("opacity")) {
 		onStyleParameter(tag, name, value);
 	} else if (name.equals("transform") && tag.shape != SvgTag::Use && tag.shape != SvgTag::None) {
 		tag.getPath().applyTransform(svg_parseTransform(value));
@@ -507,8 +508,7 @@ void SvgReader::onTagAttribute(Parser &p, Tag &tag, StringReader &name, StringRe
 				tag.ref = value;
 			}
 			break;
-		default:
-			break;
+		default: break;
 		}
 	}
 }
@@ -526,14 +526,14 @@ void SvgReader::onPopTag(Parser &p, Tag &tag) {
 	}
 }
 
-void SvgReader::onInlineTag(Parser &p, Tag &tag) {
-	emplacePath(tag);
-}
+void SvgReader::onInlineTag(Parser &p, Tag &tag) { emplacePath(tag); }
 
 void SvgReader::emplacePath(Tag &tag) {
 	if (tag.shape == Tag::Shape::Use) {
 		StringView ref(tag.ref);
-		if (ref.is('#')) { ++ ref; }
+		if (ref.is('#')) {
+			++ref;
+		}
 		auto pathIt = _paths.find(ref);
 		if (pathIt != _paths.end()) {
 			if (_defs) {
@@ -546,7 +546,8 @@ void SvgReader::emplacePath(Tag &tag) {
 				if (tag.mat.isIdentity()) {
 					_drawOrder.emplace_back(PathXRef{ref.str<Interface>()});
 				} else {
-					_drawOrder.emplace_back(PathXRef{ref.str<Interface>(), Interface::StringType(), tag.mat});
+					_drawOrder.emplace_back(
+							PathXRef{ref.str<Interface>(), Interface::StringType(), tag.mat});
 				}
 			}
 		}
@@ -555,7 +556,7 @@ void SvgReader::emplacePath(Tag &tag) {
 		StringView id(tag.id);
 		if (id.empty()) {
 			idStr = mem_std::toString("auto-", _nextId);
-			++ _nextId;
+			++_nextId;
 			id = idStr;
 		}
 
@@ -566,4 +567,4 @@ void SvgReader::emplacePath(Tag &tag) {
 	}
 }
 
-}
+} // namespace stappler::vg

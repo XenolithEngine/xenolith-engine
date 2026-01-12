@@ -24,50 +24,50 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-Value WindowInfo::encode() const {
+Value encodeWindowInfo(const WindowInfo &info) {
 	Value ret;
-	ret.setString(id, "id");
-	ret.setString(title, "title");
+	ret.setString(info.id, "id");
+	ret.setString(info.title, "title");
 	ret.setValue(
 			Value{
-				Value(rect.x),
-				Value(rect.y),
-				Value(rect.width),
-				Value(rect.height),
+				Value(info.rect.x),
+				Value(info.rect.y),
+				Value(info.rect.width),
+				Value(info.rect.height),
 			},
 			"rect");
 
 	ret.setValue(
 			Value{
-				Value(decorationInsets.top),
-				Value(decorationInsets.left),
-				Value(decorationInsets.bottom),
-				Value(decorationInsets.right),
+				Value(info.decorationInsets.top),
+				Value(info.decorationInsets.left),
+				Value(info.decorationInsets.bottom),
+				Value(info.decorationInsets.right),
 			},
 			"decoration");
 
-	if (density) {
-		ret.setDouble(density, "density");
+	if (info.density) {
+		ret.setDouble(info.density, "density");
 	}
 
-	ret.setString(core::getImageFormatName(imageFormat), "imageFormat");
-	ret.setString(core::getColorSpaceName(colorSpace), "colorSpace");
-	ret.setString(core::getPresentModeName(preferredPresentMode), "preferredPresentMode");
+	ret.setString(core::getImageFormatName(info.imageFormat), "imageFormat");
+	ret.setString(core::getColorSpaceName(info.colorSpace), "colorSpace");
+	ret.setString(core::getPresentModeName(info.preferredPresentMode), "preferredPresentMode");
 
 	Value f;
-	if (hasFlag(flags, WindowCreationFlags::DirectOutput)) {
+	if (hasFlag(info.flags, WindowCreationFlags::DirectOutput)) {
 		f.addString("DirectOutput");
 	}
 
-	if (hasFlag(flags, WindowCreationFlags::PreferNativeDecoration)) {
+	if (hasFlag(info.flags, WindowCreationFlags::PreferNativeDecoration)) {
 		f.addString("PreferNativeDecoration");
 	}
 
-	if (hasFlag(flags, WindowCreationFlags::PreferServerSideDecoration)) {
+	if (hasFlag(info.flags, WindowCreationFlags::PreferServerSideDecoration)) {
 		f.addString("PreferServerSideDecoration");
 	}
 
-	if (hasFlag(flags, WindowCreationFlags::PreferServerSideCursors)) {
+	if (hasFlag(info.flags, WindowCreationFlags::PreferServerSideCursors)) {
 		f.addString("PreferServerSideCursors");
 	}
 

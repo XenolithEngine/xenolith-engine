@@ -21,7 +21,8 @@
  **/
 
 #include "XLContextInfo.h"
-#include "platform/XLContextController.h"
+
+#include <sprt/runtime/window/types.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -96,7 +97,7 @@ CommandLineParser<ContextConfig> ContextConfig::getCommandLineParser() {
 		if (!target.context) {
 			target.context = Rc<ContextInfo>::alloc();
 		}
-		target.context->userLanguage = StringView(args[0]).str<Interface>();
+		target.context->userLanguage = StringView(args[0]).str<sprt::window::String>();
 		return true;
 	}},
 		CommandLineOption<ContextConfig>{.patterns = {"--bundle <bundle-name>"},
@@ -106,7 +107,7 @@ CommandLineParser<ContextConfig> ContextConfig::getCommandLineParser() {
 		if (!target.context) {
 			target.context = Rc<ContextInfo>::alloc();
 		}
-		target.context->bundleName = StringView(args[0]).str<Interface>();
+		target.context->bundleName = StringView(args[0]).str<sprt::window::String>();
 		return true;
 	}},
 		CommandLineOption<ContextConfig>{.patterns = {"--renderdoc"},
@@ -184,12 +185,12 @@ bool ContextConfig::readFromCommandLine(ContextConfig &ret, int argc, const char
 
 ContextConfig::ContextConfig(int argc, const char *argv[]) : ContextConfig() {
 	readFromCommandLine(*this, argc, argv);
-	platform::ContextController::acquireDefaultConfig(*this, nullptr);
+	sprt::window::ContextController::acquireDefaultConfig(*this, nullptr);
 }
 
 ContextConfig::ContextConfig(NativeContextHandle *handle) : ContextConfig() {
 	native = handle;
-	platform::ContextController::acquireDefaultConfig(*this, handle);
+	sprt::window::ContextController::acquireDefaultConfig(*this, handle);
 }
 
 ContextConfig::ContextConfig() {
@@ -205,30 +206,30 @@ ContextConfig::ContextConfig() {
 		context->appName = str;
 	}
 	context->appVersionCode = getAppconfigVersionIndex();
-	context->appVersion = toString(getAppconfigVersionVariant(), ".", getAppconfigVersionApi(), ".",
-			getAppconfigVersionRev(), ".", getAppconfigVersionBuild());
+	context->appVersion = sprt::StreamTraits<char>::toString(getAppconfigVersionVariant(), ".",
+			getAppconfigVersionApi(), ".", getAppconfigVersionRev(), ".",
+			getAppconfigVersionBuild());
 
 	window->id = context->bundleName;
 	window->title = context->appName;
 }
 
-Value ContextInfo::encode() const {
+Value encodeContextInfo(const ContextInfo &info) {
 	Value ret;
-	ret.setString(bundleName, "bundleName");
-	ret.setString(appName, "appName");
-	ret.setString(appVersion, "appVersion");
-	ret.setString(userLanguage, "userLanguage");
-	ret.setString(userAgent, "userAgent");
-	ret.setString(launchUrl, "launchUrl");
-	ret.setInteger(appVersionCode, "appVersionCode");
-	ret.setInteger(appUpdateInterval.toMicros(), "appUpdateInterval");
-	ret.setValue(extra, "extra");
+	ret.setString(info.bundleName, "bundleName");
+	ret.setString(info.appName, "appName");
+	ret.setString(info.appVersion, "appVersion");
+	ret.setString(info.userLanguage, "userLanguage");
+	ret.setString(info.userAgent, "userAgent");
+	ret.setString(info.launchUrl, "launchUrl");
+	ret.setInteger(info.appVersionCode, "appVersionCode");
+	ret.setInteger(info.appUpdateInterval, "appUpdateInterval");
 
-	ret.setInteger(appThreadsCount, "appThreadsCount");
-	ret.setInteger(mainThreadsCount, "mainThreadsCount");
+	ret.setInteger(info.appThreadsCount, "appThreadsCount");
+	ret.setInteger(info.mainThreadsCount, "mainThreadsCount");
 
 	Value f;
-	if (hasFlag(flags, ContextFlags::DestroyWhenAllWindowsClosed)) {
+	if (hasFlag(info.flags, ContextFlags::DestroyWhenAllWindowsClosed)) {
 		f.addString("DestroyWhenAllWindowsClosed");
 	}
 	if (!f.empty()) {
@@ -240,19 +241,19 @@ Value ContextInfo::encode() const {
 Value ContextConfig::encode() const {
 	Value ret;
 
-	if (auto act = context->encode()) {
+	if (auto act = encodeContextInfo(*context)) {
 		ret.setValue(act, "activity");
 	}
 
-	if (auto win = window->encode()) {
+	if (auto win = encodeWindowInfo(*window)) {
 		ret.setValue(win, "window");
 	}
 
-	if (auto inst = instance->encode()) {
+	if (auto inst = core::encodeInstanceInfo(*instance)) {
 		ret.setValue(inst, "instance");
 	}
 
-	if (auto l = loop->encode()) {
+	if (auto l = core::encodeLoopInfo(*loop)) {
 		ret.setValue(l, "loop");
 	}
 
@@ -272,73 +273,29 @@ Value ContextConfig::encode() const {
 	return ret;
 }
 
-void DecorationInfo::decode(const Value &val) {
-	for (auto &vIt : val.asDict()) {
-		if (vIt.first == "borderRadius") {
-			borderRadius = vIt.second.getDouble();
-		} else if (vIt.first == "shadowWidth") {
-			shadowWidth = vIt.second.getDouble();
-		} else if (vIt.first == "shadowMinValue") {
-			shadowMinValue = vIt.second.getDouble();
-		} else if (vIt.first == "shadowMaxValue") {
-			shadowMaxValue = vIt.second.getDouble();
-		} else if (vIt.first == "resizeInset") {
-			resizeInset = vIt.second.getDouble();
-		} else if (vIt.first == "shadowOffset") {
-			shadowOffset = Vec2(vIt.second.getDouble(0), vIt.second.getDouble(1));
-		}
-	}
-}
-
-Value DecorationInfo::encode() const {
+Value encodeDecorationInfo(const DecorationInfo &info) {
 	Value ret;
-	ret.setValue(borderRadius, "borderRadius");
-	ret.setValue(shadowWidth, "shadowWidth");
-	ret.setValue(shadowMinValue, "shadowMinValue");
-	ret.setValue(shadowMaxValue, "shadowMaxValue");
-	ret.setValue(resizeInset, "resizeInset");
-	ret.setValue(Value{Value(shadowOffset.x), Value(shadowOffset.y)}, "shadowOffset");
+	ret.setValue(info.borderRadius, "borderRadius");
+	ret.setValue(info.shadowWidth, "shadowWidth");
+	ret.setValue(info.shadowMinValue, "shadowMinValue");
+	ret.setValue(info.shadowMaxValue, "shadowMaxValue");
+	ret.setValue(info.resizeInset, "resizeInset");
+	ret.setValue(Value{Value(info.shadowOffset.x), Value(info.shadowOffset.y)}, "shadowOffset");
 	return ret;
 }
 
-void ThemeInfo::decode(const Value &val) {
-	for (auto &it : val.asDict()) {
-		if (it.first == "colorScheme") {
-			colorScheme = it.second.getString();
-		} else if (it.first == "systemTheme") {
-			systemTheme = it.second.getString();
-		} else if (it.first == "systemFontName") {
-			systemFontName = it.second.getString();
-		} else if (it.first == "cursorSize") {
-			cursorSize = it.second.getInteger();
-		} else if (it.first == "cursorScaling") {
-			cursorScaling = it.second.getDouble();
-		} else if (it.first == "textScaling") {
-			textScaling = it.second.getDouble();
-		} else if (it.first == "scrollModifier") {
-			scrollModifier = it.second.getDouble();
-		} else if (it.first == "leftHandedMouse") {
-			leftHandedMouse = it.second.getBool();
-		} else if (it.first == "doubleClickInterval") {
-			doubleClickInterval = it.second.getInteger();
-		} else if (it.first == "decorations") {
-			decorations.decode(it.second);
-		}
-	}
-}
-
-Value ThemeInfo::encode() const {
+Value encodeThemeInfo(const ThemeInfo &info) {
 	Value ret;
-	ret.setValue(colorScheme, "colorScheme");
-	ret.setValue(systemTheme, "systemTheme");
-	ret.setValue(systemFontName, "systemFontName");
-	ret.setValue(cursorSize, "cursorSize");
-	ret.setValue(cursorScaling, "cursorScaling");
-	ret.setValue(textScaling, "textScaling");
-	ret.setValue(scrollModifier, "scrollModifier");
-	ret.setValue(leftHandedMouse, "leftHandedMouse");
-	ret.setValue(doubleClickInterval, "doubleClickInterval");
-	ret.setValue(decorations.encode(), "decorations");
+	ret.setValue(info.colorScheme, "colorScheme");
+	ret.setValue(info.systemTheme, "systemTheme");
+	ret.setValue(info.systemFontName, "systemFontName");
+	ret.setValue(info.cursorSize, "cursorSize");
+	ret.setValue(info.cursorScaling, "cursorScaling");
+	ret.setValue(info.textScaling, "textScaling");
+	ret.setValue(info.scrollModifier, "scrollModifier");
+	ret.setValue(info.leftHandedMouse, "leftHandedMouse");
+	ret.setValue(info.doubleClickInterval, "doubleClickInterval");
+	ret.setValue(encodeDecorationInfo(info.decorations), "decorations");
 	return ret;
 }
 

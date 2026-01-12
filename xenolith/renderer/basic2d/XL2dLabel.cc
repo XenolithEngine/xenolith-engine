@@ -67,7 +67,7 @@ static size_t Label_getQuadsCount(const font::TextLayoutData<Interface> *format)
 		auto end = start + it.count();
 		if (it.line->start + it.line->count == end) {
 			const font::CharLayoutData &c = format->chars[end - 1];
-			if (!chars::isspace(c.charID) && c.charID != char16_t(0x0A)) {
+			if (!sprt::chars::isspace(c.charID) && c.charID != char16_t(0x0A)) {
 				++ret;
 			}
 			end -= 1;
@@ -75,7 +75,7 @@ static size_t Label_getQuadsCount(const font::TextLayoutData<Interface> *format)
 
 		for (auto charIdx = start; charIdx < end; ++charIdx) {
 			const font::CharLayoutData &c = format->chars[charIdx];
-			if (!chars::isspace(c.charID) && c.charID != char16_t(0x0A)
+			if (!sprt::chars::isspace(c.charID) && c.charID != char16_t(0x0A)
 					&& c.charID != char16_t(0x00AD)
 					&& c.charID != font::CharLayoutData::InvalidChar) {
 				++ret;
@@ -144,7 +144,7 @@ static void Label_writeQuads(VertexArray &vertexes, const font::TextLayoutData<I
 
 		for (auto charIdx = start; charIdx < end; ++charIdx) {
 			const font::CharLayoutData &c = format->chars[charIdx];
-			if (!chars::isspace(c.charID) && c.charID != char16_t(0x0A)
+			if (!sprt::chars::isspace(c.charID) && c.charID != char16_t(0x0A)
 					&& c.charID != char16_t(0x00AD)
 					&& c.charID != font::CharLayoutData::InvalidChar) {
 
@@ -179,7 +179,9 @@ static void Label_writeQuads(VertexArray &vertexes, const font::TextLayoutData<I
 		if (it.count() > 0 && it.range->decoration != font::TextDecoration::None) {
 			auto chstart = it.start();
 			auto chend = it.end();
-			while (chstart < chend && chars::isspace(format->chars[chstart].charID)) { ++chstart; }
+			while (chstart < chend && sprt::chars::isspace(format->chars[chstart].charID)) {
+				++chstart;
+			}
 
 			if (chstart == chend) {
 				continue;
@@ -363,20 +365,11 @@ const Label::DescriptionStyle &Label::getStyle() const { return _style; }
 
 Rc<LabelDeferredResult> Label::runDeferred(event::Looper *queue, TextLayout *format,
 		const Color4F &color) {
-	auto result = new std::promise<Rc<LabelResult>>;
-	Rc<LabelDeferredResult> ret = Rc<LabelDeferredResult>::create(result->get_future());
+	Rc<LabelDeferredResult> ret = Rc<LabelDeferredResult>::create();
 	queue->performAsync(
-			[queue, format = Rc<Label::TextLayout>(format), color, ret, result,
-					layer = _textureLayer]() mutable {
-		auto res = Label::writeResult(format, color, layer);
-		result->set_value(res);
-
-		queue->performOnThread([ret = move(ret), res = move(res), result]() mutable {
-			ret->handleReady(move(res));
-			delete result;
-		}, nullptr);
-	},
-			ret);
+			[format = Rc<Label::TextLayout>(format), color, ret, layer = _textureLayer]() mutable {
+		ret->setResult(Label::writeResult(format, color, layer));
+	}, ret);
 	return ret;
 }
 
@@ -729,47 +722,27 @@ void Label::setMarkedColor(const Color4F &c) { _marked->setColor(c, false); }
 Color4F Label::getMarkedColor() const { return _marked->getColor(); }
 
 
-LabelDeferredResult::~LabelDeferredResult() {
-	if (_future) {
-		delete _future;
-		_future = nullptr;
-	}
-}
+LabelDeferredResult::~LabelDeferredResult() { }
 
-bool LabelDeferredResult::init(std::future<Rc<LabelResult>> &&future) {
-	_future = new std::future<Rc<LabelResult>>(sp::move(future));
-	return true;
-}
+bool LabelDeferredResult::init() { return true; }
 
 bool LabelDeferredResult::acquireResult(
 		const Callback<void(SpanView<InstanceVertexData>, Flags)> &cb) {
-	std::unique_lock<Mutex> lock(_mutex);
-	if (_future) {
-		_result = _future->get();
-		delete _future;
-		_future = nullptr;
-		DeferredVertexResult::handleReady();
-	}
+	//log::debug("Label", "acquireResult: ", this);
+	_addr.wait_value(SignalValue);
 	cb(makeSpanView(&_result->data, 1), Immutable);
 	return true;
 }
 
-void LabelDeferredResult::handleReady(Rc<LabelResult> &&res) {
-	std::unique_lock<Mutex> lock(_mutex);
-	if (_future) {
-		delete _future;
-		_future = nullptr;
-	}
-	if (res && (!_result || res.get() != _result.get())) {
-		_result = move(res);
-		DeferredVertexResult::handleReady();
-	}
+void LabelDeferredResult::setResult(Rc<LabelResult> &&res) {
+	_result = move(res);
+	_addr.set_and_signal(SignalValue);
+	//log::debug("Label", "setResult: ", this);
 }
 
 void LabelDeferredResult::updateColor(const Color4F &color) {
-	acquireResult([](SpanView<InstanceVertexData>, Flags) { }); // ensure rendering was complete
+	_addr.wait_value(SignalValue);
 
-	std::unique_lock<Mutex> lock(_mutex);
 	if (_result) {
 		VertexArray arr;
 		arr.init(_result->data.data);
@@ -779,8 +752,8 @@ void LabelDeferredResult::updateColor(const Color4F &color) {
 }
 
 Rc<VertexData> LabelDeferredResult::getResult() const {
-	std::unique_lock<Mutex> lock(_mutex);
-	return _result->data.data;
+	_addr.wait_value(SignalValue);
+	return _result ? _result->data.data : nullptr;
 }
 
 } // namespace stappler::xenolith::basic2d

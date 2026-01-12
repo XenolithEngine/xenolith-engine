@@ -36,8 +36,8 @@ struct alignas(16) ColorHCT {
 		float tone;
 		float alpha;
 
-		bool operator==(const Values& right) const = default;
-		bool operator!=(const Values& right) const = default;
+		bool operator==(const Values &right) const = default;
+		bool operator!=(const Values &right) const = default;
 	};
 
 	static ColorHCT progress(const ColorHCT &a, const ColorHCT &b, float p);
@@ -54,9 +54,10 @@ struct alignas(16) ColorHCT {
 	}
 
 	ColorHCT(const Values &d)
-	: data(d), color(solveColor4F(Cam16::sanitizeDegrees(data.hue), data.chroma, data.tone, data.alpha)) { }
+	: data(d)
+	, color(solveColor4F(Cam16::sanitizeDegrees(data.hue), data.chroma, data.tone, data.alpha)) { }
 
-	explicit ColorHCT(const Color4F& c) {
+	explicit ColorHCT(const Color4F &c) {
 		auto cam = Cam16::create(c);
 		data.hue = cam.hue;
 		data.chroma = cam.chroma;
@@ -65,38 +66,27 @@ struct alignas(16) ColorHCT {
 		color = c;
 	}
 
-	ColorHCT(const Color4F& c, float a)
-	: ColorHCT(c) {
-		data.alpha = a;
-	}
+	ColorHCT(const Color4F &c, float a) : ColorHCT(c) { data.alpha = a; }
 
 	Color4F asColor4F() const { return color; }
 
-	ColorHCT &operator=(const Color4F &c) { *this = ColorHCT(c); return *this; }
+	ColorHCT &operator=(const Color4F &c) {
+		*this = ColorHCT(c);
+		return *this;
+	}
 	ColorHCT &operator=(const ColorHCT &c) = default;
 
-	inline operator Color4F () const {
-		return asColor4F();
-	}
+	inline operator Color4F() const { return asColor4F(); }
 
-	bool operator==(const ColorHCT& right) const = default;
-	bool operator!=(const ColorHCT& right) const = default;
+	bool operator==(const ColorHCT &right) const = default;
+	bool operator!=(const ColorHCT &right) const = default;
 
 	Values data;
 	Color4F color;
 };
 
-SP_PUBLIC std::ostream & operator<<(std::ostream & stream, const ColorHCT & obj);
+SP_PUBLIC std::ostream &operator<<(std::ostream &stream, const ColorHCT &obj);
 
-}
-
-namespace STAPPLER_VERSIONIZED stappler {
-
-template <> inline
-geom::ColorHCT progress<geom::ColorHCT>(const geom::ColorHCT &a, const geom::ColorHCT &b, float p) {
-	return geom::ColorHCT::progress(a, b, p);
-}
-
-}
+} // namespace stappler::geom
 
 #endif /* CORE_GEOM_SPCOLORHCT_H_ */

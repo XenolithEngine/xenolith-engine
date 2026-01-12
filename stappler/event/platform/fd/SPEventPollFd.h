@@ -27,10 +27,6 @@
 #include "SPEventPollHandle.h"
 #include "detail/SPEventHandleClass.h"
 
-#if SP_POSIX_FD
-
-#include <poll.h>
-
 namespace STAPPLER_VERSIONIZED stappler::event {
 
 struct PollFdSource {
@@ -53,7 +49,6 @@ public:
 	virtual NativeHandle getNativeHandle() const override;
 };
 
-#ifdef SP_EVENT_URING
 class SP_PUBLIC PollFdURingHandle : public PollFdHandle {
 public:
 	virtual ~PollFdURingHandle() = default;
@@ -63,7 +58,6 @@ public:
 
 	void notify(URingData *, PollFdSource *, const NotifyData &);
 };
-#endif
 
 class SP_PUBLIC PollFdEPollHandle : public PollFdHandle {
 public:
@@ -75,7 +69,6 @@ public:
 	void notify(EPollData *, PollFdSource *, const NotifyData &);
 };
 
-#if ANDROID
 class SP_PUBLIC PollFdALooperHandle : public PollFdHandle {
 public:
 	virtual ~PollFdALooperHandle() = default;
@@ -85,10 +78,7 @@ public:
 
 	void notify(ALooperData *, PollFdSource *, const NotifyData &);
 };
-#endif
 
 } // namespace stappler::event
-
-#endif
 
 #endif /* CORE_EVENT_PLATFORM_FD_SPEVENTPOLLFD_H_ */

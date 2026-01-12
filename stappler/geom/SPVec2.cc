@@ -151,7 +151,7 @@ float Vec2::getAngle(const Vec2 &other) const {
 	Vec2 a2 = getNormalized();
 	Vec2 b2 = other.getNormalized();
 	const float angle = atan2f(a2.cross(b2), a2.dot(b2));
-	if (fabs(angle) < NumericLimits<float>::epsilon()) {
+	if (fabs(angle) < sprt::Epsilon<float>) {
 		return 0.f;
 	}
 	return angle;

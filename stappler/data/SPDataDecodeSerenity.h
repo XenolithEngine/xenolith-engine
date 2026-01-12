@@ -61,7 +61,7 @@ struct Decoder : public Interface::AllocBaseType {
 			++r;
 		}
 		back = v;
-		stack.push_back(pair(t, v));
+		stack.push_back(sprt::pair(t, v));
 		backType = t;
 	}
 
@@ -83,7 +83,7 @@ struct Decoder : public Interface::AllocBaseType {
 	BackType backType;
 	StringView r;
 	ValueType *back;
-	typename InterfaceType::template ArrayType<Pair<BackType, ValueType *>> stack;
+	typename InterfaceType::template ArrayType<sprt::pair<BackType, ValueType *>> stack;
 };
 
 template <typename Interface>
@@ -91,10 +91,10 @@ inline void Decoder<Interface>::parseNumber(StringView &token, ValueType &result
 	bool isFloat = false;
 	if (token == "+inf") {
 		result._type = ValueType::Type::DOUBLE;
-		result.doubleVal = NumericLimits<double>::infinity();
+		result.doubleVal = sprt::Infinity<double>;
 	} else if (token == "-inf") {
 		result._type = ValueType::Type::DOUBLE;
-		result.doubleVal = -NumericLimits<double>::infinity();
+		result.doubleVal = -sprt::Infinity<double>;
 	} else {
 		auto data = token.data();
 		auto size = token.size();
@@ -165,7 +165,7 @@ inline void Decoder<Interface>::parsePlainToken(ValueType &current, StringView t
 	case 'i':
 		if (token == "inf") {
 			current._type = ValueType::Type::DOUBLE;
-			current.doubleVal = NumericLimits<double>::infinity();
+			current.doubleVal = sprt::Infinity<double>;
 			return;
 		}
 		break;
@@ -202,12 +202,12 @@ template <typename Interface>
 void Decoder<Interface>::parse(ValueType &val) {
 	backType = BackIsGeneric;
 	back = &val;
-	stack.push_back(pair(backType, back));
+	stack.push_back(sprt::pair(backType, back));
 
 	StringType key;
 	do {
 		r.skipUntil<TokenSpecials, StringView::Chars<'(', '~', ';', ')', ','>,
-				StringView::CharGroup<CharGroupId::Alphanumeric>, chars::UniChar>();
+				StringView::CharGroup<CharGroupId::Alphanumeric>, sprt::chars::UniChar>();
 		switch (backType) {
 		case BackIsPlain:
 			if (r.is(')') || r.is(';')) {

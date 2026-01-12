@@ -32,30 +32,27 @@ THE SOFTWARE.
 namespace STAPPLER_VERSIONIZED stappler::bitmap {
 
 static BitmapFormat s_defaultFormats[toInt(FileFormat::Custom)] = {
-	BitmapFormat(FileFormat::Png, &png::isPng, &png::getPngImageSize
-			, &png::infoPng, &png::loadPng, &png::writePng, &png::savePng
-	),
-	BitmapFormat(FileFormat::Jpeg, &jpeg::isJpg, &jpeg::getJpegImageSize
-			, &jpeg::infoJpg, &jpeg::loadJpg, &jpeg::writeJpeg, &jpeg::saveJpeg
-	),
-	BitmapFormat(FileFormat::WebpLossless, &webp::isWebpLossless, &webp::getWebpLosslessImageSize
-			, &webp::infoWebp, &webp::loadWebp, &webp::writeWebpLossless, &webp::saveWebpLossless
-	),
-	BitmapFormat(FileFormat::WebpLossy, &webp::isWebp, &webp::getWebpImageSize
-			, &webp::infoWebp, &webp::loadWebp, &webp::writeWebpLossy, &webp::saveWebpLossy
-	),
+	BitmapFormat(FileFormat::Png, &png::isPng, &png::getPngImageSize, &png::infoPng, &png::loadPng,
+			&png::writePng, &png::savePng),
+	BitmapFormat(FileFormat::Jpeg, &jpeg::isJpg, &jpeg::getJpegImageSize, &jpeg::infoJpg,
+			&jpeg::loadJpg, &jpeg::writeJpeg, &jpeg::saveJpeg),
+	BitmapFormat(FileFormat::WebpLossless, &webp::isWebpLossless, &webp::getWebpLosslessImageSize,
+			&webp::infoWebp, &webp::loadWebp, &webp::writeWebpLossless, &webp::saveWebpLossless),
+	BitmapFormat(FileFormat::WebpLossy, &webp::isWebp, &webp::getWebpImageSize, &webp::infoWebp,
+			&webp::loadWebp, &webp::writeWebpLossy, &webp::saveWebpLossy),
 	BitmapFormat(FileFormat::Svg, &custom::isSvg, &custom::getSvgImageSize),
-	BitmapFormat(FileFormat::Gif, &gif::isGif, &gif::getGifImageSize
-			, &gif::infoGif, &gif::loadGif
-	),
+	BitmapFormat(FileFormat::Gif, &gif::isGif, &gif::getGifImageSize, &gif::infoGif, &gif::loadGif),
 	BitmapFormat(FileFormat::Tiff, &custom::isTiff, &custom::getTiffImageSize),
 };
 
 static std::mutex _formatListMutex;
 static std::vector<BitmapFormat *> _formatList;
 
-SPUNUSED static const BitmapFormat &getDefaultFormat(uint32_t i) {
-	return s_defaultFormats[i];
+const BitmapFormat *getDefaultFormat(FileFormat i) {
+	if (i < FileFormat::Custom) {
+		return &s_defaultFormats[toInt(i)];
+	}
+	return nullptr;
 }
 
 SPUNUSED static std::unique_lock<std::mutex> lockFormatList() {
@@ -67,11 +64,20 @@ SPUNUSED static void addCustomFormat(BitmapFormat &&fmt) {
 	_formatList.emplace_back(new BitmapFormat(move(fmt)));
 }
 
-SPUNUSED static const std::vector<BitmapFormat *> &getCustomFormats() {
-	return _formatList;
+SPUNUSED static const std::vector<BitmapFormat *> &getCustomFormats() { return _formatList; }
+
+const BitmapFormat *getCustomFormat(StringView name) {
+	auto lock = lockFormatList();
+
+	for (auto &it : getCustomFormats()) {
+		if (it->getName() == name && it->isWritable()) {
+			return it;
+		}
+	}
+	return nullptr;
 }
 
-}
+} // namespace stappler::bitmap
 
 #include "SPBitmapFormat.cc"
 #include "SPBitmap.cc"

@@ -43,11 +43,11 @@ struct SP_PUBLIC ActionContainer : RefContainer<Action, Interface> {
 struct SP_PUBLIC HashTraitActionContainer {
 	static uint32_t hash(uint32_t salt, const ActionContainer &value) {
 		auto target = value.target.get();
-		return hash::hash32((const char *)&target, sizeof(Node *), salt);
+		return sprt::hash32((const char *)&target, sizeof(Node *), salt);
 	}
 
 	static uint32_t hash(uint32_t salt, const Node *value) {
-		return hash::hash32((const char *)&value, sizeof(Node *), salt);
+		return sprt::hash32((const char *)&value, sizeof(Node *), salt);
 	}
 
 	static bool equal(const ActionContainer &l, const ActionContainer &r) {

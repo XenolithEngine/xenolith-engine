@@ -22,8 +22,13 @@
 
 #include "SPEventSignalFd.h"
 #include "../uring/SPEvent-uring.h"
+#include "../epoll/SPEvent-epoll.h"
+#include "../android/SPEvent-alooper.h"
 
 #include <signal.h>
+#include <unistd.h>
+
+#if __SPRT_CONFIG_HAVE_SIGNALFD
 
 namespace STAPPLER_VERSIONIZED stappler::event {
 
@@ -160,8 +165,8 @@ static const siginfo *getSignalInfo(int sig) {
 	return nullptr;
 }
 
-bool SignalFdSource::init(const sigset_t *sig) {
-	fd = ::signalfd(-1, sig, SFD_CLOEXEC | SFD_NONBLOCK);
+bool SignalFdSource::init(const __sprt_sigset_t *sig) {
+	fd = ::__sprt_signalfd(-1, sig, __SPRT_SFD_CLOEXEC | __SPRT_SFD_NONBLOCK);
 	if (fd < 0) {
 		return false;
 	}
@@ -259,15 +264,7 @@ void SignalFdHandle::enable() {
 void SignalFdHandle::enable(const sigset_t *sigset) {
 	auto source = reinterpret_cast<SignalFdSource *>(_data);
 
-#if LINUX
 	::sigorset(&_sigset, sigset, &_default);
-#else
-	for (size_t i = 0; i < sizeof(siglist) / sizeof(siginfo); i++) {
-		if (::sigismember(&_default, siglist[i].code)) {
-			sigaddset(&_sigset, siglist[i].code);
-		}
-	}
-#endif
 
 	mem_std::StringStream signals;
 	for (size_t i = 0; i < sizeof(siglist) / sizeof(siginfo); i++) {
@@ -278,21 +275,20 @@ void SignalFdHandle::enable(const sigset_t *sigset) {
 
 	log::source().debug("event::Queue", "signalfd enabled:", signals.str());
 
-	::signalfd(source->fd, &_sigset, SFD_NONBLOCK | SFD_CLOEXEC);
+	::__sprt_signalfd(source->fd, &_sigset, __SPRT_SFD_NONBLOCK | __SPRT_SFD_CLOEXEC);
 }
 
 void SignalFdHandle::disable() {
 	auto source = reinterpret_cast<SignalFdSource *>(_data);
 
 	::sigemptyset(&_sigset);
-	::signalfd(source->fd, &_sigset, SFD_NONBLOCK | SFD_CLOEXEC);
+	::__sprt_signalfd(source->fd, &_sigset, __SPRT_SFD_NONBLOCK | __SPRT_SFD_CLOEXEC);
 }
 
 const sigset_t *SignalFdHandle::getDefaultSigset() const { return &_default; }
 
 const sigset_t *SignalFdHandle::getCurrentSigset() const { return &_sigset; }
 
-#ifdef SP_EVENT_URING
 Status SignalFdURingHandle::rearm(URingData *uring, SignalFdSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
@@ -334,13 +330,12 @@ void SignalFdURingHandle::notify(URingData *uring, SignalFdSource *source, const
 		cancel(URingData::getErrnoStatus(data.result));
 	}
 }
-#endif
 
 Status SignalFdEPollHandle::rearm(EPollData *epoll, SignalFdSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
 		source->event.data.ptr = this;
-		source->event.events = EPOLLIN;
+		source->event.events = __SPRT_EPOLLIN;
 
 		status = epoll->add(source->fd, source->event);
 	}
@@ -365,22 +360,21 @@ void SignalFdEPollHandle::notify(EPollData *epoll, SignalFdSource *source, const
 
 	bool notify = false;
 
-	if (data.queueFlags & EPOLLIN) {
+	if (data.queueFlags & __SPRT_EPOLLIN) {
 		while (read()) { notify = true; }
 	}
 
-	if ((data.queueFlags & EPOLLERR) || (data.queueFlags & EPOLLHUP)) {
+	if ((data.queueFlags & __SPRT_EPOLLERR) || (data.queueFlags & __SPRT_EPOLLHUP)) {
 		cancel();
 	} else if (notify) {
 		sendCompletion(0, Status::Ok);
 	}
 }
 
-#if ANDROID
 Status SignalFdALooperHandle::rearm(ALooperData *alooper, SignalFdSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
-		status = alooper->add(source->fd, ALOOPER_EVENT_INPUT, this);
+		status = alooper->add(source->fd, __SPRT_ALOOPER_EVENT_INPUT, this);
 	}
 	return status;
 }
@@ -404,17 +398,19 @@ void SignalFdALooperHandle::notify(ALooperData *alooper, SignalFdSource *source,
 
 	bool notify = false;
 
-	if (data.queueFlags & ALOOPER_EVENT_INPUT) {
+	if (data.queueFlags & __SPRT_ALOOPER_EVENT_INPUT) {
 		while (read()) { notify = true; }
 	}
 
-	if ((data.queueFlags & ALOOPER_EVENT_ERROR) || (data.queueFlags & ALOOPER_EVENT_HANGUP)
-			|| (data.queueFlags & ALOOPER_EVENT_INVALID)) {
+	if ((data.queueFlags & __SPRT_ALOOPER_EVENT_ERROR)
+			|| (data.queueFlags & __SPRT_ALOOPER_EVENT_HANGUP)
+			|| (data.queueFlags & __SPRT_ALOOPER_EVENT_INVALID)) {
 		cancel();
 	} else if (notify) {
 		sendCompletion(0, Status::Ok);
 	}
 }
-#endif
 
 } // namespace stappler::event
+
+#endif

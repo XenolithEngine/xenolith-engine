@@ -100,7 +100,7 @@ public:
 
 	template <class T = Ref>
 	inline T *getObject() const {
-		static_assert(std::is_convertible<T *, Ref *>::value,
+		static_assert(std::is_convertible_v<T *, Ref *>,
 				"Invalid Type for stappler::Event target!");
 		return static_cast<T *>(_object);
 	}

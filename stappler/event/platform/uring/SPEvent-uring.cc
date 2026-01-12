@@ -22,36 +22,17 @@
 
 #include "SPCore.h"
 #include "SPEventQueue.h"
-#include "SPPlatformUnistd.h"
 #include "SPTime.h"
-
-#if LINUX
 
 #include "platform/linux/SPEvent-linux.h"
 #include "SPEvent-uring.h"
 
+#include <sprt/c/sys/__sprt_utsname.h>
+#include <signal.h>
+
 namespace STAPPLER_VERSIONIZED stappler::event {
 
 static constexpr uint32_t URING_CANCEL_FLAG = 0x8000'0000;
-
-static int io_uring_setup(unsigned entries, struct io_uring_params *p) {
-	return (int)syscall(__NR_io_uring_setup, entries, p);
-}
-
-static int io_uring_enter(int ring_fd, unsigned int to_submit, unsigned int min_complete,
-		unsigned int flags, const sigset_t *sig = nullptr) {
-	return (int)syscall(__NR_io_uring_enter, ring_fd, to_submit, min_complete, flags, sig, 0);
-}
-
-static int io_uring_enter2(int ring_fd, unsigned int to_submit, unsigned int min_complete,
-		unsigned int flags, void *arg = nullptr, size_t argsize = 0) {
-	return (int)syscall(__NR_io_uring_enter, ring_fd, to_submit, min_complete, flags, arg, argsize);
-}
-
-static int io_uring_register(unsigned int fd, unsigned int opcode, const void *arg,
-		unsigned int nr_args) {
-	return (int)syscall(__NR_io_uring_register, fd, opcode, arg, nr_args);
-}
 
 static unsigned atomicLoadAcquire(unsigned *ptr) {
 	unsigned result;
@@ -77,9 +58,9 @@ static constexpr int DEBUG_ERROR_THRESHOLD = 0;
 #endif
 
 bool URingData::checkSupport() {
-	struct utsname buffer;
+	struct __SPRT_UTSNAME_NAME buffer;
 
-	if (uname(&buffer) != 0) {
+	if (__sprt_uname(&buffer) != 0) {
 		log::source().info("event::URingData", "Fail to detect kernel version");
 		return false;
 	}
@@ -91,7 +72,9 @@ bool URingData::checkSupport() {
 		return false;
 	}
 
-	if (syscall(__NR_io_uring_register, 0, IORING_UNREGISTER_BUFFERS, NULL, 0) && errno == ENOSYS) {
+	auto ret = __sprt_io_uring_register(0, IORING_UNREGISTER_BUFFERS, NULL, 0);
+
+	if (ret == 0 && errno == ENOSYS) {
 		log::source().info("event::URingData", "io_uring disabled in OS");
 		return false;
 	} else {
@@ -693,10 +676,10 @@ int URingData::enter(unsigned sub, unsigned wait, unsigned flags, _linux_timespe
 			.sigmask_sz = sigset ? uint32_t(_NSIG / 8) : uint32_t(0),
 			.ts = reinterpret_cast<uint64_t>(ts)};
 
-		return io_uring_enter2(_ringFd, sub, wait, flags | IORING_ENTER_EXT_ARG, &arg,
+		return __sprt_io_uring_enter2(_ringFd, sub, wait, flags | IORING_ENTER_EXT_ARG, &arg,
 				sizeof(io_uring_getevents_arg));
 	} else {
-		return io_uring_enter(_ringFd, sub, wait, flags, sigset);
+		return __sprt_io_uring_enter(_ringFd, sub, wait, flags, sigset);
 	}
 }
 
@@ -780,8 +763,8 @@ URingData::URingData(QueueRef *q, Queue::Data *data, const QueueInfo &info, Span
 	memset(&_params, 0, sizeof(_params));
 
 	// check available features
-	struct utsname buffer;
-	if (uname(&buffer) != 0) {
+	struct __SPRT_UTSNAME_NAME buffer;
+	if (__sprt_uname(&buffer) != 0) {
 		log::source().info("event::URingData", "Fail to detect kernel version");
 		return;
 	}
@@ -847,7 +830,7 @@ URingData::URingData(QueueRef *q, Queue::Data *data, const QueueInfo &info, Span
 
 	_params.flags |= IORING_SETUP_CLAMP;
 
-	ringFd = io_uring_setup(math::npot(info.submitQueueSize), &_params);
+	ringFd = __sprt_io_uring_setup(math::npot(info.submitQueueSize), &_params);
 	if (ringFd < 0) {
 		log::source().error("event::URingData",
 				"io_uring_setup: Fail to setup io_uring instance: ", errno);
@@ -951,7 +934,8 @@ URingData::URingData(QueueRef *q, Queue::Data *data, const QueueInfo &info, Span
 
 	// Register probe
 	memset(&_probe, 0, sizeof(URingProbe));
-	auto err = io_uring_register(ringFd, IORING_REGISTER_PROBE, &_probe, URingProbe::OpcodeCount);
+	auto err = __sprt_io_uring_register(ringFd, IORING_REGISTER_PROBE, &_probe,
+			URingProbe::OpcodeCount);
 	if (err < 0) {
 		log::source().error("event::URingData", "Fail to register probe: ", err);
 		cleanup();
@@ -994,7 +978,7 @@ URingData::URingData(QueueRef *q, Queue::Data *data, const QueueInfo &info, Span
 		fdTableReg.data = reinterpret_cast<uintptr_t>(_fds.data());
 		fdTableReg.tags = reinterpret_cast<uintptr_t>(_tags.data());
 
-		err = io_uring_register(ringFd, IORING_REGISTER_FILES2, &fdTableReg,
+		err = __sprt_io_uring_register(ringFd, IORING_REGISTER_FILES2, &fdTableReg,
 				sizeof(io_uring_rsrc_register));
 		if (err < 0) {
 			log::source().error("event::URingData", "Fail to set fd table");
@@ -1014,7 +998,7 @@ URingData::URingData(QueueRef *q, Queue::Data *data, const QueueInfo &info, Span
 			range.len = info.internalHandles;
 			range.resv = 0;
 
-			err = io_uring_register(ringFd, IORING_REGISTER_FILE_ALLOC_RANGE, &range, 0);
+			err = __sprt_io_uring_register(ringFd, IORING_REGISTER_FILE_ALLOC_RANGE, &range, 0);
 			if (err < 0) {
 				log::source().error("event::URingData", "Fail to register file alloc range");
 				cleanup();
@@ -1037,5 +1021,3 @@ URingData::~URingData() {
 }
 
 } // namespace stappler::event
-
-#endif

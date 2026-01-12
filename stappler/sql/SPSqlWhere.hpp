@@ -61,7 +61,7 @@ static inline void Query_writeComparationStr(Query<Binder, Interface> &q,
 		stream << "\"" << f.source << "\".";
 	}
 	Query_writeFieldName<Interface>(stream, f.name, f.plain) << cmp;
-	q.writeBind(forward<Value1>(v1));
+	q.writeBind(sprt::forward<Value1>(v1));
 	stream << ")";
 }
 
@@ -74,7 +74,7 @@ static inline void Query_writeComparationStrArray(Query<Binder, Interface> &q,
 		stream << "\"" << f.source << "\".";
 	}
 	Query_writeFieldName<Interface>(stream, f.name, f.plain) << cmp;
-	q.writeBindArray(forward<Value1>(v1));
+	q.writeBindArray(sprt::forward<Value1>(v1));
 	stream << ")";
 }
 
@@ -88,13 +88,13 @@ static inline void Query_writeComparationStr(Query<Binder, Interface> &q,
 		stream << f.source << ".";
 	}
 	Query_writeFieldName<Interface>(stream, f.name, f.plain) << cmp1;
-	q.writeBind(forward<Value1>(v1));
+	q.writeBind(sprt::forward<Value1>(v1));
 	stream << " " << op << " ";
 	if (!f.source.empty()) {
 		stream << f.source << ".";
 	}
 	Query_writeFieldName<Interface>(stream, f.name, f.plain) << cmp2;
-	q.writeBind(forward<Value2>(v2));
+	q.writeBind(sprt::forward<Value2>(v2));
 	stream << ")";
 }
 
@@ -106,9 +106,9 @@ static inline void Query_writeComparationBetween(Query<Binder, Interface> &q,
 		stream << f.source << ".";
 	}
 	Query_writeFieldName<Interface>(stream, f.name, f.plain) << " BETWEEN ";
-	q.writeBind(forward<Value1>(v1));
+	q.writeBind(sprt::forward<Value1>(v1));
 	stream << " AND ";
-	q.writeBind(forward<Value2>(v2));
+	q.writeBind(sprt::forward<Value2>(v2));
 }
 
 template <typename Binder, typename Interface>
@@ -128,31 +128,31 @@ inline void Query_writeComparation(Query<Binder, Interface> &q,
 		const typename Query<Binder, Interface>::Field &f, Comparation cmp, Value1 &&v1) {
 	switch (cmp) {
 	case Comparation::LessThen:
-		Query_writeComparationStr(q, stream, f, "<", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, "<", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::LessOrEqual:
-		Query_writeComparationStr(q, stream, f, "<=", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, "<=", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::Equal:
-		Query_writeComparationStr(q, stream, f, "=", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, "=", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::NotEqual:
-		Query_writeComparationStr(q, stream, f, "!=", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, "!=", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::GreatherOrEqual:
-		Query_writeComparationStr(q, stream, f, ">=", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, ">=", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::GreatherThen:
-		Query_writeComparationStr(q, stream, f, ">", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, ">", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::Includes:
-		Query_writeComparationStr(q, stream, f, "@@", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, "@@", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::In:
-		Query_writeComparationStr(q, stream, f, " IN ", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, " IN ", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::NotIn:
-		Query_writeComparationStr(q, stream, f, " NOT IN ", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, " NOT IN ", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::IsNull: Query_writeComparationStrNoArg(q, stream, f, " IS NULL"); break;
 	case Comparation::IsNotNull:
@@ -176,51 +176,51 @@ inline void Query_writeComparation(Query<Binder, Interface> &q,
 	switch (cmp) {
 	case Comparation::Invalid: break;
 	case Comparation::LessThen:
-		Query_writeComparationStr(q, stream, f, "<", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, "<", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::LessOrEqual:
-		Query_writeComparationStr(q, stream, f, "<=", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, "<=", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::Equal:
-		Query_writeComparationStr(q, stream, f, "=", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, "=", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::NotEqual:
-		Query_writeComparationStr(q, stream, f, "!=", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, "!=", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::GreatherOrEqual:
-		Query_writeComparationStr(q, stream, f, ">=", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, ">=", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::GreatherThen:
-		Query_writeComparationStr(q, stream, f, ">", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, ">", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::BetweenValues:
-		Query_writeComparationStr(q, stream, f, ">", std::forward<Value1>(v1), "<",
-				std::forward<Value2>(v2), "AND");
+		Query_writeComparationStr(q, stream, f, ">", sprt::forward<Value1>(v1), "<",
+				sprt::forward<Value2>(v2), "AND");
 		break;
 	case Comparation::BetweenEquals:
-		Query_writeComparationStr(q, stream, f, ">=", std::forward<Value1>(v1),
-				"<=", std::forward<Value2>(v2), "AND");
+		Query_writeComparationStr(q, stream, f, ">=", sprt::forward<Value1>(v1),
+				"<=", sprt::forward<Value2>(v2), "AND");
 		break;
 	case Comparation::NotBetweenValues:
-		Query_writeComparationStr(q, stream, f, "<=", std::forward<Value1>(v1),
-				">=", std::forward<Value2>(v2), "OR");
+		Query_writeComparationStr(q, stream, f, "<=", sprt::forward<Value1>(v1),
+				">=", sprt::forward<Value2>(v2), "OR");
 		break;
 	case Comparation::NotBetweenEquals:
-		Query_writeComparationStr(q, stream, f, "<", std::forward<Value1>(v1), ">",
-				std::forward<Value2>(v2), "OR");
+		Query_writeComparationStr(q, stream, f, "<", sprt::forward<Value1>(v1), ">",
+				sprt::forward<Value2>(v2), "OR");
 		break;
 	case Comparation::Includes:
-		Query_writeComparationStr(q, stream, f, "@@", std::forward<Value1>(v1));
+		Query_writeComparationStr(q, stream, f, "@@", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::Between:
-		Query_writeComparationBetween(q, stream, f, std::forward<Value1>(v1),
-				std::forward<Value2>(v2));
+		Query_writeComparationBetween(q, stream, f, sprt::forward<Value1>(v1),
+				sprt::forward<Value2>(v2));
 		break;
 	case Comparation::In:
-		Query_writeComparationStrArray(q, stream, f, " IN ", std::forward<Value1>(v1));
+		Query_writeComparationStrArray(q, stream, f, " IN ", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::NotIn:
-		Query_writeComparationStrArray(q, stream, f, " NOT IN ", std::forward<Value1>(v1));
+		Query_writeComparationStrArray(q, stream, f, " NOT IN ", sprt::forward<Value1>(v1));
 		break;
 	case Comparation::IsNull: Query_writeComparationStrNoArg(q, stream, f, " IS NULL"); break;
 	case Comparation::IsNotNull:
@@ -228,15 +228,15 @@ inline void Query_writeComparation(Query<Binder, Interface> &q,
 		break;
 	case Comparation::Prefix:
 		Query_writeComparationStr(q, stream, f, " LIKE ",
-				makePatternComparator(cmp, std::forward<Value1>(v1)));
+				makePatternComparator(cmp, sprt::forward<Value1>(v1)));
 		break;
 	case Comparation::Suffix:
 		Query_writeComparationStr(q, stream, f, " LIKE ",
-				makePatternComparator(cmp, std::forward<Value1>(v1)));
+				makePatternComparator(cmp, sprt::forward<Value1>(v1)));
 		break;
 	case Comparation::WordPart:
 		Query_writeComparationStr(q, stream, f, " LIKE ",
-				makePatternComparator(cmp, std::forward<Value1>(v1)));
+				makePatternComparator(cmp, sprt::forward<Value1>(v1)));
 		break;
 	}
 	stream << ")";
@@ -253,7 +253,7 @@ auto Query<Binder, Interface>::WhereClause<Clause>::where(Operator op, const Fie
 		Query_writeOperator(this->query->stream, op);
 	}
 	Query_writeComparation(*(this->query), this->query->stream, field, cmp,
-			std::forward<Value>(val));
+			sprt::forward<Value>(val));
 	return (Clause &)*this;
 }
 
@@ -268,7 +268,7 @@ auto Query<Binder, Interface>::WhereClause<Clause>::where(Operator op, const Fie
 		Query_writeOperator(this->query->stream, op);
 	}
 	Query_writeComparationStr(*(this->query), this->query->stream, field, cmp,
-			std::forward<Value>(val));
+			sprt::forward<Value>(val));
 	return (Clause &)*this;
 }
 
@@ -283,7 +283,7 @@ auto Query<Binder, Interface>::WhereClause<Clause>::where(Operator op, const Fie
 		Query_writeOperator(this->query->stream, op);
 	}
 	Query_writeComparation(*(this->query), this->query->stream, field, cmp,
-			std::forward<Value>(val1), std::forward<Value>(val2));
+			sprt::forward<Value>(val1), sprt::forward<Value>(val2));
 	return (Clause &)*this;
 }
 
@@ -298,7 +298,7 @@ auto Query<Binder, Interface>::WhereClause<Clause>::where(Operator op, const Fie
 		Query_writeOperator(this->query->stream, op);
 	}
 	Query_writeComparationStr(*(this->query), this->query->stream, field, cmp1,
-			std::forward<Value>(val1), cmp2, std::forward<Value>(val2));
+			sprt::forward<Value>(val1), cmp2, sprt::forward<Value>(val2));
 	return (Clause &)*this;
 }
 
@@ -327,7 +327,7 @@ template <typename Binder, typename Interface>
 template <typename... Args>
 auto Query<Binder, Interface>::WhereBegin::where(Args &&...args) -> WhereContinue {
 	WhereContinue q(this->query);
-	q.where(sql::Operator::And, std::forward<Args>(args)...);
+	q.where(sql::Operator::And, sprt::forward<Args>(args)...);
 	return q;
 }
 
@@ -354,7 +354,7 @@ auto Query<Binder, Interface>::SetClause<Clause>::set(const StringView &f, Value
 		this->query->stream << ",";
 	}
 	this->query->stream << " \"" << f << "\"=";
-	this->query->writeBind(forward<Value>(v));
+	this->query->writeBind(sprt::forward<Value>(v));
 	return (Clause &)*this;
 }
 
@@ -369,7 +369,7 @@ auto Query<Binder, Interface>::SetClause<Clause>::set(const StringView &t, const
 		this->query->stream << ",";
 	}
 	this->query->stream << " " << t << ".\"" << f << "\"=";
-	this->query->writeBind(forward<Value>(v));
+	this->query->writeBind(sprt::forward<Value>(v));
 	return (Clause &)*this;
 }
 

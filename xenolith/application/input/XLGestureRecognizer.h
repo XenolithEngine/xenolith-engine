@@ -268,7 +268,7 @@ protected:
 	virtual InputEventState renewEvent(const InputEvent &, float density) override;
 
 	Time _lastTime;
-	math::MovingAverage<4> _velocityX, _velocityY;
+	MovingAverage<4> _velocityX, _velocityY;
 
 	bool _swipeBegin = false;
 	uint32_t _currentTouch = maxOf<uint32_t>();
@@ -297,7 +297,7 @@ protected:
 	virtual InputEventState renewEvent(const InputEvent &, float density) override;
 
 	Time _lastTime;
-	math::MovingAverage<3> _velocity;
+	MovingAverage<3> _velocity;
 
 	GesturePinch _gesture;
 	InputCallback _callback;

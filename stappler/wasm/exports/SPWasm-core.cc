@@ -96,7 +96,7 @@ static void StapplerCoreToUtf8(wasm_exec_env_t exec_env, char16_t *ptr, uint32_t
 	auto sourcePtr = sourceString.data();
 	auto end = sourcePtr + sourceString.size();
 	while (sourcePtr < end) {
-		auto c = unicode::utf16Decode32(sourcePtr, offset);
+		auto c = unicode::utf16Decode32(sourcePtr, end - sourcePtr, offset);
 		targetBuf += unicode::utf8EncodeBuf(targetBuf, c);
 		sourcePtr += offset;
 	}

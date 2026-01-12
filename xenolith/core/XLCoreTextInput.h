@@ -26,110 +26,20 @@
 #include "SPString.h"
 #include "XLCoreInput.h"
 
+#include <sprt/runtime/window/text_input.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
-struct TextInputState;
-struct TextInputRequest;
-
-enum class TextInputFlags : uint32_t {
-	None,
-	RunIfDisabled = 1 << 0,
-};
-
-SP_DEFINE_ENUM_AS_MASK(TextInputFlags)
-
-struct TextInputString : public Ref {
-	virtual ~TextInputString() = default;
-
-	template <typename... Args>
-	static Rc<TextInputString> create(Args &&...args) {
-		auto ret = Rc<TextInputString>::alloc();
-		ret->string = string::toWideString<memory::StandartInterface>(std::forward<Args>(args)...);
-		return ret;
-	}
-
-	size_t size() const { return string.size(); }
-
-	WideString string;
-};
-
-struct TextInputState {
-	bool empty() const { return !string || string->string.empty(); }
-	size_t size() const { return string ? string->string.size() : 0; }
-
-	WideStringView getStringView() const {
-		return string ? WideStringView(string->string) : WideStringView();
-	}
-
-	Rc<TextInputString> string;
-	TextCursor cursor;
-	TextCursor marked;
-
-	bool enabled = false;
-	TextInputType type = TextInputType::Empty;
-	InputKeyComposeState compose = InputKeyComposeState::Nothing;
-
-	TextInputRequest getRequest() const;
-};
-
-struct TextInputRequest {
-	bool empty() const { return !string || string->string.empty(); }
-	size_t size() const { return string ? string->string.size() : 0; }
-
-	Rc<TextInputString> string;
-	TextCursor cursor;
-	TextCursor marked;
-	TextInputType type = TextInputType::Empty;
-
-	TextInputState getState() const;
-};
-
-struct TextInputInfo {
-	Function<bool(const TextInputRequest &)> update;
-	Function<void(const TextInputState &)> propagate;
-	Function<void()> cancel;
-};
-
-class TextInputProcessor : public Ref {
-public:
-	virtual ~TextInputProcessor() = default;
-
-	bool init(TextInputInfo &&);
-
-	void insertText(WideStringView sInsert, InputKeyComposeState);
-	void insertText(WideStringView sInsert, TextCursor replacement);
-	void setMarkedText(WideStringView sInsert, TextCursor replacement, TextCursor marked);
-	void deleteBackward();
-	void deleteForward();
-	void unmarkText();
-
-	bool hasText();
-	void textChanged(TextInputString *, TextCursor, TextCursor);
-	void cursorChanged(TextCursor);
-	void markedChanged(TextCursor);
-
-	void handleInputEnabled(bool enabled);
-	void handleTextChanged(TextInputState &&);
-
-	// run input capture (or update it with new params)
-	// propagates all data to device input manager, enables screen keyboard if needed
-	void run(const TextInputRequest &);
-
-	// disable text input, disables keyboard connection and keyboard input event interception
-	// default manager automatically disabled when app goes background
-	void cancel();
-
-	bool isRunning() const { return _state.enabled; }
-
-	bool canHandleInputEvent(const InputEventData &);
-	bool handleInputEvent(const InputEventData &);
-
-protected:
-	bool doInsertText(TextInputState &, WideStringView, InputKeyComposeState);
-
-	TextInputInfo _info;
-	TextInputState _state;
-};
+using sprt::window::TextInputType;
+using sprt::window::TextCursorPosition;
+using sprt::window::TextCursorLength;
+using sprt::window::TextCursor;
+using sprt::window::TextInputState;
+using sprt::window::TextInputRequest;
+using sprt::window::TextInputFlags;
+using sprt::window::TextInputString;
+using sprt::window::TextInputInfo;
+using sprt::window::TextInputProcessor;
 
 } // namespace stappler::xenolith::core
 

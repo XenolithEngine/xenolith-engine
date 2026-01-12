@@ -22,11 +22,8 @@
  **/
 
 #include "XLFontLocale.h"
-#include "SPBytesReader.h"
 #include "SPMemInterface.h"
-#include "SPRef.h"
 #include "SPString.h"
-#include "SPStringDetail.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::locale {
 
@@ -97,8 +94,8 @@ struct LocaleInterface {
 
 	void init() {
 		manager = Rc<SharedRef<LocaleManager>>::create(SharedRefMode::Allocator);
-		manager->setDefault(stappler::platform::getOsLocale());
-		manager->setLocale(stappler::platform::getOsLocale());
+		manager->setDefault(sprt::platform::getOsLocale());
+		manager->setLocale(sprt::platform::getOsLocale());
 	}
 	void term() { manager = nullptr; }
 

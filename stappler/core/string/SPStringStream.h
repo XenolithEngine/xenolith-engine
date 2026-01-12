@@ -268,7 +268,7 @@ static void toStringStream(Stream &stream, const WideStringView &val) {
 	uint8_t offset = 0;
 
 	while (s > 0) {
-		auto c = sprt::unicode::utf16Decode32(d, offset);
+		auto c = sprt::unicode::utf16Decode32(d, s, offset);
 		unicode::utf8Encode(stream, c);
 
 		if (s >= offset) {

@@ -225,9 +225,9 @@ static void fillCryptoBlockHeader(uint8_t *buf, const BlockKey256 &key, BytesVie
 	uint64_t dataSize = d.size();
 
 	BlockCryptoHeader header;
-	header.size = byteorder::HostToLittle(dataSize);
-	header.version = byteorder::HostToLittle(key.version);
-	header.cipher = byteorder::HostToLittle(toInt(key.cipher));
+	header.size = sprt::byteorder::HostToLittle(dataSize);
+	header.version = sprt::byteorder::HostToLittle(key.version);
+	header.cipher = sprt::byteorder::HostToLittle(toInt(key.cipher));
 	header.padding = 0;
 
 	memcpy(buf, &header, sizeof(BlockCryptoHeader));
@@ -337,7 +337,7 @@ BlockKey256 makeBlockKey(const PrivateKey &pkey, BytesView hash, BlockCipher b, 
 
 BlockInfo getBlockInfo(BytesView val) {
 	BlockInfo ret;
-	BytesViewTemplate<Endian::Little> b(val);
+	BytesViewTemplate<sprt::endian::little> b(val);
 	ret.dataSize = b.readUnsigned64();
 	ret.version = b.readUnsigned16();
 	ret.cipher = BlockCipher(b.readUnsigned16());

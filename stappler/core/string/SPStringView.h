@@ -28,10 +28,11 @@ THE SOFTWARE.
 // Umbrella header for StringView implementation
 
 #include "SPMemInterface.h"
-#include <sprt/runtime/stringbuffer.h>
 #include <sprt/runtime/stringview.h>
 
 namespace STAPPLER_VERSIONIZED stappler {
+
+namespace chars = sprt::chars;
 
 using sprt::BytesReader;
 using sprt::StringViewBase;
@@ -290,31 +291,6 @@ inline std::basic_ostream<char> &operator<<(std::basic_ostream<char> &os,
 
 namespace STAPPLER_VERSIONIZED stappler {
 
-template <typename Type>
-auto makeSpanView(const std::vector<Type> &vec) -> SpanView<Type> {
-	return SpanView<Type>(vec);
-}
-
-template <typename Type>
-auto makeSpanView(const sprt::memory::vector<Type> &vec) -> SpanView<Type> {
-	return SpanView<Type>(vec);
-}
-
-template <typename Type, size_t Size>
-auto makeSpanView(const std::array<Type, Size> &vec) -> SpanView<Type> {
-	return SpanView<Type>(vec);
-}
-
-template <typename Type>
-auto makeSpanView(const Type *ptr, size_t size) -> SpanView<Type> {
-	return SpanView<Type>(ptr, size);
-}
-
-template <typename Type, size_t Size>
-auto makeSpanView(const Type (&array)[Size]) -> SpanView<Type> {
-	return SpanView<Type>(array, Size);
-}
-
 template <typename CharType>
 inline auto operator<=>(const memory::StandartInterface::BasicStringType<CharType> &l,
 		const StringViewBase<CharType> &r) {
@@ -454,6 +430,25 @@ struct hash<STAPPLER_VERSIONIZED_NAMESPACE::SpanView<Value>> {
 } // namespace std
 
 namespace STAPPLER_VERSIONIZED stappler::memory {
+
+template <typename T>
+inline auto makeCallback(T &&t) ->
+		typename std::enable_if<!std::is_function<T>::value && !std::is_bind_expression<T>::value,
+				typename sprt::callback_traits<decltype(&T::operator())>::type>::type {
+	using Type = typename sprt::callback_traits<decltype(&T::operator())>::type;
+
+	return Type(std::forward<T>(t));
+}
+
+template <typename Sig>
+inline auto makeCallback(const std::function<Sig> &fn) {
+	return callback<Sig>(fn);
+}
+
+template <typename Sig>
+inline auto makeCallback(const memory::function<Sig> &fn) {
+	return callback<Sig>(fn);
+}
 
 template <typename Char>
 inline auto makeCallback(std::basic_ostream<Char> &stream) {

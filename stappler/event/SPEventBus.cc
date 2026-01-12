@@ -47,7 +47,7 @@ bool BusDelegate::init(NotNull<Looper> looper, SpanView<BusEventCategory> cat, N
 
 bool BusDelegate::init(NotNull<Looper> looper, BusEventCategory cat, NotNull<Ref> ref,
 		BusEventCallback &&cb) {
-	return init(looper, makeSpanView(&cat, 1), ref, sp::move(cb));
+	return init(looper, sprt::makeSpanView(&cat, 1), ref, sp::move(cb));
 }
 
 // should be called when owner is disabled

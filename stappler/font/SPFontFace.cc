@@ -43,7 +43,7 @@ static constexpr uint32_t getAxisTag(char c1, char c2, char c3, char c4) {
 static constexpr uint32_t getAxisTag(const char c[4]) { return getAxisTag(c[0], c[1], c[2], c[3]); }
 
 static CharGroupId getCharGroupForChar(char32_t c) {
-	using namespace chars;
+	using namespace sprt::chars;
 	if (CharGroup<char32_t, CharGroupId::Numbers>::match(c)) {
 		return CharGroupId::Numbers;
 	} else if (CharGroup<char32_t, CharGroupId::Latin>::match(c)) {
@@ -365,7 +365,7 @@ bool FontFaceObject::acquireTextureUnsafe(char32_t theChar,
 			return true;
 		}
 	} else {
-		if (!chars::isspace(theChar) && theChar != char16_t(0x0A)) {
+		if (!sprt::chars::isspace(theChar) && theChar != char16_t(0x0A)) {
 			log::format(log::Warn, "Font", SP_LOCATION, "error: no bitmap for (%d) '%s'", theChar,
 					string::toUtf8<Interface>(theChar).data());
 		}
@@ -412,7 +412,7 @@ bool FontFaceObject::addChars(const Vector<char32_t> &chars, bool expand,
 
 bool FontFaceObject::addCharGroup(CharGroupId g, Vector<char32_t> *failed) {
 	bool updated = false;
-	using namespace chars;
+	using namespace sprt::chars;
 	auto f = [&, this](char32_t c) {
 		auto plane = ((c >> 16) & 0xFFFF);
 		if ((plane != _plane || !addChar(char16_t(c & 0xFFFF), updated)) && failed) {
@@ -535,7 +535,7 @@ bool FontFaceObject::addChar(char16_t theChar, bool &updated) {
 				static_cast<uint16_t>(advance >> 16),
 			});
 
-	if (!chars::isspace(theChar)) {
+	if (!sprt::chars::isspace(theChar)) {
 		updated = true;
 	}
 
@@ -728,7 +728,7 @@ bool FontFaceSet::addTextureChars(SpanView<CharLayoutData> chars) const {
 
 	bool ret = false;
 	for (auto &it : chars) {
-		if (chars::isspace(it.charID) || it.charID == char16_t(0x0A)
+		if (sprt::chars::isspace(it.charID) || it.charID == char16_t(0x0A)
 				|| it.charID == char16_t(0x00AD)) {
 			continue;
 		}

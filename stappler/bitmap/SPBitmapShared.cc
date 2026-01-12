@@ -27,11 +27,11 @@ namespace STAPPLER_VERSIONIZED stappler::bitmap {
 
 static SharedSymbol s_bitmapSharedSymbols[] = {
 	SharedSymbol{"detectFormat",
-		static_cast<Pair<FileFormat, StringView> (*)(const FileInfo &)>(detectFormat)},
+		static_cast<sprt::pair<FileFormat, StringView> (*)(const FileInfo &)>(detectFormat)},
 	SharedSymbol{"detectFormat",
-		static_cast<Pair<FileFormat, StringView> (*)(io::Producer const &)>(detectFormat)},
+		static_cast<sprt::pair<FileFormat, StringView> (*)(io::Producer const &)>(detectFormat)},
 	SharedSymbol{"detectFormat",
-		static_cast<Pair<FileFormat, StringView> (*)(uint8_t const *, size_t)>(detectFormat)},
+		static_cast<sprt::pair<FileFormat, StringView> (*)(uint8_t const *, size_t)>(detectFormat)},
 	SharedSymbol{"getMimeType", static_cast<StringView (*)(FileFormat)>(getMimeType)},
 	SharedSymbol{"getMimeType", static_cast<StringView (*)(StringView)>(getMimeType)},
 	SharedSymbol{"getImageSize",

@@ -120,7 +120,7 @@ public:
 
 	constexpr Vec1 getNormalized() const;
 
-	constexpr bool fuzzyEquals(const Vec1 &b, float var = NumericLimits<float>::epsilon()) const {
+	constexpr bool fuzzyEquals(const Vec1 &b, float var = sprt::Epsilon<float>) const {
 		return (x - var <= b.x && b.x <= x + var);
 	}
 

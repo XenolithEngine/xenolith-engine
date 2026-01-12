@@ -24,7 +24,6 @@ THE SOFTWARE.
 #ifndef CORE_VG_SPVECTORPATH_H_
 #define CORE_VG_SPVECTORPATH_H_
 
-#include "SPRef.h"
 #include "SPVectorPathData.h"
 
 namespace STAPPLER_VERSIONIZED stappler::vg {
@@ -62,31 +61,31 @@ public:
 	bool init(const PathData<memory::StandartInterface> &);
 	bool init(const PathData<memory::PoolInterface> &);
 
-	VectorPath & addPath(const VectorPath &);
-	VectorPath & addPath(BytesView);
-	VectorPath & addPath(StringView);
+	VectorPath &addPath(const VectorPath &);
+	VectorPath &addPath(BytesView);
+	VectorPath &addPath(StringView);
 
 	size_t count() const;
 
-	VectorPath & openForWriting(const Callback<void(PathWriter &)> &);
+	VectorPath &openForWriting(const Callback<void(PathWriter &)> &);
 
-	VectorPath & setFillColor(const Color4B &color);
-	VectorPath & setFillColor(const Color3B &color, bool preserveOpacity = false);
-	VectorPath & setFillColor(const Color &color, bool preserveOpacity = false);
+	VectorPath &setFillColor(const Color4B &color);
+	VectorPath &setFillColor(const Color3B &color, bool preserveOpacity = false);
+	VectorPath &setFillColor(const Color &color, bool preserveOpacity = false);
 	const Color4B &getFillColor() const;
 
-	VectorPath & setStrokeColor(const Color4B &color);
-	VectorPath & setStrokeColor(const Color3B &color, bool preserveOpacity = false);
-	VectorPath & setStrokeColor(const Color &color, bool preserveOpacity = false);
+	VectorPath &setStrokeColor(const Color4B &color);
+	VectorPath &setStrokeColor(const Color3B &color, bool preserveOpacity = false);
+	VectorPath &setStrokeColor(const Color &color, bool preserveOpacity = false);
 	const Color4B &getStrokeColor() const;
 
-	VectorPath & setFillOpacity(uint8_t value);
+	VectorPath &setFillOpacity(uint8_t value);
 	uint8_t getFillOpacity() const;
 
-	VectorPath & setStrokeOpacity(uint8_t value);
+	VectorPath &setStrokeOpacity(uint8_t value);
 	uint8_t getStrokeOpacity() const;
 
-	VectorPath & setStrokeWidth(float width);
+	VectorPath &setStrokeWidth(float width);
 	float getStrokeWidth() const;
 
 	VectorPath &setWindingRule(Winding);
@@ -101,20 +100,20 @@ public:
 	VectorPath &setMiterLimit(float);
 	float getMiterLimit() const;
 
-	VectorPath & setStyle(DrawStyle s);
+	VectorPath &setStyle(DrawStyle s);
 	DrawStyle getStyle() const;
 
 	VectorPath &setAntialiased(bool);
 	bool isAntialiased() const;
 
 	// transform should be applied in reverse order
-	VectorPath & setTransform(const Mat4 &);
-	VectorPath & applyTransform(const Mat4 &);
+	VectorPath &setTransform(const Mat4 &);
+	VectorPath &applyTransform(const Mat4 &);
 	const Mat4 &getTransform() const;
 
-	VectorPath & clear();
+	VectorPath &clear();
 
-	VectorPath & setParams(const PathParams &);
+	VectorPath &setParams(const PathParams &);
 	PathParams getParams() const;
 
 	bool empty() const;
@@ -141,6 +140,6 @@ protected:
 	PathData<Interface> _data;
 };
 
-}
+} // namespace stappler::vg
 
 #endif /* STAPPLER_VG_SPVECTORPATH_H_ */

@@ -134,9 +134,11 @@ public:
 	bool save(FileFormat, const FileInfo &, bool invert = false);
 	bool save(StringView name, const FileInfo &, bool invert = false);
 
-	auto write(FileFormat = FileFormat::Png, bool invert = false) const ->
-			typename Interface::BytesType;
-	auto write(StringView name, bool invert = false) const -> typename Interface::BytesType;
+	template <typename BytesType = typename Interface::BytesType>
+	auto write(FileFormat = FileFormat::Png, bool invert = false) const -> BytesType;
+
+	template <typename BytesType = typename Interface::BytesType>
+	auto write(StringView name, bool invert = false) const -> BytesType;
 
 	// resample with default filter (usually Lanczos4)
 	BitmapTemplate resample(uint32_t width, uint32_t height, uint32_t stride = 0) const;
@@ -145,6 +147,15 @@ public:
 			uint32_t stride = 0) const;
 
 protected:
+	template <typename BytesType>
+	struct BitmapBytesTarget {
+		BytesType *bytes = nullptr;
+		const StrideFn *strideFn;
+	};
+
+	template <typename BytesType = typename Interface::BytesType>
+	void _setupWriter(BitmapWriter &, const BitmapBytesTarget<BytesType> *) const;
+
 	void setInfo(uint32_t w, uint32_t h, PixelFormat c,
 			AlphaFormat a = AlphaFormat::Unpremultiplied, uint32_t stride = 0);
 
@@ -294,6 +305,46 @@ void BitmapTemplate<Interface>::alloc(uint8_t val, uint32_t w, uint32_t h, Pixel
 	_data.resize(_stride * h, val);
 	_originalFormat = FileFormat::Custom;
 	_originalFormatName.clear();
+}
+
+
+template <typename Interface>
+template <typename BytesType>
+void BitmapTemplate<Interface>::_setupWriter(BitmapWriter &w,
+		const BitmapBytesTarget<BytesType> *target) const {
+	w.target = (void *)target;
+	w.color = format();
+	w.alpha = alpha();
+	w.width = width();
+	w.height = height();
+	w.stride = stride();
+
+	if (target && target->strideFn) {
+		w.getStride = [](void *ptr, PixelFormat f, uint32_t w) {
+			return (*((BitmapBytesTarget<BytesType> *)ptr)->strideFn)(f, w);
+		};
+	} else {
+		w.getStride = nullptr;
+	}
+
+	w.push = [](void *ptr, const uint8_t *data, uint32_t size) {
+		auto bytes = ((BitmapBytesTarget<BytesType> *)ptr)->bytes;
+		auto origSize = bytes->size();
+		bytes->resize(origSize + size);
+		memcpy(bytes->data() + origSize, data, size);
+	};
+	w.resize = [](void *ptr, uint32_t size) {
+		((BitmapBytesTarget<BytesType> *)ptr)->bytes->resize(size);
+	};
+	w.getData = [](void *ptr, uint32_t location) {
+		return ((BitmapBytesTarget<BytesType> *)ptr)->bytes->data() + location;
+	};
+	w.assign = [](void *ptr, const uint8_t *data, uint32_t size) {
+		auto bytes = ((BitmapBytesTarget<BytesType> *)ptr)->bytes;
+		bytes->resize(size);
+		memcpy(bytes->data(), data, size);
+	};
+	w.clear = [](void *ptr) { ((BitmapBytesTarget<BytesType> *)ptr)->bytes->clear(); };
 }
 
 template <typename Interface>
@@ -551,6 +602,41 @@ bool BitmapTemplate<Interface>::save(const FileInfo &path, bool invert) {
 template <typename Interface>
 bool BitmapTemplate<Interface>::loadData(BytesView d, const StrideFn &strideFn) {
 	return loadData(d.data(), d.size(), strideFn);
+}
+
+
+template <typename Interface>
+template <typename BytesType>
+auto BitmapTemplate<Interface>::write(FileFormat fmt, bool invert) const -> BytesType {
+	BytesType ret;
+
+	BitmapWriter w;
+	BitmapBytesTarget<BytesType> target{&ret, nullptr};
+	_setupWriter(w, &target);
+
+	auto support = getDefaultFormat(fmt);
+	if (support->isWritable() && support->write(_data.data(), w, invert)) {
+		return ret;
+	} else if (getDefaultFormat(FileFormat::Png)->write(_data.data(), w, invert)) {
+		return ret;
+	}
+	return BytesType();
+}
+
+template <typename Interface>
+template <typename BytesType>
+auto BitmapTemplate<Interface>::write(StringView fmt, bool invert) const -> BytesType {
+	BytesType ret;
+
+	BitmapWriter w;
+	BitmapBytesTarget<BytesType> target{&ret, nullptr};
+	_setupWriter(w, &target);
+
+	auto support = getCustomFormat(fmt);
+	if (support->isWritable() && support->write(_data.data(), w, invert)) {
+		return ret;
+	}
+	return BytesType();
 }
 
 } // namespace stappler::bitmap

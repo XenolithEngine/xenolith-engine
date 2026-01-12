@@ -25,81 +25,18 @@
 
 #include "XLCoreInfo.h" // IWYU pragma: keep
 
+#include <sprt/runtime/window/mode.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
-enum class FullscreenFlags : uint32_t {
-	None,
-	Current = 1 << 0,
-	Exclusive = 1 << 1,
-};
+using sprt::window::FullscreenFlags;
 
-SP_DEFINE_ENUM_AS_MASK(FullscreenFlags)
-
-struct EdidInfo {
-	static EdidInfo parse(BytesView);
-	static StringView getVendorName(StringView);
-
-	String vendorId;
-	String model;
-	String serial;
-	StringView vendor;
-
-	auto operator<=>(const EdidInfo &) const = default;
-};
-
-struct ModeInfo {
-	static const ModeInfo Current;
-	static const ModeInfo Preferred;
-
-	uint32_t width = 0;
-	uint32_t height = 0;
-	uint32_t rate = 0; // FPS multiplied by 1000
-	float scale = 1.0f;
-
-	auto operator<=>(const ModeInfo &) const = default;
-};
-
-struct MonitorId {
-	// Use this to fullscreen into primary monitor
-	static const MonitorId Primary;
-
-	// Use this to disable fullscreen
-	static const MonitorId None;
-
-	String name;
-	EdidInfo edid;
-
-	auto operator<=>(const MonitorId &) const = default;
-};
-
-struct SP_PUBLIC FullscreenInfo {
-	// Exit fullscreen mode
-	static const FullscreenInfo None;
-
-	// Use current monitor for the fullscreen
-	static const FullscreenInfo Current;
-
-	MonitorId id;
-	ModeInfo mode;
-	FullscreenFlags flags = FullscreenFlags::None;
-
-	auto operator<=>(const FullscreenInfo &) const = default;
-};
-
-struct MonitorInfo : MonitorId {
-	IRect rect;
-	Extent2 mm;
-
-	uint32_t preferredMode = 0;
-	uint32_t currentMode = 0;
-
-	Vector<ModeInfo> modes;
-};
-
-struct ScreenInfo : public Ref {
-	Vector<MonitorInfo> monitors;
-	uint32_t primaryMonitor = 0;
-};
+using sprt::window::EdidInfo;
+using sprt::window::ModeInfo;
+using sprt::window::MonitorId;
+using sprt::window::FullscreenInfo;
+using sprt::window::MonitorInfo;
+using sprt::window::ScreenInfo;
 
 } // namespace stappler::xenolith::core
 

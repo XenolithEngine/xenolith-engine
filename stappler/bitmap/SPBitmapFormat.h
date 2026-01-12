@@ -79,15 +79,18 @@ SP_PUBLIC bool isImage(const FileInfo &, bool readable = true);
 SP_PUBLIC bool isImage(const io::Producer &file, bool readable = true);
 SP_PUBLIC bool isImage(const uint8_t *data, size_t dataLen, bool readable = true);
 
-SP_PUBLIC Pair<FileFormat, StringView> detectFormat(const FileInfo &);
-SP_PUBLIC Pair<FileFormat, StringView> detectFormat(const io::Producer &file);
-SP_PUBLIC Pair<FileFormat, StringView> detectFormat(const uint8_t *data, size_t dataLen);
+SP_PUBLIC sprt::pair<FileFormat, StringView> detectFormat(const FileInfo &);
+SP_PUBLIC sprt::pair<FileFormat, StringView> detectFormat(const io::Producer &file);
+SP_PUBLIC sprt::pair<FileFormat, StringView> detectFormat(const uint8_t *data, size_t dataLen);
 
 SP_PUBLIC StringView getMimeType(FileFormat);
 SP_PUBLIC StringView getMimeType(StringView);
 
 SP_PUBLIC bool check(FileFormat, const uint8_t *data, size_t dataLen);
 SP_PUBLIC bool check(StringView, const uint8_t *data, size_t dataLen);
+
+SP_PUBLIC const BitmapFormat *getDefaultFormat(FileFormat);
+SP_PUBLIC const BitmapFormat *getCustomFormat(StringView);
 
 inline uint8_t getBytesPerPixel(PixelFormat c) {
 	switch (c) {

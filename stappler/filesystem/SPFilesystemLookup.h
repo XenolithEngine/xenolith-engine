@@ -61,6 +61,7 @@ SP_PUBLIC std::ostream &operator<<(std::ostream &, const FileInfo &);
 namespace STAPPLER_VERSIONIZED stappler::filesystem {
 
 using sprt::filesystem::OpenFlags;
+using sprt::filesystem::PollFlags;
 using sprt::filesystem::Access;
 using sprt::filesystem::LocationInterface;
 
@@ -103,19 +104,25 @@ SP_PUBLIC auto findPath(LocationCategory, LookupFlags = LookupFlags::None) ->
 
 // returns path, from which loadable resource can be read (from application bundle or dedicated resource directory)
 template <typename Interface>
-SP_PUBLIC auto findPath(StringView path, LocationCategory = LocationCategory::Custom,
-		LookupFlags = LookupFlags::None, Access = Access::None) -> typename Interface::StringType;
+SP_PUBLIC auto findPath(LocationCategory, StringView path, LookupFlags = LookupFlags::None,
+		Access = Access::None) -> typename Interface::StringType;
 
 template <typename Interface>
-SP_PUBLIC auto findPath(StringView path, LocationCategory cat, Access a) ->
+SP_PUBLIC auto findPath(LocationCategory cat, StringView path, Access a) ->
 		typename Interface::StringType {
-	return findPath<Interface>(path, cat, LookupFlags::None, a);
+	return findPath<Interface>(cat, path, LookupFlags::None, a);
+}
+
+template <typename Interface>
+SP_PUBLIC auto findPath(StringView path, LookupFlags flags = LookupFlags::None,
+		Access a = Access::None) -> typename Interface::StringType {
+	return findPath<Interface>(LocationCategory::Custom, path, flags, a);
 }
 
 template <typename Interface>
 SP_PUBLIC auto findPath(const FileInfo &info, Access a = Access::None) ->
 		typename Interface::StringType {
-	return findPath<Interface>(info.path, info.category, info.flags, a);
+	return findPath<Interface>(info.category, info.path, info.flags, a);
 }
 
 template <typename Interface>
@@ -125,22 +132,21 @@ SP_PUBLIC inline auto findWritablePath(LocationCategory cat, LookupFlags flags =
 }
 
 template <typename Interface>
-SP_PUBLIC inline auto findWritablePath(StringView path,
-		LocationCategory cat = LocationCategory::Custom, LookupFlags flags = LookupFlags::None,
+SP_PUBLIC inline auto findWritablePath(StringView path, LookupFlags flags = LookupFlags::None,
 		Access a = Access::None) -> typename Interface::StringType {
-	return findPath<Interface>(path, cat, flags | LookupFlags::Writable, a);
+	return findPath<Interface>(LocationCategory::Custom, path, flags | LookupFlags::Writable, a);
 }
 
 template <typename Interface>
-SP_PUBLIC inline auto findWritablePath(StringView path, LocationCategory cat, Access a) ->
+SP_PUBLIC inline auto findWritablePath(LocationCategory cat, StringView path, Access a) ->
 		typename Interface::StringType {
-	return findPath<Interface>(path, cat, LookupFlags::Writable, a);
+	return findPath<Interface>(cat, path, LookupFlags::Writable, a);
 }
 
 template <typename Interface>
 SP_PUBLIC inline auto findWritablePath(const FileInfo &info, Access a = Access::None) ->
 		typename Interface::StringType {
-	return findPath<Interface>(info.path, info.category, info.flags | LookupFlags::Writable, a);
+	return findPath<Interface>(info.category, info.path, info.flags | LookupFlags::Writable, a);
 }
 
 // enumerate all paths, that will be used to find a resource of specific types
@@ -246,10 +252,10 @@ SP_PUBLIC inline LocationCategory detectResourceCategory(const FileInfo &info,
 }
 
 template <typename Interface>
-SP_PUBLIC inline auto findPath(StringView path, LocationCategory type, LookupFlags flags, Access a)
+SP_PUBLIC inline auto findPath(LocationCategory type, StringView path, LookupFlags flags, Access a)
 		-> typename Interface::StringType {
 	typename Interface::StringType npath;
-	enumeratePaths(path, type, flags, a, [&](const LocationInfo &, StringView p) {
+	enumeratePaths(type, path, flags, a, [&](const LocationInfo &, StringView p) {
 		npath = p.str<Interface>();
 		return false;
 	});

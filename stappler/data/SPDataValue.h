@@ -64,14 +64,14 @@ class ValueTemplate;
 } // namespace stappler::data
 
 
-namespace STAPPLER_VERSIONIZED stappler::memory::detail {
+namespace sprt::memory::detail {
 
 template <typename Interface>
-struct mem_sso_test<data::ValueTemplate<Interface>> {
+struct mem_sso_test<stappler::data::ValueTemplate<Interface>> {
 	static constexpr bool value = true;
 };
 
-} // namespace stappler::memory::detail
+} // namespace sprt::memory::detail
 
 
 namespace STAPPLER_VERSIONIZED stappler::data {
@@ -154,10 +154,12 @@ public:
 	explicit ValueTemplate(BytesType &&v) : _type(Type::BYTESTRING) {
 		bytesVal = new (std::nothrow) BytesType(sp::move(v));
 	}
-	explicit ValueTemplate(const BytesViewTemplate<Endian::Big> &v) : _type(Type::BYTESTRING) {
+	explicit ValueTemplate(const BytesViewTemplate<sprt::endian::big> &v)
+	: _type(Type::BYTESTRING) {
 		bytesVal = new (std::nothrow) BytesType(v.data(), v.data() + v.size());
 	}
-	explicit ValueTemplate(const BytesViewTemplate<Endian::Little> &v) : _type(Type::BYTESTRING) {
+	explicit ValueTemplate(const BytesViewTemplate<sprt::endian::little> &v)
+	: _type(Type::BYTESTRING) {
 		bytesVal = new (std::nothrow) BytesType(v.data(), v.data() + v.size());
 	}
 	explicit ValueTemplate(const ArrayType &v) : _type(Type::ARRAY) {
@@ -252,7 +254,7 @@ public:
 	}
 	bool operator==(const char *v) const { return isString() ? strVal->compare(v) == 0 : false; }
 	bool operator==(const StringView &v) const {
-		return isString() ? string::detail::compare_c(*strVal, v) == 0 : false;
+		return isString() ? sprt::detail::compare_c(*strVal, v) == 0 : false;
 	}
 	bool operator==(const BytesView &v) const { return isBytes() ? (*bytesVal) == v : false; }
 	bool operator==(const ArrayType &v) const { return isArray() ? compare(*arrayVal, v) : false; }
@@ -333,11 +335,11 @@ public:
 		setValue(Self(sp::move(v)), std::forward<Key>(key));
 	}
 	template <class Key>
-	void setBytes(const BytesViewTemplate<Endian::Big> &v, Key &&key) {
+	void setBytes(const BytesViewTemplate<sprt::endian::big> &v, Key &&key) {
 		setValue(Self(v), std::forward<Key>(key));
 	}
 	template <class Key>
-	void setBytes(const BytesViewTemplate<Endian::Little> &v, Key &&key) {
+	void setBytes(const BytesViewTemplate<sprt::endian::little> &v, Key &&key) {
 		setValue(Self(v), std::forward<Key>(key));
 	}
 	template <class Key>

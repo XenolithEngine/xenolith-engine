@@ -27,17 +27,17 @@
 #include "SPPlatformUnistd.h"
 #include "detail/SPEventQueueData.h"
 
-#if ANDROID
-
 #include "../fd/SPEventSignalFd.h"
 #include "../fd/SPEventEventFd.h"
 
-#include <android/looper.h>
+#include <sprt/c/sys/__sprt_alooper.h>
 
 namespace STAPPLER_VERSIONIZED stappler::event {
 
 struct SP_PUBLIC ALooperData : public PlatformQueueData {
-	ALooper *_looper = nullptr;
+	static bool checkSupport();
+
+	__SPRT_ID(ALooper) *_looper = nullptr;
 
 	Rc<EventFdHandle> _eventFd;
 
@@ -60,7 +60,5 @@ struct SP_PUBLIC ALooperData : public PlatformQueueData {
 };
 
 } // namespace stappler::event
-
-#endif
 
 #endif /* CORE_EVENT_PLATFORM_ANDROID_SPEVENT_ALOOPER_H_ */

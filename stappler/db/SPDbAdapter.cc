@@ -110,7 +110,7 @@ void ApplicationInterface::scheduleAyncDbTask(
 
 StringView ApplicationInterface::getDocumentRoot() const {
 	StringView ret;
-	filesystem::enumeratePaths(FileCategory::AppData, [&](StringView path, FileFlags) {
+	filesystem::enumeratePaths(FileCategory::AppData, [&](const LocationInfo &, StringView path) {
 		ret = path;
 		return false;
 	});

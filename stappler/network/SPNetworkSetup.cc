@@ -178,19 +178,41 @@ Pair<FILE *, uint64_t> _openFile(const FileInfo &filename, bool readOnly, bool r
 			pos = stat.size;
 			if (!readOnly) {
 				filesystem::enumerateWritablePaths(filename, filesystem::Access::None,
-						[&](StringView path, FileFlags) {
+						[&](const LocationInfo &loc, StringView path) {
+					void *fileDes = nullptr;
+					const char *mode = nullptr;
 					if (!resume) {
 						filesystem::remove(filename);
-						file = filesystem::native::fopen_fn(path, "w+b");
+						fileDes = loc.interface->_open(loc, path,
+								filesystem::OpenFlags::Read | filesystem::OpenFlags::Override,
+								nullptr);
+						mode = "w+b";
 					} else {
-						file = filesystem::native::fopen_fn(path, "a+b");
+						fileDes = loc.interface->_open(loc, path,
+								filesystem::OpenFlags::Read | filesystem::OpenFlags::Append
+										| filesystem::OpenFlags::Write,
+								nullptr);
+						mode = "a+b";
+					}
+					if (fileDes) {
+						file = loc.interface->_fdopen(fileDes, mode, nullptr);
+						if (!file) {
+							loc.interface->_close(fileDes, nullptr);
+						}
 					}
 					return false;
 				});
 			} else {
 				filesystem::enumeratePaths(filename, filesystem::Access::None,
-						[&](StringView path, FileFlags) {
-					file = filesystem::native::fopen_fn(path, "rb");
+						[&](const LocationInfo &loc, StringView path) {
+					auto fileDes =
+							loc.interface->_open(loc, path, filesystem::OpenFlags::Read, nullptr);
+					if (fileDes) {
+						file = loc.interface->_fdopen(fileDes, "rb", nullptr);
+						if (!file) {
+							loc.interface->_close(fileDes, nullptr);
+						}
+					}
 					return false;
 				});
 			}
@@ -198,8 +220,15 @@ Pair<FILE *, uint64_t> _openFile(const FileInfo &filename, bool readOnly, bool r
 	} else {
 		if (!readOnly) {
 			filesystem::enumerateWritablePaths(filename, filesystem::Access::None,
-					[&](StringView path, FileFlags) {
-				file = filesystem::native::fopen_fn(path, "w+b");
+					[&](const LocationInfo &loc, StringView path) {
+				auto fileDes = loc.interface->_open(loc, path,
+						filesystem::OpenFlags::Read | filesystem::OpenFlags::Write, nullptr);
+				if (fileDes) {
+					file = loc.interface->_fdopen(fileDes, "w+b", nullptr);
+					if (!file) {
+						loc.interface->_close(fileDes, nullptr);
+					}
+				}
 				return false;
 			});
 		}

@@ -192,12 +192,11 @@ using dict = stappler::memory::dict<T, V, Compare>;
 
 using Mutex = std::mutex;
 
-using stappler::makeSpanView;
+using sprt::makeSpanView;
 
 using memory::perform;
 using memory::perform_clear;
 using memory::perform_temporary;
-using memory::makeCallback;
 
 template <typename Container, typename T>
 bool emplace_ordered(Container &vec, T val);
@@ -258,12 +257,11 @@ using stappler::Pair;
 
 using Mutex = std::mutex;
 
-using stappler::makeSpanView;
+using sprt::makeSpanView;
 
 using memory::perform;
 using memory::perform_clear;
 using memory::perform_temporary;
-using memory::makeCallback;
 
 template <typename Container, typename T>
 bool emplace_ordered(Container &vec, T val);

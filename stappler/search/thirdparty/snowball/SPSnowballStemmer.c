@@ -1,5 +1,6 @@
 #include "SPSnowballStemmer.h"
 #include <string.h>
+#include <sprt/c/bits/__sprt_null.h>
 
 typedef unsigned char sb_symbol;
 
@@ -143,8 +144,8 @@ static struct stemmer_modules modules[] = {
 static symbol *create_s(struct SN_env *env) {
 	symbol *p;
 	void *mem = env->memalloc(env->userData, HEAD + (CREATE_SIZE + 1) * sizeof(symbol));
-	if (mem == NULL) {
-		return NULL;
+	if (mem == __SPRT_NULL) {
+		return __SPRT_NULL;
 	}
 	p = (symbol *)(HEAD + (char *)mem);
 	CAPACITY(p) = CREATE_SIZE;
@@ -153,7 +154,7 @@ static symbol *create_s(struct SN_env *env) {
 }
 
 static void lose_s(struct SN_env *env, symbol *p) {
-	if (p == NULL) {
+	if (p == __SPRT_NULL) {
 		return;
 	}
 	env->memfree(env->userData, (char *)p - HEAD);
@@ -552,16 +553,16 @@ static int find_among_b(struct SN_env *z, const struct among *v, int v_size) {
 
 
 /* Increase the size of the buffer pointed to by p to at least n symbols.
- * If insufficient memory, returns NULL and frees the old buffer.
+ * If insufficient memory, returns __SPRT_NULL and frees the old buffer.
  */
 static symbol *increase_size(struct SN_env *alloc, symbol *p, int n) {
 	symbol *q;
 	int new_size = n + 20;
 	void *mem = alloc->memalloc(alloc->userData, HEAD + (new_size + 1) * sizeof(symbol));
 	memcpy(mem, p - HEAD, CAPACITY(p));
-	if (mem == NULL) {
+	if (mem == __SPRT_NULL) {
 		lose_s(alloc, p);
-		return NULL;
+		return __SPRT_NULL;
 	}
 	q = (symbol *)(HEAD + (char *)mem);
 	CAPACITY(q) = new_size;
@@ -571,15 +572,15 @@ static symbol *increase_size(struct SN_env *alloc, symbol *p, int n) {
 /* to replace symbols between c_bra and c_ket in z->p by the
    s_size symbols at s.
    Returns 0 on success, -1 on error.
-   Also, frees z->p (and sets it to NULL) on error.
+   Also, frees z->p (and sets it to __SPRT_NULL) on error.
 */
 static int replace_s(struct SN_env *z, int c_bra, int c_ket, int s_size, const symbol *s,
 		int *adjptr) {
 	int adjustment;
 	int len;
-	if (z->p == NULL) {
+	if (z->p == __SPRT_NULL) {
 		z->p = create_s(z);
-		if (z->p == NULL) {
+		if (z->p == __SPRT_NULL) {
 			return -1;
 		}
 	}
@@ -588,7 +589,7 @@ static int replace_s(struct SN_env *z, int c_bra, int c_ket, int s_size, const s
 	if (adjustment != 0) {
 		if (adjustment + len > CAPACITY(z->p)) {
 			z->p = increase_size(z, z->p, adjustment + len);
-			if (z->p == NULL) {
+			if (z->p == __SPRT_NULL) {
 				return -1;
 			}
 		}
@@ -604,7 +605,7 @@ static int replace_s(struct SN_env *z, int c_bra, int c_ket, int s_size, const s
 	if (s_size) {
 		memmove(z->p + c_bra, s, s_size * sizeof(symbol));
 	}
-	if (adjptr != NULL) {
+	if (adjptr != __SPRT_NULL) {
 		*adjptr = adjustment;
 	}
 	return 0;
@@ -612,7 +613,7 @@ static int replace_s(struct SN_env *z, int c_bra, int c_ket, int s_size, const s
 
 static int slice_check(struct SN_env *z) {
 
-	if (z->bra < 0 || z->bra > z->ket || z->ket > z->l || z->p == NULL
+	if (z->bra < 0 || z->bra > z->ket || z->ket > z->l || z->p == __SPRT_NULL
 			|| z->l > SIZE(z->p)) /* this line could be removed */
 	{
 #if 0
@@ -628,7 +629,7 @@ static int slice_from_s(struct SN_env *z, int s_size, const symbol *s) {
 	if (slice_check(z)) {
 		return -1;
 	}
-	return replace_s(z, z->bra, z->ket, s_size, s, NULL);
+	return replace_s(z, z->bra, z->ket, s_size, s, __SPRT_NULL);
 }
 
 static int slice_from_v(struct SN_env *z, const symbol *p) { return slice_from_s(z, SIZE(p), p); }
@@ -656,14 +657,14 @@ static int insert_v(struct SN_env *z, int bra, int ket, const symbol *p) {
 static symbol *slice_to(struct SN_env *z, symbol *p) {
 	if (slice_check(z)) {
 		lose_s(z, p);
-		return NULL;
+		return __SPRT_NULL;
 	}
 	{
 		int len = z->ket - z->bra;
 		if (CAPACITY(p) < len) {
 			p = increase_size(z, p, len);
-			if (p == NULL) {
-				return NULL;
+			if (p == __SPRT_NULL) {
+				return __SPRT_NULL;
 			}
 		}
 		memmove(p, z->p + z->bra, len * sizeof(symbol));
@@ -676,8 +677,8 @@ static symbol *assign_to(struct SN_env *z, symbol *p) {
 	int len = z->l;
 	if (CAPACITY(p) < len) {
 		p = increase_size(z, p, len);
-		if (p == NULL) {
-			return NULL;
+		if (p == __SPRT_NULL) {
+			return __SPRT_NULL;
 		}
 	}
 	memmove(p, z->p, len * sizeof(symbol));
@@ -699,23 +700,23 @@ static int len_utf8(const symbol *p) {
 
 
 static struct SN_env *SN_create_env(struct SN_env *z, int S_size, int I_size, int B_size) {
-	if (z == NULL) {
-		return NULL;
+	if (z == __SPRT_NULL) {
+		return __SPRT_NULL;
 	}
 	z->p = create_s(z);
-	if (z->p == NULL) {
+	if (z->p == __SPRT_NULL) {
 		goto error;
 	}
 	if (S_size) {
 		int i;
 		z->S = (symbol **)z->memalloc(z->userData, S_size * sizeof(symbol *));
-		if (z->S == NULL) {
+		if (z->S == __SPRT_NULL) {
 			goto error;
 		}
 
 		for (i = 0; i < S_size; i++) {
 			z->S[i] = create_s(z);
-			if (z->S[i] == NULL) {
+			if (z->S[i] == __SPRT_NULL) {
 				goto error;
 			}
 		}
@@ -723,14 +724,14 @@ static struct SN_env *SN_create_env(struct SN_env *z, int S_size, int I_size, in
 
 	if (I_size) {
 		z->I = (int *)z->memalloc(z->userData, I_size * sizeof(int));
-		if (z->I == NULL) {
+		if (z->I == __SPRT_NULL) {
 			goto error;
 		}
 	}
 
 	if (B_size) {
 		z->B = (unsigned char *)z->memalloc(z->userData, B_size * sizeof(unsigned char));
-		if (z->B == NULL) {
+		if (z->B == __SPRT_NULL) {
 			goto error;
 		}
 	}
@@ -738,11 +739,11 @@ static struct SN_env *SN_create_env(struct SN_env *z, int S_size, int I_size, in
 	return z;
 error:
 	SN_close_env(z, S_size);
-	return NULL;
+	return __SPRT_NULL;
 }
 
 static void SN_close_env(struct SN_env *z, int S_size) {
-	if (z == NULL) {
+	if (z == __SPRT_NULL) {
 		return;
 	}
 	if (S_size) {
@@ -758,7 +759,7 @@ static void SN_close_env(struct SN_env *z, int S_size) {
 }
 
 static int SN_set_current(struct SN_env *z, int size, const symbol *s) {
-	int err = replace_s(z, 0, z->l, size, s, NULL);
+	int err = replace_s(z, 0, z->l, size, s, __SPRT_NULL);
 	z->c = 0;
 	return err;
 }
@@ -767,11 +768,11 @@ const sb_symbol *sb_stemmer_stem(struct SN_env *z, const sb_symbol *word, int si
 	int ret;
 	if (SN_set_current(z, size, (const symbol *)(word))) {
 		z->l = 0;
-		return NULL;
+		return __SPRT_NULL;
 	}
 	ret = z->stem(z);
 	if (ret < 0) {
-		return NULL;
+		return __SPRT_NULL;
 	}
 	z->p[z->l] = 0;
 	return (const sb_symbol *)(z->p);

@@ -28,6 +28,8 @@
 #include "XLCoreTextInput.h"
 #include "XLCorePresentationEngine.h"
 
+#include <sprt/runtime/window/interface.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class Director;
@@ -36,7 +38,7 @@ enum class AppWindowConfigFlags {
 	None = 0,
 };
 
-class SP_PUBLIC AppWindow : public Ref, core::PresentationWindow {
+class SP_PUBLIC AppWindow : public sprt::window::AppWindow, core::PresentationWindow {
 public:
 	using InputEventData = core::InputEventData;
 	using InputEventName = core::InputEventName;
@@ -53,14 +55,14 @@ public:
 
 	virtual void runWithQueue(const Rc<core::Queue> &); // from view thread
 
-	virtual void run(); // from view thread
+	virtual void run() override; // from view thread
 
-	virtual void update(core::PresentationUpdateFlags); // from view thread
+	virtual void update(core::PresentationUpdateFlags) override; // from view thread
 	virtual void end(); // from view thread
 
-	virtual void close(bool graceful = true);
+	virtual void close(bool graceful = true) override;
 
-	virtual void handleInputEvents(Vector<InputEventData> &&);
+	virtual void handleInputEvents(sprt::memory::dynvector<InputEventData> &&);
 	virtual void handleTextInput(const TextInputState &);
 
 	Context *getContext() const { return _context; }
@@ -88,7 +90,7 @@ public:
 	// Run constraints update process
 	void updateConstraints(core::UpdateConstraintsFlags); // from any thread
 
-	void setReadyForNextFrame(); // from any thread
+	void setReadyForNextFrame() override; // from any thread
 
 	// Block current thread until next frame
 	bool waitUntilFrame();
@@ -126,7 +128,7 @@ public:
 	void acquireTextInput(TextInputRequest &&);
 	void releaseTextInput();
 
-	void updateLayers(Vector<WindowLayer> &&); // from app thread
+	void updateLayers(sprt::window::Vector<WindowLayer> &&); // from app thread
 
 	// Acquire data describing current monitor configuration
 	void acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&, Ref * = nullptr);

@@ -23,6 +23,8 @@
 #include "SPThreadPool.h"
 #include "SPThread.h"
 
+#include <sprt/runtime/thread/info.h>
+
 namespace STAPPLER_VERSIONIZED stappler::thread {
 
 class ThreadPool::Worker : public Thread {
@@ -89,7 +91,7 @@ ThreadPool::Worker::Worker(ThreadPool::WorkerContext *queue, StringView name, ui
 ThreadPool::Worker::~Worker() { _queue->threadPool->release(_queueRefId); }
 
 void ThreadPool::Worker::threadInit() {
-	ThreadInfo::setThreadInfo(_name, _workerId, true);
+	sprt::thread::info::set(_name, _workerId, true);
 	Thread::threadInit();
 }
 
@@ -108,7 +110,7 @@ bool ThreadPool::Worker::worker() {
 
 	if (!task) {
 		std::unique_lock<std::mutex> lock(_queue->inputMutexQueue);
-		if (_queue->tasksCounter.load() > 0) {
+		if (_queue->tasksInQueue.load() > 0) {
 			// some task received after locking
 			return true;
 		}
@@ -116,6 +118,7 @@ bool ThreadPool::Worker::worker() {
 		return true;
 	}
 
+	--_queue->tasksInQueue;
 	task->execute();
 
 	_queue->onMainThreadWorker(sp::move(task));
@@ -151,7 +154,7 @@ void ThreadPool::WorkerContext::spawn() {
 	std::unique_lock lock(inputMutexQueue);
 	if (workers.empty()) {
 		for (uint32_t i = 0; i < info.threadCount; i++) {
-			auto worker = new (std::nothrow) Worker(this, info.name, i);
+			auto worker = new (sprt::nothrow) Worker(this, info.name, i);
 			workers.push_back(worker);
 			worker->run();
 		}
@@ -207,7 +210,8 @@ Status ThreadPool::WorkerContext::perform(Rc<Task> &&task, bool first) {
 
 	task->addRef(threadPool);
 
-	++tasksCounter;
+	++tasksInExecution;
+	++tasksInQueue;
 	inputQueue.push(task->getPriority().get(), first, sp::move(task));
 	inputCondition.notify_one();
 	return Status::Ok;
@@ -219,7 +223,7 @@ void ThreadPool::WorkerContext::onMainThreadWorker(Rc<Task> &&task) {
 	}
 
 	info.complete->perform(move(task));
-	--tasksCounter;
+	--tasksInExecution;
 }
 
 Rc<Task> ThreadPool::WorkerContext::popTask() {

@@ -67,7 +67,7 @@ struct SP_PUBLIC RankingValues {
 };
 
 struct SP_PUBLIC SearchVector {
-	using MatchVector = Vector<Pair<size_t, SearchData::Rank>>;
+	using MatchVector = Vector<sprt::pair<size_t, SearchData::Rank>>;
 
 	size_t documentLength = 0;
 	Map<StringView, MatchVector> words;

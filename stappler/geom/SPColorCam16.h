@@ -203,9 +203,9 @@ struct SP_PUBLIC Cam16 {
 		const Float p2 = (40.0 * r_a + 20.0 * g_a + b_a) / 20.0;
 
 		const Float radians = std::atan2(b, a);
-		const Float degrees = radians * 180.0 / numbers::pi;
+		const Float degrees = radians * 180.0 / sprt::numbers::Pi<Float>;
 		const Float _hue = sanitizeDegrees(degrees);
-		const Float hue_radians = _hue * numbers::pi / 180.0;
+		const Float hue_radians = _hue * sprt::numbers::Pi<Float> / 180.0;
 		const Float ac = p2 * viewing_conditions.nbb;
 
 		const Float _j = 100.0
@@ -213,7 +213,8 @@ struct SP_PUBLIC Cam16 {
 		const Float _q = (4.0 / viewing_conditions.c) * std::sqrt(Float(_j / 100.0))
 				* (viewing_conditions.aw + 4.0) * viewing_conditions.fl_root;
 		const Float hue_prime = _hue < 20.14 ? _hue + 360 : _hue;
-		const Float e_hue = 0.25 * (std::cos(Float(hue_prime * numbers::pi / 180.0 + 2.0) + 3.8));
+		const Float e_hue =
+				0.25 * (std::cos(Float(hue_prime * sprt::numbers::Pi<Float> / 180.0 + 2.0) + 3.8));
 		const Float p1 = 50000.0 / 13.0 * e_hue * viewing_conditions.n_c * viewing_conditions.ncb;
 		const Float t = p1 * std::sqrt(a * a + b * b) / (u + Float(0.305));
 		const Float alpha = std::pow(t, Float(0.9))
@@ -288,9 +289,9 @@ struct SP_PUBLIC Cam16 {
 		const Float p2 = (40.0 * r_a + 20.0 * g_a + b_a) / 20.0;
 
 		const Float radians = std::atan2(b, a);
-		const Float degrees = radians * 180.0 / numbers::pi;
+		const Float degrees = radians * 180.0 / sprt::numbers::Pi<Float>;
 		const Float _hue = sanitizeDegrees(degrees);
-		const Float hue_radians = _hue * numbers::pi / 180.0;
+		const Float hue_radians = _hue * sprt::numbers::Pi<Float> / 180.0;
 		const Float ac = p2 * ViewingConditions::DEFAULT.nbb;
 
 		const Float _j = 100.0
@@ -299,7 +300,8 @@ struct SP_PUBLIC Cam16 {
 		const Float _q = (4.0 / ViewingConditions::DEFAULT.c) * std::sqrt(Float(_j / 100.0))
 				* (ViewingConditions::DEFAULT.aw + 4.0) * ViewingConditions::DEFAULT.fl_root;
 		const Float hue_prime = _hue < 20.14 ? _hue + 360 : _hue;
-		const Float e_hue = 0.25 * (std::cos(Float(hue_prime * numbers::pi / 180.0 + 2.0)) + 3.8);
+		const Float e_hue =
+				0.25 * (std::cos(Float(hue_prime * sprt::numbers::Pi<Float> / 180.0 + 2.0)) + 3.8);
 		const Float p1 = 50000.0 / 13.0 * e_hue * ViewingConditions::DEFAULT.n_c
 				* ViewingConditions::DEFAULT.ncb;
 		const Float t = p1 * std::sqrt(a * a + b * b) / (u + Float(0.305));

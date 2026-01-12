@@ -21,15 +21,22 @@
  **/
 
 #include "XLContext.h"
-#include "SPStringDetail.h"
+#include "SPString.h"
 #include "XLAppThread.h"
 #include "XLAppWindow.h"
 #include "XLContextInfo.h"
 #include "XLCoreEnum.h"
 #include "XLDirector.h"
 #include "XLScene.h"
-#include "platform/XLContextController.h"
-#include "platform/XLContextNativeWindow.h"
+#include "XLLooperAdapter.h"
+
+#if MODULE_XENOLITH_BACKEND_VK
+#include "XLVkInstance.h"
+#endif
+
+#include <sprt/runtime/window/native_window.h>
+#include <sprt/runtime/window/controller.h>
+#include <sprt/runtime/window/clipboard.h>
 
 #if MODULE_XENOLITH_FONT
 #include "XLFontLocale.h"
@@ -47,7 +54,6 @@ ContentInitializer::ContentInitializer() { }
 ContentInitializer::~ContentInitializer() { terminate(); }
 
 ContentInitializer::ContentInitializer(ContentInitializer &&other) {
-	alloc = other.alloc;
 	pool = other.pool;
 	tmpPool = other.tmpPool;
 	init = other.init;
@@ -58,14 +64,12 @@ ContentInitializer::ContentInitializer(ContentInitializer &&other) {
 
 	other.tmpPool = nullptr;
 	other.pool = nullptr;
-	other.alloc = nullptr;
 	other.init = false;
 }
 
 ContentInitializer &ContentInitializer::operator=(ContentInitializer &&other) {
 	terminate();
 
-	alloc = other.alloc;
 	pool = other.pool;
 	tmpPool = other.tmpPool;
 	init = other.init;
@@ -76,7 +80,6 @@ ContentInitializer &ContentInitializer::operator=(ContentInitializer &&other) {
 
 	other.tmpPool = nullptr;
 	other.pool = nullptr;
-	other.alloc = nullptr;
 	other.init = false;
 	return *this;
 }
@@ -86,12 +89,8 @@ bool ContentInitializer::initialize(int argc, const char *argv[]) {
 		return true;
 	}
 
-	alloc = memory::allocator::create();
-	pool = memory::pool::create(alloc);
+	pool = memory::pool::create(sprt::memory::self_contained_allocator);
 	tmpPool = memory::pool::create(pool);
-
-	// Context pool should be main thread's pool
-	thread::ThreadInfo::setThreadPool(pool);
 
 	int result = 0;
 	if (!sp::initialize(argc, argv, result)) {
@@ -103,15 +102,13 @@ bool ContentInitializer::initialize(int argc, const char *argv[]) {
 }
 
 void ContentInitializer::terminate() {
-	if (alloc) {
+	if (pool) {
 		memory::pool::destroy(tmpPool);
 		memory::pool::destroy(pool);
-		memory::allocator::destroy(alloc);
 		sp::terminate();
 
 		tmpPool = nullptr;
 		pool = nullptr;
-		alloc = nullptr;
 		init = false;
 	}
 }
@@ -139,8 +136,8 @@ static int Context_runWithConfig(ContextConfig &&config, ContentInitializer &&in
 		return -1;
 	}
 
-	auto container = Rc<platform::ContextContainer>::create();
-	container->context = sp::move(ctx);
+	auto container = Rc<sprt::window::ContextContainer>::create();
+	container->context = sprt::move(ctx);
 	container->controller = container->context->getController();
 
 	return container->controller->run(container);
@@ -242,20 +239,30 @@ bool Context::init(ContextConfig &&info, ContentInitializer &&init) {
 
 	_info = info.context;
 
-	_controller = platform::ContextController::create(this, move(info));
+	auto engineMask = event::QueueEngine::Any;
+#if ANDROID
+	engineMask = event::QueueEngine::EPoll;
+#endif
+
+	_looper = event::Looper::acquire(event::LooperInfo{
+		.workersCount = info.context->mainThreadsCount,
+		.engineMask = engineMask,
+	});
+
+	_controller = sprt::window::ContextController::create(this, move(info),
+			Rc<LooperAdapter>::create(_looper));
 
 	if (!_controller) {
 		log::source().error("Context", "Fail to create ContextController");
 		return false;
 	}
-	_looper = _controller->getLooper();
 
 #if MODULE_XENOLITH_FONT
 	auto setLocale = SharedModule::acquireTypedSymbol<decltype(&locale::setLocale)>(
 			buildconfig::MODULE_XENOLITH_FONT_NAME, "locale::setLocale");
 	if (setLocale) {
 		if (_info->userLanguage.empty()) {
-			setLocale(stappler::platform::getOsLocale());
+			setLocale(sprt::platform::getOsLocale());
 		} else {
 			setLocale(_info->userLanguage);
 		}
@@ -292,9 +299,9 @@ bool Context::isCursorSupported(WindowCursor cursor, bool serverSide) const {
 
 WindowCapabilities Context::getWindowCapabilities() const { return _controller->getCapabilities(); }
 
-Status Context::readFromClipboard(Function<void(Status, BytesView, StringView)> &&cb,
-		Function<StringView(SpanView<StringView>)> &&tcb, Ref *target) {
-	auto request = Rc<platform::ClipboardRequest>::create();
+Status Context::readFromClipboard(sprt::window::Function<void(Status, BytesView, StringView)> &&cb,
+		sprt::window::Function<StringView(SpanView<StringView>)> &&tcb, Ref *target) {
+	auto request = Rc<sprt::window::ClipboardRequest>::create();
 	request->dataCallback = sp::move(cb);
 	request->typeCallback = sp::move(tcb);
 	request->target = target;
@@ -302,19 +309,24 @@ Status Context::readFromClipboard(Function<void(Status, BytesView, StringView)> 
 	return _controller->readFromClipboard(sp::move(request));
 }
 
-Status Context::probeClipboard(Function<void(Status, SpanView<StringView>)> &&cb, Ref *ref) {
-	auto probe = Rc<platform::ClipboardProbe>::create();
+Status Context::probeClipboard(sprt::window::Function<void(Status, SpanView<StringView>)> &&cb,
+		Ref *ref) {
+	auto probe = Rc<sprt::window::ClipboardProbe>::create();
 	probe->typeCallback = sp::move(cb);
 	probe->target = ref;
 	return _controller->probeClipboard(sp::move(probe));
 }
 
-Status Context::writeToClipboard(Function<Bytes(StringView)> &&cb, SpanView<String> types, Ref *ref,
-		StringView label) {
-	auto data = Rc<platform::ClipboardData>::create();
-	data->label = label.str<Interface>();
+Status Context::writeToClipboard(sprt::window::Function<sprt::window::Bytes(StringView)> &&cb,
+		SpanView<String> types, Ref *ref, StringView label) {
+	auto data = Rc<sprt::window::ClipboardData>::create();
+	data->label = label.str<sprt::window::String>();
 	data->encodeCallback = sp::move(cb);
-	data->types = types.vec<Interface>();
+
+	sprt::window::Vector<sprt::window::String> vecTypes;
+	for (auto &it : types) { vecTypes.emplace_back(StringView(it).str<sprt::window::String>()); }
+
+	data->types = sp::move(vecTypes);
 	data->owner = ref;
 
 	return _controller->writeToClipboard(move(data));
@@ -322,8 +334,8 @@ Status Context::writeToClipboard(Function<Bytes(StringView)> &&cb, SpanView<Stri
 
 void Context::handleConfigurationChanged(Rc<ContextInfo> &&info) { _info = move(info); }
 
-void Context::handleGraphicsLoaded(NotNull<core::Loop> loop) {
-	_loop = loop;
+void Context::handleGraphicsLoaded(NotNull<sprt::window::gapi::Loop> loop) {
+	_loop = static_cast<core::Loop *>(loop.get());
 	_loop->run();
 #if MODULE_XENOLITH_FONT
 	auto createFontComponent =
@@ -467,15 +479,15 @@ void Context::handleNativeWindowConstraintsChanged(NotNull<NativeWindow> w,
 		core::UpdateConstraintsFlags flags) {
 	log::source().info("Context", "handleNativeWindowConstraintsChanged ", toInt(flags));
 
-	auto appWindow = w->getAppWindow();
+	auto appWindow = static_cast<AppWindow *>(w->getAppWindow());
 	if (appWindow) {
 		appWindow->updateConstraints(flags);
 	}
 }
 
 void Context::handleNativeWindowInputEvents(NotNull<NativeWindow> w,
-		Vector<core::InputEventData> &&events) {
-	auto appWindow = w->getAppWindow();
+		sprt::memory::dynvector<core::InputEventData> &&events) {
+	auto appWindow = static_cast<AppWindow *>(w->getAppWindow());
 	if (appWindow) {
 		appWindow->handleInputEvents(sp::move(events));
 	}
@@ -483,7 +495,7 @@ void Context::handleNativeWindowInputEvents(NotNull<NativeWindow> w,
 
 void Context::handleNativeWindowTextInput(NotNull<NativeWindow> w,
 		const core::TextInputState &state) {
-	auto appWindow = w->getAppWindow();
+	auto appWindow = static_cast<AppWindow *>(w->getAppWindow());
 	if (appWindow) {
 		appWindow->handleTextInput(state);
 	}
@@ -578,7 +590,7 @@ void Context::handleThemeInfoChanged(const ThemeInfo &info) {
 		_application->handleThemeInfoChanged(info);
 	}
 
-	onThemeChanged(this, info.encode());
+	onThemeChanged(this, encodeThemeInfo(info));
 
 	if (_application) {
 		_application->wakeup();
@@ -625,6 +637,133 @@ Rc<ScreenInfo> Context::getScreenInfo() const { return _controller->getScreenInf
 
 void Context::openUrl(StringView str) { _controller->openUrl(str); }
 
+Rc<sprt::window::gapi::Instance> Context::makeInstance(
+		NotNull<sprt::window::gapi::InstanceInfo> info) {
+	Rc<sprt::window::gapi::InstanceInfo> instanceInfo;
+#if MODULE_XENOLITH_BACKEND_VK
+	if (info->api == core::InstanceApi::Vulkan) {
+		instanceInfo = Rc<sprt::window::gapi::InstanceInfo>::alloc();
+		instanceInfo->api = info->api;
+		instanceInfo->backend = info->backend;
+
+		auto instanceBackendInfo = Rc<vk::InstanceBackendInfo>::create();
+		instanceBackendInfo->setup = [this](vk::InstanceData &data, const vk::InstanceInfo &info) {
+			auto supportInfo = _controller->getSupportInfo();
+
+			data.enableBackends = supportInfo.backendMask;
+
+			auto ctxInfo = getInfo();
+
+			data.applicationName = ctxInfo->appName;
+			data.applicationVersion = ctxInfo->appVersion;
+			data.checkPresentationSupport = [this](const vk::Instance *inst,
+													VkPhysicalDevice device, uint32_t queueIdx) {
+				auto supportInfo = _controller->getSupportInfo();
+				vk::SurfaceBackendMask ret;
+
+#if defined(VK_KHR_wayland_surface)
+				if (supportInfo.backendMask.test(toInt(vk::SurfaceBackend::Wayland))) {
+					if (supportInfo.wayland.display) {
+						auto supports = inst->vkGetPhysicalDeviceWaylandPresentationSupportKHR(
+								device, queueIdx, (struct wl_display *)supportInfo.wayland.display);
+						if (supports) {
+							ret.set(toInt(vk::SurfaceBackend::Wayland));
+						}
+					}
+				}
+#endif
+
+#if defined(VK_KHR_xcb_surface)
+				if (supportInfo.backendMask.test(toInt(vk::SurfaceBackend::Xcb))) {
+					if (supportInfo.xcb.connection) {
+						auto supports = inst->vkGetPhysicalDeviceXcbPresentationSupportKHR(device,
+								queueIdx, (xcb_connection_t *)supportInfo.xcb.connection,
+								supportInfo.xcb.visual_id);
+						if (supports) {
+							ret.set(toInt(vk::SurfaceBackend::Xcb));
+						}
+					}
+				}
+#endif
+
+#if defined(VK_KHR_android_surface)
+				if (supportInfo.backendMask.test(toInt(vk::SurfaceBackend::Android))) {
+					ret.set(toInt(vk::SurfaceBackend::Android));
+				}
+#endif
+
+#if defined(VK_KHR_win32_surface)
+				if (supportInfo.backendMask.test(toInt(vk::SurfaceBackend::Win32))) {
+					auto supports = inst->vkGetPhysicalDeviceWin32PresentationSupportKHR(device,
+							queueIdx) if (supports) {
+						ret.set(toInt(vk::SurfaceBackend::Win32));
+					}
+				}
+#endif
+
+#if defined(VK_MVK_macos_surface)
+				if (supportInfo.backendMask.test(toInt(vk::SurfaceBackend::MacOS))) {
+					ret.set(toInt(vk::SurfaceBackend::MacOS));
+				}
+#endif
+
+#if defined(VK_EXT_metal_surface)
+				if (supportInfo.backendMask.test(toInt(vk::SurfaceBackend::Metal))) {
+					ret.set(toInt(vk::SurfaceBackend::Metal));
+				}
+#endif
+				return ret;
+			};
+			return true;
+		};
+
+		instanceInfo->backend = move(instanceBackendInfo);
+	}
+#endif
+	if (instanceInfo) {
+		return core::Instance::create(move(instanceInfo));
+	}
+	return nullptr;
+}
+
+Rc<sprt::window::gapi::Loop> Context::makeLoop(NotNull<sprt::window::gapi::Instance> instance,
+		NotNull<sprt::window::gapi::LoopInfo> info) {
+	Rc<sprt::window::gapi::LoopInfo> loopInfo;
+#if MODULE_XENOLITH_BACKEND_VK
+	if (instance->getApi() == core::InstanceApi::Vulkan) {
+		loopInfo = Rc<sprt::window::gapi::LoopInfo>::alloc();
+		loopInfo->deviceIdx = info->deviceIdx;
+		loopInfo->defaultFormat = info->defaultFormat;
+
+		auto isHeadless = hasFlag(getInfo()->flags, ContextFlags::Headless);
+		auto data = Rc<vk::LoopBackendInfo>::alloc();
+		data->deviceSupportCallback = [isHeadless](const vk::DeviceInfo &dev) {
+			if (isHeadless) {
+				return true;
+			} else {
+				return dev.supportsPresentation()
+						&& std::find(dev.availableExtensions.begin(), dev.availableExtensions.end(),
+								   String(VK_KHR_SWAPCHAIN_EXTENSION_NAME))
+						!= dev.availableExtensions.end();
+			}
+		};
+		data->deviceExtensionsCallback = [isHeadless](
+												 const vk::DeviceInfo &dev) -> Vector<StringView> {
+			Vector<StringView> ret;
+			if (!isHeadless) {
+				ret.emplace_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+			}
+			return ret;
+		};
+		loopInfo->backend = data;
+	}
+#endif
+	if (loopInfo) {
+		return static_cast<core::Instance *>(instance.get())->makeLoop(_looper, move(loopInfo));
+	}
+	return nullptr;
+}
+
 Rc<AppThread> Context::makeAppThread() {
 	auto makeAppThreadSymbol =
 			SharedModule::acquireTypedSymbol<Context::SymbolMakeAppThreadSignature>(
@@ -643,12 +782,10 @@ Rc<AppThread> Context::makeAppThread() {
 }
 
 Rc<AppWindow> Context::makeAppWindow(NotNull<NativeWindow> w) {
-	return _controller->makeAppWindow(_application, w);
+	return Rc<AppWindow>::create(this, _application, w);
 }
 
-void Context::initializeComponent(NotNull<ContextComponent> comp) {
-	_controller->initializeComponent(comp);
-}
+void Context::initializeComponent(NotNull<ContextComponent> comp) { }
 
 void Context::updateLiveReload() {
 	if (!_initializer.liveReloadPath.empty() && _actualLiveReloadLibrary) {

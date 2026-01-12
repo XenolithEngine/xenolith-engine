@@ -26,7 +26,8 @@ THE SOFTWARE.
 #include "SPDbAdapter.h"
 #include "SPDbScheme.h"
 #include "SPDbWorker.h"
-#include "detail/SPMemUserData.h"
+
+#include <sprt/runtime/mem/userdata.h>
 
 namespace STAPPLER_VERSIONIZED stappler::db {
 

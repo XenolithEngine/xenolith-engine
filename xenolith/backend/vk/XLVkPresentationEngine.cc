@@ -180,8 +180,8 @@ bool PresentationEngine::recreateSwapchain() {
 	auto cfg = _window->selectConfig(info, fastModeSelected);
 
 	if (!info.isSupported(cfg)) {
-		log::source().error("Vk-Error", "Presentation with config ", cfg.description(),
-				" is not supported for ", info.description());
+		log::source().error("Vk-Error", "Presentation with config ", cfg, " is not supported for ",
+				info);
 		return false;
 	}
 
@@ -255,7 +255,7 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::Sw
 			}
 
 			auto newConstraints = _window->exportConstraints();
-			newConstraints.extent = cfg.extent;
+			newConstraints.extent = Extent3(cfg.extent, 1);
 			newConstraints.transform = cfg.transform;
 
 			_constraints = sp::move(newConstraints);

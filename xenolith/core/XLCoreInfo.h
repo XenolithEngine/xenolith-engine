@@ -27,6 +27,8 @@
 #include "XLCorePipelineInfo.h"
 #include "SPBitmap.h"
 
+#include <sprt/runtime/window/presentation.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 class BufferObject;
@@ -52,79 +54,7 @@ using ArrayLayers = ValueWrapper<uint32_t, class ArrayLayersFlag>;
 using Extent1 = ValueWrapper<uint32_t, class Extent1Flag>;
 using BaseArrayLayer = ValueWrapper<uint32_t, class BaseArrayLayerFlag>;
 
-// Опции работы движка презентации кадров
-// Позволяют балансировать презентацию кадров между нагрузкой на GPU, низкой задержкой ввода
-// и стабильным кадровым интервалом.
-// Настройки по умолчанию выполнены сбалансированно в пользу снижения задержки ввода
-//
-// Ряд опций зависит от реализации оконного менеджера. Для работы движок презантации получает
-// предпочитаемый набор опций от окна файловой системы.
-//
-// При работе нужно помнить, что Xenolith требует стабильной асинхронной работы.
-// Использовать опции, которые могут заблокировать презентацию или получение кадрового буфера
-// категорически не следует, это может нарушить нормальную работу движка.
-// Например, способ презентации в системе в режиме earlyPresent может блокировать презентацию
-// по вертикальной синхронизации (оснвоной поток будет заблокирован до сигнала). В таком случае,
-// этот режим в системе нужно отключить. Функции получения кадра и презентации всегда должны
-// завершаться без блокировки.
-//
-// Особой осторожности требуют старые или экспериментальные системы, где асинхронный режим
-// работы графичского стека не реализован на уровне системы. Для таких систем необходимо
-// использовать собственную реализацию таймеров (режим usePresentWindow) вместо ожидания
-// синхронизации от самой системы
-struct PresentationOptions {
-	// Запускать следующий кадр только по запросу либо наличию действий в процессе.
-	// В таком случае, PresentationInterval будет считаться на основе реальной презентации
-	// Показательными для производительности остаются интервал подготовки кадра и
-	// таймер использования GPU
-	bool renderOnDemand = true;
-
-	// Использовать внешний сигнал вертикальной синхронизации (система должна поддерживать)
-	// В этом режиме готовые к презентации кадры ожидают сигнала, прежде, чем отправиться
-	// Также, по сигналу система запрашиваает новый буфер для отрисовки следующего кадра
-	// Если система не успела подготовить новый кадр - обновление пропускается
-	bool followDisplayLink = false;
-
-	// Начинать новый кадр только по внешнему сигналу вертикальной синхронизации
-	// В этом режиме система нчинает новый кадр по сигналу, и отправляет его на презентацию
-	// по готовности без ожидания. Если новый сигнал синхронизации поступил до презентации
-	// предыдущего кадра - новый кадр будет начат сразу же
-	// Обеспечивает более низкую задержку ввода, чем базовый followDisplayLink, но требует
-	// большей поддержки от ОС и менеджера окон.
-	// Стандартный режим для Linux+Wayland и Android+Choreographer
-	// Несовместим с usePresentWindow
-	//
-	// P.S. Интерфейс к Wayland запрашивает новый сигнал синхронизации только при отправке кадра
-	// на презентацию. То есть, если кадр не укладывается в релизное окно, без поддержки от композитора
-	// можно ожидать жёсткой потери кадров. В таком случае рекомендуется работать в режиме usePresentWindow
-	bool followDisplayLinkBarrier = false;
-
-	// Использовать внеэкранный рендеринг для подготовки изображений. В этом режиме презентация нового изображения выполняется
-	// строго синхронно (см. presentImmediate)
-	// TODO -пока не реализовано
-	bool renderImageOffscreen = false;
-
-	// Начинать новый кадр как только предыдущий был отправлен на исполнение (то есть, до его завершения и презентации)
-	// Позволяет иметь несколько кадров в одновременной обработке для большей загрузке графического процессора
-	// Не стоит применять без выделенного или интегрированного GPU (то есть, для рендеринга на CPU)
-	bool preStartFrame = true;
-
-	// Использовать временное окно для презентации кадра
-	// Вместо презентации по готовности, система будет стараться удерживать целевую частоту кадров за счёт откладывания
-	// презентации до следующего окна времени
-	// Не работает в режиме followDisplayLink и followDisplayLinkBarrier
-	bool usePresentWindow = true;
-
-	// Отправлять кадр на презентацию сразу после его отправки в обработку. Может снизить видимую задержку ввода.
-	// Использовать с осторожностью в режиме FIFO с двойной буферизацией (предпочитать тройную)
-	bool earlyPresent = true;
-
-	// Сихронизировать обновление параметров и закрытие окна с оконным менеджером
-	// Необходимо для немедленного повторного использования поверхности менеджером окон (Android)
-	//
-	// В этом режиме вызов AppWindow::close может создавать существенную задержку
-	bool syncConstraintsUpdate = false;
-};
+using sprt::window::PresentationOptions;
 
 struct SP_PUBLIC SamplerIndex : ValueWrapper<uint32_t, class SamplerIndexFlag> {
 	// Predefined samplers
@@ -477,6 +407,8 @@ struct SP_PUBLIC ImageData : ImageInfo {
 	using DataCallback = memory::callback<void(BytesView)>;
 
 	BytesView data;
+
+
 	memory::function<void(uint8_t *, uint64_t, const DataCallback &)> memCallback = nullptr;
 	std::function<void(uint8_t *, uint64_t, const DataCallback &)> stdCallback = nullptr;
 	Rc<ImageObject> image; // GL implementation-dependent object
@@ -490,118 +422,9 @@ struct SP_PUBLIC ImageData : ImageInfo {
 	size_t writeData(uint8_t *mem, size_t expected) const;
 };
 
-// OS Windows Manager constraints for a frame presentation
-struct SP_PUBLIC FrameConstraints {
-	Extent3 extent;
-	Padding contentPadding;
-	SurfaceTransformFlags transform = SurfaceTransformFlags::Identity;
-
-	float density = 1.0f;
-	float surfaceDensity = 1.0f;
-
-	// WM frame interval (it's not an engine limit, but OS limit)
-	uint64_t frameInterval = 1'000'000 / 60;
-
-	Size2 getScreenSize() const {
-		if (hasFlag(transform, core::SurfaceTransformFlags::PreRotated)) {
-			switch (core::getPureTransform(transform)) {
-			case SurfaceTransformFlags::Rotate90:
-			case SurfaceTransformFlags::Rotate270:
-			case SurfaceTransformFlags::MirrorRotate90:
-			case SurfaceTransformFlags::MirrorRotate270:
-				return Size2(extent.height, extent.width);
-				break;
-			default: break;
-			}
-		}
-		return Size2(extent.width, extent.height);
-	}
-
-	Padding getRotatedPadding() const {
-		Padding out = contentPadding;
-		switch (transform) {
-		case SurfaceTransformFlags::Rotate90:
-			out.left = contentPadding.top;
-			out.top = contentPadding.right;
-			out.right = contentPadding.bottom;
-			out.bottom = contentPadding.left;
-			break;
-		case SurfaceTransformFlags::Rotate180:
-			out.left = contentPadding.right;
-			out.top = contentPadding.bottom;
-			out.right = contentPadding.left;
-			out.bottom = contentPadding.top;
-			break;
-		case SurfaceTransformFlags::Rotate270:
-			out.left = contentPadding.bottom;
-			out.top = contentPadding.left;
-			out.right = contentPadding.top;
-			out.bottom = contentPadding.right;
-			break;
-		case SurfaceTransformFlags::Mirror:
-			out.left = contentPadding.right;
-			out.right = contentPadding.left;
-			break;
-		case SurfaceTransformFlags::MirrorRotate90: break;
-		case SurfaceTransformFlags::MirrorRotate180:
-			out.top = contentPadding.bottom;
-			out.bottom = contentPadding.top;
-			break;
-		case SurfaceTransformFlags::MirrorRotate270: break;
-		default: break;
-		}
-		return out;
-	}
-
-	constexpr bool operator==(const FrameConstraints &) const = default;
-	constexpr bool operator!=(const FrameConstraints &) const = default;
-};
-
-struct SP_PUBLIC SwapchainConfig {
-	PresentMode presentMode = PresentMode::Mailbox;
-	PresentMode presentModeFast = PresentMode::Unsupported;
-	ImageFormat imageFormat = ImageFormat::R8G8B8A8_UNORM;
-	ColorSpace colorSpace = ColorSpace::SRGB_NONLINEAR_KHR;
-	CompositeAlphaFlags alpha = CompositeAlphaFlags::Opaque;
-	SurfaceTransformFlags transform = SurfaceTransformFlags::Identity;
-	uint32_t imageCount = 3;
-	Extent2 extent;
-	bool clipped = false;
-	bool transfer = true;
-	bool liveResize = false;
-
-	// Used when gAPI support for the fullscreen mode required
-	FullScreenExclusiveMode fullscreenMode = FullScreenExclusiveMode::Default;
-	void *fullscreenHandle = nullptr;
-
-	String description() const;
-
-	constexpr bool operator==(const SwapchainConfig &) const = default;
-	constexpr bool operator!=(const SwapchainConfig &) const = default;
-};
-
-struct SP_PUBLIC SurfaceInfo {
-	uint32_t minImageCount;
-	uint32_t maxImageCount;
-	Extent2 currentExtent;
-	Extent2 minImageExtent;
-	Extent2 maxImageExtent;
-	uint32_t maxImageArrayLayers;
-	CompositeAlphaFlags supportedCompositeAlpha;
-	SurfaceTransformFlags supportedTransforms;
-	SurfaceTransformFlags currentTransform;
-	ImageUsage supportedUsageFlags;
-	Vector<Pair<ImageFormat, ColorSpace>> formats;
-	Vector<PresentMode> presentModes;
-
-	// Used when gAPI support for the fullscreen mode required
-	FullScreenExclusiveMode fullscreenMode = FullScreenExclusiveMode::Default;
-	void *fullscreenHandle = nullptr;
-
-	bool isSupported(const SwapchainConfig &) const;
-
-	String description() const;
-};
+using sprt::window::FrameConstraints;
+using sprt::window::SwapchainConfig;
+using sprt::window::SurfaceInfo;
 
 struct SP_PUBLIC TextureSetLayoutInfo {
 	uint32_t imageCount = config::MaxTextureSetImages;
@@ -649,15 +472,34 @@ SP_PUBLIC String getImageFlagsDescription(ImageFlags fmt);
 SP_PUBLIC String getSampleCountDescription(SampleCount fmt);
 SP_PUBLIC StringView getImageTypeName(ImageType type);
 SP_PUBLIC StringView getImageViewTypeName(ImageViewType type);
-SP_PUBLIC StringView getImageFormatName(ImageFormat fmt);
+
+using sprt::window::getImageFormatName;
+using sprt::window::getPresentModeName;
+using sprt::window::getColorSpaceName;
+
 SP_PUBLIC StringView getImageTilingName(ImageTiling type);
 SP_PUBLIC StringView getComponentMappingName(ComponentMapping);
-SP_PUBLIC StringView getPresentModeName(PresentMode);
-SP_PUBLIC StringView getColorSpaceName(ColorSpace);
-SP_PUBLIC String getCompositeAlphaFlagsDescription(CompositeAlphaFlags);
-SP_PUBLIC String getSurfaceTransformFlagsDescription(SurfaceTransformFlags);
-SP_PUBLIC String getImageUsageDescription(ImageUsage fmt);
-SP_PUBLIC size_t getFormatBlockSize(ImageFormat format);
+
+SP_PUBLIC inline String getCompositeAlphaFlagsDescription(CompositeAlphaFlags flags) {
+	StringStream out;
+	memory::makeCallback(out) << flags;
+	return out.str();
+}
+
+SP_PUBLIC inline String getSurfaceTransformFlagsDescription(SurfaceTransformFlags flags) {
+	StringStream out;
+	memory::makeCallback(out) << flags;
+	return out.str();
+}
+
+SP_PUBLIC inline String getImageUsageDescription(ImageUsage fmt) {
+	StringStream out;
+	memory::makeCallback(out) << fmt;
+	return out.str();
+}
+
+using sprt::window::getFormatBlockSize;
+
 SP_PUBLIC PixelFormat getImagePixelFormat(ImageFormat format);
 SP_PUBLIC bool isStencilFormat(ImageFormat format);
 SP_PUBLIC bool isDepthFormat(ImageFormat format);
@@ -675,5 +517,21 @@ SP_PUBLIC bool saveImage(const FileInfo &, const ImageInfoData &, BytesView);
 SP_PUBLIC std::ostream &operator<<(std::ostream &stream, const ImageInfoData &value);
 
 } // namespace stappler::xenolith::core
+
+namespace std {
+
+inline std::ostream &operator<<(std::ostream &stream,
+		const STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::SwapchainConfig &v) {
+	STAPPLER_VERSIONIZED_NAMESPACE::memory::makeCallback(stream) << v;
+	return stream;
+}
+
+inline std::ostream &operator<<(std::ostream &stream,
+		const STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::SurfaceInfo &v) {
+	STAPPLER_VERSIONIZED_NAMESPACE::memory::makeCallback(stream) << v;
+	return stream;
+}
+
+} // namespace std
 
 #endif /* XENOLITH_CORE_XLCOREINFO_H_ */

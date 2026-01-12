@@ -170,7 +170,7 @@ void DynamicStateSystem::popState(FrameInfo &info) {
 	if (ctx->stateStack.back().second == this) {
 		ctx->stateStack.pop_back();
 	} else {
-		Vector<Pair<StateId, FrameStateOwnerInterface *>> owners;
+		Vector<sprt::pair<StateId, FrameStateOwnerInterface *>> owners;
 		while (!ctx->stateStack.empty() && ctx->stateStack.back().second != this) {
 			owners.emplace_back(ctx->stateStack.back());
 			ctx->stateStack.pop_back();

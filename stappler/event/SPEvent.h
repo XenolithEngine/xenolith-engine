@@ -24,7 +24,6 @@
 #define CORE_EVENT_SPEVENT_H_
 
 #include "SPMemory.h"
-#include "SPRef.h"
 #include "SPPlatform.h"
 #include "SPFilesystem.h"
 #include "SPStatus.h"
@@ -47,25 +46,10 @@ using NativeHandle = void *;
 using NativeHandle = int;
 #endif
 
-using OpenFlags = filesystem::OpenFlags;
-using ProtFlags = filesystem::ProtFlags;
-using Stat = filesystem::Stat;
-
-enum class PollFlags : uint16_t {
-	None = 0,
-	In = 0x001, /* There is data to read.  */
-	Pri = 0x002, /* There is urgent data to read.  */
-	Out = 0x004, /* Writing now will not block.  */
-	Err = 0X008, /* ERROR CONDITION.  */
-	HungUp = 0X010, /* HUNG UP.  */
-	Invalid = 0X020, /* INVALID POLLING REQUEST.  */
-
-	PollMask = 0x3FFF,
-	CloseFd = 0x4000,
-	AllowMulti = 0x8000, // Allow edge-triggered multishot setups
-};
-
-SP_DEFINE_ENUM_AS_MASK(PollFlags)
+using filesystem::OpenFlags;
+using filesystem::ProtFlags;
+using filesystem::PollFlags;
+using filesystem::Stat;
 
 template <typename Result = Handle>
 struct SP_PUBLIC CompletionHandle {
@@ -124,35 +108,6 @@ struct SP_PUBLIC TimerInfo {
 	// but 'reset' for this timer can save some syscalls and kernel resources
 	bool resetable = false;
 };
-
-/*struct SP_PUBLIC FileOpInfo {
-	DirHandle *root = nullptr;
-	StringView path;
-};
-
-struct SP_PUBLIC OpenDirInfo {
-	using Completion = CompletionHandle<DirHandle>;
-
-	Completion completion;
-	FileOpInfo file;
-};
-
-struct SP_PUBLIC StatOpInfo {
-	using Completion = CompletionHandle<StatHandle>;
-
-	Completion completion;
-	FileOpInfo file;
-};
-
-struct SP_PUBLIC OpenFileInfo {
-	using Completion = CompletionHandle<FileHandle>;
-
-	Completion completion;
-	DirHandle *dir = nullptr;
-	StringView path;
-	OpenFlags flags = OpenFlags::None;
-	ProtFlags prot = ProtFlags::None;
-};*/
 
 } // namespace stappler::event
 

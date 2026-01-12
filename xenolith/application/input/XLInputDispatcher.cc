@@ -171,7 +171,7 @@ void InputDispatcher::commitStorage(AppWindow *window, Rc<InputListenerStorage> 
 		return true;
 	}, nullptr);
 
-	Vector<WindowLayer> layers;
+	sprt::window::Vector<WindowLayer> layers;
 	_events->foreachListener([&](const InputListenerStorage::Rec &rec) {
 		if (rec.layer) {
 			layers.emplace_back(rec.layer);
@@ -322,10 +322,10 @@ void InputDispatcher::resetWindowState(WindowState state, bool propagate) {
 
 	if (propagate) {
 		core::InputEventData stateUpdate{
-				0,
-				core::InputEventName::WindowState,
-				{.input = {core::InputMouseButton::None, core::InputModifier::None, nan(), nan()}},
-				{.window = {state, WindowState::All}},
+			0,
+			core::InputEventName::WindowState,
+			{.input = {core::InputMouseButton::None, core::InputModifier::None, nan(), nan()}},
+			{.window = {state, WindowState::All}},
 		};
 
 		handleInputEvent(stateUpdate);

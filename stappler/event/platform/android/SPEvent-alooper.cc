@@ -23,12 +23,22 @@
 #include "SPEvent-alooper.h"
 #include "SPEvent-android.h"
 
+#include <sprt/c/sys/__sprt_alooper.h>
+
 namespace STAPPLER_VERSIONIZED stappler::event {
 
 static constexpr uint32_t ALOOPER_CANCEL_FLAG = 0x8000'0000;
 
+bool ALooperData::checkSupport() {
+#if ANDROID
+	return true;
+#else
+	return false;
+#endif
+}
+
 Status ALooperData::add(int fd, int events, Handle *handle) {
-	if (ALooper_addFd(_looper, fd, 0, events,
+	if (__sprt_ALooper_addFd(_looper, fd, 0, events,
 				[](int fd, int events, void *ptr) {
 		NotifyData data;
 		auto h = (Handle *)ptr;
@@ -39,7 +49,7 @@ Status ALooperData::add(int fd, int events, Handle *handle) {
 		data.queueFlags = events;
 		data.userFlags = 0;
 
-		h->_class->info->data->notify(h, data);
+		h->getClass()->info->data->notify(h, data);
 
 		auto st = h->getStatus();
 
@@ -59,7 +69,7 @@ Status ALooperData::add(int fd, int events, Handle *handle) {
 }
 
 Status ALooperData::remove(int fd) {
-	auto ret = ALooper_removeFd(_looper, fd);
+	auto ret = __sprt_ALooper_removeFd(_looper, fd);
 	if (ret == 1) {
 		return Status::Ok;
 	} else if (ret == 0) {
@@ -76,8 +86,8 @@ uint32_t ALooperData::poll() {
 	RunContext ctx;
 	pushContext(&ctx, RunContext::Poll);
 
-	auto ret = ALooper_pollOnce(0, nullptr, nullptr, nullptr);
-	while (ret == ALOOPER_POLL_CALLBACK) { ++result; }
+	auto ret = __sprt_ALooper_pollOnce(0, nullptr, nullptr, nullptr);
+	while (ret == __SPRT_ALOOPER_POLL_CALLBACK) { ++result; }
 
 	popContext(&ctx);
 
@@ -90,8 +100,8 @@ uint32_t ALooperData::wait(TimeInterval ival) {
 	RunContext ctx;
 	pushContext(&ctx, RunContext::Wait);
 
-	auto ret = ALooper_pollOnce(ival.toMillis(), nullptr, nullptr, nullptr);
-	if (ret == ALOOPER_POLL_CALLBACK) {
+	auto ret = __sprt_ALooper_pollOnce(ival.toMillis(), nullptr, nullptr, nullptr);
+	if (ret == __SPRT_ALOOPER_POLL_CALLBACK) {
 		++result;
 	}
 
@@ -123,15 +133,15 @@ Status ALooperData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval
 	int ret = 0;
 
 	while (ctx.state == RunContext::Running) {
-		ret = ALooper_pollOnce(-1, nullptr, nullptr, nullptr);
-		if (ret == ALOOPER_POLL_ERROR) {
+		ret = __sprt_ALooper_pollOnce(-1, nullptr, nullptr, nullptr);
+		if (ret == __SPRT_ALOOPER_POLL_ERROR) {
 			log::source().error("event::ALooperData", "ALooper error: ", ret);
 			ctx.wakeupStatus = Status::ErrorUnknown;
 			break;
 		}
 	}
 
-	if (ret == ALOOPER_POLL_ERROR) {
+	if (ret == __SPRT_ALOOPER_POLL_ERROR) {
 		log::source().error("event::Queue", "ALooper failed with error");
 	}
 
@@ -162,7 +172,7 @@ ALooperData::ALooperData(QueueRef *q, Queue::Data *data, const QueueInfo &info, 
 
 	_stopContext = [](RunContext *ctx) {
 		auto q = static_cast<ALooperData *>(ctx->queue);
-		ALooper_wake(q->_looper);
+		__sprt_ALooper_wake(q->_looper);
 	};
 
 	if (hasFlag(_flags, QueueFlags::Protected)) {
@@ -170,7 +180,7 @@ ALooperData::ALooperData(QueueRef *q, Queue::Data *data, const QueueInfo &info, 
 				"QueueFlags::Protected is not supported by ALooper queue, ignored");
 	}
 
-	_looper = ALooper_prepare(0);
+	_looper = __sprt_ALooper_prepare(0);
 
 	_eventFd = Rc<EventFdALooperHandle>::create(&data->_alooperEventFdClass,
 			CompletionHandle<EventFdALooperHandle>::create<ALooperData>(this,
@@ -187,7 +197,7 @@ ALooperData::ALooperData(QueueRef *q, Queue::Data *data, const QueueInfo &info, 
 
 ALooperData::~ALooperData() {
 	if (_looper) {
-		ALooper_release(_looper);
+		__sprt_ALooper_release(_looper);
 		_looper = nullptr;
 	}
 }

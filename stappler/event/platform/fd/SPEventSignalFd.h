@@ -25,13 +25,15 @@
 
 #include "SPEventFd.h"
 
+#if __SPRT_CONFIG_HAVE_SIGNALFD
+
 namespace STAPPLER_VERSIONIZED stappler::event {
 
 struct SP_PUBLIC SignalFdSource {
 	int fd;
 	epoll_event event;
 
-	bool init(const sigset_t *sig);
+	bool init(const __SPRT_ID(sigset_t) * sig);
 	void cancel();
 };
 
@@ -44,21 +46,20 @@ public:
 	bool read();
 	bool process();
 	void enable();
-	void enable(const sigset_t *);
+	void enable(const __SPRT_ID(sigset_t) *);
 	void disable();
 
 	const signalfd_siginfo *getInfo() const { return &_info; }
 
-	const sigset_t *getDefaultSigset() const;
-	const sigset_t *getCurrentSigset() const;
+	const __SPRT_ID(sigset_t) * getDefaultSigset() const;
+	const __SPRT_ID(sigset_t) * getCurrentSigset() const;
 
 protected:
-	sigset_t _sigset;
-	sigset_t _default;
+	__SPRT_ID(sigset_t) _sigset;
+	__SPRT_ID(sigset_t) _default;
 	signalfd_siginfo _info;
 };
 
-#ifdef SP_EVENT_URING
 class SP_PUBLIC SignalFdURingHandle : public SignalFdHandle {
 public:
 	virtual ~SignalFdURingHandle() = default;
@@ -68,7 +69,6 @@ public:
 
 	void notify(URingData *, SignalFdSource *, const NotifyData &);
 };
-#endif
 
 class SP_PUBLIC SignalFdEPollHandle : public SignalFdHandle {
 public:
@@ -80,7 +80,6 @@ public:
 	void notify(EPollData *, SignalFdSource *, const NotifyData &);
 };
 
-#if ANDROID
 class SP_PUBLIC SignalFdALooperHandle : public SignalFdHandle {
 public:
 	virtual ~SignalFdALooperHandle() = default;
@@ -90,8 +89,9 @@ public:
 
 	void notify(ALooperData *, SignalFdSource *, const NotifyData &);
 };
-#endif
 
-}
+} // namespace stappler::event
+
+#endif
 
 #endif /* CORE_EVENT_PLATFORM_FD_SPEVENTSIGNALFD_H_ */

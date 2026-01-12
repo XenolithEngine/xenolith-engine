@@ -21,9 +21,9 @@
  **/
 
 #include "SPEventPollFd.h"
-#include "../linux/SPEvent-linux.h"
-#include "../android/SPEvent-android.h"
-#include "SPEventQueue.h"
+#include "../epoll/SPEvent-epoll.h"
+#include "../uring/SPEvent-uring.h"
+#include "../android/SPEvent-alooper.h"
 
 namespace STAPPLER_VERSIONIZED stappler::event {
 
@@ -59,7 +59,6 @@ NativeHandle PollFdHandle::getNativeHandle() const {
 	return reinterpret_cast<const PollFdSource *>(_data)->fd;
 }
 
-#ifdef SP_EVENT_URING
 Status PollFdURingHandle::rearm(URingData *uring, PollFdSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
@@ -108,7 +107,6 @@ void PollFdURingHandle::notify(URingData *uring, PollFdSource *source, const Not
 
 	sendCompletion(uint32_t(data.result), Status::Ok);
 }
-#endif
 
 Status PollFdEPollHandle::rearm(EPollData *epoll, PollFdSource *source) {
 	auto status = prepareRearm();
@@ -117,19 +115,19 @@ Status PollFdEPollHandle::rearm(EPollData *epoll, PollFdSource *source) {
 
 		source->event.events = 0;
 		if (hasFlag(source->flags, PollFlags::In)) {
-			source->event.events |= EPOLLIN;
+			source->event.events |= __SPRT_EPOLLIN;
 		}
 		if (hasFlag(source->flags, PollFlags::Pri)) {
-			source->event.events |= EPOLLPRI;
+			source->event.events |= __SPRT_EPOLLPRI;
 		}
 		if (hasFlag(source->flags, PollFlags::Out)) {
-			source->event.events |= EPOLLOUT;
+			source->event.events |= __SPRT_EPOLLOUT;
 		}
 		if (hasFlag(source->flags, PollFlags::Err)) {
-			source->event.events |= EPOLLERR;
+			source->event.events |= __SPRT_EPOLLERR;
 		}
 		if (hasFlag(source->flags, PollFlags::HungUp)) {
-			source->event.events |= EPOLLHUP;
+			source->event.events |= __SPRT_EPOLLHUP;
 		}
 
 		status = epoll->add(source->fd, source->event);
@@ -154,45 +152,44 @@ void PollFdEPollHandle::notify(EPollData *epoll, PollFdSource *source, const Not
 	}
 
 	PollFlags pollFlags = PollFlags::None;
-	if (data.queueFlags & EPOLLIN) {
+	if (data.queueFlags & __SPRT_EPOLLIN) {
 		pollFlags |= PollFlags::In;
 	}
-	if (data.queueFlags & EPOLLPRI) {
+	if (data.queueFlags & __SPRT_EPOLLPRI) {
 		pollFlags |= PollFlags::Pri;
 	}
-	if (data.queueFlags & EPOLLOUT) {
+	if (data.queueFlags & __SPRT_EPOLLOUT) {
 		pollFlags |= PollFlags::Out;
 	}
-	if (data.queueFlags & EPOLLHUP) {
+	if (data.queueFlags & __SPRT_EPOLLHUP) {
 		pollFlags |= PollFlags::HungUp;
 	}
-	if (data.queueFlags & EPOLLERR) {
+	if (data.queueFlags & __SPRT_EPOLLERR) {
 		pollFlags |= PollFlags::Err;
 	}
 
 	sendCompletion(toInt(pollFlags), Status::Ok);
 
-	if ((data.queueFlags & EPOLLERR) || (data.queueFlags & EPOLLHUP)) {
+	if ((data.queueFlags & __SPRT_EPOLLERR) || (data.queueFlags & __SPRT_EPOLLHUP)) {
 		cancel();
 	}
 }
 
-#if ANDROID
 Status PollFdALooperHandle::rearm(ALooperData *alooper, PollFdSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
 		int events = 0;
 		if (hasFlag(source->flags, PollFlags::In)) {
-			events |= ALOOPER_EVENT_INPUT;
+			events |= __SPRT_ALOOPER_EVENT_INPUT;
 		}
 		if (hasFlag(source->flags, PollFlags::Out)) {
-			events |= ALOOPER_EVENT_OUTPUT;
+			events |= __SPRT_ALOOPER_EVENT_OUTPUT;
 		}
 		if (hasFlag(source->flags, PollFlags::Err)) {
-			events |= ALOOPER_EVENT_ERROR;
+			events |= __SPRT_ALOOPER_EVENT_ERROR;
 		}
 		if (hasFlag(source->flags, PollFlags::HungUp)) {
-			events |= ALOOPER_EVENT_HANGUP;
+			events |= __SPRT_ALOOPER_EVENT_HANGUP;
 		}
 
 		status = alooper->add(source->fd, events, this);
@@ -218,29 +215,29 @@ void PollFdALooperHandle::notify(ALooperData *alooper, PollFdSource *source,
 	}
 
 	PollFlags pollFlags = PollFlags::None;
-	if (data.queueFlags & ALOOPER_EVENT_INPUT) {
+	if (data.queueFlags & __SPRT_ALOOPER_EVENT_INPUT) {
 		pollFlags |= PollFlags::In;
 	}
-	if (data.queueFlags & ALOOPER_EVENT_OUTPUT) {
+	if (data.queueFlags & __SPRT_ALOOPER_EVENT_OUTPUT) {
 		pollFlags |= PollFlags::Out;
 	}
-	if (data.queueFlags & ALOOPER_EVENT_ERROR) {
+	if (data.queueFlags & __SPRT_ALOOPER_EVENT_ERROR) {
 		pollFlags |= PollFlags::HungUp;
 	}
-	if (data.queueFlags & ALOOPER_EVENT_HANGUP) {
+	if (data.queueFlags & __SPRT_ALOOPER_EVENT_HANGUP) {
 		pollFlags |= PollFlags::Err;
 	}
-	if (data.queueFlags & ALOOPER_EVENT_INVALID) {
+	if (data.queueFlags & __SPRT_ALOOPER_EVENT_INVALID) {
 		pollFlags |= PollFlags::Err;
 	}
 
 	sendCompletion(toInt(pollFlags), Status::Ok);
 
-	if ((data.queueFlags & ALOOPER_EVENT_ERROR) || (data.queueFlags & ALOOPER_EVENT_HANGUP)
-			|| (data.queueFlags & ALOOPER_EVENT_INVALID)) {
+	if ((data.queueFlags & __SPRT_ALOOPER_EVENT_ERROR)
+			|| (data.queueFlags & __SPRT_ALOOPER_EVENT_HANGUP)
+			|| (data.queueFlags & __SPRT_ALOOPER_EVENT_INVALID)) {
 		cancel();
 	}
 }
-#endif
 
 } // namespace stappler::event

@@ -51,17 +51,25 @@ struct SP_PUBLIC ColorMode {
 	};
 
 	uint32_t mode : 4;
-	uint32_t r : 7;
-	uint32_t g : 7;
-	uint32_t b : 7;
-	uint32_t a : 7;
+	uint32_t r	  : 7;
+	uint32_t g	  : 7;
+	uint32_t b	  : 7;
+	uint32_t a	  : 7;
 
 	ColorMode() : mode(Solid), r(0), g(0), b(0), a(0) { }
 	ColorMode(ComponentMapping r, ComponentMapping g, ComponentMapping b, ComponentMapping a)
-	: mode(Custom), r(stappler::toInt(r)), g(stappler::toInt(g)), b(stappler::toInt(b)), a(stappler::toInt(a)) { }
+	: mode(Custom)
+	, r(stappler::toInt(r))
+	, g(stappler::toInt(g))
+	, b(stappler::toInt(b))
+	, a(stappler::toInt(a)) { }
 
 	ColorMode(ComponentMapping color, ComponentMapping a)
-	: mode(Custom), r(stappler::toInt(color)), g(stappler::toInt(color)), b(stappler::toInt(color)), a(stappler::toInt(a)) { }
+	: mode(Custom)
+	, r(stappler::toInt(color))
+	, g(stappler::toInt(color))
+	, b(stappler::toInt(color))
+	, a(stappler::toInt(a)) { }
 
 	ColorMode(const ColorMode &) = default;
 	ColorMode(ColorMode &&) = default;
@@ -78,48 +86,63 @@ struct SP_PUBLIC ColorMode {
 	ComponentMapping getA() const { return ComponentMapping(a); }
 
 	uint32_t toInt() const { return *(uint32_t *)this; }
-	operator uint32_t () const { return *(uint32_t *)this; }
+	operator uint32_t() const { return *(uint32_t *)this; }
 };
 
 // uint32_t-sized blend description
 struct SP_PUBLIC BlendInfo {
-	uint32_t enabled : 4;
-	uint32_t srcColor : 4;
-	uint32_t dstColor : 4;
-	uint32_t opColor : 4;
-	uint32_t srcAlpha : 4;
-	uint32_t dstAlpha : 4;
-	uint32_t opAlpha : 4;
+	uint32_t enabled   : 4;
+	uint32_t srcColor  : 4;
+	uint32_t dstColor  : 4;
+	uint32_t opColor   : 4;
+	uint32_t srcAlpha  : 4;
+	uint32_t dstAlpha  : 4;
+	uint32_t opAlpha   : 4;
 	uint32_t writeMask : 4;
 
-	BlendInfo() : enabled(0)
-	, srcColor(toInt(BlendFactor::One)) , dstColor(toInt(BlendFactor::OneMinusSrcAlpha)) , opColor(toInt(BlendOp::Add))
-	, srcAlpha(toInt(BlendFactor::One)) , dstAlpha(toInt(BlendFactor::OneMinusSrcAlpha)) , opAlpha(toInt(BlendOp::Add))
+	BlendInfo()
+	: enabled(0)
+	, srcColor(toInt(BlendFactor::One))
+	, dstColor(toInt(BlendFactor::OneMinusSrcAlpha))
+	, opColor(toInt(BlendOp::Add))
+	, srcAlpha(toInt(BlendFactor::One))
+	, dstAlpha(toInt(BlendFactor::OneMinusSrcAlpha))
+	, opAlpha(toInt(BlendOp::Add))
 	, writeMask(toInt(ColorComponentFlags::All)) { }
 
 	BlendInfo(BlendFactor src, BlendFactor dst, BlendOp op = BlendOp::Add,
 			ColorComponentFlags flags = ColorComponentFlags::All)
-	: enabled(1), srcColor(toInt(src)), dstColor(toInt(dst)), opColor(toInt(op))
-	, srcAlpha(toInt(src)), dstAlpha(toInt(dst)), opAlpha(toInt(op)), writeMask(toInt(flags)) { }
+	: enabled(1)
+	, srcColor(toInt(src))
+	, dstColor(toInt(dst))
+	, opColor(toInt(op))
+	, srcAlpha(toInt(src))
+	, dstAlpha(toInt(dst))
+	, opAlpha(toInt(op))
+	, writeMask(toInt(flags)) { }
 
-	BlendInfo(BlendFactor srcColor, BlendFactor dstColor, BlendOp opColor,
-			BlendFactor srcAlpha, BlendFactor dstAlpha, BlendOp opAlpha,
+	BlendInfo(BlendFactor srcColor, BlendFactor dstColor, BlendOp opColor, BlendFactor srcAlpha,
+			BlendFactor dstAlpha, BlendOp opAlpha,
 			ColorComponentFlags flags = ColorComponentFlags::All)
-	: enabled(1), srcColor(toInt(srcColor)), dstColor(toInt(dstColor)), opColor(toInt(opColor))
-	, srcAlpha(toInt(srcAlpha)), dstAlpha(toInt(dstAlpha)), opAlpha(toInt(opAlpha)), writeMask(toInt(flags)) { }
+	: enabled(1)
+	, srcColor(toInt(srcColor))
+	, dstColor(toInt(dstColor))
+	, opColor(toInt(opColor))
+	, srcAlpha(toInt(srcAlpha))
+	, dstAlpha(toInt(dstAlpha))
+	, opAlpha(toInt(opAlpha))
+	, writeMask(toInt(flags)) { }
 
 	bool operator==(const BlendInfo &other) const = default;
 	bool operator!=(const BlendInfo &other) const = default;
 
-	bool isEnabled() const {
-		return enabled != 0;
-	}
+	bool isEnabled() const { return enabled != 0; }
 };
 
 struct SP_PUBLIC DepthInfo {
 	uint32_t writeEnabled : 4;
-	uint32_t testEnabled : 4;
-	uint32_t compare : 24; // gl::CompareOp
+	uint32_t testEnabled  : 4;
+	uint32_t compare	  : 24; // gl::CompareOp
 
 	DepthInfo() : writeEnabled(0), testEnabled(0), compare(0) { }
 
@@ -160,8 +183,9 @@ public:
 	PipelineMaterialInfo(const PipelineMaterialInfo &) = default;
 	PipelineMaterialInfo &operator=(const PipelineMaterialInfo &) = default;
 
-	template <typename T, typename ... Args, typename = std::enable_if_t<std::negation_v<std::is_same<T, PipelineMaterialInfo>>> >
-	PipelineMaterialInfo(T &&t, Args && ... args) : PipelineMaterialInfo() {
+	template <typename T, typename... Args,
+			typename = std::enable_if_t<std::negation_v<std::is_same<T, PipelineMaterialInfo>>> >
+	PipelineMaterialInfo(T &&t, Args &&...args) : PipelineMaterialInfo() {
 		setup(std::forward<T>(t));
 		setup(std::forward<Args>(args)...);
 	}
@@ -189,21 +213,21 @@ public:
 
 	bool operator==(const PipelineMaterialInfo &tmp2) const {
 		return this->blend == tmp2.blend && this->depth == tmp2.depth && this->bounds == tmp2.bounds
-				&& this->stencil == tmp2.stencil && (!this->stencil || (this->front == tmp2.front && this->back == tmp2.back))
+				&& this->stencil == tmp2.stencil
+				&& (!this->stencil || (this->front == tmp2.front && this->back == tmp2.back))
 				&& this->lineWidth == tmp2.lineWidth && this->imageViewType == tmp2.imageViewType;
 	}
 
 	bool operator!=(const PipelineMaterialInfo &tmp2) const {
 		return this->blend != tmp2.blend || this->depth != tmp2.depth || this->bounds != tmp2.bounds
-				|| this->stencil != tmp2.stencil || (this->stencil && (this->front != tmp2.front || this->back != tmp2.back))
+				|| this->stencil != tmp2.stencil
+				|| (this->stencil && (this->front != tmp2.front || this->back != tmp2.back))
 				|| this->lineWidth != tmp2.lineWidth || this->imageViewType != tmp2.imageViewType;
 	}
 
 	bool isMatch(const PipelineMaterialInfo &tmp2) const;
 
-	size_t hash() const {
-		return hash::hashSize((const char *)this, sizeof(PipelineMaterialInfo));
-	}
+	size_t hash() const { return sprt::hashSize((const char *)this, sizeof(PipelineMaterialInfo)); }
 
 	String data() const;
 	String description() const;
@@ -221,8 +245,8 @@ protected:
 		_setup(std::forward<T>(t));
 	}
 
-	template <typename T, typename ... Args>
-	void setup(T &&t, Args && ... args) {
+	template <typename T, typename... Args>
+	void setup(T &&t, Args &&...args) {
 		setup(std::forward<T>(t));
 		setup(std::forward<Args>(args)...);
 	}
@@ -239,6 +263,6 @@ protected:
 	ImageViewType imageViewType = ImageViewType::ImageView1D;
 };
 
-}
+} // namespace stappler::xenolith::core
 
 #endif /* XENOLITH_CORE_XLCOREPIPELINEINFO_H_ */

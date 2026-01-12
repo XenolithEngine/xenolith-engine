@@ -143,7 +143,7 @@ void AssetComponent::cleanup(const db::Transaction &t) {
 		iface->performSimpleSelect(query, [&](db::Result &res) {
 			for (auto it : res) {
 				auto path = _container->getLibrary()->getAssetPath(it.toInteger(0));
-				filesystem::remove(FileInfo{path}, true, true);
+				filesystem::remove(FileInfo{path}, true);
 			}
 		});
 

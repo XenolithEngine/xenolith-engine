@@ -251,7 +251,7 @@ bool Formatter::isSpecial(char32_t ch) const {
 	if (!opticalAlignment || !collapseSpaces) {
 		return false;
 	}
-	return chars::CharGroup<char32_t, CharGroupId::OpticalAlignmentSpecial>::match(ch);
+	return sprt::chars::CharGroup<char32_t, CharGroupId::OpticalAlignmentSpecial>::match(ch);
 }
 
 uint16_t Formatter::checkBullet(uint16_t first, uint16_t len) const {
@@ -263,9 +263,9 @@ uint16_t Formatter::checkBullet(uint16_t first, uint16_t len) const {
 	uint16_t offset = 0;
 	for (uint16_t i = first; i < first + len - 1; i++) {
 		auto ch = _output.chars.at(i).charID;
-		if (chars::CharGroup<char32_t, CharGroupId::OpticalAlignmentBullet>::match(ch)) {
+		if (sprt::chars::CharGroup<char32_t, CharGroupId::OpticalAlignmentBullet>::match(ch)) {
 			offset++;
-		} else if (chars::isspace(ch) && offset >= 1) {
+		} else if (sprt::chars::isspace(ch) && offset >= 1) {
 			return offset + 1;
 		} else {
 			break;
@@ -298,9 +298,9 @@ void Formatter::pushLineFiller(bool replaceLastChar) {
 
 bool Formatter::pushChar(char32_t ch) {
 	if (_textStyle.textTransform == TextTransform::Uppercase) {
-		ch = string::detail::toupper(ch);
+		ch = sprt::unicode::toupper(ch);
 	} else if (_textStyle.textTransform == TextTransform::Lowercase) {
-		ch = string::detail::tolower(ch);
+		ch = sprt::unicode::tolower(ch);
 	}
 
 	CharShape charDef = _primaryFontSet->getChar(ch, faceId);
@@ -330,7 +330,9 @@ bool Formatter::pushChar(char32_t ch) {
 		}
 	} else if (ch == u'-' || ch == u'+' || ch == u'*' || ch == u'/' || ch == u'\\') {
 		auto pos = charNum;
-		while (pos > firstInLine && (!chars::isspace(_output.chars.at(pos - 1).charID))) { pos--; }
+		while (pos > firstInLine && (!sprt::chars::isspace(_output.chars.at(pos - 1).charID))) {
+			pos--;
+		}
 		if (charNum - pos > 2) {
 			wordWrapPos = charNum + 1;
 		}
@@ -444,7 +446,7 @@ bool Formatter::pushLine(uint16_t first, uint16_t len, bool forceAlign) {
 
 			for (uint16_t i = first; i < first + len - 1; i++) {
 				auto ch = _output.chars.at(i).charID;
-				if (chars::isspace(ch) && ch != '\n') {
+				if (sprt::chars::isspace(ch) && ch != '\n') {
 					spacesCount++;
 				}
 			}
@@ -452,7 +454,7 @@ bool Formatter::pushLine(uint16_t first, uint16_t len, bool forceAlign) {
 			int16_t offset = 0;
 			for (uint16_t i = first; i < first + len; i++) {
 				auto ch = _output.chars.at(i).charID;
-				if (ch != CharLayoutData::InvalidChar && chars::isspace(ch) && ch != '\n'
+				if (ch != CharLayoutData::InvalidChar && sprt::chars::isspace(ch) && ch != '\n'
 						&& spacesCount > 0) {
 					offset += joffset / spacesCount;
 					joffset -= joffset / spacesCount;
@@ -528,7 +530,8 @@ Formatter::Output::Output(TextLayoutData<memory::PoolInterface> *d)
 , lines(d->lines) { }
 
 bool Formatter::pushLineBreak() {
-	if (chars::CharGroup<char32_t, CharGroupId::WhiteSpace>::match(_output.chars.back().charID)) {
+	if (sprt::chars::CharGroup<char32_t, CharGroupId::WhiteSpace>::match(
+				_output.chars.back().charID)) {
 		return true;
 	}
 
@@ -560,7 +563,7 @@ bool Formatter::pushLineBreak() {
 	} else {
 		// we can wrap the word
 		auto &ch = _output.chars.at((wordWrapPos - 1));
-		if (!chars::isspace(ch.charID)) {
+		if (!sprt::chars::isspace(ch.charID)) {
 			if (!pushLine(firstInLine, (wordWrapPos)-firstInLine, true)) {
 				return false;
 			}
@@ -666,7 +669,7 @@ bool Formatter::readChars(WideStringView &r, const Vector<uint8_t> &hyph) {
 			continue;
 		}
 
-		if (c != char32_t(0x00A0) && chars::isspace(c) && collapseSpaces) {
+		if (c != char32_t(0x00A0) && sprt::chars::isspace(c) && collapseSpaces) {
 			if (!startWhitespace) {
 				bufferedSpace = true;
 			}
@@ -682,7 +685,8 @@ bool Formatter::readChars(WideStringView &r, const Vector<uint8_t> &hyph) {
 			continue;
 		}
 
-		if (bufferedSpace || (!collapseSpaces && c != char32_t(0x00A0) && chars::isspace(c))) {
+		if (bufferedSpace
+				|| (!collapseSpaces && c != char32_t(0x00A0) && sprt::chars::isspace(c))) {
 			if (request == ContentRequest::Minimize && charNum > 0) {
 				wordWrapPos = charNum;
 				auto b = bufferedSpace;
@@ -701,7 +705,9 @@ bool Formatter::readChars(WideStringView &r, const Vector<uint8_t> &hyph) {
 		}
 
 		auto kerning = _primaryFontSet->getKerningAmount(b, c, faceId);
-		lineX += kerning;
+		if (kerning != 0) {
+			lineX += kerning;
+		}
 		if (!pushChar(c)) {
 			return false;
 		}
@@ -718,7 +724,9 @@ bool Formatter::readChars(WideStringView &r, const Vector<uint8_t> &hyph) {
 		case ContentRequest::Maximize: break;
 		case ContentRequest::Normal:
 			if (width + lineOffset > 0 && lineX > width + lineOffset) {
-				lineX -= kerning;
+				if (kerning != 0) {
+					lineX -= kerning;
+				}
 				if (!pushLineBreak()) {
 					return false;
 				}
@@ -765,12 +773,12 @@ bool Formatter::read(const FontParameters &f, const TextParameters &s, const cha
 			auto ch = sprt::unicode::utf16Decode32(tmpStr, tmpLen, offset);
 
 			if (s.textTransform == TextTransform::Uppercase) {
-				ch = string::detail::toupper(ch);
+				ch = sprt::unicode::toupper(ch);
 			} else if (s.textTransform == TextTransform::Lowercase) {
-				ch = string::detail::tolower(ch);
+				ch = sprt::unicode::tolower(ch);
 			}
-			if (ch != string::detail::toupper(ch)) {
-				secondaryStr.addChar(string::detail::toupper(ch));
+			if (ch != sprt::unicode::toupper(ch)) {
+				secondaryStr.addChar(sprt::unicode::toupper(ch));
 			} else {
 				primaryStr.addChar(ch);
 			}
@@ -816,9 +824,9 @@ bool Formatter::read(const FontParameters &f, const TextParameters &s, const cha
 				auto ch = sprt::unicode::utf16Decode32(tmpStr, tmpLen, offset);
 
 				if (s.textTransform == TextTransform::Uppercase) {
-					ch = string::detail::toupper(ch);
+					ch = sprt::unicode::toupper(ch);
 				} else if (s.textTransform == TextTransform::Lowercase) {
-					ch = string::detail::tolower(ch);
+					ch = sprt::unicode::tolower(ch);
 				}
 				primaryStr.addChar(ch);
 
@@ -862,8 +870,8 @@ bool Formatter::read(const FontParameters &f, const TextParameters &s, const cha
 		while (tmpLen > 0) {
 			uint8_t offset;
 			auto ch = sprt::unicode::utf16Decode32(tmpStr, tmpLen, offset);
-			auto c = (s.textTransform == TextTransform::None) ? ch : string::detail::tolower(ch);
-			if (string::detail::toupper(c) != c) { // char can be uppercased - use caps
+			auto c = (s.textTransform == TextTransform::None) ? ch : sprt::unicode::tolower(ch);
+			if (sprt::unicode::toupper(c) != c) { // char can be uppercased - use caps
 				if (caps != true) {
 					caps = true;
 					if (blockSize > 0) {
@@ -948,7 +956,7 @@ bool Formatter::readWithRange(RangeLayoutData &&range, const TextParameters &s, 
 	}
 
 	if (!_output.chars.empty() && _output.chars.back().charID == ' ' && collapseSpaces) {
-		while (len > 0 && ((chars::isspace(str[0]) && str[0] != 0x00A0) || str[0] < 0x20)) {
+		while (len > 0 && ((sprt::chars::isspace(str[0]) && str[0] != 0x00A0) || str[0] < 0x20)) {
 			len--;
 			str++;
 		}

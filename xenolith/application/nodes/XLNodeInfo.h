@@ -82,7 +82,7 @@ struct SP_PUBLIC MaterialInfo {
 	core::PipelineMaterialInfo pipeline;
 
 	uint64_t hash() const {
-		return hash::hash64(reinterpret_cast<const char *>(this), sizeof(MaterialInfo));
+		return sprt::hash64(reinterpret_cast<const char *>(this), sizeof(MaterialInfo));
 	}
 
 	String description() const;

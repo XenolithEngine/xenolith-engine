@@ -28,6 +28,8 @@ THE SOFTWARE.
 #include "SPThread.h"
 #endif
 
+#include <sprt/runtime/thread/info.h>
+
 namespace STAPPLER_VERSIONIZED stappler::log {
 
 static const constexpr int MAX_LOG_FUNC = 16;
@@ -104,12 +106,11 @@ static void DefaultLog2(LogType type, StringView tag, const sprt::source_locatio
 	prefixStream << s_logManager.features.drop;
 #endif
 
-#if MODULE_STAPPLER_THREADS
 	prefixStream << s_logManager.features.italic;
-	if (auto local = thread::ThreadInfo::getThreadInfo()) {
+	if (auto local = sprt::thread::info::get()) {
 		if (!local->managed) {
 			prefixStream << "[Thread:" << std::this_thread::get_id() << "]";
-		} else if (local->workerId == thread::ThreadInfo::DetachedWorker) {
+		} else if (local->workerId == sprt::thread::info::DetachedWorker) {
 			prefixStream << "[" << local->name << "]";
 		} else {
 			prefixStream << "[" << local->name << ":" << local->workerId << "]";
@@ -118,11 +119,12 @@ static void DefaultLog2(LogType type, StringView tag, const sprt::source_locatio
 		prefixStream << "[Log]";
 	}
 	prefixStream << s_logManager.features.drop << " ";
-#endif
+
 	auto prefix = prefixStream.str();
 
 #if SP_SOURCE_DEBUG
-	if (auto f = source.file_name()) {
+	auto f = source.file_name();
+	if (f && f[0] != 0) {
 		auto textToLog = mem_std::toString(text, " ", s_logManager.features.underline,
 				s_logManager.features.dim, f, ":", source.line(), s_logManager.features.drop);
 		sprt::log::print(type, sprt::StringView(prefix.data(), prefix.size()),

@@ -32,6 +32,11 @@ THE SOFTWARE.
 #include <stdio.h>
 #include <sys/stat.h>
 
+#if MODULE_STAPPLER_BITMAP
+#include "SPBitmap.h"
+#include "SPSharedModule.h"
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::filesystem {
 
 ProtFlags getProtFlagsFromMode(mode_t m) {
@@ -559,7 +564,7 @@ StringView detectMimeType(StringView path) {
 	}
 
 #if MODULE_STAPPLER_BITMAP
-	decltype(static_cast<Pair<bitmap::FileFormat, StringView> (*)(const FileInfo &)>(
+	decltype(static_cast<sprt::pair<bitmap::FileFormat, StringView> (*)(const FileInfo &)>(
 			bitmap::detectFormat)) bitmap_detectFormat;
 
 	decltype(static_cast<StringView (*)(bitmap::FileFormat)>(

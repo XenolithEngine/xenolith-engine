@@ -49,7 +49,6 @@ public:
 	Status read(uint64_t *);
 };
 
-#ifdef SP_EVENT_URING
 class SP_PUBLIC TimerFdURingHandle : public TimerFdHandle {
 public:
 	virtual ~TimerFdURingHandle() = default;
@@ -59,7 +58,6 @@ public:
 
 	void notify(URingData *, TimerFdSource *source, const NotifyData &);
 };
-#endif
 
 class SP_PUBLIC TimerFdEPollHandle : public TimerFdHandle {
 public:
@@ -71,7 +69,6 @@ public:
 	void notify(EPollData *, TimerFdSource *source, const NotifyData &);
 };
 
-#if ANDROID
 class SP_PUBLIC TimerFdALooperHandle : public TimerFdHandle {
 public:
 	virtual ~TimerFdALooperHandle() = default;
@@ -81,7 +78,6 @@ public:
 
 	void notify(ALooperData *, TimerFdSource *source, const NotifyData &);
 };
-#endif
 
 } // namespace stappler::event
 

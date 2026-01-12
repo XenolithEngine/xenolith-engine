@@ -29,6 +29,8 @@
 #include "XLVk.h"
 #include "XlCoreMonitorInfo.h"
 
+#include <sprt/runtime/window/types.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
 
 struct DisplayInfo;
@@ -65,8 +67,8 @@ struct SP_PUBLIC DisplayInfo {
 
 	operator core::MonitorInfo() const {
 		core::MonitorInfo mon;
-		mon.name = name;
-		mon.rect = IRect{0, 0, extent.width, extent.height};
+		mon.name = StringView(name).str<sprt::window::String>();
+		mon.rect = sprt::IRect{0, 0, extent.width, extent.height};
 		mon.mm = mm;
 
 		for (auto &it : modes) { mon.modes.emplace_back(it.info); }

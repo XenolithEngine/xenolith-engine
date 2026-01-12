@@ -79,23 +79,21 @@ class SP_PUBLIC VectorCanvasDeferredResult : public DeferredVertexResult {
 public:
 	virtual ~VectorCanvasDeferredResult();
 
-	bool init(std::future<Rc<VectorCanvasResult>> &&, bool waitOnReady);
+	bool init(bool waitOnReady);
 
-	virtual bool acquireResult(const Callback<void(SpanView<InstanceVertexData>, Flags)> &) override;
+	virtual bool acquireResult(
+			const Callback<void(SpanView<InstanceVertexData>, Flags)> &) override;
 
-	virtual void handleReady(Rc<VectorCanvasResult> &&);
-	virtual void handleReady() override { DeferredVertexResult::handleReady(); }
+	void setResult(Rc<VectorCanvasResult> &&);
 
 	void updateColor(const Color4F &);
 
 	Rc<VectorCanvasResult> getResult() const;
 
 protected:
-	mutable Mutex _mutex;
 	Rc<VectorCanvasResult> _result;
-	std::future<Rc<VectorCanvasResult>> *_future = nullptr;
 };
 
-}
+} // namespace stappler::xenolith::basic2d
 
 #endif /* XENOLITH_RENDERER_BASIC2D_XL2DVECTORRESULT_H_ */

@@ -23,7 +23,7 @@
 #include "SPEventThreadHandle-alooper.h"
 #include "SPEvent-alooper.h"
 
-#include <sys/eventfd.h>
+#include <sprt/c/sys/__sprt_eventfd.h>
 
 namespace STAPPLER_VERSIONIZED stappler::event {
 
@@ -38,7 +38,7 @@ bool ThreadALooperHandle::init(HandleClass *cl) {
 
 Status ThreadALooperHandle::read() {
 	auto source = reinterpret_cast<EventFdSource *>(_data);
-	auto ret = ::eventfd_read(source->fd, &source->eventTarget);
+	auto ret = ::__sprt_eventfd_read(source->fd, &source->eventTarget);
 	if (ret < 0) {
 		return sprt::status::errnoToStatus(errno);
 	}
@@ -47,7 +47,7 @@ Status ThreadALooperHandle::read() {
 
 Status ThreadALooperHandle::write(uint64_t val) {
 	auto source = reinterpret_cast<EventFdSource *>(_data);
-	auto ret = ::eventfd_write(source->fd, val);
+	auto ret = ::__sprt_eventfd_write(source->fd, val);
 	if (ret < 0) {
 		return sprt::status::errnoToStatus(errno);
 	}
@@ -57,7 +57,7 @@ Status ThreadALooperHandle::write(uint64_t val) {
 Status ThreadALooperHandle::rearm(ALooperData *alooper, EventFdSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
-		status = alooper->add(source->fd, ALOOPER_EVENT_INPUT, this);
+		status = alooper->add(source->fd, __SPRT_ALOOPER_EVENT_INPUT, this);
 	}
 	return status;
 }
@@ -79,7 +79,7 @@ void ThreadALooperHandle::notify(ALooperData *alooper, EventFdSource *source,
 		return;
 	}
 
-	if (data.queueFlags & ALOOPER_EVENT_INPUT) {
+	if (data.queueFlags & __SPRT_ALOOPER_EVENT_INPUT) {
 		while (read() == Status::Ok) {
 			_mutex.lock();
 
@@ -87,8 +87,9 @@ void ThreadALooperHandle::notify(ALooperData *alooper, EventFdSource *source,
 		}
 	}
 
-	if ((data.queueFlags & ALOOPER_EVENT_ERROR) || (data.queueFlags & ALOOPER_EVENT_HANGUP)
-			|| (data.queueFlags & ALOOPER_EVENT_INVALID)) {
+	if ((data.queueFlags & __SPRT_ALOOPER_EVENT_ERROR)
+			|| (data.queueFlags & __SPRT_ALOOPER_EVENT_HANGUP)
+			|| (data.queueFlags & __SPRT_ALOOPER_EVENT_INVALID)) {
 		cancel();
 	}
 }
@@ -98,7 +99,7 @@ Status ThreadALooperHandle::perform(Rc<thread::Task> &&task) {
 	_outputQueue.emplace_back(move(task));
 
 	uint64_t value = 1;
-	::eventfd_write(reinterpret_cast<EventFdSource *>(_data)->fd, value);
+	::__sprt_eventfd_write(reinterpret_cast<EventFdSource *>(_data)->fd, value);
 	return Status::Ok;
 }
 
@@ -107,7 +108,7 @@ Status ThreadALooperHandle::perform(mem_std::Function<void()> &&func, Ref *targe
 	_outputCallbacks.emplace_back(CallbackInfo{sp::move(func), target, tag});
 
 	uint64_t value = 1;
-	::eventfd_write(reinterpret_cast<EventFdSource *>(_data)->fd, value);
+	::__sprt_eventfd_write(reinterpret_cast<EventFdSource *>(_data)->fd, value);
 	return Status::Ok;
 }
 

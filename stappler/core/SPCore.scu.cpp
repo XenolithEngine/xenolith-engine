@@ -89,10 +89,11 @@ bool initialize(int argc, const char *argv[], int &resultCode) {
 
 	if (!sprt::initialize(
 				sprt::AppConfig{
-					SharedModule::acquireTypedSymbol<const char *>(
-							buildconfig::MODULE_APPCONFIG_NAME, "APPCONFIG_BUNDLE_NAME"),
+					getAppconfigBundleName(),
+					getAppconfigAppName(),
 					SharedModule::acquireTypedSymbol<const char *>(
 							buildconfig::MODULE_APPCONFIG_NAME, "APPCONFIG_BUNDLE_PATH"),
+					getAppconfigVersionIndex(),
 					sprt::AppLocationScheme(scheme ? *scheme : 0),
 				},
 				resultCode)) {

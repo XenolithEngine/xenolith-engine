@@ -35,8 +35,8 @@ namespace STAPPLER_VERSIONIZED stappler::search {
 static StemmerEnv *Configuration_makeLocalConfig(StemmerEnv *orig) {
 	auto p = memory::pool::acquire();
 
-	char buf[24] = { 0 };
-	snprintf(buf, 24, "%#018" PRIxPTR, (uintptr_t)orig);
+	char buf[24] = {0};
+	snprintf(buf, 24, "%#018lx", (uintptr_t)orig);
 
 	StemmerEnv *ret = nullptr;
 	memory::pool::userdata_get((void **)&ret, buf, p);
@@ -61,8 +61,6 @@ static StemmerEnv *Configuration_makeLocalConfig(StemmerEnv *orig) {
 	return nullptr;
 }
 
-static void *StemmerEnv_getUserData(StemmerEnv *env) {
-	return env->userData;
-}
+static void *StemmerEnv_getUserData(StemmerEnv *env) { return env->userData; }
 
-}
+} // namespace stappler::search

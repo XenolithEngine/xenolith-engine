@@ -25,6 +25,7 @@
 namespace STAPPLER_VERSIONIZED stappler::filesystem {
 
 File File::open_tmp(StringView prefix, OpenFlags, Status *) {
+	slog().error("filesystem", "File::open_tmp not implemented");
 	/*if (prefix.empty()) {
 		prefix = StringView("sa.tmp");
 	}
@@ -57,7 +58,7 @@ File File::open(const FileInfo &info, OpenFlags f, Status *st) {
 			return false;
 		});
 	} else {
-		enumeratePaths(info, [&](const LocationInfo &info, StringView path) {
+		enumeratePaths(info, Access::Read, [&](const LocationInfo &info, StringView path) {
 			ret = open(info, path, f, st);
 			return false;
 		});

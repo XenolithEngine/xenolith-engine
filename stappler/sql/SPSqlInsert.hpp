@@ -32,8 +32,8 @@ THE SOFTWARE.
 namespace STAPPLER_VERSIONIZED stappler::sql {
 
 template <typename Binder, typename Interface>
-template <typename ...Args>
-auto Query<Binder, Interface>::Insert::values(Args && ... args) -> InsertValues {
+template <typename... Args>
+auto Query<Binder, Interface>::Insert::values(Args &&...args) -> InsertValues {
 	switch (this->state) {
 	case State::None: this->query->stream << " VALUES"; break;
 	case State::Some: this->query->stream << ")VALUES"; break;
@@ -41,20 +41,20 @@ auto Query<Binder, Interface>::Insert::values(Args && ... args) -> InsertValues 
 	}
 
 	InsertValues v(this->query, State::Init);
-	Expand<InsertValues>::values(v, forward<Args>(args)...);
+	Expand<InsertValues>::values(v, sprt::forward<Args>(args)...);
 	return v;
 }
 
 template <typename Binder, typename Interface>
-template <typename ...Args>
-auto Query<Binder, Interface>::InsertValues::values(Args && ... args) -> InsertValues & {
+template <typename... Args>
+auto Query<Binder, Interface>::InsertValues::values(Args &&...args) -> InsertValues & {
 	if (this->state == State::Some) {
 		this->query->stream << ")";
 		this->state = State::None;
 		this->query->finalization = FinalizationState::None;
 	}
 
-	Expand<InsertValues>::values(*this, forward<Args>(args)...);
+	Expand<InsertValues>::values(*this, sprt::forward<Args>(args)...);
 
 	return *this;
 }
@@ -73,12 +73,10 @@ auto Query<Binder, Interface>::InsertValues::value(Value &&val) -> InsertValues 
 		this->state = State::Some;
 		this->query->finalization = FinalizationState::Parentesis;
 		break;
-	case State::Some:
-		this->query->stream << ",";
-		break;
+	case State::Some: this->query->stream << ","; break;
 	}
 
-	this->query->writeBind(forward<Value>(val));
+	this->query->writeBind(sprt::forward<Value>(val));
 	return *this;
 }
 
@@ -95,18 +93,12 @@ auto Query<Binder, Interface>::InsertValues::def() -> InsertValues & {
 		this->state = State::Some;
 		this->query->finalization = FinalizationState::Parentesis;
 		break;
-	case State::Some:
-		this->query->stream << ",";
-		break;
+	case State::Some: this->query->stream << ","; break;
 	}
 
 	switch (this->query->profile) {
-	case Profile::Postgres:
-		this->query->stream << "DEFAULT";
-		break;
-	case Profile::Sqlite:
-		this->query->stream << "NULL";
-		break;
+	case Profile::Postgres: this->query->stream << "DEFAULT"; break;
+	case Profile::Sqlite: this->query->stream << "NULL"; break;
 	}
 	return *this;
 }
@@ -159,12 +151,8 @@ template <typename Binder, typename Interface>
 auto Query<Binder, Interface>::InsertValues::next() -> InsertValues {
 	switch (this->state) {
 	case State::None:
-	case State::Init:
-		this->query->stream << "\n";
-		break;
-	case State::Some:
-		this->query->stream << ")\n";
-		break;
+	case State::Init: this->query->stream << "\n"; break;
+	case State::Some: this->query->stream << ")\n"; break;
 	}
 
 	this->query->finalization = FinalizationState::None;
@@ -186,24 +174,33 @@ auto Query<Binder, Interface>::InsertConflict::doUpdate() -> InsertUpdateValues 
 
 template <typename Binder, typename Interface>
 auto Query<Binder, Interface>::InsertUpdateValues::excluded(StringView f) -> InsertUpdateValues & {
-	if (this->state == State::None) { this->state = State::Some; } else { this->query->stream << ","; }
+	if (this->state == State::None) {
+		this->state = State::Some;
+	} else {
+		this->query->stream << ",";
+	}
 	this->query->stream << " \"" << f << "\"=EXCLUDED.\"" << f << "\"";
 	return *this;
 }
 
 template <typename Binder, typename Interface>
-auto Query<Binder, Interface>::InsertUpdateValues::excluded(StringView f, StringView v) -> InsertUpdateValues & {
-	if (this->state == State::None) { this->state = State::Some; } else { this->query->stream << ","; }
+auto Query<Binder, Interface>::InsertUpdateValues::excluded(StringView f, StringView v)
+		-> InsertUpdateValues & {
+	if (this->state == State::None) {
+		this->state = State::Some;
+	} else {
+		this->query->stream << ",";
+	}
 	this->query->stream << " \"" << f << "\"=EXCLUDED.\"" << v << "\"";
 	return *this;
 }
 
 template <typename Binder, typename Interface>
-template <typename ... Args>
-auto Query<Binder, Interface>::InsertUpdateValues::where(Args && ... args) -> InsertWhereValues {
+template <typename... Args>
+auto Query<Binder, Interface>::InsertUpdateValues::where(Args &&...args) -> InsertWhereValues {
 	this->query->stream << " WHERE";
 	InsertWhereValues q(this->query);
-	q.where(sql::Operator::And, forward<Args>(args)...);
+	q.where(sql::Operator::And, sprt::forward<Args>(args)...);
 	return q;
 };
 
@@ -233,27 +230,39 @@ auto Query<Binder, Interface>::InsertPostConflict::returning() -> Returning {
 
 template <typename Binder, typename Interface>
 auto Query<Binder, Interface>::Returning::all() -> Returning & {
-	if (this->state == State::None) { this->state = State::Some; } else { this->query->stream << ","; }
+	if (this->state == State::None) {
+		this->state = State::Some;
+	} else {
+		this->query->stream << ",";
+	}
 	this->query->stream << " *";
 	return *this;
 }
 
 template <typename Binder, typename Interface>
 auto Query<Binder, Interface>::Returning::count() -> Returning & {
-	if (this->state == State::None) { this->state = State::Some; } else { this->query->stream << ","; }
+	if (this->state == State::None) {
+		this->state = State::Some;
+	} else {
+		this->query->stream << ",";
+	}
 	this->query->stream << " COUNT(*)";
 	return *this;
 }
 
 template <typename Binder, typename Interface>
 auto Query<Binder, Interface>::Returning::count(const StringView &alias) -> Returning & {
-	if (this->state == State::None) { this->state = State::Some; } else { this->query->stream << ","; }
+	if (this->state == State::None) {
+		this->state = State::Some;
+	} else {
+		this->query->stream << ",";
+	}
 	this->query->stream << " COUNT(*) AS \"" << alias << "\"";
 	return *this;
 }
 
 template <typename Binder, typename Interface>
-auto Query<Binder, Interface>::insert(const StringView & field) -> Insert {
+auto Query<Binder, Interface>::insert(const StringView &field) -> Insert {
 	stream << "INSERT INTO " << field;
 	target = field;
 	return Insert(this, State::Init);
@@ -266,6 +275,6 @@ auto Query<Binder, Interface>::insert(const StringView &field, const StringView 
 	return Insert(this, State::Init);
 }
 
-}
+} // namespace stappler::sql
 
 #endif /* STAPPLER_SQL_SPSQLINSERT_HPP_ */

@@ -198,12 +198,13 @@ static bool getTiffImageSize(const io::Producer &file, StackBuffer<512> &data, u
 		uint32_t &height) {
 	if (isTiff(data.data(), data.size())) {
 		if (memcmp(data.data(), "II", 2) == 0) {
-			if (getTiffImageSizeImpl<BytesViewTemplate<Endian::Little>>(file, data, width,
+			if (getTiffImageSizeImpl<BytesViewTemplate<sprt::endian::little>>(file, data, width,
 						height)) {
 				return true;
 			}
 		} else {
-			if (getTiffImageSizeImpl<BytesViewTemplate<Endian::Big>>(file, data, width, height)) {
+			if (getTiffImageSizeImpl<BytesViewTemplate<sprt::endian::big>>(file, data, width,
+						height)) {
 				return true;
 			}
 		}

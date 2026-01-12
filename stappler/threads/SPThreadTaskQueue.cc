@@ -115,7 +115,7 @@ void TaskQueue::update(uint32_t *count) {
 		*count += stack.size() + callbacks.size();
 	}
 
-	if (_context.tasksCounter.load() > 0) {
+	if (_context.tasksInQueue.load() > 0) {
 		_context.inputCondition.notify_all();
 	}
 }
@@ -128,7 +128,7 @@ void TaskQueue::unlock() { _context.inputMutexQueue.unlock(); }
 
 Status TaskQueue::waitForAll(TimeInterval iv) {
 	update();
-	while (_context.tasksCounter.load() != 0) { wait(iv, nullptr); }
+	while (_context.tasksInExecution.load() != 0) { wait(iv, nullptr); }
 	return Status::Ok;
 }
 

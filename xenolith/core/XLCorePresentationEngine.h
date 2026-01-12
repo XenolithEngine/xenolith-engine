@@ -58,30 +58,8 @@ public:
 	virtual void setFrameOrder(uint64_t) = 0;
 };
 
-enum class UpdateConstraintsFlags : uint32_t {
-	None,
-	DeprecateSwapchain = 1 << 0,
-	SwitchToFastMode = 1 << 1,
-	SwitchToNext = 1 << 2,
-	EndOfLife = 1 << 3,
-	Finalized = 1 << 4,
-	EnableLiveResize = 1 << 5,
-	DisableLiveResize = 1 << 6,
-	SyncUpdate = 1 << 7,
-
-	// to be more clear what DeprecateSwapchain means
-	WindowResized = DeprecateSwapchain,
-};
-
-SP_DEFINE_ENUM_AS_MASK(UpdateConstraintsFlags)
-
-enum class PresentationUpdateFlags : uint32_t {
-	None,
-	DisplayLink = 1 << 0,
-	FlushPending = 1 << 1,
-};
-
-SP_DEFINE_ENUM_AS_MASK(PresentationUpdateFlags)
+using sprt::window::UpdateConstraintsFlags;
+using sprt::window::PresentationUpdateFlags;
 
 class SP_PUBLIC PresentationEngine : public Ref {
 public:
@@ -228,19 +206,19 @@ protected:
 	// Presentation interval is not the same, as frame interval, it's time between two present event
 	uint64_t _lastPresentationTime = 0;
 	std::atomic<uint64_t> _lastPresentationInterval = 0;
-	math::MovingAverage<FrameAverageCount, uint64_t> _avgPresentationInterval;
+	MovingAverage<FrameAverageCount, uint64_t> _avgPresentationInterval;
 	std::atomic<uint64_t> _avgPresentationIntervalValue = 0;
 
 	uint64_t _lastFrameTime = 0;
-	math::MovingAverage<FrameAverageCount, uint64_t> _avgFrameTime;
+	MovingAverage<FrameAverageCount, uint64_t> _avgFrameTime;
 	std::atomic<uint64_t> _avgFrameTimeValue = 0;
 
 	uint64_t _lastFenceFrameTime = 0;
-	math::MovingAverage<FrameAverageCount, uint64_t> _avgFenceInterval;
+	MovingAverage<FrameAverageCount, uint64_t> _avgFenceInterval;
 	std::atomic<uint64_t> _avgFenceIntervalValue = 0;
 
 	uint64_t _lastTimestampFrameTime = 0;
-	math::MovingAverage<FrameAverageCount, uint64_t> _avgTimestampInterval;
+	MovingAverage<FrameAverageCount, uint64_t> _avgTimestampInterval;
 	std::atomic<uint64_t> _avgTimestampIntervalValue = 0;
 
 	uint64_t _frameOrder = 0; // current scheduled frame order

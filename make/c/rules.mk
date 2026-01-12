@@ -82,9 +82,11 @@ sp_toolkit_include_flags = \
 # $(3) - build path
 sp_toolkit_private_flags = \
 	$(if $(filter %.c,$(2)),$($(1)_PRIVATE_CFLAGS)) \
-	$(if $(filter %.cpp,$(2)),$($(1)_PRIVATE_CXXFLAGS)) \
+	$(if $(filter %.cpp,$(2)),\
+		$(addprefix -include-pch$(space)$(3)/,$(addsuffix $(OSTYPE_GCH_SUFFIX),$($(1)_PRIVATE_INCLUDE_PCH))) \
+		$($(1)_PRIVATE_CXXFLAGS) \
+	) \
 	$(if $(filter %.mm,$(2)),$($(1)_PRIVATE_CXXFLAGS)) \
-	$(addprefix -include-pch$(space)$(3)/,$(addsuffix $(OSTYPE_GCH_SUFFIX),$($(1)_PRIVATE_INCLUDE_PCH))) \
 	$(addprefix -I,$(call sp_toolkit_include_list,,$($(1)_PRIVATE_INCLUDES)))
 
 # $(1) - filename

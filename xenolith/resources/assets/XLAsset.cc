@@ -309,7 +309,7 @@ void Asset::parseVersions(const db::Value &downloads) {
 		return true;
 	}, 1);
 
-	for (auto &it : pathsToRemove) { filesystem::remove(FileInfo{it}, true, true); }
+	for (auto &it : pathsToRemove) { filesystem::remove(FileInfo{it}, true); }
 
 	bool localFound = false;
 	bool pendingFound = false;
@@ -339,7 +339,7 @@ void Asset::parseVersions(const db::Value &downloads) {
 struct AssetDownloadData : Ref {
 	Rc<Asset> asset;
 	Asset::VersionData data;
-	FILE *inputFile = nullptr;
+	filesystem::File inputFile;
 	bool valid = true;
 	float progress = 0.0f;
 
@@ -383,14 +383,14 @@ bool Asset::startNewDownload(Time ctime, StringView etag) {
 				auto tag = StringView(data->data.etag);
 				tag.trimChars<StringView::Chars<'"', '\'', ' ', '-'>>();
 				data->data.path = toString(_path, "/", data->data.ctime.toMicros(), "-", tag);
-				data->inputFile = filesystem::native::fopen_fn(data->data.path.data(), "w");
+				data->inputFile = filesystem::File::open(FileInfo(data->data.path),
+						filesystem::OpenFlags::Write);
 				if (!data->inputFile) {
 					return size_t(CURL_WRITEFUNC_ERROR);
 				}
 				addVersion(data);
 			}
-
-			return size_t(fwrite(bytes, size, 1, data->inputFile) * size);
+			return data->inputFile.write((const uint8_t *)bytes, size);
 		});
 		return true;
 	}, data);
@@ -407,8 +407,7 @@ bool Asset::startNewDownload(Time ctime, StringView etag) {
 	req->perform(_library->getController(),
 			[this, data = data.get()](const network::Request &req, bool success) {
 		if (data->inputFile) {
-			fclose(data->inputFile);
-			data->inputFile = nullptr;
+			data->inputFile.close();
 
 			setDownloadComplete(data->data, data->valid && success);
 			return;
@@ -454,13 +453,13 @@ bool Asset::resumeDownload(VersionData &d) {
 			}
 
 			if (!data->inputFile) {
-				data->inputFile = filesystem::native::fopen_fn(data->data.path.data(), "a");
+				data->inputFile = filesystem::File::open(FileInfo(data->data.path),
+						filesystem::OpenFlags::Write | filesystem::OpenFlags::Append);
 				if (!data->inputFile) {
 					return size_t(CURL_WRITEFUNC_ERROR);
 				}
 			}
-
-			return size_t(fwrite(bytes, size, 1, data->inputFile) * size);
+			return data->inputFile.write((const uint8_t *)bytes, size);
 		});
 		return true;
 	}, data);
@@ -478,8 +477,7 @@ bool Asset::resumeDownload(VersionData &d) {
 	req->perform(_library->getController(),
 			[this, data = data.get()](const network::Request &req, bool success) {
 		if (data->inputFile) {
-			fclose(data->inputFile);
-			data->inputFile = nullptr;
+			data->inputFile.close();
 		}
 
 		setDownloadComplete(data->data, data->valid && success);
@@ -566,7 +564,7 @@ void Asset::addVersion(AssetDownloadData *data) {
 
 void Asset::dropVersion(const VersionData &data) {
 	if (!data.locked) {
-		filesystem::remove(FileInfo{data.path}, true, true);
+		filesystem::remove(FileInfo{data.path}, true);
 	}
 	_library->eraseVersion(data.id);
 }
@@ -580,7 +578,7 @@ void Asset::releaseLock(const VersionData &data) {
 		}
 	}
 
-	filesystem::remove(FileInfo{data.path}, true, true);
+	filesystem::remove(FileInfo{data.path}, true);
 }
 
 } // namespace stappler::xenolith::storage

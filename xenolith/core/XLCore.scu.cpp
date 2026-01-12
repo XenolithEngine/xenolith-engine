@@ -41,7 +41,6 @@
 
 #include "XLCorePresentationFrame.cc"
 #include "XLCorePresentationEngine.cc"
-#include "XLCoreTextInput.cc"
 
 #include "SPMetastring.h"
 

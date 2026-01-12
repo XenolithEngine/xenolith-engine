@@ -1,0 +1,7 @@
+.gradle
+.idea
+build
+app/build
+app/src/debug
+gradle/wrapper/gradle-wrapper.jar
+local.properties

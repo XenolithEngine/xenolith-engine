@@ -292,7 +292,7 @@ void Scene2d::initialize() {
 				_data1.event = InputEventName::Cancel;
 				_data2.event = InputEventName::Cancel;
 
-				Vector<InputEventData> events{_data1, _data2};
+				sprt::window::Vector<InputEventData> events{_data1, _data2};
 
 				_scene->getDirector()->getWindow()->handleInputEvents(sp::move(events));
 			}
@@ -310,7 +310,7 @@ void Scene2d::initialize() {
 				_content->convertToWorldSpace(_pointerVirtual->getPosition().xy()),
 				maxOf<uint32_t>() - 2);
 
-		Vector<InputEventData> events{_data1, _data2};
+		sprt::window::Vector<InputEventData> events{_data1, _data2};
 
 		_scene->getDirector()->getWindow()->handleInputEvents(sp::move(events));
 

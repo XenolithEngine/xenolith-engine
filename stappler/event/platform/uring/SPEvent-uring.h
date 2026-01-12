@@ -26,8 +26,6 @@
 
 #include "SPEventHandle.h"
 
-#if LINUX
-
 #include "detail/SPEventQueueData.h"
 
 #include "../fd/SPEventFd.h"
@@ -37,20 +35,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
-#include <sys/ioctl.h>
-#include <sys/syscall.h>
 #include <sys/mman.h>
-#include <sys/uio.h>
-#include <sys/utsname.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
-
-#include "linux-uring.h"
-
-#ifdef __USE_GNU
-#define SP_URING_THREAD_FENCE_HANDLE 1
-#endif
+#include <sprt/c/sys/__sprt_uring.h>
 
 namespace STAPPLER_VERSIONIZED stappler::event {
 
@@ -137,9 +126,7 @@ struct SP_PUBLIC URingProbe {
 	}
 };
 
-struct SP_PUBLIC URingData;
-
-struct alignas(32) URingData : public PlatformQueueData {
+struct SP_PUBLIC alignas(32) URingData : public PlatformQueueData {
 	static constexpr size_t CQESize = sizeof(struct io_uring_cqe);
 	static constexpr uint32_t DefaultIdleInterval = 500;
 
@@ -239,7 +226,5 @@ struct alignas(32) URingData : public PlatformQueueData {
 };
 
 } // namespace stappler::event
-
-#endif
 
 #endif /* CORE_EVENT_PLATFORM_SPEVENT_URING_H_ */

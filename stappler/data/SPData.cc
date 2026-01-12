@@ -31,8 +31,7 @@ THE SOFTWARE.
 #include "SPFilesystem.h"
 #endif
 
-#define LZ4_HC_STATIC_LINKING_ONLY 1
-#include "thirdparty/lz4/lib/lz4hc.h"
+#include <sprt/runtime/compress.h>
 
 #ifdef MODULE_STAPPLER_BROTLI_LIB
 #include "brotli/encode.h"
@@ -170,18 +169,12 @@ size_t getCompressBounds(size_t size, EncodeFormat::Compression c) {
 	switch (c) {
 	case EncodeFormat::LZ4Compression:
 	case EncodeFormat::LZ4HCCompression: {
-		if (size < LZ4_MAX_INPUT_SIZE) {
-			return LZ4_compressBound(int(size)) + ((size <= 0xFFFF) ? 2 : 4);
-		}
-		return 0;
+		return sprt::lz4_getCompressBounds(size) + +((size <= 0xFFFF) ? 2 : 4);
 		break;
 	}
 #ifdef MODULE_STAPPLER_BROTLI_LIB
 	case EncodeFormat::Brotli:
-		if (size < LZ4_MAX_INPUT_SIZE) {
-			return BrotliEncoderMaxCompressedSize(size) + ((size <= 0xFFFF) ? 2 : 4);
-		}
-		return 0;
+		return BrotliEncoderMaxCompressedSize(size) + ((size <= 0xFFFF) ? 2 : 4);
 		break;
 #endif
 	case EncodeFormat::NoCompression: break;
@@ -189,18 +182,14 @@ size_t getCompressBounds(size_t size, EncodeFormat::Compression c) {
 	return 0;
 }
 
-thread_local uint8_t tl_lz4HCEncodeState[std::max(sizeof(LZ4_streamHC_t), sizeof(LZ4_stream_t))];
 thread_local uint8_t tl_compressBuffer[128_KiB];
-
-uint8_t *getLZ4EncodeState() { return tl_lz4HCEncodeState; }
 
 size_t compressData(const uint8_t *src, size_t srcSize, uint8_t *dest, size_t destSize,
 		EncodeFormat::Compression c) {
 	switch (c) {
 	case EncodeFormat::LZ4Compression: {
 		const int offSize = ((srcSize <= 0xFFFF) ? 2 : 4);
-		const int ret = LZ4_compress_fast_extState(tl_lz4HCEncodeState, (const char *)src,
-				(char *)dest + offSize, int(srcSize), int(destSize - offSize), 1);
+		const auto ret = sprt::lz4_compressData(src, srcSize, dest + offSize, destSize - offSize);
 		if (ret > 0) {
 			if (srcSize <= 0xFFFF) {
 				uint16_t sz = srcSize;
@@ -215,8 +204,7 @@ size_t compressData(const uint8_t *src, size_t srcSize, uint8_t *dest, size_t de
 	}
 	case EncodeFormat::LZ4HCCompression: {
 		const int offSize = ((srcSize <= 0xFFFF) ? 2 : 4);
-		const int ret = LZ4_compress_HC_extStateHC(tl_lz4HCEncodeState, (const char *)src,
-				(char *)dest + offSize, int(srcSize), int(destSize - offSize), LZ4HC_CLEVEL_MAX);
+		const auto ret = sprt::lz4hc_compressData(src, srcSize, dest + offSize, destSize - offSize);
 		if (ret > 0) {
 			if (srcSize <= 0xFFFF) {
 				uint16_t sz = srcSize;
@@ -360,24 +348,19 @@ auto compress<memory::StandartInterface>(BytesView src, EncodeFormat::Compressio
 
 using decompress_ptr = const uint8_t *;
 
-static bool doDecompressLZ4Frame(const uint8_t *src, size_t srcSize, uint8_t *dest,
-		size_t destSize) {
-	return LZ4_decompress_safe((const char *)src, (char *)dest, int(srcSize), int(destSize)) > 0;
-}
-
 template <typename Interface>
 static inline auto doDecompressLZ4(BytesView data, bool sh) -> ValueTemplate<Interface> {
 	size_t size = sh ? data.readUnsigned16() : data.readUnsigned32();
 
 	ValueTemplate<Interface> ret;
 	if (size <= sizeof(tl_compressBuffer)) {
-		if (doDecompressLZ4Frame(data.data(), data.size(), tl_compressBuffer, size)) {
+		if (sprt::lz4_decompressData(data.data(), data.size(), tl_compressBuffer, size)) {
 			ret = data::read<Interface>(BytesView(tl_compressBuffer, size));
 		}
 	} else {
 		typename Interface::BytesType res;
 		res.resize(size);
-		if (doDecompressLZ4Frame(data.data(), data.size(), res.data(), size)) {
+		if (sprt::lz4_decompressData(data.data(), data.size(), res.data(), size)) {
 			ret = data::read<Interface>(res);
 		}
 	}
@@ -446,7 +429,7 @@ size_t decompress(const uint8_t *d, size_t size, uint8_t *dstData, size_t dstSiz
 		ret = data.readUnsigned16();
 		if (dstData) {
 			if (dstSize >= ret) {
-				if (!doDecompressLZ4Frame(data.data(), data.size() - padding, dstData, ret)) {
+				if (!sprt::lz4_decompressData(data.data(), data.size() - padding, dstData, ret)) {
 					ret = 0;
 				}
 			} else {
@@ -460,7 +443,7 @@ size_t decompress(const uint8_t *d, size_t size, uint8_t *dstData, size_t dstSiz
 		ret = data.readUnsigned32();
 		if (dstData) {
 			if (dstSize >= ret) {
-				if (!doDecompressLZ4Frame(data.data(), data.size() - padding, dstData, ret)) {
+				if (!sprt::lz4_decompressData(data.data(), data.size() - padding, dstData, ret)) {
 					ret = 0;
 				}
 			} else {
@@ -527,19 +510,19 @@ const typename ValueTemplate<memory::StandartInterface>::DictionaryType
 
 template <>
 const typename ValueTemplate<memory::PoolInterface>::StringType
-		ValueTemplate<memory::PoolInterface>::StringNull(memory::get_zero_pool());
+		ValueTemplate<memory::PoolInterface>::StringNull(sprt::memory::get_zero_pool());
 
 template <>
 const typename ValueTemplate<memory::PoolInterface>::BytesType
-		ValueTemplate<memory::PoolInterface>::BytesNull(memory::get_zero_pool());
+		ValueTemplate<memory::PoolInterface>::BytesNull(sprt::memory::get_zero_pool());
 
 template <>
 const typename ValueTemplate<memory::PoolInterface>::ArrayType
-		ValueTemplate<memory::PoolInterface>::ArrayNull(memory::get_zero_pool());
+		ValueTemplate<memory::PoolInterface>::ArrayNull(sprt::memory::get_zero_pool());
 
 template <>
 const typename ValueTemplate<memory::PoolInterface>::DictionaryType
-		ValueTemplate<memory::PoolInterface>::DictionaryNull(memory::get_zero_pool());
+		ValueTemplate<memory::PoolInterface>::DictionaryNull(sprt::memory::get_zero_pool());
 
 template <>
 auto ValueTemplate<memory::StandartInterface>::getStringNullConst() -> const StringType & {

@@ -27,6 +27,8 @@
 #include "XLCore.h" // IWYU pragma: keep
 #include "SPDso.h"
 
+#include <sprt/runtime/window/gapi.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 class Loop;
@@ -35,57 +37,32 @@ class Device;
 
 static constexpr uint16_t InstanceDefaultDevice = maxOf<uint16_t>();
 
-enum class InstanceApi {
-	None = 0,
-	Vulkan = 1,
-};
+using sprt::window::gapi::InstanceApi;
+using sprt::window::gapi::InstanceFlags;
 
-enum class InstanceFlags : uint32_t {
-	None = 0,
-	RenderDoc = 1 << 0,
-	Validation = 1 << 1, // try to enable validation layers
-	ForcedValidation = 1 << 2, // do not start if we failed to enable validation
-	ValidateSynchromization = 1 << 3, // validate data synchronization
-};
 
-SP_DEFINE_ENUM_AS_MASK(InstanceFlags)
-
-struct SP_PUBLIC InstanceBackendInfo : public Ref {
+struct SP_PUBLIC InstanceBackendInfo : public sprt::window::gapi::InstanceBackendInfo {
 	virtual ~InstanceBackendInfo() = default;
 
 	virtual Value encode() const = 0;
 };
 
-struct SP_PUBLIC InstancePlatformInfo : public Ref {
+struct SP_PUBLIC InstancePlatformInfo : public sprt::window::gapi::InstancePlatformInfo {
 	virtual ~InstancePlatformInfo() = default;
 
 	virtual Value encode() const = 0;
 };
 
-struct SP_PUBLIC InstanceInfo final : public Ref {
-	virtual ~InstanceInfo() = default;
+using sprt::window::gapi::InstanceInfo;
+using sprt::window::gapi::LoopInfo;
 
-	InstanceApi api = InstanceApi::None;
-	InstanceFlags flags = InstanceFlags::None;
-	Rc<InstanceBackendInfo> backend;
+SP_PUBLIC Value encodeInstanceInfo(const InstanceInfo &info);
+SP_PUBLIC Value encodeLoopInfo(const LoopInfo &info);
 
-	Value encode() const;
-};
-
-struct SP_PUBLIC LoopBackendInfo : public Ref {
+struct SP_PUBLIC LoopBackendInfo : public sprt::window::gapi::LoopBackendInfo {
 	virtual ~LoopBackendInfo() = default;
 
 	virtual Value encode() const = 0;
-};
-
-struct SP_PUBLIC LoopInfo final : public Ref {
-	virtual ~LoopInfo() = default;
-
-	uint16_t deviceIdx = InstanceDefaultDevice;
-	ImageFormat defaultFormat = ImageFormat::R8G8B8A8_UNORM;
-	Rc<LoopBackendInfo> backend; // backend-specific data
-
-	Value encode() const;
 };
 
 struct SP_PUBLIC DeviceProperties {
@@ -95,7 +72,7 @@ struct SP_PUBLIC DeviceProperties {
 	bool supportsPresentation = false;
 };
 
-class SP_PUBLIC Instance : public Ref {
+class SP_PUBLIC Instance : public sprt::window::gapi::Instance {
 public:
 	static Rc<Instance> create(Rc<InstanceInfo> &&);
 
@@ -106,6 +83,8 @@ public:
 	const Vector<DeviceProperties> &getAvailableDevices() const { return _availableDevices; }
 
 	virtual Rc<Loop> makeLoop(NotNull<event::Looper>, Rc<core::LoopInfo> &&) const;
+
+	virtual bool isPresentationSupported() const;
 
 	InstanceApi getApi() const { return _api; }
 	InstanceFlags getFlags() const { return _flags; }

@@ -28,130 +28,36 @@
 #include "SPAbi.h"
 #endif
 
+#include <sprt/runtime/thread/entry.h>
+
 namespace STAPPLER_VERSIONIZED stappler::thread {
-
-struct ThreadCallbacks {
-	void (*init)(Thread *);
-	void (*dispose)(Thread *);
-	bool (*worker)(Thread *);
-};
-
-static void _workerThread(const ThreadCallbacks &tm, Thread *);
-static void _setThreadName(StringView name);
 
 static std::atomic<uint32_t> s_threadId(1);
 
-thread_local ThreadInfo tl_threadInfo;
 thread_local const Thread *tl_owner = nullptr;
 
-static void ThreadCallbacks_init(const ThreadCallbacks &cb, Thread *tm) {
-	memory::pool::initialize();
-
-	tl_threadInfo.threadAlloc = memory::allocator::create();
-	tl_threadInfo.threadPool = memory::pool::create(tl_threadInfo.threadAlloc);
-
-	tl_threadInfo.workerPool = memory::pool::create(tl_threadInfo.threadPool);
-
-	memory::perform([&] {
-		tm->retain();
-		cb.init(tm);
-	}, tl_threadInfo.threadPool);
-}
-
-static bool ThreadCallbacks_worker(const ThreadCallbacks &cb, Thread *tm) {
-	sprt_passert(tl_threadInfo.workerPool, "Thread pool should be initialized");
-	bool ret = false;
-
-	memory::perform_clear([&] { ret = cb.worker(tm); }, tl_threadInfo.workerPool);
-
-	return ret;
-}
-
-static void ThreadCallbacks_dispose(const ThreadCallbacks &cb, Thread *tm) {
-	memory::perform([&] {
-		cb.dispose(tm);
-		tm->release(0);
-	}, tl_threadInfo.threadPool);
-
-	memory::pool::destroy(tl_threadInfo.workerPool);
-
-	memory::pool::destroy(tl_threadInfo.threadPool);
-	memory::allocator::destroy(tl_threadInfo.threadAlloc);
-
-	memory::pool::terminate();
-}
-
-const ThreadInfo *ThreadInfo::getThreadInfo() {
-	if (!tl_threadInfo.managed) {
-		return nullptr;
-	}
-
-	return &tl_threadInfo;
-}
-
-void ThreadInfo::setThreadInfo(StringView n, uint32_t w, bool m) {
-	_setThreadName(n);
-
-	tl_threadInfo.workerId = w;
-	tl_threadInfo.name = n;
-	tl_threadInfo.managed = m;
-}
-
-bool ThreadInfo::setThreadPool(const NotNull<memory::pool_t> &pool) {
-	if (tl_threadInfo.threadPool) {
-		return false;
-	}
-
-	tl_threadInfo.threadPool = pool;
-	memory::pool::cleanup_register(pool, nullptr, [](void *ptr) -> Status {
-		tl_threadInfo.threadPool = nullptr;
-		return Status::Ok;
-	});
-	return true;
-}
-
-void Thread::workerThread(Thread *tm) {
+void Thread::workerThread(NotNull<Thread> tm) {
 	tl_owner = tm;
 
-	ThreadCallbacks cb;
-	cb.init = [](Thread *obj) { obj->threadInit(); };
+	sprt::thread::callbacks cb;
+	cb.init = [](NotNull<Ref> obj) {
+		static_cast<Thread *>(obj.get())->threadInit(); //
+	};
 
-	cb.dispose = [](Thread *obj) { obj->threadDispose(); };
+	cb.dispose = [](NotNull<Ref> obj) {
+		static_cast<Thread *>(obj.get())->threadDispose(); //
+	};
 
-	cb.worker = [](Thread *obj) -> bool { return obj->worker(); };
+	cb.worker = [](NotNull<Ref> obj) -> bool {
+		return static_cast<Thread *>(obj.get())->worker(); //
+	};
 
-	memory::pool::initialize();
-	_workerThread(cb, tm);
-	memory::pool::terminate();
+	sprt::thread::_entry(cb, tm);
 }
 
 const Thread *Thread::getCurrentThread() { return tl_owner; }
 
-#if STAPPLER_STATIC_TOOLCHAIN
-
-void Thread::Type::detach() {
-	auto detachThread = SharedModule::acquireTypedSymbol<decltype(&abi::detachThread)>(
-			buildconfig::MODULE_STAPPLER_ABI_NAME, "detachThread");
-	if (detachThread) {
-		detachThread(threadPtr);
-	}
-}
-
-void Thread::Type::join() {
-	auto joinThread = SharedModule::acquireTypedSymbol<decltype(&abi::joinThread)>(
-			buildconfig::MODULE_STAPPLER_ABI_NAME, "joinThread");
-	if (joinThread) {
-		joinThread(threadPtr);
-	}
-}
-
-Thread::Id Thread::getCurrentThreadId() { return Id{pthread_self()}; }
-
-#else
-
 Thread::Id Thread::getCurrentThreadId() { return std::this_thread::get_id(); }
-
-#endif
 
 Thread::~Thread() {
 	if (getCurrentThreadId() == _thisThreadId) {
@@ -175,18 +81,9 @@ bool Thread::run(ThreadFlags flags) {
 	_type = &(typeid(*this));
 	_continueExecution.test_and_set();
 	_parentThread = getCurrentThread();
-#if STAPPLER_STATIC_TOOLCHAIN
-	auto createThread = SharedModule::acquireTypedSymbol<decltype(&abi::createThread)>(
-			buildconfig::MODULE_STAPPLER_ABI_NAME, "createThread");
-	if (createThread) {
-		_thisThread = Type{createThread(Thread::workerThread, this, toInt(flags))};
-		if (!_thisThread.threadPtr) {
-			return false;
-		}
-	}
-#else
+
 	_thisThread = std::thread(Thread::workerThread, this);
-#endif
+
 	if ((flags & ThreadFlags::Joinable) == ThreadFlags::None) {
 		_thisThread.detach();
 	}

@@ -25,7 +25,7 @@ THE SOFTWARE.
 #define STAPPLER_CORE_UTILS_SPHASHTABLE_H_
 
 #include "SPLog.h"
-#include "SPRef.h"
+#include "SPMemory.h"
 
 namespace STAPPLER_VERSIONIZED stappler {
 
@@ -53,7 +53,7 @@ template <>
 struct HashTraits<NamedRef *> {
 	static uint32_t hash(uint32_t salt, const NamedRef *value) {
 		auto name = value->getName();
-		return hash::hash32(name.data(), uint32_t(name.size()), salt);
+		return sprt::hash32(name.data(), uint32_t(name.size()), salt);
 	}
 
 	static bool equal(const NamedRef *l, const NamedRef *r) { return l == r; }
@@ -63,11 +63,11 @@ template <>
 struct HashTraits<Rc<NamedRef>> {
 	static uint32_t hash(uint32_t salt, const NamedRef *value) {
 		auto name = value->getName();
-		return hash::hash32(name.data(), uint32_t(name.size()), salt);
+		return sprt::hash32(name.data(), uint32_t(name.size()), salt);
 	}
 
 	static uint32_t hash(uint32_t salt, StringView value) {
-		return hash::hash32(value.data(), uint32_t(value.size()), salt);
+		return sprt::hash32(value.data(), uint32_t(value.size()), salt);
 	}
 
 	static bool equal(const NamedRef *l, const NamedRef *r) { return l == r; }
@@ -78,11 +78,11 @@ struct HashTraits<Rc<NamedRef>> {
 template <>
 struct HashTraits<NamedMem *> {
 	static uint32_t hash(uint32_t salt, const NamedMem *value) {
-		return hash::hash32(value->key.data(), uint32_t(value->key.size()), salt);
+		return sprt::hash32(value->key.data(), uint32_t(value->key.size()), salt);
 	}
 
 	static uint32_t hash(uint32_t salt, StringView value) {
-		return hash::hash32(value.data(), uint32_t(value.size()), salt);
+		return sprt::hash32(value.data(), uint32_t(value.size()), salt);
 	}
 
 	static bool equal(const NamedMem *l, const NamedMem *r) { return l->key == r->key; }

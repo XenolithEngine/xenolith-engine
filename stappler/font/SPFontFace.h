@@ -25,7 +25,6 @@
 #define CORE_FONT_XLFONTFACE_H_
 
 #include "SPFontTextLayout.h"
-#include "SPRef.h"
 
 typedef struct FT_LibraryRec_ *FT_Library;
 typedef struct FT_FaceRec_ *FT_Face;

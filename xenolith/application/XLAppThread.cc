@@ -144,7 +144,7 @@ void AppThread::handleThemeInfoChanged(const ThemeInfo &theme) {
 		if (theme != _themeInfo) {
 			_themeInfo = theme;
 			for (auto &it : _extensions) { it.second->handleThemeInfoChanged(theme); }
-			onThemeInfo(this, _themeInfo.encode());
+			onThemeInfo(this, encodeThemeInfo(_themeInfo));
 		}
 	}, this);
 }
@@ -233,20 +233,21 @@ void AppThread::probeClipboard(Function<void(Status, SpanView<StringView>)> &&cb
 void AppThread::writeToClipboard(BytesView data, StringView contentType, Ref *ref,
 		StringView label) {
 	_context->performOnThread(
-			[this, data = data.bytes<Interface>(), type = contentType.str<Interface>(),
+			[this, data = data.bytes<sprt::window::Bytes>(), type = contentType.str<Interface>(),
 					ref = Rc<Ref>(ref), label = label.str<Interface>()]() mutable {
-		_context->writeToClipboard([data = sp::move(data), t = type](StringView type) -> Bytes {
+		_context->writeToClipboard(
+				[data = sp::move(data), t = type](StringView type) -> sprt::window::Bytes {
 			if (t == type) {
 				return data;
 			}
-			return Bytes();
+			return sprt::window::Bytes();
 		}, makeSpanView(&type, 1), ref, label);
 	},
 			this);
 }
 
-void AppThread::writeToClipboard(Function<Bytes(StringView)> &&cb, SpanView<StringView> types,
-		Ref *ref, StringView label) {
+void AppThread::writeToClipboard(sprt::window::Function<sprt::window::Bytes(StringView)> &&cb,
+		SpanView<StringView> types, Ref *ref, StringView label) {
 	Vector<String> vtypes;
 	vtypes.reserve(types.size());
 	for (auto &it : types) { vtypes.emplace_back(it.str<Interface>()); }

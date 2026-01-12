@@ -29,6 +29,8 @@
 #include "XLLiveReload.h"
 #include "SPSharedModule.h" // IWYU pragma: keep
 
+#include <sprt/runtime/window/native_window.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::platform {
 
 class ContextController;
@@ -44,7 +46,7 @@ class AppWindow;
 class Director;
 class Scene;
 
-using NativeWindow = platform::NativeWindow;
+using sprt::window::NativeWindow;
 
 class ContextComponent : public Ref {
 public:
@@ -81,7 +83,6 @@ public:
 */
 
 struct SP_PUBLIC ContentInitializer {
-	memory::allocator_t *alloc = nullptr;
 	memory::pool_t *pool = nullptr;
 	memory::pool_t *tmpPool = nullptr;
 
@@ -104,7 +105,7 @@ struct SP_PUBLIC ContentInitializer {
 	void terminate();
 };
 
-class SP_PUBLIC Context : public Ref {
+class SP_PUBLIC Context : public sprt::window::Context {
 public:
 	using SwapchainConfig = core::SwapchainConfig;
 	using SurfaceInfo = core::SurfaceInfo;
@@ -155,12 +156,9 @@ public:
 
 	virtual bool init(ContextConfig &&, ContentInitializer &&);
 
-	const ContextInfo *getInfo() const { return _info; }
 	event::Looper *getLooper() const { return _looper; }
 
 	core::Loop *getGlLoop() const { return _loop; }
-
-	platform::ContextController *getController() const { return _controller; }
 
 	BytesView getMessageToken() const { return _messageToken; }
 
@@ -178,15 +176,16 @@ public:
 	bool isCursorSupported(WindowCursor, bool serverSide) const;
 	WindowCapabilities getWindowCapabilities() const;
 
-	virtual Status readFromClipboard(Function<void(Status, BytesView, StringView)> &&,
-			Function<StringView(SpanView<StringView>)> &&, Ref * = nullptr);
-	virtual Status probeClipboard(Function<void(Status, SpanView<StringView>)> &&, Ref * = nullptr);
-	virtual Status writeToClipboard(Function<Bytes(StringView)> &&, SpanView<String>,
-			Ref * = nullptr, StringView label = StringView());
+	virtual Status readFromClipboard(sprt::window::Function<void(Status, BytesView, StringView)> &&,
+			sprt::window::Function<StringView(SpanView<StringView>)> &&, Ref * = nullptr);
+	virtual Status probeClipboard(sprt::window::Function<void(Status, SpanView<StringView>)> &&,
+			Ref * = nullptr);
+	virtual Status writeToClipboard(sprt::window::Function<sprt::window::Bytes(StringView)> &&,
+			SpanView<String>, Ref * = nullptr, StringView label = StringView());
 
-	virtual void handleConfigurationChanged(Rc<ContextInfo> &&);
+	virtual void handleConfigurationChanged(Rc<ContextInfo> &&) override;
 
-	virtual void handleGraphicsLoaded(NotNull<core::Loop>);
+	virtual void handleGraphicsLoaded(NotNull<sprt::window::gapi::Loop>) override;
 
 	virtual Value saveState();
 
@@ -197,35 +196,36 @@ public:
 	virtual SwapchainConfig handleAppWindowSurfaceUpdate(NotNull<AppWindow>, const SurfaceInfo &,
 			bool fastMode);
 
-	virtual void handleNativeWindowCreated(NotNull<NativeWindow>);
-	virtual void handleNativeWindowDestroyed(NotNull<NativeWindow>);
+	virtual void handleNativeWindowCreated(NotNull<NativeWindow>) override;
+	virtual void handleNativeWindowDestroyed(NotNull<NativeWindow>) override;
 	virtual void handleNativeWindowConstraintsChanged(NotNull<NativeWindow>,
-			core::UpdateConstraintsFlags);
+			core::UpdateConstraintsFlags) override;
 	virtual void handleNativeWindowInputEvents(NotNull<NativeWindow>,
-			Vector<core::InputEventData> &&);
-	virtual void handleNativeWindowTextInput(NotNull<NativeWindow>, const core::TextInputState &);
+			sprt::memory::dynvector<core::InputEventData> &&) override;
+	virtual void handleNativeWindowTextInput(NotNull<NativeWindow>,
+			const core::TextInputState &) override;
 
-	virtual void handleSystemNotification(SystemNotification);
+	virtual void handleSystemNotification(SystemNotification) override;
 
-	virtual void handleWillDestroy();
-	virtual void handleDidDestroy();
+	virtual void handleWillDestroy() override;
+	virtual void handleDidDestroy() override;
 
-	virtual void handleWillStop();
-	virtual void handleDidStop();
+	virtual void handleWillStop() override;
+	virtual void handleDidStop() override;
 
-	virtual void handleWillPause();
-	virtual void handleDidPause();
+	virtual void handleWillPause() override;
+	virtual void handleDidPause() override;
 
-	virtual void handleWillResume();
-	virtual void handleDidResume();
+	virtual void handleWillResume() override;
+	virtual void handleDidResume() override;
 
-	virtual void handleWillStart();
-	virtual void handleDidStart();
+	virtual void handleWillStart() override;
+	virtual void handleDidStart() override;
 
-	virtual void handleNetworkStateChanged(NetworkFlags);
-	virtual void handleThemeInfoChanged(const ThemeInfo &);
+	virtual void handleNetworkStateChanged(NetworkFlags) override;
+	virtual void handleThemeInfoChanged(const ThemeInfo &) override;
 
-	virtual bool configureWindow(NotNull<WindowInfo>);
+	virtual bool configureWindow(NotNull<WindowInfo>) override;
 
 	virtual void updateMessageToken(BytesView tok);
 	virtual void receiveRemoteNotification(Value &&val);
@@ -240,6 +240,12 @@ public:
 	virtual void openUrl(StringView);
 
 protected:
+	virtual Rc<sprt::window::gapi::Instance> makeInstance(
+			NotNull<sprt::window::gapi::InstanceInfo>) override;
+
+	virtual Rc<sprt::window::gapi::Loop> makeLoop(NotNull<sprt::window::gapi::Instance>,
+			NotNull<sprt::window::gapi::LoopInfo>) override;
+
 	virtual Rc<AppThread> makeAppThread();
 	virtual Rc<AppWindow> makeAppWindow(NotNull<NativeWindow>);
 
@@ -254,11 +260,7 @@ protected:
 
 	bool _running = false;
 
-	Rc<ContextInfo> _info;
-
 	Bytes _messageToken;
-
-	Rc<platform::ContextController> _controller;
 
 	Rc<core::Loop> _loop;
 

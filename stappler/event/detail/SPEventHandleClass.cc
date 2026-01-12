@@ -113,7 +113,7 @@ void HandleClass::addPending(Handle *origin, Handle *pending) {
 	mem_pool::perform([&] {
 		auto it = pendingHandles.find(origin);
 		if (it == pendingHandles.end()) {
-			it = pendingHandles.emplace(origin).first;
+			it = pendingHandles.emplace(origin, mem_pool::Vector<Rc<Handle>>()).first;
 			it->second.reserve_block_optimal();
 		}
 		it->second.emplace_back(pending);

@@ -45,7 +45,7 @@ static bool isWebpLossless(const uint8_t *data, size_t dataLen) {
 static bool getWebpLosslessImageSize(const io::Producer &file, StackBuffer<512> &data,
 		uint32_t &width, uint32_t &height) {
 	if (isWebpLossless(data.data(), data.size())) {
-		auto reader = BytesViewTemplate<Endian::Big>(data.data() + 21, 4);
+		auto reader = BytesViewTemplate<sprt::endian::big>(data.data() + 21, 4);
 
 		auto b0 = reader.readUnsigned();
 		auto b1 = reader.readUnsigned();
@@ -77,7 +77,7 @@ static bool isWebp(const uint8_t *data, size_t dataLen) {
 static bool getWebpImageSize(const io::Producer &file, StackBuffer<512> &data, uint32_t &width,
 		uint32_t &height) {
 	if (isWebp(data.data(), data.size())) {
-		auto reader = BytesViewTemplate<Endian::Little>(data.data() + 24, 6);
+		auto reader = BytesViewTemplate<sprt::endian::little>(data.data() + 24, 6);
 
 		auto b0 = reader.readUnsigned();
 		auto b1 = reader.readUnsigned();
@@ -227,12 +227,15 @@ struct WebpStruct {
 
 	WebpStruct(const FileInfo &filename, bool lossless) : WebpStruct(lossless) {
 		filesystem::enumerateWritablePaths(filename, filesystem::Access::None,
-				[&](StringView str, FileFlags) {
-			fp = filesystem::native::fopen_fn(str, "wb");
-			if (fp) {
-				return false;
+				[&](const LocationInfo &loc, StringView str) {
+			auto file = loc.interface->_open(loc, str, filesystem::OpenFlags::Override, nullptr);
+			if (file) {
+				fp = loc.interface->_fdopen(file, "wb", nullptr);
+				if (fp) {
+					return false;
+				}
 			}
-			return true;
+			return false;
 		});
 
 		if (!fp) {

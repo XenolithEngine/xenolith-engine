@@ -112,7 +112,8 @@ const FontController::FontSource *FontController::Builder::addFontSource(StringV
 	auto it = _data->dataQueries.find(name);
 	if (it == _data->dataQueries.end()) {
 		it = _data->dataQueries.emplace(name.str<Interface>(), FontSource()).first;
-		filesystem::enumeratePaths(data, filesystem::Access::Read, [&](StringView path, FileFlags) {
+		filesystem::enumeratePaths(data, filesystem::Access::Read,
+				[&](const LocationInfo &, StringView path) {
 			it->second.fontFilePath = path.str<Interface>();
 			return false;
 		});
@@ -173,7 +174,8 @@ const FontController::FontSource *FontController::Builder::addFontSource(StringV
 	auto it = _data->dataQueries.find(name);
 	if (it == _data->dataQueries.end()) {
 		it = _data->dataQueries.emplace(name.str<Interface>(), FontSource()).first;
-		filesystem::enumeratePaths(data, filesystem::Access::Read, [&](StringView path, FileFlags) {
+		filesystem::enumeratePaths(data, filesystem::Access::Read,
+				[&](const LocationInfo &, StringView path) {
 			it->second.fontFilePath = path.str<Interface>();
 			return false;
 		});

@@ -37,7 +37,7 @@ void CharVector::addString(const WideStringView &str) {
 	uint8_t offset = 0;
 
 	while (size > 0) {
-		auto c = sprt::unicode::utf16Decode32(ptr, offset);
+		auto c = sprt::unicode::utf16Decode32(ptr, size, offset);
 		if (c) {
 			addChar(c);
 		}

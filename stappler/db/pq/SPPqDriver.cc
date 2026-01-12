@@ -26,7 +26,8 @@ THE SOFTWARE.
 #include "SPSqlHandle.h"
 #include "SPDso.h"
 #include "SPDbFieldExtensions.h"
-#include "detail/SPMemUserData.h"
+
+#include <sprt/runtime/mem/userdata.h>
 
 namespace STAPPLER_VERSIONIZED stappler::db::pq {
 
@@ -251,19 +252,19 @@ void Driver_noticeMessage(void *arg, const char *message) {
 	// Silence libpq notices
 }
 
-static void Driver_insert_sorted(Vector<Pair<uint32_t, BackendInterface::StorageType>> &vec,
+static void Driver_insert_sorted(Vector<sprt::pair<uint32_t, BackendInterface::StorageType>> &vec,
 		uint32_t oid, BackendInterface::StorageType type) {
 	auto it = std::upper_bound(vec.begin(), vec.end(), oid,
-			[](uint32_t l, const Pair<uint32_t, BackendInterface::StorageType> &r) -> bool {
+			[](uint32_t l, const sprt::pair<uint32_t, BackendInterface::StorageType> &r) -> bool {
 		return l < r.first;
 	});
 	vec.emplace(it, oid, type);
 }
 
-static void Driver_insert_sorted(Vector<Pair<uint32_t, String>> &vec, uint32_t oid,
+static void Driver_insert_sorted(Vector<sprt::pair<uint32_t, String>> &vec, uint32_t oid,
 		StringView type) {
 	auto it = std::upper_bound(vec.begin(), vec.end(), oid,
-			[](uint32_t l, const Pair<uint32_t, String> &r) -> bool { return l < r.first; });
+			[](uint32_t l, const sprt::pair<uint32_t, String> &r) -> bool { return l < r.first; });
 	vec.emplace(it, oid, type.str<Interface>());
 }
 
@@ -359,7 +360,7 @@ void Driver::performWithStorage(Handle handle,
 
 	cb(storage);
 
-	auto stack = stappler::memory::pool::get<db::Transaction::Stack>(targetPool,
+	auto stack = sprt::memory::pool::get<db::Transaction::Stack>(targetPool,
 			config::STORAGE_TRANSACTION_STACK_KEY);
 	if (stack) {
 		for (auto &it : stack->stack) {
@@ -616,7 +617,7 @@ Driver::Result Driver::exec(Connection conn, const char *command, int nParams,
 
 BackendInterface::StorageType Driver::getTypeById(uint32_t oid) const {
 	auto it = std::lower_bound(_storageTypes.begin(), _storageTypes.end(), oid,
-			[](const Pair<uint32_t, BackendInterface::StorageType> &l, uint32_t r) -> bool {
+			[](const sprt::pair<uint32_t, BackendInterface::StorageType> &l, uint32_t r) -> bool {
 		return l.first < r;
 	});
 	if (it != _storageTypes.end() && it->first == oid) {
@@ -627,7 +628,7 @@ BackendInterface::StorageType Driver::getTypeById(uint32_t oid) const {
 
 StringView Driver::getTypeNameById(uint32_t oid) const {
 	auto it = std::lower_bound(_customTypes.begin(), _customTypes.end(), oid,
-			[](const Pair<uint32_t, String> &l, uint32_t r) -> bool { return l.first < r; });
+			[](const sprt::pair<uint32_t, String> &l, uint32_t r) -> bool { return l.first < r; });
 	if (it != _customTypes.end() && it->first == oid) {
 		return it->second;
 	}

@@ -313,20 +313,14 @@ inline auto write(const ValueTemplate<Interface> &val, bool pretty = false) ->
 #if MODULE_STAPPLER_FILESYSTEM
 template <typename Interface>
 bool save(const ValueTemplate<Interface> &val, const FileInfo &info, bool pretty) {
-	bool success = false;
-	filesystem::enumerateWritablePaths(info, filesystem::Access::None,
-			[&](StringView ipath, FileFlags) {
-		auto path = filesystem::native::posixToNative<Interface>(ipath);
-		std::ofstream stream(path.data());
-		if (stream.is_open()) {
-			write([&](StringView str) { stream.write(str.data(), str.size()); }, val, pretty);
-			stream.flush();
-			stream.close();
-			success = true;
-		}
-		return false;
-	});
-	return success;
+	if (auto f = filesystem::File::open(info, filesystem::OpenFlags::Override)) {
+		write([&](StringView str) { f.write((const uint8_t *)str.data(), str.size()); }, val,
+				pretty);
+		f.flush();
+		f.close();
+		return true;
+	}
+	return false;
 }
 #endif
 

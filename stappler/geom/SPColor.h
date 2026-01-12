@@ -409,31 +409,4 @@ constexpr const Color4F Color4F::ONE(1, 1, 1, 1);
 
 } // namespace stappler::geom
 
-namespace STAPPLER_VERSIONIZED stappler {
-
-template <>
-inline geom::Color progress<geom::Color>(const geom::Color &a, const geom::Color &b, float p) {
-	return geom::Color::progress(a, b, p);
-}
-
-template <>
-inline geom::Color3B progress<geom::Color3B>(const geom::Color3B &a, const geom::Color3B &b,
-		float p) {
-	return geom::Color3B::progress(a, b, p);
-}
-
-template <>
-inline geom::Color4B progress<geom::Color4B>(const geom::Color4B &a, const geom::Color4B &b,
-		float p) {
-	return geom::Color4B::progress(a, b, p);
-}
-
-template <>
-inline geom::Color4F progress<geom::Color4F>(const geom::Color4F &a, const geom::Color4F &b,
-		float p) {
-	return geom::Color4F::progress(a, b, p);
-}
-
-} // namespace STAPPLER_VERSIONIZED stappler
-
 #endif /* CORE_GEOM_SPCOLOR_H_ */

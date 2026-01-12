@@ -91,14 +91,16 @@ public:
 
 	bool isValid() const;
 
-	const FrameConstraints &getFrameConstraints() const { return _constraints; }
+	const sprt::window::PresentationFrameInfo &getInfo() const { return _info; }
+
+	const FrameConstraints &getFrameConstraints() const { return _info.constraints; }
 
 	ImageStorage *getTarget() const { return _target; }
 	FrameRequest *getRequest() const { return _frameRequest; }
 	FrameHandle *getHandle() const { return _frameHandle; }
 	Swapchain *getSwapchain() const { return _swapchain; }
 
-	uint64_t getFrameOrder() const { return _frameOrder; }
+	uint64_t getFrameOrder() const { return _info.order; }
 
 	Status getPresentationStatus() const { return _presentationStatus; }
 
@@ -119,11 +121,10 @@ public:
 	void cancelFrameHandle();
 
 protected:
-	uint64_t _frameOrder = 0;
+	sprt::window::PresentationFrameInfo _info;
 	bool _active = true;
 	Flags _flags = None;
 	Status _presentationStatus = Status::Ok;
-	FrameConstraints _constraints;
 	Rc<ImageStorage> _target;
 	Rc<FrameRequest> _frameRequest;
 	Rc<FrameHandle> _frameHandle;

@@ -472,7 +472,7 @@ Cam16Vec3 NthVertex(Cam16Float y, int n) {
  * @return A coterminal angle between 0 and 2pi.
  */
 static Cam16Float SanitizeRadians(Cam16Float angle) {
-	return std::fmod(angle + numbers::pi * 8, numbers::pi * 2);
+	return std::fmod(angle + sprt::numbers::Pi<Cam16Float> * 8, sprt::numbers::Pi<Cam16Float> * 2);
 }
 
 static bool AreInCyclicOrder(Cam16Float a, Cam16Float b, Cam16Float c) {
@@ -713,7 +713,7 @@ static Color4F SolveToColor4F(Cam16Float hue_degrees, Cam16Float chroma, Cam16Fl
 
 	hue_degrees = Cam16::sanitizeDegrees(hue_degrees);
 	//fixTone(hue_degrees, chroma, lstar);
-	Cam16Float hue_radians = hue_degrees / 180 * numbers::pi;
+	Cam16Float hue_radians = hue_degrees / 180 * sprt::numbers::Pi<Cam16Float>;
 	Cam16Float y = ViewingConditions::YFromLstar(lstar);
 	Color4F exact_answer = FindResultByJ(hue_radians, chroma, y);
 	if (exact_answer != Color4F::BLACK) {

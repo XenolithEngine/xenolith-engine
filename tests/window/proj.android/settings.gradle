@@ -1,0 +1,20 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+include ':app'
+include ':stappler.core'
+include ':xenolith.core'
+
+project(':stappler.core').projectDir = new File('../../../core/core/platform')
+project(':xenolith.core').projectDir = new File('../../../xenolith/application/android')

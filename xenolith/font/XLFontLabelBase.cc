@@ -530,7 +530,7 @@ void LabelBase::setString(const StringView &newString) {
 }
 
 void LabelBase::setString(const WideStringView &newString) {
-	if (newString == _string16) {
+	if (newString == WideStringView(_string16)) {
 		return;
 	}
 

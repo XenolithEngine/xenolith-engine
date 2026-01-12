@@ -443,8 +443,8 @@ bool FieldText::transformValue(const Scheme &scheme, const Value &obj, Value &va
 	}
 	case Type::Bytes:
 		if (val.isString()) {
-			auto &str = val.getString();
-			if (str.size() > 4 && strncasecmp(str.data(), "hex:", 4) == 0) {
+			auto str = StringView(val.getString());
+			if (str.size() > 4 && str.starts_with<StringCaseComparator>("hex:")) {
 				auto len = (str.size() - 4) / 2;
 				if (len < minLength || len > maxLength) {
 					return false;
@@ -452,7 +452,7 @@ bool FieldText::transformValue(const Scheme &scheme, const Value &obj, Value &va
 
 				val.setBytes(stappler::base16::decode<Interface>(
 						StringView(str.data() + 4, str.size() - 4)));
-			} else if (str.size() > 7 && strncasecmp(str.data(), "base64:", 7) == 0) {
+			} else if (str.size() > 7 && str.starts_with<StringCaseComparator>("base64:") == 0) {
 				auto len = stappler::base64::decodeSize(str.size() - 7);
 				if (len < minLength || len > maxLength) {
 					return false;

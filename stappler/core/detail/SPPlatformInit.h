@@ -155,18 +155,9 @@
 //
 // Note that, not like `__func__`, this returns name by constructing argument
 // in place of a call, instead of macro substitution in place of occurrence
-#if SP_SOURCE_DEBUG
-#if __cplusplus >= 202002L
-#define __STAPPLER_LOCATION (std::source_location::current().function_name())
-#define __STAPPLER_LOCATION_FULL (STAPPLER_VERSIONIZED_NAMESPACE::SourceLocation(std::source_location::current()))
-#else
-#define __STAPPLER_LOCATION ("")
-#define __STAPPLER_LOCATION_FULL (STAPPLER_VERSIONIZED_NAMESPACE::SourceLocation())
-#endif
-#else
-#define __STAPPLER_LOCATION ("")
-#define __STAPPLER_LOCATION_FULL (STAPPLER_VERSIONIZED_NAMESPACE::SourceLocation())
-#endif // SP_SOURCE_DEBUG
+
+#define __STAPPLER_LOCATION (sprt::source_location::current().function_name())
+#define __STAPPLER_LOCATION_FULL (sprt::source_location::current())
 
 #define SP_FUNC __STAPPLER_LOCATION
 #define SP_LOCATION __STAPPLER_LOCATION_FULL
@@ -196,8 +187,6 @@
 // Actually, windows-specific includes should be only in SPPlatformUnistd.h with proper filters for macro leaking
 #if WIN32
 
-#define SP_POSIX_FD 0
-
 #if XWIN
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wnonportable-include-path"
@@ -215,9 +204,6 @@
 #define UNICODE
 #define _UNICODE
 
-#else
-
-#define SP_POSIX_FD 1
 
 #endif
 

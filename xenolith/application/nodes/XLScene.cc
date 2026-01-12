@@ -132,7 +132,7 @@ void Scene::setContent(SceneContent *content) {
 void Scene::handlePresented(Director *dir) {
 	_director = dir;
 	if (getContentSize() == Size2::ZERO) {
-		setContentSize(_constraints.getScreenSize() / _constraints.density);
+		setContentSize(Size2(_constraints.getScreenSize()) / _constraints.density);
 	}
 
 	if (auto res = _queue->getInternalResource()) {
@@ -172,7 +172,7 @@ void Scene::handleFrameDetached(const FrameHandle *frame) { }
 
 void Scene::setFrameConstraints(const core::FrameConstraints &constraints) {
 	if (_constraints != constraints) {
-		auto size = constraints.getScreenSize();
+		auto size = Size2(constraints.getScreenSize());
 
 		_constraints = constraints;
 

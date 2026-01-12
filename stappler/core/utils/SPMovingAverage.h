@@ -26,25 +26,21 @@ THE SOFTWARE.
 
 #include "SPCommon.h"
 
-namespace STAPPLER_VERSIONIZED stappler::math {
+namespace STAPPLER_VERSIONIZED stappler {
 
 template <uint64_t Count, typename T = float>
 class MovingAverage {
 public:
 	void dropValues() {
-		for (size_t i = 0; i < Count; i++) {
-			_values[i] = 0;
-		}
+		for (size_t i = 0; i < Count; i++) { _values[i] = 0; }
 	}
-	void addValue(T value) {
-		_values[_current ++ % Count] = value;
-	}
+	void addValue(T value) { _values[_current++ % Count] = value; }
 	T getAverage() const {
 		size_t c = 0;
 		T s = 0;
 		for (size_t i = 0; i < min(Count, _current); i++) {
 			s += _values[i];
-			++ c;
+			++c;
 		}
 		return s / c;
 	}
@@ -54,12 +50,16 @@ public:
 	}
 
 	T range() {
-		Pair<T, T> minmax(std::numeric_limits<T>::max(), std::numeric_limits<T>::min());
+		sprt::pair<T, T> minmax(sprt::Max<T>, sprt::Min<T>);
 
 		for (size_t i = 0; i < min(Count, _current); i++) {
 			if (_values[i] != 0) {
-				if (_values[i] < minmax.first) { minmax.first = _values[i]; }
-				if (_values[i] > minmax.second) { minmax.second = _values[i]; }
+				if (_values[i] < minmax.first) {
+					minmax.first = _values[i];
+				}
+				if (_values[i] > minmax.second) {
+					minmax.second = _values[i];
+				}
 			}
 		}
 
@@ -73,20 +73,16 @@ public:
 	size_t size() const { return Count; }
 
 	void reset(const T &value) {
-		for (auto &it : _values) {
-			it = value;
-		}
+		for (auto &it : _values) { it = value; }
 	}
 
-	MovingAverage() {
-		memset(_values.data(), 0, _values.size() * sizeof(T));
-	}
+	MovingAverage() { memset(_values.data(), 0, _values.size() * sizeof(T)); }
 
 protected:
 	uint64_t _current = 0;
-    std::array<T, Count> _values;
+	sprt::array<T, Count> _values;
 };
 
-}
+} // namespace STAPPLER_VERSIONIZED stappler
 
 #endif // STAPPLER_CORE_UTILS_SPMOVINGAVERAGE_H_

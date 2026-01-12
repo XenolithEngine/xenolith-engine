@@ -61,15 +61,11 @@ struct Encoder : public Interface::AllocBaseType {
 
 #if MODULE_STAPPLER_FILESYSTEM
 	Encoder(const FileInfo &info) : type(File) {
-		filesystem::enumerateWritablePaths(info, filesystem::Access::None,
-				[&](StringView filename, FileFlags) {
-			auto path = filesystem::native::posixToNative<Interface>(filename);
-			file = new std::ofstream(path.data(), std::ios::binary);
-			if (isOpen()) {
-				cbor::_writeId(*this);
-			}
-			return false;
-		});
+		auto f = filesystem::File::open(info, filesystem::OpenFlags::Override);
+		if (f) {
+			file = new filesystem::File(sprt::move(f));
+			cbor::_writeId(*this);
+		}
 	}
 #endif
 
@@ -103,11 +99,13 @@ struct Encoder : public Interface::AllocBaseType {
 
 	~Encoder() {
 		switch (type) {
+#if MODULE_STAPPLER_FILESYSTEM
 		case File:
 			file->flush();
 			file->close();
 			delete file;
 			break;
+#endif
 		case Stream: break;
 		case Vector: delete buffer; break;
 		default: break;
@@ -116,7 +114,9 @@ struct Encoder : public Interface::AllocBaseType {
 
 	void emplace(uint8_t c) {
 		switch (type) {
-		case File: file->put(c); break;
+#if MODULE_STAPPLER_FILESYSTEM
+		case File: file->xsputc(c); break;
+#endif
 		case Stream: (*stream) << c; break;
 		case Buffered:
 		case Vector: buffer->emplace_back(c); break;
@@ -131,7 +131,9 @@ struct Encoder : public Interface::AllocBaseType {
 
 		size_t tmpSize;
 		switch (type) {
-		case File: file->write((const std::ofstream::char_type *)buf, size); break;
+#if MODULE_STAPPLER_FILESYSTEM
+		case File: file->write((const uint8_t *)buf, size); break;
+#endif
 		case Stream: (*stream) << BytesView(buf, size); break;
 		case Buffered:
 		case Vector:
@@ -156,7 +158,9 @@ struct Encoder : public Interface::AllocBaseType {
 	bool isOpen() const {
 		switch (type) {
 		case None: return false; break;
-		case File: return file->is_open(); break;
+#if MODULE_STAPPLER_FILESYSTEM
+		case File: return file && file->is_open(); break;
+#endif
 		default: return true; break;
 		}
 		return false;
@@ -193,7 +197,9 @@ public: // CBOR format impl
 private:
 	union {
 		typename ValueType::BytesType *buffer;
-		std::ofstream *file;
+#if MODULE_STAPPLER_FILESYSTEM
+		filesystem::File *file;
+#endif
 		const Callback<void(BytesView)> *stream;
 	};
 

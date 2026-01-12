@@ -116,7 +116,7 @@ struct SP_PUBLIC FrameContextHandle : public core::AttachmentInputData {
 	Rc<Director> director; // allow to access director from rendering pipeline (to send stats)
 	FrameContext *context = nullptr;
 
-	memory::vector<Pair<StateId, FrameStateOwnerInterface *>> stateStack;
+	memory::vector<sprt::pair<StateId, FrameStateOwnerInterface *>> stateStack;
 	memory::vector<DrawStateValues> states;
 
 	StateId addState(DrawStateValues values) {

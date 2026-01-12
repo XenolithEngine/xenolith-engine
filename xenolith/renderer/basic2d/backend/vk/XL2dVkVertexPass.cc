@@ -729,8 +729,8 @@ void VertexMaterialDynamicData::pushPlanVertexes(WriteTarget &writeTarget,
 			}
 
 			if (packedInstance->depthValue > 0.0f) {
-				auto f16 = halffloat::encode(packedInstance->depthValue);
-				auto value = halffloat::decode(f16);
+				auto f16 = sprt::halffloat::encode(packedInstance->depthValue);
+				auto value = sprt::halffloat::decode(f16);
 				depthValue = value;
 			}
 
@@ -820,8 +820,8 @@ void VertexMaterialDynamicData::pushPlanVertexes(WriteTarget &writeTarget,
 				}
 
 				if (it->depthValue > 0.0f) {
-					auto f16 = halffloat::encode(it->depthValue);
-					auto value = halffloat::decode(f16);
+					auto f16 = sprt::halffloat::encode(it->depthValue);
+					auto value = sprt::halffloat::decode(f16);
 					depthValue = value;
 				}
 
@@ -835,7 +835,7 @@ void VertexMaterialDynamicData::pushPlanVertexes(WriteTarget &writeTarget,
 void VertexMaterialDynamicData::drawWritePlan(VertexProcessor *processor, WriteTarget &writeTarget,
 		Map<core::MaterialId, MaterialWritePlan> &writePlan) {
 	// optimize draw order, minimize switching pipeline, textureSet and descriptors
-	Vector<const Pair<const core::MaterialId, MaterialWritePlan> *> drawOrder;
+	Vector<const sprt::pair<const core::MaterialId, MaterialWritePlan> *> drawOrder;
 
 	// optimize pipeline switching strategy
 	for (auto &it : writePlan) {
@@ -843,8 +843,8 @@ void VertexMaterialDynamicData::drawWritePlan(VertexProcessor *processor, WriteT
 			drawOrder.emplace_back(&it);
 		} else {
 			auto lb = std::lower_bound(drawOrder.begin(), drawOrder.end(), &it,
-					[](const Pair<const core::MaterialId, MaterialWritePlan> *l,
-							const Pair<const core::MaterialId, MaterialWritePlan> *r) {
+					[](const sprt::pair<const core::MaterialId, MaterialWritePlan> *l,
+							const sprt::pair<const core::MaterialId, MaterialWritePlan> *r) {
 				if (l->second.material->getPipeline() != l->second.material->getPipeline()) {
 					return GraphicPipeline::comparePipelineOrdering(
 							*l->second.material->getPipeline(), *r->second.material->getPipeline());

@@ -42,7 +42,7 @@ static bool isGif(const uint8_t *data, size_t dataLen) {
 static bool getGifImageSize(const io::Producer &file, StackBuffer<512> &data, uint32_t &width,
 		uint32_t &height) {
 	if (isGif(data.data(), data.size())) {
-		auto reader = BytesViewTemplate<Endian::Little>(data.data() + 6, 4);
+		auto reader = BytesViewTemplate<sprt::endian::little>(data.data() + 6, 4);
 
 		width = reader.readUnsigned16();
 		height = reader.readUnsigned16();
@@ -88,7 +88,7 @@ struct GifReadStruct {
 	GifReadStruct() { }
 
 	bool init(const uint8_t *inputData, size_t size) {
-		reader._data = BytesViewTemplate<Endian::Network>(inputData, size);
+		reader._data = BytesViewTemplate<sprt::endian::network>(inputData, size);
 		file = bitmap_DGifOpen((void *)&reader, &Gif_InputFunc, &error);
 
 		if (!file || error != 0) {

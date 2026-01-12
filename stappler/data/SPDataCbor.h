@@ -25,7 +25,6 @@ THE SOFTWARE.
 #define STAPPLER_DATA_SPDATACBOR_H_
 
 #include "SPStringView.h"
-#include "SPHalfFloat.h"
 
 namespace STAPPLER_VERSIONIZED stappler::data::cbor {
 
@@ -207,7 +206,7 @@ inline void _writeId(Writer &w) {
 
 template <class Writer, class T>
 inline void _writeNumeric(Writer &w, T value, MajorTypeEncoded m, Flags f) {
-	value = byteorder::HostToNetwork(value);
+	value = sprt::byteorder::HostToNetwork(value);
 	w.emplace(toInt(m) | toInt(f));
 	w.emplace((uint8_t *)&value, sizeof(T));
 }
@@ -230,19 +229,19 @@ inline void _writeInt(Writer &w, uint64_t value, MajorTypeEncoded type) {
 
 template <class Writer>
 inline void _writeFloatNaN(Writer &w) {
-	_writeNumeric(w, halffloat::nan(), MajorTypeEncoded::Simple,
+	_writeNumeric(w, sprt::halffloat::nan(), MajorTypeEncoded::Simple,
 			Flags::AdditionalFloat16Bit); // write nan from IEEE 754
 }
 
 template <class Writer>
 inline void _writeFloatPositiveInf(Writer &w) {
-	_writeNumeric(w, halffloat::posinf(), MajorTypeEncoded::Simple,
+	_writeNumeric(w, sprt::halffloat::posinf(), MajorTypeEncoded::Simple,
 			Flags::AdditionalFloat16Bit); // write +inf from IEEE 754
 }
 
 template <class Writer>
 inline void _writeFloatNegativeInf(Writer &w) {
-	_writeNumeric(w, halffloat::neginf(), MajorTypeEncoded::Simple,
+	_writeNumeric(w, sprt::halffloat::neginf(), MajorTypeEncoded::Simple,
 			Flags::AdditionalFloat16Bit); // write -inf from IEEE 754
 }
 
@@ -302,9 +301,9 @@ inline void _writeFloat(Writer &w, double value) {
 	float fvalue = value;
 	if (isnan(value)) { // NaN -- we always write a half NaN
 		_writeFloatNaN(w);
-	} else if (value == NumericLimits<double>::infinity()) {
+	} else if (value == sprt::Infinity<double>) {
 		_writeFloatPositiveInf(w);
-	} else if (value == -NumericLimits<double>::infinity()) {
+	} else if (value == -sprt::Infinity<double>) {
 		_writeFloatNegativeInf(w);
 	} else if (fvalue == value) { // 32 bits is enough and we aren't NaN
 		union {
@@ -351,7 +350,7 @@ inline void _writeString(Writer &w, const StringView &str) {
 }
 
 template <class Writer>
-inline void _writeBytes(Writer &w, const BytesViewTemplate<Endian::Network> &data) {
+inline void _writeBytes(Writer &w, const BytesViewTemplate<sprt::endian::network> &data) {
 	auto size = data.size();
 	_writeInt(w, size, MajorTypeEncoded::ByteString);
 	w.emplace(data.data(), size);
@@ -366,7 +365,7 @@ inline void _writeNumber(Writer &w, float n) {
 	}
 };
 
-inline uint64_t _readIntValue(BytesViewTemplate<Endian::Network> &r, uint8_t type) {
+inline uint64_t _readIntValue(BytesViewTemplate<sprt::endian::network> &r, uint8_t type) {
 	if (type < toInt(Flags::MaxAdditionalNumber)) {
 		return type;
 	} else if (type == toInt(Flags::AdditionalNumber8Bit)) {
@@ -382,7 +381,7 @@ inline uint64_t _readIntValue(BytesViewTemplate<Endian::Network> &r, uint8_t typ
 	}
 }
 
-inline int64_t _readInt(BytesViewTemplate<Endian::Network> &r) {
+inline int64_t _readInt(BytesViewTemplate<sprt::endian::network> &r) {
 	uint8_t type = r.readUnsigned();
 	MajorTypeEncoded majorType = (MajorTypeEncoded)(type & toInt(Flags::MajorTypeMaskEncoded));
 	;
@@ -396,7 +395,7 @@ inline int64_t _readInt(BytesViewTemplate<Endian::Network> &r) {
 	return 0;
 }
 
-inline double _readNumber(BytesViewTemplate<Endian::Network> &r) {
+inline double _readNumber(BytesViewTemplate<sprt::endian::network> &r) {
 	uint8_t type = r.readUnsigned();
 	MajorTypeEncoded majorType = (MajorTypeEncoded)(type & toInt(Flags::MajorTypeMaskEncoded));
 	;

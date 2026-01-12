@@ -29,6 +29,8 @@
 #include "XLCoreMaterial.h"
 #include "XLCoreFrameCache.h"
 
+#include <sprt/runtime/window/gapi.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 class Loop;
@@ -36,7 +38,7 @@ class Device;
 class PresentationEngine;
 class PresentationWindow;
 
-class SP_PUBLIC Loop : public Ref {
+class SP_PUBLIC Loop : public sprt::window::gapi::Loop {
 public:
 	using FrameCache = core::FrameCache;
 	using FrameRequest = core::FrameRequest;

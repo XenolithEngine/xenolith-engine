@@ -26,6 +26,8 @@ THE SOFTWARE.
 
 #include "SPDataValue.h"
 
+#include <sprt/runtime/base64.h>
+
 #if MODULE_STAPPLER_FILESYSTEM
 #include "SPFilesystem.h"
 #endif
@@ -79,7 +81,8 @@ struct RawEncoder : public Interface::AllocBaseType {
 
 	inline void write(const typename ValueType::BytesType &data) {
 		(*stream) << '"' << "BASE64:";
-		base64url::encode([&](char c) { *stream << c; }, data);
+		sprt::base64url::encode(data.data(), data.size(),
+				[&](const char *str, size_t len) { (*stream) << StringView(str, len); });
 		(*stream) << '"';
 	}
 	inline void onBeginArray(const typename ValueType::ArrayType &arr) { (*stream) << '['; }
@@ -136,7 +139,8 @@ struct PrettyEncoder : public Interface::AllocBaseType {
 
 	void write(const typename ValueType::BytesType &data) {
 		(*stream) << '"' << "BASE64:";
-		base64url::encode([&](char c) { *stream << c; }, data);
+		sprt::base64url::encode(data.data(), data.size(),
+				[&](const char *str, size_t len) { (*stream) << StringView(str, len); });
 		(*stream) << '"';
 		offsetted = false;
 	}
@@ -256,21 +260,14 @@ inline auto write(const ValueTemplate<Interface> &val, bool pretty = false,
 template <typename Interface>
 bool save(const ValueTemplate<Interface> &val, const FileInfo &info, bool pretty,
 		bool timeMarkers = false) {
-	bool success = false;
-	filesystem::enumerateWritablePaths(info, filesystem::Access::None,
-			[&](StringView ipath, FileFlags) {
-		auto path = filesystem::native::posixToNative<Interface>(ipath);
-		std::ofstream stream(path.data());
-		if (stream.is_open()) {
-			write([&](StringView str) { stream.write(str.data(), str.size()); }, val, pretty,
-					timeMarkers);
-			stream.flush();
-			stream.close();
-			success = true;
-		}
-		return false;
-	});
-	return success;
+	if (auto f = filesystem::File::open(info, filesystem::OpenFlags::Override)) {
+		write([&](StringView str) { f.write((const uint8_t *)str.data(), str.size()); }, val,
+				pretty);
+		f.flush();
+		f.close();
+		return true;
+	}
+	return false;
 }
 #endif
 

@@ -1,0 +1,50 @@
+plugins {
+    id 'com.android.application'
+}
+
+tasks.register('prepareAndroidMk', Exec) {
+    workingDir rootProject.getRootDir().getPath() + "/.."
+    commandLine 'make', 'android-export'
+}
+
+preBuild.dependsOn prepareAndroidMk
+clean.dependsOn prepareAndroidMk
+
+android {
+    compileSdk 35
+    ndkVersion '28.2.13676358'
+
+    defaultConfig {
+        applicationId = 'org.stappler.xenolith.gui'
+        minSdkVersion 24
+        targetSdkVersion 36
+	    externalNativeBuild {
+			ndkBuild {
+				arguments "NDK_APPLICATION_MK:=Application.mk"
+			}
+	    }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'),
+                    'proguard-rules.pro'
+        }
+    }
+	sourceSets {
+		main {
+			manifest.srcFile 'AndroidManifest.xml'
+			assets.srcDirs = ['assets']
+		}
+	}
+    externalNativeBuild {
+		ndkBuild {
+			path "Android.mk"
+		}
+    }
+    namespace 'org.stappler.xenolith.gui'
+}
+
+dependencies {
+    implementation project(path: ":xenolith.core")
+}

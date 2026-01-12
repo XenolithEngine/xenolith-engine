@@ -64,7 +64,8 @@ InputFile::InputFile(String &&name, String &&type, String &&enc, String &&orig, 
 , writeSize(0)
 , headerSize(s)
 , id(id) {
-	file = filesystem::File::open_tmp(config::UPLOAD_TMP_FILE_PREFIX, false);
+	file = filesystem::File::open_tmp(config::UPLOAD_TMP_FILE_PREFIX,
+			filesystem::OpenFlags::Read | filesystem::OpenFlags::Write);
 	path = file.path();
 }
 

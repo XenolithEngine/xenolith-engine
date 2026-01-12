@@ -51,7 +51,7 @@ Status DeviceQueue::submit(Fence &fence, const CommandBuffer *buffer, DeviceIdle
 			fence.bindQueries(q.get());
 		}
 	}
-	return doSubmit(nullptr, nullptr, fence, makeSpanView(&buffer, 1), idleFlags);
+	return doSubmit(nullptr, nullptr, fence, sprt::makeSpanView(&buffer, 1), idleFlags);
 }
 
 Status DeviceQueue::submit(Fence &fence, SpanView<const CommandBuffer *> buffers,

@@ -22,14 +22,15 @@
 
 #include "SPEventEventFd.h"
 #include "../uring/SPEvent-uring.h"
+#include "../epoll/SPEvent-epoll.h"
 #include "../android/SPEvent-alooper.h"
 
-#include <sys/eventfd.h>
+#include <sprt/c/sys/__sprt_eventfd.h>
 
 namespace STAPPLER_VERSIONIZED stappler::event {
 
 bool EventFdSource::init() {
-	fd = ::eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+	fd = ::__sprt_eventfd(0, __SPRT_EFD_CLOEXEC | __SPRT_EFD_NONBLOCK);
 	if (fd < 0) {
 		return false;
 	}
@@ -55,7 +56,7 @@ bool EventFdHandle::init(HandleClass *cl, CompletionHandle<void> &&c) {
 
 Status EventFdHandle::read(uint64_t *target) {
 	auto source = reinterpret_cast<EventFdSource *>(_data);
-	auto ret = ::eventfd_read(source->fd, target ? target : source->target);
+	auto ret = ::__sprt_eventfd_read(source->fd, target ? target : source->target);
 	if (ret < 0) {
 		return sprt::status::errnoToStatus(errno);
 	}
@@ -67,14 +68,13 @@ Status EventFdHandle::write(uint64_t val, uint32_t value) {
 	if (value) {
 		__atomic_or_fetch(&source->eventValue, value, __ATOMIC_SEQ_CST);
 	}
-	auto ret = ::eventfd_write(source->fd, val);
+	auto ret = ::__sprt_eventfd_write(source->fd, val);
 	if (ret < 0) {
 		return sprt::status::errnoToStatus(errno);
 	}
 	return Status::Ok;
 }
 
-#ifdef SP_EVENT_URING
 Status EventFdURingHandle::rearm(URingData *uring, EventFdSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
@@ -113,13 +113,12 @@ void EventFdURingHandle::notify(URingData *uring, EventFdSource *source, const N
 		cancel(URingData::getErrnoStatus(notify.result));
 	}
 }
-#endif
 
 Status EventFdEPollHandle::rearm(EPollData *epoll, EventFdSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
 		source->event.data.ptr = this;
-		source->event.events = EPOLLIN;
+		source->event.events = __SPRT_EPOLLIN;
 		source->eventTarget = 0;
 		source->eventValue = 0;
 
@@ -146,22 +145,21 @@ void EventFdEPollHandle::notify(EPollData *epoll, EventFdSource *source, const N
 
 	bool notify = false;
 
-	if (data.queueFlags & EPOLLIN) {
+	if (data.queueFlags & __SPRT_EPOLLIN) {
 		while (read(&source->eventTarget) == Status::Ok) { notify = true; }
 	}
 
-	if ((data.queueFlags & EPOLLERR) || (data.queueFlags & EPOLLHUP)) {
+	if ((data.queueFlags & __SPRT_EPOLLERR) || (data.queueFlags & __SPRT_EPOLLHUP)) {
 		cancel();
 	} else if (notify) {
 		sendCompletion(__atomic_exchange_n(&source->eventValue, 0, __ATOMIC_SEQ_CST), Status::Ok);
 	}
 }
 
-#if ANDROID
 Status EventFdALooperHandle::rearm(ALooperData *alooper, EventFdSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
-		status = alooper->add(source->fd, ALOOPER_EVENT_INPUT, this);
+		status = alooper->add(source->fd, __SPRT_ALOOPER_EVENT_INPUT, this);
 	}
 	return status;
 }
@@ -185,17 +183,17 @@ void EventFdALooperHandle::notify(ALooperData *alooper, EventFdSource *source,
 
 	bool notify = false;
 
-	if (data.queueFlags & ALOOPER_EVENT_INPUT) {
+	if (data.queueFlags & __SPRT_ALOOPER_EVENT_INPUT) {
 		while (read(&source->eventTarget) == Status::Ok) { notify = true; }
 	}
 
-	if ((data.queueFlags & ALOOPER_EVENT_ERROR) || (data.queueFlags & ALOOPER_EVENT_HANGUP)
-			|| (data.queueFlags & ALOOPER_EVENT_INVALID)) {
+	if ((data.queueFlags & __SPRT_ALOOPER_EVENT_ERROR)
+			|| (data.queueFlags & __SPRT_ALOOPER_EVENT_HANGUP)
+			|| (data.queueFlags & __SPRT_ALOOPER_EVENT_INVALID)) {
 		cancel();
 	} else if (notify) {
 		sendCompletion(__atomic_exchange_n(&source->eventValue, 0, __ATOMIC_SEQ_CST), Status::Ok);
 	}
 }
-#endif
 
 } // namespace stappler::event

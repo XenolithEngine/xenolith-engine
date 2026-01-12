@@ -334,7 +334,8 @@ static bool getTargetImageSize(uint32_t W, uint32_t H, const MinImageSize &min,
 }
 
 static String saveImage(Bitmap &bmp) {
-	filesystem::File file = filesystem::File::open_tmp(config::UPLOAD_TMP_IMAGE_PREFIX, false);
+	filesystem::File file = filesystem::File::open_tmp(config::UPLOAD_TMP_IMAGE_PREFIX,
+			filesystem::OpenFlags::Write | filesystem::OpenFlags::Read);
 	String path(file.path());
 	file.close();
 
@@ -461,7 +462,8 @@ static Map<String, String> writeImages(const ApplicationInterface *app, const Fi
 			}
 		}
 	} else {
-		filesystem::File file = filesystem::File::open_tmp(config::UPLOAD_TMP_IMAGE_PREFIX, false);
+		filesystem::File file = filesystem::File::open_tmp(config::UPLOAD_TMP_IMAGE_PREFIX,
+				filesystem::OpenFlags::Write | filesystem::OpenFlags::Read);
 		file.xsputn((const char *)data.data(), data.size());
 		ret.emplace(f.getName().str<Interface>(), file.path());
 		file.close();

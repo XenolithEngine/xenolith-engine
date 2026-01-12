@@ -27,6 +27,8 @@
 #include "XLNetworkRequest.h"
 #include "XLContext.h"
 
+#include <sprt/runtime/thread/info.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::network {
 
 struct ControllerHandle {
@@ -100,7 +102,7 @@ void Controller::Data::threadInit() {
 	_pending.setQueueLocking(_mutexQueue);
 	_pending.setFreeLocking(_mutexFree);
 
-	thread::ThreadInfo::setThreadInfo(_name);
+	sprt::thread::info::set(_name);
 
 	_handle = curl_multi_init();
 

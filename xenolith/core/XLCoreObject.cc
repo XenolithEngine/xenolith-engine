@@ -76,11 +76,11 @@ uint64_t Framebuffer::getViewHash(SpanView<Rc<ImageView>> views) {
 }
 
 uint64_t Framebuffer::getViewHash(SpanView<uint64_t> ids) {
-	return hash::hash64((const char *)ids.data(), ids.size() * sizeof(uint64_t));
+	return sprt::hash64((const char *)ids.data(), ids.size() * sizeof(uint64_t));
 }
 
 uint64_t Framebuffer::getHash() const {
-	return hash::hash64((const char *)_viewIds.data(), _viewIds.size() * sizeof(uint64_t));
+	return sprt::hash64((const char *)_viewIds.data(), _viewIds.size() * sizeof(uint64_t));
 }
 
 inline uint32_t hash(uint32_t k, uint32_t capacity) {
@@ -317,7 +317,7 @@ String Shader::inspectShader(SpanView<uint32_t> data) {
 	}
 
 	StringStream d;
-	auto out = makeCallback(d);
+	auto out = memory::makeCallback(d);
 
 	out << "[" << stage << "]\n";
 

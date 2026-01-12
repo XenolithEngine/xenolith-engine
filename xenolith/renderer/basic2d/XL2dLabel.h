@@ -25,7 +25,7 @@
 #define XENOLITH_RENDERER_BASIC2D_XL2DLABEL_H_
 
 #include "XL2dSprite.h"
-#include "XLCoreInput.h"
+#include "XLCoreTextInput.h"
 #include "XLFontLabelBase.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
@@ -45,21 +45,19 @@ class SP_PUBLIC LabelDeferredResult : public DeferredVertexResult {
 public:
 	virtual ~LabelDeferredResult();
 
-	bool init(std::future<Rc<LabelResult>> &&);
+	bool init();
 
 	virtual bool acquireResult(
 			const Callback<void(SpanView<InstanceVertexData>, Flags)> &) override;
 
-	virtual void handleReady(Rc<LabelResult> &&);
+	void setResult(Rc<LabelResult> &&);
 
 	void updateColor(const Color4F &);
 
 	Rc<VertexData> getResult() const;
 
 protected:
-	mutable Mutex _mutex;
 	Rc<LabelResult> _result;
-	std::future<Rc<LabelResult>> *_future = nullptr;
 };
 
 class SP_PUBLIC Label : public Sprite, public font::LabelBase {

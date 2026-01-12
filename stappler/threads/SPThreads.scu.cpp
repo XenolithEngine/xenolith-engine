@@ -24,40 +24,6 @@ THE SOFTWARE.
 #include "SPCommon.h"
 
 #include "SPThread.cc"
-#include "platform/SPThreads-android.cc"
-#include "platform/SPThreads-linux.cc"
-#include "platform/SPThreads-win32.cc"
-#include "platform/SPThreads-macos.cc"
 #include "SPThreadTask.cc"
 #include "SPThreadPool.cc"
 #include "SPThreadTaskQueue.cc"
-
-#include "SPSharedModule.h"
-#include "stappler-buildconfig.h"
-
-namespace STAPPLER_VERSIONIZED stappler::thread {
-
-static SharedSymbol s_threadSharedSymbols[] = {
-	SharedSymbol{"ThreadInfo::setThreadInfo", &ThreadInfo::setThreadInfo},
-	SharedSymbol{"ThreadInfo::setThreadPool", &ThreadInfo::setThreadPool},
-};
-
-SP_USED static SharedModule s_threadSharedModule(buildconfig::MODULE_STAPPLER_THREADS_NAME,
-		s_threadSharedSymbols, sizeof(s_threadSharedSymbols) / sizeof(SharedSymbol));
-
-struct ThreadInitializer {
-	static void init(void *ptr) {
-		auto pool = memory::pool::acquire();
-
-		ThreadInfo::setThreadInfo("Main");
-		ThreadInfo::setThreadPool(pool);
-	}
-
-	static void term(void *ptr) { }
-
-	ThreadInitializer() { addInitializer(this, &init, &term); }
-};
-
-static ThreadInitializer s_threadInit;
-
-} // namespace stappler::thread

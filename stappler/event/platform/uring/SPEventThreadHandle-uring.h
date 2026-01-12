@@ -47,8 +47,6 @@ static constexpr bool URING_THREAD_DEBUG_SWITCH_TIMER = false;
 // For now, classic implementation gives more stable context switch time, so, ThreadUringHandle is disabled
 static constexpr bool URING_THREAD_USE_FUTEX_HANDLE = false;
 
-#ifdef SP_URING_THREAD_FENCE_HANDLE
-
 // Thread dispatch control with a single futex (requires FUTEX2 syscalls)
 // On client side - works normally, but always calls futex_wake on unlock, to signal server thread
 // Server thread uses uring instead of syscalls to do async lockless processing
@@ -57,14 +55,6 @@ public:
 	static constexpr uint32_t CLIENT_MASK = 0x01;
 	static constexpr uint32_t SERVER_MASK = 0x02;
 	static constexpr uint32_t FULL_MASK = CLIENT_MASK | SERVER_MASK;
-
-	static constexpr uint32_t FLAG_SIZE_U8 = 0x00;
-	static constexpr uint32_t FLAG_SIZE_U16 = 0x01;
-	static constexpr uint32_t FLAG_SIZE_U32 = 0x02;
-	static constexpr uint32_t FLAG_SIZE_U64 = 0x03;
-	static constexpr uint32_t FLAG_NUMA = 0x04;
-	static constexpr uint32_t FLAG_MPOL = 0x08;
-	static constexpr uint32_t FLAG_PRIVATE = 128;
 
 	void client_lock();
 	bool client_try_lock();
@@ -120,8 +110,6 @@ public:
 protected:
 	void rearmFailsafe(URingData *, ThreadUringSource *);
 };
-
-#endif // __USE_GNU
 
 // eventfd - based handler
 class SP_PUBLIC ThreadEventFdHandle : public ThreadHandle {

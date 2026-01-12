@@ -32,11 +32,11 @@ SimpleServer::~SimpleServer() {
 	if (pool) {
 		memory::pool::destroy(pool);
 	}
-	memory::pool::terminate();
+	sprt::memory::pool::terminate();
 }
 
 SimpleServer::SimpleServer() {
-	memory::pool::initialize();
+	sprt::memory::pool::initialize();
 
 	auto pool = memory::pool::create();
 

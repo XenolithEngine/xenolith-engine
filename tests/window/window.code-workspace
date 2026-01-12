@@ -1,0 +1,41 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../runtime"
+		},
+		{
+			"path": "../../stappler"
+		},
+		{
+			"path": "../../xenolith"
+		},
+		{
+			"path": "../../make"
+		}
+	],
+	"settings": {
+		"editor.formatOnSave": true,
+		"editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+		"clangd.arguments": [
+			"--header-insertion=never",
+			"--compile-commands-dir=${workspaceFolder}"
+		],
+		"debug.allowBreakpointsEverywhere": true,
+		"makefile.configurations": [
+			{
+				"name": "Debug",
+				"makeArgs": ["DEBUG=1", "OPTIMIZE=0", "-j8"],
+			}, 
+		],
+		"makefile.launchConfigurations": [
+			{
+				"cwd": "/home/sbkarr/stappler/xenolith-engine/tests/window/stappler-build/host/debug/clang",
+				"binaryPath": "/home/sbkarr/stappler/xenolith-engine/tests/window/stappler-build/host/debug/clang/testapp",
+				"binaryArgs": []
+			}
+		],
+	}
+}

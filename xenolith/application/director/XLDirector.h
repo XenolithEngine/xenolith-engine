@@ -123,7 +123,7 @@ protected:
 
 	Vector<Rc<Ref>> _autorelease;
 
-	math::MovingAverage<20, uint64_t> _avgFrameTime;
+	MovingAverage<20, uint64_t> _avgFrameTime;
 	uint64_t _avgFrameTimeValue = 0;
 };
 

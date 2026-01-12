@@ -498,21 +498,21 @@ bool Handle::beginTransaction() {
 
 	switch (level) {
 	case TransactionLevel::Deferred:
-		if (performSimpleQuery("BEGIN DEFERRED"_weak)) {
+		if (performSimpleQuery("BEGIN DEFERRED")) {
 			level = TransactionLevel::Deferred;
 			transactionStatus = db::TransactionStatus::Commit;
 			return true;
 		}
 		break;
 	case TransactionLevel::Immediate:
-		if (performSimpleQuery("BEGIN IMMEDIATE"_weak)) {
+		if (performSimpleQuery("BEGIN IMMEDIATE")) {
 			level = TransactionLevel::Immediate;
 			transactionStatus = db::TransactionStatus::Commit;
 			return true;
 		}
 		break;
 	case TransactionLevel::Exclusive:
-		if (performSimpleQuery("BEGIN EXCLUSIVE"_weak)) {
+		if (performSimpleQuery("BEGIN EXCLUSIVE")) {
 			level = TransactionLevel::Exclusive;
 			transactionStatus = db::TransactionStatus::Commit;
 			return true;
@@ -527,14 +527,14 @@ bool Handle::endTransaction() {
 	switch (transactionStatus) {
 	case db::TransactionStatus::Commit:
 		transactionStatus = db::TransactionStatus::None;
-		if (performSimpleQuery("COMMIT"_weak)) {
+		if (performSimpleQuery("COMMIT")) {
 			finalizeBroadcast();
 			return true;
 		}
 		break;
 	case db::TransactionStatus::Rollback:
 		transactionStatus = db::TransactionStatus::None;
-		if (performSimpleQuery("ROLLBACK"_weak)) {
+		if (performSimpleQuery("ROLLBACK")) {
 			finalizeBroadcast();
 			return false;
 		}

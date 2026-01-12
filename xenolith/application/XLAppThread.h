@@ -109,8 +109,8 @@ public:
 	// Callback is preserved until clibpoard data remains actial for OS
 	// - types - list of types, that can be accessed with provided callback
 	// - ref is preserved until clibpoard data remains actial for OS
-	void writeToClipboard(Function<Bytes(StringView)> &&dataCallback, SpanView<StringView> types,
-			Ref *ref = nullptr, StringView label = StringView());
+	void writeToClipboard(sprt::window::Function<sprt::window::Bytes(StringView)> &&dataCallback,
+			SpanView<StringView> types, Ref *ref = nullptr, StringView label = StringView());
 
 	void acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&, Ref * = nullptr);
 

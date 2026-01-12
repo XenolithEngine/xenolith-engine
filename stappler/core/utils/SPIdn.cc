@@ -27,6 +27,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::idn {
 
+namespace chars = sprt::chars;
+
 /* punycode parameters, see http://tools.ietf.org/html/rfc3492#section-5 */
 static constexpr auto BASE = 36;
 static constexpr auto TMIN = 1;

@@ -141,12 +141,16 @@ public:
 
 	constexpr Vec2(const Vec2 &copy) = default;
 
+	constexpr Vec2(const sprt::Vec2 &c) : x(c.x), y(c.y) { }
+
 	// disable <int, int> overload resolutions
 	explicit Vec2(const SpanView<float> &buf)
 	: x(buf.size() > 0 ? buf[0] : nan()), y(buf.size() > 1 ? buf[1] : nan()) { }
 
 	explicit Vec2(const Size2 &);
 	explicit Vec2(const Extent2 &);
+
+	constexpr operator sprt::Vec2() const { return sprt::Vec2{x, y}; }
 
 	constexpr bool isValid() const { return !std::isnan(x) && !std::isnan(y); }
 
@@ -221,7 +225,7 @@ public:
 
 	Vec2 getNormalized() const;
 
-	constexpr bool fuzzyEquals(const Vec2 &b, float var = NumericLimits<float>::epsilon()) const {
+	constexpr bool fuzzyEquals(const Vec2 &b, float var = sprt::Epsilon<float>) const {
 
 		return (x - var <= b.x && b.x <= x + var) && (y - var <= b.y && b.y <= y + var);
 	}

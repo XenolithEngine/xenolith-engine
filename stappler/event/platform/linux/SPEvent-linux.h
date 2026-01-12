@@ -27,10 +27,9 @@
 #include "SPPlatformUnistd.h"
 #include "detail/SPEventHandleClass.h"
 
-#if LINUX
-
 #include "../uring/SPEvent-uring.h"
 #include "../epoll/SPEvent-epoll.h"
+#include "../android/SPEvent-alooper.h"
 
 namespace STAPPLER_VERSIONIZED stappler::event {
 
@@ -38,9 +37,7 @@ struct SP_PUBLIC Queue::Data : public QueueData {
 	HandleClass _uringTimerFdClass;
 	HandleClass _uringTimerClass;
 	HandleClass _uringThreadEventFdClass;
-#ifdef SP_URING_THREAD_FENCE_HANDLE
 	HandleClass _uringThreadFenceClass;
-#endif
 	HandleClass _uringSignalFdClass;
 	HandleClass _uringEventFdClass;
 	HandleClass _uringPollFdClass;
@@ -51,8 +48,11 @@ struct SP_PUBLIC Queue::Data : public QueueData {
 	HandleClass _epollEventFdClass;
 	HandleClass _epollPollFdClass;
 
-	//Rc<DirHandle> openDir(OpenDirInfo &&);
-	//Rc<StatHandle> stat(StatOpInfo &&);
+	HandleClass _alooperThreadClass;
+	HandleClass _alooperTimerFdClass;
+	HandleClass _alooperSignalFdClass;
+	HandleClass _alooperEventFdClass;
+	HandleClass _alooperPollFdClass;
 
 	Data(QueueRef *q, const QueueInfo &info);
 };
@@ -195,8 +195,75 @@ void setupEpollHandleClass(QueueHandleClassInfo *info, HandleClass *cl, bool sus
 	};
 }
 
-} // namespace stappler::event
+template <typename HandleType, typename SourceType>
+void setupALooperHandleClass(QueueHandleClassInfo *info, HandleClass *cl, bool suspendable) {
+	cl->info = info;
 
-#endif
+	cl->createFn = [](HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize]) {
+		static_assert(sizeof(SourceType) <= Handle::DataSize
+				&& std::is_standard_layout<SourceType>::value);
+		new (data) SourceType;
+		return HandleClass::create(cl, handle, data);
+	};
+	cl->destroyFn = HandleClass::destroy;
+
+	cl->runFn = [](HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize]) {
+		auto platformData = static_cast<Queue::Data *>(cl->info->data);
+		auto source = reinterpret_cast<SourceType *>(data);
+
+		auto status = static_cast<HandleType *>(handle)->rearm(
+				reinterpret_cast<ALooperData *>(platformData->_platformQueue), source);
+		if (status == Status::Ok || status == Status::Done) {
+			return HandleClass::run(cl, handle, data);
+		}
+		return status;
+	};
+
+	cl->cancelFn = [](HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize], Status st) {
+		auto source = reinterpret_cast<SourceType *>(data);
+
+		source->cancel();
+		source->~SourceType();
+
+		return HandleClass::cancel(cl, handle, data, st);
+	};
+
+	if (suspendable) {
+		cl->suspendFn = [](HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize]) {
+			auto platformData = static_cast<Queue::Data *>(cl->info->data);
+			auto source = reinterpret_cast<SourceType *>(data);
+
+			auto status = static_cast<HandleType *>(handle)->disarm(
+					reinterpret_cast<ALooperData *>(platformData->_platformQueue), source);
+			if (status == Status::Ok || status == Status::Done) {
+				return HandleClass::suspend(cl, handle, data);
+			}
+			return status;
+		};
+
+		cl->resumeFn = [](HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize]) {
+			auto platformData = static_cast<Queue::Data *>(cl->info->data);
+			auto source = reinterpret_cast<SourceType *>(data);
+
+			auto status = HandleClass::resume(cl, handle, data);
+			if (status == Status::Ok || status == Status::Done) {
+				status = static_cast<HandleType *>(handle)->rearm(
+						reinterpret_cast<ALooperData *>(platformData->_platformQueue), source);
+			}
+			return status;
+		};
+	}
+
+	cl->notifyFn = [](HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize],
+						   const NotifyData &n) {
+		auto platformData = static_cast<Queue::Data *>(cl->info->data);
+		auto source = reinterpret_cast<SourceType *>(data);
+
+		static_cast<HandleType *>(handle)->notify(
+				reinterpret_cast<ALooperData *>(platformData->_platformQueue), source, n);
+	};
+}
+
+} // namespace stappler::event
 
 #endif /* CORE_EVENT_PLATFORM_LINUX_SPEVENT_LINUX_H_ */

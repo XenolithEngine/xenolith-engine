@@ -31,21 +31,9 @@
 #include "../fd/SPEventSignalFd.h"
 #include "../fd/SPEventEventFd.h"
 
-#include <sys/epoll.h>
-#include <sys/signalfd.h>
-
 namespace STAPPLER_VERSIONIZED stappler::event {
 
-enum class EPollFlags : uint32_t {
-	None,
-	HaveEPollPWait2 = 1 << 0,
-};
-
-SP_DEFINE_ENUM_AS_MASK(EPollFlags)
-
 struct SP_PUBLIC EPollData : public PlatformQueueData {
-	EPollFlags _eflags = EPollFlags::None;
-
 	Rc<SignalFdHandle> _signalFd;
 	Rc<EventFdHandle> _eventFd;
 

@@ -523,7 +523,7 @@ bool Handle::beginTransaction_pg(TransactionLevel l) {
 
 	switch (l) {
 	case TransactionLevel::ReadCommited:
-		if (performSimpleQuery("BEGIN ISOLATION LEVEL READ COMMITTED"_weak)) {
+		if (performSimpleQuery("BEGIN ISOLATION LEVEL READ COMMITTED")) {
 			setVariables();
 			level = TransactionLevel::ReadCommited;
 			transactionStatus = db::TransactionStatus::Commit;
@@ -531,7 +531,7 @@ bool Handle::beginTransaction_pg(TransactionLevel l) {
 		}
 		break;
 	case TransactionLevel::RepeatableRead:
-		if (performSimpleQuery("BEGIN ISOLATION LEVEL REPEATABLE READ"_weak)) {
+		if (performSimpleQuery("BEGIN ISOLATION LEVEL REPEATABLE READ")) {
 			setVariables();
 			level = TransactionLevel::RepeatableRead;
 			transactionStatus = db::TransactionStatus::Commit;
@@ -539,7 +539,7 @@ bool Handle::beginTransaction_pg(TransactionLevel l) {
 		}
 		break;
 	case TransactionLevel::Serialized:
-		if (performSimpleQuery("BEGIN ISOLATION LEVEL SERIALIZABLE"_weak)) {
+		if (performSimpleQuery("BEGIN ISOLATION LEVEL SERIALIZABLE")) {
 			setVariables();
 			level = TransactionLevel::Serialized;
 			transactionStatus = db::TransactionStatus::Commit;
@@ -557,14 +557,14 @@ bool Handle::endTransaction_pg() {
 	switch (transactionStatus) {
 	case db::TransactionStatus::Commit:
 		transactionStatus = db::TransactionStatus::None;
-		if (performSimpleQuery("COMMIT"_weak)) {
+		if (performSimpleQuery("COMMIT")) {
 			finalizeBroadcast();
 			return true;
 		}
 		break;
 	case db::TransactionStatus::Rollback:
 		transactionStatus = db::TransactionStatus::None;
-		if (performSimpleQuery("ROLLBACK"_weak)) {
+		if (performSimpleQuery("ROLLBACK")) {
 			finalizeBroadcast();
 			return false;
 		}

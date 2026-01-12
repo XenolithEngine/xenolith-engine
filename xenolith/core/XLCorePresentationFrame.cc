@@ -29,8 +29,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 bool PresentationFrame::init(PresentationEngine *e, FrameConstraints c, uint64_t frameOrder,
 		Flags flags, Function<void(PresentationFrame *, bool)> &&completeCallback) {
-	_constraints = c;
-	_frameOrder = frameOrder;
+	_info.constraints = c;
+	_info.order = frameOrder;
 	_flags = (flags & InitFlags);
 
 	_engine = e;
@@ -50,7 +50,7 @@ bool PresentationFrame::init(PresentationEngine *e, FrameConstraints c, uint64_t
 
 		auto extent = _target->getInfo().extent;
 
-		c.extent = Extent2(extent.width, extent.height);
+		c.extent = Extent3(extent.width, extent.height, 1);
 	}
 
 	_frameRequest = Rc<FrameRequest>::create(this, c);
@@ -92,7 +92,7 @@ core::FrameHandle *PresentationFrame::submitFrame() {
 		_target->setFrameIndex(_frameHandle->getOrder());
 	}
 
-	_frameOrder = _frameHandle->getOrder();
+	_info.order = _frameHandle->getOrder();
 
 	_flags |= FrameSubmitted;
 	return _frameHandle;

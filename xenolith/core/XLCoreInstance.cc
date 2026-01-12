@@ -30,17 +30,17 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
-Value InstanceInfo::encode() const {
+Value encodeInstanceInfo(const InstanceInfo &info) {
 	Value ret;
-	ret.setString(getInstanceApiName(api), "backend");
-	if (auto i = backend->encode()) {
+	ret.setString(getInstanceApiName(info.api), "backend");
+	/*if (auto i = info.backend->encode()) {
 		ret.setValue(move(i), "info");
-	}
+	}*/
 	Value f;
-	if (hasFlag(flags, InstanceFlags::Validation)) {
+	if (hasFlag(info.flags, InstanceFlags::Validation)) {
 		f.addString("Validation");
 	}
-	if (hasFlag(flags, InstanceFlags::RenderDoc)) {
+	if (hasFlag(info.flags, InstanceFlags::RenderDoc)) {
 		f.addString("RenderDoc");
 	}
 	if (!f.empty()) {
@@ -49,13 +49,13 @@ Value InstanceInfo::encode() const {
 	return ret;
 }
 
-Value LoopInfo::encode() const {
+Value encodeLoopInfo(const LoopInfo &info) {
 	Value ret;
-	ret.setInteger(deviceIdx, "deviceIdx");
-	ret.setString(getImageFormatName(defaultFormat), "defaultFormat");
-	if (auto b = backend->encode()) {
+	ret.setInteger(info.deviceIdx, "deviceIdx");
+	ret.setString(getImageFormatName(info.defaultFormat), "defaultFormat");
+	/*if (auto b = backend->encode()) {
 		ret.setValue(move(b), "backend");
-	}
+	}*/
 	return ret;
 }
 
@@ -83,6 +83,15 @@ Instance::Instance(InstanceApi api, InstanceFlags flags, Dso &&dso)
 : _api(api), _flags(flags), _dsoModule(sp::move(dso)) { }
 
 Rc<Loop> Instance::makeLoop(NotNull<event::Looper>, Rc<LoopInfo> &&) const { return nullptr; }
+
+bool Instance::isPresentationSupported() const {
+	for (auto &it : _availableDevices) {
+		if (it.supportsPresentation) {
+			return true;
+		}
+	}
+	return false;
+}
 
 StringView getInstanceApiName(InstanceApi backend) {
 	switch (backend) {

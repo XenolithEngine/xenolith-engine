@@ -278,15 +278,12 @@ SP_PUBLIC auto encode(const CoderSource &source, bool upper = false) ->
 
 SP_PUBLIC void encode(std::basic_ostream<char> &stream, const CoderSource &source,
 		bool upper = false);
-SP_PUBLIC void encode(const Callback<void(char)> &cb, const CoderSource &source,
-		bool upper = false);
 SP_PUBLIC size_t encode(char *, size_t bsize, const CoderSource &source, bool upper = false);
 
 template <typename Interface>
 SP_PUBLIC auto decode(const CoderSource &source) -> typename Interface::BytesType;
 
 SP_PUBLIC void decode(std::basic_ostream<char> &stream, const CoderSource &source);
-SP_PUBLIC void decode(const Callback<void(uint8_t)> &cb, const CoderSource &source);
 SP_PUBLIC size_t decode(uint8_t *, size_t bsize, const CoderSource &source);
 
 } // namespace stappler::base16
@@ -301,14 +298,12 @@ template <typename Interface>
 SP_PUBLIC auto encode(const CoderSource &source) -> typename Interface::StringType;
 
 SP_PUBLIC void encode(std::basic_ostream<char> &stream, const CoderSource &source);
-SP_PUBLIC void encode(const Callback<void(char)> &cb, const CoderSource &source);
 SP_PUBLIC size_t encode(char *, size_t bsize, const CoderSource &source);
 
 template <typename Interface>
 SP_PUBLIC auto decode(const CoderSource &source) -> typename Interface::BytesType;
 
 SP_PUBLIC void decode(std::basic_ostream<char> &stream, const CoderSource &source);
-SP_PUBLIC void decode(const Callback<void(uint8_t)> &cb, const CoderSource &source);
 SP_PUBLIC size_t decode(uint8_t *, size_t bsize, const CoderSource &source);
 
 } // namespace stappler::base64
@@ -316,23 +311,16 @@ SP_PUBLIC size_t decode(uint8_t *, size_t bsize, const CoderSource &source);
 
 namespace STAPPLER_VERSIONIZED stappler::base64url {
 
-SP_PUBLIC size_t encodeSize(size_t);
-SP_PUBLIC size_t decodeSize(size_t);
+using stappler::base64::encodeSize;
+using stappler::base64::decodeSize;
 
 template <typename Interface>
 SP_PUBLIC auto encode(const CoderSource &source) -> typename Interface::StringType;
 
 SP_PUBLIC void encode(std::basic_ostream<char> &stream, const CoderSource &source);
-SP_PUBLIC void encode(const Callback<void(char)> &cb, const CoderSource &source);
 SP_PUBLIC size_t encode(char *, size_t bsize, const CoderSource &source);
 
-
-template <typename Interface>
-SP_PUBLIC auto decode(const CoderSource &source) -> typename Interface::BytesType;
-
-SP_PUBLIC void decode(std::basic_ostream<char> &stream, const CoderSource &source);
-SP_PUBLIC void decode(const Callback<void(uint8_t)> &cb, const CoderSource &source);
-SP_PUBLIC size_t decode(uint8_t *, size_t bsize, const CoderSource &source);
+using stappler::base64::decode;
 
 } // namespace stappler::base64url
 
@@ -669,42 +657,42 @@ auto StringTraits<Interface>::toKoi8r(const WideStringView &str) -> String {
 template <typename Interface>
 auto StringTraits<Interface>::tolower(const WideStringView &str) -> WideString {
 	WideString ret;
-	sprt::unicode::tolower([&](WideStringView str) { ret = str.str<Interface>(); });
+	sprt::unicode::tolower([&](WideStringView str) { ret = str.str<Interface>(); }, str);
 	return ret;
 }
 
 template <typename Interface>
 auto StringTraits<Interface>::toupper(const WideStringView &str) -> WideString {
 	WideString ret;
-	sprt::unicode::toupper([&](WideStringView str) { ret = str.str<Interface>(); });
+	sprt::unicode::toupper([&](WideStringView str) { ret = str.str<Interface>(); }, str);
 	return ret;
 }
 
 template <typename Interface>
 auto StringTraits<Interface>::totitle(const WideStringView &str) -> WideString {
 	WideString ret;
-	sprt::unicode::totitle([&](WideStringView str) { ret = str.str<Interface>(); });
+	sprt::unicode::totitle([&](WideStringView str) { ret = str.str<Interface>(); }, str);
 	return ret;
 }
 
 template <typename Interface>
 auto StringTraits<Interface>::tolower(const StringView &str) -> String {
 	String ret;
-	sprt::unicode::tolower([&](StringView str) { ret = str.str<Interface>(); });
+	sprt::unicode::tolower([&](StringView str) { ret = str.str<Interface>(); }, str);
 	return ret;
 }
 
 template <typename Interface>
 auto StringTraits<Interface>::toupper(const StringView &str) -> String {
 	String ret;
-	sprt::unicode::toupper([&](StringView str) { ret = str.str<Interface>(); });
+	sprt::unicode::toupper([&](StringView str) { ret = str.str<Interface>(); }, str);
 	return ret;
 }
 
 template <typename Interface>
 auto StringTraits<Interface>::totitle(const StringView &str) -> String {
 	String ret;
-	sprt::unicode::totitle([&](StringView str) { ret = str.str<Interface>(); });
+	sprt::unicode::totitle([&](StringView str) { ret = str.str<Interface>(); }, str);
 	return ret;
 }
 
@@ -745,63 +733,6 @@ bool StringTraits<Interface>::isUrlencodeChar(char c) {
 }
 
 } // namespace stappler::string
-
-namespace STAPPLER_VERSIONIZED stappler::base64 {
-
-SP_PUBLIC auto __encode_pool(const CoderSource &source) ->
-		typename memory::PoolInterface::StringType;
-SP_PUBLIC auto __encode_std(const CoderSource &source) ->
-		typename memory::StandartInterface::StringType;
-
-SP_PUBLIC auto __decode_pool(const CoderSource &source) ->
-		typename memory::PoolInterface::BytesType;
-SP_PUBLIC auto __decode_std(const CoderSource &source) ->
-		typename memory::StandartInterface::BytesType;
-
-template <>
-inline auto decode<memory::PoolInterface>(const CoderSource &source) ->
-		typename memory::PoolInterface::BytesType {
-	return __decode_pool(source);
-}
-
-template <>
-inline auto decode<memory::StandartInterface>(const CoderSource &source) ->
-		typename memory::StandartInterface::BytesType {
-	return __decode_std(source);
-}
-
-} // namespace stappler::base64
-
-namespace STAPPLER_VERSIONIZED stappler::base64url {
-
-inline size_t encodeSize(size_t l) { return base64::encodeSize(l); }
-inline size_t decodeSize(size_t l) { return base64::decodeSize(l); }
-
-SP_PUBLIC auto __encode_pool(const CoderSource &source) ->
-		typename memory::PoolInterface::StringType;
-SP_PUBLIC auto __encode_std(const CoderSource &source) ->
-		typename memory::StandartInterface::StringType;
-
-template <typename Interface>
-SP_PUBLIC inline auto decode(const CoderSource &source) -> typename Interface::BytesType {
-	return base64::decode<Interface>(source);
-}
-
-inline void decode(std::basic_ostream<char> &stream, const CoderSource &source) {
-	base64::decode(stream, source);
-}
-
-inline void decode(const Callback<void(uint8_t)> &cb, const CoderSource &source) {
-	base64::decode(cb, source);
-}
-
-inline size_t decode(uint8_t *buf, size_t bsize, const CoderSource &source) {
-	return base64::decode(buf, bsize, source);
-	;
-}
-
-} // namespace stappler::base64url
-
 
 namespace STAPPLER_VERSIONIZED stappler::mem_pool {
 

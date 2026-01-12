@@ -27,6 +27,8 @@
 #include "SPEventThreadHandle.h"
 #include "SPEventBus.h"
 
+#include <sprt/runtime/thread/info.h>
+
 namespace STAPPLER_VERSIONIZED stappler::event::platform {
 
 Rc<QueueRef> getThreadQueue(QueueInfo &&);
@@ -43,7 +45,7 @@ struct Looper::Data : public memory::AllocPool {
 	Rc<QueueRef> queue;
 	Rc<ThreadHandle> threadHandle;
 	Rc<thread::ThreadPool> threadPool;
-	const thread::ThreadInfo *threadInfo = nullptr;
+	const sprt::thread::info *threadInfo = nullptr;
 	memory::pool_t *threadMemPool = nullptr;
 	thread::Thread::Id thisThreadId;
 	bool suspendThreadsOnWakeup = false;
@@ -65,7 +67,7 @@ struct Looper::Data : public memory::AllocPool {
 
 		// Looper cleanup can cause app finalization, so, prevent in with
 		// initialize + terminate
-		memory::pool::initialize();
+		sprt::memory::pool::initialize();
 		std::unique_lock lock(l->_mutex);
 
 		d->queue->poll();
@@ -90,22 +92,22 @@ struct Looper::Data : public memory::AllocPool {
 		if (d->threadPool) {
 			d->threadPool->cancel();
 			d->threadPool = nullptr;
-			log::source().debug("Looper", "Cleanup: ", thread::ThreadInfo::getThreadInfo()->name);
+			log::source().debug("Looper", "Cleanup: ", sprt::thread::info::get()->name);
 		}
 
 		if (d->queue) {
 			auto q = d->queue;
 			d->queue = nullptr;
 			q->cancel();
-#if SP_REF_DEBUG
+#if SPRT_REF_DEBUG
 			if (q->getRef()->getReferenceCount() > 1) {
 				auto tmp = q->getRef();
 				q = nullptr;
 
 				tmp->foreachBacktrace(
-						[](uint64_t id, Time time, const std::vector<std::string> &vec) {
+						[](uint64_t id, time_t t, const memory::forward_list<StringView> &vec) {
 					mem_std::StringStream stream;
-					stream << "[" << id << ":" << time.toHttp<memory::StandartInterface>()
+					stream << "[" << id << ":" << Time(t).toHttp<memory::StandartInterface>()
 						   << "]:\n";
 					for (auto &it : vec) { stream << "\t" << it << "\n"; }
 					log::source().debug("event::Queue", stream.str());
@@ -118,7 +120,7 @@ struct Looper::Data : public memory::AllocPool {
 #endif
 		}
 		lock.unlock();
-		memory::pool::terminate();
+		sprt::memory::pool::terminate();
 	}
 
 	void attachBus(Bus *bus) {
@@ -279,9 +281,9 @@ Looper::Looper(LooperInfo &&info, Rc<QueueRef> &&q) {
 
 		_data->threadPoolInfo.name = StringView(mem_pool::toString(info.name, ":Worker")).pdup();
 
-		thread::ThreadInfo::setThreadInfo(info.name);
+		sprt::thread::info::set(info.name);
 
-		_data->threadInfo = thread::ThreadInfo::getThreadInfo();
+		_data->threadInfo = sprt::thread::info::get();
 		if (!_data->threadInfo || !_data->threadInfo->threadPool) {
 			_data->threadMemPool = pool;
 		} else {

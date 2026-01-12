@@ -22,7 +22,7 @@
 
 #include "SPEventThreadHandle-epoll.h"
 
-#include <sys/eventfd.h>
+#include <sprt/c/sys/__sprt_eventfd.h>
 
 namespace STAPPLER_VERSIONIZED stappler::event {
 
@@ -37,7 +37,7 @@ bool ThreadEPollHandle::init(HandleClass *cl) {
 
 Status ThreadEPollHandle::read() {
 	auto source = reinterpret_cast<EventFdSource *>(_data);
-	auto ret = ::eventfd_read(source->fd, &source->eventTarget);
+	auto ret = ::__sprt_eventfd_read(source->fd, &source->eventTarget);
 	if (ret < 0) {
 		return sprt::status::errnoToStatus(errno);
 	}
@@ -46,7 +46,7 @@ Status ThreadEPollHandle::read() {
 
 Status ThreadEPollHandle::write(uint64_t val) {
 	auto source = reinterpret_cast<EventFdSource *>(_data);
-	auto ret = ::eventfd_write(source->fd, val);
+	auto ret = ::__sprt_eventfd_write(source->fd, val);
 	if (ret < 0) {
 		return sprt::status::errnoToStatus(errno);
 	}
@@ -57,7 +57,7 @@ Status ThreadEPollHandle::rearm(EPollData *epoll, EventFdSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
 		source->event.data.ptr = this;
-		source->event.events = EPOLLIN;
+		source->event.events = __SPRT_EPOLLIN;
 		source->eventTarget = 0;
 
 		status = epoll->add(source->fd, source->event);
@@ -81,7 +81,7 @@ void ThreadEPollHandle::notify(EPollData *epoll, EventFdSource *source, const No
 		return;
 	}
 
-	if (data.queueFlags & EPOLLIN) {
+	if (data.queueFlags & __SPRT_EPOLLIN) {
 		bool checked = false;
 		while (read() == Status::Ok) { checked = true; }
 
@@ -91,7 +91,7 @@ void ThreadEPollHandle::notify(EPollData *epoll, EventFdSource *source, const No
 		}
 	}
 
-	if ((data.queueFlags & EPOLLERR) || (data.queueFlags & EPOLLHUP)) {
+	if ((data.queueFlags & __SPRT_EPOLLERR) || (data.queueFlags & __SPRT_EPOLLHUP)) {
 		cancel();
 	}
 }
@@ -101,7 +101,7 @@ Status ThreadEPollHandle::perform(Rc<thread::Task> &&task) {
 	_outputQueue.emplace_back(move(task));
 
 	uint64_t value = 1;
-	::eventfd_write(reinterpret_cast<EventFdSource *>(_data)->fd, value);
+	::__sprt_eventfd_write(reinterpret_cast<EventFdSource *>(_data)->fd, value);
 	return Status::Ok;
 }
 
@@ -110,7 +110,7 @@ Status ThreadEPollHandle::perform(mem_std::Function<void()> &&func, Ref *target,
 	_outputCallbacks.emplace_back(CallbackInfo{sp::move(func), target, tag});
 
 	uint64_t value = 1;
-	::eventfd_write(reinterpret_cast<EventFdSource *>(_data)->fd, value);
+	::__sprt_eventfd_write(reinterpret_cast<EventFdSource *>(_data)->fd, value);
 	return Status::Ok;
 }
 

@@ -28,7 +28,6 @@ THE SOFTWARE.
 
 namespace STAPPLER_VERSIONIZED stappler::bitmap {
 
-const BitmapFormat &getDefaultFormat(uint32_t);
 static std::unique_lock<std::mutex> lockFormatList();
 static void addCustomFormat(BitmapFormat &&fmt);
 static const std::vector<BitmapFormat *> &getCustomFormats();
@@ -151,8 +150,8 @@ bool getImageSize(const io::Producer &file, uint32_t &width, uint32_t &height) {
 	}
 
 	for (int i = 0; i < toInt(FileFormat::Custom); ++i) {
-		if (getDefaultFormat(i).isRecognizable()
-				&& getDefaultFormat(i).getSize(file, data, width, height)) {
+		if (getDefaultFormat(FileFormat(i))->isRecognizable()
+				&& getDefaultFormat(FileFormat(i))->getSize(file, data, width, height)) {
 			return true;
 		}
 	}
@@ -181,9 +180,10 @@ bool getImageSize(const io::Producer &file, uint32_t &width, uint32_t &height) {
 
 bool getImageInfo(BytesView data, ImageInfo &info) {
 	for (int i = 0; i < toInt(FileFormat::Custom); ++i) {
-		if (getDefaultFormat(i).isReadable() && getDefaultFormat(i).is(data.data(), data.size())
-				&& getDefaultFormat(i).getInfo(data.data(), data.size(), info)) {
-			info.format = &getDefaultFormat(i);
+		auto fmt = getDefaultFormat(FileFormat(i));
+		if (fmt->isReadable() && fmt->is(data.data(), data.size())
+				&& fmt->getInfo(data.data(), data.size(), info)) {
+			info.format = fmt;
 			return true;
 		}
 	}
@@ -226,8 +226,8 @@ bool isImage(const io::Producer &file, bool readable) {
 
 bool isImage(const uint8_t *data, size_t dataLen, bool readable) {
 	for (int i = 0; i < toInt(FileFormat::Custom); ++i) {
-		if (getDefaultFormat(i).isRecognizable() && (!readable || getDefaultFormat(i).isReadable())
-				&& getDefaultFormat(i).is(data, dataLen)) {
+		auto fmt = getDefaultFormat(FileFormat(i));
+		if (fmt->isRecognizable() && (!readable || fmt->isReadable()) && fmt->is(data, dataLen)) {
 			return true;
 		}
 	}
@@ -254,28 +254,29 @@ bool isImage(const uint8_t *data, size_t dataLen, bool readable) {
 	return false;
 }
 
-Pair<FileFormat, StringView> detectFormat(const FileInfo &path) {
+sprt::pair<FileFormat, StringView> detectFormat(const FileInfo &path) {
 	auto file = filesystem::openForReading(path);
 	return detectFormat(file);
 }
 
-Pair<FileFormat, StringView> detectFormat(const io::Producer &file) {
+sprt::pair<FileFormat, StringView> detectFormat(const io::Producer &file) {
 	StackBuffer<512> data;
 	if (file.seekAndRead(0, data, 512) < 32) {
-		return pair(FileFormat::Custom, StringView());
+		return sprt::pair(FileFormat::Custom, StringView());
 	}
 
 	return detectFormat(data.data(), data.size());
 }
 
-Pair<FileFormat, StringView> detectFormat(const uint8_t *data, size_t dataLen) {
+sprt::pair<FileFormat, StringView> detectFormat(const uint8_t *data, size_t dataLen) {
 	for (int i = 0; i < toInt(FileFormat::Custom); ++i) {
-		if (getDefaultFormat(i).isRecognizable() && getDefaultFormat(i).is(data, dataLen)) {
-			return pair(getDefaultFormat(i).getFormat(), getDefaultFormat(i).getName());
+		auto fmt = getDefaultFormat(FileFormat(i));
+		if (fmt->isRecognizable() && fmt->is(data, dataLen)) {
+			return sprt::pair(fmt->getFormat(), fmt->getName());
 		}
 	}
 
-	memory::vector<Pair<StringView, BitmapFormat::check_fn>> fns;
+	memory::vector<sprt::pair<StringView, BitmapFormat::check_fn>> fns;
 
 	auto lock = lockFormatList();
 	fns.reserve(getCustomFormats().size());
@@ -290,11 +291,11 @@ Pair<FileFormat, StringView> detectFormat(const uint8_t *data, size_t dataLen) {
 
 	for (auto &it : fns) {
 		if (it.second(data, dataLen)) {
-			return pair(FileFormat::Custom, it.first);
+			return sprt::pair(FileFormat::Custom, it.first);
 		}
 	}
 
-	return pair(FileFormat::Custom, StringView());
+	return sprt::pair(FileFormat::Custom, StringView());
 }
 
 StringView getMimeType(FileFormat fmt) {
@@ -313,8 +314,9 @@ StringView getMimeType(FileFormat fmt) {
 
 StringView getMimeType(StringView name) {
 	for (uint32_t i = 0; i < toInt(FileFormat::Custom); ++i) {
-		if (getDefaultFormat(i).getName() == name) {
-			return getDefaultFormat(i).getMime();
+		auto fmt = getDefaultFormat(FileFormat(i));
+		if (fmt->getName() == name) {
+			return fmt->getMime();
 		}
 	}
 
@@ -329,7 +331,7 @@ StringView getMimeType(StringView name) {
 
 bool check(FileFormat fmt, const uint8_t *data, size_t dataLen) {
 	assert(fmt != FileFormat::Custom);
-	return getDefaultFormat(toInt(fmt)).is(data, dataLen);
+	return getDefaultFormat(fmt)->is(data, dataLen);
 }
 
 bool check(StringView name, const uint8_t *data, size_t dataLen) {

@@ -740,8 +740,9 @@ size_t TransferResource::preTransferData() {
 			it.useStaging = true;
 			stagingSize = math::align<VkDeviceSize>(stagingSize, alignment);
 			it.stagingOffset = stagingSize;
-			stagingSize += getFormatBlockSize(it.info.format) * it.info.extent.width
-					* it.info.extent.height * it.info.extent.depth * it.info.arrayLayers;
+			stagingSize += core::getFormatBlockSize(core::ImageFormat(it.info.format))
+					* it.info.extent.width * it.info.extent.height * it.info.extent.depth
+					* it.info.arrayLayers;
 		} else {
 			writeData(generalMem + it.offset, it);
 		}

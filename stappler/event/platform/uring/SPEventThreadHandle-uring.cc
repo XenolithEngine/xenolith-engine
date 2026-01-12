@@ -22,14 +22,8 @@
 
 #include "SPEventThreadHandle-uring.h"
 
-#if LINUX
-
-#include <sys/syscall.h>
-#include <sys/eventfd.h>
-
-#ifdef SP_URING_THREAD_FENCE_HANDLE
-#include <linux/futex.h>
-#endif
+#include <sprt/c/sys/__sprt_eventfd.h>
+#include <sprt/c/sys/__sprt_futex.h>
 
 // Available sinve 5.16
 static constexpr int sp_sys_futex_wake = 454;
@@ -39,15 +33,6 @@ namespace STAPPLER_VERSIONIZED stappler::event {
 
 // futex implementation based on https://github.com/eliben/code-for-blog/blob/main/2018/futex-basics/mutex-using-futex.cpp
 
-#ifdef SP_URING_THREAD_FENCE_HANDLE
-static long futex_wake(volatile uint32_t *uaddr, uint32_t bitset, int nr_wake, uint32_t flags) {
-	return syscall(sp_sys_futex_wake, uaddr, bitset, nr_wake, flags);
-}
-
-static long futex_wait(volatile uint32_t *uaddr, uint32_t val, uint32_t mask, uint32_t flags,
-		_linux_timespec *timespec, clockid_t clockid) {
-	return syscall(sp_sys_futex_wait, uaddr, val, mask, flags, timespec, clockid);
-}
 
 static uint32_t atomicLoadSeq(volatile uint32_t *ptr) {
 	uint32_t ret;
@@ -82,8 +67,8 @@ void FutexImpl::client_lock() {
 			if ((c & WAIT_VALUE) != 0 || (atomicFetchOr(&_futex, WAIT_VALUE) & LOCK_VALUE) != 0) {
 				// futex should have all three flags set at this moment
 				// wait for unlock
-				futex_wait(&_futex, FULL_VALUE, CLIENT_MASK, FLAG_SIZE_U32 | FLAG_PRIVATE, nullptr,
-						CLOCK_MONOTONIC);
+				__sprt_futex2_wait(&_futex, FULL_VALUE, CLIENT_MASK,
+						__SPRT_FUTEX2_SIZE_U32 | __SPRT_FUTEX2_PRIVATE, nullptr, CLOCK_MONOTONIC);
 			}
 			// check if lock still in place by fetching value and set all flags
 		} while (((c = atomicFetchOr(&_futex, FULL_VALUE)) & LOCK_VALUE) != 0);
@@ -104,7 +89,7 @@ void FutexImpl::client_unlock() {
 	}
 
 	// wake server or clients
-	futex_wake(&_futex, FULL_MASK, 1, FLAG_SIZE_U32 | FLAG_PRIVATE);
+	__sprt_futex2_wake(&_futex, FULL_MASK, 1, __SPRT_FUTEX2_SIZE_U32 | __SPRT_FUTEX2_PRIVATE);
 }
 
 bool FutexImpl::server_try_lock() {
@@ -116,7 +101,7 @@ bool FutexImpl::server_try_lock() {
 bool FutexImpl::server_unlock() {
 	// unset all, return true if WAIT was set
 	if ((atomicExchange(&_futex, 0) & WAIT_VALUE) != 0) {
-		futex_wake(&_futex, CLIENT_MASK, 1, FLAG_SIZE_U32 | FLAG_PRIVATE);
+		__sprt_futex2_wake(&_futex, CLIENT_MASK, 1, __SPRT_FUTEX2_SIZE_U32 | __SPRT_FUTEX2_PRIVATE);
 		return true;
 	}
 	return false;
@@ -157,7 +142,7 @@ Status ThreadUringHandle::rearm(URingData *uring, ThreadUringSource *source, boo
 		}
 
 		auto result = uring->pushSqe({IORING_OP_FUTEX_WAIT}, [&](io_uring_sqe *sqe, uint32_t n) {
-			sqe->fd = FutexImpl::FLAG_SIZE_U32 | FutexImpl::FLAG_PRIVATE;
+			sqe->fd = __SPRT_FUTEX2_SIZE_U32 | __SPRT_FUTEX2_PRIVATE;
 			sqe->futex_flags = 0;
 			sqe->len = 0;
 			sqe->addr = reinterpret_cast<uintptr_t>(source->futex.getAddr());
@@ -311,8 +296,6 @@ void ThreadUringHandle::rearmFailsafe(URingData *uring, ThreadUringSource *sourc
 	source->failsafe = true;
 }
 
-#endif
-
 bool ThreadEventFdHandle::init(HandleClass *cl) {
 	if (!ThreadHandle::init(cl)) {
 		return false;
@@ -422,7 +405,7 @@ void ThreadEventFdHandle::notify(URingData *uring, EventFdSource *source, const 
 					rearm(uring, source);
 				}
 				uint64_t value = 1;
-				::eventfd_write(source->fd, value);
+				::__sprt_eventfd_write(source->fd, value);
 			}
 		} else {
 			_mutex.lock();
@@ -445,7 +428,7 @@ Status ThreadEventFdHandle::perform(Rc<thread::Task> &&task) {
 	}
 
 	uint64_t value = 1;
-	::eventfd_write(reinterpret_cast<EventFdSource *>(_data)->fd, value);
+	::__sprt_eventfd_write(reinterpret_cast<EventFdSource *>(_data)->fd, value);
 	return Status::Ok;
 }
 
@@ -458,10 +441,8 @@ Status ThreadEventFdHandle::perform(mem_std::Function<void()> &&func, Ref *targe
 	}
 
 	uint64_t value = 1;
-	::eventfd_write(reinterpret_cast<EventFdSource *>(_data)->fd, value);
+	::__sprt_eventfd_write(reinterpret_cast<EventFdSource *>(_data)->fd, value);
 	return Status::Ok;
 }
 
 } // namespace stappler::event
-
-#endif

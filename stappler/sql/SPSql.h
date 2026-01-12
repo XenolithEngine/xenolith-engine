@@ -232,26 +232,26 @@ public:
 		template <typename... VArgs>
 		static void fields(Clause &c, const Field &f, VArgs &&...args) {
 			c.field(f);
-			fields(c, forward<VArgs>(args)...);
+			fields(c, sprt::forward<VArgs>(args)...);
 		}
 		static void fields(Clause &c, const Field &f) { c.field(f); }
 
 		template <typename... VArgs>
 		static void from(Clause &c, const Field &f, VArgs &&...args) {
 			c.from(f);
-			from(c, forward<VArgs>(args)...);
+			from(c, sprt::forward<VArgs>(args)...);
 		}
 		static void from(Clause &c, const Field &f) { c.from(f); }
 
 		template <typename Value, typename... VArgs>
 		static void values(Clause &c, Value &&v, VArgs &&...args) {
-			c.value(forward<Value>(v));
-			values(c, forward<VArgs>(args)...);
+			c.value(sprt::forward<Value>(v));
+			values(c, sprt::forward<VArgs>(args)...);
 		}
 
 		template <typename Value>
 		static void values(Clause &c, Value &&v) {
-			c.value(forward<Value>(v));
+			c.value(sprt::forward<Value>(v));
 		}
 
 		static void values(Clause &c) { }
@@ -560,12 +560,12 @@ template <typename Binder, typename Interface, typename Value>
 struct BinderTraits {
 	template <typename V>
 	static void writeBind(Query<Binder, Interface> &q, Binder &b, V &&val) {
-		b.writeBind(q.getStream(), forward<V>(val));
+		b.writeBind(q.getStream(), sprt::forward<V>(val));
 	}
 
 	template <typename V>
 	static void writeBindArray(Query<Binder, Interface> &q, Binder &b, V &&val) {
-		b.writeBindArray(q.getStream(), forward<V>(val));
+		b.writeBindArray(q.getStream(), sprt::forward<V>(val));
 	}
 };
 
@@ -612,14 +612,14 @@ template <typename Binder, typename Interface>
 template <typename Value>
 void Query<Binder, Interface>::writeBind(Value &&val) {
 	BinderTraits<Binder, Interface, typename std::remove_reference<Value>::type>::writeBind(*this,
-			this->binder, forward<Value>(val));
+			this->binder, sprt::forward<Value>(val));
 }
 
 template <typename Binder, typename Interface>
 template <typename Value>
 void Query<Binder, Interface>::writeBindArray(Value &&val) {
 	BinderTraits<Binder, Interface, typename std::remove_reference<Value>::type>::writeBindArray(
-			*this, this->binder, forward<Value>(val));
+			*this, this->binder, sprt::forward<Value>(val));
 }
 
 template <typename Binder, typename Interface>
@@ -746,14 +746,14 @@ auto Query<Binder, Interface>::GenericQuery::select(Distinct d) -> Select {
 template <typename Binder, typename Interface>
 template <typename... Args>
 auto Query<Binder, Interface>::GenericQuery::select(const Field &f, Args &&...args) -> Select {
-	return this->query->select(f, forward<Args>(args)...);
+	return this->query->select(f, sprt::forward<Args>(args)...);
 }
 
 template <typename Binder, typename Interface>
 template <typename... Args>
 auto Query<Binder, Interface>::GenericQuery::select(Distinct d, const Field &f, Args &&...args)
 		-> Select {
-	return this->query->select(d, f, forward<Args>(args)...);
+	return this->query->select(d, f, sprt::forward<Args>(args)...);
 }
 
 template <typename Binder, typename Interface>

@@ -90,7 +90,8 @@ protected:
 		ThreadPool *threadPool = nullptr;
 
 		std::atomic<bool> finalized;
-		std::atomic<size_t> tasksCounter = 0;
+		std::atomic<size_t> tasksInExecution = 0;
+		std::atomic<size_t> tasksInQueue = 0;
 
 		mem_std::Vector<Worker *> workers;
 

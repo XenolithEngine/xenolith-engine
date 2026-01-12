@@ -986,7 +986,7 @@ PathWriter &PathWriter::addArc(const Rect &oval, float startAngleInRadians,
 	const auto sy = ry * sinf(startAngleInRadians + sweepAngleInRadians);
 
 	moveTo(oval.origin.x + rx + x, oval.origin.y + ry + y);
-	arcTo(rx, ry, 0.0f, (sweepAngleInRadians > numbers::pi) ? true : false, true,
+	arcTo(rx, ry, 0.0f, (sweepAngleInRadians > sprt::numbers::Pi<float>) ? true : false, true,
 			oval.origin.x + rx + sx, oval.origin.y + ry + sy);
 	return *this;
 }

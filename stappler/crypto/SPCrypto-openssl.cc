@@ -26,6 +26,8 @@ THE SOFTWARE.
 #include "SPCrypto.h"
 #include "SPValid.h"
 
+#include <sprt/runtime/base64.h>
+
 #if __CDT_PARSER__
 #define MODULE_STAPPLER_CRYPTO_OPENSSL 1
 #endif
@@ -1420,12 +1422,10 @@ static BackendCtx s_openSSLCtx = {
 		auto dataBlock = r.readUntil<StringView::CharGroup<CharGroupId::WhiteSpace>>();
 		dataBlock = dataBlock.readChars<StringView::CharGroup<CharGroupId::Base64>>();
 		if (valid::validateBase64(dataBlock)) {
+			auto bytesSize = base64::decodeSize(dataBlock.size());
 			uint8_t bytes[base64::decodeSize(dataBlock.size())];
-			uint8_t *target = bytes;
-			base64::decode([&] (uint8_t c) {
-				*target++ = c;
-			}, dataBlock);
-			BytesViewNetwork dataView(bytes, target - bytes);
+
+			BytesViewNetwork dataView(bytes,  sprt::base64::decode(dataBlock.data(), dataBlock.size(), bytes, bytesSize));
 			auto len = dataView.readUnsigned32();
 			auto keyType = dataView.readString(len);
 
@@ -1445,9 +1445,18 @@ static BackendCtx s_openSSLCtx = {
 
 			std::stringstream stream;
 			stream << "-----BEGIN RSA PUBLIC KEY-----\n";
-			base64::encode([&] (char c) {
-				stream << c;
-			}, CoderSource(out, buf - out));
+			sprt::base64::encode(out, buf - out, [&] (const char *str, size_t len) {
+				while (len > 80) {
+					stream.write(str, 80);
+					len -= 80;
+					str += 80;
+					stream << '\n';
+				}
+				if (len > 0) {
+					stream.write(str, len);
+				}
+			});
+
 			stream << "\n-----END RSA PUBLIC KEY-----\n";
 
 			BIO *bioData = nullptr;

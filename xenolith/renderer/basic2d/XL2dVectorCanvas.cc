@@ -24,6 +24,8 @@
 #include "SPFilepath.h"
 #include "SPThread.h"
 
+#include <sprt/runtime/thread/info.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
 struct VectorCanvasPathOutput {
@@ -164,7 +166,7 @@ Rc<VectorCanvas> VectorCanvas::getInstance(bool deferred) {
 	static thread_local Rc<VectorCanvas> tl_instance = nullptr;
 	if (!tl_instance) {
 		tl_instance = Rc<VectorCanvas>::create(deferred);
-		thread::ThreadInfo::addCleanup([value = &tl_instance] {
+		sprt::thread::info::add_cleanup([value = &tl_instance] {
 			// deallocate thread interface
 			*value = nullptr;
 		});
@@ -749,56 +751,33 @@ void VectorCanvasResult::updateColor(const Color4F &color) {
 	config.color = color;
 }
 
-VectorCanvasDeferredResult::~VectorCanvasDeferredResult() {
-	if (_future) {
-		delete _future;
-		_future = nullptr;
-	}
-}
+VectorCanvasDeferredResult::~VectorCanvasDeferredResult() { }
 
-bool VectorCanvasDeferredResult::init(std::future<Rc<VectorCanvasResult>> &&future,
-		bool waitOnReady) {
-	_future = new std::future<Rc<VectorCanvasResult>>(sp::move(future));
+bool VectorCanvasDeferredResult::init(bool waitOnReady) {
 	_waitOnReady = waitOnReady;
 	return true;
 }
 
 bool VectorCanvasDeferredResult::acquireResult(
 		const Callback<void(SpanView<InstanceVertexData>, Flags)> &cb) {
-	std::unique_lock<Mutex> lock(_mutex);
-	if (_future) {
-		_result = _future->get();
-		delete _future;
-		_future = nullptr;
-		DeferredVertexResult::handleReady();
-	}
+	_addr.wait_value(SignalValue);
 	cb(_result->mut, None);
 	return true;
 }
 
-void VectorCanvasDeferredResult::handleReady(Rc<VectorCanvasResult> &&res) {
-	std::unique_lock<Mutex> lock(_mutex);
-	if (_future) {
-		delete _future;
-		_future = nullptr;
-	}
-	if (res && (!_result || res.get() != _result.get())) {
-		_result = move(res);
-		DeferredVertexResult::handleReady();
-	}
+void VectorCanvasDeferredResult::setResult(Rc<VectorCanvasResult> &&res) {
+	_result = move(res);
+	_addr.set_and_signal(SignalValue);
 }
 
 Rc<VectorCanvasResult> VectorCanvasDeferredResult::getResult() const {
-	std::unique_lock<Mutex> lock(_mutex);
+	_addr.wait_value(SignalValue);
 	return _result;
 }
 
 void VectorCanvasDeferredResult::updateColor(const Color4F &color) {
-	getResult(); // ensure rendering was complete
-
-	std::unique_lock<Mutex> lock(_mutex);
+	_addr.wait_value(SignalValue);
 	if (_result) {
-		lock.unlock();
 		_result->updateColor(color);
 	}
 }

@@ -33,7 +33,10 @@ LOCAL_MODULES_PATHS = stappler/stappler-modules.mk
 LOCAL_MODULES ?= \
 	runtime \
 	stappler_core \
-	stappler_filesystem
+	stappler_filesystem \
+	stappler_threads \
+	stappler_event \
+	stappler_data
 
 LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 

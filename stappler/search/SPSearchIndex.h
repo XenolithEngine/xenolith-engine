@@ -24,17 +24,15 @@ THE SOFTWARE.
 #ifndef STAPPLER_SEARCH_SPSEARCHINDEX_H_
 #define STAPPLER_SEARCH_SPSEARCHINDEX_H_
 
-#include "SPRef.h"
 #include "SPSearchDistance.h"
 
 namespace STAPPLER_VERSIONIZED stappler::search {
 
 class SP_PUBLIC SearchIndex : public Ref {
 public:
-	using DefaultSep = StringView::Compose<
-			StringView::CharGroup<CharGroupId::WhiteSpace>,
-			StringView::Chars<'=', '/', '(', ')', '.', ',', '-', '\'', '"', ':', ';', '?', '!', '@', '#', '$', '%', '^', '*', '\\', '+', '[', ']'>
-	>;
+	using DefaultSep = StringView::Compose< StringView::CharGroup<CharGroupId::WhiteSpace>,
+			StringView::Chars<'=', '/', '(', ')', '.', ',', '-', '\'', '"', ':', ';', '?', '!', '@',
+					'#', '$', '%', '^', '*', '\\', '+', '[', ']'> >;
 
 	struct Slice;
 	struct Node;
@@ -92,9 +90,10 @@ public:
 		using SizeCallback = Function<float(uint32_t, uint32_t)>;
 
 		Heuristic() { }
-		Heuristic(const TagCallback &cb, bool exclude = true) : excludeEqualMatches(exclude), tagScore(cb) { }
+		Heuristic(const TagCallback &cb, bool exclude = true)
+		: excludeEqualMatches(exclude), tagScore(cb) { }
 
-		float operator ()(const SearchIndex &index, const SearchIndex::ResultNode &result);
+		float operator()(const SearchIndex &index, const SearchIndex::ResultNode &result);
 
 		bool excludeEqualMatches = true;
 
@@ -102,19 +101,17 @@ public:
 		float fullMatchScore = 2.0f;
 
 		// all token score is multiplied by score of it's node tag
-		TagCallback tagScore = [] (int64_t tag) -> float {
-			return 1.0f;
-		};
+		TagCallback tagScore = [](int64_t tag) -> float { return 1.0f; };
 
 		// token score is better for longer word
-		SizeCallback wordScore = [] (uint32_t match, uint32_t size) -> float {
+		SizeCallback wordScore = [](uint32_t match, uint32_t size) -> float {
 			return (1.0f + log2f(size)) * (float(match) / float(size));
 		};
 
 		// token score is better if tokens match sequentially
-		SizeCallback positionScore = [] (uint32_t prev, uint32_t current) -> float {
+		SizeCallback positionScore = [](uint32_t prev, uint32_t current) -> float {
 			if (prev != maxOf<uint32_t>()) {
-				return (prev + 1 == current)?1.0f:((prev + 2 == current)?0.5f:0.0f);
+				return (prev + 1 == current) ? 1.0f : ((prev + 2 == current) ? 0.5f : 0.0f);
 			}
 			return 0.0f;
 		};
@@ -125,8 +122,8 @@ public:
 	void reserve(size_t);
 	void add(const StringView &, int64_t id, int64_t tag);
 
-	Result performSearch(const StringView &, size_t minMatch, const HeuristicCallback & = Heuristic(),
-			const FilterCallback & filter = nullptr);
+	Result performSearch(const StringView &, size_t minMatch,
+			const HeuristicCallback & = Heuristic(), const FilterCallback &filter = nullptr);
 
 	StringView resolveToken(const Node &, const ResultToken &) const;
 	Slice convertToken(const Node &, const ResultToken &) const;
@@ -144,6 +141,6 @@ protected:
 	TokenizerCallback _tokenizer;
 };
 
-}
+} // namespace stappler::search
 
 #endif /* STAPPLER_SEARCH_SPSEARCHINDEX_H_ */

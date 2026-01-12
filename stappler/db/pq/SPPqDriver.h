@@ -53,13 +53,15 @@ public:
 		Unknown
 	};
 
-	static Driver *open(pool_t *, ApplicationInterface *, StringView path = StringView(), const void *external = nullptr);
+	static Driver *open(pool_t *, ApplicationInterface *, StringView path = StringView(),
+			const void *external = nullptr);
 
 	virtual ~Driver();
 
 	virtual bool init(Handle handle, const Vector<StringView> &) override;
 
-	virtual void performWithStorage(Handle handle, const Callback<void(const db::Adapter &)> &cb) const override;
+	virtual void performWithStorage(Handle handle,
+			const Callback<void(const db::Adapter &)> &cb) const override;
 	virtual BackendInterface *acquireInterface(Handle handle, pool_t *) const override;
 
 	virtual Handle connect(const Map<StringView, StringView> &) const override;
@@ -103,7 +105,7 @@ public:
 	Result exec(Connection conn, const char *command, int nParams, const char *const *paramValues,
 			const int *paramLengths, const int *paramFormats, int resultFormat) const;
 
-	explicit operator bool () const { return _handle != nullptr; }
+	explicit operator bool() const { return _handle != nullptr; }
 
 	BackendInterface::StorageType getTypeById(uint32_t) const;
 	StringView getTypeNameById(uint32_t) const;
@@ -111,12 +113,13 @@ public:
 protected:
 	Driver(pool_t *pool, ApplicationInterface *, StringView, const void *external);
 
-	Handle doConnect(const char * const *keywords, const char * const *values, int expand_dbname) const;
+	Handle doConnect(const char *const *keywords, const char *const *values,
+			int expand_dbname) const;
 
 	bool _init = false;
 
-	Vector<Pair<uint32_t, BackendInterface::StorageType>> _storageTypes;
-	Vector<Pair<uint32_t, String>> _customTypes;
+	Vector<sprt::pair<uint32_t, BackendInterface::StorageType>> _storageTypes;
+	Vector<sprt::pair<uint32_t, String>> _customTypes;
 
 	DriverSym *_handle = nullptr;
 	const void *_external = nullptr;
@@ -125,7 +128,8 @@ protected:
 class SP_PUBLIC ResultCursor final : public db::ResultCursor {
 public:
 	inline static constexpr bool pgsql_is_success(Driver::Status x) {
-		return (x == Driver::Status::Empty) || (x == Driver::Status::CommandOk) || (x == Driver::Status::TuplesOk) || (x == Driver::Status::SingleTuple);
+		return (x == Driver::Status::Empty) || (x == Driver::Status::CommandOk)
+				|| (x == Driver::Status::TuplesOk) || (x == Driver::Status::SingleTuple);
 	}
 
 	ResultCursor(const Driver *d, Driver::Result res);
@@ -164,6 +168,6 @@ public:
 	Driver::Status err = Driver::Status::Empty;
 };
 
-}
+} // namespace stappler::db::pq
 
 #endif /* STAPPLER_DB_PQ_SPDBPQDRIVER_H_ */

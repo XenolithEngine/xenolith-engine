@@ -31,9 +31,7 @@ bool SearchIndex::init(const TokenizerCallback &tcb) {
 	return true;
 }
 
-void SearchIndex::reserve(size_t s) {
-	_nodes.reserve(s);
-}
+void SearchIndex::reserve(size_t s) { _nodes.reserve(s); }
 
 void SearchIndex::add(const StringView &v, int64_t id, int64_t tag) {
 	String origin(string::tolower<Interface>(v));
@@ -44,14 +42,14 @@ void SearchIndex::add(const StringView &v, int64_t id, int64_t tag) {
 	uint32_t idx = uint32_t(_nodes.size() - 1);
 	auto &canonical = node.canonical;
 
-	auto tokenFn = [&, this] (const StringView &str) {
+	auto tokenFn = [&, this](const StringView &str) {
 		if (!str.empty()) {
 			if (!canonical.empty()) {
 				canonical.append(" ");
 			}
 			auto s = canonical.size();
 			canonical.append(str.str<Interface>());
-			onToken(_tokens, str, idx, Slice{ uint16_t(s), uint16_t(str.size()) });
+			onToken(_tokens, str, idx, Slice{uint16_t(s), uint16_t(str.size())});
 		}
 	};
 
@@ -69,43 +67,46 @@ void SearchIndex::add(const StringView &v, int64_t id, int64_t tag) {
 	}
 }
 
-SearchIndex::Result SearchIndex::performSearch(const StringView &v, size_t minMatch, const HeuristicCallback &cb,
-		const FilterCallback & filter) {
+SearchIndex::Result SearchIndex::performSearch(const StringView &v, size_t minMatch,
+		const HeuristicCallback &cb, const FilterCallback &filter) {
 	String origin(string::tolower<Interface>(v));
 
 	SearchIndex::Result res{this};
 
 	uint32_t wordIndex = 0;
 
-	auto tokenFn = [&, this] (const StringView &str) {
-		auto lb = std::lower_bound(_tokens.begin(), _tokens.end(), str, [&, this] (const Token &l, const StringView &r) {
-			return string::detail::compare_c(makeStringView(l.index, l.slice), r) < 0;
+	auto tokenFn = [&, this](const StringView &str) {
+		auto lb = std::lower_bound(_tokens.begin(), _tokens.end(), str,
+				[&, this](const Token &l, const StringView &r) {
+			return sprt::detail::compare_c(makeStringView(l.index, l.slice), r) < 0;
 		});
 
 		if (lb != _tokens.end()) {
 			auto node = &_nodes.at(lb->index);
 			StringView value = makeStringView(*lb);
 
-			while (lb != _tokens.end() && value.size() >= str.size() && String::traits_type::compare(value.data(), str.data(), str.size()) == 0) {
+			while (lb != _tokens.end() && value.size() >= str.size()
+					&& sprt::__constexpr_strcompare(value.data(), str.data(), str.size()) == 0) {
 				if (!filter || filter(node)) {
 					auto ret_it = std::lower_bound(res.nodes.begin(), res.nodes.end(), node,
-							[&] (const ResultNode &l, const Node *r) {
-						return l.node < r;
-					});
+							[&](const ResultNode &l, const Node *r) { return l.node < r; });
 					if (ret_it == res.nodes.end() || ret_it->node != node) {
-						res.nodes.emplace(ret_it, ResultNode{ 0.0f, node, {ResultToken{wordIndex, uint16_t(str.size()), lb->slice}} });
+						res.nodes.emplace(ret_it,
+								ResultNode{0.0f, node,
+									{ResultToken{wordIndex, uint16_t(str.size()), lb->slice}}});
 					} else {
-						ret_it->matches.emplace_back(ResultToken{wordIndex, uint16_t(str.size()), lb->slice});
+						ret_it->matches.emplace_back(
+								ResultToken{wordIndex, uint16_t(str.size()), lb->slice});
 					}
 				}
-				++ lb;
+				++lb;
 				if (lb != _tokens.end()) {
 					value = makeStringView(*lb);
 					node = &_nodes.at(lb->index);
 				}
 			}
 		}
-		wordIndex ++;
+		wordIndex++;
 	};
 
 	if (_tokenizer) {
@@ -116,13 +117,10 @@ SearchIndex::Result SearchIndex::performSearch(const StringView &v, size_t minMa
 	}
 
 	if (cb) {
-		for (auto &it : res.nodes) {
-			it.score = cb(*this, it);
-		}
+		for (auto &it : res.nodes) { it.score = cb(*this, it); }
 
-		std::sort(res.nodes.begin(), res.nodes.end(), [] (const ResultNode &l, const ResultNode &r) {
-			return l.score > r.score;
-		});
+		std::sort(res.nodes.begin(), res.nodes.end(),
+				[](const ResultNode &l, const ResultNode &r) { return l.score > r.score; });
 	}
 
 	return res;
@@ -158,18 +156,21 @@ StringView SearchIndex::makeStringView(uint32_t idx, const Slice &sl) const {
 	return StringView(node.canonical.data() + sl.start, sl.size);
 }
 
-void SearchIndex::onToken(Vector<Token> &vec, const StringView &rep, uint32_t idx, const Slice &sl) {
-	auto insert_it = std::lower_bound(vec.begin(), vec.end(), rep, [&, this] (const Token &l, const StringView &r) {
-		return string::detail::compare_c(makeStringView(l.index, l.slice), r) < 0;
+void SearchIndex::onToken(Vector<Token> &vec, const StringView &rep, uint32_t idx,
+		const Slice &sl) {
+	auto insert_it = std::lower_bound(vec.begin(), vec.end(), rep,
+			[&, this](const Token &l, const StringView &r) {
+		return sprt::detail::compare_c(makeStringView(l.index, l.slice), r) < 0;
 	});
-	if (insert_it ==  vec.end()) {
+	if (insert_it == vec.end()) {
 		vec.emplace_back(Token{idx, sl});
 	} else {
 		vec.emplace(insert_it, Token{idx, sl});
 	}
 }
 
-float SearchIndex::Heuristic::operator () (const SearchIndex &index, const SearchIndex::ResultNode &node) {
+float SearchIndex::Heuristic::operator()(const SearchIndex &index,
+		const SearchIndex::ResultNode &node) {
 	float score = 0.0f;
 	uint32_t idx = maxOf<uint32_t>();
 
@@ -199,4 +200,4 @@ float SearchIndex::Heuristic::operator () (const SearchIndex &index, const Searc
 	return score;
 }
 
-}
+} // namespace stappler::search

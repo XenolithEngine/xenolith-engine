@@ -27,8 +27,8 @@ THE SOFTWARE.
 
 namespace STAPPLER_VERSIONIZED stappler::data {
 
-using NextToken = chars::Chars<char, '=', '&', ';', '[', ']', '+', '%'>;
-using NextKey = chars::Chars<char, '&', ';', '+'>;
+using NextToken = sprt::chars::Chars<char, '=', '&', ';', '[', ']', '+', '%'>;
+using NextKey = sprt::chars::Chars<char, '&', ';', '+'>;
 
 template <typename Interface>
 class UrlencodeParser {

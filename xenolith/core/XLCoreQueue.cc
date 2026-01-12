@@ -480,9 +480,12 @@ static void Queue_addDirectDependency(QueueData *data, const AttachmentPassData 
 		}
 	}
 
-	auto &it = data->passDependencies.emplace_back(QueuePassDependency{source.pass, target.pass,
-		memory::vector<const AttachmentData *>{source.attachment},
-		target.dependency.initialUsageStage});
+	auto &it = data->passDependencies.emplace_back(QueuePassDependency{
+		source.pass,
+		target.pass,
+		{source.attachment},
+		target.dependency.initialUsageStage,
+	});
 
 	const_cast<QueuePassData *>(it.source)->sourceQueueDependencies.emplace_back(&it);
 	const_cast<QueuePassData *>(it.target)->targetQueueDependencies.emplace_back(&it);

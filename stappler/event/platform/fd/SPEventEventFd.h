@@ -54,7 +54,6 @@ public:
 	Status write(uint64_t = 1, uint32_t value = 0);
 };
 
-#ifdef SP_EVENT_URING
 class SP_PUBLIC EventFdURingHandle : public EventFdHandle {
 public:
 	virtual ~EventFdURingHandle() = default;
@@ -64,7 +63,6 @@ public:
 
 	void notify(URingData *, EventFdSource *, const NotifyData &);
 };
-#endif
 
 class SP_PUBLIC EventFdEPollHandle : public EventFdHandle {
 public:
@@ -76,7 +74,6 @@ public:
 	void notify(EPollData *, EventFdSource *, const NotifyData &);
 };
 
-#if ANDROID
 class SP_PUBLIC EventFdALooperHandle : public EventFdHandle {
 public:
 	virtual ~EventFdALooperHandle() = default;
@@ -86,7 +83,6 @@ public:
 
 	void notify(ALooperData *, EventFdSource *, const NotifyData &);
 };
-#endif
 
 } // namespace stappler::event
 

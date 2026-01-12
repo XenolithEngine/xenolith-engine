@@ -273,13 +273,13 @@ size_t Configuration::makeSearchVector(SearchVector &vec, StringView str, Search
 		if (it == vec.words.end()) {
 			return &vec.words
 							.emplace(s.pdup(vec.words.get_allocator()),
-									SearchVector::MatchVector({pair(counter, rank)}))
+									SearchVector::MatchVector({sprt::pair(counter, rank)}))
 							.first->first;
 		} else {
-			auto value = pair(counter, rank);
+			auto value = sprt::pair(counter, rank);
 			auto iit = std::lower_bound(it->second.begin(), it->second.end(), value,
-					[&](const Pair<size_t, SearchData::Rank> &l,
-							const Pair<size_t, SearchData::Rank> &r) {
+					[&](const sprt::pair<size_t, SearchData::Rank> &l,
+							const sprt::pair<size_t, SearchData::Rank> &r) {
 				if (l.first != r.first) {
 					return l.first < r.first;
 				} else {
@@ -742,7 +742,7 @@ String Configuration::makeHeadlines(const HeadlineConfig &cfg,
 				}
 				stemWord(word, tok, [&](StringView word, StringView stem, ParserToken tok) {
 					auto it = std::lower_bound(stemList.begin(), stemList.end(), stem);
-					if (it != stemList.end() && string::detail::caseCompare_u(*it, stem) == 0) {
+					if (it != stemList.end() && sprt::detail::caseCompare_u(*it, stem) == 0) {
 						if (isComplexWord(tok)) {
 							enabledComplex = true;
 						} else {

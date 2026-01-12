@@ -69,7 +69,7 @@ struct TableRec {
 
 	static Map<StringView, TableRec> parse(const Driver *driver,
 			const BackendInterface::Config &cfg, const Map<StringView, const Scheme *> &s,
-			const Vector<Pair<StringView, int64_t>> &);
+			const Vector<sprt::pair<StringView, int64_t>> &);
 	static Map<StringView, TableRec> get(Handle &h, StringStream &stream);
 
 	static void writeCompareResult(StringStream &stream, Map<StringView, TableRec> &required,
@@ -77,7 +77,7 @@ struct TableRec {
 
 	TableRec();
 	TableRec(const Driver *d, const BackendInterface::Config &cfg, const db::Scheme *scheme,
-			const Vector<Pair<StringView, int64_t>> &customs, uint32_t v);
+			const Vector<sprt::pair<StringView, int64_t>> &customs, uint32_t v);
 
 	Map<String, ColRec> cols;
 	Map<String, ConstraintRec> constraints;
@@ -605,7 +605,7 @@ void TableRec::writeCompareResult(StringStream &stream, Map<StringView, TableRec
 
 Map<StringView, TableRec> TableRec::parse(const Driver *driver, const BackendInterface::Config &cfg,
 		const Map<StringView, const db::Scheme *> &s,
-		const Vector<Pair<StringView, int64_t>> &customs) {
+		const Vector<sprt::pair<StringView, int64_t>> &customs) {
 	Map<StringView, TableRec> tables;
 	for (auto &it : s) {
 		auto scheme = it.second;
@@ -869,7 +869,8 @@ Map<StringView, TableRec> TableRec::get(Handle &h, StringStream &stream) {
 
 TableRec::TableRec() : objects(false) { }
 TableRec::TableRec(const Driver *driver, const BackendInterface::Config &cfg,
-		const db::Scheme *scheme, const Vector<Pair<StringView, int64_t>> &customs, uint32_t v)
+		const db::Scheme *scheme, const Vector<sprt::pair<StringView, int64_t>> &customs,
+		uint32_t v)
 : version(v) {
 	StringStream hashStreamAfter;
 	hashStreamAfter << getDefaultFunctionVersion();
@@ -1077,9 +1078,9 @@ TableRec::TableRec(const Driver *driver, const BackendInterface::Config &cfg,
 	}
 }
 
-static void Handle_insert_sorted(Vector<Pair<StringView, int64_t>> &vec, StringView type) {
+static void Handle_insert_sorted(Vector<sprt::pair<StringView, int64_t>> &vec, StringView type) {
 	auto it = std::upper_bound(vec.begin(), vec.end(), type,
-			[](const StringView &l, const Pair<StringView, int64_t> &r) -> bool {
+			[](const StringView &l, const sprt::pair<StringView, int64_t> &r) -> bool {
 		return l < r.first;
 	});
 	vec.emplace(it, type, 0);
@@ -1097,7 +1098,7 @@ bool Handle::init(const BackendInterface::Config &cfg, const Map<StringView, con
 	StringStream tables;
 	tables << "Server: " << cfg.name << "\n";
 
-	Vector<Pair<StringView, int64_t>> customFields;
+	Vector<sprt::pair<StringView, int64_t>> customFields;
 
 	for (auto &it : s) {
 		for (auto &f : it.second->getFields()) {
@@ -1152,11 +1153,11 @@ bool Handle::init(const BackendInterface::Config &cfg, const Map<StringView, con
 			stream << "Server: " << cfg.name << "\n";
 			stream << "\nErrorInfo: " << EncodeFormat::Pretty << errInfo << "\n";
 		})) {
-			performSimpleQuery("COMMIT;"_weak);
+			performSimpleQuery("COMMIT;");
 		} else {
 			log::source().error("Database", "Fail to perform database update");
 			stream << "\nError: " << driver->getStatusMessage(lastError) << "\n";
-			performSimpleQuery("ROLLBACK;"_weak);
+			performSimpleQuery("ROLLBACK;");
 			success = false;
 		}
 
@@ -1166,7 +1167,7 @@ bool Handle::init(const BackendInterface::Config &cfg, const Map<StringView, con
 			return false;
 		}
 	} else {
-		performSimpleQuery("COMMIT;"_weak);
+		performSimpleQuery("COMMIT;");
 	}
 
 	beginTransaction_pg(TransactionLevel::ReadCommited);
