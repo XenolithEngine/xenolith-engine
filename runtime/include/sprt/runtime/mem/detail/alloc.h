@@ -77,6 +77,8 @@ struct Allocator_protect_construct {
 template <typename T>
 class Allocator {
 public:
+	using base_class = AllocPool;
+
 	using pointer = T *;
 	using const_pointer = const T *;
 
@@ -300,7 +302,7 @@ inline void Allocator<T>::construct(pointer p, Args &&...args) const noexcept {
 			if constexpr (is_trivially_copyable<T>::value
 					&& is_convertible_v<typename Allocator_SelectFirst<Args...>::type, const T &>) {
 				auto construct_memcpy = [](pointer p, const T &source) {
-					__constexpr_memcpy(p, &source, 1);
+					__builtin_memcpy(p, &source, sizeof(T));
 				};
 
 				construct_memcpy(p, sprt::forward<Args>(args)...);
@@ -382,7 +384,7 @@ template <typename T>
 inline void Allocator<T>::copy_rewrite(T *dest, size_t dcount, const T *source,
 		size_t count) noexcept {
 	if constexpr (is_trivially_copyable<T>::value) {
-		memmove(dest, source, count * sizeof(T));
+		__constexpr_memmove(dest, source, count);
 	} else {
 		if (dest == source) {
 			return;
@@ -411,7 +413,7 @@ inline void Allocator<T>::move(T *dest, T *source, size_t count) noexcept {
 	if constexpr (is_trivially_copyable<T>::value) {
 		__constexpr_memmove(dest, source, count);
 	} else if constexpr (is_trivially_move_constructible<T>::value) {
-		__constexpr_memmove((void *)dest, source, count);
+		__constexpr_memmove(dest, source, count);
 	} else {
 		if (dest == source) {
 			return;

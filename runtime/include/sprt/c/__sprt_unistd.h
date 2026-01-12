@@ -44,6 +44,7 @@ THE SOFTWARE.
 
 #define __SPRT_SC_PAGE_SIZE	30
 #define __SPRT_SC_PAGESIZE	30
+#define __SPRT_SC_NPROCESSORS_ONLN	84
 
 __SPRT_BEGIN_DECL
 
@@ -216,6 +217,9 @@ SPRT_API int __SPRT_ID(linkat)(int __old_dir_fd, const char *__old_path, int __n
 SPRT_API int __SPRT_ID(unlinkat)(int __dirfd, const char *__path, int __flags);
 
 SPRT_API long __SPRT_ID(gethostid)(void);
+
+SPRT_API int __SPRT_ID(pipe)(int[2]);
+SPRT_API int __SPRT_ID(pipe2)(int[2], int);
 
 __SPRT_END_DECL
 

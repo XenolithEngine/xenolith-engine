@@ -25,6 +25,20 @@ THE SOFTWARE.
 
 #include <sprt/runtime/int.h>
 
+#if __SPRT_USE_STL
+
+#include <new>
+
+namespace sprt {
+
+using std::nothrow_t;
+using std::nothrow;
+using std::align_val_t;
+
+} // namespace sprt
+
+#else
+
 namespace sprt {
 
 struct nothrow_t {
@@ -35,7 +49,9 @@ extern const nothrow_t nothrow;
 
 enum class align_val_t : size_t {
 };
-
 } // namespace sprt
+
+#endif
+
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_NEW_H_

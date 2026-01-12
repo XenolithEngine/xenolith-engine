@@ -69,9 +69,9 @@ struct SPRT_API RbTreeNodeFlag<size_t(8)> {
 	uintptr_t size	   : (sizeof(uintptr_t) / 2) * 8;
 };
 
-template <typename Node>
+template <typename Node, typename Allocator>
 struct NodeBlockAllocatorHelper {
-	using allocator_type = sprt::memory::detail::Allocator<Node>;
+	using allocator_type = Allocator;
 
 	// Callback in form [] (Node *, size_t) ->  bool {}
 	// return true if node should not be placed in list by allocator

@@ -28,13 +28,13 @@ THE SOFTWARE.
 namespace sprt::memory::detail {
 
 // small object optimization type (based on SSO-23: https://github.com/elliotgoodrich/SSO-23)
-template <typename Type, size_t ByteCount>
+template <typename Type, size_t ByteCount, typename Allocator>
 struct mem_small {
-	using self = mem_small<Type, ByteCount>;
+	using self = mem_small<Type, ByteCount, Allocator>;
 	using pointer = Type *;
 	using const_pointer = const Type *;
 	using size_type = size_t;
-	using allocator = sprt::memory::detail::Allocator<Type>;
+	using allocator = Allocator;
 
 	static constexpr size_type max_capacity() {
 		return (sizeof(Type) < ByteCount) ? ((ByteCount - 1) / sizeof(Type)) : 0;
@@ -89,14 +89,14 @@ struct mem_small {
 	array<uint8_t, ByteCount> storage;
 };
 
-template <typename Type, size_t Extra = 0>
+template <typename Type, size_t Extra, typename Allocator>
 class mem_large {
 public:
-	using self = mem_large<Type, Extra>;
+	using self = mem_large<Type, Extra, Allocator>;
 	using pointer = Type *;
 	using const_pointer = const Type *;
 	using size_type = size_t;
-	using allocator = sprt::memory::detail::Allocator<Type>;
+	using allocator = Allocator;
 
 	mem_large() = default;
 	mem_large(const self &) = default;
@@ -211,7 +211,7 @@ public:
 		size_t alloc_size = newsize + Extra;
 
 		// use extra memory if provided by allocator
-		size_t allocated = 0; // real memory block size returned
+		size_t allocated = alloc_size * sizeof(Type); // real memory block size returned
 		auto ptr = a.__allocate(alloc_size, allocated);
 
 		alloc_size = allocated / sizeof(Type);
@@ -256,13 +256,13 @@ protected:
 	size_type _allocated = 0; // in elements
 };
 
-template <typename Type, size_t Extra, bool UseSoo>
+template <typename Type, size_t Extra, bool UseSoo, typename Allocator>
 class mem_soo_iface;
 
-template <typename Type, size_t Extra>
-class mem_soo_iface<Type, Extra, false> : public mem_large<Type, Extra> {
+template <typename Type, size_t Extra, typename Allocator>
+class mem_soo_iface<Type, Extra, false, Allocator> : public mem_large<Type, Extra, Allocator> {
 public:
-	using base = mem_large<Type, Extra>;
+	using base = mem_large<Type, Extra, Allocator>;
 	using pointer = typename base::pointer;
 	using const_pointer = typename base::const_pointer;
 	using size_type = typename base::size_type;
@@ -344,17 +344,17 @@ protected:
 };
 
 
-template <typename Type, size_t Extra>
-class mem_soo_iface<Type, Extra, true> {
+template <typename Type, size_t Extra, typename Allocator>
+class mem_soo_iface<Type, Extra, true, Allocator> {
 public:
 	using pointer = Type *;
 	using const_pointer = const Type *;
 
 	using size_type = size_t;
-	using allocator = sprt::memory::detail::Allocator<Type>;
+	using allocator = Allocator;
 
-	using large_mem = mem_large<Type, Extra>;
-	using small_mem = mem_small<Type, sizeof(large_mem)>;
+	using large_mem = mem_large<Type, Extra, allocator>;
+	using small_mem = mem_small<Type, sizeof(large_mem), allocator>;
 
 	static constexpr size_type get_soo_size() { return small_mem::max_capacity(); }
 

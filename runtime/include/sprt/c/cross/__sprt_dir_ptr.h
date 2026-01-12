@@ -24,29 +24,10 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_DIR_PTR_H_
 
 #include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/cross/__sprt_config.h>
 
-__SPRT_BEGIN_DECL
-
-#if SPRT_LINUX
-
-typedef struct __dirstream __SPRT_ID(DIR);
-
-#elif SPRT_WINDOWS
-
-#error "Unknown OS"
-
-#elif SPRT_ANDROID
-
-typedef struct DIR __SPRT_ID(DIR);
-
-#elif SPRT_MACOS
-
-#error "Unknown OS"
-
-#else
-#error "Unknown OS"
-#endif
-
-__SPRT_END_DECL
+// clang-format off
+#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/dir_ptr.h)
+// clang-format on
 
 #endif // CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_DIR_PTR_H_

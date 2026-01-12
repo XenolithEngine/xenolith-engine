@@ -56,6 +56,13 @@ THE SOFTWARE.
 #endif
 
 /*
+	Define library functions as inlined builtins where possible
+*/
+#ifndef __SPRT_CONFIG_BUILTIN_MATH_INLINES
+#define __SPRT_CONFIG_BUILTIN_MATH_INLINES 1
+#endif
+
+/*
 	To work with llvm-libc++, you need to disable receiving symbols from the standard library
 	This must be specified during compilation of llvm-libc++
 */

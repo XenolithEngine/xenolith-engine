@@ -24,56 +24,13 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_FENV_T_H_
 
 #include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/cross/__sprt_config.h>
 
 __SPRT_BEGIN_DECL
 
-#if SPRT_LINUX
-
-#if defined(__x86_64__) || defined(_M_X64)
-#include <sprt/c/cross/linux/x86_64/fenv.h>
-#elif defined(__aarch64__) || defined(_M_ARM64)
-#include <sprt/c/cross/linux/aarch64/fenv.h>
-#else
-#error "Unknown Linux arch"
-#endif
-
-#elif SPRT_WINDOWS
-
-#if defined(__x86_64__) || defined(_M_X64)
-#include <sprt/c/cross/windows/x86_64/fenv.h>
-#elif defined(__aarch64__) || defined(_M_ARM64)
-#include <sprt/c/cross/windows/aarch64/fenv.h>
-#else
-#error "Unknown Windows arch"
-#endif
-
-#elif SPRT_ANDROID
-
-#if defined(__x86_64__) || defined(_M_X64)
-#include <sprt/c/cross/android/x86_64/fenv.h>
-#elif defined(i386) || defined(__i386__) || defined(_M_IX86)
-#include <sprt/c/cross/android/x86/fenv.h>
-#elif defined(__aarch64__) || defined(_M_ARM64)
-#include <sprt/c/cross/android/arm64/fenv.h>
-#elif defined(__arm__) || defined(_M_ARM)
-#include <sprt/c/cross/android/arm/fenv.h>
-#else
-#error "Unknown Android arche"
-#endif
-
-#elif SPRT_MACOS
-
-#if defined(__x86_64__) || defined(_M_X64)
-#include <sprt/c/cross/macos/x86_64/fenv.h>
-#elif defined(__aarch64__) || defined(_M_ARM64)
-#include <sprt/c/cross/macos/aarch64/fenv.h>
-#else
-#error "Unknown Macos arch"
-#endif
-
-#else
-#error "Unknown OS"
-#endif
+// clang-format off
+#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/__SPRT_ARCH_NAME/fenv.h)
+// clang-format on
 
 #ifndef __SPRT_FE_DFL_ENV
 

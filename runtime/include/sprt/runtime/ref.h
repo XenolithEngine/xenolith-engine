@@ -82,8 +82,10 @@ public:
 	static void *operator new(size_t size, void *ptr) noexcept = delete;
 	static void *operator new(size_t size, memory::pool_t *ptr) noexcept;
 
-	static void operator delete(void *ptr) noexcept;
-	static void operator delete(void *ptr, align_val_t al) noexcept;
+	static inline void operator delete(void *ptr) noexcept { __abi_operator_delete(ptr); }
+	static inline void operator delete(void *ptr, align_val_t al) noexcept {
+		__abi_operator_delete(ptr, toInt(al));
+	}
 
 	virtual ~RefAlloc();
 
@@ -106,6 +108,10 @@ protected:
 	void destroySelfContained(memory::allocator_t *);
 
 	atomic<uint32_t> _referenceCount = 1;
+
+private:
+	static void __abi_operator_delete(void *ptr) noexcept;
+	static void __abi_operator_delete(void *ptr, size_t) noexcept;
 };
 
 class SPRT_API Ref : public RefAlloc {
@@ -116,7 +122,11 @@ public:
 	// If SPRT_REF_DEBUG is not enabled - it's noop
 
 #if SPRT_REF_DEBUG
-	virtual ~Ref() { memleak::releaseRef(this); }
+	virtual ~Ref() {
+		if (isRetainTrackerEnabled()) {
+			memleak::releaseRef(this);
+		}
+	}
 
 	virtual uint64_t retain(uint64_t value = Max<uint64_t>) {
 		incrementReferenceCount();
@@ -318,17 +328,27 @@ public:
 	using Parent::Parent;
 	using Parent::operator=;
 
-	template <typename B, typename enable_if<is_convertible<B *, _Base *>{}>::type * = nullptr>
+	template <typename B, typename enable_if<is_convertible_v<B *, _Base *>>::type * = nullptr>
+	Rc(const Rc<B> &value) noexcept {
+		this->set(value);
+	}
+
+	template <typename B, typename enable_if<is_convertible_v<B *, _Base *>>::type * = nullptr>
+	Rc(NotNull<B> value) noexcept {
+		this->set(value);
+	}
+
+	template <typename B, typename enable_if<is_convertible_v<B *, _Base *>>::type * = nullptr>
 	inline Rc &operator=(const Rc<B> &value) noexcept;
 
-	template <typename B, typename enable_if<is_convertible<B *, _Base *>{}>::type * = nullptr>
+	template <typename B, typename enable_if<is_convertible_v<B *, _Base *>>::type * = nullptr>
 	inline Rc &operator=(Rc<B> &&value) noexcept;
 
-	template <typename B, typename enable_if<is_convertible<B *, _Base *>{}>::type * = nullptr>
+	template <typename B, typename enable_if<is_convertible_v<B *, _Base *>>::type * = nullptr>
 	Rc &operator=(NotNull<B>) noexcept;
 
 	// upcast
-	template <typename B, typename enable_if<is_convertible<B *, _Base *>{}>::type * = nullptr>
+	template <typename B, typename enable_if<is_convertible_v<B *, _Base *>>::type * = nullptr>
 	B *get_cast() const noexcept;
 
 	// Direct call of `get` should not be on empty storage
@@ -338,14 +358,14 @@ public:
 
 	operator NotNull<_Base>() const noexcept;
 
-	template <typename B, typename enable_if<is_convertible<_Base *, B *>{}>::type * = nullptr>
+	template <typename B, typename enable_if<is_convertible_v<_Base *, B *>>::type * = nullptr>
 	operator NotNull<B>() const noexcept;
 
 	_Base *operator->() const noexcept;
 
 	explicit operator bool() const noexcept;
 
-	template <typename B, typename enable_if<is_convertible<_Base *, B *>{}>::type * = nullptr>
+	template <typename B, typename enable_if<is_convertible_v<_Base *, B *>>::type * = nullptr>
 	operator Rc<B>() noexcept;
 
 	template <typename Target>
@@ -453,7 +473,7 @@ auto SharedRef<T>::create(Args &&...args) -> SharedRef * {
 	memory::perform([&] {
 		shared = new (pool) SharedRef(SharedRefMode::Pool, nullptr, pool);
 		if (shared) {
-			shared->_shared = new (pool) T(shared, pool, forward<Args>(args)...);
+			shared->_shared = new (pool) T(shared, pool, sprt::forward<Args>(args)...);
 		}
 	}, pool);
 	return shared;
@@ -468,7 +488,7 @@ auto SharedRef<T>::create(memory::pool_t *p, Args &&...args) -> SharedRef * {
 	memory::perform([&] {
 		shared = new (pool) SharedRef(SharedRefMode::Pool, nullptr, pool);
 		if (shared) {
-			shared->_shared = new (pool) T(shared, pool, forward<Args>(args)...);
+			shared->_shared = new (pool) T(shared, pool, sprt::forward<Args>(args)...);
 		}
 		if (p) {
 			shared->_parent = p;
@@ -496,7 +516,7 @@ auto SharedRef<T>::create(SharedRefMode mode, Args &&...args) -> SharedRef * {
 	memory::perform([&] {
 		shared = new (pool) SharedRef(mode, alloc, pool);
 		if (shared) {
-			shared->_shared = new (pool) T(shared, pool, forward<Args>(args)...);
+			shared->_shared = new (pool) T(shared, pool, sprt::forward<Args>(args)...);
 		}
 	}, pool);
 	return shared;
@@ -866,16 +886,20 @@ template <class... Args>
 inline auto Rc<_Base>::create(Args &&...args) -> Self {
 	static_assert(is_base_of<Ref, _Base>::value, "Rc base class should be derived from Ref");
 
-	if constexpr (requires(Type *pRet, Args &&...args) { pRet->init(forward<Args>(args)...); }) {
+	if constexpr (requires(Type *pRet, Args &&...args) {
+					  pRet->init(sprt::forward<Args>(args)...);
+				  }) {
 		auto pRet = new (nothrow) Type();
-		if (pRet->init(forward<Args>(args)...)) {
+		if (pRet->init(sprt::forward<Args>(args)...)) {
 			return Self(pRet, true); // unsafe assignment
 		} else {
 			delete pRet;
 			return Self(nullptr);
 		}
-	} else if constexpr (requires(Args &&...args) { new (nothrow) Type(forward<Args>(args)...); }) {
-		auto pRet = new (nothrow) Type(forward<Args>(args)...);
+	} else if constexpr (requires(Args &&...args) {
+							 new (nothrow) Type(sprt::forward<Args>(args)...);
+						 }) {
+		auto pRet = new (nothrow) Type(sprt::forward<Args>(args)...);
 		return Self(pRet, true); // unsafe assignment
 	} else {
 		static_assert(false, "Fail to detect Type::init(...) or Type(...) with arguments provided");
@@ -893,18 +917,18 @@ template <typename _Base>
 template <class... Args>
 inline auto Rc<_Base>::alloc(Args &&...args) -> Self {
 	static_assert(is_base_of<Ref, _Base>::value, "Rc base class should be derived from Ref");
-	return Self(new (nothrow) Type(forward<Args>(args)...), true);
+	return Self(new (nothrow) Type(sprt::forward<Args>(args)...), true);
 }
 
 template <typename _Base>
-template <typename B, typename enable_if<is_convertible<B *, _Base *>{}>::type *>
+template <typename B, typename enable_if<is_convertible_v<B *, _Base *>>::type *>
 inline auto Rc<_Base>::operator=(const Rc<B> &value) noexcept -> Rc & {
 	this->set(value);
 	return *this;
 }
 
 template <typename _Base>
-template <typename B, typename enable_if<is_convertible<B *, _Base *>{}>::type *>
+template <typename B, typename enable_if<is_convertible_v<B *, _Base *>>::type *>
 inline auto Rc<_Base>::operator=(Rc<B> &&value) noexcept -> Rc & {
 	this->_ptr = static_cast<Type *>(value._ptr);
 	value._ptr = nullptr;
@@ -916,7 +940,7 @@ inline auto Rc<_Base>::operator=(Rc<B> &&value) noexcept -> Rc & {
 }
 
 template <typename _Base>
-template <typename B, typename enable_if<is_convertible<B *, _Base *>{}>::type *>
+template <typename B, typename enable_if<is_convertible_v<B *, _Base *>>::type *>
 inline auto Rc<_Base>::operator=(NotNull<B> value) noexcept -> Rc & {
 	this->set(value.get());
 	return *this;
@@ -924,7 +948,7 @@ inline auto Rc<_Base>::operator=(NotNull<B> value) noexcept -> Rc & {
 
 // upcast
 template <typename _Base>
-template <typename B, typename enable_if<is_convertible<B *, _Base *>{}>::type *>
+template <typename B, typename enable_if<is_convertible_v<B *, _Base *>>::type *>
 inline auto Rc<_Base>::get_cast() const noexcept -> B * {
 	return static_cast<B *>(this->_ptr);
 }
@@ -950,7 +974,7 @@ inline Rc<_Base>::operator NotNull<_Base>() const noexcept {
 }
 
 template <typename _Base>
-template <typename B, typename enable_if<is_convertible<_Base *, B *>{}>::type *>
+template <typename B, typename enable_if<is_convertible_v<_Base *, B *>>::type *>
 inline Rc<_Base>::operator NotNull<B>() const noexcept {
 	auto ptr = get();
 	sprt_passert(ptr, "");
@@ -968,7 +992,7 @@ inline Rc<_Base>::operator bool() const noexcept {
 }
 
 template <typename _Base>
-template <typename B, typename enable_if<is_convertible<_Base *, B *>{}>::type *>
+template <typename B, typename enable_if<is_convertible_v<_Base *, B *>>::type *>
 inline Rc<_Base>::operator Rc<B>() noexcept {
 	return Rc<B>(static_cast<B *>(get()));
 }
@@ -988,7 +1012,7 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(Args &&.
 	auto pRet = Type::create();
 	Self ret(nullptr);
 	pRet->perform([&](_Base *base) {
-		if (base->init(forward<Args>(args)...)) {
+		if (base->init(sprt::forward<Args>(args)...)) {
 			ret = Self(pRet, true); // unsafe assignment
 		}
 	});
@@ -1005,7 +1029,7 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(memory::
 	auto pRet = Type::create(pool);
 	Self ret(nullptr);
 	pRet->perform([&](_Base *base) {
-		if (base->init(forward<Args>(args)...)) {
+		if (base->init(sprt::forward<Args>(args)...)) {
 			ret = Self(pRet, true); // unsafe assignment
 		}
 	});
@@ -1022,7 +1046,7 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(SharedRe
 	auto pRet = Type::create(mode);
 	Self ret(nullptr);
 	pRet->perform([&](_Base *base) {
-		if (base->init(forward<Args>(args)...)) {
+		if (base->init(sprt::forward<Args>(args)...)) {
 			ret = Self(pRet, true); // unsafe assignment
 		}
 	});
@@ -1040,21 +1064,21 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::alloc() {
 template <typename _Base>
 template <class... Args>
 inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::alloc(Args &&...args) {
-	return Self(Type::create(forward<Args>(args)...), true);
+	return Self(Type::create(sprt::forward<Args>(args)...), true);
 }
 
 template <typename _Base>
 template <class... Args>
 inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::alloc(memory::pool_t *pool,
 		Args &&...args) {
-	return Self(Type::create(pool, forward<Args>(args)...), true);
+	return Self(Type::create(pool, sprt::forward<Args>(args)...), true);
 }
 
 template <typename _Base>
 template <class... Args>
 inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::alloc(SharedRefMode mode,
 		Args &&...args) {
-	return Self(Type::create(mode, forward<Args>(args)...), true);
+	return Self(Type::create(mode, sprt::forward<Args>(args)...), true);
 }
 
 } // namespace sprt

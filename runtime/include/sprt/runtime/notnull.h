@@ -72,7 +72,7 @@ public:
 		SPRT_ASSUME(_ptr != nullptr);
 	}
 
-	template <typename U, typename = enable_if_t<is_convertible<U *, element_type>::value>>
+	template <typename U, typename = enable_if_t<is_convertible_v<U *, element_type>>>
 	constexpr NotNull(const NotNull<U> &other) noexcept : NotNull(other.get()) { }
 
 	NotNull(const NotNull &other) noexcept = default;

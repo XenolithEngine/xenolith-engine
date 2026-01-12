@@ -77,7 +77,7 @@ constexpr inline bool isinf(double value) { return __builtin_isinf(value); }
 // numbers::pi replacement from std
 namespace sprt::numbers {
 
-template <typename T>
+template <typename T = float>
 inline constexpr T Pi =
 		enable_if_t<is_floating_point_v<T>, T>(3.141592653589793238462643383279502884L);
 

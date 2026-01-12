@@ -389,7 +389,7 @@ void App::inspectDrawables(const callback<void(StringView, jint)> &cb) {
 
 	auto packageName = Application.getPackageName(jAppRef);
 
-	auto drawableClassName = StringBuffer<char>::create(packageName.getString(), ".R$drawable");
+	auto drawableClassName = memory::dynstring::create(packageName.getString(), ".R$drawable");
 	auto drawablesClass = classLoader.findClass(env, drawableClassName);
 	if (drawablesClass) {
 		classLoader.foreachField(drawablesClass,
@@ -427,16 +427,16 @@ void App::handleLowMemory(const jni::Ref &ref) {
 	}
 }
 
-static StringBuffer<char> getApplicationName(App *proxy, const jni::Ref &ctx) {
+static memory::dynstring getApplicationName(App *proxy, const jni::Ref &ctx) {
 	auto jAppInfo = proxy->Application.getApplicationInfo(ctx);
 	if (!jAppInfo) {
-		return StringBuffer<char>();
+		return memory::dynstring();
 	}
 
 	auto labelRes = proxy->ApplicationInfo.labelRes(jAppInfo);
 	if (labelRes == 0) {
 		auto jNonLocalizedLabel = proxy->ApplicationInfo.nonLocalizedLabel(jAppInfo);
-		return StringBuffer<char>::create(
+		return StreamTraits<char>::toString(
 				proxy->CharSequence.toString(jNonLocalizedLabel).getString());
 	} else {
 		auto jAppName = proxy->Application.getString(ctx, jint(labelRes));
@@ -444,21 +444,21 @@ static StringBuffer<char> getApplicationName(App *proxy, const jni::Ref &ctx) {
 	}
 }
 
-static StringBuffer<char> getApplicationVersion(App *proxy, const jni::Ref &ctx,
+static memory::dynstring getApplicationVersion(App *proxy, const jni::Ref &ctx,
 		const jni::RefString &jPackageName) {
 	auto jpm = proxy->Application.getPackageManager(ctx);
 	if (!jpm) {
-		return StringBuffer<char>();
+		return memory::dynstring();
 	}
 
 	auto jinfo = proxy->PackageManager.getPackageInfo(jpm, jPackageName, 0);
 	if (!jinfo) {
-		return StringBuffer<char>();
+		return memory::dynstring();
 	}
 
 	auto jversion = proxy->PackageInfo.versionName(jinfo);
 	if (!jversion) {
-		return StringBuffer<char>();
+		return memory::dynstring();
 	}
 
 	return jversion.getString();

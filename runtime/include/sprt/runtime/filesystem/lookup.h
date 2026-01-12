@@ -206,9 +206,27 @@ enum class OpenFlags : uint32_t {
 	Truncate = 1 << 4,
 	CreateExclusive = 1 << 5,
 	DelOnClose = 1 << 6,
+
+	Override = Write | Create | Truncate,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(OpenFlags)
+
+enum class PollFlags : uint16_t {
+	None = 0,
+	In = 0x001, /* There is data to read.  */
+	Pri = 0x002, /* There is urgent data to read.  */
+	Out = 0x004, /* Writing now will not block.  */
+	Err = 0X008, /* ERROR CONDITION.  */
+	HungUp = 0X010, /* HUNG UP.  */
+	Invalid = 0X020, /* INVALID POLLING REQUEST.  */
+
+	PollMask = 0x3FFF,
+	CloseFd = 0x4000,
+	AllowMulti = 0x8000, // Allow edge-triggered multishot setups
+};
+
+SPRT_DEFINE_ENUM_AS_MASK(PollFlags)
 
 enum class MappingType {
 	Private,
@@ -253,6 +271,8 @@ struct LocationInterface {
 			__sprt_mode_t prot, size_t offset, size_t len, Status *) = nullptr;
 	Status (*_munmap)(uint8_t *region, uint8_t storage[16]) = nullptr;
 	Status (*_msync)(uint8_t *region, uint8_t storage[16]) = nullptr;
+
+	__sprt_FILE *(*_fdopen)(void *, const char *, Status *) = nullptr;
 };
 
 struct LocationInfo {

@@ -21,7 +21,6 @@
  **/
 
 #include <sprt/runtime/log.h>
-#include <sprt/runtime/stringbuffer.h>
 #include <sprt/runtime/math.h>
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/__sprt_stdio.h>
@@ -418,31 +417,31 @@ void print(LogType type, StringView prefix, StringView tag, StringView text) {
 		}
 	});
 #else
-	StringBuffer<char> prefixData;
+	memory::dynstring prefixData;
 	if (prefix.empty()) {
 		switch (type) {
 		case LogType::Verbose:
-			prefixData = StringBuffer<char>::create(s_logInit.reverse, s_logInit.bold,
+			prefixData = StreamTraits<char>::toString(s_logInit.reverse, s_logInit.bold,
 					s_logInit.fcyan, "[V]", s_logInit.fdef, s_logInit.drop);
 			break;
 		case LogType::Debug:
-			prefixData = StringBuffer<char>::create(s_logInit.reverse, s_logInit.bold,
+			prefixData = StreamTraits<char>::toString(s_logInit.reverse, s_logInit.bold,
 					s_logInit.fblue, "[D]", s_logInit.fdef, s_logInit.drop);
 			break;
 		case LogType::Info:
-			prefixData = StringBuffer<char>::create(s_logInit.reverse, s_logInit.bold,
+			prefixData = StreamTraits<char>::toString(s_logInit.reverse, s_logInit.bold,
 					s_logInit.fgreen, "[I]", s_logInit.fdef, s_logInit.drop);
 			break;
 		case LogType::Warn:
-			prefixData = StringBuffer<char>::create(s_logInit.reverse, s_logInit.bold,
+			prefixData = StreamTraits<char>::toString(s_logInit.reverse, s_logInit.bold,
 					s_logInit.fyellow, "[W]", s_logInit.fdef, s_logInit.drop);
 			break;
 		case LogType::Error:
-			prefixData = StringBuffer<char>::create(s_logInit.reverse, s_logInit.bold,
+			prefixData = StreamTraits<char>::toString(s_logInit.reverse, s_logInit.bold,
 					s_logInit.fred, "[E]", s_logInit.fdef, s_logInit.drop);
 			break;
 		case LogType::Fatal:
-			prefixData = StringBuffer<char>::create(s_logInit.reverse, s_logInit.bold,
+			prefixData = StreamTraits<char>::toString(s_logInit.reverse, s_logInit.bold,
 					s_logInit.fred, "[F]", s_logInit.fdef, s_logInit.drop);
 			break;
 		}

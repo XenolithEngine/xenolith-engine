@@ -1,0 +1,968 @@
+/**
+ Copyright (c) 2025 Stappler Team <admin@stappler.org>
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
+
+#include "private/window/linux/SPRTWinLinuxWaylandProtocol.h"
+#include "private/window/linux/SPRTWinLinuxWaylandLibrary.h"
+#include "private/window/linux/SPRTWinLinuxWaylandKeys.h"
+#include "private/window/linux/SPRTWinLinux.h"
+
+#include <sprt/runtime/window/types.h>
+#include <sprt/runtime/log.h>
+#include <sprt/runtime/compress.h>
+
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
+
+namespace sprt::window {
+
+struct WaylandIconInfo {
+	uint32_t width;
+	uint32_t height;
+	BytesView compressedData;
+};
+
+// clang-format off
+static const uint8_t s_iconCloseData[] = {
+0x1f, 0x00, 0x01, 0x00, 0xff, 0xbd, 0x8f, 0x67, 0x67, 0x67, 0x5c, 0x55, 0x55, 0x55, 0x06, 0x20, 
+0x00, 0x05, 0x00, 0x1c, 0x00, 0x00, 0x24, 0x00, 0x0f, 0x54, 0x00, 0x1d, 0x8e, 0x67, 0x67, 0x67, 
+0xff, 0x67, 0x67, 0x67, 0xb0, 0x5c, 0x00, 0x05, 0x54, 0x00, 0x13, 0xb0, 0x24, 0x00, 0x0f, 0x5c, 
+0x00, 0x16, 0x83, 0x66, 0x66, 0x66, 0x05, 0x67, 0x67, 0x67, 0xaf, 0x38, 0x00, 0x5b, 0xb5, 0x6d, 
+0x6d, 0x6d, 0x07, 0x54, 0x00, 0x0e, 0x1c, 0x00, 0x0f, 0x5c, 0x00, 0x20, 0x40, 0x68, 0x68, 0x68, 
+0xb6, 0x40, 0x00, 0x0f, 0x54, 0x00, 0x2d, 0x0f, 0xf0, 0x00, 0x04, 0x18, 0xb0, 0x0c, 0x00, 0x0f, 
+0x7c, 0x01, 0x09, 0x0f, 0x14, 0x01, 0x20, 0x0f, 0xa8, 0x00, 0x2a, 0x0e, 0xb4, 0x00, 0x06, 0x58, 
+0x00, 0x04, 0x14, 0x01, 0x0f, 0x54, 0x00, 0x30, 0x01, 0xfc, 0x00, 0x4f, 0x66, 0x66, 0x66, 0xb1, 
+0x08, 0x01, 0x31, 0x0f, 0x14, 0x02, 0x01, 0x0f, 0xcc, 0x01, 0x01, 0x0f, 0x54, 0x00, 0x2d, 0x0f, 
+0x1c, 0x00, 0x11, 0x0f, 0x18, 0x03, 0x15, 0x00, 0xfc, 0x00, 0x0f, 0x18, 0x03, 0x39, 0x0f, 0xc8, 
+0x03, 0x45, 0x0f, 0x01, 0x00, 0xff, 0x8d, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 
+};
+
+static const WaylandIconInfo s_iconClose{
+        22, 22, s_iconCloseData,
+};
+
+static const uint8_t s_iconMaximizeData[] = {
+0x1f, 0x00, 0x01, 0x00, 0xff, 0xb9, 0x8f, 0x64, 0x64, 0x64, 0x40, 0x66, 0x66, 0x66, 0x80, 0x04, 
+0x00, 0x11, 0x00, 0x2c, 0x00, 0x0f, 0x58, 0x00, 0x15, 0x00, 0x30, 0x00, 0x8f, 0x65, 0x65, 0x65, 
+0xfc, 0x65, 0x65, 0x65, 0xe0, 0x04, 0x00, 0x0c, 0x10, 0xfc, 0x2c, 0x00, 0x0f, 0x58, 0x00, 0x1c, 
+0x1f, 0xe0, 0x28, 0x00, 0x0d, 0x00, 0x24, 0x00, 0x0f, 0x58, 0x00, 0xff, 0xff, 0x8a, 0x0f, 0x18, 
+0x03, 0x3e, 0x0f, 0xc8, 0x03, 0x45, 0x0f, 0x01, 0x00, 0xff, 0x8d, 0x50, 0x00, 0x00, 0x00, 0x00, 
+0x00, 
+};
+
+static const WaylandIconInfo s_iconMaximize{
+        22, 22, s_iconMaximizeData,
+};
+
+static const uint8_t s_iconMinimizeData[] = {
+0x1f, 0x00, 0x01, 0x00, 0xff, 0xff, 0xff, 0xff, 0x7c, 0x8f, 0x68, 0x68, 0x68, 0x20, 0x64, 0x64, 
+0x64, 0x40, 0x04, 0x00, 0x11, 0x00, 0x2c, 0x00, 0x0f, 0x58, 0x00, 0x15, 0x8f, 0x66, 0x66, 0x66, 
+0x80, 0x65, 0x65, 0x65, 0xff, 0x04, 0x00, 0x11, 0x00, 0x2c, 0x00, 0x0f, 0x58, 0x00, 0x15, 0x40, 
+0x60, 0x60, 0x60, 0x10, 0x88, 0x00, 0x0f, 0x04, 0x00, 0x11, 0x00, 0x2c, 0x00, 0x0f, 0xff, 0x02, 
+0xff, 0xff, 0x0e, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 
+};
+
+static const WaylandIconInfo s_iconMinimize{
+        22, 22, s_iconMinimizeData,
+};
+
+static const uint8_t s_iconRestoreData[] = {
+0x1f, 0x00, 0x01, 0x00, 0xff, 0xc5, 0x8f, 0x65, 0x65, 0x65, 0x30, 0x68, 0x68, 0x68, 0x40, 0x04, 
+0x00, 0x08, 0x1f, 0x20, 0x58, 0x00, 0x21, 0x8f, 0x67, 0x67, 0x67, 0x54, 0x66, 0x66, 0x66, 0x70, 
+0x04, 0x00, 0x01, 0x40, 0x65, 0x65, 0x65, 0x7e, 0x5c, 0x00, 0x0f, 0xcc, 0x00, 0x3d, 0x00, 0x5c, 
+0x00, 0x0f, 0x58, 0x00, 0x18, 0x00, 0xfc, 0x00, 0x5f, 0x60, 0x65, 0x65, 0x65, 0xc0, 0x04, 0x00, 
+0x08, 0x1f, 0x90, 0x58, 0x00, 0x20, 0x00, 0x30, 0x00, 0x9c, 0x80, 0x65, 0x65, 0x65, 0xf4, 0x64, 
+0x64, 0x64, 0xa0, 0x04, 0x00, 0x40, 0x65, 0x65, 0x65, 0xdc, 0x5c, 0x00, 0x0f, 0x58, 0x00, 0x28, 
+0x1f, 0xe0, 0x1c, 0x00, 0x01, 0x03, 0x5c, 0x00, 0x0f, 0x58, 0x00, 0xfa, 0x00, 0x84, 0x02, 0x00, 
+0xe0, 0x02, 0x0f, 0x58, 0x00, 0x3d, 0x0f, 0x98, 0x02, 0x20, 0x00, 0x58, 0x00, 0x10, 0xfc, 0x5c, 
+0x00, 0x1e, 0x65, 0x04, 0x00, 0x1f, 0xf4, 0x58, 0x00, 0x24, 0x00, 0x94, 0x00, 0x10, 0x40, 0x5c, 
+0x00, 0x0f, 0x04, 0x00, 0x05, 0x00, 0xe0, 0x02, 0x0f, 0xb3, 0x05, 0xff, 0xc1, 0x50, 0x00, 0x00, 
+0x00, 0x00, 0x00, 
+};
+
+static const WaylandIconInfo s_iconRestore{
+        22, 22, s_iconRestoreData,
+};
+
+static const uint8_t s_iconCloseActiveData[] = {
+0x1f, 0x00, 0x01, 0x00, 0x04, 0xf3, 0x05, 0xb8, 0xb8, 0xb8, 0x12, 0xb4, 0xb4, 0xb4, 0x62, 0xb4, 
+0xb4, 0xb4, 0xb0, 0xb3, 0xb3, 0xb3, 0xd8, 0xb3, 0xb3, 0xb3, 0xf4, 0x04, 0x00, 0x00, 0x0c, 0x00, 
+0xaf, 0xaf, 0xb3, 0xb3, 0xb3, 0x61, 0xb4, 0xb4, 0xb4, 0x11, 0x00, 0x01, 0x00, 0x14, 0xff, 0x01, 
+0xaa, 0xaa, 0xaa, 0x09, 0xb2, 0xb2, 0xb2, 0x7b, 0xb3, 0xb3, 0xb3, 0xf1, 0xb3, 0xb3, 0xb3, 0xff, 
+0x04, 0x00, 0x0c, 0x50, 0xf0, 0xb4, 0xb4, 0xb4, 0x7a, 0x34, 0x00, 0x0f, 0x54, 0x00, 0x09, 0x8f, 
+0xb1, 0xb1, 0xb1, 0x1a, 0xb3, 0xb3, 0xb3, 0xca, 0x50, 0x00, 0x10, 0x0c, 0x04, 0x00, 0x5f, 0xcf, 
+0xb3, 0xb3, 0xb3, 0x1e, 0x54, 0x00, 0x01, 0x8f, 0xb6, 0xb6, 0xb6, 0x1c, 0xb3, 0xb3, 0xb3, 0xe4, 
+0x54, 0x00, 0x20, 0x04, 0x04, 0x00, 0x5c, 0xe3, 0xb3, 0xb3, 0xb3, 0x1b, 0xfc, 0x00, 0x4f, 0xb3, 
+0xb3, 0xb3, 0xcd, 0x54, 0x00, 0x28, 0x01, 0x04, 0x00, 0x84, 0xb2, 0xb2, 0xb2, 0xcb, 0xbf, 0xbf, 
+0xbf, 0x08, 0x58, 0x00, 0x4c, 0xb4, 0xb4, 0xb4, 0x7d, 0x24, 0x00, 0x7f, 0xce, 0xce, 0xce, 0xff, 
+0xb5, 0xb5, 0xb5, 0x44, 0x00, 0x06, 0x00, 0x1c, 0x00, 0x00, 0x24, 0x00, 0x1e, 0xb3, 0x1c, 0x00, 
+0x14, 0x78, 0xf8, 0x01, 0x0c, 0xa4, 0x01, 0x00, 0x30, 0x00, 0x00, 0x01, 0x00, 0x3e, 0xe7, 0xe7, 
+0xe7, 0x5c, 0x00, 0x03, 0x54, 0x00, 0x00, 0x1c, 0x00, 0x00, 0x01, 0x00, 0x0e, 0x5c, 0x00, 0x01, 
+0xcc, 0x01, 0x5c, 0x11, 0xb2, 0xb2, 0xb2, 0x63, 0x38, 0x00, 0x35, 0xb4, 0xb4, 0xb4, 0x38, 0x00, 
+0x39, 0xe9, 0xe9, 0xe9, 0x5c, 0x00, 0x08, 0x54, 0x00, 0x0c, 0x1c, 0x00, 0x07, 0x10, 0x01, 0x13, 
+0x60, 0xa0, 0x02, 0x1f, 0xff, 0x5c, 0x00, 0x11, 0x0f, 0x54, 0x00, 0x11, 0x03, 0x04, 0x00, 0x5e, 
+0xae, 0xb3, 0xb3, 0xb3, 0xdb, 0x44, 0x01, 0x0e, 0x9c, 0x00, 0x00, 0x08, 0x00, 0x08, 0x0c, 0x00, 
+0x0f, 0x7c, 0x01, 0x09, 0x03, 0x3c, 0x03, 0x1f, 0xf3, 0xe4, 0x01, 0x09, 0x08, 0xb8, 0x00, 0x0f, 
+0xa8, 0x00, 0x10, 0x04, 0x04, 0x00, 0x1e, 0xf3, 0x58, 0x00, 0x0e, 0xb4, 0x00, 0x0f, 0x58, 0x00, 
+0x20, 0x00, 0x08, 0x02, 0x1f, 0xd9, 0x54, 0x00, 0x11, 0x3f, 0xe8, 0xe8, 0xe8, 0x08, 0x01, 0x19, 
+0x13, 0xd7, 0x44, 0x04, 0x0f, 0xb8, 0x01, 0x12, 0x0f, 0x28, 0x02, 0x09, 0x0b, 0x10, 0x02, 0x10, 
+0xad, 0x98, 0x04, 0x0f, 0x68, 0x02, 0x19, 0x0f, 0x5c, 0x00, 0x14, 0x13, 0x5e, 0x18, 0x03, 0x1e, 
+0xf0, 0x18, 0x03, 0x02, 0xfc, 0x00, 0x0f, 0x18, 0x03, 0x20, 0x53, 0xef, 0xaf, 0xaf, 0xaf, 0x10, 
+0xc8, 0x03, 0x1f, 0x7a, 0xc8, 0x03, 0x38, 0x14, 0x76, 0x20, 0x04, 0x00, 0x2c, 0x04, 0x00, 0x34, 
+0x04, 0x0f, 0x78, 0x04, 0x2c, 0x00, 0x04, 0x00, 0x18, 0xc9, 0x78, 0x04, 0x00, 0x01, 0x00, 0x00, 
+0xe4, 0x04, 0x03, 0xec, 0x04, 0x0f, 0x54, 0x00, 0x25, 0x10, 0xe2, 0xc0, 0x05, 0x0f, 0xd8, 0x05, 
+0x08, 0x1f, 0xc9, 0x54, 0x00, 0x20, 0x1f, 0xce, 0xd8, 0x05, 0x05, 0x08, 0x14, 0x01, 0x00, 0xec, 
+0x04, 0x0c, 0xcc, 0x01, 0x0f, 0x04, 0x00, 0x04, 0x10, 0xef, 0x50, 0x01, 0x4f, 0xb6, 0xb6, 0xb6, 
+0x07, 0xe8, 0x06, 0x15, 0x03, 0xec, 0x04, 0x13, 0x60, 0xe0, 0x02, 0x17, 0xd7, 0x9c, 0x03, 0x10, 
+0xd7, 0x58, 0x04, 0x44, 0xb4, 0xb4, 0xb4, 0x5f, 0xf8, 0x01, 0x0b, 0x01, 0x00, 0x50, 0x00, 0x00, 
+0x00, 0x00, 0x00, 
+};
+
+static const WaylandIconInfo s_iconCloseActive{
+        22, 22, s_iconCloseActiveData,
+};
+
+static const uint8_t s_iconMaximizeActiveData[] = {
+0x1f, 0x00, 0x01, 0x00, 0x04, 0xf3, 0x05, 0xb8, 0xb8, 0xb8, 0x12, 0xb4, 0xb4, 0xb4, 0x62, 0xb4, 
+0xb4, 0xb4, 0xb0, 0xb3, 0xb3, 0xb3, 0xd8, 0xb3, 0xb3, 0xb3, 0xf4, 0x04, 0x00, 0x00, 0x0c, 0x00, 
+0xaf, 0xaf, 0xb3, 0xb3, 0xb3, 0x61, 0xb4, 0xb4, 0xb4, 0x11, 0x00, 0x01, 0x00, 0x14, 0xff, 0x01, 
+0xaa, 0xaa, 0xaa, 0x09, 0xb2, 0xb2, 0xb2, 0x7b, 0xb3, 0xb3, 0xb3, 0xf1, 0xb3, 0xb3, 0xb3, 0xff, 
+0x04, 0x00, 0x0c, 0x50, 0xf0, 0xb4, 0xb4, 0xb4, 0x7a, 0x34, 0x00, 0x0f, 0x54, 0x00, 0x09, 0x8f, 
+0xb1, 0xb1, 0xb1, 0x1a, 0xb3, 0xb3, 0xb3, 0xca, 0x50, 0x00, 0x10, 0x0c, 0x04, 0x00, 0x5f, 0xcf, 
+0xb3, 0xb3, 0xb3, 0x1e, 0x54, 0x00, 0x01, 0x8f, 0xb6, 0xb6, 0xb6, 0x1c, 0xb3, 0xb3, 0xb3, 0xe4, 
+0x54, 0x00, 0x20, 0x04, 0x04, 0x00, 0x5c, 0xe3, 0xb3, 0xb3, 0xb3, 0x1b, 0xfc, 0x00, 0x4f, 0xb3, 
+0xb3, 0xb3, 0xcd, 0x54, 0x00, 0x28, 0x01, 0x04, 0x00, 0x84, 0xb2, 0xb2, 0xb2, 0xcb, 0xbf, 0xbf, 
+0xbf, 0x08, 0x58, 0x00, 0x48, 0xb4, 0xb4, 0xb4, 0x7d, 0x20, 0x00, 0x7f, 0xc6, 0xc6, 0xc6, 0xff, 
+0xd9, 0xd9, 0xd9, 0x04, 0x00, 0x12, 0x00, 0x2c, 0x00, 0x0b, 0x60, 0x00, 0x14, 0x78, 0xf8, 0x01, 
+0x0c, 0xa4, 0x01, 0x00, 0x30, 0x00, 0x7f, 0xfe, 0xfe, 0xfe, 0xff, 0xf6, 0xf6, 0xf6, 0x04, 0x00, 
+0x0a, 0x00, 0x24, 0x00, 0x00, 0x2c, 0x00, 0x1e, 0xb3, 0xcc, 0x01, 0x5c, 0x11, 0xb2, 0xb2, 0xb2, 
+0x63, 0xd0, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x38, 0x00, 0x0f, 0xf8, 0x00, 0x0d, 0x00, 0x24, 0x00, 
+0x0e, 0x58, 0x00, 0x01, 0x10, 0x01, 0x13, 0x60, 0xa0, 0x02, 0x0f, 0x58, 0x00, 0x39, 0x00, 0x04, 
+0x00, 0x5f, 0xae, 0xb3, 0xb3, 0xb3, 0xdb, 0x58, 0x00, 0x40, 0x00, 0x3c, 0x03, 0x1f, 0xf3, 0x58, 
+0x00, 0x40, 0x1f, 0xf3, 0x58, 0x00, 0x44, 0x00, 0x08, 0x02, 0x1f, 0xd9, 0x58, 0x00, 0x40, 0x13, 
+0xd7, 0x44, 0x04, 0x0f, 0x10, 0x02, 0x3d, 0x10, 0xad, 0x98, 0x04, 0x0f, 0xb0, 0x00, 0x40, 0x13, 
+0x5e, 0x18, 0x03, 0x1f, 0xf0, 0x18, 0x03, 0x38, 0x53, 0xef, 0xaf, 0xaf, 0xaf, 0x10, 0xc8, 0x03, 
+0x1f, 0x7a, 0xc8, 0x03, 0x38, 0x14, 0x76, 0x20, 0x04, 0x00, 0x2c, 0x04, 0x00, 0x34, 0x04, 0x0f, 
+0x78, 0x04, 0x2c, 0x00, 0x04, 0x00, 0x18, 0xc9, 0x78, 0x04, 0x00, 0x01, 0x00, 0x00, 0xe4, 0x04, 
+0x03, 0xec, 0x04, 0x0f, 0x54, 0x00, 0x25, 0x10, 0xe2, 0xc0, 0x05, 0x0f, 0xd8, 0x05, 0x08, 0x1f, 
+0xc9, 0x54, 0x00, 0x20, 0x1f, 0xce, 0xd8, 0x05, 0x05, 0x08, 0x14, 0x01, 0x00, 0xec, 0x04, 0x0c, 
+0xcc, 0x01, 0x0f, 0x04, 0x00, 0x04, 0x10, 0xef, 0x50, 0x01, 0x4f, 0xb6, 0xb6, 0xb6, 0x07, 0xe8, 
+0x06, 0x15, 0x03, 0xec, 0x04, 0x13, 0x60, 0xe0, 0x02, 0x17, 0xd7, 0x9c, 0x03, 0x10, 0xd7, 0x58, 
+0x04, 0x44, 0xb4, 0xb4, 0xb4, 0x5f, 0xf8, 0x01, 0x0b, 0x01, 0x00, 0x50, 0x00, 0x00, 0x00, 0x00, 
+0x00, 
+};
+
+static const WaylandIconInfo s_iconMaximizeActive{
+        22, 22, s_iconMaximizeActiveData,
+};
+
+static const uint8_t s_iconMinimizeActiveData[] = {
+0x1f, 0x00, 0x01, 0x00, 0x04, 0xf3, 0x05, 0xb8, 0xb8, 0xb8, 0x12, 0xb4, 0xb4, 0xb4, 0x62, 0xb4, 
+0xb4, 0xb4, 0xb0, 0xb3, 0xb3, 0xb3, 0xd8, 0xb3, 0xb3, 0xb3, 0xf4, 0x04, 0x00, 0x00, 0x0c, 0x00, 
+0xaf, 0xaf, 0xb3, 0xb3, 0xb3, 0x61, 0xb4, 0xb4, 0xb4, 0x11, 0x00, 0x01, 0x00, 0x14, 0xff, 0x01, 
+0xaa, 0xaa, 0xaa, 0x09, 0xb2, 0xb2, 0xb2, 0x7b, 0xb3, 0xb3, 0xb3, 0xf1, 0xb3, 0xb3, 0xb3, 0xff, 
+0x04, 0x00, 0x0c, 0x50, 0xf0, 0xb4, 0xb4, 0xb4, 0x7a, 0x34, 0x00, 0x0f, 0x54, 0x00, 0x09, 0x8f, 
+0xb1, 0xb1, 0xb1, 0x1a, 0xb3, 0xb3, 0xb3, 0xca, 0x50, 0x00, 0x10, 0x0c, 0x04, 0x00, 0x5f, 0xcf, 
+0xb3, 0xb3, 0xb3, 0x1e, 0x54, 0x00, 0x01, 0x8f, 0xb6, 0xb6, 0xb6, 0x1c, 0xb3, 0xb3, 0xb3, 0xe4, 
+0x54, 0x00, 0x20, 0x04, 0x04, 0x00, 0x5c, 0xe3, 0xb3, 0xb3, 0xb3, 0x1b, 0xfc, 0x00, 0x4f, 0xb3, 
+0xb3, 0xb3, 0xcd, 0x54, 0x00, 0x28, 0x01, 0x04, 0x00, 0x84, 0xb2, 0xb2, 0xb2, 0xcb, 0xbf, 0xbf, 
+0xbf, 0x08, 0x58, 0x00, 0x4f, 0xb4, 0xb4, 0xb4, 0x7d, 0x54, 0x00, 0x2d, 0x07, 0x04, 0x00, 0x14, 
+0x78, 0xf8, 0x01, 0x0e, 0xa4, 0x01, 0x0f, 0x04, 0x00, 0x2a, 0x10, 0xf0, 0x28, 0x02, 0x4f, 0xb2, 
+0xb2, 0xb2, 0x63, 0x54, 0x00, 0x38, 0x04, 0x10, 0x01, 0x13, 0x60, 0xa0, 0x02, 0x1f, 0xff, 0x04, 
+0x00, 0x3c, 0x5f, 0xae, 0xb3, 0xb3, 0xb3, 0xdb, 0x58, 0x00, 0x40, 0x00, 0x3c, 0x03, 0x1f, 0xf3, 
+0x58, 0x00, 0x40, 0x1f, 0xf3, 0x58, 0x00, 0x44, 0x00, 0x08, 0x02, 0x1f, 0xd9, 0x58, 0x00, 0x40, 
+0x13, 0xd7, 0x44, 0x04, 0x09, 0x18, 0x00, 0x7f, 0xbd, 0xbd, 0xbd, 0xff, 0xc6, 0xc6, 0xc6, 0x04, 
+0x00, 0x12, 0x00, 0x2c, 0x00, 0x1e, 0xb3, 0x10, 0x02, 0x10, 0xad, 0x98, 0x04, 0x0c, 0x18, 0x00, 
+0x4f, 0xd9, 0xd9, 0xd9, 0xff, 0x01, 0x00, 0x15, 0x00, 0x2c, 0x00, 0x1e, 0xb3, 0xb0, 0x00, 0x13, 
+0x5e, 0x18, 0x03, 0x18, 0xf0, 0x18, 0x00, 0x31, 0xb8, 0xb8, 0xb8, 0x88, 0x00, 0x0f, 0x04, 0x00, 
+0x11, 0x00, 0x2c, 0x00, 0x0b, 0x54, 0x00, 0x53, 0xef, 0xaf, 0xaf, 0xaf, 0x10, 0xc8, 0x03, 0x1f, 
+0x7a, 0x5c, 0x01, 0x38, 0x14, 0x76, 0x20, 0x04, 0x00, 0x2c, 0x04, 0x00, 0x34, 0x04, 0x0f, 0x54, 
+0x00, 0x30, 0x18, 0xc9, 0x78, 0x04, 0x00, 0x01, 0x00, 0x00, 0xe4, 0x04, 0x03, 0xec, 0x04, 0x0f, 
+0x54, 0x00, 0x25, 0x10, 0xe2, 0xc0, 0x05, 0x0f, 0xd8, 0x05, 0x08, 0x1f, 0xc9, 0x54, 0x00, 0x20, 
+0x1f, 0xce, 0xd8, 0x05, 0x05, 0x08, 0x14, 0x01, 0x00, 0xec, 0x04, 0x0c, 0xcc, 0x01, 0x0f, 0x04, 
+0x00, 0x04, 0x10, 0xef, 0x50, 0x01, 0x4f, 0xb6, 0xb6, 0xb6, 0x07, 0xe8, 0x06, 0x15, 0x03, 0xec, 
+0x04, 0x13, 0x60, 0xe0, 0x02, 0x17, 0xd7, 0x9c, 0x03, 0x10, 0xd7, 0x58, 0x04, 0x44, 0xb4, 0xb4, 
+0xb4, 0x5f, 0xf8, 0x01, 0x0b, 0x01, 0x00, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 
+};
+
+static const WaylandIconInfo s_iconMinimizeActive{
+        22, 22, s_iconMinimizeActiveData,
+};
+
+static const uint8_t s_iconRestoreActiveData[] = {
+0x1f, 0x00, 0x01, 0x00, 0x04, 0xf3, 0x05, 0xb8, 0xb8, 0xb8, 0x12, 0xb1, 0xb1, 0xb1, 0x62, 0xb2, 
+0xb2, 0xb2, 0xb0, 0xb2, 0xb2, 0xb2, 0xd8, 0xb2, 0xb2, 0xb2, 0xf4, 0x04, 0x00, 0x00, 0x0c, 0x00, 
+0xaf, 0xaf, 0xb3, 0xb3, 0xb3, 0x61, 0xb4, 0xb4, 0xb4, 0x11, 0x00, 0x01, 0x00, 0x14, 0xff, 0x01, 
+0xaa, 0xaa, 0xaa, 0x09, 0xb2, 0xb2, 0xb2, 0x7b, 0xb2, 0xb2, 0xb2, 0xf1, 0xb2, 0xb2, 0xb2, 0xff, 
+0x04, 0x00, 0x09, 0x80, 0xb3, 0xb3, 0xb3, 0xf0, 0xb2, 0xb2, 0xb2, 0x7a, 0x34, 0x00, 0x0f, 0x54, 
+0x00, 0x09, 0x8f, 0xb1, 0xb1, 0xb1, 0x1a, 0xb2, 0xb2, 0xb2, 0xca, 0x50, 0x00, 0x0d, 0x0c, 0x04, 
+0x00, 0x8f, 0xb1, 0xb1, 0xb1, 0xcf, 0xb3, 0xb3, 0xb3, 0x1e, 0x54, 0x00, 0x01, 0x8f, 0xb6, 0xb6, 
+0xb6, 0x1c, 0xb2, 0xb2, 0xb2, 0xe4, 0x54, 0x00, 0x1d, 0x07, 0x5c, 0x00, 0x6e, 0xe3, 0xb3, 0xb3, 
+0xb3, 0x1b, 0x00, 0xfc, 0x00, 0x1f, 0xcd, 0x54, 0x00, 0x25, 0x07, 0x04, 0x00, 0x57, 0xcb, 0xbf, 
+0xbf, 0xbf, 0x08, 0x00, 0x01, 0x1f, 0x7d, 0x2c, 0x00, 0x05, 0x7f, 0xc0, 0xc0, 0xc0, 0xff, 0xc5, 
+0xc5, 0xc5, 0x04, 0x00, 0x06, 0x3c, 0xbc, 0xbc, 0xbc, 0x74, 0x01, 0x14, 0x78, 0xf8, 0x01, 0x0f, 
+0xa4, 0x01, 0x09, 0x7f, 0xcb, 0xcb, 0xcb, 0xff, 0xd4, 0xd4, 0xd4, 0x04, 0x00, 0x02, 0x31, 0xd8, 
+0xd8, 0xd8, 0x5c, 0x00, 0x0c, 0xcc, 0x01, 0x00, 0x28, 0x02, 0x4f, 0xb2, 0xb2, 0xb2, 0x63, 0xf8, 
+0x00, 0x25, 0x00, 0x5c, 0x00, 0x0c, 0x58, 0x00, 0x03, 0x04, 0x00, 0x13, 0x60, 0xa0, 0x02, 0x09, 
+0x18, 0x00, 0x7f, 0xcf, 0xcf, 0xcf, 0xff, 0xec, 0xec, 0xec, 0x04, 0x00, 0x06, 0x3e, 0xdd, 0xdd, 
+0xdd, 0x58, 0x00, 0x0a, 0xc4, 0x01, 0x5c, 0xae, 0xb2, 0xb2, 0xb2, 0xdb, 0x18, 0x00, 0xbd, 0xd9, 
+0xd9, 0xd9, 0xff, 0xfc, 0xfc, 0xfc, 0xff, 0xe2, 0xe2, 0xe2, 0x04, 0x00, 0x31, 0xf4, 0xf4, 0xf4, 
+0x5c, 0x00, 0x0f, 0xb0, 0x00, 0x0c, 0x00, 0x3c, 0x03, 0x1f, 0xf3, 0x58, 0x00, 0x01, 0x3f, 0xf6, 
+0xf6, 0xf6, 0xfc, 0x00, 0x02, 0x00, 0x5c, 0x00, 0x0f, 0x58, 0x00, 0x10, 0x1f, 0xf3, 0x58, 0x00, 
+0x44, 0x5f, 0xf1, 0xb1, 0xb1, 0xb1, 0xd9, 0x58, 0x00, 0x40, 0x10, 0xd7, 0x44, 0x04, 0x0f, 0x58, 
+0x00, 0x25, 0x00, 0x84, 0x02, 0x00, 0xe0, 0x02, 0x1e, 0xb2, 0x28, 0x00, 0x10, 0xad, 0x98, 0x04, 
+0x0f, 0x58, 0x00, 0x25, 0x0f, 0x90, 0x04, 0x08, 0x10, 0x5e, 0x18, 0x03, 0x03, 0x98, 0x04, 0x09, 
+0x58, 0x00, 0x31, 0xfe, 0xfe, 0xfe, 0x5c, 0x00, 0x0c, 0x04, 0x00, 0x00, 0x28, 0x02, 0x0f, 0x58, 
+0x00, 0x0c, 0x50, 0xef, 0xaf, 0xaf, 0xaf, 0x10, 0x74, 0x03, 0x00, 0xec, 0x04, 0x08, 0x1c, 0x00, 
+0x00, 0x34, 0x01, 0x00, 0x5c, 0x00, 0x0f, 0x04, 0x00, 0x05, 0x00, 0xe0, 0x02, 0x0f, 0x80, 0x04, 
+0x08, 0x14, 0x76, 0x20, 0x04, 0x00, 0x2c, 0x04, 0x00, 0x34, 0x04, 0x0f, 0x78, 0x04, 0x30, 0x18, 
+0xc9, 0x78, 0x04, 0x00, 0x01, 0x00, 0x00, 0xe4, 0x04, 0x00, 0xec, 0x04, 0x0f, 0x54, 0x00, 0x28, 
+0x10, 0xe2, 0xc0, 0x05, 0x0f, 0xd8, 0x05, 0x08, 0x1f, 0xc9, 0x54, 0x00, 0x20, 0x1f, 0xce, 0xd8, 
+0x05, 0x05, 0x08, 0x14, 0x01, 0x00, 0xec, 0x04, 0x0c, 0xcc, 0x01, 0x0f, 0xa4, 0x01, 0x05, 0x00, 
+0x50, 0x01, 0x4f, 0xb6, 0xb6, 0xb6, 0x07, 0xe8, 0x06, 0x15, 0x03, 0xec, 0x04, 0x13, 0x60, 0xe0, 
+0x02, 0x17, 0xd7, 0x9c, 0x03, 0x10, 0xd7, 0x58, 0x04, 0x44, 0xb1, 0xb1, 0xb1, 0x5f, 0xf8, 0x01, 
+0x0b, 0x01, 0x00, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00, 
+};
+
+static const WaylandIconInfo s_iconRestoreActive{
+        22, 22, s_iconRestoreActiveData,
+};
+// clang-format on
+
+ViewporterInterface::ViewporterInterface(const struct wl_interface *wl_surface_interface)
+: viewporter_types{
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	&wp_viewport_interface,
+	wl_surface_interface
+}, wp_viewporter_requests{
+	{ "destroy", "", viewporter_types + 0 },
+	{ "get_viewport", "no", viewporter_types + 4 },
+}, wp_viewport_requests{
+	{ "destroy", "", viewporter_types + 0 },
+	{ "set_source", "ffff", viewporter_types + 0 },
+	{ "set_destination", "ii", viewporter_types + 0 },
+}, wp_viewporter_interface{
+	"wp_viewporter", 1,
+	2, wp_viewporter_requests,
+	0, NULL,
+}, wp_viewport_interface{
+	"wp_viewport", 1,
+	3, wp_viewport_requests,
+	0, NULL,
+} { }
+
+XdgInterface::XdgInterface(const struct wl_interface *wl_output_interface, const struct wl_interface *wl_seat_interface,
+		const struct wl_interface *wl_surface_interface)
+: xdg_shell_types{
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	&xdg_positioner_interface,
+	&xdg_surface_interface,
+	wl_surface_interface,
+	&xdg_toplevel_interface,
+	&xdg_popup_interface,
+	&xdg_surface_interface,
+	&xdg_positioner_interface,
+	&xdg_toplevel_interface,
+	wl_seat_interface,
+	NULL,
+	NULL,
+	NULL,
+	wl_seat_interface,
+	NULL,
+	wl_seat_interface,
+	NULL,
+	NULL,
+	wl_output_interface,
+	wl_seat_interface,
+	NULL,
+	&xdg_positioner_interface,
+	NULL,
+}, xdg_wm_base_requests{
+	{ "destroy", "", xdg_shell_types + 0 },
+	{ "create_positioner", "n", xdg_shell_types + 4 },
+	{ "get_xdg_surface", "no", xdg_shell_types + 5 },
+	{ "pong", "u", xdg_shell_types + 0 },
+}, xdg_wm_base_events{
+	{ "ping", "u", xdg_shell_types + 0 },
+}, xdg_positioner_requests{
+	{ "destroy", "", xdg_shell_types + 0 },
+	{ "set_size", "ii", xdg_shell_types + 0 },
+	{ "set_anchor_rect", "iiii", xdg_shell_types + 0 },
+	{ "set_anchor", "u", xdg_shell_types + 0 },
+	{ "set_gravity", "u", xdg_shell_types + 0 },
+	{ "set_constraint_adjustment", "u", xdg_shell_types + 0 },
+	{ "set_offset", "ii", xdg_shell_types + 0 },
+	{ "set_reactive", "3", xdg_shell_types + 0 },
+	{ "set_parent_size", "3ii", xdg_shell_types + 0 },
+	{ "set_parent_configure", "3u", xdg_shell_types + 0 },
+}, xdg_surface_requests{
+	{ "destroy", "", xdg_shell_types + 0 },
+	{ "get_toplevel", "n", xdg_shell_types + 7 },
+	{ "get_popup", "n?oo", xdg_shell_types + 8 },
+	{ "set_window_geometry", "iiii", xdg_shell_types + 0 },
+	{ "ack_configure", "u", xdg_shell_types + 0 },
+}, xdg_surface_events{
+	{ "configure", "u", xdg_shell_types + 0 },
+}, xdg_toplevel_requests{
+	{ "destroy", "", xdg_shell_types + 0 },
+	{ "set_parent", "?o", xdg_shell_types + 11 },
+	{ "set_title", "s", xdg_shell_types + 0 },
+	{ "set_app_id", "s", xdg_shell_types + 0 },
+	{ "show_window_menu", "ouii", xdg_shell_types + 12 },
+	{ "move", "ou", xdg_shell_types + 16 },
+	{ "resize", "ouu", xdg_shell_types + 18 },
+	{ "set_max_size", "ii", xdg_shell_types + 0 },
+	{ "set_min_size", "ii", xdg_shell_types + 0 },
+	{ "set_maximized", "", xdg_shell_types + 0 },
+	{ "unset_maximized", "", xdg_shell_types + 0 },
+	{ "set_fullscreen", "?o", xdg_shell_types + 21 },
+	{ "unset_fullscreen", "", xdg_shell_types + 0 },
+	{ "set_minimized", "", xdg_shell_types + 0 },
+}, xdg_toplevel_events{
+	{ "configure", "iia", xdg_shell_types + 0 },
+	{ "close", "", xdg_shell_types + 0 },
+	{ "configure_bounds", "4ii", xdg_shell_types + 0 },
+	{ "wm_capabilities", "5a", xdg_shell_types + 0 },
+}, xdg_popup_requests{
+	{ "destroy", "", xdg_shell_types + 0 },
+	{ "grab", "ou", xdg_shell_types + 22 },
+	{ "reposition", "3ou", xdg_shell_types + 24 },
+}, xdg_popup_events{
+	{ "configure", "iiii", xdg_shell_types + 0 },
+	{ "popup_done", "", xdg_shell_types + 0 },
+	{ "repositioned", "3u", xdg_shell_types + 0 },
+}, xdg_wm_base_interface{
+	"xdg_wm_base", 7,
+	4, xdg_wm_base_requests,
+	1, xdg_wm_base_events,
+}, xdg_positioner_interface{
+	"xdg_positioner", 7,
+	10, xdg_positioner_requests,
+	0, NULL,
+}, xdg_surface_interface{
+	"xdg_surface", 7,
+	5, xdg_surface_requests,
+	1, xdg_surface_events,
+}, xdg_toplevel_interface{
+	"xdg_toplevel", 7,
+	14, xdg_toplevel_requests,
+	4, xdg_toplevel_events,
+}, xdg_popup_interface{
+	"xdg_popup", 7,
+	3, xdg_popup_requests,
+	3, xdg_popup_events,
+} { }
+
+XdgDecorationInterface::XdgDecorationInterface(const struct wl_interface *xdg_toplevel_interface)
+: xdg_decoration_unstable_v1_types{
+	NULL,
+	&zxdg_toplevel_decoration_v1_interface,
+	xdg_toplevel_interface,
+},
+zxdg_decoration_manager_v1_requests{
+	{ "destroy", "", xdg_decoration_unstable_v1_types + 0 },
+	{ "get_toplevel_decoration", "no", xdg_decoration_unstable_v1_types + 1 },
+},
+zxdg_toplevel_decoration_v1_requests{
+	{ "destroy", "", xdg_decoration_unstable_v1_types + 0 },
+	{ "set_mode", "u", xdg_decoration_unstable_v1_types + 0 },
+	{ "unset_mode", "", xdg_decoration_unstable_v1_types + 0 },
+},
+zxdg_toplevel_decoration_v1_events{
+	{ "configure", "u", xdg_decoration_unstable_v1_types + 0 },
+},
+zxdg_decoration_manager_v1_interface{
+	"zxdg_decoration_manager_v1", 1,
+	2, zxdg_decoration_manager_v1_requests,
+	0, NULL,
+},
+zxdg_toplevel_decoration_v1_interface{
+	"zxdg_toplevel_decoration_v1", 1,
+	3, zxdg_toplevel_decoration_v1_requests,
+	1, zxdg_toplevel_decoration_v1_events,
+} { }
+
+CursorShapeInterface::CursorShapeInterface(const struct wl_interface *wl_pointer_interface)
+: cursor_shape_v1_types{
+	NULL,
+	NULL,
+	&wp_cursor_shape_device_v1_interface,
+	wl_pointer_interface,
+	&wp_cursor_shape_device_v1_interface,
+	nullptr,
+},
+wp_cursor_shape_manager_v1_requests{
+	{ "destroy", "", cursor_shape_v1_types + 0 },
+	{ "get_pointer", "no", cursor_shape_v1_types + 2 },
+	{ "get_tablet_tool_v2", "no", cursor_shape_v1_types + 4 },
+},
+wp_cursor_shape_device_v1_requests{
+	{ "destroy", "", cursor_shape_v1_types + 0 },
+	{ "set_shape", "uu", cursor_shape_v1_types + 0 },
+},
+wp_cursor_shape_manager_v1_interface{
+	"wp_cursor_shape_manager_v1", 2,
+	3, wp_cursor_shape_manager_v1_requests,
+	0, NULL,
+},
+wp_cursor_shape_device_v1_interface{
+	"wp_cursor_shape_device_v1", 2,
+	2, wp_cursor_shape_device_v1_requests,
+	0, NULL,
+} { }
+
+WaylandBuffer::~WaylandBuffer() {
+	if (buffer) {
+		wayland->wl_buffer_destroy(buffer);
+		buffer = nullptr;
+	}
+}
+
+bool WaylandBuffer::init(WaylandLibrary *lib, wl_shm_pool *pool, int32_t offset, int32_t w,
+		int32_t h, int32_t stride, uint32_t format) {
+	wayland = lib;
+	width = w;
+	height = h;
+	buffer = wayland->wl_shm_pool_create_buffer(pool, offset, width, height, stride, format);
+	return true;
+}
+
+KeyState::KeyState() {
+	keycodes[KEY_GRAVE] = InputKeyCode::GRAVE_ACCENT;
+	keycodes[KEY_1] = InputKeyCode::_1;
+	keycodes[KEY_2] = InputKeyCode::_2;
+	keycodes[KEY_3] = InputKeyCode::_3;
+	keycodes[KEY_4] = InputKeyCode::_4;
+	keycodes[KEY_5] = InputKeyCode::_5;
+	keycodes[KEY_6] = InputKeyCode::_6;
+	keycodes[KEY_7] = InputKeyCode::_7;
+	keycodes[KEY_8] = InputKeyCode::_8;
+	keycodes[KEY_9] = InputKeyCode::_9;
+	keycodes[KEY_0] = InputKeyCode::_0;
+	keycodes[KEY_SPACE] = InputKeyCode::SPACE;
+	keycodes[KEY_MINUS] = InputKeyCode::MINUS;
+	keycodes[KEY_EQUAL] = InputKeyCode::EQUAL;
+	keycodes[KEY_Q] = InputKeyCode::Q;
+	keycodes[KEY_W] = InputKeyCode::W;
+	keycodes[KEY_E] = InputKeyCode::E;
+	keycodes[KEY_R] = InputKeyCode::R;
+	keycodes[KEY_T] = InputKeyCode::T;
+	keycodes[KEY_Y] = InputKeyCode::Y;
+	keycodes[KEY_U] = InputKeyCode::U;
+	keycodes[KEY_I] = InputKeyCode::I;
+	keycodes[KEY_O] = InputKeyCode::O;
+	keycodes[KEY_P] = InputKeyCode::P;
+	keycodes[KEY_LEFTBRACE] = InputKeyCode::LEFT_BRACKET;
+	keycodes[KEY_RIGHTBRACE] = InputKeyCode::RIGHT_BRACKET;
+	keycodes[KEY_A] = InputKeyCode::A;
+	keycodes[KEY_S] = InputKeyCode::S;
+	keycodes[KEY_D] = InputKeyCode::D;
+	keycodes[KEY_F] = InputKeyCode::F;
+	keycodes[KEY_G] = InputKeyCode::G;
+	keycodes[KEY_H] = InputKeyCode::H;
+	keycodes[KEY_J] = InputKeyCode::J;
+	keycodes[KEY_K] = InputKeyCode::K;
+	keycodes[KEY_L] = InputKeyCode::L;
+	keycodes[KEY_SEMICOLON] = InputKeyCode::SEMICOLON;
+	keycodes[KEY_APOSTROPHE] = InputKeyCode::APOSTROPHE;
+	keycodes[KEY_Z] = InputKeyCode::Z;
+	keycodes[KEY_X] = InputKeyCode::X;
+	keycodes[KEY_C] = InputKeyCode::C;
+	keycodes[KEY_V] = InputKeyCode::V;
+	keycodes[KEY_B] = InputKeyCode::B;
+	keycodes[KEY_N] = InputKeyCode::N;
+	keycodes[KEY_M] = InputKeyCode::M;
+	keycodes[KEY_COMMA] = InputKeyCode::COMMA;
+	keycodes[KEY_DOT] = InputKeyCode::PERIOD;
+	keycodes[KEY_SLASH] = InputKeyCode::SLASH;
+	keycodes[KEY_BACKSLASH] = InputKeyCode::BACKSLASH;
+	keycodes[KEY_ESC] = InputKeyCode::ESCAPE;
+	keycodes[KEY_TAB] = InputKeyCode::TAB;
+	keycodes[KEY_LEFTSHIFT] = InputKeyCode::LEFT_SHIFT;
+	keycodes[KEY_RIGHTSHIFT] = InputKeyCode::RIGHT_SHIFT;
+	keycodes[KEY_LEFTCTRL] = InputKeyCode::LEFT_CONTROL;
+	keycodes[KEY_RIGHTCTRL] = InputKeyCode::RIGHT_CONTROL;
+	keycodes[KEY_LEFTALT] = InputKeyCode::LEFT_ALT;
+	keycodes[KEY_RIGHTALT] = InputKeyCode::RIGHT_ALT;
+	keycodes[KEY_LEFTMETA] = InputKeyCode::LEFT_SUPER;
+	keycodes[KEY_RIGHTMETA] = InputKeyCode::RIGHT_SUPER;
+	keycodes[KEY_COMPOSE] = InputKeyCode::MENU;
+	keycodes[KEY_NUMLOCK] = InputKeyCode::NUM_LOCK;
+	keycodes[KEY_CAPSLOCK] = InputKeyCode::CAPS_LOCK;
+	keycodes[KEY_PRINT] = InputKeyCode::PRINT_SCREEN;
+	keycodes[KEY_SCROLLLOCK] = InputKeyCode::SCROLL_LOCK;
+	keycodes[KEY_PAUSE] = InputKeyCode::PAUSE;
+	keycodes[KEY_DELETE] = InputKeyCode::DELETE;
+	keycodes[KEY_BACKSPACE] = InputKeyCode::BACKSPACE;
+	keycodes[KEY_ENTER] = InputKeyCode::ENTER;
+	keycodes[KEY_HOME] = InputKeyCode::HOME;
+	keycodes[KEY_END] = InputKeyCode::END;
+	keycodes[KEY_PAGEUP] = InputKeyCode::PAGE_UP;
+	keycodes[KEY_PAGEDOWN] = InputKeyCode::PAGE_DOWN;
+	keycodes[KEY_INSERT] = InputKeyCode::INSERT;
+	keycodes[KEY_LEFT] = InputKeyCode::LEFT;
+	keycodes[KEY_RIGHT] = InputKeyCode::RIGHT;
+	keycodes[KEY_DOWN] = InputKeyCode::DOWN;
+	keycodes[KEY_UP] = InputKeyCode::UP;
+	keycodes[KEY_F1] = InputKeyCode::F1;
+	keycodes[KEY_F2] = InputKeyCode::F2;
+	keycodes[KEY_F3] = InputKeyCode::F3;
+	keycodes[KEY_F4] = InputKeyCode::F4;
+	keycodes[KEY_F5] = InputKeyCode::F5;
+	keycodes[KEY_F6] = InputKeyCode::F6;
+	keycodes[KEY_F7] = InputKeyCode::F7;
+	keycodes[KEY_F8] = InputKeyCode::F8;
+	keycodes[KEY_F9] = InputKeyCode::F9;
+	keycodes[KEY_F10] = InputKeyCode::F10;
+	keycodes[KEY_F11] = InputKeyCode::F11;
+	keycodes[KEY_F12] = InputKeyCode::F12;
+	keycodes[KEY_F13] = InputKeyCode::F13;
+	keycodes[KEY_F14] = InputKeyCode::F14;
+	keycodes[KEY_F15] = InputKeyCode::F15;
+	keycodes[KEY_F16] = InputKeyCode::F16;
+	keycodes[KEY_F17] = InputKeyCode::F17;
+	keycodes[KEY_F18] = InputKeyCode::F18;
+	keycodes[KEY_F19] = InputKeyCode::F19;
+	keycodes[KEY_F20] = InputKeyCode::F20;
+	keycodes[KEY_F21] = InputKeyCode::F21;
+	keycodes[KEY_F22] = InputKeyCode::F22;
+	keycodes[KEY_F23] = InputKeyCode::F23;
+	keycodes[KEY_F24] = InputKeyCode::F24;
+	keycodes[KEY_KPSLASH] = InputKeyCode::KP_DIVIDE;
+	keycodes[KEY_KPASTERISK] = InputKeyCode::KP_MULTIPLY;
+	keycodes[KEY_KPMINUS] = InputKeyCode::KP_SUBTRACT;
+	keycodes[KEY_KPPLUS] = InputKeyCode::KP_ADD;
+	keycodes[KEY_KP0] = InputKeyCode::KP_0;
+	keycodes[KEY_KP1] = InputKeyCode::KP_1;
+	keycodes[KEY_KP2] = InputKeyCode::KP_2;
+	keycodes[KEY_KP3] = InputKeyCode::KP_3;
+	keycodes[KEY_KP4] = InputKeyCode::KP_4;
+	keycodes[KEY_KP5] = InputKeyCode::KP_5;
+	keycodes[KEY_KP6] = InputKeyCode::KP_6;
+	keycodes[KEY_KP7] = InputKeyCode::KP_7;
+	keycodes[KEY_KP8] = InputKeyCode::KP_8;
+	keycodes[KEY_KP9] = InputKeyCode::KP_9;
+	keycodes[KEY_KPDOT] = InputKeyCode::KP_DECIMAL;
+	keycodes[KEY_KPEQUAL] = InputKeyCode::KP_EQUAL;
+	keycodes[KEY_KPENTER] = InputKeyCode::KP_ENTER;
+	keycodes[KEY_102ND] = InputKeyCode::WORLD_2;
+}
+
+static int createAnonymousFile(off_t size) {
+	static const char tpl[] = "/xl-wayland-XXXXXX";
+	const char *path;
+	int fd;
+	int ret;
+
+	fd = ::memfd_create("xl-wayland", MFD_CLOEXEC | MFD_ALLOW_SEALING);
+	if (fd >= 0) {
+		::fcntl(fd, F_ADD_SEALS, F_SEAL_SHRINK | F_SEAL_SEAL);
+	} else {
+		path = getenv("XDG_RUNTIME_DIR");
+		if (!path) {
+			errno = ENOENT;
+			return -1;
+		}
+
+		char *tmpname = (char *)::calloc(strlen(path) + sizeof(tpl), 1);
+		::strcpy(tmpname, path);
+		::strcat(tmpname, tpl);
+
+		fd = ::mkostemp(tmpname, O_CLOEXEC);
+		if (fd >= 0) {
+			::unlink(tmpname);
+			::free(tmpname);
+		} else {
+			::free(tmpname);
+			return -1;
+		}
+	}
+
+	ret = ::posix_fallocate(fd, 0, size);
+	if (ret != 0) {
+		::close(fd);
+		errno = ret;
+		return -1;
+	}
+	return fd;
+}
+
+template <typename T>
+struct SharedSuballocation {
+	T *data = nullptr;
+	uint32_t offset = 0; // in bytes
+	uint32_t size = 0; // in bytes
+};
+
+struct SharedDataBlock {
+	uint8_t *data = nullptr;
+	uint32_t size = 0;
+	uint32_t offset = 0;
+
+	template <typename T>
+	SharedSuballocation<T> allocate(uint32_t allocSize) {
+		uint32_t totalSize = allocSize * sizeof(T);
+		if (offset + totalSize <= size) {
+			auto ret = data + offset;
+			auto off = offset;
+			offset += totalSize;
+			return SharedSuballocation<T>{reinterpret_cast<T *>(ret), off, totalSize};
+		}
+		log::vperror(__SPRT_LOCATION, "Wayland",
+				"Fail to suballocate shared memory for decorations");
+		return SharedSuballocation<T>{nullptr};
+	}
+};
+
+bool allocateDecorations(WaylandLibrary *wayland, wl_shm *shm, WaylandDecorationInfo &info) {
+	auto size = info.width * sizeof(Color4B) * 8; // plain shadows
+	size += (info.width + info.inset) * (info.width + info.inset) * sizeof(Color4B)
+			* 8; // cornerShadows
+	size += (info.inset * info.inset) * sizeof(Color4B) * 8; // header corners
+	size += 4 * sizeof(Color4B); // header titles
+
+	struct IconData {
+		WaylandDecorationName name;
+		WaylandIconInfo info;
+		Bytes data;
+		bool active;
+	};
+
+	Vector<IconData> icons;
+
+	auto loadData = [&](WaylandDecorationName name, const WaylandIconInfo &data, bool active) {
+		auto &icon = icons.emplace_back(IconData{name, data});
+		icon.data.resize(icon.info.width * icon.info.height * 4);
+
+		sprt::lz4_decompressData(icon.info.compressedData.data(), icon.info.compressedData.size(),
+				icon.data.data(), icon.data.size());
+
+		return icon.data.size();
+	};
+
+	size += loadData(WaylandDecorationName::IconClose, s_iconClose, false);
+	size += loadData(WaylandDecorationName::IconMaximize, s_iconMaximize, false);
+	size += loadData(WaylandDecorationName::IconMinimize, s_iconMinimize, false);
+	size += loadData(WaylandDecorationName::IconRestore, s_iconRestore, false);
+	size += loadData(WaylandDecorationName::IconClose, s_iconCloseActive, true);
+	size += loadData(WaylandDecorationName::IconMaximize, s_iconMaximizeActive, true);
+	size += loadData(WaylandDecorationName::IconMinimize, s_iconMinimizeActive, true);
+	size += loadData(WaylandDecorationName::IconRestore, s_iconRestoreActive, true);
+
+	const int fd = createAnonymousFile(size);
+	if (fd < 0) {
+		return false;
+	}
+
+	auto sharedMemData = ::mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+	if (sharedMemData == MAP_FAILED) {
+		::close(fd);
+		return false;
+	}
+
+	SharedDataBlock data{reinterpret_cast<uint8_t *>(sharedMemData), static_cast<uint32_t>(size)};
+
+	auto pool = wayland->wl_shm_create_pool(shm, fd, size);
+	::close(fd);
+
+	auto bufferTopLeftInactive = data.allocate<Color4B>(info.width);
+	auto bufferBottomRightInactive = data.allocate<Color4B>(info.width);
+	auto bufferTopLeftActive = data.allocate<Color4B>(info.width);
+	auto bufferBottomRightActive = data.allocate<Color4B>(info.width);
+
+	makeShadowVector([&](uint32_t j, float value) {
+		bufferTopLeftInactive.data[j].a = (uint8_t)(255.0 * info.shadowMin * value);
+		bufferTopLeftActive.data[j].a = (uint8_t)(255.0 * info.shadowMax * value);
+	}, info.width);
+
+	// make normal
+	::__sprt_memcpy(bufferBottomRightInactive.data, bufferTopLeftInactive.data,
+			bufferTopLeftInactive.size);
+	sprt::reverse(bufferTopLeftInactive.data, bufferTopLeftInactive.data + info.width);
+
+	::__sprt_memcpy(bufferBottomRightActive.data, bufferTopLeftActive.data,
+			bufferTopLeftActive.size);
+	sprt::reverse(bufferTopLeftActive.data, bufferTopLeftActive.data + info.width);
+
+	info.ret->top = Rc<WaylandBuffer>::create(wayland, pool, bufferTopLeftInactive.offset, 1,
+			info.width, sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+	info.ret->left = Rc<WaylandBuffer>::create(wayland, pool, bufferTopLeftInactive.offset,
+			info.width, 1, info.width * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+	info.ret->bottom = Rc<WaylandBuffer>::create(wayland, pool, bufferBottomRightInactive.offset, 1,
+			info.width, sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+	info.ret->right = Rc<WaylandBuffer>::create(wayland, pool, bufferBottomRightInactive.offset,
+			info.width, 1, info.width * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+
+	info.ret->topActive = Rc<WaylandBuffer>::create(wayland, pool, bufferTopLeftActive.offset, 1,
+			info.width, sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+	info.ret->leftActive = Rc<WaylandBuffer>::create(wayland, pool, bufferTopLeftActive.offset,
+			info.width, 1, info.width * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+	info.ret->bottomActive = Rc<WaylandBuffer>::create(wayland, pool,
+			bufferBottomRightActive.offset, 1, info.width, sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+	info.ret->rightActive = Rc<WaylandBuffer>::create(wayland, pool, bufferBottomRightActive.offset,
+			info.width, 1, info.width * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+
+	do {
+		auto cWidth = (info.width + info.inset);
+
+		auto targetA = data.allocate<Color4B>(cWidth * cWidth);
+		auto targetB = data.allocate<Color4B>(cWidth * cWidth);
+		auto targetC = data.allocate<Color4B>(cWidth * cWidth);
+		auto targetD = data.allocate<Color4B>(cWidth * cWidth);
+		auto targetE = data.allocate<Color4B>(cWidth * cWidth);
+		auto targetF = data.allocate<Color4B>(cWidth * cWidth);
+		auto targetG = data.allocate<Color4B>(cWidth * cWidth);
+		auto targetH = data.allocate<Color4B>(cWidth * cWidth);
+
+		makeShadowCorner([&](uint32_t i, uint32_t j, float value) {
+			auto valueA = (uint8_t)(255.0 * info.shadowMin * value);
+			auto valueB = (uint8_t)(255.0 * info.shadowMax * value);
+			targetA.data[i * cWidth + j].a = valueA;
+			targetB.data[(cWidth - i - 1) * cWidth + (cWidth - j - 1)].a = valueA;
+			targetC.data[(i)*cWidth + (cWidth - j - 1)].a = valueA;
+			targetD.data[(cWidth - i - 1) * cWidth + (j)].a = valueA;
+			targetE.data[i * cWidth + j].a = valueB;
+			targetF.data[(cWidth - i - 1) * cWidth + (cWidth - j - 1)].a = valueB;
+			targetG.data[(i)*cWidth + (cWidth - j - 1)].a = valueB;
+			targetH.data[(cWidth - i - 1) * cWidth + (j)].a = valueB;
+		}, cWidth, info.inset);
+
+		info.ret->bottomRight = Rc<WaylandBuffer>::create(wayland, pool, targetA.offset, cWidth,
+				cWidth, cWidth * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+		info.ret->topLeft = Rc<WaylandBuffer>::create(wayland, pool, targetB.offset, cWidth, cWidth,
+				cWidth * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+		info.ret->bottomLeft = Rc<WaylandBuffer>::create(wayland, pool, targetC.offset, cWidth,
+				cWidth, cWidth * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+		info.ret->topRight = Rc<WaylandBuffer>::create(wayland, pool, targetD.offset, cWidth,
+				cWidth, cWidth * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+		info.ret->bottomRightActive = Rc<WaylandBuffer>::create(wayland, pool, targetE.offset,
+				cWidth, cWidth, cWidth * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+		info.ret->topLeftActive = Rc<WaylandBuffer>::create(wayland, pool, targetF.offset, cWidth,
+				cWidth, cWidth * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+		info.ret->bottomLeftActive = Rc<WaylandBuffer>::create(wayland, pool, targetG.offset,
+				cWidth, cWidth, cWidth * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+		info.ret->topRightActive = Rc<WaylandBuffer>::create(wayland, pool, targetH.offset, cWidth,
+				cWidth, cWidth * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+	} while (0);
+
+	do {
+		auto targetA = data.allocate<Color4B>(info.inset * info.inset);
+		auto targetB = data.allocate<Color4B>(info.inset * info.inset);
+		auto targetC = data.allocate<Color4B>(info.inset * info.inset);
+		auto targetD = data.allocate<Color4B>(info.inset * info.inset);
+
+		Color4B tmpA = Color4B(info.headerLight.r, info.headerLight.g, info.headerLight.b, 255);
+		Color4B tmpB = Color4B(info.headerLightActive.r, info.headerLightActive.g,
+				info.headerLightActive.b, 255);
+
+		makeRoundedCorners([&](uint32_t i, uint32_t j, float value) {
+			if (value > 0.0f) {
+				targetA.data[i * info.inset + j] = tmpA;
+				targetB.data[i * info.inset + j] = tmpB;
+				targetC.data[i * info.inset + (info.inset - j - 1)] = tmpA;
+				targetD.data[i * info.inset + (info.inset - j - 1)] = tmpB;
+			} else {
+				targetA.data[i * info.inset + j] = Color4B{0, 0, 0, 0};
+				targetB.data[i * info.inset + j] = Color4B(0, 0, 0, 0);
+				targetC.data[i * info.inset + (info.inset - j - 1)] = Color4B(0, 0, 0, 0);
+				targetD.data[i * info.inset + (info.inset - j - 1)] = Color4B(0, 0, 0, 0);
+			}
+		}, info.inset);
+
+		info.ret->headerLeft = Rc<WaylandBuffer>::create(wayland, pool, targetA.offset, info.inset,
+				info.inset, info.inset * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+		info.ret->headerLeftActive = Rc<WaylandBuffer>::create(wayland, pool, targetB.offset,
+				info.inset, info.inset, info.inset * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+		info.ret->headerRight = Rc<WaylandBuffer>::create(wayland, pool, targetC.offset, info.inset,
+				info.inset, info.inset * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+		info.ret->headerRightActive = Rc<WaylandBuffer>::create(wayland, pool, targetD.offset,
+				info.inset, info.inset, info.inset * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+	} while (0);
+
+	do {
+		auto targetA = data.allocate<Color4B>(info.inset * info.inset);
+		auto targetB = data.allocate<Color4B>(info.inset * info.inset);
+		auto targetC = data.allocate<Color4B>(info.inset * info.inset);
+		auto targetD = data.allocate<Color4B>(info.inset * info.inset);
+
+		Color4B tmpA = Color4B(info.headerDark.r, info.headerDark.g, info.headerDark.b, 255);
+		Color4B tmpB = Color4B(info.headerDarkActive.r, info.headerDarkActive.g,
+				info.headerDarkActive.b, 255);
+
+		makeRoundedCorners([&](uint32_t i, uint32_t j, float value) {
+			if (value > 0.0f) {
+				targetA.data[i * info.inset + j] = tmpA;
+				targetB.data[i * info.inset + j] = tmpB;
+				targetC.data[i * info.inset + (info.inset - j - 1)] = tmpA;
+				targetD.data[i * info.inset + (info.inset - j - 1)] = tmpB;
+			} else {
+				targetA.data[i * info.inset + j] = Color4B(0, 0, 0, 0);
+				targetB.data[i * info.inset + j] = Color4B(0, 0, 0, 0);
+				targetC.data[i * info.inset + (info.inset - j - 1)] = Color4B(0, 0, 0, 0);
+				targetD.data[i * info.inset + (info.inset - j - 1)] = Color4B(0, 0, 0, 0);
+			}
+		}, info.inset);
+
+		info.ret->headerDarkLeft = Rc<WaylandBuffer>::create(wayland, pool, targetA.offset,
+				info.inset, info.inset, info.inset * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+		info.ret->headerDarkLeftActive = Rc<WaylandBuffer>::create(wayland, pool, targetB.offset,
+				info.inset, info.inset, info.inset * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+		info.ret->headerDarkRight = Rc<WaylandBuffer>::create(wayland, pool, targetB.offset,
+				info.inset, info.inset, info.inset * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+		info.ret->headerDarkRightActive = Rc<WaylandBuffer>::create(wayland, pool, targetD.offset,
+				info.inset, info.inset, info.inset * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+	} while (0);
+
+	auto retA = data.allocate<Color4B>(1);
+	auto retB = data.allocate<Color4B>(1);
+
+	retA.data[0] = Color4B(info.headerLight.b, info.headerLight.g, info.headerLight.r, 255);
+	retB.data[0] = Color4B(info.headerLightActive.b, info.headerLightActive.g,
+			info.headerLightActive.r, 255);
+
+	info.ret->headerLightCenter = Rc<WaylandBuffer>::create(wayland, pool, retA.offset, 1, 1,
+			sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+	info.ret->headerLightCenterActive = Rc<WaylandBuffer>::create(wayland, pool, retB.offset, 1, 1,
+			sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+
+	retA = data.allocate<Color4B>(1);
+	retB = data.allocate<Color4B>(1);
+
+	retA.data[0] = Color4B(info.headerDark.b, info.headerDark.g, info.headerDark.r, 255);
+	retB.data[0] =
+			Color4B(info.headerDarkActive.b, info.headerDarkActive.g, info.headerDarkActive.r, 255);
+
+	info.ret->headerDarkCenter = Rc<WaylandBuffer>::create(wayland, pool, retA.offset, 1, 1,
+			sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+	info.ret->headerDarkCenterActive = Rc<WaylandBuffer>::create(wayland, pool, retB.offset, 1, 1,
+			sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+
+	for (IconData &it : icons) {
+		auto iconBuf = data.allocate<uint8_t>(it.data.size());
+		memcpy(iconBuf.data, it.data.data(), it.data.size());
+
+		Rc<WaylandBuffer> buf =
+				Rc<WaylandBuffer>::create(wayland, pool, iconBuf.offset, it.info.width,
+						it.info.height, it.info.width * sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+		switch (it.name) {
+		case WaylandDecorationName::IconClose:
+			if (it.active) {
+				info.ret->iconCloseActive = move(buf);
+			} else {
+				info.ret->iconClose = move(buf);
+			}
+			break;
+		case WaylandDecorationName::IconMaximize:
+			if (it.active) {
+				info.ret->iconMaximizeActive = move(buf);
+			} else {
+				info.ret->iconMaximize = move(buf);
+			}
+			break;
+		case WaylandDecorationName::IconMinimize:
+			if (it.active) {
+				info.ret->iconMinimizeActive = move(buf);
+			} else {
+				info.ret->iconMinimize = move(buf);
+			}
+			break;
+		case WaylandDecorationName::IconRestore:
+			if (it.active) {
+				info.ret->iconRestoreActive = move(buf);
+			} else {
+				info.ret->iconRestore = move(buf);
+			}
+			break;
+		default: break;
+		}
+	}
+
+	::munmap(sharedMemData, size);
+	wayland->wl_shm_pool_destroy(pool);
+
+	return true;
+}
+
+uint32_t getWaylandCursor(WindowCursor cursor) {
+	switch (cursor) {
+	case WindowCursor::Undefined: return 0; break;
+	case WindowCursor::Default: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT; break;
+	case WindowCursor::ContextMenu: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CONTEXT_MENU; break;
+	case WindowCursor::Help: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_HELP; break;
+	case WindowCursor::Pointer: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_POINTER; break;
+	case WindowCursor::Progress: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_PROGRESS; break;
+	case WindowCursor::Wait: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_WAIT; break;
+	case WindowCursor::Cell: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CELL; break;
+	case WindowCursor::Crosshair: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_CROSSHAIR; break;
+	case WindowCursor::Text: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_TEXT; break;
+	case WindowCursor::VerticalText: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_VERTICAL_TEXT; break;
+	case WindowCursor::Alias: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ALIAS; break;
+	case WindowCursor::Copy: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_COPY; break;
+	case WindowCursor::Move: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_MOVE; break;
+	case WindowCursor::NoDrop: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NO_DROP; break;
+	case WindowCursor::NotAllowed: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NOT_ALLOWED; break;
+	case WindowCursor::Grab: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_GRAB; break;
+	case WindowCursor::Grabbing: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_GRABBING; break;
+
+	case WindowCursor::AllScroll: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ALL_SCROLL; break;
+	case WindowCursor::ZoomIn: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ZOOM_IN; break;
+	case WindowCursor::ZoomOut: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ZOOM_OUT; break;
+	case WindowCursor::DndAsk: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DND_ASK; break;
+
+	case WindowCursor::RightPtr: return 0; break;
+	case WindowCursor::Pencil: return 0; break;
+	case WindowCursor::Target: return 0; break;
+
+	case WindowCursor::ResizeRight: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_E_RESIZE; break;
+	case WindowCursor::ResizeTop: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_N_RESIZE; break;
+	case WindowCursor::ResizeTopRight: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NE_RESIZE; break;
+	case WindowCursor::ResizeTopLeft: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NW_RESIZE; break;
+	case WindowCursor::ResizeBottom: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_S_RESIZE; break;
+	case WindowCursor::ResizeBottomRight: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SE_RESIZE; break;
+	case WindowCursor::ResizeBottomLeft: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_SW_RESIZE; break;
+	case WindowCursor::ResizeLeft: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_W_RESIZE; break;
+	case WindowCursor::ResizeLeftRight: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_EW_RESIZE; break;
+	case WindowCursor::ResizeTopBottom: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NS_RESIZE; break;
+	case WindowCursor::ResizeTopRightBottomLeft:
+		return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NESW_RESIZE;
+		break;
+	case WindowCursor::ResizeTopLeftBottomRight:
+		return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_NWSE_RESIZE;
+		break;
+	case WindowCursor::ResizeCol: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_COL_RESIZE; break;
+	case WindowCursor::ResizeRow: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ROW_RESIZE; break;
+	case WindowCursor::ResizeAll: return WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_ALL_RESIZE; break;
+	default: return 0; break;
+	}
+	return 0;
+}
+
+} // namespace sprt::window

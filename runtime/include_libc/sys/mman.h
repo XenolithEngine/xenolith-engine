@@ -119,6 +119,10 @@ THE SOFTWARE.
 
 #define MLOCK_ONFAULT __SPRT_MLOCK_ONFAULT
 
+#define MFD_CLOEXEC __SPRT_MFD_CLOEXEC
+#define MFD_ALLOW_SEALING __SPRT_MFD_ALLOW_SEALING
+#define MFD_HUGETLB __SPRT_MFD_HUGETLB
+
 __SPRT_BEGIN_DECL
 
 typedef __SPRT_ID(size_t) size_t;
@@ -177,6 +181,10 @@ SPRT_FORCEINLINE inline int madvise(void *__addr, size_t __size, int __flags) {
 
 SPRT_FORCEINLINE inline int mincore(void *__addr, size_t __size, unsigned char *__vec) {
 	return __sprt_mincore(__addr, __size, __vec);
+}
+
+SPRT_FORCEINLINE inline int memfd_create(const char *name, unsigned flags) {
+	return __sprt_memfd_create(name, flags);
 }
 
 __SPRT_END_DECL

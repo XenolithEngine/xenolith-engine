@@ -25,64 +25,13 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/bits/__sprt_int.h>
+#include <sprt/c/cross/__sprt_config.h>
 
 #define __SPRT_MATH_ERRNO	1	/* errno set by math functions.  */
 #define __SPRT_MATH_ERREXCEPT	2	/* Exceptions raised by math functions.  */
 
 // clang-format off
-#if SPRT_LINUX
-
-#define __SPRT_FP_ILOGBNAN (-1-0x7fffffff)
-#define __SPRT_FP_ILOGB0 __SPRT_FP_ILOGBNAN
-
-#ifdef __FAST_MATH__
-#define __SPRT_math_errhandling	0
-#elif defined __NO_MATH_ERRNO__
-#define __SPRT_math_errhandling	(__SPRT_MATH_ERREXCEPT)
-#else
-#define __SPRT_math_errhandling	(__SPRT_MATH_ERRNO | __SPRT_MATH_ERREXCEPT)
-#endif
-
-#define __SPRT_FP_NAN       0
-#define __SPRT_FP_INFINITE  1
-#define __SPRT_FP_ZERO      2
-#define __SPRT_FP_SUBNORMAL 3
-#define __SPRT_FP_NORMAL    4
-
-#elif SPRT_WINDOWS
-
-#define __SPRT__C2          1  // 0 if not 2's complement
-#define __SPRT_FP_ILOGB0   (-0x7fffffff - __SPRT__C2)
-#define __SPRT_FP_ILOGBNAN 0x7fffffff
-
-#define __SPRT_math_errhandling  (__SPRT_MATH_ERRNO | __SPRT_MATH_ERREXCEPT)
-
-#define __SPRT_FP_INFINITE  1
-#define __SPRT_FP_NAN       2
-#define __SPRT_FP_NORMAL    (-1)
-#define __SPRT_FP_SUBNORMAL (-2)
-#define __SPRT_FP_ZERO      0
-
-#elif SPRT_ANDROID
-
-#define __SPRT_FP_ILOGB0 (-__SPRT_INT_MAX)
-#define __SPRT_FP_ILOGBNAN __SPRT_INT_MAX
-
-#define __SPRT_math_errhandling  __SPRT_MATH_ERREXCEPT
-
-#define __SPRT_FP_INFINITE 0x01
-#define __SPRT_FP_NAN 0x02
-#define __SPRT_FP_NORMAL 0x04
-#define __SPRT_FP_SUBNORMAL 0x08
-#define __SPRT_FP_ZERO 0x10
-
-#elif SPRT_MACOS
-
-#error "Unknown OS"
-
-#else
-#error "Unknown OS"
-#endif
+#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/math.h)
 // clang-format on
 
 #endif

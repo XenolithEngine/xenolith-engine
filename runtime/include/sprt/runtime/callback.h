@@ -29,15 +29,15 @@ THE SOFTWARE.
 
 namespace sprt {
 
-template <typename UnusedType>
+template <size_t BufferSize, typename UnusedType>
 class static_function;
 
 // analogue of std::function without memory allocation with a pre-allocated block for data storage
 
-template <typename ReturnType, typename... ArgumentTypes>
-class static_function<ReturnType(ArgumentTypes...)> {
+template <size_t BufferSize, typename ReturnType, typename... ArgumentTypes>
+class static_function<BufferSize, ReturnType(ArgumentTypes...)> {
 public:
-	static constexpr size_t FunctionBufferSize = 32;
+	static constexpr size_t FunctionBufferSize = BufferSize;
 
 	using signature_type = ReturnType(ArgumentTypes...);
 
@@ -94,9 +94,9 @@ public:
 	}
 
 	template <typename FunctionT,
-			class = typename enable_if<
-					!is_same< typename remove_cv<typename remove_reference<FunctionT>::type>::type,
-							static_function<ReturnType(ArgumentTypes...) >>::value>::type>
+			class = typename enable_if< !is_same<
+					typename remove_cv<typename remove_reference<FunctionT>::type>::type,
+					static_function<BufferSize, ReturnType(ArgumentTypes...) >>::value>::type>
 	static_function(FunctionT &&f) noexcept {
 		mCallback = makeFreeFunction(sprt::forward<FunctionT>(f), mBuffer.data());
 	}

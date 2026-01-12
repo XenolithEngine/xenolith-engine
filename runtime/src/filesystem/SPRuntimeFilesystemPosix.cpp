@@ -530,7 +530,30 @@ static LocationInterface s_defaultInterface = {
 	}
 	return Status::ErrorInvalidArguemnt;
 },
-};
+
+
+	._fdopen = [](void *ptr, const char *mode, Status *st) -> __sprt_FILE * {
+	auto fd = static_cast<int>(reinterpret_cast<intptr_t>(ptr));
+	if (fd <= 0) {
+		if (st) {
+			*st = sprt::status::errnoToStatus(EINVAL);
+		}
+		return nullptr;
+	}
+
+	auto ret = ::__sprt_fdopen(fd, mode);
+	if (ret) {
+		if (st) {
+			*st = Status::Ok;
+		}
+		return ret;
+	} else {
+		if (st) {
+			*st = sprt::status::errnoToStatus(__sprt_errno);
+		}
+		return nullptr;
+	}
+}};
 
 SPRT_API const LocationInterface *getDefaultInterface() { return &s_defaultInterface; }
 

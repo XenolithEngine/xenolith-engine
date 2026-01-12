@@ -33,18 +33,18 @@ struct mem_sso_test {
 	static constexpr bool value = sprt::is_scalar<Type>::value;
 };
 
-template <typename Type, size_t Extra = 0>
-class storage_mem_soo : public mem_soo_iface<Type, Extra, mem_sso_test<Type>::value> {
+template <typename Type, size_t Extra, typename Allocator>
+class storage_mem_soo : public mem_soo_iface<Type, Extra, mem_sso_test<Type>::value, Allocator> {
 public:
-	using base = mem_soo_iface<Type, Extra, mem_sso_test<Type>::value>;
-	using self = storage_mem_soo<Type, Extra>;
+	using base = mem_soo_iface<Type, Extra, mem_sso_test<Type>::value, Allocator>;
+	using self = storage_mem_soo<Type, Extra, Allocator>;
 	using pointer = Type *;
 	using const_pointer = const Type *;
 	using reference = Type &;
 	using const_reference = const Type &;
 
 	using size_type = size_t;
-	using allocator = sprt::memory::detail::Allocator<Type>;
+	using allocator = Allocator;
 
 	using iterator = pointer_iterator<Type, pointer, reference>;
 	using const_iterator = pointer_iterator<Type, const_pointer, const_reference>;
@@ -422,8 +422,8 @@ private:
 	using base::_allocator;
 };
 
-template <typename Type, size_t Extra = 0>
-using storage_mem = storage_mem_soo<Type, Extra>;
+template <typename Type, size_t Extra, typename Allocator>
+using storage_mem = storage_mem_soo<Type, Extra, Allocator>;
 
 } // namespace sprt::memory::detail
 

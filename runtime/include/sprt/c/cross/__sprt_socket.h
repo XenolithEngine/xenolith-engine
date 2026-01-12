@@ -35,35 +35,10 @@ THE SOFTWARE.
 
 struct __SPRT_SOCKADDR_NAME;
 
-#if SPRT_LINUX
+#include <sprt/c/cross/__sprt_config.h>
 
-typedef __SPRT_ID(uint32_t) __SPRT_ID(socklen_t);
-typedef unsigned short __SPRT_ID(sa_family_t);
-
-struct __SPRT_SOCKADDR_NAME {
-	__SPRT_ID(sa_family_t) sa_family;
-	char sa_data[14];
-};
-
-#elif SPRT_ANDROID
-
-#if !defined(__LP64__)
-typedef __SPRT_ID(int32_t) socklen_t;
-#else
-typedef __SPRT_ID(uint32_t) socklen_t;
-#endif
-
-struct __SPRT_SOCKADDR_NAME {
-	sa_family_t sa_family;
-	char sa_data[14];
-};
-
-#elif SPRT_WINDOWS
-#error "Unknown OS"
-#elif SPRT_MACOS
-#error "Unknown OS"
-#else
-#error "Unknown OS"
-#endif
+// clang-format off
+#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/socket.h)
+// clang-format on
 
 #endif // CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_SOCKET_H_

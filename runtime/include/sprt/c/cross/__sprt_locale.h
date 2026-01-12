@@ -24,30 +24,10 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_LOCALE_H_
 
 #include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/cross/__sprt_config.h>
 
-#if SPRT_LINUX
-
-typedef struct __locale_struct *__SPRT_ID(locale_t);
-
-#elif SPRT_WINDOWS
-
-typedef struct __crt_locale_pointers {
-	struct __crt_locale_data *locinfo;
-	struct __crt_multibyte_data *mbcinfo;
-} __crt_locale_pointers;
-
-typedef __crt_locale_pointers *__SPRT_ID(locale_t);
-
-#elif SPRT_ANDROID
-
-typedef struct __locale_t *__SPRT_ID(locale_t);
-
-#elif SPRT_MACOS
-
-#error "Unknown OS"
-
-#else
-#error "Unknown OS"
-#endif
+// clang-format off
+#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/locale.h)
+// clang-format on
 
 #endif

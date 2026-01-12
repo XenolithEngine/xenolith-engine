@@ -31,6 +31,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_ssize_t.h>
 #include <sprt/c/cross/__sprt_fstypes.h>
 
+// clang-format off
 #define __SPRT_O_SEARCH   __SPRT_O_PATH
 #define __SPRT_O_EXEC     __SPRT_O_PATH
 #define __SPRT_O_TTY_INIT 0
@@ -44,11 +45,21 @@ THE SOFTWARE.
 #define __SPRT_F_OFD_SETLK 37
 #define __SPRT_F_OFD_SETLKW 38
 
-#define __SPRT_F_DUPFD_CLOEXEC 1'030
+#define __SPRT_F_DUPFD_CLOEXEC 1030
 
 #define __SPRT_F_RDLCK 0
 #define __SPRT_F_WRLCK 1
 #define __SPRT_F_UNLCK 2
+#define __SPRT_F_SETPIPE_SZ	1031
+#define __SPRT_F_GETPIPE_SZ	1032
+#define __SPRT_F_ADD_SEALS 1033
+#define __SPRT_F_GET_SEALS 1034
+
+#define __SPRT_F_SEAL_SEAL 0x0001
+#define __SPRT_F_SEAL_SHRINK 0x0002
+#define __SPRT_F_SEAL_GROW 0x0004
+#define __SPRT_F_SEAL_WRITE 0x0008
+#define __SPRT_F_SEAL_FUTURE_WRITE 0x0010
 
 #define __SPRT_FD_CLOEXEC 1
 
@@ -58,6 +69,7 @@ THE SOFTWARE.
 #define __SPRT_POSIX_FADV_WILLNEED   3
 #define __SPRT_POSIX_FADV_DONTNEED   4
 #define __SPRT_POSIX_FADV_NOREUSE    5
+// clang-format on
 
 __SPRT_BEGIN_DECL
 

@@ -27,9 +27,14 @@ THE SOFTWARE.
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/unicode.h>
 
-namespace sprt {
+#if __SPRT_USE_STL
+#include <typeinfo>
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
+#include <cxxabi.h>
+#endif
+#endif
 
-namespace detail {
+namespace sprt::detail {
 
 template <typename FunctionalStreamArg>
 struct FunctionalStreamCharTraits { };
@@ -182,12 +187,43 @@ inline void streamWrite(const FunctionalStream &stream, char c) {
 	}
 }
 
+inline void streamWrite(const callback<void(StringView)> &cb, const Status &st) {
+	status::getStatusDescription(st, cb);
+}
+
 inline void streamWrite(const callback<void(BytesView)> &cb, const BytesView &val) { cb(val); }
 inline void streamWrite(const callback<void(BytesView)> &cb, const uint8_t &val) {
 	cb(BytesView(&val, 1));
 }
 
-} // namespace detail
+#if __SPRT_USE_STL
+
+template <typename Stream>
+static void printDemangled(const Stream &stream, const std::type_info &t) {
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
+	int status = 0;
+	auto name = abi::__cxa_demangle(t.name(), nullptr, nullptr, &status);
+	if (status == 0) {
+		streamWrite(stream, name);
+		::free(name);
+	} else {
+		streamWrite(stream, t.name());
+	}
+#else
+	streamWrite(stream, t.name());
+#endif
+}
+
+template <typename FunctionalStream>
+inline void streamWrite(const FunctionalStream &stream, const std::type_info &c) {
+	printDemangled(stream, c);
+}
+
+#endif
+
+} // namespace sprt::detail
+
+namespace sprt {
 
 template <typename T, typename ReturnType, typename... ArgumentTypes>
 const callback<ReturnType(ArgumentTypes...)> &operator<<(
@@ -257,6 +293,11 @@ struct StreamTraits {
 	static constexpr inline size_t getSizeFor(const float &value) {
 		return sprt::dtoa(value, (CharType *)nullptr, 0);
 	}
+	static constexpr inline size_t getSizeFor(const Status &value) {
+		size_t ret = 0;
+		status::getStatusDescription(value, [&](StringView str) { ret = str.size(); });
+		return ret;
+	}
 
 	template <typename Container>
 	requires TypedContainer<Container, CharType>
@@ -264,9 +305,34 @@ struct StreamTraits {
 		return c.size();
 	}
 
+	template <typename CustomType>
+	static constexpr inline size_t getSizeFor(const CustomType &c) {
+		size_t s = 0;
+		auto fn = [&](StringView str) { s += str.size(); };
+		callback<void(StringView)>(fn) << c;
+		return s;
+	}
+
 	template <typename... Args>
 	static constexpr size_t calculateSize(Args &&...args) {
 		return (1 + ... + getSizeFor(args));
+	}
+
+	template <typename... Args>
+	static memory::basic_string<CharType, memory::detail::DynamicAllocator<CharType>> toString(
+			Args &&...args) {
+		auto bufferSize = calculateSize(forward<Args>(args)...);
+		memory::basic_string<CharType, memory::detail::DynamicAllocator<CharType>> ret;
+		ret.resize(bufferSize - 1);
+
+		auto target = ret.data();
+		auto targetSize = bufferSize;
+		__processArgs<CharType>([&](StringViewBase<CharType> str) {
+			target = strappend(target, &targetSize, str.data(), str.size());
+		}, forward<Args>(args)...);
+
+		ret.resize(target - ret.data());
+		return ret;
 	}
 
 	template <typename... Args>

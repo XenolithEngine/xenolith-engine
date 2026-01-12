@@ -128,8 +128,8 @@ static void initialize() {
 	if (s_aprInterface) {
 		s_aprInterface.apr_pool_initialize();
 	} else {
-		log::vprint(log::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		//log::vprint(log::LogType::Error, __SPRT_LOCATION, "sprt::memory",
+		//		"APR interface is not available");
 	}
 }
 

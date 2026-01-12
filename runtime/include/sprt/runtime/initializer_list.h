@@ -27,28 +27,34 @@ THE SOFTWARE.
 
 #include <sprt/runtime/int.h>
 
-namespace sprt {
+#if __SPRT_USE_STL
+
+#include <initializer_list>
+
+#else
+
+namespace std {
 
 template <typename _Ep>
 class initializer_list {
 	const _Ep *__begin_;
-	size_t __size_;
+	sprt::size_t __size_;
 
-	constexpr initializer_list(const _Ep *__b, size_t __s) noexcept
+	constexpr initializer_list(const _Ep *__b, sprt::size_t __s) noexcept
 	: __begin_(__b), __size_(__s) { }
 
 public:
 	typedef _Ep value_type;
 	typedef const _Ep &reference;
 	typedef const _Ep &const_reference;
-	typedef size_t size_type;
+	typedef sprt::size_t size_type;
 
 	typedef const _Ep *iterator;
 	typedef const _Ep *const_iterator;
 
 	constexpr initializer_list() noexcept : __begin_(nullptr), __size_(0) { }
 
-	constexpr size_t size() const noexcept { return __size_; }
+	constexpr sprt::size_t size() const noexcept { return __size_; }
 
 	constexpr const _Ep *begin() const noexcept { return __begin_; }
 
@@ -65,6 +71,12 @@ inline constexpr const _Ep *end(initializer_list<_Ep> __il) noexcept {
 	return __il.end();
 }
 
-} // namespace sprt
+} // namespace std
+
+#endif
+
+namespace sprt {
+using std::initializer_list;
+}
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_INITIALIZER_LIST_H_

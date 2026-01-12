@@ -47,6 +47,16 @@ struct random_access_iterator_tag : public bidirectional_iterator_tag { };
 struct contiguous_iterator_tag : public random_access_iterator_tag { };
 #endif
 
+template <typename Iter>
+struct _IteratorTraits {
+	using iterator_category = typename Iter::iterator_category;
+};
+
+template <typename Ptr>
+struct _IteratorTraits<Ptr *> {
+	using iterator_category = random_access_iterator_tag;
+};
+
 template <typename _InputIter>
 inline constexpr ptrdiff_t __distance(_InputIter __first, _InputIter __last, input_iterator_tag) {
 	ptrdiff_t __r(0);
@@ -62,7 +72,33 @@ inline constexpr ptrdiff_t __distance(_RandIter __first, _RandIter __last,
 
 template <typename _InputIter>
 inline constexpr ptrdiff_t distance(_InputIter __first, _InputIter __last) {
-	return sprt::__distance(__first, __last, typename _InputIter::iterator_category());
+	return sprt::__distance(__first, __last,
+			typename _IteratorTraits<_InputIter>::iterator_category());
+}
+
+
+template <class _InputIter>
+void __advance(_InputIter &__i, ptrdiff_t __n, input_iterator_tag) {
+	for (; __n > 0; --__n) { ++__i; }
+}
+
+template <class _BiDirIter>
+void __advance(_BiDirIter &__i, ptrdiff_t __n, bidirectional_iterator_tag) {
+	if (__n >= 0) {
+		for (; __n > 0; --__n) { ++__i; }
+	} else {
+		for (; __n < 0; ++__n) { --__i; }
+	}
+}
+
+template <class _RandIter>
+void __advance(_RandIter &__i, ptrdiff_t __n, random_access_iterator_tag) {
+	__i += __n;
+}
+
+template < class _InputIter>
+void advance(_InputIter &__i, ptrdiff_t __n) {
+	sprt::__advance(__i, __n, typename _IteratorTraits<_InputIter>::iterator_category());
 }
 
 template <typename Cat1, typename Cat2>
@@ -87,6 +123,11 @@ template <typename Iter>
 using __has_random_access_iterator_category =
 		__has_iterator_category_convertible_to<typename Iter::iterator_category,
 				random_access_iterator_tag>;
+
+template <typename _ForwardIterator1, typename _ForwardIterator2>
+inline constexpr void iter_swap(_ForwardIterator1 __a, _ForwardIterator2 __b) noexcept {
+	sprt::swap(*__a, *__b);
+}
 
 } // namespace sprt
 

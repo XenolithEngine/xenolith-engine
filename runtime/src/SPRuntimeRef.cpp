@@ -73,7 +73,8 @@ void *RefAlloc::operator new(size_t size, memory::pool_t *pool) noexcept {
 	return ptr;
 }
 
-void RefAlloc::operator delete(void *ptr) noexcept {
+
+void RefAlloc::__abi_operator_delete(void *ptr) noexcept {
 	auto d = RefAllocData::get();
 	if (ptr != d->lastPtr) {
 		AllocBase::operator delete(ptr);
@@ -82,10 +83,10 @@ void RefAlloc::operator delete(void *ptr) noexcept {
 	d->clear();
 }
 
-void RefAlloc::operator delete(void *ptr, sprt::align_val_t al) noexcept {
+void RefAlloc::__abi_operator_delete(void *ptr, size_t al) noexcept {
 	auto d = RefAllocData::get();
 	if (ptr != d->lastPtr) {
-		AllocBase::operator delete(ptr, al);
+		AllocBase::operator delete(ptr, align_val_t(al));
 	}
 	d->lastPtr = nullptr;
 	d->clear();

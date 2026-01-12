@@ -42,31 +42,31 @@ THE SOFTWARE.
 #define __SPRT_M_SQRT1_2       0.70710678118654752440  /* 1/sqrt(2) */
 // clang-format on
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_nanf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_nanf)
 #define __SPRT_NAN       __builtin_nanf("")
 #else
 #define __SPRT_NAN       (float)(0.0f/0.0f)
 #endif
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_inff)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_inff)
 #define __SPRT_INFINITY      __builtin_inff()
 #else
 #define __SPRT_INFINITY       (float)(1e+300 * 1e+300)
 #endif
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_huge_val)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_huge_val)
 #define __SPRT_HUGE_VAL  __builtin_huge_val()
 #else
 #define __SPRT_HUGE_VAL ((double)__SPRT_INFINITY)
 #endif
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_huge_valf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_huge_valf)
 #define __SPRT_HUGE_VALF  __builtin_huge_valf()
 #else
 #define __SPRT_HUGE_VALF ((float)__SPRT_INFINITY)
 #endif
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_huge_vall)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_huge_vall)
 #define __SPRT_HUGE_VALL  __builtin_huge_vall()
 #else
 #define __SPRT_HUGE_VALL ((long double)__SPRT_INFINITY)
@@ -84,7 +84,7 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fpclassify)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fpclassify)
 #define __sprt_fpclassify(v) __builtin_fpclassify(__SPRT_FP_NAN, __SPRT_FP_INFINITE, \
 	__SPRT_FP_NORMAL, __SPRT_FP_SUBNORMAL, __SPRT_FP_ZERO, v)
 #else
@@ -115,7 +115,7 @@ static inline unsigned long long __SPRT_DOUBLE_BITS(double __f) {
 	return __u.__i;
 }
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_isfinite)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_isfinite)
 #define __sprt_isfinite(v) __builtin_isfinite(v)
 #else
 #define __sprt_isfinite(x) ( \
@@ -124,7 +124,7 @@ static inline unsigned long long __SPRT_DOUBLE_BITS(double __f) {
 	__sprt_fpclassify(x) > __SPRT_FP_INFINITE)
 #endif
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_isnan)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_isnan)
 #define __sprt_isnan(v) __builtin_isnan(v)
 #else
 #define __sprt_isnan(x) ( \
@@ -133,7 +133,7 @@ static inline unsigned long long __SPRT_DOUBLE_BITS(double __f) {
 	__sprt_fpclassify(x) == __SPRT_FP_NAN)
 #endif
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_isinf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_isinf)
 #define __sprt_isinf(v) __builtin_isinf(v)
 #else
 #define __sprt_isinf(x) ( \
@@ -142,7 +142,7 @@ static inline unsigned long long __SPRT_DOUBLE_BITS(double __f) {
 	__sprt_fpclassify(x) == __SPRT_FP_INFINITE)
 #endif
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_isnormal)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_isnormal)
 #define __sprt_isnormal(v) __builtin_isnormal(v)
 #else
 #define __sprt_isnormal(x) ( \
@@ -152,7 +152,7 @@ static inline unsigned long long __SPRT_DOUBLE_BITS(double __f) {
 #endif
 
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_signbit)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_signbit)
 #define __sprt_signbit(v) __builtin_signbit(v)
 #else
 SPRT_API int __SPRT_ID(__signbit)(double);
@@ -165,27 +165,27 @@ SPRT_API int __SPRT_ID(__signbitl)(long double);
 	__SPRT_ID(__signbitl)(x) )
 #endif
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_isgreater)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_isgreater)
 #define __sprt_isgreater(a, b) __builtin_isgreater(a, b)
 #endif
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_isgreaterequal)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_isgreaterequal)
 #define __sprt_isgreaterequal(a, b) __builtin_isgreaterequal(a, b)
 #endif
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_isless)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_isless)
 #define __sprt_isless(a, b) __builtin_isless(a, b)
 #endif
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_islessequal)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_islessequal)
 #define __sprt_islessequal(a, b) __builtin_islessequal(a, b)
 #endif
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_islessgreater)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_islessgreater)
 #define __sprt_islessgreater(a, b) __builtin_islessgreater(a, b)
 #endif
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_isunordered)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_isunordered)
 #define __sprt_isunordered(a, b) __builtin_isunordered(a, b)
 #endif
 
@@ -242,7 +242,7 @@ __SPRT_ISREL_DEF(greaterequall, >=, long double)
 
 SPRT_API double __SPRT_ID(acos_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_acos)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_acos)
 inline double __SPRT_ID(acos)(double value) { return __builtin_acos(value); }
 #else
 #define __sprt_acos __SPRT_ID(acos_impl)
@@ -251,7 +251,7 @@ inline double __SPRT_ID(acos)(double value) { return __builtin_acos(value); }
 
 SPRT_API float __SPRT_ID(acosf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_acosf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_acosf)
 inline float __SPRT_ID(acosf)(float value) { return __builtin_acosf(value); }
 #else
 #define __sprt_acosf __SPRT_ID(acosf_impl)
@@ -260,7 +260,7 @@ inline float __SPRT_ID(acosf)(float value) { return __builtin_acosf(value); }
 
 SPRT_API long double __SPRT_ID(acosl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_acosl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_acosl)
 inline long double __SPRT_ID(acosl)(long double value) { return __builtin_acosl(value); }
 #else
 #define __sprt_acosl __SPRT_ID(acosl_impl)
@@ -269,7 +269,7 @@ inline long double __SPRT_ID(acosl)(long double value) { return __builtin_acosl(
 
 SPRT_API double __SPRT_ID(acosh_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_acosh)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_acosh)
 inline double __SPRT_ID(acosh)(double value) { return __builtin_acosh(value); }
 #else
 #define __sprt_acosh __SPRT_ID(acosh_impl)
@@ -278,7 +278,7 @@ inline double __SPRT_ID(acosh)(double value) { return __builtin_acosh(value); }
 
 SPRT_API float __SPRT_ID(acoshf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_acoshf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_acoshf)
 inline float __SPRT_ID(acoshf)(float value) { return __builtin_acoshf(value); }
 #else
 #define __sprt_acoshf __SPRT_ID(acoshf_impl)
@@ -287,7 +287,7 @@ inline float __SPRT_ID(acoshf)(float value) { return __builtin_acoshf(value); }
 
 SPRT_API long double __SPRT_ID(acoshl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_acoshl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_acoshl)
 inline long double __SPRT_ID(acoshl)(long double value) { return __builtin_acoshl(value); }
 #else
 #define __sprt_acoshl __SPRT_ID(acoshl_impl)
@@ -296,7 +296,7 @@ inline long double __SPRT_ID(acoshl)(long double value) { return __builtin_acosh
 
 SPRT_API double __SPRT_ID(asin_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_asin)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_asin)
 inline double __SPRT_ID(asin)(double value) { return __builtin_asin(value); }
 #else
 #define __sprt_asin __SPRT_ID(asin_impl)
@@ -305,7 +305,7 @@ inline double __SPRT_ID(asin)(double value) { return __builtin_asin(value); }
 
 SPRT_API float __SPRT_ID(asinf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_asinf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_asinf)
 inline float __SPRT_ID(asinf)(float value) { return __builtin_asinf(value); }
 #else
 #define __sprt_asinf __SPRT_ID(asinf_impl)
@@ -314,7 +314,7 @@ inline float __SPRT_ID(asinf)(float value) { return __builtin_asinf(value); }
 
 SPRT_API long double __SPRT_ID(asinl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_asinl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_asinl)
 inline long double __SPRT_ID(asinl)(long double value) { return __builtin_asinl(value); }
 #else
 #define __sprt_asinl __SPRT_ID(asinl_impl)
@@ -323,7 +323,7 @@ inline long double __SPRT_ID(asinl)(long double value) { return __builtin_asinl(
 
 SPRT_API double __SPRT_ID(asinh_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_asinh)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_asinh)
 inline double __SPRT_ID(asinh)(double value) { return __builtin_asinh(value); }
 #else
 #define __sprt_asinh __SPRT_ID(asinh_impl)
@@ -332,7 +332,7 @@ inline double __SPRT_ID(asinh)(double value) { return __builtin_asinh(value); }
 
 SPRT_API float __SPRT_ID(asinhf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_asinhf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_asinhf)
 inline float __SPRT_ID(asinhf)(float value) { return __builtin_asinhf(value); }
 #else
 #define __sprt_asinhf __SPRT_ID(asinhf_impl)
@@ -341,7 +341,7 @@ inline float __SPRT_ID(asinhf)(float value) { return __builtin_asinhf(value); }
 
 SPRT_API long double __SPRT_ID(asinhl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_asinhl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_asinhl)
 inline long double __SPRT_ID(asinhl)(long double value) { return __builtin_asinhl(value); }
 #else
 #define __sprt_asinhl __SPRT_ID(asinhl_impl)
@@ -350,7 +350,7 @@ inline long double __SPRT_ID(asinhl)(long double value) { return __builtin_asinh
 
 SPRT_API double __SPRT_ID(atan_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_atan)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_atan)
 inline double __SPRT_ID(atan)(double value) { return __builtin_atan(value); }
 #else
 #define __sprt_atan __SPRT_ID(atan_impl)
@@ -359,7 +359,7 @@ inline double __SPRT_ID(atan)(double value) { return __builtin_atan(value); }
 
 SPRT_API float __SPRT_ID(atanf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_atanf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_atanf)
 inline float __SPRT_ID(atanf)(float value) { return __builtin_atanf(value); }
 #else
 #define __sprt_atanf __SPRT_ID(atanf_impl)
@@ -368,7 +368,7 @@ inline float __SPRT_ID(atanf)(float value) { return __builtin_atanf(value); }
 
 SPRT_API long double __SPRT_ID(atanl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_atanl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_atanl)
 inline long double __SPRT_ID(atanl)(long double value) { return __builtin_atanl(value); }
 #else
 #define __sprt_atanl __SPRT_ID(atanl_impl)
@@ -377,7 +377,7 @@ inline long double __SPRT_ID(atanl)(long double value) { return __builtin_atanl(
 
 SPRT_API double __SPRT_ID(atan2_impl)(double, double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_atan2)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_atan2)
 inline double __SPRT_ID(atan2)(double a, double b) { return __builtin_atan2(a, b); }
 #else
 #define __sprt_atan2 __SPRT_ID(atan2_impl)
@@ -386,7 +386,7 @@ inline double __SPRT_ID(atan2)(double a, double b) { return __builtin_atan2(a, b
 
 SPRT_API float __SPRT_ID(atan2f_impl)(float, float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_atan2f)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_atan2f)
 inline float __SPRT_ID(atan2f)(float a, float b) { return __builtin_atan2f(a, b); }
 #else
 #define __sprt_atan2f __SPRT_ID(atan2f_impl)
@@ -395,7 +395,7 @@ inline float __SPRT_ID(atan2f)(float a, float b) { return __builtin_atan2f(a, b)
 
 SPRT_API long double __SPRT_ID(atan2l_impl)(long double, long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_atan2l)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_atan2l)
 inline long double __SPRT_ID(atan2l)(long double a, long double b) {
 	return __builtin_atan2l(a, b);
 }
@@ -406,7 +406,7 @@ inline long double __SPRT_ID(atan2l)(long double a, long double b) {
 
 SPRT_API double __SPRT_ID(atanh_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_atanh)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_atanh)
 inline double __SPRT_ID(atanh)(double value) { return __builtin_atanh(value); }
 #else
 #define __sprt_atanh __SPRT_ID(atanh_impl)
@@ -415,7 +415,7 @@ inline double __SPRT_ID(atanh)(double value) { return __builtin_atanh(value); }
 
 SPRT_API float __SPRT_ID(atanhf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_atanhf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_atanhf)
 inline float __SPRT_ID(atanhf)(float value) { return __builtin_atanhf(value); }
 #else
 #define __sprt_atanhf __SPRT_ID(atanhf_impl)
@@ -424,7 +424,7 @@ inline float __SPRT_ID(atanhf)(float value) { return __builtin_atanhf(value); }
 
 SPRT_API long double __SPRT_ID(atanhl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_atanhl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_atanhl)
 inline long double __SPRT_ID(atanhl)(long double value) { return __builtin_atanhl(value); }
 #else
 #define __sprt_atanhl __SPRT_ID(atanhl_impl)
@@ -433,7 +433,7 @@ inline long double __SPRT_ID(atanhl)(long double value) { return __builtin_atanh
 
 SPRT_API double __SPRT_ID(cbrt_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_cbrt)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_cbrt)
 inline double __SPRT_ID(cbrt)(double value) { return __builtin_cbrt(value); }
 #else
 #define __sprt_cbrt __SPRT_ID(cbrt_impl)
@@ -442,7 +442,7 @@ inline double __SPRT_ID(cbrt)(double value) { return __builtin_cbrt(value); }
 
 SPRT_API float __SPRT_ID(cbrtf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_cbrtf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_cbrtf)
 inline float __SPRT_ID(cbrtf)(float value) { return __builtin_cbrtf(value); }
 #else
 #define __sprt_cbrtf __SPRT_ID(cbrtf_impl)
@@ -451,7 +451,7 @@ inline float __SPRT_ID(cbrtf)(float value) { return __builtin_cbrtf(value); }
 
 SPRT_API long double __SPRT_ID(cbrtl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_cbrtl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_cbrtl)
 inline long double __SPRT_ID(cbrtl)(long double value) { return __builtin_cbrtl(value); }
 #else
 #define __sprt_cbrtl __SPRT_ID(cbrtl_impl)
@@ -460,7 +460,7 @@ inline long double __SPRT_ID(cbrtl)(long double value) { return __builtin_cbrtl(
 
 SPRT_API double __SPRT_ID(ceil_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_ceil)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_ceil)
 inline double __SPRT_ID(ceil)(double value) { return __builtin_ceil(value); }
 #else
 #define __sprt_ceil __SPRT_ID(ceil_impl)
@@ -469,7 +469,7 @@ inline double __SPRT_ID(ceil)(double value) { return __builtin_ceil(value); }
 
 SPRT_API float __SPRT_ID(ceilf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_ceilf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_ceilf)
 inline float __SPRT_ID(ceilf)(float value) { return __builtin_ceilf(value); }
 #else
 #define __sprt_ceilf __SPRT_ID(ceilf_impl)
@@ -478,7 +478,7 @@ inline float __SPRT_ID(ceilf)(float value) { return __builtin_ceilf(value); }
 
 SPRT_API long double __SPRT_ID(ceill_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_ceill)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_ceill)
 inline long double __SPRT_ID(ceill)(long double value) { return __builtin_ceill(value); }
 #else
 #define __sprt_ceill __SPRT_ID(ceill_impl)
@@ -487,7 +487,7 @@ inline long double __SPRT_ID(ceill)(long double value) { return __builtin_ceill(
 
 SPRT_API double __SPRT_ID(copysign_impl)(double, double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_copysign)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_copysign)
 inline double __SPRT_ID(copysign)(double a, double b) { return __builtin_copysign(a, b); }
 #else
 #define __sprt_copysign __SPRT_ID(copysign_impl)
@@ -496,7 +496,7 @@ inline double __SPRT_ID(copysign)(double a, double b) { return __builtin_copysig
 
 SPRT_API float __SPRT_ID(copysignf_impl)(float, float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_copysignf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_copysignf)
 inline float __SPRT_ID(copysignf)(float a, float b) { return __builtin_copysignf(a, b); }
 #else
 #define __sprt_copysignf __SPRT_ID(copysignf_impl)
@@ -505,7 +505,7 @@ inline float __SPRT_ID(copysignf)(float a, float b) { return __builtin_copysignf
 
 SPRT_API long double __SPRT_ID(copysignl_impl)(long double, long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_copysignl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_copysignl)
 inline long double __SPRT_ID(copysignl)(long double a, long double b) {
 	return __builtin_copysignl(a, b);
 }
@@ -516,7 +516,7 @@ inline long double __SPRT_ID(copysignl)(long double a, long double b) {
 
 SPRT_API double __SPRT_ID(cos_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_cos)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_cos)
 inline double __SPRT_ID(cos)(double value) { return __builtin_cos(value); }
 #else
 #define __sprt_cos __SPRT_ID(cos_impl)
@@ -525,7 +525,7 @@ inline double __SPRT_ID(cos)(double value) { return __builtin_cos(value); }
 
 SPRT_API float __SPRT_ID(cosf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_cosf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_cosf)
 inline float __SPRT_ID(cosf)(float value) { return __builtin_cosf(value); }
 #else
 #define __sprt_cosf __SPRT_ID(cosf_impl)
@@ -534,7 +534,7 @@ inline float __SPRT_ID(cosf)(float value) { return __builtin_cosf(value); }
 
 SPRT_API long double __SPRT_ID(cosl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_cosl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_cosl)
 inline long double __SPRT_ID(cosl)(long double value) { return __builtin_cosl(value); }
 #else
 #define __sprt_cosl __SPRT_ID(cosl_impl)
@@ -543,7 +543,7 @@ inline long double __SPRT_ID(cosl)(long double value) { return __builtin_cosl(va
 
 SPRT_API double __SPRT_ID(cosh_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_cosh)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_cosh)
 inline double __SPRT_ID(cosh)(double value) { return __builtin_cosh(value); }
 #else
 #define __sprt_cosh __SPRT_ID(cosh_impl)
@@ -552,7 +552,7 @@ inline double __SPRT_ID(cosh)(double value) { return __builtin_cosh(value); }
 
 SPRT_API float __SPRT_ID(coshf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_coshf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_coshf)
 inline float __SPRT_ID(coshf)(float value) { return __builtin_coshf(value); }
 #else
 #define __sprt_coshf __SPRT_ID(coshf_impl)
@@ -561,7 +561,7 @@ inline float __SPRT_ID(coshf)(float value) { return __builtin_coshf(value); }
 
 SPRT_API long double __SPRT_ID(coshl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_coshl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_coshl)
 inline long double __SPRT_ID(coshl)(long double value) { return __builtin_coshl(value); }
 #else
 #define __sprt_coshl __SPRT_ID(coshl_impl)
@@ -570,7 +570,7 @@ inline long double __SPRT_ID(coshl)(long double value) { return __builtin_coshl(
 
 SPRT_API double __SPRT_ID(erf_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_erf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_erf)
 inline double __SPRT_ID(erf)(double value) { return __builtin_erf(value); }
 #else
 #define __sprt_erf __SPRT_ID(erf_impl)
@@ -579,7 +579,7 @@ inline double __SPRT_ID(erf)(double value) { return __builtin_erf(value); }
 
 SPRT_API float __SPRT_ID(erff_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_erff)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_erff)
 inline float __SPRT_ID(erff)(float value) { return __builtin_erff(value); }
 #else
 #define __sprt_erff __SPRT_ID(erff_impl)
@@ -588,7 +588,7 @@ inline float __SPRT_ID(erff)(float value) { return __builtin_erff(value); }
 
 SPRT_API long double __SPRT_ID(erfl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_erfl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_erfl)
 inline long double __SPRT_ID(erfl)(long double value) { return __builtin_erfl(value); }
 #else
 #define __sprt_erfl __SPRT_ID(erfl_impl)
@@ -597,7 +597,7 @@ inline long double __SPRT_ID(erfl)(long double value) { return __builtin_erfl(va
 
 SPRT_API double __SPRT_ID(erfc_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_erfc)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_erfc)
 inline double __SPRT_ID(erfc)(double value) { return __builtin_erfc(value); }
 #else
 #define __sprt_erfc __SPRT_ID(erfc_impl)
@@ -606,7 +606,7 @@ inline double __SPRT_ID(erfc)(double value) { return __builtin_erfc(value); }
 
 SPRT_API float __SPRT_ID(erfcf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_erfcf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_erfcf)
 inline float __SPRT_ID(erfcf)(float value) { return __builtin_erfcf(value); }
 #else
 #define __sprt_erfcf __SPRT_ID(erfcf_impl)
@@ -615,7 +615,7 @@ inline float __SPRT_ID(erfcf)(float value) { return __builtin_erfcf(value); }
 
 SPRT_API long double __SPRT_ID(erfcl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_erfcl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_erfcl)
 inline long double __SPRT_ID(erfcl)(long double value) { return __builtin_erfcl(value); }
 #else
 #define __sprt_erfcl __SPRT_ID(erfcl_impl)
@@ -624,7 +624,7 @@ inline long double __SPRT_ID(erfcl)(long double value) { return __builtin_erfcl(
 
 SPRT_API double __SPRT_ID(exp_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_exp)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_exp)
 inline double __SPRT_ID(exp)(double value) { return __builtin_exp(value); }
 #else
 #define __sprt_exp __SPRT_ID(exp_impl)
@@ -633,7 +633,7 @@ inline double __SPRT_ID(exp)(double value) { return __builtin_exp(value); }
 
 SPRT_API float __SPRT_ID(expf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_expf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_expf)
 inline float __SPRT_ID(expf)(float value) { return __builtin_expf(value); }
 #else
 #define __sprt_expf __SPRT_ID(expf_impl)
@@ -642,7 +642,7 @@ inline float __SPRT_ID(expf)(float value) { return __builtin_expf(value); }
 
 SPRT_API long double __SPRT_ID(expl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_expl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_expl)
 inline long double __SPRT_ID(expl)(long double value) { return __builtin_expl(value); }
 #else
 #define __sprt_expl __SPRT_ID(expl_impl)
@@ -651,7 +651,7 @@ inline long double __SPRT_ID(expl)(long double value) { return __builtin_expl(va
 
 SPRT_API double __SPRT_ID(exp2_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_exp2)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_exp2)
 inline double __SPRT_ID(exp2)(double value) { return __builtin_exp2(value); }
 #else
 #define __sprt_exp2 __SPRT_ID(exp2_impl)
@@ -660,7 +660,7 @@ inline double __SPRT_ID(exp2)(double value) { return __builtin_exp2(value); }
 
 SPRT_API float __SPRT_ID(exp2f_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_exp2f)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_exp2f)
 inline float __SPRT_ID(exp2f)(float value) { return __builtin_exp2f(value); }
 #else
 #define __sprt_exp2f __SPRT_ID(exp2f_impl)
@@ -669,7 +669,7 @@ inline float __SPRT_ID(exp2f)(float value) { return __builtin_exp2f(value); }
 
 SPRT_API long double __SPRT_ID(exp2l_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_exp2l)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_exp2l)
 inline long double __SPRT_ID(exp2l)(long double value) { return __builtin_exp2l(value); }
 #else
 #define __sprt_exp2l __SPRT_ID(exp2l_impl)
@@ -678,7 +678,7 @@ inline long double __SPRT_ID(exp2l)(long double value) { return __builtin_exp2l(
 
 SPRT_API double __SPRT_ID(expm1_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_expm1)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_expm1)
 inline double __SPRT_ID(expm1)(double value) { return __builtin_expm1(value); }
 #else
 #define __sprt_expm1 __SPRT_ID(expm1_impl)
@@ -687,7 +687,7 @@ inline double __SPRT_ID(expm1)(double value) { return __builtin_expm1(value); }
 
 SPRT_API float __SPRT_ID(expm1f_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_expm1f)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_expm1f)
 inline float __SPRT_ID(expm1f)(float value) { return __builtin_expm1f(value); }
 #else
 #define __sprt_expm1f __SPRT_ID(expm1f_impl)
@@ -696,7 +696,7 @@ inline float __SPRT_ID(expm1f)(float value) { return __builtin_expm1f(value); }
 
 SPRT_API long double __SPRT_ID(expm1l_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_expm1l)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_expm1l)
 inline long double __SPRT_ID(expm1l)(long double value) { return __builtin_expm1l(value); }
 #else
 #define __sprt_expm1l __SPRT_ID(expm1l_impl)
@@ -705,7 +705,7 @@ inline long double __SPRT_ID(expm1l)(long double value) { return __builtin_expm1
 
 SPRT_API double __SPRT_ID(fabs_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fabs)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fabs)
 inline double __SPRT_ID(fabs)(double value) { return __builtin_fabs(value); }
 #else
 #define __sprt_fabs __SPRT_ID(fabs_impl)
@@ -714,7 +714,7 @@ inline double __SPRT_ID(fabs)(double value) { return __builtin_fabs(value); }
 
 SPRT_API float __SPRT_ID(fabsf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fabsf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fabsf)
 inline float __SPRT_ID(fabsf)(float value) { return __builtin_fabsf(value); }
 #else
 #define __sprt_fabsf __SPRT_ID(fabsf_impl)
@@ -723,7 +723,7 @@ inline float __SPRT_ID(fabsf)(float value) { return __builtin_fabsf(value); }
 
 SPRT_API long double __SPRT_ID(fabsl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fabsl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fabsl)
 inline long double __SPRT_ID(fabsl)(long double value) { return __builtin_fabsl(value); }
 #else
 #define __sprt_fabsl __SPRT_ID(fabsl_impl)
@@ -732,7 +732,7 @@ inline long double __SPRT_ID(fabsl)(long double value) { return __builtin_fabsl(
 
 SPRT_API double __SPRT_ID(fdim_impl)(double, double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fdim)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fdim)
 inline double __SPRT_ID(fdim)(double a, double b) { return __builtin_fdim(a, b); }
 #else
 #define __sprt_fdim __SPRT_ID(fdim_impl)
@@ -741,7 +741,7 @@ inline double __SPRT_ID(fdim)(double a, double b) { return __builtin_fdim(a, b);
 
 SPRT_API float __SPRT_ID(fdimf_impl)(float, float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fdimf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fdimf)
 inline float __SPRT_ID(fdimf)(float a, float b) { return __builtin_fdimf(a, b); }
 #else
 #define __sprt_fdimf __SPRT_ID(fdimf_impl)
@@ -750,7 +750,7 @@ inline float __SPRT_ID(fdimf)(float a, float b) { return __builtin_fdimf(a, b); 
 
 SPRT_API long double __SPRT_ID(fdiml_impl)(long double, long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fdiml)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fdiml)
 inline long double __SPRT_ID(fdiml)(long double a, long double b) { return __builtin_fdiml(a, b); }
 #else
 #define __sprt_fdiml __SPRT_ID(fdiml_impl)
@@ -759,7 +759,7 @@ inline long double __SPRT_ID(fdiml)(long double a, long double b) { return __bui
 
 SPRT_API double __SPRT_ID(floor_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_floor)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_floor)
 inline double __SPRT_ID(floor)(double value) { return __builtin_floor(value); }
 #else
 #define __sprt_floor __SPRT_ID(floor_impl)
@@ -768,7 +768,7 @@ inline double __SPRT_ID(floor)(double value) { return __builtin_floor(value); }
 
 SPRT_API float __SPRT_ID(floorf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_floorf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_floorf)
 inline float __SPRT_ID(floorf)(float value) { return __builtin_floorf(value); }
 #else
 #define __sprt_floorf __SPRT_ID(floorf_impl)
@@ -777,7 +777,7 @@ inline float __SPRT_ID(floorf)(float value) { return __builtin_floorf(value); }
 
 SPRT_API long double __SPRT_ID(floorl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_floorl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_floorl)
 inline long double __SPRT_ID(floorl)(long double value) { return __builtin_floorl(value); }
 #else
 #define __sprt_floorl __SPRT_ID(floorl_impl)
@@ -786,7 +786,7 @@ inline long double __SPRT_ID(floorl)(long double value) { return __builtin_floor
 
 SPRT_API double __SPRT_ID(fma_impl)(double, double, double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fma)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fma)
 inline double __SPRT_ID(fma)(double a, double b, double c) { return __builtin_fma(a, b, c); }
 #else
 #define __sprt_fma __SPRT_ID(fma_impl)
@@ -795,7 +795,7 @@ inline double __SPRT_ID(fma)(double a, double b, double c) { return __builtin_fm
 
 SPRT_API float __SPRT_ID(fmaf_impl)(float, float, float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmaf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmaf)
 inline float __SPRT_ID(fmaf)(float a, float b, float c) { return __builtin_fmaf(a, b, c); }
 #else
 #define __sprt_fmaf __SPRT_ID(fmaf_impl)
@@ -804,7 +804,7 @@ inline float __SPRT_ID(fmaf)(float a, float b, float c) { return __builtin_fmaf(
 
 SPRT_API long double __SPRT_ID(fmal_impl)(long double, long double, long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmal)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmal)
 inline long double __SPRT_ID(fmal)(long double a, long double b, long double c) {
 	return __builtin_fmal(a, b, c);
 }
@@ -815,7 +815,7 @@ inline long double __SPRT_ID(fmal)(long double a, long double b, long double c) 
 
 SPRT_API double __SPRT_ID(fmax_impl)(double, double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmax)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmax)
 inline double __SPRT_ID(fmax)(double a, double b) { return __builtin_fmax(a, b); }
 #else
 #define __sprt_fmax __SPRT_ID(fmax_impl)
@@ -824,7 +824,7 @@ inline double __SPRT_ID(fmax)(double a, double b) { return __builtin_fmax(a, b);
 
 SPRT_API float __SPRT_ID(fmaxf_impl)(float, float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmaxf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmaxf)
 inline float __SPRT_ID(fmaxf)(float a, float b) { return __builtin_fmaxf(a, b); }
 #else
 #define __sprt_fmaxf __SPRT_ID(fmaxf_impl)
@@ -833,7 +833,7 @@ inline float __SPRT_ID(fmaxf)(float a, float b) { return __builtin_fmaxf(a, b); 
 
 SPRT_API long double __SPRT_ID(fmaxl_impl)(long double, long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmaxl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmaxl)
 inline long double __SPRT_ID(fmaxl)(long double a, long double b) { return __builtin_fmaxl(a, b); }
 #else
 #define __sprt_fmaxl __SPRT_ID(fmaxl_impl)
@@ -842,7 +842,7 @@ inline long double __SPRT_ID(fmaxl)(long double a, long double b) { return __bui
 
 SPRT_API double __SPRT_ID(fmin_impl)(double, double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmin)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmin)
 inline double __SPRT_ID(fmin)(double a, double b) { return __builtin_fmin(a, b); }
 #else
 #define __sprt_fmin __SPRT_ID(fmin_impl)
@@ -851,7 +851,7 @@ inline double __SPRT_ID(fmin)(double a, double b) { return __builtin_fmin(a, b);
 
 SPRT_API float __SPRT_ID(fminf_impl)(float, float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fminf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fminf)
 inline float __SPRT_ID(fminf)(float a, float b) { return __builtin_fminf(a, b); }
 #else
 #define __sprt_fminf __SPRT_ID(fminf_impl)
@@ -860,7 +860,7 @@ inline float __SPRT_ID(fminf)(float a, float b) { return __builtin_fminf(a, b); 
 
 SPRT_API long double __SPRT_ID(fminl_impl)(long double, long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fminl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fminl)
 inline long double __SPRT_ID(fminl)(long double a, long double b) { return __builtin_fminl(a, b); }
 #else
 #define __sprt_fminl __SPRT_ID(fminl_impl)
@@ -869,7 +869,7 @@ inline long double __SPRT_ID(fminl)(long double a, long double b) { return __bui
 
 SPRT_API double __SPRT_ID(fmod_impl)(double, double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmod)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmod)
 inline double __SPRT_ID(fmod)(double a, double b) { return __builtin_fmod(a, b); }
 #else
 #define __sprt_fmod __SPRT_ID(fmod_impl)
@@ -878,7 +878,7 @@ inline double __SPRT_ID(fmod)(double a, double b) { return __builtin_fmod(a, b);
 
 SPRT_API float __SPRT_ID(fmodf_impl)(float, float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmodf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmodf)
 inline float __SPRT_ID(fmodf)(float a, float b) { return __builtin_fmodf(a, b); }
 #else
 #define __sprt_fmodf __SPRT_ID(fmodf_impl)
@@ -887,7 +887,7 @@ inline float __SPRT_ID(fmodf)(float a, float b) { return __builtin_fmodf(a, b); 
 
 SPRT_API long double __SPRT_ID(fmodl_impl)(long double, long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmodl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_fmodl)
 inline long double __SPRT_ID(fmodl)(long double a, long double b) { return __builtin_fmodl(a, b); }
 #else
 #define __sprt_fmodl __SPRT_ID(fmodl_impl)
@@ -896,7 +896,7 @@ inline long double __SPRT_ID(fmodl)(long double a, long double b) { return __bui
 
 SPRT_API double __SPRT_ID(frexp_impl)(double, int *);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_frexp)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_frexp)
 inline double __SPRT_ID(frexp)(double a, int *b) { return __builtin_frexp(a, b); }
 #else
 #define __sprt_frexp __SPRT_ID(frexp_impl)
@@ -905,7 +905,7 @@ inline double __SPRT_ID(frexp)(double a, int *b) { return __builtin_frexp(a, b);
 
 SPRT_API float __SPRT_ID(frexpf_impl)(float, int *);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_frexpf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_frexpf)
 inline float __SPRT_ID(frexpf)(float a, int *b) { return __builtin_frexpf(a, b); }
 #else
 #define __sprt_frexpf __SPRT_ID(frexpf_impl)
@@ -914,7 +914,7 @@ inline float __SPRT_ID(frexpf)(float a, int *b) { return __builtin_frexpf(a, b);
 
 SPRT_API long double __SPRT_ID(frexpl_impl)(long double, int *);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_frexpl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_frexpl)
 inline long double __SPRT_ID(frexpl)(long double a, int *b) { return __builtin_frexpl(a, b); }
 #else
 #define __sprt_frexpl __SPRT_ID(frexpl_impl)
@@ -923,7 +923,7 @@ inline long double __SPRT_ID(frexpl)(long double a, int *b) { return __builtin_f
 
 SPRT_API double __SPRT_ID(hypot_impl)(double, double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_hypot)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_hypot)
 inline double __SPRT_ID(hypot)(double a, double b) { return __builtin_hypot(a, b); }
 #else
 #define __sprt_hypot __SPRT_ID(hypot_impl)
@@ -932,7 +932,7 @@ inline double __SPRT_ID(hypot)(double a, double b) { return __builtin_hypot(a, b
 
 SPRT_API float __SPRT_ID(hypotf_impl)(float, float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_hypotf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_hypotf)
 inline float __SPRT_ID(hypotf)(float a, float b) { return __builtin_hypotf(a, b); }
 #else
 #define __sprt_hypotf __SPRT_ID(hypotf_impl)
@@ -941,7 +941,7 @@ inline float __SPRT_ID(hypotf)(float a, float b) { return __builtin_hypotf(a, b)
 
 SPRT_API long double __SPRT_ID(hypotl_impl)(long double, long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_hypotl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_hypotl)
 inline long double __SPRT_ID(hypotl)(long double a, long double b) {
 	return __builtin_hypotl(a, b);
 }
@@ -952,7 +952,7 @@ inline long double __SPRT_ID(hypotl)(long double a, long double b) {
 
 SPRT_API int __SPRT_ID(ilogb_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_ilogb)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_ilogb)
 inline int __SPRT_ID(ilogb)(double value) { return __builtin_ilogb(value); }
 #else
 #define __sprt_ilogb __SPRT_ID(ilogb_impl)
@@ -961,7 +961,7 @@ inline int __SPRT_ID(ilogb)(double value) { return __builtin_ilogb(value); }
 
 SPRT_API int __SPRT_ID(ilogbf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_ilogbf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_ilogbf)
 inline int __SPRT_ID(ilogbf)(float value) { return __builtin_ilogbf(value); }
 #else
 #define __sprt_ilogbf __SPRT_ID(ilogbf_impl)
@@ -970,7 +970,7 @@ inline int __SPRT_ID(ilogbf)(float value) { return __builtin_ilogbf(value); }
 
 SPRT_API int __SPRT_ID(ilogbl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_ilogbl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_ilogbl)
 inline int __SPRT_ID(ilogbl)(long double value) { return __builtin_ilogbl(value); }
 #else
 #define __sprt_ilogbl __SPRT_ID(ilogbl_impl)
@@ -979,7 +979,7 @@ inline int __SPRT_ID(ilogbl)(long double value) { return __builtin_ilogbl(value)
 
 SPRT_API double __SPRT_ID(ldexp_impl)(double, int);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_ldexp)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_ldexp)
 inline double __SPRT_ID(ldexp)(double a, int b) { return __builtin_ldexp(a, b); }
 #else
 #define __sprt_ldexp __SPRT_ID(ldexp_impl)
@@ -988,7 +988,7 @@ inline double __SPRT_ID(ldexp)(double a, int b) { return __builtin_ldexp(a, b); 
 
 SPRT_API float __SPRT_ID(ldexpf_impl)(float, int);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_ldexpf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_ldexpf)
 inline float __SPRT_ID(ldexpf)(float a, int b) { return __builtin_ldexpf(a, b); }
 #else
 #define __sprt_ldexpf __SPRT_ID(ldexpf_impl)
@@ -997,7 +997,7 @@ inline float __SPRT_ID(ldexpf)(float a, int b) { return __builtin_ldexpf(a, b); 
 
 SPRT_API long double __SPRT_ID(ldexpl_impl)(long double, int);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_ldexpl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_ldexpl)
 inline long double __SPRT_ID(ldexpl)(long double a, int b) { return __builtin_ldexpl(a, b); }
 #else
 #define __sprt_ldexpl __SPRT_ID(ldexpl_impl)
@@ -1006,7 +1006,7 @@ inline long double __SPRT_ID(ldexpl)(long double a, int b) { return __builtin_ld
 
 SPRT_API double __SPRT_ID(lgamma_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_lgamma)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_lgamma)
 inline double __SPRT_ID(lgamma)(double value) { return __builtin_lgamma(value); }
 #else
 #define __sprt_lgamma __SPRT_ID(lgamma_impl)
@@ -1015,7 +1015,7 @@ inline double __SPRT_ID(lgamma)(double value) { return __builtin_lgamma(value); 
 
 SPRT_API float __SPRT_ID(lgammaf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_lgammaf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_lgammaf)
 inline float __SPRT_ID(lgammaf)(float value) { return __builtin_lgammaf(value); }
 #else
 #define __sprt_lgammaf __SPRT_ID(lgammaf_impl)
@@ -1024,7 +1024,7 @@ inline float __SPRT_ID(lgammaf)(float value) { return __builtin_lgammaf(value); 
 
 SPRT_API long double __SPRT_ID(lgammal_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_lgammal)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_lgammal)
 inline long double __SPRT_ID(lgammal)(long double value) { return __builtin_lgammal(value); }
 #else
 #define __sprt_lgammal __SPRT_ID(lgammal_impl)
@@ -1033,7 +1033,7 @@ inline long double __SPRT_ID(lgammal)(long double value) { return __builtin_lgam
 
 SPRT_API long long __SPRT_ID(llrint_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_llrint)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_llrint)
 inline long long __SPRT_ID(llrint)(double value) { return __builtin_llrint(value); }
 #else
 #define __sprt_llrint __SPRT_ID(llrint_impl)
@@ -1042,7 +1042,7 @@ inline long long __SPRT_ID(llrint)(double value) { return __builtin_llrint(value
 
 SPRT_API long long __SPRT_ID(llrintf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_llrintf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_llrintf)
 inline long long __SPRT_ID(llrintf)(float value) { return __builtin_llrintf(value); }
 #else
 #define __sprt_llrintf __SPRT_ID(llrintf_impl)
@@ -1051,7 +1051,7 @@ inline long long __SPRT_ID(llrintf)(float value) { return __builtin_llrintf(valu
 
 SPRT_API long long __SPRT_ID(llrintl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_llrintl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_llrintl)
 inline long long __SPRT_ID(llrintl)(long double value) { return __builtin_llrintl(value); }
 #else
 #define __sprt_llrintl __SPRT_ID(llrintl_impl)
@@ -1060,7 +1060,7 @@ inline long long __SPRT_ID(llrintl)(long double value) { return __builtin_llrint
 
 SPRT_API long long __SPRT_ID(llround_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_llround)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_llround)
 inline long long __SPRT_ID(llround)(double value) { return __builtin_llround(value); }
 #else
 #define __sprt_llround __SPRT_ID(llround_impl)
@@ -1069,7 +1069,7 @@ inline long long __SPRT_ID(llround)(double value) { return __builtin_llround(val
 
 SPRT_API long long __SPRT_ID(llroundf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_llroundf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_llroundf)
 inline long long __SPRT_ID(llroundf)(float value) { return __builtin_llroundf(value); }
 #else
 #define __sprt_llroundf __SPRT_ID(llroundf_impl)
@@ -1078,7 +1078,7 @@ inline long long __SPRT_ID(llroundf)(float value) { return __builtin_llroundf(va
 
 SPRT_API long long __SPRT_ID(llroundl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_llroundl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_llroundl)
 inline long long __SPRT_ID(llroundl)(long double value) { return __builtin_llroundl(value); }
 #else
 #define __sprt_llroundl __SPRT_ID(llroundl_impl)
@@ -1087,7 +1087,7 @@ inline long long __SPRT_ID(llroundl)(long double value) { return __builtin_llrou
 
 SPRT_API double __SPRT_ID(log_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_log)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_log)
 inline double __SPRT_ID(log)(double value) { return __builtin_log(value); }
 #else
 #define __sprt_log __SPRT_ID(log_impl)
@@ -1096,7 +1096,7 @@ inline double __SPRT_ID(log)(double value) { return __builtin_log(value); }
 
 SPRT_API float __SPRT_ID(logf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_logf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_logf)
 inline float __SPRT_ID(logf)(float value) { return __builtin_logf(value); }
 #else
 #define __sprt_logf __SPRT_ID(logf_impl)
@@ -1105,7 +1105,7 @@ inline float __SPRT_ID(logf)(float value) { return __builtin_logf(value); }
 
 SPRT_API long double __SPRT_ID(logl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_logl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_logl)
 inline long double __SPRT_ID(logl)(long double value) { return __builtin_logl(value); }
 #else
 #define __sprt_logl __SPRT_ID(logl_impl)
@@ -1114,7 +1114,7 @@ inline long double __SPRT_ID(logl)(long double value) { return __builtin_logl(va
 
 SPRT_API double __SPRT_ID(log10_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_log10)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_log10)
 inline double __SPRT_ID(log10)(double value) { return __builtin_log10(value); }
 #else
 #define __sprt_log10 __SPRT_ID(log10_impl)
@@ -1123,7 +1123,7 @@ inline double __SPRT_ID(log10)(double value) { return __builtin_log10(value); }
 
 SPRT_API float __SPRT_ID(log10f_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_log10f)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_log10f)
 inline float __SPRT_ID(log10f)(float value) { return __builtin_log10f(value); }
 #else
 #define __sprt_log10f __SPRT_ID(log10f_impl)
@@ -1132,7 +1132,7 @@ inline float __SPRT_ID(log10f)(float value) { return __builtin_log10f(value); }
 
 SPRT_API long double __SPRT_ID(log10l_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_log10l)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_log10l)
 inline long double __SPRT_ID(log10l)(long double value) { return __builtin_log10l(value); }
 #else
 #define __sprt_log10l __SPRT_ID(log10l_impl)
@@ -1141,7 +1141,7 @@ inline long double __SPRT_ID(log10l)(long double value) { return __builtin_log10
 
 SPRT_API double __SPRT_ID(log1p_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_log1p)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_log1p)
 inline double __SPRT_ID(log1p)(double value) { return __builtin_log1p(value); }
 #else
 #define __sprt_log1p __SPRT_ID(log1p_impl)
@@ -1150,7 +1150,7 @@ inline double __SPRT_ID(log1p)(double value) { return __builtin_log1p(value); }
 
 SPRT_API float __SPRT_ID(log1pf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_log1pf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_log1pf)
 inline float __SPRT_ID(log1pf)(float value) { return __builtin_log1pf(value); }
 #else
 #define __sprt_log1pf __SPRT_ID(log1pf_impl)
@@ -1159,7 +1159,7 @@ inline float __SPRT_ID(log1pf)(float value) { return __builtin_log1pf(value); }
 
 SPRT_API long double __SPRT_ID(log1pl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_log1pl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_log1pl)
 inline long double __SPRT_ID(log1pl)(long double value) { return __builtin_log1pl(value); }
 #else
 #define __sprt_log1pl __SPRT_ID(log1pl_impl)
@@ -1168,7 +1168,7 @@ inline long double __SPRT_ID(log1pl)(long double value) { return __builtin_log1p
 
 SPRT_API double __SPRT_ID(log2_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_log2)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_log2)
 inline double __SPRT_ID(log2)(double value) { return __builtin_log2(value); }
 #else
 #define __sprt_log2 __SPRT_ID(log2_impl)
@@ -1177,7 +1177,7 @@ inline double __SPRT_ID(log2)(double value) { return __builtin_log2(value); }
 
 SPRT_API float __SPRT_ID(log2f_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_log2f)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_log2f)
 inline float __SPRT_ID(log2f)(float value) { return __builtin_log2f(value); }
 #else
 #define __sprt_log2f __SPRT_ID(log2f_impl)
@@ -1186,7 +1186,7 @@ inline float __SPRT_ID(log2f)(float value) { return __builtin_log2f(value); }
 
 SPRT_API long double __SPRT_ID(log2l_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_log2l)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_log2l)
 inline long double __SPRT_ID(log2l)(long double value) { return __builtin_log2l(value); }
 #else
 #define __sprt_log2l __SPRT_ID(log2l_impl)
@@ -1195,7 +1195,7 @@ inline long double __SPRT_ID(log2l)(long double value) { return __builtin_log2l(
 
 SPRT_API double __SPRT_ID(logb_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_logb)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_logb)
 inline double __SPRT_ID(logb)(double value) { return __builtin_logb(value); }
 #else
 #define __sprt_logb __SPRT_ID(logb_impl)
@@ -1204,7 +1204,7 @@ inline double __SPRT_ID(logb)(double value) { return __builtin_logb(value); }
 
 SPRT_API float __SPRT_ID(logbf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_logbf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_logbf)
 inline float __SPRT_ID(logbf)(float value) { return __builtin_logbf(value); }
 #else
 #define __sprt_logbf __SPRT_ID(logbf_impl)
@@ -1213,7 +1213,7 @@ inline float __SPRT_ID(logbf)(float value) { return __builtin_logbf(value); }
 
 SPRT_API long double __SPRT_ID(logbl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_logbl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_logbl)
 inline long double __SPRT_ID(logbl)(long double value) { return __builtin_logbl(value); }
 #else
 #define __sprt_logbl __SPRT_ID(logbl_impl)
@@ -1222,7 +1222,7 @@ inline long double __SPRT_ID(logbl)(long double value) { return __builtin_logbl(
 
 SPRT_API long __SPRT_ID(lrint_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_lrint)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_lrint)
 inline long __SPRT_ID(lrint)(double value) { return __builtin_lrint(value); }
 #else
 #define __sprt_lrint __SPRT_ID(lrint_impl)
@@ -1231,7 +1231,7 @@ inline long __SPRT_ID(lrint)(double value) { return __builtin_lrint(value); }
 
 SPRT_API long __SPRT_ID(lrintf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_lrintf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_lrintf)
 inline long __SPRT_ID(lrintf)(float value) { return __builtin_lrintf(value); }
 #else
 #define __sprt_lrintf __SPRT_ID(lrintf_impl)
@@ -1240,7 +1240,7 @@ inline long __SPRT_ID(lrintf)(float value) { return __builtin_lrintf(value); }
 
 SPRT_API long __SPRT_ID(lrintl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_lrintl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_lrintl)
 inline long __SPRT_ID(lrintl)(long double value) { return __builtin_lrintl(value); }
 #else
 #define __sprt_lrintl __SPRT_ID(lrintl_impl)
@@ -1249,7 +1249,7 @@ inline long __SPRT_ID(lrintl)(long double value) { return __builtin_lrintl(value
 
 SPRT_API long __SPRT_ID(lround_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_lround)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_lround)
 inline long __SPRT_ID(lround)(double value) { return __builtin_lround(value); }
 #else
 #define __sprt_lround __SPRT_ID(lround_impl)
@@ -1258,7 +1258,7 @@ inline long __SPRT_ID(lround)(double value) { return __builtin_lround(value); }
 
 SPRT_API long __SPRT_ID(lroundf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_lroundf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_lroundf)
 inline long __SPRT_ID(lroundf)(float value) { return __builtin_lroundf(value); }
 #else
 #define __sprt_lroundf __SPRT_ID(lroundf_impl)
@@ -1267,7 +1267,7 @@ inline long __SPRT_ID(lroundf)(float value) { return __builtin_lroundf(value); }
 
 SPRT_API long __SPRT_ID(lroundl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_lroundl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_lroundl)
 inline long __SPRT_ID(lroundl)(long double value) { return __builtin_lroundl(value); }
 #else
 #define __sprt_lroundl __SPRT_ID(lroundl_impl)
@@ -1276,7 +1276,7 @@ inline long __SPRT_ID(lroundl)(long double value) { return __builtin_lroundl(val
 
 SPRT_API double __SPRT_ID(modf_impl)(double, double *);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_modf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_modf)
 inline double __SPRT_ID(modf)(double a, double *b) { return __builtin_modf(a, b); }
 #else
 #define __sprt_modf __SPRT_ID(modf_impl)
@@ -1285,7 +1285,7 @@ inline double __SPRT_ID(modf)(double a, double *b) { return __builtin_modf(a, b)
 
 SPRT_API float __SPRT_ID(modff_impl)(float, float *);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_modff)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_modff)
 inline float __SPRT_ID(modff)(float a, float *b) { return __builtin_modff(a, b); }
 #else
 #define __sprt_modff __SPRT_ID(modff_impl)
@@ -1294,7 +1294,7 @@ inline float __SPRT_ID(modff)(float a, float *b) { return __builtin_modff(a, b);
 
 SPRT_API long double __SPRT_ID(modfl_impl)(long double, long double *);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_modfl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_modfl)
 inline long double __SPRT_ID(modfl)(long double a, long double *b) { return __builtin_modfl(a, b); }
 #else
 #define __sprt_modfl __SPRT_ID(modfl_impl)
@@ -1303,7 +1303,7 @@ inline long double __SPRT_ID(modfl)(long double a, long double *b) { return __bu
 
 SPRT_API double __SPRT_ID(nan_impl)(const char *);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_nan)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_nan)
 inline double __SPRT_ID(nan)(const char *value) { return __builtin_nan(value); }
 #else
 #define __sprt_nan __SPRT_ID(nan_impl)
@@ -1312,7 +1312,7 @@ inline double __SPRT_ID(nan)(const char *value) { return __builtin_nan(value); }
 
 SPRT_API float __SPRT_ID(nanf_impl)(const char *);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_nanf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_nanf)
 inline float __SPRT_ID(nanf)(const char *value) { return __builtin_nanf(value); }
 #else
 #define __sprt_nanf __SPRT_ID(nanf_impl)
@@ -1321,7 +1321,7 @@ inline float __SPRT_ID(nanf)(const char *value) { return __builtin_nanf(value); 
 
 SPRT_API long double __SPRT_ID(nanl_impl)(const char *);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_nanl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_nanl)
 inline long double __SPRT_ID(nanl)(const char *value) { return __builtin_nanl(value); }
 #else
 #define __sprt_nanl __SPRT_ID(nanl_impl)
@@ -1330,7 +1330,7 @@ inline long double __SPRT_ID(nanl)(const char *value) { return __builtin_nanl(va
 
 SPRT_API double __SPRT_ID(nearbyint_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_nearbyint)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_nearbyint)
 inline double __SPRT_ID(nearbyint)(double value) { return __builtin_nearbyint(value); }
 #else
 #define __sprt_nearbyint __SPRT_ID(nearbyint_impl)
@@ -1339,7 +1339,7 @@ inline double __SPRT_ID(nearbyint)(double value) { return __builtin_nearbyint(va
 
 SPRT_API float __SPRT_ID(nearbyintf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_nearbyintf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_nearbyintf)
 inline float __SPRT_ID(nearbyintf)(float value) { return __builtin_nearbyintf(value); }
 #else
 #define __sprt_nearbyintf __SPRT_ID(nearbyintf_impl)
@@ -1348,7 +1348,7 @@ inline float __SPRT_ID(nearbyintf)(float value) { return __builtin_nearbyintf(va
 
 SPRT_API long double __SPRT_ID(nearbyintl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_nearbyintl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_nearbyintl)
 inline long double __SPRT_ID(nearbyintl)(long double value) { return __builtin_nearbyintl(value); }
 #else
 #define __sprt_nearbyintl __SPRT_ID(nearbyintl_impl)
@@ -1357,7 +1357,7 @@ inline long double __SPRT_ID(nearbyintl)(long double value) { return __builtin_n
 
 SPRT_API double __SPRT_ID(nextafter_impl)(double, double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_nextafter)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_nextafter)
 inline double __SPRT_ID(nextafter)(double a, double b) { return __builtin_nextafter(a, b); }
 #else
 #define __sprt_nextafter __SPRT_ID(nextafter_impl)
@@ -1366,7 +1366,7 @@ inline double __SPRT_ID(nextafter)(double a, double b) { return __builtin_nextaf
 
 SPRT_API float __SPRT_ID(nextafterf_impl)(float, float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_nextafterf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_nextafterf)
 inline float __SPRT_ID(nextafterf)(float a, float b) { return __builtin_nextafterf(a, b); }
 #else
 #define __sprt_nextafterf __SPRT_ID(nextafterf_impl)
@@ -1375,7 +1375,7 @@ inline float __SPRT_ID(nextafterf)(float a, float b) { return __builtin_nextafte
 
 SPRT_API long double __SPRT_ID(nextafterl_impl)(long double, long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_nextafterl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_nextafterl)
 inline long double __SPRT_ID(nextafterl)(long double a, long double b) {
 	return __builtin_nextafterl(a, b);
 }
@@ -1386,7 +1386,7 @@ inline long double __SPRT_ID(nextafterl)(long double a, long double b) {
 
 SPRT_API double __SPRT_ID(nexttoward_impl)(double, long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_nexttoward)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_nexttoward)
 inline double __SPRT_ID(nexttoward)(double a, long double b) { return __builtin_nexttoward(a, b); }
 #else
 #define __sprt_nexttoward __SPRT_ID(nexttoward_impl)
@@ -1395,7 +1395,7 @@ inline double __SPRT_ID(nexttoward)(double a, long double b) { return __builtin_
 
 SPRT_API float __SPRT_ID(nexttowardf_impl)(float, long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_nexttowardf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_nexttowardf)
 inline float __SPRT_ID(nexttowardf)(float a, long double b) { return __builtin_nexttowardf(a, b); }
 #else
 #define __sprt_nexttowardf __SPRT_ID(nexttowardf_impl)
@@ -1404,7 +1404,7 @@ inline float __SPRT_ID(nexttowardf)(float a, long double b) { return __builtin_n
 
 SPRT_API long double __SPRT_ID(nexttowardl_impl)(long double, long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_nexttowardl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_nexttowardl)
 inline long double __SPRT_ID(nexttowardl)(long double a, long double b) {
 	return __builtin_nexttowardl(a, b);
 }
@@ -1415,7 +1415,7 @@ inline long double __SPRT_ID(nexttowardl)(long double a, long double b) {
 
 SPRT_API double __SPRT_ID(pow_impl)(double, double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_pow)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_pow)
 inline double __SPRT_ID(pow)(double a, double b) { return __builtin_pow(a, b); }
 #else
 #define __sprt_pow __SPRT_ID(pow_impl)
@@ -1424,7 +1424,7 @@ inline double __SPRT_ID(pow)(double a, double b) { return __builtin_pow(a, b); }
 
 SPRT_API float __SPRT_ID(powf_impl)(float, float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_powf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_powf)
 inline float __SPRT_ID(powf)(float a, float b) { return __builtin_powf(a, b); }
 #else
 #define __sprt_powf __SPRT_ID(powf_impl)
@@ -1433,7 +1433,7 @@ inline float __SPRT_ID(powf)(float a, float b) { return __builtin_powf(a, b); }
 
 SPRT_API long double __SPRT_ID(powl_impl)(long double, long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_powl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_powl)
 inline long double __SPRT_ID(powl)(long double a, long double b) { return __builtin_powl(a, b); }
 #else
 #define __sprt_powl __SPRT_ID(powl_impl)
@@ -1442,7 +1442,7 @@ inline long double __SPRT_ID(powl)(long double a, long double b) { return __buil
 
 SPRT_API double __SPRT_ID(remainder_impl)(double, double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_remainder)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_remainder)
 inline double __SPRT_ID(remainder)(double a, double b) { return __builtin_remainder(a, b); }
 #else
 #define __sprt_remainder __SPRT_ID(remainder_impl)
@@ -1451,7 +1451,7 @@ inline double __SPRT_ID(remainder)(double a, double b) { return __builtin_remain
 
 SPRT_API float __SPRT_ID(remainderf_impl)(float, float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_remainderf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_remainderf)
 inline float __SPRT_ID(remainderf)(float a, float b) { return __builtin_remainderf(a, b); }
 #else
 #define __sprt_remainderf __SPRT_ID(remainderf_impl)
@@ -1460,7 +1460,7 @@ inline float __SPRT_ID(remainderf)(float a, float b) { return __builtin_remainde
 
 SPRT_API long double __SPRT_ID(remainderl_impl)(long double, long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_remainderl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_remainderl)
 inline long double __SPRT_ID(remainderl)(long double a, long double b) {
 	return __builtin_remainderl(a, b);
 }
@@ -1471,7 +1471,7 @@ inline long double __SPRT_ID(remainderl)(long double a, long double b) {
 
 SPRT_API double __SPRT_ID(remquo_impl)(double, double, int *);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_remquo)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_remquo)
 inline double __SPRT_ID(remquo)(double a, double b, int *c) { return __builtin_remquo(a, b, c); }
 #else
 #define __sprt_remquo __SPRT_ID(remquo_impl)
@@ -1480,7 +1480,7 @@ inline double __SPRT_ID(remquo)(double a, double b, int *c) { return __builtin_r
 
 SPRT_API float __SPRT_ID(remquof_impl)(float, float, int *);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_remquof)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_remquof)
 inline float __SPRT_ID(remquof)(float a, float b, int *c) { return __builtin_remquof(a, b, c); }
 #else
 #define __sprt_remquof __SPRT_ID(remquof_impl)
@@ -1489,7 +1489,7 @@ inline float __SPRT_ID(remquof)(float a, float b, int *c) { return __builtin_rem
 
 SPRT_API long double __SPRT_ID(remquol_impl)(long double, long double, int *);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_remquol)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_remquol)
 inline long double __SPRT_ID(remquol)(long double a, long double b, int *c) {
 	return __builtin_remquol(a, b, c);
 }
@@ -1500,7 +1500,7 @@ inline long double __SPRT_ID(remquol)(long double a, long double b, int *c) {
 
 SPRT_API double __SPRT_ID(rint_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_rint)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_rint)
 inline double __SPRT_ID(rint)(double value) { return __builtin_rint(value); }
 #else
 #define __sprt_rint __SPRT_ID(rint_impl)
@@ -1509,7 +1509,7 @@ inline double __SPRT_ID(rint)(double value) { return __builtin_rint(value); }
 
 SPRT_API float __SPRT_ID(rintf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_rintf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_rintf)
 inline float __SPRT_ID(rintf)(float value) { return __builtin_rintf(value); }
 #else
 #define __sprt_rintf __SPRT_ID(rintf_impl)
@@ -1518,7 +1518,7 @@ inline float __SPRT_ID(rintf)(float value) { return __builtin_rintf(value); }
 
 SPRT_API long double __SPRT_ID(rintl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_rintl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_rintl)
 inline long double __SPRT_ID(rintl)(long double value) { return __builtin_rintl(value); }
 #else
 #define __sprt_rintl __SPRT_ID(rintl_impl)
@@ -1527,7 +1527,7 @@ inline long double __SPRT_ID(rintl)(long double value) { return __builtin_rintl(
 
 SPRT_API double __SPRT_ID(round_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_round)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_round)
 inline double __SPRT_ID(round)(double value) { return __builtin_round(value); }
 #else
 #define __sprt_round __SPRT_ID(round_impl)
@@ -1536,7 +1536,7 @@ inline double __SPRT_ID(round)(double value) { return __builtin_round(value); }
 
 SPRT_API float __SPRT_ID(roundf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_roundf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_roundf)
 inline float __SPRT_ID(roundf)(float value) { return __builtin_roundf(value); }
 #else
 #define __sprt_roundf __SPRT_ID(roundf_impl)
@@ -1545,7 +1545,7 @@ inline float __SPRT_ID(roundf)(float value) { return __builtin_roundf(value); }
 
 SPRT_API long double __SPRT_ID(roundl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_roundl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_roundl)
 inline long double __SPRT_ID(roundl)(long double value) { return __builtin_roundl(value); }
 #else
 #define __sprt_roundl __SPRT_ID(roundl_impl)
@@ -1554,7 +1554,7 @@ inline long double __SPRT_ID(roundl)(long double value) { return __builtin_round
 
 SPRT_API double __SPRT_ID(scalbln_impl)(double, long);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_scalbln)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_scalbln)
 inline double __SPRT_ID(scalbln)(double a, long b) { return __builtin_scalbln(a, b); }
 #else
 #define __sprt_scalbln __SPRT_ID(scalbln_impl)
@@ -1563,7 +1563,7 @@ inline double __SPRT_ID(scalbln)(double a, long b) { return __builtin_scalbln(a,
 
 SPRT_API float __SPRT_ID(scalblnf_impl)(float, long);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_scalblnf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_scalblnf)
 inline float __SPRT_ID(scalblnf)(float a, long b) { return __builtin_scalblnf(a, b); }
 #else
 #define __sprt_scalblnf __SPRT_ID(scalblnf_impl)
@@ -1572,7 +1572,7 @@ inline float __SPRT_ID(scalblnf)(float a, long b) { return __builtin_scalblnf(a,
 
 SPRT_API long double __SPRT_ID(scalblnl_impl)(long double, long);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_scalblnl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_scalblnl)
 inline long double __SPRT_ID(scalblnl)(long double a, long b) { return __builtin_scalblnl(a, b); }
 #else
 #define __sprt_scalblnl __SPRT_ID(scalblnl_impl)
@@ -1581,7 +1581,7 @@ inline long double __SPRT_ID(scalblnl)(long double a, long b) { return __builtin
 
 SPRT_API double __SPRT_ID(scalbn_impl)(double, int);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_scalbn)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_scalbn)
 inline double __SPRT_ID(scalbn)(double a, int b) { return __builtin_scalbn(a, b); }
 #else
 #define __sprt_scalbn __SPRT_ID(scalbn_impl)
@@ -1590,7 +1590,7 @@ inline double __SPRT_ID(scalbn)(double a, int b) { return __builtin_scalbn(a, b)
 
 SPRT_API float __SPRT_ID(scalbnf_impl)(float, int);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_scalbnf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_scalbnf)
 inline float __SPRT_ID(scalbnf)(float a, int b) { return __builtin_scalbnf(a, b); }
 #else
 #define __sprt_scalbnf __SPRT_ID(scalbnf_impl)
@@ -1599,7 +1599,7 @@ inline float __SPRT_ID(scalbnf)(float a, int b) { return __builtin_scalbnf(a, b)
 
 SPRT_API long double __SPRT_ID(scalbnl_impl)(long double, int);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_scalbnl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_scalbnl)
 inline long double __SPRT_ID(scalbnl)(long double a, int b) { return __builtin_scalbnl(a, b); }
 #else
 #define __sprt_scalbnl __SPRT_ID(scalbnl_impl)
@@ -1608,7 +1608,7 @@ inline long double __SPRT_ID(scalbnl)(long double a, int b) { return __builtin_s
 
 SPRT_API double __SPRT_ID(sin_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_sin)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_sin)
 inline double __SPRT_ID(sin)(double value) { return __builtin_sin(value); }
 #else
 #define __sprt_sin __SPRT_ID(sin_impl)
@@ -1617,7 +1617,7 @@ inline double __SPRT_ID(sin)(double value) { return __builtin_sin(value); }
 
 SPRT_API float __SPRT_ID(sinf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_sinf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_sinf)
 inline float __SPRT_ID(sinf)(float value) { return __builtin_sinf(value); }
 #else
 #define __sprt_sinf __SPRT_ID(sinf_impl)
@@ -1626,7 +1626,7 @@ inline float __SPRT_ID(sinf)(float value) { return __builtin_sinf(value); }
 
 SPRT_API long double __SPRT_ID(sinl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_sinl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_sinl)
 inline long double __SPRT_ID(sinl)(long double value) { return __builtin_sinl(value); }
 #else
 #define __sprt_sinl __SPRT_ID(sinl_impl)
@@ -1635,7 +1635,7 @@ inline long double __SPRT_ID(sinl)(long double value) { return __builtin_sinl(va
 
 SPRT_API double __SPRT_ID(sinh_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_sinh)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_sinh)
 inline double __SPRT_ID(sinh)(double value) { return __builtin_sinh(value); }
 #else
 #define __sprt_sinh __SPRT_ID(sinh_impl)
@@ -1644,7 +1644,7 @@ inline double __SPRT_ID(sinh)(double value) { return __builtin_sinh(value); }
 
 SPRT_API float __SPRT_ID(sinhf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_sinhf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_sinhf)
 inline float __SPRT_ID(sinhf)(float value) { return __builtin_sinhf(value); }
 #else
 #define __sprt_sinhf __SPRT_ID(sinhf_impl)
@@ -1653,7 +1653,7 @@ inline float __SPRT_ID(sinhf)(float value) { return __builtin_sinhf(value); }
 
 SPRT_API long double __SPRT_ID(sinhl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_sinhl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_sinhl)
 inline long double __SPRT_ID(sinhl)(long double value) { return __builtin_sinhl(value); }
 #else
 #define __sprt_sinhl __SPRT_ID(sinhl_impl)
@@ -1662,7 +1662,7 @@ inline long double __SPRT_ID(sinhl)(long double value) { return __builtin_sinhl(
 
 SPRT_API double __SPRT_ID(sqrt_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_sqrt)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_sqrt)
 inline double __SPRT_ID(sqrt)(double value) { return __builtin_sqrt(value); }
 #else
 #define __sprt_sqrt __SPRT_ID(sqrt_impl)
@@ -1671,7 +1671,7 @@ inline double __SPRT_ID(sqrt)(double value) { return __builtin_sqrt(value); }
 
 SPRT_API float __SPRT_ID(sqrtf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_sqrtf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_sqrtf)
 inline float __SPRT_ID(sqrtf)(float value) { return __builtin_sqrtf(value); }
 #else
 #define __sprt_sqrtf __SPRT_ID(sqrtf_impl)
@@ -1680,7 +1680,7 @@ inline float __SPRT_ID(sqrtf)(float value) { return __builtin_sqrtf(value); }
 
 SPRT_API long double __SPRT_ID(sqrtl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_sqrtl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_sqrtl)
 inline long double __SPRT_ID(sqrtl)(long double value) { return __builtin_sqrtl(value); }
 #else
 #define __sprt_sqrtl __SPRT_ID(sqrtl_impl)
@@ -1689,7 +1689,7 @@ inline long double __SPRT_ID(sqrtl)(long double value) { return __builtin_sqrtl(
 
 SPRT_API double __SPRT_ID(tan_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_tan)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_tan)
 inline double __SPRT_ID(tan)(double value) { return __builtin_tan(value); }
 #else
 #define __sprt_tan __SPRT_ID(tan_impl)
@@ -1698,7 +1698,7 @@ inline double __SPRT_ID(tan)(double value) { return __builtin_tan(value); }
 
 SPRT_API float __SPRT_ID(tanf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_tanf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_tanf)
 inline float __SPRT_ID(tanf)(float value) { return __builtin_tanf(value); }
 #else
 #define __sprt_tanf __SPRT_ID(tanf_impl)
@@ -1707,7 +1707,7 @@ inline float __SPRT_ID(tanf)(float value) { return __builtin_tanf(value); }
 
 SPRT_API long double __SPRT_ID(tanl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_tanl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_tanl)
 inline long double __SPRT_ID(tanl)(long double value) { return __builtin_tanl(value); }
 #else
 #define __sprt_tanl __SPRT_ID(tanl_impl)
@@ -1716,7 +1716,7 @@ inline long double __SPRT_ID(tanl)(long double value) { return __builtin_tanl(va
 
 SPRT_API double __SPRT_ID(tanh_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_tanh)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_tanh)
 inline double __SPRT_ID(tanh)(double value) { return __builtin_tanh(value); }
 #else
 #define __sprt_tanh __SPRT_ID(tanh_impl)
@@ -1725,7 +1725,7 @@ inline double __SPRT_ID(tanh)(double value) { return __builtin_tanh(value); }
 
 SPRT_API float __SPRT_ID(tanhf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_tanhf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_tanhf)
 inline float __SPRT_ID(tanhf)(float value) { return __builtin_tanhf(value); }
 #else
 #define __sprt_tanhf __SPRT_ID(tanhf_impl)
@@ -1734,7 +1734,7 @@ inline float __SPRT_ID(tanhf)(float value) { return __builtin_tanhf(value); }
 
 SPRT_API long double __SPRT_ID(tanhl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_tanhl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_tanhl)
 inline long double __SPRT_ID(tanhl)(long double value) { return __builtin_tanhl(value); }
 #else
 #define __sprt_tanhl __SPRT_ID(tanhl_impl)
@@ -1743,7 +1743,7 @@ inline long double __SPRT_ID(tanhl)(long double value) { return __builtin_tanhl(
 
 SPRT_API double __SPRT_ID(tgamma_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_tgamma)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_tgamma)
 inline double __SPRT_ID(tgamma)(double value) { return __builtin_tgamma(value); }
 #else
 #define __sprt_tgamma __SPRT_ID(tgamma_impl)
@@ -1752,7 +1752,7 @@ inline double __SPRT_ID(tgamma)(double value) { return __builtin_tgamma(value); 
 
 SPRT_API float __SPRT_ID(tgammaf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_tgammaf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_tgammaf)
 inline float __SPRT_ID(tgammaf)(float value) { return __builtin_tgammaf(value); }
 #else
 #define __sprt_tgammaf __SPRT_ID(tgammaf_impl)
@@ -1761,7 +1761,7 @@ inline float __SPRT_ID(tgammaf)(float value) { return __builtin_tgammaf(value); 
 
 SPRT_API long double __SPRT_ID(tgammal_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_tgammal)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_tgammal)
 inline long double __SPRT_ID(tgammal)(long double value) { return __builtin_tgammal(value); }
 #else
 #define __sprt_tgammal __SPRT_ID(tgammal_impl)
@@ -1770,7 +1770,7 @@ inline long double __SPRT_ID(tgammal)(long double value) { return __builtin_tgam
 
 SPRT_API double __SPRT_ID(trunc_impl)(double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_trunc)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_trunc)
 inline double __SPRT_ID(trunc)(double value) { return __builtin_trunc(value); }
 #else
 #define __sprt_trunc __SPRT_ID(trunc_impl)
@@ -1779,7 +1779,7 @@ inline double __SPRT_ID(trunc)(double value) { return __builtin_trunc(value); }
 
 SPRT_API float __SPRT_ID(truncf_impl)(float);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_truncf)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_truncf)
 inline float __SPRT_ID(truncf)(float value) { return __builtin_truncf(value); }
 #else
 #define __sprt_truncf __SPRT_ID(truncf_impl)
@@ -1788,7 +1788,7 @@ inline float __SPRT_ID(truncf)(float value) { return __builtin_truncf(value); }
 
 SPRT_API long double __SPRT_ID(truncl_impl)(long double);
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_truncl)
+#if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_truncl)
 inline long double __SPRT_ID(truncl)(long double value) { return __builtin_truncl(value); }
 #else
 #define __sprt_truncl __SPRT_ID(truncl_impl)

@@ -31,9 +31,9 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdio.h>
 #include <sprt/c/__sprt_locale.h>
 #include <sprt/c/__sprt_nl_types.h>
+#include <sprt/c/sys/__sprt_utsname.h>
 
 #include <sprt/runtime/log.h>
-#include <sprt/runtime/stringbuffer.h>
 #include <sprt/runtime/source_location.h>
 #include "private/SPRTFilename.h"
 
@@ -47,15 +47,16 @@ THE SOFTWARE.
 #include <setjmp.h>
 #include <utime.h>
 #include <nl_types.h>
+#include <sys/utsname.h>
 
 namespace sprt {
 
 __SPRT_C_FUNC void __sprt_assert_fail(const char *cond, const char *file, unsigned int line,
 		const char *fn, const char *text) __SPRT_NOEXCEPT {
 	auto features = log::LogFeatures::acquire();
-	StringBuffer<char> prefix;
+	memory::dynstring prefix;
 #if !SPRT_ANDROID
-	prefix = StringBuffer<char>::create(features.reverse, features.bold, features.fred, "[F]",
+	prefix = StreamTraits<char>::toString(features.reverse, features.bold, features.fred, "[F]",
 			features.fdef, features.drop);
 #endif
 
@@ -135,6 +136,47 @@ __SPRT_C_FUNC int __SPRT_ID(feupdateenv)(const __SPRT_ID(fenv_t) * ex) {
 	return ::feupdateenv((const fenv_t *)ex);
 }
 
+__SPRT_C_FUNC int __SPRT_ID(sigemptyset)(__SPRT_ID(sigset_t) * set) {
+	for (auto &it : set->__bits) { it = 0; }
+	return 0;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(sigfillset)(__SPRT_ID(sigset_t) * set) {
+	return ::sigfillset((sigset_t *)set);
+}
+__SPRT_C_FUNC int __SPRT_ID(sigaddset)(__SPRT_ID(sigset_t) * set, int s) {
+	return ::sigaddset((sigset_t *)set, s);
+}
+__SPRT_C_FUNC int __SPRT_ID(sigdelset)(__SPRT_ID(sigset_t) * set, int s) {
+	return ::sigdelset((sigset_t *)set, s);
+}
+__SPRT_C_FUNC int __SPRT_ID(sigismember)(const __SPRT_ID(sigset_t) * set, int s) {
+	return ::sigismember((const sigset_t *)set, s);
+}
+__SPRT_C_FUNC int __SPRT_ID(sigprocmask)(int m, const __SPRT_ID(sigset_t) * __SPRT_RESTRICT a,
+		__SPRT_ID(sigset_t) * __SPRT_RESTRICT b) {
+	return ::sigprocmask(m, (const sigset_t *)a, (sigset_t *)b);
+}
+__SPRT_C_FUNC int __SPRT_ID(sigsuspend)(const __SPRT_ID(sigset_t) * set) {
+	return ::sigsuspend((const sigset_t *)set);
+}
+__SPRT_C_FUNC int __SPRT_ID(sigpending)(__SPRT_ID(sigset_t) * set) {
+	return ::sigpending((sigset_t *)set);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(sigisemptyset)(const __SPRT_ID(sigset_t) * set) {
+	return ::sigisemptyset((sigset_t *)set);
+}
+__SPRT_C_FUNC int __SPRT_ID(sigorset)(__SPRT_ID(sigset_t) * set, const __SPRT_ID(sigset_t) * a,
+		const __SPRT_ID(sigset_t) * b) {
+	return ::sigorset((sigset_t *)set, (const sigset_t *)a, (const sigset_t *)b);
+}
+__SPRT_C_FUNC int __SPRT_ID(sigandset)(__SPRT_ID(sigset_t) * set, const __SPRT_ID(sigset_t) * a,
+		const __SPRT_ID(sigset_t) * b) {
+	return ::sigandset((sigset_t *)set, (const sigset_t *)a, (const sigset_t *)b);
+}
+
+
 __SPRT_C_FUNC void (*__SPRT_ID(signal)(int sig, void (*cb)(int)))(int) { return ::signal(sig, cb); }
 
 __SPRT_C_FUNC int __SPRT_ID(raise)(int sig) { return ::raise(sig); }
@@ -178,5 +220,9 @@ __SPRT_C_FUNC char *__SPRT_ID(catgets)(__SPRT_ID(nl_catd) cat, int a, int b, con
 }
 
 __SPRT_C_FUNC int __SPRT_ID(catclose)(__SPRT_ID(nl_catd) cat) { return ::catclose(cat); }
+
+__SPRT_C_FUNC int __SPRT_ID(uname)(struct __SPRT_UTSNAME_NAME *buf) {
+	return ::uname((struct utsname *)buf);
+}
 
 } // namespace sprt

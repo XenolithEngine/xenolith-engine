@@ -395,6 +395,9 @@ SPRT_FORCEINLINE inline int unlinkat(int __dirfd, const char *__path, int __flag
 
 SPRT_FORCEINLINE inline long gethostid(void) { return __sprt_gethostid(); }
 
+SPRT_FORCEINLINE inline int pipe(int fds[2]) { return __sprt_pipe(fds); }
+SPRT_FORCEINLINE inline int pipe2(int fds[2], int flags) { return __sprt_pipe2(fds, flags); }
+
 __SPRT_END_DECL
 
 #endif

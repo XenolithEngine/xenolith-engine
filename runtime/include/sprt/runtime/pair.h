@@ -29,108 +29,90 @@
 namespace sprt {
 
 template <class _T1, class _T2>
-struct __check_pair_construction {
+struct check_pair_construction {
 	template <int &...>
-	static constexpr bool __enable_implicit_default() {
+	static constexpr bool enable_implicit_default() {
 		return __is_implicitly_default_constructible<_T1>::value
 				&& __is_implicitly_default_constructible<_T2>::value;
 	}
 
 	template <int &...>
-	static constexpr bool __enable_default() {
+	static constexpr bool enable_default() {
 		return is_default_constructible<_T1>::value && is_default_constructible<_T2>::value;
 	}
 
 	template <class _U1, class _U2>
-	static constexpr bool __is_pair_constructible() {
+	static constexpr bool is_pair_constructible() {
 		return is_constructible<_T1, _U1>::value && is_constructible<_T2, _U2>::value;
 	}
 
 	template <class _U1, class _U2>
-	static constexpr bool __is_implicit() {
-		return is_convertible<_U1, _T1>::value && is_convertible<_U2, _T2>::value;
+	static constexpr bool is_implicit() {
+		return is_convertible_v<_U1, _T1> && is_convertible_v<_U2, _T2>;
 	}
 };
 
+struct pair_emplace_construct_t { };
+
 template <class _T1, class _T2>
 struct pair {
+
 	using first_type = _T1;
 	using second_type = _T2;
 
 	_T1 first;
 	_T2 second;
 
-	using __trivially_relocatable =
+	using trivially_relocatable =
 			conditional_t<is_trivially_copyable<_T1>::value && is_trivially_copyable<_T2>::value,
 					pair, void>;
-	using __replaceable =
+	using replaceable =
 			conditional_t<__is_replaceable_v<_T1> && __is_replaceable_v<_T2>, pair, void>;
 
 	pair(pair const &) = default;
 	pair(pair &&) = default;
 
-	template <class _CheckArgsDep = __check_pair_construction<_T1, _T2>,
-			enable_if_t<_CheckArgsDep::__enable_default(), int> = 0>
-	explicit(!_CheckArgsDep::__enable_implicit_default()) constexpr pair()
-			noexcept(is_nothrow_default_constructible<first_type>::value
-					&& is_nothrow_default_constructible<second_type>::value)
-	: first(), second() { }
+	pair &operator=(pair &&) = default;
+	pair &operator=(const pair &) = default;
 
-	template <class _CheckArgsDep = __check_pair_construction<_T1, _T2>,
-			enable_if_t<
-					_CheckArgsDep::template __is_pair_constructible<_T1 const &, _T2 const &>(),
+	template <typename First, typename... Args>
+	explicit constexpr pair(pair_emplace_construct_t, First &&first, Args &&...args) noexcept
+	: first(sprt::forward<First>(first)), second(sprt::forward<Args>(args)...) {
+		static_assert(is_constructible_v<_T1, First>);
+		static_assert(is_constructible_v<_T2, Args...>);
+	}
+
+	template <class _CheckArgsDep = check_pair_construction<_T1, _T2>,
+			enable_if_t< _CheckArgsDep::template is_pair_constructible<_T1 const &, _T2 const &>(),
 					int> = 0>
-	constexpr explicit(!_CheckArgsDep::template __is_implicit<_T1 const &, _T2 const &>())
-			pair(_T1 const &__t1, _T2 const &__t2)
-					noexcept(is_nothrow_copy_constructible<first_type>::value
-							&& is_nothrow_copy_constructible<second_type>::value)
+	constexpr explicit(!_CheckArgsDep::template is_implicit<_T1 const &, _T2 const &>())
+			pair(_T1 const &__t1, _T2 const &__t2) noexcept
 	: first(__t1), second(__t2) { }
 
 	template < class _U1, class _U2,
-			enable_if_t<__check_pair_construction<_T1, _T2>::template __is_pair_constructible<_U1,
-								_U2>(),
+			enable_if_t<
+					check_pair_construction<_T1, _T2>::template is_pair_constructible<_U1, _U2>(),
 					int> = 0 >
-	constexpr explicit(!__check_pair_construction<_T1, _T2>::template __is_implicit<_U1, _U2>())
-			pair(_U1 &&__u1, _U2 &&__u2) noexcept(is_nothrow_constructible<first_type, _U1>::value
-					&& is_nothrow_constructible<second_type, _U2>::value)
+	constexpr explicit(!check_pair_construction<_T1, _T2>::template is_implicit<_U1, _U2>())
+			pair(_U1 &&__u1, _U2 &&__u2) noexcept
 	: first(sprt::forward<_U1>(__u1)), second(sprt::forward<_U2>(__u2)) { }
 
 	template < class _U1, class _U2,
-			enable_if_t<__check_pair_construction<_T1,
-								_T2>::template __is_pair_constructible< _U1 const &, _U2 const &>(),
+			enable_if_t<check_pair_construction<_T1,
+								_T2>::template is_pair_constructible< _U1 const &, _U2 const &>(),
 					int> = 0>
-	constexpr explicit(!__check_pair_construction<_T1, _T2>::template __is_implicit<_U1 const &,
-			_U2 const &>()) pair(pair<_U1, _U2> const &__p)
-			noexcept(is_nothrow_constructible<first_type, _U1 const &>::value
-					&& is_nothrow_constructible<second_type, _U2 const &>::value)
+	constexpr explicit(
+			!check_pair_construction<_T1, _T2>::template is_implicit<_U1 const &, _U2 const &>())
+			pair(pair<_U1, _U2> const &__p) noexcept
 	: first(__p.first), second(__p.second) { }
 
 	template <class _U1, class _U2,
-			enable_if_t<__check_pair_construction<_T1, _T2>::template __is_pair_constructible<_U1,
-								_U2>(),
+			enable_if_t<
+					check_pair_construction<_T1, _T2>::template is_pair_constructible<_U1, _U2>(),
 					int> = 0>
-	constexpr explicit(!__check_pair_construction<_T1, _T2>::template __is_implicit<_U1, _U2>())
-			pair(pair<_U1, _U2> &&__p) noexcept(is_nothrow_constructible<first_type, _U1 &&>::value
-					&& is_nothrow_constructible<second_type, _U2 &&>::value)
+	constexpr explicit(!check_pair_construction<_T1, _T2>::template is_implicit<_U1, _U2>())
+			pair(pair<_U1, _U2> &&__p) noexcept
 	: first(sprt::forward<_U1>(__p.first)), second(sprt::forward<_U2>(__p.second)) { }
-
-	constexpr pair &operator=(conditional_t<is_copy_assignable<first_type>::value
-					&& is_copy_assignable<second_type>::value,
-			pair, __nat> const &__p) noexcept(is_nothrow_copy_assignable<first_type>::value
-			&& is_nothrow_copy_assignable<second_type>::value) {
-		first = __p.first;
-		second = __p.second;
-		return *this;
-	}
-
-	constexpr pair &operator=(conditional_t<is_move_assignable<first_type>::value
-					&& is_move_assignable<second_type>::value,
-			pair, __nat> &&__p) noexcept(is_nothrow_move_assignable<first_type>::value
-			&& is_nothrow_move_assignable<second_type>::value) {
-		first = sprt::forward<first_type>(__p.first);
-		second = sprt::forward<second_type>(__p.second);
-		return *this;
-	}
 
 	template < class _U1, class _U2,
 			enable_if_t<is_assignable<first_type &, _U1 const &>::value
@@ -158,6 +140,36 @@ struct pair {
 		swap(second, __p.second);
 	}
 };
+
+template <typename _T1, typename _T2, typename _U1, typename _U2>
+inline constexpr bool operator==(const pair<_T1, _T2> &__x, const pair<_U1, _U2> &__y) noexcept {
+	return __x.first == __y.first && __x.second == __y.second;
+}
+
+template <typename _T1, typename _T2, typename _U1, typename _U2>
+inline constexpr bool operator!=(const pair<_T1, _T2> &__x, const pair<_U1, _U2> &__y) noexcept {
+	return !(__x == __y);
+}
+
+template <typename _T1, typename _T2, typename _U1, typename _U2>
+inline constexpr bool operator<(const pair<_T1, _T2> &__x, const pair<_U1, _U2> &__y) noexcept {
+	return __x.first < __y.first || (!(__y.first < __x.first) && __x.second < __y.second);
+}
+
+template <typename _T1, typename _T2, typename _U1, typename _U2>
+inline constexpr bool operator>(const pair<_T1, _T2> &__x, const pair<_U1, _U2> &__y) noexcept {
+	return __y < __x;
+}
+
+template <typename _T1, typename _T2, typename _U1, typename _U2>
+inline constexpr bool operator>=(const pair<_T1, _T2> &__x, const pair<_U1, _U2> &__y) noexcept {
+	return !(__x < __y);
+}
+
+template <typename _T1, typename _T2, typename _U1, typename _U2>
+inline constexpr bool operator<=(const pair<_T1, _T2> &__x, const pair<_U1, _U2> &__y) noexcept {
+	return !(__y < __x);
+}
 
 } // namespace sprt
 

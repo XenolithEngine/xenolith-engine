@@ -41,6 +41,13 @@ struct _recursive_qmutex_data_t {
 #error TODO
 #endif
 
+
+/*
+	A simpliest and fastest mutex. Designed for minimal synchronization, potentially
+	does not implement priority management functions and other tasks critical to
+	overall performance. Use where mutual locks are not expected and the locks
+	themselves take minimal time.
+*/
 class qmutex final {
 public:
 	~qmutex();
@@ -55,6 +62,10 @@ protected:
 	__qmutex_data_t _data;
 };
 
+/*
+	A slower mutex that supports recursive locking and priority
+	inheritance features. Use as a general purpose mutex.
+*/
 class recursive_qmutex final {
 public:
 	~recursive_qmutex();
@@ -69,7 +80,9 @@ protected:
 	_recursive_qmutex_data_t _data;
 };
 
-
+/*
+	std::unique_lock
+*/
 template <class _Mutex>
 class unique_lock {
 public:

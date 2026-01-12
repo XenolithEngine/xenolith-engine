@@ -26,7 +26,6 @@
 
 #include <sprt/jni/call.h> // IWYU pragma: keep
 #include <sprt/runtime/ref.h>
-#include <sprt/runtime/stringbuffer.h>
 
 #if SPRT_ANDROID
 
@@ -596,8 +595,8 @@ protected:
 
 	GlobalClass loaderClassClass = nullptr;
 
-	StringBuffer<char> apkPath;
-	StringBuffer<char> nativeLibraryDir;
+	memory::dynstring apkPath;
+	memory::dynstring nativeLibraryDir;
 
 	App *app = nullptr;
 };
@@ -614,12 +613,12 @@ struct SPRT_API ApplicationInfo : public RtRef {
 
 	bool init(const jni::Ref &);
 
-	StringBuffer<char> bundleName;
-	StringBuffer<char> applicationName;
-	StringBuffer<char> applicationVersion;
-	StringBuffer<char> userAgent;
-	StringBuffer<char> systemAgent;
-	StringBuffer<char> locale;
+	memory::dynstring bundleName;
+	memory::dynstring applicationName;
+	memory::dynstring applicationVersion;
+	memory::dynstring userAgent;
+	memory::dynstring systemAgent;
+	memory::dynstring locale;
 
 	uint32_t pixelWidth = 0;
 	uint32_t pixelHeight = 0;

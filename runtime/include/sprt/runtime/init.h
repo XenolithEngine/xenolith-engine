@@ -33,6 +33,10 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/runtime/config.h>
 
+#if __SPRT_USE_STL
+#include <utility>
+#endif
+
 #define SPRT_UNUSED [[maybe_unused]]
 #define SPRT_INLINE [[gnu::always_inline]]
 #define SPRT_INLINE_LAMBDA __attribute__((always_inline))
@@ -386,12 +390,20 @@ constexpr typename remove_reference<Type>::type &&move_unsafe(Type &&value) noex
 	swap
 */
 
+#if __SPRT_USE_STL
+
+using std::swap;
+
+#else
+
 template <typename Type>
 inline constexpr void swap(Type &left, Type &right) noexcept {
 	Type tmp(move(left));
 	left = move(right);
 	right = move(tmp);
 }
+
+#endif
 
 template <typename Type>
 constexpr inline Type *addressof(Type &__x) noexcept {

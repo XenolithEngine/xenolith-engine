@@ -23,76 +23,10 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_MBSTATE_H_
 #define CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_MBSTATE_H_
 
-#include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/cross/__sprt_config.h>
 
-#if SPRT_LINUX
-
-#ifdef __SPRT_BUILD
-#define __SPRT_MBSTATE_NAME __SPRT_ID(mbstate_t)
-#else
-#define __SPRT_MBSTATE_NAME __mbstate_t
-#endif
-#define __SPRT_MBSTATE_DIRECT 0
-
-#ifndef __SPRT_WEOF
-#define __SPRT_WEOF 0xffff'ffffU
-#endif
-
-typedef unsigned long __SPRT_ID(wctype_t);
-
-typedef struct {
-	unsigned __opaque1;
-	unsigned __opaque2;
-} __SPRT_MBSTATE_NAME;
-
-#elif SPRT_WINDOWS
-
-#ifdef __SPRT_BUILD
-#define __SPRT_MBSTATE_NAME __SPRT_ID(mbstate_t)
-#else
-#define __SPRT_MBSTATE_NAME mbstate_t
-#endif
-#define __SPRT_MBSTATE_DIRECT 1
-
-#ifndef __SPRT_WEOF
-#define __SPRT_WEOF 0xffff
-#endif
-
-typedef unsigned short __SPRT_ID(wctype_t);
-
-typedef struct {
-	unsigned long _Wchar;
-	unsigned short _Byte unsigned short _State;
-} __SPRT_MBSTATE_NAME;
-
-#elif SPRT_ANDROID
-
-#ifdef __SPRT_BUILD
-#define __SPRT_MBSTATE_NAME __SPRT_ID(mbstate_t)
-#else
-#define __SPRT_MBSTATE_NAME mbstate_t
-#endif
-#define __SPRT_MBSTATE_DIRECT 1
-
-#ifndef __SPRT_WEOF
-#define __SPRT_WEOF (__sprt_wint_t)(-1)
-#endif
-
-typedef long __SPRT_ID(wctype_t);
-
-typedef struct {
-	unsigned char __seq[4];
-#ifdef __LP64__
-	unsigned char __reserved[4];
-#endif
-} __SPRT_MBSTATE_NAME;
-
-#elif SPRT_MACOS
-
-#error "Unknown OS"
-
-#else
-#error "Unknown OS"
-#endif
+// clang-format off
+#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/mbstate.h)
+// clang-format on
 
 #endif // CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_MBSTATE_H_

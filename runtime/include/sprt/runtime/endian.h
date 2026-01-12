@@ -23,8 +23,8 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_ENDINAN_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_ENDINAN_H_
 
-#include <sprt/c/__sprt_string.h>
 #include <sprt/runtime/int.h>
+#include <sprt/runtime/bit_cast.h>
 
 namespace sprt::byteorder {
 
@@ -104,17 +104,23 @@ struct Converter<T, ShouldSwap::DoSwap, Bit8Size> {
 
 template <class T>
 struct Converter<T, ShouldSwap::DoSwap, Bit16Size> {
-	static inline T Swap(T value) { return bit_cast<T>(bswap16(bit_cast<uint16_t>(value))); }
+	static inline T Swap(T value) {
+		return sprt::bit_cast<T>(bswap16(sprt::bit_cast<uint16_t>(value)));
+	}
 };
 
 template <class T>
 struct Converter<T, ShouldSwap::DoSwap, Bit32Size> {
-	static inline T Swap(T value) { return bit_cast<T>(bswap32(bit_cast<uint32_t>(value))); }
+	static inline T Swap(T value) {
+		return sprt::bit_cast<T>(bswap32(sprt::bit_cast<uint32_t>(value)));
+	}
 };
 
 template <class T>
 struct Converter<T, ShouldSwap::DoSwap, Bit64Size> {
-	static inline T Swap(T value) { return bit_cast<T>(bswap64(bit_cast<uint64_t>(value))); }
+	static inline T Swap(T value) {
+		return sprt::bit_cast<T>(bswap64(sprt::bit_cast<uint64_t>(value)));
+	}
 };
 
 template <class T, size_t Size>

@@ -24,17 +24,19 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_VECTOR_H_
 
 #include <sprt/runtime/mem/detail/storage.h>
+#include <sprt/runtime/mem/detail/dynalloc.h>
 #include <sprt/runtime/hash.h>
 #include <sprt/runtime/string.h>
 #include <sprt/runtime/detail/compare.h>
 #include <sprt/runtime/initializer_list.h>
+#include <sprt/runtime/detail/ordering.h>
 
 namespace sprt::memory {
 
-template <typename Type>
-class vector : public sprt::memory::AllocPool {
+template <typename Type, typename Allocator = sprt::memory::detail::Allocator<Type>>
+class vector : public Allocator::base_class {
 public:
-	using allocator_type = sprt::memory::detail::Allocator<Type>;
+	using allocator_type = Allocator;
 
 	using pointer = Type *;
 	using const_pointer = const Type *;
@@ -43,8 +45,8 @@ public:
 
 	using size_type = size_t;
 	using value_type = Type;
-	using mem_type = detail::storage_mem<Type, 0>;
-	using self = vector<Type>;
+	using mem_type = detail::storage_mem<Type, 0, allocator_type>;
+	using self = vector<Type, allocator_type>;
 
 	using iterator = typename mem_type::iterator;
 	using const_iterator = typename mem_type::const_iterator;
@@ -76,6 +78,7 @@ public:
 	vector(vector &&other) noexcept : _mem(sprt::move_unsafe(other._mem)) { }
 	vector(vector &&other, const allocator_type &alloc) noexcept
 	: _mem(sprt::move_unsafe(other._mem), alloc) { }
+
 	vector(initializer_list<Type> init, const allocator_type &alloc = allocator_type()) noexcept
 	: _mem(alloc) {
 		_mem.reserve(init.size());
@@ -229,62 +232,39 @@ protected:
 
 using bytes = vector<uint8_t>;
 
-template <typename _Tp>
-inline constexpr bool operator==(const vector<_Tp> &__x, const vector<_Tp> &__y) {
+template <typename Type>
+using dynvector = vector<Type, detail::DynamicAllocator<Type>>;
+
+using dynbytes = dynvector<uint8_t>;
+
+template <typename _Tp, typename Allocator>
+inline constexpr bool operator==(const vector<_Tp, Allocator> &__x,
+		const vector<_Tp, Allocator> &__y) {
 	return (__x.size() == __y.size() && sprt::equal(__x.begin(), __x.end(), __y.begin()));
 }
 
-template <typename _Tp>
-inline constexpr bool operator<(const vector<_Tp> &__x, const vector<_Tp> &__y) {
-	return sprt::lexicographical_compare(__x.begin(), __x.end(), __y.begin(), __y.end());
+template <typename _Tp, typename Allocator>
+inline constexpr auto operator<=>(const vector<_Tp, Allocator> &__x,
+		const vector<_Tp, Allocator> &__y) {
+	return sprt::lexicographical_compare_three_way(__x.begin(), __x.end(), __y.begin(), __y.end());
 }
 
-template <>
-inline constexpr bool operator==(const vector<uint8_t> &x, const vector<uint8_t> &y) {
-	auto len1 = x.size();
-	auto len2 = y.size();
-	return len1 == len2 && __constexpr_memcmp(x.data(), y.data(), len1) == 0;
-}
-
-template <>
-inline constexpr bool operator<(const vector<uint8_t> &x, const vector<uint8_t> &y) {
-	auto len1 = x.size();
-	auto len2 = y.size();
-	int result = __constexpr_memcmp(x.data(), y.data(), min(len1, len2));
-	if (result != 0) {
-		return result < 0;
+template <typename Allocator>
+inline constexpr auto operator<=>(const vector<uint8_t, Allocator> &x,
+		const vector<uint8_t, Allocator> &y) {
+	auto commonLen = sprt::min(x.size(), y.size());
+	if (commonLen == 0) {
+		return x.size() <=> y.size();
+	} else {
+		auto ret = __constexpr_memcmp(x.data(), y.data(), commonLen);
+		if (ret < 0) {
+			return sprt::strong_ordering::less;
+		} else if (ret > 0) {
+			return sprt::strong_ordering::greater;
+		} else {
+			return x.size() <=> y.size();
+		}
 	}
-	if (len1 < len2) {
-		return true;
-	}
-	if (len1 > len2) {
-		return false;
-	}
-	return false;
-}
-
-/// Based on operator==
-template <typename _Tp>
-inline constexpr bool operator!=(const vector<_Tp> &__x, const vector<_Tp> &__y) {
-	return !(__x == __y);
-}
-
-/// Based on operator<
-template <typename _Tp>
-inline constexpr bool operator>(const vector<_Tp> &__x, const vector<_Tp> &__y) {
-	return __y < __x;
-}
-
-/// Based on operator<
-template <typename _Tp>
-inline constexpr bool operator<=(const vector<_Tp> &__x, const vector<_Tp> &__y) {
-	return !(__y < __x);
-}
-
-/// Based on operator<
-template <typename _Tp>
-inline constexpr bool operator>=(const vector<_Tp> &__x, const vector<_Tp> &__y) {
-	return !(__x < __y);
 }
 
 } // namespace sprt::memory

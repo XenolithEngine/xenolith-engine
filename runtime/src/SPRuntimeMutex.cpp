@@ -21,6 +21,7 @@
  **/
 
 #include <sprt/runtime/mutex.h>
+#include <sprt/runtime/waitable_address.h>
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/status.h>
 #include "private/SPRTSpecific.h"
@@ -28,124 +29,32 @@
 #include <sprt/c/__sprt_time.h>
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/__sprt_errno.h>
+#include <sprt/c/sys/__sprt_futex.h>
 
 namespace sprt {
-
-SPRT_UNUSED static constexpr uint32_t FUTEX_V1_WAIT = 0;
-SPRT_UNUSED static constexpr uint32_t FUTEX_V1_WAKE = 1;
-SPRT_UNUSED static constexpr uint32_t FUTEX_V1_LOCK_PI = 6;
-SPRT_UNUSED static constexpr uint32_t FUTEX_V1_UNLOCK_PI = 7;
-SPRT_UNUSED static constexpr uint32_t FUTEX_V1_TRYLOCK_PI = 8;
-SPRT_UNUSED static constexpr uint32_t FUTEX_V1_WAIT_BITSET = 9;
-SPRT_UNUSED static constexpr uint32_t FUTEX_V1_WAKE_BITSET = 10;
-
-SPRT_UNUSED static constexpr uint32_t FUTEX_V1_PRIVATE_FLAG = 128;
-static constexpr uint32_t FUTEX_V1_CLOCK_REALTIME = 256;
-
-SPRT_UNUSED SPRT_UNUSED static constexpr uint32_t FUTEX_V1_WAITERS = 0x8000'0000;
-SPRT_UNUSED static constexpr uint32_t FUTEX_V1_OWNER_DIED = 0x4000'0000;
-SPRT_UNUSED static constexpr uint32_t FUTEX_V1_TID_MASK = 0x3fff'ffff;
 
 SPRT_UNUSED static constexpr uint32_t LOCK_VALUE = 0b0001;
 SPRT_UNUSED static constexpr uint32_t WAIT_VALUE = 0b0010;
 SPRT_UNUSED static constexpr uint32_t FULL_VALUE = LOCK_VALUE | WAIT_VALUE;
 
-SPRT_UNUSED static constexpr uint32_t CLIENT_MASK = 0x01;
-SPRT_UNUSED static constexpr uint32_t SERVER_MASK = 0x02;
-SPRT_UNUSED static constexpr uint32_t FULL_MASK = CLIENT_MASK | SERVER_MASK;
-
-SPRT_UNUSED static constexpr uint32_t FLAG_SIZE_U8 = 0x00;
-SPRT_UNUSED static constexpr uint32_t FLAG_SIZE_U16 = 0x01;
-SPRT_UNUSED static constexpr uint32_t FLAG_SIZE_U32 = 0x02;
-SPRT_UNUSED static constexpr uint32_t FLAG_SIZE_U64 = 0x03;
-SPRT_UNUSED static constexpr uint32_t FLAG_NUMA = 0x04;
-SPRT_UNUSED static constexpr uint32_t FLAG_MPOL = 0x08;
-SPRT_UNUSED static constexpr uint32_t FLAG_PRIVATE = 128;
-
-static bool s_hasFutex2 = false;
-
 static uint32_t sys_gettid() { return uint32_t(::syscall(SYS_GETTID)); }
 
-static long futex_lock(volatile uint32_t *uaddr, uint32_t flags, _linux_timespec *timespec) {
-	auto op = FUTEX_V1_LOCK_PI;
-	if (hasFlag(flags, FLAG_PRIVATE)) {
-		op |= FUTEX_V1_PRIVATE_FLAG;
-	}
-
-	return ::syscall(SYS_FUTEX_V1, uaddr, op, 0, &timespec);
-}
-
-static long futex_try_lock(volatile uint32_t *uaddr, uint32_t flags) {
-	auto op = FUTEX_V1_TRYLOCK_PI;
-	if (hasFlag(flags, FLAG_PRIVATE)) {
-		op |= FUTEX_V1_PRIVATE_FLAG;
-	}
-
-	return ::syscall(SYS_FUTEX_V1, uaddr, op);
-}
-
-static long futex_unlock(volatile uint32_t *uaddr, uint32_t flags) {
-	auto op = FUTEX_V1_UNLOCK_PI;
-	if (hasFlag(flags, FLAG_PRIVATE)) {
-		op |= FUTEX_V1_PRIVATE_FLAG;
-	}
-
-	return ::syscall(SYS_FUTEX_V1, uaddr, op);
-}
-
-static long futex_wake_v1(volatile uint32_t *uaddr, uint32_t bitset, int nr_wake, uint32_t flags) {
-	auto op = bitset ? FUTEX_V1_WAKE_BITSET : FUTEX_V1_WAKE;
-	if (hasFlag(flags, FLAG_PRIVATE)) {
-		op |= FUTEX_V1_PRIVATE_FLAG;
-	}
-
-	if (bitset) {
-		return ::syscall(SYS_FUTEX_V1, uaddr, op, nr_wake, nullptr, nullptr, bitset);
-	} else {
-		return ::syscall(SYS_FUTEX_V1, uaddr, op, nr_wake);
-	}
-}
-
-static long futex_wait_v1(volatile uint32_t *uaddr, uint32_t val, uint32_t mask, uint32_t flags,
-		_linux_timespec *timespec, __sprt_clockid_t clockid) {
-	auto op = mask ? FUTEX_V1_WAIT_BITSET : FUTEX_V1_WAIT;
-	if (hasFlag(flags, FLAG_PRIVATE)) {
-		op |= FUTEX_V1_PRIVATE_FLAG;
-	}
-
-	if (clockid == __SPRT_CLOCK_REALTIME) {
-		op |= FUTEX_V1_CLOCK_REALTIME;
-	}
-
-	if (mask) {
-		return ::syscall(SYS_FUTEX_V1, uaddr, op, val, timespec, nullptr, mask);
-	} else {
-		return ::syscall(SYS_FUTEX_V1, uaddr, op, val, timespec);
-	}
-}
-
-static long futex_wake(volatile uint32_t *uaddr, uint32_t bitset, int nr_wake, uint32_t flags) {
-	if (s_hasFutex2) {
-		return syscall(SYS_FUTEX_V2_WAKE, uaddr, bitset, nr_wake, flags);
-	} else {
-		return futex_wake_v1(uaddr, bitset, nr_wake, flags);
-	}
-}
-
-static long futex_wait(volatile uint32_t *uaddr, uint32_t val, uint32_t mask, uint32_t flags,
-		_linux_timespec *timespec, __sprt_clockid_t clockid) {
-	if (s_hasFutex2) {
-		return syscall(SYS_FUTEX_V2_WAIT, uaddr, val, mask, flags, timespec, clockid);
-	} else {
-		return futex_wait_v1(uaddr, val, mask, flags, timespec, clockid);
+static void reportError(StringView tag, int err) {
+	if (err != EAGAIN) {
+		auto st = status::errnoToStatus(err);
+		status::getStatusDescription(st, [&](StringView str) {
+			log::vprint(log::LogType::Error, __SPRT_LOCATION, tag, "Syscall error: ", str);
+		});
 	}
 }
 
 static uint32_t atomicLoadSeq(volatile uint32_t *ptr) {
-	uint32_t ret;
-	__atomic_load(ptr, &ret, __ATOMIC_SEQ_CST);
-	return ret;
+	return __atomic_load_n(ptr, __ATOMIC_SEQ_CST);
 }
+
+/*static void atomicStoreSeq(volatile uint32_t *ptr, uint32_t value) {
+	__atomic_store_n(ptr, value, __ATOMIC_SEQ_CST);
+}*/
 
 static uint32_t atomicFetchOr(volatile uint32_t *ptr, uint32_t value) {
 	return __atomic_fetch_or(ptr, value, __ATOMIC_SEQ_CST);
@@ -182,14 +91,11 @@ void qmutex::lock() {
 			// if wait flag is set already or we still locked
 			if ((c & WAIT_VALUE) != 0
 					|| (atomicFetchOr(&_data.value, WAIT_VALUE) & LOCK_VALUE) != 0) {
-				// futex should have all three flags set at this moment
-				// wait for unlock
-				auto ret = futex_wait(&_data.value, FULL_VALUE, s_hasFutex2 ? FULL_MASK : 0,
-						FLAG_SIZE_U32 | FLAG_PRIVATE, nullptr, __SPRT_CLOCK_MONOTONIC);
+				// wait for unlock, if futex has both WAIT_VALUE and LOCK_VALUE
+				auto ret = __sprt_futex_wait(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG, FULL_VALUE,
+						nullptr);
 				if (ret < 0) {
-					auto err = __sprt_errno;
-					log::vprint(log::LogType::Error, __SPRT_LOCATION, "sprt::qmutex",
-							"Syscall error: ", err);
+					reportError(__PRETTY_FUNCTION__, __sprt_errno);
 				}
 			}
 			// check if lock still in place by fetching value and set all flags
@@ -207,12 +113,9 @@ bool qmutex::unlock() {
 	// unset all, return true if WAIT was set
 	if ((atomicExchange(&_data.value, 0) & WAIT_VALUE) != 0) {
 		// WAIT was set, we need to signal
-		auto ret = futex_wake(&_data.value, s_hasFutex2 ? FULL_MASK : 0, 1,
-				FLAG_SIZE_U32 | FLAG_PRIVATE);
+		auto ret = __sprt_futex_wake(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG, 1);
 		if (ret < 0) {
-			auto err = __sprt_errno;
-			log::vprint(log::LogType::Error, __SPRT_LOCATION, "sprt::qmutex",
-					"Syscall error: ", err);
+			reportError(__PRETTY_FUNCTION__, __sprt_errno);
 		}
 		return true;
 	}
@@ -231,7 +134,7 @@ recursive_qmutex::~recursive_qmutex() {
 }
 
 void recursive_qmutex::lock() {
-	auto tid = tl_tid & FUTEX_V1_TID_MASK;
+	auto tid = tl_tid & __SPRT_FUTEX_TID_MASK;
 	uint32_t expected = 0;
 	// try to capture mutex with out tid
 	if (!atomicCompareSwap(&_data.value, &expected, tid)) [[unlikely]] {
@@ -243,7 +146,7 @@ void recursive_qmutex::lock() {
 				++_data.counter;
 				return;
 			} else {
-				if (futex_lock(&_data.value, FLAG_PRIVATE, nullptr) < 0) {
+				if (__sprt_futex_lock_pi(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG, nullptr) < 0) {
 					auto err = __sprt_errno;
 					switch (err) {
 					case EAGAIN: break;
@@ -252,10 +155,7 @@ void recursive_qmutex::lock() {
 						++_data.counter;
 						return;
 						break;
-					default:
-						log::vprint(log::LogType::Error, __SPRT_LOCATION, "sprt::recursive_qmutex",
-								"Syscall error: ", err);
-						break;
+					default: reportError(__PRETTY_FUNCTION__, err); break;
 					}
 				}
 
@@ -271,7 +171,7 @@ void recursive_qmutex::lock() {
 }
 
 bool recursive_qmutex::try_lock() {
-	auto tid = tl_tid & FUTEX_V1_TID_MASK;
+	auto tid = tl_tid & __SPRT_FUTEX_TID_MASK;
 	uint32_t expected = 0;
 	// try to capture mutex with out tid
 	if (!atomicCompareSwap(&_data.value, &expected, tid)) [[unlikely]] {
@@ -281,8 +181,8 @@ bool recursive_qmutex::try_lock() {
 			++_data.counter;
 			return true;
 		} else {
-			auto ret = futex_try_lock(&_data.value, FLAG_PRIVATE);
-			if (futex_try_lock(&_data.value, FLAG_PRIVATE) == 0) {
+			auto ret = __sprt_futex_trylock_pi(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG);
+			if (ret == 0) {
 				++_data.counter;
 				return true;
 			} else if (ret < 0) {
@@ -294,10 +194,7 @@ bool recursive_qmutex::try_lock() {
 					++_data.counter;
 					return true;
 					break;
-				default:
-					log::vprint(log::LogType::Error, __SPRT_LOCATION, "sprt::recursive_qmutex",
-							"Syscall error: ", err);
-					break;
+				default: reportError(__PRETTY_FUNCTION__, err); break;
 				}
 			}
 			return false;
@@ -309,28 +206,27 @@ bool recursive_qmutex::try_lock() {
 }
 
 bool recursive_qmutex::unlock() {
-	auto tid = tl_tid & FUTEX_V1_TID_MASK;
+	auto tid = tl_tid & __SPRT_FUTEX_TID_MASK;
 	auto value = atomicLoadSeq(&_data.value);
-	if ((value & FUTEX_V1_TID_MASK) == tid) {
+	if ((value & __SPRT_FUTEX_TID_MASK) == tid) {
 		--_data.counter;
 		if (_data.counter > 0) {
 			// some recursive locks still in place
 			return false;
 		}
 
-		if ((value & FUTEX_V1_WAITERS) != 0) {
+		if ((value & __SPRT_FUTEX_WAITERS) != 0) {
 			// we know there are waiters, unlock via syscall
-			futex_unlock(&_data.value, FLAG_PRIVATE);
+			__sprt_futex_unlock_pi(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG);
 			return true;
 		} else {
 			// try to release atomically
 			uint32_t expected = tid;
 			if (!atomicCompareSwap(&_data.value, &expected, 0)) {
 				// there are waiters or an error, we don't care what - just unlock
-				auto ret = futex_unlock(&_data.value, FLAG_PRIVATE);
+				auto ret = __sprt_futex_unlock_pi(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG);
 				if (ret < 0) {
-					log::vprint(log::LogType::Error, __SPRT_LOCATION, "sprt::recursive_qmutex",
-							"Syscall error: ", __sprt_errno);
+					reportError(__PRETTY_FUNCTION__, __sprt_errno);
 				}
 				return true;
 			} else {
@@ -345,11 +241,64 @@ bool recursive_qmutex::unlock() {
 	return false;
 }
 
+static constexpr waitable_address::value_type WaitersBit = 0x8000'0000;
 
-void setFutexVersion(int v) {
-	if (v > 1) {
-		s_hasFutex2 = true;
+waitable_address::~waitable_address() { }
+
+void waitable_address::wait_value(value_type val) {
+	// optimistic load, if success - returns without setting WaitersBit
+	auto v = (atomicLoadSeq(&_data.value));
+	if ((v & value_mask) != val) {
+		int ret = 0;
+		// wait on futex
+		do {
+			if ((v & WaitersBit) != 0) {
+				// WaitersBit was not dropped, just wait
+				ret = __sprt_futex_wait(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG, v, nullptr);
+				if (ret < 0) {
+					reportError(__PRETTY_FUNCTION__, __sprt_errno);
+				}
+			} else {
+				// set waiters bit, then wait if needed
+				v = atomicFetchOr(&_data.value, WaitersBit);
+				if ((v & value_mask) != val) {
+					// if &_data.value is still == v - wait until signal
+					ret = __sprt_futex_wait(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG, FULL_VALUE,
+							nullptr);
+					if (ret < 0) {
+						reportError(__PRETTY_FUNCTION__, __sprt_errno);
+					}
+				}
+			}
+
+			v = (atomicLoadSeq(&_data.value));
+
+			/*ret = __sprt_futex_wait(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG, v, nullptr);
+			if (ret < 0) {
+				reportError(__PRETTY_FUNCTION__, __sprt_errno);
+			}
+			v = (atomicLoadSeq(&_data.value) & value_mask);*/
+		} while ((v & value_mask) != val);
 	}
+}
+
+bool waitable_address::try_value(value_type val) {
+	return (atomicLoadSeq(&_data.value) & value_mask) == val;
+}
+
+void waitable_address::set_and_signal(value_type val) {
+	if (atomicExchange(&_data.value, val) & WaitersBit) {
+		auto ret = __sprt_futex_wake(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG, __SPRT_INT_MAX);
+		if (ret < 0) {
+			reportError(__PRETTY_FUNCTION__, __sprt_errno);
+		}
+	}
+
+	/*atomicStoreSeq(&_data.value, val);
+	auto ret = __sprt_futex_wake(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG, __SPRT_INT_MAX);
+	if (ret < 0) {
+		reportError(__PRETTY_FUNCTION__, __sprt_errno);
+	}*/
 }
 
 } // namespace sprt

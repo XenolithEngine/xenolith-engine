@@ -257,13 +257,15 @@ struct RbTreeKeyExtractor<Key, pair<Key, Value>> {
 	template <typename A, typename... Args>
 	static inline void construct(A &alloc, RbTreeNode<pair<Key, Value>> *node, const Key &k,
 			Args &&...args) noexcept {
-		alloc.construct(node->value.ptr(), sprt::forward<Key>(k), sprt::forward<Args>(args)...);
+		alloc.construct(node->value.ptr(), pair_emplace_construct_t(), sprt::forward<Key>(k),
+				sprt::forward<Args>(args)...);
 	}
 
 	template <typename A, typename... Args>
 	static inline void construct(A &alloc, RbTreeNode<pair<Key, Value>> *node, Key &&k,
 			Args &&...args) noexcept {
-		alloc.construct(node->value.ptr(), sprt::move_unsafe(k), sprt::forward<Args>(args)...);
+		alloc.construct(node->value.ptr(), pair_emplace_construct_t(), sprt::move_unsafe(k),
+				sprt::forward<Args>(args)...);
 	}
 };
 
@@ -274,13 +276,15 @@ struct RbTreeKeyExtractor<Key, pair<const Key, Value>> {
 	template <typename A, typename... Args>
 	static inline void construct(A &alloc, RbTreeNode<pair<const Key, Value>> *node, const Key &k,
 			Args &&...args) noexcept {
-		alloc.construct(node->value.ptr(), k, sprt::forward<Args>(args)...);
+		alloc.construct(node->value.ptr(), pair_emplace_construct_t(), k,
+				sprt::forward<Args>(args)...);
 	}
 
 	template <typename A, typename... Args>
 	static inline void construct(A &alloc, RbTreeNode<pair<const Key, Value>> *node, Key &&k,
 			Args &&...args) noexcept {
-		alloc.construct(node->value.ptr(), sprt::move_unsafe(k), sprt::forward<Args>(args)...);
+		alloc.construct(node->value.ptr(), pair_emplace_construct_t(), sprt::move_unsafe(k),
+				sprt::forward<Args>(args)...);
 	}
 };
 
@@ -308,7 +312,7 @@ inline constexpr bool is_detected_v = impl::is_detected<void, A, B...>::value;
 template <typename T>
 using RbTreeDetectTransparent = typename T::is_transparent;
 
-template <typename Key, typename Value, typename Comp>
+template <typename Key, typename Value, typename Comp, typename Allocator>
 class RbTree : public sprt::memory::AllocPool {
 public:
 	using value_type = Value;
@@ -317,8 +321,8 @@ public:
 	using base_type = RbTreeNodeBase *;
 	using const_node_ptr = const node_type *;
 
-	using node_allocator_type = sprt::memory::detail::Allocator<node_type>;
-	using value_allocator_type = sprt::memory::detail::Allocator<value_type>;
+	using value_allocator_type = Allocator;
+	using node_allocator_type = typename Allocator::template rebind<node_type>::other;
 	using comparator_type = Comp;
 
 	using iterator = RbTreeIterator<Value>;
@@ -327,7 +331,7 @@ public:
 	using reverse_iterator = common_reverse_iterator<iterator>;
 	using const_reverse_iterator = common_reverse_iterator<const_iterator>;
 
-	using allocator_helper = NodeBlockAllocatorHelper<node_type>;
+	using allocator_helper = NodeBlockAllocatorHelper<node_type, node_allocator_type>;
 
 public:
 	RbTree(const Comp &comp = Comp(),

@@ -24,12 +24,6 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_UNICODE_H_
 
 #include <sprt/runtime/callback.h>
-
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_STRINGVIEW_H_
-#warning Include <stringview.h> first!
-#include <sprt/runtime/stringview.h>
-#endif
-
 #include <sprt/runtime/status.h>
 
 namespace sprt::unicode {
@@ -213,11 +207,6 @@ SPRT_INLINE constexpr inline char32_t utf16Decode32(const char16_t *ptr, size_t 
 	}
 }
 
-SPRT_INLINE constexpr inline char32_t utf16Decode32(const char16_t *ptr, size_t len) {
-	uint8_t offset;
-	return utf16Decode32(ptr, len, offset);
-}
-
 SPRT_INLINE constexpr inline uint8_t utf16EncodeLength(char32_t c) {
 	if (c < 0xD800) {
 		return 1;
@@ -260,60 +249,6 @@ SPRT_INLINE constexpr inline uint8_t utf16EncodeBuf(char16_t *ptr, size_t bufSiz
 }
 
 SPRT_API char32_t utf8HtmlDecode32(const char *utf8, size_t len, uint8_t &offset);
-
-SPRT_API bool isValidUtf8(StringView);
-
-inline size_t getUtf16Length(char32_t c) { return sprt::unicode::utf16EncodeLength(c); }
-SPRT_API size_t getUtf16Length(const StringView &str);
-SPRT_API size_t getUtf16HtmlLength(const StringView &str);
-
-inline size_t getUtf8Length(char32_t c) { return sprt::unicode::utf8EncodeLength(c); }
-inline size_t getUtf8Length(char16_t c) { return sprt::unicode::utf8EncodeLength(c); }
-SPRT_API size_t getUtf8HtmlLength(const StringView &str);
-SPRT_API size_t getUtf8Length(const WideStringView &str);
-SPRT_API size_t getUtf8Length(const StringViewBase<char32_t> &str);
-
-SPRT_API Status toUtf16(char16_t *buf, size_t bufSize, const StringView &data,
-		size_t *ret = nullptr);
-
-SPRT_API Status toUtf16(char16_t *buf, size_t bufSize, char32_t ch, size_t *ret = nullptr);
-
-SPRT_API Status toUtf16Html(char16_t *buf, size_t bufSize, const StringView &data,
-		size_t *ret = nullptr);
-
-SPRT_API Status toUtf16(const callback<void(WideStringView)> &, const StringView &data);
-
-SPRT_API Status toUtf16Html(const callback<void(WideStringView)> &, const StringView &data);
-
-SPRT_API Status toUtf8(char *, size_t bufSize, const WideStringView &data, size_t *ret = nullptr);
-
-SPRT_API Status toUtf8(char *, size_t bufSize, char16_t c, size_t *ret = nullptr);
-
-SPRT_API Status toUtf8(char *, size_t bufSize, char32_t c, size_t *ret = nullptr);
-
-SPRT_API Status toUtf8(const callback<void(StringView)> &, const WideStringView &data);
-
-SPRT_API char32_t toupper(char32_t);
-SPRT_API char32_t totitle(char32_t);
-SPRT_API char32_t tolower(char32_t);
-
-SPRT_API bool toupper(const callback<void(StringView)> &, StringView);
-SPRT_API bool totitle(const callback<void(StringView)> &, StringView);
-SPRT_API bool tolower(const callback<void(StringView)> &, StringView);
-
-SPRT_API bool toupper(const callback<void(WideStringView)> &, WideStringView);
-SPRT_API bool totitle(const callback<void(WideStringView)> &, WideStringView);
-SPRT_API bool tolower(const callback<void(WideStringView)> &, WideStringView);
-
-SPRT_API bool compare(StringView l, StringView r, int *result);
-SPRT_API bool compare(WideStringView l, WideStringView r, int *result);
-
-SPRT_API bool caseCompare(StringView l, StringView r, int *result);
-SPRT_API bool caseCompare(WideStringView l, WideStringView r, int *result);
-
-SPRT_API bool idnToAscii(const callback<void(StringView)> &, StringView source);
-
-SPRT_API bool idnToUnicode(const callback<void(StringView)> &, StringView source);
 
 } // namespace sprt::unicode
 

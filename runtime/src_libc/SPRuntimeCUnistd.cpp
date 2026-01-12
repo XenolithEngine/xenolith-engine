@@ -680,6 +680,10 @@ __SPRT_C_FUNC long __SPRT_ID(gethostid)(void) {
 	}
 }
 
+__SPRT_C_FUNC int __SPRT_ID(pipe)(int fds[2]) { return ::pipe(fds); }
+__SPRT_C_FUNC int __SPRT_ID(pipe2)(int fds[2], int flags) { return ::pipe2(fds, flags); }
+
+
 } // namespace sprt
 
 #if __clang__

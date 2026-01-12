@@ -24,6 +24,7 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_FUNCTION_H_
 
 #include <sprt/runtime/mem/detail/alloc.h>
+#include <sprt/runtime/mem/detail/dynalloc.h>
 #include <sprt/runtime/array.h>
 #include <sprt/runtime/callback.h>
 #include <sprt/c/__sprt_string.h>
@@ -38,34 +39,35 @@ struct check_signature : false_type { };
 
 template <typename Func, typename Ret, typename... Args>
 struct check_signature<Func, Ret(Args...),
-		typename enable_if<
-				is_convertible< decltype(declval<Func>()(declval<Args>()...)), Ret >::value,
+		typename enable_if< is_convertible_v< decltype(declval<Func>()(declval<Args>()...)), Ret >,
 				void>::type> : true_type { };
 
-template <typename UnusedType>
-class function;
+template <typename Allocator, typename UnusedType>
+class alloc_function;
 
-template <typename ReturnType, typename... ArgumentTypes>
-class function<ReturnType(ArgumentTypes...)> : public AllocPool {
+template <typename Allocator, typename ReturnType, typename... ArgumentTypes>
+class alloc_function<Allocator, ReturnType(ArgumentTypes...)> : public Allocator::base_class {
 public:
 	using signature_type = ReturnType(ArgumentTypes...);
-	using allocator_type = detail::Allocator<void *>;
+	using allocator_type = Allocator;
+	//using allocator_type = detail::Allocator<void *>;
 
-	~function() { clear(); }
+	~alloc_function() { clear(); }
 
-	function(const allocator_type &alloc = allocator_type()) noexcept
+	alloc_function(const allocator_type &alloc = allocator_type()) noexcept
 	: mAllocator(alloc), mCallback(nullptr) { }
 
-	function(nullptr_t, const allocator_type &alloc = allocator_type()) noexcept
+	alloc_function(nullptr_t, const allocator_type &alloc = allocator_type()) noexcept
 	: mAllocator(alloc), mCallback(nullptr) { }
 
-	function &operator=(nullptr_t) noexcept {
+	alloc_function &operator=(nullptr_t) noexcept {
 		clear();
 		mCallback = nullptr;
 		return *this;
 	}
 
-	function(const function &other, const allocator_type &alloc = allocator_type()) noexcept
+	alloc_function(const alloc_function &other,
+			const allocator_type &alloc = allocator_type()) noexcept
 	: mAllocator(alloc) {
 		mCallback = other.mCallback;
 		if (mCallback) {
@@ -73,7 +75,7 @@ public:
 		}
 	}
 
-	function &operator=(const function &other) noexcept {
+	alloc_function &operator=(const alloc_function &other) noexcept {
 		if (&other == this) {
 			return *this;
 		}
@@ -86,7 +88,7 @@ public:
 		return *this;
 	}
 
-	function(function &&other, const allocator_type &alloc = allocator_type()) noexcept
+	alloc_function(alloc_function &&other, const allocator_type &alloc = allocator_type()) noexcept
 	: mAllocator(alloc) {
 		mCallback = other.mCallback;
 		if (mCallback) {
@@ -98,7 +100,7 @@ public:
 		}
 	}
 
-	function &operator=(function &&other) noexcept {
+	alloc_function &operator=(alloc_function &&other) noexcept {
 		if (&other == this) {
 			return *this;
 		}
@@ -118,14 +120,14 @@ public:
 	template <typename FunctionT,
 			class = typename enable_if<
 					!is_same< typename remove_cv<typename remove_reference<FunctionT>::type>::type,
-							function<ReturnType(ArgumentTypes...) >>::value>::type>
-	function(FunctionT &&f, const allocator_type &alloc = allocator_type()) noexcept
+							alloc_function<Allocator, ReturnType(ArgumentTypes...) >>::value>::type>
+	alloc_function(FunctionT &&f, const allocator_type &alloc = allocator_type()) noexcept
 	: mAllocator(alloc) {
 		mCallback = makeFreeFunction(sprt::forward<FunctionT>(f), mAllocator, mBuffer.data());
 	}
 
 	template <typename FunctionT>
-	function &operator=(FunctionT &&f) noexcept {
+	alloc_function &operator=(FunctionT &&f) noexcept {
 		clear();
 		mCallback = makeFreeFunction(sprt::forward<FunctionT>(f), mAllocator, mBuffer.data());
 		return *this;
@@ -141,12 +143,12 @@ public:
 
 	constexpr explicit operator bool() const noexcept { return mCallback != nullptr; }
 
-	constexpr bool operator==(const function &other) const noexcept {
+	constexpr bool operator==(const alloc_function &other) const noexcept {
 		return mAllocator == other.mAllocator && mCallback == other.mCallback
 				&& (__sprt_memcmp(mBuffer.data(), other.mBuffer.data(), mBuffer.size()) == 0);
 	}
 
-	constexpr bool operator!=(const function &other) const noexcept {
+	constexpr bool operator!=(const alloc_function &other) const noexcept {
 		return mAllocator != other.mAllocator || mCallback != other.mCallback
 				|| (__sprt_memcmp(mBuffer.data(), other.mBuffer.data(), mBuffer.size()) != 0);
 	}
@@ -176,45 +178,48 @@ private:
 		using BaseTypePtr = BaseType *;
 		if constexpr (sizeof(BaseType) <= OptBufferSize) {
 			static functor_traits traits{
-				[](const void *arg, ArgumentTypes... args) -> ReturnType {
+				.invoke = [](const void *arg, ArgumentTypes... args) -> ReturnType {
 				return (*static_cast<const BaseType *>(arg))(sprt::forward<ArgumentTypes>(args)...);
 			},
-				[](void *arg) {
+				.destroy =
+						[](void *arg) {
 				if (arg) {
 					(*static_cast<BaseType *>(arg)).~BaseType();
 				}
 			},
-				[](const void *arg, allocator_type &alloc, uint8_t *buf) -> void * {
-				return new (buf) BaseType(*static_cast<const BaseType *>(arg));
+				.copy = [](const void *arg, allocator_type &alloc, uint8_t *buf) -> void * {
+				return new (buf, nothrow) BaseType(*static_cast<const BaseType *>(arg));
 			},
-				[](void *arg, allocator_type &alloc, uint8_t *buf) -> void * {
-				return new (buf) BaseType(sprt::move_unsafe(*static_cast<BaseType *>(arg)));
+				.move = [](void *arg, allocator_type &alloc, uint8_t *buf) -> void * {
+				return new (buf, nothrow)
+						BaseType(sprt::move_unsafe(*static_cast<BaseType *>(arg)));
 			},
 			};
 
 			return &traits;
 		} else {
 			static functor_traits traits{
-				[](const void *arg, ArgumentTypes... args) -> ReturnType {
+				.invoke = [](const void *arg, ArgumentTypes... args) -> ReturnType {
 				return (*(*static_cast<const BaseTypePtr *>(arg)))(
 						sprt::forward<ArgumentTypes>(args)...);
 			},
-				[](void *arg) {
+				.destroy =
+						[](void *arg) {
 				auto ptr = *static_cast<BaseTypePtr *>(arg);
 				if (ptr) {
 					ptr->~BaseType();
-					new (arg)(const BaseType *)(nullptr);
+					new (arg, nothrow)(const BaseType *)(nullptr);
 				}
 			},
-				[](const void *arg, allocator_type &alloc, uint8_t *buf) -> void * {
-				detail::Allocator<BaseType> ialloc = alloc;
+				.copy = [](const void *arg, allocator_type &alloc, uint8_t *buf) -> void * {
+				typename Allocator::template rebind<BaseType>::other ialloc = alloc;
 				auto mem = ialloc.allocate(1);
 				ialloc.construct(mem, *(*static_cast<const BaseTypePtr *>(arg)));
-				return new (buf)(const BaseType *)(mem);
+				return new (buf, nothrow)(const BaseType *)(mem);
 			},
-				[](void *arg, allocator_type &alloc, uint8_t *buf) -> void * {
-				auto ret = new (buf)(const BaseType *)((*static_cast<BaseTypePtr *>(arg)));
-				new (arg)(const BaseType *)(nullptr);
+				.move = [](void *arg, allocator_type &alloc, uint8_t *buf) -> void * {
+				auto ret = new (buf, nothrow)(const BaseType *)((*static_cast<BaseTypePtr *>(arg)));
+				new (arg, nothrow)(const BaseType *)(nullptr);
 				return ret;
 			},
 			};
@@ -228,15 +233,19 @@ private:
 			uint8_t *buf) noexcept {
 		using BaseType = typename remove_cv<typename remove_reference<FunctionT>::type>::type;
 		if constexpr (sizeof(BaseType) <= OptBufferSize) {
-			new (buf) BaseType(sprt::forward<FunctionT>(f));
+			new (buf, nothrow) BaseType(sprt::forward<FunctionT>(f));
 		} else {
-			detail::Allocator<BaseType> ialloc = alloc;
+			typename Allocator::template rebind<BaseType>::other ialloc = alloc;
 			auto mem = ialloc.allocate(1);
 
-			memory::perform_conditional([&] { new (mem) BaseType(sprt::forward<FunctionT>(f)); },
-					alloc);
+			if constexpr (is_convertible_v<allocator_type, memory::pool_t *>) {
+				memory::perform_conditional(
+						[&] { new (mem, nothrow) BaseType(sprt::forward<FunctionT>(f)); }, alloc);
+			} else {
+				new (mem, nothrow) BaseType(sprt::forward<FunctionT>(f));
+			}
 
-			new (buf)(const BaseType *)(mem);
+			new (buf, nothrow)(const BaseType *)(mem);
 		}
 		return &makeFunctionTraits<FunctionT>;
 	}
@@ -253,6 +262,12 @@ private:
 	traits_callback mCallback = nullptr;
 	array<uint8_t, OptBufferSize> mBuffer;
 };
+
+template <typename Sig>
+using function = alloc_function<detail::Allocator<void *>, Sig>;
+
+template <typename Sig>
+using dynfunction = alloc_function<detail::DynamicAllocator<void *>, Sig>;
 
 } // namespace sprt::memory
 

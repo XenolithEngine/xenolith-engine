@@ -25,105 +25,11 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/bits/__sprt_int.h>
+#include <sprt/c/cross/__sprt_config.h>
 
-#define __SPRT_SIGHUP    1
-#define __SPRT_SIGINT    2
-#define __SPRT_SIGQUIT   3
-#define __SPRT_SIGILL    4
-#define __SPRT_SIGTRAP   5
-#define __SPRT_SIGABRT   6
-#define __SPRT_SIGIOT    __SPRT_SIGABRT
-#define __SPRT_SIGBUS    7
-#define __SPRT_SIGFPE    8
-#define __SPRT_SIGKILL   9
-#define __SPRT_SIGUSR1   10
-#define __SPRT_SIGSEGV   11
-#define __SPRT_SIGUSR2   12
-#define __SPRT_SIGPIPE   13
-#define __SPRT_SIGALRM   14
-#define __SPRT_SIGTERM   15
-#define __SPRT_SIGSTKFLT 16
-#define __SPRT_SIGCHLD   17
-#define __SPRT_SIGCONT   18
-#define __SPRT_SIGSTOP   19
-#define __SPRT_SIGTSTP   20
-#define __SPRT_SIGTTIN   21
-#define __SPRT_SIGTTOU   22
-#define __SPRT_SIGURG    23
-#define __SPRT_SIGXCPU   24
-#define __SPRT_SIGXFSZ   25
-#define __SPRT_SIGVTALRM 26
-#define __SPRT_SIGPROF   27
-#define __SPRT_SIGWINCH  28
-#define __SPRT_SIGIO     29
-#define __SPRT_SIGPOLL   29
-#define __SPRT_SIGPWR    30
-#define __SPRT_SIGSYS    31
-#define __SPRT_SIGUNUSED __SPRT_SIGSYS
-
-#if SPRT_LINUX
-
-#define __SPRT_SIG_ERR  ((void (*)(int))-1)
-#define __SPRT_SIG_DFL  ((void (*)(int)) 0)
-#define __SPRT_SIG_IGN  ((void (*)(int)) 1)
-
-typedef int __SPRT_ID(sig_atomic_t);
-
-#define __SPRT_SIG_ATOMIC_MIN __SPRT_INT_MAX
-#define __SPRT_SIG_ATOMIC_MAX (-1-__SPRT_INT_MAX)
-
-#if defined(__x86_64__) || defined(_M_X64)
-#include <sprt/c/cross/linux/x86_64/signal.h>
-#elif defined(__aarch64__) || defined(_M_ARM64)
-#include <sprt/c/cross/linux/aarch64/signal.h>
-#else
-#error "Unknown Linux arch"
-#endif
-
-#elif SPRT_WINDOWS
-
-#define __SPRT_SIG_DFL ((void (*)(int))0)     // default signal action
-#define __SPRT_SIG_IGN ((void (*)(int))1)     // ignore signal
-#define __SPRT_SIG_GET ((void (*)(int))2)     // return current value
-#define __SPRT_SIG_SGE ((void (*)(int))3)     // signal gets error
-#define __SPRT_SIG_ACK ((void (*)(int))4)
-#define __SPRT_SIG_ERR __SPRT_SIG_SGE
-
-typedef int __SPRT_ID(sig_atomic_t);
-
-#define __SPRT_SIG_ATOMIC_MIN __SPRT_INT_MAX
-#define __SPRT_SIG_ATOMIC_MAX (-1-__SPRT_INT_MAX)
-
-#define __SPRT__NSIG 23
-
-#elif SPRT_ANDROID
-
-#define __SPRT_SIG_ERR  ((void (*)(int))-1)
-#define __SPRT_SIG_DFL  ((void (*)(int)) 0)
-#define __SPRT_SIG_IGN  ((void (*)(int)) 1)
-
-typedef int __SPRT_ID(sig_atomic_t);
-
-#define __SPRT_SIG_ATOMIC_MIN __SPRT_INT_MAX
-#define __SPRT_SIG_ATOMIC_MAX (-1-__SPRT_INT_MAX)
-
-#define __SPRT__NSIG 65
-
-#elif SPRT_MACOS
-
-#error "Unknown OS"
-
-#if defined(__x86_64__) || defined(_M_X64)
-#include <sprt/c/cross/macos/x86_64/signal.h>
-#elif defined(__aarch64__) || defined(_M_ARM64)
-#include <sprt/c/cross/macos/aarch64/signal.h>
-#else
-#error "Unknown Macos arch"
-#endif
-
-#else
-#error "Unknown OS"
-#endif
-
+// clang-format off
+#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/__SPRT_ARCH_NAME/signal.h)
+#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/signal.h)
+// clang-format on
 
 #endif

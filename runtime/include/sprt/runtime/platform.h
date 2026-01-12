@@ -109,7 +109,10 @@ enum class AppLocationScheme {
 
 struct AppConfig {
 	StringView bundleName;
+	StringView appName;
 	StringView bundlePath;
+
+	uint32_t versionCode = 0;
 	AppLocationScheme pathScheme = AppLocationScheme::ExecutableRelative;
 };
 

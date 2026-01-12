@@ -128,6 +128,36 @@ SPRT_API void vprint(LogType type, const source_location &loc, StringView tag, A
 	}
 }
 
+template <typename... Args>
+SPRT_API void vpverbose(const source_location &loc, StringView tag, Args &&...args) {
+	vprint(LogType::Verbose, loc, tag, sprt::forward<Args>(args)...);
+}
+
+template <typename... Args>
+SPRT_API void vpdebug(const source_location &loc, StringView tag, Args &&...args) {
+	vprint(LogType::Debug, loc, tag, sprt::forward<Args>(args)...);
+}
+
+template <typename... Args>
+SPRT_API void vpinfo(const source_location &loc, StringView tag, Args &&...args) {
+	vprint(LogType::Info, loc, tag, sprt::forward<Args>(args)...);
+}
+
+template <typename... Args>
+SPRT_API void vpwarn(const source_location &loc, StringView tag, Args &&...args) {
+	vprint(LogType::Warn, loc, tag, sprt::forward<Args>(args)...);
+}
+
+template <typename... Args>
+SPRT_API void vperror(const source_location &loc, StringView tag, Args &&...args) {
+	vprint(LogType::Error, loc, tag, sprt::forward<Args>(args)...);
+}
+
+template <typename... Args>
+SPRT_API void vpfatal(const source_location &loc, StringView tag, Args &&...args) {
+	vprint(LogType::Fatal, loc, tag, sprt::forward<Args>(args)...);
+}
+
 } // namespace sprt::log
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_LOG_H_

@@ -132,6 +132,10 @@ SPRT_FORCEINLINE inline errno_t strerror_s(char *buf, rsize_t bufsz, errno_t err
 	return __sprt_strerror_s(buf, bufsz, errnum);
 }
 
+SPRT_FORCEINLINE inline int strverscmp(const char *l0, const char *r0) {
+	return __sprt_strverscmp(l0, r0);
+}
+
 __SPRT_END_DECL
 
 #endif

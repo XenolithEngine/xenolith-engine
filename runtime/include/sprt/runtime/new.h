@@ -27,6 +27,8 @@ THE SOFTWARE.
 #include <sprt/runtime/detail/new.h>
 #include <sprt/c/__sprt_stdlib.h>
 
+
+#if __SPRT_USE_STL == 0
 [[nodiscard]]
 inline constexpr void *operator new(sprt::size_t size, sprt::nothrow_t) noexcept {
 	if (size == 0) {
@@ -41,16 +43,6 @@ inline constexpr void *operator new[](sprt::size_t size, sprt::nothrow_t) noexce
 		size = 1;
 	}
 	return __sprt_malloc(size);
-}
-
-[[nodiscard]]
-inline constexpr void *operator new(sprt::size_t size, void *ptr, sprt::nothrow_t) noexcept {
-	return ptr;
-}
-
-[[nodiscard]]
-inline constexpr void *operator new[](sprt::size_t size, void *ptr, sprt::nothrow_t) noexcept {
-	return ptr;
 }
 
 [[nodiscard]]
@@ -71,9 +63,6 @@ inline constexpr void *operator new[](sprt::size_t size, sprt::align_val_t al,
 	return __sprt_malloc(size);
 }
 
-inline void operator delete(void *ptr, const sprt::nothrow_t &) noexcept { __sprt_free(ptr); }
-inline void operator delete[](void *ptr, const sprt::nothrow_t &) noexcept { __sprt_free(ptr); }
-
 inline void operator delete(void *ptr, sprt::align_val_t al) noexcept { __sprt_free(ptr); }
 inline void operator delete[](void *ptr, sprt::align_val_t al) noexcept { __sprt_free(ptr); }
 
@@ -83,7 +72,17 @@ inline void operator delete(void *ptr, sprt::align_val_t al, const sprt::nothrow
 inline void operator delete[](void *ptr, sprt::align_val_t al, const sprt::nothrow_t &) noexcept {
 	__sprt_free(ptr);
 }
+#endif
 
+[[nodiscard]]
+inline constexpr void *operator new(sprt::size_t size, void *ptr, sprt::nothrow_t) noexcept {
+	return ptr;
+}
+
+[[nodiscard]]
+inline constexpr void *operator new[](sprt::size_t size, void *ptr, sprt::nothrow_t) noexcept {
+	return ptr;
+}
 
 namespace sprt {
 
@@ -113,6 +112,14 @@ struct SPRT_API AllocBase : public AllocPlacement {
 	static void operator delete(void *ptr) noexcept { return ::operator delete(ptr); }
 	static void operator delete(void *ptr, sprt::align_val_t al) noexcept {
 		return ::operator delete(ptr, al);
+	}
+
+	static constexpr void *operator new(sprt::size_t size, void *ptr, sprt::nothrow_t) noexcept {
+		return ptr;
+	}
+
+	static constexpr void *operator new[](sprt::size_t size, void *ptr, sprt::nothrow_t) noexcept {
+		return ptr;
 	}
 };
 

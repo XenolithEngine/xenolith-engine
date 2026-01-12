@@ -24,27 +24,29 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_SET_H_
 
 #include <sprt/runtime/mem/detail/rbtree.h>
+#include <sprt/runtime/mem/detail/dynalloc.h>
 #include <sprt/runtime/initializer_list.h>
 #include <sprt/runtime/detail/operations.h>
 #include <sprt/runtime/detail/compare.h>
 
 namespace sprt::memory {
 
-template <typename Value, typename Comp = sprt::less<void>>
-class set : public sprt::memory::AllocPool {
+template <typename Value, typename Comp = sprt::less<void>,
+		typename Allocator = sprt::memory::detail::Allocator<Value>>
+class set : public Allocator::base_class {
 public:
 	using key_type = Value;
 	using value_type = Value;
 	using key_compare = Comp;
 	using value_compare = Comp;
-	using allocator_type = sprt::memory::detail::Allocator<Value>;
+	using allocator_type = Allocator;
 
 	using pointer = Value *;
 	using const_pointer = const Value *;
 	using reference = Value &;
 	using const_reference = const Value &;
 
-	using tree_type = detail::RbTree<Value, Value, Comp>;
+	using tree_type = detail::RbTree<Value, Value, Comp, allocator_type>;
 
 	using iterator = typename tree_type::const_iterator;
 	using const_iterator = typename tree_type::const_iterator;
@@ -212,47 +214,50 @@ public:
 	void reserve(size_t c) { _tree.reserve(c); }
 
 protected:
-	detail::RbTree<Value, Value, Comp> _tree;
+	tree_type _tree;
 };
 
+template <typename Value, typename Comp = sprt::less<void>>
+using dynset = set<Value, Comp, memory::detail::DynamicAllocator<Value>>;
+
 /// See sprt::vector::swap().
-template <typename _Tp, typename Comp>
-inline void swap(set<_Tp, Comp> &__x, set<_Tp, Comp> &__y) noexcept {
+template <typename _Tp, typename Comp, typename Allocator>
+inline void swap(set<_Tp, Comp, Allocator> &__x, set<_Tp, Comp, Allocator> &__y) noexcept {
 	__x.swap(__y);
 }
 
 
-template <typename _Tp, typename Comp>
-inline bool operator==(const set<_Tp, Comp> &__x, const set<_Tp, Comp> &__y) {
+template <typename _Tp, typename Comp, typename Allocator>
+inline bool operator==(const set<_Tp, Comp, Allocator> &__x, const set<_Tp, Comp, Allocator> &__y) {
 	return (__x.size() == __y.size() && sprt::equal(__x.begin(), __x.end(), __y.begin()));
 }
 
-template <typename _Tp, typename Comp>
-inline bool operator<(const set<_Tp, Comp> &__x, const set<_Tp, Comp> &__y) {
+template <typename _Tp, typename Comp, typename Allocator>
+inline bool operator<(const set<_Tp, Comp, Allocator> &__x, const set<_Tp, Comp, Allocator> &__y) {
 	return sprt::lexicographical_compare(__x.begin(), __x.end(), __y.begin(), __y.end());
 }
 
 /// Based on operator==
-template <typename _Tp, typename Comp>
-inline bool operator!=(const set<_Tp, Comp> &__x, const set<_Tp, Comp> &__y) {
+template <typename _Tp, typename Comp, typename Allocator>
+inline bool operator!=(const set<_Tp, Comp, Allocator> &__x, const set<_Tp, Comp, Allocator> &__y) {
 	return !(__x == __y);
 }
 
 /// Based on operator<
-template <typename _Tp, typename Comp>
-inline bool operator>(const set<_Tp, Comp> &__x, const set<_Tp, Comp> &__y) {
+template <typename _Tp, typename Comp, typename Allocator>
+inline bool operator>(const set<_Tp, Comp, Allocator> &__x, const set<_Tp, Comp, Allocator> &__y) {
 	return __y < __x;
 }
 
 /// Based on operator<
-template <typename _Tp, typename Comp>
-inline bool operator<=(const set<_Tp, Comp> &__x, const set<_Tp, Comp> &__y) {
+template <typename _Tp, typename Comp, typename Allocator>
+inline bool operator<=(const set<_Tp, Comp, Allocator> &__x, const set<_Tp, Comp, Allocator> &__y) {
 	return !(__y < __x);
 }
 
 /// Based on operator<
-template <typename _Tp, typename Comp>
-inline bool operator>=(const set<_Tp, Comp> &__x, const set<_Tp, Comp> &__y) {
+template <typename _Tp, typename Comp, typename Allocator>
+inline bool operator>=(const set<_Tp, Comp, Allocator> &__x, const set<_Tp, Comp, Allocator> &__y) {
 	return !(__x < __y);
 }
 

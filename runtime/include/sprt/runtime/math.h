@@ -26,6 +26,7 @@
 
 #include <sprt/runtime/int.h>
 #include <sprt/runtime/float.h>
+#include <sprt/runtime/detail/operations.h>
 #include <sprt/c/__sprt_stdlib.h>
 
 /*
@@ -148,7 +149,7 @@ inline constexpr uint64_t Min<int64_t> = __SPRT_INT64_C(-1) - __SPRT_INT64_C(__S
 
 template <signed_or_unsigned_integer T>
 static constexpr const int Digits =
-		static_cast<int>(sizeof(T) * __CHAR_BIT__ - is_signed_integer_v<T> ? 1 : 0);
+		static_cast<int>(sizeof(T) * __CHAR_BIT__ - (is_signed_integer_v<T> ? 1 : 0));
 
 template <signed_or_unsigned_integer T>
 static constexpr const int Digits10 = Digits<T> * 3 / 10;
@@ -165,8 +166,15 @@ struct HasMultiplication {
 };
 
 template <typename T>
+requires requires(T x, float v) { x * v; }
 constexpr inline T progress(const T &a, const T &b, float p) {
 	return (a * (1.0f - p) + b * p);
+}
+
+template <typename T>
+requires requires(T x, float v) { T::progress(x, x, v); } && (!requires(T x, float v) { x * v; })
+constexpr inline T progress(const T &a, const T &b, float p) {
+	return T::progress(a, b, p);
 }
 
 template <typename Type>
@@ -204,6 +212,21 @@ template <unsigned_integer Type>
 constexpr int countr_one(Type __t) noexcept {
 	return __t != Max<Type> ? sprt::countr_zero(static_cast<Type>(~__t)) : Digits<Type>;
 }
+
+
+template <class _Tp>
+[[nodiscard]]
+constexpr int __popcount(_Tp __t) noexcept {
+	static_assert(is_unsigned_integer_v<_Tp>, "__popcount only works with unsigned types");
+	return __builtin_popcountg(__t);
+}
+
+template <unsigned_integer _Tp>
+[[nodiscard]]
+constexpr int popcount(_Tp __t) noexcept {
+	return sprt::__popcount(__t);
+}
+
 
 template <typename T>
 auto StringToNumber(const char *ptr, char **tail, int base) -> T;
@@ -313,7 +336,7 @@ constexpr inline const T &clamp(const T &v, const T &lo, const T &hi, Compare co
 
 template <typename T>
 constexpr inline const T &clamp(const T &v, const T &lo, const T &hi) {
-	return math::clamp(v, lo, hi, less<T>());
+	return math::clamp(v, lo, hi, sprt::less<T>());
 }
 
 template <typename T, typename Compare>

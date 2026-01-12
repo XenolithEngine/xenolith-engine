@@ -222,15 +222,15 @@ struct ForwardListConstIterator {
 	pointer operator->() const { return __target->value.ptr(); }
 };
 
-template <typename Node>
+template <typename Node, typename Allocator>
 class SPRT_API list_base : AllocPool {
 public:
 	using node_type = Node;
 	using size_type = size_t;
 	using difference_type = ptrdiff_t;
 
-	using node_allocator_type = detail::Allocator<Node>;
-	using allocator_helper = detail::NodeBlockAllocatorHelper<node_type>;
+	using node_allocator_type = typename Allocator::template rebind<Node>::other;
+	using allocator_helper = detail::NodeBlockAllocatorHelper<node_type, node_allocator_type>;
 
 	list_base(const node_allocator_type &alloc = node_allocator_type()) noexcept : _alloc(alloc) { }
 

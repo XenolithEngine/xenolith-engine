@@ -26,61 +26,16 @@ THE SOFTWARE.
 // Per-OS/Per-arch Stappler Runtime configuration
 #include <sprt/c/bits/__sprt_def.h>
 
-#if SPRT_LINUX
-#include <sprt/c/cross/linux/config.h>
+#define SPRT_CROSS_CONFIG_NAME_(x) #x
+#define SPRT_CROSS_CONFIG_NAME(x) SPRT_CROSS_CONFIG_NAME_(x)
 
-#if defined(__x86_64__) || defined(_M_X64)
-#include <sprt/c/cross/linux/x86_64/config.h>
-#elif defined(__aarch64__) || defined(_M_ARM64)
-#include <sprt/c/cross/linux/aarch64/config.h>
-#else
-#error "Unknown Linux arch"
-#endif
-
-#elif SPRT_WINDOWS
-#include <sprt/c/cross/windows/config.h>
-
-#if defined(__x86_64__) || defined(_M_X64)
-#include <sprt/c/cross/windows/x86_64/config.h>
-#elif defined(__aarch64__) || defined(_M_ARM64)
-#include <sprt/c/cross/windows/aarch64/config.h>
-#else
-#error "Unknown Windows arch"
-#endif
-
-#elif SPRT_ANDROID
-#include <sprt/c/cross/android/config.h>
-
-#if defined(__x86_64__) || defined(_M_X64)
-#include <sprt/c/cross/android/x86_64/config.h>
-#elif defined(i386) || defined(__i386__) || defined(_M_IX86)
-#include <sprt/c/cross/android/x86/config.h>
-#elif defined(__aarch64__) || defined(_M_ARM64)
-#include <sprt/c/cross/android/arm64/config.h>
-#elif defined(__arm__) || defined(_M_ARM)
-#include <sprt/c/cross/android/arm/config.h>
-#else
-#error "Unknown Android arche"
-#endif
-
-#elif SPRT_MACOS
-#include <sprt/c/cross/macos/config.h>
-
-#if defined(__x86_64__) || defined(_M_X64)
-#include <sprt/c/cross/macos/x86_64/config.h>
-#elif defined(__aarch64__) || defined(_M_ARM64)
-#include <sprt/c/cross/macos/aarch64/config.h>
-#else
-#error "Unknown Macos arch"
-#endif
-
-#else
-#error "Unknown OS"
-#endif
-
-// All fallback values should be defined there
+// clang-format off
+#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/config.h)
+#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/__SPRT_ARCH_NAME/config.h)
+// clang-format on
 
 /*
+	All fallback values should be defined there
 	Use this list to create your own platform configurations
 */
 
@@ -134,6 +89,34 @@ THE SOFTWARE.
 
 #ifndef __SPRT_CONFIG_HAVE_ADJTIME
 #define __SPRT_CONFIG_HAVE_ADJTIME 1
+#endif
+
+#ifndef __SPRT_CONFIG_HAVE_EPOLL
+#define __SPRT_CONFIG_HAVE_EPOLL 0
+#endif
+
+#ifndef __SPRT_CONFIG_HAVE_EVENTFD
+#define __SPRT_CONFIG_HAVE_EVENTFD 0
+#endif
+
+#ifndef __SPRT_CONFIG_HAVE_SIGNALFD
+#define __SPRT_CONFIG_HAVE_SIGNALFD 0
+#endif
+
+#ifndef __SPRT_CONFIG_HAVE_TIMERFD
+#define __SPRT_CONFIG_HAVE_TIMERFD 0
+#endif
+
+#ifndef __SPRT_CONFIG_HAVE_ALOOPER
+#define __SPRT_CONFIG_HAVE_ALOOPER 0
+#endif
+
+#ifndef __SPRT_CONFIG_HAVE_URING
+#define __SPRT_CONFIG_HAVE_URING 0
+#endif
+
+#ifndef __SPRT_CONFIG_HAVE_FUTEX
+#define __SPRT_CONFIG_HAVE_FUTEX 0
 #endif
 
 #endif

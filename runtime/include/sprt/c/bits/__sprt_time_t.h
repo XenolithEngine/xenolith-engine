@@ -54,10 +54,12 @@ typedef __SPRT_ID(int64_t) __SPRT_ID(suseconds_t);
 #define __SPRT_TM_NAME __SPRT_ID(tm)
 #define __SPRT_TIMESPEC_NAME __SPRT_ID(timespec)
 #define __SPRT_TIMEVAL_NAME __SPRT_ID(timeval)
+#define __SPRT_ITIMERSPEC_NAME __SPRT_ID(itimerspec)
 #else
 #define __SPRT_TM_NAME tm
 #define __SPRT_TIMESPEC_NAME timespec
 #define __SPRT_TIMEVAL_NAME timeval
+#define __SPRT_ITIMERSPEC_NAME itimerspec
 #endif
 
 struct __SPRT_TIMESPEC_NAME {
@@ -68,6 +70,11 @@ struct __SPRT_TIMESPEC_NAME {
 struct __SPRT_TIMEVAL_NAME {
 	__SPRT_ID(time_t) tv_sec;
 	__SPRT_ID(suseconds_t) tv_usec;
+};
+
+struct __SPRT_ITIMERSPEC_NAME {
+	struct __SPRT_TIMESPEC_NAME it_interval;
+	struct __SPRT_TIMESPEC_NAME it_value;
 };
 
 typedef int __SPRT_ID(clockid_t);

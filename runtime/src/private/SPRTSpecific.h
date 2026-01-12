@@ -27,7 +27,9 @@ THE SOFTWARE.
 
 #if SPRT_LINUX
 
+#ifndef __SPRT_BUILD
 __SPRT_C_FUNC long int syscall(long int __sysno, ...) noexcept;
+#endif
 
 #if defined(__x86_64__)
 

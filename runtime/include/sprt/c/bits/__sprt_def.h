@@ -26,6 +26,28 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_config.h>
 
 /*
+	Known platforms
+*/
+#define __SPRT_PLATFORM_NAME_MACOS macos_sprt
+#define __SPRT_PLATFORM_ID_MACOS 1
+
+#define __SPRT_PLATFORM_NAME_IOS ios_sprt
+#define __SPRT_PLATFORM_ID_IOS 2
+
+#define __SPRT_PLATFORM_NAME_DARWIN_UNKNOWN darwin_sprt
+#define __SPRT_PLATFORM_ID_DARWIN_UNKNOWN 3
+
+#define __SPRT_PLATFORM_NAME_WINDOWS windows_sprt
+#define __SPRT_PLATFORM_ID_WINDOWS 4
+
+#define __SPRT_PLATFORM_NAME_ANDROID android_sprt
+#define __SPRT_PLATFORM_ID_ANDROID 5
+
+#define __SPRT_PLATFORM_NAME_LINUX linux_sprt
+#define __SPRT_PLATFORM_ID_LINUX 6
+
+
+/*
 	Defines one of:
 
 	SPRT_MACOS
@@ -38,20 +60,107 @@ THE SOFTWARE.
 	for platform detection
 */
 #ifdef __APPLE__
+#warning TODO: remove this library dependency
 #include <TargetConditionals.h>
 #if TARGET_OS_MAC
-#define SPRT_MACOS 1
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_MACOS
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_MACOS
+#define SPRT_MACOS __SPRT_PLATFORM_ID_MACOS
 #elif TARGET_OS_IPHONE
-#define SPRT_IOS 2
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_IOS
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_IOS
+#define SPRT_IOS __SPRT_PLATFORM_ID_IOS
 #else
-#define SPRT_DARWIN_UNKNOWN 3
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_DARWIN_UNKNOWN
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_DARWIN_UNKNOWN
+#define SPRT_DARWIN_UNKNOWN __SPRT_PLATFORM_ID_DARWIN_UNKNOWN
 #endif
 #elif defined(_WIN32) || defined(_WIN64)
-#define SPRT_WINDOWS 4
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_WINDOWS
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_WINDOWS
+#define SPRT_WINDOWS __SPRT_PLATFORM_ID_WINDOWS
 #elif defined(__ANDROID__)
-#define SPRT_ANDROID 5
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_ANDROID
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_ANDROID
+#define SPRT_ANDROID __SPRT_PLATFORM_ID_ANDROID
 #elif defined(__linux__)
-#define SPRT_LINUX 6
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_LINUX
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_LINUX
+#define SPRT_LINUX __SPRT_PLATFORM_ID_LINUX
+#else
+#error "Unknown platform"
+#endif
+
+
+/*
+	Known arches
+*/
+#define __SPRT_ARCH_NAME_AARCH64 aarch64_sprt
+#define __SPRT_ARCH_ID_AARCH64 1
+
+#define __SPRT_ARCH_NAME_ARM arm_sprt
+#define __SPRT_ARCH_ID_ARM 2
+
+#define __SPRT_ARCH_NAME_X86 x86_sprt
+#define __SPRT_ARCH_ID_X86 3
+
+#define __SPRT_ARCH_NAME_X86_64 x86_64_sprt
+#define __SPRT_ARCH_ID_X86_64 4
+
+#define __SPRT_ARCH_NAME_E2K e2k_sprt
+#define __SPRT_ARCH_ID_E2K 5
+
+#define __SPRT_ARCH_NAME_WASM64 wasm64_sprt
+#define __SPRT_ARCH_ID_WASM64 6
+
+#define __SPRT_ARCH_NAME_WASM32 wasm32_sprt
+#define __SPRT_ARCH_ID_WASM32 7
+
+#define __SPRT_ARCH_NAME_RISCV64 riscv64_sprt
+#define __SPRT_ARCH_ID_RISCV64 8
+
+#define __SPRT_ARCH_NAME_RISCV32 riscv32_sprt
+#define __SPRT_ARCH_ID_RISCV32 9
+
+#define __SPRT_ARCH_NAME_LOONGARCH64 loongarch64_sprt
+#define __SPRT_ARCH_ID_LOONGARCH64 10
+
+#define __SPRT_ARCH_NAME_LOONGARCH32 loongarch32_sprt
+#define __SPRT_ARCH_ID_LOONGARCH32 11
+
+
+#if defined(__aarch64__) || defined(_M_ARM64)
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_AARCH64
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_AARCH64
+#elif defined(__arm__) || defined(_M_ARM)
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_ARM
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_ARM
+#elif defined(__x86_64__) || defined(_M_X64)
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_X86_64
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_X86_64
+#elif defined(i386) || defined(__i386__) || defined(_M_IX86)
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_X86
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_X86
+#elif defined(__wasm64__)
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_WASM64
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_WASM64
+#elif defined(__wasm32__)
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_WASM32
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_WASM32
+#elif defined(__riscv) && defined(__riscv_xlen) && __riscv_xlen == 64
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_RISCV64
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_RISCV64
+#elif defined(__riscv) && defined(__riscv_xlen) && __riscv_xlen == 32
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_RISCV32
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_RISCV32
+#elif defined(__loongarch__) && defined(__loongarch_grlen) && __loongarch_grlen == 64
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_RISCV64
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_RISCV64
+#elif defined(__loongarch__) && defined(__loongarch_grlen) && __loongarch_grlen == 32
+#define __SPRT_ARCH_NAME __SPRT_ARCH_NAME_RISCV32
+#define __SPRT_ARCH_ID __SPRT_ARCH_ID_RISCV32
+#else
+#error "Unknown arch"
 #endif
 
 // clang-format off

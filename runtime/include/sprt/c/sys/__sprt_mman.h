@@ -113,6 +113,10 @@ THE SOFTWARE.
 
 #define __SPRT_MLOCK_ONFAULT 0x01
 
+#define __SPRT_MFD_CLOEXEC 0x0001U
+#define __SPRT_MFD_ALLOW_SEALING 0x0002U
+#define __SPRT_MFD_HUGETLB 0x0004U
+
 __SPRT_BEGIN_DECL
 
 SPRT_API void *__SPRT_ID(mmap)(void *__addr, __SPRT_ID(size_t) __size, int __prot, int __flags,
@@ -135,6 +139,8 @@ SPRT_API int __SPRT_ID(mlock2)(const void *, __SPRT_ID(size_t), int);
 
 SPRT_API int __SPRT_ID(madvise)(void *, __SPRT_ID(size_t), int);
 SPRT_API int __SPRT_ID(mincore)(void *, __SPRT_ID(size_t), unsigned char *);
+
+SPRT_API int __SPRT_ID(memfd_create)(const char *, unsigned);
 
 __SPRT_END_DECL
 
