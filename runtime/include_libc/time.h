@@ -56,74 +56,73 @@ typedef __SPRT_ID(pid_t) pid_t;
 
 __SPRT_BEGIN_DECL
 
-SPRT_FORCEINLINE inline clock_t clock(void) { return __sprt_clock(); }
+SPRT_FORCEINLINE clock_t clock(void) { return __sprt_clock(); }
 
-SPRT_FORCEINLINE inline time_t time(time_t *t) { return __sprt_time(t); }
+SPRT_FORCEINLINE time_t time(time_t *t) { return __sprt_time(t); }
 
-SPRT_FORCEINLINE inline double difftime(time_t a, time_t b) { return __sprt_difftime(a, b); }
+SPRT_FORCEINLINE double difftime(time_t a, time_t b) { return __sprt_difftime(a, b); }
 
-SPRT_FORCEINLINE inline time_t mktime(struct tm *_tm) { return __sprt_mktime(_tm); }
+SPRT_FORCEINLINE time_t mktime(struct tm *_tm) { return __sprt_mktime(_tm); }
 
-SPRT_FORCEINLINE inline time_t strftime(char *__SPRT_RESTRICT buf, size_t size,
+SPRT_FORCEINLINE time_t strftime(char *__SPRT_RESTRICT buf, size_t size,
 		const char *__SPRT_RESTRICT fmt, const struct tm *__SPRT_RESTRICT _tm) {
 	return __sprt_strftime(buf, size, fmt, _tm);
 }
 
-SPRT_FORCEINLINE inline struct tm *gmtime(const time_t *t) { return __sprt_gmtime(t); }
+SPRT_FORCEINLINE struct tm *gmtime(const time_t *t) { return __sprt_gmtime(t); }
 
-SPRT_FORCEINLINE inline struct tm *localtime(const time_t *t) { return __sprt_localtime(t); }
+SPRT_FORCEINLINE struct tm *localtime(const time_t *t) { return __sprt_localtime(t); }
 
-SPRT_FORCEINLINE inline char *asctime(const struct tm *_tm) { return __sprt_asctime(_tm); }
+SPRT_FORCEINLINE char *asctime(const struct tm *_tm) { return __sprt_asctime(_tm); }
 
-SPRT_FORCEINLINE inline char *ctime(const time_t *t) { return __sprt_ctime(t); }
+SPRT_FORCEINLINE char *ctime(const time_t *t) { return __sprt_ctime(t); }
 
-SPRT_FORCEINLINE inline int timespec_get(struct timespec *spec, int base) {
+SPRT_FORCEINLINE int timespec_get(struct timespec *spec, int base) {
 	return __sprt_timespec_get(spec, base);
 }
 
-SPRT_FORCEINLINE inline struct tm *gmtime_r(const time_t *t, struct tm *_tm) {
+SPRT_FORCEINLINE struct tm *gmtime_r(const time_t *t, struct tm *_tm) {
 	return __sprt_gmtime_r(t, _tm);
 }
 
-SPRT_FORCEINLINE inline struct tm *localtime_r(const time_t *t, struct tm *_tm) {
+SPRT_FORCEINLINE struct tm *localtime_r(const time_t *t, struct tm *_tm) {
 	return __sprt_localtime_r(t, _tm);
 }
 
-SPRT_FORCEINLINE inline size_t strftime_l(char *__SPRT_RESTRICT buf, size_t size,
+SPRT_FORCEINLINE size_t strftime_l(char *__SPRT_RESTRICT buf, size_t size,
 		const char *__SPRT_RESTRICT fmt, const struct tm *__SPRT_RESTRICT ts, locale_t loc) {
 	return __sprt_strftime_l(buf, size, fmt, ts, loc);
 }
 
-SPRT_FORCEINLINE inline char *asctime_r(const struct tm *__SPRT_RESTRICT ts,
-		char *__SPRT_RESTRICT buf) {
+SPRT_FORCEINLINE char *asctime_r(const struct tm *__SPRT_RESTRICT ts, char *__SPRT_RESTRICT buf) {
 	return __sprt_asctime_r(ts, buf);
 }
-SPRT_FORCEINLINE inline char *ctime_r(const time_t *t, char *buf) { return __sprt_ctime_r(t, buf); }
+SPRT_FORCEINLINE char *ctime_r(const time_t *t, char *buf) { return __sprt_ctime_r(t, buf); }
 
-SPRT_FORCEINLINE inline void tzset(void) { __sprt_tzset(); }
+SPRT_FORCEINLINE void tzset(void) { __sprt_tzset(); }
 
-SPRT_FORCEINLINE inline int nanosleep(const struct timespec *ts, struct timespec *out) {
+SPRT_FORCEINLINE int nanosleep(const struct timespec *ts, struct timespec *out) {
 	return __sprt_nanosleep(ts, out);
 }
 
-SPRT_FORCEINLINE inline int clock_getres(clockid_t clock, struct timespec *out) {
+SPRT_FORCEINLINE int clock_getres(clockid_t clock, struct timespec *out) {
 	return __sprt_clock_getres(clock, out);
 }
 
-SPRT_FORCEINLINE inline int clock_gettime(clockid_t clock, struct timespec *out) {
+SPRT_FORCEINLINE int clock_gettime(clockid_t clock, struct timespec *out) {
 	return __sprt_clock_gettime(clock, out);
 }
 
-SPRT_FORCEINLINE inline int clock_settime(clockid_t clock, const struct timespec *ts) {
+SPRT_FORCEINLINE int clock_settime(clockid_t clock, const struct timespec *ts) {
 	return __sprt_clock_settime(clock, ts);
 }
 
-SPRT_FORCEINLINE inline int clock_nanosleep(clockid_t clock, int v, const struct timespec *ts,
+SPRT_FORCEINLINE int clock_nanosleep(clockid_t clock, int v, const struct timespec *ts,
 		struct timespec *out) {
 	return __sprt_clock_nanosleep(clock, v, ts, out);
 }
 
-SPRT_FORCEINLINE inline int clock_getcpuclockid(pid_t pid, clockid_t *clock) {
+SPRT_FORCEINLINE int clock_getcpuclockid(pid_t pid, clockid_t *clock) {
 	return __sprt_clock_getcpuclockid(pid, clock);
 }
 

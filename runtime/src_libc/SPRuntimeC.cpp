@@ -37,6 +37,7 @@ THE SOFTWARE.
 #include <sprt/runtime/source_location.h>
 #include "private/SPRTFilename.h"
 
+#include <stddef.h>
 #include <locale.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -48,6 +49,18 @@ THE SOFTWARE.
 #include <utime.h>
 #include <nl_types.h>
 #include <sys/utsname.h>
+
+#include "private/SPRTSpecific.h"
+
+#if SPRT_ANDROID
+namespace sprt::platform {
+
+extern nl_catd (*_catopen)(const char *__name, int __flag);
+extern char *(*_catgets)(nl_catd __catalog, int __set_number, int __msg_number, const char *__msg);
+extern int (*_catclose)(nl_catd __catalog);
+
+} // namespace sprt::platform
+#endif
 
 namespace sprt {
 
@@ -165,17 +178,26 @@ __SPRT_C_FUNC int __SPRT_ID(sigpending)(__SPRT_ID(sigset_t) * set) {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(sigisemptyset)(const __SPRT_ID(sigset_t) * set) {
-	return ::sigisemptyset((sigset_t *)set);
+	for (auto &it : set->__bits) {
+		if (it != 0) {
+			return 0;
+		}
+	}
+	return 1;
 }
+
 __SPRT_C_FUNC int __SPRT_ID(sigorset)(__SPRT_ID(sigset_t) * set, const __SPRT_ID(sigset_t) * a,
 		const __SPRT_ID(sigset_t) * b) {
-	return ::sigorset((sigset_t *)set, (const sigset_t *)a, (const sigset_t *)b);
+	auto s = sizeof(set->__bits) / sizeof(set->__bits[0]);
+	for (size_t i = 0; i < s; ++i) { set->__bits[i] = a->__bits[i] | b->__bits[i]; }
+	return 0;
 }
 __SPRT_C_FUNC int __SPRT_ID(sigandset)(__SPRT_ID(sigset_t) * set, const __SPRT_ID(sigset_t) * a,
 		const __SPRT_ID(sigset_t) * b) {
-	return ::sigandset((sigset_t *)set, (const sigset_t *)a, (const sigset_t *)b);
+	auto s = sizeof(set->__bits) / sizeof(set->__bits[0]);
+	for (size_t i = 0; i < s; ++i) { set->__bits[i] = a->__bits[i] & b->__bits[i]; }
+	return 0;
 }
-
 
 __SPRT_C_FUNC void (*__SPRT_ID(signal)(int sig, void (*cb)(int)))(int) { return ::signal(sig, cb); }
 
@@ -212,14 +234,46 @@ __SPRT_C_FUNC int __SPRT_ID(utime)(const char *path, const struct __SPRT_UTIMBUF
 }
 
 __SPRT_C_FUNC __SPRT_ID(nl_catd) __SPRT_ID(catopen)(const char *path, int v) {
+#if SPRT_ANDROID
+	if (platform::_catopen) {
+		return platform::_catopen(path, v);
+	}
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (Android: API not available)");
+	*__sprt___errno_location() = ENOSYS;
+	return nullptr;
+#else
 	return ::catopen(path, v);
+#endif
 }
 
 __SPRT_C_FUNC char *__SPRT_ID(catgets)(__SPRT_ID(nl_catd) cat, int a, int b, const char *str) {
+#if SPRT_ANDROID
+	if (platform::_catgets) {
+		return platform::_catgets(cat, a, b, str);
+	}
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (Android: API not available)");
+	*__sprt___errno_location() = ENOSYS;
+	return nullptr;
+#else
 	return ::catgets(cat, a, b, str);
+#endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(catclose)(__SPRT_ID(nl_catd) cat) { return ::catclose(cat); }
+__SPRT_C_FUNC int __SPRT_ID(catclose)(__SPRT_ID(nl_catd) cat) {
+#if SPRT_ANDROID
+	if (platform::_catclose) {
+		return platform::_catclose(cat);
+	}
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (Android: API not available)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#else
+	return ::catclose(cat);
+#endif
+}
 
 __SPRT_C_FUNC int __SPRT_ID(uname)(struct __SPRT_UTSNAME_NAME *buf) {
 	return ::uname((struct utsname *)buf);

@@ -32,6 +32,8 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stddef.h>
 
 typedef __SPRT_ID(max_align_t) max_align_t;
+typedef __SPRT_ID(size_t) size_t;
+typedef __SPRT_ID(ptrdiff_t) ptrdiff_t;
 
 #define offsetof(type, member) __SPRT_offsetof(type, member)
 

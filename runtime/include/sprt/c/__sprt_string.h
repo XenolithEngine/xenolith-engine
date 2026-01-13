@@ -69,7 +69,7 @@ SPRT_API char *__SPRT_ID(strerror_impl)(int);
 
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_memcpy)
-SPRT_FORCEINLINE inline void *__SPRT_ID(memcpy)(void *__SPRT_RESTRICT dest,
+SPRT_FORCEINLINE void *__SPRT_ID(memcpy)(void *__SPRT_RESTRICT dest,
 		const void *__SPRT_RESTRICT source, __SPRT_ID(size_t) size) {
 	return __builtin_memcpy(dest, source, size);
 }
@@ -78,8 +78,7 @@ SPRT_FORCEINLINE inline void *__SPRT_ID(memcpy)(void *__SPRT_RESTRICT dest,
 #endif
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_memmove)
-SPRT_FORCEINLINE inline void *__SPRT_ID(
-		memmove)(void *dest, const void *source, __SPRT_ID(size_t) size) {
+SPRT_FORCEINLINE void *__SPRT_ID(memmove)(void *dest, const void *source, __SPRT_ID(size_t) size) {
 	return __builtin_memmove(dest, source, size);
 }
 #else
@@ -87,7 +86,7 @@ SPRT_FORCEINLINE inline void *__SPRT_ID(
 #endif
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_memset)
-SPRT_FORCEINLINE inline void *__SPRT_ID(memset)(void *dest, int val, __SPRT_ID(size_t) size) {
+SPRT_FORCEINLINE void *__SPRT_ID(memset)(void *dest, int val, __SPRT_ID(size_t) size) {
 	return __builtin_memset(dest, val, size);
 }
 #else
@@ -95,8 +94,7 @@ SPRT_FORCEINLINE inline void *__SPRT_ID(memset)(void *dest, int val, __SPRT_ID(s
 #endif
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_memcmp)
-SPRT_FORCEINLINE inline int __SPRT_ID(
-		memcmp)(const void *l, const void *r, __SPRT_ID(size_t) size) {
+SPRT_FORCEINLINE int __SPRT_ID(memcmp)(const void *l, const void *r, __SPRT_ID(size_t) size) {
 	return __builtin_memcmp(l, r, size);
 }
 #else
@@ -104,8 +102,7 @@ SPRT_FORCEINLINE inline int __SPRT_ID(
 #endif
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_memchr)
-SPRT_FORCEINLINE inline const void *__SPRT_ID(
-		memchr)(const void *s, int c, __SPRT_ID(size_t) size) {
+SPRT_FORCEINLINE const void *__SPRT_ID(memchr)(const void *s, int c, __SPRT_ID(size_t) size) {
 	return __builtin_memchr(s, c, size);
 }
 #else
@@ -114,7 +111,7 @@ SPRT_FORCEINLINE inline const void *__SPRT_ID(
 
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_strcpy)
-SPRT_FORCEINLINE inline char *__SPRT_ID(
+SPRT_FORCEINLINE char *__SPRT_ID(
 		strcpy)(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src) {
 	return __builtin_strcpy(dest, src);
 }
@@ -123,7 +120,7 @@ SPRT_FORCEINLINE inline char *__SPRT_ID(
 #endif
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_strncpy)
-SPRT_FORCEINLINE inline char *__SPRT_ID(strncpy)(char *__SPRT_RESTRICT dest,
+SPRT_FORCEINLINE char *__SPRT_ID(strncpy)(char *__SPRT_RESTRICT dest,
 		const char *__SPRT_RESTRICT src, __SPRT_ID(size_t) size) {
 	return __builtin_strncpy(dest, src, size);
 }
@@ -133,7 +130,7 @@ SPRT_FORCEINLINE inline char *__SPRT_ID(strncpy)(char *__SPRT_RESTRICT dest,
 
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_strcat)
-SPRT_FORCEINLINE inline char *__SPRT_ID(
+SPRT_FORCEINLINE char *__SPRT_ID(
 		strcat)(char *__SPRT_RESTRICT tar, const char *__SPRT_RESTRICT str) {
 	return __builtin_strcat(tar, str);
 }
@@ -142,7 +139,7 @@ SPRT_FORCEINLINE inline char *__SPRT_ID(
 #endif
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_strncat)
-SPRT_FORCEINLINE inline char *__SPRT_ID(strncat)(char *__SPRT_RESTRICT tar,
+SPRT_FORCEINLINE char *__SPRT_ID(strncat)(char *__SPRT_RESTRICT tar,
 		const char *__SPRT_RESTRICT str, __SPRT_ID(size_t) size) {
 	return __builtin_strncat(tar, str, size);
 }
@@ -152,7 +149,7 @@ SPRT_FORCEINLINE inline char *__SPRT_ID(strncat)(char *__SPRT_RESTRICT tar,
 
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_strcmp)
-SPRT_FORCEINLINE inline int __SPRT_ID(strcmp)(const char *l, const char *r) {
+SPRT_FORCEINLINE int __SPRT_ID(strcmp)(const char *l, const char *r) {
 	return __builtin_strcmp(l, r);
 }
 #else
@@ -160,8 +157,7 @@ SPRT_FORCEINLINE inline int __SPRT_ID(strcmp)(const char *l, const char *r) {
 #endif
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_strncmp)
-SPRT_FORCEINLINE inline int __SPRT_ID(
-		strncmp)(const char *l, const char *r, __SPRT_ID(size_t) size) {
+SPRT_FORCEINLINE int __SPRT_ID(strncmp)(const char *l, const char *r, __SPRT_ID(size_t) size) {
 	return __builtin_strncmp(l, r, size);
 }
 #else
@@ -174,7 +170,7 @@ SPRT_FORCEINLINE inline int __SPRT_ID(
 
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_strchr)
-SPRT_FORCEINLINE inline const char *__SPRT_ID(strchr)(const char *str, int c) {
+SPRT_FORCEINLINE const char *__SPRT_ID(strchr)(const char *str, int c) {
 	return __builtin_strchr(str, c);
 }
 #else
@@ -182,7 +178,7 @@ SPRT_FORCEINLINE inline const char *__SPRT_ID(strchr)(const char *str, int c) {
 #endif
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_strrchr)
-SPRT_FORCEINLINE inline const char *__SPRT_ID(strrchr)(const char *str, int c) {
+SPRT_FORCEINLINE const char *__SPRT_ID(strrchr)(const char *str, int c) {
 	return __builtin_strrchr(str, c);
 }
 #else
@@ -191,7 +187,7 @@ SPRT_FORCEINLINE inline const char *__SPRT_ID(strrchr)(const char *str, int c) {
 
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_strcspn)
-SPRT_FORCEINLINE inline __SPRT_ID(size_t) __SPRT_ID(strcspn)(const char *str, const char *span) {
+SPRT_FORCEINLINE __SPRT_ID(size_t) __SPRT_ID(strcspn)(const char *str, const char *span) {
 	return __builtin_strcspn(str, span);
 }
 #else
@@ -199,7 +195,7 @@ SPRT_FORCEINLINE inline __SPRT_ID(size_t) __SPRT_ID(strcspn)(const char *str, co
 #endif
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_strspn)
-SPRT_FORCEINLINE inline __SPRT_ID(size_t) __SPRT_ID(strspn)(const char *str, const char *span) {
+SPRT_FORCEINLINE __SPRT_ID(size_t) __SPRT_ID(strspn)(const char *str, const char *span) {
 	return __builtin_strspn(str, span);
 }
 #else
@@ -207,7 +203,7 @@ SPRT_FORCEINLINE inline __SPRT_ID(size_t) __SPRT_ID(strspn)(const char *str, con
 #endif
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_strpbrk)
-SPRT_FORCEINLINE inline const char *__SPRT_ID(strpbrk)(const char *str, const char *span) {
+SPRT_FORCEINLINE const char *__SPRT_ID(strpbrk)(const char *str, const char *span) {
 	return __builtin_strpbrk(str, span);
 }
 #else
@@ -215,7 +211,7 @@ SPRT_FORCEINLINE inline const char *__SPRT_ID(strpbrk)(const char *str, const ch
 #endif
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_strstr)
-SPRT_FORCEINLINE inline const char *__SPRT_ID(strstr)(const char *str, const char *nstr) {
+SPRT_FORCEINLINE const char *__SPRT_ID(strstr)(const char *str, const char *nstr) {
 	return __builtin_strstr(str, nstr);
 }
 #else
@@ -223,7 +219,7 @@ SPRT_FORCEINLINE inline const char *__SPRT_ID(strstr)(const char *str, const cha
 #endif
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_strtok)
-SPRT_FORCEINLINE inline char *__SPRT_ID(
+SPRT_FORCEINLINE char *__SPRT_ID(
 		strtok)(char *__SPRT_RESTRICT str, const char *__SPRT_RESTRICT tok) {
 	return __builtin_strtok(str, tok);
 }
@@ -233,7 +229,7 @@ SPRT_FORCEINLINE inline char *__SPRT_ID(
 
 
 #if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_strlen)
-SPRT_FORCEINLINE inline __SPRT_ID(size_t) __SPRT_ID(strlen)(const char *str) {
+SPRT_FORCEINLINE __SPRT_ID(size_t) __SPRT_ID(strlen)(const char *str) {
 	return __builtin_strlen(str);
 }
 #else

@@ -39,11 +39,11 @@ __SPRT_BEGIN_DECL
 typedef __SPRT_ID(nl_item) nl_item;
 typedef __SPRT_ID(nl_catd) nl_catd;
 
-SPRT_FORCEINLINE inline nl_catd catopen(const char *path, int v) { return __sprt_catopen(path, v); }
-SPRT_FORCEINLINE inline char *catgets(nl_catd cat, int a, int b, const char *str) {
+SPRT_FORCEINLINE nl_catd catopen(const char *path, int v) { return __sprt_catopen(path, v); }
+SPRT_FORCEINLINE char *catgets(nl_catd cat, int a, int b, const char *str) {
 	return __sprt_catgets(cat, a, b, str);
 }
-SPRT_FORCEINLINE inline int catclose(nl_catd cat) { return __sprt_catclose(cat); }
+SPRT_FORCEINLINE int catclose(nl_catd cat) { return __sprt_catclose(cat); }
 
 __SPRT_END_DECL
 

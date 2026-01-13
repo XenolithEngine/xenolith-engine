@@ -50,19 +50,15 @@ __SPRT_C_FUNC struct __SPRT_DIRENT_NAME *__SPRT_ID(readdir)(__SPRT_ID(DIR) * __d
 }
 
 
-#if SPRT_ANROID || SPRT_LINUX
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#endif
 
 __SPRT_C_FUNC int __SPRT_ID(readdir_r)(__SPRT_ID(DIR) * __dir, struct __SPRT_DIRENT_NAME *__entry,
 		struct __SPRT_DIRENT_NAME **__buffer) {
 	return ::readdir64_r(__dir, (struct dirent64 *)__entry, (struct dirent64 **)__buffer);
 }
 
-#if SPRT_ANROID || SPRT_LINUX
 #pragma clang diagnostic pop
-#endif
 
 __SPRT_C_FUNC int __SPRT_ID(closedir)(__SPRT_ID(DIR) * __dir) { return ::closedir(__dir); }
 

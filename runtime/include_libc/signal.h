@@ -76,27 +76,25 @@ __SPRT_BEGIN_DECL
 
 typedef __SPRT_ID(sigset_t) sigset_t;
 
-SPRT_FORCEINLINE inline int sigemptyset(sigset_t *set) { return __SPRT_ID(sigemptyset)(set); }
-SPRT_FORCEINLINE inline int sigfillset(sigset_t *set) { return __SPRT_ID(sigfillset)(set); }
-SPRT_FORCEINLINE inline int sigaddset(sigset_t *set, int s) { return __SPRT_ID(sigaddset)(set, s); }
-SPRT_FORCEINLINE inline int sigdelset(sigset_t *set, int s) { return __SPRT_ID(sigdelset)(set, s); }
-SPRT_FORCEINLINE inline int sigismember(const sigset_t *set, int s) {
+SPRT_FORCEINLINE int sigemptyset(sigset_t *set) { return __SPRT_ID(sigemptyset)(set); }
+SPRT_FORCEINLINE int sigfillset(sigset_t *set) { return __SPRT_ID(sigfillset)(set); }
+SPRT_FORCEINLINE int sigaddset(sigset_t *set, int s) { return __SPRT_ID(sigaddset)(set, s); }
+SPRT_FORCEINLINE int sigdelset(sigset_t *set, int s) { return __SPRT_ID(sigdelset)(set, s); }
+SPRT_FORCEINLINE int sigismember(const sigset_t *set, int s) {
 	return __SPRT_ID(sigismember)(set, s);
 }
-SPRT_FORCEINLINE inline int sigprocmask(int mode, const sigset_t *__SPRT_RESTRICT a,
+SPRT_FORCEINLINE int sigprocmask(int mode, const sigset_t *__SPRT_RESTRICT a,
 		sigset_t *__SPRT_RESTRICT b) {
 	return __SPRT_ID(sigprocmask)(mode, a, b);
 }
-SPRT_FORCEINLINE inline int sigsuspend(const sigset_t *set) { return __SPRT_ID(sigsuspend)(set); }
-SPRT_FORCEINLINE inline int sigpending(sigset_t *set) { return __SPRT_ID(sigpending)(set); }
+SPRT_FORCEINLINE int sigsuspend(const sigset_t *set) { return __SPRT_ID(sigsuspend)(set); }
+SPRT_FORCEINLINE int sigpending(sigset_t *set) { return __SPRT_ID(sigpending)(set); }
 
-SPRT_FORCEINLINE inline int sigisemptyset(const sigset_t *set) {
-	return __SPRT_ID(sigisemptyset)(set);
-}
-SPRT_FORCEINLINE inline int sigorset(sigset_t *set, const sigset_t *a, const sigset_t *b) {
+SPRT_FORCEINLINE int sigisemptyset(const sigset_t *set) { return __SPRT_ID(sigisemptyset)(set); }
+SPRT_FORCEINLINE int sigorset(sigset_t *set, const sigset_t *a, const sigset_t *b) {
 	return __SPRT_ID(sigorset)(set, a, b);
 }
-SPRT_FORCEINLINE inline int sigandset(sigset_t *set, const sigset_t *a, const sigset_t *b) {
+SPRT_FORCEINLINE int sigandset(sigset_t *set, const sigset_t *a, const sigset_t *b) {
 	return __SPRT_ID(sigandset)(set, a, b);
 }
 

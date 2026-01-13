@@ -298,6 +298,7 @@ struct is_convertible {
 template <typename From, typename To>
 inline constexpr bool is_convertible_v = __is_convertible(From, To);
 
+#if __SPRT_HAS_BUILTIN(__is_nothrow_convertible)
 template <typename From, typename To>
 struct is_nothrow_convertible {
 	static constexpr auto value = __is_nothrow_convertible(From, To);
@@ -305,6 +306,9 @@ struct is_nothrow_convertible {
 
 template <typename From, typename To>
 inline constexpr bool is_nothrow_convertible_v = __is_nothrow_convertible(From, To);
+#else
+#error "no __is_nothrow_convertible available"
+#endif
 
 
 /*

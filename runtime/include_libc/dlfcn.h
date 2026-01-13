@@ -45,18 +45,16 @@ __SPRT_BEGIN_DECL
 
 typedef __SPRT_ID(Dl_info) Dl_info;
 
-SPRT_FORCEINLINE inline int dlclose(void *h) { return __sprt_dlclose(h); }
-SPRT_FORCEINLINE inline char *dlerror(void) { return __sprt_dlerror(); }
+SPRT_FORCEINLINE int dlclose(void *h) { return __sprt_dlclose(h); }
+SPRT_FORCEINLINE char *dlerror(void) { return __sprt_dlerror(); }
 
-SPRT_FORCEINLINE inline void *dlopen(const char *path, int flags) {
-	return __sprt_dlopen(path, flags);
-}
+SPRT_FORCEINLINE void *dlopen(const char *path, int flags) { return __sprt_dlopen(path, flags); }
 
-SPRT_FORCEINLINE inline void *dlsym(void *__SPRT_RESTRICT h, const char *__SPRT_RESTRICT sym) {
+SPRT_FORCEINLINE void *dlsym(void *__SPRT_RESTRICT h, const char *__SPRT_RESTRICT sym) {
 	return __sprt_dlsym(h, sym);
 }
 
-SPRT_FORCEINLINE inline int dladdr(const void *h, Dl_info *info) { return __sprt_dladdr(h, info); }
+SPRT_FORCEINLINE int dladdr(const void *h, Dl_info *info) { return __sprt_dladdr(h, info); }
 
 __SPRT_END_DECL
 

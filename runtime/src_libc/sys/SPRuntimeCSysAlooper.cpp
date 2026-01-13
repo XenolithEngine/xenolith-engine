@@ -26,7 +26,7 @@
 #include <sprt/c/sys/__sprt_alooper.h>
 
 #if __SPRT_CONFIG_HAVE_ALOOPER
-#include <android/alooper.h>
+#include <android/looper.h>
 #endif
 
 namespace sprt {

@@ -23,6 +23,7 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_DYNALLOC_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_DYNALLOC_H_
 
+#include <sprt/c/__sprt_stdio.h>
 #include <sprt/runtime/mem/detail/alloc.h>
 
 namespace sprt::memory::detail {
@@ -148,7 +149,10 @@ inline auto DynamicAllocator<T>::operator=(DynamicAllocator<B> &&a) noexcept
 template <typename T>
 inline auto DynamicAllocator<T>::allocate(size_t n) const noexcept -> T * {
 	T *ptr = nullptr;
-	__sprt_posix_memalign((void **)&ptr, alignof(T), sizeof(T) * n);
+	ptr = (T *)__sprt_aligned_alloc(alignof(T), sizeof(T) * n);
+	if (!ptr) {
+		__sprt_perror("allocation error");
+	}
 	sprt_passert(ptr, "allocation should always be successful");
 	return ptr;
 }
@@ -156,7 +160,10 @@ inline auto DynamicAllocator<T>::allocate(size_t n) const noexcept -> T * {
 template <typename T>
 inline auto DynamicAllocator<T>::__allocate(size_t &n) const noexcept -> T * {
 	T *ptr = nullptr;
-	__sprt_posix_memalign((void **)&ptr, alignof(T), sizeof(T) * n);
+	ptr = (T *)__sprt_aligned_alloc(alignof(T), sizeof(T) * n);
+	if (!ptr) {
+		__sprt_perror("allocation error");
+	}
 	sprt_passert(ptr, "allocation should always be successful");
 	return ptr;
 }
@@ -164,7 +171,10 @@ inline auto DynamicAllocator<T>::__allocate(size_t &n) const noexcept -> T * {
 template <typename T>
 inline auto DynamicAllocator<T>::__allocate(size_t n, size_t &bytes) const noexcept -> T * {
 	T *ptr = nullptr;
-	__sprt_posix_memalign((void **)&ptr, alignof(T), sizeof(T) * n);
+	ptr = (T *)__sprt_aligned_alloc(alignof(T), sizeof(T) * n);
+	if (!ptr) {
+		__sprt_perror("allocation error");
+	}
 	sprt_passert(ptr, "allocation should always be successful");
 	bytes = n * sizeof(T);
 	return ptr;

@@ -36,7 +36,8 @@ ANDROID_PLATFORM_LEVEL = 24
 
 INCLUDES := \
 	idn2.h \
-	simde/simde-arch.h
+	simde/simde-arch.h \
+	spirv/unified1/spirv.h
 
 LIBS := \
 	libbz2.a \
@@ -202,6 +203,9 @@ $(SP_INSTALL_PREFIX)/lib/libnghttp3.a: $(MAKE_ROOT)nghttp3.mk
 $(SP_INSTALL_PREFIX)/include/idn2.h: replacements/idn2.h
 	$(MKDIR) $(SP_INSTALL_PREFIX)/include
 	cp -f replacements/idn2.h $@
+
+$(SP_INSTALL_PREFIX)/include/spirv/unified1/spirv.h: $(MAKE_ROOT)spirv-headers.mk
+	$(MAKE) -f $(MAKE_ROOT)spirv-headers.mk $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/include/simde/simde-arch.h: $(MAKE_ROOT)simde.mk
 	$(MAKE) -f $(MAKE_ROOT)simde.mk $(FORWARD_VARS)

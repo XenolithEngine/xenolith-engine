@@ -28,6 +28,7 @@ THE SOFTWARE.
 
 #include <sprt/runtime/log.h>
 #include "private/SPRTFilename.h"
+#include "private/SPRTSpecific.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -388,7 +389,19 @@ __SPRT_C_FUNC int __SPRT_ID(
 		}, -1);
 	}, -1);
 }
-__SPRT_C_FUNC char *__SPRT_ID(ctermid)(char *s) { return ::ctermid(s); }
 
+__SPRT_C_FUNC char *__SPRT_ID(ctermid)(char *s) {
+#if SPRT_ANDROID
+	if (platform::_ctermid) {
+		return platform::_ctermid(s);
+	}
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (Android: API not available)");
+	*__sprt___errno_location() = ENOSYS;
+	return nullptr;
+#else
+	return ::ctermid(s);
+#endif
+}
 
 } // namespace sprt

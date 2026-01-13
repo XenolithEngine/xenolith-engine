@@ -29,23 +29,23 @@
 namespace sprt::byteorder {
 
 #if __SPRT_HAS_BUILTIN(__builtin_bswap16)
-static SPRT_FORCEINLINE inline uint16_t bswap16(uint16_t x) { return __builtin_bswap16(x); }
+SPRT_FORCEINLINE uint16_t bswap16(uint16_t x) { return __builtin_bswap16(x); }
 #else
-static SPRT_FORCEINLINE inline uint16_t bswap16(uint16_t x) { return __builtin_bswap32(x) << 16; }
+SPRT_FORCEINLINE uint16_t bswap16(uint16_t x) { return __builtin_bswap32(x) << 16; }
 #endif
 
 #if __SPRT_HAS_BUILTIN(__builtin_bswap32)
-static SPRT_FORCEINLINE inline uint32_t bswap32(uint32_t x) { return __builtin_bswap32(x); }
+SPRT_FORCEINLINE uint32_t bswap32(uint32_t x) { return __builtin_bswap32(x); }
 #else
-static SPRT_FORCEINLINE inline uint32_t bswap32(uint32_t x) {
+SPRT_FORCEINLINE uint32_t bswap32(uint32_t x) {
 	return x & 0xFF << 24 | (x >> 8 & 0xFF) << 16 | (x >> 16 & 0xFF) << 8 | (x >> 24 & 0xFF);
 }
 #endif
 
 #if __SPRT_HAS_BUILTIN(__builtin_bswap64)
-static SPRT_FORCEINLINE inline uint64_t bswap64(uint64_t x) { return __builtin_bswap64(x); }
+SPRT_FORCEINLINE uint64_t bswap64(uint64_t x) { return __builtin_bswap64(x); }
 #else
-static SPRT_FORCEINLINE inline uint64_t bswap64(uint64_t x) {
+SPRT_FORCEINLINE uint64_t bswap64(uint64_t x) {
 	return x & 0xFF << 56 | (x >> 8 & 0xFF) << 48 | (x >> 16 & 0xFF) << 40 | (x >> 24 & 0xFF) << 32
 			| (x >> 32 & 0xFF) << 24 | (x >> 40 & 0xFF) << 16 | (x >> 48 & 0xFF) << 8
 			| (x >> 56 & 0xFF);

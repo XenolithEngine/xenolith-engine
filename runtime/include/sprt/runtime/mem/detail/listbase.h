@@ -414,7 +414,7 @@ protected:
 
 		Node *source = other._front;
 
-		__expand(other.size(), [&](Node *dest) SPRT_FORCEINLINE {
+		__expand(other.size(), [&](Node *dest) SPRT_LAMBDAINLINE {
 			Node::copyValue(_alloc, dest, source);
 			source = source->next;
 		});

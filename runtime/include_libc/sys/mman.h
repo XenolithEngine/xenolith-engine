@@ -128,38 +128,36 @@ __SPRT_BEGIN_DECL
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(off_t) off_t;
 
-SPRT_FORCEINLINE inline void *mmap(void *__addr, size_t __size, int __prot, int __flags, int __fd,
+SPRT_FORCEINLINE void *mmap(void *__addr, size_t __size, int __prot, int __flags, int __fd,
 		off_t __offset) {
 	return __sprt_mmap(__addr, __size, __prot, __flags, __fd, __offset);
 }
 
-SPRT_FORCEINLINE inline int munmap(void *__addr, size_t __size) {
-	return __sprt_munmap(__addr, __size);
-}
+SPRT_FORCEINLINE int munmap(void *__addr, size_t __size) { return __sprt_munmap(__addr, __size); }
 
-SPRT_FORCEINLINE inline int mprotect(void *__addr, size_t __size, int __flags) {
+SPRT_FORCEINLINE int mprotect(void *__addr, size_t __size, int __flags) {
 	return __sprt_mprotect(__addr, __size, __flags);
 }
 
-SPRT_FORCEINLINE inline int msync(void *__addr, size_t __size, int __flags) {
+SPRT_FORCEINLINE int msync(void *__addr, size_t __size, int __flags) {
 	return __sprt_msync(__addr, __size, __flags);
 }
 
-SPRT_FORCEINLINE inline int posix_madvise(void *__addr, size_t __size, int __flags) {
+SPRT_FORCEINLINE int posix_madvise(void *__addr, size_t __size, int __flags) {
 	return __sprt_posix_madvise(__addr, __size, __flags);
 }
 
-SPRT_FORCEINLINE inline int mlock(const void *__addr, size_t __size) {
+SPRT_FORCEINLINE int mlock(const void *__addr, size_t __size) {
 	return __sprt_mlock(__addr, __size);
 }
-SPRT_FORCEINLINE inline int munlock(const void *__addr, size_t __size) {
+SPRT_FORCEINLINE int munlock(const void *__addr, size_t __size) {
 	return __sprt_munlock(__addr, __size);
 }
-SPRT_FORCEINLINE inline int mlockall(int __flags) { return __sprt_mlockall(__flags); }
-SPRT_FORCEINLINE inline int munlockall(void) { return __sprt_munlockall(); }
+SPRT_FORCEINLINE int mlockall(int __flags) { return __sprt_mlockall(__flags); }
+SPRT_FORCEINLINE int munlockall(void) { return __sprt_munlockall(); }
 
-SPRT_FORCEINLINE inline void *mremap(void *__addr, size_t __old_size, size_t __new_size,
-		int __flags, ...) {
+SPRT_FORCEINLINE void *mremap(void *__addr, size_t __old_size, size_t __new_size, int __flags,
+		...) {
 	__sprt_va_list ap;
 	void *new_addr = 0;
 	if (__flags & MREMAP_FIXED) {
@@ -171,19 +169,19 @@ SPRT_FORCEINLINE inline void *mremap(void *__addr, size_t __old_size, size_t __n
 	return __sprt_mremap(__addr, __old_size, __new_size, __flags, new_addr);
 }
 
-SPRT_FORCEINLINE inline int mlock2(const void *__addr, size_t __size, int __flags) {
+SPRT_FORCEINLINE int mlock2(const void *__addr, size_t __size, int __flags) {
 	return __sprt_mlock2(__addr, __size, __flags);
 }
 
-SPRT_FORCEINLINE inline int madvise(void *__addr, size_t __size, int __flags) {
+SPRT_FORCEINLINE int madvise(void *__addr, size_t __size, int __flags) {
 	return __sprt_madvise(__addr, __size, __flags);
 }
 
-SPRT_FORCEINLINE inline int mincore(void *__addr, size_t __size, unsigned char *__vec) {
+SPRT_FORCEINLINE int mincore(void *__addr, size_t __size, unsigned char *__vec) {
 	return __sprt_mincore(__addr, __size, __vec);
 }
 
-SPRT_FORCEINLINE inline int memfd_create(const char *name, unsigned flags) {
+SPRT_FORCEINLINE int memfd_create(const char *name, unsigned flags) {
 	return __sprt_memfd_create(name, flags);
 }
 

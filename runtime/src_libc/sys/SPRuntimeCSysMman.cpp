@@ -29,7 +29,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdarg.h>
 
 #include <sprt/runtime/log.h>
-#include "private/SPRTPrivate.h"
+#include "private/SPRTSpecific.h"
 
 #include <sys/mman.h>
 
@@ -101,7 +101,17 @@ __SPRT_C_FUNC int __SPRT_ID(mincore)(void *__addr, __SPRT_ID(size_t) __size, uns
 }
 
 __SPRT_C_FUNC int __SPRT_ID(memfd_create)(const char *name, unsigned flags) {
+#if SPRT_ANDROID
+	if (platform::_memfd_create) {
+		return platform::_memfd_create(name, flags);
+	}
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (Android: API not available)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#else
 	return ::memfd_create(name, flags);
+#endif
 }
 
 } // namespace sprt

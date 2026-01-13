@@ -26,11 +26,12 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdio.h>
 #include <sprt/c/__sprt_errno.h>
 
-#include "private/SPRTFilename.h"
-#include "private/SPRTPrivate.h"
 #include <sprt/runtime/log.h>
 
 #include <sys/time.h>
+
+#include "private/SPRTFilename.h"
+#include "private/SPRTSpecific.h"
 
 namespace sprt {
 

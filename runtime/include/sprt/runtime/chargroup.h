@@ -113,18 +113,18 @@ struct Chars {
 
 template <typename CharType, CharType First, CharType Last>
 struct Range {
-	static inline bool match(CharType c) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE bool match(CharType c);
 
 	template <typename Func>
-	static inline void foreach (const Func &) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE void foreach (const Func &);
 };
 
 template <typename CharType, typename... Args>
 struct Compose {
-	static inline bool match(CharType c) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE bool match(CharType c);
 
 	template <typename Func>
-	static inline void foreach (const Func &) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE void foreach (const Func &);
 };
 
 
@@ -456,49 +456,49 @@ struct CharGroup<char32_t, GroupId::TextPunctuation>
 class MatchTraits {
 public:
 	template <typename CharType, CharType... Args>
-	static inline bool matchChar(CharType c) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE bool matchChar(CharType c);
 
 	template <typename CharType, CharType First, CharType Last>
-	static inline bool matchPair(CharType c) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE bool matchPair(CharType c);
 
 	template <typename CharType, typename... Args>
-	static inline bool matchCompose(CharType c) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE bool matchCompose(CharType c);
 
 
 	template <typename CharType, typename Func, CharType... Args>
-	static inline void foreachChar(const Func &) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE void foreachChar(const Func &);
 
 	template <typename CharType, typename Func, CharType First, CharType Last>
-	static inline void foreachPair(const Func &) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE void foreachPair(const Func &);
 
 	template <typename CharType, typename Func, typename... Args>
-	static inline void foreachCompose(const Func &) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE void foreachCompose(const Func &);
 
 private:
 	template <typename CharType, CharType T>
-	static inline bool _matchChar(CharType c) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE bool _matchChar(CharType c);
 
 	template <typename CharType, CharType T, CharType T1, CharType... Args>
-	static inline bool _matchChar(CharType c) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE bool _matchChar(CharType c);
 
 	template <typename CharType, typename T>
-	static inline bool _matchCompose(CharType c) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE bool _matchCompose(CharType c);
 
 	template <typename CharType, typename T, typename T1, typename... Args>
-	static inline bool _matchCompose(CharType c) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE bool _matchCompose(CharType c);
 
 
 	template <typename CharType, typename Func, CharType T>
-	static inline void _foreachChar(const Func &) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE void _foreachChar(const Func &);
 
 	template <typename CharType, typename Func, CharType T, CharType T1, CharType... Args>
-	static inline void _foreachChar(const Func &) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE void _foreachChar(const Func &);
 
 	template <typename CharType, typename Func, typename T>
-	static inline void _foreachCompose(const Func &) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE void _foreachCompose(const Func &);
 
 	template <typename CharType, typename Func, typename T, typename T1, typename... Args>
-	static inline void _foreachCompose(const Func &) SPRT_FORCEINLINE;
+	static SPRT_FORCEINLINE void _foreachCompose(const Func &);
 };
 
 template <typename CharType, CharType... Args>

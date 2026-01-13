@@ -26,14 +26,15 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_time.h>
 
 #include <sprt/runtime/log.h>
-#include "private/SPRTPrivate.h"
-#include "private/SPRTTime.h"
 
 #if SPRT_ANDROID && !defined(__LP64__)
 #include <time64.h>
 #else
 #include <time.h>
 #endif
+
+#include "private/SPRTSpecific.h"
+#include "private/SPRTTime.h"
 
 namespace sprt {
 

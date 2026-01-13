@@ -22,7 +22,7 @@
 
 #include <sprt/runtime/config.h>
 
-#if __SPRT_RUNTIME_CONFIG_HAVE_WINDOW
+#if __SPRT_RUNTIME_CONFIG_HAVE_WINDOW && SPRT_LINUX
 
 #include "SPRTWinLinuxDBusLibrary.cc"
 #include "SPRTWinLinuxDBusController.cc"

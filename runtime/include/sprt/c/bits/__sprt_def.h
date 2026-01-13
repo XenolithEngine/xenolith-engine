@@ -181,7 +181,7 @@ THE SOFTWARE.
 #define __SPRT_HAS_ATTR(Attr) 0
 #endif
 
-#define __SPRT_FALLBACK_ATTR(Attr) __attribute__((Attr))
+#define __SPRT_FALLBACK_ATTR(...) __attribute__((__VA_ARGS__))
 
 #if defined(__has_builtin)
 #define __SPRT_HAS_BUILTIN(Attr) __has_builtin(Attr)
@@ -321,10 +321,28 @@ THE SOFTWARE.
 #endif
 // clang-format on
 
+#ifdef __cplusplus
+
 #if __SPRT_HAS_ATTR(always_inline)
-#define SPRT_FORCEINLINE __SPRT_FALLBACK_ATTR(always_inline)
+#define SPRT_LAMBDAINLINE __SPRT_FALLBACK_ATTR(always_inline)
 #else
-#define SPRT_FORCEINLINE __forceinline
+#define SPRT_LAMBDAINLINE
+#endif
+
+#if __SPRT_HAS_ATTR(always_inline)
+#define SPRT_FORCEINLINE __SPRT_FALLBACK_ATTR(always_inline) inline
+#else
+#define SPRT_FORCEINLINE __forceinline inline
+#endif
+
+#else
+
+#if __SPRT_HAS_ATTR(always_inline)
+#define SPRT_FORCEINLINE static __SPRT_FALLBACK_ATTR(always_inline) inline
+#else
+#define SPRT_FORCEINLINE static __forceinline inline
+#endif
+
 #endif
 
 #define __SPRT_ID(Def) __sprt_ ## Def

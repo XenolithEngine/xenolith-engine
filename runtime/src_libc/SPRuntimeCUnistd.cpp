@@ -31,11 +31,14 @@ THE SOFTWARE.
 #include <sprt/runtime/hash.h>
 #include <sprt/runtime/platform.h>
 #include <sprt/runtime/log.h>
-#include "private/SPRTFilename.h"
-#include "private/SPRTPrivate.h"
 
-#include <sys/resource.h>
+#include <limits.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <sys/resource.h>
+
+#include "private/SPRTFilename.h"
+#include "private/SPRTSpecific.h"
 
 #if __clang__
 #pragma clang diagnostic push
@@ -606,7 +609,16 @@ __SPRT_C_FUNC void __SPRT_ID(swab)(const void *__SPRT_RESTRICT __from, void *__S
 	return ::swab(__from, __to, __n);
 }
 __SPRT_C_FUNC int __SPRT_ID(getentropy)(void *__buffer, __SPRT_ID(size_t) __length) {
+#if SPRT_ANDROID
+	if (platform::_getentropy) {
+		return platform::_getentropy(__buffer, __length);
+	} else {
+		arc4random_buf(__buffer, __length);
+		return 0;
+	}
+#else
 	return ::getentropy(__buffer, __length);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(

@@ -59,7 +59,7 @@ THE SOFTWARE.
 	Define library functions as inlined builtins where possible
 */
 #ifndef __SPRT_CONFIG_BUILTIN_MATH_INLINES
-#define __SPRT_CONFIG_BUILTIN_MATH_INLINES 1
+#define __SPRT_CONFIG_BUILTIN_MATH_INLINES 0
 #endif
 
 /*

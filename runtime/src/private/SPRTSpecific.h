@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/runtime/int.h>
 
-#if SPRT_LINUX
+#if SPRT_LINUX || SPRT_ANDROID
 
 #ifndef __SPRT_BUILD
 __SPRT_C_FUNC long int syscall(long int __sysno, ...) noexcept;
@@ -100,6 +100,15 @@ extern int (*_futimesat)(int __dir_fd, const char *__path, const struct timeval 
 extern int (*_sync_file_range)(int __fd, off64_t __offset, off64_t __length, unsigned int __flags);
 
 extern int (*_mlock2)(const void *__addr, size_t __size, int __flags);
+extern int (*_memfd_create)(const char *__name, unsigned __flags);
+
+extern char *(*_ctermid)(char *__buf);
+
+extern int (*_getsubopt)(char **__option, char *const *__tokens, char **__value_ptr);
+
+extern int (*_getentropy)(void *__buffer, size_t __buffer_size);
+
+extern ssize_t (*_getrandom)(void *__buffer, size_t __buffer_size, unsigned int __flags);
 
 } // namespace sprt::platform
 

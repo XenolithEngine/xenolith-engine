@@ -124,7 +124,7 @@ typedef __SPRT_ID(ssize_t) ssize_t;
 typedef __SPRT_ID(off_t) off_t;
 typedef __SPRT_ID(mode_t) mode_t;
 
-SPRT_FORCEINLINE inline int fcntl(int __fd, int __cmd, ...) {
+SPRT_FORCEINLINE int fcntl(int __fd, int __cmd, ...) {
 	unsigned long arg;
 	__sprt_va_list ap;
 	__sprt_va_start(ap, __cmd);
@@ -134,11 +134,9 @@ SPRT_FORCEINLINE inline int fcntl(int __fd, int __cmd, ...) {
 	return __sprt_fcntl(__fd, __cmd, arg);
 }
 
-SPRT_FORCEINLINE inline int creat(const char *path, mode_t __mode) {
-	return __sprt_creat(path, __mode);
-}
+SPRT_FORCEINLINE int creat(const char *path, mode_t __mode) { return __sprt_creat(path, __mode); }
 
-SPRT_FORCEINLINE inline int open(const char *path, int __flags, ...) {
+SPRT_FORCEINLINE int open(const char *path, int __flags, ...) {
 	mode_t __mode = 0;
 
 	if ((__flags & __SPRT_O_CREAT) || (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE) {
@@ -151,7 +149,7 @@ SPRT_FORCEINLINE inline int open(const char *path, int __flags, ...) {
 	return __sprt_open(path, __mode);
 }
 
-SPRT_FORCEINLINE inline int openat(int __dir_fd, const char *path, int __flags, ...) {
+SPRT_FORCEINLINE int openat(int __dir_fd, const char *path, int __flags, ...) {
 	mode_t __mode = 0;
 
 	if ((__flags & __SPRT_O_CREAT) || (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE) {
@@ -164,33 +162,32 @@ SPRT_FORCEINLINE inline int openat(int __dir_fd, const char *path, int __flags, 
 	return __sprt_openat(__dir_fd, path, __mode);
 }
 
-SPRT_FORCEINLINE inline ssize_t splice(int __in_fd, off_t *__in_offset, int __out_fd,
-		off_t *__out_offset, size_t __length, unsigned int __flags) {
+SPRT_FORCEINLINE ssize_t splice(int __in_fd, off_t *__in_offset, int __out_fd, off_t *__out_offset,
+		size_t __length, unsigned int __flags) {
 	return __sprt_splice(__in_fd, __in_offset, __out_fd, __out_offset, __length, __flags);
 }
 
-SPRT_FORCEINLINE inline ssize_t tee(int __in_fd, int __out_fd, size_t __length,
-		unsigned int __flags) {
+SPRT_FORCEINLINE ssize_t tee(int __in_fd, int __out_fd, size_t __length, unsigned int __flags) {
 	return __sprt_tee(__in_fd, __out_fd, __length, __flags);
 }
 
-SPRT_FORCEINLINE inline int fallocate(int __fd, int __mode, off_t __offset, off_t __length) {
+SPRT_FORCEINLINE int fallocate(int __fd, int __mode, off_t __offset, off_t __length) {
 	return __sprt_fallocate(__fd, __mode, __offset, __length);
 }
 
-SPRT_FORCEINLINE inline int posix_fadvise(int __fd, off_t __offset, off_t __length, int __advice) {
+SPRT_FORCEINLINE int posix_fadvise(int __fd, off_t __offset, off_t __length, int __advice) {
 	return __sprt_posix_fadvise(__fd, __offset, __length, __advice);
 }
 
-SPRT_FORCEINLINE inline int posix_fallocate(int __fd, off_t __offset, off_t __length) {
+SPRT_FORCEINLINE int posix_fallocate(int __fd, off_t __offset, off_t __length) {
 	return __sprt_posix_fallocate(__fd, __offset, __length);
 }
 
-SPRT_FORCEINLINE inline ssize_t readahead(int __fd, off_t __offset, size_t __length) {
+SPRT_FORCEINLINE ssize_t readahead(int __fd, off_t __offset, size_t __length) {
 	return __sprt_readahead(__fd, __offset, __length);
 }
 
-SPRT_FORCEINLINE inline int sync_file_range(int __fd, off_t __offset, off_t __length,
+SPRT_FORCEINLINE int sync_file_range(int __fd, off_t __offset, off_t __length,
 		unsigned int __flags) {
 	return __sprt_sync_file_range(__fd, __offset, __length, __flags);
 }

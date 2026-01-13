@@ -23,6 +23,8 @@
 #include <sprt/runtime/compress.h>
 #include <sprt/runtime/detail/operations.h>
 
+#include <stddef.h>
+
 #include "private/thirdparty/lz4hc.h"
 
 namespace sprt {

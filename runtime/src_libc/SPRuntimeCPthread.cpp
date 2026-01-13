@@ -23,8 +23,20 @@ THE SOFTWARE.
 #define __SPRT_BUILD 1
 
 #include <sprt/c/__sprt_pthread.h>
+#include <sprt/c/__sprt_errno.h>
+#include <sprt/runtime/log.h>
 
 #include <pthread.h>
+
+#include "private/SPRTSpecific.h"
+
+#if SPRT_ANDROID
+namespace sprt::platform {
+
+extern int (*_pthread_setschedprio)(pthread_t __pthread, int __priority);
+
+} // namespace sprt::platform
+#endif
 
 namespace sprt {
 
@@ -50,6 +62,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_equal)(__SPRT_ID(pthread_t) t1, __SPRT_ID(pt
 	return ::pthread_equal(t1, t2);
 }
 
+#if __SPRT_CONFIG_HAVE_PTHREAD_CANCEL
 __SPRT_C_FUNC int __SPRT_ID(pthread_setcancelstate)(int v, int *p) {
 	return ::pthread_setcancelstate(v, p);
 }
@@ -62,6 +75,7 @@ __SPRT_C_FUNC void __SPRT_ID(pthread_testcancel)(void) { ::pthread_testcancel();
 __SPRT_C_FUNC int __SPRT_ID(pthread_cancel)(__SPRT_ID(pthread_t) thread) {
 	return ::pthread_cancel(thread);
 }
+#endif
 
 __SPRT_C_FUNC int __SPRT_ID(pthread_getschedparam)(__SPRT_ID(pthread_t) thread,
 		int *__SPRT_RESTRICT n, struct __SPRT_ID(sched_param) * __SPRT_RESTRICT p) {
@@ -76,7 +90,6 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_getschedparam)(__SPRT_ID(pthread_t) thread,
 
 __SPRT_C_FUNC int __SPRT_ID(pthread_setschedparam)(__SPRT_ID(pthread_t) thread, int n,
 		const struct __SPRT_ID(sched_param) * p) {
-
 	struct sched_param param;
 	if (p) {
 		param.sched_priority = p->sched_priority;
@@ -85,7 +98,17 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_setschedparam)(__SPRT_ID(pthread_t) thread, 
 }
 
 __SPRT_C_FUNC int __SPRT_ID(pthread_setschedprio)(__SPRT_ID(pthread_t) thread, int p) {
+#if SPRT_ANDROID
+	if (platform::_pthread_setschedprio) {
+		return platform::_pthread_setschedprio(thread, p);
+	}
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (Android: API not available)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#else
 	return ::pthread_setschedprio(thread, p);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(pthread_once)(__SPRT_ID(pthread_once_t) * once, void (*cb)(void)) {
@@ -122,10 +145,14 @@ __SPRT_C_FUNC int __SPRT_ID(
 __SPRT_C_FUNC int __SPRT_ID(pthread_mutex_destroy)(__SPRT_ID(pthread_mutex_t) * mutex) {
 	return ::pthread_mutex_destroy((pthread_mutex_t *)mutex);
 }
+
+#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST
 __SPRT_C_FUNC int __SPRT_ID(pthread_mutex_consistent)(__SPRT_ID(pthread_mutex_t) * mutex) {
 	return ::pthread_mutex_consistent((pthread_mutex_t *)mutex);
 }
+#endif
 
+#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO
 __SPRT_C_FUNC int __SPRT_ID(pthread_mutex_getprioceiling)(
 		const __SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT mutex, int *__SPRT_RESTRICT p) {
 	return ::pthread_mutex_getprioceiling((pthread_mutex_t *)mutex, p);
@@ -134,6 +161,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_mutex_setprioceiling)(
 		__SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT mutex, int v, int *__SPRT_RESTRICT p) {
 	return ::pthread_mutex_setprioceiling((pthread_mutex_t *)mutex, v, p);
 }
+#endif
 
 __SPRT_C_FUNC int __SPRT_ID(pthread_cond_init)(__SPRT_ID(pthread_cond_t) * __SPRT_RESTRICT cond,
 		const __SPRT_ID(pthread_condattr_t) * __SPRT_RESTRICT attr) {
@@ -216,19 +244,19 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_rwlock_unlock)(__SPRT_ID(pthread_rwlock_t) *
 }
 
 __SPRT_C_FUNC int __SPRT_ID(pthread_spin_init)(__SPRT_ID(pthread_spinlock_t) * spin, int v) {
-	return ::pthread_spin_init(spin, v);
+	return ::pthread_spin_init((pthread_spinlock_t *)spin, v);
 }
 __SPRT_C_FUNC int __SPRT_ID(pthread_spin_destroy)(__SPRT_ID(pthread_spinlock_t) * spin) {
-	return ::pthread_spin_destroy(spin);
+	return ::pthread_spin_destroy((pthread_spinlock_t *)spin);
 }
 __SPRT_C_FUNC int __SPRT_ID(pthread_spin_lock)(__SPRT_ID(pthread_spinlock_t) * spin) {
-	return ::pthread_spin_lock(spin);
+	return ::pthread_spin_lock((pthread_spinlock_t *)spin);
 }
 __SPRT_C_FUNC int __SPRT_ID(pthread_spin_trylock)(__SPRT_ID(pthread_spinlock_t) * spin) {
-	return ::pthread_spin_trylock(spin);
+	return ::pthread_spin_trylock((pthread_spinlock_t *)spin);
 }
 __SPRT_C_FUNC int __SPRT_ID(pthread_spin_unlock)(__SPRT_ID(pthread_spinlock_t) * spin) {
-	return ::pthread_spin_unlock(spin);
+	return ::pthread_spin_unlock((pthread_spinlock_t *)spin);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
@@ -331,6 +359,8 @@ __SPRT_C_FUNC int __SPRT_ID(
 	}
 	return ::pthread_attr_setschedparam((pthread_attr_t *)attr, val ? &native : nullptr);
 }
+
+#if __SPRT_CONFIG_HAVE_PTHREAD_INHERITSCHED
 __SPRT_C_FUNC int __SPRT_ID(pthread_attr_getinheritsched)(
 		const __SPRT_ID(pthread_attr_t) * __SPRT_RESTRICT attr, int *__SPRT_RESTRICT ret) {
 	return ::pthread_attr_getinheritsched((pthread_attr_t *)attr, ret);
@@ -338,25 +368,45 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_attr_getinheritsched)(
 __SPRT_C_FUNC int __SPRT_ID(pthread_attr_setinheritsched)(__SPRT_ID(pthread_attr_t) * attr, int v) {
 	return ::pthread_attr_setinheritsched((pthread_attr_t *)attr, v);
 }
+#endif
 
 __SPRT_C_FUNC int __SPRT_ID(pthread_mutexattr_destroy)(__SPRT_ID(pthread_mutexattr_t) * attr) {
 	return ::pthread_mutexattr_destroy((pthread_mutexattr_t *)attr);
 }
+
+#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO
 __SPRT_C_FUNC int __SPRT_ID(pthread_mutexattr_getprioceiling)(
 		const __SPRT_ID(pthread_mutexattr_t) * __SPRT_RESTRICT attr, int *__SPRT_RESTRICT ret) {
 	return ::pthread_mutexattr_getprioceiling((pthread_mutexattr_t *)attr, ret);
+}
+__SPRT_C_FUNC int __SPRT_ID(
+		pthread_mutexattr_setprioceiling)(__SPRT_ID(pthread_mutexattr_t) * attr, int v) {
+	return ::pthread_mutexattr_setprioceiling((pthread_mutexattr_t *)attr, v);
 }
 __SPRT_C_FUNC int __SPRT_ID(pthread_mutexattr_getprotocol)(
 		const __SPRT_ID(pthread_mutexattr_t) * __SPRT_RESTRICT attr, int *__SPRT_RESTRICT ret) {
 	return ::pthread_mutexattr_getprotocol((pthread_mutexattr_t *)attr, ret);
 }
-__SPRT_C_FUNC int __SPRT_ID(pthread_mutexattr_getpshared)(
-		const __SPRT_ID(pthread_mutexattr_t) * __SPRT_RESTRICT attr, int *__SPRT_RESTRICT ret) {
-	return ::pthread_mutexattr_getpshared((pthread_mutexattr_t *)attr, ret);
+__SPRT_C_FUNC int __SPRT_ID(
+		pthread_mutexattr_setprotocol)(__SPRT_ID(pthread_mutexattr_t) * attr, int v) {
+	return ::pthread_mutexattr_setprotocol((pthread_mutexattr_t *)attr, v);
 }
+#endif
+
+#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST
 __SPRT_C_FUNC int __SPRT_ID(pthread_mutexattr_getrobust)(
 		const __SPRT_ID(pthread_mutexattr_t) * __SPRT_RESTRICT attr, int *__SPRT_RESTRICT ret) {
 	return ::pthread_mutexattr_getrobust((pthread_mutexattr_t *)attr, ret);
+}
+__SPRT_C_FUNC int __SPRT_ID(
+		pthread_mutexattr_setrobust)(__SPRT_ID(pthread_mutexattr_t) * attr, int v) {
+	return ::pthread_mutexattr_setrobust((pthread_mutexattr_t *)attr, v);
+}
+#endif
+
+__SPRT_C_FUNC int __SPRT_ID(pthread_mutexattr_getpshared)(
+		const __SPRT_ID(pthread_mutexattr_t) * __SPRT_RESTRICT attr, int *__SPRT_RESTRICT ret) {
+	return ::pthread_mutexattr_getpshared((pthread_mutexattr_t *)attr, ret);
 }
 __SPRT_C_FUNC int __SPRT_ID(pthread_mutexattr_gettype)(
 		const __SPRT_ID(pthread_mutexattr_t) * __SPRT_RESTRICT attr, int *__SPRT_RESTRICT ret) {
@@ -366,20 +416,8 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_mutexattr_init)(__SPRT_ID(pthread_mutexattr_
 	return ::pthread_mutexattr_init((pthread_mutexattr_t *)attr);
 }
 __SPRT_C_FUNC int __SPRT_ID(
-		pthread_mutexattr_setprioceiling)(__SPRT_ID(pthread_mutexattr_t) * attr, int v) {
-	return ::pthread_mutexattr_setprioceiling((pthread_mutexattr_t *)attr, v);
-}
-__SPRT_C_FUNC int __SPRT_ID(
-		pthread_mutexattr_setprotocol)(__SPRT_ID(pthread_mutexattr_t) * attr, int v) {
-	return ::pthread_mutexattr_setprotocol((pthread_mutexattr_t *)attr, v);
-}
-__SPRT_C_FUNC int __SPRT_ID(
 		pthread_mutexattr_setpshared)(__SPRT_ID(pthread_mutexattr_t) * attr, int v) {
 	return ::pthread_mutexattr_setpshared((pthread_mutexattr_t *)attr, v);
-}
-__SPRT_C_FUNC int __SPRT_ID(
-		pthread_mutexattr_setrobust)(__SPRT_ID(pthread_mutexattr_t) * attr, int v) {
-	return ::pthread_mutexattr_setrobust((pthread_mutexattr_t *)attr, v);
 }
 __SPRT_C_FUNC int __SPRT_ID(
 		pthread_mutexattr_settype)(__SPRT_ID(pthread_mutexattr_t) * attr, int v) {
@@ -445,14 +483,17 @@ __SPRT_C_FUNC int __SPRT_ID(
 	return ::pthread_atfork(prepare, parent, child);
 }
 
+#if __SPRT_CONFIG_HAVE_PTHREAD_CONCURRENCY
 __SPRT_C_FUNC int __SPRT_ID(pthread_getconcurrency)(void) { return ::pthread_getconcurrency(); }
 __SPRT_C_FUNC int __SPRT_ID(pthread_setconcurrency)(int v) { return ::pthread_setconcurrency(v); }
+#endif
 
 __SPRT_C_FUNC int __SPRT_ID(
 		pthread_getcpuclockid)(__SPRT_ID(pthread_t) thread, __SPRT_ID(clockid_t) * clock) {
 	return ::pthread_getcpuclockid(thread, clock);
 }
 
+#if __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY
 __SPRT_C_FUNC int __SPRT_ID(pthread_getaffinity_np)(__SPRT_ID(pthread_t) thread,
 		__SPRT_ID(size_t) n, __SPRT_ID(cpu_set_t) * set) {
 	return ::pthread_getaffinity_np(thread, n, (cpu_set_t *)set);
@@ -461,6 +502,8 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_setaffinity_np)(__SPRT_ID(pthread_t) thread,
 		__SPRT_ID(size_t) n, const __SPRT_ID(cpu_set_t) * set) {
 	return ::pthread_setaffinity_np(thread, n, (const cpu_set_t *)set);
 }
+#endif
+
 __SPRT_C_FUNC int __SPRT_ID(
 		pthread_getattr_np)(__SPRT_ID(pthread_t) thread, __SPRT_ID(pthread_attr_t) * attr) {
 	return ::pthread_getattr_np(thread, (pthread_attr_t *)attr);
@@ -468,19 +511,30 @@ __SPRT_C_FUNC int __SPRT_ID(
 __SPRT_C_FUNC int __SPRT_ID(pthread_setname_np)(__SPRT_ID(pthread_t) thread, const char *name) {
 	return ::pthread_setname_np(thread, name);
 }
+
+#if __SPRT_CONFIG_HAVE_PTHREAD_GETNAME
 __SPRT_C_FUNC int __SPRT_ID(
 		pthread_getname_np)(__SPRT_ID(pthread_t) thread, char *buf, __SPRT_ID(size_t) len) {
 	return ::pthread_getname_np(thread, buf, len);
 }
+#endif
+
+#if __SPRT_CONFIG_HAVE_PTHREAD_ATTRDEFAULT
 __SPRT_C_FUNC int __SPRT_ID(pthread_getattr_default_np)(__SPRT_ID(pthread_attr_t) * attr) {
 	return ::pthread_getattr_default_np((pthread_attr_t *)attr);
 }
 __SPRT_C_FUNC int __SPRT_ID(pthread_setattr_default_np)(const __SPRT_ID(pthread_attr_t) * attr) {
 	return ::pthread_setattr_default_np((const pthread_attr_t *)attr);
 }
+#endif
+
+#if __SPRT_CONFIG_HAVE_PTHREAD_TRYJOIN
 __SPRT_C_FUNC int __SPRT_ID(pthread_tryjoin_np)(__SPRT_ID(pthread_t) thread, void **ret) {
 	return ::pthread_tryjoin_np(thread, ret);
 }
+#endif
+
+#if __SPRT_CONFIG_HAVE_PTHREAD_TIMEDJOIN
 __SPRT_C_FUNC int __SPRT_ID(pthread_timedjoin_np)(__SPRT_ID(pthread_t) thread, void **ret,
 		const __SPRT_TIMESPEC_NAME *tv) {
 	struct timespec native;
@@ -490,5 +544,6 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_timedjoin_np)(__SPRT_ID(pthread_t) thread, v
 	}
 	return ::pthread_timedjoin_np(thread, ret, tv ? &native : nullptr);
 }
+#endif
 
 } // namespace sprt

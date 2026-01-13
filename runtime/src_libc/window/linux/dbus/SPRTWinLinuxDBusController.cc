@@ -216,6 +216,15 @@ dbus_bool_t Controller::handleDbusEvent(dbus::Connection *c, const dbus::Event &
 						handle->resetTimer(0,
 								c->lib->dbus_timeout_get_interval((DBusTimeout *)timeout) * 1'000,
 								1);
+
+						handle->retain(0);
+						c->lib->dbus_timeout_set_data((DBusTimeout *)timeout, handle,
+								[](void *ptr) {
+							auto handle = reinterpret_cast<HandleAdapter *>(ptr);
+							handle->cancel(Status::ErrorCancelled);
+							handle->setUserdata(nullptr);
+							handle->release(0);
+						});
 					}
 				}
 			});

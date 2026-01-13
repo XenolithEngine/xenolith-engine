@@ -204,7 +204,7 @@ inline forward_list<T, Allocator>::forward_list(size_type count,
 		const allocator_type &alloc) noexcept
 : forward_list(alloc) {
 	_base.expand_front(count,
-			[](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_FORCEINLINE {
+			[](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
 		auto alloc = allocator_type(nalloc);
 		alloc.construct(node->value.ptr());
 	});
@@ -216,7 +216,7 @@ inline forward_list<T, Allocator>::forward_list(size_type count, const value_typ
 : forward_list(alloc) {
 	_base.expand_front(count,
 			[value = &value](const base_type::node_allocator_type &nalloc, node_type *node)
-					SPRT_FORCEINLINE {
+					SPRT_LAMBDAINLINE {
 		auto alloc = allocator_type(nalloc);
 		alloc.construct(node->value.ptr(), *value);
 	});
@@ -260,7 +260,7 @@ inline forward_list<T, Allocator>::forward_list(initializer_list<T> init,
 : forward_list(alloc) {
 	auto source = init.begin();
 	_base.expand_front(init.size(),
-			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_FORCEINLINE {
+			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
 		auto alloc = allocator_type(nalloc);
 		alloc.construct(node->value.ptr(), *source++);
 	});
@@ -298,7 +298,7 @@ inline void forward_list<T, Allocator>::assign(size_type count, const T &value) 
 	_base.set_memory_persistent(preallocTmp);
 
 	_base.expand_front(count,
-			[](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_FORCEINLINE {
+			[](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
 		auto alloc = allocator_type(nalloc);
 		alloc.construct(node->value.ptr());
 	});
@@ -328,7 +328,7 @@ inline void forward_list<T, Allocator>::assign(initializer_list<T> init) noexcep
 
 	auto source = init.begin();
 	_base.expand_front(init.size(),
-			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_FORCEINLINE {
+			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
 		auto alloc = allocator_type(nalloc);
 		alloc.construct(node->value.ptr(), *source++);
 	});
@@ -399,7 +399,7 @@ forward_list<T, Allocator>::iterator forward_list<T, Allocator>::insert_after(co
 		size_type count, const T &value) noexcept {
 	auto node = _base.expand(pos.__next, count,
 			[value = &value](const base_type::node_allocator_type &nalloc, node_type *node)
-					SPRT_FORCEINLINE {
+					SPRT_LAMBDAINLINE {
 		auto alloc = allocator_type(nalloc);
 		alloc.construct(node->value.ptr(), *value);
 	});
@@ -422,7 +422,7 @@ forward_list<T, Allocator>::iterator forward_list<T, Allocator>::insert_after(co
 		initializer_list<T> init) noexcept {
 	auto source = init.begin();
 	auto node = _base.expand_front(init.size(),
-			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_FORCEINLINE {
+			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
 		auto alloc = allocator_type(nalloc);
 		alloc.construct(node->value.ptr(), *source++);
 	});

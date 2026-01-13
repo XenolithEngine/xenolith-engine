@@ -25,12 +25,23 @@ THE SOFTWARE.
 #include <sprt/c/sys/__sprt_random.h>
 
 #include <sys/random.h>
+#include <stdlib.h>
+
+#include "private/SPRTSpecific.h"
 
 namespace sprt {
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t)
 		__SPRT_ID(getrandom)(void *__buffer, __SPRT_ID(size_t) __length, unsigned __flags) {
+#if SPRT_ANDROID
+	if (platform::_getrandom) {
+		return platform::_getrandom(__buffer, __length, __flags);
+	}
+	arc4random_buf(__buffer, __length);
+	return 0;
+#else
 	return ::getrandom(__buffer, __length, __flags);
+#endif
 }
 
 } // namespace sprt

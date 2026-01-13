@@ -33,79 +33,53 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-SPRT_FORCEINLINE inline int isalnum(int c) { return __sprt_isalnum(c); }
+SPRT_FORCEINLINE int isalnum(int c) { return __sprt_isalnum(c); }
 
-SPRT_FORCEINLINE inline int isalpha(int c) { return __sprt_isalpha(c); }
+SPRT_FORCEINLINE int isalpha(int c) { return __sprt_isalpha(c); }
 
-SPRT_FORCEINLINE inline int isblank(int c) { return __sprt_isblank(c); }
+SPRT_FORCEINLINE int isblank(int c) { return __sprt_isblank(c); }
 
-SPRT_FORCEINLINE inline int iscntrl(int c) { return __sprt_iscntrl(c); }
+SPRT_FORCEINLINE int iscntrl(int c) { return __sprt_iscntrl(c); }
 
-SPRT_FORCEINLINE inline int isdigit(int c) { return __sprt_isdigit(c); }
+SPRT_FORCEINLINE int isdigit(int c) { return __sprt_isdigit(c); }
 
-SPRT_FORCEINLINE inline int isgraph(int c) { return __sprt_isgraph(c); }
+SPRT_FORCEINLINE int isgraph(int c) { return __sprt_isgraph(c); }
 
-SPRT_FORCEINLINE inline int islower(int c) { return __sprt_islower(c); }
+SPRT_FORCEINLINE int islower(int c) { return __sprt_islower(c); }
 
-SPRT_FORCEINLINE inline int isprint(int c) { return __sprt_isprint(c); }
+SPRT_FORCEINLINE int isprint(int c) { return __sprt_isprint(c); }
 
-SPRT_FORCEINLINE inline int ispunct(int c) { return __sprt_ispunct(c); }
+SPRT_FORCEINLINE int ispunct(int c) { return __sprt_ispunct(c); }
 
-SPRT_FORCEINLINE inline int isspace(int c) { return __sprt_isspace(c); }
+SPRT_FORCEINLINE int isspace(int c) { return __sprt_isspace(c); }
 
-SPRT_FORCEINLINE inline int isupper(int c) { return __sprt_isupper(c); }
+SPRT_FORCEINLINE int isupper(int c) { return __sprt_isupper(c); }
 
-SPRT_FORCEINLINE inline int isxdigit(int c) { return __sprt_isxdigit(c); }
+SPRT_FORCEINLINE int isxdigit(int c) { return __sprt_isxdigit(c); }
 
-SPRT_FORCEINLINE inline int tolower(int c) { return __sprt_tolower(c); }
+SPRT_FORCEINLINE int tolower(int c) { return __sprt_tolower(c); }
 
-SPRT_FORCEINLINE inline int toupper(int c) { return __sprt_toupper(c); }
+SPRT_FORCEINLINE int toupper(int c) { return __sprt_toupper(c); }
 
-SPRT_FORCEINLINE inline int isalnum_l(int c, __SPRT_ID(locale_t) loc) {
-	return __sprt_isalnum_l(c, loc);
-}
-SPRT_FORCEINLINE inline int isalpha_l(int c, __SPRT_ID(locale_t) loc) {
-	return __sprt_isalpha_l(c, loc);
-}
-SPRT_FORCEINLINE inline int isblank_l(int c, __SPRT_ID(locale_t) loc) {
-	return __sprt_isblank_l(c, loc);
-}
-SPRT_FORCEINLINE inline int iscntrl_l(int c, __SPRT_ID(locale_t) loc) {
-	return __sprt_iscntrl_l(c, loc);
-}
-SPRT_FORCEINLINE inline int isdigit_l(int c, __SPRT_ID(locale_t) loc) {
-	return __sprt_isdigit_l(c, loc);
-}
-SPRT_FORCEINLINE inline int isgraph_l(int c, __SPRT_ID(locale_t) loc) {
-	return __sprt_isgraph_l(c, loc);
-}
-SPRT_FORCEINLINE inline int islower_l(int c, __SPRT_ID(locale_t) loc) {
-	return __sprt_islower_l(c, loc);
-}
-SPRT_FORCEINLINE inline int isprint_l(int c, __SPRT_ID(locale_t) loc) {
-	return __sprt_isprint_l(c, loc);
-}
-SPRT_FORCEINLINE inline int ispunct_l(int c, __SPRT_ID(locale_t) loc) {
-	return __sprt_ispunct_l(c, loc);
-}
-SPRT_FORCEINLINE inline int isspace_l(int c, __SPRT_ID(locale_t) loc) {
-	return __sprt_isspace_l(c, loc);
-}
-SPRT_FORCEINLINE inline int isupper_l(int c, __SPRT_ID(locale_t) loc) {
-	return __sprt_isupper_l(c, loc);
-}
-SPRT_FORCEINLINE inline int isxdigit_l(int c, __SPRT_ID(locale_t) loc) {
+SPRT_FORCEINLINE int isalnum_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isalnum_l(c, loc); }
+SPRT_FORCEINLINE int isalpha_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isalpha_l(c, loc); }
+SPRT_FORCEINLINE int isblank_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isblank_l(c, loc); }
+SPRT_FORCEINLINE int iscntrl_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_iscntrl_l(c, loc); }
+SPRT_FORCEINLINE int isdigit_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isdigit_l(c, loc); }
+SPRT_FORCEINLINE int isgraph_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isgraph_l(c, loc); }
+SPRT_FORCEINLINE int islower_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_islower_l(c, loc); }
+SPRT_FORCEINLINE int isprint_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isprint_l(c, loc); }
+SPRT_FORCEINLINE int ispunct_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_ispunct_l(c, loc); }
+SPRT_FORCEINLINE int isspace_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isspace_l(c, loc); }
+SPRT_FORCEINLINE int isupper_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isupper_l(c, loc); }
+SPRT_FORCEINLINE int isxdigit_l(int c, __SPRT_ID(locale_t) loc) {
 	return __sprt_isxdigit_l(c, loc);
 }
-SPRT_FORCEINLINE inline int tolower_l(int c, __SPRT_ID(locale_t) loc) {
-	return __sprt_tolower_l(c, loc);
-}
-SPRT_FORCEINLINE inline int toupper_l(int c, __SPRT_ID(locale_t) loc) {
-	return __sprt_toupper_l(c, loc);
-}
+SPRT_FORCEINLINE int tolower_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_tolower_l(c, loc); }
+SPRT_FORCEINLINE int toupper_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_toupper_l(c, loc); }
 
-SPRT_FORCEINLINE inline int isascii(int c) { return __sprt_isascii(c); }
-SPRT_FORCEINLINE inline int toascii(int c) { return __sprt_toascii(c); }
+SPRT_FORCEINLINE int isascii(int c) { return __sprt_isascii(c); }
+SPRT_FORCEINLINE int toascii(int c) { return __sprt_toascii(c); }
 
 __SPRT_END_DECL
 

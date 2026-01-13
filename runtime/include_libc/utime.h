@@ -33,7 +33,7 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-SPRT_FORCEINLINE inline int utime(const char *path, const struct __SPRT_UTIMBUF_NAME *buf) {
+SPRT_FORCEINLINE int utime(const char *path, const struct __SPRT_UTIMBUF_NAME *buf) {
 	return __sprt_utime(path, buf);
 }
 

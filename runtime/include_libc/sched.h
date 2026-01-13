@@ -38,33 +38,29 @@ typedef struct __SPRT_ID(sched_param) sched_param;
 typedef __SPRT_TIMESPEC_NAME timespec;
 typedef __SPRT_ID(cpu_set_t) cpu_set_t;
 
-SPRT_FORCEINLINE inline int sched_get_priority_max(int t) {
-	return __sprt_sched_get_priority_max(t);
-}
+SPRT_FORCEINLINE int sched_get_priority_max(int t) { return __sprt_sched_get_priority_max(t); }
 
-SPRT_FORCEINLINE inline int sched_get_priority_min(int t) {
-	return __sprt_sched_get_priority_min(t);
-}
+SPRT_FORCEINLINE int sched_get_priority_min(int t) { return __sprt_sched_get_priority_min(t); }
 
-SPRT_FORCEINLINE inline int sched_getparam(pid_t pid, sched_param *p) {
+SPRT_FORCEINLINE int sched_getparam(pid_t pid, sched_param *p) {
 	return __sprt_sched_getparam(pid, p);
 }
 
-SPRT_FORCEINLINE inline int sched_getscheduler(pid_t pid) { return __sprt_sched_getscheduler(pid); }
+SPRT_FORCEINLINE int sched_getscheduler(pid_t pid) { return __sprt_sched_getscheduler(pid); }
 
-SPRT_FORCEINLINE inline int sched_rr_get_interval(pid_t pid, timespec *t) {
+SPRT_FORCEINLINE int sched_rr_get_interval(pid_t pid, timespec *t) {
 	return __sprt_sched_rr_get_interval(pid, t);
 }
 
-SPRT_FORCEINLINE inline int sched_setparam(pid_t pid, const sched_param *p) {
+SPRT_FORCEINLINE int sched_setparam(pid_t pid, const sched_param *p) {
 	return __sprt_sched_setparam(pid, p);
 }
 
-SPRT_FORCEINLINE inline int sched_setscheduler(pid_t pid, int t, const sched_param *p) {
+SPRT_FORCEINLINE int sched_setscheduler(pid_t pid, int t, const sched_param *p) {
 	return __sprt_sched_setscheduler(pid, t, p);
 }
 
-SPRT_FORCEINLINE inline int sched_yield(void) { return __sprt_sched_yield(); }
+SPRT_FORCEINLINE int sched_yield(void) { return __sprt_sched_yield(); }
 
 __SPRT_END_DECL
 

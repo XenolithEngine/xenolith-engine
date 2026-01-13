@@ -24,12 +24,23 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_wchar.h>
 #include <sprt/c/__sprt_stdarg.h>
+#include <sprt/c/__sprt_errno.h>
+#include <sprt/runtime/log.h>
 
 #include <wchar.h>
 #include <wctype.h>
 #include <time.h>
 
 #include "private/SPRTTime.h"
+
+#if SPRT_ANDROID
+namespace sprt::platform {
+
+extern size_t (*_wcsftime_l)(wchar_t *__buf, size_t __n, const wchar_t *__fmt,
+		const struct tm *__tm, locale_t __l);
+
+}
+#endif
 
 namespace sprt {
 
@@ -107,7 +118,7 @@ __SPRT_C_FUNC const __SPRT_WCHAR_T *__SPRT_ID(
 
 __SPRT_C_FUNC const __SPRT_WCHAR_T *__SPRT_ID(
 		wcswcs)(const __SPRT_WCHAR_T *a, const __SPRT_WCHAR_T *b) {
-	return ::wcswcs(a, b);
+	return ::wcsstr(a, b);
 }
 
 __SPRT_C_FUNC const __SPRT_WCHAR_T *__SPRT_ID(
@@ -336,42 +347,86 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsftime)(__SPRT_WCHAR_T *__SPRT_RESTR
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fgetwc_unlocked)(__SPRT_ID(FILE) * f) {
+#if SPRT_ANDROID
+	return ::fgetwc(f);
+#else
 	return ::fgetwc_unlocked(f);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwc_unlocked)(__SPRT_ID(FILE) * f) {
+#if SPRT_ANDROID
+	return ::getwc(f);
+#else
 	return ::getwc_unlocked(f);
+#endif
 }
 
-__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwchar_unlocked)(void) { return ::getwchar_unlocked(); }
+__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwchar_unlocked)(void) {
+#if SPRT_ANDROID
+	return ::getwchar();
+#else
+	return ::getwchar_unlocked();
+#endif
+}
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fputwc_unlocked)(__SPRT_WCHAR_T c, __SPRT_ID(FILE) * f) {
+#if SPRT_ANDROID
+	return ::fputwc(c, f);
+#else
 	return ::fputwc_unlocked(c, f);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(putwc_unlocked)(__SPRT_WCHAR_T c, __SPRT_ID(FILE) * f) {
+#if SPRT_ANDROID
+	return ::putwc(c, f);
+#else
 	return ::putwc_unlocked(c, f);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(putwchar_unlocked)(__SPRT_WCHAR_T c) {
+#if SPRT_ANDROID
+	return putwchar(c);
+#else
 	return putwchar_unlocked(c);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_WCHAR_T *__SPRT_ID(fgetws_unlocked)(__SPRT_WCHAR_T *__SPRT_RESTRICT ptr, int c,
 		__SPRT_ID(FILE) * __SPRT_RESTRICT f) {
+#if SPRT_ANDROID
+	return ::fgetws(ptr, c, f);
+#else
 	return ::fgetws_unlocked(ptr, c, f);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fputws_unlocked)(const __SPRT_WCHAR_T *__SPRT_RESTRICT ptr,
 		__SPRT_ID(FILE) * __SPRT_RESTRICT f) {
+#if SPRT_ANDROID
+	return ::fputws(ptr, f);
+#else
 	return ::fputws_unlocked(ptr, f);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsftime_l)(__SPRT_WCHAR_T *__SPRT_RESTRICT ptr,
 		__SPRT_ID(size_t) size, const __SPRT_WCHAR_T *__SPRT_RESTRICT fmt,
 		const struct __SPRT_TM_NAME *__SPRT_RESTRICT _tm, __SPRT_ID(locale_t) loc) {
 	auto native = internal::getNativeTm(_tm);
+#if SPRT_ANDROID
+	if (platform::_wcsftime_l) {
+		return platform::_wcsftime_l(ptr, size, fmt, &native, loc);
+	}
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (Android: API not available)");
+	*__sprt___errno_location() = ENOSYS;
+	return 0;
+#else
 	return ::wcsftime_l(ptr, size, fmt, &native, loc);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(FILE)

@@ -26,6 +26,7 @@
 
 #include <sprt/jni/call.h> // IWYU pragma: keep
 #include <sprt/runtime/ref.h>
+#include <sprt/runtime/mem/function.h>
 
 #if SPRT_ANDROID
 
@@ -601,7 +602,7 @@ protected:
 	App *app = nullptr;
 };
 
-struct SPRT_API ApplicationInfo : public RtRef {
+struct SPRT_API ApplicationInfo : public sprt::Ref {
 	enum Orientation {
 		Any = 0x0000,
 		Portrait = 0x0001,
@@ -632,7 +633,7 @@ struct SPRT_API ApplicationInfo : public RtRef {
 	jni::Global jConfig = nullptr; // android.content.res.Configuration reference
 };
 
-struct SPRT_API App : public RtRef {
+struct SPRT_API App : public sprt::Ref {
 	JavaVM *vm = nullptr;
 	int32_t sdkVersion = 0;
 	Global jApplication = nullptr;
@@ -684,11 +685,11 @@ struct SPRT_API App : public RtRef {
 	ClipDataItemProxy ClipDataItem = "android/content/ClipData$Item";
 	NetworkCapabilitiesProxy NetworkCapabilities = "android/net/NetworkCapabilities";
 
-	RtRc<jni::ApplicationInfo> currentInfo;
+	Rc<jni::ApplicationInfo> currentInfo;
 
-	static_function<bool(ANativeActivity *, BytesView)> activityLoader;
-	static_function<void(jni::ApplicationInfo *)> configurationHandler;
-	static_function<void()> lowMemoryHandler;
+	memory::dynfunction<bool(ANativeActivity *, BytesView)> activityLoader;
+	memory::dynfunction<void(jni::ApplicationInfo *)> configurationHandler;
+	memory::dynfunction<void()> lowMemoryHandler;
 
 	static App *alloc(const RefClass &);
 
@@ -701,15 +702,15 @@ struct SPRT_API App : public RtRef {
 	void handleConfigurationChanged(const jni::Ref &ref);
 	void handleLowMemory(const jni::Ref &ref);
 
-	void setActivityLoader(static_function<bool(ANativeActivity *, BytesView)> &&);
-	void setConfigurationHandler(static_function<void(jni::ApplicationInfo *)> &&);
-	void setLowMemoryHandler(static_function<void()> &&);
+	void setActivityLoader(memory::dynfunction<bool(ANativeActivity *, BytesView)> &&);
+	void setConfigurationHandler(memory::dynfunction<void(jni::ApplicationInfo *)> &&);
+	void setLowMemoryHandler(memory::dynfunction<void()> &&);
 
-	RtRc<jni::ApplicationInfo> makeInfo(const jni::Ref &ref);
+	Rc<jni::ApplicationInfo> makeInfo(const jni::Ref &ref);
 
 	bool loadActivity(ANativeActivity *, BytesView);
 
-	RtRc<jni::ApplicationInfo> getCurrentInfo();
+	Rc<jni::ApplicationInfo> getCurrentInfo();
 };
 
 class SPRT_API Env {

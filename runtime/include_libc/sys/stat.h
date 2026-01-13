@@ -84,66 +84,60 @@ __SPRT_BEGIN_DECL
 typedef __SPRT_ID(mode_t) mode_t;
 typedef __SPRT_ID(dev_t) dev_t;
 
-SPRT_FORCEINLINE inline int stat(const char *__SPRT_RESTRICT path,
+SPRT_FORCEINLINE int stat(const char *__SPRT_RESTRICT path,
 		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) {
 	return __sprt_stat(path, __stat);
 }
 
-SPRT_FORCEINLINE inline int fstat(int __fd, struct __SPRT_STAT_NAME *__stat) {
+SPRT_FORCEINLINE int fstat(int __fd, struct __SPRT_STAT_NAME *__stat) {
 	return __sprt_fstat(__fd, __stat);
 }
-SPRT_FORCEINLINE inline int lstat(const char *__SPRT_RESTRICT path,
+SPRT_FORCEINLINE int lstat(const char *__SPRT_RESTRICT path,
 		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) {
 	return __sprt_lstat(path, __stat);
 }
 
-SPRT_FORCEINLINE inline int fstatat(int __fd, const char *__SPRT_RESTRICT path,
+SPRT_FORCEINLINE int fstatat(int __fd, const char *__SPRT_RESTRICT path,
 		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat, int flags) {
 	return __sprt_fstatat(__fd, path, __stat, flags);
 }
 
-SPRT_FORCEINLINE inline int chmod(const char *path, mode_t mode) {
-	return __sprt_chmod(path, mode);
-}
+SPRT_FORCEINLINE int chmod(const char *path, mode_t mode) { return __sprt_chmod(path, mode); }
 
-SPRT_FORCEINLINE inline int fchmod(int fd, mode_t mode) { return __sprt_fchmod(fd, mode); }
+SPRT_FORCEINLINE int fchmod(int fd, mode_t mode) { return __sprt_fchmod(fd, mode); }
 
-SPRT_FORCEINLINE inline int fchmodat(int fd, const char *path, mode_t mode, int flags) {
+SPRT_FORCEINLINE int fchmodat(int fd, const char *path, mode_t mode, int flags) {
 	return __sprt_fchmodat(fd, path, mode, flags);
 }
 
-SPRT_FORCEINLINE inline mode_t umask(mode_t mode) { return __sprt_umask(mode); }
+SPRT_FORCEINLINE mode_t umask(mode_t mode) { return __sprt_umask(mode); }
 
-SPRT_FORCEINLINE inline int mkdir(const char *path, mode_t mode) {
-	return __sprt_mkdir(path, mode);
-}
+SPRT_FORCEINLINE int mkdir(const char *path, mode_t mode) { return __sprt_mkdir(path, mode); }
 
-SPRT_FORCEINLINE inline int mkfifo(const char *path, mode_t mode) {
-	return __sprt_mkfifo(path, mode);
-}
+SPRT_FORCEINLINE int mkfifo(const char *path, mode_t mode) { return __sprt_mkfifo(path, mode); }
 
-SPRT_FORCEINLINE inline int mkdirat(int fd, const char *path, mode_t mode) {
+SPRT_FORCEINLINE int mkdirat(int fd, const char *path, mode_t mode) {
 	return __sprt_mkdirat(fd, path, mode);
 }
 
-SPRT_FORCEINLINE inline int mkfifoat(int fd, const char *path, mode_t mode) {
+SPRT_FORCEINLINE int mkfifoat(int fd, const char *path, mode_t mode) {
 	return __sprt_mkfifoat(fd, path, mode);
 }
 
-SPRT_FORCEINLINE inline int mknod(const char *path, mode_t mode, dev_t dev) {
+SPRT_FORCEINLINE int mknod(const char *path, mode_t mode, dev_t dev) {
 	return __sprt_mknod(path, mode, dev);
 }
 
-SPRT_FORCEINLINE inline int mknodat(int fd, const char *path, mode_t mode, dev_t dev) {
+SPRT_FORCEINLINE int mknodat(int fd, const char *path, mode_t mode, dev_t dev) {
 	return __sprt_mknodat(fd, path, mode, dev);
 }
 
-SPRT_FORCEINLINE inline int futimens(int fd, const struct __SPRT_TIMESPEC_NAME ts[2]) {
+SPRT_FORCEINLINE int futimens(int fd, const struct __SPRT_TIMESPEC_NAME ts[2]) {
 	return __sprt_futimens(fd, ts);
 }
 
-SPRT_FORCEINLINE inline int utimensat(int fd, const char *path,
-		const struct __SPRT_TIMESPEC_NAME ts[2], int flags) {
+SPRT_FORCEINLINE int utimensat(int fd, const char *path, const struct __SPRT_TIMESPEC_NAME ts[2],
+		int flags) {
 	return __sprt_utimensat(fd, path, ts, flags);
 }
 

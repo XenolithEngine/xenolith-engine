@@ -23,14 +23,14 @@
 #ifndef RUNTIME_INCLUDE_SPRT_JNI_TYPE_H_
 #define RUNTIME_INCLUDE_SPRT_JNI_TYPE_H_
 
-#include <sprt/runtime/string.h> // IWYU pragma: keep
+#include <sprt/runtime/stringview.h> // IWYU pragma: keep
 #include <sprt/runtime/array.h>
 
 #if SPRT_ANDROID
 
 #define JNIDEBUG 1
 
-#include <jni.h>
+#include <sprt/jni/env.h>
 
 namespace sprt::jni::detail {
 

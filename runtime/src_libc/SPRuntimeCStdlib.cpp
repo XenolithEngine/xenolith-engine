@@ -20,13 +20,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#include "private/SPRTFilename.h"
 #define __SPRT_BUILD 1
 
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/__sprt_errno.h>
 
 #include <sprt/runtime/log.h>
+
+#include "private/SPRTFilename.h"
+#include "private/SPRTSpecific.h"
 
 #include <stdlib.h>
 
@@ -168,7 +170,17 @@ __SPRT_C_FUNC int __SPRT_ID(mkstemp)(char *tpl) { return ::mkstemp(tpl); }
 __SPRT_C_FUNC int __SPRT_ID(mkostemp)(char *tpl, int n) { return ::mkostemp(tpl, n); }
 __SPRT_C_FUNC char *__SPRT_ID(mkdtemp)(char *tpl) { return ::mkdtemp(tpl); }
 __SPRT_C_FUNC int __SPRT_ID(getsubopt)(char **opts, char *const *toks, char **vals) {
+#if SPRT_ANDROID
+	if (platform::_getsubopt) {
+		return platform::_getsubopt(opts, toks, vals);
+	}
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (Android: API not available)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#else
 	return ::getsubopt(opts, toks, vals);
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(rand_r)(unsigned *v) { return ::rand_r(v); }
 
@@ -211,5 +223,28 @@ __SPRT_C_FUNC long double __SPRT_ID(strtold_l)(const char *__SPRT_RESTRICT str,
 		char **__SPRT_RESTRICT endp, __SPRT_ID(locale_t) loc) {
 	return ::strtold_l(str, endp, loc);
 }
+
+#if __SPRT_CONFIG_HAVE_STDLIB_MB
+
+__SPRT_C_FUNC __SPRT_ID(size_t)
+		__SPRT_ID(mbstowcs)(wchar_t *__dst, const char *__src, __SPRT_ID(size_t) __n) {
+	return ::mbstowcs(__dst, __src, __n);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(mbtowc)(wchar_t *__wc_ptr, const char *__s, __SPRT_ID(size_t) __n) {
+	return ::mbtowc(__wc_ptr, __s, __n);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(wctomb)(char *__dst, wchar_t __wc) { return ::wctomb(__dst, __wc); }
+
+__SPRT_C_FUNC __SPRT_ID(size_t)
+		__SPRT_ID(wcstombs)(char *__dst, const wchar_t *__src, __SPRT_ID(size_t) __n) {
+	return ::wcstombs(__dst, __src, __n);
+}
+
+__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(__ctype_get_mb_cur_max)(void) {
+	return ::__ctype_get_mb_cur_max();
+}
+#endif
 
 } // namespace sprt

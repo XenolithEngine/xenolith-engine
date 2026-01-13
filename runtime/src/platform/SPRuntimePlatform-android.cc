@@ -25,10 +25,12 @@
 
 #if SPRT_ANDROID
 
-#include "SPRuntimeUnicode.h"
-#include "SPRuntimeStringBuffer.h"
-#include "jni/SPRuntimeJni.h"
+#include <sprt/runtime/stringview.h>
+#include <sprt/runtime/mutex.h>
+#include <sprt/jni/jni.h>
+
 #include "private/SPRTDso.h"
+#include "private/SPRTSpecific.h"
 
 #include <unicode/uchar.h>
 #include <unicode/urename.h>
@@ -37,12 +39,12 @@
 #include <stdlib.h>
 #include <sys/random.h>
 #include <android/configuration.h>
-
-#include <mutex>
+#include <nl_types.h>
+#include <wchar.h>
 
 namespace sprt::unicode {
 
-static std::mutex s_collatorMutex;
+static qmutex s_collatorMutex;
 
 namespace icujava {
 
@@ -120,7 +122,7 @@ bool compare(jni::App *app, StringView l, StringView r, bool caseInsensetive, in
 
 	auto coll = app->Collator.getInstance(app->Collator.getClass().ref(env));
 	if (coll) {
-		std::unique_lock lock(s_collatorMutex);
+		unique_lock lock(s_collatorMutex);
 		app->Collator.setStrength(coll,
 				jint(caseInsensetive ? app->Collator.SECONDARY() : app->Collator.TERTIARY()));
 		*result = app->Collator._compare(coll, strL, strR);
@@ -137,7 +139,7 @@ bool compare(jni::App *app, WideStringView l, WideStringView r, bool caseInsense
 
 	auto coll = app->Collator.getInstance(app->Collator.getClass().ref(env));
 	if (coll) {
-		std::unique_lock lock(s_collatorMutex);
+		unique_lock lock(s_collatorMutex);
 		app->Collator.setStrength(coll,
 				jint(caseInsensetive ? app->Collator.SECONDARY() : app->Collator.TERTIARY()));
 		*result = app->Collator._compare(coll, strL, strR);
@@ -251,18 +253,20 @@ bool tolower(const callback<void(StringView)> &cb, StringView data) {
 
 bool toupper(const callback<void(WideStringView)> &cb, WideStringView data) {
 	if (s_icuNative) {
-		StringBuffer<char16_t> ret;
+		memory::dynu16string str;
+		str.resize(data.size());
 
 		int status = 0;
-		size_t capacity = data.size();
-		auto ptr = ret.prepare(capacity);
+		size_t capacity = str.size();
+		auto ptr = str.data();
 
 		auto len = strToUpper_fn(ptr, capacity, data.data(), data.size(), nullptr, &status);
-		if (len <= int32_t(ret.size())) {
-			ret.commit(len);
+		if (len <= int32_t(str.size())) {
+			str.resize(len);
 		} else {
 			capacity = len;
-			ptr = ret.prepare(capacity);
+			str.resize(capacity);
+			ptr = str.data();
 			strToUpper_fn(ptr, capacity, data.data(), data.size(), nullptr, &status);
 		}
 		if (status == 0) {
@@ -278,19 +282,21 @@ bool toupper(const callback<void(WideStringView)> &cb, WideStringView data) {
 
 bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
 	if (s_icuNative) {
-		StringBuffer<char16_t> ret;
+		memory::dynu16string str;
+		str.resize(data.size());
 
 		int status = 0;
-		size_t capacity = data.size();
-		auto ptr = ret.prepare(capacity);
+		size_t capacity = str.size();
+		auto ptr = str.data();
 
 		auto len =
 				strToTitle_fn(ptr, capacity, data.data(), data.size(), nullptr, nullptr, &status);
-		if (len <= int32_t(ret.size())) {
-			ret.commit(len);
+		if (len <= int32_t(str.size())) {
+			str.resize(len);
 		} else {
 			capacity = len;
-			ptr = ret.prepare(capacity);
+			str.resize(capacity);
+			ptr = str.data();
 			strToTitle_fn(ptr, capacity, data.data(), data.size(), nullptr, nullptr, &status);
 		}
 		if (status == 0) {
@@ -306,18 +312,20 @@ bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
 
 bool tolower(const callback<void(WideStringView)> &cb, WideStringView data) {
 	if (s_icuNative) {
-		StringBuffer<char16_t> ret;
+		memory::dynu16string str;
+		str.resize(data.size());
 
 		int status = 0;
-		size_t capacity = data.size();
-		auto ptr = ret.prepare(capacity);
+		size_t capacity = str.size();
+		auto ptr = str.data();
 
 		auto len = strToLower_fn(ptr, capacity, data.data(), data.size(), nullptr, &status);
-		if (len <= int32_t(ret.size())) {
-			ret.commit(len);
+		if (len <= int32_t(str.size())) {
+			str.resize(len);
 		} else {
 			capacity = len;
-			ptr = ret.prepare(capacity);
+			str.resize(capacity);
+			ptr = str.data();
 			strToLower_fn(ptr, capacity, data.data(), data.size(), nullptr, &status);
 		}
 		if (status == 0) {
@@ -599,7 +607,7 @@ extern "C" SPRT_GLOBAL void idn2_free(void *ptr) {
 }
 
 extern "C" SPRT_GLOBAL const char *idn2_check_version(const char *req_version) {
-	if (!req_version || strcmp(req_version, IDN2_VERSION) <= 0) {
+	if (!req_version || __sprt_strverscmp(req_version, IDN2_VERSION) <= 0) {
 		return IDN2_VERSION;
 	}
 
@@ -611,6 +619,27 @@ extern "C" SPRT_GLOBAL const char *idn2_check_version(const char *req_version) {
 namespace sprt::platform {
 
 static char s_locale[6] = "en-us";
+
+size_t makeRandomBytes(uint8_t *buf, size_t count) {
+	size_t generated = 0;
+	auto ret = ::getrandom(buf, count, GRND_RANDOM | GRND_NONBLOCK);
+	if (ret < ssize_t(count)) {
+		buf += ret;
+		count -= ret;
+		generated += ret;
+
+		ret = ::getrandom(buf, count, GRND_NONBLOCK | GRND_INSECURE);
+		if (ret >= 0) {
+			generated += ret;
+		}
+	} else {
+		generated += ret;
+	}
+	return generated;
+}
+
+StringView getOsLocale() { return StringView(s_locale); }
+
 static Dso s_self;
 
 int (*_timespec_get)(struct timespec *__ts, int __base) = nullptr;
@@ -624,13 +653,25 @@ int (*_futimesat)(int __dir_fd, const char *__path, const struct timeval __times
 int (*_sync_file_range)(int __fd, off64_t __offset, off64_t __length,
 		unsigned int __flags) = nullptr;
 int (*_mlock2)(const void *__addr, size_t __size, int __flags) = nullptr;
+int (*_memfd_create)(const char *__name, unsigned __flags) = nullptr;
 
-size_t makeRandomBytes(uint8_t *buf, size_t count) {
-	::arc4random_buf(buf, count);
-	return count;
-}
+nl_catd (*_catopen)(const char *__name, int __flag) = nullptr;
+char *(*_catgets)(nl_catd __catalog, int __set_number, int __msg_number,
+		const char *__msg) = nullptr;
+int (*_catclose)(nl_catd __catalog) = nullptr;
 
-StringView getOsLocale() { return StringView(s_locale); }
+int (*_pthread_setschedprio)(pthread_t __pthread, int __priority) = nullptr;
+
+char *(*_ctermid)(char *__buf) = nullptr;
+
+int (*_getsubopt)(char **__option, char *const *__tokens, char **__value_ptr) = nullptr;
+
+int (*_getentropy)(void *__buffer, size_t __buffer_size) = nullptr;
+
+ssize_t (*_getrandom)(void *__buffer, size_t __buffer_size, unsigned int __flags) = nullptr;
+
+size_t (*_wcsftime_l)(wchar_t *__buf, size_t __n, const wchar_t *__fmt, const struct tm *__tm,
+		locale_t __l) = nullptr;
 
 bool initialize(int &resultCode) {
 	s_self = Dso(StringView(), DsoFlags::Self);
@@ -644,6 +685,16 @@ bool initialize(int &resultCode) {
 		_futimesat = s_self.sym<decltype(_futimesat)>("futimesat");
 		_sync_file_range = s_self.sym<decltype(_sync_file_range)>("sync_file_range");
 		_mlock2 = s_self.sym<decltype(_mlock2)>("mlock2");
+		_memfd_create = s_self.sym<decltype(_memfd_create)>("memfd_create");
+		_catopen = s_self.sym<decltype(_catopen)>("catopen");
+		_catgets = s_self.sym<decltype(_catgets)>("catgets");
+		_catclose = s_self.sym<decltype(_catclose)>("catclose");
+		_pthread_setschedprio = s_self.sym<decltype(_pthread_setschedprio)>("pthread_setschedprio");
+		_ctermid = s_self.sym<decltype(_ctermid)>("ctermid");
+		_getsubopt = s_self.sym<decltype(_getsubopt)>("getsubopt");
+		_getentropy = s_self.sym<decltype(_getentropy)>("getentropy");
+		_getrandom = s_self.sym<decltype(_getrandom)>("getrandom");
+		_wcsftime_l = s_self.sym<decltype(_wcsftime_l)>("wcsftime_l");
 	}
 
 	// init locale

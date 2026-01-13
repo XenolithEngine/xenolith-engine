@@ -226,19 +226,24 @@ void LZ4_free(void *p);
 #define ALLOC_AND_ZERO(s) LZ4_calloc(1,s)
 #define FREEMEM(p)        LZ4_free(p)
 #else
-#include <stdlib.h> /* malloc, calloc, free */
-#define ALLOC(s)          malloc(s)
-#define ALLOC_AND_ZERO(s) calloc(1,s)
-#define FREEMEM(p)        free(p)
+#include <sprt/c/__sprt_stdlib.h> /* malloc, calloc, free */
+#define ALLOC(s)          __sprt_malloc(s)
+#define ALLOC_AND_ZERO(s) __sprt_calloc(1,s)
+#define FREEMEM(p)        __sprt_free(p)
 #endif
 
 #if !LZ4_FREESTANDING
 #include <string.h> /* memset, memcpy */
 #endif
 #if !defined(LZ4_memset)
-#define LZ4_memset(p, v, s) memset((p),(v),(s))
+#define LZ4_memset(p, v, s) __sprt_memset((p),(v),(s))
 #endif
 #define MEM_INIT(p, v, s)   LZ4_memset((p),(v),(s))
+
+
+#ifndef NULL
+#define NULL __SPRT_NULL
+#endif
 
 
 /*-************************************

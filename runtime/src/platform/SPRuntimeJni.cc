@@ -25,18 +25,20 @@
 
 #if SPRT_ANDROID
 
-#include "SPRuntimeLog.h"
+#include <sprt/c/__sprt_ctype.h>
+#include <sprt/runtime/mutex.h>
 
 #include <android/configuration.h>
 #include <android/asset_manager.h>
-#include <android/asset_manager_jni.h>
-#include <android/native_activity.h>
+#include <sprt/jni/native_activity.h>
 
 #include <math.h>
 
+extern "C" AAssetManager *AAssetManager_fromJava(JNIEnv *env, jobject assetManager);
+
 namespace sprt::jni {
 
-static RtRc<App> s_app;
+static Rc<App> s_app;
 
 struct JavaThread {
 	JavaVM *vm = nullptr;
@@ -91,9 +93,9 @@ Local &Local::operator=(Local &&other) {
 	return *this;
 }
 
-Local::Local(std::nullptr_t) : _obj(nullptr), _env(nullptr) { }
+Local::Local(sprt::nullptr_t) : _obj(nullptr), _env(nullptr) { }
 
-Local &Local::operator=(std::nullptr_t) {
+Local &Local::operator=(sprt::nullptr_t) {
 	if (_obj) {
 		_env->DeleteLocalRef(_obj);
 		_obj = nullptr;
@@ -118,9 +120,9 @@ LocalClass &LocalClass::operator=(LocalClass &&other) {
 	return *this;
 }
 
-LocalClass::LocalClass(std::nullptr_t) : Local(nullptr) { }
+LocalClass::LocalClass(sprt::nullptr_t) : Local(nullptr) { }
 
-LocalClass &LocalClass::operator=(std::nullptr_t) {
+LocalClass &LocalClass::operator=(sprt::nullptr_t) {
 	if (_obj) {
 		_env->DeleteLocalRef(_obj);
 		_obj = nullptr;
@@ -197,9 +199,9 @@ Global &Global::operator=(Global &&other) {
 	return *this;
 }
 
-Global::Global(std::nullptr_t) : _obj(nullptr) { }
+Global::Global(sprt::nullptr_t) : _obj(nullptr) { }
 
-Global &Global::operator=(std::nullptr_t) {
+Global &Global::operator=(sprt::nullptr_t) {
 	if (_obj) {
 		Env::getEnv().deleteGlobalRef(_obj);
 		_obj = nullptr;
@@ -231,9 +233,9 @@ LocalString &LocalString::operator=(LocalString &&other) {
 	return *this;
 }
 
-LocalString::LocalString(std::nullptr_t) : Local(nullptr) { }
+LocalString::LocalString(sprt::nullptr_t) : Local(nullptr) { }
 
-LocalString &LocalString::operator=(std::nullptr_t) {
+LocalString &LocalString::operator=(sprt::nullptr_t) {
 	reset();
 
 	Local::operator=(nullptr);
@@ -276,9 +278,9 @@ GlobalString &GlobalString::operator=(GlobalString &&other) {
 	return *this;
 }
 
-GlobalString::GlobalString(std::nullptr_t) : Global(nullptr) { }
+GlobalString::GlobalString(sprt::nullptr_t) : Global(nullptr) { }
 
-GlobalString &GlobalString::operator=(std::nullptr_t) {
+GlobalString &GlobalString::operator=(sprt::nullptr_t) {
 	Global::operator=(nullptr);
 	return *this;
 }
@@ -321,9 +323,9 @@ GlobalClass &GlobalClass::operator=(GlobalClass &&other) {
 	return *this;
 }
 
-GlobalClass::GlobalClass(std::nullptr_t) : Global(nullptr) { }
+GlobalClass::GlobalClass(sprt::nullptr_t) : Global(nullptr) { }
 
-GlobalClass &GlobalClass::operator=(std::nullptr_t) {
+GlobalClass &GlobalClass::operator=(sprt::nullptr_t) {
 	Global::operator=(nullptr);
 	return *this;
 }
@@ -340,7 +342,7 @@ GlobalString RefString::getGlobal() const { return GlobalString(*this); }
 
 GlobalClass RefClass::getGlobal() const { return GlobalClass(*this); }
 
-static std::mutex s_infoMutex;
+static sprt::qmutex s_infoMutex;
 
 App *App::alloc(const RefClass &cl) { return new (sprt::nothrow) App(cl); }
 
@@ -389,7 +391,7 @@ void App::inspectDrawables(const callback<void(StringView, jint)> &cb) {
 
 	auto packageName = Application.getPackageName(jAppRef);
 
-	auto drawableClassName = memory::dynstring::create(packageName.getString(), ".R$drawable");
+	auto drawableClassName = StreamTraits<char>::toString(packageName.getString(), ".R$drawable");
 	auto drawablesClass = classLoader.findClass(env, drawableClassName);
 	if (drawablesClass) {
 		classLoader.foreachField(drawablesClass,
@@ -402,7 +404,7 @@ void App::inspectDrawables(const callback<void(StringView, jint)> &cb) {
 }
 
 void App::handleConfigurationChanged(const jni::Ref &ref) {
-	std::unique_lock lock(s_infoMutex);
+	sprt::unique_lock lock(s_infoMutex);
 
 	if (config) {
 		AConfiguration_delete(config);
@@ -440,7 +442,7 @@ static memory::dynstring getApplicationName(App *proxy, const jni::Ref &ctx) {
 				proxy->CharSequence.toString(jNonLocalizedLabel).getString());
 	} else {
 		auto jAppName = proxy->Application.getString(ctx, jint(labelRes));
-		return jAppName.getString();
+		return jAppName.getString().str<memory::dynstring>();
 	}
 }
 
@@ -461,7 +463,7 @@ static memory::dynstring getApplicationVersion(App *proxy, const jni::Ref &ctx,
 		return memory::dynstring();
 	}
 
-	return jversion.getString();
+	return jversion.getString().str<memory::dynstring>();
 }
 
 static StringView getSystemAgent(App *proxy, const jni::Env &env) {
@@ -478,35 +480,35 @@ static StringView getUserAgent(App *proxy, const jni::Ref &ctx) {
 	return StringView();
 }
 
-void App::setActivityLoader(static_function<bool(ANativeActivity *, BytesView)> &&cb) {
+void App::setActivityLoader(memory::dynfunction<bool(ANativeActivity *, BytesView)> &&cb) {
 	activityLoader = move(cb);
 }
 
-void App::setConfigurationHandler(static_function<void(jni::ApplicationInfo *)> &&cb) {
+void App::setConfigurationHandler(memory::dynfunction<void(jni::ApplicationInfo *)> &&cb) {
 	configurationHandler = move(cb);
 }
 
-void App::setLowMemoryHandler(static_function<void()> &&cb) { lowMemoryHandler = move(cb); }
+void App::setLowMemoryHandler(memory::dynfunction<void()> &&cb) { lowMemoryHandler = move(cb); }
 
-RtRc<jni::ApplicationInfo> App::makeInfo(const jni::Ref &ref) {
-	auto info = RtRc<jni::ApplicationInfo>::alloc();
+Rc<jni::ApplicationInfo> App::makeInfo(const jni::Ref &ref) {
+	auto info = Rc<jni::ApplicationInfo>::alloc();
 
 	auto env = Env::getEnv();
 	auto ctx = jni::Ref(jApplication, env);
 
 	auto jPackageName = Application.getPackageName(ctx);
 	if (jPackageName) {
-		info->bundleName = jPackageName.getString();
+		info->bundleName = jPackageName.getString().str<memory::dynstring>();
 		info->applicationName = getApplicationName(this, ctx);
 		info->applicationVersion = getApplicationVersion(this, ctx, jPackageName);
-		info->systemAgent = getSystemAgent(this, env);
-		info->userAgent = getUserAgent(this, ctx);
+		info->systemAgent = getSystemAgent(this, env).str<memory::dynstring>();
+		info->userAgent = getUserAgent(this, ctx).str<memory::dynstring>();
 	}
 
 	// Use DP size as fallback
 	int32_t widthPixels = AConfiguration_getScreenWidthDp(config);
 	int32_t heightPixels = AConfiguration_getScreenHeightDp(config);
-	float displayDensity = NAN;
+	float displayDensity = NaN<float>;
 
 	if (auto resObj = Application.getResources(ctx)) {
 		if (auto dmObj = Resources.getDisplayMetrics(resObj)) {
@@ -517,17 +519,17 @@ RtRc<jni::ApplicationInfo> App::makeInfo(const jni::Ref &ref) {
 	}
 
 	array<char, 6> language;
-	memcpy(language.data(), "en-us", 6);
+	__sprt_memcpy(language.data(), "en-us", 6);
 	AConfiguration_getLanguage(config, language.data());
 	AConfiguration_getCountry(config, language.data() + 3);
 
 	for (auto &it : language) {
 		if (it) {
-			it = ::tolower(it);
+			it = ::__sprt_tolower(it);
 		}
 	}
 
-	info->locale = StringView(language.data(), 5);
+	info->locale = StringView(language.data(), 5).str<memory::dynstring>();
 
 	if (isnan(displayDensity)) {
 		auto densityValue = AConfiguration_getDensity(config);
@@ -562,12 +564,12 @@ RtRc<jni::ApplicationInfo> App::makeInfo(const jni::Ref &ref) {
 		info->pixelHeight = heightPixels;
 		break;
 	case ACONFIGURATION_ORIENTATION_PORT:
-		info->pixelWidth = std::min(widthPixels, heightPixels);
-		info->pixelHeight = std::max(widthPixels, heightPixels);
+		info->pixelWidth = sprt::min(widthPixels, heightPixels);
+		info->pixelHeight = sprt::max(widthPixels, heightPixels);
 		break;
 	case ACONFIGURATION_ORIENTATION_LAND:
-		info->pixelWidth = std::max(widthPixels, heightPixels);
-		info->pixelHeight = std::min(widthPixels, heightPixels);
+		info->pixelWidth = sprt::max(widthPixels, heightPixels);
+		info->pixelHeight = sprt::min(widthPixels, heightPixels);
 		break;
 	}
 
@@ -587,8 +589,8 @@ bool App::loadActivity(ANativeActivity *a, BytesView data) {
 	return activityLoader(a, data);
 }
 
-RtRc<jni::ApplicationInfo> App::getCurrentInfo() {
-	std::unique_lock lock(s_infoMutex);
+Rc<jni::ApplicationInfo> App::getCurrentInfo() {
+	sprt::unique_lock lock(s_infoMutex);
 	return currentInfo;
 }
 
@@ -653,13 +655,12 @@ void Env::loadJava(JavaVM *vm) {
 	auto applicationClass = LocalClass(env->FindClass("org/stappler/core/Application"), env);
 
 	if (applicationClass) {
-		s_app = RtRc<App>::alloc(RefClass(applicationClass));
+		s_app = Rc<App>::alloc(RefClass(applicationClass));
 		s_app->vm = vm;
 	}
 
 	if (!s_app) {
-		log::
-				vprint(log::LogType::Fatal, __SPRT_LOCATION, "JNI",
+		log:: vprint(log::LogType::Fatal, __SPRT_LOCATION, "JNI",
 						"Fail to load AppProxy; org/stappler/appsupport/Application class was not "
 						"defined " "properly?");
 	}
@@ -717,8 +718,8 @@ bool ClassLoader::init(App *a, JNIEnv *env) {
 		}
 	}
 
-	this->apkPath = publicSourceDir.getString();
-	this->nativeLibraryDir = nativeLibraryDir.getString();
+	this->apkPath = publicSourceDir.getString().str<memory::dynstring>();
+	this->nativeLibraryDir = nativeLibraryDir.getString().str<memory::dynstring>();
 
 	return true;
 }

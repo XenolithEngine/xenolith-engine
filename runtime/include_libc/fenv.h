@@ -39,30 +39,34 @@ THE SOFTWARE.
 #define FP_NORMAL __SPRT_FP_NORMAL
 #endif
 
+#ifndef FE_TONEAREST
+#define FE_TONEAREST __SPRT_FE_TONEAREST
+#define FE_DOWNWARD __SPRT_FE_DOWNWARD
+#define FE_UPWARD __SPRT_FE_UPWARD
+#define FE_TOWARDZERO __SPRT_FE_TOWARDZERO
+#endif
+
+
 __SPRT_BEGIN_DECL
 
 typedef __SPRT_ID(fexcept_t) fexcept_t;
 typedef __SPRT_ID(fenv_t) fenv_t;
 
-SPRT_FORCEINLINE inline int feclearexcept(int v) { return __sprt_feclearexcept(v); }
-SPRT_FORCEINLINE inline int fegetexceptflag(fexcept_t *ex, int v) {
-	return __sprt_fegetexceptflag(ex, v);
-}
-SPRT_FORCEINLINE inline int feraiseexcept(int v) { return __sprt_feraiseexcept(v); }
-SPRT_FORCEINLINE inline int fesetexceptflag(const fexcept_t *ex, int v) {
+SPRT_FORCEINLINE int feclearexcept(int v) { return __sprt_feclearexcept(v); }
+SPRT_FORCEINLINE int fegetexceptflag(fexcept_t *ex, int v) { return __sprt_fegetexceptflag(ex, v); }
+SPRT_FORCEINLINE int feraiseexcept(int v) { return __sprt_feraiseexcept(v); }
+SPRT_FORCEINLINE int fesetexceptflag(const fexcept_t *ex, int v) {
 	return __sprt_fesetexceptflag(ex, v);
 }
-SPRT_FORCEINLINE inline int fetestexcept(int v) { return __sprt_fetestexcept(v); }
+SPRT_FORCEINLINE int fetestexcept(int v) { return __sprt_fetestexcept(v); }
 
-SPRT_FORCEINLINE inline int fegetround(void) { return __sprt_fegetround(); }
-SPRT_FORCEINLINE inline int fesetround(int v) { return __sprt_fesetround(v); }
+SPRT_FORCEINLINE int fegetround(void) { return __sprt_fegetround(); }
+SPRT_FORCEINLINE int fesetround(int v) { return __sprt_fesetround(v); }
 
-SPRT_FORCEINLINE inline int fegetenv(fenv_t *ex) { return __sprt_fegetenv((fenv_t *)ex); }
-SPRT_FORCEINLINE inline int feholdexcept(fenv_t *ex) { return __sprt_feholdexcept((fenv_t *)ex); }
-SPRT_FORCEINLINE inline int fesetenv(const fenv_t *ex) {
-	return __sprt_fesetenv((const fenv_t *)ex);
-}
-SPRT_FORCEINLINE inline int feupdateenv(const fenv_t *ex) {
+SPRT_FORCEINLINE int fegetenv(fenv_t *ex) { return __sprt_fegetenv((fenv_t *)ex); }
+SPRT_FORCEINLINE int feholdexcept(fenv_t *ex) { return __sprt_feholdexcept((fenv_t *)ex); }
+SPRT_FORCEINLINE int fesetenv(const fenv_t *ex) { return __sprt_fesetenv((const fenv_t *)ex); }
+SPRT_FORCEINLINE int feupdateenv(const fenv_t *ex) {
 	return __sprt_feupdateenv((const fenv_t *)ex);
 }
 

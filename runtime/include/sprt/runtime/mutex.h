@@ -28,7 +28,7 @@ THE SOFTWARE.
 
 namespace sprt {
 
-#if SPRT_LINUX
+#if SPRT_LINUX || SPRT_ANDROID
 struct __qmutex_data_t {
 	uint32_t value = 0;
 };

@@ -30,7 +30,7 @@ THE SOFTWARE.
 
 #include <sprt/runtime/log.h>
 #include "private/SPRTFilename.h"
-#include "private/SPRTPrivate.h"
+#include "private/SPRTSpecific.h"
 
 #include <fcntl.h>
 

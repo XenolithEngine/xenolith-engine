@@ -41,6 +41,7 @@ THE SOFTWARE.
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(rsize_t) rsize_t;
 typedef __SPRT_ID(off_t) off_t;
+typedef __SPRT_ID(off_t) off64_t;
 typedef __SPRT_ID(ssize_t) ssize_t;
 typedef __SPRT_ID(time_t) time_t;
 typedef __SPRT_ID(clock_t) clock_t;

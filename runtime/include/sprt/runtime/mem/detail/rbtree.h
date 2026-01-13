@@ -1165,11 +1165,11 @@ protected:
 		RbTreeNode<Value> *block = nullptr, *tail = nullptr;
 		if (_header.flag.index < node_type::Flag::MaxIndex) {
 			uintptr_t preallocIdx = ++_header.flag.index;
-			block = allocator_helper::allocate_block([](auto node, size_t idx) SPRT_FORCEINLINE {
+			block = allocator_helper::allocate_block([](auto node, size_t idx) SPRT_LAMBDAINLINE {
 				return false;
 			}, get_allocator(), preallocIdx, count, &tail);
 		} else {
-			block = allocator_helper::allocate_batch([](auto node, size_t idx) SPRT_FORCEINLINE {
+			block = allocator_helper::allocate_batch([](auto node, size_t idx) SPRT_LAMBDAINLINE {
 				return false;
 			}, get_allocator(), count, &tail);
 		}

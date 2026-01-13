@@ -54,18 +54,18 @@ typedef __SPRT_ID(locale_t) locale_t;
 
 __SPRT_BEGIN_DECL
 
-SPRT_FORCEINLINE inline char *setlocale(int cat, const char *locale) {
+SPRT_FORCEINLINE char *setlocale(int cat, const char *locale) {
 	return __sprt_setlocale(cat, locale);
 }
 
-SPRT_FORCEINLINE inline lconv *localeconv(void) { return __sprt_localeconv(); }
+SPRT_FORCEINLINE lconv *localeconv(void) { return __sprt_localeconv(); }
 
-SPRT_FORCEINLINE inline locale_t duplocale(locale_t loc) { return __sprt_duplocale(loc); }
-SPRT_FORCEINLINE inline void freelocale(locale_t loc) { __sprt_freelocale(loc); }
-SPRT_FORCEINLINE inline locale_t newlocale(int v, const char *name, locale_t loc) {
+SPRT_FORCEINLINE locale_t duplocale(locale_t loc) { return __sprt_duplocale(loc); }
+SPRT_FORCEINLINE void freelocale(locale_t loc) { __sprt_freelocale(loc); }
+SPRT_FORCEINLINE locale_t newlocale(int v, const char *name, locale_t loc) {
 	return __sprt_newlocale(v, name, loc);
 }
-SPRT_FORCEINLINE inline locale_t uselocale(locale_t loc) { return __sprt_uselocale(loc); }
+SPRT_FORCEINLINE locale_t uselocale(locale_t loc) { return __sprt_uselocale(loc); }
 
 __SPRT_END_DECL
 

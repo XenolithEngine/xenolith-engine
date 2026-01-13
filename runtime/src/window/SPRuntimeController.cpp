@@ -34,6 +34,13 @@
 #include "private/window/linux/SPRTWinLinuxWaylandDisplay.h"
 #endif
 
+#if SPRT_ANDROID
+#include "private/window/android/SPRTWinAndroidContextController.h"
+#include "private/window/android/SPRTWinAndroidNetworkConnectivity.h"
+#include "private/window/android/SPRTWinAndroidClipboardListener.h"
+#include "private/window/android/SPRTWinAndroidActivity.h"
+#endif
+
 namespace sprt::window {
 
 Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextConfig &&info,
@@ -41,13 +48,13 @@ Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextCon
 #if SPRT_LINUX
 	return Rc<LinuxContextController>::create(ctx, move(info), a);
 #endif
-#if MACOS
+#if SPRT_MACOS
 	return Rc<MacosContextController>::create(ctx, move(info));
 #endif
-#if WIN32
+#if SPRT_WINDOWS
 	return Rc<WindowsContextController>::create(ctx, move(info));
 #endif
-#if ANDROID
+#if SPRT_ANDROID
 	return Rc<AndroidContextController>::create(ctx, move(info));
 #endif
 	log::vperror(__SPRT_LOCATION, "ContextController", "Unknown platform");
@@ -58,13 +65,13 @@ void ContextController::acquireDefaultConfig(ContextConfig &config, NativeContex
 #if SPRT_LINUX
 	LinuxContextController::acquireDefaultConfig(config, handle);
 #endif
-#if MACOS
+#if SPRT_MACOS
 	MacosContextController::acquireDefaultConfig(config, handle);
 #endif
-#if WIN32
+#if SPRT_WINDOWS
 	WindowsContextController::acquireDefaultConfig(config, handle);
 #endif
-#if ANDROID
+#if SPRT_ANDROID
 	AndroidContextController::acquireDefaultConfig(config);
 #endif
 }
