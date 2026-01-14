@@ -26,7 +26,7 @@
 #include "detail/SPEventQueueData.h"
 #include "SPMemory.h"
 
-#if LINUX
+#if LINUX || ANDROID
 
 #include "../fd/SPEventFd.h"
 #include "../fd/SPEventTimerFd.h"
@@ -228,8 +228,11 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 namespace STAPPLER_VERSIONIZED stappler::event::platform {
 
 Rc<QueueRef> getThreadQueue(QueueInfo &&info) {
-	// Just create the queue, Linux has no specifics
-	info.engineMask = QueueEngine::URing;
+#if LINUX
+	info.engineMask &= QueueEngine::URing | QueueEngine::EPoll;
+#else
+	info.engineMask &= QueueEngine::EPoll | QueueEngine::ALooper;
+#endif
 	return Queue::create(move(info));
 }
 

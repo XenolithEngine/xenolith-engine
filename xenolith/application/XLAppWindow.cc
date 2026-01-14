@@ -49,8 +49,8 @@ bool AppWindow::init(NotNull<Context> ctx, NotNull<AppThread> app, NotNull<Nativ
 	_capabilities = _window->getInfo()->capabilities;
 	_windowId = StringView(_window->getInfo()->id).str<String>();
 
-	_presentationEngine =
-			_context->getGlLoop()->makePresentationEngine(this, w->getPreferredOptions());
+	_presentationEngine = static_cast<core::Loop *>(_context->getGlLoop())
+								  ->makePresentationEngine(this, w->getPreferredOptions());
 
 	return _presentationEngine != nullptr;
 }
@@ -122,7 +122,7 @@ void AppWindow::close(bool graceful) {
 	}
 
 	_inCloseRequest = true;
-	_context->performOnThread([this, w = _window, graceful] {
+	_context->performOnThread([this, w = Rc<NativeWindow>(_window), graceful] {
 		if (w) {
 			if (!w->close()) {
 				_application->performOnAppThread([this] {
@@ -137,7 +137,7 @@ void AppWindow::close(bool graceful) {
 			end();
 		} else {
 			_presentationEngine->updateConstraints(core::UpdateConstraintsFlags::EndOfLife,
-					[this](bool) {
+					[this, w = Rc<NativeWindow>(w)](bool) {
 				// successful stop
 				end();
 				_window = nullptr;

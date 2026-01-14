@@ -158,7 +158,7 @@ public:
 
 	event::Looper *getLooper() const { return _looper; }
 
-	core::Loop *getGlLoop() const { return _loop; }
+	virtual sprt::window::gapi::Loop *getGlLoop() const override { return _loop; }
 
 	BytesView getMessageToken() const { return _messageToken; }
 
@@ -186,8 +186,6 @@ public:
 	virtual void handleConfigurationChanged(Rc<ContextInfo> &&) override;
 
 	virtual void handleGraphicsLoaded(NotNull<sprt::window::gapi::Loop>) override;
-
-	virtual Value saveState();
 
 	virtual void handleAppThreadCreated(NotNull<AppThread>);
 	virtual void handleAppThreadDestroyed(NotNull<AppThread>);
@@ -238,6 +236,11 @@ public:
 	}
 
 	virtual void openUrl(StringView);
+
+	virtual memory::pool_t *getTmpPool() const override { return _initializer.tmpPool; }
+
+	virtual Value saveStateValue() const;
+	virtual sprt::memory::dynbytes saveState() const override;
 
 protected:
 	virtual Rc<sprt::window::gapi::Instance> makeInstance(

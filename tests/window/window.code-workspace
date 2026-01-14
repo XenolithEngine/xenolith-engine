@@ -27,7 +27,11 @@
 		"makefile.configurations": [
 			{
 				"name": "Debug",
-				"makeArgs": ["DEBUG=1", "OPTIMIZE=0", "-j8"],
+				"makeArgs": ["-j8"],
+			},
+			{
+				"name": "Android",
+				"makeArgs": ["NDK=/home/sbkarr/Android/Ndk"],
 			}, 
 		],
 		"makefile.launchConfigurations": [

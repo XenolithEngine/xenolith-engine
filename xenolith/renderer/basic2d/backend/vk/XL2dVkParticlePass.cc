@@ -24,6 +24,7 @@
 #include "SPMemory.h"
 #include "SPPlatform.h"
 #include "SPTime.h"
+#include "SPValid.h"
 #include "XL2d.h"
 #include "XL2dCommandList.h"
 #include "XL2dConfig.h"
@@ -117,8 +118,7 @@ static void ParticlePersistentData_initParticles(uint8_t *ptr, uint32_t particle
 
 	// use hard-random from OS
 	// to debug randomness - use static values
-	stappler::platform::makeRandomBytes(reinterpret_cast<uint8_t *>(randomdata.data()),
-			randomdata.size());
+	valid::makeRandomBytes(reinterpret_cast<uint8_t *>(randomdata.data()), randomdata.size());
 
 	auto particle = reinterpret_cast<ParticleData *>(ptr);
 

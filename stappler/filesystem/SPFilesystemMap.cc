@@ -63,7 +63,7 @@ MemoryMappedRegion MemoryMappedRegion::mapFile(const FileInfo &info, MappingType
 			return MemoryMappedRegion();
 		} else {
 			auto remains = stat.st_size - offset;
-			len = std::min(len, remains);
+			len = std::min(len, size_t(remains));
 		}
 	}
 

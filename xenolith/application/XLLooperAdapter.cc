@@ -26,6 +26,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
+HandleAdapter::~HandleAdapter() { }
+
 bool HandleAdapter::init(Type t, void *p, Fn fn) {
 	_type = t;
 	_ptr = p;
@@ -42,9 +44,11 @@ bool HandleAdapter::init(Type t, Rc<event::Handle> &&h) {
 void HandleAdapter::setHandle(Rc<event::Handle> &&h) { _handle = sp::move(h); }
 
 void HandleAdapter::forward(uint32_t flags, Status status) {
+	auto id = retain(0);
 	if (_ptr && _fn) {
 		_fn(_ptr, this, flags, status);
 	}
+	release(id);
 }
 
 Status HandleAdapter::getStatus() const {
@@ -169,5 +173,13 @@ Status LooperAdapter::performOnThread(sprt::memory::dynfunction<void()> &&func, 
 		bool immediate, StringView tag) const {
 	return _looper->performOnThread(sp::move(func), target, immediate, tag);
 }
+
+
+Status LooperAdapter::performAsync(sprt::memory::dynfunction<void()> &&cb, Ref *ref, bool first,
+		StringView tag) const {
+	return _looper->performAsync(sp::move(cb), ref, first, tag);
+}
+
+int LooperAdapter::getHandle() const { return _looper->getQueue()->getHandle(); }
 
 } // namespace stappler::xenolith

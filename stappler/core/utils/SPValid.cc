@@ -23,15 +23,11 @@ THE SOFTWARE.
 
 #include "SPValid.h"
 #include "SPUrl.h"
-#include "SPIdn.h"
 #include "SPString.h"
 #include <sprt/runtime/platform.h>
+#include <sprt/runtime/idn.h>
 
-namespace STAPPLER_VERSIONIZED stappler::platform {
-
-size_t makeRandomBytes(uint8_t *buf, size_t count);
-
-}
+#include <sys/random.h>
 
 namespace STAPPLER_VERSIONIZED stappler::valid {
 
@@ -221,13 +217,17 @@ static bool _validateEmailData(StringView r, typename Interface::StringType *tar
 			return false;
 		}
 
-		auto host = idn::toAscii<Interface>(r, false);
-		if (host.empty()) {
-			return false;
-		}
+		bool hasHost = false;
+		sprt::idn::to_ascii([&](StringView host) {
+			hasHost = true;
 
-		if (target) {
-			target->append(host);
+			if (target) {
+				target->append(host.data(), host.size());
+			}
+		}, r, false);
+
+		if (!hasHost) {
+			return false;
 		}
 	}
 
@@ -288,6 +288,7 @@ bool validateEmail(memory::StandartInterface::StringType &str) {
 
 template <typename Interface>
 static bool _validateUrl(typename Interface::StringType &str) {
+	typename Interface::StringType newHost;
 	UrlView url;
 	if (!url.parse(str)) {
 		return false;
@@ -299,16 +300,21 @@ static bool _validateUrl(typename Interface::StringType &str) {
 	}
 
 	if (!oldHost.empty()) {
-		auto str = oldHost.str<Interface>();
-		auto newHost = idn::toAscii<Interface>(str, true);
+		if (!sprt::idn::to_ascii([&](StringView host) {
+			newHost = host.str<decltype(newHost)>(); //
+		}, oldHost, true)) {
+			return false;
+		}
+
 		if (newHost.empty()) {
 			return false;
 		}
 		url.host = newHost;
 	}
 
-	auto newUrl = url.get<Interface>();
-	str = typename Interface::StringType(newUrl.data(), newUrl.size());
+	url.get([&](StringView u) {
+		str = u.str<typename Interface::StringType>(); //
+	});
 	return true;
 }
 
@@ -365,7 +371,23 @@ bool validateBase64(const StringView &str) {
 	return true;
 }
 
-void makeRandomBytes(uint8_t *buf, size_t count) { sprt::platform::makeRandomBytes(buf, count); }
+size_t makeRandomBytes(uint8_t *buf, size_t count) {
+	size_t generated = 0;
+	auto ret = ::getrandom(buf, count, GRND_RANDOM | GRND_NONBLOCK);
+	if (ret < ssize_t(count)) {
+		buf += ret;
+		count -= ret;
+		generated += ret;
+
+		ret = ::getrandom(buf, count, GRND_NONBLOCK | GRND_INSECURE);
+		if (ret >= 0) {
+			generated += ret;
+		}
+	} else {
+		generated += ret;
+	}
+	return generated;
+}
 
 template <>
 auto makeRandomBytes<memory::PoolInterface>(size_t count) -> memory::PoolInterface::BytesType {

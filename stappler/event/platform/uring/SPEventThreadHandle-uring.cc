@@ -33,7 +33,6 @@ namespace STAPPLER_VERSIONIZED stappler::event {
 
 // futex implementation based on https://github.com/eliben/code-for-blog/blob/main/2018/futex-basics/mutex-using-futex.cpp
 
-
 static uint32_t atomicLoadSeq(volatile uint32_t *ptr) {
 	uint32_t ret;
 	__atomic_load(ptr, &ret, __ATOMIC_SEQ_CST);

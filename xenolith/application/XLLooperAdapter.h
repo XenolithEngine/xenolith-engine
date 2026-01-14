@@ -39,7 +39,7 @@ public:
 		Poll
 	};
 
-	virtual ~HandleAdapter() = default;
+	virtual ~HandleAdapter();
 
 	virtual bool init(Type, void *, Fn);
 	virtual bool init(Type, Rc<event::Handle> &&);
@@ -77,6 +77,8 @@ public:
 	virtual Status wakeup(bool graceful = false) override;
 	virtual Status run() override;
 
+	virtual int getHandle() const override;
+
 	virtual Rc<sprt::window::HandleAdapter> scheduleTimer(time_t timeout, time_t interval,
 			uint32_t count, void *,
 			void (*)(void *, sprt::window::HandleAdapter *, uint32_t flags,
@@ -93,6 +95,9 @@ public:
 	virtual Status performOnThread(sprt::memory::dynfunction<void()> &&func, Ref *target = nullptr,
 			bool immediate = false,
 			StringView tag = __SPRT_LOCATION.function_name()) const override;
+
+	virtual Status performAsync(sprt::memory::dynfunction<void()> &&, Ref * = nullptr,
+			bool first = false, StringView tag = __SPRT_LOCATION.function_name()) const override;
 
 protected:
 	Rc<event::Looper> _looper;

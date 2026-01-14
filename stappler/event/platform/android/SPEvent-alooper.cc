@@ -21,7 +21,6 @@
  **/
 
 #include "SPEvent-alooper.h"
-#include "SPEvent-android.h"
 
 #include <sprt/c/sys/__sprt_alooper.h>
 

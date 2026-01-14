@@ -30,7 +30,6 @@
 #include "platform/uring/SPEventTimer-uring.cc"
 #include "platform/uring/SPEvent-uring.cc"
 
-#include "platform/android/SPEvent-android.cc"
 #include "platform/android/SPEvent-alooper.cc"
 #include "platform/android/SPEventThreadHandle-alooper.cc"
 

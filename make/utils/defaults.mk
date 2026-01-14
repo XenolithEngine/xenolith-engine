@@ -226,6 +226,29 @@ ifeq ($(STAPPLER_TARGET),android)
 LOCAL_ANDROID_TARGET ?= application
 LOCAL_ANDROID_PLATFORM ?= android-24
 
+# Usually we use NDK variable, transferred to make
+# (like: `make android NDK=/path/to/ndk`)
+# You can use ANDROID_NDK_ROOT env var
+NDK ?= $(ANDROID_NDK_ROOT)
+
+$(call print_verbose,(defaults.mk) Android NDK: $(NDK))
+
+ifeq ($(UNAME),Darwin)
+ANDROID_HOST ?= darwin-x86_64
+else ifeq ($(UNAME),Msys)
+ANDROID_HOST ?= windows-x86_64
+else
+ANDROID_HOST ?= linux-x86_64
+endif
+
+$(call print_verbose,(defaults.mk) ANDROID_HOST: $(ANDROID_HOST))
+
+ANDROID_SYSROOT := $(NDK)/toolchains/llvm/prebuilt/$(ANDROID_HOST)/sysroot
+ANDROID_SYSROOT_INCLUDE_CXX := $(realpath $(ANDROID_SYSROOT)/usr/include/c++/v1)
+ANDROID_SYSROOT_INCLUDE_COMMON := $(abspath $(ANDROID_SYSROOT)/usr/include/$$(BUILD_ARCH)) $(realpath $(ANDROID_SYSROOT)/usr/include)
+
+$(call print_verbose,(defaults.mk) ANDROID_SYSROOT: $(ANDROID_SYSROOT))
+
 $(call print_verbose,(defaults.mk) LOCAL_ANDROID_TARGET: $(LOCAL_ANDROID_TARGET) (android library name))
 $(call print_verbose,(defaults.mk) LOCAL_ANDROID_PLATFORM: $(LOCAL_ANDROID_PLATFORM) (minimal target API level))
 

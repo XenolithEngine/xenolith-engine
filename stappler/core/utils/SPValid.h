@@ -46,7 +46,7 @@ SP_PUBLIC bool validateNumber(const StringView &str);
 SP_PUBLIC bool validateHexadecimial(const StringView &str);
 SP_PUBLIC bool validateBase64(const StringView &str);
 
-SP_PUBLIC void makeRandomBytes(uint8_t *, size_t);
+SP_PUBLIC size_t makeRandomBytes(uint8_t *, size_t);
 
 template <typename Interface>
 SP_PUBLIC auto makeRandomBytes(size_t) -> typename Interface::BytesType;

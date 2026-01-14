@@ -232,7 +232,9 @@ void Director::end() {
 	_autorelease.clear();
 }
 
-core::Loop *Director::getGlLoop() const { return _application->getContext()->getGlLoop(); }
+core::Loop *Director::getGlLoop() const {
+	return static_cast<core::Loop *>(_application->getContext()->getGlLoop());
+}
 
 void Director::setFrameConstraints(const core::FrameConstraints &c) {
 	if (_constraints != c) {

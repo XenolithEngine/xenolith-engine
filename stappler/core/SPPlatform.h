@@ -35,10 +35,6 @@ using sprt::platform::ClockType;
 
 namespace STAPPLER_VERSIONIZED stappler::platform {
 
-SP_PUBLIC inline size_t makeRandomBytes(uint8_t *buf, size_t count) {
-	return sprt::platform::makeRandomBytes(buf, count);
-}
-
 // current time in microseconds
 SP_PUBLIC inline uint64_t clock(ClockType c = ClockType::Default) {
 	return sprt::platform::clock(c);

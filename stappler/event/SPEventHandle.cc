@@ -55,6 +55,9 @@ Status Handle::pause() {
 		if (_status == Status::Suspended) {
 			// temporary suspended by system, mark as externally suspended
 			_status = Status::Declined;
+
+			// infrm class that handle was suspended
+			_class->suspendFn(_class, this, _data);
 			return Status::Ok;
 		}
 		// not running

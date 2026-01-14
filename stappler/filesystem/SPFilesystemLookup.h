@@ -149,9 +149,7 @@ SP_PUBLIC inline auto findWritablePath(const FileInfo &info, Access a = Access::
 	return findPath<Interface>(info.category, info.path, info.flags | LookupFlags::Writable, a);
 }
 
-// enumerate all paths, that will be used to find a resource of specific types
-SP_PUBLIC void enumeratePaths(LocationCategory, LookupFlags,
-		const Callback<bool(const LocationInfo &, StringView)> &);
+using sprt::filesystem::enumeratePaths;
 
 SP_PUBLIC void enumeratePaths(LocationCategory, StringView path, LookupFlags, Access,
 		const Callback<bool(const LocationInfo &, StringView)> &);

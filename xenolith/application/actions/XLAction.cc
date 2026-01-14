@@ -105,9 +105,9 @@ bool ActionInterval::init(float duration) {
 	// prevent division by 0
 	// This comparison could be in step:, but it might decrease the performance
 	// by 3% in heavy based action games.
-	_duration = std::max(_duration, FLT_EPSILON);
+	_duration = std::max(_duration, sprt::Epsilon<float>);
 	if (_duration == 0) {
-		_duration = FLT_EPSILON;
+		_duration = sprt::Epsilon<float>;
 	}
 
 	_elapsed = 0;
@@ -139,7 +139,9 @@ void ActionInterval::startWithTarget(Node *target) {
 	_firstTick = true;
 }
 
-void ActionInterval::setDuration(float duration) { _duration = std::max(_duration, FLT_EPSILON); }
+void ActionInterval::setDuration(float duration) {
+	_duration = std::max(_duration, sprt::Epsilon<float>);
+}
 
 bool Speed::init(Rc<ActionInterval> &&action, float speed) {
 	XLASSERT(action != nullptr, "action must not be NULL");

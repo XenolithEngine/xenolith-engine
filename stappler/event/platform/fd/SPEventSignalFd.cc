@@ -216,15 +216,6 @@ bool SignalFdHandle::read() {
 	return false;
 }
 
-#if ANDROID
-int sigisemptyset(const sigset_t *set) {
-	sigset_t sigset;
-	::sigemptyset(&sigset);
-
-	return memcmp(set, &sigset, sizeof(sigset_t)) == 0;
-}
-#endif
-
 bool SignalFdHandle::process() {
 	if (_info.ssi_signo == 0) {
 		return false;

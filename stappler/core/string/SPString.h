@@ -183,13 +183,15 @@ void apply(Container &c, const Callback<void(typename Container::value_type &)> 
 // fast tolower for C locale
 template <typename Container>
 void apply_tolower_c(Container &c) {
-	stappler::string::apply(c, [](typename Container::value_type &ch) { ch = std::tolower(ch); });
+	stappler::string::apply(c,
+			[](typename Container::value_type &ch) { ch = sprt::tolower_c(ch); });
 }
 
 // fast toupper for C locale
 template <typename Container>
 void apply_toupper_c(Container &c) {
-	stappler::string::apply(c, [](typename Container::value_type &ch) { ch = std::toupper(ch); });
+	stappler::string::apply(c,
+			[](typename Container::value_type &ch) { ch = sprt::toupper_c(ch); });
 }
 
 template <typename Interface>

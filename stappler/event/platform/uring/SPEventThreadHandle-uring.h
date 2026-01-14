@@ -27,7 +27,7 @@
 #include "../fd/SPEventEventFd.h"
 #include "SPEvent-uring.h"
 
-#if LINUX
+#if LINUX || ANDROID
 
 namespace STAPPLER_VERSIONIZED stappler::event {
 

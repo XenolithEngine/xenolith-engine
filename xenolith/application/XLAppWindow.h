@@ -93,7 +93,7 @@ public:
 	void setReadyForNextFrame() override; // from any thread
 
 	// Block current thread until next frame
-	bool waitUntilFrame();
+	virtual bool waitUntilFrame() override;
 
 	void setPresentationOnDemand(bool value); // from any thread
 	bool isPresentationOnDemand() const; // from any thread

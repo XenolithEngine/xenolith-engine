@@ -191,7 +191,7 @@ bool Scene2d::init(NotNull<AppThread> app, NotNull<AppWindow> window,
 #if MODULE_XENOLITH_BACKEND_VK
 
 	basic2d::vk::ShadowPass::RenderQueueInfo info{
-		app->getContext()->getGlLoop(),
+		static_cast<core::Loop *>(app->getContext()->getGlLoop()),
 		queueInfo.extent,
 		basic2d::vk::ShadowPass::Flags::None,
 		queueInfo.backgroundColor,

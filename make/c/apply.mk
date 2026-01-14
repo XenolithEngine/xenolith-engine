@@ -27,7 +27,7 @@ endif
 # Для Android в пути к библоитеке используется символ-заместитель для архитектуры, потому используется abspath вместо realpath
 ifndef BUILD_SHARED
 ifdef ANDROID
-BUILD_LIBS := $(call sp_toolkit_resolve_libs, $(abspath $(addprefix $(GLOBAL_ROOT)/,$(BUILD_LIBRARY_PATH))), $(TOOLKIT_LIBS)) $(LDFLAGS)
+BUILD_LIBS := $(call sp_toolkit_resolve_libs, $(abspath $(BUILD_LIBRARY_PATH)), $(TOOLKIT_LIBS)) $(LDFLAGS)
 else
 RPATH_PREFIX := -Wl,-rpath,
 BUILD_LIBS := \
@@ -143,8 +143,8 @@ BUILD_ALL_FLAGS := \
 	$(BUILD_CONFIG_STRINGS)
 
 # Сравниваем итоговые флаги с кешированными
-ifndef TARGET_ARCH_ABI
-TARGET_ARCH_ABI := $$(TARGET_ARCH_ABI)
+ifndef BUILD_ARCH
+BUILD_ARCH := $$(BUILD_ARCH)
 endif
 
 -include $(TOOLKIT_CACHED_FLAGS)

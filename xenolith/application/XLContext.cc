@@ -349,7 +349,16 @@ void Context::handleGraphicsLoaded(NotNull<sprt::window::gapi::Loop> loop) {
 #endif
 }
 
-Value Context::saveState() { return Value(); }
+Value Context::saveStateValue() const { return Value(); }
+
+sprt::memory::dynbytes Context::saveState() const {
+	auto stateData = saveStateValue();
+	if (stateData) {
+		auto comp = data::write(stateData, EncodeFormat::CborCompressed);
+		return sprt::memory::dynbytes(comp.data(), comp.data() + comp.size());
+	}
+	return sprt::memory::dynbytes();
+}
 
 void Context::handleAppThreadCreated(NotNull<AppThread>) {
 	log::source().info("Context", "handleAppThreadCreated");

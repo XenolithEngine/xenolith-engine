@@ -59,6 +59,7 @@ bool TimerURingHandle::reset(TimerInfo &&info) {
 	auto hasMultiTimer =
 			hasFlag(reinterpret_cast<URingData *>(_class->info->data->_platformQueue)->_uflags,
 					URingFlags::TimerMultishotSupported);
+
 	if (info.count == 1 || (hasMultiTimer && info.count != TimerInfo::Infinite)) {
 		if (info.completion) {
 			_completion = move(info.completion);

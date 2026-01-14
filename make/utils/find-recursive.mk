@@ -96,5 +96,5 @@ sp_make_general_include_list = \
 			)\
 		)\
 		$(call sp_add_root,$(3),$(filter-out /%,$(2))) \
-		$(filter /%,$(2)) \
-	)
+	) \
+	$(filter /%,$(2))

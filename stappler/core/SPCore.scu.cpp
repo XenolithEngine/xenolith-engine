@@ -47,9 +47,6 @@ THE SOFTWARE.
 #include "SPStatus.cc"
 #include "SPLocaleInfo.cc"
 
-#include "SPIdn.cc"
-#include "SPIdnTld.cc"
-
 #include "SPMetastring.h"
 #include <sprt/runtime/platform.h>
 

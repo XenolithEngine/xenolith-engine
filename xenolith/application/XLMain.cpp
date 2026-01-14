@@ -31,10 +31,8 @@
 
 #if ANDROID
 
-#include "jni/SPRuntimeJni.h"
-
-#include <android/native_activity.h>
-#include <android/configuration.h>
+#include <sprt/jni/jni.h>
+#include <sprt/jni/native_activity.h>
 
 SP_EXTERN_C JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 	sprt::jni::Env::loadJava(vm);

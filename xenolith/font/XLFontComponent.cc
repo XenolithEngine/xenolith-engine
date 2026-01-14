@@ -126,7 +126,8 @@ void FontComponent::handleStart(Context *a) {
 
 #if MODULE_XENOLITH_BACKEND_VK
 	if (!_queue) {
-		if (a->getGlLoop()->getInstance()->getApi() == core::InstanceApi::Vulkan) {
+		if (static_cast<core::Loop *>(a->getGlLoop())->getInstance()->getApi()
+				== core::InstanceApi::Vulkan) {
 			_queue = Rc<vk::FontQueue>::create("FontQueue");
 		}
 	}
@@ -140,7 +141,8 @@ void FontComponent::handleStart(Context *a) {
 		handleActivated();
 	} else {
 		auto linkId = retain();
-		a->getGlLoop()->compileQueue(_queue, [this, linkId](bool success) {
+		static_cast<core::Loop *>(a->getGlLoop())
+				->compileQueue(_queue, [this, linkId](bool success) {
 			if (success) {
 				handleActivated();
 			}
@@ -300,7 +302,8 @@ void FontComponent::updateImage(event::Looper *looper, const Rc<core::DynamicIma
 		break;
 	}
 
-	_context->getGlLoop()->runRenderQueue(sp::move(req), 0, sp::move(complete));
+	static_cast<core::Loop *>(_context->getGlLoop())
+			->runRenderQueue(sp::move(req), 0, sp::move(complete));
 }
 
 void FontComponent::handleActivated() {
