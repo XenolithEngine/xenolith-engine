@@ -21,6 +21,7 @@
  **/
 
 #include "private/window/linux/SPRTWinLinuxController.h"
+#include "private/window/linux/SPRTWinLinuxDBusController.h"
 #include "private/window/linux/SPRTWinLinuxXcbConnection.h"
 #include "private/window/linux/SPRTWinLinuxXcbWindow.h"
 #include "private/window/linux/SPRTWinLinuxXcbLibrary.h"
@@ -75,6 +76,11 @@ void LinuxContextController::acquireDefaultConfig(ContextConfig &config,
 		config.window->flags |=
 				WindowCreationFlags::Regular | WindowCreationFlags::PreferServerSideDecoration;
 	}
+}
+
+Rc<LinuxContextController> LinuxContextController::create(NotNull<Context> ctx, ContextConfig &&cfg,
+		NotNull<LooperAdapter> looper) {
+	return Rc<LinuxContextController>::create(ctx, sprt::move(cfg), looper);
 }
 
 bool LinuxContextController::init(NotNull<Context> ctx, ContextConfig &&config,

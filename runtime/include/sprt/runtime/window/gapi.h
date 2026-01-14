@@ -85,6 +85,11 @@ public:
 class SPRT_API Loop : public Ref {
 public:
 	virtual ~Loop() = default;
+
+	const LoopInfo *getInfo() const { return _info; }
+
+protected:
+	Rc<LoopInfo> _info;
 };
 
 } // namespace sprt::window::gapi

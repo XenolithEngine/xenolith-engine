@@ -107,26 +107,6 @@ bool istpunct(char c) {
 	return smart_lookup_table[((const uint8_t *)&c)[0]] & toInt(SmartType::TextPunctuation);
 }
 
-char tolower_c(char c) { return __sprt_tolower(c); }
-
-char16_t tolower_c(char16_t c) {
-	return static_cast<char16_t>(__sprt_towlower(static_cast<__sprt_wint_t>(c)));
-}
-
-char32_t tolower_c(char32_t c) {
-	return static_cast<char32_t>(__sprt_towlower(static_cast<__sprt_wint_t>(c)));
-}
-
-char toupper_c(char c) { return __sprt_toupper(c); }
-
-char16_t toupper_c(char16_t c) {
-	return static_cast<char16_t>(__sprt_towupper(static_cast<__sprt_wint_t>(c)));
-}
-
-char32_t toupper_c(char32_t c) {
-	return static_cast<char32_t>(__sprt_towupper(static_cast<__sprt_wint_t>(c)));
-}
-
 void nullify(const char *ptr, size_t size) { __sprt_memset((void *)ptr, 0, size * sizeof(char)); }
 
 void nullify(const char16_t *ptr, size_t size) {

@@ -20,14 +20,58 @@
  THE SOFTWARE.
  **/
 
-#include <sprt/runtime/config.h>
-#include <sprt/c/bits/__sprt_def.h>
+#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_URLVIEW_H_
+#define RUNTIME_INCLUDE_SPRT_RUNTIME_URLVIEW_H_
 
-#if __SPRT_RUNTIME_CONFIG_HAVE_WINDOW && SPRT_LINUX
+#include <sprt/runtime/stringview.h>
 
-#include "SPRTWinLinuxDBusLibrary.cc"
-#include "SPRTWinLinuxDBusController.cc"
-#include "SPRTWinLinuxDBusGnome.cc"
-#include "SPRTWinLinuxDBusKde.cc"
+namespace sprt {
 
-#endif
+struct SPRT_API UrlView {
+	enum class UrlToken {
+		Scheme,
+		User,
+		Password,
+		Host,
+		Port,
+		Path,
+		Query,
+		Fragment,
+		Blank,
+	};
+
+	StringView scheme;
+	StringView user;
+	StringView password;
+	StringView host;
+	StringView port;
+	StringView path;
+	StringView query;
+	StringView fragment;
+
+	StringView url;
+
+	static bool validateScheme(const StringView &r);
+	static bool validateHost(const StringView &r);
+	static bool validateUserOrPassword(const StringView &r);
+
+	static bool validateHost(StringView &r);
+	static bool parseUrl(StringView &s, const callback<void(StringView, UrlView::UrlToken)> &cb);
+
+	UrlView();
+	UrlView(StringView);
+
+	void clear();
+
+	bool parse(const StringView &);
+	bool parse(StringView &); // leaves unparsed part of the string in view
+
+	void get(const callback<void(StringView)> &) const;
+
+	bool isEmail() const;
+	bool isPath() const;
+};
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_URLVIEW_H_

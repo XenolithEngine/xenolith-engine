@@ -54,4 +54,12 @@ SPRT_LOCAL void terminate();
 
 } // namespace sprt::filesystem
 
+
+namespace sprt::unicode {
+
+SPRT_LOCAL bool idnToAscii(const callback<void(StringView)> &, StringView source);
+SPRT_LOCAL bool idnToUnicode(const callback<void(StringView)> &, StringView source);
+
+} // namespace sprt::unicode
+
 #endif // CORE_RUNTIME_PRIVATE_SPRTPRIVATE_H_

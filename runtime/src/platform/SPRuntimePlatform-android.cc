@@ -27,6 +27,8 @@
 
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/mutex.h>
+#include <sprt/runtime/platform.h>
+#include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/jni/jni.h>
 
 #include "private/SPRTDso.h"
@@ -36,11 +38,17 @@
 #include <unicode/urename.h>
 #include <unicode/ustring.h>
 
+#include <android/configuration.h>
 #include <stdlib.h>
 #include <sys/random.h>
-#include <android/configuration.h>
 #include <nl_types.h>
 #include <wchar.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <limits.h>
+#include <dirent.h>
+#include <string.h>
 
 namespace sprt::unicode {
 
@@ -618,27 +626,43 @@ extern "C" SPRT_GLOBAL const char *idn2_check_version(const char *req_version) {
 
 namespace sprt::platform {
 
-static char s_locale[6] = "en-us";
+struct GlobalConfig {
+	static char localeBuf[6];
 
-size_t makeRandomBytes(uint8_t *buf, size_t count) {
-	size_t generated = 0;
-	auto ret = ::getrandom(buf, count, GRND_RANDOM | GRND_NONBLOCK);
-	if (ret < ssize_t(count)) {
-		buf += ret;
-		count -= ret;
-		generated += ret;
+	qmutex s_infoMutex;
+	StringView uniqueIdBuf;
+	StringView execPathBuf;
+	StringView homePathBuf;
+	StringView locale = StringView(localeBuf);
 
-		ret = ::getrandom(buf, count, GRND_NONBLOCK | GRND_INSECURE);
-		if (ret >= 0) {
-			generated += ret;
-		}
-	} else {
-		generated += ret;
+	AppConfig config;
+
+	filesystem::LocationInfo current;
+
+	memory::pool_t *_pool = memory::pool::create(memory::self_contained_allocator);
+};
+
+char GlobalConfig::localeBuf[6] = "en-us";
+static GlobalConfig s_globalConfig;
+
+StringView getUniqueDeviceId() { return s_globalConfig.uniqueIdBuf; }
+
+StringView getExecPath() { return s_globalConfig.execPathBuf; }
+
+StringView getHomePath() {
+	if (s_globalConfig.homePathBuf.empty()) {
+		// optimistic multithreaded lazy-init
+		// it can allocate more-then needed memory but protected from general lock
+
+		auto path = StringView(getenv("HOME"));
+
+		unique_lock lock(s_globalConfig.s_infoMutex);
+		s_globalConfig.homePathBuf = path.pdup(s_globalConfig._pool);
 	}
-	return generated;
+	return s_globalConfig.homePathBuf;
 }
 
-StringView getOsLocale() { return StringView(s_locale); }
+StringView getOsLocale() { return StringView(s_globalConfig.locale); }
 
 static Dso s_self;
 
@@ -673,7 +697,35 @@ ssize_t (*_getrandom)(void *__buffer, size_t __buffer_size, unsigned int __flags
 size_t (*_wcsftime_l)(wchar_t *__buf, size_t __n, const wchar_t *__fmt, const struct tm *__tm,
 		locale_t __l) = nullptr;
 
-bool initialize(int &resultCode) {
+static bool checkApkFile(StringView path) {
+	int fd = ::open(path.data(), O_RDONLY);
+	if (fd == -1) {
+		return false;
+	}
+
+	if (auto f = fdopen(fd, "r")) {
+		fclose(f);
+		return true;
+	}
+
+	close(fd);
+	return false;
+}
+
+bool initialize(sprt::AppConfig &&appcfg, int &resultCode) {
+	s_globalConfig.config.bundleName = appcfg.bundleName.pdup(s_globalConfig._pool);
+	s_globalConfig.config.bundlePath = appcfg.bundlePath.pdup(s_globalConfig._pool);
+	s_globalConfig.config.pathScheme = appcfg.pathScheme;
+
+	s_globalConfig.current.lookupType = filesystem::LookupFlags::Public
+			| filesystem::LookupFlags::Shared | filesystem::LookupFlags::Writable;
+	s_globalConfig.current.locationFlags = filesystem::LocationFlags::Writable;
+	s_globalConfig.current.interface = filesystem::getDefaultInterface();
+
+	filesystem::getCurrentDir([&](StringView path) {
+		s_globalConfig.current.path = path.pdup(s_globalConfig._pool);
+	});
+
 	s_self = Dso(StringView(), DsoFlags::Self);
 	if (s_self) {
 		_timespec_get = s_self.sym<decltype(_timespec_get)>("timespec_get");
@@ -698,10 +750,77 @@ bool initialize(int &resultCode) {
 	}
 
 	// init locale
+	auto app = jni::Env::getApp();
+	auto env = jni::Env::getEnv();
+
+	auto apkPath = app->classLoader.getApkPath();
+
+	if (apkPath.empty() || !checkApkFile(apkPath)) {
+		char fullpath[PATH_MAX] = "/proc/self/fd/";
+		char refpath[PATH_MAX] = {0};
+		struct dirent *dp = nullptr;
+		auto dir = ::opendir("/proc/self/fd");
+		while ((dp = readdir(dir)) != NULL) {
+			if (dp->d_name[0] != '.') {
+				memcpy(fullpath + "/proc/self/fd/"_len, dp->d_name, strlen(dp->d_name) + 1);
+				auto nbytes = readlink(fullpath, refpath, PATH_MAX);
+				if (nbytes > 0) {
+					StringView path(refpath, nbytes);
+					if (path.ends_with(".apk") && path.starts_with("/data/")) {
+						if (checkApkFile(refpath)) {
+							s_globalConfig.execPathBuf =
+									StringView(refpath, nbytes).pdup(s_globalConfig._pool);
+							break;
+						}
+					}
+				}
+			}
+		}
+		closedir(dir);
+	} else {
+		s_globalConfig.execPathBuf = apkPath.pdup(s_globalConfig._pool);
+	}
+
+	auto thiz = sprt::jni::Ref(app->jApplication, env);
+	auto filesDir = app->Application.getFilesDir(thiz);
+	if (filesDir) {
+		s_globalConfig.homePathBuf = StringView(app->File.getAbsolutePath(filesDir).getString())
+											 .pdup(s_globalConfig._pool);
+	}
+
+	if (s_globalConfig.current.path.empty()) {
+		auto storageDir =
+				app->Environment.getExternalStorageDirectory(env, app->Environment.getClass());
+		if (storageDir) {
+			auto path = app->File.getAbsolutePath(storageDir);
+			if (path) {
+				s_globalConfig.current = filesystem::LocationInfo{
+					StringView(path.getString()).pdup(s_globalConfig._pool),
+					filesystem::LookupFlags::Shared | filesystem::LookupFlags::Writable,
+					filesystem::LocationFlags::Locateable,
+					filesystem::getDefaultInterface(),
+				};
+			}
+		}
+
+		if (s_globalConfig.current.path.empty()) {
+			s_globalConfig.current = filesystem::LocationInfo{
+				s_globalConfig.homePathBuf,
+				filesystem::LookupFlags::Private | filesystem::LookupFlags::Writable,
+				filesystem::LocationFlags::Locateable,
+				filesystem::getDefaultInterface(),
+			};
+		}
+	}
+
+	auto androidId = app->SettingsSecure.ANDROID_ID(env, app->SettingsSecure.getClass());
+
+	s_globalConfig.uniqueIdBuf = StringView(androidId.getString()).pdup(s_globalConfig._pool);
+
 	auto cfg = jni::Env::getApp()->config;
 	if (cfg) {
-		AConfiguration_getLanguage(cfg, platform::s_locale);
-		AConfiguration_getCountry(cfg, platform::s_locale + 3);
+		AConfiguration_getLanguage(cfg, s_globalConfig.localeBuf);
+		AConfiguration_getCountry(cfg, &s_globalConfig.localeBuf[3]);
 	}
 
 	unicode::s_icuNative = Dso("libicu.so");
@@ -727,6 +846,14 @@ bool initialize(int &resultCode) {
 
 void terminate() { unicode::s_icuNative.close(); }
 
+memory::pool_t *getConfigPool() { return s_globalConfig._pool; }
+
 } // namespace sprt::platform
+
+namespace sprt::filesystem {
+
+const LocationInfo &getCurrentLocation() { return platform::s_globalConfig.current; }
+
+} // namespace sprt::filesystem
 
 #endif

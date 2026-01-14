@@ -25,20 +25,14 @@
 #include <sprt/runtime/window/display_config.h>
 #include <sprt/runtime/log.h>
 
+#if __SPRT_RUNTIME_CONFIG_HAVE_WINDOW
+
 #if SPRT_LINUX
 #include "private/window/linux/SPRTWinLinuxController.h"
-#include "private/window/linux/SPRTWinLinuxXcbLibrary.h"
-#include "private/window/linux/SPRTWinLinuxXcbConnection.h"
-#include "private/window/linux/SPRTWinLinuxXkbLibrary.h"
-#include "private/window/linux/SPRTWinLinuxWaylandLibrary.h"
-#include "private/window/linux/SPRTWinLinuxWaylandDisplay.h"
 #endif
 
 #if SPRT_ANDROID
 #include "private/window/android/SPRTWinAndroidContextController.h"
-#include "private/window/android/SPRTWinAndroidNetworkConnectivity.h"
-#include "private/window/android/SPRTWinAndroidClipboardListener.h"
-#include "private/window/android/SPRTWinAndroidActivity.h"
 #endif
 
 namespace sprt::window {
@@ -46,16 +40,16 @@ namespace sprt::window {
 Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextConfig &&info,
 		NotNull<LooperAdapter> a) {
 #if SPRT_LINUX
-	return Rc<LinuxContextController>::create(ctx, move(info), a);
+	return LinuxContextController::create(ctx, move(info), a);
 #endif
 #if SPRT_MACOS
-	return Rc<MacosContextController>::create(ctx, move(info));
+	return MacosContextController::create(ctx, move(info));
 #endif
 #if SPRT_WINDOWS
-	return Rc<WindowsContextController>::create(ctx, move(info));
+	return WindowsContextController::create(ctx, move(info));
 #endif
 #if SPRT_ANDROID
-	return Rc<AndroidContextController>::create(ctx, move(info));
+	return AndroidContextController::create(ctx, move(info), a);
 #endif
 	log::vperror(__SPRT_LOCATION, "ContextController", "Unknown platform");
 	return nullptr;
@@ -460,3 +454,5 @@ void ContextController::notifyPendingWindows() {
 }
 
 } // namespace sprt::window
+
+#endif

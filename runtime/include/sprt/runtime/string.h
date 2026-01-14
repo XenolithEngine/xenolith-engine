@@ -106,13 +106,13 @@ SPRT_API bool isxdigit(char c);
 SPRT_API bool isbase64(char c);
 SPRT_API bool istpunct(char c);
 
-SPRT_API char tolower_c(char);
-SPRT_API char16_t tolower_c(char16_t);
-SPRT_API char32_t tolower_c(char32_t);
+SPRT_API constexpr inline char tolower_c(char c) { return __constexpr_tolower_c(c); }
+SPRT_API constexpr inline char16_t tolower_c(char16_t c) { return __constexpr_tolower_c(c); }
+SPRT_API constexpr inline char32_t tolower_c(char32_t c) { return __constexpr_tolower_c(c); }
 
-SPRT_API char toupper_c(char);
-SPRT_API char16_t toupper_c(char16_t);
-SPRT_API char32_t toupper_c(char32_t);
+SPRT_API constexpr inline char toupper_c(char c) { return __constexpr_toupper_c(c); }
+SPRT_API constexpr inline char16_t toupper_c(char16_t c) { return __constexpr_toupper_c(c); }
+SPRT_API constexpr inline char32_t toupper_c(char32_t c) { return __constexpr_toupper_c(c); }
 
 SPRT_API void nullify(const char *, size_t);
 SPRT_API void nullify(const char16_t *, size_t);

@@ -103,12 +103,6 @@ struct SPRT_API ClipboardContentProviderProxy : jni::ClassProxy {
 	using jni::ClassProxy::ClassProxy;
 };
 
-//SP_PUBLIC void saveApplicationInfo(const Value &);
-//SP_PUBLIC Value loadApplicationInfo();
-
-SPRT_API void saveMessageToken(StringView);
-SPRT_API String loadMessageToken();
-
 } // namespace sprt::window
 
 #endif

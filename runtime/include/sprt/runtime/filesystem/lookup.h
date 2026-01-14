@@ -241,6 +241,11 @@ struct LocationInfo;
 	When an action is executed, LocationInfo is used to construct absolute paths from relative paths.
 */
 struct LocationInterface {
+	static constexpr __sprt_mode_t DirMode = __SPRT_S_IRUSR | __SPRT_S_IWUSR | __SPRT_S_IXUSR
+			| __SPRT_S_IRGRP | __SPRT_S_IXGRP | __SPRT_S_IROTH | __SPRT_S_IXOTH;
+	static constexpr __sprt_mode_t FileMode =
+			__SPRT_S_IRUSR | __SPRT_S_IWUSR | __SPRT_S_IRGRP | __SPRT_S_IROTH;
+
 	Status (*_access)(const LocationInfo &, StringView path, Access) = nullptr;
 	Status (*_stat)(const LocationInfo &, StringView path, struct __SPRT_STAT_NAME *) = nullptr;
 
@@ -308,6 +313,12 @@ SPRT_API bool getCurrentDir(const callback<void(StringView)> &, StringView = Str
 SPRT_API StringView readVariable(memory::pool_t *pool, StringView key);
 
 SPRT_API LocationCategory getResourceCategoryByPrefix(StringView prefix);
+
+SPRT_API void enumeratePaths(const LookupInfo &res, StringView ifilename, LookupFlags flags,
+		Access a, const callback<bool(const LocationInfo &, StringView)> &cb);
+
+SPRT_API void enumeratePaths(LocationCategory t, LookupFlags flags,
+		const callback<bool(const LocationInfo &, StringView)> &cb);
 
 } // namespace sprt::filesystem
 

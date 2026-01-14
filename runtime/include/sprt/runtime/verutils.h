@@ -24,6 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_VERUTILS_H_
 
 #include <sprt/runtime/int.h>
+#include <sprt/runtime/stringview.h>
 
 namespace sprt {
 
@@ -47,6 +48,26 @@ inline constexpr uint32_t SPRT_VERSION_MAJOR(uint32_t index) {
 
 inline constexpr uint32_t SPRT_VERSION_VARIANT(uint32_t index) {
 	return uint32_t(index >> 29 & 0b111);
+}
+
+inline uint32_t SPRT_MAKE_VERSION(StringView version) {
+	uint32_t ver[4];
+	uint32_t i = 0;
+	version.split<StringView::Chars<'.'>>([&](StringView str) {
+		if (i < 4) {
+			ver[i++] = uint32_t(str.readInteger(10).get(0));
+		}
+	});
+
+	uint32_t verCode = 0;
+	switch (i) {
+	case 0: verCode = SPRT_MAKE_VERSION(0, 0, 1, 0); break;
+	case 1: verCode = SPRT_MAKE_VERSION(0, ver[0], 0, 0); break;
+	case 2: verCode = SPRT_MAKE_VERSION(0, ver[0], ver[1], 0); break;
+	case 3: verCode = SPRT_MAKE_VERSION(0, ver[0], ver[1], ver[2]); break;
+	case 4: verCode = SPRT_MAKE_VERSION(ver[0], ver[1], ver[2], ver[3]); break;
+	}
+	return verCode;
 }
 
 } // namespace sprt

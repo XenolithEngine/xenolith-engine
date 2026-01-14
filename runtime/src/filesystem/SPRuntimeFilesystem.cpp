@@ -37,6 +37,10 @@
 #include "SPRuntimeFilesystem-linux.cc"
 #endif
 
+#if SPRT_ANDROID
+#include "SPRuntimeFilesystem-android.cc"
+#endif
+
 namespace sprt::filesystem {
 
 bool getCurrentDir(const callback<void(StringView)> &cb, StringView path) {
@@ -248,6 +252,170 @@ const LookupInfo *getLookupInfo(LocationCategory cat) {
 		return &detail::LookupData::get()->_resourceLocations[toInt(cat)];
 	}
 	return nullptr;
+}
+
+using EnumListType = memory::forward_list<sprt::filesystem::LocationInfo>;
+
+// We need FileInfo for root constraints
+static bool _mkdir_recursive(const LocationInfo &info, StringView path) {
+	if (info.path.empty()) {
+		return false;
+	}
+
+	// check if root dir exists
+	auto root = filepath::root(path);
+	auto rootInfo = info;
+	rootInfo.path = filepath::root(info.path);
+
+	auto err = info.interface->_access(info, root, Access::Exists);
+	if (err != Status::Ok) {
+		if (!_mkdir_recursive(info, root)) {
+			return false;
+		}
+	}
+
+	return info.interface->_mkdir(info, path, LocationInterface::DirMode) == Status::Ok;
+}
+
+// recursive-logic trick - ordered enumeration without sorting
+template <typename FileCallback>
+static bool enumerateOrdered(LookupFlags order, const EnumListType &paths,
+		EnumListType::const_iterator it, FileCallback &&cb) {
+	if (it == paths.end()) {
+		return true;
+	}
+
+	bool performInFront = true;
+	auto &path = *it;
+	switch (order) {
+	case LookupFlags::PrivateFirst:
+		if (hasFlag(path.lookupType, LookupFlags::Private)) {
+			performInFront = true;
+		} else {
+			performInFront = false;
+		}
+		break;
+	case LookupFlags::PublicFirst:
+		if (hasFlag(path.lookupType, LookupFlags::Public)) {
+			performInFront = true;
+		} else {
+			performInFront = false;
+		}
+		break;
+	case LookupFlags::SharedFirst:
+		if (hasFlag(path.lookupType, LookupFlags::Shared)) {
+			performInFront = true;
+		} else {
+			performInFront = false;
+		}
+		break;
+	default: break;
+	}
+
+	if (performInFront) {
+		if (!cb(path)) {
+			return false;
+		}
+		auto next = it;
+		++next;
+		if (next != paths.end()) {
+			return enumerateOrdered(order, paths, next, cb);
+		}
+	} else {
+		auto next = it;
+		++next;
+		if (next != paths.end()) {
+			if (!enumerateOrdered(order, paths, next, cb)) {
+				return false;
+			}
+		}
+		if (!cb(path)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+static void initResource(sprt::filesystem::LookupInfo &res) {
+	if (res.paths.empty()) {
+		return;
+	}
+
+	for (auto &it : res.paths) {
+		if (hasFlag(it.locationFlags, sprt::filesystem::LocationFlags::Writable)) {
+			_mkdir_recursive(it, it.path);
+
+			if (it.interface->_access(it, it.path, Access::Write) != Status::Ok) {
+				it.lookupType &= ~LookupFlags::Writable;
+			}
+		}
+	}
+
+	res.init = true;
+}
+
+void enumeratePaths(const LookupInfo &res, StringView ifilename, LookupFlags flags, Access a,
+		const callback<bool(const LocationInfo &, StringView)> &cb) {
+	bool writable = hasFlag(flags, LookupFlags::Writable);
+	auto pathFlags = flags & LookupFlags::PathMask;
+	auto orderFlags = flags & LookupFlags::OrderMask;
+
+	if (hasFlag(a, Access::Write)) {
+		pathFlags |= LookupFlags::Writable;
+	}
+
+	if (writable) {
+		sprt::unique_lock lock(res.mutex);
+		if (!res.init) {
+			initResource(const_cast<LookupInfo &>(res));
+		}
+	}
+
+	sprt::filepath::reconstructPath([&](StringView filename) {
+		enumerateOrdered(orderFlags, res.paths, res.paths.begin(),
+				[&](const sprt::filesystem::LocationInfo &info) {
+			if (writable && !hasFlag(info.lookupType, LookupFlags::Writable)) {
+				return true;
+			}
+			bool ret = true;
+			if (pathFlags == LookupFlags::None
+					|| (info.lookupType & pathFlags) != LookupFlags::None) {
+				sprt::filepath::merge([&](StringView path) {
+					if (a == Access::None || info.interface->_access(info, path, a) == Status::Ok) {
+						if (hasFlag(flags, LookupFlags::MakeDir)) {
+							_mkdir_recursive(info, filepath::root(path));
+						}
+						if (!cb(info, path)) {
+							ret = false;
+						}
+					}
+				}, info.path, filename);
+			}
+			return ret;
+		});
+	}, ifilename);
+}
+
+void enumeratePaths(LocationCategory t, LookupFlags flags,
+		const callback<bool(const LocationInfo &, StringView)> &cb) {
+	if (t < LocationCategory::Custom) {
+		auto res = sprt::filesystem::getLookupInfo(t);
+
+		if ((flags & LookupFlags::PathMask) == LookupFlags::None) {
+			flags |= res->defaultLookupFlags;
+		}
+
+		for (auto &it : res->paths) {
+			if (flags == LookupFlags::None || (it.lookupType & flags) != LookupFlags::None) {
+				if (!cb(it, it.path)) {
+					return;
+				}
+			}
+		}
+	} else {
+		sprt::filesystem::getCurrentDir(
+				[&](StringView path) { cb(sprt::filesystem::getCurrentLocation(), path); });
+	}
 }
 
 } // namespace sprt::filesystem

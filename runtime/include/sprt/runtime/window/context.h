@@ -82,6 +82,12 @@ public:
 
 	virtual Rc<gapi::Loop> makeLoop(NotNull<gapi::Instance>, NotNull<gapi::LoopInfo>) = 0;
 
+	virtual memory::pool_t *getTmpPool() const = 0;
+
+	virtual Bytes saveState() const = 0;
+
+	virtual const gapi::Loop *getGlLoop() const = 0;
+
 protected:
 	Rc<ContextInfo> _info;
 	Rc<ContextController> _controller;

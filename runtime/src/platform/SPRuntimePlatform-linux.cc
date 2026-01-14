@@ -825,24 +825,6 @@ struct GlobalConfig {
 
 static GlobalConfig s_globalConfig;
 
-size_t makeRandomBytes(uint8_t *buf, size_t count) {
-	size_t generated = 0;
-	auto ret = ::getrandom(buf, count, GRND_RANDOM | GRND_NONBLOCK);
-	if (ret < ssize_t(count)) {
-		buf += ret;
-		count -= ret;
-		generated += ret;
-
-		ret = ::getrandom(buf, count, GRND_NONBLOCK);
-		if (ret >= 0) {
-			generated += ret;
-		}
-	} else {
-		generated += ret;
-	}
-	return generated;
-}
-
 StringView getOsLocale() {
 	auto locale = ::getenv("LC_ALL");
 	if (!locale) {

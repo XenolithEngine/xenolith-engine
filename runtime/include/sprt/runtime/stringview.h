@@ -991,10 +991,6 @@ SPRT_API bool compare(WideStringView l, WideStringView r, int *result);
 SPRT_API bool caseCompare(StringView l, StringView r, int *result);
 SPRT_API bool caseCompare(WideStringView l, WideStringView r, int *result);
 
-SPRT_API bool idnToAscii(const callback<void(StringView)> &, StringView source);
-
-SPRT_API bool idnToUnicode(const callback<void(StringView)> &, StringView source);
-
 } // namespace sprt::unicode
 
 namespace sprt {
@@ -1210,8 +1206,8 @@ template <typename L, typename R, typename CharType>
 inline int caseCompare_c(const L &l, const R &r) {
 	auto ret = sprt::lexicographical_compare_pointer(l.data(), l.data() + l.size(), r.data(),
 			r.data() + r.size(), [&](const CharType &l, const CharType &r) -> int {
-		auto lc = toupper_c(l);
-		auto rc = toupper_c(r);
+		auto lc = __constexpr_toupper_c(l);
+		auto rc = __constexpr_toupper_c(r);
 		if (lc == rc) {
 			return 0;
 		} else if (lc < rc) {
@@ -1595,7 +1591,7 @@ auto StringViewBase<_CharType>::ptolower_c(memory::pool_t *p) const -> Self {
 		auto buf =
 				(_CharType *)sprt::memory::pool::palloc(p, (this->size() + 1) * sizeof(_CharType));
 		memcpy(buf, this->data(), this->size() * sizeof(_CharType));
-		for (size_t i = 0; i < this->size(); ++i) { buf[i] = tolower_c(buf[i]); }
+		for (size_t i = 0; i < this->size(); ++i) { buf[i] = __constexpr_tolower_c(buf[i]); }
 		buf[this->size()] = 0;
 		return Self(buf, this->size());
 	}
@@ -1611,7 +1607,7 @@ auto StringViewBase<_CharType>::ptoupper_c(memory::pool_t *p) const -> Self {
 		auto buf =
 				(_CharType *)sprt::memory::pool::palloc(p, (this->size() + 1) * sizeof(_CharType));
 		memcpy(buf, this->data(), this->size() * sizeof(_CharType));
-		for (size_t i = 0; i < this->size(); ++i) { buf[i] = toupper_c(buf[i]); }
+		for (size_t i = 0; i < this->size(); ++i) { buf[i] = __constexpr_toupper_c(buf[i]); }
 		buf[this->size()] = 0;
 		return Self(buf, this->size());
 	}

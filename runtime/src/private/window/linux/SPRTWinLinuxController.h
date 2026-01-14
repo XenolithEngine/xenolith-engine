@@ -27,7 +27,12 @@
 
 #if SPRT_LINUX
 
-#include "private/window/linux/SPRTWinLinuxDBusController.h"
+namespace sprt::window::dbus {
+
+class Library;
+class Controller;
+
+} // namespace sprt::window::dbus
 
 namespace sprt::window {
 
@@ -41,6 +46,9 @@ struct WaylandDisplay;
 class LinuxContextController : public ContextController {
 public:
 	static void acquireDefaultConfig(ContextConfig &, NativeContextHandle *);
+
+	static Rc<LinuxContextController> create(NotNull<Context>, ContextConfig &&,
+			NotNull<LooperAdapter>);
 
 	virtual ~LinuxContextController() = default;
 

@@ -49,8 +49,6 @@ enum class ClockType {
 	Hardware
 };
 
-SPRT_API size_t makeRandomBytes(uint8_t *buf, size_t count);
-
 // current time in microseconds (with except for Hardware, see above)
 SPRT_API uint64_t clock(ClockType = ClockType::Default);
 

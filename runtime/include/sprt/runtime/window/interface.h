@@ -39,6 +39,8 @@ public:
 	virtual void close(bool force) = 0;
 	virtual void setReadyForNextFrame() = 0;
 	virtual void update(PresentationUpdateFlags) = 0;
+
+	virtual bool waitUntilFrame() = 0;
 };
 
 class SPRT_API HandleAdapter : public Ref {
@@ -71,6 +73,8 @@ public:
 	virtual Status wakeup(bool graceful = false) = 0;
 	virtual Status run() = 0;
 
+	virtual int getHandle() const = 0;
+
 	virtual Rc<HandleAdapter> scheduleTimer(time_t timeout, time_t interval, uint32_t count, void *,
 			void (*)(void *, HandleAdapter *, uint32_t flags, Status status)) = 0;
 
@@ -82,6 +86,9 @@ public:
 
 	virtual Status performOnThread(memory::dynfunction<void()> &&func, Ref *target = nullptr,
 			bool immediate = false, StringView tag = __SPRT_LOCATION.function_name()) const = 0;
+
+	virtual Status performAsync(memory::dynfunction<void()> &&, Ref * = nullptr, bool first = false,
+			StringView tag = __SPRT_LOCATION.function_name()) const = 0;
 };
 
 } // namespace sprt::window

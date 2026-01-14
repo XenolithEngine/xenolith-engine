@@ -19,3 +19,19 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
  **/
+
+#include "private/SPRTThread.h"
+
+#if SPRT_ANDROID
+
+namespace sprt::thread {
+
+void _entry_platform(const callbacks &cb, NotNull<Ref> tm) {
+	_init(cb, tm);
+	while (_worker(cb, tm)) { }
+	_dispose(cb, tm);
+}
+
+} // namespace sprt::thread
+
+#endif

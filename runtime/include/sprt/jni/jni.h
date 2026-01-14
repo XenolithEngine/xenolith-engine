@@ -205,6 +205,12 @@ struct WebSettingsProxy : ClassProxy {
 	using ClassProxy::ClassProxy;
 };
 
+struct SettingsSecureProxy : ClassProxy {
+	StaticField< "ANDROID_ID", jstring> ANDROID_ID = this;
+
+	using ClassProxy::ClassProxy;
+};
+
 // With DexClassLoader we can load additional classes from application, that was not defined in Manifest
 struct DexClassLoaderProxy : ClassProxy {
 	Constructor<void(jstring, jstring, jstring, L<"java/lang/ClassLoader">)> constructor = this;
@@ -651,6 +657,7 @@ struct SPRT_API App : public sprt::Ref {
 	ClassFieldProxy Field = "java/lang/reflect/Field";
 	SystemProxy System = "java/lang/System";
 	WebSettingsProxy WebSettings = "android/webkit/WebSettings";
+	SettingsSecureProxy SettingsSecure = " 	android/provider/Settings$Secure";
 	DexClassLoaderProxy DexClassLoader = "dalvik/system/DexClassLoader";
 	PackageManagerProxy PackageManager = "android/content/pm/PackageManager";
 	ApplicationInfoProxy ApplicationInfo = "android/content/pm/ApplicationInfo";

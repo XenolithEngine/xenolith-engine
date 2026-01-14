@@ -208,10 +208,18 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(strftime_l)(char *__SPRT_RESTRICT buf,
 __SPRT_C_FUNC char *__SPRT_ID(
 		asctime_r)(const struct __SPRT_TM_NAME *__SPRT_RESTRICT ts, char *__SPRT_RESTRICT buf) {
 	auto native = internal::getNativeTm(ts);
+#if SPRT_ANDROID && !defined(__LP64__)
+	return ::asctime64_r(&native, buf);
+#else
 	return ::asctime_r(&native, buf);
+#endif
 }
 __SPRT_C_FUNC char *__SPRT_ID(ctime_r)(const __SPRT_ID(time_t) * t, char *buf) {
+#if SPRT_ANDROID && !defined(__LP64__)
+	return ::ctime64_r(t, buf);
+#else
 	return ::ctime_r(t, buf);
+#endif
 }
 
 __SPRT_C_FUNC void __SPRT_ID(tzset)(void) { ::tzset(); }

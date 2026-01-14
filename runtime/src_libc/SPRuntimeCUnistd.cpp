@@ -475,7 +475,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(readlink)(const char *__SPRT_RESTRICT
 		char *__SPRT_RESTRICT __buf, __SPRT_ID(size_t) __len) __SPRT_NOEXCEPT {
 	return internal::performWithNativePath(__path, [&](const char *target) {
 		// call with native path
-		auto retlen = ::readlink(target, __buf, __len);
+		auto retlen = static_cast<__SPRT_ID(ssize_t)>(::readlink(target, __buf, __len));
 		if (retlen > 0) {
 			if (!__sprt_fpath_is_posix(__buf, retlen)) {
 				// convert path in place
@@ -636,7 +636,8 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 		readlinkat)(int __dir_fd, const char *__path, char *__buf, __SPRT_ID(size_t) __buf_size) {
 	return internal::performWithNativePath(__path, [&](const char *target) {
 		// call with native path
-		auto retlen = ::readlinkat(__dir_fd, target, __buf, __buf_size);
+		auto retlen =
+				static_cast<__SPRT_ID(ssize_t)>(::readlinkat(__dir_fd, target, __buf, __buf_size));
 		if (retlen > 0) {
 			if (!__sprt_fpath_is_posix(__buf, retlen)) {
 				// convert path in place

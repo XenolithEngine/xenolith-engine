@@ -42,9 +42,12 @@ public:
 
 	static void acquireDefaultConfig(ContextConfig &);
 
+	static Rc<AndroidContextController> create(NotNull<Context>, ContextConfig &&,
+			NotNull<LooperAdapter>);
+
 	virtual ~AndroidContextController();
 
-	virtual bool init(NotNull<Context>, ContextConfig &&);
+	virtual bool init(NotNull<Context>, ContextConfig &&, NotNull<LooperAdapter>);
 
 	virtual int run(NotNull<ContextContainer>) override;
 

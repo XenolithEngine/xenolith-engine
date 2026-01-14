@@ -136,16 +136,16 @@ template <>
 inline constexpr uint64_t Min<uint64_t> = 0;
 
 template <>
-inline constexpr uint8_t Min<int8_t> = __SPRT_INT8_C(-1) - __SPRT_INT8_C(__SPRT_INT8_MAX);
+inline constexpr uint8_t Min<int8_t> = __SPRT_INT8_C(-1) - __SPRT_INT8_MAX;
 
 template <>
-inline constexpr uint16_t Min<int16_t> = __SPRT_INT16_C(-1) - __SPRT_INT16_C(__SPRT_INT16_MAX);
+inline constexpr uint16_t Min<int16_t> = __SPRT_INT16_C(-1) - __SPRT_INT16_MAX;
 
 template <>
-inline constexpr uint32_t Min<int32_t> = __SPRT_INT32_C(-1) - __SPRT_INT32_C(__SPRT_INT32_MAX);
+inline constexpr uint32_t Min<int32_t> = __SPRT_INT32_C(-1) - __SPRT_INT32_MAX;
 
 template <>
-inline constexpr uint64_t Min<int64_t> = __SPRT_INT64_C(-1) - __SPRT_INT64_C(__SPRT_INT64_MAX);
+inline constexpr uint64_t Min<int64_t> = __SPRT_INT64_C(-1) - __SPRT_INT64_MAX;
 
 template <signed_or_unsigned_integer T>
 static constexpr const int Digits =
