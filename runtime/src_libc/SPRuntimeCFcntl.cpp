@@ -34,6 +34,21 @@ THE SOFTWARE.
 
 #include <fcntl.h>
 
+// Bionic forcefully renames *64 versions with linker script, so, it can call non-64 recursively
+// To deal with it, we acquire direct pointers for *64 functions from libc
+#if SPRT_ANDROID
+namespace sprt::platform {
+
+extern int (*_creat64)(const char *_Nonnull __path, mode_t __mode);
+extern int (*_open64)(const char *_Nonnull __path, int __flags, ...);
+extern int (*_openat64)(int __dir_fd, const char *_Nonnull __path, int __flags, ...);
+extern int (*_fallocate64)(int __fd, int __mode, off64_t __offset, off64_t __length);
+extern int (*_posix_fadvise64)(int __fd, off64_t __offset, off64_t __length, int __advice);
+extern int (*_posix_fallocate64)(int __fd, off64_t __offset, off64_t __length);
+
+} // namespace sprt::platform
+#endif
+
 namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(fcntl)(int __fd, int __cmd, ...) {
@@ -48,8 +63,12 @@ __SPRT_C_FUNC int __SPRT_ID(fcntl)(int __fd, int __cmd, ...) {
 
 __SPRT_C_FUNC int __SPRT_ID(creat)(const char *path, __SPRT_ID(mode_t) __mode) {
 	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
+// call with native path
+#if SPRT_ANDROID
+		return platform::_creat64(target, __mode);
+#else
 		return ::creat64(target, __mode);
+#endif
 	}, -1);
 }
 
@@ -64,8 +83,12 @@ __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 	}
 
 	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
+	// call with native path
+#if SPRT_ANDROID
+		return platform::_open64(target, __flags, __mode);
+#else
 		return ::open64(target, __flags, __mode);
+#endif
 	}, -1);
 }
 
@@ -80,8 +103,12 @@ __SPRT_C_FUNC int __SPRT_ID(openat)(int __dir_fd, const char *path, int __flags,
 	}
 
 	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
+	// call with native path
+#if SPRT_ANDROID
+		return platform::_openat64(__dir_fd, target, __flags, __mode);
+#else
 		return ::openat64(__dir_fd, target, __flags, __mode);
+#endif
 	}, -1);
 }
 
@@ -98,17 +125,29 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 
 __SPRT_C_FUNC int __SPRT_ID(
 		fallocate)(int __fd, int __mode, __SPRT_ID(off_t) __offset, __SPRT_ID(off_t) __length) {
+#if SPRT_ANDROID
+	return platform::_fallocate64(__fd, __mode, __offset, __length);
+#else
 	return ::fallocate64(__fd, __mode, __offset, __length);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(posix_fadvise)(int __fd, __SPRT_ID(off_t) __offset,
 		__SPRT_ID(off_t) __length, int __advice) {
+#if SPRT_ANDROID
+	return platform::_posix_fadvise64(__fd, __offset, __length, __advice);
+#else
 	return ::posix_fadvise64(__fd, __offset, __length, __advice);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		posix_fallocate)(int __fd, __SPRT_ID(off_t) __offset, __SPRT_ID(off_t) __length) {
+#if SPRT_ANDROID
+	return platform::_posix_fallocate64(__fd, __offset, __length);
+#else
 	return ::posix_fallocate64(__fd, __offset, __length);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t)

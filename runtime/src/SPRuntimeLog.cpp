@@ -417,42 +417,49 @@ void print(LogType type, StringView prefix, StringView tag, StringView text) {
 		}
 	});
 #else
-	memory::dynstring prefixData;
+	static constexpr size_t StaticBufSize = 1'024;
+
+	size_t bufferOffset = 0;
+	char staticBuffer[StaticBufSize] = {0};
 	if (prefix.empty()) {
 		switch (type) {
 		case LogType::Verbose:
-			prefixData = StreamTraits<char>::toString(s_logInit.reverse, s_logInit.bold,
-					s_logInit.fcyan, "[V]", s_logInit.fdef, s_logInit.drop);
+			bufferOffset =
+					StreamTraits<char>::toStringBuf(staticBuffer, StaticBufSize, s_logInit.reverse,
+							s_logInit.bold, s_logInit.fcyan, "[V]", s_logInit.fdef, s_logInit.drop);
 			break;
 		case LogType::Debug:
-			prefixData = StreamTraits<char>::toString(s_logInit.reverse, s_logInit.bold,
-					s_logInit.fblue, "[D]", s_logInit.fdef, s_logInit.drop);
+			bufferOffset =
+					StreamTraits<char>::toStringBuf(staticBuffer, StaticBufSize, s_logInit.reverse,
+							s_logInit.bold, s_logInit.fblue, "[D]", s_logInit.fdef, s_logInit.drop);
 			break;
 		case LogType::Info:
-			prefixData = StreamTraits<char>::toString(s_logInit.reverse, s_logInit.bold,
-					s_logInit.fgreen, "[I]", s_logInit.fdef, s_logInit.drop);
+			bufferOffset = StreamTraits<char>::toStringBuf(staticBuffer, StaticBufSize,
+					s_logInit.reverse, s_logInit.bold, s_logInit.fgreen, "[I]", s_logInit.fdef,
+					s_logInit.drop);
 			break;
 		case LogType::Warn:
-			prefixData = StreamTraits<char>::toString(s_logInit.reverse, s_logInit.bold,
-					s_logInit.fyellow, "[W]", s_logInit.fdef, s_logInit.drop);
+			bufferOffset = StreamTraits<char>::toStringBuf(staticBuffer, StaticBufSize,
+					s_logInit.reverse, s_logInit.bold, s_logInit.fyellow, "[W]", s_logInit.fdef,
+					s_logInit.drop);
 			break;
 		case LogType::Error:
-			prefixData = StreamTraits<char>::toString(s_logInit.reverse, s_logInit.bold,
-					s_logInit.fred, "[E]", s_logInit.fdef, s_logInit.drop);
+			bufferOffset =
+					StreamTraits<char>::toStringBuf(staticBuffer, StaticBufSize, s_logInit.reverse,
+							s_logInit.bold, s_logInit.fred, "[E]", s_logInit.fdef, s_logInit.drop);
 			break;
 		case LogType::Fatal:
-			prefixData = StreamTraits<char>::toString(s_logInit.reverse, s_logInit.bold,
-					s_logInit.fred, "[F]", s_logInit.fdef, s_logInit.drop);
+			bufferOffset =
+					StreamTraits<char>::toStringBuf(staticBuffer, StaticBufSize, s_logInit.reverse,
+							s_logInit.bold, s_logInit.fred, "[F]", s_logInit.fdef, s_logInit.drop);
 			break;
 		}
-		prefix = prefixData;
 	}
 
-	auto bufSize = prefix.size() + 1 + tag.size() + 2 + text.size() + 3;
-	auto buf = new char[bufSize];
+	//auto bufSize = prefix.size() + 1 + tag.size() + 2 + text.size() + 3;
 
-	auto freeSize = bufSize;
-	auto target = buf;
+	auto freeSize = StaticBufSize - bufferOffset;
+	auto target = &staticBuffer[bufferOffset];
 
 	target = strappend(target, &freeSize, prefix.data(), prefix.size());
 	target = strappend(target, &freeSize, " ", 1);
@@ -464,7 +471,7 @@ void print(LogType type, StringView prefix, StringView tag, StringView text) {
 	target = strappend(target, &freeSize, "\n", 1);
 #endif
 
-	::__sprt_fwrite(buf, target - buf, 1, __sprt_stderr_impl());
+	::__sprt_fwrite(staticBuffer, target - staticBuffer, 1, __sprt_stderr_impl());
 	::__sprt_fflush(__sprt_stderr_impl());
 #endif // platform switch
 }

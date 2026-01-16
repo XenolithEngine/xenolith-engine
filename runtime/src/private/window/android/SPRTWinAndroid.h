@@ -92,7 +92,7 @@ struct SPRT_API ActivityProxy : public sprt::Ref {
 };
 
 struct SPRT_API ClipboardContentProviderProxy : jni::ClassProxy {
-	jni::StaticField<"Self", jni::L<"org/stappler/xenolith/core/ClipboardContentProvider">> Self =
+	jni::StaticField<"Self", jni::L<"org/stappler/runtime/ClipboardContentProvider">> Self =
 			this;
 	jni::Method<"getNative", jlong()> getNative = this;
 	jni::Method<"setNative", void(jlong)> setNative = this;

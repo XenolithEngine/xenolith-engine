@@ -110,6 +110,8 @@ extern int (*_getentropy)(void *__buffer, size_t __buffer_size);
 
 extern ssize_t (*_getrandom)(void *__buffer, size_t __buffer_size, unsigned int __flags);
 
+extern void *(*_aligned_alloc)(size_t __alignment, size_t __size);
+
 } // namespace sprt::platform
 
 #endif

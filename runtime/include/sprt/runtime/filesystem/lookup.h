@@ -207,7 +207,13 @@ enum class OpenFlags : uint32_t {
 	CreateExclusive = 1 << 5,
 	DelOnClose = 1 << 6,
 
+	// Optional hints for prefetching, use one of:
+	ReadHintRandom = 1 << 28, // Random access (default it no other hints)
+	ReadHintStreaming = 1 << 29, // Sequential read (possibly with seek)
+	ReadHintOneshotBuffer = 1 << 30, // Oneshot read into preallocated buffer
+
 	Override = Write | Create | Truncate,
+	ReadHints = ReadHintRandom | ReadHintStreaming | ReadHintOneshotBuffer
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(OpenFlags)

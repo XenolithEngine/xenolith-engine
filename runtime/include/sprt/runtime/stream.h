@@ -336,6 +336,16 @@ struct StreamTraits {
 	}
 
 	template <typename... Args>
+	static size_t toStringBuf(CharType *buf, size_t bufferSize, Args &&...args) {
+		auto target = buf;
+		auto targetSize = bufferSize;
+		__processArgs<CharType>([&](StringViewBase<CharType> str) {
+			target = strappend(target, &targetSize, str.data(), str.size());
+		}, forward<Args>(args)...);
+		return target - buf;
+	}
+
+	template <typename... Args>
 	static constexpr void merge(const callback<void(StringView)> &cb, Args &&...args) {
 		auto bufferSize = calculateSize(forward<Args>(args)...);
 

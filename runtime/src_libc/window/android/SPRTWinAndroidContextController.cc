@@ -441,7 +441,7 @@ Status AndroidContextController::writeToClipboard(Rc<ClipboardData> &&data) {
 	}
 
 	if (data->label.empty()) {
-		data->label = "Xenolith Clipboard";
+		data->label = "Stappler Clipboard";
 	}
 
 	if (data->types.size() == 1) {
@@ -555,6 +555,12 @@ void AndroidContextController::openUrl(StringView str) {
 	auto it = _activities.begin();
 
 	(*it)->getProxy()->Activity.startActivity(jni::Ref((*it)->getActivity()->clazz, env), intent);
+}
+
+SurfaceSupportInfo AndroidContextController::getSupportInfo() const {
+	SurfaceSupportInfo info;
+	info.backendMask.set(toInt(SurfaceBackend::Android));
+	return info;
 }
 
 void AndroidContextController::readClipboardStream(Rc<ClipboardRequest> &&req,

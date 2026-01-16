@@ -35,7 +35,7 @@ struct ANativeActivity;
 struct AAssetManager;
 
 #ifndef SP_JAVA_APPLICATION_CLASS
-#define SP_JAVA_APPLICATION_CLASS "org/stappler/core/Application"
+#define SP_JAVA_APPLICATION_CLASS "org/stappler/runtime/Application"
 #endif
 
 /* Use Application from org.stappler.core library as the base class of android application
@@ -90,6 +90,12 @@ struct ApplicationProxy : ClassProxy {
 	using ClassProxy::ClassProxy;
 };
 
+struct AssetManagerProxy : ClassProxy {
+	Method<"list", A<jstring>(jstring)> list = this;
+
+	using ClassProxy::ClassProxy;
+};
+
 struct ContentResolverProxy : ClassProxy {
 	Method<"openAssetFileDescriptor",
 			L<"android.content.res.AssetFileDescriptor">(L<"android.net.Uri">, jstring)>
@@ -119,7 +125,8 @@ struct UCharacterProxy : jni::ClassProxy {
 
 	jni::StaticMethod<"toLowerCase", jstring(jstring)> toLowerString = this;
 	jni::StaticMethod<"toUpperCase", jstring(jstring)> toUpperString = this;
-	jni::StaticMethod<"toTitleCase", jstring(jstring)> toTitleString = this;
+	jni::StaticMethod<"toTitleCase", jstring(jstring, L<"android/icu/text/BreakIterator">)>
+			toTitleString = this;
 
 	using jni::ClassProxy::ClassProxy;
 };
@@ -130,7 +137,7 @@ struct CollatorProxy : jni::ClassProxy {
 	jni::StaticField<"TERTIARY", jint> TERTIARY = this;
 	jni::StaticField<"QUATERNARY", jint> QUATERNARY = this;
 
-	jni::StaticMethod<"getInstance", jni::L<"android/icu/text/Collator;">()> getInstance = this;
+	jni::StaticMethod<"getInstance", jni::L<"android/icu/text/Collator">()> getInstance = this;
 	jni::Method<"setStrength", void(jint)> setStrength = this;
 	jni::Method<"compare", jint(jstring, jstring)> _compare = this;
 
@@ -649,6 +656,7 @@ struct SPRT_API App : public sprt::Ref {
 	ClassLoader classLoader;
 
 	ApplicationProxy Application = SP_JAVA_APPLICATION_CLASS;
+	AssetManagerProxy AssetManager = "android/content/res/AssetManager";
 	ContentResolverProxy ContentResolver = "android/content/ContentResolver";
 	ClassClassProxy Class = "java/lang/Class";
 	FileProxy File = "java/io/File";
@@ -657,7 +665,7 @@ struct SPRT_API App : public sprt::Ref {
 	ClassFieldProxy Field = "java/lang/reflect/Field";
 	SystemProxy System = "java/lang/System";
 	WebSettingsProxy WebSettings = "android/webkit/WebSettings";
-	SettingsSecureProxy SettingsSecure = " 	android/provider/Settings$Secure";
+	SettingsSecureProxy SettingsSecure = "android/provider/Settings$Secure";
 	DexClassLoaderProxy DexClassLoader = "dalvik/system/DexClassLoader";
 	PackageManagerProxy PackageManager = "android/content/pm/PackageManager";
 	ApplicationInfoProxy ApplicationInfo = "android/content/pm/ApplicationInfo";

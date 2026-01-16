@@ -32,7 +32,6 @@
 #include <sprt/jni/jni.h>
 
 #include "private/SPRTDso.h"
-#include "private/SPRTSpecific.h"
 
 #include <unicode/uchar.h>
 #include <unicode/urename.h>
@@ -41,8 +40,6 @@
 #include <android/configuration.h>
 #include <stdlib.h>
 #include <sys/random.h>
-#include <nl_types.h>
-#include <wchar.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -80,7 +77,7 @@ bool toupper(jni::App *app, const callback<void(StringView)> &cb, StringView dat
 bool totitle(jni::App *app, const callback<void(StringView)> &cb, StringView data) {
 	auto env = jni::Env::getEnv();
 	auto ret =
-			app->UCharacter.toTitleString(app->UCharacter.getClass().ref(env), env.newString(data))
+			app->UCharacter.toTitleString(app->UCharacter.getClass().ref(env), env.newString(data), nullptr)
 					.getString();
 	cb(ret);
 	return true;
@@ -107,7 +104,7 @@ bool toupper(jni::App *app, const callback<void(WideStringView)> &cb, WideString
 bool totitle(jni::App *app, const callback<void(WideStringView)> &cb, WideStringView data) {
 	auto env = jni::Env::getEnv();
 	auto ret =
-			app->UCharacter.toTitleString(app->UCharacter.getClass().ref(env), env.newString(data))
+			app->UCharacter.toTitleString(app->UCharacter.getClass().ref(env), env.newString(data), nullptr)
 					.getWideString();
 	cb(ret);
 	return true;
@@ -664,39 +661,6 @@ StringView getHomePath() {
 
 StringView getOsLocale() { return StringView(s_globalConfig.locale); }
 
-static Dso s_self;
-
-int (*_timespec_get)(struct timespec *__ts, int __base) = nullptr;
-int (*_timespec_getres)(struct timespec *__ts, int __base) = nullptr;
-int (*_getlogin_r)(char *__buffer, size_t __buffer_size) = nullptr;
-ssize_t (*_copy_file_range)(int __fd_in, off_t *__off_in, int __fd_out, off_t *__off_out,
-		size_t __length, unsigned int __flags) = nullptr;
-int (*_futimes)(int __fd, const struct timeval __times[2]) = nullptr;
-int (*_lutimes)(const char *__path, const struct timeval __times[2]) = nullptr;
-int (*_futimesat)(int __dir_fd, const char *__path, const struct timeval __times[2]) = nullptr;
-int (*_sync_file_range)(int __fd, off64_t __offset, off64_t __length,
-		unsigned int __flags) = nullptr;
-int (*_mlock2)(const void *__addr, size_t __size, int __flags) = nullptr;
-int (*_memfd_create)(const char *__name, unsigned __flags) = nullptr;
-
-nl_catd (*_catopen)(const char *__name, int __flag) = nullptr;
-char *(*_catgets)(nl_catd __catalog, int __set_number, int __msg_number,
-		const char *__msg) = nullptr;
-int (*_catclose)(nl_catd __catalog) = nullptr;
-
-int (*_pthread_setschedprio)(pthread_t __pthread, int __priority) = nullptr;
-
-char *(*_ctermid)(char *__buf) = nullptr;
-
-int (*_getsubopt)(char **__option, char *const *__tokens, char **__value_ptr) = nullptr;
-
-int (*_getentropy)(void *__buffer, size_t __buffer_size) = nullptr;
-
-ssize_t (*_getrandom)(void *__buffer, size_t __buffer_size, unsigned int __flags) = nullptr;
-
-size_t (*_wcsftime_l)(wchar_t *__buf, size_t __n, const wchar_t *__fmt, const struct tm *__tm,
-		locale_t __l) = nullptr;
-
 static bool checkApkFile(StringView path) {
 	int fd = ::open(path.data(), O_RDONLY);
 	if (fd == -1) {
@@ -725,29 +689,6 @@ bool initialize(sprt::AppConfig &&appcfg, int &resultCode) {
 	filesystem::getCurrentDir([&](StringView path) {
 		s_globalConfig.current.path = path.pdup(s_globalConfig._pool);
 	});
-
-	s_self = Dso(StringView(), DsoFlags::Self);
-	if (s_self) {
-		_timespec_get = s_self.sym<decltype(_timespec_get)>("timespec_get");
-		_timespec_getres = s_self.sym<decltype(_timespec_getres)>("timespec_getres");
-		_getlogin_r = s_self.sym<decltype(_getlogin_r)>("getlogin_r");
-		_copy_file_range = s_self.sym<decltype(_copy_file_range)>("copy_file_range");
-		_futimes = s_self.sym<decltype(_futimes)>("futimes");
-		_lutimes = s_self.sym<decltype(_lutimes)>("lutimes");
-		_futimesat = s_self.sym<decltype(_futimesat)>("futimesat");
-		_sync_file_range = s_self.sym<decltype(_sync_file_range)>("sync_file_range");
-		_mlock2 = s_self.sym<decltype(_mlock2)>("mlock2");
-		_memfd_create = s_self.sym<decltype(_memfd_create)>("memfd_create");
-		_catopen = s_self.sym<decltype(_catopen)>("catopen");
-		_catgets = s_self.sym<decltype(_catgets)>("catgets");
-		_catclose = s_self.sym<decltype(_catclose)>("catclose");
-		_pthread_setschedprio = s_self.sym<decltype(_pthread_setschedprio)>("pthread_setschedprio");
-		_ctermid = s_self.sym<decltype(_ctermid)>("ctermid");
-		_getsubopt = s_self.sym<decltype(_getsubopt)>("getsubopt");
-		_getentropy = s_self.sym<decltype(_getentropy)>("getentropy");
-		_getrandom = s_self.sym<decltype(_getrandom)>("getrandom");
-		_wcsftime_l = s_self.sym<decltype(_wcsftime_l)>("wcsftime_l");
-	}
 
 	// init locale
 	auto app = jni::Env::getApp();

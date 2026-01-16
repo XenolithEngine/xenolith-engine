@@ -44,9 +44,9 @@ class AndroidWindow;
 class SPRT_API AndroidActivity : public Ref {
 public:
 	static constexpr StringView NetworkConnectivityClassName =
-			"org.stappler.xenolith.appsupport.NetworkConnectivity";
+			"org.stappler.runtime.NetworkConnectivity";
 	static constexpr StringView NetworkConnectivityClassPath =
-			"org/stappler/xenolith/appsupport/NetworkConnectivity";
+			"org/stappler/runtime/NetworkConnectivity";
 
 	static constexpr int FLAG_ACTIVITY_NEW_TASK = 268'435'456;
 

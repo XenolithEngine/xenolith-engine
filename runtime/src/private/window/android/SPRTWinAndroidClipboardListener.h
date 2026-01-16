@@ -30,18 +30,18 @@
 namespace sprt::window {
 
 struct SPRT_API ClipboardListener : public Ref {
-	static constexpr StringView ClassName = "org.stappler.xenolith.core.ClipboardListener";
-	static constexpr StringView ClassPath = "org/stappler/xenolith/core/ClipboardListener";
+	static constexpr StringView ClassName = "org.stappler.runtime.ClipboardListener";
+	static constexpr StringView ClassPath = "org/stappler/runtime/ClipboardListener";
 
 	struct NetworkConnectivityProxy : jni::ClassProxy {
 		jni::StaticMethod<"create",
-				jni::L<"org/stappler/xenolith/core/ClipboardListener">(
+				jni::L<"org/stappler/runtime/ClipboardListener">(
 						jni::L<"android.content.Context">, jlong)>
 				create = this;
 		jni::Method<"finalize", void()> finalize = this;
 
 		using jni::ClassProxy ::ClassProxy;
-	} proxy = "org/stappler/xenolith/core/ClipboardListener";
+	} proxy = "org/stappler/runtime/ClipboardListener";
 
 	jni::Global thiz = nullptr;
 	Function<void()> callback;

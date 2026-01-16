@@ -33,19 +33,19 @@ namespace sprt::window {
 
 struct NetworkConnectivity : public Ref {
 	static constexpr StringView NetworkConnectivityClassName =
-			"org.stappler.xenolith.core.NetworkConnectivity";
+			"org.stappler.runtime.NetworkConnectivity";
 	static constexpr StringView NetworkConnectivityClassPath =
-			"org/stappler/xenolith/core/NetworkConnectivity";
+			"org/stappler/runtime/NetworkConnectivity";
 
 	struct NetworkConnectivityProxy : jni::ClassProxy {
 		jni::StaticMethod<"create",
-				jni::L<"org/stappler/xenolith/core/NetworkConnectivity">(
+				jni::L<"org/stappler/runtime/NetworkConnectivity">(
 						jni::L<"android.content.Context">, jlong)>
 				create = this;
 		jni::Method<"finalize", void()> finalize = this;
 
 		using jni::ClassProxy ::ClassProxy;
-	} proxy = "org/stappler/xenolith/core/NetworkConnectivity";
+	} proxy = "org/stappler/runtime/NetworkConnectivity";
 
 	jni::Global thiz = nullptr;
 	NetworkFlags flags = NetworkFlags::None;

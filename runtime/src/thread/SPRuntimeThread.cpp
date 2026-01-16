@@ -81,7 +81,7 @@ const info *info::get() {
 }
 
 void info::set(StringView n, uint32_t w, bool m) {
-	n.performWithTerminated([](const char *tname, size_t) {
+	n.pdup(tl_threadInfo.threadPool).performWithTerminated([](const char *tname, size_t) {
 		pthread_setname_np(pthread_self(), tname); //
 	});
 

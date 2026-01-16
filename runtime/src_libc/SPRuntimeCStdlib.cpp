@@ -98,9 +98,22 @@ __SPRT_C_FUNC void *__SPRT_ID(realloc_impl)(void *ptr, size_t size) { return ::r
 __SPRT_C_FUNC void __SPRT_ID(free_impl)(void *ptr) { return ::free(ptr); }
 
 __SPRT_C_FUNC void *__SPRT_ID(aligned_alloc_impl)(size_t align, size_t size) {
-#if !__SPRT_CONFIG_HAVE_ALLIGNED_ALLOC
+	if (align <= _Alignof(max_align_t)) {
+		return ::malloc(size);
+	}
+#if SPRT_ANDROID
+	if (platform::_aligned_alloc) {
+		return platform::_aligned_alloc(align, size);
+	}
+
+	void* __result = nullptr;
+	(void)::posix_memalign(&__result, align, size);
+	if (__result) {
+		return __result;
+	}
+
 	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (__SPRT_CONFIG_HAVE_ALLIGNED_ALLOC)");
+				" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
 #else

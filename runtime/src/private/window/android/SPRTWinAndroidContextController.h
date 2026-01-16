@@ -70,6 +70,8 @@ public:
 
 	virtual void openUrl(StringView) override;
 
+	virtual SurfaceSupportInfo getSupportInfo() const override;
+
 protected:
 	void readClipboardStream(Rc<ClipboardRequest> &&, const jni::Ref &, StringView type);
 
@@ -86,7 +88,7 @@ protected:
 	Rc<ClipboardData> _clipboardData;
 	String _clipboardAuthority;
 	ClipboardContentProviderProxy ClipboardContentProvider =
-			"org/stappler/xenolith/core/ClipboardContentProvider";
+			"org/stappler/runtime/ClipboardContentProvider";
 };
 
 } // namespace sprt::window

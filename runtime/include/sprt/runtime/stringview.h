@@ -192,13 +192,15 @@ public:
 	void clear() { len = 0; }
 	bool empty() const { return len == 0 || !ptr; }
 
-	bool terminated() const { return ptr[len] == 0; }
+	bool terminated() const { return ptr && ptr[len] == 0; }
 
 	template <typename Callback>
 	void performWithTerminated(const Callback &cb) {
 		static_assert(is_invocable_v<Callback, const CharType *, size_t>,
 				"Invalid callback type (expected (const Char *, size_t))");
-		if (terminated()) {
+		if (!ptr) {
+			cb("", 0);
+		} else if (terminated()) {
 			cb(data(), size());
 		} else {
 			auto buf = (char *)__sprt_malloca((size() + 1) * sizeof(CharType));

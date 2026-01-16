@@ -24,6 +24,7 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_UNISTD_H_
 
 #include <sprt/c/cross/__sprt_config.h>
+#include <sprt/c/cross/__sprt_sysconf.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_ssize_t.h>
 #include <sprt/c/bits/__sprt_time_t.h>
@@ -41,10 +42,6 @@ THE SOFTWARE.
 #define __SPRT_PC_NAME_MAX	3
 #define __SPRT_PC_PATH_MAX	4
 #define __SPRT_PC_PIPE_BUF	5
-
-#define __SPRT_SC_PAGE_SIZE	30
-#define __SPRT_SC_PAGESIZE	30
-#define __SPRT_SC_NPROCESSORS_ONLN	84
 
 __SPRT_BEGIN_DECL
 

@@ -50,13 +50,13 @@ protected:
 
 	struct DisplayConfigListener : jni::ClassProxy {
 		jni::StaticMethod<"create",
-				jni::L<"org/stappler/xenolith/core/DisplayConfigListener">(
+				jni::L<"org/stappler/runtime/DisplayConfigListener">(
 						jni::L<"android.content.Context">, jlong)>
 				create = this;
 		jni::Method<"finalize", void()> finalize = this;
 
 		using jni::ClassProxy ::ClassProxy;
-	} proxy = "org/stappler/xenolith/core/DisplayConfigListener";
+	} proxy = "org/stappler/runtime/DisplayConfigListener";
 
 	jni::Global thiz = nullptr;
 
