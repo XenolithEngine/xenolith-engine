@@ -497,7 +497,7 @@ File openForReading(const FileInfo &ipath) {
 		return File();
 	}
 
-	return File::open(ipath, OpenFlags::Read);
+	return File::open(ipath, OpenFlags::Read | OpenFlags::ReadHintStreaming);
 }
 
 bool readIntoBuffer(uint8_t *buf, const FileInfo &ipath, size_t off, size_t size) {

@@ -12,9 +12,8 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-include ':app'
-include ':stappler.core'
-include ':xenolith.core'
 
-project(':stappler.core').projectDir = new File('../../../core/core/platform')
-project(':xenolith.core').projectDir = new File('../../../xenolith/application/android')
+include ':app'
+include ':stappler.runtime'
+
+project(':stappler.runtime').projectDir = new File('../../../runtime/android')

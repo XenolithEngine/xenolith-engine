@@ -58,7 +58,6 @@ public:
 	Instance *getInstance() const { return _instance; }
 	FrameCache *getFrameCache() const { return _frameCache; }
 	event::Looper *getLooper() const { return _looper; }
-	const LoopInfo *getInfo() const { return _info; }
 
 	bool isOnThisThread() const;
 
@@ -129,7 +128,6 @@ protected:
 
 	Rc<Instance> _instance;
 	Rc<FrameCache> _frameCache;
-	Rc<LoopInfo> _info;
 	event::Looper *_looper = nullptr;
 };
 

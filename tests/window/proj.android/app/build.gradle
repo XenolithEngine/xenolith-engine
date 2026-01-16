@@ -2,17 +2,9 @@ plugins {
     id 'com.android.application'
 }
 
-tasks.register('prepareAndroidMk', Exec) {
-    workingDir rootProject.getRootDir().getPath() + "/.."
-    commandLine 'make', 'android-export'
-}
-
-preBuild.dependsOn prepareAndroidMk
-clean.dependsOn prepareAndroidMk
-
 android {
     compileSdk 35
-    ndkVersion '28.2.13676358'
+    ndkVersion '29.0.14206865'
 
     defaultConfig {
         applicationId = 'org.stappler.xenolith.gui'
@@ -45,6 +37,14 @@ android {
     namespace 'org.stappler.xenolith.gui'
 }
 
+tasks.register('prepareAndroidMk', Exec) {
+    workingDir rootProject.getRootDir().getPath() + "/.."
+    commandLine 'make', 'android-export', 'NDK='+android.ndkDirectory
+}
+
+preBuild.dependsOn prepareAndroidMk
+clean.dependsOn prepareAndroidMk
+
 dependencies {
-    implementation project(path: ":xenolith.core")
+    implementation project(path: ":stappler.runtime")
 }

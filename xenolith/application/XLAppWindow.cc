@@ -275,6 +275,23 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 	VkSurfaceKHR surface = VK_NULL_HANDLE;
 
 	switch (info.backend) {
+	case sprt::window::SurfaceBackend::Android: {
+
+#if defined(VK_KHR_android_surface)
+		VkAndroidSurfaceCreateInfoKHR createInfo{
+			VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
+			nullptr,
+			0,
+			(ANativeWindow *)info.android.window,
+		};
+
+		if (instance->vkCreateAndroidSurfaceKHR(instance->getInstance(), &createInfo, nullptr, &surface)
+				!= VK_SUCCESS) {
+			return nullptr;
+		}
+#endif
+		break;
+	}
 	case sprt::window::SurfaceBackend::Xcb: {
 #if defined(VK_KHR_xcb_surface)
 		VkXcbSurfaceCreateInfoKHR createInfo{
