@@ -22,6 +22,9 @@
 
 #include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/runtime/filesystem/filepath.h>
+
+#if SPRT_LINUX | SPRT_ANDROID || SPRT_MACOS
+
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_unistd.h>
 #include <sprt/c/__sprt_utime.h>
@@ -558,3 +561,5 @@ static LocationInterface s_defaultInterface = {
 SPRT_API const LocationInterface *getDefaultInterface() { return &s_defaultInterface; }
 
 } // namespace sprt::filesystem
+
+#endif

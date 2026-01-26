@@ -147,6 +147,7 @@ SPRT_API void nullify(const char16_t *, size_t);
 		__sprt_freea(buf);
 */
 template <typename CharType>
+[[nodiscard("Use result as next buffer pointer")]]
 constexpr inline auto strappend(CharType SPRT_NONNULL *buf, size_t *bufSize,
 		const CharType SPRT_NONNULL *str, size_t strSize) -> CharType * {
 	if (!bufSize) {
@@ -174,6 +175,7 @@ constexpr inline auto strappend(CharType SPRT_NONNULL *buf, size_t *bufSize,
 	strappend overload to write integer decimial value into string
 */
 template <typename CharType>
+[[nodiscard("Use result as next buffer pointer")]]
 constexpr inline auto strappend(CharType SPRT_NONNULL *buf, size_t *bufSize, int64_t val)
 		-> CharType * {
 	CharType tmp[INT_MAX_DIGITS];
@@ -185,6 +187,7 @@ constexpr inline auto strappend(CharType SPRT_NONNULL *buf, size_t *bufSize, int
 	strappend overload to write integer decimial value into string
 */
 template <typename CharType>
+[[nodiscard("Use result as next buffer pointer")]]
 constexpr inline auto strappend(char SPRT_NONNULL *buf, size_t *bufSize, uint64_t val)
 		-> CharType * {
 	CharType tmp[INT_MAX_DIGITS];
@@ -196,6 +199,7 @@ constexpr inline auto strappend(char SPRT_NONNULL *buf, size_t *bufSize, uint64_
 	strappend overload to write float value into string
 */
 template <typename CharType>
+[[nodiscard("Use result as next buffer pointer")]]
 constexpr inline auto strappend(char SPRT_NONNULL *buf, size_t *bufSize, double val) -> CharType * {
 	CharType tmp[DOUBLE_MAX_DIGITS];
 	auto ret = sprt::dtoa(val, tmp, DOUBLE_MAX_DIGITS);

@@ -329,7 +329,15 @@ THE SOFTWARE.
 #define SPRT_LAMBDAINLINE
 #endif
 
-#if __SPRT_HAS_ATTR(always_inline)
+#if __SPRT_HAS_ATTR(internal_linkage)
+#define SPRT_INTERNAL __SPRT_FALLBACK_ATTR(internal_linkage)
+#else
+#define SPRT_INTERNAL static
+#endif
+
+#if __SPRT_HAS_ATTR(always_inline) && __SPRT_HAS_ATTR(internal_linkage)
+#define SPRT_FORCEINLINE __SPRT_FALLBACK_ATTR(always_inline,internal_linkage) inline
+#elif __SPRT_HAS_ATTR(always_inline)
 #define SPRT_FORCEINLINE __SPRT_FALLBACK_ATTR(always_inline) inline
 #else
 #define SPRT_FORCEINLINE __forceinline inline
@@ -337,7 +345,9 @@ THE SOFTWARE.
 
 #else
 
-#if __SPRT_HAS_ATTR(always_inline)
+#if __SPRT_HAS_ATTR(always_inline) && __SPRT_HAS_ATTR(internal_linkage)
+#define SPRT_FORCEINLINE static __SPRT_FALLBACK_ATTR(always_inline,internal_linkage) inline
+#elif __SPRT_HAS_ATTR(always_inline)
 #define SPRT_FORCEINLINE static __SPRT_FALLBACK_ATTR(always_inline) inline
 #else
 #define SPRT_FORCEINLINE static __forceinline inline

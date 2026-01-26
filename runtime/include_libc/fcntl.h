@@ -162,35 +162,47 @@ SPRT_FORCEINLINE int openat(int __dir_fd, const char *path, int __flags, ...) {
 	return __sprt_openat(__dir_fd, path, __mode);
 }
 
+#if __SPRT_CONFIG_HAVE_FCNTL_SPLICE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE ssize_t splice(int __in_fd, off_t *__in_offset, int __out_fd, off_t *__out_offset,
 		size_t __length, unsigned int __flags) {
 	return __sprt_splice(__in_fd, __in_offset, __out_fd, __out_offset, __length, __flags);
 }
+#endif
 
+#if __SPRT_CONFIG_HAVE_FCNTL_TEE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE ssize_t tee(int __in_fd, int __out_fd, size_t __length, unsigned int __flags) {
 	return __sprt_tee(__in_fd, __out_fd, __length, __flags);
 }
+#endif
 
+#if __SPRT_CONFIG_HAVE_FCNTL_FALLOCATE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int fallocate(int __fd, int __mode, off_t __offset, off_t __length) {
 	return __sprt_fallocate(__fd, __mode, __offset, __length);
-}
-
-SPRT_FORCEINLINE int posix_fadvise(int __fd, off_t __offset, off_t __length, int __advice) {
-	return __sprt_posix_fadvise(__fd, __offset, __length, __advice);
 }
 
 SPRT_FORCEINLINE int posix_fallocate(int __fd, off_t __offset, off_t __length) {
 	return __sprt_posix_fallocate(__fd, __offset, __length);
 }
+#endif
 
+#if __SPRT_CONFIG_HAVE_FCNTL_FADVICE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+SPRT_FORCEINLINE int posix_fadvise(int __fd, off_t __offset, off_t __length, int __advice) {
+	return __sprt_posix_fadvise(__fd, __offset, __length, __advice);
+}
+#endif
+
+#if __SPRT_CONFIG_HAVE_FCNTL_READAHEAD || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE ssize_t readahead(int __fd, off_t __offset, size_t __length) {
 	return __sprt_readahead(__fd, __offset, __length);
 }
+#endif
 
+#if __SPRT_CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int sync_file_range(int __fd, off_t __offset, off_t __length,
 		unsigned int __flags) {
 	return __sprt_sync_file_range(__fd, __offset, __length, __flags);
 }
+#endif
 
 __SPRT_END_DECL
 

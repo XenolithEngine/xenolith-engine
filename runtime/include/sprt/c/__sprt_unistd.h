@@ -39,10 +39,6 @@ THE SOFTWARE.
 #define __SPRT_F_TLOCK 2	/* Test and lock a region for exclusive use.  */
 #define __SPRT_F_TEST  3	/* Test a region for other processes locks.  */
 
-#define __SPRT_PC_NAME_MAX	3
-#define __SPRT_PC_PATH_MAX	4
-#define __SPRT_PC_PIPE_BUF	5
-
 __SPRT_BEGIN_DECL
 
 SPRT_API int __SPRT_ID(access)(const char *__name, int __type) __SPRT_NOEXCEPT;
@@ -142,23 +138,32 @@ SPRT_API __SPRT_ID(uid_t) __SPRT_ID(geteuid)(void) __SPRT_NOEXCEPT;
 SPRT_API __SPRT_ID(gid_t) __SPRT_ID(getgid)(void) __SPRT_NOEXCEPT;
 SPRT_API __SPRT_ID(gid_t) __SPRT_ID(getegid)(void) __SPRT_NOEXCEPT;
 
+SPRT_API int __SPRT_ID(getresuid)(__SPRT_ID(uid_t) * __ruid, __SPRT_ID(uid_t) * __euid,
+		__SPRT_ID(uid_t) * __suid) __SPRT_NOEXCEPT;
+SPRT_API int __SPRT_ID(getresgid)(__SPRT_ID(gid_t) * __rgid, __SPRT_ID(gid_t) * __egid,
+		__SPRT_ID(gid_t) * __sgid) __SPRT_NOEXCEPT;
+
 SPRT_API int __SPRT_ID(getgroups)(int __size, __SPRT_ID(gid_t) __list[]) __SPRT_NOEXCEPT;
+
+#if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(setuid)(__SPRT_ID(uid_t) __uid) __SPRT_NOEXCEPT;
 SPRT_API int __SPRT_ID(setreuid)(__SPRT_ID(uid_t) __ruid, __SPRT_ID(uid_t) __euid) __SPRT_NOEXCEPT;
 SPRT_API int __SPRT_ID(seteuid)(__SPRT_ID(uid_t) __uid) __SPRT_NOEXCEPT;
 SPRT_API int __SPRT_ID(setgid)(__SPRT_ID(gid_t) __gid) __SPRT_NOEXCEPT;
 SPRT_API int __SPRT_ID(setregid)(__SPRT_ID(gid_t) __rgid, __SPRT_ID(gid_t) __egid) __SPRT_NOEXCEPT;
 SPRT_API int __SPRT_ID(setegid)(__SPRT_ID(gid_t) __gid) __SPRT_NOEXCEPT;
-SPRT_API int __SPRT_ID(getresuid)(__SPRT_ID(uid_t) * __ruid, __SPRT_ID(uid_t) * __euid,
-		__SPRT_ID(uid_t) * __suid) __SPRT_NOEXCEPT;
-SPRT_API int __SPRT_ID(getresgid)(__SPRT_ID(gid_t) * __rgid, __SPRT_ID(gid_t) * __egid,
-		__SPRT_ID(gid_t) * __sgid) __SPRT_NOEXCEPT;
+
 SPRT_API int __SPRT_ID(setresuid)(__SPRT_ID(uid_t) __ruid, __SPRT_ID(uid_t) __euid,
 		__SPRT_ID(uid_t) __suid) __SPRT_NOEXCEPT;
 SPRT_API int __SPRT_ID(setresgid)(__SPRT_ID(gid_t) __rgid, __SPRT_ID(gid_t) __egid,
 		__SPRT_ID(gid_t) __sgid) __SPRT_NOEXCEPT;
+#endif
+
+#if __SPRT_CONFIG_HAVE_UNISTD_FORK || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API __SPRT_ID(pid_t) __SPRT_ID(fork)(void) __SPRT_NOEXCEPT;
 SPRT_API __SPRT_ID(pid_t) __SPRT_ID(vfork)(void) __SPRT_NOEXCEPT;
+#endif
+
 SPRT_API char *__SPRT_ID(ttyname)(int __fd) __SPRT_NOEXCEPT;
 SPRT_API int __SPRT_ID(
 		ttyname_r)(int __fd, char *__buf, __SPRT_ID(size_t) __buflen) __SPRT_NOEXCEPT;
@@ -178,7 +183,10 @@ SPRT_API int __SPRT_ID(setlogin)(const char *__name) __SPRT_NOEXCEPT;
 #endif
 
 SPRT_API int __SPRT_ID(gethostname)(char *__name, __SPRT_ID(size_t) __len) __SPRT_NOEXCEPT;
+
+#if __SPRT_CONFIG_HAVE_UNISTD_SETHOSTNAME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(sethostname)(const char *__name, __SPRT_ID(size_t) __len) __SPRT_NOEXCEPT;
+#endif
 
 #if __SPRT_CONFIG_HAVE_UNISTD_DOMAINNAME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(getdomainname)(char *__name, __SPRT_ID(size_t) __len) __SPRT_NOEXCEPT;
@@ -191,8 +199,12 @@ SPRT_API int __SPRT_ID(getpagesize)(void) __SPRT_NOEXCEPT;
 SPRT_API int __SPRT_ID(getdtablesize)(void) __SPRT_NOEXCEPT;
 SPRT_API int __SPRT_ID(truncate)(const char *__file, __SPRT_ID(off_t) length) __SPRT_NOEXCEPT;
 SPRT_API int __SPRT_ID(ftruncate)(int __fd, __SPRT_ID(off_t) length) __SPRT_NOEXCEPT;
+
+#if __SPRT_CONFIG_HAVE_UNISTD_BRK || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(brk)(void *__addr) __SPRT_NOEXCEPT;
 SPRT_API void *__SPRT_ID(sbrk)(__SPRT_ID(intptr_t) __delta) __SPRT_NOEXCEPT;
+#endif
+
 SPRT_API int __SPRT_ID(lockf)(int __fd, int __cmd, __SPRT_ID(off_t) len);
 SPRT_API __SPRT_ID(ssize_t)
 		__SPRT_ID(copy_file_range)(int __infd, __SPRT_ID(off_t) * __pinoff, int __outfd,

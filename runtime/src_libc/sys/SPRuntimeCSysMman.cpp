@@ -31,42 +31,68 @@ THE SOFTWARE.
 #include <sprt/runtime/log.h>
 #include "private/SPRTSpecific.h"
 
+#if SPRT_WINDOWS
+#include "../platform/windows/mman.cc"
+#else
 #include <sys/mman.h>
+#endif
 
 namespace sprt {
 
 __SPRT_C_FUNC void *__SPRT_ID(mmap)(void *__addr, __SPRT_ID(size_t) __size, int __prot, int __flags,
 		int __fd, __SPRT_ID(off_t) __offset) {
-	return ::mmap64(__addr, __size, __prot, __flags, __fd, __offset);
+	return mmap64(__addr, __size, __prot, __flags, __fd, __offset);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(munmap)(void *__addr, __SPRT_ID(size_t) __size) {
-	return ::munmap(__addr, __size);
+	return munmap(__addr, __size);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mprotect)(void *__addr, __SPRT_ID(size_t) __size, int __flags) {
-	return ::mprotect(__addr, __size, __flags);
+	return mprotect(__addr, __size, __flags);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(msync)(void *__addr, __SPRT_ID(size_t) __size, int __flags) {
-	return ::msync(__addr, __size, __flags);
+	return msync(__addr, __size, __flags);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(posix_madvise)(void *__addr, __SPRT_ID(size_t) __size, int __flags) {
-	return ::posix_madvise(__addr, __size, __flags);
+	return posix_madvise(__addr, __size, __flags);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mlock)(const void *__addr, __SPRT_ID(size_t) __size) {
-	return ::mlock(__addr, __size);
+	return mlock(__addr, __size);
 }
 __SPRT_C_FUNC int __SPRT_ID(munlock)(const void *__addr, __SPRT_ID(size_t) __size) {
-	return ::munlock(__addr, __size);
+	return munlock(__addr, __size);
 }
-__SPRT_C_FUNC int __SPRT_ID(mlockall)(int __flags) { return ::mlockall(__flags); }
-__SPRT_C_FUNC int __SPRT_ID(munlockall)(void) { return ::munlockall(); }
+
+__SPRT_C_FUNC int __SPRT_ID(mlockall)(int __flags) {
+#if __SPRT_CONFIG_HAVE_MMAN_MLOCKALL
+	return ::mlockall(__flags);
+}
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_MMAN_MREMAP)");
+	__sprt_errno = ENOSYS;
+	return -1;
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(munlockall)(void) {
+#if __SPRT_CONFIG_HAVE_MMAN_MLOCKALL
+	return ::munlockall();
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_MMAN_MREMAP)");
+	__sprt_errno = ENOSYS;
+	return -1;
+#endif
+}
 
 __SPRT_C_FUNC void *__SPRT_ID(mremap)(void *__addr, __SPRT_ID(size_t) __old_size,
 		__SPRT_ID(size_t) __new_size, int __flags, ...) {
+#if __SPRT_CONFIG_HAVE_MMAN_MREMAP
 	__sprt_va_list ap;
 	void *new_addr = 0;
 	if (__flags & MREMAP_FIXED) {
@@ -76,6 +102,12 @@ __SPRT_C_FUNC void *__SPRT_ID(mremap)(void *__addr, __SPRT_ID(size_t) __old_size
 	}
 
 	return ::mremap(__addr, __old_size, __new_size, __flags, new_addr);
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_MMAN_MREMAP)");
+	__sprt_errno = ENOSYS;
+	return __SPRT_MAP_FAILED;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mlock2)(const void *__addr, __SPRT_ID(size_t) __size, int __flags) {
@@ -88,19 +120,20 @@ __SPRT_C_FUNC int __SPRT_ID(mlock2)(const void *__addr, __SPRT_ID(size_t) __size
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #else
-	return ::mlock2(__addr, __size, __flags);
+	return mlock2(__addr, __size, __flags);
 #endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(madvise)(void *__addr, __SPRT_ID(size_t) __size, int __flags) {
-	return ::madvise(__addr, __size, __flags);
+	return madvise(__addr, __size, __flags);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mincore)(void *__addr, __SPRT_ID(size_t) __size, unsigned char *__vec) {
-	return ::mincore(__addr, __size, __vec);
+	return mincore(__addr, __size, __vec);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(memfd_create)(const char *name, unsigned flags) {
+#if __SPRT_CONFIG_HAVE_MMAN_MEMFD
 #if SPRT_ANDROID
 	if (platform::_memfd_create) {
 		return platform::_memfd_create(name, flags);
@@ -111,6 +144,12 @@ __SPRT_C_FUNC int __SPRT_ID(memfd_create)(const char *name, unsigned flags) {
 	return -1;
 #else
 	return ::memfd_create(name, flags);
+#endif
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_MMAN_MEMFD)");
+	__sprt_errno = ENOSYS;
+	return -1;
 #endif
 }
 

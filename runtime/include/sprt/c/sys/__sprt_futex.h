@@ -91,7 +91,7 @@ SPRT_API long __SPRT_ID(futex_wake)(volatile __SPRT_ID(uint32_t) * uaddr, __SPRT
 		__SPRT_ID(uint32_t) nr_wake);
 
 
-// FUTEX_WAIT(2const): https://man7.org/linux/man-pages/man2/FUTEX_WAIT.2const.html
+// FUTEX_WAIT(2const): https://man7.org/linux/man-pages/man2/FUTEX_WAITwaitonfd.2const.html
 SPRT_API long __SPRT_ID(futex_wait)(volatile __SPRT_ID(uint32_t) * uaddr, __SPRT_ID(uint32_t) flags,
 		__SPRT_ID(uint32_t) val, __SPRT_TIMESPEC_NAME *timespec);
 

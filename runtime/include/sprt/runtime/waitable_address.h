@@ -40,6 +40,8 @@ public:
 
 	void set_and_signal(value_type);
 
+	value_type get_value() const;
+
 protected:
 	__qmutex_data_t _data;
 };

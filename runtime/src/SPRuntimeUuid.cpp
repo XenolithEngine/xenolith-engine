@@ -27,10 +27,6 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_unistd.h>
 #include <sprt/c/__sprt_string.h>
 
-#if SPRT_WINDOWS
-#include <winsock.h>
-#endif
-
 namespace sprt {
 
 struct UuidState {
@@ -42,11 +38,7 @@ struct UuidState {
 			char hostname[257];
 		} r;
 
-#if SPRT_WINDOWS
-		r.pid = GetCurrentProcessId();
-#else
 		r.pid = __sprt_getpid();
-#endif
 
 		r.time = sprt::platform::clock();
 		r.threadId = __sprt_gettid();

@@ -36,6 +36,10 @@ THE SOFTWARE.
 #include <string.h>
 #include <ctype.h>
 
+#if SPRT_WINDOWS
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 // clang-format on
 
 namespace sprt {

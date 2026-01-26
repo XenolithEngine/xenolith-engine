@@ -29,8 +29,6 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdarg.h>
 
 #include <sprt/runtime/log.h>
-#include "private/SPRTFilename.h"
-#include "private/SPRTSpecific.h"
 
 #include <fcntl.h>
 
@@ -49,28 +47,11 @@ extern int (*_posix_fallocate64)(int __fd, off64_t __offset, off64_t __length);
 } // namespace sprt::platform
 #endif
 
-namespace sprt {
-
-__SPRT_C_FUNC int __SPRT_ID(fcntl)(int __fd, int __cmd, ...) {
-	unsigned long arg;
-	__sprt_va_list ap;
-	__sprt_va_start(ap, __cmd);
-	arg = __sprt_va_arg(ap, unsigned long);
-	__sprt_va_end(ap);
-
-	return ::fcntl(__fd, __cmd, arg);
-}
-
-__SPRT_C_FUNC int __SPRT_ID(creat)(const char *path, __SPRT_ID(mode_t) __mode) {
-	return internal::performWithNativePath(path, [&](const char *target) {
-// call with native path
-#if SPRT_ANDROID
-		return platform::_creat64(target, __mode);
-#else
-		return ::creat64(target, __mode);
+#ifdef SPRT_WINDOWS
+#include "platform/windows/fcntl.cc"
 #endif
-	}, -1);
-}
+
+namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 	__SPRT_ID(mode_t) __mode = 0;
@@ -82,14 +63,19 @@ __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 		__sprt_va_end(ap);
 	}
 
-	return internal::performWithNativePath(path, [&](const char *target) {
-	// call with native path
 #if SPRT_ANDROID
-		return platform::_open64(target, __flags, __mode);
+	return platform::_open64(path, __flags, __mode);
 #else
-		return ::open64(target, __flags, __mode);
+	return open64(path, __flags, __mode);
 #endif
-	}, -1);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(creat)(const char *path, __SPRT_ID(mode_t) __mode) {
+#if SPRT_ANDROID
+	return platform::_creat64(path, __mode);
+#else
+	return creat64(path, __mode);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(openat)(int __dir_fd, const char *path, int __flags, ...) {
@@ -102,61 +88,102 @@ __SPRT_C_FUNC int __SPRT_ID(openat)(int __dir_fd, const char *path, int __flags,
 		__sprt_va_end(ap);
 	}
 
-	return internal::performWithNativePath(path, [&](const char *target) {
-	// call with native path
+
 #if SPRT_ANDROID
-		return platform::_openat64(__dir_fd, target, __flags, __mode);
+	return platform::_openat64(__dir_fd, path, __flags, __mode);
 #else
-		return ::openat64(__dir_fd, target, __flags, __mode);
+	return openat64(__dir_fd, path, __flags, __mode);
 #endif
-	}, -1);
 }
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t)
 		__SPRT_ID(splice)(int __in_fd, __SPRT_ID(off_t) * __in_offset, int __out_fd,
 				__SPRT_ID(off_t) * __out_offset, __SPRT_ID(size_t) __length, unsigned int __flags) {
+#if __SPRT_CONFIG_HAVE_FCNTL_SPLICE
 	return ::splice(__in_fd, __in_offset, __out_fd, __out_offset, __length, __flags);
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_SPLICE)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 		tee)(int __in_fd, int __out_fd, __SPRT_ID(size_t) __length, unsigned int __flags) {
+#if __SPRT_CONFIG_HAVE_FCNTL_TEE
 	return ::tee(__in_fd, __out_fd, __length, __flags);
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_TEE)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		fallocate)(int __fd, int __mode, __SPRT_ID(off_t) __offset, __SPRT_ID(off_t) __length) {
+#if __SPRT_CONFIG_HAVE_FCNTL_FALLOCATE
 #if SPRT_ANDROID
 	return platform::_fallocate64(__fd, __mode, __offset, __length);
 #else
 	return ::fallocate64(__fd, __mode, __offset, __length);
 #endif
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_FALLOCATE)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(posix_fadvise)(int __fd, __SPRT_ID(off_t) __offset,
 		__SPRT_ID(off_t) __length, int __advice) {
+#if __SPRT_CONFIG_HAVE_FCNTL_FADVICE
 #if SPRT_ANDROID
 	return platform::_posix_fadvise64(__fd, __offset, __length, __advice);
 #else
 	return ::posix_fadvise64(__fd, __offset, __length, __advice);
 #endif
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_FADVICE)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		posix_fallocate)(int __fd, __SPRT_ID(off_t) __offset, __SPRT_ID(off_t) __length) {
+#if __SPRT_CONFIG_HAVE_FCNTL_FALLOCATE
 #if SPRT_ANDROID
 	return platform::_posix_fallocate64(__fd, __offset, __length);
 #else
 	return ::posix_fallocate64(__fd, __offset, __length);
 #endif
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_FALLOCATE)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t)
 		__SPRT_ID(readahead)(int __fd, __SPRT_ID(off_t) __offset, __SPRT_ID(size_t) __length) {
+#if __SPRT_CONFIG_HAVE_FCNTL_READAHEAD
 	return ::readahead(__fd, __offset, __length);
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_READAHEAD)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(sync_file_range)(int __fd, __SPRT_ID(off_t) __offset,
 		__SPRT_ID(off_t) __length, unsigned int __flags) {
+#if __SPRT_CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE
 #if SPRT_ANDROID
 	if (platform::_sync_file_range) {
 		return platform::_sync_file_range(__fd, __offset, __length, __flags);
@@ -168,6 +195,22 @@ __SPRT_C_FUNC int __SPRT_ID(sync_file_range)(int __fd, __SPRT_ID(off_t) __offset
 #else
 	return ::sync_file_range(__fd, __offset, __length, __flags);
 #endif
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(fcntl)(int __fd, int __cmd, ...) {
+	unsigned long arg;
+	__sprt_va_list ap;
+	__sprt_va_start(ap, __cmd);
+	arg = __sprt_va_arg(ap, unsigned long);
+	__sprt_va_end(ap);
+
+	return fcntl(__fd, __cmd, arg);
 }
 
 } // namespace sprt

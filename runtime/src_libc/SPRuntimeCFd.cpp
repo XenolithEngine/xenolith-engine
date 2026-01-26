@@ -26,6 +26,7 @@
 #include <sprt/c/sys/__sprt_signalfd.h>
 #include <sprt/c/sys/__sprt_timerfd.h>
 #include <sprt/c/sys/__sprt_uring.h>
+#include <sprt/c/__sprt_errno.h>
 
 #if __SPRT_CONFIG_HAVE_EVENTFD
 

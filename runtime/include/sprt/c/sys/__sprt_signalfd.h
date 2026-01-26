@@ -24,7 +24,7 @@
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SIGNALFD_H_
 
 #include <sprt/c/cross/__sprt_config.h>
-#include <sprt/c/bits/__sprt_sigset_t.h>
+#include <sprt/c/cross/__sprt_signal.h>
 
 #include <sprt/c/__sprt_stdint.h>
 #include <sprt/c/__sprt_fcntl.h>

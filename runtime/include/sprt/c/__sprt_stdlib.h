@@ -42,6 +42,8 @@ __SPRT_BEGIN_DECL
 #define __SPRT_WIFSTOPPED(s) ((short)((((s)&0xffff)*0x10001U)>>8) > 0x7f00)
 #define __SPRT_WIFSIGNALED(s) (((s)&0xffff)-1U < 0xffu)
 
+#define  __SPRT_RAND_MAX (0x7fffffff)
+
 // clang-format on
 
 #ifndef __clang__
@@ -155,6 +157,10 @@ SPRT_API __SPRT_NORETURN void __SPRT_ID(quick_exit_impl)(int);
 
 SPRT_API char *__SPRT_ID(getenv_impl)(const char *);
 #define __sprt_getenv __SPRT_ID(getenv_impl)
+
+
+SPRT_API int __SPRT_ID(getenv_s)(__SPRT_ID(size_t) * pReturnValue, char *buffer,
+		__SPRT_ID(size_t) numberOfElements, const char *varname);
 
 
 SPRT_API int __SPRT_ID(system_impl)(const char *);
@@ -303,7 +309,7 @@ SPRT_FORCEINLINE void __sprt_alloca_freea(void *ptr) {
 //
 // Expose them only for C++ to avoid C wchar_t definitiom
 #ifdef __cplusplus
-#if __SPRT_CONFIG_HAVE_STDLIB_MB
+#if __SPRT_CONFIG_HAVE_STDLIB_MB || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 
 __SPRT_ID(size_t)
 __SPRT_ID(mbstowcs)(wchar_t *__dst, const char *__src, __SPRT_ID(size_t) __n);

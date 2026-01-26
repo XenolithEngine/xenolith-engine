@@ -39,11 +39,13 @@ __SPRT_BEGIN_DECL
 typedef __SPRT_ID(nl_item) nl_item;
 typedef __SPRT_ID(nl_catd) nl_catd;
 
+#if __SPRT_CONFIG_HAVE_NLTYPES_CAT || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE nl_catd catopen(const char *path, int v) { return __sprt_catopen(path, v); }
 SPRT_FORCEINLINE char *catgets(nl_catd cat, int a, int b, const char *str) {
 	return __sprt_catgets(cat, a, b, str);
 }
 SPRT_FORCEINLINE int catclose(nl_catd cat) { return __sprt_catclose(cat); }
+#endif
 
 __SPRT_END_DECL
 

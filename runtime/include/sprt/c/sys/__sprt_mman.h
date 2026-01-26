@@ -131,16 +131,24 @@ SPRT_API int __SPRT_ID(posix_madvise)(void *, __SPRT_ID(size_t), int);
 
 SPRT_API int __SPRT_ID(mlock)(const void *, __SPRT_ID(size_t));
 SPRT_API int __SPRT_ID(munlock)(const void *, __SPRT_ID(size_t));
+
+#if __SPRT_CONFIG_HAVE_MMAN_MLOCKALL || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(mlockall)(int);
 SPRT_API int __SPRT_ID(munlockall)(void);
+#endif
 
+#if __SPRT_CONFIG_HAVE_MMAN_MREMAP || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API void *__SPRT_ID(mremap)(void *, __SPRT_ID(size_t), __SPRT_ID(size_t), int, ...);
+#endif
+
 SPRT_API int __SPRT_ID(mlock2)(const void *, __SPRT_ID(size_t), int);
 
 SPRT_API int __SPRT_ID(madvise)(void *, __SPRT_ID(size_t), int);
 SPRT_API int __SPRT_ID(mincore)(void *, __SPRT_ID(size_t), unsigned char *);
 
+#if __SPRT_CONFIG_HAVE_MMAN_MEMFD || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(memfd_create)(const char *, unsigned);
+#endif
 
 __SPRT_END_DECL
 

@@ -57,26 +57,103 @@ __SPRT_C_FUNC int __SPRT_ID(tolower_impl)(int c) { return ::tolower(c); }
 
 __SPRT_C_FUNC int __SPRT_ID(toupper_impl)(int c) { return ::toupper(c); }
 
-
-__SPRT_C_FUNC int __SPRT_ID(isalnum_l)(int c, __SPRT_ID(locale_t) loc) { return isalnum_l(c, loc); }
-__SPRT_C_FUNC int __SPRT_ID(isalpha_l)(int c, __SPRT_ID(locale_t) loc) { return isalpha_l(c, loc); }
-__SPRT_C_FUNC int __SPRT_ID(isblank_l)(int c, __SPRT_ID(locale_t) loc) { return isblank_l(c, loc); }
-__SPRT_C_FUNC int __SPRT_ID(iscntrl_l)(int c, __SPRT_ID(locale_t) loc) { return iscntrl_l(c, loc); }
-__SPRT_C_FUNC int __SPRT_ID(isdigit_l)(int c, __SPRT_ID(locale_t) loc) { return isdigit_l(c, loc); }
-__SPRT_C_FUNC int __SPRT_ID(isgraph_l)(int c, __SPRT_ID(locale_t) loc) { return isgraph_l(c, loc); }
-__SPRT_C_FUNC int __SPRT_ID(islower_l)(int c, __SPRT_ID(locale_t) loc) { return islower_l(c, loc); }
-__SPRT_C_FUNC int __SPRT_ID(isprint_l)(int c, __SPRT_ID(locale_t) loc) { return isprint_l(c, loc); }
-__SPRT_C_FUNC int __SPRT_ID(ispunct_l)(int c, __SPRT_ID(locale_t) loc) { return ispunct_l(c, loc); }
-__SPRT_C_FUNC int __SPRT_ID(isspace_l)(int c, __SPRT_ID(locale_t) loc) { return isspace_l(c, loc); }
-__SPRT_C_FUNC int __SPRT_ID(isupper_l)(int c, __SPRT_ID(locale_t) loc) { return isupper_l(c, loc); }
+__SPRT_C_FUNC int __SPRT_ID(isalnum_l)(int c, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return _isalnum_l(c, loc);
+#else
+	return isalnum_l(c, loc); //
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(isalpha_l)(int c, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return _isalpha_l(c, loc); //
+#else
+	return isalpha_l(c, loc); //
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(isblank_l)(int c, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return _isblank_l(c, loc); //
+#else
+	return isblank_l(c, loc); //
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(iscntrl_l)(int c, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return _iscntrl_l(c, loc); //
+#else
+	return iscntrl_l(c, loc); //
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(isdigit_l)(int c, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return _isdigit_l(c, loc); //
+#else
+	return isdigit_l(c, loc); //
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(isgraph_l)(int c, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return _isgraph_l(c, loc); //
+#else
+	return isgraph_l(c, loc); //
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(islower_l)(int c, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return _islower_l(c, loc); //
+#else
+	return islower_l(c, loc); //
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(isprint_l)(int c, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return _isprint_l(c, loc); //
+#else
+	return isprint_l(c, loc); //
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(ispunct_l)(int c, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return _ispunct_l(c, loc); //
+#else
+	return ispunct_l(c, loc); //
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(isspace_l)(int c, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return _isspace_l(c, loc); //
+#else
+	return isspace_l(c, loc); //
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(isupper_l)(int c, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return _isupper_l(c, loc); //
+#else
+	return isupper_l(c, loc); //
+#endif
+}
 __SPRT_C_FUNC int __SPRT_ID(isxdigit_l)(int c, __SPRT_ID(locale_t) loc) {
-	return isxdigit_l(c, loc);
+#if SPRT_WINDOWS
+	return _isxdigit_l(c, loc); //
+#else
+	return isxdigit_l(c, loc); //
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(tolower_l)(int c, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return _tolower_l(c, loc);
+#else
 	return ::tolower_l(c, loc);
+#endif
 }
 __SPRT_C_FUNC int __SPRT_ID(toupper_l)(int c, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return _toupper_l(c, loc);
+#else
 	return ::toupper_l(c, loc);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(isascii)(int c) { return isascii(c); }

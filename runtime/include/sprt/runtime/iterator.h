@@ -50,11 +50,13 @@ struct contiguous_iterator_tag : public random_access_iterator_tag { };
 template <typename Iter>
 struct _IteratorTraits {
 	using iterator_category = typename Iter::iterator_category;
+	using value_type = typename Iter::value_type;
 };
 
 template <typename Ptr>
 struct _IteratorTraits<Ptr *> {
 	using iterator_category = random_access_iterator_tag;
+	using value_type = Ptr;
 };
 
 template <typename _InputIter>
@@ -127,6 +129,39 @@ using __has_random_access_iterator_category =
 template <typename _ForwardIterator1, typename _ForwardIterator2>
 inline constexpr void iter_swap(_ForwardIterator1 __a, _ForwardIterator2 __b) noexcept {
 	sprt::swap(*__a, *__b);
+}
+
+template <typename Type>
+using iterator_traits = _IteratorTraits<Type>;
+
+template < typename C >
+constexpr auto begin(C &c) noexcept -> decltype(c.begin()) {
+	return c.begin();
+}
+
+template < typename C >
+constexpr auto begin(const C &c) noexcept -> decltype(c.begin()) {
+	return c.begin();
+}
+
+template < typename T, size_t N >
+T *begin(T (&array)[N]) {
+	return &array[0];
+}
+
+template < typename C >
+constexpr auto end(C &c) noexcept -> decltype(c.end()) {
+	return c.end();
+}
+
+template < typename C >
+constexpr auto end(const C &c) noexcept -> decltype(c.end()) {
+	return c.end();
+}
+
+template < typename T, size_t N >
+T *end(T (&array)[N]) {
+	return (&array[N - 1]) + 1;
 }
 
 } // namespace sprt

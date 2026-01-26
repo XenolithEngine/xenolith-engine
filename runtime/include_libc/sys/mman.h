@@ -153,9 +153,13 @@ SPRT_FORCEINLINE int mlock(const void *__addr, size_t __size) {
 SPRT_FORCEINLINE int munlock(const void *__addr, size_t __size) {
 	return __sprt_munlock(__addr, __size);
 }
+
+#if __SPRT_CONFIG_HAVE_MMAN_MLOCKALL || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int mlockall(int __flags) { return __sprt_mlockall(__flags); }
 SPRT_FORCEINLINE int munlockall(void) { return __sprt_munlockall(); }
+#endif
 
+#if __SPRT_CONFIG_HAVE_MMAN_MREMAP || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE void *mremap(void *__addr, size_t __old_size, size_t __new_size, int __flags,
 		...) {
 	__sprt_va_list ap;
@@ -168,6 +172,7 @@ SPRT_FORCEINLINE void *mremap(void *__addr, size_t __old_size, size_t __new_size
 
 	return __sprt_mremap(__addr, __old_size, __new_size, __flags, new_addr);
 }
+#endif
 
 SPRT_FORCEINLINE int mlock2(const void *__addr, size_t __size, int __flags) {
 	return __sprt_mlock2(__addr, __size, __flags);
@@ -181,9 +186,11 @@ SPRT_FORCEINLINE int mincore(void *__addr, size_t __size, unsigned char *__vec) 
 	return __sprt_mincore(__addr, __size, __vec);
 }
 
+#if __SPRT_CONFIG_HAVE_MMAN_MEMFD || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int memfd_create(const char *name, unsigned flags) {
 	return __sprt_memfd_create(name, flags);
 }
+#endif
 
 __SPRT_END_DECL
 

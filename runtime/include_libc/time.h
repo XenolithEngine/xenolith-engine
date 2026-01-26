@@ -47,6 +47,8 @@ THE SOFTWARE.
 #define CLOCK_SGI_CYCLE __SPRT_CLOCK_SGI_CYCLE
 #define CLOCK_TAI __SPRT_CLOCK_TAI
 
+#define TIMER_ABSTIME __SPRT_TIMER_ABSTIME
+
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(time_t) time_t;
 typedef __SPRT_ID(clock_t) clock_t;
@@ -113,9 +115,11 @@ SPRT_FORCEINLINE int clock_gettime(clockid_t clock, struct timespec *out) {
 	return __sprt_clock_gettime(clock, out);
 }
 
+#if __SPRT_CONFIG_HAVE_TIME_CLOCK_SETTIME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int clock_settime(clockid_t clock, const struct timespec *ts) {
 	return __sprt_clock_settime(clock, ts);
 }
+#endif
 
 SPRT_FORCEINLINE int clock_nanosleep(clockid_t clock, int v, const struct timespec *ts,
 		struct timespec *out) {

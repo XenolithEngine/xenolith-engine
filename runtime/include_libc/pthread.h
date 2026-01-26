@@ -113,7 +113,7 @@ SPRT_FORCEINLINE int pthread_equal(pthread_t t1, pthread_t t2) {
 	return __sprt_pthread_equal(t1, t2);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_CANCEL
+#if __SPRT_CONFIG_HAVE_PTHREAD_CANCEL || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_setcancelstate(int v, int *p) {
 	return __sprt_pthread_setcancelstate(v, p);
 }
@@ -168,14 +168,14 @@ SPRT_FORCEINLINE int pthread_mutex_destroy(pthread_mutex_t *mutex) {
 	return __sprt_pthread_mutex_destroy(mutex);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST
+#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_mutex_consistent(pthread_mutex_t *mutex) {
 	return __sprt_pthread_mutex_consistent(mutex);
 }
 #endif
 
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO
+#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_mutex_getprioceiling(const pthread_mutex_t *__SPRT_RESTRICT mutex,
 		int *__SPRT_RESTRICT p) {
 	return __sprt_pthread_mutex_getprioceiling(mutex, p);
@@ -343,7 +343,7 @@ SPRT_FORCEINLINE int pthread_attr_setschedparam(pthread_attr_t *__SPRT_RESTRICT 
 	return __sprt_pthread_attr_setschedparam(attr, val);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_INHERITSCHED
+#if __SPRT_CONFIG_HAVE_PTHREAD_INHERITSCHED || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_attr_getinheritsched(const pthread_attr_t *__SPRT_RESTRICT attr,
 		int *__SPRT_RESTRICT ret) {
 	return __sprt_pthread_attr_getinheritsched(attr, ret);
@@ -357,7 +357,7 @@ SPRT_FORCEINLINE int pthread_mutexattr_destroy(pthread_mutexattr_t *attr) {
 	return __sprt_pthread_mutexattr_destroy(attr);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO
+#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_mutexattr_getprioceiling(
 		const pthread_mutexattr_t *__SPRT_RESTRICT attr, int *__SPRT_RESTRICT ret) {
 	return __sprt_pthread_mutexattr_getprioceiling(attr, ret);
@@ -374,7 +374,7 @@ SPRT_FORCEINLINE int pthread_mutexattr_setprotocol(pthread_mutexattr_t *attr, in
 }
 #endif
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST
+#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_mutexattr_getrobust(const pthread_mutexattr_t *__SPRT_RESTRICT attr,
 		int *__SPRT_RESTRICT ret) {
 	return __sprt_pthread_mutexattr_getrobust(attr, ret);
@@ -456,7 +456,7 @@ SPRT_FORCEINLINE int pthread_atfork(void (*prepare)(void), void (*parent)(void),
 	return __sprt_pthread_atfork(prepare, parent, child);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_CONCURRENCY
+#if __SPRT_CONFIG_HAVE_PTHREAD_CONCURRENCY || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_getconcurrency(void) { return __sprt_pthread_getconcurrency(); }
 SPRT_FORCEINLINE int pthread_setconcurrency(int v) { return __sprt_pthread_setconcurrency(v); }
 #endif
@@ -465,7 +465,7 @@ SPRT_FORCEINLINE int pthread_getcpuclockid(pthread_t thread, clockid_t *clock) {
 	return __sprt_pthread_getcpuclockid(thread, clock);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY
+#if __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_getaffinity_np(pthread_t thread, size_t n, cpu_set_t *set) {
 	return __sprt_pthread_getaffinity_np(thread, n, set);
 }
@@ -481,13 +481,13 @@ SPRT_FORCEINLINE int pthread_setname_np(pthread_t thread, const char *name) {
 	return __sprt_pthread_setname_np(thread, name);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_GETNAME
+#if __SPRT_CONFIG_HAVE_PTHREAD_GETNAME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_getname_np(pthread_t thread, char *buf, size_t len) {
 	return __sprt_pthread_getname_np(thread, buf, len);
 }
 #endif
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_ATTRDEFAULT
+#if __SPRT_CONFIG_HAVE_PTHREAD_ATTRDEFAULT || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_getattr_default_np(pthread_attr_t *attr) {
 	return __sprt_pthread_getattr_default_np(attr);
 }
@@ -496,13 +496,13 @@ SPRT_FORCEINLINE int pthread_setattr_default_np(const pthread_attr_t *attr) {
 }
 #endif
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_TRYJOIN
+#if __SPRT_CONFIG_HAVE_PTHREAD_TRYJOIN || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_tryjoin_np(pthread_t thread, void **ret) {
 	return __sprt_pthread_tryjoin_np(thread, ret);
 }
 #endif
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_TIMEDJOIN
+#if __SPRT_CONFIG_HAVE_PTHREAD_TIMEDJOIN || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_timedjoin_np(pthread_t thread, void **ret, const timespec *tv) {
 	return __sprt_pthread_timedjoin_np(thread, ret, tv);
 }

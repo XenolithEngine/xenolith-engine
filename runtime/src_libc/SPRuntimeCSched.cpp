@@ -25,18 +25,22 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_sched.h>
 #include <sprt/c/__sprt_string.h>
 
+#if SPRT_WINDOWS
+#include "platform/windows/sched.cc"
+#else
 #include <sched.h>
+#endif
 
 namespace sprt {
 
-__SPRT_C_FUNC int __SPRT_ID(sched_get_priority_max)(int t) { return ::sched_get_priority_max(t); }
+__SPRT_C_FUNC int __SPRT_ID(sched_get_priority_max)(int t) { return sched_get_priority_max(t); }
 
-__SPRT_C_FUNC int __SPRT_ID(sched_get_priority_min)(int t) { return ::sched_get_priority_min(t); }
+__SPRT_C_FUNC int __SPRT_ID(sched_get_priority_min)(int t) { return sched_get_priority_min(t); }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		sched_getparam)(__SPRT_ID(pid_t) pid, struct __SPRT_ID(sched_param) * p) {
 	struct sched_param param;
-	auto ret = ::sched_getparam(pid, &param);
+	auto ret = sched_getparam(pid, &param);
 	if (p) {
 		p->sched_priority = param.sched_priority;
 	}
@@ -44,17 +48,21 @@ __SPRT_C_FUNC int __SPRT_ID(
 }
 
 __SPRT_C_FUNC int __SPRT_ID(sched_getscheduler)(__SPRT_ID(pid_t) pid) {
-	return ::sched_getscheduler(pid);
+	return sched_getscheduler(pid);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(sched_rr_get_interval)(__SPRT_ID(pid_t) pid, __SPRT_TIMESPEC_NAME *t) {
+#if SPRT_WINDOWS
+	return sched_rr_get_interval(pid, t);
+#else
 	struct timespec ts;
-	auto ret = ::sched_rr_get_interval(pid, &ts);
+	auto ret = sched_rr_get_interval(pid, &ts);
 	if (t) {
 		t->tv_sec = ts.tv_sec;
 		t->tv_nsec = ts.tv_nsec;
 	}
 	return ret;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
@@ -64,7 +72,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	if (p) {
 		param.sched_priority = p->sched_priority;
 	}
-	return ::sched_setparam(pid, &param);
+	return sched_setparam(pid, &param);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
@@ -74,9 +82,9 @@ __SPRT_C_FUNC int __SPRT_ID(
 	if (p) {
 		param.sched_priority = p->sched_priority;
 	}
-	return ::sched_setscheduler(pid, t, &param);
+	return sched_setscheduler(pid, t, &param);
 }
 
-__SPRT_C_FUNC int __SPRT_ID(sched_yield)(void) { return ::sched_yield(); }
+__SPRT_C_FUNC int __SPRT_ID(sched_yield)(void) { return sched_yield(); }
 
 } // namespace sprt

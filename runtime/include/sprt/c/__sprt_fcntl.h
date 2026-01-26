@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C___SPRT_FCNTL_H_
 #define CORE_RUNTIME_INCLUDE_C___SPRT_FCNTL_H_
 
-#include <sprt/c/bits/fcntl.h>
+#include <sprt/c/cross/__sprt_fcntl.h>
 #include <sprt/c/bits/atfile.h>
 #include <sprt/c/bits/seek.h>
 #include <sprt/c/bits/access.h>
@@ -81,27 +81,39 @@ SPRT_API int __SPRT_ID(open)(const char *__path, int __flags, ...);
 
 SPRT_API int __SPRT_ID(openat)(int __dir_fd, const char *__path, int __flags, ...);
 
+#if __SPRT_CONFIG_HAVE_FCNTL_SPLICE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API __SPRT_ID(ssize_t)
 		__SPRT_ID(splice)(int __in_fd, __SPRT_ID(off_t) * __in_offset, int __out_fd,
 				__SPRT_ID(off_t) * __out_offset, __SPRT_ID(size_t) __length, unsigned int __flags);
+#endif
 
+#if __SPRT_CONFIG_HAVE_FCNTL_TEE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API __SPRT_ID(ssize_t)
 		__SPRT_ID(tee)(int __in_fd, int __out_fd, __SPRT_ID(size_t) __length, unsigned int __flags);
+#endif
 
+#if __SPRT_CONFIG_HAVE_FCNTL_FALLOCATE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(
 		fallocate)(int __fd, int __mode, __SPRT_ID(off_t) __offset, __SPRT_ID(off_t) __length);
 
-SPRT_API int __SPRT_ID(posix_fadvise)(int __fd, __SPRT_ID(off_t) __offset,
-		__SPRT_ID(off_t) __length, int __advice);
-
 SPRT_API int __SPRT_ID(
 		posix_fallocate)(int __fd, __SPRT_ID(off_t) __offset, __SPRT_ID(off_t) __length);
+#endif
 
+#if __SPRT_CONFIG_HAVE_FCNTL_FADVICE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+SPRT_API int __SPRT_ID(posix_fadvise)(int __fd, __SPRT_ID(off_t) __offset,
+		__SPRT_ID(off_t) __length, int __advice);
+#endif
+
+#if __SPRT_CONFIG_HAVE_FCNTL_READAHEAD || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API __SPRT_ID(ssize_t)
 		__SPRT_ID(readahead)(int __fd, __SPRT_ID(off_t) __offset, __SPRT_ID(size_t) __length);
+#endif
 
+#if __SPRT_CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(sync_file_range)(int __fd, __SPRT_ID(off_t) __offset,
 		__SPRT_ID(off_t) __length, unsigned int __flags);
+#endif
 
 __SPRT_END_DECL
 

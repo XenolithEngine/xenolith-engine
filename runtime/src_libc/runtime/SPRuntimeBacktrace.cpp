@@ -20,12 +20,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+#define __SPRT_BUILD
+
 #include <sprt/runtime/backtrace.h>
-#include <stdlib.h>
-#include <stdio.h>
+#include <sprt/runtime/log.h>
 
 #if SPRT_WINDOWS
-#include "private/SPRTUnistd.h" // IWYU pragma: keep
+#include <sprt/runtime/mutex.h>
+
+#include "private/SPRTDso.h"
+
+#include <Windows.h>
 #include <dbghelp.h>
 #else
 #include <cxxabi.h>
@@ -49,16 +54,16 @@ static StringView filepath_lastComponent(StringView path) {
 static size_t print(char *buf, size_t bufLen, uintptr_t pc, StringView filename, int lineno,
 		StringView function) {
 	char *target = buf;
-	auto w = ::snprintf(target, bufLen, "[%p]", (void *)pc);
+	auto w = __sprt_snprintf(target, bufLen, "[%p]", (void *)pc);
 	bufLen -= w;
 	target += w;
 
 	if (!filename.empty()) {
 		auto name = filepath_lastComponent(filename);
 		if (lineno >= 0) {
-			w = ::snprintf(target, bufLen, " %.*s:%d", int(name.size()), name.data(), lineno);
+			w = __sprt_snprintf(target, bufLen, " %.*s:%d", int(name.size()), name.data(), lineno);
 		} else {
-			w = ::snprintf(target, bufLen, " %.*s", int(name.size()), name.data());
+			w = __sprt_snprintf(target, bufLen, " %.*s", int(name.size()), name.data());
 		}
 		bufLen -= w;
 		target += w;
@@ -66,19 +71,19 @@ static size_t print(char *buf, size_t bufLen, uintptr_t pc, StringView filename,
 
 	if (!function.empty()) {
 #if SPRT_WINDOWS
-		w = ::snprintf(target, bufLen, " - %.*s", int(function.size()), function.data());
+		w = __sprt_snprintf(target, bufLen, " - %.*s", int(function.size()), function.data());
 		bufLen -= w;
 		target += w;
 #else
 		int status = 0;
 		auto ptr = abi::__cxa_demangle(function.data(), nullptr, nullptr, &status);
 		if (ptr) {
-			w = ::snprintf(target, bufLen, " - %s", ptr);
+			w = __sprt_snprintf(target, bufLen, " - %s", ptr);
 			bufLen -= w;
 			target += w;
-			::free(ptr);
+			__sprt_free(ptr);
 		} else {
-			w = ::snprintf(target, bufLen, " - %.*s", int(function.size()), function.data());
+			w = __sprt_snprintf(target, bufLen, " - %.*s", int(function.size()), function.data());
 			bufLen -= w;
 			target += w;
 		}
@@ -91,7 +96,7 @@ static size_t print(char *buf, size_t bufLen, uintptr_t pc, StringView filename,
 
 #if SPRT_WINDOWS
 
-namespace STAPPLER_VERSIONIZED stappler::backtrace::detail {
+namespace sprt::backtrace::detail {
 
 struct State {
 	Dso handle;
@@ -104,7 +109,7 @@ struct State {
 	decltype(&::SymGetSymFromAddr64) SymGetSymFromAddr64 = nullptr;
 	decltype(&::SymGetLineFromAddr64) SymGetLineFromAddr64 = nullptr;
 
-	std::mutex mutex;
+	qmutex mutex;
 
 	operator bool() const { return hProcess != nullptr; }
 };
@@ -131,7 +136,7 @@ static void initState(State &state) {
 		return;
 	}
 
-	state.handle = sp::move(handle);
+	state.handle = sprt::move(handle);
 	state.SymSetOptions = state.handle.sym<decltype(&::SymSetOptions)>("SymSetOptions");
 	state.SymInitialize = state.handle.sym<decltype(&::SymInitialize)>("SymInitialize");
 	state.SymCleanup = state.handle.sym<decltype(&::SymCleanup)>("SymCleanup");
@@ -153,12 +158,12 @@ static void initState(State &state) {
 
 	if (!DuplicateHandle(hCurrentProcess, hCurrentProcess, hCurrentProcess, &hProcess, 0, FALSE,
 				DUPLICATE_SAME_ACCESS)) {
-		log::source().error("Ref", "Fail to duplicate process handle");
+		log::vperror(__SPRT_LOCATION, "Ref", "Fail to duplicate process handle");
 		return;
 	}
 
 	if (!state.SymInitialize(hProcess, NULL, TRUE)) {
-		log::source().error("Ref", "Fail to load symbol info");
+		log::vperror(__SPRT_LOCATION, "Ref", "Fail to load symbol info");
 		return;
 	}
 
@@ -174,7 +179,7 @@ static void termState(State &state) {
 	state.handle.close();
 }
 
-static void performBacktrace(State &state, size_t offset, const Callback<void(StringView)> &cb) {
+static void performBacktrace(State &state, size_t offset, const callback<void(StringView)> &cb) {
 	auto hThread = GetCurrentThread();
 
 	DWORD machine = 0;
@@ -197,7 +202,7 @@ static void performBacktrace(State &state, size_t offset, const Callback<void(St
 #pragma error("unsupported architecture")
 #endif
 
-	std::unique_lock lock(state.mutex);
+	unique_lock lock(state.mutex);
 
 	DWORD dwDisplacement;
 	StackFrameSym stackSym;
@@ -223,7 +228,7 @@ static void performBacktrace(State &state, size_t offset, const Callback<void(St
 	}
 }
 
-} // namespace stappler::backtrace::detail
+} // namespace sprt::backtrace::detail
 
 #else
 

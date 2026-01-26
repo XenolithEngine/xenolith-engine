@@ -25,6 +25,28 @@
 
 #define STATUS_DESC_BUFFER_SIZE 512
 
+#if SPRT_WINDOWS
+#include "private/SPRTSpecific.h"
+
+#define FORMAT_MESSAGE_IGNORE_INSERTS  0x0000'0200
+#define FORMAT_MESSAGE_FROM_STRING     0x0000'0400
+#define FORMAT_MESSAGE_FROM_HMODULE    0x0000'0800
+#define FORMAT_MESSAGE_FROM_SYSTEM     0x0000'1000
+#define FORMAT_MESSAGE_ARGUMENT_ARRAY  0x0000'2000
+#define FORMAT_MESSAGE_MAX_WIDTH_MASK  0x0000'00FF
+
+#define LANG_NEUTRAL 0x00
+#define SUBLANG_NEUTRAL 0x00
+#define SUBLANG_DEFAULT 0x01
+
+#define MAKELANGID(p, s)       ((((WORD  )(s)) << 10) | (WORD  )(p))
+
+WINBASEAPI DWORD WINAPI FormatMessageA(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId,
+		DWORD dwLanguageId, LPSTR lpBuffer, DWORD nSize, __sprt_va_list *Arguments);
+
+
+#endif
+
 namespace sprt::status {
 
 StringView getStatusName(Status status) {
@@ -220,12 +242,12 @@ void getStatusDescription(Status st, const callback<void(StringView)> &cb) {
 
 		auto errorMessageID = status::toWinApi(st);
 
-		auto len = strlen(strerrBuffer);
+		auto len = __sprt_strlen(strerrBuffer);
 		auto target = &strerrBuffer[len];
 
-		FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,
+		FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr,
 				errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), target,
-				STATUS_DESC_BUFFER_SIZE - len - 1, NULL);
+				STATUS_DESC_BUFFER_SIZE - len - 1, nullptr);
 #endif
 	} else {
 		outCb << ": No description found";

@@ -1,5 +1,5 @@
 /**
-Copyright (c) 2025 Stappler Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@stappler.org>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,13 +20,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef CORE_RUNTIME_INCLUDE_C_BITS___SPRT_SIGSET_T_H_
-#define CORE_RUNTIME_INCLUDE_C_BITS___SPRT_SIGSET_T_H_
+#ifndef CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_FCNTL_H_
+#define CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_FCNTL_H_
 
 #include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/cross/__sprt_config.h>
 
-typedef struct __SPRT_ID(__sigset_t) {
-	unsigned long __bits[128 / sizeof(long)];
-} __SPRT_ID(sigset_t);
+// clang-format off
+#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/__SPRT_ARCH_NAME/fcntl.h)
+// clang-format on
 
-#endif // CORE_RUNTIME_INCLUDE_C_BITS___SPRT_SIGSET_T_H_
+
+#endif // CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_FCNTL_H_

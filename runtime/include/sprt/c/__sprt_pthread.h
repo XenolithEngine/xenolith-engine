@@ -26,8 +26,8 @@ THE SOFTWARE.
 #include <sprt/c/cross/__sprt_pthread.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_time_t.h>
-#include <sprt/c/bits/__sprt_sigset_t.h>
-#include <sprt/c/__sprt_sched.h>
+#include <sprt/c/bits/__sprt_cpuset_t.h>
+#include <sprt/c/cross/__sprt_signal.h>
 
 #define __SPRT_PTHREAD_CREATE_JOINABLE 0
 #define __SPRT_PTHREAD_CREATE_DETACHED 1
@@ -84,7 +84,7 @@ SPRT_API __SPRT_ID(pthread_t) __SPRT_ID(pthread_self)(void);
 
 SPRT_API int __SPRT_ID(pthread_equal)(__SPRT_ID(pthread_t), __SPRT_ID(pthread_t));
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_CANCEL
+#if __SPRT_CONFIG_HAVE_PTHREAD_CANCEL || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(pthread_setcancelstate)(int, int *);
 SPRT_API int __SPRT_ID(pthread_setcanceltype)(int, int *);
 SPRT_API void __SPRT_ID(pthread_testcancel)(void);
@@ -108,11 +108,11 @@ SPRT_API int __SPRT_ID(pthread_mutex_timedlock)(__SPRT_ID(pthread_mutex_t) * __S
 		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT);
 SPRT_API int __SPRT_ID(pthread_mutex_destroy)(__SPRT_ID(pthread_mutex_t) *);
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST
+#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(pthread_mutex_consistent)(__SPRT_ID(pthread_mutex_t) *);
 #endif
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO
+#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(pthread_mutex_getprioceiling)(
 		const __SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT, int *__SPRT_RESTRICT);
 SPRT_API int __SPRT_ID(pthread_mutex_setprioceiling)(__SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT,
@@ -185,7 +185,7 @@ SPRT_API int __SPRT_ID(
 SPRT_API int __SPRT_ID(pthread_attr_setschedparam)(__SPRT_ID(pthread_attr_t) * __SPRT_RESTRICT,
 		const struct __SPRT_ID(sched_param) * __SPRT_RESTRICT);
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_INHERITSCHED
+#if __SPRT_CONFIG_HAVE_PTHREAD_INHERITSCHED || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(pthread_attr_getinheritsched)(
 		const __SPRT_ID(pthread_attr_t) * __SPRT_RESTRICT, int *__SPRT_RESTRICT);
 SPRT_API int __SPRT_ID(pthread_attr_setinheritsched)(__SPRT_ID(pthread_attr_t) *, int);
@@ -193,7 +193,7 @@ SPRT_API int __SPRT_ID(pthread_attr_setinheritsched)(__SPRT_ID(pthread_attr_t) *
 
 SPRT_API int __SPRT_ID(pthread_mutexattr_destroy)(__SPRT_ID(pthread_mutexattr_t) *);
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO
+#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(pthread_mutexattr_getprioceiling)(
 		const __SPRT_ID(pthread_mutexattr_t) * __SPRT_RESTRICT, int *__SPRT_RESTRICT);
 SPRT_API int __SPRT_ID(pthread_mutexattr_setprioceiling)(__SPRT_ID(pthread_mutexattr_t) *, int);
@@ -202,7 +202,7 @@ SPRT_API int __SPRT_ID(pthread_mutexattr_getprotocol)(
 SPRT_API int __SPRT_ID(pthread_mutexattr_setprotocol)(__SPRT_ID(pthread_mutexattr_t) *, int);
 #endif
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST
+#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(pthread_mutexattr_getrobust)(
 		const __SPRT_ID(pthread_mutexattr_t) * __SPRT_RESTRICT, int *__SPRT_RESTRICT);
 SPRT_API int __SPRT_ID(pthread_mutexattr_setrobust)(__SPRT_ID(pthread_mutexattr_t) *, int);
@@ -241,14 +241,14 @@ SPRT_API int __SPRT_ID(pthread_barrierattr_setpshared)(__SPRT_ID(pthread_barrier
 
 SPRT_API int __SPRT_ID(pthread_atfork)(void (*)(void), void (*)(void), void (*)(void));
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_CONCURRENCY
+#if __SPRT_CONFIG_HAVE_PTHREAD_CONCURRENCY || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(pthread_getconcurrency)(void);
 SPRT_API int __SPRT_ID(pthread_setconcurrency)(int);
 #endif
 
 SPRT_API int __SPRT_ID(pthread_getcpuclockid)(__SPRT_ID(pthread_t), __SPRT_ID(clockid_t) *);
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY
+#if __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(
 		pthread_getaffinity_np)(__SPRT_ID(pthread_t), __SPRT_ID(size_t), __SPRT_ID(cpu_set_t) *);
 SPRT_API int __SPRT_ID(pthread_setaffinity_np)(__SPRT_ID(pthread_t), __SPRT_ID(size_t),
@@ -258,20 +258,20 @@ SPRT_API int __SPRT_ID(pthread_setaffinity_np)(__SPRT_ID(pthread_t), __SPRT_ID(s
 SPRT_API int __SPRT_ID(pthread_getattr_np)(__SPRT_ID(pthread_t), __SPRT_ID(pthread_attr_t) *);
 SPRT_API int __SPRT_ID(pthread_setname_np)(__SPRT_ID(pthread_t), const char *);
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_GETNAME
+#if __SPRT_CONFIG_HAVE_PTHREAD_GETNAME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(pthread_getname_np)(__SPRT_ID(pthread_t), char *, __SPRT_ID(size_t));
 #endif
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_ATTRDEFAULT
+#if __SPRT_CONFIG_HAVE_PTHREAD_ATTRDEFAULT || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(pthread_getattr_default_np)(__SPRT_ID(pthread_attr_t) *);
 SPRT_API int __SPRT_ID(pthread_setattr_default_np)(const __SPRT_ID(pthread_attr_t) *);
 #endif
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_TRYJOIN
+#if __SPRT_CONFIG_HAVE_PTHREAD_TRYJOIN || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(pthread_tryjoin_np)(__SPRT_ID(pthread_t), void **);
 #endif
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_TIMEDJOIN
+#if __SPRT_CONFIG_HAVE_PTHREAD_TIMEDJOIN || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(
 		pthread_timedjoin_np)(__SPRT_ID(pthread_t), void **, const __SPRT_TIMESPEC_NAME *);
 #endif

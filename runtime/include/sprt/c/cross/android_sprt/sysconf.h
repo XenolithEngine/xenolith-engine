@@ -1,3 +1,24 @@
+#define __SPRT_PC_FILESIZEBITS 0
+#define __SPRT_PC_LINK_MAX 1
+#define __SPRT_PC_MAX_CANON 2
+#define __SPRT_PC_MAX_INPUT 3
+#define __SPRT_PC_NAME_MAX 4
+#define __SPRT_PC_PATH_MAX 5
+#define __SPRT_PC_PIPE_BUF 6
+#define __SPRT_PC_2_SYMLINKS 7
+#define __SPRT_PC_ALLOC_SIZE_MIN 8
+#define __SPRT_PC_REC_INCR_XFER_SIZE 9
+#define __SPRT_PC_REC_MAX_XFER_SIZE 10
+#define __SPRT_PC_REC_MIN_XFER_SIZE 11
+#define __SPRT_PC_REC_XFER_ALIGN 12
+#define __SPRT_PC_SYMLINK_MAX 13
+#define __SPRT_PC_CHOWN_RESTRICTED 14
+#define __SPRT_PC_NO_TRUNC 15
+#define __SPRT_PC_VDISABLE 16
+#define __SPRT_PC_ASYNC_IO 17
+#define __SPRT_PC_PRIO_IO 18
+#define __SPRT_PC_SYNC_IO 19
+
 /** sysconf() query for the maximum number of bytes of exec() arguments. */
 #define __SPRT_SC_ARG_MAX 0x0000
 /** sysconf() query for bc(1) behavior equivalent to _POSIX2_BC_BASE_MAX. */

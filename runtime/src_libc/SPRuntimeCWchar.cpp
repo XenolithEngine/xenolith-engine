@@ -21,6 +21,7 @@ THE SOFTWARE.
 **/
 
 #define __SPRT_BUILD 1
+#define _CRT_SECURE_NO_WARNINGS 1
 
 #include <sprt/c/__sprt_wchar.h>
 #include <sprt/c/__sprt_stdarg.h>
@@ -40,6 +41,12 @@ extern size_t (*_wcsftime_l)(wchar_t *__buf, size_t __n, const wchar_t *__fmt,
 		const struct tm *__tm, locale_t __l);
 
 }
+#endif
+
+#if SPRT_WINDOWS
+#include <stdio.h>
+
+#include "platform/windows/wchar.cc"
 #endif
 
 namespace sprt {
@@ -349,6 +356,8 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsftime)(__SPRT_WCHAR_T *__SPRT_RESTR
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fgetwc_unlocked)(__SPRT_ID(FILE) * f) {
 #if SPRT_ANDROID
 	return ::fgetwc(f);
+#elif SPRT_WINDOWS
+	return _fgetwc_nolock(f);
 #else
 	return ::fgetwc_unlocked(f);
 #endif
@@ -357,6 +366,8 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fgetwc_unlocked)(__SPRT_ID(FILE) * f) 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwc_unlocked)(__SPRT_ID(FILE) * f) {
 #if SPRT_ANDROID
 	return ::getwc(f);
+#elif SPRT_WINDOWS
+	return _getwc_nolock(f);
 #else
 	return ::getwc_unlocked(f);
 #endif
@@ -365,6 +376,8 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwc_unlocked)(__SPRT_ID(FILE) * f) {
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwchar_unlocked)(void) {
 #if SPRT_ANDROID
 	return ::getwchar();
+#elif SPRT_WINDOWS
+	return _getwchar_nolock();
 #else
 	return ::getwchar_unlocked();
 #endif
@@ -373,6 +386,8 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwchar_unlocked)(void) {
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fputwc_unlocked)(__SPRT_WCHAR_T c, __SPRT_ID(FILE) * f) {
 #if SPRT_ANDROID
 	return ::fputwc(c, f);
+#elif SPRT_WINDOWS
+	return _fputwc_nolock(c, f);
 #else
 	return ::fputwc_unlocked(c, f);
 #endif
@@ -381,6 +396,8 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fputwc_unlocked)(__SPRT_WCHAR_T c, __S
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(putwc_unlocked)(__SPRT_WCHAR_T c, __SPRT_ID(FILE) * f) {
 #if SPRT_ANDROID
 	return ::putwc(c, f);
+#elif SPRT_WINDOWS
+	return _putwc_nolock(c, f);
 #else
 	return ::putwc_unlocked(c, f);
 #endif
@@ -389,6 +406,8 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(putwc_unlocked)(__SPRT_WCHAR_T c, __SP
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(putwchar_unlocked)(__SPRT_WCHAR_T c) {
 #if SPRT_ANDROID
 	return putwchar(c);
+#elif SPRT_WINDOWS
+	return _putwchar_nolock(c);
 #else
 	return putwchar_unlocked(c);
 #endif
@@ -399,7 +418,7 @@ __SPRT_C_FUNC __SPRT_WCHAR_T *__SPRT_ID(fgetws_unlocked)(__SPRT_WCHAR_T *__SPRT_
 #if SPRT_ANDROID
 	return ::fgetws(ptr, c, f);
 #else
-	return ::fgetws_unlocked(ptr, c, f);
+	return fgetws_unlocked(ptr, c, f);
 #endif
 }
 
@@ -408,7 +427,7 @@ __SPRT_C_FUNC int __SPRT_ID(fputws_unlocked)(const __SPRT_WCHAR_T *__SPRT_RESTRI
 #if SPRT_ANDROID
 	return ::fputws(ptr, f);
 #else
-	return ::fputws_unlocked(ptr, f);
+	return fputws_unlocked(ptr, f);
 #endif
 }
 
@@ -424,6 +443,8 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsftime_l)(__SPRT_WCHAR_T *__SPRT_RES
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return 0;
+#elif SPRT_WINDOWS
+	return ::_wcsftime_l(ptr, size, fmt, &native, loc);
 #else
 	return ::wcsftime_l(ptr, size, fmt, &native, loc);
 #endif
@@ -431,22 +452,45 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsftime_l)(__SPRT_WCHAR_T *__SPRT_RES
 
 __SPRT_C_FUNC __SPRT_ID(FILE)
 		* __SPRT_ID(open_wmemstream)(__SPRT_WCHAR_T **ptr, __SPRT_ID(size_t) * s) {
+#if __SPRT_CONFIG_HAVE_STDIO_OPEN_MEMSTREAM
 	return ::open_wmemstream(ptr, s);
+#else
+	__sprt_errno = ENOSYS;
+	return nullptr;
+#endif
 }
 
-__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(mbsnrtowcs)(__SPRT_WCHAR_T *__SPRT_RESTRICT ptr,
-		const char **__SPRT_RESTRICT ret, __SPRT_ID(size_t) a, __SPRT_ID(size_t) b,
+__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(mbsnrtowcs)(__SPRT_WCHAR_T *__SPRT_RESTRICT dest,
+		const char **__SPRT_RESTRICT src, __SPRT_ID(size_t) count, __SPRT_ID(size_t) destSize,
 		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT state) {
+#if SPRT_WINDOWS
+	size_t nchars = 0;
+	mbsrtowcs_s(&nchars, dest, destSize, src, count, (mbstate_t *)state);
+	return nchars;
+#else
 	return ::mbsnrtowcs(ptr, ret, a, b, (mbstate_t *)state);
+#endif
 }
 
-__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsnrtombs)(char *__SPRT_RESTRICT ptr,
-		const __SPRT_WCHAR_T **__SPRT_RESTRICT ret, __SPRT_ID(size_t) a, __SPRT_ID(size_t) b,
-		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT state) {
+__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsnrtombs)(char *__SPRT_RESTRICT dest,
+		const __SPRT_WCHAR_T **__SPRT_RESTRICT src, __SPRT_ID(size_t) count,
+		__SPRT_ID(size_t) destSize, __SPRT_MBSTATE_NAME *__SPRT_RESTRICT state) {
+#if SPRT_WINDOWS
+	size_t nchars = 0;
+	wcsrtombs_s(&nchars, dest, destSize, src, count, (mbstate_t *)state);
+	return nchars;
+#else
 	return ::wcsnrtombs(ptr, ret, a, b, (mbstate_t *)state);
+#endif
 }
 
-__SPRT_C_FUNC __SPRT_WCHAR_T *__SPRT_ID(wcsdup)(const __SPRT_WCHAR_T *ptr) { return ::wcsdup(ptr); }
+__SPRT_C_FUNC __SPRT_WCHAR_T *__SPRT_ID(wcsdup)(const __SPRT_WCHAR_T *ptr) {
+#if SPRT_WINDOWS
+	return ::_wcsdup(ptr);
+#else
+	return ::wcsdup(ptr);
+#endif
+}
 
 __SPRT_C_FUNC __SPRT_ID(size_t)
 		__SPRT_ID(wcsnlen)(const __SPRT_WCHAR_T *ptr, __SPRT_ID(size_t) len) {
@@ -455,47 +499,79 @@ __SPRT_C_FUNC __SPRT_ID(size_t)
 
 __SPRT_C_FUNC __SPRT_WCHAR_T *__SPRT_ID(
 		wcpcpy)(__SPRT_WCHAR_T *__SPRT_RESTRICT ptr, const __SPRT_WCHAR_T *__SPRT_RESTRICT buf) {
+#if SPRT_WINDOWS
+	return ::wcscpy(ptr, buf);
+#else
 	return ::wcpcpy(ptr, buf);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_WCHAR_T *__SPRT_ID(wcpncpy)(__SPRT_WCHAR_T *__SPRT_RESTRICT a,
 		const __SPRT_WCHAR_T *__SPRT_RESTRICT b, __SPRT_ID(size_t) size) {
+#if SPRT_WINDOWS
+	return ::wcsncpy(a, b, size);
+#else
 	return ::wcpncpy(a, b, size);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(wcscasecmp)(const __SPRT_WCHAR_T *a, const __SPRT_WCHAR_T *b) {
+#if SPRT_WINDOWS
+	return _wcsicmp(a, b);
+#else
 	return ::wcscasecmp(a, b);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		wcscasecmp_l)(const __SPRT_WCHAR_T *a, const __SPRT_WCHAR_T *b, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return _wcsicmp_l(a, b, loc);
+#else
 	return ::wcscasecmp_l(a, b, loc);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		wcsncasecmp)(const __SPRT_WCHAR_T *a, const __SPRT_WCHAR_T *b, __SPRT_ID(size_t) s) {
+#if SPRT_WINDOWS
+	return ::_wcsnicmp(a, b, s);
+#else
 	return ::wcsncasecmp(a, b, s);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(wcsncasecmp_l)(const __SPRT_WCHAR_T *a, const __SPRT_WCHAR_T *b,
 		__SPRT_ID(size_t) s, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return ::_wcsnicmp_l(a, b, s, loc);
+#else
 	return ::wcsncasecmp_l(a, b, s, loc);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		wcscoll_l)(const __SPRT_WCHAR_T *a, const __SPRT_WCHAR_T *b, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return ::_wcscoll_l(a, b, loc);
+#else
 	return ::wcscoll_l(a, b, loc);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsxfrm_l)(__SPRT_WCHAR_T *__SPRT_RESTRICT a,
 		const __SPRT_WCHAR_T *__SPRT_RESTRICT b, __SPRT_ID(size_t) s, __SPRT_ID(locale_t) loc) {
+#if SPRT_WINDOWS
+	return ::_wcsxfrm_l(a, b, s, loc);
+#else
 	return ::wcsxfrm_l(a, b, s, loc);
+#endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(wcwidth)(__SPRT_WCHAR_T c) { return ::wcwidth(c); }
+__SPRT_C_FUNC int __SPRT_ID(wcwidth)(__SPRT_WCHAR_T c) { return wcwidth(c); }
 
 __SPRT_C_FUNC int __SPRT_ID(wcswidth)(const __SPRT_WCHAR_T *ptr, __SPRT_ID(size_t) s) {
-	return ::wcswidth(ptr, s);
+	return wcswidth(ptr, s);
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(towlower)(__SPRT_ID(wint_t) wc) { return ::towlower(wc); }

@@ -41,6 +41,8 @@ typedef __SPRT_ID(lldiv_t) lldiv_t;
 #define _freea(Ptr) __sprt_freea(Ptr)
 #endif
 
+#define RAND_MAX  __SPRT_RAND_MAX
+
 __SPRT_BEGIN_DECL
 
 SPRT_FORCEINLINE int atoi(const char *value) { return __sprt_atoi(value); }
@@ -101,6 +103,11 @@ SPRT_FORCEINLINE int at_quick_exit(void (*value)(void)) { return __sprt_at_quick
 SPRT_FORCEINLINE __SPRT_NORETURN void quick_exit(int value) { __sprt_quick_exit(value); }
 
 SPRT_FORCEINLINE char *getenv(const char *value) { return __sprt_getenv(value); }
+
+SPRT_FORCEINLINE int getenv_s(size_t *pReturnValue, char *buffer, size_t numberOfElements,
+		const char *varname) {
+	return __sprt_getenv_s(pReturnValue, buffer, numberOfElements, varname);
+}
 
 SPRT_FORCEINLINE int system(const char *value) { return __sprt_system(value); }
 
@@ -174,7 +181,7 @@ __SPRT_END_DECL
 //
 // Expose them only for C++ to avoid C wchar_t definitiom
 #ifdef __cplusplus
-#if __SPRT_CONFIG_HAVE_STDLIB_MB
+#if __SPRT_CONFIG_HAVE_STDLIB_MB || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 
 SPRT_FORCEINLINE size_t mbstowcs(wchar_t *__dst, const char *__src, size_t __n) {
 	return __SPRT_ID(mbstowcs)(__dst, __src, __n);

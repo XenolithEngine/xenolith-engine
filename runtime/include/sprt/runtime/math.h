@@ -99,16 +99,16 @@ template <>
 inline constexpr uint64_t Max<uint64_t> = __SPRT_UINT64_MAX;
 
 template <>
-inline constexpr uint8_t Max<int8_t> = __SPRT_INT8_MAX;
+inline constexpr int8_t Max<int8_t> = __SPRT_INT8_MAX;
 
 template <>
-inline constexpr uint16_t Max<int16_t> = __SPRT_INT16_MAX;
+inline constexpr int16_t Max<int16_t> = __SPRT_INT16_MAX;
 
 template <>
-inline constexpr uint32_t Max<int32_t> = __SPRT_INT32_MAX;
+inline constexpr int32_t Max<int32_t> = __SPRT_INT32_MAX;
 
 template <>
-inline constexpr uint64_t Max<int64_t> = __SPRT_INT64_MAX;
+inline constexpr int64_t Max<int64_t> = __SPRT_INT64_MAX;
 
 
 template <typename T>

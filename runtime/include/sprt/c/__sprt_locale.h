@@ -80,10 +80,12 @@ struct __SPRT_ID(lconv) {
 SPRT_API char *__SPRT_ID(setlocale)(int, const char *);
 SPRT_API struct __SPRT_ID(lconv) * __SPRT_ID(localeconv)(void);
 
+#if __SPRT_CONFIG_HAVE_LOCALE_EXT || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API __SPRT_ID(locale_t) __SPRT_ID(duplocale)(__SPRT_ID(locale_t));
 SPRT_API void __SPRT_ID(freelocale)(__SPRT_ID(locale_t));
 SPRT_API __SPRT_ID(locale_t) __SPRT_ID(newlocale)(int, const char *, __SPRT_ID(locale_t));
 SPRT_API __SPRT_ID(locale_t) __SPRT_ID(uselocale)(__SPRT_ID(locale_t));
+#endif
 
 __SPRT_END_DECL
 

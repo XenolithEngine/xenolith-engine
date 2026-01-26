@@ -217,7 +217,11 @@ SPRT_API int __SPRT_ID(vasprintf)(char **, const char *, __SPRT_ID(va_list));
 SPRT_API __SPRT_ID(FILE)
 		* __SPRT_ID(
 				fmemopen)(void *__SPRT_RESTRICT, __SPRT_ID(size_t), const char *__SPRT_RESTRICT);
+
+#if __SPRT_CONFIG_HAVE_STDIO_OPEN_MEMSTREAM || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API __SPRT_ID(FILE) * __SPRT_ID(open_memstream)(char **, __SPRT_ID(size_t) *);
+#endif
+
 SPRT_API __SPRT_ID(FILE) * __SPRT_ID(fdopen)(int, const char *);
 SPRT_API __SPRT_ID(FILE) * __SPRT_ID(popen)(const char *, const char *);
 SPRT_API int __SPRT_ID(pclose)(__SPRT_ID(FILE) *);

@@ -24,6 +24,7 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_SCHED_H_
 
 #include <sprt/c/bits/__sprt_time_t.h>
+#include <sprt/c/bits/__sprt_cpuset_t.h>
 #include <sprt/c/cross/__sprt_sysid.h>
 
 __SPRT_BEGIN_DECL
@@ -31,10 +32,6 @@ __SPRT_BEGIN_DECL
 struct __SPRT_ID(sched_param) {
 	int sched_priority;
 };
-
-typedef struct {
-	unsigned long __bits[128 / sizeof(long)];
-} __SPRT_ID(cpu_set_t);
 
 SPRT_API int __SPRT_ID(sched_get_priority_max)(int);
 SPRT_API int __SPRT_ID(sched_get_priority_min)(int);

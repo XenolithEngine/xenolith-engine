@@ -34,7 +34,7 @@
 #endif
 
 #if SPRT_WINDOWS
-#include "private/SPUnistd.h" // IWYU pragma: keep
+
 #endif
 
 namespace sprt::log {

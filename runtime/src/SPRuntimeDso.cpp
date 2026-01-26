@@ -101,8 +101,16 @@ void *dso_sym(void *h, const char *name, DsoSymFlags flags, const char **err) {
 
 #if SPRT_WINDOWS
 
-#include "provate/SPUnistd.h"
-#include <libloaderapi.h>
+#include "private/SPRTSpecific.h"
+
+extern "C" {
+
+WINBASEAPI HMODULE WINAPI GetModuleHandleA(LPCSTR lpModuleName);
+WINBASEAPI HMODULE WINAPI LoadLibraryA(LPCSTR lpLibFileName);
+WINBASEAPI BOOL WINAPI FreeLibrary(HMODULE hLibModule);
+
+WINBASEAPI void *WINAPI GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
+}
 
 namespace sprt {
 
@@ -110,7 +118,7 @@ static constexpr const char *WIN_FAIL_TO_LOAD = "Fail to load dynamic object";
 static constexpr const char *WIN_SYMBOL_NOT_FOUND = "Fail to find symbol in dynamic object";
 
 void *dso_open(StringView name, DsoFlags flags, const char **err) {
-	HMODULE h = NULL;
+	HMODULE h = nullptr;
 	if ((flags & DsoFlags::Self) != DsoFlags::None) {
 		h = GetModuleHandleA(nullptr);
 	} else {
@@ -125,7 +133,7 @@ void *dso_open(StringView name, DsoFlags flags, const char **err) {
 }
 
 void *dso_open(const char *name, DsoFlags flags, const char **err) {
-	HMODULE h = NULL;
+	HMODULE h = nullptr;
 	if ((flags & DsoFlags::Self) != DsoFlags::None) {
 		h = GetModuleHandleA(nullptr);
 	} else {
@@ -148,8 +156,9 @@ void dso_close(DsoFlags flags, void *handle) {
 
 void *dso_sym(void *h, StringView name, DsoSymFlags flags, const char **err) {
 	void *s = nullptr;
-	name.performWithTerminated(
-			[&](const char *ptr, size_t len) { s = GetProcAddress(HMODULE(h), ptr); });
+	name.performWithTerminated([&](const char *ptr, size_t len) {
+		s = GetProcAddress(HMODULE(h), ptr); //
+	});
 	if (!s) {
 		*err = WIN_SYMBOL_NOT_FOUND;
 	}

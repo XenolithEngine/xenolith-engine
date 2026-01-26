@@ -58,7 +58,7 @@ struct DiyFp {
 	constexpr DiyFp operator-(const DiyFp &rhs) const { return DiyFp(f - rhs.f, e); }
 
 	constexpr DiyFp operator*(const DiyFp &rhs) const {
-#if defined(_MSC_VER) && defined(_M_AMD64)
+#if defined(_MSC_VER) && defined(_M_AMD64) && !defined(__clang__)
 		uint64_t h;
 		uint64_t l = _umul128(f, rhs.f, &h);
 		if (l & (uint64_t(1) << 63)) { // rounding
@@ -91,11 +91,11 @@ struct DiyFp {
 	}
 
 	constexpr DiyFp Normalize() const {
-#if defined(_MSC_VER) && defined(_M_AMD64)
+#if defined(_MSC_VER) && defined(_M_AMD64) && !defined(__clang__)
 		unsigned long index;
 		_BitScanReverse64(&index, f);
 		return DiyFp(f << (63 - index), e - (63 - index));
-#elif defined(__GNUC__)
+#elif defined(__GNUC__) || defined(__clang__)
 		int s = __builtin_clzll(f);
 		return DiyFp(f << s, e - s);
 #else
@@ -111,7 +111,7 @@ struct DiyFp {
 	}
 
 	constexpr DiyFp NormalizeBoundary() const {
-#if defined(_MSC_VER) && defined(_M_AMD64)
+#if defined(_MSC_VER) && defined(_M_AMD64) && !defined(__clang__)
 		unsigned long index;
 		_BitScanReverse64(&index, f);
 		return DiyFp(f << (63 - index), e - (63 - index));
@@ -315,7 +315,7 @@ constexpr inline void DigitGen(const DiyFp &W, const DiyFp &Mp, uint64_t delta, 
 			p1 = 0;
 			break;
 		default:
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(__clang__)
 			__assume(0);
 #elif __clang__ || __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 5)
 			__builtin_unreachable();
@@ -406,7 +406,7 @@ constexpr inline void DigitGen_len(const DiyFp &W, const DiyFp &Mp, uint64_t del
 			p1 = 0;
 			break;
 		default:
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(__clang__)
 			__assume(0);
 #elif __clang__ || __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 5)
 			__builtin_unreachable();

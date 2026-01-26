@@ -49,6 +49,8 @@ THE SOFTWARE.
 #define __SPRT_CLOCK_SGI_CYCLE         10
 #define __SPRT_CLOCK_TAI               11
 
+#define __SPRT_TIMER_ABSTIME 1
+
 __SPRT_BEGIN_DECL
 
 enum __SPRT_ID(tm_gmt_e) {
@@ -106,10 +108,29 @@ SPRT_API void __SPRT_ID(tzset)(void);
 SPRT_API int __SPRT_ID(nanosleep)(const __SPRT_TIMESPEC_NAME *, __SPRT_TIMESPEC_NAME *);
 SPRT_API int __SPRT_ID(clock_getres)(__SPRT_ID(clockid_t), __SPRT_TIMESPEC_NAME *);
 SPRT_API int __SPRT_ID(clock_gettime)(__SPRT_ID(clockid_t), __SPRT_TIMESPEC_NAME *);
+
+#if __SPRT_CONFIG_HAVE_TIME_CLOCK_SETTIME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(clock_settime)(__SPRT_ID(clockid_t), const __SPRT_TIMESPEC_NAME *);
+#endif
+
 SPRT_API int __SPRT_ID(clock_nanosleep)(__SPRT_ID(clockid_t), int, const __SPRT_TIMESPEC_NAME *,
 		__SPRT_TIMESPEC_NAME *);
 SPRT_API int __SPRT_ID(clock_getcpuclockid)(__SPRT_ID(pid_t), __SPRT_ID(clockid_t) *);
+
+SPRT_FORCEINLINE struct __SPRT_TIMESPEC_NAME __SPRT_ID(timespec_diff)(
+		const struct __SPRT_TIMESPEC_NAME *time1, const struct __SPRT_TIMESPEC_NAME *time0) {
+	struct __SPRT_TIMESPEC_NAME diff;
+	diff.tv_sec = time1->tv_sec - time0->tv_sec;
+	diff.tv_nsec = time1->tv_nsec - time0->tv_nsec;
+
+	// clang-format off
+	if (diff.tv_nsec < 0) {
+		diff.tv_nsec += 1000000000; // Add one second in nanoseconds
+		diff.tv_sec--; // Subtract one second from seconds
+	}
+	// clang-format on
+	return diff;
+}
 
 __SPRT_END_DECL
 

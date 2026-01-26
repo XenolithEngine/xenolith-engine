@@ -31,40 +31,142 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_signal.h>
 
+#ifdef __SPRT_SIGHUP
 #define SIGHUP __SPRT_SIGHUP
+#endif
+
+#ifdef __SPRT_SIGINT
 #define SIGINT __SPRT_SIGINT
+#endif
+
+#ifdef __SPRT_SIGQUIT
 #define SIGQUIT __SPRT_SIGQUIT
+#endif
+
+#ifdef __SPRT_SIGILL
 #define SIGILL __SPRT_SIGILL
+#endif
+
+#ifdef __SPRT_SIGTRAP
 #define SIGTRAP __SPRT_SIGTRAP
+#endif
+
+#ifdef __SPRT_SIGABRT
 #define SIGABRT __SPRT_SIGABRT
+#endif
+
+#ifdef __SPRT_SIGIOT
 #define SIGIOT __SPRT_SIGIOT
+#endif
+
+#ifdef __SPRT_SIGBUS
 #define SIGBUS __SPRT_SIGBUS
+#endif
+
+#ifdef __SPRT_SIGFPE
 #define SIGFPE __SPRT_SIGFPE
+#endif
+
+#ifdef __SPRT_SIGKILL
 #define SIGKILL __SPRT_SIGKILL
-#define SIGUSR1 __SPRT_SIGUSR1
+#endif
+
+#ifdef __SPRT_SIGUSR
+#define SIGUSR __SPRT_SIGUSR
+#endif
+1
+#ifdef __SPRT_SIGSEGV
 #define SIGSEGV __SPRT_SIGSEGV
-#define SIGUSR2 __SPRT_SIGUSR2
+#endif
+
+#ifdef __SPRT_SIGUSR
+#define SIGUSR __SPRT_SIGUSR
+#endif
+		2
+#ifdef __SPRT_SIGPIPE
 #define SIGPIPE __SPRT_SIGPIPE
+#endif
+
+#ifdef __SPRT_SIGALRM
 #define SIGALRM __SPRT_SIGALRM
+#endif
+
+#ifdef __SPRT_SIGTERM
 #define SIGTERM __SPRT_SIGTERM
+#endif
+
+#ifdef __SPRT_SIGSTKFLT
 #define SIGSTKFLT __SPRT_SIGSTKFLT
+#endif
+
+#ifdef __SPRT_SIGCHLD
 #define SIGCHLD __SPRT_SIGCHLD
+#endif
+
+#ifdef __SPRT_SIGCONT
 #define SIGCONT __SPRT_SIGCONT
+#endif
+
+#ifdef __SPRT_SIGSTOP
 #define SIGSTOP __SPRT_SIGSTOP
+#endif
+
+#ifdef __SPRT_SIGTSTP
 #define SIGTSTP __SPRT_SIGTSTP
+#endif
+
+#ifdef __SPRT_SIGTTIN
 #define SIGTTIN __SPRT_SIGTTIN
+#endif
+
+#ifdef __SPRT_SIGTTOU
 #define SIGTTOU __SPRT_SIGTTOU
+#endif
+
+#ifdef __SPRT_SIGURG
 #define SIGURG __SPRT_SIGURG
+#endif
+
+#ifdef __SPRT_SIGXCPU
 #define SIGXCPU __SPRT_SIGXCPU
+#endif
+
+#ifdef __SPRT_SIGXFSZ
 #define SIGXFSZ __SPRT_SIGXFSZ
+#endif
+
+#ifdef __SPRT_SIGVTALRM
 #define SIGVTALRM __SPRT_SIGVTALRM
+#endif
+
+#ifdef __SPRT_SIGPROF
 #define SIGPROF __SPRT_SIGPROF
+#endif
+
+#ifdef __SPRT_SIGWINCH
 #define SIGWINCH __SPRT_SIGWINCH
+#endif
+
+#ifdef __SPRT_SIGIO
 #define SIGIO __SPRT_SIGIO
+#endif
+
+#ifdef __SPRT_SIGPOLL
 #define SIGPOLL __SPRT_SIGPOLL
+#endif
+
+#ifdef __SPRT_SIGPWR
 #define SIGPWR __SPRT_SIGPWR
+#endif
+
+#ifdef __SPRT_SIGSYS
 #define SIGSYS __SPRT_SIGSYS
+#endif
+
+#ifdef __SPRT_SIGUNUSED
 #define SIGUNUSED __SPRT_SIGUNUSED
+#endif
+
 
 #define SIG_BLOCK __SPRT_SIG_BLOCK
 #define SIG_UNBLOCK __SPRT_SIG_UNBLOCK
@@ -72,9 +174,9 @@ THE SOFTWARE.
 
 #define _NSIG __SPRT__NSIG
 
-__SPRT_BEGIN_DECL
+		__SPRT_BEGIN_DECL
 
-typedef __SPRT_ID(sigset_t) sigset_t;
+		typedef __SPRT_ID(sigset_t) sigset_t;
 
 SPRT_FORCEINLINE int sigemptyset(sigset_t *set) { return __SPRT_ID(sigemptyset)(set); }
 SPRT_FORCEINLINE int sigfillset(sigset_t *set) { return __SPRT_ID(sigfillset)(set); }
@@ -83,12 +185,15 @@ SPRT_FORCEINLINE int sigdelset(sigset_t *set, int s) { return __SPRT_ID(sigdelse
 SPRT_FORCEINLINE int sigismember(const sigset_t *set, int s) {
 	return __SPRT_ID(sigismember)(set, s);
 }
+
+#if __SPRT_CONFIG_HAVE_SIGNAL_SIGPROCMASK || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int sigprocmask(int mode, const sigset_t *__SPRT_RESTRICT a,
 		sigset_t *__SPRT_RESTRICT b) {
 	return __SPRT_ID(sigprocmask)(mode, a, b);
 }
 SPRT_FORCEINLINE int sigsuspend(const sigset_t *set) { return __SPRT_ID(sigsuspend)(set); }
 SPRT_FORCEINLINE int sigpending(sigset_t *set) { return __SPRT_ID(sigpending)(set); }
+#endif
 
 SPRT_FORCEINLINE int sigisemptyset(const sigset_t *set) { return __SPRT_ID(sigisemptyset)(set); }
 SPRT_FORCEINLINE int sigorset(sigset_t *set, const sigset_t *a, const sigset_t *b) {

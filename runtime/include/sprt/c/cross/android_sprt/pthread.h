@@ -1,3 +1,8 @@
+// clang-format off
+#define __SPRT_PTHREAD_KEYS_MAX 128
+#define __SPRT_PTHREAD_DESTRUCTOR_ITERATIONS 4
+// clang-format on
+
 typedef long __SPRT_ID(pthread_t);
 typedef int __SPRT_ID(pthread_once_t);
 typedef int __SPRT_ID(pthread_key_t);

@@ -261,9 +261,13 @@ SPRT_FORCEINLINE FILE *fmemopen(void *__SPRT_RESTRICT ptr, size_t size,
 		const char *__SPRT_RESTRICT mode) {
 	return __sprt_fmemopen(ptr, size, mode);
 }
+
+#if __SPRT_CONFIG_HAVE_STDIO_OPEN_MEMSTREAM || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE FILE *open_memstream(char **ptr, size_t *sz) {
 	return __sprt_open_memstream(ptr, sz);
 }
+#endif
+
 SPRT_FORCEINLINE FILE *fdopen(int fd, const char *mode) { return __sprt_fdopen(fd, mode); }
 SPRT_FORCEINLINE FILE *popen(const char *str, const char *mode) { return __sprt_popen(str, mode); }
 SPRT_FORCEINLINE int pclose(FILE *f) { return __sprt_pclose(f); }

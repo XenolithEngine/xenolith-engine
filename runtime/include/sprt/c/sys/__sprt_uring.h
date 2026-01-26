@@ -26,7 +26,7 @@
 #include <sprt/c/cross/__sprt_config.h>
 
 #include <sprt/c/bits/uring.h>
-#include <sprt/c/bits/__sprt_sigset_t.h>
+#include <sprt/c/cross/__sprt_signal.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 
 #if __SPRT_CONFIG_HAVE_URING || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS

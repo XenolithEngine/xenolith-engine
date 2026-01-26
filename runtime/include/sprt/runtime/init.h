@@ -292,7 +292,7 @@ using enable_if_t = typename enable_if<Bool, Type>::type;
 
 template <typename From, typename To>
 struct is_convertible {
-	static constexpr auto value = __is_convertible(From, To);
+	static constexpr bool value = __is_convertible(From, To);
 };
 
 template <typename From, typename To>

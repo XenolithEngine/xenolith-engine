@@ -26,26 +26,33 @@ THE SOFTWARE.
 
 #include "private/SPRTFilename.h"
 
+#ifndef SPRT_WINDOWS
+
 #include <dlfcn.h>
+
+#else
+
+#include "platform/windows/dlfcn.cc"
+
+#endif
 
 namespace sprt {
 
-__SPRT_C_FUNC int __SPRT_ID(dlclose)(void *ptr) { return ::dlclose(ptr); }
+__SPRT_C_FUNC int __SPRT_ID(dlclose)(void *ptr) { return dlclose(ptr); }
 
-__SPRT_C_FUNC char *__SPRT_ID(dlerror)(void) { return ::dlerror(); }
+__SPRT_C_FUNC char *__SPRT_ID(dlerror)(void) { return dlerror(); }
 
 __SPRT_C_FUNC void *__SPRT_ID(dlopen)(const char *path, int __flags) {
-	return internal::performWithNativePath(path,
-			[&](const char *target) { return ::dlopen(target, __flags); }, (void *)nullptr);
+	return dlopen(path, __flags);
 }
 
 __SPRT_C_FUNC void *__SPRT_ID(
 		dlsym)(void *__SPRT_RESTRICT __handle, const char *__SPRT_RESTRICT __name) {
-	return ::dlsym(__handle, __name);
+	return dlsym(__handle, __name);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(dladdr)(const void *__handle, __SPRT_ID(Dl_info) * __info) {
-	return ::dladdr(__handle, (::Dl_info *)__info);
+	return dladdr(__handle, (Dl_info *)__info);
 }
 
 } // namespace sprt

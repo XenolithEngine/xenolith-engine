@@ -250,10 +250,18 @@ SPRT_FORCEINLINE gid_t getgid(void) __SPRT_NOEXCEPT { return __sprt_getgid(); }
 
 SPRT_FORCEINLINE gid_t getegid(void) __SPRT_NOEXCEPT { return __sprt_getegid(); }
 
+SPRT_FORCEINLINE int getresuid(uid_t *__ruid, uid_t *__euid, uid_t *__suid) __SPRT_NOEXCEPT {
+	return __sprt_getresuid(__ruid, __euid, __suid);
+}
+SPRT_FORCEINLINE int getresgid(gid_t *__rgid, gid_t *__egid, gid_t *__sgid) __SPRT_NOEXCEPT {
+	return __sprt_getresgid(__rgid, __egid, __sgid);
+}
+
 SPRT_FORCEINLINE int getgroups(int __size, gid_t __list[]) __SPRT_NOEXCEPT {
 	return __sprt_getgroups(__size, __list);
 }
 
+#if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int setuid(uid_t __uid) __SPRT_NOEXCEPT { return __sprt_setuid(__uid); }
 SPRT_FORCEINLINE int setreuid(uid_t __ruid, uid_t __euid) __SPRT_NOEXCEPT {
 	return __sprt_setreuid(__ruid, __euid);
@@ -264,20 +272,19 @@ SPRT_FORCEINLINE int setregid(gid_t __rgid, gid_t __egid) __SPRT_NOEXCEPT {
 	return __sprt_setregid(__rgid, __egid);
 }
 SPRT_FORCEINLINE int setegid(gid_t __gid) __SPRT_NOEXCEPT { return __sprt_setegid(__gid); }
-SPRT_FORCEINLINE int getresuid(uid_t *__ruid, uid_t *__euid, uid_t *__suid) __SPRT_NOEXCEPT {
-	return __sprt_getresuid(__ruid, __euid, __suid);
-}
-SPRT_FORCEINLINE int getresgid(gid_t *__rgid, gid_t *__egid, gid_t *__sgid) __SPRT_NOEXCEPT {
-	return __sprt_getresgid(__rgid, __egid, __sgid);
-}
 SPRT_FORCEINLINE int setresuid(uid_t __ruid, uid_t __euid, uid_t __suid) __SPRT_NOEXCEPT {
 	return __sprt_setresuid(__ruid, __euid, __suid);
 }
 SPRT_FORCEINLINE int setresgid(gid_t __rgid, gid_t __egid, gid_t __sgid) __SPRT_NOEXCEPT {
 	return __sprt_setresgid(__rgid, __egid, __sgid);
 }
+#endif
+
+#if __SPRT_CONFIG_HAVE_UNISTD_FORK || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE pid_t fork(void) __SPRT_NOEXCEPT { return __sprt_fork(); }
 SPRT_FORCEINLINE pid_t vfork(void) __SPRT_NOEXCEPT { return __sprt_vfork(); }
+#endif
+
 SPRT_FORCEINLINE char *ttyname(int __fd) __SPRT_NOEXCEPT { return __sprt_ttyname(__fd); }
 SPRT_FORCEINLINE int ttyname_r(int __fd, char *__buf, size_t __buflen) __SPRT_NOEXCEPT {
 	return __sprt_ttyname_r(__fd, __buf, __buflen);
@@ -301,16 +308,21 @@ SPRT_FORCEINLINE int getlogin_r(char *__name, size_t __name_len) {
 	return __sprt_getlogin_r(__name, __name_len);
 }
 
+#if __SPRT_CONFIG_HAVE_UNISTD_SETLOGIN || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int setlogin(const char *__name) __SPRT_NOEXCEPT {
 	return __sprt_setlogin(__name);
 }
+#endif
 
 SPRT_FORCEINLINE int gethostname(char *__name, size_t __len) __SPRT_NOEXCEPT {
 	return __sprt_gethostname(__name, __len);
 }
+
+#if __SPRT_CONFIG_HAVE_UNISTD_SETHOSTNAME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int sethostname(const char *__name, size_t __len) __SPRT_NOEXCEPT {
 	return __sprt_sethostname(__name, __len);
 }
+#endif
 
 #if __SPRT_CONFIG_HAVE_UNISTD_DOMAINNAME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int getdomainname(char *__name, size_t __len) __SPRT_NOEXCEPT {
@@ -331,8 +343,12 @@ SPRT_FORCEINLINE int truncate(const char *__file, off_t length) __SPRT_NOEXCEPT 
 SPRT_FORCEINLINE int ftruncate(int __fd, off_t length) __SPRT_NOEXCEPT {
 	return __sprt_ftruncate(__fd, length);
 }
+
+#if __SPRT_CONFIG_HAVE_UNISTD_BRK || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int brk(void *__addr) __SPRT_NOEXCEPT { return __sprt_brk(__addr); }
 SPRT_FORCEINLINE void *sbrk(intptr_t __delta) __SPRT_NOEXCEPT { return __sprt_sbrk(__delta); }
+#endif
+
 SPRT_FORCEINLINE int lockf(int __fd, int __cmd, off_t len) {
 	return __sprt_lockf(__fd, __cmd, len);
 }

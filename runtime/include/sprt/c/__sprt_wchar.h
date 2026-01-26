@@ -177,7 +177,10 @@ SPRT_API __SPRT_ID(size_t) __SPRT_ID(wcsftime_l)(__SPRT_WCHAR_T *__SPRT_RESTRICT
 		const __SPRT_WCHAR_T *__SPRT_RESTRICT, const struct __SPRT_TM_NAME *__SPRT_RESTRICT,
 		__SPRT_ID(locale_t));
 
+#if __SPRT_CONFIG_HAVE_STDIO_OPEN_MEMSTREAM || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API __SPRT_ID(FILE) * __SPRT_ID(open_wmemstream)(__SPRT_WCHAR_T **, __SPRT_ID(size_t) *);
+#endif
+
 SPRT_API __SPRT_ID(size_t)
 		__SPRT_ID(mbsnrtowcs)(__SPRT_WCHAR_T *__SPRT_RESTRICT, const char **__SPRT_RESTRICT,
 				__SPRT_ID(size_t), __SPRT_ID(size_t), __SPRT_MBSTATE_NAME *__SPRT_RESTRICT);

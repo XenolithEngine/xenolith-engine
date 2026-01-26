@@ -29,13 +29,9 @@
 #include <sprt/c/__sprt_stdlib.h>
 
 #include <sprt/runtime/detail/invoke.h>
+#include <sprt/runtime/stringview.h>
 
 namespace sprt::internal {
-
-#if __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wvla-cxx-extension"
-#endif
 
 template <typename Result, typename Callback>
 static inline auto performWithNativePath(const char *path, const Callback &cb,
@@ -77,9 +73,25 @@ static inline auto performWithPosixePath(const char *path, const Callback &cb,
 	return error;
 }
 
-#if __clang__
-#pragma clang diagnostic pop
-#endif
+template < typename Callback>
+static inline auto performBinaryMode(const char *mode, const Callback &cb) {
+	static_assert(is_invocable_v<Callback, const char *>);
+	StringView smode(mode);
+	if (smode.find('b') == Max<size_t>) {
+		// add 'b' to mode string
+		auto modeLen = __constexpr_strlen(mode) + 2;
+		auto modeBuf = (char *)__sprt_malloca(modeLen);
+		auto target = modeBuf;
+
+		target = strappend(target, &modeLen, smode.data(), smode.size());
+		target = strappend(target, &modeLen, "b", 1);
+
+		cb(modeBuf);
+	} else {
+		cb(mode);
+	}
+}
+
 
 } // namespace sprt::internal
 

@@ -65,21 +65,19 @@ SPRT_API __SPRT_ID(DIR) * __SPRT_ID(opendir)(const char *__path);
 SPRT_API __SPRT_ID(DIR) * __SPRT_ID(fdopendir)(int __dir_fd);
 
 SPRT_API struct __SPRT_DIRENT_NAME *__SPRT_ID(readdir)(__SPRT_ID(DIR) * __dir);
-SPRT_API struct __SPRT_DIRENT_NAME *__SPRT_ID(readdir64)(__SPRT_ID(DIR) * __dir);
-
-SPRT_API int __SPRT_ID(readdir_r)(__SPRT_ID(DIR) * __dir, struct __SPRT_DIRENT_NAME *__entry,
-		struct __SPRT_DIRENT_NAME **__buffer);
-SPRT_API int __SPRT_ID(readdir64_r)(__SPRT_ID(DIR) * __dir, struct __SPRT_DIRENT_NAME *__entry,
-		struct __SPRT_DIRENT_NAME **__buffer);
 
 SPRT_API int __SPRT_ID(closedir)(__SPRT_ID(DIR) * __dir);
-SPRT_API void __SPRT_ID(rewinddir)(__SPRT_ID(DIR) * __dir);
+SPRT_API int __SPRT_ID(rewinddir)(__SPRT_ID(DIR) * __dir);
 
-SPRT_API void __SPRT_ID(seekdir)(__SPRT_ID(DIR) * __dir, long __location);
+SPRT_API int __SPRT_ID(seekdir)(__SPRT_ID(DIR) * __dir, long __location);
 SPRT_API long __SPRT_ID(telldir)(__SPRT_ID(DIR) * __dir);
 
 SPRT_API int __SPRT_ID(dirfd)(__SPRT_ID(DIR) * __dir);
+
 SPRT_API int __SPRT_ID(alphasort)(const struct __SPRT_DIRENT_NAME **__lhs,
+		const struct __SPRT_DIRENT_NAME **__rhs);
+
+SPRT_API int __SPRT_ID(versionsort)(const struct __SPRT_DIRENT_NAME **__lhs,
 		const struct __SPRT_DIRENT_NAME **__rhs);
 
 SPRT_API int __SPRT_ID(scandir)(const char *__path, struct __SPRT_DIRENT_NAME ***__name_list,

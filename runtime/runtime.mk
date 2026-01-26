@@ -34,7 +34,7 @@ MODULE_RUNTIME_LIBC_INCLUDES_OBJS := \
 	$(RUNTIME_MODULE_DIR)/src
 
 ifdef TOOLCHAIN_INCLUDEDIR_LIBC
-MODULE_RUNTIME_LIBC_PRIVATE_CXXFLAGS := -idirafter $(TOOLCHAIN_INCLUDEDIR_LIBC)
+MODULE_RUNTIME_LIBC_PRIVATE_CXXFLAGS := $(addprefix -idirafter ,$(TOOLCHAIN_INCLUDEDIR_LIBC))
 endif
 
 $(call define_module, runtime_libc, MODULE_RUNTIME_LIBC)
@@ -58,7 +58,7 @@ MODULE_RUNTIME_DEPENDS_ON := runtime_libc
 ifdef LINUX
 MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
-MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a
+MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a -l:libicuuc.a -l:libicudata.a
 endif
 
 ifdef ANDROID
@@ -75,6 +75,8 @@ MODULE_RUNTIME_GENERAL_LDFLAGS += -framework CoreFoundation  -framework Foundati
 endif
 
 ifdef WIN32
+MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_LIBS += -ladvapi32 -lshlwapi -lshell32 -lole32 -luserenv
 endif
 

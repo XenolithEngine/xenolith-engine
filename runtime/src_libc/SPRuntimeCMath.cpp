@@ -474,5 +474,4 @@ __SPRT_C_FUNC float __SPRT_ID(truncf_impl)(float value) { return ::truncf(value)
 
 __SPRT_C_FUNC long double __SPRT_ID(truncl_impl)(long double value) { return ::truncl(value); }
 
-
 } // namespace sprt

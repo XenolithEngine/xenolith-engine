@@ -37,6 +37,15 @@ struct _recursive_qmutex_data_t {
 	uint32_t value = 0;
 	uint32_t counter = 0;
 };
+#elif SPRT_WINDOWS
+struct __qmutex_data_t {
+	uint32_t value = 0;
+};
+
+struct _recursive_qmutex_data_t {
+	uint32_t value = 0;
+	uint32_t counter = 0;
+};
 #else
 #error TODO
 #endif

@@ -33,16 +33,20 @@ THE SOFTWARE.
 #include <stdarg.h>
 #include <stdio.h>
 
+#if SPRT_WINDOWS
+#include "platform/windows/stdio.cc"
+#endif
+
 namespace sprt {
 
 __SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(stdin_impl)() {
-	return ::stdin; //
+	return stdin; //
 }
 __SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(stdout_impl)() {
-	return ::stdout; //
+	return stdout; //
 }
 __SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(stderr_impl)() {
-	return ::stderr; //
+	return stderr; //
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_posix)(const char *__SPRT_RESTRICT path,
@@ -51,13 +55,15 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_posix)(const char *__SPRT_RES
 		return 0;
 	}
 
-	__sprt_memcpy(buf, path, pathSize);
 #if SPRT_WINDOWS
-#endif
+	return __fpath_to_posix(path, pathSize, buf, bufSize);
+#else
+	__sprt_memcpy(buf, path, pathSize);
 	if (bufSize > pathSize) {
 		buf[pathSize] = 0; // optional nullterm
 	}
 	return pathSize;
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_native)(const char *__SPRT_RESTRICT path,
@@ -66,57 +72,77 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_native)(const char *__SPRT_RE
 		return 0;
 	}
 
-	__sprt_memcpy(buf, path, pathSize);
 #if SPRT_WINDOWS
-#endif
+	return __fpath_to_native(path, pathSize, buf, bufSize);
+#else
+	__sprt_memcpy(buf, path, pathSize);
 	if (bufSize > pathSize) {
 		buf[pathSize] = 0; // optional nullterm
 	}
 	return pathSize;
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(FILE)
 		* __SPRT_ID(
 				fopen_impl)(const char *__SPRT_RESTRICT path, const char *__SPRT_RESTRICT mode) {
-	if (!path || !mode) {
-		log::vprint(log::LogType::Error, __SPRT_LOCATION, "sprt::stdio",
-				"path or mode is not defined");
-		return nullptr;
-	}
-
-	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
-		return ::fopen64(target, mode);
-	}, (__SPRT_ID(FILE) *)nullptr);
+#if SPRT_WINDOWS
+	FILE *ret = nullptr;
+	internal::performWithNativePath(path, [&](const char *nativePath) SPRT_LAMBDAINLINE {
+		internal::performBinaryMode(mode, [&](const char *modeBuf) SPRT_LAMBDAINLINE {
+			__sprt_errno = fopen_s(&ret, nativePath, modeBuf);
+		});
+		return 0;
+	}, 0);
+	return ret;
+#else
+	return ::fopen64(path, mode);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(FILE)
 		* __SPRT_ID(freopen_impl)(const char *__SPRT_RESTRICT path,
 				const char *__SPRT_RESTRICT mode, __SPRT_ID(FILE) * __SPRT_RESTRICT file) {
-	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
-		return ::freopen64(target, mode, file);
-	}, (__SPRT_ID(FILE) *)nullptr);
+#if SPRT_WINDOWS
+	FILE *ret = nullptr;
+	internal::performWithNativePath(path, [&](const char *nativePath) SPRT_LAMBDAINLINE {
+		internal::performBinaryMode(mode, [&](const char *modeBuf) SPRT_LAMBDAINLINE {
+			__sprt_errno = freopen_s(&ret, nativePath, modeBuf, file);
+		});
+		return 0;
+	}, 0);
+	return ret;
+#else
+	return ::freopen64(path, mode, file);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fclose_impl)(__SPRT_ID(FILE) * file) { return ::fclose(file); }
 
 __SPRT_C_FUNC int __SPRT_ID(remove_impl)(const char *path) {
-	return internal::performWithNativePath(path, [&](const char *target) {
+#if SPRT_WINDOWS
+	return internal::performWithNativePath(path, [&](const char *nativePath) SPRT_LAMBDAINLINE {
 		// call with native path
-		return ::remove(target);
+		return ::remove(nativePath);
 	}, -1);
+#else
+	return ::remove(target);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(rename_impl)(const char *oldPath, const char *newPath) {
-	return internal::performWithNativePath(oldPath, [&](const char *oldTarget) {
-		return internal::performWithNativePath(newPath, [&](const char *newTarget) {
+#if SPRT_WINDOWS
+	return internal::performWithNativePath(oldPath, [&](const char *oldTarget) SPRT_LAMBDAINLINE {
+		return internal::performWithNativePath(newPath,
+				[&](const char *newTarget) SPRT_LAMBDAINLINE {
 			// call with native path
 			return ::rename(oldTarget, newTarget);
 		}, -1);
 	}, -1);
+#else
+	return ::rename(oldPath, newPath);
+#endif
 }
-
 
 __SPRT_C_FUNC int __SPRT_ID(feof_impl)(__SPRT_ID(FILE) * file) { return ::feof(file); }
 
@@ -126,7 +152,6 @@ __SPRT_C_FUNC int __SPRT_ID(fflush_impl)(__SPRT_ID(FILE) * file) { return ::fflu
 
 __SPRT_C_FUNC void __SPRT_ID(clearerr_impl)(__SPRT_ID(FILE) * file) { return ::clearerr(file); }
 
-
 __SPRT_C_FUNC int __SPRT_ID(fseek_impl)(__SPRT_ID(FILE) * file, long pos, int when) {
 	return ::fseek(file, pos, when);
 }
@@ -134,7 +159,6 @@ __SPRT_C_FUNC int __SPRT_ID(fseek_impl)(__SPRT_ID(FILE) * file, long pos, int wh
 __SPRT_C_FUNC long __SPRT_ID(ftell_impl)(__SPRT_ID(FILE) * file) { return ::ftell(file); }
 
 __SPRT_C_FUNC void __SPRT_ID(rewind_impl)(__SPRT_ID(FILE) * file) { return ::rewind(file); }
-
 
 __SPRT_C_FUNC size_t __SPRT_ID(fread_impl)(void *__SPRT_RESTRICT buf, size_t n, size_t count,
 		__SPRT_ID(FILE) * __SPRT_RESTRICT file) {
@@ -146,7 +170,6 @@ __SPRT_C_FUNC size_t __SPRT_ID(fwrite_impl)(const void *__SPRT_RESTRICT buf, siz
 	return ::fwrite(buf, n, count, file);
 }
 
-
 __SPRT_C_FUNC int __SPRT_ID(fgetc_impl)(__SPRT_ID(FILE) * file) { return ::fgetc(file); }
 
 __SPRT_C_FUNC int __SPRT_ID(getc_impl)(__SPRT_ID(FILE) * file) { return ::getc(file); }
@@ -157,19 +180,16 @@ __SPRT_C_FUNC int __SPRT_ID(ungetc_impl)(int c, __SPRT_ID(FILE) * file) {
 	return ::ungetc(c, file);
 }
 
-
 __SPRT_C_FUNC int __SPRT_ID(fputc_impl)(int c, __SPRT_ID(FILE) * file) { return ::fputc(c, file); }
 
 __SPRT_C_FUNC int __SPRT_ID(putc_impl)(int c, __SPRT_ID(FILE) * file) { return ::putc(c, file); }
 
 __SPRT_C_FUNC int __SPRT_ID(putchar_impl)(int c) { return ::putchar(c); }
 
-
 __SPRT_C_FUNC char *__SPRT_ID(
 		fgets_impl)(char *__SPRT_RESTRICT buf, int n, __SPRT_ID(FILE) * __SPRT_RESTRICT file) {
 	return ::fgets(buf, n, file);
 }
-
 
 __SPRT_C_FUNC int __SPRT_ID(
 		fputs_impl)(const char *__SPRT_RESTRICT buf, __SPRT_ID(FILE) * __SPRT_RESTRICT file) {
@@ -177,7 +197,6 @@ __SPRT_C_FUNC int __SPRT_ID(
 }
 
 __SPRT_C_FUNC int __SPRT_ID(puts_impl)(const char *str) { return ::puts(str); }
-
 
 __SPRT_C_FUNC int __SPRT_ID(printf_impl)(const char *__SPRT_RESTRICT fmt, ...) {
 	va_list list;
@@ -205,7 +224,16 @@ __SPRT_C_FUNC int __SPRT_ID(
 	va_list list;
 	va_start(list, fmt);
 
+
+#ifdef SPRT_WINDOWS
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 	auto ret = ::vsprintf(buf, fmt, list);
+#pragma clang diagnostic pop
+#else
+	auto ret = ::vsprintf(buf, fmt, list);
+#endif
+
 
 	va_end(list);
 	return ret;
@@ -234,7 +262,14 @@ __SPRT_C_FUNC int __SPRT_ID(vfprintf_impl)(__SPRT_ID(FILE) * __SPRT_RESTRICT fil
 
 __SPRT_C_FUNC int __SPRT_ID(vsprintf_impl)(char *__SPRT_RESTRICT buf,
 		const char *__SPRT_RESTRICT fmt, __SPRT_ID(va_list) arg) {
+#ifdef SPRT_WINDOWS
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 	return ::vsprintf(buf, fmt, arg);
+#pragma clang diagnostic pop
+#else
+	return ::vsprintf(buf, fmt, arg);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vsnprintf_impl)(char *__SPRT_RESTRICT buf, size_t n,
@@ -300,7 +335,14 @@ __SPRT_C_FUNC int __SPRT_ID(setvbuf_impl)(__SPRT_ID(FILE) * __SPRT_RESTRICT file
 
 __SPRT_C_FUNC void __SPRT_ID(
 		setbuf_impl)(__SPRT_ID(FILE) * __SPRT_RESTRICT file, char *__SPRT_RESTRICT buf) {
+#ifdef SPRT_WINDOWS
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 	::setbuf(file, buf);
+#pragma clang diagnostic pop
+#else
+	::setbuf(file, buf);
+#endif
 }
 
 #ifdef __clang__
@@ -314,80 +356,240 @@ __SPRT_C_FUNC char *__SPRT_ID(tmpnam_impl)(char *buf) { return ::tmpnam(buf); }
 #pragma clang diagnostic pop
 #endif
 
-__SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(tmpfile_impl)(void) { return ::tmpfile(); }
+__SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(tmpfile_impl)(void) {
+
+#ifdef SPRT_WINDOWS
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+	return ::tmpfile();
+#pragma clang diagnostic pop
+#else
+	return ::tmpfile();
+#endif
+}
 
 __SPRT_C_FUNC int __SPRT_ID(asprintf)(char **out, const char *fmt, ...) {
 	va_list list;
 	va_start(list, fmt);
 
+#if SPRT_WINDOWS
+	va_list tmpList;
+	va_copy(tmpList, list);
+	int l = vsnprintf(0, 0, fmt, tmpList);
+	va_end(tmpList);
+
+	if (l < 0 || !(*out = (char *)__sprt_malloc(l + 1U))) {
+		return -1;
+	}
+	auto ret = vsnprintf(*out, l + 1U, fmt, list);
+#else
 	auto ret = ::vasprintf(out, fmt, list);
+#endif
 
 	va_end(list);
 	return ret;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vasprintf)(char **out, const char *fmt, __SPRT_ID(va_list) list) {
+#if SPRT_WINDOWS
+	va_list tmpList;
+	va_copy(tmpList, list);
+	int l = vsnprintf(0, 0, fmt, tmpList);
+	va_end(tmpList);
+
+	if (l < 0 || !(*out = (char *)__sprt_malloc(l + 1U))) {
+		return -1;
+	}
+	return vsnprintf(*out, l + 1U, fmt, list);
+#else
 	return ::vasprintf(out, fmt, list);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(FILE)
 		* __SPRT_ID(fmemopen)(void *__SPRT_RESTRICT ptr, __SPRT_ID(size_t) size,
 				const char *__SPRT_RESTRICT mode) {
-	return ::fmemopen(ptr, size, mode);
+	return fmemopen(ptr, size, mode);
 }
+
 __SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(open_memstream)(char **ptr, __SPRT_ID(size_t) * sz) {
+#if __SPRT_CONFIG_HAVE_STDIO_OPEN_MEMSTREAM
 	return ::open_memstream(ptr, sz);
+#else
+	__sprt_errno = ENOSYS;
+	return nullptr;
+#endif
 }
+
 __SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(fdopen)(int fd, const char *mode) {
+#if SPRT_WINDOWS
+	FILE *ret = nullptr;
+	internal::performBinaryMode(mode, [&](const char *modeBuf) {
+		ret = ::_fdopen(fd, modeBuf); //
+	});
+	return ret;
+#else
 	return ::fdopen(fd, mode);
+#endif
 }
+
 __SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(popen)(const char *str, const char *mode) {
-	return ::popen(str, mode);
+#if SPRT_WINDOWS
+	FILE *ret = nullptr;
+	internal::performBinaryMode(mode, [&](const char *modeBuf) { ret = ::_popen(str, modeBuf); });
+	return ret;
+#else
+	return ::popen(str, modeBuf);
+#endif
 }
-__SPRT_C_FUNC int __SPRT_ID(pclose)(__SPRT_ID(FILE) * f) { return ::pclose(f); }
-__SPRT_C_FUNC int __SPRT_ID(fileno)(__SPRT_ID(FILE) * f) { return ::fileno(f); }
+
+__SPRT_C_FUNC int __SPRT_ID(pclose)(__SPRT_ID(FILE) * f) {
+#if SPRT_WINDOWS
+	return ::_pclose(f);
+#else
+	return ::pclose(f);
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(fileno)(__SPRT_ID(FILE) * f) {
+#if SPRT_WINDOWS
+	return ::_fileno(f);
+#else
+	return ::fileno(f);
+#endif
+}
+
 __SPRT_C_FUNC int __SPRT_ID(fseeko)(__SPRT_ID(FILE) * f, __SPRT_ID(off_t) off, int n) {
+#if SPRT_WINDOWS
+	return ::_fseeki64(f, off, n);
+#else
 	return ::fseeko(f, off, n);
+#endif
 }
-__SPRT_C_FUNC __SPRT_ID(off_t) __SPRT_ID(ftello)(__SPRT_ID(FILE) * f) { return ::ftello(f); }
+
+__SPRT_C_FUNC __SPRT_ID(off_t) __SPRT_ID(ftello)(__SPRT_ID(FILE) * f) {
+#if SPRT_WINDOWS
+	return ::_ftelli64(f);
+#else
+	return ::ftello(f);
+#endif
+}
+
 __SPRT_C_FUNC int __SPRT_ID(dprintf)(int n, const char *__SPRT_RESTRICT fmt, ...) {
 	va_list list;
 	va_start(list, fmt);
 
+#if SPRT_WINDOWS
+	FILE *fp = _fdopen(_dup(n), "wb"); // Duplicate to avoid close issues
+	if (!fp) {
+		return -1;
+	}
+
+	int ret = vfprintf(fp, fmt, list);
+
+	fclose(fp);
+#else
 	auto ret = ::vdprintf(n, fmt, list);
+#endif
 
 	va_end(list);
 	return ret;
 }
+
 __SPRT_C_FUNC int __SPRT_ID(
 		vdprintf)(int n, const char *__SPRT_RESTRICT fmt, __SPRT_ID(va_list) list) {
+#if SPRT_WINDOWS
+	FILE *fp = _fdopen(_dup(n), "wb"); // Duplicate to avoid close issues
+	if (!fp) {
+		return -1;
+	}
+
+	int ret = vfprintf(fp, fmt, list);
+
+	fclose(fp);
+	return ret;
+#else
 	return ::vdprintf(n, fmt, list);
+#endif
 }
-__SPRT_C_FUNC void __SPRT_ID(flockfile)(__SPRT_ID(FILE) * f) { return ::flockfile(f); }
-__SPRT_C_FUNC int __SPRT_ID(ftrylockfile)(__SPRT_ID(FILE) * f) { return ::ftrylockfile(f); }
-__SPRT_C_FUNC void __SPRT_ID(funlockfile)(__SPRT_ID(FILE) * f) { return ::funlockfile(f); }
-__SPRT_C_FUNC int __SPRT_ID(getc_unlocked)(__SPRT_ID(FILE) * f) { return ::getc_unlocked(f); }
-__SPRT_C_FUNC int __SPRT_ID(getchar_unlocked)(void) { return ::getchar_unlocked(); }
+
+__SPRT_C_FUNC void __SPRT_ID(flockfile)(__SPRT_ID(FILE) * f) {
+#if SPRT_WINDOWS
+	::_lock_file(f);
+#else
+	::flockfile(f);
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(ftrylockfile)(__SPRT_ID(FILE) * f) {
+#if SPRT_WINDOWS
+	return -1;
+#else
+	return ::ftrylockfile(f);
+#endif
+}
+
+__SPRT_C_FUNC void __SPRT_ID(funlockfile)(__SPRT_ID(FILE) * f) {
+#if SPRT_WINDOWS
+	::_unlock_file(f);
+#else
+	::funlockfile(f);
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(getc_unlocked)(__SPRT_ID(FILE) * f) {
+#if SPRT_WINDOWS
+	return _fgetc_nolock(f);
+#else
+	return ::getc_unlocked(f);
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(getchar_unlocked)(void) {
+#if SPRT_WINDOWS
+	return _getchar_nolock();
+#else
+	return ::getchar_unlocked();
+#endif
+}
+
 __SPRT_C_FUNC int __SPRT_ID(putc_unlocked)(int c, __SPRT_ID(FILE) * f) {
+#if SPRT_WINDOWS
+	return _fputc_nolock(c, f);
+#else
 	return ::putc_unlocked(c, f);
+#endif
 }
-__SPRT_C_FUNC int __SPRT_ID(putchar_unlocked)(int c) { return ::putchar_unlocked(c); }
+
+__SPRT_C_FUNC int __SPRT_ID(putchar_unlocked)(int c) {
+#if SPRT_WINDOWS
+	return ::_putchar_nolock(c);
+#else
+	return ::putchar_unlocked(c);
+#endif
+}
+
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(getdelim)(char **__SPRT_RESTRICT ret,
 		__SPRT_ID(size_t) * __SPRT_RESTRICT sz, int c, __SPRT_ID(FILE) * __SPRT_RESTRICT f) {
-	return ::getdelim(ret, sz, c, f);
+	return getdelim(ret, sz, c, f);
 }
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(getline)(char **__SPRT_RESTRICT ret,
 		__SPRT_ID(size_t) * __SPRT_RESTRICT sz, __SPRT_ID(FILE) * __SPRT_RESTRICT f) {
-	return ::getline(ret, sz, f);
+	return getline(ret, sz, f);
 }
 __SPRT_C_FUNC int __SPRT_ID(
 		renameat)(int oldfd, const char *oldPath, int newfd, const char *newPath) {
-	return internal::performWithNativePath(oldPath, [&](const char *oldTarget) {
-		return internal::performWithNativePath(newPath, [&](const char *newTarget) {
-			// call with native path
-			return ::renameat(oldfd, oldTarget, newfd, newTarget);
-		}, -1);
-	}, -1);
+
+#if SPRT_WINDOWS
+	int ret = -1;
+	platform::openAtPath(oldfd, oldPath, [&](const char *oldTarget, size_t) {
+		platform::openAtPath(newfd, newPath, [&](const char *newTarget, size_t) {
+			ret = rename(oldTarget, newTarget);
+		}, platform::FdHandleType::File);
+	}, platform::FdHandleType::File);
+	return ret;
+#else
+	return ::renameat(oldfd, oldPath, newFd, newPath);
+#endif
 }
 
 __SPRT_C_FUNC char *__SPRT_ID(ctermid)(char *s) {
@@ -399,6 +601,11 @@ __SPRT_C_FUNC char *__SPRT_ID(ctermid)(char *s) {
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
+#elif SPRT_WINDOWS
+	if (s) {
+		*s = '\n';
+	}
+	return s;
 #else
 	return ::ctermid(s);
 #endif

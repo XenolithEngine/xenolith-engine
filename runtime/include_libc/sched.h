@@ -38,6 +38,34 @@ typedef struct __SPRT_ID(sched_param) sched_param;
 typedef __SPRT_TIMESPEC_NAME timespec;
 typedef __SPRT_ID(cpu_set_t) cpu_set_t;
 
+#define CPU_SETSIZE __SPRT_CPU_SETSIZE
+
+#define CPU_SET_S(i, size, set) __SPRT_CPU_SET_S(i, size, set)
+#define CPU_CLR_S(i, size, set) __SPRT_CPU_SET_S(i, size, set)
+#define CPU_ISSET_S(i, size, set) __SPRT_CPU_SET_S(i, size, set)
+
+#define CPU_AND_S(a, b, c, d) __SPRT_CPU_AND_S(a,b,c,d)
+#define CPU_OR_S(a, b, c, d) __SPRT_CPU_OR_S(a,b,c,d)
+#define CPU_XOR_S(a, b, c, d) __SPRT_CPU_XOR_S(a,b,c,d)
+
+#define CPU_COUNT_S(size, set) __SPRT_CPU_COUNT_S(size,set)
+#define CPU_ZERO_S(size, set) __SPRT_CPU_ZERO_S(size,set)
+#define CPU_EQUAL_S(size, set1, set2) __SPRT_CPU_EQUAL_S(size,set1,set2)
+
+#define CPU_ALLOC_SIZE(n) __SPRT_CPU_ALLOC_SIZE(n)
+#define CPU_ALLOC(n) __SPRT_CPU_ALLOC(n)
+#define CPU_FREE(set) __SPRT_CPU_FREE(set)
+
+#define CPU_SET(i, set) __SPRT_CPU_SET(i, set)
+#define CPU_CLR(i, set) __SPRT_CPU_CLR(i, set)
+#define CPU_ISSET(i, set) __SPRT_CPU_ISSET(i, set)
+#define CPU_AND(d, s1, s2) __SPRT_CPU_AND(d,s1,s2)
+#define CPU_OR(d, s1, s2) __SPRT_CPU_OR(d,s1,s2)
+#define CPU_XOR(d, s1, s2) __SPRT_CPU_XOR(d,s1,s2)
+#define CPU_COUNT(set) __SPRT_CPU_COUNT(set)
+#define CPU_ZERO(set) __SPRT_CPU_ZERO(set)
+#define CPU_EQUAL(s1, s2) __SPRT_CPU_EQUAL(s1,s2)
+
 SPRT_FORCEINLINE int sched_get_priority_max(int t) { return __sprt_sched_get_priority_max(t); }
 
 SPRT_FORCEINLINE int sched_get_priority_min(int t) { return __sprt_sched_get_priority_min(t); }

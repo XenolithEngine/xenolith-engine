@@ -116,4 +116,81 @@ extern void *(*_aligned_alloc)(size_t __alignment, size_t __size);
 
 #endif
 
+#if SPRT_WINDOWS
+
+#ifndef _WINDOWS_
+#ifndef __SPRT_BUILD
+
+#ifndef DECLSPEC_IMPORT
+#if defined(_M_IX86) || defined(_M_IA64) || defined(_M_AMD64) || defined(_M_ARM) \
+		|| defined(_M_ARM64)
+#define DECLSPEC_IMPORT __declspec(dllimport)
+#else
+#define DECLSPEC_IMPORT
+#endif
+#endif
+
+#define WINBASEAPI DECLSPEC_IMPORT
+#define WINAPI __stdcall
+
+using CHAR = char;
+using LPSTR = char *;
+using PVOID = void *;
+using LPCVOID = const void *;
+using PCHAR = char *;
+using LPCSTR = const char *;
+using HANDLE = void *;
+using HMODULE = void *;
+using WORD = __SPRT_ID(uint16_t);
+using DWORD = __SPRT_ID(uint32_t);
+using DWORD64 = __SPRT_ID(uint64_t);
+using PWORD = WORD *;
+using PDWORD = DWORD *;
+using PDWORD64 = DWORD64 *;
+using BOOL = int;
+
+#endif
+#endif
+
+#include <sprt/c/cross/__sprt_fstypes.h>
+#include <sprt/runtime/callback.h>
+
+namespace sprt::platform {
+
+enum class FdHandleType : uint32_t {
+	None,
+	File,
+	Find,
+};
+
+struct FdHandle {
+	void *handle = nullptr;
+	FdHandleType type = FdHandleType::None;
+	int fd = 0;
+	union Data {
+		struct {
+			int openMask;
+			__sprt_mode_t openMode;
+		};
+		void *ptr = nullptr;
+	} data;
+};
+
+int lastErrorToErrno(unsigned long winerr);
+
+FdHandle *getFdHandle(int fd);
+
+int openFdHandle(void *handle, const FdHandle::Data &, FdHandleType type, int fdTarget = -1);
+
+// Removes fd from table; you should close HANDLE by yourself
+bool closeFdHandle(int fd);
+
+// should construct path, that can be open for specific FdHandleType
+bool openAtPath(int fd, const char *path, const callback<void(const char *, size_t)> &,
+		FdHandleType);
+
+} // namespace sprt::platform
+
+#endif
+
 #endif // RUNTIME_SRC_PRIVATE_SPRTSPECIFIC_H_

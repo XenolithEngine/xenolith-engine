@@ -24,7 +24,6 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_SIGNAL_H_
 
 #include <sprt/c/cross/__sprt_signal.h>
-#include <sprt/c/bits/__sprt_sigset_t.h>
 #include <sprt/c/bits/__sprt_int.h>
 
 #define __SPRT_SIG_BLOCK 0
@@ -39,10 +38,12 @@ SPRT_API int __SPRT_ID(sigaddset)(__SPRT_ID(sigset_t) * set, int);
 SPRT_API int __SPRT_ID(sigdelset)(__SPRT_ID(sigset_t) * set, int);
 SPRT_API int __SPRT_ID(sigismember)(const __SPRT_ID(sigset_t) * set, int);
 
+#if __SPRT_CONFIG_HAVE_SIGNAL_SIGPROCMASK || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API int __SPRT_ID(sigprocmask)(int, const __SPRT_ID(sigset_t) * __SPRT_RESTRICT,
 		__SPRT_ID(sigset_t) * __SPRT_RESTRICT);
 SPRT_API int __SPRT_ID(sigsuspend)(const __SPRT_ID(sigset_t) *);
 SPRT_API int __SPRT_ID(sigpending)(__SPRT_ID(sigset_t) *);
+#endif
 
 SPRT_API int __SPRT_ID(sigisemptyset)(const __SPRT_ID(sigset_t) *);
 SPRT_API int __SPRT_ID(

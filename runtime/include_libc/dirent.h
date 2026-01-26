@@ -53,15 +53,11 @@ SPRT_FORCEINLINE DIR *fdopendir(int __dir_fd) { return __sprt_fdopendir(__dir_fd
 
 SPRT_FORCEINLINE struct dirent *readdir(DIR *__dir) { return __sprt_readdir(__dir); }
 
-SPRT_FORCEINLINE int readdir_r(DIR *__dir, struct dirent *__entry, struct dirent **__buffer) {
-	return __sprt_readdir64_r(__dir, __entry, __buffer);
-}
-
 SPRT_FORCEINLINE int closedir(DIR *__dir) { return __sprt_closedir(__dir); }
 
-SPRT_FORCEINLINE void rewinddir(DIR *__dir) { return __sprt_rewinddir(__dir); }
+SPRT_FORCEINLINE int rewinddir(DIR *__dir) { return __sprt_rewinddir(__dir); }
 
-SPRT_FORCEINLINE void seekdir(DIR *__dir, long __location) {
+SPRT_FORCEINLINE int seekdir(DIR *__dir, long __location) {
 	return __sprt_seekdir(__dir, __location);
 }
 

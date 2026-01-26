@@ -60,12 +60,14 @@ SPRT_FORCEINLINE char *setlocale(int cat, const char *locale) {
 
 SPRT_FORCEINLINE lconv *localeconv(void) { return __sprt_localeconv(); }
 
+#if __SPRT_CONFIG_HAVE_LOCALE_EXT || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE locale_t duplocale(locale_t loc) { return __sprt_duplocale(loc); }
 SPRT_FORCEINLINE void freelocale(locale_t loc) { __sprt_freelocale(loc); }
 SPRT_FORCEINLINE locale_t newlocale(int v, const char *name, locale_t loc) {
 	return __sprt_newlocale(v, name, loc);
 }
 SPRT_FORCEINLINE locale_t uselocale(locale_t loc) { return __sprt_uselocale(loc); }
+#endif
 
 __SPRT_END_DECL
 

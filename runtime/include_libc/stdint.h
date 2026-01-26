@@ -30,7 +30,6 @@ THE SOFTWARE.
 #else
 
 #include <sprt/c/__sprt_stdint.h>
-#include <sprt/c/cross/__sprt_signal.h>
 
 #define INT8_C(V) __SPRT_INT8_C(V)
 #define INT16_C(V) __SPRT_INT16_C(V)

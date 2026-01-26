@@ -46,6 +46,7 @@ const nothrow_t nothrow;
 bool initialize(AppConfig &&cfg, int &resultCode) {
 #if SPRT_WINDOWS
 	// force Windows to use UTF-8
+	// Windows 10 version 1803 required
 	::setlocale(LC_ALL, "*.UTF8");
 #endif
 

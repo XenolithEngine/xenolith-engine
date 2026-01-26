@@ -28,10 +28,11 @@
 
 #define __SPRT_BUILD 1
 
-#include <android/api-level.h>
 #include <sprt/c/__sprt_stdlib.h>
 
 #if SPRT_ANDROID
+#include <android/api-level.h>
+
 __SPRT_C_FUNC int android_get_application_target_sdk_version();
 __SPRT_C_FUNC int __system_property_get(const char *__name, char *__value);
 #endif

@@ -318,9 +318,12 @@ SPRT_FORCEINLINE size_t wcsftime_l(wchar_t *__SPRT_RESTRICT ptr, size_t s,
 	return __sprt_wcsftime_l(ptr, s, fmt, tm, value);
 }
 
+#if __SPRT_CONFIG_HAVE_STDIO_OPEN_MEMSTREAM || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE FILE *open_wmemstream(wchar_t **ptr, size_t *value) {
 	return __sprt_open_wmemstream(ptr, value);
 }
+#endif
+
 SPRT_FORCEINLINE size_t mbsnrtowcs(wchar_t *__SPRT_RESTRICT ptr, const char **__SPRT_RESTRICT ret,
 		size_t a, size_t b, mbstate_t *__SPRT_RESTRICT value) {
 	return __sprt_mbsnrtowcs(ptr, ret, a, b, value);
