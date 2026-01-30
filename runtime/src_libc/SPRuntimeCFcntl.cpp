@@ -43,6 +43,7 @@ extern int (*_openat64)(int __dir_fd, const char *_Nonnull __path, int __flags, 
 extern int (*_fallocate64)(int __fd, int __mode, off64_t __offset, off64_t __length);
 extern int (*_posix_fadvise64)(int __fd, off64_t __offset, off64_t __length, int __advice);
 extern int (*_posix_fallocate64)(int __fd, off64_t __offset, off64_t __length);
+extern int (*_sync_file_range)(int __fd, off64_t __offset, off64_t __length, unsigned int __flags);
 
 } // namespace sprt::platform
 #endif

@@ -63,9 +63,9 @@ bool getCurrentDir(const callback<void(StringView)> &cb, StringView path) {
 			auto target = &buf[len];
 
 			if (buf[len - 1] != '/' && path.at(0) != '/') {
-				strappend(target, &bufferSize, "/", 1);
+				target = strappend(target, &bufferSize, "/", 1);
 			}
-			strappend(target, &bufferSize, path.data(), path.size());
+			target = strappend(target, &bufferSize, path.data(), path.size());
 			target[0] = 0;
 
 			filepath::reconstructPath([&](StringView path) { cb(path); },

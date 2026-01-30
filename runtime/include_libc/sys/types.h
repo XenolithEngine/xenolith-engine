@@ -31,11 +31,11 @@ THE SOFTWARE.
 
 #include <sprt/c/cross/__sprt_pthread.h>
 #include <sprt/c/cross/__sprt_socket.h>
+#include <sprt/c/cross/__sprt_signal.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_time_t.h>
 #include <sprt/c/bits/__sprt_ssize_t.h>
 #include <sprt/c/bits/__sprt_time_t.h>
-#include <sprt/c/bits/__sprt_sigset_t.h>
 #include <sprt/c/bits/fdset.h>
 
 typedef __SPRT_ID(size_t) size_t;

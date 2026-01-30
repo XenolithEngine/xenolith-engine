@@ -22,8 +22,6 @@ THE SOFTWARE.
 
 #include "pthread_win.h"
 
-#include "private/SPRTAtomics.h"
-
 #ifdef __clang__
 #pragma clang diagnostic ignored "-Wunused-function"
 #endif
@@ -35,59 +33,75 @@ namespace sprt {
 int pthread_cond_t::wait(pthread_mutex_t *mutex, DWORD timeout) {
 	uint64_t desired = bit_cast<uint64_t>(mutex);
 	uint64_t expected = 0;
-	if (atomicCompareSwap(&mutexid, &expected, desired)) {
+	if (_atomic::compareSwap(&mutexid, &expected, desired)) {
 		// comdition captured by new mutex
-		++counter;
+		_atomic::fetchAdd(&counter, uint32_t(1));
 	} else if (expected == desired) {
 		// comdition was captured by this mutex
-		++counter;
+		_atomic::fetchAdd(&counter, uint32_t(1));
 	} else {
 		// captured by different mutex
 		return EINVAL;
 	}
 
-	uint32_t v = atomicLoadSeq(&value);
-	atomicStoreSeq(&previous, v);
+	uint32_t v = _atomic::loadSeq(&value);
+	_atomic::storeSeq(&previous, v);
 
 	int result = 0;
 
+	uint64_t now = (timeout == INFINITE) ? 0 : _pthread_t::now(), next = 0;
+
 	mutex->unlock();
-	if (!WaitOnAddress(&value, &v, sizeof(v), timeout)) {
-		if (GetLastError() == ERROR_TIMEOUT) {
+	while (v == _atomic::loadSeq(&value)) {
+		if (timeout == 0) {
 			result = ETIMEDOUT;
+			break;
+		}
+
+		if (!WaitOnAddress(&value, &v, sizeof(v), timeout)) {
+			if (GetLastError() == ERROR_TIMEOUT) {
+				result = ETIMEDOUT;
+				break;
+			}
+		}
+
+		if (timeout != INFINITE) {
+			next = _pthread_t::now();
+			timeout -= min((next - now), timeout);
+			now = next;
 		}
 	}
 	mutex->lock(INFINITE);
 
-	if (--counter == 0) {
-		atomicStoreSeq(&mutexid, uint64_t(0));
+	if (_atomic::fetchSub(&counter, 1U) == 1) {
+		_atomic::storeSeq(&mutexid, uint64_t(0));
 	}
 
 	return result;
 }
 
 int pthread_cond_t::signal() {
-	uint64_t mid = atomicLoadSeq(&mutexid);
+	uint64_t mid = _atomic::loadSeq(&mutexid);
 	if (mid == 0) {
 		// no waiters
 		return 0;
 	}
 
-	uint32_t v = 1u + atomicLoadSeq(&previous);
-	atomicStoreSeq(&value, v);
+	uint32_t v = 1u + _atomic::loadSeq(&previous);
+	_atomic::storeSeq(&value, v);
 	WakeByAddressSingle(&value);
 	return 0;
 }
 
 int pthread_cond_t::broadcast() {
-	uint64_t mid = atomicLoadSeq(&mutexid);
+	uint64_t mid = _atomic::loadSeq(&mutexid);
 	if (mid == 0) {
 		// no waiters
 		return 0;
 	}
 
-	uint32_t v = 1u + atomicLoadSeq(&previous);
-	atomicStoreSeq(&value, v);
+	uint32_t v = 1u + _atomic::loadSeq(&previous);
+	_atomic::storeSeq(&value, v);
 	WakeByAddressAll(&value);
 	return 0;
 }

@@ -31,6 +31,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdarg.h>
 
 #include <sprt/runtime/string.h>
+#include <sprt/runtime/enum.h>
 
 #include "private/SPRTFilename.h"
 
@@ -39,6 +40,7 @@ THE SOFTWARE.
 #include <Windows.h>
 #include <shlwapi.h>
 #include <corecrt_io.h>
+#include <fcntl.h>
 
 #include "private/SPRTSpecific.h"
 
@@ -60,16 +62,12 @@ static bool isWinAbsolutePath(const char *path) {
 	return PathIsRelativeA(path) == FALSE;
 }
 
-bool openAtPath(int fd, const char *path, const callback<void(const char *, size_t)> &cb,
-		FdHandleType type) {
+bool openAtPath(int fd, const char *path, const callback<void(const char *, size_t)> &cb) {
 	if (isWinAbsolutePath(path)) {
 		auto pathlen = strlen(path);
 		auto isNative = __sprt_fpath_is_native(path, pathlen);
 
 		auto bufLen = pathlen + 1;
-		if (type == FdHandleType::Find) {
-			bufLen += 3;
-		}
 
 		auto buf = (char *)__sprt_malloca(bufLen + 1);
 		auto target = buf;
@@ -85,10 +83,6 @@ bool openAtPath(int fd, const char *path, const callback<void(const char *, size
 			bufferSize -= ws;
 		} else {
 			target = strappend(target, &bufferSize, path, pathlen);
-		}
-
-		if (type == FdHandleType::Find) {
-			target = strappend(target, &bufferSize, "\\*", 2);
 		}
 
 		cb(buf, target - buf);
@@ -108,19 +102,29 @@ bool openAtPath(int fd, const char *path, const callback<void(const char *, size
 	if (fd == __SPRT_AT_FDCWD) {
 		auto pathLen = GetCurrentDirectoryA(0, nullptr);
 		if (pathLen == 0) {
+			__sprt_errno = EBADF;
 			return false;
 		}
 
 		bufferLen = pathLen + extraPathLen + 1;
-		if (type == FdHandleType::Find) {
-			bufferLen += 3;
-		}
-
 		buffer = (char *)__sprt_malloc(bufferLen);
 		writtenLen = GetCurrentDirectoryA(bufferLen, buffer);
 	} else {
 		auto handle = (HANDLE)_get_osfhandle(fd);
 		if (!handle || handle == INVALID_HANDLE_VALUE) {
+			__sprt_errno = EBADF;
+			return false;
+		}
+
+		FILE_STANDARD_INFO standardInfo;
+		if (!GetFileInformationByHandleEx(handle, FileStandardInfo, &standardInfo,
+					sizeof(FILE_STANDARD_INFO))) {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return false;
+		}
+
+		if (!standardInfo.Directory) {
+			__sprt_errno = ENOTDIR;
 			return false;
 		}
 
@@ -132,20 +136,22 @@ bool openAtPath(int fd, const char *path, const callback<void(const char *, size
 
 			pathLen = GetFinalPathNameByHandleA(handle, NULL, 0, 0);
 			if (pathLen == 0) {
+				__sprt_errno = EBADF;
 				return false;
 			}
 
 			bufferLen = pathLen + extraPathLen + 1;
-			if (type == FdHandleType::Find) {
-				bufferLen += 3;
-			}
-
 			buffer = (char *)__sprt_malloc(bufferLen);
 			writtenLen = GetFinalPathNameByHandleA(handle, buffer, pathLen, 0);
 
 			// if writtenLen is larger then initial value - try again
 			// this may happen if file was moved between two GetFinalPathNameByHandleA calls
 		} while (writtenLen > pathLen);
+	}
+
+	if (writtenLen == 0) {
+		__sprt_errno = EBADF;
+		return false;
 	}
 
 	auto target = buffer + writtenLen;
@@ -168,10 +174,6 @@ bool openAtPath(int fd, const char *path, const callback<void(const char *, size
 			target += ws;
 			bufferSize -= ws;
 		}
-	}
-
-	if (type == FdHandleType::Find) {
-		target = strappend(target, &bufferSize, "\\*", 2);
 	}
 
 	cb(buffer, target - buffer);
@@ -309,9 +311,15 @@ static int __open(const char *path, int __flags, __SPRT_ID(mode_t) __mode) {
 		return -1;
 	}
 
-	return platform::openFdHandle(h,
-			platform::FdHandle::Data{{.openMask = __flags, .openMode = __mode}},
-			platform::FdHandleType::File);
+	int accessFlags = __flags & (__SPRT_O_RDONLY | __SPRT_O_WRONLY | __SPRT_O_RDWR);
+	int openHandleFlags = _O_BINARY;
+	if (__flags & __SPRT_O_APPEND) {
+		openHandleFlags |= _O_APPEND;
+	}
+	if (accessFlags == __SPRT_O_RDONLY) {
+		openHandleFlags |= _O_RDONLY;
+	}
+	return _open_osfhandle(intptr_t(h), openHandleFlags);
 }
 
 static HANDLE __reopen(HANDLE h, int __flags, __SPRT_ID(mode_t) __mode) {
@@ -359,32 +367,37 @@ static int creat64(const char *path, __SPRT_ID(mode_t) __mode) {
 
 static int openat64(int __dir_fd, const char *path, int __flags, __SPRT_ID(mode_t) __mode) {
 	int ret = 0;
-	platform::openAtPath(__dir_fd, path, [&](const char *path, size_t pathLen) {
-		ret = __sprt_open(path, __flags, __mode);
-	}, platform::FdHandleType::File);
+	platform::openAtPath(__dir_fd, path,
+			[&](const char *path, size_t pathLen) { ret = __sprt_open(path, __flags, __mode); });
 	return ret;
 }
 
 static int fcntl(int __fd, int __cmd, unsigned long arg) {
-	auto h = platform::getFdHandle(__fd);
-	if (!h || !h->handle) {
-		__sprt_errno = EINVAL;
+	auto handle = (HANDLE)_get_osfhandle(__fd);
+	if (!handle || handle == INVALID_HANDLE_VALUE) {
+		__sprt_errno = EBADF;
 		return -1;
 	}
+
 	switch (__cmd) {
-	case __SPRT_F_DUPFD:
+	case __SPRT_F_DUPFD: return _dup(__fd); break;
 	case __SPRT_F_DUPFD_CLOEXEC: {
-		if (h->type != platform::FdHandleType::File) {
-			__sprt_errno = EINVAL;
+		auto nfd = _dup(__fd);
+		auto nhandle = (HANDLE)_get_osfhandle(nfd);
+
+		if (!handle || handle == INVALID_HANDLE_VALUE) {
+			_close(nfd);
+			__sprt_errno = EBADF;
 			return -1;
 		}
 
-		auto proc = GetCurrentProcess();
-		HANDLE outHandle = nullptr;
-		if (DuplicateHandle(proc, h, proc, &outHandle, 0, __cmd == __SPRT_F_DUPFD_CLOEXEC,
-					DUPLICATE_SAME_ACCESS)) {
-			return platform::openFdHandle(h, h->data, h->type);
+		DWORD flagsMask = HANDLE_FLAG_INHERIT;
+		DWORD flagsToSet = 0;
+
+		if (SetHandleInformation(nhandle, flagsMask, flagsToSet)) {
+			return nfd;
 		} else {
+			_close(nfd);
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
 			return -1;
 		}
@@ -392,7 +405,7 @@ static int fcntl(int __fd, int __cmd, unsigned long arg) {
 	}
 	case __SPRT_F_GETFD: {
 		DWORD flags = 0;
-		if (GetHandleInformation(h->handle, &flags)) {
+		if (GetHandleInformation(handle, &flags)) {
 			int ret = 0;
 			if (flags & HANDLE_FLAG_INHERIT) {
 				ret |= __SPRT_FD_CLOEXEC;
@@ -416,7 +429,7 @@ static int fcntl(int __fd, int __cmd, unsigned long arg) {
 			__sprt_errno = EINVAL;
 			return -1;
 		}
-		if (SetHandleInformation(h->handle, flagsMask, flagsToSet)) {
+		if (SetHandleInformation(handle, flagsMask, flagsToSet)) {
 			return 0;
 		} else {
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
@@ -424,24 +437,9 @@ static int fcntl(int __fd, int __cmd, unsigned long arg) {
 		}
 		break;
 	}
-	case __SPRT_F_GETFL: {
-		return h->data.openMask;
-	}
-	case __SPRT_F_SETFL: {
-		if (auto n = __reopen(h->handle, arg, h->data.openMode)) {
-			h->handle = n;
-			h->data.openMask = arg;
-			return 0;
-		}
-		return -1;
-	}
 	}
 	__sprt_errno = EINVAL;
 	return -1;
 }
 
 } // namespace sprt
-
-#ifdef __clang__
-#pragma clang diagnostic pop
-#endif

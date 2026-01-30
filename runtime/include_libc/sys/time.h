@@ -33,6 +33,7 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
+#if __SPRT_CONFIG_HAVE_TIME_TIMEOFDAY || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int gettimeofday(struct timeval *__SPRT_RESTRICT __tv,
 		struct timezone *__SPRT_RESTRICT __tz) {
 	return __sprt_gettimeofday(__tv, __tz);
@@ -41,7 +42,9 @@ SPRT_FORCEINLINE int gettimeofday(struct timeval *__SPRT_RESTRICT __tv,
 SPRT_FORCEINLINE int settimeofday(const timeval *__tv, const struct timezone *__tz) {
 	return __sprt_settimeofday(__tv, __tz);
 }
+#endif
 
+#if __SPRT_CONFIG_HAVE_TIME_TIMER || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int getitimer(int __w, struct itimerval *__tv) {
 	return __sprt_getitimer(__w, __tv);
 }
@@ -50,6 +53,7 @@ SPRT_FORCEINLINE int setitimer(int __w, const struct itimerval *__SPRT_RESTRICT 
 		struct itimerval *__SPRT_RESTRICT __atv) {
 	return __sprt_setitimer(__w, __tv, __atv);
 }
+#endif
 
 SPRT_FORCEINLINE int utimes(const char *path, const __SPRT_TIMEVAL_NAME ts[2]) {
 	return __sprt_utimes(path, ts);
@@ -67,7 +71,7 @@ SPRT_FORCEINLINE int lutimes(const char *path, const __SPRT_TIMEVAL_NAME ts[2]) 
 	return __sprt_lutimes(path, ts);
 }
 
-#if __SPRT_CONFIG_HAVE_ADJTIME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+#if __SPRT_CONFIG_HAVE_TIME_ADJTIME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int adjtime(const __SPRT_TIMEVAL_NAME *__tv, __SPRT_TIMEVAL_NAME *__otv) {
 	return __sprt_adjtime(__tv, __otv);
 }

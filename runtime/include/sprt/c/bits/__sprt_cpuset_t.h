@@ -24,6 +24,7 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C_BITS___SPRT_CPUSET_T_H_
 
 #include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/bits/__sprt_size_t.h>
 
 #define __SPRT_CPU_SETSIZE 1'024
 
@@ -39,10 +40,10 @@ typedef struct {
 #define __SPRT_CPU_ISSET_S(i, size, set) __SPRT_CPU_op_S(i, size, set, &)
 
 #define __SPRT_CPU_op_func_S(func, op) \
-static __inline void __S_SPRT_CPU_##func##_S(size_t __size, __SPRT_ID(cpu_set_t) *__dest, \
+static __inline void __S_SPRT_CPU_##func##_S(__SPRT_ID(size_t) __size, __SPRT_ID(cpu_set_t) *__dest, \
 	const __SPRT_ID(cpu_set_t) *__src1, const __SPRT_ID(cpu_set_t) *__src2) \
 { \
-	size_t __i; \
+	__SPRT_ID(size_t) __i; \
 	for (__i=0; __i<__size/sizeof(long); __i++) \
 		((unsigned long *)__dest)[__i] = ((unsigned long *)__src1)[__i] \
 			op ((unsigned long *)__src2)[__i] ; \

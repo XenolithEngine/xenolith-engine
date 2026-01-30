@@ -39,10 +39,17 @@ SPRT_API int __SPRT_ID(sigdelset)(__SPRT_ID(sigset_t) * set, int);
 SPRT_API int __SPRT_ID(sigismember)(const __SPRT_ID(sigset_t) * set, int);
 
 #if __SPRT_CONFIG_HAVE_SIGNAL_SIGPROCMASK || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+
+__SPRT_CONFIG_HAVE_SIGNAL_SIGPROCMASK_NOTICE
 SPRT_API int __SPRT_ID(sigprocmask)(int, const __SPRT_ID(sigset_t) * __SPRT_RESTRICT,
 		__SPRT_ID(sigset_t) * __SPRT_RESTRICT);
+
+__SPRT_CONFIG_HAVE_SIGNAL_SIGPROCMASK_NOTICE
 SPRT_API int __SPRT_ID(sigsuspend)(const __SPRT_ID(sigset_t) *);
+
+__SPRT_CONFIG_HAVE_SIGNAL_SIGPROCMASK_NOTICE
 SPRT_API int __SPRT_ID(sigpending)(__SPRT_ID(sigset_t) *);
+
 #endif
 
 SPRT_API int __SPRT_ID(sigisemptyset)(const __SPRT_ID(sigset_t) *);

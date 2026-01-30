@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
+#include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_time.h>
 
@@ -29,9 +30,9 @@ THE SOFTWARE.
 
 #if SPRT_ANDROID && !defined(__LP64__)
 #include <time64.h>
-#else
-#include <time.h>
 #endif
+
+#include <time.h>
 
 #if SPRT_WINDOWS
 #include "platform/windows/time.cc"
@@ -54,7 +55,7 @@ __SPRT_C_FUNC __SPRT_ID(clock_t) __SPRT_ID(clock)(void) { return ::clock(); }
 __SPRT_C_FUNC __SPRT_ID(time_t) __SPRT_ID(time)(__SPRT_ID(time_t) * t) {
 #if SPRT_ANDROID && !defined(__LP64__)
 	::time_t native;
-	auto ret = ::time64(&native);
+	auto ret = ::time(&native);
 	if (t) {
 		*t = native;
 	}
@@ -62,7 +63,7 @@ __SPRT_C_FUNC __SPRT_ID(time_t) __SPRT_ID(time)(__SPRT_ID(time_t) * t) {
 #elif SPRT_WINDOWS
 	return ::_time64(t);
 #else
-	return ::time64(t);
+	return ::time(t);
 #endif
 }
 

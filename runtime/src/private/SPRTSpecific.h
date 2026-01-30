@@ -133,6 +133,7 @@ extern void *(*_aligned_alloc)(size_t __alignment, size_t __size);
 #define WINBASEAPI DECLSPEC_IMPORT
 #define WINAPI __stdcall
 
+using VOID = void;
 using CHAR = char;
 using LPSTR = char *;
 using PVOID = void *;
@@ -144,6 +145,7 @@ using HMODULE = void *;
 using WORD = __SPRT_ID(uint16_t);
 using DWORD = __SPRT_ID(uint32_t);
 using DWORD64 = __SPRT_ID(uint64_t);
+using SIZE_T = size_t;
 using PWORD = WORD *;
 using PDWORD = DWORD *;
 using PDWORD64 = DWORD64 *;
@@ -157,37 +159,10 @@ using BOOL = int;
 
 namespace sprt::platform {
 
-enum class FdHandleType : uint32_t {
-	None,
-	File,
-	Find,
-};
-
-struct FdHandle {
-	void *handle = nullptr;
-	FdHandleType type = FdHandleType::None;
-	int fd = 0;
-	union Data {
-		struct {
-			int openMask;
-			__sprt_mode_t openMode;
-		};
-		void *ptr = nullptr;
-	} data;
-};
-
 int lastErrorToErrno(unsigned long winerr);
 
-FdHandle *getFdHandle(int fd);
-
-int openFdHandle(void *handle, const FdHandle::Data &, FdHandleType type, int fdTarget = -1);
-
-// Removes fd from table; you should close HANDLE by yourself
-bool closeFdHandle(int fd);
-
 // should construct path, that can be open for specific FdHandleType
-bool openAtPath(int fd, const char *path, const callback<void(const char *, size_t)> &,
-		FdHandleType);
+bool openAtPath(int fd, const char *path, const callback<void(const char *, size_t)> &);
 
 } // namespace sprt::platform
 

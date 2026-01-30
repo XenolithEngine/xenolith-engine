@@ -34,7 +34,6 @@ THE SOFTWARE.
 #include <sprt/runtime/new.h>
 #include <sprt/runtime/mutex.h>
 #include <sprt/runtime/atomic.h>
-#include <sprt/runtime/waitable_address.h>
 #include <sprt/runtime/mem/set.h>
 #include <sprt/runtime/mem/map.h>
 
@@ -43,7 +42,6 @@ THE SOFTWARE.
 #include <setjmp.h>
 
 #include "private/SPRTSpecific.h" // IWYU pragma: keep
-#include "private/SPRTAtomics.h" // IWYU pragma: keep
 
 #include "sched_win.h"
 
@@ -214,8 +212,7 @@ struct pthread_mutex_t {
 	static constexpr uint64_t StateNotRecoverable = 1ULL << 35;
 
 	pthread_mutexattr_t attr;
-	uint32_t counter = 0;
-	uint64_t value = 0; // ThreadId + flags
+	__rmutex_data mtx;
 
 	int lock(DWORD);
 	int unlock();
@@ -371,16 +368,16 @@ static_assert(sizeof(pthread_attr_t) == sizeof(__sprt_pthread_attr_t));
 struct _pthread_t {
 	// set by new thread when it successfully initializes it's data
 	// pthread_create will wait for it
-	static constexpr waitable_address::value_type StateInternalInit = 1;
+	static constexpr qtimeline::value_type StateInternalInit = 1;
 
 	// set by pthread_create after it's completely initialize thread
 	// thread will wait for it before run user's callback
-	static constexpr waitable_address::value_type StateExternalInit = 2;
+	static constexpr qtimeline::value_type StateExternalInit = 2;
 
-	static constexpr waitable_address::value_type StateCancelling = 4;
+	static constexpr qtimeline::value_type StateCancelling = 4;
 
 	// set when thread ready to be joined or detached to free it's resources
-	static constexpr waitable_address::value_type StateFinalized = 6;
+	static constexpr qtimeline::value_type StateFinalized = 6;
 
 	_pthread_t *next = nullptr;
 	memory::pool_t *threadMemPool = nullptr;
@@ -392,7 +389,7 @@ struct _pthread_t {
 	HANDLE handle = nullptr;
 	pthread_attr_t attr;
 	qmutex mutex;
-	waitable_address state;
+	qtimeline state;
 
 	unsigned int threadId = 0;
 	unsigned int result = 0;
@@ -420,62 +417,6 @@ using pthread_t = _pthread_t *;
 using pthread_once_t = uint32_t;
 
 static_assert(sizeof(pthread_once_t) == sizeof(__sprt_pthread_once_t));
-
-static constexpr uint32_t MUTEX_LOCK = 1;
-static constexpr uint32_t MUTEX_WAIT = 2;
-
-static inline bool mutexLock(uint32_t *value, DWORD *timeout) {
-	ULONGLONG now = (*timeout != INFINITE) ? _pthread_t::now() : 0, next = 0;
-
-	// try to mark futex to own it
-	uint32_t waitvalue = MUTEX_LOCK | MUTEX_WAIT;
-	uint32_t c = atomicFetchOr(value, MUTEX_LOCK);
-	if ((c & MUTEX_LOCK) != 0) {
-		// prev value already has LOCK flag, wait
-		do {
-			if (*timeout == 0) {
-				return false;
-			}
-
-			// if wait flag is set already or we still locked
-			if ((c & MUTEX_WAIT) != 0 || (atomicFetchOr(value, MUTEX_WAIT) & MUTEX_LOCK) != 0) {
-				// wait for unlock, if futex has both WAIT_VALUE and LOCK_VALUE
-				if (WaitOnAddress(value, &waitvalue, sizeof(uint32_t), *timeout)) {
-					if (GetLastError() == ERROR_TIMEOUT) {
-						return false;
-					}
-				}
-
-				if (*timeout != INFINITE) {
-					next = _pthread_t::now();
-					*timeout -= min((next - now), *timeout);
-				}
-				now = next;
-			}
-			// check if lock still in place by fetching value and set all flags
-		} while (((c = atomicFetchOr(value, waitvalue)) & MUTEX_LOCK) != 0);
-	}
-
-	return true;
-}
-
-static inline bool mutexTryLock(uint32_t *value) {
-	return (atomicFetchOr(value, MUTEX_LOCK) & MUTEX_LOCK) == 0;
-}
-
-static inline void mutexUnlock(uint32_t *value) {
-	if ((atomicExchange(value, uint32_t(0)) & MUTEX_WAIT) != 0) {
-		// WAIT was set, we need to signal
-		WakeByAddressSingle(value);
-	}
-}
-
-static inline void mutexUnlockAll(uint32_t *value) {
-	if ((atomicExchange(value, uint32_t(0)) & MUTEX_WAIT) != 0) {
-		// WAIT was set, we need to signal
-		WakeByAddressAll(value);
-	}
-}
 
 } // namespace sprt
 

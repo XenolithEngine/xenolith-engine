@@ -30,9 +30,9 @@
 #if __SPRT_CONFIG_HAVE_EPOLL
 #include <sys/epoll.h>
 #include <unistd.h>
-#else
-#include "private/SPRTSpecific.h"
 #endif
+
+#include "private/SPRTSpecific.h"
 
 namespace sprt {
 

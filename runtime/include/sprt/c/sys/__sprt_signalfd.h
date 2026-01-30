@@ -67,6 +67,7 @@ struct __SPRT_SIGNALFD_SIGINFO_NAME {
 
 __SPRT_BEGIN_DECL
 
+__SPRT_CONFIG_HAVE_SIGNALFD_NOTICE
 SPRT_API int __SPRT_ID(signalfd)(int, const __SPRT_ID(sigset_t) *, int);
 
 __SPRT_END_DECL

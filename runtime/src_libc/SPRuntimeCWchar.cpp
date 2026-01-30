@@ -468,7 +468,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(mbsnrtowcs)(__SPRT_WCHAR_T *__SPRT_RES
 	mbsrtowcs_s(&nchars, dest, destSize, src, count, (mbstate_t *)state);
 	return nchars;
 #else
-	return ::mbsnrtowcs(ptr, ret, a, b, (mbstate_t *)state);
+	return ::mbsnrtowcs(dest, src, count, destSize, (mbstate_t *)state);
 #endif
 }
 
@@ -480,7 +480,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsnrtombs)(char *__SPRT_RESTRICT dest
 	wcsrtombs_s(&nchars, dest, destSize, src, count, (mbstate_t *)state);
 	return nchars;
 #else
-	return ::wcsnrtombs(ptr, ret, a, b, (mbstate_t *)state);
+	return ::wcsnrtombs(dest, src, count, destSize, (mbstate_t *)state);
 #endif
 }
 

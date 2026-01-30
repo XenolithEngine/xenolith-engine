@@ -23,6 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_STAT_H_
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_STAT_H_
 
+#include <sprt/c/cross/__sprt_config.h>
 #include <sprt/c/bits/stat.h>
 #include <sprt/c/bits/atfile.h>
 
@@ -39,11 +40,28 @@ SPRT_API int __SPRT_ID(fchmod)(int, __SPRT_ID(mode_t));
 SPRT_API int __SPRT_ID(fchmodat)(int, const char *, __SPRT_ID(mode_t), int);
 SPRT_API __SPRT_ID(mode_t) __SPRT_ID(umask)(__SPRT_ID(mode_t));
 SPRT_API int __SPRT_ID(mkdir)(const char *, __SPRT_ID(mode_t));
-SPRT_API int __SPRT_ID(mkfifo)(const char *, __SPRT_ID(mode_t));
 SPRT_API int __SPRT_ID(mkdirat)(int, const char *, __SPRT_ID(mode_t));
+
+#if __SPRT_CONFIG_HAVE_STAT_MKFIFO || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+
+__SPRT_CONFIG_HAVE_STAT_MKFIFO_NOTICE
+SPRT_API int __SPRT_ID(mkfifo)(const char *, __SPRT_ID(mode_t));
+
+__SPRT_CONFIG_HAVE_STAT_MKFIFO_NOTICE
 SPRT_API int __SPRT_ID(mkfifoat)(int, const char *, __SPRT_ID(mode_t));
+
+#endif
+
+#if __SPRT_CONFIG_HAVE_STAT_MKNOD || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+
+__SPRT_CONFIG_HAVE_STAT_MKNOD_NOTICE
 SPRT_API int __SPRT_ID(mknod)(const char *, __SPRT_ID(mode_t), __SPRT_ID(dev_t));
+
+__SPRT_CONFIG_HAVE_STAT_MKNOD_NOTICE
 SPRT_API int __SPRT_ID(mknodat)(int, const char *, __SPRT_ID(mode_t), __SPRT_ID(dev_t));
+
+#endif
+
 SPRT_API int __SPRT_ID(futimens)(int, const struct __SPRT_TIMESPEC_NAME[2]);
 SPRT_API int __SPRT_ID(utimensat)(int, const char *, const struct __SPRT_TIMESPEC_NAME[2], int);
 

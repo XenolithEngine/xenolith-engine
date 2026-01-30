@@ -82,12 +82,23 @@ __attribute__((__packed__))
 
 __SPRT_BEGIN_DECL
 
+__SPRT_CONFIG_HAVE_EPOLL_NOTICE
 SPRT_API int __SPRT_ID(epoll_create)(int);
+
+__SPRT_CONFIG_HAVE_EPOLL_NOTICE
 SPRT_API int __SPRT_ID(epoll_create1)(int);
+
+__SPRT_CONFIG_HAVE_EPOLL_NOTICE
 SPRT_API int __SPRT_ID(epoll_ctl)(int, int, int, struct __SPRT_EPOLL_EVENT_NAME *);
+
+__SPRT_CONFIG_HAVE_EPOLL_NOTICE
 SPRT_API int __SPRT_ID(epoll_wait)(int, struct __SPRT_EPOLL_EVENT_NAME *, int, int);
+
+__SPRT_CONFIG_HAVE_EPOLL_NOTICE
 SPRT_API int __SPRT_ID(
 		epoll_pwait)(int, struct __SPRT_EPOLL_EVENT_NAME *, int, int, const __SPRT_ID(sigset_t) *);
+
+__SPRT_CONFIG_HAVE_EPOLL_NOTICE
 SPRT_API int __SPRT_ID(epoll_pwait2)(int, struct __SPRT_EPOLL_EVENT_NAME *, int,
 		const struct __SPRT_TIMESPEC_NAME *, const __SPRT_ID(sigset_t) * __mask);
 

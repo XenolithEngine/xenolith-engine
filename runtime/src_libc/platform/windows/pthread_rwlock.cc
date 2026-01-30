@@ -28,18 +28,39 @@ THE SOFTWARE.
 
 namespace sprt {
 
-int pthread_rwlock_t::rdlock(DWORD timeout) {
+static Status _rwMutexWait(volatile uint32_t *value, uint32_t expected, uint64_t timeout) {
+	auto ret = WaitOnAddress(value, &expected, sizeof(uint32_t), DWORD(timeout));
+	if (!ret) {
+		if (GetLastError() == ERROR_TIMEOUT) {
+			return Status::Timeout;
+		}
+	}
+	return Status::Ok;
+}
+
+static void _rwMutexWake(volatile uint32_t *value) { WakeByAddressSingle((void *)value); }
+
+static void _rwMutexWakeAll(volatile uint32_t *value) { WakeByAddressAll((void *)value); }
+
+int pthread_rwlock_t::rdlock(DWORD dtimeout) {
 	auto self = _pthread_t::self();
 	if (self->has_wrlock(this)) {
 		return EDEADLK;
 	}
 
+	uint64_t itimeout = dtimeout;
 	// mutexLock will update timeout, and returns false if expired
-	if (!mutexLock(&mutex, &timeout)) {
-		return ETIMEDOUT;
+
+	if (dtimeout == INFINITE) {
+		qmutex_base::_lock<_rwMutexWait, nullptr>(&mutex, nullptr);
+	} else {
+		if (qmutex_base::_lock<_rwMutexWait, _pthread_t::now>(&mutex, &itimeout)
+				== Status::ErrorTimeout) {
+			return ETIMEDOUT;
+		}
 	}
 
-	mutexUnlockAll(&mutex);
+	qmutex_base::_unlock<_rwMutexWakeAll>(&mutex);
 
 	ULONGLONG now = _pthread_t::now(), next = 0;
 
@@ -47,7 +68,7 @@ int pthread_rwlock_t::rdlock(DWORD timeout) {
 	uint32_t expected = 0;
 
 	// We want to set value from 0 to WriteLock
-	if (!atomicCompareSwap(&value, &expected, desired)) [[unlikely]] {
+	if (!_atomic::compareSwap(&value, &expected, desired)) [[unlikely]] {
 		// failed - should lock
 		do {
 			// check if read lock already set
@@ -56,23 +77,23 @@ int pthread_rwlock_t::rdlock(DWORD timeout) {
 				break; // from do ... while
 			}
 
-			if (timeout == 0) {
+			if (itimeout == 0) {
 				return ETIMEDOUT;
 			}
 
 			// set waiters flag
 			if ((expected & Waiters) != 0
-					|| ((expected = atomicFetchOr(&value, Waiters) | Waiters) & ~Waiters) != 0) {
+					|| ((expected = _atomic::fetchOr(&value, Waiters) | Waiters) & ~Waiters) != 0) {
 				// we successfully set waiters flag (or it was set before)
-				if (!WaitOnAddress(&value, &expected, sizeof(uint64_t), timeout)) {
+				if (!WaitOnAddress(&value, &expected, sizeof(uint64_t), DWORD(itimeout))) {
 					if (GetLastError() == ERROR_TIMEOUT) {
 						return ETIMEDOUT;
 					}
 				}
 
-				if (timeout != INFINITE) {
+				if (itimeout != INFINITE) {
 					next = _pthread_t::now();
-					timeout -= min((next - now), timeout);
+					itimeout -= min((next - now), itimeout);
 				}
 				now = next;
 			}
@@ -80,11 +101,11 @@ int pthread_rwlock_t::rdlock(DWORD timeout) {
 			// value was changed, now it's 0 or other lock value
 			// assume 0 and try to set lock with WriteLock
 			expected = 0;
-		} while (!atomicCompareSwap(&value, &expected, desired));
+		} while (!_atomic::compareSwap(&value, &expected, desired));
 	}
 
 	// we now read-locked
-	atomicFetchAdd(&counter, uint32_t(1));
+	_atomic::fetchAdd(&counter, uint32_t(1));
 
 	auto it = self->threadRdLocks->find(this);
 	if (it != self->threadRdLocks->end()) {
@@ -105,14 +126,14 @@ int pthread_rwlock_t::tryrdlock() {
 	uint32_t desired = ReadLock;
 	uint32_t expected = 0;
 
-	if (!mutexTryLock(&mutex)) {
+	if (qmutex_base::_try_lock(&mutex) == Status::ErrorBusy) {
 		return EBUSY;
 	}
 
-	mutexUnlockAll(&mutex);
+	qmutex_base::_unlock<_rwMutexWakeAll>(&mutex);
 
 	// We want to set value from 0 to WriteLock
-	if (!atomicCompareSwap(&value, &expected, desired)) [[unlikely]] {
+	if (!_atomic::compareSwap(&value, &expected, desired)) [[unlikely]] {
 		// check if read lock already set
 		if ((expected & desired) != desired) {
 			// read lock is NOT set, return with error
@@ -121,7 +142,7 @@ int pthread_rwlock_t::tryrdlock() {
 	}
 
 	// we now read-locked
-	atomicFetchAdd(&counter, uint32_t(1));
+	_atomic::fetchAdd(&counter, uint32_t(1));
 
 	auto it = self->threadRdLocks->find(this);
 	if (it != self->threadRdLocks->end()) {
@@ -133,7 +154,7 @@ int pthread_rwlock_t::tryrdlock() {
 	return 0;
 }
 
-int pthread_rwlock_t::wrlock(DWORD timeout) {
+int pthread_rwlock_t::wrlock(DWORD dtimeout) {
 	auto self = _pthread_t::self();
 	if (self->has_wrlock(this)) {
 		return EDEADLK;
@@ -144,35 +165,41 @@ int pthread_rwlock_t::wrlock(DWORD timeout) {
 	uint32_t desired = WriteLock;
 	uint32_t expected = 0;
 
-	// mutexLock will update timeout, and returns false if expired
-	if (!mutexLock(&mutex, &timeout)) {
-		return ETIMEDOUT;
+	uint64_t itimeout = dtimeout;
+
+	if (dtimeout == INFINITE) {
+		qmutex_base::_lock<_rwMutexWait, nullptr>(&mutex, nullptr);
+	} else {
+		if (qmutex_base::_lock<_rwMutexWait, _pthread_t::now>(&mutex, &itimeout)
+				== Status::ErrorTimeout) {
+			return ETIMEDOUT;
+		}
 	}
 
 	// We want to set value from 0 to WriteLock
-	if (!atomicCompareSwap(&value, &expected, desired)) [[unlikely]] {
+	if (!_atomic::compareSwap(&value, &expected, desired)) [[unlikely]] {
 		// failed - should lock
 		do {
-			if (timeout == 0) {
-				mutexUnlockAll(&mutex);
+			if (itimeout == 0) {
+				qmutex_base::_unlock<_rwMutexWakeAll>(&mutex);
 				return ETIMEDOUT;
 			}
 
 			// set waiters flag
 			if ((expected & Waiters) != 0
-					|| ((expected = atomicFetchOr(&value, Waiters) | Waiters) & ~Waiters) != 0) {
+					|| ((expected = _atomic::fetchOr(&value, Waiters) | Waiters) & ~Waiters) != 0) {
 
 				// we successfully set waiters flag (or it was set before)
-				if (!WaitOnAddress(&value, &expected, sizeof(uint64_t), timeout)) {
+				if (!WaitOnAddress(&value, &expected, sizeof(uint64_t), DWORD(itimeout))) {
 					if (GetLastError() == ERROR_TIMEOUT) {
-						mutexUnlockAll(&mutex);
+						qmutex_base::_unlock<_rwMutexWakeAll>(&mutex);
 						return ETIMEDOUT;
 					}
 				}
 
-				if (timeout != INFINITE) {
+				if (dtimeout != INFINITE) {
 					next = _pthread_t::now();
-					timeout -= min((next - now), timeout);
+					itimeout -= min((next - now), itimeout);
 				}
 				now = next;
 			}
@@ -180,10 +207,10 @@ int pthread_rwlock_t::wrlock(DWORD timeout) {
 			// value was changed, now it's 0 or other lock value
 			// assume 0 and try to set lock with WriteLock
 			expected = 0;
-		} while (!atomicCompareSwap(&value, &expected, desired));
+		} while (!_atomic::compareSwap(&value, &expected, desired));
 	}
 
-	atomicFetchAdd(&counter, uint32_t(1));
+	_atomic::fetchAdd(&counter, uint32_t(1));
 
 	// we now write-locked
 	self->threadWrLocks->emplace(this);
@@ -200,17 +227,17 @@ int pthread_rwlock_t::trywrlock() {
 	uint32_t desired = WriteLock;
 	uint32_t expected = 0;
 
-	if (!mutexTryLock(&mutex)) {
+	if (qmutex_base::_try_lock(&mutex) == Status::ErrorBusy) {
 		return EBUSY;
 	}
 
 	// We want to set value from 0 to WriteLock
-	if (!atomicCompareSwap(&value, &expected, desired)) [[unlikely]] {
-		mutexUnlockAll(&mutex);
+	if (!_atomic::compareSwap(&value, &expected, desired)) [[unlikely]] {
+		qmutex_base::_unlock<_rwMutexWakeAll>(&mutex);
 		return EBUSY;
 	}
 
-	atomicFetchAdd(&counter, uint32_t(1));
+	_atomic::fetchAdd(&counter, uint32_t(1));
 
 	// we now write-locked
 	self->threadWrLocks->emplace(this);
@@ -229,7 +256,7 @@ int pthread_rwlock_t::unlock() {
 		return EPERM;
 	}
 
-	bool shouldUnlock = (atomicFetchSub(&counter, uint32_t(1)) == 1);
+	bool shouldUnlock = (_atomic::fetchSub(&counter, uint32_t(1)) == 1);
 	if (!shouldUnlock) {
 		if (has_rd) {
 			if (rd_it->second > 1) {
@@ -241,7 +268,7 @@ int pthread_rwlock_t::unlock() {
 		return 0;
 	}
 
-	auto v = atomicExchange(&value, uint32_t(0));
+	auto v = _atomic::exchange(&value, uint32_t(0));
 	if (v & Waiters) {
 		WakeByAddressAll(&value);
 	}
@@ -250,7 +277,7 @@ int pthread_rwlock_t::unlock() {
 		self->threadRdLocks->erase(rd_it);
 	}
 	if (has_wr) {
-		mutexUnlockAll(&mutex);
+		qmutex_base::_unlock<_rwMutexWakeAll>(&mutex);
 		self->threadWrLocks->erase(wr_it);
 	}
 
@@ -258,18 +285,18 @@ int pthread_rwlock_t::unlock() {
 }
 
 void pthread_rwlock_t::force_unlock(bool isReadLock) {
-	bool shouldUnlock = (atomicFetchSub(&counter, uint32_t(1)) == 1);
+	bool shouldUnlock = (_atomic::fetchSub(&counter, uint32_t(1)) == 1);
 	if (!shouldUnlock) {
 		return;
 	}
 
-	auto v = atomicExchange(&value, uint32_t(0));
+	auto v = _atomic::exchange(&value, uint32_t(0));
 	if (v & Waiters) {
 		WakeByAddressAll(&value);
 	}
 
 	if (!isReadLock) {
-		mutexUnlockAll(&mutex);
+		qmutex_base::_unlock<_rwMutexWakeAll>(&mutex);
 	}
 }
 

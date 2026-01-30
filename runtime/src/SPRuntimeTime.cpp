@@ -25,7 +25,6 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_time.h>
 
 #include <math.h>
-#include <stdlib.h>
 #include <time.h>
 
 namespace sprt::time {

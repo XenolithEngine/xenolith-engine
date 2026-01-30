@@ -28,8 +28,6 @@
 #include <sprt/c/__sprt_ctype.h>
 #include <sprt/c/__sprt_wchar.h>
 
-#include <math.h>
-
 namespace sprt {
 
 enum class SmartType : uint8_t {

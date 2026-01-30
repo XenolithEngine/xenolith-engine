@@ -39,9 +39,14 @@
 
 __SPRT_BEGIN_DECL
 
+__SPRT_CONFIG_HAVE_TIMERFD_NOTICE
 SPRT_API int __SPRT_ID(timerfd_create)(int, int);
+
+__SPRT_CONFIG_HAVE_TIMERFD_NOTICE
 SPRT_API int __SPRT_ID(timerfd_settime)(int, int, const struct __SPRT_ITIMERSPEC_NAME *,
 		struct __SPRT_ITIMERSPEC_NAME *);
+
+__SPRT_CONFIG_HAVE_TIMERFD_NOTICE
 SPRT_API int __SPRT_ID(timerfd_gettime)(int, struct __SPRT_ITIMERSPEC_NAME *);
 
 __SPRT_END_DECL

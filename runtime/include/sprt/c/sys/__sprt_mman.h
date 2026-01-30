@@ -23,6 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_MMAN_H_
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_MMAN_H_
 
+#include <sprt/c/cross/__sprt_config.h>
 #include <sprt/c/bits/__sprt_ssize_t.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 
@@ -133,12 +134,20 @@ SPRT_API int __SPRT_ID(mlock)(const void *, __SPRT_ID(size_t));
 SPRT_API int __SPRT_ID(munlock)(const void *, __SPRT_ID(size_t));
 
 #if __SPRT_CONFIG_HAVE_MMAN_MLOCKALL || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+
+__SPRT_CONFIG_HAVE_MMAN_MLOCKALL_NOTICE
 SPRT_API int __SPRT_ID(mlockall)(int);
+
+__SPRT_CONFIG_HAVE_MMAN_MLOCKALL_NOTICE
 SPRT_API int __SPRT_ID(munlockall)(void);
+
 #endif
 
 #if __SPRT_CONFIG_HAVE_MMAN_MREMAP || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+
+__SPRT_CONFIG_HAVE_MMAN_MREMAP_NOTICE
 SPRT_API void *__SPRT_ID(mremap)(void *, __SPRT_ID(size_t), __SPRT_ID(size_t), int, ...);
+
 #endif
 
 SPRT_API int __SPRT_ID(mlock2)(const void *, __SPRT_ID(size_t), int);
@@ -147,7 +156,10 @@ SPRT_API int __SPRT_ID(madvise)(void *, __SPRT_ID(size_t), int);
 SPRT_API int __SPRT_ID(mincore)(void *, __SPRT_ID(size_t), unsigned char *);
 
 #if __SPRT_CONFIG_HAVE_MMAN_MEMFD || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+
+__SPRT_CONFIG_HAVE_MMAN_MEMFD_NOTICE
 SPRT_API int __SPRT_ID(memfd_create)(const char *, unsigned);
+
 #endif
 
 __SPRT_END_DECL

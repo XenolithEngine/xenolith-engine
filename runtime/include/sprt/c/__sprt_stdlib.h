@@ -121,10 +121,8 @@ SPRT_API void *__SPRT_ID(calloc_impl)(__SPRT_ID(size_t), __SPRT_ID(size_t)) __SP
 SPRT_API void *__SPRT_ID(realloc_impl)(void *, __SPRT_ID(size_t)) __SPRT_MALLOC;
 #define __sprt_realloc __SPRT_ID(realloc_impl)
 
-#if __SPRT_CONFIG_HAVE_ALLIGNED_ALLOC || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_API void *__SPRT_ID(aligned_alloc_impl)(__SPRT_ID(size_t), __SPRT_ID(size_t)) __SPRT_MALLOC;
 #define __sprt_aligned_alloc __SPRT_ID(aligned_alloc_impl)
-#endif
 
 SPRT_API __SPRT_NORETURN void __SPRT_ID(abort_impl)(void);
 
@@ -311,14 +309,21 @@ SPRT_FORCEINLINE void __sprt_alloca_freea(void *ptr) {
 #ifdef __cplusplus
 #if __SPRT_CONFIG_HAVE_STDLIB_MB || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 
+__SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
 __SPRT_ID(size_t)
 __SPRT_ID(mbstowcs)(wchar_t *__dst, const char *__src, __SPRT_ID(size_t) __n);
+
+__SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
 int __SPRT_ID(mbtowc)(wchar_t *__wc_ptr, const char *__s, __SPRT_ID(size_t) __n);
+
+__SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
 int __SPRT_ID(wctomb)(char *__dst, wchar_t __wc);
 
+__SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
 __SPRT_ID(size_t)
 __SPRT_ID(wcstombs)(char *__dst, const wchar_t *__src, __SPRT_ID(size_t) __n);
 
+__SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
 __SPRT_ID(size_t) __SPRT_ID(__ctype_get_mb_cur_max)(void);
 
 #endif

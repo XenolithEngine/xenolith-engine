@@ -110,7 +110,10 @@ SPRT_API int __SPRT_ID(clock_getres)(__SPRT_ID(clockid_t), __SPRT_TIMESPEC_NAME 
 SPRT_API int __SPRT_ID(clock_gettime)(__SPRT_ID(clockid_t), __SPRT_TIMESPEC_NAME *);
 
 #if __SPRT_CONFIG_HAVE_TIME_CLOCK_SETTIME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+
+__SPRT_CONFIG_HAVE_TIME_CLOCK_SETTIME_NOTICE
 SPRT_API int __SPRT_ID(clock_settime)(__SPRT_ID(clockid_t), const __SPRT_TIMESPEC_NAME *);
+
 #endif
 
 SPRT_API int __SPRT_ID(clock_nanosleep)(__SPRT_ID(clockid_t), int, const __SPRT_TIMESPEC_NAME *,

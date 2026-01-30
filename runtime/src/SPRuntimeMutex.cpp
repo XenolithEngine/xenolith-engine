@@ -21,7 +21,6 @@
  **/
 
 #include <sprt/runtime/mutex.h>
-#include <sprt/runtime/waitable_address.h>
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/status.h>
 
@@ -30,26 +29,11 @@
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/sys/__sprt_futex.h>
 
-#include "private/SPRTSpecific.h"
-#include "private/SPRTAtomics.h"
+#include <sys/winapi.h>
 
-#if SPRT_WINDOWS
-extern "C" {
-WINBASEAPI DWORD WINAPI GetCurrentThreadId();
-}
-#endif
+#include "private/SPRTSpecific.h"
 
 namespace sprt {
-
-SPRT_UNUSED static constexpr uint32_t LOCK_VALUE = 0b0001;
-SPRT_UNUSED static constexpr uint32_t WAIT_VALUE = 0b0010;
-SPRT_UNUSED static constexpr uint32_t FULL_VALUE = LOCK_VALUE | WAIT_VALUE;
-
-#if SPRT_LINUX || SPRT_ANDROID
-static uint32_t sys_gettid() { return uint32_t(::syscall(SYS_GETTID)); }
-#elif SPRT_WINDOWS
-static uint32_t sys_gettid() { return uint32_t(::GetCurrentThreadId()); }
-#endif
 
 static void reportError(StringView tag, int err) {
 	if (err != EAGAIN) {
@@ -60,8 +44,108 @@ static void reportError(StringView tag, int err) {
 	}
 }
 
+#if SPRT_LINUX || SPRT_ANDROID
+
+static inline auto sys_gettid() { return uint32_t(::syscall(SYS_GETTID)); }
+
+static Status qmutex_wait(volatile uint32_t *value, uint32_t expected, uint64_t) {
+	auto ret = __sprt_futex_wait(value, __SPRT_FUTEX_PRIVATE_FLAG, expected, nullptr);
+	if (ret < 0) {
+		reportError(__PRETTY_FUNCTION__, __sprt_errno);
+	}
+	return Status::Ok;
+}
+
+static void qmutex_wake(volatile uint32_t *value) {
+	auto ret = __sprt_futex_wake(value, __SPRT_FUTEX_PRIVATE_FLAG, 1);
+	if (ret < 0) {
+		reportError(__PRETTY_FUNCTION__, __sprt_errno);
+	}
+}
+
+static void qtimeline_wake(volatile uint32_t *value) {
+	auto ret = __sprt_futex_wake(value, __SPRT_FUTEX_PRIVATE_FLAG, __SPRT_INT_MAX);
+	if (ret < 0) {
+		reportError(__PRETTY_FUNCTION__, __sprt_errno);
+	}
+}
+
+static constexpr bool RMutexSyscallLock = true;
+
+static Status rmutex_wait(volatile uint32_t *value, uint32_t *expected, uint64_t) {
+	if (__sprt_futex_lock_pi(value, __SPRT_FUTEX_PRIVATE_FLAG, nullptr) < 0) {
+		auto err = __sprt_errno;
+		switch (err) {
+		case EAGAIN: break;
+		case ETIMEDOUT: break;
+		case EDEADLK: break;
+		default: reportError(__PRETTY_FUNCTION__, err); break;
+		}
+		return status::errnoToStatus(err);
+	}
+	return Status::Ok;
+}
+
+static bool rmutex_try(volatile uint32_t *value) {
+	auto ret = __sprt_futex_trylock_pi(value, __SPRT_FUTEX_PRIVATE_FLAG);
+	if (ret == 0) {
+		return true;
+	} else if (ret < 0) {
+		auto err = __sprt_errno;
+		switch (err) {
+		case EAGAIN: break;
+		case ETIMEDOUT: break;
+		case EDEADLK: return true; break;
+		default: reportError(__PRETTY_FUNCTION__, err); break;
+		}
+	}
+	return false;
+}
+
+static void rmutex_wake(volatile uint32_t *value) {
+	__sprt_futex_unlock_pi(value, __SPRT_FUTEX_PRIVATE_FLAG);
+}
+
+#elif SPRT_WINDOWS
+
+static inline auto sys_gettid() { return ::_GetCurrentThreadId(); }
+
+static Status qmutex_wait(volatile uint32_t *value, uint32_t expected, uint64_t) {
+	auto ret = _WaitOnAddress(value, &expected, sizeof(uint32_t), _WINAPI_INFINITE);
+	if (!ret) {
+		reportError(__PRETTY_FUNCTION__, platform::lastErrorToErrno(_GetLastError()));
+	}
+	return Status::Ok;
+}
+
+static void qmutex_wake(volatile uint32_t *value) { _WakeByAddressSingle((void *)value); }
+
+static void qtimeline_wake(volatile uint32_t *value) { _WakeByAddressAll((void *)value); }
+
+static constexpr bool RMutexSyscallLock = false;
+
+static Status rmutex_wait(volatile uint64_t *value, uint64_t *expected, uint64_t) {
+	auto ret = _WaitOnAddress(value, expected, sizeof(uint64_t), _WINAPI_INFINITE);
+	if (!ret) {
+		reportError(__PRETTY_FUNCTION__, platform::lastErrorToErrno(_GetLastError()));
+	}
+	return Status::Ok;
+}
+
+static bool rmutex_try(volatile uint64_t *value) { return false; }
+
+static void rmutex_wake(volatile uint64_t *value) {
+	_atomic::storeSeq(value, uint64_t(0));
+	_WakeByAddressSingle((void *)value);
+}
+#else
+#error TODO
+#endif
+
+static thread_local uint32_t tl_tid = sys_gettid();
+
 qmutex::~qmutex() {
-	auto value = atomicExchange(&_data.value, uint32_t(0));
+	auto value = _atomic::exchange(&_data.value, uint32_t(0));
 	if (value != 0) {
 		log::vprint(log::LogType::Fatal, __SPRT_LOCATION, "sprt::qmutex",
 				"Mutex is locked when it's destroyed, aborting");
@@ -69,50 +153,14 @@ qmutex::~qmutex() {
 	}
 }
 
-void qmutex::lock() {
-	// try to mark futex to own it
-	uint32_t c = atomicFetchOr(&_data.value, LOCK_VALUE);
-	if ((c & LOCK_VALUE) != 0) {
-		// prev value already has LOCK flag, wait
-		do {
-			// if wait flag is set already or we still locked
-			if ((c & WAIT_VALUE) != 0
-					|| (atomicFetchOr(&_data.value, WAIT_VALUE) & LOCK_VALUE) != 0) {
-				// wait for unlock, if futex has both WAIT_VALUE and LOCK_VALUE
-				auto ret = __sprt_futex_wait(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG, FULL_VALUE,
-						nullptr);
-				if (ret < 0) {
-					reportError(__PRETTY_FUNCTION__, __sprt_errno);
-				}
-			}
-			// check if lock still in place by fetching value and set all flags
-		} while (((c = atomicFetchOr(&_data.value, FULL_VALUE)) & LOCK_VALUE) != 0);
-	}
-}
+void qmutex::lock() { _lock<qmutex_wait, nullptr>(&_data.value, 0); }
 
-bool qmutex::try_lock() {
-	// returns true if successfully locked
-	// set LOCK flag, return true if it was not set (so, we successfully locked)
-	return (atomicFetchOr(&_data.value, LOCK_VALUE) & LOCK_VALUE) == 0;
-}
+bool qmutex::try_lock() { return _try_lock(&_data.value) == Status::Ok; }
 
-bool qmutex::unlock() {
-	// unset all, return true if WAIT was set
-	if ((atomicExchange(&_data.value, uint32_t(0)) & WAIT_VALUE) != 0) {
-		// WAIT was set, we need to signal
-		auto ret = __sprt_futex_wake(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG, 1);
-		if (ret < 0) {
-			reportError(__PRETTY_FUNCTION__, __sprt_errno);
-		}
-		return true;
-	}
-	return false;
-}
+bool qmutex::unlock() { return _unlock<qmutex_wake>(&_data.value) == Status::Ok; }
 
-static thread_local uint32_t tl_tid = sys_gettid();
-
-recursive_qmutex::~recursive_qmutex() {
-	auto value = atomicExchange(&_data.value, uint32_t(0));
+rmutex::~rmutex() {
+	auto value = _atomic::exchange(&_data.value, decltype(_data.value)(0));
 	if (value != 0) {
 		log::vprint(log::LogType::Fatal, __SPRT_LOCATION, "sprt::recursive_qmutex",
 				"Mutex is locked when it's destroyed, aborting");
@@ -120,159 +168,51 @@ recursive_qmutex::~recursive_qmutex() {
 	}
 }
 
-void recursive_qmutex::lock() {
-	auto tid = tl_tid & __SPRT_FUTEX_TID_MASK;
-	uint32_t expected = 0;
-	// try to capture mutex with out tid
-	if (!atomicCompareSwap(&_data.value, &expected, tid)) [[unlikely]] {
-		// failed - should lock
-		do {
-			// check if we are the owner
-			if ((expected & __SPRT_FUTEX_TID_MASK) == tid) {
-				// we are the owner, increment and return
-				++_data.counter;
-				return;
-			} else {
-				if (__sprt_futex_lock_pi(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG, nullptr) < 0) {
-					auto err = __sprt_errno;
-					switch (err) {
-					case EAGAIN: break;
-					case ETIMEDOUT: break;
-					case EDEADLK:
-						++_data.counter;
-						return;
-						break;
-					default: reportError(__PRETTY_FUNCTION__, err); break;
-					}
-				}
+void rmutex::lock() { _lock<rmutex_wait, nullptr, RMutexSyscallLock>(_data, tl_tid, 0); }
 
-				// Check if lock still in place by CAS
-				// We will lock it with 0 -> TID or expected become TID;
-				// If not - locke one more time
-				expected = 0;
-			}
-		} while (!atomicCompareSwap(&_data.value, &expected, tid));
-	} else {
-		++_data.counter;
-	}
-}
+bool rmutex::try_lock() { return _try_lock<rmutex_try>(_data, tl_tid) == Status::Ok; }
 
-bool recursive_qmutex::try_lock() {
-	auto tid = tl_tid & __SPRT_FUTEX_TID_MASK;
-	uint32_t expected = 0;
-	// try to capture mutex with out tid
-	if (!atomicCompareSwap(&_data.value, &expected, tid)) [[unlikely]] {
-		// check if we are the owner
-		if ((expected & __SPRT_FUTEX_TID_MASK) == tid) {
-			// we are the owner, increment and return
-			++_data.counter;
-			return true;
-		} else {
-			auto ret = __sprt_futex_trylock_pi(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG);
-			if (ret == 0) {
-				++_data.counter;
-				return true;
-			} else if (ret < 0) {
-				auto err = __sprt_errno;
-				switch (err) {
-				case EAGAIN: break;
-				case ETIMEDOUT: break;
-				case EDEADLK:
-					++_data.counter;
-					return true;
-					break;
-				default: reportError(__PRETTY_FUNCTION__, err); break;
-				}
-			}
-			return false;
-		}
-	} else {
-		++_data.counter;
-		return true;
-	}
-}
+bool rmutex::unlock() { return _unlock<rmutex_wake>(_data, tl_tid) == Status::Ok; }
 
-bool recursive_qmutex::unlock() {
-	auto tid = tl_tid & __SPRT_FUTEX_TID_MASK;
-	auto value = atomicLoadSeq(&_data.value);
-	if ((value & __SPRT_FUTEX_TID_MASK) == tid) {
-		--_data.counter;
-		if (_data.counter > 0) {
-			// some recursive locks still in place
-			return false;
-		}
+static constexpr qtimeline::value_type WaitersBit = 0x8000'0000;
 
-		if ((value & __SPRT_FUTEX_WAITERS) != 0) {
-			// we know there are waiters, unlock via syscall
-			__sprt_futex_unlock_pi(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG);
-			return true;
-		} else {
-			// try to release atomically
-			uint32_t expected = tid;
-			if (!atomicCompareSwap(&_data.value, &expected, uint32_t(0))) {
-				// there are waiters or an error, we don't care what - just unlock
-				auto ret = __sprt_futex_unlock_pi(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG);
-				if (ret < 0) {
-					reportError(__PRETTY_FUNCTION__, __sprt_errno);
-				}
-				return true;
-			} else {
-				// successful, no waiters
-				return false;
-			}
-		}
-	}
-	log::vprint(log::LogType::Fatal, __SPRT_LOCATION, "sprt::recursive_qmutex",
-			"Mutex is locked by another thread");
-	::__sprt_abort();
-	return false;
-}
+qtimeline::qtimeline(value_type v) : _data({v}) { }
 
-static constexpr waitable_address::value_type WaitersBit = 0x8000'0000;
+qtimeline::~qtimeline() { }
 
-waitable_address::~waitable_address() { }
-
-void waitable_address::wait_value(value_type val) {
+void qtimeline::wait(value_type val) {
 	// optimistic load, if success - returns without setting WaitersBit
-	auto v = (atomicLoadSeq(&_data.value));
-	if ((v & value_mask) != val) {
-		int ret = 0;
+	auto v = (_atomic::loadSeq(&_data.value));
+	if ((v & value_mask) < val) {
 		// wait on futex
 		do {
 			if ((v & WaitersBit) != 0) {
 				// WaitersBit was not dropped, just wait
-				ret = __sprt_futex_wait(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG, v, nullptr);
-				if (ret < 0) {
-					reportError(__PRETTY_FUNCTION__, __sprt_errno);
-				}
+				qmutex_wait(&_data.value, v, 0);
 			} else {
 				// set waiters bit, then wait if needed
-				v = atomicFetchOr(&_data.value, WaitersBit);
-				if ((v & value_mask) != val) {
-					// if &_data.value is still == v - wait until signal
-					ret = __sprt_futex_wait(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG, FULL_VALUE,
-							nullptr);
-					if (ret < 0) {
-						reportError(__PRETTY_FUNCTION__, __sprt_errno);
-					}
+				v = _atomic::fetchOr(&_data.value, WaitersBit);
+				if ((v & value_mask) < val) {
+					// if &_data.value is still == v -- wait until signal
+					qmutex_wait(&_data.value, v, 0);
 				}
 			}
 
-			v = (atomicLoadSeq(&_data.value));
-		} while ((v & value_mask) != val);
+			v = (_atomic::loadSeq(&_data.value));
+		} while ((v & value_mask) < val);
 	}
 }
 
-bool waitable_address::try_value(value_type val) {
-	return (atomicLoadSeq(&_data.value) & value_mask) == val;
+bool qtimeline::try_wait(value_type val) {
+	return (_atomic::loadSeq(&_data.value) & value_mask) >= val;
 }
 
-void waitable_address::set_and_signal(value_type val) {
-	if (atomicExchange(&_data.value, val) & WaitersBit) {
-		auto ret = __sprt_futex_wake(&_data.value, __SPRT_FUTEX_PRIVATE_FLAG, __SPRT_INT_MAX);
-		if (ret < 0) {
-			reportError(__PRETTY_FUNCTION__, __sprt_errno);
-		}
+void qtimeline::signal(value_type val) {
+	if (val == 0) {
+		return;
+	}
+	if (_atomic::fetchAdd(&_data.value, val) & WaitersBit) {
+		qtimeline_wake(&_data.value);
 	}
 }
 

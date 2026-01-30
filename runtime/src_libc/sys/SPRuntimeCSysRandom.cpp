@@ -24,10 +24,14 @@ THE SOFTWARE.
 
 #include <sprt/c/sys/__sprt_random.h>
 
+#if SPRT_WINDOWS
+#include <Windows.h>
+#else
 #include <sys/random.h>
 #include <stdlib.h>
 
 #include "private/SPRTSpecific.h"
+#endif
 
 namespace sprt {
 
@@ -39,6 +43,13 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 	}
 	arc4random_buf(__buffer, __length);
 	return 0;
+#elif SPRT_WINDOWS
+	auto ret = BCryptGenRandom(nullptr, (unsigned char *)__buffer, __length,
+			BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+	if (ret == 0) {
+		return __length;
+	}
+	return -1;
 #else
 	return ::getrandom(__buffer, __length, __flags);
 #endif

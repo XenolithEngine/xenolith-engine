@@ -23,6 +23,7 @@ THE SOFTWARE.
 #define __SPRT_BUILD 1
 
 #include <sprt/c/__sprt_pthread.h>
+#include <sprt/c/__sprt_sched.h>
 #include <sprt/runtime/log.h>
 
 #ifndef SPRT_WINDOWS

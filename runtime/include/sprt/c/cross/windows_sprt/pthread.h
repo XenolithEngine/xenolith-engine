@@ -22,7 +22,7 @@ typedef struct alignas(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
 } __SPRT_ID(pthread_mutexattr_t);
 
 typedef struct alignas(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
-	__SPRT_ID(uint64_t) __data[2];
+	__SPRT_ID(uint64_t) __data[3];
 } __SPRT_ID(pthread_mutex_t);
 
 typedef __SPRT_ID(uint32_t) __SPRT_ID(pthread_key_t);

@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C___SPRT_NL_TYPES_H_
 #define CORE_RUNTIME_INCLUDE_C___SPRT_NL_TYPES_H_
 
-#include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/cross/__sprt_config.h>
 
 #define __SPRT_NL_SETD 1
 #define __SPRT_NL_CAT_LOCALE 1
@@ -34,6 +34,8 @@ typedef int __SPRT_ID(nl_item);
 typedef void *__SPRT_ID(nl_catd);
 
 #if __SPRT_CONFIG_HAVE_NLTYPES_CAT || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+
+__SPRT_CONFIG_HAVE_NLTYPES_CAT_NOTICE
 SPRT_API __SPRT_ID(nl_catd) __SPRT_ID(catopen)(const char *, int);
 SPRT_API char *__SPRT_ID(catgets)(__SPRT_ID(nl_catd), int, int, const char *);
 SPRT_API int __SPRT_ID(catclose)(__SPRT_ID(nl_catd));

@@ -114,16 +114,19 @@ SPRT_FORCEINLINE mode_t umask(mode_t mode) { return __sprt_umask(mode); }
 
 SPRT_FORCEINLINE int mkdir(const char *path, mode_t mode) { return __sprt_mkdir(path, mode); }
 
-SPRT_FORCEINLINE int mkfifo(const char *path, mode_t mode) { return __sprt_mkfifo(path, mode); }
-
 SPRT_FORCEINLINE int mkdirat(int fd, const char *path, mode_t mode) {
 	return __sprt_mkdirat(fd, path, mode);
 }
 
+#if __SPRT_CONFIG_HAVE_STAT_MKFIFO || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+SPRT_FORCEINLINE int mkfifo(const char *path, mode_t mode) { return __sprt_mkfifo(path, mode); }
+
 SPRT_FORCEINLINE int mkfifoat(int fd, const char *path, mode_t mode) {
 	return __sprt_mkfifoat(fd, path, mode);
 }
+#endif
 
+#if __SPRT_CONFIG_HAVE_STAT_MKNOD || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int mknod(const char *path, mode_t mode, dev_t dev) {
 	return __sprt_mknod(path, mode, dev);
 }
@@ -131,6 +134,7 @@ SPRT_FORCEINLINE int mknod(const char *path, mode_t mode, dev_t dev) {
 SPRT_FORCEINLINE int mknodat(int fd, const char *path, mode_t mode, dev_t dev) {
 	return __sprt_mknodat(fd, path, mode, dev);
 }
+#endif
 
 SPRT_FORCEINLINE int futimens(int fd, const struct __SPRT_TIMESPEC_NAME ts[2]) {
 	return __sprt_futimens(fd, ts);

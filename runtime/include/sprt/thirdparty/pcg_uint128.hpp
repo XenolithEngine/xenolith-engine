@@ -105,7 +105,9 @@ inline bitcount_t flog2(uint32_t v) { return 31 - __builtin_clz(v); }
 inline bitcount_t trailingzeros(uint32_t v) { return __builtin_ctz(v); }
 
 inline bitcount_t flog2(uint64_t v) {
-#if UINT64_MAX == ULONG_MAX
+#if __SPRT_HAS_BUILTIN(__builtin_clzg)
+	return 63 - __builtin_clzg(v);
+#elif UINT64_MAX == ULONG_MAX
 	return 63 - __builtin_clzl(v);
 #elif UINT64_MAX == ULLONG_MAX
 	return 63 - __builtin_clzll(v);
@@ -115,7 +117,9 @@ inline bitcount_t flog2(uint64_t v) {
 }
 
 inline bitcount_t trailingzeros(uint64_t v) {
-#if UINT64_MAX == ULONG_MAX
+#if __SPRT_HAS_BUILTIN(__builtin_ctzg)
+	return __builtin_ctzg(v);
+#elif UINT64_MAX == ULONG_MAX
 	return __builtin_ctzl(v);
 #elif UINT64_MAX == ULLONG_MAX
 	return __builtin_ctzll(v);

@@ -178,7 +178,7 @@ struct SPRT_LOCAL Cleanup {
 };
 
 struct SPRT_LOCAL Allocator {
-	using AllocMutex = sprt::recursive_qmutex;
+	using AllocMutex = sprt::rmutex;
 
 	// used to detect stappler allocators vs. APR allocators
 	uintptr_t magic = static_cast<uintptr_t>(config::POOL_MAGIC);

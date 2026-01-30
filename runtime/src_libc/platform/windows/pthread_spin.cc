@@ -45,7 +45,7 @@ static inline int pthread_spin_destroy(pthread_spinlock_t *s) {
 static inline int pthread_spin_trylock(pthread_spinlock_t *s) {
 	// InterlockedCompareExchange returns previous value.
 	uint32_t value = 0;
-	if (atomicCompareSwap(s, &value, uint32_t(1))) {
+	if (_atomic::compareSwap(s, &value, uint32_t(1))) {
 		return 0;
 	}
 	return EBUSY;
@@ -83,7 +83,7 @@ static inline int pthread_spin_lock(pthread_spinlock_t *s) {
 // Unlock
 static inline int pthread_spin_unlock(pthread_spinlock_t *s) {
 	// Simple store is enough on x86; use barrier if you need strict ordering
-	atomicStoreSeq(s, uint32_t(0));
+	_atomic::storeSeq(s, uint32_t(0));
 	return 0;
 }
 

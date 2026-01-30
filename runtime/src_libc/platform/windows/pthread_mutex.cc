@@ -22,178 +22,106 @@ THE SOFTWARE.
 
 #include "pthread_win.h"
 
-#include "private/SPRTAtomics.h"
-
 #ifdef __clang__
 #pragma clang diagnostic ignored "-Wunused-function"
 #endif
 
 namespace sprt {
 
-int pthread_mutex_t::lock(DWORD timeout) {
-	uint64_t desired = static_cast<uint64_t>(GetCurrentThreadId());
-	uint64_t expected = 0;
-
-	ULONGLONG now = _pthread_t::now(), next = 0;
-
-	// We want to set value from 0 to thread_id
-	if (!atomicCompareSwap(&value, &expected, desired)) [[unlikely]] {
-		// failed - should lock
-		do {
-			if ((expected & pthread_mutex_t::StateNotRecoverable) != 0) {
-				// we are the owner, increment and return
-
-				return ENOTRECOVERABLE;
-			}
-
-			// check if we are actually owner, but with wait flag set
-			if ((expected & pthread_mutex_t::StateThreadMask) == desired) {
-				// we are the owner, return
-				break; // from do ... while
-			}
-
-			if (timeout == 0) {
-				return ETIMEDOUT;
-			}
-
-			// set waiters flag
-			if ((expected & pthread_mutex_t::StateWaiters) != 0
-					// expected should be (fetch | StateWaiters), then we check it's value part against nonzero
-					|| ((expected = atomicFetchOr(&value, pthread_mutex_t::StateWaiters)
-										| pthread_mutex_t::StateWaiters)
-							   & StateThreadMask)
-							!= 0) {
-				// we successfully set waiters flag (or it was set before)
-				if (!WaitOnAddress(&value, &expected, sizeof(uint64_t), timeout)) {
-					if (GetLastError() == ERROR_TIMEOUT) {
-						return ETIMEDOUT;
-					}
-				}
-
-				if (timeout != INFINITE) {
-					next = _pthread_t::now();
-					timeout -= min((next - now), timeout);
-				}
-				now = next;
-
-				// value was changed, now it's 0 or other thread id
-				// assume 0 and try to set to our thread id
-				expected = 0;
-			} else {
-				// we have 0 or 0 | StateWaiters in expected, try to CompareSwap with it
-			}
-
-		} while (!atomicCompareSwap(&value, &expected, desired));
-	}
-
-	// value is now thread_id, we owns mmutex
-	++counter;
-
-	if (counter == 1 && hasFlag(attr.flags, MutexAttrFlags::Robust)) {
-		_pthread_t::self()->threadRobustMutexes->emplace(this);
-	}
-
-	if (hasFlag(attr.flags, MutexAttrFlags::OwnerDied)) {
-		return EOWNERDEAD;
-	}
-	return 0;
+static Status _mutexLock(volatile uint64_t *value, uint64_t *expected, uint64_t timeout) {
+	WaitOnAddress(value, expected, sizeof(uint64_t), INFINITE);
+	return Status::Ok;
 }
 
-int pthread_mutex_t::unlock() {
-	uint64_t desired = static_cast<uint64_t>(GetCurrentThreadId());
-	uint64_t expected = atomicLoadSeq(&expected);
+static Status _mutexTimedLock(volatile uint64_t *value, uint64_t *expected, uint64_t timeout) {
+	if (!WaitOnAddress(value, expected, sizeof(uint64_t), timeout)) {
+		if (GetLastError() == ERROR_TIMEOUT) {
+			return Status::ErrorTimeout;
+		}
+	}
+	return Status::Ok;
+}
 
-	if ((expected & pthread_mutex_t::StateThreadMask) != desired) {
-		// Mutex is not ours
+static void _mutexUnlock(volatile uint64_t *value) { WakeByAddressSingle((void *)value); }
 
-		return EPERM;
+int pthread_mutex_t::lock(DWORD timeout) {
+	uint64_t itimeout = timeout;
+	Status st = Status::Ok;
+	if (timeout == INFINITE) {
+		st = rmutex_base::_lock<_mutexLock, nullptr, false>(mtx,
+				static_cast<uint64_t>(GetCurrentThreadId()), nullptr);
+	} else {
+		st = rmutex_base::_lock<_mutexTimedLock, _pthread_t::now, false>(mtx,
+				static_cast<uint64_t>(GetCurrentThreadId()), &itimeout);
 	}
 
-	--counter;
-	if (--counter > 0) {
-		// some recursive locks still in place
+	if (st == Status::Ok) {
+		if (mtx.counter == 1 && hasFlag(attr.flags, MutexAttrFlags::Robust)) {
+			_pthread_t::self()->threadRobustMutexes->emplace(this);
+		}
+		if (hasFlag(attr.flags, MutexAttrFlags::OwnerDied)) {
+			return EOWNERDEAD;
+		}
 		return 0;
 	}
 
-	if (hasFlag(attr.flags, MutexAttrFlags::Robust)) {
-		_pthread_t::self()->threadRobustMutexes->erase(this);
-	}
+	return status::toErrno(st);
+}
 
+int pthread_mutex_t::unlock() {
 	if (hasFlag(attr.flags, MutexAttrFlags::OwnerDied)) {
+		auto expected = _atomic::loadRel(&mtx.value);
+		if ((expected & rmutex_base::VALUE_MASK) != GetCurrentThreadId() || mtx.counter <= 0) {
+			return EPERM;
+		}
+
 		// make mutex inconsistent and notify all about it
 		attr.flags |= MutexAttrFlags::NotRecoverable;
-		atomicFetchOr(&value, pthread_mutex_t::StateNotRecoverable);
-		WakeByAddressAll(&value);
-
+		_atomic::fetchOr(&mtx.value, pthread_mutex_t::StateNotRecoverable);
+		WakeByAddressAll(&mtx.value);
 		return ENOTRECOVERABLE;
-	} else if ((expected & pthread_mutex_t::StateWaiters) != 0) {
-		// we know there are waiters, unlock via syscall
-		atomicStoreSeq(&value, uint64_t(0));
-		WakeByAddressSingle(&value);
-	} else {
-		// try to release atomically
-		if (!atomicCompareSwap(&value, &expected, uint64_t(0))) {
-			// there are new waiters or an error, we don't care what - just unlock with syscall
-			atomicStoreSeq(&value, uint64_t(0));
-			WakeByAddressSingle(&value);
-		} else {
-			// successful, no waiters
-		}
 	}
-	return 0;
+
+	auto st = rmutex_base::_unlock<_mutexUnlock>(mtx, GetCurrentThreadId());
+
+	if (status::isSuccessful(st)) {
+		if (st != Status::Suspended) {
+			if (hasFlag(attr.flags, MutexAttrFlags::Robust)) {
+				_pthread_t::self()->threadRobustMutexes->erase(this);
+			}
+		}
+		return 0;
+	}
+
+	return status::toErrno(st);
 }
 
 int pthread_mutex_t::try_lock() {
-	uint64_t desired = static_cast<uint64_t>(GetCurrentThreadId());
-	uint64_t expected = 0;
+	auto st = rmutex_base::_try_lock<nullptr>(mtx, GetCurrentThreadId());
 
-	if (!atomicCompareSwap(&value, &expected, desired)) [[unlikely]] {
-		// check if we are the owner
-		if ((expected & pthread_mutex_t::StateNotRecoverable) != 0) {
-			// we are the owner, increment and return
-			return ENOTRECOVERABLE;
-		}
-
-		if ((expected & pthread_mutex_t::StateThreadMask) == desired) {
-			// we are the owner, increment and return
-			++counter;
-		} else {
-			return EBUSY;
-		}
-	} else {
-		++counter;
-	}
-
-	if (hasFlag(attr.flags, MutexAttrFlags::Robust)) {
-		_pthread_t::self()->threadRobustMutexes->emplace(this);
-	}
-
-	if (hasFlag(attr.flags, MutexAttrFlags::OwnerDied)) {
-		return EOWNERDEAD;
-	}
-	return 0;
+	return status::toErrno(st);
 }
 
 void pthread_mutex_t::force_unlock() {
 	uint64_t desired = static_cast<uint64_t>(GetCurrentThreadId());
-	uint64_t expected = atomicLoadSeq(&value);
+	uint64_t expected = _atomic::loadSeq(&mtx.value);
 
 	// ensure that we are owner
 	if ((expected & pthread_mutex_t::StateThreadMask) == desired) {
 		attr.flags |= MutexAttrFlags::OwnerDied;
 
 		// remove all recursive locks
-		counter = 0;
+		mtx.counter = 0;
 		if ((expected & pthread_mutex_t::StateWaiters) != 0) {
 			// we know there are waiters, unlock via syscall
-			atomicStoreSeq(&value, uint64_t(0));
-			WakeByAddressSingle(&value);
+			_atomic::storeSeq(&mtx.value, uint64_t(0));
+			WakeByAddressSingle(&mtx.value);
 		} else {
 			// try to release atomically
-			if (!atomicCompareSwap(&value, &expected, uint64_t(0))) {
+			if (!_atomic::compareSwap(&mtx.value, &expected, uint64_t(0))) {
 				// there are new waiters or an error, we don't care what - just unlock with syscall
-				atomicStoreSeq(&value, uint64_t(0));
-				WakeByAddressSingle(&value);
+				_atomic::storeSeq(&mtx.value, uint64_t(0));
+				WakeByAddressSingle(&mtx.value);
 			} else {
 				// successful, no waiters
 			}
@@ -203,7 +131,7 @@ void pthread_mutex_t::force_unlock() {
 
 bool pthread_mutex_t::is_owned_by_this_thread() {
 	uint64_t desired = static_cast<uint64_t>(GetCurrentThreadId());
-	uint64_t expected = atomicLoadSeq(&value);
+	uint64_t expected = _atomic::loadSeq(&mtx.value);
 
 	// ensure that we are owner
 	if ((expected & pthread_mutex_t::StateThreadMask) == desired) {
@@ -422,9 +350,8 @@ static int pthread_mutex_consistent(pthread_mutex_t *mutex) {
 		return EINVAL;
 	}
 
-	auto flags = MutexAttrFlags(atomicLoadSeq((uint16_t *)&mutex->attr.flags));
+	auto flags = MutexAttrFlags(_atomic::loadSeq((uint16_t *)&mutex->attr.flags));
 	if (!hasFlag(flags, MutexAttrFlags::OwnerDied)) {
-
 		return EINVAL;
 	}
 

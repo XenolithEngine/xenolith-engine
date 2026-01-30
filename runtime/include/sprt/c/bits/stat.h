@@ -21,7 +21,6 @@ struct __SPRT_STAT_NAME {
 	__SPRT_ID(mode_t) st_mode;
 	__SPRT_ID(uid_t) st_uid;
 	__SPRT_ID(gid_t) st_gid;
-	unsigned int __pad0;
 	__SPRT_ID(dev_t) st_rdev;
 	__SPRT_ID(off_t) st_size;
 	__SPRT_ID(blksize_t) st_blksize;
@@ -30,7 +29,6 @@ struct __SPRT_STAT_NAME {
 	__SPRT_TIMESPEC_NAME st_atim;
 	__SPRT_TIMESPEC_NAME st_mtim;
 	__SPRT_TIMESPEC_NAME st_ctim;
-	long unused[3];
 };
 
 #endif // CORE_RUNTIME_INCLUDE_C_BITS_STAT_H_

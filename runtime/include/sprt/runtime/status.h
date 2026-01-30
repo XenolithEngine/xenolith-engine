@@ -29,6 +29,7 @@
 #include <sprt/runtime/math.h>
 #include <sprt/runtime/detail/operations.h>
 #include <sprt/runtime/detail/invoke.h>
+#include <sprt/c/__sprt_errno.h>
 
 namespace sprt::status {
 
@@ -72,26 +73,29 @@ enum class Status : int32_t {
 	// general errors
 	// This errors matched their errno codes, but can occurs in any subsystem
 	ErrorNumber =				status::ERRNO_ERROR_NUMBER(0),
-	ErrorNotPermitted =			status::ERRNO_ERROR_NUMBER(1), // EPERM, VK_ERROR_NOT_PERMITTED_KHR
-	ErrorNotFound =				status::ERRNO_ERROR_NUMBER(2), // ENOENT
-	ErrorNoSuchProcess  =		status::ERRNO_ERROR_NUMBER(3), // ESRCH
-	ErrorInterrupted  =			status::ERRNO_ERROR_NUMBER(4), // ESRCH
-	ErrorTooManyObjects =		status::ERRNO_ERROR_NUMBER(7), // E2BIG, VK_ERROR_TOO_MANY_OBJECTS
-	ErrorAgain =				status::ERRNO_ERROR_NUMBER(11), // EAGAIN
-	ErrorOutOfHostMemory =		status::ERRNO_ERROR_NUMBER(12), // ENOMEM, VK_ERROR_OUT_OF_HOST_MEMORY
-	ErrorBusy =					status::ERRNO_ERROR_NUMBER(16), // EBUSY
-	ErrorFileExists =			status::ERRNO_ERROR_NUMBER(17), // EEXIST
-	ErrorIncompatibleDevice =	status::ERRNO_ERROR_NUMBER(18), // EXDEV, VK_ERROR_INCOMPATIBLE_DRIVER
-	ErrorInvalidArguemnt =		status::ERRNO_ERROR_NUMBER(22), // EINVAL, VK_ERROR_INITIALIZATION_FAILED
-	ErrorOutOfDeviceMemory =	status::ERRNO_ERROR_NUMBER(28), // ENOSPC, VK_ERROR_OUT_OF_DEVICE_MEMORY
-	ErrorNotImplemented =		status::ERRNO_ERROR_NUMBER(38), // ENOSYS
-	ErrorTimerExpired =			status::ERRNO_ERROR_NUMBER(62), // ETIME; when it's not an error - return Suspended
-	ErrorNotSupported =			status::ERRNO_ERROR_NUMBER(95), // ENOTSUP, VK_ERROR_FORMAT_NOT_SUPPORTED
-	ErrorBufferOverflow =		status::ERRNO_ERROR_NUMBER(105), // ENOBUFS
-	ErrorAlreadyPerformed =		status::ERRNO_ERROR_NUMBER(114), // EALREADY
-	ErrorInProgress =			status::ERRNO_ERROR_NUMBER(115), // EINPROGRESS
-	ErrorCancelled =			status::ERRNO_ERROR_NUMBER(125), // ECANCELED, VK_ERROR_OUT_OF_DATE_KHR
-	ErrorDeviceLost =			status::ERRNO_ERROR_NUMBER(130), // EOWNERDEAD, VK_ERROR_DEVICE_LOST
+	ErrorNotPermitted =			status::ERRNO_ERROR_NUMBER(EPERM), // EPERM, VK_ERROR_NOT_PERMITTED_KHR
+	ErrorNotFound =				status::ERRNO_ERROR_NUMBER(ENOENT), // ENOENT
+	ErrorNoSuchProcess  =		status::ERRNO_ERROR_NUMBER(ESRCH), // ESRCH
+	ErrorInterrupted  =			status::ERRNO_ERROR_NUMBER(EINTR), // EINTR
+	ErrorTooManyObjects =		status::ERRNO_ERROR_NUMBER(E2BIG), // E2BIG, VK_ERROR_TOO_MANY_OBJECTS
+	ErrorAgain =				status::ERRNO_ERROR_NUMBER(EAGAIN), // EAGAIN
+	ErrorOutOfHostMemory =		status::ERRNO_ERROR_NUMBER(ENOMEM), // ENOMEM, VK_ERROR_OUT_OF_HOST_MEMORY
+	ErrorBusy =					status::ERRNO_ERROR_NUMBER(EBUSY), // EBUSY
+	ErrorFileExists =			status::ERRNO_ERROR_NUMBER(EEXIST), // EEXIST
+	ErrorIncompatibleDevice =	status::ERRNO_ERROR_NUMBER(EXDEV), // EXDEV, VK_ERROR_INCOMPATIBLE_DRIVER
+	ErrorInvalidArguemnt =		status::ERRNO_ERROR_NUMBER(EINVAL), // EINVAL, VK_ERROR_INITIALIZATION_FAILED
+	ErrorOutOfDeviceMemory =	status::ERRNO_ERROR_NUMBER(ENOSPC), // ENOSPC, VK_ERROR_OUT_OF_DEVICE_MEMORY
+	ErrorDeadLock =				status::ERRNO_ERROR_NUMBER(EDEADLK), // EDEADLK
+	ErrorNotImplemented =		status::ERRNO_ERROR_NUMBER(ENOSYS), // ENOSYS
+	ErrorTimerExpired =			status::ERRNO_ERROR_NUMBER(ETIME), // ETIME; when it's not an error - return Suspended
+	ErrorNotSupported =			status::ERRNO_ERROR_NUMBER(ENOTSUP), // ENOTSUP, VK_ERROR_FORMAT_NOT_SUPPORTED
+	ErrorBufferOverflow =		status::ERRNO_ERROR_NUMBER(ENOBUFS), // ENOBUFS
+	ErrorTimeout =				status::ERRNO_ERROR_NUMBER(ETIMEDOUT), // ETIMEDOUT
+	ErrorAlreadyPerformed =		status::ERRNO_ERROR_NUMBER(EALREADY), // EALREADY
+	ErrorInProgress =			status::ERRNO_ERROR_NUMBER(EINPROGRESS), // EINPROGRESS
+	ErrorCancelled =			status::ERRNO_ERROR_NUMBER(ECANCELED), // ECANCELED, VK_ERROR_OUT_OF_DATE_KHR
+	ErrorNotRecoverable =		status::ERRNO_ERROR_NUMBER(ENOTRECOVERABLE), // ENOTRECOVERABLE
+	ErrorDeviceLost =			status::ERRNO_ERROR_NUMBER(EOWNERDEAD), // EOWNERDEAD, VK_ERROR_DEVICE_LOST
 
 	// Generic errors, can occurs in any subsystem
 	ErrorMemoryMapFailed =		status::GENERIC_ERROR_NUMBER(1), // VK_ERROR_MEMORY_MAP_FAILED

@@ -29,6 +29,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdarg.h>
 
 #include <sprt/runtime/log.h>
+
 #include "private/SPRTSpecific.h"
 
 #if SPRT_WINDOWS
@@ -70,7 +71,6 @@ __SPRT_C_FUNC int __SPRT_ID(munlock)(const void *__addr, __SPRT_ID(size_t) __siz
 __SPRT_C_FUNC int __SPRT_ID(mlockall)(int __flags) {
 #if __SPRT_CONFIG_HAVE_MMAN_MLOCKALL
 	return ::mlockall(__flags);
-}
 #else
 	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_MMAN_MREMAP)");

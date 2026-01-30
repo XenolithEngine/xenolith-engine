@@ -121,7 +121,7 @@
 /*-************************************
 *  Compiler Options
 **************************************/
-#if defined(_MSC_VER) && (_MSC_VER >= 1400) /* Visual Studio 2005+ */
+#if !defined(__clang__) && defined(_MSC_VER) && (_MSC_VER >= 1400) /* Visual Studio 2005+ */
 #include <intrin.h> /* only present in VS2005+ */
 #pragma warning(disable : 4127) /* disable: C4127: conditional expression is constant */
 #pragma warning(disable : 6237) /* disable: C6237: conditional expression is always 0 */
@@ -233,7 +233,7 @@ void LZ4_free(void *p);
 #endif
 
 #if !LZ4_FREESTANDING
-#include <string.h> /* memset, memcpy */
+#include <sprt/c/__sprt_string.h> /* memset, memcpy */
 #endif
 #if !defined(LZ4_memset)
 #define LZ4_memset(p, v, s) __sprt_memset((p),(v),(s))
@@ -354,18 +354,18 @@ typedef enum {
  * environments. This is needed when decompressing the Linux Kernel, for example.
  */
 #if !defined(LZ4_memcpy)
-#if defined(__GNUC__) && (__GNUC__ >= 4)
+#if defined(__clang__) || (defined(__GNUC__) && (__GNUC__ >= 4))
 #define LZ4_memcpy(dst, src, size) __builtin_memcpy(dst, src, size)
 #else
-#define LZ4_memcpy(dst, src, size) memcpy(dst, src, size)
+#define LZ4_memcpy(dst, src, size) __sprt_memcpy(dst, src, size)
 #endif
 #endif
 
 #if !defined(LZ4_memmove)
-#if defined(__GNUC__) && (__GNUC__ >= 4)
+#if defined(__clang__) || (defined(__GNUC__) && (__GNUC__ >= 4))
 #define LZ4_memmove __builtin_memmove
 #else
-#define LZ4_memmove memmove
+#define LZ4_memmove __sprt_memmove
 #endif
 #endif
 
@@ -583,8 +583,8 @@ static unsigned LZ4_NbCommonBytes(reg_t val) {
 	assert(val != 0);
 	if (LZ4_isLittleEndian()) {
 		if (sizeof(val) == 8) {
-#if defined(_MSC_VER) && (_MSC_VER >= 1800) && (defined(_M_AMD64) && !defined(_M_ARM64EC)) \
-		&& !defined(LZ4_FORCE_SW_BITCOUNT)
+#if !defined(__clang__) && defined(_MSC_VER) && (_MSC_VER >= 1800) \
+		&& (defined(_M_AMD64) && !defined(_M_ARM64EC)) && !defined(LZ4_FORCE_SW_BITCOUNT)
 /*-*************************************************************************************************
 * ARM64EC is a Microsoft-designed ARM64 ABI compatible with AMD64 applications on ARM64 Windows 11.
 * The ARM64EC ABI does not support AVX/AVX2/AVX512 instructions, nor their relevant intrinsics
@@ -598,7 +598,7 @@ static unsigned LZ4_NbCommonBytes(reg_t val) {
 			/* x64 CPUS without BMI support interpret `TZCNT` as `REP BSF` */
 			return (unsigned)_tzcnt_u64(val) >> 3;
 #endif
-#elif defined(_MSC_VER) && defined(_WIN64) && !defined(LZ4_FORCE_SW_BITCOUNT)
+#elif !defined(__clang__) && defined(_MSC_VER) && defined(_WIN64) && !defined(LZ4_FORCE_SW_BITCOUNT)
 			unsigned long r = 0;
 			_BitScanForward64(&r, (U64)val);
 			return (unsigned)r >> 3;
@@ -612,7 +612,8 @@ static unsigned LZ4_NbCommonBytes(reg_t val) {
 			return (unsigned)(((U64)((val & (m - 1)) * m)) >> 56);
 #endif
 		} else /* 32 bits */ {
-#if defined(_MSC_VER) && (_MSC_VER >= 1400) && !defined(LZ4_FORCE_SW_BITCOUNT)
+#if !defined(__clang__) && defined(_MSC_VER) && (_MSC_VER >= 1400) \
+		&& !defined(LZ4_FORCE_SW_BITCOUNT)
 			unsigned long r;
 			_BitScanForward(&r, (U32)val);
 			return (unsigned)r >> 3;
@@ -3358,7 +3359,8 @@ LZ4_FORCE_INLINE
 unsigned LZ4HC_NbCommonBytes32(U32 val) {
 	assert(val != 0);
 	if (LZ4_isLittleEndian()) {
-#if defined(_MSC_VER) && (_MSC_VER >= 1400) && !defined(LZ4_FORCE_SW_BITCOUNT)
+#if !defined(__clang__) && defined(_MSC_VER) && (_MSC_VER >= 1400) \
+		&& !defined(LZ4_FORCE_SW_BITCOUNT)
 		unsigned long r;
 		_BitScanReverse(&r, val);
 		return (unsigned)((31 - r) >> 3);
@@ -3372,7 +3374,8 @@ unsigned LZ4HC_NbCommonBytes32(U32 val) {
 		return (unsigned)val ^ 3;
 #endif
 	} else {
-#if defined(_MSC_VER) && (_MSC_VER >= 1400) && !defined(LZ4_FORCE_SW_BITCOUNT)
+#if !defined(__clang__) && defined(_MSC_VER) && (_MSC_VER >= 1400) \
+		&& !defined(LZ4_FORCE_SW_BITCOUNT)
 		unsigned long r;
 		_BitScanForward(&r, val);
 		return (unsigned)(r >> 3);

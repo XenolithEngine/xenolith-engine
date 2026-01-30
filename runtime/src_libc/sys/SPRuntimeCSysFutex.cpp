@@ -25,6 +25,8 @@
 #include <sprt/c/sys/__sprt_futex.h>
 #include <sprt/c/__sprt_errno.h>
 
+#include <sprt/runtime/log.h>
+
 namespace sprt {
 
 #if __SPRT_CONFIG_HAVE_FUTEX
@@ -99,6 +101,8 @@ __SPRT_C_FUNC long __SPRT_ID(futex2_wait)(volatile __SPRT_ID(uint32_t) * uaddr,
 // FUTEX_WAKE(2const): https://man7.org/linux/man-pages/man2/FUTEX_WAKE.2const.html
 __SPRT_C_FUNC long __SPRT_ID(futex_wake)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) val) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_FUTEX)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }
@@ -106,6 +110,8 @@ __SPRT_C_FUNC long __SPRT_ID(futex_wake)(volatile __SPRT_ID(uint32_t) * uaddr,
 // FUTEX_WAIT(2const): https://man7.org/linux/man-pages/man2/FUTEX_WAIT.2const.html
 __SPRT_C_FUNC long __SPRT_ID(futex_wait)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) val, __SPRT_TIMESPEC_NAME *timespec) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_FUTEX)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }
@@ -114,6 +120,8 @@ __SPRT_C_FUNC long __SPRT_ID(futex_wait)(volatile __SPRT_ID(uint32_t) * uaddr,
 __SPRT_C_FUNC long __SPRT_ID(futex_wait_bitset)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) val, __SPRT_TIMESPEC_NAME *timespec,
 		__SPRT_ID(uint32_t) bitset) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_FUTEX)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }
@@ -121,6 +129,8 @@ __SPRT_C_FUNC long __SPRT_ID(futex_wait_bitset)(volatile __SPRT_ID(uint32_t) * u
 // FUTEX_WAIT_BITSET(2const): https://man7.org/linux/man-pages/man2/FUTEX_WAIT_BITSET.2const.html
 __SPRT_C_FUNC long __SPRT_ID(futex_wake_bitset)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) val, __SPRT_ID(uint32_t) bitset) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_FUTEX)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }
@@ -128,6 +138,8 @@ __SPRT_C_FUNC long __SPRT_ID(futex_wake_bitset)(volatile __SPRT_ID(uint32_t) * u
 // FUTEX_LOCK_PI(2const): https://man7.org/linux/man-pages/man2/FUTEX_LOCK_PI.2const.html
 __SPRT_C_FUNC long __SPRT_ID(futex_lock_pi)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_TIMESPEC_NAME *timespec) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_FUTEX)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }
@@ -135,6 +147,8 @@ __SPRT_C_FUNC long __SPRT_ID(futex_lock_pi)(volatile __SPRT_ID(uint32_t) * uaddr
 // FUTEX_TRYLOCK_PI(2const): https://man7.org/linux/man-pages/man2/FUTEX_TRYLOCK_PI.2const.html
 __SPRT_C_FUNC long __SPRT_ID(
 		futex_trylock_pi)(volatile __SPRT_ID(uint32_t) * uaddr, __SPRT_ID(uint32_t) flags) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_FUTEX)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }
@@ -142,6 +156,8 @@ __SPRT_C_FUNC long __SPRT_ID(
 // FUTEX_UNLOCK_PI(2const): https://man7.org/linux/man-pages/man2/FUTEX_UNLOCK_PI.2const.html
 __SPRT_C_FUNC long __SPRT_ID(
 		futex_unlock_pi)(volatile __SPRT_ID(uint32_t) * uaddr, __SPRT_ID(uint32_t) flags) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_FUTEX)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }

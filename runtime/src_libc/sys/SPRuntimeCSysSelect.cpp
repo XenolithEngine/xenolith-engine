@@ -27,7 +27,9 @@ THE SOFTWARE.
 
 #include <sprt/runtime/log.h>
 
+#if __SPRT_CONFIG_HAVE_SELECT
 #include <sys/select.h>
+#endif
 
 namespace sprt {
 

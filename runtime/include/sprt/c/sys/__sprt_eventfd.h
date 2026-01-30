@@ -38,8 +38,13 @@ typedef __SPRT_ID(uint64_t) __SPRT_ID(eventfd_t);
 
 __SPRT_BEGIN_DECL
 
+__SPRT_CONFIG_HAVE_EVENTFD_NOTICE
 SPRT_API int __SPRT_ID(eventfd)(unsigned int, int);
+
+__SPRT_CONFIG_HAVE_EVENTFD_NOTICE
 SPRT_API int __SPRT_ID(eventfd_read)(int, __SPRT_ID(eventfd_t) *);
+
+__SPRT_CONFIG_HAVE_EVENTFD_NOTICE
 SPRT_API int __SPRT_ID(eventfd_write)(int, __SPRT_ID(eventfd_t));
 
 __SPRT_END_DECL

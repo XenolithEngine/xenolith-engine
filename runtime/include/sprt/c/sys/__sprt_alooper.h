@@ -45,20 +45,30 @@ typedef int (*__SPRT_ID(ALooper_callbackFunc))(int fd, int events, void *data);
 
 __SPRT_BEGIN_DECL
 
+__SPRT_CONFIG_HAVE_ALOOPER_NOTICE
 SPRT_API __SPRT_ID(ALooper) * __SPRT_ID(ALooper_forThread)();
+
+__SPRT_CONFIG_HAVE_ALOOPER_NOTICE
 SPRT_API __SPRT_ID(ALooper) * __SPRT_ID(ALooper_prepare)(int opts);
 
+__SPRT_CONFIG_HAVE_ALOOPER_NOTICE
 SPRT_API void __SPRT_ID(ALooper_acquire)(__SPRT_ID(ALooper) * looper);
+
+__SPRT_CONFIG_HAVE_ALOOPER_NOTICE
 SPRT_API void __SPRT_ID(ALooper_release)(__SPRT_ID(ALooper) * looper);
 
+__SPRT_CONFIG_HAVE_ALOOPER_NOTICE
 SPRT_API int __SPRT_ID(
 		ALooper_pollOnce)(int timeoutMillis, int *outFd, int *outEvents, void **outData);
 
+__SPRT_CONFIG_HAVE_ALOOPER_NOTICE
 SPRT_API void __SPRT_ID(ALooper_wake)(__SPRT_ID(ALooper) * looper);
 
+__SPRT_CONFIG_HAVE_ALOOPER_NOTICE
 SPRT_API int __SPRT_ID(ALooper_addFd)(__SPRT_ID(ALooper) * looper, int fd, int ident, int events,
 		__SPRT_ID(ALooper_callbackFunc) callback, void *data);
 
+__SPRT_CONFIG_HAVE_ALOOPER_NOTICE
 SPRT_API int __SPRT_ID(ALooper_removeFd)(__SPRT_ID(ALooper) * looper, int fd);
 
 __SPRT_END_DECL

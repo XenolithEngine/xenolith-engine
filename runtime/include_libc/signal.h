@@ -74,7 +74,7 @@ THE SOFTWARE.
 #ifdef __SPRT_SIGUSR
 #define SIGUSR __SPRT_SIGUSR
 #endif
-1
+
 #ifdef __SPRT_SIGSEGV
 #define SIGSEGV __SPRT_SIGSEGV
 #endif
@@ -82,7 +82,15 @@ THE SOFTWARE.
 #ifdef __SPRT_SIGUSR
 #define SIGUSR __SPRT_SIGUSR
 #endif
-		2
+
+#ifdef __SPRT_SIGUSR1
+#define SIGUSR1 __SPRT_SIGUSR1
+#endif
+
+#ifdef __SPRT_SIGUSR2
+#define SIGUSR2 __SPRT_SIGUSR2
+#endif
+
 #ifdef __SPRT_SIGPIPE
 #define SIGPIPE __SPRT_SIGPIPE
 #endif
@@ -174,9 +182,9 @@ THE SOFTWARE.
 
 #define _NSIG __SPRT__NSIG
 
-		__SPRT_BEGIN_DECL
+__SPRT_BEGIN_DECL
 
-		typedef __SPRT_ID(sigset_t) sigset_t;
+typedef __SPRT_ID(sigset_t) sigset_t;
 
 SPRT_FORCEINLINE int sigemptyset(sigset_t *set) { return __SPRT_ID(sigemptyset)(set); }
 SPRT_FORCEINLINE int sigfillset(sigset_t *set) { return __SPRT_ID(sigfillset)(set); }

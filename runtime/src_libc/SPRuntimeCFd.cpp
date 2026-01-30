@@ -28,6 +28,8 @@
 #include <sprt/c/sys/__sprt_uring.h>
 #include <sprt/c/__sprt_errno.h>
 
+#include <sprt/runtime/log.h>
+
 #if __SPRT_CONFIG_HAVE_EVENTFD
 
 #include <sys/eventfd.h>
@@ -53,16 +55,22 @@ __SPRT_C_FUNC int __SPRT_ID(eventfd_write)(int fd, __SPRT_ID(eventfd_t) efd) {
 namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(eventfd)(unsigned int count, int flags) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_EVENTFD)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(eventfd_read)(int fd, __SPRT_ID(eventfd_t) * efd) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_EVENTFD)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(eventfd_write)(int fd, __SPRT_ID(eventfd_t) efd) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_EVENTFD)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }
@@ -88,6 +96,8 @@ __SPRT_C_FUNC int __SPRT_ID(signalfd)(int fd, const __SPRT_ID(sigset_t) * sig, i
 namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(signalfd)(int fd, const __SPRT_ID(sigset_t) * sig, int flags) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_SIGNALFD)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }
@@ -150,17 +160,23 @@ __SPRT_C_FUNC int __SPRT_ID(timerfd_gettime)(int ufd, struct __SPRT_ITIMERSPEC_N
 namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(timerfd_create)(int clockid, int flags) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_TIMERFD)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(timerfd_settime)(int ufd, int flags,
 		const struct __SPRT_ITIMERSPEC_NAME *utmr, struct __SPRT_ITIMERSPEC_NAME *otmr) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_TIMERFD)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(timerfd_gettime)(int ufd, struct __SPRT_ITIMERSPEC_NAME *otmr) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_TIMERFD)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }

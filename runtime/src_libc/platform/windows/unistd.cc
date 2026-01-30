@@ -356,6 +356,17 @@ static DWORD getppid(void) {
 	return ppid;
 }
 
+static DWORD __getRid(PSID sid) {
+	if (!GetSidSubAuthorityCount(sid)) {
+		errno = EINVAL;
+		return __SPRT_ID(uid_t)(-1);
+	}
+
+	DWORD sub_count = *GetSidSubAuthorityCount(sid);
+
+	return *GetSidSubAuthority(sid, sub_count - 1);
+}
+
 // @AI-geerated
 static __SPRT_ID(uid_t) getuid(void) {
 	HANDLE hToken = nullptr;
@@ -376,19 +387,9 @@ static __SPRT_ID(uid_t) getuid(void) {
 		return __SPRT_ID(uid_t)(-1);
 	}
 
-	PSID sid = pUser->User.Sid;
-	if (!GetSidSubAuthorityCount(sid)) {
-		__sprt_freea(pUser);
-		errno = EINVAL;
-		return __SPRT_ID(uid_t)(-1);
-	}
-
-	DWORD sub_count = *GetSidSubAuthorityCount(sid);
-
-	auto rid = GetSidSubAuthority(sid, sub_count - 1);
+	auto uid = __getRid(pUser->User.Sid);
 	__sprt_freea(pUser);
-
-	return __SPRT_ID(uid_t)(*rid);
+	return uid;
 }
 
 static __SPRT_ID(uid_t) geteuid(void) { return getuid(); }
@@ -415,19 +416,9 @@ static __SPRT_ID(gid_t) getgid(void) {
 		return __SPRT_ID(gid_t)(-1);
 	}
 
-	PSID sid = pGroup->PrimaryGroup;
-	if (!GetSidSubAuthorityCount(sid)) {
-		__sprt_freea(pGroup);
-		errno = EINVAL;
-		return __SPRT_ID(gid_t)(-1);
-	}
-
-	DWORD sub_count = *GetSidSubAuthorityCount(sid);
-
-	auto rid = GetSidSubAuthority(sid, sub_count - 1);
+	auto gid = __getRid(pGroup->PrimaryGroup);
 	__sprt_freea(pGroup);
-
-	return __SPRT_ID(gid_t)(*rid);
+	return gid;
 }
 
 static __SPRT_ID(gid_t) getegid(void) { return getuid(); }
@@ -965,7 +956,7 @@ static int symlinkat(const char *__old_path, int __new_dir_fd, const char *__new
 				return -1;
 			}
 		}, -1);
-	}, platform::FdHandleType::File)) {
+	})) {
 		__sprt_errno = EINVAL;
 		return -1;
 	}
@@ -976,7 +967,7 @@ static ssize_t readlinkat(int __dir_fd, const char *__path, char *__buf, size_t 
 	int ret = 0;
 	if (!platform::openAtPath(__dir_fd, __path, [&](const char *path, size_t size) {
 		ret = __readlink(path, __buf, __buf_size);
-	}, platform::FdHandleType::File)) {
+	})) {
 		__sprt_errno = EINVAL;
 		return -1;
 	}
@@ -985,9 +976,8 @@ static ssize_t readlinkat(int __dir_fd, const char *__path, char *__buf, size_t 
 
 static int faccessat(int __dirfd, const char *__path, int __mode, int __flags) {
 	int ret = 0;
-	if (!platform::openAtPath(__dirfd, __path, [&](const char *path, size_t size) {
-		ret = __access(path, __mode, __flags);
-	}, platform::FdHandleType::File)) {
+	if (!platform::openAtPath(__dirfd, __path,
+				[&](const char *path, size_t size) { ret = __access(path, __mode, __flags); })) {
 		__sprt_errno = EINVAL;
 		return -1;
 	}
@@ -1018,12 +1008,12 @@ static int linkat(int __old_dir_fd, const char *__old_path, int __new_dir_fd,
 				__sprt_errno = platform::lastErrorToErrno(GetLastError());
 				ret = -1;
 			}
-		}, platform::FdHandleType::File)) {
+		})) {
 			__sprt_errno = EINVAL;
 			ret = -1;
 			return;
 		}
-	}, platform::FdHandleType::File)) {
+	})) {
 		__sprt_errno = EINVAL;
 		return -1;
 	}
@@ -1038,7 +1028,7 @@ static int unlinkat(int __dirfd, const char *__path, int __flags) {
 		} else {
 			ret = __unlink(path);
 		}
-	}, platform::FdHandleType::File)) {
+	})) {
 		__sprt_errno = EINVAL;
 		return -1;
 	}

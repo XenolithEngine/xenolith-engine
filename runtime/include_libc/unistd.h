@@ -224,7 +224,6 @@ SPRT_FORCEINLINE int execlp(const char *__file, const char *__arg, ...) __SPRT_N
 SPRT_FORCEINLINE int nice(int __inc) __SPRT_NOEXCEPT { return __sprt_nice(__inc); }
 #endif
 
-#if __SPRT_CONFIG_HAVE_UNISTD_CONF || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE long int pathconf(const char *__path, int __name) __SPRT_NOEXCEPT {
 	return __sprt_pathconf(__path, __name);
 }
@@ -234,7 +233,6 @@ SPRT_FORCEINLINE long int fpathconf(int __fd, int __name) __SPRT_NOEXCEPT {
 }
 
 SPRT_FORCEINLINE long int sysconf(int __name) __SPRT_NOEXCEPT { return __sprt_sysconf(__name); }
-#endif
 
 SPRT_FORCEINLINE pid_t getpid(void) __SPRT_NOEXCEPT { return __sprt_getpid(); }
 

@@ -20,37 +20,32 @@
  THE SOFTWARE.
  **/
 
-#ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_URING_H_
-#define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_URING_H_
+#ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_WINAPI_H_
+#define CORE_RUNTIME_INCLUDE_LIBC_SYS_WINAPI_H_
 
-#include <sprt/c/cross/__sprt_config.h>
+#include <sprt/c/sys/__sprt_winapi.h>
 
-#include <sprt/c/bits/uring.h>
-#include <sprt/c/cross/__sprt_signal.h>
-#include <sprt/c/bits/__sprt_size_t.h>
+#if __SPRT_CONFIG_HAVE_WINAPI || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 
-#if __SPRT_CONFIG_HAVE_URING || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+#define _WINAPI_INFINITE __SPRT_WINAPI_INFINITE
 
 __SPRT_BEGIN_DECL
 
-__SPRT_CONFIG_HAVE_URING_NOTICE
-SPRT_API int __SPRT_ID(io_uring_setup)(unsigned entries, struct io_uring_params *p);
+SPRT_FORCEINLINE __SPRT_ID(pid_t) _GetCurrentThreadId() { return __sprt_GetCurrentThreadId(); }
 
-__SPRT_CONFIG_HAVE_URING_NOTICE
-SPRT_API int __SPRT_ID(io_uring_enter)(int ring_fd, unsigned int to_submit,
-		unsigned int min_complete, unsigned int flags, const __SPRT_ID(sigset_t) *sig = nullptr);
+SPRT_FORCEINLINE __SPRT_ID(uint32_t) _GetLastError() { return __sprt_GetLastError(); }
 
-__SPRT_CONFIG_HAVE_URING_NOTICE
-SPRT_API int __SPRT_ID(io_uring_enter2)(int ring_fd, unsigned int to_submit,
-		unsigned int min_complete, unsigned int flags, void *arg = nullptr,
-		__SPRT_ID(size_t) argsize = 0);
+SPRT_FORCEINLINE int _WaitOnAddress(volatile void *Address, void *CompareAddress,
+		__SPRT_ID(size_t) AddressSize, __SPRT_ID(uint32_t) dwMilliseconds) {
+	return __sprt_WaitOnAddress(Address, CompareAddress, AddressSize, dwMilliseconds);
+}
 
-__SPRT_CONFIG_HAVE_URING_NOTICE
-SPRT_API int __SPRT_ID(io_uring_register)(unsigned int fd, unsigned int opcode, const void *arg,
-		unsigned int nr_args);
+SPRT_FORCEINLINE void _WakeByAddressSingle(void *Address) { __sprt_WakeByAddressSingle(Address); }
+
+SPRT_FORCEINLINE void _WakeByAddressAll(void *Address) { __sprt_WakeByAddressAll(Address); }
 
 __SPRT_END_DECL
 
 #endif
 
-#endif
+#endif // CORE_RUNTIME_INCLUDE_LIBC_SYS_WINAPI_H_

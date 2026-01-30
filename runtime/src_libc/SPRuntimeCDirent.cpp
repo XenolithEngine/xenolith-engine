@@ -49,7 +49,7 @@ __SPRT_C_FUNC __SPRT_ID(DIR) * __SPRT_ID(opendir)(const char *path) { return ope
 __SPRT_C_FUNC __SPRT_ID(DIR) * __SPRT_ID(fdopendir)(int __dir_fd) { return fdopendir(__dir_fd); }
 
 __SPRT_C_FUNC struct __SPRT_DIRENT_NAME *__SPRT_ID(readdir)(__SPRT_ID(DIR) * __dir) {
-	return readdir64(__dir);
+	return (struct __SPRT_DIRENT_NAME *)readdir64(__dir);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(closedir)(__SPRT_ID(DIR) * __dir) { return closedir(__dir); }
@@ -96,7 +96,7 @@ __SPRT_C_FUNC int __SPRT_ID(scandir)(const char *path, struct __SPRT_DIRENT_NAME
 				const struct __SPRT_DIRENT_NAME **)) {
 #ifndef SPRT_WINDOWS
 	// call with native path
-	return ::scandir64(target, (struct dirent64 ***)__name_list,
+	return ::scandir64(path, (struct dirent64 ***)__name_list,
 			reinterpret_cast<int (*)(const struct dirent64 *)>(__filter),
 			reinterpret_cast<int (*)(const struct dirent64 **, const struct dirent64 **)>(
 					__comparator));
@@ -111,7 +111,7 @@ __SPRT_C_FUNC int __SPRT_ID(scandirat)(int __dir_fd, const char *path,
 		int (*__comparator)(const struct __SPRT_DIRENT_NAME **,
 				const struct __SPRT_DIRENT_NAME **)) {
 #ifndef SPRT_WINDOWS
-	return ::scandirat64(__dir_fd, target, (struct dirent64 ***)__name_list,
+	return ::scandirat64(__dir_fd, path, (struct dirent64 ***)__name_list,
 			reinterpret_cast<int (*)(const struct dirent64 *)>(__filter),
 			reinterpret_cast<int (*)(const struct dirent64 **, const struct dirent64 **)>(
 					__comparator));

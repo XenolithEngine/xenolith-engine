@@ -219,7 +219,10 @@ SPRT_API __SPRT_ID(FILE)
 				fmemopen)(void *__SPRT_RESTRICT, __SPRT_ID(size_t), const char *__SPRT_RESTRICT);
 
 #if __SPRT_CONFIG_HAVE_STDIO_OPEN_MEMSTREAM || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+
+__SPRT_CONFIG_HAVE_STDIO_OPEN_MEMSTREAM_NOTICE
 SPRT_API __SPRT_ID(FILE) * __SPRT_ID(open_memstream)(char **, __SPRT_ID(size_t) *);
+
 #endif
 
 SPRT_API __SPRT_ID(FILE) * __SPRT_ID(fdopen)(int, const char *);

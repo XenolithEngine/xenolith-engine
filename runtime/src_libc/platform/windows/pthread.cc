@@ -132,7 +132,7 @@ _pthread_t *_pthread_t::self() {
 
 		thread->attr.prio = __unmapPriority(GetThreadPriority(thread->handle));
 
-		thread->state.set_and_signal(_pthread_t::StateExternalInit);
+		thread->state.signal(2);
 
 		tl_self.thread = thread;
 	}
@@ -219,7 +219,7 @@ void _pthread_t::registerThread() {
 
 			for (auto &it : *specs) {
 				// spec created only via increment for refcount, decrement it
-				if (atomicFetchSub(&it.second.data->refcount, uint32_t(1)) == 1) {
+				if (_atomic::fetchSub(&it.second.data->refcount, uint32_t(1)) == 1) {
 					unique_lock lock(s_handlePool.mutex);
 					s_handlePool.keys.erase(it.first);
 				}
@@ -251,8 +251,8 @@ static __stdcall unsigned int __runthead(void *arg) {
 
 	tl_self.thread = thread;
 
-	thread->state.set_and_signal(_pthread_t::StateInternalInit);
-	thread->state.wait_value(_pthread_t::StateExternalInit);
+	thread->state.signal(1);
+	thread->state.wait(_pthread_t::StateExternalInit);
 
 	if (setjmp(thread->jmpToRunthread) == 0) {
 		thread->arg = thread->cb(thread->arg);
@@ -262,7 +262,7 @@ static __stdcall unsigned int __runthead(void *arg) {
 
 	auto result = thread->result;
 
-	thread->state.set_and_signal(_pthread_t::StateFinalized);
+	thread->state.signal(_pthread_t::StateFinalized - thread->state.get_value());
 	lock.unlock(); // unlock before mutex's memory destroyed
 
 	return result;
@@ -285,7 +285,7 @@ static int pthread_create(pthread_t *__SPRT_RESTRICT outthread,
 
 	__attachThread(thread, handle);
 
-	thread->state.wait_value(_pthread_t::StateInternalInit);
+	thread->state.wait(_pthread_t::StateInternalInit);
 
 	// handle priority
 	if (hasFlagAll(thread->attr.attr,
@@ -300,7 +300,7 @@ static int pthread_create(pthread_t *__SPRT_RESTRICT outthread,
 		thread->handle = nullptr;
 	}*/
 
-	thread->state.set_and_signal(_pthread_t::StateExternalInit);
+	thread->state.signal(_pthread_t::StateExternalInit - thread->state.get_value());
 	*outthread = thread;
 	return 0;
 }
@@ -327,7 +327,7 @@ static int pthread_detach(pthread_t thread) {
 	// We hold the thread's mutex, so, it can not change state by itself
 	// Finalizer (if ready) will be called after we release mutex
 
-	if (thread->state.try_value(_pthread_t::StateFinalized)) {
+	if (thread->state.try_wait(_pthread_t::StateFinalized)) {
 		// thread was finalized as joinable, release it's resources
 		CloseHandle(thread->handle);
 		__detachAndDeallocateThread(thread);
@@ -382,7 +382,7 @@ static int __pthread_join(pthread_t thread, void **ret, DWORD timeout, bool tryj
 	// thread is joinable
 
 	// release all data if already complete
-	if (thread->state.try_value(_pthread_t::StateFinalized)) {
+	if (thread->state.try_wait(_pthread_t::StateFinalized)) {
 		// thread was finalized as joinable, release it's resources
 		CloseHandle(thread->handle);
 		*ret = thread->arg;
@@ -510,7 +510,7 @@ static int pthread_cancel(pthread_t thread) {
 			lock.unlock();
 			pthread_exit(__SPRT_PTHREAD_CANCELED); // <-- noreturn
 		} else if (thread->state.get_value() < _pthread_t::StateCancelling) {
-			thread->state.set_and_signal(_pthread_t::StateCancelling);
+			thread->state.signal(_pthread_t::StateCancelling - thread->state.get_value());
 
 			// Break user's context to call __pthread_cancel_callback on target thread
 			// QueueUserAPC2 will unwind the stack for current user context
@@ -841,7 +841,7 @@ static int pthread_key_delete(pthread_key_t key) {
 		return EINVAL;
 	}
 
-	if (atomicFetchSub(&it->second.refcount, uint32_t(1)) == 1) {
+	if (_atomic::fetchSub(&it->second.refcount, uint32_t(1)) == 1) {
 		s_handlePool.keys.erase(it);
 	}
 	return 0;
@@ -877,7 +877,7 @@ static int pthread_setspecific(pthread_key_t key, const void *val) {
 			return EINVAL;
 		}
 
-		atomicFetchAdd(&keyIt->second.refcount, uint32_t(1));
+		_atomic::fetchAdd(&keyIt->second.refcount, uint32_t(1));
 		data = &keyIt->second;
 		lock.unlock();
 

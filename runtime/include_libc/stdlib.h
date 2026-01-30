@@ -87,11 +87,9 @@ SPRT_FORCEINLINE void *calloc(size_t a, size_t value) { return __sprt_calloc(a, 
 SPRT_FORCEINLINE void *realloc(void *ptr, size_t value) { return __sprt_realloc(ptr, value); }
 SPRT_FORCEINLINE void free(void *value) { return __sprt_free(value); }
 
-#if __SPRT_CONFIG_HAVE_ALLIGNED_ALLOC || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE void *aligned_alloc(size_t a, size_t value) {
 	return __sprt_aligned_alloc(a, value);
 }
-#endif
 
 SPRT_FORCEINLINE __SPRT_NORETURN void abort(void) { __sprt_abort(); }
 

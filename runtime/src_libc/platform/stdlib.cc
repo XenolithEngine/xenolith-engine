@@ -93,7 +93,7 @@ static void srandom(unsigned int base) {
 #ifndef SPRT_WINDOWS
 static int getenv_s(size_t *pReturnValue, char *buffer, size_t numberOfElements,
 		const char *varname) {
-	auto val ::getenv(name);
+	auto val = ::getenv(varname);
 
 	if (!val) {
 		if (pReturnValue) {

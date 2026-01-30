@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_time_t.h>
-#include <sprt/c/bits/__sprt_sigset_t.h>
+#include <sprt/c/cross/__sprt_signal.h>
 #include <sprt/c/cross/__sprt_config.h>
 
 #include <sprt/c/bits/fdset.h>
@@ -34,9 +34,12 @@ __SPRT_BEGIN_DECL
 
 #if __SPRT_CONFIG_HAVE_SELECT || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 
+__SPRT_CONFIG_HAVE_SELECT_NOTICE
 SPRT_API int __SPRT_ID(select)(int, __SPRT_ID(fd_set) * __SPRT_RESTRICT,
 		__SPRT_ID(fd_set) * __SPRT_RESTRICT, __SPRT_ID(fd_set) * __SPRT_RESTRICT,
 		__SPRT_TIMEVAL_NAME *__SPRT_RESTRICT);
+
+__SPRT_CONFIG_HAVE_SELECT_NOTICE
 SPRT_API int __SPRT_ID(pselect)(int, __SPRT_ID(fd_set) * __SPRT_RESTRICT,
 		__SPRT_ID(fd_set) * __SPRT_RESTRICT, __SPRT_ID(fd_set) * __SPRT_RESTRICT,
 		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT, const __SPRT_ID(sigset_t) * __SPRT_RESTRICT);

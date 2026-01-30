@@ -302,6 +302,56 @@ struct atomic_flag {
 	atomic_flag &operator=(const atomic_flag &) volatile = delete;
 };
 
+namespace _atomic {
+
+template <typename Value>
+static inline Value loadSeq(volatile Value *ptr) {
+	return __atomic_load_n(ptr, __ATOMIC_SEQ_CST);
+}
+
+template <typename Value>
+static inline Value loadRel(volatile Value *ptr) {
+	return __atomic_load_n(ptr, __ATOMIC_RELAXED);
+}
+
+template <typename Value>
+static inline void storeSeq(volatile Value *ptr, Value value) {
+	__atomic_store_n(ptr, value, __ATOMIC_SEQ_CST);
+}
+
+template <typename Value>
+static inline Value fetchOr(volatile Value *ptr, Value value) {
+	return __atomic_fetch_or(ptr, value, __ATOMIC_SEQ_CST);
+}
+
+template <typename Value>
+static inline Value fetchAnd(volatile Value *ptr, Value value) {
+	return __atomic_fetch_and(ptr, value, __ATOMIC_SEQ_CST);
+}
+
+template <typename Value>
+static inline Value fetchAdd(volatile Value *ptr, Value value) {
+	return __atomic_fetch_add(ptr, value, __ATOMIC_SEQ_CST);
+}
+
+template <typename Value>
+static inline Value fetchSub(volatile Value *ptr, Value value) {
+	return __atomic_fetch_sub(ptr, value, __ATOMIC_SEQ_CST);
+}
+
+template <typename Value>
+static inline Value exchange(volatile Value *ptr, Value value) {
+	return __atomic_exchange_n(ptr, value, __ATOMIC_SEQ_CST);
+}
+
+template <typename Value>
+static inline bool compareSwap(volatile Value *ptr, Value *expected, Value desired) {
+	return __atomic_compare_exchange_n(ptr, expected, desired, false, __ATOMIC_SEQ_CST,
+			__ATOMIC_SEQ_CST);
+}
+
+} // namespace _atomic
+
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_ATOMIC_H_

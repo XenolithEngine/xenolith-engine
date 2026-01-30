@@ -30,20 +30,20 @@ namespace sprt {
 
 int pthread_barrier_t::wait() {
 	uint32_t expected = nthreads & ValueMask;
-	uint32_t gen = atomicLoadSeq(&generations);
-	auto ticket = atomicFetchAdd(&nIn, uint32_t(1));
+	uint32_t gen = _atomic::loadSeq(&generations);
+	auto ticket = _atomic::fetchAdd(&nIn, uint32_t(1));
 
 	if ((ticket % (expected)) == expected - 1) {
 		// golden ticket - we can set PassFlag and signal others
 		// but only if PassFlag is NOT set
 
 		// decrement In value to exclude overflow
-		atomicFetchSub(&nIn, expected);
+		_atomic::fetchSub(&nIn, expected);
 
 		// we expect that flag is set for our WaitOnAddress
 		expected |= PassFlag;
 
-		auto v = atomicFetchOr(&nthreads, PassFlag);
+		auto v = _atomic::fetchOr(&nthreads, PassFlag);
 		while ((v & PassFlag) != 0) {
 			// flag was set - waiting
 			// this can happen, if some other thread with golden ticket set flag before us
@@ -51,12 +51,12 @@ int pthread_barrier_t::wait() {
 			WaitOnAddress(&nthreads, &expected, sizeof(uint32_t), INFINITE);
 
 			// try to set flag again
-			v = atomicFetchOr(&nthreads, PassFlag);
+			v = _atomic::fetchOr(&nthreads, PassFlag);
 		}
 
 		// clear Out counter
-		atomicStoreSeq(&nOut, uint32_t(0));
-		atomicFetchAdd(&generations, uint32_t(1));
+		_atomic::storeSeq(&nOut, uint32_t(0));
+		_atomic::fetchAdd(&generations, uint32_t(1));
 
 		WakeByAddressAll(&nthreads);
 		return __SPRT_PTHREAD_BARRIER_SERIAL_THREAD;
@@ -65,23 +65,23 @@ int pthread_barrier_t::wait() {
 			// wait until PassFlag is set
 			do {
 				WaitOnAddress(&nthreads, &expected, sizeof(uint32_t), INFINITE);
-			} while (atomicLoadSeq(&nthreads) == expected);
+			} while (_atomic::loadSeq(&nthreads) == expected);
 
 			uint32_t newGen;
 			// spinlock for generation increment
 			// if generation was incremented - Out was cleared
-			while ((newGen = atomicLoadSeq(&generations)) == gen) { YieldProcessor(); }
+			while ((newGen = _atomic::loadSeq(&generations)) == gen) { YieldProcessor(); }
 			gen = newGen;
 
 			// pass flag was set
 			// last exiting thread (expected - 2 thread) should remove flag; others ( > expected - 2) should wait again
 
-			auto exitTicket = atomicFetchAdd(&nOut, uint32_t(1));
+			auto exitTicket = _atomic::fetchAdd(&nOut, uint32_t(1));
 			if (exitTicket < expected - 2) {
 				return 0;
 			} else if (exitTicket == expected - 2) {
 				// black ticket - remove PassFlag
-				atomicFetchAnd(&nthreads, ValueMask);
+				_atomic::fetchAnd(&nthreads, ValueMask);
 
 				// we can wake a quick ones from this loop, so, use WakeByAddressAll instead of WakeByAddressSingle
 				WakeByAddressAll(&nthreads);
@@ -174,8 +174,8 @@ static int pthread_barrier_destroy(pthread_barrier_t *bar) {
 		return EINVAL;
 	}
 
-	if (atomicLoadSeq(&bar->nOut) != 0 || atomicLoadSeq(&bar->nIn) != 0
-			|| (atomicLoadSeq(&bar->nthreads) & pthread_barrier_t::PassFlag)) {
+	if (_atomic::loadSeq(&bar->nOut) != 0 || _atomic::loadSeq(&bar->nIn) != 0
+			|| (_atomic::loadSeq(&bar->nthreads) & pthread_barrier_t::PassFlag)) {
 		return EBUSY;
 	}
 

@@ -126,7 +126,7 @@ __SPRT_C_FUNC int __SPRT_ID(remove_impl)(const char *path) {
 		return ::remove(nativePath);
 	}, -1);
 #else
-	return ::remove(target);
+	return ::remove(path);
 #endif
 }
 
@@ -439,7 +439,7 @@ __SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(popen)(const char *str, const char *mo
 	internal::performBinaryMode(mode, [&](const char *modeBuf) { ret = ::_popen(str, modeBuf); });
 	return ret;
 #else
-	return ::popen(str, modeBuf);
+	return ::popen(str, mode);
 #endif
 }
 
@@ -578,17 +578,15 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(getline)(char **__SPRT_RESTRICT ret,
 }
 __SPRT_C_FUNC int __SPRT_ID(
 		renameat)(int oldfd, const char *oldPath, int newfd, const char *newPath) {
-
 #if SPRT_WINDOWS
 	int ret = -1;
 	platform::openAtPath(oldfd, oldPath, [&](const char *oldTarget, size_t) {
-		platform::openAtPath(newfd, newPath, [&](const char *newTarget, size_t) {
-			ret = rename(oldTarget, newTarget);
-		}, platform::FdHandleType::File);
-	}, platform::FdHandleType::File);
+		platform::openAtPath(newfd, newPath,
+				[&](const char *newTarget, size_t) { ret = rename(oldTarget, newTarget); });
+	});
 	return ret;
 #else
-	return ::renameat(oldfd, oldPath, newFd, newPath);
+	return ::renameat(oldfd, oldPath, newfd, newPath);
 #endif
 }
 

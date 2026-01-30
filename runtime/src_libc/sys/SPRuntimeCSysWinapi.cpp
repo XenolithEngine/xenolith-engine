@@ -1,31 +1,71 @@
 /**
-Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+ Copyright (c) 2026 Xenolith Team <admin@stappler.org>
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-**/
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
 
-#define __SPRT_BUILD
+#define __SPRT_BUILD 1
+
+#include <sprt/c/__sprt_errno.h>
+#include <sprt/c/sys/__sprt_winapi.h>
+
+#if __SPRT_CONFIG_HAVE_WINAPI
+#include <Windows.h>
+#endif
 
 #include "private/SPRTSpecific.h"
 
-#include <sprt/c/__sprt_errno.h>
-#include <windows.h>
+namespace sprt {
+
+#if __SPRT_CONFIG_HAVE_WINAPI
+
+__SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(GetCurrentThreadId)() { return GetCurrentThreadId(); }
+
+__SPRT_C_FUNC __SPRT_ID(uint32_t) __SPRT_ID(GetLastError)() { return GetLastError(); }
+
+__SPRT_C_FUNC int __SPRT_ID(WaitOnAddress)(volatile void *Address, void *CompareAddress,
+		__SPRT_ID(size_t) AddressSize, __SPRT_ID(uint32_t) dwMilliseconds) {
+	return WaitOnAddress(Address, CompareAddress, AddressSize, dwMilliseconds);
+}
+__SPRT_C_FUNC void __SPRT_ID(WakeByAddressSingle)(void *Address) { WakeByAddressSingle(Address); }
+
+__SPRT_C_FUNC void __SPRT_ID(WakeByAddressAll)(void *Address) { WakeByAddressAll(Address); }
+
+#else
+__SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(GetCurrentThreadId)() { return -1; }
+
+__SPRT_C_FUNC __SPRT_ID(uint32_t) __SPRT_ID(GetLastError)() { return -1; }
+
+__SPRT_C_FUNC int __SPRT_ID(WaitOnAddress)(volatile void *Address, void *CompareAddress,
+		__SPRT_ID(size_t) AddressSize, __SPRT_ID(uint32_t) dwMilliseconds) {
+	return -1;
+}
+
+__SPRT_C_FUNC void __SPRT_ID(WakeByAddressSingle)(void *Address) { }
+
+__SPRT_C_FUNC void __SPRT_ID(WakeByAddressAll)(void *Address) { }
+
+#endif
+
+} // namespace sprt
+
+#if __SPRT_CONFIG_HAVE_WINAPI
 
 /*
 	AI-Generated
@@ -324,3 +364,5 @@ int lastErrorToErrno(unsigned long winerr) {
 }
 
 } // namespace sprt::platform
+
+#endif

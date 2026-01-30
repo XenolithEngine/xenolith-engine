@@ -22,42 +22,31 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include "private/SPRTFilename.h"
 #include <sprt/c/sys/__sprt_stat.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_stdio.h>
+#include <sprt/runtime/log.h>
+
+#include "private/SPRTFilename.h"
 
 #include <sys/stat.h>
 
+#if SPRT_WINDOWS
+#include "../platform/windows/stat.cc"
+#endif
+
 namespace sprt {
 
-static ::mode_t convertModeToNative(__SPRT_ID(mode_t) mode) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
-	return mode;
-#else
-#error TODO
-#endif
-}
+#ifndef SPRT_WINDOWS
 
-static ::dev_t convertDevToNative(__SPRT_ID(dev_t) dev) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
-	return dev;
-#else
-#error TODO
-#endif
-}
+static ::dev_t convertDevToNative(__SPRT_ID(dev_t) dev) { return dev; }
 
-static ::mode_t convertModeToRuntime(__SPRT_ID(mode_t) mode) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
-	return mode;
-#else
-#error TODO
-#endif
-}
+static ::mode_t convertModeToRuntime(__SPRT_ID(mode_t) mode) { return mode; }
+
+static auto convertModeToNative(__SPRT_ID(mode_t) mode) { return mode; }
 
 static void convertStatFromNative(const struct stat64 *native, struct __SPRT_STAT_NAME *rt) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
 	rt->st_dev = native->st_dev;
 	rt->st_ino = native->st_ino;
 	rt->st_nlink = native->st_nlink;
@@ -74,148 +63,172 @@ static void convertStatFromNative(const struct stat64 *native, struct __SPRT_STA
 	rt->st_mtim.tv_sec = native->st_mtim.tv_sec;
 	rt->st_ctim.tv_nsec = native->st_ctim.tv_nsec;
 	rt->st_ctim.tv_sec = native->st_ctim.tv_sec;
-#else
-#error TODO
-#endif
 }
+#else
+
+static auto convertModeToNative(__SPRT_ID(mode_t) mode) { return mode; }
+
+#endif
 
 __SPRT_C_FUNC int __SPRT_ID(
 		stat)(const char *__SPRT_RESTRICT path, struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) {
+#if SPRT_WINDOWS
+	return stat(path, __stat);
+#else
 	struct stat64 native;
-
-	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
-		auto ret = ::stat64(target, &native);
-		if (ret == 0) {
-			convertStatFromNative(&native, __stat);
-		}
-		return ret;
-	}, -1);
+	auto ret = ::stat64(path, &native);
+	if (ret == 0) {
+		convertStatFromNative(&native, __stat);
+	}
+	return ret;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fstat)(int __fd, struct __SPRT_STAT_NAME *__stat) {
+#if SPRT_WINDOWS
+	return fstat(__fd, __stat);
+#else
 	struct stat64 native;
 	auto ret = ::fstat64(__fd, &native);
 	if (ret == 0) {
 		convertStatFromNative(&native, __stat);
 	}
 	return ret;
+#endif
 }
+
 __SPRT_C_FUNC int __SPRT_ID(
 		lstat)(const char *__SPRT_RESTRICT path, struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) {
+#if SPRT_WINDOWS
+	return lstat(path, __stat);
+#else
 	struct stat64 native;
-
-	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
-		auto ret = ::lstat64(target, &native);
-		if (ret == 0) {
-			convertStatFromNative(&native, __stat);
-		}
-		return ret;
-	}, -1);
+	auto ret = ::lstat64(path, &native);
+	if (ret == 0) {
+		convertStatFromNative(&native, __stat);
+	}
+	return ret;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fstatat)(int __fd, const char *__SPRT_RESTRICT path,
 		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat, int flags) {
+#if SPRT_WINDOWS
+	return fstatat(__fd, path, __stat, flags);
+#else
 	struct stat64 native;
-
-	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
-		auto ret = ::fstatat64(__fd, target, &native, flags);
-		if (ret == 0) {
-			convertStatFromNative(&native, __stat);
-		}
-		return ret;
-	}, -1);
+	auto ret = ::fstatat64(__fd, path, &native, flags);
+	if (ret == 0) {
+		convertStatFromNative(&native, __stat);
+	}
+	return ret;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(chmod)(const char *path, __SPRT_ID(mode_t) mode) {
-	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
-		return ::chmod(target, convertModeToNative(mode));
-	}, -1);
+	return chmod(path, convertModeToNative(mode));
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fchmod)(int fd, __SPRT_ID(mode_t) mode) {
-	return ::fchmod(fd, convertModeToNative(mode));
+	return fchmod(fd, convertModeToNative(mode));
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fchmodat)(int fd, const char *path, __SPRT_ID(mode_t) mode, int flags) {
-	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
-		return ::fchmodat(fd, target, convertModeToNative(mode), flags);
-	}, -1);
+	return fchmodat(fd, path, convertModeToNative(mode), flags);
 }
 
 __SPRT_C_FUNC __SPRT_ID(mode_t) __SPRT_ID(umask)(__SPRT_ID(mode_t) mode) {
+#if SPRT_WINDOWS
+	return umask(mode);
+#else
 	return convertModeToRuntime(::umask(convertModeToNative(mode)));
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mkdir)(const char *path, __SPRT_ID(mode_t) mode) {
-	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
-		return ::mkdir(target, convertModeToNative(mode));
-	}, -1);
-}
-
-__SPRT_C_FUNC int __SPRT_ID(mkfifo)(const char *path, __SPRT_ID(mode_t) mode) {
-	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
-		return ::mkfifo(target, convertModeToNative(mode));
-	}, -1);
+	return mkdir(path, convertModeToNative(mode));
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mkdirat)(int fd, const char *path, __SPRT_ID(mode_t) mode) {
-	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
-		return ::mkdirat(fd, target, convertModeToNative(mode));
-	}, -1);
+	return mkdirat(fd, path, convertModeToNative(mode));
+}
+
+__SPRT_C_FUNC int __SPRT_ID(mkfifo)(const char *path, __SPRT_ID(mode_t) mode) {
+#if __SPRT_CONFIG_HAVE_STAT_MKFIFO
+	return ::mkfifo(path, convertModeToNative(mode));
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_STAT_MKFIFO)");
+	__sprt_errno = ENOSYS;
+	return -1;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mkfifoat)(int fd, const char *path, __SPRT_ID(mode_t) mode) {
-	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
-		return ::mkfifoat(fd, target, convertModeToNative(mode));
-	}, -1);
+#if __SPRT_CONFIG_HAVE_STAT_MKFIFO
+	return ::mkfifoat(fd, path, convertModeToNative(mode));
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_STAT_MKFIFO)");
+	__sprt_errno = ENOSYS;
+	return -1;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mknod)(const char *path, __SPRT_ID(mode_t) mode, __SPRT_ID(dev_t) dev) {
-	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
-		return ::mknod(target, convertModeToNative(mode), convertDevToNative(dev));
-	}, -1);
+#if __SPRT_CONFIG_HAVE_STAT_MKNOD
+	return ::mknod(path, convertModeToNative(mode), convertDevToNative(dev));
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_STAT_MKNOD)");
+	__sprt_errno = ENOSYS;
+	return -1;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		mknodat)(int fd, const char *path, __SPRT_ID(mode_t) mode, __SPRT_ID(dev_t) dev) {
-	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
-		return ::mknodat(fd, target, convertModeToNative(mode), convertDevToNative(dev));
-	}, -1);
+#if __SPRT_CONFIG_HAVE_STAT_MKNOD
+	return ::mknodat(fd, path, convertModeToNative(mode), convertDevToNative(dev));
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_STAT_MKNOD)");
+	__sprt_errno = ENOSYS;
+	return -1;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(futimens)(int fd, const __SPRT_TIMESPEC_NAME ts[2]) {
+#if SPRT_WINDOWS
+	return futimens(fd, ts);
+#else
 	struct timespec nativeTs[2];
-	nativeTs[0].tv_sec = ts[0].tv_sec;
-	nativeTs[0].tv_nsec = ts[0].tv_nsec;
-	nativeTs[1].tv_sec = ts[1].tv_sec;
-	nativeTs[1].tv_nsec = ts[1].tv_nsec;
+	if (ts) {
+		nativeTs[0].tv_sec = ts[0].tv_sec;
+		nativeTs[0].tv_nsec = ts[0].tv_nsec;
+		nativeTs[1].tv_sec = ts[1].tv_sec;
+		nativeTs[1].tv_nsec = ts[1].tv_nsec;
+	}
 
-	return ::futimens(fd, nativeTs);
+	return ::futimens(fd, ts ? nativeTs : nullptr);
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		utimensat)(int fd, const char *path, const __SPRT_TIMESPEC_NAME ts[2], int flags) {
+#if SPRT_WINDOWS
+	return utimensat(fd, path, ts, flags);
+#else
 	struct timespec nativeTs[2];
-	nativeTs[0].tv_sec = ts[0].tv_sec;
-	nativeTs[0].tv_nsec = ts[0].tv_nsec;
-	nativeTs[1].tv_sec = ts[1].tv_sec;
-	nativeTs[1].tv_nsec = ts[1].tv_nsec;
+	if (ts) {
+		nativeTs[0].tv_sec = ts[0].tv_sec;
+		nativeTs[0].tv_nsec = ts[0].tv_nsec;
+		nativeTs[1].tv_sec = ts[1].tv_sec;
+		nativeTs[1].tv_nsec = ts[1].tv_nsec;
+	}
 
-	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
-		return ::utimensat(fd, target, nativeTs, flags);
-	}, -1);
+	return ::utimensat(fd, path, ts ? nativeTs : nullptr, flags);
+#endif
 }
 
 } // namespace sprt

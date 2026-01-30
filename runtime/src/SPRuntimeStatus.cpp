@@ -89,6 +89,9 @@ StringView getStatusName(Status status) {
 	case Status::ErrorInProgress: return "Status::ErrorInProgress"; break;
 	case Status::ErrorCancelled: return "Status::ErrorCancelled"; break;
 	case Status::ErrorDeviceLost: return "Status::ErrorDeviceLost"; break;
+	case Status::ErrorTimeout: return "Status::ErrorTimeout"; break;
+	case Status::ErrorNotRecoverable: return "Status::ErrorNotRecoverable"; break;
+	case Status::ErrorDeadLock: return "Status::ErrorDeadLock"; break;
 
 	// Generic errors, can occurs in any subsystem
 	case Status::ErrorMemoryMapFailed: return "Status::ErrorMemoryMapFailed"; break;
