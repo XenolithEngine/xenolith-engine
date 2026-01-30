@@ -729,19 +729,19 @@ bool LabelDeferredResult::init() { return true; }
 bool LabelDeferredResult::acquireResult(
 		const Callback<void(SpanView<InstanceVertexData>, Flags)> &cb) {
 	//log::debug("Label", "acquireResult: ", this);
-	_addr.wait_value(SignalValue);
+	_timeline.wait(SignalValue);
 	cb(makeSpanView(&_result->data, 1), Immutable);
 	return true;
 }
 
 void LabelDeferredResult::setResult(Rc<LabelResult> &&res) {
 	_result = move(res);
-	_addr.set_and_signal(SignalValue);
+	_timeline.wait(SignalValue);
 	//log::debug("Label", "setResult: ", this);
 }
 
 void LabelDeferredResult::updateColor(const Color4F &color) {
-	_addr.wait_value(SignalValue);
+	_timeline.wait(SignalValue);
 
 	if (_result) {
 		VertexArray arr;
@@ -752,7 +752,7 @@ void LabelDeferredResult::updateColor(const Color4F &color) {
 }
 
 Rc<VertexData> LabelDeferredResult::getResult() const {
-	_addr.wait_value(SignalValue);
+	_timeline.wait(SignalValue);
 	return _result ? _result->data.data : nullptr;
 }
 

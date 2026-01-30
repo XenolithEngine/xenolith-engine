@@ -49,10 +49,6 @@ MODULE_STAPPLER_CORE_SHARED_CONSUME := \
 	stappler_filesystem \
 	stappler_threads
 
-ifdef TOOLCHAIN_SYSROOT
-MODULE_STAPPLER_CORE_LIBS += -l:libicuuc.a -l:libicudata.a
-endif
-
 ifdef LINUX
 MODULE_STAPPLER_CORE_LIBS += -ldl
 endif

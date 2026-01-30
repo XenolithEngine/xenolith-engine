@@ -93,6 +93,7 @@ APPCONFIG_EXEC_LIVE_RELOAD = 0
 endif
 
 
+
 ifdef LOCAL_EXECUTABLE
 APPCONFIG_APP_NAME ?= $(LOCAL_EXECUTABLE)
 APPCONFIG_BUNDLE_NAME ?= org.stappler.app.$(LOCAL_EXECUTABLE)
@@ -113,6 +114,7 @@ APPCONFIG_APP_NAME ?=
 APPCONFIG_BUNDLE_NAME ?=
 endif # LOCAL_EXECUTABLE
 
+
 # Where to search for a bundled files on a platforms without app bundle
 
 # Linux: if >0 - use XDG locations for application files
@@ -127,20 +129,24 @@ APPCONFIG_VERSION_API ?= 0
 APPCONFIG_VERSION_REV ?= 0
 APPCONFIG_VERSION_BUILD ?= 0
 
+
 BUILD_WORKDIR = $(patsubst %/,%,$(dir $(realpath $(firstword $(MAKEFILE_LIST)))))
 
 LOCAL_INSTALL_DIR ?= $(LOCAL_OUTDIR)/host
 BUILD_OUTDIR := $(LOCAL_OUTDIR)/host/$(BUILD_TYPE)
+
 
 ifdef BUILD_ANDROID
 LOCAL_INSTALL_DIR ?= $(LOCAL_OUTDIR)/android
 BUILD_OUTDIR := $(LOCAL_OUTDIR)/android/$(BUILD_TYPE)
 endif
 
+
 ifdef BUILD_XWIN
 LOCAL_INSTALL_DIR ?= $(LOCAL_OUTDIR)/xwin
 BUILD_OUTDIR := $(LOCAL_OUTDIR)/xwin/$(BUILD_TYPE)
 endif
+
 
 $(call print_verbose,(defaults.mk) BUILD_OUTDIR: $(BUILD_OUTDIR))
 
@@ -206,6 +212,8 @@ $(call print_verbose,(defaults.mk) WASI_THREADS: $(WASI_THREADS))
 
 endif # LOCAL_WASM_MODULE
 
+
+
 ifeq (4.1,$(firstword $(sort $(MAKE_VERSION) 4.1)))
 MAKE_4_1 := 1
 else
@@ -220,6 +228,22 @@ STAPPLER_TARGET_ARCH := $(STAPPLER_ARCH)
 else # STAPPLER_ARCH
 STAPPLER_TARGET_ARCH ?= $(shell uname -m)
 endif # STAPPLER_ARCH
+
+STAPPLER_TOOLCHAIN_FILE := toolchain.mk
+
+#
+# XWin
+#
+
+ifeq ($(STAPPLER_TARGET),xwin)
+
+STAPPLER_TOOLCHAIN_FILE := toolchain-xwin.mk
+
+endif
+
+#
+# Android
+#
 
 ifeq ($(STAPPLER_TARGET),android)
 
@@ -245,7 +269,9 @@ $(call print_verbose,(defaults.mk) ANDROID_HOST: $(ANDROID_HOST))
 
 ANDROID_SYSROOT := $(NDK)/toolchains/llvm/prebuilt/$(ANDROID_HOST)/sysroot
 ANDROID_SYSROOT_INCLUDE_CXX := $(realpath $(ANDROID_SYSROOT)/usr/include/c++/v1)
-ANDROID_SYSROOT_INCLUDE_COMMON := $(abspath $(ANDROID_SYSROOT)/usr/include/$$(BUILD_ARCH)) $(realpath $(ANDROID_SYSROOT)/usr/include)
+ANDROID_SYSROOT_INCLUDE_COMMON := \
+	$(abspath $(ANDROID_SYSROOT)/usr/include/$$(BUILD_ARCH)) \
+	$(realpath $(ANDROID_SYSROOT)/usr/include)
 
 $(call print_verbose,(defaults.mk) ANDROID_SYSROOT: $(ANDROID_SYSROOT))
 
@@ -259,6 +285,11 @@ STAPPLER_TARGET_ENV := android
 # Unified sysroot
 STAPPLER_TARGET_FULL := android
 
+
+#
+# Darwin/MacOS
+#
+
 else ifneq ($(or $(filter Darwin,$(UNAME)),$(filter macos,$(STAPPLER_TARGET))),)
 
 STAPPLER_TARGET_VENDOR := apple
@@ -266,13 +297,24 @@ STAPPLER_TARGET_SYS := darwin
 
 STAPPLER_TARGET_FULL := $(STAPPLER_TARGET_ARCH)-$(STAPPLER_TARGET_VENDOR)-$(STAPPLER_TARGET_SYS)
 
-else ifneq ($(or $(filter Msys,$(UNAME)),$(filter xwin,$(STAPPLER_TARGET)),$(filter windows,$(STAPPLER_TARGET))),)
+
+
+#
+# MSYS on Windows
+#
+
+else ifneq ($(or $(filter Msys,$(UNAME)),$(filter windows,$(STAPPLER_TARGET))),)
 
 STAPPLER_TARGET_VENDOR := pc
 STAPPLER_TARGET_SYS := windows
 STAPPLER_TARGET_ENV := msvc
 
 STAPPLER_TARGET_FULL := $(STAPPLER_TARGET_ARCH)-$(STAPPLER_TARGET_VENDOR)-$(STAPPLER_TARGET_SYS)-$(STAPPLER_TARGET_ENV)
+
+
+#
+# Linux Generic
+#
 
 else ifneq ($(or $(filter %Linux,$(UNAME)),$(filter linux,$(STAPPLER_TARGET))),)
 
@@ -306,7 +348,7 @@ ifdef LOCAL_TOOLCHAIN
 
 $(call print_verbose,(defaults.mk) LOCAL_TOOLCHAIN: $(LOCAL_TOOLCHAIN))
 
-include $(LOCAL_TOOLCHAIN)/toolchain.mk
+include $(LOCAL_TOOLCHAIN)/$(STAPPLER_TOOLCHAIN_FILE)
 
 else # LOCAL_TOOLCHAIN
 
@@ -318,9 +360,9 @@ ifneq ($(LOCAL_USE_INTERNAL_TOOLCHAIN),0)
 
 STAPPLER_TARGET_ROOT := $(abspath $(GLOBAL_ROOT))/toolchains/targets
 
-$(call print_verbose,(defaults.mk) Try to load internal toolchain: $(STAPPLER_TARGET_ROOT)/$(STAPPLER_TARGET_FULL)/toolchain.mk)
+$(call print_verbose,(defaults.mk) Try to load internal toolchain: $(STAPPLER_TARGET_ROOT)/$(STAPPLER_TARGET_FULL)/$(STAPPLER_TOOLCHAIN_FILE))
 
--include $(STAPPLER_TARGET_ROOT)/$(STAPPLER_TARGET_FULL)/toolchain.mk
+-include $(STAPPLER_TARGET_ROOT)/$(STAPPLER_TARGET_FULL)/$(STAPPLER_TOOLCHAIN_FILE)
 
 ifndef TOOLCHAIN_SYSROOT
 $(call print_verbose,(defaults.mk) Fail to load internal toolchain (LOCAL_USE_INTERNAL_TOOLCHAIN: $(LOCAL_USE_INTERNAL_TOOLCHAIN)))
@@ -329,7 +371,9 @@ $(call print_verbose,(defaults.mk) Fail to load internal toolchain (LOCAL_USE_IN
 
 STAPPLER_TARGET_ROOT := $(abspath $(LOCAL_RUNTIME_PATH))/toolchains/targets
 
--include $(STAPPLER_TARGET_ROOT)/$(STAPPLER_TARGET_FULL)/toolchain.mk
+$(call print_verbose,(defaults.mk) Try to load internal toolchain: $(STAPPLER_TARGET_ROOT)/$(STAPPLER_TARGET_FULL)/$(STAPPLER_TOOLCHAIN_FILE))
+
+-include $(STAPPLER_TARGET_ROOT)/$(STAPPLER_TARGET_FULL)/$(STAPPLER_TOOLCHAIN_FILE)
 
 ifndef TOOLCHAIN_SYSROOT
 $(call print_verbose,(defaults.mk) Fail to load internal toolchain (LOCAL_USE_INTERNAL_TOOLCHAIN: $(LOCAL_USE_INTERNAL_TOOLCHAIN)))

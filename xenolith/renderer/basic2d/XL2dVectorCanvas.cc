@@ -760,23 +760,23 @@ bool VectorCanvasDeferredResult::init(bool waitOnReady) {
 
 bool VectorCanvasDeferredResult::acquireResult(
 		const Callback<void(SpanView<InstanceVertexData>, Flags)> &cb) {
-	_addr.wait_value(SignalValue);
+	_timeline.wait(SignalValue);
 	cb(_result->mut, None);
 	return true;
 }
 
 void VectorCanvasDeferredResult::setResult(Rc<VectorCanvasResult> &&res) {
 	_result = move(res);
-	_addr.set_and_signal(SignalValue);
+	_timeline.wait(SignalValue);
 }
 
 Rc<VectorCanvasResult> VectorCanvasDeferredResult::getResult() const {
-	_addr.wait_value(SignalValue);
+	_timeline.wait(SignalValue);
 	return _result;
 }
 
 void VectorCanvasDeferredResult::updateColor(const Color4F &color) {
-	_addr.wait_value(SignalValue);
+	_timeline.wait(SignalValue);
 	if (_result) {
 		_result->updateColor(color);
 	}

@@ -20,8 +20,6 @@
 
 OSTYPE_IS_WIN32 := 1
 
-verbose=1
-
 OSTYPE_ARCH ?= x86_64
 OSTYPE_ARCH_LOCAL ?= x64
 OSTYPE_TARGET ?= x86_64-windows-msvc
@@ -32,29 +30,9 @@ else
 OSTYPE_BUILD_TYPE := debug
 endif
 
-XWIN_PATH ?= deps/xwin
-
-XWIN_REPLACEMENTS_INCLUDE := $(XWIN_PATH)/../windows/replacements/include
-XWIN_REPLACEMENTS_BIN := $(XWIN_PATH)/../windows/replacements/bin
-
-XWIN_CRT_VERSION ?= Microsoft.VC.14.41.17.11.CRT
-
-XWIN_CRT_INCLUDE += \
-	$(XWIN_PATH)/splat/crt/include \
-	$(XWIN_PATH)/splat/sdk/include/ucrt \
-	$(XWIN_PATH)/splat/sdk/include/um \
-	$(XWIN_PATH)/splat/sdk/include/shared
-
-XWIN_CRT_LIB += \
-	$(XWIN_PATH)/splat/crt/lib/$(OSTYPE_ARCH) \
-	$(XWIN_PATH)/splat/sdk/lib/um/$(OSTYPE_ARCH) \
-	$(XWIN_PATH)/splat/sdk/lib/ucrt/$(OSTYPE_ARCH) \
-	$(XWIN_PATH)/.xwin-cache/unpack/ucrt.msi/lib/ucrt/$(OSTYPE_ARCH_LOCAL) \
-	$(XWIN_PATH)/.xwin-cache/unpack/$(XWIN_CRT_VERSION).$(OSTYPE_ARCH_LOCAL).Desktop.base.vsix/lib/$(OSTYPE_ARCH_LOCAL)
-
 OSTYPE_DEPS := deps/windows/$(OSTYPE_ARCH)
-OSTYPE_PREBUILT_PATH := deps/windows/$(OSTYPE_ARCH)/$(OSTYPE_BUILD_TYPE)/lib $(XWIN_CRT_LIB)
-OSTYPE_INCLUDE := deps/windows/$(OSTYPE_ARCH)/$(OSTYPE_BUILD_TYPE)/include  $(XWIN_REPLACEMENTS_INCLUDE) $(XWIN_CRT_INCLUDE)
+OSTYPE_PREBUILT_PATH := $(TOOLCHAIN_LIBDIR)
+OSTYPE_INCLUDE := $(TOOLCHAIN_INCLUDEDIR)
 OSTYPE_CFLAGS :=  -Wall --target=$(OSTYPE_TARGET) -m64 -msse2 -D_MT \
 	-Wno-microsoft-include -Wno-unqualified-std-cast-call -Wno-vla-cxx-extension
 
@@ -62,8 +40,8 @@ ifeq ($(RELEASE),1)
 OSTYPE_CFLAGS +=
 OSTYPE_LDFLAGS_BUILDTYPE :=  -llibucrt -llibvcruntime -llibcmt -llibcpmt
 else
-OSTYPE_CFLAGS += -D_DEBUG -Xclang -gcodeview
-OSTYPE_LDFLAGS_BUILDTYPE := -g -Xclang -gcodeview -llibucrtd -llibvcruntimed -llibcmtd -llibcpmtd
+OSTYPE_CFLAGS += -g
+OSTYPE_LDFLAGS_BUILDTYPE := -g -llibucrtd -llibvcruntimed -llibcmtd -llibcpmtd
 endif
 
 OSTYPE_EXEC_SUFFIX := .exe
@@ -71,7 +49,7 @@ OSTYPE_DSO_SUFFIX := .dll
 OSTYPE_LIB_SUFFIX := .lib
 OSTYPE_LIB_PREFIX :=
 
-OSTYPE_CONFIG_FLAGS := WIN32 XWIN SP_STATIC_DEPS
+OSTYPE_CONFIG_FLAGS := WIN32 XWIN
 
 OSTYPE_GENERAL_CFLAGS := $(OSTYPE_CFLAGS)
 OSTYPE_LIB_CFLAGS := -fPIC -DPIC -DSP_BUILD_SHARED_LIBRARY
@@ -87,4 +65,3 @@ OSTYPE_LIB_LDFLAGS :=
 
 XWIN := 1
 WIN32 := 1
-	

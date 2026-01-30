@@ -34,8 +34,6 @@
 #include "glsl/include/XL2dGlslSdfData.h"
 #include "glsl/include/XL2dGlslParticle.h"
 
-#include <sprt/runtime/waitable_address.h>
-
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
 using glsl::VertexConstantData;
@@ -174,7 +172,7 @@ struct ImagePlacementInfo {
 
 class SP_PUBLIC DeferredVertexResult : public Ref {
 public:
-	static constexpr sprt::waitable_address::value_type SignalValue = 1;
+	static constexpr sprt::qtimeline::value_type SignalValue = 1;
 
 	enum Flags : uint32_t {
 		None = 0,
@@ -185,12 +183,12 @@ public:
 
 	virtual bool acquireResult(const Callback<void(SpanView<InstanceVertexData>, Flags)> &) = 0;
 
-	bool isReady() const { return _addr.try_value(SignalValue); }
+	bool isReady() const { return _timeline.try_wait(SignalValue); }
 	bool isWaitOnReady() const { return _waitOnReady; }
 
 protected:
 	bool _waitOnReady = true;
-	mutable sprt::waitable_address _addr;
+	mutable sprt::qtimeline _timeline;
 };
 
 SP_DEFINE_ENUM_AS_MASK(DeferredVertexResult::Flags)

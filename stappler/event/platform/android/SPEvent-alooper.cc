@@ -29,12 +29,15 @@ namespace STAPPLER_VERSIONIZED stappler::event {
 static constexpr uint32_t ALOOPER_CANCEL_FLAG = 0x8000'0000;
 
 bool ALooperData::checkSupport() {
-#if ANDROID
+#if __SPRT_CONFIG_HAVE_ALOOPER
 	return true;
 #else
 	return false;
 #endif
 }
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wattribute-warning"
 
 Status ALooperData::add(int fd, int events, Handle *handle) {
 	if (__sprt_ALooper_addFd(_looper, fd, 0, events,
@@ -200,5 +203,7 @@ ALooperData::~ALooperData() {
 		_looper = nullptr;
 	}
 }
+
+#pragma clang diagnostic pop
 
 } // namespace stappler::event
