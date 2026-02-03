@@ -1,4 +1,5 @@
 # Copyright (c) 2025 Stappler Team <admin@stappler.org>
+# Copyright (c) 2026 Xenolith Team <admin@senolith.studio>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -39,6 +40,12 @@ endif
 
 $(call define_module, runtime_libc, MODULE_RUNTIME_LIBC)
 
+ifdef WIN32
+MODULE_RUNTIME_LIBC_PRIVATE_FLAGS_FILTER := -nostdinc
+MODULE_RUNTIME_LIBC_PRIVATE_CFLAGS :=
+MODULE_RUNTIME_LIBC_PRIVATE_CXXFLAGS :=
+endif
+
 
 MODULE_RUNTIME_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
 MODULE_RUNTIME_LIBS :=
@@ -77,7 +84,16 @@ endif
 ifdef WIN32
 MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
-MODULE_RUNTIME_LIBS += -ladvapi32 -lshlwapi -lshell32 -lole32 -luserenv
+
+MODULE_RUNTIME_LIBS_COMMON := -lSynchronization -lShlwapi -lPathcch -lOle32 -lNormaliz -lAdvapi32 -lBcrypt \
+	-lUserenv -lOneCore -lUser32 -lShell32 -lDxva2 -lUxTheme -lDwmapi
+
+ifeq ($(BUILD_TYPE),debug)
+MODULE_RUNTIME_LIBS += -llibucrtd -llibvcruntimed -llibcmtd -llibcpmtd $(MODULE_RUNTIME_LIBS_COMMON)
+else
+MODULE_RUNTIME_LIBS += -llibucrt -llibvcruntime -llibcmt -llibcpmt $(MODULE_RUNTIME_LIBS_COMMON)
+endif
+
 endif
 
 #spec

@@ -270,7 +270,7 @@ Status toUtf16Html(char16_t *ibuf, size_t bufSize, const StringView &utf8_str, s
 
 Status toUtf16(const callback<void(WideStringView)> &cb, const StringView &data) {
 	auto len = getUtf16Length(data);
-	auto buf = new char16_t[len + 1];
+	auto buf = (char16_t *)__sprt_malloca((len + 1) * sizeof(char16_t));
 
 	auto st = toUtf16(buf, len + 1, data, &len);
 	buf[len] = 0;
@@ -279,13 +279,13 @@ Status toUtf16(const callback<void(WideStringView)> &cb, const StringView &data)
 		cb(WideStringView(buf, len));
 	}
 
-	delete[] buf;
+	__sprt_freea(buf);
 	return st;
 }
 
 Status toUtf16Html(const callback<void(WideStringView)> &cb, const StringView &data) {
 	auto len = getUtf16HtmlLength(data);
-	auto buf = new char16_t[len + 1];
+	auto buf = (char16_t *)__sprt_malloca((len + 1) * sizeof(char16_t));
 
 	auto st = toUtf16Html(buf, len + 1, data, &len);
 	buf[len] = 0;
@@ -294,7 +294,7 @@ Status toUtf16Html(const callback<void(WideStringView)> &cb, const StringView &d
 		cb(WideStringView(buf, len));
 	}
 
-	delete[] buf;
+	__sprt_freea(buf);
 	return st;
 }
 
@@ -348,7 +348,7 @@ Status toUtf8(char *ibuf, size_t bufSize, char32_t ch, size_t *ret) {
 
 Status toUtf8(const callback<void(StringView)> &cb, const WideStringView &data) {
 	auto len = getUtf8Length(data);
-	auto buf = new char[len + 1];
+	auto buf = (char *)__sprt_malloca(len + 1);
 
 	auto st = toUtf8(buf, len + 1, data, &len);
 	buf[len] = 0;
@@ -357,7 +357,7 @@ Status toUtf8(const callback<void(StringView)> &cb, const WideStringView &data) 
 		cb(StringView(buf, len));
 	}
 
-	delete[] buf;
+	__sprt_freea(buf);
 	return st;
 }
 

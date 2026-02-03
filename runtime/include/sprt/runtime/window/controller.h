@@ -92,6 +92,7 @@ public:
 	virtual int run(NotNull<ContextContainer>);
 
 	Context *getContext() const { return _context; }
+	LooperAdapter *getLooper() const { return _looper; }
 
 	DisplayConfigManager *getDisplayConfigManager() const { return _displayConfigManager; }
 

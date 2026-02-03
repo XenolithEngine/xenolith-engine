@@ -29,6 +29,7 @@ THE SOFTWARE.
 #include <sprt/runtime/mutex.h>
 #include <sprt/runtime/mem/map.h>
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <corecrt_io.h>
 #include <psapi.h>
@@ -381,7 +382,7 @@ static int mincore(void *addr, size_t length, unsigned char *vec) {
 
 	memset(vec, 0, npages);
 
-	PPSAPI_WORKING_SET_EX_INFORMATION WsInfo = (PPSAPI_WORKING_SET_EX_INFORMATION)malloc(
+	PPSAPI_WORKING_SET_EX_INFORMATION WsInfo = (PPSAPI_WORKING_SET_EX_INFORMATION)__sprt_malloca(
 			npages * sizeof(PSAPI_WORKING_SET_EX_INFORMATION));
 
 	if (WsInfo == NULL) {
@@ -397,7 +398,7 @@ static int mincore(void *addr, size_t length, unsigned char *vec) {
 			(DWORD)page_size * sizeof(PSAPI_WORKING_SET_EX_INFORMATION));
 
 	if (!bResult) {
-		free(WsInfo);
+		__sprt_freea(WsInfo);
 		errno = ENOMEM;
 		return -1;
 	}
@@ -406,8 +407,33 @@ static int mincore(void *addr, size_t length, unsigned char *vec) {
 		vec[i] = WsInfo[i].VirtualAttributes.Valid ? 1 : 0; //
 	}
 
-	free(WsInfo);
+	__sprt_freea(WsInfo);
 	return 0;
+}
+
+
+void MappingInfo::attachRegion(void *ptr, size_t size, int fd) {
+	unique_lock lock(s_mappingInfo.mutex);
+	s_mappingInfo.regions.emplace(ptr, MappingRegion(ptr, size, fd));
+}
+
+void MappingInfo::detachRegion(void *ptr) {
+	unique_lock lock(s_mappingInfo.mutex);
+	s_mappingInfo.regions.erase(ptr);
+}
+
+bool MappingInfo::isRegionExists(void *ptr, size_t size, int *fd) {
+	unique_lock lock(s_mappingInfo.mutex);
+	auto it = s_mappingInfo.regions.find(ptr);
+	if (it != s_mappingInfo.regions.end()) {
+		if (it->second.length == size) {
+			if (fd) {
+				*fd = it->second.fd;
+			}
+			return true;
+		}
+	}
+	return false;
 }
 
 } // namespace sprt

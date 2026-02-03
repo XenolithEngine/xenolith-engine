@@ -280,7 +280,13 @@ __SPRT_C_FUNC char *__SPRT_ID(ctime_r)(const __SPRT_ID(time_t) * t, char *buf) {
 #endif
 }
 
-__SPRT_C_FUNC void __SPRT_ID(tzset)(void) { ::tzset(); }
+__SPRT_C_FUNC void __SPRT_ID(tzset)(void) {
+#if SPRT_WINDOWS
+	::_tzset();
+#else
+	::tzset();
+#endif
+}
 
 __SPRT_C_FUNC int __SPRT_ID(nanosleep)(const __SPRT_TIMESPEC_NAME *ts, __SPRT_TIMESPEC_NAME *out) {
 #if SPRT_WINDOWS

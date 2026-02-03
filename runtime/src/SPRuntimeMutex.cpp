@@ -216,4 +216,6 @@ void qtimeline::signal(value_type val) {
 	}
 }
 
+qtimeline::value_type qtimeline::get_value() const { return _atomic::loadSeq(&_data.value); }
+
 } // namespace sprt

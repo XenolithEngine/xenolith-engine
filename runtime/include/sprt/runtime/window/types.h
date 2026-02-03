@@ -36,6 +36,8 @@ namespace sprt::window {
 
 using String = memory::dynstring;
 
+using WideString = memory::dynu16string;
+
 template <typename Type>
 using Vector = memory::dynvector<Type>;
 

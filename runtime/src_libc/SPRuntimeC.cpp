@@ -49,6 +49,7 @@ THE SOFTWARE.
 #include <setjmp.h>
 
 #ifndef SPRT_WINDOWS
+
 #include <utime.h>
 #include <nl_types.h>
 #include <sys/utsname.h>
@@ -391,6 +392,7 @@ __SPRT_C_FUNC int __SPRT_ID(uname)(struct __SPRT_UTSNAME_NAME *buf) {
 
 #if SPRT_WINDOWS
 
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 namespace sprt {

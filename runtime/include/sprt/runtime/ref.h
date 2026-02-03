@@ -298,9 +298,15 @@ protected:
 
 	inline Pointer doSwap(Pointer value);
 
-	// unsafe assignment
+// unsafe assignment
+#if SPRT_REF_SAFE_INSTANIATION
+public:
+#else
+protected:
+#endif
 	inline RcBase(Pointer value, bool v) noexcept;
 
+protected:
 	Pointer _ptr = nullptr;
 #if SPRT_REF_DEBUG
 	uint64_t _id = 0;

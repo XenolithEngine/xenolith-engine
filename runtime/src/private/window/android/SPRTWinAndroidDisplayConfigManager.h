@@ -42,10 +42,10 @@ public:
 
 	virtual void invalidate() override;
 
-	void updateDisplayConfig(Function<void(DisplayConfig *_Nullable)> && = nullptr);
+	void updateDisplayConfig(Function<void(DisplayConfig *)> && = nullptr);
 
 protected:
-	virtual void prepareDisplayConfigUpdate(Function<void(DisplayConfig *_Nullable)> &&) override;
+	virtual void prepareDisplayConfigUpdate(Function<void(DisplayConfig *)> &&) override;
 	virtual void applyDisplayConfig(NotNull<DisplayConfig>, Function<void(Status)> &&) override;
 
 	struct DisplayConfigListener : jni::ClassProxy {

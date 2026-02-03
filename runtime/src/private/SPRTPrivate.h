@@ -62,4 +62,25 @@ SPRT_LOCAL bool idnToUnicode(const callback<void(StringView)> &, StringView sour
 
 } // namespace sprt::unicode
 
+#if SPRT_WINDOWS
+#include <sprt/runtime/stringview.h>
+
+namespace sprt::platform {
+
+bool isAppContainer();
+
+void destroyAppContainer(StringView appConfigBundleName);
+
+bool initAppContainer(StringView appConfigBundleName, StringView appConfigName);
+
+bool runSelfInContainer(int &resultCode);
+
+bool getAppPath(const callback<void(StringView)> &);
+bool getHomePath(const callback<void(StringView)> &);
+bool getMachineId(const callback<void(StringView)> &);
+
+} // namespace sprt::platform
+
+#endif
+
 #endif // CORE_RUNTIME_PRIVATE_SPRTPRIVATE_H_

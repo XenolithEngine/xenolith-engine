@@ -31,6 +31,8 @@ struct Vec2 {
 	float x;
 	float y;
 
+	bool isValid() const { return !isnan(x) && !isnan(y); }
+
 	constexpr bool operator==(const Vec2 &) const = default;
 	constexpr bool operator!=(const Vec2 &) const = default;
 };

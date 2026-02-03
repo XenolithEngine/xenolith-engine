@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -21,6 +21,9 @@
  **/
 
 #include <sprt/runtime/platform.h>
+
+#if SPRT_ANDROID
+
 #include <sprt/runtime/stream.h>
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/mem/vector.h>
@@ -669,3 +672,5 @@ void _initSystemPaths(LookupData &data) { PathInfo::getInstance()->initSystemPat
 void _termSystemPaths(LookupData &data) { PathInfo::getInstance()->termSystemPaths(data); }
 
 } // namespace sprt::filesystem::detail
+
+#endif

@@ -24,7 +24,7 @@
 #include <sprt/runtime/detail/new.h>
 #include "private/SPRTPrivate.h"
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS || SPRT_WINDOWS
 #include "SPRuntimePlatform-posix.cc"
 #endif
 
@@ -35,6 +35,10 @@
 #if SPRT_ANDROID
 #include "SPRuntimePlatform-android.cc"
 #include "SPRuntimeJni.cc"
+#endif
+
+#if SPRT_WINDOWS
+#include "SPRuntimePlatform-windows.cc"
 #endif
 
 #include <locale.h>

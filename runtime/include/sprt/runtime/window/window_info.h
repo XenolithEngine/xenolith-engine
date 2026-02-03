@@ -30,6 +30,21 @@
 
 namespace sprt::window {
 
+/** View tiling constraints flags. If flag is set - window enge is constrained, if not set - resizable  */
+enum class ViewConstraints : uint32_t {
+	None,
+	Top = 1 << 0,
+	Left = 1 << 1,
+	Bottom = 1 << 2,
+	Right = 1 << 3,
+
+	Vertical = Top | Bottom,
+	Horizontal = Left | Right,
+	All = Vertical | Horizontal
+};
+
+SPRT_DEFINE_ENUM_AS_MASK(ViewConstraints)
+
 // Cross-OS window state flags
 // Some OS/WN can support only some subset of this flags
 enum class WindowState : uint64_t {

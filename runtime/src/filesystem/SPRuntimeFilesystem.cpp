@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -41,6 +41,12 @@
 #include "SPRuntimeFilesystem-android.cc"
 #endif
 
+#if SPRT_WINDOWS
+#include <sys/winapi.h>
+
+#include "SPRuntimeFilesystem-windows.cc"
+#endif
+
 namespace sprt::filesystem {
 
 bool getCurrentDir(const callback<void(StringView)> &cb, StringView path) {
@@ -49,13 +55,44 @@ bool getCurrentDir(const callback<void(StringView)> &cb, StringView path) {
 		return true;
 	}
 
-	char buf[PATH_MAX];
-	if (getcwd(buf, PATH_MAX)) {
+#if __SPRT_CONFIG_HAVE_WINAPI
+	auto bufferLen = _GetCurrentDirectory(0, nullptr);
+	if (bufferLen == 0) {
+		return false;
+	}
+
+	auto bufferSize = bufferLen + path.size() + 2;
+	auto buf = (char *)__sprt_malloca(bufferLen + path.size() + 2);
+	bufferLen = _GetCurrentDirectory(bufferLen, buf);
+	buf[bufferLen] = 0;
+	if (bufferLen == 0) {
+		return false;
+	}
+
+	if (path.empty()) {
+		cb(StringView(buf, bufferLen));
+		__sprt_freea(buf);
+		return true;
+	} else {
+		bufferSize -= bufferLen;
+		auto target = &buf[bufferLen];
+
+		if (buf[bufferLen - 1] != '/' && path.at(0) != '/') {
+			target = strappend(target, &bufferSize, "/", 1);
+		}
+		target = strappend(target, &bufferSize, path.data(), path.size());
+		target[0] = 0;
+
+		filepath::reconstructPath(cb, StringView(buf, target - buf));
+		return true;
+	}
+#else
+	char buf[PATH_MAX + 1];
+	auto result = getcwd(buf, PATH_MAX);
+	if (result) {
 		auto len = sprt::detail::length(buf, PATH_MAX);
 		if (path.empty()) {
-			if (len < PATH_MAX) {
-				buf[len] = 0;
-			}
+			buf[len] = 0;
 			cb(StringView(buf, len));
 			return true;
 		} else if (PATH_MAX - len > path.size() + 2) {
@@ -68,11 +105,11 @@ bool getCurrentDir(const callback<void(StringView)> &cb, StringView path) {
 			target = strappend(target, &bufferSize, path.data(), path.size());
 			target[0] = 0;
 
-			filepath::reconstructPath([&](StringView path) { cb(path); },
-					StringView(buf, target - buf));
+			filepath::reconstructPath(cb, StringView(buf, target - buf));
 			return true;
 		}
 	}
+#endif
 	return false;
 }
 

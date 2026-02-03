@@ -191,7 +191,7 @@ SPRT_FORCEINLINE int mbtowc(wchar_t *__wc_ptr, const char *__s, size_t __n) {
 
 SPRT_FORCEINLINE int wctomb(char *__dst, wchar_t __wc) { return __SPRT_ID(wctomb)(__dst, __wc); }
 
-SPRT_FORCEINLINE size_t wcstombs(char *__dst, const wchar_t *_Nullable __src, size_t __n) {
+SPRT_FORCEINLINE size_t wcstombs(char *__dst, const wchar_t *__src, size_t __n) {
 	return __SPRT_ID(wcstombs)(__dst, __src, __n);
 }
 

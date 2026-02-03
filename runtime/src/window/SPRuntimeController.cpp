@@ -35,6 +35,10 @@
 #include "private/window/android/SPRTWinAndroidContextController.h"
 #endif
 
+#if SPRT_WINDOWS
+#include "private/window/windows/SPRTWinWindowsContextController.h"
+#endif
+
 namespace sprt::window {
 
 Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextConfig &&info,
@@ -46,7 +50,7 @@ Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextCon
 	return MacosContextController::create(ctx, move(info));
 #endif
 #if SPRT_WINDOWS
-	return WindowsContextController::create(ctx, move(info));
+	return WindowsContextController::create(ctx, move(info), a);
 #endif
 #if SPRT_ANDROID
 	return AndroidContextController::create(ctx, move(info), a);

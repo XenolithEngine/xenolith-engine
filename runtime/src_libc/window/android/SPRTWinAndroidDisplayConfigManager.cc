@@ -25,8 +25,8 @@
 
 namespace sprt::window {
 
-static void AndroidDisplayConfigManager_handleDisplayChanged(JNIEnv *_Nonnull env,
-		jobject _Nonnull thiz, jlong nativePointer) {
+static void AndroidDisplayConfigManager_handleDisplayChanged(JNIEnv *env, jobject thiz,
+		jlong nativePointer) {
 	auto native = reinterpret_cast<AndroidDisplayConfigManager *>(nativePointer);
 	native->updateDisplayConfig();
 }
@@ -81,8 +81,7 @@ void AndroidDisplayConfigManager::invalidate() {
 	}
 }
 
-void AndroidDisplayConfigManager::updateDisplayConfig(
-		Function<void(DisplayConfig *_Nullable)> &&cb) {
+void AndroidDisplayConfigManager::updateDisplayConfig(Function<void(DisplayConfig *)> &&cb) {
 	Rc<DisplayConfig> info = Rc<DisplayConfig>::create();
 
 	auto env = jni::Env::getEnv();
@@ -214,8 +213,7 @@ void AndroidDisplayConfigManager::updateDisplayConfig(
 	handleConfigChanged(info);
 }
 
-void AndroidDisplayConfigManager::prepareDisplayConfigUpdate(
-		Function<void(DisplayConfig *_Nullable)> &&cb) {
+void AndroidDisplayConfigManager::prepareDisplayConfigUpdate(Function<void(DisplayConfig *)> &&cb) {
 	updateDisplayConfig(sprt::move(cb));
 }
 

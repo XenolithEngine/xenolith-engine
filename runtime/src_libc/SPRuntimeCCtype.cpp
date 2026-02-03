@@ -22,6 +22,10 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
+#if defined(DEBUG) && !defined(_DEBUG)
+#define _DEBUG 1
+#endif
+
 #include <sprt/c/__sprt_ctype.h>
 #include <sprt/runtime/string.h>
 

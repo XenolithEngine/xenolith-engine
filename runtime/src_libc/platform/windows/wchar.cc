@@ -26,6 +26,7 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_wchar.h>
 #include <sprt/runtime/stringview.h>
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <corecrt.h>
 #include <corecrt_wstdio.h>

@@ -23,8 +23,6 @@
 #include <sprt/runtime/dso.h>
 #include "private/SPRTDso.h"
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
-
 #include <sprt/c/__sprt_dlfcn.h>
 
 namespace sprt {
@@ -96,83 +94,3 @@ void *dso_sym(void *h, const char *name, DsoSymFlags flags, const char **err) {
 }
 
 } // namespace sprt
-
-#endif
-
-#if SPRT_WINDOWS
-
-#include "private/SPRTSpecific.h"
-
-extern "C" {
-
-WINBASEAPI HMODULE WINAPI GetModuleHandleA(LPCSTR lpModuleName);
-WINBASEAPI HMODULE WINAPI LoadLibraryA(LPCSTR lpLibFileName);
-WINBASEAPI BOOL WINAPI FreeLibrary(HMODULE hLibModule);
-
-WINBASEAPI void *WINAPI GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
-}
-
-namespace sprt {
-
-static constexpr const char *WIN_FAIL_TO_LOAD = "Fail to load dynamic object";
-static constexpr const char *WIN_SYMBOL_NOT_FOUND = "Fail to find symbol in dynamic object";
-
-void *dso_open(StringView name, DsoFlags flags, const char **err) {
-	HMODULE h = nullptr;
-	if ((flags & DsoFlags::Self) != DsoFlags::None) {
-		h = GetModuleHandleA(nullptr);
-	} else {
-		name.performWithTerminated(
-				[&](const char *ptr, size_t len) { h = LoadLibraryA(LPCSTR(ptr)); });
-	}
-
-	if (!h) {
-		*err = WIN_FAIL_TO_LOAD;
-	}
-	return (void *)h;
-}
-
-void *dso_open(const char *name, DsoFlags flags, const char **err) {
-	HMODULE h = nullptr;
-	if ((flags & DsoFlags::Self) != DsoFlags::None) {
-		h = GetModuleHandleA(nullptr);
-	} else {
-		h = LoadLibraryA(LPCSTR(name));
-	}
-
-	if (!h) {
-		*err = WIN_FAIL_TO_LOAD;
-	}
-	return (void *)h;
-}
-
-void dso_close(DsoFlags flags, void *handle) {
-	if (handle) {
-		if ((flags & DsoFlags::Self) == DsoFlags::None) {
-			FreeLibrary(HMODULE(handle));
-		}
-	}
-}
-
-void *dso_sym(void *h, StringView name, DsoSymFlags flags, const char **err) {
-	void *s = nullptr;
-	name.performWithTerminated([&](const char *ptr, size_t len) {
-		s = GetProcAddress(HMODULE(h), ptr); //
-	});
-	if (!s) {
-		*err = WIN_SYMBOL_NOT_FOUND;
-	}
-	return (void *)s;
-}
-
-void *dso_sym(void *h, const char *name, DsoSymFlags flags, const char **err) {
-	auto s = GetProcAddress(HMODULE(h), name);
-	if (!s) {
-		*err = WIN_SYMBOL_NOT_FOUND;
-	}
-	return (void *)s;
-}
-
-} // namespace sprt
-
-#endif

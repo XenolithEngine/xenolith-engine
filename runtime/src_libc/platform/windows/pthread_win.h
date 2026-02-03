@@ -37,6 +37,7 @@ THE SOFTWARE.
 #include <sprt/runtime/mem/set.h>
 #include <sprt/runtime/mem/map.h>
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <process.h>
 #include <setjmp.h>

@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_sched.h>
 #include <sprt/c/__sprt_errno.h>
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <tlhelp32.h>
 

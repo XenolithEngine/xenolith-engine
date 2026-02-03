@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -21,6 +21,9 @@
  **/
 
 #include <sprt/runtime/platform.h>
+
+#if SPRT_LINUX
+
 #include <sprt/runtime/stream.h>
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/mem/vector.h>
@@ -98,7 +101,7 @@ StringView _readEnvExt(memory::pool_t *pool, StringView key) {
 
 void _initSystemPaths(LookupData &data) {
 	auto homePath = platform::getHomePath();
-	auto exeecPath = platform::getExecPath();
+	auto execPath = platform::getExecPath();
 	auto defaultInterface = getDefaultInterface();
 	if (homePath.empty()) {
 		log::vprint(log::LogType::Error, __SPRT_LOCATION, "filesystem", "$HOME is not defined");
@@ -388,7 +391,7 @@ void _initSystemPaths(LookupData &data) {
 			}, data._resourceLocations[toInt(it) - off].paths.front().path, appConfig.bundleName);
 		}
 	} else {
-		auto bundlePath = filepath::root(exeecPath);
+		auto bundlePath = filepath::root(execPath);
 		data.initAppPaths(bundlePath);
 	}
 }
@@ -396,3 +399,5 @@ void _initSystemPaths(LookupData &data) {
 void _termSystemPaths(LookupData &) { }
 
 } // namespace sprt::filesystem::detail
+
+#endif

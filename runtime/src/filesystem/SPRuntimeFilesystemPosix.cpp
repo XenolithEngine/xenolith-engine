@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -23,7 +23,7 @@
 #include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/runtime/filesystem/filepath.h>
 
-#if SPRT_LINUX | SPRT_ANDROID || SPRT_MACOS
+#if SPRT_LINUX | SPRT_ANDROID || SPRT_MACOS || SPRT_WINDOWS
 
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_unistd.h>

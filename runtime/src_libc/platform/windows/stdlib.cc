@@ -39,6 +39,7 @@ THE SOFTWARE.
 #pragma clang diagnostic ignored "-Wunused-function"
 #endif
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <stdlib.h>
 
@@ -54,7 +55,7 @@ THE SOFTWARE.
 namespace sprt {
 
 struct _EnvBlock {
-	_EnvBlock();
+	_EnvBlock() { }
 
 	char *get(const char *name) {
 		auto bufSize = GetEnvironmentVariableA(name, nullptr, 0);

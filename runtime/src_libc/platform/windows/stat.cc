@@ -28,6 +28,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_time.h>
 #include <sprt/runtime/stringview.h>
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <aclapi.h>
 #include <shlwapi.h>

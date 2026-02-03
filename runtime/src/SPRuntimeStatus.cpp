@@ -41,9 +41,8 @@
 
 #define MAKELANGID(p, s)       ((((WORD  )(s)) << 10) | (WORD  )(p))
 
-WINBASEAPI DWORD WINAPI FormatMessageA(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId,
+extern "C" DWORD FormatMessageA(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId,
 		DWORD dwLanguageId, LPSTR lpBuffer, DWORD nSize, __sprt_va_list *Arguments);
-
 
 #endif
 

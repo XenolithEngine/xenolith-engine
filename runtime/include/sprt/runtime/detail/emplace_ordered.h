@@ -40,9 +40,31 @@ inline bool emplace_ordered(Container &vec, T val) {
 	return false;
 }
 
+template <typename Container, typename T, typename Comp>
+inline bool emplace_ordered(Container &vec, T val, const Comp &comp) {
+	auto lb = sprt::lower_bound(vec.begin(), vec.end(), val, comp);
+	if (lb == vec.end()) {
+		vec.emplace_back(val);
+		return true;
+	} else if (*lb != val) {
+		vec.emplace(lb, val);
+		return true;
+	}
+	return false;
+}
+
 template <typename Container, typename T>
 inline bool exists_ordered(const Container &vec, const T &val) {
 	auto lb = sprt::lower_bound(vec.begin(), vec.end(), val);
+	if (lb == vec.end() || *lb != val) {
+		return false;
+	}
+	return true;
+}
+
+template <typename Container, typename T, typename Comp>
+inline bool exists_ordered(const Container &vec, const T &val, const Comp &comp) {
+	auto lb = sprt::lower_bound(vec.begin(), vec.end(), val, comp);
 	if (lb == vec.end() || *lb != val) {
 		return false;
 	}

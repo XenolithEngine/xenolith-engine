@@ -37,9 +37,9 @@ THE SOFTWARE.
 #if SPRT_ANDROID
 namespace sprt::platform {
 
-extern int (*_creat64)(const char *_Nonnull __path, mode_t __mode);
-extern int (*_open64)(const char *_Nonnull __path, int __flags, ...);
-extern int (*_openat64)(int __dir_fd, const char *_Nonnull __path, int __flags, ...);
+extern int (*_creat64)(const char *__path, mode_t __mode);
+extern int (*_open64)(const char *__path, int __flags, ...);
+extern int (*_openat64)(int __dir_fd, const char *__path, int __flags, ...);
 extern int (*_fallocate64)(int __fd, int __mode, off64_t __offset, off64_t __length);
 extern int (*_posix_fadvise64)(int __fd, off64_t __offset, off64_t __length, int __advice);
 extern int (*_posix_fallocate64)(int __fd, off64_t __offset, off64_t __length);

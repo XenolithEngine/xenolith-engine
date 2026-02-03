@@ -34,11 +34,11 @@ inline constexpr const bool __is_trivially_lexicographically_comparable_v =
 		&& (is_unsigned_v<_Tp> || is_same_v<remove_cv_t<_Tp>, char>);
 
 template <typename _Tp>
-constexpr _Tp *__constexpr_memset(_Tp *dest, const _Tp *source, size_t __count) {
+constexpr _Tp *__constexpr_memset(_Tp *dest, const _Tp &source, size_t __count) {
 	if (is_constant_evaluated()) {
-		while (__count-- > 0) { *(dest++) = *(source++); }
+		while (__count-- > 0) { *(dest++) = source; }
 	} else {
-		return (_Tp *)__builtin_memcpy(dest, source, __count * sizeof(_Tp));
+		return (_Tp *)__builtin_memset(dest, int(source), __count * sizeof(_Tp));
 	}
 }
 

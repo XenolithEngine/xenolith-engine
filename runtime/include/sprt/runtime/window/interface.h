@@ -73,6 +73,8 @@ public:
 	virtual Status wakeup(bool graceful = false) = 0;
 	virtual Status run() = 0;
 
+	virtual bool isOnThisThread() const = 0;
+
 	virtual int getHandle() const = 0;
 
 	virtual Rc<HandleAdapter> scheduleTimer(time_t timeout, time_t interval, uint32_t count, void *,

@@ -71,17 +71,6 @@ THE SOFTWARE.
 #endif
 
 /*
-	Use source_location from the standard library
-	Define as 1 to use <source_location>, 0 or undefined to use internal implementation
-	WARNIING: internal implementation conflicts with <source_location> in std. Just not to use it
-	of define __SPRT_USE_LIBCXX_SOURCE_LOCATION 1 before including runtime.
-	It's safe to use std and internal implementations in different translation units for same executable
-*/
-#ifndef __SPRT_USE_LIBCXX_SOURCE_LOCATION
-#define __SPRT_USE_LIBCXX_SOURCE_LOCATION 0
-#endif
-
-/*
 	Use STL headers for integration with standard library functions
 	(three-way comparison, iterator categories, etc.)
 
@@ -90,6 +79,17 @@ THE SOFTWARE.
 */
 #ifndef __SPRT_USE_STL
 #define __SPRT_USE_STL 0
+#endif
+
+/*
+	Use source_location from the standard library
+	Define as 1 to use <source_location>, 0 or undefined to use internal implementation
+	WARNIING: internal implementation conflicts with <source_location> in std. Just not to use it
+	or define __SPRT_USE_LIBCXX_SOURCE_LOCATION 1 before including runtime.
+	It's safe to use std and internal implementations in different translation units for same executable
+*/
+#ifndef __SPRT_USE_LIBCXX_SOURCE_LOCATION
+#define __SPRT_USE_LIBCXX_SOURCE_LOCATION __SPRT_USE_STL
 #endif
 
 /*
