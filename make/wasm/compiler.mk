@@ -50,10 +50,10 @@ BUILD_WASM_LDFLAGS := -z stack-size=4096 -Wl,--no-entry -Wl,--export=malloc -Wl,
 BUILD_WASM_CFLAGS_INIT := $(BUILD_WASM_CFLAGS_DEFAULT) -std=$(GLOBAL_STD)
 BUILD_WASM_CXXFLAGS_INIT := $(BUILD_WASM_CFLAGS_DEFAULT) -std=$(GLOBAL_STDXX) -fno-exceptions
 
-sp_compile_wasm_c = $(GLOBAL_QUIET_WASM_CC) $(GLOBAL_MKDIR) $(dir $@); $(WASI_SDK_CC) \
+sp_compile_wasm_c = $(GLOBAL_QUIET_WASM_CC) $(call rule_mkdir,$(dir $@)); $(WASI_SDK_CC) \
 	$(OSTYPE_C_FILE) $(call sp_compile_dep, $@, $(1)) -c -o $@ $<
 
-sp_compile_wasm_cpp = $(GLOBAL_QUIET_WASM_CXX) $(GLOBAL_MKDIR) $(dir $@); $(WASI_SDK_CXX) \
+sp_compile_wasm_cpp = $(GLOBAL_QUIET_WASM_CXX) $(call rule_mkdir,$(dir $@)); $(WASI_SDK_CXX) \
 	$(OSTYPE_CPP_FILE) $(call sp_compile_dep, $@, $(1))  -c -o $@ $<
 
 sp_toolkit_wit_list = $(call sp_make_general_source_list,$(1),$(2),$(GLOBAL_ROOT),*.wit,%.c %.cpp %.mm)
@@ -67,4 +67,4 @@ sp_wasm_include_list = $(call sp_make_general_include_list,$(1),$(2),$(3))
 sp_wasm_object_list = \
 	$(addprefix $(1),$(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(realpath $(2)))))
 
-sp_copy_wit = $(GLOBAL_QUIET_WIT) $(GLOBAL_MKDIR) $(BUILD_WIT_OUTDIR)/wit; $(GLOBAL_CP) $(1) $(BUILD_WIT_OUTDIR)/wit/$(notdir $(1))
+sp_copy_wit = $(GLOBAL_QUIET_WIT) $(call rule_mkdir,$(BUILD_WIT_OUTDIR)/wit); $(GLOBAL_CP) $(1) $(BUILD_WIT_OUTDIR)/wit/$(notdir $(1))

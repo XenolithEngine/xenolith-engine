@@ -23,6 +23,8 @@ ifdef TOOLCHAIN_SYSROOT
 BUILD_LIBRARY_PATH := $(TOOLCHAIN_SYSROOT)/lib
 endif
 
+$(call print_verbose,(c/apply.mk) Build source lists)
+
 # Список библиотек для включения в конечное приложение
 # Для Android в пути к библоитеке используется символ-заместитель для архитектуры, потому используется abspath вместо realpath
 ifndef BUILD_SHARED
@@ -59,11 +61,15 @@ TOOLKIT_EXEC_GCH := $(addsuffix $(OSTYPE_GCH_SUFFIX),$(TOOLKIT_EXEC_H_GCH))
 TOOLKIT_LIB_GCH_DIRS = $(sort $(dir $(TOOLKIT_LIB_GCH)))
 TOOLKIT_EXEC_GCH_DIRS = $(sort $(dir $(TOOLKIT_EXEC_GCH)))
 
+$(call print_verbose,(c/apply.mk) Build include lists)
+
 # Cписок директорий для включения от фреймворка
 TOOLKIT_INCLUDES := $(call sp_toolkit_include_list, $(TOOLKIT_INCLUDES_DIRS), $(TOOLKIT_INCLUDES_OBJS))
 
 # Cписок директорий для включения от приложения
 BUILD_INCLUDES := $(call sp_local_include_list,$(LOCAL_INCLUDES_DIRS),$(LOCAL_INCLUDES_OBJS))
+
+$(call print_verbose,(c/apply.mk) Build compiler flags)
 
 # Вычисляем окончательные флаги сборки
 BUILD_GENERAL_CFLAGS := \
@@ -147,16 +153,9 @@ ifndef BUILD_ARCH
 BUILD_ARCH := $$(BUILD_ARCH)
 endif
 
--include $(TOOLKIT_CACHED_FLAGS)
+$(call print_verbose,(c/apply.mk) Validate flags cache)
 
-BUILD_ALL_FLAGS_CACHED := \
-	$(BUILD_EXEC_CFLAGS_CACHED) \
-	$(BUILD_EXEC_CXXFLAGS_CACHED) \
-	$(BUILD_LIB_CFLAGS_CACHED) \
-	$(BUILD_LIB_CXXFLAGS_CACHED) \
-	$(BUILD_CONFIG_FLAGS_CACHED) \
-	$(BUILD_CONFIG_VALUES_CACHED) \
-	$(BUILD_CONFIG_STRINGS_CACHED)
+BUILD_ALL_FLAGS_CACHED := $(call shell_cat,$(TOOLKIT_CACHED_FLAGS))
 
 BUILD_ALL_FLAGS_DIFF := \
 	$(filter-out $(BUILD_ALL_FLAGS), $(BUILD_ALL_FLAGS_CACHED)) \
@@ -169,27 +168,18 @@ ifneq ($(strip $(BUILD_ALL_FLAGS_CACHED)),$(strip $(BUILD_ALL_FLAGS)))
 $(info Build flags changed: $(BUILD_ALL_FLAGS_DIFF))
 
 # Обновляем кешированные флаги
-$(shell $(GLOBAL_MKDIR) $(BUILD_С_OUTDIR))
-$(shell echo 'BUILD_EXEC_CFLAGS_CACHED:= $(BUILD_EXEC_CFLAGS)' > $(TOOLKIT_CACHED_FLAGS))
-$(shell echo 'BUILD_EXEC_CXXFLAGS_CACHED:= $(BUILD_EXEC_CXXFLAGS)' >> $(TOOLKIT_CACHED_FLAGS))
-$(shell echo 'BUILD_LIB_CFLAGS_CACHED:= $(BUILD_LIB_CFLAGS)' >> $(TOOLKIT_CACHED_FLAGS))
-$(shell echo 'BUILD_LIB_CXXFLAGS_CACHED:= $(BUILD_LIB_CXXFLAGS)' >> $(TOOLKIT_CACHED_FLAGS))
-$(shell echo 'BUILD_CONFIG_FLAGS_CACHED:= $(BUILD_CONFIG_FLAGS)' >> $(TOOLKIT_CACHED_FLAGS))
-$(shell echo 'BUILD_CONFIG_VALUES_CACHED:= $(BUILD_CONFIG_VALUES)' >> $(TOOLKIT_CACHED_FLAGS))
-$(shell echo 'BUILD_CONFIG_STRINGS_CACHED:= $(BUILD_CONFIG_STRINGS)' >> $(TOOLKIT_CACHED_FLAGS))
+
+$(call shell_mkdir,$(BUILD_С_OUTDIR))
+$(call shell_override_file,$(TOOLKIT_CACHED_FLAGS),$(BUILD_ALL_FLAGS))
 
 $(TOOLKIT_CACHED_FLAGS):
-	@$(GLOBAL_MKDIR) $(BUILD_С_OUTDIR)
-	@echo 'BUILD_EXEC_CFLAGS_CACHED:= $(BUILD_EXEC_CFLAGS)' > $(TOOLKIT_CACHED_FLAGS)
-	@echo 'BUILD_EXEC_CXXFLAGS_CACHED:= $(BUILD_EXEC_CXXFLAGS)' >> $(TOOLKIT_CACHED_FLAGS)
-	@echo 'BUILD_LIB_CFLAGS_CACHED:= $(BUILD_LIB_CFLAGS)' >> $(TOOLKIT_CACHED_FLAGS)
-	@echo 'BUILD_LIB_CXXFLAGS_CACHED:= $(BUILD_LIB_CXXFLAGS)' >> $(TOOLKIT_CACHED_FLAGS)
-	@echo 'BUILD_CONFIG_FLAGS_CACHED:= $(BUILD_CONFIG_FLAGS)' >> $(TOOLKIT_CACHED_FLAGS)
-	@echo 'BUILD_CONFIG_VALUES_CACHED:= $(BUILD_CONFIG_VALUES)' >> $(TOOLKIT_CACHED_FLAGS)
-	@echo 'BUILD_CONFIG_STRINGS_CACHED:= $(BUILD_CONFIG_STRINGS)' >> $(TOOLKIT_CACHED_FLAGS)
+	@$(call rule_mkdir,$(BUILD_С_OUTDIR))
+	@echo 'BUILD_ALL_FLAGS' > $(TOOLKIT_CACHED_FLAGS)
 
 endif
 endif
+
+$(call print_verbose,(c/apply.mk) Build precompiled headers list)
 
 # Копируем заголовки для предкомпиляции
 $(foreach target,$(TOOLKIT_PRECOMPILED_HEADERS),\
@@ -201,6 +191,8 @@ $(foreach target,$(TOOLKIT_PRECOMPILED_HEADERS),\
 	$(eval $(call BUILD_include_rule,$(target),\
 		$(call sp_toolkit_prefix_files_list,$(BUILD_С_OUTDIR)/exec_objs,$(target)))\
 	))
+
+$(call print_verbose,(c/apply.mk) Build target source list)
 
 # Список полных путей к компилируемым файлам фреймворка
 TOOLKIT_SRCS := $(call sp_toolkit_source_list, $(TOOLKIT_SRCS_DIRS), $(TOOLKIT_SRCS_OBJS))
@@ -220,6 +212,8 @@ BUILD_LIB_SRCS := \
 	$(BUILD_SRCS) \
 	$(if $(filter-out $(LOCAL_BUILD_SHARED),3),$(TOOLKIT_SRCS))
 
+$(call print_verbose,(c/apply.mk) Build target objects list)
+
 # Список объектных файлов, относящихся к фреймворку
 TOOLKIT_LIB_OBJS := $(call sp_toolkit_object_list,$(BUILD_С_OUTDIR)/lib_objs,$(TOOLKIT_SRCS))
 TOOLKIT_EXEC_OBJS := $(call sp_toolkit_object_list,$(BUILD_С_OUTDIR)/exec_objs,$(TOOLKIT_SRCS))
@@ -237,16 +231,22 @@ BUILD_CDB_TARGET_SRCS :=
 BUILD_CDB_TARGET_OBJS :=
 
 ifdef LOCAL_LIBRARY
+$(call print_verbose,(c/apply.mk) include c/library.mk)
 include $(BUILD_ROOT)/c/library.mk
 endif
 
 ifdef LOCAL_EXECUTABLE
+$(call print_verbose,(c/apply.mk) include c/executable.mk)
 include $(BUILD_ROOT)/c/executable.mk
 endif
+
+$(call print_verbose,(c/apply.mk) include dependencies)
 
 # include dependencies
 -include $(patsubst %.o,%.o.d,$(BUILD_EXEC_OBJS) $(BUILD_LIB_OBJS))
 -include $(patsubst %.h$(OSTYPE_GCH_SUFFIX),%.h$(OSTYPE_GCH_SUFFIX).d,$(TOOLKIT_EXEC_GCH) $(TOOLKIT_LIB_GCH))
+
+$(call print_verbose,(c/apply.mk) prepare compilation database)
 
 BUILD_CDB_TARGET_JSON := $(addsuffix .json,$(filter-out %.S.o,$(BUILD_CDB_TARGET_OBJS)))
 

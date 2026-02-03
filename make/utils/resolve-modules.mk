@@ -192,12 +192,15 @@ TOOLKIT_LIBS_SHARED :=  \
 TOOLKIT_MODULES := $(BUILD_С_OUTDIR)/modules.info
 TOOLKIT_CACHED_FLAGS := $(BUILD_С_OUTDIR)/cached_flags.mk
 
-TOOLKIT_CACHED_MODULES := $(shell cat $(TOOLKIT_MODULES) 2> /dev/null)
+TOOLKIT_CACHED_MODULES := $(call shell_cat,$(TOOLKIT_MODULES))
 
 ifdef MAKE_4_1
 ifneq ($(LOCAL_MODULES),$(TOOLKIT_CACHED_MODULES))
 $(info Modules was updated)
-$(shell $(GLOBAL_MKDIR) $(BUILD_С_OUTDIR); echo '$(LOCAL_MODULES)' > $(TOOLKIT_MODULES))
+
+$(call shell_mkdir,$(BUILD_С_OUTDIR))
+$(call shell_override_file,$(TOOLKIT_MODULES),$(LOCAL_MODULES))
+
 endif
 endif # MAKE_4_1
 	

@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
+# Copyright (c) 2026 Xenloith Team <admin@xenolith.studio>
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -18,3 +18,27 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+$(call print_verbose,(fn-powershell.mk) Using powershell)
+
+POWERSHELL := 1
+
+GLOBAL_RM ?= rm -f
+GLOBAL_CP ?= cp -f
+GLOBAL_MAKE ?= make
+GLOBAL_MKDIR ?= powershell New-Item -ItemType Directory -Force -Path
+GLOBAL_AR ?= ar rcs
+
+shell_mkdir = $(call print_verbose,Powershell (mkdir): $(shell New-Item -Path "$(1)" -ItemType Directory -Force | Out-Null))
+
+rule_mkdir = powershell New-Item -ItemType Directory -Force -Path $(1) | Out-Null
+
+shell_override_file = \
+	$(call print_verbose,Powershell (override): $(shell Set-Content "$(1)" '$(2)') )
+
+shell_append_file = \
+	$(call print_verbose,Powershell (append): $(shell Add-Content "$(1)" '$(2)') )
+
+shell_cat = \
+	$(shell if (Test-Path -Path "$(1)" -PathType Leaf) { Get-Content "$(1)" })
+
+shell_arith = $(shell powershell $(1))

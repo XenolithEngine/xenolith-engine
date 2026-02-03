@@ -1,15 +1,15 @@
-# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
-#
+# Copyright (c) 2026 Xenloith Team <admin@xenolith.studio>
+# 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-#
+# 
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-#
+# 
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -18,35 +18,27 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-# force to rebuild if this makefile changed
-LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
+$(call print_verbose,(fn-sh.mk) Using sh)
 
-STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../../make
+SH := 1
 
-LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
-LOCAL_EXECUTABLE := freestandingruntimetest
+GLOBAL_RM ?= rm -f
+GLOBAL_CP ?= cp -f
+GLOBAL_MAKE ?= make
+GLOBAL_MKDIR ?= mkdir -p
+GLOBAL_AR ?= ar rcs
 
-LOCAL_PRIVATE_INCLUDE_PCH :=
+shell_mkdir = $(shell $(GLOBAL_MKDIR) $(1))
 
-LOCAL_MODULES_PATHS =
+rule_mkdir = $(GLOBAL_MKDIR) $(1)
 
-LOCAL_MODULES ?= \
-	runtime
+shell_override_file = \
+	$(shell echo '$(2)' > $(1))
 
-LOCAL_ROOT = $(abspath $(dir $(LOCAL_MAKEFILE)))
+shell_append_file = \
+	$(shell echo '$(2)' >> $(1))
 
-LOCAL_SRCS_DIRS :=
-LOCAL_SRCS_OBJS :=
+shell_cat = \
+	$(shell cat $(1) 2> /dev/null)
 
-LOCAL_INCLUDES_DIRS :=
-LOCAL_INCLUDES_OBJS :=
-
-LOCAL_MAIN := main.cpp
-
-APPCONFIG_APP_NAME := FreestandingRuntimeTest
-APPCONFIG_BUNDLE_NAME := org.stappler.FreestandingRuntimeTest
-APPCONFIG_APP_PATH_COMMON := 3
-
-#verbose=1
-
-include $(STAPPLER_BUILD_ROOT)/universal.mk
+shell_arith = $(shell echo $$($(1)) )

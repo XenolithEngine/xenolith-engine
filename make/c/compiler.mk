@@ -57,8 +57,8 @@ else ifeq ($(STAPPLER_TARGET),xwin)
 	include $(BUILD_ROOT)/os/xwin.mk
 else ifeq ($(UNAME),Darwin)
 	include $(BUILD_ROOT)/os/darwin.mk
-else ifeq ($(UNAME),Msys)
-	include $(BUILD_ROOT)/os/msys.mk
+else ifeq ($(UNAME),Windows)
+	include $(BUILD_ROOT)/os/windows.mk
 else
 	include $(BUILD_ROOT)/os/linux.mk
 endif
@@ -82,8 +82,8 @@ BUILD_TYPE_CFLAGS_RELEASE := $(GLOBAL_OPTIMIZATION)
 BUILD_TYPE_CXXFLAGS_RELEASE := $(GLOBAL_OPTIMIZATION)
 BUILD_TYPE_LDFLAGS_RELEASE :=
 
-BUILD_TYPE_CFLAGS_DEBUG := -g -DSTAPPLER_ROOT=\"$(realpath $(GLOBAL_ROOT))\" -funwind-tables
-BUILD_TYPE_CXXFLAGS_DEBUG := -g -DSTAPPLER_ROOT=\"$(realpath $(GLOBAL_ROOT))\" -funwind-tables
+BUILD_TYPE_CFLAGS_DEBUG := -g -funwind-tables
+BUILD_TYPE_CXXFLAGS_DEBUG := -g -funwind-tables
 BUILD_TYPE_LDFLAGS_DEBUG :=
 
 BUILD_TYPE_CFLAGS_COVERAGE := -g -fprofile-arcs -ftest-coverage

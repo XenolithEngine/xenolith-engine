@@ -40,8 +40,8 @@ GLOBAL_QUIET_WASM_CC =
 GLOBAL_QUIET_WASM_CXX =
 GLOBAL_QUIET_WASM_LINK =
 else
-GLOBAL_QUIET_CC = @ echo $(call sp_counter_text) [$(notdir $(GLOBAL_CC))] $(notdir $@) ;
-GLOBAL_QUIET_CPP = @ echo $(call sp_counter_text) [$(notdir $(GLOBAL_CXX))] $(notdir $@) ;
+GLOBAL_QUIET_CC = @ echo "$(call sp_counter_text) [$(notdir $(GLOBAL_CC))] $(notdir $@)" ;
+GLOBAL_QUIET_CPP = @ echo "$(call sp_counter_text) [$(notdir $(GLOBAL_CXX))] $(notdir $@)" ;
 GLOBAL_QUIET_LINK = @ echo [Link] $@ ;
 GLOBAL_QUIET_LINK_SHARED = @ echo [DSO Link] $$(notdir $$@) ;
 GLOBAL_QUIET_LINK_STATIC = @ echo [Static Link] $$(notdir $$@) ;
@@ -63,15 +63,15 @@ BUILD_EXEC_COUNTER := 0
 BUILD_TARGET :=
 
 define BUILD_LIB_template =
-$(eval BUILD_LIB_COUNTER=$(shell echo $$(($(BUILD_LIB_COUNTER)+1))))
+$(eval BUILD_LIB_COUNTER=$(BUILD_LIB_COUNTER) 1)
 $(1):BUILD_CURRENT_COUNTER:=$(BUILD_LIB_COUNTER)
 $(1):BUILD_FILES_COUNTER := $(3)
 $(1):BUILD_TARGET := $(2)
 endef
 
 define BUILD_EXEC_template =
-$(eval BUILD_EXEC_COUNTER=$(shell echo $$(($(BUILD_EXEC_COUNTER)+1))))
-$(1):BUILD_CURRENT_COUNTER:=$(BUILD_EXEC_COUNTER)
+$(eval BUILD_EXEC_COUNTER=$(BUILD_EXEC_COUNTER) 1)
+$(1):BUILD_CURRENT_COUNTER:=$(words $(BUILD_EXEC_COUNTER))
 $(1):BUILD_FILES_COUNTER := $(3)
 $(1):BUILD_TARGET := $(2)
 endef

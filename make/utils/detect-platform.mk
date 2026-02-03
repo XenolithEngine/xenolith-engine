@@ -22,14 +22,14 @@
 
 STAPPLER_PLATFORM :=
 
+ifeq ($(findstring Windows,$(OS)),Windows)
+UNAME := Windows
+else
 UNAME := $(shell uname)
 
 ifneq ($(UNAME),Darwin)
 	UNAME := $(shell uname -o)
 endif
-
-ifeq ($(findstring MSYS_NT,$(UNAME)),MSYS_NT)
-	UNAME := $(shell uname -o)
 endif
 
 STAPPLER_PLATFORM ?=
@@ -45,10 +45,23 @@ else ifeq ($(UNAME),Darwin)
 MACOS := 1
 STAPPLER_ARCH ?= $(shell uname -m)
 STAPPLER_PLATFORM += MACOS=1 STAPPLER_ARCH=$(STAPPLER_ARCH)
-else ifeq ($(UNAME),Msys)
-MSYS := 1
+else ifeq ($(findstring Windows,$(UNAME)),Windows)
+
+ifndef STAPPLER_ARCH
+STAPPLER_ARCH := $(shell powershell [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)
+ifeq ($(STAPPLER_ARCH),X64)
+STAPPLER_ARCH := x86_64
+else ifeq ($(STAPPLER_ARCH),X86)
+STAPPLER_ARCH := x86
+else ifeq ($(STAPPLER_ARCH),Arm64)
+STAPPLER_ARCH := aarch64
+else ifeq ($(STAPPLER_ARCH),Arm)
+STAPPLER_ARCH := arm
+endif
+endif # ifndef STAPPLER_ARCH
+
 WIN32 := 1
-STAPPLER_PLATFORM += MSYS=1 WIN32=1
+STAPPLER_PLATFORM += WIN32=1 STAPPLER_ARCH=$(STAPPLER_ARCH)
 else
 LINUX := 1
 STAPPLER_ARCH ?= $(shell uname -m)

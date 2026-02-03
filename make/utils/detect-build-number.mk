@@ -19,10 +19,10 @@
 # THE SOFTWARE.
 
 sp_detect_git = $(shell git -C $(1) rev-parse --git-dir 2> /dev/null)
-sp_detect_build_write_rev = $(firstword $(2) $(shell echo '$(2)' > $(1)/.build_number))
+sp_detect_build_write_rev = $(firstword $(2) $(call shell_override_file, $(1)/.build_number,$(2)))
 
 sp_detect_build_number_git = $(shell git -C $(1) rev-list --count HEAD)
-sp_detect_build_number_file = $(shell cat $(1)/.build_number)
+sp_detect_build_number_file = $(call shell_cat,$(1)/.build_number)
 
 sp_detect_build_number = $(if $(call sp_detect_git,$(1)),\
 	$(call sp_detect_build_write_rev,$(1),$(call sp_detect_build_number_git,$(1))),\

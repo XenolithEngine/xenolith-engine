@@ -49,9 +49,13 @@ LOCAL_ROOT ?= .
 LOCAL_OUTDIR ?= stappler-build
 LOCAL_EXEC_LIVE_RELOAD ?= 0
 
+LOCAL_ROOT := $(subst \,/,$(LOCAL_ROOT))
+LOCAL_OUTDIR := $(subst \,/,$(LOCAL_OUTDIR))
+
 ifneq ($(filter %/,$(LOCAL_ROOT)),)
 LOCAL_ROOT := $(patsubst %/,%,$(LOCAL_ROOT))
 endif
+
 
 $(call print_verbose,(defaults.mk) LOCAL_ROOT: $(LOCAL_ROOT))
 $(call print_verbose,(defaults.mk) LOCAL_OUTDIR: $(LOCAL_OUTDIR))
@@ -130,7 +134,42 @@ APPCONFIG_VERSION_REV ?= 0
 APPCONFIG_VERSION_BUILD ?= 0
 
 
+ifeq ($(findstring Windows,$(OS)),Windows)
+
+UNAME := Windows
+SHELL = powershell.exe
+
+include $(BUILD_ROOT)/utils/fn-powershell.mk
+
+else # Windows
+
+# Проверяем хостовую систему, у Darwin нет опции -o для uname
+UNAME := $(shell uname)
+
+ifneq ($(UNAME),Darwin)
+	UNAME := $(shell uname -o)
+endif
+
+include $(BUILD_ROOT)/utils/fn-sh.mk
+
+endif # Windows
+
+ifdef SHARED_PREFIX
+GLOBAL_ROOT := $(SHARED_PREFIX)
+else # SHARED_PREFIX
+ifdef STAPPLER_BUILD_ROOT
+GLOBAL_ROOT := $(realpath $(STAPPLER_BUILD_ROOT)/..)
+else
+GLOBAL_ROOT := $(realpath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
+endif
+endif # SHARED_PREFIX
+
 BUILD_WORKDIR = $(patsubst %/,%,$(dir $(realpath $(firstword $(MAKEFILE_LIST)))))
+
+$(call print_verbose,(defaults.mk) BUILD_WORKDIR: $(BUILD_WORKDIR))
+$(call print_verbose,(defaults.mk) GLOBAL_ROOT: $(GLOBAL_ROOT))
+$(call print_verbose,(defaults.mk) UNAME: $(UNAME))
+
 
 LOCAL_INSTALL_DIR ?= $(LOCAL_OUTDIR)/host
 BUILD_OUTDIR := $(LOCAL_OUTDIR)/host/$(BUILD_TYPE)
@@ -147,42 +186,7 @@ LOCAL_INSTALL_DIR ?= $(LOCAL_OUTDIR)/xwin
 BUILD_OUTDIR := $(LOCAL_OUTDIR)/xwin/$(BUILD_TYPE)
 endif
 
-
 $(call print_verbose,(defaults.mk) BUILD_OUTDIR: $(BUILD_OUTDIR))
-
-
-ifdef SHARED_PREFIX
-GLOBAL_ROOT := $(SHARED_PREFIX)
-else # SHARED_PREFIX
-ifdef STAPPLER_BUILD_ROOT
-GLOBAL_ROOT := $(realpath $(STAPPLER_BUILD_ROOT)/..)
-else
-GLOBAL_ROOT := $(realpath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
-endif
-endif # SHARED_PREFIX
-
-$(call print_verbose,(defaults.mk) GLOBAL_ROOT: $(GLOBAL_ROOT))
-
-GLOBAL_RM ?= rm -f
-GLOBAL_CP ?= cp -f
-GLOBAL_MAKE ?= make
-GLOBAL_MKDIR ?= mkdir -p
-GLOBAL_AR ?= ar rcs
-
-# Проверяем хостовую систему, у Darwin нет опции -o для uname
-
-UNAME := $(shell uname)
-
-ifneq ($(UNAME),Darwin)
-	UNAME := $(shell uname -o)
-endif
-
-ifeq ($(findstring MSYS_NT,$(UNAME)),MSYS_NT)
-	UNAME := $(shell uname -o)
-endif
-
-$(call print_verbose,(defaults.mk) UNAME: $(UNAME))
-
 
 #
 # WebAssebmly
@@ -226,7 +230,23 @@ GLOBAL_GENERAL_CXXFLAGS :=
 ifdef STAPPLER_ARCH
 STAPPLER_TARGET_ARCH := $(STAPPLER_ARCH)
 else # STAPPLER_ARCH
+
+ifeq ($(findstring Windows,$(OS)),Windows)
+STAPPLER_TARGET_ARCH ?= $(shell [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)
+
+ifeq ($(STAPPLER_TARGET_ARCH),X64)
+STAPPLER_TARGET_ARCH := x86_64
+else ifeq ($(STAPPLER_TARGET_ARCH),X86)
+STAPPLER_TARGET_ARCH := x86
+else ifeq ($(STAPPLER_TARGET_ARCH),Arm64)
+STAPPLER_TARGET_ARCH := aarch64
+else ifeq ($(STAPPLER_TARGET_ARCH),Arm)
+STAPPLER_TARGET_ARCH := arm
+endif
+
+else
 STAPPLER_TARGET_ARCH ?= $(shell uname -m)
+endif
 endif # STAPPLER_ARCH
 
 STAPPLER_TOOLCHAIN_FILE := toolchain.mk
@@ -259,7 +279,7 @@ $(call print_verbose,(defaults.mk) Android NDK: $(NDK))
 
 ifeq ($(UNAME),Darwin)
 ANDROID_HOST ?= darwin-x86_64
-else ifeq ($(UNAME),Msys)
+else ifeq ($(UNAME),Windows)
 ANDROID_HOST ?= windows-x86_64
 else
 ANDROID_HOST ?= linux-x86_64
@@ -300,10 +320,10 @@ STAPPLER_TARGET_FULL := $(STAPPLER_TARGET_ARCH)-$(STAPPLER_TARGET_VENDOR)-$(STAP
 
 
 #
-# MSYS on Windows
+# Windows
 #
 
-else ifneq ($(or $(filter Msys,$(UNAME)),$(filter windows,$(STAPPLER_TARGET))),)
+else ifneq ($(or $(filter windows,$(STAPPLER_TARGET)),$(findstring Windows,$(UNAME))),)
 
 STAPPLER_TARGET_VENDOR := pc
 STAPPLER_TARGET_SYS := windows

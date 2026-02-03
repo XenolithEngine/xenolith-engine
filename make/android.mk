@@ -51,4 +51,4 @@ clean: clean_local
 .PHONY: clean_local clean .prebuild_local all static
 
 .prebuild_local:
-	@$(GLOBAL_MKDIR) $(BUILD_DIRS)
+	@$(call rule_mkdir,$(BUILD_DIRS))

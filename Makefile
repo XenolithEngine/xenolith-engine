@@ -24,7 +24,7 @@ LOCAL_VERSION := 0.6
 LOCAL_BUILD_TARGET ?= runtime
 
 # force to rebuild if this makefile changed
-LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
+LOCAL_MAKEFILE := $(abspath $(lastword $(MAKEFILE_LIST)))
 
 LOCAL_OUTDIR := stappler-build
 

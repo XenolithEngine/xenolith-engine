@@ -70,15 +70,15 @@ VULKAN_LAYERS_PATH = $(realpath $(VULKAN_SDK_PREFIX)/share/vulkan/explicit_layer
 VULKAN_LIBDIR = $(dir $(BUILD_EXECUTABLE))vulkan
 
 $(VULKAN_LIBDIR)/icd.d/MoltenVK_icd.json: $(VULKAN_MOLTENVK_ICD_PATH)
-	@$(GLOBAL_MKDIR) $(VULKAN_LIBDIR)/icd.d
+	@$(call rule_mkdir,$(VULKAN_LIBDIR)/icd.d)
 	sed 's/..\/..\/..\/lib\/libMoltenVK/..\/lib\/libMoltenVK/g' $(VULKAN_MOLTENVK_ICD_PATH) >  $(VULKAN_LIBDIR)/icd.d/MoltenVK_icd.json
 
 $(VULKAN_LIBDIR)/explicit_layer.d/%.json: $(VULKAN_LAYERS_PATH)/%.json
-	@$(GLOBAL_MKDIR) $(VULKAN_LIBDIR)/explicit_layer.d
+	@$(call rule_mkdir,$(VULKAN_LIBDIR)/explicit_layer.d)
 	sed 's/..\/..\/..\/lib\/libVkLayer/..\/lib\/libVkLayer/g' $(VULKAN_LAYERS_PATH)/$*.json > $(VULKAN_LIBDIR)/explicit_layer.d/$*.json
 
 $(VULKAN_LIBDIR)/lib/%.dylib: $(VULKAN_SDK_PREFIX)/lib/%.dylib
-	@$(GLOBAL_MKDIR) $(VULKAN_LIBDIR)/lib
+	@$(call rule_mkdir,$(VULKAN_LIBDIR)/lib)
 	cp $(VULKAN_SDK_PREFIX)/lib/$*.dylib $(VULKAN_LIBDIR)/lib/$*.dylib
 
 $(BUILD_EXECUTABLE): \

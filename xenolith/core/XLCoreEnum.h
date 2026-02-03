@@ -586,20 +586,7 @@ enum class DescriptorFlags : uint32_t {
 
 SP_DEFINE_ENUM_AS_MASK(DescriptorFlags)
 
-/** View tiling constraints flags. If flag is set - window enge is constrained, if not set - resizable  */
-enum class ViewConstraints : uint32_t {
-	None,
-	Top = 1 << 0,
-	Left = 1 << 1,
-	Bottom = 1 << 2,
-	Right = 1 << 3,
-
-	Vertical = Top | Bottom,
-	Horizontal = Left | Right,
-	All = Vertical | Horizontal
-};
-
-SP_DEFINE_ENUM_AS_MASK(ViewConstraints)
+using sprt::window::ViewConstraints;
 
 using sprt::window::WindowState;
 

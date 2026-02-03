@@ -27,6 +27,11 @@ ifeq ($(UNAME),Darwin)
 GLOBAL_CXX ?= clang++
 GLOBAL_CC ?= clang
 
+else ifeq ($(UNAME),Windows)
+
+GLOBAL_CXX ?= clang++
+GLOBAL_CC ?= clang
+
 else
 
 ifeq ($(GLOBAL_COMPILER_IS_CLANG),1)

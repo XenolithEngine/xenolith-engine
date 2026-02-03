@@ -21,12 +21,7 @@
 # Функции для вывода правил компиляции
 
 ifeq ($(GLOBAL_COMPILER_IS_CLANG),1)
-ifdef MSYS
-# Записываем имя зависимости в формате unix, иначе make не сможет его сопоставить
-sp_compile_dep = -MMD -MP -MF $(addsuffix .d,$(1)) $(2) -MT$(shell cygpath -u $(abspath $(1)))
-else
 sp_compile_dep = -MMD -MP -MF $(addsuffix .d,$(1)) $(2)
-endif
 else
 sp_compile_dep = -MMD -MP -MF $(addsuffix .d,$(1)) $(2)
 endif
@@ -39,22 +34,22 @@ endif
 
 sp_compile_command = $(1) $(2) $(call sp_compile_dep, $(5), $(3)) -c -o $(5) $(4)
 
-sp_compile_gch = $(GLOBAL_QUIET_CPP) $(GLOBAL_MKDIR) $(dir $@);\
+sp_compile_gch = $(GLOBAL_QUIET_CPP) $(call rule_mkdir,$(dir $@));\
 	$(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_GCH_FILE),$(1),$<,$@)
 
-sp_compile_S = $(GLOBAL_QUIET_CC) $(GLOBAL_MKDIR) $(dir $@);\
+sp_compile_S = $(GLOBAL_QUIET_CC) $(call rule_mkdir,$(dir $@));\
 	$(call sp_compile_command,$(GLOBAL_CC),,$(1),$<,$@)
 
-sp_compile_c = $(GLOBAL_QUIET_CC) $(GLOBAL_MKDIR) $(dir $@);\
+sp_compile_c = $(GLOBAL_QUIET_CC) $(call rule_mkdir,$(dir $@));\
 	$(call sp_compile_command,$(GLOBAL_CC),$(OSTYPE_C_FILE),$(1),$<,$@)
 
-sp_compile_cpp = $(GLOBAL_QUIET_CPP) $(GLOBAL_MKDIR) $(dir $@);\
+sp_compile_cpp = $(GLOBAL_QUIET_CPP) $(call rule_mkdir,$(dir $@));\
 	$(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_CPP_FILE),$(1),$<,$@)
 
-sp_compile_mm = $(GLOBAL_QUIET_CPP) $(GLOBAL_MKDIR) $(dir $@);\
+sp_compile_mm = $(GLOBAL_QUIET_CPP) $(call rule_mkdir,$(dir $@));\
 	$(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_MM_FILE),$(1) -fobjc-arc,$<,$@)
 
-sp_copy_header = @$(GLOBAL_MKDIR) $(dir $@); cp -f $< $@
+sp_copy_header = @$(call rule_mkdir,$(dir $@)); cp -f $< $@
 
 sp_toolkit_source_list_c = $(call sp_make_general_source_list,$(1),$(2),$(GLOBAL_ROOT),\
 	*.cpp *.c *.S $(if $(BUILD_OBJC),*.mm),\
@@ -80,6 +75,7 @@ sp_toolkit_include_flags = \
 # $(1) - module
 # $(2) - filename
 # $(3) - build path
+# $(4) - default flags
 sp_toolkit_private_flags = \
 	$(if $(filter %.c,$(2)),$($(1)_PRIVATE_CFLAGS)) \
 	$(if $(filter %.cpp,$(2)),\
@@ -87,16 +83,19 @@ sp_toolkit_private_flags = \
 		$($(1)_PRIVATE_CXXFLAGS) \
 	) \
 	$(if $(filter %.mm,$(2)),$($(1)_PRIVATE_CXXFLAGS)) \
-	$(addprefix -I,$(call sp_toolkit_include_list,,$($(1)_PRIVATE_INCLUDES)))
+	$(addprefix -I,$(call sp_toolkit_include_list,,$($(1)_PRIVATE_INCLUDES))) \
+	$(if $($(1)_PRIVATE_FLAGS_FILTER),$(filter-out $($(1)_PRIVATE_FLAGS_FILTER),$(4)),$(4))
 
 # $(1) - filename
 # $(2) - build path
+# $(3) - default flags
 sp_local_private_flags = \
 	$(if $(filter %.c,$(1)),$(LOCAL_PRIVATE_CFLAGS)) \
 	$(if $(filter %.cpp,$(1)),$(LOCAL_PRIVATE_CXXFLAGS)) \
 	$(if $(filter %.mm,$(1)),$(LOCAL_PRIVATE_CXXFLAGS)) \
 	$(addprefix -include-pch$(space)$(2)/,$(addsuffix $(OSTYPE_GCH_SUFFIX),$(LOCAL_PRIVATE_INCLUDE_PCH))) \
-	$(addprefix -I,$(call sp_toolkit_include_list,,$(LOCAL_PRIVATE_INCLUDES)))
+	$(addprefix -I,$(call sp_toolkit_include_list,,$(LOCAL_PRIVATE_INCLUDES))) \
+	$(3)
 
 
 sp_local_source_list_c = $(call sp_make_general_source_list,$(1),$(2),$(LOCAL_ROOT),\
@@ -128,22 +127,27 @@ sp_build_target_path = \
 	$(abspath $(addprefix $(2)/objs/,$(addsuffix .o,$(notdir $(1)))))
 
 
-ifdef MSYS
-sp_cdb_convert_cmd = `cygpath -w $(1) | sed -r 's/\\\\/\\\\\\\\/g'`
-sp_cdb_which_cmd = `which $(1) | cygpath -w -f - | sed -r 's/\\\\/\\\\\\\\/g'`
+ifeq ($(findstring Windows,$(OS)),Windows)
+sp_cdb_convert_cmd = $(1)
+sp_cdb_which_cmd = $(1)
 else
 sp_cdb_convert_cmd = '$(1)'
 sp_cdb_which_cmd = `which $(1)`
 endif
 
 sp_cdb_process_arg = \
-	$(if $(filter -I%,$(1)),-I'$(call sp_cdb_convert_cmd,$(patsubst -I%,%,$(1)))',\
-		$(if $(filter /%,$(1)),'$(call sp_cdb_convert_cmd,$(1))',$(1))\
+	$(if $(filter -I%,$(1)),-I$(call sp_cdb_convert_cmd,$(patsubst -I%,%,$(1))),\
+		$(if $(filter /%,$(1)),$(call sp_cdb_convert_cmd,$(1)),$(1))\
 	)
 
 sp_cdb_split_arguments_cmd = \
-	"'$(call sp_cdb_which_cmd,$(1))'"\
+	"$(call sp_cdb_which_cmd,$(1))"\
 	$(foreach arg,$(2),,"$(foreach a,$(call sp_cdb_process_arg,$(arg)),$(a))")
+
+
+define BUILD_cdb_json_file
+
+endef
 
 # $(1) - source path
 # $(2) - target path
@@ -166,14 +170,12 @@ endef
 # $(4) - compilation flags
 define BUILD_c_rule
 $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
-	@$(GLOBAL_MKDIR) $$(dir $$@)
-	@echo "{" > $$@
-	@echo '"directory":"'$$(call sp_cdb_convert_cmd,$$(BUILD_WORKDIR))'",' >> $$@
-	@echo '"file":"'$$(call sp_cdb_convert_cmd,$(1))'",' >> $$@
-	@echo '"output":"'$$(call sp_cdb_convert_cmd,$(2))'",' >> $$@
-	@echo '"arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CC),$$(call sp_compile_command,,$$(OSTYPE_C_FILE),$(4),$(1),$(2)))]' >> $$@
-	@echo "}," >> $$@
-	@echo [Compilation database entry]: $(notdir $(1))
+	@$(call rule_mkdir,$$(dir $$@))
+	@echo '{"directory":"$$(strip $$(call sp_cdb_convert_cmd,$$(BUILD_WORKDIR)))",\
+"file":"$$(strip $$(call sp_cdb_convert_cmd,$(1)))",\
+"output":"$$(strip $$(call sp_cdb_convert_cmd,$(2)))",\
+"arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CC),$$(call sp_compile_command,,$$(OSTYPE_C_FILE),$(4),$(1),$(2)))]},' > $$@
+	@echo '[Compilation database entry]: $(notdir $(1))'
 
 $(2): \
 		$(1) $(3) $$(LOCAL_MAKEFILE) | $(2).json $$(BUILD_COMPILATION_DATABASE)
@@ -196,14 +198,12 @@ endef
 # $(4) - compilation flags
 define BUILD_cpp_rule
 $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
-	@$(GLOBAL_MKDIR) $$(dir $$@)
-	@echo "{" > $$@
-	@echo '"directory":"'$$(call sp_cdb_convert_cmd,$$(BUILD_WORKDIR))'",' >> $$@
-	@echo '"file":"'$$(call sp_cdb_convert_cmd,$(1))'",' >> $$@
-	@echo '"output":"'$$(call sp_cdb_convert_cmd,$(2))'",' >> $$@
-	@echo '"arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CXX),$$(call sp_compile_command,,$$(OSTYPE_CPP_FILE),$(4),$(1),$(2)))]' >> $$@
-	@echo "}," >> $$@
-	@echo [Compilation database entry]: $(notdir $(1))
+	@$(call rule_mkdir,$$(dir $$@))
+	@echo '{"directory":"$$(strip $$(call sp_cdb_convert_cmd,$$(BUILD_WORKDIR)))",\
+"file":"$$(strip $$(call sp_cdb_convert_cmd,$(1)))",\
+"output":"$$(strip $$(call sp_cdb_convert_cmd,$(2)))",\
+"arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CXX),$$(call sp_compile_command,,$$(OSTYPE_CPP_FILE),$(4),$(1),$(2)))]},' > $$@
+	@echo '[Compilation database entry]: $(notdir $(1))'
 
 $(2): \
 		$(1) $(3) $$(LOCAL_MAKEFILE) | $(2).json $$(BUILD_COMPILATION_DATABASE)
@@ -216,14 +216,12 @@ endef
 # $(4) - compilation flags
 define BUILD_mm_rule
 $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
-	@$(GLOBAL_MKDIR) $$(dir $$@)
-	@echo "{" > $$@
-	@echo '"directory":"'$$(call sp_cdb_convert_cmd,$$(BUILD_WORKDIR))'",' >> $$@
-	@echo '"file":"'$$(call sp_cdb_convert_cmd,$(1))'",' >> $$@
-	@echo '"output":"'$$(call sp_cdb_convert_cmd,$(2))'",' >> $$@
-	@echo '"arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CXX),$$(call sp_compile_command,,$$(OSTYPE_MM_FILE),$(4),$(1),$(2)))]' >> $$@
-	@echo "}," >> $$@
-	@echo [Compilation database entry]: $(notdir $(1))
+	@$(call rule_mkdir,$$(dir $$@))
+	@echo '{"directory":"$$(strip $$(call sp_cdb_convert_cmd,$$(BUILD_WORKDIR)))",\
+"file":"$$(strip $$(call sp_cdb_convert_cmd,$(1)))",\
+"output":"$$(strip $$(call sp_cdb_convert_cmd,$(2)))",\
+"arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CXX),$$(call sp_compile_command,,$$(OSTYPE_MM_FILE),$(4),$(1),$(2)))]},' > $$@
+	@echo '[Compilation database entry]: $(notdir $(1))'
 
 $(2): \
 		$(1) $(3) $$(LOCAL_MAKEFILE) | $(2).json $$(BUILD_COMPILATION_DATABASE)
@@ -257,7 +255,7 @@ endef
 # $(5) - config strings
 define BUILD_config_header
 $(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
-	@$(GLOBAL_MKDIR) $(dir $(1))
+	@$(call rule_mkdir,$$(dir $$@))
 	@echo "// Autogenerated config" > $(1)
 	@echo "" >> $(1)
 	@echo "#ifndef STAPPLER_CONFIG_$(2)_H_" >> $(1)
@@ -281,10 +279,23 @@ endef
 
 # $(1) - target path
 # $(2) - json files
+# $(3) - build dir
+
+ifeq ($(POWERSHELL),1)
+define BUILD_cdb
+$(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) $(2)
+	@powershell \
+		Set-Content  -Encoding utf8 $(1) "[";\
+		Get-Content $(addsuffix *.json,$(sort $(dir $(2)))) | Add-Content  -Encoding utf8 $(1); \
+		Add-Content  -Encoding utf8 $(1) "]";
+	@echo "[Compilation database] $(1)"
+endef
+else
 define BUILD_cdb
 $(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) $(2)
 	@echo "[" > $(1)
 	$(foreach file,$(2),$(call BUILD_write_cdb_entry,$(1),$(file)))
 	@echo "]" >> $(1)
-	@echo [Compilation database] $(1)
+	@echo "[Compilation database] $(1)"
 endef
+endif

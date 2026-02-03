@@ -21,6 +21,9 @@
 # Рекурсивный поиск директорий и файлов без использования shell
 # Требует GNU Make
 
+sp_list_abspaths = $(foreach dir,$(1),$(filter $(abspath $(dir)),$(dir)))
+sp_list_relpaths = $(foreach dir,$(1),$(filter-out $(abspath $(dir)),$(dir)))
+
 sp_add_root = $(addprefix $(addsuffix /,$(patsubst %/,%,$(1))),$(2))
 
 ### sp_find_files : Находит все файлы в директориях по шаблону
@@ -72,11 +75,12 @@ sp_find_recursive = $(foreach dir,$(1),$(call sp_find_files,$(call sp_find_dirs_
 sp_make_general_source_list = \
 	$(realpath \
 		$(call sp_find_recursive,\
-			$(filter /%,$(1)) $(call sp_add_root,$(3),$(filter-out /%,$(1))),\
+			$(call sp_list_abspaths,$(1)) \
+			$(call sp_add_root,$(3),$(call sp_list_relpaths,$(1))),\
 			$(4)) \
-		$(filter /%,\
+		$(call sp_list_abspaths,\
 			$(if $(5),$(filter-out $(5),$(2)),$(2)))\
-		$(call sp_add_root,$(3),$(filter-out /%,\
+		$(call sp_add_root,$(3),$(call sp_list_relpaths,\
 			$(if $(5),$(filter-out $(5),$(2)),$(2))))\
 	)
 
@@ -90,11 +94,11 @@ sp_make_general_source_list = \
 sp_make_general_include_list = \
 	$(realpath \
 		$(foreach dir,$(1),\
-			$(if $(filter /%,$(dir)),\
+			$(if $(call sp_list_abspaths,$(dir)),\
 				$(call sp_find_dirs_recursive,$(dir)),\
 				$(call sp_find_dirs_recursive,$(call sp_add_root,$(3),$(dir)))\
 			)\
 		)\
-		$(call sp_add_root,$(3),$(filter-out /%,$(2))) \
+		$(call sp_add_root,$(3),$(call sp_list_relpaths,$(2))) \
 	) \
-	$(filter /%,$(2))
+	$(call sp_list_abspaths,$(2))
