@@ -157,6 +157,8 @@ using BOOL = int;
 
 #include <sprt/c/cross/__sprt_fstypes.h>
 #include <sprt/runtime/callback.h>
+#include <sprt/runtime/math.h>
+#include <sprt/runtime/stringview.h>
 
 namespace sprt::platform {
 
@@ -164,6 +166,79 @@ int lastErrorToErrno(unsigned long winerr);
 
 // should construct path, that can be open for specific FdHandleType
 bool openAtPath(int fd, const char *path, const callback<void(const char *, size_t)> &);
+
+uint32_t getRid(void *sid);
+
+struct __wstring {
+	static wchar_t *toWStringBuf(wchar_t *buf, const char *source) {
+		size_t len = 0;
+		unicode::toUtf16((char16_t *)buf, Max<size_t>, StringView(source), &len);
+		buf[len] = 0;
+		return buf;
+	};
+
+	static wchar_t *toWStringBuf(wchar_t *buf, const char *source, size_t sourceLen) {
+		size_t len = 0;
+		unicode::toUtf16((char16_t *)buf, Max<size_t>, StringView(source, sourceLen), &len);
+		buf[len] = 0;
+		return buf;
+	};
+
+	static char *toStringBuf(char *buf, const wchar_t *source) {
+		size_t len = 0;
+		unicode::toUtf8(buf, Max<size_t>, WideStringView((char16_t *)source), &len);
+		buf[len] = 0;
+		return buf;
+	};
+
+	static char *toStringBuf(char *buf, const wchar_t *source, size_t sourceLen) {
+		size_t len = 0;
+		unicode::toUtf8(buf, Max<size_t>, WideStringView((char16_t *)source, sourceLen), &len);
+		buf[len] = 0;
+		return buf;
+	};
+
+	~__wstring() {
+		if (data) {
+			__sprt_free(data);
+			data = nullptr;
+		}
+	}
+
+	__wstring(StringView str) {
+		auto wlen = unicode::getUtf16Length(str);
+		data = (wchar_t *)__sprt_malloc((wlen + 1) * sizeof(wchar_t));
+
+		auto len = wlen;
+		auto buf = (char16_t *)data;
+
+		unicode::toUtf16(buf, len + 1, str, &len);
+		buf[len] = 0;
+		size = len;
+	}
+	__wstring(const char *str, size_t len) : __wstring(StringView(str, len)) { }
+
+	__wstring(const char *str) : __wstring(str, __constexpr_strlen(str)) { }
+
+	operator wchar_t *() const { return data; }
+
+	size_t size = 0;
+	wchar_t *data = nullptr;
+};
+
+#define __MALLOCA_WSTRING(Str) ::sprt::platform::__wstring::toWStringBuf(\
+	__sprt_typed_malloca(wchar_t, ::sprt::unicode::getUtf16Length(StringView(Str)) + 1), Str)
+
+#define __MALLOCA_WSTRINGS(Str, Size) ::sprt::platform::__wstring::toWStringBuf(\
+	__sprt_typed_malloca(wchar_t, ::sprt::unicode::getUtf16Length(StringView(Str, Size)) + 1), Str, Size)
+
+
+#define __MALLOCA_STRING(Str) ::sprt::platform::__wstring::toStringBuf(\
+	__sprt_typed_malloca(char, ::sprt::unicode::getUtf8Length(WideStringView((char16_t *)Str)) + 1), Str)
+
+#define __MALLOCA_STRINGS(Str, Size) ::sprt::platform::__wstring::toStringBuf(\
+	__sprt_typed_malloca(char, ::sprt::unicode::getUtf8Length(WideStringView((char16_t *)Str, Size)) + 1), Str, Size)
+
 
 } // namespace sprt::platform
 

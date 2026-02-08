@@ -37,16 +37,6 @@ THE SOFTWARE.
 
 namespace sprt {
 
-struct TimeInfo {
-	LARGE_INTEGER qpc_freq;
-
-	TimeInfo() {
-		QueryPerformanceFrequency(&qpc_freq); //
-	}
-};
-
-static TimeInfo s_timeInfo;
-
 static int clock_getres(int clk_id, struct __SPRT_TIMESPEC_NAME *tp) {
 	if (!tp) {
 		__sprt_errno = EFAULT;
@@ -67,12 +57,14 @@ static int clock_getres(int clk_id, struct __SPRT_TIMESPEC_NAME *tp) {
 	}
 
 	case __SPRT_CLOCK_MONOTONIC: {
+		LARGE_INTEGER qpc_freq;
+		QueryPerformanceFrequency(&qpc_freq);
 		tp->tv_sec = 0;
 		// if more then nanosec resolution
-		if (s_timeInfo.qpc_freq.QuadPart > 1'000'000'000ULL) {
+		if (qpc_freq.QuadPart > 1'000'000'000ULL) {
 			tp->tv_nsec = 1;
 		} else {
-			tp->tv_nsec = 1'000'000'000 / s_timeInfo.qpc_freq.QuadPart;
+			tp->tv_nsec = 1'000'000'000 / qpc_freq.QuadPart;
 		}
 		return 0;
 	}
@@ -107,6 +99,12 @@ static int clock_gettime(int clk_id, struct __SPRT_TIMESPEC_NAME *tp) {
 	if (!tp) {
 		__sprt_errno = EFAULT;
 		return -1;
+	}
+
+	static LARGE_INTEGER qpc_freq = {{0, 0}};
+
+	if (qpc_freq.QuadPart == 0) {
+		QueryPerformanceFrequency(&qpc_freq); //
 	}
 
 	switch (clk_id) {
@@ -145,7 +143,7 @@ static int clock_gettime(int clk_id, struct __SPRT_TIMESPEC_NAME *tp) {
 		QueryPerformanceCounter(&pc);
 
 		// Nanoseconds since some monotonic epoch
-		auto ns = pc.QuadPart * 1'000'000'000ULL / s_timeInfo.qpc_freq.QuadPart;
+		auto ns = pc.QuadPart * 1'000'000'000ULL / qpc_freq.QuadPart;
 		tp->tv_sec = ns / 1'000'000'000ULL;
 		tp->tv_nsec = ns % 1'000'000'000ULL;
 		return 0;
@@ -211,17 +209,29 @@ static int __getLocalGmtOff(bool isDst) {
 }
 
 static ULONGLONG __nano_now() {
+	static LARGE_INTEGER qpc_freq = {{0, 0}};
+
+	if (qpc_freq.QuadPart == 0) {
+		QueryPerformanceFrequency(&qpc_freq); //
+	}
+
 	LARGE_INTEGER pc;
 	QueryPerformanceCounter(&pc);
 
 	// Nanoseconds since some monotonic epoch
-	return pc.QuadPart * 1'000'000'000ULL / s_timeInfo.qpc_freq.QuadPart;
+	return pc.QuadPart * 1'000'000'000ULL / qpc_freq.QuadPart;
 }
 
 static int nanosleep(const struct __SPRT_TIMESPEC_NAME *req, struct __SPRT_TIMESPEC_NAME *rem) {
+	static LARGE_INTEGER qpc_freq = {{0, 0}};
+
+	if (qpc_freq.QuadPart == 0) {
+		QueryPerformanceFrequency(&qpc_freq); //
+	}
+
 	constexpr const ULONGLONG SPIN_NS = 100'000ULL; // 100mks spin limit
 
-	if (!req || !rem) {
+	if (!req) {
 		errno = EFAULT;
 		return -1;
 	}
@@ -234,22 +244,10 @@ static int nanosleep(const struct __SPRT_TIMESPEC_NAME *req, struct __SPRT_TIMES
 	auto nanoStart = __nano_now();
 	auto nanoToSleep = req->tv_nsec + req->tv_sec * 1'000'000'000ULL;
 
-	if (nanoToSleep <= SPIN_NS) {
-		// Spin-wait
-		LARGE_INTEGER now;
-		ULONGLONG target_ticks =
-				nanoStart + (nanoToSleep * s_timeInfo.qpc_freq.QuadPart / 1'000'000'000LL);
-		while (1) {
-			YieldProcessor();
-			now.QuadPart = 0;
-			QueryPerformanceCounter(&now);
-			if (now.QuadPart >= target_ticks) {
-				break;
-			}
-			target_ticks -= now.QuadPart;
-		}
-	} else {
-		HANDLE timer = CreateWaitableTimerA(NULL, TRUE, NULL);
+	ULONGLONG nanoStop, elapsed;
+
+	if (nanoToSleep > SPIN_NS) {
+		HANDLE timer = CreateWaitableTimerW(NULL, TRUE, NULL);
 		if (!timer || timer == INVALID_HANDLE_VALUE) {
 			errno = ENOSYS;
 			return -1;
@@ -270,9 +268,44 @@ static int nanosleep(const struct __SPRT_TIMESPEC_NAME *req, struct __SPRT_TIMES
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
 			return -1;
 		}
+
+		nanoStop = __nano_now();
+		elapsed = nanoStop - nanoStart;
+
+		if (nanoToSleep > elapsed && nanoToSleep - elapsed <= SPIN_NS) {
+			nanoToSleep -= elapsed;
+
+			// Spin-wait
+			LARGE_INTEGER now;
+			ULONGLONG target_ticks = nanoStop + (nanoToSleep * qpc_freq.QuadPart / 1'000'000'000LL);
+			while (1) {
+				YieldProcessor();
+				now.QuadPart = 0;
+				QueryPerformanceCounter(&now);
+				if (now.QuadPart >= target_ticks) {
+					break;
+				}
+				target_ticks -= now.QuadPart;
+			}
+		}
+	} else {
+		// Spin-wait
+		LARGE_INTEGER now;
+		ULONGLONG target_ticks = nanoStart + (nanoToSleep * qpc_freq.QuadPart / 1'000'000'000LL);
+		while (1) {
+			YieldProcessor();
+			now.QuadPart = 0;
+			QueryPerformanceCounter(&now);
+			if (now.QuadPart >= target_ticks) {
+				break;
+			}
+			target_ticks -= now.QuadPart;
+		}
 	}
 
-	auto elapsed = __nano_now() - nanoStart;
+	nanoStop = __nano_now();
+	elapsed = nanoStop - nanoStart;
+
 	if (rem) {
 		if (nanoToSleep > elapsed) {
 			auto remains = nanoToSleep - elapsed;
@@ -339,7 +372,7 @@ static int clock_nanosleep(__SPRT_ID(clockid_t) clock, int v, const __SPRT_TIMES
 			nanoToSleep -= v;
 		}
 	} else {
-		HANDLE timer = CreateWaitableTimerA(NULL, TRUE, NULL);
+		HANDLE timer = CreateWaitableTimerW(NULL, TRUE, NULL);
 		if (!timer || timer == INVALID_HANDLE_VALUE) {
 			errno = ENOSYS;
 			return -1;

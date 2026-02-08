@@ -49,7 +49,7 @@ __SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(stderr_impl)() {
 	return stderr; //
 }
 
-__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_posix)(const char *__SPRT_RESTRICT path,
+__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_posix)(const char *path,
 		__SPRT_ID(size_t) pathSize, char *buf, __SPRT_ID(size_t) bufSize) {
 	if (bufSize < pathSize) {
 		return 0;
@@ -66,7 +66,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_posix)(const char *__SPRT_RES
 #endif
 }
 
-__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_native)(const char *__SPRT_RESTRICT path,
+__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_native)(const char *path,
 		__SPRT_ID(size_t) pathSize, char *buf, __SPRT_ID(size_t) bufSize) {
 	if (bufSize < pathSize) {
 		return 0;
@@ -75,7 +75,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_native)(const char *__SPRT_RE
 #if SPRT_WINDOWS
 	return __fpath_to_native(path, pathSize, buf, bufSize);
 #else
-	__sprt_memcpy(buf, path, pathSize);
+	__sprt_memmove(buf, path, pathSize);
 	if (bufSize > pathSize) {
 		buf[pathSize] = 0; // optional nullterm
 	}
@@ -121,9 +121,29 @@ __SPRT_C_FUNC int __SPRT_ID(fclose_impl)(__SPRT_ID(FILE) * file) { return ::fclo
 
 __SPRT_C_FUNC int __SPRT_ID(remove_impl)(const char *path) {
 #if SPRT_WINDOWS
-	return internal::performWithNativePath(path, [&](const char *nativePath) SPRT_LAMBDAINLINE {
+	return internal::performWithNativePath(path, [&](const char *nativePath) {
 		// call with native path
-		return ::remove(nativePath);
+		auto wNativePath = __MALLOCA_WSTRING(nativePath);
+		DWORD attributes = GetFileAttributesW(wNativePath);
+		if (attributes == INVALID_FILE_ATTRIBUTES) {
+			__sprt_freea(wNativePath);
+			__sprt_errno = ENOENT;
+			return -1;
+		}
+		if ((attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+			if (RemoveDirectoryW(wNativePath)) {
+				__sprt_freea(wNativePath);
+				return 0;
+			}
+		} else {
+			if (DeleteFileW(wNativePath)) {
+				__sprt_freea(wNativePath);
+				return 0;
+			}
+		}
+		__sprt_freea(wNativePath);
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
 	}, -1);
 #else
 	return ::remove(path);

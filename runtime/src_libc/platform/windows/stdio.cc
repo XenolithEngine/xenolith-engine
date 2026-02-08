@@ -89,8 +89,8 @@ __SPRT_C_FUNC int __SPRT_ID(fpath_is_posix)(const char *path, __SPRT_ID(size_t) 
 	return 1;
 }
 
-static __SPRT_ID(size_t) __fpath_to_posix(const char *__SPRT_RESTRICT path,
-		__SPRT_ID(size_t) pathSize, char *buf, __SPRT_ID(size_t) bufSize) {
+static __SPRT_ID(size_t) __fpath_to_posix(const char *path, __SPRT_ID(size_t) pathSize, char *buf,
+		__SPRT_ID(size_t) bufSize) {
 	auto target = buf;
 	StringView source(path, pathSize);
 	if (source.starts_with("\\\\?\\")) {
@@ -98,60 +98,74 @@ static __SPRT_ID(size_t) __fpath_to_posix(const char *__SPRT_RESTRICT path,
 		// DOS device prefix, just skip it
 		source += __constexpr_strlen("\\\\?\\");
 	}
-	if (source.size() > 2 && source.is<StringView::LatinUppercase>() && source.at(1) == ':'
+	if (source.size() > 2 && source.is<StringView::Latin>() && source.at(1) == ':'
 			&& source.at(2) == '\\') {
 		auto driveLetter = tolower_c(source.at(0));
-		target = strappend(target, &bufSize, "/", 1);
-		target = strappend(target, &bufSize, &driveLetter, 1);
-		target = strappend(target, &bufSize, "/", 1);
-		source += 3;
-	} else if (source.size() > 1 && source.is<StringView::LatinUppercase>()
-			&& source.at(1) == ':') {
-		auto driveLetter = tolower_c(source.at(0));
-		target = strappend(target, &bufSize, "/", 1);
-		target = strappend(target, &bufSize, &driveLetter, 1);
 		source += 2;
+		target = strappend<char, false>(target, &bufSize, "/", 1);
+		target = strappend<char, false>(target, &bufSize, &driveLetter, 1);
+	} else if (source.size() > 1 && source.is<StringView::Latin>() && source.at(1) == ':') {
+		auto driveLetter = tolower_c(source.at(0));
+		source += 2;
+		target = strappend<char, false>(target, &bufSize, "/", 1);
+		target = strappend<char, false>(target, &bufSize, &driveLetter, 1);
 	}
 
 	while (!source.empty()) {
 		if (source.is('\\')) {
-			target = strappend(target, &bufSize, "/", 1);
 			source.skipChars<StringView::Chars<'\\'>>();
+			target = strappend<char, false>(target, &bufSize, "/", 1);
 		}
 		auto component = source.readUntil<StringView::Chars<'\\'>>();
 		if (!component.empty()) {
-			target = strappend(target, &bufSize, component.data(), component.size());
+			target = strappend<char, false>(target, &bufSize, component.data(), component.size());
 		}
+	}
+	if (bufSize > 0) {
+		target[0] = 0;
 	}
 	return target - buf;
 }
 
-static __SPRT_ID(size_t) __fpath_to_native(const char *__SPRT_RESTRICT path,
-		__SPRT_ID(size_t) pathSize, char *buf, __SPRT_ID(size_t) bufSize) {
+static __SPRT_ID(size_t) __fpath_to_native(const char *path, __SPRT_ID(size_t) pathSize, char *buf,
+		__SPRT_ID(size_t) bufSize) {
 	auto target = buf;
 	StringView source(path, pathSize);
+	if (source == "/") {
+		target = strappend<char>(target, &bufSize, "C:", 2);
+		return target - buf;
+	}
+
 	if (source.starts_with('/')) {
 		++source;
 		auto sub = source.readUntil<StringView::Chars<'/'>>();
 		if (sub.size() == 1 && sub.is<StringView::Latin>()) {
 			auto driveLetter = toupper_c(sub.at(0));
-			target = strappend(target, &bufSize, &driveLetter, 1);
-			target = strappend(target, &bufSize, ":", 1);
+			target = strappend<char, false>(target, &bufSize, &driveLetter, 1);
+			target = strappend<char, false>(target, &bufSize, ":", 1);
+			// C: - path to current dir on drive C,
+			// but C:\ - path to the drive's root, so, add \ to the end of string
+			if (source.empty()) {
+				target = strappend<char, false>(target, &bufSize, "\\", 1);
+			}
 		} else {
-			target = strappend(target, &bufSize, "\\", 1);
-			target = strappend(target, &bufSize, sub.data(), sub.size());
+			target = strappend<char, false>(target, &bufSize, "\\", 1);
+			target = strappend<char, false>(target, &bufSize, sub.data(), sub.size());
 		}
 	}
 
 	while (!source.empty()) {
 		if (source.is('/')) {
-			target = strappend(target, &bufSize, "\\", 1);
+			target = strappend<char, false>(target, &bufSize, "\\", 1);
 			source.skipChars<StringView::Chars<'/'>>();
 		}
 		auto component = source.readUntil<StringView::Chars<'/'>>();
 		if (!component.empty()) {
-			target = strappend(target, &bufSize, component.data(), component.size());
+			target = strappend<char, false>(target, &bufSize, component.data(), component.size());
 		}
+	}
+	if (bufSize > 0) {
+		target[0] = 0;
 	}
 	return target - buf;
 }
@@ -162,33 +176,27 @@ static __SPRT_ID(FILE)
 	static constexpr size_t PathBufferLen = MAX_PATH + 2;
 	static constexpr size_t PrefixBufferLen = 24;
 
-	char tmpDirPath[PathBufferLen] = {0};
-	char tmpFilePath[PathBufferLen] = {0};
-	char tmpPrefixPath[PrefixBufferLen] = {0};
+	wchar_t tmpDirPath[PathBufferLen] = {0};
+	wchar_t tmpFilePath[PathBufferLen] = {0};
+	wchar_t tmpPrefixPath[PrefixBufferLen] = {0};
 
-	auto dirLength = GetTempPathA(PathBufferLen, tmpDirPath);
+	auto dirLength = GetTempPathW(PathBufferLen, tmpDirPath);
 	if (dirLength < 0) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return nullptr;
 	}
 
 	size_t tmpPrefixPathBufLen = PrefixBufferLen;
-	auto target = strappend(tmpPrefixPath, &tmpPrefixPathBufLen, "sfmop", 5);
+	auto target = strappend(tmpPrefixPath, &tmpPrefixPathBufLen, L"sfmop", 5);
 	target = strappend(target, &tmpPrefixPathBufLen, GetCurrentProcessId());
 
-	if (GetTempFileNameA(tmpDirPath, tmpPrefixPath, 0, tmpFilePath) == 0) {
+	if (GetTempFileNameW(tmpDirPath, tmpPrefixPath, 0, tmpFilePath) == 0) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return nullptr;
 	}
 
-	/*HANDLE hFile = CreateFileA(tmpFilePath, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
-			FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, NULL);
-	if (hFile == INVALID_HANDLE_VALUE) {
-		DeleteFileA(tmpFilePath); // Cleanup if failed
-	}*/
-
 	int fd = -1;
-	if (_sopen_s(&fd, tmpFilePath,
+	if (_wsopen_s(&fd, tmpFilePath,
 				_O_CREAT | _O_SHORT_LIVED | _O_TEMPORARY | _O_RDWR | _O_BINARY | _O_NOINHERIT,
 				_SH_DENYRW, _S_IREAD | _S_IWRITE)
 			!= 0) {

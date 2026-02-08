@@ -47,17 +47,16 @@ namespace sprt {
 
 const nothrow_t nothrow;
 
-bool initialize(AppConfig &&cfg, int &resultCode) {
-#if SPRT_WINDOWS
-	// force Windows to use UTF-8
-	// Windows 10 version 1803 required
-	::setlocale(LC_ALL, "*.UTF8");
-#endif
+static int s_isInitialized = 0;
 
+bool isInitialized() { return s_isInitialized == 1; }
+
+bool initialize(AppConfig &&cfg, int &resultCode) {
 	memory::pool::initialize();
 	if (platform::initialize(sprt::move(cfg), resultCode)) {
 		backtrace::initialize();
 		filesystem::initialize();
+		s_isInitialized = 1;
 		return true;
 	}
 	memory::pool::terminate();
@@ -65,6 +64,7 @@ bool initialize(AppConfig &&cfg, int &resultCode) {
 }
 
 void terminate() {
+	s_isInitialized = 0;
 	filesystem::terminate();
 	backtrace::terminate();
 	memory::pool::terminate();

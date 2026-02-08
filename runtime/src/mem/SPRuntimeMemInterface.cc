@@ -847,7 +847,7 @@ Status userdata_get(void **data, const char *key, size_t klen, pool_t *pool) {
 			if (key[klen]) {
 				return Status(apr::pool::userdata_get(data, key, (apr_pool_t *)pool));
 			} else {
-				auto buf = (char *)__sprt_malloca(klen + 1);
+				auto buf = __sprt_typed_malloca(char, klen + 1);
 				__builtin_memcpy(buf, key, klen);
 				buf[klen] = 0;
 				auto ret = Status(apr::pool::userdata_get(data, key, (apr_pool_t *)pool));

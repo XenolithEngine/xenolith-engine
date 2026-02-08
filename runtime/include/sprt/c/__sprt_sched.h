@@ -43,6 +43,9 @@ SPRT_API int __SPRT_ID(
 		sched_setscheduler)(__SPRT_ID(pid_t), int, const struct __SPRT_ID(sched_param) *);
 SPRT_API int __SPRT_ID(sched_yield)(void);
 
+SPRT_API int __SPRT_ID(
+		__sched_cpucount)(__SPRT_ID(size_t) nbytes, const __SPRT_ID(cpu_set_t) * set);
+
 #define __SPRT_SCHED_OTHER 0
 #define __SPRT_SCHED_FIFO 1
 #define __SPRT_SCHED_RR 2

@@ -70,6 +70,9 @@ int pthread_rwlock_t::rdlock(DWORD dtimeout) {
 	// We want to set value from 0 to WriteLock
 	if (!_atomic::compareSwap(&value, &expected, desired)) [[unlikely]] {
 		// failed - should lock
+
+		// Assume that there are other waiters
+		desired |= Waiters;
 		do {
 			// check if read lock already set
 			if ((expected & desired) == desired) {
@@ -179,6 +182,9 @@ int pthread_rwlock_t::wrlock(DWORD dtimeout) {
 	// We want to set value from 0 to WriteLock
 	if (!_atomic::compareSwap(&value, &expected, desired)) [[unlikely]] {
 		// failed - should lock
+
+		// Assume that there are other waiters
+		desired |= Waiters;
 		do {
 			if (itimeout == 0) {
 				qmutex_base::_unlock<_rwMutexWakeAll>(&mutex);
@@ -252,7 +258,7 @@ int pthread_rwlock_t::unlock() {
 	auto has_rd = rd_it != self->threadRdLocks->end();
 	auto has_wr = wr_it != self->threadWrLocks->end();
 
-	if (!has_rd || !has_wr) {
+	if (!has_rd && !has_wr) {
 		return EPERM;
 	}
 
@@ -339,7 +345,7 @@ static int pthread_rwlockattr_getpshared(const pthread_rwlockattr_t *__SPRT_REST
 
 static int pthread_rwlock_init(pthread_rwlock_t *__SPRT_RESTRICT lock,
 		const pthread_rwlockattr_t *__SPRT_RESTRICT attr) {
-	if (!attr) {
+	if (!lock) {
 		return EINVAL;
 	}
 

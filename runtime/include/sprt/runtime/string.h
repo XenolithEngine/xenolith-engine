@@ -146,7 +146,7 @@ SPRT_API void nullify(const char16_t *, size_t);
 
 		__sprt_freea(buf);
 */
-template <typename CharType>
+template <typename CharType, bool InsertNullterm = true>
 [[nodiscard("Use result as next buffer pointer")]]
 constexpr inline auto strappend(CharType SPRT_NONNULL *buf, size_t *bufSize,
 		const CharType SPRT_NONNULL *str, size_t strSize) -> CharType * {
@@ -158,13 +158,17 @@ constexpr inline auto strappend(CharType SPRT_NONNULL *buf, size_t *bufSize,
 		__constexpr_memcpy(buf, str, strSize);
 		buf += strSize;
 		*bufSize -= strSize;
-		*buf = 0;
+		if constexpr (InsertNullterm) {
+			*buf = 0;
+		}
 		return buf;
 	} else if (*bufSize > 1) {
 		__constexpr_memcpy(buf, str, *bufSize - 1);
 		buf += (*bufSize - 1);
 		*bufSize = 1;
-		*buf = 0;
+		if constexpr (InsertNullterm) {
+			*buf = 0;
+		}
 		return buf;
 	} else {
 		return buf;
@@ -174,36 +178,36 @@ constexpr inline auto strappend(CharType SPRT_NONNULL *buf, size_t *bufSize,
 /*
 	strappend overload to write integer decimial value into string
 */
-template <typename CharType>
+template <typename CharType, bool InsertNullterm = true>
 [[nodiscard("Use result as next buffer pointer")]]
 constexpr inline auto strappend(CharType SPRT_NONNULL *buf, size_t *bufSize, int64_t val)
 		-> CharType * {
 	CharType tmp[INT_MAX_DIGITS];
 	auto ret = sprt::itoa(val, tmp, INT_MAX_DIGITS);
-	return strappend(buf, bufSize, tmp + INT_MAX_DIGITS - ret, ret);
+	return strappend<CharType, InsertNullterm>(buf, bufSize, tmp + INT_MAX_DIGITS - ret, ret);
 }
 
 /*
 	strappend overload to write integer decimial value into string
 */
-template <typename CharType>
+template <typename CharType, bool InsertNullterm = true>
 [[nodiscard("Use result as next buffer pointer")]]
 constexpr inline auto strappend(char SPRT_NONNULL *buf, size_t *bufSize, uint64_t val)
 		-> CharType * {
 	CharType tmp[INT_MAX_DIGITS];
 	auto ret = sprt::itoa(val, tmp, INT_MAX_DIGITS);
-	return strappend(buf, bufSize, tmp + INT_MAX_DIGITS - ret, ret);
+	return strappend<CharType, InsertNullterm>(buf, bufSize, tmp + INT_MAX_DIGITS - ret, ret);
 }
 
 /*
 	strappend overload to write float value into string
 */
-template <typename CharType>
+template <typename CharType, bool InsertNullterm = true>
 [[nodiscard("Use result as next buffer pointer")]]
 constexpr inline auto strappend(char SPRT_NONNULL *buf, size_t *bufSize, double val) -> CharType * {
 	CharType tmp[DOUBLE_MAX_DIGITS];
 	auto ret = sprt::dtoa(val, tmp, DOUBLE_MAX_DIGITS);
-	return strappend(buf, bufSize, tmp, ret);
+	return strappend<CharType, InsertNullterm>(buf, bufSize, tmp, ret);
 }
 
 } // namespace sprt

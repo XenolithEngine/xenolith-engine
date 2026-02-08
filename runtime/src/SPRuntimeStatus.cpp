@@ -28,6 +28,7 @@
 #if SPRT_WINDOWS
 #include "private/SPRTSpecific.h"
 
+#define FORMAT_MESSAGE_ALLOCATE_BUFFER 0x0000'0100
 #define FORMAT_MESSAGE_IGNORE_INSERTS  0x0000'0200
 #define FORMAT_MESSAGE_FROM_STRING     0x0000'0400
 #define FORMAT_MESSAGE_FROM_HMODULE    0x0000'0800
@@ -41,8 +42,8 @@
 
 #define MAKELANGID(p, s)       ((((WORD  )(s)) << 10) | (WORD  )(p))
 
-extern "C" DWORD FormatMessageA(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId,
-		DWORD dwLanguageId, LPSTR lpBuffer, DWORD nSize, __sprt_va_list *Arguments);
+extern "C" DWORD FormatMessageW(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId,
+		DWORD dwLanguageId, char16_t *lpBuffer, DWORD nSize, __sprt_va_list *Arguments);
 
 #endif
 
@@ -244,12 +245,13 @@ void getStatusDescription(Status st, const callback<void(StringView)> &cb) {
 
 		auto errorMessageID = status::toWinApi(st);
 
-		auto len = __sprt_strlen(strerrBuffer);
-		auto target = &strerrBuffer[len];
+		char16_t errorBuffer[1'024] = {0};
 
-		FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr,
-				errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), target,
-				STATUS_DESC_BUFFER_SIZE - len - 1, nullptr);
+		FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr,
+				errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), errorBuffer, 1'024,
+				nullptr);
+
+		unicode::toUtf8([&](StringView str) { outCb << str; }, WideStringView(errorBuffer));
 #endif
 	} else {
 		outCb << ": No description found";

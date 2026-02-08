@@ -121,7 +121,7 @@ bool toupper(const callback<void(WideStringView)> &cb, WideStringView data) {
 		return false;
 	}
 
-	auto buf = (char16_t *)__sprt_malloca(bufSize * sizeof(char16_t *) + 1);
+	auto buf = __sprt_typed_malloca(char16_t, bufSize + 1);
 	bufSize = mapBuffer(data, buf, bufSize + 1, LCMAP_UPPERCASE);
 	if (bufSize <= 0) {
 		__sprt_freea(buf);
@@ -140,7 +140,7 @@ bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
 		return false;
 	}
 
-	auto buf = (char16_t *)__sprt_malloca(bufSize * sizeof(char16_t *) + 1);
+	auto buf = __sprt_typed_malloca(char16_t, bufSize + 1);
 	bufSize = mapBuffer(data, buf, bufSize + 1, LCMAP_LOWERCASE);
 	if (bufSize <= 0) {
 		__sprt_freea(buf);
@@ -159,7 +159,7 @@ bool tolower(const callback<void(WideStringView)> &cb, WideStringView data) {
 		return false;
 	}
 
-	auto buf = (char16_t *)__sprt_malloca(bufSize * sizeof(char16_t *) + 1);
+	auto buf = __sprt_typed_malloca(char16_t, bufSize + 1);
 	bufSize = mapBuffer(data, buf, bufSize + 1, LCMAP_TITLECASE);
 	if (bufSize <= 0) {
 		__sprt_freea(buf);
@@ -217,7 +217,7 @@ bool idnToAscii(const callback<void(StringView)> &cb, StringView source) {
 			return;
 		}
 
-		auto buf = (char16_t *)__sprt_malloca((bufSize + 1) * sizeof(char16_t));
+		auto buf = __sprt_typed_malloca(char16_t, bufSize + 1);
 
 		bufSize = _IdnToAscii(0, usource.data(), usource.size(), buf, bufSize + 1);
 		if (bufSize == 0) {
@@ -242,7 +242,7 @@ bool idnToUnicode(const callback<void(StringView)> &cb, StringView source) {
 			return;
 		}
 
-		auto buf = (char16_t *)__sprt_malloca((bufSize + 1) * sizeof(char16_t));
+		auto buf = __sprt_typed_malloca(char16_t, bufSize + 1);
 
 		bufSize = _IdnToUnicode(0, usource.data(), usource.size(), buf, bufSize + 1);
 		if (bufSize == 0) {

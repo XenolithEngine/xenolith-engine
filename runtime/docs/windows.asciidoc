@@ -1,0 +1,16 @@
+
+== Установка кодировки по умолчанию для PoweShell
+
+Рантайм для Windows использует кодировку UTF-8 по умолчанию. Чтобы работать с рантаймомом в PowerShell (в том числе в Visual Studio Code) необходимо переключить кодировку PoserShell по умолчанию.
+
+Для замены кодировки используется скрипт:
+
+----
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+chcp 65001 > $null
+----
+
+Его можно запускать либо при инициализации терминала, либо добавить в файл, определяемый переменной окружения $PROFILE. Если файла не существует - его необходимо создать.
+

@@ -863,7 +863,7 @@ StringView getExecPath() {
 		// optimistic multithreaded lazy-init
 		// it can allocate more-then needed memory but protected from general lock
 
-		auto buf = (char *)__sprt_malloca(PATH_MAX);
+		auto buf = __sprt_typed_malloca(char, PATH_MAX);
 		auto v = ::readlink("/proc/self/exe", buf, PATH_MAX);
 		if (v > 0) {
 			unique_lock lock(s_globalConfig.s_infoMutex);

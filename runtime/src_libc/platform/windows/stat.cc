@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/c/sys/__sprt_stat.h>
 #include <sprt/c/__sprt_time.h>
 #include <sprt/runtime/stringview.h>
+#include <sprt/runtime/log.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -43,17 +44,6 @@ THE SOFTWARE.
 #endif
 
 namespace sprt {
-
-static DWORD __getRid(PSID sid) {
-	if (!GetSidSubAuthorityCount(sid)) {
-		errno = EINVAL;
-		return __SPRT_ID(uid_t)(-1);
-	}
-
-	DWORD sub_count = *GetSidSubAuthorityCount(sid);
-
-	return *GetSidSubAuthority(sid, sub_count - 1);
-}
 
 static struct __SPRT_TIMESPEC_NAME __toTimespec(const FILETIME &ft) {
 	constexpr unsigned __int64 TICKS_PER_SEC = 10'000'000ULL;
@@ -110,8 +100,8 @@ static int __hstat(HANDLE h, struct __SPRT_STAT_NAME *__stat) {
 	if (GetSecurityInfo(h, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION,
 				&owner_sid, &group_sid, NULL, NULL, NULL)
 			== ERROR_SUCCESS) {
-		__stat->st_uid = __getRid(owner_sid);
-		__stat->st_gid = __getRid(group_sid);
+		__stat->st_uid = platform::getRid(owner_sid);
+		__stat->st_gid = platform::getRid(group_sid);
 	} else {
 		__stat->st_uid = 0;
 		__stat->st_gid = 0;
@@ -147,9 +137,11 @@ static int __hstat(HANDLE h, struct __SPRT_STAT_NAME *__stat) {
 
 static int __wstat(const char *__SPRT_RESTRICT path,
 		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat, bool reparsePoint) {
-	HANDLE h = CreateFileA(path, GENERIC_READ,
+	auto wpath = __MALLOCA_WSTRING(path);
+	HANDLE h = CreateFileW(wpath, GENERIC_READ,
 			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
 			FILE_FLAG_BACKUP_SEMANTICS | (reparsePoint ? FILE_FLAG_OPEN_REPARSE_POINT : 0), NULL);
+	__sprt_freea(wpath);
 	if (h == INVALID_HANDLE_VALUE) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
@@ -174,6 +166,11 @@ static int lstat(const char *__SPRT_RESTRICT path,
 }
 
 static int fstat(int fd, struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) {
+	if (fd < 0) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
 	HANDLE h = (HANDLE)_get_osfhandle(fd);
 	if (h && h != INVALID_HANDLE_VALUE) {
 		return __hstat(h, __stat);
@@ -191,8 +188,9 @@ static int fstatat(int fd, const char *__path, struct __SPRT_STAT_NAME *__SPRT_R
 	return ret;
 }
 
-static int __wchmod(const char *__path, __SPRT_ID(mode_t) mode) {
-	auto attr = GetFileAttributesA(__path);
+static int __wchmod(const wchar_t *__path, __SPRT_ID(mode_t) mode) {
+	auto origAttr = GetFileAttributesW(__path);
+	auto attr = origAttr;
 	if (attr == INVALID_FILE_ATTRIBUTES) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
@@ -204,22 +202,30 @@ static int __wchmod(const char *__path, __SPRT_ID(mode_t) mode) {
 		// No write bit -> read-only
 		attr |= FILE_ATTRIBUTE_READONLY;
 	}
-
-	if (!SetFileAttributesA(__path, attr)) {
-		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		return -1;
+	if (attr != origAttr) {
+		if (!SetFileAttributesW(__path, attr)) {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return -1;
+		}
 	}
-
 	return 0;
 }
 
 static int chmod(const char *__path, __SPRT_ID(mode_t) mode) {
 	return internal::performWithNativePath(__path, [&](const char *target) {
-		return __wchmod(target, mode); //
+		auto wpath = __MALLOCA_WSTRING(target);
+		auto ret = __wchmod(wpath, mode); //
+		__sprt_freea(wpath);
+		return ret;
 	}, -1);
 }
 
 static int fchmod(int __fd, __SPRT_ID(mode_t) mode) {
+	if (__fd < 0) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
 	HANDLE hFile = (HANDLE)_get_osfhandle(__fd);
 	if (!hFile || hFile == INVALID_HANDLE_VALUE) {
 		__sprt_errno = EBADF;
@@ -247,7 +253,9 @@ static int fchmod(int __fd, __SPRT_ID(mode_t) mode) {
 static int fchmodat(int __fd, const char *__path, __SPRT_ID(mode_t) mode, int flags) {
 	int ret = -1;
 	platform::openAtPath(__fd, __path, [&](const char *path, size_t) {
-		ret = __wchmod(path, mode); //
+		auto wpath = __MALLOCA_WSTRING(path);
+		ret = __wchmod(wpath, mode); //
+		__sprt_freea(wpath);
 	});
 	return ret;
 }
@@ -277,11 +285,14 @@ static __SPRT_ID(mode_t) umask(__SPRT_ID(mode_t) mode) {
 }
 
 static int __wmkdir(const char *__path, __SPRT_ID(mode_t) mode) {
-	if (!CreateDirectoryExA(nullptr, __path, nullptr)) {
+	auto wpath = __MALLOCA_WSTRING(__path);
+	if (!CreateDirectoryW(wpath, nullptr)) {
+		__sprt_freea(wpath);
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
-	__wchmod(__path, mode);
+	__wchmod(wpath, mode);
+	__sprt_freea(wpath);
 	return 0;
 }
 
@@ -334,6 +345,11 @@ static int __wfutimens(HANDLE hFile, const struct __SPRT_TIMESPEC_NAME *times) {
 }
 
 static int futimens(int __fd, const struct __SPRT_TIMESPEC_NAME *times) {
+	if (__fd < 0) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
 	HANDLE hFile = (HANDLE)_get_osfhandle(__fd);
 	if (!hFile || hFile == INVALID_HANDLE_VALUE) {
 		__sprt_errno = EBADF;
@@ -346,11 +362,13 @@ static int futimens(int __fd, const struct __SPRT_TIMESPEC_NAME *times) {
 static int utimensat(int __fd, const char *__path, const __SPRT_TIMESPEC_NAME *times, int flags) {
 	int ret = -1;
 	platform::openAtPath(__fd, __path, [&](const char *path, size_t) {
-		HANDLE hFile = CreateFileA(path, FILE_WRITE_ATTRIBUTES,
+		auto wpath = __MALLOCA_WSTRING(path);
+		HANDLE hFile = CreateFileW(wpath, FILE_WRITE_ATTRIBUTES,
 				FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
 				FILE_FLAG_BACKUP_SEMANTICS
 						| ((flags & __SPRT_AT_SYMLINK_NOFOLLOW) ? FILE_FLAG_OPEN_REPARSE_POINT : 0),
 				NULL);
+		__sprt_freea(wpath);
 		if (!hFile || hFile == INVALID_HANDLE_VALUE) {
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
 			ret = -1;

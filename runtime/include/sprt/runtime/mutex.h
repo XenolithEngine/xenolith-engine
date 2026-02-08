@@ -155,6 +155,16 @@ public:
 	static constexpr value_type OWNER_DIED = __rmutex_data::OWNER_DIED;
 	static constexpr value_type WAITERS_BIT = __rmutex_data::WAITERS_BIT;
 
+	static Status _lock2(Status (*waitFn)(volatile value_type *, value_type *, timeout_type),
+			timeout_type (*clockFn)(), bool syscallLock, __rmutex_data &data, value_type threadId,
+			timeout_type *timeout);
+
+	static Status _try_lock2(bool (*rryLockFn)(volatile value_type *), __rmutex_data &data,
+			value_type threadId);
+
+	static Status _unlock2(void (*WakeFn)(volatile value_type *), __rmutex_data &data,
+			value_type threadId);
+
 	/*
 		Set SyscallLock to true when whole locking process should be performed with WaitFn
 	*/

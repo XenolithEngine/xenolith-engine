@@ -460,6 +460,13 @@ constexpr auto to_deg(T val) -> T {
 	return T(val) * T(180) / numbers::Pi<T>;
 }
 
+// Safe ptrdiff, where more-than-half diff is possible;
+// On some systems, (T *)Max<uintptr_t> - ptr can be negative, here we resolve this problem
+template <typename T>
+constexpr uintptr_t ptrdiff(const T *a, const T *b) {
+	return (reinterpret_cast<uintptr_t>(a) - reinterpret_cast<uintptr_t>(b)) / sizeof(T);
+}
+
 } // namespace sprt::math
 
 #endif /* RUNTIME_INCLUDE_SPRT_RUNTIME_MATH_H_ */

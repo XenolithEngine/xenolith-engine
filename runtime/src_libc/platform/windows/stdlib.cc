@@ -139,17 +139,20 @@ template <typename Callback>
 static bool __mktmppath(char *itpl, const Callback &cb) {
 	static constexpr size_t PathBufferLen = MAX_PATH + 2;
 
-	char tmpDirPath[PathBufferLen] = {0};
-	char tmpFilePath[PathBufferLen] = {0};
+	wchar_t tmpDirPath[PathBufferLen] = {0};
+	wchar_t tmpFilePath[PathBufferLen] = {0};
 
-	auto dirLength = GetTempPathA(PathBufferLen, tmpDirPath);
+	auto dirLength = GetTempPathW(PathBufferLen, tmpDirPath);
 	if (dirLength < 0) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
 
-	StringView tpl(itpl);
-	if (!tpl.ends_with("XXXXXX")) {
+	auto wtpl = __MALLOCA_WSTRING(itpl);
+
+	StringViewBase<wchar_t> tpl(wtpl);
+	if (!tpl.ends_with(L"XXXXXX")) {
+		__sprt_freea(wtpl);
 		__sprt_errno = EINVAL;
 		return -1;
 	}
@@ -166,7 +169,7 @@ static bool __mktmppath(char *itpl, const Callback &cb) {
 	auto target = tmpFilePath;
 
 	target = strappend(target, &tmpPrefixPathBufLen, tmpDirPath, dirLength);
-	target = strappend(target, &tmpPrefixPathBufLen, "\\", 1);
+	target = strappend(target, &tmpPrefixPathBufLen, L"\\", 1);
 	target = strappend(target, &tmpPrefixPathBufLen, tpl.data(), tpl.size());
 	if (tmpPrefixPathBufLen == 0) {
 		__sprt_errno = ERANGE;
@@ -175,12 +178,13 @@ static bool __mktmppath(char *itpl, const Callback &cb) {
 
 	cb(tmpFilePath, target - tmpFilePath);
 
+	__sprt_freea(wtpl);
 	return true;
 }
 
 static int mkostemp(char *itpl, int _flags) {
 	int fd = -1;
-	if (!__mktmppath(itpl, [&](const char *path, size_t pathLength) {
+	if (!__mktmppath(itpl, [&](const wchar_t *path, size_t pathLength) {
 		auto flags = _O_CREAT | _O_SHORT_LIVED | _O_TEMPORARY | _O_RDWR | _O_BINARY;
 		for (auto f : sprt::flags(uint32_t(_flags))) {
 			switch (f) {
@@ -190,7 +194,7 @@ static int mkostemp(char *itpl, int _flags) {
 			}
 		}
 
-		_sopen_s(&fd, path, flags, _SH_DENYRW, _S_IREAD | _S_IWRITE);
+		_wsopen_s(&fd, path, flags, _SH_DENYRW, _S_IREAD | _S_IWRITE);
 	})) {
 		return -1;
 	}
@@ -202,8 +206,8 @@ static int mkstemp(char *itpl) { return mkostemp(itpl, 0); }
 
 static char *mkdtemp(char *itpl) {
 	char *ret = nullptr;
-	if (!__mktmppath(itpl, [&](const char *path, size_t pathLength) {
-		if (!CreateDirectoryA(path, nullptr)) {
+	if (!__mktmppath(itpl, [&](const wchar_t *path, size_t pathLength) {
+		if (!CreateDirectoryW(path, nullptr)) {
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		} else {
 			ret = itpl;
@@ -250,13 +254,62 @@ static bool __realpath_convert(StringView path, const Callback &cb) {
 	}, path);
 
 	if (out) {
-		unicode::toUtf8([&](StringView str) {
-			// convert in place
-			auto len = __sprt_fpath_to_posix(str.data(), str.size(), (char *)str.data(),
-					str.size() + 1);
+		auto attrs = GetFileAttributesW(out);
+		if (attrs == INVALID_FILE_ATTRIBUTES) {
+			LocalFree(out);
+			return false;
+		}
 
-			cb(str.sub(0, len));
-		}, WideStringView((char16_t *)out));
+		if (attrs & FILE_ATTRIBUTE_REPARSE_POINT) {
+			HANDLE hLink = CreateFileW(out, GENERIC_READ,
+					FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+					FILE_FLAG_BACKUP_SEMANTICS, NULL);
+			if (hLink == INVALID_HANDLE_VALUE) {
+				LocalFree(out);
+				return false;
+			}
+
+			auto pathLen = GetFinalPathNameByHandleW(hLink, NULL, 0, 0);
+			if (pathLen == 0) {
+				LocalFree(out);
+				__sprt_errno = platform::lastErrorToErrno(GetLastError());
+				return -1;
+			}
+
+			auto buf = __sprt_typed_malloca(wchar_t, pathLen + 1);
+
+			auto writtenLen = GetFinalPathNameByHandleW(hLink, buf, pathLen + 1, 0);
+			if (writtenLen == 0) {
+				LocalFree(out);
+				__sprt_freea(buf);
+				__sprt_errno = platform::lastErrorToErrno(GetLastError());
+				return -1;
+			}
+
+			WideStringView wstr((char16_t *)buf, writtenLen);
+			auto outLen = unicode::getUtf8Length(wstr);
+			auto out = __sprt_typed_malloca(char, outLen + 1);
+
+			size_t ulen = 0;
+			unicode::toUtf8(out, outLen, wstr, &ulen);
+
+			auto len = __sprt_fpath_to_posix(out, ulen, out, outLen + 1);
+
+			cb(StringView(out, len));
+
+			__sprt_freea(out);
+			__sprt_freea(buf);
+			CloseHandle(hLink);
+		} else {
+			unicode::toUtf8([&](StringView str) {
+				// convert in place
+				auto len = __sprt_fpath_to_posix(str.data(), str.size(), (char *)str.data(),
+						str.size() + 1);
+
+				cb(StringView(str.data(), len));
+			}, WideStringView((char16_t *)out));
+		}
+		LocalFree(out);
 		return true;
 	}
 
@@ -284,11 +337,15 @@ static char *realpath(const char *__SPRT_RESTRICT ipath, char *__SPRT_RESTRICT o
 	StringView path(ipath);
 	if (__sprt_fpath_is_posix(path.data(), path.size())) {
 		filepath::reconstructPath([&](StringView reconstructed) {
-			auto len = __sprt_fpath_to_native(reconstructed.data(), reconstructed.size(),
-					(char *)reconstructed.data(), reconstructed.size() + 1);
-			__realpath_convert(reconstructed.sub(0, len), [&](StringView str) {
+			auto buflen = max(8, reconstructed.size() + 1);
+			auto buf = __sprt_typed_malloca(char, buflen);
+
+			auto len =
+					__sprt_fpath_to_native(reconstructed.data(), reconstructed.size(), buf, buflen);
+			__realpath_convert(StringView(buf, len), [&](StringView str) {
 				ret = __realpath_write(str, out); //
 			});
+			__sprt_freea(buf);
 		}, path);
 	} else {
 		__realpath_convert(path, [&](StringView str) {

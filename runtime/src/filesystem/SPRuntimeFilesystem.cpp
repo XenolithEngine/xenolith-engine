@@ -61,21 +61,28 @@ bool getCurrentDir(const callback<void(StringView)> &cb, StringView path) {
 		return false;
 	}
 
-	auto bufferSize = bufferLen + path.size() + 2;
-	auto buf = (char *)__sprt_malloca(bufferLen + path.size() + 2);
-	bufferLen = _GetCurrentDirectory(bufferLen, buf);
+	auto buf = __sprt_typed_malloca(char16_t, bufferLen + 1);
+	bufferLen = _GetCurrentDirectory(bufferLen + 1, buf);
 	buf[bufferLen] = 0;
 	if (bufferLen == 0) {
 		return false;
 	}
 
 	if (path.empty()) {
-		cb(StringView(buf, bufferLen));
+		unicode::toUtf8(cb, WideStringView(buf, bufferLen));
 		__sprt_freea(buf);
 		return true;
 	} else {
-		bufferSize -= bufferLen;
-		auto target = &buf[bufferLen];
+		auto ulen = unicode::getUtf8Length(WideStringView(buf, bufferLen));
+
+		auto bufferSize = ulen + path.size() + 3;
+		auto resultBuf = __sprt_typed_malloca(char, bufferSize);
+
+		unicode::toUtf8(resultBuf, bufferSize, WideStringView(buf, bufferLen), &ulen);
+		resultBuf[ulen] = 0;
+
+		bufferSize -= ulen;
+		auto target = &resultBuf[ulen];
 
 		if (buf[bufferLen - 1] != '/' && path.at(0) != '/') {
 			target = strappend(target, &bufferSize, "/", 1);
@@ -83,7 +90,7 @@ bool getCurrentDir(const callback<void(StringView)> &cb, StringView path) {
 		target = strappend(target, &bufferSize, path.data(), path.size());
 		target[0] = 0;
 
-		filepath::reconstructPath(cb, StringView(buf, target - buf));
+		filepath::reconstructPath(cb, StringView(resultBuf, target - resultBuf));
 		return true;
 	}
 #else

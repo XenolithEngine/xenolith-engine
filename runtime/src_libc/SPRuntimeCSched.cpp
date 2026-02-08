@@ -87,4 +87,17 @@ __SPRT_C_FUNC int __SPRT_ID(
 
 __SPRT_C_FUNC int __SPRT_ID(sched_yield)(void) { return sched_yield(); }
 
+__SPRT_C_FUNC int __SPRT_ID(
+		__sched_cpucount)(__SPRT_ID(size_t) setsize, const __SPRT_ID(cpu_set_t) * set) {
+	// Based on bionic: https://android.googlesource.com/platform/bionic/+/234dc36ac/libc/bionic/sched_cpucount.c
+	int nn = 0;
+	int nn_max = setsize / sizeof(set->__bits[0]);
+	int count = 0;
+	for (; nn < nn_max; nn++) {
+		count += __builtin_popcountg(set->__bits[nn]); //
+	}
+	return count;
+}
+
+
 } // namespace sprt

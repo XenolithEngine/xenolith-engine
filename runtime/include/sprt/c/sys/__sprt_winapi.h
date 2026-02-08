@@ -122,7 +122,7 @@ SPRT_API int __SPRT_ID(_IdnToUnicode)(__SPRT_ID(uint32_t) dwFlags, const char16_
 
 __SPRT_CONFIG_HAVE_WINAPI_NOTICE
 SPRT_API __SPRT_ID(uint32_t)
-		__SPRT_ID(_GetCurrentDirectory)(__SPRT_ID(uint32_t) nBufferLength, char *lpBuffer);
+		__SPRT_ID(_GetCurrentDirectory)(__SPRT_ID(uint32_t) nBufferLength, char16_t *lpBuffer);
 
 __SPRT_END_DECL
 

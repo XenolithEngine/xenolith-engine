@@ -283,7 +283,7 @@ static int pthread_mutex_init(pthread_mutex_t *__SPRT_RESTRICT mutex,
 		return EINVAL;
 	}
 
-	new (mutex, nothrow) pthread_mutex_t{*attr};
+	new (mutex, nothrow) pthread_mutex_t{attr ? *attr : pthread_mutexattr_t()};
 	return 0;
 }
 

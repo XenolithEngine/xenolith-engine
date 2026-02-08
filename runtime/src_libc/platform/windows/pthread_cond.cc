@@ -202,8 +202,14 @@ static int pthread_condattr_getpshared(const pthread_condattr_t *__SPRT_RESTRICT
 
 static int pthread_cond_init(pthread_cond_t *__SPRT_RESTRICT cond,
 		const pthread_condattr_t *__SPRT_RESTRICT attr) {
+	if (!cond) {
+		return EINVAL;
+	}
+
 	new (cond, nothrow) pthread_cond_t();
-	cond->flags = attr->flags;
+	if (attr) {
+		cond->flags = attr->flags;
+	}
 	return 0;
 }
 

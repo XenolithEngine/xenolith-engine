@@ -1107,7 +1107,7 @@ struct MimeDetector {
 static MimeDetector s_mimeDetector;
 
 StringView getMimeTypeForExtension(StringView str) {
-	auto buf = (char *)__sprt_malloca(str.size());
+	auto buf = __sprt_typed_malloca(char, str.size());
 	__builtin_memcpy(buf, str.data(), str.size());
 	for (size_t i = 0; i < str.size(); ++i) { buf[i] = ::__sprt_tolower(buf[i]); }
 
@@ -1121,7 +1121,7 @@ StringView getMimeTypeForExtension(StringView str) {
 }
 
 StringView getExtensionForMimeType(StringView str) {
-	auto buf = (char *)__sprt_malloca(str.size());
+	auto buf = __sprt_typed_malloca(char, str.size());
 	__builtin_memcpy(buf, str.data(), str.size());
 	for (size_t i = 0; i < str.size(); ++i) { buf[i] = ::__sprt_tolower(buf[i]); }
 

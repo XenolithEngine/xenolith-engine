@@ -58,7 +58,71 @@ static bool isWinAbsolutePath(const char *path) {
 		return true;
 	}
 
-	return PathIsRelativeA(path) == FALSE;
+	auto wpath = __MALLOCA_WSTRING(path);
+
+	auto ret = PathIsRelativeW(wpath) == FALSE;
+
+	__sprt_freea(wpath);
+	return ret;
+}
+
+static WideStringView allocateNativePath(int fd) {
+	size_t pathLen = 0;
+	wchar_t *pathBuffer = 0;
+	if (fd == __SPRT_AT_FDCWD) {
+		pathLen = GetCurrentDirectoryW(0, nullptr);
+		if (pathLen == 0) {
+			__sprt_errno = EBADF;
+			return WideStringView();
+		}
+
+		pathBuffer = (wchar_t *)__sprt_malloc((pathLen + 1) * sizeof(wchar_t));
+		pathLen = GetCurrentDirectoryW(pathLen + 1, pathBuffer);
+	} else {
+		if (fd < 0) {
+			__sprt_errno = EBADF;
+			return WideStringView();
+		}
+		auto handle = (HANDLE)_get_osfhandle(fd);
+		if (!handle || handle == INVALID_HANDLE_VALUE) {
+			__sprt_errno = EBADF;
+			return WideStringView();
+		}
+
+		FILE_STANDARD_INFO standardInfo;
+		if (!GetFileInformationByHandleEx(handle, FileStandardInfo, &standardInfo,
+					sizeof(FILE_STANDARD_INFO))) {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return WideStringView();
+		}
+
+		if (!standardInfo.Directory) {
+			__sprt_errno = ENOTDIR;
+			return WideStringView();
+		}
+
+		size_t bufferLen = 0;
+		do {
+			if (pathBuffer) {
+				__sprt_free(pathBuffer);
+				pathBuffer = nullptr;
+			}
+
+			pathLen = GetFinalPathNameByHandleW(handle, NULL, 0, 0);
+			if (pathLen == 0) {
+				__sprt_errno = EBADF;
+				return WideStringView();
+			}
+
+			bufferLen = pathLen + 1;
+			pathBuffer = (wchar_t *)__sprt_malloc(bufferLen * sizeof(wchar_t));
+			pathLen = GetFinalPathNameByHandleW(handle, pathBuffer, bufferLen, 0);
+
+			// if writtenLen is larger then initial value - try again
+			// this may happen if file was moved between two GetFinalPathNameByHandleA calls
+		} while (pathLen > bufferLen);
+	}
+	return WideStringView((char16_t *)pathBuffer, pathLen);
 }
 
 bool openAtPath(int fd, const char *path, const callback<void(const char *, size_t)> &cb) {
@@ -66,9 +130,9 @@ bool openAtPath(int fd, const char *path, const callback<void(const char *, size
 		auto pathlen = strlen(path);
 		auto isNative = __sprt_fpath_is_native(path, pathlen);
 
-		auto bufLen = pathlen + 1;
+		auto bufLen = max(pathlen + 1, 8);
 
-		auto buf = (char *)__sprt_malloca(bufLen + 1);
+		auto buf = __sprt_typed_malloca(char, bufLen + 1);
 		auto target = buf;
 		auto bufferSize = bufLen;
 
@@ -90,71 +154,21 @@ bool openAtPath(int fd, const char *path, const callback<void(const char *, size
 		return true;
 	}
 
-	auto extraPathLen = path ? strlen(path) + 1 : 0;
+	auto extraPathLen = path ? max(strlen(path) + 2, 8) : 0;
 
-	char *buffer = nullptr;
-
-	DWORD pathLen = 0;
-	DWORD writtenLen = 0;
-	DWORD bufferLen = 0;
-
-	if (fd == __SPRT_AT_FDCWD) {
-		auto pathLen = GetCurrentDirectoryA(0, nullptr);
-		if (pathLen == 0) {
-			__sprt_errno = EBADF;
-			return false;
-		}
-
-		bufferLen = pathLen + extraPathLen + 1;
-		buffer = (char *)__sprt_malloc(bufferLen);
-		writtenLen = GetCurrentDirectoryA(bufferLen, buffer);
-	} else {
-		auto handle = (HANDLE)_get_osfhandle(fd);
-		if (!handle || handle == INVALID_HANDLE_VALUE) {
-			__sprt_errno = EBADF;
-			return false;
-		}
-
-		FILE_STANDARD_INFO standardInfo;
-		if (!GetFileInformationByHandleEx(handle, FileStandardInfo, &standardInfo,
-					sizeof(FILE_STANDARD_INFO))) {
-			__sprt_errno = platform::lastErrorToErrno(GetLastError());
-			return false;
-		}
-
-		if (!standardInfo.Directory) {
-			__sprt_errno = ENOTDIR;
-			return false;
-		}
-
-		do {
-			if (buffer) {
-				__sprt_free(buffer);
-				buffer = nullptr;
-			}
-
-			pathLen = GetFinalPathNameByHandleA(handle, NULL, 0, 0);
-			if (pathLen == 0) {
-				__sprt_errno = EBADF;
-				return false;
-			}
-
-			bufferLen = pathLen + extraPathLen + 1;
-			buffer = (char *)__sprt_malloc(bufferLen);
-			writtenLen = GetFinalPathNameByHandleA(handle, buffer, pathLen, 0);
-
-			// if writtenLen is larger then initial value - try again
-			// this may happen if file was moved between two GetFinalPathNameByHandleA calls
-		} while (writtenLen > pathLen);
-	}
-
-	if (writtenLen == 0) {
-		__sprt_errno = EBADF;
+	auto nativePath = allocateNativePath(fd);
+	if (nativePath.empty()) {
 		return false;
 	}
 
-	auto target = buffer + writtenLen;
-	size_t bufferSize = bufferLen - writtenLen;
+	auto resultBufferLen = extraPathLen + unicode::getUtf8Length(nativePath);
+	auto buffer = __sprt_typed_malloca(char, resultBufferLen);
+
+	size_t offset = 0;
+	unicode::toUtf8(buffer, resultBufferLen, nativePath, &offset);
+
+	auto target = buffer + offset;
+	size_t bufferSize = resultBufferLen - offset;
 
 	if (path) {
 		target = strappend(target, &bufferSize, "\\", 1);
@@ -163,9 +177,9 @@ bool openAtPath(int fd, const char *path, const callback<void(const char *, size
 		auto isNative = __sprt_fpath_is_native(path, pathlen);
 
 		if (isNative) {
-			target = strappend(target, &bufferSize, path, pathLen);
+			target = strappend(target, &bufferSize, path, pathlen);
 		} else {
-			auto ws = __sprt_fpath_to_native(path, pathlen, target, pathlen + 1);
+			auto ws = __sprt_fpath_to_native(path, pathlen, target, bufferSize);
 			if (ws == 0) {
 				return false;
 			}
@@ -175,10 +189,27 @@ bool openAtPath(int fd, const char *path, const callback<void(const char *, size
 		}
 	}
 
-	cb(buffer, target - buffer);
-	__sprt_free(buffer);
+	StringView out(buffer, target - buffer);
+	if (out.starts_with("\\\\?\\")) {
+		out += 4;
+	}
+
+	cb(out.data(), out.size());
+	__sprt_freea(buffer);
+	__sprt_free((void *)nativePath.data());
 
 	return true;
+}
+
+uint32_t getRid(void *sid) {
+	if (!GetSidSubAuthorityCount(sid)) {
+		errno = EINVAL;
+		return uint32_t(-1);
+	}
+
+	DWORD sub_count = *GetSidSubAuthorityCount(sid);
+
+	return (uint32_t)*GetSidSubAuthority(sid, sub_count - 1);
 }
 
 } // namespace sprt::platform
@@ -268,20 +299,23 @@ struct __OpenInfo {
 };
 
 static int __open(const char *path, int __flags, __SPRT_ID(mode_t) __mode) {
-	if ((__flags & __SPRT_O_TMPFILE) || (__flags & __SPRT_O_NONBLOCK)) {
+	if ((__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE
+			|| (__flags & __SPRT_O_NONBLOCK) == __SPRT_O_NONBLOCK) {
 		__sprt_errno = ENOSYS;
 		return -1;
 	}
 
 	__OpenInfo info(__flags, __mode);
 
-	HANDLE h = CreateFileA(path, // file path
+	auto wpath = __MALLOCA_WSTRING(path);
+	HANDLE h = CreateFileW(wpath, // file path
 			info.dwDesiredAccess, // ← maps to O_RDONLY/O_WRONLY/O_RDWR
 			info.dwShareMode, // ← no POSIX equivalent; Windows-specific
 			nullptr, // security descriptor
 			info.dwCreationDisposition, // ← maps to O_CREAT/O_EXCL/O_TRUNC
 			info.dwFlagsAndAttributes, // ← maps to mode + O_APPEND/O_SYNC/FILE_FLAG_*
 			nullptr);
+	__sprt_freea(wpath);
 	if (!h || h == INVALID_HANDLE_VALUE) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
@@ -296,18 +330,22 @@ static int __open(const char *path, int __flags, __SPRT_ID(mode_t) __mode) {
 		}
 	}
 
-	if ((__flags & __SPRT_O_DIRECTORY) == 0) {
+	if ((__flags & __SPRT_O_DIRECTORY) != 0 || (__flags & __SPRT_O_NOFOLLOW) != 0) {
 		BY_HANDLE_FILE_INFORMATION info;
 		if (GetFileInformationByHandle(h, &info)) {
-			if ((info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+			if ((__flags & __SPRT_O_DIRECTORY) != 0
+					&& (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
 				CloseHandle(h);
 				__sprt_errno = ENOTDIR;
 				return -1;
 			}
+			if ((__flags & __SPRT_O_NOFOLLOW) != 0
+					&& (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+				CloseHandle(h);
+				__sprt_errno = ELOOP;
+				return -1;
+			}
 		}
-		CloseHandle(h);
-		__sprt_errno = EINVAL;
-		return -1;
 	}
 
 	int accessFlags = __flags & (__SPRT_O_RDONLY | __SPRT_O_WRONLY | __SPRT_O_RDWR);
@@ -366,12 +404,18 @@ static int creat64(const char *path, __SPRT_ID(mode_t) __mode) {
 
 static int openat64(int __dir_fd, const char *path, int __flags, __SPRT_ID(mode_t) __mode) {
 	int ret = 0;
-	platform::openAtPath(__dir_fd, path,
-			[&](const char *path, size_t pathLen) { ret = __sprt_open(path, __flags, __mode); });
+	platform::openAtPath(__dir_fd, path, [&](const char *path, size_t pathLen) {
+		ret = __open(path, __flags, __mode); //
+	});
 	return ret;
 }
 
 static int fcntl(int __fd, int __cmd, unsigned long arg) {
+	if (__fd < 0) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
 	auto handle = (HANDLE)_get_osfhandle(__fd);
 	if (!handle || handle == INVALID_HANDLE_VALUE) {
 		__sprt_errno = EBADF;

@@ -284,7 +284,7 @@ SPRT_FORCEINLINE void *__sprt_alloca_wrapper(void *ptr) {
 
 // We allocate a block from the heap, mark it and return the user part
 SPRT_FORCEINLINE void *__sprt_alloca_malloc(__SPRT_ID(size_t) sz) {
-	void *ptr = __SPRT_ID(malloc_impl)(sz + __SPRT_MALLOCA_OFFSET);
+	void *ptr = __SPRT_ID(malloc_impl)(sz);
 	*((__SPRT_ID(uint32_t) *)ptr) = 1;
 	return (void *)((const char *)ptr + __SPRT_MALLOCA_OFFSET);
 }
@@ -298,8 +298,10 @@ SPRT_FORCEINLINE void __sprt_alloca_freea(void *ptr) {
 }
 
 #define __sprt_malloca(Sz) (__sprt_is_alloca_allowed(Sz) ? \
-	__sprt_alloca_wrapper(__builtin_alloca((Sz) + __SPRT_MALLOCA_OFFSET)) : __sprt_alloca_malloc((Sz)))
+	__sprt_alloca_wrapper(__builtin_alloca(__SPRT_MALLOCA_OFFSET + (Sz))) : __sprt_alloca_malloc(__SPRT_MALLOCA_OFFSET + (Sz)))
 #define __sprt_freea(Ptr) __sprt_alloca_freea(Ptr)
+
+#define __sprt_typed_malloca(Type, Sz) ((Type *)__sprt_malloca((Sz) * sizeof(Type)))
 
 #endif
 

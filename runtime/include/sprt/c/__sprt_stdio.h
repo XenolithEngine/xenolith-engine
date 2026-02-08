@@ -2,7 +2,7 @@
 Copyright (c) 2025 Stappler Team <admin@stappler.org>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation __SPRT_ID(FILE)s (the "Software"), to deal
+of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
@@ -36,18 +36,18 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-SPRT_API __SPRT_ID(size_t) __SPRT_ID(fpath_to_posix)(const char *__SPRT_RESTRICT,
-		__SPRT_ID(size_t) pathSize, char *buf, __SPRT_ID(size_t) bufSize);
+SPRT_API __SPRT_ID(size_t) __SPRT_ID(fpath_to_posix)(const char *, __SPRT_ID(size_t) pathSize,
+		char *buf, __SPRT_ID(size_t) bufSize);
 
-SPRT_API __SPRT_ID(size_t) __SPRT_ID(fpath_to_native)(const char *__SPRT_RESTRICT,
-		__SPRT_ID(size_t) pathSize, char *buf, __SPRT_ID(size_t) bufSize);
+SPRT_API __SPRT_ID(size_t) __SPRT_ID(fpath_to_native)(const char *, __SPRT_ID(size_t) pathSize,
+		char *buf, __SPRT_ID(size_t) bufSize);
 
 #if SPRT_WINDOWS
-SPRT_API int __SPRT_ID(fpath_is_native)(const char *__SPRT_RESTRICT, __SPRT_ID(size_t));
-SPRT_API int __SPRT_ID(fpath_is_posix)(const char *__SPRT_RESTRICT, __SPRT_ID(size_t));
+SPRT_API int __SPRT_ID(fpath_is_native)(const char *, __SPRT_ID(size_t));
+SPRT_API int __SPRT_ID(fpath_is_posix)(const char *, __SPRT_ID(size_t));
 #else
-inline int __SPRT_ID(fpath_is_native)(const char *__SPRT_RESTRICT, __SPRT_ID(size_t)) { return 1; }
-inline int __SPRT_ID(fpath_is_posix)(const char *__SPRT_RESTRICT, __SPRT_ID(size_t)) { return 1; }
+inline int __SPRT_ID(fpath_is_native)(const char *, __SPRT_ID(size_t)) { return 1; }
+inline int __SPRT_ID(fpath_is_posix)(const char *, __SPRT_ID(size_t)) { return 1; }
 #endif
 
 SPRT_API __SPRT_ID(FILE) * __SPRT_ID(stdin_impl)();

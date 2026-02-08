@@ -86,7 +86,7 @@ MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
 
 MODULE_RUNTIME_LIBS_COMMON := -lSynchronization -lShlwapi -lPathcch -lOle32 -lNormaliz -lAdvapi32 -lBcrypt \
-	-lUserenv -lOneCore -lUser32 -lShell32 -lDxva2 -lUxTheme -lDwmapi
+	-lUserenv -lOneCore -lUser32 -lShell32 -lDxva2 -lUxTheme -lDwmapi -lwbemuuid -lcomsupp
 
 ifeq ($(BUILD_TYPE),debug)
 MODULE_RUNTIME_LIBS += -llibucrtd -llibvcruntimed -llibcmtd -llibcpmtd $(MODULE_RUNTIME_LIBS_COMMON)

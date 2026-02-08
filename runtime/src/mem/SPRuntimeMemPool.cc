@@ -37,7 +37,9 @@ pool_t *get_zero_pool() {
 		impl::Allocator _alloc;
 		impl::Pool *_pool = nullptr;
 
-		ZeroPoolStruct() { _pool = impl::Pool::create(&_alloc); }
+		ZeroPoolStruct() {
+			_pool = impl::Pool::create(&_alloc); //
+		}
 		~ZeroPoolStruct() {
 			impl::Pool::destroy(_pool);
 			_pool = nullptr;

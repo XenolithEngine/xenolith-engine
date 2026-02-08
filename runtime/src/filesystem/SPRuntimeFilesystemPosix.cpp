@@ -418,7 +418,7 @@ static LocationInterface s_defaultInterface = {
 
 		auto bufSize = __SPRT_PATH_MAX + pathMax;
 
-		auto workBuf = (char *)__sprt_malloca(bufSize);
+		auto workBuf = __sprt_typed_malloca(char, bufSize);
 
 		st = _ftw_fn(dirfd, cb, depth, dirFirst, workBuf, workBuf, bufSize);
 

@@ -104,7 +104,7 @@ SPRT_API void vprint(LogType type, const source_location &loc, StringView tag, A
 	bufSize += 1; // nullterm
 
 	if (bufSize > 0) {
-		auto buf = (char *)__sprt_malloca(bufSize + 1);
+		auto buf = __sprt_typed_malloca(char, bufSize + 1);
 		auto target = buf;
 		auto targetSize = bufSize;
 		__processArgs<char>([&](StringView str) {

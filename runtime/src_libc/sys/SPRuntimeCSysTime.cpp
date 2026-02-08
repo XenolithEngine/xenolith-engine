@@ -30,6 +30,7 @@ THE SOFTWARE.
 #include <sprt/runtime/log.h>
 
 #if SPRT_WINDOWS
+#define NOMINMAX 1
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #else

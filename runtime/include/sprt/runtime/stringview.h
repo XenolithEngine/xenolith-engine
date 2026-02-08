@@ -203,7 +203,7 @@ public:
 		} else if (terminated()) {
 			cb(data(), size());
 		} else {
-			auto buf = (char *)__sprt_malloca((size() + 1) * sizeof(CharType));
+			auto buf = __sprt_typed_malloca(CharType, size() + 1);
 			__sprt_memcpy(buf, data(), size() * sizeof(CharType));
 			buf[size()] = 0;
 			cb((const CharType *)buf, size());

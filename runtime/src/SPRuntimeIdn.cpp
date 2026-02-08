@@ -1479,7 +1479,7 @@ struct TldList {
 	TldList() : values(s_IdnTld) { }
 
 	bool has(StringView val) {
-		auto buf = (char *)__sprt_malloca(val.size() + 1);
+		auto buf = __sprt_typed_malloca(char, val.size() + 1);
 		__sprt_memcpy(buf, val.data(), val.size());
 		buf[val.size()] = 0;
 
@@ -1744,7 +1744,7 @@ bool puny_encode(const callback<void(StringView)> &cb, StringView source, bool m
 	StringViewUtf8 utfSource(source);
 	auto uCodeSize = utfSource.code_size();
 
-	auto buf = (char32_t *)__sprt_malloca(uCodeSize * sizeof(char32_t) + 1);
+	auto buf = __sprt_typed_malloca(char32_t, uCodeSize + 1);
 	auto target = buf;
 
 	utfSource.foreach ([&](char32_t ch) { *(target++) = ch; });
@@ -1752,7 +1752,7 @@ bool puny_encode(const callback<void(StringView)> &cb, StringView source, bool m
 	bool result = false;
 	size_t retSize = 0;
 	if (punycode_encode(buf, target - buf, [&](char ch) { ++retSize; })) {
-		auto rbuf = (char *)__sprt_malloca(retSize * sizeof(char) + 1 + (makeUrlPrefix ? 4 : 0));
+		auto rbuf = __sprt_typed_malloca(char, retSize + 1 + (makeUrlPrefix ? 4 : 0));
 		auto rtarget = rbuf;
 
 		if (makeUrlPrefix) {
@@ -1787,7 +1787,7 @@ bool puny_decode(const callback<void(StringView)> &cb, StringView source, bool p
 		return false;
 	}
 
-	auto buf = (char32_t *)__sprt_malloca(uCodeSize * sizeof(char32_t) + 1);
+	auto buf = __sprt_typed_malloca(char32_t, uCodeSize + 1);
 
 	if (!punycode_decode(source.data(), source.size(), buf, &uCodeSize)) {
 		__sprt_freea(buf);
@@ -1798,7 +1798,7 @@ bool puny_decode(const callback<void(StringView)> &cb, StringView source, bool p
 	auto view = SpanView(buf, uCodeSize);
 	for (auto &it : view) { retSize += unicode::utf8EncodeLength(it); }
 
-	auto rbuf = (char *)__sprt_malloca(retSize * sizeof(char) + 1);
+	auto rbuf = __sprt_typed_malloca(char, retSize + 1);
 	auto rtarget = rbuf;
 	size_t rBufSize = retSize;
 

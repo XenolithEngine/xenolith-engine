@@ -43,8 +43,9 @@ static inline auto performWithNativePath(const char *path, const Callback &cb,
 	if (!path || isNative) {
 		return cb(path);
 	} else {
-		auto buf = (char *)__sprt_malloca(pathlen + 1);
-		if (__sprt_fpath_to_native(path, pathlen, buf, pathlen + 1) > 0) {
+		auto buflen = sprt::max((__SPRT_ID(size_t))8, pathlen + 1);
+		auto buf = __sprt_typed_malloca(char, buflen);
+		if (__sprt_fpath_to_native(path, pathlen, buf, buflen) > 0) {
 			return cb(buf);
 		}
 		__sprt_freea(buf);
@@ -63,7 +64,7 @@ static inline auto performWithPosixePath(const char *path, const Callback &cb,
 	if (!path || isPosix) {
 		return cb(path);
 	} else {
-		auto buf = (char *)__sprt_malloca(pathlen + 1);
+		auto buf = __sprt_typed_malloca(char, pathlen + 1);
 		if (__sprt_fpath_to_posix(path, pathlen, buf, pathlen + 1) > 0) {
 			return cb(buf);
 		}
@@ -80,7 +81,7 @@ static inline auto performBinaryMode(const char *mode, const Callback &cb) {
 	if (smode.find('b') == Max<size_t>) {
 		// add 'b' to mode string
 		auto modeLen = __constexpr_strlen(mode) + 2;
-		auto modeBuf = (char *)__sprt_malloca(modeLen);
+		auto modeBuf = __sprt_typed_malloca(char, modeLen);
 		auto target = modeBuf;
 
 		target = strappend(target, &modeLen, smode.data(), smode.size());

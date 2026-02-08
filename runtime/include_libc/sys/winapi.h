@@ -114,7 +114,7 @@ SPRT_FORCEINLINE int _IdnToUnicode(__SPRT_ID(uint32_t) dwFlags, const char16_t *
 }
 
 SPRT_FORCEINLINE __SPRT_ID(uint32_t)
-		_GetCurrentDirectory(__SPRT_ID(uint32_t) nBufferLength, char *lpBuffer) {
+		_GetCurrentDirectory(__SPRT_ID(uint32_t) nBufferLength, char16_t *lpBuffer) {
 	return __sprt__GetCurrentDirectory(nBufferLength, lpBuffer);
 }
 

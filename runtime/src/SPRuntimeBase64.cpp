@@ -138,7 +138,7 @@ size_t encode(const uint8_t *in, size_t insize, char *out, size_t outsize) {
 
 size_t encode(const uint8_t *in, size_t insize, const callback<void(const char *, size_t)> &cb) {
 	auto outsize = getEncodeSize(insize) + 1;
-	auto d = (char *)__sprt_malloca(outsize);
+	auto d = __sprt_typed_malloca(char, outsize);
 
 	auto ret = encode(in, insize, d, outsize);
 
@@ -167,7 +167,7 @@ size_t decode(const char *in, size_t insize, uint8_t *out, size_t outsize) {
 
 size_t decode(const char *in, size_t insize, const callback<void(const uint8_t *, size_t)> &cb) {
 	auto outsize = getDecodeSize(insize) + 1;
-	auto d = (uint8_t *)__sprt_malloca(outsize);
+	auto d = __sprt_typed_malloca(uint8_t, outsize);
 
 	auto ret = decode(in, insize, d, outsize);
 
@@ -231,7 +231,7 @@ size_t encode(const uint8_t *in, size_t insize, char *out, size_t outsize) {
 
 size_t encode(const uint8_t *in, size_t insize, const callback<void(const char *, size_t)> &cb) {
 	auto outsize = getEncodeSize(insize) + 1;
-	auto d = (char *)__sprt_malloca(outsize);
+	auto d = __sprt_typed_malloca(char, outsize);
 
 	auto ret = encode(in, insize, d, outsize);
 
@@ -337,7 +337,7 @@ size_t encode(const uint8_t *in, size_t insize, char *out, size_t outsize, bool 
 size_t encode(const uint8_t *in, size_t insize, const callback<void(const char *, size_t)> &cb,
 		bool upper) {
 	auto outsize = getEncodeSize(insize) + 1;
-	auto d = (char *)__sprt_malloca(outsize);
+	auto d = __sprt_typed_malloca(char, outsize);
 
 	auto ret = encode(in, insize, d, outsize, upper);
 
@@ -368,7 +368,7 @@ size_t decode(const char *in, size_t insize, uint8_t *out, size_t outsize) {
 
 size_t decode(const char *in, size_t insize, const callback<void(const uint8_t *, size_t)> &cb) {
 	auto outsize = getDecodeSize(insize) + 1;
-	auto d = (uint8_t *)__sprt_malloca(outsize);
+	auto d = __sprt_typed_malloca(uint8_t, outsize);
 
 	auto ret = decode(in, insize, d, outsize);
 

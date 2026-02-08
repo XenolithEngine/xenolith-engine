@@ -114,6 +114,9 @@ struct AppConfig {
 	AppLocationScheme pathScheme = AppLocationScheme::ExecutableRelative;
 };
 
+// Static-safe check
+SPRT_API bool isInitialized();
+
 SPRT_API bool initialize(AppConfig &&, int &resultCode);
 
 SPRT_API void terminate();

@@ -28,8 +28,11 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_errno.h>
 
 #define WIN32_LEAN_AND_MEAN
+#define NOMINMAX 1
 #include <Windows.h>
 #include <tlhelp32.h>
+
+#undef __deallocate
 
 #include "private/SPRTSpecific.h" // IWYU pragma: keep
 

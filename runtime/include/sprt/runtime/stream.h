@@ -349,7 +349,7 @@ struct StreamTraits {
 	static constexpr void merge(const callback<void(StringView)> &cb, Args &&...args) {
 		auto bufferSize = calculateSize(forward<Args>(args)...);
 
-		auto buf = (CharType *)__sprt_malloca(bufferSize * sizeof(CharType));
+		auto buf = __sprt_typed_malloca(CharType, bufferSize);
 
 		auto target = buf;
 		auto targetSize = bufferSize;

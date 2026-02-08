@@ -95,32 +95,6 @@ int pthread_barrier_t::wait() {
 
 	__builtin_unreachable();
 	return 0;
-
-	// acquire our ticket and generation atomically
-	/*genmutex.lock();
-	auto ticket = narrivals++;
-	auto gen = generations;
-
-	if (ticket + 1 == nthreads) {
-		narrivals -= nthreads;
-		++generations;
-	}
-	genmutex.unlock();
-
-	// Unlock whole generation or wait until it
-
-	if (ticket + 1 == nthreads) {
-		// Last thread: signal completion
-		atomicFetchAdd(&value, uint32_t(1));
-		WakeByAddressAll(&value);
-		return __SPRT_PTHREAD_BARRIER_SERIAL_THREAD;
-	} else {
-		// Wait for barrier pass
-		do {
-			WaitOnAddress(&value, &gen, sizeof(uint32_t), INFINITE);
-		} while (atomicLoadSeq(&value) == gen);
-		return 0; // PTHREAD_BARRIER_SERIAL_THREAD (non-last)
-	}*/
 }
 
 static int pthread_barrierattr_init(pthread_barrierattr_t *attr) {
@@ -162,7 +136,7 @@ static int pthread_barrierattr_setpshared(pthread_barrierattr_t *attr, int v) {
 
 static int pthread_barrier_init(pthread_barrier_t *__SPRT_RESTRICT bar,
 		const pthread_barrierattr_t *__SPRT_RESTRICT attr, unsigned v) {
-	if (!attr || v == 0) {
+	if (v == 0) {
 		return EINVAL;
 	}
 

@@ -41,6 +41,7 @@ THE SOFTWARE.
 #include <sprt/runtime/mem/set.h>
 
 #include "private/SPRTFilename.h"
+#include "private/SPRTSpecific.h"
 
 #define VC_EXTRALEAN
 #define WIN32_LEAN_AND_MEAN
@@ -78,7 +79,7 @@ static BOOL __EnumProcessModules(HANDLE hProcess, HMODULE *lphModule, DWORD cb,
 
 	if (EnumProcessModulesPtr == nullptr) {
 		/* Windows 7 and newer versions have K32EnumProcessModules in Kernel32.dll which is always pre-loaded */
-		kernel32 = GetModuleHandleA("Kernel32.dll");
+		kernel32 = GetModuleHandleW(L"Kernel32.dll");
 		if (kernel32 != nullptr) {
 			EnumProcessModulesPtr = (BOOL(WINAPI *)(HANDLE, HMODULE *, DWORD, LPDWORD))(
 					void (*)(void))GetProcAddress(kernel32, "K32EnumProcessModules");
@@ -86,7 +87,7 @@ static BOOL __EnumProcessModules(HANDLE hProcess, HMODULE *lphModule, DWORD cb,
 
 		/* Windows Vista and older version have EnumProcessModules in Psapi.dll which needs to be loaded */
 		if (EnumProcessModulesPtr == nullptr) {
-			psapi = LoadLibraryA("Psapi.dll");
+			psapi = LoadLibraryW(L"Psapi.dll");
 			if (psapi != nullptr) {
 				EnumProcessModulesPtr = (BOOL(WINAPI *)(HANDLE, HMODULE *, DWORD, LPDWORD))(
 						void (*)(void))GetProcAddress(psapi, "EnumProcessModules");
@@ -152,7 +153,7 @@ static void *dlopen(const char *path, int __flags) {
 	HMODULE h = nullptr;
 	if (!path) {
 		// GetModuleHandleExA increments refcount and reuires FreeLibrary;
-		if (!GetModuleHandleExA(0, nullptr, &h)) {
+		if (!GetModuleHandleExW(0, nullptr, &h)) {
 			StreamTraits<char>::toStringBuf(tl_errorData.buffer, DlError::BufferSize,
 					"Fail to dlopen ", path, ": ", status::lastErrorToStatus(GetLastError()));
 			tl_errorData.errorIsSet = true;
@@ -160,23 +161,26 @@ static void *dlopen(const char *path, int __flags) {
 		}
 	} else {
 		h = internal::performWithNativePath(path, [&](const char *target) {
+			auto wtarget = __MALLOCA_WSTRING(target);
 			if ((__flags & __SPRT_RTLD_NOLOAD) != 0) {
 				HMODULE hMod = nullptr;
 				DWORD flags = 0;
 				if ((__flags & __SPRT_RTLD_NODELETE) != 0) {
 					flags |= GET_MODULE_HANDLE_EX_FLAG_PIN;
 				}
-				GetModuleHandleExA(flags, target, &hMod);
+				GetModuleHandleExW(flags, wtarget, &hMod);
+				__sprt_freea(wtarget);
 				return hMod;
 			} else {
-				HMODULE hMod = LoadLibraryExA(target, nullptr, 0);
+				HMODULE hMod = LoadLibraryExW(wtarget, nullptr, 0);
 
 				if (hMod && (__flags & __SPRT_RTLD_NODELETE) != 0) {
-					GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN
+					GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN
 									| GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-							target, &hMod);
+							wtarget, &hMod);
 				}
 
+				__sprt_freea(wtarget);
 				return hMod;
 			}
 		}, (HMODULE) nullptr);
@@ -214,7 +218,7 @@ static void *dlopen(const char *path, int __flags) {
 
 static void *dlsym(void *__SPRT_RESTRICT __handle, const char *__SPRT_RESTRICT __name) {
 	HMODULE hCaller = nullptr;
-	auto self = GetModuleHandleA(nullptr);
+	auto self = GetModuleHandleW(nullptr);
 
 	if (__handle != __SPRT_RTLD_NEXT) {
 		if (__handle == __SPRT_RTLD_DEFAULT) {
@@ -232,9 +236,10 @@ static void *dlsym(void *__SPRT_RESTRICT __handle, const char *__SPRT_RESTRICT _
 			return nullptr;
 		}
 	} else {
-		if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+		if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
 							| GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-					(LPCSTR)__builtin_extract_return_addr(__builtin_return_address(0)), &hCaller)) {
+					(LPCWSTR)__builtin_extract_return_addr(__builtin_return_address(0)),
+					&hCaller)) {
 			StreamTraits<char>::toStringBuf(tl_errorData.buffer, DlError::BufferSize,
 					"Fail to dlsym ", __name, ": ", status::lastErrorToStatus(GetLastError()));
 			tl_errorData.errorIsSet = true;
@@ -249,7 +254,7 @@ static void *dlsym(void *__SPRT_RESTRICT __handle, const char *__SPRT_RESTRICT _
 	FARPROC symbol = nullptr;
 	auto hCurrentProc = GetCurrentProcess();
 
-	/* GetModuleHandleA( nullptr ) only returns the current program file. So
+	/* GetModuleHandleW( nullptr ) only returns the current program file. So
          * if we want to get ALL loaded module including those in linked DLLs,
          * we have to use EnumProcessModules( ).
          */
@@ -518,9 +523,9 @@ static int dladdr(const void *__handle, __SPRT_ID(Dl_info) * __info) {
 		DWORD iatSize;
 		HMODULE hModule;
 
-		if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+		if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
 							| GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-					(LPCSTR)__handle, &hModule)) {
+					(LPCWSTR)__handle, &hModule)) {
 			return 0;
 		}
 
@@ -551,22 +556,29 @@ static int dladdr(const void *__handle, __SPRT_ID(Dl_info) * __info) {
 		}
 	}
 
-	static thread_local char tl_moduleName[1'024];
+	static constexpr size_t MODULE_NAME_NCHARS = 1'024;
+	static thread_local char tl_moduleName[MODULE_NAME_NCHARS * 3];
 
 	HMODULE hModule;
-	if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+	if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
 						| GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-				(LPCSTR)__handle, &hModule)) {
+				(LPCWSTR)__handle, &hModule)) {
 		return 0;
 	}
 
-	auto dwSize = GetModuleFileNameA(hModule, tl_moduleName, sizeof(tl_moduleName));
-	if (dwSize == 0 || dwSize == sizeof(tl_moduleName)) {
+	wchar_t moduleName[MODULE_NAME_NCHARS];
+	auto dwSize = GetModuleFileNameW(hModule, moduleName, MODULE_NAME_NCHARS);
+	if (dwSize == 0 || dwSize == MODULE_NAME_NCHARS) {
 		return 0;
 	}
 
 	IMAGE_EXPORT_DIRECTORY *ied;
 	void *funcAddress = nullptr;
+
+	size_t uLen = 0;
+	unicode::toUtf8(tl_moduleName, MODULE_NAME_NCHARS * 3,
+			WideStringView((char16_t *)moduleName, dwSize), &uLen);
+	tl_moduleName[uLen] = 0;
 
 	__info->dli_fname = tl_moduleName;
 	__info->dli_fbase = (void *)hModule;

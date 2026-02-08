@@ -56,11 +56,15 @@ __SPRT_CPU_op_func_S(AND, &) __SPRT_CPU_op_func_S(OR, |) __SPRT_CPU_op_func_S(XO
 #define __SPRT_CPU_XOR_S(a, b, c, d) __S_SPRT_CPU_XOR_S(a,b,c,d)
 
 #define __SPRT_CPU_COUNT_S(size, set) __SPRT_ID(__sched_cpucount)(size,set)
-#define __SPRT_CPU_ZERO_S(size, set) __SPRT_ID(memset)(set,0,size)
+#define __SPRT_CPU_ZERO_S(size, set) __sprt_memset_impl(set,0,size)
 #define __SPRT_CPU_EQUAL_S(size, set1, set2) (!__SPRT_ID(memcmp)(set1,set2,size))
 
-#define __SPRT_CPU_ALLOC_SIZE(n) (sizeof(long) * ( (n)/(8*sizeof(long)) \
-	+ ((n)%(8*sizeof(long)) + 8*sizeof(long)-1)/(8*sizeof(long)) ) )
+#define __SPRT_CPU_ALLOC_SIZE(n) ( \
+	sizeof(long) * ( \
+		(n) / (8 * sizeof(long)) \
+		+ ((n) % (8 * sizeof(long)) + 8 * sizeof(long) - 1) \
+		/ (8 * sizeof(long)) \
+	) )
 #define __SPRT_CPU_ALLOC(n) ((cpu_set_t *)__SPRT_ID(calloc)(1,__SPRT_CPU_ALLOC_SIZE(n)))
 #define __SPRT_CPU_FREE(set) __SPRT_ID(free)(set)
 

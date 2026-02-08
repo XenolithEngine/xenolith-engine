@@ -146,7 +146,7 @@ SPRT_FORCEINLINE int open(const char *path, int __flags, ...) {
 		__sprt_va_end(ap);
 	}
 
-	return __sprt_open(path, __mode);
+	return __sprt_open(path, __flags, __mode);
 }
 
 SPRT_FORCEINLINE int openat(int __dir_fd, const char *path, int __flags, ...) {
@@ -159,7 +159,7 @@ SPRT_FORCEINLINE int openat(int __dir_fd, const char *path, int __flags, ...) {
 		__sprt_va_end(ap);
 	}
 
-	return __sprt_openat(__dir_fd, path, __mode);
+	return __sprt_openat(__dir_fd, path, __flags, __mode);
 }
 
 #if __SPRT_CONFIG_HAVE_FCNTL_SPLICE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS

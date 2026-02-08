@@ -114,6 +114,11 @@ static void *mmap64(void *addr, size_t length, int prot, int flags, int fd, off_
 		return __SPRT_MAP_FAILED;
 	}
 
+	if (fd < 0) {
+		__sprt_errno = EBADF;
+		return __SPRT_MAP_FAILED;
+	}
+
 	HANDLE hFile = (HANDLE)_get_osfhandle(fd);
 	if (hFile == INVALID_HANDLE_VALUE) {
 		errno = EBADF;
@@ -126,7 +131,7 @@ static void *mmap64(void *addr, size_t length, int prot, int flags, int fd, off_
 
 	LARGE_INTEGER liOffset = {.QuadPart = offset};
 	HANDLE hMap =
-			CreateFileMappingA(hFile, NULL, flProtect, liOffset.HighPart, liOffset.LowPart, NULL);
+			CreateFileMappingW(hFile, NULL, flProtect, liOffset.HighPart, liOffset.LowPart, NULL);
 	if (!hMap) {
 		errno = platform::lastErrorToErrno(GetLastError());
 		return __SPRT_MAP_FAILED;
@@ -243,12 +248,19 @@ static int msync(void *addr, size_t length, int flags) {
 	}
 
 	// Flush file buffers for disk durability
+	if (fd < 0) {
+		errno = EBADF;
+		return -1;
+	}
+
 	HANDLE hFile = (HANDLE)_get_osfhandle(fd);
 	if (hFile != INVALID_HANDLE_VALUE) {
 		FlushFileBuffers(hFile);
+		return 0;
 	}
 
-	return 0;
+	errno = EBADF;
+	return -1;
 }
 
 static int posix_madvise(void *addr, size_t len, int advice) {
@@ -382,8 +394,7 @@ static int mincore(void *addr, size_t length, unsigned char *vec) {
 
 	memset(vec, 0, npages);
 
-	PPSAPI_WORKING_SET_EX_INFORMATION WsInfo = (PPSAPI_WORKING_SET_EX_INFORMATION)__sprt_malloca(
-			npages * sizeof(PSAPI_WORKING_SET_EX_INFORMATION));
+	auto WsInfo = __sprt_typed_malloca(PSAPI_WORKING_SET_EX_INFORMATION, npages);
 
 	if (WsInfo == NULL) {
 		errno = ENOMEM;

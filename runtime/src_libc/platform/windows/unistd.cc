@@ -31,6 +31,7 @@ THE SOFTWARE.
 #include <sprt/c/sys/__sprt_random.h>
 
 #include "private/SPRTFilename.h"
+#include "private/SPRTPrivate.h"
 
 #include <Windows.h>
 #include <corecrt_io.h>
@@ -47,8 +48,55 @@ THE SOFTWARE.
 
 namespace sprt {
 
+static __SPRT_ID(ssize_t) read(int __fd, void *__buf, __SPRT_ID(size_t) __nbytes) {
+	if (__fd < 0) {
+		errno = EBADF;
+		return -1;
+	}
+
+	HANDLE h = (HANDLE)_get_osfhandle(__fd);
+	if (h == INVALID_HANDLE_VALUE) {
+		errno = EBADF;
+		return -1;
+	}
+
+	DWORD read;
+	if (!ReadFile(h, __buf, (DWORD)__nbytes, &read, NULL)) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+
+	return (ssize_t)read;
+}
+
+static __SPRT_ID(ssize_t) write(int __fd, const void *__buf, __SPRT_ID(size_t) __n) {
+	if (__fd < 0) {
+		errno = EBADF;
+		return -1;
+	}
+
+	HANDLE h = (HANDLE)_get_osfhandle(__fd);
+	if (h == INVALID_HANDLE_VALUE) {
+		errno = EBADF;
+		return -1;
+	}
+
+	DWORD written;
+	if (!WriteFile(h, __buf, (DWORD)__n, &written, NULL)) {
+		errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+
+	return (ssize_t)written;
+}
+
 // @AI-geerated
 static ssize_t pread64(int fd, void *buf, size_t count, off64_t offset) {
+	if (fd < 0) {
+		errno = EBADF;
+		return -1;
+	}
+
 	HANDLE h = (HANDLE)_get_osfhandle(fd);
 	if (h == INVALID_HANDLE_VALUE) {
 		errno = EBADF;
@@ -84,6 +132,11 @@ static ssize_t pread64(int fd, void *buf, size_t count, off64_t offset) {
 
 // @AI-geerated
 ssize_t pwrite64(int fd, const void *buf, size_t count, off64_t offset) {
+	if (fd < 0) {
+		errno = EBADF;
+		return -1;
+	}
+
 	HANDLE h = (HANDLE)_get_osfhandle(fd);
 	if (h == INVALID_HANDLE_VALUE) {
 		errno = EBADF;
@@ -151,28 +204,33 @@ int usleep(unsigned long us) {
 }
 
 int fchdir(int fdDir) {
+	if (fdDir < 0) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
 	HANDLE handle = (HANDLE)_get_osfhandle(fdDir);
 	if (handle == INVALID_HANDLE_VALUE) {
 		errno = EBADF;
 		return -1;
 	}
 
-	auto pathLen = GetFinalPathNameByHandleA(handle, NULL, 0, 0);
+	auto pathLen = GetFinalPathNameByHandleW(handle, NULL, 0, 0);
 	if (pathLen == 0) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
 
+	auto buf = __sprt_typed_malloca(wchar_t, pathLen + 1);
 
-	auto buf = (char *)__sprt_malloca(pathLen + 1);
-
-	auto writtenLen = GetFinalPathNameByHandleA(handle, buf, pathLen + 1, 0);
+	auto writtenLen = GetFinalPathNameByHandleW(handle, buf, pathLen + 1, 0);
 	if (writtenLen == 0) {
+		__sprt_freea(buf);
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
 
-	auto ret = SetCurrentDirectoryA(buf);
+	auto ret = SetCurrentDirectoryW(buf);
 
 	__sprt_freea(buf);
 
@@ -185,42 +243,57 @@ int fchdir(int fdDir) {
 }
 
 static int fexecve(int __fd, char *const _argv[], char *const __envp[]) __SPRT_NOEXCEPT {
+	if (__fd < 0) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
 	HANDLE handle = (HANDLE)_get_osfhandle(__fd);
 	if (handle == INVALID_HANDLE_VALUE) {
 		errno = EBADF;
 		return -1;
 	}
 
-	auto pathLen = GetFinalPathNameByHandleA(handle, NULL, 0, 0);
+	auto pathLen = GetFinalPathNameByHandleW(handle, NULL, 0, 0);
 	if (pathLen == 0) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
 
-	auto buf = (char *)__sprt_malloc(pathLen + 1);
+	auto buf = __sprt_typed_malloca(wchar_t, pathLen + 1);
 
-	auto writtenLen = GetFinalPathNameByHandleA(handle, buf, pathLen + 1, 0);
+	auto writtenLen = GetFinalPathNameByHandleW(handle, buf, pathLen + 1, 0);
 	if (writtenLen == 0) {
+		__sprt_free(buf);
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
 
-	auto ret = int(::_execve(buf, _argv, __envp));
-	__sprt_free(buf);
+	auto ustr = __MALLOCA_STRINGS(buf, writtenLen);
+
+	auto ret = int(::_execve(ustr, _argv, __envp));
+	__sprt_freea(ustr);
+	__sprt_freea(buf);
 	return ret;
 }
 
 // @AI-geerated
-static long pathconf(const char *path, int name) {
-	char root[4] = {path[0], ':', '\\', '\0'}; // e.g., "C:\\"
-
+static long __wdiskpathconf(const wchar_t *diskPath, int name) {
 	switch (name) {
-	case __SPRT_PC_LINK_MAX: return 1; // Windows hard links limited [web:375]
+	case __SPRT_PC_LINK_MAX: {
+		DWORD fsFlags;
+		GetVolumeInformationW(diskPath, NULL, 0, NULL, NULL, &fsFlags, NULL, 0);
+		if (fsFlags & FILE_SUPPORTS_HARD_LINKS) {
+			return 1'024;
+		}
+		return 1;
+	}
 
-	case __SPRT_PC_NAME_MAX:
+	case __SPRT_PC_NAME_MAX: {
 		DWORD max_comp;
-		GetVolumeInformationA(root, NULL, 0, NULL, &max_comp, NULL, NULL, 0);
+		GetVolumeInformationW(diskPath, NULL, 0, NULL, &max_comp, NULL, NULL, 0);
 		return (long)max_comp; // Usually 255 NTFS
+	}
 
 	case __SPRT_PC_PATH_MAX: return MAX_PATH; // MAX_PATH legacy; 32K with "\\?\"
 
@@ -238,35 +311,49 @@ static long pathconf(const char *path, int name) {
 
 	case __SPRT_PC_ALLOC_SIZE_MIN:
 		ULARGE_INTEGER avail, total, free;
-		GetDiskFreeSpaceExA(root, &avail, &total, &free);
+		GetDiskFreeSpaceExW(diskPath, &avail, &total, &free);
 		return (long)avail.QuadPart; // Free bytes proxy
 
 	default: errno = EINVAL; return -1;
 	}
 }
 
+// @AI-geerated
+static long pathconf(const char *path, int name) {
+	wchar_t root[4] = {wchar_t(path[0]), L':', L'\\', L'\0'}; // e.g., "C:\\"
+	return __wdiskpathconf(root, name);
+}
+
 static long fpathconf(int __fd, int name) {
+	if (__fd < 0) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
 	HANDLE handle = (HANDLE)_get_osfhandle(__fd);
 	if (handle == INVALID_HANDLE_VALUE) {
 		errno = EBADF;
 		return -1;
 	}
 
-	auto pathLen = GetFinalPathNameByHandleA(handle, NULL, 0, 0);
+	auto pathLen = GetFinalPathNameByHandleW(handle, NULL, 0, 0);
 	if (pathLen == 0) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
 
-	auto buf = (char *)__sprt_malloca(pathLen + 1);
+	auto buf = __sprt_typed_malloca(wchar_t, pathLen + 1);
 
-	auto writtenLen = GetFinalPathNameByHandleA(handle, buf, pathLen + 1, 0);
+	auto writtenLen = GetFinalPathNameByHandleW(handle, buf, pathLen + 1, 0);
 	if (writtenLen == 0) {
+		__sprt_freea(buf);
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
 
-	auto ret = pathconf(buf, name);
+	wchar_t root[4] = {buf[0], L':', L'\\', L'\0'}; // e.g., "C:\\"
+
+	auto ret = __wdiskpathconf(root, name);
 
 	__sprt_freea(buf);
 
@@ -356,17 +443,6 @@ static DWORD getppid(void) {
 	return ppid;
 }
 
-static DWORD __getRid(PSID sid) {
-	if (!GetSidSubAuthorityCount(sid)) {
-		errno = EINVAL;
-		return __SPRT_ID(uid_t)(-1);
-	}
-
-	DWORD sub_count = *GetSidSubAuthorityCount(sid);
-
-	return *GetSidSubAuthority(sid, sub_count - 1);
-}
-
 // @AI-geerated
 static __SPRT_ID(uid_t) getuid(void) {
 	HANDLE hToken = nullptr;
@@ -387,12 +463,18 @@ static __SPRT_ID(uid_t) getuid(void) {
 		return __SPRT_ID(uid_t)(-1);
 	}
 
-	auto uid = __getRid(pUser->User.Sid);
+	auto uid = platform::getRid(pUser->User.Sid);
 	__sprt_freea(pUser);
 	return uid;
 }
 
-static __SPRT_ID(uid_t) geteuid(void) { return getuid(); }
+static __SPRT_ID(uid_t) geteuid(void) {
+	auto uid = platform::getEffectiveFileUid();
+	if (uid) {
+		return uid;
+	}
+	return getuid();
+}
 
 // @AI-geerated
 static __SPRT_ID(gid_t) getgid(void) {
@@ -416,12 +498,18 @@ static __SPRT_ID(gid_t) getgid(void) {
 		return __SPRT_ID(gid_t)(-1);
 	}
 
-	auto gid = __getRid(pGroup->PrimaryGroup);
+	auto gid = platform::getRid(pGroup->PrimaryGroup);
 	__sprt_freea(pGroup);
 	return gid;
 }
 
-static __SPRT_ID(gid_t) getegid(void) { return getuid(); }
+static __SPRT_ID(gid_t) getegid(void) {
+	auto uid = platform::getEffectiveFileGid();
+	if (uid) {
+		return uid;
+	}
+	return getgid();
+}
 
 // @AI-geerated
 static int getgroups(int size, __SPRT_ID(gid_t) list[]) {
@@ -465,41 +553,43 @@ static int getgroups(int size, __SPRT_ID(gid_t) list[]) {
 	return count;
 }
 
-static BOOL __isdir(const char *path) {
-	DWORD attr = GetFileAttributesA(path);
+static BOOL __isdir(const wchar_t *path) {
+	DWORD attr = GetFileAttributesW(path);
 	return (attr != INVALID_FILE_ATTRIBUTES) && (attr & FILE_ATTRIBUTE_DIRECTORY);
 }
 
 // @AI-geerated
-static memory::dynstring __readlink_str(const char *path) {
-#warning Needs heavy testing
-	HANDLE h = CreateFileA(path, GENERIC_READ,
-			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
-			FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+
+using dynwstring = memory::basic_string<wchar_t, memory::detail::DynamicAllocator<wchar_t>>;
+
+static dynwstring __readlink_str(const wchar_t *path) {
+	HANDLE h =
+			CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+					NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (h == INVALID_HANDLE_VALUE) {
 		errno = platform::lastErrorToErrno(GetLastError());
-		return memory::dynstring();
+		return dynwstring();
 	}
 
-	auto pathLen = GetFinalPathNameByHandleA(h, NULL, 0, 0);
+	auto pathLen = GetFinalPathNameByHandleW(h, NULL, 0, 0);
 	if (pathLen == 0) {
 		CloseHandle(h);
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		return memory::dynstring();
+		return dynwstring();
 	}
 
-	memory::dynstring ret;
+	dynwstring ret;
 	ret.resize(pathLen);
 
-	auto writtenLen = GetFinalPathNameByHandleA(h, ret.data(), pathLen + 1, FILE_NAME_NORMALIZED);
+	auto writtenLen = GetFinalPathNameByHandleW(h, ret.data(), pathLen + 1, FILE_NAME_NORMALIZED);
 	CloseHandle(h);
 
 	if (writtenLen == 0) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		return memory::dynstring();
+		return dynwstring();
 	}
 
-	ret.resize(writtenLen - 1);
+	ret.resize(writtenLen);
 	return ret;
 }
 
@@ -507,18 +597,13 @@ static int link(const char *__from, const char *__to) __SPRT_NOEXCEPT {
 	return internal::performWithNativePath(__from, [&](const char *from) {
 		// call with native path
 		return internal::performWithNativePath(__to, [&](const char *to) {
-			memory::dynstring tmpPath;
-			DWORD attr = 0;
-			do {
-				auto attr = GetFileAttributesA(from);
-				if (attr & FILE_ATTRIBUTE_REPARSE_POINT) {
-					tmpPath = __readlink_str(from);
-					from = tmpPath.data();
-				}
-			} while (attr & FILE_ATTRIBUTE_REPARSE_POINT);
-
 			// call with native path
-			if (CreateHardLinkA(to, from, nullptr)) {
+			auto wFrom = __MALLOCA_WSTRING(from);
+			auto wTo = __MALLOCA_WSTRING(to);
+			auto ret = CreateHardLinkW(wTo, wFrom, nullptr);
+			__sprt_freea(wTo);
+			__sprt_freea(wFrom);
+			if (ret) {
 				return 0;
 			}
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
@@ -532,7 +617,13 @@ static int symlink(const char *__from, const char *__to) __SPRT_NOEXCEPT {
 		// call with native path
 		return internal::performWithNativePath(__to, [&](const char *to) {
 			// call with native path
-			if (CreateSymbolicLinkA(to, from, __isdir(from) ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0)) {
+			auto wFrom = __MALLOCA_WSTRING(from);
+			auto wTo = __MALLOCA_WSTRING(to);
+			auto ret = CreateSymbolicLinkW(wTo, wFrom,
+					__isdir(wFrom) ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0);
+			__sprt_freea(wTo);
+			__sprt_freea(wFrom);
+			if (ret) {
 				return 0;
 			}
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
@@ -548,8 +639,11 @@ static int __access(const char *path, int mode, int flags) {
 		return -1;
 	}
 
-	DWORD attr = GetFileAttributesA(path);
+	auto wpath = __MALLOCA_WSTRING(path);
+
+	DWORD attr = GetFileAttributesW(wpath);
 	if (attr == INVALID_FILE_ATTRIBUTES) {
+		__sprt_freea(wpath);
 		DWORD err = GetLastError();
 		errno = (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) ? ENOENT : EACCES;
 		return -1;
@@ -557,11 +651,13 @@ static int __access(const char *path, int mode, int flags) {
 
 	// F_OK: exists
 	if (mode == __SPRT_F_OK) {
+		__sprt_freea(wpath);
 		return 0;
 	}
 
 	// Directory? Fail (POSIX: not regular file)
 	if (attr & FILE_ATTRIBUTE_DIRECTORY) {
+		__sprt_freea(wpath);
 		errno = EISDIR;
 		return -1;
 	}
@@ -573,15 +669,17 @@ static int __access(const char *path, int mode, int flags) {
 
 	// X_OK: executable (any file)
 	if (mode & __SPRT_X_OK) {
+		__sprt_freea(wpath);
 		return 0;
 	}
 
 	// R_OK: try read-only open
 	if (mode & __SPRT_R_OK) {
-		HANDLE h = CreateFileA(path, GENERIC_READ,
+		HANDLE h = CreateFileW(wpath, GENERIC_READ,
 				FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
 				FILE_ATTRIBUTE_NORMAL | fileFlags, NULL);
 		if (h == INVALID_HANDLE_VALUE) {
+			__sprt_freea(wpath);
 			errno = GetLastError() == ERROR_ACCESS_DENIED ? EACCES : EIO;
 			return -1;
 		}
@@ -590,16 +688,18 @@ static int __access(const char *path, int mode, int flags) {
 
 	// W_OK: try write-only open
 	if (mode & __SPRT_W_OK) {
-		HANDLE h = CreateFileA(path, GENERIC_WRITE,
+		HANDLE h = CreateFileW(wpath, GENERIC_WRITE,
 				FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
 				FILE_ATTRIBUTE_NORMAL | fileFlags, NULL);
 		if (h == INVALID_HANDLE_VALUE) {
+			__sprt_freea(wpath);
 			errno = GetLastError() == ERROR_ACCESS_DENIED ? EACCES : EIO;
 			return -1;
 		}
 		CloseHandle(h);
 	}
 
+	__sprt_freea(wpath);
 	return 0;
 }
 
@@ -612,26 +712,19 @@ static int access(const char *__path, int __mode) {
 static int eaccess(const char *__path, int __mode) { return access(__path, __mode); }
 
 static ssize_t __readlink(const char *path, char *buf, size_t bufsiz) {
-	auto strPath = __readlink_str(path);
+	auto wpath = __MALLOCA_WSTRING(path);
+	auto strPath = __readlink_str(wpath);
 	if (strPath.empty()) {
 		return -1;
 	}
 
+	WideStringView wstr((char16_t *)strPath.data(), strPath.size());
+
+	size_t ulen = 0;
+	unicode::toUtf8(buf, bufsiz, wstr, &ulen);
+
 	// convert in place
-	auto writtenLen = __sprt_fpath_to_posix(strPath.data(), strPath.size(), strPath.data(),
-			strPath.size() + 1);
-
-	if (!buf) {
-		return writtenLen;
-	}
-
-	if (writtenLen <= bufsiz) {
-		memcpy(buf, strPath.data(), writtenLen);
-		return writtenLen;
-	} else {
-		memcpy(buf, strPath.data(), bufsiz);
-		return bufsiz;
-	}
+	return __sprt_fpath_to_posix(buf, ulen, buf, bufsiz);
 }
 
 static ssize_t readlink(const char *__path, char *buf, size_t bufsiz) {
@@ -643,14 +736,17 @@ static ssize_t readlink(const char *__path, char *buf, size_t bufsiz) {
 // @AI-geerated
 static int __unlink(const char *path) {
 	// Clear read-only attribute first
-	DWORD attr = GetFileAttributesA(path);
+	auto wpath = __MALLOCA_WSTRING(path);
+	DWORD attr = GetFileAttributesW(wpath);
 	if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_READONLY)) {
-		if (!SetFileAttributesA(path, attr & ~FILE_ATTRIBUTE_READONLY)) {
+		if (!SetFileAttributesW(wpath, attr & ~FILE_ATTRIBUTE_READONLY)) {
 			// Still try to delete even if attr change fails
 		}
 	}
 
-	if (!DeleteFileA(path)) {
+	auto ret = DeleteFileW(wpath);
+	__sprt_freea(wpath);
+	if (!ret) {
 		DWORD err = GetLastError();
 		switch (err) {
 		case ERROR_FILE_NOT_FOUND:
@@ -673,7 +769,10 @@ static int unlink(const char *__path) {
 
 // @AI-geerated
 static int __rmdir(const char *path) {
-	if (!RemoveDirectoryA(path)) {
+	auto wpath = __MALLOCA_WSTRING(path);
+	auto ret = RemoveDirectoryW(wpath);
+	__sprt_freea(wpath);
+	if (!ret) {
 		DWORD err = GetLastError();
 		switch (err) {
 		case ERROR_PATH_NOT_FOUND:
@@ -695,43 +794,89 @@ static int rmdir(const char *__path) {
 }
 
 static char *getlogin(void) {
-	static char username[UNLEN + 1] = {0};
+	static wchar_t wusername[UNLEN + 1] = {0};
+	static char username[UNLEN * 3 + 1] = {0};
+
 	DWORD username_len = UNLEN + 1;
-	GetUserNameA(username, &username_len);
+	if (!GetUserNameW(wusername, &username_len)) {
+		errno = platform::lastErrorToErrno(GetLastError());
+		return nullptr;
+	}
+
+	size_t len = 0;
+	unicode::toUtf8(username, UNLEN * 3 + 1, WideStringView((char16_t *)wusername, username_len),
+			&len);
+	username[len] = 0;
+
 	return username;
 }
 
 static int getlogin_r(char *__name, size_t __name_len) {
-	DWORD username_len = __name_len;
-	if (GetUserNameA(__name, &username_len)) {
-		return 0;
+	wchar_t wusername[UNLEN + 1] = {0};
+	DWORD username_len = UNLEN + 1;
+	if (!GetUserNameW(wusername, &username_len)) {
+		errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
 	}
-	errno = platform::lastErrorToErrno(GetLastError());
-	return -1;
+
+	auto ulen = unicode::getUtf8Length(WideStringView((char16_t *)wusername, username_len));
+	if (__name_len < ulen) {
+		errno = ERANGE;
+		return -1;
+	}
+
+	size_t len = 0;
+	unicode::toUtf8(__name, __name_len, WideStringView((char16_t *)wusername, username_len), &len);
+	if (len < __name_len) {
+		__name[len] = 0;
+	}
+	return 0;
 }
 
 // @AI-geerated
-static int getdomainname(char *name, size_t namelen) {
-	if (namelen == 0) {
+static int getdomainname(char *__name, size_t __name_len) {
+	if (__name_len == 0 || __name == nullptr) {
 		errno = EINVAL;
 		return -1;
 	}
 
-	DWORD size = (DWORD)namelen;
-	if (!GetComputerNameExA(ComputerNameDnsDomain, name, &size)) {
-		DWORD err = GetLastError();
-		switch (err) {
-		case ERROR_MORE_DATA: errno = ENOSPC; break;
-		default: errno = platform::lastErrorToErrno(GetLastError());
-		}
+	DWORD nSymbols = 0;
+	GetComputerNameExW(ComputerNameDnsDomain, nullptr, &nSymbols);
+
+	if (nSymbols == 0) {
+		errno = EINVAL;
 		return -1;
 	}
 
+	nSymbols += 1;
+	auto wbuf = __sprt_typed_malloca(wchar_t, nSymbols);
+
+	if (!GetComputerNameExW(ComputerNameDnsDomain, wbuf, &nSymbols)) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	auto ulen = unicode::getUtf8Length(WideStringView((char16_t *)wbuf, nSymbols));
+	if (__name_len < ulen) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	size_t len = 0;
+	unicode::toUtf8(__name, __name_len, WideStringView((char16_t *)wbuf, nSymbols), &len);
+	if (len < __name_len) {
+		__name[len] = 0;
+	}
 	return 0;
 }
 
 // @AI-geerated
 static int fsync(int fd) {
+	if (fd < 0) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
 	HANDLE h = (HANDLE)_get_osfhandle(fd);
 	if (h == INVALID_HANDLE_VALUE) {
 		errno = EBADF;
@@ -760,10 +905,11 @@ static int getdtablesize(void) {
 
 // @AI-geerated
 static int __truncate(const char *path, off64_t length) {
-	HANDLE h = CreateFileA(path, GENERIC_WRITE,
+	auto wpath = __MALLOCA_WSTRING(path);
+	HANDLE h = CreateFileW(wpath, GENERIC_WRITE,
 			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
 			length == 0 ? TRUNCATE_EXISTING : OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-
+	__sprt_freea(wpath);
 	if (h == INVALID_HANDLE_VALUE) {
 		errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
@@ -799,6 +945,11 @@ static int truncate64(const char *__path, off64_t length) {
 
 // @AI-geerated
 static int ftruncate64(int __fd, off64_t length) {
+	if (__fd < 0) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
 	HANDLE handle = (HANDLE)_get_osfhandle(__fd);
 	if (handle == INVALID_HANDLE_VALUE) {
 		errno = EBADF;
@@ -946,10 +1097,15 @@ static int getentropy(void *__buffer, __SPRT_ID(size_t) __length) {
 
 static int symlinkat(const char *__old_path, int __new_dir_fd, const char *__new_path) {
 	int ret = 0;
-	if (!platform::openAtPath(__new_dir_fd, __new_path, [&](const char *path, size_t size) {
+	if (!platform::openAtPath(__new_dir_fd, __new_path, [&](const char *to, size_t size) {
 		ret = internal::performWithNativePath(__old_path, [&](const char *from) {
-			if (CreateSymbolicLinkA(path, __old_path,
-						__isdir(__old_path) ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0)) {
+			auto wFrom = __MALLOCA_WSTRING(from);
+			auto wTo = __MALLOCA_WSTRING(to);
+			auto ret = CreateSymbolicLinkW(wTo, wFrom,
+					__isdir(wFrom) ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0);
+			__sprt_freea(wTo);
+			__sprt_freea(wFrom);
+			if (ret) {
 				return 0;
 			} else {
 				__sprt_errno = platform::lastErrorToErrno(GetLastError());
@@ -987,22 +1143,33 @@ static int faccessat(int __dirfd, const char *__path, int __mode, int __flags) {
 static int linkat(int __old_dir_fd, const char *__old_path, int __new_dir_fd,
 		const char *__new_path, int __flags) {
 	int ret = 0;
-	if (!platform::openAtPath(__old_dir_fd, __old_path, [&](const char *from, size_t size) {
-		if (!platform::openAtPath(__new_dir_fd, __new_path, [&](const char *to, size_t size) {
-			memory::dynstring tmpPath;
+	if (!platform::openAtPath(__old_dir_fd, __old_path, [&](const char *from, size_t fromSize) {
+		if (!platform::openAtPath(__new_dir_fd, __new_path, [&](const char *to, size_t toSize) {
+			auto wFrom = __MALLOCA_WSTRINGS(from, fromSize);
+			auto wFromBuf = wFrom;
+			auto wTo = __MALLOCA_WSTRINGS(to, toSize);
+
+			dynwstring tmpPath;
 			if (__flags & __SPRT_AT_SYMLINK_FOLLOW) {
 				DWORD attr = 0;
 				do {
-					attr = GetFileAttributesA(from);
+					attr = GetFileAttributesW(wFrom);
 					if (attr & FILE_ATTRIBUTE_REPARSE_POINT) {
-						tmpPath = __readlink_str(from);
-						from = tmpPath.data();
+						auto newPath = __readlink_str(wFrom);
+						if (newPath == tmpPath) {
+							break;
+						}
+						tmpPath = sprt::move(newPath);
+						wFrom = tmpPath.data();
 					}
 				} while (attr & FILE_ATTRIBUTE_REPARSE_POINT);
 			}
 
 			// call with native path
-			if (CreateHardLinkA(to, from, nullptr)) {
+			auto ret = CreateHardLinkW(wTo, wFrom, nullptr);
+			__sprt_freea(wTo);
+			__sprt_freea(wFromBuf);
+			if (ret) {
 				ret = 0;
 			} else {
 				__sprt_errno = platform::lastErrorToErrno(GetLastError());
@@ -1062,5 +1229,56 @@ static int pipe2(int fds[2], int flags) {
 }
 
 static int pipe(int fds[2]) { return pipe2(fds, __SPRT_O_CLOEXEC); }
+
+static char *getcwd(char *buf, size_t bufSize) {
+	if (buf && bufSize == 0) {
+		errno = EINVAL;
+		return nullptr;
+	}
+
+	auto requiredBufferLen = GetCurrentDirectoryW(0, nullptr);
+	if (requiredBufferLen == 0) {
+		errno = EACCES;
+		return nullptr;
+	}
+
+	auto wbuf = __sprt_typed_malloca(wchar_t, requiredBufferLen + 1);
+	auto цbufferLen = GetCurrentDirectoryW(requiredBufferLen + 1, wbuf);
+	if (цbufferLen == 0) {
+		errno = EACCES;
+		return nullptr;
+	}
+
+	auto requiredLen = unicode::getUtf8Length(WideStringView((char16_t *)wbuf, цbufferLen)) + 1;
+
+	if (bufSize > 0 && bufSize < requiredLen) {
+		errno = ERANGE;
+		return nullptr;
+	}
+
+	if (!buf) {
+		if (bufSize == 0) {
+			buf = (char *)malloc(requiredLen);
+			bufSize = requiredLen;
+		} else {
+			buf = (char *)malloc(bufSize);
+		}
+	}
+
+	size_t retLen = 0;
+	unicode::toUtf8(buf, bufSize, WideStringView((char16_t *)wbuf, цbufferLen), &retLen);
+	if (retLen < bufSize) {
+		buf[retLen] = 0;
+	}
+
+	if (!__sprt_fpath_is_posix(buf, retLen)) {
+		// convert path in place
+		if (__sprt_fpath_to_posix(buf, retLen, buf, bufSize) == 0) {
+			*__sprt___errno_location() = EINVAL;
+			return nullptr;
+		}
+	}
+	return buf;
+}
 
 } // namespace sprt

@@ -30,6 +30,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdio.h>
 
 #include <sprt/runtime/string.h>
+#include <sprt/runtime/enum.h>
 
 #include <stdlib.h>
 #include <fcntl.h>
@@ -44,9 +45,11 @@ THE SOFTWARE.
 
 struct __dirstream {
 	static constexpr size_t DefaultSize = 4'096;
+	static constexpr size_t MaxFilenameSize = 256 + 768;
+	static constexpr int RootFd = INT_MIN;
 
 	struct __SPRT_DIRENT_NAME dent;
-	char extraNameBuffer[512];
+	char extraNameBuffer[768];
 
 	size_t size = 0;
 	int fd = -1;
@@ -59,6 +62,12 @@ struct __dirstream {
 	// uint64_t for alignment
 	sprt::uint64_t extraSpaceSize = 0;
 	char *extraSpace[0];
+};
+
+struct __rootdirinfo {
+	DWORD _driveMask = 0;
+	DWORD _nDrives = 0;
+	char _drives[28] = {0};
 };
 
 #ifdef __clang__
@@ -82,10 +91,36 @@ static bool __isdir(HANDLE handle) {
 	return true;
 }
 
+static __dirstream *__wopenroot() {
+	auto ds = new (malloc(__dirstream::DefaultSize), nothrow) __dirstream;
+	if (!ds) {
+		__sprt_errno = ENOMEM;
+		return nullptr;
+	}
+
+	ds->size = __dirstream::DefaultSize;
+	ds->handle = nullptr;
+	ds->fd = __dirstream::RootFd;
+	ds->dent.d_off = 0;
+	ds->extraSpaceSize = ds->size - offsetof(__dirstream, extraSpace);
+
+	auto rdi = new (ds->extraSpace, nothrow) __rootdirinfo;
+	rdi->_driveMask = GetLogicalDrives();
+
+	rdi->_nDrives = 0;
+	for (auto idx : flags(rdi->_driveMask)) {
+		rdi->_drives[rdi->_nDrives++] = 'a' + __builtin_ctz(idx); //
+	}
+
+	return ds;
+}
+
 static __dirstream *__wopendir(const char *path) {
+	auto wpath = __MALLOCA_WSTRING(path);
 	HANDLE h =
-			CreateFileA(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+			CreateFileW(wpath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
 					NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+	__sprt_freea(wpath);
 	if (h == INVALID_HANDLE_VALUE) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return nullptr;
@@ -103,21 +138,30 @@ static __dirstream *__wopendir(const char *path) {
 	}
 	ds->size = __dirstream::DefaultSize;
 	ds->handle = h;
+	ds->dent.d_off = 0;
 	ds->extraSpaceSize = ds->size - offsetof(__dirstream, extraSpace);
 
 	return ds;
 }
 
 static __dirstream *opendir(const char *path) {
-	return internal::performWithNativePath(path, [&](const char *target) {
-		return __wopendir(target); //
-	}, (__dirstream *)nullptr);
+	if (memcmp(path, "/", 2) == 0) { // note null-term here
+		return __wopenroot();
+	} else {
+		return internal::performWithNativePath(path, [&](const char *target) {
+			return __wopendir(target); //
+		}, (__dirstream *)nullptr);
+	}
 }
 
 static __dirstream *fdopendir(int __dir_fd) {
+	if (__dir_fd < 0) {
+		__sprt_errno = EBADF;
+		return nullptr;
+	}
 	auto h = HANDLE(_get_osfhandle(__dir_fd));
 	if (!h || h == INVALID_HANDLE_VALUE) {
-		*__sprt___errno_location() = EBADF;
+		__sprt_errno = EBADF;
 		return nullptr;
 	}
 
@@ -140,7 +184,9 @@ static __dirstream *fdopendir(int __dir_fd) {
 }
 
 static struct __SPRT_DIRENT_NAME *readdir64(__dirstream *__dir, off_t target = 0) {
-	if (!__dir || !__dir->handle || __dir->handle == INVALID_HANDLE_VALUE) {
+	if (!__dir
+			|| ((__dir->fd != __dirstream::RootFd)
+					&& (!__dir->handle || __dir->handle == INVALID_HANDLE_VALUE))) {
 		*__sprt___errno_location() = EINVAL;
 		return nullptr;
 	}
@@ -148,6 +194,19 @@ static struct __SPRT_DIRENT_NAME *readdir64(__dirstream *__dir, off_t target = 0
 	if (__dir->noMoreFiles) {
 		// signal to end
 		return nullptr;
+	}
+
+	if (__dir->fd == __dirstream::RootFd) {
+		auto rdi = (__rootdirinfo *)__dir->extraSpace;
+		if (__dir->dent.d_off >= rdi->_nDrives) {
+			__dir->noMoreFiles = true;
+			return nullptr;
+		}
+
+		__dir->dent.d_name[0] = rdi->_drives[__dir->dent.d_off++];
+		__dir->dent.d_name[1] = 0;
+
+		return &__dir->dent;
 	}
 
 	if (!__dir->currentInfo) {
@@ -162,13 +221,13 @@ static struct __SPRT_DIRENT_NAME *readdir64(__dirstream *__dir, off_t target = 0
 
 	if (__dir->currentInfo) {
 		__dir->dent.d_ino = __dir->currentInfo->FileId.QuadPart;
-		__dir->dent.d_off = __dir->currentInfo->FileIndex;
+		++__dir->dent.d_off;
 
 		if (target == 0 || __dir->dent.d_off == target) {
 			size_t len = 0;
-			unicode::toUtf8(__dir->dent.d_name, 256 + 512,
+			unicode::toUtf8(__dir->dent.d_name, __dirstream::MaxFilenameSize,
 					WideStringView((char16_t *)__dir->currentInfo->FileName,
-							__dir->currentInfo->FileNameLength),
+							__dir->currentInfo->FileNameLength / sizeof(wchar_t)),
 					&len);
 			__dir->dent.d_name[len] = 0;
 			__dir->dent.d_reclen = sizeof(struct __SPRT_DIRENT_NAME) + len - 256;
@@ -183,8 +242,9 @@ static struct __SPRT_DIRENT_NAME *readdir64(__dirstream *__dir, off_t target = 0
 		}
 
 		if (__dir->currentInfo->NextEntryOffset) {
+			auto source = (char *)__dir->currentInfo;
 			__dir->currentInfo =
-					(FILE_ID_BOTH_DIR_INFO *)__dir->extraSpace[__dir->currentInfo->NextEntryOffset];
+					(FILE_ID_BOTH_DIR_INFO *)(source + __dir->currentInfo->NextEntryOffset);
 		} else {
 			__dir->currentInfo = nullptr;
 		}
@@ -218,7 +278,7 @@ static int rewinddir(__dirstream *__dir) {
 		return -1;
 	}
 
-	if (!__dir->currentInfo) {
+	if (__dir->handle && !__dir->currentInfo) {
 		if (GetFileInformationByHandleEx(__dir->handle, FileIdBothDirectoryRestartInfo,
 					__dir->extraSpace, __dir->extraSpaceSize)) {
 			__dir->currentInfo = (FILE_ID_BOTH_DIR_INFO *)__dir->extraSpace;
@@ -239,26 +299,28 @@ static int seekdir(__dirstream *__dir, long __location) {
 		return -1;
 	}
 
-	if (__location >= 0) {
-		if (__location == __dir->dent.d_off) {
-			return 0;
-		}
+	if (__location < 0) {
+		*__sprt___errno_location() = EINVAL;
+		return -1;
+	}
 
-		if (__location < __dir->dent.d_off) {
-			if (__sprt_rewinddir(__dir) != 0) {
-				return -1;
-			}
-		}
+	if (__location == __dir->dent.d_off) {
+		return 0;
+	}
 
-		while (__dir->dent.d_off != __location && __dir->handle && !__dir->noMoreFiles) {
-			if (!readdir64(__dir, __location)) {
-				*__sprt___errno_location() = EINVAL;
-				return -1;
-			}
+	if (__location < __dir->dent.d_off) {
+		if (__sprt_rewinddir(__dir) != 0) {
+			return -1;
 		}
 	}
-	*__sprt___errno_location() = EINVAL;
-	return -1;
+
+	while (__dir->dent.d_off != __location && __dir->handle && !__dir->noMoreFiles) {
+		if (!readdir64(__dir, __location)) {
+			*__sprt___errno_location() = EINVAL;
+			return -1;
+		}
+	}
+	return 0;
 }
 
 static long telldir(__dirstream *__dir) {
@@ -272,6 +334,11 @@ static long telldir(__dirstream *__dir) {
 static int dirfd(__dirstream *__dir) {
 	if (!__dir || !__dir->handle || __dir->handle == INVALID_HANDLE_VALUE) {
 		*__sprt___errno_location() = EINVAL;
+		return -1;
+	}
+
+	if (__dir->fd == __dirstream::RootFd) {
+		*__sprt___errno_location() = ENOTSUP;
 		return -1;
 	}
 

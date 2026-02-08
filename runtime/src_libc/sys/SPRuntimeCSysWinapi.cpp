@@ -38,6 +38,9 @@
 #include <accctrl.h>
 #include <aclapi.h>
 
+#include <io.h>
+#include <fcntl.h>
+
 #include <wil/result_macros.h>
 #include <wil/stl.h>
 #include <wil/resource.h>
@@ -100,8 +103,8 @@ __SPRT_C_FUNC int __SPRT_ID(_IdnToUnicode)(uint32_t dwFlags, const char16_t *lpU
 }
 
 __SPRT_C_FUNC __SPRT_ID(uint32_t)
-		__SPRT_ID(_GetCurrentDirectory)(__SPRT_ID(uint32_t) nBufferLength, char *lpBuffer) {
-	return GetCurrentDirectoryA(nBufferLength, lpBuffer);
+		__SPRT_ID(_GetCurrentDirectory)(__SPRT_ID(uint32_t) nBufferLength, char16_t *lpBuffer) {
+	return GetCurrentDirectoryW(nBufferLength, (wchar_t *)lpBuffer);
 }
 
 #else
@@ -495,6 +498,16 @@ struct StaticInit {
 	StaticInit() {
 		initResult = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 		wil::get_token_is_app_container_nothrow(nullptr, isAppContainer);
+
+		::setlocale(LC_ALL, "*.UTF8");
+
+		_setmode(_fileno(stderr), O_BINARY);
+		_setmode(_fileno(stdout), O_BINARY);
+		_setmode(_fileno(stdin), O_BINARY);
+
+		SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX);
+
+		acquireEffectiveIds();
 	}
 
 	~StaticInit() {
@@ -507,12 +520,58 @@ struct StaticInit {
 		}
 	}
 
+	void acquireEffectiveIds() {
+		wchar_t tempPath[MAX_PATH];
+		wchar_t tempFileName[MAX_PATH];
+
+		UINT uniqueNum = 0;
+
+		if (GetTempPathW(MAX_PATH, tempPath) == 0) {
+			return;
+		}
+
+		if (GetTempFileNameW(tempPath, L"euidgid", uniqueNum, tempFileName) == 0) {
+			return;
+		}
+
+		// Open the file with FILE_FLAG_DELETE_ON_CLOSE
+		HANDLE hTempFile = CreateFileW(tempFileName, GENERIC_READ | GENERIC_WRITE,
+				0, // No sharing
+				NULL,
+				OPEN_EXISTING, // The file was created by GetTempFileName
+				FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE, NULL);
+
+		if (hTempFile == INVALID_HANDLE_VALUE) {
+			return;
+		}
+
+		PSID owner_sid = nullptr;
+		PSID group_sid = nullptr;
+
+		if (GetSecurityInfo(hTempFile, SE_FILE_OBJECT,
+					OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION, &owner_sid, &group_sid,
+					NULL, NULL, NULL)
+				== ERROR_SUCCESS) {
+			euid = platform::getRid(owner_sid);
+			egid = platform::getRid(group_sid);
+		}
+
+		// The file is automatically deleted when the handle is closed.
+		CloseHandle(hTempFile);
+	}
+
 	HRESULT initResult;
 	PSID containerId = nullptr;
 	bool isAppContainer = false;
+
+	uint32_t euid = 0;
+	uint32_t egid = 0;
 };
 
 static StaticInit s_staticInit __attribute__((used));
+
+uint32_t getEffectiveFileUid() { return s_staticInit.euid; }
+uint32_t getEffectiveFileGid() { return s_staticInit.egid; }
 
 bool isAppContainer() { return s_staticInit.isAppContainer; }
 
@@ -693,7 +752,11 @@ bool getAppPath(const callback<void(StringView)> &cb) {
 		return false;
 	}
 
-	unicode::toUtf8(cb, WideStringView((char16_t *)fullpath, n));
+	unicode::toUtf8([&](StringView str) {
+		auto len =
+				__sprt_fpath_to_posix(str.data(), str.size(), (char *)str.data(), str.size() + 1);
+		cb(StringView(str.data(), len));
+	}, WideStringView((char16_t *)fullpath, n));
 	return true;
 }
 
@@ -702,7 +765,11 @@ bool getHomePath(const callback<void(StringView)> &cb) {
 	// Use FOLDERID_Documents to get the path to the Documents folder
 	HRESULT hr = SHGetKnownFolderPath(FOLDERID_Documents, KF_FLAG_DEFAULT, NULL, &pPath);
 	if (SUCCEEDED(hr)) {
-		unicode::toUtf8(cb, WideStringView((char16_t *)pPath));
+		unicode::toUtf8([&](StringView str) {
+			auto len = __sprt_fpath_to_posix(str.data(), str.size(), (char *)str.data(),
+					str.size() + 1);
+			cb(StringView(str.data(), len));
+		}, WideStringView((char16_t *)pPath));
 		CoTaskMemFree(pPath); // Free memory allocated by the function
 		return true;
 	}
@@ -711,16 +778,16 @@ bool getHomePath(const callback<void(StringView)> &cb) {
 
 bool getMachineId(const callback<void(StringView)> &cb) {
 	HKEY hKey;
-	if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Cryptography", 0, KEY_READ, &hKey)
+	if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Cryptography", 0, KEY_READ, &hKey)
 			!= ERROR_SUCCESS) {
-		throw std::runtime_error("Could not open registry key");
+		return false;
 	}
 
 	DWORD type;
 	DWORD dataSize = 0;
 	// Call RegGetValue once to get the buffer size
 	LONG result =
-			RegGetValueA(hKey, nullptr, "MachineGuid", RRF_RT_REG_SZ, &type, nullptr, &dataSize);
+			RegGetValueW(hKey, nullptr, L"MachineGuid", RRF_RT_REG_SZ, &type, nullptr, &dataSize);
 
 	if (result != ERROR_SUCCESS) {
 		RegCloseKey(hKey);
@@ -728,16 +795,16 @@ bool getMachineId(const callback<void(StringView)> &cb) {
 	}
 
 	// Allocate a buffer of the required size
-	auto buf = (char *)__sprt_malloca(dataSize + 1);
-	result = RegGetValueA(hKey, nullptr, "MachineGuid", RRF_RT_REG_SZ, &type, buf, &dataSize);
+	auto wbuf = __sprt_typed_malloca(wchar_t, dataSize + 1);
+	result = RegGetValueW(hKey, nullptr, L"MachineGuid", RRF_RT_REG_SZ, &type, wbuf, &dataSize);
 
 	if (result == ERROR_SUCCESS) {
-		cb(StringView(buf, dataSize));
+		unicode::toUtf8(cb, WideStringView((char16_t *)wbuf, dataSize));
 	}
 
 	RegCloseKey(hKey);
 
-	__sprt_freea(buf);
+	__sprt_freea(wbuf);
 	return false;
 }
 

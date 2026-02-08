@@ -35,6 +35,7 @@ THE SOFTWARE.
 #include <limits.h>
 
 #if SPRT_WINDOWS
+#define NOMINMAX 1
 #include <Windows.h>
 #include <corecrt_io.h>
 #include <direct.h>
@@ -82,6 +83,10 @@ __SPRT_C_FUNC __SPRT_ID(off_t)
 
 __SPRT_C_FUNC int __SPRT_ID(close)(int __fd) {
 #if SPRT_WINDOWS
+	if (__fd < 0) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
 	return ::_close(__fd);
 #else
 	return ::close(__fd);
@@ -90,20 +95,13 @@ __SPRT_C_FUNC int __SPRT_ID(close)(int __fd) {
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t)
 		__SPRT_ID(read)(int __fd, void *__buf, __SPRT_ID(size_t) __nbytes) {
-#if SPRT_WINDOWS
-	return ::_read(__fd, __buf, __nbytes);
-#else
-	return ::read(__fd, __buf, __nbytes);
-#endif
+	return read(__fd, __buf, __nbytes);
 }
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t)
 		__SPRT_ID(write)(int __fd, const void *__buf, __SPRT_ID(size_t) __n) {
-#if SPRT_WINDOWS
-	return ::_write(__fd, __buf, __n);
-#else
-	return ::write(__fd, __buf, __n);
-#endif
+
+	return write(__fd, __buf, __n);
 }
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
@@ -170,22 +168,7 @@ __SPRT_C_FUNC int __SPRT_ID(chdir)(const char *path) __SPRT_NOEXCEPT {
 __SPRT_C_FUNC int __SPRT_ID(fchdir)(int __fd) __SPRT_NOEXCEPT { return fchdir(__fd); }
 
 __SPRT_C_FUNC char *__SPRT_ID(getcwd)(char *__buf, __SPRT_ID(size_t) __size) __SPRT_NOEXCEPT {
-#if SPRT_WINDOWS
-	auto ret = ::_getcwd(__buf, __size);
-#else
-	auto ret = ::getcwd(__buf, __size);
-#endif
-	if (ret) {
-		auto retlen = __sprt_strlen(ret);
-		if (!__sprt_fpath_is_posix(ret, retlen)) {
-			// convert path in place
-			if (__sprt_fpath_to_posix(ret, retlen, ret, retlen + 1) == 0) {
-				*__sprt___errno_location() = EINVAL;
-				return nullptr;
-			}
-		}
-	}
-	return ret;
+	return getcwd(__buf, __size);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(dup)(int __fd) __SPRT_NOEXCEPT {
@@ -527,7 +510,7 @@ __SPRT_C_FUNC int __SPRT_ID(getresuid)(__SPRT_ID(uid_t) * __ruid, __SPRT_ID(uid_
 		*__ruid = id;
 	}
 	if (__euid) {
-		*__euid = id;
+		*__euid = geteuid();
 	}
 	if (__suid) {
 		*__suid = id;
@@ -545,7 +528,7 @@ __SPRT_C_FUNC int __SPRT_ID(getresgid)(__SPRT_ID(gid_t) * __rgid, __SPRT_ID(gid_
 		*__rgid = id;
 	}
 	if (__egid) {
-		*__egid = id;
+		*__egid = getegid();
 	}
 	if (__sgid) {
 		*__sgid = id;

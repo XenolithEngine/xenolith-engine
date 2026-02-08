@@ -31,7 +31,7 @@ namespace sprt {
 // @AI-generated
 static inline int pthread_spin_init(pthread_spinlock_t *s, int pshared) {
 	(void)pshared; // Ignored, no cross-process support
-	s = 0;
+	*s = 0;
 	return 0;
 }
 
@@ -44,8 +44,8 @@ static inline int pthread_spin_destroy(pthread_spinlock_t *s) {
 // Try to acquire: return 0 on success, EBUSY if already locked
 static inline int pthread_spin_trylock(pthread_spinlock_t *s) {
 	// InterlockedCompareExchange returns previous value.
-	uint32_t value = 0;
-	if (_atomic::compareSwap(s, &value, uint32_t(1))) {
+	uint32_t expected = 0;
+	if (_atomic::compareSwap(s, &expected, uint32_t(1))) {
 		return 0;
 	}
 	return EBUSY;

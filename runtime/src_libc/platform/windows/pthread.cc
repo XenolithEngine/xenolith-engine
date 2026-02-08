@@ -22,6 +22,9 @@ THE SOFTWARE.
 
 #include "pthread_win.h"
 
+#include <sprt/c/__sprt_string.h>
+#include <sprt/c/__sprt_sched.h>
+
 #ifdef __clang__
 #pragma clang diagnostic ignored "-Wunused-function"
 #endif
@@ -47,7 +50,7 @@ struct ThreadSlot {
 };
 
 static _pthread_pool_t s_handlePool;
-static ThreadSlot tl_self;
+thread_local ThreadSlot tl_self;
 
 static _pthread_t *__allocateThread(const pthread_attr_t *attr) {
 	_pthread_t *handle = nullptr;
@@ -92,7 +95,7 @@ static void __deallocateThread(_pthread_t *handle) {
 	s_handlePool.free = handle;
 }
 
-static void __detachAndDeallocateThread(_pthread_t *thread) {
+static void __detachAndDeallocateThread(_pthread_t *thread, unique_lock<qmutex> *externalLock) {
 	unique_lock lock(s_handlePool.mutex);
 
 	if (thread->handle) {
@@ -101,6 +104,11 @@ static void __detachAndDeallocateThread(_pthread_t *thread) {
 	}
 
 	s_handlePool.active = thread->next;
+
+	// External lock should be released before thread's destructor called
+	if (externalLock && externalLock->owns_lock()) {
+		externalLock->unlock();
+	}
 	thread->~_pthread_t();
 	thread->next = s_handlePool.free;
 	s_handlePool.free = thread;
@@ -109,7 +117,7 @@ static void __detachAndDeallocateThread(_pthread_t *thread) {
 ThreadSlot::~ThreadSlot() {
 	if (thread && hasFlag(thread->attr.attr, ThreadAttrFlags::Detached)) {
 		// clear thread resources and free memory
-		__detachAndDeallocateThread(thread);
+		__detachAndDeallocateThread(thread, nullptr);
 	}
 	thread = nullptr;
 }
@@ -271,6 +279,10 @@ static __stdcall unsigned int __runthead(void *arg) {
 static int pthread_create(pthread_t *__SPRT_RESTRICT outthread,
 		const pthread_attr_t *__SPRT_RESTRICT attr, void *(*cb)(void *),
 		void *__SPRT_RESTRICT arg) {
+	/*if (!tl_self.thread) {
+		tl_self.thread = _pthread_t::self();
+	}*/
+
 	auto thread = __allocateThread(attr);
 	thread->cb = cb;
 	thread->arg = arg;
@@ -329,8 +341,7 @@ static int pthread_detach(pthread_t thread) {
 
 	if (thread->state.try_wait(_pthread_t::StateFinalized)) {
 		// thread was finalized as joinable, release it's resources
-		CloseHandle(thread->handle);
-		__detachAndDeallocateThread(thread);
+		__detachAndDeallocateThread(thread, &lock);
 	} else if (!hasFlag(thread->attr.attr, ThreadAttrFlags::JoinRequested)) {
 		// mark as detached
 		// with this flag, thread's resources will be destroyed right before main func returns
@@ -384,9 +395,8 @@ static int __pthread_join(pthread_t thread, void **ret, DWORD timeout, bool tryj
 	// release all data if already complete
 	if (thread->state.try_wait(_pthread_t::StateFinalized)) {
 		// thread was finalized as joinable, release it's resources
-		CloseHandle(thread->handle);
 		*ret = thread->arg;
-		__detachAndDeallocateThread(thread);
+		__detachAndDeallocateThread(thread, &lock);
 		return 0;
 	}
 
@@ -417,7 +427,7 @@ static int __pthread_join(pthread_t thread, void **ret, DWORD timeout, bool tryj
 
 	*ret = thread->arg;
 
-	__detachAndDeallocateThread(thread);
+	__detachAndDeallocateThread(thread, &lock);
 
 	return 0;
 }
@@ -913,24 +923,160 @@ static int pthread_getcpuclockid(pthread_t thread, __sprt_clockid_t *clock) {
 	return 0;
 }
 
-static int pthread_getaffinity_np(pthread_t thread, size_t n, __sprt_cpu_set_t *set) {
-	if (!thread || !set) {
-		return EINVAL;
+static bool __fillCpuSet(SpanView<ULONG> ids, size_t cpusetsize, __sprt_cpu_set_t *set) {
+	ULONG bufferSize = 0;
+	if (!GetSystemCpuSetInformation(nullptr, 0, &bufferSize, GetCurrentProcess(), 0)) {
+		if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+			return false;
+		}
 	}
 
-#warning @TODO: https://learn.microsoft.com/en-us/windows/win32/procthread/cpu-sets
+	if (bufferSize == 0) {
+		return false;
+	}
 
-	return 0;
+	auto buf = (SYSTEM_CPU_SET_INFORMATION *)__sprt_malloc(bufferSize);
+	if (!GetSystemCpuSetInformation(buf, bufferSize, &bufferSize, GetCurrentProcess(), 0)) {
+		__sprt_freea(buf);
+		return false;
+	}
+
+	uint32_t idx = 0;
+	DWORD offset = 0;
+	auto target = (SYSTEM_CPU_SET_INFORMATION *)buf;
+
+	while (offset < bufferSize) {
+		if (target->Type == 0) {
+			for (auto &it : ids) {
+				if (it == target->CpuSet.Id) {
+					__SPRT_CPU_SET_S(idx, cpusetsize, set);
+					break;
+				}
+			}
+		}
+
+		offset += buf->Size;
+		target = (SYSTEM_CPU_SET_INFORMATION *)(((char *)target) + target->Size);
+		++idx;
+	}
+
+	__sprt_freea(buf);
+	return true;
 }
 
-static int pthread_setaffinity_np(pthread_t thread, size_t n, const __sprt_cpu_set_t *set) {
-	if (!thread || !set) {
+static int pthread_getaffinity_np(pthread_t thread, size_t cpusetsize, __sprt_cpu_set_t *set) {
+	if (!thread) {
+		return ESRCH;
+	}
+	if (!set) {
 		return EINVAL;
 	}
 
-#warning @TODO: https://learn.microsoft.com/en-us/windows/win32/procthread/cpu-sets
+	SYSTEM_INFO sysInfo;
+	GetNativeSystemInfo(&sysInfo);
 
-	return 0;
+	DWORD kernelSetSize =
+			sysInfo.dwNumberOfProcessors / 8 + ((sysInfo.dwNumberOfProcessors % 8) ? 1 : 0);
+
+	if (cpusetsize < kernelSetSize) {
+		return EINVAL;
+	}
+
+	ULONG nCpus = 0;
+	if (!GetThreadSelectedCpuSets(thread->handle, nullptr, 0, &nCpus)) {
+		return EINVAL;
+	}
+
+	__SPRT_CPU_ZERO_S(cpusetsize, set);
+	if (nCpus == 0) {
+		return 0;
+	}
+
+	auto cpus = __sprt_typed_malloca(ULONG, nCpus);
+
+	if (!GetThreadSelectedCpuSets(thread->handle, cpus, nCpus, &nCpus)) {
+		__sprt_freea(cpus);
+		return EINVAL;
+	}
+
+	if (__fillCpuSet(SpanView<ULONG>(cpus, nCpus), cpusetsize, set)) {
+		__sprt_freea(cpus);
+		return 0;
+	}
+
+	__sprt_freea(cpus);
+	return EINVAL;
+}
+
+static uint32_t __fillCpuIds(ULONG *cpuids, size_t cpusetsize, const __sprt_cpu_set_t *set) {
+	ULONG bufferSize = 0;
+	if (!GetSystemCpuSetInformation(nullptr, 0, &bufferSize, GetCurrentProcess(), 0)) {
+		if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+			return 0;
+		}
+	}
+
+	if (bufferSize == 0) {
+		return 0;
+	}
+
+	auto buf = (SYSTEM_CPU_SET_INFORMATION *)__sprt_malloc(bufferSize);
+	if (!GetSystemCpuSetInformation(buf, bufferSize, &bufferSize, GetCurrentProcess(), 0)) {
+		__sprt_freea(buf);
+		return false;
+	}
+
+	uint32_t ncpus = 0;
+	uint32_t idx = 0;
+	DWORD offset = 0;
+	auto target = (SYSTEM_CPU_SET_INFORMATION *)buf;
+
+	while (offset < bufferSize) {
+		if (target->Type == 0) {
+			if (__SPRT_CPU_ISSET_S(idx, cpusetsize, set)) {
+				*cpuids++ = target->CpuSet.Id;
+				++ncpus;
+			}
+		}
+
+		offset += buf->Size;
+		target = (SYSTEM_CPU_SET_INFORMATION *)(((char *)target) + target->Size);
+		++idx;
+	}
+
+	__sprt_freea(buf);
+	return ncpus;
+}
+
+static int pthread_setaffinity_np(pthread_t thread, size_t cpusetsize,
+		const __sprt_cpu_set_t *set) {
+	if (!thread) {
+		return ESRCH;
+	}
+	if (!set) {
+		return EINVAL;
+	}
+
+	auto nCpus = __SPRT_CPU_COUNT_S(cpusetsize, set);
+	if (nCpus == 0) {
+		return EINVAL;
+	}
+
+	auto cpus = __sprt_typed_malloca(ULONG, nCpus);
+
+	auto nset = __fillCpuIds(cpus, cpusetsize, set);
+	if (nset == 0 || nset != nCpus) {
+		__sprt_freea(cpus);
+		return EINVAL;
+	}
+
+	if (SetThreadSelectedCpuSets(thread->handle, cpus, nCpus)) {
+		__sprt_freea(cpus);
+		return 0;
+	}
+
+	__sprt_freea(cpus);
+	return EINVAL;
 }
 
 static int pthread_getattr_np(pthread_t thread, pthread_attr_t *attr) {
