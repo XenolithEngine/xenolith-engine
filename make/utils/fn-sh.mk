@@ -22,6 +22,8 @@ $(call print_verbose,(fn-sh.mk) Using sh)
 
 SH := 1
 
+GLOBAL_SHELL := sh
+
 GLOBAL_RM ?= rm -f
 GLOBAL_CP ?= cp -f
 GLOBAL_MAKE ?= make

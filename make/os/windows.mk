@@ -36,7 +36,7 @@ endif
 XWIN_REPLACEMENTS_INCLUDE := deps/windows/replacements/include
 XWIN_REPLACEMENTS_BIN := deps/windows/replacements/bin
 
-OSTYPE_CFLAGS := -Wall -D_MT
+OSTYPE_CFLAGS := -Wall -D_MT -Wno-vla-cxx-extension -Wno-microsoft-include
 
 ifeq ($(RELEASE),1)
 OSTYPE_CFLAGS +=

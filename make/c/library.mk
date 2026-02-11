@@ -79,6 +79,16 @@ $(foreach target,$(TOOLKIT_LIB_GCH),\
 	$(eval $(call BUILD_gch_rule,$(target),$(BUILD_LIB_CXXFLAGS),$(BUILD_LIB_CONFIG)))\
 	$(eval $(call BUILD_LIB_template,$(target),$(LOCAL_LIBRARY),$(BUILD_LIB_WORDS))))
 
+BUILD_LIB_.c_FLAGS := $(BUILD_LIB_CFLAGS)
+BUILD_LIB_.S_FLAGS := $(BUILD_LIB_CFLAGS)
+BUILD_LIB_.cpp_FLAGS := $(BUILD_LIB_CXXFLAGS)
+BUILD_LIB_.mm_FLAGS := $(BUILD_LIB_CXXFLAGS)
+
+BUILD_PRIVATE_LIB_.c_FLAGS := $(BUILD_PRIVATE_LIB_CFLAGS)
+BUILD_PRIVATE_LIB_.S_FLAGS := $(BUILD_PRIVATE_LIB_CFLAGS)
+BUILD_PRIVATE_LIB_.cpp_FLAGS := $(BUILD_PRIVATE_LIB_CXXFLAGS)
+BUILD_PRIVATE_LIB_.mm_FLAGS := $(BUILD_PRIVATE_LIB_CXXFLAGS)
+
 $(if $(filter-out $(LOCAL_BUILD_SHARED),3), \
 	$(foreach MOD,$(TOOLKIT_MODULE_VARS), \
 		$(foreach SRC,$(call sp_toolkit_source_list, $($(MOD)_SRCS_DIRS), $($(MOD)_SRCS_OBJS)), \
@@ -86,7 +96,8 @@ $(if $(filter-out $(LOCAL_BUILD_SHARED),3), \
 $(SRC),\
 $(call sp_build_target_path,$(SRC),$(BUILD_LIB_OUTDIR)), \
 $($(MOD)_PRIVATE_DEPS), \
-$(call sp_toolkit_private_flags,$(MOD),$(SRC),$(BUILD_LIB_OUTDIR)/include) \
+$(call sp_toolkit_private_flags,$(MOD),$(SRC),$(BUILD_LIB_OUTDIR)/include\
+	,$(BUILD_LIB_$(suffix $(SRC))_FLAGS),$(BUILD_PRIVATE_LIB_$(suffix $(SRC))_FLAGS)) \
 			) \
 		) \
 	) \

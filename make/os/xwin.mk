@@ -38,10 +38,10 @@ OSTYPE_CFLAGS :=  -Wall --target=$(OSTYPE_TARGET) -m64 -msse2 -D_MT \
 
 ifeq ($(RELEASE),1)
 OSTYPE_CFLAGS +=
-OSTYPE_LDFLAGS_BUILDTYPE :=  -llibucrt -llibvcruntime -llibcmt -llibcpmt
+OSTYPE_LDFLAGS_BUILDTYPE :=  -llibucrt -llibvcruntime -lmsvcrt -llibcpmt
 else
 OSTYPE_CFLAGS += -g
-OSTYPE_LDFLAGS_BUILDTYPE := -g -llibucrtd -llibvcruntimed -llibcmtd -llibcpmtd
+OSTYPE_LDFLAGS_BUILDTYPE := -g -llibucrtd -llibvcruntimed -lmsvcrtd -llibcpmtd
 endif
 
 OSTYPE_EXEC_SUFFIX := .exe

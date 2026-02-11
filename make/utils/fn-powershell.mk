@@ -22,8 +22,10 @@ $(call print_verbose,(fn-powershell.mk) Using powershell)
 
 POWERSHELL := 1
 
+GLOBAL_SHELL := powershell
+
 GLOBAL_RM ?= rm -f
-GLOBAL_CP ?= cp -f
+GLOBAL_CP ?= cp
 GLOBAL_MAKE ?= make
 GLOBAL_MKDIR ?= powershell New-Item -ItemType Directory -Force -Path
 GLOBAL_AR ?= ar rcs

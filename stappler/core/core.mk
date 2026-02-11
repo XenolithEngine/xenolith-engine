@@ -49,6 +49,10 @@ MODULE_STAPPLER_CORE_SHARED_CONSUME := \
 	stappler_filesystem \
 	stappler_threads
 
+ifdef TOOLCHAIN_INCLUDEDIR_LIBCXX
+MODULE_STAPPLER_CORE_INCLUDES_OBJS += $(addprefix --isystem ,$(TOOLCHAIN_INCLUDEDIR_LIBCXX))
+endif
+
 ifdef LINUX
 MODULE_STAPPLER_CORE_LIBS += -ldl
 endif
