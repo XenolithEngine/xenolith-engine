@@ -1,5 +1,5 @@
 /**
-Copyright (c) 2025 Stappler Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,22 +20,36 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef CORE_RUNTIME_INCLUDE_LIBC_ASSERT_H_
-#define CORE_RUNTIME_INCLUDE_LIBC_ASSERT_H_
+#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_SWAP_H_
+#define RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_SWAP_H_
 
-#ifdef __SPRT_BUILD
+#include <sprt/runtime/init.h>
 
-#include_next <asset.h>
+#if __SPRT_USE_STL
+#include <utility>
+#endif
+
+namespace sprt {
+
+/*
+	swap
+*/
+
+#if __SPRT_USE_STL
+
+using std::swap;
 
 #else
 
-#include <sprt/c/__sprt_assert.h>
-
-#undef assert
-
-#define assert(Expr) \
-	(__SPRT_ASSERT_TEST(Expr) ? __SPRT_ASSERT_UNUSED(0) : __sprt_assert_fail(#Expr, __FILE__, __LINE__, __SPRT_FUNCTION__, __SPRT_NULL))
+template <typename Type>
+inline constexpr void swap(Type &left, Type &right) noexcept {
+	Type tmp(move(left));
+	left = move(right);
+	right = move(tmp);
+}
 
 #endif
 
-#endif // CORE_RUNTIME_INCLUDE_LIBC_ASSERT_H_
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_SWAP_H_

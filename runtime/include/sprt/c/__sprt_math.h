@@ -115,11 +115,12 @@ static inline unsigned long long __SPRT_DOUBLE_BITS(double __f) {
 	return __u.__i;
 }
 
+// clang-format off
 #if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_isfinite)
 #define __sprt_isfinite(v) __builtin_isfinite(v)
 #else
 #define __sprt_isfinite(x) ( \
-	sizeof(x) == sizeof(float) ? (__SPRT_FLOAT_BITS(x) & 0x7fff'ffff) < 0x7f80'0000 : \
+	sizeof(x) == sizeof(float) ? (__SPRT_FLOAT_BITS(x) & 0x7fffffff) < 0x7f800000 : \
 	sizeof(x) == sizeof(double) ? (__SPRT_DOUBLE_BITS(x) & -1ULL>>1) < 0x7ffULL<<52 : \
 	__sprt_fpclassify(x) > __SPRT_FP_INFINITE)
 #endif
@@ -128,7 +129,7 @@ static inline unsigned long long __SPRT_DOUBLE_BITS(double __f) {
 #define __sprt_isnan(v) __builtin_isnan(v)
 #else
 #define __sprt_isnan(x) ( \
-	sizeof(x) == sizeof(float) ? (__SPRT_FLOAT_BITS(x) & 0x7fff'ffff) > 0x7f80'0000 : \
+	sizeof(x) == sizeof(float) ? (__SPRT_FLOAT_BITS(x) & 0x7fffffff) > 0x7f800000 : \
 	sizeof(x) == sizeof(double) ? (__SPRT_DOUBLE_BITS(x) & -1ULL>>1) > 0x7ffULL<<52 : \
 	__sprt_fpclassify(x) == __SPRT_FP_NAN)
 #endif
@@ -137,8 +138,8 @@ static inline unsigned long long __SPRT_DOUBLE_BITS(double __f) {
 #define __sprt_isinf(v) __builtin_isinf(v)
 #else
 #define __sprt_isinf(x) ( \
-	sizeof(x) == sizeof(float) ? (__SPRT_FLOAT_BITS(x) & 0x7fff'ffff) == 0x7f80'0000 : \
-	sizeof(x) == sizeof(double) ? __SPRT_DOUBLE_BITS(x) & -1ULL>>1) == 0x7ffULL<<52 : \
+	sizeof(x) == sizeof(float) ? (__SPRT_FLOAT_BITS(x) & 0x7fffffff) == 0x7f800000 : \
+	sizeof(x) == sizeof(double) ? (__SPRT_DOUBLE_BITS(x) & -1ULL>>1) == 0x7ffULL<<52 : \
 	__sprt_fpclassify(x) == __SPRT_FP_INFINITE)
 #endif
 
@@ -146,11 +147,12 @@ static inline unsigned long long __SPRT_DOUBLE_BITS(double __f) {
 #define __sprt_isnormal(v) __builtin_isnormal(v)
 #else
 #define __sprt_isnormal(x) ( \
-	sizeof(x) == sizeof(float) ? ((__SPRT_FLOAT_BITS(x)+0x0080'0000) & 0x7fff'ffff) >= 0x0100'0000 : \
+	sizeof(x) == sizeof(float) ? ((__SPRT_FLOAT_BITS(x)+0x00800000) & 0x7fffffff) >= 0x01000000 : \
 	sizeof(x) == sizeof(double) ? ((__SPRT_DOUBLE_BITS(x)+(1ULL<<52)) & -1ULL>>1) >= 1ULL<<53 : \
 	__sprt_fpclassify(x) == __SPRT_FP_NORMAL)
 #endif
 
+// clang-format off
 
 #if __SPRT_CONFIG_BUILTIN_MATH_INLINES && __SPRT_HAS_BUILTIN(__builtin_signbit)
 #define __sprt_signbit(v) __builtin_signbit(v)

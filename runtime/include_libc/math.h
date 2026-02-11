@@ -65,6 +65,15 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
+#ifndef __cplusplus
+#define fpclassify(x) __sprt_fpclassify(x)
+#define isinf(x) __sprt_isinf(x)
+#define isnan(x) __sprt_isnan(x)
+#define isnormal(x) __sprt_isnormal(x)
+#define isfinite(x) __sprt_isfinite(x)
+#define signbit(x) __sprt_signbit(x)
+#endif
+
 SPRT_FORCEINLINE double acos(double value) { return __sprt_acos(value); }
 
 SPRT_FORCEINLINE float acosf(float value) { return __sprt_acosf(value); }
@@ -476,6 +485,10 @@ SPRT_FORCEINLINE float truncf(float value) { return __sprt_truncf(value); }
 SPRT_FORCEINLINE long double truncl(long double value) { return __sprt_truncl(value); }
 
 __SPRT_END_DECL
+
+#ifdef _LIBCPP_MSVCRT
+#include <vcruntime_math.h>
+#endif
 
 #endif
 

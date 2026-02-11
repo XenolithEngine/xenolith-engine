@@ -28,66 +28,24 @@ SRC_ROOT := $(LIBS_MAKE_ROOT)src
 TMP_DIR := $(LIBS_MAKE_ROOT)tmp
 XWIN_ROOT := $(LIBS_MAKE_ROOT)xwin
 
+ifeq ($(findstring Windows,$(OS)),Windows)
+$(info Unsing powershell)
+WGET = curl.exe
+SHELL := powershell.exe
+MKDIR ?= powershell New-Item -ItemType Directory -Force -Path
+RM := powershell Remove-Item -Recurse -Force -ErrorAction Ignore -Path 
+
+rule_rm = powershell 'if (Test-Path "$(1)") { Remove-Item -Recurse -Force -ErrorAction Ignore -Path "$(1)" }'
+rule_cp = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force
+else
 WGET = wget
-MKDIR = mkdir -p
-TAR_XF = tar -xf
-
-LIBS = \
-	bzip2 \
-	xz \
-	zstd \
-	jpeg \
-	libjpeg-turbo \
-	libpng \
-	giflib \
-	libwebp \
-	tiff \
-	brotli \
-	curl \
-	freetype \
-	harfbuzz \
-	sqlite \
-	libuidna \
-	mbedtls \
-	nghttp3 \
-	libzip \
-	zlib \
-	openssl \
-	openssl-gost-engine \
-	wasm-micro-runtime \
-	vulkan-headers \
-	spirv-headers \
-	glslang \
-	spirv-tools \
-	icu4c \
-	ffi \
-	expat \
-	libbacktrace \
-	simde
-
-# Extra Linux deps
-#	dbus \
-#	libxcb \
-#	xcb-proto \
-#	libXau \
-#	xorgproto \
-#	xkbcommon \
-#	xcb-util-keysyms \
-#	xcb-util-errors \
-#	xcb-util-cursor \
-#	wayland \
-#	vulkan-loader \
-
-
-
 UNAME := $(shell uname -a)
+MKDIR ?= mkdir -p
+RM := rm -rf
 
-# DO NOT use MSYS cmake - it's buggy for compiling with clang on windows
-MSYS_PREPARE := pacman --noconfirm --needed -S curl wget tar sed unzip git binutils gcc pkg-config
-
-PREPARE := $(if $(filter MSYS_NT%,$(UNAME)),$(MSYS_PREPARE))
-
-get_tar_top_dir = `tar -tf $(1)  | head -1 | cut -f1 -d"/"`
+rule_rm = rm -rf $(1)
+rule_cp = cp -f $(1) $(2)
+endif
 
 include src.mk
 
@@ -97,15 +55,16 @@ TOOLCHAIN_INTERMEDIATE := $(abspath $(LIBS_MAKE_ROOT))/intermediate
 TOOLCHAIN_TARGETS := $(abspath $(LIBS_MAKE_ROOT))/targets
 
 prepare:
-	$(PREPARE)
+	$(call rule_rm,$(TMP_DIR))
 
 download: $(ALL_SRC)
 
 download: prepare
-	rm -rf $(TMP_DIR)
 
 clean:
-	rm -rf $(SRC_ROOT) $(XWIN_ROOT) $(TMP_DIR) replacements/curl/cacert.pem
+	$(call rule_rm,$(SRC_ROOT))
+	$(call rule_rm,$(XWIN_ROOT))
+	$(call rule_rm,$(TMP_DIR))
 
 xwin: $(SRC_ROOT)/xwin/splat
 

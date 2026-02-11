@@ -8,11 +8,7 @@ include(CheckCSourceRuns)
 
 enable_testing()
 
-if(WIN32)
-else()
-	find_package(OpenSSL 3.0 REQUIRED)
-endif()
-
+find_package(OpenSSL 3.4 REQUIRED)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message(STATUS "Setting build type to 'RelWithDebInfo' as none was specified.")
@@ -33,12 +29,12 @@ if (CMAKE_C_COMPILER_ID MATCHES "Clang")
   set(CMAKE_C_FLAGS_RELEASE -O2)
   set(CMAKE_C_FLAGS_DEBUG "-O0 -ggdb")
   set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -ggdb")
-  add_compile_options(-Wall -Wno-unused-parameter -Wno-unused-function -Wno-missing-braces -Qunused-arguments -Wno-deprecated-declarations)
+  add_compile_options(-Werror -Wall -Wno-unused-parameter -Wno-unused-function -Wno-missing-braces -Qunused-arguments -Wno-deprecated-declarations -Wno-error=\#warnings)
 elseif(CMAKE_C_COMPILER_ID MATCHES "GNU")
   set(CMAKE_C_FLAGS_RELEASE -O2)
   set(CMAKE_C_FLAGS_DEBUG "-O0 -ggdb")
   set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -ggdb")
-  add_compile_options(-Wall -Wno-unused-parameter -Wno-unused-function -Wno-missing-braces -Wno-error=unknown-pragmas -Wno-error=pragmas -Wno-deprecated-declarations)
+  add_compile_options(-Werror -Wall -Wno-unused-parameter -Wno-unused-function -Wno-missing-braces -Wno-error=unknown-pragmas -Wno-error=pragmas -Wno-deprecated-declarations -Wno-error=cpp)
 elseif(CMAKE_C_COMPILER_ID MATCHES "MSVC")
   add_definitions(-D_CRT_SECURE_NO_WARNINGS)
   add_definitions(-D_CRT_DEPRECATED_NO_WARNINGS)
@@ -49,6 +45,10 @@ endif()
 if (ASAN)
   message(STATUS "address sanitizer enabled")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -g3 -fno-omit-frame-pointer")
+  set(SKIP_PERL_TESTS 1)
+endif()
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
   set(SKIP_PERL_TESTS 1)
 endif()
 
@@ -208,262 +208,101 @@ set(GOST_ENGINE_SOURCE_FILES
 
 set(GOST_PROV_SOURCE_FILES
         gost_prov.c
+        gost_prov.h
         gost_prov_cipher.c
         gost_prov_digest.c
         gost_prov_mac.c
+        gost_prov_keymgmt.c
+        gost_prov_encoder.c
+        gost_prov_signature.c
+        gost_prov_decoder.c
+        gost_prov_keyexch.c
+        gost_prov_tls.c
+        gost_prov_tls.h
         )
 
-set(TEST_ENVIRONMENT_COMMON
-        CMAKE_CURRENT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-        PERL5LIB=${CMAKE_CURRENT_SOURCE_DIR}/test
-        OPENSSL_PROGRAM=${OPENSSL_PROGRAM}
-        OPENSSL_CRYPTO_LIBRARY=${OPENSSL_CRYPTO_LIBRARY}
-        )
+if(TLS13_PATCHED_OPENSSL)
+  add_executable(test_mgm test_mgm.c)
+  target_link_libraries(test_mgm OpenSSL::Crypto)
+  add_test(NAME mgm-with-engine COMMAND test_mgm)
+  set_tests_properties(mgm-with-engine
+    PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_ENGINE}")
+  add_test(NAME mgm-with-provider COMMAND test_mgm)
+  set_tests_properties(mgm-with-provider
+    PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_PROVIDER}")
+  set_property(TARGET test_mgm APPEND PROPERTY COMPILE_DEFINITIONS ENGINE_DIR="${OUTPUT_DIRECTORY}")
 
-set(TEST_ENVIRONMENT_ENGINE
-        ${TEST_ENVIRONMENT_COMMON}
-        OPENSSL_ENGINES=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
-        OPENSSL_CONF=${CMAKE_CURRENT_SOURCE_DIR}/test/engine.cnf
-        )
-
-set(TEST_ENVIRONMENT_PROVIDER
-        ${TEST_ENVIRONMENT_COMMON}
-        OPENSSL_MODULES=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
-        OPENSSL_CONF=${CMAKE_CURRENT_SOURCE_DIR}/test/provider.cnf
-        )
-
-IF(NOT CMAKE_CROSSCOMPILING)
-	add_executable(test_digest test_digest.c)
-	target_link_libraries(test_digest OpenSSL::Crypto)
-	add_test(NAME digest-with-engine COMMAND test_digest)
-	set_tests_properties(digest-with-engine
-	  PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_ENGINE}")
-	add_test(NAME digest-with-provider COMMAND test_digest)
-	set_tests_properties(digest-with-provider
-	  PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_PROVIDER}")
-	
-	add_executable(test_ciphers test_ciphers.c)
-	target_link_libraries(test_ciphers OpenSSL::Crypto)
-	add_test(NAME ciphers-with-engine COMMAND test_ciphers)
-	set_tests_properties(ciphers-with-engine
-	  PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_ENGINE}")
-	add_test(NAME ciphers-with-provider COMMAND test_ciphers)
-	set_tests_properties(ciphers-with-provider
-	  PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_PROVIDER}")
-	
-	# test_curves is an internals testing program, it doesn't need a test env
-	add_executable(test_curves test_curves.c)
-	target_link_libraries(test_curves gost_core gost_err)
-	add_test(NAME curves COMMAND test_curves)
-	
-	add_executable(test_params test_params.c)
-	target_link_libraries(test_params OpenSSL::Crypto)
-	add_test(NAME parameters-with-engine COMMAND test_params)
-	set_tests_properties(parameters-with-engine
-	  PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_ENGINE}")
-	
-	add_executable(test_derive test_derive.c)
-	target_link_libraries(test_derive OpenSSL::Crypto)
-	add_test(NAME derive-with-engine COMMAND test_derive)
-	set_tests_properties(derive-with-engine
-	  PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_ENGINE}")
-	
-	add_executable(test_sign test_sign.c)
-	target_link_libraries(test_sign OpenSSL::Crypto)
-	add_test(NAME sign/verify-with-engine COMMAND test_sign)
-	set_tests_properties(sign/verify-with-engine
-	  PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_ENGINE}")
-	
-	add_executable(test_tls test_tls.c)
-	target_link_libraries(test_tls OpenSSL::SSL)
-	add_test(NAME TLS-with-engine COMMAND test_tls)
-	set_tests_properties(TLS-with-engine
-	  PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_ENGINE}")
-	
-	add_executable(test_context test_context.c)
-	target_link_libraries(test_context OpenSSL::Crypto)
-	add_test(NAME context-with-engine COMMAND test_context)
-	set_tests_properties(context-with-engine
-	  PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_ENGINE}")
-	add_test(NAME context-with-provider COMMAND test_context)
-	set_tests_properties(context-with-provider
-	  PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_PROVIDER}")
-	
-	# test_keyexpimp is an internals testing program, it doesn't need a test env
-	add_executable(test_keyexpimp test_keyexpimp.c)
-	#target_compile_definitions(test_keyexpimp PUBLIC -DOPENSSL_LOAD_CONF)
-	target_link_libraries(test_keyexpimp gost_core gost_err)
-	add_test(NAME keyexpimp COMMAND test_keyexpimp)
-	
-	# test_gost89 is an internals testing program, it doesn't need a test env
-	add_executable(test_gost89 test_gost89.c)
-	target_link_libraries(test_gost89 gost_core gost_err)
-	add_test(NAME gost89 COMMAND test_gost89)
-	
-	add_executable(test_mgm test_mgm.c)
-	target_link_libraries(test_mgm OpenSSL::Crypto)
-	add_test(NAME mgm-with-engine COMMAND test_mgm)
-	set_tests_properties(mgm-with-engine
-	  PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_ENGINE}")
-	add_test(NAME mgm-with-provider COMMAND test_mgm)
-	set_tests_properties(mgm-with-provider
-	  PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_PROVIDER}")
-	
-	if(NOT SKIP_PERL_TESTS)
-	    execute_process(COMMAND perl -MTest2::V0 -e ""
-	       ERROR_QUIET RESULT_VARIABLE MISSING_TEST2_V0)
-	    find_program(HAVE_PROVE NAMES prove)
-	    if(NOT MISSING_TEST2_V0 AND HAVE_PROVE)
-		add_test(NAME engine
-		    COMMAND prove --merge -PWrapOpenSSL ${CMAKE_CURRENT_SOURCE_DIR}/test :: engine)
-		set_tests_properties(engine PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_ENGINE}")
-		add_test(NAME provider
-		    COMMAND prove --merge -PWrapOpenSSL ${CMAKE_CURRENT_SOURCE_DIR}/test :: provider)
-		set_tests_properties(provider PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_PROVIDER}")
-	    else()
-	        message(STATUS "No Test2::V0 perl module (engine and provider tests skipped)")
-	    endif()
-	endif()
-	
-	if(NOT MSVC)
-	  add_executable(sign benchmark/sign.c)
-	  target_link_libraries(sign gost_core gost_err ${CLOCK_GETTIME_LIB})
-	endif()
-	
-	# All that may need to load just built engine will have path to it defined.
-	set(BINARY_TESTS_TARGETS
-	        test_digest
-	        test_ciphers
-	        test_curves
-	        test_params
-	        test_derive
-	        test_sign
-	        test_context
-	        test_keyexpimp
-	        test_gost89
-	        test_tls
-	        test_mgm
-	        )
-	set_property(TARGET ${BINARY_TESTS_TARGETS} APPEND PROPERTY COMPILE_DEFINITIONS ENGINE_DIR="${OUTPUT_DIRECTORY}")
-ENDIF()
+  add_executable(test_tls13handshake test_tls13handshake.c)
+  target_link_libraries(test_tls13handshake OpenSSL::Crypto OpenSSL::SSL)
+  add_test(NAME test-tls13handshake-with-provider COMMAND test_tls13handshake)
+  set_tests_properties(test-tls13handshake-with-provider
+    PROPERTIES ENVIRONMENT "${TEST_ENVIRONMENT_PROVIDER}")
+endif()
 
 add_library(gost_core STATIC ${GOST_LIB_SOURCE_FILES})
 set_target_properties(gost_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(gost_core PRIVATE OpenSSL::Crypto)
 add_library(gost_err STATIC ${GOST_ERR_SOURCE_FILES})
 set_target_properties(gost_err PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(gost_err PRIVATE OpenSSL::Crypto)
 
 # The GOST engine in module form
-add_library(gost_engine MODULE ${GOST_ENGINE_SOURCE_FILES})
-# Set the suffix explicitly to adapt to OpenSSL's idea of what a
-# module suffix should be
-set_target_properties(gost_engine PROPERTIES
-  PREFIX "" OUTPUT_NAME "gost" SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX})
+add_library(gost_engine STATIC ${GOST_ENGINE_SOURCE_FILES} ${GOST_LIB_SOURCE_FILES} ${GOST_ERR_SOURCE_FILES})
+
 target_link_libraries(gost_engine PRIVATE gost_core gost_err)
 
-if (NOT MSVC)
-# The GOST engine in library form
-add_library(lib_gost_engine SHARED ${GOST_ENGINE_SOURCE_FILES})
-set_target_properties(lib_gost_engine PROPERTIES
-  COMPILE_DEFINITIONS "BUILDING_ENGINE_AS_LIBRARY"
-  PUBLIC_HEADER gost-engine.h
-  OUTPUT_NAME "gost")
-target_link_libraries(lib_gost_engine PRIVATE gost_core gost_err)
-endif()
+# The GOST provider uses this
+add_subdirectory(libprov)
 
+# The GOST provider in module form
+#add_library(gost_prov MODULE
+#  ${GOST_PROV_SOURCE_FILES} ${GOST_ENGINE_SOURCE_FILES}
+#  )
 
-if(WIN32)
-else()
-	# The GOST provider uses this
-	add_subdirectory(libprov)
-
-	# The GOST provider in module form
-	add_library(gost_prov MODULE
-	  ${GOST_PROV_SOURCE_FILES} ${GOST_ENGINE_SOURCE_FILES}
-	  )
-	set_target_properties(gost_prov PROPERTIES
-	  PREFIX "" OUTPUT_NAME "gostprov" SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX}
-	  COMPILE_DEFINITIONS "BUILDING_GOST_PROVIDER;OPENSSL_NO_DYNAMIC_ENGINE"
-	  )
-	target_link_libraries(gost_prov PRIVATE gost_core libprov)
-
-	if (NOT MSVC)
-	# The GOST provider in library form
-	add_library(lib_gost_prov SHARED
-	  ${GOST_PROV_SOURCE_FILES} ${GOST_ENGINE_SOURCE_FILES}
-	  )
-	set_target_properties(lib_gost_prov PROPERTIES
-	  OUTPUT_NAME "gostprov"
-	  COMPILE_DEFINITIONS "BUILDING_GOST_PROVIDER;BUILDING_PROVIDER_AS_LIBRARY;OPENSSL_NO_DYNAMIC_ENGINE"
-	  )
-	target_link_libraries(lib_gost_prov PRIVATE gost_core libprov)
-	endif()
-	
-	install(TARGETS gost_prov EXPORT GostProviderConfig
-        LIBRARY  DESTINATION ${OPENSSL_MODULES_DIR}
-        RUNTIME  DESTINATION ${OPENSSL_MODULES_DIR})
-	if (NOT MSVC)
-		# install engine and provider in library form
-		install(TARGETS lib_gost_prov EXPORT GostProviderConfig
-				LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
-	endif()
-
-endif()
-
-
-set(GOST_SUM_SOURCE_FILES
-        gostsum.c
-        )
-
-add_executable(gostsum ${GOST_SUM_SOURCE_FILES})
-target_link_libraries(gostsum gost_core gost_err)
-
-set(GOST_12_SUM_SOURCE_FILES
-        gost12sum.c
-        )
-
-add_executable(gost12sum ${GOST_12_SUM_SOURCE_FILES})
-target_link_libraries(gost12sum gost_core gost_err)
+#target_link_libraries(gost_prov PRIVATE gost_core libprov)
 
 set_source_files_properties(tags PROPERTIES GENERATED true)
 add_custom_target(tags
     COMMAND ctags -R . ${OPENSSL_ROOT_DIR}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
-add_custom_target(tcl_tests
+add_custom_target(tcl_tests_provider
+    COMMAND OPENSSL_LIBCRYPTO=${OPENSSL_CRYPTO_LIBRARY}
+            OPENSSL_APP=${OPENSSL_PROGRAM}
+            TESTSRC=${CMAKE_SOURCE_DIR}/tcl_tests
+            TESTDIR=${CMAKE_BINARY_DIR}/tcl_tests_provider
+            OPENSSL_MODULES_DIR=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+            OPENSSL_CONF=${CMAKE_SOURCE_DIR}/tcl_tests/openssl-gost-provider.cnf
+            sh ./runtest.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tcl_tests)
+
+add_custom_target(tcl_tests_engine
     COMMAND OPENSSL_LIBCRYPTO=${OPENSSL_CRYPTO_LIBRARY}
             OPENSSL_APP=${OPENSSL_PROGRAM}
             TESTSRC=${CMAKE_SOURCE_DIR}/tcl_tests
             TESTDIR=${CMAKE_BINARY_DIR}/tcl_tests
             ENGINE_DIR=${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+            OPENSSL_CONF=${CMAKE_SOURCE_DIR}/tcl_tests/openssl-gost-engine.cnf
             sh ./runtest.sh
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tcl_tests)
 
-add_executable(test_tlstree test_tlstree.c)
-
-# install programs and manuals
-install(TARGETS gostsum gost12sum RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES gostsum.1 gost12sum.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
 
 # install engine and provider in module form
-install(TARGETS gost_engine EXPORT GostEngineConfig
+install(TARGETS gost_engine
         LIBRARY  DESTINATION ${OPENSSL_ENGINES_DIR}
         RUNTIME  DESTINATION ${OPENSSL_ENGINES_DIR})
-if (NOT MSVC)
-# install engine and provider in library form
-install(TARGETS lib_gost_engine EXPORT GostEngineConfig
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
-endif()
+#install(TARGETS gost_prov EXPORT GostProviderConfig
+#        LIBRARY  DESTINATION ${OPENSSL_MODULES_DIR}
+#        RUNTIME  DESTINATION ${OPENSSL_MODULES_DIR})
+
 
 if (MSVC)
-  install(FILES $<TARGET_PDB_FILE:gostsum> $<TARGET_PDB_FILE:gost12sum>
-    EXPORT GostEngineConfig DESTINATION ${CMAKE_INSTALL_BINDIR} OPTIONAL)
-  install(FILES $<TARGET_PDB_FILE:gost_engine>
-    EXPORT GostEngineConfig DESTINATION ${OPENSSL_ENGINES_DIR} OPTIONAL)
+#  install(FILES $<TARGET_PDB_FILE:gostsum> $<TARGET_PDB_FILE:gost12sum>
+#    EXPORT GostEngineConfig DESTINATION ${CMAKE_INSTALL_BINDIR} OPTIONAL)
+#  install(FILES $<TARGET_PDB_FILE:gost_engine>
+#    EXPORT GostEngineConfig DESTINATION ${OPENSSL_ENGINES_DIR} OPTIONAL)
+#  install(FILES $<TARGET_PDB_FILE:gost_prov>
+#    EXPORT GostProviderConfig DESTINATION ${OPENSSL_MODULES_DIR} OPTIONAL)
 endif()
-install(EXPORT GostEngineConfig DESTINATION share/cmake/GostEngine)
-
-add_library(gost_engine_static STATIC ${GOST_ENGINE_SOURCE_FILES} ${GOST_LIB_SOURCE_FILES} ${GOST_ERR_SOURCE_FILES})
-set_target_properties(gost_engine_static PROPERTIES
-  COMPILE_DEFINITIONS "BUILDING_ENGINE_AS_LIBRARY"
-  PUBLIC_HEADER gost-engine.h
-  OUTPUT_NAME "gost")
+#install(EXPORT GostEngineConfig DESTINATION share/cmake/GostEngine)
+#install(EXPORT GostProviderConfig DESTINATION share/cmake/GostProvider)

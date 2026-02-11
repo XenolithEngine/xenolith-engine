@@ -28,6 +28,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_ssize_t.h>
 #include <sprt/c/cross/__sprt_file_ptr.h>
+#include <sprt/c/cross/__sprt_locale.h>
 #include <sprt/c/bits/seek.h>
 
 #ifndef __SPRT_EOF
@@ -246,6 +247,24 @@ SPRT_API __SPRT_ID(ssize_t) __SPRT_ID(getline)(char **__SPRT_RESTRICT,
 		__SPRT_ID(size_t) * __SPRT_RESTRICT, __SPRT_ID(FILE) * __SPRT_RESTRICT);
 SPRT_API int __SPRT_ID(renameat)(int, const char *, int, const char *);
 SPRT_API char *__SPRT_ID(ctermid)(char *);
+
+// BSD-stype API
+SPRT_API int __SPRT_ID(scanf_l)(__SPRT_ID(locale_t) loc, const char *__SPRT_RESTRICT format, ...);
+
+SPRT_API int __SPRT_ID(fscanf_l)(__SPRT_ID(FILE) * __SPRT_RESTRICT stream, __SPRT_ID(locale_t) loc,
+		const char *__SPRT_RESTRICT format, ...);
+
+SPRT_API int __SPRT_ID(sscanf_l)(const char *__SPRT_RESTRICT str, __SPRT_ID(locale_t) loc,
+		const char *__SPRT_RESTRICT format, ...);
+
+SPRT_API int __SPRT_ID(vscanf_l)(__SPRT_ID(locale_t) loc, const char *__SPRT_RESTRICT format,
+		__SPRT_ID(va_list) ap);
+
+SPRT_API int __SPRT_ID(vfscanf_l)(__SPRT_ID(FILE) * __SPRT_RESTRICT stream, __SPRT_ID(locale_t) loc,
+		const char *__SPRT_RESTRICT format, __SPRT_ID(va_list) ap);
+
+SPRT_API int __SPRT_ID(vsscanf_l)(const char *__SPRT_RESTRICT str, __SPRT_ID(locale_t) loc,
+		const char *__SPRT_RESTRICT format, __SPRT_ID(va_list) ap);
 
 __SPRT_END_DECL
 

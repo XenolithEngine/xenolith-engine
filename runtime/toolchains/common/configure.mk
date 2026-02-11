@@ -21,6 +21,25 @@
 
 DEBUG ?= 0
 
+ifeq ($(findstring Windows,$(OS)),Windows)
+SHELL = powershell.exe
+MKDIR = powershell New-Item -ItemType Directory -Force -Path
+RM := powershell Remove-Item -Recurse -Force -ErrorAction Ignore -Path 
+
+rule_rm = powershell 'if (Test-Path "$(1)") { Remove-Item -Recurse -Force -ErrorAction Ignore -Path "$(1)" }'
+rule_cp = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force
+rule_cpr = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force -Recurse
+rule_mv = powershell Move-Item -Path "$(1)" -Destination "$(2)" -Force
+else
+MKDIR = mkdir -p
+RM := rm -rf
+
+rule_rm = rm -rf $(1)
+rule_cp = cp -f $(1) $(2)
+rule_cpr = cp -rf $(1) $(2)
+rule_mv = mv -f $(1) $(2)
+endif
+
 export PKG_CONFIG_PATH=$(SP_INSTALL_PREFIX)/lib/pkgconfig
 
 SP_CFLAGS := $(SP_OPT) $(SP_USER_CFLAGS)
@@ -42,6 +61,11 @@ SP_CPPFLAGS := --sysroot=$(SP_TOOLCHAIN_PREFIX) \
 	-idirafter $(SP_TOOLCHAIN_PREFIX)/include_libc \
 	$(SP_CPPFLAGS)
 SP_LDFLAGS := --sysroot=$(SP_TOOLCHAIN_PREFIX) $(SP_LDFLAGS)
+endif
+
+ifdef WINDOWS
+SP_CFLAGS +=  -D_CRT_SECURE_NO_WARNINGS -Wno-deprecated-declarations -Xclang --dependent-lib=libcmt
+SP_CXXFLAGS +=  -D_CRT_SECURE_NO_WARNINGS -Wno-deprecated-declarations -Xclang --dependent-lib=libcmt
 endif
 
 SP_LIBS_ALL := 
@@ -84,6 +108,10 @@ ifeq ($(ARCH),e2k)
 CONFIGURE_AUTOCONF += --host=e2k-linux
 endif
 
+ifdef WINDOWS
+CONFIGURE_AUTOCONF += RC=$(SP_RC)
+endif
+
 ifeq ($(ARCH),aarch64)
 CONFIGURE_AUTOCONF += --host=aarch64-linux-gnu
 endif
@@ -102,9 +130,12 @@ CONFIGURE_CMAKE_CXX_FLAGS_INIT := -I$(SP_INSTALL_PREFIX)/include \
 	-D_LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE \
 	-idirafter $(SP_TOOLCHAIN_PREFIX)/include_libc \
 	$(SP_OPT) $(SP_USER_CXXFLAGS)
-CONFIGURE_EXE_LINKER_FLAGS_INIT := -L$(SP_INSTALL_PREFIX)/lib $(SP_LIBS_PLATFORM) -Wl,--gc-sections $(SP_USER_LDFLAGS)
+CONFIGURE_EXE_LINKER_FLAGS_INIT := -L$(SP_INSTALL_PREFIX)/lib $(SP_LIBS_PLATFORM) $(SP_USER_LDFLAGS)
 CONFIGURE_SHARED_LINKER_FLAGS_INIT := -L$(SP_INSTALL_PREFIX)/lib $(SP_LIBS_PLATFORM) $(SP_USER_LDFLAGS)
 
+ifndef WINDOWS
+CONFIGURE_EXE_LINKER_FLAGS_INIT += -Wl,--gc-sections
+endif
 
 
 CONFIGURE_CMAKE := \
@@ -136,6 +167,10 @@ endif
 
 ifdef LINUX
 
+endif
+
+ifdef WINDOWS
+CONFIGURE_CMAKE += -DCMAKE_RC_COMPILER=$(SP_RC) -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
 endif
 
 ifeq ($(DEBUG),1)

@@ -307,7 +307,64 @@ SPRT_FORCEINLINE int renameat(int oldfd, const char *oldPath, int newfd, const c
 SPRT_FORCEINLINE char *ctermid(char *s) { return __sprt_ctermid(s); }
 
 
+SPRT_FORCEINLINE int scanf_l(__SPRT_ID(locale_t) loc, const char *__SPRT_RESTRICT fmt, ...) {
+	__sprt_va_list list;
+	__sprt_va_start(list, fmt);
+
+	auto ret = __sprt_vscanf_l(loc, fmt, list);
+
+	__sprt_va_end(list);
+	return ret;
+}
+
+
+SPRT_FORCEINLINE int fscanf_l(FILE *__SPRT_RESTRICT stream, __SPRT_ID(locale_t) loc,
+		const char *__SPRT_RESTRICT fmt, ...) {
+	__sprt_va_list list;
+	__sprt_va_start(list, fmt);
+
+	auto ret = __sprt_fscanf_l(stream, loc, fmt, list);
+
+	__sprt_va_end(list);
+	return ret;
+}
+
+SPRT_FORCEINLINE int sscanf_l(const char *__SPRT_RESTRICT buf, __SPRT_ID(locale_t) loc,
+		const char *__SPRT_RESTRICT fmt, ...) {
+	__sprt_va_list list;
+	__sprt_va_start(list, fmt);
+
+	auto ret = __sprt_vsscanf_l(buf, loc, fmt, list);
+
+	__sprt_va_end(list);
+	return ret;
+}
+
+SPRT_FORCEINLINE int vscanf_l(__SPRT_ID(locale_t) loc, const char *__SPRT_RESTRICT format,
+		__SPRT_ID(va_list) ap) {
+	return __sprt_vscanf_l(loc, format, ap);
+}
+
+SPRT_FORCEINLINE int vfscanf_l(FILE *__SPRT_RESTRICT stream, __SPRT_ID(locale_t) loc,
+		const char *__SPRT_RESTRICT format, __SPRT_ID(va_list) ap) {
+	return __sprt_vfscanf_l(stream, loc, format, ap);
+}
+
+SPRT_FORCEINLINE int vsscanf_l(const char *__SPRT_RESTRICT str, __SPRT_ID(locale_t) loc,
+		const char *__SPRT_RESTRICT format, __SPRT_ID(va_list) ap) {
+	return __sprt_vsscanf_l(str, loc, format, ap);
+}
+
 __SPRT_END_DECL
+
+#ifdef _LIBCPP_MSVCRT
+#define _scanf_l(fmt, loc, ...) scanf_l(loc, fmt, __VA_ARGS__)
+#define _fscanf_l(stream, fmt, loc, ...) fscanf_l(stream, loc, fmt, __VA_ARGS__)
+#define _sscanf_l(str, fmt, loc, ...) sscanf_l(str, loc, fmt, __VA_ARGS__)
+#define _vscanf_l(fmt, loc, ...) vscanf_l(loc, fmt, __VA_ARGS__)
+#define _vfscanf_l(stream, fmt, loc, ...) vfscanf_l(stream, loc, fmt, __VA_ARGS__)
+#define _vsscanf_l(str, fmt, loc, ...) vsscanf_l(str, loc, fmt, __VA_ARGS__)
+#endif
 
 #endif
 

@@ -178,8 +178,8 @@ __SPRT_END_DECL
 // Bionic/BSD specific functions
 //
 // Expose them only for C++ to avoid C wchar_t definitiom
-#ifdef __cplusplus
-#if __SPRT_CONFIG_HAVE_STDLIB_MB || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+#if defined(__cplusplus) && __SPRT_CONFIG_HAVE_STDLIB_MB \
+		|| __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 
 SPRT_FORCEINLINE size_t mbstowcs(wchar_t *__dst, const char *__src, size_t __n) {
 	return __SPRT_ID(mbstowcs)(__dst, __src, __n);
@@ -197,6 +197,18 @@ SPRT_FORCEINLINE size_t wcstombs(char *__dst, const wchar_t *__src, size_t __n) 
 
 #define MB_CUR_MAX __SPRT_ID(__ctype_get_mb_cur_max)()
 #endif
+
+#ifdef _LIBCPP_MSVCRT
+#define _strtol_l strtol_l
+#define _strtoll_l strtoll_l
+#define _strtoul_l strtoul_l
+#define _strtoull_l strtoull_l
+#define _strtof_l strtof_l
+#define _strtod_l strtod_l
+#define _strtold_l strtold_l
+
+#define _strtoi64_l strtoll_l
+#define _strtoui64_l strtoull_l
 #endif
 
 #endif

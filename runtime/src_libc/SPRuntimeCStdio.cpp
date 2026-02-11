@@ -30,6 +30,8 @@ THE SOFTWARE.
 #include "private/SPRTFilename.h"
 #include "private/SPRTSpecific.h"
 
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -626,6 +628,78 @@ __SPRT_C_FUNC char *__SPRT_ID(ctermid)(char *s) {
 	return s;
 #else
 	return ::ctermid(s);
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(
+		scanf_l)(__SPRT_ID(locale_t) loc, const char *__SPRT_RESTRICT fmt, ...) {
+	va_list list;
+	va_start(list, fmt);
+
+#if SPRT_WINDOWS
+	auto ret = ::_vscanf_l(fmt, loc, list);
+#else
+	auto ret = ::vscanf_l(loc, fmt, list);
+#endif
+
+	va_end(list);
+	return ret;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(fscanf_l)(__SPRT_ID(FILE) * __SPRT_RESTRICT stream,
+		__SPRT_ID(locale_t) loc, const char *__SPRT_RESTRICT fmt, ...) {
+	va_list list;
+	va_start(list, fmt);
+
+#if SPRT_WINDOWS
+	auto ret = ::_fscanf_l(stream, fmt, loc, list);
+#else
+	auto ret = ::fscanf_l(stream, loc, fmt, list);
+#endif
+
+	va_end(list);
+	return ret;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(sscanf_l)(const char *__SPRT_RESTRICT buf, __SPRT_ID(locale_t) loc,
+		const char *__SPRT_RESTRICT fmt, ...) {
+	va_list list;
+	va_start(list, fmt);
+
+#if SPRT_WINDOWS
+	auto ret = ::_vsscanf_l(buf, fmt, loc, list);
+#else
+	auto ret = ::vsscanf_l(buf, loc, fmt, list);
+#endif
+
+	va_end(list);
+	return ret;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(vscanf_l)(__SPRT_ID(locale_t) loc, const char *__SPRT_RESTRICT format,
+		__SPRT_ID(va_list) ap) {
+#if SPRT_WINDOWS
+	return _vscanf_l(format, loc, ap);
+#else
+	return vscanf_l(loc, format, ap);
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(vfscanf_l)(__SPRT_ID(FILE) * __SPRT_RESTRICT stream,
+		__SPRT_ID(locale_t) loc, const char *__SPRT_RESTRICT format, __SPRT_ID(va_list) ap) {
+#if SPRT_WINDOWS
+	return _vfscanf_l(stream, format, loc, ap);
+#else
+	return vfscanf_l(stream, loc, format, ap);
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(vsscanf_l)(const char *__SPRT_RESTRICT str, __SPRT_ID(locale_t) loc,
+		const char *__SPRT_RESTRICT format, __SPRT_ID(va_list) ap) {
+#if SPRT_WINDOWS
+	return _vsscanf_l(str, format, loc, ap);
+#else
+	return vsscanf_l(str, loc, format, ap);
 #endif
 }
 

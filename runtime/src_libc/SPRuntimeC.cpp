@@ -49,7 +49,6 @@ THE SOFTWARE.
 #include <setjmp.h>
 
 #ifndef SPRT_WINDOWS
-
 #include <utime.h>
 #include <nl_types.h>
 #include <sys/utsname.h>

@@ -1,0 +1,44 @@
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
+.DEFAULT_GOAL := all
+
+LIBNAME = zstd
+
+include ../common/configure.mk
+
+CONFIGURE := \
+	$(CONFIGURE_CMAKE) \
+	-DZSTD_BUILD_PROGRAMS=OFF \
+	-DZSTD_PROGRAMS_LINK_SHARED=OFF \
+	-DZSTD_BUILD_SHARED=OFF \
+	-DZSTD_BUILD_STATIC=ON \
+	-DBUILD_TESTING=OFF
+
+all:
+	$(call rule_rm,$(LIBNAME))
+	$(MKDIR) $(LIBNAME) | Out-Null
+	cd $(LIBNAME); cmake -G "Ninja" $(LIB_SRC_DIR)/$(LIBNAME)/build/cmake $(CONFIGURE);
+	cd $(LIBNAME); cmake --build . --parallel
+	cd $(LIBNAME); cmake --install .
+	$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/zstd_static.lib,$(SP_INSTALL_PREFIX)/lib/zstd.lib)
+	$(call rule_rm,$(LIBNAME))
+
+.PHONY: all

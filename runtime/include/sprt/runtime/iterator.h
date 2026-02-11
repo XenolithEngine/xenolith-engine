@@ -24,6 +24,7 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_ITERATOR_H_
 
 #include <sprt/runtime/int.h>
+#include <sprt/runtime/detail/swap.h>
 
 #if __SPRT_USE_STL_ITERATOR_TAGS
 #include <iterator>

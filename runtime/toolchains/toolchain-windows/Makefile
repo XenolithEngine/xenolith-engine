@@ -20,6 +20,8 @@
 
 LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
+SHELL = powershell.exe
+
 SP_NJOBS := -j16
 SP_ARCH := x86_64
 SP_ARCH_LD := x86-64
@@ -31,14 +33,26 @@ MAKE_SRC_VER := 4.4.1
 MAKE_SRC_TARBALL := make-$(MAKE_SRC_VER).tar.lz
 MAKE_SRC_DIR := make-$(MAKE_SRC_VER)
 MAKE_SRC_URL := https://ftp.gnu.org/gnu/make/make-$(MAKE_SRC_VER).tar.lz
+MAKE_SRC_EXE := $(MAKE_SRC_DIR)/WinRel\gnumake.exe
 
 $(MAKE_SRC_TARBALL):
-	powershell Invoke-WebRequest -Uri "$(MAKE_SRC_URL)" -OutFile "$(MAKE_SRC_TARBALL)"
+	Invoke-WebRequest -Uri "$(MAKE_SRC_URL)" -OutFile "$(MAKE_SRC_TARBALL)"
 
 $(MAKE_SRC_DIR): $(MAKE_SRC_TARBALL)
-	powershell tar -xf $(MAKE_SRC_TARBALL)
-	powershell touch $(MAKE_SRC_DIR)
+	tar -xf $(MAKE_SRC_TARBALL)
+	touch $(MAKE_SRC_DIR)
+	cd $(MAKE_SRC_DIR); patch -Np1 -i ../make-patch/make-4.4.1-sub_proc.patch
+	cd $(MAKE_SRC_DIR); patch -Np1 -i ../make-patch/make-4.4.1-win32-ctrl-c.patch
+	cd $(MAKE_SRC_DIR); patch -Np1 -i ../make-patch/make-4.4.1-SV49841.patch
+	cd $(MAKE_SRC_DIR); patch -Np1 -i ../make-patch/make-4.4.1-warn-noargs.patch
+	cd $(MAKE_SRC_DIR); patch -Np1 -i ../make-patch/make-4.4.1-expand.patch
+	cd $(MAKE_SRC_DIR); patch -Np1 -i ../make-patch/make-4.4.1-sort.patch
+	cd $(MAKE_SRC_DIR); patch -Np1 -i ../make-patch/make-4.4.1-filter.patch
+	cd $(MAKE_SRC_DIR); patch -Np1 -i ../make-patch/make-4.4.1-win32-colors.patch
+	cd $(MAKE_SRC_DIR); sed -i 's/.* HAVE_CASE_INSENSITIVE_FS .*/#define HAVE_CASE_INSENSITIVE_FS 1/' ./src/config.h.W32
 
+$(MAKE_SRC_EXE): $(MAKE_SRC_DIR)
+	cd $(MAKE_SRC_DIR); cmd.exe /c 'start cmd.exe /c "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat" x86_amd64 && build_w32.bat --verbose --without-guile'
 
 LLVM_MAJOR := 21
 LLVM_V := $(LLVM_MAJOR).1.8
@@ -58,7 +72,7 @@ OUT_SYSROOT := ../$(SP_ARCH_CLANG)
 
 include stage0.mk
 
-$(OUT_SYSROOT): $(STAGE0_SYSROOT)
+$(OUT_SYSROOT): $(STAGE0_SYSROOT) $(MAKE_SRC_EXE)
 	rm -rf $(OUT_SYSROOT)
 	mkdir -p $(OUT_SYSROOT)
 	cp -rf $(STAGE0_SYSROOT)/lib $(OUT_SYSROOT)
@@ -67,14 +81,17 @@ $(OUT_SYSROOT): $(STAGE0_SYSROOT)
 	cp -f $(STAGE0_SYSROOT)/bin/clang.exe $(OUT_SYSROOT)/bin
 	cp -f $(STAGE0_SYSROOT)/bin/lld.exe $(OUT_SYSROOT)/bin
 	cp -f $(STAGE0_SYSROOT)/bin/llvm-ar.exe $(OUT_SYSROOT)/bin
+	cp -f $(STAGE0_SYSROOT)/bin/llvm-rc.exe $(OUT_SYSROOT)/bin
 	cp -f $(STAGE0_SYSROOT)/bin/LLVM-C.dll $(OUT_SYSROOT)/bin
 	cp -f $(STAGE0_SYSROOT)/bin/LTO.dll $(OUT_SYSROOT)/bin
 	cp -f $(STAGE0_SYSROOT)/bin/libclang.dll $(OUT_SYSROOT)/bin
+	cp -f $(MAKE_SRC_EXE) $(OUT_SYSROOT)/bin/make.exe
 
 	@echo 'TOOLCHAIN_SYSROOT := $$(abspath $$(dir $$(lastword $$(MAKEFILE_LIST))))' > $(OUT_SYSROOT)/toolchain.mk
 	@echo 'TOOLCHAIN_TARGET := $(SP_ARCH_CLANG)' >> $(OUT_SYSROOT)/toolchain.mk
 	@echo 'TOOLCHAIN_LIBDIR := $$(TOOLCHAIN_SYSROOT)/lib' >> $(OUT_SYSROOT)/toolchain.mk
 	@echo 'TOOLCHAIN_INCLUDEDIR := $$(TOOLCHAIN_SYSROOT)/include' >> $(OUT_SYSROOT)/toolchain.mk
+	@echo 'TOOLCHAIN_INCLUDEDIR_LIBCXX := $$(TOOLCHAIN_INCLUDEDIR)/c++/v1' >> $(OUT_SYSROOT)/toolchain.mk
 	@echo 'TOOLCHAIN_CC := $$(TOOLCHAIN_SYSROOT)/bin/clang.exe' >> $(OUT_SYSROOT)/toolchain.mk
 	@echo 'TOOLCHAIN_CXX := $$(TOOLCHAIN_SYSROOT)/bin/clang.exe' >> $(OUT_SYSROOT)/toolchain.mk
 	@echo 'TOOLCHAIN_AR := $$(TOOLCHAIN_SYSROOT)/bin/llvm-ar.exe' >> $(OUT_SYSROOT)/toolchain.mk

@@ -83,6 +83,23 @@ SPRT_FORCEINLINE int toascii(int c) { return __sprt_toascii(c); }
 
 __SPRT_END_DECL
 
+#ifdef _LIBCPP_MSVCRT
+#define _isalnum_l isalnum_l
+#define _isalpha_l isalpha_l
+#define _isblank_l isblank_l
+#define _iscntrl_l iscntrl_l
+#define _isdigit_l isdigit_l
+#define _isgraph_l isgraph_l
+#define _islower_l islower_l
+#define _isprint_l isprint_l
+#define _ispunct_l ispunct_l
+#define _isspace_l isspace_l
+#define _isupper_l isupper_l
+#define _isxdigit_l isxdigit_l
+#define _tolower_l tolower_l
+#define _toupper_l toupper_l
+#endif
+
 #endif
 
 #endif // CORE_RUNTIME_INCLUDE_LIBC_CTYPE_H_

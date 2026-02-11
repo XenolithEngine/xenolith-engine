@@ -96,8 +96,6 @@ public:
 	NotNull &operator-=(ptrdiff_t) = delete;
 	void operator[](ptrdiff_t) const = delete;
 
-	void swap(NotNull<T> &other) noexcept { sprt::swap(_ptr, other._ptr); }
-
 private:
 	element_type _ptr;
 };
