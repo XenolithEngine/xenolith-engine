@@ -105,6 +105,8 @@ struct AprInterface {
 
 	Dso _handle;
 
+	AprInterface();
+
 	bool load(Dso &&);
 
 	explicit operator bool() const;
@@ -173,8 +175,9 @@ struct SPRT_LOCAL Cleanup {
 	Cleanup *next;
 	const void *data;
 	Callback fn;
+	pool::cleanup_flags flags = pool::cleanup_flags::cleanup_flags_none;
 
-	static void run(Cleanup **cref);
+	static void run(Cleanup **cref, bool plain);
 };
 
 struct SPRT_LOCAL Allocator {
@@ -247,8 +250,8 @@ struct SPRT_LOCAL Pool : public AllocPlacement {
 	Pool *make_child();
 	Pool *make_child(Allocator *);
 
-	void cleanup_register(const void *, Cleanup::Callback cb);
-	void pre_cleanup_register(const void *, Cleanup::Callback cb);
+	void cleanup_register(const void *, Cleanup::Callback cb, pool::cleanup_flags);
+	void pre_cleanup_register(const void *, Cleanup::Callback cb, pool::cleanup_flags);
 
 	void cleanup_kill(void *, Cleanup::Callback cb);
 	void cleanup_run(void *, Cleanup::Callback cb);

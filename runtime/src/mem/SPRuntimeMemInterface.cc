@@ -584,10 +584,6 @@ static void popPoolInfo(pool_t *pool) {
 }
 
 void initialize() {
-	auto self = Dso(StringView(), DsoFlags::Self);
-
-	s_aprInterface.load(sprt::move(self));
-
 	if constexpr (config::AprCompatible) {
 		apr::pool::initialize();
 	}
@@ -788,26 +784,36 @@ void cleanup_kill(pool_t *pool, void *ptr, cleanup_fn cb) {
 	((impl::Pool *)pool)->cleanup_kill(ptr, (impl::Cleanup::Callback)cb);
 }
 
-void cleanup_register(pool_t *pool, void *ptr, cleanup_fn cb) {
+void cleanup_register(pool_t *pool, void *ptr, cleanup_fn cb, cleanup_flags flags) {
 	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
+			if (flags != cleanup_flags::cleanup_flags_none) {
+				log::vprint(log::LogType::Warn, __SPRT_LOCATION, "memory",
+						"APR pool has no cleanup_flags support and flags is not "
+						"cleanup_flags_none");
+			}
 			apr::pool::cleanup_register((apr_pool_t *)pool, ptr, (apr_status_t (*)(void *))cb);
 			return;
 		}
 	}
-	((impl::Pool *)pool)->cleanup_register(ptr, (impl::Cleanup::Callback)cb);
+	((impl::Pool *)pool)->cleanup_register(ptr, (impl::Cleanup::Callback)cb, flags);
 }
 
-void pre_cleanup_register(pool_t *pool, void *ptr, cleanup_fn cb) {
+void pre_cleanup_register(pool_t *pool, void *ptr, cleanup_fn cb, cleanup_flags flags) {
 	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
+			if (flags != cleanup_flags::cleanup_flags_none) {
+				log::vprint(log::LogType::Warn, __SPRT_LOCATION, "memory",
+						"APR pool has no cleanup_flags support and flags is not "
+						"cleanup_flags_none");
+			}
 			apr::pool::pre_cleanup_register((apr_pool_t *)pool, ptr, (apr_status_t (*)(void *))cb);
 			return;
 		}
 	}
-	((impl::Pool *)pool)->pre_cleanup_register(ptr, (impl::Cleanup::Callback)cb);
+	((impl::Pool *)pool)->pre_cleanup_register(ptr, (impl::Cleanup::Callback)cb, flags);
 }
 
 Status userdata_set(const void *data, const char *key, cleanup_fn cb, pool_t *pool) {

@@ -248,6 +248,7 @@ void ContextController::handleContextDidDestroy() {
 	_context->handleDidDestroy();
 	_looper->poll();
 	_looper->wakeup();
+	_looper = nullptr;
 	_context = nullptr;
 }
 

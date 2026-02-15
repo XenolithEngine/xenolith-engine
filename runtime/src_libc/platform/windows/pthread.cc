@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_sched.h>
+#include <sprt/c/__sprt_unistd.h>
 
 #ifdef __clang__
 #pragma clang diagnostic ignored "-Wunused-function"
@@ -395,7 +396,9 @@ static int __pthread_join(pthread_t thread, void **ret, DWORD timeout, bool tryj
 	// release all data if already complete
 	if (thread->state.try_wait(_pthread_t::StateFinalized)) {
 		// thread was finalized as joinable, release it's resources
-		*ret = thread->arg;
+		if (ret) {
+			*ret = thread->arg;
+		}
 		__detachAndDeallocateThread(thread, &lock);
 		return 0;
 	}
@@ -425,7 +428,9 @@ static int __pthread_join(pthread_t thread, void **ret, DWORD timeout, bool tryj
 
 	// thread is now terminated, WaitForSingleObject triggered after __runthead returns
 
-	*ret = thread->arg;
+	if (ret) {
+		*ret = thread->arg;
+	}
 
 	__detachAndDeallocateThread(thread, &lock);
 

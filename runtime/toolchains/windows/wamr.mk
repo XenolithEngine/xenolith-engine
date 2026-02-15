@@ -82,8 +82,8 @@ $(SP_INSTALL_PREFIX)/lib/iwasm-debug.lib:
 	$(call rule_rm,$(LIBNAME))
 	$(MKDIR) $(LIBNAME) | Out-Null
 	cd $(LIBNAME); cmake -G "Ninja" $(CONFIGURE_DEBUG) $(LIB_SRC_DIR)/$(LIBNAME)
-	cd $(LIBNAME); cmake  --build . --config Debug --parallel 1
-	$(call rule_cp,$(LIBNAME)/iwasm.lib,$(SP_INSTALL_PREFIX)/lib/libiwasm-debug.lib)
+	cd $(LIBNAME); cmake  --build . --config Debug --parallel
+	$(call rule_cp,$(LIBNAME)/iwasm.lib,$(SP_INSTALL_PREFIX)/lib/iwasm-debug.lib)
 	$(call rule_rm,$(LIBNAME))
 
 all: $(INCLUDES) $(SP_INSTALL_PREFIX)/lib/iwasm-release.lib $(SP_INSTALL_PREFIX)/lib/iwasm-debug.lib

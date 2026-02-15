@@ -75,35 +75,53 @@ ANDROID_TARGETS_TOOLCHAINS := $(addprefix $(TOOLCHAIN_TARGETS)/,\
 	aarch64-linux-android armv7a-linux-androideabi i686-linux-android x86_64-linux-android)
 
 $(ANDROID_INTERMEDIATE_TOOLCHAINS):
-	mkdir -p $(TOOLCHAIN_INTERMEDIATE)
-	make -C android TOOLCHAIN_OUTPUT_DIR=$(abspath $(LIBS_MAKE_ROOT))/intermediate all
+	$(MKDIR) $(TOOLCHAIN_INTERMEDIATE)
+	$(MAKE) -C android TOOLCHAIN_OUTPUT_DIR=$(abspath $(LIBS_MAKE_ROOT))/intermediate all
 
 $(TOOLCHAIN_TARGETS)/android: $(ANDROID_INTERMEDIATE_TOOLCHAINS)
 	$(MAKE) -f android.mk TOOLCHAIN_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE) TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS)
 	touch $@
 
 $(TOOLCHAIN_INTERMEDIATE)/x86_64-unknown-linux-gnu:
-	mkdir -p $(TOOLCHAIN_INTERMEDIATE)
-	make -C toolchain-linux-glibc OUT_SYSROOT=$(LIBS_MAKE_ROOT)/intermediate/x86_64-unknown-linux-gnu out
-	make -C linux x86_64 OUT_SYSROOT=$(LIBS_MAKE_ROOT)/intermediate/x86_64-unknown-linux-gnu
+	$(MKDIR) $(TOOLCHAIN_INTERMEDIATE)
+	$(MAKE) -C toolchain-linux-glibc OUT_SYSROOT=$(LIBS_MAKE_ROOT)/intermediate/x86_64-unknown-linux-gnu out
+	$(MAKE) -C linux x86_64 OUT_SYSROOT=$(LIBS_MAKE_ROOT)/intermediate/x86_64-unknown-linux-gnu
 
 $(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu: $(TOOLCHAIN_INTERMEDIATE)/x86_64-unknown-linux-gnu
 	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/x86_64-unknown-linux-gnu \
 		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu
 
+$(TOOLCHAIN_INTERMEDIATE)/x86_64-pc-windows-msvc:
+	$(MKDIR) $(TOOLCHAIN_INTERMEDIATE)
+	$(MAKE) -C toolchain-windows OUT_SYSROOT=$(LIBS_MAKE_ROOT)/intermediate/x86_64-pc-windows-msvc out
+	$(MAKE) -C windows x86_64 OUT_SYSROOT=$(LIBS_MAKE_ROOT)/intermediate/x86_64-pc-windows-msvc
+
+$(TOOLCHAIN_TARGETS)/x86_64-pc-windows-msvc: $(TOOLCHAIN_INTERMEDIATE)/x86_64-pc-windows-msvc
+	$(MAKE) -f windows.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/x86_64-pc-windows-msvc \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-pc-windows-msvc
+
 android: $(TOOLCHAIN_TARGETS)/android
 
 android-clean:
-	-rm -rf $(ANDROID_INTERMEDIATE_TOOLCHAINS) $(TOOLCHAIN_TARGETS)/android
+	$(RM) $(ANDROID_INTERMEDIATE_TOOLCHAINS) $(TOOLCHAIN_TARGETS)/android
 
 linux-glibc-x86_64: $(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu
+
+windows-x86_64: $(TOOLCHAIN_TARGETS)/x86_64-pc-windows-msvc
 
 android.tar.xz: $(TOOLCHAIN_TARGETS)/android
 	tar -cJf $@ $<
 
+x86_64-unknown-linux-gnu.tar.xz: $(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu
+	tar -cJf $@ -C $(TOOLCHAIN_TARGETS) x86_64-unknown-linux-gnu
+
+x86_64-pc-windows-msvc.tar.xz: $(TOOLCHAIN_TARGETS)/x86_64-pc-windows-msvc
+	tar -cJf $@ -C $(TOOLCHAIN_TARGETS) x86_64-pc-windows-msvc
+
 compress: \
 	android.tar.xz \
-	x86_64-unknown-linux-gnu.tar.xz
+	x86_64-unknown-linux-gnu.tar.xz \
+	x86_64-pc-windows-msvc
 
-.PHONY: all clean prepare compress xwin android android-clean linux-glibc-x86_64
+.PHONY: all clean prepare compress xwin android android-clean linux-glibc-x86_64 windows-x86_64
 .DEFAULT_GOAL := all

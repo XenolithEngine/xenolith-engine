@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Stappler Team <admin@stappler.org>
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -24,12 +24,6 @@ LIBNAME = spirv-tools
 
 include ../common/configure.mk
 
-ifdef SP_NATIVE
-SPIRV_EXTRA_LINKER_FLAGS :=
-else
-SPIRV_EXTRA_LINKER_FLAGS := -lc++ -lc++abi
-endif
-
 CONFIGURE := \
 	$(CONFIGURE_CMAKE) \
 	-DSPIRV-Headers_SOURCE_DIR=$(SP_INSTALL_PREFIX) \
@@ -40,10 +34,9 @@ CONFIGURE := \
 	-DSPIRV_WERROR=Off
 
 all:
-	@rm -rf $(LIBNAME)
-	@mkdir -p $(LIBNAME)
-	cd $(LIBNAME); \
-		cmake $(LIB_SRC_DIR)/$(LIBNAME) $(CONFIGURE); \
-		cmake --build . --parallel;\
-		cmake --install .
-	rm -rf $(LIBNAME)
+	$(call rule_rm,$(LIBNAME))
+	$(MKDIR) $(LIBNAME) | Out-Null
+	cd $(LIBNAME); cmake -G "Ninja" $(LIB_SRC_DIR)/$(LIBNAME) $(CONFIGURE);
+	cd $(LIBNAME); cmake --build .
+	cd $(LIBNAME); cmake --install .
+	$(call rule_rm,$(LIBNAME))

@@ -24,14 +24,13 @@ LIBNAME = simde
 
 include ../common/configure.mk
 
+CONFIGURE := \
+	$(CONFIGURE_CMAKE) \
+
 all:
-	rm -rf $(LIBNAME)
-	mkdir -p $(LIBNAME)
-	cd $(LIB_SRC_DIR)/$(LIBNAME); meson setup ../../linux/$(LIBNAME) \
-		-Dprefix=$(SP_INSTALL_PREFIX) \
-		-Dlibdir=$(SP_INSTALL_PREFIX)/lib \
-		-Dtests=false \
-		-Dbuildtype=release
-	cd $(LIBNAME); meson compile
-	cd $(LIBNAME); meson install
-	rm -rf $(LIBNAME)
+	$(call rule_rm,$(LIBNAME))
+	$(MKDIR) $(LIBNAME) | Out-Null
+	cd $(LIBNAME); cmake -G "Ninja" $(LIB_SRC_DIR)/$(LIBNAME) $(CONFIGURE);
+	cd $(LIBNAME); cmake --build .
+	cd $(LIBNAME); cmake --install .
+	$(call rule_rm,$(LIBNAME))

@@ -22,6 +22,9 @@
 
 LIBNAME = openssl-gost-engine
 
+SP_USER_CFLAGS := -DBUILDING_ENGINE_AS_LIBRARY
+SP_USER_CXXFLAGS := -DBUILDING_ENGINE_AS_LIBRARY
+
 include ../common/configure.mk
 
 CONFIGURE := \

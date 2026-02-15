@@ -24,36 +24,43 @@ THE SOFTWARE.
 
 namespace sprt::memory::apr {
 
+AprInterface::AprInterface() {
+	auto self = Dso(StringView(), DsoFlags::Self);
+	load(sprt::move(self));
+}
+
 bool AprInterface::load(Dso &&handle) {
 	if (handle) {
 		SPRT_LOAD_PROTO(handle, apr_allocator_create);
-		SPRT_LOAD_PROTO(handle, apr_allocator_destroy);
-		SPRT_LOAD_PROTO(handle, apr_allocator_mutex_set);
-		SPRT_LOAD_PROTO(handle, apr_allocator_owner_set);
-		SPRT_LOAD_PROTO(handle, apr_allocator_owner_get);
-		SPRT_LOAD_PROTO(handle, apr_allocator_max_free_set);
-		SPRT_LOAD_PROTO(handle, apr_pool_initialize);
-		SPRT_LOAD_PROTO(handle, apr_pool_terminate);
-		SPRT_LOAD_PROTO(handle, apr_pool_create_unmanaged_ex);
-		SPRT_LOAD_PROTO(handle, apr_pool_create_ex);
-		SPRT_LOAD_PROTO(handle, apr_pool_tag);
-		SPRT_LOAD_PROTO(handle, apr_pool_destroy);
-		SPRT_LOAD_PROTO(handle, apr_pool_clear);
-		SPRT_LOAD_PROTO(handle, apr_palloc);
-		SPRT_LOAD_PROTO(handle, apr_pool_cleanup_kill);
-		SPRT_LOAD_PROTO(handle, apr_pool_cleanup_null);
-		SPRT_LOAD_PROTO(handle, apr_pool_cleanup_register);
-		SPRT_LOAD_PROTO(handle, apr_pool_pre_cleanup_register);
-		SPRT_LOAD_PROTO(handle, apr_pool_userdata_set);
-		SPRT_LOAD_PROTO(handle, apr_pool_userdata_setn);
-		SPRT_LOAD_PROTO(handle, apr_pool_userdata_get);
-		SPRT_LOAD_PROTO(handle, apr_pool_allocator_get);
-		SPRT_LOAD_PROTO(handle, apr_pmemdup);
-		SPRT_LOAD_PROTO(handle, apr_pstrdup);
+		if (apr_allocator_create) {
+			SPRT_LOAD_PROTO(handle, apr_allocator_destroy);
+			SPRT_LOAD_PROTO(handle, apr_allocator_mutex_set);
+			SPRT_LOAD_PROTO(handle, apr_allocator_owner_set);
+			SPRT_LOAD_PROTO(handle, apr_allocator_owner_get);
+			SPRT_LOAD_PROTO(handle, apr_allocator_max_free_set);
+			SPRT_LOAD_PROTO(handle, apr_pool_initialize);
+			SPRT_LOAD_PROTO(handle, apr_pool_terminate);
+			SPRT_LOAD_PROTO(handle, apr_pool_create_unmanaged_ex);
+			SPRT_LOAD_PROTO(handle, apr_pool_create_ex);
+			SPRT_LOAD_PROTO(handle, apr_pool_tag);
+			SPRT_LOAD_PROTO(handle, apr_pool_destroy);
+			SPRT_LOAD_PROTO(handle, apr_pool_clear);
+			SPRT_LOAD_PROTO(handle, apr_palloc);
+			SPRT_LOAD_PROTO(handle, apr_pool_cleanup_kill);
+			SPRT_LOAD_PROTO(handle, apr_pool_cleanup_null);
+			SPRT_LOAD_PROTO(handle, apr_pool_cleanup_register);
+			SPRT_LOAD_PROTO(handle, apr_pool_pre_cleanup_register);
+			SPRT_LOAD_PROTO(handle, apr_pool_userdata_set);
+			SPRT_LOAD_PROTO(handle, apr_pool_userdata_setn);
+			SPRT_LOAD_PROTO(handle, apr_pool_userdata_get);
+			SPRT_LOAD_PROTO(handle, apr_pool_allocator_get);
+			SPRT_LOAD_PROTO(handle, apr_pmemdup);
+			SPRT_LOAD_PROTO(handle, apr_pstrdup);
 
-		if (validateFunctionList(&apr_first_fn, &apr_last_fn)) {
-			_handle = sprt::move(handle);
-			return true;
+			if (validateFunctionList(&apr_first_fn, &apr_last_fn)) {
+				_handle = sprt::move(handle);
+				return true;
+			}
 		}
 	}
 	return false;

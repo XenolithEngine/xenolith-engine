@@ -87,9 +87,23 @@ SPRT_FORCEINLINE void *calloc(size_t a, size_t value) { return __sprt_calloc(a, 
 SPRT_FORCEINLINE void *realloc(void *ptr, size_t value) { return __sprt_realloc(ptr, value); }
 SPRT_FORCEINLINE void free(void *value) { return __sprt_free(value); }
 
+/*
+	WARNING: use aligned_free to safely free aligned memory.
+	It's MSVC requirement, but safe to follow this rule everywhere
+*/
+SPRT_FORCEINLINE int posix_memalign(void **ptr, size_t size, size_t align) {
+	return __sprt_posix_memalign(ptr, size, align);
+}
+
+/*
+	WARNING: use aligned_free to safely free aligned memory.
+	It's MSVC requirement, but safe to follow this rule everywhere
+*/
 SPRT_FORCEINLINE void *aligned_alloc(size_t a, size_t value) {
 	return __sprt_aligned_alloc(a, value);
 }
+
+SPRT_FORCEINLINE void aligned_free(void *memblock) { __sprt_aligned_free(memblock); }
 
 SPRT_FORCEINLINE __SPRT_NORETURN void abort(void) { __sprt_abort(); }
 
@@ -125,10 +139,6 @@ SPRT_FORCEINLINE div_t div(int a, int value) { return __sprt_div(a, value); }
 SPRT_FORCEINLINE ldiv_t ldiv(long a, long value) { return __sprt_ldiv(a, value); }
 SPRT_FORCEINLINE lldiv_t lldiv(long long a, long long value) { return __sprt_lldiv(a, value); }
 
-
-SPRT_FORCEINLINE int posix_memalign(void **ptr, size_t size, size_t align) {
-	return __sprt_posix_memalign(ptr, size, align);
-}
 SPRT_FORCEINLINE int setenv(const char *n, const char *v, int r) { return __sprt_setenv(n, v, r); }
 SPRT_FORCEINLINE int unsetenv(const char *n) { return __sprt_unsetenv(n); }
 SPRT_FORCEINLINE int mkstemp(char *tpl) { return __sprt_mkstemp(tpl); }
@@ -178,8 +188,8 @@ __SPRT_END_DECL
 // Bionic/BSD specific functions
 //
 // Expose them only for C++ to avoid C wchar_t definitiom
-#if defined(__cplusplus) && __SPRT_CONFIG_HAVE_STDLIB_MB \
-		|| __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+#if defined(__cplusplus) \
+		&& (__SPRT_CONFIG_HAVE_STDLIB_MB || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS)
 
 SPRT_FORCEINLINE size_t mbstowcs(wchar_t *__dst, const char *__src, size_t __n) {
 	return __SPRT_ID(mbstowcs)(__dst, __src, __n);

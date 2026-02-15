@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Stappler Team <admin@stappler.org>
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -28,10 +28,9 @@ CONFIGURE := \
 	$(CONFIGURE_CMAKE) \
 
 all:
-	@rm -rf $(LIBNAME)
-	@mkdir -p $(LIBNAME)
-	cd $(LIBNAME); \
-		cmake $(LIB_SRC_DIR)/$(LIBNAME) $(CONFIGURE); \
-		cmake --install .
-	touch $(SP_INSTALL_PREFIX)/include/spirv/unified1/spirv.h
-	rm -rf $(LIBNAME)
+	$(call rule_rm,$(LIBNAME))
+	$(MKDIR) $(LIBNAME) | Out-Null
+	cd $(LIBNAME); cmake -G "Ninja" $(LIB_SRC_DIR)/$(LIBNAME) $(CONFIGURE);
+	cd $(LIBNAME); cmake --build .
+	cd $(LIBNAME); cmake --install .
+	$(call rule_rm,$(LIBNAME))

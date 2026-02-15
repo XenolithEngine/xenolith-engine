@@ -21,7 +21,8 @@
  **/
 
 #define __SPRT_BUILD 1
-#define __SPRT_USE_STL 1
+#define INITKNOWNFOLDERS
+#define INITGUID
 
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/sys/__sprt_winapi.h>
@@ -29,23 +30,21 @@
 #include "private/SPRTPrivate.h"
 
 #if __SPRT_CONFIG_HAVE_WINAPI
-#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <userenv.h>
+#include <winternl.h>
+#include <ntstatus.h>
+#include <locale.h>
 
 #include <Shlobj.h>
+#include <KnownFolders.h>
 #include <sddl.h>
 #include <accctrl.h>
 #include <aclapi.h>
 
+#include <stdio.h>
 #include <io.h>
 #include <fcntl.h>
-
-#include <wil/result_macros.h>
-#include <wil/stl.h>
-#include <wil/resource.h>
-#include <wil/com.h>
-#include <wil\token_helpers.h>
 
 #endif
 
@@ -55,6 +54,22 @@
 #undef __deallocate
 
 #include "private/SPRTSpecific.h"
+
+#if __SPRT_CONFIG_HAVE_WINAPI
+extern "C" {
+
+WINBASEAPI NTSTATUS WINAPI NtCreateWaitCompletionPacket(_Out_ PHANDLE WaitCompletionPacketHandle,
+		_In_ ACCESS_MASK DesiredAccess, _In_opt_ POBJECT_ATTRIBUTES ObjectAttributes);
+
+WINBASEAPI NTSTATUS WINAPI NtAssociateWaitCompletionPacket(_In_ HANDLE WaitCompletionPacketHandle,
+		_In_ HANDLE IoCompletionHandle, _In_ HANDLE TargetObjectHandle, _In_opt_ PVOID KeyContext,
+		_In_opt_ PVOID ApcContext, _In_ NTSTATUS IoStatus, _In_ ULONG_PTR IoStatusInformation,
+		_Out_opt_ PBOOLEAN AlreadySignaled);
+
+WINBASEAPI NTSTATUS WINAPI NtCancelWaitCompletionPacket(_In_ HANDLE WaitCompletionPacketHandle,
+		_In_ BOOLEAN RemoveSignaledPacket);
+}
+#endif
 
 namespace sprt {
 
@@ -105,6 +120,160 @@ __SPRT_C_FUNC int __SPRT_ID(_IdnToUnicode)(uint32_t dwFlags, const char16_t *lpU
 __SPRT_C_FUNC __SPRT_ID(uint32_t)
 		__SPRT_ID(_GetCurrentDirectory)(__SPRT_ID(uint32_t) nBufferLength, char16_t *lpBuffer) {
 	return GetCurrentDirectoryW(nBufferLength, (wchar_t *)lpBuffer);
+}
+__SPRT_C_FUNC void *__SPRT_ID(_ReportEventAsCompletion)(void *hIOCP, void *hEvent,
+		__SPRT_ID(uint32_t) dwNumberOfBytesTransferred, __SPRT_ID(uintptr_t) dwCompletionKey,
+		void *lpOverlapped) {
+
+	HANDLE hPacket = NULL;
+	HRESULT hr = NtCreateWaitCompletionPacket(&hPacket, GENERIC_ALL, NULL);
+
+	if (SUCCEEDED(hr)) {
+		OVERLAPPED_ENTRY completion{};
+		completion.dwNumberOfBytesTransferred = dwNumberOfBytesTransferred;
+		completion.lpCompletionKey = dwCompletionKey;
+		completion.lpOverlapped = (LPOVERLAPPED)lpOverlapped;
+
+		if (!__SPRT_ID(
+					_RestartEventCompletion)(hPacket, hIOCP, hEvent, (const void **)&completion)) {
+			NtClose(hPacket);
+			hPacket = NULL;
+		}
+	} else {
+		switch (hr) {
+		case STATUS_NO_MEMORY: SetLastError(ERROR_OUTOFMEMORY); break;
+		default: SetLastError(hr);
+		}
+	}
+	return hPacket;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_RestartEventCompletion)(void *hPacket, void *hIOCP, void *hEvent,
+		const void **ncompletion) {
+	if (!ncompletion) {
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+
+	auto completion = (const OVERLAPPED_ENTRY *)ncompletion;
+
+	return __SPRT_ID(_RestartEventCompletion2)(hPacket, hIOCP, hEvent,
+			completion->dwNumberOfBytesTransferred, completion->lpCompletionKey,
+			completion->lpOverlapped);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_RestartEventCompletion2)(void *hPacket, void *hIOCP, void *hEvent,
+		__SPRT_ID(uint32_t) dwNumberOfBytesTransferred, __SPRT_ID(uintptr_t) dwCompletionKey,
+		void *lpOverlapped) {
+	HRESULT hr = NtAssociateWaitCompletionPacket(hPacket, hIOCP, hEvent, (PVOID)dwCompletionKey,
+			(PVOID)lpOverlapped, 0, dwNumberOfBytesTransferred, NULL);
+	if (SUCCEEDED(hr)) {
+		return TRUE;
+	} else {
+		switch (hr) {
+		case STATUS_NO_MEMORY: SetLastError(ERROR_OUTOFMEMORY); break;
+		case STATUS_INVALID_HANDLE: // not valid handle passed for hIOCP
+		case STATUS_OBJECT_TYPE_MISMATCH: // incorrect handle passed for hIOCP
+		case STATUS_INVALID_PARAMETER_1:
+		case STATUS_INVALID_PARAMETER_2: SetLastError(ERROR_INVALID_PARAMETER); break;
+		case STATUS_INVALID_PARAMETER_3:
+			if (hEvent) {
+				SetLastError(ERROR_INVALID_HANDLE);
+			} else {
+				SetLastError(ERROR_INVALID_PARAMETER);
+			}
+			break;
+		default: SetLastError(hr);
+		}
+		return FALSE;
+	}
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_CancelEventCompletion)(void *hPacket, int cancel) {
+	HRESULT hr = NtCancelWaitCompletionPacket(hPacket, cancel);
+	if (SUCCEEDED(hr)) {
+		return TRUE;
+	} else {
+		SetLastError(hr);
+		return FALSE;
+	}
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_PeekMessage)(__SPRT_ID(winmsg) * lpMsg, void *hWnd,
+		unsigned wMsgFilterMin, unsigned wMsgFilterMax, unsigned wRemoveMsg) {
+	return PeekMessageW((MSG *)lpMsg, (HWND)hWnd, wMsgFilterMin, wMsgFilterMax, wRemoveMsg);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_TranslateMessage)(const __SPRT_ID(winmsg) * lpMsg) {
+	return TranslateMessage((const MSG *)lpMsg);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_DispatchMessage)(const __SPRT_ID(winmsg) * lpMsg) {
+	return DispatchMessageW((const MSG *)lpMsg);
+}
+
+__SPRT_C_FUNC __SPRT_ID(uint32_t) __SPRT_ID(_MsgWaitForMultipleObjectsEx)(
+		__SPRT_ID(uint32_t) nCount, void *const *pHandles, __SPRT_ID(uint32_t) dwMilliseconds,
+		__SPRT_ID(uint32_t) dwWakeMask, __SPRT_ID(uint32_t) dwFlags) {
+	return MsgWaitForMultipleObjectsEx(nCount, pHandles, dwMilliseconds, dwWakeMask, dwFlags);
+}
+
+__SPRT_C_FUNC void *__SPRT_ID(_CreateIoCompletionPort)(void *FileHandle,
+		void *ExistingCompletionPort, __SPRT_ID(uintptr_t) CompletionKey,
+		__SPRT_ID(uint32_t) NumberOfConcurrentThreads) {
+	return CreateIoCompletionPort(FileHandle, ExistingCompletionPort, CompletionKey,
+			NumberOfConcurrentThreads);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_GetQueuedCompletionStatusEx)(void *CompletionPort,
+		__SPRT_ID(overlapped_entry) * lpCompletionPortEntries, unsigned long ulCount,
+		unsigned long *ulNumEntriesRemoved, __SPRT_ID(uint32_t) dwMilliseconds, int fAlertable) {
+	return GetQueuedCompletionStatusEx(CompletionPort, (LPOVERLAPPED_ENTRY)lpCompletionPortEntries,
+			ulCount, ulNumEntriesRemoved, dwMilliseconds, fAlertable);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_PostQueuedCompletionStatus)(void *CompletionPort,
+		__SPRT_ID(uint32_t) dwNumberOfBytesTransferred, __SPRT_ID(uintptr_t) dwCompletionKey,
+		__SPRT_ID(overlapped) * lpOverlapped) {
+	return PostQueuedCompletionStatus(CompletionPort, dwNumberOfBytesTransferred, dwCompletionKey,
+			(LPOVERLAPPED)lpOverlapped);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_CloseHandle)(void *hObject) { return CloseHandle(hObject); }
+
+__SPRT_C_FUNC void *__SPRT_ID(_CreateWaitableTimerEx)(
+		__SPRT_ID(security_attributes) * lpTimerAttributes, const char16_t *lpTimerName,
+		__SPRT_ID(uint32_t) dwFlags, __SPRT_ID(uint32_t) dwDesiredAccess) {
+	return CreateWaitableTimerExW((LPSECURITY_ATTRIBUTES)lpTimerAttributes,
+			(const wchar_t *)lpTimerName, dwFlags, dwDesiredAccess);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_SetWaitableTimer)(void *hTimer, __SPRT_ID(int64_t) * lpDueTime,
+		long lPeriod, __SPRT_ID(timer_apc_routine) pfnCompletionRoutine,
+		void *lpArgToCompletionRoutine, int fResume) {
+	LARGE_INTEGER _lpDueTime;
+	if (lpDueTime) {
+		_lpDueTime.QuadPart = *lpDueTime;
+	}
+	return SetWaitableTimer(hTimer, lpDueTime ? &_lpDueTime : nullptr, lPeriod,
+			pfnCompletionRoutine, lpArgToCompletionRoutine, fResume);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_SetWaitableTimerEx)(void *hTimer, __SPRT_ID(int64_t) * lpDueTime,
+		long lPeriod, __SPRT_ID(timer_apc_routine) pfnCompletionRoutine,
+		void *lpArgToCompletionRoutine, __SPRT_ID(reason_context) * WakeContext,
+		unsigned long TolerableDelay) {
+	LARGE_INTEGER _lpDueTime;
+	if (lpDueTime) {
+		_lpDueTime.QuadPart = *lpDueTime;
+	}
+	return SetWaitableTimerEx(hTimer, lpDueTime ? &_lpDueTime : nullptr, lPeriod,
+			pfnCompletionRoutine, lpArgToCompletionRoutine, (PREASON_CONTEXT)WakeContext,
+			TolerableDelay);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_CancelWaitableTimer)(void *hTimer) {
+	return CancelWaitableTimer(hTimer);
 }
 
 #else
@@ -175,6 +344,123 @@ __SPRT_C_FUNC int __SPRT_ID(_IdnToUnicode)(uint32_t dwFlags, const char16_t *lpU
 
 __SPRT_C_FUNC __SPRT_ID(uint32_t)
 		__SPRT_ID(_GetCurrentDirectory)(__SPRT_ID(uint32_t) nBufferLength, char *lpBuffer) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return 0;
+}
+
+__SPRT_C_FUNC void *__SPRT_ID(_ReportEventAsCompletion)(void *hIOCP, void *hEvent,
+		__SPRT_ID(uint32_t) dwNumberOfBytesTransferred, __SPRT_ID(uintptr_t) dwCompletionKey,
+		void *lpOverlapped) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return nullptr;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_RestartEventCompletion)(void *hPacket, void *hIOCP, void *hEvent,
+		const void **ncompletion) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return 0;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_RestartEventCompletion2)(void *hPacket, void *hIOCP, void *hEvent,
+		__SPRT_ID(uint32_t) dwNumberOfBytesTransferred, __SPRT_ID(uintptr_t) dwCompletionKey,
+		void *lpOverlapped) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return 0;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_CancelEventCompletion)(void *hPacket, int cancel) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return 0;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_PeekMessage)(__SPRT_ID(winmsg) * lpMsg, void *hWnd,
+		unsigned wMsgFilterMin, unsigned wMsgFilterMax, unsigned wRemoveMsg) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return 0;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_TranslateMessage)(const __SPRT_ID(winmsg) * lpMsg) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return 0;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_DispatchMessage)(const __SPRT_ID(winmsg) * lpMsg) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return 0;
+}
+
+__SPRT_C_FUNC __SPRT_ID(uint32_t) __SPRT_ID(_MsgWaitForMultipleObjectsEx)(
+		__SPRT_ID(uint32_t) nCount, void *const *pHandles, __SPRT_ID(uint32_t) dwMilliseconds,
+		__SPRT_ID(uint32_t) dwWakeMask, __SPRT_ID(uint32_t) dwFlags) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return 0;
+}
+
+__SPRT_C_FUNC void *__SPRT_ID(_CreateIoCompletionPort)(void *FileHandle,
+		void *ExistingCompletionPort, __SPRT_ID(uintptr_t) CompletionKey,
+		__SPRT_ID(uint32_t) NumberOfConcurrentThreads) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return nullptr;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_GetQueuedCompletionStatusEx)(void *CompletionPort,
+		__SPRT_ID(overlapped_entry) * lpCompletionPortEntries, unsigned long ulCount,
+		unsigned long *ulNumEntriesRemoved, __SPRT_ID(uint32_t) dwMilliseconds, int fAlertable) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return 0;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_PostQueuedCompletionStatus)(void *CompletionPort,
+		__SPRT_ID(uint32_t) dwNumberOfBytesTransferred, __SPRT_ID(uintptr_t) dwCompletionKey,
+		__SPRT_ID(overlapped) * lpOverlapped) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return 0;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_CloseHandle)(void *hObject) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return 0;
+}
+
+__SPRT_C_FUNC void *__SPRT_ID(_CreateWaitableTimerEx)(
+		__SPRT_ID(security_attributes) * lpTimerAttributes, const char16_t *lpTimerName,
+		__SPRT_ID(uint32_t) dwFlags, __SPRT_ID(uint32_t) dwDesiredAccess) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return nullptr;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_SetWaitableTimer)(void *hTimer, __SPRT_ID(int64_t) * lpDueTime,
+		long lPeriod, __SPRT_ID(timer_apc_routine) pfnCompletionRoutine,
+		void *lpArgToCompletionRoutine, int fResume) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return 0;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_SetWaitableTimerEx)(void *hTimer, __SPRT_ID(int64_t) * lpDueTime,
+		long lPeriod, __SPRT_ID(timer_apc_routine) pfnCompletionRoutine,
+		void *lpArgToCompletionRoutine, __SPRT_ID(reason_context) * WakeContext,
+		unsigned long TolerableDelay) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
+	return 0;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(_CancelWaitableTimer)(void *hTimer) {
 	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;
@@ -497,7 +783,13 @@ static const KNOWNFOLDERID *s_knownFoldersToAllow[] = {&FOLDERID_Profile, &FOLDE
 struct StaticInit {
 	StaticInit() {
 		initResult = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-		wil::get_token_is_app_container_nothrow(nullptr, isAppContainer);
+
+		DWORD dwIsAppContainer = 0;
+		DWORD dwReturnLength = 0;
+		if (GetTokenInformation(GetCurrentThreadEffectiveToken(), TokenIsAppContainer,
+					&dwIsAppContainer, sizeof(dwIsAppContainer), &dwReturnLength)) {
+			isAppContainer = (dwIsAppContainer != 0);
+		}
 
 		::setlocale(LC_ALL, "*.UTF8");
 
@@ -947,10 +1239,16 @@ void _initSystemPaths(LookupData &data) {
 	auto exeecPath = platform::getExecPath();
 	auto defaultInterface = getDefaultInterface();
 
-	auto manager = wil::CoCreateInstance<KnownFolderManager, IKnownFolderManager,
-			wil::err_returncode_policy>();
-	if (manager) {
-		HRESULT hr;
+	CLSID _CLSID_KnownFolderManager;
+	CLSIDFromString(L"4df0c730-df9d-4ae3-9153-aa6b82e9795a", &_CLSID_KnownFolderManager);
+
+	IID _IID_IKnownFolderManager;
+	IIDFromString(L"8BE2D872-86AA-4d47-B776-32CCA40C7018", &_IID_IKnownFolderManager);
+
+	IKnownFolderManager *manager = nullptr;
+	auto hr = CoCreateInstance(_CLSID_KnownFolderManager, nullptr, CLSCTX_INPROC_SERVER,
+			_IID_IKnownFolderManager, (void **)&manager);
+	if (SUCCEEDED(hr)) {
 		IKnownFolder *pKnownFolder = nullptr;
 		for (auto &it : s_defaultKnownFolders) {
 			hr = manager->GetFolder(*it.folder, &pKnownFolder);
@@ -959,6 +1257,7 @@ void _initSystemPaths(LookupData &data) {
 				pKnownFolder->Release();
 			}
 		}
+		manager->Release();
 	}
 
 	auto &appConfig = getAppConfig();

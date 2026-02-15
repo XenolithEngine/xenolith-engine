@@ -21,6 +21,7 @@ THE SOFTWARE.
 **/
 
 #define __SPRT_BUILD 1
+#define _CRT_STDIO_ISO_WIDE_SPECIFIERS 1 // for libc++ compatibility
 
 #include <sprt/c/__sprt_assert.h>
 #include <sprt/c/__sprt_errno.h>

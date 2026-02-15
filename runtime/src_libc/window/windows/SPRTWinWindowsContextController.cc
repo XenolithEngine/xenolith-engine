@@ -257,6 +257,12 @@ void WindowsContextController::openUrl(StringView str) {
 	});
 }
 
+SurfaceSupportInfo WindowsContextController::getSupportInfo() const {
+	SurfaceSupportInfo ret;
+	ret.backendMask.set(toInt(SurfaceBackend::Win32));
+	return ret;
+}
+
 bool WindowsContextController::loadWindow() {
 	Rc<NativeWindow> window;
 	auto wInfo = move(_windowInfo);

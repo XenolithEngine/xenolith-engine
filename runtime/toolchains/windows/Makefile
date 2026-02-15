@@ -57,8 +57,8 @@ WASM_LIBS := \
 	libiwasm-debug.a
 
 BINS := \
-	spirv-opt \
-	glslangValidator
+	spirv-opt.exe \
+	glslang.exe
 
 INCLUDES := \
 	spirv/unified1/spirv.h \
@@ -123,7 +123,7 @@ ARCH_INCLUDES  = $(addprefix $(SP_INSTALL_PREFIX)/include/,$(INCLUDES))
 
 ARCH_BINS  = $(addprefix $(SP_INSTALL_PREFIX)/bin/,$(BINS))
 
-all: $(ARCH_LIBS) # $(ARCH_INCLUDES) $(ARCH_BINS) $(SP_INSTALL_PREFIX)/share/licenses
+all: $(ARCH_LIBS) $(ARCH_INCLUDES) $(ARCH_BINS) $(SP_INSTALL_PREFIX)/share/licenses
 
 $(SP_INSTALL_PREFIX)/lib/z.lib: $(MAKE_ROOT)zlib.mk
 	$(MAKE) -f $(MAKE_ROOT)zlib.mk $(FORWARD_VARS)
@@ -190,24 +190,25 @@ $(SP_INSTALL_PREFIX)/lib/iwasm-release.lib $(SP_INSTALL_PREFIX)/lib/iwasm-debug.
 
 $(SP_INSTALL_PREFIX)/include/vulkan/vulkan.h: $(MAKE_ROOT)vulkan-headers.mk
 	$(MAKE) -f $(MAKE_ROOT)vulkan-headers.mk $(FORWARD_VARS)
+	(Get-Item "$(SP_INSTALL_PREFIX)/include/vulkan/vulkan.h").LastWriteTime = $$(Get-Date);
 
 $(SP_INSTALL_PREFIX)/include/spirv/unified1/spirv.h: $(MAKE_ROOT)spirv-headers.mk
 	$(MAKE) -f $(MAKE_ROOT)spirv-headers.mk $(FORWARD_VARS)
+	(Get-Item "$(SP_INSTALL_PREFIX)/include/spirv/unified1/spirv.h").LastWriteTime = $$(Get-Date);
 
 $(SP_INSTALL_PREFIX)/include/simde/simde-arch.h: $(MAKE_ROOT)simde.mk
 	$(MAKE) -f $(MAKE_ROOT)simde.mk $(FORWARD_VARS)
-	touch $(SP_INSTALL_PREFIX)/include/simde/simde-arch.h
+	(Get-Item "$(SP_INSTALL_PREFIX)/include/simde/simde-arch.h").LastWriteTime = $$(Get-Date);
 
-$(SP_INSTALL_PREFIX)/bin/spirv-opt: $(MAKE_ROOT)spirv-tools.mk $(SP_INSTALL_PREFIX)/include/spirv/unified1/spirv.h
+$(SP_INSTALL_PREFIX)/bin/spirv-opt.exe: $(MAKE_ROOT)spirv-tools.mk $(SP_INSTALL_PREFIX)/include/spirv/unified1/spirv.h
 	$(MAKE) -f $(MAKE_ROOT)spirv-tools.mk $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/bin/glslangValidator: $(MAKE_ROOT)glslang.mk $(SP_INSTALL_PREFIX)/bin/spirv-opt $(SP_INSTALL_PREFIX)/include/vulkan/vulkan.h
+$(SP_INSTALL_PREFIX)/bin/glslang.exe: $(MAKE_ROOT)glslang.mk $(SP_INSTALL_PREFIX)/bin/spirv-opt.exe $(SP_INSTALL_PREFIX)/include/vulkan/vulkan.h
 	$(MAKE) -f $(MAKE_ROOT)glslang.mk $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/share/licenses:
-	rm -rf $(SP_INSTALL_PREFIX)/share/licenses
-	cp -rf runtime/include/* $(SP_INSTALL_PREFIX)/include
-	cp -rf ../licenses $(SP_INSTALL_PREFIX)/share/licenses
+	powershell 'if (Test-Path "$(SP_INSTALL_PREFIX)/share/licenses") { Remove-Item -Recurse -Force -ErrorAction Ignore -Path "$(SP_INSTALL_PREFIX)/share/licenses" }'
+	powershell Copy-Item -Path "../licenses" -Destination "$(SP_INSTALL_PREFIX)/share/licenses" -Force -Recurse
 
 .PHONY: all
 

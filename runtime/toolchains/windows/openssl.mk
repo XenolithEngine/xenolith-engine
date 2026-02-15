@@ -28,6 +28,7 @@ OPENSSL_TARGET := VC-WIN64A
 
 CONFIGURE := $(OPENSSL_TARGET) \
 	--prefix=$(SP_INSTALL_PREFIX) \
+	--release \
 	no-tests \
 	no-module \
 	no-legacy \

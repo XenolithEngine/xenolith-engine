@@ -90,13 +90,13 @@ ifdef WIN32
 MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc -idirafter $(RUNTIME_MODULE_DIR)/include_libc/msvcrt/cxx
 
-MODULE_RUNTIME_LIBS_COMMON := -lSynchronization -lShlwapi -lPathcch -lOle32 -lNormaliz -lAdvapi32 -lBcrypt \
-	-lUserenv -lOneCore -lUser32 -lShell32 -lDxva2 -lUxTheme -lDwmapi -lwbemuuid -lcomsupp
+MODULE_RUNTIME_LIBS_COMMON := -lSynchronization -lShlwapi -lPathcch -lNormaliz -lAdvapi32 -lBcrypt \
+	-lUserenv -lOneCore -lUser32 -lShell32 -lDxva2 -lUxTheme -lDwmapi -lwbemuuid -lcomsupp -liso_stdio_wide_specifiers
 
 ifeq ($(BUILD_TYPE),debug)
-MODULE_RUNTIME_LIBS += -llibucrt -llibvcruntime -llibcmt -llibcpmt $(MODULE_RUNTIME_LIBS_COMMON)
+MODULE_RUNTIME_LIBS += $(MODULE_RUNTIME_LIBS_COMMON) -llibucrt -llibvcruntime -llibcmt -llibcpmt
 else
-MODULE_RUNTIME_LIBS += -llibucrt -llibvcruntime -llibcmt -llibcpmt $(MODULE_RUNTIME_LIBS_COMMON)
+MODULE_RUNTIME_LIBS += $(MODULE_RUNTIME_LIBS_COMMON) -llibucrt -llibvcruntime -llibcmt -llibcpmt
 endif
 
 endif

@@ -24,6 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_INTERFACE_H_
 
 #include <sprt/runtime/ref.h>
+#include <sprt/runtime/native_handle.h>
 #include <sprt/runtime/window/surface_info.h>
 #include <sprt/runtime/window/presentation.h>
 #include <sprt/runtime/window/types.h>
@@ -75,16 +76,17 @@ public:
 
 	virtual bool isOnThisThread() const = 0;
 
-	virtual int getHandle() const = 0;
+	virtual sprt::native_handle getHandle() const = 0;
 
 	virtual Rc<HandleAdapter> scheduleTimer(time_t timeout, time_t interval, uint32_t count, void *,
 			void (*)(void *, HandleAdapter *, uint32_t flags, Status status)) = 0;
 
-	virtual Rc<HandleAdapter> listenPollableHandle(int, filesystem::PollFlags, void *,
+	virtual Rc<HandleAdapter> listenPollableHandle(native_handle, filesystem::PollFlags, void *,
 			void (*)(void *, HandleAdapter *, uint32_t flags, Status status)) = 0;
 
-	virtual Rc<HandleAdapter> listenPollableHandle(int, filesystem::PollFlags,
-			Function<Status(int fd, filesystem::PollFlags flags)> &&, Ref * = nullptr) = 0;
+	virtual Rc<HandleAdapter> listenPollableHandle(native_handle, filesystem::PollFlags,
+			Function<Status(sprt::native_handle fd, filesystem::PollFlags flags)> &&,
+			Ref * = nullptr) = 0;
 
 	virtual Status performOnThread(memory::dynfunction<void()> &&func, Ref *target = nullptr,
 			bool immediate = false, StringView tag = __SPRT_LOCATION.function_name()) const = 0;

@@ -51,7 +51,11 @@ inline constexpr void *operator new(sprt::size_t size, sprt::align_val_t al,
 	if (size == 0) {
 		size = 1;
 	}
-	return __sprt_malloc(size);
+	if (toInt(al) <= alignof(__sprt_max_align_t)) {
+		return __sprt_malloc(size);
+	} else {
+		return __sprt_aligned_alloc(toInt(al), size);
+	}
 }
 
 [[nodiscard]]
@@ -60,17 +64,41 @@ inline constexpr void *operator new[](sprt::size_t size, sprt::align_val_t al,
 	if (size == 0) {
 		size = 1;
 	}
-	return __sprt_malloc(size);
+	if (toInt(al) <= alignof(__sprt_max_align_t)) {
+		return __sprt_malloc(size);
+	} else {
+		return __sprt_aligned_alloc(toInt(al), size);
+	}
 }
 
-inline void operator delete(void *ptr, sprt::align_val_t al) noexcept { __sprt_free(ptr); }
-inline void operator delete[](void *ptr, sprt::align_val_t al) noexcept { __sprt_free(ptr); }
+inline void operator delete(void *ptr, sprt::align_val_t al) noexcept {
+	if (toInt(al) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(ptr);
+	} else {
+		__sprt_aligned_free(ptr);
+	}
+}
+inline void operator delete[](void *ptr, sprt::align_val_t al) noexcept {
+	if (toInt(al) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(ptr);
+	} else {
+		__sprt_aligned_free(ptr);
+	}
+}
 
 inline void operator delete(void *ptr, sprt::align_val_t al, const sprt::nothrow_t &) noexcept {
-	__sprt_free(ptr);
+	if (toInt(al) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(ptr);
+	} else {
+		__sprt_aligned_free(ptr);
+	}
 }
 inline void operator delete[](void *ptr, sprt::align_val_t al, const sprt::nothrow_t &) noexcept {
-	__sprt_free(ptr);
+	if (toInt(al) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(ptr);
+	} else {
+		__sprt_aligned_free(ptr);
+	}
 }
 #endif
 
@@ -99,19 +127,29 @@ struct SPRT_API AllocBase : public AllocPlacement {
 	static void *operator new[](size_t size) = delete;
 
 	static void *operator new(size_t size, const sprt::nothrow_t &tag) noexcept {
-		return ::operator new(size, tag);
+		return __sprt_malloc(size);
 	}
 	static void *operator new(size_t size, sprt::align_val_t al,
 			const sprt::nothrow_t &tag) noexcept {
-		return ::operator new(size, al, tag);
+		if (toInt(al) <= alignof(__sprt_max_align_t)) {
+			return __sprt_malloc(size);
+		} else {
+			return __sprt_aligned_alloc(toInt(al), size);
+		}
 	}
 
 	// Allocation from pool is forbidden for common classes
 	static void *operator new(size_t size, memory::pool_t *ptr) noexcept = delete;
 
-	static void operator delete(void *ptr) noexcept { return ::operator delete(ptr); }
+	static void operator delete(void *ptr) noexcept {
+		__sprt_free(ptr); //
+	}
 	static void operator delete(void *ptr, sprt::align_val_t al) noexcept {
-		return ::operator delete(ptr, al);
+		if (toInt(al) <= alignof(__sprt_max_align_t)) {
+			__sprt_free(ptr);
+		} else {
+			__sprt_aligned_free(ptr);
+		}
 	}
 
 	static constexpr void *operator new(sprt::size_t size, void *ptr, sprt::nothrow_t) noexcept {

@@ -90,7 +90,9 @@ void info::set(StringView n, uint32_t w, bool m) {
 	tl_threadInfo.managed = m;
 }
 
-info::info() : tid(__sprt_gettid()) { threadPool = memory::get_zero_pool(); }
+info::info() : tid(__sprt_gettid()) {
+	threadPool = memory::get_thread_support_pool(); //
+}
 
 void _entry(const callbacks &cb, NotNull<Ref> tm) {
 	memory::pool::initialize();

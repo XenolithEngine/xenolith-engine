@@ -149,7 +149,11 @@ inline auto DynamicAllocator<T>::operator=(DynamicAllocator<B> &&a) noexcept
 template <typename T>
 inline auto DynamicAllocator<T>::allocate(size_t n) const noexcept -> T * {
 	T *ptr = nullptr;
-	ptr = (T *)__sprt_aligned_alloc(alignof(T), sizeof(T) * n);
+	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+		ptr = (T *)__sprt_malloc(sizeof(T) * n);
+	} else {
+		ptr = (T *)__sprt_aligned_alloc(alignof(T), sizeof(T) * n);
+	}
 	if (!ptr) {
 		__sprt_perror("allocation error");
 	}
@@ -160,7 +164,11 @@ inline auto DynamicAllocator<T>::allocate(size_t n) const noexcept -> T * {
 template <typename T>
 inline auto DynamicAllocator<T>::__allocate(size_t &n) const noexcept -> T * {
 	T *ptr = nullptr;
-	ptr = (T *)__sprt_aligned_alloc(alignof(T), sizeof(T) * n);
+	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+		ptr = (T *)__sprt_malloc(sizeof(T) * n);
+	} else {
+		ptr = (T *)__sprt_aligned_alloc(alignof(T), sizeof(T) * n);
+	}
 	if (!ptr) {
 		__sprt_perror("allocation error");
 	}
@@ -171,7 +179,11 @@ inline auto DynamicAllocator<T>::__allocate(size_t &n) const noexcept -> T * {
 template <typename T>
 inline auto DynamicAllocator<T>::__allocate(size_t n, size_t &bytes) const noexcept -> T * {
 	T *ptr = nullptr;
-	ptr = (T *)__sprt_aligned_alloc(alignof(T), sizeof(T) * n);
+	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+		ptr = (T *)__sprt_malloc(sizeof(T) * n);
+	} else {
+		ptr = (T *)__sprt_aligned_alloc(alignof(T), sizeof(T) * n);
+	}
 	if (!ptr) {
 		__sprt_perror("allocation error");
 	}
@@ -182,12 +194,20 @@ inline auto DynamicAllocator<T>::__allocate(size_t n, size_t &bytes) const noexc
 
 template <typename T>
 inline void DynamicAllocator<T>::deallocate(T *t, size_t n) const noexcept {
-	__sprt_free(t);
+	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(t);
+	} else {
+		__sprt_aligned_free(t);
+	}
 }
 
 template <typename T>
 inline void DynamicAllocator<T>::__deallocate(T *t, size_t n, size_t bytes) const noexcept {
-	__sprt_free(t);
+	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(t);
+	} else {
+		__sprt_aligned_free(t);
+	}
 }
 
 template <typename T>

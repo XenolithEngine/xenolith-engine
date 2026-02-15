@@ -121,8 +121,8 @@ SPRT_API void *__SPRT_ID(calloc_impl)(__SPRT_ID(size_t), __SPRT_ID(size_t)) __SP
 SPRT_API void *__SPRT_ID(realloc_impl)(void *, __SPRT_ID(size_t)) __SPRT_MALLOC;
 #define __sprt_realloc __SPRT_ID(realloc_impl)
 
-SPRT_API void *__SPRT_ID(aligned_alloc_impl)(__SPRT_ID(size_t), __SPRT_ID(size_t)) __SPRT_MALLOC;
-#define __sprt_aligned_alloc __SPRT_ID(aligned_alloc_impl)
+SPRT_API void *__SPRT_ID(aligned_alloc)(__SPRT_ID(size_t), __SPRT_ID(size_t)) __SPRT_MALLOC;
+SPRT_API void __SPRT_ID(aligned_free)(void *) __SPRT_MALLOC;
 
 SPRT_API __SPRT_NORETURN void __SPRT_ID(abort_impl)(void);
 

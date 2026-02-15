@@ -63,13 +63,14 @@ static uint8_t *Allocator_mmap(size_t size) {
 static void Allocator_unmmap(uint8_t *ptr, size_t size) { ::munmap(ptr, size); }
 
 static MemNode *Allocator_malloc(size_t size, uint32_t index) {
-	static bool isPageAligned = config::BOUNDARY_SIZE % platform::getMemoryPageSize() == 0;
-
 	uint32_t mapped = 0;
 	uint8_t *ptr = nullptr;
+#ifndef SPRT_WINDOWS
+	static bool isPageAligned = config::BOUNDARY_SIZE % platform::getMemoryPageSize() == 0;
 	if (isPageAligned) {
 		ptr = Allocator_mmap(size);
 	}
+#endif
 
 	if (ptr) {
 		mapped = 1;
@@ -104,6 +105,7 @@ Allocator::Allocator() {
 }
 
 Allocator::~Allocator() {
+	unique_lock lock(mutex);
 	for (uint32_t index = 0; index < config::MAX_INDEX; index++) {
 		auto node = buf[index];
 

@@ -24,6 +24,9 @@ VARIANT ?= mbedtls
 
 LIBNAME = curl
 
+SP_USER_CFLAGS := -DNGHTTP3_STATICLIB
+SP_USER_CXXFLAGS := -DNGHTTP3_STATICLIB
+
 include ../common/configure.mk
 
 CONFIGURE := \

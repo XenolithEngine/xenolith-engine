@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/runtime/mem/detail/alloc.h>
 #include <sprt/runtime/mem/detail/rbtree.h>
 #include <sprt/runtime/mem/userdata.h>
+#include <sprt/runtime/log.h>
 
 namespace sprt::memory::impl {
 
@@ -134,14 +135,19 @@ void MemNode::remove() {
 
 size_t MemNode::free_space() const { return endp - first_avail; }
 
-void Cleanup::run(Cleanup **cref) {
+void Cleanup::run(Cleanup **cref, bool plain) {
 	Cleanup *c = *cref;
 	while (c) {
-		*cref = c->next;
-		if (c->fn) {
-			(*c->fn)((void *)c->data);
+		if ((c->flags & pool::cleanup_flags_plain) || !plain) {
+			*cref = c->next;
+			if (c->fn) {
+				(*c->fn)((void *)c->data);
+			}
+			c = *cref;
+		} else {
+			cref = &c->next;
+			c = c->next;
 		}
-		c = *cref;
 	}
 }
 

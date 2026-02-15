@@ -90,15 +90,26 @@ static atomic<int> s_global_init = 0;
 static atomic<size_t> s_nPools = 0;
 
 static void Pool_performCleanup(Pool *pool) {
-	perform_conditional([&] { Cleanup::run(&pool->pre_cleanups); }, (sprt::memory::pool_t *)pool);
+	// Run default cleanups first...
+	perform_conditional([&] {
+		Cleanup::run(&pool->pre_cleanups, false); //
+	}, (sprt::memory::pool_t *)pool);
+
+	// then run plain cleanups
+	Cleanup::run(&pool->pre_cleanups, true);
 
 	pool->pre_cleanups = nullptr;
 
 	// DO NOT push current pool when childs is destroyed
 	while (pool->child) { pool->child->~Pool(); }
 
-	/* Run cleanups */
-	perform_conditional([&] { Cleanup::run(&pool->cleanups); }, (sprt::memory::pool_t *)pool);
+	// Run default cleanups first...
+	perform_conditional([&] {
+		Cleanup::run(&pool->cleanups, false); //
+	}, (sprt::memory::pool_t *)pool);
+
+	// then run plain cleanups
+	Cleanup::run(&pool->cleanups, true);
 
 	pool->cleanups = nullptr;
 	pool->free_cleanups = nullptr;
@@ -374,7 +385,7 @@ Pool *Pool::make_child(Allocator *allocator) {
 	return pool;
 }
 
-void Pool::cleanup_register(const void *data, Cleanup::Callback cb) {
+void Pool::cleanup_register(const void *data, Cleanup::Callback cb, pool::cleanup_flags flags) {
 	Cleanup *c;
 
 	if (free_cleanups) {
@@ -387,11 +398,12 @@ void Pool::cleanup_register(const void *data, Cleanup::Callback cb) {
 
 	c->data = data;
 	c->fn = cb;
+	c->flags = flags;
 	c->next = cleanups;
 	cleanups = c;
 }
 
-void Pool::pre_cleanup_register(const void *data, Cleanup::Callback cb) {
+void Pool::pre_cleanup_register(const void *data, Cleanup::Callback cb, pool::cleanup_flags flags) {
 	Cleanup *c;
 
 	if (free_cleanups) {
@@ -403,6 +415,7 @@ void Pool::pre_cleanup_register(const void *data, Cleanup::Callback cb) {
 	}
 	c->data = data;
 	c->fn = cb;
+	c->flags = flags;
 	c->next = pre_cleanups;
 	pre_cleanups = c;
 }
@@ -460,7 +473,7 @@ Status Pool::userdata_set(const void *data, const char *key, Cleanup::Callback c
 	}
 
 	if (cleanup) {
-		cleanup_register(data, cleanup);
+		cleanup_register(data, cleanup, pool::cleanup_flags::cleanup_flags_none);
 	}
 	return Status::Ok;
 }
@@ -473,7 +486,7 @@ Status Pool::userdata_setn(const void *data, const char *key, Cleanup::Callback 
 	user_data->set(key, -1, data);
 
 	if (cleanup) {
-		cleanup_register(data, cleanup);
+		cleanup_register(data, cleanup, pool::cleanup_flags::cleanup_flags_none);
 	}
 	return Status::Ok;
 }

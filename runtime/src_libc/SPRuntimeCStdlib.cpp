@@ -21,6 +21,7 @@ THE SOFTWARE.
 **/
 
 #define __SPRT_BUILD 1
+#define _CRT_STDIO_ISO_WIDE_SPECIFIERS 1 // for libc++ compatibility
 
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/__sprt_errno.h>
@@ -101,11 +102,13 @@ __SPRT_C_FUNC void *__SPRT_ID(realloc_impl)(void *ptr, size_t size) { return ::r
 
 __SPRT_C_FUNC void __SPRT_ID(free_impl)(void *ptr) { return ::free(ptr); }
 
-__SPRT_C_FUNC void *__SPRT_ID(aligned_alloc_impl)(size_t align, size_t size) {
+__SPRT_C_FUNC void *__SPRT_ID(aligned_alloc)(size_t align, size_t size) {
+#if SPRT_WINDOWS
+	return ::_aligned_malloc(size, align);
+#elif SPRT_ANDROID
 	if (align <= _Alignof(__SPRT_ID(max_align_t))) {
 		return ::malloc(size);
 	}
-#if SPRT_ANDROID
 	if (platform::_aligned_alloc) {
 		return platform::_aligned_alloc(align, size);
 	}
@@ -120,10 +123,16 @@ __SPRT_C_FUNC void *__SPRT_ID(aligned_alloc_impl)(size_t align, size_t size) {
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
-#elif SPRT_WINDOWS
-	return ::_aligned_malloc(align, size);
 #else
 	return ::aligned_alloc(align, size);
+#endif
+}
+
+__SPRT_C_FUNC void __SPRT_ID(aligned_free)(void *memblock) {
+#if SPRT_WINDOWS
+	::_aligned_free(memblock);
+#else
+	::free(memblock);
 #endif
 }
 

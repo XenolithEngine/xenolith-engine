@@ -69,7 +69,11 @@ bool getCurrentDir(const callback<void(StringView)> &cb, StringView path) {
 	}
 
 	if (path.empty()) {
-		unicode::toUtf8(cb, WideStringView(buf, bufferLen));
+		unicode::toUtf8([&](StringView upath) {
+			auto len = __sprt_fpath_to_posix(upath.data(), upath.size(), (char *)upath.data(),
+					upath.size() + 1);
+			cb(StringView(upath.data(), len));
+		}, WideStringView(buf, bufferLen));
 		__sprt_freea(buf);
 		return true;
 	} else {
@@ -79,6 +83,9 @@ bool getCurrentDir(const callback<void(StringView)> &cb, StringView path) {
 		auto resultBuf = __sprt_typed_malloca(char, bufferSize);
 
 		unicode::toUtf8(resultBuf, bufferSize, WideStringView(buf, bufferLen), &ulen);
+		resultBuf[ulen] = 0;
+
+		ulen = __sprt_fpath_to_posix(resultBuf, ulen, resultBuf, bufferSize);
 		resultBuf[ulen] = 0;
 
 		bufferSize -= ulen;

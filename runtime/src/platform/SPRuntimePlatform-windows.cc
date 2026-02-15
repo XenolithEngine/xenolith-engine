@@ -135,6 +135,32 @@ bool toupper(const callback<void(WideStringView)> &cb, WideStringView data) {
 }
 
 bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
+	bool ret = false;
+	// lowercase first, WinAPI cannt do titlecase on uppercased strings
+	if (!tolower([&](WideStringView lstr) {
+		auto bufSize = mapBuffer(lstr, nullptr, 0, LCMAP_TITLECASE);
+		if (bufSize <= 0) {
+			return;
+		}
+
+		auto buf = __sprt_typed_malloca(char16_t, bufSize + 1);
+		bufSize = mapBuffer(lstr, buf, bufSize + 1, LCMAP_TITLECASE);
+		if (bufSize <= 0) {
+			__sprt_freea(buf);
+			return;
+		}
+		buf[bufSize] = 0;
+
+		cb(WideStringView(buf, bufSize));
+		__sprt_freea(buf);
+		ret = true;
+	}, data)) {
+		return false;
+	}
+	return ret;
+}
+
+bool tolower(const callback<void(WideStringView)> &cb, WideStringView data) {
 	auto bufSize = mapBuffer(data, nullptr, 0, LCMAP_LOWERCASE);
 	if (bufSize <= 0) {
 		return false;
@@ -142,25 +168,6 @@ bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
 
 	auto buf = __sprt_typed_malloca(char16_t, bufSize + 1);
 	bufSize = mapBuffer(data, buf, bufSize + 1, LCMAP_LOWERCASE);
-	if (bufSize <= 0) {
-		__sprt_freea(buf);
-		return false;
-	}
-	buf[bufSize] = 0;
-
-	cb(WideStringView(buf, bufSize));
-	__sprt_freea(buf);
-	return true;
-}
-
-bool tolower(const callback<void(WideStringView)> &cb, WideStringView data) {
-	auto bufSize = mapBuffer(data, nullptr, 0, LCMAP_TITLECASE);
-	if (bufSize <= 0) {
-		return false;
-	}
-
-	auto buf = __sprt_typed_malloca(char16_t, bufSize + 1);
-	bufSize = mapBuffer(data, buf, bufSize + 1, LCMAP_TITLECASE);
 	if (bufSize <= 0) {
 		__sprt_freea(buf);
 		return false;
@@ -199,9 +206,8 @@ bool caseCompare(StringView l, StringView r, int *result) {
 }
 
 bool caseCompare(WideStringView l, WideStringView r, int *result) {
-	auto ret = _CompareString(LOCALE_NAME_SYSTEM_DEFAULT,
-			NORM_LINGUISTIC_CASING | NORM_IGNORECASE | LINGUISTIC_IGNORECASE, l.data(), l.size(),
-			r.data(), r.size());
+	auto ret = _CompareString(LOCALE_NAME_SYSTEM_DEFAULT, NORM_LINGUISTIC_CASING | NORM_IGNORECASE,
+			l.data(), l.size(), r.data(), r.size());
 	if (ret > 0) {
 		*result = ret - CSTR_EQUAL;
 		return true;

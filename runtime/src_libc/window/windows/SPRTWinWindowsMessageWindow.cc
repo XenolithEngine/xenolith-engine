@@ -313,7 +313,7 @@ struct MessageWindow::WinRtAdapter {
 	winrt::event_token _clipboardChangedToken;
 
 	WinRtAdapter(MessageWindow *w) : _message(w) {
-		winrt::init_apartment(winrt::apartment_type::single_threaded);
+		//winrt::init_apartment(winrt::apartment_type::single_threaded);
 
 		_textScaleFactorToken = _settings.TextScaleFactorChanged(
 				[this](const UISettings &sender, const Foundation::IInspectable &args) {
@@ -339,7 +339,7 @@ struct MessageWindow::WinRtAdapter {
 		NetworkInformation::NetworkStatusChanged(_networkStatusChangedToken);
 		Clipboard::ContentChanged(_clipboardChangedToken);
 
-		winrt::uninit_apartment();
+		//winrt::uninit_apartment();
 	}
 
 	void updateTheme() { _message->handleSettingsChanged(); }
@@ -585,8 +585,8 @@ struct MessageWindow::WinRtAdapter {
 			}
 		});
 	}
-
-	/*static void readClipboardValue(ClipboardRequest *req, StringView type,
+#if 0
+	static void readClipboardValue(ClipboardRequest *req, StringView type,
 			const Foundation::Collections::IVectorView<Storage::IStorageItem> &s) {
 		Value data;
 
@@ -631,7 +631,8 @@ struct MessageWindow::WinRtAdapter {
 
 		auto d = data::write(data, data::EncodeFormat::Cbor);
 		req->dataCallback(Status::Ok, d, type);
-	}*/
+	}
+#endif
 
 	static void readClipboardValue(ClipboardRequest *req, StringView type,
 			const Foundation::IInspectable &s) {

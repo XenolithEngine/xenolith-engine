@@ -250,8 +250,15 @@ SPRT_API void *calloc(pool_t *, size_t count, size_t eltsize);
 SPRT_API void free(pool_t *, void *ptr, size_t size);
 
 SPRT_API void cleanup_kill(pool_t *, void *, cleanup_fn);
-SPRT_API void cleanup_register(pool_t *, void *, cleanup_fn);
-SPRT_API void pre_cleanup_register(pool_t *, void *, cleanup_fn);
+
+enum cleanup_flags {
+	cleanup_flags_none = 0,
+	cleanup_flags_plain = 1,
+};
+
+SPRT_API void cleanup_register(pool_t *, void *, cleanup_fn, cleanup_flags = cleanup_flags_none);
+SPRT_API void pre_cleanup_register(pool_t *, void *, cleanup_fn,
+		cleanup_flags = cleanup_flags_none);
 
 SPRT_API Status userdata_set(const void *data, const char *key, cleanup_fn, pool_t *);
 SPRT_API Status userdata_setn(const void *data, const char *key, cleanup_fn, pool_t *);
@@ -271,16 +278,6 @@ SPRT_API size_t get_return_bytes(pool_t *);
 SPRT_API size_t get_active_count();
 
 SPRT_API void set_pool_info(pool_t *pool, uint32_t tag, const void *ptr);
-
-/*
-// start recording additional pool info on creation
-SPRT_API bool debug_begin(pool_t *pool = nullptr);
-
-// stop recording and return info
-SPRT_API std::map<pool_t *, const char **, less<void>> debug_end();
-
-SPRT_API void debug_foreach(void *, void (*)(void *, pool_t *));
-*/
 
 } // namespace sprt::memory::pool
 

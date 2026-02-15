@@ -419,9 +419,11 @@ void print(LogType type, StringView prefix, StringView tag, StringView text) {
 #else
 	static constexpr size_t StaticBufSize = 1'024;
 
+	bool customPrefix = true;
 	size_t bufferOffset = 0;
 	char staticBuffer[StaticBufSize] = {0};
 	if (prefix.empty()) {
+		customPrefix = true;
 		switch (type) {
 		case LogType::Verbose:
 			bufferOffset =
@@ -456,12 +458,26 @@ void print(LogType type, StringView prefix, StringView tag, StringView text) {
 		}
 	}
 
-	//auto bufSize = prefix.size() + 1 + tag.size() + 2 + text.size() + 3;
+	char *buffer = nullptr;
+	char *target = nullptr;
+	size_t freeSize = 0;
 
-	auto freeSize = StaticBufSize - bufferOffset;
-	auto target = &staticBuffer[bufferOffset];
+	auto bufSize = prefix.size() + 1 + tag.size() + 2 + text.size() + 3;
+	if (bufSize > StaticBufSize - bufferOffset) {
+		buffer = target = __sprt_typed_malloca(char, bufSize);
+		freeSize = bufSize;
 
-	target = strappend(target, &freeSize, prefix.data(), prefix.size());
+		target = strappend(target, &freeSize, prefix.data(), prefix.size());
+	} else {
+		buffer = staticBuffer;
+		freeSize = StaticBufSize - bufferOffset;
+		target = &staticBuffer[bufferOffset];
+
+		if (customPrefix) {
+			target = strappend(target, &freeSize, prefix.data(), prefix.size());
+		}
+	}
+
 	target = strappend(target, &freeSize, " ", 1);
 	target = strappend(target, &freeSize, tag.data(), tag.size());
 	target = strappend(target, &freeSize, ": ", 2);
@@ -471,8 +487,12 @@ void print(LogType type, StringView prefix, StringView tag, StringView text) {
 	target = strappend(target, &freeSize, "\n", 1);
 #endif
 
-	::__sprt_fwrite(staticBuffer, target - staticBuffer, 1, __sprt_stderr_impl());
+	::__sprt_fwrite(buffer, target - buffer, 1, __sprt_stderr_impl());
 	::__sprt_fflush(__sprt_stderr_impl());
+
+	if (buffer != staticBuffer) {
+		__sprt_freea(buffer);
+	}
 #endif // platform switch
 }
 

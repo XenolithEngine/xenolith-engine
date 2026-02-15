@@ -20,34 +20,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef CORE_RUNTIME_INCLUDE_LIBC_MSVCRT_CXX_VCRUNTIME_MATH_H_
-#define CORE_RUNTIME_INCLUDE_LIBC_MSVCRT_CXX_VCRUNTIME_MATH_H_
+#ifndef CORE_RUNTIME_INCLUDE_LIBC_MALLOC_H_
+#define CORE_RUNTIME_INCLUDE_LIBC_MALLOC_H_
 
-#include <sprt/c/__sprt_math.h>
-#include <sprt/runtime/math.h>
+#include <stdlib.h>
 
-template <typename ValueClass,
-		sprt::enable_if_t<sprt::is_floating_point<ValueClass>::value, int> = 0>
-constexpr bool isinf(ValueClass __value) noexcept {
-	return __sprt_isinf(__value);
-}
+#define _aligned_malloc(Size, Align) aligned_alloc(Align, Size)
+#define _aligned_free(Ptr) aligned_free(Ptr)
 
-template <typename ValueClass,
-		sprt::enable_if_t<sprt::is_floating_point<ValueClass>::value, int> = 0>
-constexpr bool isnan(ValueClass __value) noexcept {
-	return __sprt_isnan(__value);
-}
-
-template <typename ValueClass,
-		sprt::enable_if_t<sprt::is_floating_point<ValueClass>::value, int> = 0>
-constexpr bool isfinite(ValueClass __value) noexcept {
-	return __sprt_isfinite(__value);
-}
-
-template <typename ValueClass,
-		sprt::enable_if_t<sprt::is_floating_point<ValueClass>::value, int> = 0>
-constexpr bool isnormal(ValueClass __value) noexcept {
-	return __sprt_isnormal(__value);
-}
-
-#endif // CORE_RUNTIME_INCLUDE_LIBC_MSVCRT_CXX_VCRUNTIME_MATH_H_
+#endif

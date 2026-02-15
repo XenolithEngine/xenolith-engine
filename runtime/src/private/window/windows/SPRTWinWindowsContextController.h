@@ -63,6 +63,8 @@ public:
 
 	virtual void openUrl(StringView) override;
 
+	virtual SurfaceSupportInfo getSupportInfo() const override;
+
 protected:
 	bool loadWindow();
 

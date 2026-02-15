@@ -161,10 +161,10 @@ bool qmutex::try_lock() { return _try_lock(&_data.value) == Status::Ok; }
 bool qmutex::unlock() { return _unlock<qmutex_wake>(&_data.value) == Status::Ok; }
 
 rmutex::~rmutex() {
-	auto value = _atomic::exchange(&_data.value, decltype(_data.value)(0));
+	auto value = _atomic::exchange(&_data.value, decltype(_data.value)(0)) & VALUE_MASK;
 	if (value != 0) {
 		log::vprint(log::LogType::Fatal, __SPRT_LOCATION, "sprt::recursive_qmutex",
-				"Mutex is locked when it's destroyed, aborting");
+				"Mutex is locked when it's destroyed, aborting: tid:", value);
 		::__sprt_abort();
 	}
 }

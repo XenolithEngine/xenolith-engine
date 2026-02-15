@@ -20,34 +20,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef CORE_RUNTIME_INCLUDE_LIBC_MSVCRT_CXX_VCRUNTIME_MATH_H_
-#define CORE_RUNTIME_INCLUDE_LIBC_MSVCRT_CXX_VCRUNTIME_MATH_H_
+#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_NATIVE_HANDLE_H_
+#define RUNTIME_INCLUDE_SPRT_RUNTIME_NATIVE_HANDLE_H_
 
-#include <sprt/c/__sprt_math.h>
-#include <sprt/runtime/math.h>
+namespace sprt {
 
-template <typename ValueClass,
-		sprt::enable_if_t<sprt::is_floating_point<ValueClass>::value, int> = 0>
-constexpr bool isinf(ValueClass __value) noexcept {
-	return __sprt_isinf(__value);
-}
+struct native_handle {
+	native_handle(int v) : fd(v) { }
+	native_handle(void *v) : handle(v) { }
 
-template <typename ValueClass,
-		sprt::enable_if_t<sprt::is_floating_point<ValueClass>::value, int> = 0>
-constexpr bool isnan(ValueClass __value) noexcept {
-	return __sprt_isnan(__value);
-}
+	union {
+		void *handle = nullptr;
+		int fd;
+	};
+};
 
-template <typename ValueClass,
-		sprt::enable_if_t<sprt::is_floating_point<ValueClass>::value, int> = 0>
-constexpr bool isfinite(ValueClass __value) noexcept {
-	return __sprt_isfinite(__value);
-}
+} // namespace sprt
 
-template <typename ValueClass,
-		sprt::enable_if_t<sprt::is_floating_point<ValueClass>::value, int> = 0>
-constexpr bool isnormal(ValueClass __value) noexcept {
-	return __sprt_isnormal(__value);
-}
-
-#endif // CORE_RUNTIME_INCLUDE_LIBC_MSVCRT_CXX_VCRUNTIME_MATH_H_
+#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_NATIVE_HANDLE_H_

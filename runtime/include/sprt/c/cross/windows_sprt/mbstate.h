@@ -1,9 +1,8 @@
 #ifdef __SPRT_BUILD
 #define __SPRT_MBSTATE_NAME __SPRT_ID(mbstate_t)
 #else
-#define __SPRT_MBSTATE_NAME mbstate_t
+#define __SPRT_MBSTATE_NAME _Mbstatet
 #endif
-#define __SPRT_MBSTATE_DIRECT 1
 
 #ifndef __SPRT_WEOF
 #define __SPRT_WEOF 0xffff

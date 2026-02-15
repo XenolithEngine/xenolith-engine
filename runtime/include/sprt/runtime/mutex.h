@@ -211,7 +211,7 @@ public:
 				} else {
 					// If value bits is empty - we should try to CAS out TID again, but with updated
 					// expected value
-					if (((expected & VALUE_MASK) == 0)
+					if (((expected & VALUE_MASK) != 0)
 							// Or, if WAITERS_BIT is set - we should wait unconditionally
 							&& ((expected & WAITERS_BIT) != 0
 									// If it was not set - try to set it, then read current value to expected;
@@ -299,9 +299,18 @@ public:
 
 		// We check if we already know about the waiting threads.
 		// If we don’t know, then we try to atomically unlock the mutex.
+
+		bool unlocked = false;
 		if ((expected & WAITERS_BIT) != 0
-				|| !_atomic::compareSwap(&data.value, &expected, value_type(0))) {
+				|| !(unlocked = _atomic::compareSwap(&data.value, &expected, value_type(0)))) {
 			// Now we know for sure that there are waiting threads
+			if (!unlocked) {
+				// CAS failed (Waiters flag was added)
+				// or WAITERS_BIT was already set, CAS was not performed
+				//
+				// Force-set data to 0;
+				_atomic::storeSeq(&data.value, value_type(0));
+			}
 			WakeFn(&data.value);
 			return Status::Ok;
 		}

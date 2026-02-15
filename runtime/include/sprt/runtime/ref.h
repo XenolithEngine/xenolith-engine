@@ -73,11 +73,15 @@ public:
 	static void *operator new[](size_t size) = delete;
 
 	static void *operator new(size_t size, const sprt::nothrow_t &tag) noexcept {
-		return ::operator new(size, tag);
+		return __sprt_malloc(size);
 	}
 	static void *operator new(size_t size, sprt::align_val_t al,
 			const sprt::nothrow_t &tag) noexcept {
-		return ::operator new(size, al, tag);
+		if (toInt(al) <= alignof(__sprt_max_align_t)) {
+			return __sprt_malloc(size);
+		} else {
+			return __sprt_aligned_alloc(toInt(al), size);
+		}
 	}
 	static void *operator new(size_t size, void *ptr) noexcept = delete;
 	static void *operator new(size_t size, memory::pool_t *ptr) noexcept;
