@@ -32,11 +32,11 @@ THE SOFTWARE.
 namespace STAPPLER_VERSIONIZED stappler::sql {
 
 template <typename Binder, typename Interface>
-template <typename ... Args>
-auto Query<Binder, Interface>::Update::where(Args && ... args) -> UpdateWhere {
+template <typename... Args>
+auto Query<Binder, Interface>::Update::where(Args &&...args) -> UpdateWhere {
 	this->query->stream << " WHERE";
 	UpdateWhere q(this->query);
-	q.where(sql::Operator::And, forward<Args>(args)...);
+	q.where(sql::Operator::And, sp::forward<Args>(args)...);
 	return q;
 };
 
@@ -59,7 +59,7 @@ auto Query<Binder, Interface>::UpdateWhere::returning() -> Returning {
 }
 
 template <typename Binder, typename Interface>
-auto Query<Binder, Interface>::update(const StringView & field) -> Update {
+auto Query<Binder, Interface>::update(const StringView &field) -> Update {
 	stream << "UPDATE " << field << " SET";
 	target = field;
 	return Update(this);
@@ -74,11 +74,11 @@ auto Query<Binder, Interface>::update(const StringView &field, const StringView 
 
 
 template <typename Binder, typename Interface>
-template <typename ... Args>
-auto Query<Binder, Interface>::Delete::where(Args && ... args) -> DeleteWhere {
+template <typename... Args>
+auto Query<Binder, Interface>::Delete::where(Args &&...args) -> DeleteWhere {
 	this->query->stream << " WHERE";
 	DeleteWhere q(this->query);
-	q.where(sql::Operator::And, forward<Args>(args)...);
+	q.where(sql::Operator::And, sp::forward<Args>(args)...);
 	return q;
 };
 
@@ -101,7 +101,7 @@ auto Query<Binder, Interface>::DeleteWhere::returning() -> Returning {
 }
 
 template <typename Binder, typename Interface>
-auto Query<Binder, Interface>::remove(const StringView & field) -> Delete {
+auto Query<Binder, Interface>::remove(const StringView &field) -> Delete {
 	stream << "DELETE FROM " << field;
 	target = field;
 	return Delete(this);
@@ -114,6 +114,6 @@ auto Query<Binder, Interface>::remove(const StringView &field, const StringView 
 	return Delete(this);
 }
 
-}
+} // namespace stappler::sql
 
 #endif /* STAPPLER_SQL_SPSQLUPDATE_HPP_ */

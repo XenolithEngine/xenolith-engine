@@ -49,6 +49,11 @@ bool PresentationEngine::run() {
 		_presentWithWindowTiming = true;
 	}
 
+	if (!_surface) {
+		slog().error("PresentationEngine", "No surface bound with PresentationEngine to run()");
+		return false;
+	}
+
 	auto info = _window->getSurfaceOptions(*static_cast<Device *>(_device), _surface);
 	auto cfg = _window->selectConfig(info, false);
 

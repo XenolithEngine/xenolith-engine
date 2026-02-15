@@ -33,11 +33,11 @@
 namespace STAPPLER_VERSIONIZED stappler::event {
 
 struct PollIocpSource {
-	HANDLE handle = nullptr;
-	HANDLE event = nullptr;
+	void *handle = nullptr;
+	void *event = nullptr;
 	PollFlags flags = PollFlags::None;
 
-	bool init(HANDLE, PollFlags);
+	bool init(void *, PollFlags);
 	void cancel();
 };
 
@@ -51,7 +51,7 @@ public:
 
 	virtual ~PollIocpHandle() = default;
 
-	bool init(HandleClass *, HANDLE, PollFlags, CompletionHandle<PollHandle> &&);
+	bool init(HandleClass *, void *, PollFlags, CompletionHandle<PollHandle> &&);
 
 	virtual NativeHandle getNativeHandle() const override;
 

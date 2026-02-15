@@ -77,19 +77,24 @@ public:
 	virtual Status wakeup(bool graceful = false) override;
 	virtual Status run() override;
 
-	virtual int getHandle() const override;
+	virtual sprt::native_handle getHandle() const override;
+
+	virtual bool isOnThisThread() const override;
 
 	virtual Rc<sprt::window::HandleAdapter> scheduleTimer(time_t timeout, time_t interval,
 			uint32_t count, void *,
 			void (*)(void *, sprt::window::HandleAdapter *, uint32_t flags,
 					Status status)) override;
 
-	virtual Rc<sprt::window::HandleAdapter> listenPollableHandle(int, filesystem::PollFlags, void *,
+	virtual Rc<sprt::window::HandleAdapter> listenPollableHandle(sprt::native_handle,
+			filesystem::PollFlags, void *,
 			void (*)(void *, sprt::window::HandleAdapter *, uint32_t flags,
 					Status status)) override;
 
-	virtual Rc<sprt::window::HandleAdapter> listenPollableHandle(int, filesystem::PollFlags,
-			sprt::memory::dynfunction<Status(int fd, filesystem::PollFlags flags)> &&,
+	virtual Rc<sprt::window::HandleAdapter> listenPollableHandle(sprt::native_handle,
+			filesystem::PollFlags,
+			sprt::memory::dynfunction<Status(sprt::native_handle fd, filesystem::PollFlags flags)>
+					&&,
 			Ref * = nullptr) override;
 
 	virtual Status performOnThread(sprt::memory::dynfunction<void()> &&func, Ref *target = nullptr,

@@ -29,15 +29,14 @@
 #endif
 
 #include <sprt/runtime/thread/entry.h>
+#include <unistd.h>
 
 namespace STAPPLER_VERSIONIZED stappler::thread {
 
-static std::atomic<uint32_t> s_threadId(1);
-
 thread_local const Thread *tl_owner = nullptr;
 
-void Thread::workerThread(NotNull<Thread> tm) {
-	tl_owner = tm;
+void *Thread::workerThread(void *tm) {
+	tl_owner = (Thread *)tm;
 
 	sprt::thread::callbacks cb;
 	cb.init = [](NotNull<Ref> obj) {
@@ -52,22 +51,22 @@ void Thread::workerThread(NotNull<Thread> tm) {
 		return static_cast<Thread *>(obj.get())->worker(); //
 	};
 
-	sprt::thread::_entry(cb, tm);
+	sprt::thread::_entry(cb, (Thread *)tm);
+	return nullptr;
 }
 
 const Thread *Thread::getCurrentThread() { return tl_owner; }
 
-Thread::Id Thread::getCurrentThreadId() { return std::this_thread::get_id(); }
+Thread::Id Thread::getCurrentThreadId() { return gettid(); }
 
 Thread::~Thread() {
-	if (getCurrentThreadId() == _thisThreadId) {
-		_thisThread.detach();
-		return;
-	}
-
-	if ((_flags & ThreadFlags::Joinable) != ThreadFlags::None) {
-		_continueExecution.clear();
-		_thisThread.join();
+	if (_thisThread) {
+		if (getCurrentThreadId() == _thisThreadId) {
+			pthread_detach(_thisThread);
+		} else if ((_flags & ThreadFlags::Joinable) != ThreadFlags::None) {
+			_continueExecution.clear();
+			pthread_join(_thisThread, nullptr);
+		}
 	}
 }
 
@@ -82,11 +81,23 @@ bool Thread::run(ThreadFlags flags) {
 	_continueExecution.test_and_set();
 	_parentThread = getCurrentThread();
 
-	_thisThread = std::thread(Thread::workerThread, this);
-
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
 	if ((flags & ThreadFlags::Joinable) == ThreadFlags::None) {
-		_thisThread.detach();
+		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+	} else {
+		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 	}
+
+	auto err = pthread_create(&_thisThread, &attr, Thread::workerThread, this);
+
+	pthread_attr_destroy(&attr);
+
+	if (err != 0) {
+		slog().error("Thread", "Fail to create thread: ", sprt::status::errnoToStatus(err));
+		return false;
+	}
+
 	return true;
 }
 
@@ -106,8 +117,9 @@ void Thread::waitRunning() {
 }
 
 void Thread::waitStopped() {
-	_thisThread.join();
+	pthread_join(_thisThread, nullptr);
 	_flags &= ~ThreadFlags::Joinable;
+	_thisThread = 0;
 }
 
 void Thread::threadInit() {

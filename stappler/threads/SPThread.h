@@ -27,6 +27,8 @@
 
 #include "SPMemory.h"
 
+#include <pthread.h>
+
 namespace STAPPLER_VERSIONIZED stappler::thread {
 
 enum class ThreadFlags : uint32_t {
@@ -39,10 +41,9 @@ SP_DEFINE_ENUM_AS_MASK(ThreadFlags)
 /* Interface for thread workers or handlers */
 class SP_PUBLIC Thread : public Ref {
 public:
-	using Type = std::thread;
-	using Id = std::thread::id;
+	using Id = uint32_t;
 
-	static void workerThread(NotNull<Thread> tm);
+	static void *workerThread(void *tm);
 
 	static const Thread *getCurrentThread();
 	static Id getCurrentThreadId();
@@ -80,7 +81,7 @@ protected:
 
 	const std::type_info *_type = nullptr;
 
-	Type _thisThread;
+	pthread_t _thisThread = 0;
 	Id _thisThreadId;
 
 	std::atomic<bool> _running = false;

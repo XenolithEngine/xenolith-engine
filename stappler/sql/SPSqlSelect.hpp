@@ -136,7 +136,7 @@ template <typename Binder, typename Interface>
 template <typename... Args>
 auto Query<Binder, Interface>::Select::from(const Field &field, Args &&...args) -> SelectFrom {
 	auto f = from();
-	Expand<SelectFrom>::from(f, field, forward<Args>(args)...);
+	Expand<SelectFrom>::from(f, field, sp::forward<Args>(args)...);
 	return f;
 }
 
@@ -367,7 +367,7 @@ template <typename Binder, typename Interface>
 template <typename... Args>
 auto Query<Binder, Interface>::select(const Field &f, Args &&...args) -> Select {
 	auto s = select();
-	s.fields(f, forward<Args>(args)...);
+	s.fields(f, sp::forward<Args>(args)...);
 	return s;
 }
 
@@ -375,7 +375,7 @@ template <typename Binder, typename Interface>
 template <typename... Args>
 auto Query<Binder, Interface>::select(Distinct d, const Field &f, Args &&...args) -> Select {
 	auto s = select(d);
-	s.fields(f, forward<Args>(args)...);
+	s.fields(f, sp::forward<Args>(args)...);
 	return s;
 }
 

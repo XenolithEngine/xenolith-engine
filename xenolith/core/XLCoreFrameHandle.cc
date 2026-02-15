@@ -46,10 +46,9 @@ static constexpr ClockType FrameClockType = ClockType::Monotonic;
 	} while (0);
 #endif
 
-static std::atomic<uint32_t> s_frameCount = 0;
-
-static Mutex s_frameMutex;
-static std::set<FrameHandle *> s_activeFrames;
+static sprt::atomic<uint32_t> s_frameCount = 0;
+static sprt::qmutex s_frameMutex;
+static sprt::memory::dynset<FrameHandle *> s_activeFrames = sprt::memory::dynset<FrameHandle *>();
 
 FrameExternalTask::~FrameExternalTask() {
 	if (_frame) {

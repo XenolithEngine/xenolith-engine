@@ -694,7 +694,10 @@ void Loop::captureBuffer(Function<void(const BufferInfo &info, BytesView view)> 
 
 Rc<core::PresentationEngine> Loop::makePresentationEngine(NotNull<core::PresentationWindow> w,
 		core::PresentationOptions opts) {
-	return Rc<PresentationEngine>::create(this, _internal->device.get(), w, opts);
+	if (_internal->device) {
+		return Rc<PresentationEngine>::create(this, _internal->device.get(), w, opts);
+	}
+	return nullptr;
 }
 
 void Loop::performInit() { }

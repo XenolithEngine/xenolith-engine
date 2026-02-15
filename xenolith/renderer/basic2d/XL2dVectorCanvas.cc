@@ -767,7 +767,7 @@ bool VectorCanvasDeferredResult::acquireResult(
 
 void VectorCanvasDeferredResult::setResult(Rc<VectorCanvasResult> &&res) {
 	_result = move(res);
-	_timeline.wait(SignalValue);
+	_timeline.signal(1);
 }
 
 Rc<VectorCanvasResult> VectorCanvasDeferredResult::getResult() const {

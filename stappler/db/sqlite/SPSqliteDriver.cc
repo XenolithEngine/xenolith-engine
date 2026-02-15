@@ -211,9 +211,18 @@ static Driver::Handle Driver_setupDriver(const Driver *d, DriverSym *_handle, po
 	}
 	filesystem::mkdir_recursive(FileInfo(filepath::root(FileInfo{dbname})));
 #if WIN32
-	dbname = StringView(filesystem::native::posixToNative<Interface>(dbname)).pdup();
+	auto buffer = __sprt_typed_malloca(char, dbname.size() + 1);
+	auto len = __sprt_fpath_to_native(dbname.data(), dbname.size(), buffer, dbname.size() + 1);
+
+	dbname = StringView(buffer, len);
 #endif
-	if (_handle->open(dbname.data(), &db, flags, nullptr) == SQLITE_OK) {
+	auto ret = _handle->open(dbname.data(), &db, flags, nullptr);
+
+#if WIN32
+	__sprt_freea(buffer);
+#endif
+
+	if (ret == SQLITE_OK) {
 		_handle->_db_config(db, SQLITE_DBCONFIG_DQS_DDL, 0, nullptr);
 		_handle->_db_config(db, SQLITE_DBCONFIG_DQS_DML, 0, nullptr);
 		_handle->_db_config(db, SQLITE_DBCONFIG_ENABLE_FKEY, 1, nullptr);
@@ -286,7 +295,6 @@ static Driver::Handle Driver_setupDriver(const Driver *d, DriverSym *_handle, po
 		h->pool = p;
 		h->driver = d;
 		h->sym = _handle;
-		;
 		h->conn = db;
 		h->name = dbname.pdup(p);
 		h->ctime = Time::now();

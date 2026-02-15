@@ -285,7 +285,8 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 			(ANativeWindow *)info.android.window,
 		};
 
-		if (instance->vkCreateAndroidSurfaceKHR(instance->getInstance(), &createInfo, nullptr, &surface)
+		if (instance->vkCreateAndroidSurfaceKHR(instance->getInstance(), &createInfo, nullptr,
+					&surface)
 				!= VK_SUCCESS) {
 			return nullptr;
 		}
@@ -318,6 +319,24 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 			(struct wl_surface *)info.wayland.surface,
 		};
 		if (instance->vkCreateWaylandSurfaceKHR(instance->getInstance(), &createInfo, nullptr,
+					&surface)
+				!= VK_SUCCESS) {
+			return nullptr;
+		}
+#endif
+		break;
+	}
+	case sprt::window::SurfaceBackend::Win32: {
+#if defined(VK_KHR_win32_surface)
+		VkWin32SurfaceCreateInfoKHR createInfo{
+			VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
+			nullptr,
+			0,
+			info.windows.hinstance,
+			info.windows.hwnd,
+		};
+
+		if (instance->vkCreateWin32SurfaceKHR(instance->getInstance(), &createInfo, nullptr,
 					&surface)
 				!= VK_SUCCESS) {
 			return nullptr;

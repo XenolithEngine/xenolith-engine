@@ -49,7 +49,7 @@ void enumeratePaths(FileCategory cat, StringView filename, FileFlags flags, Acce
 		}
 
 		sprt::filepath::reconstructPath([&](StringView path) {
-			enumeratePaths(*res, filename, flags, a, cb); //
+			enumeratePaths(*res, path, flags, a, cb); //
 		}, filename);
 	} else {
 		sprt::filesystem::getCurrentDir([&](StringView path) {

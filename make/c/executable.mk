@@ -130,8 +130,6 @@ BUILD_PRIVATE_EXEC_.mm_FLAGS := $(BUILD_PRIVATE_EXEC_CXXFLAGS)
 
 $(call print_verbose,(c/executable.mk) Prepare common source files rules)
 
-$(info TEST: $(addprefix -I,$(call sp_toolkit_include_list,,$(MODULE_RUNTIME_LIBC_PRIVATE_INCLUDES))))
-
 $(foreach MOD,$(TOOLKIT_MODULE_VARS), \
 	$(foreach SRC,$(call sp_toolkit_source_list, $($(MOD)_SRCS_DIRS), $($(MOD)_SRCS_OBJS)), \
 		$(call sp_build_$(suffix $(SRC))_exec_rule_counted,\

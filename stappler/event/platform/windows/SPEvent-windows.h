@@ -24,7 +24,6 @@
 #define CORE_EVENT_PLATFORM_WINDOWS_SPEVENT_WINDOWS_H_
 
 #include "SPEventQueue.h"
-#include "SPPlatformUnistd.h"
 #include "detail/SPEventQueueData.h"
 #include "detail/SPEventHandleClass.h"
 

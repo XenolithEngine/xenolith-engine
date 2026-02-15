@@ -25,7 +25,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::event {
 
-bool PollIocpSource::init(HANDLE h, PollFlags f) {
+bool PollIocpSource::init(void *h, PollFlags f) {
 	handle = h;
 	flags = f;
 	return true;
@@ -33,7 +33,7 @@ bool PollIocpSource::init(HANDLE h, PollFlags f) {
 
 void PollIocpSource::cancel() { handle = nullptr; }
 
-bool PollIocpHandle::init(HandleClass *cl, HANDLE handle, PollFlags flags,
+bool PollIocpHandle::init(HandleClass *cl, void *handle, PollFlags flags,
 		CompletionHandle<PollHandle> &&c) {
 	if (!Handle::init(cl, move(c))) {
 		return false;
@@ -56,15 +56,15 @@ Status PollIocpHandle::rearm(IocpData *iocp, PollIocpSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
 		if (!source->event) {
-			source->event = ReportEventAsCompletion(iocp->_port, source->handle, 1,
+			source->event = _ReportEventAsCompletion(iocp->_port, source->handle, 1,
 					reinterpret_cast<uintptr_t>(this), nullptr);
 			if (!source->event) {
-				return status::lastErrorToStatus(GetLastError());
+				return sprt::status::lastErrorToStatus(_GetLastError());
 			}
 		} else {
-			if (!RestartEventCompletion(source->event, iocp->_port, source->handle, 1,
+			if (!_RestartEventCompletion2(source->event, iocp->_port, source->handle, 1,
 						reinterpret_cast<uintptr_t>(this), nullptr)) {
-				return status::lastErrorToStatus(GetLastError());
+				return sprt::status::lastErrorToStatus(_GetLastError());
 			}
 		}
 	}
@@ -75,7 +75,7 @@ Status PollIocpHandle::disarm(IocpData *iocp, PollIocpSource *source) {
 	auto status = prepareDisarm();
 	if (status == Status::Ok) {
 		if (source->event) {
-			CancelEventCompletion(source->event, true);
+			_CancelEventCompletion(source->event, true);
 			source->event = nullptr;
 		}
 		++_timeline;

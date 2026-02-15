@@ -158,6 +158,11 @@ bool CommandList::init(const Rc<PoolRef> &pool) {
 
 void CommandList::pushVertexArray(Rc<VertexData> &&vert, const Mat4 &t, CmdInfo &&info,
 		CommandFlags flags) {
+	if (!vert) {
+		log::warn("CommandList", "Pushing empty commands should be avoidable on node's side");
+		return;
+	}
+
 	_pool->perform([&, this] {
 		auto cmd = Command::create(_pool->getPool(), CommandType::VertexArray, flags);
 		auto cmdData = reinterpret_cast<CmdVertexArray *>(cmd->data);
@@ -168,6 +173,7 @@ void CommandList::pushVertexArray(Rc<VertexData> &&vert, const Mat4 &t, CmdInfo 
 
 		TransformData instance(t);
 
+		// Copy data to pool
 		p->instances = makeSpanView(&instance, 1).pdup(_pool->getPool());
 		p->data = move(vert);
 
@@ -213,6 +219,11 @@ void CommandList::pushVertexArray(
 
 void CommandList::pushDeferredVertexResult(const Rc<DeferredVertexResult> &res, const Mat4 &viewT,
 		const Mat4 &modelT, bool normalized, CmdInfo &&info, CommandFlags flags) {
+	if (!res) {
+		log::warn("CommandList", "Pushing empty commands should be avoidable on node's side");
+		return;
+	}
+
 	_pool->perform([&, this] {
 		auto cmd = Command::create(_pool->getPool(), CommandType::Deferred, flags);
 		auto cmdData = reinterpret_cast<CmdDeferred *>(cmd->data);

@@ -66,7 +66,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 			_listenHandle = [](QueueData *d, void *ptr, NativeHandle handle, PollFlags flags,
 									CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
-				return Rc<PollIocpHandle>::create(&data->_iocpPollClass, handle, flags,
+				return Rc<PollIocpHandle>::create(&data->_iocpPollClass, handle.handle, flags,
 						sp::move(cb));
 			};
 

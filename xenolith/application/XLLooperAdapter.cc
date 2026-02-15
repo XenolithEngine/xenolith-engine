@@ -146,7 +146,7 @@ Rc<sprt::window::HandleAdapter> LooperAdapter::scheduleTimer(time_t timeout, tim
 	return ha;
 }
 
-Rc<sprt::window::HandleAdapter> LooperAdapter::listenPollableHandle(int fd,
+Rc<sprt::window::HandleAdapter> LooperAdapter::listenPollableHandle(sprt::native_handle fd,
 		filesystem::PollFlags flags, void *ptr,
 		void (*fn)(void *, sprt::window::HandleAdapter *, uint32_t flags, Status status)) {
 	auto ha = Rc<HandleAdapter>::create(HandleAdapter::Poll, ptr, fn);
@@ -162,9 +162,10 @@ Rc<sprt::window::HandleAdapter> LooperAdapter::listenPollableHandle(int fd,
 	return ha;
 }
 
-Rc<sprt::window::HandleAdapter> LooperAdapter::listenPollableHandle(int fd,
+Rc<sprt::window::HandleAdapter> LooperAdapter::listenPollableHandle(sprt::native_handle fd,
 		filesystem::PollFlags flags,
-		sprt::memory::dynfunction<Status(int fd, filesystem::PollFlags flags)> &&cb, Ref *ref) {
+		sprt::memory::dynfunction<Status(sprt::native_handle fd, filesystem::PollFlags flags)> &&cb,
+		Ref *ref) {
 	return Rc<HandleAdapter>::create(HandleAdapter::Poll,
 			_looper->listenPollableHandle(fd, flags, sp::move(cb), ref));
 }
@@ -180,6 +181,8 @@ Status LooperAdapter::performAsync(sprt::memory::dynfunction<void()> &&cb, Ref *
 	return _looper->performAsync(sp::move(cb), ref, first, tag);
 }
 
-int LooperAdapter::getHandle() const { return _looper->getQueue()->getHandle(); }
+sprt::native_handle LooperAdapter::getHandle() const { return _looper->getQueue()->getHandle(); }
+
+bool LooperAdapter::isOnThisThread() const { return _looper->isOnThisThread(); }
 
 } // namespace stappler::xenolith

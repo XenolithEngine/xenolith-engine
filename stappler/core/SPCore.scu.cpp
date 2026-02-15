@@ -38,7 +38,6 @@ THE SOFTWARE.
 
 #include "platform/SPCoreRuntime.cc"
 
-#include "platform/SPCore-win32.cc"
 #include "platform/SPCore-darwin.cc"
 
 #include "SPUrl.cc"

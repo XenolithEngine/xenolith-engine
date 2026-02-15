@@ -26,9 +26,10 @@ GLOBAL_SHELL := sh
 
 GLOBAL_RM ?= rm -f
 GLOBAL_CP ?= cp -f
-GLOBAL_MAKE ?= make
+GLOBAL_MAKE ?= $(MAKE)
 GLOBAL_MKDIR ?= mkdir -p
 GLOBAL_AR ?= ar rcs
+GLOBAL_ECHO ?= echo
 
 shell_mkdir = $(shell $(GLOBAL_MKDIR) $(1))
 

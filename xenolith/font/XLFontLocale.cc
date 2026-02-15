@@ -535,13 +535,7 @@ static bool isYesterday(struct tm &tm, struct tm &now) {
 	return n1 + 1 == n2;
 }
 
-static void sp_localtime_r(time_t *sec_now, struct tm *tm_now) {
-#if WIN32
-	localtime_s(tm_now, sec_now);
-#else
-	localtime_r(sec_now, tm_now);
-#endif
-}
+static void sp_localtime_r(time_t *sec_now, struct tm *tm_now) { localtime_r(sec_now, tm_now); }
 
 template <typename T>
 static String localDate_impl(const std::array<T, toInt(TimeTokens::Max)> &table, Time t) {

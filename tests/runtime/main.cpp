@@ -38,23 +38,23 @@ THE SOFTWARE.
 
 using namespace stappler;
 
-static sprt::qmutex s_mutex;
+static sprt::rmutex s_mutex;
 
 class TestThread : public thread::Thread {
 public:
 	virtual void threadInit() override {
 		sprt::unique_lock lock(s_mutex);
 		Thread::threadInit();
-		slog().debug("Thread", "threadInit");
+		slog().debug("Thread", "threadInit: ", getThreadId());
 	}
 	virtual void threadDispose() override {
 		sprt::unique_lock lock(s_mutex);
 		Thread::threadDispose();
-		slog().debug("Thread", "threadDispose");
+		slog().debug("Thread", "threadDispose: ", getThreadId());
 	}
 	virtual bool worker() override {
 		sprt::unique_lock lock(s_mutex);
-		slog().debug("Thread", "worker");
+		slog().debug("Thread", "worker: ", getThreadId());
 		return false;
 	}
 };
@@ -90,6 +90,8 @@ static void performThreadTests() {
 	slog().debug("Thread", "performThreadTests");
 
 	s_mutex.unlock();
+
+	t->waitStopped();
 }
 
 static void performDynAllocTests() {
@@ -170,14 +172,19 @@ static void performTimeTests() {
 }
 
 static void performUnicodeTests() {
-	StringView test1 = "Тест1";
-	StringView test2 = "ТЕСТ1";
-	StringView test3 = "ТЕСТ3asd";
+	StringView test1 = "Тест";
+	StringView test2 = "ТЕСТ";
+	StringView test3 = "ТЕСТ";
 
 	WideStringView wtest1 = u"Тест1";
 	WideStringView wtest2 = u"ТЕСТ1";
+	WideStringView wtest3 = u"тест1";
 
 	std::cout << platform::toupper<memory::StandartInterface>(test1) << "\n";
+	std::cout << platform::tolower<memory::StandartInterface>(test1) << "\n";
+	std::cout << platform::totitle<memory::StandartInterface>(test1) << "\n";
+
+	std::cout << platform::toupper<memory::StandartInterface>(test2) << "\n";
 	std::cout << platform::tolower<memory::StandartInterface>(test2) << "\n";
 	std::cout << platform::totitle<memory::StandartInterface>(test2) << "\n";
 
@@ -199,8 +206,8 @@ int main(int argc, const char *argv[]) {
 		//printCaseTables();
 		//runDataCoverter();
 
-		performIdnTests();
 		performThreadTests();
+		performIdnTests();
 		performDynAllocTests();
 		performPathTests();
 		performTimeTests();

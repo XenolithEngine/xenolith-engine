@@ -31,8 +31,8 @@ namespace STAPPLER_VERSIONIZED stappler::event {
 static constexpr bool IOCP_THREAD_NONBLOCK = false;
 
 struct SP_PUBLIC ThreadIocpSource {
-	HANDLE currentThread = nullptr;
-	HANDLE port = nullptr;
+	pid_t currentThread = 0;
+	void *port = nullptr;
 
 	bool init();
 	void cancel();

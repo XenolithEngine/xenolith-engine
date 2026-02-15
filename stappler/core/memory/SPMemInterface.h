@@ -89,6 +89,7 @@ using sprt::memory::pool::create;
 using sprt::memory::pool::create_tagged;
 using sprt::memory::pool::destroy;
 using sprt::memory::pool::clear;
+using sprt::memory::pool::cleanup_flags;
 using sprt::memory::pool::cleanup_register;
 using sprt::memory::pool::pre_cleanup_register;
 using sprt::memory::pool::alloc;

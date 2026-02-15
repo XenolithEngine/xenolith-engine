@@ -703,8 +703,9 @@ Rc<sprt::window::gapi::Instance> Context::makeInstance(
 
 #if defined(VK_KHR_win32_surface)
 				if (supportInfo.backendMask.test(toInt(vk::SurfaceBackend::Win32))) {
-					auto supports = inst->vkGetPhysicalDeviceWin32PresentationSupportKHR(device,
-							queueIdx) if (supports) {
+					auto supports =
+							inst->vkGetPhysicalDeviceWin32PresentationSupportKHR(device, queueIdx);
+					if (supports) {
 						ret.set(toInt(vk::SurfaceBackend::Win32));
 					}
 				}

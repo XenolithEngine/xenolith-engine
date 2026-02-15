@@ -24,22 +24,24 @@
 #include "SPStatus.h"
 #include "detail/SPEventHandleClass.h"
 #include "platform/windows/SPEvent-iocp.h"
-#include <processthreadsapi.h>
+
+#include <unistd.h>
 
 namespace STAPPLER_VERSIONIZED stappler::event {
 
 bool ThreadIocpSource::init() {
-	currentThread = GetCurrentThread();
+	currentThread = __sprt_gettid();
 	return true;
 }
 
 void ThreadIocpSource::cancel() {
-	currentThread = nullptr;
+	currentThread = 0;
 	port = nullptr;
 }
 
 bool ThreadIocpHandle::init(HandleClass *cl) {
-	static_assert(sizeof(ThreadIocpSource) <= DataSize && std::is_standard_layout<ThreadIocpSource>::value);
+	static_assert(sizeof(ThreadIocpSource) <= DataSize
+			&& std::is_standard_layout<ThreadIocpSource>::value);
 
 	if (!ThreadHandle::init(cl)) {
 		return false;
@@ -52,7 +54,7 @@ bool ThreadIocpHandle::init(HandleClass *cl) {
 Status ThreadIocpHandle::rearm(IocpData *iocp, ThreadIocpSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
-		source->currentThread = GetCurrentThread();
+		source->currentThread = __sprt_gettid();
 		source->port = iocp->_port;
 	}
 	return status;
@@ -60,9 +62,7 @@ Status ThreadIocpHandle::rearm(IocpData *iocp, ThreadIocpSource *source) {
 
 Status ThreadIocpHandle::disarm(IocpData *iocp, ThreadIocpSource *source) {
 	auto status = prepareDisarm();
-	if (status == Status::Ok) {
-		
-	}
+	if (status == Status::Ok) { }
 	return status;
 }
 
@@ -71,11 +71,7 @@ void ThreadIocpHandle::notify(IocpData *iocp, ThreadIocpSource *source, const No
 		return; // just exit
 	}
 
-	auto performUnlock = [&] {
-		performAll([&] (uint32_t count) {
-			_mutex.unlock();
-		});
-	};
+	auto performUnlock = [&] { performAll([&](uint32_t count) { _mutex.unlock(); }); };
 
 	if (data.result > 0) {
 		if constexpr (IOCP_THREAD_NONBLOCK) {
@@ -93,11 +89,11 @@ void ThreadIocpHandle::notify(IocpData *iocp, ThreadIocpSource *source, const No
 
 Status ThreadIocpHandle::perform(Rc<thread::Task> &&task) {
 	auto source = reinterpret_cast<ThreadIocpSource *>(_data);
-	
+
 	std::unique_lock lock(_mutex);
 	_outputQueue.emplace_back(move(task));
 
-	PostQueuedCompletionStatus(source->port, 1, reinterpret_cast<uintptr_t>(this), nullptr);
+	_PostQueuedCompletionStatus(source->port, 1, reinterpret_cast<uintptr_t>(this), nullptr);
 
 	return Status::Ok;
 }
@@ -108,9 +104,9 @@ Status ThreadIocpHandle::perform(mem_std::Function<void()> &&func, Ref *target, 
 	std::unique_lock lock(_mutex);
 	_outputCallbacks.emplace_back(CallbackInfo{sp::move(func), target, tag});
 
-	PostQueuedCompletionStatus(source->port, 1, reinterpret_cast<uintptr_t>(this), nullptr);
+	_PostQueuedCompletionStatus(source->port, 1, reinterpret_cast<uintptr_t>(this), nullptr);
 
 	return Status::Ok;
 }
 
-}
+} // namespace stappler::event

@@ -178,7 +178,7 @@ $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 "file":"$$(strip $$(call sp_cdb_convert_cmd,$(1)))",\
 "output":"$$(strip $$(call sp_cdb_convert_cmd,$(2)))",\
 "arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CC),$$(call sp_compile_command,,$$(OSTYPE_C_FILE),$(4),$(1),$(2)))]},' > $$@
-	@echo '[Compilation database entry]: $(notdir $(1))'
+	@$(GLOBAL_ECHO) "[Compilation database entry]: $(notdir $(1))"
 
 $(2): \
 		$(1) $(3) $$(LOCAL_MAKEFILE) | $(2).json $$(BUILD_COMPILATION_DATABASE)
@@ -206,7 +206,7 @@ $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 "file":"$$(strip $$(call sp_cdb_convert_cmd,$(1)))",\
 "output":"$$(strip $$(call sp_cdb_convert_cmd,$(2)))",\
 "arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CXX),$$(call sp_compile_command,,$$(OSTYPE_CPP_FILE),$(4),$(1),$(2)))]},' > $$@
-	@echo '[Compilation database entry]: $(notdir $(1))'
+	@$(GLOBAL_ECHO) "[Compilation database entry]: $(notdir $(1))"
 
 $(2): \
 		$(1) $(3) $$(LOCAL_MAKEFILE) | $(2).json $$(BUILD_COMPILATION_DATABASE)
@@ -224,7 +224,7 @@ $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 "file":"$$(strip $$(call sp_cdb_convert_cmd,$(1)))",\
 "output":"$$(strip $$(call sp_cdb_convert_cmd,$(2)))",\
 "arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CXX),$$(call sp_compile_command,,$$(OSTYPE_MM_FILE),$(4),$(1),$(2)))]},' > $$@
-	@echo '[Compilation database entry]: $(notdir $(1))'
+	@$(GLOBAL_ECHO) "[Compilation database entry]: $(notdir $(1))"
 
 $(2): \
 		$(1) $(3) $$(LOCAL_MAKEFILE) | $(2).json $$(BUILD_COMPILATION_DATABASE)

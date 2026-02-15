@@ -26,16 +26,17 @@ GLOBAL_SHELL := powershell
 
 GLOBAL_RM ?= rm -f
 GLOBAL_CP ?= cp
-GLOBAL_MAKE ?= make
+GLOBAL_MAKE ?= $(MAKE)
 GLOBAL_MKDIR ?= powershell New-Item -ItemType Directory -Force -Path
 GLOBAL_AR ?= ar rcs
+GLOBAL_ECHO ?= Write-Host
 
 shell_mkdir = $(call print_verbose,Powershell (mkdir): $(shell New-Item -Path "$(1)" -ItemType Directory -Force | Out-Null))
 
 rule_mkdir = powershell New-Item -ItemType Directory -Force -Path $(1) | Out-Null
 
 shell_override_file = \
-	$(call print_verbose,Powershell (override): $(shell Set-Content "$(1)" '$(2)') )
+	$(call print_verbose,Powershell (override): $(shell Set-Content "$(strip $(1))" '$(strip $(2))') )
 
 shell_append_file = \
 	$(call print_verbose,Powershell (append): $(shell Add-Content "$(1)" '$(2)') )

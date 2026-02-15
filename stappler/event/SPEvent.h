@@ -28,6 +28,8 @@
 #include "SPFilesystem.h"
 #include "SPStatus.h"
 
+#include <sprt/runtime/native_handle.h>
+
 namespace STAPPLER_VERSIONIZED stappler::event {
 
 class Looper;
@@ -40,11 +42,7 @@ class PollHandle;
 
 struct BufferChain;
 
-#if WIN32
-using NativeHandle = void *;
-#else
-using NativeHandle = int;
-#endif
+using NativeHandle = sprt::native_handle;
 
 using filesystem::OpenFlags;
 using filesystem::ProtFlags;

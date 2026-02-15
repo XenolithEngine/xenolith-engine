@@ -36,13 +36,13 @@ endif
 XWIN_REPLACEMENTS_INCLUDE := deps/windows/replacements/include
 XWIN_REPLACEMENTS_BIN := deps/windows/replacements/bin
 
-OSTYPE_CFLAGS := -Wall -D_MT -Wno-vla-cxx-extension -Wno-microsoft-include
+OSTYPE_CFLAGS := -Wall -D_MT -Wno-vla-cxx-extension -Wno-microsoft-include -D_CRT_STDIO_ISO_WIDE_SPECIFIERS=1
 
 ifeq ($(RELEASE),1)
 OSTYPE_CFLAGS +=
 OSTYPE_LDFLAGS :=
 else
-OSTYPE_CFLAGS += -D_DEBUG -g -gcodeview
+OSTYPE_CFLAGS += -g -gcodeview
 OSTYPE_LDFLAGS := -g
 endif
 

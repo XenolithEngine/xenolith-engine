@@ -736,7 +736,7 @@ bool LabelDeferredResult::acquireResult(
 
 void LabelDeferredResult::setResult(Rc<LabelResult> &&res) {
 	_result = move(res);
-	_timeline.wait(SignalValue);
+	_timeline.signal(1);
 	//log::debug("Label", "setResult: ", this);
 }
 

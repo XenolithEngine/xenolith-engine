@@ -29,8 +29,8 @@
 namespace STAPPLER_VERSIONIZED stappler::event {
 
 struct SP_PUBLIC TimerIocpSource {
-	HANDLE handle = nullptr;
-	HANDLE event = nullptr;
+	void *handle = nullptr;
+	void *event = nullptr;
 	TimeInterval interval;
 	uint32_t count = 0;
 	uint32_t value = 0;

@@ -24,62 +24,18 @@
 #define CORE_EVENT_PLATFORM_WINDOWS_SPEVENT_IOCP_H_
 
 #include "SPEventQueue.h"
-#include "SPPlatformUnistd.h"
 #include "detail/SPEventQueueData.h"
-#include <winnt.h>
+#include <sys/winapi.h>
 
 namespace STAPPLER_VERSIONIZED stappler::event {
 
-// ReportEventAsCompletion
-//  - associates Event with I/O Completion Port and requests a completion packet when signalled
-//  - parameters order modelled after PostQueuedCompletionStatus
-//  - parameters: hIOCP - handle to I/O Completion Port
-//                hEvent - handle to Event, Semaphore, Thread or Process
-//                       - NOTE: Mutex is not supported, it makes no sense in this context
-//                dwNumberOfBytesTransferred - user-specified value, provided back by GetQueuedCompletionStatus(Ex)
-//                dwCompletionKey - user-specified value, provided back by GetQueuedCompletionStatus(Ex)
-//                lpOverlapped - user-specified value, provided back by GetQueuedCompletionStatus(Ex)
-//  - returns: I/O Packet HANDLE for the association
-//             NULL on failure, call GetLastError () for details
-//              - ERROR_INVALID_PARAMETER -
-//              - ERROR_INVALID_HANDLE - provided hEvent is not supported by this API
-//              - otherwise internal HRESULT is forwarded
-//  - call CloseHandle to free the returned I/O Packet HANDLE when no longer needed
-//
-SP_PUBLIC _Ret_maybenull_ HANDLE ReportEventAsCompletion(HANDLE hIOCP, HANDLE hEvent,
-		DWORD dwNumberOfBytesTransferred, ULONG_PTR dwCompletionKey, LPOVERLAPPED lpOverlapped);
-
-// RestartEventCompletion
-//  - use to wait again, after the event completion was consumed by GetQueuedCompletionStatus(Ex)
-//  - parameters: hPacket - is HANDLE returned by 'ReportEventAsCompletion'
-//                hIOCP - handle to I/O Completion Port
-//                hEvent - handle to the Event object
-//                oEntry - pointer to data provided back by GetQueuedCompletionStatus(Ex)
-//  - returns: TRUE on success
-//             FALSE on failure, call GetLastError () for details (TBD)
-//
-SP_PUBLIC BOOL RestartEventCompletion(HANDLE hPacket, HANDLE hIOCP, HANDLE hEvent,
-		const OVERLAPPED_ENTRY *oEntry);
-SP_PUBLIC BOOL RestartEventCompletion(HANDLE hPacket, HANDLE hIOCP, HANDLE hEvent,
-		DWORD dwNumberOfBytesTransferred, ULONG_PTR dwCompletionKey, LPOVERLAPPED lpOverlapped);
-
-// CancelEventCompletion
-//  - stops the Event from completing into the I/O Completion Port
-//  - call CloseHandle to free the I/O Packet HANDLE when no longer needed
-//  - parameters: hPacket - is HANDLE returned by 'ReportEventAsCompletion'
-//                cancel - if TRUE, if already signalled, the completion packet is removed from queue
-//  - returns: TRUE on success
-//             FALSE on failure, call GetLastError () for details (TBD)
-//
-BOOL CancelEventCompletion(HANDLE hPacket, BOOL cancel);
-
 struct SP_PUBLIC IocpData : public PlatformQueueData {
-	static constexpr DWORD InternalFlag = 1 << 29;
-	static constexpr DWORD CancelFlag = 1 << 30;
+	static constexpr uint32_t InternalFlag = 1 << 29;
+	static constexpr uint32_t CancelFlag = 1 << 30;
 
-	HANDLE _port = nullptr;
+	void *_port = nullptr;
 
-	mem_pool::Vector<OVERLAPPED_ENTRY> _events;
+	mem_pool::Vector<overlapped_entry> _events;
 
 	uint32_t _receivedEvents = 0;
 	uint32_t _processedEvents = 0;

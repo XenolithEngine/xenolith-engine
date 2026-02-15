@@ -24,19 +24,32 @@
 
 #if WIN32
 
-#include "SPPlatformUnistd.h"
-
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk::platform {
 
 Rc<core::Instance> createInstance(Rc<core::InstanceInfo> &&info) {
-	FunctionTable table(vkGetInstanceProcAddr);
+	if (info->api != core::InstanceApi::Vulkan || !info->backend) {
+		return nullptr;
+	}
+
+	auto handle = Dso(StringView("vulkan-1.dll"));
+	if (!handle) {
+		log::source().error("Vk", "Fail to open vulkan-1.dll");
+		return nullptr;
+	}
+
+	auto getInstanceProcAddr = handle.sym<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
+	if (!getInstanceProcAddr) {
+		return nullptr;
+	}
+
+	FunctionTable table(getInstanceProcAddr);
 
 	if (!table) {
 		return nullptr;
 	}
 
 	if (auto instance = table.createInstance(info, info->backend.get_cast<InstanceBackendInfo>(),
-				Dso())) {
+				sp::move(handle))) {
 		return instance;
 	}
 

@@ -72,7 +72,7 @@ MemoryMappedRegion MemoryMappedRegion::mapFile(const FileInfo &info, MappingType
 	auto region = loc->interface->_mmap(storage.data(), *loc, path, type,
 			getModeFromProtFlags(prot), offset, len, &st);
 	if (region) {
-		return MemoryMappedRegion(*loc, move(storage), region, type, prot, len);
+		return MemoryMappedRegion(*loc, sprt::move(storage), region, type, prot, len);
 	}
 
 	return MemoryMappedRegion();

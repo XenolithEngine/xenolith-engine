@@ -365,6 +365,10 @@ void VertexMaterialDynamicData::emplaceWritePlan(FrameContextHandle2d *input,
 		size_t packedCommands = 0;
 
 		for (auto &vIt : vertexes) {
+			if (!vIt.data) {
+				continue;
+			}
+
 			// count data objects
 			globalWritePlan.vertexes += vIt.data->data.size();
 			globalWritePlan.indexes += vIt.data->indexes.size();

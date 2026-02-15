@@ -295,7 +295,7 @@ Looper::Looper(LooperInfo &&info, Rc<QueueRef> &&q) {
 				l->_data = nullptr;
 				tl_looper = nullptr;
 				return Status::Ok;
-			});
+			}, memory::pool::cleanup_flags::cleanup_flags_plain);
 		}
 
 		_data->thisThreadId = thread::Thread::getCurrentThreadId();

@@ -26,116 +26,23 @@
 #include "SPStatus.h"
 #include "SPTime.h"
 
-#include <errhandlingapi.h>
-#include <handleapi.h>
-#include <minwinbase.h>
-#include <winerror.h>
-#include <winternl.h>
-#include <ntstatus.h>
-
-extern "C" {
-
-WINBASEAPI NTSTATUS WINAPI NtCreateWaitCompletionPacket(_Out_ PHANDLE WaitCompletionPacketHandle,
-		_In_ ACCESS_MASK DesiredAccess, _In_opt_ POBJECT_ATTRIBUTES ObjectAttributes);
-
-WINBASEAPI NTSTATUS WINAPI NtAssociateWaitCompletionPacket(_In_ HANDLE WaitCompletionPacketHandle,
-		_In_ HANDLE IoCompletionHandle, _In_ HANDLE TargetObjectHandle, _In_opt_ PVOID KeyContext,
-		_In_opt_ PVOID ApcContext, _In_ NTSTATUS IoStatus, _In_ ULONG_PTR IoStatusInformation,
-		_Out_opt_ PBOOLEAN AlreadySignaled);
-
-WINBASEAPI NTSTATUS WINAPI NtCancelWaitCompletionPacket(_In_ HANDLE WaitCompletionPacketHandle,
-		_In_ BOOLEAN RemoveSignaledPacket);
-}
-
 namespace STAPPLER_VERSIONIZED stappler::event {
 
 // based on https://github.com/tringi/win32-iocp-events
-
-HANDLE ReportEventAsCompletion(HANDLE hIOCP, HANDLE hEvent, DWORD dwNumberOfBytesTransferred,
-		ULONG_PTR dwCompletionKey, LPOVERLAPPED lpOverlapped) {
-
-	HANDLE hPacket = NULL;
-	HRESULT hr = NtCreateWaitCompletionPacket(&hPacket, GENERIC_ALL, NULL);
-
-	if (SUCCEEDED(hr)) {
-		OVERLAPPED_ENTRY completion{};
-		completion.dwNumberOfBytesTransferred = dwNumberOfBytesTransferred;
-		completion.lpCompletionKey = dwCompletionKey;
-		completion.lpOverlapped = lpOverlapped;
-
-		if (!RestartEventCompletion(hPacket, hIOCP, hEvent, &completion)) {
-			NtClose(hPacket);
-			hPacket = NULL;
-		}
-	} else {
-		switch (hr) {
-		case STATUS_NO_MEMORY: SetLastError(ERROR_OUTOFMEMORY); break;
-		default: SetLastError(hr);
-		}
-	}
-	return hPacket;
-}
-
-BOOL RestartEventCompletion(HANDLE hPacket, HANDLE hIOCP, HANDLE hEvent,
-		const OVERLAPPED_ENTRY *completion) {
-	if (!completion) {
-		SetLastError(ERROR_INVALID_PARAMETER);
-		return FALSE;
-	}
-
-	return RestartEventCompletion(hPacket, hIOCP, hEvent, completion->dwNumberOfBytesTransferred,
-			completion->lpCompletionKey, completion->lpOverlapped);
-}
-
-BOOL RestartEventCompletion(HANDLE hPacket, HANDLE hIOCP, HANDLE hEvent,
-		DWORD dwNumberOfBytesTransferred, ULONG_PTR dwCompletionKey, LPOVERLAPPED lpOverlapped) {
-	HRESULT hr = NtAssociateWaitCompletionPacket(hPacket, hIOCP, hEvent, (PVOID)dwCompletionKey,
-			(PVOID)lpOverlapped, 0, dwNumberOfBytesTransferred, NULL);
-	if (SUCCEEDED(hr)) {
-		return TRUE;
-	} else {
-		switch (hr) {
-		case STATUS_NO_MEMORY: SetLastError(ERROR_OUTOFMEMORY); break;
-		case STATUS_INVALID_HANDLE: // not valid handle passed for hIOCP
-		case STATUS_OBJECT_TYPE_MISMATCH: // incorrect handle passed for hIOCP
-		case STATUS_INVALID_PARAMETER_1:
-		case STATUS_INVALID_PARAMETER_2: SetLastError(ERROR_INVALID_PARAMETER); break;
-		case STATUS_INVALID_PARAMETER_3:
-			if (hEvent) {
-				SetLastError(ERROR_INVALID_HANDLE);
-			} else {
-				SetLastError(ERROR_INVALID_PARAMETER);
-			}
-			break;
-		default: SetLastError(hr);
-		}
-		return FALSE;
-	}
-}
-
-BOOL CancelEventCompletion(HANDLE hWait, BOOL cancel) {
-	HRESULT hr = NtCancelWaitCompletionPacket(hWait, cancel);
-	if (SUCCEEDED(hr)) {
-		return TRUE;
-	} else {
-		SetLastError(hr);
-		return FALSE;
-	}
-}
 
 void IocpData::pollMessages() {
 	++_data->_performEnabled;
 
 	auto tmpPool = memory::pool::create(_data->_tmpPool);
 
-	MSG msg = {};
-	BOOL hasMessage = 1;
+	winmsg msg = {};
+	int hasMessage = 1;
 	while (hasMessage) {
 		mem_pool::perform_clear([&] {
-			hasMessage = PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE);
+			hasMessage = _PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE);
 			if (hasMessage) {
-				TranslateMessage(&msg);
-				DispatchMessage(&msg);
+				_TranslateMessage(&msg);
+				_DispatchMessage(&msg);
 			}
 		}, tmpPool);
 
@@ -152,24 +59,24 @@ Status IocpData::runPoll(TimeInterval ival, bool infinite) {
 		return Status::Ok;
 	}
 
-	ULONG nevents = 0;
+	unsigned long nevents = 0;
 
-	MsgWaitForMultipleObjectsEx(1, &_port, infinite ? INFINITE : ival.toMillis(), QS_ALLINPUT,
-			MWMO_ALERTABLE | MWMO_INPUTAVAILABLE);
+	_MsgWaitForMultipleObjectsEx(1, &_port, infinite ? _WINAPI_INFINITE : ival.toMillis(),
+			QS_ALLINPUT, MWMO_ALERTABLE | MWMO_INPUTAVAILABLE);
 
 	// Prevent from recursive message polling
 	if (_data->_performEnabled == 0) {
 		pollMessages();
 	}
 
-	if (!GetQueuedCompletionStatusEx(_port, _events.data(), _events.size(), &nevents, 0, 1)) {
-		auto err = GetLastError();
+	if (!_GetQueuedCompletionStatusEx(_port, _events.data(), _events.size(), &nevents, 0, 1)) {
+		auto err = _GetLastError();
 		if (err == WAIT_TIMEOUT) {
 			_processedEvents = 0;
 			_receivedEvents = 0;
 			return Status::Ok;
 		}
-		return status::lastErrorToStatus(err);
+		return sprt::status::lastErrorToStatus(err);
 	}
 
 	_processedEvents = 0;
@@ -178,7 +85,7 @@ Status IocpData::runPoll(TimeInterval ival, bool infinite) {
 	if (nevents >= 0) {
 		return Status::Ok;
 	} else {
-		return status::lastErrorToStatus(GetLastError());
+		return sprt::status::lastErrorToStatus(_GetLastError());
 	}
 }
 
@@ -261,7 +168,7 @@ Status IocpData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval wa
 		timerHandle =
 				_queue->get()->schedule(ival, [this, wakeupFlags](Handle *handle, bool success) {
 			if (success) {
-				PostQueuedCompletionStatus(_port, toInt(wakeupFlags) | InternalFlag,
+				_PostQueuedCompletionStatus(_port, toInt(wakeupFlags) | InternalFlag,
 						reinterpret_cast<uintptr_t>(this), nullptr);
 			}
 		});
@@ -291,7 +198,7 @@ Status IocpData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval wa
 }
 
 Status IocpData::wakeup(WakeupFlags flags) {
-	PostQueuedCompletionStatus(_port, toInt(flags), reinterpret_cast<uintptr_t>(this), nullptr);
+	_PostQueuedCompletionStatus(_port, toInt(flags), reinterpret_cast<uintptr_t>(this), nullptr);
 	return Status::Ok;
 }
 
@@ -309,16 +216,16 @@ Status IocpData::suspendHandles() {
 }
 
 void IocpData::cancel() {
-	PostQueuedCompletionStatus(_port, toInt(WakeupFlags::ContextDefault) | CancelFlag,
+	_PostQueuedCompletionStatus(_port, toInt(WakeupFlags::ContextDefault) | CancelFlag,
 			reinterpret_cast<uintptr_t>(this), nullptr);
 }
 
 IocpData::IocpData(QueueRef *q, Queue::Data *data, const QueueInfo &info)
 : PlatformQueueData(q, data, info.flags) {
-	_port = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 1);
+	_port = _CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 1);
 	if (!_port) {
 		log::source().error("event::Queue",
-				"Fail to create IOCP: ", status::lastErrorToStatus(GetLastError()));
+				"Fail to create IOCP: ", sprt::status::lastErrorToStatus(_GetLastError()));
 		return;
 	}
 
@@ -334,7 +241,7 @@ IocpData::IocpData(QueueRef *q, Queue::Data *data, const QueueInfo &info)
 
 IocpData::~IocpData() {
 	if (_port) {
-		CloseHandle(_port);
+		_CloseHandle(_port);
 		_port = nullptr;
 	}
 }

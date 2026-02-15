@@ -26,6 +26,7 @@
 #define XENOLITH_BACKEND_VK_XLVKHEADER_H
 
 #include "XLCommon.h"
+#include <sys/winapi.h>
 
 // we don't need function prototypes, we generate them as tables
 #define VK_NO_PROTOTYPES 1
@@ -41,7 +42,6 @@
 #endif
 
 #if WIN32
-#define VK_USE_PLATFORM_WIN32_KHR 1
 #endif
 
 #include <vulkan/vulkan.h>
@@ -58,6 +58,18 @@ typedef uint32_t xcb_visualid_t;
 #include <vulkan/vulkan_xcb.h>
 #include <vulkan/vulkan_wayland.h>
 
+#endif
+
+#if WIN32
+typedef unsigned long DWORD;
+typedef void *HANDLE;
+typedef void *HINSTANCE;
+typedef void *HMONITOR;
+typedef void *HWND;
+typedef wchar_t *LPCWSTR;
+typedef security_attributes SECURITY_ATTRIBUTES;
+
+#include <vulkan/vulkan_win32.h>
 #endif
 
 #endif
