@@ -159,7 +159,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 			_listenHandle = [](QueueData *d, void *ptr, NativeHandle handle, PollFlags flags,
 									CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
-				return Rc<PollFdURingHandle>::create(&data->_uringPollFdClass, handle, flags,
+				return Rc<PollFdURingHandle>::create(&data->_uringPollFdClass, handle.fd, flags,
 						sp::move(cb));
 			};
 
@@ -210,7 +210,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 			_listenHandle = [](QueueData *d, void *ptr, NativeHandle handle, PollFlags flags,
 									CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
-				return Rc<PollFdEPollHandle>::create(&data->_epollPollFdClass, handle, flags,
+				return Rc<PollFdEPollHandle>::create(&data->_epollPollFdClass, handle.fd, flags,
 						sp::move(cb));
 			};
 

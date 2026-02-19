@@ -249,17 +249,13 @@ STAPPLER_TARGET_ARCH ?= $(shell uname -m)
 endif
 endif # STAPPLER_ARCH
 
+
+ifdef LOCAL_TOOLCHAIN_FILE
+STAPPLER_TOOLCHAIN_FILE := $(LOCAL_TOOLCHAIN_FILE)
+else
 STAPPLER_TOOLCHAIN_FILE := toolchain.mk
-
-#
-# XWin
-#
-
-ifeq ($(STAPPLER_TARGET),xwin)
-
-STAPPLER_TOOLCHAIN_FILE := toolchain-xwin.mk
-
 endif
+
 
 #
 # Android

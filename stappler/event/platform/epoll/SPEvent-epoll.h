@@ -25,7 +25,6 @@
 #define CORE_EVENT_PLATFORM_SPEVENT_EPOLL_H_
 
 #include "SPEventQueue.h"
-#include "SPPlatformUnistd.h" // IWYU pragma: keep
 #include "detail/SPEventQueueData.h"
 
 #include "../fd/SPEventSignalFd.h"

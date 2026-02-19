@@ -22,7 +22,6 @@
  **/
 
 #include "SPEventQueue.h"
-#include "SPPlatformUnistd.h"
 #include "SPTime.h"
 #include "SPEvent-epoll.h"
 

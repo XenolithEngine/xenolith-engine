@@ -24,7 +24,6 @@
 #define CORE_EVENT_PLATFORM_LINUX_SPEVENT_LINUX_H_
 
 #include "SPEventQueue.h"
-#include "SPPlatformUnistd.h"
 #include "detail/SPEventHandleClass.h"
 
 #include "../uring/SPEvent-uring.h"

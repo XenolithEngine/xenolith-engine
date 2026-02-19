@@ -134,8 +134,8 @@ ifeq ($(findstring Windows,$(OS)),Windows)
 sp_cdb_convert_cmd = $(1)
 sp_cdb_which_cmd = $(1)
 else
-sp_cdb_convert_cmd = '$(1)'
-sp_cdb_which_cmd = `which $(1)`
+sp_cdb_convert_cmd = $(1)
+sp_cdb_which_cmd = $(1)
 endif
 
 sp_cdb_process_arg = \

@@ -24,7 +24,6 @@
 #define CORE_EVENT_PLATFORM_ANDROID_SPEVENT_ALOOPER_H_
 
 #include "SPEventQueue.h"
-#include "SPPlatformUnistd.h"
 #include "detail/SPEventQueueData.h"
 
 #include "../fd/SPEventSignalFd.h"
