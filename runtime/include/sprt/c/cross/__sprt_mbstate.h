@@ -24,6 +24,7 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_MBSTATE_H_
 
 #include <sprt/c/cross/__sprt_config.h>
+#include <sprt/c/bits/__sprt_uint32_t.h>
 
 // clang-format off
 #include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/mbstate.h)

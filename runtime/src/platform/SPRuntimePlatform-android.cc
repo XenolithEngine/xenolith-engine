@@ -76,9 +76,10 @@ bool toupper(jni::App *app, const callback<void(StringView)> &cb, StringView dat
 
 bool totitle(jni::App *app, const callback<void(StringView)> &cb, StringView data) {
 	auto env = jni::Env::getEnv();
-	auto ret =
-			app->UCharacter.toTitleString(app->UCharacter.getClass().ref(env), env.newString(data), nullptr)
-					.getString();
+	auto ret = app->UCharacter
+					   .toTitleString(app->UCharacter.getClass().ref(env), env.newString(data),
+							   nullptr)
+					   .getString();
 	cb(ret);
 	return true;
 }
@@ -103,9 +104,10 @@ bool toupper(jni::App *app, const callback<void(WideStringView)> &cb, WideString
 
 bool totitle(jni::App *app, const callback<void(WideStringView)> &cb, WideStringView data) {
 	auto env = jni::Env::getEnv();
-	auto ret =
-			app->UCharacter.toTitleString(app->UCharacter.getClass().ref(env), env.newString(data), nullptr)
-					.getWideString();
+	auto ret = app->UCharacter
+					   .toTitleString(app->UCharacter.getClass().ref(env), env.newString(data),
+							   nullptr)
+					   .getWideString();
 	cb(ret);
 	return true;
 }
@@ -622,22 +624,6 @@ extern "C" SPRT_GLOBAL const char *idn2_check_version(const char *req_version) {
 } // namespace sprt::idn
 
 namespace sprt::platform {
-
-struct GlobalConfig {
-	static char localeBuf[6];
-
-	qmutex s_infoMutex;
-	StringView uniqueIdBuf;
-	StringView execPathBuf;
-	StringView homePathBuf;
-	StringView locale = StringView(localeBuf);
-
-	AppConfig config;
-
-	filesystem::LocationInfo current;
-
-	memory::pool_t *_pool = memory::pool::create(memory::self_contained_allocator);
-};
 
 char GlobalConfig::localeBuf[6] = "en-us";
 static GlobalConfig s_globalConfig;

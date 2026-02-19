@@ -42,7 +42,7 @@ SPRT_UNUSED static struct tm getNativeTm(const struct __SPRT_TM_NAME *_tm) {
 		.tm_isdst = _tm->tm_isdst,
 #if !SPRT_WINDOWS
 		.tm_gmtoff = _tm->tm_gmtoff,
-		.tm_zone = _tm->tm_zone,
+		.tm_zone = (char *)_tm->tm_zone,
 #endif
 	};
 	return target;

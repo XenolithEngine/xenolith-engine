@@ -24,8 +24,8 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_STAT_H_
 
 #include <sprt/c/cross/__sprt_config.h>
+#include <sprt/c/cross/__sprt_fcntl.h>
 #include <sprt/c/bits/stat.h>
-#include <sprt/c/bits/atfile.h>
 
 __SPRT_BEGIN_DECL
 

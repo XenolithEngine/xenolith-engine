@@ -35,7 +35,7 @@ all:
 	@mkdir -p $(LIBNAME)
 	cd $(LIBNAME); \
 		CC=$(SP_CC) CXX=$(SP_CXX) \
-		CFLAGS="$(SP_OPT)" \
+		CFLAGS="$(SP_CFLAGS)" \
 		CPP="$(SP_CC) -E" \
 		AR="$(SP_AR)" \
 		CPPFLAGS="-I$(SP_INSTALL_PREFIX)/include -I$(SP_INSTALL_PREFIX)/include_libc" \

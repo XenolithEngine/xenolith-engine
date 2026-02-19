@@ -22,6 +22,7 @@
 
 #include <sprt/runtime/string.h>
 #include <sprt/runtime/detail/new.h>
+
 #include "private/SPRTPrivate.h"
 
 #if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS || SPRT_WINDOWS
@@ -39,6 +40,10 @@
 
 #if SPRT_WINDOWS
 #include "SPRuntimePlatform-windows.cc"
+#endif
+
+#if SPRT_MACOS
+#include "SPRuntimePlatform-macos.cc"
 #endif
 
 #include <locale.h>

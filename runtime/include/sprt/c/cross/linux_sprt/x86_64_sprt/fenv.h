@@ -23,7 +23,7 @@ typedef unsigned short __sprt_fexcept_t;
 #define __SPRT_FE_OVERFLOW   8
 #define __SPRT_FE_UNDERFLOW  16
 #define __SPRT_FE_INEXACT    32
-#define __SPRT_FE_ALL_EXCEPT 63
+#define __SPRT_FE_ALL_EXCEPT ( __SPRT_FE_INEXACT |  __SPRT_FE_DIVBYZERO |  __SPRT_FE_UNDERFLOW |  __SPRT_FE_OVERFLOW |  __SPRT_FE_INVALID)
 #define __SPRT_FE_TONEAREST  0
 #define __SPRT_FE_DOWNWARD   0x400
 #define __SPRT_FE_UPWARD     0x800

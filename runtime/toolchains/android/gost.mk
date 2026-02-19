@@ -36,7 +36,7 @@ all:
 			-DADDCARRY_U64=FALSE \
 			$(LIB_SRC_DIR)/$(LIBNAME); \
 		make gost_engine_static
-	mv -f $(LIBNAME)/libgost.a $(SP_INSTALL_PREFIX)/lib/libgost.a 
+	mv -f $(LIBNAME)/libgost.a $(SP_INSTALL_PREFIX)/lib/libgost_engine.a 
 	cp -f $(LIB_SRC_DIR)/$(LIBNAME)/gost-engine.h $(SP_INSTALL_PREFIX)/include
 	cp -f $(LIB_SRC_DIR)/$(LIBNAME)/e_gost_err.h $(SP_INSTALL_PREFIX)/include
 	rm -rf $(LIBNAME)

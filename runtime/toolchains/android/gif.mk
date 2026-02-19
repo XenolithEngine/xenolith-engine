@@ -27,6 +27,6 @@ include ../common/configure.mk
 
 all:
 	$(MAKE) -C $(LIB_SRC_DIR)/$(LIBNAME) clean
-	$(MAKE) -j8 -C $(LIB_SRC_DIR)/$(LIBNAME) CFLAGS="$(SP_OPT) -std=gnu99 -Wall" CC=$(SP_CC) AR=$(SP_AR) libgif.a
+	$(MAKE) -j8 -C $(LIB_SRC_DIR)/$(LIBNAME) CFLAGS="$(SP_CFLAGS) -std=gnu99 -Wall" CC=$(SP_CC) AR=$(SP_AR) libgif.a
 	mv -f $(LIB_SRC_DIR)/$(LIBNAME)/libgif.a $(SP_INSTALL_PREFIX)/lib/libgif.a
 	cp -f $(LIB_SRC_DIR)/$(LIBNAME)/gif_lib.h $(SP_INSTALL_PREFIX)/include/gif_lib.h

@@ -29,7 +29,7 @@ all:
 	@mkdir -p $(SP_INSTALL_PREFIX)/lib $(SP_INSTALL_PREFIX)/include
 	@mkdir -p $(LIBNAME)
 	cd $(LIBNAME); \
-		$(SP_CC) $(SP_OPT) -c -o sqlite3.o $(LIB_SRC_DIR)/$(LIBNAME)/sqlite3.c; \
+		$(SP_CC) $(SP_CFLAGS) -c -o sqlite3.o $(LIB_SRC_DIR)/$(LIBNAME)/sqlite3.c; \
 		$(SP_AR) rcs libsqlite3.a sqlite3.o
 	mv -f $(LIBNAME)/libsqlite3.a $(SP_INSTALL_PREFIX)/lib/
 	rm -rf $(LIBNAME)

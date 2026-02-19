@@ -20,9 +20,9 @@
  THE SOFTWARE.
  **/
 
-#include "sprt/c/__sprt_errno.h"
 #define __SPRT_BUILD 1
 
+#include <sprt/c/__sprt_errno.h>
 #include <sprt/c/sys/__sprt_epoll.h>
 #include <sprt/c/cross/__sprt_signal.h>
 #include <sprt/runtime/log.h>

@@ -59,6 +59,75 @@ THE SOFTWARE.
 
 #include "private/SPRTSpecific.h"
 
+static_assert(FE_INEXACT == __SPRT_FE_INEXACT);
+static_assert(FE_UNDERFLOW == __SPRT_FE_UNDERFLOW);
+static_assert(FE_OVERFLOW == __SPRT_FE_OVERFLOW);
+static_assert(FE_DIVBYZERO == __SPRT_FE_DIVBYZERO);
+static_assert(FE_INVALID == __SPRT_FE_INVALID);
+
+static_assert(FE_ALL_EXCEPT == __SPRT_FE_ALL_EXCEPT);
+static_assert(FE_TONEAREST == __SPRT_FE_TONEAREST);
+static_assert(FE_UPWARD == __SPRT_FE_UPWARD);
+static_assert(FE_DOWNWARD == __SPRT_FE_DOWNWARD);
+static_assert(FE_TOWARDZERO == __SPRT_FE_TOWARDZERO);
+
+#ifdef FE_DENORMALOPERAND
+static_assert(FE_DENORMALOPERAND == __SPRT_FE_DENORMALOPERAND);
+#endif
+
+#ifdef FE_FLUSHTOZERO
+static_assert(FE_FLUSHTOZERO == __SPRT_FE_FLUSHTOZERO);
+#endif
+
+static_assert(sizeof(fenv_t) == sizeof(__sprt_fenv_t));
+static_assert(sprt::is_same_v<fexcept_t, __sprt_fexcept_t>);
+
+static_assert(sizeof(jmp_buf) == sizeof(__sprt_jmp_buf));
+
+static_assert(SIGHUP == __SPRT_SIGHUP);
+static_assert(SIGINT == __SPRT_SIGINT);
+static_assert(SIGQUIT == __SPRT_SIGQUIT);
+static_assert(SIGILL == __SPRT_SIGILL);
+static_assert(SIGTRAP == __SPRT_SIGTRAP);
+static_assert(SIGABRT == __SPRT_SIGABRT);
+static_assert(SIGIOT == __SPRT_SIGIOT);
+#ifdef SIGEMT
+static_assert(SIGEMT == __SPRT_SIGEMT);
+#endif
+static_assert(SIGFPE == __SPRT_SIGFPE);
+static_assert(SIGKILL == __SPRT_SIGKILL);
+static_assert(SIGBUS == __SPRT_SIGBUS);
+static_assert(SIGSEGV == __SPRT_SIGSEGV);
+static_assert(SIGSYS == __SPRT_SIGSYS);
+static_assert(SIGPIPE == __SPRT_SIGPIPE);
+static_assert(SIGALRM == __SPRT_SIGALRM);
+static_assert(SIGTERM == __SPRT_SIGTERM);
+static_assert(SIGURG == __SPRT_SIGURG);
+static_assert(SIGSTOP == __SPRT_SIGSTOP);
+static_assert(SIGTSTP == __SPRT_SIGTSTP);
+static_assert(SIGCONT == __SPRT_SIGCONT);
+static_assert(SIGCHLD == __SPRT_SIGCHLD);
+static_assert(SIGTTIN == __SPRT_SIGTTIN);
+static_assert(SIGTTOU == __SPRT_SIGTTOU);
+static_assert(SIGIO == __SPRT_SIGIO);
+static_assert(SIGXCPU == __SPRT_SIGXCPU);
+static_assert(SIGXFSZ == __SPRT_SIGXFSZ);
+static_assert(SIGVTALRM == __SPRT_SIGVTALRM);
+static_assert(SIGPROF == __SPRT_SIGPROF);
+static_assert(SIGWINCH == __SPRT_SIGWINCH);
+#ifdef SIGINFO
+static_assert(SIGINFO == __SPRT_SIGINFO);
+#endif
+static_assert(SIGUSR1 == __SPRT_SIGUSR1);
+static_assert(SIGUSR2 == __SPRT_SIGUSR2);
+
+static_assert(SIG_DFL == __SPRT_SIG_DFL);
+//static_assert(SIG_IGN == __SPRT_SIG_IGN);
+//static_assert(SIG_HOLD == __SPRT_SIG_HOLD);
+//static_assert(SIG_ERR == __SPRT_SIG_ERR);
+
+static_assert(sprt::is_same_v<sig_atomic_t, __sprt_sig_atomic_t>);
+
 #if SPRT_ANDROID
 namespace sprt::platform {
 
@@ -103,6 +172,8 @@ __SPRT_C_FUNC __SPRT_FALLBACK_ATTR(const) int *__SPRT_ID(__errno_location)(void)
 	return ::__errno();
 #elif SPRT_WINDOWS
 	return ::_errno();
+#elif SPRT_MACOS
+	return __error();
 #else
 	return ::__errno_location();
 #endif
@@ -186,7 +257,7 @@ __SPRT_C_FUNC int __SPRT_ID(sigfillset)(__SPRT_ID(sigset_t) * set) {
 	set->__bits[0] = 0xffff'ffff;
 	return 0;
 #else
-	return ::sigfillset((sigset_t *)set);
+	return sigfillset((sigset_t *)set);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(sigaddset)(__SPRT_ID(sigset_t) * set, int s) {
@@ -197,7 +268,7 @@ __SPRT_C_FUNC int __SPRT_ID(sigaddset)(__SPRT_ID(sigset_t) * set, int s) {
 	*__sprt___errno_location() = EINVAL;
 	return -1;
 #else
-	return ::sigaddset((sigset_t *)set, s);
+	return sigaddset((sigset_t *)set, s);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(sigdelset)(__SPRT_ID(sigset_t) * set, int s) {
@@ -209,7 +280,7 @@ __SPRT_C_FUNC int __SPRT_ID(sigdelset)(__SPRT_ID(sigset_t) * set, int s) {
 	*__sprt___errno_location() = EINVAL;
 	return -1;
 #else
-	return ::sigdelset((sigset_t *)set, s);
+	return sigdelset((sigset_t *)set, s);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(sigismember)(const __SPRT_ID(sigset_t) * set, int s) {
@@ -219,7 +290,7 @@ __SPRT_C_FUNC int __SPRT_ID(sigismember)(const __SPRT_ID(sigset_t) * set, int s)
 	}
 	return 0;
 #else
-	return ::sigismember((const sigset_t *)set, s);
+	return sigismember((const sigset_t *)set, s);
 #endif
 }
 __SPRT_C_FUNC int __SPRT_ID(sigprocmask)(int m, const __SPRT_ID(sigset_t) * __SPRT_RESTRICT a,
@@ -349,6 +420,8 @@ __SPRT_C_FUNC char *__SPRT_ID(catgets)(__SPRT_ID(nl_catd) cat, int a, int b, con
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
+#elif SPRT_MACOS
+	return ::catgets(nl_catd(cat), a, b, str);
 #else
 	return ::catgets(cat, a, b, str);
 #endif
@@ -370,6 +443,8 @@ __SPRT_C_FUNC int __SPRT_ID(catclose)(__SPRT_ID(nl_catd) cat) {
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
+#elif SPRT_MACOS
+	return ::catclose(nl_catd(cat));
 #else
 	return ::catclose(cat);
 #endif

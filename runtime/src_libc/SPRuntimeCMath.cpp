@@ -28,15 +28,84 @@ THE SOFTWARE.
 
 #include <math.h>
 
+static_assert(MATH_ERRNO == __SPRT_MATH_ERRNO);
+static_assert(MATH_ERREXCEPT == __SPRT_MATH_ERREXCEPT);
+
+#if !defined(SPRT_MACOS)
+static_assert(math_errhandling == __SPRT_math_errhandling);
+#endif
+
+static_assert(FP_NAN == __SPRT_FP_NAN);
+static_assert(FP_INFINITE == __SPRT_FP_INFINITE);
+static_assert(FP_ZERO == __SPRT_FP_ZERO);
+static_assert(FP_SUBNORMAL == __SPRT_FP_SUBNORMAL);
+static_assert(FP_NORMAL == __SPRT_FP_NORMAL);
+
+static_assert(M_E == __SPRT_M_E);
+static_assert(M_LOG2E == __SPRT_M_LOG2E);
+static_assert(M_LOG10E == __SPRT_M_LOG10E);
+static_assert(M_LN2 == __SPRT_M_LN2);
+static_assert(M_LN10 == __SPRT_M_LN10);
+static_assert(M_PI == __SPRT_M_PI);
+static_assert(M_PI_2 == __SPRT_M_PI_2);
+static_assert(M_PI_4 == __SPRT_M_PI_4);
+static_assert(M_1_PI == __SPRT_M_1_PI);
+static_assert(M_2_PI == __SPRT_M_2_PI);
+static_assert(M_2_SQRTPI == __SPRT_M_2_SQRTPI);
+static_assert(M_SQRT2 == __SPRT_M_SQRT2);
+static_assert(M_SQRT1_2 == __SPRT_M_SQRT1_2);
+
+//static_assert(NAN == __SPRT_NAN);
+static_assert(INFINITY == __SPRT_INFINITY);
+static_assert(HUGE_VAL == __SPRT_HUGE_VAL);
+static_assert(HUGE_VALF == __SPRT_HUGE_VALF);
+static_assert(HUGE_VALL == __SPRT_HUGE_VALL);
+
 namespace sprt {
 
-__SPRT_C_FUNC int __SPRT_ID(__fpclassify)(double v) { return ::fpclassify(v); }
-__SPRT_C_FUNC int __SPRT_ID(__fpclassifyf)(float v) { return ::fpclassify(v); }
-__SPRT_C_FUNC int __SPRT_ID(__fpclassifyl)(long double v) { return ::fpclassify(v); }
+__SPRT_C_FUNC int __SPRT_ID(__fpclassify)(double v) {
+#if SPRT_MACOS
+	return ::__fpclassifyd(v);
+#else
+	return ::fpclassify(v);
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(__fpclassifyf)(float v) {
+#if SPRT_MACOS
+	return ::__fpclassifyf(v);
+#else
+	return ::fpclassify(v);
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(__fpclassifyl)(long double v) {
+#if SPRT_MACOS
+	return ::__fpclassifyl(v);
+#else
+	return ::fpclassify(v);
+#endif
+}
 
-__SPRT_C_FUNC int __SPRT_ID(__signbit)(double v) { return ::signbit(v); }
-__SPRT_C_FUNC int __SPRT_ID(__signbitf)(float v) { return ::signbit(v); }
-__SPRT_C_FUNC int __SPRT_ID(__signbitl)(long double v) { return ::signbit(v); }
+__SPRT_C_FUNC int __SPRT_ID(__signbit)(double v) {
+#if SPRT_MACOS
+	return ::__inline_signbitd(v);
+#else
+	return ::signbit(v);
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(__signbitf)(float v) {
+#if SPRT_MACOS
+	return ::__inline_signbitf(v);
+#else
+	return ::signbit(v);
+#endif
+}
+__SPRT_C_FUNC int __SPRT_ID(__signbitl)(long double v) {
+#if SPRT_MACOS
+	return ::__inline_signbitl(v);
+#else
+	return ::signbit(v);
+#endif
+}
 
 __SPRT_C_FUNC double __SPRT_ID(acos_impl)(double value) { return ::acos(value); }
 

@@ -191,7 +191,7 @@ void WaylandDataInputTransfer::schedule(NotNull<LooperAdapter> looper) {
 	}
 	handle = looper->listenPollableHandle(pipefd[0],
 			filesystem::PollFlags::In | filesystem::PollFlags::HungUp,
-			[this](int fd, filesystem::PollFlags flags) {
+			[this](native_handle fd, filesystem::PollFlags flags) {
 		if (hasFlag(flags, filesystem::PollFlags::In)) {
 			ssize_t bytesRead = 0;
 			do {
@@ -284,7 +284,7 @@ bool WaylandDataOutputTransfer::init(Bytes &&d, int fd) {
 	} else if (!success && (errno == EAGAIN || errno == EWOULDBLOCK)) {
 		// make handle to wait for other end
 		handle = LooperAdapter::getForThread()->listenPollableHandle(targetFd,
-				filesystem::PollFlags::Out, [this](int fd, filesystem::PollFlags flags) {
+				filesystem::PollFlags::Out, [this](native_handle fd, filesystem::PollFlags flags) {
 			if (hasFlag(flags, filesystem::PollFlags::Out)) {
 				write();
 				if (offset == data.size()) {

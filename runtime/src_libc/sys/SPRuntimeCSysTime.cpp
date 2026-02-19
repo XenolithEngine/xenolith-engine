@@ -37,6 +37,12 @@ THE SOFTWARE.
 #include <sys/time.h>
 #endif
 
+#if SPRT_MACOS
+#include <sys/syslimits.h>
+#include <sys/fcntl.h>
+#include <unistd.h>
+#endif
+
 #include "private/SPRTFilename.h"
 #include "private/SPRTSpecific.h"
 
@@ -220,6 +226,37 @@ __SPRT_C_FUNC int __SPRT_ID(futimesat)(int fd, const char *path, const __SPRT_TI
 	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#elif SPRT_MACOS
+	if (path[0] == '/') {
+		return utimes(path, nativeTs);
+	}
+
+	char buffer[PATH_MAX] = {0};
+	if (fd == __SPRT_AT_FDCWD) {
+		if (getcwd(buffer, PATH_MAX) != 0) {
+			*__sprt___errno_location() = EBADF;
+			return -1;
+		}
+	} else {
+		if (fcntl(fd, F_GETPATH, buffer) != 0 || buffer[0] == 0) {
+			*__sprt___errno_location() = EBADF;
+			return -1;
+		}
+	}
+
+	auto len = __sprt_strlen(buffer);
+	auto target = &buffer[len];
+	auto remains = PATH_MAX - len;
+
+	target = strappend(target, &remains, "/", 1);
+	target = strappend(target, &remains, path, __sprt_strlen(path));
+
+	if (remains > 0) {
+		return utimes(buffer, nativeTs);
+	}
+
+	*__sprt___errno_location() = EFAULT;
 	return -1;
 #else
 	return ::futimesat(fd, path, nativeTs);

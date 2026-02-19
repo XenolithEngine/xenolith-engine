@@ -343,7 +343,7 @@ __SPRT_C_FUNC int __SPRT_ID(_IdnToUnicode)(uint32_t dwFlags, const char16_t *lpU
 }
 
 __SPRT_C_FUNC __SPRT_ID(uint32_t)
-		__SPRT_ID(_GetCurrentDirectory)(__SPRT_ID(uint32_t) nBufferLength, char *lpBuffer) {
+		__SPRT_ID(_GetCurrentDirectory)(__SPRT_ID(uint32_t) nBufferLength, char16_t *lpBuffer) {
 	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;

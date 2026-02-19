@@ -23,9 +23,17 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_MALLOC_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_MALLOC_H_
 
+#ifdef __SPRT_BUILD
+
+#include_next <malloc.h>
+
+#else
+
 #include <stdlib.h>
 
 #define _aligned_malloc(Size, Align) aligned_alloc(Align, Size)
 #define _aligned_free(Ptr) aligned_free(Ptr)
+
+#endif
 
 #endif

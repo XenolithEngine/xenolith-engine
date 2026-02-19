@@ -49,6 +49,13 @@ extern size_t (*_wcsftime_l)(wchar_t *__buf, size_t __n, const wchar_t *__fmt,
 #include "platform/windows/wchar.cc"
 #endif
 
+#if SPRT_MACOS
+#include <xlocale.h>
+#endif
+
+static_assert(sizeof(mbstate_t) == sizeof(__SPRT_MBSTATE_NAME));
+static_assert(sizeof(wctype_t) == sizeof(wctype_t));
+
 namespace sprt {
 
 __SPRT_C_FUNC __SPRT_WCHAR_T *__SPRT_ID(
@@ -354,7 +361,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcsftime)(__SPRT_WCHAR_T *__SPRT_RESTR
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fgetwc_unlocked)(__SPRT_ID(FILE) * f) {
-#if SPRT_ANDROID
+#if SPRT_ANDROID || SPRT_MACOS
 	return ::fgetwc(f);
 #elif SPRT_WINDOWS
 	return _fgetwc_nolock(f);
@@ -364,7 +371,7 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fgetwc_unlocked)(__SPRT_ID(FILE) * f) 
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwc_unlocked)(__SPRT_ID(FILE) * f) {
-#if SPRT_ANDROID
+#if SPRT_ANDROID || SPRT_MACOS
 	return ::getwc(f);
 #elif SPRT_WINDOWS
 	return _getwc_nolock(f);
@@ -374,7 +381,7 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwc_unlocked)(__SPRT_ID(FILE) * f) {
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwchar_unlocked)(void) {
-#if SPRT_ANDROID
+#if SPRT_ANDROID || SPRT_MACOS
 	return ::getwchar();
 #elif SPRT_WINDOWS
 	return _getwchar_nolock();
@@ -384,7 +391,7 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(getwchar_unlocked)(void) {
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fputwc_unlocked)(__SPRT_WCHAR_T c, __SPRT_ID(FILE) * f) {
-#if SPRT_ANDROID
+#if SPRT_ANDROID || SPRT_MACOS
 	return ::fputwc(c, f);
 #elif SPRT_WINDOWS
 	return _fputwc_nolock(c, f);
@@ -394,7 +401,7 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(fputwc_unlocked)(__SPRT_WCHAR_T c, __S
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(putwc_unlocked)(__SPRT_WCHAR_T c, __SPRT_ID(FILE) * f) {
-#if SPRT_ANDROID
+#if SPRT_ANDROID || SPRT_MACOS
 	return ::putwc(c, f);
 #elif SPRT_WINDOWS
 	return _putwc_nolock(c, f);
@@ -404,7 +411,7 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(putwc_unlocked)(__SPRT_WCHAR_T c, __SP
 }
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(putwchar_unlocked)(__SPRT_WCHAR_T c) {
-#if SPRT_ANDROID
+#if SPRT_ANDROID || SPRT_MACOS
 	return putwchar(c);
 #elif SPRT_WINDOWS
 	return _putwchar_nolock(c);
@@ -415,7 +422,7 @@ __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(putwchar_unlocked)(__SPRT_WCHAR_T c) {
 
 __SPRT_C_FUNC __SPRT_WCHAR_T *__SPRT_ID(fgetws_unlocked)(__SPRT_WCHAR_T *__SPRT_RESTRICT ptr, int c,
 		__SPRT_ID(FILE) * __SPRT_RESTRICT f) {
-#if SPRT_ANDROID
+#if SPRT_ANDROID || SPRT_MACOS
 	return ::fgetws(ptr, c, f);
 #else
 	return fgetws_unlocked(ptr, c, f);
@@ -424,7 +431,7 @@ __SPRT_C_FUNC __SPRT_WCHAR_T *__SPRT_ID(fgetws_unlocked)(__SPRT_WCHAR_T *__SPRT_
 
 __SPRT_C_FUNC int __SPRT_ID(fputws_unlocked)(const __SPRT_WCHAR_T *__SPRT_RESTRICT ptr,
 		__SPRT_ID(FILE) * __SPRT_RESTRICT f) {
-#if SPRT_ANDROID
+#if SPRT_ANDROID || SPRT_MACOS
 	return ::fputws(ptr, f);
 #else
 	return fputws_unlocked(ptr, f);

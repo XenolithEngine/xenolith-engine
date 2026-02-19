@@ -94,17 +94,12 @@ To force a thread to terminate, SPRT will exit to the thread's initial function 
 This method, if C++ exceptions are enabled by the compiler, allows SPRT to correctly call all
 destructors and unwind the stack.
 
-pthread_cancel in asynchronous mode uses QueueUserAPC2 + QUEUE_USER_APC_FLAGS_SPECIAL_USER_APC.
-This function cannot interrupt execution of code in user space, but it can interrupt any system
-call and correctly call the destructors of the current stack frame.
-
-pthread_testcancel is called whenever possible in all functions described in POSIX as
-cancellation points and implemented in SPRT.
-
 There is no way to gracefully terminate a thread created outside of pthread (that is, not
 pthread_create) using pthread_exit. Such a thread, however, will be terminated using
 _endthreadex. In this case, data leaks, deadlocks and race conditions are possible, since
 destructors will not be called.
+
+pthread_cancel is not disabled in runtme configuration
 
 = Thread attaching =
 
@@ -166,7 +161,7 @@ pthread_condattr_setclock restrictions:
 
 = Barrier =
 
-* Experimental algorithm, based on in/out tickeds with WaitOnAddress (needs confirmation in high loads)
+* Experimental algorithm, based on in/out tickets with WaitOnAddress (needs confirmation in high loads)
 
 
 = Keys =

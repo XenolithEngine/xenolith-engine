@@ -34,7 +34,15 @@ THE SOFTWARE.
 #include <Windows.h>
 #include <dbghelp.h>
 #else
+#if __has_include(<cxxabi.h>)
 #include <cxxabi.h>
+#else
+#warning "No <cxxabi.h> available, replacing with forward declaration"
+namespace abi {
+extern "C" char *__cxa_demangle(const char *mangled_name, char *output_buffer,
+		__SPRT_ID(size_t) * length, int *status);
+}
+#endif
 #endif
 
 namespace sprt::backtrace::detail {
@@ -233,7 +241,27 @@ static void performBacktrace(State &state, size_t offset, const callback<void(St
 
 #else
 
+#if __has_include(<backtrace.h>)
 #include <backtrace.h>
+#else
+#warning "No <backtrace.h> available, replacing with forward declaration"
+
+struct backtrace_state;
+
+typedef void (*backtrace_error_callback)(void *data, const char *msg, int errnum);
+
+extern "C" struct backtrace_state *backtrace_create_state(const char *filename, int threaded,
+		backtrace_error_callback error_callback, void *data);
+
+typedef int (*backtrace_full_callback)(void *data, __SPRT_ID(uintptr_t) pc, const char *filename,
+		int lineno, const char *function);
+
+extern "C" int backtrace_full(struct backtrace_state *state, int skip,
+		backtrace_full_callback callback, backtrace_error_callback error_callback, void *data);
+
+
+#endif
+
 
 // libbacktrace info
 // see https://github.com/ianlancetaylor/libbacktrace
@@ -246,8 +274,8 @@ struct State {
 };
 
 static void debug_backtrace_error(void *data, const char *msg, int errnum) {
-	::perror("libbacktrace");
-	::perror(msg);
+	::__sprt_perror("libbacktrace");
+	::__sprt_perror(msg);
 }
 
 static int debug_backtrace_full_callback(void *data, uintptr_t pc, const char *filename, int lineno,

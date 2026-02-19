@@ -42,21 +42,37 @@ THE SOFTWARE.
 
 #endif
 
+#if SPRT_MACOS
+#include <sys/syslimits.h>
+#include <unistd.h>
+#include <fcntl.h>
+#endif
+
+static_assert(sizeof(struct dirent) == sizeof(struct __SPRT_DIRENT_NAME));
+
 namespace sprt {
 
-__SPRT_C_FUNC __SPRT_ID(DIR) * __SPRT_ID(opendir)(const char *path) { return opendir(path); }
-
-__SPRT_C_FUNC __SPRT_ID(DIR) * __SPRT_ID(fdopendir)(int __dir_fd) { return fdopendir(__dir_fd); }
-
-__SPRT_C_FUNC struct __SPRT_DIRENT_NAME *__SPRT_ID(readdir)(__SPRT_ID(DIR) * __dir) {
-	return (struct __SPRT_DIRENT_NAME *)readdir64(__dir);
+__SPRT_C_FUNC __SPRT_ID(DIR) * __SPRT_ID(opendir)(const char *path) {
+	return (__SPRT_ID(DIR) *)opendir(path);
 }
 
-__SPRT_C_FUNC int __SPRT_ID(closedir)(__SPRT_ID(DIR) * __dir) { return closedir(__dir); }
+__SPRT_C_FUNC __SPRT_ID(DIR) * __SPRT_ID(fdopendir)(int __dir_fd) {
+	return (__SPRT_ID(DIR) *)fdopendir(__dir_fd);
+}
+
+__SPRT_C_FUNC struct __SPRT_DIRENT_NAME *__SPRT_ID(readdir)(__SPRT_ID(DIR) * __dir) {
+#if SPRT_MACOS
+	return (struct __SPRT_DIRENT_NAME *)readdir((DIR *)__dir);
+#else
+	return (struct __SPRT_DIRENT_NAME *)readdir64(__dir);
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(closedir)(__SPRT_ID(DIR) * __dir) { return closedir((DIR *)__dir); }
 
 __SPRT_C_FUNC int __SPRT_ID(rewinddir)(__SPRT_ID(DIR) * __dir) {
 #ifndef SPRT_WINDOWS
-	rewinddir(__dir);
+	rewinddir((DIR *)__dir);
 	return 0;
 #else
 	return rewinddir(__dir);
@@ -65,21 +81,25 @@ __SPRT_C_FUNC int __SPRT_ID(rewinddir)(__SPRT_ID(DIR) * __dir) {
 
 __SPRT_C_FUNC int __SPRT_ID(seekdir)(__SPRT_ID(DIR) * __dir, long __location) {
 #ifndef SPRT_WINDOWS
-	::seekdir(__dir, __location);
+	::seekdir((DIR *)__dir, __location);
 	return 0;
 #else
 	return seekdir(__dir, __location);
 #endif
 }
 
-__SPRT_C_FUNC long __SPRT_ID(telldir)(__SPRT_ID(DIR) * __dir) { return telldir(__dir); }
+__SPRT_C_FUNC long __SPRT_ID(telldir)(__SPRT_ID(DIR) * __dir) { return telldir((DIR *)__dir); }
 
-__SPRT_C_FUNC int __SPRT_ID(dirfd)(__SPRT_ID(DIR) * __dir) { return dirfd(__dir); }
+__SPRT_C_FUNC int __SPRT_ID(dirfd)(__SPRT_ID(DIR) * __dir) { return dirfd((DIR *)__dir); }
 
 __SPRT_C_FUNC int __SPRT_ID(alphasort)(const struct __SPRT_DIRENT_NAME **__lhs,
 		const struct __SPRT_DIRENT_NAME **__rhs) {
 #ifndef SPRT_WINDOWS
+#if SPRT_MACOS
+	return ::alphasort((const struct dirent **)__lhs, (const struct dirent **)__rhs);
+#else
 	return ::alphasort64((const struct dirent64 **)__lhs, (const struct dirent64 **)__rhs);
+#endif
 #else
 	return alphasort(__lhs, __rhs);
 #endif
@@ -95,11 +115,18 @@ __SPRT_C_FUNC int __SPRT_ID(scandir)(const char *path, struct __SPRT_DIRENT_NAME
 		int (*__comparator)(const struct __SPRT_DIRENT_NAME **,
 				const struct __SPRT_DIRENT_NAME **)) {
 #ifndef SPRT_WINDOWS
+#if SPRT_MACOS
+	return ::scandir(path, (struct dirent ***)__name_list,
+			reinterpret_cast<int (*)(const struct dirent *)>(__filter),
+			reinterpret_cast<int (*)(const struct dirent **, const struct dirent **)>(
+					__comparator));
+#else
 	// call with native path
 	return ::scandir64(path, (struct dirent64 ***)__name_list,
 			reinterpret_cast<int (*)(const struct dirent64 *)>(__filter),
 			reinterpret_cast<int (*)(const struct dirent64 **, const struct dirent64 **)>(
 					__comparator));
+#endif
 #else
 	return scandir(path, __name_list, __filter, __comparator);
 #endif
@@ -111,10 +138,49 @@ __SPRT_C_FUNC int __SPRT_ID(scandirat)(int __dir_fd, const char *path,
 		int (*__comparator)(const struct __SPRT_DIRENT_NAME **,
 				const struct __SPRT_DIRENT_NAME **)) {
 #ifndef SPRT_WINDOWS
+#if SPRT_MACOS
+	if (path[0] == '/') {
+		return ::scandir(path, (struct dirent ***)__name_list,
+				reinterpret_cast<int (*)(const struct dirent *)>(__filter),
+				reinterpret_cast<int (*)(const struct dirent **, const struct dirent **)>(
+						__comparator));
+	}
+
+	char buffer[PATH_MAX] = {0};
+	if (__dir_fd == AT_FDCWD) {
+		if (getcwd(buffer, PATH_MAX) != 0) {
+			*__sprt___errno_location() = EBADF;
+			return -1;
+		}
+	} else {
+		if (fcntl(__dir_fd, F_GETPATH, buffer) != 0 || buffer[0] == 0) {
+			*__sprt___errno_location() = EBADF;
+			return -1;
+		}
+	}
+
+	auto len = __sprt_strlen(buffer);
+	auto target = &buffer[len];
+	auto remains = PATH_MAX - len;
+
+	target = strappend(target, &remains, "/", 1);
+	target = strappend(target, &remains, path, __sprt_strlen(path));
+
+	if (remains > 0) {
+		return ::scandir(buffer, (struct dirent ***)__name_list,
+				reinterpret_cast<int (*)(const struct dirent *)>(__filter),
+				reinterpret_cast<int (*)(const struct dirent **, const struct dirent **)>(
+						__comparator));
+	}
+
+	*__sprt___errno_location() = EFAULT;
+	return -1;
+#else
 	return ::scandirat64(__dir_fd, path, (struct dirent64 ***)__name_list,
 			reinterpret_cast<int (*)(const struct dirent64 *)>(__filter),
 			reinterpret_cast<int (*)(const struct dirent64 **, const struct dirent64 **)>(
 					__comparator));
+#endif
 #else
 	return scandirat(__dir_fd, path, __name_list, __filter, __comparator);
 #endif

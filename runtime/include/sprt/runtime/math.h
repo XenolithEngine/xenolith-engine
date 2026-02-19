@@ -110,6 +110,10 @@ inline constexpr int32_t Max<int32_t> = __SPRT_INT32_MAX;
 template <>
 inline constexpr int64_t Max<int64_t> = __SPRT_INT64_MAX;
 
+#if SPRT_MACOS
+template <>
+inline constexpr int64_t Max<size_t> = __SPRT_SIZE_MAX;
+#endif
 
 template <typename T>
 constexpr inline T Min;
@@ -146,6 +150,11 @@ inline constexpr uint32_t Min<int32_t> = __SPRT_INT32_C(-1) - __SPRT_INT32_MAX;
 
 template <>
 inline constexpr uint64_t Min<int64_t> = __SPRT_INT64_C(-1) - __SPRT_INT64_MAX;
+
+#if SPRT_MACOS
+template <>
+inline constexpr int64_t Min<size_t> = __SPRT_SIZE_MIN;
+#endif
 
 template <signed_or_unsigned_integer T>
 static constexpr const int Digits =

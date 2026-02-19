@@ -26,12 +26,30 @@
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/runtime/int.h>
 #include <sprt/runtime/platform.h>
+#include <sprt/runtime/mutex.h>
+#include <sprt/runtime/filesystem/lookup.h>
 
 #if SPRT_ANDROID
 #include <time.h>
 #endif
 
 namespace sprt::platform {
+
+struct GlobalConfig {
+	static char localeBuf[6];
+
+	qmutex infoMutex;
+	StringView uniqueIdBuf;
+	StringView execPathBuf;
+	StringView homePathBuf;
+	StringView locale = StringView(localeBuf);
+
+	AppConfig config;
+
+	filesystem::LocationInfo current;
+
+	memory::pool_t *_pool = memory::pool::create(memory::self_contained_allocator);
+};
 
 SPRT_LOCAL bool initialize(AppConfig &&cfg, int &);
 SPRT_LOCAL void terminate();

@@ -35,6 +35,14 @@ THE SOFTWARE.
 #include <stdarg.h>
 #include <stdio.h>
 
+#if SPRT_LINUX || SPRT_ANDROID
+#include <locale.h>
+#endif
+
+#if SPRT_MACOS
+#include <xlocale.h>
+#endif
+
 #if SPRT_WINDOWS
 #include "platform/windows/stdio.cc"
 #endif
@@ -97,6 +105,8 @@ __SPRT_C_FUNC __SPRT_ID(FILE)
 		return 0;
 	}, 0);
 	return ret;
+#elif SPRT_MACOS
+	return ::fopen(path, mode);
 #else
 	return ::fopen64(path, mode);
 #endif
@@ -114,6 +124,8 @@ __SPRT_C_FUNC __SPRT_ID(FILE)
 		return 0;
 	}, 0);
 	return ret;
+#elif SPRT_MACOS
+	return ::freopen(path, mode, file);
 #else
 	return ::freopen64(path, mode, file);
 #endif
@@ -247,15 +259,14 @@ __SPRT_C_FUNC int __SPRT_ID(
 	va_start(list, fmt);
 
 
-#ifdef SPRT_WINDOWS
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#ifdef SPRT_WINDOWS
 	auto ret = ::vsprintf(buf, fmt, list);
-#pragma clang diagnostic pop
 #else
 	auto ret = ::vsprintf(buf, fmt, list);
 #endif
-
+#pragma clang diagnostic pop
 
 	va_end(list);
 	return ret;
@@ -284,14 +295,14 @@ __SPRT_C_FUNC int __SPRT_ID(vfprintf_impl)(__SPRT_ID(FILE) * __SPRT_RESTRICT fil
 
 __SPRT_C_FUNC int __SPRT_ID(vsprintf_impl)(char *__SPRT_RESTRICT buf,
 		const char *__SPRT_RESTRICT fmt, __SPRT_ID(va_list) arg) {
-#ifdef SPRT_WINDOWS
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#ifdef SPRT_WINDOWS
 	return ::vsprintf(buf, fmt, arg);
-#pragma clang diagnostic pop
 #else
 	return ::vsprintf(buf, fmt, arg);
 #endif
+#pragma clang diagnostic pop
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vsnprintf_impl)(char *__SPRT_RESTRICT buf, size_t n,
@@ -562,7 +573,7 @@ __SPRT_C_FUNC int __SPRT_ID(getc_unlocked)(__SPRT_ID(FILE) * f) {
 #if SPRT_WINDOWS
 	return _fgetc_nolock(f);
 #else
-	return ::getc_unlocked(f);
+	return getc_unlocked(f);
 #endif
 }
 
@@ -570,7 +581,7 @@ __SPRT_C_FUNC int __SPRT_ID(getchar_unlocked)(void) {
 #if SPRT_WINDOWS
 	return _getchar_nolock();
 #else
-	return ::getchar_unlocked();
+	return getchar_unlocked();
 #endif
 }
 
@@ -638,6 +649,10 @@ __SPRT_C_FUNC int __SPRT_ID(
 
 #if SPRT_WINDOWS
 	auto ret = ::_vscanf_l(fmt, loc, list);
+#elif SPRT_LINUX || SPRT_ANDROID
+	auto cur = ::uselocale(loc);
+	auto ret = ::vscanf(fmt, list);
+	::uselocale(cur);
 #else
 	auto ret = ::vscanf_l(loc, fmt, list);
 #endif
@@ -653,6 +668,10 @@ __SPRT_C_FUNC int __SPRT_ID(fscanf_l)(__SPRT_ID(FILE) * __SPRT_RESTRICT stream,
 
 #if SPRT_WINDOWS
 	auto ret = ::_fscanf_l(stream, fmt, loc, list);
+#elif SPRT_LINUX || SPRT_ANDROID
+	auto cur = ::uselocale(loc);
+	auto ret = ::fscanf(stream, fmt, list);
+	::uselocale(cur);
 #else
 	auto ret = ::fscanf_l(stream, loc, fmt, list);
 #endif
@@ -668,6 +687,10 @@ __SPRT_C_FUNC int __SPRT_ID(sscanf_l)(const char *__SPRT_RESTRICT buf, __SPRT_ID
 
 #if SPRT_WINDOWS
 	auto ret = ::_vsscanf_l(buf, fmt, loc, list);
+#elif SPRT_LINUX || SPRT_ANDROID
+	auto cur = ::uselocale(loc);
+	auto ret = ::vsscanf(buf, fmt, list);
+	::uselocale(cur);
 #else
 	auto ret = ::vsscanf_l(buf, loc, fmt, list);
 #endif
@@ -680,6 +703,11 @@ __SPRT_C_FUNC int __SPRT_ID(vscanf_l)(__SPRT_ID(locale_t) loc, const char *__SPR
 		__SPRT_ID(va_list) ap) {
 #if SPRT_WINDOWS
 	return _vscanf_l(format, loc, ap);
+#elif SPRT_LINUX || SPRT_ANDROID
+	auto cur = ::uselocale(loc);
+	auto ret = ::vscanf(format, ap);
+	::uselocale(cur);
+	return ret;
 #else
 	return vscanf_l(loc, format, ap);
 #endif
@@ -689,6 +717,11 @@ __SPRT_C_FUNC int __SPRT_ID(vfscanf_l)(__SPRT_ID(FILE) * __SPRT_RESTRICT stream,
 		__SPRT_ID(locale_t) loc, const char *__SPRT_RESTRICT format, __SPRT_ID(va_list) ap) {
 #if SPRT_WINDOWS
 	return _vfscanf_l(stream, format, loc, ap);
+#elif SPRT_LINUX || SPRT_ANDROID
+	auto cur = ::uselocale(loc);
+	auto ret = ::vfscanf(stream, format, ap);
+	::uselocale(cur);
+	return ret;
 #else
 	return vfscanf_l(stream, loc, format, ap);
 #endif
@@ -698,6 +731,11 @@ __SPRT_C_FUNC int __SPRT_ID(vsscanf_l)(const char *__SPRT_RESTRICT str, __SPRT_I
 		const char *__SPRT_RESTRICT format, __SPRT_ID(va_list) ap) {
 #if SPRT_WINDOWS
 	return _vsscanf_l(str, format, loc, ap);
+#elif SPRT_LINUX || SPRT_ANDROID
+	auto cur = ::uselocale(loc);
+	auto ret = ::vsscanf(str, format, ap);
+	::uselocale(cur);
+	return ret;
 #else
 	return vsscanf_l(str, loc, format, ap);
 #endif

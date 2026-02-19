@@ -106,14 +106,14 @@ inline void streamWrite(const FunctionalStream &stream, uint64_t i) {
 					ret));
 }
 
-#if SP_HAVE_DEDICATED_SIZE_T
+#if SPRT_HAVE_DEDICATED_SIZE_T
 template <typename FunctionalStream>
 inline void streamWrite(const FunctionalStream &stream, size_t i) {
 	typename FunctionalStreamTraits<FunctionalStream>::CharType buf[INT_MAX_DIGITS];
 	auto ret = sprt::itoa(sprt::uint64_t(i), buf, INT_MAX_DIGITS);
 	streamWrite(stream,
-			typename FunctionalStreamTraits<FunctionalStream>::ArgType(
-					buf.data() + buf.size() - ret, ret));
+			typename FunctionalStreamTraits<FunctionalStream>::ArgType(buf + INT_MAX_DIGITS - ret,
+					ret));
 }
 
 #endif

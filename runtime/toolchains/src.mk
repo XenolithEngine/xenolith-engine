@@ -55,7 +55,7 @@ LIBS = \
 	libbacktrace \
 	simde
 
-TAR_XF = tar -xzf
+TAR_XF = tar -xf
 
 VULKAN_SDK_VER := 1.4.328.1
 
@@ -76,6 +76,7 @@ get_tar_top_dir = `tar -tf $(1)  | head -1 | cut -f1 -d"/"`
 unpack_tar = $(MKDIR) $(SRC_ROOT); $(MKDIR) $(TMP_DIR); \
 	cd $(TMP_DIR); \
 	$(WGET)  -O $(notdir $(1)) $(1); \
+	$(MKDIR) $(firstword $(2)); \
 	$(TAR_XF) $(notdir $(1)) --strip-components=1 -C $(firstword $(2)); \
 	rm -rf $(SRC_ROOT)/$(firstword $(2)); \
 	mv -f $(firstword $(2)) $(SRC_ROOT)/$(firstword $(2)); \

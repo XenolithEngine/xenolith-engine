@@ -23,7 +23,15 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_DIR_PTR_H_
 #define CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_DIR_PTR_H_
 
+#ifdef __SPRT_BUILD
+#define __SPRT_DIRENT_NAME __SPRT_ID(dirent)
+#else
+#define __SPRT_DIRENT_NAME dirent
+#endif
+
 #include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/bits/__sprt_uint16_t.h>
+#include <sprt/c/bits/__sprt_uint8_t.h>
 #include <sprt/c/cross/__sprt_config.h>
 
 // clang-format off

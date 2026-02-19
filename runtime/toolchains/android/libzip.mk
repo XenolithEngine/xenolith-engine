@@ -27,6 +27,8 @@ LIBNAME = libzip
 
 include ../common/configure.mk
 
+export OPENSSL_ROOT_DIR=$(SP_INSTALL_PREFIX)
+
 CONFIGURE := \
 	$(CONFIGURE_CMAKE) \
 	-DENABLE_BZIP2=OFF \
@@ -36,6 +38,7 @@ CONFIGURE := \
 	-DBUILD_REGRESS=OFF \
 	-DBUILD_EXAMPLES=OFF \
 	-DBUILD_DOC=OFF \
+	-DZLIB_INCLUDE_DIR=$(SP_INSTALL_PREFIX) \
 	-DZLIB_LIBRARY="-lz"
 
 ifeq ($(VARIANT),mbedtls)
@@ -57,6 +60,7 @@ CONFIGURE += \
 endif
 
 all:
+	rm -rf $(LIBNAME)
 	@mkdir -p $(LIBNAME)
 	cd $(LIBNAME); \
 		$(PRE_CONFIGURE) cmake $(LIB_SRC_DIR)/$(LIBNAME) $(CONFIGURE)

@@ -41,6 +41,11 @@ THE SOFTWARE.
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #endif
 
+#if SPRT_MACOS
+#include <xlocale.h>
+#include <unistd.h>
+#endif
+
 namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(atoi_impl)(const char *str) { return ::atoi(str); }

@@ -187,7 +187,7 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 
 			_xcbPollHandle = _looper->listenPollableHandle(_xcbConnection->getSocket(),
 					filesystem::PollFlags::In | filesystem::PollFlags::AllowMulti,
-					[this](int fd, filesystem::PollFlags flags) {
+					[this](native_handle fd, filesystem::PollFlags flags) {
 				retainPollDepth();
 				_xcbConnection->poll();
 				releasePollDepth();
@@ -201,7 +201,7 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 		if (_waylandDisplay) {
 			_waylandPollHandle = _looper->listenPollableHandle(_waylandDisplay->getFd(),
 					filesystem::PollFlags::In | filesystem::PollFlags::AllowMulti,
-					[this](int fd, filesystem::PollFlags flags) {
+					[this](native_handle fd, filesystem::PollFlags flags) {
 				if (hasFlag(flags, filesystem::PollFlags::Err)) {
 					return Status::ErrorCancelled;
 				}

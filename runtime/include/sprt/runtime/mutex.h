@@ -66,7 +66,23 @@ struct __rmutex_data {
 	uint32_t counter = 0;
 };
 #else
-#error TODO
+struct __qmutex_data {
+	using value_type = uint32_t;
+
+	value_type value = 0;
+};
+
+struct __rmutex_data {
+	static constexpr uint64_t VALUE_MASK = 0xFFFF'FFFFLLU;
+	static constexpr uint64_t OWNER_DIED = 0x1'0000'0000LLU;
+	static constexpr uint64_t WAITERS_BIT = 0x2'0000'0000LLU;
+
+	using value_type = uint64_t;
+
+	value_type value = 0;
+	uint32_t lock = 0;
+	uint32_t counter = 0;
+};
 #endif
 
 class qmutex_base {

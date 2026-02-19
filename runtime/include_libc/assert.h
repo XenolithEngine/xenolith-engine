@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #ifdef __SPRT_BUILD
 
-#include_next <asset.h>
+#include_next <assert.h>
 
 #else
 

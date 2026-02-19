@@ -27,6 +27,10 @@ THE SOFTWARE.
 
 #include <ctype.h>
 
+#if SPRT_MACOS
+#include <xlocale.h>
+#endif
+
 namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(isalnum_impl)(int c) { return ::isalnum(c); }

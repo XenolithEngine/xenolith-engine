@@ -43,24 +43,6 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-#ifdef __SPRT_BUILD
-#define __SPRT_DIRENT_NAME __SPRT_ID(dirent)
-#else
-#define __SPRT_DIRENT_NAME dirent
-#endif
-
-struct __SPRT_DIRENT_NAME;
-
-
-// should match dirent64 for target systems
-struct __SPRT_DIRENT_NAME {
-	__SPRT_ID(ino_t) d_ino;
-	__SPRT_ID(off_t) d_off;
-	unsigned short d_reclen;
-	unsigned char d_type;
-	char d_name[256];
-};
-
 SPRT_API __SPRT_ID(DIR) * __SPRT_ID(opendir)(const char *__path);
 SPRT_API __SPRT_ID(DIR) * __SPRT_ID(fdopendir)(int __dir_fd);
 

@@ -42,6 +42,9 @@ $(T_TARGET):
 $(T_TARGET)/include: $(T_INTERMEDIATE)/include $(T_TARGET)
 	cp -rf $< $@
 
+$(T_TARGET)/lib/x86_64-unknown-linux-gnu: $(T_INTERMEDIATE)/lib/x86_64-unknown-linux-gnu $(T_TARGET)
+	cp -rf $< $@
+
 $(T_TARGET)/include_libc: $(T_INTERMEDIATE)/include_libc $(T_TARGET)
 	cp -rf $< $@
 
@@ -52,7 +55,9 @@ $(T_TARGET)/%: $(T_INTERMEDIATE)/% $(T_TARGET)
 	cp -af $< $@
 
 all: $(ALL_INSTALL_BIN) $(ALL_INSTALL_STATIC_LIBS) $(ALL_INSTALL_SHARED_LIBS) $(ALL_INSTALL_OBJ_LIBS) \
-	$(T_TARGET)/include $(T_TARGET)/include_libc $(T_TARGET)/lib/clang  $(T_TARGET)/toolchain.mk
+	$(T_TARGET)/include $(T_TARGET)/include_libc \
+	$(T_TARGET)/lib/clang $(T_TARGET)/lib/x86_64-unknown-linux-gnu \
+	$(T_TARGET)/toolchain.mk
 	cp -rf licenses $(T_TARGET)/share
 
 .PHONY: all

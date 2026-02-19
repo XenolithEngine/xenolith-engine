@@ -24,10 +24,15 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_SYSID_H_
 
 #include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/cross/__sprt_config.h>
 #include <sprt/c/bits/__sprt_uint32_t.h>
 
 typedef __SPRT_ID(uint32_t) __SPRT_ID(uid_t);
 typedef __SPRT_ID(uint32_t) __SPRT_ID(gid_t);
 typedef int __SPRT_ID(pid_t);
+
+// clang-format off
+#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/clockid.h)
+// clang-format on
 
 #endif // CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_SYSID_H_

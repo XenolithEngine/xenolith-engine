@@ -810,19 +810,7 @@ bool idnToUnicode(const callback<void(StringView)> &cb, StringView source) {
 
 namespace sprt::platform {
 
-struct GlobalConfig {
-	qmutex s_infoMutex;
-	StringView uniqueIdBuf;
-	StringView execPathBuf;
-	StringView homePathBuf;
-
-	AppConfig config;
-
-	filesystem::LocationInfo current;
-
-	memory::pool_t *_pool = memory::pool::create(memory::self_contained_allocator);
-};
-
+char GlobalConfig::localeBuf[6] = "en-us";
 static GlobalConfig s_globalConfig;
 
 StringView getOsLocale() {
@@ -847,7 +835,7 @@ StringView getUniqueDeviceId() {
 				if (v == st.st_size) {
 					auto id = StringView((const char *)buf, v);
 					id.trimChars<StringView::WhiteSpace>();
-					unique_lock lock(s_globalConfig.s_infoMutex);
+					unique_lock lock(s_globalConfig.infoMutex);
 					s_globalConfig.uniqueIdBuf = id.pdup(s_globalConfig._pool);
 				}
 			}
@@ -866,7 +854,7 @@ StringView getExecPath() {
 		auto buf = __sprt_typed_malloca(char, PATH_MAX);
 		auto v = ::readlink("/proc/self/exe", buf, PATH_MAX);
 		if (v > 0) {
-			unique_lock lock(s_globalConfig.s_infoMutex);
+			unique_lock lock(s_globalConfig.infoMutex);
 			s_globalConfig.execPathBuf = StringView(buf, v).pdup(s_globalConfig._pool);
 		}
 		__sprt_freea(buf);
@@ -882,7 +870,7 @@ StringView getHomePath() {
 
 		auto path = StringView(getenv("HOME"));
 
-		unique_lock lock(s_globalConfig.s_infoMutex);
+		unique_lock lock(s_globalConfig.infoMutex);
 		s_globalConfig.homePathBuf = path.pdup(s_globalConfig._pool);
 	}
 	return s_globalConfig.homePathBuf;

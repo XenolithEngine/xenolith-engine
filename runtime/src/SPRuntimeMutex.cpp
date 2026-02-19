@@ -31,6 +31,8 @@
 #include <sprt/c/sys/__sprt_futex.h>
 
 #include <sys/winapi.h>
+#include <sys/darwin.h>
+#include <unistd.h>
 
 #include "private/SPRTSpecific.h"
 
@@ -139,6 +141,29 @@ static void rmutex_wake(volatile uint64_t *value) {
 	_atomic::storeSeq(value, uint64_t(0));
 	_WakeByAddressSingle((void *)value);
 }
+#elif SPRT_MACOS
+
+static inline auto sys_gettid() { return ::gettid(); }
+
+static Status qmutex_wait(volatile uint32_t *value, uint32_t expected, uint64_t) {
+	auto ret = _os_sync_wait_on_address((void *)value, expected, sizeof(uint32_t),
+			_OS_SYNC_WAIT_ON_ADDRESS_NONE);
+	if (ret < 0) {
+		reportError(__PRETTY_FUNCTION__, __sprt_errno);
+	}
+	return Status::Ok;
+}
+
+static void qmutex_wake(volatile uint32_t *value) {
+	_os_sync_wake_by_address_any((void *)value, sizeof(uint32_t),
+			__SPRT_OS_SYNC_WAKE_BY_ADDRESS_NONE);
+}
+
+static void qtimeline_wake(volatile uint32_t *value) {
+	_os_sync_wake_by_address_all((void *)value, sizeof(uint32_t),
+			__SPRT_OS_SYNC_WAKE_BY_ADDRESS_NONE);
+}
+
 #else
 #error TODO
 #endif
@@ -170,6 +195,25 @@ rmutex::~rmutex() {
 }
 
 void rmutex::lock() {
+#if SPRT_MACOS
+	value_type tid = (isInitialized() ? tl_tid : sys_gettid()) & VALUE_MASK;
+	value_type expected = 0;
+
+	if (!_atomic::compareSwap(&_data.value, &expected, tid)) [[unlikely]] {
+		// failed - should lock
+		// If tid already in value - it's recursive lock, we should not call _os_unfair_lock_lock
+		if ((expected & VALUE_MASK) != tid) {
+			_os_unfair_lock_lock(&_data.lock);
+			_atomic::storeSeq(&_data.value, tid);
+		}
+	} else {
+		// 0 -> tid success, it's first thread lock, mark as locked
+		_os_unfair_lock_lock(&_data.lock);
+		_atomic::storeSeq(&_data.value, tid);
+	}
+
+	++_data.counter;
+#else
 	// we can not use thread locals until full initialization is complete
 	// becouse some static inits may use mutexes, but thread locals can be initialized after statics
 	if (isInitialized()) {
@@ -177,9 +221,33 @@ void rmutex::lock() {
 	} else {
 		_lock<rmutex_wait, nullptr, RMutexSyscallLock>(_data, sys_gettid(), 0); //
 	}
+#endif
 }
 
 bool rmutex::try_lock() {
+#if SPRT_MACOS
+	value_type tid = (isInitialized() ? tl_tid : sys_gettid()) & VALUE_MASK;
+	value_type expected = 0;
+
+	// try to capture mutex with out tid
+	if (!_atomic::compareSwap(&_data.value, &expected, tid)) [[unlikely]] {
+		// check if we are the owner
+		if ((expected & VALUE_MASK) == tid) {
+			// we are the owner, increment and return
+			++_data.counter;
+			return true;
+		}
+	} else {
+		// 0 -> tid success, it's first thread lock, mark as locked
+		// some thread may force-lock thread before us, so, we should trylock
+		if (_os_unfair_lock_trylock(&_data.lock)) {
+			_atomic::storeSeq(&_data.value, tid);
+			++_data.counter;
+			return true;
+		}
+	}
+	return false;
+#else
 	// we can not use thread locals until full initialization is complete
 	// becouse some static inits may use mutexes, but thread locals can be initialized after statics
 	if (isInitialized()) {
@@ -187,9 +255,27 @@ bool rmutex::try_lock() {
 	} else {
 		return _try_lock<rmutex_try>(_data, sys_gettid()) == Status::Ok; //
 	}
+#endif
 }
 
 bool rmutex::unlock() {
+#if SPRT_MACOS
+	value_type tid = (isInitialized() ? tl_tid : sys_gettid()) & VALUE_MASK;
+	auto expected = _atomic::loadRel(&_data.value);
+
+	if ((expected & VALUE_MASK) != tid || _data.counter <= 0) {
+		return false;
+	}
+
+	if (--_data.counter > 0) {
+		// some recursive locks still in place
+		return false;
+	}
+
+	_atomic::storeSeq(&_data.value, value_type(0));
+	_os_unfair_lock_unlock(&_data.lock);
+	return true;
+#else
 	// we can not use thread locals until full initialization is complete
 	// becouse some static inits may use mutexes, but thread locals can be initialized after statics
 	if (isInitialized()) {
@@ -197,6 +283,7 @@ bool rmutex::unlock() {
 	} else {
 		return _unlock<rmutex_wake>(_data, sys_gettid()) == Status::Ok; //
 	}
+#endif
 }
 
 static constexpr qtimeline::value_type WaitersBit = 0x8000'0000;

@@ -39,6 +39,10 @@
 #include "private/window/windows/SPRTWinWindowsContextController.h"
 #endif
 
+#if SPRT_MACOS
+#include "private/window/macos/SPRTWinMacosContextController.h"
+#endif
+
 namespace sprt::window {
 
 Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextConfig &&info,
@@ -47,7 +51,7 @@ Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextCon
 	return LinuxContextController::create(ctx, move(info), a);
 #endif
 #if SPRT_MACOS
-	return MacosContextController::create(ctx, move(info));
+	return MacosContextController::create(ctx, move(info), a);
 #endif
 #if SPRT_WINDOWS
 	return WindowsContextController::create(ctx, move(info), a);

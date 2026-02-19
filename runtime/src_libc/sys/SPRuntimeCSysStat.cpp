@@ -40,6 +40,13 @@ namespace sprt {
 
 #ifndef SPRT_WINDOWS
 
+#if __DARWIN_64_BIT_INO_T
+#define stat64 stat
+#define fstat64 fstat
+#define lstat64 lstat
+#define fstatat64 fstatat
+#endif
+
 static ::dev_t convertDevToNative(__SPRT_ID(dev_t) dev) { return dev; }
 
 static ::mode_t convertModeToRuntime(__SPRT_ID(mode_t) mode) { return mode; }
@@ -57,12 +64,21 @@ static void convertStatFromNative(const struct stat64 *native, struct __SPRT_STA
 	rt->st_size = native->st_size;
 	rt->st_blksize = native->st_blksize;
 	rt->st_blocks = native->st_blocks;
+#if SPRT_MACOS
+	rt->st_atim.tv_nsec = native->st_atimespec.tv_nsec;
+	rt->st_atim.tv_sec = native->st_atimespec.tv_sec;
+	rt->st_mtim.tv_nsec = native->st_mtimespec.tv_nsec;
+	rt->st_mtim.tv_sec = native->st_mtimespec.tv_sec;
+	rt->st_ctim.tv_nsec = native->st_ctimespec.tv_nsec;
+	rt->st_ctim.tv_sec = native->st_ctimespec.tv_sec;
+#else
 	rt->st_atim.tv_nsec = native->st_atim.tv_nsec;
 	rt->st_atim.tv_sec = native->st_atim.tv_sec;
 	rt->st_mtim.tv_nsec = native->st_mtim.tv_nsec;
 	rt->st_mtim.tv_sec = native->st_mtim.tv_sec;
 	rt->st_ctim.tv_nsec = native->st_ctim.tv_nsec;
 	rt->st_ctim.tv_sec = native->st_ctim.tv_sec;
+#endif
 }
 #else
 

@@ -24,6 +24,9 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_sched.h>
 #include <sprt/c/__sprt_string.h>
+#include <sprt/c/__sprt_errno.h>
+
+#include <sprt/runtime/log.h>
 
 #if SPRT_WINDOWS
 #include "platform/windows/sched.cc"
@@ -39,19 +42,34 @@ __SPRT_C_FUNC int __SPRT_ID(sched_get_priority_min)(int t) { return sched_get_pr
 
 __SPRT_C_FUNC int __SPRT_ID(
 		sched_getparam)(__SPRT_ID(pid_t) pid, struct __SPRT_ID(sched_param) * p) {
+#if __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER
 	struct sched_param param;
 	auto ret = sched_getparam(pid, &param);
 	if (p) {
 		p->sched_priority = param.sched_priority;
 	}
 	return ret;
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(sched_getscheduler)(__SPRT_ID(pid_t) pid) {
+#if __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER
 	return sched_getscheduler(pid);
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(sched_rr_get_interval)(__SPRT_ID(pid_t) pid, __SPRT_TIMESPEC_NAME *t) {
+#if __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER
 #if SPRT_WINDOWS
 	return sched_rr_get_interval(pid, t);
 #else
@@ -63,26 +81,46 @@ __SPRT_C_FUNC int __SPRT_ID(sched_rr_get_interval)(__SPRT_ID(pid_t) pid, __SPRT_
 	}
 	return ret;
 #endif
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		sched_setparam)(__SPRT_ID(pid_t) pid, const struct __SPRT_ID(sched_param) * p) {
+#if __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER
 	struct sched_param param;
 	__sprt_memset(&param, 0, sizeof(struct sched_param));
 	if (p) {
 		param.sched_priority = p->sched_priority;
 	}
 	return sched_setparam(pid, &param);
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		sched_setscheduler)(__SPRT_ID(pid_t) pid, int t, const struct __SPRT_ID(sched_param) * p) {
+#if __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER
 	struct sched_param param;
 	__sprt_memset(&param, 0, sizeof(struct sched_param));
 	if (p) {
 		param.sched_priority = p->sched_priority;
 	}
 	return sched_setscheduler(pid, t, &param);
+#else
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER)");
+	*__sprt___errno_location() = ENOSYS;
+	return -1;
+#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(sched_yield)(void) { return sched_yield(); }

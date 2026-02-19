@@ -269,19 +269,6 @@ bool idnToUnicode(const callback<void(StringView)> &cb, StringView source) {
 
 namespace sprt::platform {
 
-struct GlobalConfig {
-	qmutex infoMutex;
-	StringView uniqueIdBuf;
-	StringView execPathBuf;
-	StringView homePathBuf;
-
-	AppConfig config;
-
-	filesystem::LocationInfo current;
-
-	memory::pool_t *_pool = memory::pool::create(memory::self_contained_allocator);
-};
-
 static GlobalConfig s_globalConfig;
 
 bool initialize(AppConfig &&cfg, int &resultCode) {

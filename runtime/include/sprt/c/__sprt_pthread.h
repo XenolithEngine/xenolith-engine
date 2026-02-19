@@ -113,8 +113,13 @@ SPRT_API int __SPRT_ID(pthread_mutex_init)(__SPRT_ID(pthread_mutex_t) * __SPRT_R
 SPRT_API int __SPRT_ID(pthread_mutex_lock)(__SPRT_ID(pthread_mutex_t) *);
 SPRT_API int __SPRT_ID(pthread_mutex_unlock)(__SPRT_ID(pthread_mutex_t) *);
 SPRT_API int __SPRT_ID(pthread_mutex_trylock)(__SPRT_ID(pthread_mutex_t) *);
+
+#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_TIMED || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+__SPRT_CONFIG_HAVE_PTHREAD_MUTEX_TIMED_NOTICE
 SPRT_API int __SPRT_ID(pthread_mutex_timedlock)(__SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT,
 		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT);
+#endif
+
 SPRT_API int __SPRT_ID(pthread_mutex_destroy)(__SPRT_ID(pthread_mutex_t) *);
 
 #if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
@@ -151,12 +156,22 @@ SPRT_API int __SPRT_ID(pthread_rwlock_init)(__SPRT_ID(pthread_rwlock_t) * __SPRT
 SPRT_API int __SPRT_ID(pthread_rwlock_destroy)(__SPRT_ID(pthread_rwlock_t) *);
 SPRT_API int __SPRT_ID(pthread_rwlock_rdlock)(__SPRT_ID(pthread_rwlock_t) *);
 SPRT_API int __SPRT_ID(pthread_rwlock_tryrdlock)(__SPRT_ID(pthread_rwlock_t) *);
+
+#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_TIMED || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+__SPRT_CONFIG_HAVE_PTHREAD_MUTEX_TIMED_NOTICE
 SPRT_API int __SPRT_ID(pthread_rwlock_timedrdlock)(__SPRT_ID(pthread_rwlock_t) * __SPRT_RESTRICT,
 		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT);
+#endif
+
 SPRT_API int __SPRT_ID(pthread_rwlock_wrlock)(__SPRT_ID(pthread_rwlock_t) *);
 SPRT_API int __SPRT_ID(pthread_rwlock_trywrlock)(__SPRT_ID(pthread_rwlock_t) *);
+
+#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_TIMED || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+__SPRT_CONFIG_HAVE_PTHREAD_MUTEX_TIMED_NOTICE
 SPRT_API int __SPRT_ID(pthread_rwlock_timedwrlock)(__SPRT_ID(pthread_rwlock_t) * __SPRT_RESTRICT,
 		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT);
+#endif
+
 SPRT_API int __SPRT_ID(pthread_rwlock_unlock)(__SPRT_ID(pthread_rwlock_t) *);
 
 SPRT_API int __SPRT_ID(pthread_spin_init)(__SPRT_ID(pthread_spinlock_t) *, int);
@@ -254,12 +269,22 @@ SPRT_API int __SPRT_ID(pthread_mutexattr_settype)(__SPRT_ID(pthread_mutexattr_t)
 
 SPRT_API int __SPRT_ID(pthread_condattr_init)(__SPRT_ID(pthread_condattr_t) *);
 SPRT_API int __SPRT_ID(pthread_condattr_destroy)(__SPRT_ID(pthread_condattr_t) *);
+
+#if __SPRT_CONFIG_HAVE_PTHREAD_CLOCK || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+__SPRT_CONFIG_HAVE_PTHREAD_CLOCK_NOTICE
 SPRT_API int __SPRT_ID(
 		pthread_condattr_setclock)(__SPRT_ID(pthread_condattr_t) *, __SPRT_ID(clockid_t));
-SPRT_API int __SPRT_ID(pthread_condattr_setpshared)(__SPRT_ID(pthread_condattr_t) *, int);
+
+__SPRT_CONFIG_HAVE_PTHREAD_CLOCK_NOTICE
 SPRT_API int __SPRT_ID(
 		pthread_condattr_getclock)(const __SPRT_ID(pthread_condattr_t) * __SPRT_RESTRICT,
 		__SPRT_ID(clockid_t) * __SPRT_RESTRICT);
+
+__SPRT_CONFIG_HAVE_PTHREAD_CLOCK_NOTICE
+SPRT_API int __SPRT_ID(pthread_getcpuclockid)(__SPRT_ID(pthread_t), __SPRT_ID(clockid_t) *);
+#endif
+
+SPRT_API int __SPRT_ID(pthread_condattr_setpshared)(__SPRT_ID(pthread_condattr_t) *, int);
 SPRT_API int __SPRT_ID(pthread_condattr_getpshared)(
 		const __SPRT_ID(pthread_condattr_t) * __SPRT_RESTRICT, int *__SPRT_RESTRICT);
 
@@ -287,8 +312,6 @@ SPRT_API int __SPRT_ID(pthread_setconcurrency)(int);
 
 #endif
 
-SPRT_API int __SPRT_ID(pthread_getcpuclockid)(__SPRT_ID(pthread_t), __SPRT_ID(clockid_t) *);
-
 #if __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 
 __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY_NOTICE
@@ -298,10 +321,13 @@ SPRT_API int __SPRT_ID(
 __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY_NOTICE
 SPRT_API int __SPRT_ID(pthread_setaffinity_np)(__SPRT_ID(pthread_t), __SPRT_ID(size_t),
 		const __SPRT_ID(cpu_set_t) *);
-
 #endif
 
+#if __SPRT_CONFIG_HAVE_PTHREAD_GETATTR || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+__SPRT_CONFIG_HAVE_PTHREAD_GETATTR_NOTICE
 SPRT_API int __SPRT_ID(pthread_getattr_np)(__SPRT_ID(pthread_t), __SPRT_ID(pthread_attr_t) *);
+#endif
+
 SPRT_API int __SPRT_ID(pthread_setname_np)(__SPRT_ID(pthread_t), const char *);
 
 #if __SPRT_CONFIG_HAVE_PTHREAD_GETNAME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS

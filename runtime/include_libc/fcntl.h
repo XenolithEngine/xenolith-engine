@@ -38,6 +38,11 @@ THE SOFTWARE.
 #define SEEK_END __SPRT_SEEK_END
 #endif
 
+#define O_ACCMODE __SPRT_O_ACCMODE
+#define O_RDONLY __SPRT_O_RDONLY
+#define O_WRONLY __SPRT_O_WRONLY
+#define O_RDWR __SPRT_O_RDWR
+
 #define O_CREAT __SPRT_O_CREAT
 #define O_EXCL __SPRT_O_EXCL
 #define O_NOCTTY __SPRT_O_NOCTTY
@@ -46,18 +51,39 @@ THE SOFTWARE.
 #define O_NONBLOCK __SPRT_O_NONBLOCK
 #define O_DSYNC __SPRT_O_DSYNC
 #define O_SYNC __SPRT_O_SYNC
-#define O_RSYNC __SPRT_O_RSYNC
 #define O_DIRECTORY __SPRT_O_DIRECTORY
 #define O_NOFOLLOW __SPRT_O_NOFOLLOW
 #define O_CLOEXEC __SPRT_O_CLOEXEC
-
 #define O_ASYNC __SPRT_O_ASYNC
-#define O_DIRECT __SPRT_O_DIRECT
-#define O_LARGEFILE __SPRT_O_LARGEFILE
-#define O_NOATIME __SPRT_O_NOATIME
-#define O_PATH __SPRT_O_PATH
-#define O_TMPFILE __SPRT_O_TMPFILE
 #define O_NDELAY __SPRT_O_NDELAY
+#define O_SEARCH __SPRT_O_SEARCH
+#define O_EXEC __SPRT_O_EXEC
+
+#ifdef __SPRT_O_RSYNC
+#define O_RSYNC __SPRT_O_RSYNC
+#endif
+
+#ifdef __SPRT_O_DIRECT
+#define O_DIRECT __SPRT_O_DIRECT
+#endif
+
+#ifdef __SPRT_O_LARGEFILE
+#define O_LARGEFILE __SPRT_O_LARGEFILE
+#endif
+
+#ifdef __SPRT_O_NOATIME
+#define O_NOATIME __SPRT_O_NOATIME
+#endif
+
+#ifdef __SPRT_O_PATH
+#define O_PATH __SPRT_O_PATH
+#else
+#define O_PATH 0
+#endif
+
+#ifdef __SPRT_O_TMPFILE
+#define O_TMPFILE __SPRT_O_TMPFILE
+#endif
 
 #define F_DUPFD __SPRT_F_DUPFD
 #define F_GETFD __SPRT_F_GETFD
@@ -67,12 +93,11 @@ THE SOFTWARE.
 
 #define F_SETOWN __SPRT_F_SETOWN
 #define F_GETOWN __SPRT_F_GETOWN
-#define F_SETSIG __SPRT_F_SETSIG
-#define F_GETSIG __SPRT_F_GETSIG
 
 #define F_GETLK __SPRT_F_GETLK
 #define F_SETLK __SPRT_F_SETLK
 #define F_SETLKW __SPRT_F_SETLKW
+
 #define F_SETPIPE_SZ __SPRT_F_SETPIPE_SZ
 #define F_GETPIPE_SZ __SPRT_F_GETPIPE_SZ
 #define F_ADD_SEALS __SPRT_F_ADD_SEALS
@@ -84,19 +109,14 @@ THE SOFTWARE.
 #define F_SEAL_WRITE __SPRT_F_SEAL_WRITE
 #define F_SEAL_FUTURE_WRITE __SPRT_F_SEAL_FUTURE_WRITE
 
+#define F_SETSIG __SPRT_F_SETSIG
+#define F_GETSIG __SPRT_F_GETSIG
+
 #define F_SETOWN_EX __SPRT_F_SETOWN_EX
 #define F_GETOWN_EX __SPRT_F_GETOWN_EX
 
 #define F_GETOWNER_UIDS __SPRT_F_GETOWNER_UIDS
 
-#define O_SEARCH __SPRT_O_SEARCH
-#define O_EXEC __SPRT_O_EXEC
-#define O_TTY_INIT __SPRT_O_TTY_INIT
-
-#define O_ACCMODE __SPRT_O_ACCMODE
-#define O_RDONLY __SPRT_O_RDONLY
-#define O_WRONLY __SPRT_O_WRONLY
-#define O_RDWR __SPRT_O_RDWR
 
 #define F_OFD_GETLK __SPRT_F_OFD_GETLK
 #define F_OFD_SETLK __SPRT_F_OFD_SETLK
@@ -139,7 +159,11 @@ SPRT_FORCEINLINE int creat(const char *path, mode_t __mode) { return __sprt_crea
 SPRT_FORCEINLINE int open(const char *path, int __flags, ...) {
 	mode_t __mode = 0;
 
-	if ((__flags & __SPRT_O_CREAT) || (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE) {
+	if ((__flags & __SPRT_O_CREAT)
+#ifdef __SPRT_O_TMPFILE
+			|| (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE
+#endif
+	) {
 		__sprt_va_list ap;
 		__sprt_va_start(ap, __flags);
 		__mode = __sprt_va_arg(ap, mode_t);
@@ -152,7 +176,11 @@ SPRT_FORCEINLINE int open(const char *path, int __flags, ...) {
 SPRT_FORCEINLINE int openat(int __dir_fd, const char *path, int __flags, ...) {
 	mode_t __mode = 0;
 
-	if ((__flags & __SPRT_O_CREAT) || (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE) {
+	if ((__flags & __SPRT_O_CREAT)
+#ifdef __SPRT_O_TMPFILE
+			|| (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE
+#endif
+	) {
 		__sprt_va_list ap;
 		__sprt_va_start(ap, __flags);
 		__mode = __sprt_va_arg(ap, mode_t);

@@ -23,7 +23,7 @@
 #include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/runtime/filesystem/filepath.h>
 
-#if SPRT_LINUX | SPRT_ANDROID || SPRT_MACOS || SPRT_WINDOWS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS || SPRT_WINDOWS
 
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_unistd.h>

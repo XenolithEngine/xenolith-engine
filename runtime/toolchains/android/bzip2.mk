@@ -28,7 +28,7 @@ all:
 	rm -rf $(LIBNAME)
 	cp -rf $(LIB_SRC_DIR)/$(LIBNAME) $(LIBNAME)
 	cd $(LIBNAME); \
-		CC=$(SP_CC) AR=$(SP_AR) make -j8 CC=$(SP_CC) AR=$(SP_AR) CFLAGS="$(SP_OPT) -D_FILE_OFFSET_BITS=64" libbz2.a
+		CC=$(SP_CC) AR=$(SP_AR) make -j8 CC=$(SP_CC) AR=$(SP_AR) CFLAGS="$(SP_CFLAGS) -D_FILE_OFFSET_BITS=64" libbz2.a
 	cp -f $(LIBNAME)/bzlib.h $(SP_INSTALL_PREFIX)/include
 	cp -f $(LIBNAME)/libbz2.a $(SP_INSTALL_PREFIX)/lib
 	rm -rf $(LIBNAME)

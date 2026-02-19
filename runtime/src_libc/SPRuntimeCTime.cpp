@@ -38,12 +38,47 @@ THE SOFTWARE.
 #include "platform/windows/time.cc"
 #endif
 
+#if SPRT_MACOS
+#include <xlocale.h>
+#include <unistd.h>
+#endif
+
 #include "private/SPRTSpecific.h"
 #include "private/SPRTTime.h"
 
 #if SPRT_WINDOWS
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #endif
+
+#if SPRT_MACOS
+#define CLOCK_MONOTONIC_COARSE CLOCK_MONOTONIC_RAW_APPROX
+#define CLOCK_BOOTTIME CLOCK_UPTIME_RAW
+#endif
+
+static_assert(CLOCK_REALTIME == __SPRT_CLOCK_REALTIME);
+static_assert(CLOCK_MONOTONIC == __SPRT_CLOCK_MONOTONIC);
+static_assert(CLOCK_PROCESS_CPUTIME_ID == __SPRT_CLOCK_PROCESS_CPUTIME_ID);
+static_assert(CLOCK_THREAD_CPUTIME_ID == __SPRT_CLOCK_THREAD_CPUTIME_ID);
+static_assert(CLOCK_MONOTONIC_RAW == __SPRT_CLOCK_MONOTONIC_RAW);
+static_assert(CLOCK_MONOTONIC_COARSE == __SPRT_CLOCK_MONOTONIC_COARSE);
+static_assert(CLOCK_BOOTTIME == __SPRT_CLOCK_BOOTTIME);
+
+#ifdef CLOCK_REALTIME_COARSE
+static_assert(CLOCK_REALTIME_COARSE == __SPRT_CLOCK_REALTIME_COARSE);
+#endif
+
+#ifdef CLOCK_REALTIME_ALARM
+static_assert(CLOCK_REALTIME_ALARM == __SPRT_CLOCK_REALTIME_ALARM);
+#endif
+
+#ifdef CLOCK_SGI_CYCLE
+static_assert(CLOCK_SGI_CYCLE == __SPRT_CLOCK_SGI_CYCLE);
+#endif
+
+#ifdef CLOCK_TAI
+static_assert(CLOCK_TAI == __SPRT_CLOCK_TAI);
+#endif
+
 
 namespace sprt {
 
@@ -313,7 +348,7 @@ __SPRT_C_FUNC int __SPRT_ID(clock_getres)(__SPRT_ID(clockid_t) clock, __SPRT_TIM
 	return clock_getres(clock, out);
 #else
 	struct timespec rem;
-	auto ret = ::clock_getres(clock, &rem);
+	auto ret = ::clock_getres(clockid_t(clock), &rem);
 	if (out) {
 		out->tv_nsec = rem.tv_nsec;
 		out->tv_sec = rem.tv_sec;
@@ -327,7 +362,7 @@ __SPRT_C_FUNC int __SPRT_ID(clock_gettime)(__SPRT_ID(clockid_t) clock, __SPRT_TI
 	return clock_gettime(clock, out);
 #else
 	struct timespec rem;
-	auto ret = ::clock_gettime(clock, &rem);
+	auto ret = ::clock_gettime(clockid_t(clock), &rem);
 	if (out) {
 		out->tv_nsec = rem.tv_nsec;
 		out->tv_sec = rem.tv_sec;
@@ -345,7 +380,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 		native.tv_sec = ts->tv_sec;
 	}
 
-	return ::clock_settime(clock, ts ? &native : nullptr);
+	return ::clock_settime(clockid_t(clock), ts ? &native : nullptr);
 #else
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -356,6 +391,13 @@ __SPRT_C_FUNC int __SPRT_ID(clock_nanosleep)(__SPRT_ID(clockid_t) clock, int v,
 		const __SPRT_TIMESPEC_NAME *ts, __SPRT_TIMESPEC_NAME *out) {
 #if SPRT_WINDOWS
 	return clock_nanosleep(clock, v, ts, out);
+#elif SPRT_MACOS
+	if (clock == CLOCK_REALTIME && v == 0) {
+		if (__sprt_nanosleep(ts, out) != 0) {
+			return *__sprt___errno_location();
+		}
+	}
+	return EINVAL;
 #else
 	struct timespec native;
 	if (ts) {
@@ -375,9 +417,11 @@ __SPRT_C_FUNC int __SPRT_ID(clock_nanosleep)(__SPRT_ID(clockid_t) clock, int v,
 
 __SPRT_C_FUNC int __SPRT_ID(
 		clock_getcpuclockid)(__SPRT_ID(pid_t) pid, __SPRT_ID(clockid_t) * clock) {
-#if SPRT_WINDOWS
-	__sprt_errno = ENOSYS;
-	return -1;
+#if SPRT_WINDOWS || SPRT_MACOS
+	if (pid != getpid()) {
+		return ENOSYS;
+	}
+	return CLOCK_PROCESS_CPUTIME_ID;
 #else
 	return ::clock_getcpuclockid(pid, clock);
 #endif

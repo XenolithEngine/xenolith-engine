@@ -165,5 +165,4 @@ static int pthread_barrier_wait(pthread_barrier_t *bar) {
 	return bar->wait();
 }
 
-
 } // namespace sprt

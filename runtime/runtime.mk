@@ -59,7 +59,9 @@ MODULE_RUNTIME_SRCS_DIRS := $(RUNTIME_MODULE_DIR)/src
 MODULE_RUNTIME_SRCS_OBJS :=
 MODULE_RUNTIME_INCLUDES_DIRS :=
 MODULE_RUNTIME_INCLUDES_OBJS := \
-	$(RUNTIME_MODULE_DIR)/include
+	$(RUNTIME_MODULE_DIR)/include \
+	$(RUNTIME_MODULE_DIR)/include_libc
+
 MODULE_RUNTIME_PRIVATE_INCLUDES := \
 	$(RUNTIME_MODULE_DIR)/include \
 	$(RUNTIME_MODULE_DIR)/include_libc \
@@ -68,8 +70,6 @@ MODULE_RUNTIME_PRIVATE_INCLUDES := \
 MODULE_RUNTIME_DEPENDS_ON := runtime_libc
 
 ifdef LINUX
-MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
-MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a -l:libicuuc.a -l:libicudata.a
 endif
 
@@ -78,12 +78,13 @@ MODULE_RUNTIME_GENERAL_CFLAGS += -nostdinc++
 MODULE_RUNTIME_GENERAL_CXXFLAGS += -nostdinc++
 MODULE_RUNTIME_INCLUDES_OBJS += \
 	$(ANDROID_SYSROOT_INCLUDE_CXX) \
-	$(RUNTIME_MODULE_DIR)/include_libc
+	$(RUNTIME_MODULE_DIR)/include_libc \
+	$(RUNTIME_MODULE_DIR)/src
 MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a
 endif
 
 ifdef MACOS
-MODULE_RUNTIME_GENERAL_LDFLAGS += -framework CoreFoundation  -framework Foundation
+MODULE_RUNTIME_GENERAL_LDFLAGS += -framework CoreFoundation  -framework Foundation  -framework Security
 endif
 
 ifdef WIN32

@@ -19,3 +19,43 @@
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
  **/
+
+#include "private/SPRTThread.h"
+
+#if SPRT_MACOS
+
+typedef struct objc_object *id;
+typedef struct objc_class *Class;
+typedef struct objc_selector *SEL;
+
+extern "C" void objc_msgSend(void);
+extern "C" Class objc_getClass(const char *name);
+extern "C" SEL sel_getUid(const char *str);
+
+namespace sprt::thread {
+
+using AutoreleasePool_new_type = id (*)(Class, SEL);
+using AutoreleasePool_drain_type = void (*)(id, SEL);
+
+template <typename Callback>
+static void ThreadCallbacks_performInAutorelease(Callback &&cb) {
+	id pool = ((AutoreleasePool_new_type)&objc_msgSend)(objc_getClass("NSAutoreleasePool"),
+			sel_getUid("new"));
+	cb();
+	((AutoreleasePool_drain_type)&objc_msgSend)(pool, sel_getUid("drain"));
+}
+
+void _entry_platform(const callbacks &cb, NotNull<Ref> tm) {
+	ThreadCallbacks_performInAutorelease([&] { _init(cb, tm); });
+
+	bool ret = true;
+	while (ret) {
+		ThreadCallbacks_performInAutorelease([&] { ret = _worker(cb, tm); });
+	}
+
+	ThreadCallbacks_performInAutorelease([&] { _dispose(cb, tm); });
+}
+
+} // namespace sprt::thread
+
+#endif

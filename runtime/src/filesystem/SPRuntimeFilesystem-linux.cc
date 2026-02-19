@@ -145,21 +145,19 @@ void _initSystemPaths(LookupData &data) {
 		res.init = true;
 	}
 
-	do {
+	auto ldPathEnv = ::getenv("LD_LIBRARY_PATH");
+	if (ldPathEnv) {
 		auto &res = data._resourceLocations[toInt(LocationCategory::Library)];
-		auto ldPathEnv = ::getenv("LD_LIBRARY_PATH");
-		if (ldPathEnv) {
-			StringView(pathEnv).split<StringView::Chars<':'>>([&](StringView value) {
-				res.paths.emplace_back(LocationInfo{
-					value.pdup(data._pool),
-					LookupFlags::Shared,
-					LocationFlags::Locateable,
-					defaultInterface,
-				});
+		StringView(pathEnv).split<StringView::Chars<':'>>([&](StringView value) {
+			res.paths.emplace_back(LocationInfo{
+				value.pdup(data._pool),
+				LookupFlags::Shared,
+				LocationFlags::Locateable,
+				defaultInterface,
 			});
-		}
+		});
 		res.init = true;
-	} while (0);
+	}
 
 	// search for XDG envvars
 	auto dataHome = _readEnvExt(data._pool, "XDG_DATA_HOME");

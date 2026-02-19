@@ -225,6 +225,22 @@
 #define __SPRT_SC_CPUTIME 0x006e
 /** sysconf() query equivalent to _POSIX_HOST_NAME_MAX. */
 #define __SPRT_SC_HOST_NAME_MAX 0x006f
+/** Unimplemented. */
+#define __SPRT_SC_TRACE 0x0080
+/** Unimplemented. */
+#define __SPRT_SC_TRACE_EVENT_FILTER 0x0081
+/** Unimplemented. */
+#define __SPRT_SC_TRACE_INHERIT 0x0083
+/** Unimplemented. */
+#define __SPRT_SC_TRACE_LOG 0x0084
+/** sysconf() query equivalent to _POSIX_V7_ILP32_OFF32. */
+#define __SPRT_SC_V7_ILP32_OFF32 0x0089
+/** sysconf() query equivalent to _POSIX_V7_ILP32_OFFBIG. */
+#define __SPRT_SC_V7_ILP32_OFFBIG 0x008a
+/** sysconf() query equivalent to _POSIX_V7_ILP64_OFF64. */
+#define __SPRT_SC_V7_LP64_OFF64 0x008b
+/** sysconf() query equivalent to _POSIX_V7_ILP64_OFFBIG. */
+#define __SPRT_SC_V7_LPBIG_OFFBIG 0x008c
 /** sysconf() query equivalent to _POSIX_IPV6. */
 #define __SPRT_SC_IPV6 0x0070
 /** sysconf() query equivalent to _POSIX_RAW_SOCKETS. */
@@ -257,3 +273,15 @@
 #define __SPRT_SC_THREAD_SPORADIC_SERVER 0x007e
 /** sysconf() query equivalent to _POSIX_TIMEOUTS. */
 #define __SPRT_SC_TIMEOUTS 0x007f
+/** sysconf() query equivalent to _POSIX_TYPED_MEMORY_OBJECTS. */
+#define __SPRT_SC_TYPED_MEMORY_OBJECTS 0x0088
+/** Unimplemented. */
+#define __SPRT_SC_TRACE_EVENT_NAME_MAX 0x0082
+/** Unimplemented. */
+#define __SPRT_SC_TRACE_NAME_MAX 0x0085
+/** Unimplemented. */
+#define __SPRT_SC_TRACE_SYS_MAX 0x0086
+/** Unimplemented. */
+#define __SPRT_SC_TRACE_USER_EVENT_MAX 0x0087
+/** Unimplemented. */
+#define __SPRT_SC_XOPEN_STREAMS 0x008d

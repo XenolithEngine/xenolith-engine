@@ -25,11 +25,11 @@ THE SOFTWARE.
 
 #include <sprt/c/cross/__sprt_config.h>
 #include <sprt/c/cross/__sprt_sysconf.h>
+#include <sprt/c/cross/__sprt_fcntl.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_ssize_t.h>
 #include <sprt/c/bits/__sprt_time_t.h>
 #include <sprt/c/bits/__sprt_intptr_t.h>
-#include <sprt/c/bits/atfile.h>
 #include <sprt/c/cross/__sprt_sysid.h>
 #include <sprt/c/bits/seek.h>
 #include <sprt/c/bits/access.h>
@@ -266,9 +266,14 @@ SPRT_API void *__SPRT_ID(sbrk)(__SPRT_ID(intptr_t) __delta) __SPRT_NOEXCEPT;
 #endif
 
 SPRT_API int __SPRT_ID(lockf)(int __fd, int __cmd, __SPRT_ID(off_t) len);
+
+#if __SPRT_CONFIG_HAVE_UNISTD_COPY_FILE_RANGE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+__SPRT_CONFIG_HAVE_UNISTD_COPY_FILE_RANGE_NOTICE
 SPRT_API __SPRT_ID(ssize_t)
 		__SPRT_ID(copy_file_range)(int __infd, __SPRT_ID(off_t) * __pinoff, int __outfd,
 				__SPRT_ID(off_t) * __poutoff, __SPRT_ID(size_t) __length, unsigned int __flags);
+#endif
+
 SPRT_API __SPRT_ID(pid_t) __SPRT_ID(gettid)(void);
 SPRT_API int __SPRT_ID(fdatasync)(int __fildes);
 SPRT_API void __SPRT_ID(swab)(const void *__SPRT_RESTRICT __from, void *__SPRT_RESTRICT __to,

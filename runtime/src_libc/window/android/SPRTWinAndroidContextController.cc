@@ -234,7 +234,7 @@ int AndroidContextController::run(NotNull<ContextContainer> c) {
 	auto alooper = ALooper_forThread();
 
 	if (_looper) {
-		ALooper_addFd(alooper, _looper->getHandle(), 0, ALOOPER_EVENT_INPUT,
+		ALooper_addFd(alooper, _looper->getHandle().fd, 0, ALOOPER_EVENT_INPUT,
 				[](int fd, int events, void *data) {
 			auto controller = reinterpret_cast<AndroidContextController *>(data);
 			if ((events & ALOOPER_EVENT_INPUT) != 0) {

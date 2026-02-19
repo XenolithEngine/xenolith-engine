@@ -54,7 +54,7 @@ LIBS := \
 	libsqlite3.a \
 	libnghttp3.a \
 	libssl.a \
-	libgost.a \
+	libgost_engine.a \
 	libcurl-openssl.a \
 	libzip-openssl.a \
 	libiwasm-release.a \
@@ -191,7 +191,7 @@ $(SP_INSTALL_PREFIX)/lib/libzip-mbedtls.a: $(MAKE_ROOT)libzip.mk $(SP_INSTALL_PR
 $(SP_INSTALL_PREFIX)/lib/libzip-openssl.a: $(MAKE_ROOT)libzip.mk $(SP_INSTALL_PREFIX)/lib/libssl.a
 	$(MAKE) -f $(MAKE_ROOT)libzip.mk $(FORWARD_VARS) VARIANT=openssl
 
-$(SP_INSTALL_PREFIX)/lib/libgost.a: $(MAKE_ROOT)gost.mk $(SP_INSTALL_PREFIX)/lib/libssl.a
+$(SP_INSTALL_PREFIX)/lib/libgost_engine.a: $(MAKE_ROOT)gost.mk $(SP_INSTALL_PREFIX)/lib/libssl.a
 	$(MAKE) -f $(MAKE_ROOT)gost.mk $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/lib/libiwasm-release.a $(SP_INSTALL_PREFIX)/lib/libiwasm-debug.a: $(MAKE_ROOT)wamr.mk

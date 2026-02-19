@@ -56,13 +56,28 @@ THE SOFTWARE.
 #define AT_STATX_FORCE_SYNC __SPRT_AT_STATX_FORCE_SYNC
 #define AT_STATX_DONT_SYNC __SPRT_AT_STATX_DONT_SYNC
 #define AT_RECURSIVE __SPRT_AT_RECURSIVE
-#define AT_RENAME_NOREPLACE __SPRT_AT_RENAME_NOREPLACE
-#define AT_RENAME_EXCHANGE __SPRT_AT_RENAME_EXCHANGE
-#define AT_RENAME_WHITEOUT __SPRT_AT_RENAME_WHITEOUT
 #define AT_EACCESS __SPRT_AT_EACCESS
 #define AT_REMOVEDIR __SPRT_AT_REMOVEDIR
+
+#ifdef __SPRT_AT_RENAME_NOREPLACE
+#define AT_RENAME_NOREPLACE __SPRT_AT_RENAME_NOREPLACE
+#endif
+
+#ifdef __SPRT_AT_RENAME_EXCHANGE
+#define AT_RENAME_EXCHANGE __SPRT_AT_RENAME_EXCHANGE
+#endif
+
+#ifdef __SPRT_AT_RENAME_WHITEOUT
+#define AT_RENAME_WHITEOUT __SPRT_AT_RENAME_WHITEOUT
+#endif
+
+#ifdef __SPRT_AT_HANDLE_FID
 #define AT_HANDLE_FID __SPRT_AT_HANDLE_FID
+#endif
+
+#ifdef __SPRT_AT_HANDLE_MNT_ID_UNIQUE
 #define AT_HANDLE_MNT_ID_UNIQUE __SPRT_AT_HANDLE_MNT_ID_UNIQUE
+#endif
 #endif
 
 #ifdef __SPRT_SC_ARG_MAX
@@ -844,10 +859,14 @@ SPRT_FORCEINLINE void *sbrk(intptr_t __delta) __SPRT_NOEXCEPT { return __sprt_sb
 SPRT_FORCEINLINE int lockf(int __fd, int __cmd, off_t len) {
 	return __sprt_lockf(__fd, __cmd, len);
 }
+
+#if __SPRT_CONFIG_HAVE_UNISTD_COPY_FILE_RANGE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE ssize_t copy_file_range(int __infd, off_t *__pinoff, int __outfd, off_t *__poutoff,
 		size_t __length, unsigned int __flags) {
 	return __sprt_copy_file_range(__infd, __pinoff, __outfd, __poutoff, __length, __flags);
 }
+#endif
+
 SPRT_FORCEINLINE pid_t gettid(void) { return __sprt_gettid(); }
 SPRT_FORCEINLINE int fdatasync(int __fildes) { return __sprt_fdatasync(__fildes); }
 

@@ -28,8 +28,11 @@ THE SOFTWARE.
 namespace sprt {
 
 static constexpr size_t UuidSize = 16;
+static constexpr size_t UuidFormattedSize = 37;
 
 SPRT_API void genuuid(uint8_t buf[UuidSize]);
+
+SPRT_API void formatuuid(char buf[UuidFormattedSize], const uint8_t uuid[UuidSize]);
 
 } // namespace sprt
 

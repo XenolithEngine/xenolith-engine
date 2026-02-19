@@ -35,13 +35,27 @@ struct __SPRT_ID(sched_param) {
 
 SPRT_API int __SPRT_ID(sched_get_priority_max)(int);
 SPRT_API int __SPRT_ID(sched_get_priority_min)(int);
+SPRT_API int __SPRT_ID(sched_yield)(void);
+
+#if __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+
+__SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER_NOTICE
 SPRT_API int __SPRT_ID(sched_getparam)(__SPRT_ID(pid_t), struct __SPRT_ID(sched_param) *);
+
+__SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER_NOTICE
 SPRT_API int __SPRT_ID(sched_getscheduler)(__SPRT_ID(pid_t));
+
+__SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER_NOTICE
 SPRT_API int __SPRT_ID(sched_rr_get_interval)(__SPRT_ID(pid_t), __SPRT_TIMESPEC_NAME *);
+
+__SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER_NOTICE
 SPRT_API int __SPRT_ID(sched_setparam)(__SPRT_ID(pid_t), const struct __SPRT_ID(sched_param) *);
+
+__SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER_NOTICE
 SPRT_API int __SPRT_ID(
 		sched_setscheduler)(__SPRT_ID(pid_t), int, const struct __SPRT_ID(sched_param) *);
-SPRT_API int __SPRT_ID(sched_yield)(void);
+
+#endif
 
 SPRT_API int __SPRT_ID(
 		__sched_cpucount)(__SPRT_ID(size_t) nbytes, const __SPRT_ID(cpu_set_t) * set);
