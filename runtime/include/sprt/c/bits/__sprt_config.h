@@ -63,14 +63,6 @@ THE SOFTWARE.
 #endif
 
 /*
-	To work with llvm-libc++, you need to disable receiving symbols from the standard library
-	This must be specified during compilation of llvm-libc++
-*/
-#ifndef _LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE
-#define _LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE
-#endif
-
-/*
 	Use STL headers for integration with standard library functions
 	(three-way comparison, iterator categories, etc.)
 

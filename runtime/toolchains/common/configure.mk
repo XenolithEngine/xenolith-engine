@@ -26,18 +26,24 @@ SHELL = powershell.exe
 MKDIR = powershell New-Item -ItemType Directory -Force -Path
 RM := powershell Remove-Item -Recurse -Force -ErrorAction Ignore -Path 
 
+rule_mkdir = powershell New-Item -ItemType Directory -Force -Path "$(1)" | Out-Null
 rule_rm = powershell 'if (Test-Path "$(1)") { Remove-Item -Recurse -Force -ErrorAction Ignore -Path "$(1)" }'
 rule_cp = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force
 rule_cpr = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force -Recurse
 rule_mv = powershell Move-Item -Path "$(1)" -Destination "$(2)" -Force
+
+mklibname = $(addprefix lib,$(addsuffix .lib, $(1)))
 else
 MKDIR = mkdir -p
 RM := rm -rf
 
+rule_mkdir = mkdir -p $(1)
 rule_rm = rm -rf $(1)
 rule_cp = cp -f $(1) $(2)
 rule_cpr = cp -rf $(1) $(2)
 rule_mv = mv -f $(1) $(2)
+
+mklibname = $(addprefix lib,$(addsuffix .a, $(1)))
 endif
 
 export PKG_CONFIG_PATH=$(SP_INSTALL_PREFIX)/lib/pkgconfig
@@ -49,15 +55,12 @@ SP_LDFLAGS := -L$(SP_INSTALL_PREFIX)/lib $(SP_USER_LDFLAGS)
 
 ifdef SP_TOOLCHAIN_PREFIX
 SP_CFLAGS := --sysroot=$(SP_TOOLCHAIN_PREFIX) \
-	-D_LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE \
 	-idirafter $(SP_TOOLCHAIN_PREFIX)/include_libc \
 	$(SP_CFLAGS)
 SP_CXXFLAGS := --sysroot=$(SP_TOOLCHAIN_PREFIX) \
-	-D_LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE \
 	-idirafter $(SP_TOOLCHAIN_PREFIX)/include_libc \
 	$(SP_CXXFLAGS)
 SP_CPPFLAGS := --sysroot=$(SP_TOOLCHAIN_PREFIX) \
-	-D_LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE \
 	-idirafter $(SP_TOOLCHAIN_PREFIX)/include_libc \
 	$(SP_CPPFLAGS)
 SP_LDFLAGS := --sysroot=$(SP_TOOLCHAIN_PREFIX) $(SP_LDFLAGS)
@@ -124,26 +127,25 @@ endif
 # CMake helper
 #
 
-CONFIGURE_CMAKE_C_FLAGS_INIT := -I$(SP_INSTALL_PREFIX)/include \
-	-D_LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE \
-	-idirafter $(SP_TOOLCHAIN_PREFIX)/include_libc \
-	$(SP_OPT) $(SP_USER_CFLAGS)
-CONFIGURE_CMAKE_CXX_FLAGS_INIT := -I$(SP_INSTALL_PREFIX)/include \
-	-D_LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE \
-	-idirafter $(SP_TOOLCHAIN_PREFIX)/include_libc \
-	$(SP_OPT) $(SP_USER_CXXFLAGS)
-CONFIGURE_EXE_LINKER_FLAGS_INIT := -L$(SP_INSTALL_PREFIX)/lib $(SP_LIBS_PLATFORM) $(SP_USER_LDFLAGS)
-CONFIGURE_SHARED_LINKER_FLAGS_INIT := -L$(SP_INSTALL_PREFIX)/lib $(SP_LIBS_PLATFORM) $(SP_USER_LDFLAGS)
+CONFIGURE_CMAKE_C_FLAGS_INIT := $(SP_OPT) $(SP_USER_CFLAGS) -resource-dir $(SP_INSTALL_PREFIX)/lib/clang/21
+CONFIGURE_CMAKE_CXX_FLAGS_INIT := $(SP_OPT) $(SP_USER_CXXFLAGS) -resource-dir $(SP_INSTALL_PREFIX)/lib/clang/21
+CONFIGURE_EXE_LINKER_FLAGS_INIT := $(SP_LIBS_PLATFORM) $(SP_USER_LDFLAGS) -resource-dir $(SP_INSTALL_PREFIX)/lib/clang/21
+CONFIGURE_SHARED_LINKER_FLAGS_INIT := $(SP_LIBS_PLATFORM) $(SP_USER_LDFLAGS) -resource-dir $(SP_INSTALL_PREFIX)/lib/clang/21
 
 ifndef WINDOWS
 CONFIGURE_EXE_LINKER_FLAGS_INIT += -Wl,--gc-sections
 endif
 
+CONFIGURE_CMAKE :=
 
-CONFIGURE_CMAKE := \
+ifdef SP_TOOLCHAIN_FILE
+CONFIGURE_CMAKE += -DCMAKE_TOOLCHAIN_FILE=$(realpath $(SP_TOOLCHAIN_FILE))
+endif
+
+CONFIGURE_CMAKE += \
 	-DCMAKE_FIND_USE_CMAKE_SYSTEM_PATH=Off \
-	-DCMAKE_C_COMPILER=$(SP_CC) \
-	-DCMAKE_CXX_COMPILER=$(SP_CXX) \
+	-DCMAKE_FIND_ROOT_PATH="$(SP_INSTALL_PREFIX)" \
+	-DPKG_CONFIG_PATH="$(SP_INSTALL_PREFIX)/lib/pkgconfig" \
 	-DCMAKE_C_FLAGS_INIT="$(CONFIGURE_CMAKE_C_FLAGS_INIT)" \
 	-DCMAKE_CXX_FLAGS_INIT="$(CONFIGURE_CMAKE_CXX_FLAGS_INIT)" \
 	-DCMAKE_EXE_LINKER_FLAGS_INIT="$(CONFIGURE_EXE_LINKER_FLAGS_INIT)" \
@@ -151,13 +153,12 @@ CONFIGURE_CMAKE := \
 	-DCMAKE_INSTALL_PREFIX=$(SP_INSTALL_PREFIX) \
 	-DCMAKE_PREFIX_PATH=$(SP_INSTALL_PREFIX) \
 	-DCMAKE_INSTALL_BINDIR=$(MAKE_ROOT)$(LIBNAME)/bin \
+	-DCMAKE_INSTALL_LIBDIR=$(SP_INSTALL_PREFIX)/usr/lib \
+	-DCMAKE_INSTALL_INCLUDEDIR=$(SP_INSTALL_PREFIX)/usr/include \
 	-DCMAKE_INSTALL_DATAROOTDIR=$(MAKE_ROOT)$(LIBNAME)/share \
 	-DBUILD_SHARED_LIBS=OFF \
-	-DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+#	-DCMAKE_VERBOSE_MAKEFILE=On
 
-ifdef SP_TOOLCHAIN_PREFIX
-CONFIGURE_CMAKE += -DCMAKE_SYSROOT=$(SP_TOOLCHAIN_PREFIX)
-endif
 
 ifdef ANDROID
 CONFIGURE_CMAKE += \

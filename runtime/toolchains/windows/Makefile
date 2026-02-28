@@ -29,32 +29,28 @@ SHELL = powershell.exe
 SP_OPT := -O3
 
 LIBS := \
-	z.lib \
-	bz2.lib \
-	lzma.lib \
-	zstd.lib \
-	brotlienc.lib \
-	jpeg.lib \
-	png16.lib \
-	gif.lib \
-	webp.lib \
-	tiff.lib \
-	freetype.lib \
-	harfbuzz.lib \
-	sqlite3.lib \
-	mbedtls.lib \
-	nghttp3.lib \
-	ssl.lib \
-	gost_engine.lib \
-	curl-openssl.lib \
-	curl-mbedtls.lib \
-	zip.lib \
-	iwasm-release.lib \
-	iwasm-debug.lib \
-
-WASM_LIBS := \
-	libiwasm-release.a \
-	libiwasm-debug.a
+	libz.lib \
+	libbz2.lib \
+	liblzma.lib \
+	libzstd.lib \
+	libbrotlienc.lib \
+	libjpeg.lib \
+	libpng16.lib \
+	libgif.lib \
+	libwebp.lib \
+	libtiff.lib \
+	libfreetype.lib \
+	libharfbuzz.lib \
+	libsqlite3.lib \
+	libmbedtls.lib \
+	libnghttp3.lib \
+	libssl.lib \
+	libgost_engine.lib \
+	libcurl-openssl.lib \
+	libcurl-mbedtls.lib \
+	libzip.lib \
+	libiwasm-release.lib \
+	libiwasm-debug.lib \
 
 BINS := \
 	spirv-opt.exe \
@@ -125,11 +121,11 @@ ARCH_BINS  = $(addprefix $(SP_INSTALL_PREFIX)/bin/,$(BINS))
 
 all: $(ARCH_LIBS) $(ARCH_INCLUDES) $(ARCH_BINS) $(SP_INSTALL_PREFIX)/share/licenses
 
-$(SP_INSTALL_PREFIX)/lib/z.lib: $(MAKE_ROOT)zlib.mk
-	$(MAKE) -f $(MAKE_ROOT)zlib.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/lib/libz.lib:  ../common/zlib.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/bz2.lib: $(MAKE_ROOT)bzip2.mk
-	$(MAKE) -f $(MAKE_ROOT)bzip2.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/lib/libbz2.lib: : ../common/bzip2.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/lib/lzma.lib: $(MAKE_ROOT)xz.mk
 	$(MAKE) -f $(MAKE_ROOT)xz.mk $(FORWARD_VARS)

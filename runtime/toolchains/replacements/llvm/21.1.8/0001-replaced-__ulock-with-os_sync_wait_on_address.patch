@@ -1,0 +1,38 @@
+From 5cab9587bb0b6a61a628ba44027e4f6b5b4cde99 Mon Sep 17 00:00:00 2001
+From: SBKarr <sbkarr@stappler.org>
+Date: Tue, 24 Feb 2026 02:26:36 +0800
+Subject: [PATCH] replaced __ulock with os_sync_wait_on_address
+
+---
+ libcxx/src/atomic.cpp | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/libcxx/src/atomic.cpp b/libcxx/src/atomic.cpp
+index 903084da0..be5b20e66 100644
+--- a/libcxx/src/atomic.cpp
++++ b/libcxx/src/atomic.cpp
+@@ -63,6 +63,21 @@ static void __libcpp_platform_wake_by_address(__cxx_atomic_contention_t const vo
+   _LIBCPP_FUTEX(__ptr, FUTEX_WAKE_PRIVATE, __notify_one ? 1 : INT_MAX, 0, 0, 0);
+ }
+ 
++#elif defined(__APPLE__) && defined(_LIBCPP_USE_OS_SYNC_WAIT_ON_ADDRESS)
++
++#include <os/os_sync_wait_on_address.h>
++
++static void
++__libcpp_platform_wait_on_address(__cxx_atomic_contention_t const volatile* __ptr, __cxx_contention_t __val) {
++  static_assert(sizeof(__cxx_atomic_contention_t) == 8, "Waiting on 8 bytes value");
++  os_sync_wait_on_address((void *)__ptr, __val, sizeof(__cxx_atomic_contention_t), OS_SYNC_WAIT_ON_ADDRESS_NONE);
++}
++
++static void __libcpp_platform_wake_by_address(__cxx_atomic_contention_t const volatile* __ptr, bool __notify_one) {
++  static_assert(sizeof(__cxx_atomic_contention_t) == 8, "Waking up on 8 bytes value");
++  os_sync_wake_by_address_all((void *)__ptr, sizeof(__cxx_atomic_contention_t), OS_SYNC_WAKE_BY_ADDRESS_NONE);
++}
++
+ #elif defined(__APPLE__) && defined(_LIBCPP_USE_ULOCK)
+ 
+ extern "C" int __ulock_wait(
+-- 
+2.48.1
+

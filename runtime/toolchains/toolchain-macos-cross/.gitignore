@@ -9,3 +9,4 @@ src
 /llvm-*
 /make-*
 /zlib-*
+MacOSX*
