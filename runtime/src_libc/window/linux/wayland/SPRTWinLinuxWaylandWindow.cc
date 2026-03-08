@@ -21,6 +21,8 @@
  THE SOFTWARE.
  **/
 
+#define __SPRT_BUILD 1
+
 #include "private/window/linux/SPRTWinLinuxWaylandWindow.h"
 #include "private/window/linux/SPRTWinLinuxWaylandLibrary.h"
 #include "private/window/linux/SPRTWinLinuxWaylandSeat.h"
@@ -30,6 +32,7 @@
 #include "private/window/linux/SPRTWinLinuxWaylandKeys.h"
 
 #include <sprt/runtime/window/display_config.h>
+#include <sprt/runtime/log.h>
 
 #if MODULE_XENOLITH_BACKEND_VK
 #include "XLVkPresentationEngine.h" // IWYU pragma: keep
@@ -84,24 +87,6 @@ static const xdg_toplevel_listener s_XdgToplevelListener{
 	}
 };
 
-static libdecor_frame_interface s_libdecorFrameInterface {
-	.configure = [](libdecor_frame *frame, libdecor_configuration *configuration, void *data) {
-		reinterpret_cast<WaylandWindow *>(data)->handleDecorConfigure(frame, configuration);
-	},
-	.close = [](libdecor_frame *frame, void *data) {
-		reinterpret_cast<WaylandWindow *>(data)->handleDecorClose(frame);
-	},
-	.commit = [](libdecor_frame *frame, void *data) {
-		reinterpret_cast<WaylandWindow *>(data)->handleDecorCommit(frame);
-	},
-	.dismiss_popup = [](libdecor_frame *frame, const char *seat_name, void *user_data) {
-
-	},
-	/*.bounds = [](struct libdecor_frame *frame, int width, int height, void *user_data) {
-
-	}*/
-};
-
 static zxdg_toplevel_decoration_v1_listener s_serverDecorationListener {
 	.configure = [](void *data, zxdg_toplevel_decoration_v1 *decor, uint32_t mode) {
 		reinterpret_cast<WaylandWindow *>(data)->handleDecorConfigure(decor, mode);
@@ -112,28 +97,23 @@ static zxdg_toplevel_decoration_v1_listener s_serverDecorationListener {
 
 WaylandWindow::~WaylandWindow() {
 	if (_frameCallback) {
-		_wayland->wl_callback_destroy(_frameCallback);
+		wl_callback_destroy(_frameCallback);
 		_frameCallback = nullptr;
 	}
 
 	if (_serverDecor) {
-		_wayland->zxdg_toplevel_decoration_v1_destroy(_serverDecor);
+		zxdg_toplevel_decoration_v1_destroy(_serverDecor);
 		_serverDecor = nullptr;
-	}
-
-	if (_clientDecor) {
-		_wayland->libdecor_frame_unref(_clientDecor);
-		_clientDecor = nullptr;
 	}
 
 	_iconMaximized = nullptr;
 	_decors.clear();
 	if (_toplevel) {
-		_wayland->xdg_toplevel_destroy(_toplevel);
+		xdg_toplevel_destroy(_toplevel);
 		_toplevel = nullptr;
 	}
 	if (_xdgSurface) {
-		_wayland->xdg_surface_destroy(_xdgSurface);
+		xdg_surface_destroy(_xdgSurface);
 		_xdgSurface = nullptr;
 	}
 	if (_surface) {
@@ -164,8 +144,8 @@ bool WaylandWindow::init(NotNull<WaylandDisplay> display, Rc<WindowInfo> &&info,
 
 	_surface = _display->createSurface(this);
 	if (_surface) {
-		_wayland->wl_surface_set_user_data(_surface, this);
-		_wayland->wl_surface_add_listener(_surface, &s_WaylandSurfaceListener, this);
+		wl_surface_set_user_data(_surface, this);
+		wl_surface_add_listener(_surface, &s_WaylandSurfaceListener, this);
 
 		if (hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
 			if (!initWithAppDecor()) {
@@ -174,11 +154,6 @@ bool WaylandWindow::init(NotNull<WaylandDisplay> display, Rc<WindowInfo> &&info,
 		} else if (hasFlag(_info->capabilities, WindowCapabilities::ServerSideDecorations)
 				&& hasFlag(_info->flags, WindowCreationFlags::PreferServerSideDecoration)) {
 			if (!initWithServerDecor()) {
-				return false;
-			}
-		} else if (hasFlag(_info->capabilities, WindowCapabilities::NativeDecorations)
-				&& hasFlag(_info->flags, WindowCreationFlags::PreferNativeDecoration)) {
-			if (!initWithLibdecor()) {
 				return false;
 			}
 		} else {
@@ -192,10 +167,6 @@ bool WaylandWindow::init(NotNull<WaylandDisplay> display, Rc<WindowInfo> &&info,
 	for (auto &it : _display->outputs) { rate = sprt::max(rate, uint32_t(it->currentMode.rate)); }
 	_frameRate = rate;
 
-	if (_clientDecor) {
-		_wayland->libdecor_frame_map(_clientDecor);
-	}
-
 	return true;
 }
 
@@ -206,7 +177,7 @@ void WaylandWindow::mapWindow() {
 
 void WaylandWindow::unmapWindow() {
 	if (_frameCallback) {
-		_wayland->wl_callback_destroy(_frameCallback);
+		wl_callback_destroy(_frameCallback);
 		_frameCallback = nullptr;
 	}
 	_mapped = false;
@@ -231,55 +202,66 @@ bool WaylandWindow::close() {
 	return false;
 }
 
-void WaylandWindow::handleFramePresented(const PresentationFrameInfo &frame) {
+void WaylandWindow::handleFrameReady(const PresentationFrameInfo &frame) {
+	// Note that wl_surface_commit will be called by gAPI (vkPresentKHR) after this func;
+	// We should not commit anything from here
+
+	// Extract new windows's extent from rendered frame
 	auto newExtent = Extent2(frame.constraints.extent.width, frame.constraints.extent.height);
 	if (_density != 0.0f) {
 		newExtent.width /= _density;
 		newExtent.height /= _density;
 	}
 
-	bool dirty = _commitedExtent.width != newExtent.width
-			|| _commitedExtent.height != newExtent.height
-			|| _configureSerial != Max<uint32_t> || _decorConfiguration;
+	// Check if we should update window's geometry
+	bool windowGeometryDirty = _commitedExtent.width != newExtent.width
+			|| _commitedExtent.height != newExtent.height || _configureSerial != Max<uint32_t>;
 
-	if (!dirty) {
+	if (!windowGeometryDirty) {
+		// if some detoration's frame changed - general geometry is also dirty
 		for (auto &it : _decors) {
 			if (it->dirty) {
-				dirty = true;
+				windowGeometryDirty = true;
 				break;
 			}
 		}
 	}
 
 	if (!_frameCallback) {
-		_frameCallback = _wayland->wl_surface_frame(_surface);
-		_wayland->wl_callback_add_listener(_frameCallback, &s_WaylandSurfaceFrameListener, this);
-		_wayland->wl_surface_commit(_surface);
+		// add callback for next frame
+		_frameCallback = wl_surface_frame(_surface);
+		wl_callback_add_listener(_frameCallback, &s_WaylandSurfaceFrameListener, this);
 	}
 
-	if (!dirty) {
+	if (!windowGeometryDirty) {
 		return;
 	}
 
-
 	String stream;
-	stream += StreamTraits<char>::toString("commit: ", newExtent.width, " ", newExtent.height, ";");
+	stream += StreamTraits<char>::toString("handleFrameReady: ", frame.order,
+			" commit: ", newExtent.width, " ", newExtent.height, ";");
 
 	_commitedExtent = newExtent;
 
-	bool surfacesDirty = configureDecorations(_commitedExtent);
+	// Update decoration's geometry to match new window extent
+	configureDecorations(_commitedExtent);
 
+	// There are two cases to be here
+	// First - interactive resize (Resizing flag set), it this case - apply current frame's size for xdg_surface
+	// Second - force-resize by WM to match some constraints, in this case, wait until PresentationEngine perform
+	// frame, that extent's match _awaitingExtent
 	if (_configureSerial != Max<uint32_t>
-			&& (_awaitingExtent == Extent2(0, 0) || _awaitingExtent == _commitedExtent)) {
+			&& (hasFlag(_info->state, WindowState::Resizing) || _commitedExtent == _awaitingExtent
+					|| _awaitingExtent == Extent2())) {
 		if (_toplevel) {
 			// TODO: configure it the right way
-			_wayland->xdg_toplevel_set_min_size(_toplevel, DecorWidth * 2 + IconSize * 3,
+			// For now, we define it to keep space for decorations
+			xdg_toplevel_set_min_size(_toplevel, DecorWidth * 2 + IconSize * 3,
 					DecorWidth * 2 + DecorOffset + DecorInset);
 		}
 
 		if (_xdgSurface) {
-			// Capture decoration
-
+			// Offset windows's extent by decoration's frames
 			auto pos = IVec2(0, 0);
 			auto extent = _commitedExtent;
 			if (!hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)
@@ -288,51 +270,42 @@ void WaylandWindow::handleFramePresented(const PresentationFrameInfo &frame) {
 				pos.y -= DecorInset + DecorOffset;
 			}
 
-			_wayland->xdg_surface_ack_configure(_xdgSurface, _configureSerial);
-
-			_wayland->xdg_surface_set_window_geometry(_xdgSurface, pos.x, pos.y, extent.width,
-					extent.height);
+			xdg_surface_set_window_geometry(_xdgSurface, pos.x, pos.y, extent.width, extent.height);
 
 			stream += StreamTraits<char>::toString(" surface: ", extent.width, " ", extent.height);
-			stream += StreamTraits<char>::toString(" configure: ", _configureSerial, ";");
+
+			// If we have _configureSerial - confirm it
+			if (_configureSerial != 0 && _configureSerial != Max<uint32_t>) {
+				xdg_surface_ack_configure(_xdgSurface, _configureSerial);
+				stream += StreamTraits<char>::toString("; configure: ", _configureSerial, ";");
+			}
 		}
 		_configureSerial = Max<uint32_t>;
 	}
 
-	if (_decorConfiguration) {
-		auto state = _wayland->libdecor_state_new(_commitedExtent.width, _commitedExtent.height);
-		_wayland->libdecor_frame_commit(_clientDecor, state, _decorConfiguration);
-		_decorConfiguration = nullptr;
-	}
-
-	if (!_frameCallback) {
-		_frameCallback = _wayland->wl_surface_frame(_surface);
-		_wayland->wl_callback_add_listener(_frameCallback, &s_WaylandSurfaceFrameListener, this);
-	}
-
-	if (_toplevel && _awaitingExtent != Extent2(0, 0)) {
-		if (_awaitingExtent != _commitedExtent) {
-			auto w = _awaitingExtent.width;
-			auto h = _awaitingExtent.height;
-			_awaitingExtent = Extent2(0, 0);
-			handleToplevelConfigure(_toplevel, w, h, nullptr);
-		} else {
-			_awaitingExtent = Extent2(0, 0);
-		}
-	}
-
-	if (surfacesDirty) {
-		emitAppFrame();
-		stream += " Surfaces Dirty;";
-	}
-
-	_wayland->wl_surface_commit(_surface);
-
-	XL_WAYLAND_LOG(stream.str());
+	XL_WAYLAND_LOG(stream);
 }
 
-FrameConstraints WaylandWindow::exportConstraints() const {
-	auto ret = NativeWindow::exportConstraints();
+void WaylandWindow::handleFramePresented(const PresentationFrameInfo &frame) {
+	// New frame was presented, so, wl_surface_commit was valled before this func
+
+	// With interactive resize, we can miss some last resizing frames due async rendering;
+	// It this case, _awaitingExtent (target extent for resize op) != _commitedExtent (last frame's extent)
+	// We should then inform PresentationEngine that swapchain should be updated one more time, by calling
+	// handleToplevelGeometry with new extent
+	if (_awaitingExtent != Extent2() && _commitedExtent != _awaitingExtent
+			&& !hasFlag(_info->state, WindowState::Resizing)) {
+		handleToplevelGeometry(_toplevel, _awaitingExtent.width, _awaitingExtent.height, false,
+				nullptr);
+	}
+}
+
+void WaylandWindow::handleSwapchainUpdated(const FrameConstraints &c) { }
+
+FrameConstraints WaylandWindow::exportConstraints(uint64_t &serial) const {
+	auto ret = NativeWindow::exportConstraints(serial);
+
+	serial = _configureSerial;
 
 	ret.extent = Extent3(_currentExtent.width, _currentExtent.height, 1);
 	if (ret.density == 0.0f) {
@@ -370,6 +343,7 @@ Extent2 WaylandWindow::getExtent() const { return _currentExtent; }
 PresentationOptions WaylandWindow::getPreferredOptions() const {
 	PresentationOptions opts;
 	opts.followDisplayLinkBarrier = true;
+	opts.acquireImageWithoutFence = true;
 	return opts;
 }
 
@@ -378,7 +352,7 @@ void WaylandWindow::handleSurfaceEnter(wl_surface *surface, wl_output *output) {
 		return;
 	}
 
-	auto out = (WaylandOutput *)_wayland->wl_output_get_user_data(output);
+	auto out = (WaylandOutput *)wl_output_get_user_data(output);
 	if (out) {
 		_activeOutputs.emplace(out);
 		XL_WAYLAND_LOG("handleSurfaceEnter: output: ", out->description());
@@ -398,7 +372,7 @@ void WaylandWindow::handleSurfaceLeave(wl_surface *surface, wl_output *output) {
 		return;
 	}
 
-	auto out = (WaylandOutput *)_wayland->wl_output_get_user_data(output);
+	auto out = (WaylandOutput *)wl_output_get_user_data(output);
 	if (out) {
 		_activeOutputs.erase(out);
 		XL_WAYLAND_LOG("handleSurfaceLeave: output: ", out->description());
@@ -426,15 +400,25 @@ void WaylandWindow::handleSurfaceConfigure(xdg_surface *surface, uint32_t serial
 				}
 
 				configureDecorations(_currentExtent);
-				_wayland->xdg_surface_set_window_geometry(_xdgSurface, 0, -headerHeight,
-						_currentExtent.width, _currentExtent.height + headerHeight);
+				xdg_surface_set_window_geometry(_xdgSurface, 0, -headerHeight, _currentExtent.width,
+						_currentExtent.height + headerHeight);
 			} else if (_xdgSurface) {
-				_wayland->xdg_surface_set_window_geometry(_xdgSurface, 0, 0, _currentExtent.width,
+				xdg_surface_set_window_geometry(_xdgSurface, 0, 0, _currentExtent.width,
 						_currentExtent.height);
 			}
 		}
 	}
 	_configureSerial = serial;
+
+	if (!_started) {
+		_controller->notifyWindowCreated(this);
+		_started = true;
+	}
+
+	if (_toplevelDirty) {
+		emitAppFrame();
+		_toplevelDirty = false;
+	}
 }
 
 void WaylandWindow::handleToplevelConfigure(xdg_toplevel *xdg_toplevel, int32_t width,
@@ -578,8 +562,17 @@ void WaylandWindow::handleToplevelConfigure(xdg_toplevel *xdg_toplevel, int32_t 
 		it->setVisible(checkVisible(it->name));
 	}
 
+	handleToplevelGeometry(xdg_toplevel, width, height, hasModeSwitch, &stream);
+
+	XL_WAYLAND_LOG(stream);
+
+	_toplevelDirty = true;
+}
+
+void WaylandWindow::handleToplevelGeometry(xdg_toplevel *xdg_toplevel, int32_t width,
+		int32_t height, bool hasModeSwitch, String *stream) {
 	if (width && height && _commitedExtent.width && _commitedExtent.height) {
-		if (!_clientDecor && !_serverDecor && !hasFlag(_info->state, WindowState::Fullscreen)
+		if (!_serverDecor && !hasFlag(_info->state, WindowState::Fullscreen)
 				&& !hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
 			height -= (DecorInset + DecorOffset);
 		}
@@ -598,22 +591,15 @@ void WaylandWindow::handleToplevelConfigure(xdg_toplevel *xdg_toplevel, int32_t 
 				_controller->notifyWindowConstraintsChanged(this,
 						UpdateConstraintsFlags::DeprecateSwapchain);
 
-				stream += StreamTraits<char>::toString("surface: ", _currentExtent.width, " ",
-						_currentExtent.height);
+				if (stream) {
+					(*stream) += StreamTraits<char>::toString("surface: ", _currentExtent.width,
+							" ", _currentExtent.height);
+				}
 			} else {
 				_awaitingExtent =
 						Extent2(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 			}
 		}
-	}
-
-	XL_WAYLAND_LOG(stream.str());
-
-	emitAppFrame();
-
-	if (!_started) {
-		_controller->notifyWindowCreated(this);
-		_started = true;
 	}
 }
 
@@ -654,9 +640,9 @@ void WaylandWindow::handleToplevelCapabilities(xdg_toplevel *xdg_toplevel, wl_ar
 
 void WaylandWindow::handleSurfaceFrameDone(wl_callback *frame, uint32_t data) {
 	if (frame != _frameCallback) {
-		_wayland->wl_callback_destroy(frame);
+		wl_callback_destroy(frame);
 	} else {
-		_wayland->wl_callback_destroy(frame);
+		wl_callback_destroy(frame);
 		_frameCallback = nullptr;
 		if (_appWindow) {
 			_appWindow->update(PresentationUpdateFlags::DisplayLink);
@@ -664,85 +650,8 @@ void WaylandWindow::handleSurfaceFrameDone(wl_callback *frame, uint32_t data) {
 	}
 }
 
-void WaylandWindow::handleDecorConfigure(libdecor_frame *frame,
-		libdecor_configuration *configuration) {
-
-	int width = 0, height = 0;
-	_wayland->libdecor_configuration_get_content_size(configuration, frame, &width, &height);
-
-	String stream;
-	stream = StreamTraits<char>::toString("handleDecorConfigure: width: ", width,
-			", height: ", height, ";");
-
-	libdecor_window_state wstate = LIBDECOR_WINDOW_STATE_NONE;
-	if (_wayland->libdecor_configuration_get_window_state(configuration, &wstate)) {
-		WindowState state = WindowState::None;
-
-		if (hasFlag(wstate, LIBDECOR_WINDOW_STATE_ACTIVE)) {
-			state |= WindowState::Focused;
-		}
-		if (hasFlag(wstate, LIBDECOR_WINDOW_STATE_MAXIMIZED)) {
-			state |= WindowState::Maximized;
-		}
-		if (hasFlag(wstate, LIBDECOR_WINDOW_STATE_FULLSCREEN)) {
-			state |= WindowState::Fullscreen;
-		}
-		if (hasFlag(wstate, LIBDECOR_WINDOW_STATE_TILED_LEFT)) {
-			state |= WindowState::TiledLeft;
-		}
-		if (hasFlag(wstate, LIBDECOR_WINDOW_STATE_TILED_RIGHT)) {
-			state |= WindowState::TiledRight;
-		}
-		if (hasFlag(wstate, LIBDECOR_WINDOW_STATE_TILED_TOP)) {
-			state |= WindowState::TiledTop;
-		}
-		if (hasFlag(wstate, LIBDECOR_WINDOW_STATE_TILED_BOTTOM)) {
-			state |= WindowState::TiledBottom;
-		}
-		if (hasFlag(wstate, LIBDECOR_WINDOW_STATE_SUSPENDED)) {
-			state |= WindowState::Minimized;
-		}
-
-		if (state != _info->state) {
-			updateState(0, state);
-		}
-	}
-
-	_decorConfiguration = configuration;
-
-	if (!_started) {
-		_controller->notifyWindowCreated(this);
-		_started = true;
-	}
-
-	if (width && height) {
-		if (_currentExtent.width != static_cast<uint32_t>(width)
-				|| _currentExtent.height != static_cast<uint32_t>(height)) {
-			_currentExtent.width = static_cast<uint32_t>(width);
-			_currentExtent.height = static_cast<uint32_t>(height);
-			_controller->notifyWindowConstraintsChanged(this,
-					UpdateConstraintsFlags::DeprecateSwapchain);
-
-			stream += StreamTraits<char>::toString("surface: ", _currentExtent.width, " ",
-					_currentExtent.height);
-		}
-	}
-
-	XL_WAYLAND_LOG(stream.str());
-}
-
 void WaylandWindow::handleDecorConfigure(zxdg_toplevel_decoration_v1 *decor, uint32_t mode) {
 	XL_WAYLAND_LOG("handleDecorConfigure:", mode);
-}
-
-void WaylandWindow::handleDecorClose(libdecor_frame *frame) {
-	XL_WAYLAND_LOG("handleDecorClose");
-	_controller->notifyWindowClosed(this);
-}
-
-void WaylandWindow::handleDecorCommit(libdecor_frame *frame) {
-	XL_WAYLAND_LOG("handleDecorCommit");
-	_configureSerial++;
 }
 
 void WaylandWindow::handlePointerEnter(wl_fixed_t surface_x, wl_fixed_t surface_y) {
@@ -817,7 +726,7 @@ void WaylandWindow::handlePointerMotion(uint32_t time, wl_fixed_t surface_x, wl_
 			auto grip = _buttonGripFlags;
 			switch (grip) {
 			case WindowLayerFlags::MoveGrip:
-				_wayland->xdg_toplevel_move(_toplevel, _display->seat->seat, _buttonGripSerial);
+				xdg_toplevel_move(_toplevel, _display->seat->seat, _buttonGripSerial);
 				break;
 			case WindowLayerFlags::ResizeTopLeftGrip:
 			case WindowLayerFlags::ResizeTopGrip:
@@ -827,7 +736,7 @@ void WaylandWindow::handlePointerMotion(uint32_t time, wl_fixed_t surface_x, wl_
 			case WindowLayerFlags::ResizeBottomGrip:
 			case WindowLayerFlags::ResizeBottomLeftGrip:
 			case WindowLayerFlags::ResizeLeftGrip:
-				_wayland->xdg_toplevel_resize(_toplevel, _display->seat->seat, _buttonGripSerial,
+				xdg_toplevel_resize(_toplevel, _display->seat->seat, _buttonGripSerial,
 						getWaylandGripEdge(grip));
 				break;
 			default: break;
@@ -897,7 +806,7 @@ void WaylandWindow::handlePointerButton(uint32_t serial, uint32_t time, uint32_t
 			// Capture current grip flags
 			if (hasFlag(_currentLayerFlags, WindowLayerFlags::WindowMenuLeft)) {
 				cancelPointerEvents();
-				_wayland->xdg_toplevel_show_window_menu(_toplevel, _display->seat->seat, serial,
+				xdg_toplevel_show_window_menu(_toplevel, _display->seat->seat, serial,
 						wl_fixed_to_int(_surfaceFX), wl_fixed_to_int(_surfaceFY));
 				return;
 			} else {
@@ -907,7 +816,7 @@ void WaylandWindow::handlePointerButton(uint32_t serial, uint32_t time, uint32_t
 		} else if (btn == InputMouseButton::MouseRight) {
 			if (hasFlag(_currentLayerFlags, WindowLayerFlags::WindowMenuRight)) {
 				cancelPointerEvents();
-				_wayland->xdg_toplevel_show_window_menu(_toplevel, _display->seat->seat, serial,
+				xdg_toplevel_show_window_menu(_toplevel, _display->seat->seat, serial,
 						wl_fixed_to_int(_surfaceFX), wl_fixed_to_int(_surfaceFY));
 				return;
 			}
@@ -1417,10 +1326,10 @@ void WaylandWindow::handleDecorationPress(WaylandDecoration *decor, uint32_t ser
 		bool released) {
 	auto switchMaximized = [&, this] {
 		if (!hasFlag(_info->state, WindowState::Maximized)) {
-			_wayland->xdg_toplevel_set_maximized(_toplevel);
+			xdg_toplevel_set_maximized(_toplevel);
 			_iconMaximized->setAlternative(true);
 		} else {
-			_wayland->xdg_toplevel_unset_maximized(_toplevel);
+			xdg_toplevel_unset_maximized(_toplevel);
 			_iconMaximized->setAlternative(false);
 		}
 	};
@@ -1435,14 +1344,12 @@ void WaylandWindow::handleDecorationPress(WaylandDecoration *decor, uint32_t ser
 		emitAppFrame();
 		return;
 		break;
-	case WaylandDecorationName::IconMinimize:
-		_wayland->xdg_toplevel_set_minimized(_toplevel);
-		return;
+	case WaylandDecorationName::IconMinimize: xdg_toplevel_set_minimized(_toplevel); return;
 	case WaylandDecorationName::HeaderCenter:
 	case WaylandDecorationName::HeaderBottom:
 	case WaylandDecorationName::HeaderLeft:
 		if (btn == BTN_RIGHT) {
-			_wayland->xdg_toplevel_show_window_menu(_toplevel, _display->seat->seat, serial,
+			xdg_toplevel_show_window_menu(_toplevel, _display->seat->seat, serial,
 					wl_fixed_to_int(decor->pointerX), wl_fixed_to_int(decor->pointerY));
 			emitAppFrame();
 		}
@@ -1470,10 +1377,10 @@ void WaylandWindow::handleDecorationPress(WaylandDecoration *decor, uint32_t ser
 	}
 
 	if (edges != 0) {
-		_wayland->xdg_toplevel_resize(_toplevel, _display->seat->seat, serial, edges);
+		xdg_toplevel_resize(_toplevel, _display->seat->seat, serial, edges);
 		emitAppFrame();
 	} else {
-		_wayland->xdg_toplevel_move(_toplevel, _display->seat->seat, serial);
+		xdg_toplevel_move(_toplevel, _display->seat->seat, serial);
 		emitAppFrame();
 	}
 }
@@ -1481,7 +1388,7 @@ void WaylandWindow::handleDecorationPress(WaylandDecoration *decor, uint32_t ser
 void WaylandWindow::setPreferredScale(int32_t scale) {
 	if (_density != float(scale)) {
 		_density = float(scale);
-		_wayland->wl_surface_set_buffer_scale(_surface, scale);
+		wl_surface_set_buffer_scale(_surface, scale);
 		_controller->notifyWindowConstraintsChanged(this, UpdateConstraintsFlags::None);
 	}
 }
@@ -1507,7 +1414,7 @@ void WaylandWindow::dispatchPendingEvents() {
 	}
 
 	if (surfacesDirty) {
-		_wayland->wl_surface_commit(_surface);
+		wl_surface_commit(_surface);
 	}
 }
 
@@ -1526,13 +1433,13 @@ bool WaylandWindow::enableState(WindowState state) {
 	switch (state) {
 	case WindowState::Minimized:
 		if (_toplevel) {
-			_wayland->xdg_toplevel_set_minimized(_toplevel);
+			xdg_toplevel_set_minimized(_toplevel);
 			return true;
 		}
 		break;
 	case WindowState::Maximized:
 		if (_toplevel) {
-			_wayland->xdg_toplevel_set_maximized(_toplevel);
+			xdg_toplevel_set_maximized(_toplevel);
 			return true;
 		}
 		break;
@@ -1550,7 +1457,7 @@ bool WaylandWindow::disableState(WindowState state) {
 	switch (state) {
 	case WindowState::Maximized:
 		if (_toplevel) {
-			_wayland->xdg_toplevel_unset_maximized(_toplevel);
+			xdg_toplevel_unset_maximized(_toplevel);
 			return true;
 		}
 		break;
@@ -1569,9 +1476,7 @@ Status WaylandWindow::setFullscreenState(FullscreenInfo &&info) {
 	if (!enable) {
 		if (hasFlag(_info->state, WindowState::Fullscreen)) {
 			if (_toplevel) {
-				_wayland->xdg_toplevel_unset_fullscreen(_toplevel);
-			} else if (_clientDecor) {
-				_wayland->libdecor_frame_unset_fullscreen(_clientDecor);
+				xdg_toplevel_unset_fullscreen(_toplevel);
 			}
 			_info->fullscreen = move(info);
 			return Status::Ok;
@@ -1584,9 +1489,7 @@ Status WaylandWindow::setFullscreenState(FullscreenInfo &&info) {
 				_savedExtent = _currentExtent;
 				auto current = (*_activeOutputs.begin());
 				if (_toplevel) {
-					_wayland->xdg_toplevel_set_fullscreen(_toplevel, current->output);
-				} else if (_clientDecor) {
-					_wayland->libdecor_frame_set_fullscreen(_clientDecor, current->output);
+					xdg_toplevel_set_fullscreen(_toplevel, current->output);
 				}
 
 				// replace info with real data
@@ -1615,17 +1518,13 @@ Status WaylandWindow::setFullscreenState(FullscreenInfo &&info) {
 		// find target output
 		if (hasFlag(_info->state, WindowState::Fullscreen)) {
 			if (_toplevel) {
-				_wayland->xdg_toplevel_unset_fullscreen(_toplevel);
-			} else if (_clientDecor) {
-				_wayland->libdecor_frame_unset_fullscreen(_clientDecor);
+				xdg_toplevel_unset_fullscreen(_toplevel);
 			}
 		}
 		for (auto &it : _display->outputs) {
 			if (it->name == info.id.name) {
 				if (_toplevel) {
-					_wayland->xdg_toplevel_set_fullscreen(_toplevel, it->output);
-				} else if (_clientDecor) {
-					_wayland->libdecor_frame_set_fullscreen(_clientDecor, it->output);
+					xdg_toplevel_set_fullscreen(_toplevel, it->output);
 				}
 				_info->fullscreen = move(info);
 				return Status::Ok;
@@ -1731,50 +1630,38 @@ bool WaylandWindow::configureDecorations(Extent2 extent) {
 
 bool WaylandWindow::initWithServerDecor() {
 	// make server-size decorations
-	_xdgSurface = _wayland->xdg_wm_base_get_xdg_surface(_display->xdgWmBase, _surface);
+	_xdgSurface = xdg_wm_base_get_xdg_surface(_display->xdgWmBase, _surface);
 
-	_wayland->xdg_surface_add_listener(_xdgSurface, &s_XdgSurfaceListener, this);
+	xdg_surface_add_listener(_xdgSurface, &s_XdgSurfaceListener, this);
 
-	_toplevel = _wayland->xdg_surface_get_toplevel(_xdgSurface);
+	_toplevel = xdg_surface_get_toplevel(_xdgSurface);
 
-	_wayland->xdg_toplevel_set_title(_toplevel, _info->title.data());
-	_wayland->xdg_toplevel_set_app_id(_toplevel, _info->id.data());
-	_wayland->xdg_toplevel_add_listener(_toplevel, &s_XdgToplevelListener, this);
+	xdg_toplevel_set_title(_toplevel, _info->title.data());
+	xdg_toplevel_set_app_id(_toplevel, _info->id.data());
+	xdg_toplevel_add_listener(_toplevel, &s_XdgToplevelListener, this);
 
-	_serverDecor = _wayland->zxdg_decoration_manager_v1_get_toplevel_decoration(
-			_display->decorationManager, _toplevel);
-	_wayland->zxdg_toplevel_decoration_v1_add_listener(_serverDecor, &s_serverDecorationListener,
-			this);
-	_wayland->zxdg_toplevel_decoration_v1_set_mode(_serverDecor,
+	_serverDecor = zxdg_decoration_manager_v1_get_toplevel_decoration(_display->decorationManager,
+			_toplevel);
+	zxdg_toplevel_decoration_v1_add_listener(_serverDecor, &s_serverDecorationListener, this);
+	zxdg_toplevel_decoration_v1_set_mode(_serverDecor,
 			ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
-	_wayland->xdg_surface_set_window_geometry(_xdgSurface, 0, 0, _currentExtent.width,
-			_currentExtent.height);
-	_wayland->wl_surface_commit(_surface);
+	xdg_surface_set_window_geometry(_xdgSurface, 0, 0, _currentExtent.width, _currentExtent.height);
+	wl_surface_commit(_surface);
 	_display->flush();
-	return true;
-}
-
-bool WaylandWindow::initWithLibdecor() {
-	// libdecor decorations
-	_clientDecor =
-			_wayland->libdecor_decorate(_display->decor, _surface, &s_libdecorFrameInterface, this);
-
-	_wayland->libdecor_frame_set_title(_clientDecor, _info->title.data());
-	_wayland->libdecor_frame_set_app_id(_clientDecor, _info->id.data());
 	return true;
 }
 
 bool WaylandWindow::initWithAppDecor() {
 	auto &theme = _controller->getThemeInfo();
 	// application-based decorations
-	_xdgSurface = _wayland->xdg_wm_base_get_xdg_surface(_display->xdgWmBase, _surface);
+	_xdgSurface = xdg_wm_base_get_xdg_surface(_display->xdgWmBase, _surface);
 
-	_wayland->xdg_surface_add_listener(_xdgSurface, &s_XdgSurfaceListener, this);
+	xdg_surface_add_listener(_xdgSurface, &s_XdgSurfaceListener, this);
 
-	_toplevel = _wayland->xdg_surface_get_toplevel(_xdgSurface);
-	_wayland->xdg_toplevel_set_title(_toplevel, _info->title.data());
-	_wayland->xdg_toplevel_set_app_id(_toplevel, _info->id.data());
-	_wayland->xdg_toplevel_add_listener(_toplevel, &s_XdgToplevelListener, this);
+	_toplevel = xdg_surface_get_toplevel(_xdgSurface);
+	xdg_toplevel_set_title(_toplevel, _info->title.data());
+	xdg_toplevel_set_app_id(_toplevel, _info->id.data());
+	xdg_toplevel_add_listener(_toplevel, &s_XdgToplevelListener, this);
 
 	if (!_display->viewporter) {
 		log::vperror(__SPRT_LOCATION, "WaylandWindow",

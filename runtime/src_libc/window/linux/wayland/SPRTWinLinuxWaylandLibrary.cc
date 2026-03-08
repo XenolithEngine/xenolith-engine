@@ -23,18 +23,243 @@
 #include "private/window/linux/SPRTWinLinuxWaylandLibrary.h"
 #include "private/window/linux/SPRTWinLinuxDBusLibrary.h"
 
+#include <sprt/c/__sprt_assert.h>
+
 namespace sprt::window {
 
-WaylandLibrary::~WaylandLibrary() { close(); }
+static WaylandLibrary *s_library = nullptr;
 
-WaylandLibrary::WaylandLibrary() { }
+}
+
+extern "C" {
+
+#define WL_CLOSURE_MAX_ARGS 20
+
+struct wl_interface wl_display_interface = wl_interface();
+struct wl_interface wl_registry_interface = wl_interface();
+struct wl_interface wl_compositor_interface = wl_interface();
+struct wl_interface wl_output_interface = wl_interface();
+struct wl_interface wl_seat_interface = wl_interface();
+struct wl_interface wl_surface_interface = wl_interface();
+struct wl_interface wl_region_interface = wl_interface();
+struct wl_interface wl_callback_interface = wl_interface();
+struct wl_interface wl_pointer_interface = wl_interface();
+struct wl_interface wl_keyboard_interface = wl_interface();
+struct wl_interface wl_touch_interface = wl_interface();
+struct wl_interface wl_shm_interface = wl_interface();
+struct wl_interface wl_subcompositor_interface = wl_interface();
+struct wl_interface wl_subsurface_interface = wl_interface();
+struct wl_interface wl_shm_pool_interface = wl_interface();
+struct wl_interface wl_buffer_interface = wl_interface();
+struct wl_interface wl_data_offer_interface = wl_interface();
+struct wl_interface wl_data_source_interface = wl_interface();
+struct wl_interface wl_data_device_interface = wl_interface();
+struct wl_interface wl_data_device_manager_interface = wl_interface();
+
+struct wl_object {
+	const struct wl_interface *interface;
+	const void *implementation;
+	uint32_t id;
+};
+
+struct wl_proxy {
+	struct wl_object object;
+};
+
+enum wl_arg_type {
+	WL_ARG_INT = 'i',
+	WL_ARG_UINT = 'u',
+	WL_ARG_FIXED = 'f',
+	WL_ARG_STRING = 's',
+	WL_ARG_OBJECT = 'o',
+	WL_ARG_NEW_ID = 'n',
+	WL_ARG_ARRAY = 'a',
+	WL_ARG_FD = 'h',
+};
+
+struct argument_details {
+	enum wl_arg_type type;
+	int nullable;
+};
+
+static const char *get_next_argument(const char *signature, struct argument_details *details) {
+	details->nullable = 0;
+	for (; *signature; ++signature) {
+		switch (*signature) {
+		case WL_ARG_INT:
+		case WL_ARG_UINT:
+		case WL_ARG_FIXED:
+		case WL_ARG_STRING:
+		case WL_ARG_OBJECT:
+		case WL_ARG_NEW_ID:
+		case WL_ARG_ARRAY:
+		case WL_ARG_FD: details->type = (wl_arg_type)*signature; return signature + 1;
+		case '?': details->nullable = 1;
+		}
+	}
+	details->type = (wl_arg_type)'\0';
+	return signature;
+}
+
+static void wl_argument_from_va_list(const char *signature, union wl_argument *args, int count,
+		va_list ap) {
+	int i;
+	const char *sig_iter;
+	struct argument_details arg;
+
+	sig_iter = signature;
+	for (i = 0; i < count; i++) {
+		sig_iter = get_next_argument(sig_iter, &arg);
+
+		switch (arg.type) {
+		case WL_ARG_INT: args[i].i = va_arg(ap, int32_t); break;
+		case WL_ARG_UINT: args[i].u = va_arg(ap, uint32_t); break;
+		case WL_ARG_FIXED: args[i].f = va_arg(ap, wl_fixed_t); break;
+		case WL_ARG_STRING: args[i].s = va_arg(ap, const char *); break;
+		case WL_ARG_OBJECT: args[i].o = va_arg(ap, struct wl_object *); break;
+		case WL_ARG_NEW_ID: args[i].o = va_arg(ap, struct wl_object *); break;
+		case WL_ARG_ARRAY: args[i].a = va_arg(ap, struct wl_array *); break;
+		case WL_ARG_FD: args[i].h = va_arg(ap, int32_t); break;
+		}
+	}
+}
+
+struct wl_proxy *wl_proxy_marshal_flags(struct wl_proxy *proxy, uint32_t opcode,
+		const struct wl_interface *interface, uint32_t version, uint32_t flags, ...) {
+	union wl_argument args[WL_CLOSURE_MAX_ARGS];
+	va_list ap;
+
+	va_start(ap, flags);
+	wl_argument_from_va_list(proxy->object.interface->methods[opcode].signature, args,
+			WL_CLOSURE_MAX_ARGS, ap);
+	va_end(ap);
+
+	return wl_proxy_marshal_array_flags(proxy, opcode, interface, version, flags, args);
+}
+
+struct wl_display *wl_display_connect(const char *name) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_display_connect(name);
+}
+
+int wl_display_get_fd(struct wl_display *display) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_display_get_fd(display);
+}
+
+int wl_display_dispatch(struct wl_display *display) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_display_dispatch(display);
+}
+
+int wl_display_dispatch_pending(struct wl_display *display) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_display_dispatch_pending(display);
+}
+
+int wl_display_prepare_read(struct wl_display *display) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_display_prepare_read(display);
+}
+
+int wl_display_flush(struct wl_display *display) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_display_flush(display);
+}
+
+int wl_display_read_events(struct wl_display *display) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_display_read_events(display);
+}
+
+void wl_display_disconnect(struct wl_display *display) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	sprt::window::s_library->wl_display_disconnect(display);
+}
+
+struct wl_proxy *wl_proxy_marshal_array_flags(struct wl_proxy *proxy, uint32_t opcode,
+		const struct wl_interface *interface, uint32_t version, uint32_t flags,
+		union wl_argument *args) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_proxy_marshal_array_flags(proxy, opcode, interface, version,
+			flags, args);
+}
+
+uint32_t wl_proxy_get_version(struct wl_proxy *proxy) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_proxy_get_version(proxy);
+}
+
+int wl_proxy_add_listener(struct wl_proxy *proxy, void (**implementation)(void), void *data) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_proxy_add_listener(proxy, implementation, data);
+}
+
+void wl_proxy_set_user_data(struct wl_proxy *proxy, void *user_data) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_proxy_set_user_data(proxy, user_data);
+}
+
+void *wl_proxy_get_user_data(struct wl_proxy *proxy) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_proxy_get_user_data(proxy);
+}
+
+void wl_proxy_set_tag(struct wl_proxy *proxy, const char *const *tag) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_proxy_set_tag(proxy, tag);
+}
+
+const char *const *wl_proxy_get_tag(struct wl_proxy *proxy) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_proxy_get_tag(proxy);
+}
+
+void wl_proxy_destroy(struct wl_proxy *proxy) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	sprt::window::s_library->wl_proxy_destroy(proxy);
+}
+
+int wl_display_roundtrip(struct wl_display *display) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_display_roundtrip(display);
+}
+
+struct wl_cursor_theme *wl_cursor_theme_load(const char *name, int size, struct wl_shm *shm) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_cursor_theme_load(name, size, shm);
+}
+
+void wl_cursor_theme_destroy(struct wl_cursor_theme *theme) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	sprt::window::s_library->wl_cursor_theme_destroy(theme);
+}
+
+struct wl_cursor *wl_cursor_theme_get_cursor(struct wl_cursor_theme *theme, const char *name) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_cursor_theme_get_cursor(theme, name);
+}
+
+struct wl_buffer *wl_cursor_image_get_buffer(struct wl_cursor_image *image) {
+	sprt_passert(sprt::window::s_library, "Wayland not loaded");
+	return sprt::window::s_library->wl_cursor_image_get_buffer(image);
+}
+}
+
+namespace sprt::window {
+
+WaylandLibrary::~WaylandLibrary() {
+	close();
+	s_library = nullptr;
+}
+
+WaylandLibrary::WaylandLibrary() { s_library = this; }
 
 bool WaylandLibrary::init() {
 	_handle = Dso("libwayland-client.so");
 	if (!_handle) {
 		return false;
 	}
-
 	if (open(_handle)) {
 		return true;
 	} else {
@@ -43,32 +268,7 @@ bool WaylandLibrary::init() {
 	return false;
 }
 
-void WaylandLibrary::close() {
-	if (kdeOutputDevice) {
-		delete kdeOutputDevice;
-		kdeOutputDevice = nullptr;
-	}
-
-	if (cursorShape) {
-		delete cursorShape;
-		cursorShape = nullptr;
-	}
-
-	if (xdgDecoration) {
-		delete xdgDecoration;
-		xdgDecoration = nullptr;
-	}
-
-	if (viewporter) {
-		delete viewporter;
-		viewporter = nullptr;
-	}
-
-	if (xdg) {
-		delete xdg;
-		xdg = nullptr;
-	}
-}
+void WaylandLibrary::close() { }
 
 bool WaylandLibrary::ownsProxy(wl_proxy *proxy) {
 	auto tag = wl_proxy_get_tag(proxy);
@@ -81,26 +281,30 @@ bool WaylandLibrary::ownsProxy(wl_surface *surface) {
 	return ownsProxy((struct wl_proxy *)surface);
 }
 
+#define SPRT_LOAD_INTERFACE(handle, Name) const_cast<wl_interface &>(::Name) = *handle.sym<const wl_interface *>(#Name);
+
 bool WaylandLibrary::open(Dso &handle) {
-	SPRT_LOAD_PROTO(handle, wl_registry_interface)
-	SPRT_LOAD_PROTO(handle, wl_compositor_interface)
-	SPRT_LOAD_PROTO(handle, wl_output_interface)
-	SPRT_LOAD_PROTO(handle, wl_seat_interface)
-	SPRT_LOAD_PROTO(handle, wl_surface_interface)
-	SPRT_LOAD_PROTO(handle, wl_region_interface)
-	SPRT_LOAD_PROTO(handle, wl_callback_interface)
-	SPRT_LOAD_PROTO(handle, wl_pointer_interface)
-	SPRT_LOAD_PROTO(handle, wl_keyboard_interface)
-	SPRT_LOAD_PROTO(handle, wl_touch_interface)
-	SPRT_LOAD_PROTO(handle, wl_shm_interface)
-	SPRT_LOAD_PROTO(handle, wl_subcompositor_interface)
-	SPRT_LOAD_PROTO(handle, wl_subsurface_interface)
-	SPRT_LOAD_PROTO(handle, wl_shm_pool_interface)
-	SPRT_LOAD_PROTO(handle, wl_buffer_interface)
-	SPRT_LOAD_PROTO(handle, wl_data_offer_interface)
-	SPRT_LOAD_PROTO(handle, wl_data_source_interface)
-	SPRT_LOAD_PROTO(handle, wl_data_device_interface)
-	SPRT_LOAD_PROTO(handle, wl_data_device_manager_interface)
+	//::wl_registry_interface = *handle.sym< decltype(::wl_registry_interface) >("wl_registry_interface");
+	SPRT_LOAD_INTERFACE(handle, wl_display_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_registry_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_compositor_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_output_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_seat_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_surface_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_region_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_callback_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_pointer_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_keyboard_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_touch_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_shm_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_subcompositor_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_subsurface_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_shm_pool_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_buffer_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_data_offer_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_data_source_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_data_device_interface)
+	SPRT_LOAD_INTERFACE(handle, wl_data_device_manager_interface)
 
 	SPRT_LOAD_PROTO(handle, wl_display_connect)
 	SPRT_LOAD_PROTO(handle, wl_display_get_fd)
@@ -110,6 +314,7 @@ bool WaylandLibrary::open(Dso &handle) {
 	SPRT_LOAD_PROTO(handle, wl_display_flush)
 	SPRT_LOAD_PROTO(handle, wl_display_read_events)
 	SPRT_LOAD_PROTO(handle, wl_display_disconnect)
+	SPRT_LOAD_PROTO(handle, wl_proxy_marshal_array_flags)
 	SPRT_LOAD_PROTO(handle, wl_proxy_marshal_flags)
 	SPRT_LOAD_PROTO(handle, wl_proxy_get_version)
 	SPRT_LOAD_PROTO(handle, wl_proxy_add_listener)
@@ -125,47 +330,9 @@ bool WaylandLibrary::open(Dso &handle) {
 		return false;
 	}
 
-	viewporter = new ViewporterInterface(wl_surface_interface);
-	xdg = new XdgInterface(wl_output_interface, wl_seat_interface, wl_surface_interface);
-
-	wp_viewporter_interface = &viewporter->wp_viewporter_interface;
-	wp_viewport_interface = &viewporter->wp_viewport_interface;
-
-	xdg_wm_base_interface = &xdg->xdg_wm_base_interface;
-	xdg_positioner_interface = &xdg->xdg_positioner_interface;
-	xdg_surface_interface = &xdg->xdg_surface_interface;
-	xdg_toplevel_interface = &xdg->xdg_toplevel_interface;
-	xdg_popup_interface = &xdg->xdg_popup_interface;
-
-	xdgDecoration = new XdgDecorationInterface(xdg_toplevel_interface);
-
-	zxdg_decoration_manager_v1_interface = &xdgDecoration->zxdg_decoration_manager_v1_interface;
-	zxdg_toplevel_decoration_v1_interface = &xdgDecoration->zxdg_toplevel_decoration_v1_interface;
-
-	cursorShape = new CursorShapeInterface(wl_pointer_interface);
-
-	wp_cursor_shape_manager_v1_interface = &cursorShape->wp_cursor_shape_manager_v1_interface;
-	wp_cursor_shape_device_v1_interface = &cursorShape->wp_cursor_shape_device_v1_interface;
-
-	kdeOutputDevice = new KdeOutputDeviceInterface();
-
-	kde_output_device_v2_interface = &kdeOutputDevice->kde_output_device_v2_interface;
-	kde_output_device_mode_v2_interface = &kdeOutputDevice->kde_output_device_mode_v2_interface;
-	kde_output_order_v1_interface = &kdeOutputDevice->kde_output_order_v1_interface;
-	kde_output_management_v2_interface = &kdeOutputDevice->kde_output_management_v2_interface;
-	kde_output_configuration_v2_interface = &kdeOutputDevice->kde_output_configuration_v2_interface;
-
 	_cursor = Dso("libwayland-cursor.so");
 	if (!openWaylandCursor(_cursor)) {
 		_cursor = Dso();
-	}
-
-	_decor = Dso("libdecor.so");
-	if (!_decor) {
-		_decor = Dso("libdecor-0.so");
-	}
-	if (!openDecor(_decor)) {
-		_decor = Dso();
 	}
 
 	return true;
@@ -183,61 +350,6 @@ bool WaylandLibrary::openWaylandCursor(Dso &handle) {
 
 	if (!validateFunctionList(&_wlcursor_first_fn, &_wlcursor_last_fn)) {
 		log::vperror(__SPRT_LOCATION, "WaylandLibrary", "Fail to load libwayland-client");
-		return false;
-	}
-
-	return true;
-}
-
-bool WaylandLibrary::openDecor(Dso &handle) {
-	if (!handle) {
-		return false;
-	}
-
-	SPRT_LOAD_PROTO(handle, libdecor_unref)
-	SPRT_LOAD_PROTO(handle, libdecor_new)
-	SPRT_LOAD_PROTO(handle, libdecor_get_fd)
-	SPRT_LOAD_PROTO(handle, libdecor_dispatch)
-	SPRT_LOAD_PROTO(handle, libdecor_decorate)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_ref)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_unref)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_set_visibility)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_is_visible)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_set_parent)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_set_title)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_get_title)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_set_app_id)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_set_capabilities)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_unset_capabilities)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_has_capability)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_show_window_menu)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_popup_grab)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_popup_ungrab)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_translate_coordinate)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_set_min_content_size)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_set_max_content_size)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_get_min_content_size)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_get_max_content_size)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_resize)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_move)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_commit)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_set_minimized)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_set_maximized)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_unset_maximized)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_set_fullscreen)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_unset_fullscreen)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_is_floating)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_close)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_map)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_get_xdg_surface)
-	SPRT_LOAD_PROTO(handle, libdecor_frame_get_xdg_toplevel)
-	SPRT_LOAD_PROTO(handle, libdecor_state_new)
-	SPRT_LOAD_PROTO(handle, libdecor_state_free)
-	SPRT_LOAD_PROTO(handle, libdecor_configuration_get_content_size)
-	SPRT_LOAD_PROTO(handle, libdecor_configuration_get_window_state)
-
-	if (!validateFunctionList(&_libdecor_first_fn, &_libdecor_last_fn)) {
-		log::vperror(__SPRT_LOCATION, "WaylandLibrary", "Fail to load libdecor");
 		return false;
 	}
 

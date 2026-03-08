@@ -29,7 +29,7 @@ all:
 	$(call rule_mkdir,$(LIBNAME))
 	cd $(LIBNAME); $(SP_CC) $(SP_CFLAGS) -c -o sqlite3.o $(LIB_SRC_DIR)/$(LIBNAME)/sqlite3.c
 	cd $(LIBNAME); $(SP_AR) rcs $(call mklibname,sqlite3) sqlite3.o
-	$(call rule_mv,$(LIBNAME)/$(call mklibname,sqlite3),$(SP_INSTALL_PREFIX)/lib)
+	$(call rule_mv,$(LIBNAME)/$(call mklibname,sqlite3),$(SP_INSTALL_PREFIX)/usr/lib)
 	$(call rule_rm,$(LIBNAME))
-	$(call rule_cp,$(LIB_SRC_DIR)/$(LIBNAME)/sqlite3.h,$(SP_INSTALL_PREFIX)/include)
-	$(call rule_cp,$(LIB_SRC_DIR)/$(LIBNAME)/sqlite3ext.h,$(SP_INSTALL_PREFIX)/include)
+	$(call rule_cp,$(LIB_SRC_DIR)/$(LIBNAME)/sqlite3.h,$(SP_INSTALL_PREFIX)/usr/include)
+	$(call rule_cp,$(LIB_SRC_DIR)/$(LIBNAME)/sqlite3ext.h,$(SP_INSTALL_PREFIX)/usr/include)

@@ -1,5 +1,6 @@
 /**
 Copyright (c) 2025 Stappler Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -92,6 +93,7 @@ public:
 
 	static constexpr value_type LOCK_BIT = 0b0001;
 	static constexpr value_type WAIT_BIT = 0b0010;
+	static constexpr value_type COMPLETE_BIT = 0b0100;
 
 	template <Status (*WaitFn)(volatile value_type *, value_type, timeout_type),
 			timeout_type (*ClockFn)()>
@@ -410,6 +412,52 @@ public:
 	value_type get_value() const;
 
 protected:
+	__qmutex_data _data;
+};
+
+class qonce final {
+public:
+	using value_type = __qmutex_data::value_type;
+
+	qonce();
+	~qonce();
+
+	template <typename Callback>
+	void operator()(const Callback &cb) {
+		auto val = _atomic::fetchOr(&_data.value, qmutex_base::LOCK_BIT);
+		if (val == 0) {
+			// The First One
+			cb();
+
+			// set complete flag and check for a waiters
+			val = _atomic::fetchOr(&_data.value, qmutex_base::COMPLETE_BIT);
+			if (val & qmutex_base::WAIT_BIT) {
+
+				// wake waiters if any
+				wake();
+			}
+		} else if (val & qmutex_base::COMPLETE_BIT) {
+			// already complete, return
+			return;
+		} else {
+			// set flag to notify The First One that we are waiting for him
+			val = _atomic::fetchOr(&_data.value, qmutex_base::WAIT_BIT);
+			while ((val & qmutex_base::COMPLETE_BIT) == 0) {
+				wait(val);
+				val = _atomic::loadSeq(&_data.value);
+			}
+		}
+	}
+
+	bool is_set() const {
+		auto val = _atomic::loadSeq(&_data.value);
+		return val & qmutex_base::COMPLETE_BIT;
+	}
+
+protected:
+	void wait(value_type);
+	void wake();
+
 	__qmutex_data _data;
 };
 

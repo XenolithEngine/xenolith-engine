@@ -183,12 +183,29 @@ x86_64-pc-windows-msvc.tar.xz: $(TOOLCHAIN_TARGETS)/x86_64-pc-windows-msvc
 host:
 	$(MAKE) -C $(HOST_TOOLCHAIN) out OUT_SYSROOT=$(abspath hosts/$(HOST_ID))
 
-intermediate-x86_64-unknown-linux-gnu: host
+target-x86_64-unknown-linux-gnu: host
 	$(MAKE) -C target-linux-glibc out \
 		OUT_HOST=../../hosts/$(HOST_ID) \
 		OUT_SYSROOT=$(abspath intermediate/x86_64-unknown-linux-gnu) SP_ARCH_TARGET=x86_64
 	$(MAKE) -C deps-linux x86_64 OUT_SYSROOT=$(abspath intermediate/x86_64-unknown-linux-gnu)
+	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/x86_64-unknown-linux-gnu \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu
 
+target-aarch64-unknown-linux-gnu: host
+	$(MAKE) -C target-linux-glibc out \
+		OUT_HOST=../../hosts/$(HOST_ID) \
+		OUT_SYSROOT=$(abspath intermediate/aarch64-unknown-linux-gnu) SP_ARCH_TARGET=aarch64
+	$(MAKE) -C deps-linux aarch64 OUT_SYSROOT=$(abspath intermediate/aarch64-unknown-linux-gnu)
+	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/aarch64-unknown-linux-gnu \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-unknown-linux-gnu
+
+target-riscv64-unknown-linux-gnu: host
+	$(MAKE) -C target-linux-glibc out \
+		OUT_HOST=../../hosts/$(HOST_ID) \
+		OUT_SYSROOT=$(abspath intermediate/riscv64-unknown-linux-gnu) SP_ARCH_TARGET=riscv64
+	$(MAKE) -C deps-linux riscv64 OUT_SYSROOT=$(abspath intermediate/riscv64-unknown-linux-gnu)
+	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/riscv64-unknown-linux-gnu \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/riscv64-unknown-linux-gnu
 
 compress: \
 	android.tar.xz \

@@ -73,8 +73,9 @@ void LinuxContextController::acquireDefaultConfig(ContextConfig &config,
 		if (config.window->imageFormat == ImageFormat::Undefined) {
 			config.window->imageFormat = ImageFormat::B8G8R8A8_UNORM;
 		}
-		config.window->flags |=
-				WindowCreationFlags::Regular | WindowCreationFlags::PreferServerSideDecoration;
+		config.window->flags |= WindowCreationFlags::Regular
+				| WindowCreationFlags::PreferServerSideDecoration
+				| WindowCreationFlags::PreferServerSideCursors;
 	}
 }
 
@@ -200,7 +201,8 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 
 		if (_waylandDisplay) {
 			_waylandPollHandle = _looper->listenPollableHandle(_waylandDisplay->getFd(),
-					filesystem::PollFlags::In | filesystem::PollFlags::AllowMulti,
+					filesystem::PollFlags::In | filesystem::PollFlags::Out
+							| filesystem::PollFlags::AllowMulti,
 					[this](native_handle fd, filesystem::PollFlags flags) {
 				if (hasFlag(flags, filesystem::PollFlags::Err)) {
 					return Status::ErrorCancelled;

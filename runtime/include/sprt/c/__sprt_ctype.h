@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/cross/__sprt_locale.h>
+#include <sprt/c/cross/__sprt_ctype.h>
 
 __SPRT_BEGIN_DECL
 

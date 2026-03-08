@@ -44,6 +44,7 @@ struct KdeOutputModeData {
 	int32_t width = 0;
 	int32_t height = 0;
 	int32_t rate = 0;
+	uint32_t flags = 0;
 	bool preferred = false;
 	bool current = false;
 	bool removed = false;
@@ -94,6 +95,8 @@ struct KdeOutputDeviceData {
 	uint32_t automatic_max_bits_per_color_limit = 0;
 	uint32_t edr_policy = 0;
 	uint32_t sharpness = 0;
+	uint32_t priority = 0;
+	uint32_t auto_brightness = 0;
 
 	MonitorId getId() const { return MonitorId{name, edid}; }
 };

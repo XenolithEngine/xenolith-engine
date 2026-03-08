@@ -25,7 +25,7 @@ TARGET_CXX := $(TARGET_SYSROOT)/bin/$(SP_ARCH_TARGET_CLANG)-g++
 TARGET_GLIBC := $(TARGET_SYSROOT)/lib/libc.so.6
 
 TARGET_LIBCXX := $(TARGET_SYSROOT)/lib/libc++.a
-TARGET_LIBCRT := $(TARGET_SYSROOT)/lib/linux/liborc_rt-$(SP_ARCH_TARGET).a
+TARGET_LIBCRT := $(TARGET_SYSROOT)/lib/linux/libclang_rt.profile-$(SP_ARCH_TARGET).a
 
 TARGET_CMAKE_GCC_TOOLCHAIN := $(TARGET_SYSROOT)/gcc.cmake
 
@@ -185,7 +185,7 @@ $(TARGET_LIBCRT): $(TARGET_LIBCXX)
 	cmake --build build/libcxx_gcc_crt
 	cmake --install build/libcxx_gcc_crt
 
-$(TARGET_SYSROOT)/lib/clang: $(TARGET_LIBCRT)
+$(TARGET_SYSROOT)/lib/clang/21/include: $(TARGET_LIBCRT)
 	rm -rf build/libcxx_gcc_clang
 	cmake \
 		-DCMAKE_TOOLCHAIN_FILE=$(realpath $(TARGET_CMAKE_GCC_TOOLCHAIN)) \
@@ -198,4 +198,4 @@ $(TARGET_SYSROOT)/lib/clang: $(TARGET_LIBCRT)
 		-DCMAKE_INSTALL_PREFIX=$(realpath $(TARGET_SYSROOT))
 	cd build/libcxx_gcc_clang; ninja install-clang-resource-headers
 
-target: $(TARGET_AS) $(TARGET_CC) $(TARGET_GLIBC) $(TARGET_CXX) $(TARGET_LIBCXX) $(TARGET_LIBCRT) $(TARGET_SYSROOT)/lib/clang
+target: $(TARGET_AS) $(TARGET_CC) $(TARGET_GLIBC) $(TARGET_CXX) $(TARGET_LIBCXX) $(TARGET_LIBCRT) $(TARGET_SYSROOT)/lib/clang/21/include

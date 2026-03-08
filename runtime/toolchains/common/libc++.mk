@@ -51,19 +51,28 @@ CONFIGURE := \
 	-DCOMPILER_RT_BUILD_CTX_PROFILE=OFF \
 	-DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
 	-DCOMPILER_RT_USE_LLVM_UNWINDER=ON \
+	-DLLVM_HOST_TRIPLE="$(SP_TARGET)" \
+	-DLLVM_DEFAULT_TARGET_TRIPLE="$(SP_TARGET)" \
+	-DCOMPILER_RT_DEFAULT_TARGET_TRIPLE=$(SP_TARGET)
+
+ifeq ($(SP_ARCH),riscv64)
+RISCV := 1
+endif
 
 all:
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_mkdir,$(LIBNAME))
 	cd $(LIBNAME); cmake -G "Ninja" -S $(LIB_SRC_DIR)/$(LIBNAME)/runtimes $(CONFIGURE)
+	cd $(LIBNAME); cmake  --build . --config Release --target install-cxx
+	cd $(LIBNAME); cmake  --build . --config Release --target install-cxxabi
+	cd $(LIBNAME); cmake  --build . --config Release --target install-unwind
 	cd $(LIBNAME); cmake  --build . --config Release --target install
 	$(call rule_rm,$(LIBNAME))
-	$(call rule_rm,$(SP_INSTALL_PREFIX)/lib/libunwind.a)
-	$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/linux/libclang_rt.builtins-$(ARCH).a,$(SP_INSTALL_PREFIX)/lib/clang/21/lib/$(SP_TARGET)/libclang_rt.builtins.a)
-	$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/linux/libclang_rt.profile-$(ARCH).a,$(SP_INSTALL_PREFIX)/lib/clang/21/lib/$(SP_TARGET)/libclang_rt.profile.a)
-	$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/linux/clang_rt.crtbegin-$(ARCH).o,$(SP_INSTALL_PREFIX)/lib/clang/21/lib/$(SP_TARGET)/clang_rt.crtbegin.o)
-	$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/linux/clang_rt.crtend-$(ARCH).o,$(SP_INSTALL_PREFIX)/lib/clang/21/lib/$(SP_TARGET)/clang_rt.crtend.o)
-	$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/linux/liborc_rt-$(ARCH).a,$(SP_INSTALL_PREFIX)/lib/clang/21/lib/$(SP_TARGET)/liborc_rt.a)
+	$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/linux/libclang_rt.builtins-$(ARCH).a,$(SP_INSTALL_PREFIX)/lib/clang/lib/$(SP_TARGET)/libclang_rt.builtins.a)
+	$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/linux/libclang_rt.profile-$(ARCH).a,$(SP_INSTALL_PREFIX)/lib/clang/lib/$(SP_TARGET)/libclang_rt.profile.a)
+	$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/linux/clang_rt.crtbegin-$(ARCH).o,$(SP_INSTALL_PREFIX)/lib/clang/lib/$(SP_TARGET)/clang_rt.crtbegin.o)
+	$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/linux/clang_rt.crtend-$(ARCH).o,$(SP_INSTALL_PREFIX)/lib/clang/lib/$(SP_TARGET)/clang_rt.crtend.o)
+	$(if $(RISCV),,$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/linux/liborc_rt-$(ARCH).a,$(SP_INSTALL_PREFIX)/lib/clang/lib/$(SP_TARGET)/liborc_rt.a))
 	$(call rule_rm,$(SP_INSTALL_PREFIX)/lib/linux)
 
 .PHONY: all

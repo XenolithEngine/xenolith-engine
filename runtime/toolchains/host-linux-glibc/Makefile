@@ -78,6 +78,7 @@ OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
 	llvm-size \
 	llvm-strings \
 	llvm-symbolizer \
+	make \
 	spirv-as \
 	spirv-cfg \
 	spirv-diff \
@@ -112,7 +113,7 @@ $(OUT_SYSROOT)/lib/%: $(STAGEOUT_SYSROOT)/lib/% $(STAGE2_CLANG_CC) $(STAGEOUT_LI
 	$(STAGEOUT_SYSROOT)/bin/llvm-strip $< -o $@
 	chmod +x $@
 
-$(OUT_SYSROOT)/bin/%: $(STAGEOUT_SYSROOT)/bin/% $(STAGE2_CLANG_CC) $(STAGEOUT_LIBCXX) $(STAGEOUT_SYSROOT)/bin/glslang
+$(OUT_SYSROOT)/bin/%: $(STAGEOUT_SYSROOT)/bin/% $(STAGE2_CLANG_CC) $(STAGEOUT_LIBCXX) $(STAGEOUT_SYSROOT)/bin/glslang $(STAGEOUT_MAKE)
 	@mkdir -p $(OUT_SYSROOT)/bin
 	@rm -f $@
 	$(STAGEOUT_SYSROOT)/bin/llvm-strip $< -o $@
@@ -127,8 +128,28 @@ $(OUT_SYSROOT)/share/licenses: licenses
 	rm -rf $@
 	mkdir -p $@
 	cp -fr $</* $@
+	touch $@
 
-$(OUT_SYSROOT): $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/share/licenses # $(OUT_INCLUDES)
+
+$(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))
+	@echo 'Build $(OUT_SYSROOT)/host.mk'
+	@echo 'HOST_BINDIR := $$(dir $$(lastword $$(MAKEFILE_LIST)))bin' > $@
+	@echo 'HOST_CC := $$(HOST_BINDIR)/cc' >> $@
+	@echo 'HOST_CXX := $$(HOST_BINDIR)/c++' >> $@
+	@echo 'HOST_AR := $$(HOST_BINDIR)/ar' >> $@
+	@echo 'HOST_GLSLANG := $$(HOST_BINDIR)/glslang' >> $@
+	@echo 'HOST_SPIRV_LINK := $$(HOST_BINDIR)/spirv-link' >> $@
+	@echo 'HOST_GENERAL_CFLAGS :=' >> $@
+	@echo 'HOST_GENERAL_CXXFLAGS :=' >> $@
+	@echo 'HOST_GENERAL_LDFLAGS :=' >> $@
+	@echo 'HOST_EXEC_CFLAGS :=' >> $@
+	@echo 'HOST_EXEC_CXXFLAGS :=' >> $@
+	@echo 'HOST_EXEC_LDFLAGS :=' >> $@
+	@echo 'HOST_LIB_CFLAGS :=' >> $@
+	@echo 'HOST_LIB_CXXFLAGS :=' >> $@
+	@echo 'HOST_LIB_LDFLAGS :=' >> $@
+
+$(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++abi.so.1.0 libc++abi.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++abi.so.1.0 libc++abi.so.1
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++.so.1.0 libc++.so
@@ -168,9 +189,11 @@ $(OUT_SYSROOT): $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/share/licenses # $(OUT_I
 	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 c++
 	cd $(OUT_SYSROOT)/bin; ln -fs llvm-ar ar
 
+	touch $@
+
 download: $(LINUX_HEADERS_DIR)
 
-out: $(OUT_SYSROOT)
+out: $(OUT_SYSROOT)/sysroot
 
 all: stage0 stage1 stage2
 

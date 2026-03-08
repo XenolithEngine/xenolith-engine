@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -58,7 +58,7 @@ bool NativeWindow::init(NotNull<ContextController> c, Rc<WindowInfo> &&info,
 
 SurfaceInfo NativeWindow::getSurfaceOptions(SurfaceInfo &&info) const { return sprt::move(info); }
 
-FrameConstraints NativeWindow::exportConstraints() const {
+FrameConstraints NativeWindow::exportConstraints(uint64_t &serial) const {
 	FrameConstraints c;
 	c.density = _info->density;
 

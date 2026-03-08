@@ -25,7 +25,9 @@ LIBNAME = libpng
 include ../common/configure.mk
 
 CONFIGURE := \
-	$(CONFIGURE_CMAKE) -DPNG_SHARED=OFF
+	$(CONFIGURE_CMAKE) \
+	-DPNG_SHARED=OFF \
+	-DPNG_TARGET_ARCHITECTURE=$(SP_ARCH)
 
 all:
 	$(call rule_rm,$(LIBNAME))

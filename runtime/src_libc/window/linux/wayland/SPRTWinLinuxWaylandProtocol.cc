@@ -20,6 +20,8 @@
  THE SOFTWARE.
  **/
 
+#define __SPRT_BUILD 1
+
 #include "private/window/linux/SPRTWinLinuxWaylandProtocol.h"
 #include "private/window/linux/SPRTWinLinuxWaylandLibrary.h"
 #include "private/window/linux/SPRTWinLinuxWaylandKeys.h"
@@ -251,197 +253,9 @@ static const WaylandIconInfo s_iconRestoreActive{
 };
 // clang-format on
 
-ViewporterInterface::ViewporterInterface(const struct wl_interface *wl_surface_interface)
-: viewporter_types{
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	&wp_viewport_interface,
-	wl_surface_interface
-}, wp_viewporter_requests{
-	{ "destroy", "", viewporter_types + 0 },
-	{ "get_viewport", "no", viewporter_types + 4 },
-}, wp_viewport_requests{
-	{ "destroy", "", viewporter_types + 0 },
-	{ "set_source", "ffff", viewporter_types + 0 },
-	{ "set_destination", "ii", viewporter_types + 0 },
-}, wp_viewporter_interface{
-	"wp_viewporter", 1,
-	2, wp_viewporter_requests,
-	0, NULL,
-}, wp_viewport_interface{
-	"wp_viewport", 1,
-	3, wp_viewport_requests,
-	0, NULL,
-} { }
-
-XdgInterface::XdgInterface(const struct wl_interface *wl_output_interface, const struct wl_interface *wl_seat_interface,
-		const struct wl_interface *wl_surface_interface)
-: xdg_shell_types{
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	&xdg_positioner_interface,
-	&xdg_surface_interface,
-	wl_surface_interface,
-	&xdg_toplevel_interface,
-	&xdg_popup_interface,
-	&xdg_surface_interface,
-	&xdg_positioner_interface,
-	&xdg_toplevel_interface,
-	wl_seat_interface,
-	NULL,
-	NULL,
-	NULL,
-	wl_seat_interface,
-	NULL,
-	wl_seat_interface,
-	NULL,
-	NULL,
-	wl_output_interface,
-	wl_seat_interface,
-	NULL,
-	&xdg_positioner_interface,
-	NULL,
-}, xdg_wm_base_requests{
-	{ "destroy", "", xdg_shell_types + 0 },
-	{ "create_positioner", "n", xdg_shell_types + 4 },
-	{ "get_xdg_surface", "no", xdg_shell_types + 5 },
-	{ "pong", "u", xdg_shell_types + 0 },
-}, xdg_wm_base_events{
-	{ "ping", "u", xdg_shell_types + 0 },
-}, xdg_positioner_requests{
-	{ "destroy", "", xdg_shell_types + 0 },
-	{ "set_size", "ii", xdg_shell_types + 0 },
-	{ "set_anchor_rect", "iiii", xdg_shell_types + 0 },
-	{ "set_anchor", "u", xdg_shell_types + 0 },
-	{ "set_gravity", "u", xdg_shell_types + 0 },
-	{ "set_constraint_adjustment", "u", xdg_shell_types + 0 },
-	{ "set_offset", "ii", xdg_shell_types + 0 },
-	{ "set_reactive", "3", xdg_shell_types + 0 },
-	{ "set_parent_size", "3ii", xdg_shell_types + 0 },
-	{ "set_parent_configure", "3u", xdg_shell_types + 0 },
-}, xdg_surface_requests{
-	{ "destroy", "", xdg_shell_types + 0 },
-	{ "get_toplevel", "n", xdg_shell_types + 7 },
-	{ "get_popup", "n?oo", xdg_shell_types + 8 },
-	{ "set_window_geometry", "iiii", xdg_shell_types + 0 },
-	{ "ack_configure", "u", xdg_shell_types + 0 },
-}, xdg_surface_events{
-	{ "configure", "u", xdg_shell_types + 0 },
-}, xdg_toplevel_requests{
-	{ "destroy", "", xdg_shell_types + 0 },
-	{ "set_parent", "?o", xdg_shell_types + 11 },
-	{ "set_title", "s", xdg_shell_types + 0 },
-	{ "set_app_id", "s", xdg_shell_types + 0 },
-	{ "show_window_menu", "ouii", xdg_shell_types + 12 },
-	{ "move", "ou", xdg_shell_types + 16 },
-	{ "resize", "ouu", xdg_shell_types + 18 },
-	{ "set_max_size", "ii", xdg_shell_types + 0 },
-	{ "set_min_size", "ii", xdg_shell_types + 0 },
-	{ "set_maximized", "", xdg_shell_types + 0 },
-	{ "unset_maximized", "", xdg_shell_types + 0 },
-	{ "set_fullscreen", "?o", xdg_shell_types + 21 },
-	{ "unset_fullscreen", "", xdg_shell_types + 0 },
-	{ "set_minimized", "", xdg_shell_types + 0 },
-}, xdg_toplevel_events{
-	{ "configure", "iia", xdg_shell_types + 0 },
-	{ "close", "", xdg_shell_types + 0 },
-	{ "configure_bounds", "4ii", xdg_shell_types + 0 },
-	{ "wm_capabilities", "5a", xdg_shell_types + 0 },
-}, xdg_popup_requests{
-	{ "destroy", "", xdg_shell_types + 0 },
-	{ "grab", "ou", xdg_shell_types + 22 },
-	{ "reposition", "3ou", xdg_shell_types + 24 },
-}, xdg_popup_events{
-	{ "configure", "iiii", xdg_shell_types + 0 },
-	{ "popup_done", "", xdg_shell_types + 0 },
-	{ "repositioned", "3u", xdg_shell_types + 0 },
-}, xdg_wm_base_interface{
-	"xdg_wm_base", 7,
-	4, xdg_wm_base_requests,
-	1, xdg_wm_base_events,
-}, xdg_positioner_interface{
-	"xdg_positioner", 7,
-	10, xdg_positioner_requests,
-	0, NULL,
-}, xdg_surface_interface{
-	"xdg_surface", 7,
-	5, xdg_surface_requests,
-	1, xdg_surface_events,
-}, xdg_toplevel_interface{
-	"xdg_toplevel", 7,
-	14, xdg_toplevel_requests,
-	4, xdg_toplevel_events,
-}, xdg_popup_interface{
-	"xdg_popup", 7,
-	3, xdg_popup_requests,
-	3, xdg_popup_events,
-} { }
-
-XdgDecorationInterface::XdgDecorationInterface(const struct wl_interface *xdg_toplevel_interface)
-: xdg_decoration_unstable_v1_types{
-	NULL,
-	&zxdg_toplevel_decoration_v1_interface,
-	xdg_toplevel_interface,
-},
-zxdg_decoration_manager_v1_requests{
-	{ "destroy", "", xdg_decoration_unstable_v1_types + 0 },
-	{ "get_toplevel_decoration", "no", xdg_decoration_unstable_v1_types + 1 },
-},
-zxdg_toplevel_decoration_v1_requests{
-	{ "destroy", "", xdg_decoration_unstable_v1_types + 0 },
-	{ "set_mode", "u", xdg_decoration_unstable_v1_types + 0 },
-	{ "unset_mode", "", xdg_decoration_unstable_v1_types + 0 },
-},
-zxdg_toplevel_decoration_v1_events{
-	{ "configure", "u", xdg_decoration_unstable_v1_types + 0 },
-},
-zxdg_decoration_manager_v1_interface{
-	"zxdg_decoration_manager_v1", 1,
-	2, zxdg_decoration_manager_v1_requests,
-	0, NULL,
-},
-zxdg_toplevel_decoration_v1_interface{
-	"zxdg_toplevel_decoration_v1", 1,
-	3, zxdg_toplevel_decoration_v1_requests,
-	1, zxdg_toplevel_decoration_v1_events,
-} { }
-
-CursorShapeInterface::CursorShapeInterface(const struct wl_interface *wl_pointer_interface)
-: cursor_shape_v1_types{
-	NULL,
-	NULL,
-	&wp_cursor_shape_device_v1_interface,
-	wl_pointer_interface,
-	&wp_cursor_shape_device_v1_interface,
-	nullptr,
-},
-wp_cursor_shape_manager_v1_requests{
-	{ "destroy", "", cursor_shape_v1_types + 0 },
-	{ "get_pointer", "no", cursor_shape_v1_types + 2 },
-	{ "get_tablet_tool_v2", "no", cursor_shape_v1_types + 4 },
-},
-wp_cursor_shape_device_v1_requests{
-	{ "destroy", "", cursor_shape_v1_types + 0 },
-	{ "set_shape", "uu", cursor_shape_v1_types + 0 },
-},
-wp_cursor_shape_manager_v1_interface{
-	"wp_cursor_shape_manager_v1", 2,
-	3, wp_cursor_shape_manager_v1_requests,
-	0, NULL,
-},
-wp_cursor_shape_device_v1_interface{
-	"wp_cursor_shape_device_v1", 2,
-	2, wp_cursor_shape_device_v1_requests,
-	0, NULL,
-} { }
-
 WaylandBuffer::~WaylandBuffer() {
 	if (buffer) {
-		wayland->wl_buffer_destroy(buffer);
+		wl_buffer_destroy(buffer);
 		buffer = nullptr;
 	}
 }
@@ -451,7 +265,7 @@ bool WaylandBuffer::init(WaylandLibrary *lib, wl_shm_pool *pool, int32_t offset,
 	wayland = lib;
 	width = w;
 	height = h;
-	buffer = wayland->wl_shm_pool_create_buffer(pool, offset, width, height, stride, format);
+	buffer = wl_shm_pool_create_buffer(pool, offset, width, height, stride, format);
 	return true;
 }
 
@@ -690,7 +504,7 @@ bool allocateDecorations(WaylandLibrary *wayland, wl_shm *shm, WaylandDecoration
 
 	SharedDataBlock data{reinterpret_cast<uint8_t *>(sharedMemData), static_cast<uint32_t>(size)};
 
-	auto pool = wayland->wl_shm_create_pool(shm, fd, size);
+	auto pool = wl_shm_create_pool(shm, fd, size);
 	::close(fd);
 
 	auto bufferTopLeftInactive = data.allocate<Color4B>(info.width);
@@ -906,7 +720,7 @@ bool allocateDecorations(WaylandLibrary *wayland, wl_shm *shm, WaylandDecoration
 	}
 
 	::munmap(sharedMemData, size);
-	wayland->wl_shm_pool_destroy(pool);
+	wl_shm_pool_destroy(pool);
 
 	return true;
 }

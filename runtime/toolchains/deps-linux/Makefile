@@ -31,7 +31,7 @@ SP_OPT := -O3 -fPIC -DPIC
 
 LIBS := \
 	libc++.a \
-#	libz.a \
+	libz.a \
 	libbz2.a \
 	liblzma.a \
 	libzstd.a \
@@ -56,7 +56,11 @@ LIBS := \
 	libzip-mbedtls.a \
 	libiwasm-release.a \
 	libiwasm-debug.a \
-	libbacktrace.a
+	libbacktrace.a \
+	libxml2.a \
+	libffi.a \
+	libexpat.a \
+	libwayland-client.a
 
 WASM_LIBS := \
 	libiwasm-release.a \
@@ -67,7 +71,7 @@ BINS := \
 	glslang
 
 INCLUDES := \
-#	spirv/unified1/spirv.h \
+	spirv/unified1/spirv.h \
 	vulkan/vulkan.h \
 	simde/simde-arch.h
 
@@ -86,12 +90,15 @@ native:
 x86_64:
 	$(MAKE) -f $(THIS_FILE) ARCH=x86_64 SP_TARGET=x86_64-unknown-linux-gnu OUT_SYSROOT=$(OUT_SYSROOT)
 
+aarch64:
+	$(MAKE) -f $(THIS_FILE) ARCH=aarch64 SP_TARGET=aarch64-unknown-linux-gnu OUT_SYSROOT=$(OUT_SYSROOT)
+
+riscv64:
+	$(MAKE) -f $(THIS_FILE) ARCH=riscv64 SP_TARGET=riscv64-unknown-linux-gnu OUT_SYSROOT=$(OUT_SYSROOT)
+
 e2k:
 	@mkdir -p $(abspath ../e2k-unknown-linux) $(abspath ../e2k-unknown-linux/include) $(abspath ../e2k-unknown-linux/lib) $(abspath ../e2k-unknown-linux/bin)
 	$(MAKE) -f $(THIS_FILE) ARCH=e2k SP_TARGET=e2k-unknown-linux SP_TOOLCHAIN_PREFIX=$(LCC_TOOLCHAIN_PATH)/fs
-
-aarch64:
-	$(MAKE) -f $(THIS_FILE) ARCH=aarch64 SP_TARGET=aarch64-unknown-linux-gnu OUT_SYSROOT=$(OUT_SYSROOT)
 
 .PHONY: all x86_64 e2k aarch64
 
@@ -117,9 +124,9 @@ SP_TOOLCHAIN_PREFIX ?= $(OUT_SYSROOT)
 SP_INSTALL_PREFIX ?= $(OUT_SYSROOT)
 SP_TOOLCHAIN_FILE ?= $(realpath $(OUT_SYSROOT)/toolchain.cmake)
 
-SP_CC := $(abspath $(SP_TOOLCHAIN_PREFIX)/bin/cc)
-SP_CXX := $(abspath $(SP_TOOLCHAIN_PREFIX)/bin/c++)
-SP_AR := $(abspath $(SP_TOOLCHAIN_PREFIX)/bin/ar)
+SP_CC := $(abspath $(SP_TOOLCHAIN_PREFIX)/host/bin/cc)
+SP_CXX := $(abspath $(SP_TOOLCHAIN_PREFIX)/host/bin/c++)
+SP_AR := $(abspath $(SP_TOOLCHAIN_PREFIX)/host/bin/ar)
 
 endif # ($(ARCH),native)
 
@@ -128,6 +135,7 @@ LIB_SRC_DIR := $(realpath $(MAKE_ROOT)../src)
 FORWARD_VARS := \
 	LINUX=1 \
 	ARCH=$(ARCH) \
+	SP_ARCH=$(ARCH) \
 	SP_INSTALL_PREFIX=$(SP_INSTALL_PREFIX) \
 	SP_TOOLCHAIN_FILE=$(SP_TOOLCHAIN_FILE) \
 	SP_TARGET=$(SP_TARGET) \
@@ -155,105 +163,105 @@ all: $(ARCH_LIBS) $(ARCH_INCLUDES) $(SP_INSTALL_PREFIX)/share/licenses
 $(SP_INSTALL_PREFIX)/usr/lib/libc++.a: ../common/libc++.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libz.a: ../common/zlib.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libz.a: ../common/zlib.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libbz2.a: ../common/bzip2.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libbz2.a: ../common/bzip2.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/liblzma.a: ../common/xz.mk
+$(SP_INSTALL_PREFIX)/usr/lib/liblzma.a: ../common/xz.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libzstd.a:  ../common/zstd.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libzstd.a:  ../common/zstd.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libbrotlienc.a: ../common/brotli.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libbrotlienc.a: ../common/brotli.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libjpeg.a: ../common/libjpeg-turbo.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libjpeg.a: ../common/libjpeg-turbo.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libpng16.a: ../common/libpng.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libpng16.a: ../common/libpng.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libgif.a: ../common/gif.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libgif.a: ../common/gif.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libwebp.a: ../common/libwebp.mk $(SP_INSTALL_PREFIX)/lib/libpng16.a $(SP_INSTALL_PREFIX)/lib/libjpeg.a $(SP_INSTALL_PREFIX)/lib/libgif.a
+$(SP_INSTALL_PREFIX)/usr/lib/libwebp.a: ../common/libwebp.mk $(SP_INSTALL_PREFIX)/usr/lib/libpng16.a $(SP_INSTALL_PREFIX)/usr/lib/libjpeg.a $(SP_INSTALL_PREFIX)/usr/lib/libgif.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libtiff.a: ../common/tiff.mk $(SP_INSTALL_PREFIX)/lib/libwebp.a $(SP_INSTALL_PREFIX)/lib/liblzma.a $(SP_INSTALL_PREFIX)/lib/libzstd.a
+$(SP_INSTALL_PREFIX)/usr/lib/libtiff.a: ../common/tiff.mk $(SP_INSTALL_PREFIX)/usr/lib/libwebp.a $(SP_INSTALL_PREFIX)/usr/lib/liblzma.a $(SP_INSTALL_PREFIX)/usr/lib/libzstd.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libfreetype.a: ../common/freetype.mk $(SP_INSTALL_PREFIX)/lib/libbrotlienc.a $(SP_INSTALL_PREFIX)/lib/libpng16.a $(SP_INSTALL_PREFIX)/lib/libbz2.a
+$(SP_INSTALL_PREFIX)/usr/lib/libfreetype.a: ../common/freetype.mk $(SP_INSTALL_PREFIX)/usr/lib/libbrotlienc.a $(SP_INSTALL_PREFIX)/usr/lib/libpng16.a $(SP_INSTALL_PREFIX)/usr/lib/libbz2.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libharfbuzz.a:../common/harfbuzz.mk $(SP_INSTALL_PREFIX)/lib/libfreetype.a
+$(SP_INSTALL_PREFIX)/usr/lib/libharfbuzz.a:../common/harfbuzz.mk $(SP_INSTALL_PREFIX)/usr/lib/libfreetype.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libsqlite3.a: ../common/sqlite.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libsqlite3.a: ../common/sqlite.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libmbedtls.a: ../common/mbedtls.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a: ../common/mbedtls.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libnghttp3.a:  ../common/nghttp3.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a:  ../common/nghttp3.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libssl.a: $(MAKE_ROOT)openssl.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libssl.a: $(MAKE_ROOT)openssl.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libgost_engine.a:  ../common/gost.mk $(SP_INSTALL_PREFIX)/lib/libssl.a
+$(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a:  ../common/gost.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 # Actually, use libuidna to mimic libidn2
-$(SP_INSTALL_PREFIX)/lib/libidn2.a: $(MAKE_ROOT)uidna.mk $(SP_INSTALL_PREFIX)/lib/libicuuc.a
+$(SP_INSTALL_PREFIX)/usr/lib/libidn2.a: $(MAKE_ROOT)uidna.mk $(SP_INSTALL_PREFIX)/usr/lib/libicuuc.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libicuuc.a: $(MAKE_ROOT)icu.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libicuuc.a: $(MAKE_ROOT)icu.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libcurl-openssl.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/lib/libssl.a $(SP_INSTALL_PREFIX)/lib/libidn2.a
+$(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a $(SP_INSTALL_PREFIX)/usr/lib/libidn2.a
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
-$(SP_INSTALL_PREFIX)/lib/libcurl-mbedtls.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/lib/libmbedtls.a $(SP_INSTALL_PREFIX)/lib/libidn2.a
+$(SP_INSTALL_PREFIX)/usr/lib/libcurl-mbedtls.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a $(SP_INSTALL_PREFIX)/usr/lib/libidn2.a
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=mbedtls
 
-$(SP_INSTALL_PREFIX)/lib/libzip-openssl.a: ../common/libzip.mk $(SP_INSTALL_PREFIX)/lib/libssl.a $(SP_INSTALL_PREFIX)/lib/libgost_engine.a
+$(SP_INSTALL_PREFIX)/usr/lib/libzip-openssl.a: ../common/libzip.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a $(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
-$(SP_INSTALL_PREFIX)/lib/libzip-mbedtls.a: ../common/libzip.mk $(SP_INSTALL_PREFIX)/lib/libmbedtls.a
+$(SP_INSTALL_PREFIX)/usr/lib/libzip-mbedtls.a: ../common/libzip.mk $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=mbedtls
 
-$(SP_INSTALL_PREFIX)/lib/libiwasm-release.a $(SP_INSTALL_PREFIX)/lib/libiwasm-debug.a:  ../common/wamr.mk $(SP_INSTALL_PREFIX)/lib/libz.a
+$(SP_INSTALL_PREFIX)/usr/lib/libiwasm-release.a $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-debug.a:  ../common/wamr.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libbacktrace.a: $(MAKE_ROOT)backtrace.mk $(SP_INSTALL_PREFIX)/lib/libz.a
+$(SP_INSTALL_PREFIX)/usr/lib/libbacktrace.a: $(MAKE_ROOT)backtrace.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libffi.a: $(MAKE_ROOT)ffi.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libxml2.a: ../common/libxml2.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a $(SP_INSTALL_PREFIX)/usr/lib/libzstd.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libexpat.a: $(MAKE_ROOT)expat.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libffi.a: $(MAKE_ROOT)ffi.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/include/vulkan/vulkan.h: ../common/vulkan-headers.mk
-	$(MAKE) -f $< $(FORWARD_VARS)
-	touch $(SP_INSTALL_PREFIX)/include/vulkan/vulkan.h
-
-$(SP_INSTALL_PREFIX)/include/spirv/unified1/spirv.h: ../common/spirv-headers.mk
-	$(MAKE) -f $< $(FORWARD_VARS)
-	touch $(SP_INSTALL_PREFIX)/include/spirv/unified1/spirv.h
-
-$(SP_INSTALL_PREFIX)/include/simde/simde-arch.h: ../common/simde.mk
-	$(MAKE) -f $< $(FORWARD_VARS)
-	touch $(SP_INSTALL_PREFIX)/include/simde/simde-arch.h
-
-$(SP_INSTALL_PREFIX)/bin/spirv-opt: ../common/spirv-tools.mk $(SP_INSTALL_PREFIX)/include/spirv/unified1/spirv.h
+$(SP_INSTALL_PREFIX)/usr/lib/libexpat.a: $(MAKE_ROOT)expat.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/bin/glslang: ../common/glslang.mk $(SP_INSTALL_PREFIX)/bin/spirv-opt $(SP_INSTALL_PREFIX)/include/vulkan/vulkan.h
+$(SP_INSTALL_PREFIX)/usr/lib/libwayland-client.a: $(MAKE_ROOT)wayland.mk $(SP_INSTALL_PREFIX)/usr/lib/libxml2.a $(SP_INSTALL_PREFIX)/usr/lib/libffi.a $(SP_INSTALL_PREFIX)/usr/lib/libexpat.a
 	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h: ../common/vulkan-headers.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+	touch $(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h
+
+$(SP_INSTALL_PREFIX)/usr/include/spirv/unified1/spirv.h: ../common/spirv-headers.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+	touch $(SP_INSTALL_PREFIX)/usr/include/spirv/unified1/spirv.h
+
+$(SP_INSTALL_PREFIX)/usr/include/simde/simde-arch.h: ../common/simde.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+	touch $(SP_INSTALL_PREFIX)/usr/include/simde/simde-arch.h
 
 $(SP_INSTALL_PREFIX)/share/licenses:
 	rm -rf $(SP_INSTALL_PREFIX)/share/licenses

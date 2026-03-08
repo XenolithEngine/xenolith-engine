@@ -949,8 +949,8 @@ void XcbWindow::handleFramePresented(const PresentationFrameInfo &frame) {
 	}
 }
 
-FrameConstraints XcbWindow::exportConstraints() const {
-	auto ret = NativeWindow::exportConstraints();
+FrameConstraints XcbWindow::exportConstraints(uint64_t &serial) const {
+	auto ret = NativeWindow::exportConstraints(serial);
 
 	ret.extent = Extent3(_xinfo.contentRect.width, _xinfo.contentRect.height, 1);
 	if (ret.density == 0.0f) {

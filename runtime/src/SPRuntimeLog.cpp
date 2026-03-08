@@ -214,7 +214,7 @@ static bool checkLogFeatureWithFilename(StringView str, LogFeaturesInit &ret) {
 	struct stat s;
 	auto r = ::__sprt_stat(str.data(), &s);
 	if (r == 0 && s.st_size > 0) {
-		uint8_t buf[s.st_size];
+		auto buf = (uint8_t *)__sprt_malloca(s.st_size);
 		auto f = __sprt_fopen(str.data(), "r");
 		if (f) {
 			if (__sprt_fread(buf, s.st_size, 1, f) > 0) {
@@ -222,6 +222,7 @@ static bool checkLogFeatureWithFilename(StringView str, LogFeaturesInit &ret) {
 			}
 			__sprt_fclose(f);
 		}
+		__sprt_freea(buf);
 	}
 	return result;
 }

@@ -1,4 +1,5 @@
 # Copyright (c) 2025 Stappler Team <admin@stappler.org>
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -31,6 +32,7 @@ STAGE2_LIBCXX := $(STAGE2_SYSROOT)/lib/libc++.a
 STAGE2_CLANG_CC := $(STAGEOUT_SYSROOT)/bin/clang
 STAGE2_CLANG_CXX := $(STAGEOUT_SYSROOT)/bin/clang++
 STAGE2_CLANG_LLDB := $(STAGEOUT_SYSROOT)/bin/lldb
+STAGEOUT_MAKE := $(STAGEOUT_SYSROOT)/bin/make
 STAGEOUT_LIBCXX := $(STAGEOUT_SYSROOT)/lib/libc++.so.1.0
 STAGEOUT_ZLIB := $(STAGEOUT_SYSROOT)/lib/libz.a
 
@@ -257,7 +259,7 @@ $(STAGEOUT_LIBCXX): $(STAGE2_ZLIB) $(STAGE1_CLANG_CC) $(STAGE1_CMAKE_CLANG_TOOLC
 	cmake --build build/stage2-libcxx2
 	cmake --install build/stage2-libcxx2
 
-$(STAGE2_SYSROOT)/include/vulkan/vulkan.h: ../common/vulkan-headers.mk
+$(STAGE2_SYSROOT)/include/vulkan/vulkan.h: $(STAGE2_CLANG_CC)
 	rm -rf build/stage2-vulkan-headers
 	@echo Build Vulkan Headers $(STAGE2_SYSROOT)/include/vulkan/vulkan.h
 	cmake \
@@ -269,7 +271,7 @@ $(STAGE2_SYSROOT)/include/vulkan/vulkan.h: ../common/vulkan-headers.mk
 	cmake --install build/stage2-vulkan-headers
 	touch $@
 
-$(STAGE2_SYSROOT)/include/spirv/unified1/spirv.h: ../common/spirv-headers.mk
+$(STAGE2_SYSROOT)/include/spirv/unified1/spirv.h: $(STAGE2_CLANG_CC)
 	rm -rf build/stage2-spirv-headers
 	@echo Build Vulkan Headers $(STAGE2_SYSROOT)/include/vulkan/vulkan.h
 	cmake \
@@ -281,9 +283,9 @@ $(STAGE2_SYSROOT)/include/spirv/unified1/spirv.h: ../common/spirv-headers.mk
 	cmake --install build/stage2-spirv-headers
 	touch $@
 
-$(STAGEOUT_SYSROOT)/bin/spirv-opt: ../common/spirv-tools.mk $(STAGE2_SYSROOT)/include/spirv/unified1/spirv.h
+$(STAGEOUT_SYSROOT)/bin/spirv-opt: $(STAGE2_SYSROOT)/include/spirv/unified1/spirv.h
 	rm -rf build/stage2-spirv-tools
-	@echo Build Vulkan Headers $(STAGE2_SYSROOT)/include/vulkan/vulkan.h
+	@echo Build SPIR-V tools $(STAGE2_SYSROOT)/include/vulkan/vulkan.h
 	cmake \
 		-DCMAKE_TOOLCHAIN_FILE=$(realpath $(STAGE2_CMAKE_STAGE1_CLANG_TOOLCHAIN)) \
 		-G Ninja -S $(SPIRV_TOOLS_DIR) -B build/stage2-spirv-tools \
@@ -296,17 +298,16 @@ $(STAGEOUT_SYSROOT)/bin/spirv-opt: ../common/spirv-tools.mk $(STAGE2_SYSROOT)/in
 		-DCMAKE_CXX_FLAGS="-ffunction-sections -fdata-sections -flto" \
 		-DCMAKE_EXE_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections -flto" \
 		-DCMAKE_SHARED_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections -flto" \
-		-DCMAKE_INSTALL_RPATH='$$ORIGIN' \
-		-DCMAKE_BUILD_RPATH='$$ORIGIN' \
-		-DBUILD_SHARED_LIBS=OFF
+		-DCMAKE_INSTALL_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
+		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib'
 	cmake --build build/stage2-spirv-tools
 	cmake --install build/stage2-spirv-tools --prefix $(abspath $(STAGE2_SYSROOT))
 	cmake --install build/stage2-spirv-tools
 	touch $@
 
-$(STAGEOUT_SYSROOT)/bin/glslang: ../common/glslang.mk $(STAGEOUT_SYSROOT)/bin/spirv-opt $(STAGE2_SYSROOT)/include/vulkan/vulkan.h
+$(STAGEOUT_SYSROOT)/bin/glslang: $(STAGEOUT_SYSROOT)/bin/spirv-opt $(STAGE2_SYSROOT)/include/vulkan/vulkan.h
 	rm -rf build/stage2-glslang
-	@echo Build Vulkan Headers $(STAGE2_SYSROOT)/include/vulkan/vulkan.h
+	@echo Build glslang compiler $(STAGE2_SYSROOT)/include/vulkan/vulkan.h
 	cmake \
 		-DCMAKE_TOOLCHAIN_FILE=$(realpath $(STAGE2_CMAKE_STAGE1_CLANG_TOOLCHAIN)) \
 		-G Ninja -S $(GLSLANG_DIR) -B build/stage2-glslang \
@@ -324,13 +325,24 @@ $(STAGEOUT_SYSROOT)/bin/glslang: ../common/glslang.mk $(STAGEOUT_SYSROOT)/bin/sp
 		-DCMAKE_CXX_FLAGS="-ffunction-sections -fdata-sections -flto" \
 		-DCMAKE_EXE_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections -flto" \
 		-DCMAKE_SHARED_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections -flto" \
-		-DCMAKE_INSTALL_RPATH='$$ORIGIN' \
-		-DCMAKE_BUILD_RPATH='$$ORIGIN'
+		-DCMAKE_INSTALL_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
+		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib'
 	cmake --build build/stage2-glslang
 	cmake --install build/stage2-glslang
 	touch $@
 
+$(STAGEOUT_MAKE): $(STAGE1_SYSROOT)/sysroot $(STAGE0_CLANG_CC) $(MAKE_SRC_DIR)
+	rm -rf build/stage1-make
+	mkdir -p build/stage1-make
+	cd build/stage1-make; $(abspath $(MAKE_SRC_DIR))/configure --prefix $(abspath $(STAGEOUT_SYSROOT)) \
+		CC=$(abspath $(STAGE1_SYSROOT))/bin/clang \
+		CFLAGS="--sysroot $(realpath $(STAGE2_SYSROOT)) -flto" \
+		LDFLAGS="-flto"
+	make -C build/stage1-make $(SP_NJOBS)
+	make -C build/stage1-make install
+
 stage2: $(STAGE2_GLIBC) $(STAGE2_CMAKE_STAGE1_CLANG_TOOLCHAIN) $(STAGE2_ZLIB) \
 	$(STAGE2_LIBCXX) $(STAGE2_CLANG_CC) $(STAGEOUT_LIBCXX) \
 	$(STAGE2_SYSROOT)/include/vulkan/vulkan.h $(STAGE2_SYSROOT)/include/spirv/unified1/spirv.h \
-	$(STAGEOUT_SYSROOT)/bin/spirv-opt $(STAGEOUT_SYSROOT)/bin/glslang
+	$(STAGEOUT_SYSROOT)/bin/spirv-opt $(STAGEOUT_SYSROOT)/bin/glslang \
+	$(STAGEOUT_MAKE)

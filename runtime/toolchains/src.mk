@@ -54,7 +54,10 @@ LIBS = \
 	libbacktrace \
 	simde \
 	llvm-project \
-	libxml2
+	libxml2 \
+	wayland \
+	wayland-protocols \
+	plasma-wayland-protocols
 
 TAR_XF = tar -xf
 
@@ -254,6 +257,18 @@ $(SRC_ROOT)/llvm-project: | prepare
 # https://download.gnome.org/sources/libxml2  # revised: 26 feb 2026
 $(SRC_ROOT)/libxml2: | prepare
 	$(call unpack_tar, https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.1.tar.xz, libxml2)
+
+# https://wayland.freedesktop.org/releases.html # revised: 06 mar 2026
+$(SRC_ROOT)/wayland: | prepare
+	$(call unpack_tar, https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.24.0/downloads/wayland-1.24.0.tar.xz, wayland)
+
+# https://wayland.freedesktop.org/releases.html # revised: 06 mar 2026
+$(SRC_ROOT)/wayland-protocols: | prepare
+	$(call unpack_tar, https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/1.47/downloads/wayland-protocols-1.47.tar.xz, wayland-protocols)
+
+# https://github.com/KDE/plasma-wayland-protocols # revised: 06 mar 2026
+$(SRC_ROOT)/plasma-wayland-protocols: | prepare
+	cd $(SRC_ROOT); git clone https://github.com/KDE/plasma-wayland-protocols.git --branch v1.20.0  --depth 1
 
 # Inject Russia Ministry of Digital Development certificates
 # https://curl.se/ca # revised: 22 feb 2026

@@ -31,6 +31,7 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_unistd.h>
 #include <sprt/c/__sprt_stdarg.h>
+#include <sprt/c/__sprt_stdlib.h>
 
 #ifndef SEEK_SET
 #define SEEK_SET __SPRT_SEEK_SET
@@ -683,14 +684,16 @@ SPRT_FORCEINLINE int execle(const char *__path, const char *__arg, ...) __SPRT_N
 	__sprt_va_end(ap);
 
 	int i;
-	char *argv[argc + 1];
+	char **argv = __sprt_typed_malloca(char *, argc + 1);
 	char **envp;
 	__sprt_va_start(ap, __arg);
 	argv[0] = (char *)__arg;
 	for (i = 1; i <= argc; i++) { argv[i] = __sprt_va_arg(ap, char *); }
 	envp = __sprt_va_arg(ap, char **);
 	__sprt_va_end(ap);
-	return __sprt_execve(__path, argv, envp);
+	int ret = __sprt_execve(__path, argv, envp);
+	__sprt_freea(argv);
+	return ret;
 }
 
 SPRT_FORCEINLINE int execl(const char *__path, const char *__arg, ...) __SPRT_NOEXCEPT {
@@ -701,13 +704,15 @@ SPRT_FORCEINLINE int execl(const char *__path, const char *__arg, ...) __SPRT_NO
 	__sprt_va_end(ap);
 
 	int i;
-	char *argv[argc + 1];
+	char **argv = __sprt_typed_malloca(char *, argc + 1);
 	__sprt_va_start(ap, __arg);
 	argv[0] = (char *)__arg;
 	for (i = 1; i < argc; i++) { argv[i] = __sprt_va_arg(ap, char *); }
 	argv[i] = nullptr;
 	__sprt_va_end(ap);
-	return __sprt_execv(__path, argv);
+	int ret = __sprt_execv(__path, argv);
+	__sprt_freea(argv);
+	return ret;
 }
 
 SPRT_FORCEINLINE int execlp(const char *__file, const char *__arg, ...) __SPRT_NOEXCEPT {
@@ -718,13 +723,15 @@ SPRT_FORCEINLINE int execlp(const char *__file, const char *__arg, ...) __SPRT_N
 	__sprt_va_end(ap);
 
 	int i;
-	char *argv[argc + 1];
+	char **argv = __sprt_typed_malloca(char *, argc + 1);
 	__sprt_va_start(ap, __arg);
 	argv[0] = (char *)__arg;
 	for (i = 1; i < argc; i++) { argv[i] = __sprt_va_arg(ap, char *); }
 	argv[i] = nullptr;
 	__sprt_va_end(ap);
-	return __sprt_execvp(__file, argv);
+	int ret = __sprt_execvp(__file, argv);
+	__sprt_freea(argv);
+	return ret;
 }
 
 #endif

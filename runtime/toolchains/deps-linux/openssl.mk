@@ -27,16 +27,20 @@ include ../common/configure.mk
 
 OPENSSL_TARGET := linux-x86_64-clang
 
-ifeq ($(ARCH),aarch64)
+ifeq ($(SP_ARCH),aarch64)
 OPENSSL_TARGET := linux-aarch64
 endif
 
+ifeq ($(SP_ARCH),riscv64)
+OPENSSL_TARGET := linux64-riscv64
+endif
+
 ifdef SP_TOOLCHAIN_PREFIX
-export CFLAGS= --sysroot=$(SP_TOOLCHAIN_PREFIX) -idirafter $(SP_TOOLCHAIN_PREFIX)/include_libc $(SP_OPT)
+export CFLAGS=$(SP_CFLAGS)
 endif
 
 CONFIGURE := $(OPENSSL_TARGET) \
-	--prefix=$(SP_INSTALL_PREFIX) \
+	--prefix=$(SP_INSTALL_PREFIX)/usr \
 	CC=$(SP_CC) \
 	CXX=$(SP_CXX) \
 	AR=$(SP_AR) \
@@ -58,7 +62,7 @@ ifeq ($(DEBUG),1)
 CONFIGURE += -d
 endif
 
-ifeq ($(ARCH),aarch64)
+ifeq ($(ARCH),x86_64)
 all:
 	@mkdir -p $(LIBNAME)
 	cd $(LIBNAME); \
@@ -66,8 +70,15 @@ all:
 		make -j8; \
 		make install_sw
 	rm -rf $(LIBNAME)
-	rm -rf $(SP_INSTALL_PREFIX)/bin/c_rehash
-	sed -i -e 's/ -lssl/ -lssl -lpthread/g' $(SP_INSTALL_PREFIX)/lib/pkgconfig/libssl.pc
+	mv -f $(SP_INSTALL_PREFIX)/usr/lib64/libssl.a $(SP_INSTALL_PREFIX)/usr/lib/libssl.a 
+	mv -f $(SP_INSTALL_PREFIX)/usr/lib64/libcrypto.a $(SP_INSTALL_PREFIX)/usr/lib/libcrypto.a 
+	mv -f $(SP_INSTALL_PREFIX)/usr/lib64/pkgconfig/libssl.pc $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc
+	mv -f $(SP_INSTALL_PREFIX)/usr/lib64/pkgconfig/libcrypto.pc $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libcrypto.pc
+	rm -rf $(SP_INSTALL_PREFIX)/usr/lib64 $(SP_INSTALL_PREFIX)/bin/c_rehash
+	sed -i -e 's/ -lssl/ -lgost -lssl -lpthread/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc
+	cp $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/openssl.pc
+	sed -i -e 's/ -lssl/ -lssl -lcrypto/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/openssl.pc
+	sed -i -e 's/{exec_prefix}\/lib64/{exec_prefix}\/lib/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc
 else
 all:
 	@mkdir -p $(LIBNAME)
@@ -76,15 +87,8 @@ all:
 		make -j8; \
 		make install_sw
 	rm -rf $(LIBNAME)
-	mv -f $(SP_INSTALL_PREFIX)/lib64/libssl.a $(SP_INSTALL_PREFIX)/lib/libssl.a 
-	mv -f $(SP_INSTALL_PREFIX)/lib64/libcrypto.a $(SP_INSTALL_PREFIX)/lib/libcrypto.a 
-	mv -f $(SP_INSTALL_PREFIX)/lib64/pkgconfig/libssl.pc $(SP_INSTALL_PREFIX)/lib/pkgconfig/libssl.pc
-	mv -f $(SP_INSTALL_PREFIX)/lib64/pkgconfig/libcrypto.pc $(SP_INSTALL_PREFIX)/lib/pkgconfig/libcrypto.pc
-	rm -rf $(SP_INSTALL_PREFIX)/lib64 $(SP_INSTALL_PREFIX)/bin/c_rehash
-	sed -i -e 's/ -lssl/ -lgost -lssl -lpthread/g' $(SP_INSTALL_PREFIX)/lib/pkgconfig/libssl.pc
-	cp $(SP_INSTALL_PREFIX)/lib/pkgconfig/libssl.pc $(SP_INSTALL_PREFIX)/lib/pkgconfig/openssl.pc
-	sed -i -e 's/ -lssl/ -lssl -lcrypto/g' $(SP_INSTALL_PREFIX)/lib/pkgconfig/openssl.pc
-	sed -i -e 's/{exec_prefix}\/lib64/{exec_prefix}\/lib/g' $(SP_INSTALL_PREFIX)/lib/pkgconfig/libssl.pc
+	rm -rf $(SP_INSTALL_PREFIX)/bin/c_rehash
+	sed -i -e 's/ -lssl/ -lssl -lpthread/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc
 endif
 
 .PHONY: all

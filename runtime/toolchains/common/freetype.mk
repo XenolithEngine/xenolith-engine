@@ -38,8 +38,8 @@ all:
 	cd $(LIBNAME); cmake -G "Ninja" $(CONFIGURE) $(LIB_SRC_DIR)/$(LIBNAME)
 	cd $(LIBNAME); cmake  --build . --config Release --target install
 	$(call rule_rm,$(LIBNAME))
-	$(call rule_cpr,$(SP_INSTALL_PREFIX)/include/freetype2/freetype,$(SP_INSTALL_PREFIX)/include)
-	$(call rule_cp,$(SP_INSTALL_PREFIX)/include/freetype2/ft2build.h,$(SP_INSTALL_PREFIX)/include)
-	$(call rule_rm,$(SP_INSTALL_PREFIX)/include/freetype2)
+	$(call rule_cpr,$(SP_INSTALL_PREFIX)/usr/include/freetype2/freetype,$(SP_INSTALL_PREFIX)/usr/include)
+	$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/freetype2/ft2build.h,$(SP_INSTALL_PREFIX)/usr/include)
+	$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/include/freetype2)
 
 .PHONY: all

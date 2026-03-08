@@ -30,22 +30,22 @@ ifdef SP_NATIVE
 CONFIGURE := \
 	OUTDIR=$(abspath $(LIBNAME)) \
 	LIBNAME=libidn2 \
-	PREFIX=$(abspath $(SP_INSTALL_PREFIX)) \
+	PREFIX=$(abspath $(SP_INSTALL_PREFIX))/usr \
 	CC=$(SP_CC) \
 	CXX=$(SP_CXX) \
-	CFLAGS=" --sysroot=$(SP_TOOLCHAIN_PREFIX) -I$(SP_INSTALL_PREFIX)/include -idirafter $(SP_TOOLCHAIN_PREFIX)/include_libc" CFLAGS_OPTIMIZE="$(SP_OPT)" AR=$(SP_AR)
+	CFLAGS="$(SP_CFLAGS)" AR=$(SP_AR)
 
 else
 
 CONFIGURE := \
 	OUTDIR=$(abspath $(LIBNAME)) \
 	LIBNAME=libidn2 \
-	PREFIX=$(abspath $(SP_INSTALL_PREFIX)) \
+	PREFIX=$(abspath $(SP_INSTALL_PREFIX))/usr \
 	CC=$(SP_CC) \
 	CXX=$(SP_CXX) \
-	CFLAGS=" --sysroot=$(SP_TOOLCHAIN_PREFIX) -I$(SP_INSTALL_PREFIX)/include -idirafter $(SP_TOOLCHAIN_PREFIX)/include_libc" CFLAGS_OPTIMIZE="$(SP_OPT)" AR=$(SP_AR) UIDNA_LIBCXX=c++
+	CFLAGS="$(SP_CFLAGS)" AR=$(SP_AR) UIDNA_LIBCXX=c++
 
-LIB_REPLACE := sed -i 's/-lc++ -licuuc/-lc++ -lc++abi -lm -licuuc/g' $(SP_INSTALL_PREFIX)/lib/pkgconfig/libidn2.pc
+LIB_REPLACE := sed -i 's/-lc++ -licuuc/-lc++ -lc++abi -lm -licuuc/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libidn2.pc
 
 endif
 

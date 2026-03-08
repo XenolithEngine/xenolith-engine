@@ -330,6 +330,18 @@ void qtimeline::signal(value_type val) {
 
 qtimeline::value_type qtimeline::get_value() const { return _atomic::loadSeq(&_data.value); }
 
+qonce::qonce() : _data({0}) { }
+
+qonce::~qonce() { }
+
+void qonce::wait(value_type value) {
+	qmutex_wait(&_data.value, value, 0); //
+}
+
+void qonce::wake() {
+	qtimeline_wake(&_data.value); //
+}
+
 Status rmutex_base::_lock2(Status (*waitFn)(volatile value_type *, value_type *, timeout_type),
 		timeout_type (*clockFn)(), bool syscallLock, __rmutex_data &data, value_type threadId,
 		timeout_type *timeout) {

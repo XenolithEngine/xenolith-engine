@@ -20,6 +20,8 @@
  THE SOFTWARE.
  **/
 
+#define __SPRT_BUILD 1
+
 #include "private/window/linux/SPRTWinLinuxWaylandSeat.h"
 #include "private/window/linux/SPRTWinLinuxWaylandDataDevice.h"
 #include "private/window/linux/SPRTWinLinuxWaylandLibrary.h"
@@ -29,6 +31,7 @@
 #include "private/window/linux/SPRTWinLinux.h"
 
 #include <sprt/runtime/enum.h>
+#include <sprt/runtime/log.h>
 
 #include <sys/mman.h>
 #include <unistd.h>
@@ -45,7 +48,7 @@ static struct wl_pointer_listener s_WaylandPointerListener{
 
 		if (seat->root->isDecoration(surface)) {
 			if (auto decor =
-							(WaylandDecoration *)seat->wayland->wl_surface_get_user_data(surface)) {
+							(WaylandDecoration *)wl_surface_get_user_data(surface)) {
 				if (decor->image != seat->cursorImage) {
 					seat->setCursor(decor->image, true);
 				}
@@ -56,7 +59,7 @@ static struct wl_pointer_listener s_WaylandPointerListener{
 		}
 
 		if (surface != seat->cursorSurface && seat->wayland->ownsProxy(surface)) {
-			auto window = reinterpret_cast<WaylandWindow *>(seat->wayland->wl_surface_get_user_data(surface));
+			auto window = reinterpret_cast<WaylandWindow *>(wl_surface_get_user_data(surface));
 			if (window) {
 				seat->pointerViews.emplace(window);
 				if (window->getCursor() != seat->cursorImage) {
@@ -71,13 +74,13 @@ static struct wl_pointer_listener s_WaylandPointerListener{
 		auto seat = reinterpret_cast<WaylandSeat *>(data);
 
 		if (seat->root->isDecoration(surface)) {
-			if (auto decor = (WaylandDecoration *)seat->wayland->wl_surface_get_user_data(surface)) {
+			if (auto decor = (WaylandDecoration *)wl_surface_get_user_data(surface)) {
 				decor->waitForMove = false;
 				seat->pointerDecorations.erase(decor);
 				decor->onLeave();
 			}
 		} else if (seat->root->ownsSurface(surface)) {
-			auto window = reinterpret_cast<WaylandWindow *>(seat->wayland->wl_surface_get_user_data(surface));
+			auto window = reinterpret_cast<WaylandWindow *>(wl_surface_get_user_data(surface));
 			if (window) {
 				window->handlePointerLeave();
 				seat->pointerViews.erase(window);
@@ -196,7 +199,7 @@ static struct wl_keyboard_listener s_WaylandKeyboardListener{// keymap
 			struct wl_array *keys) {
 		auto seat = (WaylandSeat *)data;
 		if (seat->root->ownsSurface(surface)) {
-			if (auto view = (WaylandWindow *)seat->wayland->wl_surface_get_user_data(surface)) {
+			if (auto view = (WaylandWindow *)wl_surface_get_user_data(surface)) {
 				Vector<uint32_t> keysVec;
 				for (uint32_t *it = (uint32_t *)keys->data;
 						(const char *)it < ((const char *)keys->data + keys->size); ++it) {
@@ -213,7 +216,7 @@ static struct wl_keyboard_listener s_WaylandKeyboardListener{// keymap
 	.leave = [](void *data, wl_keyboard *wl_keyboard, uint32_t serial, wl_surface *surface) {
 		auto seat = (WaylandSeat *)data;
 		if (seat->root->ownsSurface(surface)) {
-			if (auto view = (WaylandWindow *)seat->wayland->wl_surface_get_user_data(surface)) {
+			if (auto view = (WaylandWindow *)wl_surface_get_user_data(surface)) {
 				view->handleKeyboardLeave();
 				seat->keyboardViews.erase(view);
 			}
@@ -245,7 +248,11 @@ static struct wl_keyboard_listener s_WaylandKeyboardListener{// keymap
 		auto seat = (WaylandSeat *)data;
 		seat->keyState.keyRepeatRate = rate;
 		seat->keyState.keyRepeatDelay = delay;
-		seat->keyState.keyRepeatInterval = 1'000'000 / rate;
+		if (rate > 0) {
+			seat->keyState.keyRepeatInterval = 1'000'000 / rate;
+		} else {
+			seat->keyState.keyRepeatInterval = sprt::Max<int32_t>;
+		}
 	}
 };
 
@@ -304,7 +311,7 @@ static struct wl_surface_listener s_cursorSurfaceListener = {
 			return;
 		}
 
-		auto out = (WaylandOutput *)seat->wayland->wl_output_get_user_data(output);
+		auto out = (WaylandOutput *)wl_output_get_user_data(output);
 		seat->pointerOutputs.emplace(out);
 		seat->tryUpdateCursor();
 	},
@@ -314,7 +321,7 @@ static struct wl_surface_listener s_cursorSurfaceListener = {
 			return;
 		}
 
-		auto out = (WaylandOutput *)seat->wayland->wl_output_get_user_data(output);
+		auto out = (WaylandOutput *)wl_output_get_user_data(output);
 		seat->pointerOutputs.erase(out);
 	},
 	.preferred_buffer_scale = [](void *data, struct wl_surface *wl_surface, int32_t factor) {
@@ -336,7 +343,7 @@ WaylandSeat::~WaylandSeat() {
 		compose = nullptr;
 	}
 	if (seat) {
-		wayland->wl_seat_destroy(seat);
+		wl_seat_destroy(seat);
 		seat = nullptr;
 	}
 }
@@ -349,13 +356,11 @@ bool WaylandSeat::init(NotNull<WaylandLibrary> lib, NotNull<WaylandDisplay> view
 	if (version >= 5U) {
 		hasPointerFrames = true;
 	}
-	seat = static_cast<wl_seat *>(
-			wayland->wl_registry_bind(registry, name, wayland->wl_seat_interface,
-					sprt::min(version, uint32_t(wayland->wl_seat_interface->version))));
+	seat = static_cast<wl_seat *>(wl_registry_bind(registry, name, &wl_seat_interface, version));
 
-	wayland->wl_seat_set_user_data(seat, this);
-	wayland->wl_seat_add_listener(seat, &s_WaylandSeatListener, this);
-	wayland->wl_proxy_set_tag((struct wl_proxy *)seat, &s_XenolithWaylandTag);
+	wl_seat_set_user_data(seat, this);
+	wl_seat_add_listener(seat, &s_WaylandSeatListener, this);
+	wl_proxy_set_tag((struct wl_proxy *)seat, &s_XenolithWaylandTag);
 
 	return true;
 }
@@ -365,7 +370,7 @@ void WaylandSeat::setCursor(WindowCursor image, bool serverSide) {
 	auto waylandCursor = getWaylandCursor(cursorImage);
 	if (serverSide && cursorShape && waylandCursor) {
 		serverSideCursor = true;
-		wayland->wp_cursor_shape_device_v1_set_shape(cursorShape, serial, waylandCursor);
+		wp_cursor_shape_device_v1_set_shape(cursorShape, serial, waylandCursor);
 	} else if (cursorTheme) {
 		serverSideCursor = false;
 		cursorTheme->setCursor(this);
@@ -380,15 +385,15 @@ void WaylandSeat::setCursors(StringView theme, int32_t size) {
 	}
 
 	if (!cursorSurface) {
-		cursorSurface = wayland->wl_compositor_create_surface(root->compositor);
-		wayland->wl_surface_add_listener(cursorSurface, &s_cursorSurfaceListener, this);
+		cursorSurface = wl_compositor_create_surface(root->compositor);
+		wl_surface_add_listener(cursorSurface, &s_cursorSurfaceListener, this);
 	}
 }
 
 void WaylandSeat::tryUpdateCursor() {
 	auto waylandCursor = getWaylandCursor(cursorImage);
 	if (serverSideCursor && cursorShape && waylandCursor) {
-		wayland->wp_cursor_shape_device_v1_set_shape(cursorShape, serial, waylandCursor);
+		wp_cursor_shape_device_v1_set_shape(cursorShape, serial, waylandCursor);
 	} else {
 		serverSideCursor = false;
 		if (cursorTheme) {
@@ -412,37 +417,36 @@ void WaylandSeat::update() {
 	root->seatDirty = false;
 
 	if ((capabilities & WL_SEAT_CAPABILITY_POINTER) != 0 && !pointer) {
-		pointer = wayland->wl_seat_get_pointer(seat);
-		wayland->wl_pointer_add_listener(pointer, &s_WaylandPointerListener, this);
+		pointer = wl_seat_get_pointer(seat);
+		wl_pointer_add_listener(pointer, &s_WaylandPointerListener, this);
 		pointerScale = 1;
 		if (root->cursorManager) {
-			cursorShape =
-					wayland->wp_cursor_shape_manager_v1_get_pointer(root->cursorManager, pointer);
+			cursorShape = wp_cursor_shape_manager_v1_get_pointer(root->cursorManager, pointer);
 		}
 		if (cursorTheme) {
 			setCursors(cursorTheme->cursorName, cursorTheme->cursorSize);
 		}
 	} else if ((capabilities & WL_SEAT_CAPABILITY_POINTER) == 0 && pointer) {
 		if (cursorShape) {
-			wayland->wp_cursor_shape_device_v1_destroy(cursorShape);
+			wp_cursor_shape_device_v1_destroy(cursorShape);
 		}
-		wayland->wl_pointer_release(pointer);
+		wl_pointer_release(pointer);
 		pointer = NULL;
 	}
 
 	if ((capabilities & WL_SEAT_CAPABILITY_KEYBOARD) != 0 && !keyboard) {
-		keyboard = wayland->wl_seat_get_keyboard(seat);
-		wayland->wl_keyboard_add_listener(keyboard, &s_WaylandKeyboardListener, this);
+		keyboard = wl_seat_get_keyboard(seat);
+		wl_keyboard_add_listener(keyboard, &s_WaylandKeyboardListener, this);
 	} else if ((capabilities & WL_SEAT_CAPABILITY_KEYBOARD) == 0 && keyboard) {
-		wayland->wl_keyboard_release(keyboard);
+		wl_keyboard_release(keyboard);
 		keyboard = NULL;
 	}
 
 	if ((capabilities & WL_SEAT_CAPABILITY_TOUCH) != 0 && !touch) {
-		touch = wayland->wl_seat_get_touch(seat);
-		wayland->wl_touch_add_listener(touch, &s_WaylandTouchListener, this);
+		touch = wl_seat_get_touch(seat);
+		wl_touch_add_listener(touch, &s_WaylandTouchListener, this);
 	} else if ((capabilities & WL_SEAT_CAPABILITY_TOUCH) == 0 && touch) {
-		wayland->wl_touch_release(touch);
+		wl_touch_release(touch);
 		touch = NULL;
 	}
 
@@ -483,7 +487,7 @@ xkb_keysym_t WaylandSeat::composeSymbol(xkb_keysym_t sym,
 
 WaylandCursorTheme::~WaylandCursorTheme() {
 	if (cursorTheme) {
-		wayland->wl_cursor_theme_destroy(cursorTheme);
+		wl_cursor_theme_destroy(cursorTheme);
 		cursorTheme = nullptr;
 	}
 }
@@ -492,7 +496,7 @@ bool WaylandCursorTheme::init(WaylandDisplay *display, StringView name, int size
 	wayland = display->wayland;
 	cursorSize = size;
 	cursorName = name.str<String>();
-	cursorTheme = wayland->wl_cursor_theme_load(name.data(), size, display->shm->shm);
+	cursorTheme = wl_cursor_theme_load(name.data(), size, display->shm->shm);
 
 	if (cursorTheme) {
 		for (auto cursor : sprt::each<WindowCursor>()) {
@@ -504,7 +508,7 @@ bool WaylandCursorTheme::init(WaylandDisplay *display, StringView name, int size
 
 			wl_cursor *c = nullptr;
 			for (auto &it : names) {
-				c = wayland->wl_cursor_theme_get_cursor(cursorTheme, it.data());
+				c = wl_cursor_theme_get_cursor(cursorTheme, it.data());
 				if (c) {
 					cursors.emplace_back(c);
 					break;
@@ -537,13 +541,13 @@ void WaylandCursorTheme::setCursor(wl_pointer *pointer, wl_surface *cursorSurfac
 	}
 
 	auto image = cursor->images[0];
-	auto buffer = wayland->wl_cursor_image_get_buffer(image);
-	wayland->wl_pointer_set_cursor(pointer, serial, cursorSurface, image->hotspot_x / scale,
+	auto buffer = wl_cursor_image_get_buffer(image);
+	wl_pointer_set_cursor(pointer, serial, cursorSurface, image->hotspot_x / scale,
 			image->hotspot_y / scale);
-	wayland->wl_surface_attach(cursorSurface, buffer, 0, 0);
-	wayland->wl_surface_set_buffer_scale(cursorSurface, scale);
-	wayland->wl_surface_damage_buffer(cursorSurface, 0, 0, image->width, image->height);
-	wayland->wl_surface_commit(cursorSurface);
+	wl_surface_attach(cursorSurface, buffer, 0, 0);
+	wl_surface_set_buffer_scale(cursorSurface, scale);
+	wl_surface_damage_buffer(cursorSurface, 0, 0, image->width, image->height);
+	wl_surface_commit(cursorSurface);
 }
 
 bool WaylandCursorTheme::hasCursor(WindowCursor cursor) const {

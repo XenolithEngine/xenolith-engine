@@ -32,8 +32,6 @@ CONFIGURE := \
 	-Dtiff-tests=OFF \
 	-Dtiff-contrib=OFF \
 	-Dtiff-docs=OFF \
-	-DZLIB_LIBRARY="$(SP_INSTALL_PREFIX)/lib/$(call mklibname,z)" \
-	-DZLIB_INCLUDE_DIR="$(SP_INSTALL_PREFIX)/include" \
 	-DHAVE_LD_VERSION_SCRIPT=FALSE
 
 all:

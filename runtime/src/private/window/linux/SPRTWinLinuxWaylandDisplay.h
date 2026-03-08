@@ -108,7 +108,6 @@ struct SPRT_API WaylandDisplay : public Ref {
 	xdg_wm_base *xdgWmBase = nullptr;
 	wp_cursor_shape_manager_v1 *cursorManager = nullptr;
 	zxdg_decoration_manager_v1 *decorationManager = nullptr;
-	libdecor *decor = nullptr;
 	Set<wl_surface *> surfaces;
 	Set<wl_surface *> decorations;
 	Set<WaylandWindow *> windows;

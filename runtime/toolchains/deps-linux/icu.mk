@@ -24,15 +24,17 @@ LIBNAME = icu4c
 
 include ../common/configure.mk
 
+LIB_REPLACE := sed -i -e 's/-lpthread -lm/-lpthread -lm -lc++ -lc++abi/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/icu-uc.pc
+
 CONFIGURE := \
 	$(CONFIGURE_AUTOCONF) \
 	--disable-tests \
 	--disable-samples \
 	--with-data-packaging=static
 
-ifeq ($(ARCH),e2k)
-
 CONFIGURE += -with-cross-build=$(abspath $(MAKE_ROOT)$(LIBNAME)/native)
+
+CONFIGURE += LDFLAGS="--sysroot=$(SP_INSTALL_PREFIX) -L$(SP_INSTALL_PREFIX)/usr/lib -lc++ -lc++abi"
 
 CONFIGURE_NATIVE := \
 	CC=gcc \
@@ -63,29 +65,5 @@ all:
 
 	$(LIB_REPLACE)
 	rm -rf $(LIBNAME)
-
-
-else # ifeq ($(ARCH),e2k)
-
-
-ifndef SP_NATIVE
-CONFIGURE += LDFLAGS="--sysroot=$(SP_INSTALL_PREFIX) -L$(SP_INSTALL_PREFIX)/lib -lc++ -lc++abi"
-LIB_REPLACE := sed -i -e 's/-lpthread -lm/-lpthread -lm -lc++ -lc++abi/g' $(SP_INSTALL_PREFIX)/lib/pkgconfig/icu-uc.pc
-endif
-
-all:
-	rm -rf $(LIBNAME)
-	@mkdir -p $(LIBNAME)
-
-	cd $(LIBNAME); \
-		$(LIB_SRC_DIR)/$(LIBNAME)/source/configure $(CONFIGURE); \
-		make -j8; \
-		make install
-
-	$(LIB_REPLACE)
-	rm -rf $(LIBNAME)
-
-
-endif # ifeq ($(ARCH),e2k)
 
 .PHONY: all

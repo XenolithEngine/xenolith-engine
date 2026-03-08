@@ -29,10 +29,10 @@ all:
 	$(call rule_mkdir,$(LIBNAME))
 	cd $(LIBNAME); cmake -G "Ninja" $(CONFIGURE_CMAKE) $(LIB_SRC_DIR)/$(LIBNAME)
 	cd $(LIBNAME); cmake  --build . --config Release --target install --parallel
-	$(if $(LINUX),sed -i -e 's/ -lbrotlidec/ -lbrotlidec -lbrotlicommon/g' $(SP_INSTALL_PREFIX)/lib/pkgconfig/libbrotlidec.pc)
-	$(if $(LINUX),sed -i -e 's/ -lbrotlienc/ -lbrotlienc -lbrotlicommon/g' $(SP_INSTALL_PREFIX)/lib/pkgconfig/libbrotlienc.pc)
-	$(if $(ANDROID),sed -i -e 's/ -lbrotlidec/ -lbrotlidec -lbrotlicommon/g' $(SP_INSTALL_PREFIX)/lib/pkgconfig/libbrotlidec.pc)
-	$(if $(ANDROID),sed -i -e 's/ -lbrotlienc/ -lbrotlienc -lbrotlicommon/g' $(SP_INSTALL_PREFIX)/lib/pkgconfig/libbrotlienc.pc)
+	$(if $(LINUX),sed -i -e 's/ -lbrotlidec/ -lbrotlidec -lbrotlicommon/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libbrotlidec.pc)
+	$(if $(LINUX),sed -i -e 's/ -lbrotlienc/ -lbrotlienc -lbrotlicommon/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libbrotlienc.pc)
+	$(if $(ANDROID),sed -i -e 's/ -lbrotlidec/ -lbrotlidec -lbrotlicommon/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libbrotlidec.pc)
+	$(if $(ANDROID),sed -i -e 's/ -lbrotlienc/ -lbrotlienc -lbrotlicommon/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libbrotlienc.pc)
 	$(call rule_rm,$(LIBNAME))
 
 .PHONY: all

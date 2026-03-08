@@ -339,6 +339,9 @@ protected:
 	destroy_pointer _destroyPointer;
 };
 
+template <typename Sig>
+using Callback = callback<Sig>;
+
 template <typename Function>
 struct SPRT_API callback_traits;
 

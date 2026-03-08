@@ -966,7 +966,7 @@ inline auto Rc<_Base>::get_cast() const noexcept -> B * {
 template <typename _Base>
 inline auto Rc<_Base>::get() const noexcept -> _Base * {
 #if SPRT_REF_DEBUG
-	assert(this->_ptr);
+	sprt_passert(this->_ptr, "Rc should be initialized when dereferenced");
 #endif
 	return this->_ptr;
 }

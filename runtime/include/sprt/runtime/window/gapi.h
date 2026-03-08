@@ -74,12 +74,31 @@ struct SPRT_API LoopInfo : public Ref {
 	Rc<LoopBackendInfo> backend; // backend-specific data
 };
 
+struct SPRT_API DeviceProperties {
+	StringView deviceName;
+	uint32_t apiVersion = 0;
+	uint32_t driverVersion = 0;
+	bool presentationSupported = false;
+};
+
 class SPRT_API Instance : public Ref {
 public:
 	virtual ~Instance() = default;
 
-	virtual bool isPresentationSupported() const = 0;
+	// Returns the number of available display devices
+	virtual size_t getDeviceCount() const = 0;
+
+	virtual bool readDeviceProperties(size_t, DeviceProperties &) = 0;
+
 	virtual InstanceApi getApi() const = 0;
+
+	/* Finds at least one device that supports image output. Most often this is the first device in the list
+
+	Since systems often only test the functionality of the first device, this call is intended to avoid calls
+	to subsequent devices when not required. Thus, the system will work even if requests to devices after the
+	first one lead to crashes or freezes due to driver problems
+	*/
+	bool isPresentationSupported();
 };
 
 class SPRT_API Loop : public Ref {

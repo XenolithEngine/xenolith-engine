@@ -20,6 +20,8 @@
  THE SOFTWARE.
  **/
 
+#define __SPRT_BUILD 1
+
 #include "private/window/linux/SPRTWinLinuxWaylandDataDevice.h"
 #include "private/window/linux/SPRTWinLinuxWaylandLibrary.h"
 #include "private/window/linux/SPRTWinLinuxWaylandDisplay.h"
@@ -87,7 +89,7 @@ static struct wl_data_device_listener s_dataDeviceListener{
 		wl_fixed_t x, wl_fixed_t y, struct wl_data_offer *id) {
 		auto device = reinterpret_cast<WaylandDataDevice *>(data);
 		auto offer = reinterpret_cast<WaylandDataOffer *>(
-				device->wayland->wl_data_offer_get_user_data(id));
+				wl_data_offer_get_user_data(id));
 
 		offer->serial = serial;
 		offer->surface = surface;
@@ -124,7 +126,7 @@ static struct wl_data_device_listener s_dataDeviceListener{
 	.selection = [](void *data, struct wl_data_device *wl_data_device, struct wl_data_offer *id) {
 		auto device = reinterpret_cast<WaylandDataDevice *>(data);
 		auto offer = reinterpret_cast<WaylandDataOffer *>(
-				device->wayland->wl_data_offer_get_user_data(id));
+				wl_data_offer_get_user_data(id));
 		device->setSelection(offer);
 	}
 };
@@ -133,7 +135,7 @@ static struct wl_data_device_listener s_dataDeviceListener{
 
 WaylandDataDeviceManager::~WaylandDataDeviceManager() {
 	if (manager) {
-		wayland->wl_data_device_manager_destroy(manager);
+		wl_data_device_manager_destroy(manager);
 		manager = nullptr;
 	}
 }
@@ -143,10 +145,9 @@ bool WaylandDataDeviceManager::init(NotNull<WaylandDisplay> disp, wl_registry *r
 	root = disp;
 	wayland = root->wayland;
 	manager = static_cast<struct wl_data_device_manager *>(
-			wayland->wl_registry_bind(registry, name, wayland->wl_data_device_manager_interface,
-					sprt::min(int(version), wayland->wl_data_device_manager_interface->version)));
-	wayland->wl_data_device_manager_set_user_data(manager, this);
-	wayland->wl_proxy_set_tag((struct wl_proxy *)manager, &s_XenolithWaylandTag);
+			wl_registry_bind(registry, name, &wl_data_device_manager_interface, version));
+	wl_data_device_manager_set_user_data(manager, this);
+	wl_proxy_set_tag((struct wl_proxy *)manager, &s_XenolithWaylandTag);
 	return true;
 }
 
@@ -155,8 +156,8 @@ WaylandDataOffer::~WaylandDataOffer() { }
 bool WaylandDataOffer::init(NotNull<WaylandLibrary> w, wl_data_offer *o) {
 	wayland = w;
 	offer = o;
-	wayland->wl_data_offer_add_listener(offer, &s_dataOfferListener, this);
-	wayland->wl_data_offer_set_user_data(offer, this);
+	wl_data_offer_add_listener(offer, &s_dataOfferListener, this);
+	wl_data_offer_set_user_data(offer, this);
 	return true;
 }
 
@@ -178,7 +179,7 @@ bool WaylandDataInputTransfer::init(StringView t, NotNull<WaylandDataOffer> o,
 	request = sprt::move(req);
 
 	if (::pipe2(pipefd, O_CLOEXEC | O_NONBLOCK) == 0) {
-		offer->wayland->wl_data_offer_receive(offer->offer, type.data(), pipefd[1]);
+		wl_data_offer_receive(offer->offer, type.data(), pipefd[1]);
 		return true;
 	}
 	return false;
@@ -326,7 +327,7 @@ bool WaylandDataOutputTransfer::write() {
 
 WaylandDataSource::~WaylandDataSource() {
 	if (source) {
-		wayland->wl_data_source_destroy(source);
+		wl_data_source_destroy(source);
 		source = nullptr;
 	}
 }
@@ -335,10 +336,10 @@ bool WaylandDataSource::init(NotNull<WaylandDataDevice> device, Rc<ClipboardData
 	wayland = device->wayland;
 	data = sprt::move(d);
 
-	source = wayland->wl_data_device_manager_create_data_source(device->manager->manager);
-	wayland->wl_data_source_add_listener(source, &s_dataSourceListener, this);
+	source = wl_data_device_manager_create_data_source(device->manager->manager);
+	wl_data_source_add_listener(source, &s_dataSourceListener, this);
 
-	for (auto &it : data->types) { wayland->wl_data_source_offer(source, it.data()); }
+	for (auto &it : data->types) { wl_data_source_offer(source, it.data()); }
 
 	return true;
 }
@@ -367,8 +368,8 @@ void WaylandDataSource::cancel() {
 
 WaylandDataDevice::~WaylandDataDevice() {
 	if (device) {
-		manager->wayland->wl_data_device_release(device);
-		manager->wayland->wl_data_device_destroy(device);
+		wl_data_device_release(device);
+		wl_data_device_destroy(device);
 		device = nullptr;
 	}
 
@@ -380,9 +381,9 @@ bool WaylandDataDevice::init(NotNull<WaylandDataDeviceManager> m, NotNull<Waylan
 	seat = s;
 	manager = m;
 
-	device = wayland->wl_data_device_manager_get_data_device(manager->manager, seat->seat);
+	device = wl_data_device_manager_get_data_device(manager->manager, seat->seat);
 
-	wayland->wl_data_device_add_listener(device, &s_dataDeviceListener, this);
+	wl_data_device_add_listener(device, &s_dataDeviceListener, this);
 
 	return true;
 }
@@ -427,7 +428,7 @@ Status WaylandDataDevice::readFromClipboard(Rc<ClipboardRequest> &&req) {
 	auto transfer =
 			Rc<WaylandDataInputTransfer>::create(selectedType, selectionOffer, sprt::move(req));
 	if (transfer) {
-		wayland->wl_display_flush(seat->root->display);
+		wl_display_flush(seat->root->display);
 		transfer->schedule(LooperAdapter::getForThread());
 		return Status::Ok;
 	}
@@ -451,7 +452,7 @@ Status WaylandDataDevice::probeClipboard(Rc<ClipboardProbe> &&probe) {
 Status WaylandDataDevice::writeToClipboard(Rc<ClipboardData> &&data) {
 	auto source = Rc<WaylandDataSource>::create(this, sprt::move(data));
 
-	wayland->wl_data_device_set_selection(device, source->source, seat->serial);
+	wl_data_device_set_selection(device, source->source, seat->serial);
 	selectionSource = source;
 
 	return Status::Ok;

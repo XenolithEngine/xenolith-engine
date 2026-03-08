@@ -20,6 +20,8 @@
  THE SOFTWARE.
  **/
 
+#define __SPRT_BUILD 1
+
 #include "private/window/linux/SPRTWinLinuxWaylandDisplay.h"
 #include "private/window/linux/SPRTWinLinuxWaylandLibrary.h"
 #include "private/window/linux/SPRTWinLinuxWaylandWindow.h"
@@ -35,7 +37,7 @@ namespace sprt::window {
 // clang-format off
 static const xdg_wm_base_listener s_XdgWmBaseListener{
 	.ping = [](void *data, xdg_wm_base *xdg_wm_base, uint32_t serial) {
-		((WaylandDisplay *)data)->wayland->xdg_wm_base_pong(xdg_wm_base, serial);
+		xdg_wm_base_pong(xdg_wm_base, serial);
 	}
 };
 
@@ -125,19 +127,6 @@ static struct wl_shm_listener s_WaylandShmListener = {
 	}
 };
 
-static struct libdecor_interface s_libdecorInterface {
-	.error = [](libdecor *context, enum libdecor_error error, const char *message) {
-		switch (error) {
-		case LIBDECOR_ERROR_COMPOSITOR_INCOMPATIBLE:
-			log::vperror(__SPRT_LOCATION, "WaylandDisplay", "LIBDECOR_ERROR_COMPOSITOR_INCOMPATIBLE: ", message);
-			break;
-		case LIBDECOR_ERROR_INVALID_FRAME_CONFIGURATION:
-			log::vperror(__SPRT_LOCATION, "WaylandDisplay", "LIBDECOR_ERROR_INVALID_FRAME_CONFIGURATION: ", message);
-			break;
-		}
-	}
-};
-
 static const wl_registry_listener s_WaylandRegistryListener{
 	.global = [](void *data, struct wl_registry *registry, uint32_t name, const char *interface,
 			uint32_t version) {
@@ -146,111 +135,145 @@ static const wl_registry_listener s_WaylandRegistryListener{
 
 		StringView iname = StringView(interface);
 
-		if (iname == StringView(wayland->wl_compositor_interface->name)) {
+		if (iname == StringView(wl_compositor_interface.name)) {
+			auto availableVersion = sprt::min(version, uint32_t(wl_compositor_interface.version));
+			auto targetVersion = sprt::min(WaylandLibrary::wl_compositor_version_supported, availableVersion);
+
 			display->compositor = static_cast<wl_compositor *>(
-				wayland->wl_registry_bind(registry, name,
-					wayland->wl_compositor_interface,
-					sprt::min(version, uint32_t(wayland->wl_compositor_interface->version))));
+				wl_registry_bind(registry, name, &wl_compositor_interface,
+					targetVersion));
 
-			XL_WAYLAND_LOG("Init: '", interface, "', version: ",
-				sprt::min(int(version), wayland->kde_output_management_v2_interface->version), ", name: ", name);
-		} else if (iname == StringView(wayland->wl_subcompositor_interface->name)) {
+			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
+
+		} else if (iname == StringView(wl_subcompositor_interface.name)) {
+			auto availableVersion = sprt::min(version, uint32_t(wl_subcompositor_interface.version));
+			auto targetVersion = sprt::min(WaylandLibrary::wl_subcompositor_version_supported, availableVersion);
+
 			display->subcompositor = static_cast<wl_subcompositor *>(
-				wayland->wl_registry_bind(registry, name,
-					wayland->wl_subcompositor_interface,
-					sprt::min(version, uint32_t(wayland->wl_subcompositor_interface->version))));
+				wl_registry_bind(registry, name, &wl_subcompositor_interface,
+					targetVersion));
 
-			XL_WAYLAND_LOG("Init: '", interface, "', version: ",
-				sprt::min(int(version), wayland->kde_output_management_v2_interface->version), ", name: ", name);
-		} else if (iname == StringView(wayland->wl_output_interface->name)) {
-			auto out = Rc<WaylandOutput>::create(wayland, registry, name, version);
+			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
+
+		} else if (iname == StringView(wl_output_interface.name)) {
+			auto availableVersion = sprt::min(version, uint32_t(wl_output_interface.version));
+			auto targetVersion = sprt::min(WaylandLibrary::wl_output_version_supported, availableVersion);
+
+			auto out = Rc<WaylandOutput>::create(wayland, registry, name, targetVersion);
 			display->outputs.emplace_back(move(out));
 
-			XL_WAYLAND_LOG("Init: '", interface, "', version: ",
-				sprt::min(int(version), wayland->kde_output_management_v2_interface->version), ", name: ", name);
-		} else if (iname == StringView(wayland->wp_viewporter_interface->name)) {
+			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
+
+		} else if (iname == StringView(wp_viewporter_interface.name)) {
+			auto availableVersion = sprt::min(version, uint32_t(wp_viewporter_interface.version));
+			auto targetVersion = sprt::min(WaylandLibrary::wp_viewporter_version_supported, availableVersion);
+
 			display->viewporter = static_cast<struct wp_viewporter *>(
-					wayland->wl_registry_bind(registry, name,
-						wayland->wp_viewporter_interface,
-						sprt::min(version, uint32_t(wayland->wp_viewporter_interface->version))));
+					wl_registry_bind(registry, name, &wp_viewporter_interface,
+						targetVersion));
 
-			XL_WAYLAND_LOG("Init: '", interface, "', version: ",
-				sprt::min(int(version), wayland->kde_output_management_v2_interface->version), ", name: ", name);
-		} else if (iname == StringView(wayland->xdg_wm_base_interface->name)) {
+			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
+
+		} else if (iname == StringView(xdg_wm_base_interface.name)) {
+			auto availableVersion = sprt::min(version, uint32_t(xdg_wm_base_interface.version));
+			auto targetVersion = sprt::min(WaylandLibrary::xdg_wm_base_version_supported, availableVersion);
+
 			display->xdgWmBase = static_cast<struct xdg_wm_base *>(
-				wayland->wl_registry_bind(registry, name,
-					wayland->xdg_wm_base_interface,
-					sprt::min(int(version), wayland->xdg_wm_base_interface->version)));
+				wl_registry_bind(registry, name, &xdg_wm_base_interface,
+					targetVersion));
 
-			wayland->xdg_wm_base_add_listener(display->xdgWmBase, &s_XdgWmBaseListener, display);
+			xdg_wm_base_add_listener(display->xdgWmBase, &s_XdgWmBaseListener, display);
 
-			XL_WAYLAND_LOG("Init: '", interface, "', version: ",
-				sprt::min(int(version), wayland->kde_output_management_v2_interface->version), ", name: ", name);
-		} else if (iname == StringView(wayland->wl_shm_interface->name)) {
-			display->shm = Rc<WaylandShm>::create(wayland, registry, name, version);
+			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
 
-			XL_WAYLAND_LOG("Init: '", interface, "', version: ",
-				sprt::min(int(version), wayland->kde_output_management_v2_interface->version), ", name: ", name);
-		} else if (iname == StringView(wayland->wl_seat_interface->name)) {
-			display->seat = Rc<WaylandSeat>::create(wayland, display, registry, name, version);
+		} else if (iname == StringView(wl_shm_interface.name)) {
+			auto availableVersion = sprt::min(version, uint32_t(wl_shm_interface.version));
+			auto targetVersion = sprt::min(WaylandLibrary::wl_shm_version_supported, availableVersion);
 
-			XL_WAYLAND_LOG("Init: '", interface, "', version: ",
-				sprt::min(int(version), wayland->kde_output_management_v2_interface->version), ", name: ", name);
-		} else if (iname == StringView(wayland->zxdg_decoration_manager_v1_interface->name)) {
+			display->shm = Rc<WaylandShm>::create(wayland, registry, name, targetVersion);
+
+			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
+
+		} else if (iname == StringView(wl_seat_interface.name)) {
+			auto availableVersion = sprt::min(version, uint32_t(wl_seat_interface.version));
+			auto targetVersion = sprt::min(WaylandLibrary::wl_seat_version_supported, availableVersion);
+
+			display->seat = Rc<WaylandSeat>::create(wayland, display, registry, name, targetVersion);
+
+			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
+
+		} else if (iname == StringView(zxdg_decoration_manager_v1_interface.name)) {
+			auto availableVersion = sprt::min(version, uint32_t(zxdg_decoration_manager_v1_interface.version));
+			auto targetVersion = sprt::min(WaylandLibrary::zxdg_decoration_manager_v1_version_supported, availableVersion);
+
 			display->decorationManager = static_cast<struct zxdg_decoration_manager_v1 *>(
-				wayland->wl_registry_bind(registry, name,
-					wayland->zxdg_decoration_manager_v1_interface,
-					sprt::min(int(version), wayland->xdg_wm_base_interface->version)));
+				wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface,
+					targetVersion));
 
-			XL_WAYLAND_LOG("Init: '", interface, "', version: ",
-				sprt::min(int(version), wayland->kde_output_management_v2_interface->version), ", name: ", name);
-		} else if (iname == StringView(wayland->kde_output_device_v2_interface->name)) {
+			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
+
+		} else if (iname == StringView(kde_output_device_v2_interface.name)) {
+			auto availableVersion = sprt::min(version, uint32_t(kde_output_device_v2_interface.version));
+			auto targetVersion = sprt::min(WaylandLibrary::kde_output_device_v2_version_supported, availableVersion);
+
 			if (!display->kdeDisplayConfigManager) {
 				display->kdeDisplayConfigManager = Rc<WaylandKdeDisplayConfigManager>::create(display);
 			}
 
 			auto output = static_cast<struct kde_output_device_v2 *>(
-				wayland->wl_registry_bind(registry, name,
-					wayland->kde_output_device_v2_interface,
-					sprt::min(int(version), wayland->kde_output_device_v2_interface->version)));
+				wl_registry_bind(registry, name, &kde_output_device_v2_interface,
+					targetVersion));
+
 			display->kdeDisplayConfigManager->addOutput(output, name);
-			XL_WAYLAND_LOG("Init: '", interface, "', version: ",
-				sprt::min(int(version), wayland->kde_output_management_v2_interface->version), ", name: ", name);
-		} else if (iname == StringView(wayland->kde_output_order_v1_interface->name)) {
+			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
+
+		} else if (iname == StringView(kde_output_order_v1_interface.name)) {
+			auto availableVersion = sprt::min(version, uint32_t(kde_output_order_v1_interface.version));
+			auto targetVersion = sprt::min(WaylandLibrary::kde_output_order_v1_version_supported, availableVersion);
+
 			if (!display->kdeDisplayConfigManager) {
 				display->kdeDisplayConfigManager = Rc<WaylandKdeDisplayConfigManager>::create(display);
 			}
 
 			auto order = static_cast<struct kde_output_order_v1 *>(
-				wayland->wl_registry_bind(registry, name,
-					wayland->kde_output_order_v1_interface,
-					sprt::min(int(version), wayland->kde_output_order_v1_interface->version)));
+				wl_registry_bind(registry, name, &kde_output_order_v1_interface,
+					targetVersion));
 
 			display->kdeDisplayConfigManager->setOrder(order);
-			XL_WAYLAND_LOG("Init: '", interface, "', version: ",
-				sprt::min(int(version), wayland->kde_output_management_v2_interface->version), ", name: ", name);
-		} else if (iname == StringView(wayland->kde_output_management_v2_interface->name)) {
+			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
+
+		} else if (iname == StringView(kde_output_management_v2_interface.name)) {
+			auto availableVersion = sprt::min(version, uint32_t(kde_output_management_v2_interface.version));
+			auto targetVersion = sprt::min(WaylandLibrary::kde_output_management_v2_version_supported, availableVersion);
+
 			if (!display->kdeDisplayConfigManager) {
 				display->kdeDisplayConfigManager = Rc<WaylandKdeDisplayConfigManager>::create(display);
 			}
 
 			auto manager = static_cast<struct kde_output_management_v2 *>(
-				wayland->wl_registry_bind(registry, name,
-					wayland->kde_output_management_v2_interface,
-					sprt::min(int(version), wayland->kde_output_management_v2_interface->version)));
+				wl_registry_bind(registry, name, &kde_output_management_v2_interface,
+					targetVersion));
+
 			display->kdeDisplayConfigManager->setManager(manager);
-			XL_WAYLAND_LOG("Init: '", interface, "', version: ",
-				sprt::min(int(version), wayland->kde_output_management_v2_interface->version), ", name: ", name);
-		} else if (iname == StringView(wayland->wp_cursor_shape_manager_v1_interface->name)) {
+			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
+
+		} else if (iname == StringView(wp_cursor_shape_manager_v1_interface.name)) {
+			auto availableVersion = sprt::min(version, uint32_t(wp_cursor_shape_manager_v1_interface.version));
+			auto targetVersion = sprt::min(WaylandLibrary::wp_cursor_shape_manager_v1_version_supported, availableVersion);
+
 			display->cursorManager = static_cast<struct wp_cursor_shape_manager_v1 *>(
-				wayland->wl_registry_bind(registry, name,
-					wayland->wp_cursor_shape_manager_v1_interface,
-					1));
-			XL_WAYLAND_LOG("Init: '", interface, "', version: ", 1, ", name: ", name);
-		} else if (iname == StringView(wayland->wl_data_device_manager_interface->name)) {
-			display->dataDeviceManager = Rc<WaylandDataDeviceManager>::create(display, registry, name, version);
-			XL_WAYLAND_LOG("Init: '", interface, "', version: ",
-				sprt::min(int(version), wayland->wl_data_device_manager_interface->version), ", name: ", name);
+				wl_registry_bind(registry, name, &wp_cursor_shape_manager_v1_interface,
+					targetVersion));
+
+			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
+
+		} else if (iname == StringView(wl_data_device_manager_interface.name)) {
+			auto availableVersion = sprt::min(version, uint32_t(wl_data_device_manager_interface.version));
+			auto targetVersion = sprt::min(WaylandLibrary::wl_data_device_manager_version_supported, availableVersion);
+
+			display->dataDeviceManager = Rc<WaylandDataDeviceManager>::create(display, registry, name, targetVersion);
+			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
+
 		} else {
 			XL_WAYLAND_LOG("Unknown registry interface: '", interface, "', version: ", version, ", name: ", name);
 		}
@@ -268,26 +291,26 @@ static const wl_registry_listener s_WaylandRegistryListener{
 
 WaylandDisplay::~WaylandDisplay() {
 	if (decorationManager) {
-		wayland->zxdg_decoration_manager_v1_destroy(decorationManager);
+		zxdg_decoration_manager_v1_destroy(decorationManager);
 		decorationManager = nullptr;
 	}
 	if (cursorManager) {
-		wayland->wp_cursor_shape_manager_v1_destroy(cursorManager);
+		wp_cursor_shape_manager_v1_destroy(cursorManager);
 	}
 	if (xdgWmBase) {
-		wayland->xdg_wm_base_destroy(xdgWmBase);
+		xdg_wm_base_destroy(xdgWmBase);
 		xdgWmBase = nullptr;
 	}
 	if (compositor) {
-		wayland->wl_compositor_destroy(compositor);
+		wl_compositor_destroy(compositor);
 		compositor = nullptr;
 	}
 	if (subcompositor) {
-		wayland->wl_subcompositor_destroy(subcompositor);
+		wl_subcompositor_destroy(subcompositor);
 		subcompositor = nullptr;
 	}
 	if (viewporter) {
-		wayland->wp_viewporter_destroy(viewporter);
+		wp_viewporter_destroy(viewporter);
 		viewporter = nullptr;
 	}
 
@@ -297,7 +320,7 @@ WaylandDisplay::~WaylandDisplay() {
 	outputs.clear();
 
 	if (display) {
-		wayland->wl_display_disconnect(display);
+		wl_display_disconnect(display);
 		display = nullptr;
 	}
 }
@@ -305,23 +328,19 @@ WaylandDisplay::~WaylandDisplay() {
 bool WaylandDisplay::init(NotNull<WaylandLibrary> lib, NotNull<XkbLibrary> xkbLib, StringView d) {
 	wayland = lib;
 
-	display = wayland->wl_display_connect(
+	display = wl_display_connect(
 			d.empty() ? nullptr : (d.terminated() ? d.data() : d.str<String>().data()));
 	if (!display) {
 		log::vperror(__SPRT_LOCATION, "WaylandDisplay", "Fail to connect to Wayland Display");
 		return false;
 	}
 
-	if (wayland->hasDecor()) {
-		decor = wayland->libdecor_new(display, &s_libdecorInterface);
-	}
+	struct wl_registry *registry = wl_display_get_registry(display);
 
-	struct wl_registry *registry = wayland->wl_display_get_registry(display);
-
-	wayland->wl_registry_add_listener(registry, &s_WaylandRegistryListener, this);
-	wayland->wl_display_roundtrip(display); // registry
-	wayland->wl_display_roundtrip(display); // seats and outputs
-	wayland->wl_registry_destroy(registry);
+	wl_registry_add_listener(registry, &s_WaylandRegistryListener, this);
+	wl_display_roundtrip(display); // registry
+	wl_display_roundtrip(display); // seats and outputs
+	wl_registry_destroy(registry);
 
 	xkb = xkbLib;
 	return true;
@@ -336,9 +355,9 @@ Rc<DisplayConfigManager> WaylandDisplay::makeDisplayConfigManager(
 }
 
 wl_surface *WaylandDisplay::createSurface(WaylandWindow *view) {
-	auto surface = wayland->wl_compositor_create_surface(compositor);
-	wayland->wl_surface_set_user_data(surface, view);
-	wayland->wl_proxy_set_tag((struct wl_proxy *)surface, &s_XenolithWaylandTag);
+	auto surface = wl_compositor_create_surface(compositor);
+	wl_surface_set_user_data(surface, view);
+	wl_proxy_set_tag((struct wl_proxy *)surface, &s_XenolithWaylandTag);
 	surfaces.emplace(surface);
 	windows.emplace(view);
 	return surface;
@@ -350,20 +369,20 @@ void WaylandDisplay::destroySurface(WaylandWindow *window) {
 	auto surface = window->getSurface();
 	surfaces.erase(window->getSurface());
 	windows.erase(window);
-	wayland->wl_surface_destroy(surface);
+	wl_surface_destroy(surface);
 }
 
 wl_surface *WaylandDisplay::createDecorationSurface(WaylandDecoration *decor) {
-	auto surface = wayland->wl_compositor_create_surface(compositor);
-	wayland->wl_surface_set_user_data(surface, decor);
-	wayland->wl_proxy_set_tag((struct wl_proxy *)surface, &s_XenolithWaylandTag);
+	auto surface = wl_compositor_create_surface(compositor);
+	wl_surface_set_user_data(surface, decor);
+	wl_proxy_set_tag((struct wl_proxy *)surface, &s_XenolithWaylandTag);
 	decorations.emplace(surface);
 	return surface;
 }
 
 void WaylandDisplay::destroyDecorationSurface(wl_surface *surface) {
 	decorations.erase(surface);
-	wayland->wl_surface_destroy(surface);
+	wl_surface_destroy(surface);
 }
 
 bool WaylandDisplay::ownsSurface(wl_surface *surface) const {
@@ -374,23 +393,21 @@ bool WaylandDisplay::isDecoration(wl_surface *surface) const {
 	return decorations.find(surface) != decorations.end();
 }
 
-bool WaylandDisplay::flush() { return wayland->wl_display_flush(display) != -1; }
+bool WaylandDisplay::flush() { return wl_display_flush(display) != -1; }
 
 bool WaylandDisplay::poll() {
 	if (seatDirty) {
 		seat->update();
 	}
 
-	if (decor) {
-		wayland->libdecor_dispatch(decor, 0);
+	auto rv = wl_display_prepare_read(display);
+	while (rv != 0) {
+		wl_display_dispatch_pending(display);
+		rv = wl_display_prepare_read(display);
 	}
 
-	while (wayland->wl_display_prepare_read(display) != 0) {
-		wayland->wl_display_dispatch_pending(display);
-	}
-
-	wayland->wl_display_read_events(display);
-	wayland->wl_display_dispatch_pending(display);
+	wl_display_read_events(display);
+	wl_display_dispatch_pending(display);
 
 	for (auto &it : windows) { it->dispatchPendingEvents(); }
 
@@ -403,7 +420,7 @@ bool WaylandDisplay::poll() {
 	return true;
 }
 
-int WaylandDisplay::getFd() const { return wayland->wl_display_get_fd(display); }
+int WaylandDisplay::getFd() const { return wl_display_get_fd(display); }
 
 void WaylandDisplay::updateThemeInfo(const ThemeInfo &theme) {
 	if (seat) {
@@ -455,10 +472,6 @@ WindowCapabilities WaylandDisplay::getCapabilities() const {
 	auto caps = WindowCapabilities::Fullscreen | WindowCapabilities::FullscreenWithMode
 			| WindowCapabilities::UserSpaceDecorations | WindowCapabilities::CloseGuard;
 
-	if (wayland->hasDecor()) {
-		caps |= WindowCapabilities::NativeDecorations;
-	}
-
 	if (decorationManager) {
 		caps |= WindowCapabilities::ServerSideDecorations;
 	}
@@ -478,7 +491,7 @@ void WaylandDisplay::handleClipboardChanged() {
 
 WaylandShm::~WaylandShm() {
 	if (shm) {
-		wayland->wl_shm_destroy(shm);
+		wl_shm_destroy(shm);
 		shm = nullptr;
 	}
 }
@@ -487,17 +500,16 @@ bool WaylandShm::init(const Rc<WaylandLibrary> &lib, wl_registry *registry, uint
 		uint32_t version) {
 	wayland = lib;
 	id = name;
-	shm = static_cast<wl_shm *>(wayland->wl_registry_bind(registry, name, wayland->wl_shm_interface,
-			sprt::min(version, uint32_t(wayland->wl_shm_interface->version))));
-	wayland->wl_shm_set_user_data(shm, this);
-	wayland->wl_shm_add_listener(shm, &s_WaylandShmListener, this);
-	wayland->wl_proxy_set_tag((struct wl_proxy *)shm, &s_XenolithWaylandTag);
+	shm = static_cast<wl_shm *>(wl_registry_bind(registry, name, &wl_shm_interface, version));
+	wl_shm_set_user_data(shm, this);
+	wl_shm_add_listener(shm, &s_WaylandShmListener, this);
+	wl_proxy_set_tag((struct wl_proxy *)shm, &s_XenolithWaylandTag);
 	return true;
 }
 
 WaylandOutput::~WaylandOutput() {
 	if (output) {
-		wayland->wl_output_destroy(output);
+		wl_output_destroy(output);
 		output = nullptr;
 	}
 }
@@ -507,11 +519,10 @@ bool WaylandOutput::init(const Rc<WaylandLibrary> &lib, wl_registry *registry, u
 	wayland = lib;
 	id = name;
 	output = static_cast<wl_output *>(
-			wayland->wl_registry_bind(registry, name, wayland->wl_output_interface,
-					sprt::min(version, uint32_t(wayland->wl_output_interface->version))));
-	wayland->wl_output_set_user_data(output, this);
-	wayland->wl_output_add_listener(output, &s_WaylandOutputListener, this);
-	wayland->wl_proxy_set_tag((struct wl_proxy *)output, &s_XenolithWaylandTag);
+			wl_registry_bind(registry, name, &wl_output_interface, version));
+	wl_output_set_user_data(output, this);
+	wl_output_add_listener(output, &s_WaylandOutputListener, this);
+	wl_proxy_set_tag((struct wl_proxy *)output, &s_XenolithWaylandTag);
 	return true;
 }
 
@@ -525,11 +536,11 @@ String WaylandOutput::description() const {
 
 WaylandDecoration::~WaylandDecoration() {
 	if (viewport) {
-		wayland->wp_viewport_destroy(viewport);
+		wp_viewport_destroy(viewport);
 		viewport = nullptr;
 	}
 	if (subsurface) {
-		wayland->wl_subsurface_destroy(subsurface);
+		wl_subsurface_destroy(subsurface);
 		subsurface = nullptr;
 	}
 	if (surface) {
@@ -563,12 +574,12 @@ bool WaylandDecoration::init(WaylandWindow *view, Rc<WaylandBuffer> &&b, Rc<Wayl
 
 	auto parent = root->getSurface();
 
-	subsurface = wayland->wl_subcompositor_get_subsurface(display->subcompositor, surface, parent);
-	wayland->wl_subsurface_place_below(subsurface, parent);
-	wayland->wl_subsurface_set_sync(subsurface);
+	subsurface = wl_subcompositor_get_subsurface(display->subcompositor, surface, parent);
+	wl_subsurface_place_below(subsurface, parent);
+	wl_subsurface_set_sync(subsurface);
 
-	viewport = wayland->wp_viewporter_get_viewport(display->viewporter, surface);
-	wayland->wl_surface_attach(surface, buffer->buffer, 0, 0);
+	viewport = wp_viewporter_get_viewport(display->viewporter, surface);
+	wl_surface_attach(surface, buffer->buffer, 0, 0);
 
 	dirty = true;
 
@@ -624,8 +635,8 @@ void WaylandDecoration::onEnter() {
 	if (isTouchable() && !isActive) {
 		isActive = true;
 		auto &b = (active && isActive) ? active : buffer;
-		wayland->wl_surface_attach(surface, b->buffer, 0, 0);
-		wayland->wl_surface_damage_buffer(surface, 0, 0, b->width, b->height);
+		wl_surface_attach(surface, b->buffer, 0, 0);
+		wl_surface_damage_buffer(surface, 0, 0, b->width, b->height);
 		dirty = true;
 	}
 }
@@ -634,8 +645,8 @@ void WaylandDecoration::onLeave() {
 	if (isTouchable() && isActive) {
 		isActive = false;
 		auto &b = (active && isActive) ? active : buffer;
-		wayland->wl_surface_attach(surface, b->buffer, 0, 0);
-		wayland->wl_surface_damage_buffer(surface, 0, 0, b->width, b->height);
+		wl_surface_attach(surface, b->buffer, 0, 0);
+		wl_surface_damage_buffer(surface, 0, 0, b->width, b->height);
 		dirty = true;
 	}
 }
@@ -645,8 +656,8 @@ void WaylandDecoration::setActive(bool val) {
 		if (val != isActive) {
 			isActive = val;
 			auto &b = (active && isActive) ? active : buffer;
-			wayland->wl_surface_attach(surface, b->buffer, 0, 0);
-			wayland->wl_surface_damage_buffer(surface, 0, 0, b->width, b->height);
+			wl_surface_attach(surface, b->buffer, 0, 0);
+			wl_surface_damage_buffer(surface, 0, 0, b->width, b->height);
 			dirty = true;
 		}
 	}
@@ -657,10 +668,10 @@ void WaylandDecoration::setVisible(bool val) {
 		visible = val;
 		if (visible) {
 			auto &b = (active && isActive) ? active : buffer;
-			wayland->wl_surface_attach(surface, b->buffer, 0, 0);
-			wayland->wl_surface_damage_buffer(surface, 0, 0, b->width, b->height);
+			wl_surface_attach(surface, b->buffer, 0, 0);
+			wl_surface_damage_buffer(surface, 0, 0, b->width, b->height);
 		} else {
-			wayland->wl_surface_attach(surface, nullptr, 0, 0);
+			wl_surface_attach(surface, nullptr, 0, 0);
 		}
 		dirty = true;
 	}
@@ -683,8 +694,8 @@ void WaylandDecoration::setAlternative(bool val) {
 		active = move(tmpB);
 
 		auto &b = (active && isActive) ? active : buffer;
-		wayland->wl_surface_attach(surface, b->buffer, 0, 0);
-		wayland->wl_surface_damage_buffer(surface, 0, 0, b->width, b->height);
+		wl_surface_attach(surface, b->buffer, 0, 0);
+		wl_surface_damage_buffer(surface, 0, 0, b->width, b->height);
 		dirty = true;
 	}
 }
@@ -699,17 +710,17 @@ void WaylandDecoration::setGeometry(int32_t x, int32_t y, int32_t width, int32_t
 	_width = width;
 	_height = height;
 
-	wayland->wl_subsurface_set_position(subsurface, _x, _y);
-	wayland->wp_viewport_set_destination(viewport, _width, _height);
+	wl_subsurface_set_position(subsurface, _x, _y);
+	wp_viewport_set_destination(viewport, _width, _height);
 
 	auto &b = (active && isActive) ? active : buffer;
-	wayland->wl_surface_damage_buffer(surface, 0, 0, b->width, b->height);
+	wl_surface_damage_buffer(surface, 0, 0, b->width, b->height);
 	dirty = true;
 }
 
 bool WaylandDecoration::commit() {
 	if (dirty) {
-		wayland->wl_surface_commit(surface);
+		wl_surface_commit(surface);
 		dirty = false;
 		return true;
 	}

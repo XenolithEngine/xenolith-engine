@@ -100,14 +100,14 @@ endif
 $(LIBNAME)/%.o: $(LIB_SRC_DIR)/$(LIBNAME)/%.c | prepare
 	$(SP_CC) $(TARGET_CFLAGS) -c $< -o $@
 
-$(SP_INSTALL_PREFIX)/include/%.h: $(LIB_SRC_DIR)/$(LIBNAME)/%.h | prepare
+$(SP_INSTALL_PREFIX)/usr/include/%.h: $(LIB_SRC_DIR)/$(LIBNAME)/%.h | prepare
 	$(call rule_cp,$<,$@)
 
 $(LIBNAME)/$(call mklibname,gost_engine): $(addprefix $(LIBNAME)/,$(OBJS)) prepare
 	$(SP_AR) rcs $@ $(addprefix $(LIBNAME)/,$(OBJS))
 
-all: $(LIBNAME)/$(call mklibname,gost_engine) $(addprefix $(SP_INSTALL_PREFIX)/include/,$(HEADERS))
-	$(call rule_cp,$(LIBNAME)/$(call mklibname,gost_engine),$(SP_INSTALL_PREFIX)/lib/$(call mklibname,gost_engine))
+all: $(LIBNAME)/$(call mklibname,gost_engine) $(addprefix $(SP_INSTALL_PREFIX)/usr/include/,$(HEADERS))
+	$(call rule_cp,$(LIBNAME)/$(call mklibname,gost_engine),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,gost_engine))
 	$(call rule_rm,$(LIBNAME))
 
 .PHONY: all

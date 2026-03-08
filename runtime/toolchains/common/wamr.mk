@@ -64,6 +64,12 @@ CONFIGURE_WAMR += \
 	-DWAMR_BUILD_AOT=1
 endif
 
+ifeq ($(ARCH),riscv64)
+CONFIGURE_WAMR += \
+	-DWAMR_BUILD_TARGET=RISCV64 \
+	-DWAMR_BUILD_AOT=1
+endif
+
 ifeq ($(ARCH),x86_64)
 CONFIGURE_WAMR += \
 	-DWAMR_BUILD_TARGET=X86_64 \
@@ -98,34 +104,34 @@ CONFIGURE_DEBUG := \
 	-DWAMR_BUILD_DEBUG_AOT=1 \
 	-DWAMR_BUILD_FAST_INTERP=0
 
-INCLUDES := $(SP_INSTALL_PREFIX)/include/wamr/wasm_export.h $(SP_INSTALL_PREFIX)/include/wamr/lib_export.h
+INCLUDES := $(SP_INSTALL_PREFIX)/usr/include/wamr/wasm_export.h $(SP_INSTALL_PREFIX)/usr/include/wamr/lib_export.h
 
-$(SP_INSTALL_PREFIX)/include/wamr/wasm_export.h:
-	$(call rule_mkdir,$(SP_INSTALL_PREFIX)/include/wamr)
-	$(call rule_cp,$(LIB_SRC_DIR)/$(LIBNAME)/core/iwasm/include/wasm_export.h,$(SP_INSTALL_PREFIX)/include/wamr/wasm_export.h)
+$(SP_INSTALL_PREFIX)/usr/include/wamr/wasm_export.h:
+	$(call rule_mkdir,$(SP_INSTALL_PREFIX)/usr/include/wamr)
+	$(call rule_cp,$(LIB_SRC_DIR)/$(LIBNAME)/core/iwasm/include/wasm_export.h,$(SP_INSTALL_PREFIX)/usr/include/wamr/wasm_export.h)
 
-$(SP_INSTALL_PREFIX)/include/wamr/lib_export.h:
-	$(call rule_mkdir,$(SP_INSTALL_PREFIX)/include/wamr)
-	$(call rule_cp,$(LIB_SRC_DIR)/$(LIBNAME)/core/iwasm/include/lib_export.h,$(SP_INSTALL_PREFIX)/include/wamr/lib_export.h)
+$(SP_INSTALL_PREFIX)/usr/include/wamr/lib_export.h:
+	$(call rule_mkdir,$(SP_INSTALL_PREFIX)/usr/include/wamr)
+	$(call rule_cp,$(LIB_SRC_DIR)/$(LIBNAME)/core/iwasm/include/lib_export.h,$(SP_INSTALL_PREFIX)/usr/include/wamr/lib_export.h)
 
-$(SP_INSTALL_PREFIX)/lib/$(call mklibname,iwasm-release): $(lastword $(MAKEFILE_LIST))
+$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,iwasm-release): $(lastword $(MAKEFILE_LIST))
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_mkdir,$(LIBNAME))
 	cd $(LIBNAME); cmake -G "Ninja" $(CONFIGURE) $(LIB_SRC_DIR)/$(LIBNAME)
 	cd $(LIBNAME); cmake  --build . --config Release --parallel
-	$(call rule_cp,$(LIBNAME)/$(call mklibname,iwasm),$(SP_INSTALL_PREFIX)/lib/$(call mklibname,iwasm-release))
+	$(call rule_cp,$(LIBNAME)/$(call mklibname,iwasm),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,iwasm-release))
 	$(call rule_rm,$(LIBNAME))
 
-$(SP_INSTALL_PREFIX)/lib/$(call mklibname,iwasm-debug): $(lastword $(MAKEFILE_LIST))
+$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,iwasm-debug): $(lastword $(MAKEFILE_LIST))
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_mkdir,$(LIBNAME))
 	cd $(LIBNAME); cmake -G "Ninja" $(CONFIGURE_DEBUG) $(LIB_SRC_DIR)/$(LIBNAME)
 	cd $(LIBNAME); cmake  --build . --config Debug --parallel
-	$(call rule_cp,$(LIBNAME)/$(call mklibname,iwasm),$(SP_INSTALL_PREFIX)/lib/$(call mklibname,iwasm-debug))
+	$(call rule_cp,$(LIBNAME)/$(call mklibname,iwasm),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,iwasm-debug))
 	$(call rule_rm,$(LIBNAME))
 
 all: $(INCLUDES) \
-	$(SP_INSTALL_PREFIX)/lib/$(call mklibname,iwasm-release) \
-	$(SP_INSTALL_PREFIX)/lib/$(call mklibname,iwasm-debug)
+	$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,iwasm-release) \
+	$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,iwasm-debug)
 
 .PHONY: all

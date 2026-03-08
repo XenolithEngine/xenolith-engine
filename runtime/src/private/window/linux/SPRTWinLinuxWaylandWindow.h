@@ -113,9 +113,12 @@ public:
 	virtual void unmapWindow() override;
 	virtual bool close() override;
 
+	virtual void handleFrameReady(const PresentationFrameInfo &) override;
 	virtual void handleFramePresented(const PresentationFrameInfo &) override;
 
-	virtual FrameConstraints exportConstraints() const override;
+	virtual void handleSwapchainUpdated(const FrameConstraints &) override;
+
+	virtual FrameConstraints exportConstraints(uint64_t &serial) const override;
 
 	virtual SurfaceInterfaceInfo getSurfaceInterfaceInfo() const override;
 
@@ -134,15 +137,14 @@ public:
 	void handleSurfaceConfigure(xdg_surface *, uint32_t serial);
 	void handleToplevelConfigure(xdg_toplevel *xdg_toplevel, int32_t width, int32_t height,
 			wl_array *states);
+	void handleToplevelGeometry(xdg_toplevel *xdg_toplevel, int32_t width, int32_t height,
+			bool hasModeSwitch, String *out);
 	void handleToplevelClose(xdg_toplevel *xdg_toplevel);
 	void handleToplevelBounds(xdg_toplevel *xdg_toplevel, int32_t width, int32_t height);
 	void handleToplevelCapabilities(xdg_toplevel *xdg_toplevel, wl_array *capabilities);
 	void handleSurfaceFrameDone(wl_callback *wl_callback, uint32_t callback_data);
 
-	void handleDecorConfigure(libdecor_frame *, libdecor_configuration *configuration);
 	void handleDecorConfigure(zxdg_toplevel_decoration_v1 *decor, uint32_t mode);
-	void handleDecorClose(libdecor_frame *);
-	void handleDecorCommit(libdecor_frame *);
 
 	void handlePointerEnter(wl_fixed_t surface_x, wl_fixed_t surface_y);
 	void handlePointerLeave();
@@ -192,7 +194,6 @@ protected:
 	bool configureDecorations(Extent2 extent);
 
 	bool initWithServerDecor();
-	bool initWithLibdecor();
 	bool initWithAppDecor();
 
 	void cancelPointerEvents();
@@ -201,9 +202,7 @@ protected:
 	Rc<WaylandLibrary> _wayland;
 
 	wl_surface *_surface = nullptr;
-	libdecor_frame *_clientDecor = nullptr;
 	zxdg_toplevel_decoration_v1 *_serverDecor = nullptr;
-	libdecor_configuration *_decorConfiguration = nullptr;
 
 	wl_callback *_frameCallback = nullptr;
 	xdg_surface *_xdgSurface = nullptr;
@@ -220,6 +219,7 @@ protected:
 	bool _pointerInit = false;
 	bool _serverSideCursors = false;
 	bool _mapped = false;
+	bool _toplevelDirty = false;
 
 	Set<WaylandOutput *> _activeOutputs;
 

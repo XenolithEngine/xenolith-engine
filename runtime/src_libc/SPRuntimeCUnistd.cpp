@@ -34,6 +34,10 @@ THE SOFTWARE.
 
 #include <limits.h>
 
+#if SPRT_LINUX
+#define _LARGEFILE64_SOURCE 1
+#endif
+
 #if SPRT_WINDOWS
 #define NOMINMAX 1
 #include <Windows.h>

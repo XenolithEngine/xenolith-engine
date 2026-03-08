@@ -36,7 +36,10 @@ CONFIGURE := \
 	-DBUILD_REGRESS=OFF \
 	-DBUILD_OSSFUZZ=OFF \
 	-DBUILD_EXAMPLES=OFF \
-	-DBUILD_DOC=OFF
+	-DBUILD_DOC=OFF \
+	-DCMAKE_INSTALL_PREFIX=$(SP_INSTALL_PREFIX)/usr \
+	-DCMAKE_INSTALL_LIBDIR=$(SP_INSTALL_PREFIX)/usr/lib \
+	-DCMAKE_INSTALL_INCLUDEDIR=$(SP_INSTALL_PREFIX)/usr/include \
 
 ifdef WINDOWS
 
@@ -49,7 +52,7 @@ else # WINDOWS
 
 ifeq ($(VARIANT),mbedtls)
 CONFIGURE += \
-	-DMbedTLS_LIBRARY="$(SP_INSTALL_PREFIX)/lib/libmbedcrypto.a" -DMbedTLS_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/include \
+	-DMbedTLS_LIBRARY="$(SP_INSTALL_PREFIX)/usr/lib/libmbedcrypto.a" -DMbedTLS_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/usr/include \
 	-DENABLE_GNUTLS=OFF \
 	-DENABLE_COMMONCRYPTO=OFF \
 	-DENABLE_OPENSSL=OFF
@@ -61,8 +64,9 @@ CONFIGURE += \
 	-DENABLE_GNUTLS=OFF \
 	-DENABLE_COMMONCRYPTO=OFF \
 	-DENABLE_OPENSSL=ON \
-	-DOPENSSL_ROOT_DIR=$(SP_INSTALL_PREFIX) \
-	-DOpenSSL_LIBRARY=$(SP_INSTALL_PREFIX)/lib/libcrypto.a -DOpenSSL_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/include
+	-DOPENSSL_ROOT=$(SP_INSTALL_PREFIX)/usr \
+	-DOPENSSL_ROOT_DIR=$(SP_INSTALL_PREFIX)/usr \
+	-DOpenSSL_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libcrypto.a -DOpenSSL_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/usr/include
 endif
 
 ifeq ($(VARIANT),gnutls)
@@ -82,7 +86,7 @@ all:
 	cd $(LIBNAME); cmake --build . --parallel
 	cd $(LIBNAME); cmake --install .
 	$(call rule_rm,$(LIBNAME))
-	$(if $(LINUX),$(call rule_cp,$(SP_INSTALL_PREFIX)/lib/$(call mklibname,zip),$(SP_INSTALL_PREFIX)/lib/$(call mklibname,zip-$(VARIANT))))
-	$(if $(LINUX),$(call rule_rm,$(SP_INSTALL_PREFIX)/lib/$(call mklibname,zip)))
+	$(if $(LINUX),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip-$(VARIANT))))
+	$(if $(LINUX),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip)))
 
 .PHONY: all

@@ -1543,14 +1543,14 @@ inline constexpr StringViewBase<_CharType>::StringViewBase(const Self &ptr, size
 
 template <typename _CharType>
 inline auto StringViewBase<_CharType>::operator=(const CharType *ptr) -> Self & {
-	this->set(StringViewBase<_CharType>(ptr));
+	this->set(ptr, detail::length(ptr));
 	return *this;
 }
 
 template <typename _CharType>
 template <size_t Size>
 inline auto StringViewBase<_CharType>::operator=(const CharType (&c)[Size]) -> Self & {
-	this->set(StringViewBase<_CharType>(c, Size));
+	this->set(c, detail::length(c, Size));
 	return *this;
 }
 
@@ -1558,7 +1558,7 @@ template <typename _CharType>
 template <size_t Size>
 inline constexpr auto StringViewBase<_CharType>::operator=(const sprt::array<CharType, Size> &str)
 		-> Self & {
-	this->set(str);
+	this->set(str.data(), detail::length(str.data(), str.size()));
 	return *this;
 }
 

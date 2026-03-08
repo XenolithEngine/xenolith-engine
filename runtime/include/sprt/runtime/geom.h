@@ -28,8 +28,8 @@
 namespace sprt {
 
 struct Vec2 {
-	float x;
-	float y;
+	float x = 0.0f;
+	float y = 0.0f;
 
 	bool isValid() const { return !isnan(x) && !isnan(y); }
 
@@ -38,8 +38,8 @@ struct Vec2 {
 };
 
 struct Size2 {
-	float width;
-	float height;
+	float width = 0.0f;
+	float height = 0.0f;
 
 	constexpr bool operator==(const Size2 &) const = default;
 	constexpr bool operator!=(const Size2 &) const = default;
@@ -54,33 +54,33 @@ struct Rect {
 };
 
 struct Extent2 {
-	uint32_t width;
-	uint32_t height;
+	uint32_t width = 0;
+	uint32_t height = 0;
 
 	constexpr bool operator==(const Extent2 &) const = default;
 	constexpr bool operator!=(const Extent2 &) const = default;
 };
 
 struct Extent3 {
-	uint32_t width;
-	uint32_t height;
-	uint32_t depth;
+	uint32_t width = 0;
+	uint32_t height = 0;
+	uint32_t depth = 0;
 
 	constexpr bool operator==(const Extent3 &) const = default;
 	constexpr bool operator!=(const Extent3 &) const = default;
 };
 
 struct IVec2 {
-	int32_t x;
-	int32_t y;
+	int32_t x = 0;
+	int32_t y = 0;
 
 	constexpr bool operator==(const IVec2 &) const = default;
 	constexpr bool operator!=(const IVec2 &) const = default;
 };
 
 struct IRect {
-	int32_t x;
-	int32_t y;
+	int32_t x = 0;
+	int32_t y = 0;
 	uint32_t width = 0;
 	uint32_t height = 0;
 

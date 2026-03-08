@@ -253,6 +253,13 @@ void Connection::setup() {
 		callMethod("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
 				"ListNames", nullptr, [](NotNull<Connection> c, DBusMessage *reply) {
 			parseServiceList(c->lib, c->services, reply);
+			if (c->services.empty()) {
+				log::vperror(__SPRT_LOCATION, "dbus::Connection",
+						"Fail to acquire dbus services list");
+				dbus::describe(c->lib, reply, [](StringView str) {
+					__sprt_fwrite(str.data(), str.size(), 1, __sprt_stdout_impl());
+				});
+			}
 			c->connected = true;
 			c->callback(c, Event{Event::Connected});
 		}, this);
@@ -308,10 +315,8 @@ DBusPendingCall *Connection::callMethod(StringView bus, StringView path, StringV
 		});
 	}
 
-	auto success = lib->dbus_connection_send_with_reply(connection, message, &ret,
-			DBUS_TIMEOUT_USE_DEFAULT);
-
-	lib->dbus_message_unref(message);
+	auto success =
+			lib->dbus_connection_send_with_reply(connection, message, &ret, DBUS_TIMEOUT_INFINITE);
 
 	if (success && ret) {
 		auto data = new MessageData;
@@ -324,6 +329,8 @@ DBusPendingCall *Connection::callMethod(StringView bus, StringView path, StringV
 				MessageData::freeMessage);
 		flush();
 	}
+
+	//lib->dbus_message_unref(message);
 	return ret;
 }
 

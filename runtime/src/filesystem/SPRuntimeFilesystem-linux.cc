@@ -200,7 +200,12 @@ void _initSystemPaths(LookupData &data) {
 	auto configHome = _readEnvExt(data._pool, "XDG_CONFIG_HOME");
 	if (!configHome.empty()) {
 		auto &res = data._resourceLocations[toInt(LocationCategory::CommonConfig)];
-		res.paths.emplace_back(configHome, LookupFlags::Shared);
+		res.paths.emplace_back(LocationInfo{
+			configHome,
+			LookupFlags::Shared,
+			LocationFlags::Locateable,
+			defaultInterface,
+		});
 
 		auto configDirs = ::getenv("XDG_CONFIG_DIRS");
 		if (configDirs) {

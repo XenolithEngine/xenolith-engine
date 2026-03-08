@@ -66,7 +66,7 @@ all:
 	cd $(LIBNAME); cmake --build . --parallel
 	cd $(LIBNAME); cmake --install .
 	$(call rule_rm,$(LIBNAME))
-	$(call rule_cp,$(SP_INSTALL_PREFIX)/lib/$(call mklibname,curl),$(SP_INSTALL_PREFIX)/lib/$(call mklibname,curl-$(VARIANT)))
-	$(call rule_rm,$(SP_INSTALL_PREFIX)/lib/$(call mklibname,curl))
+	$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,curl),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,curl-$(VARIANT)))
+	$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,curl))
 
 .PHONY: all

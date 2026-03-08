@@ -41,14 +41,14 @@ OBJS = \
 $(LIBNAME)/%.o: $(LIB_SRC_DIR)/$(LIBNAME)/%.c | prepare
 	$(SP_CC) $(SP_CFLAGS) -D_FILE_OFFSET_BITS=64 -c $< -o $@
 
-$(SP_INSTALL_PREFIX)/include/%.h: $(LIB_SRC_DIR)/$(LIBNAME)/%.h | prepare
+$(SP_INSTALL_PREFIX)/usr/include/%.h: $(LIB_SRC_DIR)/$(LIBNAME)/%.h | prepare
 	$(call rule_cp,$<,$@)
 
 $(LIBNAME)/$(call mklibname,bz2): prepare $(addprefix $(LIBNAME)/,$(OBJS))
 	$(SP_AR) rcs $@ $(addprefix $(LIBNAME)/,$(OBJS))
 
-all: $(LIBNAME)/$(call mklibname,bz2) $(addprefix $(SP_INSTALL_PREFIX)/include/,$(HEADERS))
-	$(call rule_cp,$(LIBNAME)/$(call mklibname,bz2),$(SP_INSTALL_PREFIX)/lib/$(call mklibname,bz2))
+all: $(LIBNAME)/$(call mklibname,bz2) $(addprefix $(SP_INSTALL_PREFIX)/usr/include/,$(HEADERS))
+	$(call rule_cp,$(LIBNAME)/$(call mklibname,bz2),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,bz2))
 	$(call rule_rm,$(LIBNAME))
 
 .PHONY: all prepare

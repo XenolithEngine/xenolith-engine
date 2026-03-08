@@ -20,6 +20,8 @@
  THE SOFTWARE.
  **/
 
+#define __SPRT_BUILD 1
+
 #include "private/window/linux/SPRTWinLinuxWaylandKdeDisplayConfigManager.h"
 #include "private/window/linux/SPRTWinLinuxWaylandLibrary.h"
 #include "private/window/linux/SPRTWinLinuxWaylandDisplay.h"
@@ -305,6 +307,18 @@ static kde_output_device_v2_listener s_kdeOutputListener{
 	XL_WAYLAND_KDE_LOG("sharpness");
 },
 
+.priority = [](void *data, struct kde_output_device_v2 *kde_output_device_v2, uint32_t priority) {
+	auto dev = reinterpret_cast<KdeOutputDevice *>(data);
+	dev->next.priority = priority;
+	XL_WAYLAND_KDE_LOG("priority");
+},
+
+.auto_brightness = [](void *data, struct kde_output_device_v2 *kde_output_device_v2, uint32_t enabled) {
+	auto dev = reinterpret_cast<KdeOutputDevice *>(data);
+	dev->next.auto_brightness = enabled;
+	XL_WAYLAND_KDE_LOG("auto_brightness");
+}
+
 };
 
 static kde_output_device_mode_v2_listener s_kdeOutputModeListener{
@@ -334,6 +348,12 @@ static kde_output_device_mode_v2_listener s_kdeOutputModeListener{
 	auto mode = reinterpret_cast<KdeOutputMode *>(data);
 	mode->next.removed = true;
 	XL_WAYLAND_KDE_LOG("mode.removed");
+},
+
+.flags = [](void *data, struct kde_output_device_mode_v2 *kde_output_device_mode_v2, uint32_t flags) {
+	auto mode = reinterpret_cast<KdeOutputMode *>(data);
+	mode->next.flags = flags;
+	XL_WAYLAND_KDE_LOG("mode.flags");
 },
 
 };
@@ -366,7 +386,7 @@ static kde_output_configuration_v2_listener s_kdeOutputConfigurationListener{
 	if (l->callback) {
 		l->callback(Status::Ok);
 	}
-	l->wayland->kde_output_configuration_v2_destroy(l->config);
+	kde_output_configuration_v2_destroy(l->config);
 	delete l;
 },
 
@@ -375,7 +395,7 @@ static kde_output_configuration_v2_listener s_kdeOutputConfigurationListener{
 	if (l->callback) {
 		l->callback(Status::ErrorInvalidArguemnt);
 	}
-	l->wayland->kde_output_configuration_v2_destroy(l->config);
+	kde_output_configuration_v2_destroy(l->config);
 	delete l;
 },
 
@@ -428,7 +448,7 @@ void WaylandKdeDisplayConfigManager::addOutput(kde_output_device_v2 *d, uint32_t
 	dev->device = d;
 	dev->manager = this;
 
-	_wayland->kde_output_device_v2_add_listener(dev->device, &s_kdeOutputListener, dev.get());
+	kde_output_device_v2_add_listener(dev->device, &s_kdeOutputListener, dev.get());
 
 	_devices.emplace_back(dev);
 }
@@ -436,7 +456,7 @@ void WaylandKdeDisplayConfigManager::addOutput(kde_output_device_v2 *d, uint32_t
 void WaylandKdeDisplayConfigManager::removeOutput(uint32_t index) {
 	for (auto it = _devices.begin(); it != _devices.end(); ++it) {
 		if ((*it)->index == index) {
-			_wayland->kde_output_device_v2_destroy((*it)->device);
+			kde_output_device_v2_destroy((*it)->device);
 			(*it)->device = nullptr;
 
 			_devices.erase(it);
@@ -447,14 +467,14 @@ void WaylandKdeDisplayConfigManager::removeOutput(uint32_t index) {
 
 void WaylandKdeDisplayConfigManager::setOrder(kde_output_order_v1 *order) {
 	if (_order) {
-		_wayland->kde_output_order_v1_destroy(order);
+		kde_output_order_v1_destroy(order);
 	}
 
 	auto o = Rc<KdeOutputOrder>::create();
 	o->order = order;
 	o->manager = this;
 
-	_wayland->kde_output_order_v1_add_listener(order, &s_kdeOutputOrderListener, o.get());
+	kde_output_order_v1_add_listener(order, &s_kdeOutputOrderListener, o.get());
 
 	_order = o;
 }
@@ -467,7 +487,7 @@ Rc<KdeOutputMode> WaylandKdeDisplayConfigManager::addOutputMode(KdeOutputDevice 
 	ret->device = dev;
 	ret->mode = mode;
 
-	_wayland->kde_output_device_mode_v2_add_listener(mode, &s_kdeOutputModeListener, ret.get());
+	kde_output_device_mode_v2_add_listener(mode, &s_kdeOutputModeListener, ret.get());
 	return ret;
 }
 
@@ -489,19 +509,19 @@ void WaylandKdeDisplayConfigManager::invalidate() {
 	DisplayConfigManager::invalidate();
 
 	for (auto &it : _devices) {
-		_wayland->kde_output_device_v2_destroy(it->device);
+		kde_output_device_v2_destroy(it->device);
 		it->device = nullptr;
 	}
 	_devices.clear();
 
 	if (_order) {
-		_wayland->kde_output_order_v1_destroy(_order->order);
+		kde_output_order_v1_destroy(_order->order);
 		_order->order = nullptr;
 		_order = nullptr;
 	}
 
 	if (_manager) {
-		_wayland->kde_output_management_v2_destroy(_manager);
+		kde_output_management_v2_destroy(_manager);
 		_manager = nullptr;
 	}
 
@@ -521,7 +541,7 @@ void WaylandKdeDisplayConfigManager::applyDisplayConfig(NotNull<DisplayConfig> c
 		return;
 	}
 
-	auto c = _wayland->kde_output_management_v2_create_configuration(_manager);
+	auto c = kde_output_management_v2_create_configuration(_manager);
 
 	bool hasUpdates = false;
 	for (auto &it : config->monitors) {
@@ -538,7 +558,7 @@ void WaylandKdeDisplayConfigManager::applyDisplayConfig(NotNull<DisplayConfig> c
 			auto rectX = l->rect.x / scale;
 			auto rectY = l->rect.y / scale;
 
-			_wayland->kde_output_configuration_v2_position(c, d->device, rectX, rectY);
+			kde_output_configuration_v2_position(c, d->device, rectX, rectY);
 		}
 
 		if (reqMode.xid.ptr != d->getCurrentMode()->mode) {
@@ -547,14 +567,14 @@ void WaylandKdeDisplayConfigManager::applyDisplayConfig(NotNull<DisplayConfig> c
 				cb(Status::ErrorInvalidArguemnt);
 				return;
 			} else {
-				_wayland->kde_output_configuration_v2_mode(c, d->device, m->mode);
+				kde_output_configuration_v2_mode(c, d->device, m->mode);
 				hasUpdates = true;
 			}
 		}
 	}
 
 	if (!hasUpdates) {
-		_wayland->kde_output_configuration_v2_destroy(c);
+		kde_output_configuration_v2_destroy(c);
 		cb(Status::Declined);
 	} else {
 		auto listener = new OutputConfigurationListener;
@@ -562,9 +582,8 @@ void WaylandKdeDisplayConfigManager::applyDisplayConfig(NotNull<DisplayConfig> c
 		listener->config = c;
 		listener->callback = sprt::move(cb);
 
-		_wayland->kde_output_configuration_v2_add_listener(c, &s_kdeOutputConfigurationListener,
-				listener);
-		_wayland->kde_output_configuration_v2_apply(c);
+		kde_output_configuration_v2_add_listener(c, &s_kdeOutputConfigurationListener, listener);
+		kde_output_configuration_v2_apply(c);
 	}
 }
 

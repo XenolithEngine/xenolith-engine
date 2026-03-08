@@ -56,13 +56,15 @@ public:
 	// true if successfully closed
 	virtual bool close() = 0;
 
+	virtual void handleFrameReady(const PresentationFrameInfo &) { }
 	virtual void handleFramePresented(const PresentationFrameInfo &) { }
+	virtual void handleSwapchainUpdated(const FrameConstraints &) { }
 
 	virtual SurfaceInterfaceInfo getSurfaceInterfaceInfo() const = 0;
 
 	virtual SurfaceInfo getSurfaceOptions(SurfaceInfo &&info) const;
 
-	virtual FrameConstraints exportConstraints() const;
+	virtual FrameConstraints exportConstraints(uint64_t &serial) const;
 
 	virtual Extent2 getExtent() const = 0;
 

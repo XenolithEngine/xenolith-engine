@@ -25,6 +25,8 @@
 #include "private/window/linux/SPRTWinLinuxDBusGnome.h"
 #include "private/window/linux/SPRTWinLinuxDBusKde.h"
 
+#include <sprt/runtime/readconf.h>
+
 namespace sprt::window::dbus {
 
 SPRT_UNUSED static constexpr auto NM_SERVICE_NAME = "org.freedesktop.NetworkManager";
@@ -332,8 +334,7 @@ void Controller::updateNetworkState() {
 void Controller::updateInterfaceTheme() {
 	_sessionBus->callMethod(DESKTOP_PORTAL_SERVICE_NAME, DESKTOP_PORTAL_SERVICE_PATH,
 			DESKTOP_PORTAL_SETTINGS_INTERFACE, "ReadAll", [](WriteIterator &iter) {
-		StringView array[] = {"org.gnome.desktop.interface", "org.gnome.desktop.peripherals.mouse"};
-		iter.add(makeSpanView(array));
+		iter.addArray("s", [](WriteIterator &) { });
 	}, [this](NotNull<dbus::Connection> c, DBusMessage *reply) {
 		auto newThemeInfo = readThemeInfo(_dbus, reply);
 
@@ -620,6 +621,79 @@ NetworkFlags NetworkState::getFlags() const {
 	return ret;
 }
 
+enum class ThemeFormat {
+	Default,
+	KdeGlobals,
+	KcmInputrc
+};
+
+static void readThemeDataDefault(ThemeInfo &out, StringView data) {
+	sprt::readconf([&](StringView section, StringView key, StringView value) {
+		if (section.equals<StringCaseComparator>("[Icon Theme]")
+				&& key.equals<StringCaseComparator>("Inherits")) {
+			if (out.systemTheme.empty()) {
+				out.systemTheme = value.str<String>();
+			}
+		}
+		return true;
+	}, data);
+}
+
+static void readThemeDataKde(ThemeInfo &out, StringView data) {
+	sprt::readconf([&](StringView section, StringView key, StringView value) {
+		if (section.equals<StringCaseComparator>("[Icons]")
+				&& key.equals<StringCaseComparator>("Theme")) {
+			if (out.systemTheme.empty()) {
+				out.systemTheme = value.str<String>();
+			}
+		}
+		return true;
+	}, data);
+}
+
+static void readThemeDataKcm(ThemeInfo &out, StringView data) {
+	sprt::readconf([&](StringView section, StringView key, StringView value) {
+		if (section.equals<StringCaseComparator>("[Mouse]")
+				&& key.equals<StringCaseComparator>("cursorTheme")) {
+			if (out.systemTheme.empty()) {
+				out.systemTheme = value.str<String>();
+			}
+		}
+		return true;
+	}, data);
+}
+
+static void readThemeData(ThemeInfo &out, StringView data, ThemeFormat fmt) {
+	switch (fmt) {
+	case ThemeFormat::Default: readThemeDataDefault(out, data); break;
+	case ThemeFormat::KdeGlobals: readThemeDataKde(out, data); break;
+	case ThemeFormat::KcmInputrc: readThemeDataKcm(out, data); break;
+	}
+}
+
+static void readThemeFile(ThemeInfo &out, const filesystem::LocationInfo &locInfo, StringView path,
+		ThemeFormat fmt) {
+	stat st;
+	if (locInfo.interface->_stat(locInfo, path, &st) == Status::Ok) {
+		if (!__SPRT_S_ISREG(st.st_mode)) {
+			return;
+		}
+
+		auto fp = locInfo.interface->_open(locInfo, path, filesystem::OpenFlags::Read, nullptr);
+		if (fp) {
+			auto buf = (char *)__sprt_malloca(st.st_size);
+
+			locInfo.interface->_seek(fp, 0, __SPRT_SEEK_SET, nullptr);
+			if (locInfo.interface->_read(fp, (uint8_t *)buf, st.st_size, nullptr) == st.st_size) {
+				readThemeData(out, StringView(buf, st.st_size), fmt);
+			}
+			__sprt_freea(buf);
+
+			locInfo.interface->_close(fp, nullptr);
+		}
+	}
+}
+
 ThemeInfo Controller::readThemeInfo(NotNull<dbus::Library> lib, NotNull<DBusMessage> message) {
 	ThemeInfo ret;
 	dbus::MessageSettingsInfoParser parser;
@@ -627,6 +701,49 @@ ThemeInfo Controller::readThemeInfo(NotNull<dbus::Library> lib, NotNull<DBusMess
 	parser.target = &ret;
 
 	lib->parseMessage(message, parser);
+
+	if (auto l = filesystem::getLookupInfo(filesystem::LocationCategory::CommonConfig)) {
+		if (StringView(__sprt_getenv("XDG_CURRENT_DESKTOP")) == StringView("KDE")) {
+			filesystem::enumeratePaths(*l, "kcminputrc", filesystem::LookupFlags::None,
+					filesystem::Access::Read,
+					[&](const filesystem::LocationInfo &locInfo, StringView path) {
+				readThemeFile(ret, locInfo, path, ThemeFormat::KcmInputrc);
+				return true; // continue iteration
+			});
+
+			filesystem::enumeratePaths(*l, "kdeglobals", filesystem::LookupFlags::None,
+					filesystem::Access::Read,
+					[&](const filesystem::LocationInfo &locInfo, StringView path) {
+				readThemeFile(ret, locInfo, path, ThemeFormat::KdeGlobals);
+				return true; // continue iteration
+			});
+		}
+	}
+
+	// try theme file in $HOME
+	if (auto l = filesystem::getLookupInfo(filesystem::LocationCategory::UserHome)) {
+		filesystem::enumeratePaths(*l, "~/.icons/default/index.theme",
+				filesystem::LookupFlags::None, filesystem::Access::Read,
+				[&](const filesystem::LocationInfo &locInfo, StringView path) {
+			readThemeFile(ret, locInfo, path, ThemeFormat::Default);
+			return true; // continue iteration
+		});
+	}
+
+	// try theme file in XDG_DATA_DIRS
+	if (auto l = filesystem::getLookupInfo(filesystem::LocationCategory::CommonData)) {
+		filesystem::enumeratePaths(*l, "icons/default/index.theme", filesystem::LookupFlags::None,
+				filesystem::Access::Read,
+				[&](const filesystem::LocationInfo &locInfo, StringView path) {
+			readThemeFile(ret, locInfo, path, ThemeFormat::Default);
+			return true; // continue iteration
+		});
+	}
+
+	if (ret.cursorSize == 0) {
+		ret.cursorSize = 24;
+	}
+
 	return ret;
 }
 

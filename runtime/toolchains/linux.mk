@@ -21,44 +21,40 @@
 T_INTERMEDIATE ?= $(abspath $(LIBS_MAKE_ROOT))/intermediate/x86_64-unknown-linux-gnu
 T_TARGET ?= $(abspath $(LIBS_MAKE_ROOT))/targets/x86_64-unknown-linux-gnu
 
-EXCLUDE_BIN := \
-	openssl \
-	libpng16-config \
-	spirv-lesspipe.sh
-
-ALL_BIN := $(filter-out $(addprefix %/,$(EXCLUDE_BIN)),$(wildcard $(T_INTERMEDIATE)/bin/*))
-ALL_OBJ_LIBS := $(wildcard $(T_INTERMEDIATE)/lib/*.o) $(wildcard $(T_INTERMEDIATE)/lib/*.json)
-ALL_STATIC_LIBS := $(wildcard $(T_INTERMEDIATE)/lib/*.a)
-ALL_SHARED_LIBS := $(wildcard $(T_INTERMEDIATE)/lib/*.so) $(wildcard $(T_INTERMEDIATE)/lib/*.so.*)
-
-ALL_INSTALL_BIN := $(patsubst $(T_INTERMEDIATE)/%,$(T_TARGET)/%,$(ALL_BIN))
-ALL_INSTALL_OBJ_LIBS := $(patsubst $(T_INTERMEDIATE)/%,$(T_TARGET)/%,$(ALL_OBJ_LIBS))
+ALL_STATIC_LIBS := $(wildcard $(T_INTERMEDIATE)/usr/lib/*.a)
 ALL_INSTALL_STATIC_LIBS := $(patsubst $(T_INTERMEDIATE)/%,$(T_TARGET)/%,$(ALL_STATIC_LIBS))
-ALL_INSTALL_SHARED_LIBS := $(patsubst $(T_INTERMEDIATE)/%,$(T_TARGET)/%,$(ALL_SHARED_LIBS))
 
 $(T_TARGET):
-	mkdir -p $(T_TARGET)/bin $(T_TARGET)/lib $(T_TARGET)/share
+	mkdir -p $(T_TARGET)/share $(T_TARGET)/usr/lib
 
-$(T_TARGET)/include: $(T_INTERMEDIATE)/include $(T_TARGET)
+$(T_TARGET)/include_libc: $(T_INTERMEDIATE)/include | $(T_TARGET)
+	@mkdir -p $(dir $@)
+	rm -rf $@
 	cp -rf $< $@
 
-$(T_TARGET)/lib/x86_64-unknown-linux-gnu: $(T_INTERMEDIATE)/lib/x86_64-unknown-linux-gnu $(T_TARGET)
+$(T_TARGET)/usr/include: $(T_INTERMEDIATE)/usr/include | $(T_TARGET)
+	@mkdir -p $(dir $@)
+	rm -rf $@
 	cp -rf $< $@
 
-$(T_TARGET)/include_libc: $(T_INTERMEDIATE)/include_libc $(T_TARGET)
+$(T_TARGET)/lib: $(T_INTERMEDIATE)/lib | $(T_TARGET)
+	@mkdir -p $(dir $@)
+	rm -rf $@
 	cp -rf $< $@
+	touch $@
 
-$(T_TARGET)/lib/clang: $(T_INTERMEDIATE)/lib/clang $(T_TARGET)
-	cp -rf $< $@
-
-$(T_TARGET)/%: $(T_INTERMEDIATE)/% $(T_TARGET)
+$(T_TARGET)/%: $(T_INTERMEDIATE)/% | $(T_TARGET)
+	@mkdir -p $(dir $@)
 	cp -af $< $@
 
-all: $(ALL_INSTALL_BIN) $(ALL_INSTALL_STATIC_LIBS) $(ALL_INSTALL_SHARED_LIBS) $(ALL_INSTALL_OBJ_LIBS) \
-	$(T_TARGET)/include $(T_TARGET)/include_libc \
-	$(T_TARGET)/lib/clang $(T_TARGET)/lib/x86_64-unknown-linux-gnu \
-	$(T_TARGET)/toolchain.mk
+$(T_TARGET)/share/licenses: | $(T_TARGET)
+	@mkdir -p $(dir $@)
+	rm -rf $@
 	cp -rf licenses $(T_TARGET)/share
+
+all: $(ALL_INSTALL_STATIC_LIBS) \
+	$(T_TARGET)/include_libc $(T_TARGET)/lib $(T_TARGET)/usr/include $(T_TARGET)/share/licenses $(T_TARGET)/target.mk \
+	$(T_TARGET)
 
 .PHONY: all
 .DEFAULT_GOAL := all
