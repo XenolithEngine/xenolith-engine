@@ -1,17 +1,17 @@
-# Copyright (c) 2023-2024 Stappler LLC <admin@stappler.dev>
+# Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
 # Copyright (c) 2025 Stappler Team <admin@stappler.org>
-# Copyright (c) 2025 Xenolith Team <admin@xenolith.studio>
-# 
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -26,18 +26,33 @@ THIS_FILE := $(lastword $(MAKEFILE_LIST))
 MAKE_FILE := $(realpath $(lastword $(MAKEFILE_LIST)))
 MAKE_ROOT := $(dir $(MAKE_FILE))
 
+TOOLCHAIN_OUTPUT_DIR ?= $(realpath $(MAKE_ROOT)/../intermediate)
+
 MKDIR = mkdir -p
 
-SP_OPT := -O3 -fPIC -DPIC
+ifdef ANDROID_NDK_ROOT
+NDK ?= $(ANDROID_NDK_ROOT)
+else
+NDK ?= $(HOME)/Android/Ndk
+endif
+
+include $(dir $(THIS_FILE))../common/utils/detect-platform.mk
+
+NDKPATH = $(NDK)/toolchains/llvm/prebuilt/$(HOST_ANDROID)/bin
+
+ANDROID_PLATFORM_LEVEL = 24
+
+INCLUDES := \
+	idn2.h \
+	simde/simde-arch.h \
+	spirv/unified1/spirv.h
 
 LIBS := \
-	libc++.a \
 	libz.a \
 	libbz2.a \
 	liblzma.a \
 	libzstd.a \
 	libbrotlienc.a \
-	libicuuc.a \
 	libjpeg.a \
 	libpng16.a \
 	libgif.a \
@@ -46,100 +61,70 @@ LIBS := \
 	libfreetype.a \
 	libharfbuzz.a \
 	libsqlite3.a \
-	libmbedtls.a \
 	libnghttp3.a \
 	libssl.a \
 	libgost_engine.a \
-	libidn2.a \
+	libmbedtls.a \
 	libcurl-openssl.a \
-	libzip-openssl.a \
 	libcurl-mbedtls.a \
+	libzip-openssl.a \
 	libzip-mbedtls.a \
 	libiwasm-release.a \
 	libiwasm-debug.a \
-	libbacktrace.a \
-	libxml2.a \
-	libffi.a \
-	libexpat.a \
-	libwayland-client.a
-
-WASM_LIBS := \
-	libiwasm-release.a \
-	libiwasm-debug.a
-
-BINS := \
-	spirv-opt \
-	glslang
-
-INCLUDES := \
-	spirv/unified1/spirv.h \
-	vulkan/vulkan.h \
-	simde/simde-arch.h
+	libbacktrace.a
 
 ifndef ARCH
 
-ARCHS := e2k x86_64
+ARCHS := x86 x86_64 arm64-v8a armeabi-v7a
 
 all: $(ARCHS)
 
 clean:
-
-native:
-	@mkdir -p $(abspath ../native) $(abspath ../native/include) $(abspath ../native/lib) $(abspath ../native/bin)
-	$(MAKE) -f $(THIS_FILE) ARCH=native
+	rm -rf x86 x86_64 arm64-v8a armeabi-v7a
 
 x86_64:
-	$(MAKE) -f $(THIS_FILE) ARCH=x86_64 SP_TARGET=x86_64-unknown-linux-gnu OUT_SYSROOT=$(OUT_SYSROOT)
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/x86_64-ndk-linux-android/usr/include $(TOOLCHAIN_OUTPUT_DIR)/x86_64-ndk-linux-android/usr/lib
+	$(MAKE) -f $(THIS_FILE) ARCH=x86_64 ANDROID_ARCH=x86_64 NDKP=x86_64-linux-android$(ANDROID_PLATFORM_LEVEL) SP_TARGET=x86_64-linux-android \
+		TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-ndk-linux-android
 
-aarch64:
-	$(MAKE) -f $(THIS_FILE) ARCH=aarch64 SP_TARGET=aarch64-unknown-linux-gnu OUT_SYSROOT=$(OUT_SYSROOT)
+x86:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/i686-ndk-linux-android/usr/include $(TOOLCHAIN_OUTPUT_DIR)/i686-ndk-linux-android/usr/lib
+	$(MAKE) -f $(THIS_FILE) ARCH=x86 ANDROID_ARCH=x86 NDKP=i686-linux-android$(ANDROID_PLATFORM_LEVEL) SP_TARGET=i686-linux-android \
+		TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/i686-ndk-linux-android
 
-riscv64:
-	$(MAKE) -f $(THIS_FILE) ARCH=riscv64 SP_TARGET=riscv64-unknown-linux-gnu OUT_SYSROOT=$(OUT_SYSROOT)
+arm64-v8a:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-ndk-linux-android/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-ndk-linux-android/usr/lib
+	$(MAKE) -f $(THIS_FILE) ARCH=arm64-v8a ANDROID_ARCH=arm64 NDKP=aarch64-linux-android$(ANDROID_PLATFORM_LEVEL) SP_TARGET=aarch64-linux-android \
+		TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-ndk-linux-android
 
-e2k:
-	@mkdir -p $(abspath ../e2k-unknown-linux) $(abspath ../e2k-unknown-linux/include) $(abspath ../e2k-unknown-linux/lib) $(abspath ../e2k-unknown-linux/bin)
-	$(MAKE) -f $(THIS_FILE) ARCH=e2k SP_TARGET=e2k-unknown-linux SP_TOOLCHAIN_PREFIX=$(LCC_TOOLCHAIN_PATH)/fs
+armeabi-v7a:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/armv7a-ndk-linux-androideabi/usr/include $(TOOLCHAIN_OUTPUT_DIR)/armv7a-ndk-linux-androideabi/usr/lib
+	$(MAKE) -f $(THIS_FILE) ARCH=armeabi-v7a ANDROID_ARCH=arm NDKP=armv7a-linux-androideabi$(ANDROID_PLATFORM_LEVEL) SP_TARGET=armv7a-linux-androideabi \
+		TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/armv7a-ndk-linux-androideabi
 
-.PHONY: all x86_64 e2k aarch64
+.PHONY: all x86 x86_64 arm64-v8a armeabi-v7a
 
-else # ARCH
+else
 
-ifeq ($(ARCH),native)
+SP_CC := $(NDKPATH)/$(NDKP)-clang
+SP_CXX := $(NDKPATH)/$(NDKP)-clang++
+SP_AR := $(NDKPATH)/llvm-ar
+SP_OPT := -Oz -fPIC -DPIC -ffunction-sections -fdata-sections
 
-SP_INSTALL_PREFIX ?= $(realpath ../native)
-
-SP_CC := gcc
-SP_CXX := g++
-SP_AR := ar
-
-ARCH := $(shell uname -m)
-SP_TARGET := $(ARCH)-unknown-linux
-SP_IS_NATIVE := 1
-
-else # ($(ARCH),native)
-
-OUT_SYSROOT ?= $(realpath ../$(SP_TARGET))
-
-SP_TOOLCHAIN_PREFIX ?= $(OUT_SYSROOT)
-SP_INSTALL_PREFIX ?= $(OUT_SYSROOT)
-SP_TOOLCHAIN_FILE ?= $(realpath $(OUT_SYSROOT)/toolchain.cmake)
-
-SP_CC := $(abspath $(SP_TOOLCHAIN_PREFIX)/host/bin/cc)
-SP_CXX := $(abspath $(SP_TOOLCHAIN_PREFIX)/host/bin/c++)
-SP_AR := $(abspath $(SP_TOOLCHAIN_PREFIX)/host/bin/ar)
-
-endif # ($(ARCH),native)
+SP_INSTALL_PREFIX ?= $(TOOLCHAIN_OUTPUT_DIR)
 
 LIB_SRC_DIR := $(realpath $(MAKE_ROOT)../src)
 
 FORWARD_VARS := \
-	LINUX=1 \
+	ANDROID=1 \
+	ANDROID_ARCH=$(ANDROID_ARCH) \
 	ARCH=$(ARCH) \
-	SP_ARCH=$(ARCH) \
-	SP_INSTALL_PREFIX=$(SP_INSTALL_PREFIX) \
-	SP_TOOLCHAIN_FILE=$(SP_TOOLCHAIN_FILE) \
+	NDK=$(NDK) \
+	NDKP=$(NDKP) \
+	NDKPATH=$(NDKPATH) \
+	ANDROID_PLATFORM_LEVEL=$(ANDROID_PLATFORM_LEVEL) \
 	SP_TARGET=$(SP_TARGET) \
+	SP_INSTALL_PREFIX=$(SP_INSTALL_PREFIX) \
 	SP_CC=$(SP_CC) \
 	SP_CXX=$(SP_CXX) \
 	SP_AR=$(SP_AR) \
@@ -147,22 +132,11 @@ FORWARD_VARS := \
 	LIB_SRC_DIR=$(LIB_SRC_DIR) \
 	MAKE_ROOT=$(MAKE_ROOT)
 
-ifdef SP_TOOLCHAIN_PREFIX
-FORWARD_VARS += SP_TOOLCHAIN_PREFIX=$(SP_TOOLCHAIN_PREFIX)
-endif
-
-ifdef SP_IS_NATIVE
-FORWARD_VARS += SP_NATIVE=1
-endif
-
 ARCH_LIBS = $(addprefix $(SP_INSTALL_PREFIX)/usr/lib/,$(LIBS))
 
 ARCH_INCLUDES  = $(addprefix $(SP_INSTALL_PREFIX)/usr/include/,$(INCLUDES))
 
-all: $(ARCH_LIBS) $(ARCH_INCLUDES) $(SP_INSTALL_PREFIX)/share/licenses
-
-$(SP_INSTALL_PREFIX)/usr/lib/libc++.a: ../common/libc++.mk
-	$(MAKE) -f $< $(FORWARD_VARS)
+all: $(ARCH_LIBS) $(ARCH_INCLUDES) $(SP_INSTALL_PREFIX)/share/licenses $(SP_INSTALL_PREFIX)/toolchain.mk
 
 $(SP_INSTALL_PREFIX)/usr/lib/libz.a: ../common/zlib.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
@@ -203,9 +177,6 @@ $(SP_INSTALL_PREFIX)/usr/lib/libharfbuzz.a:../common/harfbuzz.mk $(SP_INSTALL_PR
 $(SP_INSTALL_PREFIX)/usr/lib/libsqlite3.a: ../common/sqlite.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a: ../common/mbedtls.mk
-	$(MAKE) -f $< $(FORWARD_VARS)
-
 $(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a:  ../common/nghttp3.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
@@ -215,18 +186,16 @@ $(SP_INSTALL_PREFIX)/usr/lib/libssl.a: $(MAKE_ROOT)openssl.mk
 $(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a:  ../common/gost.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-# Actually, use libuidna to mimic libidn2
-$(SP_INSTALL_PREFIX)/usr/lib/libidn2.a: $(MAKE_ROOT)uidna.mk $(SP_INSTALL_PREFIX)/usr/lib/libicuuc.a
+$(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a: ../common/mbedtls.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/lib/libicuuc.a: $(MAKE_ROOT)icu.mk
-	$(MAKE) -f $< $(FORWARD_VARS)
-
-$(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a $(SP_INSTALL_PREFIX)/usr/lib/libidn2.a
-	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
-
-$(SP_INSTALL_PREFIX)/usr/lib/libcurl-mbedtls.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a $(SP_INSTALL_PREFIX)/usr/lib/libidn2.a
+$(SP_INSTALL_PREFIX)/usr/lib/libcurl-mbedtls.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a \
+		$(SP_INSTALL_PREFIX)/usr/include/idn2.h
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=mbedtls
+
+$(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
+		$(SP_INSTALL_PREFIX)/usr/include/idn2.h
+	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
 $(SP_INSTALL_PREFIX)/usr/lib/libzip-openssl.a: ../common/libzip.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a $(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
@@ -237,24 +206,12 @@ $(SP_INSTALL_PREFIX)/usr/lib/libzip-mbedtls.a: ../common/libzip.mk $(SP_INSTALL_
 $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-release.a $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-debug.a:  ../common/wamr.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/lib/libbacktrace.a: $(MAKE_ROOT)backtrace.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a
+$(SP_INSTALL_PREFIX)/usr/lib/libbacktrace.a: $(MAKE_ROOT)backtrace.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/lib/libxml2.a: ../common/libxml2.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a $(SP_INSTALL_PREFIX)/usr/lib/libzstd.a
-	$(MAKE) -f $< $(FORWARD_VARS)
-
-$(SP_INSTALL_PREFIX)/usr/lib/libffi.a: $(MAKE_ROOT)ffi.mk
-	$(MAKE) -f $< $(FORWARD_VARS)
-
-$(SP_INSTALL_PREFIX)/usr/lib/libexpat.a: $(MAKE_ROOT)expat.mk
-	$(MAKE) -f $< $(FORWARD_VARS)
-
-$(SP_INSTALL_PREFIX)/usr/lib/libwayland-client.a: $(MAKE_ROOT)wayland.mk $(SP_INSTALL_PREFIX)/usr/lib/libxml2.a $(SP_INSTALL_PREFIX)/usr/lib/libffi.a $(SP_INSTALL_PREFIX)/usr/lib/libexpat.a
-	$(MAKE) -f $< $(FORWARD_VARS)
-
-$(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h: ../common/vulkan-headers.mk
-	$(MAKE) -f $< $(FORWARD_VARS)
-	touch $(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h
+$(SP_INSTALL_PREFIX)/usr/include/idn2.h: replacements/idn2.h
+	$(MKDIR) $(SP_INSTALL_PREFIX)/usr/include
+	cp -f replacements/idn2.h $@
 
 $(SP_INSTALL_PREFIX)/usr/include/spirv/unified1/spirv.h: ../common/spirv-headers.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
@@ -264,11 +221,11 @@ $(SP_INSTALL_PREFIX)/usr/include/simde/simde-arch.h: ../common/simde.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 	touch $(SP_INSTALL_PREFIX)/usr/include/simde/simde-arch.h
 
-$(SP_INSTALL_PREFIX)/share/licenses:
-	rm -rf $(SP_INSTALL_PREFIX)/share/licenses
-	cp -rf runtime/include/* $(SP_INSTALL_PREFIX)/include
-	cp -rf ../licenses $(SP_INSTALL_PREFIX)/share/licenses
+$(SP_INSTALL_PREFIX)/share/licenses: ../licenses
+	$(MKDIR) $(SP_INSTALL_PREFIX)/share
+	cp -rf $< $@
 
 .PHONY: all
+.DEFAULT_GOAL := all
 
 endif

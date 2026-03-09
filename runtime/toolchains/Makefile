@@ -20,64 +20,11 @@
 
 .DEFAULT_GOAL := all
 
-# Detect host
-
-ifeq ($(findstring Windows,$(OS)),Windows)
-
-UNAME := Windows
-
-HOST_ID := x86_64-pc-windows-msvc
-WINARCH := $(shell [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)
-
-ifeq ($(WINARCH),X64)
-HOST_ID := x86_64-pc-windows-msvc
-else ifeq ($(WINARCH),X86)
-HOST_ID := x86-pc-windows-msvc
-else ifeq ($(WINARCH),Arm64)
-HOST_ID := aarch64-pc-windows-msvc
-else ifeq ($(WINARCH),Arm)
-HOST_ID := armv7-pc-windows-msvc
-endif # ($(WINARCH),X64)
-
-HOST_TOOLCHAIN := host-windows-msvc
-
-else # ($(findstring Windows,$(OS)),Windows)
-
-UNAME := $(shell uname)
-
-ifeq ($(UNAME),Darwin)
-
-HOST_ID := $(shell uname -m)-apple-macosx
-HOST_TOOLCHAIN := host-macosx
-
-else ifeq ($(UNAME),Linux)
-
-ifeq ($(shell ldd /bin/ls 2>&1 | grep -q 'musl'),)
-HOST_ID := $(shell uname -m)-unknown-linux-gnu
-HOST_TOOLCHAIN := host-linux-glibc
-else
-HOST_ID := $(shell uname -m)-unknown-linux-musl
-HOST_TOOLCHAIN := host-linux-musl
-endif # MUSL
-
-# Native android host will be implemented later
-#
-#else ifeq ($(UNAME),Android)
-#
-#HOST_ID := $(shell uname -m)-unknown-linux-android
-#
-else
-
-$(error Unknown host)
-
-endif # $(UNAME)
-
-endif # ($(findstring Windows,$(OS)),Windows)
-
-
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
 LIBS_MAKE_FILE := $(realpath $(lastword $(MAKEFILE_LIST)))
 LIBS_MAKE_ROOT := $(dir $(LIBS_MAKE_FILE))
+
+include $(dir $(THIS_FILE))common/utils/detect-platform.mk
 
 SRC_ROOT := $(LIBS_MAKE_ROOT)src
 TMP_DIR := $(LIBS_MAKE_ROOT)tmp
@@ -126,32 +73,6 @@ clean:
 
 xwin: $(SRC_ROOT)/xwin/splat
 
-ANDROID_INTERMEDIATE_TOOLCHAINS := $(addprefix $(TOOLCHAIN_INTERMEDIATE)/,\
-	aarch64-linux-android armv7a-linux-androideabi i686-linux-android x86_64-linux-android)
-
-ANDROID_TARGETS_TOOLCHAINS := $(addprefix $(TOOLCHAIN_TARGETS)/,\
-	aarch64-linux-android armv7a-linux-androideabi i686-linux-android x86_64-linux-android)
-
-$(ANDROID_INTERMEDIATE_TOOLCHAINS):
-	$(MKDIR) $(TOOLCHAIN_INTERMEDIATE)
-	$(MAKE) -C android TOOLCHAIN_OUTPUT_DIR=$(abspath $(LIBS_MAKE_ROOT))/intermediate all
-
-$(TOOLCHAIN_TARGETS)/android: $(ANDROID_INTERMEDIATE_TOOLCHAINS)
-	$(MAKE) -f android.mk TOOLCHAIN_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE) TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS)
-	touch $@
-
-$(TOOLCHAIN_INTERMEDIATE)/x86_64-unknown-linux-gnu/toolchain:
-	$(MKDIR) $(TOOLCHAIN_INTERMEDIATE)
-	$(MAKE) -C toolchain-linux-glibc OUT_SYSROOT=$(LIBS_MAKE_ROOT)/intermediate/x86_64-unknown-linux-gnu out
-	touch $@
-
-$(TOOLCHAIN_INTERMEDIATE)/x86_64-unknown-linux-gnu/deps: $(TOOLCHAIN_INTERMEDIATE)/x86_64-unknown-linux-gnu/toolchain
-	$(MAKE) -C linux x86_64 OUT_SYSROOT=$(LIBS_MAKE_ROOT)/intermediate/x86_64-unknown-linux-gnu
-	touch $@
-
-$(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu: $(TOOLCHAIN_INTERMEDIATE)/x86_64-unknown-linux-gnu/deps
-	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/x86_64-unknown-linux-gnu \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu
 
 $(TOOLCHAIN_INTERMEDIATE)/x86_64-pc-windows-msvc:
 	$(MKDIR) $(TOOLCHAIN_INTERMEDIATE)
@@ -161,11 +82,6 @@ $(TOOLCHAIN_INTERMEDIATE)/x86_64-pc-windows-msvc:
 $(TOOLCHAIN_TARGETS)/x86_64-pc-windows-msvc: $(TOOLCHAIN_INTERMEDIATE)/x86_64-pc-windows-msvc
 	$(MAKE) -f windows.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/x86_64-pc-windows-msvc \
 		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-pc-windows-msvc
-
-android: $(TOOLCHAIN_TARGETS)/android
-
-android-clean:
-	$(RM) $(ANDROID_INTERMEDIATE_TOOLCHAINS) $(TOOLCHAIN_TARGETS)/android
 
 linux-glibc-x86_64: $(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu
 
@@ -182,6 +98,33 @@ x86_64-pc-windows-msvc.tar.xz: $(TOOLCHAIN_TARGETS)/x86_64-pc-windows-msvc
 
 host:
 	$(MAKE) -C $(HOST_TOOLCHAIN) out OUT_SYSROOT=$(abspath hosts/$(HOST_ID))
+
+#
+# Android NDK targets
+#
+
+
+ANDROID_INTERMEDIATE_TOOLCHAINS := $(addprefix $(TOOLCHAIN_INTERMEDIATE)/,\
+	aarch64-linux-android armv7a-linux-androideabi i686-linux-android x86_64-linux-android)
+
+ANDROID_TARGETS_TOOLCHAINS := $(addprefix $(TOOLCHAIN_TARGETS)/,\
+	aarch64-linux-android armv7a-linux-androideabi i686-linux-android x86_64-linux-android)
+
+$(ANDROID_INTERMEDIATE_TOOLCHAINS):
+	$(MKDIR) $(TOOLCHAIN_INTERMEDIATE)
+
+$(TOOLCHAIN_TARGETS)/android: $(ANDROID_INTERMEDIATE_TOOLCHAINS)
+	$(MAKE) -f android.mk TOOLCHAIN_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE) TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS)
+	touch $@
+
+
+unknown-ndk-linux-android:
+	$(MAKE) -C deps-android TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) SP_NDK=1 all
+	$(MAKE) -f android.mk TOOLCHAIN_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE) TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS)
+
+#
+# Linux targets
+#
 
 target-x86_64-unknown-linux-gnu: host
 	$(MAKE) -C target-linux-glibc out \
@@ -207,10 +150,7 @@ target-riscv64-unknown-linux-gnu: host
 	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/riscv64-unknown-linux-gnu \
 		T_TARGET=$(TOOLCHAIN_TARGETS)/riscv64-unknown-linux-gnu
 
-compress: \
-	android.tar.xz \
-	x86_64-unknown-linux-gnu.tar.xz \
-	x86_64-pc-windows-msvc
+
 
 .PHONY: all clean prepare compress host download \
 	intermediate-x86_64-unknown-linux-gnu

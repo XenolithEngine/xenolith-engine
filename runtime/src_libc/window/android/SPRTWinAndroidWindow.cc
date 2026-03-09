@@ -234,8 +234,8 @@ SurfaceInfo AndroidWindow::getSurfaceOptions(SurfaceInfo &&opts) const {
 	return opts;
 }
 
-FrameConstraints AndroidWindow::exportConstraints() const {
-	auto c = NativeWindow::exportConstraints();
+FrameConstraints AndroidWindow::exportConstraints(uint64_t &serial) const {
+	auto c = NativeWindow::exportConstraints(serial);
 
 	if (_vsyncPeriodNanos) {
 		// convert to micros

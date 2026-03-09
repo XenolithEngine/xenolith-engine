@@ -639,7 +639,7 @@ StringView getHomePath() {
 
 		auto path = StringView(getenv("HOME"));
 
-		unique_lock lock(s_globalConfig.s_infoMutex);
+		unique_lock lock(s_globalConfig.infoMutex);
 		s_globalConfig.homePathBuf = path.pdup(s_globalConfig._pool);
 	}
 	return s_globalConfig.homePathBuf;

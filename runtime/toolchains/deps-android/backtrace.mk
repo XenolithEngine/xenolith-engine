@@ -1,4 +1,3 @@
-# Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
 # Copyright (c) 2025 Stappler Team <admin@stappler.org>
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,24 +20,32 @@
 
 .DEFAULT_GOAL := all
 
-LIBNAME = openssl-gost-engine
+LIBNAME = libbacktrace
 
 include ../common/configure.mk
 
+CONFIGURE := \
+	CC=$(SP_CC) \
+	CPP="$(SP_CC) -E" \
+	CXX=$(SP_CXX) \
+	CFLAGS="$(SP_OPT)" \
+	AR=$(SP_AR) \
+	PKG_CONFIG_PATH="$(SP_INSTALL_PREFIX)/usr/lib/pkgconfig" \
+	--host=$(SP_TARGET)$(ANDROID_PLATFORM_LEVEL)\
+	--includedir=$(SP_INSTALL_PREFIX)/usr/include \
+	--libdir=$(SP_INSTALL_PREFIX)/usr/lib \
+	--bindir=$(MAKE_ROOT)$(LIBNAME)/prefix/bin \
+	--sbindir=$(MAKE_ROOT)$(LIBNAME)/prefix/sbin \
+	--datarootdir=$(MAKE_ROOT)$(LIBNAME)/prefix/share \
+	--prefix=$(SP_INSTALL_PREFIX) \
+	--enable-shared=no \
+	--enable-static=yes
+
 all:
+	rm -rf $(LIBNAME)
 	@mkdir -p $(LIBNAME)
 	cd $(LIBNAME); \
-		export PATH=$(NDKPATH):$$PATH; \
-		cmake $(CONFIGURE_CMAKE) -DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENSSL_ROOT_DIR=$(SP_INSTALL_PREFIX) \
-			-DOPENSSL_CRYPTO_LIBRARY=$(SP_INSTALL_PREFIX)/lib/libcrypto.a \
-			-DOPENSSL_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/include \
-			-DRELAXED_ALIGNMENT=TRUE \
-			-DADDCARRY_U64=FALSE \
-			$(LIB_SRC_DIR)/$(LIBNAME); \
-		make gost_engine_static
-	mv -f $(LIBNAME)/libgost.a $(SP_INSTALL_PREFIX)/lib/libgost_engine.a 
-	cp -f $(LIB_SRC_DIR)/$(LIBNAME)/gost-engine.h $(SP_INSTALL_PREFIX)/include
-	cp -f $(LIB_SRC_DIR)/$(LIBNAME)/e_gost_err.h $(SP_INSTALL_PREFIX)/include
+		$(LIB_SRC_DIR)/$(LIBNAME)/configure $(CONFIGURE); \
+		make -j8; \
+		make install
 	rm -rf $(LIBNAME)
-
-.PHONY: all

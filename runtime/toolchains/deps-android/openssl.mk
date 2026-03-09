@@ -21,24 +21,39 @@
 
 .DEFAULT_GOAL := all
 
-LIBNAME = libwebp
+LIBNAME = openssl
 
 include ../common/configure.mk
 
-CONFIGURE := \
-	$(CONFIGURE_AUTOCONF) \
-	--disable-gl \
-	--disable-sdl \
-	--disable-tiff \
-	--disable-wic \
-	--disable-dependency-tracking
+CONFIGURE := android-$(ANDROID_ARCH) \
+	--prefix=$(SP_INSTALL_PREFIX)/usr \
+	CC=$(SP_CC) \
+	CXX=$(SP_CXX) \
+	AR=$(SP_AR) \
+	no-tests \
+	no-shared \
+	no-module \
+	no-legacy \
+	no-srtp \
+	no-srp \
+	no-dso \
+	no-filenames \
+	no-autoload-config \
+	$(SP_OPT)
+
+ifeq ($(ARCH),armeabi-v7a)
+CONFIGURE += no-asm
+endif
 
 all:
 	@mkdir -p $(LIBNAME)
 	cd $(LIBNAME); \
-		$(LIB_SRC_DIR)/$(LIBNAME)/configure $(CONFIGURE); \
+		export ANDROID_NDK_ROOT=$(NDK); \
+		export PATH=$(NDKPATH):$$PATH; \
+		$(LIB_SRC_DIR)/$(LIBNAME)/Configure $(CONFIGURE); \
 		make -j8; \
-		make install
+		make install_sw
 	rm -rf $(LIBNAME)
+	sed -i -e 's/ -lssl/ -lssl -lpthread/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc
 
 .PHONY: all

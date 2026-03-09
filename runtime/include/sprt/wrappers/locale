@@ -45,7 +45,15 @@
 
 #endif
 
+#if defined(SPRT_ANDROID)
+#define __BIONIC__
+#endif
+
 #include <locale>
+
+#if defined(SPRT_ANDROID)
+#undef __BIONIC__
+#endif
 
 #if defined(SPRT_LINUX) && !defined(SPRT_LINUX_MUSL)
 #undef __GLIBC__

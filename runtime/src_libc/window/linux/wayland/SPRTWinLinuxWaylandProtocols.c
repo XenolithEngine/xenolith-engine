@@ -22,6 +22,10 @@
 
 #define __SPRT_BUILD 1
 
+#include <sprt/c/bits/__sprt_def.h>
+
+#ifdef SPRT_LINUX
+
 #include <wayland-protocols/xdg-shell.c>
 #include <wayland-protocols/viewporter.c>
 #include <wayland-protocols/tablet-v2.c>
@@ -30,3 +34,5 @@
 #include <wayland-protocols/kde-output-order-v1.c>
 #include <wayland-protocols/kde-output-management-v2.c>
 #include <wayland-protocols/cursor-shape.c>
+
+#endif

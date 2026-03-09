@@ -65,7 +65,7 @@ public:
 
 	virtual SurfaceInfo getSurfaceOptions(SurfaceInfo &&info) const override;
 
-	virtual FrameConstraints exportConstraints() const override;
+	virtual FrameConstraints exportConstraints(uint64_t &serial) const override;
 
 	virtual Extent2 getExtent() const override;
 

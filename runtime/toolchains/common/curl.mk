@@ -46,6 +46,10 @@ CONFIGURE := \
 	-DCURL_STATIC_CRT=On \
 	-DCURL_CA_BUNDLE="$(realpath ../replacements/curl/cacert.pem)"
 
+ifdef ANDROID
+CONFIGURE += -DLIBIDN2_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a
+endif
+
 ifeq ($(VARIANT),mbedtls)
 CONFIGURE += \
 	-DCURL_DEFAULT_SSL_BACKEND="mbedtls" -DCURL_USE_MBEDTLS=ON
@@ -54,8 +58,8 @@ endif
 ifeq ($(VARIANT),openssl)
 CONFIGURE += \
 	-DCURL_DEFAULT_SSL_BACKEND="openssl" -DCURL_USE_OPENSSL=ON \
-	-DLIB_EAY=$(SP_INSTALL_PREFIX)/lib/crypto.lib \
-	-DSSL_EAY=$(SP_INSTALL_PREFIX)/lib/ssl.lib \
+	-DLIB_EAY=$(SP_INSTALL_PREFIX)/usr/lib/crypto.lib \
+	-DSSL_EAY=$(SP_INSTALL_PREFIX)/usr/lib/ssl.lib \
 	-DUSE_OPENSSL_QUIC=ON
 endif
 
