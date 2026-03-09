@@ -82,16 +82,8 @@ Instance::~Instance() {
 Instance::Instance(InstanceApi api, InstanceFlags flags, Dso &&dso)
 : _api(api), _flags(flags), _dsoModule(sp::move(dso)) { }
 
-Rc<Loop> Instance::makeLoop(NotNull<event::Looper>, Rc<LoopInfo> &&) const { return nullptr; }
 
-bool Instance::isPresentationSupported() const {
-	for (auto &it : _availableDevices) {
-		if (it.supportsPresentation) {
-			return true;
-		}
-	}
-	return false;
-}
+Rc<Loop> Instance::makeLoop(NotNull<event::Looper>, Rc<LoopInfo> &&) const { return nullptr; }
 
 StringView getInstanceApiName(InstanceApi backend) {
 	switch (backend) {

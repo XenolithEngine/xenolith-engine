@@ -54,7 +54,11 @@ constexpr auto MODULE_APPCOMMON_NAME = "appcommon";
 
 #include "detail/SPPlatformInit.h"
 #include <sprt/runtime/notnull.h>
+
 #include <assert.h>
+
+// We need to wrap <locale> to carefully mimic original libc interface
+#include <sprt/wrappers/locale>
 
 // From C++ standard library:
 #include <type_traits> // IWYU pragma: keep
@@ -66,7 +70,6 @@ constexpr auto MODULE_APPCOMMON_NAME = "appcommon";
 #include <algorithm> // IWYU pragma: keep
 #include <tuple> // IWYU pragma: keep
 #include <cmath> // IWYU pragma: keep
-#include <locale> // IWYU pragma: keep
 
 #include <tuple> // IWYU pragma: keep
 #include <string> // IWYU pragma: keep

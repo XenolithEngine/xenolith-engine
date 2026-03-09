@@ -98,6 +98,8 @@ struct SP_PUBLIC DeviceInfo {
 			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT, nullptr};
 		VkPhysicalDeviceBufferDeviceAddressFeaturesKHR deviceBufferDeviceAddress = {
 			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR, nullptr};
+		VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT deviceSwapchainMaintenance1 = {
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT, nullptr};
 
 #if VK_VERSION_1_3
 		VkPhysicalDeviceVulkan13Features device13 = {
@@ -161,7 +163,9 @@ struct SP_PUBLIC DeviceInfo {
 		SurfaceBackendMask presentSurfaceMask;
 	};
 
+	//sprt::qonce initHandle;
 	VkPhysicalDevice device = VK_NULL_HANDLE;
+
 	QueueFamilyInfo graphicsFamily;
 	QueueFamilyInfo presentFamily;
 	QueueFamilyInfo transferFamily;
@@ -182,8 +186,7 @@ struct SP_PUBLIC DeviceInfo {
 	Vector<DisplayInfo> displays;
 
 	DeviceInfo();
-	DeviceInfo(VkPhysicalDevice, QueueFamilyInfo, QueueFamilyInfo, QueueFamilyInfo, QueueFamilyInfo,
-			Vector<StringView> &&, Vector<StringView> &&);
+	DeviceInfo(VkPhysicalDevice);
 	DeviceInfo(const DeviceInfo &) = default;
 	DeviceInfo &operator=(const DeviceInfo &) = default;
 	DeviceInfo(DeviceInfo &&) = default;

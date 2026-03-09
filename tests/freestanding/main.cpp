@@ -160,13 +160,18 @@ void performDirLinkTest(const char *originalDirPath, const char *linkDirPath) {
 		sprt::log::vperror(__SPRT_LOCATION, "main", "Open symlink with O_NOFOLLOW should fail");
 	}
 
+	printf("Open dir %s\n", originalDirPath);
 	dirfd = open(originalDirPath, O_PATH | O_DIRECTORY | O_NOFOLLOW);
 	if (dirfd < 0) {
 		sprt::log::vperror(__SPRT_LOCATION, "main", "Open dir failed");
 	}
 
+	printf("Create file with openat: %d %s\n", dirfd, "testfile.txt");
 	auto fd = openat(dirfd, "testfile.txt", O_CREAT | O_WRONLY | O_TRUNC, S_IWUSR | S_IRUSR);
-
+	if (fd < 0) {
+		sprt::log::vperror(__SPRT_LOCATION, "main",
+				"fail to create file this openat: ", sprt::status::errnoToStatus(errno));
+	}
 	auto content = "TestFileContent\n";
 	write(fd, content, strlen(content));
 	close(fd);
@@ -175,6 +180,7 @@ void performDirLinkTest(const char *originalDirPath, const char *linkDirPath) {
 		filepath.performWithTerminated([&](const char *cFilePath, size_t) {
 			sprt::filepath::merge([&](sprt::StringView filepath) {
 				filepath.performWithTerminated([&](const char *linkFilePath, size_t) {
+					printf("Symlink %s -> %s\n", cFilePath, linkFilePath);
 					auto ret = symlink(cFilePath, linkFilePath);
 					if (ret != 0) {
 						sprt::log::vperror(__SPRT_LOCATION, "main",
@@ -205,7 +211,7 @@ void performLinkTest() {
 	dirPath.performWithTerminated([&](const char *cDirPath, size_t) {
 		dirfd = open(cDirPath, O_PATH | O_DIRECTORY); //
 	});
-	if (mkdirat(dirfd, "testdir_link", S_IWUSR | S_IRUSR) != 0) {
+	if (mkdirat(dirfd, "testdir_link", S_IWUSR | S_IRUSR | S_IXUSR) != 0) {
 		sprt::log::vperror(__SPRT_LOCATION, "main",
 				"fail to create dir: ", sprt::status::errnoToStatus(errno));
 	}

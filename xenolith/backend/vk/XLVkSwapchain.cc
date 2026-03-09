@@ -243,7 +243,8 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 #if XL_VKAPI_DEBUG
 		auto t = sp::platform::clock(ClockType::Monotonic);
 #endif
-		if (table.vkAcquireNextImage2KHR) {
+		if (dev->getInfo().features.deviceSwapchainMaintenance1.swapchainMaintenance1
+				&& table.vkAcquireNextImage2KHR) {
 			VkAcquireNextImageInfoKHR info;
 			info.sType = VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR;
 			info.pNext = nullptr;
@@ -263,6 +264,7 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 		XL_VKAPI_LOG("vkAcquireNextImageKHR: ", imageIndex, " ", ret, " [",
 				sp::platform::clock(ClockType::Monotonic) - t, "]");
 #endif
+		table.vkDeviceWaitIdle(device);
 	});
 
 	if (result == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT) {
@@ -324,7 +326,9 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 		_deprecated = true;
 		releaseSemaphore(ref_cast<Semaphore>(move(sem)));
 		break;
-	case VK_TIMEOUT: releaseSemaphore(ref_cast<Semaphore>(move(sem))); break;
+	case VK_TIMEOUT:
+		releaseSemaphore(ref_cast<Semaphore>(move(sem))); //
+		break;
 	default:
 		releaseSemaphore(ref_cast<Semaphore>(move(sem)));
 		log::source().error("vk::SwapchainHandle", "Fail to acquire image: ", getStatus(result));
@@ -444,7 +448,8 @@ void SwapchainHandle::invalidateImage(uint32_t idx, bool release) {
 	if (it != _acquiredIndexes.end()) {
 		_acquiredIndexes.erase(it);
 		auto dev = static_cast<Device *>(_object.device);
-		if (release && dev->getTable()->vkReleaseSwapchainImagesEXT) {
+		if (release && dev->getInfo().features.deviceSwapchainMaintenance1.swapchainMaintenance1
+				&& dev->getTable()->vkReleaseSwapchainImagesEXT) {
 			VkReleaseSwapchainImagesInfoEXT info;
 			info.sType = VK_STRUCTURE_TYPE_RELEASE_SWAPCHAIN_IMAGES_INFO_EXT;
 			info.pNext = nullptr;

@@ -19,10 +19,39 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+# key variables:
+#	STAPPLER_HOST - current host id (x86_64-unknown-linux-gnu, aarch64-pc-windows-msvc, etc), set by build-system
+#
+#	STAPPLER_HOST_FILE - file with host's toolchain definition, set by user or defaulted to standert locations:
+#		<root>/toolchains/hosts/$(STAPPLER_HOST)/host.mk or <root>/runtime/toolchains/hosts/$(STAPPLER_HOST)/host.mk
+#		The host file should define HOST_BINDIR and host-specific tools (HOST_CC, HOST_CXX, HOST_AR).
+#		System designed with clang compiler in mind, but you can use GCC cross-compilers or other compilers,
+#		that can produce code for the specified target.
+#		Host file can provide compiler's host specific flags via HOST_(GENERAL|LIB|EXEC)_(C|CXX|LD)FLAGS
+#
+#	STAPPLER_TARGET - user-specified target in form <arch>-<vendor>-<os>[-<variant>], or $(STAPPLER_HOST)
+#
+#	STAPPLER_TARGET_FILE - file with target's toolchain definition, set by user or defaulted to standert locations:
+#		<root>/toolchains/targets/$(STAPPLER_TARGET)/target.mk or <root>/runtime/toolchains/targets/$(STAPPLER_TARGET)/host.mk
+#		Target file should define:
+#			TARGET_SYSROOT - target's sysroot for compiler
+#			TARGET_NAME - target's name for compiler's --target argument (can be empty if not supported)
+#			TARGET_SYSTEM - target's system name (Linux/Windows/MacOS/Android/iOS, etc)
+#		
+#		Target file can provide target's specific flags via TARGET_(GENERAL|LIB|EXEC)_(C|CXX|LD)FLAGS
+#
+
 ifeq ($(verbose),1)
 print_verbose = $(info (verbose := 1) $(1))
 else
 print_verbose =
+endif
+
+
+ifeq (4.1,$(firstword $(sort $(MAKE_VERSION) 4.1)))
+MAKE_4_1 := 1
+else
+$(info COMPATIBILITY MODE: Some functions may not work. Minimal required make version: 4.1)
 endif
 
 
@@ -135,348 +164,120 @@ APPCONFIG_VERSION_BUILD ?= 0
 
 
 ifeq ($(findstring Windows,$(OS)),Windows)
-
-UNAME := Windows
-SHELL = powershell.exe
-
-include $(BUILD_ROOT)/utils/fn-powershell.mk
-
+include $(BUILD_ROOT)/utils/init-powershell.mk
 else # Windows
-
-# Проверяем хостовую систему, у Darwin нет опции -o для uname
-UNAME := $(shell uname)
-
-ifneq ($(UNAME),Darwin)
-	UNAME := $(shell uname -o)
-endif
-
-include $(BUILD_ROOT)/utils/fn-sh.mk
-
+include $(BUILD_ROOT)/utils/init-sh.mk
 endif # Windows
+
 
 ifdef SHARED_PREFIX
 GLOBAL_ROOT := $(SHARED_PREFIX)
-else # SHARED_PREFIX
-ifdef STAPPLER_BUILD_ROOT
+else ifdef STAPPLER_BUILD_ROOT
 GLOBAL_ROOT := $(realpath $(STAPPLER_BUILD_ROOT)/..)
 else
 GLOBAL_ROOT := $(realpath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 endif
-endif # SHARED_PREFIX
 
+# Based on initial makefile location
 BUILD_WORKDIR = $(patsubst %/,%,$(dir $(realpath $(firstword $(MAKEFILE_LIST)))))
 
-$(call print_verbose,(defaults.mk) BUILD_WORKDIR: $(BUILD_WORKDIR))
 $(call print_verbose,(defaults.mk) GLOBAL_ROOT: $(GLOBAL_ROOT))
-$(call print_verbose,(defaults.mk) UNAME: $(UNAME))
+$(call print_verbose,(defaults.mk) BUILD_WORKDIR: $(BUILD_WORKDIR))
 
 
-LOCAL_INSTALL_DIR ?= $(LOCAL_OUTDIR)/host
-BUILD_OUTDIR := $(LOCAL_OUTDIR)/host/$(BUILD_TYPE)
+#
+# Find host toolchain's half
+#
 
+ifdef STAPPLER_HOST_FILE
 
-ifdef BUILD_ANDROID
-LOCAL_INSTALL_DIR ?= $(LOCAL_OUTDIR)/android
-BUILD_OUTDIR := $(LOCAL_OUTDIR)/android/$(BUILD_TYPE)
+$(call print_verbose,(defaults.mk) Use user-provided host file: $(STAPPLER_HOST_FILE))
+include $(STAPPLER_HOST_FILE)
+
+else
+
+$(call print_verbose,(defaults.mk) Try to find host file in GLOBAL_ROOT: $(GLOBAL_ROOT)/toolchains/hosts/$(STAPPLER_HOST)/host.mk)
+
+-include $(GLOBAL_ROOT)/toolchains/hosts/$(STAPPLER_HOST)/host.mk
+
+ifndef HOST_BINDIR
+$(call print_verbose,(defaults.mk) Try runtime root: $(GLOBAL_ROOT)/runtime/toolchains/hosts/$(STAPPLER_HOST)/host.mk)
+-include $(GLOBAL_ROOT)/runtime/toolchains/hosts/$(STAPPLER_HOST)/host.mk
+endif
+
+endif
+
+ifndef HOST_BINDIR
+$(error HOST_BINDIR is not defined: no host "$(STAPPLER_HOST)" specification found)
+else
+$(call print_verbose,(defaults.mk) Build as host: $(STAPPLER_HOST))
 endif
 
 
-ifdef BUILD_XWIN
-LOCAL_INSTALL_DIR ?= $(LOCAL_OUTDIR)/xwin
-BUILD_OUTDIR := $(LOCAL_OUTDIR)/xwin/$(BUILD_TYPE)
+#
+# Find target toolchain's half
+#
+
+ifndef STAPPLER_TARGET
+$(call print_verbose,(defaults.mk) No user-provided target, use STAPPLER_HOST: $(STAPPLER_HOST))
+STAPPLER_TARGET := $(STAPPLER_HOST)
+else
+$(call print_verbose,(defaults.mk) User-provided target, $(STAPPLER_TARGET))
 endif
 
+ifdef STAPPLER_TARGET_FILE
+
+$(call print_verbose,(defaults.mk) Use user-provided host file: $(STAPPLER_HOST_FILE))
+include $(STAPPLER_HOST_FILE)
+
+else
+
+$(call print_verbose,(defaults.mk) Try to find target file in GLOBAL_ROOT: $(GLOBAL_ROOT)/toolchains/targets/$(STAPPLER_TARGET)/target.mk)
+
+-include $(GLOBAL_ROOT)/toolchains/targets/$(STAPPLER_TARGET)/target.mk
+
+ifndef TARGET_SYSROOT
+$(call print_verbose,(defaults.mk) Failed! Try runtime root: $(GLOBAL_ROOT)/runtime/toolchains/targets/$(STAPPLER_TARGET)/target.mk)
+-include $(GLOBAL_ROOT)/runtime/toolchains/targets/$(STAPPLER_TARGET)/target.mk
+endif
+
+endif
+
+ifndef TARGET_SYSROOT
+$(error TARGET_SYSROOT is not defined: no target "$(STAPPLER_TARGET)" specification found)
+endif
+
+
+LOCAL_INSTALL_DIR ?= $(LOCAL_OUTDIR)/$(STAPPLER_TARGET)
+BUILD_OUTDIR := $(LOCAL_OUTDIR)/$(STAPPLER_TARGET)/$(BUILD_TYPE)
+
+$(call print_verbose,(defaults.mk) STAPPLER_TARGET: $(STAPPLER_TARGET))
 $(call print_verbose,(defaults.mk) BUILD_OUTDIR: $(BUILD_OUTDIR))
 
-#
-# WebAssebmly
-#
-
-ifdef LOCAL_WASM_MODULE
-
-$(call print_verbose,(defaults.mk) LOCAL_WASM_MODULE: $(LOCAL_WASM_MODULE))
-
-WIT_BINDGEN ?= wit-bindgen
-
-WASI_SDK ?= /opt/wasi-sdk
-WASI_SDK_CC ?= $(WASI_SDK)/bin/clang
-WASI_SDK_CXX ?= $(WASI_SDK)/bin/clang++
-WASI_THREADS ?= 1
-GLOBAL_WASM_OPTIMIZATION ?= -Os
-
-# Отладка WebAssembly фактически останавливает выполнение приложения
-# в ожидании подключения отладчика LLDB. Потому, это поведение необходимо
-# явно включать, оно не включается автоматически в отладочной форме приложения
-GLOBAL_WASM_DEBUG ?= 0
-
-$(call print_verbose,(defaults.mk) WIT_BINDGEN: $(WIT_BINDGEN))
-$(call print_verbose,(defaults.mk) WASI_SDK_CC: $(WASI_SDK_CC))
-$(call print_verbose,(defaults.mk) WASI_SDK_CXX: $(WASI_SDK_CXX))
-$(call print_verbose,(defaults.mk) WASI_THREADS: $(WASI_THREADS))
-
-endif # LOCAL_WASM_MODULE
-
-
-
-ifeq (4.1,$(firstword $(sort $(MAKE_VERSION) 4.1)))
-MAKE_4_1 := 1
-else
-$(info COMPATIBILITY MODE: Some functions may not work. Minimal required make version: 4.1)
-endif
-
-GLOBAL_GENERAL_CFLAGS :=
-GLOBAL_GENERAL_CXXFLAGS :=
-
-ifdef STAPPLER_ARCH
-STAPPLER_TARGET_ARCH := $(STAPPLER_ARCH)
-else # STAPPLER_ARCH
-
-ifeq ($(findstring Windows,$(OS)),Windows)
-STAPPLER_TARGET_ARCH ?= $(shell [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)
-
-ifeq ($(STAPPLER_TARGET_ARCH),X64)
-STAPPLER_TARGET_ARCH := x86_64
-else ifeq ($(STAPPLER_TARGET_ARCH),X86)
-STAPPLER_TARGET_ARCH := x86
-else ifeq ($(STAPPLER_TARGET_ARCH),Arm64)
-STAPPLER_TARGET_ARCH := aarch64
-else ifeq ($(STAPPLER_TARGET_ARCH),Arm)
-STAPPLER_TARGET_ARCH := arm
-endif
-
-else
-STAPPLER_TARGET_ARCH ?= $(shell uname -m)
-endif
-endif # STAPPLER_ARCH
-
-
-ifdef LOCAL_TOOLCHAIN_FILE
-STAPPLER_TOOLCHAIN_FILE := $(LOCAL_TOOLCHAIN_FILE)
-else
-STAPPLER_TOOLCHAIN_FILE := toolchain.mk
-endif
-
 
 #
-# Android
+# Android special NDK target: unknown-ndk-linux-android
 #
 
-ifeq ($(STAPPLER_TARGET),android)
+ifeq ($(STAPPLER_TARGET),unknown-ndk-linux-android)
 
 LOCAL_ANDROID_TARGET ?= application
 LOCAL_ANDROID_PLATFORM ?= android-24
 
-# Usually we use NDK variable, transferred to make
-# (like: `make android NDK=/path/to/ndk`)
-# You can use ANDROID_NDK_ROOT env var
-NDK ?= $(ANDROID_NDK_ROOT)
-
-$(call print_verbose,(defaults.mk) Android NDK: $(NDK))
-
-ifeq ($(UNAME),Darwin)
-ANDROID_HOST ?= darwin-x86_64
-else ifeq ($(UNAME),Windows)
-ANDROID_HOST ?= windows-x86_64
-else
-ANDROID_HOST ?= linux-x86_64
-endif
-
 $(call print_verbose,(defaults.mk) ANDROID_HOST: $(ANDROID_HOST))
-
-ANDROID_SYSROOT := $(NDK)/toolchains/llvm/prebuilt/$(ANDROID_HOST)/sysroot
-ANDROID_SYSROOT_INCLUDE_CXX := $(realpath $(ANDROID_SYSROOT)/usr/include/c++/v1)
-ANDROID_SYSROOT_INCLUDE_COMMON := \
-	$(abspath $(ANDROID_SYSROOT)/usr/include/$$(BUILD_ARCH)) \
-	$(realpath $(ANDROID_SYSROOT)/usr/include)
-
-$(call print_verbose,(defaults.mk) ANDROID_SYSROOT: $(ANDROID_SYSROOT))
 
 $(call print_verbose,(defaults.mk) LOCAL_ANDROID_TARGET: $(LOCAL_ANDROID_TARGET) (android library name))
 $(call print_verbose,(defaults.mk) LOCAL_ANDROID_PLATFORM: $(LOCAL_ANDROID_PLATFORM) (minimal target API level))
 
-STAPPLER_TARGET_VENDOR :=
-STAPPLER_TARGET_SYS := linux
-STAPPLER_TARGET_ENV := android
-
-# Unified sysroot
-STAPPLER_TARGET_FULL := android
-
-
-#
-# Darwin/MacOS
-#
-
-else ifneq ($(or $(filter Darwin,$(UNAME)),$(filter macos,$(STAPPLER_TARGET))),)
-
-STAPPLER_TARGET_VENDOR := apple
-STAPPLER_TARGET_SYS := darwin
-
-STAPPLER_TARGET_FULL := $(STAPPLER_TARGET_ARCH)-$(STAPPLER_TARGET_VENDOR)-$(STAPPLER_TARGET_SYS)
-
-
-
-#
-# Windows
-#
-
-else ifneq ($(or $(filter windows,$(STAPPLER_TARGET)),$(findstring Windows,$(UNAME))),)
-
-STAPPLER_TARGET_VENDOR := pc
-STAPPLER_TARGET_SYS := windows
-STAPPLER_TARGET_ENV := msvc
-
-STAPPLER_TARGET_FULL := $(STAPPLER_TARGET_ARCH)-$(STAPPLER_TARGET_VENDOR)-$(STAPPLER_TARGET_SYS)-$(STAPPLER_TARGET_ENV)
-
-
-#
-# Linux Generic
-#
-
-else ifneq ($(or $(filter %Linux,$(UNAME)),$(filter linux,$(STAPPLER_TARGET))),)
-
-STAPPLER_TARGET_VENDOR := unknown
-STAPPLER_TARGET_SYS := linux
-STAPPLER_TARGET_ENV := gnu
-
-STAPPLER_TARGET_FULL := $(STAPPLER_TARGET_ARCH)-$(STAPPLER_TARGET_VENDOR)-$(STAPPLER_TARGET_SYS)-$(STAPPLER_TARGET_ENV)
-
-else # OS check
-
-$(error Unknown OS)
-
 endif # OS check
 
-$(call print_verbose,(defaults.mk) STAPPLER_TARGET_ARCH: $(STAPPLER_TARGET_ARCH))
-$(call print_verbose,(defaults.mk) STAPPLER_TARGET_VENDOR: $(STAPPLER_TARGET_VENDOR))
-$(call print_verbose,(defaults.mk) STAPPLER_TARGET_SYS: $(STAPPLER_TARGET_SYS))
-$(call print_verbose,(defaults.mk) STAPPLER_TARGET_ENV: $(STAPPLER_TARGET_ENV))
-$(call print_verbose,(defaults.mk) STAPPLER_TARGET_FULL: $(STAPPLER_TARGET_FULL))
-
-$(info Build for $(STAPPLER_TARGET_FULL))
-
-
-# Сперва пробуем загрузить тулчейн, чтобы у рантайма была информация, как связываться со стандартной библиотекой
-
-LOCAL_RUNTIME_PATH ?= $(abspath $(GLOBAL_ROOT))/runtime
-$(call print_verbose,(defaults.mk) LOCAL_RUNTIME_PATH: $(LOCAL_RUNTIME_PATH))
-
-ifdef LOCAL_TOOLCHAIN
-
-$(call print_verbose,(defaults.mk) LOCAL_TOOLCHAIN: $(LOCAL_TOOLCHAIN))
-
-include $(LOCAL_TOOLCHAIN)/$(STAPPLER_TOOLCHAIN_FILE)
-
-else # LOCAL_TOOLCHAIN
-
-LOCAL_USE_INTERNAL_TOOLCHAIN ?= optional
-
-$(call print_verbose,(defaults.mk) LOCAL_USE_INTERNAL_TOOLCHAIN: $(LOCAL_USE_INTERNAL_TOOLCHAIN) (variants: 0 | optional | required))
-
-ifneq ($(LOCAL_USE_INTERNAL_TOOLCHAIN),0)
-
-STAPPLER_TARGET_ROOT := $(abspath $(GLOBAL_ROOT))/toolchains/targets
-
-$(call print_verbose,(defaults.mk) Try to load internal toolchain: $(STAPPLER_TARGET_ROOT)/$(STAPPLER_TARGET_FULL)/$(STAPPLER_TOOLCHAIN_FILE))
-
--include $(STAPPLER_TARGET_ROOT)/$(STAPPLER_TARGET_FULL)/$(STAPPLER_TOOLCHAIN_FILE)
-
-ifndef TOOLCHAIN_SYSROOT
-$(call print_verbose,(defaults.mk) Fail to load internal toolchain (LOCAL_USE_INTERNAL_TOOLCHAIN: $(LOCAL_USE_INTERNAL_TOOLCHAIN)))
-
-# Try runtime in-tree toolchain
-
-STAPPLER_TARGET_ROOT := $(abspath $(LOCAL_RUNTIME_PATH))/toolchains/targets
-
-$(call print_verbose,(defaults.mk) Try to load internal toolchain: $(STAPPLER_TARGET_ROOT)/$(STAPPLER_TARGET_FULL)/$(STAPPLER_TOOLCHAIN_FILE))
-
--include $(STAPPLER_TARGET_ROOT)/$(STAPPLER_TARGET_FULL)/$(STAPPLER_TOOLCHAIN_FILE)
-
-ifndef TOOLCHAIN_SYSROOT
-$(call print_verbose,(defaults.mk) Fail to load internal toolchain (LOCAL_USE_INTERNAL_TOOLCHAIN: $(LOCAL_USE_INTERNAL_TOOLCHAIN)))
-endif
-
-endif # ($(LOCAL_USE_INTERNAL_TOOLCHAIN),required)
-
-endif # ($(LOCAL_USE_INTERNAL_TOOLCHAIN),0)
-endif # LOCAL_TOOLCHAIN
-
-
-# Fail if toolchain is required
-ifeq ($(LOCAL_USE_INTERNAL_TOOLCHAIN),required)
-ifndef TOOLCHAIN_SYSROOT
-$(error Fail to load internal toolchain (LOCAL_USE_INTERNAL_TOOLCHAIN: $(LOCAL_USE_INTERNAL_TOOLCHAIN)))
-endif
-endif
-
-
-
-# Загружаем рантайм
-
-GLOBAL_HAS_RUNTIME := 0
-GLOBAL_RUNTIME_PATH :=
-
-LOCAL_USE_RUNTIME_FROM_TOOLCHAIN ?= 0
-
-$(call print_verbose,(defaults.mk) LOCAL_USE_RUNTIME_FROM_TOOLCHAIN: $(LOCAL_USE_RUNTIME_FROM_TOOLCHAIN))
-
-ifeq ($(LOCAL_USE_RUNTIME_FROM_TOOLCHAIN),1)
-
-ifndef TOOLCHAIN_SYSROOT
-$(error Fail to load runtime from toolchain: toolchain was not loaded)
-endif # TOOLCHAIN_SYSROOT
-
-$(call print_verbose,(defaults.mk) Try to use runtime from toolchain: $(TOOLCHAIN_SYSROOT)/share/stappler/runtime.mk)
-
-include $(TOOLCHAIN_SYSROOT)/share/stappler/runtime.mk
-
-GLOBAL_RUNTIME_PATH := $(TOOLCHAIN_SYSROOT)/share/stappler
-GLOBAL_HAS_RUNTIME := 1
-
-else # ifeq ($(LOCAL_USE_RUNTIME_FROM_TOOLCHAIN),1)
-
-$(call print_verbose,(defaults.mk) Try to use local runtime (LOCAL_RUNTIME_PATH): $(LOCAL_RUNTIME_PATH)/runtime.mk)
-
-include $(LOCAL_RUNTIME_PATH)/runtime.mk
-
-GLOBAL_RUNTIME_PATH := $(LOCAL_RUNTIME_PATH)
-GLOBAL_HAS_RUNTIME := 1
-
-endif # ifeq ($(LOCAL_USE_RUNTIME_FROM_TOOLCHAIN),1)
-
-
-ifdef TOOLCHAIN_SYSROOT
-$(call print_verbose,(defaults.mk) TOOLCHAIN_SYSROOT: $(TOOLCHAIN_SYSROOT))
 include $(BUILD_ROOT)/utils/apply-toolchain.mk
-
-ifneq ($(GLOBAL_HAS_RUNTIME),1)
-
-$(call print_verbose,(defaults.mk) Try to use runtime from toolchain: $(TOOLCHAIN_SYSROOT)/share/stappler/runtime.mk)
-
--include $(TOOLCHAIN_SYSROOT)/share/stappler/runtime.mk
-
-ifneq ($(filter runtime,$(TOOLKIT_ALL_MODULES)),)
-GLOBAL_RUNTIME_PATH := $(TOOLCHAIN_SYSROOT)/share/stappler
-GLOBAL_HAS_RUNTIME := 1
-$(call print_verbose,(defaults.mk) GLOBAL_RUNTIME_PATH: $(GLOBAL_RUNTIME_PATH) (from toolchain source tree))
-else
-$(call print_verbose,(defaults.mk) Fail to load runtime from toolchain)
-endif
-
-endif # ifneq ($(GLOBAL_HAS_RUNTIME),1)
-
-endif # TOOLCHAIN_SYSROOT
-
-
-ifneq ($(GLOBAL_HAS_RUNTIME),1)
-$(error Fail to find runtime for comppilation)
-endif
 
 ifndef GLSLC
 ifdef VULKAN_SDK_PREFIX
 GLSLC ?= $(VULKAN_SDK_PREFIX)/bin/glslangValidator
 $(call print_verbose,(defaults.mk) GLSLC: $(GLSLC) (from OS Vulkan SDK) (VULKAN_SDK_PREFIX: $(VULKAN_SDK_PREFIX)))
 else # VULKAN_SDK_PREFIX
-#VULKAN_SDK_PREFIX = /usr/local
 GLSLC ?= glslangValidator
 $(call print_verbose,(defaults.mk) GLSLC: $(GLSLC) (from OS distribution))
 endif # VULKAN_SDK_PREFIX
@@ -487,7 +288,6 @@ ifdef VULKAN_SDK_PREFIX
 SPIRV_LINK ?= $(VULKAN_SDK_PREFIX)/bin/spirv-link
 $(call print_verbose,(defaults.mk) SPIRV_LINK: $(SPIRV_LINK) (from OS Vulkan SDK) (VULKAN_SDK_PREFIX: $(VULKAN_SDK_PREFIX)))
 else # VULKAN_SDK_PREFIX
-#VULKAN_SDK_PREFIX = /usr/local
 SPIRV_LINK ?= spirv-link
 $(call print_verbose,(defaults.mk) SPIRV_LINK: $(SPIRV_LINK) (from OS distribution))
 endif # VULKAN_SDK_PREFIX

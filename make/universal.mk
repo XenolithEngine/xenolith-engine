@@ -26,110 +26,75 @@ endif
 
 BUILD_ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-ifndef STAPPLER_TARGET
+ifeq ($(or $(STAPPLER_TARGET),$(STAPPLER_BUILD)),)
 
 .DEFAULT_GOAL := host
 
-# Загружаем конфигурацию разделяемого окружения ОС
--include $(BUILD_ROOT)/shared-config.mk
+FORWARD_ARGS := STAPPLER_BUILD=1
 
-include $(BUILD_ROOT)/utils/detect-platform.mk
+ifdef STAPPLER_TARGET
+FORWARD_ARGS += STAPPLER_TARGET=$(STAPPLER_TARGET)
+endif
 
 host: host-debug
 clean: host-debug-clean
 install: host-install
 
 host-install:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) install
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) install
 
 host-debug:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) all
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) all
 
 host-debug-clean:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) clean
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) clean
 
 host-release:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) RELEASE=1
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) RELEASE=1 all
 
 host-release-clean:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) RELEASE=1 clean
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) RELEASE=1 clean
 
 host-coverage:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) COVERAGE=1 all
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) COVERAGE=1 all
 
 host-coverage-clean:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) COVERAGE=1 clean
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) COVERAGE=1 clean
 
 host-report:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) COVERAGE=1 report
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) COVERAGE=1 report
 
 android: android-debug
 android-clean: android-debug-clean
 
 android-export:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) ANDROID_EXPORT=1 $(call sp_detect_platform,android) android-export
-	@$(MAKE) -f $(LOCAL_MAKEFILE) ANDROID_EXPORT=1 RELEASE=1 $(call sp_detect_platform,android) android-export
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) ANDROID_EXPORT=1 STAPPLER_TARGET=unknown-ndk-linux-android android-export
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) ANDROID_EXPORT=1 STAPPLER_TARGET=unknown-ndk-linux-android RELEASE=1 android-export
 
 android-debug:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) ANDROID_EXPORT=1 $(call sp_detect_platform,android) android-export
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,android) all
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) ANDROID_EXPORT=1 STAPPLER_TARGET=unknown-ndk-linux-android android-export
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) STAPPLER_TARGET=unknown-ndk-linux-android all
 
 android-debug-clean:
-	@$(MAKE) $(call sp_detect_platform,android) clean
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) STAPPLER_TARGET=unknown-ndk-linux-android clean
 
 android-release:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) ANDROID_EXPORT=1 $(call sp_detect_platform,android) android-export
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,android) RELEASE=1 all
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) ANDROID_EXPORT=1 STAPPLER_TARGET=unknown-ndk-linux-android RELEASE=1 android-export
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) STAPPLER_TARGET=unknown-ndk-linux-android RELEASE=1 all
 
 android-release-clean:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,android) RELEASE=1 clean
-
-ios: ios-debug
-ios-clean: ios-debug-clean
-
-ios-export:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,ios) IOS_ARCH=export ios-export
-
-mac-export:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,host) RELEASE=1 mac-export
-
-xwin: xwin-debug
-xwin-clean: xwin-debug-clean
-
-xwin-debug:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) all
-
-xwin-debug-clean:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) clean
-
-xwin-release:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) RELEASE=1 all
-
-xwin-release-clean:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) RELEASE=1 clean
-
-xwin-all:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) xwin
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) RELEASE=1 xwin
-
-xwin-all-clean:
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) xwin-clean
-	@$(MAKE) -f $(LOCAL_MAKEFILE) $(call sp_detect_platform,xwin) RELEASE=1 xwin-clean
+	@$(MAKE) -f $(LOCAL_MAKEFILE) $(FORWARD_ARGS) STAPPLER_TARGET=unknown-ndk-linux-android RELEASE=1 clean
 
 .PHONY: clean install
 .PHONY: host host-clean host-debug host-debug-clean host-release host-release-clean host-install host-coverage host-report
 .PHONY: android android-clean android-export android-debug android-debug-clean android-release android-release-clean
-.PHONY: ios ios-clean ios-debug ios-debug-clean ios-release ios-release-clean
-.PHONY: xwin xwin-clean xwin-debug xwin-debug-clean xwin-release xwin-release-clean xwin-all xwin-all-clean
 
 else
 
-ifeq ($(STAPPLER_TARGET),host)
+ifeq ($(STAPPLER_TARGET),unknown-ndk-linux-android)
+include $(BUILD_ROOT)/android-ndk.mk
+else
 include $(BUILD_ROOT)/host.mk
-else ifeq ($(STAPPLER_TARGET),android)
-include $(BUILD_ROOT)/android.mk
-else ifeq ($(STAPPLER_TARGET),xwin)
-include $(BUILD_ROOT)/xwin.mk
 endif
 
 endif

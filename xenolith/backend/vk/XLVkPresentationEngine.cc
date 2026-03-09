@@ -226,6 +226,8 @@ bool PresentationEngine::recreateSwapchain() {
 
 bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::SwapchainConfig &&cfg,
 		core::PresentMode presentMode, bool oldSwapchainValid) {
+	static constexpr bool showSwapchainConfig = false;
+
 	auto dev = static_cast<Device *>(_device);
 	auto &devInfo = dev->getInfo();
 
@@ -244,7 +246,16 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::Sw
 			log::source().warn("vk::View", "Swapchain replaced without frame presentation");
 		}
 
-		// log::source().verbose("vk::PresentationEngine", "Surface: ", info.description());
+		if (oldSwapchain && oldSwapchain->getAcquiredImagesCount() != 0) {
+			log::source().warn("vk::View", "Some swapchain images still active");
+		}
+
+		if constexpr (showSwapchainConfig) {
+			StringStream out;
+			info.description([&](StringView str) { out << str; });
+			slog().verbose("vk::PresentationEngine", "Surface: ", out.str());
+		}
+
 		_swapchain = Rc<SwapchainHandle>::create(*dev, info, cfg, move(swapchainImageInfo),
 				presentMode, _surface.get_cast<Surface>(), queueFamilyIndices,
 				(oldSwapchain && oldSwapchainValid) ? oldSwapchain.get_cast<SwapchainHandle>()
@@ -259,7 +270,7 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::Sw
 				}
 			}
 
-			auto newConstraints = _window->exportConstraints();
+			auto newConstraints = _window->exportConstraints(_serial);
 			newConstraints.extent = Extent3(cfg.extent, 1);
 			newConstraints.transform = cfg.transform;
 
@@ -278,7 +289,11 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::Sw
 
 			for (auto &id : ids) { cache->addImageView(id); }
 
-			// log::source().verbose("vk::PresentationEngine", "Swapchain: ", cfg.description());
+			if constexpr (showSwapchainConfig) {
+				StringStream out;
+				cfg.description([&](StringView str) { out << str; });
+				log::source().verbose("vk::PresentationEngine", "Swapchain: ", out.str());
+			}
 		} else {
 			log::source().error("vk::PresentationEngine", "Fail to create swapchain");
 			break;
@@ -286,6 +301,7 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::Sw
 	} while (!_swapchain);
 
 	if (_swapchain) {
+		handleSwapchainUpdated(_constraints);
 		_waitForDisplayLink = false;
 		_readyForNextFrame = true;
 		return true;

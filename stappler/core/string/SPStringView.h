@@ -117,7 +117,8 @@ inline void streamWrite(const FunctionalStream &stream,
 
 template <typename FunctionalStream>
 inline void streamWrite(const FunctionalStream &stream, double d) {
-	std::array<typename FunctionalStreamTraits<FunctionalStream>::CharType, sprt::DOUBLE_MAX_DIGITS>
+	sprt::array<typename FunctionalStreamTraits<FunctionalStream>::CharType,
+			sprt::DOUBLE_MAX_DIGITS>
 			buf = {0};
 	auto ret = sprt::dtoa(d, buf.data(), buf.size());
 	streamWrite(stream,
@@ -131,7 +132,7 @@ inline void streamWrite(const FunctionalStream &stream, float f) {
 
 template <typename FunctionalStream>
 inline void streamWrite(const FunctionalStream &stream, int64_t i) {
-	std::array<typename FunctionalStreamTraits<FunctionalStream>::CharType,
+	sprt::array<typename FunctionalStreamTraits<FunctionalStream>::CharType,
 			std::numeric_limits<int64_t>::digits10 + 2>
 			buf = {0};
 	auto ret = sprt::itoa(sprt::int64_t(i), buf.data(), buf.size());
@@ -142,7 +143,7 @@ inline void streamWrite(const FunctionalStream &stream, int64_t i) {
 
 template <typename FunctionalStream>
 inline void streamWrite(const FunctionalStream &stream, uint64_t i) {
-	std::array<typename FunctionalStreamTraits<FunctionalStream>::CharType,
+	sprt::array<typename FunctionalStreamTraits<FunctionalStream>::CharType,
 			std::numeric_limits<int64_t>::digits10 + 2>
 			buf = {0};
 	auto ret = sprt::itoa(sprt::uint64_t(i), buf.data(), buf.size());
@@ -154,7 +155,7 @@ inline void streamWrite(const FunctionalStream &stream, uint64_t i) {
 #if SP_HAVE_DEDICATED_SIZE_T
 template <typename FunctionalStream>
 inline void streamWrite(const FunctionalStream &stream, size_t i) {
-	std::array<typename FunctionalStreamTraits<FunctionalStream>::CharType,
+	sprt::array<typename FunctionalStreamTraits<FunctionalStream>::CharType,
 			std::numeric_limits<int64_t>::digits10 + 2>
 			buf = {0};
 	auto ret = string::detail::itoa(sprt::uint64_t(i), buf.data(), buf.size());

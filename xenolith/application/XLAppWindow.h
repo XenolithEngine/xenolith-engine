@@ -190,10 +190,12 @@ protected:
 	virtual void acquireFrameData(NotNull<core::PresentationFrame>,
 			Function<void(NotNull<core::PresentationFrame>)> &&) override;
 
+	virtual void handleFrameReady(NotNull<core::PresentationFrame>) override;
 	virtual void handleFramePresented(NotNull<core::PresentationFrame>) override;
+	virtual void handleSwapchainUpdated(const core::FrameConstraints &) override;
 
 	virtual Rc<core::Surface> makeSurface(NotNull<core::Instance>) override;
-	virtual core::FrameConstraints exportConstraints() const override;
+	virtual core::FrameConstraints exportConstraints(uint64_t &serial) const override;
 
 	virtual void setFrameOrder(uint64_t) override;
 

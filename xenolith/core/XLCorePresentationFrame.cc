@@ -28,8 +28,10 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 bool PresentationFrame::init(PresentationEngine *e, FrameConstraints c, uint64_t frameOrder,
-		Flags flags, Function<void(PresentationFrame *, bool)> &&completeCallback) {
+		uint64_t serial, Flags flags,
+		Function<void(PresentationFrame *, bool)> &&completeCallback) {
 	_info.constraints = c;
+	_info.serial = serial;
 	_info.order = frameOrder;
 	_flags = (flags & InitFlags);
 

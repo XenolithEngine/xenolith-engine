@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Stappler Team <admin@stappler.org>
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -18,78 +18,157 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-$(call print_verbose,(apply-toolchain.mk) Start)
+$(call print_verbose,(apply-toolchain.mk) Build toolckain configuration...)
 
-ifdef TOOLCHAIN_AR
-GLOBAL_AR = $(TOOLCHAIN_AR)
+#
+# System-specific definitions
+#
+
+ifeq ($(TARGET_SYSTEM),Linux)
+	include $(BUILD_ROOT)/os/linux.mk
+else ifeq ($(TARGET_SYSTEM),Darwin)
+	include $(BUILD_ROOT)/os/darwin.mk
+else ifeq ($(TARGET_SYSTEM),MacOS)
+	include $(BUILD_ROOT)/os/darwin.mk
+else ifeq ($(TARGET_SYSTEM),iOS)
+	include $(BUILD_ROOT)/os/darwin.mk
+else ifeq ($(TARGET_SYSTEM),Windows)
+	include $(BUILD_ROOT)/os/windows.mk
+else ifeq ($(TARGET_SYSTEM),Android)
+	include $(BUILD_ROOT)/os/linux.mk
+else ifeq ($(TARGET_SYSTEM),Android-NDK)
+	include $(BUILD_ROOT)/os/android-ndk.mk
+else
+$(error Unknown TARGET_SYSTEM: $(TARGET_SYSTEM))
 endif
 
-ifdef TOOLCHAIN_CC
-GLOBAL_CC = $(TOOLCHAIN_CC)
+GLOBAL_GENERAL_CFLAGS := $(OSTYPE_GENERAL_CFLAGS)
+GLOBAL_GENERAL_CXXFLAGS := $(OSTYPE_GENERAL_CXXFLAGS)
+GLOBAL_GENERAL_LDFLAGS := $(OSTYPE_GENERAL_LDFLAGS)
+
+GLOBAL_EXEC_CFLAGS := $(OSTYPE_EXEC_CFLAGS)
+GLOBAL_EXEC_CXXFLAGS := $(OSTYPE_EXEC_CXXFLAGS)
+GLOBAL_EXEC_LDFLAGS := $(OSTYPE_EXEC_LDFLAGS)
+
+GLOBAL_LIB_CFLAGS := $(OSTYPE_LIB_CFLAGS)
+GLOBAL_LIB_CXXFLAGS := $(OSTYPE_LIB_CXXFLAGS)
+GLOBAL_LIB_LDFLAGS := $(OSTYPE_LIB_LDFLAGS)
+
+#
+# Host half
+#
+
+ifdef HOST_AR
+GLOBAL_AR = $(HOST_AR)
 endif
 
-ifdef TOOLCHAIN_CXX
-GLOBAL_CXX = $(TOOLCHAIN_CXX)
+ifdef HOST_CC
+GLOBAL_CC = $(HOST_CC)
 endif
 
-ifdef TOOLCHAIN_GLSLANG
-GLSLC = $(TOOLCHAIN_GLSLANG)
+ifdef HOST_CXX
+GLOBAL_CXX = $(HOST_CXX)
 endif
 
-ifdef TOOLCHAIN_SPIRV_LINK
-SPIRV_LINK = $(TOOLCHAIN_SPIRV_LINK)
+ifdef HOST_GLSLANG
+GLSLC = $(HOST_GLSLANG)
 endif
 
-ifdef TOOLCHAIN_TARGET
-GLOBAL_GENERAL_CFLAGS += --target=$(TOOLCHAIN_TARGET)
-GLOBAL_GENERAL_CXXFLAGS += --target=$(TOOLCHAIN_TARGET)
-GLOBAL_GENERAL_LDFLAGS += --target=$(TOOLCHAIN_TARGET)
+ifdef HOST_SPIRV_LINK
+SPIRV_LINK = $(HOST_SPIRV_LINK)
 endif
 
-ifdef TOOLCHAIN_SYSROOT
-GLOBAL_GENERAL_CFLAGS += --sysroot=$(TOOLCHAIN_SYSROOT)
-GLOBAL_GENERAL_CXXFLAGS += --sysroot=$(TOOLCHAIN_SYSROOT)
-GLOBAL_GENERAL_LDFLAGS += --sysroot=$(TOOLCHAIN_SYSROOT)
+ifdef HOST_GENERAL_CFLAGS
+GLOBAL_GENERAL_CFLAGS += $(HOST_GENERAL_CFLAGS)
 endif
 
-ifdef TOOLCHAIN_GENERAL_CFLAGS
-GLOBAL_GENERAL_CFLAGS += $(TOOLCHAIN_GENERAL_CFLAGS)
+ifdef HOST_GENERAL_CXXFLAGS
+GLOBAL_GENERAL_CXXFLAGS += $(HOST_GENERAL_CXXFLAGS)
 endif
 
-ifdef TOOLCHAIN_GENERAL_CXXFLAGS
-GLOBAL_GENERAL_CXXFLAGS += $(TOOLCHAIN_GENERAL_CXXFLAGS)
+ifdef HOST_EXEC_CFLAGS
+GLOBAL_EXEC_CFLAGS += $(HOST_EXEC_CFLAGS)
 endif
 
-ifdef TOOLCHAIN_EXEC_CFLAGS
-GLOBAL_EXEC_CFLAGS := $(TOOLCHAIN_EXEC_CFLAGS)
+ifdef HOST_EXEC_CXXFLAGS
+GLOBAL_EXEC_CXXFLAGS += $(HOST_EXEC_CXXFLAGS)
 endif
 
-ifdef TOOLCHAIN_EXEC_CXXFLAGS
-GLOBAL_EXEC_CXXFLAGS := $(TOOLCHAIN_EXEC_CXXFLAGS)
+ifdef HOST_LIB_CFLAGS
+GLOBAL_LIB_CFLAGS += $(HOST_LIB_CFLAGS)
 endif
 
-ifdef TOOLCHAIN_LIB_CFLAGS
-GLOBAL_LIB_CFLAGS := $(TOOLCHAIN_LIB_CFLAGS)
+ifdef HOST_LIB_CXXFLAGS
+GLOBAL_LIB_CXXFLAGS += $(HOST_LIB_CXXFLAGS)
 endif
 
-ifdef TOOLCHAIN_LIB_CXXFLAGS
-GLOBAL_LIB_CXXFLAGS := $(TOOLCHAIN_LIB_CXXFLAGS)
+ifdef HOST_GENERAL_LDFLAGS
+GLOBAL_GENERAL_LDFLAGS += $(HOST_GENERAL_LDFLAGS)
 endif
 
-ifdef TOOLCHAIN_GENERAL_LDFLAGS
-GLOBAL_GENERAL_LDFLAGS := $(TOOLCHAIN_GENERAL_LDFLAGS)
+ifdef HOST_LIB_LDFLAGS
+GLOBAL_LIB_LDFLAGS += $(HOST_LIB_LDFLAGS)
 endif
 
-ifdef TOOLCHAIN_LIB_LDFLAGS
-GLOBAL_LIB_LDFLAGS := $(TOOLCHAIN_LIB_LDFLAGS)
+ifdef HOST_EXEC_LDFLAGS
+GLOBAL_EXEC_LDFLAGS += $(HOST_EXEC_LDFLAGS)
 endif
 
-ifdef TOOLCHAIN_EXEC_LDFLAGS
-GLOBAL_EXEC_LDFLAGS := $(TOOLCHAIN_EXEC_LDFLAGS)
+
+#
+# Target half
+#
+
+ifdef TARGET_NAME
+ifneq ($(TARGET_NAME),)
+GLOBAL_GENERAL_CFLAGS += --target=$(TARGET_NAME)
+GLOBAL_GENERAL_CXXFLAGS += --target=$(TARGET_NAME)
+GLOBAL_GENERAL_LDFLAGS += --target=$(TARGET_NAME)
+endif
 endif
 
-ifneq (,$(findstring clang,$(GLOBAL_CXX)))
-	GLOBAL_COMPILER_IS_CLANG := 1
+ifdef TARGET_SYSROOT
+ifneq ($(TARGET_SYSROOT),)
+GLOBAL_GENERAL_CFLAGS += --sysroot=$(TARGET_SYSROOT)
+GLOBAL_GENERAL_CXXFLAGS += --sysroot=$(TARGET_SYSROOT)
+GLOBAL_GENERAL_LDFLAGS += --sysroot=$(TARGET_SYSROOT)
+endif
+endif
+
+ifdef TARGET_GENERAL_CFLAGS
+GLOBAL_GENERAL_CFLAGS += $(TARGET_GENERAL_CFLAGS)
+endif
+
+ifdef TARGET_GENERAL_CXXFLAGS
+GLOBAL_GENERAL_CXXFLAGS += $(TARGET_GENERAL_CXXFLAGS)
+endif
+
+ifdef TARGET_EXEC_CFLAGS
+GLOBAL_EXEC_CFLAGS += $(TARGET_EXEC_CFLAGS)
+endif
+
+ifdef TARGET_EXEC_CXXFLAGS
+GLOBAL_EXEC_CXXFLAGS += $(TARGET_EXEC_CXXFLAGS)
+endif
+
+ifdef TARGET_LIB_CFLAGS
+GLOBAL_LIB_CFLAGS += $(TARGET_LIB_CFLAGS)
+endif
+
+ifdef TARGET_LIB_CXXFLAGS
+GLOBAL_LIB_CXXFLAGS += $(TARGET_LIB_CXXFLAGS)
+endif
+
+ifdef TARGET_GENERAL_LDFLAGS
+GLOBAL_GENERAL_LDFLAGS += $(TARGET_GENERAL_LDFLAGS)
+endif
+
+ifdef TARGET_LIB_LDFLAGS
+GLOBAL_LIB_LDFLAGS += $(TARGET_LIB_LDFLAGS)
+endif
+
+ifdef TARGET_EXEC_LDFLAGS
+GLOBAL_EXEC_LDFLAGS += $(TARGET_EXEC_LDFLAGS)
 endif
 
 $(call print_verbose,(apply-toolchain.mk) GLOBAL_AR: $(GLOBAL_AR))
@@ -104,12 +183,16 @@ $(call print_verbose,(apply-toolchain.mk) GLOBAL_LIB_CXXFLAGS: $(GLOBAL_LIB_CXXF
 $(call print_verbose,(apply-toolchain.mk) GLOBAL_GENERAL_LDFLAGS: $(GLOBAL_GENERAL_LDFLAGS))
 $(call print_verbose,(apply-toolchain.mk) GLOBAL_LIB_LDFLAGS: $(GLOBAL_LIB_LDFLAGS))
 $(call print_verbose,(apply-toolchain.mk) GLOBAL_EXEC_LDFLAGS: $(GLOBAL_EXEC_LDFLAGS))
-$(call print_verbose,(apply-toolchain.mk) GLOBAL_COMPILER_IS_CLANG: $(GLOBAL_COMPILER_IS_CLANG))
 
 $(call print_verbose,(apply-toolchain.mk) GLSLC: $(GLSLC))
 $(call print_verbose,(apply-toolchain.mk) SPIRV_LINK: $(SPIRV_LINK))
 
 # Find runtime for toolchain
--include $(TOOLCHAIN_SYSROOT)/share/stappler/runtime.mk
+ifeq ($(patsubst %$+sprt,,$(STAPPLER_TARGET)),)
+$(call print_verbose,(apply-toolchain.mk) $(STAPPLER_TARGET) uses integrated stappler runtime)
+else
+$(call print_verbose,(apply-toolchain.mk) $(STAPPLER_TARGET) requires internal runtime)
+include $(GLOBAL_ROOT)/runtime/runtime.mk
+endif
 
-$(call print_verbose,(apply-toolchain.mk) End)
+$(call print_verbose,(apply-toolchain.mk) Toolchain configured!)

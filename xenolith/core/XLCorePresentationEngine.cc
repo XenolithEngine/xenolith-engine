@@ -32,7 +32,6 @@
 #include "SPEventTimerHandle.h"
 
 #define XL_COREPRESENT_DEBUG 0
-
 #ifndef XL_VKAPI_LOG
 #define XL_VKAPI_LOG(...)
 #endif
@@ -100,7 +99,7 @@ void PresentationEngine::scheduleNextImage(Function<void(PresentationFrame *, bo
 	}
 
 	if (scheduleSwapchainImage(Rc<PresentationFrame>::create(this, _constraints, _frameOrder,
-				frameFlags, sp::move(cb)))) {
+				_serial, frameFlags, sp::move(cb)))) {
 		_readyForNextFrame = false;
 		_waitForDisplayLink = true;
 	}
@@ -178,7 +177,7 @@ void PresentationEngine::updateConstraints(UpdateConstraintsFlags flags,
 
 	if (flags == UpdateConstraintsFlags::None) {
 		// update should not deprecate swapchain, just update secondary fields
-		auto newConstraints = _window->exportConstraints();
+		auto newConstraints = _window->exportConstraints(_serial);
 		newConstraints.extent = _constraints.extent;
 		newConstraints.transform = _constraints.transform;
 
@@ -238,7 +237,7 @@ bool PresentationEngine::init(NotNull<Loop> loop, NotNull<Device> device,
 	_device = device;
 	_window = window;
 	_originalSurface = _surface = _window->makeSurface(loop->getInstance());
-	_constraints = _window->exportConstraints();
+	_constraints = _window->exportConstraints(_serial);
 	return true;
 }
 
@@ -370,6 +369,9 @@ void PresentationEngine::setTargetFrameInterval(uint64_t value) { _targetFrameIn
 void PresentationEngine::presentWithQueue(DeviceQueue &queue, NotNull<PresentationFrame> frame,
 		ImageStorage *image, uint64_t presentWindow) {
 	XL_COREPRESENT_LOG("presentWithQueue: ", _activeFrames.size());
+
+	_window->handleFrameReady(frame);
+
 	auto clock = sp::platform::clock(ClockType::Monotonic);
 	auto res = _swapchain->present(queue, image, presentWindow);
 	auto dt = updatePresentationInterval();
@@ -609,10 +611,14 @@ void PresentationEngine::handleFrameComplete(NotNull<PresentationFrame> frame) {
 	}
 }
 
+void PresentationEngine::handleSwapchainUpdated(const FrameConstraints &c) {
+	_window->handleSwapchainUpdated(c);
+}
+
 void PresentationEngine::captureScreenshot(
 		Function<void(const ImageInfoData &info, BytesView view)> &&cb) {
 
-	scheduleSwapchainImage(Rc<PresentationFrame>::create(this, _constraints, _frameOrder,
+	scheduleSwapchainImage(Rc<PresentationFrame>::create(this, _constraints, _frameOrder, _serial,
 			PresentationFrame::OffscreenTarget | PresentationFrame::DoNotPresent,
 			[this, cb = sp::move(cb)](PresentationFrame *frame, bool success) mutable {
 		auto target = frame->getTarget();
@@ -682,39 +688,62 @@ void PresentationEngine::scheduleImage(NotNull<PresentationFrame> frame) {
 Status PresentationEngine::acquireScheduledImage() {
 	if (!_requestedSwapchainImage.empty() || _framesAwaitingImages.empty()
 			|| _totalFrames.size() != _activeFrames.size()) {
-		XL_COREPRESENT_LOG("acquireScheduledImage - dropped");
+		XL_COREPRESENT_LOG("acquireScheduledImage - dropped: ", !_requestedSwapchainImage.empty(),
+				" ", _framesAwaitingImages.empty(), " ", _totalFrames.size(), " ",
+				_activeFrames.size());
 		return Status::Declined;
 	}
 
-	Status status;
 
 	XL_COREPRESENT_LOG("acquireScheduledImage");
 	auto loop = (Loop *)_loop.get();
-	auto fence = loop->acquireFence(FenceType::Swapchain);
-	if (auto acquiredImage = _swapchain->acquire(true, fence, status)) {
-		_requestedSwapchainImage.emplace(acquiredImage);
-		XL_COREPRESENT_LOG("acquireScheduledImage - spawn request: ",
-				_requestedSwapchainImage.size());
-		fence->addRelease([this, f = fence.get(), acquiredImage](bool success) mutable {
-			if (success) {
-				handleSwapchainImageReady(move(acquiredImage));
-			} else {
-				_requestedSwapchainImage.erase(acquiredImage);
-			}
-			XL_COREPRESENT_LOG("[", f->getFrame(), "] acquireScheduledImage [complete]", " [",
-					sp::platform::clock(ClockType::Monotonic) - f->getArmedTime(), "]");
-		}, this, "PresentationEngine::acquireScheduledImage");
-		fence->schedule(*loop);
-		return Status::Ok;
+
+	Status status = Status::Ok;
+	Rc<Swapchain::SwapchainAcquiredImage> acquiredImage;
+	Rc<Fence> fence;
+
+	if (!_options.acquireImageWithoutFence) {
+		fence = loop->acquireFence(FenceType::Swapchain);
+		acquiredImage = _swapchain->acquire(true, fence, status);
+		if (acquiredImage) {
+			_requestedSwapchainImage.emplace(acquiredImage);
+			XL_COREPRESENT_LOG("acquireScheduledImage - spawn request: ",
+					_requestedSwapchainImage.size(), " - ", acquiredImage->imageIndex);
+			fence->addRelease([this, f = fence.get(), acquiredImage](bool success) mutable {
+				if (success) {
+					handleSwapchainImageReady(move(acquiredImage));
+				} else {
+					_requestedSwapchainImage.erase(acquiredImage);
+				}
+				XL_COREPRESENT_LOG("[", f->getFrame(), "] acquireScheduledImage [complete]", " [",
+						sp::platform::clock(ClockType::Monotonic) - f->getArmedTime(), "]");
+			}, this, "PresentationEngine::acquireScheduledImage");
+			fence->schedule(*loop);
+			return Status::Ok;
+		}
 	} else {
+		// Without Fence, we have no ability to wait before image ACTUALLY ready, so, lock immediately (lockfree = false)
+		acquiredImage = _swapchain->acquire(false, fence, status);
+		if (acquiredImage) {
+			_requestedSwapchainImage.emplace(acquiredImage);
+			XL_COREPRESENT_LOG("acquireScheduledImage - acquired: ",
+					_requestedSwapchainImage.size(), " - ", acquiredImage->imageIndex);
+			handleSwapchainImageReady(move(acquiredImage));
+			return Status::Ok;
+		}
+	}
+
+	if (!acquiredImage) {
 		XL_COREPRESENT_LOG("acquireScheduledImage - failed");
-		fence->schedule(*loop);
+		if (fence) {
+			fence->schedule(*loop);
+		}
 		if (status == Status::Timeout) {
 			// schedule timed waiter
 			scheduleImageAcquisition();
 		}
-		return status;
 	}
+	return status;
 }
 
 void PresentationEngine::scheduleImageAcquisition() {

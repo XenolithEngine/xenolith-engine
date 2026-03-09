@@ -27,7 +27,7 @@
 #include "XLVk.h"
 #include "XLVkInfo.h"
 #include "XLVkLoop.h"
-#include "XLCoreDevice.h"
+#include "XLVkDevice.h"
 #include <vulkan/vulkan_core.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
@@ -160,12 +160,7 @@ Instance::Instance(VkInstance inst, const PFN_vkGetInstanceProcAddr getInstanceP
 		vkEnumeratePhysicalDevices(_instance, &deviceCount, devices.data());
 
 		for (auto &device : devices) {
-			auto &it = _devices.emplace_back(getDeviceInfo(device));
-
-			_availableDevices.emplace_back(core::DeviceProperties{
-				String(it.properties.device10.properties.deviceName),
-				it.properties.device10.properties.apiVersion,
-				it.properties.device10.properties.driverVersion, it.supportsPresentation()});
+			_devices.emplace_back(DeviceInfoWrapper(device)); //
 		}
 	} else {
 		log::source().info("Vk", "No devices available on this instance");
@@ -177,6 +172,25 @@ Instance::~Instance() {
 		vkDestroyDebugUtilsMessengerEXT(_instance, debugMessenger, nullptr);
 	}
 	vkDestroyInstance(_instance, nullptr);
+}
+
+size_t Instance::getDeviceCount() const { return _devices.size(); }
+
+bool Instance::readDeviceProperties(size_t n, sprt::window::gapi::DeviceProperties &prop) {
+	if (n >= _devices.size()) {
+		return false;
+	}
+
+	auto &it = _devices.at(n);
+
+	it.once([&] { getDeviceInfo(it.info, it.info.device); });
+
+	prop.deviceName = it.info.properties.device10.properties.deviceName;
+	prop.apiVersion = it.info.properties.device10.properties.apiVersion;
+	prop.driverVersion = it.info.properties.device10.properties.driverVersion;
+	prop.presentationSupported = it.info.supportsPresentation();
+
+	return true;
 }
 
 Rc<core::Loop> Instance::makeLoop(NotNull<event::Looper> looper, Rc<core::LoopInfo> &&info) const {
@@ -267,54 +281,60 @@ Rc<Device> Instance::makeDevice(const core::LoopInfo &info) const {
 
 	if (info.deviceIdx == core::InstanceDefaultDevice) {
 		for (auto &it : _devices) {
-			if (!isDeviceSupported(it)) {
+			it.once([&] { getDeviceInfo(it.info, it.info.device); });
+
+			if (!isDeviceSupported(it.info)) {
 				log::source().warn("vk::Instance", "Device rejected: device is not supported");
 				continue;
 			}
 
-			auto requiredExtensions = getDeviceExtensions(it);
-			if (!isExtensionsSupported(it, requiredExtensions)) {
+			auto requiredExtensions = getDeviceExtensions(it.info);
+			if (!isExtensionsSupported(it.info, requiredExtensions)) {
 				log::source().warn("vk::Instance",
 						"Device rejected: required extensions is not available");
 				continue;
 			}
 
 			DeviceInfo::Features targetFeatures;
-			if (!buildFeaturesList(it, targetFeatures)) {
+			if (!buildFeaturesList(it.info, targetFeatures)) {
 				log::source().warn("vk::Instance",
 						"Device rejected: required features is not available");
 				continue;
 			}
 
-			if (it.features.canEnable(targetFeatures,
-						it.properties.device10.properties.apiVersion)) {
-				return Rc<vk::Device>::create(this, DeviceInfo(it), targetFeatures,
+			if (it.info.features.canEnable(targetFeatures,
+						it.info.properties.device10.properties.apiVersion)) {
+				return Rc<vk::Device>::create(this, DeviceInfo(it.info), targetFeatures,
 						requiredExtensions);
 			}
 		}
 	} else if (info.deviceIdx < _devices.size()) {
 		auto &dev = _devices[info.deviceIdx];
-		if (!isDeviceSupported(dev)) {
+
+		dev.once([&] { getDeviceInfo(dev.info, dev.info.device); });
+
+		if (!isDeviceSupported(dev.info)) {
 			log::source().error("vk::Instance", "Fail to create device: device is not supported");
 			return nullptr;
 		}
 
-		auto requiredExtensions = getDeviceExtensions(dev);
-		if (!isExtensionsSupported(dev, requiredExtensions)) {
+		auto requiredExtensions = getDeviceExtensions(dev.info);
+		if (!isExtensionsSupported(dev.info, requiredExtensions)) {
 			log::source().error("vk::Instance",
 					"Fail to create device: required extensions is not available");
 			return nullptr;
 		}
 
 		DeviceInfo::Features targetFeatures;
-		if (!buildFeaturesList(dev, targetFeatures)) {
+		if (!buildFeaturesList(dev.info, targetFeatures)) {
 			log::source().error("vk::Instance",
 					"Fail to create device: required features is not available");
 			return nullptr;
 		}
 
-		if (dev.features.canEnable(targetFeatures, dev.properties.device10.properties.apiVersion)) {
-			return Rc<vk::Device>::create(this, DeviceInfo(dev), targetFeatures,
+		if (dev.info.features.canEnable(targetFeatures,
+					dev.info.properties.device10.properties.apiVersion)) {
+			return Rc<vk::Device>::create(this, DeviceInfo(dev.info), targetFeatures,
 					requiredExtensions);
 		}
 	}
@@ -468,7 +488,7 @@ VkExtent2D Instance::getSurfaceExtent(VkSurfaceKHR surface, VkPhysicalDevice dev
 
 VkInstance Instance::getInstance() const { return _instance; }
 
-void Instance::printDevicesInfo(std::ostream &out) const {
+void Instance::printDevicesInfo(std::ostream &out, bool initOnly) const {
 	out << "\n";
 
 	auto getDeviceTypeString = [&](VkPhysicalDeviceType type) -> const char * {
@@ -483,18 +503,25 @@ void Instance::printDevicesInfo(std::ostream &out) const {
 	};
 
 	for (auto &device : _devices) {
-		out << "\tDevice: " << device.device << " "
-			<< getDeviceTypeString(device.properties.device10.properties.deviceType) << ": "
-			<< device.properties.device10.properties.deviceName
-			<< " (API: " << getVersionDescription(device.properties.device10.properties.apiVersion)
+		if (initOnly && !device.once.is_set()) {
+			continue;
+		}
+
+		device.once([&] { getDeviceInfo(device.info, device.info.device); });
+
+		out << "\tDevice: " << device.info.device << " "
+			<< getDeviceTypeString(device.info.properties.device10.properties.deviceType) << ": "
+			<< device.info.properties.device10.properties.deviceName << " (API: "
+			<< getVersionDescription(device.info.properties.device10.properties.apiVersion)
 			<< ", Driver: "
-			<< getVersionDescription(device.properties.device10.properties.driverVersion) << ")\n";
+			<< getVersionDescription(device.info.properties.device10.properties.driverVersion)
+			<< ")\n";
 
 		uint32_t queueFamilyCount = 0;
-		vkGetPhysicalDeviceQueueFamilyProperties(device.device, &queueFamilyCount, nullptr);
+		vkGetPhysicalDeviceQueueFamilyProperties(device.info.device, &queueFamilyCount, nullptr);
 
 		Vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-		vkGetPhysicalDeviceQueueFamilyProperties(device.device, &queueFamilyCount,
+		vkGetPhysicalDeviceQueueFamilyProperties(device.info.device, &queueFamilyCount,
 				queueFamilies.data());
 
 		int i = 0;
@@ -542,7 +569,7 @@ void Instance::printDevicesInfo(std::ostream &out) const {
 				out << "Protected";
 			}
 
-			VkBool32 presentSupport = checkPresentationSupport(device.device, i).any();
+			VkBool32 presentSupport = checkPresentationSupport(device.info.device, i).any();
 			if (presentSupport) {
 				if (!empty) {
 					out << ", ";
@@ -555,7 +582,7 @@ void Instance::printDevicesInfo(std::ostream &out) const {
 			out << "; Count: " << queueFamily.queueCount << "\n";
 			i++;
 		}
-		out << device.description();
+		out << device.info.description();
 	}
 }
 
@@ -622,6 +649,10 @@ void Instance::getDeviceFeatures(const VkPhysicalDevice &device, DeviceInfo::Fea
 			features.deviceBufferDeviceAddress.pNext = next;
 			next = &features.deviceBufferDeviceAddress;
 		}
+		if (flags[toInt(OptionalDeviceExtension::SwapchainMaintenance1)]) {
+			features.deviceSwapchainMaintenance1.pNext = next;
+			next = &features.deviceSwapchainMaintenance1;
+		}
 		features.device10.pNext = next;
 
 		if (vkGetPhysicalDeviceFeatures2) {
@@ -672,8 +703,7 @@ void Instance::getDeviceProperties(const VkPhysicalDevice &device,
 	}
 }
 
-DeviceInfo Instance::getDeviceInfo(VkPhysicalDevice device) const {
-	DeviceInfo ret;
+void Instance::getDeviceInfo(DeviceInfo &ret, VkPhysicalDevice device) const {
 	uint32_t graphicsFamily = maxOf<uint32_t>();
 	uint32_t presentFamily = maxOf<uint32_t>();
 	uint32_t transferFamily = maxOf<uint32_t>();
@@ -930,8 +960,6 @@ DeviceInfo Instance::getDeviceInfo(VkPhysicalDevice device) const {
 			}
 		}
 	}
-
-	return ret;
 }
 
 SurfaceBackendMask Instance::checkPresentationSupport(VkPhysicalDevice device,

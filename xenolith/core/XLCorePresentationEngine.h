@@ -50,10 +50,15 @@ public:
 	virtual void acquireFrameData(NotNull<PresentationFrame>,
 			Function<void(NotNull<PresentationFrame>)> &&) = 0;
 
+	// called right before present call
+	virtual void handleFrameReady(NotNull<core::PresentationFrame>) = 0;
+
+	// called right after present call
 	virtual void handleFramePresented(NotNull<PresentationFrame>) = 0;
+	virtual void handleSwapchainUpdated(const FrameConstraints &) = 0;
 
 	virtual Rc<Surface> makeSurface(NotNull<Instance>) = 0;
-	virtual FrameConstraints exportConstraints() const = 0;
+	virtual FrameConstraints exportConstraints(uint64_t &serial) const = 0;
 
 	virtual void setFrameOrder(uint64_t) = 0;
 };
@@ -143,6 +148,8 @@ public:
 	virtual void handleFramePresented(NotNull<PresentationFrame>);
 	virtual void handleFrameComplete(NotNull<PresentationFrame>);
 
+	virtual void handleSwapchainUpdated(const FrameConstraints &);
+
 	virtual void captureScreenshot(Function<void(const ImageInfoData &info, BytesView view)> &&cb);
 
 	virtual void synchronizeClose();
@@ -178,6 +185,8 @@ protected:
 	bool canScheduleNextFrame() const;
 
 	PresentationOptions _options;
+
+	uint64_t _serial = 0;
 	FrameConstraints _constraints;
 
 	Device *_device = nullptr;

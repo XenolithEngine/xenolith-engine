@@ -476,11 +476,13 @@ bool Fence::check(Loop &loop, bool lockfree) {
 		_state = Armed;
 		if (sp::platform::clock(ClockType::Monotonic) - _armedTime > 1'000'000) {
 			lock.unlock();
-			/*if (_queue) {
-				XL_VKAPI_LOG("Fence [", _queue->getFrameIndex(), "] Fence is possibly broken: ", _tag);
+			if (_queue) {
+				slog().error("core::Fence", "Fence [", _queue->getFrameIndex(),
+						"] Fence is possibly broken: ", _tag);
 			} else {
-				XL_VKAPI_LOG("Fence [", _frame, "] Fence is possibly broken: ", _tag);
-			}*/
+				slog().error("core::Fence", "Fence [", _frame,
+						"] Fence is possibly broken: ", _tag);
+			}
 			return check(loop, false);
 		}
 		return false;

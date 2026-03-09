@@ -36,7 +36,7 @@ MODULE_STAPPLER_FONT_LIBS += -l:libz.a
 endif
 
 ifdef ANDROID
-MODULE_STAPPLER_FONT_LIBS += -lz -l:libharfbuzz.a
+MODULE_STAPPLER_FONT_LIBS += -l:libz.a -l:libharfbuzz.a
 endif
 
 ifdef WIN32

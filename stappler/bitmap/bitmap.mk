@@ -34,6 +34,10 @@ ifdef LINUX
 MODULE_STAPPLER_BITMAP_LIBS += -l:libz.a -lpthread
 endif
 
+ifdef ANDROID
+MODULE_STAPPLER_BITMAP_LIBS += -l:libz.a
+endif
+
 ifdef MACOS
 MODULE_STAPPLER_BITMAP_GENERAL_LDFLAGS += -lz
 endif

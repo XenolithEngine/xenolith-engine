@@ -18,7 +18,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-$(call print_verbose,(fn-sh.mk) Using sh)
+$(call print_verbose,(init-sh.mk) Init with sh)
+
+# Проверяем хостовую систему, у Darwin нет опции -o для uname
+UNAME := $(shell uname)
 
 SH := 1
 
@@ -45,3 +48,36 @@ shell_cat = \
 	$(shell cat $(1) 2> /dev/null)
 
 shell_arith = $(shell echo $$($(1)) )
+
+STAPPLER_HOST_ARCH ?= $(shell uname -m)
+
+ifeq ($(STAPPLER_HOST_ARCH),arm64)
+STAPPLER_HOST_ARCH := aarch64
+endif
+
+ifeq ($(UNAME),Darwin)
+
+ANDROID_HOST := darwin-$(STAPPLER_HOST_ARCH)
+
+STAPPLER_HOST := $(STAPPLER_HOST_ARCH)-apple-darwin
+
+else ifeq ($(UNAME),Linux)
+
+ANDROID_HOST := linux-$(STAPPLER_HOST_ARCH)
+
+ifeq ($(shell ldd /bin/ls 2>&1 | grep -q 'musl'),)
+STAPPLER_HOST := $(STAPPLER_HOST_ARCH)-unknown-linux-gnu
+else
+STAPPLER_HOST := $(STAPPLER_HOST_ARCH)-unknown-linux-musl
+endif # MUSL
+
+else
+
+$(error Unknown host OS)
+
+endif
+
+$(call print_verbose,(init-sh.mk) UNAME: $(UNAME))
+$(call print_verbose,(init-sh.mk) STAPPLER_HOST_ARCH: $(STAPPLER_HOST_ARCH))
+$(call print_verbose,(init-sh.mk) STAPPLER_HOST: $(STAPPLER_HOST))
+$(call print_verbose,(init-sh.mk) ANDROID_HOST: $(ANDROID_HOST))

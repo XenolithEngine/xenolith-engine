@@ -90,6 +90,10 @@ public:
 			PresentSupportCallback &&, SurfaceBackendMask &&, core::InstanceFlags flags);
 	virtual ~Instance();
 
+	virtual size_t getDeviceCount() const override;
+
+	virtual bool readDeviceProperties(size_t, sprt::window::gapi::DeviceProperties &) override;
+
 	virtual Rc<core::Loop> makeLoop(NotNull<event::Looper>, Rc<core::LoopInfo> &&) const override;
 
 	Rc<Device> makeDevice(const core::LoopInfo &) const;
@@ -100,19 +104,26 @@ public:
 
 	VkInstance getInstance() const;
 
-	void printDevicesInfo(std::ostream &stream) const;
+	void printDevicesInfo(std::ostream &stream, bool initOnly = false) const;
 
 	uint32_t getVersion() const { return _version; }
 
 	SurfaceBackendMask getSurfaceBackends() const { return _surfaceBackendMask; }
 
 private:
+	struct DeviceInfoWrapper {
+		mutable sprt::qonce once;
+		mutable DeviceInfo info;
+
+		DeviceInfoWrapper(VkPhysicalDevice dev) : info(dev) { }
+	};
+
 	void getDeviceFeatures(const VkPhysicalDevice &device, DeviceInfo::Features &,
 			const DeviceInfo::OptVec &, uint32_t) const;
 	void getDeviceProperties(const VkPhysicalDevice &device, DeviceInfo::Properties &,
 			const DeviceInfo::OptVec &, uint32_t) const;
 
-	DeviceInfo getDeviceInfo(VkPhysicalDevice device) const;
+	void getDeviceInfo(DeviceInfo &, VkPhysicalDevice device) const;
 
 	SurfaceBackendMask checkPresentationSupport(VkPhysicalDevice device, uint32_t) const;
 
@@ -127,7 +138,7 @@ private:
 	VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
 	uint32_t _version = 0;
 	OptVec _optionals;
-	Vector<DeviceInfo> _devices;
+	Vector<DeviceInfoWrapper> _devices;
 	PresentSupportCallback _checkPresentSupport;
 	SurfaceBackendMask _surfaceBackendMask;
 };

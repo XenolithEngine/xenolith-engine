@@ -18,18 +18,18 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-BUILD_LIBRARY_PATH := $(OSTYPE_PREBUILT_PATH)
-ifdef TOOLCHAIN_SYSROOT
-BUILD_LIBRARY_PATH := $(TOOLCHAIN_SYSROOT)/lib
+ifdef TARGET_LIBDIR
+BUILD_LIBRARY_PATH := $(TARGET_LIBDIR)
+else ifdef TARGET_SYSROOT
+BUILD_LIBRARY_PATH := $(TARGET_SYSROOT)/usr/lib
 endif
 
 $(call print_verbose,(c/apply.mk) Build source lists)
 
 # Список библиотек для включения в конечное приложение
 # Для Android в пути к библоитеке используется символ-заместитель для архитектуры, потому используется abspath вместо realpath
-ifndef BUILD_SHARED
 ifdef ANDROID
-BUILD_LIBS := $(call sp_toolkit_resolve_libs, $(abspath $(BUILD_LIBRARY_PATH)), $(TOOLKIT_LIBS)) $(LDFLAGS)
+BUILD_LIBS := $(call sp_toolkit_resolve_libs, $(abspath $(BUILD_LIBRARY_PATH)/$$(BUILD_ARCH)), $(TOOLKIT_LIBS))
 else
 RPATH_PREFIX := -Wl,-rpath,
 BUILD_LIBS := \
@@ -37,13 +37,9 @@ BUILD_LIBS := \
 		$(addprefix -L,$(SHARED_LIBDIR))\
 		$(if $(SHARED_RPATH),$(addprefix $(RPATH_PREFIX),$(SHARED_RPATH)))) \
 	$(call sp_toolkit_resolve_libs,\
-		$(if $(SHARED_LIBDIR),,$(if $(BUILD_SHARED_DEPS),,$(realpath $(addprefix $(GLOBAL_ROOT)/,$(BUILD_LIBRARY_PATH))))),\
-		$(TOOLKIT_LIBS),$(TOOLKIT_LIBS_SHARED))\
-	$(LDFLAGS)
+		$(if $(SHARED_LIBDIR),,$(realpath $(addprefix $(GLOBAL_ROOT)/,$(BUILD_LIBRARY_PATH)))),\
+		$(TOOLKIT_LIBS),$(TOOLKIT_LIBS_SHARED))
 endif # ANDROID
-else
-BUILD_LIBS :=
-endif # BUILD_SHARED
 
 # Список полных путей к прекомпилируемым заголовкам
 TOOLKIT_PRECOMPILED_HEADERS := $(call sp_toolkit_resolve_prefix_files,$(TOOLKIT_PRECOMPILED_HEADERS))
@@ -74,13 +70,11 @@ $(call print_verbose,(c/apply.mk) Build compiler flags)
 
 BUILD_PRIVATE_GENERAL_CFLAGS := \
 	$(BUILD_TYPE_CFLAGS) \
-	$(GLOBAL_GENERAL_CFLAGS) \
-	$(addprefix -I,$(OSTYPE_INCLUDE))
+	$(GLOBAL_GENERAL_CFLAGS)
 
 BUILD_PRIVATE_GENERAL_CXXFLAGS := \
 	$(BUILD_TYPE_CXXFLAGS) \
-	$(GLOBAL_GENERAL_CXXFLAGS) \
-	$(addprefix -I,$(OSTYPE_INCLUDE))
+	$(GLOBAL_GENERAL_CXXFLAGS)
 
 BUILD_PRIVATE_EXEC_CFLAGS := \
 	$(BUILD_PRIVATE_GENERAL_CFLAGS) \
@@ -105,7 +99,6 @@ BUILD_GENERAL_CFLAGS := \
 	$(LOCAL_CFLAGS) \
 	$(addprefix -I,$(TOOLKIT_INCLUDES)) \
 	$(addprefix -I,$(BUILD_INCLUDES)) \
-	$(addprefix -I,$(OSTYPE_INCLUDE)) \
 	$(BUILD_SHADERS_TARGET_INCLUDE_ALL)
 
 BUILD_GENERAL_CXXFLAGS := \
@@ -115,7 +108,6 @@ BUILD_GENERAL_CXXFLAGS := \
 	$(LOCAL_CXXFLAGS) \
 	$(addprefix -I,$(TOOLKIT_INCLUDES)) \
 	$(addprefix -I,$(BUILD_INCLUDES)) \
-	$(addprefix -I,$(OSTYPE_INCLUDE)) \
 	$(BUILD_SHADERS_TARGET_INCLUDE_ALL)
 
 BUILD_EXEC_CFLAGS := \
@@ -191,7 +183,7 @@ BUILD_ALL_FLAGS_DIFF := \
 ifndef SPBUILDTOOL
 ifneq ($(strip $(BUILD_ALL_FLAGS_CACHED)),$(strip $(BUILD_ALL_FLAGS)))
 
-$(info Build flags changed: $(BUILD_ALL_FLAGS_DIFF))
+$(call print_verbose,(c/apply.mk) Build flags changed: $(BUILD_ALL_FLAGS_DIFF))
 
 # Обновляем кешированные флаги
 

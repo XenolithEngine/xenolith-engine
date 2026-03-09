@@ -65,13 +65,6 @@ struct SP_PUBLIC LoopBackendInfo : public sprt::window::gapi::LoopBackendInfo {
 	virtual Value encode() const = 0;
 };
 
-struct SP_PUBLIC DeviceProperties {
-	String deviceName;
-	uint32_t apiVersion = 0;
-	uint32_t driverVersion = 0;
-	bool supportsPresentation = false;
-};
-
 class SP_PUBLIC Instance : public sprt::window::gapi::Instance {
 public:
 	static Rc<Instance> create(Rc<InstanceInfo> &&);
@@ -80,11 +73,7 @@ public:
 
 	Instance(InstanceApi b, InstanceFlags flags, Dso &&);
 
-	const Vector<DeviceProperties> &getAvailableDevices() const { return _availableDevices; }
-
 	virtual Rc<Loop> makeLoop(NotNull<event::Looper>, Rc<core::LoopInfo> &&) const;
-
-	virtual bool isPresentationSupported() const;
 
 	InstanceApi getApi() const { return _api; }
 	InstanceFlags getFlags() const { return _flags; }
@@ -93,7 +82,6 @@ protected:
 	InstanceApi _api = InstanceApi::None;
 	InstanceFlags _flags = InstanceFlags::None;
 	Dso _dsoModule;
-	Vector<DeviceProperties> _availableDevices;
 };
 
 SP_PUBLIC StringView getInstanceApiName(InstanceApi);

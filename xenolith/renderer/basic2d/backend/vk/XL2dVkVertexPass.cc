@@ -142,6 +142,12 @@ struct VertexMaterialVertexProcessor : public Ref {
 	using DynamicData = VertexMaterialDynamicData;
 	using WriteTarget = VertexMaterialWriteTarget;
 
+	core::FrameConstraints _constraints;
+	bool _persistentMapping = false;
+	Rc<core::FrameCache> _cache;
+	Rc<Device> _device;
+	Rc<DeviceMemoryPool> _devMemPool;
+
 	uint32_t solidCmds = 0;
 	uint32_t surfaceCmds = 0;
 	uint32_t transparentCmds = 0;
@@ -167,7 +173,7 @@ struct VertexMaterialVertexProcessor : public Ref {
 
 	void run(core::FrameHandle &frame);
 
-	bool loadVertexes(core::FrameHandle &frame);
+	bool loadVertexes();
 
 	void finalize(DynamicData *data);
 };
@@ -179,39 +185,35 @@ VertexMaterialVertexProcessor::VertexMaterialVertexProcessor(VertexAttachmentHan
 }
 
 void VertexMaterialVertexProcessor::run(core::FrameHandle &frame) {
+	_constraints = frame.getFrameConstraints();
+	_persistentMapping = frame.isPersistentMapping();
+	_cache = frame.getLoop()->getFrameCache();
+	_device = static_cast<Device *>(frame.getDevice());
+	_devMemPool = static_cast<DeviceFrameHandle &>(frame).getMemPool(this);
+
 	frame.performInQueue([this](core::FrameHandle &handle) {
-		if (!loadVertexes(handle)) {
+		if (!loadVertexes()) {
 			_callback(false);
 		}
 	}, this, "VertexMaterialAttachmentHandle::submitInput");
 }
 
-bool VertexMaterialVertexProcessor::loadVertexes(core::FrameHandle &fhandle) {
-	auto handle = dynamic_cast<DeviceFrameHandle *>(&fhandle);
-	if (!handle) {
-		return false;
-	}
-
+bool VertexMaterialVertexProcessor::loadVertexes() {
 	auto pool = memory::pool::create(memory::pool::acquire());
 	auto ret = mem_pool::perform([&] {
-		auto cache = handle->getLoop()->getFrameCache();
-
-		_drawStat.cachedFramebuffers = uint32_t(cache->getFramebuffersCount());
-		_drawStat.cachedImages = uint32_t(cache->getImagesCount());
-		_drawStat.cachedImageViews = uint32_t(cache->getImageViewsCount());
+		_drawStat.cachedFramebuffers = uint32_t(_cache->getFramebuffersCount());
+		_drawStat.cachedImages = uint32_t(_cache->getImagesCount());
+		_drawStat.cachedImageViews = uint32_t(_cache->getImageViewsCount());
 		_drawStat.materials = uint32_t(_attachment->getMaterialSet()->getMaterials().size());
 
 		auto dynamicData = new (pool) DynamicData;
-		dynamicData->surfaceExtent = fhandle.getFrameConstraints().extent;
-		dynamicData->transform = fhandle.getFrameConstraints().transform;
-		dynamicData->hasGpuSideAtlases =
-				handle->getAllocator()->getDevice()->hasDynamicIndexedBuffers();
+		dynamicData->surfaceExtent = _constraints.extent;
+		dynamicData->transform = _constraints.transform;
+		dynamicData->hasGpuSideAtlases = _device->hasDynamicIndexedBuffers();
 		dynamicData->pool = pool;
 
-		auto shadowExtent =
-				_input->lights.getShadowExtent(fhandle.getFrameConstraints().getScreenSize());
-		auto shadowSize =
-				_input->lights.getShadowSize(fhandle.getFrameConstraints().getScreenSize());
+		auto shadowExtent = _input->lights.getShadowExtent(_constraints.getScreenSize());
+		auto shadowSize = _input->lights.getShadowSize(_constraints.getScreenSize());
 
 		dynamicData->shadowSize = Vec2(shadowSize.width / float(shadowExtent.width),
 				shadowSize.height / float(shadowExtent.height));
@@ -237,20 +239,17 @@ bool VertexMaterialVertexProcessor::loadVertexes(core::FrameHandle &fhandle) {
 			cmd = cmd->next;
 		}
 
-		auto devFrame = static_cast<DeviceFrameHandle *>(handle);
-		auto devPool = devFrame->getMemPool(this);
-
 		// create buffers
-		_indexes = devPool->spawn(AllocationUsage::DeviceLocalHostVisible,
+		_indexes = _devMemPool->spawn(AllocationUsage::DeviceLocalHostVisible,
 				BufferInfo(StringView("IndexBuffer"), core::BufferUsage::IndexBuffer,
 						(dynamicData->globalWritePlan.indexes + 12) * sizeof(uint32_t)));
 
-		_vertexes = devPool->spawn(AllocationUsage::DeviceLocalHostVisible,
+		_vertexes = _devMemPool->spawn(AllocationUsage::DeviceLocalHostVisible,
 				BufferInfo(StringView("VertexBuffer"), core::BufferUsage::StorageBuffer,
 						core::BufferUsage::ShaderDeviceAddress,
 						(dynamicData->globalWritePlan.vertexes + 8) * sizeof(Vertex)));
 
-		_transforms = devPool->spawn(AllocationUsage::DeviceLocalHostVisible,
+		_transforms = _devMemPool->spawn(AllocationUsage::DeviceLocalHostVisible,
 				BufferInfo(StringView("TransformBuffer"), core::BufferUsage::StorageBuffer,
 						core::BufferUsage::ShaderDeviceAddress,
 						(_input->commands->getPredefinedTransforms()
@@ -267,7 +266,7 @@ bool VertexMaterialVertexProcessor::loadVertexes(core::FrameHandle &fhandle) {
 		WriteTarget writeTarget;
 		writeTarget.transtormOffset = _input->commands->getPredefinedTransforms();
 
-		if (fhandle.isPersistentMapping()) {
+		if (_persistentMapping) {
 			// do not invalidate regions
 			writeTarget.vertexes = _vertexes->getPersistentMappedRegion(false);
 			writeTarget.indexes = _indexes->getPersistentMappedRegion(false);
@@ -293,7 +292,7 @@ bool VertexMaterialVertexProcessor::loadVertexes(core::FrameHandle &fhandle) {
 			dynamicData->pushAll(this, writeTarget);
 		}
 
-		if (fhandle.isPersistentMapping()) {
+		if (_persistentMapping) {
 			_vertexes->flushMappedRegion();
 			_indexes->flushMappedRegion();
 			_transforms->flushMappedRegion();

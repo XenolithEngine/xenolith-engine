@@ -54,8 +54,8 @@ LOCAL_INCLUDES_OBJS := src
 LOCAL_SHADERS_DIR := shaders
 
 # Android config
-LOCAL_ANDROID_MK := proj.android/app/Android.mk # path to root Android.mk
-LOCAL_APPLICATION_MK := proj.android/app/Application.mk # path to Application.mk
+LOCAL_ANDROID_MK := $(LOCAL_ROOT)/proj.android/app/Android.mk # path to root Android.mk
+LOCAL_APPLICATION_MK := $(LOCAL_ROOT)/proj.android/app/Application.mk # path to Application.mk
 LOCAL_ANDROID_TARGET := application # target to build
 LOCAL_ANDROID_PLATFORM := android-24 # android platform version
 
@@ -63,8 +63,8 @@ LOCAL_ANDROID_PLATFORM := android-24 # android platform version
 include $(STAPPLER_BUILD_ROOT)/universal.mk
 
 prepare-android:
-	@mkdir -p proj.android/app/assets
-	rsync -ar resources proj.android/app/assets
+	@mkdir -p $(LOCAL_ROOT)/proj.android/app/assets
+	rsync -ar $(LOCAL_ROOT)/resources $(LOCAL_ROOT)/proj.android/app/assets
 
 ifdef STAPPLER_TARGET
 

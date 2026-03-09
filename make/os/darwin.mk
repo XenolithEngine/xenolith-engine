@@ -1,5 +1,5 @@
-# Copyright (c) 2023-2025 Stappler LLC <admin@stappler.dev>
-#
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+# 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
@@ -18,14 +18,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-MACOSX_DEPLOYMENT_TARGET := 14.0
-
 OSTYPE_IS_MACOS := 1
 
-OSTYPE_ARCH ?= $(STAPPLER_ARCH)
-OSTYPE_DEPS := deps/mac/$(OSTYPE_ARCH)
-OSTYPE_PREBUILT_PATH := $(OSTYPE_DEPS)/lib
-OSTYPE_INCLUDE := $(OSTYPE_DEPS)/include
+OSTYPE_EXEC_SUFFIX :=
+OSTYPE_DSO_SUFFIX := .dylib
+OSTYPE_LIB_SUFFIX := .a
+OSTYPE_LIB_PREFIX := lib
 
 OSTYPE_CONFIG_FLAGS := MACOS
 
@@ -44,16 +42,7 @@ OSTYPE_GENERAL_LDFLAGS := -Xlinker -all_load
 OSTYPE_EXEC_LDFLAGS := 
 OSTYPE_LIB_LDFLAGS := -rdynamic -Wl,--exclude-libs,ALL
 
-# Can cause conflict with XCode export
-# Disabled: XCode no primary compilation path for MacOS
-# OSTYPE_GENERAL_CFLAGS += -mmacosx-version-min=$(MACOSX_DEPLOYMENT_TARGET)
-# OSTYPE_GENERAL_CXXFLAGS += -mmacosx-version-min=$(MACOSX_DEPLOYMENT_TARGET)
-# OSTYPE_GENERAL_LDFLAGS += -mmacosx-version-min=$(MACOSX_DEPLOYMENT_TARGET)
-
-OSTYPE_EXEC_SUFFIX :=
-OSTYPE_DSO_SUFFIX := .lib
-OSTYPE_LIB_SUFFIX := .a
-OSTYPE_LIB_PREFIX := lib
+OSTYPE_LIBS_REALPATH := 1
 
 BUILD_OBJC := 1
-OSTYPE_LIBS_REALPATH := 1
+DARWIN := 1

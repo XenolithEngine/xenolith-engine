@@ -1,5 +1,5 @@
-# Copyright (c) 2023-2024 Stappler LLC <admin@stappler.dev>
-# 
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
@@ -18,22 +18,31 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-OSTYPE_IS_ANDROID := 1
-
-OSTYPE_DEPS := $(realpath $(GLOBAL_ROOT)/toolchains/targets/android/sysroot)
-
-ifeq ($(OSTYPE_DEPS),)
-OSTYPE_DEPS := $(realpath $(GLOBAL_ROOT)/runtime/toolchains/targets/android/sysroot)
-endif
-
-ifeq ($(OSTYPE_DEPS),)
-$(error Fail to find android sysroot)
+ifndef NDK
+ifdef ANDROID_NDK_ROOT
+NDK := $(ANDROID_NDK_ROOT)
 else
-$(info Android sysroot: $(OSTYPE_DEPS))
+NDK := $(HOME)/Android/Ndk
+endif
 endif
 
-OSTYPE_PREBUILT_PATH := $(OSTYPE_DEPS)/lib/$$(BUILD_ARCH)
-OSTYPE_INCLUDE :=  $(OSTYPE_DEPS)/include  $(OSTYPE_DEPS)/include/$$(BUILD_ARCH)
+ifeq ($(NDK),)
+ifdef ANDROID_NDK_ROOT
+NDK := $(ANDROID_NDK_ROOT)
+else
+NDK := $(HOME)/Android/Ndk
+endif
+endif
+
+ANDROID_SYSROOT := $(NDK)/toolchains/llvm/prebuilt/$(ANDROID_HOST)/sysroot
+ANDROID_SYSROOT_INCLUDE_CXX := $(realpath $(ANDROID_SYSROOT)/usr/include/c++/v1)
+ANDROID_SYSROOT_INCLUDE_COMMON := \
+	$(abspath $(ANDROID_SYSROOT)/usr/include/$$(BUILD_ARCH)) \
+	$(realpath $(ANDROID_SYSROOT)/usr/include)
+
+$(call print_verbose,(defaults.mk) ANDROID_SYSROOT: $(ANDROID_SYSROOT))
+
+OSTYPE_IS_ANDROID := 1
 
 OSTYPE_EXEC_SUFFIX :=
 OSTYPE_DSO_SUFFIX := .so
@@ -44,19 +53,18 @@ OSTYPE_CONFIG_FLAGS := ANDROID
 
 OSTYPE_LIBS_REALPATH := 1
 
-GLOBAL_CC := ndk-build
-GLOBAL_CXX := ndk-build
+HOST_CC := ndk-build
+HOST_CXX := ndk-build
 
 ANDROID_EXPORT_PREFIX ?= $(GLOBAL_ROOT)
-ANDROID_EXPORT_PATH := $(if $(LOCAL_ROOT),,$(GLOBAL_ROOT)/)$(LOCAL_OUTDIR)/android
+ANDROID_EXPORT_PATH := $(if $(LOCAL_ROOT),,$(GLOBAL_ROOT)/)$(LOCAL_OUTDIR)/unknown-ndk-linux-android
 ANDROID_TARGET ?= aarch64-linux-android24
 
-OSTYPE_GENERAL_CFLAGS := -Wall -fvisibility=hidden --sysroot=$(ANDROID_SYSROOT) --target=$(ANDROID_TARGET)
+OSTYPE_GENERAL_CFLAGS := -Wall -fvisibility=hidden
 OSTYPE_LIB_CFLAGS := -fPIC -DPIC
 OSTYPE_EXEC_CFLAGS :=
 
-OSTYPE_GENERAL_CXXFLAGS := -Wall -Wno-overloaded-virtual -frtti -fvisibility=hidden -fvisibility-inlines-hidden \
-	--sysroot=$(ANDROID_SYSROOT) --target=$(ANDROID_TARGET)
+OSTYPE_GENERAL_CXXFLAGS := -Wall -Wno-overloaded-virtual -frtti -fvisibility=hidden -fvisibility-inlines-hidden
 OSTYPE_LIB_CXXFLAGS := -fPIC -DPIC
 OSTYPE_EXEC_CXXFLAGS :=
 
@@ -98,23 +106,23 @@ $(ANDROID_EXPORT_PATH)/Android.mk.tmp:
 	@echo 'endif' >> $@
 	@echo 'include $$(CLEAR_VARS)' >> $@
 	@echo 'LOCAL_MODULE := stappler_application_generic' >> $@
-	@echo 'LOCAL_EXPORT_LDLIBS := -llog -lz -landroid' >> $@
+	@echo 'LOCAL_EXPORT_LDLIBS := -llog -landroid' >> $@
 	@echo 'LOCAL_C_INCLUDES := \' >> $@
 	$(foreach file,$(realpath $(BUILD_INCLUDES)) $(TOOLKIT_INCLUDES) $(abspath $(dir $(call android_filter_build_type,$(BUILD_EXEC_CONFIG)))),\
 		$(call ANDROID_write_file,$@,$(file)))
 	$(foreach file,$(abspath $(sort $(call android_filter_build_type,\
 		$(BUILD_SHADERS_OUTDIR)))),\
 		$(call ANDROID_write_file,$@,$(file)))
-	@echo '\t$(OSTYPE_INCLUDE)' >> $@
+	@echo '	$(TARGET_SYSROOT)/usr/include $(TARGET_SYSROOT)/usr/include/$$(BUILD_ARCH)' >> $@
 	@echo '' >> $@
-	@echo 'LOCAL_CFLAGS := -DUSE_FILE32API $(TOOLKIT_GENERAL_CFLAGS) $(TOOLKIT_LIB_CFLAGS)' >> $@
+	@echo 'LOCAL_CFLAGS := -DUSE_FILE32API $(strip $(TOOLKIT_GENERAL_CFLAGS) $(TOOLKIT_LIB_CFLAGS))' >> $@
 	@echo 'LOCAL_SRC_FILES := \' >> $@
 	$(foreach file,$(realpath $(BUILD_LIB_SRCS)) $(abspath $(call android_filter_build_type,$(BUILD_APP_CONFIG_SOURCE))),\
 		$(call ANDROID_write_file,$@,$(file)))
 	@echo '' >> $@
 	@echo 'LOCAL_WHOLE_STATIC_LIBRARIES := cpufeatures $(call android_lib_list,$(sort $(BUILD_LIBS)),build)' >> $@
 	@echo 'include $$(BUILD_STATIC_LIBRARY)' >> $@
-	@echo '$(call android_lib_defs,$(call android_filter_libs,$(sort $(BUILD_LIBS))),build)' >> $@
+	@echo -e '$(call android_lib_defs,$(call android_filter_libs,$(sort $(BUILD_LIBS))),build)' >> $@
 	@echo '' >> $@
 	@echo '$$(call import-module,android/cpufeatures)' >> $@
 
@@ -130,3 +138,5 @@ android-export: $(ANDROID_EXPORT_PATH)/Android.mk.tmp
 	fi
 
 .PHONY: android android-clean android-export
+
+ANDROID := 1

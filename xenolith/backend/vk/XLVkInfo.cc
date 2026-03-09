@@ -576,16 +576,7 @@ DeviceInfo::Properties &DeviceInfo::Properties::operator=(const Properties &p) {
 
 DeviceInfo::DeviceInfo() { }
 
-DeviceInfo::DeviceInfo(VkPhysicalDevice dev, QueueFamilyInfo gr, QueueFamilyInfo pres,
-		QueueFamilyInfo tr, QueueFamilyInfo comp, Vector<StringView> &&optionals,
-		Vector<StringView> &&promoted)
-: device(dev)
-, graphicsFamily(gr)
-, presentFamily(pres)
-, transferFamily(tr)
-, computeFamily(comp)
-, optionalExtensions(sp::move(optionals))
-, promotedExtensions(sp::move(promoted)) { }
+DeviceInfo::DeviceInfo(VkPhysicalDevice dev) : device(dev) { }
 
 bool DeviceInfo::supportsPresentation() const {
 	// transferFamily and computeFamily can be same as graphicsFamily

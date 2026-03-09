@@ -18,7 +18,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-$(call print_verbose,(fn-powershell.mk) Using powershell)
+$(call print_verbose,(init-powershell.mk) Init with powershell)
+
+UNAME := Windows
+SHELL = powershell.exe
 
 POWERSHELL := 1
 
@@ -45,3 +48,25 @@ shell_cat = \
 	$(shell if (Test-Path -Path "$(1)" -PathType Leaf) { Get-Content "$(1)" })
 
 shell_arith = $(shell powershell $(1))
+
+STAPPLER_HOST_ARCH ?= $(shell [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)
+
+ifeq ($(STAPPLER_HOST_ARCH),X64)
+STAPPLER_HOST_ARCH := x86_64
+else ifeq ($(STAPPLER_HOST_ARCH),X86)
+STAPPLER_HOST_ARCH := x86
+else ifeq ($(STAPPLER_HOST_ARCH),Arm64)
+STAPPLER_HOST_ARCH := aarch64
+else ifeq ($(STAPPLER_HOST_ARCH),Arm)
+STAPPLER_HOST_ARCH := arm
+endif
+
+ANDROID_HOST := windows-$(STAPPLER_HOST_ARCH)
+
+STAPPLER_HOST := $(STAPPLER_HOST_ARCH)-pc-windows-msvc
+
+$(call print_verbose,(init-powershell.mk) UNAME: $(UNAME))
+$(call print_verbose,(init-powershell.mk) STAPPLER_HOST_ARCH: $(STAPPLER_HOST_ARCH))
+$(call print_verbose,(init-powershell.mk) STAPPLER_HOST: $(STAPPLER_HOST))
+$(call print_verbose,(init-powershell.mk) ANDROID_HOST: $(ANDROID_HOST))
+

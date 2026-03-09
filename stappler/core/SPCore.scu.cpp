@@ -38,8 +38,6 @@ THE SOFTWARE.
 
 #include "platform/SPCoreRuntime.cc"
 
-#include "platform/SPCore-darwin.cc"
-
 #include "SPUrl.cc"
 #include "SPValid.cc"
 #include "SPCommandLineParser.cc"

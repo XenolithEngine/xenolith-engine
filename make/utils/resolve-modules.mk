@@ -36,12 +36,6 @@ ifndef SHARED_PREFIX
 LOCAL_MODULES_PATHS += $(realpath $(BUILD_ROOT)/../module/module.mk)
 endif # SHARED_PREFIX
 
-
-ifeq ($(TOOLCHAIN_REQUIRES_STAPPLER_ABI),1)
-LOCAL_MODULES += stappler_abi
-endif
-
-
 TOOLKIT_MODULE_LIST :=
 
 ifdef SHARED_PREFIX

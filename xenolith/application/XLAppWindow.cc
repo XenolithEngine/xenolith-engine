@@ -257,9 +257,21 @@ void AppWindow::acquireFrameData(NotNull<core::PresentationFrame> frame,
 			this);
 }
 
+void AppWindow::handleFrameReady(NotNull<core::PresentationFrame> frame) {
+	if (_window) {
+		_window->handleFrameReady(frame->getInfo());
+	}
+}
+
 void AppWindow::handleFramePresented(NotNull<core::PresentationFrame> frame) {
 	if (_window) {
 		_window->handleFramePresented(frame->getInfo());
+	}
+}
+
+void AppWindow::handleSwapchainUpdated(const core::FrameConstraints &c) {
+	if (_window) {
+		_window->handleSwapchainUpdated(c);
 	}
 }
 
@@ -312,15 +324,15 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 	case sprt::window::SurfaceBackend::Wayland: {
 #if defined(VK_KHR_wayland_surface)
 		VkWaylandSurfaceCreateInfoKHR createInfo{
-			VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
+			VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
 			nullptr,
 			0,
 			(struct wl_display *)info.wayland.display,
 			(struct wl_surface *)info.wayland.surface,
 		};
-		if (instance->vkCreateWaylandSurfaceKHR(instance->getInstance(), &createInfo, nullptr,
-					&surface)
-				!= VK_SUCCESS) {
+		auto ret = instance->vkCreateWaylandSurfaceKHR(instance->getInstance(), &createInfo,
+				nullptr, &surface);
+		if (ret != VK_SUCCESS) {
 			return nullptr;
 		}
 #endif
@@ -355,7 +367,9 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 	return nullptr;
 }
 
-core::FrameConstraints AppWindow::exportConstraints() const { return _window->exportConstraints(); }
+core::FrameConstraints AppWindow::exportConstraints(uint64_t &serial) const {
+	return _window->exportConstraints(serial);
+}
 
 void AppWindow::setFrameOrder(uint64_t frameOrder) {
 	if (_window) {

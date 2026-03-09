@@ -84,8 +84,8 @@ public:
 
 	virtual ~PresentationFrame() = default;
 
-	bool init(PresentationEngine *, FrameConstraints, uint64_t frameOrder, Flags flags,
-			Function<void(PresentationFrame *, bool)> &&completeCallback = nullptr);
+	bool init(PresentationEngine *, FrameConstraints, uint64_t frameOrder, uint64_t serial,
+			Flags flags, Function<void(PresentationFrame *, bool)> &&completeCallback = nullptr);
 
 	bool hasFlag(Flags f) const { return sp::hasFlag(_flags, f); }
 
