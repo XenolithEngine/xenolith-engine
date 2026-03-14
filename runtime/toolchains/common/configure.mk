@@ -21,6 +21,12 @@
 
 DEBUG ?= 0
 
+ifdef DARWIN
+SP_MACOS_SDK ?= $(abspath $(LIB_SRC_DIR))/MacOSX.sdk
+SP_IOS_SDK ?= $(abspath $(LIB_SRC_DIR))/iPhoneOS.sdk
+SP_IOSSIM_SDK ?= $(abspath $(LIB_SRC_DIR))/iPhoneSimulator.sdk
+endif
+
 ifeq ($(findstring Windows,$(OS)),Windows)
 SHELL = powershell.exe
 MKDIR = powershell New-Item -ItemType Directory -Force -Path
@@ -77,6 +83,28 @@ ifdef WINDOWS
 SP_CFLAGS +=  -D_CRT_SECURE_NO_WARNINGS -Wno-deprecated-declarations -Xclang --dependent-lib=libcmt
 SP_CXXFLAGS +=  -D_CRT_SECURE_NO_WARNINGS -Wno-deprecated-declarations -Xclang --dependent-lib=libcmt
 endif
+
+
+ifdef DARWIN
+ifeq ($(SP_SYSNAME),Darwin)
+SP_CFLAGS += -isysroot $(SP_MACOS_SDK) -isystem $(SP_INSTALL_PREFIX)/usr/include
+SP_CXXFLAGS += -isysroot $(SP_MACOS_SDK) -isystem $(SP_INSTALL_PREFIX)/usr/include
+SP_LDFLAGS += -L$(SP_INSTALL_PREFIX)/usr/lib -L$(SP_MACOS_SDK)/usr/lib -F$(SP_MACOS_SDK)/System/Library/Frameworks
+endif # Darwin
+
+ifeq ($(SP_SYSNAME),iOS)
+ifdef SP_IOSSIM
+SP_CFLAGS += -isysroot $(SP_IOSSIM_SDK) -isystem $(SP_INSTALL_PREFIX)/usr/include
+SP_CXXFLAGS += -isysroot $(SP_IOSSIM_SDK) -isystem $(SP_INSTALL_PREFIX)/usr/include
+SP_LDFLAGS += -L$(SP_INSTALL_PREFIX)/usr/lib -L$(SP_IOSSIM_SDK)/usr/lib -F$(SP_IOSSIM_SDK)/System/Library/Frameworks
+else # SP_IOSSIM
+SP_CFLAGS += -isysroot $(SP_IOS_SDK) -isystem $(SP_INSTALL_PREFIX)/usr/include
+SP_CXXFLAGS += -isysroot $(SP_IOS_SDK) -isystem $(SP_INSTALL_PREFIX)/usr/include
+SP_LDFLAGS += -L$(SP_INSTALL_PREFIX)/usr/lib -L$(SP_IOS_SDK)/usr/lib -F$(SP_IOS_SDK)/System/Library/Frameworks
+endif # SP_IOSSIM
+endif # iOS
+
+endif # DARWIN
 
 SP_LIBS_ALL := 
 SP_LIBS_PLATFORM := 
@@ -148,15 +176,21 @@ CONFIGURE_CMAKE_CXX_FLAGS_INIT := $(SP_OPT) $(SP_USER_CXXFLAGS)
 CONFIGURE_EXE_LINKER_FLAGS_INIT := $(SP_LIBS_PLATFORM) $(SP_USER_LDFLAGS)
 CONFIGURE_SHARED_LINKER_FLAGS_INIT := $(SP_LIBS_PLATFORM) $(SP_USER_LDFLAGS)
 
-ifndef WINDOWS
+ifdef LINUX
+CONFIGURE_EXE_LINKER_FLAGS_INIT += -Wl,--gc-sections
+endif
+
+ifdef ANDROID
 CONFIGURE_EXE_LINKER_FLAGS_INIT += -Wl,--gc-sections
 endif
 
 CONFIGURE_CMAKE :=
 
 ifdef SP_TOOLCHAIN_FILE
+
 CONFIGURE_CMAKE += -DCMAKE_TOOLCHAIN_FILE=$(realpath $(SP_TOOLCHAIN_FILE))
-else
+
+else # SP_TOOLCHAIN_FILE
 
 ifdef ANDROID
 CONFIGURE_CMAKE += \
@@ -167,7 +201,7 @@ CONFIGURE_CMAKE += \
 	-DCMAKE_ANDROID_API=$(ANDROID_PLATFORM_LEVEL) \
 	-DANDROID_PLATFORM_LEVEL=$(ANDROID_PLATFORM_LEVEL) \
 	-DANDROID_NDK=$(NDK)
-endif
+endif # ANDROID
 
 CONFIGURE_CMAKE += \
 	-DCMAKE_ASM_FLAGS_INIT="$(CONFIGURE_CMAKE_C_FLAGS_INIT)" \
@@ -186,8 +220,65 @@ CONFIGURE_CMAKE += \
 	-DCMAKE_INSTALL_LIBDIR="${SP_INSTALL_PREFIX}/usr/lib" \
 	-DCMAKE_INSTALL_INCLUDEDIR="${SP_INSTALL_PREFIX}/usr/include" \
 	-DPKG_CONFIG_PATH="$(SP_INSTALL_PREFIX)/usr/lib/pkgconfig"
+endif # SP_TOOLCHAIN_FILE
 
-endif
+
+ifdef DARWIN
+
+CONFIGURE_CMAKE_C_FLAGS_INIT += -isystem $(SP_INSTALL_PREFIX)/usr/include
+CONFIGURE_CMAKE_CXX_FLAGS_INIT += -isystem $(SP_INSTALL_PREFIX)/usr/include
+
+CONFIGURE_CMAKE += \
+	-DCMAKE_LIBTOOL="$(SP_INSTALL_PREFIX)/host/bin/llvm-libtool-darwin" \
+	-DCMAKE_LIPO="$(SP_INSTALL_PREFIX)/host/bin/llvm-lipo" 
+
+ifeq ($(SP_SYSNAME),Darwin)
+CONFIGURE_CMAKE += -DCMAKE_OSX_SYSROOT=$(SP_MACOS_SDK) \
+	-DCMAKE_C_COMPILER=$(SP_CC) \
+	-DCMAKE_CXX_COMPILER=$(SP_CXX) \
+	-DCMAKE_FRAMEWORK_PATH="$(SP_MACOS_SDK)/System/Library/Frameworks"
+CONFIGURE_EXE_LINKER_FLAGS_INIT += \
+	-L$(SP_INSTALL_PREFIX)/usr/lib \
+	-L$(SP_MACOS_SDK)/usr/lib \
+	-F$(SP_MACOS_SDK)/System/Library/Frameworks
+CONFIGURE_SHARED_LINKER_FLAGS_INIT += \
+	-L$(SP_INSTALL_PREFIX)/usr/lib \
+	-L$(SP_MACOS_SDK)/usr/lib \
+	-F$(SP_MACOS_SDK)/System/Library/Frameworks
+endif # Darwin
+
+ifeq ($(SP_SYSNAME),iOS)
+ifdef SP_IOSSIM
+CONFIGURE_CMAKE += -DCMAKE_OSX_SYSROOT=$(SP_IOSSIM_SDK) \
+	-DCMAKE_C_COMPILER=$(SP_CC) \
+	-DCMAKE_CXX_COMPILER=$(SP_CXX) \
+	-DCMAKE_FRAMEWORK_PATH="$(SP_IOSSIM_SDK)/System/Library/Frameworks"
+CONFIGURE_EXE_LINKER_FLAGS_INIT += \
+	-L$(SP_INSTALL_PREFIX)/usr/lib \
+	-L$(SP_IOSSIM_SDK)/usr/lib \
+	-F$(SP_IOSSIM_SDK)/System/Library/Frameworks
+CONFIGURE_SHARED_LINKER_FLAGS_INIT += \
+	-L$(SP_INSTALL_PREFIX)/usr/lib \
+	-L$(SP_IOSSIM_SDK)/usr/lib \
+	-F$(SP_IOSSIM_SDK)/System/Library/Frameworks
+else # SP_IOSSIM
+CONFIGURE_CMAKE += -DCMAKE_OSX_SYSROOT=$(SP_IOS_SDK) \
+	-DCMAKE_C_COMPILER=$(SP_CC) \
+	-DCMAKE_CXX_COMPILER=$(SP_CXX) \
+	-DCMAKE_FRAMEWORK_PATH="$(SP_IOS_SDK)/System/Library/Frameworks"
+CONFIGURE_EXE_LINKER_FLAGS_INIT += \
+	-L$(SP_INSTALL_PREFIX)/usr/lib \
+	-L$(SP_IOS_SDK)/usr/lib \
+	-F$(SP_IOS_SDK)/System/Library/Frameworks
+CONFIGURE_SHARED_LINKER_FLAGS_INIT += \
+	-L$(SP_INSTALL_PREFIX)/usr/lib \
+	-L$(SP_IOS_SDK)/usr/lib \
+	-F$(SP_IOS_SDK)/System/Library/Frameworks
+endif # SP_IOSSIM
+endif # iOS
+
+endif # DARWIN
+
 
 CONFIGURE_CMAKE += \
 	-DSP_C_FLAGS="$(CONFIGURE_CMAKE_C_FLAGS_INIT)" \
@@ -199,7 +290,6 @@ CONFIGURE_CMAKE += \
 	-DCMAKE_INSTALL_DATAROOTDIR=$(MAKE_ROOT)$(LIBNAME)/share \
 	-DBUILD_SHARED_LIBS=OFF \
 	-DCMAKE_SYSTEM_PROCESSOR=$(SP_ARCH) \
-	-DCMAKE_OSX_ARCHITECTURES=$(SP_ARCH) \
 	-DCMAKE_POSITION_INDEPENDENT_CODE=On \
 	-DCMAKE_VERBOSE_MAKEFILE=On
 

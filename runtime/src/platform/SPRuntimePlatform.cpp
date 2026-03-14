@@ -33,11 +33,6 @@
 #include "SPRuntimePlatform-linux.cc"
 #endif
 
-#if SPRT_ANDROID
-#include "SPRuntimePlatform-android.cc"
-#include "SPRuntimeJni.cc"
-#endif
-
 #if SPRT_WINDOWS
 #include "SPRuntimePlatform-windows.cc"
 #endif

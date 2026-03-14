@@ -30,6 +30,12 @@ DIFF_FILES_B := $(filter $(TOOLCHAIN_INTERMEDIATE)/x86_64-ndk-linux-android/%,\
 DIFF_FILES_C := $(filter $(TOOLCHAIN_INTERMEDIATE)/x86_64-ndk-linux-android/%,\
 	$(shell diff -qr $(TOOLCHAIN_INTERMEDIATE)/x86_64-ndk-linux-android/usr/include/ $(TOOLCHAIN_INTERMEDIATE)/i686-ndk-linux-android/usr/include/))
 
+
+$(info DIFF_FILES_A $(DIFF_FILES_A))
+$(info DIFF_FILES_B $(DIFF_FILES_B))
+$(info DIFF_FILES_C $(DIFF_FILES_C))
+
+
 ARCH_CONF_FILES := $(sort $(DIFF_FILES_A) $(DIFF_FILES_B) $(DIFF_FILES_C))
 
 FILES_TO_REMOVE := $(patsubst $(TOOLCHAIN_INTERMEDIATE)/x86_64-ndk-linux-android/usr/%,\
@@ -85,7 +91,7 @@ $(A_TARGET_LIB)/x86_64-linux-android/%: $(TOOLCHAIN_INTERMEDIATE)/x86_64-ndk-lin
 ALL_ARCH_FILES := \
 	$(foreach arch,$(ARCH_TARGET_DIRS),\
 		$(patsubst $(TOOLCHAIN_INTERMEDIATE)/x86_64-ndk-linux-android/usr/include/%,\
-		$(A_TARGET_INCLUDE)/$(arch)/%,$(ARCH_CONF_FILES)) \
+			$(A_TARGET_INCLUDE)/$(arch)/%,$(ARCH_CONF_FILES)) \
 	)
 
 ALL_ARCH_LIBS := \

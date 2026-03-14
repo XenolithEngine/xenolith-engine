@@ -45,6 +45,8 @@ LIBS = \
 	openssl-gost-engine \
 	wasm-micro-runtime \
 	vulkan-headers \
+	vulkan-loader \
+	moltenvk \
 	spirv-headers \
 	glslang \
 	spirv-tools \
@@ -219,9 +221,13 @@ $(SRC_ROOT)/glslang: | prepare
 $(SRC_ROOT)/spirv-tools: | prepare
 	cd $(SRC_ROOT);  git clone  --recurse-submodules --branch vulkan-sdk-$(VULKAN_SDK_VER) --depth 1 https://github.com/KhronosGroup/SPIRV-Tools.git spirv-tools
 
-# https://github.com/KhronosGroup/Vulkan-Loader # revised: 22 feb 2026
+# https://github.com/KhronosGroup/Vulkan-Loader # revised: 14 mar 2026
 $(SRC_ROOT)/vulkan-loader: | prepare
 	cd $(SRC_ROOT);  git clone  --recurse-submodules --branch vulkan-sdk-$(VULKAN_SDK_VER) --depth 1 https://github.com/KhronosGroup/Vulkan-Loader.git vulkan-loader
+
+# https://github.com/KhronosGroup/MoltenVK/releases # revised: 14 mar 2026
+$(SRC_ROOT)/moltenvk: | prepare
+	$(call unpack_tar, https://github.com/KhronosGroup/MoltenVK/archive/refs/tags/v1.4.1.tar.gz, moltenvk)
 
 # https://github.com/unicode-org/icu/releases # revised: 22 feb 2026
 $(SRC_ROOT)/icu4c: | prepare

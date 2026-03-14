@@ -25,11 +25,28 @@ LIBNAME = openssl
 
 include ../common/configure.mk
 
+ifdef ANDROID
+ifndef NDK
+OPENSSL_CC := clang
+OPENSSL_CXX := clang++
+OPENSSL_AR := llvm-ar
+else
+OPENSSL_CC := $(SP_CC)
+OPENSSL_CXX := $(SP_CXX)
+OPENSSL_AR := $(SP_AR)
+endif
+else
+OPENSSL_CC := $(SP_CC)
+OPENSSL_CXX := $(SP_CXX)
+OPENSSL_AR := $(SP_AR)
+endif
+
 CONFIGURE := android-$(ANDROID_ARCH) \
 	--prefix=$(SP_INSTALL_PREFIX)/usr \
-	CC=$(SP_CC) \
-	CXX=$(SP_CXX) \
-	AR=$(SP_AR) \
+	CC=$(OPENSSL_CC) \
+	CXX=$(OPENSSL_CXX) \
+	AR=$(OPENSSL_AR) \
+	no-apps \
 	no-tests \
 	no-shared \
 	no-module \
@@ -45,11 +62,21 @@ ifeq ($(ARCH),armeabi-v7a)
 CONFIGURE += no-asm
 endif
 
+NDK_ROOT := $(NDK)
+NDK_PATH := $(NDKPATH)
+
+ifdef ANDROID
+ifndef NDK
+NDK_ROOT := $(SP_TOOLCHAIN_PREFIX)
+NDK_PATH := $(SP_TOOLCHAIN_PREFIX)/bin:$(SP_TOOLCHAIN_PREFIX)/host/bin
+endif
+endif
+
 all:
 	@mkdir -p $(LIBNAME)
 	cd $(LIBNAME); \
-		export ANDROID_NDK_ROOT=$(NDK); \
-		export PATH=$(NDKPATH):$$PATH; \
+		export ANDROID_NDK_ROOT=$(NDK_ROOT); \
+		export PATH=$(NDK_PATH):$$PATH; \
 		$(LIB_SRC_DIR)/$(LIBNAME)/Configure $(CONFIGURE); \
 		make -j8; \
 		make install_sw

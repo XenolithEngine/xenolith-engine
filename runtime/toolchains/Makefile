@@ -103,24 +103,38 @@ host:
 # Android NDK targets
 #
 
+target-unknown-ndk-linux-android:
+	$(MAKE) -C deps-android TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) all-ndk
+	$(MAKE) -f android-ndk.mk TOOLCHAIN_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE) TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS)
 
-ANDROID_INTERMEDIATE_TOOLCHAINS := $(addprefix $(TOOLCHAIN_INTERMEDIATE)/,\
-	aarch64-linux-android armv7a-linux-androideabi i686-linux-android x86_64-linux-android)
+target-aarch64-unknown-linux-android: host
+	$(MAKE) -C deps-android TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) arm64-v8a
+	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/aarch64-unknown-linux-android \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-unknown-linux-android
 
-ANDROID_TARGETS_TOOLCHAINS := $(addprefix $(TOOLCHAIN_TARGETS)/,\
-	aarch64-linux-android armv7a-linux-androideabi i686-linux-android x86_64-linux-android)
+target-armv7a-unknown-linux-androideabi: host
+	$(MAKE) -C deps-android TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) armeabi-v7a
+	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/armv7a-unknown-linux-androideabi \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/armv7a-unknown-linux-androideabi
 
-$(ANDROID_INTERMEDIATE_TOOLCHAINS):
-	$(MKDIR) $(TOOLCHAIN_INTERMEDIATE)
+target-i686-unknown-linux-android: host
+	$(MAKE) -C deps-android TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) x86
+	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/i686-unknown-linux-android \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/i686-unknown-linux-android
 
-$(TOOLCHAIN_TARGETS)/android: $(ANDROID_INTERMEDIATE_TOOLCHAINS)
-	$(MAKE) -f android.mk TOOLCHAIN_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE) TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS)
-	touch $@
+target-x86_64-unknown-linux-android: host
+	$(MAKE) -C deps-android TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) x86_64
+	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/x86_64-unknown-linux-android \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-android
 
+target-android-ndk: target-unknown-ndk-linux-android
 
-unknown-ndk-linux-android:
-	$(MAKE) -C deps-android TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) SP_NDK=1 all
-	$(MAKE) -f android.mk TOOLCHAIN_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE) TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS)
+target-android: \
+	target-aarch64-unknown-linux-android \
+	target-armv7a-unknown-linux-androideabi \
+	target-armv7a-unknown-linux-androideabi \
+	target-i686-unknown-linux-android \
+	target-x86_64-unknown-linux-android
 
 #
 # Linux targets
@@ -150,9 +164,63 @@ target-riscv64-unknown-linux-gnu: host
 	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/riscv64-unknown-linux-gnu \
 		T_TARGET=$(TOOLCHAIN_TARGETS)/riscv64-unknown-linux-gnu
 
+target-linux: \
+	target-x86_64-unknown-linux-gnu \
+	target-aarch64-unknown-linux-gnu \
+	target-riscv64-unknown-linux-gnu \
+
+
+#
+# Apple targets
+#
+
+target-x86_64-apple-macosx:
+	$(MAKE) -C deps-darwin TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) x86_64-apple-macosx
+
+target-aarch64-apple-macosx:
+	$(MAKE) -C deps-darwin TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) aarch64-apple-macosx
+
+target-aarch64-apple-ios:
+	$(MAKE) -C deps-darwin TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) aarch64-apple-ios
+
+target-x86_64-apple-ios-simulator:
+	$(MAKE) -C deps-darwin TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) x86_64-apple-ios-simulator
+
+target-aarch64-apple-ios-simulator:
+	$(MAKE) -C deps-darwin TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) aarch64-apple-ios-simulator
+
+target-macosx: \
+	target-x86_64-apple-macosx \
+	target-aarch64-apple-macosx
+
+target-ios: \
+	target-aarch64-apple-ios \
+	target-x86_64-apple-ios-simulator \
+	target-aarch64-apple-ios-simulator
+
+target-apple: target-macosx target-ios
 
 
 .PHONY: all clean prepare compress host download \
-	intermediate-x86_64-unknown-linux-gnu
+	target-linux \
+	target-x86_64-unknown-linux-gnu \
+	target-aarch64-unknown-linux-gnu \
+	target-riscv64-unknown-linux-gnu \
+	target-android-ndk \
+	target-unknown-ndk-linux-android \
+	target-android \
+	target-aarch64-unknown-linux-android \
+	target-armv7a-unknown-linux-androideabi \
+	target-armv7a-unknown-linux-androideabi \
+	target-i686-unknown-linux-android \
+	target-x86_64-unknown-linux-android \
+	target-apple \
+	target-macosx \
+	target-x86_64-apple-macosx \
+	target-aarch64-apple-macosx
+	target-ios \
+	target-aarch64-apple-ios \
+	target-x86_64-apple-ios-simulator \
+	target-aarch64-apple-ios-simulator
 
 .DEFAULT_GOAL := host

@@ -26,6 +26,10 @@
 #define __SPRT_CONFIG_HAVE_ALOOPER 1
 #endif
 
+#ifndef __SPRT_CONFIG_HAVE_ALOG
+#define __SPRT_CONFIG_HAVE_ALOG 1
+#endif
+
 #ifndef __SPRT_CONFIG_HAVE_URING
 #define __SPRT_CONFIG_HAVE_URING 1
 #endif

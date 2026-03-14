@@ -69,13 +69,19 @@ MODULE_RUNTIME_PRIVATE_INCLUDES := \
 
 MODULE_RUNTIME_DEPENDS_ON := runtime_libc
 
-ifdef LINUX
+ifeq ($(TARGET_SYSTEM),Linux)
 MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a -l:libicuuc.a -l:libicudata.a
 endif
 
-ifdef ANDROID
+ifeq ($(TARGET_SYSTEM),Android)
+MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a -landroid -llog
+endif
+
+ifeq ($(TARGET_SYSTEM),Android-NDK)
 MODULE_RUNTIME_GENERAL_CFLAGS += -nostdinc++
 MODULE_RUNTIME_GENERAL_CXXFLAGS += -nostdinc++
 MODULE_RUNTIME_INCLUDES_OBJS += \

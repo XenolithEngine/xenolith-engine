@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+ Copyright (c) 2026 Xenolith Team <admin@stappler.org>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -20,11 +20,37 @@
  THE SOFTWARE.
  **/
 
-#include <sprt/runtime/platform.h>
+#ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_ALOG_H_
+#define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_ALOG_H_
 
-#if SPRT_WINDOWS
+#include <sprt/c/cross/__sprt_config.h>
+#include <sprt/c/__sprt_stdarg.h>
 
-#pragma comment(lib, "shell32.lib")
-#pragma comment(lib, "shlwapi.lib")
+__SPRT_BEGIN_DECL
+
+typedef enum __SPRT_ID(alog_priority) {
+	__SPRT_ALOG_UNKNOWN = 0,
+	__SPRT_ALOG_DEFAULT,
+	__SPRT_ALOG_VERBOSE,
+	__SPRT_ALOG_DEBUG,
+	__SPRT_ALOG_INFO,
+	__SPRT_ALOG_WARN,
+	__SPRT_ALOG_ERROR,
+	__SPRT_ALOG_FATAL,
+	__SPRT_ALOG_SILENT,
+} __SPRT_ID(alog_priority);
+
+#if __SPRT_CONFIG_HAVE_ALOG || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+
+__SPRT_CONFIG_HAVE_ALOG_NOTICE
+SPRT_API int __SPRT_ID(alog_print)(int prio, const char *tag, const char *fmt, ...);
+
+__SPRT_CONFIG_HAVE_ALOG_NOTICE
+SPRT_API int __SPRT_ID(
+		alog_vprint)(int prio, const char *tag, const char *fmt, __SPRT_ID(va_list) ap);
 
 #endif
+
+__SPRT_END_DECL
+
+#endif // CORE_RUNTIME_INCLUDE_C_SYS___SPRT_ALOG_H_

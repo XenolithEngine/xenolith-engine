@@ -26,7 +26,7 @@
 #include <sprt/c/__sprt_stdio.h>
 
 #if SPRT_ANDROID
-#include <android/log.h>
+#include <sprt/c/sys/__sprt_alog.h>
 #endif
 
 #if SPRT_LINUX
@@ -398,22 +398,22 @@ void print(LogType type, StringView prefix, StringView tag, StringView text) {
 	tag.performWithTerminated([&](const char *tagBuf, size_t len) {
 		switch (type) {
 		case LogType::Verbose:
-			__android_log_print(ANDROID_LOG_VERBOSE, tagBuf, "%.*s", int(text.size()), text.data());
+			__sprt_alog_print(__SPRT_ALOG_VERBOSE, tagBuf, "%.*s", int(text.size()), text.data());
 			break;
 		case LogType::Debug:
-			__android_log_print(ANDROID_LOG_DEBUG, tagBuf, "%.*s", int(text.size()), text.data());
+			__sprt_alog_print(__SPRT_ALOG_DEBUG, tagBuf, "%.*s", int(text.size()), text.data());
 			break;
 		case LogType::Info:
-			__android_log_print(ANDROID_LOG_INFO, tagBuf, "%.*s", int(text.size()), text.data());
+			__sprt_alog_print(__SPRT_ALOG_INFO, tagBuf, "%.*s", int(text.size()), text.data());
 			break;
 		case LogType::Warn:
-			__android_log_print(ANDROID_LOG_WARN, tagBuf, "%.*s", int(text.size()), text.data());
+			__sprt_alog_print(__SPRT_ALOG_WARN, tagBuf, "%.*s", int(text.size()), text.data());
 			break;
 		case LogType::Error:
-			__android_log_print(ANDROID_LOG_ERROR, tagBuf, "%.*s", int(text.size()), text.data());
+			__sprt_alog_print(__SPRT_ALOG_ERROR, tagBuf, "%.*s", int(text.size()), text.data());
 			break;
 		case LogType::Fatal:
-			__android_log_print(ANDROID_LOG_FATAL, tagBuf, "%.*s", int(text.size()), text.data());
+			__sprt_alog_print(__SPRT_ALOG_FATAL, tagBuf, "%.*s", int(text.size()), text.data());
 			break;
 		}
 	});

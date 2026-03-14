@@ -1,27 +1,26 @@
 /**
- Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
- Copyright (c) 2025 Stappler Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
- Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files (the "Software"), to deal
- in the Software without restriction, including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- copies of the Software, and to permit persons to whom the Software is
- furnished to do so, subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
- The above copyright notice and this permission notice shall be included in
- all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
 
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- THE SOFTWARE.
- **/
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
 
-#include <sprt/runtime/init.h>
+#include <sprt/runtime/platform.h>
 
 #if SPRT_ANDROID
 
@@ -31,6 +30,11 @@
 #include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/jni/jni.h>
 
+#include <sprt/c/__sprt_fcntl.h>
+#include <sprt/c/__sprt_unistd.h>
+#include <sprt/c/__sprt_dirent.h>
+#include <sprt/c/__sprt_limits.h>
+
 #include "private/SPRTDso.h"
 
 #include <unicode/uchar.h>
@@ -38,14 +42,8 @@
 #include <unicode/ustring.h>
 
 #include <android/configuration.h>
-#include <stdlib.h>
-#include <sys/random.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <limits.h>
-#include <dirent.h>
-#include <string.h>
+
+#include "private/SPRTPrivate.h"
 
 namespace sprt::unicode {
 
@@ -637,7 +635,7 @@ StringView getHomePath() {
 		// optimistic multithreaded lazy-init
 		// it can allocate more-then needed memory but protected from general lock
 
-		auto path = StringView(getenv("HOME"));
+		auto path = StringView(__sprt_getenv("HOME"));
 
 		unique_lock lock(s_globalConfig.infoMutex);
 		s_globalConfig.homePathBuf = path.pdup(s_globalConfig._pool);
@@ -648,17 +646,17 @@ StringView getHomePath() {
 StringView getOsLocale() { return StringView(s_globalConfig.locale); }
 
 static bool checkApkFile(StringView path) {
-	int fd = ::open(path.data(), O_RDONLY);
+	int fd = ::__sprt_open(path.data(), __SPRT_O_RDONLY);
 	if (fd == -1) {
 		return false;
 	}
 
-	if (auto f = fdopen(fd, "r")) {
-		fclose(f);
+	if (auto f = __sprt_fdopen(fd, "r")) {
+		__sprt_fclose(f);
 		return true;
 	}
 
-	close(fd);
+	__sprt_close(fd);
 	return false;
 }
 
@@ -683,14 +681,15 @@ bool initialize(sprt::AppConfig &&appcfg, int &resultCode) {
 	auto apkPath = app->classLoader.getApkPath();
 
 	if (apkPath.empty() || !checkApkFile(apkPath)) {
-		char fullpath[PATH_MAX] = "/proc/self/fd/";
-		char refpath[PATH_MAX] = {0};
-		struct dirent *dp = nullptr;
-		auto dir = ::opendir("/proc/self/fd");
-		while ((dp = readdir(dir)) != NULL) {
+		char fullpath[__SPRT_PATH_MAX] = "/proc/self/fd/";
+		char refpath[__SPRT_PATH_MAX] = {0};
+		struct __SPRT_DIRENT_NAME *dp = nullptr;
+		auto dir = ::__sprt_opendir("/proc/self/fd");
+		while ((dp = __sprt_readdir(dir)) != NULL) {
 			if (dp->d_name[0] != '.') {
-				memcpy(fullpath + "/proc/self/fd/"_len, dp->d_name, strlen(dp->d_name) + 1);
-				auto nbytes = readlink(fullpath, refpath, PATH_MAX);
+				__sprt_memcpy(fullpath + "/proc/self/fd/"_len, dp->d_name,
+						__sprt_strlen(dp->d_name) + 1);
+				auto nbytes = __sprt_readlink(fullpath, refpath, __SPRT_PATH_MAX);
 				if (nbytes > 0) {
 					StringView path(refpath, nbytes);
 					if (path.ends_with(".apk") && path.starts_with("/data/")) {
@@ -703,7 +702,7 @@ bool initialize(sprt::AppConfig &&appcfg, int &resultCode) {
 				}
 			}
 		}
-		closedir(dir);
+		__sprt_closedir(dir);
 	} else {
 		s_globalConfig.execPathBuf = apkPath.pdup(s_globalConfig._pool);
 	}

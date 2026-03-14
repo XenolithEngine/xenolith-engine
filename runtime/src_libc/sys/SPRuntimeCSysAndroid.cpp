@@ -20,15 +20,22 @@
  THE SOFTWARE.
  **/
 
+#define __SPRT_BUILD 1
+
 #include "private/SPRTSpecific.h"
 
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/sys/__sprt_alooper.h>
+#include <sprt/c/sys/__sprt_alog.h>
 
 #include <sprt/runtime/log.h>
 
 #if __SPRT_CONFIG_HAVE_ALOOPER
 #include <android/looper.h>
+#endif
+
+#if __SPRT_CONFIG_HAVE_ALOG
+#include <android/log.h>
 #endif
 
 namespace sprt {
@@ -120,4 +127,55 @@ __SPRT_C_FUNC int __SPRT_ID(ALooper_removeFd)(__SPRT_ID(ALooper) * looper, int f
 
 #endif
 
+
+#if __SPRT_CONFIG_HAVE_ALOG
+
+static_assert(toInt(__SPRT_ALOG_UNKNOWN) == toInt(ANDROID_LOG_UNKNOWN));
+static_assert(toInt(__SPRT_ALOG_DEFAULT) == toInt(ANDROID_LOG_DEFAULT));
+static_assert(toInt(__SPRT_ALOG_VERBOSE) == toInt(ANDROID_LOG_VERBOSE));
+static_assert(toInt(__SPRT_ALOG_DEBUG) == toInt(ANDROID_LOG_DEBUG));
+static_assert(toInt(__SPRT_ALOG_INFO) == toInt(ANDROID_LOG_INFO));
+static_assert(toInt(__SPRT_ALOG_WARN) == toInt(ANDROID_LOG_WARN));
+static_assert(toInt(__SPRT_ALOG_ERROR) == toInt(ANDROID_LOG_ERROR));
+static_assert(toInt(__SPRT_ALOG_FATAL) == toInt(ANDROID_LOG_FATAL));
+static_assert(toInt(__SPRT_ALOG_SILENT) == toInt(ANDROID_LOG_SILENT));
+
+__SPRT_C_FUNC int __SPRT_ID(alog_print)(int prio, const char *tag, const char *fmt, ...) {
+	va_list list;
+	va_start(list, fmt);
+
+	auto ret = ::__android_log_vprint(prio, tag, fmt, list);
+
+	va_end(list);
+	return ret;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(
+		alog_vprint)(int prio, const char *tag, const char *fmt, __SPRT_ID(va_list) ap) {
+	return ::__android_log_vprint(prio, tag, fmt, ap);
+}
+
+#else
+
+__SPRT_C_FUNC int __SPRT_ID(alog_print)(int prio, const char *tag, const char *fmt, ...) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_ALOG)");
+	return -ENOSYS;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(
+		alog_vprint)(int prio, const char *tag, const char *fmt, __SPRT_ID(va_list) ap) {
+	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+			" not available for this platform (__SPRT_CONFIG_HAVE_ALOG)");
+	return -ENOSYS;
+}
+
+#endif
+
 } // namespace sprt
+
+#if SPRT_ANDROID
+#include "../platform/android/filesystem.cc"
+#include "../platform/android/unicode.cc"
+#include "../platform/android/jni.cc"
+#endif

@@ -46,6 +46,15 @@ CONFIGURE := \
 	-DCURL_STATIC_CRT=On \
 	-DCURL_CA_BUNDLE="$(realpath ../replacements/curl/cacert.pem)"
 
+ifdef DARWIN
+CONFIGURE += \
+	-DSYSTEMCONFIGURATION_FRAMEWORK="SystemConfiguration" \
+	-DCOREFOUNDATION_FRAMEWORK="CoreFoundation" \
+	-DCORESERVICES_FRAMEWORK="CoreServices" \
+	-DUSE_APPLE_IDN=On \
+	-DUSE_LIBIDN2=Off
+endif
+
 ifdef ANDROID
 CONFIGURE += -DLIBIDN2_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a
 endif

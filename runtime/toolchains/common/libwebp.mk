@@ -35,6 +35,13 @@ CONFIGURE := \
 	-DWEBP_BUILD_WEBPINFO=OFF \
 	-DWEBP_BUILD_WEBPMUX=OFF \
 
+ifdef ANDROID
+ifndef NDK
+CONFIGURE += \
+	-DANDROID_NDK=$(SP_TOOLCHAIN_PREFIX)
+endif
+endif
+
 all:
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_mkdir,$(LIBNAME))

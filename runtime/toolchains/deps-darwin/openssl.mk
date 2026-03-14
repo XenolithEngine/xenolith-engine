@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Stappler Team <admin@stappler.org>
-# 
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
@@ -20,40 +20,48 @@
 
 .DEFAULT_GOAL := all
 
-LIBNAME = libbacktrace
+LIBNAME = openssl
 
 include ../common/configure.mk
 
-BACKTRACE_CFLAGS := $(SP_OPT)
+OPENSSL_TARGET := darwin64-$(SP_ARCH)
 
-ifdef ANDROID
-ifndef NDK
-BACKTRACE_CFLAGS := $(SP_CFLAGS)
-endif
+ifdef SP_TOOLCHAIN_PREFIX
+export CFLAGS=$(SP_CFLAGS)
 endif
 
-CONFIGURE := \
+CONFIGURE := $(OPENSSL_TARGET) \
+	--prefix=$(SP_INSTALL_PREFIX)/usr \
 	CC=$(SP_CC) \
-	CPP="$(SP_CC) -E" \
 	CXX=$(SP_CXX) \
-	CFLAGS="$(BACKTRACE_CFLAGS)" \
 	AR=$(SP_AR) \
-	PKG_CONFIG_PATH="$(SP_INSTALL_PREFIX)/usr/lib/pkgconfig" \
-	--host=$(SP_TARGET)$(ANDROID_PLATFORM_LEVEL)\
-	--includedir=$(SP_INSTALL_PREFIX)/usr/include \
-	--libdir=$(SP_INSTALL_PREFIX)/usr/lib \
-	--bindir=$(MAKE_ROOT)$(LIBNAME)/prefix/bin \
-	--sbindir=$(MAKE_ROOT)$(LIBNAME)/prefix/sbin \
-	--datarootdir=$(MAKE_ROOT)$(LIBNAME)/prefix/share \
-	--prefix=$(SP_INSTALL_PREFIX) \
-	--enable-shared=no \
-	--enable-static=yes
+	LIBTOOL=$(SP_LIBTOOL) \
+	RANLIB=$(SP_RANLIB) \
+	no-apps \
+	no-tests \
+	no-module \
+	no-legacy \
+	no-srtp \
+	no-srp \
+	no-dso \
+	no-filenames \
+	no-shared \
+	no-autoload-config
+
+ifeq ($(ARCH),e2k)
+CONFIGURE += no-asm -mno-sse4.2
+endif
+
+ifeq ($(DEBUG),1)
+CONFIGURE += -d
+endif
 
 all:
-	rm -rf $(LIBNAME)
 	@mkdir -p $(LIBNAME)
 	cd $(LIBNAME); \
-		$(LIB_SRC_DIR)/$(LIBNAME)/configure $(CONFIGURE); \
+		$(LIB_SRC_DIR)/$(LIBNAME)/Configure $(CONFIGURE); \
 		make -j8; \
-		make install
+		make install_sw
 	rm -rf $(LIBNAME)
+
+.PHONY: all

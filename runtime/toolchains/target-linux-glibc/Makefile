@@ -132,39 +132,40 @@ endif
 
 OUT_RTS := $(addprefix $(OUT_SYSROOT)/lib/clang/lib/$(SP_ARCH_TARGET_CLANG)/,$(OUT_RTS_FILES))
 
-$(OUT_SYSROOT)/lib/clang/include: $(TARGET_SYSROOT)/lib/clang/21/include
-	@mkdir -p $@
-	cp -rf $(TARGET_SYSROOT)/lib/clang/21/include/* $@
-
 $(OUT_SYSROOT)/lib/clang/lib/$(SP_ARCH_TARGET_CLANG)/clang_rt.crtbegin.o: \
-		$(TARGET_SYSROOT)/lib/linux/clang_rt.crtbegin-$(SP_ARCH_TARGET).o $(OUT_SYSROOT)/lib/clang/include
-	@mkdir -p $(OUT_SYSROOT)/lib/clang/lib/$(SP_ARCH_TARGET_CLANG)
+		$(TARGET_SYSROOT)/lib/linux/clang_rt.crtbegin-$(SP_ARCH_TARGET).o
+	@mkdir -p $(dir $@)
 	@rm -f $@
 	cp -f $< $@
 
 $(OUT_SYSROOT)/lib/clang/lib/$(SP_ARCH_TARGET_CLANG)/clang_rt.crtend.o: \
-		$(TARGET_SYSROOT)/lib/linux/clang_rt.crtend-$(SP_ARCH_TARGET).o $(OUT_SYSROOT)/lib/clang/include
-	@mkdir -p $(OUT_SYSROOT)/lib/clang/lib/$(SP_ARCH_TARGET_CLANG)
+		$(TARGET_SYSROOT)/lib/linux/clang_rt.crtend-$(SP_ARCH_TARGET).o
+	@mkdir -p $(dir $@)
 	@rm -f $@
 	cp -f $< $@
 
 $(OUT_SYSROOT)/lib/clang/lib/$(SP_ARCH_TARGET_CLANG)/libclang_rt.profile.a: \
-		$(TARGET_SYSROOT)/lib/linux/libclang_rt.profile-$(SP_ARCH_TARGET).a $(OUT_SYSROOT)/lib/clang/include
-	@mkdir -p $(OUT_SYSROOT)/lib/clang/lib/$(SP_ARCH_TARGET_CLANG)
+		$(TARGET_SYSROOT)/lib/linux/libclang_rt.profile-$(SP_ARCH_TARGET).a
+	@mkdir -p $(dir $@)
 	@rm -f $@
 	cp -f $< $@
 
 $(OUT_SYSROOT)/lib/clang/lib/$(SP_ARCH_TARGET_CLANG)/liborc_rt.a: \
-		$(TARGET_SYSROOT)/lib/linux/liborc_rt-$(SP_ARCH_TARGET).a $(OUT_SYSROOT)/lib/clang/include
-	@mkdir -p $(OUT_SYSROOT)/lib/clang/lib/$(SP_ARCH_TARGET_CLANG)
+		$(TARGET_SYSROOT)/lib/linux/liborc_rt-$(SP_ARCH_TARGET).a
+	@mkdir -p $(dir $@)
 	@rm -f $@
 	cp -f $< $@
 
 $(OUT_SYSROOT)/lib/clang/lib/$(SP_ARCH_TARGET_CLANG)/libclang_rt.builtins.a: \
-		$(TARGET_SYSROOT)/lib/linux/libclang_rt.builtins-$(SP_ARCH_TARGET).a $(OUT_SYSROOT)/lib/clang/include
-	@mkdir -p $(OUT_SYSROOT)/lib/clang/lib/$(SP_ARCH_TARGET_CLANG)
+		$(TARGET_SYSROOT)/lib/linux/libclang_rt.builtins-$(SP_ARCH_TARGET).a
+	@mkdir -p $(dir $@)
 	@rm -f $@
 	cp -f $< $@
+
+$(OUT_SYSROOT)/lib/clang/lib/linux: $(TARGET_SYSROOT)/lib/linux $(TARGET_LIBCRT)
+	@mkdir -p $(dir $@)
+	@rm -f $@
+	cp -rf $< $@
 
 $(OUT_SYSROOT)/include: $(TARGET_GLIBC)
 	@rm -rf $(OUT_SYSROOT)/include
@@ -240,7 +241,7 @@ $(OUT_SYSROOT)/toolchain.cmake: $(lastword $(MAKEFILE_LIST))
 	@echo 'set(CMAKE_INSTALL_LIBDIR "$${CMAKE_CURRENT_LIST_DIR}/usr/lib")' >> $@
 	@echo 'set(CMAKE_INSTALL_INCLUDEDIR "$${CMAKE_CURRENT_LIST_DIR}/usr/include")' >> $@
 
-$(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_USR_LIBS) $(OUT_RTS) $(OUT_SYSROOT)/include \
+$(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_USR_LIBS) $(OUT_SYSROOT)/lib/clang/lib/linux $(OUT_SYSROOT)/include \
 		$(OUT_SYSROOT)/toolchain.cmake $(OUT_SYSROOT)/target.mk $(OUT_SYSROOT)/target.ini
 	cd $(OUT_SYSROOT)/lib; ln -fs libanl.so.1 libanl.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libBrokenLocale.so.1 libBrokenLocale.so
@@ -255,6 +256,7 @@ $(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_USR_LIBS) $(OUT_RTS) $(OUT_SYSROOT)/in
 ifdef OUT_HOST
 	rm -f $(OUT_SYSROOT)/host
 	cd $(OUT_SYSROOT); ln -fs $(OUT_HOST) host
+	cd $(OUT_SYSROOT)/lib/clang; ln -fs ../../host/lib/clang/21/include include
 endif
 	touch $@
 

@@ -34,7 +34,7 @@ struct ANativeWindow;
 namespace sprt::window {
 
 class AndroidActivity;
-class ClipboardListener;
+struct ClipboardListener;
 
 class SPRT_API AndroidContextController : public ContextController {
 public:

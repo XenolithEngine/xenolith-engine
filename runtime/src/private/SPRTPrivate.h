@@ -29,10 +29,6 @@
 #include <sprt/runtime/mutex.h>
 #include <sprt/runtime/filesystem/lookup.h>
 
-#if SPRT_ANDROID
-#include <time.h>
-#endif
-
 namespace sprt::platform {
 
 struct GlobalConfig {

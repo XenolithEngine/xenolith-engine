@@ -1,17 +1,15 @@
-# Copyright (c) 2023-2024 Stappler LLC <admin@stappler.dev>
-# Copyright (c) 2025 Stappler Team <admin@stappler.org>
-# Copyright (c) 2025 Xenolith Team <admin@xenolith.studio>
-# 
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -20,15 +18,21 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-.DEFAULT_GOAL := all
-
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
 MAKE_FILE := $(realpath $(lastword $(MAKEFILE_LIST)))
 MAKE_ROOT := $(dir $(MAKE_FILE))
 
+TOOLCHAIN_OUTPUT_DIR ?= $(realpath $(MAKE_ROOT)/../intermediate)
+
 MKDIR = mkdir -p
 
-SP_OPT := -O3 -fPIC -DPIC
+SP_MACOS_VER := 14.4
+SP_IOS_VER := 17.4
+
+INCLUDES := \
+	simde/simde-arch.h \
+	spirv/unified1/spirv.h \
+	vulkan/vulkan.h
 
 LIBS := \
 	libc++.a \
@@ -37,7 +41,6 @@ LIBS := \
 	liblzma.a \
 	libzstd.a \
 	libbrotlienc.a \
-	libicuuc.a \
 	libjpeg.a \
 	libpng16.a \
 	libgif.a \
@@ -46,80 +49,100 @@ LIBS := \
 	libfreetype.a \
 	libharfbuzz.a \
 	libsqlite3.a \
-	libmbedtls.a \
 	libnghttp3.a \
 	libssl.a \
 	libgost_engine.a \
-	libidn2.a \
+	libmbedtls.a \
 	libcurl-openssl.a \
-	libzip-openssl.a \
 	libcurl-mbedtls.a \
-	libzip-mbedtls.a \
+	libzip.a \
 	libiwasm-release.a \
 	libiwasm-debug.a \
 	libbacktrace.a \
-	libxml2.a \
-	libffi.a \
-	libexpat.a \
-	libwayland-client.a
+	libvulkan.dylib \
+	libMoltenVK.dylib
 
-WASM_LIBS := \
-	libiwasm-release.a \
-	libiwasm-debug.a
+ifndef SP_ARCH
 
-BINS := \
-	spirv-opt \
-	glslang
+ARCHS := \
+	x86_64-apple-macosx \
+	aarch64-apple-macosx \
+	aarch64-apple-ios \
+	x86_64-apple-ios-simulator \
+	aarch64-apple-ios-simulator
 
-INCLUDES := \
-	spirv/unified1/spirv.h \
-	vulkan/vulkan.h \
-	simde/simde-arch.h
-
-ifndef ARCH
-
-ARCHS := e2k x86_64
+TARGET_FILE := $(dir $(THIS_FILE))target.mk
 
 all: $(ARCHS)
 
-clean:
+SP_x86_64_MACOSX_INFO := \
+	SP_SYSNAME=Darwin \
+	SP_OSVER=$(SP_MACOS_VER) \
+	SP_TARGET=x86_64-apple-macosx \
+	SP_ARCH=x86_64 \
+	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx
 
-native:
-	@mkdir -p $(abspath ../native) $(abspath ../native/include) $(abspath ../native/lib) $(abspath ../native/bin)
-	$(MAKE) -f $(THIS_FILE) ARCH=native
+SP_aarch64_MACOSX_INFO := \
+	SP_SYSNAME=Darwin \
+	SP_OSVER=$(SP_MACOS_VER) \
+	SP_TARGET=aarch64-apple-macosx \
+	SP_ARCH=arm64 \
+	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx
 
-x86_64:
-	$(MAKE) -f $(THIS_FILE) ARCH=x86_64 SP_TARGET=x86_64-unknown-linux-gnu OUT_SYSROOT=$(OUT_SYSROOT)
+SP_aarch64_IOS_INFO := \
+	SP_SYSNAME=iOS \
+	SP_OSVER=$(SP_MACOS_VER) \
+	SP_TARGET=aarch64-apple-ios \
+	SP_ARCH=arm64 \
+	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios
 
-aarch64:
-	$(MAKE) -f $(THIS_FILE) ARCH=aarch64 SP_TARGET=aarch64-unknown-linux-gnu OUT_SYSROOT=$(OUT_SYSROOT)
+SP_x86_64_IOSSIM_INFO := \
+	SP_SYSNAME=iOS \
+	SP_OSVER=$(SP_MACOS_VER) \
+	SP_TARGET=x86_64-apple-ios-simulator \
+	SP_ARCH=x86_64 \
+	SP_IOSSIM=1 \
+	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-ios-simulator
 
-riscv64:
-	$(MAKE) -f $(THIS_FILE) ARCH=riscv64 SP_TARGET=riscv64-unknown-linux-gnu OUT_SYSROOT=$(OUT_SYSROOT)
+SP_aarch64_IOSSIM_INFO := \
+	SP_SYSNAME=iOS \
+	SP_OSVER=$(SP_MACOS_VER) \
+	SP_TARGET=aarch64-apple-ios-simulator \
+	SP_ARCH=arm64 \
+	SP_IOSSIM=1 \
+	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios-simulator
 
-e2k:
-	@mkdir -p $(abspath ../e2k-unknown-linux) $(abspath ../e2k-unknown-linux/include) $(abspath ../e2k-unknown-linux/lib) $(abspath ../e2k-unknown-linux/bin)
-	$(MAKE) -f $(THIS_FILE) ARCH=e2k SP_TARGET=e2k-unknown-linux SP_TOOLCHAIN_PREFIX=$(LCC_TOOLCHAIN_PATH)/fs
+x86_64-apple-macosx:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx/usr/include $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx/usr/lib
+	$(MAKE) -f $(TARGET_FILE) $(SP_x86_64_MACOSX_INFO)
+	$(MAKE) -f $(THIS_FILE) $(SP_x86_64_MACOSX_INFO)
 
-.PHONY: all x86_64 e2k aarch64
+aarch64-apple-macosx:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx/usr/lib
+	$(MAKE) -f $(TARGET_FILE) $(SP_aarch64_MACOSX_INFO)
+	$(MAKE) -f $(THIS_FILE) $(SP_aarch64_MACOSX_INFO)
 
-else # ARCH
+aarch64-apple-ios:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios/usr/lib
+	$(MAKE) -f $(TARGET_FILE) $(SP_aarch64_IOS_INFO)
+	$(MAKE) -f $(THIS_FILE) $(SP_aarch64_IOS_INFO)
 
-ifeq ($(ARCH),native)
+x86_64-apple-ios-simulator:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-ios-simulator/usr/include $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-ios-simulator/usr/lib
+	$(MAKE) -f $(TARGET_FILE) $(SP_x86_64_IOSSIM_INFO)
+	$(MAKE) -f $(THIS_FILE) $(SP_x86_64_IOSSIM_INFO)
 
-SP_INSTALL_PREFIX ?= $(realpath ../native)
+aarch64-apple-ios-simulator:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios-simulator/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios-simulator/usr/lib
+	$(MAKE) -f $(TARGET_FILE) $(SP_aarch64_IOSSIM_INFO)
+	$(MAKE) -f $(THIS_FILE) $(SP_aarch64_IOSSIM_INFO)
 
-SP_CC := gcc
-SP_CXX := g++
-SP_AR := ar
+.PHONY: all $(ARCHS)
+.DEFAULT_GOAL := all
 
-ARCH := $(shell uname -m)
-SP_TARGET := $(ARCH)-unknown-linux
-SP_IS_NATIVE := 1
+else
 
-else # ($(ARCH),native)
-
-OUT_SYSROOT ?= $(realpath ../$(SP_TARGET))
+OUT_SYSROOT ?= $(TOOLCHAIN_OUTPUT_DIR)
 
 SP_TOOLCHAIN_PREFIX ?= $(OUT_SYSROOT)
 SP_INSTALL_PREFIX ?= $(OUT_SYSROOT)
@@ -128,31 +151,32 @@ SP_TOOLCHAIN_FILE ?= $(realpath $(OUT_SYSROOT)/toolchain.cmake)
 SP_CC := $(abspath $(SP_TOOLCHAIN_PREFIX)/host/bin/cc)
 SP_CXX := $(abspath $(SP_TOOLCHAIN_PREFIX)/host/bin/c++)
 SP_AR := $(abspath $(SP_TOOLCHAIN_PREFIX)/host/bin/ar)
+SP_LIBTOOL := $(abspath $(SP_TOOLCHAIN_PREFIX)/host/bin/llvm-libtool-darwin)
+SP_RANLIB := $(abspath $(SP_TOOLCHAIN_PREFIX)/host/bin/llvm-ranlib)
 
-endif # ($(ARCH),native)
+SP_OPT := -O3 -fPIC -DPIC
 
 LIB_SRC_DIR := $(realpath $(MAKE_ROOT)../src)
 
 FORWARD_VARS := \
-	LINUX=1 \
-	ARCH=$(ARCH) \
-	SP_ARCH=$(ARCH) \
+	DARWIN=1 \
+	SP_ARCH=$(SP_ARCH) \
 	SP_INSTALL_PREFIX=$(SP_INSTALL_PREFIX) \
 	SP_TOOLCHAIN_FILE=$(SP_TOOLCHAIN_FILE) \
 	SP_TARGET=$(SP_TARGET) \
 	SP_CC=$(SP_CC) \
 	SP_CXX=$(SP_CXX) \
 	SP_AR=$(SP_AR) \
+	SP_LIBTOOL=$(SP_LIBTOOL) \
+	SP_RANLIB=$(SP_RANLIB) \
 	SP_OPT="$(SP_OPT)" \
 	LIB_SRC_DIR=$(LIB_SRC_DIR) \
-	MAKE_ROOT=$(MAKE_ROOT)
+	MAKE_ROOT=$(MAKE_ROOT) \
+	SP_MACOS_VER=$(SP_MACOS_VER) \
+	SP_IOS_VER=$(SP_IOS_VER)
 
 ifdef SP_TOOLCHAIN_PREFIX
 FORWARD_VARS += SP_TOOLCHAIN_PREFIX=$(SP_TOOLCHAIN_PREFIX)
-endif
-
-ifdef SP_IS_NATIVE
-FORWARD_VARS += SP_NATIVE=1
 endif
 
 ARCH_LIBS = $(addprefix $(SP_INSTALL_PREFIX)/usr/lib/,$(LIBS))
@@ -215,24 +239,14 @@ $(SP_INSTALL_PREFIX)/usr/lib/libssl.a: $(MAKE_ROOT)openssl.mk
 $(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a:  ../common/gost.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-# Actually, use libuidna to mimic libidn2
-$(SP_INSTALL_PREFIX)/usr/lib/libidn2.a: $(MAKE_ROOT)uidna.mk $(SP_INSTALL_PREFIX)/usr/lib/libicuuc.a
-	$(MAKE) -f $< $(FORWARD_VARS)
-
-$(SP_INSTALL_PREFIX)/usr/lib/libicuuc.a: $(MAKE_ROOT)icu.mk
-	$(MAKE) -f $< $(FORWARD_VARS)
-
-$(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a $(SP_INSTALL_PREFIX)/usr/lib/libidn2.a
+$(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
-$(SP_INSTALL_PREFIX)/usr/lib/libcurl-mbedtls.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a $(SP_INSTALL_PREFIX)/usr/lib/libidn2.a
+$(SP_INSTALL_PREFIX)/usr/lib/libcurl-mbedtls.a: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=mbedtls
 
-$(SP_INSTALL_PREFIX)/usr/lib/libzip-openssl.a: ../common/libzip.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a $(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a
-	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
-
-$(SP_INSTALL_PREFIX)/usr/lib/libzip-mbedtls.a: ../common/libzip.mk $(SP_INSTALL_PREFIX)/usr/lib/libmbedtls.a
-	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=mbedtls
+$(SP_INSTALL_PREFIX)/usr/lib/libzip.a: ../common/libzip.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-release.a $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-debug.a:  ../common/wamr.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a
 	$(MAKE) -f $< $(FORWARD_VARS)
@@ -240,16 +254,10 @@ $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-release.a $(SP_INSTALL_PREFIX)/usr/lib/lib
 $(SP_INSTALL_PREFIX)/usr/lib/libbacktrace.a: $(MAKE_ROOT)backtrace.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/lib/libxml2.a: ../common/libxml2.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a $(SP_INSTALL_PREFIX)/usr/lib/libzstd.a
+$(SP_INSTALL_PREFIX)/usr/lib/libvulkan.dylib: $(MAKE_ROOT)vulkan-loader.mk $(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/lib/libffi.a: $(MAKE_ROOT)ffi.mk
-	$(MAKE) -f $< $(FORWARD_VARS)
-
-$(SP_INSTALL_PREFIX)/usr/lib/libexpat.a: $(MAKE_ROOT)expat.mk
-	$(MAKE) -f $< $(FORWARD_VARS)
-
-$(SP_INSTALL_PREFIX)/usr/lib/libwayland-client.a: $(MAKE_ROOT)wayland.mk $(SP_INSTALL_PREFIX)/usr/lib/libxml2.a $(SP_INSTALL_PREFIX)/usr/lib/libffi.a $(SP_INSTALL_PREFIX)/usr/lib/libexpat.a
+$(SP_INSTALL_PREFIX)/usr/lib/libMoltenVk.dylib: $(MAKE_ROOT)moltenvk.mk $(SP_INSTALL_PREFIX)/usr/lib/libvulkan.dylib
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h: ../common/vulkan-headers.mk
@@ -266,8 +274,6 @@ $(SP_INSTALL_PREFIX)/usr/include/simde/simde-arch.h: ../common/simde.mk
 
 $(SP_INSTALL_PREFIX)/share/licenses:
 	rm -rf $(SP_INSTALL_PREFIX)/share/licenses
-	cp -rf runtime/include/* $(SP_INSTALL_PREFIX)/include
-	cp -rf ../licenses $(SP_INSTALL_PREFIX)/share/licenses
 
 .PHONY: all
 

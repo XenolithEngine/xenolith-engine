@@ -1,5 +1,5 @@
-# Copyright (c) 2025 Stappler Team <admin@stappler.org>
-# 
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
@@ -24,30 +24,11 @@ LIBNAME = libbacktrace
 
 include ../common/configure.mk
 
-BACKTRACE_CFLAGS := $(SP_OPT)
-
-ifdef ANDROID
-ifndef NDK
-BACKTRACE_CFLAGS := $(SP_CFLAGS)
-endif
-endif
-
 CONFIGURE := \
-	CC=$(SP_CC) \
-	CPP="$(SP_CC) -E" \
-	CXX=$(SP_CXX) \
-	CFLAGS="$(BACKTRACE_CFLAGS)" \
-	AR=$(SP_AR) \
-	PKG_CONFIG_PATH="$(SP_INSTALL_PREFIX)/usr/lib/pkgconfig" \
-	--host=$(SP_TARGET)$(ANDROID_PLATFORM_LEVEL)\
-	--includedir=$(SP_INSTALL_PREFIX)/usr/include \
-	--libdir=$(SP_INSTALL_PREFIX)/usr/lib \
-	--bindir=$(MAKE_ROOT)$(LIBNAME)/prefix/bin \
-	--sbindir=$(MAKE_ROOT)$(LIBNAME)/prefix/sbin \
-	--datarootdir=$(MAKE_ROOT)$(LIBNAME)/prefix/share \
-	--prefix=$(SP_INSTALL_PREFIX) \
-	--enable-shared=no \
-	--enable-static=yes
+	-host=$(SP_TARGET) \
+	LIBTOOL=$(SP_LIBTOOL) \
+	RANLIB=$(SP_RANLIB) \
+	$(CONFIGURE_AUTOCONF)
 
 all:
 	rm -rf $(LIBNAME)
