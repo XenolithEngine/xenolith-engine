@@ -41,6 +41,14 @@ MODULE_RUNTIME_LIBC_PRIVATE_CFLAGS := $(addprefix -idirafter ,$(TARGET_INCLUDE_D
 MODULE_RUNTIME_LIBC_PRIVATE_CXXFLAGS := $(addprefix -idirafter ,$(TARGET_INCLUDE_DIR_LIBC))
 endif
 
+ifeq ($(TARGET_SYSTEM),Darwin)
+# Change include ordering by duplicating HOST flags before SDK's flags
+MODULE_RUNTIME_LIBC_PRIVATE_CFLAGS += $(HOST_GENERAL_CFLAGS) \
+	-idirafter $(OSTYPE_SDK_PATH)/usr/include -F$(OSTYPE_SDK_PATH)/System/Library/Frameworks
+MODULE_RUNTIME_LIBC_PRIVATE_CXXFLAGS += $(HOST_GENERAL_CFLAGS) \
+	-idirafter $(OSTYPE_SDK_PATH)/usr/include -F$(OSTYPE_SDK_PATH)/System/Library/Frameworks
+endif
+
 $(call define_module, runtime_libc, MODULE_RUNTIME_LIBC)
 
 ifdef WIN32
@@ -91,8 +99,27 @@ MODULE_RUNTIME_INCLUDES_OBJS += \
 MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a
 endif
 
-ifdef MACOS
-MODULE_RUNTIME_GENERAL_LDFLAGS += -framework CoreFoundation  -framework Foundation  -framework Security
+ifeq ($(TARGET_SYSTEM),Darwin)
+MODULE_RUNTIME_GENERAL_CFLAGS += \
+	-idirafter $(RUNTIME_MODULE_DIR)/include_libc \
+	-idirafter $(RUNTIME_MODULE_DIR)/include_libc/darwin
+MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-idirafter $(RUNTIME_MODULE_DIR)/include_libc \
+	-idirafter $(RUNTIME_MODULE_DIR)/include_libc/darwin
+MODULE_RUNTIME_GENERAL_LDFLAGS += -L$(TARGET_LIB_DIR) \
+	-F$(OSTYPE_SDK_PATH)/System/Library/Frameworks \
+	-framework CoreFoundation \
+	-framework Foundation \
+	-framework SystemConfiguration \
+	-framework Security \
+	-framework UniformTypeIdentifiers \
+	-framework AppKit \
+	-framework Network \
+	-framework IOKit \
+	-framework QuartzCore \
+	-framework Metal \
+	-L$(OSTYPE_SDK_PATH)/usr/lib -lSystem -licucore -lobjc -liconv
+MODULE_RUNTIME_LIBS += -l:libbacktrace.a -l:libc++.a
 endif
 
 ifdef WIN32

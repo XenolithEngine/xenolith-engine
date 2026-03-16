@@ -1,16 +1,16 @@
-# Copyright (c) 2023-2024 Stappler LLC <admin@stappler.dev>
+# Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
 # Copyright (c) 2025 Stappler Team <admin@stappler.org>
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -25,70 +25,62 @@ LIBNAME = openssl
 
 include ../common/configure.mk
 
-OPENSSL_TARGET := linux-x86_64-clang
-
-ifeq ($(SP_ARCH),aarch64)
-OPENSSL_TARGET := linux-aarch64
+ifdef ANDROID
+ifndef NDK
+OPENSSL_CC := clang
+OPENSSL_CXX := clang++
+OPENSSL_AR := llvm-ar
+else
+OPENSSL_CC := $(SP_CC)
+OPENSSL_CXX := $(SP_CXX)
+OPENSSL_AR := $(SP_AR)
+endif
+else
+OPENSSL_CC := $(SP_CC)
+OPENSSL_CXX := $(SP_CXX)
+OPENSSL_AR := $(SP_AR)
 endif
 
-ifeq ($(SP_ARCH),riscv64)
-OPENSSL_TARGET := linux64-riscv64
-endif
-
-ifdef SP_TOOLCHAIN_PREFIX
-export CFLAGS=$(SP_CFLAGS)
-endif
-
-CONFIGURE := $(OPENSSL_TARGET) \
+CONFIGURE := android-$(ANDROID_ARCH) \
 	--prefix=$(SP_INSTALL_PREFIX)/usr \
-	CC=$(SP_CC) \
-	CXX=$(SP_CXX) \
-	AR=$(SP_AR) \
+	CC=$(OPENSSL_CC) \
+	CXX=$(OPENSSL_CXX) \
+	AR=$(OPENSSL_AR) \
+	no-apps \
 	no-tests \
+	no-shared \
 	no-module \
 	no-legacy \
 	no-srtp \
 	no-srp \
 	no-dso \
 	no-filenames \
-	no-shared \
-	no-autoload-config
+	no-autoload-config \
+	$(SP_OPT)
 
-ifeq ($(ARCH),e2k)
-CONFIGURE += no-asm -mno-sse4.2
+ifeq ($(SP_ARCH),armv7a)
+CONFIGURE += no-asm
 endif
 
-ifeq ($(DEBUG),1)
-CONFIGURE += -d
+NDK_ROOT := $(NDK)
+NDK_PATH := $(NDKPATH)
+
+ifdef ANDROID
+ifndef NDK
+NDK_ROOT := $(SP_TOOLCHAIN_PREFIX)
+NDK_PATH := $(SP_TOOLCHAIN_PREFIX)/bin:$(SP_TOOLCHAIN_PREFIX)/host/bin
+endif
 endif
 
-ifeq ($(ARCH),x86_64)
 all:
 	@mkdir -p $(LIBNAME)
 	cd $(LIBNAME); \
+		export ANDROID_NDK_ROOT=$(NDK_ROOT); \
+		export PATH=$(NDK_PATH):$$PATH; \
 		$(LIB_SRC_DIR)/$(LIBNAME)/Configure $(CONFIGURE); \
 		make -j8; \
 		make install_sw
 	rm -rf $(LIBNAME)
-	mv -f $(SP_INSTALL_PREFIX)/usr/lib64/libssl.a $(SP_INSTALL_PREFIX)/usr/lib/libssl.a 
-	mv -f $(SP_INSTALL_PREFIX)/usr/lib64/libcrypto.a $(SP_INSTALL_PREFIX)/usr/lib/libcrypto.a 
-	mv -f $(SP_INSTALL_PREFIX)/usr/lib64/pkgconfig/libssl.pc $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc
-	mv -f $(SP_INSTALL_PREFIX)/usr/lib64/pkgconfig/libcrypto.pc $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libcrypto.pc
-	rm -rf $(SP_INSTALL_PREFIX)/usr/lib64 $(SP_INSTALL_PREFIX)/bin/c_rehash
-	sed -i -e 's/ -lssl/ -lgost -lssl -lpthread/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc
-	cp $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/openssl.pc
-	sed -i -e 's/ -lssl/ -lssl -lcrypto/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/openssl.pc
-	sed -i -e 's/{exec_prefix}\/lib64/{exec_prefix}\/lib/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc
-else
-all:
-	@mkdir -p $(LIBNAME)
-	cd $(LIBNAME); \
-		$(LIB_SRC_DIR)/$(LIBNAME)/Configure $(CONFIGURE); \
-		make -j8; \
-		make install_sw
-	rm -rf $(LIBNAME)
-	rm -rf $(SP_INSTALL_PREFIX)/bin/c_rehash
 	sed -i -e 's/ -lssl/ -lssl -lpthread/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc
-endif
 
 .PHONY: all

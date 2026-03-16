@@ -23,8 +23,17 @@
 #define __SPRT_BUILD 1
 #define __SPRT_USE_STL 1
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#pragma clang diagnostic ignored "-Wdeprecated-enum-enum-conversion"
+#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+#pragma clang diagnostic ignored "-Wdeprecated-anon-enum-enum-conversion"
+#pragma clang diagnostic ignored "-Wavailability"
+
 #import <AppKit/AppKit.h>
 #import <MetalKit/MetalKit.h>
+
+#pragma clang diagnostic pop
 
 #include "private/window/macos/SPRTWinMacosContextController.h"
 #include "private/window/macos/SPRTWinMacosDisplayConfigManager.h"
@@ -175,8 +184,8 @@ SurfaceInterfaceInfo MacosWindow::getSurfaceInterfaceInfo() const {
 	return info;
 }
 
-FrameConstraints MacosWindow::exportConstraints() const {
-	FrameConstraints constraints = NativeWindow::exportConstraints();
+FrameConstraints MacosWindow::exportConstraints(uint64_t &serial) const {
+	FrameConstraints constraints = NativeWindow::exportConstraints(serial);
 
 	if (constraints.density == 0.0f) {
 		constraints.density = 1.0f;

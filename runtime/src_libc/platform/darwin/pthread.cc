@@ -20,6 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+#define __SPRT_BUILD 1
+
 #include <sched.h>
 #include <sprt/runtime/math.h>
 #include <sprt/runtime/new.h>

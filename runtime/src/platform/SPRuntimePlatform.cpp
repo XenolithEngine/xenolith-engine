@@ -37,10 +37,6 @@
 #include "SPRuntimePlatform-windows.cc"
 #endif
 
-#if SPRT_MACOS
-#include "SPRuntimePlatform-macos.cc"
-#endif
-
 #include <locale.h>
 
 namespace sprt {

@@ -22,7 +22,10 @@ THIS_FILE := $(lastword $(MAKEFILE_LIST))
 MAKE_FILE := $(realpath $(lastword $(MAKEFILE_LIST)))
 MAKE_ROOT := $(dir $(MAKE_FILE))
 
-TOOLCHAIN_OUTPUT_DIR ?= $(realpath $(MAKE_ROOT)/../intermediate)
+TARGET_FILE := $(dir $(THIS_FILE))init-target.mk
+INSTALL_TARGET_FILE := $(MAKE_ROOT)install-target.mk
+
+TOOLCHAIN_OUTPUT_DIR ?= $(abspath $(MAKE_ROOT)intermediate)
 
 MKDIR = mkdir -p
 
@@ -71,8 +74,6 @@ ARCHS := \
 	x86_64-apple-ios-simulator \
 	aarch64-apple-ios-simulator
 
-TARGET_FILE := $(dir $(THIS_FILE))target.mk
-
 all: $(ARCHS)
 
 SP_x86_64_MACOSX_INFO := \
@@ -116,26 +117,41 @@ x86_64-apple-macosx:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx/usr/include $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx/usr/lib
 	$(MAKE) -f $(TARGET_FILE) $(SP_x86_64_MACOSX_INFO)
 	$(MAKE) -f $(THIS_FILE) $(SP_x86_64_MACOSX_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-apple-macosx
 
 aarch64-apple-macosx:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx/usr/lib
 	$(MAKE) -f $(TARGET_FILE) $(SP_aarch64_MACOSX_INFO)
 	$(MAKE) -f $(THIS_FILE) $(SP_aarch64_MACOSX_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-apple-macosx
 
 aarch64-apple-ios:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios/usr/lib
 	$(MAKE) -f $(TARGET_FILE) $(SP_aarch64_IOS_INFO)
 	$(MAKE) -f $(THIS_FILE) $(SP_aarch64_IOS_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-apple-ios
 
 x86_64-apple-ios-simulator:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-ios-simulator/usr/include $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-ios-simulator/usr/lib
 	$(MAKE) -f $(TARGET_FILE) $(SP_x86_64_IOSSIM_INFO)
 	$(MAKE) -f $(THIS_FILE) $(SP_x86_64_IOSSIM_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-ios-simulator \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-apple-ios-simulator
 
 aarch64-apple-ios-simulator:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios-simulator/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios-simulator/usr/lib
 	$(MAKE) -f $(TARGET_FILE) $(SP_aarch64_IOSSIM_INFO)
 	$(MAKE) -f $(THIS_FILE) $(SP_aarch64_IOSSIM_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios-simulator \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-apple-ios-simulator
 
 .PHONY: all $(ARCHS)
 .DEFAULT_GOAL := all
@@ -160,6 +176,7 @@ LIB_SRC_DIR := $(realpath $(MAKE_ROOT)../src)
 
 FORWARD_VARS := \
 	DARWIN=1 \
+	SP_SYSNAME=$(SP_SYSNAME) \
 	SP_ARCH=$(SP_ARCH) \
 	SP_INSTALL_PREFIX=$(SP_INSTALL_PREFIX) \
 	SP_TOOLCHAIN_FILE=$(SP_TOOLCHAIN_FILE) \
@@ -257,7 +274,7 @@ $(SP_INSTALL_PREFIX)/usr/lib/libbacktrace.a: $(MAKE_ROOT)backtrace.mk $(SP_INSTA
 $(SP_INSTALL_PREFIX)/usr/lib/libvulkan.dylib: $(MAKE_ROOT)vulkan-loader.mk $(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/lib/libMoltenVk.dylib: $(MAKE_ROOT)moltenvk.mk $(SP_INSTALL_PREFIX)/usr/lib/libvulkan.dylib
+$(SP_INSTALL_PREFIX)/usr/lib/libMoltenVK.dylib: $(MAKE_ROOT)moltenvk.mk $(SP_INSTALL_PREFIX)/usr/lib/libvulkan.dylib
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h: ../common/vulkan-headers.mk

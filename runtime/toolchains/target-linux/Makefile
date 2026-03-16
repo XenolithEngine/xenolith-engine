@@ -1,6 +1,6 @@
 # Copyright (c) 2023-2024 Stappler LLC <admin@stappler.dev>
 # Copyright (c) 2025 Stappler Team <admin@stappler.org>
-# Copyright (c) 2025 Xenolith Team <admin@xenolith.studio>
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +25,12 @@
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
 MAKE_FILE := $(realpath $(lastword $(MAKEFILE_LIST)))
 MAKE_ROOT := $(dir $(MAKE_FILE))
+
+INSTALL_TARGET_FILE := $(MAKE_ROOT)install-target.mk
+
+OUT_SYSROOT ?= $(abspath $(MAKE_ROOT)intermediate)
+
+include $(MAKE_ROOT)../common/utils/detect-platform.mk
 
 MKDIR = mkdir -p
 
@@ -76,7 +82,7 @@ INCLUDES := \
 	vulkan/vulkan.h \
 	simde/simde-arch.h
 
-ifndef ARCH
+ifndef SP_ARCH
 
 ARCHS := e2k x86_64
 
@@ -84,40 +90,44 @@ all: $(ARCHS)
 
 clean:
 
-native:
-	@mkdir -p $(abspath ../native) $(abspath ../native/include) $(abspath ../native/lib) $(abspath ../native/bin)
-	$(MAKE) -f $(THIS_FILE) ARCH=native
-
 x86_64:
-	$(MAKE) -f $(THIS_FILE) ARCH=x86_64 SP_TARGET=x86_64-unknown-linux-gnu OUT_SYSROOT=$(OUT_SYSROOT)
+	$(MAKE) -C glibc out SP_ARCH_TARGET=x86_64 \
+		OUT_HOST=$(abspath $(MAKE_ROOT)../hosts/$(HOST_ID)) \
+		OUT_SYSROOT=$(OUT_SYSROOT)/x86_64-unknown-linux-gnu
+	$(MAKE) -f $(THIS_FILE) SP_ARCH=x86_64 SP_TARGET=x86_64-unknown-linux-gnu \
+		OUT_SYSROOT=$(OUT_SYSROOT)/x86_64-unknown-linux-gnu
+	$(MAKE) -f $(INSTALL_TARGET_FILE) \
+		T_INTERMEDIATE=$(OUT_SYSROOT)/x86_64-unknown-linux-gnu \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu
 
 aarch64:
-	$(MAKE) -f $(THIS_FILE) ARCH=aarch64 SP_TARGET=aarch64-unknown-linux-gnu OUT_SYSROOT=$(OUT_SYSROOT)
+	$(MAKE) -C glibc out SP_ARCH_TARGET=aarch64 \
+		OUT_HOST=$(abspath $(MAKE_ROOT)../hosts/$(HOST_ID)) \
+		OUT_SYSROOT=$(OUT_SYSROOT)/aarch64-unknown-linux-gnu
+	$(MAKE) -f $(THIS_FILE) SP_ARCH=aarch64 SP_TARGET=aarch64-unknown-linux-gnu \
+		OUT_SYSROOT=$(OUT_SYSROOT)/aarch64-unknown-linux-gnu
+	$(MAKE) -f $(INSTALL_TARGET_FILE) \
+		T_INTERMEDIATE=$(OUT_SYSROOT)/aarch64-unknown-linux-gnu \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-unknown-linux-gnu
 
 riscv64:
-	$(MAKE) -f $(THIS_FILE) ARCH=riscv64 SP_TARGET=riscv64-unknown-linux-gnu OUT_SYSROOT=$(OUT_SYSROOT)
+	$(MAKE) -C glibc out SP_ARCH_TARGET=riscv64 \
+		OUT_HOST=$(abspath $(MAKE_ROOT)../hosts/$(HOST_ID)) \
+		OUT_SYSROOT=$(OUT_SYSROOT)/riscv64-unknown-linux-gnu
+	$(MAKE) -f $(THIS_FILE) SP_ARCH=riscv64 SP_TARGET=riscv64-unknown-linux-gnu \
+		OUT_SYSROOT=$(OUT_SYSROOT)/riscv64-unknown-linux-gnu
+	$(MAKE) -f $(INSTALL_TARGET_FILE) \
+		T_INTERMEDIATE=$(OUT_SYSROOT)/riscv64-unknown-linux-gnu \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/riscv64-unknown-linux-gnu
 
 e2k:
 	@mkdir -p $(abspath ../e2k-unknown-linux) $(abspath ../e2k-unknown-linux/include) $(abspath ../e2k-unknown-linux/lib) $(abspath ../e2k-unknown-linux/bin)
-	$(MAKE) -f $(THIS_FILE) ARCH=e2k SP_TARGET=e2k-unknown-linux SP_TOOLCHAIN_PREFIX=$(LCC_TOOLCHAIN_PATH)/fs
+	$(MAKE) -f $(THIS_FILE) SP_ARCH=e2k SP_TARGET=e2k-unknown-linux \
+		OUT_SYSROOT=$(OUT_SYSROOT)/e2k-unknown-linux SP_TOOLCHAIN_PREFIX=$(LCC_TOOLCHAIN_PATH)/fs
 
-.PHONY: all x86_64 e2k aarch64
+.PHONY: all x86_64 aarch64 riscv64 e2k
 
-else # ARCH
-
-ifeq ($(ARCH),native)
-
-SP_INSTALL_PREFIX ?= $(realpath ../native)
-
-SP_CC := gcc
-SP_CXX := g++
-SP_AR := ar
-
-ARCH := $(shell uname -m)
-SP_TARGET := $(ARCH)-unknown-linux
-SP_IS_NATIVE := 1
-
-else # ($(ARCH),native)
+else # SP_ARCH
 
 OUT_SYSROOT ?= $(realpath ../$(SP_TARGET))
 
@@ -129,14 +139,12 @@ SP_CC := $(abspath $(SP_TOOLCHAIN_PREFIX)/host/bin/cc)
 SP_CXX := $(abspath $(SP_TOOLCHAIN_PREFIX)/host/bin/c++)
 SP_AR := $(abspath $(SP_TOOLCHAIN_PREFIX)/host/bin/ar)
 
-endif # ($(ARCH),native)
-
 LIB_SRC_DIR := $(realpath $(MAKE_ROOT)../src)
 
 FORWARD_VARS := \
 	LINUX=1 \
-	ARCH=$(ARCH) \
-	SP_ARCH=$(ARCH) \
+	SP_SYSNAME=Linux \
+	SP_ARCH=$(SP_ARCH) \
 	SP_INSTALL_PREFIX=$(SP_INSTALL_PREFIX) \
 	SP_TOOLCHAIN_FILE=$(SP_TOOLCHAIN_FILE) \
 	SP_TARGET=$(SP_TARGET) \

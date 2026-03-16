@@ -27,17 +27,24 @@ SP_MACOS_SDK ?= $(abspath $(dir $(THIS_FILE))../src)/MacOSX.sdk
 SP_IOS_SDK ?= $(abspath $(dir $(THIS_FILE))../src)/iPhoneOS.sdk
 SP_IOSSIM_SDK ?= $(abspath $(dir $(THIS_FILE))../src)/iPhoneSimulator.sdk
 
-
 ifeq ($(SP_SYSNAME),Darwin)
 SP_SDK_ROOT := $(SP_MACOS_SDK)
+SP_DEPFLAGS := -mmacosx-version-min=$(SP_OSVER)
+SP_SDK_NAME := macosx
+SP_SDK_FALLBACK := MacOSX.sdk
 endif # Darwin
 
 ifeq ($(SP_SYSNAME),iOS)
 ifdef SP_IOSSIM
+SP_SDK_NAME := iphonesimulator
 SP_SDK_ROOT := $(SP_IOSSIM_SDK)
+SP_SDK_FALLBACK := iPhoneSimulator.sdk
 else # SP_IOSSIM
+SP_SDK_NAME := iphoneos
 SP_SDK_ROOT := $(SP_IOS_SDK)
+SP_SDK_FALLBACK := iPhoneOS.sdk
 endif # SP_IOSSIM
+SP_DEPFLAGS := -mios-version-min=$(SP_OSVER)
 endif
 
 TOOLCHAIN_CFLAGS :=  -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(SP_TARGET) -arch $(SP_ARCH)
@@ -75,9 +82,29 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(THIS_FILE)
 	@echo 'set(CMAKE_INSTALL_LIBDIR "$${CMAKE_CURRENT_LIST_DIR}/usr/lib")' >> $@
 	@echo 'set(CMAKE_INSTALL_INCLUDEDIR "$${CMAKE_CURRENT_LIST_DIR}/usr/include")' >> $@
 	rm -f $(TOOLCHAIN_OUTPUT_DIR)/host
-	cd $(TOOLCHAIN_OUTPUT_DIR); ln -fs ../../hosts/$(HOST_ID) host
+	cd $(TOOLCHAIN_OUTPUT_DIR); ln -fs ../../../hosts/$(HOST_ID) host
 	mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/lib/clang
 	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/21/include include
+
+$(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
+	@echo 'Build $@'
+	@echo 'TARGET_SYSROOT := $$(patsubst %/,%,$$(dir $$(lastword $$(MAKEFILE_LIST))))' > $@
+	@echo 'TARGET_SYSTEM := $(SP_SYSNAME)' >> $@
+	@echo 'TARGET_ARCH := $(SP_ARCH)' >> $@
+	@echo 'TARGET_NAME := $(SP_TARGET)' >> $@
+	@echo 'TARGET_INCLUDE_DIR := $$(TARGET_SYSROOT)/usr/include' >> $@
+	@echo 'TARGET_LIB_DIR := $$(TARGET_SYSROOT)/usr/lib' >> $@
+	@echo 'TARGET_GENERAL_CFLAGS := -arch $(SP_ARCH) -resource-dir $$(TARGET_SYSROOT)/lib/clang $(SP_DEPFLAGS)' >> $@
+	@echo 'TARGET_GENERAL_CXXFLAGS := -arch $(SP_ARCH) -resource-dir $$(TARGET_SYSROOT)/lib/clang $(SP_DEPFLAGS)' >> $@
+	@echo 'TARGET_GENERAL_LDFLAGS := -arch $(SP_ARCH) -resource-dir $$(TARGET_SYSROOT)/lib/clang -L$$(TARGET_LIB_DIR) -nostdlib++ -nostdlib $(SP_DEPFLAGS)' >> $@
+	@echo 'TARGET_EXEC_CFLAGS :=' >> $@
+	@echo 'TARGET_EXEC_CXXFLAGS :=' >> $@
+	@echo 'TARGET_EXEC_LDFLAGS :=' >> $@
+	@echo 'TARGET_LIB_CFLAGS :=' >> $@
+	@echo 'TARGET_LIB_CXXFLAGS :=' >> $@
+	@echo 'TARGET_LIB_LDFLAGS :=' >> $@
+	@echo 'TARGET_SDK_NAME := $(SP_SDK_NAME)' >> $@
+	@echo 'TARGET_SDK_FALLBACK := $$(realpath $$(TARGET_SYSROOT)/../../src/$(SP_SDK_FALLBACK))' >> $@
 
 CSU_DIR := $(dir $(THIS_FILE))csu
 
@@ -99,7 +126,8 @@ $(TOOLCHAIN_OUTPUT_DIR)/usr/lib/crt1.o: | $(CSU_DIR) $(TOOLCHAIN_OUTPUT_DIR)/too
 	$(MAKE) -C $(CSU_DIR) CC="$(CC)" ARCH_CFLAGS="$(CFLAGS)" DSTROOT="$(TOOLCHAIN_OUTPUT_DIR)" install
 	$(MAKE) -C $(CSU_DIR) CC="$(CC)" ARCH_CFLAGS="$(CFLAGS)" DSTROOT="$(TOOLCHAIN_OUTPUT_DIR)" clean
 
-all: $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake $(CSU_DIR) $(TOOLCHAIN_OUTPUT_DIR)/usr/lib/crt1.o
+all: $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake $(TOOLCHAIN_OUTPUT_DIR)/target.mk \
+	$(CSU_DIR) $(TOOLCHAIN_OUTPUT_DIR)/usr/lib/crt1.o
 
 .PHONY: all
 .DEFAULT_GOAL := all

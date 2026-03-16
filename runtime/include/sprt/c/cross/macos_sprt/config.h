@@ -81,3 +81,7 @@
 #ifndef __SPRT_CONFIG_HAVE_DARWIN
 #define __SPRT_CONFIG_HAVE_DARWIN 1
 #endif
+
+#ifndef __SPRT_CONFIG_HAVE_KQUEUE
+#define __SPRT_CONFIG_HAVE_KQUEUE 1
+#endif

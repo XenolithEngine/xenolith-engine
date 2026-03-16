@@ -355,6 +355,40 @@ SPRT_FORCEINLINE int vsscanf_l(const char *__SPRT_RESTRICT str, __SPRT_ID(locale
 	return __sprt_vsscanf_l(str, loc, format, ap);
 }
 
+SPRT_FORCEINLINE int snprintf_l(char *__SPRT_RESTRICT buf, __SPRT_ID(size_t) len,
+		__SPRT_ID(locale_t) __SPRT_RESTRICT loc, const char *__SPRT_RESTRICT fmt, ...) {
+	__sprt_va_list list;
+	__sprt_va_start(list, fmt);
+
+	auto ret = __sprt_vsnprintf_l(buf, len, loc, fmt, list);
+
+	__sprt_va_end(list);
+	return ret;
+}
+
+SPRT_FORCEINLINE int vsnprintf_l(char *__SPRT_RESTRICT buf, __SPRT_ID(size_t) len,
+		__SPRT_ID(locale_t) __SPRT_RESTRICT loc, const char *__SPRT_RESTRICT fmt,
+		__SPRT_ID(va_list) list) {
+	return __sprt_vsnprintf_l(buf, len, loc, fmt, list);
+}
+
+SPRT_FORCEINLINE int asprintf_l(char **__SPRT_RESTRICT target,
+		__SPRT_ID(locale_t) __SPRT_RESTRICT loc, const char *__SPRT_RESTRICT fmt, ...) {
+	__sprt_va_list list;
+	__sprt_va_start(list, fmt);
+
+	auto ret = __sprt_vasprintf_l(target, loc, fmt, list);
+
+	__sprt_va_end(list);
+	return ret;
+}
+
+SPRT_FORCEINLINE int vasprintf_l(char **__SPRT_RESTRICT target,
+		__SPRT_ID(locale_t) __SPRT_RESTRICT loc, const char *__SPRT_RESTRICT fmt,
+		__SPRT_ID(va_list) list) {
+	return __sprt_vasprintf_l(target, loc, fmt, list);
+}
+
 __SPRT_END_DECL
 
 #ifdef _LIBCPP_MSVCRT

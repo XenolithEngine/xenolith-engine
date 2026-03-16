@@ -93,7 +93,7 @@ OBJS := $(SRCS:.c=.o)
 TARGET_CFLAGS := $(SP_CFLAGS) -DBUILDING_ENGINE_AS_LIBRARY -DL_ENDIAN \
 	-Werror -Wall -Wno-unused-parameter -Wno-unused-function -Wno-missing-braces -Qunused-arguments -Wno-deprecated-declarations
 
-ifeq ($(ARCH),x86_64)
+ifeq ($(SP_ARCH),x86_64)
 TARGET_CFLAGS += -DHAVE_ADDCARRY_U64
 endif
 

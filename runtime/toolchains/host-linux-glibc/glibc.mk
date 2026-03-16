@@ -18,6 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+SP_SRC_DIR ?= ../src
+
 # Нам нужно чем-то собрать начальную версию clang и glibc. Почему бы не GCC.
 # https://ftp.gnu.org/gnu/gcc/gcc-15.2.0/gcc-15.2.0.tar.gz
 GCC_SRC_VER := 15.2.0
@@ -101,13 +103,13 @@ MAKE_SRC_URL := https://ftp.gnu.org/gnu/make/make-$(MAKE_SRC_VER).tar.lz
 $(eval $(call download_tarbell_target,$(MAKE_SRC_DIR),$(MAKE_SRC_TARBALL),$(MAKE_SRC_URL)))
 
 
-ZLIB_DIR := $(realpath ../src/zlib)
+ZLIB_DIR := $(realpath $(SP_SRC_DIR)/zlib)
 
 ifeq ($(ZLIB_DIR),)
 $(error ZLib not found, try 'make download' from toolchains)
 endif
 
-LLVM_DIR := $(realpath ../src/llvm-project)
+LLVM_DIR := $(realpath $(SP_SRC_DIR)/llvm-project)
 
 ifeq ($(LLVM_DIR),)
 $(error LLVM not found, try 'make download' from toolchains)

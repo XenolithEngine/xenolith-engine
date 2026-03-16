@@ -22,13 +22,21 @@
 
 #define __SPRT_BUILD 1
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#pragma clang diagnostic ignored "-Wdeprecated-enum-enum-conversion"
+#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+#pragma clang diagnostic ignored "-Wdeprecated-anon-enum-enum-conversion"
+#pragma clang diagnostic ignored "-Wavailability"
+
 #include <Foundation/Foundation.h>
+
+#pragma clang diagnostic pop
 
 #include "private/window/macos/SPRTWinMacosContextController.h"
 #include "private/window/macos/SPRTWinMacosDisplayConfigManager.h"
 #include "private/window/macos/SPRTWinMacosWindow.h"
 #include "private/window/macos/SPRTWinMacosView.h"
-
 
 #if XL_MACOS_DEBUG
 #define XL_MACOS_LOG(...) NSSP::log::source().debug(__VA_ARGS__)

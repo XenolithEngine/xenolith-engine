@@ -741,4 +741,72 @@ __SPRT_C_FUNC int __SPRT_ID(vsscanf_l)(const char *__SPRT_RESTRICT str, __SPRT_I
 #endif
 }
 
+__SPRT_C_FUNC int __SPRT_ID(snprintf_l)(char *__SPRT_RESTRICT buf, __SPRT_ID(size_t) len,
+		__SPRT_ID(locale_t) __SPRT_RESTRICT loc, const char *__SPRT_RESTRICT fmt, ...) {
+	va_list list;
+	va_start(list, fmt);
+
+#if SPRT_WINDOWS
+	auto ret = _vsnprintf_l(buf, len, fmt, loc, ap);
+#elif SPRT_LINUX || SPRT_ANDROID
+	auto cur = ::uselocale(loc);
+	auto ret = ::vsnprintf(buf, len, fmt, list);
+	::uselocale(cur);
+#else
+	auto ret = vsnprintf_l(buf, len, loc, fmt, list);
+#endif
+
+	va_end(list);
+	return ret;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(vsnprintf_l)(char *__SPRT_RESTRICT buf, __SPRT_ID(size_t) len,
+		__SPRT_ID(locale_t) __SPRT_RESTRICT loc, const char *__SPRT_RESTRICT fmt,
+		__SPRT_ID(va_list) list) {
+#if SPRT_WINDOWS
+	return _vsnprintf_l(buf, len, fmt, loc, ap);
+#elif SPRT_LINUX || SPRT_ANDROID
+	auto cur = ::uselocale(loc);
+	auto ret = ::vsnprintf(buf, len, fmt, list);
+	::uselocale(cur);
+	return ret;
+#else
+	return vsnprintf_l(buf, len, loc, fmt, list);
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(asprintf_l)(char **__SPRT_RESTRICT target,
+		__SPRT_ID(locale_t) __SPRT_RESTRICT loc, const char *__SPRT_RESTRICT fmt, ...) {
+	va_list list;
+	va_start(list, fmt);
+
+#if SPRT_WINDOWS
+	auto ret = _vasprintf_l(target, loc, fmt, list);
+#elif SPRT_LINUX || SPRT_ANDROID
+	auto cur = ::uselocale(loc);
+	auto ret = ::vasprintf(target, fmt, list);
+	::uselocale(cur);
+#else
+	auto ret = vasprintf_l(target, loc, fmt, list);
+#endif
+
+	va_end(list);
+	return ret;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(vasprintf_l)(char **__SPRT_RESTRICT target,
+		__SPRT_ID(locale_t) __SPRT_RESTRICT loc, const char *__SPRT_RESTRICT fmt,
+		__SPRT_ID(va_list) list) {
+#if SPRT_WINDOWS
+	return _vasprintf_l(target, loc, fmt, list);
+#elif SPRT_LINUX || SPRT_ANDROID
+	auto cur = ::uselocale(loc);
+	auto ret = ::vasprintf(target, fmt, list);
+	::uselocale(cur);
+	return ret;
+#else
+	return vasprintf_l(target, loc, fmt, list);
+#endif
+}
+
 } // namespace sprt

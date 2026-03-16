@@ -22,10 +22,19 @@
 
 #define __SPRT_BUILD 1
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#pragma clang diagnostic ignored "-Wdeprecated-enum-enum-conversion"
+#pragma clang diagnostic ignored "-Wunguarded-availability-new"
+#pragma clang diagnostic ignored "-Wdeprecated-anon-enum-enum-conversion"
+#pragma clang diagnostic ignored "-Wavailability"
+
 #import <AppKit/NSApplication.h>
 #import <AppKit/NSPasteboardItem.h>
 #import <Network/Network.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+
+#pragma clang diagnostic pop
 
 #include <sprt/runtime/log.h>
 

@@ -21,10 +21,15 @@
 # THE SOFTWARE.
 
 THIS_FILE := $(lastword $(MAKEFILE_LIST))
+
 MAKE_FILE := $(realpath $(lastword $(MAKEFILE_LIST)))
 MAKE_ROOT := $(dir $(MAKE_FILE))
 
-TOOLCHAIN_OUTPUT_DIR ?= $(realpath $(MAKE_ROOT)/../intermediate)
+TARGET_FILE := $(MAKE_ROOT)init-target.mk
+INSTALL_TARGET_NDK_FILE := $(MAKE_ROOT)install-target-ndk.mk
+INSTALL_TARGET_FILE := $(MAKE_ROOT)install-target.mk
+
+TOOLCHAIN_OUTPUT_DIR ?= $(abspath $(MAKE_ROOT)intermediate)
 
 MKDIR = mkdir -p
 
@@ -71,11 +76,12 @@ LIBS := \
 	libiwasm-debug.a \
 	libbacktrace.a
 
-ifndef ARCH
+ifndef SP_ARCH
 
 ARCHS_NDK := x86-ndk x86_64-ndk arm64-v8a-ndk armeabi-v7a-ndk
 
 all-ndk: $(ARCHS_NDK)
+	$(MAKE) -f $(INSTALL_TARGET_NDK_FILE) TOOLCHAIN_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR) TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS)
 
 clean:
 	rm -rf x86 x86_64 arm64-v8a armeabi-v7a
@@ -86,12 +92,12 @@ clean:
 #
 
 SP_ARCH_x86_64_INFO_BASE := \
-	ANDROID_ARCH_ABI=x86_64 ARCH=x86_64 \
+	ANDROID_ARCH_ABI=x86_64 \
 	ANDROID_ARCH=x86_64 \
 	ANDROID_PLATFORM_LEVEL=$(ANDROID_PLATFORM_LEVEL) \
 	ANDROID_TARGET=x86_64-linux-android \
+	SP_ARCH=x86_64 \
 	SP_RES_ARCH=x86_64 \
-	SP_ARCH_TARGET=x86_64 \
 	SP_ARCH_TARGET_CLANG=x86_64-unknown-linux-android \
 	NDKP=x86_64-linux-android$(ANDROID_PLATFORM_LEVEL)
 
@@ -107,12 +113,12 @@ SP_ARCH_x86_64_INFO := \
 	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-unknown-linux-android
 
 SP_ARCH_x86_INFO_BASE := \
-	ANDROID_ARCH_ABI=x86 ARCH=x86 \
+	ANDROID_ARCH_ABI=x86 \
 	ANDROID_ARCH=x86 \
 	ANDROID_PLATFORM_LEVEL=$(ANDROID_PLATFORM_LEVEL) \
 	ANDROID_TARGET=i686-linux-android \
+	SP_ARCH=x86 \
 	SP_RES_ARCH=i686 \
-	SP_ARCH_TARGET=x86 \
 	SP_ARCH_TARGET_CLANG=i686-unknown-linux-android \
 	NDKP=i686-linux-android$(ANDROID_PLATFORM_LEVEL)
 
@@ -128,12 +134,12 @@ SP_ARCH_x86_INFO := \
 	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/i686-unknown-linux-android
 
 SP_ARCH_arm64_INFO_BASE := \
-	ANDROID_ARCH_ABI=arm64-v8a ARCH=arm64-v8a \
+	ANDROID_ARCH_ABI=arm64-v8a \
 	ANDROID_ARCH=arm64 \
 	ANDROID_PLATFORM_LEVEL=$(ANDROID_PLATFORM_LEVEL) \
 	ANDROID_TARGET=aarch64-linux-android \
+	SP_ARCH=aarch64 \
 	SP_RES_ARCH=aarch64 \
-	SP_ARCH_TARGET=aarch64 \
 	SP_ARCH_TARGET_CLANG=aarch64-unknown-linux-android \
 	NDKP=aarch64-linux-android$(ANDROID_PLATFORM_LEVEL)
 
@@ -149,12 +155,12 @@ SP_ARCH_arm64_INFO := \
 	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-unknown-linux-android
 
 SP_ARCH_arm_INFO_BASE := \
-	ANDROID_ARCH_ABI=armeabi-v7a ARCH=armeabi-v7a \
+	ANDROID_ARCH_ABI=armeabi-v7a \
 	ANDROID_ARCH=arm \
 	ANDROID_PLATFORM_LEVEL=$(ANDROID_PLATFORM_LEVEL) \
 	ANDROID_TARGET=arm-linux-androideabi \
+	SP_ARCH=armv7a \
 	SP_RES_ARCH=arm \
-	SP_ARCH_TARGET=armv7a \
 	SP_ARCH_TARGET_CLANG=armv7a-unknown-linux-androideabi \
 	NDKP=armv7a-linux-androideabi$(ANDROID_PLATFORM_LEVEL)
 
@@ -185,32 +191,42 @@ armeabi-v7a-ndk:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/armv7a-ndk-linux-androideabi/usr/include $(TOOLCHAIN_OUTPUT_DIR)/armv7a-ndk-linux-androideabi/usr/lib
 	$(MAKE) -f $(THIS_FILE) $(SP_ARCH_arm_INFO_NDK)
 
-TARGET_FILE := $(dir $(THIS_FILE))target.mk
-
 x86_64:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/x86_64-unknown-linux-android/usr/include $(TOOLCHAIN_OUTPUT_DIR)/x86_64-unknown-linux-android/usr/lib
 	$(MAKE) -f $(TARGET_FILE) $(SP_ARCH_x86_64_INFO)
 	$(MAKE) -f $(THIS_FILE) $(SP_ARCH_x86_64_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-unknown-linux-android \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-android
 
 x86:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/i686-unknown-linux-android/usr/include $(TOOLCHAIN_OUTPUT_DIR)/i686-unknown-linux-android/usr/lib
 	$(MAKE) -f $(TARGET_FILE) $(SP_ARCH_x86_INFO)
 	$(MAKE) -f $(THIS_FILE) $(SP_ARCH_x86_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/i686-unknown-linux-android \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/i686-unknown-linux-android
 
 arm64-v8a:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-unknown-linux-android/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-unknown-linux-android/usr/lib
 	$(MAKE) -f $(TARGET_FILE) $(SP_ARCH_arm64_INFO)
 	$(MAKE) -f $(THIS_FILE) $(SP_ARCH_arm64_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-unknown-linux-android \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-unknown-linux-android
 
 armeabi-v7a:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/armv7a-unknown-linux-androideabi/usr/include $(TOOLCHAIN_OUTPUT_DIR)/armv7a-unknown-linux-androideabi/usr/lib
 	$(MAKE) -f $(TARGET_FILE) $(SP_ARCH_arm_INFO)
 	$(MAKE) -f $(THIS_FILE) $(SP_ARCH_arm_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/armv7a-unknown-linux-androideabi \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/armv7a-unknown-linux-androideabi
 
 .PHONY: all-ndk x86 x86_64 arm64-v8a armeabi-v7a x86-ndk x86_64-ndk arm64-v8a-ndk armeabi-v7a-ndk
 .DEFAULT_GOAL := all-ndk
 
-else
+else # SP_ARCH
 
 SP_OPT := -Oz -fPIC -DPIC -ffunction-sections -fdata-sections
 
@@ -218,26 +234,30 @@ SP_INSTALL_PREFIX ?= $(TOOLCHAIN_OUTPUT_DIR)
 
 LIB_SRC_DIR := $(realpath $(MAKE_ROOT)../src)
 
+FORWARD_VARS := \
+	ANDROID=1 \
+	ANDROID_ARCH=$(ANDROID_ARCH) \
+	ANDROID_ARCH_ABI=$(ANDROID_ARCH_ABI) \
+	ANDROID_TARGET=$(ANDROID_TARGET) \
+	ANDROID_PLATFORM_LEVEL=$(ANDROID_PLATFORM_LEVEL) \
+	SP_ARCH=$(SP_ARCH) \
+	SP_SYSNAME=Android \
+	SP_TARGET=$(SP_TARGET) \
+	SP_INSTALL_PREFIX=$(SP_INSTALL_PREFIX) \
+	SP_OPT="$(SP_OPT)" \
+	LIB_SRC_DIR=$(LIB_SRC_DIR) \
+	MAKE_ROOT=$(MAKE_ROOT)
+
 ifdef SP_NDK
 
 SP_CC := $(NDKPATH)/$(NDKP)-clang
 SP_CXX := $(NDKPATH)/$(NDKP)-clang++
 SP_AR := $(NDKPATH)/llvm-ar
 
-FORWARD_VARS := \
-	ANDROID=1 \
-	ANDROID_ARCH=$(ANDROID_ARCH) \
-	ANDROID_TARGET=$(ANDROID_TARGET) \
-	ARCH=$(ARCH) \
-	ANDROID_PLATFORM_LEVEL=$(ANDROID_PLATFORM_LEVEL) \
-	SP_TARGET=$(SP_TARGET) \
-	SP_INSTALL_PREFIX=$(SP_INSTALL_PREFIX) \
+FORWARD_VARS += \
 	SP_CC=$(SP_CC) \
 	SP_CXX=$(SP_CXX) \
 	SP_AR=$(SP_AR) \
-	SP_OPT="$(SP_OPT)" \
-	LIB_SRC_DIR=$(LIB_SRC_DIR) \
-	MAKE_ROOT=$(MAKE_ROOT) \
 	NDK=$(NDK) \
 	NDKP=$(NDKP) \
 	NDKPATH=$(NDKPATH)
@@ -250,22 +270,12 @@ SP_CC := $(HOST_BINDIR)/clang
 SP_CXX := $(HOST_BINDIR)/clang++
 SP_AR := $(HOST_BINDIR)/llvm-ar
 
-FORWARD_VARS := \
-	ANDROID=1 \
-	ANDROID_ARCH=$(ANDROID_ARCH) \
-	ANDROID_TARGET=$(ANDROID_TARGET) \
-	ARCH=$(ARCH) \
-	ANDROID_PLATFORM_LEVEL=$(ANDROID_PLATFORM_LEVEL) \
+FORWARD_VARS += \
 	SP_TOOLCHAIN_FILE=$(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake \
 	SP_TOOLCHAIN_PREFIX=$(TOOLCHAIN_OUTPUT_DIR) \
-	SP_TARGET=$(SP_TARGET) \
-	SP_INSTALL_PREFIX=$(SP_INSTALL_PREFIX) \
 	SP_CC=$(SP_CC) \
 	SP_CXX=$(SP_CXX) \
-	SP_AR=$(SP_AR) \
-	SP_OPT="$(SP_OPT)" \
-	LIB_SRC_DIR=$(LIB_SRC_DIR) \
-	MAKE_ROOT=$(MAKE_ROOT)
+	SP_AR=$(SP_AR)
 
 INCLUDES += vulkan/vulkan.h
 
@@ -371,4 +381,4 @@ $(SP_INSTALL_PREFIX)/share/licenses: ../licenses
 .PHONY: all
 .DEFAULT_GOAL := all
 
-endif
+endif # SP_ARCH

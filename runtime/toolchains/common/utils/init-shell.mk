@@ -18,31 +18,31 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-.DEFAULT_GOAL := all
+ifeq ($(findstring Windows,$(OS)),Windows)
 
-LIBNAME = zstd
+SHELL = powershell.exe
+MKDIR = powershell New-Item -ItemType Directory -Force -Path
+RM := powershell Remove-Item -Recurse -Force -ErrorAction Ignore -Path 
 
-ifeq ($(SP_ARCH),e2k)
-SP_USER_CFLAGS := -DZSTD_NO_INTRINSICS
-SP_USER_CXXFLAGS := -DZSTD_NO_INTRINSICS
+rule_mkdir = powershell New-Item -ItemType Directory -Force -Path "$(1)" | Out-Null
+rule_rm = powershell 'if (Test-Path "$(1)") { Remove-Item -Recurse -Force -ErrorAction Ignore -Path "$(1)" }'
+rule_cp = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force
+rule_cpr = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force -Recurse
+rule_mv = powershell Move-Item -Path "$(1)" -Destination "$(2)" -Force
+
+mklibname = $(addprefix lib,$(addsuffix .lib, $(1)))
+
+else
+
+MKDIR = mkdir -p
+RM := rm -rf
+
+rule_mkdir = mkdir -p $(1)
+rule_rm = rm -rf $(1)
+rule_cp = cp -f $(1) $(2)
+rule_cpr = cp -rf $(1) $(2)
+rule_mv = mv -f $(1) $(2)
+
+mklibname = $(addprefix lib,$(addsuffix .a, $(1)))
+
 endif
-
-include ../common/configure.mk
-
-CONFIGURE := \
-	$(CONFIGURE_CMAKE) \
-	-DZSTD_BUILD_PROGRAMS=OFF \
-	-DZSTD_PROGRAMS_LINK_SHARED=OFF \
-	-DZSTD_BUILD_SHARED=OFF \
-	-DZSTD_BUILD_STATIC=ON \
-	-DBUILD_TESTING=OFF
-
-all:
-	$(call rule_rm,$(LIBNAME))
-	$(call rule_mkdir,$(LIBNAME))
-	cd $(LIBNAME); cmake -G "Ninja" $(LIB_SRC_DIR)/$(LIBNAME)/build/cmake $(CONFIGURE);
-	cd $(LIBNAME); cmake --build . --parallel
-	cd $(LIBNAME); cmake --install .
-	$(call rule_rm,$(LIBNAME))
-
-.PHONY: all

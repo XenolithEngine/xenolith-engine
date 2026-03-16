@@ -6,10 +6,10 @@
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -18,50 +18,31 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-.DEFAULT_GOAL := all
+CONFIGURE_PROC_x86 := i686
+CONFIGURE_PROC_armv7a := armv7-a
+CONFIGURE_PROC_x86_64 := x86_64
+CONFIGURE_PROC_aarch64 := aarch64
+CONFIGURE_PROC_arm64 := aarch64
+CONFIGURE_PROC_riscv64 := riscv64
+CONFIGURE_PROC_e2k := e2kv4
 
-LIBNAME = openssl
+CONFIGURE_HOST_Linux_x86 := i686-linux-gnu
+CONFIGURE_HOST_Linux_armv7a := armv7a-linux-gnu
+CONFIGURE_HOST_Linux_x86_64 := x86_64-linux-gnu
+CONFIGURE_HOST_Linux_aarch64 := aarch64-linux-gnu
+CONFIGURE_HOST_Linux_riscv64 := riscv64-linux-gnu
+CONFIGURE_HOST_Linux_e2k := e2k-linux
 
-include ../common/configure.mk
+CONFIGURE_HOST_Android_x86 := i686-linux-android
+CONFIGURE_HOST_Android_armv7a := armv7a-linux-androideabi
+CONFIGURE_HOST_Android_x86_64 := x86_64-linux-android
+CONFIGURE_HOST_Android_aarch64 := aarch64-linux-android
+CONFIGURE_HOST_Android_riscv64 := riscv64-linux-android
 
-OPENSSL_TARGET := darwin64-$(SP_ARCH)
+CONFIGURE_HOST_Darwin_x86_64 := x86_64-apple-macosx
+CONFIGURE_HOST_Darwin_aarch64 := aarch64-apple-macosx
+CONFIGURE_HOST_Darwin_arm64 := aarch64-apple-macosx
 
-ifdef SP_TOOLCHAIN_PREFIX
-export CFLAGS=$(SP_CFLAGS)
-endif
-
-CONFIGURE := $(OPENSSL_TARGET) \
-	--prefix=$(SP_INSTALL_PREFIX)/usr \
-	CC=$(SP_CC) \
-	CXX=$(SP_CXX) \
-	AR=$(SP_AR) \
-	LIBTOOL=$(SP_LIBTOOL) \
-	RANLIB=$(SP_RANLIB) \
-	no-apps \
-	no-tests \
-	no-module \
-	no-legacy \
-	no-srtp \
-	no-srp \
-	no-dso \
-	no-filenames \
-	no-shared \
-	no-autoload-config
-
-ifeq ($(ARCH),e2k)
-CONFIGURE += no-asm -mno-sse4.2
-endif
-
-ifeq ($(DEBUG),1)
-CONFIGURE += -d
-endif
-
-all:
-	@mkdir -p $(LIBNAME)
-	cd $(LIBNAME); \
-		$(LIB_SRC_DIR)/$(LIBNAME)/Configure $(CONFIGURE); \
-		make -j8; \
-		make install_sw
-	rm -rf $(LIBNAME)
-
-.PHONY: all
+CONFIGURE_HOST_iOS_x86_64 := x86_64-apple-ios-simulator
+CONFIGURE_HOST_iOS_aarch64 := aarch64-apple-ios
+CONFIGURE_HOST_iOS_arm64 := aarch64-apple-ios

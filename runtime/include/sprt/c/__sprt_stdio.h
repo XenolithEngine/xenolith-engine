@@ -266,6 +266,18 @@ SPRT_API int __SPRT_ID(vfscanf_l)(__SPRT_ID(FILE) * __SPRT_RESTRICT stream, __SP
 SPRT_API int __SPRT_ID(vsscanf_l)(const char *__SPRT_RESTRICT str, __SPRT_ID(locale_t) loc,
 		const char *__SPRT_RESTRICT format, __SPRT_ID(va_list) ap);
 
+SPRT_API int __SPRT_ID(snprintf_l)(char *__SPRT_RESTRICT, __SPRT_ID(size_t) __maxlen,
+		__SPRT_ID(locale_t) __SPRT_RESTRICT, const char *__SPRT_RESTRICT, ...);
+
+SPRT_API int __SPRT_ID(vsnprintf_l)(char *__SPRT_RESTRICT, __SPRT_ID(size_t) __maxlen,
+		__SPRT_ID(locale_t) __SPRT_RESTRICT, const char *__SPRT_RESTRICT, __SPRT_ID(va_list));
+
+SPRT_API int __SPRT_ID(asprintf_l)(char **__SPRT_RESTRICT, __SPRT_ID(locale_t) __SPRT_RESTRICT,
+		const char *__SPRT_RESTRICT, ...);
+
+SPRT_API int __SPRT_ID(vasprintf_l)(char **__SPRT_RESTRICT, __SPRT_ID(locale_t) __SPRT_RESTRICT,
+		const char *__SPRT_RESTRICT, __SPRT_ID(va_list));
+
 __SPRT_END_DECL
 
 #endif // CORE_RUNTIME_INCLUDE_C___SPRT_STDIO_H_

@@ -99,70 +99,47 @@ x86_64-pc-windows-msvc.tar.xz: $(TOOLCHAIN_TARGETS)/x86_64-pc-windows-msvc
 host:
 	$(MAKE) -C $(HOST_TOOLCHAIN) out OUT_SYSROOT=$(abspath hosts/$(HOST_ID))
 
+
 #
 # Android NDK targets
 #
 
 target-unknown-ndk-linux-android:
-	$(MAKE) -C deps-android TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) all-ndk
-	$(MAKE) -f android-ndk.mk TOOLCHAIN_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE) TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS)
+	$(MAKE) -C target-android TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) all-ndk
 
 target-aarch64-unknown-linux-android: host
-	$(MAKE) -C deps-android TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) arm64-v8a
-	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/aarch64-unknown-linux-android \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-unknown-linux-android
+	$(MAKE) -C target-android TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) arm64-v8a
 
 target-armv7a-unknown-linux-androideabi: host
-	$(MAKE) -C deps-android TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) armeabi-v7a
-	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/armv7a-unknown-linux-androideabi \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/armv7a-unknown-linux-androideabi
+	$(MAKE) -C target-android TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) armeabi-v7a
 
 target-i686-unknown-linux-android: host
-	$(MAKE) -C deps-android TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) x86
-	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/i686-unknown-linux-android \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/i686-unknown-linux-android
+	$(MAKE) -C target-android TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) x86
 
 target-x86_64-unknown-linux-android: host
-	$(MAKE) -C deps-android TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) x86_64
-	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/x86_64-unknown-linux-android \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-android
+	$(MAKE) -C target-android TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) x86_64
 
 target-android-ndk: target-unknown-ndk-linux-android
 
 target-android: \
 	target-aarch64-unknown-linux-android \
 	target-armv7a-unknown-linux-androideabi \
-	target-armv7a-unknown-linux-androideabi \
 	target-i686-unknown-linux-android \
 	target-x86_64-unknown-linux-android
+
 
 #
 # Linux targets
 #
 
 target-x86_64-unknown-linux-gnu: host
-	$(MAKE) -C target-linux-glibc out \
-		OUT_HOST=../../hosts/$(HOST_ID) \
-		OUT_SYSROOT=$(abspath intermediate/x86_64-unknown-linux-gnu) SP_ARCH_TARGET=x86_64
-	$(MAKE) -C deps-linux x86_64 OUT_SYSROOT=$(abspath intermediate/x86_64-unknown-linux-gnu)
-	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/x86_64-unknown-linux-gnu \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) x86_64
 
 target-aarch64-unknown-linux-gnu: host
-	$(MAKE) -C target-linux-glibc out \
-		OUT_HOST=../../hosts/$(HOST_ID) \
-		OUT_SYSROOT=$(abspath intermediate/aarch64-unknown-linux-gnu) SP_ARCH_TARGET=aarch64
-	$(MAKE) -C deps-linux aarch64 OUT_SYSROOT=$(abspath intermediate/aarch64-unknown-linux-gnu)
-	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/aarch64-unknown-linux-gnu \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-unknown-linux-gnu
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64
 
 target-riscv64-unknown-linux-gnu: host
-	$(MAKE) -C target-linux-glibc out \
-		OUT_HOST=../../hosts/$(HOST_ID) \
-		OUT_SYSROOT=$(abspath intermediate/riscv64-unknown-linux-gnu) SP_ARCH_TARGET=riscv64
-	$(MAKE) -C deps-linux riscv64 OUT_SYSROOT=$(abspath intermediate/riscv64-unknown-linux-gnu)
-	$(MAKE) -f linux.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/riscv64-unknown-linux-gnu \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/riscv64-unknown-linux-gnu
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) riscv64
 
 target-linux: \
 	target-x86_64-unknown-linux-gnu \
@@ -175,19 +152,19 @@ target-linux: \
 #
 
 target-x86_64-apple-macosx:
-	$(MAKE) -C deps-darwin TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) x86_64-apple-macosx
+	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) x86_64-apple-macosx
 
 target-aarch64-apple-macosx:
-	$(MAKE) -C deps-darwin TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) aarch64-apple-macosx
+	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64-apple-macosx
 
 target-aarch64-apple-ios:
-	$(MAKE) -C deps-darwin TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) aarch64-apple-ios
+	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64-apple-ios
 
 target-x86_64-apple-ios-simulator:
-	$(MAKE) -C deps-darwin TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) x86_64-apple-ios-simulator
+	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) x86_64-apple-ios-simulator
 
 target-aarch64-apple-ios-simulator:
-	$(MAKE) -C deps-darwin TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_INTERMEDIATE) aarch64-apple-ios-simulator
+	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64-apple-ios-simulator
 
 target-macosx: \
 	target-x86_64-apple-macosx \

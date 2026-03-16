@@ -28,6 +28,7 @@ THIS_FILE := $(lastword $(MAKEFILE_LIST))
 
 include $(dir $(THIS_FILE))../common/utils/detect-platform.mk
 include $(dir $(THIS_FILE))../common/utils/find-recursive.mk
+include $(dir $(THIS_FILE))../common/utils/names.mk
 
 NDK_INCLUDES = $(NDK)/toolchains/llvm/prebuilt/$(HOST_ANDROID)/sysroot/usr/include
 NDK_LIBDIR = $(NDK)/toolchains/llvm/prebuilt/$(HOST_ANDROID)/sysroot/usr/lib/$(ANDROID_TARGET)/$(ANDROID_PLATFORM_LEVEL)
@@ -156,7 +157,7 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(lastword $(MAKEFILE_LIST)) $(TOOLCHAI
 	rm -f $(TOOLCHAIN_OUTPUT_DIR)/sysroot
 	cd $(TOOLCHAIN_OUTPUT_DIR); ln -fs . sysroot
 	rm -f $(TOOLCHAIN_OUTPUT_DIR)/host
-	cd $(TOOLCHAIN_OUTPUT_DIR); ln -fs ../../hosts/$(HOST_ID) host
+	cd $(TOOLCHAIN_OUTPUT_DIR); ln -fs ../../../hosts/$(HOST_ID) host
 	mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/lib/clang
 	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/21/include include
 
@@ -164,7 +165,7 @@ $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'Build $@'
 	@echo 'TARGET_SYSROOT := $$(patsubst %/,%,$$(dir $$(lastword $$(MAKEFILE_LIST))))' > $@
 	@echo 'TARGET_SYSTEM := Android' >> $@
-	@echo 'TARGET_ARCH := $(SP_ARCH_TARGET)' >> $@
+	@echo 'TARGET_ARCH := $(SP_ARCH)' >> $@
 	@echo 'TARGET_NAME := $(SP_ARCH_TARGET_CLANG)$(ANDROID_PLATFORM_LEVEL)' >> $@
 	@echo 'TARGET_INCLUDE_DIR := $$(TARGET_SYSROOT)/usr/include' >> $@
 	@echo 'TARGET_INCLUDE_DIR_LIBC := $$(TARGET_SYSROOT)/include_libc' >> $@
@@ -202,7 +203,7 @@ $(TARGET_LIBCXX): $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake
 	mkdir -p $(LIBNAME)
 	cd $(LIBNAME); cmake \
 		-DCMAKE_TOOLCHAIN_FILE=$(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake \
-		-G "Ninja" -S $(dir $(THIS_FILE))../../src/$(LIBNAME)/runtimes \
+		-G "Ninja" -S $(dir $(THIS_FILE))../src/$(LIBNAME)/runtimes \
 		-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind;compiler-rt" \
 		-DLLVM_INSTALL_TOOLCHAIN_ONLY=On \
 		-DLLVM_ENABLE_PIC=On \

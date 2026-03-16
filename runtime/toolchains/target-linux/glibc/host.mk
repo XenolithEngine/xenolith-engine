@@ -39,10 +39,10 @@ $(HOST_SYSROOT)/sysroot: $(LINUX_HOST_HEADERS_DIR)
 	mkdir -p $(HOST_SYSROOT)/lib
 	mkdir -p $(HOST_SYSROOT)$(abspath $(HOST_SYSROOT))
 	cp -rL $(LINUX_HOST_HEADERS_DIR)/include $(HOST_SYSROOT)/include
-	cd $(HOST_SYSROOT); ln -s lib lib64
-	cd $(HOST_SYSROOT)/usr; ln -s ../include include
-	cd $(HOST_SYSROOT)/usr; ln -s ../lib lib
-	cd $(HOST_SYSROOT)$(abspath $(HOST_SYSROOT)); ln -s $(abspath $(HOST_SYSROOT))/lib lib
+	cd $(HOST_SYSROOT); rm lib64; ln -s lib lib64
+	cd $(HOST_SYSROOT)/usr; rm include; ln -s ../include include
+	cd $(HOST_SYSROOT)/usr; rm lib; ln -s ../lib lib
+	cd $(HOST_SYSROOT)$(abspath $(HOST_SYSROOT)); rm lib; ln -s $(abspath $(HOST_SYSROOT))/lib lib
 	touch $(HOST_SYSROOT)/sysroot
 
 $(HOST_GCC_MAKE): $(HOST_SYSROOT)/sysroot $(MAKE_SRC_DIR)
@@ -85,6 +85,7 @@ $(HOST_GCC_CC): $(HOST_GCC_MAKE)
 		--disable-multilib \
 		--disable-libsanitizer \
 		--disable-bootstrap \
+		--disable-werror \
 		--enable-languages=c,c++ \
 		LDFLAGS=""
 	make -C build/host-gcc $(SP_NJOBS)

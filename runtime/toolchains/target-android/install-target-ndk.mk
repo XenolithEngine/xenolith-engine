@@ -18,6 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+MAKE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+
 TOOLCHAIN_INTERMEDIATE ?= $(abspath $(LIBS_MAKE_ROOT))/intermediate
 TOOLCHAIN_TARGETS ?= $(abspath $(LIBS_MAKE_ROOT))/targets
 
@@ -29,12 +31,6 @@ DIFF_FILES_B := $(filter $(TOOLCHAIN_INTERMEDIATE)/x86_64-ndk-linux-android/%,\
 	$(shell diff -qr $(TOOLCHAIN_INTERMEDIATE)/x86_64-ndk-linux-android/usr/include/ $(TOOLCHAIN_INTERMEDIATE)/armv7a-ndk-linux-androideabi/usr/include/))
 DIFF_FILES_C := $(filter $(TOOLCHAIN_INTERMEDIATE)/x86_64-ndk-linux-android/%,\
 	$(shell diff -qr $(TOOLCHAIN_INTERMEDIATE)/x86_64-ndk-linux-android/usr/include/ $(TOOLCHAIN_INTERMEDIATE)/i686-ndk-linux-android/usr/include/))
-
-
-$(info DIFF_FILES_A $(DIFF_FILES_A))
-$(info DIFF_FILES_B $(DIFF_FILES_B))
-$(info DIFF_FILES_C $(DIFF_FILES_C))
-
 
 ARCH_CONF_FILES := $(sort $(DIFF_FILES_A) $(DIFF_FILES_B) $(DIFF_FILES_C))
 
@@ -120,9 +116,14 @@ $(TOOLCHAIN_TARGETS)/unknown-ndk-linux-android/target.mk: $(lastword $(MAKEFILE_
 	@echo 'TARGET_EXEC_LDFLAGS :=' >> $@
 	@echo '$$(info Available toolchain: unknown-ndk-linux-android: $$(TARGET_SYSROOT))' >> $@
 
-all: $(ALL_ARCH_FILES) $(ALL_ARCH_LIBS) $(TOOLCHAIN_TARGETS)/unknown-ndk-linux-android/target.mk
-	mkdir -p $(TOOLCHAIN_TARGETS)/unknown-ndk-linux-android/share
-	cp -rf licenses $(TOOLCHAIN_TARGETS)/unknown-ndk-linux-android/share
+$(TOOLCHAIN_TARGETS)/unknown-ndk-linux-android/share/licenses: $(MAKE_DIR)../licenses
+	mkdir -p $(dir $@)
+	rm -rf $@
+	cp -rf $< $@
+
+all: $(ALL_ARCH_FILES) $(ALL_ARCH_LIBS) \
+	$(TOOLCHAIN_TARGETS)/unknown-ndk-linux-android/target.mk \
+	$(TOOLCHAIN_TARGETS)/unknown-ndk-linux-android/share/licenses
 
 .PHONY: all
 .DEFAULT_GOAL := all

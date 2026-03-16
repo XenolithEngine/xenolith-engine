@@ -49,8 +49,9 @@ ifeq ($(SP_ARCH_HOST_LINUX),aarch64)
 SP_ARCH_HOST_LINUX := arm64
 endif
 
+SP_SRC_DIR := $(abspath $(dir $(LOCAL_MAKEFILE))../../src)
 
-include ../host-linux-glibc/glibc.mk
+include ../../host-linux-glibc/glibc.mk
 
 BINUTILS_SRC_VER := 2.46.0
 BINUTILS_SRC_TARBALL := binutils-$(BINUTILS_SRC_VER).tar.xz
@@ -58,6 +59,14 @@ BINUTILS_SRC_DIR := src/binutils
 BINUTILS_SRC_URL := https://ftp.gnu.org/gnu/binutils/binutils-$(BINUTILS_SRC_VER).tar.gz
 
 $(eval $(call download_tarbell_target,$(BINUTILS_SRC_DIR),$(BINUTILS_SRC_TARBALL),$(BINUTILS_SRC_URL)))
+
+LINUX_HOST_HEADERS_DIR := src/linux-headers-host-$(SP_ARCH_TARGET)
+
+$(LINUX_HOST_HEADERS_DIR): $(LINUX_KERNEL_DIR)
+	mkdir -p $@
+	cd $(LINUX_KERNEL_DIR); make headers_install ARCH=$(SP_ARCH_HOST_LINUX) INSTALL_HDR_PATH=../$(notdir $(LINUX_HOST_HEADERS_DIR))
+	cd $(LINUX_KERNEL_DIR); make clean
+	touch -m -r src/$(LINUX_KERNEL_TARBALL) $(LINUX_KERNEL_DIR)
 
 LINUX_TARGET_HEADERS_DIR := src/linux-headers-target-$(SP_ARCH_TARGET)
 
@@ -164,7 +173,7 @@ $(OUT_SYSROOT)/lib/clang/lib/$(SP_ARCH_TARGET_CLANG)/libclang_rt.builtins.a: \
 
 $(OUT_SYSROOT)/lib/clang/lib/linux: $(TARGET_SYSROOT)/lib/linux $(TARGET_LIBCRT)
 	@mkdir -p $(dir $@)
-	@rm -f $@
+	@rm -rf $@
 	cp -rf $< $@
 
 $(OUT_SYSROOT)/include: $(TARGET_GLIBC)
@@ -262,8 +271,8 @@ endif
 
 download: $(LINUX_TARGET_HEADERS_DIR)
 
-out: $(OUT_SYSROOT)/sysroot
+out: download host target $(OUT_SYSROOT)/sysroot
 
-all: host target
+all: download host target
 
 .PHONY: host target all download

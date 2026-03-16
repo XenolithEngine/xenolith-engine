@@ -54,7 +54,9 @@ extern size_t (*_wcsftime_l)(wchar_t *__buf, size_t __n, const wchar_t *__fmt,
 #endif
 
 static_assert(sizeof(mbstate_t) == sizeof(__SPRT_MBSTATE_NAME));
-static_assert(sizeof(wctype_t) == sizeof(wctype_t));
+static_assert(sizeof(wctype_t) == sizeof(__sprt_wctype_t));
+static_assert(sizeof(wint_t) == sizeof(__sprt_wint_t));
+static_assert(WEOF == __SPRT_WEOF);
 
 namespace sprt {
 

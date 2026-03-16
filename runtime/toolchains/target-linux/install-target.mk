@@ -41,6 +41,7 @@ $(T_TARGET)/lib: $(T_INTERMEDIATE)/lib | $(T_TARGET)
 	@mkdir -p $(dir $@)
 	rm -rf $@
 	cp -rf $< $@
+	rm -rf $@/clang/include
 	touch $@
 
 $(T_TARGET)/%: $(T_INTERMEDIATE)/% | $(T_TARGET)
@@ -50,10 +51,10 @@ $(T_TARGET)/%: $(T_INTERMEDIATE)/% | $(T_TARGET)
 $(T_TARGET)/share/licenses: | $(T_TARGET)
 	@mkdir -p $(dir $@)
 	rm -rf $@
-	cp -rf licenses $(T_TARGET)/share
+	cp -rf ../licenses $(T_TARGET)/share
 
 all: $(ALL_INSTALL_STATIC_LIBS) \
-	$(T_TARGET)/include_libc $(T_TARGET)/lib $(T_TARGET)/usr/include $(T_TARGET)/share/licenses $(T_TARGET)/target.mk \
+		$(T_TARGET)/include_libc $(T_TARGET)/lib $(T_TARGET)/usr/include $(T_TARGET)/share/licenses $(T_TARGET)/target.mk \
 	$(T_TARGET)
 
 .PHONY: all

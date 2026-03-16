@@ -49,6 +49,29 @@
 #define __BIONIC__
 #endif
 
+#if defined(SPRT_MACOS)
+#define	_CTYPE_A __SPRT_CTYPE_A
+#define	_CTYPE_C __SPRT_CTYPE_C
+#define	_CTYPE_D __SPRT_CTYPE_D
+#define	_CTYPE_G __SPRT_CTYPE_G
+#define	_CTYPE_L __SPRT_CTYPE_L
+#define	_CTYPE_P __SPRT_CTYPE_P
+#define	_CTYPE_S __SPRT_CTYPE_S
+#define	_CTYPE_U __SPRT_CTYPE_U
+#define	_CTYPE_X __SPRT_CTYPE_X
+#define	_CTYPE_B __SPRT_CTYPE_B
+#define	_CTYPE_R __SPRT_CTYPE_R
+#define	_CTYPE_I __SPRT_CTYPE_I
+#define	_CTYPE_T __SPRT_CTYPE_T
+#define	_CTYPE_Q __SPRT_CTYPE_Q
+#define	_CTYPE_SW0 __SPRT_CTYPE_SW0
+#define	_CTYPE_SW1 __SPRT_CTYPE_SW1
+#define	_CTYPE_SW2 __SPRT_CTYPE_SW2
+#define	_CTYPE_SW3 __SPRT_CTYPE_SW3
+#define	_CTYPE_SWM __SPRT_CTYPE_SWM
+#define	_CTYPE_SWS __SPRT_CTYPE_SWS
+#endif
+
 #include <locale>
 
 #if defined(SPRT_ANDROID)
