@@ -62,6 +62,7 @@ LIBS := \
 	libiwasm-release.a \
 	libiwasm-debug.a \
 	libbacktrace.a \
+	libxml2.a \
 	libvulkan.dylib \
 	libMoltenVK.dylib
 
@@ -269,6 +270,9 @@ $(SP_INSTALL_PREFIX)/usr/lib/libiwasm-release.a $(SP_INSTALL_PREFIX)/usr/lib/lib
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/libbacktrace.a: $(MAKE_ROOT)backtrace.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libxml2.a: ../common/libxml2.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a $(SP_INSTALL_PREFIX)/usr/lib/libzstd.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/libvulkan.dylib: $(MAKE_ROOT)vulkan-loader.mk $(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h

@@ -66,6 +66,7 @@ endif # WINDOWS
 ifdef DARWIN
 
 ifeq ($(SP_SYSNAME),Darwin)
+SP_SDK_DIR := $(SP_MACOS_SDK)
 SP_CFLAGS += -mmacosx-version-min=$(SP_MACOS_VER) -isysroot $(SP_MACOS_SDK) -isystem $(SP_INSTALL_PREFIX)/usr/include
 SP_CXXFLAGS += -mmacosx-version-min=$(SP_MACOS_VER) -isysroot $(SP_MACOS_SDK) -isystem $(SP_INSTALL_PREFIX)/usr/include
 SP_LDFLAGS += -mmacosx-version-min=$(SP_MACOS_VER) -L$(SP_INSTALL_PREFIX)/usr/lib -L$(SP_MACOS_SDK)/usr/lib -F$(SP_MACOS_SDK)/System/Library/Frameworks
@@ -73,10 +74,12 @@ endif # SP_SYSNAME Darwin
 
 ifeq ($(SP_SYSNAME),iOS)
 ifdef SP_IOSSIM
+SP_SDK_DIR := $(SP_IOSSIM_SDK)
 SP_CFLAGS += -mmacosx-version-min=$(SP_IOS_VER) -isysroot $(SP_IOSSIM_SDK) -isystem $(SP_INSTALL_PREFIX)/usr/include
 SP_CXXFLAGS += -mmacosx-version-min=$(SP_IOS_VER) -isysroot $(SP_IOSSIM_SDK) -isystem $(SP_INSTALL_PREFIX)/usr/include
 SP_LDFLAGS += -mmacosx-version-min=$(SP_IOS_VER) -L$(SP_INSTALL_PREFIX)/usr/lib -L$(SP_IOSSIM_SDK)/usr/lib -F$(SP_IOSSIM_SDK)/System/Library/Frameworks
 else # SP_IOSSIM
+SP_SDK_DIR := $(SP_IOS_SDK)
 SP_CFLAGS += -mmacosx-version-min=$(SP_IOS_VER) -isysroot $(SP_IOS_SDK) -isystem $(SP_INSTALL_PREFIX)/usr/include
 SP_CXXFLAGS += -mmacosx-version-min=$(SP_IOS_VER) -isysroot $(SP_IOS_SDK) -isystem $(SP_INSTALL_PREFIX)/usr/include
 SP_LDFLAGS += -mmacosx-version-min=$(SP_IOS_VER) -L$(SP_INSTALL_PREFIX)/usr/lib -L$(SP_IOS_SDK)/usr/lib -F$(SP_IOS_SDK)/System/Library/Frameworks

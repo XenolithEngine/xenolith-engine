@@ -284,6 +284,7 @@ $(STAGEOUT_SYSROOT)/bin/spirv-opt: $(STAGE2_SYSROOT)/include/spirv/unified1/spir
 	cmake \
 		-DCMAKE_TOOLCHAIN_FILE=$(realpath $(STAGE2_CMAKE_STAGE1_CLANG_TOOLCHAIN)) \
 		-G Ninja -S $(SPIRV_TOOLS_DIR) -B build/stage2-spirv-tools \
+		-DSPIRV_TOOLS_BUILD_STATIC=Off \
 		-DSPIRV-Headers_SOURCE_DIR=$(abspath $(STAGE2_SYSROOT)) \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX=$(abspath $(STAGEOUT_SYSROOT)) \
@@ -294,7 +295,8 @@ $(STAGEOUT_SYSROOT)/bin/spirv-opt: $(STAGE2_SYSROOT)/include/spirv/unified1/spir
 		-DCMAKE_EXE_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections -flto" \
 		-DCMAKE_SHARED_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections -flto" \
 		-DCMAKE_INSTALL_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
-		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib'
+		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
+		-DBUILD_SHARED_LIBS=On
 	cmake --build build/stage2-spirv-tools
 	cmake --install build/stage2-spirv-tools --prefix $(abspath $(STAGE2_SYSROOT))
 	cmake --install build/stage2-spirv-tools
@@ -321,7 +323,8 @@ $(STAGEOUT_SYSROOT)/bin/glslang: $(STAGEOUT_SYSROOT)/bin/spirv-opt $(STAGE2_SYSR
 		-DCMAKE_EXE_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections -flto" \
 		-DCMAKE_SHARED_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections -flto" \
 		-DCMAKE_INSTALL_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
-		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib'
+		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
+		-DBUILD_SHARED_LIBS=On
 	cmake --build build/stage2-glslang
 	cmake --install build/stage2-glslang
 	touch $@

@@ -32,6 +32,12 @@ CONFIGURE := \
 	-DLIBXML2_WITH_TESTS=Off \
 	-DLIBXML2_WITH_TLS=On \
 
+
+ifdef DARWIN
+CONFIGURE += -DIconv_LIBRARY="-liconv" -DIconv_INCLUDE_DIR="$(SP_SDK_DIR)/usr/include"
+endif
+ 
+
 all:
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_mkdir,$(LIBNAME))

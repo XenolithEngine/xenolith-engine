@@ -46,7 +46,7 @@ include stage0.mk
 include stage1.mk
 include stage2.mk
 
-OUT_SYSROOT ?= ../$(SP_ARCH_CLANG)
+OUT_SYSROOT ?= ../hosts/$(SP_ARCH_CLANG)
 
 OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
 	clang-21 \
