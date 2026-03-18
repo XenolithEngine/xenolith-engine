@@ -25,7 +25,6 @@
 #if MACOS
 
 #include "SPDso.h"
-#include <mach-o/dyld.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk::platform {
 
@@ -34,17 +33,12 @@ Rc<core::Instance> createInstance(Rc<core::InstanceInfo> &&info) {
 		return nullptr;
 	}
 
-	char pathBuf[1'024];
-	uint32_t size = sizeof(pathBuf);
-	if (::_NSGetExecutablePath(pathBuf, &size) != 0) {
-		log::source().error("Vulkan", "Fail to detect executable path");
-		return nullptr;
-	}
+	auto execPath = sprt::platform::getExecPath();
 
-	auto bundledPath = filepath::merge<Interface>(filepath::root(filepath::root(pathBuf)),
+	auto bundledPath = filepath::merge<Interface>(filepath::root(filepath::root(execPath)),
 			"Frameworks", "libvulkan.1.dylib");
 	auto flatPath =
-			filepath::merge<Interface>(filepath::root(pathBuf), "vulkan/lib", "libvulkan.1.dylib");
+			filepath::merge<Interface>(filepath::root(execPath), "vulkan/lib", "libvulkan.1.dylib");
 
 	bool isBundled = false;
 
@@ -61,7 +55,7 @@ Rc<core::Instance> createInstance(Rc<core::InstanceInfo> &&info) {
 	String loaderPath = isBundled ? bundledPath : flatPath;
 	if (!isBundled) {
 		::setenv("VK_LAYER_PATH",
-				filepath::merge<Interface>(filepath::root(pathBuf), "vulkan", "explicit_layer.d")
+				filepath::merge<Interface>(filepath::root(execPath), "vulkan", "explicit_layer.d")
 						.data(),
 				1);
 	}

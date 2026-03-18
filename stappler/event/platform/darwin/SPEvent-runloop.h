@@ -24,12 +24,11 @@
 #define CORE_EVENT_PLATFORM_DARWIN_SPEVENT_RUNLOOP_H_
 
 #include "SPEventQueue.h"
-#include "SPPlatformUnistd.h"
 #include "SPEventTimerHandle.h"
 #include "SPEventThreadHandle.h"
 #include "detail/SPEventQueueData.h"
 
-#include "CoreFoundation/CFRunLoop.h"
+#include <sys/darwin.h>
 
 namespace STAPPLER_VERSIONIZED stappler::event {
 
@@ -38,7 +37,7 @@ static constexpr bool RUNLOOP_THREAD_NONBLOCK = false;
 struct RunLoopData;
 
 struct SP_PUBLIC RunLoopTimerSource {
-	CFRunLoopTimerRef timer = nullptr;
+	_CFRunLoopTimerRef timer = nullptr;
 	TimeInterval timeout;
 	TimeInterval interval;
 	uint32_t count = 0;
@@ -65,8 +64,8 @@ public:
 };
 
 struct SP_PUBLIC RunLoopData : public PlatformQueueData {
-	CFRunLoopRef _runLoop = nullptr;
-	CFStringRef _runMode = nullptr;
+	_CFRunLoopRef _runLoop = nullptr;
+	_CFStringRef _runMode = nullptr;
 
 	void addTimer(RunLoopTimerHandle *handle, RunLoopTimerSource *);
 	void removeTimer(RunLoopTimerHandle *handle, RunLoopTimerSource *);

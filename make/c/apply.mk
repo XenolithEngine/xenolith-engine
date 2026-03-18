@@ -33,11 +33,8 @@ BUILD_LIBS := $(call sp_toolkit_resolve_libs, $(abspath $(BUILD_LIBRARY_PATH)/$$
 else
 RPATH_PREFIX := -Wl,-rpath,
 BUILD_LIBS := \
-	$(if $(BUILD_HOST),\
-		$(addprefix -L,$(SHARED_LIBDIR))\
-		$(if $(SHARED_RPATH),$(addprefix $(RPATH_PREFIX),$(SHARED_RPATH)))) \
 	$(call sp_toolkit_resolve_libs,\
-		$(if $(SHARED_LIBDIR),,$(realpath $(addprefix $(GLOBAL_ROOT)/,$(BUILD_LIBRARY_PATH)))),\
+		$(TARGET_LIB_DIR),\
 		$(TOOLKIT_LIBS),$(TOOLKIT_LIBS_SHARED))
 endif # ANDROID
 
@@ -69,12 +66,12 @@ $(call print_verbose,(c/apply.mk) Build compiler flags)
 # Вычисляем окончательные флаги сборки
 
 BUILD_PRIVATE_GENERAL_CFLAGS := \
-	$(BUILD_TYPE_CFLAGS) \
-	$(GLOBAL_GENERAL_CFLAGS)
+	$(GLOBAL_GENERAL_CFLAGS) \
+	$(BUILD_TYPE_CFLAGS)
 
 BUILD_PRIVATE_GENERAL_CXXFLAGS := \
-	$(BUILD_TYPE_CXXFLAGS) \
-	$(GLOBAL_GENERAL_CXXFLAGS)
+	$(GLOBAL_GENERAL_CXXFLAGS) \
+	$(BUILD_TYPE_CXXFLAGS)
 
 BUILD_PRIVATE_EXEC_CFLAGS := \
 	$(BUILD_PRIVATE_GENERAL_CFLAGS) \

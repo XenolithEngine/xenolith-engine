@@ -30,7 +30,7 @@ MODULE_STAPPLER_NETWORK_INCLUDES_OBJS := $(STAPPLER_MODULE_DIR)/network
 MODULE_STAPPLER_NETWORK_DEPENDS_ON := stappler_crypto stappler_filesystem stappler_brotli_lib stappler_data
 MODULE_STAPPLER_NETWORK_GENERAL_LDFLAGS :=
 
-ifdef LINUX
+ifeq ($(TARGET_SYSTEM),Linux)
 MODULE_STAPPLER_NETWORK_LIBS += -l:libidn2.a
 endif
 

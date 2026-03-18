@@ -21,9 +21,9 @@
  **/
 
 #include "SPEventQueue.h"
-#include "SPPlatformUnistd.h"
 #include "SPEvent-kqueue.h"
 #include "SPEvent-darwin.h"
+#include <unistd.h>
 
 namespace STAPPLER_VERSIONIZED stappler::event {
 
@@ -36,7 +36,7 @@ Status KQueueData::update(const struct kevent &ev) {
 
 	auto result = kevent(_kqueueFd, &ev, 1, nullptr, 0, &timeout);
 
-	return result == 0 ? Status::Ok : status::errnoToStatus(errno);
+	return result == 0 ? Status::Ok : sprt::status::errnoToStatus(__sprt_errno);
 }
 
 Status KQueueData::update(SpanView<struct kevent> ev) {
@@ -46,7 +46,7 @@ Status KQueueData::update(SpanView<struct kevent> ev) {
 
 	auto result = kevent(_kqueueFd, ev.data(), static_cast<int>(ev.size()), nullptr, 0, &timeout);
 
-	return result == 0 ? Status::Ok : status::errnoToStatus(errno);
+	return result == 0 ? Status::Ok : sprt::status::errnoToStatus(__sprt_errno);
 }
 
 Status KQueueData::runPoll(TimeInterval ival) {
@@ -68,7 +68,7 @@ Status KQueueData::runPoll(TimeInterval ival) {
 
 		return Status::Ok;
 	} else {
-		return status::errnoToStatus(errno);
+		return sprt::status::errnoToStatus(__sprt_errno);
 	}
 }
 
@@ -169,7 +169,7 @@ Status KQueueData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval 
 				NOTE_USECONDS, ival.toMicros(), reinterpret_cast<void *>(toInt(wakeupFlags)));
 	}
 
-	update(makeSpanView(events, ival ? 2 : 1));
+	update(sprt::makeSpanView(events, ival ? 2 : 1));
 
 	pushContext(&ctx, RunContext::Run);
 
@@ -186,7 +186,7 @@ Status KQueueData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval 
 
 	if (ival) {
 		events[0].flags = EV_DELETE;
-		update(makeSpanView(events, 1));
+		update(sprt::makeSpanView(events, 1));
 	}
 
 	popContext(&ctx);

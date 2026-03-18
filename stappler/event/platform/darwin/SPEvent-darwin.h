@@ -24,7 +24,6 @@
 #define CORE_EVENT_PLATFORM_DARWIN_SPEVENT_DARWIN_H_
 
 #include "SPEventQueue.h"
-#include "SPPlatformUnistd.h"
 #include "detail/SPEventQueueData.h"
 #include "detail/SPEventHandleClass.h"
 
@@ -51,7 +50,7 @@ void setupKQueueHandleClass(QueueHandleClassInfo *info, HandleClass *cl, bool su
 
 	cl->createFn = [](HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize]) {
 		static_assert(sizeof(SourceType) <= Handle::DataSize
-					  && std::is_standard_layout<SourceType>::value);
+				&& std::is_standard_layout<SourceType>::value);
 		new (data) SourceType;
 		return HandleClass::create(cl, handle, data);
 	};
@@ -61,7 +60,8 @@ void setupKQueueHandleClass(QueueHandleClassInfo *info, HandleClass *cl, bool su
 		auto platformData = static_cast<Queue::Data *>(cl->info->data);
 		auto source = reinterpret_cast<SourceType *>(data);
 
-		auto status = static_cast<HandleType *>(handle)->rearm(reinterpret_cast<KQueueData *>(platformData->_platformQueue), source);
+		auto status = static_cast<HandleType *>(handle)->rearm(
+				reinterpret_cast<KQueueData *>(platformData->_platformQueue), source);
 		if (status == Status::Ok || status == Status::Done) {
 			return HandleClass::run(cl, handle, data);
 		}
@@ -82,7 +82,8 @@ void setupKQueueHandleClass(QueueHandleClassInfo *info, HandleClass *cl, bool su
 			auto platformData = static_cast<Queue::Data *>(cl->info->data);
 			auto source = reinterpret_cast<SourceType *>(data);
 
-			auto status = static_cast<HandleType *>(handle)->disarm(reinterpret_cast<KQueueData *>(platformData->_platformQueue), source);
+			auto status = static_cast<HandleType *>(handle)->disarm(
+					reinterpret_cast<KQueueData *>(platformData->_platformQueue), source);
 			if (status == Status::Ok || status == Status::Done) {
 				return HandleClass::suspend(cl, handle, data);
 			}
@@ -95,18 +96,20 @@ void setupKQueueHandleClass(QueueHandleClassInfo *info, HandleClass *cl, bool su
 
 			auto status = HandleClass::resume(cl, handle, data);
 			if (status == Status::Ok || status == Status::Done) {
-				status = static_cast<HandleType *>(handle)->rearm(reinterpret_cast<KQueueData *>(platformData->_platformQueue), source);
+				status = static_cast<HandleType *>(handle)->rearm(
+						reinterpret_cast<KQueueData *>(platformData->_platformQueue), source);
 			}
 			return status;
 		};
 	}
 
 	cl->notifyFn = [](HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize],
-					  const NotifyData &n) {
+						   const NotifyData &n) {
 		auto platformData = static_cast<Queue::Data *>(cl->info->data);
 		auto source = reinterpret_cast<SourceType *>(data);
 
-		static_cast<HandleType *>(handle)->notify(reinterpret_cast<KQueueData *>(platformData->_platformQueue), source, n);
+		static_cast<HandleType *>(handle)->notify(
+				reinterpret_cast<KQueueData *>(platformData->_platformQueue), source, n);
 	};
 }
 
@@ -116,7 +119,7 @@ void setupRunLoopHandleClass(QueueHandleClassInfo *info, HandleClass *cl, bool s
 
 	cl->createFn = [](HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize]) {
 		static_assert(sizeof(SourceType) <= Handle::DataSize
-					  && std::is_standard_layout<SourceType>::value);
+				&& std::is_standard_layout<SourceType>::value);
 		new (data) SourceType;
 		return HandleClass::create(cl, handle, data);
 	};
@@ -126,7 +129,8 @@ void setupRunLoopHandleClass(QueueHandleClassInfo *info, HandleClass *cl, bool s
 		auto platformData = static_cast<Queue::Data *>(cl->info->data);
 		auto source = reinterpret_cast<SourceType *>(data);
 
-		auto status = static_cast<HandleType *>(handle)->rearm(reinterpret_cast<RunLoopData *>(platformData->_platformQueue), source);
+		auto status = static_cast<HandleType *>(handle)->rearm(
+				reinterpret_cast<RunLoopData *>(platformData->_platformQueue), source);
 		if (status == Status::Ok || status == Status::Done) {
 			return HandleClass::run(cl, handle, data);
 		}
@@ -147,7 +151,8 @@ void setupRunLoopHandleClass(QueueHandleClassInfo *info, HandleClass *cl, bool s
 			auto platformData = static_cast<Queue::Data *>(cl->info->data);
 			auto source = reinterpret_cast<SourceType *>(data);
 
-			auto status = static_cast<HandleType *>(handle)->disarm(reinterpret_cast<RunLoopData *>(platformData->_platformQueue), source);
+			auto status = static_cast<HandleType *>(handle)->disarm(
+					reinterpret_cast<RunLoopData *>(platformData->_platformQueue), source);
 			if (status == Status::Ok || status == Status::Done) {
 				return HandleClass::suspend(cl, handle, data);
 			}
@@ -160,22 +165,24 @@ void setupRunLoopHandleClass(QueueHandleClassInfo *info, HandleClass *cl, bool s
 
 			auto status = HandleClass::resume(cl, handle, data);
 			if (status == Status::Ok || status == Status::Done) {
-				status = static_cast<HandleType *>(handle)->rearm(reinterpret_cast<RunLoopData *>(platformData->_platformQueue), source);
+				status = static_cast<HandleType *>(handle)->rearm(
+						reinterpret_cast<RunLoopData *>(platformData->_platformQueue), source);
 			}
 			return status;
 		};
 	}
 
 	cl->notifyFn = [](HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize],
-					  const NotifyData &n) {
+						   const NotifyData &n) {
 		auto platformData = static_cast<Queue::Data *>(cl->info->data);
 		auto source = reinterpret_cast<SourceType *>(data);
 
-		static_cast<HandleType *>(handle)->notify(reinterpret_cast<RunLoopData *>(platformData->_platformQueue), source, n);
+		static_cast<HandleType *>(handle)->notify(
+				reinterpret_cast<RunLoopData *>(platformData->_platformQueue), source, n);
 	};
 }
 
-}
+} // namespace stappler::event
 
 #endif
 

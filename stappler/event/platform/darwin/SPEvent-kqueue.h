@@ -24,7 +24,6 @@
 #define CORE_EVENT_PLATFORM_DARWIN_SPEVENT_KQUEUE_H_
 
 #include "SPEventQueue.h"
-#include "SPPlatformUnistd.h"
 #include "SPEventTimerHandle.h"
 #include "SPEventThreadHandle.h"
 #include "detail/SPEventQueueData.h"

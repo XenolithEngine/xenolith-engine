@@ -24,6 +24,8 @@
 #include "SPEvent-kqueue.h"
 #include "SPEvent-runloop.h"
 
+#include <signal.h>
+
 namespace STAPPLER_VERSIONIZED stappler::event {
 
 static int SignalsToIntercept[] = {SIGUSR1, SIGUSR2};

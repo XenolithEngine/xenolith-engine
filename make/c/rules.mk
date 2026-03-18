@@ -77,17 +77,21 @@ sp_toolkit_include_flags = \
 # $(3) - build path
 # $(4) - default flags
 # $(5) - private default flags
-sp_toolkit_private_flags = \
+sp_toolkit_private_flags = $(strip \
 	$(if $(filter %.S %.c,$(2)),$($(1)_PRIVATE_CFLAGS)) \
-	$(if $(filter %.mm %.cpp,$(2)),\
+	$(if $(filter %.cpp,$(2)),\
 		$(addprefix -include-pch ,$(addprefix $(strip $(3))/,$(addsuffix $(OSTYPE_GCH_SUFFIX),$($(1)_PRIVATE_INCLUDE_PCH)))) \
+		$($(1)_PRIVATE_CXXFLAGS) \
+	) \
+	$(if $(filter %.mm,$(2)),\
 		$($(1)_PRIVATE_CXXFLAGS) \
 	) \
 	$(addprefix -I,$(call sp_toolkit_include_list,,$($(1)_PRIVATE_INCLUDES))) \
 	$(if $($(1)_PRIVATE_STANDALONE),\
 		$(if $($(1)_PRIVATE_FLAGS_FILTER),$(filter-out $($(1)_PRIVATE_FLAGS_FILTER),$(5)),$(5)),\
 		$(if $($(1)_PRIVATE_FLAGS_FILTER),$(filter-out $($(1)_PRIVATE_FLAGS_FILTER),$(4)),$(4))\
-	)
+	) \
+)
 
 # $(1) - filename
 # $(2) - build path

@@ -31,7 +31,7 @@ OSTYPE_GENERAL_CFLAGS := -Wall -fvisibility=hidden
 OSTYPE_LIB_CFLAGS := -fPIC -DPIC
 OSTYPE_EXEC_CFLAGS :=
 
-OSTYPE_GENERAL_CXXFLAGS := -Wall -Wno-overloaded-virtual -Wno-vla-cxx-extension -frtti -fvisibility=hidden -fvisibility-inlines-hidden
+OSTYPE_GENERAL_CXXFLAGS := -Wall -Wno-vla-cxx-extension -frtti -fvisibility=hidden -fvisibility-inlines-hidden
 OSTYPE_LIB_CXXFLAGS := -fPIC -DPIC
 OSTYPE_EXEC_CXXFLAGS :=
 

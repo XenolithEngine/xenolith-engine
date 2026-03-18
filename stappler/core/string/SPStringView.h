@@ -158,7 +158,7 @@ inline void streamWrite(const FunctionalStream &stream, size_t i) {
 	sprt::array<typename FunctionalStreamTraits<FunctionalStream>::CharType,
 			std::numeric_limits<int64_t>::digits10 + 2>
 			buf = {0};
-	auto ret = string::detail::itoa(sprt::uint64_t(i), buf.data(), buf.size());
+	auto ret = sprt::itoa(sprt::uint64_t(i), buf.data(), buf.size());
 	streamWrite(stream,
 			typename FunctionalStreamTraits<FunctionalStream>::ArgType(
 					buf.data() + buf.size() - ret, ret));

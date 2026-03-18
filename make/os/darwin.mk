@@ -20,6 +20,16 @@
 
 OSTYPE_IS_MACOS := 1
 
+OSTYPE_SDK_PATH := $(shell xcrun --sdk $(TARGET_SDK_NAME) --show-sdk-path 2> /dev/null)
+
+$(info OSTYPE_SDK_PATH $(OSTYPE_SDK_PATH))
+
+ifeq ($(OSTYPE_SDK_PATH),)
+OSTYPE_SDK_PATH := $(TARGET_SDK_FALLBACK)
+endif
+
+$(info OSTYPE_SDK_PATH $(OSTYPE_SDK_PATH))
+
 OSTYPE_EXEC_SUFFIX :=
 OSTYPE_DSO_SUFFIX := .dylib
 OSTYPE_LIB_SUFFIX := .a
@@ -27,14 +37,13 @@ OSTYPE_LIB_PREFIX := lib
 
 OSTYPE_CONFIG_FLAGS := MACOS
 
-OSTYPE_GENERAL_CFLAGS := -DUSE_FILE32API -Wall \
-	-Wnullability-completeness-on-arrays -Wno-documentation
+OSTYPE_GENERAL_CFLAGS := -Wall -fvisibility=hidden
 OSTYPE_LIB_CFLAGS := -fPIC -DPIC
 OSTYPE_EXEC_CFLAGS :=
 
-OSTYPE_GENERAL_CXXFLAGS :=  -DUSE_FILE32API -Wall -frtti \
-	-Wno-unqualified-std-cast-call -Wno-overloaded-virtual -Wno-nullability-completeness-on-arrays \
-	-Wno-documentation -Wno-vla-cxx-extension
+# -Wno-overloaded-virtual: complains about 'hides overloaded virtual function', that is normal for Stappler/Xenolith
+OSTYPE_GENERAL_CXXFLAGS := -Wall -Wno-vla-cxx-extension -Wno-overloaded-virtual -Wno-elaborated-enum-base \
+	-frtti -fvisibility=hidden -fvisibility-inlines-hidden
 OSTYPE_LIB_CXXFLAGS := -fPIC -DPIC
 OSTYPE_EXEC_CXXFLAGS :=
 
@@ -42,7 +51,12 @@ OSTYPE_GENERAL_LDFLAGS := -Xlinker -all_load
 OSTYPE_EXEC_LDFLAGS := 
 OSTYPE_LIB_LDFLAGS := -rdynamic -Wl,--exclude-libs,ALL
 
-OSTYPE_LIBS_REALPATH := 1
+ifdef BUILD_SHARED
 
+OSTYPE_LIB_LDFLAGS += -Wl,-z,defs
+
+endif # BUILD_SHARED
+
+OSTYPE_LIBS_REALPATH := 1
 BUILD_OBJC := 1
 DARWIN := 1
