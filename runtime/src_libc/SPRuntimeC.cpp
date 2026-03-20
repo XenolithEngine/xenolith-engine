@@ -36,7 +36,7 @@ THE SOFTWARE.
 
 #include <sprt/runtime/math.h>
 #include <sprt/runtime/log.h>
-#include <sprt/runtime/source_location.h>
+#include <sprt/cxx/source_location.h>
 #include "private/SPRTFilename.h"
 
 #include <stddef.h>

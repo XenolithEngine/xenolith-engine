@@ -24,7 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_ENUM_H_
 
 #include <sprt/runtime/math.h>
-#include <sprt/runtime/iterator.h>
+#include <sprt/cxx/iterator.h>
 
 namespace sprt {
 
@@ -34,6 +34,28 @@ namespace sprt {
 //
 // EnumClass should contains value with name Max
 //
+
+namespace detail {
+
+template <typename T>
+struct ToIntWrapperType {
+	static_assert(is_integral_v<T> or is_enum_v<T>);
+
+	using type = decltype([]() {
+		if constexpr (is_enum_v<T>) {
+			return underlying_type_t<T>();
+		} else {
+			return T{};
+		}
+	}());
+};
+
+} // namespace detail
+
+template <typename E>
+constexpr typename detail::ToIntWrapperType<E>::type toInt(const E &e) {
+	return static_cast<typename detail::ToIntWrapperType<E>::type>(e);
+}
 
 namespace detail {
 
@@ -121,7 +143,7 @@ struct enum_iterator {
 		return iterator(it.value - n);
 	}
 
-	typename sprt::ToIntWrapperType<E>::type value;
+	typename ToIntWrapperType<E>::type value;
 };
 
 template <typename E>
@@ -135,12 +157,12 @@ struct flags_iterator {
 	using reference = E;
 	using difference_type = ptrdiff_t;
 	using value_type = E;
-	using int_type = typename sprt::ToIntWrapperType<E>::type;
+	using int_type = typename ToIntWrapperType<E>::type;
 
 	using iterator = flags_iterator<E>;
 
 	constexpr flags_iterator() noexcept : value(1) { }
-	constexpr flags_iterator(int v, typename sprt::ToIntWrapperType<E>::type f) noexcept
+	constexpr flags_iterator(int v, typename ToIntWrapperType<E>::type f) noexcept
 	: value(v), flags(f) { }
 	constexpr flags_iterator(const flags_iterator &other) noexcept = default;
 
@@ -182,7 +204,7 @@ struct flags_iterator {
 	constexpr reference operator*() const { return E(int_type(1) << value); }
 
 	int value;
-	typename sprt::ToIntWrapperType<E>::type flags;
+	typename ToIntWrapperType<E>::type flags;
 };
 
 template <typename E, E Value>
@@ -193,7 +215,7 @@ struct flags_iterator_static {
 	using reference = E;
 	using difference_type = ptrdiff_t;
 	using value_type = E;
-	using int_type = typename sprt::ToIntWrapperType<E>::type;
+	using int_type = typename ToIntWrapperType<E>::type;
 
 	using iterator = flags_iterator_static<E, Value>;
 
@@ -250,7 +272,7 @@ struct flags_wrapper {
 
 	flags_wrapper(E e) : value(toInt(e)) { }
 
-	typename sprt::ToIntWrapperType<E>::type value;
+	typename ToIntWrapperType<E>::type value;
 };
 
 template <typename E, E Value>
@@ -275,7 +297,7 @@ constexpr auto each() -> detail::enum_wrapper<E, E(0), E(toInt(E::Max) - 1)> {
 
 template <typename E>
 auto flags(E flags) -> detail::flags_wrapper<E> {
-	static_assert(is_unsigned_v<typename sprt::ToIntWrapperType<E>::type>,
+	static_assert(is_unsigned_v<typename detail::ToIntWrapperType<E>::type>,
 			"Flags should be unsigned");
 	return detail::flags_wrapper<E>(flags);
 }
@@ -283,6 +305,16 @@ auto flags(E flags) -> detail::flags_wrapper<E> {
 template <uint64_t Value>
 auto flags() {
 	return detail::flags_wrapper_static<uint64_t, Value>();
+}
+
+template <typename T>
+inline bool hasFlag(T mask, T flag) {
+	return (mask & flag) != T(0);
+}
+
+template <typename T>
+inline bool hasFlagAll(T mask, T flag) {
+	return (mask & flag) == T(flag);
 }
 
 } // namespace sprt
@@ -329,5 +361,25 @@ auto flags() {
 		::memcpy(&a, &value, sizeof(Type)); \
 		return a; \
 	}
+
+/** SPRT_DEFINE_ENUM_AS_MASK is utility to make a bitwise-mask from typed enum
+ * It defines a set of overloaded operators, that allow some bitwise operations
+ * on this enum class
+ *
+ * Type should be unsigned, and SDK code style suggests to make it sized (uint32_t, uint64_t)
+ */
+#define SPRT_DEFINE_ENUM_AS_MASK(Type) \
+	static_assert(::sprt::is_unsigned_v<::sprt::underlying_type_t<Type>>, #Type " should be unsigned");\
+	SPRT_COVERAGE_TRIVIAL constexpr inline Type operator | (const Type &l, const Type &r) { return Type(::sprt::toInt(l) | ::sprt::toInt(r)); } \
+	SPRT_COVERAGE_TRIVIAL constexpr inline Type operator & (const Type &l, const Type &r) { return Type(::sprt::toInt(l) & ::sprt::toInt(r)); } \
+	SPRT_COVERAGE_TRIVIAL constexpr inline Type operator ^ (const Type &l, const Type &r) { return Type(::sprt::toInt(l) ^ ::sprt::toInt(r)); } \
+	SPRT_COVERAGE_TRIVIAL constexpr inline Type & operator |= (Type &l, const Type &r) { l = Type(::sprt::toInt(l) | ::sprt::toInt(r)); return l; } \
+	SPRT_COVERAGE_TRIVIAL constexpr inline Type & operator &= (Type &l, const Type &r) { l = Type(::sprt::toInt(l) & ::sprt::toInt(r)); return l; } \
+	SPRT_COVERAGE_TRIVIAL constexpr inline Type & operator ^= (Type &l, const Type &r) { l = Type(::sprt::toInt(l) ^ ::sprt::toInt(r)); return l; } \
+	SPRT_COVERAGE_TRIVIAL constexpr inline bool operator == (const Type &l, const ::sprt::underlying_type<Type>::type &r) { return ::sprt::toInt(l) == r; } \
+	SPRT_COVERAGE_TRIVIAL constexpr inline bool operator == (const ::sprt::underlying_type<Type>::type &l, const Type &r) { return l == ::sprt::toInt(r); } \
+	SPRT_COVERAGE_TRIVIAL constexpr inline bool operator != (const Type &l, const ::sprt::underlying_type<Type>::type &r) { return ::sprt::toInt(l) != r; } \
+	SPRT_COVERAGE_TRIVIAL constexpr inline bool operator != (const ::sprt::underlying_type<Type>::type &l, const Type &r) { return l != ::sprt::toInt(r); } \
+	SPRT_COVERAGE_TRIVIAL constexpr inline Type operator~(const Type &t) { return Type(~::sprt::toInt(t)); }
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_ENUM_H_

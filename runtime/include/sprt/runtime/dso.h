@@ -23,25 +23,30 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_DSO_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_DSO_H_
 
+#include <sprt/runtime/enum.h>
 #include <sprt/runtime/stringview.h>
 
 namespace sprt {
 
 enum class DsoFlags : uint32_t {
 	None = 0,
-	Self = 1
-			<< 0, // open caller app itself instead of target library ( Dso(StringView(), DsoFlags::Self) )
-	Lazy = 1 << 1, // use lazy binding if available (default)
+
+	// open caller app itself instead of target library ( Dso(StringView(), DsoFlags::Self) )
+	Self = 1 << 0,
+
+	// use lazy binding if available (default)
+	Lazy = 1 << 1,
+
+	// link as RTLD_GLOBAL
 	Global = 1 << 2,
 
 	UserFlags = Self | Lazy | Global,
 
-	StapplerAbi = 1
-			<< 30, // set by implementation for Dso, opened with stappler-abi module instead of actual OS DSO
+	// set by implementation for Dso, opened with stappler-abi module instead of actual OS DSO
+	StapplerAbi = 1 << 30,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(DsoFlags)
-
 
 enum class DsoSymFlags : uint32_t {
 	None = 0,
@@ -51,6 +56,8 @@ enum class DsoSymFlags : uint32_t {
 
 SPRT_DEFINE_ENUM_AS_MASK(DsoSymFlags)
 
+// Do-nothing indicator function, do nothing but points to some location within runtime
+SPRT_API void _null_fn();
 
 SPRT_API void *dso_open(StringView name, DsoFlags flags, const char **err);
 
@@ -83,6 +90,52 @@ inline Type dso_tsym(void *h, const char *name, DsoSymFlags flags = DsoSymFlags:
 	}
 	return nullptr;
 }
+
+class SPRT_API Dso {
+public:
+	// Version number for shared modules, defined, when DSO loaded
+	// This is actual when called within some DSO operation (open/close/sym)
+	static uint32_t GetCurrentVersion();
+
+	~Dso();
+
+	Dso();
+	Dso(StringView, uint32_t v = 0); // Lazy | Local by default
+	Dso(StringView, DsoFlags, uint32_t v = 0);
+
+	Dso(const Dso &) = delete;
+	Dso &operator=(const Dso &) = delete;
+
+	Dso(Dso &&);
+	Dso &operator=(Dso &&);
+
+	template <typename T = void *>
+	T sym(StringView name, DsoSymFlags flags = DsoSymFlags::None) {
+		static_assert(sprt::is_pointer<T>::value, "Pointer type required to load from DSO");
+		if constexpr (sprt::is_function_v<sprt::remove_pointer_t<T>>) {
+			flags |= DsoSymFlags::Executable;
+		}
+		return reinterpret_cast<T>(loadSym(name, flags));
+	}
+
+	bool isValid() const { return _handle != nullptr; }
+
+	explicit operator bool() const { return isValid(); }
+
+	DsoFlags getFlags() const { return _flags; }
+	StringView getError() const { return _error; }
+	uint32_t getVersion() const { return _version; }
+
+	void close();
+
+protected:
+	void *loadSym(StringView, DsoSymFlags);
+
+	DsoFlags _flags = DsoFlags::None;
+	void *_handle = nullptr;
+	const char *_error = nullptr;
+	uint32_t _version = 0;
+};
 
 } // namespace sprt
 

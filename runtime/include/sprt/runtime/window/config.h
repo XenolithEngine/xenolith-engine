@@ -23,7 +23,7 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_CONFIG_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_CONFIG_H_
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/init.h>
 #include <sprt/runtime/thread/info.h>
 
 namespace sprt::window::config {

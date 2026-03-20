@@ -193,7 +193,7 @@ $(OUT_SYSROOT)/target.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'TARGET_LIB_DIR_LIBC := $$(TARGET_SYSROOT)/lib' >> $@
 	@echo 'TARGET_GENERAL_CFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang' >> $@
 	@echo 'TARGET_GENERAL_CXXFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang' >> $@
-	@echo 'TARGET_GENERAL_LDFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -lc++ -lc++abi' >> $@
+	@echo 'TARGET_GENERAL_LDFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -lc++abi' >> $@
 	@echo 'TARGET_EXEC_CFLAGS :=' >> $@
 	@echo 'TARGET_EXEC_CXXFLAGS :=' >> $@
 	@echo 'TARGET_EXEC_LDFLAGS :=' >> $@
@@ -236,8 +236,12 @@ $(OUT_SYSROOT)/toolchain.cmake: $(lastword $(MAKEFILE_LIST))
 	@echo 'set(CMAKE_CXX_FLAGS_INIT "$${SP_CXX_FLAGS}  -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(SP_ARCH_TARGET_CLANG)" CACHE STRING "" FORCE)' >> $@
 	@echo 'set(CMAKE_EXE_LINKER_FLAGS_INIT "$${SP_EXE_LINKER_FLAGS}  -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(SP_ARCH_TARGET_CLANG)" CACHE STRING "" FORCE)' >> $@
 	@echo 'set(CMAKE_SHARED_LINKER_FLAGS_INIT "$${SP_SHARED_LINKER_FLAGS}  -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(SP_ARCH_TARGET_CLANG)" CACHE STRING "" FORCE)' >> $@
-	@echo 'set(CMAKE_C_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang")' >> $@
-	@echo 'set(CMAKE_CXX_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang")' >> $@
+	@echo 'set(CMAKE_C_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang" CACHE STRING "" FORCE)' >> $@
+	@echo 'if(DEFINED SP_CXX_COMPILER)' >> $@
+	@echo 'set(CMAKE_CXX_COMPILER "$${SP_CXX_COMPILER}" CACHE STRING "" FORCE)' >> $@
+	@echo 'else()' >> $@
+	@echo 'set(CMAKE_CXX_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang" CACHE STRING "" FORCE)' >> $@
+	@echo 'endif()' >> $@
 	@echo 'set(CMAKE_FIND_USE_CMAKE_SYSTEM_PATH Off)' >> $@
 	@echo 'set(CMAKE_FIND_ROOT_PATH "$${CMAKE_CURRENT_LIST_DIR};$${CMAKE_CURRENT_LIST_DIR}/usr")' >> $@
 	@echo 'set(PKG_CONFIG_PATH "$${CMAKE_CURRENT_LIST_DIR}/usr/lib/pkgconfig")' >> $@
@@ -245,10 +249,6 @@ $(OUT_SYSROOT)/toolchain.cmake: $(lastword $(MAKEFILE_LIST))
 	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)' >> $@
 	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)' >> $@
 	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)' >> $@
-	@echo 'set(CMAKE_PREFIX_PATH "$${CMAKE_CURRENT_LIST_DIR};$${CMAKE_CURRENT_LIST_DIR}/usr")' >> $@
-	@echo 'set(CMAKE_INSTALL_PREFIX "$${CMAKE_CURRENT_LIST_DIR}")' >> $@
-	@echo 'set(CMAKE_INSTALL_LIBDIR "$${CMAKE_CURRENT_LIST_DIR}/usr/lib")' >> $@
-	@echo 'set(CMAKE_INSTALL_INCLUDEDIR "$${CMAKE_CURRENT_LIST_DIR}/usr/include")' >> $@
 
 $(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_USR_LIBS) $(OUT_SYSROOT)/lib/clang/lib/linux $(OUT_SYSROOT)/include \
 		$(OUT_SYSROOT)/toolchain.cmake $(OUT_SYSROOT)/target.mk $(OUT_SYSROOT)/target.ini

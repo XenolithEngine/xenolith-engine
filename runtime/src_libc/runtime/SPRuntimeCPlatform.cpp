@@ -1,5 +1,5 @@
 /**
-Copyright (c) 2025 Stappler Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,38 +20,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_NEW_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_NEW_H_
+#define __SPRT_BUILD 1
 
-#include <sprt/runtime/init.h>
-
-#if __SPRT_USE_STL
-
-#include <new>
-
-namespace sprt {
-
-using std::nothrow_t;
-using std::nothrow;
-using std::align_val_t;
-
-} // namespace sprt
-
-#else
-
-namespace sprt {
-
-struct nothrow_t {
-	explicit nothrow_t() = default;
-};
-
-extern const nothrow_t nothrow;
-
-enum class align_val_t : size_t {
-};
-} // namespace sprt
-
+#if SPRT_ANDROID
+#include "../platform/android/filesystem.cc"
+#include "../platform/android/unicode.cc"
+#include "../platform/android/jni.cc"
 #endif
 
+#if SPRT_MACOS
+#include "../platform/darwin/unicode.cc"
+#endif
 
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_NEW_H_
+#if SPRT_WINDOWS
+#include "../platform/windows/platform.cc"
+#endif

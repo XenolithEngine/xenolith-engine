@@ -23,7 +23,7 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_STATUS_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_STATUS_H_
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/enum.h>
 #include <sprt/runtime/string.h>
 #include <sprt/runtime/callback.h>
 #include <sprt/runtime/math.h>

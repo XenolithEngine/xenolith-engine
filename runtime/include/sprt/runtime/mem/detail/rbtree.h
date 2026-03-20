@@ -25,8 +25,9 @@ THE SOFTWARE.
 
 #include <sprt/runtime/mem/detail/nodebase.h>
 #include <sprt/runtime/mem/detail/pointer_iterator.h>
-#include <sprt/runtime/iterator.h>
-#include <sprt/runtime/pair.h>
+
+#include <sprt/cxx/iterator.h>
+#include <sprt/cxx/pair.h>
 
 namespace sprt::memory::detail {
 

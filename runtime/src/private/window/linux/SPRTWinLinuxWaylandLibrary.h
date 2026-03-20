@@ -59,7 +59,7 @@ public:
 	bool ownsProxy(wl_output *);
 	bool ownsProxy(wl_surface *);
 
-	decltype(&_sprt_null_fn) _wl_first_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _wl_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(wl_display_connect)
 	SPRT_DEFINE_PROTO(wl_display_get_fd)
 	SPRT_DEFINE_PROTO(wl_display_dispatch)
@@ -78,14 +78,14 @@ public:
 	SPRT_DEFINE_PROTO(wl_proxy_get_tag)
 	SPRT_DEFINE_PROTO(wl_proxy_destroy)
 	SPRT_DEFINE_PROTO(wl_display_roundtrip)
-	decltype(&_sprt_null_fn) _wl_last_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _wl_last_fn = &_null_fn;
 
-	decltype(&_sprt_null_fn) _wlcursor_first_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _wlcursor_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(wl_cursor_theme_load)
 	SPRT_DEFINE_PROTO(wl_cursor_theme_destroy)
 	SPRT_DEFINE_PROTO(wl_cursor_theme_get_cursor)
 	SPRT_DEFINE_PROTO(wl_cursor_image_get_buffer)
-	decltype(&_sprt_null_fn) _wlcursor_last_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _wlcursor_last_fn = &_null_fn;
 
 protected:
 	bool open(Dso &);

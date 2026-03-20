@@ -23,7 +23,6 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_VERUTILS_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_VERUTILS_H_
 
-#include <sprt/runtime/int.h>
 #include <sprt/runtime/stringview.h>
 
 namespace sprt {

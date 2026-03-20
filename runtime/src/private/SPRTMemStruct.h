@@ -26,9 +26,9 @@ THE SOFTWARE.
 #define RUNTIME_SRC_PRIVATE_SPRTMEMSTRUCT_H_
 
 #include <sprt/runtime/mem/pool.h>
-#include <sprt/runtime/new.h>
-#include <sprt/runtime/atomic.h>
 #include <sprt/runtime/mutex.h>
+#include <sprt/cxx/new.h>
+#include <sprt/cxx/atomic.h>
 
 #include "private/SPRTDso.h"
 
@@ -43,7 +43,7 @@ typedef struct apr_thread_mutex_t apr_thread_mutex_t;
 namespace sprt::memory::apr {
 
 struct AprInterface {
-	decltype(&_sprt_null_fn) apr_first_fn = &_sprt_null_fn;
+	decltype(&_null_fn) apr_first_fn = &_null_fn;
 	apr_status_t (*apr_allocator_create)(apr_allocator_t **allocator)
 			__attribute__((nonnull(1))) = nullptr;
 	void (*apr_allocator_destroy)(apr_allocator_t *allocator) __attribute__((nonnull(1))) = nullptr;
@@ -101,7 +101,7 @@ struct AprInterface {
 	void *(*apr_pmemdup)(apr_pool_t *p, const void *m, apr_size_t n)
 			__attribute__((alloc_size(3))) = nullptr;
 	char *(*apr_pstrdup)(apr_pool_t *p, const char *s) = nullptr;
-	decltype(&_sprt_null_fn) apr_last_fn = &_sprt_null_fn;
+	decltype(&_null_fn) apr_last_fn = &_null_fn;
 
 	Dso _handle;
 

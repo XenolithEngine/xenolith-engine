@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_CHARGROUP_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_CHARGROUP_H_
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/enum.h>
 
 namespace sprt {
 

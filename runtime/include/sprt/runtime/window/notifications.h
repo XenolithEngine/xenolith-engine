@@ -23,7 +23,7 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_NOTIFICATIONS_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_NOTIFICATIONS_H_
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/enum.h>
 
 namespace sprt::window {
 

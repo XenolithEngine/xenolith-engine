@@ -78,9 +78,9 @@ MODULE_RUNTIME_PRIVATE_INCLUDES := \
 MODULE_RUNTIME_DEPENDS_ON := runtime_libc
 
 ifeq ($(TARGET_SYSTEM),Linux)
-MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
-MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
-MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a -l:libicuuc.a -l:libicudata.a
+MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc -nostdinc++
+MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc -nostdinc++
+MODULE_RUNTIME_LIBS += -l:libbacktrace.a -l:libicuuc.a -l:libicudata.a -l:libc++.a
 endif
 
 ifeq ($(TARGET_SYSTEM),Android)

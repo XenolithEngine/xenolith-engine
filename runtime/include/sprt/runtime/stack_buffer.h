@@ -24,8 +24,9 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_STACK_BUFFER_H_
 
 #include <sprt/runtime/detail/constexpr.h>
-#include <sprt/runtime/array.h>
 #include <sprt/runtime/stringview.h>
+
+#include <sprt/cxx/array.h>
 
 namespace sprt {
 

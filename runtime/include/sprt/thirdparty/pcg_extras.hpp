@@ -33,8 +33,7 @@
 #ifndef PCG_EXTRAS_HPP_INCLUDED
 #define PCG_EXTRAS_HPP_INCLUDED 1
 
-#include <sprt/runtime/int.h>
-#include <sprt/runtime/iterator.h>
+#include <sprt/cxx/iterator.h>
 
 /*
  * Abstractions for compiler-specific directives

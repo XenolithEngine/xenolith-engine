@@ -28,8 +28,8 @@ THE SOFTWARE.
 #include <sprt/runtime/hash.h>
 #include <sprt/runtime/string.h>
 #include <sprt/runtime/detail/compare.h>
-#include <sprt/runtime/initializer_list.h>
 #include <sprt/runtime/detail/ordering.h>
+#include <sprt/cxx/initializer_list.h>
 
 namespace sprt::memory {
 

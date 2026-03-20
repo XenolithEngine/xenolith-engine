@@ -26,7 +26,7 @@ THE SOFTWARE.
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/runtime/detail/invoke.h>
 #include <sprt/runtime/detail/swap.h>
-#include <sprt/runtime/source_location.h>
+#include <sprt/cxx/source_location.h>
 
 namespace sprt::memory {
 

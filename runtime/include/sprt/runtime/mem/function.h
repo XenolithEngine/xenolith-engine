@@ -25,8 +25,9 @@ THE SOFTWARE.
 
 #include <sprt/runtime/mem/detail/alloc.h>
 #include <sprt/runtime/mem/detail/dynalloc.h>
-#include <sprt/runtime/array.h>
 #include <sprt/runtime/callback.h>
+
+#include <sprt/cxx/array.h>
 #include <sprt/c/__sprt_string.h>
 
 namespace sprt::memory {

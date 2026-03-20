@@ -124,8 +124,7 @@ $(TARGET_CLANG_CC): $(TARGET_TOOLCHAIN_FILE)
 		-DCLANG_DEFAULT_LINKER=lld \
 		-DCLANG_DEFAULT_UNWINDLIB=libunwind \
 		-DCLANG_INCLUDE_TESTS=Off \
-		-DCLANG_LINK_CLANG_DYLIB=Off \
-		-DCLANG_ENABLE_ARCMT=Off \
+		-DCLANG_LINK_CLANG_DYLIB=On \
 		-DCLANG_ENABLE_STATIC_ANALYZER=Off \
 		-DLIBCLANG_BUILD_STATIC=On \
 		-DLLDB_NO_INSTALL_DEFAULT_RPATH=On \
@@ -283,7 +282,8 @@ OUT_LIBS := $(addprefix $(OUT_SYSROOT)/lib/,\
 	libLLVM.dylib \
 	libLTO.dylib \
 	libRemarks.dylib \
-	libSPIRV.16.0.0.dylib \
+	libclang.dylib \
+	libclang-cpp.dylib \
 	libSPIRV-Tools-diff.dylib \
 	libSPIRV-Tools.dylib \
 	libSPIRV-Tools-link.dylib \
@@ -354,8 +354,6 @@ $(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))
 $(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
 	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.21.1.8.dylib liblldb.dylib
 	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.dylib libLLVM-21.dylib
-	cd $(OUT_SYSROOT)/lib; ln -fs libSPIRV.16.0.0.dylib libSPIRV.16.dylib
-	cd $(OUT_SYSROOT)/lib; ln -fs libSPIRV.16.dylib libSPIRV.dylib
 
 	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 clang
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang++

@@ -83,7 +83,7 @@ public:
 
 	struct xkb_context *getContext() const { return _context; }
 
-	decltype(&_sprt_null_fn) _xkb_first_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xkb_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(xkb_context_new)
 	SPRT_DEFINE_PROTO(xkb_context_ref)
 	SPRT_DEFINE_PROTO(xkb_context_unref)
@@ -111,14 +111,14 @@ public:
 	SPRT_DEFINE_PROTO(xkb_compose_state_get_status)
 	SPRT_DEFINE_PROTO(xkb_compose_state_get_one_sym)
 	SPRT_DEFINE_PROTO(xkb_compose_state_unref)
-	decltype(&_sprt_null_fn) _xkb_last_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xkb_last_fn = &_null_fn;
 
-	decltype(&_sprt_null_fn) _xkb_x11_first_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xkb_x11_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(xkb_x11_setup_xkb_extension)
 	SPRT_DEFINE_PROTO(xkb_x11_get_core_keyboard_device_id)
 	SPRT_DEFINE_PROTO(xkb_x11_keymap_new_from_device)
 	SPRT_DEFINE_PROTO(xkb_x11_state_new_from_device)
-	decltype(&_sprt_null_fn) _xkb_x11_last_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xkb_x11_last_fn = &_null_fn;
 
 protected:
 	bool open(Dso &);

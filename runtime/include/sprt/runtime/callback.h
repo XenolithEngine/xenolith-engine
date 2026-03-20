@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_CALLBACK_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_CALLBACK_H_
 
-#include <sprt/runtime/array.h>
+#include <sprt/cxx/array.h>
 #include <sprt/runtime/detail/constexpr.h>
 #include <sprt/runtime/detail/invoke.h>
 

@@ -20,8 +20,8 @@
  THE SOFTWARE.
  **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_BITSET_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_BITSET_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_BITSET_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_BITSET_H_
 
 #include <sprt/runtime/math.h>
 
@@ -80,7 +80,7 @@ protected:
 	constexpr void flip(size_t n) { __first_[n % __bits_per_word] ^= ~(__storage_type(1) << n); }
 
 	constexpr bool all() const noexcept { return !__scan_bits(__bit_not()); }
-	constexpr bool any() const noexcept { return __scan_bits(sprt::__identity()); }
+	constexpr bool any() const noexcept { return __scan_bits(sprt::identity()); }
 
 	constexpr void set() {
 		size_t __n = _Size;
@@ -422,4 +422,4 @@ inline constexpr bitset<_Size> operator^(const bitset<_Size> &__x,
 
 } // namespace sprt
 
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_BITSET_H_
+#endif // RUNTIME_INCLUDE_SPRT_CXX_BITSET_H_

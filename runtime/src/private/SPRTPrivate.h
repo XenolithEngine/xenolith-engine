@@ -24,7 +24,6 @@
 #define CORE_RUNTIME_PRIVATE_SPRTPRIVATE_H_
 
 #include <sprt/runtime/mem/pool.h>
-#include <sprt/runtime/int.h>
 #include <sprt/runtime/platform.h>
 #include <sprt/runtime/mutex.h>
 #include <sprt/runtime/filesystem/lookup.h>

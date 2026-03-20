@@ -21,7 +21,7 @@
  **/
 
 #include <sprt/runtime/string.h>
-#include <sprt/runtime/float.h>
+#include <sprt/runtime/enum.h>
 #include <sprt/runtime/math.h>
 
 #include <sprt/c/__sprt_string.h>

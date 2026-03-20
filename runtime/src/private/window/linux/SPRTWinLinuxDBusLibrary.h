@@ -222,7 +222,7 @@ public:
 	template <typename Parser>
 	bool parseMessage(NotNull<DBusMessageIter>, Parser &);
 
-	decltype(&_sprt_null_fn) _dbus_first_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _dbus_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(dbus_error_init)
 	SPRT_DEFINE_PROTO(dbus_error_free)
 	SPRT_DEFINE_PROTO(dbus_message_new_method_call)
@@ -289,7 +289,7 @@ public:
 	SPRT_DEFINE_PROTO(dbus_timeout_set_data)
 	SPRT_DEFINE_PROTO(dbus_timeout_handle)
 	SPRT_DEFINE_PROTO(dbus_timeout_get_enabled)
-	decltype(&_sprt_null_fn) _dbus_last_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _dbus_last_fn = &_null_fn;
 
 protected:
 	Dso _handle;

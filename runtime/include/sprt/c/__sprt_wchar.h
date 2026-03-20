@@ -40,7 +40,9 @@ __SPRT_BEGIN_DECL
 #define __SPRT_WCHAR_T __SPRT_WCHAR_T
 #endif
 
+#ifndef __SPRT_WEOF
 #define __SPRT_WEOF 	((__SPRT_ID(wint_t))-1)
+#endif
 
 SPRT_API __SPRT_WCHAR_T *__SPRT_ID(
 		wcscpy)(__SPRT_WCHAR_T *__SPRT_RESTRICT, const __SPRT_WCHAR_T *__SPRT_RESTRICT);

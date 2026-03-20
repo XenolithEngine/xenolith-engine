@@ -24,9 +24,19 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_PAIR_H_
 
 #include <sprt/runtime/init.h>
-#include <sprt/runtime/detail/constructable.h>
+#include <sprt/runtime/detail/swap.h>
 
 namespace sprt {
+
+template <typename Type, class = void>
+struct __is_replaceable : is_trivially_copyable<Type> { };
+
+template <typename Type>
+struct __is_replaceable<Type, enable_if_t<is_same<Type, typename Type::__replaceable>::value> >
+: true_type { };
+
+template <typename Type>
+inline const bool __is_replaceable_v = __is_replaceable<Type>::value;
 
 template <class _T1, class _T2>
 struct check_pair_construction {

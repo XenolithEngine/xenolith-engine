@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/init.h>
 #include <sprt/runtime/detail/constexpr.h>
 
 namespace sprt::_itoa {

@@ -30,128 +30,6 @@
 
 namespace sprt {
 
-class SPRT_LOCAL Dso {
-public:
-	static constexpr const char *ERROR_MOVED_OUT = "Object was moved out";
-	static constexpr const char *ERROR_NOT_LOADED = "Object was not loaded";
-
-	~Dso() {
-		if (_handle) {
-			close();
-		}
-	}
-
-	Dso() { }
-
-	Dso(StringView name) : Dso(name, DsoFlags::Lazy) { }
-	Dso(StringView name, DsoFlags flags) {
-		flags &= DsoFlags::UserFlags;
-
-		_handle = dso_open(name, flags, &_error);
-		if (_handle) {
-			_flags = flags;
-		}
-	}
-
-	Dso(const char *name) : Dso(name, DsoFlags::Lazy) { }
-	Dso(const char *name, DsoFlags flags) {
-		flags &= DsoFlags::UserFlags;
-
-		_handle = dso_open(name, flags, &_error);
-		if (_handle) {
-			_flags = flags;
-		}
-	}
-
-	Dso(const Dso &) = delete;
-	Dso &operator=(const Dso &) = delete;
-
-	Dso(Dso &&other) {
-		_flags = other._flags;
-		_handle = other._handle;
-		_error = other._error;
-
-		other._flags = DsoFlags::None;
-		other._handle = nullptr;
-		other._error = ERROR_MOVED_OUT;
-	}
-
-	Dso &operator=(Dso &&other) {
-		if (_handle) {
-			close();
-		}
-
-		_flags = other._flags;
-		_handle = other._handle;
-		_error = other._error;
-
-		other._flags = DsoFlags::None;
-		other._handle = nullptr;
-		other._error = ERROR_MOVED_OUT;
-		return *this;
-	}
-
-	template <typename T = void *>
-	T sym(StringView name, DsoSymFlags flags = DsoSymFlags::None) {
-		return reinterpret_cast<T>(loadSym(name, flags));
-	}
-
-	template <typename T = void *>
-	T sym(const char *name, DsoSymFlags flags = DsoSymFlags::None) {
-		return reinterpret_cast<T>(loadSym(name, flags));
-	}
-
-	bool isValid() const { return _handle != nullptr; }
-	explicit operator bool() const { return _handle != nullptr; }
-
-	DsoFlags getFlags() const { return _flags; }
-	const char *getError() const { return _error; }
-
-	void close() {
-		if (_handle) {
-			dso_close(_flags, _handle);
-			_handle = nullptr;
-			_flags = DsoFlags::None;
-		} else {
-			_error = ERROR_NOT_LOADED;
-		}
-	}
-
-protected:
-	void *loadSym(const char *name, DsoSymFlags flags) {
-		if (_handle) {
-			auto s = sprt::dso_sym(_handle, name, flags, &_error);
-			if (s) {
-				_error = nullptr;
-				return s;
-			}
-		} else {
-			_error = ERROR_NOT_LOADED;
-		}
-		return nullptr;
-	}
-
-	void *loadSym(StringView name, DsoSymFlags flags) {
-		if (_handle) {
-			auto s = sprt::dso_sym(_handle, name, flags, &_error);
-			if (s) {
-				_error = nullptr;
-				return s;
-			}
-		} else {
-			_error = ERROR_NOT_LOADED;
-		}
-		return nullptr;
-	}
-
-	DsoFlags _flags = DsoFlags::None;
-	void *_handle = nullptr;
-	const char *_error = nullptr;
-};
-
-// List indicator function, do nothing but points to the bounds of function block
-SPRT_API void _sprt_null_fn();
-
 template <typename T>
 static bool clearFunctionList(T first, T last) {
 	while (first != last) {
@@ -172,7 +50,6 @@ static bool validateFunctionList(T first, T last) {
 	}
 	return true;
 }
-
 
 } // namespace sprt
 

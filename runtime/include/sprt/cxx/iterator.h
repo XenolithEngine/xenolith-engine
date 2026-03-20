@@ -20,10 +20,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_ITERATOR_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_ITERATOR_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_ITERATOR_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_ITERATOR_H_
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/init.h>
 #include <sprt/runtime/detail/swap.h>
 
 #if __SPRT_USE_STL_ITERATOR_TAGS
@@ -167,4 +167,4 @@ T *end(T (&array)[N]) {
 
 } // namespace sprt
 
-#endif
+#endif // RUNTIME_INCLUDE_SPRT_CXX_ITERATOR_H_

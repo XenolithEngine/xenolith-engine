@@ -24,7 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_JNI_TYPE_H_
 
 #include <sprt/runtime/stringview.h> // IWYU pragma: keep
-#include <sprt/runtime/array.h>
+#include <sprt/cxx/array.h>
 
 #if SPRT_ANDROID
 

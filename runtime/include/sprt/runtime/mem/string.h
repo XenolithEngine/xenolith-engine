@@ -30,7 +30,8 @@ THE SOFTWARE.
 #include <sprt/runtime/detail/operations.h>
 #include <sprt/runtime/detail/constexpr.h>
 #include <sprt/runtime/detail/ordering.h>
-#include <sprt/runtime/initializer_list.h>
+
+#include <sprt/cxx/initializer_list.h>
 
 namespace sprt::memory {
 

@@ -21,11 +21,11 @@
  THE SOFTWARE.
  **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_ATOMIC_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_ATOMIC_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_ATOMIC_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_ATOMIC_H_
 
-#include <sprt/runtime/int.h>
-#include <sprt/runtime/detail/constructable.h>
+#include <sprt/runtime/init.h>
+#include <sprt/runtime/enum.h>
 
 namespace sprt {
 
@@ -187,7 +187,7 @@ struct __atomic_base<Type, true> : public __atomic_base<Type, false> {
 template <typename Type>
 struct atomic : public __atomic_base<Type> {
 	static_assert(is_trivially_copyable<Type>::value,
-			"std::atomic<T> requires that 'T' be a trivially copyable type");
+			"sprt::atomic<T> requires that 'T' be a trivially copyable type");
 
 	using __base = __atomic_base<Type>;
 
@@ -354,4 +354,4 @@ static inline bool compareSwap(volatile Value *ptr, Value *expected, Value desir
 
 } // namespace sprt
 
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_ATOMIC_H_
+#endif // RUNTIME_INCLUDE_SPRT_CXX_ATOMIC_H_

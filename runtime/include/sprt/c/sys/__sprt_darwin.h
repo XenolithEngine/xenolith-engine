@@ -92,10 +92,8 @@ typedef void (*__SPRT_ID(_CFRunLoopTimerCallBack))(__SPRT_ID(_CFRunLoopTimerRef)
 
 __SPRT_BEGIN_DECL
 
-__SPRT_CONFIG_HAVE_DARWIN_NOTICE
 SPRT_API extern const __SPRT_ID(_CFRunLoopMode) __SPRT_ID(_kCFRunLoopDefaultMode);
 
-__SPRT_CONFIG_HAVE_DARWIN_NOTICE
 SPRT_API extern const __SPRT_ID(_CFRunLoopMode) __SPRT_ID(_kCFRunLoopCommonModes);
 
 __SPRT_CONFIG_HAVE_DARWIN_NOTICE
@@ -180,9 +178,11 @@ SPRT_API void __SPRT_ID(_CFRunLoopWakeUp)(__SPRT_ID(_CFRunLoopRef) rl);
 __SPRT_CONFIG_HAVE_DARWIN_NOTICE
 SPRT_API void __SPRT_ID(_CFRunLoopStop)(__SPRT_ID(_CFRunLoopRef) rl);
 
+#if defined(__has_feature) && __has_feature(blocks)
 __SPRT_CONFIG_HAVE_DARWIN_NOTICE
 SPRT_API void __SPRT_ID(
 		_CFRunLoopPerformBlock)(__SPRT_ID(_CFRunLoopRef) rl, const void *mode, void (^block)(void));
+#endif
 
 __SPRT_CONFIG_HAVE_DARWIN_NOTICE
 SPRT_API void __SPRT_ID(

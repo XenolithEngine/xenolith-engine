@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_FORWARD_LIST_H_
 
 #include <sprt/runtime/mem/detail/listbase.h>
-#include <sprt/runtime/initializer_list.h>
+#include <sprt/cxx/initializer_list.h>
 
 namespace sprt::memory {
 

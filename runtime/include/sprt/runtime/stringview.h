@@ -24,7 +24,6 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_STRINGVIEW_H_
 
 #include <sprt/runtime/math.h>
-#include <sprt/runtime/array.h>
 #include <sprt/runtime/notnull.h>
 #include <sprt/runtime/chargroup.h>
 #include <sprt/runtime/string.h>
@@ -39,6 +38,8 @@ THE SOFTWARE.
 #include <sprt/runtime/mem/context.h>
 #include <sprt/runtime/mem/string.h>
 #include <sprt/runtime/mem/detail/pointer_iterator.h>
+
+#include <sprt/cxx/array.h>
 
 #include <sprt/c/__sprt_string.h>
 

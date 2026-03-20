@@ -25,7 +25,7 @@
 
 /* Original source from LLVM libc++ */
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/init.h>
 
 #if __SPRT_USE_STL
 

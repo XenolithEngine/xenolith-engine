@@ -24,10 +24,117 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MATH_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MATH_H_
 
-#include <sprt/runtime/int.h>
-#include <sprt/runtime/float.h>
+#include <sprt/runtime/init.h>
 #include <sprt/runtime/detail/operations.h>
 #include <sprt/c/__sprt_stdlib.h>
+#include <sprt/c/__sprt_float.h>
+
+namespace sprt {
+
+template <class _Tp, _Tp... _Ip>
+struct integer_sequence {
+	typedef _Tp value_type;
+	static_assert(is_integral<_Tp>::value,
+			"std::integer_sequence can only be instantiated with an integral type");
+	static constexpr size_t size() noexcept { return sizeof...(_Ip); }
+};
+
+template <size_t... _Ip>
+using index_sequence = integer_sequence<size_t, _Ip...>;
+
+#if __has_builtin(__make_integer_seq)
+
+template <class _Tp, _Tp _Ep>
+using make_integer_sequence = __make_integer_seq<integer_sequence, _Tp, _Ep>;
+
+#elif __has_builtin(__integer_pack)
+
+template <class _Tp, _Tp _SequenceSize>
+using make_integer_sequence = integer_sequence<_Tp, __integer_pack(_SequenceSize)...>;
+
+#else
+#error "No known way to get an integer pack from the compiler"
+#endif
+
+template <size_t _Np>
+using make_index_sequence = make_integer_sequence<size_t, _Np>;
+
+template <typename _Tp>
+inline const bool is_signed_integer_v = false;
+template <>
+inline const bool is_signed_integer_v<signed char> = true;
+template <>
+inline const bool is_signed_integer_v<signed short> = true;
+template <>
+inline const bool is_signed_integer_v<signed int> = true;
+template <>
+inline const bool is_signed_integer_v<signed long> = true;
+template <>
+inline const bool is_signed_integer_v<signed long long> = true;
+
+template <typename _Tp>
+inline const bool is_unsigned_integer_v = false;
+template <>
+inline const bool is_unsigned_integer_v<unsigned char> = true;
+template <>
+inline const bool is_unsigned_integer_v<unsigned short> = true;
+template <>
+inline const bool is_unsigned_integer_v<unsigned int> = true;
+template <>
+inline const bool is_unsigned_integer_v<unsigned long> = true;
+template <>
+inline const bool is_unsigned_integer_v<unsigned long long> = true;
+
+#if SPRT_HAVE_DEDICATED_SIZE_T
+template <>
+inline const bool is_unsigned_integer_v<__sprt_size_t> = true;
+#endif
+
+template <typename _Tp>
+concept signed_integer = is_signed_integer_v<_Tp>;
+
+template <typename _Tp>
+concept unsigned_integer = is_unsigned_integer_v<_Tp>;
+
+template <typename _Tp>
+concept signed_or_unsigned_integer = signed_integer<_Tp> || unsigned_integer<_Tp>;
+
+constexpr inline bool isnan(float value) {
+#if __has_builtin(__builtin_isnan)
+	return __builtin_isnan(value);
+#else
+	return value != value;
+#endif
+}
+
+constexpr inline bool isnan(double value) {
+#if __has_builtin(__builtin_isnan)
+	return __builtin_isnan(value);
+#else
+	return value != value;
+#endif
+}
+
+constexpr inline bool isnan(long double value) {
+#if __has_builtin(__builtin_isnan)
+	return __builtin_isnan(value);
+#else
+	return value != value;
+#endif
+}
+
+constexpr inline bool isinf(double value) { return __builtin_isinf(value); }
+
+} // namespace sprt
+
+// numbers::pi replacement from std
+namespace sprt::numbers {
+
+template <typename T = float>
+inline constexpr T Pi =
+		enable_if_t<is_floating_point_v<T>, T>(3.141592653589793238462643383279502884L);
+
+} // namespace sprt::numbers
 
 /*
  * 		Extra math functions

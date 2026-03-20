@@ -25,12 +25,12 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_COMPARE_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_COMPARE_H_
 
-#include <sprt/runtime/detail/constructable.h>
+#include <sprt/runtime/init.h>
 #include <sprt/runtime/detail/invoke.h>
-#include <sprt/runtime/iterator.h>
-#include <sprt/runtime/pair.h>
 #include <sprt/runtime/detail/operations.h>
 #include <sprt/runtime/detail/constexpr.h>
+#include <sprt/cxx/iterator.h>
+#include <sprt/cxx/pair.h>
 
 namespace sprt {
 
@@ -187,7 +187,7 @@ template <typename _InputIterator1, typename _InputIterator2>
 [[nodiscard]]
 inline constexpr bool lexicographical_compare(_InputIterator1 __first1, _InputIterator1 __last1,
 		_InputIterator2 __first2, _InputIterator2 __last2) {
-	__identity __proj;
+	identity __proj;
 	return sprt::__lexicographical_compare(__first1, __last1, __first2, __last2, sprt::less<void>(),
 			__proj, __proj);
 }
@@ -363,7 +363,7 @@ template <typename _ForwardIterator, typename _Tp, typename _Compare>
 [[nodiscard]]
 inline constexpr _ForwardIterator lower_bound(_ForwardIterator __first, _ForwardIterator __last,
 		const _Tp &__value, _Compare __comp) {
-	auto __proj = sprt::__identity();
+	auto __proj = sprt::identity();
 	return sprt::__lower_bound(__first, __last, __value, __comp, __proj);
 }
 

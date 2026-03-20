@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_CONSTEXPR_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_CONSTEXPR_H_
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/init.h>
 #include <sprt/c/__sprt_string.h>
 
 namespace sprt {

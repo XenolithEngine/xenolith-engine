@@ -32,6 +32,14 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/runtime/config.h>
+#include <sprt/runtime/detail/type_categories.h>
+#include <sprt/runtime/detail/type_operations.h>
+#include <sprt/runtime/detail/type_queries.h>
+
+#include <sprt/c/__sprt_stddef.h>
+#include <sprt/c/__sprt_stdint.h>
+#include <sprt/c/bits/__sprt_ssize_t.h>
+#include <sprt/c/bits/__sprt_time_t.h>
 
 #define SPRT_UNUSED [[maybe_unused]]
 #define SPRT_INLINE [[gnu::always_inline]]
@@ -58,291 +66,42 @@ THE SOFTWARE.
 
 namespace sprt {
 
-using nullptr_t = decltype(nullptr);
-
-template <typename...>
-using void_t = void;
-
-struct __nat {
-	__nat() = delete;
-	__nat(const __nat &) = delete;
-	__nat &operator=(const __nat &) = delete;
-	~__nat() = delete;
-};
-
-template <typename Type, Type __v>
-struct integral_constant {
-	static inline constexpr const Type value = __v;
-	typedef Type value_type;
-	typedef integral_constant type;
-	constexpr operator value_type() const noexcept { return value; }
-	constexpr value_type operator()() const noexcept { return value; }
-};
-
-typedef integral_constant<bool, true> true_type;
-typedef integral_constant<bool, false> false_type;
-
-template <bool __b>
-using bool_constant = integral_constant<bool, __b>;
-
-template <typename Type, typename _Up>
-using _IsSame = bool_constant<__is_same(Type, _Up)>;
-
-template <typename Type, typename _Up>
-using _IsNotSame = bool_constant<!__is_same(Type, _Up)>;
-
-
-template <bool>
-struct _IfImpl;
-
-template <>
-struct _IfImpl<true> {
-	template <typename _IfRes, typename _ElseRes>
-	using _Select = _IfRes;
-};
-
-template <>
-struct _IfImpl<false> {
-	template <typename _IfRes, typename _ElseRes>
-	using _Select = _ElseRes;
-};
-
-template <bool _Cond, typename _IfRes, typename _ElseRes>
-using _If = typename _IfImpl<_Cond>::template _Select<_IfRes, _ElseRes>;
-
-template <bool _Bp, typename _If, typename _Then>
-struct conditional {
-	using type = _If;
-};
-
-template <typename _If, typename _Then>
-struct conditional<false, _If, _Then> {
-	using type = _Then;
-};
-
-template <bool _Bp, typename _IfRes, typename _ElseRes>
-using conditional_t = typename conditional<_Bp, _IfRes, _ElseRes>::type;
-
-
-/*
-	remove_reference / remove_reference_t
-*/
-
-#if __has_builtin(__remove_reference_t)
-template <typename T>
-struct remove_reference {
-	using type = __remove_reference_t(T);
-};
-
-template <typename T>
-using remove_reference_t = __remove_reference_t(T);
-#elif __has_builtin(__remove_reference)
-template <typename T>
-struct remove_reference {
-	using type = __remove_reference(T);
-};
-
-template <typename T>
-using remove_reference_t = typename remove_reference<T>::type;
-#else
-#error "remove_reference not implemented!"
-#endif // __has_builtin(__remove_reference_t)
-
-
-/*
-	remove_pointer / remove_pointer_t
-*/
-
-template <typename Type>
-struct remove_pointer {
-	using type = __remove_pointer(Type);
-};
-
-template <typename Type>
-using remove_pointer_t = typename remove_pointer<Type>::type;
-
-
-/*
-	remove_const / remove_const_t
-*/
-
-#if __has_builtin(__remove_const)
-template <typename Type>
-struct remove_const {
-	using type = __remove_const(Type);
-};
-
-template <typename Type>
-using remove_const_t = __remove_const(Type);
-#else
-template <typename Type>
-struct remove_const {
-	using type = Type;
-};
-template <typename Type>
-struct remove_const<const Type> {
-	using type = Type;
-};
-
-template <typename Type>
-using remove_const_t = typename remove_const<Type>::type;
-#endif // __has_builtin(__remove_const)
-
-
-/*
-	is_reference / is_reference_v
-*/
-
-template <typename T>
-struct is_reference {
-	static constexpr auto value = __is_reference(T);
-};
-
-template <typename T>
-inline constexpr bool is_reference_v = __is_reference(T);
-
-
-/*
-	is_lvalue_reference / is_rvalue_reference
-*/
-
-#if __has_builtin(__is_lvalue_reference) && __has_builtin(__is_rvalue_reference)
-
-template <typename T>
-struct is_lvalue_reference {
-	static constexpr auto value = __is_lvalue_reference(T);
-};
-
-template <typename T>
-struct is_rvalue_reference {
-	static constexpr auto value = __is_rvalue_reference(T);
-};
-
-template <typename T>
-inline constexpr bool is_lvalue_reference_v = __is_lvalue_reference(T);
-template <typename T>
-inline constexpr bool is_rvalue_reference_v = __is_rvalue_reference(T);
-
-#else // __has_builtin(__is_lvalue_reference)
-
-template <typename T>
-struct is_lvalue_reference {
-	static constexpr auto value = false;
-};
-template <typename T>
-struct is_lvalue_reference<T &> {
-	static constexpr auto value = true;
-};
-
-template <typename T>
-struct is_rvalue_reference {
-	static constexpr auto value = false;
-};
-template <typename T>
-struct is_rvalue_reference<T &&> {
-	static constexpr auto value = true;
-};
-
-template <typename T>
-inline constexpr bool is_lvalue_reference_v = is_lvalue_reference<T>::value;
-
-template <typename T>
-inline constexpr bool is_rvalue_reference_v = is_rvalue_reference<T>::value;
-
-#endif // __has_builtin(__is_lvalue_reference)
-
-
-/*
-	remove_cv / remove_cv_t
-*/
-
-template <typename Type>
-struct remove_cv {
-	using type = __remove_cv(Type);
-};
-
-template <typename Type>
-using remove_cv_t = typename remove_cv<Type>::type;
-
-
-/*
-	enable_if / enable_if_t
-*/
-
-template <bool, typename Type = void>
-struct enable_if { };
-
-template <typename Type>
-struct enable_if<true, Type> {
-	using type = Type;
-};
-
-template <bool Bool, typename Type = void>
-using enable_if_t = typename enable_if<Bool, Type>::type;
-
-
-/*
-	is_convertible / is_convertible_v
-*/
-
-template <typename From, typename To>
-struct is_convertible {
-	static constexpr bool value = __is_convertible(From, To);
-};
-
-template <typename From, typename To>
-inline constexpr bool is_convertible_v = __is_convertible(From, To);
-
-#if __SPRT_HAS_BUILTIN(__is_nothrow_convertible)
-template <typename From, typename To>
-struct is_nothrow_convertible {
-	static constexpr auto value = __is_nothrow_convertible(From, To);
-};
-
-template <typename From, typename To>
-inline constexpr bool is_nothrow_convertible_v = __is_nothrow_convertible(From, To);
-#else
-#error "no __is_nothrow_convertible available"
-#endif
-
-
-/*
-	is_base_of / is_base_of_v
-*/
-
-template <typename Base, typename Derived>
-struct is_base_of {
-	static constexpr auto value = __is_base_of(Base, Derived);
-};
-
-template <typename Base, typename Derived>
-inline constexpr bool is_base_of_v = __is_base_of(Base, Derived);
-
-
-/*
-	is_same / is_same_v
-*/
-
-template <typename TypeA, typename TypeB>
-struct is_same {
-	static constexpr bool value = __is_same(TypeA, TypeB);
-};
-
-template <typename TypeA, typename TypeB>
-inline constexpr bool is_same_v = __is_same(TypeA, TypeB);
-
-
-/*
-	is_pointer / is_pointer_v
-*/
-
-template <typename Type>
-struct is_pointer {
-	static constexpr bool value = __is_pointer(Type);
-};
-
-template <typename Type>
-inline constexpr bool is_pointer_v = __is_pointer(Type);
+using uint8_t = __SPRT_ID(uint8_t);
+using uint16_t = __SPRT_ID(uint16_t);
+using uint32_t = __SPRT_ID(uint32_t);
+using uint64_t = __SPRT_ID(uint64_t);
+
+using int8_t = __SPRT_ID(int8_t);
+using int16_t = __SPRT_ID(int16_t);
+using int32_t = __SPRT_ID(int32_t);
+using int64_t = __SPRT_ID(int64_t);
+
+using uint_least32_t = __SPRT_ID(uint_least32_t);
+using uint_fast32_t = __SPRT_ID(uint_fast32_t);
+
+using size_t = __SPRT_ID(size_t);
+using rsize_t = __SPRT_ID(rsize_t);
+using ssize_t = __SPRT_ID(ssize_t);
+using off_t = __SPRT_ID(off_t);
+using time_t = __SPRT_ID(time_t);
+using clock_t = __SPRT_ID(clock_t);
+
+// Always 64-bit in SPRT
+using off64_t = __SPRT_ID(off_t);
+using time64_t = __SPRT_ID(time_t);
+
+using ptrdiff_t = __SPRT_ID(ptrdiff_t);
+using uintptr_t = __SPRT_ID(uintptr_t);
+using intptr_t = __SPRT_ID(intptr_t);
+
+static_assert(sizeof(uint8_t) == 1, "Invalid int length");
+static_assert(sizeof(int8_t) == 1, "Invalid int length");
+static_assert(sizeof(uint16_t) == 2, "Invalid int length");
+static_assert(sizeof(int16_t) == 2, "Invalid int length");
+static_assert(sizeof(uint32_t) == 4, "Invalid int length");
+static_assert(sizeof(int32_t) == 4, "Invalid int length");
+static_assert(sizeof(uint64_t) == 8, "Invalid int length");
+static_assert(sizeof(uint64_t) == 8, "Invalid int length");
 
 
 /*
@@ -390,62 +149,8 @@ constexpr inline Type *addressof(Type &__x) noexcept {
 	return __builtin_addressof(__x);
 }
 
-template <typename Type>
-struct add_rvalue_reference {
-	using type = __add_rvalue_reference(Type);
-};
-
-template <typename Type>
-using add_rvalue_reference_t = typename add_rvalue_reference<Type>::type;
-
-template <typename Type>
-struct add_lvalue_reference {
-	using type = __add_lvalue_reference(Type);
-};
-
-template <typename Type>
-using add_lvalue_reference_t = typename add_lvalue_reference<Type>::type;
-
-template <typename Type>
-struct is_function : integral_constant<bool, __is_function(Type)> { };
-
-template <typename Type>
-inline constexpr bool is_function_v = __is_function(Type);
-
-template <typename Type>
-struct is_scalar : bool_constant<__is_scalar(Type)> { };
-
-template <typename Type>
-inline constexpr bool is_scalar_v = __is_scalar(Type);
-
-template <typename Type>
-struct is_volatile : bool_constant<__is_volatile(Type)> { };
-
-template <typename Type>
-inline constexpr bool is_volatile_v = __is_volatile(Type);
-
-template <typename Type>
-struct is_signed : bool_constant<__is_signed(Type)> { };
-
-template <typename Type>
-inline constexpr bool is_signed_v = __is_signed(Type);
-
-
 template <class _Tp>
-struct __is_identity : false_type { };
-
-struct __identity {
-	template <class _Tp>
-	[[nodiscard]]
-	constexpr _Tp &&operator()(_Tp &&__t) const noexcept {
-		return sprt::forward<_Tp>(__t);
-	}
-
-	using is_transparent = void;
-};
-
-template <>
-struct __is_identity<__identity> : true_type { };
+struct is_identity : false_type { };
 
 struct identity {
 	template <class _Tp>
@@ -458,11 +163,12 @@ struct identity {
 };
 
 template <>
-struct __is_identity<identity> : true_type { };
+struct is_identity<identity> : true_type { };
 
 
 template <typename Type>
 Type &&__declval(int);
+
 template <typename Type>
 Type __declval(long);
 
@@ -474,6 +180,23 @@ decltype(sprt::__declval<Type>(0)) declval() noexcept {
 }
 
 inline constexpr bool is_constant_evaluated() noexcept { return __builtin_is_constant_evaluated(); }
+
+constexpr size_t operator""_length(const char *str, size_t len) { return len; }
+constexpr size_t operator""_length(const char16_t *str, size_t len) { return len; }
+constexpr size_t operator""_len(const char *str, size_t len) { return len; }
+constexpr size_t operator""_len(const char16_t *str, size_t len) { return len; }
+
+constexpr unsigned long long int operator""_GiB(unsigned long long int val) {
+	return val * 1'024 * 1'024 * 1'024;
+}
+constexpr unsigned long long int operator""_MiB(unsigned long long int val) {
+	return val * 1'024 * 1'024;
+}
+constexpr unsigned long long int operator""_KiB(unsigned long long int val) { return val * 1'024; }
+
+constexpr char16_t operator""_c16(unsigned long long int val) { return (char16_t)val; }
+constexpr char operator""_c8(unsigned long long int val) { return (char)val; }
+
 
 } // namespace sprt
 

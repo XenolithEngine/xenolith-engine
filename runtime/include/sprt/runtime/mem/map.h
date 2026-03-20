@@ -25,9 +25,9 @@ THE SOFTWARE.
 
 #include <sprt/runtime/mem/detail/rbtree.h>
 #include <sprt/runtime/mem/detail/dynalloc.h>
-#include <sprt/runtime/initializer_list.h>
 #include <sprt/runtime/detail/operations.h>
 #include <sprt/runtime/detail/compare.h>
+#include <sprt/cxx/initializer_list.h>
 
 namespace sprt::memory {
 

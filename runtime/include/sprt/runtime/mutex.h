@@ -24,21 +24,22 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MUTEX_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MUTEX_H_
 
-#include <sprt/runtime/int.h>
-#include <sprt/runtime/atomic.h>
+#include <sprt/cxx/atomic.h>
 #include <sprt/runtime/status.h>
 #include <sprt/c/__sprt_assert.h>
 
 namespace sprt {
 
-#if SPRT_LINUX || SPRT_ANDROID
+using __qmutex_value_type = uint32_t;
+
 struct __qmutex_data {
-	using value_type = uint32_t;
+	using value_type = __qmutex_value_type;
 
 	value_type value = 0;
 };
 
 struct __rmutex_data {
+#if SPRT_LINUX || SPRT_ANDROID
 	// Futex PI Values
 	static constexpr uint32_t VALUE_MASK = 0x3fff'ffffU;
 	static constexpr uint32_t OWNER_DIED = 0x4000'0000U;
@@ -48,15 +49,7 @@ struct __rmutex_data {
 
 	value_type value = 0;
 	uint32_t counter = 0;
-};
 #elif SPRT_WINDOWS
-struct __qmutex_data {
-	using value_type = uint32_t;
-
-	value_type value = 0;
-};
-
-struct __rmutex_data {
 	static constexpr uint64_t VALUE_MASK = 0xFFFF'FFFFLLU;
 	static constexpr uint64_t OWNER_DIED = 0x1'0000'0000LLU;
 	static constexpr uint64_t WAITERS_BIT = 0x2'0000'0000LLU;
@@ -65,15 +58,7 @@ struct __rmutex_data {
 
 	value_type value = 0;
 	uint32_t counter = 0;
-};
 #else
-struct __qmutex_data {
-	using value_type = uint32_t;
-
-	value_type value = 0;
-};
-
-struct __rmutex_data {
 	static constexpr uint64_t VALUE_MASK = 0xFFFF'FFFFLLU;
 	static constexpr uint64_t OWNER_DIED = 0x1'0000'0000LLU;
 	static constexpr uint64_t WAITERS_BIT = 0x2'0000'0000LLU;
@@ -83,8 +68,8 @@ struct __rmutex_data {
 	value_type value = 0;
 	uint32_t lock = 0;
 	uint32_t counter = 0;
-};
 #endif
+};
 
 class qmutex_base {
 public:
@@ -94,6 +79,10 @@ public:
 	static constexpr value_type LOCK_BIT = 0b0001;
 	static constexpr value_type WAIT_BIT = 0b0010;
 	static constexpr value_type COMPLETE_BIT = 0b0100;
+
+	static Status wait(value_type *, value_type);
+	static void wake_one(value_type *);
+	static void wake_all(value_type *);
 
 	template <Status (*WaitFn)(volatile value_type *, value_type, timeout_type),
 			timeout_type (*ClockFn)()>
@@ -172,16 +161,6 @@ public:
 	static constexpr value_type VALUE_MASK = __rmutex_data::VALUE_MASK;
 	static constexpr value_type OWNER_DIED = __rmutex_data::OWNER_DIED;
 	static constexpr value_type WAITERS_BIT = __rmutex_data::WAITERS_BIT;
-
-	static Status _lock2(Status (*waitFn)(volatile value_type *, value_type *, timeout_type),
-			timeout_type (*clockFn)(), bool syscallLock, __rmutex_data &data, value_type threadId,
-			timeout_type *timeout);
-
-	static Status _try_lock2(bool (*rryLockFn)(volatile value_type *), __rmutex_data &data,
-			value_type threadId);
-
-	static Status _unlock2(void (*WakeFn)(volatile value_type *), __rmutex_data &data,
-			value_type threadId);
 
 	/*
 		Set SyscallLock to true when whole locking process should be performed with WaitFn

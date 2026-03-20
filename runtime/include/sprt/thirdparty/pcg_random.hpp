@@ -74,7 +74,7 @@
 #define PCG_RAND_HPP_INCLUDED 1
 
 #include <sprt/runtime/detail/compare.h>
-#include <sprt/runtime/new.h>
+#include <sprt/cxx/new.h>
 
 #ifdef _MSC_VER
 #pragma warning(disable : 4'146)

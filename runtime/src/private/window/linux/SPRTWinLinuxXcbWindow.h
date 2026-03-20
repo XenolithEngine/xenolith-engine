@@ -28,8 +28,9 @@
 #if SPRT_LINUX
 
 #include <sprt/runtime/ref.h>
-#include <sprt/runtime/bitset.h>
 #include <sprt/runtime/window/native_window.h>
+
+#include <sprt/cxx/bitset.h>
 
 #include "SPRTWinLinuxXcbConnection.h"
 #include "SPRTWinLinuxXkbLibrary.h"

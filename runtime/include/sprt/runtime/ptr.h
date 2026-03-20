@@ -23,7 +23,7 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_PTR_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_PTR_H_
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/init.h>
 #include <sprt/c/__sprt_stdlib.h>
 
 namespace sprt {

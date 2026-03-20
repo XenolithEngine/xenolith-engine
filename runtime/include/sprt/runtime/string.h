@@ -24,11 +24,10 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_STRING_H_
 
 #include <sprt/runtime/callback.h>
-#include <sprt/runtime/int.h>
-#include <sprt/runtime/array.h>
 #include <sprt/runtime/notnull.h>
 #include <sprt/runtime/detail/itoa.h>
 #include <sprt/runtime/detail/dtoa.h>
+#include <sprt/cxx/array.h>
 
 #include <sprt/c/__sprt_string.h>
 

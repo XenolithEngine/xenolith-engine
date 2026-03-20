@@ -24,11 +24,11 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_REF_H_
 
 #include <sprt/runtime/mem/forward_list.h>
-#include <sprt/runtime/int.h>
 #include <sprt/runtime/notnull.h>
-#include <sprt/runtime/new.h>
-#include <sprt/runtime/atomic.h>
 #include <sprt/runtime/stringview.h>
+
+#include <sprt/cxx/new.h>
+#include <sprt/cxx/atomic.h>
 
 // enable Ref debug mode to track retain/release sources
 #ifndef SPRT_REF_DEBUG

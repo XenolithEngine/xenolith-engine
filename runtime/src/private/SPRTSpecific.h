@@ -24,7 +24,7 @@ THE SOFTWARE.
 #ifndef RUNTIME_SRC_PRIVATE_SPRTSPECIFIC_H_
 #define RUNTIME_SRC_PRIVATE_SPRTSPECIFIC_H_
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/init.h>
 
 #if SPRT_LINUX || SPRT_ANDROID
 

@@ -23,9 +23,11 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_LOG_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_LOG_H_
 
+#include <sprt/runtime/enum.h>
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/stream.h>
-#include <sprt/runtime/source_location.h>
+
+#include <sprt/cxx/source_location.h>
 
 namespace sprt::log {
 

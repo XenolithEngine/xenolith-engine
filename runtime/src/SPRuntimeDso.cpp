@@ -27,7 +27,12 @@
 
 namespace sprt {
 
-void _sprt_null_fn() { }
+static constexpr const char *ERROR_MOVED_OUT = "Object was moved out";
+static constexpr const char *ERROR_NOT_LOADED = "Object was not loaded";
+
+static thread_local uint32_t tl_dsoVersion = 0;
+
+void _null_fn() { }
 
 void *dso_open(StringView name, DsoFlags flags, const char **err) {
 	void *h = nullptr;
@@ -91,6 +96,89 @@ void *dso_sym(void *h, const char *name, DsoSymFlags flags, const char **err) {
 		*err = ::__sprt_dlerror();
 	}
 	return s;
+}
+
+uint32_t Dso::GetCurrentVersion() { return tl_dsoVersion; }
+
+Dso::~Dso() {
+	if (_handle) {
+		close();
+	}
+}
+
+Dso::Dso() { }
+
+Dso::Dso(StringView name, uint32_t v) : Dso(name, DsoFlags::Lazy, v) { }
+
+Dso::Dso(StringView name, DsoFlags flags, uint32_t v) : _version(v) {
+	flags &= DsoFlags::UserFlags;
+
+	auto tmp = tl_dsoVersion;
+	tl_dsoVersion = _version;
+	_handle = sprt::dso_open(sprt::StringView(name.data(), name.size()), flags, &_error);
+	if (_handle) {
+		_flags = flags;
+	}
+	tl_dsoVersion = tmp;
+}
+
+Dso::Dso(Dso &&other) {
+	_flags = other._flags;
+	_handle = other._handle;
+	_error = other._error;
+	_version = other._version;
+
+	other._flags = DsoFlags::None;
+	other._handle = nullptr;
+	other._error = ERROR_MOVED_OUT;
+	other._version = 0;
+}
+
+Dso &Dso::operator=(Dso &&other) {
+	if (_handle) {
+		close();
+	}
+
+	_flags = other._flags;
+	_handle = other._handle;
+	_error = other._error;
+	_version = other._version;
+
+	other._flags = DsoFlags::None;
+	other._handle = nullptr;
+	other._error = ERROR_MOVED_OUT;
+	other._version = 0;
+	return *this;
+}
+
+void Dso::close() {
+	if (_handle) {
+		auto tmp = tl_dsoVersion;
+		tl_dsoVersion = _version;
+		sprt::dso_close(_flags, _handle);
+		tl_dsoVersion = tmp;
+		_handle = nullptr;
+		_flags = DsoFlags::None;
+	} else {
+		_error = ERROR_NOT_LOADED;
+	}
+}
+
+void *Dso::loadSym(StringView name, DsoSymFlags flags) {
+	if (_handle) {
+		auto tmp = tl_dsoVersion;
+		tl_dsoVersion = _version;
+		void *s = nullptr;
+		s = sprt::dso_sym(_handle, sprt::StringView(name.data(), name.size()), flags, &_error);
+		tl_dsoVersion = tmp;
+		if (s) {
+			_error = nullptr;
+			return s;
+		}
+	} else {
+		_error = ERROR_NOT_LOADED;
+	}
+	return nullptr;
 }
 
 } // namespace sprt

@@ -59,14 +59,14 @@ static Status qmutex_wait(volatile uint32_t *value, uint32_t expected, uint64_t)
 	return Status::Ok;
 }
 
-static void qmutex_wake(volatile uint32_t *value) {
+static void qmutex_wake_one(volatile uint32_t *value) {
 	auto ret = __sprt_futex_wake(value, __SPRT_FUTEX_PRIVATE_FLAG, 1);
 	if (ret < 0) {
 		reportError(__PRETTY_FUNCTION__, __sprt_errno);
 	}
 }
 
-static void qtimeline_wake(volatile uint32_t *value) {
+static void qmutex_wake_all(volatile uint32_t *value) {
 	auto ret = __sprt_futex_wake(value, __SPRT_FUTEX_PRIVATE_FLAG, __SPRT_INT_MAX);
 	if (ret < 0) {
 		reportError(__PRETTY_FUNCTION__, __sprt_errno);
@@ -121,9 +121,9 @@ static Status qmutex_wait(volatile uint32_t *value, uint32_t expected, uint64_t)
 	return Status::Ok;
 }
 
-static void qmutex_wake(volatile uint32_t *value) { _WakeByAddressSingle((void *)value); }
+static void qmutex_wake_one(volatile uint32_t *value) { _WakeByAddressSingle((void *)value); }
 
-static void qtimeline_wake(volatile uint32_t *value) { _WakeByAddressAll((void *)value); }
+static void qmutex_wake_all(volatile uint32_t *value) { _WakeByAddressAll((void *)value); }
 
 static constexpr bool RMutexSyscallLock = false;
 
@@ -154,12 +154,12 @@ static Status qmutex_wait(volatile uint32_t *value, uint32_t expected, uint64_t)
 	return Status::Ok;
 }
 
-static void qmutex_wake(volatile uint32_t *value) {
+static void qmutex_wake_one(volatile uint32_t *value) {
 	_os_sync_wake_by_address_any((void *)value, sizeof(uint32_t),
 			__SPRT_OS_SYNC_WAKE_BY_ADDRESS_NONE);
 }
 
-static void qtimeline_wake(volatile uint32_t *value) {
+static void qmutex_wake_all(volatile uint32_t *value) {
 	_os_sync_wake_by_address_all((void *)value, sizeof(uint32_t),
 			__SPRT_OS_SYNC_WAKE_BY_ADDRESS_NONE);
 }
@@ -169,6 +169,14 @@ static void qtimeline_wake(volatile uint32_t *value) {
 #endif
 
 static thread_local uint32_t tl_tid = sys_gettid();
+
+Status qmutex_base::wait(value_type *value, value_type expected) {
+	return qmutex_wait(value, expected, 0);
+}
+
+void qmutex_base::wake_one(value_type *value) { qmutex_wake_one(value); }
+
+void qmutex_base::wake_all(value_type *value) { qmutex_wake_all(value); }
 
 qmutex::~qmutex() {
 	auto value = _atomic::exchange(&_data.value, uint32_t(0));
@@ -183,7 +191,7 @@ void qmutex::lock() { _lock<qmutex_wait, nullptr>(&_data.value, 0); }
 
 bool qmutex::try_lock() { return _try_lock(&_data.value) == Status::Ok; }
 
-bool qmutex::unlock() { return _unlock<qmutex_wake>(&_data.value) == Status::Ok; }
+bool qmutex::unlock() { return _unlock<qmutex_wake_one>(&_data.value) == Status::Ok; }
 
 rmutex::~rmutex() {
 	auto value = _atomic::exchange(&_data.value, decltype(_data.value)(0)) & VALUE_MASK;
@@ -324,7 +332,7 @@ void qtimeline::signal(value_type val) {
 		return;
 	}
 	if (_atomic::fetchAdd(&_data.value, val) & WaitersBit) {
-		qtimeline_wake(&_data.value);
+		qmutex_wake_all(&_data.value);
 	}
 }
 
@@ -339,147 +347,7 @@ void qonce::wait(value_type value) {
 }
 
 void qonce::wake() {
-	qtimeline_wake(&_data.value); //
-}
-
-Status rmutex_base::_lock2(Status (*waitFn)(volatile value_type *, value_type *, timeout_type),
-		timeout_type (*clockFn)(), bool syscallLock, __rmutex_data &data, value_type threadId,
-		timeout_type *timeout) {
-	value_type tid = threadId & VALUE_MASK;
-	value_type expected = 0;
-
-	timeout_type now = 0, next = 0;
-	if (clockFn != nullptr) {
-		now = clockFn();
-	}
-
-	// try to capture mutex with our tid
-	// We need not set WAITERS_BIT hee, as we assume that mutex is not locked and no waiters exists
-	if (!_atomic::compareSwap(&data.value, &expected, tid)) [[unlikely]] {
-		// failed - should lock
-		do {
-			if ((expected & OWNER_DIED) != 0) {
-				return Status::ErrorNotRecoverable;
-			}
-
-			// check if we are the owner
-			if ((expected & VALUE_MASK) == tid) {
-				// we are the owner, increment and return
-				break;
-			}
-
-			if (clockFn != nullptr) {
-				if (*timeout && timeout == 0) {
-					return Status::ErrorTimeout;
-				}
-			}
-
-			Status st = Status::Ok;
-			if (syscallLock) {
-				st = waitFn(&data.value, &expected, timeout ? *timeout : 0);
-
-				// Check if lock still in place by CAS
-				// We will lock it with 0 -> TID or expected become TID;
-				// If not - try lock one more time
-				expected = 0;
-			} else {
-				// If value bits is empty - we should try to CAS out TID again, but with updated
-				// expected value
-				if (((expected & VALUE_MASK) == 0)
-						// Or, if WAITERS_BIT is set - we should wait unconditionally
-						&& ((expected & WAITERS_BIT) != 0
-								// If it was not set - try to set it, then read current value to expected;
-								// expected should be (fetched | WAITERS_BIT);
-								// then we check it's value part against nonzero;
-								// If value bits is empty after WAITERS_BIT was set become empty - try to lock mutex without waiting
-								|| ((expected = _atomic::fetchOr(&data.value, WAITERS_BIT)
-													| WAITERS_BIT)
-										   & VALUE_MASK)
-										!= 0)) {
-					// we successfully set waiters flag (or it was set before)
-					st = waitFn(&data.value, &expected, timeout ? *timeout : 0);
-
-					// value was changed, now it's 0 or other thread id
-					// assume 0 and try to set to our thread id
-					expected = 0;
-				} else {
-					// we have 0 or 0 | StateWaiters in expected, try to CompareSwap with it
-				}
-			}
-
-			if (st != Status::Ok) {
-				if (st == Status::ErrorDeadLock) {
-					++data.counter;
-				}
-				return st;
-			}
-
-			if (clockFn != nullptr) {
-				if (timeout) {
-					next = clockFn();
-					*timeout -= min((next - now), *timeout);
-					now = next;
-				}
-			}
-
-			// Here we must assume that other threads may also be waiting to lock the mutex
-			// That is, we must set WAITERS_BIT in order to correctly transfer control to them later
-		} while (!_atomic::compareSwap(&data.value, &expected, tid | WAITERS_BIT));
-	}
-
-	++data.counter;
-	return Status::Ok;
-}
-
-Status rmutex_base::_try_lock2(bool (*tryLockFn)(volatile value_type *), __rmutex_data &data,
-		value_type threadId) {
-	value_type tid = threadId & VALUE_MASK;
-	value_type expected = 0;
-	// try to capture mutex with out tid
-	if (!_atomic::compareSwap(&data.value, &expected, tid)) [[unlikely]] {
-		// check if we are the owner
-		if ((expected & VALUE_MASK) == tid) {
-			// we are the owner, increment and return
-			++data.counter;
-			return Status::Ok;
-		}
-
-		if (tryLockFn != nullptr) {
-			if (tryLockFn(&data.value)) {
-				++data.counter;
-				return Status::Ok;
-			}
-		}
-		return Status::ErrorBusy;
-	} else {
-		++data.counter;
-		return Status::Ok;
-	}
-}
-
-Status rmutex_base::_unlock2(void (*wakeFn)(volatile value_type *), __rmutex_data &data,
-		value_type threadId) {
-	value_type tid = threadId & VALUE_MASK;
-	auto expected = _atomic::loadRel(&data.value);
-
-	if ((expected & VALUE_MASK) != tid || data.counter <= 0) {
-		return Status::ErrorNotPermitted;
-	}
-
-	if (--data.counter > 0) {
-		// some recursive locks still in place
-		return Status::Suspended;
-	}
-
-	// We check if we already know about the waiting threads.
-	// If we don’t know, then we try to atomically unlock the mutex.
-	if ((expected & WAITERS_BIT) != 0
-			|| !_atomic::compareSwap(&data.value, &expected, value_type(0))) {
-		// Now we know for sure that there are waiting threads
-		wakeFn(&data.value);
-		return Status::Ok;
-	}
-	return Status::Done;
+	qmutex_wake_all(&_data.value); //
 }
 
 } // namespace sprt

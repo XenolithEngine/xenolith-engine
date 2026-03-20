@@ -23,8 +23,8 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_ENDINAN_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_ENDINAN_H_
 
-#include <sprt/runtime/int.h>
-#include <sprt/runtime/bit_cast.h>
+#include <sprt/runtime/init.h>
+#include <sprt/cxx/bit_cast.h>
 
 namespace sprt::byteorder {
 

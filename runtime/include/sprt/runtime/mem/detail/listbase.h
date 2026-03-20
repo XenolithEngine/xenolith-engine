@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_LISTBASE_H_
 
 #include <sprt/runtime/mem/detail/nodebase.h>
-#include <sprt/runtime/iterator.h>
+#include <sprt/cxx/iterator.h>
 
 namespace sprt::memory::detail {
 

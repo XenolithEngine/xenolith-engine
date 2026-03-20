@@ -20,10 +20,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_ARRAY_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_ARRAY_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_ARRAY_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_ARRAY_H_
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/init.h>
 
 namespace sprt {
 
@@ -82,4 +82,4 @@ struct array {
 
 } // namespace sprt
 
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_ARRAY_H_
+#endif // RUNTIME_INCLUDE_SPRT_CXX_ARRAY_H_

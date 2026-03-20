@@ -26,11 +26,12 @@ include ../common/configure.mk
 
 CONFIGURE := \
 	$(CONFIGURE_CMAKE) \
-	-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind;compiler-rt" \
+	-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
 	-DLLVM_INSTALL_TOOLCHAIN_ONLY=On \
 	-DLLVM_ENABLE_PIC=On \
 	-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
-	-DCMAKE_BUILD_TYPE=Release \
+	-DLLVM_HOST_TRIPLE="$(SP_TARGET)" \
+	-DLLVM_DEFAULT_TARGET_TRIPLE="$(SP_TARGET)" \
 	-DLIBCXX_HAS_ATOMIC_LIB=Off \
 	-DLIBCXX_ENABLE_SHARED=Off \
 	-DLIBCXX_USE_COMPILER_RT=On \
@@ -43,17 +44,7 @@ CONFIGURE := \
 	-DLIBUNWIND_USE_COMPILER_RT=On \
 	-DLIBUNWIND_ENABLE_SHARED=Off \
 	-DLIBUNWIND_INSTALL_LIBRARY_DIR=usr/lib \
-	-DCOMPILER_RT_BUILD_BUILTINS=On \
-	-DCOMPILER_RT_BUILD_GWP_ASAN=OFF \
-	-DCOMPILER_RT_BUILD_SANITIZERS=OFF \
-	-DCOMPILER_RT_BUILD_XRAY=OFF \
-	-DCOMPILER_RT_BUILD_MEMPROF=OFF \
-	-DCOMPILER_RT_BUILD_CTX_PROFILE=OFF \
-	-DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
-	-DCOMPILER_RT_USE_LLVM_UNWINDER=ON \
-	-DLLVM_HOST_TRIPLE="$(SP_TARGET)" \
-	-DLLVM_DEFAULT_TARGET_TRIPLE="$(SP_TARGET)" \
-	-DCOMPILER_RT_DEFAULT_TARGET_TRIPLE=$(SP_TARGET)
+	-DCMAKE_BUILD_TYPE=Release
 
 ifeq ($(SP_ARCH),riscv64)
 RISCV := 1
@@ -65,11 +56,7 @@ all:
 	cd $(LIBNAME); cmake -G "Ninja" -S $(LIB_SRC_DIR)/$(LIBNAME)/runtimes $(CONFIGURE)
 	cd $(LIBNAME); cmake  --build . --config Release --target install-cxx
 	cd $(LIBNAME); cmake  --build . --config Release --target install-cxxabi
-	cd $(LIBNAME); cmake  --build . --config Release --target install-unwind
 	cd $(LIBNAME); cmake  --build . --config Release --target install
 	$(call rule_rm,$(LIBNAME))
-	$(call rule_rm,$(SP_INSTALL_PREFIX)/lib/clang/lib/linux)
-	$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/linux,$(SP_INSTALL_PREFIX)/lib/clang/lib)
-	$(call rule_rm,$(SP_INSTALL_PREFIX)/lib/linux)
 
 .PHONY: all

@@ -286,7 +286,7 @@ __SPRT_C_FUNC void __SPRT_ID(_CFRelease)(void *ref) {
 __SPRT_C_FUNC __SPRT_ID(_CFAbsoluteTime) __SPRT_ID(_CFAbsoluteTimeGetCurrent)(void) {
 	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
-	return 0);
+	return 0.0;
 }
 
 __SPRT_C_FUNC __SPRT_ID(_CFStringRef) __SPRT_ID(
@@ -318,7 +318,7 @@ __SPRT_C_FUNC __SPRT_ID(_CFRunLoopRunResult)
 				__SPRT_ID(_CFTimeInterval) seconds, int returnAfterSourceHandled) {
 	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
-	return 0;
+	return __SPRT_ID(_CFRunLoopRunResult)(0);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_CFRunLoopIsWaiting)(__SPRT_ID(_CFRunLoopRef) rl) {
@@ -337,11 +337,13 @@ __SPRT_C_FUNC void __SPRT_ID(_CFRunLoopStop)(__SPRT_ID(_CFRunLoopRef) rl) {
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
 
+#if defined(__has_feature) && __has_feature(blocks)
 __SPRT_C_FUNC void __SPRT_ID(_CFRunLoopPerformBlock)(__SPRT_ID(_CFRunLoopRef) rl, const void *mode,
 		void (^block)(void)) {
 	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
+#endif
 
 __SPRT_C_FUNC void __SPRT_ID(
 		_CFRunLoopAddCommonMode)(__SPRT_ID(_CFRunLoopRef) rl, __SPRT_ID(_CFRunLoopMode) mode) {
@@ -381,7 +383,3 @@ __SPRT_C_FUNC void __SPRT_ID(_CFRunLoopRemoveTimer)(__SPRT_ID(_CFRunLoopRef) rl,
 #endif
 
 } // namespace sprt
-
-#if SPRT_MACOS
-#include "../platform/darwin/unicode.cc"
-#endif

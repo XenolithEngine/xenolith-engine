@@ -20,10 +20,10 @@
  THE SOFTWARE.
  **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_BIT_CAST_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_BIT_CAST_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_BIT_CAST_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_BIT_CAST_H_
 
-#include <sprt/runtime/detail/constructable.h>
+#include <sprt/runtime/init.h>
 #include <sprt/runtime/detail/constexpr.h>
 
 namespace sprt {
@@ -45,4 +45,4 @@ bit_cast(const From &src) noexcept {
 
 } // namespace sprt
 
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_BIT_CAST_H_
+#endif // RUNTIME_INCLUDE_SPRT_CXX_BIT_CAST_H_

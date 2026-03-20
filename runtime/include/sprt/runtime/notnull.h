@@ -23,7 +23,7 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_NOTNULL_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_NOTNULL_H_
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/init.h>
 
 // see: https://stackoverflow.com/questions/63493968/reproducing-clangs-builtin-assume-for-gcc
 

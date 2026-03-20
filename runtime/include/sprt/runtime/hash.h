@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_HASH_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_HASH_H_
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/init.h>
 #include <sprt/c/bits/__sprt_def.h>
 
 namespace sprt::sha1 {
@@ -267,5 +267,25 @@ inline constexpr sprt::size_t hashSize(const char *str, sprt::size_t len, sprt::
 }
 
 } // namespace sprt
+
+#if __SPRT_USE_STL
+
+#include <hash>
+
+#else
+
+namespace std {
+
+template <typename T>
+struct hash;
+
+
+/*template <typename T>
+struct hash<sprt::enable_if_t<sprt::is_arithmetic_v<T>, T>> { }*/
+
+
+} // namespace std
+
+#endif
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_HASH_H_

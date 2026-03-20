@@ -27,7 +27,8 @@
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/window/mode.h>
 #include <sprt/runtime/mem/vector.h>
-#include <sprt/runtime/bitset.h>
+
+#include <sprt/cxx/bitset.h>
 
 namespace sprt::window {
 

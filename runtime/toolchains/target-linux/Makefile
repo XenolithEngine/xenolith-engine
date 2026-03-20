@@ -36,8 +36,10 @@ MKDIR = mkdir -p
 
 SP_OPT := -O3 -fPIC -DPIC
 
+INTERNAL_LIBS := \
+	libc++.a
+
 LIBS := \
-	libc++.a \
 	libz.a \
 	libbz2.a \
 	liblzma.a \
@@ -163,13 +165,20 @@ ifdef SP_IS_NATIVE
 FORWARD_VARS += SP_NATIVE=1
 endif
 
-ARCH_LIBS = $(addprefix $(SP_INSTALL_PREFIX)/usr/lib/,$(LIBS))
+INTERNAL_LIBS += clang/lib/linux/libclang_rt.asan-$(SP_ARCH).a
+
+ARCH_LIBS = \
+	$(addprefix $(SP_INSTALL_PREFIX)/lib/,$(INTERNAL_LIBS)) \
+	$(addprefix $(SP_INSTALL_PREFIX)/usr/lib/,$(LIBS))
 
 ARCH_INCLUDES  = $(addprefix $(SP_INSTALL_PREFIX)/usr/include/,$(INCLUDES))
 
 all: $(ARCH_LIBS) $(ARCH_INCLUDES) $(SP_INSTALL_PREFIX)/share/licenses
 
-$(SP_INSTALL_PREFIX)/usr/lib/libc++.a: $(MAKE_ROOT)libc++.mk
+$(SP_INSTALL_PREFIX)/lib/libc++.a: $(MAKE_ROOT)libc++.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/lib/clang/lib/linux/libclang_rt.asan-$(SP_ARCH).a: $(MAKE_ROOT)compiler_rt.mk $(SP_INSTALL_PREFIX)/lib/libc++.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/libz.a: ../common/zlib.mk

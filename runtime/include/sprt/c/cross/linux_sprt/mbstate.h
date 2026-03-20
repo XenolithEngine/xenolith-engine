@@ -5,9 +5,11 @@
 #endif
 #define __SPRT_MBSTATE_DIRECT 0
 
+// clang-format off
 #ifndef __SPRT_WEOF
-#define __SPRT_WEOF 0xffff'ffffU
+#define __SPRT_WEOF 0xffffffffU
 #endif
+// clang-format on
 
 typedef unsigned long __SPRT_ID(wctype_t);
 

@@ -173,9 +173,3 @@ __SPRT_C_FUNC int __SPRT_ID(
 #endif
 
 } // namespace sprt
-
-#if SPRT_ANDROID
-#include "../platform/android/filesystem.cc"
-#include "../platform/android/unicode.cc"
-#include "../platform/android/jni.cc"
-#endif

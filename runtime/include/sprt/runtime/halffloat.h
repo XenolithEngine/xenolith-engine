@@ -23,7 +23,6 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_HALFFLOAT_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_HALFFLOAT_H_
 
-#include <sprt/runtime/float.h>
 #include <sprt/runtime/math.h>
 
 namespace sprt::halffloat {

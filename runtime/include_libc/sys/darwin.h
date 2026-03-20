@@ -172,10 +172,12 @@ SPRT_FORCEINLINE void _CFRunLoopWakeUp(__SPRT_ID(_CFRunLoopRef) rl) { __sprt__CF
 
 SPRT_FORCEINLINE void _CFRunLoopStop(__SPRT_ID(_CFRunLoopRef) rl) { __sprt__CFRunLoopStop(rl); }
 
+#if defined(__has_feature) && __has_feature(blocks)
 SPRT_FORCEINLINE void _CFRunLoopPerformBlock(__SPRT_ID(_CFRunLoopRef) rl, const void *mode,
 		void (^block)(void)) {
 	__sprt__CFRunLoopPerformBlock(rl, mode, block);
 }
+#endif
 
 SPRT_FORCEINLINE void _CFRunLoopAddCommonMode(__SPRT_ID(_CFRunLoopRef) rl,
 		__SPRT_ID(_CFRunLoopMode) mode) {

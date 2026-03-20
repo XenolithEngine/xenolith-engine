@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_TIME_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_TIME_H_
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/init.h>
 #include <sprt/runtime/stringview.h>
 #include <sprt/c/__sprt_time.h>
 

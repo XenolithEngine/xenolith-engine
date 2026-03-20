@@ -23,7 +23,7 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_SOURCE_LOCATION_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_SOURCE_LOCATION_H_
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/init.h>
 
 #if __SPRT_USE_LIBCXX_SOURCE_LOCATION
 

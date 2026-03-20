@@ -23,8 +23,7 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_POINTER_ITERATOR_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_POINTER_ITERATOR_H_
 
-#include <sprt/runtime/iterator.h>
-#include <sprt/runtime/detail/constructable.h>
+#include <sprt/cxx/iterator.h>
 
 namespace sprt::memory::detail {
 

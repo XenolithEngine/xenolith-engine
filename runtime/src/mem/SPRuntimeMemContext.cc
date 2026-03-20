@@ -25,7 +25,7 @@ THE SOFTWARE.
 #include <sprt/runtime/mem/context.h>
 #include <sprt/runtime/mem/function.h>
 #include <sprt/runtime/log.h>
-#include <sprt/runtime/new.h>
+#include <sprt/cxx/new.h>
 
 namespace sprt::memory::pool {
 

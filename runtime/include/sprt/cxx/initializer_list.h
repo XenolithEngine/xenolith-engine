@@ -22,10 +22,10 @@ THE SOFTWARE.
 
 // Original source code from LLVM libc++
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_INITIALIZER_LIST_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_INITIALIZER_LIST_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_INITIALIZER_LIST_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_INITIALIZER_LIST_H_
 
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/init.h>
 
 #if __SPRT_USE_STL
 
@@ -79,4 +79,4 @@ namespace sprt {
 using std::initializer_list;
 }
 
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_INITIALIZER_LIST_H_
+#endif // RUNTIME_INCLUDE_SPRT_CXX_INITIALIZER_LIST_H_

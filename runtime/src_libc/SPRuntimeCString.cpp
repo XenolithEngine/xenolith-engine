@@ -23,7 +23,7 @@ THE SOFTWARE.
 #define __SPRT_BUILD 1
 
 #include <sprt/c/__sprt_string.h>
-#include <sprt/runtime/int.h>
+#include <sprt/runtime/init.h>
 
 // clang-format off
 #ifdef __STDC_VERSION__

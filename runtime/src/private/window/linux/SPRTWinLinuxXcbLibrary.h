@@ -96,7 +96,7 @@ public:
 	bool hasShape() const;
 	bool hasErrors() const;
 
-	decltype(&_sprt_null_fn) _xcb_first_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(xcb_grab_server_checked)
 	SPRT_DEFINE_PROTO(xcb_grab_server)
 	SPRT_DEFINE_PROTO(xcb_ungrab_server_checked)
@@ -177,10 +177,10 @@ public:
 	void *(*xcb_wait_for_reply)(xcb_connection_t *c, unsigned int request,
 			xcb_generic_error_t **e) = nullptr;
 
-	decltype(&_sprt_null_fn) _xcb_last_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_last_fn = &_null_fn;
 
 
-	decltype(&_sprt_null_fn) _xcb_randr_first_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_randr_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(xcb_randr_id)
 	SPRT_DEFINE_PROTO(xcb_randr_select_input)
 	SPRT_DEFINE_PROTO(xcb_randr_select_input_checked)
@@ -292,9 +292,9 @@ public:
 	SPRT_DEFINE_PROTO(xcb_randr_set_panning_reply)
 	SPRT_DEFINE_PROTO(xcb_randr_set_output_primary_checked)
 	SPRT_DEFINE_PROTO(xcb_randr_set_output_primary)
-	decltype(&_sprt_null_fn) _xcb_randr_last_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_randr_last_fn = &_null_fn;
 
-	decltype(&_sprt_null_fn) _xcb_key_first_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_key_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(xcb_key_symbols_alloc)
 	SPRT_DEFINE_PROTO(xcb_key_symbols_free)
 	SPRT_DEFINE_PROTO(xcb_key_symbols_get_keysym)
@@ -309,37 +309,37 @@ public:
 	SPRT_DEFINE_PROTO(xcb_is_function_key)
 	SPRT_DEFINE_PROTO(xcb_is_misc_function_key)
 	SPRT_DEFINE_PROTO(xcb_is_modifier_key)
-	decltype(&_sprt_null_fn) _xcb_key_last_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_key_last_fn = &_null_fn;
 
-	decltype(&_sprt_null_fn) _xcb_xkb_first_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_xkb_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(xcb_xkb_id)
 	SPRT_DEFINE_PROTO(xcb_xkb_select_events)
-	decltype(&_sprt_null_fn) _xcb_xkb_last_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_xkb_last_fn = &_null_fn;
 
-	decltype(&_sprt_null_fn) _xcb_sync_first_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_sync_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(xcb_sync_id)
 	SPRT_DEFINE_PROTO(xcb_sync_create_counter)
 	SPRT_DEFINE_PROTO(xcb_sync_create_counter_checked)
 	SPRT_DEFINE_PROTO(xcb_sync_destroy_counter)
 	SPRT_DEFINE_PROTO(xcb_sync_destroy_counter_checked)
 	SPRT_DEFINE_PROTO(xcb_sync_set_counter)
-	decltype(&_sprt_null_fn) _xcb_sync_last_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_sync_last_fn = &_null_fn;
 
-	decltype(&_sprt_null_fn) _xcb_cursor_first_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_cursor_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(xcb_cursor_context_new)
 	SPRT_DEFINE_PROTO(xcb_cursor_load_cursor)
 	SPRT_DEFINE_PROTO(xcb_cursor_context_free)
-	decltype(&_sprt_null_fn) _xcb_cursor_last_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_cursor_last_fn = &_null_fn;
 
-	decltype(&_sprt_null_fn) _xcb_xfixes_first_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_xfixes_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(xcb_xfixes_id)
 	SPRT_DEFINE_PROTO(xcb_xfixes_query_version)
 	SPRT_DEFINE_PROTO(xcb_xfixes_query_version_unchecked)
 	SPRT_DEFINE_PROTO(xcb_xfixes_query_version_reply)
 	SPRT_DEFINE_PROTO(xcb_xfixes_select_selection_input)
-	decltype(&_sprt_null_fn) _xcb_xfixes_last_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_xfixes_last_fn = &_null_fn;
 
-	decltype(&_sprt_null_fn) _xcb_shape_first_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_shape_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(xcb_shape_id)
 	SPRT_DEFINE_PROTO(xcb_shape_op_next)
 	SPRT_DEFINE_PROTO(xcb_shape_op_end)
@@ -371,9 +371,9 @@ public:
 	SPRT_DEFINE_PROTO(xcb_shape_get_rectangles_rectangles)
 	SPRT_DEFINE_PROTO(xcb_shape_get_rectangles_rectangles_length)
 	SPRT_DEFINE_PROTO(xcb_shape_get_rectangles_reply)
-	decltype(&_sprt_null_fn) _xcb_shape_last_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_shape_last_fn = &_null_fn;
 
-	decltype(&_sprt_null_fn) _xcb_errors_first_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_errors_first_fn = &_null_fn;
 	SPRT_DEFINE_PROTO(xcb_errors_context_new)
 	SPRT_DEFINE_PROTO(xcb_errors_context_free)
 	SPRT_DEFINE_PROTO(xcb_errors_get_name_for_major_code)
@@ -382,7 +382,7 @@ public:
 	SPRT_DEFINE_PROTO(xcb_errors_get_name_for_xge_event)
 	SPRT_DEFINE_PROTO(xcb_errors_get_name_for_xcb_event)
 	SPRT_DEFINE_PROTO(xcb_errors_get_name_for_error)
-	decltype(&_sprt_null_fn) _xcb_errors_last_fn = &_sprt_null_fn;
+	decltype(&_null_fn) _xcb_errors_last_fn = &_null_fn;
 
 protected:
 	void openAux();
