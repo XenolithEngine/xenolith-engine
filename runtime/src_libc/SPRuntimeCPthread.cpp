@@ -98,7 +98,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_setcancelstate)(int v, int *p) {
 #if __SPRT_CONFIG_HAVE_PTHREAD_CANCEL
 	return pthread_setcancelstate(v, p);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_CANCEL)");
 	return EINVAL;
 #endif
@@ -107,7 +107,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_setcanceltype)(int v, int *p) {
 #if __SPRT_CONFIG_HAVE_PTHREAD_CANCEL
 	return pthread_setcanceltype(v, p);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_CANCEL)");
 	return EINVAL;
 #endif
@@ -117,7 +117,7 @@ __SPRT_C_FUNC void __SPRT_ID(pthread_testcancel)(void) {
 #if __SPRT_CONFIG_HAVE_PTHREAD_CANCEL
 	pthread_testcancel();
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_CANCEL)");
 #endif
 }
@@ -126,7 +126,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_cancel)(__SPRT_ID(pthread_t) thread) {
 #if __SPRT_CONFIG_HAVE_PTHREAD_CANCEL
 	return pthread_cancel((pthread_t)thread);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_CANCEL)");
 	return EINVAL;
 #endif
@@ -157,7 +157,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_setschedprio)(__SPRT_ID(pthread_t) thread, i
 	if (platform::_pthread_setschedprio) {
 		return platform::_pthread_setschedprio(thread, p);
 	}
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -211,7 +211,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	return pthread_mutex_timedlock((pthread_mutex_t *)mutex, tv);
 #endif
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_MUTEX_TIMED)");
 	return EINVAL;
 #endif
@@ -224,7 +224,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_mutex_consistent)(__SPRT_ID(pthread_mutex_t)
 #if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST
 	return pthread_mutex_consistent((pthread_mutex_t *)mutex);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST)");
 	return EINVAL;
 #endif
@@ -235,7 +235,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_mutex_getprioceiling)(
 #if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO
 	return pthread_mutex_getprioceiling((pthread_mutex_t *)mutex, p);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO)");
 	return EINVAL;
 #endif
@@ -245,7 +245,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_mutex_setprioceiling)(
 #if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO
 	return pthread_mutex_setprioceiling((pthread_mutex_t *)mutex, v, p);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO)");
 	return EINVAL;
 #endif
@@ -319,7 +319,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	return pthread_rwlock_timedrdlock((pthread_rwlock_t *)lock, tv);
 #endif
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_MUTEX_TIMED)");
 	return EINVAL;
 #endif
@@ -346,7 +346,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	return pthread_rwlock_timedwrlock((pthread_rwlock_t *)lock, tv);
 #endif
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_MUTEX_TIMED)");
 	return EINVAL;
 #endif
@@ -477,7 +477,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_attr_getinheritsched)(
 #if __SPRT_CONFIG_HAVE_PTHREAD_INHERITSCHED
 	return pthread_attr_getinheritsched((pthread_attr_t *)attr, ret);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_INHERITSCHED)");
 	return EINVAL;
 #endif
@@ -486,7 +486,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_attr_setinheritsched)(__SPRT_ID(pthread_attr
 #if __SPRT_CONFIG_HAVE_PTHREAD_INHERITSCHED
 	return pthread_attr_setinheritsched((pthread_attr_t *)attr, v);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_INHERITSCHED)");
 	return EINVAL;
 #endif
@@ -501,7 +501,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_mutexattr_getprioceiling)(
 #if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO
 	return pthread_mutexattr_getprioceiling((pthread_mutexattr_t *)attr, ret);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO)");
 	return EINVAL;
 #endif
@@ -511,7 +511,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 #if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO
 	return pthread_mutexattr_setprioceiling((pthread_mutexattr_t *)attr, v);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO)");
 	return EINVAL;
 #endif
@@ -521,7 +521,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_mutexattr_getprotocol)(
 #if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO
 	return pthread_mutexattr_getprotocol((pthread_mutexattr_t *)attr, ret);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO)");
 	return EINVAL;
 #endif
@@ -531,7 +531,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 #if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO
 	return pthread_mutexattr_setprotocol((pthread_mutexattr_t *)attr, v);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO)");
 	return EINVAL;
 #endif
@@ -542,7 +542,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_mutexattr_getrobust)(
 #if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST
 	return pthread_mutexattr_getrobust((pthread_mutexattr_t *)attr, ret);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST)");
 	return EINVAL;
 #endif
@@ -552,7 +552,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 #if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST
 	return pthread_mutexattr_setrobust((pthread_mutexattr_t *)attr, v);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST)");
 	return EINVAL;
 #endif
@@ -649,7 +649,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_getconcurrency)(void) {
 #if __SPRT_CONFIG_HAVE_PTHREAD_CONCURRENCY
 	return pthread_getconcurrency();
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_CONCURRENCY)");
 	return EINVAL;
 #endif
@@ -658,7 +658,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_setconcurrency)(int v) {
 #if __SPRT_CONFIG_HAVE_PTHREAD_CONCURRENCY
 	return pthread_setconcurrency(v);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_CONCURRENCY)");
 	return EINVAL;
 #endif
@@ -678,7 +678,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_getaffinity_np)(__SPRT_ID(pthread_t) thread,
 #if __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY
 	return pthread_getaffinity_np((pthread_t)thread, n, (cpu_set_t *)set);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_AFFINITY)");
 	return EINVAL;
 #endif
@@ -688,7 +688,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_setaffinity_np)(__SPRT_ID(pthread_t) thread,
 #if __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY
 	return pthread_setaffinity_np((pthread_t)thread, n, (const cpu_set_t *)set);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_AFFINITY)");
 	return EINVAL;
 #endif
@@ -699,7 +699,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 #if __SPRT_CONFIG_HAVE_PTHREAD_GETATTR
 	return pthread_getattr_np((pthread_t)thread, (pthread_attr_t *)attr);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_GETATTR)");
 	return EINVAL;
 #endif
@@ -711,7 +711,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_setname_np)(__SPRT_ID(pthread_t) thread, con
 	if (pthread_equal(self, (pthread_t)thread)) {
 		return pthread_setname_np(name);
 	}
-	log::vprint(log::LogType::Warn, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			": on Darwin, thread name can be set only from thread itself");
 	return EINVAL;
 #else
@@ -724,7 +724,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 #if __SPRT_CONFIG_HAVE_PTHREAD_GETNAME
 	return pthread_getname_np((pthread_t)thread, buf, len);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_GETNAME)");
 	return EINVAL;
 #endif
@@ -734,7 +734,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_getattr_default_np)(__SPRT_ID(pthread_attr_t
 #if __SPRT_CONFIG_HAVE_PTHREAD_ATTRDEFAULT
 	return pthread_getattr_default_np((pthread_attr_t *)attr);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_ATTRDEFAULT)");
 	return EINVAL;
 #endif
@@ -743,7 +743,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_setattr_default_np)(const __SPRT_ID(pthread_
 #if __SPRT_CONFIG_HAVE_PTHREAD_ATTRDEFAULT
 	return pthread_setattr_default_np((const pthread_attr_t *)attr);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_ATTRDEFAULT)");
 	return EINVAL;
 #endif
@@ -753,7 +753,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_tryjoin_np)(__SPRT_ID(pthread_t) thread, voi
 #if __SPRT_CONFIG_HAVE_PTHREAD_TRYJOIN
 	return pthread_tryjoin_np((pthread_t)thread, ret);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_TRYJOIN)");
 	return EINVAL;
 #endif
@@ -770,7 +770,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_timedjoin_np)(__SPRT_ID(pthread_t) thread, v
 	}
 	return pthread_timedjoin_np((pthread_t)thread, ret, tv ? &native : nullptr);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_PTHREAD_TIMEDJOIN)");
 	return EINVAL;
 #endif

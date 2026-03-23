@@ -481,10 +481,10 @@ void App::handleLowMemory(const jni::Ref &ref) {
 	}
 }
 
-static memory::dynstring getApplicationName(App *proxy, const jni::Ref &ctx) {
+static String getApplicationName(App *proxy, const jni::Ref &ctx) {
 	auto jAppInfo = proxy->Application.getApplicationInfo(ctx);
 	if (!jAppInfo) {
-		return memory::dynstring();
+		return String();
 	}
 
 	auto labelRes = proxy->ApplicationInfo.labelRes(jAppInfo);
@@ -494,28 +494,28 @@ static memory::dynstring getApplicationName(App *proxy, const jni::Ref &ctx) {
 				proxy->CharSequence.toString(jNonLocalizedLabel).getString());
 	} else {
 		auto jAppName = proxy->Application.getString(ctx, jint(labelRes));
-		return jAppName.getString().str<memory::dynstring>();
+		return jAppName.getString().str<String>();
 	}
 }
 
-static memory::dynstring getApplicationVersion(App *proxy, const jni::Ref &ctx,
+static String getApplicationVersion(App *proxy, const jni::Ref &ctx,
 		const jni::RefString &jPackageName) {
 	auto jpm = proxy->Application.getPackageManager(ctx);
 	if (!jpm) {
-		return memory::dynstring();
+		return String();
 	}
 
 	auto jinfo = proxy->PackageManager.getPackageInfo(jpm, jPackageName, 0);
 	if (!jinfo) {
-		return memory::dynstring();
+		return String();
 	}
 
 	auto jversion = proxy->PackageInfo.versionName(jinfo);
 	if (!jversion) {
-		return memory::dynstring();
+		return String();
 	}
 
-	return jversion.getString().str<memory::dynstring>();
+	return jversion.getString().str<String>();
 }
 
 static StringView getSystemAgent(App *proxy, const jni::Env &env) {
@@ -532,15 +532,15 @@ static StringView getUserAgent(App *proxy, const jni::Ref &ctx) {
 	return StringView();
 }
 
-void App::setActivityLoader(memory::dynfunction<bool(ANativeActivity *, BytesView)> &&cb) {
+void App::setActivityLoader(Function<bool(ANativeActivity *, BytesView)> &&cb) {
 	activityLoader = move(cb);
 }
 
-void App::setConfigurationHandler(memory::dynfunction<void(jni::ApplicationInfo *)> &&cb) {
+void App::setConfigurationHandler(Function<void(jni::ApplicationInfo *)> &&cb) {
 	configurationHandler = move(cb);
 }
 
-void App::setLowMemoryHandler(memory::dynfunction<void()> &&cb) { lowMemoryHandler = move(cb); }
+void App::setLowMemoryHandler(Function<void()> &&cb) { lowMemoryHandler = move(cb); }
 
 Rc<jni::ApplicationInfo> App::makeInfo(const jni::Ref &ref) {
 	auto info = Rc<jni::ApplicationInfo>::alloc();
@@ -550,11 +550,11 @@ Rc<jni::ApplicationInfo> App::makeInfo(const jni::Ref &ref) {
 
 	auto jPackageName = Application.getPackageName(ctx);
 	if (jPackageName) {
-		info->bundleName = jPackageName.getString().str<memory::dynstring>();
+		info->bundleName = jPackageName.getString().str<String>();
 		info->applicationName = getApplicationName(this, ctx);
 		info->applicationVersion = getApplicationVersion(this, ctx, jPackageName);
-		info->systemAgent = getSystemAgent(this, env).str<memory::dynstring>();
-		info->userAgent = getUserAgent(this, ctx).str<memory::dynstring>();
+		info->systemAgent = getSystemAgent(this, env).str<String>();
+		info->userAgent = getUserAgent(this, ctx).str<String>();
 	}
 
 	// Use DP size as fallback
@@ -581,7 +581,7 @@ Rc<jni::ApplicationInfo> App::makeInfo(const jni::Ref &ref) {
 		}
 	}
 
-	info->locale = StringView(language.data(), 5).str<memory::dynstring>();
+	info->locale = StringView(language.data(), 5).str<String>();
 
 	if (isnan(displayDensity)) {
 		auto densityValue = AConfiguration_getDensity(config);
@@ -651,7 +651,7 @@ static JNIEnv *getVmEnv(JavaVM *vm) {
 	if (vm) {
 		vm->GetEnv(&ret, JNI_VERSION_1_6);
 	} else {
-		log::vprint(log::LogType::Error, __SPRT_LOCATION, "JNI", "JavaVM not found");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "JNI", "JavaVM not found");
 	}
 	return reinterpret_cast<JNIEnv *>(ret);
 }
@@ -754,7 +754,7 @@ void Env::loadJava(JavaVM *vm) {
 	}
 
 	if (!s_app) {
-		log:: vprint(log::LogType::Fatal, __SPRT_LOCATION, "JNI",
+		log:: vprint(oslog::LogType::Fatal, __SPRT_LOCATION, "JNI",
 						"Fail to load AppProxy; org/stappler/runtime/Application class was not "
 						"defined " "properly?");
 	}
@@ -800,7 +800,7 @@ bool ClassLoader::init(App *a, JNIEnv *env) {
 
 		auto className = currentClassLoader.getClassName();
 
-		log::vprint(log::LogType::Info, __SPRT_LOCATION, "JNI",
+		oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "JNI",
 				"App: ClassLoader: ", className.getString());
 
 		auto dexClassLoader =
@@ -812,8 +812,8 @@ bool ClassLoader::init(App *a, JNIEnv *env) {
 		}
 	}
 
-	this->apkPath = publicSourceDir.getString().str<memory::dynstring>();
-	this->nativeLibraryDir = nativeLibraryDir.getString().str<memory::dynstring>();
+	this->apkPath = publicSourceDir.getString().str<String>();
+	this->nativeLibraryDir = nativeLibraryDir.getString().str<String>();
 
 	return true;
 }
@@ -909,7 +909,7 @@ void checkErrors(JNIEnv *env) {
 		auto message = e.callMethod<jstring>(getMessage);
 		auto exName = clazz.callMethod<jstring>(getName);
 
-		log::vprint(log::LogType::Error, __SPRT_LOCATION, "JNI", "[", exName.getString(), "] ",
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "JNI", "[", exName.getString(), "] ",
 				message.getString());
 	}
 }

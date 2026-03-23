@@ -243,7 +243,7 @@ bool XcbWindow::init(NotNull<XcbConnection> conn, Rc<WindowInfo> &&info,
 	_xinfo.wmClass = _wmClass;
 
 	if (!_connection->createWindow(_info, _xinfo)) {
-		log::vperror(__SPRT_LOCATION, "XCB", "Fail to create window");
+		oslog::vperror(__SPRT_LOCATION, "XCB", "Fail to create window");
 		return false;
 	}
 
@@ -1244,7 +1244,7 @@ void XcbWindow::updateShadows() {
 
 void XcbWindow::generateShadowPixmaps(uint32_t size, uint32_t inset) {
 	if (_xinfo.depth != 32) {
-		log::vperror(__SPRT_LOCATION, "XcbWindow", "Shadows can be generated only with depth 32");
+		oslog::vperror(__SPRT_LOCATION, "XcbWindow", "Shadows can be generated only with depth 32");
 		return;
 	}
 

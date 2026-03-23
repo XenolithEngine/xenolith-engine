@@ -278,38 +278,38 @@ __SPRT_C_FUNC int __SPRT_ID(_CancelWaitableTimer)(void *hTimer) {
 
 #else
 __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(GetCurrentThreadId)() {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return -1;
 }
 
 __SPRT_C_FUNC __SPRT_ID(uint32_t) __SPRT_ID(GetLastError)() {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return -1;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(WaitOnAddress)(volatile void *Address, void *CompareAddress,
 		__SPRT_ID(size_t) AddressSize, __SPRT_ID(uint32_t) dwMilliseconds) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return -1;
 }
 
 __SPRT_C_FUNC void __SPRT_ID(WakeByAddressSingle)(void *Address) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 }
 
 __SPRT_C_FUNC void __SPRT_ID(WakeByAddressAll)(void *Address) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_LCMapString)(const char16_t *lpLocaleName,
 		__SPRT_ID(uint32_t) dwMapFlags, const char16_t *lpSrcStr, int cchSrc, char16_t *lpDestStr,
 		int cchDest) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return -1;
 }
@@ -317,34 +317,34 @@ __SPRT_C_FUNC int __SPRT_ID(_LCMapString)(const char16_t *lpLocaleName,
 __SPRT_C_FUNC int __SPRT_ID(_CompareString)(const char16_t *lpLocaleName,
 		__SPRT_ID(uint32_t) dwMapFlags, const char16_t *lpString1, int cchCount1,
 		const char16_t *lpString2, int cchCount2) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return -1;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_GetUserDefaultLocaleName)(char16_t *wlocale, int bufSize) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return -1;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_IdnToAscii)(uint32_t dwFlags, const char16_t *lpUnicodeCharStr,
 		int cchUnicodeChar, char16_t *lpASCIICharStr, int cchASCIIChar) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return -1;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_IdnToUnicode)(uint32_t dwFlags, const char16_t *lpUnicodeCharStr,
 		int cchUnicodeChar, char16_t *lpASCIICharStr, int cchASCIIChar) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return -1;
 }
 
 __SPRT_C_FUNC __SPRT_ID(uint32_t)
 		__SPRT_ID(_GetCurrentDirectory)(__SPRT_ID(uint32_t) nBufferLength, char16_t *lpBuffer) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;
 }
@@ -352,14 +352,14 @@ __SPRT_C_FUNC __SPRT_ID(uint32_t)
 __SPRT_C_FUNC void *__SPRT_ID(_ReportEventAsCompletion)(void *hIOCP, void *hEvent,
 		__SPRT_ID(uint32_t) dwNumberOfBytesTransferred, __SPRT_ID(uintptr_t) dwCompletionKey,
 		void *lpOverlapped) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return nullptr;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_RestartEventCompletion)(void *hPacket, void *hIOCP, void *hEvent,
 		const void **ncompletion) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;
 }
@@ -367,32 +367,32 @@ __SPRT_C_FUNC int __SPRT_ID(_RestartEventCompletion)(void *hPacket, void *hIOCP,
 __SPRT_C_FUNC int __SPRT_ID(_RestartEventCompletion2)(void *hPacket, void *hIOCP, void *hEvent,
 		__SPRT_ID(uint32_t) dwNumberOfBytesTransferred, __SPRT_ID(uintptr_t) dwCompletionKey,
 		void *lpOverlapped) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_CancelEventCompletion)(void *hPacket, int cancel) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_PeekMessage)(__SPRT_ID(winmsg) * lpMsg, void *hWnd,
 		unsigned wMsgFilterMin, unsigned wMsgFilterMax, unsigned wRemoveMsg) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_TranslateMessage)(const __SPRT_ID(winmsg) * lpMsg) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_DispatchMessage)(const __SPRT_ID(winmsg) * lpMsg) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;
 }
@@ -400,7 +400,7 @@ __SPRT_C_FUNC int __SPRT_ID(_DispatchMessage)(const __SPRT_ID(winmsg) * lpMsg) {
 __SPRT_C_FUNC __SPRT_ID(uint32_t) __SPRT_ID(_MsgWaitForMultipleObjectsEx)(
 		__SPRT_ID(uint32_t) nCount, void *const *pHandles, __SPRT_ID(uint32_t) dwMilliseconds,
 		__SPRT_ID(uint32_t) dwWakeMask, __SPRT_ID(uint32_t) dwFlags) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;
 }
@@ -408,7 +408,7 @@ __SPRT_C_FUNC __SPRT_ID(uint32_t) __SPRT_ID(_MsgWaitForMultipleObjectsEx)(
 __SPRT_C_FUNC void *__SPRT_ID(_CreateIoCompletionPort)(void *FileHandle,
 		void *ExistingCompletionPort, __SPRT_ID(uintptr_t) CompletionKey,
 		__SPRT_ID(uint32_t) NumberOfConcurrentThreads) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return nullptr;
 }
@@ -416,7 +416,7 @@ __SPRT_C_FUNC void *__SPRT_ID(_CreateIoCompletionPort)(void *FileHandle,
 __SPRT_C_FUNC int __SPRT_ID(_GetQueuedCompletionStatusEx)(void *CompletionPort,
 		__SPRT_ID(overlapped_entry) * lpCompletionPortEntries, unsigned long ulCount,
 		unsigned long *ulNumEntriesRemoved, __SPRT_ID(uint32_t) dwMilliseconds, int fAlertable) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;
 }
@@ -424,13 +424,13 @@ __SPRT_C_FUNC int __SPRT_ID(_GetQueuedCompletionStatusEx)(void *CompletionPort,
 __SPRT_C_FUNC int __SPRT_ID(_PostQueuedCompletionStatus)(void *CompletionPort,
 		__SPRT_ID(uint32_t) dwNumberOfBytesTransferred, __SPRT_ID(uintptr_t) dwCompletionKey,
 		__SPRT_ID(overlapped) * lpOverlapped) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_CloseHandle)(void *hObject) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;
 }
@@ -438,7 +438,7 @@ __SPRT_C_FUNC int __SPRT_ID(_CloseHandle)(void *hObject) {
 __SPRT_C_FUNC void *__SPRT_ID(_CreateWaitableTimerEx)(
 		__SPRT_ID(security_attributes) * lpTimerAttributes, const char16_t *lpTimerName,
 		__SPRT_ID(uint32_t) dwFlags, __SPRT_ID(uint32_t) dwDesiredAccess) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return nullptr;
 }
@@ -446,7 +446,7 @@ __SPRT_C_FUNC void *__SPRT_ID(_CreateWaitableTimerEx)(
 __SPRT_C_FUNC int __SPRT_ID(_SetWaitableTimer)(void *hTimer, __SPRT_ID(int64_t) * lpDueTime,
 		long lPeriod, __SPRT_ID(timer_apc_routine) pfnCompletionRoutine,
 		void *lpArgToCompletionRoutine, int fResume) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;
 }
@@ -455,13 +455,13 @@ __SPRT_C_FUNC int __SPRT_ID(_SetWaitableTimerEx)(void *hTimer, __SPRT_ID(int64_t
 		long lPeriod, __SPRT_ID(timer_apc_routine) pfnCompletionRoutine,
 		void *lpArgToCompletionRoutine, __SPRT_ID(reason_context) * WakeContext,
 		unsigned long TolerableDelay) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_CancelWaitableTimer)(void *hTimer) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_WINAPI)");
 	return 0;
 }

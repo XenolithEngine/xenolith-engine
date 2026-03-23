@@ -23,7 +23,7 @@
 
 #include <sprt/runtime/idn.h>
 #include <sprt/runtime/detail/emplace_ordered.h>
-#include <sprt/runtime/mem/set.h>
+#include <sprt/cxx/set.h>
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/__sprt_ctype.h>
 

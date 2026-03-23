@@ -1,31 +1,73 @@
 /**
- Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
- Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files (the "Software"), to deal
- in the Software without restriction, including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- copies of the Software, and to permit persons to whom the Software is
- furnished to do so, subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
- The above copyright notice and this permission notice shall be included in
- all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
 
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- THE SOFTWARE.
- **/
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_OPERATIONS_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_OPERATIONS_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_FUNCTIONAL_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_FUNCTIONAL_H_
 
 #include <sprt/runtime/init.h>
 
 namespace sprt {
+
+template <typename Type, typename _Up, typename = void>
+struct __is_equality_comparable : false_type { };
+
+template <typename Type, typename _Up>
+struct __is_equality_comparable<Type, _Up, void_t<decltype(declval<Type>() == declval<_Up>())> >
+: true_type { };
+
+template <typename Type, typename _Up, typename = void>
+struct is_trivially_equality_comparable_impl : false_type { };
+
+template <typename Type>
+struct is_trivially_equality_comparable_impl<Type, Type>
+#if __has_builtin(__is_trivially_equality_comparable)
+: integral_constant<bool,
+		  __is_trivially_equality_comparable(Type) && __is_equality_comparable<Type, Type>::value> {
+};
+#else
+: is_integral<Type> {
+};
+#endif // __has_builtin(__is_trivially_equality_comparable)
+
+template <typename Type, typename _Up>
+struct is_trivially_equality_comparable_impl< Type, _Up,
+		enable_if_t<is_integral<Type>::value && is_integral<_Up>::value
+				&& !is_same<Type, _Up>::value && is_signed<Type>::value == is_signed<_Up>::value
+				&& sizeof(Type) == sizeof(_Up)> > : true_type { };
+
+template <typename Type>
+struct is_trivially_equality_comparable_impl<Type *, Type *> : true_type { };
+
+template <typename Type, typename _Up>
+struct is_trivially_equality_comparable_impl<Type *, _Up *>
+: integral_constant< bool,
+		  __is_equality_comparable<Type *, _Up *>::value
+				  && (is_same<remove_cv_t<Type>, remove_cv_t<_Up> >::value || is_void<Type>::value
+						  || is_void<_Up>::value)> { };
+
+template <typename Type, typename _Up>
+using is_trivially_equality_comparable =
+		is_trivially_equality_comparable_impl<remove_cv_t<Type>, remove_cv_t<_Up> >;
+
 
 // Comparison operations
 
@@ -124,41 +166,6 @@ struct greater<void> {
 	using is_transparent = void;
 };
 
-
-/*
-	min
-*/
-
-template <typename Type, typename Compare>
-[[nodiscard]]
-inline constexpr const Type &min(const Type &l, const Type &r, Compare comp) {
-	return comp(r, l) ? r : l;
-}
-
-template <typename Type>
-[[nodiscard]]
-inline constexpr const Type &min(const Type &l, const Type &r) {
-	return min(l, r, less<void>());
-}
-
-
-/*
-	max
-*/
-
-template <typename Type, typename Compare>
-[[nodiscard]]
-inline constexpr const Type &max(const Type &l, const Type &r, Compare comp) {
-	return comp(l, r) ? r : l;
-}
-
-template <typename Type>
-[[nodiscard]]
-inline constexpr const Type &max(const Type &l, const Type &r) {
-	return max(l, r, less<void>());
-}
-
-
 } // namespace sprt
 
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_OPERATIONS_H_
+#endif

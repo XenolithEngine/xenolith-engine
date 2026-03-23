@@ -173,7 +173,7 @@ __SPRT_C_FUNC int __SPRT_ID(mkfifo)(const char *path, __SPRT_ID(mode_t) mode) {
 #if __SPRT_CONFIG_HAVE_STAT_MKFIFO
 	return ::mkfifo(path, convertModeToNative(mode));
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_STAT_MKFIFO)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -184,7 +184,7 @@ __SPRT_C_FUNC int __SPRT_ID(mkfifoat)(int fd, const char *path, __SPRT_ID(mode_t
 #if __SPRT_CONFIG_HAVE_STAT_MKFIFO
 	return ::mkfifoat(fd, path, convertModeToNative(mode));
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_STAT_MKFIFO)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -195,7 +195,7 @@ __SPRT_C_FUNC int __SPRT_ID(mknod)(const char *path, __SPRT_ID(mode_t) mode, __S
 #if __SPRT_CONFIG_HAVE_STAT_MKNOD
 	return ::mknod(path, convertModeToNative(mode), convertDevToNative(dev));
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_STAT_MKNOD)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -207,7 +207,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 #if __SPRT_CONFIG_HAVE_STAT_MKNOD
 	return ::mknodat(fd, path, convertModeToNative(mode), convertDevToNative(dev));
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_STAT_MKNOD)");
 	__sprt_errno = ENOSYS;
 	return -1;

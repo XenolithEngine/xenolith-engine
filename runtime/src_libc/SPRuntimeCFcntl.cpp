@@ -241,7 +241,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 #if __SPRT_CONFIG_HAVE_FCNTL_SPLICE
 	return ::splice(__in_fd, __in_offset, __out_fd, __out_offset, __length, __flags);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_SPLICE)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -253,7 +253,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 #if __SPRT_CONFIG_HAVE_FCNTL_TEE
 	return ::tee(__in_fd, __out_fd, __length, __flags);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_TEE)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -269,7 +269,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	return ::fallocate64(__fd, __mode, __offset, __length);
 #endif
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_FALLOCATE)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -285,7 +285,7 @@ __SPRT_C_FUNC int __SPRT_ID(posix_fadvise)(int __fd, __SPRT_ID(off_t) __offset,
 	return ::posix_fadvise64(__fd, __offset, __length, __advice);
 #endif
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_FADVICE)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -301,7 +301,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	return ::posix_fallocate64(__fd, __offset, __length);
 #endif
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_FALLOCATE)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -313,7 +313,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 #if __SPRT_CONFIG_HAVE_FCNTL_READAHEAD
 	return ::readahead(__fd, __offset, __length);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_READAHEAD)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -327,7 +327,7 @@ __SPRT_C_FUNC int __SPRT_ID(sync_file_range)(int __fd, __SPRT_ID(off_t) __offset
 	if (platform::_sync_file_range) {
 		return platform::_sync_file_range(__fd, __offset, __length, __flags);
 	}
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -335,7 +335,7 @@ __SPRT_C_FUNC int __SPRT_ID(sync_file_range)(int __fd, __SPRT_ID(off_t) __offset
 	return ::sync_file_range(__fd, __offset, __length, __flags);
 #endif
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;

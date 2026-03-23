@@ -20,13 +20,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_STORAGE_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_STORAGE_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_MEMORY_STORAGE_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_MEMORY_STORAGE_H_
 
-#include <sprt/runtime/mem/detail/storage_impl.h>
-#include <sprt/runtime/mem/detail/pointer_iterator.h>
+#include <sprt/cxx/memory/storage_impl.h>
+#include <sprt/cxx/memory/pointer_iterator.h>
 
-namespace sprt::memory::detail {
+namespace sprt::memory {
 
 template <typename Type>
 struct mem_sso_test {
@@ -34,10 +34,10 @@ struct mem_sso_test {
 };
 
 template <typename Type, size_t Extra, typename Allocator>
-class storage_mem_soo : public mem_soo_iface<Type, Extra, mem_sso_test<Type>::value, Allocator> {
+class linear_memory_soo : public mem_soo_iface<Type, Extra, mem_sso_test<Type>::value, Allocator> {
 public:
 	using base = mem_soo_iface<Type, Extra, mem_sso_test<Type>::value, Allocator>;
-	using self = storage_mem_soo<Type, Extra, Allocator>;
+	using self = linear_memory_soo<Type, Extra, Allocator>;
 	using pointer = Type *;
 	using const_pointer = const Type *;
 	using reference = Type &;
@@ -55,38 +55,38 @@ public:
 	using base::get_soo_size;
 
 	// default init with current context allocator or specified allocator
-	storage_mem_soo(const allocator &alloc = allocator()) noexcept : base(alloc) {
+	linear_memory_soo(const allocator &alloc = allocator()) noexcept : base(alloc) {
 		sprt_passert(_allocator, "Allocator should be defined");
 	}
 
-	storage_mem_soo(pointer p, size_type s, const allocator &alloc) noexcept
-	: storage_mem_soo(alloc) {
+	linear_memory_soo(pointer p, size_type s, const allocator &alloc) noexcept
+	: linear_memory_soo(alloc) {
 		assign(p, s);
 	}
 
-	storage_mem_soo(const_pointer p, size_type s, const allocator &alloc = allocator()) noexcept
-	: storage_mem_soo(alloc) {
+	linear_memory_soo(const_pointer p, size_type s, const allocator &alloc = allocator()) noexcept
+	: linear_memory_soo(alloc) {
 		assign(p, s);
 	}
 
-	storage_mem_soo(const self &other, size_type pos, size_type len,
+	linear_memory_soo(const self &other, size_type pos, size_type len,
 			const allocator &alloc = allocator()) noexcept
-	: storage_mem_soo(alloc) {
+	: linear_memory_soo(alloc) {
 		if (pos < other.size()) {
 			assign(other.data() + pos, min(len, other.size() - pos));
 		}
 	}
 
 	// copy-construct
-	storage_mem_soo(const self &other, const allocator &alloc = allocator()) noexcept
-	: storage_mem_soo(alloc) {
+	linear_memory_soo(const self &other, const allocator &alloc = allocator()) noexcept
+	: linear_memory_soo(alloc) {
 		assign(other);
 	}
 
 	// move
 	// we steal memory block from other, it lifetime is same, or make copy
-	storage_mem_soo(self &&other, const allocator &alloc = allocator()) noexcept
-	: storage_mem_soo(alloc) {
+	linear_memory_soo(self &&other, const allocator &alloc = allocator()) noexcept
+	: linear_memory_soo(alloc) {
 		if (other._allocator == _allocator) {
 			// lifetime is same, steal allocated memory
 			perform_move(sprt::move_unsafe(other));
@@ -96,12 +96,12 @@ public:
 		other.clear_dealloc(_allocator);
 	}
 
-	storage_mem_soo &operator=(const self &other) noexcept {
+	linear_memory_soo &operator=(const self &other) noexcept {
 		assign(other);
 		return *this;
 	}
 
-	storage_mem_soo &operator=(self &&other) noexcept {
+	linear_memory_soo &operator=(self &&other) noexcept {
 		if (other._allocator == _allocator) {
 			// clear and deallocate our memory, self-move-assignment is UB
 			clear_dealloc(_allocator);
@@ -114,9 +114,6 @@ public:
 	}
 
 	using base::assign;
-	using base::assign_weak;
-	using base::assign_mem;
-	using base::is_weak;
 
 	void assign(const self &other) { assign(other.data(), other.size()); }
 
@@ -209,7 +206,7 @@ public:
 		insert(spos, other.data() + pos, min(other.size() - pos, len));
 	}
 
-	template < class... Args >
+	template < typename... Args >
 	void insert(size_type pos, size_type s, Args &&...args) {
 		const auto _used = size();
 		auto _ptr = reserve(_used + s, true);
@@ -220,14 +217,14 @@ public:
 		modify_size(s);
 	}
 
-	template < class... Args >
+	template < typename... Args >
 	iterator insert(const_iterator it, size_type len, Args &&...args) {
 		size_type pos = it - data();
 		insert(pos, len, sprt::forward<Args>(args)...);
 		return iterator(data() + pos);
 	}
 
-	template < class InputIt >
+	template < typename InputIt >
 	iterator insert(const_iterator it, InputIt first, InputIt last) {
 		auto _ptr = data();
 		const auto _used = size();
@@ -320,7 +317,7 @@ public:
 		}
 	}
 
-	template < class InputIt >
+	template < typename InputIt >
 	iterator replace(const_iterator first, const_iterator last, InputIt first2, InputIt last2) {
 		auto pos = size_t(first - data());
 		auto len = size_t(last - first);
@@ -423,8 +420,8 @@ private:
 };
 
 template <typename Type, size_t Extra, typename Allocator>
-using storage_mem = storage_mem_soo<Type, Extra, Allocator>;
+using linear_memory = linear_memory_soo<Type, Extra, Allocator>;
 
-} // namespace sprt::memory::detail
+} // namespace sprt::memory
 
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_STORAGE_H_
+#endif // RUNTIME_INCLUDE_SPRT_CXX_MEMORY_STORAGE_H_

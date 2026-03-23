@@ -728,7 +728,7 @@ void XcbDisplayConfigManager::applyDisplayConfig(NotNull<DisplayConfig> config,
 					crtc.filterParams.empty() ? nullptr : crtc.filterParams.data());
 		}
 
-		log::vpdebug(__SPRT_LOCATION, "XcbDisplayConfigManager",
+		oslog::vpdebug(__SPRT_LOCATION, "XcbDisplayConfigManager",
 				"Update: ", it.monitors.front().name, " ", it.rect.x, " ", it.rect.y);
 	}
 
@@ -737,7 +737,7 @@ void XcbDisplayConfigManager::applyDisplayConfig(NotNull<DisplayConfig> config,
 	for (auto &it : updateCookies) {
 		auto reply = _connection->perform(_xcb->xcb_randr_set_crtc_config_reply, it);
 		if (!reply) {
-			log::vperror(__SPRT_LOCATION, "XcbDisplayConfigManager", "Fail to update CRTC");
+			oslog::vperror(__SPRT_LOCATION, "XcbDisplayConfigManager", "Fail to update CRTC");
 			status = Status::ErrorInvalidArguemnt;
 		}
 	}

@@ -55,7 +55,7 @@ __SPRT_C_FUNC int __SPRT_ID(io_uring_register)(unsigned int fd, unsigned int opc
 #else
 
 __SPRT_C_FUNC int __SPRT_ID(io_uring_setup)(unsigned entries, struct io_uring_params *p) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_URING)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -63,7 +63,7 @@ __SPRT_C_FUNC int __SPRT_ID(io_uring_setup)(unsigned entries, struct io_uring_pa
 
 __SPRT_C_FUNC int __SPRT_ID(io_uring_enter)(int ring_fd, unsigned int to_submit,
 		unsigned int min_complete, unsigned int flags, const __SPRT_ID(sigset_t) * sig) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_URING)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -71,7 +71,7 @@ __SPRT_C_FUNC int __SPRT_ID(io_uring_enter)(int ring_fd, unsigned int to_submit,
 
 __SPRT_C_FUNC int __SPRT_ID(io_uring_enter2)(int ring_fd, unsigned int to_submit,
 		unsigned int min_complete, unsigned int flags, void *arg, __SPRT_ID(size_t) argsize) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_URING)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -79,7 +79,7 @@ __SPRT_C_FUNC int __SPRT_ID(io_uring_enter2)(int ring_fd, unsigned int to_submit
 
 __SPRT_C_FUNC int __SPRT_ID(io_uring_register)(unsigned int fd, unsigned int opcode,
 		const void *arg, unsigned int nr_args) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_URING)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;

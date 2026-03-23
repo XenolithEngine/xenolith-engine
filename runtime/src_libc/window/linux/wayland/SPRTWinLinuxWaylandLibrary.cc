@@ -326,7 +326,7 @@ bool WaylandLibrary::open(Dso &handle) {
 	SPRT_LOAD_PROTO(handle, wl_display_roundtrip)
 
 	if (!validateFunctionList(&_wl_first_fn, &_wl_last_fn)) {
-		log::vperror(__SPRT_LOCATION, "WaylandLibrary", "Fail to load libwayland-client");
+		oslog::vperror(__SPRT_LOCATION, "WaylandLibrary", "Fail to load libwayland-client");
 		return false;
 	}
 
@@ -349,7 +349,7 @@ bool WaylandLibrary::openWaylandCursor(Dso &handle) {
 	SPRT_LOAD_PROTO(handle, wl_cursor_image_get_buffer)
 
 	if (!validateFunctionList(&_wlcursor_first_fn, &_wlcursor_last_fn)) {
-		log::vperror(__SPRT_LOCATION, "WaylandLibrary", "Fail to load libwayland-client");
+		oslog::vperror(__SPRT_LOCATION, "WaylandLibrary", "Fail to load libwayland-client");
 		return false;
 	}
 

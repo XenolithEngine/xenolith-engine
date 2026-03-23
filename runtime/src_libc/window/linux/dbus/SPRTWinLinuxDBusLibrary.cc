@@ -97,7 +97,7 @@ BusFilter::~BusFilter() {
 		}
 		connection->lib->dbus_bus_remove_match(connection->connection, filter.data(), &error);
 		if (connection->lib->dbus_error_is_set(&error)) {
-			log::vperror(__SPRT_LOCATION, "DBus", "Fail to remove filter: ", error.name, ": ",
+			oslog::vperror(__SPRT_LOCATION, "DBus", "Fail to remove filter: ", error.name, ": ",
 					error.message);
 		}
 	}
@@ -113,7 +113,7 @@ BusFilter::BusFilter(NotNull<Connection> c, StringView f)
 	connection->lib->dbus_error_init(&error);
 	connection->lib->dbus_bus_add_match(connection->connection, filter.data(), &error);
 	if (connection->lib->dbus_error_is_set(&error)) {
-		log::vperror(__SPRT_LOCATION, "DBus", "Fail to add filter: ", error.name, ": ",
+		oslog::vperror(__SPRT_LOCATION, "DBus", "Fail to add filter: ", error.name, ": ",
 				error.message);
 		connection->lib->dbus_bus_remove_match(connection->connection, filter.data(), nullptr);
 	} else {
@@ -122,12 +122,11 @@ BusFilter::BusFilter(NotNull<Connection> c, StringView f)
 }
 
 BusFilter::BusFilter(NotNull<Connection> c, StringView filter, StringView interface,
-		StringView signal,
-		memory::dynfunction<uint32_t(NotNull<const BusFilter>, NotNull<DBusMessage>)> &&cb)
+		StringView signal, Function<uint32_t(NotNull<const BusFilter>, NotNull<DBusMessage>)> &&cb)
 : BusFilter(c, filter) {
 	if (added) {
-		this->interface = interface.str<memory::dynstring>();
-		this->signal = signal.str<memory::dynstring>();
+		this->interface = interface.str<String>();
+		this->signal = signal.str<String>();
 		handler = sprt::move(cb);
 		connection->addMatchFilter(this);
 	}
@@ -146,7 +145,8 @@ Connection::Connection(Library *lib, EventCallback &&cb, DBusBusType type)
 	connection = lib->dbus_bus_get_private(type, &error);
 
 	if (lib->dbus_error_is_set(&error)) {
-		log::vperror(__SPRT_LOCATION, "DBus", "Fail to connect: ", error.name, ": ", error.message);
+		oslog::vperror(__SPRT_LOCATION, "DBus", "Fail to connect: ", error.name, ": ",
+				error.message);
 	}
 
 	if (connection) {
@@ -222,8 +222,7 @@ Connection::Connection(Library *lib, EventCallback &&cb, DBusBusType type)
 	}
 }
 
-static void parseServiceList(Library *lib, memory::dynset<memory::dynstring> &services,
-		DBusMessage *reply) {
+static void parseServiceList(Library *lib, Set<String> &services, DBusMessage *reply) {
 	Type current_type = Type::Invalid;
 	DBusMessageIter iter;
 
@@ -254,7 +253,7 @@ void Connection::setup() {
 				"ListNames", nullptr, [](NotNull<Connection> c, DBusMessage *reply) {
 			parseServiceList(c->lib, c->services, reply);
 			if (c->services.empty()) {
-				log::vperror(__SPRT_LOCATION, "dbus::Connection",
+				oslog::vperror(__SPRT_LOCATION, "dbus::Connection",
 						"Fail to acquire dbus services list");
 				dbus::describe(c->lib, reply, [](StringView str) {
 					__sprt_fwrite(str.data(), str.size(), 1, __sprt_stdout_impl());
@@ -271,12 +270,12 @@ void Connection::setup() {
 
 DBusPendingCall *Connection::callMethod(StringView bus, StringView path, StringView iface,
 		StringView method, const sprt::callback<void(WriteIterator &)> &argsCallback,
-		memory::dynfunction<void(NotNull<Connection>, DBusMessage *)> &&resultCallback, Ref *ref) {
+		Function<void(NotNull<Connection>, DBusMessage *)> &&resultCallback, Ref *ref) {
 
 	struct MessageData {
 		Rc<Library> interface;
 		Rc<Connection> connection;
-		memory::dynfunction<void(NotNull<Connection>, DBusMessage *)> callback;
+		Function<void(NotNull<Connection>, DBusMessage *)> callback;
 		Rc<Ref> ref;
 
 		static void parseReply(DBusPendingCall *pending, void *user_data) {
@@ -335,8 +334,7 @@ DBusPendingCall *Connection::callMethod(StringView bus, StringView path, StringV
 }
 
 DBusPendingCall *Connection::callMethod(StringView bus, StringView path, StringView iface,
-		StringView method, memory::dynfunction<void(NotNull<Connection>, DBusMessage *)> &&cb,
-		Ref *ref) {
+		StringView method, Function<void(NotNull<Connection>, DBusMessage *)> &&cb, Ref *ref) {
 	return callMethod(bus, path, iface, method, nullptr, sprt::move(cb), ref);
 }
 
@@ -392,7 +390,7 @@ void Connection::removeMatchFilter(BusFilter *f) { matchFilters.erase(f); }
 bool Library::init() {
 	_handle = Dso("libdbus-1.so");
 	if (!_handle) {
-		log::vperror(__SPRT_LOCATION, "DBusLibrary",
+		oslog::vperror(__SPRT_LOCATION, "DBusLibrary",
 				"Fail to open libdbus-1.so: ", _handle.getError());
 		return false;
 	}
@@ -474,7 +472,7 @@ bool Library::open(Dso &handle) {
 	SPRT_LOAD_PROTO(handle, dbus_timeout_get_enabled)
 
 	if (!validateFunctionList(&_dbus_first_fn, &_dbus_last_fn)) {
-		log::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb");
+		oslog::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb");
 		return false;
 	}
 
@@ -1085,7 +1083,7 @@ bool WriteIterator::add(StringView key, BasicValue val) {
 
 	subtype = Type::DictEntry;
 
-	memory::dynstring d;
+	String d;
 	DBusMessageIter sub;
 	lib->dbus_message_iter_open_container(&iter, toInt(Type::DictEntry), nullptr, &sub);
 
@@ -1093,7 +1091,7 @@ bool WriteIterator::add(StringView key, BasicValue val) {
 		const char *ptr = key.data();
 		lib->dbus_message_iter_append_basic(&iter, toInt(Type::String), &ptr);
 	} else {
-		d = key.str<memory::dynstring>();
+		d = key.str<String>();
 		const char *ptr = d.data();
 		lib->dbus_message_iter_append_basic(&iter, toInt(Type::String), &ptr);
 	}
@@ -1113,7 +1111,7 @@ bool WriteIterator::add(StringView key, const callback<void(WriteIterator &)> &c
 
 	WriteIterator next(lib, Type::DictEntry);
 
-	memory::dynstring d;
+	String d;
 	auto ret = lib->dbus_message_iter_open_container(&iter, toInt(Type::DictEntry), nullptr,
 			&next.iter);
 	if (!ret) {
@@ -1125,7 +1123,7 @@ bool WriteIterator::add(StringView key, const callback<void(WriteIterator &)> &c
 		const char *ptr = key.data();
 		lib->dbus_message_iter_append_basic(&next.iter, toInt(Type::String), &ptr);
 	} else {
-		d = key.str<memory::dynstring>();
+		d = key.str<String>();
 		const char *ptr = d.data();
 		lib->dbus_message_iter_append_basic(&next.iter, toInt(Type::String), &ptr);
 	}
@@ -1372,7 +1370,7 @@ bool MessagePropertyParser::parse(Library *lib, NotNull<DBusMessageIter> entry,
 }
 
 bool MessagePropertyParser::parse(Library *lib, NotNull<DBusMessageIter> entry,
-		memory::dynvector<uint32_t> &target) {
+		Vector<uint32_t> &target) {
 	MessagePropertyParser parser;
 	parser.lib = lib;
 	parser.u32ArrayTarget = &target;
@@ -1385,7 +1383,7 @@ bool MessagePropertyParser::parse(Library *lib, NotNull<DBusMessageIter> entry, 
 		switch (ret.type) {
 		case Type::Boolean: val = ret.value.bool_val; break;
 		default:
-			log::vperror(__SPRT_LOCATION, "DBus", "Fail to read int32_t property: invalid type");
+			oslog::vperror(__SPRT_LOCATION, "DBus", "Fail to read int32_t property: invalid type");
 			return false;
 			break;
 		}
@@ -1403,7 +1401,7 @@ bool MessagePropertyParser::parse(Library *lib, NotNull<DBusMessageIter> entry, 
 		case Type::Int16: val = ret.value.i16; break;
 		case Type::Int32: val = ret.value.i32; break;
 		default:
-			log::vperror(__SPRT_LOCATION, "DBus", "Fail to read int32_t property: invalid type");
+			oslog::vperror(__SPRT_LOCATION, "DBus", "Fail to read int32_t property: invalid type");
 			return false;
 			break;
 		}
@@ -1421,7 +1419,7 @@ bool MessagePropertyParser::parse(Library *lib, NotNull<DBusMessageIter> entry, 
 		case Type::Uint16: val = ret.value.u16; break;
 		case Type::Uint32: val = ret.value.u32; break;
 		default:
-			log::vperror(__SPRT_LOCATION, "DBus", "Fail to read uint32_t property: invalid type");
+			oslog::vperror(__SPRT_LOCATION, "DBus", "Fail to read uint32_t property: invalid type");
 			return false;
 			break;
 		}
@@ -1440,7 +1438,7 @@ bool MessagePropertyParser::parse(Library *lib, NotNull<DBusMessageIter> entry, 
 		case Type::Uint32: val = ret.value.u32; break;
 		case Type::Double: val = static_cast<float>(ret.value.dbl); break;
 		default:
-			log::vperror(__SPRT_LOCATION, "DBus", "Fail to read float property: invalid type");
+			oslog::vperror(__SPRT_LOCATION, "DBus", "Fail to read float property: invalid type");
 			return false;
 			break;
 		}
@@ -1457,7 +1455,7 @@ bool MessagePropertyParser::parse(Library *lib, NotNull<DBusMessageIter> entry, 
 		case Type::Path: val = ret.value.str; break;
 		case Type::Signature: val = ret.value.str; break;
 		default:
-			log::vperror(__SPRT_LOCATION, "DBus", "Fail to read string property: invalid type");
+			oslog::vperror(__SPRT_LOCATION, "DBus", "Fail to read string property: invalid type");
 			return false;
 			break;
 		}

@@ -24,6 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_VALUE_WRAPPER_H_
 
 #include <sprt/runtime/math.h>
+#include <sprt/cxx/hash.h>
 
 namespace sprt {
 
@@ -47,7 +48,7 @@ namespace sprt {
  * and functions, that requires additional type-checking
  */
 
-template <class T, class Flag>
+template <typename T, typename Flag>
 struct ValueWrapper {
 	using Type = T;
 
@@ -155,6 +156,15 @@ struct ValueWrapper {
 	auto operator<=>(const ValueWrapper &) const = default;
 
 	T value;
+};
+
+template <typename Value, typename Flag>
+struct hash<sprt::ValueWrapper<Value, Flag>> {
+	hash() { }
+
+	sprt::size_t operator()(const sprt::ValueWrapper<Value, Flag> &value) const noexcept {
+		return hash<Value>()(value.get());
+	}
 };
 
 } // namespace sprt

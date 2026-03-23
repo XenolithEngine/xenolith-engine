@@ -628,7 +628,7 @@ __SPRT_C_FUNC char *__SPRT_ID(ctermid)(char *s) {
 	if (platform::_ctermid) {
 		return platform::_ctermid(s);
 	}
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;

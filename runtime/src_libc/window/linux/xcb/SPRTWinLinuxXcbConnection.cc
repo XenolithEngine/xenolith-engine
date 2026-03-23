@@ -43,31 +43,32 @@ namespace sprt::window {
 void XcbConnection::ReportError(int error) {
 	switch (error) {
 	case XCB_CONN_ERROR:
-		log::vperror(__SPRT_LOCATION, "XcbView",
+		oslog::vperror(__SPRT_LOCATION, "XcbView",
 				"XCB_CONN_ERROR: socket error, pipe error or other stream error");
 		break;
 	case XCB_CONN_CLOSED_EXT_NOTSUPPORTED:
-		log::vperror(__SPRT_LOCATION, "XcbView",
+		oslog::vperror(__SPRT_LOCATION, "XcbView",
 				"XCB_CONN_CLOSED_EXT_NOTSUPPORTED: extension is not supported");
 		break;
 	case XCB_CONN_CLOSED_MEM_INSUFFICIENT:
-		log::vperror(__SPRT_LOCATION, "XcbView", "XCB_CONN_CLOSED_MEM_INSUFFICIENT: out of memory");
+		oslog::vperror(__SPRT_LOCATION, "XcbView",
+				"XCB_CONN_CLOSED_MEM_INSUFFICIENT: out of memory");
 		break;
 	case XCB_CONN_CLOSED_REQ_LEN_EXCEED:
-		log::vperror(__SPRT_LOCATION, "XcbView",
+		oslog::vperror(__SPRT_LOCATION, "XcbView",
 				"XCB_CONN_CLOSED_REQ_LEN_EXCEED: too large request");
 		break;
 	case XCB_CONN_CLOSED_PARSE_ERR:
-		log::vperror(__SPRT_LOCATION, "XcbView",
+		oslog::vperror(__SPRT_LOCATION, "XcbView",
 				"XCB_CONN_CLOSED_PARSE_ERR: error during parsing display string");
 		break;
 	case XCB_CONN_CLOSED_INVALID_SCREEN:
-		log::vperror(__SPRT_LOCATION, "XcbView",
+		oslog::vperror(__SPRT_LOCATION, "XcbView",
 				"XCB_CONN_CLOSED_INVALID_SCREEN: server does not have a screen matching "
 				"the " "display");
 		break;
 	case XCB_CONN_CLOSED_FDPASSING_FAILED:
-		log::vperror(__SPRT_LOCATION, "XcbView",
+		oslog::vperror(__SPRT_LOCATION, "XcbView",
 				"XCB_CONN_CLOSED_FDPASSING_FAILED: fail to pass some FD");
 		break;
 	}
@@ -132,7 +133,7 @@ XcbConnection::XcbConnection(NotNull<XcbLibrary> xcb, NotNull<XkbLibrary> xkb, S
 	}
 
 	if (_xcb->xcb_cursor_context_new(_connection, _screen, &_cursorContext) < 0) {
-		log::vpwarn(__SPRT_LOCATION, "XcbConnection", "Fail to load cursor context");
+		oslog::vpwarn(__SPRT_LOCATION, "XcbConnection", "Fail to load cursor context");
 		_cursorContext = nullptr;
 	}
 
@@ -202,7 +203,7 @@ static bool XcbConnection_forwardToWindow(StringView eventName,
 		}
 		return true;
 	}
-	log::vpwarn(__SPRT_LOCATION, "XcbConnection", "No window ", window, " attached for event ",
+	oslog::vpwarn(__SPRT_LOCATION, "XcbConnection", "No window ", window, " attached for event ",
 			eventName);
 	return false;
 }
@@ -216,7 +217,7 @@ static bool XcbConnection_forwardToWindow(StringView eventName,
 		cb(event, wIt->second);
 		return true;
 	}
-	log::vpwarn(__SPRT_LOCATION, "XcbConnection", "No window ", window, " attached for event ",
+	oslog::vpwarn(__SPRT_LOCATION, "XcbConnection", "No window ", window, " attached for event ",
 			eventName);
 	return false;
 }
@@ -238,7 +239,7 @@ uint32_t XcbConnection::poll() {
 		case 0: {
 			auto err = reinterpret_cast<xcb_generic_error_t *>(e);
 			printError("Connection error", err);
-			log::vperror(__SPRT_LOCATION, "XcbConnection", "X11 error: ", int(err->error_code));
+			oslog::vperror(__SPRT_LOCATION, "XcbConnection", "X11 error: ", int(err->error_code));
 			break;
 		}
 		case XCB_EXPOSE:
@@ -361,12 +362,12 @@ uint32_t XcbConnection::poll() {
 								(const char *)&reply);
 						_xcb->xcb_flush(_connection);
 					} else {
-						log::vperror(__SPRT_LOCATION, "XcbView",
+						oslog::vperror(__SPRT_LOCATION, "XcbView",
 								"Unknown protocol message: ", event->window, " of type ",
 								event->type, ": ", event->data.data32[0]);
 					}
 				} else {
-					log::vperror(__SPRT_LOCATION, "XcbView",
+					oslog::vperror(__SPRT_LOCATION, "XcbView",
 							"Unknown client message: ", event->window, " of type ", event->type,
 							": ", event->data.data32[0]);
 				}
@@ -853,13 +854,13 @@ static StringView XcbConnection_getCodeName(uint8_t code) {
 
 void XcbConnection::printError(StringView message, xcb_generic_error_t *error) const {
 	if (error) {
-		log::vperror(__SPRT_LOCATION, "XcbConnection", message, "; code=", error->error_code, " (",
-				XcbConnection_getCodeName(error->error_code),
+		oslog::vperror(__SPRT_LOCATION, "XcbConnection", message, "; code=", error->error_code,
+				" (", XcbConnection_getCodeName(error->error_code),
 				") " "; major=", getErrorMajorName(error->major_code),
 				"; minor=", getErrorMinorName(error->major_code, error->minor_code),
 				"; name=", getErrorName(error->error_code));
 	} else {
-		log::vperror(__SPRT_LOCATION, "XcbConnection", message, "; no error reported");
+		oslog::vperror(__SPRT_LOCATION, "XcbConnection", message, "; no error reported");
 	}
 }
 

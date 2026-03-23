@@ -20,8 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_INVOKE_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_INVOKE_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_DETAIL_INVOKE_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_DETAIL_INVOKE_H_
 
 #include <sprt/runtime/init.h>
 
@@ -34,69 +34,69 @@ namespace sprt {
 
 #if __has_builtin(__builtin_invoke)
 
-template <class, class... _Args>
+template <typename, typename... _Args>
 struct __invoke_result_impl { };
 
-template <class... _Args>
+template <typename... _Args>
 struct __invoke_result_impl<void_t<decltype(__builtin_invoke(sprt::declval<_Args>()...))>,
 		_Args...> {
 	using type = decltype(__builtin_invoke(sprt::declval<_Args>()...));
 };
 
-template <class... _Args>
+template <typename... _Args>
 using invoke_result = __invoke_result_impl<void, _Args...>;
 
-template <class... _Args>
+template <typename... _Args>
 using invoke_result_t = typename invoke_result<_Args...>::type;
 
-template <class... _Args>
+template <typename... _Args>
 constexpr invoke_result_t<_Args...> __invoke(_Args &&...__args)
 		noexcept(noexcept(__builtin_invoke(sprt::forward<_Args>(__args)...))) {
 	return __builtin_invoke(sprt::forward<_Args>(__args)...);
 }
 
-template <class _Void, class... _Args>
+template <typename _Void, typename... _Args>
 inline const bool __is_invocable_impl = false;
 
-template <class... _Args>
+template <typename... _Args>
 inline const bool __is_invocable_impl<void_t<invoke_result_t<_Args...> >, _Args...> = true;
 
-template <class... _Args>
+template <typename... _Args>
 inline const bool is_invocable_v = __is_invocable_impl<void, _Args...>;
 
-template <class... _Args>
+template <typename... _Args>
 struct is_invocable : integral_constant<bool, is_invocable_v<_Args...> > { };
 
-template <class _Ret, bool, class... _Args>
+template <typename _Ret, bool, typename... _Args>
 inline const bool __is_invocable_r_impl = false;
 
-template <class _Ret, class... _Args>
+template <typename _Ret, typename... _Args>
 inline const bool __is_invocable_r_impl<_Ret, true, _Args...> =
 		__is_core_convertible<invoke_result_t<_Args...>, _Ret>::value || is_void<_Ret>::value;
 
-template <class _Ret, class... _Args>
+template <typename _Ret, typename... _Args>
 inline const bool is_invocable_r_v =
 		__is_invocable_r_impl<_Ret, is_invocable_v<_Args...>, _Args...>;
 
-template <bool __is_invocable, class... _Args>
+template <bool __is_invocable, typename... _Args>
 inline const bool __is_nothrow_invocable_impl = false;
 
-template <class... _Args>
+template <typename... _Args>
 inline const bool __is_nothrow_invocable_impl<true, _Args...> =
 		noexcept(__builtin_invoke(sprt::declval<_Args>()...));
 
-template <class... _Args>
+template <typename... _Args>
 inline const bool is_nothrow_invocable_v =
 		__is_nothrow_invocable_impl<is_invocable_v<_Args...>, _Args...>;
 
-template <bool __is_invocable, class _Ret, class... _Args>
+template <bool __is_invocable, typename _Ret, typename... _Args>
 inline const bool __is_nothrow_invocable_r_impl = false;
 
-template <class _Ret, class... _Args>
+template <typename _Ret, typename... _Args>
 inline const bool __is_nothrow_invocable_r_impl<true, _Ret, _Args...> =
 		__is_nothrow_core_convertible_v<invoke_result_t<_Args...>, _Ret> || is_void<_Ret>::value;
 
-template <class _Ret, class... _Args>
+template <typename _Ret, typename... _Args>
 inline const bool is_nothrow_invocable_r_v =
 		__is_nothrow_invocable_r_impl<is_nothrow_invocable_v<_Args...>, _Ret, _Args...>;
 
@@ -289,48 +289,48 @@ struct is_invocable_r {
 };
 
 
-template <bool _IsInvokable, bool _IsCVVoid, class _Ret, class _Fp, class... _Args>
+template <bool _IsInvokable, bool _IsCVVoid, typename _Ret, typename _Fp, typename... _Args>
 struct __nothrow_invokable_r_imp {
 	static const bool value = false;
 };
 
-template <class _Ret, class _Fp, class... _Args>
+template <typename _Ret, typename _Fp, typename... _Args>
 struct __nothrow_invokable_r_imp<true, false, _Ret, _Fp, _Args...> {
 	typedef __nothrow_invokable_r_imp _ThisT;
 
-	template <class _Tp>
+	template <typename _Tp>
 	static void __test_noexcept(_Tp) noexcept;
 
 	static const bool value = noexcept(_ThisT::__test_noexcept<_Ret>(
 			sprt::__invoke(sprt::declval<_Fp>(), sprt::declval<_Args>()...)));
 };
 
-template <class _Ret, class _Fp, class... _Args>
+template <typename _Ret, typename _Fp, typename... _Args>
 struct __nothrow_invokable_r_imp<true, true, _Ret, _Fp, _Args...> {
 	static const bool value =
 			noexcept(sprt::__invoke(sprt::declval<_Fp>(), sprt::declval<_Args>()...));
 };
 
-template <class _Ret, class _Fp, class... _Args>
+template <typename _Ret, typename _Fp, typename... _Args>
 using __nothrow_invokable_r = __nothrow_invokable_r_imp<__invokable_r<_Ret, _Fp, _Args...>::value,
 		is_void<_Ret>::value, _Ret, _Fp, _Args...>;
 
-template <class _Fp, class... _Args>
+template <typename _Fp, typename... _Args>
 using __nothrow_invokable =
 		__nothrow_invokable_r_imp<is_invocable<_Fp, _Args...>::value, true, void, _Fp, _Args...>;
 
-template <class _Func, class... _Args>
+template <typename _Func, typename... _Args>
 inline const bool is_nothrow_invocable_v = __nothrow_invokable<_Func, _Args...>::value;
 
-template <class _Ret, class _Func, class... _Args>
+template <typename _Ret, typename _Func, typename... _Args>
 inline const bool is_nothrow_invocable_r_v = __nothrow_invokable_r<_Ret, _Func, _Args...>::value;
 
 #endif
 
-template <class _Fn, class... _Args>
+template <typename _Fn, typename... _Args>
 struct is_nothrow_invocable : bool_constant<is_nothrow_invocable_v<_Fn, _Args...> > { };
 
-template <class _Ret, class _Fn, class... _Args>
+template <typename _Ret, typename _Fn, typename... _Args>
 struct is_nothrow_invocable_r : bool_constant<is_nothrow_invocable_r_v<_Ret, _Fn, _Args...>> { };
 
 } // namespace sprt

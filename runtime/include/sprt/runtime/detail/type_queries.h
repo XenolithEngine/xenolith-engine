@@ -63,20 +63,20 @@ inline constexpr bool is_nothrow_convertible_v = __is_nothrow_convertible(From, 
 // to a function. Notice that __is_core_convertible<void,void> is false,
 // and __is_core_convertible<immovable-type,immovable-type> is true in C++17 and later.
 
-template <class _Tp, class _Up, class = void>
+template <typename _Tp, typename _Up, typename = void>
 inline const bool __is_core_convertible_v = false;
 
-template <class _Tp, class _Up>
+template <typename _Tp, typename _Up>
 inline const bool __is_core_convertible_v<_Tp, _Up,
 		decltype(static_cast<void (*)(_Up)>(0)(static_cast<_Tp (*)()>(0)()))> = true;
 
-template <class _Tp, class _Up>
+template <typename _Tp, typename _Up>
 using __is_core_convertible = integral_constant<bool, __is_core_convertible_v<_Tp, _Up> >;
 
-template <class _Tp, class _Up, bool = __is_core_convertible_v<_Tp, _Up> >
+template <typename _Tp, typename _Up, bool = __is_core_convertible_v<_Tp, _Up> >
 inline const bool __is_nothrow_core_convertible_v = false;
 
-template <class _Tp, class _Up>
+template <typename _Tp, typename _Up>
 inline const bool __is_nothrow_core_convertible_v<_Tp, _Up, true> =
 		noexcept(static_cast<void (*)(_Up) noexcept>(0)(static_cast<_Tp (*)() noexcept>(0)()));
 

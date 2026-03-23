@@ -62,7 +62,7 @@ struct DlError {
 	bool errorIsSet = false;
 };
 
-static memory::dynset<HMODULE> s_locals;
+static Set<HMODULE> s_locals;
 static thread_local DlError tl_errorData;
 
 /* Load Psapi.dll at runtime, this avoids linking caveat */

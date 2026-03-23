@@ -23,7 +23,7 @@ THE SOFTWARE.
 **/
 
 #include <sprt/runtime/mem/context.h>
-#include <sprt/runtime/mem/function.h>
+#include <sprt/cxx/function.h>
 #include <sprt/runtime/log.h>
 #include <sprt/cxx/new.h>
 
@@ -140,7 +140,8 @@ void AllocStack::pop(pool_t *p, const char *source) {
 	if (_stack.get().pool == p && (!source || _stack.get().info.source == source)) {
 		_stack.pop();
 	} else {
-		log::vprint(log::LogType::Error, __SPRT_LOCATION, "memory", "Unbalansed pool::push found");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "memory",
+				"Unbalansed pool::push found");
 		::__sprt_abort();
 	}
 #else
@@ -176,22 +177,22 @@ void push(pool_t *p, uint32_t tag, const void *ptr, const char *source) {
 void pop(pool_t *p, const char *source) { return get_stack().pop(p, source); }
 
 static Status cleanup_register_fn(void *ptr) {
-	if (auto fn = (memory::function<void()> *)ptr) {
+	if (auto fn = (__pool_function<void()> *)ptr) {
 		(*fn)();
 	}
 	return Status::Ok;
 }
 
-void cleanup_register(pool_t *p, memory::function<void()> &&cb) {
+void cleanup_register(pool_t *p, __pool_function<void()> &&cb) {
 	perform_conditional([&] {
-		auto fn = new (p) memory::function<void()>(move(cb));
+		auto fn = new (p) __pool_function<void()>(move(cb));
 		pool::cleanup_register(p, fn, &cleanup_register_fn);
 	}, p);
 }
 
-void pre_cleanup_register(pool_t *p, memory::function<void()> &&cb) {
+void pre_cleanup_register(pool_t *p, __pool_function<void()> &&cb) {
 	perform_conditional([&] {
-		auto fn = new (p) memory::function<void()>(move(cb));
+		auto fn = new (p) __pool_function<void()>(move(cb));
 		pool::pre_cleanup_register(p, fn, &cleanup_register_fn);
 	}, p);
 }

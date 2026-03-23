@@ -26,7 +26,9 @@
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/geom.h>
 #include <sprt/runtime/stringview.h>
-#include <sprt/runtime/mem/vector.h>
+#include <sprt/runtime/window/types.h>
+
+#include <sprt/cxx/vector.h>
 
 namespace sprt::window {
 
@@ -321,9 +323,9 @@ struct SPRT_API EdidInfo {
 	static EdidInfo parse(BytesView);
 	static StringView getVendorName(StringView);
 
-	memory::dynstring vendorId;
-	memory::dynstring model;
-	memory::dynstring serial;
+	String vendorId;
+	String model;
+	String serial;
 	StringView vendor;
 
 	auto operator<=>(const EdidInfo &) const = default;
@@ -348,7 +350,7 @@ struct SPRT_API MonitorId {
 	// Use this to disable fullscreen
 	static const MonitorId None;
 
-	memory::dynstring name;
+	String name;
 	EdidInfo edid;
 
 	auto operator<=>(const MonitorId &) const = default;
@@ -375,11 +377,11 @@ struct SPRT_API MonitorInfo : public MonitorId {
 	uint32_t preferredMode = 0;
 	uint32_t currentMode = 0;
 
-	memory::dynvector<ModeInfo> modes;
+	Vector<ModeInfo> modes;
 };
 
 struct ScreenInfo : public Ref {
-	memory::dynvector<MonitorInfo> monitors;
+	Vector<MonitorInfo> monitors;
 	uint32_t primaryMonitor = 0;
 };
 

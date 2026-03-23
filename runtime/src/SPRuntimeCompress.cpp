@@ -21,9 +21,7 @@
  **/
 
 #include <sprt/runtime/compress.h>
-#include <sprt/runtime/detail/operations.h>
-
-#include <stddef.h>
+#include <sprt/cxx/algorithm.h>
 
 #include "private/thirdparty/lz4hc.h"
 

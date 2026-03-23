@@ -132,7 +132,7 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 				}
 
 				if (!_xcbConnection) {
-					log::vperror(__SPRT_LOCATION, "LinuxContextController",
+					oslog::vperror(__SPRT_LOCATION, "LinuxContextController",
 							"Fail to connect to X server or Wayland server");
 					_resultCode = -1;
 					destroy();
@@ -161,7 +161,7 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 			}
 			instance = _context->makeInstance(_instanceInfo);
 		} else {
-			log::vperror(__SPRT_LOCATION, "LinuxContextController",
+			oslog::vperror(__SPRT_LOCATION, "LinuxContextController",
 									"No X11 or Wayland session detected; If there were, please "
 									"consider to " "set XDG_SESSION_TYPE appropiriately");
 
@@ -171,7 +171,7 @@ int LinuxContextController::run(NotNull<ContextContainer> container) {
 		}
 
 		if (!instance) {
-			log::vperror(__SPRT_LOCATION, "LinuxContextController", "Fail to load gAPI instance");
+			oslog::vperror(__SPRT_LOCATION, "LinuxContextController", "Fail to load gAPI instance");
 			_resultCode = -1;
 			destroy();
 			return;
@@ -303,7 +303,7 @@ void LinuxContextController::openUrl(StringView str) {
 	auto string = toString("xdg-open '", str, "'");
 	auto ret = ::system(string.data());
 	if (ret != 0) {
-		log::vperror(__SPRT_LOCATION, "LinuxContextController", "Fail to open URL: ", str);
+		oslog::vperror(__SPRT_LOCATION, "LinuxContextController", "Fail to open URL: ", str);
 	}
 }
 
@@ -341,14 +341,14 @@ void LinuxContextController::tryStart() {
 
 		_looper->performOnThread([this] {
 			if (!resume()) {
-				log::vperror(__SPRT_LOCATION, "LinuxContextController", "Fail to resume Context");
+				oslog::vperror(__SPRT_LOCATION, "LinuxContextController", "Fail to resume Context");
 				destroy();
 			}
 
 			// check if root window is defined
 			if (_windowInfo) {
 				if (!loadWindow()) {
-					log::vperror(__SPRT_LOCATION, "LinuxContextController",
+					oslog::vperror(__SPRT_LOCATION, "LinuxContextController",
 							"Fail to load root native window");
 					destroy();
 				}

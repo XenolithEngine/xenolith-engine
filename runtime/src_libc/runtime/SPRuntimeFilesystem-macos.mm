@@ -81,7 +81,7 @@ void _initSystemPaths(LookupData &data) {
 	auto execPath = platform::getExecPath();
 	auto defaultInterface = getDefaultInterface();
 	if (homePath.empty()) {
-		log::vprint(log::LogType::Error, __SPRT_LOCATION, "filesystem", "$HOME is not defined");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "filesystem", "$HOME is not defined");
 		return;
 	}
 

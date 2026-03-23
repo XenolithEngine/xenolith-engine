@@ -20,16 +20,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_FORWARD_LIST_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_FORWARD_LIST_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_FORWARD_LIST_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_FORWARD_LIST_H_
 
-#include <sprt/runtime/mem/detail/listbase.h>
+#include <sprt/cxx/memory/allocator_malloc.h>
+#include <sprt/cxx/memory/allocator_pool.h>
+#include <sprt/cxx/memory/listbase.h>
 #include <sprt/cxx/initializer_list.h>
+#include <sprt/cxx/algorithm.h>
 
-namespace sprt::memory {
+namespace sprt {
 
-template <typename T, typename Allocator = detail::Allocator<T>>
-class SPRT_API forward_list : public Allocator::base_class {
+template <typename T, typename Allocator>
+class SPRT_API __forward_list : public Allocator::base_class {
 public:
 	using value_type = T;
 	using allocator_type = Allocator;
@@ -40,38 +43,40 @@ public:
 	using pointer = typename allocator_type::pointer;
 	using const_pointer = typename allocator_type::const_pointer;
 
-	using node_type = detail::ForwardListNode<value_type>;
-	using base_type = detail::list_base<node_type, allocator_type>;
+	using node_type = memory::ForwardListNode<value_type>;
+	using base_type = memory::list_base<node_type, allocator_type>;
 
-	using iterator = detail::ForwardListIterator<value_type>;
-	using const_iterator = detail::ForwardListConstIterator<value_type>;
+	using iterator = memory::ForwardListIterator<value_type>;
+	using const_iterator = memory::ForwardListConstIterator<value_type>;
 
-	forward_list() noexcept : forward_list(allocator_type()) { }
+	__forward_list() noexcept : __forward_list(allocator_type()) { }
 
-	explicit forward_list(const allocator_type &alloc) noexcept : _base(alloc) { }
+	explicit __forward_list(const allocator_type &alloc) noexcept : _base(alloc) { }
 
-	explicit forward_list(size_type count, const allocator_type &alloc = allocator_type()) noexcept;
+	explicit __forward_list(size_type count,
+			const allocator_type &alloc = allocator_type()) noexcept;
 
-	forward_list(size_type count, const value_type &value,
+	__forward_list(size_type count, const value_type &value,
 			const allocator_type &alloc = allocator_type()) noexcept;
 
 	template <typename InputIt>
-	forward_list(InputIt first, InputIt last,
+	__forward_list(InputIt first, InputIt last,
 			const allocator_type &alloc = allocator_type()) noexcept;
 
-	forward_list(const forward_list &other) noexcept;
-	forward_list(forward_list &&other) noexcept;
+	__forward_list(const __forward_list &other) noexcept;
+	__forward_list(__forward_list &&other) noexcept;
 
-	forward_list(const forward_list &other, const allocator_type &alloc) noexcept;
-	forward_list(forward_list &&other, const allocator_type &alloc) noexcept;
+	__forward_list(const __forward_list &other, const allocator_type &alloc) noexcept;
+	__forward_list(__forward_list &&other, const allocator_type &alloc) noexcept;
 
-	forward_list(initializer_list<T> init, const allocator_type &alloc = allocator_type()) noexcept;
+	__forward_list(initializer_list<T> init,
+			const allocator_type &alloc = allocator_type()) noexcept;
 
-	~forward_list() noexcept;
+	~__forward_list() noexcept;
 
-	forward_list &operator=(const forward_list &other) noexcept;
-	forward_list &operator=(forward_list &&other) noexcept;
-	forward_list &operator=(initializer_list<value_type> ilist) noexcept;
+	__forward_list &operator=(const __forward_list &other) noexcept;
+	__forward_list &operator=(__forward_list &&other) noexcept;
+	__forward_list &operator=(initializer_list<value_type> ilist) noexcept;
 
 	void assign(size_type count, const T &value) noexcept;
 
@@ -109,13 +114,13 @@ public:
 
 	void clear() noexcept { _base.clear(); }
 
-	template < class... Args >
+	template < typename... Args >
 	reference emplace_front(Args &&...args) noexcept;
 
 	reference push_front(const T &value) noexcept;
 	reference push_front(T &&value) noexcept;
 
-	template < class... Args >
+	template < typename... Args >
 	reference emplace_back(Args &&...args) noexcept;
 
 	reference push_back(const T &value) noexcept;
@@ -129,7 +134,7 @@ public:
 	iterator insert_after(const_iterator pos, InputIt first, InputIt last) noexcept;
 	iterator insert_after(const_iterator pos, initializer_list<T> ilist) noexcept;
 
-	template < class... Args >
+	template < typename... Args >
 	iterator emplace_after(const_iterator pos, Args &&...args) noexcept;
 
 	iterator erase_after(const_iterator pos) noexcept;
@@ -140,51 +145,19 @@ public:
 	void resize(size_type count) noexcept;
 	void resize(size_type count, const value_type &value) noexcept;
 
-	/*void swap(forward_list &other) noexcept;
-
-	void merge(forward_list &other) noexcept;
-	void merge(forward_list &&other) noexcept;
-	template < class Compare >
-	void merge(forward_list &other, Compare comp) noexcept;
-	template < class Compare >
-	void merge(forward_list &&other, Compare comp) noexcept;
-
-	void splice_after(const_iterator pos, forward_list &other) noexcept;
-	void splice_after(const_iterator pos, forward_list &&other) noexcept;
-	void splice_after(const_iterator pos, forward_list &other, const_iterator it) noexcept;
-	void splice_after(const_iterator pos, forward_list &&other, const_iterator it) noexcept;
-	void splice_after(const_iterator pos, forward_list &other, const_iterator first,
-			const_iterator last) noexcept;
-	void splice_after(const_iterator pos, forward_list &&other, const_iterator first,
-			const_iterator last) noexcept;
-
-	size_type remove(const T &value) noexcept;
-
-	template <class UnaryPred>
-	void remove_if(UnaryPred p) noexcept;
-
-	template <class UnaryPred>
-	size_type remove_if(UnaryPred p) noexcept;
-
-	void reverse() noexcept;
-
-	size_type unique() noexcept;
-
-	template < class BinaryPred >
-	size_type unique(BinaryPred p) noexcept;
-
-	void sort();
-
-	template < class Compare >
-	void sort(Compare comp);*/
-
 protected:
 	base_type _base;
 };
 
+template <typename Type>
+using __pool_forward_list = __forward_list<Type, memory::AllocatorPool<Type>>;
+
+template <typename Type>
+using __malloc_forward_list = __forward_list<Type, memory::AllocatorMalloc<Type>>;
+
 template <typename T, typename Allocator>
-inline bool operator==(const forward_list<T, Allocator> &lhs,
-		const forward_list<T, Allocator> &rhs) {
+inline bool operator==(const __forward_list<T, Allocator> &lhs,
+		const __forward_list<T, Allocator> &rhs) {
 	auto first1 = lhs.begin();
 	auto last1 = lhs.end();
 	auto first2 = rhs.begin();
@@ -200,9 +173,9 @@ inline bool operator==(const forward_list<T, Allocator> &lhs,
 }
 
 template <typename T, typename Allocator>
-inline forward_list<T, Allocator>::forward_list(size_type count,
+inline __forward_list<T, Allocator>::__forward_list(size_type count,
 		const allocator_type &alloc) noexcept
-: forward_list(alloc) {
+: __forward_list(alloc) {
 	_base.expand_front(count,
 			[](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
 		auto alloc = allocator_type(nalloc);
@@ -211,9 +184,9 @@ inline forward_list<T, Allocator>::forward_list(size_type count,
 }
 
 template <typename T, typename Allocator>
-inline forward_list<T, Allocator>::forward_list(size_type count, const value_type &value,
+inline __forward_list<T, Allocator>::__forward_list(size_type count, const value_type &value,
 		const allocator_type &alloc) noexcept
-: forward_list(alloc) {
+: __forward_list(alloc) {
 	_base.expand_front(count,
 			[value = &value](const base_type::node_allocator_type &nalloc, node_type *node)
 					SPRT_LAMBDAINLINE {
@@ -224,9 +197,9 @@ inline forward_list<T, Allocator>::forward_list(size_type count, const value_typ
 
 template <typename T, typename Allocator>
 template <typename InputIt>
-inline forward_list<T, Allocator>::forward_list(InputIt first, InputIt last,
+inline __forward_list<T, Allocator>::__forward_list(InputIt first, InputIt last,
 		const allocator_type &alloc) noexcept
-: forward_list(alloc) {
+: __forward_list(alloc) {
 	// TODO: we can optimize insertion with _base.expand when std::distance for iterators is constant-time
 	auto iter = before_begin();
 	while (first != last) {
@@ -237,27 +210,27 @@ inline forward_list<T, Allocator>::forward_list(InputIt first, InputIt last,
 
 
 template <typename T, typename Allocator>
-inline forward_list<T, Allocator>::forward_list(const forward_list &other) noexcept
-: forward_list(other, allocator_type()) { }
+inline __forward_list<T, Allocator>::__forward_list(const __forward_list &other) noexcept
+: __forward_list(other, allocator_type()) { }
 
 template <typename T, typename Allocator>
-inline forward_list<T, Allocator>::forward_list(forward_list &&other) noexcept
-: forward_list(sprt::move_unsafe(other), allocator_type()) { }
+inline __forward_list<T, Allocator>::__forward_list(__forward_list &&other) noexcept
+: __forward_list(sprt::move_unsafe(other), allocator_type()) { }
 
 template <typename T, typename Allocator>
-inline forward_list<T, Allocator>::forward_list(const forward_list &other,
+inline __forward_list<T, Allocator>::__forward_list(const __forward_list &other,
 		const allocator_type &alloc) noexcept
 : _base(other._base, alloc) { }
 
 template <typename T, typename Allocator>
-inline forward_list<T, Allocator>::forward_list(forward_list &&other,
+inline __forward_list<T, Allocator>::__forward_list(__forward_list &&other,
 		const allocator_type &alloc) noexcept
 : _base(sprt::move_unsafe(other), alloc) { }
 
 template <typename T, typename Allocator>
-inline forward_list<T, Allocator>::forward_list(initializer_list<T> init,
+inline __forward_list<T, Allocator>::__forward_list(initializer_list<T> init,
 		const allocator_type &alloc) noexcept
-: forward_list(alloc) {
+: __forward_list(alloc) {
 	auto source = init.begin();
 	_base.expand_front(init.size(),
 			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
@@ -267,31 +240,32 @@ inline forward_list<T, Allocator>::forward_list(initializer_list<T> init,
 }
 
 template <typename T, typename Allocator>
-inline forward_list<T, Allocator>::~forward_list() noexcept { }
+inline __forward_list<T, Allocator>::~__forward_list() noexcept { }
 
 template <typename T, typename Allocator>
-inline auto forward_list<T, Allocator>::operator=(const forward_list &other) noexcept
-		-> forward_list & {
+inline auto __forward_list<T, Allocator>::operator=(const __forward_list &other) noexcept
+		-> __forward_list & {
 	_base = other._base;
 	return *this;
 }
 
 template <typename T, typename Allocator>
-inline auto forward_list<T, Allocator>::operator=(forward_list &&other) noexcept -> forward_list & {
+inline auto __forward_list<T, Allocator>::operator=(__forward_list &&other) noexcept
+		-> __forward_list & {
 	_base = sprt::move_unsafe(other._base);
 	return *this;
 }
 
 
 template <typename T, typename Allocator>
-inline auto forward_list<T, Allocator>::operator=(initializer_list<value_type> init) noexcept
-		-> forward_list & {
+inline auto __forward_list<T, Allocator>::operator=(initializer_list<value_type> init) noexcept
+		-> __forward_list & {
 	assign(init);
 	return *this;
 }
 
 template <typename T, typename Allocator>
-inline void forward_list<T, Allocator>::assign(size_type count, const T &value) noexcept {
+inline void __forward_list<T, Allocator>::assign(size_type count, const T &value) noexcept {
 	auto preallocTmp = _base.memory_persistent();
 	_base.set_memory_persistent(true);
 	_base.clear();
@@ -306,7 +280,7 @@ inline void forward_list<T, Allocator>::assign(size_type count, const T &value) 
 
 template <typename T, typename Allocator>
 template <typename InputIt>
-inline void forward_list<T, Allocator>::assign(InputIt first, InputIt last) noexcept {
+inline void __forward_list<T, Allocator>::assign(InputIt first, InputIt last) noexcept {
 	auto preallocTmp = _base.memory_persistent();
 	_base.set_memory_persistent(true);
 	_base.clear();
@@ -320,7 +294,7 @@ inline void forward_list<T, Allocator>::assign(InputIt first, InputIt last) noex
 }
 
 template <typename T, typename Allocator>
-inline void forward_list<T, Allocator>::assign(initializer_list<T> init) noexcept {
+inline void __forward_list<T, Allocator>::assign(initializer_list<T> init) noexcept {
 	auto preallocTmp = _base.memory_persistent();
 	_base.set_memory_persistent(true);
 	_base.clear();
@@ -335,8 +309,8 @@ inline void forward_list<T, Allocator>::assign(initializer_list<T> init) noexcep
 }
 
 template <typename T, typename Allocator>
-template < class... Args >
-forward_list<T, Allocator>::reference forward_list<T, Allocator>::emplace_front(
+template < typename... Args >
+__forward_list<T, Allocator>::reference __forward_list<T, Allocator>::emplace_front(
 		Args &&...args) noexcept {
 	auto node = _base.allocate_node();
 	get_allocator().construct(node->value.ptr(), sprt::forward<Args>(args)...);
@@ -345,19 +319,20 @@ forward_list<T, Allocator>::reference forward_list<T, Allocator>::emplace_front(
 }
 
 template <typename T, typename Allocator>
-forward_list<T, Allocator>::reference forward_list<T, Allocator>::push_front(
+__forward_list<T, Allocator>::reference __forward_list<T, Allocator>::push_front(
 		const T &value) noexcept {
 	return emplace_front(value);
 }
 
 template <typename T, typename Allocator>
-forward_list<T, Allocator>::reference forward_list<T, Allocator>::push_front(T &&value) noexcept {
+__forward_list<T, Allocator>::reference __forward_list<T, Allocator>::push_front(
+		T &&value) noexcept {
 	return emplace_front(sprt::move_unsafe(value));
 }
 
 template <typename T, typename Allocator>
-template < class... Args >
-forward_list<T, Allocator>::reference forward_list<T, Allocator>::emplace_back(
+template < typename... Args >
+__forward_list<T, Allocator>::reference __forward_list<T, Allocator>::emplace_back(
 		Args &&...args) noexcept {
 	auto node = _base.allocate_node();
 	get_allocator().construct(node->value.ptr(), sprt::forward<Args>(args)...);
@@ -366,19 +341,20 @@ forward_list<T, Allocator>::reference forward_list<T, Allocator>::emplace_back(
 }
 
 template <typename T, typename Allocator>
-forward_list<T, Allocator>::reference forward_list<T, Allocator>::push_back(
+__forward_list<T, Allocator>::reference __forward_list<T, Allocator>::push_back(
 		const T &value) noexcept {
 	return emplace_back(value);
 }
 
 template <typename T, typename Allocator>
-forward_list<T, Allocator>::reference forward_list<T, Allocator>::push_back(T &&value) noexcept {
+__forward_list<T, Allocator>::reference __forward_list<T, Allocator>::push_back(
+		T &&value) noexcept {
 	return emplace_back(sprt::move_unsafe(value));
 }
 
 template <typename T, typename Allocator>
-forward_list<T, Allocator>::iterator forward_list<T, Allocator>::insert_after(const_iterator pos,
-		const T &value) noexcept {
+__forward_list<T, Allocator>::iterator __forward_list<T, Allocator>::insert_after(
+		const_iterator pos, const T &value) noexcept {
 	auto node = _base.allocate_node();
 	get_allocator().construct(node->value.ptr(), value);
 	_base.insert(pos.__next);
@@ -386,8 +362,8 @@ forward_list<T, Allocator>::iterator forward_list<T, Allocator>::insert_after(co
 }
 
 template <typename T, typename Allocator>
-forward_list<T, Allocator>::iterator forward_list<T, Allocator>::insert_after(const_iterator pos,
-		T &&value) noexcept {
+__forward_list<T, Allocator>::iterator __forward_list<T, Allocator>::insert_after(
+		const_iterator pos, T &&value) noexcept {
 	auto node = _base.allocate_node();
 	get_allocator().construct(node->value.ptr(), sprt::move_unsafe(value));
 	_base.insert(pos.__next);
@@ -395,8 +371,8 @@ forward_list<T, Allocator>::iterator forward_list<T, Allocator>::insert_after(co
 }
 
 template <typename T, typename Allocator>
-forward_list<T, Allocator>::iterator forward_list<T, Allocator>::insert_after(const_iterator pos,
-		size_type count, const T &value) noexcept {
+__forward_list<T, Allocator>::iterator __forward_list<T, Allocator>::insert_after(
+		const_iterator pos, size_type count, const T &value) noexcept {
 	auto node = _base.expand(pos.__next, count,
 			[value = &value](const base_type::node_allocator_type &nalloc, node_type *node)
 					SPRT_LAMBDAINLINE {
@@ -408,8 +384,8 @@ forward_list<T, Allocator>::iterator forward_list<T, Allocator>::insert_after(co
 
 template <typename T, typename Allocator>
 template <typename InputIt>
-forward_list<T, Allocator>::iterator forward_list<T, Allocator>::insert_after(const_iterator iter,
-		InputIt first, InputIt last) noexcept {
+__forward_list<T, Allocator>::iterator __forward_list<T, Allocator>::insert_after(
+		const_iterator iter, InputIt first, InputIt last) noexcept {
 	while (first != last) {
 		iter = emplace_after(iter, *first);
 		++first;
@@ -418,8 +394,8 @@ forward_list<T, Allocator>::iterator forward_list<T, Allocator>::insert_after(co
 }
 
 template <typename T, typename Allocator>
-forward_list<T, Allocator>::iterator forward_list<T, Allocator>::insert_after(const_iterator pos,
-		initializer_list<T> init) noexcept {
+__forward_list<T, Allocator>::iterator __forward_list<T, Allocator>::insert_after(
+		const_iterator pos, initializer_list<T> init) noexcept {
 	auto source = init.begin();
 	auto node = _base.expand_front(init.size(),
 			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
@@ -430,9 +406,9 @@ forward_list<T, Allocator>::iterator forward_list<T, Allocator>::insert_after(co
 }
 
 template <typename T, typename Allocator>
-template < class... Args >
-forward_list<T, Allocator>::iterator forward_list<T, Allocator>::emplace_after(const_iterator pos,
-		Args &&...args) noexcept {
+template < typename... Args >
+__forward_list<T, Allocator>::iterator __forward_list<T, Allocator>::emplace_after(
+		const_iterator pos, Args &&...args) noexcept {
 	auto node = _base.allocate_node();
 	get_allocator().construct(node->value.ptr(), forward<Args>(args)...);
 	_base.insert(const_cast<node_type **>(pos.__next), node);
@@ -440,26 +416,26 @@ forward_list<T, Allocator>::iterator forward_list<T, Allocator>::emplace_after(c
 }
 
 template <typename T, typename Allocator>
-forward_list<T, Allocator>::iterator forward_list<T, Allocator>::erase_after(
+__forward_list<T, Allocator>::iterator __forward_list<T, Allocator>::erase_after(
 		const_iterator pos) noexcept {
 	auto node = _base.erase_after(pos.__next);
 	return iterator(node);
 }
 
 template <typename T, typename Allocator>
-forward_list<T, Allocator>::iterator forward_list<T, Allocator>::erase_after(const_iterator first,
-		const_iterator last) noexcept {
+__forward_list<T, Allocator>::iterator __forward_list<T, Allocator>::erase_after(
+		const_iterator first, const_iterator last) noexcept {
 	while (first != last) { first = (_base.erase_after(first.__next)); }
 	return first;
 }
 
 template <typename T, typename Allocator>
-void forward_list<T, Allocator>::pop_front() noexcept {
+void __forward_list<T, Allocator>::pop_front() noexcept {
 	_base.erase_after(before_begin().__next);
 }
 
 template <typename T, typename Allocator>
-void forward_list<T, Allocator>::resize(size_type count) noexcept {
+void __forward_list<T, Allocator>::resize(size_type count) noexcept {
 	if (_base.size() > count) {
 		auto target = before_begin();
 		while (count > 0) {
@@ -478,7 +454,7 @@ void forward_list<T, Allocator>::resize(size_type count) noexcept {
 }
 
 template <typename T, typename Allocator>
-void forward_list<T, Allocator>::resize(size_type count, const value_type &value) noexcept {
+void __forward_list<T, Allocator>::resize(size_type count, const value_type &value) noexcept {
 	if (_base.size() > count) {
 		auto target = before_begin();
 		while (count > 0) {
@@ -496,23 +472,12 @@ void forward_list<T, Allocator>::resize(size_type count, const value_type &value
 	}
 }
 
-} // namespace sprt::memory
-
-
-#if __SPRT_USE_STL_COMPARATORS
-
-#include <algorithm>
-
-namespace sprt::memory {
-
 template <typename T, typename Allocator>
-inline auto operator<=>(const forward_list<T, Allocator> &lhs,
-		const forward_list<T, Allocator> &rhs) {
-	return std::lexicographical_compare_three_way(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
+inline auto operator<=>(const __forward_list<T, Allocator> &lhs,
+		const __forward_list<T, Allocator> &rhs) {
+	return sprt::lexicographical_compare_three_way(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
 }
 
-} // namespace sprt::memory
+} // namespace sprt
 
-#endif // __SPRT_USE_STL_COMPARATORS
-
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_FORWARD_LIST_H_
+#endif // RUNTIME_INCLUDE_SPRT_CXX_FORWARD_LIST_H_

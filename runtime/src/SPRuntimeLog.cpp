@@ -21,7 +21,6 @@
  **/
 
 #include <sprt/runtime/log.h>
-#include <sprt/runtime/math.h>
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/__sprt_stdio.h>
 
@@ -37,7 +36,7 @@
 
 #endif
 
-namespace sprt::log {
+namespace sprt::oslog {
 
 struct LogFeaturesInit : LogFeatures {
 	char tmpbuf[256] = {0};
@@ -515,4 +514,4 @@ LogFeatures LogFeatures::acquire() {
 	return ret;
 }
 
-} // namespace sprt::log
+} // namespace sprt::oslog

@@ -24,11 +24,8 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_CONTROLLER_H_
 
 #include <sprt/runtime/ref.h>
-#include <sprt/runtime/mem/function.h>
-#include <sprt/runtime/mem/vector.h>
-#include <sprt/runtime/mem/string.h>
-#include <sprt/runtime/mem/set.h>
 #include <sprt/runtime/platform.h>
+#include <sprt/runtime/window/types.h>
 #include <sprt/runtime/window/window_info.h>
 #include <sprt/runtime/window/input.h>
 #include <sprt/runtime/window/text_input.h>
@@ -113,8 +110,7 @@ public:
 	virtual void notifyWindowConstraintsChanged(NotNull<NativeWindow>, UpdateConstraintsFlags);
 
 	// Some input should be transferred to application
-	virtual void notifyWindowInputEvents(NotNull<NativeWindow>,
-			memory::dynvector<InputEventData> &&);
+	virtual void notifyWindowInputEvents(NotNull<NativeWindow>, Vector<InputEventData> &&);
 
 	// Internal text input buffer was changed
 	virtual void notifyWindowTextInput(NotNull<NativeWindow>, const TextInputState &);
@@ -190,13 +186,13 @@ protected:
 	NetworkFlags _networkFlags = NetworkFlags::None;
 	ThemeInfo _themeInfo;
 
-	memory::dynset<Rc<NativeWindow>> _activeWindows;
-	memory::dynset<NativeWindow *> _allWindows;
+	Set<Rc<NativeWindow>> _activeWindows;
+	Set<NativeWindow *> _allWindows;
 
 	uint32_t _pollDepth = 0;
 
-	memory::dynvector<pair<NativeWindow *, UpdateConstraintsFlags>> _resizedWindows;
-	memory::dynvector<pair<NativeWindow *, WindowCloseOptions>> _closedWindows;
+	Vector<pair<NativeWindow *, UpdateConstraintsFlags>> _resizedWindows;
+	Vector<pair<NativeWindow *, WindowCloseOptions>> _closedWindows;
 };
 
 } // namespace sprt::window

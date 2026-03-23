@@ -766,8 +766,8 @@ static void defineAppPathFromCommon(LookupData &data, StringView bundleName) {
 	makeLocation(LocationCategory::AppRuntime, commonCache->paths.front().path, "Runtime");
 }
 
-static memory::dynstring getAppContainerPath(PSID sid) {
-	memory::dynstring ret;
+static String getAppContainerPath(PSID sid) {
+	String ret;
 	PWSTR str = nullptr, path = nullptr;
 	::ConvertSidToStringSidW(sid, &str);
 
@@ -782,7 +782,7 @@ static memory::dynstring getAppContainerPath(PSID sid) {
 	return ret;
 }
 
-static memory::dynstring s_containerPath;
+static String s_containerPath;
 
 void _initSystemPaths(LookupData &data) {
 	auto exeecPath = platform::getExecPath();

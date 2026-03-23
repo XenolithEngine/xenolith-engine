@@ -106,7 +106,7 @@ bool Controller::isConnectied() const {
 }
 
 Rc<DisplayConfigManager> Controller::makeDisplayConfigManager(
-		memory::dynfunction<void(NotNull<DisplayConfigManager>)> &&cb) {
+		Function<void(NotNull<DisplayConfigManager>)> &&cb) {
 
 	if (_sessionBus->services.find(GNOME_DISPLAY_CONFIG_SERVICE) != _sessionBus->services.end()) {
 		return Rc<GnomeDisplayConfigManager>::create(this, sprt::move(cb));
@@ -355,7 +355,7 @@ void Controller::handleSessionConnected(NotNull<dbus::Connection> c) {
 			});
 			updateInterfaceTheme();
 		}
-		log::vpdebug(__SPRT_LOCATION, "dbus::Controller", "Session bus connected");
+		oslog::vpdebug(__SPRT_LOCATION, "dbus::Controller", "Session bus connected");
 	}
 }
 
@@ -378,7 +378,7 @@ void Controller::handleSystemConnected(NotNull<dbus::Connection> c) {
 
 			updateNetworkState();
 		}
-		log::vpdebug(__SPRT_LOCATION, "dbus::Controller", "System bus connected");
+		oslog::vpdebug(__SPRT_LOCATION, "dbus::Controller", "System bus connected");
 	}
 }
 

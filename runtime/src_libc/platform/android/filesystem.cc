@@ -42,7 +42,7 @@ THE SOFTWARE.
 namespace sprt::filesystem::detail {
 
 struct PathInfo {
-	using String = memory::dynstring;
+	using String = String;
 
 	String _apkPath;
 	struct __SPRT_STAT_NAME _apkStat;

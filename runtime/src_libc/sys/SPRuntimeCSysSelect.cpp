@@ -37,7 +37,7 @@ __SPRT_C_FUNC int __SPRT_ID(select)(int nfds, __SPRT_ID(fd_set) * __SPRT_RESTRIC
 		__SPRT_ID(fd_set) * __SPRT_RESTRICT writeFds, __SPRT_ID(fd_set) * __SPRT_RESTRICT errorFds,
 		__SPRT_TIMEVAL_NAME *__SPRT_RESTRICT __timeout) {
 #if !__SPRT_CONFIG_HAVE_SELECT
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_SELECT)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -58,7 +58,7 @@ __SPRT_C_FUNC int __SPRT_ID(pselect)(int nfds, __SPRT_ID(fd_set) * __SPRT_RESTRI
 		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT __timeout,
 		const __SPRT_ID(sigset_t) * __SPRT_RESTRICT sigmask) {
 #if !__SPRT_CONFIG_HAVE_SELECT
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_SELECT)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;

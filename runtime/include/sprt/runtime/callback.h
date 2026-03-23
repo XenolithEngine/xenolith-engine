@@ -25,7 +25,9 @@ THE SOFTWARE.
 
 #include <sprt/cxx/array.h>
 #include <sprt/runtime/detail/constexpr.h>
-#include <sprt/runtime/detail/invoke.h>
+#include <sprt/runtime/detail/new.h>
+
+#include <sprt/cxx/detail/invoke.h>
 
 namespace sprt {
 
@@ -319,7 +321,7 @@ protected:
 	auto setFunction(FunctionT &&f) -> FunctionT & {
 		static_assert(sizeof(FunctionT) == BufferSize && alignof(FunctionT) == Alignment,
 				"BufferSize and Alignment should match with stored type");
-		new ((void *)_storage.buf) FunctionT(sprt::forward<FunctionT>(f));
+		new ((void *)_storage.buf, sprt::nothrow) FunctionT(sprt::forward<FunctionT>(f));
 		return *reinterpret_cast<FunctionT *>(_storage.buf);
 	}
 
@@ -354,6 +356,11 @@ template <typename ClassType, typename ReturnType, typename... Args>
 struct SPRT_API callback_traits<ReturnType (ClassType::*)(Args...)> {
 	using type = callback_storage<ReturnType, sizeof(ClassType), alignof(ClassType), Args...>;
 };
+
+template <typename Functor>
+inline auto makeCallbackStorage(Functor &&f) {
+	return typename callback_traits<decltype(&Functor::operator())>::type(sprt::move(f));
+}
 
 } // namespace sprt
 

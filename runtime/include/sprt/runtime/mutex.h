@@ -443,7 +443,7 @@ protected:
 /*
 	std::unique_lock
 */
-template <class _Mutex>
+template <typename _Mutex>
 class unique_lock {
 public:
 	typedef _Mutex mutex_type;

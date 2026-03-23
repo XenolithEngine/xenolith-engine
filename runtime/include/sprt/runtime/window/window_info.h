@@ -415,8 +415,8 @@ enum class WindowCapabilities : uint32_t {
 SPRT_DEFINE_ENUM_AS_MASK(WindowCapabilities)
 
 struct SPRT_API WindowInfo final : public Ref {
-	memory::dynstring id;
-	memory::dynstring title;
+	String id;
+	String title;
 	IRect rect = IRect(0, 0, 1'024, 768);
 	float density = 0.0f;
 	WindowCreationFlags flags = WindowCreationFlags::None;

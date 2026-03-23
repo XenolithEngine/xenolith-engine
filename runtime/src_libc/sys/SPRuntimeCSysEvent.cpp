@@ -146,7 +146,7 @@ __SPRT_C_FUNC int __SPRT_ID(kevent)(int kq, const struct __SPRT_KEVENT_NAME *cha
 #else
 
 __SPRT_C_FUNC int __SPRT_ID(kqueue)(void) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_KQUEUE)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -155,7 +155,7 @@ __SPRT_C_FUNC int __SPRT_ID(kqueue)(void) {
 __SPRT_C_FUNC int __SPRT_ID(kevent)(int kq, const struct __SPRT_KEVENT_NAME *changelist,
 		int nchanges, struct __SPRT_KEVENT_NAME *eventlist, int nevents,
 		const struct __SPRT_TIMESPEC_NAME *timeout) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_KQUEUE)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;

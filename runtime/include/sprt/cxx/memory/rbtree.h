@@ -20,16 +20,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_RBTREE_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_RBTREE_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_MEMORY_RBTREE_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_MEMORY_RBTREE_H_
 
-#include <sprt/runtime/mem/detail/nodebase.h>
-#include <sprt/runtime/mem/detail/pointer_iterator.h>
+#include <sprt/cxx/memory/allocator_malloc.h>
+#include <sprt/cxx/memory/allocator_pool.h>
+#include <sprt/cxx/memory/nodebase.h>
+#include <sprt/cxx/memory/pointer_iterator.h>
 
 #include <sprt/cxx/iterator.h>
 #include <sprt/cxx/pair.h>
 
-namespace sprt::memory::detail {
+namespace sprt::memory {
 
 enum RbTreeNodeColor : uintptr_t {
 	Red = 0,
@@ -37,7 +39,7 @@ enum RbTreeNodeColor : uintptr_t {
 };
 
 template <typename Value>
-using RbTreeNodeStorage = sprt::memory::detail::Storage<Value>;
+using RbTreeNodeStorage = sprt::memory::Storage<Value>;
 
 struct SPRT_API RbTreeNodeBase : public sprt::memory::AllocPool {
 	using Flag = RbTreeNodeFlag<sizeof(uintptr_t)>;
@@ -417,13 +419,13 @@ public:
 				tryInsertNodeUniqueHint(hint, sprt::forward<K>(k), sprt::forward<Args>(args)...));
 	}
 
-	template <typename K, class M>
+	template <typename K, typename M>
 	pair<iterator, bool> insert_or_assign(K &&k, M &&m) {
 		auto ret = tryAssignNodeUnique(sprt::forward<K>(k), sprt::forward<M>(m));
 		return pair(iterator(ret.first), ret.second);
 	}
 
-	template <typename K, class M>
+	template <typename K, typename M>
 	iterator insert_or_assign(const_iterator hint, K &&k, M &&m) {
 		return iterator(tryAssignNodeUniqueHint(hint, sprt::forward<K>(k), sprt::forward<M>(m)));
 	}
@@ -509,57 +511,57 @@ public:
 		sprt::swap(_free, other._free);
 	}
 
-	template < class K >
+	template < typename K >
 	iterator find(const K &x) {
 		auto ptr = find_impl(x);
 		return (ptr) ? iterator(ptr) : end();
 	}
 
-	template < class K >
+	template < typename K >
 	const_iterator find(const K &x) const {
 		auto ptr = find_impl(x);
 		return (ptr) ? const_iterator(ptr) : end();
 	}
 
-	template < class K >
+	template < typename K >
 	iterator lower_bound(const K &x) {
 		auto ptr = lower_bound_ptr(x);
 		return (ptr) ? iterator(ptr) : end();
 	}
 
-	template < class K >
+	template < typename K >
 	const_iterator lower_bound(const K &x) const {
 		auto ptr = lower_bound_ptr(x);
 		return (ptr) ? const_iterator(ptr) : end();
 	}
 
-	template < class K >
+	template < typename K >
 	iterator upper_bound(const K &x) {
 		auto ptr = upper_bound_ptr(x);
 		return (ptr) ? iterator(ptr) : end();
 	}
 
-	template < class K >
+	template < typename K >
 	const_iterator upper_bound(const K &x) const {
 		auto ptr = upper_bound_ptr(x);
 		return (ptr) ? const_iterator(ptr) : end();
 	}
-	template < class K >
+	template < typename K >
 	pair<iterator, iterator> equal_range(const K &x) {
 		return pair(lower_bound(x), upper_bound(x));
 	}
 
-	template < class K >
+	template < typename K >
 	pair<const_iterator, const_iterator> equal_range(const K &x) const {
 		return pair(lower_bound(x), upper_bound(x));
 	}
 
-	template < class K >
+	template < typename K >
 	size_t count(const K &x) const {
 		return count_impl(x);
 	}
 
-	template < class K >
+	template < typename K >
 	size_t count_unique(const K &x) const {
 		return findNode(x) ? 1 : 0;
 	}
@@ -585,6 +587,8 @@ protected:
 
 	RbTreeNodeBase _header; // root is _header.left
 	comparator_type _comp;
+
+	[[no_unique_address]]
 	value_allocator_type _allocator;
 	size_t _size = 0;
 	RbTreeNode<Value> *_free = nullptr;
@@ -1052,7 +1056,7 @@ protected:
 		}
 	}
 
-	template < class K >
+	template < typename K >
 	node_ptr find_impl(const K &x) const {
 		const_node_ptr current = root();
 		while (current) {
@@ -1069,7 +1073,7 @@ protected:
 		return nullptr;
 	}
 
-	template < class K >
+	template < typename K >
 	node_ptr lower_bound_ptr(const K &x) const {
 		const_node_ptr current = root();
 		const_node_ptr saved = nullptr;
@@ -1084,7 +1088,7 @@ protected:
 		return const_cast<node_ptr>(saved);
 	}
 
-	template < class K >
+	template < typename K >
 	node_ptr upper_bound_ptr(const K &x) const {
 		const_node_ptr current = root();
 		const_node_ptr saved = current;
@@ -1099,7 +1103,7 @@ protected:
 		return const_cast<node_ptr>(saved);
 	}
 
-	template < class K >
+	template < typename K >
 	size_t count_impl(const K &x) const {
 		auto c = find_impl(x);
 		if (!c) {
@@ -1181,6 +1185,6 @@ protected:
 	}
 };
 
-} // namespace sprt::memory::detail
+} // namespace sprt::memory
 
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_RBTREE_H_
+#endif // RUNTIME_INCLUDE_SPRT_CXX_MEMORY_RBTREE_H_

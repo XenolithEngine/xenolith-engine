@@ -29,7 +29,7 @@
 
 #include <sprt/cxx/source_location.h>
 
-namespace sprt::log {
+namespace sprt::oslog {
 
 enum LogType {
 	Verbose,
@@ -160,6 +160,6 @@ SPRT_API void vpfatal(const source_location &loc, StringView tag, Args &&...args
 	vprint(LogType::Fatal, loc, tag, sprt::forward<Args>(args)...);
 }
 
-} // namespace sprt::log
+} // namespace sprt::oslog
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_LOG_H_

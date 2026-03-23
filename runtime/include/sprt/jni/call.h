@@ -56,13 +56,13 @@ public:
 
 	Method(ClassProxy *proxy) {
 		if (!proxy || !proxy->getClass()) {
-			log::vprint(log::LogType::Warn, __SPRT_LOCATION, "JNI", "ClassProxy for method ", Name,
-					" : ", MethodSignature<Sig>::Name, "is invalid");
+			oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "JNI", "ClassProxy for method ",
+					Name, " : ", MethodSignature<Sig>::Name, "is invalid");
 			return;
 		}
 		_method = proxy->getClass().getMethodID(Name, MethodSignature<Sig>::Buffer.data());
 		if (!_method) {
-			log::vprint(log::LogType::Warn, __SPRT_LOCATION, "JNI", "Method ", Name, " : ",
+			oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "JNI", "Method ", Name, " : ",
 					MethodSignature<Sig>::Name, " not found in class ",
 					proxy->getClass().getName().getString());
 		}
@@ -93,14 +93,15 @@ public:
 
 	StaticMethod(ClassProxy *proxy) {
 		if (!proxy || !proxy->getClass()) {
-			log::vprint(log::LogType::Warn, __SPRT_LOCATION, "JNI", "ClassProxy for static method ",
-					Name, " : ", MethodSignature<Sig>::Name, "is invalid");
+			oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "JNI",
+					"ClassProxy for static method ", Name, " : ", MethodSignature<Sig>::Name,
+					"is invalid");
 			return;
 		}
 		_method = proxy->getClass().getStaticMethodID(Name, MethodSignature<Sig>::Buffer.data());
 		if (!_method) {
-			log::vprint(log::LogType::Warn, __SPRT_LOCATION, "JNI", "Static method ", Name, " : ",
-					MethodSignature<Sig>::Name, " not found in class ",
+			oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "JNI", "Static method ", Name,
+					" : ", MethodSignature<Sig>::Name, " not found in class ",
 					proxy->getClass().getName().getString());
 		}
 	}
@@ -132,13 +133,14 @@ public:
 
 	Constructor(ClassProxy *proxy) {
 		if (!proxy || !proxy->getClass()) {
-			log::vprint(log::LogType::Warn, __SPRT_LOCATION, "JNI", "ClassProxy for constructor ",
-					Name, " : ", MethodSignature<Sig>::Name, "is invalid");
+			oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "JNI",
+					"ClassProxy for constructor ", Name, " : ", MethodSignature<Sig>::Name,
+					"is invalid");
 			return;
 		}
 		_method = proxy->getClass().getMethodID("<init>", MethodSignature<Sig>::Buffer.data());
 		if (!_method) {
-			log::vprint(log::LogType::Warn, __SPRT_LOCATION, "JNI", "Constructor ",
+			oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "JNI", "Constructor ",
 					MethodSignature<Sig>::Name, " not found in class ",
 					proxy->getClass().getName().getString());
 		}
@@ -167,13 +169,13 @@ public:
 
 	Field(ClassProxy *proxy) {
 		if (!proxy || !proxy->getClass()) {
-			log::vprint(log::LogType::Warn, __SPRT_LOCATION, "JNI", "ClassProxy for field ", Name,
-					"is invalid");
+			oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "JNI", "ClassProxy for field ",
+					Name, "is invalid");
 			return;
 		}
 		_field = proxy->getClass().getFieldID(Name, FieldSignature<Type>::Buffer.data());
 		if (!_field) {
-			log::vprint(log::LogType::Warn, __SPRT_LOCATION, "JNI", "Field (",
+			oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "JNI", "Field (",
 					FieldSignature<Type>::Name, ") ", Name, " not found in class ",
 					proxy->getClass().getName().getString());
 		}
@@ -204,13 +206,13 @@ public:
 
 	StaticFieldBasic(ClassProxy *proxy) {
 		if (!proxy || !proxy->getClass()) {
-			log::vprint(log::LogType::Warn, __SPRT_LOCATION, "JNI", "ClassProxy for static field ",
-					Name, "is invalid");
+			oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "JNI",
+					"ClassProxy for static field ", Name, "is invalid");
 			return;
 		}
 		_field = proxy->getClass().getStaticFieldID(Name, FieldSignature<Type>::Buffer.data());
 		if (!_field) {
-			log::vprint(log::LogType::Warn, __SPRT_LOCATION, "JNI", "Static field (",
+			oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "JNI", "Static field (",
 					FieldSignature<Type>::Name, ") ", Name, " not found in class ",
 					proxy->getClass().getName().getString());
 		} else {
@@ -243,13 +245,13 @@ public:
 
 	StaticFieldObject(ClassProxy *proxy) {
 		if (!proxy || !proxy->getClass()) {
-			log::vprint(log::LogType::Warn, __SPRT_LOCATION, "JNI", "ClassProxy for static field ",
-					Name, "is invalid");
+			oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "JNI",
+					"ClassProxy for static field ", Name, "is invalid");
 			return;
 		}
 		_field = proxy->getClass().getStaticFieldID(Name, FieldSignature<Type>::Buffer.data());
 		if (!_field) {
-			log::vprint(log::LogType::Warn, __SPRT_LOCATION, "JNI", "Static field (",
+			oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "JNI", "Static field (",
 					FieldSignature<Type>::Name, ") ", Name, " not found in class ",
 					proxy->getClass().getName().getString());
 		}

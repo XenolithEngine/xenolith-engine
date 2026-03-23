@@ -20,12 +20,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_ALLOC_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_ALLOC_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_MEMORY_ALLOCATOR_POOL_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_MEMORY_ALLOCATOR_POOL_H_
 
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/runtime/mem/context.h>
-#include <sprt/runtime/detail/operations.h>
 #include <sprt/c/__sprt_assert.h>
 
 #include <sprt/cxx/new.h>
@@ -55,27 +54,13 @@ struct SPRT_GLOBAL AllocPool {
 	static void registerCleanupDestructor(T *obj, pool_t *pool);
 };
 
-} // namespace sprt::memory
-
-
-namespace sprt::memory::detail {
-
-namespace {
-template < class... Args>
-struct Allocator_SelectFirst;
-template < class A, class... Args>
-struct Allocator_SelectFirst<A, Args...> {
-	using type = A;
-};
-} // namespace
-
 template <typename Type>
 struct Allocator_protect_construct {
 	static constexpr bool value = false; // !std::is_scalar<Type>::value;
 };
 
 template <typename T>
-class Allocator {
+class AllocatorPool {
 public:
 	using base_class = AllocPool;
 
@@ -93,34 +78,27 @@ public:
 	using size_type = size_t;
 	using difference_type = ptrdiff_t;
 
-	template <class U>
+	template <typename U>
 	struct rebind {
-		using other = Allocator<U>;
+		using other = AllocatorPool<U>;
 	};
 
 	// default alignment for pool_t is 8-bit, so, we can store up to 3 flags in pool pointer
 
-	enum AllocFlag : uintptr_t {
-		FirstFlag = 1,
-		SecondFlag = 2,
-		ThirdFlag = 4,
-		BitMask = 7,
-	};
-
 public:
 	// Default allocator uses pool from top of thread's AllocStack
-	Allocator() noexcept;
-	Allocator(pool_t *p) noexcept;
+	AllocatorPool() noexcept;
+	AllocatorPool(pool_t *p) noexcept;
 
 	template <typename B>
-	Allocator(const Allocator<B> &a) noexcept;
+	AllocatorPool(const AllocatorPool<B> &a) noexcept;
 	template <typename B>
-	Allocator(Allocator<B> &&a) noexcept;
+	AllocatorPool(AllocatorPool<B> &&a) noexcept;
 
 	template <typename B>
-	Allocator<T> &operator=(const Allocator<B> &a) noexcept;
+	AllocatorPool<T> &operator=(const AllocatorPool<B> &a) noexcept;
 	template <typename B>
-	Allocator<T> &operator=(Allocator<B> &&a) noexcept;
+	AllocatorPool<T> &operator=(AllocatorPool<B> &&a) noexcept;
 
 	T *allocate(size_t n) const noexcept;
 	T *__allocate(size_t &n) const noexcept;
@@ -129,9 +107,9 @@ public:
 	void __deallocate(T *t, size_t n, size_t bytes) const noexcept;
 
 	template <typename B>
-	inline bool operator==(const Allocator<B> &p) const noexcept;
+	inline bool operator==(const AllocatorPool<B> &p) const noexcept;
 	template <typename B>
-	inline bool operator!=(const Allocator<B> &p) const noexcept;
+	inline bool operator!=(const AllocatorPool<B> &p) const noexcept;
 
 	inline pointer address(reference r) const noexcept;
 	inline const_pointer address(const_reference r) const noexcept;
@@ -157,15 +135,8 @@ public:
 	void move(T *dest, T *source, size_t count) noexcept;
 	void move_rewrite(T *dest, size_t dcount, T *source, size_t count) noexcept;
 
-	bool test(AllocFlag f) const noexcept;
-	void set(AllocFlag f) noexcept;
-	void reset(AllocFlag f) noexcept;
-	void flip(AllocFlag f) noexcept;
-
 private:
-	static pool_t *pool_ptr(pool_t *p) noexcept {
-		return (pool_t *)(uintptr_t(p) & ~toInt(BitMask));
-	}
+	static pool_t *pool_ptr(pool_t *p) noexcept { return p; }
 
 	pool_t *pool = nullptr;
 };
@@ -197,35 +168,35 @@ struct Storage {
 
 // Default allocator uses pool from top of thread's AllocStack
 template <typename T>
-inline Allocator<T>::Allocator() noexcept : pool(pool::acquire()) { }
+inline AllocatorPool<T>::AllocatorPool() noexcept : pool(pool::acquire()) { }
 
 template <typename T>
-inline Allocator<T>::Allocator(pool_t *p) noexcept : pool(p) { }
-
-template <typename T>
-template <typename B>
-inline Allocator<T>::Allocator(const Allocator<B> &a) noexcept : pool(a.getPool()) { }
+inline AllocatorPool<T>::AllocatorPool(pool_t *p) noexcept : pool(p) { }
 
 template <typename T>
 template <typename B>
-inline Allocator<T>::Allocator(Allocator<B> &&a) noexcept : pool(a.getPool()) { }
+inline AllocatorPool<T>::AllocatorPool(const AllocatorPool<B> &a) noexcept : pool(a.getPool()) { }
 
 template <typename T>
 template <typename B>
-inline auto Allocator<T>::operator=(const Allocator<B> &a) noexcept -> Allocator<T> & {
+inline AllocatorPool<T>::AllocatorPool(AllocatorPool<B> &&a) noexcept : pool(a.getPool()) { }
+
+template <typename T>
+template <typename B>
+inline auto AllocatorPool<T>::operator=(const AllocatorPool<B> &a) noexcept -> AllocatorPool<T> & {
 	pool = pool_ptr(a.pool);
 	return *this;
 }
 
 template <typename T>
 template <typename B>
-inline auto Allocator<T>::operator=(Allocator<B> &&a) noexcept -> Allocator<T> & {
+inline auto AllocatorPool<T>::operator=(AllocatorPool<B> &&a) noexcept -> AllocatorPool<T> & {
 	pool = pool_ptr(a.pool);
 	return *this;
 }
 
 template <typename T>
-inline auto Allocator<T>::allocate(size_t n) const noexcept -> T * {
+inline auto AllocatorPool<T>::allocate(size_t n) const noexcept -> T * {
 	size_t size = sizeof(T) * n;
 	auto ptr = static_cast<T *>(pool::alloc(pool_ptr(pool), size, alignof(T)));
 
@@ -235,7 +206,7 @@ inline auto Allocator<T>::allocate(size_t n) const noexcept -> T * {
 }
 
 template <typename T>
-inline auto Allocator<T>::__allocate(size_t &n) const noexcept -> T * {
+inline auto AllocatorPool<T>::__allocate(size_t &n) const noexcept -> T * {
 	size_t size = sizeof(T) * n;
 	auto ptr = static_cast<T *>(pool::alloc(pool_ptr(pool), size, alignof(T)));
 
@@ -246,7 +217,7 @@ inline auto Allocator<T>::__allocate(size_t &n) const noexcept -> T * {
 }
 
 template <typename T>
-inline auto Allocator<T>::__allocate(size_t n, size_t &bytes) const noexcept -> T * {
+inline auto AllocatorPool<T>::__allocate(size_t n, size_t &bytes) const noexcept -> T * {
 	size_t size = sizeof(T) * n;
 	auto ptr = static_cast<T *>(pool::alloc(pool_ptr(pool), size, alignof(T)));
 
@@ -257,45 +228,45 @@ inline auto Allocator<T>::__allocate(size_t n, size_t &bytes) const noexcept -> 
 }
 
 template <typename T>
-inline void Allocator<T>::deallocate(T *t, size_t n) const noexcept {
+inline void AllocatorPool<T>::deallocate(T *t, size_t n) const noexcept {
 	pool::free(pool_ptr(pool), t, n * sizeof(T));
 }
 
 template <typename T>
-inline void Allocator<T>::__deallocate(T *t, size_t n, size_t bytes) const noexcept {
+inline void AllocatorPool<T>::__deallocate(T *t, size_t n, size_t bytes) const noexcept {
 	pool::free(pool_ptr(pool), t, bytes);
 }
 
 template <typename T>
 template <typename B>
-inline bool Allocator<T>::operator==(const Allocator<B> &p) const noexcept {
+inline bool AllocatorPool<T>::operator==(const AllocatorPool<B> &p) const noexcept {
 	return pool_ptr(p.pool) == pool_ptr(pool);
 }
 
 template <typename T>
 template <typename B>
-inline bool Allocator<T>::operator!=(const Allocator<B> &p) const noexcept {
+inline bool AllocatorPool<T>::operator!=(const AllocatorPool<B> &p) const noexcept {
 	return pool_ptr(p.pool) != pool_ptr(pool);
 }
 
 template <typename T>
-inline auto Allocator<T>::address(reference r) const noexcept -> pointer {
+inline auto AllocatorPool<T>::address(reference r) const noexcept -> pointer {
 	return &r;
 }
 
 template <typename T>
-inline auto Allocator<T>::address(const_reference r) const noexcept -> const_pointer {
+inline auto AllocatorPool<T>::address(const_reference r) const noexcept -> const_pointer {
 	return &r;
 }
 
 template <typename T>
-inline auto Allocator<T>::max_size() const noexcept -> size_type {
+inline auto AllocatorPool<T>::max_size() const noexcept -> size_type {
 	return Max<size_type>;
 }
 
 template <typename T>
 template <typename... Args>
-inline void Allocator<T>::construct(pointer p, Args &&...args) const noexcept {
+inline void AllocatorPool<T>::construct(pointer p, Args &&...args) const noexcept {
 	static_assert(is_constructible<T, Args...>::value, "Invalid arguments for constructor");
 	if constexpr (is_constructible<T, Args...>::value) {
 		if constexpr (sizeof...(Args) == 1) {
@@ -321,7 +292,7 @@ inline void Allocator<T>::construct(pointer p, Args &&...args) const noexcept {
 }
 
 template <typename T>
-inline void Allocator<T>::destroy(pointer p) const noexcept {
+inline void AllocatorPool<T>::destroy(pointer p) const noexcept {
 	if constexpr (!is_destructible<T>::value || is_scalar<T>::value) {
 		// do nothing
 	} else {
@@ -335,7 +306,7 @@ inline void Allocator<T>::destroy(pointer p) const noexcept {
 }
 
 template <typename T>
-inline void Allocator<T>::destroy(pointer p, size_t size) const noexcept {
+inline void AllocatorPool<T>::destroy(pointer p, size_t size) const noexcept {
 	if constexpr (!is_destructible<T>::value || is_scalar<T>::value) {
 		// do nothing
 	} else {
@@ -351,22 +322,22 @@ inline void Allocator<T>::destroy(pointer p, size_t size) const noexcept {
 }
 
 template <typename T>
-inline Allocator<T>::operator bool() const noexcept {
+inline AllocatorPool<T>::operator bool() const noexcept {
 	return pool_ptr(pool) != nullptr;
 }
 
 template <typename T>
-inline Allocator<T>::operator pool_t *() const noexcept {
+inline AllocatorPool<T>::operator pool_t *() const noexcept {
 	return pool_ptr(pool);
 }
 
 template <typename T>
-inline pool_t *Allocator<T>::getPool() const noexcept {
+inline pool_t *AllocatorPool<T>::getPool() const noexcept {
 	return pool_ptr(pool);
 }
 
 template <typename T>
-inline void Allocator<T>::copy(T *dest, const T *source, size_t count) noexcept {
+inline void AllocatorPool<T>::copy(T *dest, const T *source, size_t count) noexcept {
 	if constexpr (is_trivially_copyable<T>::value) {
 		__constexpr_memmove(dest, source, count);
 	} else {
@@ -381,7 +352,7 @@ inline void Allocator<T>::copy(T *dest, const T *source, size_t count) noexcept 
 }
 
 template <typename T>
-inline void Allocator<T>::copy_rewrite(T *dest, size_t dcount, const T *source,
+inline void AllocatorPool<T>::copy_rewrite(T *dest, size_t dcount, const T *source,
 		size_t count) noexcept {
 	if constexpr (is_trivially_copyable<T>::value) {
 		__constexpr_memmove(dest, source, count);
@@ -409,7 +380,7 @@ inline void Allocator<T>::copy_rewrite(T *dest, size_t dcount, const T *source,
 }
 
 template <typename T>
-inline void Allocator<T>::move(T *dest, T *source, size_t count) noexcept {
+inline void AllocatorPool<T>::move(T *dest, T *source, size_t count) noexcept {
 	if constexpr (is_trivially_copyable<T>::value) {
 		__constexpr_memmove(dest, source, count);
 	} else if constexpr (is_trivially_move_constructible<T>::value) {
@@ -432,7 +403,8 @@ inline void Allocator<T>::move(T *dest, T *source, size_t count) noexcept {
 }
 
 template <typename T>
-inline void Allocator<T>::move_rewrite(T *dest, size_t dcount, T *source, size_t count) noexcept {
+inline void AllocatorPool<T>::move_rewrite(T *dest, size_t dcount, T *source,
+		size_t count) noexcept {
 	if constexpr (is_trivially_copyable<T>::value) {
 		__constexpr_memmove(dest, source, count);
 	} else if constexpr (is_trivially_move_constructible<T>::value) {
@@ -467,32 +439,6 @@ inline void Allocator<T>::move_rewrite(T *dest, size_t dcount, T *source, size_t
 		}
 	}
 }
-
-template <typename T>
-inline bool Allocator<T>::test(AllocFlag f) const noexcept {
-	return (reinterpret_cast<uintptr_t>(pool) & toInt(f)) != uintptr_t(0);
-}
-
-template <typename T>
-inline void Allocator<T>::set(AllocFlag f) noexcept {
-	pool = reinterpret_cast<pool_t *>(reinterpret_cast<uintptr_t>(pool) | toInt(f));
-}
-
-template <typename T>
-inline void Allocator<T>::reset(AllocFlag f) noexcept {
-	pool = reinterpret_cast<pool_t *>(reinterpret_cast<uintptr_t>(pool) & ~toInt(f));
-}
-
-template <typename T>
-inline void Allocator<T>::flip(AllocFlag f) noexcept {
-	pool = reinterpret_cast<pool_t *>(reinterpret_cast<uintptr_t>(pool) ^ toInt(f));
-}
-
-
-} // namespace sprt::memory::detail
-
-
-namespace sprt::memory {
 
 inline void *AllocPool::operator new(size_t size, const nothrow_t &tag) noexcept {
 	return pool::alloc(pool::acquire(), size);
@@ -537,4 +483,4 @@ inline void AllocPool::registerCleanupDestructor(T *obj, pool_t *pool) {
 
 } // namespace sprt::memory
 
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_ALLOC_H_
+#endif // RUNTIME_INCLUDE_SPRT_CXX_MEMORY_ALLOCATOR_POOL_H_

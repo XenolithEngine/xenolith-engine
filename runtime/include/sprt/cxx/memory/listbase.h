@@ -20,13 +20,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_LISTBASE_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_LISTBASE_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_MEMORY_LISTBASE_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_MEMORY_LISTBASE_H_
 
-#include <sprt/runtime/mem/detail/nodebase.h>
+#include <sprt/cxx/memory/nodebase.h>
 #include <sprt/cxx/iterator.h>
 
-namespace sprt::memory::detail {
+namespace sprt::memory {
 
 template <size_t ArchSize>
 struct SPRT_API ListNodeFlag;
@@ -69,7 +69,7 @@ struct SPRT_API ListNodeFlag<size_t(8)> {
 
 template <typename T>
 struct ForwardListNode : AllocPool {
-	using Flag = detail::ListNodeFlag<sizeof(uintptr_t)>;
+	using Flag = ListNodeFlag<sizeof(uintptr_t)>;
 
 	static constexpr uintptr_t MaxSize = Flag::MaxSize;
 	static constexpr uintptr_t MaxIndex = Flag::MaxIndex;
@@ -93,20 +93,27 @@ struct ForwardListNode : AllocPool {
 		return node;
 	}
 
-	static ForwardListNode *copyValue(const Allocator<T> &alloc, ForwardListNode *dest,
-			ForwardListNode *target) {
-		alloc.construct(dest->value.addr(), target->value.ref());
+	template <template <typename U> typename Allocator>
+	static ForwardListNode *copyValue(const Allocator<ForwardListNode> &alloc,
+			ForwardListNode *dest, ForwardListNode *target) {
+		using value_allocator = typename Allocator<ForwardListNode>::template rebind<T>::other;
+
+		value_allocator(alloc).construct(dest->value.addr(), target->value.ref());
 		return dest;
 	}
 
-	static ForwardListNode *destroyValue(const Allocator<T> &alloc, ForwardListNode *node) {
-		alloc.destroy(node->value.ptr());
+	template <template <typename U> typename Allocator>
+	static ForwardListNode *destroyValue(const Allocator<ForwardListNode> &alloc,
+			ForwardListNode *node) {
+		using value_allocator = typename Allocator<ForwardListNode>::template rebind<T>::other;
+
+		value_allocator(alloc).destroy(node->value.ptr());
 		return node;
 	}
 
 	ForwardListNode *next = nullptr;
 	Flag flag;
-	detail::Storage<T> value;
+	Storage<T> value;
 
 	ForwardListNode() noexcept : flag(Flag{0, 0, 0}) { }
 
@@ -223,14 +230,14 @@ struct ForwardListConstIterator {
 };
 
 template <typename Node, typename Allocator>
-class SPRT_API list_base : AllocPool {
+class SPRT_API list_base : Allocator::base_class {
 public:
 	using node_type = Node;
 	using size_type = size_t;
 	using difference_type = ptrdiff_t;
 
 	using node_allocator_type = typename Allocator::template rebind<Node>::other;
-	using allocator_helper = detail::NodeBlockAllocatorHelper<node_type, node_allocator_type>;
+	using allocator_helper = NodeBlockAllocatorHelper<node_type, node_allocator_type>;
 
 	list_base(const node_allocator_type &alloc = node_allocator_type()) noexcept : _alloc(alloc) { }
 
@@ -290,9 +297,9 @@ public:
 
 	size_t size() const noexcept { return _size; }
 
-	void set_memory_persistent(bool value) noexcept { _alloc.set(node_allocator_type::FirstFlag); }
+	void set_memory_persistent(bool value) noexcept { _persistent_bit = value ? 1 : 0; }
 
-	bool memory_persistent() const noexcept { return _alloc.test(node_allocator_type::FirstFlag); }
+	bool memory_persistent() const noexcept { return _persistent_bit != 0; }
 
 	void insert(Node **target, Node *node) {
 		node->next = *target;
@@ -446,8 +453,10 @@ protected:
 		}
 	}
 
+	[[no_unique_address]]
 	node_allocator_type _alloc;
-	size_t _size = 0;
+	size_type _size			  : (sizeof(size_type) * 8 - 1) = 0;
+	size_type _persistent_bit : 1 = 0;
 	uint32_t _blockIndex = 0;
 	uint32_t _extraCapacity = 0;
 
@@ -456,6 +465,6 @@ protected:
 	node_type *_storage = nullptr;
 };
 
-} // namespace sprt::memory::detail
+} // namespace sprt::memory
 
-#endif
+#endif // RUNTIME_INCLUDE_SPRT_CXX_MEMORY_LISTBASE_H_

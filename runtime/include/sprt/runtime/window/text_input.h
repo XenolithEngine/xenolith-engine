@@ -25,8 +25,8 @@
 
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/stream.h>
-#include <sprt/runtime/mem/function.h>
 #include <sprt/runtime/detail/value_wrapper.h>
+#include <sprt/runtime/window/types.h>
 #include <sprt/runtime/window/input.h>
 #include <sprt/runtime/callback.h>
 #include <sprt/runtime/stream.h>
@@ -124,7 +124,7 @@ struct TextInputString : public Ref {
 
 	size_t size() const { return string.size(); }
 
-	memory::dynu16string string;
+	WideString string;
 };
 
 struct TextInputState {
@@ -159,9 +159,9 @@ struct TextInputRequest {
 };
 
 struct TextInputInfo {
-	memory::dynfunction<bool(const TextInputRequest &)> update;
-	memory::dynfunction<void(const TextInputState &)> propagate;
-	memory::dynfunction<void()> cancel;
+	Function<bool(const TextInputRequest &)> update;
+	Function<void(const TextInputState &)> propagate;
+	Function<void()> cancel;
 };
 
 class TextInputProcessor : public Ref {

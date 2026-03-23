@@ -25,8 +25,8 @@
 
 #include <sprt/runtime/geom.h>
 #include <sprt/runtime/ref.h>
+#include <sprt/runtime/window/types.h>
 #include <sprt/runtime/window/mode.h>
-#include <sprt/runtime/mem/vector.h>
 
 #include <sprt/cxx/bitset.h>
 
@@ -189,8 +189,8 @@ struct SPRT_API SurfaceInfo {
 	SurfaceTransformFlags supportedTransforms;
 	SurfaceTransformFlags currentTransform;
 	ImageUsage supportedUsageFlags;
-	memory::dynvector<pair<ImageFormat, ColorSpace>> formats;
-	memory::dynvector<PresentMode> presentModes;
+	Vector<pair<ImageFormat, ColorSpace>> formats;
+	Vector<PresentMode> presentModes;
 
 	// Used when gAPI support for the fullscreen mode required
 	FullScreenExclusiveMode fullscreenMode = FullScreenExclusiveMode::Default;

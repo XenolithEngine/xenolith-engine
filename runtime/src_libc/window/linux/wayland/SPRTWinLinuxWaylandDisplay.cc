@@ -331,7 +331,7 @@ bool WaylandDisplay::init(NotNull<WaylandLibrary> lib, NotNull<XkbLibrary> xkbLi
 	display = wl_display_connect(
 			d.empty() ? nullptr : (d.terminated() ? d.data() : d.str<String>().data()));
 	if (!display) {
-		log::vperror(__SPRT_LOCATION, "WaylandDisplay", "Fail to connect to Wayland Display");
+		oslog::vperror(__SPRT_LOCATION, "WaylandDisplay", "Fail to connect to Wayland Display");
 		return false;
 	}
 

@@ -25,8 +25,8 @@
 
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/window/mode.h>
-#include <sprt/runtime/mem/vector.h>
-#include <sprt/runtime/mem/function.h>
+#include <sprt/cxx/vector.h>
+#include <sprt/cxx/function.h>
 #include <sprt/runtime/platform.h>
 
 namespace sprt::window {
@@ -60,10 +60,10 @@ struct DisplayMode {
 
 	NativeId xid = uintptr_t(0);
 	ModeInfo mode;
-	memory::dynstring id;
-	memory::dynstring name;
+	String id;
+	String name;
 
-	memory::dynvector<float> scales;
+	Vector<float> scales;
 
 	bool preferred = false;
 	bool current = false;
@@ -77,7 +77,7 @@ struct PhysicalDisplay {
 	uint32_t index = 0;
 	MonitorId id;
 	Extent2 mm;
-	memory::dynvector<DisplayMode> modes;
+	Vector<DisplayMode> modes;
 
 	const DisplayMode *getMode(const ModeInfo &m) const;
 	const DisplayMode &getCurrent() const;
@@ -92,7 +92,7 @@ struct LogicalDisplay {
 	float scale = 1.0f;
 	uint32_t transform = 0;
 	bool primary = false;
-	memory::dynvector<MonitorId> monitors;
+	Vector<MonitorId> monitors;
 
 	bool hasMonitor(const MonitorId &id) const;
 
@@ -102,8 +102,8 @@ struct LogicalDisplay {
 struct DisplayConfig : public Ref {
 	uint32_t serial = 0;
 	IRect desktopRect;
-	memory::dynvector<PhysicalDisplay> monitors;
-	memory::dynvector<LogicalDisplay> logical;
+	Vector<PhysicalDisplay> monitors;
+	Vector<LogicalDisplay> logical;
 
 	// OS-native config
 	Rc<Ref> native;
@@ -123,7 +123,7 @@ class DisplayConfigManager : public Ref {
 public:
 	virtual ~DisplayConfigManager() = default;
 
-	virtual bool init(memory::dynfunction<void(NotNull<DisplayConfigManager>)> &&);
+	virtual bool init(Function<void(NotNull<DisplayConfigManager>)> &&);
 
 	virtual void invalidate();
 
@@ -131,12 +131,12 @@ public:
 
 	// Set mode for the monitor, and reset modes for all other monitors to default
 	// Only single monitor mode can be set with this function
-	virtual void setModeExclusive(MonitorId, ModeInfo, memory::dynfunction<void(Status)> &&, Ref *);
+	virtual void setModeExclusive(MonitorId, ModeInfo, Function<void(Status)> &&, Ref *);
 
-	virtual void setMode(MonitorId, ModeInfo, memory::dynfunction<void(Status)> &&, Ref *);
+	virtual void setMode(MonitorId, ModeInfo, Function<void(Status)> &&, Ref *);
 
 	// Reset monitor modes to captured defaults (modes before first setMonitorMode call)
-	virtual void restoreMode(memory::dynfunction<void(Status)> &&, Ref *);
+	virtual void restoreMode(Function<void(Status)> &&, Ref *);
 
 	bool hasSavedMode() const { return _savedConfig; }
 
@@ -163,11 +163,11 @@ protected:
 
 	virtual void handleConfigChanged(NotNull<DisplayConfig>);
 
-	virtual void prepareDisplayConfigUpdate(memory::dynfunction<void(DisplayConfig *)> &&);
-	virtual void applyDisplayConfig(NotNull<DisplayConfig>, memory::dynfunction<void(Status)> &&);
+	virtual void prepareDisplayConfigUpdate(Function<void(DisplayConfig *)> &&);
+	virtual void applyDisplayConfig(NotNull<DisplayConfig>, Function<void(Status)> &&);
 
-	memory::dynfunction<void(NotNull<DisplayConfigManager>)> _onConfigChanged;
-	memory::dynvector<memory::dynfunction<void()>> _waitForConfigNotification;
+	Function<void(NotNull<DisplayConfigManager>)> _onConfigChanged;
+	Vector<Function<void()>> _waitForConfigNotification;
 	Rc<DisplayConfig> _currentConfig;
 	Rc<DisplayConfig> _savedConfig;
 	ScalingMode _scalingMode = PostScaling;

@@ -20,20 +20,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_MAP_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_MAP_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_MAP_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_MAP_H_
 
-#include <sprt/runtime/mem/detail/rbtree.h>
-#include <sprt/runtime/mem/detail/dynalloc.h>
-#include <sprt/runtime/detail/operations.h>
-#include <sprt/runtime/detail/compare.h>
+#include <sprt/cxx/memory/allocator_malloc.h>
+#include <sprt/cxx/memory/allocator_pool.h>
+#include <sprt/cxx/memory/rbtree.h>
+#include <sprt/cxx/algorithm.h>
+#include <sprt/cxx/compare.h>
 #include <sprt/cxx/initializer_list.h>
 
-namespace sprt::memory {
+namespace sprt {
 
-template <typename Key, typename Value, typename Comp = sprt::less<void>,
-		typename Allocator = sprt::memory::detail::Allocator<pair<const Key, Value>>>
-class map : public Allocator::base_class {
+template <typename Key, typename Value, typename Comp, typename Allocator>
+class __map : public Allocator::base_class {
 public:
 	using key_type = Key;
 	using mapped_type = Value;
@@ -46,7 +46,7 @@ public:
 	using reference = value_type &;
 	using const_reference = const value_type &;
 
-	using tree_type = detail::RbTree<Key, value_type, Comp, allocator_type>;
+	using tree_type = memory::RbTree<Key, value_type, Comp, allocator_type>;
 
 	using iterator = typename tree_type::iterator;
 	using const_iterator = typename tree_type::const_iterator;
@@ -56,50 +56,50 @@ public:
 	using difference_type = ptrdiff_t;
 
 public:
-	map() noexcept : map(Comp()) { }
+	__map() noexcept : __map(Comp()) { }
 
-	explicit map(const Comp &comp, const allocator_type &alloc = allocator_type()) noexcept
+	explicit __map(const Comp &comp, const allocator_type &alloc = allocator_type()) noexcept
 	: _tree(comp, alloc) { }
-	explicit map(const allocator_type &alloc) noexcept : _tree(key_compare(), alloc) { }
+	explicit __map(const allocator_type &alloc) noexcept : _tree(key_compare(), alloc) { }
 
-	template <class InputIterator>
-	map(InputIterator first, InputIterator last, const Comp &comp = Comp(),
+	template <typename InputIterator>
+	__map(InputIterator first, InputIterator last, const Comp &comp = Comp(),
 			const allocator_type &alloc = allocator_type()) noexcept
 	: _tree(comp, alloc) {
 		for (auto it = first; it != last; it++) { do_insert(*it); }
 	}
-	template < class InputIterator >
-	map(InputIterator first, InputIterator last, const allocator_type &alloc) noexcept
+	template < typename InputIterator >
+	__map(InputIterator first, InputIterator last, const allocator_type &alloc) noexcept
 	: _tree(key_compare(), alloc) {
 		for (auto it = first; it != last; it++) { do_insert(*it); }
 	}
 
-	map(const map &x) noexcept : _tree(x._tree) { }
-	map(const map &x, const allocator_type &alloc) noexcept : _tree(x._tree, alloc) { }
+	__map(const __map &x) noexcept : _tree(x._tree) { }
+	__map(const __map &x, const allocator_type &alloc) noexcept : _tree(x._tree, alloc) { }
 
-	map(map &&x) noexcept : _tree(sprt::move_unsafe(x._tree)) { }
-	map(map &&x, const allocator_type &alloc) noexcept
+	__map(__map &&x) noexcept : _tree(sprt::move_unsafe(x._tree)) { }
+	__map(__map &&x, const allocator_type &alloc) noexcept
 	: _tree(sprt::move_unsafe(x._tree), alloc) { }
 
-	map(initializer_list<value_type> il, const Comp &comp = Comp(),
+	__map(initializer_list<value_type> il, const Comp &comp = Comp(),
 			const allocator_type &alloc = allocator_type()) noexcept
 	: _tree(comp, alloc) {
 		for (auto &it : il) { do_insert(sprt::move_unsafe(const_cast<reference>(it))); }
 	}
-	map(initializer_list<value_type> il, const allocator_type &alloc) noexcept
+	__map(initializer_list<value_type> il, const allocator_type &alloc) noexcept
 	: _tree(key_compare(), alloc) {
 		for (auto &it : il) { do_insert(sprt::move_unsafe(const_cast<reference>(it))); }
 	}
 
-	map &operator=(const map &other) noexcept {
+	__map &operator=(const __map &other) noexcept {
 		_tree = other._tree;
 		return *this;
 	}
-	map &operator=(map &&other) noexcept {
+	__map &operator=(__map &&other) noexcept {
 		_tree = sprt::move_unsafe(other._tree);
 		return *this;
 	}
-	map &operator=(initializer_list<value_type> ilist) noexcept {
+	__map &operator=(initializer_list<value_type> ilist) noexcept {
 		_tree.clear();
 		for (auto &it : ilist) { do_insert(sprt::move_unsafe(const_cast<reference>(it))); }
 		return *this;
@@ -151,19 +151,19 @@ public:
 	const_reverse_iterator crbegin() const noexcept { return const_reverse_iterator(cend()); }
 	const_reverse_iterator crend() const noexcept { return const_reverse_iterator(cbegin()); }
 
-	void swap(map &other) noexcept { _tree.swap(other._tree); }
+	void swap(__map &other) noexcept { _tree.swap(other._tree); }
 
-	template <class P>
+	template <typename P>
 	pair<iterator, bool> insert(P &&value) {
 		return do_insert(sprt::forward<P>(value));
 	}
 
-	template <class P>
+	template <typename P>
 	iterator insert(const_iterator hint, P &&value) {
 		return do_insert(hint, sprt::forward<P>(value));
 	}
 
-	template < class InputIt >
+	template < typename InputIt >
 	void insert(InputIt first, InputIt last) {
 		for (auto it = first; it != last; it++) { do_insert(*it); }
 	}
@@ -173,27 +173,27 @@ public:
 	}
 
 
-	template <class M>
+	template <typename M>
 	pair<iterator, bool> insert_or_assign(const key_type &k, M &&obj) {
 		return _tree.insert_or_assign(k, obj);
 	}
 
-	template <class M>
+	template <typename M>
 	pair<iterator, bool> insert_or_assign(key_type &&k, M &&obj) {
 		return _tree.insert_or_assign(sprt::move_unsafe(k), obj);
 	}
 
-	template <class M>
+	template <typename M>
 	iterator insert_or_assign(const_iterator hint, const key_type &k, M &&obj) {
 		return _tree.insert_or_assign(hint, k, obj);
 	}
 
-	template <class M>
+	template <typename M>
 	iterator insert_or_assign(const_iterator hint, key_type &&k, M &&obj) {
 		return _tree.insert_or_assign(hint, sprt::move_unsafe(k), obj);
 	}
 
-	template < class... Args >
+	template < typename... Args >
 	pair<iterator, bool> emplace(Args &&...args) {
 		auto ret = try_emplace(sprt::forward<Args>(args)...);
 		if (!ret.second) {
@@ -202,7 +202,7 @@ public:
 		return ret;
 	}
 
-	template <class... Args>
+	template <typename... Args>
 	iterator emplace_hint(const_iterator hint, Args &&...args) {
 		auto ret = _tree.emplace_hint(hint, sprt::forward<Args>(args)...);
 		if (!ret.second) {
@@ -212,22 +212,22 @@ public:
 	}
 
 
-	template <class... Args>
+	template <typename... Args>
 	pair<iterator, bool> try_emplace(const key_type &k, Args &&...args) {
 		return _tree.try_emplace(k, sprt::forward<Args>(args)...);
 	}
 
-	template <class... Args>
+	template <typename... Args>
 	pair<iterator, bool> try_emplace(key_type &&k, Args &&...args) {
 		return _tree.try_emplace(sprt::move_unsafe(k), sprt::forward<Args>(args)...);
 	}
 
-	template <class... Args>
+	template <typename... Args>
 	iterator try_emplace(const_iterator hint, const key_type &k, Args &&...args) {
 		return _tree.try_emplace(hint, k, sprt::forward<Args>(args)...);
 	}
 
-	template <class... Args>
+	template <typename... Args>
 	iterator try_emplace(const_iterator hint, key_type &&k, Args &&...args) {
 		return _tree.try_emplace(hint, sprt::move_unsafe(k), sprt::forward<Args>(args)...);
 	}
@@ -237,43 +237,43 @@ public:
 	size_type erase(const key_type &key) { return _tree.erase_unique(key); }
 
 
-	template < class K >
+	template < typename K >
 	iterator find(const K &x) {
 		return _tree.find(x);
 	}
-	template < class K >
+	template < typename K >
 	const_iterator find(const K &x) const {
 		return _tree.find(x);
 	}
 
-	template < class K >
+	template < typename K >
 	iterator lower_bound(const K &x) {
 		return _tree.lower_bound(x);
 	}
-	template < class K >
+	template < typename K >
 	const_iterator lower_bound(const K &x) const {
 		return _tree.lower_bound(x);
 	}
 
-	template < class K >
+	template < typename K >
 	iterator upper_bound(const K &x) {
 		return _tree.upper_bound(x);
 	}
-	template < class K >
+	template < typename K >
 	const_iterator upper_bound(const K &x) const {
 		return _tree.upper_bound(x);
 	}
 
-	template < class K >
+	template < typename K >
 	pair<iterator, iterator> equal_range(const K &x) {
 		return _tree.equal_range(x);
 	}
-	template < class K >
+	template < typename K >
 	pair<const_iterator, const_iterator> equal_range(const K &x) const {
 		return _tree.equal_range(x);
 	}
 
-	template < class K >
+	template < typename K >
 	size_t count(const K &x) const {
 		return _tree.count_unique(x);
 	}
@@ -281,27 +281,27 @@ public:
 	void reserve(size_t c) { _tree.reserve(c); }
 
 protected:
-	template <class A, class B>
+	template <typename A, typename B>
 	pair<iterator, bool> do_insert(const pair<A, B> &value) {
 		return emplace(value.first, value.second);
 	}
 
-	template <class A, class B>
+	template <typename A, typename B>
 	pair<iterator, bool> do_insert(pair<A, B> &&value) {
 		return emplace(sprt::move_unsafe(value.first), sprt::move_unsafe(value.second));
 	}
 
-	template <class A, class B>
+	template <typename A, typename B>
 	iterator do_insert(const_iterator hint, const pair<A, B> &value) {
 		return emplace_hint(hint, value.first, value.second);
 	}
 
-	template <class A, class B>
+	template <typename A, typename B>
 	iterator do_insert(const_iterator hint, pair<A, B> &&value) {
 		return emplace_hint(hint, sprt::move_unsafe(value.first), sprt::move_unsafe(value.second));
 	}
 
-	template <class T, class... Args>
+	template <typename T, typename... Args>
 	void do_assign(iterator it, T &&, Args &&...args) {
 		it->second = Value(sprt::forward<Args>(args)...);
 	}
@@ -309,56 +309,59 @@ protected:
 	tree_type _tree;
 };
 
-template <typename Key, typename Value>
-using dynmap = map<Key, Value, sprt::less<void>, detail::DynamicAllocator<pair<const Key, Value>>>;
+template <typename Key, typename Value, typename Comparator = sprt::less<void>>
+using __pool_map = __map<Key, Value, Comparator, memory::AllocatorPool<pair<const Key, Value>>>;
+
+template <typename Key, typename Value, typename Comparator = sprt::less<void>>
+using __malloc_map = __map<Key, Value, Comparator, memory::AllocatorMalloc<pair<const Key, Value>>>;
 
 /// See sprt::vector::swap().
 template <typename Key, typename Value, typename Comp, typename Allocator>
-inline void swap(map<Key, Value, Comp, Allocator> &__x,
-		map<Key, Value, Comp, Allocator> &__y) noexcept {
+inline void swap(__map<Key, Value, Comp, Allocator> &__x,
+		__map<Key, Value, Comp, Allocator> &__y) noexcept {
 	__x.swap(__y);
 }
 
 template <typename Key, typename Value, typename Comp, typename Allocator>
-inline bool operator==(const map<Key, Value, Comp, Allocator> &__x,
-		const map<Key, Value, Comp, Allocator> &__y) {
+inline bool operator==(const __map<Key, Value, Comp, Allocator> &__x,
+		const __map<Key, Value, Comp, Allocator> &__y) {
 	return (__x.size() == __y.size() && sprt::equal(__x.begin(), __x.end(), __y.begin()));
 }
 
 template <typename Key, typename Value, typename Comp, typename Allocator>
-inline bool operator<(const map<Key, Value, Comp, Allocator> &__x,
-		const map<Key, Value, Comp, Allocator> &__y) {
+inline bool operator<(const __map<Key, Value, Comp, Allocator> &__x,
+		const __map<Key, Value, Comp, Allocator> &__y) {
 	return sprt::lexicographical_compare(__x.begin(), __x.end(), __y.begin(), __y.end());
 }
 
 /// Based on operator==
 template <typename Key, typename Value, typename Comp, typename Allocator>
-inline bool operator!=(const map<Key, Value, Comp, Allocator> &__x,
-		const map<Key, Value, Comp, Allocator> &__y) {
+inline bool operator!=(const __map<Key, Value, Comp, Allocator> &__x,
+		const __map<Key, Value, Comp, Allocator> &__y) {
 	return !(__x == __y);
 }
 
 /// Based on operator<
 template <typename Key, typename Value, typename Comp, typename Allocator>
-inline bool operator>(const map<Key, Value, Comp, Allocator> &__x,
-		const map<Key, Value, Comp, Allocator> &__y) {
+inline bool operator>(const __map<Key, Value, Comp, Allocator> &__x,
+		const __map<Key, Value, Comp, Allocator> &__y) {
 	return __y < __x;
 }
 
 /// Based on operator<
 template <typename Key, typename Value, typename Comp, typename Allocator>
-inline bool operator<=(const map<Key, Value, Comp, Allocator> &__x,
-		const map<Key, Value, Comp, Allocator> &__y) {
+inline bool operator<=(const __map<Key, Value, Comp, Allocator> &__x,
+		const __map<Key, Value, Comp, Allocator> &__y) {
 	return !(__y < __x);
 }
 
 /// Based on operator<
 template <typename Key, typename Value, typename Comp, typename Allocator>
-inline bool operator>=(const map<Key, Value, Comp, Allocator> &__x,
-		const map<Key, Value, Comp, Allocator> &__y) {
+inline bool operator>=(const __map<Key, Value, Comp, Allocator> &__x,
+		const __map<Key, Value, Comp, Allocator> &__y) {
 	return !(__x < __y);
 }
 
-} // namespace sprt::memory
+} // namespace sprt
 
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_MAP_H_
+#endif // RUNTIME_INCLUDE_SPRT_CXX_MAP_H_

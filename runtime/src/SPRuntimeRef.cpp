@@ -24,8 +24,8 @@
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/backtrace.h>
 #include <sprt/c/__sprt_assert.h>
-#include <sprt/runtime/mem/forward_list.h>
-#include <sprt/runtime/mem/map.h>
+#include <sprt/cxx/forward_list.h>
+#include <sprt/cxx/map.h>
 #include <sprt/runtime/mutex.h>
 
 namespace sprt {
@@ -33,8 +33,8 @@ namespace sprt {
 struct RefAllocData {
 	void *lastPtr = nullptr;
 
-	memory::forward_list<memory::pool_t *> *delayedPools = nullptr;
-	memory::forward_list<memory::allocator_t *> *delayedAllocs = nullptr;
+	__pool_forward_list<memory::pool_t *> *delayedPools = nullptr;
+	__pool_forward_list<memory::allocator_t *> *delayedAllocs = nullptr;
 
 	static RefAllocData *get() {
 		static thread_local RefAllocData tl_RefAllocData;
@@ -114,7 +114,7 @@ void RefAlloc::destroySelfContained(memory::pool_t *pool) {
 	auto d = RefAllocData::get();
 	if (!d->delayedPools) {
 		auto pool = memory::get_thread_support_pool();
-		d->delayedPools = new (pool) memory::forward_list<memory::pool_t *>(pool);
+		d->delayedPools = new (pool) __pool_forward_list<memory::pool_t *>(pool);
 		d->delayedPools->set_memory_persistent(true);
 	}
 
@@ -125,7 +125,7 @@ void RefAlloc::destroySelfContained(memory::allocator_t *alloc) {
 	auto d = RefAllocData::get();
 	if (!d->delayedAllocs) {
 		auto pool = memory::get_thread_support_pool();
-		d->delayedAllocs = new (pool) memory::forward_list<memory::allocator_t *>(pool);
+		d->delayedAllocs = new (pool) __pool_forward_list<memory::allocator_t *>(pool);
 		d->delayedAllocs->set_memory_persistent(true);
 	}
 
@@ -147,18 +147,18 @@ static atomic<uint64_t> s_refId = 1;
 struct BackraceInfo : memory::AllocPool {
 	time_t t = platform::clock(platform::ClockType::Monotonic);
 	memory::pool_t *pool = nullptr;
-	memory::forward_list<StringView> backtrace;
+	__pool_forward_list<StringView> backtrace;
 };
 
 struct RefInfo : memory::AllocPool {
 	qmutex refMutex;
 	const Ref *ref = nullptr;
 	memory::pool_t *pool = nullptr;
-	memory::map<uint64_t, BackraceInfo *> backtraces;
+	__pool_map<uint64_t, BackraceInfo *> backtraces;
 };
 
-static memory::map<const Ref *, RefInfo *> s_retainMap =
-		memory::map<const Ref *, RefInfo *>(memory::get_zero_pool());
+static __pool_map<const Ref *, RefInfo *> s_retainMap =
+		__pool_map<const Ref *, RefInfo *>(memory::get_zero_pool());
 
 uint64_t getNextRefId() { return s_refId.fetch_add(1); }
 
@@ -244,7 +244,7 @@ void releaseBacktrace(const Ref *ptr, uint64_t id) {
 }
 
 void foreachBacktrace(const Ref *ptr,
-		const callback<void(uint64_t, time_t, const memory::forward_list<StringView> &)> &cb) {
+		const callback<void(uint64_t, time_t, const __pool_forward_list<StringView> &)> &cb) {
 
 	// first - acquire ref info from global data
 	RefInfo *info = nullptr;

@@ -23,7 +23,8 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_EMPLACE_ORDERED_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_EMPLACE_ORDERED_H_
 
-#include <sprt/runtime/detail/compare.h>
+#include <sprt/cxx/compare.h>
+#include <sprt/cxx/detail/bounds.h>
 
 namespace sprt {
 

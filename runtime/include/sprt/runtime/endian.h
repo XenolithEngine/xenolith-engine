@@ -94,36 +94,36 @@ static constexpr size_t Bit16Size = 2;
 static constexpr size_t Bit32Size = 4;
 static constexpr size_t Bit64Size = 8;
 
-template <class T, ShouldSwap ByteSwap, size_t Size>
+template <typename T, ShouldSwap ByteSwap, size_t Size>
 struct Converter;
 
-template <class T>
+template <typename T>
 struct Converter<T, ShouldSwap::DoSwap, Bit8Size> {
 	static inline T Swap(T value) { return value; }
 };
 
-template <class T>
+template <typename T>
 struct Converter<T, ShouldSwap::DoSwap, Bit16Size> {
 	static inline T Swap(T value) {
 		return sprt::bit_cast<T>(bswap16(sprt::bit_cast<uint16_t>(value)));
 	}
 };
 
-template <class T>
+template <typename T>
 struct Converter<T, ShouldSwap::DoSwap, Bit32Size> {
 	static inline T Swap(T value) {
 		return sprt::bit_cast<T>(bswap32(sprt::bit_cast<uint32_t>(value)));
 	}
 };
 
-template <class T>
+template <typename T>
 struct Converter<T, ShouldSwap::DoSwap, Bit64Size> {
 	static inline T Swap(T value) {
 		return sprt::bit_cast<T>(bswap64(sprt::bit_cast<uint64_t>(value)));
 	}
 };
 
-template <class T, size_t Size>
+template <typename T, size_t Size>
 struct Converter<T, ShouldSwap::DoSwap, Size> {
 	static inline T Swap(T value) {
 		T ret;
@@ -136,7 +136,7 @@ struct Converter<T, ShouldSwap::DoSwap, Size> {
 	}
 };
 
-template <class T, size_t Size>
+template <typename T, size_t Size>
 struct Converter<T, ShouldSwap::NoSwap, Size> {
 	static inline T Swap(T value) { return value; }
 };
@@ -174,44 +174,44 @@ static constexpr ShouldSwap hostToBig() {
 
 static constexpr bool isLittleEndian() { return endian::native == endian::little; }
 
-template <class T>
+template <typename T>
 using NetworkConverter = Converter<T, hostToNetwork(), sizeof(T)>;
 
-template <class T>
+template <typename T>
 using LittleConverter = Converter<T, hostToLittle(), sizeof(T)>;
 
-template <class T>
+template <typename T>
 using BigConverter = Converter<T, hostToBig(), sizeof(T)>;
 
-template <class T>
+template <typename T>
 using HostConverter = Converter<T, ShouldSwap::NoSwap, sizeof(T)>;
 
-template <class T>
+template <typename T>
 static inline T HostToNetwork(T value) {
 	return NetworkConverter<T>::Swap(value);
 }
 
-template <class T>
+template <typename T>
 static inline T NetworkToHost(T value) {
 	return NetworkConverter<T>::Swap(value);
 }
 
-template <class T>
+template <typename T>
 static inline T HostToLittle(T value) {
 	return LittleConverter<T>::Swap(value);
 }
 
-template <class T>
+template <typename T>
 static inline T LittleToHost(T value) {
 	return LittleConverter<T>::Swap(value);
 }
 
-template <class T>
+template <typename T>
 static inline T HostToBig(T value) {
 	return BigConverter<T>::Swap(value);
 }
 
-template <class T>
+template <typename T>
 static inline T BigToHost(T value) {
 	return BigConverter<T>::Swap(value);
 }

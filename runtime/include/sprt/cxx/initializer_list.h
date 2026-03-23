@@ -61,12 +61,12 @@ public:
 	constexpr const _Ep *end() const noexcept { return __begin_ + __size_; }
 };
 
-template <class _Ep>
+template <typename _Ep>
 inline constexpr const _Ep *begin(initializer_list<_Ep> __il) noexcept {
 	return __il.begin();
 }
 
-template <class _Ep>
+template <typename _Ep>
 inline constexpr const _Ep *end(initializer_list<_Ep> __il) noexcept {
 	return __il.end();
 }

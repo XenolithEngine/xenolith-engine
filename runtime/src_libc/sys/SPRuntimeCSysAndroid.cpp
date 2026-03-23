@@ -74,52 +74,52 @@ __SPRT_C_FUNC int __SPRT_ID(ALooper_removeFd)(__SPRT_ID(ALooper) * looper, int f
 #else
 
 __SPRT_C_FUNC __SPRT_ID(ALooper) * __SPRT_ID(ALooper_forThread)() {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_ALOOPER)");
 	return nullptr;
 }
 
 __SPRT_C_FUNC __SPRT_ID(ALooper) * __SPRT_ID(ALooper_prepare)(int opts) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_ALOOPER)");
 	return nullptr;
 }
 
 __SPRT_C_FUNC void __SPRT_ID(ALooper_acquire)(__SPRT_ID(ALooper) * looper) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_ALOOPER)");
 	return;
 }
 __SPRT_C_FUNC void __SPRT_ID(ALooper_release)(__SPRT_ID(ALooper) * looper) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_ALOOPER)");
 	return;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		ALooper_pollOnce)(int timeoutMillis, int *outFd, int *outEvents, void **outData) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_ALOOPER)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }
 
 __SPRT_C_FUNC void __SPRT_ID(ALooper_wake)(__SPRT_ID(ALooper) * looper) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_ALOOPER)");
 	return;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(ALooper_addFd)(__SPRT_ID(ALooper) * looper, int fd, int ident,
 		int events, __SPRT_ID(ALooper_callbackFunc) callback, void *data) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_ALOOPER)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(ALooper_removeFd)(__SPRT_ID(ALooper) * looper, int fd) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_ALOOPER)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -158,14 +158,14 @@ __SPRT_C_FUNC int __SPRT_ID(
 #else
 
 __SPRT_C_FUNC int __SPRT_ID(alog_print)(int prio, const char *tag, const char *fmt, ...) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_ALOG)");
 	return -ENOSYS;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		alog_vprint)(int prio, const char *tag, const char *fmt, __SPRT_ID(va_list) ap) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_ALOG)");
 	return -ENOSYS;
 }

@@ -80,8 +80,8 @@ struct SPRT_API NetworkState {
 	NMMetered metered = NMMetered::NM_METERED_UNKNOWN;
 	NMState state = NMState::NM_STATE_UNKNOWN;
 	NMConnectivityState connectivity = NMConnectivityState::NM_CONNECTIVITY_UNKNOWN;
-	memory::dynstring primaryConnectionType;
-	memory::dynvector<uint32_t> capabilities;
+	String primaryConnectionType;
+	Vector<uint32_t> capabilities;
 
 	NetworkState() = default;
 	NetworkState(NotNull<dbus::Library>, NotNull<DBusMessage>);
@@ -113,7 +113,7 @@ public:
 
 	// available only if  `isConnectied`
 	Rc<DisplayConfigManager> makeDisplayConfigManager(
-			memory::dynfunction<void(NotNull<DisplayConfigManager>)> &&);
+			Function<void(NotNull<DisplayConfigManager>)> &&);
 
 protected:
 	dbus_bool_t handleDbusEvent(dbus::Connection *c, const dbus::Event &);

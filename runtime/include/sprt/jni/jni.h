@@ -609,8 +609,8 @@ protected:
 
 	GlobalClass loaderClassClass = nullptr;
 
-	memory::dynstring apkPath;
-	memory::dynstring nativeLibraryDir;
+	String apkPath;
+	String nativeLibraryDir;
 
 	App *app = nullptr;
 };
@@ -627,12 +627,12 @@ struct SPRT_API ApplicationInfo : public sprt::Ref {
 
 	bool init(const jni::Ref &);
 
-	memory::dynstring bundleName;
-	memory::dynstring applicationName;
-	memory::dynstring applicationVersion;
-	memory::dynstring userAgent;
-	memory::dynstring systemAgent;
-	memory::dynstring locale;
+	String bundleName;
+	String applicationName;
+	String applicationVersion;
+	String userAgent;
+	String systemAgent;
+	String locale;
 
 	uint32_t pixelWidth = 0;
 	uint32_t pixelHeight = 0;
@@ -702,9 +702,9 @@ struct SPRT_API App : public sprt::Ref {
 
 	Rc<jni::ApplicationInfo> currentInfo;
 
-	memory::dynfunction<bool(ANativeActivity *, BytesView)> activityLoader;
-	memory::dynfunction<void(jni::ApplicationInfo *)> configurationHandler;
-	memory::dynfunction<void()> lowMemoryHandler;
+	Function<bool(ANativeActivity *, BytesView)> activityLoader;
+	Function<void(jni::ApplicationInfo *)> configurationHandler;
+	Function<void()> lowMemoryHandler;
 
 	static App *alloc(const RefClass &);
 
@@ -717,9 +717,9 @@ struct SPRT_API App : public sprt::Ref {
 	void handleConfigurationChanged(const jni::Ref &ref);
 	void handleLowMemory(const jni::Ref &ref);
 
-	void setActivityLoader(memory::dynfunction<bool(ANativeActivity *, BytesView)> &&);
-	void setConfigurationHandler(memory::dynfunction<void(jni::ApplicationInfo *)> &&);
-	void setLowMemoryHandler(memory::dynfunction<void()> &&);
+	void setActivityLoader(Function<bool(ANativeActivity *, BytesView)> &&);
+	void setConfigurationHandler(Function<void(jni::ApplicationInfo *)> &&);
+	void setLowMemoryHandler(Function<void()> &&);
 
 	Rc<jni::ApplicationInfo> makeInfo(const jni::Ref &ref);
 

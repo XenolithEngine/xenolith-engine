@@ -73,7 +73,7 @@
 #ifndef PCG_RAND_HPP_INCLUDED
 #define PCG_RAND_HPP_INCLUDED 1
 
-#include <sprt/runtime/detail/compare.h>
+#include <sprt/cxx/algorithm.h>
 #include <sprt/cxx/new.h>
 
 #ifdef _MSC_VER

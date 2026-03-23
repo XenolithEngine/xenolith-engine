@@ -142,8 +142,8 @@ namespace sprt {
 
 __SPRT_C_FUNC void __sprt_assert_fail(const char *cond, const char *file, unsigned int line,
 		const char *fn, const char *text) __SPRT_NOEXCEPT {
-	auto features = log::LogFeatures::acquire();
-	memory::dynstring prefix;
+	auto features = oslog::LogFeatures::acquire();
+	__malloc_string prefix;
 #if !SPRT_ANDROID
 	prefix = StreamTraits<char>::toString(features.reverse, features.bold, features.fred, "[F]",
 			features.fdef, features.drop);
@@ -154,12 +154,12 @@ __SPRT_C_FUNC void __sprt_assert_fail(const char *cond, const char *file, unsign
 	StringView sFn = fn ? StringView(fn) : StringView("<function>");
 
 	if (text && text[0] != 0) {
-		log::vprint(sprt::log::LogType::Fatal, source_location_ext{file, fn, line, 0}, "Assert",
-				sFn, ": (", sCond, ") failed: ", text, " ", features.underline, features.dim, sFile,
-				":", line, features.drop);
+		oslog::vprint(oslog::LogType::Fatal, source_location_ext{file, fn, line, 0}, "Assert", sFn,
+				": (", sCond, ") failed: ", text, " ", features.underline, features.dim, sFile, ":",
+				line, features.drop);
 	} else {
-		log::vprint(sprt::log::LogType::Fatal, source_location_ext{file, fn, line, 0}, "Assert",
-				sFn, ": (", sCond, ") failed: ", features.underline, features.dim, sFile, ":", line,
+		oslog::vprint(oslog::LogType::Fatal, source_location_ext{file, fn, line, 0}, "Assert", sFn,
+				": (", sCond, ") failed: ", features.underline, features.dim, sFile, ":", line,
 				features.drop);
 	}
 	::abort();
@@ -395,7 +395,7 @@ __SPRT_C_FUNC __SPRT_ID(nl_catd) __SPRT_ID(catopen)(const char *path, int v) {
 	if (platform::_catopen) {
 		return platform::_catopen(path, v);
 	}
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
@@ -403,7 +403,7 @@ __SPRT_C_FUNC __SPRT_ID(nl_catd) __SPRT_ID(catopen)(const char *path, int v) {
 	return ::catopen(path, v);
 #endif
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_NLTYPES_CAT)");
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
@@ -416,7 +416,7 @@ __SPRT_C_FUNC char *__SPRT_ID(catgets)(__SPRT_ID(nl_catd) cat, int a, int b, con
 	if (platform::_catgets) {
 		return platform::_catgets(cat, a, b, str);
 	}
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
@@ -426,7 +426,7 @@ __SPRT_C_FUNC char *__SPRT_ID(catgets)(__SPRT_ID(nl_catd) cat, int a, int b, con
 	return ::catgets(cat, a, b, str);
 #endif
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_NLTYPES_CAT)");
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
@@ -439,7 +439,7 @@ __SPRT_C_FUNC int __SPRT_ID(catclose)(__SPRT_ID(nl_catd) cat) {
 	if (platform::_catclose) {
 		return platform::_catclose(cat);
 	}
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -449,7 +449,7 @@ __SPRT_C_FUNC int __SPRT_ID(catclose)(__SPRT_ID(nl_catd) cat) {
 	return ::catclose(cat);
 #endif
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_NLTYPES_CAT)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;

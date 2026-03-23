@@ -1,6 +1,5 @@
 /**
- Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
- Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -25,13 +24,13 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MATH_H_
 
 #include <sprt/runtime/init.h>
-#include <sprt/runtime/detail/operations.h>
+#include <sprt/cxx/functional.h>
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/__sprt_float.h>
 
 namespace sprt {
 
-template <class _Tp, _Tp... _Ip>
+template <typename _Tp, _Tp... _Ip>
 struct integer_sequence {
 	typedef _Tp value_type;
 	static_assert(is_integral<_Tp>::value,
@@ -44,12 +43,12 @@ using index_sequence = integer_sequence<size_t, _Ip...>;
 
 #if __has_builtin(__make_integer_seq)
 
-template <class _Tp, _Tp _Ep>
+template <typename _Tp, _Tp _Ep>
 using make_integer_sequence = __make_integer_seq<integer_sequence, _Tp, _Ep>;
 
 #elif __has_builtin(__integer_pack)
 
-template <class _Tp, _Tp _SequenceSize>
+template <typename _Tp, _Tp _SequenceSize>
 using make_integer_sequence = integer_sequence<_Tp, __integer_pack(_SequenceSize)...>;
 
 #else
@@ -99,32 +98,6 @@ concept unsigned_integer = is_unsigned_integer_v<_Tp>;
 template <typename _Tp>
 concept signed_or_unsigned_integer = signed_integer<_Tp> || unsigned_integer<_Tp>;
 
-constexpr inline bool isnan(float value) {
-#if __has_builtin(__builtin_isnan)
-	return __builtin_isnan(value);
-#else
-	return value != value;
-#endif
-}
-
-constexpr inline bool isnan(double value) {
-#if __has_builtin(__builtin_isnan)
-	return __builtin_isnan(value);
-#else
-	return value != value;
-#endif
-}
-
-constexpr inline bool isnan(long double value) {
-#if __has_builtin(__builtin_isnan)
-	return __builtin_isnan(value);
-#else
-	return value != value;
-#endif
-}
-
-constexpr inline bool isinf(double value) { return __builtin_isinf(value); }
-
 } // namespace sprt
 
 // numbers::pi replacement from std
@@ -141,6 +114,19 @@ inline constexpr T Pi =
  */
 
 namespace sprt {
+
+template <typename T>
+constexpr inline T MaxExp;
+
+template <>
+constexpr inline long double MaxExp<long double> = __SPRT_LDBL_MAX_EXP;
+
+template <>
+constexpr inline double MaxExp<double> = __SPRT_DBL_MAX_EXP;
+
+template <>
+constexpr inline float MaxExp<float> = __SPRT_FLT_MAX_EXP;
+
 
 template <typename T>
 constexpr inline T Infinity;
@@ -217,7 +203,7 @@ inline constexpr int32_t Max<int32_t> = __SPRT_INT32_MAX;
 template <>
 inline constexpr int64_t Max<int64_t> = __SPRT_INT64_MAX;
 
-#if SPRT_MACOS
+#if SPRT_HAVE_DEDICATED_SIZE_T
 template <>
 inline constexpr int64_t Max<size_t> = __SPRT_SIZE_MAX;
 #endif
@@ -258,7 +244,7 @@ inline constexpr uint32_t Min<int32_t> = __SPRT_INT32_C(-1) - __SPRT_INT32_MAX;
 template <>
 inline constexpr uint64_t Min<int64_t> = __SPRT_INT64_C(-1) - __SPRT_INT64_MAX;
 
-#if SPRT_MACOS
+#if SPRT_HAVE_DEDICATED_SIZE_T
 template <>
 inline constexpr int64_t Min<size_t> = __SPRT_SIZE_MIN;
 #endif
@@ -330,7 +316,7 @@ constexpr int countr_one(Type __t) noexcept {
 }
 
 
-template <class _Tp>
+template <typename _Tp>
 [[nodiscard]]
 constexpr int __popcount(_Tp __t) noexcept {
 	static_assert(is_unsigned_integer_v<_Tp>, "__popcount only works with unsigned types");

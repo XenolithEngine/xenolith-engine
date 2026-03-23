@@ -154,6 +154,14 @@ struct remove_all_extents {
 template <typename Type>
 using remove_all_extents_t = __remove_all_extents(Type);
 
+template <typename Type>
+struct remove_cvref {
+	using type = __remove_cvref(Type);
+};
+
+template <typename Type>
+using remove_cvref_t = __remove_cvref(Type);
+
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_TYPE_MODIFICATIONS_H_

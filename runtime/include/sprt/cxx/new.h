@@ -161,6 +161,15 @@ struct SPRT_API AllocBase : public AllocPlacement {
 	}
 };
 
+namespace {
+template < typename... Args>
+struct Allocator_SelectFirst;
+template < typename A, typename... Args>
+struct Allocator_SelectFirst<A, Args...> {
+	using type = A;
+};
+} // namespace
+
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_NEW_NOTHROW_H_

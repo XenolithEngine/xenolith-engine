@@ -23,10 +23,10 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_REF_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_REF_H_
 
-#include <sprt/runtime/mem/forward_list.h>
 #include <sprt/runtime/notnull.h>
 #include <sprt/runtime/stringview.h>
 
+#include <sprt/cxx/forward_list.h>
 #include <sprt/cxx/new.h>
 #include <sprt/cxx/atomic.h>
 
@@ -55,7 +55,7 @@ SPRT_API uint64_t retainBacktrace(const Ref *, uint64_t = Max<uint64_t>);
 SPRT_API void releaseBacktrace(const Ref *, uint64_t);
 SPRT_API void releaseRef(const Ref *);
 SPRT_API void foreachBacktrace(const Ref *,
-		const callback<void(uint64_t, time_t, const memory::forward_list<StringView> &)> &);
+		const callback<void(uint64_t, time_t, const __pool_forward_list<StringView> &)> &);
 
 } // namespace memleak
 
@@ -150,7 +150,7 @@ public:
 	}
 
 	virtual void foreachBacktrace(
-			const callback<void(uint64_t, time_t, const memory::forward_list<StringView> &)> &cb)
+			const callback<void(uint64_t, time_t, const __pool_forward_list<StringView> &)> &cb)
 			const {
 		memleak::foreachBacktrace(this, cb);
 	}
@@ -327,12 +327,12 @@ public:
 	template <typename Target>
 	static auto doReferenceCast(Rc<Type> &&source) -> Rc<Target>;
 
-	template <class... Args>
+	template <typename... Args>
 	static inline Self create(Args &&...args);
 
 	static inline Self alloc();
 
-	template <class... Args>
+	template <typename... Args>
 	static inline Self alloc(Args &&...args);
 
 	using Parent::Parent;
@@ -392,24 +392,24 @@ public:
 	using Self = Rc<SharedRef<_Base>>;
 	using Type = SharedRef<_Base>;
 
-	template <class... Args>
+	template <typename... Args>
 	static Self create(Args &&...args);
 
-	template <class... Args>
+	template <typename... Args>
 	static Self create(memory::pool_t *pool, Args &&...args);
 
-	template <class... Args>
+	template <typename... Args>
 	static Self create(SharedRefMode mode, Args &&...args);
 
 	static Self alloc();
 
-	template <class... Args>
+	template <typename... Args>
 	static Self alloc(Args &&...args);
 
-	template <class... Args>
+	template <typename... Args>
 	static Self alloc(memory::pool_t *pool, Args &&...args);
 
-	template <class... Args>
+	template <typename... Args>
 	static Self alloc(SharedRefMode mode, Args &&...args);
 
 	using Parent::Parent;
@@ -892,7 +892,7 @@ inline auto Rc<_Base>::doReferenceCast(Rc<Type> &&source) -> Rc<Target> {
 }
 
 template <typename _Base>
-template <class... Args>
+template <typename... Args>
 inline auto Rc<_Base>::create(Args &&...args) -> Self {
 	static_assert(is_base_of<Ref, _Base>::value, "Rc base class should be derived from Ref");
 
@@ -924,7 +924,7 @@ inline auto Rc<_Base>::alloc() -> Self {
 }
 
 template <typename _Base>
-template <class... Args>
+template <typename... Args>
 inline auto Rc<_Base>::alloc(Args &&...args) -> Self {
 	static_assert(is_base_of<Ref, _Base>::value, "Rc base class should be derived from Ref");
 	return Self(new (nothrow) Type(sprt::forward<Args>(args)...), true);
@@ -1017,7 +1017,7 @@ inline Rc<Target> Rc<_Base>::cast() const {
 }
 
 template <typename _Base>
-template <class... Args>
+template <typename... Args>
 inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(Args &&...args) {
 	auto pRet = Type::create();
 	Self ret(nullptr);
@@ -1033,7 +1033,7 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(Args &&.
 }
 
 template <typename _Base>
-template <class... Args>
+template <typename... Args>
 inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(memory::pool_t *pool,
 		Args &&...args) {
 	auto pRet = Type::create(pool);
@@ -1050,7 +1050,7 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(memory::
 }
 
 template <typename _Base>
-template <class... Args>
+template <typename... Args>
 inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(SharedRefMode mode,
 		Args &&...args) {
 	auto pRet = Type::create(mode);
@@ -1072,20 +1072,20 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::alloc() {
 }
 
 template <typename _Base>
-template <class... Args>
+template <typename... Args>
 inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::alloc(Args &&...args) {
 	return Self(Type::create(sprt::forward<Args>(args)...), true);
 }
 
 template <typename _Base>
-template <class... Args>
+template <typename... Args>
 inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::alloc(memory::pool_t *pool,
 		Args &&...args) {
 	return Self(Type::create(pool, sprt::forward<Args>(args)...), true);
 }
 
 template <typename _Base>
-template <class... Args>
+template <typename... Args>
 inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::alloc(SharedRefMode mode,
 		Args &&...args) {
 	return Self(Type::create(mode, sprt::forward<Args>(args)...), true);

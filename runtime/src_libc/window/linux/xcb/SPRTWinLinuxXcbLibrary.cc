@@ -131,7 +131,7 @@ bool XcbLibrary::open(Dso &handle) {
 	SPRT_LOAD_PROTO(handle, xcb_get_atom_name_reply)
 
 	if (!validateFunctionList(&_xcb_first_fn, &_xcb_last_fn)) {
-		log::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb");
+		oslog::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb");
 		return false;
 	}
 
@@ -272,7 +272,7 @@ void XcbLibrary::openAux() {
 		SPRT_LOAD_PROTO(randr, xcb_randr_set_output_primary)
 
 		if (!validateFunctionList(&_xcb_randr_first_fn, &_xcb_randr_last_fn)) {
-			log::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-randr function");
+			oslog::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-randr function");
 		} else {
 			_randr = move(randr);
 		}
@@ -295,7 +295,7 @@ void XcbLibrary::openAux() {
 		SPRT_LOAD_PROTO(keysyms, xcb_is_modifier_key)
 
 		if (!validateFunctionList(&_xcb_key_first_fn, &_xcb_key_last_fn)) {
-			log::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-randr function");
+			oslog::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-randr function");
 		} else {
 			_keysyms = move(keysyms);
 		}
@@ -306,7 +306,7 @@ void XcbLibrary::openAux() {
 		SPRT_LOAD_PROTO(xkb, xcb_xkb_select_events)
 
 		if (!validateFunctionList(&_xcb_xkb_first_fn, &_xcb_xkb_last_fn)) {
-			log::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-xkb function");
+			oslog::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-xkb function");
 		} else {
 			_xkb = move(xkb);
 		}
@@ -321,7 +321,7 @@ void XcbLibrary::openAux() {
 		SPRT_LOAD_PROTO(sync, xcb_sync_set_counter)
 
 		if (!validateFunctionList(&_xcb_sync_first_fn, &_xcb_sync_last_fn)) {
-			log::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-sync function");
+			oslog::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-sync function");
 		} else {
 			_sync = move(sync);
 		}
@@ -333,7 +333,7 @@ void XcbLibrary::openAux() {
 		SPRT_LOAD_PROTO(cursor, xcb_cursor_context_free)
 
 		if (!validateFunctionList(&_xcb_cursor_first_fn, &_xcb_cursor_last_fn)) {
-			log::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-cursor function");
+			oslog::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-cursor function");
 		} else {
 			_cursor = move(cursor);
 		}
@@ -347,7 +347,7 @@ void XcbLibrary::openAux() {
 		SPRT_LOAD_PROTO(xfixes, xcb_xfixes_select_selection_input)
 
 		if (!validateFunctionList(&_xcb_xfixes_first_fn, &_xcb_xfixes_last_fn)) {
-			log::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-xfixes function");
+			oslog::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-xfixes function");
 		} else {
 			_xfixes = move(xfixes);
 		}
@@ -387,7 +387,7 @@ void XcbLibrary::openAux() {
 		SPRT_LOAD_PROTO(shape, xcb_shape_get_rectangles_reply)
 
 		if (!validateFunctionList(&_xcb_shape_first_fn, &_xcb_shape_last_fn)) {
-			log::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-shape function");
+			oslog::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-shape function");
 		} else {
 			_shape = move(shape);
 		}
@@ -404,7 +404,7 @@ void XcbLibrary::openAux() {
 		SPRT_LOAD_PROTO(errors, xcb_errors_get_name_for_error)
 
 		if (!validateFunctionList(&_xcb_errors_first_fn, &_xcb_errors_last_fn)) {
-			log::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-errors function");
+			oslog::vperror(__SPRT_LOCATION, "XcbLibrary", "Fail to load libxcb-errors function");
 		} else {
 			_errors = move(errors);
 		}

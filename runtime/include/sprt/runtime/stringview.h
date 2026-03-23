@@ -29,16 +29,17 @@ THE SOFTWARE.
 #include <sprt/runtime/string.h>
 #include <sprt/runtime/hash.h>
 #include <sprt/runtime/endian.h>
-#include <sprt/runtime/detail/operations.h>
 #include <sprt/runtime/detail/constexpr.h>
 #include <sprt/runtime/unicode.h>
 #include <sprt/runtime/halffloat.h>
-#include <sprt/runtime/detail/compare.h>
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/runtime/mem/context.h>
-#include <sprt/runtime/mem/string.h>
-#include <sprt/runtime/mem/detail/pointer_iterator.h>
 
+#include <sprt/cxx/functional.h>
+#include <sprt/cxx/algorithm.h>
+#include <sprt/cxx/detail/lexicographical_compare.h>
+#include <sprt/cxx/memory/pointer_iterator.h>
+#include <sprt/cxx/string.h>
 #include <sprt/cxx/array.h>
 
 #include <sprt/c/__sprt_string.h>
@@ -227,8 +228,8 @@ public:
 	using value_type = _CharType;
 
 	using iterator =
-			memory::detail::pointer_iterator<const _CharType, const _CharType *, const _CharType &>;
-	using reverse_iterator = memory::detail::pointer_reverse_iterator<iterator>;
+			memory::pointer_iterator<const _CharType, const _CharType *, const _CharType &>;
+	using reverse_iterator = memory::pointer_reverse_iterator<iterator>;
 
 	template <CharType... Args>
 	using MatchChars = chars::Chars<CharType, Args...>;
@@ -598,7 +599,7 @@ protected: // char-matching inline functions
 template <endian Endianess = endian::network>
 class BytesViewTemplate : public BytesReader<uint8_t> {
 public:
-	template <class T>
+	template <typename T>
 	using Converter = byteorder::ConverterTraits<Endianess, T>;
 
 	using Self = BytesViewTemplate<Endianess>;
@@ -738,8 +739,8 @@ class SpanView {
 public:
 	using Type = _Type;
 	using Self = SpanView<Type>;
-	using iterator = memory::detail::pointer_iterator<const Type, const Type *, const Type &>;
-	using reverse_iterator = memory::detail::pointer_reverse_iterator<iterator>;
+	using iterator = memory::pointer_iterator<const Type, const Type *, const Type &>;
+	using reverse_iterator = memory::pointer_reverse_iterator<iterator>;
 
 	constexpr SpanView() = default;
 	constexpr SpanView(const Type *p, size_t l) : ptr(p), len(l) { }
@@ -2648,14 +2649,14 @@ inline auto operator<=>(const StringViewBase<CharType> &l, const StringViewBase<
 	return __convertIntToTwc(sprt::detail::compare_c(l, r));
 }
 
-template <typename CharType>
+template <typename CharType, typename Allocator>
 inline auto operator<=>(const StringViewBase<CharType> &l,
-		const memory::basic_string<CharType> &r) {
+		const __basic_string<CharType, Allocator> &r) {
 	return __convertIntToTwc(sprt::detail::compare_c(l, r));
 }
 
-template <typename CharType>
-inline auto operator<=>(const memory::basic_string<CharType> &l,
+template <typename CharType, typename Allocator>
+inline auto operator<=>(const __basic_string<CharType, Allocator> &l,
 		const StringViewBase<CharType> &r) {
 	return __convertIntToTwc(sprt::detail::compare_c(l, r));
 }

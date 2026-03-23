@@ -123,7 +123,7 @@ protected:
 
 private:
 	struct __bit_not {
-		template <class _Tp>
+		template <typename _Tp>
 		constexpr _Tp operator()(const _Tp &__x) const noexcept {
 			return ~__x;
 		}

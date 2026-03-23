@@ -21,7 +21,7 @@
  **/
 
 #include <sprt/runtime/mem/pool.h>
-#include <sprt/runtime/mem/string.h>
+#include <sprt/cxx/string.h>
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/enum.h>
 #include <sprt/runtime/stringview.h>
@@ -170,7 +170,7 @@ static void readDoubleQuoted(memory::pool_t *pool, StringView &str,
 StringView readVariable(memory::pool_t *pool, StringView str) {
 	StringView result;
 	memory::perform_temporary([&](memory::pool_t *tmpPool) {
-		memory::string out;
+		__pool_string out;
 
 		auto writer = [&](StringView s) {
 			out.append(s.data(), s.size()); //
@@ -295,7 +295,7 @@ const LookupInfo *getLookupInfo(LocationCategory cat) {
 	return nullptr;
 }
 
-using EnumListType = memory::forward_list<sprt::filesystem::LocationInfo>;
+using EnumListType = __pool_forward_list<sprt::filesystem::LocationInfo>;
 
 // We need FileInfo for root constraints
 static bool _mkdir_recursive(const LocationInfo &info, StringView path) {

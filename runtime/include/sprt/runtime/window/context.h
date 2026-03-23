@@ -50,7 +50,7 @@ public:
 	virtual void handleNativeWindowConstraintsChanged(NotNull<NativeWindow>,
 			UpdateConstraintsFlags) = 0;
 	virtual void handleNativeWindowInputEvents(NotNull<NativeWindow>,
-			memory::dynvector<InputEventData> &&) = 0;
+			Vector<InputEventData> &&) = 0;
 	virtual void handleNativeWindowTextInput(NotNull<NativeWindow>, const TextInputState &) = 0;
 
 	virtual void handleSystemNotification(SystemNotification) = 0;

@@ -155,7 +155,7 @@ Extent2 DisplayConfig::getSizeMM() const {
 	return Extent2(ret.width * scale, ret.height * scale);
 }
 
-bool DisplayConfigManager::init(memory::dynfunction<void(NotNull<DisplayConfigManager>)> &&cb) {
+bool DisplayConfigManager::init(Function<void(NotNull<DisplayConfigManager>)> &&cb) {
 	_onConfigChanged = sprt::move(cb);
 	return true;
 }
@@ -206,7 +206,7 @@ void DisplayConfigManager::exportScreenInfo(NotNull<ScreenInfo> info) const {
 }
 
 void DisplayConfigManager::setModeExclusive(MonitorId targetId, ModeInfo targetMode,
-		memory::dynfunction<void(Status)> &&cb, Ref *ref) {
+		Function<void(Status)> &&cb, Ref *ref) {
 	prepareDisplayConfigUpdate([this, targetId, targetMode, cb = sprt::move(cb),
 									   ref = Rc<Ref>(ref)](DisplayConfig *data) mutable {
 		if (!data) {
@@ -305,10 +305,9 @@ void DisplayConfigManager::setModeExclusive(MonitorId targetId, ModeInfo targetM
 	});
 }
 
-void DisplayConfigManager::setMode(MonitorId, ModeInfo, memory::dynfunction<void(Status)> &&,
-		Ref *) { }
+void DisplayConfigManager::setMode(MonitorId, ModeInfo, Function<void(Status)> &&, Ref *) { }
 
-void DisplayConfigManager::restoreMode(memory::dynfunction<void(Status)> &&cb, Ref *ref) {
+void DisplayConfigManager::restoreMode(Function<void(Status)> &&cb, Ref *ref) {
 	if (!_savedConfig) {
 		if (cb) {
 			cb(Status::ErrorInvalidArguemnt);
@@ -421,7 +420,7 @@ void DisplayConfigManager::adjustDisplay(NotNull<DisplayConfig> config) const {
 		return size;
 	};
 
-	memory::dynvector<LogicalDisplay *> data;
+	Vector<LogicalDisplay *> data;
 	for (auto &it : config->logical) {
 		auto size = getLogicalMonitorSize(it);
 		it.rect.width = size.width;
@@ -431,8 +430,8 @@ void DisplayConfigManager::adjustDisplay(NotNull<DisplayConfig> config) const {
 
 	// Build ordered lists
 
-	memory::dynvector<LogicalDisplay *> listX;
-	memory::dynvector<LogicalDisplay *> listY;
+	Vector<LogicalDisplay *> listX;
+	Vector<LogicalDisplay *> listY;
 
 	for (auto &it : data) {
 		if (listX.empty()) {
@@ -526,13 +525,11 @@ void DisplayConfigManager::handleConfigChanged(NotNull<DisplayConfig> cfg) {
 	}
 }
 
-void DisplayConfigManager::prepareDisplayConfigUpdate(
-		memory::dynfunction<void(DisplayConfig *)> &&cb) {
+void DisplayConfigManager::prepareDisplayConfigUpdate(Function<void(DisplayConfig *)> &&cb) {
 	cb(nullptr);
 }
 
-void DisplayConfigManager::applyDisplayConfig(NotNull<DisplayConfig>,
-		memory::dynfunction<void(Status)> &&cb) {
+void DisplayConfigManager::applyDisplayConfig(NotNull<DisplayConfig>, Function<void(Status)> &&cb) {
 	cb(Status::ErrorNotImplemented);
 }
 

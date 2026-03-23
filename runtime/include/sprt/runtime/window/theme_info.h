@@ -60,9 +60,9 @@ struct SPRT_API ThemeInfo {
 	static constexpr StringView SchemePreferLight = StringView("prefer-light");
 	static constexpr StringView SchemeDefault = StringView("default");
 
-	memory::dynstring colorScheme;
-	memory::dynstring systemTheme;
-	memory::dynstring systemFontName;
+	String colorScheme;
+	String systemTheme;
+	String systemFontName;
 	int32_t cursorSize = 0;
 	float cursorScaling = 1.0f;
 	float textScaling = 1.0f;

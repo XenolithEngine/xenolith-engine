@@ -24,38 +24,38 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_TYPES_H_
 
 #include <sprt/runtime/stringview.h>
-#include <sprt/runtime/mem/string.h>
-#include <sprt/runtime/mem/vector.h>
-#include <sprt/runtime/mem/set.h>
-#include <sprt/runtime/mem/map.h>
-#include <sprt/runtime/mem/function.h>
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/stream.h>
+#include <sprt/cxx/string.h>
+#include <sprt/cxx/vector.h>
+#include <sprt/cxx/set.h>
+#include <sprt/cxx/map.h>
+#include <sprt/cxx/function.h>
 
 namespace sprt::window {
 
-using String = memory::dynstring;
+using String = __malloc_string;
 
-using WideString = memory::dynu16string;
-
-template <typename Type>
-using Vector = memory::dynvector<Type>;
+using WideString = __malloc_u16string;
 
 template <typename Type>
-using Set = memory::dynset<Type>;
+using Vector = __malloc_vector<Type>;
+
+template <typename Type>
+using Set = __malloc_set<Type>;
 
 template <typename Key, typename Value>
-using Map = memory::dynmap<Key, Value>;
+using Map = __malloc_map<Key, Value>;
 
 template <typename Type>
-using Function = memory::dynfunction<Type>;
+using Function = __malloc_function<Type>;
 
 template <typename Type>
 using Callback = callback<Type>;
 
 using CallbackStream = callback<void(StringView)>;
 
-using Bytes = memory::dynbytes;
+using Bytes = __malloc_bytes;
 
 template <typename... Args>
 static inline String toString(Args &&...args) {

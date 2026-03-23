@@ -605,7 +605,7 @@ auto ClassInterface<Origin>::getStaticField(const char *name) const ->
 		typename SignatureWrapper<Type>::Result {
 	auto fieldId = getStaticFieldID(name, FieldSignature<Type>::Buffer.data());
 	if (!fieldId) {
-		log::vprint(log::LogType::Error, __SPRT_LOCATION, "JNI", "Fail to find static field (",
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "JNI", "Fail to find static field (",
 				FieldSignature<Type>::Buffer.data(), ") '", name, "' in class '",
 				getName().getString(), "'");
 		sprt_passert(fieldId, "Fail to find static field id");
@@ -652,8 +652,8 @@ struct ClassInterfaceGetter<Method<Value, T>> {
 	static auto get(const ClassInterface<Origin> &origin, GetFlags flags) -> Method<Value, T> {
 		auto methodId = origin.getMethodID(Value.data.data(), MethodSignature<T>::Buffer.data());
 		if (!methodId && !hasFlag(flags, Optional)) {
-			log::vprint(log::LogType::Error, __SPRT_LOCATION, "JNI", "Method ", Value.data.data(),
-					" : ", MethodSignature<T>::Name, " not found in class ",
+			oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "JNI", "Method ",
+					Value.data.data(), " : ", MethodSignature<T>::Name, " not found in class ",
 					origin.getName().getString());
 			sprt_passert(methodId, "Method not found");
 		}
@@ -669,7 +669,7 @@ struct ClassInterfaceGetter<StaticMethod<Value, T>> {
 		auto methodId =
 				origin.getStaticMethodID(Value.data.data(), MethodSignature<T>::Buffer.data());
 		if (!methodId && !hasFlag(flags, Optional)) {
-			log::vprint(log::LogType::Error, __SPRT_LOCATION, "JNI", "Static method ",
+			oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "JNI", "Static method ",
 					Value.data.data(), " : ", MethodSignature<T>::Name, " not found in class ",
 					origin.getName().getString());
 			sprt_passert(methodId, "Static method not found");
@@ -684,7 +684,7 @@ struct ClassInterfaceGetter<Constructor<T>> {
 	static auto get(const ClassInterface<Origin> &origin, GetFlags flags) -> Constructor<T> {
 		auto methodId = origin.getMethodID("<init>", MethodSignature<T>::Buffer.data());
 		if (!methodId && !hasFlag(flags, Optional)) {
-			log::vprint(log::LogType::Error, __SPRT_LOCATION, "JNI", "Constructor ",
+			oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "JNI", "Constructor ",
 					MethodSignature<T>::Name, " not found in class ", origin.getName().getString());
 			sprt_passert(methodId, "Constructor not found");
 		}
@@ -698,7 +698,7 @@ struct ClassInterfaceGetter<Field<Value, T>> {
 	static auto get(const ClassInterface<Origin> &origin, GetFlags flags) -> Field<Value, T> {
 		auto fieldId = origin.getFieldID(Value.data.data(), FieldSignature<T>::Buffer.data());
 		if (!fieldId && !hasFlag(flags, Optional)) {
-			log::vprint(log::LogType::Error, __SPRT_LOCATION, "JNI", "Field (",
+			oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "JNI", "Field (",
 					FieldSignature<T>::Name, ") ", Value.data.data(), " not found in class ",
 					origin.getName().getString());
 			sprt_passert(fieldId, "Field not found");
@@ -713,7 +713,7 @@ struct ClassInterfaceGetter<StaticField<Value, T>> {
 	static auto get(const ClassInterface<Origin> &origin, GetFlags flags) -> StaticField<Value, T> {
 		auto fieldId = origin.getFieldID(Value.data.data(), FieldSignature<T>::Buffer.data());
 		if (!fieldId && !hasFlag(flags, Optional)) {
-			log::vprint(log::LogType::Error, __SPRT_LOCATION, "JNI", "Static field (",
+			oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "JNI", "Static field (",
 					FieldSignature<T>::Name, ") ", Value.data.data(), " not found in class ",
 					origin.getName().getString());
 			sprt_passert(fieldId, "Static field not found");

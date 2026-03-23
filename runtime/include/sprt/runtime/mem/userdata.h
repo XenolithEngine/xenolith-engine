@@ -24,19 +24,19 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_USERDATA_H_
 
 #include <sprt/runtime/mem/context.h>
-#include <sprt/runtime/mem/function.h>
+#include <sprt/cxx/function.h>
 #include <sprt/runtime/stringview.h>
 
 namespace sprt::memory::pool {
 
 SPRT_API void store(pool_t *, void *ptr, const StringView &key,
-		memory::function<void()> && = nullptr);
+		__pool_function<void()> && = nullptr);
 
 template <typename T = void>
 inline T *get(pool_t *pool, const StringView &key) {
 	struct Handle : AllocPool {
 		void *pointer;
-		memory::function<void()> callback;
+		__pool_function<void()> callback;
 	};
 
 	void *ptr = nullptr;
@@ -48,7 +48,7 @@ inline T *get(pool_t *pool, const StringView &key) {
 	return nullptr;
 }
 
-inline void store(void *ptr, const StringView &key, memory::function<void()> &&cb = nullptr) {
+inline void store(void *ptr, const StringView &key, __pool_function<void()> &&cb = nullptr) {
 	store(acquire(), ptr, key, move(cb));
 }
 

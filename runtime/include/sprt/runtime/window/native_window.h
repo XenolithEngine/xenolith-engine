@@ -30,8 +30,8 @@
 #include <sprt/runtime/window/window_info.h>
 #include <sprt/runtime/window/presentation.h>
 #include <sprt/runtime/window/gapi.h>
-#include <sprt/runtime/mem/vector.h>
-#include <sprt/runtime/mem/function.h>
+#include <sprt/cxx/vector.h>
+#include <sprt/cxx/function.h>
 
 namespace sprt::window {
 
@@ -92,11 +92,11 @@ public:
 	void setAppWindow(Rc<AppWindow> &&);
 	AppWindow *getAppWindow() const;
 
-	virtual void updateLayers(memory::dynvector<WindowLayer> &&);
+	virtual void updateLayers(Vector<WindowLayer> &&);
 
-	virtual void setFullscreen(FullscreenInfo &&, memory::dynfunction<void(Status)> &&cb, Ref *ref);
+	virtual void setFullscreen(FullscreenInfo &&, Function<void(Status)> &&cb, Ref *ref);
 
-	virtual void handleInputEvents(memory::dynvector<InputEventData> &&events);
+	virtual void handleInputEvents(Vector<InputEventData> &&events);
 
 	virtual void dispatchPendingEvents();
 
@@ -154,9 +154,9 @@ protected:
 	bool _allocated = false;
 
 	Vec2 _layerLocation;
-	memory::dynvector<WindowLayer> _layers;
-	memory::dynvector<WindowLayer> _currentLayers;
-	memory::dynvector<InputEventData> _pendingEvents;
+	Vector<WindowLayer> _layers;
+	Vector<WindowLayer> _currentLayers;
+	Vector<InputEventData> _pendingEvents;
 
 	WindowLayerFlags _currentLayerFlags = WindowLayerFlags::None;
 	WindowLayerFlags _gripFlags = WindowLayerFlags::None;

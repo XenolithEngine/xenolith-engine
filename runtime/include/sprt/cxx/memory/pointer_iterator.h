@@ -20,14 +20,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_POINTER_ITERATOR_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_POINTER_ITERATOR_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_MEMORY_POINTER_ITERATOR_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_MEMORY_POINTER_ITERATOR_H_
 
 #include <sprt/cxx/iterator.h>
 
-namespace sprt::memory::detail {
+namespace sprt::memory {
 
-template <class Type, class Pointer, class Reference>
+template <typename Type, typename Pointer, typename Reference>
 class pointer_iterator {
 public:
 	using iterator_category = random_access_iterator_tag;
@@ -126,13 +126,13 @@ public:
 
 	constexpr explicit pointer_reverse_iterator(_Iter __x) : current(__x) { }
 
-	template <class _Up,
+	template <typename _Up,
 			enable_if_t<!is_same<_Up, _Iter>::value && is_convertible_v<_Up const &, _Iter>, int> =
 					0>
 	constexpr pointer_reverse_iterator(const pointer_reverse_iterator<_Up> &__u)
 	: current(__u.base()) { }
 
-	template <class _Up,
+	template <typename _Up,
 			enable_if_t<!is_same<_Up, _Iter>::value && is_convertible_v<_Up const &, _Iter>
 							&& is_assignable<_Iter &, _Up const &>::value,
 					int> = 0>
@@ -214,13 +214,13 @@ public:
 
 	constexpr explicit common_reverse_iterator(_Iter __x) : current(__x) { }
 
-	template <class _Up,
+	template <typename _Up,
 			enable_if_t<!is_same<_Up, _Iter>::value && is_convertible_v<_Up const &, _Iter>, int> =
 					0>
 	constexpr common_reverse_iterator(const common_reverse_iterator<_Up> &__u)
 	: current(__u.base()) { }
 
-	template <class _Up,
+	template <typename _Up,
 			enable_if_t<!is_same<_Up, _Iter>::value && is_convertible_v<_Up const &, _Iter>
 							&& is_assignable<_Iter &, _Up const &>::value,
 					int> = 0>
@@ -269,6 +269,6 @@ protected:
 	_Iter current;
 };
 
-} // namespace sprt::memory::detail
+} // namespace sprt::memory
 
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_POINTER_ITERATOR_H_
+#endif // RUNTIME_INCLUDE_SPRT_CXX_MEMORY_POINTER_ITERATOR_H_

@@ -124,7 +124,7 @@ __SPRT_C_FUNC void *__SPRT_ID(aligned_alloc)(size_t align, size_t size) {
 		return __result;
 	}
 
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
@@ -210,7 +210,7 @@ __SPRT_C_FUNC int __SPRT_ID(getsubopt)(char **opts, char *const *toks, char **va
 	if (platform::_getsubopt) {
 		return platform::_getsubopt(opts, toks, vals);
 	}
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;

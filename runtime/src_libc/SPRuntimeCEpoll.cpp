@@ -82,14 +82,14 @@ __SPRT_C_FUNC int __SPRT_ID(epoll_pwait2)(int efd, struct __SPRT_EPOLL_EVENT_NAM
 #else
 
 __SPRT_C_FUNC int __SPRT_ID(epoll_create)(int flags) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_EPOLL)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(epoll_create1)(int flags) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_EPOLL)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -97,7 +97,7 @@ __SPRT_C_FUNC int __SPRT_ID(epoll_create1)(int flags) {
 
 __SPRT_C_FUNC int __SPRT_ID(
 		epoll_ctl)(int efd, int op, int fd, struct __SPRT_EPOLL_EVENT_NAME *ev) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_EPOLL)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -105,7 +105,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 
 __SPRT_C_FUNC int __SPRT_ID(
 		epoll_wait)(int efd, struct __SPRT_EPOLL_EVENT_NAME *ev, int maxevents, int timeout) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_EPOLL)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -113,7 +113,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 
 __SPRT_C_FUNC int __SPRT_ID(epoll_pwait)(int efd, struct __SPRT_EPOLL_EVENT_NAME *ev, int maxevents,
 		int timeout, const __SPRT_ID(sigset_t) * sig) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_EPOLL)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -121,7 +121,7 @@ __SPRT_C_FUNC int __SPRT_ID(epoll_pwait)(int efd, struct __SPRT_EPOLL_EVENT_NAME
 
 __SPRT_C_FUNC int __SPRT_ID(epoll_pwait2)(int efd, struct __SPRT_EPOLL_EVENT_NAME *ev,
 		int maxevents, const struct __SPRT_TIMESPEC_NAME *tv, const __SPRT_ID(sigset_t) * sig) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_EPOLL)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;

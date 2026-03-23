@@ -87,7 +87,7 @@ __SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_lock_with_flags)(__SPRT_ID(_os_unfa
 #else
 __SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_lock_with_flags)(__SPRT_ID(_os_unfair_lock) * lock,
 		__SPRT_ID(uint32_t) flags) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (MAC_OS_X_VERSION_MIN_REQUIRED < "
 			"MAC_OS_X_VERSION_10_15)");
 }
@@ -206,44 +206,44 @@ extern "C" const __SPRT_ID(_CFRunLoopMode) __SPRT_ID(_kCFRunLoopCommonModes) = n
 
 __SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_lock)(
 		__SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
 
 __SPRT_C_FUNC bool __SPRT_ID(_os_unfair_lock_trylock)(
 		__SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 	return false;
 }
 
 __SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_unlock)(
 		__SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
 
 __SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_assert_owner)(
 		const __SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
 
 __SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_assert_not_owner)(
 		const __SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
 
 __SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_lock_with_flags)(__SPRT_ID(_os_unfair_lock) * lock,
 		__SPRT_ID(uint32_t) flags) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_os_sync_wait_on_address)(void *addr, __SPRT_ID(uint64_t) value,
 		__SPRT_ID(size_t) size, __SPRT_ID(uint32_t) flags) __SPRT_NOEXCEPT {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 	return -1;
 }
@@ -251,7 +251,7 @@ __SPRT_C_FUNC int __SPRT_ID(_os_sync_wait_on_address)(void *addr, __SPRT_ID(uint
 __SPRT_C_FUNC int __SPRT_ID(_os_sync_wait_on_address_with_deadline)(void *addr,
 		__SPRT_ID(uint64_t) value, __SPRT_ID(size_t) size, __SPRT_ID(uint32_t) flags,
 		__SPRT_ID(uint32_t) clockid, __SPRT_ID(uint64_t) deadline) __SPRT_NOEXCEPT {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 	return -1;
 }
@@ -259,95 +259,95 @@ __SPRT_C_FUNC int __SPRT_ID(_os_sync_wait_on_address_with_deadline)(void *addr,
 __SPRT_C_FUNC int __SPRT_ID(_os_sync_wait_on_address_with_timeout)(void *addr,
 		__SPRT_ID(uint64_t) value, __SPRT_ID(size_t) size, __SPRT_ID(uint32_t) flags,
 		__SPRT_ID(uint32_t) clockid, __SPRT_ID(uint64_t) timeout_ns) __SPRT_NOEXCEPT {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 	return -1;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_os_sync_wake_by_address_any)(void *addr, __SPRT_ID(size_t) size,
 		__SPRT_ID(uint32_t) flags) __SPRT_NOEXCEPT {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 	return -1;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_os_sync_wake_by_address_all)(void *addr, __SPRT_ID(size_t) size,
 		__SPRT_ID(uint32_t) flags) __SPRT_NOEXCEPT {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 	return -1;
 }
 
 __SPRT_C_FUNC void __SPRT_ID(_CFRelease)(void *ref) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
 
 __SPRT_C_FUNC __SPRT_ID(_CFAbsoluteTime) __SPRT_ID(_CFAbsoluteTimeGetCurrent)(void) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 	return 0.0;
 }
 
 __SPRT_C_FUNC __SPRT_ID(_CFStringRef) __SPRT_ID(
 		_CFStringCreateWithUTF8String)(__SPRT_ID(_CFAllocatorRef) alloc, const char *cStr) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 	return nullptr;
 }
 
 __SPRT_C_FUNC __SPRT_ID(_CFRunLoopRef) __SPRT_ID(_CFRunLoopGetCurrent)(void) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 	return nullptr;
 }
 
 __SPRT_C_FUNC __SPRT_ID(_CFRunLoopRef) __SPRT_ID(_CFRunLoopGetMain)(void) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 	return nullptr;
 }
 
 __SPRT_C_FUNC void __SPRT_ID(_CFRunLoopRun)(void) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
 
 __SPRT_C_FUNC __SPRT_ID(_CFRunLoopRunResult)
 		__SPRT_ID(_CFRunLoopRunInMode)(__SPRT_ID(_CFRunLoopMode) mode,
 				__SPRT_ID(_CFTimeInterval) seconds, int returnAfterSourceHandled) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 	return __SPRT_ID(_CFRunLoopRunResult)(0);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_CFRunLoopIsWaiting)(__SPRT_ID(_CFRunLoopRef) rl) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 	return 0;
 }
 
 __SPRT_C_FUNC void __SPRT_ID(_CFRunLoopWakeUp)(__SPRT_ID(_CFRunLoopRef) rl) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
 
 __SPRT_C_FUNC void __SPRT_ID(_CFRunLoopStop)(__SPRT_ID(_CFRunLoopRef) rl) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
 
 #if defined(__has_feature) && __has_feature(blocks)
 __SPRT_C_FUNC void __SPRT_ID(_CFRunLoopPerformBlock)(__SPRT_ID(_CFRunLoopRef) rl, const void *mode,
 		void (^block)(void)) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
 #endif
 
 __SPRT_C_FUNC void __SPRT_ID(
 		_CFRunLoopAddCommonMode)(__SPRT_ID(_CFRunLoopRef) rl, __SPRT_ID(_CFRunLoopMode) mode) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
 
@@ -356,27 +356,27 @@ __SPRT_C_FUNC __SPRT_ID(_CFRunLoopTimerRef) __SPRT_ID(
 		__SPRT_ID(_CFAbsoluteTime) fireDate, __SPRT_ID(_CFTimeInterval) interval,
 		__SPRT_ID(_CFOptionFlags) flags, __SPRT_ID(_CFIndex) order,
 		__SPRT_ID(_CFRunLoopTimerCallBack) callout, __SPRT_ID(_CFRunLoopTimerContext) * context) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 	return nullptr;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(_CFRunLoopContainsTimer)(__SPRT_ID(_CFRunLoopRef) rl,
 		__SPRT_ID(_CFRunLoopTimerRef) timer, __SPRT_ID(_CFRunLoopMode) mode) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 	return 0;
 }
 
 __SPRT_C_FUNC void __SPRT_ID(_CFRunLoopAddTimer)(__SPRT_ID(_CFRunLoopRef) rl,
 		__SPRT_ID(_CFRunLoopTimerRef) timer, __SPRT_ID(_CFRunLoopMode) mode) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
 
 __SPRT_C_FUNC void __SPRT_ID(_CFRunLoopRemoveTimer)(__SPRT_ID(_CFRunLoopRef) rl,
 		__SPRT_ID(_CFRunLoopTimerRef) timer, __SPRT_ID(_CFRunLoopMode) mode) {
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
 }
 

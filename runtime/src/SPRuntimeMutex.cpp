@@ -42,7 +42,7 @@ static void reportError(StringView tag, int err) {
 	if (err != EAGAIN) {
 		auto st = status::errnoToStatus(err);
 		status::getStatusDescription(st, [&](StringView str) {
-			log::vprint(log::LogType::Error, __SPRT_LOCATION, tag, "Syscall error: ", str);
+			oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, tag, "Syscall error: ", str);
 		});
 	}
 }
@@ -181,7 +181,7 @@ void qmutex_base::wake_all(value_type *value) { qmutex_wake_all(value); }
 qmutex::~qmutex() {
 	auto value = _atomic::exchange(&_data.value, uint32_t(0));
 	if (value != 0) {
-		log::vprint(log::LogType::Fatal, __SPRT_LOCATION, "sprt::qmutex",
+		oslog::vprint(oslog::LogType::Fatal, __SPRT_LOCATION, "sprt::qmutex",
 				"Mutex is locked when it's destroyed, aborting");
 		::__sprt_abort();
 	}
@@ -196,7 +196,7 @@ bool qmutex::unlock() { return _unlock<qmutex_wake_one>(&_data.value) == Status:
 rmutex::~rmutex() {
 	auto value = _atomic::exchange(&_data.value, decltype(_data.value)(0)) & VALUE_MASK;
 	if (value != 0) {
-		log::vprint(log::LogType::Fatal, __SPRT_LOCATION, "sprt::recursive_qmutex",
+		oslog::vprint(oslog::LogType::Fatal, __SPRT_LOCATION, "sprt::recursive_qmutex",
 				"Mutex is locked when it's destroyed, aborting: tid:", value);
 		::__sprt_abort();
 	}

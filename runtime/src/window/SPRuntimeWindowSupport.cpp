@@ -31,8 +31,8 @@
 
 namespace sprt::window {
 
-static memory::dynstring getManufacturerName(const unsigned char *x) {
-	memory::dynstring name;
+static String getManufacturerName(const unsigned char *x) {
+	String name;
 	name.resize(3);
 
 	name[0] = ((x[0] & 0x7c) >> 2) + '@';
@@ -42,8 +42,8 @@ static memory::dynstring getManufacturerName(const unsigned char *x) {
 	return name;
 }
 
-static memory::dynstring extractString(const unsigned char *x, unsigned len) {
-	memory::dynstring ret;
+static String extractString(const unsigned char *x, unsigned len) {
+	String ret;
 	bool seen_newline = false;
 	unsigned i;
 
@@ -894,48 +894,49 @@ void SwapchainConfig::description(const callback<void(StringView)> &stream) cons
 bool SurfaceInfo::isSupported(const SwapchainConfig &cfg) const {
 	if (sprt::find(presentModes.begin(), presentModes.end(), cfg.presentMode)
 			== presentModes.end()) {
-		log::vperror(__SPRT_LOCATION, "Vk-Error", "SurfaceInfo: presentMode is not supported");
+		oslog::vperror(__SPRT_LOCATION, "Vk-Error", "SurfaceInfo: presentMode is not supported");
 		return false;
 	}
 
 	if (cfg.presentModeFast != PresentMode::Unsupported
 			&& sprt::find(presentModes.begin(), presentModes.end(), cfg.presentModeFast)
 					== presentModes.end()) {
-		log::vperror(__SPRT_LOCATION, "Vk-Error", "SurfaceInfo: presentModeFast is not supported");
+		oslog::vperror(__SPRT_LOCATION, "Vk-Error",
+				"SurfaceInfo: presentModeFast is not supported");
 		return false;
 	}
 
 	if (sprt::find(formats.begin(), formats.end(), sprt::pair{cfg.imageFormat, cfg.colorSpace})
 			== formats.end()) {
-		log::vperror(__SPRT_LOCATION, "Vk-Error",
+		oslog::vperror(__SPRT_LOCATION, "Vk-Error",
 				"SurfaceInfo: imageFormat or colorSpace is not supported");
 		return false;
 	}
 
 	if ((supportedCompositeAlpha & cfg.alpha) == CompositeAlphaFlags::None) {
-		log::vperror(__SPRT_LOCATION, "Vk-Error", "SurfaceInfo: alpha is not supported");
+		oslog::vperror(__SPRT_LOCATION, "Vk-Error", "SurfaceInfo: alpha is not supported");
 		return false;
 	}
 
 	if ((supportedTransforms & cfg.transform) == SurfaceTransformFlags::None) {
-		log::vperror(__SPRT_LOCATION, "Vk-Error", "SurfaceInfo: transform is not supported");
+		oslog::vperror(__SPRT_LOCATION, "Vk-Error", "SurfaceInfo: transform is not supported");
 		return false;
 	}
 
 	if (cfg.imageCount < minImageCount || (maxImageCount != 0 && cfg.imageCount > maxImageCount)) {
-		log::vperror(__SPRT_LOCATION, "Vk-Error", "SurfaceInfo: imageCount is not supported");
+		oslog::vperror(__SPRT_LOCATION, "Vk-Error", "SurfaceInfo: imageCount is not supported");
 		return false;
 	}
 
 	if (cfg.extent.width < minImageExtent.width || cfg.extent.width > maxImageExtent.width
 			|| cfg.extent.height < minImageExtent.height
 			|| cfg.extent.height > maxImageExtent.height) {
-		log::vperror(__SPRT_LOCATION, "Vk-Error", "SurfaceInfo: extent is not supported");
+		oslog::vperror(__SPRT_LOCATION, "Vk-Error", "SurfaceInfo: extent is not supported");
 		return false;
 	}
 
 	if (cfg.transfer && (supportedUsageFlags & ImageUsage::TransferDst) == ImageUsage::None) {
-		log::vperror(__SPRT_LOCATION, "Vk-Error",
+		oslog::vperror(__SPRT_LOCATION, "Vk-Error",
 				"SurfaceInfo: supportedUsageFlags is not supported");
 		return false;
 	}

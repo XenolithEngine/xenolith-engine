@@ -124,7 +124,7 @@ void NativeWindow::setAppWindow(Rc<AppWindow> &&w) {
 
 AppWindow *NativeWindow::getAppWindow() const { return _appWindow; }
 
-void NativeWindow::updateLayers(memory::dynvector<WindowLayer> &&layers) {
+void NativeWindow::updateLayers(Vector<WindowLayer> &&layers) {
 	if (_layers != layers) {
 		_layers = sprt::move(layers);
 		if (_handleLayerForMotion) {
@@ -142,8 +142,7 @@ void NativeWindow::updateLayers(memory::dynvector<WindowLayer> &&layers) {
 	}
 }
 
-void NativeWindow::setFullscreen(FullscreenInfo &&info, memory::dynfunction<void(Status)> &&cb,
-		Ref *ref) {
+void NativeWindow::setFullscreen(FullscreenInfo &&info, Function<void(Status)> &&cb, Ref *ref) {
 	if (!hasFlag(_info->capabilities, WindowCapabilities::Fullscreen)) {
 		cb(Status::ErrorNotSupported);
 		return;
@@ -238,8 +237,8 @@ void NativeWindow::setFullscreen(FullscreenInfo &&info, memory::dynfunction<void
 								_controller->releasePollDepth();
 								cb(st);
 							} else {
-								log::vprint(log::LogType::Error, __SPRT_LOCATION, "NativeWindow",
-										"Fail to reset mode for fullscreen: ", st);
+								oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION,
+										"NativeWindow", "Fail to reset mode for fullscreen: ", st);
 								cb(st);
 							}
 							ref = nullptr;
@@ -315,7 +314,7 @@ void NativeWindow::setFullscreen(FullscreenInfo &&info, memory::dynfunction<void
 					cb(status);
 				}
 			} else {
-				log::vprint(log::Error, __SPRT_LOCATION, "NativeWindow",
+				oslog::vprint(oslog::Error, __SPRT_LOCATION, "NativeWindow",
 						"Fail to set mode for fullscreen: ", st);
 				cb(st);
 			}
@@ -325,7 +324,7 @@ void NativeWindow::setFullscreen(FullscreenInfo &&info, memory::dynfunction<void
 	}
 }
 
-void NativeWindow::handleInputEvents(memory::dynvector<InputEventData> &&events) {
+void NativeWindow::handleInputEvents(Vector<InputEventData> &&events) {
 	for (auto &event : events) {
 		switch (event.event) {
 		case InputEventName::MouseMove: handleMotionEvent(event); break;
@@ -414,7 +413,7 @@ void NativeWindow::handleMotionEvent(const InputEventData &event) {
 	if (_handleLayerForMotion) {
 		_layerLocation = event.getLocation();
 
-		memory::dynvector<WindowLayer> layersToExit;
+		Vector<WindowLayer> layersToExit;
 
 		auto it = _currentLayers.begin();
 		while (it != _currentLayers.end()) {

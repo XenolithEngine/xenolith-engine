@@ -20,21 +20,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_VECTOR_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_VECTOR_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_VECTOR_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_VECTOR_H_
 
-#include <sprt/runtime/mem/detail/storage.h>
-#include <sprt/runtime/mem/detail/dynalloc.h>
-#include <sprt/runtime/hash.h>
+#include <sprt/cxx/memory/allocator_malloc.h>
+#include <sprt/cxx/memory/allocator_pool.h>
+#include <sprt/cxx/memory/storage.h>
+#include <sprt/cxx/hash.h>
+
 #include <sprt/runtime/string.h>
-#include <sprt/runtime/detail/compare.h>
-#include <sprt/runtime/detail/ordering.h>
+#include <sprt/cxx/algorithm.h>
+#include <sprt/cxx/compare.h>
 #include <sprt/cxx/initializer_list.h>
 
-namespace sprt::memory {
+namespace sprt {
 
-template <typename Type, typename Allocator = sprt::memory::detail::Allocator<Type>>
-class vector : public Allocator::base_class {
+template <typename Type, typename Allocator>
+class __vector : public Allocator::base_class {
 public:
 	using allocator_type = Allocator;
 
@@ -45,55 +47,56 @@ public:
 
 	using size_type = size_t;
 	using value_type = Type;
-	using mem_type = detail::storage_mem<Type, 0, allocator_type>;
-	using self = vector<Type, allocator_type>;
+	using mem_type = memory::linear_memory<Type, 0, allocator_type>;
+	using self = __vector<Type, allocator_type>;
 
 	using iterator = typename mem_type::iterator;
 	using const_iterator = typename mem_type::const_iterator;
 	using reverse_iterator = typename mem_type::reverse_iterator;
 	using const_reverse_iterator = typename mem_type::const_reverse_iterator;
 
-	vector() noexcept { }
-	explicit vector(const allocator_type &alloc) noexcept : _mem(alloc) { }
-	explicit vector(size_type count, const Type &value,
+	__vector() noexcept { }
+	explicit __vector(const allocator_type &alloc) noexcept : _mem(alloc) { }
+	explicit __vector(size_type count, const Type &value,
 			const allocator_type &alloc = allocator_type()) noexcept
 	: _mem(alloc) {
 		_mem.fill(count, value);
 	}
-	explicit vector(size_type count, const allocator_type &alloc = allocator_type()) noexcept
+	explicit __vector(size_type count, const allocator_type &alloc = allocator_type()) noexcept
 	: _mem(alloc) {
 		_mem.fill(count);
 	}
 
-	template < class InputIt >
-	vector(InputIt first, InputIt last, const allocator_type &alloc = allocator_type()) noexcept
+	template < typename InputIt >
+	__vector(InputIt first, InputIt last, const allocator_type &alloc = allocator_type()) noexcept
 	: _mem(alloc) {
 		auto size = sprt::distance(first, last);
 		_mem.reserve(size);
 		for (auto it = first; it != last; it++) { _mem.emplace_back_unsafe(*it); }
 	}
 
-	vector(const vector &other) noexcept : _mem(other._mem) { }
-	vector(const vector &other, const allocator_type &alloc) noexcept : _mem(other._mem, alloc) { }
-	vector(vector &&other) noexcept : _mem(sprt::move_unsafe(other._mem)) { }
-	vector(vector &&other, const allocator_type &alloc) noexcept
+	__vector(const __vector &other) noexcept : _mem(other._mem) { }
+	__vector(const __vector &other, const allocator_type &alloc) noexcept
+	: _mem(other._mem, alloc) { }
+	__vector(__vector &&other) noexcept : _mem(sprt::move_unsafe(other._mem)) { }
+	__vector(__vector &&other, const allocator_type &alloc) noexcept
 	: _mem(sprt::move_unsafe(other._mem), alloc) { }
 
-	vector(initializer_list<Type> init, const allocator_type &alloc = allocator_type()) noexcept
+	__vector(initializer_list<Type> init, const allocator_type &alloc = allocator_type()) noexcept
 	: _mem(alloc) {
 		_mem.reserve(init.size());
 		for (auto &it : init) { _mem.emplace_back_unsafe(it); }
 	}
 
-	vector &operator=(const vector &other) noexcept {
+	__vector &operator=(const __vector &other) noexcept {
 		_mem = other._mem;
 		return *this;
 	}
-	vector &operator=(vector &&other) noexcept {
+	__vector &operator=(__vector &&other) noexcept {
 		_mem = sprt::move_unsafe(other._mem);
 		return *this;
 	}
-	vector &operator=(initializer_list<Type> init) noexcept {
+	__vector &operator=(initializer_list<Type> init) noexcept {
 		_mem.clear();
 		_mem.reserve(init.size());
 		for (auto &it : init) { _mem.emplace_back_unsafe(it); }
@@ -102,7 +105,7 @@ public:
 
 	void assign(size_type count, const Type &value) { _mem.fill(count, value); }
 
-	template < class InputIt >
+	template < typename InputIt >
 	void assign(InputIt first,
 			InputIt last) { // @TODO: self-assign protection and modern assignment
 		_mem.clear();
@@ -168,7 +171,7 @@ public:
 
 	void clear() { _mem.clear(); }
 
-	template < class... Args >
+	template < typename... Args >
 	iterator emplace(const_iterator pos, Args &&...args) {
 		return _mem.emplace(pos, sprt::forward<Args>(args)...);
 	}
@@ -181,7 +184,7 @@ public:
 		return _mem.insert(pos, count, value);
 	}
 
-	template < class InputIt >
+	template < typename InputIt >
 	iterator insert(const_iterator pos, InputIt first, InputIt last) {
 		return _mem.insert(pos, first, last);
 	}
@@ -194,7 +197,7 @@ public:
 
 	iterator erase(const_iterator first, const_iterator last) { return _mem.erase(first, last); }
 
-	template < class... Args >
+	template < typename... Args >
 	reference emplace_back(Args &&...args) {
 		return _mem.emplace_back(sprt::forward<Args>(args)...);
 	}
@@ -207,51 +210,34 @@ public:
 	void resize(size_type count) { _mem.resize(count); }
 	void resize(size_type count, const value_type &value) { _mem.resize(count, value); }
 
-public:
-	static const vector make_weak(const Type *str, size_type l,
-			const allocator_type &alloc = allocator_type()) {
-		vector ret(alloc);
-		if (str) {
-			ret.assign_weak(str, l);
-		}
-		return ret;
-	}
-
-	vector &assign_weak(const Type *str, size_type l) {
-		_mem.assign_weak(str, l);
-		return *this;
-	}
-
-	bool is_weak() const noexcept { return _mem.is_weak(); }
-
-	void force_clear() { _mem.force_clear(); }
-
 protected:
 	mem_type _mem;
 };
 
-using bytes = vector<uint8_t>;
+using __pool_bytes = __vector<uint8_t, memory::AllocatorPool<uint8_t>>;
+using __malloc_bytes = __vector<uint8_t, memory::AllocatorMalloc<uint8_t>>;
 
 template <typename Type>
-using dynvector = vector<Type, detail::DynamicAllocator<Type>>;
+using __pool_vector = __vector<Type, memory::AllocatorPool<Type>>;
 
-using dynbytes = dynvector<uint8_t>;
+template <typename Type>
+using __malloc_vector = __vector<Type, memory::AllocatorMalloc<Type>>;
 
 template <typename _Tp, typename Allocator>
-inline constexpr bool operator==(const vector<_Tp, Allocator> &__x,
-		const vector<_Tp, Allocator> &__y) {
+inline constexpr bool operator==(const __vector<_Tp, Allocator> &__x,
+		const __vector<_Tp, Allocator> &__y) {
 	return (__x.size() == __y.size() && sprt::equal(__x.begin(), __x.end(), __y.begin()));
 }
 
 template <typename _Tp, typename Allocator>
-inline constexpr auto operator<=>(const vector<_Tp, Allocator> &__x,
-		const vector<_Tp, Allocator> &__y) {
+inline constexpr auto operator<=>(const __vector<_Tp, Allocator> &__x,
+		const __vector<_Tp, Allocator> &__y) {
 	return sprt::lexicographical_compare_three_way(__x.begin(), __x.end(), __y.begin(), __y.end());
 }
 
 template <typename Allocator>
-inline constexpr auto operator<=>(const vector<uint8_t, Allocator> &x,
-		const vector<uint8_t, Allocator> &y) {
+inline constexpr auto operator<=>(const __vector<uint8_t, Allocator> &x,
+		const __vector<uint8_t, Allocator> &y) {
 	auto commonLen = sprt::min(x.size(), y.size());
 	if (commonLen == 0) {
 		return x.size() <=> y.size();
@@ -267,6 +253,6 @@ inline constexpr auto operator<=>(const vector<uint8_t, Allocator> &x,
 	}
 }
 
-} // namespace sprt::memory
+} // namespace sprt
 
-#endif
+#endif // RUNTIME_INCLUDE_SPRT_CXX_VECTOR_H_

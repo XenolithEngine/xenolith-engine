@@ -20,17 +20,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_FUNCTION_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_FUNCTION_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_FUNCTION_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_FUNCTION_H_
 
-#include <sprt/runtime/mem/detail/alloc.h>
-#include <sprt/runtime/mem/detail/dynalloc.h>
+#include <sprt/cxx/memory/allocator_malloc.h>
+#include <sprt/cxx/memory/allocator_pool.h>
 #include <sprt/runtime/callback.h>
 
 #include <sprt/cxx/array.h>
 #include <sprt/c/__sprt_string.h>
 
-namespace sprt::memory {
+namespace sprt {
 
 // Function - реализация std::function, использующая память из pool_t
 // some sources from https://github.com/prograholic/blog/blob/master/cxx_function/main.cpp
@@ -44,31 +44,30 @@ struct check_signature<Func, Ret(Args...),
 				void>::type> : true_type { };
 
 template <typename Allocator, typename UnusedType>
-class alloc_function;
+class SPRT_API __function;
 
 template <typename Allocator, typename ReturnType, typename... ArgumentTypes>
-class alloc_function<Allocator, ReturnType(ArgumentTypes...)> : public Allocator::base_class {
+class SPRT_API __function<Allocator, ReturnType(ArgumentTypes...)> : public Allocator::base_class {
 public:
 	using signature_type = ReturnType(ArgumentTypes...);
 	using allocator_type = Allocator;
 	//using allocator_type = detail::Allocator<void *>;
 
-	~alloc_function() { clear(); }
+	~__function() { clear(); }
 
-	alloc_function(const allocator_type &alloc = allocator_type()) noexcept
+	__function(const allocator_type &alloc = allocator_type()) noexcept
 	: mAllocator(alloc), mCallback(nullptr) { }
 
-	alloc_function(nullptr_t, const allocator_type &alloc = allocator_type()) noexcept
+	__function(nullptr_t, const allocator_type &alloc = allocator_type()) noexcept
 	: mAllocator(alloc), mCallback(nullptr) { }
 
-	alloc_function &operator=(nullptr_t) noexcept {
+	__function &operator=(nullptr_t) noexcept {
 		clear();
 		mCallback = nullptr;
 		return *this;
 	}
 
-	alloc_function(const alloc_function &other,
-			const allocator_type &alloc = allocator_type()) noexcept
+	__function(const __function &other, const allocator_type &alloc = allocator_type()) noexcept
 	: mAllocator(alloc) {
 		mCallback = other.mCallback;
 		if (mCallback) {
@@ -76,7 +75,7 @@ public:
 		}
 	}
 
-	alloc_function &operator=(const alloc_function &other) noexcept {
+	__function &operator=(const __function &other) noexcept {
 		if (&other == this) {
 			return *this;
 		}
@@ -89,7 +88,7 @@ public:
 		return *this;
 	}
 
-	alloc_function(alloc_function &&other, const allocator_type &alloc = allocator_type()) noexcept
+	__function(__function &&other, const allocator_type &alloc = allocator_type()) noexcept
 	: mAllocator(alloc) {
 		mCallback = other.mCallback;
 		if (mCallback) {
@@ -101,7 +100,7 @@ public:
 		}
 	}
 
-	alloc_function &operator=(alloc_function &&other) noexcept {
+	__function &operator=(__function &&other) noexcept {
 		if (&other == this) {
 			return *this;
 		}
@@ -119,16 +118,16 @@ public:
 	}
 
 	template <typename FunctionT,
-			class = typename enable_if<
+			typename = typename enable_if<
 					!is_same< typename remove_cv<typename remove_reference<FunctionT>::type>::type,
-							alloc_function<Allocator, ReturnType(ArgumentTypes...) >>::value>::type>
-	alloc_function(FunctionT &&f, const allocator_type &alloc = allocator_type()) noexcept
+							__function<Allocator, ReturnType(ArgumentTypes...) >>::value>::type>
+	__function(FunctionT &&f, const allocator_type &alloc = allocator_type()) noexcept
 	: mAllocator(alloc) {
 		mCallback = makeFreeFunction(sprt::forward<FunctionT>(f), mAllocator, mBuffer.data());
 	}
 
 	template <typename FunctionT>
-	alloc_function &operator=(FunctionT &&f) noexcept {
+	__function &operator=(FunctionT &&f) noexcept {
 		clear();
 		mCallback = makeFreeFunction(sprt::forward<FunctionT>(f), mAllocator, mBuffer.data());
 		return *this;
@@ -144,12 +143,12 @@ public:
 
 	constexpr explicit operator bool() const noexcept { return mCallback != nullptr; }
 
-	constexpr bool operator==(const alloc_function &other) const noexcept {
+	constexpr bool operator==(const __function &other) const noexcept {
 		return mAllocator == other.mAllocator && mCallback == other.mCallback
 				&& (__sprt_memcmp(mBuffer.data(), other.mBuffer.data(), mBuffer.size()) == 0);
 	}
 
-	constexpr bool operator!=(const alloc_function &other) const noexcept {
+	constexpr bool operator!=(const __function &other) const noexcept {
 		return mAllocator != other.mAllocator || mCallback != other.mCallback
 				|| (__sprt_memcmp(mBuffer.data(), other.mBuffer.data(), mBuffer.size()) != 0);
 	}
@@ -265,19 +264,19 @@ private:
 };
 
 template <typename Sig>
-using function = alloc_function<detail::Allocator<void *>, Sig>;
+using __pool_function = __function<memory::AllocatorPool<void *>, Sig>;
 
 template <typename Sig>
-using dynfunction = alloc_function<detail::DynamicAllocator<void *>, Sig>;
+using __malloc_function = __function<memory::AllocatorMalloc<void *>, Sig>;
 
-} // namespace sprt::memory
+} // namespace sprt
 
 namespace sprt::memory::pool {
 
-SPRT_API void cleanup_register(pool_t *p, memory::function<void()> &&cb);
+SPRT_API void cleanup_register(pool_t *p, __pool_function<void()> &&cb);
 
-SPRT_API void pre_cleanup_register(pool_t *p, memory::function<void()> &&cb);
+SPRT_API void pre_cleanup_register(pool_t *p, __pool_function<void()> &&cb);
 
 } // namespace sprt::memory::pool
 
-#endif
+#endif // RUNTIME_INCLUDE_SPRT_CXX_FUNCTION_H_

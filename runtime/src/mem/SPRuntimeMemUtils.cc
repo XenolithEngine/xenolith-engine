@@ -24,8 +24,8 @@ THE SOFTWARE.
 
 #include "private/SPRTMemStruct.h"
 #include <sprt/runtime/math.h>
-#include <sprt/runtime/mem/detail/alloc.h>
-#include <sprt/runtime/mem/detail/rbtree.h>
+#include <sprt/cxx/function.h>
+#include <sprt/cxx/memory/rbtree.h>
 #include <sprt/runtime/mem/userdata.h>
 #include <sprt/runtime/log.h>
 
@@ -158,7 +158,7 @@ namespace sprt::memory::pool {
 
 struct Pool_StoreHandle : AllocPool {
 	void *pointer;
-	memory::function<void()> callback;
+	__pool_function<void()> callback;
 };
 
 static Status sa_request_store_custom_cleanup(void *ptr) {
@@ -171,7 +171,7 @@ static Status sa_request_store_custom_cleanup(void *ptr) {
 	return Status::Ok;
 }
 
-void store(pool_t *pool, void *ptr, const StringView &key, memory::function<void()> &&cb) {
+void store(pool_t *pool, void *ptr, const StringView &key, __pool_function<void()> &&cb) {
 	context<pool_t *> ctx(pool, context<pool_t *>::conditional);
 
 	void *ret = nullptr;
@@ -211,7 +211,7 @@ void store(pool_t *pool, void *ptr, const StringView &key, memory::function<void
 
 } // namespace sprt::memory::pool
 
-namespace sprt::memory::detail {
+namespace sprt::memory {
 
 RbTreeNodeBase *RbTreeNodeBase::increment(RbTreeNodeBase *c) {
 	if (c->right) {
@@ -507,4 +507,4 @@ void RbTreeNodeBase::remove(RbTreeNodeBase *head, RbTreeNodeBase *n) {
 	n->setColor(RbTreeNodeColor::Black);
 }
 
-} // namespace sprt::memory::detail
+} // namespace sprt::memory

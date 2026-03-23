@@ -24,7 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_THREAD_INFO_H_
 
 #include <sprt/runtime/ref.h>
-#include <sprt/runtime/mem/function.h>
+#include <sprt/cxx/function.h>
 #include <sprt/c/__sprt_unistd.h>
 
 namespace sprt::thread {
@@ -60,7 +60,7 @@ void info::add_cleanup(Callback &&cb) {
 	if (d) {
 		memory::perform_conditional([&] {
 			memory::pool::cleanup_register(d->threadPool,
-					memory::function<void()>(sprt::forward<Callback>(cb)));
+					__pool_function<void()>(sprt::forward<Callback>(cb)));
 		}, d->threadPool);
 	}
 }

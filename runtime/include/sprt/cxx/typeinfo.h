@@ -1,0 +1,279 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_TYPEINFO_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_TYPEINFO_H_
+
+#include <sprt/runtime/init.h>
+
+namespace sprt {
+
+#if SPRT_WINDOWS
+
+class SPRT_API type_info {
+	type_info &operator=(const type_info &);
+	type_info(const type_info &);
+
+	mutable struct {
+		const char *__undecorated_name;
+		const char __decorated_name[1];
+	} __data;
+
+	int __compare(const type_info &__rhs) const noexcept;
+
+public:
+	virtual ~type_info();
+
+	const char *name() const noexcept;
+
+	bool before(const type_info &__arg) const noexcept { return __compare(__arg) < 0; }
+
+	size_t hash_code() const noexcept;
+
+	constexpr bool operator==(const type_info &__arg) const noexcept {
+		// When evaluated in a constant expression, both type infos simply can't come
+		// from different translation units, so it is sufficient to compare their addresses.
+		if (__builtin_is_constant_evaluated()) {
+			return this == &__arg;
+		}
+		return __compare(__arg) == 0;
+	}
+};
+
+#else // SPRT_WINDOWS
+
+// ========================================================================== //
+//                           Implementations
+// ========================================================================== //
+// ------------------------------------------------------------------------- //
+//                               Unique
+//               (_LIBCPP_TYPEINFO_COMPARISON_IMPLEMENTATION = 1)
+// ------------------------------------------------------------------------- //
+// This implementation of type_info assumes a unique copy of the RTTI for a
+// given type inside a program. This is a valid assumption when abiding to the
+// Itanium ABI (http://itanium-cxx-abi.github.io/cxx-abi/abi.html#vtable-components).
+// Under this assumption, we can always compare the addresses of the type names
+// to implement equality-comparison of type_infos instead of having to perform
+// a deep string comparison.
+
+#define SPRT_TYPEINFO_UNIQUE_IMPL 1
+
+
+// -------------------------------------------------------------------------- //
+//                             NonUnique
+//               (_LIBCPP_TYPEINFO_COMPARISON_IMPLEMENTATION = 2)
+// -------------------------------------------------------------------------- //
+// This implementation of type_info does not assume there is always a unique
+// copy of the RTTI for a given type inside a program. For various reasons
+// the linker may have failed to merge every copy of a types RTTI
+// (For example: -Bsymbolic or llvm.org/PR37398). Under this assumption, two
+// type_infos are equal if their addresses are equal or if a deep string
+// comparison is equal.
+
+#define SPRT_TYPEINFO_NONUNIQUE_IMPL 2
+
+
+// -------------------------------------------------------------------------- //
+//                          NonUniqueARMRTTIBit
+//               (_LIBCPP_TYPEINFO_COMPARISON_IMPLEMENTATION = 3)
+// -------------------------------------------------------------------------- //
+// This implementation is specific to ARM64 on Apple platforms.
+//
+// This implementation of type_info does not assume always a unique copy of
+// the RTTI for a given type inside a program. When constructing the type_info,
+// the compiler packs the pointer to the type name into a uintptr_t and reserves
+// the high bit of that pointer, which is assumed to be free for use under that
+// ABI. If that high bit is set, that specific copy of the RTTI can't be assumed
+// to be unique within the program. If the high bit is unset, then the RTTI can
+// be assumed to be unique within the program.
+//
+// When comparing type_infos, if both RTTIs can be assumed to be unique, it
+// suffices to compare their addresses. If both the RTTIs can't be assumed to
+// be unique, we must perform a deep string comparison of the type names.
+// However, if one of the RTTIs is guaranteed unique and the other one isn't,
+// then both RTTIs are necessarily not to be considered equal.
+//
+// The intent of this design is to remove the need for weak symbols. Specifically,
+// if a type would normally have a default-visibility RTTI emitted as a weak
+// symbol, it is given hidden visibility instead and the non-unique bit is set.
+// Otherwise, types declared with hidden visibility are always considered to have
+// a unique RTTI: the RTTI is emitted with linkonce_odr linkage and is assumed
+// to be deduplicated by the linker within the linked image. Across linked image
+// boundaries, such types are thus considered different types.
+
+#define SPRT_TYPEINFO_NONUNIQUE_ARMRTTI_IMPL 3
+
+
+#ifndef SPRT_TYPEINFO_TARGET_IMPL
+
+// Windows and AIX binaries can't merge typeinfos, so use the NonUnique implementation.
+#if defined(_WIN32) || defined(_AIX)
+#define SPRT_TYPEINFO_TARGET_IMPL SPRT_TYPEINFO_NONUNIQUE_IMPL
+
+// On arm64 on Apple platforms, use the special NonUniqueARMRTTIBit implementation.
+#elif defined(__APPLE__) && defined(__LP64__) && !defined(__x86_64__)
+#define SPRT_TYPEINFO_TARGET_IMPL SPRT_TYPEINFO_NONUNIQUE_ARMRTTI_IMPL
+
+// On all other platforms, assume the Itanium C++ ABI and use the Unique implementation.
+#else
+#define SPRT_TYPEINFO_TARGET_IMPL SPRT_TYPEINFO_UNIQUE_IMPL
+#endif
+#endif
+
+struct __type_info_implementations {
+	struct __string_impl_base {
+		typedef const char *__type_name_t;
+		SPRT_ALWAYSINLINE constexpr static const char *__type_name_to_string(
+				__type_name_t __v) noexcept {
+			return __v;
+		}
+		SPRT_ALWAYSINLINE constexpr static __type_name_t __string_to_type_name(
+				const char *__v) noexcept {
+			return __v;
+		}
+	};
+
+	struct __unique_impl : __string_impl_base {
+		SPRT_ALWAYSINLINE static size_t __hash(__type_name_t __v) noexcept {
+			return reinterpret_cast<size_t>(__v);
+		}
+		SPRT_ALWAYSINLINE static bool __eq(__type_name_t __lhs, __type_name_t __rhs) noexcept {
+			return __lhs == __rhs;
+		}
+		SPRT_ALWAYSINLINE static bool __lt(__type_name_t __lhs, __type_name_t __rhs) noexcept {
+			return __lhs < __rhs;
+		}
+	};
+
+	struct __non_unique_impl : __string_impl_base {
+		SPRT_ALWAYSINLINE static size_t __hash(__type_name_t __ptr) noexcept {
+			size_t __hash = 5'381;
+			while (unsigned char __c = static_cast<unsigned char>(*__ptr++)) {
+				__hash = (__hash * 33) ^ __c;
+			}
+			return __hash;
+		}
+		SPRT_ALWAYSINLINE static bool __eq(__type_name_t __lhs, __type_name_t __rhs) noexcept {
+			return __lhs == __rhs || __builtin_strcmp(__lhs, __rhs) == 0;
+		}
+		SPRT_ALWAYSINLINE static bool __lt(__type_name_t __lhs, __type_name_t __rhs) noexcept {
+			return __builtin_strcmp(__lhs, __rhs) < 0;
+		}
+	};
+
+	struct __non_unique_arm_rtti_bit_impl {
+		typedef uintptr_t __type_name_t;
+
+		SPRT_ALWAYSINLINE static const char *__type_name_to_string(__type_name_t __v) noexcept {
+			return reinterpret_cast<const char *>(__v & ~__non_unique_rtti_bit::value);
+		}
+		SPRT_ALWAYSINLINE static __type_name_t __string_to_type_name(const char *__v) noexcept {
+			return reinterpret_cast<__type_name_t>(__v);
+		}
+
+		SPRT_ALWAYSINLINE static size_t __hash(__type_name_t __v) noexcept {
+			if (__is_type_name_unique(__v)) {
+				return __v;
+			}
+			return __non_unique_impl::__hash(__type_name_to_string(__v));
+		}
+		SPRT_ALWAYSINLINE static bool __eq(__type_name_t __lhs, __type_name_t __rhs) noexcept {
+			if (__lhs == __rhs) {
+				return true;
+			}
+			if (__is_type_name_unique(__lhs) || __is_type_name_unique(__rhs)) {
+				// Either both are unique and have a different address, or one of them
+				// is unique and the other one isn't. In both cases they are unequal.
+				return false;
+			}
+			return __builtin_strcmp(__type_name_to_string(__lhs), __type_name_to_string(__rhs))
+					== 0;
+		}
+		SPRT_ALWAYSINLINE static bool __lt(__type_name_t __lhs, __type_name_t __rhs) noexcept {
+			if (__is_type_name_unique(__lhs) || __is_type_name_unique(__rhs)) {
+				return __lhs < __rhs;
+			}
+			return __builtin_strcmp(__type_name_to_string(__lhs), __type_name_to_string(__rhs)) < 0;
+		}
+
+	private:
+		// The unique bit is the top bit. It is expected that __type_name_t is 64 bits when
+		// this implementation is actually used.
+		typedef integral_constant<__type_name_t,
+				(1ULL << ((__CHAR_BIT__ * sizeof(__type_name_t)) - 1))>
+				__non_unique_rtti_bit;
+
+		static bool __is_type_name_unique(__type_name_t __lhs) noexcept {
+			return !(__lhs & __non_unique_rtti_bit::value);
+		}
+	};
+
+	using __impl =
+#if SPRT_TYPEINFO_TARGET_IMPL == SPRT_TYPEINFO_UNIQUE_IMPL
+			__unique_impl;
+#elif SPRT_TYPEINFO_TARGET_IMPL == SPRT_TYPEINFO_NONUNIQUE_IMPL
+			__non_unique_impl;
+#elif SPRT_TYPEINFO_TARGET_IMPL == SPRT_TYPEINFO_NONUNIQUE_ARMRTTI_IMPL
+			__non_unique_arm_rtti_bit_impl;
+#else
+#error invalid configuration for SPRT_TYPEINFO_TARGET_IMPL
+#endif
+};
+
+
+class SPRT_API type_info {
+	type_info &operator=(const type_info &);
+	type_info(const type_info &);
+
+protected:
+	typedef __type_info_implementations::__impl __impl;
+
+	__impl::__type_name_t __type_name;
+
+	explicit type_info(const char *__n) : __type_name(__impl::__string_to_type_name(__n)) { }
+
+public:
+	virtual ~type_info();
+
+	const char *name() const noexcept { return __impl::__type_name_to_string(__type_name); }
+
+	bool before(const type_info &__arg) const noexcept {
+		return __impl::__lt(__type_name, __arg.__type_name);
+	}
+
+	size_t hash_code() const noexcept { return __impl::__hash(__type_name); }
+
+	constexpr bool operator==(const type_info &__arg) const noexcept {
+		// When evaluated in a constant expression, both type infos simply can't come
+		// from different translation units, so it is sufficient to compare their addresses.
+		if (__builtin_is_constant_evaluated()) {
+			return this == &__arg;
+		}
+		return __impl::__eq(__type_name, __arg.__type_name);
+	}
+};
+
+#endif // SPRT_WINDOWS
+
+} // namespace sprt
+
+#endif

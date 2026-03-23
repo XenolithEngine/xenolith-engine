@@ -24,7 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_CONTEXT_INFO_H_
 
 #include <sprt/runtime/ref.h>
-#include <sprt/runtime/mem/string.h>
+#include <sprt/runtime/window/types.h>
 #include <sprt/runtime/window/config.h>
 
 namespace sprt::window {
@@ -43,12 +43,12 @@ enum class ContextFlags : uint32_t {
 SPRT_DEFINE_ENUM_AS_MASK(ContextFlags)
 
 struct SPRT_API ContextInfo final : public Ref {
-	memory::dynstring bundleName = "org.stappler.xenolith.test"; // application reverce-domain name
-	memory::dynstring appName = "Xenolith"; // application human-readable name
-	memory::dynstring appVersion = "0.0.1"; // application human-readable version
-	memory::dynstring userLanguage = ""; //"ru-ru"; // current locale name
-	memory::dynstring userAgent = "XenolithApp"; // networking user agent
-	memory::dynstring launchUrl; // initial launch URL (deep link)
+	String bundleName = "org.stappler.xenolith.test"; // application reverce-domain name
+	String appName = "Xenolith"; // application human-readable name
+	String appVersion = "0.0.1"; // application human-readable version
+	String userLanguage = ""; //"ru-ru"; // current locale name
+	String userAgent = "XenolithApp"; // networking user agent
+	String launchUrl; // initial launch URL (deep link)
 
 	uint32_t appVersionCode = 0; // version code in Vulkan format (see SP_MAKE_API_VERSION)
 

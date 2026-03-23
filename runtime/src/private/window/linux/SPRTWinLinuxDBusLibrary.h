@@ -148,21 +148,21 @@ struct SPRT_API Error {
 struct SPRT_API BusFilter : public Ref {
 	DBusError error;
 	Rc<Connection> connection;
-	memory::dynstring filter;
-	memory::dynstring interface;
-	memory::dynstring signal;
-	memory::dynfunction<uint32_t(NotNull<const BusFilter>, NotNull<DBusMessage>)> handler;
+	String filter;
+	String interface;
+	String signal;
+	Function<uint32_t(NotNull<const BusFilter>, NotNull<DBusMessage>)> handler;
 	bool added = false;
 
 	virtual ~BusFilter();
 	BusFilter(NotNull<Connection>, StringView filter);
 
 	BusFilter(NotNull<Connection>, StringView filter, StringView interface, StringView signal,
-			memory::dynfunction<uint32_t(NotNull<const BusFilter>, NotNull<DBusMessage>)> &&);
+			Function<uint32_t(NotNull<const BusFilter>, NotNull<DBusMessage>)> &&);
 };
 
 struct SPRT_API Connection : public Ref {
-	using EventCallback = memory::dynfunction<uint32_t(Connection *, const Event &)>;
+	using EventCallback = Function<uint32_t(Connection *, const Event &)>;
 
 	Rc<Library> lib;
 	EventCallback callback;
@@ -173,9 +173,9 @@ struct SPRT_API Connection : public Ref {
 	bool connected = false;
 	bool failed = false;
 	bool busy = false;
-	memory::dynstring name;
-	memory::dynset<memory::dynstring> services;
-	memory::dynset<BusFilter *> matchFilters;
+	String name;
+	Set<String> services;
+	Set<BusFilter *> matchFilters;
 
 	virtual ~Connection();
 
@@ -187,10 +187,10 @@ struct SPRT_API Connection : public Ref {
 
 	DBusPendingCall *callMethod(StringView bus, StringView path, StringView iface,
 			StringView method, const sprt::callback<void(WriteIterator &)> &,
-			memory::dynfunction<void(NotNull<Connection>, DBusMessage *)> &&, Ref * = nullptr);
+			Function<void(NotNull<Connection>, DBusMessage *)> &&, Ref * = nullptr);
 
 	DBusPendingCall *callMethod(StringView bus, StringView path, StringView iface,
-			StringView method, memory::dynfunction<void(NotNull<Connection>, DBusMessage *)> &&,
+			StringView method, Function<void(NotNull<Connection>, DBusMessage *)> &&,
 			Ref * = nullptr);
 
 	bool handle(const Event &, filesystem::PollFlags);
@@ -590,7 +590,7 @@ static inline bool _parseMessage(MessageParserData<Parser> &data, DBusMessageIte
 						}
 						break;
 					default:
-						log::vperror(__SPRT_LOCATION, "DBus", "invalid DictEntry key");
+						oslog::vperror(__SPRT_LOCATION, "DBus", "invalid DictEntry key");
 						return false;
 						break;
 					}
@@ -615,7 +615,7 @@ static inline bool _parseMessage(MessageParserData<Parser> &data, DBusMessageIte
 					}
 				}
 			} else {
-				log::vperror(__SPRT_LOCATION, "DBus", "DictEntry should be within Array");
+				oslog::vperror(__SPRT_LOCATION, "DBus", "DictEntry should be within Array");
 				return false;
 			}
 			break;
@@ -627,8 +627,7 @@ static inline bool _parseMessage(MessageParserData<Parser> &data, DBusMessageIte
 
 struct MessagePropertyParser {
 	static bool parse(Library *lib, NotNull<DBusMessageIter> entry, BasicValue &target);
-	static bool parse(Library *lib, NotNull<DBusMessageIter> entry,
-			memory::dynvector<uint32_t> &target);
+	static bool parse(Library *lib, NotNull<DBusMessageIter> entry, Vector<uint32_t> &target);
 	static bool parse(Library *lib, NotNull<DBusMessageIter> entry, bool &val);
 
 	static bool parse(Library *lib, NotNull<DBusMessageIter> entry, int32_t &val);
@@ -641,7 +640,7 @@ struct MessagePropertyParser {
 	Library *lib = nullptr;
 	bool found = false;
 	BasicValue *target = nullptr;
-	memory::dynvector<uint32_t> *u32ArrayTarget = nullptr;
+	Vector<uint32_t> *u32ArrayTarget = nullptr;
 };
 
 template <typename Parser>

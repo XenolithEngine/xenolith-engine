@@ -24,8 +24,8 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_FILESYSTEM_LOOKUP_H_
 
 #include <sprt/runtime/stringview.h>
-#include <sprt/runtime/mem/forward_list.h>
 #include <sprt/runtime/mutex.h>
+#include <sprt/cxx/forward_list.h>
 #include <sprt/c/sys/__sprt_stat.h>
 
 namespace sprt::filesystem {
@@ -296,7 +296,7 @@ struct LocationInfo {
 struct LookupInfo {
 	LocationCategory category = LocationCategory::Custom;
 	StringView prefix;
-	memory::forward_list<LocationInfo> paths;
+	__pool_forward_list<LocationInfo> paths;
 	mutable qmutex mutex;
 	bool init = false;
 	LookupFlags defaultLookupFlags = LookupFlags::None;

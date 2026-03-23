@@ -25,7 +25,6 @@ THE SOFTWARE.
 #include "private/SPRTMemStruct.h"
 #include <sprt/runtime/mem/context.h>
 #include <sprt/runtime/log.h>
-#include <sprt/runtime/detail/operations.h>
 #include <sprt/cxx/new.h>
 #include <sprt/c/__sprt_assert.h>
 #include <sprt/c/__sprt_unistd.h>
@@ -146,7 +145,7 @@ void *Pool::palloc(size_t in_size, uint32_t alignment) {
 	alignment = max(alignment, config::DefaultAlignment);
 
 	if (alignment > 1'024) {
-		log::vprint(log::LogType::Error, __SPRT_LOCATION, "sprt::memory",
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
 				"alignment value too large: ", alignment);
 		return nullptr;
 	}
@@ -193,7 +192,7 @@ void *Pool::palloc(size_t in_size, uint32_t alignment) {
 		if (mem) {
 			node->first_avail += size + ((node->endp - node->first_avail) - space);
 		} else {
-			log::vprint(log::LogType::Error, __SPRT_LOCATION, "sprt::memory",
+			oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
 					"fail to allocate aligned memory: ", alignment);
 			return nullptr;
 		}

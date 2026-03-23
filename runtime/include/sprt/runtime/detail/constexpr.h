@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/runtime/init.h>
 #include <sprt/c/__sprt_string.h>
+#include <sprt/c/__sprt_wchar.h>
 
 namespace sprt {
 
@@ -121,12 +122,16 @@ inline constexpr size_t __constexpr_strlen(const char16_t *str) {
 }
 
 inline constexpr size_t __constexpr_strlen(const wchar_t *str) {
-	if (str == nullptr) {
-		return 0;
+	if (is_constant_evaluated()) {
+		if (str == nullptr) {
+			return 0;
+		}
+		const wchar_t *end = str;
+		while (*end != u'\0') { ++end; }
+		return static_cast<size_t>(end - str);
+	} else {
+		return __sprt_wcslen(str);
 	}
-	const wchar_t *end = str;
-	while (*end != u'\0') { ++end; }
-	return static_cast<size_t>(end - str);
 }
 
 inline constexpr size_t __constexpr_strlen(const char32_t *str) {

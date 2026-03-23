@@ -875,7 +875,7 @@ __SPRT_C_FUNC int __SPRT_ID(usleep)(__SPRT_ID(time_t) __useconds) { return uslee
 __SPRT_C_FUNC int __SPRT_ID(chown)(const char *__file, __SPRT_ID(uid_t) __owner,
 		__SPRT_ID(gid_t) __group) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_CHOWN
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_CHOWN)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -890,7 +890,7 @@ __SPRT_C_FUNC int __SPRT_ID(chown)(const char *__file, __SPRT_ID(uid_t) __owner,
 __SPRT_C_FUNC int __SPRT_ID(
 		fchown)(int __fd, __SPRT_ID(uid_t) __owner, __SPRT_ID(gid_t) __group) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_CHOWN
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_CHOWN)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -919,7 +919,7 @@ __SPRT_C_FUNC char *__SPRT_ID(getcwd)(char *__buf, __SPRT_ID(size_t) __size) __S
 
 __SPRT_C_FUNC int __SPRT_ID(dup)(int __fd) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_DUP
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_DUP)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -932,7 +932,7 @@ __SPRT_C_FUNC int __SPRT_ID(dup)(int __fd) __SPRT_NOEXCEPT {
 
 __SPRT_C_FUNC int __SPRT_ID(dup2)(int __fd, int __fd2) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_DUP
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_DUP)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -945,7 +945,7 @@ __SPRT_C_FUNC int __SPRT_ID(dup2)(int __fd, int __fd2) __SPRT_NOEXCEPT {
 
 __SPRT_C_FUNC int __SPRT_ID(dup3)(int __fd, int __fd2, int __flags) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_DUP3
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_DUP3)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -957,7 +957,7 @@ __SPRT_C_FUNC int __SPRT_ID(dup3)(int __fd, int __fd2, int __flags) __SPRT_NOEXC
 __SPRT_C_FUNC int __SPRT_ID(
 		execve)(const char *__path, char *const _argv[], char *const __envp[]) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_EXEC
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_EXEC)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -974,7 +974,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 __SPRT_C_FUNC int __SPRT_ID(
 		fexecve)(int __fd, char *const _argv[], char *const __envp[]) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_FEXEC
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_FEXEC)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -985,7 +985,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 
 __SPRT_C_FUNC int __SPRT_ID(execv)(const char *__path, char *const _argv[]) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_EXEC
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_EXEC)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1001,7 +1001,7 @@ __SPRT_C_FUNC int __SPRT_ID(execv)(const char *__path, char *const _argv[]) __SP
 
 __SPRT_C_FUNC int __SPRT_ID(execvp)(const char *__file, char *const _argv[]) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_EXEC
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_EXEC)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1018,7 +1018,7 @@ __SPRT_C_FUNC int __SPRT_ID(execvp)(const char *__file, char *const _argv[]) __S
 __SPRT_C_FUNC int __SPRT_ID(
 		execvpe)(const char *__file, char *const _argv[], char *const __envp[]) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_EXEC
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_EXEC)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1036,7 +1036,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 
 __SPRT_C_FUNC int __SPRT_ID(execle)(const char *__path, const char *__arg, ...) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_EXEC
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_EXEC)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1069,7 +1069,7 @@ __SPRT_C_FUNC int __SPRT_ID(execle)(const char *__path, const char *__arg, ...) 
 
 __SPRT_C_FUNC int __SPRT_ID(execl)(const char *__path, const char *__arg, ...) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_EXEC
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_EXEC)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1101,7 +1101,7 @@ __SPRT_C_FUNC int __SPRT_ID(execl)(const char *__path, const char *__arg, ...) _
 
 __SPRT_C_FUNC int __SPRT_ID(execlp)(const char *__file, const char *__arg, ...) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_EXEC
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_EXEC)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1134,7 +1134,7 @@ __SPRT_C_FUNC int __SPRT_ID(execlp)(const char *__file, const char *__arg, ...) 
 
 __SPRT_C_FUNC int __SPRT_ID(nice)(int __inc) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_NICE
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_NICE)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1166,7 +1166,7 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(getpid)(void) __SPRT_NOEXCEPT {
 
 __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(getppid)(void) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_GETPPID
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_GETPPID)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1191,7 +1191,7 @@ __SPRT_C_FUNC int __SPRT_ID(setuid)(__SPRT_ID(uid_t) __uid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
 	return ::setuid(__uid);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETUIDGID)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -1202,7 +1202,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
 	return ::setreuid(__ruid, __euid);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETUIDGID)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -1212,7 +1212,7 @@ __SPRT_C_FUNC int __SPRT_ID(seteuid)(__SPRT_ID(uid_t) __uid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
 	return ::seteuid(__uid);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETUIDGID)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -1222,7 +1222,7 @@ __SPRT_C_FUNC int __SPRT_ID(setgid)(__SPRT_ID(gid_t) __gid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
 	return ::setgid(__gid);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETUIDGID)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -1233,7 +1233,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
 	return ::setregid(__rgid, __egid);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETUIDGID)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -1243,7 +1243,7 @@ __SPRT_C_FUNC int __SPRT_ID(setegid)(__SPRT_ID(gid_t) __gid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
 	return ::setegid(__gid);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETUIDGID)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -1295,7 +1295,7 @@ __SPRT_C_FUNC int __SPRT_ID(setresuid)(__SPRT_ID(uid_t) __ruid, __SPRT_ID(uid_t)
 	return ::setresuid(__ruid, __euid, __suid);
 #endif
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETUIDGID)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -1310,7 +1310,7 @@ __SPRT_C_FUNC int __SPRT_ID(setresgid)(__SPRT_ID(gid_t) __rgid, __SPRT_ID(gid_t)
 	return ::setresgid(__rgid, __egid, __sgid);
 #endif
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETUIDGID)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -1320,7 +1320,7 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(fork)(void) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_FORK
 	return ::fork();
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_FORK)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -1333,7 +1333,7 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(vfork)(void) __SPRT_NOEXCEPT {
 	return ::vfork();
 #pragma clang diagnostic pop
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_FORK)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -1387,7 +1387,7 @@ __SPRT_C_FUNC int __SPRT_ID(getlogin_r)(char *__name, __SPRT_ID(size_t) __name_l
 	if (platform::_getlogin_r) {
 		return platform::_getlogin_r(__name, __name_len);
 	}
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1398,7 +1398,7 @@ __SPRT_C_FUNC int __SPRT_ID(getlogin_r)(char *__name, __SPRT_ID(size_t) __name_l
 
 __SPRT_C_FUNC int __SPRT_ID(setlogin)(const char *__name) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_SETLOGIN
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETLOGIN)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1415,7 +1415,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 #if __SPRT_CONFIG_HAVE_UNISTD_SETHOSTNAME
 	return ::sethostname(__name, __len);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_SETHOSTNAME)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1423,7 +1423,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 }
 __SPRT_C_FUNC int __SPRT_ID(getdomainname)(char *__name, __SPRT_ID(size_t) __len) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_DOMAINNAME
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_DOMAINNAME)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1434,7 +1434,7 @@ __SPRT_C_FUNC int __SPRT_ID(getdomainname)(char *__name, __SPRT_ID(size_t) __len
 __SPRT_C_FUNC int __SPRT_ID(
 		setdomainname)(const char *__name, __SPRT_ID(size_t) __len) __SPRT_NOEXCEPT {
 #if !__SPRT_CONFIG_HAVE_UNISTD_DOMAINNAME
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_DOMAINNAME)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1499,7 +1499,7 @@ __SPRT_C_FUNC int __SPRT_ID(brk)(void *__addr) __SPRT_NOEXCEPT {
 #endif
 #pragma clang diagnostic pop
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_BRK)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1513,7 +1513,7 @@ __SPRT_C_FUNC void *__SPRT_ID(sbrk)(__SPRT_ID(intptr_t) __delta) __SPRT_NOEXCEPT
 	return ::sbrk(__delta);
 #pragma clang diagnostic pop
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_BRK)");
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
@@ -1536,7 +1536,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 	if (platform::_copy_file_range) {
 		return platform::_copy_file_range(__infd, __pinoff, __outfd, __poutoff, __length, __flags);
 	}
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1544,7 +1544,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 	return copy_file_range(__infd, __pinoff, __outfd, __poutoff, __length, __flags);
 #endif
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_COPY_FILE_RANGE)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -1606,7 +1606,7 @@ __SPRT_C_FUNC int __SPRT_ID(fchownat)(int __dir_fd, const char *__path, __SPRT_I
 #if __SPRT_CONFIG_HAVE_UNISTD_CHOWN
 	return ::fchownat(__dir_fd, __path, __owner, __group, __flags);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_CHOWN)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;

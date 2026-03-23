@@ -173,7 +173,7 @@ __SPRT_C_FUNC int __SPRT_ID(timespec_get)(__SPRT_TIMESPEC_NAME *spec, int base) 
 #if SPRT_ANDROID
 	struct timespec nativeSpec;
 	if (!platform::_timespec_get) {
-		log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+		oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 				" not available for this platform (Android: API not available)");
 		*__sprt___errno_location() = ENOSYS;
 		return -1;

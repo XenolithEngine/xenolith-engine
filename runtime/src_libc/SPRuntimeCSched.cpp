@@ -50,7 +50,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	}
 	return ret;
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -61,7 +61,7 @@ __SPRT_C_FUNC int __SPRT_ID(sched_getscheduler)(__SPRT_ID(pid_t) pid) {
 #if __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER
 	return sched_getscheduler(pid);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -82,7 +82,7 @@ __SPRT_C_FUNC int __SPRT_ID(sched_rr_get_interval)(__SPRT_ID(pid_t) pid, __SPRT_
 	return ret;
 #endif
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -99,7 +99,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	}
 	return sched_setparam(pid, &param);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -116,7 +116,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	}
 	return sched_setscheduler(pid, t, &param);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;

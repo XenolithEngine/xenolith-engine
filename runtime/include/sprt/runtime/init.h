@@ -94,6 +94,8 @@ using ptrdiff_t = __SPRT_ID(ptrdiff_t);
 using uintptr_t = __SPRT_ID(uintptr_t);
 using intptr_t = __SPRT_ID(intptr_t);
 
+using max_align_t = __SPRT_ID(max_align_t);
+
 static_assert(sizeof(uint8_t) == 1, "Invalid int length");
 static_assert(sizeof(int8_t) == 1, "Invalid int length");
 static_assert(sizeof(uint16_t) == 2, "Invalid int length");
@@ -149,11 +151,11 @@ constexpr inline Type *addressof(Type &__x) noexcept {
 	return __builtin_addressof(__x);
 }
 
-template <class _Tp>
+template <typename _Tp>
 struct is_identity : false_type { };
 
 struct identity {
-	template <class _Tp>
+	template <typename _Tp>
 	[[nodiscard]]
 	constexpr _Tp &&operator()(_Tp &&__t) const noexcept {
 		return sprt::forward<_Tp>(__t);

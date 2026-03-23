@@ -65,7 +65,7 @@ struct _EnvBlock {
 
 		auto it = _envs.find(name);
 		if (it == _envs.end()) {
-			it = _envs.emplace(name, memory::dynstring()).first;
+			it = _envs.emplace(name, String()).first;
 		}
 
 		it->second.resize(bufSize - 1); // strip nullptr from size
@@ -77,7 +77,7 @@ struct _EnvBlock {
 		return nullptr;
 	}
 
-	memory::dynmap<memory::dynstring, memory::dynstring> _envs;
+	memory::dynmap<String, String> _envs;
 };
 
 thread_local _EnvBlock tl_env;

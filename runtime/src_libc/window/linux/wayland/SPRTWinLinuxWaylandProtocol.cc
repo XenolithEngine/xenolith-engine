@@ -450,7 +450,7 @@ struct SharedDataBlock {
 			offset += totalSize;
 			return SharedSuballocation<T>{reinterpret_cast<T *>(ret), off, totalSize};
 		}
-		log::vperror(__SPRT_LOCATION, "Wayland",
+		oslog::vperror(__SPRT_LOCATION, "Wayland",
 				"Fail to suballocate shared memory for decorations");
 		return SharedSuballocation<T>{nullptr};
 	}

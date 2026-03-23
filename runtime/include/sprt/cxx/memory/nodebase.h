@@ -20,13 +20,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_NODEBASE_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_NODEBASE_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_MEMORY_NODEBASE_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_MEMORY_NODEBASE_H_
 
 #include <sprt/c/__sprt_stdio.h>
-#include <sprt/runtime/mem/detail/alloc.h>
+#include <sprt/cxx/memory/allocator_pool.h>
 
-namespace sprt::memory::detail {
+namespace sprt::memory {
 
 template <size_t ArchSize>
 struct SPRT_API RbTreeNodeFlag;
@@ -281,6 +281,6 @@ struct NodeBlockAllocatorHelper {
 	}
 };
 
-} // namespace sprt::memory::detail
+} // namespace sprt::memory
 
-#endif
+#endif // RUNTIME_INCLUDE_SPRT_CXX_MEMORY_NODEBASE_H_

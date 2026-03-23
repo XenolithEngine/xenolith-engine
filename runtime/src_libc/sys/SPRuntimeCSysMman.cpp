@@ -76,7 +76,7 @@ __SPRT_C_FUNC int __SPRT_ID(mlockall)(int __flags) {
 #if __SPRT_CONFIG_HAVE_MMAN_MLOCKALL
 	return ::mlockall(__flags);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_MMAN_MREMAP)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -87,7 +87,7 @@ __SPRT_C_FUNC int __SPRT_ID(munlockall)(void) {
 #if __SPRT_CONFIG_HAVE_MMAN_MLOCKALL
 	return ::munlockall();
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_MMAN_MREMAP)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -107,7 +107,7 @@ __SPRT_C_FUNC void *__SPRT_ID(mremap)(void *__addr, __SPRT_ID(size_t) __old_size
 
 	return ::mremap(__addr, __old_size, __new_size, __flags, new_addr);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_MMAN_MREMAP)");
 	__sprt_errno = ENOSYS;
 	return __SPRT_MAP_FAILED;
@@ -119,7 +119,7 @@ __SPRT_C_FUNC int __SPRT_ID(mlock2)(const void *__addr, __SPRT_ID(size_t) __size
 	if (platform::_mlock2) {
 		return platform::_mlock2(__addr, __size, __flags);
 	}
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -152,7 +152,7 @@ __SPRT_C_FUNC int __SPRT_ID(memfd_create)(const char *name, unsigned flags) {
 	if (platform::_memfd_create) {
 		return platform::_memfd_create(name, flags);
 	}
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -160,7 +160,7 @@ __SPRT_C_FUNC int __SPRT_ID(memfd_create)(const char *name, unsigned flags) {
 	return ::memfd_create(name, flags);
 #endif
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_MMAN_MEMFD)");
 	__sprt_errno = ENOSYS;
 	return -1;

@@ -88,10 +88,10 @@ public:
 			Function<Status(sprt::native_handle fd, filesystem::PollFlags flags)> &&,
 			Ref * = nullptr) = 0;
 
-	virtual Status performOnThread(memory::dynfunction<void()> &&func, Ref *target = nullptr,
+	virtual Status performOnThread(Function<void()> &&func, Ref *target = nullptr,
 			bool immediate = false, StringView tag = __SPRT_LOCATION.function_name()) const = 0;
 
-	virtual Status performAsync(memory::dynfunction<void()> &&, Ref * = nullptr, bool first = false,
+	virtual Status performAsync(Function<void()> &&, Ref * = nullptr, bool first = false,
 			StringView tag = __SPRT_LOCATION.function_name()) const = 0;
 };
 

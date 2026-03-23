@@ -59,7 +59,7 @@ Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextCon
 #if SPRT_ANDROID
 	return AndroidContextController::create(ctx, move(info), a);
 #endif
-	log::vperror(__SPRT_LOCATION, "ContextController", "Unknown platform");
+	oslog::vperror(__SPRT_LOCATION, "ContextController", "Unknown platform");
 	return nullptr;
 }
 
@@ -111,7 +111,7 @@ void ContextController::notifyWindowConstraintsChanged(NotNull<NativeWindow> w,
 	}
 }
 void ContextController::notifyWindowInputEvents(NotNull<NativeWindow> w,
-		memory::dynvector<InputEventData> &&ev) {
+		Vector<InputEventData> &&ev) {
 	_context->handleNativeWindowInputEvents(w, sprt::move(ev));
 }
 

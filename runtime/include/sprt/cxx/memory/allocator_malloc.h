@@ -20,16 +20,18 @@
  THE SOFTWARE.
  **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_DYNALLOC_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_DYNALLOC_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_MEMORY_ALLOCATOR_MALLOC_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_MEMORY_ALLOCATOR_MALLOC_H_
 
 #include <sprt/c/__sprt_stdio.h>
-#include <sprt/runtime/mem/detail/alloc.h>
+#include <sprt/c/__sprt_assert.h>
 
-namespace sprt::memory::detail {
+#include <sprt/cxx/new.h>
+
+namespace sprt::memory {
 
 template <typename T>
-class DynamicAllocator {
+class AllocatorMalloc {
 public:
 	using base_class = AllocBase;
 
@@ -47,33 +49,26 @@ public:
 	using size_type = size_t;
 	using difference_type = ptrdiff_t;
 
-	template <class U>
+	template <typename U>
 	struct rebind {
-		using other = DynamicAllocator<U>;
+		using other = AllocatorMalloc<U>;
 	};
 
 	// default alignment for pool_t is 8-bit, so, we can store up to 3 flags in pool pointer
 
-	enum AllocFlag : uintptr_t {
-		FirstFlag = 1,
-		SecondFlag = 2,
-		ThirdFlag = 4,
-		BitMask = 7,
-	};
-
 public:
 	// Default allocator uses pool from top of thread's AllocStack
-	DynamicAllocator() noexcept;
+	AllocatorMalloc() noexcept;
 
 	template <typename B>
-	DynamicAllocator(const DynamicAllocator<B> &a) noexcept;
+	AllocatorMalloc(const AllocatorMalloc<B> &a) noexcept;
 	template <typename B>
-	DynamicAllocator(DynamicAllocator<B> &&a) noexcept;
+	AllocatorMalloc(AllocatorMalloc<B> &&a) noexcept;
 
 	template <typename B>
-	DynamicAllocator<T> &operator=(const DynamicAllocator<B> &a) noexcept;
+	AllocatorMalloc<T> &operator=(const AllocatorMalloc<B> &a) noexcept;
 	template <typename B>
-	DynamicAllocator<T> &operator=(DynamicAllocator<B> &&a) noexcept;
+	AllocatorMalloc<T> &operator=(AllocatorMalloc<B> &&a) noexcept;
 
 	T *allocate(size_t n) const noexcept;
 	T *__allocate(size_t &n) const noexcept;
@@ -82,9 +77,9 @@ public:
 	void __deallocate(T *t, size_t n, size_t bytes) const noexcept;
 
 	template <typename B>
-	inline bool operator==(const DynamicAllocator<B> &p) const noexcept;
+	inline bool operator==(const AllocatorMalloc<B> &p) const noexcept;
 	template <typename B>
-	inline bool operator!=(const DynamicAllocator<B> &p) const noexcept;
+	inline bool operator!=(const AllocatorMalloc<B> &p) const noexcept;
 
 	inline pointer address(reference r) const noexcept;
 	inline const_pointer address(const_reference r) const noexcept;
@@ -106,14 +101,6 @@ public:
 
 	void move(T *dest, T *source, size_t count) noexcept;
 	void move_rewrite(T *dest, size_t dcount, T *source, size_t count) noexcept;
-
-	bool test(AllocFlag f) const noexcept;
-	void set(AllocFlag f) noexcept;
-	void reset(AllocFlag f) noexcept;
-	void flip(AllocFlag f) noexcept;
-
-private:
-	uint8_t _flags = 0;
 };
 
 //
@@ -122,32 +109,31 @@ private:
 
 // Default allocator uses pool from top of thread's AllocStack
 template <typename T>
-inline DynamicAllocator<T>::DynamicAllocator() noexcept { }
+inline AllocatorMalloc<T>::AllocatorMalloc() noexcept { }
 
 template <typename T>
 template <typename B>
-inline DynamicAllocator<T>::DynamicAllocator(const DynamicAllocator<B> &a) noexcept { }
+inline AllocatorMalloc<T>::AllocatorMalloc(const AllocatorMalloc<B> &a) noexcept { }
 
 template <typename T>
 template <typename B>
-inline DynamicAllocator<T>::DynamicAllocator(DynamicAllocator<B> &&a) noexcept { }
+inline AllocatorMalloc<T>::AllocatorMalloc(AllocatorMalloc<B> &&a) noexcept { }
 
 template <typename T>
 template <typename B>
-inline auto DynamicAllocator<T>::operator=(const DynamicAllocator<B> &a) noexcept
-		-> DynamicAllocator<T> & {
+inline auto AllocatorMalloc<T>::operator=(const AllocatorMalloc<B> &a) noexcept
+		-> AllocatorMalloc<T> & {
 	return *this;
 }
 
 template <typename T>
 template <typename B>
-inline auto DynamicAllocator<T>::operator=(DynamicAllocator<B> &&a) noexcept
-		-> DynamicAllocator<T> & {
+inline auto AllocatorMalloc<T>::operator=(AllocatorMalloc<B> &&a) noexcept -> AllocatorMalloc<T> & {
 	return *this;
 }
 
 template <typename T>
-inline auto DynamicAllocator<T>::allocate(size_t n) const noexcept -> T * {
+inline auto AllocatorMalloc<T>::allocate(size_t n) const noexcept -> T * {
 	T *ptr = nullptr;
 	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
 		ptr = (T *)__sprt_malloc(sizeof(T) * n);
@@ -162,7 +148,7 @@ inline auto DynamicAllocator<T>::allocate(size_t n) const noexcept -> T * {
 }
 
 template <typename T>
-inline auto DynamicAllocator<T>::__allocate(size_t &n) const noexcept -> T * {
+inline auto AllocatorMalloc<T>::__allocate(size_t &n) const noexcept -> T * {
 	T *ptr = nullptr;
 	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
 		ptr = (T *)__sprt_malloc(sizeof(T) * n);
@@ -177,7 +163,7 @@ inline auto DynamicAllocator<T>::__allocate(size_t &n) const noexcept -> T * {
 }
 
 template <typename T>
-inline auto DynamicAllocator<T>::__allocate(size_t n, size_t &bytes) const noexcept -> T * {
+inline auto AllocatorMalloc<T>::__allocate(size_t n, size_t &bytes) const noexcept -> T * {
 	T *ptr = nullptr;
 	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
 		ptr = (T *)__sprt_malloc(sizeof(T) * n);
@@ -193,7 +179,7 @@ inline auto DynamicAllocator<T>::__allocate(size_t n, size_t &bytes) const noexc
 }
 
 template <typename T>
-inline void DynamicAllocator<T>::deallocate(T *t, size_t n) const noexcept {
+inline void AllocatorMalloc<T>::deallocate(T *t, size_t n) const noexcept {
 	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
 		__sprt_free(t);
 	} else {
@@ -202,7 +188,7 @@ inline void DynamicAllocator<T>::deallocate(T *t, size_t n) const noexcept {
 }
 
 template <typename T>
-inline void DynamicAllocator<T>::__deallocate(T *t, size_t n, size_t bytes) const noexcept {
+inline void AllocatorMalloc<T>::__deallocate(T *t, size_t n, size_t bytes) const noexcept {
 	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
 		__sprt_free(t);
 	} else {
@@ -212,34 +198,34 @@ inline void DynamicAllocator<T>::__deallocate(T *t, size_t n, size_t bytes) cons
 
 template <typename T>
 template <typename B>
-inline bool DynamicAllocator<T>::operator==(const DynamicAllocator<B> &p) const noexcept {
+inline bool AllocatorMalloc<T>::operator==(const AllocatorMalloc<B> &p) const noexcept {
 	return true;
 }
 
 template <typename T>
 template <typename B>
-inline bool DynamicAllocator<T>::operator!=(const DynamicAllocator<B> &p) const noexcept {
+inline bool AllocatorMalloc<T>::operator!=(const AllocatorMalloc<B> &p) const noexcept {
 	return false;
 }
 
 template <typename T>
-inline auto DynamicAllocator<T>::address(reference r) const noexcept -> pointer {
+inline auto AllocatorMalloc<T>::address(reference r) const noexcept -> pointer {
 	return &r;
 }
 
 template <typename T>
-inline auto DynamicAllocator<T>::address(const_reference r) const noexcept -> const_pointer {
+inline auto AllocatorMalloc<T>::address(const_reference r) const noexcept -> const_pointer {
 	return &r;
 }
 
 template <typename T>
-inline auto DynamicAllocator<T>::max_size() const noexcept -> size_type {
+inline auto AllocatorMalloc<T>::max_size() const noexcept -> size_type {
 	return Max<size_type>;
 }
 
 template <typename T>
 template <typename... Args>
-inline void DynamicAllocator<T>::construct(pointer p, Args &&...args) const noexcept {
+inline void AllocatorMalloc<T>::construct(pointer p, Args &&...args) const noexcept {
 	static_assert(is_constructible<T, Args...>::value, "Invalid arguments for constructor");
 	if constexpr (is_constructible<T, Args...>::value) {
 		if constexpr (sizeof...(Args) == 1) {
@@ -259,7 +245,7 @@ inline void DynamicAllocator<T>::construct(pointer p, Args &&...args) const noex
 }
 
 template <typename T>
-inline void DynamicAllocator<T>::destroy(pointer p) const noexcept {
+inline void AllocatorMalloc<T>::destroy(pointer p) const noexcept {
 	if constexpr (!is_destructible<T>::value || is_scalar<T>::value) {
 		// do nothing
 	} else {
@@ -268,7 +254,7 @@ inline void DynamicAllocator<T>::destroy(pointer p) const noexcept {
 }
 
 template <typename T>
-inline void DynamicAllocator<T>::destroy(pointer p, size_t size) const noexcept {
+inline void AllocatorMalloc<T>::destroy(pointer p, size_t size) const noexcept {
 	if constexpr (!is_destructible<T>::value || is_scalar<T>::value) {
 		// do nothing
 	} else {
@@ -277,12 +263,12 @@ inline void DynamicAllocator<T>::destroy(pointer p, size_t size) const noexcept 
 }
 
 template <typename T>
-inline DynamicAllocator<T>::operator bool() const noexcept {
+inline AllocatorMalloc<T>::operator bool() const noexcept {
 	return true;
 }
 
 template <typename T>
-inline void DynamicAllocator<T>::copy(T *dest, const T *source, size_t count) noexcept {
+inline void AllocatorMalloc<T>::copy(T *dest, const T *source, size_t count) noexcept {
 	if constexpr (is_trivially_copyable<T>::value) {
 		__constexpr_memmove(dest, source, count);
 	} else {
@@ -297,7 +283,7 @@ inline void DynamicAllocator<T>::copy(T *dest, const T *source, size_t count) no
 }
 
 template <typename T>
-inline void DynamicAllocator<T>::copy_rewrite(T *dest, size_t dcount, const T *source,
+inline void AllocatorMalloc<T>::copy_rewrite(T *dest, size_t dcount, const T *source,
 		size_t count) noexcept {
 	if constexpr (is_trivially_copyable<T>::value) {
 		__constexpr_memmove(dest, source, count);
@@ -325,7 +311,7 @@ inline void DynamicAllocator<T>::copy_rewrite(T *dest, size_t dcount, const T *s
 }
 
 template <typename T>
-inline void DynamicAllocator<T>::move(T *dest, T *source, size_t count) noexcept {
+inline void AllocatorMalloc<T>::move(T *dest, T *source, size_t count) noexcept {
 	if constexpr (is_trivially_copyable<T>::value) {
 		__constexpr_memmove(dest, source, count);
 	} else if constexpr (is_trivially_move_constructible<T>::value) {
@@ -348,7 +334,7 @@ inline void DynamicAllocator<T>::move(T *dest, T *source, size_t count) noexcept
 }
 
 template <typename T>
-inline void DynamicAllocator<T>::move_rewrite(T *dest, size_t dcount, T *source,
+inline void AllocatorMalloc<T>::move_rewrite(T *dest, size_t dcount, T *source,
 		size_t count) noexcept {
 	if constexpr (is_trivially_copyable<T>::value) {
 		__constexpr_memmove(dest, source, count);
@@ -385,26 +371,6 @@ inline void DynamicAllocator<T>::move_rewrite(T *dest, size_t dcount, T *source,
 	}
 }
 
-template <typename T>
-inline bool DynamicAllocator<T>::test(AllocFlag f) const noexcept {
-	return (_flags & uint8_t(toInt(f))) != 0;
-}
+} // namespace sprt::memory
 
-template <typename T>
-inline void DynamicAllocator<T>::set(AllocFlag f) noexcept {
-	_flags |= uint8_t(toInt(f));
-}
-
-template <typename T>
-inline void DynamicAllocator<T>::reset(AllocFlag f) noexcept {
-	_flags &= ~uint8_t(toInt(f));
-}
-
-template <typename T>
-inline void DynamicAllocator<T>::flip(AllocFlag f) noexcept {
-	_flags ^= ~uint8_t(toInt(f));
-}
-
-} // namespace sprt::memory::detail
-
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_DETAIL_DYNALLOC_H_
+#endif // RUNTIME_INCLUDE_SPRT_CXX_MEMORY_ALLOCATOR_MALLOC_H_

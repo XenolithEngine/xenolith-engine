@@ -26,7 +26,7 @@
 
 #include <sprt/runtime/stream.h>
 #include <sprt/runtime/log.h>
-#include <sprt/runtime/mem/vector.h>
+#include <sprt/cxx/vector.h>
 #include <sprt/runtime/enum.h>
 #include "private/SPRTFilesystem.h"
 #include <stdlib.h>
@@ -104,7 +104,7 @@ void _initSystemPaths(LookupData &data) {
 	auto execPath = platform::getExecPath();
 	auto defaultInterface = getDefaultInterface();
 	if (homePath.empty()) {
-		log::vprint(log::LogType::Error, __SPRT_LOCATION, "filesystem", "$HOME is not defined");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "filesystem", "$HOME is not defined");
 		return;
 	}
 
@@ -290,7 +290,7 @@ void _initSystemPaths(LookupData &data) {
 
 	bool userConfigFound = false;
 	memory::perform_temporary([&](memory::pool_t *tmpPool) {
-		memory::vector<uint8_t> filedata;
+		__pool_vector<uint8_t> filedata;
 		for (auto &it : data._resourceLocations[toInt(LocationCategory::CommonConfig)].paths) {
 			filepath::merge([&](StringView path) {
 				struct stat s;
@@ -374,7 +374,7 @@ void _initSystemPaths(LookupData &data) {
 	}
 
 	if (!userConfigFound) {
-		log::vprint(log::LogType::Warn, __SPRT_LOCATION, "filesystem",
+		oslog::vprint(oslog::LogType::Warn, __SPRT_LOCATION, "filesystem",
 				"XDG defaults (user-dirs.dirs) not found, fallback to home dir");
 	}
 

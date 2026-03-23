@@ -90,13 +90,13 @@ SPRT_API void replace(const callback<void(StringView)> &, StringView path, Strin
 SPRT_API void _merge(const callback<void(StringView)> &cb, bool init, StringView root);
 SPRT_API void _merge(const callback<void(StringView)> &cb, StringView root);
 
-template <class... Args>
+template <typename... Args>
 SPRT_API inline auto _merge(const callback<void(StringView)> &cb, StringView root, Args &&...args) {
 	_merge(cb, false, root);
 	_merge(cb, sprt::forward<Args>(args)...);
 }
 
-template <class... Args>
+template <typename... Args>
 SPRT_API inline auto merge(const callback<void(StringView)> &cb, StringView root, Args &&...args) {
 	size_t bufferSize = 0;
 

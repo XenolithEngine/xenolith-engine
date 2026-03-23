@@ -484,7 +484,7 @@ void WaylandWindow::handleToplevelConfigure(xdg_toplevel *xdg_toplevel, int32_t 
 	if (unfullscreen && !_activeOutputs.empty()) {
 		auto extent = (*_activeOutputs.begin())->currentMode.size;
 		if (extent.width == uint32_t(width) && extent.height == uint32_t(height)) {
-			log::vperror(__SPRT_LOCATION, "Wayland", "Unfullscreen failed, restore saved params");
+			oslog::vperror(__SPRT_LOCATION, "Wayland", "Unfullscreen failed, restore saved params");
 			width = _savedExtent.width;
 			height = _savedExtent.height;
 		}
@@ -1664,7 +1664,7 @@ bool WaylandWindow::initWithAppDecor() {
 	xdg_toplevel_add_listener(_toplevel, &s_XdgToplevelListener, this);
 
 	if (!_display->viewporter) {
-		log::vperror(__SPRT_LOCATION, "WaylandWindow",
+		oslog::vperror(__SPRT_LOCATION, "WaylandWindow",
 				"Viewporter interface should be available for the app decorations");
 		return false;
 	}
@@ -1703,7 +1703,7 @@ bool WaylandWindow::initWithAppDecor() {
 	}
 
 	if (!allocateDecorations(_wayland, _display->shm->shm, info)) {
-		log::vperror(__SPRT_LOCATION, "WaylandWindow",
+		oslog::vperror(__SPRT_LOCATION, "WaylandWindow",
 				"Fail to allocate decorations shared buffers");
 		return false;
 	}

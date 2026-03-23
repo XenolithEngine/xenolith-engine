@@ -66,7 +66,7 @@ __SPRT_C_FUNC int __SPRT_ID(gettimeofday)(struct __SPRT_TIMEVAL_NAME *__SPRT_RES
 	}
 	return ret;
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_TIME_TIMEOFDAY)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -91,7 +91,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 
 	return ::settimeofday(__tv ? &nativeTv : nullptr, __tz ? &nativeTz : nullptr);
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_TIME_TIMEOFDAY)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -110,7 +110,7 @@ __SPRT_C_FUNC int __SPRT_ID(getitimer)(int __w, struct __SPRT_ID(itimerval) * __
 	}
 	return ret;
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_TIME_TIMER)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -140,7 +140,7 @@ __SPRT_C_FUNC int __SPRT_ID(setitimer)(int __w,
 	}
 	return ret;
 #else
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_TIME_TIMER)");
 	__sprt_errno = ENOSYS;
 	return -1;
@@ -192,7 +192,7 @@ __SPRT_C_FUNC int __SPRT_ID(futimes)(int fd, const __SPRT_TIMEVAL_NAME ts[2]) {
 	if (platform::_futimes) {
 		return platform::_futimes(fd, nativeTs);
 	}
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -223,7 +223,7 @@ __SPRT_C_FUNC int __SPRT_ID(futimesat)(int fd, const char *path, const __SPRT_TI
 	if (platform::_futimesat) {
 		return platform::_futimesat(fd, path, nativeTs);
 	}
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -285,7 +285,7 @@ __SPRT_C_FUNC int __SPRT_ID(lutimes)(const char *path, const __SPRT_TIMEVAL_NAME
 	if (platform::_lutimes) {
 		return platform::_lutimes(path, nativeTs);
 	}
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
@@ -297,7 +297,7 @@ __SPRT_C_FUNC int __SPRT_ID(lutimes)(const char *path, const __SPRT_TIMEVAL_NAME
 
 __SPRT_C_FUNC int __SPRT_ID(adjtime)(const __SPRT_TIMEVAL_NAME *__tv, __SPRT_TIMEVAL_NAME *__otv) {
 #if !__SPRT_CONFIG_HAVE_TIME_ADJTIME
-	log::vprint(log::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (__SPRT_CONFIG_HAVE_TIME_ADJTIME)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;

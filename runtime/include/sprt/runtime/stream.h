@@ -319,10 +319,9 @@ struct StreamTraits {
 	}
 
 	template <typename... Args>
-	static memory::basic_string<CharType, memory::detail::DynamicAllocator<CharType>> toString(
-			Args &&...args) {
+	static __basic_string<CharType, memory::AllocatorMalloc<CharType>> toString(Args &&...args) {
 		auto bufferSize = calculateSize(forward<Args>(args)...);
-		memory::basic_string<CharType, memory::detail::DynamicAllocator<CharType>> ret;
+		__basic_string<CharType, memory::AllocatorMalloc<CharType>> ret;
 		ret.resize(bufferSize - 1);
 
 		auto target = ret.data();
@@ -362,6 +361,16 @@ struct StreamTraits {
 		__sprt_freea(buf);
 	}
 };
+
+template <__SPRT_ID(FILE) * (*StreamGetter)() >
+struct __c_ostream_wrapper {
+	void operator()(StringView str) const {
+		__sprt_fwrite(str.data(), 1, str.size(), StreamGetter()); //
+	}
+};
+
+static auto cout = makeCallbackStorage(__c_ostream_wrapper<&__sprt_stdout_impl>{});
+static auto cerr = makeCallbackStorage(__c_ostream_wrapper<&__sprt_stderr_impl>{});
 
 } // namespace sprt
 

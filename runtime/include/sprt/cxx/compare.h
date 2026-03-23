@@ -1,29 +1,27 @@
 /**
- Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
- Permission is hereby granted, free of charge, to any person obtaining a copy
- of this software and associated documentation files (the "Software"), to deal
- in the Software without restriction, including without limitation the rights
- to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- copies of the Software, and to permit persons to whom the Software is
- furnished to do so, subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
- The above copyright notice and this permission notice shall be included in
- all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
 
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- THE SOFTWARE.
- **/
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
 
-#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_ORDEING_H_
-#define RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_ORDEING_H_
-
-/* Original source from LLVM libc++ */
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_COMPARE_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_COMPARE_H_
 
 #include <sprt/runtime/init.h>
 
@@ -58,7 +56,7 @@ struct _CmpUnspecifiedParam {
 	//
 	// The alternative to the `__enable_if__` attribute would be to use the fact that a pointer
 	// can be constructed from literal 0, but this conflicts with `-Wzero-as-null-pointer-constant`.
-	template <class _Tp, class = sprt::enable_if_t<sprt::is_same_v<_Tp, int> > >
+	template <typename _Tp, typename = sprt::enable_if_t<sprt::is_same_v<_Tp, int> > >
 	consteval _CmpUnspecifiedParam(_Tp __zero) noexcept {
 		(void)__zero;
 	}
@@ -289,7 +287,7 @@ inline constexpr strong_ordering strong_ordering::greater(_OrdResult::__greater)
 /// [cmp.categories.pre]/1
 /// The types partial_ordering, weak_ordering, and strong_ordering are
 /// collectively termed the comparison category types.
-template <class _Tp>
+template <typename _Tp>
 concept __comparison_category = sprt::is_same_v<_Tp, partial_ordering>
 		|| sprt::is_same_v<_Tp, weak_ordering> || sprt::is_same_v<_Tp, strong_ordering>;
 
@@ -305,4 +303,4 @@ using std::strong_ordering;
 
 } // namespace sprt
 
-#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_ORDEING_H_
+#endif // RUNTIME_INCLUDE_SPRT_CXX_COMPARE_H_

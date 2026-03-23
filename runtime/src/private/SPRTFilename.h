@@ -28,8 +28,8 @@
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_stdlib.h>
 
-#include <sprt/runtime/detail/invoke.h>
 #include <sprt/runtime/stringview.h>
+#include <sprt/cxx/detail/invoke.h>
 
 namespace sprt::internal {
 

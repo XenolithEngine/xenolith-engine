@@ -400,7 +400,7 @@ static kde_output_configuration_v2_listener s_kdeOutputConfigurationListener{
 },
 
 .failure_reason = [](void *data, struct kde_output_configuration_v2 *kde_output_configuration_v2, const char *reason) {
-	log::vperror(__SPRT_LOCATION, "WaylandKdeDisplayConfigManager", "Fail to update display configuration: ", reason);
+	oslog::vperror(__SPRT_LOCATION, "WaylandKdeDisplayConfigManager", "Fail to update display configuration: ", reason);
 }
 
 };

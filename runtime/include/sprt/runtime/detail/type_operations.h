@@ -44,11 +44,11 @@ struct is_trivially_constructible
 template <typename Type, typename... _Args>
 inline constexpr bool is_trivially_constructible_v = __is_trivially_constructible(Type, _Args...);
 
-template <typename Type, class... _Args>
+template <typename Type, typename... _Args>
 struct is_nothrow_constructible
 : integral_constant<bool, __is_nothrow_constructible(Type, _Args...)> { };
 
-template <typename Type, class... _Args>
+template <typename Type, typename... _Args>
 inline constexpr bool is_nothrow_constructible_v = __is_nothrow_constructible(Type, _Args...);
 
 
@@ -245,7 +245,7 @@ struct has_virtual_destructor : public integral_constant<bool, __has_virtual_des
 template <typename Type>
 void __test_implicit_default_constructible(Type);
 
-template <typename Type, class = void, class = typename is_default_constructible<Type>::type>
+template <typename Type, typename = void, typename = typename is_default_constructible<Type>::type>
 struct __is_implicitly_default_constructible : false_type { };
 
 template <typename Type>

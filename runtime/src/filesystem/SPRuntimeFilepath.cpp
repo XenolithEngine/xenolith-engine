@@ -21,9 +21,9 @@
  **/
 
 #include <sprt/runtime/filesystem/filepath.h>
-#include <sprt/runtime/mem/string.h>
-#include <sprt/runtime/mem/vector.h>
-#include <sprt/runtime/mem/map.h>
+#include <sprt/cxx/string.h>
+#include <sprt/cxx/vector.h>
+#include <sprt/cxx/map.h>
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/c/__sprt_ctype.h>
 
@@ -231,13 +231,13 @@ void reconstructPath(const callback<void(StringView)> &cb, StringView path) {
 	}
 
 	memory::perform_temporary([&] {
-		memory::string ret;
+		__pool_string ret;
 
 		ret.reserve(path.size());
 		bool start = (path.front() == '/');
 		bool end = (path.back() == '/');
 
-		memory::vector<StringView> retVec;
+		__pool_vector<StringView> retVec;
 		StringView r(path);
 		while (!r.empty()) {
 			auto str = r.readUntil<StringView::Chars<'/'>>();
@@ -1077,8 +1077,8 @@ video/x-smv					smv
 x-conference/x-cooltalk				ice)";
 
 struct MimeDetector {
-	memory::map<StringView, StringView> extToMime;
-	memory::map<StringView, StringView> mimeToExt;
+	__pool_map<StringView, StringView> extToMime;
+	__pool_map<StringView, StringView> mimeToExt;
 
 	MimeDetector() : extToMime(memory::get_zero_pool()), mimeToExt(memory::get_zero_pool()) {
 		StringView r(MIME_TYPES);
