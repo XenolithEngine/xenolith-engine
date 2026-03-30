@@ -24,7 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_THREAD_INFO_H_
 
 #include <sprt/runtime/ref.h>
-#include <sprt/cxx/function.h>
+#include <sprt/cxx/function>
 #include <sprt/c/__sprt_unistd.h>
 
 namespace sprt::thread {

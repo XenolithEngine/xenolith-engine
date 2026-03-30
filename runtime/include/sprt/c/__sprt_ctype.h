@@ -24,8 +24,24 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_CTYPE_H_
 
 #include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/bits/__sprt_uint16_t.h>
 #include <sprt/c/cross/__sprt_locale.h>
-#include <sprt/c/cross/__sprt_ctype.h>
+
+#define __SPRT_CTYPE_CNTRL (1 << 0)
+#define __SPRT_CTYPE_ALNUM (1 << 1)
+#define __SPRT_CTYPE_ALPHA (1 << 2)
+#define __SPRT_CTYPE_LOWER (1 << 3)
+#define __SPRT_CTYPE_UPPER (1 << 4)
+#define __SPRT_CTYPE_DIGIT (1 << 5)
+#define __SPRT_CTYPE_XDIGIT (1 << 6)
+#define __SPRT_CTYPE_GRAPH (1 << 7)
+#define __SPRT_CTYPE_PRINT (1 << 8)
+#define __SPRT_CTYPE_PUNCT (1 << 9)
+#define __SPRT_CTYPE_BLANK (1 << 10)
+#define __SPRT_CTYPE_SPACE (1 << 11)
+
+// Matches base64/base64url encoding symbols (alnum + +/=_-)
+#define __SPRT_CTYPE_BASE64 (1 << 12)
 
 __SPRT_BEGIN_DECL
 

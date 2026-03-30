@@ -26,7 +26,8 @@
 #include <sprt/c/__sprt_stdio.h>
 #include <sprt/c/__sprt_assert.h>
 
-#include <sprt/cxx/new.h>
+#include <sprt/cxx/new>
+#include <sprt/cxx/__algorithm/minmax.h>
 
 namespace sprt::memory {
 
@@ -53,8 +54,6 @@ public:
 	struct rebind {
 		using other = AllocatorMalloc<U>;
 	};
-
-	// default alignment for pool_t is 8-bit, so, we can store up to 3 flags in pool pointer
 
 public:
 	// Default allocator uses pool from top of thread's AllocStack

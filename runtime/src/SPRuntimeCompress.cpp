@@ -21,7 +21,7 @@
  **/
 
 #include <sprt/runtime/compress.h>
-#include <sprt/cxx/algorithm.h>
+#include <sprt/cxx/algorithm>
 
 #include "private/thirdparty/lz4hc.h"
 

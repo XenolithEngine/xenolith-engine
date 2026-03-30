@@ -27,9 +27,8 @@ THE SOFTWARE.
 #include <sprt/cxx/memory/allocator_pool.h>
 #include <sprt/cxx/memory/nodebase.h>
 #include <sprt/cxx/memory/pointer_iterator.h>
-
-#include <sprt/cxx/iterator.h>
-#include <sprt/cxx/pair.h>
+#include <sprt/cxx/memory/aligned_storage.h>
+#include <sprt/cxx/__utility/pair.h>
 
 namespace sprt::memory {
 
@@ -38,8 +37,6 @@ enum RbTreeNodeColor : uintptr_t {
 	Black = 1
 };
 
-template <typename Value>
-using RbTreeNodeStorage = sprt::memory::Storage<Value>;
 
 struct SPRT_API RbTreeNodeBase : public sprt::memory::AllocPool {
 	using Flag = RbTreeNodeFlag<sizeof(uintptr_t)>;
@@ -99,7 +96,7 @@ struct SPRT_API RbTreeNodeBase : public sprt::memory::AllocPool {
 
 template <typename Value>
 struct RbTreeNode : public RbTreeNodeBase {
-	RbTreeNodeStorage<Value> value;
+	aligned_storage<Value> value;
 
 	static inline Value *cast(RbTreeNodeBase *n) {
 		return static_cast<RbTreeNode<Value> *>(n)->value.ptr();
@@ -232,65 +229,6 @@ inline bool operator!=(const RbTreeIterator<Value> &l,
 	return l._node != r._node;
 }
 
-
-template <typename Key, typename Value>
-struct RbTreeKeyExtractor;
-
-template <typename Key>
-struct RbTreeKeyExtractor<Key, Key> {
-	static inline const Key &extract(const Key &k) noexcept { return k; }
-
-	template <typename A, typename... Args>
-	static inline void construct(A &alloc, RbTreeNode<Key> *node, const Key &key,
-			Args &&...args) noexcept {
-		alloc.construct(node->value.ptr(), key);
-	}
-
-	template <typename A, typename... Args>
-	static inline void construct(A &alloc, RbTreeNode<Key> *node, Key &&key,
-			Args &&...args) noexcept {
-		alloc.construct(node->value.ptr(), sprt::move_unsafe(key));
-	}
-};
-
-template <typename Key, typename Value>
-struct RbTreeKeyExtractor<Key, pair<Key, Value>> {
-	static inline const Key &extract(const pair<Key, Value> &k) noexcept { return k.first; }
-
-	template <typename A, typename... Args>
-	static inline void construct(A &alloc, RbTreeNode<pair<Key, Value>> *node, const Key &k,
-			Args &&...args) noexcept {
-		alloc.construct(node->value.ptr(), pair_emplace_construct_t(), sprt::forward<Key>(k),
-				sprt::forward<Args>(args)...);
-	}
-
-	template <typename A, typename... Args>
-	static inline void construct(A &alloc, RbTreeNode<pair<Key, Value>> *node, Key &&k,
-			Args &&...args) noexcept {
-		alloc.construct(node->value.ptr(), pair_emplace_construct_t(), sprt::move_unsafe(k),
-				sprt::forward<Args>(args)...);
-	}
-};
-
-template <typename Key, typename Value>
-struct RbTreeKeyExtractor<Key, pair<const Key, Value>> {
-	static inline const Key &extract(const pair<const Key, Value> &k) noexcept { return k.first; }
-
-	template <typename A, typename... Args>
-	static inline void construct(A &alloc, RbTreeNode<pair<const Key, Value>> *node, const Key &k,
-			Args &&...args) noexcept {
-		alloc.construct(node->value.ptr(), pair_emplace_construct_t(), k,
-				sprt::forward<Args>(args)...);
-	}
-
-	template <typename A, typename... Args>
-	static inline void construct(A &alloc, RbTreeNode<pair<const Key, Value>> *node, Key &&k,
-			Args &&...args) noexcept {
-		alloc.construct(node->value.ptr(), pair_emplace_construct_t(), sprt::move_unsafe(k),
-				sprt::forward<Args>(args)...);
-	}
-};
-
 namespace impl {
 
 template <typename T, typename... P>
@@ -362,12 +300,19 @@ public:
 		}
 	}
 
-	RbTree &operator=(const RbTree &other) noexcept {
-		clone(other);
-		return *this;
+	~RbTree() noexcept {
+		if (_size > 0) {
+			clear();
+		}
+		if (_header.flag.size > 0 && _free) {
+			allocator_helper::template release_blocks<false>(_allocator, &_free,
+					_header.flag.index);
+		}
 	}
 
-	RbTree &operator=(RbTree &&other) noexcept {
+	void copy_from(const RbTree &other) noexcept { clone(other); }
+
+	void move_from(RbTree &&other) noexcept {
 		if (other.get_allocator() == _allocator) {
 			clear();
 			_header = other._header;
@@ -381,20 +326,21 @@ public:
 		} else {
 			clone(other);
 		}
-		return *this;
-	}
-
-	~RbTree() noexcept {
-		if (_size > 0) {
-			clear();
-		}
-		if (_header.flag.size > 0 && _free) {
-			allocator_helper::template release_blocks<false>(_allocator, &_free,
-					_header.flag.index);
-		}
 	}
 
 	const value_allocator_type &get_allocator() const noexcept { return _allocator; }
+	void set_allocator(const Allocator &a) noexcept {
+		if (a != _allocator) {
+			clear_deallocate();
+			_allocator = a;
+		}
+	}
+	void set_allocator(Allocator &&a) noexcept {
+		if (a != _allocator) {
+			clear_deallocate();
+			_allocator = sprt::move_unsafe(a);
+		}
+	}
 
 	template <typename... Args>
 	pair<iterator, bool> emplace(Args &&...args) {
@@ -446,7 +392,8 @@ public:
 		return last;
 	}
 
-	size_t erase_unique(const Key &key) {
+	template <typename K>
+	size_t erase_unique(const K &key) {
 		auto node = find_impl(key);
 		if (node) {
 			deleteNode(node);
@@ -493,15 +440,24 @@ public:
 		_header.flag.size -= nFreed;
 	}
 
+	void clear_deallocate() noexcept {
+		clear();
+		shrink_to_fit();
+	}
+
 	size_t capacity() const noexcept { return _size + _header.flag.size; }
 
 	size_t size() const noexcept { return _size; }
+
+	size_t max_size() const noexcept { return size_t(node_type::Flag::MaxSize); }
 
 	bool empty() const noexcept { return _header.left == nullptr; }
 
 	void set_memory_persistent(bool value) noexcept { _header.flag.prealloc = value ? 1 : 0; }
 
 	bool memory_persistent() const noexcept { return _header.flag.prealloc; }
+
+	comparator_type key_comp() const noexcept { return _comp; }
 
 	void swap(RbTree &other) noexcept {
 		sprt::swap(_header, other._header);
@@ -586,6 +542,8 @@ protected:
 	// _header.prealloc - flag of persistent mode (enabled if 1, disabled by default)
 
 	RbTreeNodeBase _header; // root is _header.left
+
+	[[no_unique_address]]
 	comparator_type _comp;
 
 	[[no_unique_address]]
@@ -608,11 +566,12 @@ protected:
 	inline const_node_ptr right() const { return static_cast<const_node_ptr>(_header.right); }
 	inline void setright(base_type n) { _header.right = (n == &_header) ? nullptr : n; }
 
-
 	inline const Key &extract(const Value &val) const {
-		return RbTreeKeyExtractor<Key, Value>::extract(val);
+		return aligned_storage_kv_traits<Key, Value>::extract_key(val);
 	}
-	inline const Key &extract(const RbTreeNodeStorage<Value> &s) const { return extract(s.ref()); }
+	inline const Key &extract(const aligned_storage<Value> &s) const {
+		return aligned_storage_kv_traits<Key, Value>::extract_key(s);
+	}
 	inline const Key &extract(const RbTreeNodeBase *s) const {
 		return extract(static_cast<const RbTreeNode<Value> *>(s)->value.ref());
 	}
@@ -658,7 +617,7 @@ protected:
 		ret->left = nullptr;
 		ret->right = nullptr;
 		ret->setColor(RbTreeNodeColor::Red);
-		_allocator.construct(ret->value.ptr(), sprt::forward<Args>(args)...);
+		ret->value.construct(_allocator, sprt::forward<Args>(args)...);
 
 		return InsertData{&extract(ret->value), ret, nullptr, nullptr, false};
 	}
@@ -677,8 +636,8 @@ protected:
 		ret->right = nullptr;
 		ret->setColor(RbTreeNodeColor::Red);
 
-		RbTreeKeyExtractor<Key, Value>::construct(_allocator, ret, sprt::forward<K>(k),
-				sprt::forward<Args>(args)...);
+		aligned_storage_kv_traits<Key, Value>::construct(_allocator, ret->value,
+				sprt::forward<K>(k), sprt::forward<Args>(args)...);
 		return ret;
 	}
 
@@ -1000,7 +959,7 @@ protected:
 	}
 
 	void clone_visit(const RbTreeNode<Value> *source, RbTreeNode<Value> *target) {
-		_allocator.construct(target->value.ptr(), source->value.ref());
+		target->value.construct(_allocator, source->value.ref());
 		target->setColor(source->getColor());
 		if (source->left) {
 			target->left = allocateNode();

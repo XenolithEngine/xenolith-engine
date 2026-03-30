@@ -1,0 +1,324 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_UNORDERED_SET_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_UNORDERED_SET_H_
+
+#include <sprt/cxx/__algorithm/bounds.h>
+#include <sprt/cxx/__memory/allocator_traits.h>
+#include <sprt/cxx/initializer_list>
+
+#include <sprt/cxx/memory/hash_memory.h>
+#include <sprt/cxx/memory/access_token.h>
+#include <sprt/cxx/memory/allocator_pool.h>
+#include <sprt/cxx/memory/allocator_malloc.h>
+
+namespace sprt {
+
+template <typename Key, typename Hash, typename Pred, typename Allocator>
+class __unordered_set : public Allocator::base_class {
+public:
+	// types
+	using key_type = Key;
+	using value_type = Key;
+	using hasher = Hash;
+	using key_equal = Pred;
+	using allocator_type = Allocator;
+	using pointer = typename allocator_traits<Allocator>::pointer;
+	using const_pointer = typename allocator_traits<Allocator>::const_pointer;
+	using reference = value_type &;
+	using const_reference = const value_type &;
+	using size_type = size_t;
+	using difference_type = ptrdiff_t;
+
+	using container_type = memory::hash_memory<key_type, value_type, Hash, Pred, Allocator>;
+
+	using iterator = container_type::const_iterator;
+	using const_iterator = container_type::const_iterator;
+	using local_iterator = container_type::const_local_iterator;
+	using const_local_iterator = container_type::const_local_iterator;
+	using node_type = container_type::node_type;
+
+	static constexpr bool is_transparent_keys =
+			__is_transparent_v<hasher> && __is_transparent_v<key_equal>;
+
+	~__unordered_set() { }
+
+	// construct/copy/destroy
+	__unordered_set() : _container(0, hasher(), key_equal(), allocator_type()) { }
+
+	explicit __unordered_set(size_type n, const hasher &hf = hasher(),
+			const key_equal &eql = key_equal(), const allocator_type &a = allocator_type()) noexcept
+	: _container(n, hf, eql, a) { }
+
+	template <typename InputIter>
+	__unordered_set(InputIter f, InputIter l, size_type n, const hasher &hf = hasher(),
+			const key_equal &eql = key_equal(), const allocator_type &a = allocator_type()) noexcept
+	: _container(n, hf, eql, a) {
+		while (f != l) { _container.insert(*f++); }
+	}
+
+	__unordered_set(const __unordered_set &other) noexcept
+	: __unordered_set(0, other.hash_function(), other.key_eq(),
+			  sprt::allocator_traits<allocator_type>::select_on_container_copy_construction(
+					  other.get_allocator())) {
+		_container.max_load_factor(other.max_load_factor());
+		_container.copy_from(other._container);
+	}
+
+	__unordered_set(__unordered_set &&other) noexcept
+	: __unordered_set(0, other.hash_function(), other.key_eq(), other.get_allocator()) {
+		_container.max_load_factor(other.max_load_factor());
+		_container.move_from(sprt::move(other._container));
+	}
+
+	explicit __unordered_set(const Allocator &a) noexcept
+	: _container(0, hasher(), key_equal(), allocator_type(a)) { }
+
+	__unordered_set(const __unordered_set &other, const type_identity_t<Allocator> &a) noexcept
+	: _container(0, other.hash_function(), other.key_eq(), allocator_type(a)) {
+		_container.max_load_factor(other.max_load_factor());
+		_container.copy_from(other._container);
+	}
+	__unordered_set(__unordered_set &&other, const type_identity_t<Allocator> &a) noexcept
+	: _container(0, other.hash_function(), other.key_eq(), allocator_type(a)) {
+		_container.max_load_factor(other.max_load_factor());
+		_container.move_from(sprt::move(other._container));
+	}
+
+	__unordered_set(initializer_list<value_type> il, size_type n = 0, const hasher &hf = hasher(),
+			const key_equal &eql = key_equal(), const allocator_type &a = allocator_type()) noexcept
+	: _container(sprt::max(n, __builtin_floorf(il.size() * container_type::CoverageLoadFactor)), hf,
+			  eql, a) {
+		for (auto &it : il) { _container.insert(it); }
+	}
+
+	__unordered_set(size_type n, const allocator_type &a) noexcept
+	: __unordered_set(n, hasher(), key_equal(), a) { }
+
+	__unordered_set(size_type n, const hasher &hf, const allocator_type &a) noexcept
+	: __unordered_set(n, hf, key_equal(), a) { }
+
+	template <typename InputIter>
+	__unordered_set(InputIter f, InputIter l, size_type n, const allocator_type &a) noexcept
+	: __unordered_set(f, l, n, hasher(), key_equal(), a) { }
+
+	template <typename InputIter>
+	__unordered_set(InputIter f, InputIter l, size_type n, const hasher &hf,
+			const allocator_type &a) noexcept
+	: __unordered_set(f, l, n, hf, key_equal(), a) { }
+
+	__unordered_set(initializer_list<value_type> il, size_type n, const allocator_type &a) noexcept
+	: __unordered_set(il, n, hasher(), key_equal(), a) { }
+
+	__unordered_set(initializer_list<value_type> il, size_type n, const hasher &hf,
+			const allocator_type &a) noexcept
+	: __unordered_set(il, n, hf, key_equal(), a) { }
+
+
+	__unordered_set &operator=(const __unordered_set &other) noexcept {
+		using traits = sprt::allocator_traits<allocator_type>;
+
+		if constexpr (traits::propagate_on_container_copy_assignment::value) {
+			_container.set_allocator(other.get_allocator());
+		}
+
+		_container.copy_from(other._container);
+		return *this;
+	}
+	__unordered_set &operator=(__unordered_set &&other) noexcept {
+		using traits = sprt::allocator_traits<allocator_type>;
+
+		if constexpr (traits::propagate_on_container_copy_assignment::value) {
+			_container.set_allocator(other.get_allocator());
+		}
+
+		_container.move_from(sprt::move(other._container));
+		return *this;
+	}
+	__unordered_set &operator=(initializer_list<value_type> il) noexcept {
+		clear();
+		rehash(__builtin_floorf(il.size() * container_type::CoverageLoadFactor));
+		for (auto &it : il) { _container.insert(it); }
+		return *this;
+	}
+
+	allocator_type get_allocator() const noexcept { return _container.get_allocator(); }
+
+	// iterators
+	iterator begin() noexcept { return _container.begin(); }
+	const_iterator begin() const noexcept { return _container.begin(); }
+	iterator end() noexcept { return _container.end(); }
+	const_iterator end() const noexcept { return _container.end(); }
+	const_iterator cbegin() const noexcept { return _container.begin(); }
+	const_iterator cend() const noexcept { return _container.end(); }
+
+	// capacity
+	bool empty() const noexcept { return _container.size() == 0; }
+	size_type size() const noexcept { return _container.size(); }
+	size_type max_size() const noexcept { return _container.max_size(); }
+
+	// modifiers
+	template <typename... Args>
+	pair<iterator, bool> emplace(Args &&...args) noexcept {
+		return try_emplace(sprt::forward<Args>(args)...);
+	}
+	template <typename... Args>
+	iterator emplace_hint(const_iterator position, Args &&...args) noexcept {
+		// there is no hinted variant for hash_memory backend
+		return try_emplace(sprt::forward<Args>(args)...).second;
+	}
+	pair<iterator, bool> insert(const value_type &obj) noexcept { return _container.insert(obj); }
+	pair<iterator, bool> insert(value_type &&obj) noexcept { return _container.insert(obj); }
+	template <typename K>
+	pair<iterator, bool> insert(K &&obj) noexcept {
+		return _container.insert(obj);
+	}
+	iterator insert(const_iterator hint, const value_type &obj) noexcept {
+		return _container.insert(obj).first;
+	}
+	iterator insert(const_iterator hint, value_type &&obj) noexcept {
+		return _container.insert(obj).first;
+	}
+	template <typename K>
+	iterator insert(const_iterator hint, K &&obj) noexcept {
+		return _container.insert(obj).first;
+	}
+	template <typename InputIter>
+	void insert(InputIter first, InputIter last) noexcept {
+		while (first != last) { _container.insert(*first++); }
+	}
+	void insert(initializer_list<value_type> il) noexcept {
+		for (auto &it : il) { _container.insert(it); }
+	}
+
+	iterator erase(const_iterator position) { return _container.erase(position); }
+	size_type erase(const key_type &k) {
+		auto it = _container.find(k);
+		if (it != _container.end()) {
+			_container.erase(it);
+			return 1;
+		}
+		return 0;
+	}
+	template <typename K>
+	sprt::enable_if_t<is_transparent_keys, size_type> erase(K &&x) {
+		size_t ret = 0;
+		auto it = _container.find(x);
+		while (it != _container.end()) {
+			_container.erase(it);
+			++ret;
+			it = _container.find(x);
+		}
+		return ret;
+	}
+	iterator erase(const_iterator first, const_iterator last) {
+		auto e = end();
+		while (first != last && first != e) { first = _container.erase(first); }
+		return first;
+	}
+
+	void swap(__unordered_set &other) noexcept { _container.swap(other._container); }
+	void clear() noexcept { _container.clear_free(); }
+
+	// observers
+	hasher hash_function() const { return _container.hash_function(); }
+	key_equal key_eq() const { return _container.key_eq(); }
+
+	// set operations
+	// map operations
+	iterator find(const key_type &k) { return _container.find(k); }
+	const_iterator find(const key_type &k) const { return _container.find(k); }
+
+	template <typename K>
+	sprt::enable_if_t<is_transparent_keys, iterator> find(const K &k) {
+		return _container.find(k);
+	}
+
+	template <typename K>
+	sprt::enable_if_t<is_transparent_keys, const_iterator> find(const K &k) const {
+		return _container.find(k);
+	}
+
+	size_type count(const key_type &k) const { return _container.count(k); }
+
+	template <typename K>
+	sprt::enable_if_t<is_transparent_keys, size_type> count(const K &k) const {
+		return _container.count(k);
+	}
+
+	bool contains(const key_type &k) const {
+		return _container.find(k) != _container.end(); //
+	}
+
+	template <typename K>
+	sprt::enable_if_t<is_transparent_keys, bool> contains(const K &k) const {
+		return _container.find(k) != _container.end();
+	}
+
+	pair<iterator, iterator> equal_range(const key_type &k) { return _container.equal_range(k); }
+	pair<const_iterator, const_iterator> equal_range(const key_type &k) const {
+		return _container.equal_range(k);
+	}
+
+	template <typename K>
+	sprt::enable_if_t<is_transparent_keys, pair<iterator, iterator>> equal_range(const K &k) {
+		return _container.equal_range(k);
+	}
+	template <typename K>
+	sprt::enable_if_t<is_transparent_keys, pair<const_iterator, const_iterator>> equal_range(
+			const K &k) const {
+		return _container.equal_range(k);
+	}
+
+	// hash policy
+	float load_factor() const noexcept { return _container.load_factor(); }
+	float max_load_factor() const noexcept { return _container.max_load_factor(); }
+	void max_load_factor(float z) { _container.max_load_factor(z); }
+	void rehash(size_type n) { _container.rehash(n); }
+	void reserve(size_type n) { rehash(__builtin_ceilf(n / max_load_factor())); }
+
+protected:
+	container_type _container;
+};
+
+template <typename Value, typename Hash = sprt::hash<void>, typename Pred = sprt::equal_to<void>>
+using __pool_unordered_set = __unordered_set<Value, Hash, Pred, memory::AllocatorPool<Value>>;
+
+template <typename Value, typename Hash = sprt::hash<void>, typename Pred = sprt::equal_to<void>>
+using __malloc_unordered_set = __unordered_set<Value, Hash, Pred, memory::AllocatorMalloc<Value>>;
+
+template <typename Value, typename Hash, typename Pred, typename Allocator>
+inline void swap(const __unordered_set<Value, Hash, Pred, Allocator> &__x,
+		const __unordered_set<Value, Hash, Pred, Allocator> &__y) noexcept {
+	__x.swap(__y);
+}
+
+template <typename Value, typename Hash, typename Pred, typename Allocator>
+inline constexpr bool operator==(const __unordered_set<Value, Hash, Pred, Allocator> &__x,
+		const __unordered_set<Value, Hash, Pred, Allocator> &__y) noexcept {
+	return (__x.size() == __y.size() && sprt::equal(__x.begin(), __x.end(), __y.begin()));
+}
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_UNORDERED_SET_H_

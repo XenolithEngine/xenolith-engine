@@ -21,7 +21,7 @@ THE SOFTWARE.
 **/
 
 #include <sprt/runtime/init.h>
-#include <sprt/runtime/detail/constexpr.h>
+#include <sprt/cxx/detail/constexpr.h>
 
 namespace sprt::_itoa {
 

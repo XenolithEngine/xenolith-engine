@@ -23,7 +23,7 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_GEOM_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_GEOM_H_
 
-#include <sprt/cxx/cmath.h>
+#include <sprt/cxx/cmath>
 
 namespace sprt {
 

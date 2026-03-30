@@ -28,7 +28,7 @@
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/window/types.h>
 
-#include <sprt/cxx/vector.h>
+#include <sprt/cxx/vector>
 
 namespace sprt::window {
 

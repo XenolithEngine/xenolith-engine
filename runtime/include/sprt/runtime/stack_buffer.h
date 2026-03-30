@@ -23,10 +23,10 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_STACK_BUFFER_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_STACK_BUFFER_H_
 
-#include <sprt/runtime/detail/constexpr.h>
+#include <sprt/cxx/detail/constexpr.h>
 #include <sprt/runtime/stringview.h>
 
-#include <sprt/cxx/array.h>
+#include <sprt/cxx/array>
 
 namespace sprt {
 

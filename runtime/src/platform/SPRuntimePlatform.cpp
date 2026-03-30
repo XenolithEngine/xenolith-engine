@@ -21,7 +21,7 @@
  **/
 
 #include <sprt/runtime/string.h>
-#include <sprt/runtime/detail/new.h>
+#include <sprt/cxx/new>
 
 #include "private/SPRTPrivate.h"
 

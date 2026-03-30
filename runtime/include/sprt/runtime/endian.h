@@ -24,62 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_ENDINAN_H_
 
 #include <sprt/runtime/init.h>
-#include <sprt/cxx/bit_cast.h>
-
-namespace sprt::byteorder {
-
-#if __SPRT_HAS_BUILTIN(__builtin_bswap16)
-SPRT_FORCEINLINE uint16_t bswap16(uint16_t x) { return __builtin_bswap16(x); }
-#else
-SPRT_FORCEINLINE uint16_t bswap16(uint16_t x) { return __builtin_bswap32(x) << 16; }
-#endif
-
-#if __SPRT_HAS_BUILTIN(__builtin_bswap32)
-SPRT_FORCEINLINE uint32_t bswap32(uint32_t x) { return __builtin_bswap32(x); }
-#else
-SPRT_FORCEINLINE uint32_t bswap32(uint32_t x) {
-	return x & 0xFF << 24 | (x >> 8 & 0xFF) << 16 | (x >> 16 & 0xFF) << 8 | (x >> 24 & 0xFF);
-}
-#endif
-
-#if __SPRT_HAS_BUILTIN(__builtin_bswap64)
-SPRT_FORCEINLINE uint64_t bswap64(uint64_t x) { return __builtin_bswap64(x); }
-#else
-SPRT_FORCEINLINE uint64_t bswap64(uint64_t x) {
-	return x & 0xFF << 56 | (x >> 8 & 0xFF) << 48 | (x >> 16 & 0xFF) << 40 | (x >> 24 & 0xFF) << 32
-			| (x >> 32 & 0xFF) << 24 | (x >> 40 & 0xFF) << 16 | (x >> 48 & 0xFF) << 8
-			| (x >> 56 & 0xFF);
-}
-#endif
-
-} // namespace sprt::byteorder
-
-
-namespace sprt {
-
-/*
-	endian
-*/
-
-
-#ifndef __BYTE_ORDER__
-#error "__BYTE_ORDER__ is not defined"
-#endif
-
-enum class endian {
-	little = 0xDEAD,
-	big = 0xFACE,
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-	native = little,
-#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-	native = big,
-#else
-	native = 0xCAFE,
-#endif
-	network = big,
-};
-
-} // namespace sprt
+#include <sprt/cxx/bit>
 
 namespace sprt::byteorder {
 
@@ -105,21 +50,21 @@ struct Converter<T, ShouldSwap::DoSwap, Bit8Size> {
 template <typename T>
 struct Converter<T, ShouldSwap::DoSwap, Bit16Size> {
 	static inline T Swap(T value) {
-		return sprt::bit_cast<T>(bswap16(sprt::bit_cast<uint16_t>(value)));
+		return sprt::bit_cast<T>(byteswap(sprt::bit_cast<uint16_t>(value)));
 	}
 };
 
 template <typename T>
 struct Converter<T, ShouldSwap::DoSwap, Bit32Size> {
 	static inline T Swap(T value) {
-		return sprt::bit_cast<T>(bswap32(sprt::bit_cast<uint32_t>(value)));
+		return sprt::bit_cast<T>(byteswap(sprt::bit_cast<uint32_t>(value)));
 	}
 };
 
 template <typename T>
 struct Converter<T, ShouldSwap::DoSwap, Bit64Size> {
 	static inline T Swap(T value) {
-		return sprt::bit_cast<T>(bswap64(sprt::bit_cast<uint64_t>(value)));
+		return sprt::bit_cast<T>(byteswap(sprt::bit_cast<uint64_t>(value)));
 	}
 };
 

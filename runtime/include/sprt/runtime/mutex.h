@@ -24,7 +24,7 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_MUTEX_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MUTEX_H_
 
-#include <sprt/cxx/atomic.h>
+#include <sprt/cxx/atomic>
 #include <sprt/runtime/status.h>
 #include <sprt/c/__sprt_assert.h>
 

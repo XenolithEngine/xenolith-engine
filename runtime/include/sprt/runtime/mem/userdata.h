@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_USERDATA_H_
 
 #include <sprt/runtime/mem/context.h>
-#include <sprt/cxx/function.h>
+#include <sprt/cxx/function>
 #include <sprt/runtime/stringview.h>
 
 namespace sprt::memory::pool {

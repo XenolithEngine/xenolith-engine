@@ -26,7 +26,7 @@ THE SOFTWARE.
 #include <sprt/runtime/mem/context.h>
 #include <sprt/runtime/log.h>
 #include <sprt/c/__sprt_assert.h>
-#include <sprt/cxx/new.h>
+#include <sprt/cxx/new>
 
 namespace sprt::memory {
 

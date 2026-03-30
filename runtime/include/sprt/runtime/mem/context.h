@@ -24,9 +24,8 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MEM_CONTEXT_H_
 
 #include <sprt/runtime/mem/pool.h>
-#include <sprt/runtime/detail/swap.h>
-#include <sprt/cxx/detail/invoke.h>
-#include <sprt/cxx/source_location.h>
+#include <sprt/cxx/__functional/invoke.h>
+#include <sprt/cxx/source_location>
 
 namespace sprt::memory {
 

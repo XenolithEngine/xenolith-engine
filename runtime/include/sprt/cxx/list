@@ -1,0 +1,483 @@
+/**
+Copyright (c) 2025 Stappler Team <admin@stappler.org>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_LIST_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_LIST_H_
+
+#include <sprt/cxx/memory/pointer_iterator.h>
+#include <sprt/cxx/initializer_list>
+#include <sprt/cxx/__memory/allocator_traits.h>
+
+#include <sprt/cxx/memory/allocator_malloc.h>
+#include <sprt/cxx/memory/allocator_pool.h>
+#include <sprt/cxx/memory/double_linked_list_base.h>
+#include <sprt/cxx/algorithm>
+
+namespace sprt {
+
+template <typename T, class Allocator>
+class __list : public Allocator::base_class {
+public:
+	// types
+	using value_type = T;
+	using allocator_type = Allocator;
+	using pointer = typename allocator_traits<Allocator>::pointer;
+	using const_pointer = typename allocator_traits<Allocator>::const_pointer;
+	using reference = value_type &;
+	using const_reference = const value_type &;
+	using size_type = size_t;
+	using difference_type = ptrdiff_t;
+
+	using base_type = memory::double_linked_list_base<value_type, allocator_type>;
+	using node_type = base_type::node_type;
+
+	using iterator = memory::DoubleLinkedListIterator<value_type, Allocator>;
+	using const_iterator = memory::DoubleLinkedListConstIterator<value_type, Allocator>;
+	using reverse_iterator = memory::common_reverse_iterator<iterator>;
+	using const_reverse_iterator = memory::common_reverse_iterator<const_iterator>;
+
+	// construct/copy/destroy
+	__list() noexcept : __list(Allocator()) { }
+	explicit __list(const Allocator &alloc) noexcept : _base(alloc) { }
+	explicit __list(size_type n, const allocator_type & = allocator_type()) noexcept;
+	__list(size_type n, const T &value, const allocator_type & = allocator_type()) noexcept;
+	template <typename InputIter,
+			enable_if_t<__has_input_iterator_category<InputIter>::value, int> = 0>
+	__list(InputIter first, InputIter last, const allocator_type & = allocator_type()) noexcept;
+	__list(const __list &x) noexcept;
+	__list(__list &&x) noexcept;
+	__list(const __list &, const type_identity_t<Allocator> &) noexcept;
+	__list(__list &&, const type_identity_t<Allocator> &) noexcept;
+	__list(initializer_list<T>, const Allocator & = Allocator()) noexcept;
+	~__list() noexcept;
+	__list &operator=(const __list &x) noexcept;
+	__list &operator=(__list &&x) noexcept;
+	__list &operator=(initializer_list<T>) noexcept;
+
+	template <typename InputIter,
+			enable_if_t<__has_input_iterator_category<InputIter>::value, int> = 0>
+	void assign(InputIter first, InputIter last) noexcept;
+	void assign(size_type n, const T &t) noexcept;
+	void assign(initializer_list<T>) noexcept;
+	allocator_type get_allocator() const noexcept { return _base.get_allocator(); }
+
+	// iterators
+	iterator begin() noexcept { return iterator(_base.front()); }
+	const_iterator begin() const noexcept { return const_iterator(_base.front()); }
+	iterator end() noexcept { return iterator(_base.end()); }
+	const_iterator end() const noexcept { return const_iterator(_base.end()); }
+	reverse_iterator rbegin() noexcept { return reverse_iterator(end()); }
+	reverse_iterator rend() noexcept { return reverse_iterator(begin()); }
+	const_reverse_iterator rbegin() const noexcept { return const_reverse_iterator(end()); }
+	const_reverse_iterator rend() const noexcept { return const_reverse_iterator(begin()); }
+
+	const_iterator cbegin() const noexcept { return const_iterator(_base.front()); }
+	const_iterator cend() const noexcept { return const_iterator(_base.end()); }
+	const_reverse_iterator crbegin() const noexcept { return const_reverse_iterator(cend()); }
+	const_reverse_iterator crend() const noexcept { return const_reverse_iterator(cbegin()); }
+
+	// capacity
+	bool empty() const noexcept { return _base.empty(); }
+	size_type max_size() const noexcept { return _base.max_size(); }
+	size_type size() const noexcept { return _base.size(); }
+
+	void resize(size_type sz) noexcept;
+	void resize(size_type sz, const T &c) noexcept;
+
+	// element access
+	reference front() noexcept { return _base.front()->value.ref(); }
+	const_reference front() const noexcept { return _base.front()->value.ref(); }
+	reference back() noexcept { return _base.back()->value.ref(); }
+	const_reference back() const noexcept { return _base.back()->value.ref(); }
+
+	// modifiers
+	template <typename... Args>
+	reference emplace_front(Args &&...args) noexcept;
+	template <typename... Args>
+	reference emplace_back(Args &&...args) noexcept;
+	void push_front(const T &x) noexcept;
+	void push_front(T &&x) noexcept;
+	void pop_front() noexcept;
+	void push_back(const T &x) noexcept;
+	void push_back(T &&x) noexcept;
+	void pop_back() noexcept;
+
+	template <typename... Args>
+	iterator emplace(const_iterator position, Args &&...args) noexcept;
+	iterator insert(const_iterator position, const T &x) noexcept;
+	iterator insert(const_iterator position, T &&x) noexcept;
+	iterator insert(const_iterator position, size_type n, const T &x) noexcept;
+	template <typename InputIter,
+			enable_if_t<__has_input_iterator_category<InputIter>::value, int> = 0>
+	iterator insert(const_iterator position, InputIter first, InputIter last) noexcept;
+	iterator insert(const_iterator position, initializer_list<T> il) noexcept;
+
+	iterator erase(const_iterator position) noexcept;
+	iterator erase(const_iterator position, const_iterator last) noexcept;
+
+	void swap(__list &) noexcept;
+	void clear() noexcept { _base.clear(); }
+
+	void memory_persistent(bool value) noexcept { _base.memory_persistent(value); }
+	bool memory_persistent() const noexcept { return _base.memory_persistent(); }
+
+protected:
+	base_type _base;
+};
+
+template <typename T, typename Allocator>
+
+inline __list<T, Allocator>::__list(size_type count, const allocator_type &alloc) noexcept
+: __list(alloc) {
+	_base.expand_front(count,
+			[](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
+		node->value.construct(allocator_type(nalloc)); //
+	});
+}
+
+template <typename T, typename Allocator>
+inline __list<T, Allocator>::__list(size_type count, const value_type &value,
+		const allocator_type &alloc) noexcept
+: __list(alloc) {
+	_base.expand_front(count,
+			[value = &value](const base_type::node_allocator_type &nalloc, node_type *node)
+					SPRT_LAMBDAINLINE {
+		node->value.construct(allocator_type(nalloc), *value); //
+	});
+}
+
+template <typename T, typename Allocator>
+template <typename InputIt, enable_if_t<__has_input_iterator_category<InputIt>::value, int>>
+inline __list<T, Allocator>::__list(InputIt first, InputIt last,
+		const allocator_type &alloc) noexcept
+: __list(alloc) {
+	// TODO: we can optimize insertion with _base.expand when std::distance for iterators is constant-time
+	auto iter = begin();
+	while (first != last) {
+		iter = emplace(iter, *first);
+		++first;
+	}
+}
+
+
+template <typename T, typename Allocator>
+inline __list<T, Allocator>::__list(const __list &other) noexcept
+: _base(other._base,
+		  sprt::allocator_traits<Allocator>::select_on_container_copy_construction(
+				  other.get_allocator())) { }
+
+template <typename T, typename Allocator>
+inline __list<T, Allocator>::__list(__list &&other) noexcept
+: _base(sprt::move_unsafe(other), other.get_allocator()) { }
+
+template <typename T, typename Allocator>
+inline __list<T, Allocator>::__list(const __list &other,
+		const type_identity_t<allocator_type> &alloc) noexcept
+: _base(other._base, alloc) { }
+
+template <typename T, typename Allocator>
+inline __list<T, Allocator>::__list(__list &&other,
+		const type_identity_t<allocator_type> &alloc) noexcept
+: _base(sprt::move_unsafe(other), alloc) { }
+
+template <typename T, typename Allocator>
+inline __list<T, Allocator>::__list(initializer_list<T> init, const allocator_type &alloc) noexcept
+: __list(alloc) {
+	auto source = init.begin();
+	_base.expand_front(init.size(),
+			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
+		node->value.construct(allocator_type(nalloc), *source++); //
+	});
+}
+
+template <typename T, typename Allocator>
+inline __list<T, Allocator>::~__list() noexcept { }
+
+template <typename T, typename Allocator>
+inline auto __list<T, Allocator>::operator=(const __list &other) noexcept -> __list & {
+	using traits = sprt::allocator_traits<allocator_type>;
+
+	if constexpr (traits::propagate_on_container_copy_assignment::value) {
+		_base.set_allocator(other.get_allocator());
+	}
+
+	_base = other._base;
+	return *this;
+}
+
+template <typename T, typename Allocator>
+inline auto __list<T, Allocator>::operator=(__list &&other) noexcept -> __list & {
+	using traits = sprt::allocator_traits<allocator_type>;
+
+	if constexpr (traits::propagate_on_container_move_assignment::value) {
+		_base.set_allocator(other.get_allocator());
+	}
+
+	_base = sprt::move_unsafe(other._base);
+	return *this;
+}
+
+
+template <typename T, typename Allocator>
+inline auto __list<T, Allocator>::operator=(initializer_list<value_type> init) noexcept
+		-> __list & {
+	assign(init);
+	return *this;
+}
+
+template <typename T, typename Allocator>
+inline void __list<T, Allocator>::assign(size_type count, const T &value) noexcept {
+	auto preallocTmp = _base.memory_persistent();
+	_base.memory_persistent(true);
+	_base.clear();
+	_base.memory_persistent(preallocTmp);
+
+	_base.expand_front(count,
+			[value = &value](const base_type::node_allocator_type &nalloc, node_type *node)
+					SPRT_LAMBDAINLINE {
+		node->value.construct(allocator_type(nalloc), *value); //
+	});
+}
+
+template <typename T, typename Allocator>
+template <typename InputIt, enable_if_t<__has_input_iterator_category<InputIt>::value, int>>
+inline void __list<T, Allocator>::assign(InputIt first, InputIt last) noexcept {
+	auto preallocTmp = _base.memory_persistent();
+	_base.memory_persistent(true);
+	_base.clear();
+	_base.memory_persistent(preallocTmp);
+
+	auto iter = begin();
+	while (first != last) {
+		emplace(iter, *first);
+		++first;
+	}
+}
+
+template <typename T, typename Allocator>
+inline void __list<T, Allocator>::assign(initializer_list<T> init) noexcept {
+	auto preallocTmp = _base.memory_persistent();
+	_base.set_memory_persistent(true);
+	_base.clear();
+	_base.set_memory_persistent(preallocTmp);
+
+	auto source = init.begin();
+	_base.expand_front(init.size(),
+			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
+		node->value.construct(allocator_type(nalloc), *source++); //
+	});
+}
+
+template <typename T, typename Allocator>
+void __list<T, Allocator>::resize(size_type count) noexcept {
+	if (_base.size() > count) {
+		auto target = begin();
+		while (count > 0) {
+			++target;
+			--count;
+		}
+
+		while (target != end()) {
+			target = iterator(_base.erase(static_cast<node_type *>(target.__target)));
+		}
+	} else if (_base.size() < count) {
+		_base.expand(_base.end(), count - _base.size(),
+				[](const base_type::node_allocator_type &nalloc, node_type *node) {
+			node->value.construct(allocator_type(nalloc)); //
+		});
+	}
+}
+
+template <typename T, typename Allocator>
+void __list<T, Allocator>::resize(size_type count, const T &value) noexcept {
+	if (_base.size() > count) {
+		auto target = begin();
+		while (count > 0) {
+			++target;
+			--count;
+		}
+
+		while (target != end()) {
+			target = iterator(_base.erase(static_cast<node_type *>(target.__target)));
+		}
+	} else if (_base.size() < count) {
+		_base.expand(_base.end(), count - _base.size(),
+				[value = &value](const base_type::node_allocator_type &nalloc, node_type *node) {
+			node->value.construct(allocator_type(nalloc), *value); //
+		});
+	}
+}
+
+template <typename T, typename Allocator>
+template <typename... Args>
+__list<T, Allocator>::reference __list<T, Allocator>::emplace_front(Args &&...args) noexcept {
+	auto node = _base.allocate_node();
+	node->value.construct(get_allocator(), sprt::forward<Args>(args)...);
+	_base.insert_front(node);
+	return node->value.ref();
+}
+
+template <typename T, typename Allocator>
+template <typename... Args>
+__list<T, Allocator>::reference __list<T, Allocator>::emplace_back(Args &&...args) noexcept {
+	auto node = _base.allocate_node();
+	node->value.construct(get_allocator(), sprt::forward<Args>(args)...);
+	_base.insert_back(node);
+	return node->value.ref();
+}
+
+template <typename T, typename Allocator>
+void __list<T, Allocator>::push_front(const T &x) noexcept {
+	emplace_front(x);
+}
+template <typename T, typename Allocator>
+void __list<T, Allocator>::push_front(T &&x) noexcept {
+	emplace_front(sprt::move_unsafe(x));
+}
+template <typename T, typename Allocator>
+void __list<T, Allocator>::pop_front() noexcept {
+	if (!empty()) {
+		_base.erase(_base.front());
+	}
+}
+template <typename T, typename Allocator>
+void __list<T, Allocator>::push_back(const T &x) noexcept {
+	emplace_back(x);
+}
+template <typename T, typename Allocator>
+void __list<T, Allocator>::push_back(T &&x) noexcept {
+	emplace_back(sprt::move_unsafe(x));
+}
+template <typename T, typename Allocator>
+void __list<T, Allocator>::pop_back() noexcept {
+	if (!empty()) {
+		_base.erase(_base.back());
+	}
+}
+
+template <typename T, typename Allocator>
+template <typename... Args>
+__list<T, Allocator>::iterator __list<T, Allocator>::emplace(const_iterator position,
+		Args &&...args) noexcept {
+	auto node = _base.allocate_node();
+	node->value.construct(get_allocator(), sprt::forward<Args>(args)...);
+	_base.insert_before(const_cast<base_type::basic_node_type *>(position.__target), node);
+	return iterator(node);
+}
+
+template <typename T, typename Allocator>
+__list<T, Allocator>::iterator __list<T, Allocator>::insert(const_iterator position,
+		const T &x) noexcept {
+	return emplace(position, x);
+}
+
+template <typename T, typename Allocator>
+__list<T, Allocator>::iterator __list<T, Allocator>::insert(const_iterator position,
+		T &&x) noexcept {
+	return emplace(position, sprt::move_unsafe(x));
+}
+
+template <typename T, typename Allocator>
+__list<T, Allocator>::iterator __list<T, Allocator>::insert(const_iterator position, size_type n,
+		const T &value) noexcept {
+	return iterator(_base.expand(const_cast<base_type::basic_node_type *>(position.__target), n,
+			[value = &value](const base_type::node_allocator_type &nalloc, node_type *node)
+					SPRT_LAMBDAINLINE {
+		node->value.construct(allocator_type(nalloc), *value); //
+	}));
+}
+
+template <typename T, typename Allocator>
+template <typename InputIter, enable_if_t<__has_input_iterator_category<InputIter>::value, int>>
+__list<T, Allocator>::iterator __list<T, Allocator>::insert(const_iterator position,
+		InputIter first, InputIter last) noexcept {
+	while (first != last) {
+		position = emplace(position, *first);
+		++first;
+	}
+}
+
+template <typename T, typename Allocator>
+__list<T, Allocator>::iterator __list<T, Allocator>::insert(const_iterator position,
+		initializer_list<T> init) noexcept {
+	auto source = init.begin();
+	_base.expand(const_cast<base_type::basic_node_type *>(position.__target), init.size(),
+			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
+		node->value.construct(allocator_type(nalloc), *source++); //
+	});
+}
+
+template <typename T, typename Allocator>
+__list<T, Allocator>::iterator __list<T, Allocator>::erase(const_iterator position) noexcept {
+	return iterator(_base.erase(
+			static_cast<node_type *>(const_cast<base_type::basic_node_type *>(position.__target))));
+}
+
+template <typename T, typename Allocator>
+__list<T, Allocator>::iterator __list<T, Allocator>::erase(const_iterator first,
+		const_iterator last) noexcept {
+	while (first != last) {
+		first = const_iterator(_base.erase(static_cast<node_type *>(
+				const_cast<base_type::basic_node_type *>(first.__target))));
+	}
+	return iterator(const_cast<base_type::basic_node_type *>(first.__target));
+}
+
+template <typename T, typename Allocator>
+void __list<T, Allocator>::swap(__list &other) noexcept {
+	_base.swap(other._base);
+}
+
+template <typename Type>
+using __pool_list = __list<Type, memory::AllocatorPool<Type>>;
+
+template <typename Type>
+using __malloc_list = __list<Type, memory::AllocatorMalloc<Type>>;
+
+template <typename T, typename Allocator>
+inline bool operator==(const __list<T, Allocator> &lhs, const __list<T, Allocator> &rhs) {
+	if (lhs.size() != rhs.size()) {
+		return false;
+	}
+
+	auto first1 = lhs.begin();
+	auto last1 = lhs.end();
+	auto first2 = rhs.begin();
+	auto last2 = rhs.end();
+
+	for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
+		if (!(*first1 == *first2)) {
+			return false;
+		}
+	}
+
+	return first1 == last1 && first2 == last2;
+}
+
+template <typename T, typename Allocator>
+inline auto operator<=>(const __list<T, Allocator> &lhs, const __list<T, Allocator> &rhs) {
+	return sprt::lexicographical_compare_three_way(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
+}
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_LIST_H_

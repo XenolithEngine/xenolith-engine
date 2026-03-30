@@ -23,7 +23,10 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_MEMORY_POINTER_ITERATOR_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_MEMORY_POINTER_ITERATOR_H_
 
-#include <sprt/cxx/iterator.h>
+#include <sprt/cxx/__type_traits/operations.h>
+#include <sprt/cxx/__type_traits/modifications.h>
+#include <sprt/cxx/__type_traits/queries.h>
+#include <sprt/cxx/__iterator/iterator_tags.h>
 
 namespace sprt::memory {
 
@@ -264,6 +267,9 @@ public:
 		++current;
 		return __tmp;
 	}
+
+	constexpr bool operator==(const common_reverse_iterator &) const = default;
+	constexpr bool operator!=(const common_reverse_iterator &) const = default;
 
 protected:
 	_Iter current;

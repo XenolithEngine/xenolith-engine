@@ -24,6 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_NOTNULL_H_
 
 #include <sprt/runtime/init.h>
+#include <sprt/cxx/__type_traits/queries.h>
 
 // see: https://stackoverflow.com/questions/63493968/reproducing-clangs-builtin-assume-for-gcc
 

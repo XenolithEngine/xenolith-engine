@@ -1,0 +1,208 @@
+== Geometry Structures
+
+The `sprt::geom` namespace provides fundamental geometric data structures used throughout the engine for representing points, sizes, rectangles, and colors.
+
+=== Vec2
+
+A 2D vector with floating-point coordinates.
+
+*Fields*
+* `x` (float) - X coordinate
+* `y` (float) - Y coordinate
+
+*Methods*
+* `isValid()` - Returns true if both coordinates are valid (not NaN)
+
+*Usage*
+[source,cpp]
+----
+sprt::Vec2 position{10.5f, 20.3f};
+bool valid = position.isValid();
+----
+
+=== Size2
+
+A 2D size with floating-point dimensions.
+
+*Fields*
+* `width` (float) - Width dimension
+* `height` (float) - Height dimension
+
+*Comparison Operators*
+* `operator==`, `operator!=` - Default comparison operators
+
+*Usage*
+[source,cpp]
+----
+sprt::Size2 screenSize{1920.0f, 1080.0f};
+if (screenSize == sprt::Size2{1920.0f, 1080.0f}) {
+    // sizes match
+}
+----
+
+=== Rect
+
+A rectangle defined by an origin point and size.
+
+*Fields*
+* `origin` (sprt::Vec2) - Top-left corner position
+* `size` (sprt::Size2) - Width and height
+
+*Comparison Operators*
+* `operator==`, `operator!=` - Default comparison operators
+
+*Usage*
+[source,cpp]
+----
+sprt::Rect viewport{{0.0f, 0.0f}, {800.0f, 600.0f}};
+----
+
+=== Extent2
+
+A 2D extent with unsigned integer dimensions (typically used for texture or buffer sizes).
+
+*Fields*
+* `width` (uint32_t) - Width extent
+* `height` (uint32_t) - Height extent
+
+*Comparison Operators*
+* `operator==`, `operator!=` - Default comparison operators
+
+*Usage*
+[source,cpp]
+----
+sprt::Extent2 textureSize{1024, 1024};
+----
+
+=== Extent3
+
+A 3D extent with unsigned integer dimensions.
+
+*Fields*
+* `width` (uint32_t) - Width extent
+* `height` (uint32_t) - Height extent
+* `depth` (uint32_t) - Depth extent
+
+*Comparison Operators*
+* `operator==`, `operator!=` - Default comparison operators
+
+*Usage*
+[source,cpp]
+----
+sprt::Extent3 volumeSize{512, 512, 256};
+----
+
+=== IVec2
+
+A 2D vector with signed integer coordinates.
+
+*Fields*
+* `x` (int32_t) - X coordinate
+* `y` (int32_t) - Y coordinate
+
+*Comparison Operators*
+* `operator==`, `operator!=` - Default comparison operators
+
+*Usage*
+[source,cpp]
+----
+sprt::IVec2 mousePosition{-10, 20};
+----
+
+=== IRect
+
+A rectangle defined by signed integer coordinates and unsigned dimensions.
+
+*Fields*
+* `x` (int32_t) - X position
+* `y` (int32_t) - Y position
+* `width` (uint32_t) - Width dimension
+* `height` (uint32_t) - Height dimension
+
+*Comparison Operators*
+* `operator==`, `operator!=` - Default comparison operators
+
+*Usage*
+[source,cpp]
+----
+sprt::IRect screenArea{-100, -100, 800, 600};
+----
+
+=== Padding
+
+A 4-sided padding with floating-point values.
+
+*Fields*
+* `top` (float) - Top padding
+* `right` (float) - Right padding
+* `bottom` (float) - Bottom padding
+* `left` (float) - Left padding
+
+*Comparison Operators*
+* `operator==`, `operator!=` - Default comparison operators
+
+*Usage*
+[source,cpp]
+----
+sprt::Padding margins{10.0f, 20.0f, 10.0f, 20.0f};
+----
+
+=== Color3B
+
+An RGB color with 8-bit unsigned integer components.
+
+*Fields*
+* `r` (uint8_t) - Red channel (0-255)
+* `g` (uint8_t) - Green channel (0-255)
+* `b` (uint8_t) - Blue channel (0-255)
+
+*Comparison Operators*
+* `operator==`, `operator!=` - Default comparison operators
+
+*Usage*
+[source,cpp]
+----
+sprt::Color3B red{255, 0, 0};
+----
+
+=== Color4B
+
+An RGBA color with 8-bit unsigned integer components.
+
+*Fields*
+* `r` (uint8_t) - Red channel (0-255)
+* `g` (uint8_t) - Green channel (0-255)
+* `b` (uint8_t) - Blue channel (0-255)
+* `a` (uint8_t) - Alpha channel (0-255)
+
+*Comparison Operators*
+* `operator==`, `operator!=` - Default comparison operators
+
+*Usage*
+[source,cpp]
+----
+sprt::Color4B transparentRed{255, 0, 0, 128};
+----
+
+=== Color4S
+
+An RGBA color with 16-bit unsigned integer components.
+
+*Fields*
+* `r` (uint16_t) - Red channel (0-65535)
+* `g` (uint16_t) - Green channel (0-65535)
+* `b` (uint16_t) - Blue channel (0-65535)
+* `a` (uint16_t) - Alpha channel (0-65535)
+
+*Comparison Operators*
+* `operator==`, `operator!=` - Default comparison operators
+
+*Usage*
+[source,cpp]
+----
+sprt::Color4S highPrecisionColor{65535, 32768, 0, 32768};
+----
+
+== Default Behavior
+
+All structure types provide default comparison operators (`==` and `!=`) using constexpr. This allows for direct comparison and equality checks without additional implementation.

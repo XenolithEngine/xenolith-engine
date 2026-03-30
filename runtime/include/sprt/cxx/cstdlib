@@ -1,0 +1,136 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_CSTDLIB_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_CSTDLIB_H_
+
+#include <sprt/runtime/init.h>
+#include <sprt/runtime/unicode.h>
+#include <sprt/c/__sprt_stdlib.h>
+
+namespace sprt {
+
+// start and termination
+[[noreturn]]
+SPRT_FORCEINLINE void abort() noexcept {
+	__sprt_abort();
+}
+SPRT_FORCEINLINE int atexit(void (*fn)(void)) noexcept { return __sprt_atexit(fn); }
+SPRT_FORCEINLINE int at_quick_exit(void (*fn)(void)) noexcept { return __sprt_at_quick_exit(fn); }
+
+[[noreturn]]
+SPRT_FORCEINLINE void exit(int status) {
+	__sprt_exit(status);
+}
+
+[[noreturn]]
+SPRT_FORCEINLINE void _Exit(int status) noexcept {
+	__sprt__Exit(status);
+}
+
+[[noreturn]]
+SPRT_FORCEINLINE void quick_exit(int status) noexcept {
+	__sprt_quick_exit(status);
+}
+
+SPRT_FORCEINLINE char *getenv(const char *name) { return __sprt_getenv(name); }
+SPRT_FORCEINLINE int system(const char *string) { return __sprt_system(string); }
+
+// C library memory allocation
+SPRT_FORCEINLINE void *aligned_alloc(size_t alignment, size_t size) {
+	return __sprt_aligned_alloc(alignment, size);
+}
+SPRT_FORCEINLINE void aligned_free(void *ptr) { __sprt_aligned_free(ptr); }
+SPRT_FORCEINLINE void *calloc(size_t nmemb, size_t size) { return __sprt_calloc(nmemb, size); }
+SPRT_FORCEINLINE void free(void *ptr) { return __sprt_free(ptr); }
+SPRT_FORCEINLINE void *malloc(size_t size) { return __sprt_malloc(size); }
+SPRT_FORCEINLINE void *realloc(void *ptr, size_t size) { return __sprt_realloc(ptr, size); }
+
+SPRT_FORCEINLINE double atof(const char *nptr) { return __sprt_atof(nptr); }
+SPRT_FORCEINLINE int atoi(const char *nptr) { return __sprt_atoi(nptr); }
+SPRT_FORCEINLINE long int atol(const char *nptr) { return __sprt_atol(nptr); }
+SPRT_FORCEINLINE long long int atoll(const char *nptr) { return __sprt_atoll(nptr); }
+SPRT_FORCEINLINE double strtod(const char *nptr, char **endptr) {
+	return __sprt_strtod(nptr, endptr);
+}
+SPRT_FORCEINLINE float strtof(const char *nptr, char **endptr) {
+	return __sprt_strtof(nptr, endptr);
+}
+SPRT_FORCEINLINE long double strtold(const char *nptr, char **endptr) {
+	return __sprt_strtold(nptr, endptr);
+}
+SPRT_FORCEINLINE long int strtol(const char *nptr, char **endptr, int base) {
+	return __sprt_strtol(nptr, endptr, base);
+}
+SPRT_FORCEINLINE long long int strtoll(const char *nptr, char **endptr, int base) {
+	return __sprt_strtoll(nptr, endptr, base);
+}
+SPRT_FORCEINLINE unsigned long int strtoul(const char *nptr, char **endptr, int base) {
+	return __sprt_strtoul(nptr, endptr, base);
+}
+SPRT_FORCEINLINE unsigned long long int strtoull(const char *nptr, char **endptr, int base) {
+	return __sprt_strtoull(nptr, endptr, base);
+}
+
+/*
+// multibyte / wide string and character conversion functions
+SPRT_FORCEINLINE int mblen(const char *s, size_t n) {
+	return __sprt_mblen(s, n);
+}
+SPRT_FORCEINLINE int mbtowc(wchar_t *pwc, const char *s, size_t n);
+SPRT_FORCEINLINE int wctomb(char *s, wchar_t wchar);
+SPRT_FORCEINLINE size_t mbstowcs(wchar_t *pwcs, const char *s, size_t n);
+SPRT_FORCEINLINE size_t wcstombs(char *s, const wchar_t *pwcs, size_t n);
+
+// C standard library algorithms
+void *bsearch(const void *key, const void *base, // freestanding
+		size_t nmemb, size_t size, *compar);
+void *bsearch(const void *key, const void *base, // freestanding
+		size_t nmemb, size_t size,  *compar);
+void qsort(void *base, size_t nmemb, size_t size, // freestanding
+		 *compar);
+void qsort(void *base, size_t nmemb, size_t size, // freestanding
+		 *compar);
+
+// low-quality random number generation
+int rand();
+void srand(unsigned int seed);
+
+// absolute values
+constexpr int abs(int j); // freestanding
+constexpr long int abs(long int j); // freestanding
+constexpr long long int abs(long long int j); // freestanding
+constexpr 
+		abs( j); // freestanding-deleted
+
+constexpr long int labs(long int j); // freestanding
+constexpr long long int llabs(long long int j); // freestanding
+
+constexpr div_t div(int numer, int denom); // freestanding
+constexpr ldiv_t div(long int numer, long int denom); // freestanding
+constexpr lldiv_t div(long long int numer, long long int denom); // freestanding
+constexpr ldiv_t ldiv(long int numer, long int denom); // freestanding
+constexpr lldiv_t lldiv(long long int numer, long long int denom); // freestanding
+*/
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_CSTDLIB_H_

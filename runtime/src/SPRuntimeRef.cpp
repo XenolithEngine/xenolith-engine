@@ -24,8 +24,9 @@
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/backtrace.h>
 #include <sprt/c/__sprt_assert.h>
-#include <sprt/cxx/forward_list.h>
-#include <sprt/cxx/map.h>
+#include <sprt/cxx/forward_list>
+#include <sprt/cxx/list>
+#include <sprt/cxx/map>
 #include <sprt/runtime/mutex.h>
 
 namespace sprt {
@@ -33,8 +34,8 @@ namespace sprt {
 struct RefAllocData {
 	void *lastPtr = nullptr;
 
-	__pool_forward_list<memory::pool_t *> *delayedPools = nullptr;
-	__pool_forward_list<memory::allocator_t *> *delayedAllocs = nullptr;
+	__malloc_forward_list<memory::pool_t *> delayedPools;
+	__malloc_forward_list<memory::allocator_t *> delayedAllocs;
 
 	static RefAllocData *get() {
 		static thread_local RefAllocData tl_RefAllocData;
@@ -42,26 +43,26 @@ struct RefAllocData {
 		return &tl_RefAllocData;
 	}
 
+	RefAllocData() {
+		delayedPools.memory_persistent(true);
+		delayedAllocs.memory_persistent(true);
+	}
+
 	~RefAllocData() { clear(); }
 
 	void clear() {
-		if (delayedPools) {
-			while (!delayedPools->empty()) {
-				sprt::memory::pool::destroy(delayedPools->front());
-				delayedPools->pop_front();
-			}
-
-			delayedPools->clear();
+		while (!delayedPools.empty()) {
+			sprt::memory::pool::destroy(delayedPools.front());
+			delayedPools.pop_front();
 		}
 
-		if (delayedAllocs) {
-			while (!delayedAllocs->empty()) {
-				sprt::memory::allocator::destroy(delayedAllocs->front());
-				delayedAllocs->pop_front();
-			}
-
-			delayedAllocs->clear();
+		delayedPools.clear();
+		while (!delayedAllocs.empty()) {
+			sprt::memory::allocator::destroy(delayedAllocs.front());
+			delayedAllocs.pop_front();
 		}
+
+		delayedAllocs.clear();
 	}
 };
 
@@ -112,24 +113,12 @@ RefAlloc::RefAlloc() noexcept {
 
 void RefAlloc::destroySelfContained(memory::pool_t *pool) {
 	auto d = RefAllocData::get();
-	if (!d->delayedPools) {
-		auto pool = memory::get_thread_support_pool();
-		d->delayedPools = new (pool) __pool_forward_list<memory::pool_t *>(pool);
-		d->delayedPools->set_memory_persistent(true);
-	}
-
-	d->delayedPools->emplace_front(pool);
+	d->delayedPools.emplace_front(pool);
 }
 
 void RefAlloc::destroySelfContained(memory::allocator_t *alloc) {
 	auto d = RefAllocData::get();
-	if (!d->delayedAllocs) {
-		auto pool = memory::get_thread_support_pool();
-		d->delayedAllocs = new (pool) __pool_forward_list<memory::allocator_t *>(pool);
-		d->delayedAllocs->set_memory_persistent(true);
-	}
-
-	d->delayedAllocs->emplace_front(alloc);
+	d->delayedAllocs.emplace_front(alloc);
 }
 
 void getBacktrace(size_t offset, const callback<void(StringView)> &cb) {
@@ -147,7 +136,7 @@ static atomic<uint64_t> s_refId = 1;
 struct BackraceInfo : memory::AllocPool {
 	time_t t = platform::clock(platform::ClockType::Monotonic);
 	memory::pool_t *pool = nullptr;
-	__pool_forward_list<StringView> backtrace;
+	__pool_list<StringView> backtrace;
 };
 
 struct RefInfo : memory::AllocPool {
@@ -177,7 +166,7 @@ uint64_t retainBacktrace(const Ref *ptr, uint64_t id) {
 	s_mutex.lock();
 	// on initial call, set persistent memory for map
 	if (s_retainMap.empty()) {
-		s_retainMap.set_memory_persistent(true);
+		s_retainMap.memory_persistent(true);
 	}
 
 	auto it = s_retainMap.find(ptr);
@@ -188,7 +177,7 @@ uint64_t retainBacktrace(const Ref *ptr, uint64_t id) {
 
 		info->pool = newRefPool;
 		info->ref = ptr;
-		info->backtraces.set_memory_persistent(true);
+		info->backtraces.memory_persistent(true);
 
 		s_retainMap.emplace(ptr, info);
 	} else {
@@ -244,7 +233,7 @@ void releaseBacktrace(const Ref *ptr, uint64_t id) {
 }
 
 void foreachBacktrace(const Ref *ptr,
-		const callback<void(uint64_t, time_t, const __pool_forward_list<StringView> &)> &cb) {
+		const callback<void(uint64_t, time_t, const __pool_list<StringView> &)> &cb) {
 
 	// first - acquire ref info from global data
 	RefInfo *info = nullptr;

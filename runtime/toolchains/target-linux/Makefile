@@ -34,12 +34,12 @@ include $(MAKE_ROOT)../common/utils/detect-platform.mk
 
 MKDIR = mkdir -p
 
-SP_OPT := -O3 -fPIC -DPIC
+SP_OPT := -O3 -fPIC -DPIC -fno-exceptions
 
-INTERNAL_LIBS := \
-	libc++.a
+INTERNAL_LIBS :=
 
 LIBS := \
+	libc++.a \
 	libz.a \
 	libbz2.a \
 	liblzma.a \
@@ -175,10 +175,10 @@ ARCH_INCLUDES  = $(addprefix $(SP_INSTALL_PREFIX)/usr/include/,$(INCLUDES))
 
 all: $(ARCH_LIBS) $(ARCH_INCLUDES) $(SP_INSTALL_PREFIX)/share/licenses
 
-$(SP_INSTALL_PREFIX)/lib/libc++.a: $(MAKE_ROOT)libc++.mk
+$(SP_INSTALL_PREFIX)/usr/lib/libc++.a: $(MAKE_ROOT)libc++.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/clang/lib/linux/libclang_rt.asan-$(SP_ARCH).a: $(MAKE_ROOT)compiler_rt.mk $(SP_INSTALL_PREFIX)/lib/libc++.a
+$(SP_INSTALL_PREFIX)/lib/clang/lib/linux/libclang_rt.asan-$(SP_ARCH).a: $(MAKE_ROOT)compiler_rt.mk $(SP_INSTALL_PREFIX)/usr/lib/libc++.a
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/libz.a: ../common/zlib.mk

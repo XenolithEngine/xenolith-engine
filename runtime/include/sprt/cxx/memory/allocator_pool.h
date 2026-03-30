@@ -23,11 +23,11 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_MEMORY_ALLOCATOR_POOL_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_MEMORY_ALLOCATOR_POOL_H_
 
-#include <sprt/runtime/mem/pool.h>
-#include <sprt/runtime/mem/context.h>
+#include <sprt/cxx/new>
 #include <sprt/c/__sprt_assert.h>
 
-#include <sprt/cxx/new.h>
+#include <sprt/runtime/mem/pool.h>
+#include <sprt/runtime/mem/context.h>
 
 namespace sprt::memory {
 
@@ -83,8 +83,6 @@ public:
 		using other = AllocatorPool<U>;
 	};
 
-	// default alignment for pool_t is 8-bit, so, we can store up to 3 flags in pool pointer
-
 public:
 	// Default allocator uses pool from top of thread's AllocStack
 	AllocatorPool() noexcept;
@@ -99,6 +97,11 @@ public:
 	AllocatorPool<T> &operator=(const AllocatorPool<B> &a) noexcept;
 	template <typename B>
 	AllocatorPool<T> &operator=(AllocatorPool<B> &&a) noexcept;
+
+	constexpr AllocatorPool select_on_container_copy_construction() const {
+		// using default context allocator
+		return AllocatorPool();
+	}
 
 	T *allocate(size_t n) const noexcept;
 	T *__allocate(size_t &n) const noexcept;
@@ -139,27 +142,6 @@ private:
 	static pool_t *pool_ptr(pool_t *p) noexcept { return p; }
 
 	pool_t *pool = nullptr;
-};
-
-template <typename Value>
-struct Storage {
-	struct Image {
-		Value _value;
-	};
-
-	alignas(__alignof__(Image::_value)) uint8_t _storage[sizeof(Value)];
-
-	Storage() noexcept { }
-	Storage(nullptr_t) noexcept { }
-
-	void *addr() noexcept { return static_cast<void *>(&_storage); }
-	const void *addr() const noexcept { return static_cast<const void *>(&_storage); }
-
-	Value *ptr() noexcept { return static_cast<Value *>(addr()); }
-	const Value *ptr() const noexcept { return static_cast<const Value *>(addr()); }
-
-	Value &ref() noexcept { return *ptr(); }
-	const Value &ref() const noexcept { return *ptr(); }
 };
 
 //

@@ -21,9 +21,9 @@
  **/
 
 #include <sprt/runtime/filesystem/filepath.h>
-#include <sprt/cxx/string.h>
-#include <sprt/cxx/vector.h>
-#include <sprt/cxx/map.h>
+#include <sprt/cxx/string>
+#include <sprt/cxx/vector>
+#include <sprt/cxx/map>
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/c/__sprt_ctype.h>
 

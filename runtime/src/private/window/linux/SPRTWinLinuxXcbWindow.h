@@ -30,7 +30,7 @@
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/window/native_window.h>
 
-#include <sprt/cxx/bitset.h>
+#include <sprt/cxx/bitset>
 
 #include "SPRTWinLinuxXcbConnection.h"
 #include "SPRTWinLinuxXkbLibrary.h"

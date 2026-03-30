@@ -23,144 +23,84 @@ THE SOFTWARE.
 #define __SPRT_BUILD 1
 
 #include <sprt/c/__sprt_ctype.h>
-#include <sprt/runtime/string.h>
+#include <sprt/cxx/detail/constexpr.h>
 
-#include <ctype.h>
+__SPRT_C_FUNC int __SPRT_ID(isalnum_impl)(int c) { return sprt::__constexpr_isalnum_c(c); }
 
-#if SPRT_MACOS
-#include <xlocale.h>
-#endif
+__SPRT_C_FUNC int __SPRT_ID(isalpha_impl)(int c) { return sprt::__constexpr_isalpha_c(c); }
 
-namespace sprt {
+__SPRT_C_FUNC int __SPRT_ID(isblank_impl)(int c) { return sprt::__constexpr_isblank_c(c); }
 
-__SPRT_C_FUNC int __SPRT_ID(isalnum_impl)(int c) { return ::isalnum(c); }
+__SPRT_C_FUNC int __SPRT_ID(iscntrl_impl)(int c) { return sprt::__constexpr_iscntrl_c(c); }
 
-__SPRT_C_FUNC int __SPRT_ID(isalpha_impl)(int c) { return ::isalpha(c); }
+__SPRT_C_FUNC int __SPRT_ID(isdigit_impl)(int c) { return sprt::__constexpr_isdigit_c(c); }
 
-__SPRT_C_FUNC int __SPRT_ID(isblank_impl)(int c) { return ::isblank(c); }
+__SPRT_C_FUNC int __SPRT_ID(isgraph_impl)(int c) { return sprt::__constexpr_isgraph_c(c); }
 
-__SPRT_C_FUNC int __SPRT_ID(iscntrl_impl)(int c) { return ::iscntrl(c); }
+__SPRT_C_FUNC int __SPRT_ID(islower_impl)(int c) { return sprt::__constexpr_islower_c(c); }
 
-__SPRT_C_FUNC int __SPRT_ID(isdigit_impl)(int c) { return ::isdigit(c); }
+__SPRT_C_FUNC int __SPRT_ID(isprint_impl)(int c) { return sprt::__constexpr_isprint_c(c); }
 
-__SPRT_C_FUNC int __SPRT_ID(isgraph_impl)(int c) { return ::isgraph(c); }
+__SPRT_C_FUNC int __SPRT_ID(ispunct_impl)(int c) { return sprt::__constexpr_ispunct_c(c); }
 
-__SPRT_C_FUNC int __SPRT_ID(islower_impl)(int c) { return ::islower(c); }
+__SPRT_C_FUNC int __SPRT_ID(isspace_impl)(int c) { return sprt::__constexpr_isspace_c(c); }
 
-__SPRT_C_FUNC int __SPRT_ID(isprint_impl)(int c) { return ::isprint(c); }
+__SPRT_C_FUNC int __SPRT_ID(isupper_impl)(int c) { return sprt::__constexpr_isupper_c(c); }
 
-__SPRT_C_FUNC int __SPRT_ID(ispunct_impl)(int c) { return ::ispunct(c); }
+__SPRT_C_FUNC int __SPRT_ID(isxdigit_impl)(int c) { return sprt::__constexpr_isxdigit_c(c); }
 
-__SPRT_C_FUNC int __SPRT_ID(isspace_impl)(int c) { return ::isspace(c); }
+__SPRT_C_FUNC int __SPRT_ID(tolower_impl)(int c) {
+	if (c > 0 && c <= 0x7F) {
+		return int(sprt::__constexpr_tolower_c(char(c)));
+	}
+	return c;
+}
 
-__SPRT_C_FUNC int __SPRT_ID(isupper_impl)(int c) { return ::isupper(c); }
-
-__SPRT_C_FUNC int __SPRT_ID(isxdigit_impl)(int c) { return ::isxdigit(c); }
-
-__SPRT_C_FUNC int __SPRT_ID(tolower_impl)(int c) { return ::tolower(c); }
-
-__SPRT_C_FUNC int __SPRT_ID(toupper_impl)(int c) { return ::toupper(c); }
+__SPRT_C_FUNC int __SPRT_ID(toupper_impl)(int c) {
+	if (c > 0 && c <= 0x7F) {
+		return int(sprt::__constexpr_toupper_c(char(c)));
+	}
+	return c;
+}
 
 __SPRT_C_FUNC int __SPRT_ID(isalnum_l)(int c, __SPRT_ID(locale_t) loc) {
-#if SPRT_WINDOWS
-	return _isalnum_l(c, loc);
-#else
-	return isalnum_l(c, loc); //
-#endif
+	return __sprt_isalnum(c); //
 }
 __SPRT_C_FUNC int __SPRT_ID(isalpha_l)(int c, __SPRT_ID(locale_t) loc) {
-#if SPRT_WINDOWS
-	return _isalpha_l(c, loc); //
-#else
-	return isalpha_l(c, loc); //
-#endif
+	return __sprt_isalpha(c); //
 }
 __SPRT_C_FUNC int __SPRT_ID(isblank_l)(int c, __SPRT_ID(locale_t) loc) {
-#if SPRT_WINDOWS
-	return _isblank_l(c, loc); //
-#else
-	return isblank_l(c, loc); //
-#endif
+	return __sprt_isblank(c); //
 }
 __SPRT_C_FUNC int __SPRT_ID(iscntrl_l)(int c, __SPRT_ID(locale_t) loc) {
-#if SPRT_WINDOWS
-	return _iscntrl_l(c, loc); //
-#else
-	return iscntrl_l(c, loc); //
-#endif
+	return __sprt_iscntrl(c); //
 }
 __SPRT_C_FUNC int __SPRT_ID(isdigit_l)(int c, __SPRT_ID(locale_t) loc) {
-#if SPRT_WINDOWS
-	return _isdigit_l(c, loc); //
-#else
-	return isdigit_l(c, loc); //
-#endif
+	return __sprt_isdigit(c); //
 }
 __SPRT_C_FUNC int __SPRT_ID(isgraph_l)(int c, __SPRT_ID(locale_t) loc) {
-#if SPRT_WINDOWS
-	return _isgraph_l(c, loc); //
-#else
-	return isgraph_l(c, loc); //
-#endif
+	return __sprt_isgraph(c); //
 }
 __SPRT_C_FUNC int __SPRT_ID(islower_l)(int c, __SPRT_ID(locale_t) loc) {
-#if SPRT_WINDOWS
-	return _islower_l(c, loc); //
-#else
-	return islower_l(c, loc); //
-#endif
+	return __sprt_islower(c); //
 }
 __SPRT_C_FUNC int __SPRT_ID(isprint_l)(int c, __SPRT_ID(locale_t) loc) {
-#if SPRT_WINDOWS
-	return _isprint_l(c, loc); //
-#else
-	return isprint_l(c, loc); //
-#endif
+	return __sprt_isprint(c); //
 }
 __SPRT_C_FUNC int __SPRT_ID(ispunct_l)(int c, __SPRT_ID(locale_t) loc) {
-#if SPRT_WINDOWS
-	return _ispunct_l(c, loc); //
-#else
-	return ispunct_l(c, loc); //
-#endif
+	return __sprt_ispunct(c); //
 }
 __SPRT_C_FUNC int __SPRT_ID(isspace_l)(int c, __SPRT_ID(locale_t) loc) {
-#if SPRT_WINDOWS
-	return _isspace_l(c, loc); //
-#else
-	return isspace_l(c, loc); //
-#endif
+	return __sprt_isspace(c); //
 }
 __SPRT_C_FUNC int __SPRT_ID(isupper_l)(int c, __SPRT_ID(locale_t) loc) {
-#if SPRT_WINDOWS
-	return _isupper_l(c, loc); //
-#else
-	return isupper_l(c, loc); //
-#endif
+	return __sprt_isupper(c); //
 }
 __SPRT_C_FUNC int __SPRT_ID(isxdigit_l)(int c, __SPRT_ID(locale_t) loc) {
-#if SPRT_WINDOWS
-	return _isxdigit_l(c, loc); //
-#else
-	return isxdigit_l(c, loc); //
-#endif
+	return __sprt_isxdigit(c); //
 }
-__SPRT_C_FUNC int __SPRT_ID(tolower_l)(int c, __SPRT_ID(locale_t) loc) {
-#if SPRT_WINDOWS
-	return _tolower_l(c, loc);
-#else
-	return ::tolower_l(c, loc);
-#endif
-}
-__SPRT_C_FUNC int __SPRT_ID(toupper_l)(int c, __SPRT_ID(locale_t) loc) {
-#if SPRT_WINDOWS
-	return _toupper_l(c, loc);
-#else
-	return ::toupper_l(c, loc);
-#endif
-}
+__SPRT_C_FUNC int __SPRT_ID(tolower_l)(int c, __SPRT_ID(locale_t) loc) { return __sprt_tolower(c); }
+__SPRT_C_FUNC int __SPRT_ID(toupper_l)(int c, __SPRT_ID(locale_t) loc) { return __sprt_toupper(c); }
 
-__SPRT_C_FUNC int __SPRT_ID(isascii)(int c) { return isascii(c); }
-__SPRT_C_FUNC int __SPRT_ID(toascii)(int c) { return toascii(c); }
-
-} // namespace sprt
+__SPRT_C_FUNC int __SPRT_ID(isascii)(int c) { return (c & 0x7F) == c; }
+__SPRT_C_FUNC int __SPRT_ID(toascii)(int c) { return c & 0x7F; }

@@ -26,7 +26,7 @@
 
 #include <sprt/runtime/stream.h>
 #include <sprt/runtime/log.h>
-#include <sprt/cxx/vector.h>
+#include <sprt/cxx/vector>
 #include <sprt/runtime/enum.h>
 #include "private/SPRTFilesystem.h"
 #include <stdlib.h>

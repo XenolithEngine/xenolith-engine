@@ -31,7 +31,7 @@
 #include <sprt/runtime/window/theme_info.h>
 #include <sprt/runtime/window/native_window.h>
 #include <sprt/runtime/window/types.h>
-#include <sprt/cxx/bitset.h>
+#include <sprt/cxx/bitset>
 
 #include "SPRTWinLinuxWaylandProtocol.h"
 

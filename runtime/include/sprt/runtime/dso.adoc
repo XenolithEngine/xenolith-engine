@@ -1,0 +1,374 @@
+[[dso]]
+= DSO Module
+
+*Copyright (c) 2025 Stappler Team <admin@stappler.org>*
+
+== Description
+
+The DSO module provides a C++ interface for loading, managing, and accessing symbols in dynamic shared objects (DSOs) or shared libraries. This module offers both low-level C-style functions and a high-level C++ wrapper class for easier DSO management.
+
+== Table of Contents
+
+* [[dso_enums]]
+  * [[dso_flags]]
+  * [[dso_sym_flags]]
+* [[dso_functions]]
+  * [[dso_open]]
+  * [[dso_close]]
+  * [[dso_sym]]
+  * [[dso_tsym]]
+* [[dso_class]]
+  * [[dso_constructor]]
+  * [[dso_destructor]]
+  * [[dso_move_semantics]]
+  * [[dso_methods]]
+    * [[dso_get_current_version]]
+    * [[dso_is_valid]]
+    * [[dso_sym_method]]
+    * [[dso_close_method]]
+    * [[dso_getters]]
+
+== Enumerations
+
+[[dso_enums]]
+=== DSO Enumerations
+
+[[dso_flags]]
+==== DsoFlags
+
+Flags for DSO operations.
+
+* `None` (0) - No flags set
+* `Self` (1 << 0) - Open caller app itself instead of target library. Use with `Dso(StringView(), DsoFlags::Self)`
+* `Lazy` (1 << 1) - Use lazy binding if available (default behavior)
+* `Global` (1 << 2) - Link as RTLD_GLOBAL
+* `UserFlags` (Self | Lazy | Global) - Mask for user-defined flags
+* `StapplerAbi` (1 << 30) - Set by implementation for DSO opened with stappler-abi module instead of actual OS DSO
+
+[[dso_sym_flags]]
+==== DsoSymFlags
+
+Flags for symbol lookup operations.
+
+* `None` (0) - No flags set
+* `Executable` (1 << 0) - Symbol is executable (function pointer)
+* `Loader` (1 << 1) - Symbol is loader for other symbols
+
+== Functions
+
+[[dso_functions]]
+=== DSO Functions
+
+[[dso_open]]
+==== dso_open
+
+Load a dynamic shared object.
+
+*Signature:*
+```cpp
+void *dso_open(StringView name, DsoFlags flags, const char **err);
+void *dso_open(const char *name, DsoFlags flags, const char **err);
+```
+
+*Parameters:*
+* `name` - The name/path of the DSO to load
+* `flags` - DSO flags (e.g., `DsoFlags::Lazy`, `DsoFlags::Global`)
+* `err` - Optional output parameter for error messages
+
+*Returns:*
+* A handle to the loaded DSO, or `nullptr` on failure
+
+[[dso_close]]
+==== dso_close
+
+Close a loaded DSO.
+
+*Signature:*
+```cpp
+void dso_close(DsoFlags flags, void *handle);
+```
+
+*Parameters:*
+* `flags` - DSO flags used when opening
+* `handle` - Handle returned by `dso_open`
+
+[[dso_sym]]
+==== dso_sym
+
+Lookup a symbol in a loaded DSO.
+
+*Signature:*
+```cpp
+void *dso_sym(void *h, StringView name, DsoSymFlags flags = DsoSymFlags::None, const char **err = nullptr);
+void *dso_sym(void *h, const char *name, DsoSymFlags flags = DsoSymFlags::None, const char **err = nullptr);
+```
+
+*Parameters:*
+* `h` - Handle returned by `dso_open`
+* `name` - The name of the symbol to lookup
+* `flags` - Symbol flags (e.g., `DsoSymFlags::Executable`)
+* `err` - Optional output parameter for error messages
+
+*Returns:*
+* A pointer to the symbol, or `nullptr` if not found
+
+[[dso_tsym]]
+==== dso_tsym
+
+Type-safe symbol lookup in a loaded DSO.
+
+*Signature:*
+```cpp
+template <typename Type>
+inline Type *dso_tsym(void *h, StringView name, DsoSymFlags flags = DsoSymFlags::None, const char **err = nullptr);
+
+template <typename Type>
+inline Type dso_tsym(void *h, const char *name, DsoSymFlags flags = DsoSymFlags::None, const char **err = nullptr);
+```
+
+*Parameters:*
+* `h` - Handle returned by `dso_open`
+* `name` - The name of the symbol to lookup
+* `flags` - Symbol flags
+* `err` - Optional output parameter for error messages
+
+*Returns:*
+* A typed pointer to the symbol, or `nullptr` if not found
+
+*Note:*
+* For function pointers, the return type should be a pointer type (e.g., `void (*)()`), not a function type
+* The function automatically sets `DsoSymFlags::Executable` for function pointers
+
+== Class
+
+[[dso_class]]
+=== Dso Class
+
+A RAII wrapper class for managing DSO handles.
+
+[[dso_constructor]]
+==== Constructors
+
+*Default Constructor:*
+```cpp
+Dso();
+```
+Creates an empty DSO handle.
+
+*StringView Constructor:*
+```cpp
+Dso(StringView, uint32_t v = 0);
+```
+Loads a DSO with default flags (`DsoFlags::Lazy | DsoFlags::Local`). The version parameter is optional.
+
+*Full Constructor:*
+```cpp
+Dso(StringView, DsoFlags, uint32_t v = 0);
+```
+Loads a DSO with specified flags and optional version.
+
+[[dso_destructor]]
+==== Destructor
+
+```cpp
+~Dso();
+```
+Automatically closes the DSO handle when the object goes out of scope.
+
+[[dso_move_semantics]]
+==== Move Semantics
+
+*Move Constructor:*
+```cpp
+Dso(Dso &&other);
+```
+Takes ownership of another DSO handle.
+
+*Move Assignment:*
+```cpp
+Dso &operator=(Dso &&other);
+```
+Transfers ownership from another DSO object.
+
+*Note:*
+* Copying is disabled (`= delete`)
+
+[[dso_methods]]
+=== Dso Methods
+
+[[dso_get_current_version]]
+==== GetCurrentVersion
+
+Get the version number of the current DSO.
+
+*Signature:*
+```cpp
+static uint32_t GetCurrentVersion();
+```
+
+*Returns:*
+* The version number of the DSO where this function is called
+
+[[dso_is_valid]]
+==== isValid
+
+Check if the DSO handle is valid.
+
+*Signature:*
+```cpp
+bool isValid() const;
+```
+
+*Returns:*
+* `true` if the DSO handle is valid, `false` otherwise
+
+[[dso_sym_method]]
+==== sym
+
+Lookup a symbol in the DSO.
+
+*Signature:*
+```cpp
+template <typename T = void *>
+T sym(StringView name, DsoSymFlags flags = DsoSymFlags::None);
+```
+
+*Parameters:*
+* `name` - The name of the symbol to lookup
+* `flags` - Symbol flags
+
+*Returns:*
+* A typed pointer to the symbol
+
+*Template Requirements:*
+* For function pointers, `T` must be a pointer type (e.g., `void (*)()`)
+* The function automatically sets `DsoSymFlags::Executable` for function pointers
+
+[[dso_close_method]]
+==== close
+
+Explicitly close the DSO handle.
+
+*Signature:*
+```cpp
+void close();
+```
+
+[[dso_getters]]
+==== Getters
+
+*getFlags:*
+```cpp
+DsoFlags getFlags() const;
+```
+Returns the flags used to open the DSO.
+
+*getError:*
+```cpp
+StringView getError() const;
+```
+Returns the last error message, if any.
+
+*getVersion:*
+```cpp
+uint32_t getVersion() const;
+```
+Returns the DSO version number.
+
+*operator bool:*
+```cpp
+explicit operator bool() const;
+```
+Returns `true` if the DSO handle is valid (alias for `isValid()`).
+
+== Usage Examples
+
+=== Example 1: Basic DSO Loading
+
+```cpp
+#include <sprt/runtime/dso.h>
+
+// Load a DSO
+sprt::Dso dso("libexample.so");
+if (!dso) {
+    // Handle error
+    return;
+}
+
+// Lookup a symbol
+auto init_func = dso.sym<void (*)()>("init");
+if (init_func) {
+    init_func();
+}
+```
+
+=== Example 2: Using Low-level Functions
+
+```cpp
+#include <sprt/runtime/dso.h>
+
+const char *err = nullptr;
+void *handle = sprt::dso_open("libexample.so", sprt::DsoFlags::Lazy, &err);
+
+if (!handle) {
+    // Handle error: err contains error message
+    return;
+}
+
+// Lookup a symbol
+auto *sym = sprt::dso_sym(handle, "my_function");
+if (sym) {
+    // Use the symbol
+}
+
+sprt::dso_close(sprt::DsoFlags::Lazy, handle);
+```
+
+=== Example 3: Type-safe Symbol Lookup
+
+```cpp
+#include <sprt/runtime/dso.h>
+
+sprt::Dso dso("libexample.so");
+
+// Function pointer type
+using InitFunc = void (*)();
+
+auto init = dso.sym<InitFunc>("init");
+if (init) {
+    init();
+}
+
+// Data pointer type
+using Data = struct { int value; };
+
+auto *data = dso.sym<Data *>("get_data");
+if (data) {
+    int value = data->value;
+}
+```
+
+=== Example 4: DSO with Flags
+
+```cpp
+#include <sprt/runtime/dso.h>
+
+// Load with global linkage
+sprt::Dso dso("libexample.so", sprt::DsoFlags::Global);
+
+// Load with lazy binding
+sprt::Dso dso2("libexample.so", sprt::DsoFlags::Lazy);
+
+// Load self
+sprt::Dso dso3(sprt::StringView(), sprt::DsoFlags::Self);
+```
+
+== See Also
+
+* [[enum]] - Enumerations module
+* [[stringview]] - StringView module
+* [[ref]] - Reference module
+
+== Version History
+
+* Version 1.0 - Initial release

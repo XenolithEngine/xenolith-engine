@@ -26,9 +26,9 @@
 #include <sprt/runtime/notnull.h>
 #include <sprt/runtime/stringview.h>
 
-#include <sprt/cxx/forward_list.h>
-#include <sprt/cxx/new.h>
-#include <sprt/cxx/atomic.h>
+#include <sprt/cxx/list>
+#include <sprt/cxx/new>
+#include <sprt/cxx/atomic>
 
 // enable Ref debug mode to track retain/release sources
 #ifndef SPRT_REF_DEBUG
@@ -55,7 +55,7 @@ SPRT_API uint64_t retainBacktrace(const Ref *, uint64_t = Max<uint64_t>);
 SPRT_API void releaseBacktrace(const Ref *, uint64_t);
 SPRT_API void releaseRef(const Ref *);
 SPRT_API void foreachBacktrace(const Ref *,
-		const callback<void(uint64_t, time_t, const __pool_forward_list<StringView> &)> &);
+		const callback<void(uint64_t, time_t, const __pool_list<StringView> &)> &);
 
 } // namespace memleak
 
@@ -150,8 +150,7 @@ public:
 	}
 
 	virtual void foreachBacktrace(
-			const callback<void(uint64_t, time_t, const __pool_forward_list<StringView> &)> &cb)
-			const {
+			const callback<void(uint64_t, time_t, const __pool_list<StringView> &)> &cb) const {
 		memleak::foreachBacktrace(this, cb);
 	}
 

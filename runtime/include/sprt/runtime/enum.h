@@ -24,7 +24,8 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_ENUM_H_
 
 #include <sprt/runtime/math.h>
-#include <sprt/cxx/iterator.h>
+#include <sprt/cxx/iterator>
+#include <sprt/cxx/bit>
 
 namespace sprt {
 

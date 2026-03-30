@@ -24,7 +24,7 @@ THE SOFTWARE.
 #include <sprt/runtime/mutex.h>
 #include <sprt/thirdparty/pcg_random.hpp>
 
-namespace sprt {
+namespace sprt::libc {
 
 // from musl-libc
 static unsigned temper(unsigned x) {
@@ -117,4 +117,4 @@ static int getenv_s(size_t *pReturnValue, char *buffer, size_t numberOfElements,
 }
 #endif
 
-} // namespace sprt
+} // namespace sprt::libc

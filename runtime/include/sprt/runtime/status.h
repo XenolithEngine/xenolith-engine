@@ -27,8 +27,8 @@
 #include <sprt/runtime/string.h>
 #include <sprt/runtime/callback.h>
 #include <sprt/runtime/math.h>
-#include <sprt/cxx/detail/invoke.h>
-#include <sprt/cxx/detail/minmax.h>
+#include <sprt/cxx/__functional/invoke.h>
+#include <sprt/cxx/__algorithm/minmax.h>
 #include <sprt/c/__sprt_errno.h>
 
 namespace sprt::status {

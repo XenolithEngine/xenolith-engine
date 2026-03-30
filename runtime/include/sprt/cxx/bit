@@ -1,0 +1,187 @@
+/**
+ Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_BIT_
+#define RUNTIME_INCLUDE_SPRT_CXX_BIT_
+
+#include <sprt/cxx/detail/constexpr.h>
+
+/*
+	C++20/C++23 bit implementation
+*/
+
+namespace sprt {
+
+template <signed_or_unsigned_integer _Tp>
+[[nodiscard]]
+constexpr _Tp byteswap(_Tp __val) noexcept {
+	if constexpr (sizeof(_Tp) == 1) {
+		return __val;
+	} else if constexpr (sizeof(_Tp) == 2) {
+		return __builtin_bswap16(__val);
+	} else if constexpr (sizeof(_Tp) == 4) {
+		return __builtin_bswap32(__val);
+	} else if constexpr (sizeof(_Tp) == 8) {
+		return __builtin_bswap64(__val);
+#if defined(__SIZEOF_INT128__)
+	} else if constexpr (sizeof(_Tp) == 16) {
+#if __has_builtin(__builtin_bswap128)
+		return __builtin_bswap128(__val);
+#else
+		return static_cast<_Tp>(byteswap(static_cast<uint64_t>(__val))) << 64
+				| static_cast<_Tp>(byteswap(static_cast<uint64_t>(__val >> 64)));
+#endif // __has_builtin(__builtin_bswap128)
+#endif // _LIBCPP_HAS_INT128
+	} else {
+		static_assert(sizeof(_Tp) == 0,
+				"byteswap is unimplemented for integral types of this size");
+	}
+}
+
+template <unsigned_integer _Tp>
+[[nodiscard]]
+constexpr bool has_single_bit(_Tp __t) noexcept {
+	return __t != 0 && (((__t & (__t - 1)) == 0));
+}
+
+template <unsigned_integer Type>
+[[nodiscard]]
+constexpr int countl_zero(Type __t) noexcept {
+	static_assert(is_unsigned_v<Type>, "__countl_zero requires an unsigned integer type");
+	return __builtin_clzg(__t, Digits<Type>);
+}
+
+template <unsigned_integer Type>
+[[nodiscard]]
+constexpr int countl_one(Type __t) noexcept {
+	return __t != Max<Type> ? sprt::countl_zero(static_cast<Type>(~__t)) : Digits<Type>;
+}
+
+template <unsigned_integer Type>
+[[nodiscard]]
+constexpr int countr_zero(Type __t) noexcept {
+	static_assert(is_unsigned_v<Type>, "__countr_zero only works with unsigned types");
+	return __builtin_ctzg(__t, Digits<Type>);
+}
+
+template <unsigned_integer Type>
+[[nodiscard]]
+constexpr int countr_one(Type __t) noexcept {
+	return __t != Max<Type> ? sprt::countr_zero(static_cast<Type>(~__t)) : Digits<Type>;
+}
+
+template <unsigned_integer _Tp>
+[[nodiscard]]
+constexpr _Tp bit_ceil(_Tp __t) noexcept {
+	if (__t < 2) {
+		return 1;
+	}
+	const unsigned __n = Digits<_Tp> - sprt::countl_zero((_Tp)(__t - 1u));
+
+	if constexpr (sizeof(_Tp) >= sizeof(unsigned)) {
+		return _Tp{1} << __n;
+	} else {
+		const unsigned __extra = Digits<unsigned> - Digits<_Tp>;
+		const unsigned __ret_val = 1u << (__n + __extra);
+		return (_Tp)(__ret_val >> __extra);
+	}
+}
+
+template <unsigned_integer _Tp>
+[[nodiscard]]
+constexpr _Tp bit_floor(_Tp __t) noexcept {
+	return __t == 0 ? 0 : _Tp{1} << (Digits<_Tp> - 1 - sprt::countl_zero(__t));
+}
+
+template <unsigned_integer _Tp>
+[[nodiscard]]
+constexpr int bit_width(_Tp __t) noexcept {
+	return __t == 0 ? 0 : ((Digits<_Tp> - 1 - sprt::countl_zero(__t))) + 1;
+}
+
+template <unsigned_integer _Tp>
+constexpr _Tp rotl(_Tp __x, int __s) noexcept {
+	const int __n = Digits<_Tp>;
+	int __r = __s % __n;
+
+	if (__r == 0) {
+		return __x;
+	}
+
+	if (__r > 0) {
+		return (__x << __r) | (__x >> (__n - __r));
+	}
+
+	return (__x >> -__r) | (__x << (__n + __r));
+}
+
+template <unsigned_integer _Tp>
+constexpr _Tp rotr(_Tp __x, int __s) noexcept {
+	const int __n = Digits<_Tp>;
+	int __r = __s % __n;
+
+	if (__r == 0) {
+		return __x;
+	}
+
+	if (__r > 0) {
+		return (__x >> __r) | (__x << (__n - __r));
+	}
+
+	return (__x << -__r) | (__x >> (__n + __r));
+}
+
+template <unsigned_integer _Tp>
+[[nodiscard]]
+constexpr int popcount(_Tp __t) noexcept {
+	static_assert(is_unsigned_v<_Tp>, "__popcount only works with unsigned types");
+	return __builtin_popcountg(__t);
+}
+
+template <typename _ToType, typename _FromType>
+requires (sizeof(_ToType) == sizeof(_FromType)
+		&& is_trivially_copyable_v<_ToType> && is_trivially_copyable_v<_FromType>)
+[[nodiscard]]
+constexpr _ToType bit_cast(const _FromType &__from) noexcept {
+	return __builtin_bit_cast(_ToType, __from);
+}
+
+#ifndef __BYTE_ORDER__
+#error "__BYTE_ORDER__ is not defined"
+#endif
+
+enum class endian {
+	little = 0xDEAD,
+	big = 0xFACE,
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+	native = little,
+#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+	native = big,
+#else
+	native = 0xCAFE,
+#endif
+	network = big,
+};
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_BIT_

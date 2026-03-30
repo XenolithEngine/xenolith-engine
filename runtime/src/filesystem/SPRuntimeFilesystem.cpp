@@ -21,7 +21,7 @@
  **/
 
 #include <sprt/runtime/mem/pool.h>
-#include <sprt/cxx/string.h>
+#include <sprt/cxx/string>
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/enum.h>
 #include <sprt/runtime/stringview.h>
@@ -295,7 +295,7 @@ const LookupInfo *getLookupInfo(LocationCategory cat) {
 	return nullptr;
 }
 
-using EnumListType = __pool_forward_list<sprt::filesystem::LocationInfo>;
+using EnumListType = __pool_list<sprt::filesystem::LocationInfo>;
 
 // We need FileInfo for root constraints
 static bool _mkdir_recursive(const LocationInfo &info, StringView path) {

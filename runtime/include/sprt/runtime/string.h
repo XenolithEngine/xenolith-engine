@@ -27,7 +27,7 @@ THE SOFTWARE.
 #include <sprt/runtime/notnull.h>
 #include <sprt/runtime/detail/itoa.h>
 #include <sprt/runtime/detail/dtoa.h>
-#include <sprt/cxx/array.h>
+#include <sprt/cxx/array>
 
 #include <sprt/c/__sprt_string.h>
 
@@ -93,28 +93,6 @@ constexpr inline size_t dtoa(double number, CharType *buffer, size_t bufSize) {
 
 	return _dtoa::dtoa_milo(number, buffer);
 }
-
-SPRT_API bool ispunct(char c);
-SPRT_API bool isdigit(char c);
-SPRT_API bool isalpha(char c);
-SPRT_API bool isspace(char c);
-SPRT_API bool islower(char c);
-SPRT_API bool isupper(char c);
-SPRT_API bool isalnum(char c);
-SPRT_API bool isxdigit(char c);
-SPRT_API bool isbase64(char c);
-SPRT_API bool istpunct(char c);
-
-SPRT_API constexpr inline char tolower_c(char c) { return __constexpr_tolower_c(c); }
-SPRT_API constexpr inline char16_t tolower_c(char16_t c) { return __constexpr_tolower_c(c); }
-SPRT_API constexpr inline char32_t tolower_c(char32_t c) { return __constexpr_tolower_c(c); }
-
-SPRT_API constexpr inline char toupper_c(char c) { return __constexpr_toupper_c(c); }
-SPRT_API constexpr inline char16_t toupper_c(char16_t c) { return __constexpr_toupper_c(c); }
-SPRT_API constexpr inline char32_t toupper_c(char32_t c) { return __constexpr_toupper_c(c); }
-
-SPRT_API void nullify(const char *, size_t);
-SPRT_API void nullify(const char16_t *, size_t);
 
 /*
 	Safe strcat-like function for char buffer filling.

@@ -23,8 +23,8 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_DETAIL_PROMOTE_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_DETAIL_PROMOTE_H_
 
-#include <sprt/runtime/detail/type_categories.h>
-#include <sprt/runtime/detail/type_queries.h>
+#include <sprt/cxx/__type_traits/queries.h>
+#include <sprt/cxx/__type_traits/types.h>
 
 namespace sprt::detail {
 

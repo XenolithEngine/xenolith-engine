@@ -46,8 +46,6 @@ THE SOFTWARE.
 #include <unistd.h>
 #endif
 
-namespace sprt {
-
 __SPRT_C_FUNC int __SPRT_ID(atoi_impl)(const char *str) { return ::atoi(str); }
 
 __SPRT_C_FUNC long __SPRT_ID(atol_impl)(const char *str) { return ::atol(str); }
@@ -94,10 +92,9 @@ __SPRT_C_FUNC unsigned long long __SPRT_ID(
 }
 
 
-__SPRT_C_FUNC int __SPRT_ID(rand_impl)(void) { return sprt::rand(); }
+__SPRT_C_FUNC int __SPRT_ID(rand_impl)(void) { return sprt::libc::rand(); }
 
-__SPRT_C_FUNC void __SPRT_ID(srand_impl)(unsigned base) { return sprt::srand(base); }
-
+__SPRT_C_FUNC void __SPRT_ID(srand_impl)(unsigned base) { return sprt::libc::srand(base); }
 
 __SPRT_C_FUNC void *__SPRT_ID(malloc_impl)(size_t size) { return ::malloc(size); }
 
@@ -147,16 +144,17 @@ __SPRT_C_FUNC int __SPRT_ID(atexit_impl)(void (*cb)(void)) { return ::atexit(cb)
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(exit_impl)(int ret) { ::exit(ret); }
 
-__SPRT_NORETURN void _Exit(int);
+__SPRT_C_FUNC void __SPRT_ID(_Exit_impl)(int ret) { ::_Exit(ret); }
+
 __SPRT_C_FUNC int __SPRT_ID(at_quick_exit_impl)(void (*cb)(void)) { return ::at_quick_exit(cb); }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(quick_exit_impl)(int ret) { ::quick_exit(ret); }
 
-__SPRT_C_FUNC char *__SPRT_ID(getenv_impl)(const char *name) { return getenv(name); }
+__SPRT_C_FUNC char *__SPRT_ID(getenv_impl)(const char *name) { return ::getenv(name); }
 
 __SPRT_C_FUNC int __SPRT_ID(getenv_s)(__SPRT_ID(size_t) * pReturnValue, char *buffer,
 		__SPRT_ID(size_t) numberOfElements, const char *varname) {
-	return getenv_s(pReturnValue, buffer, numberOfElements, varname);
+	return sprt::libc::getenv_s(pReturnValue, buffer, numberOfElements, varname);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(system_impl)(const char *cmd) { return ::system(cmd); }
@@ -218,14 +216,14 @@ __SPRT_C_FUNC int __SPRT_ID(getsubopt)(char **opts, char *const *toks, char **va
 	return getsubopt(opts, toks, vals);
 #endif
 }
-__SPRT_C_FUNC int __SPRT_ID(rand_r)(unsigned *v) { return sprt::rand_r(v); }
+__SPRT_C_FUNC int __SPRT_ID(rand_r)(unsigned *v) { return sprt::libc::rand_r(v); }
 
 __SPRT_C_FUNC char *__SPRT_ID(
 		realpath)(const char *__SPRT_RESTRICT path, char *__SPRT_RESTRICT out) {
 	return realpath(path, out);
 }
-__SPRT_C_FUNC long int __SPRT_ID(random)(void) { return sprt::random(); }
-__SPRT_C_FUNC void __SPRT_ID(srandom)(unsigned int seed) { sprt::srandom(seed); }
+__SPRT_C_FUNC long int __SPRT_ID(random)(void) { return sprt::libc::random(); }
+__SPRT_C_FUNC void __SPRT_ID(srandom)(unsigned int seed) { sprt::libc::srandom(seed); }
 
 __SPRT_C_FUNC long __SPRT_ID(strtol_l)(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
 		int base, __SPRT_ID(locale_t) loc) {
@@ -335,5 +333,3 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(__ctype_get_mb_cur_max)(void) {
 	return 0;
 #endif
 }
-
-} // namespace sprt

@@ -73,8 +73,9 @@
 #ifndef PCG_RAND_HPP_INCLUDED
 #define PCG_RAND_HPP_INCLUDED 1
 
-#include <sprt/cxx/algorithm.h>
-#include <sprt/cxx/new.h>
+#include <sprt/cxx/algorithm>
+#include <sprt/cxx/new>
+#include <sprt/cxx/cstdlib>
 
 #ifdef _MSC_VER
 #pragma warning(disable : 4'146)
@@ -201,7 +202,7 @@ protected:
 	static constexpr bool is_mcg = false;
 
 	// Is never called, but is provided for symmetry with specific_stream
-	void set_stream(...) { abort(); }
+	void set_stream(...) { sprt::abort(); }
 
 public:
 	typedef itype state_type;
@@ -231,7 +232,7 @@ protected:
 	static constexpr bool is_mcg = true;
 
 	// Is never called, but is provided for symmetry with specific_stream
-	void set_stream(...) { abort(); }
+	void set_stream(...) { sprt::abort(); }
 
 public:
 	typedef itype state_type;
@@ -257,7 +258,7 @@ protected:
 	static constexpr bool is_mcg = false;
 
 	// Is never called, but is provided for symmetry with specific_stream
-	void set_stream(...) { abort(); }
+	void set_stream(...) { sprt::abort(); }
 
 public:
 	typedef itype state_type;

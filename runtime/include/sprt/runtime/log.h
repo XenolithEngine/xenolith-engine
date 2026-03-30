@@ -27,7 +27,7 @@
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/stream.h>
 
-#include <sprt/cxx/source_location.h>
+#include <sprt/cxx/source_location>
 
 namespace sprt::oslog {
 

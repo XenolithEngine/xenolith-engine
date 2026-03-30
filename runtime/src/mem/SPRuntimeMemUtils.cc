@@ -24,7 +24,7 @@ THE SOFTWARE.
 
 #include "private/SPRTMemStruct.h"
 #include <sprt/runtime/math.h>
-#include <sprt/cxx/function.h>
+#include <sprt/cxx/function>
 #include <sprt/cxx/memory/rbtree.h>
 #include <sprt/runtime/mem/userdata.h>
 #include <sprt/runtime/log.h>

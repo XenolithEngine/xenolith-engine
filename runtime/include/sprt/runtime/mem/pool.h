@@ -94,11 +94,6 @@ namespace sprt::memory {
 
 // Hide pool implementation details from users
 // Note that OpaquePool and OpaqueAllocator are never defined
-class OpaquePool;
-class OpaqueAllocator;
-
-using pool_t = OpaquePool;
-using allocator_t = OpaqueAllocator;
 
 using cleanup_fn = Status (*)(void *);
 

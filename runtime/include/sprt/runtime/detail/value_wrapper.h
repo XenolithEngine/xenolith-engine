@@ -24,7 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_VALUE_WRAPPER_H_
 
 #include <sprt/runtime/math.h>
-#include <sprt/cxx/hash.h>
+#include <sprt/cxx/detail/hash.h>
 
 namespace sprt {
 

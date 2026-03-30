@@ -28,7 +28,7 @@
 #include <sprt/runtime/window/types.h>
 #include <sprt/runtime/window/mode.h>
 
-#include <sprt/cxx/bitset.h>
+#include <sprt/cxx/bitset>
 
 namespace sprt::window {
 

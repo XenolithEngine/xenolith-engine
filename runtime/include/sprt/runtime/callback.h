@@ -23,11 +23,10 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_CALLBACK_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_CALLBACK_H_
 
-#include <sprt/cxx/array.h>
-#include <sprt/runtime/detail/constexpr.h>
-#include <sprt/runtime/detail/new.h>
-
-#include <sprt/cxx/detail/invoke.h>
+#include <sprt/cxx/array>
+#include <sprt/cxx/new>
+#include <sprt/cxx/__functional/invoke.h>
+#include <sprt/cxx/detail/constexpr.h>
 
 namespace sprt {
 

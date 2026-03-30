@@ -33,7 +33,8 @@
 #ifndef PCG_EXTRAS_HPP_INCLUDED
 #define PCG_EXTRAS_HPP_INCLUDED 1
 
-#include <sprt/cxx/iterator.h>
+#include <sprt/cxx/iterator>
+#include <sprt/cxx/cstdlib>
 
 /*
  * Abstractions for compiler-specific directives
@@ -83,6 +84,7 @@ using uint8_t = sprt::uint8_t;
 using uint16_t = sprt::uint16_t;
 using uint32_t = sprt::uint32_t;
 using uint64_t = sprt::uint64_t;
+using size_t = sprt::size_t;
 using uint_least32_t = sprt::uint_least32_t;
 
 /*
@@ -327,10 +329,10 @@ void generate_to_impl(SeedSeq &&generator, DestIter dest, sprt::false_type) {
 		generator.generate(buffer, buffer + FROM_ELEMS);
 		uneven_copy(buffer, dest, dest + size);
 	} else {
-		uint32_t *buffer = static_cast<uint32_t *>(malloc(GEN_SIZE * FROM_ELEMS));
+		uint32_t *buffer = static_cast<uint32_t *>(sprt::malloc(GEN_SIZE * FROM_ELEMS));
 		generator.generate(buffer, buffer + FROM_ELEMS);
 		uneven_copy(buffer, dest, dest + size);
-		free(static_cast<void *>(buffer));
+		sprt::free(static_cast<void *>(buffer));
 	}
 }
 

@@ -26,11 +26,11 @@
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/stream.h>
-#include <sprt/cxx/string.h>
-#include <sprt/cxx/vector.h>
-#include <sprt/cxx/set.h>
-#include <sprt/cxx/map.h>
-#include <sprt/cxx/function.h>
+#include <sprt/cxx/string>
+#include <sprt/cxx/vector>
+#include <sprt/cxx/set>
+#include <sprt/cxx/map>
+#include <sprt/cxx/function>
 
 namespace sprt::window {
 

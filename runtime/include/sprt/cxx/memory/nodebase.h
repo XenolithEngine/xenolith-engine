@@ -69,6 +69,43 @@ struct SPRT_API RbTreeNodeFlag<size_t(8)> {
 	uintptr_t size	   : (sizeof(uintptr_t) / 2) * 8;
 };
 
+template <size_t ArchSize>
+struct SPRT_API ListNodeFlag;
+
+template <>
+struct SPRT_API ListNodeFlag<size_t(4)> {
+	static constexpr uintptr_t MaxSize = Max<uintptr_t>;
+	static constexpr uintptr_t MaxIndex = (1ULL << uintptr_t(sizeof(uintptr_t) * 8 - 1)) - 1;
+
+	uintptr_t prealloc : 1;
+
+	// Index of preallocated block
+	uintptr_t index	   : sizeof(uintptr_t) * 8 - 1;
+
+	// for root node - here we store capacity
+	// for preallocated head node - block size in bytes
+	// for other preallocaed nodes - should be 0
+	// for single node - block size in bytes
+	uintptr_t size;
+};
+
+template <>
+struct SPRT_API ListNodeFlag<size_t(8)> {
+	static constexpr uintptr_t MaxSize = (1ULL << uintptr_t((sizeof(uintptr_t) / 2) * 8)) - 1;
+	static constexpr uintptr_t MaxIndex = (1ULL << uintptr_t((sizeof(uintptr_t) / 2) * 8 - 1)) - 1;
+
+	uintptr_t prealloc : 1;
+
+	// Index of preallocated block
+	uintptr_t index	   : (sizeof(uintptr_t) / 2) * 8 - 1;
+
+	// for root node - here we store capacity
+	// for preallocated head node - block size in bytes
+	// for other preallocaed nodes - should be 0
+	// for single node - block size in bytes
+	uintptr_t size	   : (sizeof(uintptr_t) / 2) * 8;
+};
+
 template <typename Node, typename Allocator>
 struct NodeBlockAllocatorHelper {
 	using allocator_type = Allocator;

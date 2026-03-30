@@ -25,8 +25,8 @@
 
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/window/mode.h>
-#include <sprt/cxx/vector.h>
-#include <sprt/cxx/function.h>
+#include <sprt/cxx/vector>
+#include <sprt/cxx/function>
 #include <sprt/runtime/platform.h>
 
 namespace sprt::window {

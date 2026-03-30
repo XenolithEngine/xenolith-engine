@@ -25,7 +25,8 @@
 
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/mutex.h>
-#include <sprt/cxx/forward_list.h>
+#include <sprt/cxx/forward_list>
+#include <sprt/cxx/list>
 #include <sprt/c/sys/__sprt_stat.h>
 
 namespace sprt::filesystem {
@@ -296,7 +297,7 @@ struct LocationInfo {
 struct LookupInfo {
 	LocationCategory category = LocationCategory::Custom;
 	StringView prefix;
-	__pool_forward_list<LocationInfo> paths;
+	__pool_list<LocationInfo> paths;
 	mutable qmutex mutex;
 	bool init = false;
 	LookupFlags defaultLookupFlags = LookupFlags::None;

@@ -1,0 +1,300 @@
+/**
+Copyright (c) 2025 Stappler Team <admin@stappler.org>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_SET_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_SET_H_
+
+#include <sprt/cxx/__memory/allocator_traits.h>
+#include <sprt/cxx/initializer_list>
+#include <sprt/cxx/__algorithm/bounds.h>
+#include <sprt/cxx/__algorithm/lexicographical_compare.h>
+
+#include <sprt/cxx/memory/allocator_malloc.h>
+#include <sprt/cxx/memory/allocator_pool.h>
+#include <sprt/cxx/memory/rbtree.h>
+
+namespace sprt {
+
+template <typename Value, typename Comp, typename Allocator>
+class __set : public Allocator::base_class {
+public:
+	using key_type = Value;
+	using value_type = Value;
+	using key_compare = Comp;
+	using value_compare = Comp;
+	using allocator_type = Allocator;
+
+	using pointer = typename allocator_traits<Allocator>::pointer;
+	using const_pointer = typename allocator_traits<Allocator>::const_pointer;
+	using reference = Value &;
+	using const_reference = const Value &;
+
+	using tree_type = memory::RbTree<Value, Value, Comp, allocator_type>;
+
+	using iterator = typename tree_type::const_iterator;
+	using const_iterator = typename tree_type::const_iterator;
+	using reverse_iterator = typename tree_type::const_reverse_iterator;
+	using const_reverse_iterator = typename tree_type::const_reverse_iterator;
+	using size_type = size_t;
+	using difference_type = ptrdiff_t;
+
+	static constexpr bool is_transparent_keys = __is_transparent_v<key_compare>;
+
+	__set() noexcept : __set(Comp()) { }
+	explicit __set(const Comp &comp, const Allocator &alloc = Allocator()) noexcept
+	: _tree(comp, alloc) { }
+
+	template <typename InputIterator>
+	__set(InputIterator first, InputIterator last, const key_compare &comp = key_compare(),
+			const allocator_type &alloc = allocator_type()) noexcept
+	: _tree(comp, alloc) {
+		for (auto it = first; it != last; it++) { emplace(*it); }
+	}
+
+	__set(const __set &x) noexcept
+	: _tree(x._tree,
+			  sprt::allocator_traits<allocator_type>::select_on_container_copy_construction(
+					  x.get_allocator())) { }
+	__set(__set &&x) noexcept : _tree(sprt::move_unsafe(x._tree, x.get_allocator())) { }
+
+	explicit __set(const Allocator &alloc) noexcept : _tree(Comp(), alloc) { }
+
+	__set(const __set &x, const type_identity_t<Allocator> &alloc) noexcept
+	: _tree(x._tree, alloc) { }
+	__set(__set &&x, const type_identity_t<Allocator> &alloc) noexcept
+	: _tree(sprt::move_unsafe(x._tree), alloc) { }
+
+	__set(initializer_list<value_type> il, const Comp &comp = Comp(),
+			const Allocator &alloc = Allocator()) noexcept
+	: _tree(comp, alloc) {
+		for (auto &it : il) { emplace(sprt::move_unsafe(it)); }
+	}
+
+	template <typename InputIter>
+	__set(InputIter first, InputIter last, const Allocator &a) noexcept
+	: __set(first, last, Comp(), a) { }
+
+	__set(initializer_list<value_type> il, const Allocator &a) noexcept : __set(il, Comp(), a) { }
+
+	__set &operator=(const __set &other) noexcept {
+		using traits = sprt::allocator_traits<allocator_type>;
+
+		if constexpr (traits::propagate_on_container_copy_assignment::value) {
+			_tree.set_allocator(other.get_allocator());
+		}
+
+		_tree.copy_from(other._tree);
+		return *this;
+	}
+	__set &operator=(__set &&other) noexcept {
+		using traits = sprt::allocator_traits<allocator_type>;
+
+		if constexpr (traits::propagate_on_container_move_assignment::value) {
+			_tree.set_allocator(other.get_allocator());
+		}
+
+		_tree.move_from(sprt::move_unsafe(other._tree));
+		return *this;
+	}
+	__set &operator=(initializer_list<value_type> ilist) {
+		_tree.clear();
+		for (auto &it : ilist) { emplace(sprt::move_unsafe(it)); }
+		return *this;
+	}
+
+	allocator_type get_allocator() const noexcept { return _tree.get_allocator(); }
+
+	iterator begin() noexcept { return _tree.begin(); }
+	iterator end() noexcept { return _tree.end(); }
+	const_iterator begin() const noexcept { return _tree.begin(); }
+	const_iterator end() const noexcept { return _tree.end(); }
+
+	reverse_iterator rbegin() noexcept { return reverse_iterator(end()); }
+	reverse_iterator rend() noexcept { return reverse_iterator(begin()); }
+	const_reverse_iterator rbegin() const noexcept { return const_reverse_iterator(end()); }
+	const_reverse_iterator rend() const noexcept { return const_reverse_iterator(begin()); }
+
+	const_iterator cbegin() const noexcept { return _tree.cbegin(); }
+	const_iterator cend() const noexcept { return _tree.cend(); }
+	const_reverse_iterator crbegin() const noexcept { return const_reverse_iterator(cend()); }
+	const_reverse_iterator crend() const noexcept { return const_reverse_iterator(cbegin()); }
+
+	bool empty() const noexcept { return _tree.empty(); }
+	size_t size() const noexcept { return _tree.size(); }
+	size_t max_size() const noexcept { return _tree.max_size(); }
+
+	template < typename... Args >
+	pair<iterator, bool> emplace(Args &&...args) noexcept {
+		return _tree.emplace(sprt::forward<Args>(args)...);
+	}
+
+	template <typename... Args>
+	iterator emplace_hint(const_iterator hint, Args &&...args) noexcept {
+		return _tree.emplace_hint(hint, sprt::forward<Args>(args)...);
+	}
+
+	pair<iterator, bool> insert(const value_type &value) noexcept { return emplace(value); }
+	pair<iterator, bool> insert(value_type &&value) noexcept {
+		return emplace(sprt::move_unsafe(value));
+	}
+	template <typename K>
+	sprt::enable_if_t<is_transparent_keys, pair<iterator, bool>> insert(K &&x) noexcept {
+		return emplace(sprt::forward<K>(x));
+	}
+
+	iterator insert(const_iterator hint, const value_type &value) noexcept {
+		return emplace_hint(hint, value);
+	}
+	iterator insert(const_iterator hint, value_type &&value) noexcept {
+		return emplace_hint(hint, sprt::move_unsafe(value));
+	}
+	template <typename K>
+	sprt::enable_if_t<is_transparent_keys, iterator> insert(const_iterator hint, K &&x) noexcept {
+		return emplace_hint(hint, sprt::forward<K>(x));
+	}
+
+	template < typename InputIt >
+	void insert(InputIt first, InputIt last) noexcept {
+		for (auto it = first; it != last; it++) { emplace(*it); }
+	}
+
+	void insert(initializer_list<value_type> ilist) noexcept {
+		for (auto &it : ilist) { emplace(sprt::move_unsafe(it)); }
+	}
+
+	iterator erase(const_iterator pos) noexcept { return _tree.erase(pos); }
+	size_type erase(const key_type &x) noexcept { return _tree.erase_unique(x); }
+	template <typename K>
+	sprt::enable_if_t<is_transparent_keys, size_type> erase(K &&x) noexcept {
+		return _tree.erase_unique(x);
+	}
+	iterator erase(const_iterator first, const_iterator last) noexcept {
+		return _tree.erase(first, last);
+	}
+	void swap(__set &other) noexcept { _tree.swap(other._tree); }
+	void clear() { _tree.clear(); }
+
+	key_compare key_comp() const { return _tree.key_comp(); }
+	value_compare value_comp() const { return _tree.key_comp(); }
+
+	iterator find(const key_type &x) { return _tree.find(x); }
+	const_iterator find(const key_type &x) const { return _tree.find(x); }
+	template < typename K >
+	sprt::enable_if_t<is_transparent_keys, iterator> find(const K &x) {
+		return _tree.find(x);
+	}
+	template < typename K >
+	sprt::enable_if_t<is_transparent_keys, const_iterator> find(const K &x) const {
+		return _tree.find(x);
+	}
+
+	size_type count(const key_type &x) const { return _tree.count_unique(x); }
+	template < typename K >
+	sprt::enable_if_t<is_transparent_keys, size_t> count(const K &x) const {
+		return _tree.count_unique(x);
+	}
+
+	bool contains(const key_type &x) const { return _tree.find(x) != _tree.end(); }
+	template <typename K>
+	sprt::enable_if_t<is_transparent_keys, bool> contains(const K &x) const {
+		return _tree.find(x) != _tree.end();
+	}
+
+
+	iterator lower_bound(const key_type &x) { return _tree.lower_bound(x); }
+	const_iterator lower_bound(const key_type &x) const { return _tree.lower_bound(x); }
+
+	template < typename K >
+	sprt::enable_if_t<is_transparent_keys, iterator> lower_bound(const K &x) {
+		return _tree.lower_bound(x);
+	}
+	template < typename K >
+	sprt::enable_if_t<is_transparent_keys, const_iterator> lower_bound(const K &x) const {
+		return _tree.lower_bound(x);
+	}
+
+	iterator upper_bound(const key_type &x) { return _tree.upper_bound(x); }
+	const_iterator upper_bound(const key_type &x) const { return _tree.upper_bound(x); }
+
+	template < typename K >
+	sprt::enable_if_t<is_transparent_keys, iterator> upper_bound(const K &x) {
+		return _tree.upper_bound(x);
+	}
+	template < typename K >
+	sprt::enable_if_t<is_transparent_keys, const_iterator> upper_bound(const K &x) const {
+		return _tree.upper_bound(x);
+	}
+
+	pair<iterator, iterator> equal_range(const key_type &x) { return _tree.equal_range(x); }
+	pair<const_iterator, const_iterator> equal_range(const key_type &x) const {
+		return _tree.equal_range(x);
+	}
+
+	template < typename K >
+	sprt::enable_if_t<is_transparent_keys, pair<iterator, iterator>> equal_range(const K &x) {
+		return _tree.equal_range(x);
+	}
+	template < typename K >
+	sprt::enable_if_t<is_transparent_keys, pair<const_iterator, const_iterator>> equal_range(
+			const K &x) const {
+		return _tree.equal_range(x);
+	}
+
+	size_t capacity() const noexcept { return _tree.capacity(); }
+	void shrink_to_fit() { _tree.shrink_to_fit(); }
+
+	void memory_persistent(bool value) noexcept { _tree.set_memory_persistent(value); }
+	bool memory_persistent() const noexcept { return _tree.memory_persistent(); }
+
+	void reserve(size_t c) { _tree.reserve(c); }
+
+protected:
+	tree_type _tree;
+};
+
+template <typename Value, typename Comparator = sprt::less<void>>
+using __pool_set = __set<Value, Comparator, memory::AllocatorPool<Value>>;
+
+template <typename Value, typename Comparator = sprt::less<void>>
+using __malloc_set = __set<Value, Comparator, memory::AllocatorMalloc<Value>>;
+
+/// See sprt::vector::swap().
+template <typename _Tp, typename Comp, typename Allocator>
+inline void swap(__set<_Tp, Comp, Allocator> &__x, __set<_Tp, Comp, Allocator> &__y) noexcept {
+	__x.swap(__y);
+}
+
+template <typename _Tp, typename Comp, typename Allocator>
+inline bool operator==(const __set<_Tp, Comp, Allocator> &__x,
+		const __set<_Tp, Comp, Allocator> &__y) {
+	return (__x.size() == __y.size() && sprt::equal(__x.begin(), __x.end(), __y.begin()));
+}
+
+template <typename Value, typename Comp, typename Allocator>
+inline constexpr auto operator<=>(const __set<Value, Comp, Allocator> &__x,
+		const __set<Value, Comp, Allocator> &__y) noexcept {
+	return sprt::lexicographical_compare_three_way(__x.begin(), __x.end(), __y.begin(), __y.end());
+}
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_SET_H_

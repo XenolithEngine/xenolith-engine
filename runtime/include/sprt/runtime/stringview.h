@@ -29,18 +29,17 @@ THE SOFTWARE.
 #include <sprt/runtime/string.h>
 #include <sprt/runtime/hash.h>
 #include <sprt/runtime/endian.h>
-#include <sprt/runtime/detail/constexpr.h>
+#include <sprt/cxx/detail/constexpr.h>
 #include <sprt/runtime/unicode.h>
 #include <sprt/runtime/halffloat.h>
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/runtime/mem/context.h>
 
-#include <sprt/cxx/functional.h>
-#include <sprt/cxx/algorithm.h>
-#include <sprt/cxx/detail/lexicographical_compare.h>
+#include <sprt/cxx/functional>
+#include <sprt/cxx/__algorithm/lexicographical_compare.h>
 #include <sprt/cxx/memory/pointer_iterator.h>
-#include <sprt/cxx/string.h>
-#include <sprt/cxx/array.h>
+#include <sprt/cxx/string>
+#include <sprt/cxx/array>
 
 #include <sprt/c/__sprt_string.h>
 

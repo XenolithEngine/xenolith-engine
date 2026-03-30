@@ -30,8 +30,8 @@
 #include <sprt/runtime/window/window_info.h>
 #include <sprt/runtime/window/presentation.h>
 #include <sprt/runtime/window/gapi.h>
-#include <sprt/cxx/vector.h>
-#include <sprt/cxx/function.h>
+#include <sprt/cxx/vector>
+#include <sprt/cxx/function>
 
 namespace sprt::window {
 

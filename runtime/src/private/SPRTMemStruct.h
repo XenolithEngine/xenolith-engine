@@ -27,8 +27,8 @@ THE SOFTWARE.
 
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/runtime/mutex.h>
-#include <sprt/cxx/new.h>
-#include <sprt/cxx/atomic.h>
+#include <sprt/cxx/new>
+#include <sprt/cxx/atomic>
 
 #include "private/SPRTDso.h"
 
