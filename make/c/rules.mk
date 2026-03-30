@@ -165,7 +165,8 @@ endef
 # $(2) - compilation flags
 # $(3) - extra deps
 define BUILD_gch_rule
-$(abspath $(1)): $(patsubst %.h$(OSTYPE_GCH_SUFFIX),%.h,$(1)) $$(LOCAL_MAKEFILE) $$($TOOLKIT_MODULES) $(3)
+$(abspath $(1)): $(patsubst %.h$(OSTYPE_GCH_SUFFIX),%.h,$(1)) \
+		$$(LOCAL_MAKEFILE) $$($TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) $(3)
 	$$(call sp_compile_gch,$(2))
 endef
 
@@ -182,8 +183,8 @@ $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 "arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CC),$$(call sp_compile_command,,$$(OSTYPE_C_FILE),$(4),$(1),$(2)))]},' > $$@
 	@$(GLOBAL_ECHO) "[Compilation database entry]: $(notdir $(1))"
 
-$(2): \
-		$(1) $(3) $$(LOCAL_MAKEFILE) | $(2).json $$(BUILD_COMPILATION_DATABASE)
+$(2): $(1) $(3) $$(LOCAL_MAKEFILE) \
+		$$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) | $(2).json $$(BUILD_COMPILATION_DATABASE)
 	$$(call sp_compile_c,$(4))
 endef
 
@@ -210,8 +211,8 @@ $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 "arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CXX),$$(call sp_compile_command,,$$(OSTYPE_CPP_FILE),$(4),$(1),$(2)))]},' > $$@
 	@$(GLOBAL_ECHO) "[Compilation database entry]: $(notdir $(1))"
 
-$(2): \
-		$(1) $(3) $$(LOCAL_MAKEFILE) | $(2).json $$(BUILD_COMPILATION_DATABASE)
+$(2): $(1) $(3) $$(LOCAL_MAKEFILE) \
+		$$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) | $(2).json $$(BUILD_COMPILATION_DATABASE)
 	$$(call sp_compile_cpp,$(4))
 endef
 
@@ -228,8 +229,8 @@ $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 "arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CXX),$$(call sp_compile_command,,$$(OSTYPE_MM_FILE),$(4),$(1),$(2)))]},' > $$@
 	@$(GLOBAL_ECHO) "[Compilation database entry]: $(notdir $(1))"
 
-$(2): \
-		$(1) $(3) $$(LOCAL_MAKEFILE) | $(2).json $$(BUILD_COMPILATION_DATABASE)
+$(2): $(1) $(3) $$(LOCAL_MAKEFILE) \
+		$$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) | $(2).json $$(BUILD_COMPILATION_DATABASE)
 	$$(call sp_compile_mm,$(4))
 endef
 

@@ -189,7 +189,7 @@ $(call shell_override_file,$(TOOLKIT_CACHED_FLAGS),$(BUILD_ALL_FLAGS))
 
 $(TOOLKIT_CACHED_FLAGS):
 	@$(call rule_mkdir,$(BUILD_С_OUTDIR))
-	@echo 'BUILD_ALL_FLAGS' > $(TOOLKIT_CACHED_FLAGS)
+	@echo '$(BUILD_ALL_FLAGS)' > $(TOOLKIT_CACHED_FLAGS)
 
 endif
 endif

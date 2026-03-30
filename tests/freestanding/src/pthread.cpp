@@ -25,6 +25,8 @@ THE SOFTWARE.
 #include <stdio.h>
 #include <time.h>
 
+namespace sprt {
+
 struct ThreadArg {
 	int id;
 	int *counter;
@@ -257,7 +259,8 @@ struct BarrierArg {
 
 static void *barrierWaiterFunc(void *arg) {
 	auto *a = static_cast<BarrierArg *>(arg);
-	printf("pthread_barrier: thread %d (tid=%p) waiting at phase 1\n", a->id, (void *)pthread_self());
+	printf("pthread_barrier: thread %d (tid=%p) waiting at phase 1\n", a->id,
+			(void *)pthread_self());
 	int ret = pthread_barrier_wait(a->barrier);
 	if (ret == PTHREAD_BARRIER_SERIAL_THREAD) {
 		(*a->phase_count)++;
@@ -266,7 +269,8 @@ static void *barrierWaiterFunc(void *arg) {
 	printf("pthread_barrier: thread %d (tid=%p) released from phase 1\n", a->id,
 			(void *)pthread_self());
 
-	printf("pthread_barrier: thread %d (tid=%p) waiting at phase 2\n", a->id, (void *)pthread_self());
+	printf("pthread_barrier: thread %d (tid=%p) waiting at phase 2\n", a->id,
+			(void *)pthread_self());
 	ret = pthread_barrier_wait(a->barrier);
 	if (ret == PTHREAD_BARRIER_SERIAL_THREAD) {
 		(*a->phase_count)++;
@@ -370,3 +374,5 @@ void performPthreadSpinlockTest() {
 			numThreads * (iterations + 100));
 	printf("--- pthread_spinlock_t test done ---\n");
 }
+
+} // namespace sprt

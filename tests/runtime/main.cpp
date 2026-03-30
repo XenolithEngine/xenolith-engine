@@ -95,7 +95,7 @@ static void performThreadTests() {
 }
 
 static void performDynAllocTests() {
-	sprt::memory::dynstring str;
+	sprt::String str;
 	str += "test 1234567890 1234567890 1234567890\n";
 
 	std::cout << str;
