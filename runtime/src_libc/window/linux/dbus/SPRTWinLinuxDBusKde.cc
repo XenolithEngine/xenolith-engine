@@ -60,8 +60,7 @@ struct KdeDisplayMode {
 		ret.mode.rate = static_cast<uint32_t>(refreshRate * 1000.0);
 
 		if (ret.name.empty()) {
-			ret.name = StreamTraits<char>::toString(ret.mode.width, "x", ret.mode.height, "@",
-					ret.mode.rate);
+			ret.name = toString(ret.mode.width, "x", ret.mode.height, "@", ret.mode.rate);
 		}
 		return ret;
 	}
@@ -431,8 +430,7 @@ void KdeDisplayConfigManager::readDisplayConfig(NotNull<DBusMessage> reply,
 			++idx;
 			continue;
 		}
-		auto eIt = _edidCache.find(
-				StreamTraits<char>::toString(it.physical.xid.xid, ":", it.physical.id.name));
+		auto eIt = _edidCache.find(toString(it.physical.xid.xid, ":", it.physical.id.name));
 		if (eIt != _edidCache.end()) {
 			it.physical.id.edid = eIt->second;
 		} else {
@@ -444,8 +442,7 @@ void KdeDisplayConfigManager::readDisplayConfig(NotNull<DBusMessage> reply,
 				auto edid = EdidInfo::parse(iter.getBytes());
 				auto &mon = info->outputs[idx].physical;
 
-				_edidCache.emplace(StreamTraits<char>::toString(mon.xid.xid, ":", mon.id.name),
-						edid);
+				_edidCache.emplace(toString(mon.xid.xid, ":", mon.id.name), edid);
 				info->outputs[idx].physical.id.edid = edid;
 				if (--info->requestsInQueue == 0) {
 					auto d = info->exportConfig();

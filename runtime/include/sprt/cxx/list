@@ -23,13 +23,13 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_LIST_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_LIST_H_
 
-#include <sprt/cxx/memory/pointer_iterator.h>
+#include <sprt/cxx/detail/pointer_iterator.h>
 #include <sprt/cxx/initializer_list>
 #include <sprt/cxx/__memory/allocator_traits.h>
 
-#include <sprt/cxx/memory/allocator_malloc.h>
-#include <sprt/cxx/memory/allocator_pool.h>
-#include <sprt/cxx/memory/double_linked_list_base.h>
+#include <sprt/cxx/detail/allocator_malloc.h>
+#include <sprt/cxx/detail/allocator_pool.h>
+#include <sprt/cxx/__list/double_linked_list_base.h>
 #include <sprt/cxx/algorithm>
 
 namespace sprt {
@@ -47,13 +47,13 @@ public:
 	using size_type = size_t;
 	using difference_type = ptrdiff_t;
 
-	using base_type = memory::double_linked_list_base<value_type, allocator_type>;
+	using base_type = detail::double_linked_list_base<value_type, allocator_type>;
 	using node_type = base_type::node_type;
 
-	using iterator = memory::DoubleLinkedListIterator<value_type, Allocator>;
-	using const_iterator = memory::DoubleLinkedListConstIterator<value_type, Allocator>;
-	using reverse_iterator = memory::common_reverse_iterator<iterator>;
-	using const_reverse_iterator = memory::common_reverse_iterator<const_iterator>;
+	using iterator = detail::DoubleLinkedListIterator<value_type, Allocator>;
+	using const_iterator = detail::DoubleLinkedListConstIterator<value_type, Allocator>;
+	using reverse_iterator = detail::common_reverse_iterator<iterator>;
+	using const_reverse_iterator = detail::common_reverse_iterator<const_iterator>;
 
 	// construct/copy/destroy
 	__list() noexcept : __list(Allocator()) { }
@@ -96,7 +96,7 @@ public:
 	const_reverse_iterator crend() const noexcept { return const_reverse_iterator(cbegin()); }
 
 	// capacity
-	bool empty() const noexcept { return _base.empty(); }
+	bool empty() const noexcept { return _base.front() == _base.end(); }
 	size_type max_size() const noexcept { return _base.max_size(); }
 	size_type size() const noexcept { return _base.size(); }
 
@@ -104,10 +104,14 @@ public:
 	void resize(size_type sz, const T &c) noexcept;
 
 	// element access
-	reference front() noexcept { return _base.front()->value.ref(); }
-	const_reference front() const noexcept { return _base.front()->value.ref(); }
-	reference back() noexcept { return _base.back()->value.ref(); }
-	const_reference back() const noexcept { return _base.back()->value.ref(); }
+	reference front() noexcept { return static_cast<node_type *>(_base.front())->value.ref(); }
+	const_reference front() const noexcept {
+		return static_cast<const node_type *>(_base.front())->value.ref();
+	}
+	reference back() noexcept { return static_cast<node_type *>(_base.back())->value.ref(); }
+	const_reference back() const noexcept {
+		return static_cast<const node_type *>(_base.back())->value.ref();
+	}
 
 	// modifiers
 	template <typename... Args>
@@ -139,6 +143,12 @@ public:
 
 	void memory_persistent(bool value) noexcept { _base.memory_persistent(value); }
 	bool memory_persistent() const noexcept { return _base.memory_persistent(); }
+
+	void reserve(size_type size) { _base.reserve(size); }
+	size_type capacity() const { return _base.capacity(); }
+
+	void shrink_to_fit() { _base.shrink_to_fit(); }
+	void clear_deallocate() { return _base.clear_deallocate(); }
 
 protected:
 	base_type _base;
@@ -448,10 +458,10 @@ void __list<T, Allocator>::swap(__list &other) noexcept {
 }
 
 template <typename Type>
-using __pool_list = __list<Type, memory::AllocatorPool<Type>>;
+using __pool_list = __list<Type, detail::AllocatorPool<Type>>;
 
 template <typename Type>
-using __malloc_list = __list<Type, memory::AllocatorMalloc<Type>>;
+using __malloc_list = __list<Type, detail::AllocatorMalloc<Type>>;
 
 template <typename T, typename Allocator>
 inline bool operator==(const __list<T, Allocator> &lhs, const __list<T, Allocator> &rhs) {

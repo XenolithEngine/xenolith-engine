@@ -27,7 +27,7 @@
 #include <sprt/cxx/forward_list>
 #include <sprt/cxx/list>
 #include <sprt/cxx/map>
-#include <sprt/runtime/mutex.h>
+#include <sprt/runtime/thread/qmutex.h>
 
 namespace sprt {
 
@@ -121,7 +121,7 @@ void RefAlloc::destroySelfContained(memory::allocator_t *alloc) {
 	d->delayedAllocs.emplace_front(alloc);
 }
 
-void getBacktrace(size_t offset, const callback<void(StringView)> &cb) {
+void getBacktrace(size_t offset, const callback<void(uintptr_t, StringView)> &cb) {
 	sprt::backtrace::getBacktrace(offset + 1, cb);
 }
 
@@ -133,13 +133,13 @@ namespace sprt::memleak {
 static qmutex s_mutex;
 static atomic<uint64_t> s_refId = 1;
 
-struct BackraceInfo : memory::AllocPool {
+struct BackraceInfo : detail::AllocPool {
 	time_t t = platform::clock(platform::ClockType::Monotonic);
 	memory::pool_t *pool = nullptr;
 	__pool_list<StringView> backtrace;
 };
 
-struct RefInfo : memory::AllocPool {
+struct RefInfo : detail::AllocPool {
 	qmutex refMutex;
 	const Ref *ref = nullptr;
 	memory::pool_t *pool = nullptr;
@@ -194,7 +194,9 @@ uint64_t retainBacktrace(const Ref *ptr, uint64_t id) {
 		btInfo = new (btPool) BackraceInfo;
 		btInfo->pool = btPool;
 
-		getBacktrace(2, [&](StringView str) { btInfo->backtrace.emplace_back(str.pdup(btPool)); });
+		getBacktrace(2, [&](uintptr_t, StringView str) {
+			btInfo->backtrace.emplace_back(str.pdup(btPool));
+		});
 	}, btPool);
 
 	// write new backtrace to RefInfo, we need lock

@@ -125,6 +125,32 @@ bool isValidUtf8(StringView r) {
 	return true;
 }
 
+size_t getUtf32Length(const StringView &input) {
+	size_t counter = 0;
+	auto ptr = input.data();
+	const auto end = ptr + input.size();
+	while (ptr < end && *ptr != 0) {
+		++counter;
+		ptr += utf8_length_data[uint8_t(*ptr)];
+	};
+	return counter;
+}
+
+size_t getUtf32Length(const WideStringView &input) {
+	size_t counter = 0;
+	auto ptr = input.data();
+	const auto end = ptr + input.size();
+	while (ptr < end && *ptr != 0) {
+		++counter;
+		if (isUtf16Surrogate(*ptr)) {
+			ptr += 2;
+		} else {
+			ptr += 1;
+		}
+	};
+	return counter;
+}
+
 size_t getUtf16Length(const StringView &input) {
 	size_t counter = 0;
 	auto ptr = input.data();
@@ -133,6 +159,16 @@ size_t getUtf16Length(const StringView &input) {
 		counter += utf16_length_data[uint8_t(*ptr)];
 		ptr += utf8_length_data[uint8_t(*ptr)];
 	};
+	return counter;
+}
+
+size_t getUtf16Length(const StringViewBase<char32_t> &str) {
+	size_t counter = 0;
+	auto source = str.data();
+	auto end = source + str.size();
+
+	while (source != end) { counter += utf16EncodeLength(*source++); }
+
 	return counter;
 }
 
@@ -212,6 +248,74 @@ size_t getUtf8Length(const StringViewBase<char32_t> &str) {
 	return ret;
 }
 
+Status toUtf32(char32_t *ibuf, size_t bufSize, const StringView &utf8_str, size_t *ret) {
+	auto buf = ibuf;
+	uint8_t offset = 0;
+	auto ptr = utf8_str.data();
+	auto end = ptr + utf8_str.size();
+	while (ptr < end) {
+		if (bufSize < 1) {
+			return Status::ErrorBufferOverflow;
+		}
+		auto ch = utf8Decode32(ptr, end - ptr, offset);
+		*buf++ = ch;
+		--bufSize;
+		ptr += offset;
+	}
+	if (ret) {
+		*ret = buf - ibuf;
+	}
+	return Status::Ok;
+}
+Status toUtf32(char32_t *ibuf, size_t bufSize, const WideStringView &utf16_str, size_t *ret) {
+	auto buf = ibuf;
+	uint8_t offset = 0;
+	auto ptr = utf16_str.data();
+	auto end = ptr + utf16_str.size();
+	while (ptr < end) {
+		if (bufSize < 1) {
+			return Status::ErrorBufferOverflow;
+		}
+		auto ch = utf16Decode32(ptr, end - ptr, offset);
+		*buf++ = ch;
+		--bufSize;
+		ptr += offset;
+	}
+	if (ret) {
+		*ret = buf - ibuf;
+	}
+	return Status::Ok;
+}
+
+Status toUtf32(const callback<void(StringViewBase<char32_t>)> &cb, const StringView &data) {
+	auto len = getUtf32Length(data);
+	auto buf = __sprt_typed_malloca(char32_t, len + 1);
+
+	auto st = toUtf32(buf, len + 1, data, &len);
+	buf[len] = 0;
+
+	if (st == Status::Ok) {
+		cb(StringViewBase<char32_t>(buf, len));
+	}
+
+	__sprt_freea(buf);
+	return st;
+}
+Status toUtf32(const callback<void(StringViewBase<char32_t>)> &cb, const WideStringView &data) {
+	auto len = getUtf32Length(data);
+	auto buf = __sprt_typed_malloca(char32_t, len + 1);
+
+	auto st = toUtf32(buf, len + 1, data, &len);
+	buf[len] = 0;
+
+	if (st == Status::Ok) {
+		cb(StringViewBase<char32_t>(buf, len));
+	}
+
+	__sprt_freea(buf);
+	return st;
+}
+
 Status toUtf16(char16_t *ibuf, size_t bufSize, const StringView &utf8_str, size_t *ret) {
 	auto buf = ibuf;
 	uint8_t offset = 0;
@@ -226,6 +330,26 @@ Status toUtf16(char16_t *ibuf, size_t bufSize, const StringView &utf8_str, size_
 		buf += encLen;
 		bufSize -= encLen;
 		ptr += offset;
+	}
+	if (ret) {
+		*ret = buf - ibuf;
+	}
+	return Status::Ok;
+}
+
+SPRT_API Status toUtf16(char16_t *ibuf, size_t bufSize, const StringViewBase<char32_t> &str,
+		size_t *ret) {
+	auto buf = ibuf;
+	auto ptr = str.data();
+	auto end = ptr + str.size();
+	while (ptr < end) {
+		auto ch = *ptr++;
+		if (bufSize < utf16EncodeLength(ch)) {
+			return Status::ErrorBufferOverflow;
+		}
+		auto encLen = utf16EncodeBuf(buf, bufSize, ch);
+		buf += encLen;
+		bufSize -= encLen;
 	}
 	if (ret) {
 		*ret = buf - ibuf;
@@ -282,6 +406,21 @@ Status toUtf16(const callback<void(WideStringView)> &cb, const StringView &data)
 	return st;
 }
 
+Status toUtf16(const callback<void(WideStringView)> &cb, const StringViewBase<char32_t> &data) {
+	auto len = getUtf16Length(data);
+	auto buf = __sprt_typed_malloca(char16_t, len + 1);
+
+	auto st = toUtf16(buf, len + 1, data, &len);
+	buf[len] = 0;
+
+	if (st == Status::Ok) {
+		cb(WideStringView(buf, len));
+	}
+
+	__sprt_freea(buf);
+	return st;
+}
+
 Status toUtf16Html(const callback<void(WideStringView)> &cb, const StringView &data) {
 	auto len = getUtf16HtmlLength(data);
 	auto buf = __sprt_typed_malloca(char16_t, len + 1);
@@ -311,6 +450,25 @@ Status toUtf8(char *ibuf, size_t bufSize, const WideStringView &str, size_t *ret
 		buf += encLen;
 		bufSize -= encLen;
 		ptr += offset;
+	}
+	if (ret) {
+		*ret = buf - ibuf;
+	}
+	return Status::Ok;
+}
+
+Status toUtf8(char *ibuf, size_t bufSize, const StringViewBase<char32_t> &str, size_t *ret) {
+	auto buf = ibuf;
+	auto ptr = str.data();
+	auto end = ptr + str.size();
+	while (ptr < end) {
+		auto ch = *ptr++;
+		if (bufSize < utf8EncodeLength(ch)) {
+			return Status::ErrorBufferOverflow;
+		}
+		auto encLen = utf8EncodeBuf(buf, bufSize, ch);
+		buf += encLen;
+		bufSize -= encLen;
 	}
 	if (ret) {
 		*ret = buf - ibuf;
@@ -355,6 +513,170 @@ Status toUtf8(const callback<void(StringView)> &cb, const WideStringView &data) 
 
 	__sprt_freea(buf);
 	return st;
+}
+
+Status toUtf8(const callback<void(StringView)> &cb, const StringViewBase<char32_t> &data) {
+	auto len = getUtf8Length(data);
+	auto buf = __sprt_typed_malloca(char, len + 1);
+
+	auto st = toUtf8(buf, len + 1, data, &len);
+	buf[len] = 0;
+
+	if (st == Status::Ok) {
+		cb(StringView(buf, len));
+	}
+
+	__sprt_freea(buf);
+	return st;
+}
+
+static constexpr const uint8_t koi8r_small[64] = {
+	0xE1,
+	0xE2,
+	0xF7,
+	0xE7,
+	0xE4,
+	0xE5,
+	0xF6,
+	0xFA,
+	0xE9,
+	0xEA,
+	0xEB,
+	0xEC,
+	0xED,
+	0xEE,
+	0xEF,
+	0xF0,
+	0xF2,
+	0xF3,
+	0xF4,
+	0xF5,
+	0xE6,
+	0xE8,
+	0xE3,
+	0xFE,
+	0xFB,
+	0xFD,
+	0xFF,
+	0xF9,
+	0xF8,
+	0xFC,
+	0xE0,
+	0xF1,
+	0xC1,
+	0xC2,
+	0xD7,
+	0xC7,
+	0xC4,
+	0xC5,
+	0xD6,
+	0xDA,
+	0xC9,
+	0xCA,
+	0xCB,
+	0xCC,
+	0xCD,
+	0xCE,
+	0xCF,
+	0xD0,
+	0xD2,
+	0xD3,
+	0xD4,
+	0xD5,
+	0xC6,
+	0xC8,
+	0xC3,
+	0xDE,
+	0xDB,
+	0xDD,
+	0xDF,
+	0xD9,
+	0xD8,
+	0xDC,
+	0xC0,
+	0xD1,
+};
+
+char toKoi8r(char16_t c) {
+	if (c <= 0x7f) {
+		return char(c & 0xFF);
+	} else if (c >= u'а' && c <= u'я') {
+		return char(koi8r_small[c - u'а' + 32]);
+	} else if (c >= u'А' && c <= u'Я') {
+		return char(koi8r_small[(c - u'A') % 64]);
+	} else {
+		switch (c) {
+		case 0x2500: return char(0x80); break;
+		case 0x2502: return char(0x81); break;
+		case 0x250C: return char(0x82); break;
+		case 0x2510: return char(0x83); break;
+		case 0x2514: return char(0x84); break;
+		case 0x2518: return char(0x85); break;
+		case 0x251C: return char(0x86); break;
+		case 0x2524: return char(0x87); break;
+		case 0x252C: return char(0x88); break;
+		case 0x2534: return char(0x89); break;
+		case 0x253C: return char(0x8A); break;
+		case 0x2580: return char(0x8B); break;
+		case 0x2584: return char(0x8C); break;
+		case 0x2588: return char(0x8D); break;
+		case 0x258C: return char(0x8E); break;
+		case 0x2590: return char(0x8F); break;
+
+		case 0x2591: return char(0x90); break;
+		case 0x2592: return char(0x91); break;
+		case 0x2593: return char(0x92); break;
+		case 0x2320: return char(0x93); break;
+		case 0x25A0: return char(0x94); break;
+		case 0x2219: return char(0x95); break;
+		case 0x221A: return char(0x96); break;
+		case 0x2248: return char(0x97); break;
+		case 0x2264: return char(0x98); break;
+		case 0x2265: return char(0x99); break;
+		case 0x00A0: return char(0x9A); break;
+		case 0x2321: return char(0x9B); break;
+		case 0x00B0: return char(0x9C); break;
+		case 0x00B2: return char(0x9D); break;
+		case 0x00B7: return char(0x9E); break;
+		case 0x00F7: return char(0x9F); break;
+
+		case 0x2550: return char(0xA0); break;
+		case 0x2551: return char(0xA1); break;
+		case 0x2552: return char(0xA2); break;
+		case 0x0451: return char(0xA3); break;
+		case 0x2553: return char(0xA4); break;
+		case 0x2554: return char(0xA5); break;
+		case 0x2555: return char(0xA6); break;
+		case 0x2556: return char(0xA7); break;
+		case 0x2557: return char(0xA8); break;
+		case 0x2558: return char(0xA9); break;
+		case 0x2559: return char(0xAA); break;
+		case 0x255A: return char(0xAB); break;
+		case 0x255B: return char(0xAC); break;
+		case 0x255C: return char(0xAD); break;
+		case 0x255D: return char(0xAE); break;
+		case 0x255E: return char(0xAF); break;
+
+		case 0x255F: return char(0xB0); break;
+		case 0x2560: return char(0xB1); break;
+		case 0x2561: return char(0xB2); break;
+		case 0x0401: return char(0xB3); break;
+		case 0x2562: return char(0xB4); break;
+		case 0x2563: return char(0xB5); break;
+		case 0x2564: return char(0xB6); break;
+		case 0x2565: return char(0xB7); break;
+		case 0x2566: return char(0xB8); break;
+		case 0x2567: return char(0xB9); break;
+		case 0x2568: return char(0xBA); break;
+		case 0x2569: return char(0xBB); break;
+		case 0x256A: return char(0xBC); break;
+		case 0x256B: return char(0xBD); break;
+		case 0x256C: return char(0xBE); break;
+		case 0x00A9: return char(0xBF); break;
+		default: break;
+		}
+	}
+	return ' ';
 }
 
 } // namespace sprt::unicode

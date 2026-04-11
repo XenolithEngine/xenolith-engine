@@ -118,7 +118,8 @@ struct TextInputString : public Ref {
 	template <typename... Args>
 	static Rc<TextInputString> create(Args &&...args) {
 		auto ret = Rc<TextInputString>::alloc();
-		ret->string = StreamTraits<char16_t>::toString(sprt::forward<Args>(args)...);
+		ret->string =
+				StreamTraits<char16_t>::toString<__malloc_u16string>(sprt::forward<Args>(args)...);
 		return ret;
 	}
 

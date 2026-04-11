@@ -23,9 +23,32 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C___SPRT_SETJMP_H_
 #define CORE_RUNTIME_INCLUDE_C___SPRT_SETJMP_H_
 
+#include <sprt/c/bits/__sprt_uintptr_t.h>
 #include <sprt/c/cross/__sprt_setjmp.h>
 
 __SPRT_BEGIN_DECL
+
+/*
+	SPRT guarantees that C++ destructors (and any others,
+	including Rust and Go) will be called correctly during
+	longjmp. However, this requires buffer expansion
+	compared to the native implementation.
+
+	It's also used in SPRT's pthread implementation, so, pthread_exit/pthread_cancel should be safe
+	for a threads, that created with SPRT's pthread_create and C++ sprt::thread
+
+	OS support:
+	* Windows: *-pc-windows-msvc with -fasync-exceptions already performs stack unwinding on longjmp
+	* Linux/Android - uses _Unwind_ForcedUnwind
+	* MacOS - uses _Unwind_ForcedUnwind
+*/
+
+typedef struct __SPRT_ID(__ext_jmp_buf) {
+	__SPRT_ID(native_jmp_buf) __native; // OS-defined jmp_buf
+	__SPRT_ID(uintptr_t) __cfa; // Canonical Frame Address for stack unwinder
+	int __result; // We need to store result value from longjmp during stack unwind
+} __SPRT_ID(jmp_buf)[1];
+
 
 SPRT_API int __SPRT_ID(setjmp)(__SPRT_ID(jmp_buf));
 SPRT_API __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf), int);

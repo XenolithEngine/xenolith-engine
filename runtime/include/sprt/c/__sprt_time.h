@@ -28,6 +28,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_time_t.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_int32_t.h>
+#include <sprt/c/bits/__sprt_uint64_t.h>
 #include <sprt/c/cross/__sprt_locale.h>
 #include <sprt/c/cross/__sprt_sysid.h>
 
@@ -121,6 +122,8 @@ SPRT_FORCEINLINE struct __SPRT_TIMESPEC_NAME __SPRT_ID(timespec_diff)(
 	// clang-format on
 	return diff;
 }
+
+SPRT_API __SPRT_ID(uint64_t) __SPRT_ID(clock_gettime_nsec_np)(__SPRT_ID(clockid_t));
 
 __SPRT_END_DECL
 

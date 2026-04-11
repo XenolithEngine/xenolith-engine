@@ -28,7 +28,7 @@
 
 namespace sprt::filesystem::detail {
 
-struct LookupData : public memory::AllocPool {
+struct LookupData : public sprt::detail::AllocPool {
 	static LookupData *get();
 
 	bool _initialized = false;

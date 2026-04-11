@@ -447,11 +447,15 @@ SPRT_API void getWindowStateDescription(const callback<void(StringView)> &, Wind
 
 namespace sprt {
 
-inline const callback<void(StringView)> &operator<<(const callback<void(StringView)> &cb,
-		window::WindowState state) {
-	getWindowStateDescription(cb, state);
-	return cb;
-}
+template <>
+struct io_traits<window::WindowState> {
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const window::WindowState &value) {
+		getWindowStateDescription([&](StringView str) { io_traits<StringView>::encode(cb, str); },
+				value);
+	}
+};
 
 } // namespace sprt
 

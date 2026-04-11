@@ -32,7 +32,7 @@ extern "C" void objc_msgSend(void);
 extern "C" Class objc_getClass(const char *name);
 extern "C" SEL sel_getUid(const char *str);
 
-namespace sprt::thread {
+namespace sprt::_thread {
 
 using AutoreleasePool_new_type = id (*)(Class, SEL);
 using AutoreleasePool_drain_type = void (*)(id, SEL);
@@ -56,6 +56,6 @@ void _entry_platform(const callbacks &cb, NotNull<Ref> tm) {
 	ThreadCallbacks_performInAutorelease([&] { _dispose(cb, tm); });
 }
 
-} // namespace sprt::thread
+} // namespace sprt::_thread
 
 #endif

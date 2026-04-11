@@ -26,15 +26,17 @@
 #include <sprt/runtime/init.h>
 #include <sprt/runtime/thread/info.h>
 
+#include <sprt/cxx/thread>
+
 namespace sprt::window::config {
 
 static inline time_t getDefaultAppUpdateInterval() { return 1'000'000; }
 
 static inline uint16_t getDefaultMainThreads() {
-	return static_cast<uint16_t>(thread::info::hardware_concurrency()) / 2;
+	return static_cast<uint16_t>(thread::hardware_concurrency()) / 2;
 }
 static inline uint16_t getDefaultAppThreads() {
-	return static_cast<uint16_t>(thread::info::hardware_concurrency()) / 2;
+	return static_cast<uint16_t>(thread::hardware_concurrency()) / 2;
 }
 
 } // namespace sprt::window::config

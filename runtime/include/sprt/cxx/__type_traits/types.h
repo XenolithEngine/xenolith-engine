@@ -23,6 +23,7 @@
 #ifndef RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_TYPES_H_
 #define RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_TYPES_H_
 
+#include <sprt/cxx/__type_traits/queries.h>
 #include <sprt/cxx/__type_traits/constants.h>
 
 namespace sprt {
@@ -110,7 +111,6 @@ __SPRT_STL_BOOL_BUILTIN(is_literal_type)
 __SPRT_STL_BOOL_BUILTIN(is_signed)
 __SPRT_STL_BOOL_BUILTIN(is_unsigned)
 
-
 template <typename _Tp>
 concept signed_integer = is_signed_v<_Tp> && !is_floating_point_v<_Tp>;
 
@@ -118,7 +118,13 @@ template <typename _Tp>
 concept unsigned_integer = is_unsigned_v<_Tp> && !is_floating_point_v<_Tp>;
 
 template <typename _Tp>
+concept floating_point = is_floating_point_v<_Tp>;
+
+template <typename _Tp>
 concept signed_or_unsigned_integer = signed_integer<_Tp> || unsigned_integer<_Tp>;
+
+template <typename _Tp>
+concept io_character = is_same_v<_Tp, char> || is_same_v<_Tp, char16_t> || is_same_v<_Tp, char32_t>;
 
 } // namespace sprt
 

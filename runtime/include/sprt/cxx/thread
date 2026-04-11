@@ -1,0 +1,141 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_THREAD_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_THREAD_H_
+
+#include <sprt/cxx/compare>
+#include <sprt/cxx/detail/ctypes.h>
+#include <sprt/c/cross/__sprt_sysid.h>
+#include <sprt/c/__sprt_pthread.h>
+#include <sprt/c/sys/__sprt_sprt.h>
+
+namespace sprt {
+
+using timeout_t = __sprt_sprt_timeout_t;
+
+class thread {
+public:
+	// class thread::id
+	struct id;
+
+	using native_handle_type = __sprt_pthread_t;
+
+	// construct/copy/destroy
+	thread() noexcept;
+	template <class F, class... Args>
+	explicit thread(F &&f, Args &&...args);
+	~thread();
+	thread(const thread &) = delete;
+	thread(thread &&) noexcept;
+	thread &operator=(const thread &) = delete;
+	thread &operator=(thread &&) noexcept;
+
+	// members
+	void swap(thread &) noexcept;
+	bool joinable() const noexcept;
+	void join();
+	void detach();
+	id get_id() const noexcept;
+	native_handle_type native_handle();
+
+	// static members
+	static unsigned int hardware_concurrency() noexcept;
+};
+
+// class jthread
+/*class jthread {
+public:
+	// types
+	using id = thread::id;
+	using native_handle_type = thread::native_handle_type;
+
+	// constructors, move, and assignment
+	jthread() noexcept;
+	template <class F, class... Args>
+	explicit jthread(F &&f, Args &&...args);
+	~jthread();
+	jthread(const jthread &) = delete;
+	jthread(jthread &&) noexcept;
+	jthread &operator=(const jthread &) = delete;
+	jthread &operator=(jthread &&) noexcept;
+
+	// members
+	void swap(jthread &) noexcept;
+	bool joinable() const noexcept;
+	void join();
+	void detach();
+	id get_id() const noexcept;
+	native_handle_type native_handle();
+
+	// stop token handling
+	stop_source get_stop_source() noexcept;
+	stop_token get_stop_token() const noexcept;
+	bool request_stop() noexcept;
+
+	// specialized algorithms
+	friend void swap(jthread &lhs, jthread &rhs) noexcept;
+
+	// static members
+	static unsigned int hardware_concurrency() noexcept;
+
+private:
+	stop_source ssource; // exposition only
+};*/
+
+struct thread::id {
+	using __type = __sprt_pid_t;
+
+	__type __native = 0;
+};
+
+constexpr inline bool operator==(thread::id x, thread::id y) noexcept {
+	return x.__native == y.__native;
+}
+constexpr inline auto operator<=>(thread::id x, thread::id y) noexcept {
+	return x.__native <=> y.__native;
+}
+
+// hash support
+template <class T>
+struct hash;
+
+template <>
+struct hash<thread::id> {
+	constexpr size_t operator()(const thread::id &value) const noexcept {
+		return static_cast<size_t>(value.__native);
+	}
+};
+
+// namespace this_thread
+namespace this_thread {
+thread::id get_id() noexcept;
+
+void yield() noexcept;
+
+template <class Rep, class Period>
+void sleep_for(const timeout_t &rel_time);
+} // namespace this_thread
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_THREAD_H_

@@ -68,6 +68,33 @@ struct hash<long double> {
 };
 
 template <>
+struct hash<char *> {
+	size_t operator()(char *value) const noexcept {
+		return sprt::hashSize(value, __constexpr_strlen(value));
+	}
+};
+
+template <>
+struct hash<const char *> {
+	size_t operator()(const char *value) const noexcept {
+		return sprt::hashSize(value, __constexpr_strlen(value));
+	}
+};
+
+template <size_t N>
+struct hash<const char (&)[N]> {
+	size_t operator()(const char (&value)[N]) const noexcept { return sprt::hashSize(value, N); }
+};
+
+template <typename T>
+struct hash<T *> {
+	constexpr size_t operator()(const T *value) const noexcept {
+		return static_cast<size_t>(sprt::rotr(reinterpret_cast<uintptr_t>(value),
+				sprt::countr_zero(alignof(max_align_t))));
+	}
+};
+
+template <>
 struct hash<void> {
 	using is_transparent = void;
 

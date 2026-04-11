@@ -946,14 +946,16 @@ size_t get_active_count() { return s_activePools.load(); }
 
 } // namespace sprt::memory::pool
 
-namespace sprt::memory {
+namespace sprt::detail {
 
-bool AllocPool::isStapplerPool(pool_t *p) {
-	if (p && ((impl::Pool *)p)->magic == static_cast<uintptr_t>(config::POOL_MAGIC)) {
+bool AllocPool::isStapplerPool(memory::pool_t *p) {
+	if (p
+			&& ((memory::impl::Pool *)p)->magic
+					== static_cast<uintptr_t>(memory::config::POOL_MAGIC)) {
 		return true;
 	} else {
 		return false;
 	}
 }
 
-} // namespace sprt::memory
+} // namespace sprt::detail

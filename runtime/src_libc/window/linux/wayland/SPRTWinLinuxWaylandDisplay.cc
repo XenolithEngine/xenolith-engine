@@ -527,9 +527,9 @@ bool WaylandOutput::init(const Rc<WaylandLibrary> &lib, wl_registry *registry, u
 }
 
 String WaylandOutput::description() const {
-	return StreamTraits<char>::toString(geometry.make, " ", geometry.model, ": ",
-			currentMode.size.width, "x", currentMode.size.height, "@", currentMode.rate / 1'000,
-			"Hz (x", scale, ");", (currentMode.flags & WL_OUTPUT_MODE_CURRENT) ? " Current; " : "",
+	return toString(geometry.make, " ", geometry.model, ": ", currentMode.size.width, "x",
+			currentMode.size.height, "@", currentMode.rate / 1'000, "Hz (x", scale, ");",
+			(currentMode.flags & WL_OUTPUT_MODE_CURRENT) ? " Current; " : "",
 			(currentMode.flags & WL_OUTPUT_MODE_PREFERRED) ? " Preferred; " : "",
 			!desc.empty() ? StringView(desc) : StringView());
 }

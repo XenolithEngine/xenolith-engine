@@ -26,10 +26,12 @@ THE SOFTWARE.
 #include <sprt/runtime/callback.h>
 #include <sprt/runtime/stringview.h>
 
+#include <sprt/c/__sprt_setjmp.h>
+
 namespace sprt::backtrace {
 
-SPRT_API void getBacktrace(size_t offset, const callback<void(StringView)> &);
+SPRT_API void getBacktrace(size_t offset, const callback<void(uintptr_t, StringView)> &);
 
-}
+} // namespace sprt::backtrace
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_BACKTRACE_H_

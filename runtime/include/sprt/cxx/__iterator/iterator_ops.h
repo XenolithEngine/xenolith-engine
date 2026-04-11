@@ -47,12 +47,14 @@ template <__specifies_members _Ip>
 struct iterator_traits<_Ip> {
 	using iterator_category = typename _Ip::iterator_category;
 	using value_type = typename _Ip::value_type;
+	using difference_type = typename _Ip::difference_type;
 };
 
 template <typename Ptr>
 struct iterator_traits<Ptr *> {
 	using iterator_category = random_access_iterator_tag;
 	using value_type = Ptr;
+	using difference_type = sprt::ptrdiff_t;
 };
 
 template <typename _InputIter>

@@ -273,35 +273,53 @@ SPRT_API void getImageUsageDescription(const callback<void(StringView)> &stream,
 
 namespace sprt {
 
-inline const callback<void(StringView)> &operator<<(const callback<void(StringView)> &cb,
-		window::CompositeAlphaFlags state) {
-	getCompositeAlphaFlagsDescription(cb, state);
-	return cb;
-}
+template <>
+struct io_traits<window::CompositeAlphaFlags> {
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const window::CompositeAlphaFlags &value) {
+		getCompositeAlphaFlagsDescription(
+				[&](StringView str) { io_traits<StringView>::encode(cb, str); }, value);
+	}
+};
 
-inline const callback<void(StringView)> &operator<<(const callback<void(StringView)> &cb,
-		window::SurfaceTransformFlags state) {
-	getSurfaceTransformFlagsDescription(cb, state);
-	return cb;
-}
+template <>
+struct io_traits<window::SurfaceTransformFlags> {
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const window::SurfaceTransformFlags &value) {
+		getSurfaceTransformFlagsDescription(
+				[&](StringView str) { io_traits<StringView>::encode(cb, str); }, value);
+	}
+};
 
-inline const callback<void(StringView)> &operator<<(const callback<void(StringView)> &cb,
-		window::ImageUsage state) {
-	getImageUsageDescription(cb, state);
-	return cb;
-}
+template <>
+struct io_traits<window::ImageUsage> {
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const window::ImageUsage &value) {
+		getImageUsageDescription([&](StringView str) { io_traits<StringView>::encode(cb, str); },
+				value);
+	}
+};
 
-inline const callback<void(StringView)> &operator<<(const callback<void(StringView)> &cb,
-		const window::SwapchainConfig &cfg) {
-	cfg.description(cb);
-	return cb;
-}
+template <>
+struct io_traits<window::SwapchainConfig> {
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const window::SwapchainConfig &value) {
+		value.description([&](StringView str) { io_traits<StringView>::encode(cb, str); });
+	}
+};
 
-inline const callback<void(StringView)> &operator<<(const callback<void(StringView)> &cb,
-		const window::SurfaceInfo &info) {
-	info.description(cb);
-	return cb;
-}
+template <>
+struct io_traits<window::SurfaceInfo> {
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const window::SurfaceInfo &value) {
+		value.description([&](StringView str) { io_traits<StringView>::encode(cb, str); });
+	}
+};
 
 } // namespace sprt
 

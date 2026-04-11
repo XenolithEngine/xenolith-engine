@@ -58,10 +58,10 @@ void LinuxContextController::acquireDefaultConfig(ContextConfig &config,
 		}
 		if (cfg.versionCode) {
 			config.context->appVersionCode = cfg.versionCode;
-			config.context->appVersion =
-					StreamTraits<char>::toString(SPRT_VERSION_MAJOR(config.context->appVersionCode),
-							".", SPRT_VERSION_MINOR(config.context->appVersionCode), ".",
-							SPRT_VERSION_PATCH(config.context->appVersionCode));
+			config.context->appVersion = StreamTraits<char>::toString<String>(
+					SPRT_VERSION_MAJOR(config.context->appVersionCode), ".",
+					SPRT_VERSION_MINOR(config.context->appVersionCode), ".",
+					SPRT_VERSION_PATCH(config.context->appVersionCode));
 		}
 	}
 

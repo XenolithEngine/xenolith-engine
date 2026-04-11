@@ -24,7 +24,7 @@
 
 #if SPRT_WINDOWS
 
-namespace sprt::thread {
+namespace sprt::_thread {
 
 void _entry_platform(const callbacks &cb, NotNull<Ref> tm) {
 	_init(cb, tm);
@@ -32,6 +32,6 @@ void _entry_platform(const callbacks &cb, NotNull<Ref> tm) {
 	_dispose(cb, tm);
 }
 
-} // namespace sprt::thread
+} // namespace sprt::_thread
 
 #endif

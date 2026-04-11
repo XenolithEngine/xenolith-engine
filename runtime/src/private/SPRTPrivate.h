@@ -25,7 +25,7 @@
 
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/runtime/platform.h>
-#include <sprt/runtime/mutex.h>
+#include <sprt/runtime/thread/qmutex.h>
 #include <sprt/runtime/filesystem/lookup.h>
 
 namespace sprt::platform {

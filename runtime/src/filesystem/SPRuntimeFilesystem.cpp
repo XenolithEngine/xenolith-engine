@@ -33,6 +33,8 @@
 #include <errno.h>
 #include <limits.h>
 
+#include <sprt/cxx/__mutex/unique_lock.h>
+
 #if SPRT_LINUX
 #include "SPRuntimeFilesystem-linux.cc"
 #endif

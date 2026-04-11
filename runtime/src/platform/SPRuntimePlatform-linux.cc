@@ -27,7 +27,7 @@
 #include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/runtime/unicode.h>
 #include <sprt/runtime/platform.h>
-#include <sprt/runtime/mutex.h>
+#include <sprt/cxx/__mutex/unique_lock.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_stdio.h>
 #include <sprt/c/__sprt_locale.h>

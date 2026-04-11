@@ -924,7 +924,7 @@ static int pthread_getcpuclockid(pthread_t thread, __sprt_clockid_t *clock) {
 		return EINVAL;
 	}
 
-	*clock = __SPRT_CLOCK_REALTIME;
+#error TODO
 	return 0;
 }
 
@@ -1132,27 +1132,6 @@ static int pthread_getname_np(pthread_t thread, char *buf, size_t len) {
 	}, WideStringView((char16_t *)wbuf));
 
 	return ret;
-}
-
-static int pthread_getattr_default_np(pthread_attr_t *attr) {
-	if (!attr) {
-		return EINVAL;
-	}
-
-	unique_lock lock(s_handlePool.mutex);
-	*attr = s_handlePool.defaultAttr;
-	return 0;
-}
-
-static int pthread_setattr_default_np(const pthread_attr_t *attr) {
-	if (!attr) {
-		return EINVAL;
-	}
-
-	unique_lock lock(s_handlePool.mutex);
-	s_handlePool.defaultAttr = *attr;
-
-	return 0;
 }
 
 static int pthread_tryjoin_np(pthread_t thread, void **ret) {

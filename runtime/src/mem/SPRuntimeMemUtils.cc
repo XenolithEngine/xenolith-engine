@@ -25,7 +25,7 @@ THE SOFTWARE.
 #include "private/SPRTMemStruct.h"
 #include <sprt/runtime/math.h>
 #include <sprt/cxx/function>
-#include <sprt/cxx/memory/rbtree.h>
+#include <sprt/cxx/detail/rbtree.h>
 #include <sprt/runtime/mem/userdata.h>
 #include <sprt/runtime/log.h>
 
@@ -156,7 +156,7 @@ void Cleanup::run(Cleanup **cref, bool plain) {
 
 namespace sprt::memory::pool {
 
-struct Pool_StoreHandle : AllocPool {
+struct Pool_StoreHandle : detail::AllocPool {
 	void *pointer;
 	__pool_function<void()> callback;
 };
@@ -211,7 +211,7 @@ void store(pool_t *pool, void *ptr, const StringView &key, __pool_function<void(
 
 } // namespace sprt::memory::pool
 
-namespace sprt::memory {
+namespace sprt::detail {
 
 RbTreeNodeBase *RbTreeNodeBase::increment(RbTreeNodeBase *c) {
 	if (c->right) {
@@ -507,4 +507,4 @@ void RbTreeNodeBase::remove(RbTreeNodeBase *head, RbTreeNodeBase *n) {
 	n->setColor(RbTreeNodeColor::Black);
 }
 
-} // namespace sprt::memory
+} // namespace sprt::detail

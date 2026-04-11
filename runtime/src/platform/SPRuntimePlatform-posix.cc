@@ -100,10 +100,22 @@ uint64_t clock(ClockType type) {
 }
 
 uint64_t nanoclock(ClockType type) {
-	struct __SPRT_TIMESPEC_NAME ts;
-	_clock(&ts, type);
-	return static_cast<uint64_t>(ts.tv_sec) * static_cast<uint64_t>(1'000'000'000)
-			+ static_cast<uint64_t>(ts.tv_nsec);
+	static __sprt_clockid_t ClockSource = getClockSource();
+
+	switch (type) {
+	case ClockType::Default: return ::__sprt_clock_gettime_nsec_np(ClockSource); break;
+	case ClockType::Monotonic: return ::__sprt_clock_gettime_nsec_np(__SPRT_CLOCK_MONOTONIC); break;
+	case ClockType::Realtime: return ::__sprt_clock_gettime_nsec_np(__SPRT_CLOCK_REALTIME); break;
+	case ClockType::Process:
+		return ::__sprt_clock_gettime_nsec_np(__SPRT_CLOCK_PROCESS_CPUTIME_ID);
+		break;
+	case ClockType::Thread:
+		return ::__sprt_clock_gettime_nsec_np(__SPRT_CLOCK_THREAD_CPUTIME_ID);
+		break;
+	case ClockType::Hardware: break;
+	}
+
+	return 0;
 }
 
 void sleep(uint64_t microseconds) { ::__sprt_usleep(time_t(microseconds)); }

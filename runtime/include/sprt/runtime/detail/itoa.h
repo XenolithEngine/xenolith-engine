@@ -87,17 +87,19 @@ constexpr inline size_t unsigned_to_decimal_len(IntType value) {
 	return ret + 2;
 }
 
-constexpr inline size_t _itoa_len(int64_t number) {
+template <signed_integer IntType>
+constexpr inline size_t _itoa_len(IntType number) {
 	if (number < 0) {
-		auto ret = unsigned_to_decimal_len(uint64_t(-number));
+		auto ret = unsigned_to_decimal_len(sprt::make_unsigned_t<IntType>(-number));
 		return ret + 1;
 	} else {
-		return unsigned_to_decimal_len(uint64_t(number));
+		return unsigned_to_decimal_len(sprt::make_unsigned_t<IntType>(number));
 	}
 }
 
-constexpr inline size_t _itoa_len(uint64_t number) {
-	return unsigned_to_decimal_len(uint64_t(number));
+template <unsigned_integer IntType>
+constexpr inline size_t _itoa_len(IntType number) {
+	return unsigned_to_decimal_len(number);
 }
 
 } // namespace sprt::_itoa

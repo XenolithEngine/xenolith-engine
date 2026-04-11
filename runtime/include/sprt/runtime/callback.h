@@ -31,12 +31,12 @@ THE SOFTWARE.
 namespace sprt {
 
 template <size_t BufferSize, typename UnusedType>
-class static_function;
+class SPRT_API static_function;
 
 // analogue of std::function without memory allocation with a pre-allocated block for data storage
 
 template <size_t BufferSize, typename ReturnType, typename... ArgumentTypes>
-class static_function<BufferSize, ReturnType(ArgumentTypes...)> {
+class SPRT_API static_function<BufferSize, ReturnType(ArgumentTypes...)> {
 public:
 	static constexpr size_t FunctionBufferSize = BufferSize;
 
@@ -193,13 +193,15 @@ private:
 	array<uint8_t, FunctionBufferSize> mBuffer;
 };
 
+template <typename Allocator, typename UnusedType>
+class SPRT_API __function;
 
 template <typename UnusedType>
-class callback;
+class SPRT_API callback;
 
 // Modern version. inspired by http://bannalia.blogspot.com/2016/07/passing-capturing-c-lambda-functions-as.html
 template <typename ReturnType, typename... ArgumentTypes>
-class callback<ReturnType(ArgumentTypes...)> {
+class SPRT_API callback<ReturnType(ArgumentTypes...)> {
 public:
 	using signature_type = ReturnType(ArgumentTypes...);
 
@@ -217,7 +219,14 @@ public:
 	template <typename FunctionT>
 	callback(const FunctionT &f) noexcept
 	: mFunctor(&f), mcallback([](const void *arg, ArgumentTypes... args) {
-		return (*static_cast<const FunctionT *>(arg))(sprt::forward<ArgumentTypes>(args)...);
+		if constexpr (sprt::is_invocable_v<const FunctionT &, ArgumentTypes...>) {
+			return (*static_cast<const FunctionT *>(arg))(sprt::forward<ArgumentTypes>(args)...);
+		} else if constexpr (sprt::is_invocable_v<FunctionT &, ArgumentTypes...>) {
+			return (*static_cast<FunctionT *>(const_cast<void *>(arg)))(
+					sprt::forward<ArgumentTypes>(args)...);
+		} else {
+			static_assert(false, "Invalid FunctionT type - not invokable with arguments provided");
+		}
 	}) { }
 
 	template <typename FunctionT>
@@ -262,8 +271,8 @@ public:
 		return mFunctor != nullptr && mcallback != nullptr;
 	}
 
-	template <typename T, typename R, typename... Args>
-	friend const callback<R(Args...)> &operator<<(const callback<R(Args...)> &, const T &);
+	template <typename T, typename OutType>
+	friend const callback<void(OutType)> &operator<<(const callback<void(OutType)> &, const T &);
 
 private:
 	using FunctionPointer = ReturnType (*)(const void *, ArgumentTypes...);
@@ -332,6 +341,14 @@ protected:
 		return *reinterpret_cast<FunctionT *>(_storage.buf);
 	}
 
+	template <typename FunctionT>
+	auto getFunction() const -> const FunctionT & {
+		static_assert(sizeof(FunctionT) == BufferSize && alignof(FunctionT) == Alignment,
+				"BufferSize and Alignment should match with stored type");
+
+		return *reinterpret_cast<const FunctionT *>(_storage.buf);
+	}
+
 	struct alignas(Alignment) storage {
 		uint8_t buf[BufferSize];
 	};
@@ -356,9 +373,17 @@ struct SPRT_API callback_traits<ReturnType (ClassType::*)(Args...)> {
 	using type = callback_storage<ReturnType, sizeof(ClassType), alignof(ClassType), Args...>;
 };
 
-template <typename Functor>
-inline auto makeCallbackStorage(Functor &&f) {
-	return typename callback_traits<decltype(&Functor::operator())>::type(sprt::move(f));
+template <typename T>
+inline auto makeCallback(T &&t) -> typename sprt::enable_if<!sprt::is_function<T>::value,
+		typename sprt::callback_traits<decltype(&T::operator())>::type>::type {
+	using Type = typename sprt::callback_traits<decltype(&T::operator())>::type;
+
+	return Type(sprt::forward<T>(t));
+}
+
+template <typename Sig, typename Allocator>
+inline auto makeCallback(const __function<Allocator, Sig> &fn) {
+	return callback<Sig>(fn);
 }
 
 } // namespace sprt

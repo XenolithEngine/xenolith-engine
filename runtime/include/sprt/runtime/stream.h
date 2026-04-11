@@ -26,212 +26,21 @@ THE SOFTWARE.
 #include <sprt/runtime/callback.h>
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/unicode.h>
-
-#if __SPRT_USE_STL
-#include <typeinfo>
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
-#include <cxxabi.h>
-#endif
-#endif
-
-namespace sprt::detail {
-
-template <typename FunctionalStreamArg>
-struct FunctionalStreamCharTraits { };
-
-template <typename Char>
-struct FunctionalStreamCharTraits<StringViewBase<Char>> {
-	using CharType = Char;
-};
-
-template <>
-struct FunctionalStreamCharTraits<BytesView> {
-	using CharType = uint8_t;
-};
-
-template <typename FunctionalStream>
-struct FunctionalStreamTraits { };
-
-template <typename Arg>
-struct FunctionalStreamTraits<callback<void(Arg)>> {
-	using ArgType = Arg;
-	using CharType = typename FunctionalStreamCharTraits<ArgType>::CharType;
-};
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream,
-		typename FunctionalStreamTraits<FunctionalStream>::ArgType str) {
-	stream(str);
-}
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream,
-		const typename FunctionalStreamTraits<FunctionalStream>::CharType *str) {
-	streamWrite(stream, typename FunctionalStreamTraits<FunctionalStream>::ArgType(str));
-}
-
-template <typename FunctionalStream, size_t N>
-inline void streamWrite(const FunctionalStream &stream,
-		const typename FunctionalStreamTraits<FunctionalStream>::CharType str[N]) {
-	streamWrite(stream, typename FunctionalStreamTraits<FunctionalStream>::ArgType(str, N));
-}
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream, double d) {
-	typename FunctionalStreamTraits<FunctionalStream>::CharType buf[DOUBLE_MAX_DIGITS];
-	auto ret = sprt::dtoa(d, buf, DOUBLE_MAX_DIGITS);
-	streamWrite(stream, typename FunctionalStreamTraits<FunctionalStream>::ArgType(buf, ret));
-}
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream, float f) {
-	streamWrite(stream, double(f));
-}
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream, int64_t i) {
-	typename FunctionalStreamTraits<FunctionalStream>::CharType buf[INT_MAX_DIGITS];
-	auto ret = sprt::itoa(sprt::int64_t(i), buf, INT_MAX_DIGITS);
-	streamWrite(stream,
-			typename FunctionalStreamTraits<FunctionalStream>::ArgType(buf + INT_MAX_DIGITS - ret,
-					ret));
-}
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream, uint64_t i) {
-	typename FunctionalStreamTraits<FunctionalStream>::CharType buf[INT_MAX_DIGITS];
-	auto ret = sprt::itoa(sprt::uint64_t(i), buf, INT_MAX_DIGITS);
-	streamWrite(stream,
-			typename FunctionalStreamTraits<FunctionalStream>::ArgType(buf + INT_MAX_DIGITS - ret,
-					ret));
-}
-
-#if SPRT_HAVE_DEDICATED_SIZE_T
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream, size_t i) {
-	typename FunctionalStreamTraits<FunctionalStream>::CharType buf[INT_MAX_DIGITS];
-	auto ret = sprt::itoa(sprt::uint64_t(i), buf, INT_MAX_DIGITS);
-	streamWrite(stream,
-			typename FunctionalStreamTraits<FunctionalStream>::ArgType(buf + INT_MAX_DIGITS - ret,
-					ret));
-}
-
-#endif
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream, int32_t i) {
-	streamWrite(stream, int64_t(i));
-}
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream, uint32_t i) {
-	streamWrite(stream, uint64_t(i));
-}
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream, int16_t i) {
-	streamWrite(stream, int64_t(i));
-}
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream, uint16_t i) {
-	streamWrite(stream, uint64_t(i));
-}
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream, int8_t i) {
-	streamWrite(stream, int64_t(i));
-}
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream, uint8_t i) {
-	streamWrite(stream, uint64_t(i));
-}
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream, char32_t c) {
-	static constexpr size_t BufSize = 6;
-	if constexpr (sizeof(typename FunctionalStreamTraits<FunctionalStream>::CharType) == 1) {
-		typename FunctionalStreamTraits<FunctionalStream>::CharType buf[BufSize] = {0};
-		streamWrite(stream,
-				typename FunctionalStreamTraits<FunctionalStream>::ArgType(buf.data(),
-						sprt::unicode::utf8EncodeBuf(buf, BufSize, c)));
-	} else {
-		typename FunctionalStreamTraits<FunctionalStream>::CharType buf[BufSize] = {0};
-		streamWrite(stream,
-				typename FunctionalStreamTraits<FunctionalStream>::ArgType(buf.data(),
-						sprt::unicode::utf16EncodeBuf(buf, BufSize, c)));
-	}
-}
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream, char16_t c) {
-	if constexpr (sizeof(typename FunctionalStreamTraits<FunctionalStream>::CharType) == 1) {
-		static constexpr size_t BufSize = 4;
-		typename FunctionalStreamTraits<FunctionalStream>::CharType buf[BufSize] = {0};
-		streamWrite(stream,
-				typename FunctionalStreamTraits<FunctionalStream>::ArgType(buf.data(),
-						sprt::unicode::utf8EncodeBuf(buf, BufSize, c)));
-	} else {
-		streamWrite(stream, typename FunctionalStreamTraits<FunctionalStream>::ArgType(&c, 1));
-	}
-}
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream, char c) {
-	if constexpr (sizeof(typename FunctionalStreamTraits<FunctionalStream>::CharType) == 1) {
-		streamWrite(stream, typename FunctionalStreamTraits<FunctionalStream>::ArgType(&c, 1));
-	} else {
-		char16_t ch = c;
-		streamWrite(stream, typename FunctionalStreamTraits<FunctionalStream>::ArgType(&ch, 1));
-	}
-}
-
-inline void streamWrite(const callback<void(StringView)> &cb, const Status &st) {
-	status::getStatusDescription(st, cb);
-}
-
-inline void streamWrite(const callback<void(BytesView)> &cb, const BytesView &val) { cb(val); }
-inline void streamWrite(const callback<void(BytesView)> &cb, const uint8_t &val) {
-	cb(BytesView(&val, 1));
-}
-
-#if __SPRT_USE_STL
-
-template <typename Stream>
-static void printDemangled(const Stream &stream, const std::type_info &t) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
-	int status = 0;
-	auto name = abi::__cxa_demangle(t.name(), nullptr, nullptr, &status);
-	if (status == 0) {
-		streamWrite(stream, name);
-		::free(name);
-	} else {
-		streamWrite(stream, t.name());
-	}
-#else
-	streamWrite(stream, t.name());
-#endif
-}
-
-template <typename FunctionalStream>
-inline void streamWrite(const FunctionalStream &stream, const std::type_info &c) {
-	printDemangled(stream, c);
-}
-
-#endif
-
-} // namespace sprt::detail
+#include <sprt/runtime/io_traits.h>
 
 namespace sprt {
 
-template <typename T, typename ReturnType, typename... ArgumentTypes>
-const callback<ReturnType(ArgumentTypes...)> &operator<<(
-		const callback<ReturnType(ArgumentTypes...)> &cb, const T &val) {
-	static_assert(sizeof...(ArgumentTypes) == 1,
-			"Functional stream should accept only one argument");
+template <typename T, typename StringType>
+inline const callback<void(StringType)> &operator<<(const callback<void(StringType)> &cb,
+		const T &val) {
+	static_assert(sprt::is_same_v<StringType, StringViewBase<char>>
+					|| sprt::is_same_v<StringType, StringViewBase<char16_t>>
+					|| sprt::is_same_v<StringType, StringViewUtf8>
+					|| sprt::is_same_v<StringType, BytesView>,
+			"Functional stream argument should be one of StringView, WideStringView, "
+			"StringViewUtf8, BytesView");
 
-	detail::streamWrite(cb, val);
+	io_traits<T>::encode(cb, val);
 	return cb;
 }
 
@@ -252,76 +61,17 @@ concept TypedContainer =
 
 template <typename CharType>
 struct StreamTraits {
-	static constexpr inline size_t getSizeFor(const CharType *value) {
-		return __constexpr_strlen(value);
-	}
-
-	template <size_t N>
-	static constexpr inline size_t getSizeFor(const CharType (&str)[N]) {
-		return N;
-	}
-
-	static constexpr inline size_t getSizeFor(const CharType &value) { return 1; }
-
-	static constexpr inline size_t getSizeFor(const int64_t &value) {
-		return sprt::itoa(sprt::int64_t(value), (CharType *)nullptr, 0);
-	}
-	static constexpr inline size_t getSizeFor(const uint64_t &value) {
-		return sprt::itoa(sprt::uint64_t(value), (CharType *)nullptr, 0);
-	}
-	static constexpr inline size_t getSizeFor(const int32_t &value) {
-		return sprt::itoa(sprt::int64_t(value), (CharType *)nullptr, 0);
-	}
-	static constexpr inline size_t getSizeFor(const uint32_t &value) {
-		return sprt::itoa(sprt::uint64_t(value), (CharType *)nullptr, 0);
-	}
-	static constexpr inline size_t getSizeFor(const int16_t &value) {
-		return sprt::itoa(sprt::int64_t(value), (CharType *)nullptr, 0);
-	}
-	static constexpr inline size_t getSizeFor(const uint16_t &value) {
-		return sprt::itoa(sprt::uint64_t(value), (CharType *)nullptr, 0);
-	}
-	static constexpr inline size_t getSizeFor(const int8_t &value) {
-		return sprt::itoa(sprt::int64_t(value), (CharType *)nullptr, 0);
-	}
-	static constexpr inline size_t getSizeFor(const uint8_t &value) {
-		return sprt::itoa(sprt::uint64_t(value), (CharType *)nullptr, 0);
-	}
-	static constexpr inline size_t getSizeFor(const double &value) {
-		return sprt::dtoa(value, (CharType *)nullptr, 0);
-	}
-	static constexpr inline size_t getSizeFor(const float &value) {
-		return sprt::dtoa(value, (CharType *)nullptr, 0);
-	}
-	static constexpr inline size_t getSizeFor(const Status &value) {
-		size_t ret = 0;
-		status::getStatusDescription(value, [&](StringView str) { ret = str.size(); });
-		return ret;
-	}
-
-	template <typename Container>
-	requires TypedContainer<Container, CharType>
-	static constexpr inline size_t getSizeFor(const Container &c) {
-		return c.size();
-	}
-
-	template <typename CustomType>
-	static constexpr inline size_t getSizeFor(const CustomType &c) {
-		size_t s = 0;
-		auto fn = [&](StringView str) { s += str.size(); };
-		callback<void(StringView)>(fn) << c;
-		return s;
-	}
-
 	template <typename... Args>
 	static constexpr size_t calculateSize(Args &&...args) {
-		return (1 + ... + getSizeFor(args));
+		return (1 + ... + io_traits<void>::template length<CharType>(args));
 	}
 
-	template <typename... Args>
-	static __basic_string<CharType, memory::AllocatorMalloc<CharType>> toString(Args &&...args) {
-		auto bufferSize = calculateSize(forward<Args>(args)...);
-		__basic_string<CharType, memory::AllocatorMalloc<CharType>> ret;
+	template <typename String, typename... Args>
+	static auto toString(Args &&...args) -> String {
+		static_assert(sprt::is_same_v<typename String::value_type, CharType>,
+				"Invalid string type");
+		auto bufferSize = calculateSize(sprt::forward<Args>(args)...);
+		String ret;
 		ret.resize(bufferSize - 1);
 
 		auto target = ret.data();
@@ -346,7 +96,7 @@ struct StreamTraits {
 
 	template <typename... Args>
 	static constexpr void merge(const callback<void(StringView)> &cb, Args &&...args) {
-		auto bufferSize = calculateSize(forward<Args>(args)...);
+		auto bufferSize = calculateSize(sprt::forward<Args>(args)...);
 
 		auto buf = __sprt_typed_malloca(CharType, bufferSize);
 
@@ -369,8 +119,53 @@ struct __c_ostream_wrapper {
 	}
 };
 
-static auto cout = makeCallbackStorage(__c_ostream_wrapper<&__sprt_stdout_impl>{});
-static auto cerr = makeCallbackStorage(__c_ostream_wrapper<&__sprt_stderr_impl>{});
+static auto cout = makeCallback(__c_ostream_wrapper<&__sprt_stdout_impl>{});
+static auto cerr = makeCallback(__c_ostream_wrapper<&__sprt_stderr_impl>{});
+
+template <typename CharType, typename Allocator>
+struct __basic_streambuf : public __basic_string<CharType, Allocator> {
+	using __basic_string<CharType, Allocator>::__basic_string;
+
+	void operator()(StringViewBase<CharType> str) { this->append(str.data(), str.size()); }
+};
+
+template <typename CharType, typename Allocator>
+struct __basic_stringstream
+: public callback_storage<void, sizeof(__basic_streambuf<CharType, Allocator>),
+		  alignof(__basic_streambuf<CharType, Allocator>), StringViewBase<CharType>> {
+
+	using string_type = __basic_string<CharType, Allocator>;
+	using buffer_type = __basic_streambuf<CharType, Allocator>;
+	using storage_type = callback_storage<void, sizeof(__basic_streambuf<CharType, Allocator>),
+			alignof(__basic_streambuf<CharType, Allocator>), StringViewBase<CharType>>;
+
+	__basic_stringstream() : storage_type(buffer_type()) { }
+	~__basic_stringstream() { }
+
+	const string_type &str() const { return this->template getFunction<buffer_type>(); }
+
+	bool empty() const { return this->template getFunction<buffer_type>().empty(); }
+
+	void clear() { this->template getFunction<buffer_type>().clear(); }
+
+	StringViewBase<CharType> weak() const {
+		return StringViewBase<CharType>(this->template getFunction<buffer_type>());
+	}
+};
+
+using __pool_stringstream = __basic_stringstream<char, detail::AllocatorPool<char>>;
+using __pool_u16stringstream = __basic_stringstream<char16_t, detail::AllocatorPool<char16_t>>;
+using __pool_u32stringstream = __basic_stringstream<char32_t, detail::AllocatorPool<char32_t>>;
+
+using __malloc_stringstream = __basic_stringstream<char, detail::AllocatorMalloc<char>>;
+using __malloc_u16stringstream = __basic_stringstream<char16_t, detail::AllocatorMalloc<char16_t>>;
+using __malloc_u32stringstream = __basic_stringstream<char32_t, detail::AllocatorMalloc<char32_t>>;
+
+template <typename CharType>
+using __pool_basic_stringstream = __basic_stringstream<CharType, detail::AllocatorPool<char>>;
+
+template <typename CharType>
+using __malloc_basic_stringstream = __basic_stringstream<CharType, detail::AllocatorMalloc<char>>;
 
 } // namespace sprt
 

@@ -73,13 +73,52 @@ static_assert(sizeof(int32_t) == 4, "Invalid int length");
 static_assert(sizeof(uint64_t) == 8, "Invalid int length");
 static_assert(sizeof(uint64_t) == 8, "Invalid int length");
 
+template <typename T>
+constexpr inline const int Digits = 0;
 
 template <signed_or_unsigned_integer T>
-static constexpr inline const int Digits =
+constexpr inline const int Digits<T> =
 		static_cast<int>(sizeof(T) * __CHAR_BIT__ - (is_signed_v<T> ? 1 : 0));
 
+template <>
+constexpr inline const int Digits<float> = __FLT_MANT_DIG__;
+
+template <>
+constexpr inline const int Digits<double> = __DBL_MANT_DIG__;
+
+template <>
+constexpr inline const int Digits<long double> = __LDBL_MANT_DIG__;
+
+
+template <typename T>
+constexpr inline const int Digits10 = 0;
+
 template <signed_or_unsigned_integer T>
-static constexpr inline const int Digits10 = Digits<T> * 3 / 10;
+constexpr inline const int Digits10<T> = Digits<T> * 3 / 10;
+
+template <>
+constexpr inline const int Digits10<float> = __FLT_DIG__;
+
+template <>
+constexpr inline const int Digits10<double> = __DBL_DIG__;
+
+template <>
+constexpr inline const int Digits10<long double> = __LDBL_DIG__;
+
+
+template <typename T>
+constexpr inline const int MaxDigits10 = Digits10<T>;
+
+template <>
+constexpr inline const int MaxDigits10<float> = 2 + (Digits<float> * 30'103l) / 100'000l;
+
+template <>
+constexpr inline const int MaxDigits10<double> = 2 + (Digits<double> * 30'103l) / 100'000l;
+
+template <>
+constexpr inline const int MaxDigits10<long double> =
+		2 + (Digits<long double> * 30'103l) / 100'000l;
+;
 
 
 template <typename T>

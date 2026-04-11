@@ -113,7 +113,6 @@ SPRT_FORCEINLINE int pthread_equal(pthread_t t1, pthread_t t2) {
 	return __sprt_pthread_equal(t1, t2);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_CANCEL || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_setcancelstate(int v, int *p) {
 	return __sprt_pthread_setcancelstate(v, p);
 }
@@ -124,7 +123,6 @@ SPRT_FORCEINLINE int pthread_setcanceltype(int v, int *p) {
 SPRT_FORCEINLINE void pthread_testcancel(void) { __sprt_pthread_testcancel(); }
 
 SPRT_FORCEINLINE int pthread_cancel(pthread_t thread) { return __sprt_pthread_cancel(thread); }
-#endif
 
 SPRT_FORCEINLINE int pthread_getschedparam(pthread_t thread, int *__SPRT_RESTRICT n,
 		sched_param *__SPRT_RESTRICT p) {
@@ -160,25 +158,19 @@ SPRT_FORCEINLINE int pthread_mutex_trylock(pthread_mutex_t *mutex) {
 	return __sprt_pthread_mutex_trylock(mutex);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_TIMED || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_mutex_timedlock(pthread_mutex_t *__SPRT_RESTRICT mutex,
 		const timespec *__SPRT_RESTRICT tv) {
 	return __sprt_pthread_mutex_timedlock(mutex, tv);
 }
-#endif
 
 SPRT_FORCEINLINE int pthread_mutex_destroy(pthread_mutex_t *mutex) {
 	return __sprt_pthread_mutex_destroy(mutex);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_mutex_consistent(pthread_mutex_t *mutex) {
 	return __sprt_pthread_mutex_consistent(mutex);
 }
-#endif
 
-
-#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_mutex_getprioceiling(const pthread_mutex_t *__SPRT_RESTRICT mutex,
 		int *__SPRT_RESTRICT p) {
 	return __sprt_pthread_mutex_getprioceiling(mutex, p);
@@ -187,7 +179,6 @@ SPRT_FORCEINLINE int pthread_mutex_setprioceiling(pthread_mutex_t *__SPRT_RESTRI
 		int *__SPRT_RESTRICT p) {
 	return __sprt_pthread_mutex_setprioceiling(mutex, v, p);
 }
-#endif
 
 SPRT_FORCEINLINE int pthread_cond_init(pthread_cond_t *__SPRT_RESTRICT cond,
 		const pthread_condattr_t *__SPRT_RESTRICT attr) {
@@ -231,12 +222,10 @@ SPRT_FORCEINLINE int pthread_rwlock_tryrdlock(pthread_rwlock_t *lock) {
 	return __sprt_pthread_rwlock_tryrdlock(lock);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_TIMED || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_rwlock_timedrdlock(pthread_rwlock_t *__SPRT_RESTRICT lock,
 		const timespec *__SPRT_RESTRICT tv) {
 	return __sprt_pthread_rwlock_timedrdlock(lock, tv);
 }
-#endif
 
 SPRT_FORCEINLINE int pthread_rwlock_wrlock(pthread_rwlock_t *lock) {
 	return __sprt_pthread_rwlock_wrlock(lock);
@@ -245,12 +234,10 @@ SPRT_FORCEINLINE int pthread_rwlock_trywrlock(pthread_rwlock_t *lock) {
 	return __sprt_pthread_rwlock_trywrlock(lock);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_TIMED || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_rwlock_timedwrlock(pthread_rwlock_t *__SPRT_RESTRICT lock,
 		const timespec *__SPRT_RESTRICT tv) {
 	return __sprt_pthread_rwlock_timedwrlock(lock, tv);
 }
-#endif
 
 SPRT_FORCEINLINE int pthread_rwlock_unlock(pthread_rwlock_t *lock) {
 	return __sprt_pthread_rwlock_unlock(lock);
@@ -353,7 +340,6 @@ SPRT_FORCEINLINE int pthread_attr_setschedparam(pthread_attr_t *__SPRT_RESTRICT 
 	return __sprt_pthread_attr_setschedparam(attr, val);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_INHERITSCHED || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_attr_getinheritsched(const pthread_attr_t *__SPRT_RESTRICT attr,
 		int *__SPRT_RESTRICT ret) {
 	return __sprt_pthread_attr_getinheritsched(attr, ret);
@@ -361,13 +347,11 @@ SPRT_FORCEINLINE int pthread_attr_getinheritsched(const pthread_attr_t *__SPRT_R
 SPRT_FORCEINLINE int pthread_attr_setinheritsched(pthread_attr_t *attr, int v) {
 	return __sprt_pthread_attr_setinheritsched(attr, v);
 }
-#endif
 
 SPRT_FORCEINLINE int pthread_mutexattr_destroy(pthread_mutexattr_t *attr) {
 	return __sprt_pthread_mutexattr_destroy(attr);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_PRIO || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_mutexattr_getprioceiling(
 		const pthread_mutexattr_t *__SPRT_RESTRICT attr, int *__SPRT_RESTRICT ret) {
 	return __sprt_pthread_mutexattr_getprioceiling(attr, ret);
@@ -382,9 +366,7 @@ SPRT_FORCEINLINE int pthread_mutexattr_getprotocol(const pthread_mutexattr_t *__
 SPRT_FORCEINLINE int pthread_mutexattr_setprotocol(pthread_mutexattr_t *attr, int v) {
 	return __sprt_pthread_mutexattr_setprotocol(attr, v);
 }
-#endif
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_MUTEX_ROBUST || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_mutexattr_getrobust(const pthread_mutexattr_t *__SPRT_RESTRICT attr,
 		int *__SPRT_RESTRICT ret) {
 	return __sprt_pthread_mutexattr_getrobust(attr, ret);
@@ -392,7 +374,6 @@ SPRT_FORCEINLINE int pthread_mutexattr_getrobust(const pthread_mutexattr_t *__SP
 SPRT_FORCEINLINE int pthread_mutexattr_setrobust(pthread_mutexattr_t *attr, int v) {
 	return __sprt_pthread_mutexattr_setrobust(attr, v);
 }
-#endif
 
 SPRT_FORCEINLINE int pthread_mutexattr_getpshared(const pthread_mutexattr_t *__SPRT_RESTRICT attr,
 		int *__SPRT_RESTRICT ret) {
@@ -419,7 +400,6 @@ SPRT_FORCEINLINE int pthread_condattr_destroy(pthread_condattr_t *attr) {
 	return __sprt_pthread_condattr_destroy(attr);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_CLOCK || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_condattr_setclock(pthread_condattr_t *attr, clockid_t clock) {
 	return __sprt_pthread_condattr_setclock(attr, clock);
 }
@@ -430,7 +410,6 @@ SPRT_FORCEINLINE int pthread_condattr_getclock(const pthread_condattr_t *__SPRT_
 SPRT_FORCEINLINE int pthread_getcpuclockid(pthread_t thread, clockid_t *clock) {
 	return __sprt_pthread_getcpuclockid(thread, clock);
 }
-#endif
 
 SPRT_FORCEINLINE int pthread_condattr_setpshared(pthread_condattr_t *attr, int v) {
 	return __sprt_pthread_condattr_setpshared(attr, v);
@@ -487,42 +466,32 @@ SPRT_FORCEINLINE int pthread_setaffinity_np(pthread_t thread, size_t n, const cp
 }
 #endif
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_GETATTR || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_getattr_np(pthread_t thread, pthread_attr_t *attr) {
 	return __sprt_pthread_getattr_np(thread, attr);
 }
-#endif
 
 SPRT_FORCEINLINE int pthread_setname_np(pthread_t thread, const char *name) {
 	return __sprt_pthread_setname_np(thread, name);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_GETNAME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_getname_np(pthread_t thread, char *buf, size_t len) {
 	return __sprt_pthread_getname_np(thread, buf, len);
 }
-#endif
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_ATTRDEFAULT || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_getattr_default_np(pthread_attr_t *attr) {
 	return __sprt_pthread_getattr_default_np(attr);
 }
 SPRT_FORCEINLINE int pthread_setattr_default_np(const pthread_attr_t *attr) {
 	return __sprt_pthread_setattr_default_np(attr);
 }
-#endif
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_TRYJOIN || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_tryjoin_np(pthread_t thread, void **ret) {
 	return __sprt_pthread_tryjoin_np(thread, ret);
 }
-#endif
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_TIMEDJOIN || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_timedjoin_np(pthread_t thread, void **ret, const timespec *tv) {
 	return __sprt_pthread_timedjoin_np(thread, ret, tv);
 }
-#endif
 
 __SPRT_END_DECL
 

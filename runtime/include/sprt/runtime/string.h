@@ -46,6 +46,7 @@ namespace sprt {
 */
 
 static constexpr size_t INT_MAX_DIGITS = 22; // Safe buffer size
+static constexpr size_t INT128_MAX_DIGITS = 40; // Safe buffer size
 
 template <typename CharType>
 constexpr inline size_t itoa(int64_t number, CharType *buffer, size_t bufSize) {

@@ -140,8 +140,7 @@ XcbSupportWindow::XcbSupportWindow(NotNull<XcbConnection> conn, NotNull<XkbLibra
 	}
 
 	// try XSETTINGS
-	_xsettings.selection =
-			_connection->getAtom(StreamTraits<char>::toString("_XSETTINGS_S", screenNbr), true);
+	_xsettings.selection = _connection->getAtom(toString("_XSETTINGS_S", screenNbr), true);
 	_xsettings.property = _connection->getAtom(XcbAtomIndex::_XSETTINGS_SETTINGS);
 	if (_xsettings.selection && _xsettings.property) {
 		auto cookie =

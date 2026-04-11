@@ -23,9 +23,9 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_STRING_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_STRING_H_
 
-#include <sprt/cxx/memory/allocator_malloc.h>
-#include <sprt/cxx/memory/allocator_pool.h>
-#include <sprt/cxx/memory/linear_memory.h>
+#include <sprt/cxx/detail/allocator_malloc.h>
+#include <sprt/cxx/detail/allocator_pool.h>
+#include <sprt/cxx/detail/linear_memory.h>
 #include <sprt/cxx/detail/hash.h>
 
 #include <sprt/cxx/detail/constexpr.h>
@@ -79,7 +79,7 @@ public:
 	using size_type = size_t;
 	using charT = CharType;
 	using value_type = CharType;
-	using mem_type = memory::linear_memory<CharType, size_t(1), allocator_type>;
+	using mem_type = detail::linear_memory<CharType, size_t(1), allocator_type>;
 	using self = __basic_string<CharType, allocator_type>;
 
 	using iterator = typename mem_type::iterator;
@@ -855,19 +855,19 @@ constexpr const typename __basic_string<CharT, Allocator>::size_type
 		__basic_string<CharT, Allocator>::npos =
 				Max<typename __basic_string<CharT, Allocator>::size_type>;
 
-using __pool_string = __basic_string<char, memory::AllocatorPool<char>>;
-using __pool_u16string = __basic_string<char16_t, memory::AllocatorPool<char16_t>>;
-using __pool_u32string = __basic_string<char32_t, memory::AllocatorPool<char32_t>>;
+using __pool_string = __basic_string<char, detail::AllocatorPool<char>>;
+using __pool_u16string = __basic_string<char16_t, detail::AllocatorPool<char16_t>>;
+using __pool_u32string = __basic_string<char32_t, detail::AllocatorPool<char32_t>>;
 
-using __malloc_string = __basic_string<char, memory::AllocatorMalloc<char>>;
-using __malloc_u16string = __basic_string<char16_t, memory::AllocatorMalloc<char16_t>>;
-using __malloc_u32string = __basic_string<char32_t, memory::AllocatorMalloc<char32_t>>;
-
-template <typename CharType>
-using __pool_basic_string = __basic_string<CharType, memory::AllocatorPool<char>>;
+using __malloc_string = __basic_string<char, detail::AllocatorMalloc<char>>;
+using __malloc_u16string = __basic_string<char16_t, detail::AllocatorMalloc<char16_t>>;
+using __malloc_u32string = __basic_string<char32_t, detail::AllocatorMalloc<char32_t>>;
 
 template <typename CharType>
-using __malloc_basic_string = __basic_string<CharType, memory::AllocatorMalloc<char>>;
+using __pool_basic_string = __basic_string<CharType, detail::AllocatorPool<char>>;
+
+template <typename CharType>
+using __malloc_basic_string = __basic_string<CharType, detail::AllocatorMalloc<char>>;
 
 template <typename CharType, typename Allocator>
 struct hash<__basic_string<CharType, Allocator>> {

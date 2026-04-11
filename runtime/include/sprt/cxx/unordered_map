@@ -29,10 +29,10 @@ THE SOFTWARE.
 #include <sprt/cxx/__utility/pair.h>
 #include <sprt/cxx/__memory/allocator_traits.h>
 
-#include <sprt/cxx/memory/hash_memory.h>
-#include <sprt/cxx/memory/access_token.h>
-#include <sprt/cxx/memory/allocator_pool.h>
-#include <sprt/cxx/memory/allocator_malloc.h>
+#include <sprt/cxx/detail/hash_memory.h>
+#include <sprt/cxx/detail/access_token.h>
+#include <sprt/cxx/detail/allocator_pool.h>
+#include <sprt/cxx/detail/allocator_malloc.h>
 
 namespace sprt {
 
@@ -43,7 +43,7 @@ public:
 	using mapped_type = Value;
 	using value_type = pair<const Key, Value>;
 
-	using container_type = memory::hash_memory<key_type, value_type, Hash, Pred, Allocator>;
+	using container_type = detail::hash_memory<key_type, value_type, Hash, Pred, Allocator>;
 
 	// types
 	using hasher = Hash;
@@ -63,10 +63,10 @@ public:
 	using node_type = container_type::node_type;
 
 	template <typename AccessType = key_type>
-	using access_token = memory::access_token<__unordered_map, AccessType>;
+	using access_token = detail::access_token<__unordered_map, AccessType>;
 
 	template <typename AccessType = key_type>
-	using const_access_token = memory::const_access_token<__unordered_map, AccessType>;
+	using const_access_token = detail::const_access_token<__unordered_map, AccessType>;
 
 	static constexpr bool is_transparent_keys =
 			__is_transparent_v<hasher> && __is_transparent_v<key_equal>;
@@ -79,7 +79,8 @@ public:
 			const key_equal &eql = key_equal(), const allocator_type &a = allocator_type()) noexcept
 	: _container(n, hf, eql, a) { }
 
-	template <typename InputIter>
+	template <typename InputIter,
+			enable_if_t<__has_input_iterator_category<InputIter>::value, int> = 0>
 	__unordered_map(InputIter f, InputIter l, size_type n, const hasher &hf = hasher(),
 			const key_equal &eql = key_equal(), const allocator_type &a = allocator_type()) noexcept
 	: _container(n, hf, eql, a) {
@@ -127,11 +128,13 @@ public:
 	__unordered_map(size_type n, const hasher &hf, const allocator_type &a) noexcept
 	: __unordered_map(n, hf, key_equal(), a) { }
 
-	template <typename InputIter>
+	template <typename InputIter,
+			enable_if_t<__has_input_iterator_category<InputIter>::value, int> = 0>
 	__unordered_map(InputIter f, InputIter l, size_type n, const allocator_type &a) noexcept
 	: __unordered_map(f, l, n, hasher(), key_equal(), a) { }
 
-	template <typename InputIter>
+	template <typename InputIter,
+			enable_if_t<__has_input_iterator_category<InputIter>::value, int> = 0>
 	__unordered_map(InputIter f, InputIter l, size_type n, const hasher &hf,
 			const allocator_type &a) noexcept
 	: __unordered_map(f, l, n, hf, key_equal(), a) { }
@@ -203,7 +206,7 @@ public:
 	}
 	template <typename P>
 	pair<iterator, bool> insert(P &&obj) {
-		return _container.insert(sprt::forward(obj));
+		return _container.insert(sprt::forward<P>(obj));
 	}
 
 	iterator insert(const_iterator hint, const value_type &obj) {
@@ -214,10 +217,11 @@ public:
 	}
 	template <typename P>
 	iterator insert(const_iterator hint, P &&obj) {
-		return _container.insert(sprt::forward(obj)).first;
+		return _container.insert(sprt::forward<P>(obj)).first;
 	}
 
-	template <typename InputIter>
+	template <typename InputIter,
+			enable_if_t<__has_input_iterator_category<InputIter>::value, int> = 0>
 	void insert(InputIter first, InputIter last) {
 		while (first != last) { _container.insert(*first++); }
 	}
@@ -262,7 +266,7 @@ public:
 	pair<iterator, bool> insert_or_assign(const key_type &k, M &&obj) {
 		auto ret = _container.try_emplace(k, sprt::forward<M>(obj));
 		if (ret.second == false) {
-			*ret.first = sprt::forward<M>(obj);
+			ret.first->second = sprt::forward<M>(obj);
 		}
 		return ret;
 	}
@@ -270,7 +274,7 @@ public:
 	pair<iterator, bool> insert_or_assign(key_type &&k, M &&obj) {
 		auto ret = _container.try_emplace(sprt::move_unsafe(k), sprt::forward<M>(obj));
 		if (ret.second == false) {
-			*ret.first = sprt::forward<M>(obj);
+			ret.first->second = sprt::forward<M>(obj);
 		}
 		return ret;
 	}
@@ -278,7 +282,7 @@ public:
 	pair<iterator, bool> insert_or_assign(K &&k, M &&obj) {
 		auto ret = _container.try_emplace(sprt::forward<K>(k), sprt::forward<M>(obj));
 		if (ret.second == false) {
-			*ret.first = sprt::forward<M>(obj);
+			ret.first->second = sprt::forward<M>(obj);
 		}
 		return ret;
 	}
@@ -286,7 +290,7 @@ public:
 	iterator insert_or_assign(const_iterator hint, const key_type &k, M &&obj) {
 		auto ret = _container.try_emplace(k, sprt::forward<M>(obj));
 		if (ret.second == false) {
-			*ret.first = sprt::forward<M>(obj);
+			ret.first->second = sprt::forward<M>(obj);
 		}
 		return ret.first;
 	}
@@ -294,7 +298,7 @@ public:
 	iterator insert_or_assign(const_iterator hint, key_type &&k, M &&obj) {
 		auto ret = _container.try_emplace(sprt::move_unsafe(k), sprt::forward<M>(obj));
 		if (ret.second == false) {
-			*ret.first = sprt::forward<M>(obj);
+			ret.first->second = sprt::forward<M>(obj);
 		}
 		return ret.first;
 	}
@@ -302,7 +306,7 @@ public:
 	iterator insert_or_assign(const_iterator hint, K &&k, M &&obj) {
 		auto ret = _container.try_emplace(sprt::forward<K>(k), sprt::forward<M>(obj));
 		if (ret.second == false) {
-			*ret.first = sprt::forward<M>(obj);
+			ret.first->second = sprt::forward<M>(obj);
 		}
 		return ret.first;
 	}
@@ -434,12 +438,12 @@ protected:
 template <typename Key, typename Value, typename Hash = sprt::hash<void>,
 		typename Pred = sprt::equal_to<void>>
 using __pool_unordered_map =
-		__unordered_map<Key, Value, Hash, Pred, memory::AllocatorPool<pair<const Key, Value>>>;
+		__unordered_map<Key, Value, Hash, Pred, detail::AllocatorPool<pair<const Key, Value>>>;
 
 template <typename Key, typename Value, typename Hash = sprt::hash<void>,
 		typename Pred = sprt::equal_to<void>>
 using __malloc_unordered_map =
-		__unordered_map<Key, Value, Hash, Pred, memory::AllocatorMalloc<pair<const Key, Value>>>;
+		__unordered_map<Key, Value, Hash, Pred, detail::AllocatorMalloc<pair<const Key, Value>>>;
 
 template <typename Key, typename Value, typename Hash, typename Pred, typename Allocator>
 inline void swap(const __unordered_map<Key, Value, Hash, Pred, Allocator> &__x,

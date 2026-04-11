@@ -27,9 +27,9 @@ THE SOFTWARE.
 #include <sprt/cxx/__algorithm/lexicographical_compare.h>
 #include <sprt/cxx/compare>
 
-#include <sprt/cxx/memory/allocator_malloc.h>
-#include <sprt/cxx/memory/allocator_pool.h>
-#include <sprt/cxx/memory/linear_memory.h>
+#include <sprt/cxx/detail/allocator_malloc.h>
+#include <sprt/cxx/detail/allocator_pool.h>
+#include <sprt/cxx/detail/linear_memory.h>
 #include <sprt/cxx/detail/hash.h>
 
 #include <sprt/cxx/initializer_list>
@@ -48,7 +48,7 @@ public:
 
 	using size_type = size_t;
 	using value_type = Type;
-	using mem_type = memory::linear_memory<Type, 0, allocator_type>;
+	using mem_type = detail::linear_memory<Type, 0, allocator_type>;
 	using self = __vector<Type, allocator_type>;
 
 	using iterator = typename mem_type::iterator;
@@ -215,14 +215,14 @@ protected:
 	mem_type _mem;
 };
 
-using __pool_bytes = __vector<uint8_t, memory::AllocatorPool<uint8_t>>;
-using __malloc_bytes = __vector<uint8_t, memory::AllocatorMalloc<uint8_t>>;
+using __pool_bytes = __vector<uint8_t, detail::AllocatorPool<uint8_t>>;
+using __malloc_bytes = __vector<uint8_t, detail::AllocatorMalloc<uint8_t>>;
 
 template <typename Type>
-using __pool_vector = __vector<Type, memory::AllocatorPool<Type>>;
+using __pool_vector = __vector<Type, detail::AllocatorPool<Type>>;
 
 template <typename Type>
-using __malloc_vector = __vector<Type, memory::AllocatorMalloc<Type>>;
+using __malloc_vector = __vector<Type, detail::AllocatorMalloc<Type>>;
 
 template <typename _Tp, typename Allocator>
 inline constexpr bool operator==(const __vector<_Tp, Allocator> &__x,

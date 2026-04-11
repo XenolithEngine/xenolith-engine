@@ -238,8 +238,8 @@ void WaylandWindow::handleFrameReady(const PresentationFrameInfo &frame) {
 	}
 
 	String stream;
-	stream += StreamTraits<char>::toString("handleFrameReady: ", frame.order,
-			" commit: ", newExtent.width, " ", newExtent.height, ";");
+	stream += toString("handleFrameReady: ", frame.order, " commit: ", newExtent.width, " ",
+			newExtent.height, ";");
 
 	_commitedExtent = newExtent;
 
@@ -272,12 +272,12 @@ void WaylandWindow::handleFrameReady(const PresentationFrameInfo &frame) {
 
 			xdg_surface_set_window_geometry(_xdgSurface, pos.x, pos.y, extent.width, extent.height);
 
-			stream += StreamTraits<char>::toString(" surface: ", extent.width, " ", extent.height);
+			stream += toString(" surface: ", extent.width, " ", extent.height);
 
 			// If we have _configureSerial - confirm it
 			if (_configureSerial != 0 && _configureSerial != Max<uint32_t>) {
 				xdg_surface_ack_configure(_xdgSurface, _configureSerial);
-				stream += StreamTraits<char>::toString("; configure: ", _configureSerial, ";");
+				stream += toString("; configure: ", _configureSerial, ";");
 			}
 		}
 		_configureSerial = Max<uint32_t>;
@@ -425,8 +425,8 @@ void WaylandWindow::handleToplevelConfigure(xdg_toplevel *xdg_toplevel, int32_t 
 		int32_t height, wl_array *states) {
 
 	String stream;
-	stream = StreamTraits<char>::toString("handleToplevelConfigure", (!states ? "(syntetic)" : ""),
-			" width: ", width, ", height: ", height, ";");
+	stream = toString("handleToplevelConfigure", (!states ? "(syntetic)" : ""), " width: ", width,
+			", height: ", height, ";");
 
 	bool hasModeSwitch = false;
 	bool unfullscreen = false;
@@ -476,7 +476,7 @@ void WaylandWindow::handleToplevelConfigure(xdg_toplevel *xdg_toplevel, int32_t 
 			}
 		}
 
-		stream += StreamTraits<char>::toString(state, " ");
+		stream += toString(state, " ");
 
 		updateState(_configureSerial, (_info->state & ~mask) | state);
 	}
@@ -592,8 +592,8 @@ void WaylandWindow::handleToplevelGeometry(xdg_toplevel *xdg_toplevel, int32_t w
 						UpdateConstraintsFlags::DeprecateSwapchain);
 
 				if (stream) {
-					(*stream) += StreamTraits<char>::toString("surface: ", _currentExtent.width,
-							" ", _currentExtent.height);
+					(*stream) +=
+							toString("surface: ", _currentExtent.width, " ", _currentExtent.height);
 				}
 			} else {
 				_awaitingExtent =

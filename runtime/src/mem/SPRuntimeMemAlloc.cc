@@ -25,6 +25,7 @@ THE SOFTWARE.
 #include "private/SPRTMemStruct.h"
 #include <sprt/runtime/platform.h>
 #include <sprt/c/__sprt_stdio.h>
+#include <sprt/cxx/__mutex/unique_lock.h>
 
 #include <stdlib.h>
 #include <sys/mman.h>

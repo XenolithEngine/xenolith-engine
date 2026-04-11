@@ -282,7 +282,6 @@ struct StatusValue {
 	explicit operator bool() const { return toInt(status) >= 0; }
 };
 
-
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_STATUS_H_

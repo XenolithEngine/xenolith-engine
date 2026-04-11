@@ -59,7 +59,7 @@ using Bytes = __malloc_bytes;
 
 template <typename... Args>
 static inline String toString(Args &&...args) {
-	return StreamTraits<char>::toString(sprt::forward<Args>(args)...);
+	return StreamTraits<char>::toString<String>(sprt::forward<Args>(args)...);
 }
 
 

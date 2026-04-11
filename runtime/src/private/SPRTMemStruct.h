@@ -26,7 +26,8 @@ THE SOFTWARE.
 #define RUNTIME_SRC_PRIVATE_SPRTMEMSTRUCT_H_
 
 #include <sprt/runtime/mem/pool.h>
-#include <sprt/runtime/mutex.h>
+#include <sprt/runtime/thread/qmutex.h>
+#include <sprt/runtime/thread/rmutex.h>
 #include <sprt/cxx/new>
 #include <sprt/cxx/atomic>
 

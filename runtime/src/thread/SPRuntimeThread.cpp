@@ -29,7 +29,7 @@
 
 #include <pthread.h>
 
-namespace sprt::thread {
+namespace sprt::_thread {
 
 thread_local info tl_threadInfo;
 
@@ -102,4 +102,4 @@ void _entry(const callbacks &cb, NotNull<Ref> tm) {
 	memory::pool::terminate();
 }
 
-} // namespace sprt::thread
+} // namespace sprt::_thread

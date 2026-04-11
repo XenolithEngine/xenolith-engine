@@ -28,9 +28,9 @@ THE SOFTWARE.
 #include <sprt/cxx/__algorithm/bounds.h>
 #include <sprt/cxx/__algorithm/lexicographical_compare.h>
 
-#include <sprt/cxx/memory/allocator_malloc.h>
-#include <sprt/cxx/memory/allocator_pool.h>
-#include <sprt/cxx/memory/rbtree.h>
+#include <sprt/cxx/detail/allocator_malloc.h>
+#include <sprt/cxx/detail/allocator_pool.h>
+#include <sprt/cxx/detail/rbtree.h>
 
 namespace sprt {
 
@@ -48,7 +48,7 @@ public:
 	using reference = Value &;
 	using const_reference = const Value &;
 
-	using tree_type = memory::RbTree<Value, Value, Comp, allocator_type>;
+	using tree_type = detail::RbTree<Value, Value, Comp, allocator_type>;
 
 	using iterator = typename tree_type::const_iterator;
 	using const_iterator = typename tree_type::const_iterator;
@@ -272,10 +272,10 @@ protected:
 };
 
 template <typename Value, typename Comparator = sprt::less<void>>
-using __pool_set = __set<Value, Comparator, memory::AllocatorPool<Value>>;
+using __pool_set = __set<Value, Comparator, detail::AllocatorPool<Value>>;
 
 template <typename Value, typename Comparator = sprt::less<void>>
-using __malloc_set = __set<Value, Comparator, memory::AllocatorMalloc<Value>>;
+using __malloc_set = __set<Value, Comparator, detail::AllocatorMalloc<Value>>;
 
 /// See sprt::vector::swap().
 template <typename _Tp, typename Comp, typename Allocator>

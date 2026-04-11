@@ -25,6 +25,8 @@ THE SOFTWARE.
 #include <sprt/runtime/backtrace.h>
 #include <sprt/runtime/log.h>
 
+#include <unwind.h>
+
 #if SPRT_WINDOWS
 #include <sprt/runtime/mutex.h>
 
@@ -33,16 +35,6 @@ THE SOFTWARE.
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <dbghelp.h>
-#else
-#if __has_include(<cxxabi.h>)
-#include <cxxabi.h>
-#else
-#warning "No <cxxabi.h> available, replacing with forward declaration"
-namespace abi {
-extern "C" char *__cxa_demangle(const char *mangled_name, char *output_buffer,
-		__SPRT_ID(size_t) * length, int *status);
-}
-#endif
 #endif
 
 namespace sprt::backtrace::detail {
@@ -188,7 +180,8 @@ static void termState(State &state) {
 	state.handle.close();
 }
 
-static void performBacktrace(State &state, size_t offset, const callback<void(StringView)> &cb) {
+static void performBacktrace(State &state, size_t offset,
+		const callback<void(uintptr_t, StringView)> &cb) {
 	auto hThread = GetCurrentThread();
 
 	DWORD machine = 0;
@@ -233,7 +226,7 @@ static void performBacktrace(State &state, size_t offset, const callback<void(St
 		auto size = backtrace::detail::print(stackSym.targetNameBuffer, 1_KiB, frame.AddrPC.Offset,
 				hasLine ? stackSym.line.FileName : nullptr, hasLine ? stackSym.line.LineNumber : 0,
 				hasSym ? stackSym.sym.Name : nullptr);
-		cb(StringView(stackSym.targetNameBuffer, size));
+		cb(frame.AddrPC.Offset, StringView(stackSym.targetNameBuffer, size));
 	}
 }
 
@@ -281,10 +274,10 @@ static void debug_backtrace_error(void *data, const char *msg, int errnum) {
 static int debug_backtrace_full_callback(void *data, uintptr_t pc, const char *filename, int lineno,
 		const char *function) {
 	if (pc != uintptr_t(0xffff'ffff'ffff'ffffLLU)) {
-		auto ret = (const callback<void(StringView)> *)data;
+		auto ret = (const callback<void(uintptr_t, StringView)> *)data;
 		char buf[1'024] = {0};
 		auto size = backtrace::detail::print(buf, 1'024, pc, filename, lineno, function);
-		(*ret)(StringView(buf, size));
+		(*ret)(pc, StringView(buf, size));
 	}
 	return 0;
 }
@@ -300,7 +293,8 @@ static void termState(State &state) {
 	}
 }
 
-static void performBacktrace(State &state, size_t offset, const callback<void(StringView)> &cb) {
+static void performBacktrace(State &state, size_t offset,
+		const callback<void(uintptr_t, StringView)> &cb) {
 	backtrace_full(state.state, int(offset), debug_backtrace_full_callback, debug_backtrace_error,
 			(void *)&cb);
 }
@@ -309,6 +303,7 @@ static void performBacktrace(State &state, size_t offset, const callback<void(St
 
 #endif
 
+#include "private/SPRTThread.h"
 
 namespace sprt::backtrace {
 
@@ -317,7 +312,7 @@ struct BacktraceState {
 
 	void term() { termState(state); }
 
-	void getBacktrace(size_t offset, const callback<void(StringView)> &cb) {
+	void getBacktrace(size_t offset, const callback<void(uintptr_t, StringView)> &cb) {
 		if (state) {
 			performBacktrace(state, offset + 2, cb);
 		}
@@ -332,7 +327,7 @@ void initialize() { s_backtraceState.init(); }
 
 void terminate() { s_backtraceState.term(); }
 
-void getBacktrace(size_t offset, const callback<void(StringView)> &cb) {
+void getBacktrace(size_t offset, const callback<void(uintptr_t, StringView)> &cb) {
 	s_backtraceState.getBacktrace(offset + 1, cb);
 }
 

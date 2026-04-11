@@ -37,8 +37,9 @@ THE SOFTWARE.
 
 #include <sprt/cxx/functional>
 #include <sprt/cxx/__algorithm/lexicographical_compare.h>
-#include <sprt/cxx/memory/pointer_iterator.h>
+#include <sprt/cxx/detail/pointer_iterator.h>
 #include <sprt/cxx/string>
+#include <sprt/cxx/vector>
 #include <sprt/cxx/array>
 
 #include <sprt/c/__sprt_string.h>
@@ -227,8 +228,8 @@ public:
 	using value_type = _CharType;
 
 	using iterator =
-			memory::pointer_iterator<const _CharType, const _CharType *, const _CharType &>;
-	using reverse_iterator = memory::pointer_reverse_iterator<iterator>;
+			detail::pointer_iterator<const _CharType, const _CharType *, const _CharType &>;
+	using reverse_iterator = detail::pointer_reverse_iterator<iterator>;
 
 	template <CharType... Args>
 	using MatchChars = chars::Chars<CharType, Args...>;
@@ -352,11 +353,7 @@ public:
 	Self &operator-=(const Self &) const;
 
 	constexpr uint64_t hash() const {
-		return sprt::hash64((const char *)this->data(), this->size() * sizeof(CharType));
-	}
-
-	constexpr uint32_t hash32() const {
-		return sprt::hash32((const char *)this->data(), uint32_t(this->size() * sizeof(CharType)));
+		return sprt::hashSize(this->data(), this->size() * sizeof(CharType));
 	}
 
 public:
@@ -544,11 +541,7 @@ public:
 
 	operator StringViewBase<char>() const;
 
-	constexpr uint64_t hash() const { return sprt::hash64(data(), size() * sizeof(CharType)); }
-
-	constexpr uint64_t hash32() const {
-		return sprt::hash32(data(), uint32_t(size() * sizeof(CharType)));
-	}
+	constexpr uint64_t hash() const { return sprt::hashSize(data(), size() * sizeof(CharType)); }
 
 public:
 	Result<float> readFloat();
@@ -667,6 +660,8 @@ public:
 		return Self(*this, pos, len);
 	}
 
+	constexpr size_t hash() const { return sprt::hashSize((const char *)data(), size()); }
+
 private:
 	template <typename T>
 	auto convert(const uint8_t *data) -> T;
@@ -738,8 +733,8 @@ class SpanView {
 public:
 	using Type = _Type;
 	using Self = SpanView<Type>;
-	using iterator = memory::pointer_iterator<const Type, const Type *, const Type &>;
-	using reverse_iterator = memory::pointer_reverse_iterator<iterator>;
+	using iterator = detail::pointer_iterator<const Type, const Type *, const Type &>;
+	using reverse_iterator = detail::pointer_reverse_iterator<iterator>;
 
 	constexpr SpanView() = default;
 	constexpr SpanView(const Type *p, size_t l) : ptr(p), len(l) { }
@@ -923,11 +918,7 @@ public:
 	}
 
 	constexpr size_t hash() const {
-		if constexpr (sizeof(size_t) == 4) {
-			return sprt::hash32((const char *)data(), size() * sizeof(_Type));
-		} else {
-			return sprt::hash64((const char *)data(), size() * sizeof(_Type));
-		}
+		return sprt::hashSize((const char *)data(), size() * sizeof(_Type));
 	}
 
 	Self sub(size_t pos = 0, size_t len = Max<size_t>) const { return Self(*this, pos, len); }
@@ -946,8 +937,12 @@ namespace sprt::unicode {
 
 SPRT_API bool isValidUtf8(StringView);
 
+SPRT_API size_t getUtf32Length(const StringView &str);
+SPRT_API size_t getUtf32Length(const WideStringView &str);
+
 inline size_t getUtf16Length(char32_t c) { return sprt::unicode::utf16EncodeLength(c); }
 SPRT_API size_t getUtf16Length(const StringView &str);
+SPRT_API size_t getUtf16Length(const StringViewBase<char32_t> &str);
 SPRT_API size_t getUtf16HtmlLength(const StringView &str);
 
 inline size_t getUtf8Length(char32_t c) { return sprt::unicode::utf8EncodeLength(c); }
@@ -956,7 +951,18 @@ SPRT_API size_t getUtf8HtmlLength(const StringView &str);
 SPRT_API size_t getUtf8Length(const WideStringView &str);
 SPRT_API size_t getUtf8Length(const StringViewBase<char32_t> &str);
 
+SPRT_API Status toUtf32(char32_t *buf, size_t bufSize, const StringView &data,
+		size_t *ret = nullptr);
+SPRT_API Status toUtf32(char32_t *buf, size_t bufSize, const WideStringView &data,
+		size_t *ret = nullptr);
+
+SPRT_API Status toUtf32(const callback<void(StringViewBase<char32_t>)> &, const StringView &data);
+SPRT_API Status toUtf32(const callback<void(StringViewBase<char32_t>)> &,
+		const WideStringView &data);
+
 SPRT_API Status toUtf16(char16_t *buf, size_t bufSize, const StringView &data,
+		size_t *ret = nullptr);
+SPRT_API Status toUtf16(char16_t *buf, size_t bufSize, const StringViewBase<char32_t> &data,
 		size_t *ret = nullptr);
 
 SPRT_API Status toUtf16(char16_t *buf, size_t bufSize, char32_t ch, size_t *ret = nullptr);
@@ -965,16 +971,20 @@ SPRT_API Status toUtf16Html(char16_t *buf, size_t bufSize, const StringView &dat
 		size_t *ret = nullptr);
 
 SPRT_API Status toUtf16(const callback<void(WideStringView)> &, const StringView &data);
+SPRT_API Status toUtf16(const callback<void(WideStringView)> &,
+		const StringViewBase<char32_t> &data);
 
 SPRT_API Status toUtf16Html(const callback<void(WideStringView)> &, const StringView &data);
 
 SPRT_API Status toUtf8(char *, size_t bufSize, const WideStringView &data, size_t *ret = nullptr);
+SPRT_API Status toUtf8(char *, size_t bufSize, const StringViewBase<char32_t> &data,
+		size_t *ret = nullptr);
 
 SPRT_API Status toUtf8(char *, size_t bufSize, char16_t c, size_t *ret = nullptr);
-
 SPRT_API Status toUtf8(char *, size_t bufSize, char32_t c, size_t *ret = nullptr);
 
 SPRT_API Status toUtf8(const callback<void(StringView)> &, const WideStringView &data);
+SPRT_API Status toUtf8(const callback<void(StringView)> &, const StringViewBase<char32_t> &data);
 
 SPRT_API char32_t toupper(char32_t);
 SPRT_API char32_t totitle(char32_t);
@@ -2705,7 +2715,50 @@ inline auto operator<=>(const SpanView<_Tp> &__x, const SpanView<_Tp> &__y) {
 	return sprt::lexicographical_compare_three_way(__x.begin(), __x.end(), __y.begin(), __y.end());
 }
 
-} // namespace sprt
+template <typename Allocator>
+inline auto operator<=>(const __basic_string<char, Allocator> &l, const StringViewUtf8 &r) {
+	return sprt::__convertIntToTwc(sprt::detail::compare_u(l, r));
+}
 
+template <typename Allocator>
+inline auto operator<=>(const StringViewUtf8 &l, const __basic_string<char, Allocator> &r) {
+	return sprt::__convertIntToTwc(sprt::detail::compare_u(l, r));
+}
+
+template <sprt::endian Endianess, typename Allocator>
+inline auto operator<=>(const BytesViewTemplate<Endianess> &l,
+		const __vector<uint8_t, Allocator> &r) {
+	return sprt::__compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
+
+template <sprt::endian Endianess, typename Allocator>
+inline auto operator<=>(const __vector<uint8_t, Allocator> &l,
+		const BytesViewTemplate<Endianess> &r) {
+	return sprt::__compareDataRanges(l.data(), l.size(), r.data(), r.size());
+}
+
+template <>
+struct hash<StringViewUtf8> {
+	constexpr size_t operator()(const StringViewUtf8 &value) const noexcept { return value.size(); }
+};
+
+template <typename CharType>
+struct hash<StringViewBase<CharType>> {
+	size_t operator()(const StringViewBase<CharType> &value) const noexcept { return value.hash(); }
+};
+
+template <sprt::endian E>
+struct hash< BytesViewTemplate<E>> {
+	constexpr size_t operator()(const BytesViewTemplate<E> &value) const noexcept {
+		return value.size();
+	}
+};
+
+template <typename Value>
+struct hash<SpanView<Value>> {
+	size_t operator()(const SpanView<Value> &value) { return value.hash(); }
+};
+
+} // namespace sprt
 
 #endif

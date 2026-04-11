@@ -25,7 +25,7 @@
 
 #include <sprt/runtime/ref.h>
 
-namespace sprt::thread {
+namespace sprt::_thread {
 
 struct callbacks {
 	void (*init)(NotNull<Ref>) = nullptr;
@@ -35,6 +35,6 @@ struct callbacks {
 
 SPRT_API void _entry(const callbacks &, NotNull<Ref>);
 
-} // namespace sprt::thread
+} // namespace sprt::_thread
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_THREAD_ENTRY_H_

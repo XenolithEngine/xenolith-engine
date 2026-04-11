@@ -23,9 +23,9 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_FUNCTION_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_FUNCTION_H_
 
-#include <sprt/cxx/memory/allocator_malloc.h>
-#include <sprt/cxx/memory/allocator_pool.h>
-#include <sprt/runtime/callback.h>
+#include <sprt/cxx/detail/aligned_storage.h>
+#include <sprt/cxx/detail/allocator_malloc.h>
+#include <sprt/cxx/detail/allocator_pool.h>
 
 #include <sprt/cxx/array>
 
@@ -50,7 +50,6 @@ class SPRT_API __function<Allocator, ReturnType(ArgumentTypes...)> : public Allo
 public:
 	using signature_type = ReturnType(ArgumentTypes...);
 	using allocator_type = Allocator;
-	//using allocator_type = detail::Allocator<void *>;
 
 	~__function() { clear(); }
 
@@ -174,7 +173,7 @@ private:
 	template <typename FunctionT>
 	static functor_traits *makeFunctionTraits() noexcept {
 		using BaseType = typename remove_cv<typename remove_reference<FunctionT>::type>::type;
-		using BaseTypePtr = BaseType *;
+		using StorageType = detail::aligned_storage<BaseType>;
 		if constexpr (sizeof(BaseType) <= OptBufferSize) {
 			static functor_traits traits{
 				.invoke = [](const void *arg, ArgumentTypes... args) -> ReturnType {
@@ -199,26 +198,29 @@ private:
 		} else {
 			static functor_traits traits{
 				.invoke = [](const void *arg, ArgumentTypes... args) -> ReturnType {
-				return (*(*static_cast<const BaseTypePtr *>(arg)))(
-						sprt::forward<ArgumentTypes>(args)...);
+				auto fnPtr =
+						const_cast<StorageType *>(static_cast<const StorageType *>(arg))->ptr();
+				return (*fnPtr)(sprt::forward<ArgumentTypes>(args)...);
 			},
 				.destroy =
 						[](void *arg) {
-				auto ptr = *static_cast<BaseTypePtr *>(arg);
+				auto ptr = static_cast<StorageType *>(arg);
 				if (ptr) {
-					ptr->~BaseType();
+					ptr->ptr()->~BaseType();
 					new (arg, nothrow)(const BaseType *)(nullptr);
 				}
 			},
 				.copy = [](const void *arg, allocator_type &alloc, uint8_t *buf) -> void * {
-				typename Allocator::template rebind<BaseType>::other ialloc = alloc;
+				typename Allocator::template rebind<StorageType>::other ialloc = alloc;
 				auto mem = ialloc.allocate(1);
-				ialloc.construct(mem, *(*static_cast<const BaseTypePtr *>(arg)));
-				return new (buf, nothrow)(const BaseType *)(mem);
+				new (mem->ptr(), sprt::nothrow)
+						BaseType(*static_cast<const StorageType *>(arg)->ptr());
+				return new (buf, nothrow)(const StorageType *)(mem);
 			},
 				.move = [](void *arg, allocator_type &alloc, uint8_t *buf) -> void * {
-				auto ret = new (buf, nothrow)(const BaseType *)((*static_cast<BaseTypePtr *>(arg)));
-				new (arg, nothrow)(const BaseType *)(nullptr);
+				auto ret =
+						new (buf, nothrow)(const StorageType *)((static_cast<StorageType *>(arg)));
+				new (arg, nothrow)(const StorageType *)(nullptr);
 				return ret;
 			},
 			};
@@ -231,20 +233,22 @@ private:
 	static traits_callback makeFreeFunction(FunctionT &&f, allocator_type &alloc,
 			uint8_t *buf) noexcept {
 		using BaseType = typename remove_cv<typename remove_reference<FunctionT>::type>::type;
+		using StorageType = detail::aligned_storage<BaseType>;
 		if constexpr (sizeof(BaseType) <= OptBufferSize) {
 			new (buf, nothrow) BaseType(sprt::forward<FunctionT>(f));
 		} else {
-			typename Allocator::template rebind<BaseType>::other ialloc = alloc;
+			typename Allocator::template rebind<StorageType>::other ialloc = alloc;
 			auto mem = ialloc.allocate(1);
 
 			if constexpr (is_convertible_v<allocator_type, memory::pool_t *>) {
-				memory::perform_conditional(
-						[&] { new (mem, nothrow) BaseType(sprt::forward<FunctionT>(f)); }, alloc);
+				memory::perform_conditional([&] {
+					new (mem.ptr(), sprt::nothrow) BaseType(sprt::forward<FunctionT>(f));
+				}, alloc);
 			} else {
-				new (mem, nothrow) BaseType(sprt::forward<FunctionT>(f));
+				new (mem->ptr(), sprt::nothrow) BaseType(sprt::forward<FunctionT>(f));
 			}
 
-			new (buf, nothrow)(const BaseType *)(mem);
+			new (buf, sprt::nothrow)(const StorageType *)(mem);
 		}
 		return &makeFunctionTraits<FunctionT>;
 	}
@@ -263,10 +267,10 @@ private:
 };
 
 template <typename Sig>
-using __pool_function = __function<memory::AllocatorPool<void *>, Sig>;
+using __pool_function = __function<detail::AllocatorPool<void *>, Sig>;
 
 template <typename Sig>
-using __malloc_function = __function<memory::AllocatorMalloc<void *>, Sig>;
+using __malloc_function = __function<detail::AllocatorMalloc<void *>, Sig>;
 
 } // namespace sprt
 

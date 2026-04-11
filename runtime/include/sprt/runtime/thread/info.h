@@ -27,7 +27,7 @@
 #include <sprt/cxx/function>
 #include <sprt/c/__sprt_unistd.h>
 
-namespace sprt::thread {
+namespace sprt::_thread {
 
 struct SPRT_API info {
 	static constexpr uint32_t DetachedWorker = Max<uint32_t>;
@@ -65,6 +65,6 @@ void info::add_cleanup(Callback &&cb) {
 	}
 }
 
-} // namespace sprt::thread
+} // namespace sprt::_thread
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_THREAD_INFO_H_

@@ -122,6 +122,7 @@ SPRT_INLINE constexpr inline uint8_t utf8EncodeLength(char32_t c) {
 
 template <typename PutCharFn>
 SPRT_INLINE constexpr inline uint8_t utf8EncodeCb(const PutCharFn &cb, char16_t c) {
+	static_assert(sprt::is_invocable_v<PutCharFn, char>, "Invalid callback type");
 	if (c < 0x80) {
 		cb(char(c));
 		return 1;
@@ -139,6 +140,7 @@ SPRT_INLINE constexpr inline uint8_t utf8EncodeCb(const PutCharFn &cb, char16_t 
 
 template <typename PutCharFn>
 SPRT_INLINE constexpr inline uint8_t utf8EncodeCb(const PutCharFn &cb, char32_t c) {
+	static_assert(sprt::is_invocable_v<PutCharFn, char>, "Invalid callback type");
 	if (c < 0x80) {
 		cb(char(c));
 		return 1;
@@ -222,6 +224,7 @@ SPRT_INLINE constexpr inline uint8_t utf16EncodeLength(char32_t c) {
 
 template <typename PutCharFn>
 SPRT_INLINE constexpr inline uint8_t utf16EncodeCb(const PutCharFn &cb, char32_t c) {
+	static_assert(sprt::is_invocable_v<PutCharFn, char16_t>, "Invalid callback type");
 	if (c < 0xD800) {
 		cb(char16_t(c));
 		return 1;
@@ -249,6 +252,8 @@ SPRT_INLINE constexpr inline uint8_t utf16EncodeBuf(char16_t *ptr, size_t bufSiz
 }
 
 SPRT_API char32_t utf8HtmlDecode32(const char *utf8, size_t len, uint8_t &offset);
+
+SPRT_API char toKoi8r(char16_t c);
 
 } // namespace sprt::unicode
 

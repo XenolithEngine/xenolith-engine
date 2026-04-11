@@ -34,7 +34,7 @@ SPRT_API void store(pool_t *, void *ptr, const StringView &key,
 
 template <typename T = void>
 inline T *get(pool_t *pool, const StringView &key) {
-	struct Handle : AllocPool {
+	struct Handle : detail::AllocPool {
 		void *pointer;
 		__pool_function<void()> callback;
 	};

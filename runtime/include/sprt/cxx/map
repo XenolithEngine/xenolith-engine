@@ -29,10 +29,10 @@ THE SOFTWARE.
 #include <sprt/cxx/__algorithm/lexicographical_compare.h>
 #include <sprt/cxx/__utility/pair.h>
 
-#include <sprt/cxx/memory/access_token.h>
-#include <sprt/cxx/memory/allocator_malloc.h>
-#include <sprt/cxx/memory/allocator_pool.h>
-#include <sprt/cxx/memory/rbtree.h>
+#include <sprt/cxx/detail/access_token.h>
+#include <sprt/cxx/detail/allocator_malloc.h>
+#include <sprt/cxx/detail/allocator_pool.h>
+#include <sprt/cxx/detail/rbtree.h>
 
 namespace sprt {
 
@@ -50,7 +50,7 @@ public:
 	using reference = value_type &;
 	using const_reference = const value_type &;
 
-	using tree_type = memory::RbTree<Key, value_type, Comp, allocator_type>;
+	using tree_type = detail::RbTree<Key, value_type, Comp, allocator_type>;
 
 	using iterator = typename tree_type::iterator;
 	using const_iterator = typename tree_type::const_iterator;
@@ -71,10 +71,10 @@ public:
 	};
 
 	template <typename AccessType = key_type>
-	using access_token = memory::access_token<__map, AccessType>;
+	using access_token = detail::access_token<__map, AccessType>;
 
 	template <typename AccessType = key_type>
-	using const_access_token = memory::const_access_token<__map, AccessType>;
+	using const_access_token = detail::const_access_token<__map, AccessType>;
 
 	static constexpr bool is_transparent_keys = __is_transparent_v<key_compare>;
 
@@ -95,7 +95,7 @@ public:
 			  sprt::allocator_traits<allocator_type>::select_on_container_copy_construction(
 					  x.get_allocator())) { }
 
-	__map(__map &&x) noexcept : _tree(sprt::move_unsafe(x._tree, x.get_allocator())) { }
+	__map(__map &&x) noexcept : _tree(sprt::move_unsafe(x._tree), x.get_allocator()) { }
 
 	explicit __map(const allocator_type &alloc) noexcept : _tree(key_compare(), alloc) { }
 
@@ -430,10 +430,10 @@ protected:
 };
 
 template <typename Key, typename Value, typename Comparator = sprt::less<void>>
-using __pool_map = __map<Key, Value, Comparator, memory::AllocatorPool<pair<const Key, Value>>>;
+using __pool_map = __map<Key, Value, Comparator, detail::AllocatorPool<pair<const Key, Value>>>;
 
 template <typename Key, typename Value, typename Comparator = sprt::less<void>>
-using __malloc_map = __map<Key, Value, Comparator, memory::AllocatorMalloc<pair<const Key, Value>>>;
+using __malloc_map = __map<Key, Value, Comparator, detail::AllocatorMalloc<pair<const Key, Value>>>;
 
 template <typename Key, typename Value, typename Comp, typename Allocator>
 inline void swap(__map<Key, Value, Comp, Allocator> &__x,

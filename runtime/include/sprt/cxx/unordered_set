@@ -27,10 +27,10 @@ THE SOFTWARE.
 #include <sprt/cxx/__memory/allocator_traits.h>
 #include <sprt/cxx/initializer_list>
 
-#include <sprt/cxx/memory/hash_memory.h>
-#include <sprt/cxx/memory/access_token.h>
-#include <sprt/cxx/memory/allocator_pool.h>
-#include <sprt/cxx/memory/allocator_malloc.h>
+#include <sprt/cxx/detail/hash_memory.h>
+#include <sprt/cxx/detail/access_token.h>
+#include <sprt/cxx/detail/allocator_pool.h>
+#include <sprt/cxx/detail/allocator_malloc.h>
 
 namespace sprt {
 
@@ -50,7 +50,7 @@ public:
 	using size_type = size_t;
 	using difference_type = ptrdiff_t;
 
-	using container_type = memory::hash_memory<key_type, value_type, Hash, Pred, Allocator>;
+	using container_type = detail::hash_memory<key_type, value_type, Hash, Pred, Allocator>;
 
 	using iterator = container_type::const_iterator;
 	using const_iterator = container_type::const_iterator;
@@ -70,7 +70,8 @@ public:
 			const key_equal &eql = key_equal(), const allocator_type &a = allocator_type()) noexcept
 	: _container(n, hf, eql, a) { }
 
-	template <typename InputIter>
+	template <typename InputIter,
+			enable_if_t<__has_input_iterator_category<InputIter>::value, int> = 0>
 	__unordered_set(InputIter f, InputIter l, size_type n, const hasher &hf = hasher(),
 			const key_equal &eql = key_equal(), const allocator_type &a = allocator_type()) noexcept
 	: _container(n, hf, eql, a) {
@@ -118,11 +119,13 @@ public:
 	__unordered_set(size_type n, const hasher &hf, const allocator_type &a) noexcept
 	: __unordered_set(n, hf, key_equal(), a) { }
 
-	template <typename InputIter>
+	template <typename InputIter,
+			enable_if_t<__has_input_iterator_category<InputIter>::value, int> = 0>
 	__unordered_set(InputIter f, InputIter l, size_type n, const allocator_type &a) noexcept
 	: __unordered_set(f, l, n, hasher(), key_equal(), a) { }
 
-	template <typename InputIter>
+	template <typename InputIter,
+			enable_if_t<__has_input_iterator_category<InputIter>::value, int> = 0>
 	__unordered_set(InputIter f, InputIter l, size_type n, const hasher &hf,
 			const allocator_type &a) noexcept
 	: __unordered_set(f, l, n, hf, key_equal(), a) { }
@@ -165,9 +168,7 @@ public:
 	allocator_type get_allocator() const noexcept { return _container.get_allocator(); }
 
 	// iterators
-	iterator begin() noexcept { return _container.begin(); }
 	const_iterator begin() const noexcept { return _container.begin(); }
-	iterator end() noexcept { return _container.end(); }
 	const_iterator end() const noexcept { return _container.end(); }
 	const_iterator cbegin() const noexcept { return _container.begin(); }
 	const_iterator cend() const noexcept { return _container.end(); }
@@ -180,15 +181,20 @@ public:
 	// modifiers
 	template <typename... Args>
 	pair<iterator, bool> emplace(Args &&...args) noexcept {
-		return try_emplace(sprt::forward<Args>(args)...);
+		auto ret = _container.try_emplace(sprt::forward<Args>(args)...);
+		return pair<iterator, bool>(iterator(ret.first), ret.second);
 	}
 	template <typename... Args>
 	iterator emplace_hint(const_iterator position, Args &&...args) noexcept {
 		// there is no hinted variant for hash_memory backend
-		return try_emplace(sprt::forward<Args>(args)...).second;
+		return _container.try_emplace(sprt::forward<Args>(args)...).second;
 	}
-	pair<iterator, bool> insert(const value_type &obj) noexcept { return _container.insert(obj); }
-	pair<iterator, bool> insert(value_type &&obj) noexcept { return _container.insert(obj); }
+	pair<iterator, bool> insert(const value_type &obj) noexcept {
+		return _container.template insert<value_type, iterator>(obj);
+	}
+	pair<iterator, bool> insert(value_type &&obj) noexcept {
+		return _container.template insert<value_type, iterator>(sprt::move(obj));
+	}
 	template <typename K>
 	pair<iterator, bool> insert(K &&obj) noexcept {
 		return _container.insert(obj);
@@ -203,7 +209,8 @@ public:
 	iterator insert(const_iterator hint, K &&obj) noexcept {
 		return _container.insert(obj).first;
 	}
-	template <typename InputIter>
+	template <typename InputIter,
+			enable_if_t<__has_input_iterator_category<InputIter>::value, int> = 0>
 	void insert(InputIter first, InputIter last) noexcept {
 		while (first != last) { _container.insert(*first++); }
 	}
@@ -246,13 +253,7 @@ public:
 
 	// set operations
 	// map operations
-	iterator find(const key_type &k) { return _container.find(k); }
 	const_iterator find(const key_type &k) const { return _container.find(k); }
-
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, iterator> find(const K &k) {
-		return _container.find(k);
-	}
 
 	template <typename K>
 	sprt::enable_if_t<is_transparent_keys, const_iterator> find(const K &k) const {
@@ -302,10 +303,10 @@ protected:
 };
 
 template <typename Value, typename Hash = sprt::hash<void>, typename Pred = sprt::equal_to<void>>
-using __pool_unordered_set = __unordered_set<Value, Hash, Pred, memory::AllocatorPool<Value>>;
+using __pool_unordered_set = __unordered_set<Value, Hash, Pred, detail::AllocatorPool<Value>>;
 
 template <typename Value, typename Hash = sprt::hash<void>, typename Pred = sprt::equal_to<void>>
-using __malloc_unordered_set = __unordered_set<Value, Hash, Pred, memory::AllocatorMalloc<Value>>;
+using __malloc_unordered_set = __unordered_set<Value, Hash, Pred, detail::AllocatorMalloc<Value>>;
 
 template <typename Value, typename Hash, typename Pred, typename Allocator>
 inline void swap(const __unordered_set<Value, Hash, Pred, Allocator> &__x,

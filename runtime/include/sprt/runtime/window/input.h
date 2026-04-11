@@ -536,29 +536,42 @@ SPRT_API void getInputModifiersNames(const callback<void(StringView)> &out, Inpu
 
 namespace sprt {
 
-inline const callback<void(StringView)> &operator<<(const callback<void(StringView)> &cb,
-		window::InputModifier state) {
-	getInputModifiersNames(cb, state);
-	return cb;
-}
+template <>
+struct io_traits<window::InputModifier> {
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const window::InputModifier &value) {
+		getInputModifiersNames([&](StringView str) { io_traits<StringView>::encode(cb, str); },
+				value);
+	}
+};
 
-inline const callback<void(StringView)> &operator<<(const callback<void(StringView)> &cb,
-		window::InputMouseButton v) {
-	cb << getInputButtonName(v);
-	return cb;
-}
+template <>
+struct io_traits<window::InputMouseButton> {
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const window::InputMouseButton &value) {
+		io_traits<StringView>::encode(cb, getInputButtonName(value));
+	}
+};
 
-inline const callback<void(StringView)> &operator<<(const callback<void(StringView)> &cb,
-		window::InputEventName v) {
-	cb << getInputEventName(v);
-	return cb;
-}
+template <>
+struct io_traits<window::InputEventName> {
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const window::InputEventName &value) {
+		io_traits<StringView>::encode(cb, getInputEventName(value));
+	}
+};
 
-inline const callback<void(StringView)> &operator<<(const callback<void(StringView)> &cb,
-		window::InputKeyCode v) {
-	cb << getInputKeyCodeName(v);
-	return cb;
-}
+template <>
+struct io_traits<window::InputKeyCode> {
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const window::InputKeyCode &value) {
+		io_traits<StringView>::encode(cb, getInputKeyCodeName(value));
+	}
+};
 
 } // namespace sprt
 
