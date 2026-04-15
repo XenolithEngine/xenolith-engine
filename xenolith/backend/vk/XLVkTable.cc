@@ -76,7 +76,7 @@ void setDeviceHookThreadContext(
 #endif /* VK_HOOK_DEBUG */
 
 static PFN_vkVoidFunction loadInstanceAliased(PFN_vkGetInstanceProcAddr addr, VkInstance instance, const char *name,
-		std::initializer_list<const char *> aliases) {
+		sprt::initializer_list<const char *> aliases) {
 	auto ret = addr(instance, name);
 	if (!ret) {
 		for (auto it : aliases) {
@@ -87,7 +87,7 @@ static PFN_vkVoidFunction loadInstanceAliased(PFN_vkGetInstanceProcAddr addr, Vk
 }
 
 static PFN_vkVoidFunction loadDeviceAliased(PFN_vkGetDeviceProcAddr addr, VkDevice instance, const char *name,
-		std::initializer_list<const char *> aliases) {
+		sprt::initializer_list<const char *> aliases) {
 	auto ret = addr(instance, name);
 	if (!ret) {
 		for (auto it : aliases) {

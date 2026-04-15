@@ -45,7 +45,7 @@ auto StyleContainer::StyleBuffers::getValueStream() {
 void StyleContainer::StyleBuffers::nameToLower() {
 	auto d = (char *)name.data();
 	for (size_t i = 0; i < name.size(); ++i) {
-		*d = std::tolower(*d);
+		*d = sprt::tolower_c(*d);
 		++d;
 	}
 }
@@ -70,7 +70,7 @@ void StyleContainer::StyleBuffers::valueToLower() {
 			quoted = '"';
 			++d;
 		} else {
-			*d = std::tolower(*d);
+			*d = sprt::tolower_c(*d);
 		}
 		++d;
 	}
@@ -659,7 +659,7 @@ FontFace StyleContainer::readFontFace(StyleBuffers &buffers, StringReader &s) {
 				tmp += "oblique"_len;
 				tmp.skipChars<StringView::WhiteSpace>();
 				auto val = tmp.readFloat().get(nan());
-				if (!std::isnan(val)) {
+				if (!sprt::isnan(val)) {
 					tmp.skipChars<StringView::WhiteSpace>();
 					if (tmp.is("deg") && val >= -90.0 && val <= 90.0) {
 						ret.variations.axisMask |=
@@ -670,7 +670,7 @@ FontFace StyleContainer::readFontFace(StyleBuffers &buffers, StringReader &s) {
 						tmp.skipChars<StringView::WhiteSpace>();
 						if (!tmp.empty()) {
 							val = tmp.readFloat().get(nan());
-							if (!std::isnan(val)) {
+							if (!sprt::isnan(val)) {
 								tmp.skipChars<StringView::WhiteSpace>();
 								if (tmp.is("deg") && val >= -90.0 && val <= 90.0) {
 									ret.variations.slant.max = FontStyle(uint16_t(val * (1 << 6)));

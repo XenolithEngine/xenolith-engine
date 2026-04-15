@@ -89,8 +89,8 @@ bool ScrollViewBase::init(Layout layout) {
 	_root->setPosition(Vec2::ZERO);
 	_root->setAnchorPoint((_layout == Vertical) ? Vec2(0.0f, 1.0f) : Vec2::ZERO);
 	_root->setCascadeOpacityEnabled(true);
-	_root->setContentSizeDirtyCallback(std::bind(&ScrollViewBase::onPosition, this));
-	_root->setTransformDirtyCallback(std::bind(&ScrollViewBase::onPosition, this));
+	_root->setContentSizeDirtyCallback([this] { onPosition(); });
+	_root->setTransformDirtyCallback([this](const Mat4 &) { onPosition(); });
 
 	return true;
 }
@@ -122,7 +122,7 @@ void ScrollViewBase::handleEnter(Scene *scene) {
 }
 
 void ScrollViewBase::handleContentSizeDirty() {
-	if (!isnan(_scrollSpaceLimit)) {
+	if (!sprt::isnan(_scrollSpaceLimit)) {
 		auto padding = _paddingGlobal;
 		if (isVertical()) {
 			if (_contentSize.width > _scrollSpaceLimit + _scrollSpacePadding * 2.0f) {
@@ -225,14 +225,14 @@ float ScrollViewBase::getScrollableAreaOffset() const {
 	if (_controller) {
 		return _controller->getScrollableAreaOffset();
 	}
-	return std::numeric_limits<float>::quiet_NaN();
+	return sprt::NaN<float>;
 }
 
 float ScrollViewBase::getScrollableAreaSize() const {
 	if (_controller) {
 		return _controller->getScrollableAreaSize();
 	}
-	return std::numeric_limits<float>::quiet_NaN();
+	return sprt::NaN<float>;
 }
 
 Vec2 ScrollViewBase::getPositionForNode(float scrollPos) const {
@@ -278,8 +278,8 @@ bool ScrollViewBase::addScrollNode(Node *node, Vec2 pos, Size2 size, ZOrder z, S
 void ScrollViewBase::updateScrollNode(Node *node, Vec2 pos, Size2 size, ZOrder z, StringView name) {
 	auto p = node->getParent();
 	if (p == _root || p == nullptr) {
-		auto cs = Size2(isnan(size.width) ? _root->getContentSize().width : size.width,
-				isnan(size.height) ? _root->getContentSize().height : size.height);
+		auto cs = Size2(sprt::isnan(size.width) ? _root->getContentSize().width : size.width,
+				sprt::isnan(size.height) ? _root->getContentSize().height : size.height);
 
 		node->setContentSize(cs);
 		node->setPosition((isVertical() ? Vec2(pos.x, -pos.y) : pos));
@@ -300,10 +300,10 @@ bool ScrollViewBase::removeScrollNode(Node *node) {
 
 float ScrollViewBase::getDistanceFromStart() const {
 	auto min = getScrollMinPosition();
-	if (!isnan(min)) {
+	if (!sprt::isnan(min)) {
 		return fabsf(getScrollPosition() - min);
 	} else {
-		return std::numeric_limits<float>::quiet_NaN();
+		return sprt::NaN<float>;
 	}
 }
 
@@ -326,22 +326,22 @@ Node *ScrollViewBase::getBackNode() const {
 
 float ScrollViewBase::getScrollMinPosition() const {
 	auto pos = getScrollableAreaOffset();
-	if (!isnan(pos)) {
+	if (!sprt::isnan(pos)) {
 		return pos - (isVertical() ? _paddingGlobal.top : _paddingGlobal.left);
 	}
 	if (_controller) {
 		float min = _controller->getScrollMin();
-		if (!isnan(min)) {
+		if (!sprt::isnan(min)) {
 			return min - (isVertical() ? _paddingGlobal.top : _paddingGlobal.left);
 		}
 	}
-	return std::numeric_limits<float>::quiet_NaN();
+	return sprt::NaN<float>;
 }
 
 float ScrollViewBase::getScrollMaxPosition() const {
 	auto pos = getScrollableAreaOffset();
 	auto size = getScrollableAreaSize();
-	if (!isnan(pos) && !isnan(size)) {
+	if (!sprt::isnan(pos) && !sprt::isnan(size)) {
 		pos -= (isVertical() ? _paddingGlobal.top : _paddingGlobal.left);
 		size += (isVertical() ? (_paddingGlobal.top + _paddingGlobal.bottom)
 							  : (_paddingGlobal.left + _paddingGlobal.right));
@@ -354,22 +354,22 @@ float ScrollViewBase::getScrollMaxPosition() const {
 	if (_controller) {
 		float min = _controller->getScrollMin();
 		float max = _controller->getScrollMax();
-		if (!isnan(max) && !isnan(min)) {
-			return std::max(min,
+		if (!sprt::isnan(max) && !sprt::isnan(min)) {
+			return sprt::max(min,
 					max - _scrollSize
 							+ (isVertical() ? _paddingGlobal.bottom : _paddingGlobal.right));
-		} else if (!isnan(max)) {
+		} else if (!sprt::isnan(max)) {
 			return max - _scrollSize
 					+ (isVertical() ? _paddingGlobal.bottom : _paddingGlobal.right);
 		}
 	}
 
-	return std::numeric_limits<float>::quiet_NaN();
+	return sprt::NaN<float>;
 }
 
 float ScrollViewBase::getScrollLength() const {
 	float size = getScrollableAreaSize();
-	if (!isnan(size)) {
+	if (!sprt::isnan(size)) {
 		return size
 				+ (isVertical() ? (_paddingGlobal.top + _paddingGlobal.bottom)
 								: (_paddingGlobal.left + _paddingGlobal.right));
@@ -378,7 +378,7 @@ float ScrollViewBase::getScrollLength() const {
 	float min = getScrollMinPosition();
 	float max = getScrollMaxPosition();
 
-	if (!isnan(min) && !isnan(max)) {
+	if (!sprt::isnan(min) && !sprt::isnan(max)) {
 		float trueMax = max - (isVertical() ? _paddingGlobal.bottom : _paddingGlobal.right);
 		float trueMin = min + (isVertical() ? _paddingGlobal.top : _paddingGlobal.left);
 		if (trueMax > trueMin) {
@@ -387,14 +387,14 @@ float ScrollViewBase::getScrollLength() const {
 			return _scrollSize;
 		}
 	} else {
-		return std::numeric_limits<float>::quiet_NaN();
+		return sprt::NaN<float>;
 	}
 }
 
 float ScrollViewBase::getScrollSize() const { return _scrollSize; }
 
 void ScrollViewBase::setScrollRelativePosition(float value) {
-	if (!isnan(value)) {
+	if (!sprt::isnan(value)) {
 		if (value < 0.0f) {
 			value = 0.0f;
 		} else if (value > 1.0f) {
@@ -416,7 +416,7 @@ void ScrollViewBase::setScrollRelativePosition(float value) {
 	auto paddingFront = (isVertical()) ? padding.top : padding.left;
 	auto paddingBack = (isVertical()) ? padding.bottom : padding.right;
 
-	if (!isnan(areaSize) && !isnan(areaOffset) && areaSize > 0) {
+	if (!sprt::isnan(areaSize) && !sprt::isnan(areaOffset) && areaSize > 0) {
 		float liveSize = areaSize + paddingFront + paddingBack - size;
 		float pos = (value * liveSize) - paddingFront + areaOffset;
 
@@ -427,7 +427,7 @@ void ScrollViewBase::setScrollRelativePosition(float value) {
 }
 
 float ScrollViewBase::getScrollRelativePosition() const {
-	if (!isnan(_savedRelativePosition)) {
+	if (!sprt::isnan(_savedRelativePosition)) {
 		return _savedRelativePosition;
 	}
 
@@ -443,7 +443,7 @@ float ScrollViewBase::getScrollRelativePosition(float pos) const {
 	auto paddingFront = (isVertical()) ? padding.top : padding.left;
 	auto paddingBack = (isVertical()) ? padding.bottom : padding.right;
 
-	if (!isnan(areaSize) && !isnan(areaOffset)) {
+	if (!sprt::isnan(areaSize) && !sprt::isnan(areaOffset)) {
 		float liveSize = areaSize + paddingFront + paddingBack - size;
 		return (pos - areaOffset + paddingFront) / liveSize;
 	}
@@ -481,7 +481,7 @@ Vec2 ScrollViewBase::getPointForScrollPosition(float pos) {
 void ScrollViewBase::onDelta(float delta) {
 	auto pos = getScrollPosition();
 	if (delta < 0) {
-		if (!isnan(_scrollMin) && pos + delta < _scrollMin) {
+		if (!sprt::isnan(_scrollMin) && pos + delta < _scrollMin) {
 			if (_bounce) {
 				float mod = 1.0f / (1.0f + (_scrollMin - (pos + delta)) / 5.0f);
 				setScrollPosition(pos + delta * mod);
@@ -493,7 +493,7 @@ void ScrollViewBase::onDelta(float delta) {
 			}
 		}
 	} else if (delta > 0) {
-		if (!isnan(_scrollMax) && pos + delta > _scrollMax) {
+		if (!sprt::isnan(_scrollMax) && pos + delta > _scrollMax) {
 			if (_bounce) {
 				float mod = 1.0f / (1.0f + ((pos + delta) - _scrollMax) / 5.0f);
 				setScrollPosition(pos + delta * mod);
@@ -545,7 +545,7 @@ void ScrollViewBase::onOverscrollPerformed(float velocity, float pos, float boun
 		Vec2 currentPos = getPointForScrollPosition(pos);
 
 		auto a = ActionAcceleratedMove::createBounce(5'000, currentPos, boundaryPos, velocity,
-				std::max(25000.0f, fabsf(velocity) * 50));
+				sprt::max(25000.0f, fabsf(velocity) * 50));
 		if (a) {
 			_controller->dropAnimationPadding();
 			_movement = Movement::Overscroll;
@@ -557,13 +557,13 @@ void ScrollViewBase::onOverscrollPerformed(float velocity, float pos, float boun
 
 bool ScrollViewBase::onSwipeEventBegin(uint32_t id, Vec2 loc, Vec2 delta, Vec2 velocity) {
 	if (_layout == Layout::Vertical) {
-		if (std::abs(delta.x) < std::abs(delta.y)) {
+		if (sprt::abs(delta.x) < sprt::abs(delta.y)) {
 			_inputListener->setExclusiveForTouch(id);
 		} else {
 			return false;
 		}
 	} else {
-		if (std::abs(delta.x) > std::abs(delta.y)) {
+		if (sprt::abs(delta.x) > sprt::abs(delta.y)) {
 			_inputListener->setExclusiveForTouch(id);
 		} else {
 			return false;
@@ -572,7 +572,7 @@ bool ScrollViewBase::onSwipeEventBegin(uint32_t id, Vec2 loc, Vec2 delta, Vec2 v
 
 	auto cs = (_layout == Vertical) ? (_contentSize.height) : (_contentSize.width);
 	auto length = getScrollLength();
-	if (!isnan(length) && cs >= length) {
+	if (!sprt::isnan(length) && cs >= length) {
 		return false;
 	}
 
@@ -624,7 +624,7 @@ bool ScrollViewBase::onSwipe(float delta, float velocity, bool ended) {
 		float pos = getScrollPosition();
 
 		float acceleration = (velocity > 0) ? -5000.0f : 5000.0f;
-		if (!isnan(_maxVelocity)) {
+		if (!sprt::isnan(_maxVelocity)) {
 			if (velocity > fabs(_maxVelocity)) {
 				velocity = fabs(_maxVelocity);
 			} else if (velocity < -fabs(_maxVelocity)) {
@@ -640,7 +640,7 @@ bool ScrollViewBase::onSwipe(float delta, float velocity, bool ended) {
 			_controller->onScrollPosition();
 		}
 
-		if (!isnan(_scrollMin)) {
+		if (!sprt::isnan(_scrollMin)) {
 			if (pos < _scrollMin) {
 				float mod = 1.0f / (1.0f + fabsf(_scrollMin - pos) / 5.0f);
 				onOverscrollPerformed(velocity * mod, pos, _scrollMin);
@@ -648,7 +648,7 @@ bool ScrollViewBase::onSwipe(float delta, float velocity, bool ended) {
 			}
 		}
 
-		if (!isnan(_scrollMax)) {
+		if (!sprt::isnan(_scrollMax)) {
 			if (pos > _scrollMax) {
 				float mod = 1.0f / (1.0f + fabsf(_scrollMax - pos) / 5.0f);
 				onOverscrollPerformed(velocity * mod, pos, _scrollMax);
@@ -680,7 +680,7 @@ Rc<ActionInterval> ScrollViewBase::onSwipeFinalizeAction(float velocity) {
 
 	Rc<ActionInterval> a;
 
-	if (!isnan(_maxVelocity)) {
+	if (!sprt::isnan(_maxVelocity)) {
 		if (velocity > fabs(_maxVelocity)) {
 			velocity = fabs(_maxVelocity);
 		} else if (velocity < -fabs(_maxVelocity)) {
@@ -688,7 +688,7 @@ Rc<ActionInterval> ScrollViewBase::onSwipeFinalizeAction(float velocity) {
 		}
 	}
 
-	if (!isnan(boundary)) {
+	if (!sprt::isnan(boundary)) {
 		float pos = getScrollPosition();
 		float duration = fabsf(velocity / acceleration);
 		float path = velocity * duration + acceleration * duration * duration * 0.5f;
@@ -742,14 +742,14 @@ void ScrollViewBase::onAnimationFinished() {
 void ScrollViewBase::fixPosition() {
 	if (_movement == Movement::None) {
 		auto pos = getScrollPosition();
-		if (!isnan(_scrollMin)) {
+		if (!sprt::isnan(_scrollMin)) {
 			if (pos < _scrollMin) {
 				setScrollPosition(_scrollMin);
 				return;
 			}
 		}
 
-		if (!isnan(_scrollMax)) {
+		if (!sprt::isnan(_scrollMax)) {
 			if (pos > _scrollMax) {
 				setScrollPosition(_scrollMax);
 				return;
@@ -777,14 +777,14 @@ void ScrollViewBase::onPosition() {
 	}
 
 	if (_movement == Movement::Auto) {
-		if (!isnan(_scrollMin)) {
+		if (!sprt::isnan(_scrollMin)) {
 			if (newPos < _scrollMin) {
 				onOverscrollPerformed(0, newPos, _scrollMin);
 				return;
 			}
 		}
 
-		if (!isnan(_scrollMax)) {
+		if (!sprt::isnan(_scrollMax)) {
 			if (newPos > _scrollMax) {
 				onOverscrollPerformed(0, newPos, _scrollMax);
 				return;
@@ -795,7 +795,7 @@ void ScrollViewBase::onPosition() {
 	if (_movement != Movement::None && _movement != Movement::Overscroll && newPos - oldPos != 0) {
 		onScroll(newPos - oldPos, false);
 	} else if (_movement == Movement::Overscroll) {
-		if (!isnan(_scrollMin)) {
+		if (!sprt::isnan(_scrollMin)) {
 			if (_scrollPosition < _scrollMin) {
 				if (newPos - oldPos < 0) {
 					onOverscroll(newPos - oldPos);
@@ -804,7 +804,7 @@ void ScrollViewBase::onPosition() {
 			}
 		}
 
-		if (!isnan(_scrollMax)) {
+		if (!sprt::isnan(_scrollMax)) {
 			if (newPos > _scrollMax) {
 				if (newPos - oldPos > 0) {
 					onOverscroll(newPos - oldPos);
@@ -848,7 +848,7 @@ void ScrollViewBase::updateScrollBounds() {
 	_scrollMin = getScrollMinPosition();
 	_scrollMax = getScrollMaxPosition();
 
-	if (!isnan(_savedRelativePosition)) {
+	if (!sprt::isnan(_savedRelativePosition)) {
 		float value = _savedRelativePosition;
 		_savedRelativePosition = nan();
 		setScrollRelativePosition(value);

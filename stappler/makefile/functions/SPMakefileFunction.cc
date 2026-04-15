@@ -23,6 +23,8 @@
 #include "SPFilepath.h"
 #include "SPMakefileVariable.h"
 
+#include <stdio.h>
+
 namespace STAPPLER_VERSIONIZED stappler::makefile {
 
 static bool Function_foreach(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
@@ -105,7 +107,7 @@ static bool Function_shell(const Callback<void(StringView)> &out, void *, Variab
 	FILE *fp;
 	char buf[1_KiB];
 
-	//std::cout << "CMD: " << cmd.data() << "\n";
+	//sprt::cout << "CMD: " << cmd.data() << "\n";
 
 	fp = popen(cmd.data(), "r");
 	if (fp == NULL) {
@@ -170,8 +172,7 @@ static bool Function_error(const Callback<void(StringView)> &out, void *, Variab
 			out << s;
 		}, it, 0, *engine.getCallContext()->err);
 	}
-	engine.getCallContext()->err->reportError(StringView(str.data(), str.size()), nullptr, nullptr,
-			false);
+	engine.getCallContext()->err->reportError(str.weak(), nullptr, nullptr, false);
 	return true;
 }
 
@@ -188,8 +189,7 @@ static bool Function_warning(const Callback<void(StringView)> &out, void *, Vari
 			out << s;
 		}, it, 0, *engine.getCallContext()->err);
 	}
-	engine.getCallContext()->err->reportWarning(StringView(str.data(), str.size()), nullptr,
-			nullptr, false);
+	engine.getCallContext()->err->reportWarning(str.weak(), nullptr, nullptr, false);
 	return true;
 }
 
@@ -206,8 +206,7 @@ static bool Function_info(const Callback<void(StringView)> &out, void *, Variabl
 			out << s;
 		}, it, 0, *engine.getCallContext()->err);
 	}
-	engine.getCallContext()->err->reportInfo(StringView(str.data(), str.size()), nullptr, nullptr,
-			false);
+	engine.getCallContext()->err->reportInfo(str.weak(), nullptr, nullptr, false);
 	return true;
 }
 

@@ -36,11 +36,11 @@ VertexArray::Quad &VertexArray::Quad::setTextureRect(const Rect &texRect, float 
 	float texBottom = (texRect.origin.y + texRect.size.height) / texHeight;
 
 	if (flippedX) {
-		std::swap(texLeft, texRight);
+		sprt::swap(texLeft, texRight);
 	}
 
 	if (flippedY) {
-		std::swap(texTop, texBottom);
+		sprt::swap(texTop, texBottom);
 	}
 
 	if (!rotated) {
@@ -160,7 +160,7 @@ VertexArray::Quad &VertexArray::Quad::setColor(SpanView<Color4F> colors) { // tl
 }
 
 VertexArray::Quad &VertexArray::Quad::setColor(
-		std::initializer_list<Color4F> &&colors) { // tl bl tr br
+		sprt::initializer_list<Color4F> &&colors) { // tl bl tr br
 	return setColor(SpanView<Color4F>(colors.begin(), colors.size()));
 }
 
@@ -321,7 +321,7 @@ void VertexArray::updateColor(const Color4F &color, const Vector<ColorMask> &mas
 		copy();
 	}
 
-	auto count = std::min(_data->data.size(), mask.size());
+	auto count = sprt::min(_data->data.size(), mask.size());
 
 	for (size_t i = 0; i < count; ++i) {
 		switch (mask[i]) {
@@ -357,7 +357,7 @@ void VertexArray::updateColorQuads(const Color4F &color, const Vector<ColorMask>
 	}
 
 	auto quadsCount = _data->data.size() / 4;
-	auto count = std::min(quadsCount, mask.size());
+	auto count = sprt::min(quadsCount, mask.size());
 
 	for (size_t i = 0; i < count; ++i) {
 		switch (mask[i]) {

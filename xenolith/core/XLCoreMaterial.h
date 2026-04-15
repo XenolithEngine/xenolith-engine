@@ -199,11 +199,11 @@ protected:
 
 	Queue *_compiler = nullptr;
 	const TextureSetLayoutData *_targetLayout = nullptr;
-	mutable std::atomic<MaterialId> _attachmentMaterialId = 1;
+	mutable sprt::atomic<MaterialId> _attachmentMaterialId = 1;
 	mutable Rc<MaterialSet> _materialSet;
 	Vector<Rc<Material>> _predefinedMaterials;
 
-	mutable Mutex _dynamicMutex;
+	mutable sprt::mutex _dynamicMutex;
 	mutable Map<Rc<DynamicImage>, DynamicImageTracker> _dynamicTrackers;
 };
 

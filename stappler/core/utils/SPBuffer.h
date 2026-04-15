@@ -25,10 +25,9 @@ THE SOFTWARE.
 #define STAPPLER_CORE_UTILS_SPBUFFER_H_
 
 #include "SPIOBuffer.h"
-#include "SPStringStream.h"
-#include "SPUnicode.h"
 
 #include <sprt/runtime/stack_buffer.h>
+#include <sprt/runtime/stream.h>
 
 namespace STAPPLER_VERSIONIZED stappler {
 
@@ -73,7 +72,7 @@ public:
 		return *this;
 	}
 
-	template <typename CharType, typename std::enable_if<sizeof(CharType) == 1>::type * = nullptr>
+	template <typename CharType, typename sprt::enable_if<sizeof(CharType) == 1>::type * = nullptr>
 	size_t put(const CharType *ptr, size_t len) {
 		size_t ret = 0;
 		while (ret < len) {
@@ -81,7 +80,7 @@ public:
 			if (bsize) {
 				const size_t remaining = len - ret;
 				const size_t nlen = min(bsize, remaining);
-				memcpy((void *)_ptr, (const void *)ptr, nlen);
+				sprt::memcpy((void *)_ptr, (const void *)ptr, nlen);
 				ret += nlen;
 				ptr += nlen;
 				_ptr += nlen;
@@ -125,21 +124,18 @@ public:
 	}
 
 	// toString interface adapter
-	template <typename... Args,
-			std::enable_if_t<string::detail::IsFastToStringAvailable<Args...>::value> * = nullptr>
+	template <typename... Args>
 	StringView putStrings(Args &&...args) {
-		auto size = string::detail::getBufferSize(std::forward<Args>(args)...);
+		auto size = sprt::StreamTraits<char>::calculateSize(sprt::forward<Args>(args)...);
 		size_t emptyBytes = capacity() - (_ptr - _buffer.data());
-		if (emptyBytes < size) {
-			overflow(emptyBytes);
+		if (emptyBytes < size + 1) {
+			overflow(size + 1 - emptyBytes);
 		}
+		emptyBytes = capacity() - (_ptr - _buffer.data());
 
 		char *start = (char *)_ptr;
-		auto s = string::detail::writeBuffer(start, std::forward<Args>(args)...);
-		if (s != size) {
-			std::cout << "[core]: Invalid buffer size for toString<fast>\n";
-			abort();
-		}
+		auto s = sprt::StreamTraits<char>::toStringBuf(start, size, sprt::forward<Args>(args)...);
+		sprt_passert(s != size, "[core]: Invalid buffer size for toString<fast>");
 		_ptr += s;
 		if (_ptr > _buffer.data() + _input) {
 			_input = _ptr - _buffer.data();
@@ -148,11 +144,10 @@ public:
 		return StringView(start, s);
 	}
 
-	template <typename... Args,
-			std::enable_if_t<string::detail::IsFastToStringAvailable<Args...>::value> * = nullptr>
+	template <typename... Args>
 	StringView resetWithStrings(Args &&...args) {
 		clear();
-		return putStrings(std::forward<Args>(args)...);
+		return putStrings(sprt::forward<Args>(args)...);
 	}
 
 	template <typename Reader = StringView>

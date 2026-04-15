@@ -86,8 +86,8 @@ template <typename StringReader>
 struct Tag;
 
 template <typename ReaderType, typename StringReader = StringViewUtf8,
-		typename TagType = typename std::conditional<
-				std::is_same<typename ReaderType::Tag, html::Tag<StringReader>>::value,
+		typename TagType = typename sprt::conditional<
+				sprt::is_same<typename ReaderType::Tag, html::Tag<StringReader>>::value,
 				html::Tag<StringReader>, typename ReaderType::Tag >::type>
 void parse(ReaderType &r, const StringReader &s, ParserFlags = ParserFlags::None);
 
@@ -572,7 +572,7 @@ struct Parser {
 	ParserFlags flags = ParserFlags::None;
 	ReaderType *reader;
 	StringReader current;
-	memory::vector<TagType> tagStack;
+	sprt::__malloc_vector<TagType> tagStack;
 };
 
 template <typename ReaderType, typename StringReader, typename TagType>

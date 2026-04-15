@@ -104,11 +104,11 @@ protected:
 	VkDeviceSize _bufferSize = 0;
 	VkDeviceSize _optimalRowAlignment = 1;
 	VkDeviceSize _optimalTextureAlignment = 1;
-	std::atomic<uint32_t> _bufferOffset = 0;
-	std::atomic<uint32_t> _persistentOffset = 0;
-	std::atomic<uint32_t> _copyFromTmpOffset = 0;
-	std::atomic<uint32_t> _copyToPersistentOffset = 0;
-	std::atomic<uint32_t> _textureTargetOffset = 0;
+	sprt::atomic<uint32_t> _bufferOffset = 0;
+	sprt::atomic<uint32_t> _persistentOffset = 0;
+	sprt::atomic<uint32_t> _copyFromTmpOffset = 0;
+	sprt::atomic<uint32_t> _copyToPersistentOffset = 0;
+	sprt::atomic<uint32_t> _textureTargetOffset = 0;
 	Rc<Buffer> _frontBuffer;
 	Rc<Buffer> _persistentTargetBuffer;
 	Rc<core::DataAtlas> _atlas;
@@ -118,7 +118,7 @@ protected:
 	Vector<RenderFontCharPersistentData> _copyPersistentCharData;
 	Vector<RenderFontCharTextureData> _textureTarget;
 	Extent2 _imageExtent;
-	Mutex _mutex;
+	sprt::mutex _mutex;
 	Function<void(bool)> _onInput;
 };
 
@@ -200,24 +200,24 @@ FontAttachmentHandle::~FontAttachmentHandle() { }
 
 bool FontAttachmentHandle::setup(FrameQueue &handle, Function<void(bool)> &&) {
 	auto dev = static_cast<Device *>(handle.getFrame()->getDevice());
-	_optimalTextureAlignment = std::max(
+	_optimalTextureAlignment = sprt::max(
 			dev->getInfo().properties.device10.properties.limits.optimalBufferCopyOffsetAlignment,
 			VkDeviceSize(4));
-	_optimalRowAlignment = std::max(
+	_optimalRowAlignment = sprt::max(
 			dev->getInfo().properties.device10.properties.limits.optimalBufferCopyRowPitchAlignment,
 			VkDeviceSize(4));
 	return true;
 }
 
 static Extent2 FontAttachmentHandle_buildTextureData(Vector<SpanView<VkBufferImageCopy>> requests) {
-	memory::vector<VkBufferImageCopy *> layoutData;
+	mem_pool::Vector<VkBufferImageCopy *> layoutData;
 	layoutData.reserve(requests.size());
 
 	float totalSquare = 0.0f;
 
 	for (auto &v : requests) {
 		for (auto &d : v) {
-			auto it = std::lower_bound(layoutData.begin(), layoutData.end(), &d,
+			auto it = sprt::lower_bound(layoutData.begin(), layoutData.end(), &d,
 					[](const VkBufferImageCopy *l, const VkBufferImageCopy *r) -> bool {
 				if (l->imageExtent.height == r->imageExtent.height
 						&& l->imageExtent.width == r->imageExtent.width) {
@@ -252,7 +252,7 @@ static Extent2 FontAttachmentHandle_buildTextureData(Vector<SpanView<VkBufferIma
 		[](void *ptr, uint16_t value) {
 		(reinterpret_cast<VkBufferImageCopy *>(ptr))->imageOffset.y = value;
 	}, // y
-		[](void *ptr, uint16_t value) {}, // tex
+		[](void *ptr, uint16_t value) { }, // tex
 	});
 
 	auto span = makeSpanView(reinterpret_cast<void **>(layoutData.data()), layoutData.size());
@@ -474,7 +474,7 @@ void FontAttachmentHandle::pushCopyTexture(uint32_t reqIdx, const font::CharText
 				texData.height, " vs. ", texData.bitmapWidth, ";", texData.bitmapRows, "\n");
 	}
 
-	auto size = uint32_t(texData.bitmapRows * std::abs(texData.pitch));
+	auto size = uint32_t(texData.bitmapRows * sprt::abs(texData.pitch));
 	auto offset = _frontBuffer->reserveBlock(size, _optimalTextureAlignment);
 	if (offset == maxOf<uint64_t>() || offset + size > CopyBlockSize) {
 		log::error("FontAttachmentHandle",

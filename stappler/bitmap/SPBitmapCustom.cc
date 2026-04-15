@@ -56,7 +56,7 @@ static uint32_t detectSvgSize(StringView value) {
 		return 0;
 	}
 
-	return uint32_t(ceilf(fvalue));
+	return uint32_t(sprt::ceilf(fvalue));
 }
 
 static bool detectSvg(StringView str, uint32_t &w, uint32_t &h) {
@@ -130,9 +130,10 @@ static bool isTiff(const uint8_t *data, size_t dataLen) {
 	static const char *TIFF_II = "II";
 	static const char *TIFF_MM = "MM";
 
-	return (memcmp(data, TIFF_II, 2) == 0 && *(static_cast<const unsigned char *>(data) + 2) == 42
+	return (sprt::memcmp(data, TIFF_II, 2) == 0
+				   && *(static_cast<const unsigned char *>(data) + 2) == 42
 				   && *(static_cast<const unsigned char *>(data) + 3) == 0)
-			|| (memcmp(data, TIFF_MM, 2) == 0
+			|| (sprt::memcmp(data, TIFF_MM, 2) == 0
 					&& *(static_cast<const unsigned char *>(data) + 2) == 0
 					&& *(static_cast<const unsigned char *>(data) + 3) == 42);
 }
@@ -197,7 +198,7 @@ static bool getTiffImageSizeImpl(const io::Producer &file, StackBuffer<512> &dat
 static bool getTiffImageSize(const io::Producer &file, StackBuffer<512> &data, uint32_t &width,
 		uint32_t &height) {
 	if (isTiff(data.data(), data.size())) {
-		if (memcmp(data.data(), "II", 2) == 0) {
+		if (sprt::memcmp(data.data(), "II", 2) == 0) {
 			if (getTiffImageSizeImpl<BytesViewTemplate<sprt::endian::little>>(file, data, width,
 						height)) {
 				return true;

@@ -120,7 +120,7 @@ inline void Decoder<Interface>::parseBufferString(StringType &ref) {
 			if (r.is('u')) {
 				++r;
 				if (r >= 4) {
-					unicode::utf8Encode(ref,
+					sprt::unicode::utf8EncodeCb([&](char ch) { ref.push_back(ch); },
 							char16_t(base16::hexToChar(r[0], r[1]) << 8
 									| base16::hexToChar(r[2], r[3])));
 					r += 4;
@@ -167,7 +167,7 @@ inline void Decoder<Interface>::parseValue(ValueType &current) {
 	case '"':
 		current._type = ValueType::Type::CHARSTRING;
 		parseBufferString(buf);
-		current.strVal = new (std::nothrow) StringType(sp::move(buf));
+		current.strVal = new (sprt::nothrow) StringType(sp::move(buf));
 		break;
 	case 't':
 		current._type = ValueType::Type::BOOLEAN;
@@ -193,13 +193,13 @@ inline void Decoder<Interface>::parseValue(ValueType &current) {
 	case '-': parseJsonNumber(current); break;
 	case '[':
 		current._type = ValueType::Type::ARRAY;
-		current.arrayVal = new (std::nothrow) typename ValueType::ArrayType();
+		current.arrayVal = new (sprt::nothrow) typename ValueType::ArrayType();
 		//current.arrayVal->reserve(10);
 		push(BackIsArray, &current);
 		break;
 	case '{':
 		current._type = ValueType::Type::DICTIONARY;
-		current.dictVal = new (std::nothrow) typename ValueType::DictionaryType();
+		current.dictVal = new (sprt::nothrow) typename ValueType::DictionaryType();
 		push(BackIsDict, &current);
 		break;
 	case 'n':

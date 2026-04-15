@@ -214,21 +214,21 @@ protected:
 
 	// Presentation interval is not the same, as frame interval, it's time between two present event
 	uint64_t _lastPresentationTime = 0;
-	std::atomic<uint64_t> _lastPresentationInterval = 0;
+	sprt::atomic<uint64_t> _lastPresentationInterval = 0;
 	MovingAverage<FrameAverageCount, uint64_t> _avgPresentationInterval;
-	std::atomic<uint64_t> _avgPresentationIntervalValue = 0;
+	sprt::atomic<uint64_t> _avgPresentationIntervalValue = 0;
 
 	uint64_t _lastFrameTime = 0;
 	MovingAverage<FrameAverageCount, uint64_t> _avgFrameTime;
-	std::atomic<uint64_t> _avgFrameTimeValue = 0;
+	sprt::atomic<uint64_t> _avgFrameTimeValue = 0;
 
 	uint64_t _lastFenceFrameTime = 0;
 	MovingAverage<FrameAverageCount, uint64_t> _avgFenceInterval;
-	std::atomic<uint64_t> _avgFenceIntervalValue = 0;
+	sprt::atomic<uint64_t> _avgFenceIntervalValue = 0;
 
 	uint64_t _lastTimestampFrameTime = 0;
 	MovingAverage<FrameAverageCount, uint64_t> _avgTimestampInterval;
-	std::atomic<uint64_t> _avgTimestampIntervalValue = 0;
+	sprt::atomic<uint64_t> _avgTimestampIntervalValue = 0;
 
 	uint64_t _frameOrder = 0; // current scheduled frame order
 
@@ -247,7 +247,7 @@ protected:
 	bool _presentWithWindowTiming = false;
 
 	// New frames, that waits next swapchain image
-	std::deque<Rc<PresentationFrame>> _framesAwaitingImages;
+	List<Rc<PresentationFrame>> _framesAwaitingImages;
 
 	// Frames, waiting to be presented
 	Vector< Pair<Rc<PresentationFrame>, Rc<ImageStorage>>> _scheduledForPresent;
@@ -259,7 +259,7 @@ protected:
 	Set<Swapchain::SwapchainAcquiredImage *> _requestedSwapchainImage;
 
 	// Already acquired swapchain images
-	std::deque<Rc<Swapchain::SwapchainAcquiredImage>> _acquiredSwapchainImages;
+	List<Rc<Swapchain::SwapchainAcquiredImage>> _acquiredSwapchainImages;
 
 	Set<PresentationFrame *> _activeFrames;
 	Set<PresentationFrame *> _totalFrames;

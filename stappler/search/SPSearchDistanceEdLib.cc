@@ -24,12 +24,13 @@ THE SOFTWARE.
 
 #include "SPCommon.h"
 #include "SPSearchDistance.h"
+#include <stdlib.h>
 
 namespace STAPPLER_VERSIONIZED stappler::search {
 
 // from https://github.com/Martinsos/edlib
 
-using bytes = sprt::memory::bytes;
+using bytes = sprt::__pool_bytes;
 
 typedef uint64_t Word;
 static const int WORD_SIZE = sizeof(Word) * 8; // Size of Word in bits
@@ -213,7 +214,7 @@ private:
 	bool matrix[MAX_UCHAR + 1][MAX_UCHAR + 1];
 
 public:
-	EqualityDefinition(const std::string &alphabet) {
+	EqualityDefinition(sprt::StringView alphabet) {
 		for (int i = 0; i < static_cast<int>(alphabet.size()); i++) {
 			for (int j = 0; j < static_cast<int>(alphabet.size()); j++) { matrix[i][j] = (i == j); }
 		}
@@ -245,7 +246,7 @@ static int obtainAlignmentHirschberg(const unsigned char *query, const unsigned 
 static int obtainAlignmentTraceback(int queryLength, int targetLength, int bestScore,
 		const AlignmentData *alignData, unsigned char **alignment, int *alignmentLength);
 
-static std::string transformSequences(const char *queryOriginal, int queryLength,
+static sprt::__malloc_string transformSequences(const char *queryOriginal, int queryLength,
 		const char *targetOriginal, int targetLength, unsigned char **queryTransformed,
 		unsigned char **targetTransformed);
 
@@ -265,22 +266,22 @@ static EdlibAlignResult edlibAlign(const char *const queryOriginal, const int qu
 	EdlibAlignResult result;
 	result.status = EDLIB_STATUS_OK;
 	result.editDistance = -1;
-	result.endLocations = result.startLocations = NULL;
+	result.endLocations = result.startLocations = nullptr;
 	result.numLocations = 0;
-	result.alignment = NULL;
+	result.alignment = nullptr;
 	result.alignmentLength = 0;
 	result.alphabetLength = 0;
 
 	/*------------ TRANSFORM SEQUENCES AND RECOGNIZE ALPHABET -----------*/
 	unsigned char *query, *target;
-	std::string alphabet = transformSequences(queryOriginal, queryLength, targetOriginal,
+	sprt::__malloc_string alphabet = transformSequences(queryOriginal, queryLength, targetOriginal,
 			targetLength, &query, &target);
 	result.alphabetLength = static_cast<int>(alphabet.size());
 	/*-------------------------------------------------------*/
 
 	// Handle special situation when at least one of the sequences has length 0.
 	if (queryLength == 0 || targetLength == 0) {
-		result.editDistance = std::max(queryLength, targetLength);
+		result.editDistance = sprt::max(queryLength, targetLength);
 		result.endLocations = static_cast<int *>(malloc(sizeof(int) * 1));
 		result.endLocations[0] = targetLength - 1;
 		result.numLocations = 1;
@@ -301,7 +302,7 @@ static EdlibAlignResult edlibAlign(const char *const queryOriginal, const int qu
 	/*------------------ MAIN CALCULATION -------------------*/
 	// TODO: Store alignment data only after k is determined? That could make things faster.
 	int positionNW; // Used only when mode is NW.
-	AlignmentData *alignData = NULL;
+	AlignmentData *alignData = nullptr;
 	bool dynamicK = false;
 	int k = config.k;
 	if (k < 0) { // If valid k is not given, auto-adjust k until solution is found.
@@ -468,8 +469,8 @@ static inline int max(const int x, const int y) { return x > y ? x : y; }
  * @param [in] block
  * @return Values of cells in block, starting with bottom cell in block.
  */
-static inline std::vector<int> getBlockCellValues(const Block block) {
-	std::vector<int> scores(WORD_SIZE);
+static inline sprt::__malloc_vector<int> getBlockCellValues(const Block block) {
+	sprt::__malloc_vector<int> scores(WORD_SIZE);
 	int score = block.score;
 	Word mask = HIGH_BIT_MASK;
 	for (int i = 0; i < WORD_SIZE - 1; i++) {
@@ -534,7 +535,7 @@ static inline void readBlockReverse(const Block block, int *const dest) {
  * @return True if all cells in block have value larger than k, otherwise false.
  */
 static inline bool allBlockCellsLarger(const Block block, const int k) {
-	std::vector<int> scores = getBlockCellValues(block);
+	sprt::__malloc_vector<int> scores = getBlockCellValues(block);
 	for (int i = 0; i < WORD_SIZE; i++) {
 		if (scores[i] <= k) {
 			return false;
@@ -613,7 +614,7 @@ static int myersCalcEditDistanceNW(const Word *const Peq, const int W, const int
 	} else if (targetStopPosition > -1) {
 		*alignData = new AlignmentData(maxNumBlocks, 1);
 	} else {
-		*alignData = NULL;
+		*alignData = nullptr;
 	}
 
 	const unsigned char *targetChar = target;
@@ -686,7 +687,7 @@ static int myersCalcEditDistanceNW(const Word *const Peq, const int W, const int
 				== 0) { // Every some columns do more expensive but more efficient reduction
 			while (lastBlock >= firstBlock) {
 				// If all cells outside of band, remove block
-				std::vector<int> scores = getBlockCellValues(*bl);
+				sprt::__malloc_vector<int> scores = getBlockCellValues(*bl);
 				int numCells = lastBlock == maxNumBlocks - 1 ? WORD_SIZE - W : WORD_SIZE;
 				int r = lastBlock * WORD_SIZE + numCells - 1;
 				bool reduce = true;
@@ -707,7 +708,7 @@ static int myersCalcEditDistanceNW(const Word *const Peq, const int W, const int
 
 			while (firstBlock <= lastBlock) {
 				// If all cells outside of band, remove block
-				std::vector<int> scores = getBlockCellValues(blocks[firstBlock]);
+				sprt::__malloc_vector<int> scores = getBlockCellValues(blocks[firstBlock]);
 				int numCells = firstBlock == maxNumBlocks - 1 ? WORD_SIZE - W : WORD_SIZE;
 				int r = firstBlock * WORD_SIZE + numCells - 1;
 				bool reduce = true;
@@ -1013,7 +1014,7 @@ static int obtainAlignmentTraceback(const int queryLength, const int targetLengt
 
 	*alignment = static_cast<unsigned char *>(
 			realloc(*alignment, (*alignmentLength) * sizeof(unsigned char)));
-	std::reverse(*alignment, *alignment + (*alignmentLength));
+	sprt::reverse(*alignment, *alignment + (*alignmentLength));
 	return EDLIB_STATUS_OK;
 }
 
@@ -1067,7 +1068,7 @@ static int obtainAlignment(const unsigned char *const query, const unsigned char
 			+ 2ll * sizeof(int) * targetLength;
 	if (alignmentDataSize < 1'024 * 1'024) {
 		int score_, endLocation_; // Used only to call function.
-		AlignmentData *alignData = NULL;
+		AlignmentData *alignData = nullptr;
 		Word *Peq = buildPeq(alphabetLength, query, queryLength, equalityDefinition);
 		myersCalcEditDistanceNW(Peq, W, maxNumBlocks, queryLength, target, targetLength, bestScore,
 				&score_, &endLocation_, true, &alignData, -1);
@@ -1122,13 +1123,13 @@ static int obtainAlignmentHirschberg(const unsigned char *const query,
 	const int rightHalfWidth = targetLength - leftHalfWidth;
 
 	// Calculate left half.
-	AlignmentData *alignDataLeftHalf = NULL;
+	AlignmentData *alignDataLeftHalf = nullptr;
 	int leftHalfCalcStatus = myersCalcEditDistanceNW(Peq, W, maxNumBlocks, queryLength, target,
 			targetLength, bestScore, &score_, &endLocation_, false, &alignDataLeftHalf,
 			leftHalfWidth - 1);
 
 	// Calculate right half.
-	AlignmentData *alignDataRightHalf = NULL;
+	AlignmentData *alignDataRightHalf = nullptr;
 	int rightHalfCalcStatus = myersCalcEditDistanceNW(rPeq, W, maxNumBlocks, queryLength, rTarget,
 			targetLength, bestScore, &score_, &endLocation_, false, &alignDataRightHalf,
 			rightHalfWidth - 1);
@@ -1247,12 +1248,12 @@ static int obtainAlignmentHirschberg(const unsigned char *const query,
 	const int lrHeight = queryLength - ulHeight;
 	const int ulWidth = leftHalfWidth;
 	const int lrWidth = rightHalfWidth;
-	unsigned char *ulAlignment = NULL;
+	unsigned char *ulAlignment = nullptr;
 	int ulAlignmentLength;
 	int ulStatusCode = obtainAlignment(query, rQuery + lrHeight, ulHeight, target,
 			rTarget + lrWidth, ulWidth, equalityDefinition, alphabetLength, leftScore, &ulAlignment,
 			&ulAlignmentLength);
-	unsigned char *lrAlignment = NULL;
+	unsigned char *lrAlignment = nullptr;
 	int lrAlignmentLength;
 	int lrStatusCode = obtainAlignment(query + ulHeight, rQuery, lrHeight, target + ulWidth,
 			rTarget, lrWidth, equalityDefinition, alphabetLength, rightScore, &lrAlignment,
@@ -1270,8 +1271,8 @@ static int obtainAlignmentHirschberg(const unsigned char *const query,
 	// Build alignment by concatenating upper left alignment with lower right alignment.
 	*alignmentLength = ulAlignmentLength + lrAlignmentLength;
 	*alignment = static_cast<unsigned char *>(malloc((*alignmentLength) * sizeof(unsigned char)));
-	memcpy(*alignment, ulAlignment, ulAlignmentLength);
-	memcpy(*alignment + ulAlignmentLength, lrAlignment, lrAlignmentLength);
+	sprt::memcpy(*alignment, ulAlignment, ulAlignmentLength);
+	sprt::memcpy(*alignment + ulAlignmentLength, lrAlignment, lrAlignmentLength);
 
 	free(ulAlignment);
 	free(lrAlignment);
@@ -1297,8 +1298,8 @@ static int obtainAlignmentHirschberg(const unsigned char *const query,
  * @return  Alphabet as a string of unique characters, where index of each character is its value in transformed
  *          sequences.
  */
-static std::string transformSequences(const char *const queryOriginal, const int queryLength,
-		const char *const targetOriginal, const int targetLength,
+static sprt::__malloc_string transformSequences(const char *const queryOriginal,
+		const int queryLength, const char *const targetOriginal, const int targetLength,
 		unsigned char **const queryTransformed, unsigned char **const targetTransformed) {
 	// Alphabet is constructed from letters that are present in sequences.
 	// Each letter is assigned an ordinal number, starting from 0 up to alphabetLength - 1,
@@ -1307,7 +1308,7 @@ static std::string transformSequences(const char *const queryOriginal, const int
 	*queryTransformed = static_cast<unsigned char *>(malloc(sizeof(unsigned char) * queryLength));
 	*targetTransformed = static_cast<unsigned char *>(malloc(sizeof(unsigned char) * targetLength));
 
-	std::string alphabet = "";
+	sprt::__malloc_string alphabet = "";
 
 	// Alphabet information, it is constructed on fly while transforming sequences.
 	// letterIdx[c] is index of letter c in alphabet.

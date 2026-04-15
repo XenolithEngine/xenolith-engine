@@ -25,7 +25,6 @@
 #define XENOLITH_CORE_XLCOREENUM_H_
 
 #include "SPCommon.h" // IWYU pragma: keep
-#include "SPStringView.h"
 
 #include <sprt/runtime/window/surface_info.h>
 #include <sprt/runtime/window/window_info.h>
@@ -622,30 +621,42 @@ SP_PUBLIC PipelineStage getStagesForQueue(QueueFlags);
 SP_PUBLIC StringView getDescriptorTypeName(DescriptorType);
 SP_PUBLIC void getProgramStageDescription(const CallbackStream &, ProgramStage fmt);
 
-inline const CallbackStream &operator<<(const CallbackStream &stream, DescriptorType t) {
-	stream << xenolith::core::getDescriptorTypeName(t);
-	return stream;
-}
-
-inline std::ostream &operator<<(std::ostream &stream, DescriptorType t) {
-	stream << xenolith::core::getDescriptorTypeName(t);
-	return stream;
-}
-
-inline std::ostream &operator<<(std::ostream &stream, ProgramStage t) {
-	getProgramStageDescription(memory::makeCallback(stream), t);
-	return stream;
-}
-
 } // namespace stappler::xenolith::core
 
-namespace sprt::window {
+namespace sprt {
 
-inline std::ostream &operator<<(std::ostream &stream, WindowState f) {
-	STAPPLER_VERSIONIZED_NAMESPACE::memory::makeCallback(stream) << f;
-	return stream;
-}
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::DescriptorType> {
+	using DescriptorType = STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::DescriptorType;
 
-} // namespace sprt::window
+	template <io_character CharType>
+	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const DescriptorType &value) {
+		cb << STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::getDescriptorTypeName(value);
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const DescriptorType &value) {
+		cb << STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::getDescriptorTypeName(value);
+	}
+};
+
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::ProgramStage> {
+	using ProgramStage = STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::ProgramStage;
+
+	template <io_character CharType>
+	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const ProgramStage &value) {
+		STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::getProgramStageDescription(
+				[&](StringView str) { cb << str; }, value);
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const ProgramStage &value) {
+		STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::getProgramStageDescription(
+				[&](StringView str) { cb << str; }, value);
+	}
+};
+
+} // namespace sprt
 
 #endif /* XENOLITH_CORE_XLCOREENUM_H_ */

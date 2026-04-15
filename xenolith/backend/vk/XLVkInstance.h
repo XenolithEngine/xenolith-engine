@@ -80,13 +80,13 @@ struct SP_PUBLIC LoopBackendInfo : core::LoopBackendInfo {
 
 class SP_PUBLIC Instance : public core::Instance, public InstanceTable {
 public:
-	using OptVec = std::bitset<toInt(OptionalInstanceExtension::Max)>;
+	using OptVec = sprt::bitset<toInt(OptionalInstanceExtension::Max)>;
 
 	using PresentSupportCallback = Function<SurfaceBackendMask(const Instance *,
 			VkPhysicalDevice device, uint32_t familyIdx)>;
 
 	Instance(VkInstance, const PFN_vkGetInstanceProcAddr getInstanceProcAddr,
-			uint32_t targetVersion, OptVec &&optionals, Dso &&vulkanModule,
+			uint32_t targetVersion, OptVec &&optionals, sprt::Dso &&vulkanModule,
 			PresentSupportCallback &&, SurfaceBackendMask &&, core::InstanceFlags flags);
 	virtual ~Instance();
 
@@ -104,7 +104,7 @@ public:
 
 	VkInstance getInstance() const;
 
-	void printDevicesInfo(std::ostream &stream, bool initOnly = false) const;
+	void printDevicesInfo(const CallbackStream &stream, bool initOnly = false) const;
 
 	uint32_t getVersion() const { return _version; }
 

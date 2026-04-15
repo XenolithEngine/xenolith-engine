@@ -580,10 +580,14 @@ void performStringTests() {
 	});
 
 	runTest(stream, "operator+=(double) test", count, passed, [&] {
+	// This SHOULD produce warning, but works with well-defined behavior
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wliteral-conversion"
 		str += 76.85;
 		stream << str;
 		return str.size() == "This is a string.L"_len
 				&& strcmp(str.data(), "This is a string.L") == 0;
+#pragma clang diagnostic pop
 	});
 
 	runTest(stream, "Empty comparation test", count, passed, [&] {

@@ -76,9 +76,9 @@ enum class CommandFlags : uint16_t {
 SP_DEFINE_ENUM_AS_MASK(CommandFlags)
 
 struct SP_PUBLIC MaterialInfo {
-	std::array<uint64_t, config::MaxMaterialImages> images = {0};
-	std::array<uint16_t, config::MaxMaterialImages> samplers = {0};
-	std::array<core::ColorMode, config::MaxMaterialImages> colorModes = {core::ColorMode()};
+	sprt::array<uint64_t, config::MaxMaterialImages> images = {0};
+	sprt::array<uint16_t, config::MaxMaterialImages> samplers = {0};
+	sprt::array<core::ColorMode, config::MaxMaterialImages> colorModes = {core::ColorMode()};
 	core::PipelineMaterialInfo pipeline;
 
 	uint64_t hash() const {
@@ -92,12 +92,12 @@ struct SP_PUBLIC MaterialInfo {
 
 	bool hasImage(uint64_t id) const;
 
-	MaterialInfo() { memset(this, 0, sizeof(MaterialInfo)); }
+	MaterialInfo() { sprt::memset(this, 0, sizeof(MaterialInfo)); }
 };
 
 struct SP_PUBLIC ZOrderLess {
 	bool operator()(const SpanView<ZOrder> &l, const SpanView<ZOrder> &r) const noexcept {
-		auto len = std::max(l.size(), r.size());
+		auto len = sprt::max(l.size(), r.size());
 		for (size_t i = 0; i < len; ++i) {
 			auto valL = (i < l.size()) ? l.at(i) : ZOrder(0);
 			auto valR = (i < r.size()) ? r.at(i) : ZOrder(0);

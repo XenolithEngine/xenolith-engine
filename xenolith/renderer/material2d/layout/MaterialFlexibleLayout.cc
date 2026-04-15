@@ -86,18 +86,18 @@ void FlexibleLayout::handleContentSizeDirty() {
 	if (_flexibleNode) {
 		auto heightLimit = _flexibleNode->getHeightLimits(true);
 		if (!isnan(heightLimit.first)) {
-			realFlexMin = std::max(heightLimit.first, realFlexMin);
+			realFlexMin = sprt::max(heightLimit.first, realFlexMin);
 		}
 
 		if (!isnan(heightLimit.second)) {
-			realFlexMax = std::max(heightLimit.second, realFlexMax);
+			realFlexMax = sprt::max(heightLimit.second, realFlexMax);
 		}
 	}
 
 	if (_flexibleHeightFunction) {
 		auto ret = _flexibleHeightFunction();
-		realFlexMin = std::max(ret.first, realFlexMin);
-		realFlexMax = std::min(ret.second, realFlexMax);
+		realFlexMin = sprt::max(ret.first, realFlexMin);
+		realFlexMax = sprt::min(ret.second, realFlexMax);
 	}
 
 	_realFlexibleMinHeight = realFlexMin;
@@ -115,8 +115,8 @@ void FlexibleLayout::setBaseNode(ScrollView *node, ZOrder zOrder) {
 		}
 		_baseNode = node;
 		if (_baseNode) {
-			_baseNode->setScrollCallback(std::bind(&FlexibleLayout::onScroll, this,
-					std::placeholders::_1, std::placeholders::_2));
+			_baseNode->setScrollCallback(sprt::bind(&FlexibleLayout::onScroll, this,
+					sprt::placeholders::_1, sprt::placeholders::_2));
 			if (_baseNode->isVertical()) {
 				_baseNode->setOverscrollFrontOffset(getCurrentFlexibleHeight());
 			}

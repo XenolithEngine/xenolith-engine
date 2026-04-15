@@ -37,13 +37,13 @@
 
 namespace STAPPLER_VERSIONIZED stappler::document {
 
-static std::atomic<uint64_t> s_docId = 1;
+static sprt::atomic<uint64_t> s_docId = 1;
 
 DocumentData::~DocumentData() { }
 
 DocumentData::DocumentData(memory::pool_t *p, StringView str) : pool(p), id(s_docId.fetch_add(1)) {
 	if (str.empty()) {
-		name = StringView(string::toString<memory::StandartInterface>(id)).pdup(pool);
+		name = sprt::StreamTraits<char>::allocateStringView(pool, id);
 	} else {
 		name = str.pdup(pool);
 	}
@@ -78,11 +78,11 @@ bool Document::canOpen(memory::pool_t *p, BytesView data, StringView ct) {
 }
 
 Rc<Document> Document::open(FileInfo path, StringView ct) {
-	return Document::open(memory::app_root_pool, path, ct);
+	return Document::open(sprt::memory::app_root_pool, path, ct);
 }
 
 Rc<Document> Document::open(BytesView data, StringView ct) {
-	return Document::open(memory::app_root_pool, data, ct);
+	return Document::open(sprt::memory::app_root_pool, data, ct);
 }
 
 Rc<Document> Document::open(memory::pool_t *p, FileInfo path, StringView ct) {
@@ -99,7 +99,7 @@ Document::~Document() {
 	}
 }
 
-bool Document::init() { return init(memory::app_root_pool); }
+bool Document::init() { return init(sprt::memory::app_root_pool); }
 
 bool Document::init(memory::pool_t *pool) {
 	_pool = memory::pool::create(pool);

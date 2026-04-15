@@ -81,20 +81,20 @@ public:
 	virtual void cancelTextInput() = 0;
 };
 
-using InputEventMask = std::bitset<toInt(InputEventName::Max)>;
-using InputButtonMask = std::bitset<toInt(InputMouseButton::Max)>;
-using InputKeyMask = std::bitset<toInt(InputKeyCode::Max)>;
+using InputEventMask = sprt::bitset<toInt(InputEventName::Max)>;
+using InputButtonMask = sprt::bitset<toInt(InputMouseButton::Max)>;
+using InputKeyMask = sprt::bitset<toInt(InputKeyCode::Max)>;
 
 SP_PUBLIC extern InputEventMask EventMaskTouch;
 SP_PUBLIC extern InputEventMask EventMaskKey;
 
-SP_PUBLIC InputButtonMask makeButtonMask(std::initializer_list<InputMouseButton> &&);
+SP_PUBLIC InputButtonMask makeButtonMask(sprt::initializer_list<InputMouseButton> &&);
 SP_PUBLIC InputButtonMask makeButtonMask(InputMouseButton);
 
-SP_PUBLIC InputEventMask makeEventMask(std::initializer_list<InputEventName> &&);
+SP_PUBLIC InputEventMask makeEventMask(sprt::initializer_list<InputEventName> &&);
 SP_PUBLIC InputEventMask makeEventMask(InputEventName);
 
-SP_PUBLIC InputKeyMask makeKeyMask(std::initializer_list<InputKeyCode> &&);
+SP_PUBLIC InputKeyMask makeKeyMask(sprt::initializer_list<InputKeyCode> &&);
 SP_PUBLIC InputKeyMask makeKeyMask(InputKeyCode);
 
 struct InputTouchInfo {
@@ -208,7 +208,7 @@ namespace std {
 template <>
 struct SP_PUBLIC hash<STAPPLER_VERSIONIZED_NAMESPACE::xenolith::InputEventData> {
 	size_t operator()(const STAPPLER_VERSIONIZED_NAMESPACE::xenolith::InputEventData &ev) const {
-		return std::hash<uint32_t>{}(ev.id);
+		return sprt::hash<uint32_t>{}(ev.id);
 	}
 };
 

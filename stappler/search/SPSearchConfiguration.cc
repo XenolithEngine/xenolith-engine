@@ -169,7 +169,7 @@ static bool stemWordDefault(Language lang, StemmerEnv *env, ParserToken tok, Str
 
 struct Configuration::Data : AllocBase {
 	pool_t *pool = nullptr;
-	std::atomic<uint32_t> refCount = 1;
+	sprt::atomic<uint32_t> refCount = 1;
 	Language language = Language::Simple;
 	StemmerEnv *primary = nullptr;
 	StemmerEnv *secondary = nullptr;
@@ -277,7 +277,7 @@ size_t Configuration::makeSearchVector(SearchVector &vec, StringView str, Search
 							.first->first;
 		} else {
 			auto value = sprt::pair(counter, rank);
-			auto iit = std::lower_bound(it->second.begin(), it->second.end(), value,
+			auto iit = sprt::lower_bound(it->second.begin(), it->second.end(), value,
 					[&](const sprt::pair<size_t, SearchData::Rank> &l,
 							const sprt::pair<size_t, SearchData::Rank> &r) {
 				if (l.first != r.first) {
@@ -472,7 +472,7 @@ String Configuration::makeHeadline(const HeadlineConfig &cfg, const StringView &
 		auto status = ParserStatus::Continue;
 		if (tok == ParserToken::Blank
 				|| !stemWord(word, tok, [&](StringView word, StringView stem, ParserToken tok) {
-			auto it = std::lower_bound(stemList.begin(), stemList.end(), stem);
+			auto it = sprt::lower_bound(stemList.begin(), stemList.end(), stem);
 			if (it != stemList.end() && *it == stem) {
 				if (!isOpen) {
 					result << cfg.startToken;
@@ -583,7 +583,7 @@ String Configuration::makeHeadlines(const HeadlineConfig &cfg,
 	};
 
 	auto writeFragmentWords = [&](StringStream &out, const StringView &str,
-									  const std::array<WordIndex, 32> &words,
+									  const sprt::array<WordIndex, 32> &words,
 									  const WordIndex *word) {
 		bool isOpen = false;
 		for (auto it = word; it < word->end; ++it) {
@@ -672,7 +672,7 @@ String Configuration::makeHeadlines(const HeadlineConfig &cfg,
 	};
 
 	auto makeFragment = [&](StringStream &out, const StringView &str, const StringView &tagId,
-								const std::array<WordIndex, 32> &words, const WordIndex *word,
+								const sprt::array<WordIndex, 32> &words, const WordIndex *word,
 								size_t idx) {
 		out << cfg.startFragment;
 		auto prefixView = StringView(str.data(), word->word.data() - str.data());
@@ -721,7 +721,7 @@ String Configuration::makeHeadlines(const HeadlineConfig &cfg,
 	};
 
 	cb([&, this](const StringView &str, const StringView &fragmentTag) -> bool {
-		std::array<WordIndex, 32> wordsMatch;
+		sprt::array<WordIndex, 32> wordsMatch;
 		uint16_t wordCount = 0;
 		uint16_t idx = 0;
 
@@ -741,7 +741,7 @@ String Configuration::makeHeadlines(const HeadlineConfig &cfg,
 					}
 				}
 				stemWord(word, tok, [&](StringView word, StringView stem, ParserToken tok) {
-					auto it = std::lower_bound(stemList.begin(), stemList.end(), stem);
+					auto it = sprt::lower_bound(stemList.begin(), stemList.end(), stem);
 					if (it != stemList.end() && sprt::detail::caseCompare_u(*it, stem) == 0) {
 						if (isComplexWord(tok)) {
 							enabledComplex = true;

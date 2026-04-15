@@ -141,11 +141,24 @@ struct SP_PUBLIC Stmt : AllocBase {
 
 SP_PUBLIC StringView getOriginName(Origin);
 
-SP_PUBLIC inline std::ostream &operator<<(std::ostream &stream, Origin o) {
-	stream << getOriginName(o);
-	return stream;
-}
-
 } // namespace stappler::makefile
+
+namespace sprt {
+
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::makefile::Origin> {
+	using Origin = STAPPLER_VERSIONIZED_NAMESPACE::makefile::Origin;
+
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb, const Origin &value) {
+		cb << STAPPLER_VERSIONIZED_NAMESPACE::makefile::getOriginName(value);
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const Origin &value) {
+		cb << STAPPLER_VERSIONIZED_NAMESPACE::makefile::getOriginName(value);
+	}
+};
+
+} // namespace sprt
 
 #endif /* CORE_MAKEFILE_SPMAKEFILESTMT_H_ */

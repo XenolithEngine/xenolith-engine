@@ -84,7 +84,8 @@ public:
 	const BufferData *addBuffer(StringView key, BufferInfo &&, BytesView data,
 			Rc<DataAtlas> &&atlas = Rc<DataAtlas>(), AccessType = AccessType::ShaderRead);
 	const BufferData *addBuffer(StringView key, BufferInfo &&,
-			const memory::function<void(uint8_t *, uint64_t, const BufferData::DataCallback &)> &cb,
+			const mem_pool::Function<void(uint8_t *, uint64_t, const BufferData::DataCallback &)>
+					&cb,
 			Rc<DataAtlas> &&atlas = Rc<DataAtlas>(), AccessType = AccessType::ShaderRead);
 
 	// Adds bitmap in memory, data must remain actual until Resource exists
@@ -107,7 +108,8 @@ public:
 
 	// Adss image as a callback, that writes bitmap into GPU's memory
 	const ImageData *addImage(StringView key, ImageInfo &&img,
-			const memory::function<void(uint8_t *, uint64_t, const ImageData::DataCallback &)> &cb,
+			const mem_pool::Function<void(uint8_t *, uint64_t, const ImageData::DataCallback &)>
+					&cb,
 			AttachmentLayout = AttachmentLayout::ShaderReadOnlyOptimal,
 			AccessType = AccessType::ShaderRead);
 

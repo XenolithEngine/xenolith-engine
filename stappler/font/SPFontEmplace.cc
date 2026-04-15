@@ -21,9 +21,14 @@
  **/
 
 #include "SPFontEmplace.h"
-#include "SPGeometry.h"
+
+#include <sprt/runtime/geom/geom.h>
 
 namespace STAPPLER_VERSIONIZED stappler::font {
+
+using sprt::geom::URect;
+using sprt::geom::UVec2;
+using sprt::geom::Extent2;
 
 namespace {
 
@@ -38,18 +43,18 @@ struct LayoutNodeMemoryStorage {
 
 	LayoutNodeMemoryStorage(const EmplaceCharInterface *, memory::pool_t *);
 
-	LayoutNodeMemory *alloc(const geom::URect &rect);
-	LayoutNodeMemory *alloc(const geom::UVec2 &origin, void *c);
+	LayoutNodeMemory *alloc(const URect &rect);
+	LayoutNodeMemory *alloc(const UVec2 &origin, void *c);
 	void release(LayoutNodeMemory *node);
 };
 
 struct LayoutNodeMemory : memory::AllocPool {
 	LayoutNodeMemory *_child[2];
-	geom::URect _rc;
+	URect _rc;
 	void *_char = nullptr;
 
-	LayoutNodeMemory(const geom::URect &rect);
-	LayoutNodeMemory(const LayoutNodeMemoryStorage &, const geom::UVec2 &origin, void *c);
+	LayoutNodeMemory(const URect &rect);
+	LayoutNodeMemory(const LayoutNodeMemoryStorage &, const UVec2 &origin, void *c);
 
 	bool insert(LayoutNodeMemoryStorage &, void *c);
 	size_t nodes() const;
@@ -59,7 +64,7 @@ struct LayoutNodeMemory : memory::AllocPool {
 LayoutNodeMemoryStorage::LayoutNodeMemoryStorage(const EmplaceCharInterface *i, memory::pool_t *p)
 : interface(i), pool(p) { }
 
-LayoutNodeMemory *LayoutNodeMemoryStorage::alloc(const geom::URect &rect) {
+LayoutNodeMemory *LayoutNodeMemoryStorage::alloc(const URect &rect) {
 	if (free) {
 		auto node = free;
 		free = node->_child[0];
@@ -68,7 +73,7 @@ LayoutNodeMemory *LayoutNodeMemoryStorage::alloc(const geom::URect &rect) {
 	return new (pool) LayoutNodeMemory(rect);
 }
 
-LayoutNodeMemory *LayoutNodeMemoryStorage::alloc(const geom::UVec2 &origin, void *c) {
+LayoutNodeMemory *LayoutNodeMemoryStorage::alloc(const UVec2 &origin, void *c) {
 	if (free) {
 		auto node = free;
 		free = node->_child[0];
@@ -80,7 +85,7 @@ LayoutNodeMemory *LayoutNodeMemoryStorage::alloc(const geom::UVec2 &origin, void
 void LayoutNodeMemoryStorage::release(LayoutNodeMemory *node) {
 	node->_child[0] = nullptr;
 	node->_child[1] = nullptr;
-	node->_rc = geom::URect(0, 0, 0, 0);
+	node->_rc = URect(0, 0, 0, 0);
 	node->_char = nullptr;
 	if (free) {
 		node->_child[0] = free;
@@ -88,18 +93,18 @@ void LayoutNodeMemoryStorage::release(LayoutNodeMemory *node) {
 	free = node;
 }
 
-LayoutNodeMemory::LayoutNodeMemory(const geom::URect &rect) {
+LayoutNodeMemory::LayoutNodeMemory(const URect &rect) {
 	_rc = rect;
 	_child[0] = nullptr;
 	_child[1] = nullptr;
 }
 
-LayoutNodeMemory::LayoutNodeMemory(const LayoutNodeMemoryStorage &storage,
-		const geom::UVec2 &origin, void *c) {
+LayoutNodeMemory::LayoutNodeMemory(const LayoutNodeMemoryStorage &storage, const UVec2 &origin,
+		void *c) {
 	_child[0] = nullptr;
 	_child[1] = nullptr;
 	_char = c;
-	_rc = geom::URect{origin.x, origin.y, storage.interface->getWidth(c),
+	_rc = URect{origin.x, origin.y, storage.interface->getWidth(c),
 		storage.interface->getHeight(c)};
 }
 
@@ -122,17 +127,16 @@ bool LayoutNodeMemory::insert(LayoutNodeMemoryStorage &storage, void *c) {
 			if (_rc.height == iheight) {
 				_child[0] =
 						storage.alloc(_rc.origin(), c); // new (pool) LayoutNode(_rc.origin(), c);
-				_child[1] =
-						storage.alloc(geom::URect{uint32_t(_rc.x + iwidth + LAYOUT_PADDING), _rc.y,
-							(_rc.width > iwidth + LAYOUT_PADDING)
-									? uint32_t(_rc.width - iwidth - LAYOUT_PADDING)
-									: uint32_t(0),
-							_rc.height});
+				_child[1] = storage.alloc(URect{uint32_t(_rc.x + iwidth + LAYOUT_PADDING), _rc.y,
+					(_rc.width > iwidth + LAYOUT_PADDING)
+							? uint32_t(_rc.width - iwidth - LAYOUT_PADDING)
+							: uint32_t(0),
+					_rc.height});
 			} else if (_rc.width == iwidth) {
 				_child[0] =
 						storage.alloc(_rc.origin(), c); // new (pool) LayoutNode(_rc.origin(), c);
 				_child[1] = storage.alloc(
-						geom::URect{_rc.x, uint32_t(_rc.y + iheight + LAYOUT_PADDING), _rc.width,
+						URect{_rc.x, uint32_t(_rc.y + iheight + LAYOUT_PADDING), _rc.width,
 							(_rc.height > iheight + LAYOUT_PADDING)
 									? uint32_t(_rc.height - iheight - LAYOUT_PADDING)
 									: uint32_t(0)});
@@ -145,12 +149,12 @@ bool LayoutNodeMemory::insert(LayoutNodeMemoryStorage &storage, void *c) {
 		int16_t dh = _rc.height - iheight;
 
 		if (dw > dh) {
-			_child[0] = storage.alloc(geom::URect{_rc.x, _rc.y, iwidth, _rc.height});
-			_child[1] = storage.alloc(geom::URect{uint32_t(_rc.x + iwidth + LAYOUT_PADDING), _rc.y,
+			_child[0] = storage.alloc(URect{_rc.x, _rc.y, iwidth, _rc.height});
+			_child[1] = storage.alloc(URect{uint32_t(_rc.x + iwidth + LAYOUT_PADDING), _rc.y,
 				uint32_t(dw - LAYOUT_PADDING), _rc.height});
 		} else {
-			_child[0] = storage.alloc(geom::URect{_rc.x, _rc.y, _rc.width, iheight});
-			_child[1] = storage.alloc(geom::URect{_rc.x, uint32_t(_rc.y + iheight + LAYOUT_PADDING),
+			_child[0] = storage.alloc(URect{_rc.x, _rc.y, _rc.width, iheight});
+			_child[1] = storage.alloc(URect{_rc.x, uint32_t(_rc.y + iheight + LAYOUT_PADDING),
 				_rc.width, uint32_t(dh - LAYOUT_PADDING)});
 		}
 
@@ -188,9 +192,9 @@ void LayoutNodeMemory::finalize(LayoutNodeMemoryStorage &storage, uint8_t tex) {
 
 } // namespace
 
-geom::Extent2 emplaceChars(const EmplaceCharInterface &iface, const SpanView<void *> &layoutData,
+Extent2 emplaceChars(const EmplaceCharInterface &iface, const SpanView<void *> &layoutData,
 		float totalSquare) {
-	if (std::isnan(totalSquare)) {
+	if (sprt::isnan(totalSquare)) {
 		totalSquare = 0.0f;
 		for (auto &it : layoutData) { totalSquare += iface.getWidth(it) * iface.getHeight(it); }
 	}
@@ -210,7 +214,7 @@ geom::Extent2 emplaceChars(const EmplaceCharInterface &iface, const SpanView<voi
 	LayoutNodeMemoryStorage storage(&iface, memory::pool::acquire());
 
 	while (true) {
-		auto l = storage.alloc(geom::URect{0, 0, w, h});
+		auto l = storage.alloc(URect{0, 0, w, h});
 		for (auto &it : layoutData) {
 			if (!l->insert(storage, it)) {
 				break;
@@ -234,7 +238,7 @@ geom::Extent2 emplaceChars(const EmplaceCharInterface &iface, const SpanView<voi
 		storage.release(l);
 	}
 
-	return geom::Extent2(w, h);
+	return Extent2(w, h);
 }
 
 } // namespace stappler::font

@@ -61,10 +61,10 @@ public:
 	SpanView<Rec *> getFocusGroupListener(FocusGroup *) const;
 
 protected:
-	memory::vector<Rec> *_preSceneEvents = nullptr;
-	memory::vector<Rec> *_sceneEvents = nullptr; // in reverse order
-	memory::vector<Rec> *_postSceneEvents = nullptr;
-	memory::map<FocusGroup *, memory::vector<Rec *>> *_focus = nullptr;
+	mem_pool::Vector<Rec> *_preSceneEvents = nullptr;
+	mem_pool::Vector<Rec> *_sceneEvents = nullptr; // in reverse order
+	mem_pool::Vector<Rec> *_postSceneEvents = nullptr;
+	mem_pool::Map<FocusGroup *, mem_pool::Vector<Rec *>> *_focus = nullptr;
 	uint32_t _order = 0;
 };
 
@@ -136,7 +136,7 @@ protected:
 
 template <typename Callback>
 bool InputListenerStorage::foreachListener(const Callback &cb, FocusGroup *focus) {
-	static_assert(std::is_invocable_v<Callback, const Rec &>, "Invalid callback type");
+	static_assert(sprt::is_invocable_v<Callback, const Rec &>, "Invalid callback type");
 
 	if (focus && !hasFlag(focus->getFlags(), FocusGroup::Flags::Propagate)) {
 		auto it = _focus->find(focus);
@@ -150,7 +150,7 @@ bool InputListenerStorage::foreachListener(const Callback &cb, FocusGroup *focus
 		return true;
 	}
 
-	memory::vector<Rec>::reverse_iterator it, end;
+	mem_pool::Vector<Rec>::reverse_iterator it, end;
 	it = _preSceneEvents->rbegin();
 	end = _preSceneEvents->rend();
 
@@ -195,7 +195,7 @@ bool InputListenerStorage::foreachListener(const Callback &cb, FocusGroup *focus
 
 template <typename Callback>
 bool InputListenerStorage::foreachFocusGroup(const Callback &cb, FocusGroup *parentGroup) {
-	static_assert(std::is_invocable_v<Callback, NotNull<FocusGroup>, SpanView<Rec *>>,
+	static_assert(sprt::is_invocable_v<Callback, NotNull<FocusGroup>, SpanView<Rec *>>,
 			"Invalid callback type");
 
 	for (auto &it : *_focus) {

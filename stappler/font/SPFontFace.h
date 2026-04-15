@@ -26,6 +26,9 @@
 
 #include "SPFontTextLayout.h"
 
+#include <sprt/cxx/mutex>
+#include <sprt/cxx/shared_mutex>
+
 typedef struct FT_LibraryRec_ *FT_Library;
 typedef struct FT_FaceRec_ *FT_Face;
 
@@ -110,9 +113,9 @@ protected:
 	Interface::VectorType<char32_t> _required;
 	FontCharStorage<CharShape16> _chars;
 	mem_std::HashMap<uint32_t, int16_t> _kerning;
-	mem_std::Mutex _faceMutex;
-	mutable std::shared_mutex _charsMutex;
-	mutable mem_std::Mutex _requiredMutex;
+	sprt::mutex _faceMutex;
+	mutable sprt::shared_mutex _charsMutex;
+	mutable sprt::mutex _requiredMutex;
 };
 
 class SP_PUBLIC FontFaceSet : public Ref, public InterfaceObject<memory::StandartInterface> {
@@ -157,8 +160,8 @@ public:
 	const Vector<Rc<FontFaceObject>> &getFaces() const;
 
 protected:
-	std::atomic<uint64_t> _accessTime;
-	std::atomic<bool> _persistent = false;
+	sprt::atomic<uint64_t> _accessTime;
+	sprt::atomic<bool> _persistent = false;
 
 	String _name;
 	String _family;
@@ -169,7 +172,7 @@ protected:
 	FontLibrary *_library = nullptr;
 
 	mutable size_t _texturesCount = 0;
-	mutable std::shared_mutex _mutex;
+	mutable sprt::shared_mutex _mutex;
 };
 
 } // namespace stappler::font

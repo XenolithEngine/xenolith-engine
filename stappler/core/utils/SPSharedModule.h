@@ -26,6 +26,8 @@
 
 #include "SPCore.h" // IWYU pragma: keep
 
+#include <sprt/cxx/typeinfo>
+
 namespace STAPPLER_VERSIONIZED stappler {
 
 enum class SharedModuleFlags : uint32_t {
@@ -40,29 +42,20 @@ enum class SharedModuleFlags : uint32_t {
 
 SP_DEFINE_ENUM_AS_MASK(SharedModuleFlags)
 
-// Used by stappler-abi to detect actual shared object type
-// Stappler API only defines SharedModule with _typeId = 1,
-// but ABI can define other types, that accessable with
-// abi::open in runtime
-struct SharedVirtualObject {
-	uintptr_t _typeId = 0;
-};
-
 struct SP_PUBLIC SharedSymbol final {
 	const char *name = nullptr;
 	const void *ptr = nullptr;
-	const std::type_info *type = nullptr;
+	const sprt::type_info *type = nullptr;
 
 	template <typename T>
 	SharedSymbol(const char *n, T *t)
-	: name(n), ptr(reinterpret_cast<const void *>(t)), type(&typeid(std::remove_cv_t<T>)) { }
+	: name(n), ptr(reinterpret_cast<const void *>(t)), type(&typeid(sprt::remove_cv_t<T>)) { }
 
 	SharedSymbol(const char *n, const void *p) : name(n), ptr(p) { }
 };
 
-class SP_PUBLIC SharedModule final : public SharedVirtualObject {
+class SP_PUBLIC SharedModule final {
 public:
-	static constexpr uintptr_t TypeId = 1;
 	static constexpr uint32_t VersionLatest = maxOf<uint32_t>();
 
 	// Enumarate all defined module names
@@ -73,13 +66,13 @@ public:
 	static const void *acquireSymbol(const char *module, uint32_t version, const char *symbol,
 			const sprt::source_location & = __SPRT_LOCATION);
 	static const void *acquireSymbol(const char *module, uint32_t version, const char *symbol,
-			const std::type_info &, const sprt::source_location & = __SPRT_LOCATION);
+			const sprt::type_info &, const sprt::source_location & = __SPRT_LOCATION);
 
 	template <typename T = const void *>
 	static auto acquireTypedSymbol(const char *module, uint32_t version, const char *symbol,
 			const sprt::source_location &loc = __SPRT_LOCATION) {
 		return reinterpret_cast<T>(const_cast<void *>(acquireSymbol(module, version, symbol,
-				typeid(std::remove_pointer_t<typename std::remove_cv<T>::type>), loc)));
+				typeid(sprt::remove_pointer_t<typename sprt::remove_cv<T>::type>), loc)));
 	}
 
 	static bool enumerateSymbols(const char *module, uint32_t version, void *userdata,
@@ -90,14 +83,14 @@ public:
 
 	static const void *acquireSymbol(const char *module, const char *symbol,
 			const sprt::source_location & = __SPRT_LOCATION);
-	static const void *acquireSymbol(const char *module, const char *symbol, const std::type_info &,
-			const sprt::source_location & = __SPRT_LOCATION);
+	static const void *acquireSymbol(const char *module, const char *symbol,
+			const sprt::type_info &, const sprt::source_location & = __SPRT_LOCATION);
 
 	template <typename T = const void *>
 	static auto acquireTypedSymbol(const char *module, const char *symbol,
 			const sprt::source_location &loc = __SPRT_LOCATION) {
 		return reinterpret_cast<T>(const_cast<void *>(acquireSymbol(module, symbol,
-				typeid(std::remove_pointer_t<typename std::remove_cv<T>::type>), loc)));
+				typeid(sprt::remove_pointer_t<typename sprt::remove_cv<T>::type>), loc)));
 	}
 
 	static bool enumerateSymbols(const char *module, void *userdata,
@@ -111,14 +104,14 @@ public:
 
 	const void *acquireSymbol(const char *symbol,
 			const sprt::source_location & = __SPRT_LOCATION) const;
-	const void *acquireSymbol(const char *symbol, const std::type_info &,
+	const void *acquireSymbol(const char *symbol, const sprt::type_info &,
 			const sprt::source_location & = __SPRT_LOCATION) const;
 
 	template <typename T = const void *>
 	auto acquireTypedSymbol(const char *symbol,
 			const sprt::source_location &loc = __SPRT_LOCATION) const {
 		return reinterpret_cast<T>(const_cast<void *>(acquireSymbol(symbol,
-				typeid(std::remove_pointer_t<typename std::remove_cv<T>::type>), loc)));
+				typeid(sprt::remove_pointer_t<typename sprt::remove_cv<T>::type>), loc)));
 	}
 
 private:

@@ -100,7 +100,7 @@ struct SP_PUBLIC BufferInfo : NamedMem {
 
 	template <typename... Args>
 	BufferInfo(Args &&...args) {
-		define(std::forward<Args>(args)...);
+		define(sprt::forward<Args>(args)...);
 	}
 
 	void setup(const BufferInfo &value) { *this = value; }
@@ -115,13 +115,13 @@ struct SP_PUBLIC BufferInfo : NamedMem {
 
 	template <typename T>
 	void define(T &&t) {
-		setup(std::forward<T>(t));
+		setup(sprt::forward<T>(t));
 	}
 
 	template <typename T, typename... Args>
 	void define(T &&t, Args &&...args) {
-		define(std::forward<T>(t));
-		define(std::forward<Args>(args)...);
+		define(sprt::forward<T>(t));
+		define(sprt::forward<Args>(args)...);
 	}
 
 	String description() const;
@@ -131,8 +131,8 @@ struct SP_PUBLIC BufferData : BufferInfo {
 	using DataCallback = memory::callback<void(BytesView)>;
 
 	BytesView data;
-	memory::function<void(uint8_t *, uint64_t, const DataCallback &)> memCallback = nullptr;
-	std::function<void(uint8_t *, uint64_t, const DataCallback &)> stdCallback = nullptr;
+	mem_std::Function<void(uint8_t *, uint64_t, const DataCallback &)> memCallback = nullptr;
+	mem_pool::Function<void(uint8_t *, uint64_t, const DataCallback &)> stdCallback = nullptr;
 	Rc<BufferObject> buffer; // GL implementation-dependent object
 	Rc<DataAtlas> atlas;
 	const Resource *resource = nullptr; // owning resource;
@@ -245,7 +245,7 @@ struct SP_PUBLIC ImageInfo : NamedMem, ImageInfoData {
 
 	template <typename... Args>
 	ImageInfo(Args &&...args) {
-		define(std::forward<Args>(args)...);
+		define(sprt::forward<Args>(args)...);
 	}
 
 	void setup(Extent1 value) { extent = Extent3(value.get(), 1, 1); }
@@ -272,13 +272,13 @@ struct SP_PUBLIC ImageInfo : NamedMem, ImageInfoData {
 
 	template <typename T>
 	void define(T &&t) {
-		setup(std::forward<T>(t));
+		setup(sprt::forward<T>(t));
 	}
 
 	template <typename T, typename... Args>
 	void define(T &&t, Args &&...args) {
-		define(std::forward<T>(t));
-		define(std::forward<Args>(args)...);
+		define(sprt::forward<T>(t));
+		define(sprt::forward<Args>(args)...);
 	}
 
 	bool isCompatible(const ImageInfo &) const;
@@ -309,7 +309,7 @@ struct SP_PUBLIC ImageViewInfo {
 
 	template <typename... Args>
 	ImageViewInfo(Args &&...args) {
-		define(std::forward<Args>(args)...);
+		define(sprt::forward<Args>(args)...);
 	}
 
 	void setup(const ImageViewInfo &);
@@ -329,13 +329,13 @@ struct SP_PUBLIC ImageViewInfo {
 
 	template <typename T>
 	void define(T &&t) {
-		setup(std::forward<T>(t));
+		setup(sprt::forward<T>(t));
 	}
 
 	template <typename T, typename... Args>
 	void define(T &&t, Args &&...args) {
-		define(std::forward<T>(t));
-		define(std::forward<Args>(args)...);
+		define(sprt::forward<T>(t));
+		define(sprt::forward<Args>(args)...);
 	}
 
 	bool isCompatible(const ImageInfo &) const;
@@ -408,16 +408,15 @@ struct SP_PUBLIC ImageData : ImageInfo {
 
 	BytesView data;
 
-
-	memory::function<void(uint8_t *, uint64_t, const DataCallback &)> memCallback = nullptr;
-	std::function<void(uint8_t *, uint64_t, const DataCallback &)> stdCallback = nullptr;
+	mem_std::Function<void(uint8_t *, uint64_t, const DataCallback &)> memCallback = nullptr;
+	mem_pool::Function<void(uint8_t *, uint64_t, const DataCallback &)> stdCallback = nullptr;
 	Rc<ImageObject> image; // GL implementation-dependent object
 	Rc<DataAtlas> atlas;
 	const Resource *resource = nullptr; // owning resource;
 	core::AccessType targetAccess = core::AccessType::ShaderRead;
 	core::AttachmentLayout targetLayout = core::AttachmentLayout::ShaderReadOnlyOptimal;
 
-	memory::vector<ImageViewData *> views;
+	sprt::__pool_vector<ImageViewData *> views;
 
 	size_t writeData(uint8_t *mem, size_t expected) const;
 };
@@ -431,14 +430,14 @@ struct SP_PUBLIC TextureSetLayoutInfo {
 	uint32_t imageCountIndexed = config::MaxTextureSetImagesIndexed;
 	uint32_t bufferCount = config::MaxBufferArrayObjects;
 	uint32_t bufferCountIndexed = config::MaxBufferArrayObjectsIndexed;
-	memory::vector<SamplerInfo> samplers;
+	sprt::__pool_vector<SamplerInfo> samplers;
 };
 
 struct SP_PUBLIC TextureSetLayoutData : NamedMem, TextureSetLayoutInfo {
 	QueueData *queue = nullptr;
 	Rc<TextureSetLayout> layout;
-	memory::vector<Rc<Sampler>> compiledSamplers;
-	memory::vector<PipelineLayoutData *> bindingLayouts;
+	sprt::__pool_vector<Rc<Sampler>> compiledSamplers;
+	sprt::__pool_vector<PipelineLayoutData *> bindingLayouts;
 };
 
 struct SP_PUBLIC SubresourceRangeInfo {
@@ -482,19 +481,19 @@ SP_PUBLIC StringView getComponentMappingName(ComponentMapping);
 
 SP_PUBLIC inline String getCompositeAlphaFlagsDescription(CompositeAlphaFlags flags) {
 	StringStream out;
-	memory::makeCallback(out) << flags;
+	out << flags;
 	return out.str();
 }
 
 SP_PUBLIC inline String getSurfaceTransformFlagsDescription(SurfaceTransformFlags flags) {
 	StringStream out;
-	memory::makeCallback(out) << flags;
+	out << flags;
 	return out.str();
 }
 
 SP_PUBLIC inline String getImageUsageDescription(ImageUsage fmt) {
 	StringStream out;
-	memory::makeCallback(out) << fmt;
+	out << fmt;
 	return out.str();
 }
 
@@ -514,24 +513,21 @@ SP_PUBLIC String getQueueFlagsDesc(QueueFlags);
 SP_PUBLIC Bitmap getBitmap(const ImageInfoData &, BytesView);
 SP_PUBLIC bool saveImage(const FileInfo &, const ImageInfoData &, BytesView);
 
-SP_PUBLIC std::ostream &operator<<(std::ostream &stream, const ImageInfoData &value);
-
 } // namespace stappler::xenolith::core
 
-namespace std {
+namespace sprt {
 
-inline std::ostream &operator<<(std::ostream &stream,
-		const STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::SwapchainConfig &v) {
-	STAPPLER_VERSIONIZED_NAMESPACE::memory::makeCallback(stream) << v;
-	return stream;
-}
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::ImageInfoData> {
+	using ImageInfoData = STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::ImageInfoData;
 
-inline std::ostream &operator<<(std::ostream &stream,
-		const STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::SurfaceInfo &v) {
-	STAPPLER_VERSIONIZED_NAMESPACE::memory::makeCallback(stream) << v;
-	return stream;
-}
+	template <io_character CharType>
+	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const ImageInfoData &value) {
+		cb << "ImageInfoData: " << value.extent << " Layers:" << value.arrayLayers.get();
+	}
+};
 
-} // namespace std
+} // namespace sprt
 
 #endif /* XENOLITH_CORE_XLCOREINFO_H_ */

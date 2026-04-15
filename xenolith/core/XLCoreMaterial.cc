@@ -82,7 +82,7 @@ Vector<Rc<Material>> MaterialSet::updateMaterials(SpanView<Rc<Material>> materia
 		bool isImagesValid = true;
 
 		if (!materialsToRemove.empty()) {
-			auto it = std::find(materialsToRemove.begin(), materialsToRemove.end(),
+			auto it = sprt::find(materialsToRemove.begin(), materialsToRemove.end(),
 					material->getId());
 			if (it != materialsToRemove.end()) {
 				continue;
@@ -134,7 +134,7 @@ Vector<Rc<Material>> MaterialSet::updateMaterials(SpanView<Rc<Material>> materia
 
 	for (auto &it : dynamicMaterials) {
 		if (!materialsToRemove.empty()) {
-			auto iit = std::find(materialsToRemove.begin(), materialsToRemove.end(), it);
+			auto iit = sprt::find(materialsToRemove.begin(), materialsToRemove.end(), it);
 			if (iit != materialsToRemove.end()) {
 				continue;
 			}
@@ -312,7 +312,7 @@ void MaterialSet::emplaceMaterialImages(Material *oldMaterial, Material *newMate
 				set.imageSlots[loc].image = cb(*it.first);
 				set.imageSlots[loc].image->setLocation(setIdx, loc);
 				set.imageSlots[loc].refCount = uint32_t(it.second.size());
-				set.usedImageSlots = std::max(set.usedImageSlots, loc + 1);
+				set.usedImageSlots = sprt::max(set.usedImageSlots, loc + 1);
 			}
 
 			// fill refs
@@ -363,7 +363,7 @@ void MaterialSet::emplaceMaterialImages(Material *oldMaterial, Material *newMate
 				} else if (!it.image || it.refCount == 0) {
 					// only if not emplaced
 					if (imagePositions[imageIdx] == maxOf<uint32_t>()) {
-						if (std::find(imagePositions.begin(), imagePositions.end(), location)
+						if (sprt::find(imagePositions.begin(), imagePositions.end(), location)
 								== imagePositions.end()) {
 							++emplacedImages;
 							imagePositions[imageIdx] = location;
@@ -498,7 +498,7 @@ bool Material::init(const Material *master, Rc<ImageObject> &&image, Rc<DataAtla
 		}
 	}
 
-	auto ownedData = new (std::nothrow) ImageData;
+	auto ownedData = new (sprt::nothrow) ImageData;
 	static_cast<ImageInfoData &>(*ownedData) = image->getInfo();
 	ownedData->image = move(image);
 	ownedData->atlas = move(atlas);
@@ -528,7 +528,7 @@ void Material::setLayoutIndex(uint32_t idx) { _layoutIndex = idx; }
 void Material::setBuffer(Rc<BufferObject> &&buf) { _buffer = move(buf); }
 
 MaterialAttachment::~MaterialAttachment() {
-	std::unique_lock<Mutex> lock(_dynamicMutex);
+	sprt::unique_lock<sprt::mutex > lock(_dynamicMutex);
 	for (auto &it : _dynamicTrackers) { it.first->removeTracker(this); }
 }
 
@@ -573,7 +573,7 @@ Rc<MaterialSet> MaterialAttachment::cloneSet(const Rc<MaterialSet> &other) const
 }
 
 void MaterialAttachment::addDynamicTracker(MaterialId id, const Rc<DynamicImage> &image) const {
-	std::unique_lock<Mutex> lock(_dynamicMutex);
+	sprt::unique_lock<sprt::mutex > lock(_dynamicMutex);
 	auto it = _dynamicTrackers.find(image);
 	if (it != _dynamicTrackers.end()) {
 		++it->second.refCount;
@@ -591,7 +591,7 @@ void MaterialAttachment::addDynamicTracker(MaterialId id, const Rc<DynamicImage>
 }
 
 void MaterialAttachment::removeDynamicTracker(MaterialId id, const Rc<DynamicImage> &image) const {
-	std::unique_lock<Mutex> lock(_dynamicMutex);
+	sprt::unique_lock<sprt::mutex > lock(_dynamicMutex);
 	auto it = _dynamicTrackers.find(image);
 	if (it != _dynamicTrackers.end()) {
 		auto iit = it->second.materials.find(id);
@@ -613,7 +613,7 @@ void MaterialAttachment::updateDynamicImage(Loop &loop, const DynamicImage *imag
 		const Vector<Rc<DependencyEvent>> &deps) const {
 	auto input = Rc<MaterialInputData>::alloc();
 	input->attachment = this;
-	std::unique_lock<Mutex> lock(_dynamicMutex);
+	sprt::unique_lock<sprt::mutex > lock(_dynamicMutex);
 	auto it = _dynamicTrackers.find(image);
 	if (it != _dynamicTrackers.end()) {
 		for (auto &materialIt : it->second.materials) {

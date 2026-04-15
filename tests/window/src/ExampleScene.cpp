@@ -22,7 +22,6 @@
 
 #include "XLCommon.h"
 
-#include "SPDso.h"
 #include "XLContext.h"
 #include "XL2dSceneContent.h"
 #include "XLSimpleButton.h"

@@ -38,7 +38,7 @@ struct ServerComponentData : public db::AllocBase {
 	ComponentContainer *container;
 
 	db::Map<StringView, Component *> components;
-	db::Map<std::type_index, Component *> typedComponents;
+	db::Map<sprt::type_index, Component *> typedComponents;
 	db::Map<StringView, const db::Scheme *> schemes;
 };
 
@@ -94,9 +94,9 @@ struct Server::ServerData : public thread::Thread, public db::ApplicationInterfa
 	AppThread *application = nullptr;
 	ServerDataStorage *storage = nullptr;
 
-	std::condition_variable condition;
-	Mutex mutexQueue;
-	Mutex mutexFree;
+	sprt::condition_variable condition;
+	sprt::mutex mutexQueue;
+	sprt::mutex mutexFree;
 	db::sql::Driver *driver = nullptr;
 	db::sql::Driver::Handle handle;
 	Server *server = nullptr;
@@ -160,7 +160,7 @@ bool Server::init(AppThread *app, const Value &params) {
 
 	memory::context ctx(pool);
 
-	_data = new (std::nothrow) ServerData;
+	_data = new (sprt::nothrow) ServerData;
 	_data->_serverAlloc = alloc;
 	_data->serverPool = pool;
 	_data->application = app;
@@ -902,7 +902,7 @@ void Server::ServerData::threadInit() {
 	runAsync();
 
 	if (!storage->serverName.empty()) {
-		sprt::thread::info::set(storage->serverName);
+		sprt::_thread::info::set(storage->serverName);
 	}
 
 	now = sp::platform::clock(ClockType::Monotonic);
@@ -928,11 +928,11 @@ bool Server::ServerData::worker() {
 	} while (0);
 
 	if (!task.callback) {
-		std::unique_lock<std::mutex> lock(mutexQueue);
+		sprt::unique_lock<sprt::mutex> lock(mutexQueue);
 		if (!storage->queue.empty(lock)) {
 			return true;
 		}
-		condition.wait_for(lock, std::chrono::seconds(1));
+		condition.wait_for(lock, 1'000'000'000);
 		return true;
 	}
 
@@ -1075,7 +1075,7 @@ ServerComponentLoader::ServerComponentLoader(Server::ServerData *data, const db:
 , _transaction(&t) {
 	memory::context ctx(_pool);
 
-	_components = new (std::nothrow) ServerComponentData;
+	_components = new (sprt::nothrow) ServerComponentData;
 	_components->pool = _pool;
 }
 

@@ -161,8 +161,8 @@ bool SwapchainHandle::init(Device &dev, const core::SurfaceInfo &info,
 		data->presentSemaphores.resize(imageCount);
 
 		if (old) {
-			std::unique_lock<Mutex> lock(_resourceMutex);
-			std::unique_lock<Mutex> lock2(old->_resourceMutex);
+			sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
+			sprt::unique_lock<sprt::mutex > lock2(old->_resourceMutex);
 			data->semaphores = sp::move(old->_data->semaphores);
 
 			for (auto &it : old->_data->presentSemaphores) {
@@ -283,7 +283,7 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 			fence->setArmed();
 		}
 
-		std::unique_lock<Mutex> lock(_resourceMutex);
+		sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 		auto it = _acquiredIndexes.find(imageIndex);
 		if (it != _acquiredIndexes.end()) {
 			log::source().error("vk::SwapchainHandle", "Image index ", imageIndex,
@@ -307,7 +307,7 @@ auto SwapchainHandle::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 		}
 		_deprecated = true;
 
-		std::unique_lock<Mutex> lock(_resourceMutex);
+		sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 		auto it = _acquiredIndexes.find(imageIndex);
 		if (it != _acquiredIndexes.end()) {
 			log::source().error("vk::SwapchainHandle", "Image index ", imageIndex,
@@ -396,7 +396,7 @@ Status SwapchainHandle::present(core::DeviceQueue &queue, core::ImageStorage *im
 	});
 
 	do {
-		std::unique_lock<Mutex> lock(_resourceMutex);
+		sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 		static_cast<core::SwapchainImage *>(image)->setPresented();
 		auto it = _acquiredIndexes.find(imageIndex);
 		if (it != _acquiredIndexes.end()) {
@@ -443,7 +443,7 @@ void SwapchainHandle::invalidateImage(const core::ImageStorage *image, bool rele
 }
 
 void SwapchainHandle::invalidateImage(uint32_t idx, bool release) {
-	std::unique_lock<Mutex> lock(_resourceMutex);
+	sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 	auto it = _acquiredIndexes.find(idx);
 	if (it != _acquiredIndexes.end()) {
 		_acquiredIndexes.erase(it);
@@ -465,7 +465,7 @@ void SwapchainHandle::invalidateImage(uint32_t idx, bool release) {
 }
 
 Rc<core::Semaphore> SwapchainHandle::acquireSemaphore() {
-	std::unique_lock<Mutex> lock(_resourceMutex);
+	sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 	if (!_data->semaphores.empty()) {
 		auto sem = _data->semaphores.back();
 		_data->semaphores.pop_back();
@@ -479,7 +479,7 @@ Rc<core::Semaphore> SwapchainHandle::acquireSemaphore() {
 
 bool SwapchainHandle::releaseSemaphore(Rc<core::Semaphore> &&sem) {
 	if (sem && sem->reset()) {
-		std::unique_lock<Mutex> lock(_resourceMutex);
+		sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 		_data->semaphores.emplace_back(move(sem));
 		return true;
 	}

@@ -302,12 +302,12 @@ static double sinc(double x) {
 		return 1.0f + x * x * (-1.0f / 6.0f + x * x * 1.0f / 120.0f);
 	}
 
-	return sin(x) / x;
+	return sprt::sin(x) / x;
 }
 
 static Resampler::Real clean(double t) {
 	const Resampler::Real EPSILON = .0000125f;
-	if (fabs(t) < EPSILON) {
+	if (sprt::fabs(t) < EPSILON) {
 		return 0.0f;
 	}
 	return (Resampler::Real)t;
@@ -319,8 +319,8 @@ static Resampler::Real clean(double t) {
 //}
 
 static double blackman_exact_window(double x) {
-	return 0.42659071f + 0.49656062f * cos(sprt::numbers::Pi<double> * x)
-			+ 0.07684867f * cos(2.0f * sprt::numbers::Pi<double> * x);
+	return 0.42659071f + 0.49656062f * sprt::cos(sprt::numbers::Pi<double> * x)
+			+ 0.07684867f * sprt::cos(2.0f * sprt::numbers::Pi<double> * x);
 }
 
 static constexpr Resampler::Real BLACKMAN_SUPPORT(3.0f);
@@ -343,7 +343,7 @@ static Resampler::Real gaussian_filter(Resampler::Real t) { // with blackman win
 		t = -t;
 	}
 	if (t < GAUSSIAN_SUPPORT) {
-		return clean(exp(-2.0f * t * t) * sqrt(2.0f / sprt::numbers::Pi<double>)
+		return clean(sprt::exp(-2.0f * t * t) * sprt::sqrt(2.0f / sprt::numbers::Pi<double>)
 				* blackman_exact_window(t / GAUSSIAN_SUPPORT));
 	} else {
 		return 0.0f;
@@ -428,7 +428,7 @@ static double bessel0(double x) {
 // static constexpr Resampler::Real KAISER_ALPHA(4.0f); // unused
 static double kaiser(double alpha, double half_width, double x) {
 	const double ratio = (x / half_width);
-	return bessel0(alpha * sqrt(1 - ratio * ratio)) / bessel0(alpha);
+	return bessel0(alpha * sprt::sqrt(1 - ratio * ratio)) / bessel0(alpha);
 }
 
 static constexpr Resampler::Real KAISER_SUPPORT(3);
@@ -441,7 +441,7 @@ static Resampler::Real kaiser_filter(Resampler::Real t) {
 		// db atten
 		const Resampler::Real att = 40.0f;
 		const Resampler::Real alpha =
-				(Resampler::Real)(exp(::log((double)0.58417 * (att - 20.96)) * 0.4)
+				(Resampler::Real)(sprt::exp(sprt::log((double)0.58417 * (att - 20.96)) * 0.4)
 						+ 0.07886 * (att - 20.96));
 		//const Real alpha = KAISER_ALPHA;
 		return (Resampler::Real)clean(sinc(t) * kaiser(alpha, KAISER_SUPPORT, t));
@@ -512,13 +512,13 @@ Resampler::Contrib_List *Resampler::make_clist(int src_x, int dst_x, Boundary_Op
 	Contrib_Bounds *Pcontrib_bounds;
 
 	if ((Pcontrib = (Contrib_List *)memory::pool::calloc(m_pool, dst_x, sizeof(Contrib_List)))
-			== NULL) {
-		return NULL;
+			== nullptr) {
+		return nullptr;
 	}
 
 	Pcontrib_bounds = (Contrib_Bounds *)memory::pool::calloc(m_pool, dst_x, sizeof(Contrib_Bounds));
 	if (!Pcontrib_bounds) {
-		return (NULL);
+		return (nullptr);
 	}
 
 	const Real oo_filter_scale = 1.0f / filter_scale;
@@ -545,8 +545,8 @@ Resampler::Contrib_List *Resampler::make_clist(int src_x, int dst_x, Boundary_Op
 			center -= NUDGE;
 			center += src_ofs;
 
-			left = cast_to_int((Real)floor(center - half_width));
-			right = cast_to_int((Real)ceil(center + half_width));
+			left = cast_to_int((Real)sprt::floor(center - half_width));
+			right = cast_to_int((Real)sprt::ceil(center + half_width));
 
 			Pcontrib_bounds[i].center = center;
 			Pcontrib_bounds[i].left = left;
@@ -559,8 +559,8 @@ Resampler::Contrib_List *Resampler::make_clist(int src_x, int dst_x, Boundary_Op
 
 		if ((n == 0)
 				|| ((Pcpool = (Contrib *)memory::pool::calloc(m_pool, n, sizeof(Contrib)))
-						== NULL)) {
-			return NULL;
+						== nullptr)) {
+			return nullptr;
 		}
 		total = n;
 
@@ -633,7 +633,7 @@ Resampler::Contrib_List *Resampler::make_clist(int src_x, int dst_x, Boundary_Op
 			//resampler_assert(Pcontrib[i].n);
 			//resampler_assert(max_k != -1);
 			if ((max_k == -1) || (Pcontrib[i].n == 0)) {
-				return NULL;
+				return nullptr;
 			}
 
 			if (total_weight != 1.0f) {
@@ -656,8 +656,8 @@ Resampler::Contrib_List *Resampler::make_clist(int src_x, int dst_x, Boundary_Op
 			center -= NUDGE;
 			center += src_ofs;
 
-			left = cast_to_int((Real)floor(center - half_width));
-			right = cast_to_int((Real)ceil(center + half_width));
+			left = cast_to_int((Real)sprt::floor(center - half_width));
+			right = cast_to_int((Real)sprt::ceil(center + half_width));
 
 			Pcontrib_bounds[i].center = center;
 			Pcontrib_bounds[i].left = left;
@@ -671,8 +671,8 @@ Resampler::Contrib_List *Resampler::make_clist(int src_x, int dst_x, Boundary_Op
 		int total = n;
 		if ((total == 0)
 				|| ((Pcpool = (Contrib *)memory::pool::calloc(m_pool, total, sizeof(Contrib)))
-						== NULL)) {
-			return NULL;
+						== nullptr)) {
+			return nullptr;
 		}
 
 		Pcpool_next = Pcpool;
@@ -745,7 +745,7 @@ Resampler::Contrib_List *Resampler::make_clist(int src_x, int dst_x, Boundary_Op
 			//resampler_assert(max_k != -1);
 
 			if ((max_k == -1) || (Pcontrib[i].n == 0)) {
-				return NULL;
+				return nullptr;
 			}
 
 			if (total_weight != 1.0f) {
@@ -909,7 +909,7 @@ bool Resampler::put_line(const Real *Psrc) {
 	if (!m_Pscan_buf->scan_buf_l[i]) {
 		if ((m_Pscan_buf->scan_buf_l[i] =
 							(Real *)memory::pool::palloc(m_pool, m_intermediate_x * sizeof(Real)))
-				== NULL) {
+				== nullptr) {
 			m_status = STATUS_OUT_OF_MEMORY;
 			return false;
 		}
@@ -920,7 +920,7 @@ bool Resampler::put_line(const Real *Psrc) {
 		resampler_assert(m_intermediate_x == m_resample_src_x);
 
 		// Y-X resampling order
-		memcpy(m_Pscan_buf->scan_buf_l[i], Psrc, m_intermediate_x * sizeof(Real));
+		sprt::memcpy(m_Pscan_buf->scan_buf_l[i], Psrc, m_intermediate_x * sizeof(Real));
 	} else {
 		resampler_assert(m_intermediate_x == m_resample_dst_x);
 
@@ -941,7 +941,7 @@ const Resampler::Real *Resampler::get_line() {
 	 */
 
 	if (m_cur_dst_y == m_resample_dst_y) {
-		return NULL;
+		return nullptr;
 	}
 
 	/* Check to see if all the required
@@ -952,7 +952,7 @@ const Resampler::Real *Resampler::get_line() {
 	for (i = 0; i < m_Pclist_y[m_cur_dst_y].n; i++) {
 		if (!m_Psrc_y_flag[resampler_range_check(m_Pclist_y[m_cur_dst_y].p[i].pixel,
 					m_resample_src_y)]) {
-			return NULL;
+			return nullptr;
 		}
 	}
 
@@ -968,10 +968,10 @@ Resampler::~Resampler() {
 	printf("actual ops: %i\n", total_ops);
 #endif
 
-	m_Pdst_buf = NULL;
+	m_Pdst_buf = nullptr;
 
 	if (m_Ptmp_buf) {
-		m_Ptmp_buf = NULL;
+		m_Ptmp_buf = nullptr;
 	}
 
 	/* Don't deallocate a contibutor list
@@ -979,18 +979,18 @@ Resampler::~Resampler() {
 	 */
 
 	if ((m_Pclist_x) && (!m_clist_x_forced)) {
-		m_Pclist_x = NULL;
+		m_Pclist_x = nullptr;
 	}
 
 	if ((m_Pclist_y) && (!m_clist_y_forced)) {
-		m_Pclist_y = NULL;
+		m_Pclist_y = nullptr;
 	}
 
-	m_Psrc_y_count = NULL;
-	m_Psrc_y_flag = NULL;
+	m_Psrc_y_count = nullptr;
+	m_Psrc_y_flag = nullptr;
 
 	if (m_Pscan_buf) {
-		m_Pscan_buf = NULL;
+		m_Pscan_buf = nullptr;
 	}
 }
 
@@ -1017,15 +1017,15 @@ Resampler::Resampler(int src_x, int src_y, int dst_x, int dst_y, Boundary_Op bou
 
 	m_delay_x_resample = false;
 	m_intermediate_x = 0;
-	m_Pdst_buf = NULL;
-	m_Ptmp_buf = NULL;
+	m_Pdst_buf = nullptr;
+	m_Ptmp_buf = nullptr;
 	m_clist_x_forced = false;
-	m_Pclist_x = NULL;
+	m_Pclist_x = nullptr;
 	m_clist_y_forced = false;
-	m_Pclist_y = NULL;
-	m_Psrc_y_count = NULL;
-	m_Psrc_y_flag = NULL;
-	m_Pscan_buf = NULL;
+	m_Pclist_y = nullptr;
+	m_Psrc_y_count = nullptr;
+	m_Psrc_y_flag = nullptr;
+	m_Pscan_buf = nullptr;
 	m_status = STATUS_OKAY;
 
 	m_resample_src_x = src_x;
@@ -1036,7 +1036,7 @@ Resampler::Resampler(int src_x, int src_y, int dst_x, int dst_y, Boundary_Op bou
 	m_boundary_op = boundary_op;
 
 	if ((m_Pdst_buf = (Real *)memory::pool::palloc(m_pool, m_resample_dst_x * sizeof(Real)))
-			== NULL) {
+			== nullptr) {
 		m_status = STATUS_OUT_OF_MEMORY;
 		return;
 	}
@@ -1084,14 +1084,14 @@ Resampler::Resampler(int src_x, int src_y, int dst_x, int dst_y, Boundary_Op bou
 	}
 
 	if ((m_Psrc_y_count = (int *)memory::pool::calloc(m_pool, m_resample_src_y, sizeof(int)))
-			== NULL) {
+			== nullptr) {
 		m_status = STATUS_OUT_OF_MEMORY;
 		return;
 	}
 
 	if ((m_Psrc_y_flag = (unsigned char *)memory::pool::calloc(m_pool, m_resample_src_y,
 				 sizeof(unsigned char)))
-			== NULL) {
+			== nullptr) {
 		m_status = STATUS_OUT_OF_MEMORY;
 		return;
 	}
@@ -1107,14 +1107,14 @@ Resampler::Resampler(int src_x, int src_y, int dst_x, int dst_y, Boundary_Op bou
 		}
 	}
 
-	if ((m_Pscan_buf = (Scan_Buf *)memory::pool::palloc(m_pool, sizeof(Scan_Buf))) == NULL) {
+	if ((m_Pscan_buf = (Scan_Buf *)memory::pool::palloc(m_pool, sizeof(Scan_Buf))) == nullptr) {
 		m_status = STATUS_OUT_OF_MEMORY;
 		return;
 	}
 
 	for (i = 0; i < MAX_SCAN_BUF_SIZE; i++) {
 		m_Pscan_buf->scan_buf_y[i] = -1;
-		m_Pscan_buf->scan_buf_l[i] = NULL;
+		m_Pscan_buf->scan_buf_l[i] = nullptr;
 	}
 
 	m_cur_src_y = m_cur_dst_y = 0;
@@ -1155,7 +1155,7 @@ Resampler::Resampler(int src_x, int src_y, int dst_x, int dst_y, Boundary_Op bou
 
 	if (m_delay_x_resample) {
 		if ((m_Ptmp_buf = (Real *)memory::pool::palloc(m_pool, m_intermediate_x * sizeof(Real)))
-				== NULL) {
+				== nullptr) {
 			m_status = STATUS_OUT_OF_MEMORY;
 			return;
 		}
@@ -1168,11 +1168,11 @@ public:
 
 	struct Node {
 		Resampler *resampler = nullptr;
-		memory::vector<Resampler::Real> sample;
+		sprt::__pool_vector<Resampler::Real> sample;
 
 		template <typename... Args>
 		Node(uint32_t width, Args &&...args)
-		: resampler(new (std::nothrow) Resampler(width, std::forward<Args>(args)...)) {
+		: resampler(new (sprt::nothrow) Resampler(width, sprt::forward<Args>(args)...)) {
 			sample.resize(width);
 		}
 	};
@@ -1200,7 +1200,7 @@ void ResamplerData::resample(Filter filter, const BitmapTemplate<Interface> &sou
 
 	auto bpp = getBytesPerPixel(source.format());
 
-	memory::vector<Node> nodes;
+	sprt::__pool_vector<Node> nodes;
 	nodes.reserve(bpp);
 
 	nodes.emplace_back(source.width(), source.height(), target.width(), target.height(),
@@ -1274,14 +1274,14 @@ auto BitmapTemplate<memory::PoolInterface>::resample(ResampleFilter f, uint32_t 
 	}
 
 	if ((min(width, height) <= 1) || (max(height, height) > Resampler::MaxDimensions)) {
-		log::format(log::Error, "Bitmap", SP_LOCATION,
+		log::format(sprt::oslog::Error, "Bitmap", SP_LOCATION,
 				"Invalid resample width/height (%u x %u), max dimension is %u", width, height,
 				Resampler::MaxDimensions);
 		return ret;
 	}
 
 	if ((max(_width, _height) > Resampler::MaxDimensions)) {
-		log::format(log::Error, "Bitmap", SP_LOCATION,
+		log::format(sprt::oslog::Error, "Bitmap", SP_LOCATION,
 				"Bitmap is too large (%u x %u), max dimension is %u", width, height,
 				Resampler::MaxDimensions);
 		return ret;
@@ -1319,14 +1319,14 @@ auto BitmapTemplate<memory::StandartInterface>::resample(ResampleFilter f, uint3
 	}
 
 	if ((min(width, height) <= 1) || (max(height, height) > Resampler::MaxDimensions)) {
-		log::format(log::Error, "Bitmap", SP_LOCATION,
+		log::format(sprt::oslog::Error, "Bitmap", SP_LOCATION,
 				"Invalid resample width/height (%u x %u), max dimension is %u", width, height,
 				Resampler::MaxDimensions);
 		return ret;
 	}
 
 	if ((max(_width, _height) > Resampler::MaxDimensions)) {
-		log::format(log::Error, "Bitmap", SP_LOCATION,
+		log::format(sprt::oslog::Error, "Bitmap", SP_LOCATION,
 				"Bitmap is too large (%u x %u), max dimension is %u", width, height,
 				Resampler::MaxDimensions);
 		return ret;

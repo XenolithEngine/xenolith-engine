@@ -90,7 +90,7 @@ void GeneralLayout::handleContentSizeDirty() {
 
 	// Задаём размер меню
 	// Разворачиваем на полную высоту, но ограничиваем максимальную ширину
-	_menu->setContentSize(Size2(std::min(_contentSize.width, 480.0f), _contentSize.height));
+	_menu->setContentSize(Size2(sprt::min(_contentSize.width, 480.0f), _contentSize.height));
 }
 
 void GeneralLayout::handleForeground(basic2d::SceneContent2d *l, basic2d::SceneLayout2d *overlay) {

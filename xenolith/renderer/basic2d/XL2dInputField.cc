@@ -43,20 +43,21 @@ bool InputField::init() {
 	_placeholder->setLocaleEnabled(true);
 	_placeholder->setAnchorPoint(Anchor::MiddleLeft);
 
-	/*_menu = Rc<InputMenu>::create(std::bind(&InputField::onMenuCut, this), std::bind(&InputField::onMenuCopy, this),
-			std::bind(&InputField::onMenuPaste, this));
+	/*_menu = Rc<InputMenu>::create(sprt::bind(&InputField::onMenuCut, this), sprt::bind(&InputField::onMenuCopy, this),
+			sprt::bind(&InputField::onMenuPaste, this));
 	_menu->setAnchorPoint(Anchor::MiddleBottom);
 	_menu->setVisible(false);*/
 
 	_inputListener = addInputListener(Rc<InputListener>::create());
-	_inputListener->setTouchFilter([this] (const InputEvent &vec, const InputListener::DefaultEventFilter &def) {
+	_inputListener->setTouchFilter(
+			[this](const InputEvent &vec, const InputListener::DefaultEventFilter &def) {
 		if (!_label->isActive()) {
 			return def(vec);
 		} else {
 			return true;
 		}
 	});
-	_inputListener->addPressRecognizer([this] (const GesturePress &g) {
+	_inputListener->addPressRecognizer([this](const GesturePress &g) {
 		if (g.event == GestureEvent::Began) {
 			return onPressBegin(g.pos);
 		} else if (g.event == GestureEvent::Activated) {
@@ -67,7 +68,7 @@ bool InputField::init() {
 			return onPressCancel(g.pos);
 		}
 	}, TimeInterval::milliseconds(425), true);
-	_inputListener->addSwipeRecognizer([this] (const GestureSwipe &s) {
+	_inputListener->addSwipeRecognizer([this](const GestureSwipe &s) {
 		if (s.event == GestureEvent::Began) {
 			if (onSwipeBegin(s.midpoint, s.delta / s.density)) {
 				auto ret = onSwipe(s.midpoint, s.delta / s.density);
@@ -123,12 +124,8 @@ void InputField::handleExit() {
 	Node::handleExit();
 }
 
-void InputField::setInputCallback(const Callback &cb) {
-	_onInput = cb;
-}
-const InputField::Callback &InputField::getInputCallback() const {
-	return _onInput;
-}
+void InputField::setInputCallback(const Callback &cb) { _onInput = cb; }
+const InputField::Callback &InputField::getInputCallback() const { return _onInput; }
 
 bool InputField::handleInputChar(char16_t c) {
 	if (_charFilter) {
@@ -139,12 +136,8 @@ bool InputField::handleInputChar(char16_t c) {
 void InputField::handleActivated(bool value) {
 	//_gestureListener->setSwallowTouches(value);
 }
-void InputField::handlePointer(bool value) {
-	updateMenu();
-}
-void InputField::handleCursor(const Cursor &) {
-	updateMenu();
-}
+void InputField::handlePointer(bool value) { updateMenu(); }
+void InputField::handleCursor(const Cursor &) { updateMenu(); }
 
 void InputField::setMenuPosition(const Vec2 &pos) {
 	/*_menu->updateMenu();
@@ -173,69 +166,35 @@ void InputField::setMenuPosition(const Vec2 &pos) {
 	_menu->setPosition(menuPos);*/
 }
 
-void InputField::setMaxChars(size_t value) {
-	_label->setMaxChars(value);
-}
-size_t InputField::getMaxChars() const {
-	return _label->getMaxChars();
-}
+void InputField::setMaxChars(size_t value) { _label->setMaxChars(value); }
+size_t InputField::getMaxChars() const { return _label->getMaxChars(); }
 
-void InputField::setInputType(TextInputType t) {
-	_label->setInputType(t);
-}
-TextInputType InputField::getInputType() const {
-	return _label->getInputType();
-}
+void InputField::setInputType(TextInputType t) { _label->setInputType(t); }
+TextInputType InputField::getInputType() const { return _label->getInputType(); }
 
-void InputField::setPasswordMode(PasswordMode mode) {
-	_label->setPasswordMode(mode);
-}
-InputField::PasswordMode InputField::getPasswordMode() {
-	return _label->getPasswordMode();
-}
+void InputField::setPasswordMode(PasswordMode mode) { _label->setPasswordMode(mode); }
+InputField::PasswordMode InputField::getPasswordMode() { return _label->getPasswordMode(); }
 
-void InputField::setAllowAutocorrect(bool value) {
-	_label->setAllowAutocorrect(value);
-}
-bool InputField::isAllowAutocorrect() const {
-	return _label->isAllowAutocorrect();
-}
+void InputField::setAllowAutocorrect(bool value) { _label->setAllowAutocorrect(value); }
+bool InputField::isAllowAutocorrect() const { return _label->isAllowAutocorrect(); }
 
-void InputField::setEnabled(bool value) {
-	_label->setEnabled(value);
-}
-bool InputField::isEnabled() const {
-	return _label->isEnabled();
-}
+void InputField::setEnabled(bool value) { _label->setEnabled(value); }
+bool InputField::isEnabled() const { return _label->isEnabled(); }
 
 void InputField::setNormalColor(const Color &color) {
 	_normalColor = color;
 	_label->setCursorColor(color);
 }
-const Color &InputField::getNormalColor() const {
-	return _normalColor;
-}
+const Color &InputField::getNormalColor() const { return _normalColor; }
 
-void InputField::setErrorColor(const Color &color) {
-	_errorColor = color;
-}
-const Color &InputField::getErrorColor() const {
-	return _errorColor;
-}
+void InputField::setErrorColor(const Color &color) { _errorColor = color; }
+const Color &InputField::getErrorColor() const { return _errorColor; }
 
-bool InputField::empty() const {
-	return _label->empty();
-}
+bool InputField::empty() const { return _label->empty(); }
 
-void InputField::setPlaceholder(const WideStringView &str) {
-	_placeholder->setString(str);
-}
-void InputField::setPlaceholder(const StringView &str) {
-	_placeholder->setString(str);
-}
-WideStringView InputField::getPlaceholder() const {
-	return _label->getString();
-}
+void InputField::setPlaceholder(const WideStringView &str) { _placeholder->setString(str); }
+void InputField::setPlaceholder(const StringView &str) { _placeholder->setString(str); }
+WideStringView InputField::getPlaceholder() const { return _label->getString(); }
 
 void InputField::setString(const WideString &str) {
 	if (_label->empty() != str.empty()) {
@@ -249,34 +208,18 @@ void InputField::setString(const String &str) {
 	}
 	_label->setString(str);
 }
-WideStringView InputField::getString() const {
-	return _label->getString();
-}
+WideStringView InputField::getString() const { return _label->getString(); }
 
-InputLabel *InputField::getLabel() const {
-	return _label;
-}
+InputLabel *InputField::getLabel() const { return _label; }
 
-void InputField::setCharFilter(const CharFilter &cb) {
-	_charFilter = cb;
-}
-const InputField::CharFilter &InputField::getCharFilter() const {
-	return _charFilter;
-}
+void InputField::setCharFilter(const CharFilter &cb) { _charFilter = cb; }
+const InputField::CharFilter &InputField::getCharFilter() const { return _charFilter; }
 
-void InputField::acquireInput() {
-	_label->acquireInput();
-}
-void InputField::releaseInput() {
-	_label->releaseInput();
-}
-bool InputField::isInputActive() const {
-	return _label->isActive();
-}
+void InputField::acquireInput() { _label->acquireInput(); }
+void InputField::releaseInput() { _label->releaseInput(); }
+bool InputField::isInputActive() const { return _label->isActive(); }
 
-bool InputField::onPressBegin(const Vec2 &vec) {
-	return _label->onPressBegin(vec);
-}
+bool InputField::onPressBegin(const Vec2 &vec) { return _label->onPressBegin(vec); }
 bool InputField::onLongPress(const Vec2 &vec, const TimeInterval &time, int count) {
 	return _label->onLongPress(vec, time, count);
 }
@@ -310,21 +253,13 @@ bool InputField::onPressEnd(const Vec2 &vec) {
 		return true;
 	}
 }
-bool InputField::onPressCancel(const Vec2 &vec) {
-	return _label->onPressCancel(vec);
-}
+bool InputField::onPressCancel(const Vec2 &vec) { return _label->onPressCancel(vec); }
 
-bool InputField::onSwipeBegin(const Vec2 &vec, const Vec2 &) {
-	return _label->onSwipeBegin(vec);
-}
+bool InputField::onSwipeBegin(const Vec2 &vec, const Vec2 &) { return _label->onSwipeBegin(vec); }
 
-bool InputField::onSwipe(const Vec2 &vec, const Vec2 &delta) {
-	return _label->onSwipe(vec, delta);
-}
+bool InputField::onSwipe(const Vec2 &vec, const Vec2 &delta) { return _label->onSwipe(vec, delta); }
 
-bool InputField::onSwipeEnd(const Vec2 &vel) {
-	return _label->onSwipeEnd(vel);
-}
+bool InputField::onSwipeEnd(const Vec2 &vel) { return _label->onSwipeEnd(vel); }
 
 void InputField::onMenuCut() {
 	//Device::getInstance()->copyStringToClipboard(_label->getSelectedString());
@@ -350,12 +285,8 @@ void InputField::updateMenu() {
 	}*/
 }
 
-void InputField::onMenuVisible() {
-
-}
-void InputField::onMenuHidden() {
-
-}
+void InputField::onMenuVisible() { }
+void InputField::onMenuHidden() { }
 
 Rc<InputLabel> InputField::makeLabel() {
 	auto label = Rc<InputLabel>::create();
@@ -365,4 +296,4 @@ Rc<InputLabel> InputField::makeLabel() {
 	return label;
 }
 
-}
+} // namespace stappler::xenolith::basic2d

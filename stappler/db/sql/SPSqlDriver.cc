@@ -28,7 +28,7 @@ THE SOFTWARE.
 
 namespace STAPPLER_VERSIONIZED stappler::db::sql {
 
-thread_local std::map<StringView, Map<StringView, const void *>> tl_DriverQueryStorage;
+thread_local sprt::__malloc_map<StringView, Map<StringView, const void *>> tl_DriverQueryStorage;
 
 QueryStorageHandle::QueryStorageHandle(const Driver *d, StringView n,
 		Map<StringView, const void *> *dt)

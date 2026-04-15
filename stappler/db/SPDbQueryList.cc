@@ -47,7 +47,8 @@ static const Query::FieldsVec *getFieldsVec(const Query::FieldsVec *vec, const S
 	return nullptr;
 }
 
-static void QueryFieldResolver_resolveByName(Set<const Field *> &ret, const Map<String, Field> &fields, const StringView &name) {
+static void QueryFieldResolver_resolveByName(Set<const Field *> &ret,
+		const Map<String, Field> &fields, const StringView &name) {
 	if (!name.empty() && name.front() == '$') {
 		auto res = Query::decodeResolve(name);
 		switch (res) {
@@ -81,7 +82,8 @@ static void QueryFieldResolver_resolveByName(Set<const Field *> &ret, const Map<
 			break;
 		case Resolve::Basics:
 			for (auto &it : fields) {
-				if (it.second.isSimpleLayout() && !it.second.isDataLayout() && !it.second.hasFlag(db::Flags::ForceExclude)) {
+				if (it.second.isSimpleLayout() && !it.second.isDataLayout()
+						&& !it.second.hasFlag(db::Flags::ForceExclude)) {
 					ret.emplace(&it.second);
 				}
 			}
@@ -118,8 +120,10 @@ static void QueryFieldResolver_resolveByName(Set<const Field *> &ret, const Map<
 
 QueryFieldResolver::QueryFieldResolver() : root(nullptr) { }
 
-QueryFieldResolver::QueryFieldResolver(const ApplicationInterface * app, const Scheme &scheme, const Query &query, const Vector<StringView> &extraFields) {
-	root = new Data{&scheme, &scheme.getFields(), &query.getIncludeFields(), &query.getExcludeFields()};
+QueryFieldResolver::QueryFieldResolver(const ApplicationInterface *app, const Scheme &scheme,
+		const Query &query, const Vector<StringView> &extraFields) {
+	root = new Data{&scheme, &scheme.getFields(), &query.getIncludeFields(),
+		&query.getExcludeFields()};
 	doResolve(app, root, extraFields, 0, query.getResolveDepth());
 }
 
@@ -150,13 +154,9 @@ QueryFieldResolver::Meta QueryFieldResolver::getMeta() const {
 	return root ? root->meta : Meta::None;
 }
 
-const Set<const Field *> &QueryFieldResolver::getResolves() const {
-	return root->resolved;
-}
+const Set<const Field *> &QueryFieldResolver::getResolves() const { return root->resolved; }
 
-const Set<StringView> &QueryFieldResolver::getResolvesData() const {
-	return root->resolvedData;
-}
+const Set<StringView> &QueryFieldResolver::getResolvesData() const { return root->resolvedData; }
 
 const Query::FieldsVec *QueryFieldResolver::getIncludeVec() const {
 	if (root) {
@@ -182,13 +182,15 @@ QueryFieldResolver QueryFieldResolver::next(const StringView &f) const {
 	return QueryFieldResolver();
 }
 
-QueryFieldResolver::operator bool () const {
-	return root && root->scheme != nullptr && (root->fields != nullptr || !root->resolvedData.empty());
+QueryFieldResolver::operator bool() const {
+	return root && root->scheme != nullptr
+			&& (root->fields != nullptr || !root->resolvedData.empty());
 }
 
 QueryFieldResolver::QueryFieldResolver(Data *data) : root(data) { }
 
-void QueryFieldResolver::doResolve(const ApplicationInterface *app, Data *data, const Vector<StringView> &extra, uint16_t depth, uint16_t max) {
+void QueryFieldResolver::doResolve(const ApplicationInterface *app, Data *data,
+		const Vector<StringView> &extra, uint16_t depth, uint16_t max) {
 	if (!data->fields) {
 		return;
 	}
@@ -211,7 +213,8 @@ void QueryFieldResolver::doResolve(const ApplicationInterface *app, Data *data, 
 		}
 	}
 
-	if (!data->include || data->include->empty() || (data->include->size() == 1 && data->include->front().name == "$meta")) {
+	if (!data->include || data->include->empty()
+			|| (data->include->size() == 1 && data->include->front().name == "$meta")) {
 		for (auto &it : *data->fields) {
 			if (it.second.isSimpleLayout()) {
 				if (!it.second.hasFlag(Flags::ForceExclude)) {
@@ -250,7 +253,12 @@ void QueryFieldResolver::doResolve(const ApplicationInterface *app, Data *data, 
 		} else if (it->getType() == Type::Data || it->getType() == Type::Virtual) {
 			scheme = data->scheme;
 			if (depth < max) {
-				auto n_it = data->next.emplace(it->getName().str<Interface>(), Data{scheme, nullptr, getFieldsVec(data->include, it->getName()), getFieldsVec(data->exclude, it->getName())}).first;
+				auto n_it = data->next
+									.emplace(it->getName().str<Interface>(),
+											Data{scheme, nullptr,
+												getFieldsVec(data->include, it->getName()),
+												getFieldsVec(data->exclude, it->getName())})
+									.first;
 				doResolveData(&n_it->second, depth + 1, max);
 			}
 		} else if (it->isFile()) {
@@ -258,7 +266,12 @@ void QueryFieldResolver::doResolve(const ApplicationInterface *app, Data *data, 
 			fields = &scheme->getFields();
 		}
 		if (scheme && fields && depth < max) {
-			auto n_it = data->next.emplace(it->getName().str<Interface>(), Data{scheme, fields, getFieldsVec(data->include, it->getName()), getFieldsVec(data->exclude, it->getName())}).first;
+			auto n_it =
+					data->next
+							.emplace(it->getName().str<Interface>(),
+									Data{scheme, fields, getFieldsVec(data->include, it->getName()),
+										getFieldsVec(data->exclude, it->getName())})
+							.first;
 			doResolve(app, &n_it->second, extra, depth + 1, max);
 		}
 	}
@@ -272,23 +285,23 @@ void QueryFieldResolver::doResolveData(Data *data, uint16_t depth, uint16_t max)
 	}
 
 	if (data->exclude) {
-		for (const Query::Field &it : *data->exclude) {
-			data->resolvedData.erase(it.name);
-		}
+		for (const Query::Field &it : *data->exclude) { data->resolvedData.erase(it.name); }
 	}
 
 	for (const StringView &it : data->resolvedData) {
 		auto scheme = data->scheme;
 		if (depth < max) {
-			auto n_it = data->next.emplace(it.str<Interface>(), Data{scheme, nullptr, getFieldsVec(data->include, it), getFieldsVec(data->exclude, it)}).first;
+			auto n_it = data->next
+								.emplace(it.str<Interface>(),
+										Data{scheme, nullptr, getFieldsVec(data->include, it),
+											getFieldsVec(data->exclude, it)})
+								.first;
 			doResolveData(&n_it->second, depth + 1, max);
 		}
 	}
 }
 
-const Set<const Field *> &QueryList::Item::getQueryFields() const {
-	return fields.getResolves();
-}
+const Set<const Field *> &QueryList::Item::getQueryFields() const { return fields.getResolves(); }
 
 /*void QueryList::readFields(const Scheme &scheme, const Set<const Field *> &fields, const FieldCallback &cb, bool isSimpleGet) {
 	if (!fields.empty()) {
@@ -328,8 +341,7 @@ void QueryList::Item::readFields(const FieldCallback &cb, bool isSimpleGet) cons
 	QueryList::readFields(*scheme, getQueryFields(), cb, isSimpleGet);
 }*/
 
-QueryList::QueryList(const ApplicationInterface *app, const Scheme *scheme)
-: _application(app) {
+QueryList::QueryList(const ApplicationInterface *app, const Scheme *scheme) : _application(app) {
 	queries.reserve(config::RESOURCE_RESOLVE_MAX_DEPTH);
 	queries.emplace_back(Item{scheme});
 }
@@ -372,7 +384,8 @@ bool QueryList::order(const Scheme *scheme, const StringView &f, Ordering o) {
 }
 bool QueryList::first(const Scheme *scheme, const StringView &f, size_t v) {
 	Item &b = queries.back();
-	if (b.scheme == scheme && b.query.getOrderField().empty() && b.query.getLimitValue() > v && b.query.getOffsetValue() == 0) {
+	if (b.scheme == scheme && b.query.getOrderField().empty() && b.query.getLimitValue() > v
+			&& b.query.getOffsetValue() == 0) {
 		b.query.order(f, Ordering::Ascending);
 		b.query.limit(v, 0);
 		return true;
@@ -382,7 +395,8 @@ bool QueryList::first(const Scheme *scheme, const StringView &f, size_t v) {
 }
 bool QueryList::last(const Scheme *scheme, const StringView &f, size_t v) {
 	Item &b = queries.back();
-	if (b.scheme == scheme && b.query.getOrderField().empty() && b.query.getLimitValue() > v && b.query.getOffsetValue() == 0) {
+	if (b.scheme == scheme && b.query.getOrderField().empty() && b.query.getLimitValue() > v
+			&& b.query.getOffsetValue() == 0) {
 		b.query.order(f, Ordering::Descending);
 		b.query.limit(v, 0);
 		return true;
@@ -449,7 +463,8 @@ StringView QueryList::setQueryAsMtime() {
 			if (it.second.hasFlag(db::Flags::AutoMTime)) {
 				auto &q = queries.back();
 				q.query.clearFields().include(it.first);
-				q.fields = QueryFieldResolver(_application, *q.scheme, q.query, Vector<StringView>());
+				q.fields =
+						QueryFieldResolver(_application, *q.scheme, q.query, Vector<StringView>());
 				return it.first;
 			}
 		}
@@ -457,21 +472,13 @@ StringView QueryList::setQueryAsMtime() {
 	return StringView();
 }
 
-void QueryList::clearFlags() {
-	_flags = None;
-}
+void QueryList::clearFlags() { _flags = None; }
 
-void QueryList::addFlag(Flags flags) {
-	_flags |= flags;
-}
+void QueryList::addFlag(Flags flags) { _flags |= flags; }
 
-bool QueryList::hasFlag(Flags flags) const {
-	return (_flags & flags) != Flags::None;
-}
+bool QueryList::hasFlag(Flags flags) const { return (_flags & flags) != Flags::None; }
 
-bool QueryList::isAll() const {
-	return queries.back().all;
-}
+bool QueryList::isAll() const { return queries.back().all; }
 
 bool QueryList::isRefSet() const {
 	return (queries.size() > 1 && !queries.back().ref && !queries.back().all);
@@ -489,36 +496,30 @@ bool QueryList::isView() const {
 	}
 	return false;
 }
-bool QueryList::empty() const {
-	return queries.size() == 1 && queries.front().query.empty();
-}
+bool QueryList::empty() const { return queries.size() == 1 && queries.front().query.empty(); }
 
 bool QueryList::isDeltaApplicable() const {
 	const QueryList::Item &item = getItems().back();
-	if ((queries.size() == 1 || (isView() && queries.size() == 2
-			&& (queries.front().query.getSelectIds().size() == 1 || queries.front().query.getLimitValue() == 1)))
+	if ((queries.size() == 1
+				|| (isView() && queries.size() == 2
+						&& (queries.front().query.getSelectIds().size() == 1
+								|| queries.front().query.getLimitValue() == 1)))
 			&& !item.query.hasSelectName() && !item.query.hasSelectList()) {
 		return true;
 	}
 	return false;
 }
 
-size_t QueryList::size() const {
-	return queries.size();
-}
+size_t QueryList::size() const { return queries.size(); }
 
-const Scheme *QueryList::getPrimaryScheme() const {
-	return queries.front().scheme;
-}
+const Scheme *QueryList::getPrimaryScheme() const { return queries.front().scheme; }
 const Scheme *QueryList::getSourceScheme() const {
 	if (queries.size() >= 2) {
 		return queries.at(queries.size() - 2).scheme;
 	}
 	return getPrimaryScheme();
 }
-const Scheme *QueryList::getScheme() const {
-	return queries.back().scheme;
-}
+const Scheme *QueryList::getScheme() const { return queries.back().scheme; }
 
 const Field *QueryList::getField() const {
 	if (queries.size() >= 2) {
@@ -527,13 +528,9 @@ const Field *QueryList::getField() const {
 	return nullptr;
 }
 
-const Query &QueryList::getTopQuery() const {
-	return queries.back().query;
-}
+const Query &QueryList::getTopQuery() const { return queries.back().query; }
 
-const Vector<QueryList::Item> &QueryList::getItems() const {
-	return queries;
-}
+const Vector<QueryList::Item> &QueryList::getItems() const { return queries; }
 
 void QueryList::decodeSelect(const Scheme &scheme, Query &q, const Value &val) {
 	if (val.isInteger()) {
@@ -541,13 +538,14 @@ void QueryList::decodeSelect(const Scheme &scheme, Query &q, const Value &val) {
 	} else if (val.isString()) {
 		q.select(val.getString());
 	} else if (val.isArray() && val.size() > 0) {
-		auto cb = [&, this] (const Value &iit) {
+		auto cb = [&, this](const Value &iit) {
 			if (iit.isArray() && iit.size() >= 3) {
 				auto field = iit.getValue(0).asString();
 				if (auto f = scheme.getField(field)) {
 					auto cmp = iit.getValue(1).asString();
 					auto d = decodeComparation(cmp);
-					if (f->isIndexed() || d.first == Comparation::IsNotNull || d.first == Comparation::IsNull) {
+					if (f->isIndexed() || d.first == Comparation::IsNotNull
+							|| d.first == Comparation::IsNull) {
 						auto &val = iit.getValue(2);
 						if (d.second && iit.size() >= 4) {
 							auto &val2 = iit.getValue(4);
@@ -567,9 +565,7 @@ void QueryList::decodeSelect(const Scheme &scheme, Query &q, const Value &val) {
 		if (val.getValue(0).isString()) {
 			cb(val);
 		} else if (val.getValue(0).isArray()) {
-			for (auto &iit : val.asArray()) {
-				cb(iit);
-			}
+			for (auto &iit : val.asArray()) { cb(iit); }
 		}
 	}
 }
@@ -589,7 +585,7 @@ void QueryList::decodeOrder(const Scheme &scheme, Query &q, const String &str, c
 				if (dir == "desc") {
 					ord = Ordering::Descending;
 				}
-				++ target;
+				++target;
 			}
 		} else if (str == "last") {
 			ord = Ordering::Descending;
@@ -601,10 +597,10 @@ void QueryList::decodeOrder(const Scheme &scheme, Query &q, const String &str, c
 
 		if (size > target) {
 			limit = val.getInteger(target);
-			++ target;
+			++target;
 			if (size > target) {
 				offset = val.getInteger(target);
-				++ target;
+				++target;
 			}
 		}
 	} else if (val.isString()) {
@@ -647,7 +643,8 @@ const Field *QueryList_getField(const Scheme &scheme, const Field *f, const Stri
 	return nullptr;
 }
 
-static uint16_t QueryList_emplaceItem(const ApplicationInterface *app, const Scheme &scheme, const Field *f, Vector<Query::Field> &dec, const String &name) {
+static uint16_t QueryList_emplaceItem(const ApplicationInterface *app, const Scheme &scheme,
+		const Field *f, Vector<Query::Field> &dec, const String &name) {
 	if (!name.empty() && name.front() == '$') {
 		dec.emplace_back(String(name));
 		return 1;
@@ -668,22 +665,28 @@ static uint16_t QueryList_emplaceItem(const ApplicationInterface *app, const Sch
 		return 0;
 	}
 	if (!f) {
-		app->error("QueryList", toString("Invalid field name in 'include' for scheme ", scheme.getName()), Value(name));
+		app->error("QueryList",
+				toString("Invalid field name in 'include' for scheme ", scheme.getName()),
+				Value(name));
 	} else {
 		app->error("QueryList",
-				toString("Invalid field name in 'include' for scheme ", scheme.getName(), " and field ", f->getName()), Value(name));
+				toString("Invalid field name in 'include' for scheme ", scheme.getName(),
+						" and field ", f->getName()),
+				Value(name));
 	}
 	return 0;
 }
 
-static uint16_t QueryList_decodeIncludeItem(const ApplicationInterface *app, const Scheme &scheme, const Field *f, Vector<Query::Field> &dec, const Value &val) {
+static uint16_t QueryList_decodeIncludeItem(const ApplicationInterface *app, const Scheme &scheme,
+		const Field *f, Vector<Query::Field> &dec, const Value &val) {
 	uint16_t depth = 0;
 	if (val.isString()) {
 		return QueryList_emplaceItem(app, scheme, f, dec, val.getString());
 	} else if (val.isArray()) {
 		for (auto &iit : val.asArray()) {
 			if (iit.isString()) {
-				depth = std::max(depth, QueryList_emplaceItem(app, scheme, f, dec, iit.getString()));
+				depth = sprt::max(depth,
+						QueryList_emplaceItem(app, scheme, f, dec, iit.getString()));
 			}
 		}
 	}
@@ -708,27 +711,35 @@ static void QueryList_decodeMeta(Vector<Query::Field> &dec, const Value &val) {
 	}
 }
 
-static uint16_t QueryList_decodeInclude(const ApplicationInterface *app, const Scheme &scheme, const Field *f, Vector<Query::Field> &dec, const Value &val) {
+static uint16_t QueryList_decodeInclude(const ApplicationInterface *app, const Scheme &scheme,
+		const Field *f, Vector<Query::Field> &dec, const Value &val) {
 	uint16_t depth = 0;
 	if (val.isDictionary()) {
 		for (auto &it : val.asDict()) {
 			if (!it.first.empty()) {
 				if (it.second.isBool() && it.second.asBool()) {
 					QueryList_emplaceItem(app, scheme, f, dec, it.first);
-				} else if (it.second.isArray() || it.second.isDictionary() || it.second.isString()) {
+				} else if (it.second.isArray() || it.second.isDictionary()
+						|| it.second.isString()) {
 					if (it.first.front() == '$') {
 						dec.emplace_back(String(it.first));
 						QueryList_decodeMeta(dec.back().fields, it.second);
 					} else if (auto target = QueryList_getField(scheme, f, it.first)) {
 						if (auto ts = target->getForeignScheme()) {
 							dec.emplace_back(String(it.first));
-							depth = std::max(depth, QueryList_decodeInclude(app, *ts, nullptr, dec.back().fields, it.second));
+							depth = sprt::max(depth,
+									QueryList_decodeInclude(app, *ts, nullptr, dec.back().fields,
+											it.second));
 						} else if (target->isFile()) {
 							dec.emplace_back(String(it.first));
-							depth = std::max(depth, QueryList_decodeInclude(app, *app->getFileScheme(), nullptr, dec.back().fields, it.second));
+							depth = sprt::max(depth,
+									QueryList_decodeInclude(app, *app->getFileScheme(), nullptr,
+											dec.back().fields, it.second));
 						} else {
 							dec.emplace_back(String(it.first));
-							depth = std::max(depth, QueryList_decodeInclude(app, scheme, target, dec.back().fields, it.second));
+							depth = sprt::max(depth,
+									QueryList_decodeInclude(app, scheme, target, dec.back().fields,
+											it.second));
 						}
 					}
 				}
@@ -736,16 +747,19 @@ static uint16_t QueryList_decodeInclude(const ApplicationInterface *app, const S
 		}
 		depth = (depth + 1);
 	} else {
-		depth = std::max(depth, QueryList_decodeIncludeItem(app, scheme, f, dec, val));
+		depth = sprt::max(depth, QueryList_decodeIncludeItem(app, scheme, f, dec, val));
 	}
 	return depth;
 }
 
 static Ordering QueryList_getTokenOrdering(const Value &v) {
-	return ((v.isInteger() && v.getInteger() == 1) || (v.isString() && v.getString() == "desc")) ? Ordering::Descending : Ordering::Ascending;
+	return ((v.isInteger() && v.getInteger() == 1) || (v.isString() && v.getString() == "desc"))
+			? Ordering::Descending
+			: Ordering::Ascending;
 }
 
-static ContinueToken QueryList_decodeToken(const ApplicationInterface *app, const Scheme &scheme, const Value &val) {
+static ContinueToken QueryList_decodeToken(const ApplicationInterface *app, const Scheme &scheme,
+		const Value &val) {
 	StringView fStr = StringView("__oid");
 	int64_t count = QueryList::DefaultSoftLimit;
 	Ordering ord = Ordering::Ascending;
@@ -810,22 +824,22 @@ bool QueryList::apply(const Value &val) {
 			}
 		} else if (it.first == "fields") {
 			Vector<Query::Field> dec;
-			q.depth(std::min(QueryList_decodeInclude(_application, scheme, nullptr, dec, it.second), config::RESOURCE_RESOLVE_MAX_DEPTH));
-			for (auto &it : dec) {
-				q.include(sp::move(it));
-			}
+			q.depth(sprt::min(
+					QueryList_decodeInclude(_application, scheme, nullptr, dec, it.second),
+					config::RESOURCE_RESOLVE_MAX_DEPTH));
+			for (auto &it : dec) { q.include(sp::move(it)); }
 		} else if (it.first == "include") {
 			Vector<Query::Field> dec;
-			q.depth(std::min(QueryList_decodeInclude(_application, scheme, nullptr, dec, it.second), config::RESOURCE_RESOLVE_MAX_DEPTH));
-			for (auto &it : dec) {
-				q.include(sp::move(it));
-			}
+			q.depth(sprt::min(
+					QueryList_decodeInclude(_application, scheme, nullptr, dec, it.second),
+					config::RESOURCE_RESOLVE_MAX_DEPTH));
+			for (auto &it : dec) { q.include(sp::move(it)); }
 		} else if (it.first == "exclude") {
 			Vector<Query::Field> dec;
-			q.depth(std::min(QueryList_decodeInclude(_application, scheme, nullptr, dec, it.second), config::RESOURCE_RESOLVE_MAX_DEPTH));
-			for (auto &it : dec) {
-				q.exclude(sp::move(it));
-			}
+			q.depth(sprt::min(
+					QueryList_decodeInclude(_application, scheme, nullptr, dec, it.second),
+					config::RESOURCE_RESOLVE_MAX_DEPTH));
+			for (auto &it : dec) { q.exclude(sp::move(it)); }
 		} else if (it.first == "delta") {
 			if (it.second.isString()) {
 				q.delta(it.second.asString());
@@ -860,17 +874,11 @@ void QueryList::resolve(const Vector<StringView> &vec) {
 	b.fields = QueryFieldResolver(_application, *b.scheme, b.query, vec);
 }
 
-uint16_t QueryList::getResolveDepth() const {
-	return queries.back().query.getResolveDepth();
-}
+uint16_t QueryList::getResolveDepth() const { return queries.back().query.getResolveDepth(); }
 
-void QueryList::setResolveDepth(uint16_t d) {
-	queries.back().query.depth(d);
-}
+void QueryList::setResolveDepth(uint16_t d) { queries.back().query.depth(d); }
 
-void QueryList::setDelta(stappler::Time d) {
-	queries.back().query.delta(d.toMicroseconds());
-}
+void QueryList::setDelta(stappler::Time d) { queries.back().query.delta(d.toMicroseconds()); }
 
 stappler::Time QueryList::getDelta() const {
 	return stappler::Time::microseconds(queries.back().query.getDeltaToken());
@@ -887,12 +895,8 @@ QueryFieldResolver QueryList::getFields() const {
 	return QueryFieldResolver(queries.back().fields);
 }
 
-const Value &QueryList::getExtraData() const {
-	return extraData;
-}
+const Value &QueryList::getExtraData() const { return extraData; }
 
-ContinueToken &QueryList::getContinueToken() const {
-	return token;
-}
+ContinueToken &QueryList::getContinueToken() const { return token; }
 
-}
+} // namespace stappler::db

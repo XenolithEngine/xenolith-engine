@@ -52,16 +52,6 @@ using sprt::window::WindowInfo;
 SP_PUBLIC Value encodeWindowInfo(const WindowInfo &info);
 SP_PUBLIC StringView getWindowCursorName(WindowCursor);
 
-inline const CallbackStream &operator<<(const CallbackStream &stream, WindowCursor t) {
-	stream << getWindowCursorName(t);
-	return stream;
-}
-
-inline std::ostream &operator<<(std::ostream &stream, WindowCursor t) {
-	stream << getWindowCursorName(t);
-	return stream;
-}
-
 } // namespace stappler::xenolith
 
 #endif // XENOLITH_APPLICATION_XLWINDOWINFO_H_

@@ -79,7 +79,7 @@ bool FloatContext::pushFloatingNodeToStack(LayoutBlock &origin, LayoutBlock &l, 
 		const Rect &bbox, Vec2 &vec) {
 	auto &stacks = (l.node.block.floating == Float::Left) ? floatRight : floatLeft;
 
-	float newHeight = std::max(s.size.height, bbox.size.height);
+	float newHeight = sprt::max(s.size.height, bbox.size.height);
 	float oppositeWidth = 0;
 
 	for (auto &stack : stacks) {
@@ -140,9 +140,9 @@ bool FloatContext::pushFloatingNodeToNewStack(LayoutBlock &lo, LayoutBlock &l, V
 		}
 	}
 
-	if (!isnan(pageHeight)) {
-		uint32_t curr1 = uint32_t(std::floor(origin.y / pageHeight));
-		uint32_t curr2 = uint32_t(std::floor((origin.y + bsize.height) / pageHeight));
+	if (!sprt::isnan(pageHeight)) {
+		uint32_t curr1 = uint32_t(sprt::floor(origin.y / pageHeight));
+		uint32_t curr2 = uint32_t(sprt::floor((origin.y + bsize.height) / pageHeight));
 		if (curr1 != curr2) {
 			origin.y = curr2 * pageHeight;
 		}

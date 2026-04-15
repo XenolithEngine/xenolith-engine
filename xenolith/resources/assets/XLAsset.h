@@ -163,7 +163,7 @@ protected:
 	bool _download = false;
 	bool _dirty = true;
 
-	mutable Mutex _mutex;
+	mutable sprt::mutex _mutex;
 };
 
 } // namespace stappler::xenolith::storage

@@ -55,7 +55,7 @@ inline void Lexer_parseBufferString(StringView &r, const Lexer::OutStream &strea
 				++r;
 				if (r.is('u') && r.size() >= 5) {
 					++r;
-					unicode::utf8EncodeCb([&](char c) { stream << c; },
+					sprt::unicode::utf8EncodeCb([&](char c) { stream << c; },
 							char16_t(base16::hexToChar(r[0], r[1]) << 8
 									| base16::hexToChar(r[2], r[3])));
 					r += 4;
@@ -226,7 +226,7 @@ static Expression::Op Lexer_Expression_readOperator(StringView &r, char brace,
 
 static Expression **Lexer_Expression_pushUnaryOp(Expression *node, Expression::Op op) {
 	node->op = op;
-	node->left = new (std::nothrow) Expression{Expression::Op::NoOp};
+	node->left = new (sprt::nothrow) Expression{Expression::Op::NoOp};
 	return &node->left;
 }
 
@@ -252,13 +252,13 @@ static Expression *Lexer_Expression_insertOp(Expression **node, Expression::Op o
 				&& Lexer_Expression_priority(current->right->op) == Lexer_Expression_priority(op)) {
 			current = current->right;
 		}
-		current->right = new (std::nothrow)
-				Expression(op, current->right, new (std::nothrow) Expression{Expression::NoOp});
+		current->right = new (sprt::nothrow)
+				Expression(op, current->right, new (sprt::nothrow) Expression{Expression::NoOp});
 		return current->right;
 	} else {
-		*insert = new (std::nothrow) Expression(op, current,
+		*insert = new (sprt::nothrow) Expression(op, current,
 				(op != Expression::SuffixIncr && op != Expression::SuffixDecr)
-						? new (std::nothrow) Expression{Expression::NoOp}
+						? new (sprt::nothrow) Expression{Expression::NoOp}
 						: nullptr);
 		return *insert;
 	}
@@ -322,7 +322,7 @@ static bool Lexer_Expression_readOperandValue(Expression *current, StringView &r
 			} else if (value == "null") {
 				current->set(Value());
 			} else if (value == "inf") {
-				current->set(Value(std::numeric_limits<double>::infinity()));
+				current->set(Value(sprt::Infinity<double>));
 			} else if (value == "nan") {
 				current->set(Value(nan()));
 			} else if (!value.empty()) {
@@ -749,11 +749,11 @@ Expression::Options &Expression::Options::disableAllOperators() {
 	return *this;
 }
 
-Expression::Options &Expression::Options::enableOperators(std::initializer_list<Op> &&il) {
+Expression::Options &Expression::Options::enableOperators(sprt::initializer_list<Op> &&il) {
 	for (auto &it : il) { operators.set(toInt(it)); }
 	return *this;
 }
-Expression::Options &Expression::Options::disableOperators(std::initializer_list<Op> &&il) {
+Expression::Options &Expression::Options::disableOperators(sprt::initializer_list<Op> &&il) {
 	for (auto &it : il) { operators.reset(toInt(it)); }
 	return *this;
 }
@@ -764,11 +764,11 @@ Expression::Options &Expression::Options::useNewlineToken(const StringView &str)
 	return *this;
 }
 
-Expression::Options &Expression::Options::setFlags(std::initializer_list<Flags> &&il) {
+Expression::Options &Expression::Options::setFlags(sprt::initializer_list<Flags> &&il) {
 	for (auto &it : il) { flags.set(toInt(it)); }
 	return *this;
 }
-Expression::Options &Expression::Options::clearFlags(std::initializer_list<Flags> &&il) {
+Expression::Options &Expression::Options::clearFlags(sprt::initializer_list<Flags> &&il) {
 	for (auto &it : il) { flags.reset(toInt(it)); }
 	return *this;
 }
@@ -777,7 +777,7 @@ bool Expression::Options::hasFlag(Flags f) const { return flags.test(toInt(f)); 
 bool Expression::Options::hasOperator(Op op) const { return operators.test(toInt(op)); }
 
 Expression *Expression::parse(StringView &r, const Options &opts) {
-	auto root = new (std::nothrow) Expression{Op::NoOp};
+	auto root = new (sprt::nothrow) Expression{Op::NoOp};
 	if (!Lexer_readExpression(&root, r, opts, true)) {
 		return nullptr;
 	}

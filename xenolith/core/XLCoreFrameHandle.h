@@ -161,7 +161,7 @@ protected:
 	uint64_t _order = 0;
 	uint64_t _submissionTime = 0;
 	uint64_t _deviceTime = 0;
-	std::atomic<uint32_t> _tasksRequired = 0;
+	sprt::atomic<uint32_t> _tasksRequired = 0;
 	uint32_t _tasksCompleted = 0;
 	uint32_t _queuesSubmitted = 0;
 	uint32_t _queuesCompleted = 0;

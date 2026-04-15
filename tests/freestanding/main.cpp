@@ -20,12 +20,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+#include <sprt/cxx/forward_list>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/platform.h>
+
+#include <sprt/cxx/new>
+#include <sprt/cxx/memory>
 
 namespace sprt {
 
@@ -35,7 +39,8 @@ void performDirTest();
 void performLinkTest();
 void performListTests();
 
-void performPthreadTest();
+void performPthreadCreateTest();
+void performPthreadMutexTest();
 void performPthreadCondTest();
 void performPthreadRwlockTest();
 void performPthreadBarrierTest();
@@ -43,12 +48,51 @@ void performPthreadSpinlockTest();
 
 void performMallocStringTests();
 
+void performMallocUnorderedMapTests();
+void performMallocUnorderedSetTests();
 void performMallocListTests();
+void performThreadTests();
 void performMallocForwardListTests();
+void performVariantTests();
+void performOptionalTests();
+void performSortTests();
 
 void performHashTests();
 
 } // namespace sprt
+
+struct CustomType {
+	int x = 0;
+	int y = 0;
+
+	constexpr CustomType &operator+=(const CustomType &other) {
+		x += other.x;
+		y += other.y;
+		return *this;
+	}
+};
+
+consteval int get_value() {
+	auto t = sprt::memory::allocate<CustomType>();
+	auto v = sprt::memory::allocate<CustomType>();
+
+	using forward_list = sprt::__malloc_forward_list<int>;
+
+	forward_list list{1, 2, 3};
+
+	sprt::construct_at(t, CustomType{1, 2});
+	sprt::construct_at(v, CustomType{3, 4});
+
+	*t += *v;
+
+	auto ret = t->x + t->y;
+
+	sprt::memory::deallocate(t);
+	sprt::memory::deallocate(v);
+	return ret + list.front();
+}
+
+consteval int get_max_value() { return sprt::__vmax(1, 3, 5, 7, 2, 4); }
 
 int main(int argc, const char *argv[]) {
 	auto str =
@@ -56,8 +100,30 @@ int main(int argc, const char *argv[]) {
 
 	fwrite(str, strlen(str), 1, stdout);
 
+	sprt::cout << "\nTest constevals: " << get_value() << "\n";
+
+	sprt::cout << &fwrite << " " << (void *)str << " " << 12'345 << " " << sprt::io_hex(12'345)
+			   << " " << sprt::io_hex(-12'345) << "\n";
+
+	sprt::cout << get_max_value() << "\n";
+	/*sprt::performMallocUnorderedMapTests();
+	sprt::performMallocUnorderedSetTests();
 	sprt::performMallocForwardListTests();
-	sprt::performMallocListTests();
+	sprt::performMallocListTests();*/
+
+	sprt::performSortTests();
+	sprt::performOptionalTests();
+	sprt::performVariantTests();
+	sprt::performThreadTests();
+
+	sprt::performPthreadCreateTest();
+	sprt::performPthreadMutexTest();
+	sprt::performPthreadCondTest();
+	sprt::performPthreadRwlockTest();
+	sprt::performPthreadBarrierTest();
+	sprt::performPthreadSpinlockTest();
+	/**/
+
 	/*sprt::performHashTests();
 	sprt::performMallocStringTests();
 
@@ -66,11 +132,6 @@ int main(int argc, const char *argv[]) {
 	sprt::oslog::vpinfo(__SPRT_LOCATION, "main",
 			"Unique Device Id: ", sprt::platform::getUniqueDeviceId());
 
-	sprt::performPthreadTest();
-	sprt::performPthreadCondTest();
-	sprt::performPthreadRwlockTest();
-	sprt::performPthreadBarrierTest();
-	sprt::performPthreadSpinlockTest();
 	sprt::performUnameTest();
 	sprt::performUnistdTest();
 	sprt::performDirTest();

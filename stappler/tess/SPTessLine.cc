@@ -23,12 +23,15 @@ THE SOFTWARE.
 
 #include "SPTessLine.h"
 #include "SPTessSimd.hpp"
-#include "SPVec4.h"
+
+#include <sprt/runtime/geom/vec4.h>
 
 namespace STAPPLER_VERSIONIZED stappler::geom {
 
+using sprt::geom::Vec4;
+
 constexpr size_t getMaxRecursionDepth() { return 16; }
-constexpr float getCloseControlDistance() { return std::numeric_limits<float>::epsilon() * 32; }
+constexpr float getCloseControlDistance() { return sprt::Epsilon<float> * 32; }
 
 // based on:
 // http://www.antigrain.com/research/adaptive_bezier/index.html
@@ -46,10 +49,9 @@ struct EllipseData {
 	float sin_phi;
 
 	Vec2 rotatePoint(float startAngle, float sweepAngle) const {
-		const float sx_ = rx * cosf(startAngle + sweepAngle), sy_ = ry * sinf(startAngle + sweepAngle);
-		return Vec2(
-				cx - (sx_ * cos_phi - sy_ * sin_phi),
-				cy + (sx_ * sin_phi + sy_ * cos_phi));
+		const float sx_ = rx * cosf(startAngle + sweepAngle),
+					sy_ = ry * sinf(startAngle + sweepAngle);
+		return Vec2(cx - (sx_ * cos_phi - sy_ * sin_phi), cy + (sx_ * sin_phi + sy_ * cos_phi));
 	}
 };
 
@@ -75,21 +77,22 @@ static void drawQuadBezierRecursive(LineDrawer &drawer, float x0, float y0, floa
 
 	const float x01_mid = (x0 + x1) / 2, y01_mid = (y0 + y1) / 2; // between 0 and 1
 	const float x12_mid = (x1 + x2) / 2, y12_mid = (y1 + y2) / 2; // between 1 and 2
-	const float x_mid = (x01_mid + x12_mid) / 2, y_mid = (y01_mid + y12_mid) / 2; // midpoint on curve
+	const float x_mid = (x01_mid + x12_mid) / 2,
+				y_mid = (y01_mid + y12_mid) / 2; // midpoint on curve
 
 	const float dx = x2 - x0, dy = y2 - y0;
 	const float d = fabsf(((x1 - x2) * dy - (y1 - y2) * dx)) * 2.0f; //* 0.5f;
 
-	if (d > std::numeric_limits<float>::epsilon()) { // Regular case
+	if (d > sprt::Epsilon<float>) { // Regular case
 		const float d_sq = (d * d) / (dx * dx + dy * dy);
 		if (d_sq <= drawer.distanceError) {
-			if (drawer.angularError < std::numeric_limits<float>::epsilon()) {
+			if (drawer.angularError < sprt::Epsilon<float>) {
 				drawer.push((x1 + x_mid) / 2, (y1 + y_mid) / 2);
 				return;
 			} else {
 				// Curvature condition  (we need it for offset curve)
 				const float da = fabsf(atan2f(y2 - y1, x2 - x1) - atan2f(y1 - y0, x1 - x0));
-				if (std::min(da, float(2 * M_PI - da)) < drawer.angularError) {
+				if (sprt::min(da, float(2 * M_PI - da)) < drawer.angularError) {
 					drawer.push((x1 + x_mid) / 2, (y1 + y_mid) / 2);
 					return;
 				}
@@ -107,7 +110,7 @@ static void drawQuadBezierRecursive(LineDrawer &drawer, float x0, float y0, floa
 			}
 			if (sd <= 0) {
 				sd = draw_dist_sq(x1, y1, x0, y0);
-			} else if(sd >= 1) {
+			} else if (sd >= 1) {
 				sd = draw_dist_sq(x1, y1, x2, y2);
 			} else {
 				sd = draw_dist_sq(x1, y1, x0 + sd * dx, y0 + sd * dy);
@@ -130,25 +133,30 @@ static void drawCubicBezierRecursive(LineDrawer &drawer, float x0, float y0, flo
 	}
 
 	const float x01_mid = (x0 + x1) / 2, y01_mid = (y0 + y1) / 2; // between 0 and 1
-	const float x12_mid = (x1 + x2) / 2, y12_mid = (y1 + y2) / 2;// between 1 and 2
-	const float x23_mid = (x2 + x3) / 2, y23_mid = (y2 + y3) / 2;// between 2 and 3
+	const float x12_mid = (x1 + x2) / 2, y12_mid = (y1 + y2) / 2; // between 1 and 2
+	const float x23_mid = (x2 + x3) / 2, y23_mid = (y2 + y3) / 2; // between 2 and 3
 
-	const float x012_mid = (x01_mid + x12_mid) / 2, y012_mid = (y01_mid + y12_mid) / 2;// bisect midpoint in 012
-	const float x123_mid = (x12_mid + x23_mid) / 2, y123_mid = (y12_mid + y23_mid) / 2;// bisect midpoint in 123
+	const float x012_mid = (x01_mid + x12_mid) / 2,
+				y012_mid = (y01_mid + y12_mid) / 2; // bisect midpoint in 012
+	const float x123_mid = (x12_mid + x23_mid) / 2,
+				y123_mid = (y12_mid + y23_mid) / 2; // bisect midpoint in 123
 
-	const float x_mid = (x012_mid + x123_mid) / 2, y_mid = (y012_mid + y123_mid) / 2;// midpoint on curve
+	const float x_mid = (x012_mid + x123_mid) / 2,
+				y_mid = (y012_mid + y123_mid) / 2; // midpoint on curve
 
 	const float dx = x3 - x0, dy = y3 - y0;
-	const float d1 = fabsf(((x1 - x3) * dy - (y1 - y3) * dx)) * 2.0f; // * 0.5f;// distance factor from 0-3 to 1
-	const float d2 = fabsf(((x2 - x3) * dy - (y2 - y3) * dx)) * 2.0f; // * 0.5f;// distance factor from 0-3 to 2
+	const float d1 = fabsf(((x1 - x3) * dy - (y1 - y3) * dx))
+			* 2.0f; // * 0.5f;// distance factor from 0-3 to 1
+	const float d2 = fabsf(((x2 - x3) * dy - (y2 - y3) * dx))
+			* 2.0f; // * 0.5f;// distance factor from 0-3 to 2
 
-	const bool significantPoint1 = d1 > std::numeric_limits<float>::epsilon();
-	const bool significantPoint2 = d2 > std::numeric_limits<float>::epsilon();
+	const bool significantPoint1 = d1 > sprt::Epsilon<float>;
+	const bool significantPoint2 = d2 > sprt::Epsilon<float>;
 
 	if (significantPoint1 && significantPoint1) {
 		const float d_sq = ((d1 + d2) * (d1 + d2)) / (dx * dx + dy * dy);
 		if (d_sq <= drawer.distanceError) {
-			if (drawer.angularError < std::numeric_limits<float>::epsilon()) {
+			if (drawer.angularError < sprt::Epsilon<float>) {
 				drawer.push(x12_mid, y12_mid);
 				return;
 			}
@@ -156,7 +164,8 @@ static void drawCubicBezierRecursive(LineDrawer &drawer, float x0, float y0, flo
 			const float tmp = atan2(y2 - y1, x2 - x1);
 			const float da1 = fabs(tmp - atan2(y1 - y0, x1 - x0));
 			const float da2 = fabs(atan2(y3 - y2, x3 - x2) - tmp);
-			const float da = std::min(da1, float(2 * M_PI - da1)) + std::min(da2, float(2 * M_PI - da2));
+			const float da =
+					sprt::min(da1, float(2 * M_PI - da1)) + sprt::min(da2, float(2 * M_PI - da2));
 			if (da < drawer.angularError) {
 				drawer.push(x12_mid, y12_mid);
 				return;
@@ -165,12 +174,12 @@ static void drawCubicBezierRecursive(LineDrawer &drawer, float x0, float y0, flo
 	} else if (significantPoint1) {
 		const float d_sq = (d1 * d1) / (dx * dx + dy * dy);
 		if (d_sq <= drawer.distanceError) {
-			if (drawer.angularError < std::numeric_limits<float>::epsilon()) {
+			if (drawer.angularError < sprt::Epsilon<float>) {
 				drawer.push(x12_mid, y12_mid);
 				return;
 			} else {
 				const float da = fabsf(atan2f(y2 - y1, x2 - x1) - atan2f(y1 - y0, x1 - x0));
-				if (std::min(da, float(2 * M_PI - da)) < drawer.angularError) {
+				if (sprt::min(da, float(2 * M_PI - da)) < drawer.angularError) {
 					drawer.push(x1, y1);
 					drawer.push(x2, y2);
 					return;
@@ -180,12 +189,12 @@ static void drawCubicBezierRecursive(LineDrawer &drawer, float x0, float y0, flo
 	} else if (significantPoint2) {
 		const float d_sq = (d2 * d2) / (dx * dx + dy * dy);
 		if (d_sq <= drawer.distanceError) {
-			if (drawer.angularError < std::numeric_limits<float>::epsilon()) {
+			if (drawer.angularError < sprt::Epsilon<float>) {
 				drawer.push(x12_mid, y12_mid);
 				return;
 			} else {
 				const float da = fabsf(atan2f(y3 - y2, x3 - x2) - atan2f(y2 - y1, x2 - x1));
-				if (std::min(da, float(2 * M_PI - da)) < drawer.angularError) {
+				if (sprt::min(da, float(2 * M_PI - da)) < drawer.angularError) {
 					drawer.push(x1, y1);
 					drawer.push(x2, y2);
 					return;
@@ -234,12 +243,14 @@ static void drawCubicBezierRecursive(LineDrawer &drawer, float x0, float y0, flo
 		}
 	}
 
-	drawCubicBezierRecursive(drawer, x0, y0, x01_mid, y01_mid, x012_mid, y012_mid, x_mid, y_mid, depth + 1);
-	drawCubicBezierRecursive(drawer, x_mid, y_mid, x123_mid, y123_mid, x23_mid, y23_mid, x3, y3, depth + 1);
+	drawCubicBezierRecursive(drawer, x0, y0, x01_mid, y01_mid, x012_mid, y012_mid, x_mid, y_mid,
+			depth + 1);
+	drawCubicBezierRecursive(drawer, x_mid, y_mid, x123_mid, y123_mid, x23_mid, y23_mid, x3, y3,
+			depth + 1);
 }
 
-static void drawArcRecursive(LineDrawer &drawer, const EllipseData &e, float startAngle, float sweepAngle,
-		float x0, float y0, float x1, float y1, size_t depth) {
+static void drawArcRecursive(LineDrawer &drawer, const EllipseData &e, float startAngle,
+		float sweepAngle, float x0, float y0, float x1, float y1, size_t depth) {
 	if (depth >= getMaxRecursionDepth()) {
 		return;
 	}
@@ -253,14 +264,14 @@ static void drawArcRecursive(LineDrawer &drawer, const EllipseData &e, float sta
 	const float d = draw_dist_sq(x01_mid, y01_mid, s.x, s.y);
 
 	if (d < drawer.distanceError) {
-		if (drawer.angularError < std::numeric_limits<float>::epsilon()) {
+		if (drawer.angularError < sprt::Epsilon<float>) {
 			drawer.push(s.x, s.y);
 			return;
 		} else {
 			// Optimize with SIMD?
 			auto a1 = Vec2(x1 - x0, y1 - y0).getAngle(s - Vec2(x0, y0));
 			auto a2 = Vec2(s - Vec2(x1, y1)).getAngle(Vec2(x0 - x1, y0 - y1));
-			if (std::abs(a1 + a2) < drawer.angularError) {
+			if (sprt::abs(a1 + a2) < drawer.angularError) {
 				drawer.push(s.x, s.y);
 				return;
 			}
@@ -274,17 +285,19 @@ static void drawArcRecursive(LineDrawer &drawer, const EllipseData &e, float sta
 
 static void drawArcBegin(LineDrawer &drawer, float x0, float y0, float rx, float ry, float phi,
 		bool largeArc, bool sweep, float x1, float y1) {
-	rx = fabsf(rx); ry = fabsf(ry);
+	rx = fabsf(rx);
+	ry = fabsf(ry);
 
 	const float sin_phi = sinf(phi), cos_phi = cosf(phi);
 
 	const float x01_dst = (x0 - x1) / 2, y01_dst = (y0 - y1) / 2;
 	const float x1_ = cos_phi * x01_dst + sin_phi * y01_dst;
-	const float y1_ = - sin_phi * x01_dst + cos_phi * y01_dst;
+	const float y1_ = -sin_phi * x01_dst + cos_phi * y01_dst;
 
 	const float lambda = (x1_ * x1_) / (rx * rx) + (y1_ * y1_) / (ry * ry);
 	if (lambda > 1.0f) {
-		rx = sqrtf(lambda) * rx; ry = sqrtf(lambda) * ry;
+		rx = sqrtf(lambda) * rx;
+		ry = sqrtf(lambda) * ry;
 	}
 
 	const float rx_y1_ = (rx * rx * y1_ * y1_);
@@ -297,26 +310,26 @@ static void drawArcBegin(LineDrawer &drawer, float x0, float y0, float rx, float
 	const float cx = cx_ * cos_phi - cy_ * sin_phi + (x0 + x1) / 2;
 	const float cy = cx_ * sin_phi + cy_ * cos_phi + (y0 + y1) / 2;
 
-	float startAngle = draw_angle(1.0f, 0.0f, - (x1_ - cx_) / rx, (y1_ - cy_) / ry);
-	float sweepAngle = draw_angle((x1_ - cx_) / rx, (y1_ - cy_) / ry, (-x1_ - cx_) / rx, (-y1_ - cy_) / ry);
+	float startAngle = draw_angle(1.0f, 0.0f, -(x1_ - cx_) / rx, (y1_ - cy_) / ry);
+	float sweepAngle =
+			draw_angle((x1_ - cx_) / rx, (y1_ - cy_) / ry, (-x1_ - cx_) / rx, (-y1_ - cy_) / ry);
 
-	sweepAngle = (largeArc)
-			? std::max(fabsf(sweepAngle), float(M_PI * 2 - fabsf(sweepAngle)))
-			: std::min(fabsf(sweepAngle), float(M_PI * 2 - fabsf(sweepAngle)));
+	sweepAngle = (largeArc) ? sprt::max(fabsf(sweepAngle), float(M_PI * 2 - fabsf(sweepAngle)))
+							: sprt::min(fabsf(sweepAngle), float(M_PI * 2 - fabsf(sweepAngle)));
 
-	if (rx > std::numeric_limits<float>::epsilon() && ry > std::numeric_limits<float>::epsilon()) {
+	if (rx > sprt::Epsilon<float> && ry > sprt::Epsilon<float>) {
 		const float r_avg = (rx + ry) / 2.0f;
 		const float err = (r_avg - sqrtf(drawer.distanceError)) / r_avg;
-		if (err > M_SQRT1_2 * 0.5f - std::numeric_limits<float>::epsilon()) {
+		if (err > M_SQRT1_2 * 0.5f - sprt::Epsilon<float>) {
 			const float pts = ceilf(sweepAngle / (acos(err) * 2.0f)) + 1;
-			EllipseData d{ cx, cy, rx, ry, (rx * rx) / (ry * ry), cos_phi, sin_phi };
+			EllipseData d{cx, cy, rx, ry, (rx * rx) / (ry * ry), cos_phi, sin_phi};
 
 			sweepAngle = (sweep ? -1.0f : 1.0f) * sweepAngle;
 
 			const float segmentAngle = sweepAngle / pts;
 
 			uint32_t npts = uint32_t(pts);
-			for (uint32_t i = 0; i < uint32_t(pts); ++ i) {
+			for (uint32_t i = 0; i < uint32_t(pts); ++i) {
 				const Vec2 s = d.rotatePoint(startAngle, segmentAngle);
 
 				drawArcRecursive(drawer, d, startAngle, segmentAngle, x0, y0, s.x, s.y, 0);
@@ -324,25 +337,33 @@ static void drawArcBegin(LineDrawer &drawer, float x0, float y0, float rx, float
 
 				if (npts - 1 == i) {
 					drawer.push(x1, y1);
-					x0 = x1; y0 = y1;
+					x0 = x1;
+					y0 = y1;
 				} else {
 					drawer.push(s.x, s.y);
-					x0 = s.x; y0 = s.y;
+					x0 = s.x;
+					y0 = s.y;
 				}
 			}
 
 			return;
 		} else {
-			EllipseData d{ cx, cy, rx, ry, (rx * rx) / (ry * ry), cos_phi, sin_phi };
-			drawArcRecursive(drawer, d, startAngle, (sweep ? -1.0f : 1.0f) * sweepAngle, x0, y0, x1, y1, 0);
+			EllipseData d{cx, cy, rx, ry, (rx * rx) / (ry * ry), cos_phi, sin_phi};
+			drawArcRecursive(drawer, d, startAngle, (sweep ? -1.0f : 1.0f) * sweepAngle, x0, y0, x1,
+					y1, 0);
 			drawer.push(x1, y1);
 		}
 	}
 }
 
-LineDrawer::LineDrawer(float e, Rc<Tesselator> &&tessFill, Rc<Tesselator> &&tessStroke, Rc<Tesselator> &&tessSdf,
-		float w, LineJoin lj, LineCup lc)
-: lineJoin(lj), lineCup(lc), strokeWidth(w / 2.0f), fill(move(tessFill)), stroke(move(tessStroke)), sdf(move(tessSdf)) {
+LineDrawer::LineDrawer(float e, Rc<Tesselator> &&tessFill, Rc<Tesselator> &&tessStroke,
+		Rc<Tesselator> &&tessSdf, float w, LineJoin lj, LineCup lc)
+: lineJoin(lj)
+, lineCup(lc)
+, strokeWidth(w / 2.0f)
+, fill(move(tessFill))
+, stroke(move(tessStroke))
+, sdf(move(tessSdf)) {
 	if (fill) {
 		style |= DrawStyle::Fill;
 	}
@@ -365,9 +386,12 @@ LineDrawer::LineDrawer(float e, Rc<Tesselator> &&tessFill, Rc<Tesselator> &&tess
 		angularError = 0.0f;
 	}
 
-	buffer[0].next = &buffer[1]; buffer[0].prev = &buffer[2];
-	buffer[1].next = &buffer[2]; buffer[1].prev = &buffer[0];
-	buffer[2].next = &buffer[0]; buffer[2].prev = &buffer[1];
+	buffer[0].next = &buffer[1];
+	buffer[0].prev = &buffer[2];
+	buffer[1].next = &buffer[2];
+	buffer[1].prev = &buffer[0];
+	buffer[2].next = &buffer[0];
+	buffer[2].prev = &buffer[1];
 	target = &buffer[0];
 }
 
@@ -390,9 +414,7 @@ void LineDrawer::drawBegin(float x, float y) {
 
 	push(x, y);
 }
-void LineDrawer::drawLine(float x, float y) {
-	push(x, y);
-}
+void LineDrawer::drawLine(float x, float y) { push(x, y); }
 void LineDrawer::drawQuadBezier(float x1, float y1, float x2, float y2) {
 	drawQuadBezierRecursive(*this, target->point.x, target->point.y, x1, y1, x2, y2, 0);
 	push(x2, y2);
@@ -401,7 +423,8 @@ void LineDrawer::drawCubicBezier(float x1, float y1, float x2, float y2, float x
 	drawCubicBezierRecursive(*this, target->point.x, target->point.y, x1, y1, x2, y2, x3, y3, 0);
 	push(x3, y3);
 }
-void LineDrawer::drawArc(float rx, float ry, float phi, bool largeArc, bool sweep, float x1, float y1) {
+void LineDrawer::drawArc(float rx, float ry, float phi, bool largeArc, bool sweep, float x1,
+		float y1) {
 	drawArcBegin(*this, target->point.x, target->point.y, rx, ry, phi, largeArc, sweep, x1, y1);
 }
 void LineDrawer::drawClose(bool closed) {
@@ -470,7 +493,7 @@ void LineDrawer::push(float x, float y) {
 
 	target = target->next;
 	target->point = Vec2(x, y);
-	++ count;
+	++count;
 }
 
 void LineDrawer::pushStroke(const Vec2 &v0, const Vec2 &v1, const Vec2 &v2) {
@@ -487,7 +510,7 @@ void LineDrawer::pushStroke(const Vec2 &v0, const Vec2 &v1, const Vec2 &v2) {
 		stroke->pushStrokeVertex(strokeCursor, v0, perp * strokeWidth);
 	}
 
-	if (std::abs(result.y) < _miterLimit) {
+	if (sprt::abs(result.y) < _miterLimit) {
 		stroke->pushStrokeVertex(strokeCursor, v1, Vec2(result.z * mod, result.w * mod));
 	} else {
 		auto l0 = v1.distanceSquared(v0);
@@ -539,10 +562,8 @@ void LineDrawer::pushStroke(const Vec2 &v0, const Vec2 &v1, const Vec2 &v2) {
 				auto perp = norm.getRPerp();
 				stroke->pushStrokeTop(strokeCursor, v1 - perp * strokeWidth);
 			} while (0);
-
 		}
 	}
-
 }
 
-}
+} // namespace stappler::geom

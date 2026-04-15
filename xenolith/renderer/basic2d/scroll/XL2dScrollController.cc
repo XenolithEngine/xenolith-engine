@@ -64,7 +64,7 @@ void ScrollController::handleContentSizeDirty() {
 		if (!rebuildObjects()) {
 			for (auto &it : _nodes) { updateScrollNode(it); }
 		} else {
-			if (!isnan(relPos) && tmpPos == _scroll->getScrollPosition()) {
+			if (!sprt::isnan(relPos) && tmpPos == _scroll->getScrollPosition()) {
 				onScrollPosition();
 				_scroll->setScrollRelativePosition(relPos);
 			}
@@ -97,16 +97,16 @@ void ScrollController::onScrollPosition(bool force) {
 				pos = _scroll->getNodeScrollPosition(it.pos);
 				size = _scroll->getNodeScrollSize(it.size);
 
-				if (isnan(start) || start > pos) {
+				if (sprt::isnan(start) || start > pos) {
 					start = pos;
 				}
 
-				if (isnan(end) || end < pos + size) {
+				if (sprt::isnan(end) || end < pos + size) {
 					end = pos + size;
 				}
 			}
 
-			setScrollableArea(isnan(start) ? 0.0f : start, end - start);
+			setScrollableArea(sprt::isnan(start) ? 0.0f : start, end - start);
 			_scroll->updateScrollBounds();
 			_infoDirty = false;
 			force = false;
@@ -171,10 +171,10 @@ void ScrollController::reset(float origPosition, float origSize) {
 		auto nodeSize = _scroll->getNodeScrollSize(it.size);
 		if (nodePos + nodeSize > position && nodePos < position + size) {
 			if (it.node) {
-				if (isnan(windowBegin) || windowBegin > nodePos) {
+				if (sprt::isnan(windowBegin) || windowBegin > nodePos) {
 					windowBegin = nodePos;
 				}
-				if (isnan(windowEnd) || windowEnd < nodePos + nodeSize) {
+				if (sprt::isnan(windowEnd) || windowEnd < nodePos + nodeSize) {
 					windowEnd = nodePos + nodeSize;
 				}
 			}
@@ -209,7 +209,7 @@ void ScrollController::onNextObject(Item &h, float pos, float size) {
 		auto node = h.nodeFunction(h);
 		if (node) {
 			bool forward = true;
-			if (!isnan(_windowBegin) && !isnan(_windowEnd)) {
+			if (!sprt::isnan(_windowBegin) && !sprt::isnan(_windowEnd)) {
 				float windowMid = (_windowBegin + _windowEnd) / 2.0f;
 				if (pos + size < windowMid) {
 					forward = false;
@@ -257,7 +257,7 @@ size_t ScrollController::addItem(NodeFunction &&fn, Size2 size, Vec2 vec, ZOrder
 size_t ScrollController::addItem(NodeFunction &&fn, float size, float pos, ZOrder z,
 		StringView tag) {
 	if (!_scroll) {
-		return std::numeric_limits<size_t>::max();
+		return sprt::Max<size_t>;
 	}
 
 	_nodes.emplace_back(sp::move(fn), _scroll->getPositionForNode(pos),
@@ -268,7 +268,7 @@ size_t ScrollController::addItem(NodeFunction &&fn, float size, float pos, ZOrde
 
 size_t ScrollController::addItem(NodeFunction &&fn, float size, ZOrder zIndex, StringView tag) {
 	if (!_scroll) {
-		return std::numeric_limits<size_t>::max();
+		return sprt::Max<size_t>;
 	}
 
 	auto pos = 0.0f;
@@ -345,7 +345,7 @@ size_t ScrollController::getItemIndex(Node *node) {
 		}
 		idx++;
 	}
-	return std::numeric_limits<size_t>::max();
+	return sprt::Max<size_t>;
 }
 
 bool ScrollController::removeItem(size_t idx) {
@@ -439,7 +439,7 @@ void ScrollController::setScrollRelativeValue(float value) {
 
 	onScrollPosition();
 
-	if (!isnan(value)) {
+	if (!sprt::isnan(value)) {
 		if (value < 0.0f) {
 			value = 0.0f;
 		} else if (value > 1.0f) {
@@ -457,7 +457,7 @@ void ScrollController::setScrollRelativeValue(float value) {
 	auto paddingFront = (_scroll->isVertical()) ? padding.top : padding.left;
 	auto paddingBack = (_scroll->isVertical()) ? padding.bottom : padding.right;
 
-	if (!isnan(areaSize) && !isnan(areaOffset)) {
+	if (!sprt::isnan(areaSize) && !sprt::isnan(areaOffset)) {
 		float liveSize = areaSize - size + paddingFront + paddingBack;
 		float pos = (value * liveSize) - paddingFront + areaOffset;
 		clear();

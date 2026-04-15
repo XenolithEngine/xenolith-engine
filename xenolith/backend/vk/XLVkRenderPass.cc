@@ -91,7 +91,7 @@ bool PipelineLayout::init(Device &dev, const core::PipelineLayoutData &data, uin
 	};
 
 	auto incrementSize = [&](VkDescriptorType type, uint32_t count) {
-		auto lb = std::lower_bound(_sizes.begin(), _sizes.end(), type,
+		auto lb = sprt::lower_bound(_sizes.begin(), _sizes.end(), type,
 				[](const VkDescriptorPoolSize &l, VkDescriptorType r) { return l.type < r; });
 		if (lb == _sizes.end()) {
 			_sizes.emplace_back(VkDescriptorPoolSize({type, count}));
@@ -364,7 +364,7 @@ Rc<DescriptorPool> RenderPass::acquireDescriptorPool(Device &dev, uint32_t idx) 
 		return nullptr;
 	}
 
-	std::unique_lock lock(_descriptorPoolMutex);
+	sprt::unique_lock lock(_descriptorPoolMutex);
 	auto &vec = _descriptorPools[idx];
 	if (!vec.empty()) {
 		auto ret = vec.back();
@@ -382,7 +382,7 @@ Rc<DescriptorPool> RenderPass::acquireDescriptorPool(Device &dev, uint32_t idx) 
 
 void RenderPass::releaseDescriptorPool(Rc<DescriptorPool> &&pool) {
 	auto index = pool->getLayoutIndex();
-	std::unique_lock lock(_descriptorPoolMutex);
+	sprt::unique_lock lock(_descriptorPoolMutex);
 	auto &vec = _descriptorPools[index];
 	vec.emplace_back(move(pool));
 }
@@ -415,9 +415,9 @@ bool RenderPass::writeDescriptors(const QueuePassHandle &handle, DescriptorPool 
 	const auto emptyImage = handle.getData()->queue->emptyImage;
 	const auto emptyBuffer = handle.getData()->queue->emptyBuffer;
 
-	std::forward_list<Vector<VkDescriptorImageInfo>> images;
-	std::forward_list<Vector<VkDescriptorBufferInfo>> buffers;
-	std::forward_list<Vector<VkBufferView>> views;
+	sprt::__malloc_forward_list<Vector<VkDescriptorImageInfo>> images;
+	sprt::__malloc_forward_list<Vector<VkDescriptorBufferInfo>> buffers;
+	sprt::__malloc_forward_list<Vector<VkBufferView>> views;
 
 	Vector<VkWriteDescriptorSet> writes;
 

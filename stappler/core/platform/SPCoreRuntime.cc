@@ -79,8 +79,9 @@ auto totitle<memory::StandartInterface>(StringView data) -> memory::StandartInte
 template <>
 auto tolower<memory::PoolInterface>(WideStringView data) -> memory::PoolInterface::WideStringType {
 	memory::PoolInterface::WideStringType ret;
-	sprt::unicode::tolower([&](WideStringView str) { ret = str.str<memory::PoolInterface>(); },
-			data);
+	sprt::unicode::tolower([&](WideStringView str) {
+		ret = str.str<memory::PoolInterface::WideStringType>();
+	}, data);
 	return ret;
 }
 
@@ -88,16 +89,18 @@ template <>
 auto tolower<memory::StandartInterface>(WideStringView data)
 		-> memory::StandartInterface::WideStringType {
 	memory::StandartInterface::WideStringType ret;
-	sprt::unicode::tolower([&](WideStringView str) { ret = str.str<memory::StandartInterface>(); },
-			data);
+	sprt::unicode::tolower([&](WideStringView str) {
+		ret = str.str<memory::StandartInterface::WideStringType>();
+	}, data);
 	return ret;
 }
 
 template <>
 auto toupper<memory::PoolInterface>(WideStringView data) -> memory::PoolInterface::WideStringType {
 	memory::PoolInterface::WideStringType ret;
-	sprt::unicode::toupper([&](WideStringView str) { ret = str.str<memory::PoolInterface>(); },
-			data);
+	sprt::unicode::toupper([&](WideStringView str) {
+		ret = str.str<memory::PoolInterface::WideStringType>();
+	}, data);
 	return ret;
 }
 
@@ -105,16 +108,18 @@ template <>
 auto toupper<memory::StandartInterface>(WideStringView data)
 		-> memory::StandartInterface::WideStringType {
 	memory::StandartInterface::WideStringType ret;
-	sprt::unicode::toupper([&](WideStringView str) { ret = str.str<memory::StandartInterface>(); },
-			data);
+	sprt::unicode::toupper([&](WideStringView str) {
+		ret = str.str<memory::StandartInterface::WideStringType>();
+	}, data);
 	return ret;
 }
 
 template <>
 auto totitle<memory::PoolInterface>(WideStringView data) -> memory::PoolInterface::WideStringType {
 	memory::PoolInterface::WideStringType ret;
-	sprt::unicode::totitle([&](WideStringView str) { ret = str.str<memory::PoolInterface>(); },
-			data);
+	sprt::unicode::totitle([&](WideStringView str) {
+		ret = str.str<memory::PoolInterface::WideStringType>();
+	}, data);
 	return ret;
 }
 
@@ -122,8 +127,9 @@ template <>
 auto totitle<memory::StandartInterface>(WideStringView data)
 		-> memory::StandartInterface::WideStringType {
 	memory::StandartInterface::WideStringType ret;
-	sprt::unicode::totitle([&](WideStringView str) { ret = str.str<memory::StandartInterface>(); },
-			data);
+	sprt::unicode::totitle([&](WideStringView str) {
+		ret = str.str<memory::StandartInterface::WideStringType>();
+	}, data);
 	return ret;
 }
 

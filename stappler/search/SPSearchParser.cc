@@ -664,7 +664,7 @@ static bool parseToken(StringViewUtf8 &r,
 		default: break;
 		}
 	} else if (r.is('&')) {
-		StringView tmp(r.data(), std::min(size_t(8), r.size()));
+		StringView tmp(r.data(), sprt::min(size_t(8), r.size()));
 		tmp.readUntil<StringView::Chars<';'>>();
 		if (tmp.is(';')) {
 			++tmp;
@@ -913,7 +913,7 @@ static void *staticPoolAlloc(void *userData, unsigned int size) {
 	memory::pool_t *pool = (memory::pool_t *)userData;
 	size_t s = size;
 	auto mem = memory::pool::alloc(pool, s);
-	memset(mem, 0, s);
+	sprt::memset(mem, 0, s);
 	return mem;
 }
 
@@ -937,7 +937,7 @@ StemmerEnv *getStemmer(Language lang) {
 	}
 
 	data = (StemmerEnv *)memory::pool::palloc(pool, sizeof(StemmerEnv));
-	memset(data, 0, sizeof(StemmerEnv));
+	sprt::memset(data, 0, sizeof(StemmerEnv));
 	data->memalloc = &staticPoolAlloc;
 	data->memfree = &staticPoolFree;
 	data->userData = pool;

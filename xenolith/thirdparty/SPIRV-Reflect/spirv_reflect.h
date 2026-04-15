@@ -1586,11 +1586,17 @@ const char* spvReflectBlockVariableTypeName(
 #endif
 
 #if defined(__cplusplus) && !defined(SPIRV_REFLECT_DISABLE_CPP_BINDINGS)
-#include <cstdlib>
-#include <string>
-#include <vector>
+#include <sprt/cxx/cstdlib>
+#include <sprt/cxx/string>
+#include <sprt/cxx/vector>
 
 namespace spv_reflect {
+
+  template <typename T>
+  using vector = sprt::__malloc_vector<T>;
+
+  using string = sprt::__malloc_string;
+
 
 /*! \class ShaderModule
 
@@ -1599,8 +1605,8 @@ class ShaderModule {
 public:
   ShaderModule();
   ShaderModule(size_t size, const void* p_code, SpvReflectModuleFlags flags = SPV_REFLECT_MODULE_FLAG_NONE);
-  ShaderModule(const std::vector<uint8_t>& code, SpvReflectModuleFlags flags = SPV_REFLECT_MODULE_FLAG_NONE);
-  ShaderModule(const std::vector<uint32_t>& code, SpvReflectModuleFlags flags = SPV_REFLECT_MODULE_FLAG_NONE);
+  ShaderModule(const vector<uint8_t>& code, SpvReflectModuleFlags flags = SPV_REFLECT_MODULE_FLAG_NONE);
+  ShaderModule(const vector<uint32_t>& code, SpvReflectModuleFlags flags = SPV_REFLECT_MODULE_FLAG_NONE);
   ~ShaderModule();
 
   ShaderModule(ShaderModule&& other);
@@ -1724,7 +1730,7 @@ inline ShaderModule::ShaderModule(size_t size, const void* p_code, SpvReflectMod
   @param  code
 
 */
-inline ShaderModule::ShaderModule(const std::vector<uint8_t>& code, SpvReflectModuleFlags flags) {
+inline ShaderModule::ShaderModule(const vector<uint8_t>& code, SpvReflectModuleFlags flags) {
   m_result = spvReflectCreateShaderModule2(
     flags,
     code.size(),
@@ -1737,7 +1743,7 @@ inline ShaderModule::ShaderModule(const std::vector<uint8_t>& code, SpvReflectMo
   @param  code
 
 */
-inline ShaderModule::ShaderModule(const std::vector<uint32_t>& code, SpvReflectModuleFlags flags) {
+inline ShaderModule::ShaderModule(const vector<uint32_t>& code, SpvReflectModuleFlags flags) {
   m_result = spvReflectCreateShaderModule2(
     flags,
     code.size() * sizeof(uint32_t),
@@ -1755,13 +1761,13 @@ inline ShaderModule::~ShaderModule() {
 
 inline ShaderModule::ShaderModule(ShaderModule&& other)
 {
-    *this = std::move(other);
+    *this = sprt::move(other);
 }
 
 inline ShaderModule& ShaderModule::operator=(ShaderModule&& other)
 {
-    m_result = std::move(other.m_result);
-    m_module = std::move(other.m_module);
+    m_result = sprt::move(other.m_result);
+    m_module = sprt::move(other.m_module);
 
     other.m_module = {};
     return *this;

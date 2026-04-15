@@ -82,7 +82,7 @@ static bool css_readBorderColor(const StringView &value, const StyleCallback &cb
 	}
 
 	Color4B color;
-	if (geom::readColor(value, color)) {
+	if (sprt::geom::readColor(value, color)) {
 		return cb(StyleParameter::create<Name>(color));
 	}
 	return false;
@@ -166,7 +166,7 @@ bool css_readAspectRatioValue(StringView str, float &value) {
 	return false;
 }
 
-static std::unordered_map<StringView, StyleFunctionPtr> s_cssParameters{
+static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameters{
 	pair("font-weight",
 			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
 	if (value.equals("bold")) {
@@ -235,7 +235,7 @@ static std::unordered_map<StringView, StyleFunctionPtr> s_cssParameters{
 		}
 		tmp.skipChars<StringView::WhiteSpace>();
 		auto val = tmp.readFloat().get(nan());
-		if (!std::isnan(val)) {
+		if (!sprt::isnan(val)) {
 			tmp.skipChars<StringView::WhiteSpace>();
 			if (tmp.is("deg") && val >= -90.0 && val <= 90.0) {
 				return cb(StyleParameter::create<ParameterName::CssFontStyle>(

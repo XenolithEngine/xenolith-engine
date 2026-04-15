@@ -56,7 +56,8 @@ struct SP_PUBLIC Context {
 	CURLSH *share = nullptr;
 	Handle<Interface> *origHandle = nullptr;
 	HandleData<Interface> *handle = nullptr;
-	typename HandleData<Interface>::template Vector<typename HandleData<Interface>::String> headersData;
+	typename HandleData<Interface>::template Vector<typename HandleData<Interface>::String>
+			headersData;
 
 	curl_slist *headers = nullptr;
 	curl_slist *mailTo = nullptr;
@@ -67,19 +68,21 @@ struct SP_PUBLIC Context {
 
 	int code = 0;
 	bool success = false;
-	std::array<char, 256> error = { 0 };
+	sprt::array<char, 256> error = {0};
 };
 
 template <typename Interface>
-SP_PUBLIC bool prepare(HandleData<Interface> &iface, Context<Interface> *ctx, const Callback<bool(CURL *)> &onBeforePerform);
+SP_PUBLIC bool prepare(HandleData<Interface> &iface, Context<Interface> *ctx,
+		const Callback<bool(CURL *)> &onBeforePerform);
 
 template <typename Interface>
-SP_PUBLIC bool finalize(HandleData<Interface> &iface, Context<Interface> *ctx, const Callback<bool(CURL *)> &onAfterPerform);
+SP_PUBLIC bool finalize(HandleData<Interface> &iface, Context<Interface> *ctx,
+		const Callback<bool(CURL *)> &onAfterPerform);
 
 template <typename Interface>
-SP_PUBLIC bool perform(HandleData<Interface> &iface,
-		const Callback<bool(CURL *)> &onBeforePerform, const Callback<bool(CURL *)> &onAfterPerform);
+SP_PUBLIC bool perform(HandleData<Interface> &iface, const Callback<bool(CURL *)> &onBeforePerform,
+		const Callback<bool(CURL *)> &onAfterPerform);
 
-}
+} // namespace stappler::network
 
 #endif /* STAPPLER_NETWORK_SPNETWORKCONTEXT_H_ */

@@ -33,8 +33,8 @@ namespace STAPPLER_VERSIONIZED stappler::db {
 User *User::create(const Transaction &a, const StringView &name, const StringView &password) {
 	return create(a,
 			Value{
-				std::make_pair("name", Value(name)),
-				std::make_pair("password", Value(password)),
+				sprt::make_pair("name", Value(name)),
+				sprt::make_pair("password", Value(password)),
 			});
 }
 
@@ -43,9 +43,9 @@ User *User::setup(const Transaction &a, const StringView &name, const StringView
 	if (Worker(*s, a).asSystem().count() == 0) {
 		return create(a,
 				Value{
-					std::make_pair("name", Value(name)),
-					std::make_pair("password", Value(password)),
-					std::make_pair("isAdmin", Value(true)),
+					sprt::make_pair("name", Value(name)),
+					sprt::make_pair("password", Value(password)),
+					sprt::make_pair("isAdmin", Value(true)),
 				});
 	}
 	return nullptr;
@@ -54,7 +54,7 @@ User *User::create(const Transaction &a, Value &&val) {
 	auto s = a.getAdapter().getApplicationInterface()->getUserScheme();
 
 	auto d = Worker(*s, a).asSystem().create(val);
-	return new (std::nothrow) User(sp::move(d), *s);
+	return new (sprt::nothrow) User(sp::move(d), *s);
 }
 
 User *User::get(const Adapter &a, const StringView &name, const StringView &password) {
@@ -74,7 +74,7 @@ User *User::get(const Adapter &a, const Scheme &scheme, const BytesView &key) {
 			auto d = Worker(scheme, a).asSystem().select(
 					db::Query().select(it.second.getName(), Value(key)));
 			if (d.isArray() && d.size() == 1) {
-				return new (std::nothrow) User(sp::move(d.getValue(0)), scheme);
+				return new (sprt::nothrow) User(sp::move(d.getValue(0)), scheme);
 			}
 			break;
 		}
@@ -90,7 +90,7 @@ User *User::get(const Adapter &a, uint64_t oid) {
 User *User::get(const Adapter &a, const Scheme &s, uint64_t oid) {
 	auto d = Worker(s, a).asSystem().get(oid);
 	if (d.isDictionary()) {
-		return new (std::nothrow) User(sp::move(d), s);
+		return new (sprt::nothrow) User(sp::move(d), s);
 	}
 	return nullptr;
 }
@@ -113,7 +113,7 @@ User *User::get(const Transaction &a, const Scheme &scheme, const BytesView &key
 			auto d = Worker(scheme, a).asSystem().select(
 					db::Query().select(it.second.getName(), Value(key)));
 			if (d.isArray() && d.size() == 1) {
-				return new (std::nothrow) User(sp::move(d.getValue(0)), scheme);
+				return new (sprt::nothrow) User(sp::move(d.getValue(0)), scheme);
 			}
 			break;
 		}
@@ -129,7 +129,7 @@ User *User::get(const Transaction &a, uint64_t oid) {
 User *User::get(const Transaction &a, const Scheme &s, uint64_t oid) {
 	auto d = Worker(s, a).asSystem().get(oid);
 	if (d.isDictionary()) {
-		return new (std::nothrow) User(sp::move(d), s);
+		return new (sprt::nothrow) User(sp::move(d), s);
 	}
 	return nullptr;
 }

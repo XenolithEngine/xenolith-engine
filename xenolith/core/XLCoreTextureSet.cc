@@ -40,7 +40,7 @@ void TextureSet::write(const MaterialLayout &set) {
 }
 
 Rc<TextureSet> TextureSetLayout::acquireSet(Device &dev) {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
 	if (_sets.empty()) {
 		lock.unlock();
 		return dev.makeTextureSet(*this);
@@ -52,7 +52,7 @@ Rc<TextureSet> TextureSetLayout::acquireSet(Device &dev) {
 }
 
 void TextureSetLayout::releaseSet(Rc<TextureSet> &&set) {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
 	_sets.emplace_back(move(set));
 }
 

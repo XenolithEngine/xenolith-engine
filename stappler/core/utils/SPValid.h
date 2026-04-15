@@ -24,8 +24,7 @@ THE SOFTWARE.
 #ifndef STAPPLER_CORE_UTILS_SPVALID_H_
 #define STAPPLER_CORE_UTILS_SPVALID_H_
 
-#include "SPStringView.h"
-#include "SPStringView.h"
+#include "SPMemory.h" // IWYU pragma: keep
 
 namespace STAPPLER_VERSIONIZED stappler::valid {
 
@@ -66,7 +65,7 @@ SP_PUBLIC auto generatePassword(size_t len) -> typename Interface::StringType;
 
 SP_PUBLIC uint32_t readIp(StringView r);
 SP_PUBLIC uint32_t readIp(StringView r, bool &err);
-SP_PUBLIC Pair<uint32_t, uint32_t> readIpRange(StringView r);
+SP_PUBLIC sprt::pair<uint32_t, uint32_t> readIpRange(StringView r);
 
 } // namespace stappler::valid
 

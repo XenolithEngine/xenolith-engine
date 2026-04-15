@@ -210,9 +210,9 @@ uint32_t LayoutTable::makeCells(NodeId nodeId) {
 bool LayoutTable::allocateSpace() {
 	float calcMinWidth = 0.0f;
 	float calcMaxWidth = 0.0f;
-	if (isnan(width)) {
+	if (sprt::isnan(width)) {
 		for (auto &col : cols) {
-			if (!isnan(col.info->width)) {
+			if (!sprt::isnan(col.info->width)) {
 				calcMinWidth += col.info->width;
 				calcMaxWidth += col.info->width;
 			} else {
@@ -221,19 +221,19 @@ bool LayoutTable::allocateSpace() {
 			}
 		}
 
-		if (!isnan(minWidth)) {
+		if (!sprt::isnan(minWidth)) {
 			calcMinWidth = max(minWidth, calcMinWidth);
 		}
 
-		if (!isnan(maxWidth)) {
+		if (!sprt::isnan(maxWidth)) {
 			calcMaxWidth = max(maxWidth, calcMaxWidth);
 		}
 
-		if (isnan(origMinWidth)) {
+		if (sprt::isnan(origMinWidth)) {
 			origMinWidth = calcMinWidth;
 		}
 
-		if (isnan(origMaxWidth)) {
+		if (sprt::isnan(origMaxWidth)) {
 			origMaxWidth = calcMaxWidth;
 		}
 
@@ -267,7 +267,7 @@ bool LayoutTable::allocateSpace() {
 	// calc extraspace
 	float maxExtraSpace = 0.0f;
 	for (auto &col : cols) {
-		if (isnan(col.info->width)) {
+		if (sprt::isnan(col.info->width)) {
 			maxExtraSpace += col.info->maxWidth - col.info->minWidth;
 		}
 	}
@@ -276,7 +276,7 @@ bool LayoutTable::allocateSpace() {
 	const float extraSpace = width - calcMinWidth;
 	float xPos = 0.0f;
 	for (auto &col : cols) {
-		if (isnan(col.info->width)) {
+		if (sprt::isnan(col.info->width)) {
 			col.xPos = xPos;
 			auto space = (maxExtraSpace != 0.0f)
 					? ((col.info->maxWidth - col.info->minWidth) / maxExtraSpace) * extraSpace
@@ -288,7 +288,7 @@ bool LayoutTable::allocateSpace() {
 
 	// allocate cell space
 	for (auto &cell : cells) {
-		if (isnan(cell.info->width)) {
+		if (sprt::isnan(cell.info->width)) {
 			cell.info->width = 0.0f;
 			for (size_t i = cell.colIndex; i < cell.colIndex + cell.colSpan; ++i) {
 				cell.info->width += cols[i].info->width;
@@ -357,7 +357,7 @@ static void Table_processTableChildsStyle(const StyleInterface *iface, LayoutTab
 			push(col.node);
 
 			const StyleList *colStyle = compile(col.node);
-			col.info = new (std::nothrow) LayoutTable::LayoutInfo;
+			col.info = new (sprt::nothrow) LayoutTable::LayoutInfo;
 			col.info->node = LayoutBlock::NodeInfo(col.node, colStyle, iface);
 
 			pop();
@@ -398,7 +398,7 @@ static void Table_processTableChildsStyle(const StyleInterface *iface, LayoutTab
 		push(cell.node);
 
 		const StyleList *cellStyle = compile(cell.node);
-		cell.info = new (std::nothrow) LayoutTable::LayoutInfo;
+		cell.info = new (sprt::nothrow) LayoutTable::LayoutInfo;
 		cell.info->node = LayoutBlock::NodeInfo(cell.node, cellStyle, iface);
 
 		pop(); // cell
@@ -424,21 +424,21 @@ static void Table_prepareTableCell(const LayoutEngine *b, const LayoutTable &tab
 		cell.info->minWidth = cell.info->maxWidth = cell.info->width =
 				media.computeValueStrong(cell.info->node.block.width, 0.0f);
 		return;
-	} else if (!isnan(table.width) && cell.info->node.block.width.metric == Metric::Percent) {
+	} else if (!sprt::isnan(table.width) && cell.info->node.block.width.metric == Metric::Percent) {
 		cell.info->minWidth = cell.info->maxWidth = cell.info->width =
 				table.width * cell.info->node.block.width.value;
 		return;
 	} else {
 		if (cell.info->node.block.minWidth.isFixed()) {
 			cell.info->minWidth = media.computeValueStrong(cell.info->node.block.minWidth, 0.0f);
-		} else if (!isnan(table.width)
+		} else if (!sprt::isnan(table.width)
 				&& cell.info->node.block.minWidth.metric == Metric::Percent) {
 			cell.info->minWidth = table.width * cell.info->node.block.minWidth.value;
 		}
 
 		if (cell.info->node.block.maxWidth.isFixed()) {
 			cell.info->maxWidth = media.computeValueStrong(cell.info->node.block.maxWidth, 0.0f);
-		} else if (!isnan(table.width)
+		} else if (!sprt::isnan(table.width)
 				&& cell.info->node.block.maxWidth.metric == Metric::Percent) {
 			cell.info->maxWidth = table.width * cell.info->node.block.maxWidth.value;
 		}
@@ -472,7 +472,7 @@ static void Table_processTableColSpan(LayoutTable &table,
 			auto minW = table.cols[cell->colIndex + i].info->minWidth;
 			auto maxW = table.cols[cell->colIndex + i].info->maxWidth;
 
-			if (!isnan(table.cols[cell->colIndex + i].info->width)) {
+			if (!sprt::isnan(table.cols[cell->colIndex + i].info->width)) {
 				float f = table.cols[cell->colIndex + i].info->width;
 				fixedWidth += f;
 				cols.emplace_back(
@@ -483,12 +483,12 @@ static void Table_processTableColSpan(LayoutTable &table,
 				allFixed = false;
 			}
 
-			if (!isnan(minW) && !isnan(minCellWidth)) {
+			if (!sprt::isnan(minW) && !sprt::isnan(minCellWidth)) {
 				minCellWidth += minW;
 			} else {
 				minCellWidth = nan();
 			}
-			if (!isnan(maxW) && !isnan(maxCellWidth)) {
+			if (!sprt::isnan(maxW) && !sprt::isnan(maxCellWidth)) {
 				maxCellWidth += maxW;
 			} else {
 				maxCellWidth = nan();
@@ -501,7 +501,7 @@ static void Table_processTableColSpan(LayoutTable &table,
 			continue;
 		}
 
-		if (!isnan(minCellWidth)) {
+		if (!sprt::isnan(minCellWidth)) {
 			if (minCellWidth < cell->info->minWidth) {
 				float spaceToAllocate = cell->info->minWidth;
 				spaceToAllocate -= fixedWidth;
@@ -514,7 +514,7 @@ static void Table_processTableColSpan(LayoutTable &table,
 			}
 		}
 
-		if (!isnan(maxCellWidth)) {
+		if (!sprt::isnan(maxCellWidth)) {
 			if (maxCellWidth < cell->info->maxWidth) {
 				float spaceToAllocate = cell->info->maxWidth;
 				spaceToAllocate -= fixedWidth;
@@ -527,18 +527,18 @@ static void Table_processTableColSpan(LayoutTable &table,
 			}
 		}
 
-		if (isnan(minCellWidth) || isnan(maxCellWidth)) {
+		if (sprt::isnan(minCellWidth) || sprt::isnan(maxCellWidth)) {
 			float minW = 0.0f;
 			size_t minWeightCount = 0;
 			float maxW = 0.0f;
 			size_t maxWeightCount = 0;
 			for (auto &it : cols) {
-				if (!isnan(it.colMin)) {
-					minW = std::max(minW, it.colMin);
+				if (!sprt::isnan(it.colMin)) {
+					minW = sprt::max(minW, it.colMin);
 					++minWeightCount;
 				}
-				if (!isnan(it.colMax)) {
-					maxW = std::max(maxW, it.colMax);
+				if (!sprt::isnan(it.colMax)) {
+					maxW = sprt::max(maxW, it.colMax);
 					++maxWeightCount;
 				}
 			}
@@ -546,11 +546,11 @@ static void Table_processTableColSpan(LayoutTable &table,
 			float minWeightSum = 0.0f;
 			float maxWeightSum = 0.0f;
 			for (auto &it : cols) {
-				if (!isnan(it.colMin)) {
+				if (!sprt::isnan(it.colMin)) {
 					it.minWeight = (it.colMin / minW);
 					minWeightSum += it.minWeight;
 				}
-				if (!isnan(it.colMax)) {
+				if (!sprt::isnan(it.colMax)) {
 					it.maxWeight = (it.colMax / maxW);
 					maxWeightSum += it.maxWeight;
 				}
@@ -563,10 +563,10 @@ static void Table_processTableColSpan(LayoutTable &table,
 					? (maxWeightSum / float(maxWeightCount)) / float(cell->colSpan)
 					: 1.0f;
 			for (auto &it : cols) {
-				if (!isnan(it.colMin)) {
+				if (!sprt::isnan(it.colMin)) {
 					it.minWeight *= minMod;
 				}
-				if (!isnan(it.colMax)) {
+				if (!sprt::isnan(it.colMax)) {
 					it.maxWeight *= maxMod;
 				}
 			}
@@ -574,25 +574,25 @@ static void Table_processTableColSpan(LayoutTable &table,
 			minWeightSum *= minMod;
 			maxWeightSum *= maxMod;
 
-			if (isnan(minCellWidth)) {
+			if (sprt::isnan(minCellWidth)) {
 				// has undefined min-width
 				float weightToAllocate = (1.0f - minWeightSum) / (cell->colSpan - minWeightCount);
 				for (auto &it : cols) {
-					const float w = isnan(it.colMin) ? cell->info->minWidth * weightToAllocate
-													 : cell->info->minWidth * it.minWeight;
-					if (isnan(it.col->info->minWidth) || it.col->info->minWidth < w) {
+					const float w = sprt::isnan(it.colMin) ? cell->info->minWidth * weightToAllocate
+														   : cell->info->minWidth * it.minWeight;
+					if (sprt::isnan(it.col->info->minWidth) || it.col->info->minWidth < w) {
 						it.col->info->minWidth = w;
 					}
 				}
 			}
 
-			if (isnan(maxCellWidth)) {
+			if (sprt::isnan(maxCellWidth)) {
 				// has undefined max-width
 				float weightToAllocate = (1.0f - maxWeightSum) / (cell->colSpan - maxWeightCount);
 				for (auto &it : cols) {
-					const float w = isnan(it.colMax) ? cell->info->maxWidth * weightToAllocate
-													 : cell->info->maxWidth * it.maxWeight;
-					if (isnan(it.col->info->maxWidth) || it.col->info->maxWidth < w) {
+					const float w = sprt::isnan(it.colMax) ? cell->info->maxWidth * weightToAllocate
+														   : cell->info->maxWidth * it.maxWeight;
+					if (sprt::isnan(it.col->info->maxWidth) || it.col->info->maxWidth < w) {
 						it.col->info->maxWidth = w;
 					}
 				}
@@ -622,7 +622,7 @@ void LayoutTable::processTableChilds() {
 		auto media = _media;
 		media.fontScale *= scale;
 
-		if (isnan(width)) {
+		if (sprt::isnan(width)) {
 			if (layout->node.block.minWidth.isFixed()) {
 				minWidth = media.computeValueStrong(layout->node.block.minWidth, 0.0f);
 			}
@@ -640,7 +640,8 @@ void LayoutTable::processTableChilds() {
 					col.info->maxWidth = col.info->minWidth = col.info->width =
 							media.computeValueStrong(col.info->node.block.width, 0.0f);
 					continue;
-				} else if (!isnan(width) && col.info->node.block.width.metric == Metric::Percent) {
+				} else if (!sprt::isnan(width)
+						&& col.info->node.block.width.metric == Metric::Percent) {
 					col.info->maxWidth = col.info->minWidth = col.info->width =
 							width * col.info->node.block.width.value;
 				}
@@ -648,7 +649,7 @@ void LayoutTable::processTableChilds() {
 				if (col.info->node.block.minWidth.isFixed()) {
 					col.info->minWidth =
 							media.computeValueStrong(col.info->node.block.minWidth, 0.0f);
-				} else if (!isnan(width)
+				} else if (!sprt::isnan(width)
 						&& col.info->node.block.minWidth.metric == Metric::Percent) {
 					col.info->minWidth = width * col.info->node.block.minWidth.value;
 				}
@@ -656,7 +657,7 @@ void LayoutTable::processTableChilds() {
 				if (col.info->node.block.maxWidth.isFixed()) {
 					col.info->maxWidth =
 							media.computeValueStrong(col.info->node.block.maxWidth, 0.0f);
-				} else if (!isnan(width)
+				} else if (!sprt::isnan(width)
 						&& col.info->node.block.maxWidth.metric == Metric::Percent) {
 					col.info->maxWidth = width * col.info->node.block.maxWidth.value;
 				}
@@ -690,11 +691,11 @@ void LayoutTable::processTableChilds() {
 					//		minWidth, minW, cell.info->pos.padding.horizontal(),
 					//		maxWidth, maxW, cell.info->pos.padding.horizontal());
 
-					if (isnan(cell.info->minWidth) || minWidth > cell.info->minWidth) {
+					if (sprt::isnan(cell.info->minWidth) || minWidth > cell.info->minWidth) {
 						cell.info->minWidth = minWidth;
 					}
 
-					if (isnan(cell.info->maxWidth) || maxWidth > cell.info->maxWidth) {
+					if (sprt::isnan(cell.info->maxWidth) || maxWidth > cell.info->maxWidth) {
 						cell.info->maxWidth = maxWidth;
 					}
 
@@ -703,17 +704,17 @@ void LayoutTable::processTableChilds() {
 					layout->engine->popNode();
 				});
 				if (cell->colSpan == 1) {
-					if (!isnan(cell->info->width)) {
+					if (!sprt::isnan(cell->info->width)) {
 						col.info->maxWidth = col.info->minWidth = col.info->width =
 								cell->info->width;
 						fixed = true;
 						break;
 					} else {
-						if (isnan(col.info->minWidth)
+						if (sprt::isnan(col.info->minWidth)
 								|| col.info->minWidth < cell->info->minWidth) {
 							col.info->minWidth = cell->info->minWidth;
 						}
-						if (isnan(col.info->maxWidth)
+						if (sprt::isnan(col.info->maxWidth)
 								|| col.info->maxWidth < cell->info->maxWidth) {
 							col.info->maxWidth = cell->info->maxWidth;
 						}
@@ -752,12 +753,12 @@ static void Table_procesRowCell(LayoutTable &table, LayoutTable::Row &row, Layou
 
 	newL.pos.margin = Margin(0.0f);
 
-	if (!std::isnan(height)) {
-		if (!std::isnan(minHeight) && height < minHeight) {
+	if (!sprt::isnan(height)) {
+		if (!sprt::isnan(minHeight) && height < minHeight) {
 			height = minHeight;
 		}
 
-		if (!std::isnan(maxHeight) && height > maxHeight) {
+		if (!sprt::isnan(maxHeight) && height > maxHeight) {
 			height = maxHeight;
 		}
 
@@ -773,7 +774,7 @@ static void Table_procesRowCell(LayoutTable &table, LayoutTable::Row &row, Layou
 	newL.pos.padding.bottom =
 			_media.computeValueAuto(newL.node.block.paddingBottom, newL.pos.size.width);
 
-	if (isnan(table.layout->pos.position.y)) {
+	if (sprt::isnan(table.layout->pos.position.y)) {
 		newL.pos.position = Vec2(parentPos.x + xPos + newL.pos.padding.left, newL.pos.padding.top);
 	} else {
 		newL.pos.position = Vec2(parentPos.x + xPos + newL.pos.padding.left,
@@ -786,7 +787,7 @@ static void Table_procesRowCell(LayoutTable &table, LayoutTable::Row &row, Layou
 
 	newL.finalizeInlineContext();
 
-	if (!std::isnan(newL.pos.maxHeight) && newL.pos.size.height > newL.pos.maxHeight) {
+	if (!sprt::isnan(newL.pos.maxHeight) && newL.pos.size.height > newL.pos.maxHeight) {
 		newL.pos.size.height = newL.pos.maxHeight;
 	}
 }
@@ -912,7 +913,7 @@ void LayoutTable::processTableLayouts() {
 			++colIdx;
 
 			if (cell->rowSpan == 1) {
-				row.height = std::max(row.height, newL->getBoundingBox().size.height);
+				row.height = sprt::max(row.height, newL->getBoundingBox().size.height);
 			} else {
 				rowSpans.emplace_back(cell);
 			}
@@ -1387,8 +1388,9 @@ void LayoutTable::processTableBackground() {
 					if (it->type == Object::Type::Label) {
 						WideString str;
 						str.reserve(it->asLabel()->layout.chars.size());
-						it->asLabel()->layout.str(
-								[&](char32_t ch) { unicode::utf16Encode(str, ch); });
+						it->asLabel()->layout.str([&](char32_t ch) {
+							sprt::unicode::utf16EncodeCb([&](char16_t c) { str.push_back(c); }, ch);
+						});
 						caption = string::toUtf8<Interface>(str);
 					}
 				}

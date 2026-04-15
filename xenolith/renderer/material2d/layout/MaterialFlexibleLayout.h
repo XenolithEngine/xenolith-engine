@@ -66,13 +66,13 @@ public:
 
 	template <typename T, typename... Args>
 	auto setBaseNode(const Rc<T> &ptr, Args &&...args) -> T * {
-		setBaseNode(ptr.get(), std::forward<Args>(args)...);
+		setBaseNode(ptr.get(), sprt::forward<Args>(args)...);
 		return ptr.get();
 	}
 
 	template <typename T, typename... Args>
 	auto setFlexibleNode(const Rc<T> &ptr, Args &&...args) -> T * {
-		setFlexibleNode(ptr.get(), std::forward<Args>(args)...);
+		setFlexibleNode(ptr.get(), sprt::forward<Args>(args)...);
 		return ptr.get();
 	}
 

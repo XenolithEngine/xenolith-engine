@@ -26,6 +26,7 @@ THE SOFTWARE.
 #include "SPDbFieldExtensions.h"
 #include "SPFilepath.h"
 #include "SPFilesystem.h"
+#include <stdlib.h>
 
 namespace STAPPLER_VERSIONIZED stappler::db {
 
@@ -71,7 +72,7 @@ void ApplicationInterface::defineErrorScheme(Scheme &scheme) {
 		db::Field::Text("documentRoot"), db::Field::Text("url"), db::Field::Text("request"),
 		db::Field::Text("ip"), db::Field::Data("headers"), db::Field::Data("data"),
 		db::Field::Integer("time"),
-		db::Field::Custom(new (std::nothrow) db::FieldTextArray("tags", db::Flags::Indexed,
+		db::Field::Custom(new (sprt::nothrow) db::FieldTextArray("tags", db::Flags::Indexed,
 				db::DefaultFn([&](const Value &data) -> Value {
 			Vector<String> tags;
 			for (auto &it : data.getArray("data")) {
@@ -162,7 +163,7 @@ String Adapter::getTransactionKey() const {
 
 	char buf[32] = {0};
 	auto prefix = StringView(config::STORAGE_TRANSACTION_PREFIX);
-	memcpy(buf, prefix.data(), prefix.size());
+	sprt::memcpy(buf, prefix.data(), prefix.size());
 	stappler::base16::encode(buf + prefix.size(), 32 - prefix.size(),
 			stappler::CoderSource((const uint8_t *)(_interface), sizeof(void *)));
 	return String(buf, prefix.size() + sizeof(void *) * 2);
@@ -213,9 +214,9 @@ void Adapter::broadcast(const Value &val) const {
 
 void Adapter::broadcast(StringView url, Value &&val, bool exclusive) const {
 	broadcast(Value({
-		stappler::pair("url", Value(url)),
-		stappler::pair("exclusive", Value(exclusive)),
-		stappler::pair("data", sp::move(val)),
+		sprt::make_pair("url", Value(url)),
+		sprt::make_pair("exclusive", Value(exclusive)),
+		sprt::make_pair("data", sp::move(val)),
 	}));
 }
 
@@ -293,7 +294,7 @@ Value Adapter::create(Worker &w, Value &changeSet) const {
 			} else {
 				if (it.second.hasFlag(Flags::Required)) {
 					w.getApplicationInterface()->error("Storage", "No value for required field",
-							Value({std::make_pair("field", Value(it.first))}));
+							Value({sprt::make_pair("field", Value(it.first))}));
 					stop = true;
 				}
 			}
@@ -307,7 +308,7 @@ Value Adapter::create(Worker &w, Value &changeSet) const {
 				} else {
 					if (it.second.hasFlag(Flags::Required)) {
 						w.getApplicationInterface()->error("Storage", "No value for required field",
-								Value({std::make_pair("field", Value(it.first))}));
+								Value({sprt::make_pair("field", Value(it.first))}));
 						stop = true;
 					}
 				}
@@ -529,7 +530,7 @@ void Adapter::processFullTextFields(const Scheme &scheme, Value &patch, Vector<I
 	auto addFullTextView = [&](const Field *f, const FieldFullTextView *slot) {
 		if (slot->viewFn) {
 			size_t target = 0;
-			auto iit = std::find(ifields.begin(), ifields.end(), InputField{f});
+			auto iit = sprt::find(ifields.begin(), ifields.end(), InputField{f});
 			if (iit == ifields.end()) {
 				ifields.emplace_back(InputField{f});
 				for (auto &row : ivalues) { row.values.emplace_back(Value()); }
@@ -553,7 +554,7 @@ void Adapter::processFullTextFields(const Scheme &scheme, Value &patch, Vector<I
 		if (it.second.getType() == Type::FullTextView) {
 			auto slot = it.second.getSlot<FieldFullTextView>();
 			for (auto &p_it : ifields) {
-				if (std::find(slot->requireFields.begin(), slot->requireFields.end(),
+				if (sprt::find(slot->requireFields.begin(), slot->requireFields.end(),
 							p_it.field->getName())
 						!= slot->requireFields.end()) {
 					addFullTextView(&it.second, slot);

@@ -121,7 +121,7 @@ Driver *Driver::open(pool_t *pool, ApplicationInterface *app, StringView path) {
 
 	if (l) {
 		if (l->_initialize() == SQLITE_OK) {
-			return new (std::nothrow) Driver(pool, app, path, l);
+			return new (sprt::nothrow) Driver(pool, app, path, l);
 		} else {
 			log::source().error("sqlite::Driver", "sqlite3_initialize failed");
 			DriverLibStorage::getInstance()->closeLib(l);
@@ -170,7 +170,7 @@ static void sp_sqlite_next_oid_xFunc(sqlite3_context *ctx, int nargs, sqlite3_va
 
 	sqlite3_int64 ret = 0;
 	DriverHandle *data = (DriverHandle *)sym->_user_data(ctx);
-	std::unique_lock lock(data->mutex);
+	sprt::unique_lock lock(data->mutex);
 	auto err = sym->step(data->oidQuery);
 	if (err == SQLITE_ROW) {
 		ret = sym->_column_int64(data->oidQuery, 0);
@@ -487,7 +487,7 @@ uint64_t Driver::insertWord(Handle h, StringView word) const {
 
 	uint64_t hash = sprt::hash32(word.data(), uint32_t(word.size()), 0) << 16;
 
-	std::unique_lock lock(data->mutex);
+	sprt::unique_lock lock(data->mutex);
 	bool success = false;
 	while (!success) {
 		_handle->_bind_int64(data->wordsQuery, 1, hash);

@@ -84,11 +84,11 @@ ImagePlacementResult ImagePlacementInfo::resolve(const Size2 &viewSize, const Si
 	case Autofit::Width: result.scale = result.imageFragmentSize.width / viewSize.width; break;
 	case Autofit::Height: result.scale = result.imageFragmentSize.height / viewSize.height; break;
 	case Autofit::Contain:
-		result.scale = std::max(result.imageFragmentSize.width / viewSize.width,
+		result.scale = sprt::max(result.imageFragmentSize.width / viewSize.width,
 				result.imageFragmentSize.height / viewSize.height);
 		break;
 	case Autofit::Cover:
-		result.scale = std::min(result.imageFragmentSize.width / viewSize.width,
+		result.scale = sprt::min(result.imageFragmentSize.width / viewSize.width,
 				result.imageFragmentSize.height / viewSize.height);
 		break;
 	}

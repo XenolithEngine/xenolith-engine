@@ -24,7 +24,7 @@ THE SOFTWARE.
 #ifndef STAPPLER_DATA_SPDATACBOR_H_
 #define STAPPLER_DATA_SPDATACBOR_H_
 
-#include "SPStringView.h"
+#include "SPCore.h"
 
 namespace STAPPLER_VERSIONIZED stappler::data::cbor {
 
@@ -289,7 +289,7 @@ inline void _writeInt(Writer &w, int64_t value) {
 		if (value > 0) {
 			_writeInt(w, (uint64_t)value, MajorTypeEncoded::Unsigned);
 		} else {
-			_writeInt(w, (uint64_t)std::abs(value + 1), MajorTypeEncoded::Negative);
+			_writeInt(w, (uint64_t)sprt::abs(value + 1), MajorTypeEncoded::Negative);
 		}
 	}
 }
@@ -299,7 +299,7 @@ inline void _writeFloat(Writer &w, double value) {
 	// calculate optimal size to store value
 	// some code from https://github.com/cabo/cn-cbor/blob/master/src/cn-encoder.c
 	float fvalue = value;
-	if (isnan(value)) { // NaN -- we always write a half NaN
+	if (sprt::isnan(value)) { // NaN -- we always write a half NaN
 		_writeFloatNaN(w);
 	} else if (value == sprt::Infinity<double>) {
 		_writeFloatPositiveInf(w);
@@ -358,7 +358,7 @@ inline void _writeBytes(Writer &w, const BytesViewTemplate<sprt::endian::network
 
 template <class Writer>
 inline void _writeNumber(Writer &w, float n) {
-	if (n == roundf(n)) {
+	if (n == sprt::roundf(n)) {
 		_writeInt(w, int64_t(n));
 	} else {
 		_writeFloat(w, n);

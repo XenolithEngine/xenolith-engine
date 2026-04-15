@@ -27,6 +27,8 @@
 #include "XLCorePipelineInfo.h"
 #include "XLCoreResource.h"
 
+#include <sprt/cxx/typeindex>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 class Instance;
@@ -87,7 +89,7 @@ struct SP_PUBLIC ProgramPushConstantBlock {
 
 struct SP_PUBLIC ProgramEntryPointBlock {
 	uint32_t id;
-	memory::string name;
+	mem_pool::String name;
 	uint32_t localX;
 	uint32_t localY;
 	uint32_t localZ;
@@ -95,9 +97,9 @@ struct SP_PUBLIC ProgramEntryPointBlock {
 
 struct SP_PUBLIC ProgramInfo : NamedMem {
 	ProgramStage stage;
-	memory::vector<ProgramDescriptorBinding> bindings;
-	memory::vector<ProgramPushConstantBlock> constants;
-	memory::vector<ProgramEntryPointBlock> entryPoints;
+	mem_pool::Vector<ProgramDescriptorBinding> bindings;
+	mem_pool::Vector<ProgramPushConstantBlock> constants;
+	mem_pool::Vector<ProgramEntryPointBlock> entryPoints;
 };
 
 struct SP_PUBLIC ProgramData : ProgramInfo {
@@ -107,7 +109,7 @@ struct SP_PUBLIC ProgramData : ProgramInfo {
 
 	// Useful for conditional-loading against device capabilities
 	// Device can be null for shader code inspection
-	memory::function<void(Device &, const DataCallback &)> callback = nullptr;
+	mem_pool::Function<void(Device &, const DataCallback &)> callback = nullptr;
 	Rc<Shader> program; // GL implementation-dependent object
 
 	void inspect(SpanView<uint32_t>);
@@ -115,7 +117,7 @@ struct SP_PUBLIC ProgramData : ProgramInfo {
 
 struct SpecializationConstant {
 	using ValueCallback =
-			memory::function<SpecializationConstant(const Device &, const PipelineLayoutData &)>;
+			mem_pool::Function<SpecializationConstant(const Device &, const PipelineLayoutData &)>;
 
 	enum Type {
 		Int,
@@ -141,7 +143,7 @@ struct SpecializationConstant {
 
 struct SP_PUBLIC SpecializationInfo {
 	const ProgramData *data = nullptr;
-	memory::vector<SpecializationConstant> constants;
+	mem_pool::Vector<SpecializationConstant> constants;
 
 	SpecializationInfo() = default;
 	SpecializationInfo(const ProgramData *program);
@@ -149,7 +151,7 @@ struct SP_PUBLIC SpecializationInfo {
 };
 
 struct SP_PUBLIC GraphicPipelineInfo : NamedMem {
-	memory::vector<SpecializationInfo> shaders;
+	mem_pool::Vector<SpecializationInfo> shaders;
 	DynamicState dynamicState = DynamicState::Default;
 	PipelineMaterialInfo material;
 	const SubpassData *subpass = nullptr;
@@ -179,8 +181,8 @@ struct SP_PUBLIC PipelineFamilyInfo : NamedMem {
 };
 
 struct SP_PUBLIC PipelineFamilyData : PipelineFamilyInfo {
-	memory::vector<const GraphicPipelineData *> graphicPipelines;
-	memory::vector<const ComputePipelineData *> computePipelines;
+	mem_pool::Vector<const GraphicPipelineData *> graphicPipelines;
+	mem_pool::Vector<const ComputePipelineData *> computePipelines;
 };
 
 struct SP_PUBLIC PipelineDescriptor : NamedMem {
@@ -280,18 +282,18 @@ struct SP_PUBLIC AttachmentPassData : NamedMem {
 	ColorMode colorMode;
 	AttachmentDependencyInfo dependency;
 
-	memory::vector<PipelineDescriptor *> descriptors;
-	memory::vector<AttachmentSubpassData *> subpasses;
+	mem_pool::Vector<PipelineDescriptor *> descriptors;
+	mem_pool::Vector<AttachmentSubpassData *> subpasses;
 };
 
 struct SP_PUBLIC AttachmentData : NamedMem {
 	using InputAcquisitionCallback =
-			memory::function<void(FrameQueue &, AttachmentHandle &, Function<void(bool)> &&)>;
+			mem_pool::Function<void(FrameQueue &, AttachmentHandle &, Function<void(bool)> &&)>;
 
-	using InputSubmissionCallback = memory::function<void(FrameQueue &, AttachmentHandle &,
+	using InputSubmissionCallback = Function<void(FrameQueue &, AttachmentHandle &,
 			AttachmentInputData *, Function<void(bool)> &&)>;
 
-	using InputValidationCallback = memory::function<bool(const AttachmentInputData *)>;
+	using InputValidationCallback = mem_pool::Function<bool(const AttachmentInputData *)>;
 
 	const QueueData *queue = nullptr;
 	uint64_t id = 0;
@@ -299,7 +301,7 @@ struct SP_PUBLIC AttachmentData : NamedMem {
 	AttachmentType type = AttachmentType::Image;
 	AttachmentUsage usage = AttachmentUsage::None;
 	FrameRenderPassState outputState = FrameRenderPassState::Submitted;
-	memory::vector<AttachmentPassData *> passes;
+	mem_pool::Vector<AttachmentPassData *> passes;
 
 	InputAcquisitionCallback inputAcquisitionCallback;
 	InputSubmissionCallback inputSubmissionCallback;
@@ -312,7 +314,7 @@ struct SP_PUBLIC AttachmentData : NamedMem {
 struct SP_PUBLIC DescriptorSetData : NamedMem {
 	const PipelineLayoutData *layout = nullptr;
 	uint32_t index = 0;
-	memory::vector<PipelineDescriptor *> descriptors;
+	mem_pool::Vector<PipelineDescriptor *> descriptors;
 };
 
 struct SP_PUBLIC PipelineLayoutData : NamedMem {
@@ -323,10 +325,10 @@ struct SP_PUBLIC PipelineLayoutData : NamedMem {
 
 	const PipelineFamilyData *defaultFamily = nullptr;
 
-	memory::vector<DescriptorSetData *> sets;
-	memory::vector<const PipelineFamilyData *> families;
-	memory::vector<const GraphicPipelineData *> graphicPipelines;
-	memory::vector<const ComputePipelineData *> computePipelines;
+	mem_pool::Vector<DescriptorSetData *> sets;
+	mem_pool::Vector<const PipelineFamilyData *> families;
+	mem_pool::Vector<const GraphicPipelineData *> graphicPipelines;
+	mem_pool::Vector<const ComputePipelineData *> computePipelines;
 };
 
 struct SP_PUBLIC SubpassData : NamedMem {
@@ -343,14 +345,14 @@ struct SP_PUBLIC SubpassData : NamedMem {
 	HashTable<GraphicPipelineData *> graphicPipelines;
 	HashTable<ComputePipelineData *> computePipelines;
 
-	memory::vector<const AttachmentSubpassData *> inputImages;
-	memory::vector<const AttachmentSubpassData *> outputImages;
-	memory::vector<const AttachmentSubpassData *> resolveImages;
+	mem_pool::Vector<const AttachmentSubpassData *> inputImages;
+	mem_pool::Vector<const AttachmentSubpassData *> outputImages;
+	mem_pool::Vector<const AttachmentSubpassData *> resolveImages;
 	const AttachmentSubpassData *depthStencil = nullptr;
-	mutable memory::vector<uint32_t> preserve;
+	mutable mem_pool::Vector<uint32_t> preserve;
 
-	memory::function<void(FrameQueue &, const SubpassData &)> prepareCallback = nullptr;
-	memory::function<void(FrameQueue &, const SubpassData &, CommandBuffer &)> commandsCallback =
+	mem_pool::Function<void(FrameQueue &, const SubpassData &)> prepareCallback = nullptr;
+	mem_pool::Function<void(FrameQueue &, const SubpassData &, CommandBuffer &)> commandsCallback =
 			nullptr;
 };
 
@@ -376,7 +378,7 @@ struct SP_PUBLIC QueuePassRequirements {
 struct SP_PUBLIC QueuePassDependency {
 	const QueuePassData *source = nullptr;
 	const QueuePassData *target = nullptr;
-	memory::vector<const AttachmentData *> attachments;
+	mem_pool::Vector<const AttachmentData *> attachments;
 	PipelineStage stageFlags = PipelineStage::None;
 };
 
@@ -389,15 +391,15 @@ struct SP_PUBLIC QueuePassData : NamedMem {
 	QueuePassData &operator=(QueuePassData &&) = delete;
 
 	const QueueData *queue = nullptr;
-	memory::vector<const AttachmentPassData *> attachments;
-	memory::vector<const SubpassData *> subpasses;
-	memory::vector<const PipelineLayoutData *> pipelineLayouts;
-	memory::vector<SubpassDependency> dependencies;
+	mem_pool::Vector<const AttachmentPassData *> attachments;
+	mem_pool::Vector<const SubpassData *> subpasses;
+	mem_pool::Vector<const PipelineLayoutData *> pipelineLayouts;
+	mem_pool::Vector<SubpassDependency> dependencies;
 
-	memory::vector<QueuePassDependency *> sourceQueueDependencies;
-	memory::vector<QueuePassDependency *> targetQueueDependencies;
+	mem_pool::Vector<QueuePassDependency *> sourceQueueDependencies;
+	mem_pool::Vector<QueuePassDependency *> targetQueueDependencies;
 
-	memory::vector<QueuePassRequirements> required;
+	mem_pool::Vector<QueuePassRequirements> required;
 
 	PassType type = PassType::Graphics;
 	RenderOrdering ordering = RenderOrderingLowest;
@@ -407,18 +409,18 @@ struct SP_PUBLIC QueuePassData : NamedMem {
 	Rc<QueuePass> pass;
 	Rc<RenderPass> impl;
 
-	memory::function<bool(const FrameQueue &, const QueuePassData &)> checkAvailable;
+	mem_pool::Function<bool(const FrameQueue &, const QueuePassData &)> checkAvailable;
 
-	memory::vector<memory::function<void(FrameQueue &, const QueuePassData &, bool)>>
+	mem_pool::Vector<mem_pool::Function<void(FrameQueue &, const QueuePassData &, bool)>>
 			submittedCallbacks;
-	memory::vector<memory::function<void(FrameQueue &, const QueuePassData &, bool)>>
+	mem_pool::Vector<mem_pool::Function<void(FrameQueue &, const QueuePassData &, bool)>>
 			completeCallbacks;
 };
 
 struct SP_PUBLIC QueueData : NamedMem {
 	memory::pool_t *pool = nullptr;
-	memory::vector<AttachmentData *> input;
-	memory::vector<AttachmentData *> output;
+	mem_pool::Vector<AttachmentData *> input;
+	mem_pool::Vector<AttachmentData *> output;
 	HashTable<AttachmentData *> attachments;
 	HashTable<QueuePassData *> passes;
 	HashTable<ProgramData *> programs;
@@ -437,10 +439,10 @@ struct SP_PUBLIC QueueData : NamedMem {
 	Queue *queue = nullptr;
 	FrameRenderPassState defaultSyncPassState = FrameRenderPassState::Submitted;
 
-	memory::map<std::type_index, Attachment *> typedInput;
-	memory::map<std::type_index, Attachment *> typedOutput;
+	mem_pool::HashMap<sprt::type_index, Attachment *> typedInput;
+	mem_pool::HashMap<sprt::type_index, Attachment *> typedOutput;
 
-	memory::vector<QueuePassDependency> passDependencies;
+	mem_pool::Vector<QueuePassDependency> passDependencies;
 
 	const ImageData *emptyImage = nullptr;
 	const ImageData *solidImage = nullptr;

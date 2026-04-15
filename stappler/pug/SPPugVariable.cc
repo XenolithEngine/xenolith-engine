@@ -76,7 +76,7 @@ void VarData::clear() {
 	case Inline: value.~Value(); break;
 	default: break;
 	}
-	memset((void *)this, 0, sizeof(VarData));
+	sprt::memset((void *)this, 0, sizeof(VarData));
 }
 
 const Value &VarData::readValue() const {
@@ -123,7 +123,7 @@ void VarStorage::set(const Value &val, VarClass *cl) {
 	classPointer = cl;
 	switch (val.getType()) {
 	case Value::Type::ARRAY:
-	case Value::Type::DICTIONARY: value = VarData(false, new (std::nothrow) Value(val)); break;
+	case Value::Type::DICTIONARY: value = VarData(false, new (sprt::nothrow) Value(val)); break;
 	default: value = VarData(val); break;
 	}
 }
@@ -134,7 +134,7 @@ void VarStorage::set(Value &&val, VarClass *cl) {
 	classPointer = cl;
 	switch (val.getType()) {
 	case Value::Type::ARRAY:
-	case Value::Type::DICTIONARY: value = VarData(false, new (std::nothrow) Value(val)); break;
+	case Value::Type::DICTIONARY: value = VarData(false, new (sprt::nothrow) Value(val)); break;
 	default: value = VarData(val); break;
 	}
 }

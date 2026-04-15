@@ -25,29 +25,27 @@ THE SOFTWARE.
 #ifndef STAPPLER_CORE_MEMORY_SPMEMUUID_H_
 #define STAPPLER_CORE_MEMORY_SPMEMUUID_H_
 
-#include "SPCore.h"
-#include <sprt/runtime/mem/string.h>
-#include <sprt/runtime/mem/vector.h>
-#include "SPStringView.h" // IWYU pragma: keep
+#include "SPMemInterface.h"
+#include <sprt/cxx/cstring>
 
 namespace STAPPLER_VERSIONIZED stappler::memory {
 
 struct SP_PUBLIC uuid : AllocPool {
 	static constexpr size_t FormattedLength = 36;
 
-	using uuid_t = std::array<uint8_t, 16>;
+	using uuid_t = sprt::array<uint8_t, 16>;
 
 	static bool parse(uuid_t &, StringView str);
 	static void format(char *, const uuid_t &);
 	static uuid generate();
 
-	uuid() noexcept { memset(_uuid.data(), 0, 16); }
+	uuid() noexcept { sprt::memset(_uuid.data(), 0, 16); }
 
 	uuid(StringView str) noexcept { parse(_uuid, str); }
 
 	uuid(BytesView b) noexcept {
 		if (b.size() == 16) {
-			memcpy(_uuid.data(), b.data(), 16);
+			sprt::memcpy(_uuid.data(), b.data(), 16);
 		}
 	}
 
@@ -59,38 +57,28 @@ struct SP_PUBLIC uuid : AllocPool {
 		return *this;
 	}
 
-	uuid &operator=(const sprt::memory::string &str) noexcept {
+	template <typename Allocator>
+	uuid &operator=(const sprt::__basic_string<char, Allocator> &str) noexcept {
 		parse(_uuid, str.data());
 		return *this;
 	}
 
-	uuid &operator=(const std::string &str) noexcept {
-		parse(_uuid, str.data());
-		return *this;
-	}
-
-	uuid &operator=(const sprt::memory::vector<uint8_t> &b) noexcept {
+	template <typename Allocator>
+	uuid &operator=(const sprt::__vector<uint8_t, Allocator> &b) noexcept {
 		if (b.size() == 16) {
-			memcpy(_uuid.data(), b.data(), 16);
+			sprt::memcpy(_uuid.data(), b.data(), 16);
 		}
 		return *this;
 	}
 
-	uuid &operator=(const std::vector<uint8_t> &b) noexcept {
-		if (b.size() == 16) {
-			memcpy(_uuid.data(), b.data(), 16);
-		}
-		return *this;
-	}
-
-	template <typename Str = sprt::memory::string>
+	template <typename Str = sprt::__malloc_string>
 	auto str() const -> Str {
 		char buf[FormattedLength] = {0};
 		format(buf, _uuid);
 		return Str(buf, FormattedLength);
 	}
 
-	template <typename B = sprt::memory::vector<uint8_t>>
+	template <typename B = sprt::__malloc_vector<uint8_t>>
 	auto bytes() const -> B {
 		return B(_uuid.data(), _uuid.data() + 16);
 	}
@@ -103,27 +91,27 @@ struct SP_PUBLIC uuid : AllocPool {
 	size_t size() const { return 16; }
 
 	bool operator==(const uuid &other) const {
-		return ::memcmp(_uuid.data(), other._uuid.data(), _uuid.size()) == 0;
+		return sprt::memcmp(_uuid.data(), other._uuid.data(), _uuid.size()) == 0;
 	}
 
 	bool operator!=(const uuid &other) const {
-		return ::memcmp(_uuid.data(), other._uuid.data(), _uuid.size()) != 0;
+		return sprt::memcmp(_uuid.data(), other._uuid.data(), _uuid.size()) != 0;
 	}
 
 	bool operator<(const uuid &other) const {
-		return ::memcmp(_uuid.data(), other._uuid.data(), _uuid.size()) < 0;
+		return sprt::memcmp(_uuid.data(), other._uuid.data(), _uuid.size()) < 0;
 	}
 
 	bool operator<=(const uuid &other) const {
-		return ::memcmp(_uuid.data(), other._uuid.data(), _uuid.size()) <= 0;
+		return sprt::memcmp(_uuid.data(), other._uuid.data(), _uuid.size()) <= 0;
 	}
 
 	bool operator>(const uuid &other) const {
-		return ::memcmp(_uuid.data(), other._uuid.data(), _uuid.size()) > 0;
+		return sprt::memcmp(_uuid.data(), other._uuid.data(), _uuid.size()) > 0;
 	}
 
 	bool operator>=(const uuid &other) const {
-		return ::memcmp(_uuid.data(), other._uuid.data(), _uuid.size()) >= 0;
+		return sprt::memcmp(_uuid.data(), other._uuid.data(), _uuid.size()) >= 0;
 	}
 
 	uuid_t _uuid;

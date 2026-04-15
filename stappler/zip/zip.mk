@@ -33,7 +33,7 @@ MODULE_STAPPLER_ZIP_SHARED_PKGCONFIG := libzip
 MODULE_STAPPLER_ZIP_GENERAL_LDFLAGS :=
 
 ifdef LINUX
-MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:libz.a -l:liblzma.a
+MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:libz.a -l:liblzma.a -l:libzstd.a
 endif
 
 ifdef MACOS

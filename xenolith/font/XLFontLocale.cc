@@ -29,11 +29,11 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::locale {
 
 class LocaleManager : public memory::PoolObject {
 public:
-	using StringMap = memory::dict<memory::u16string, memory::u16string>;
-	using LocaleMap = memory::map<memory::string, StringMap>;
+	using StringMap = mem_pool::HashMap<mem_pool::WideString, mem_pool::WideString>;
+	using LocaleMap = mem_pool::Map<mem_pool::String, StringMap>;
 
-	using StringIndexMap = memory::dict<size_t, memory::u16string>;
-	using LocaleIndexMap = memory::map<memory::string, StringIndexMap>;
+	using StringIndexMap = mem_pool::HashMap<size_t, mem_pool::WideString>;
+	using LocaleIndexMap = mem_pool::Map<mem_pool::String, StringIndexMap>;
 
 	using Interface = memory::PoolInterface;
 
@@ -48,7 +48,7 @@ public:
 	void define(const StringView &locale, LocaleInitList &&init);
 	void define(const StringView &locale, LocaleIndexList &&init);
 	void define(const StringView &locale,
-			const std::array<StringView, toInt(TimeTokens::Max)> &arr);
+			const sprt::array<StringView, toInt(TimeTokens::Max)> &arr);
 	WideStringView string(const WideStringView &str);
 
 	WideStringView string(size_t index);
@@ -72,7 +72,7 @@ public:
 	StringView language(const StringView &locale);
 
 	StringView timeToken(TimeTokens tok);
-	const std::array<memory::string, toInt(TimeTokens::Max)> &timeTokenTable();
+	const sprt::array<mem_pool::String, toInt(TimeTokens::Max)> &timeTokenTable();
 
 protected:
 	LocaleIdentifier _default;
@@ -80,8 +80,9 @@ protected:
 
 	LocaleMap _strings;
 	LocaleIndexMap _indexes;
-	memory::map<memory::string, std::array<memory::string, toInt(TimeTokens::Max)>> _timeTokens;
-	std::array<memory::string, toInt(TimeTokens::Max)> _defaultTime;
+	mem_pool::Map<mem_pool::String, sprt::array<mem_pool::String, toInt(TimeTokens::Max)>>
+			_timeTokens;
+	sprt::array<mem_pool::String, toInt(TimeTokens::Max)> _defaultTime;
 
 	memory::pool_t *_pool = nullptr;
 };
@@ -184,13 +185,13 @@ void LocaleManager::define(const StringView &locale, LocaleIndexList &&init) {
 }
 
 void LocaleManager::define(const StringView &locale,
-		const std::array<StringView, toInt(TimeTokens::Max)> &arr) {
+		const sprt::array<StringView, toInt(TimeTokens::Max)> &arr) {
 	memory::context ctx(_pool);
 	auto it = _timeTokens.find(locale);
 	if (it == _timeTokens.end()) {
 		it = _timeTokens
 					 .emplace(locale.str<Interface>(),
-							 std::array<memory::string, toInt(TimeTokens::Max)>())
+							 sprt::array<mem_pool::String, toInt(TimeTokens::Max)>())
 					 .first;
 	}
 
@@ -301,21 +302,21 @@ bool LocaleManager::hasLocaleTagsFast(WideStringView r) {
 		}
 	} else {
 		constexpr size_t maxChars = config::MaxFastLocaleChars;
-		WideStringView shortView(r.data(), std::min(r.size(), maxChars));
+		WideStringView shortView(r.data(), sprt::min(r.size(), maxChars));
 		shortView.skipUntil<WideStringView::Chars<'%'>>();
 		if (shortView.is('%')) {
 			++shortView;
 			if (shortView.is('=')) {
 				++shortView;
 				shortView = WideStringView(shortView.data(),
-						std::min(maxChars, r.size() - (shortView.data() - r.data())));
+						sprt::min(maxChars, r.size() - (shortView.data() - r.data())));
 				shortView.skipChars<WideStringView::CharGroup<CharGroupId::Numbers>>();
 				if (shortView.is('%')) {
 					return true;
 				}
 			} else {
 				shortView = WideStringView(shortView.data(),
-						std::min(maxChars, r.size() - (shortView.data() - r.data())));
+						sprt::min(maxChars, r.size() - (shortView.data() - r.data())));
 				shortView.skipChars< WideStringView::CharGroup<CharGroupId::Alphanumeric>,
 						WideStringView::Chars<':', '.', '-', '_', '[', ']', '+', '='>>();
 				if (shortView.is('%')) {
@@ -450,7 +451,7 @@ StringView LocaleManager::timeToken(TimeTokens tok) {
 	return table[toInt(tok)];
 }
 
-const std::array<memory::string, toInt(TimeTokens::Max)> &LocaleManager::timeTokenTable() {
+const sprt::array<mem_pool::String, toInt(TimeTokens::Max)> &LocaleManager::timeTokenTable() {
 	auto it = _timeTokens.find(_locale.id);
 	if (it == _timeTokens.end()) {
 		it = _timeTokens.find(_default.id);
@@ -471,7 +472,7 @@ void define(const StringView &locale, LocaleIndexList &&init) {
 	LocaleManager::getInstance()->define(locale, sp::move(init));
 }
 
-void define(const StringView &locale, const std::array<StringView, toInt(TimeTokens::Max)> &arr) {
+void define(const StringView &locale, const sprt::array<StringView, toInt(TimeTokens::Max)> &arr) {
 	LocaleManager::getInstance()->define(locale, arr);
 }
 
@@ -511,7 +512,7 @@ StringView language(const StringView &locale) {
 
 StringView timeToken(TimeTokens tok) { return LocaleManager::getInstance()->timeToken(tok); }
 
-const std::array<memory::string, toInt(TimeTokens::Max)> &timeTokenTable() {
+const sprt::array<mem_pool::String, toInt(TimeTokens::Max)> &timeTokenTable() {
 	return LocaleManager::getInstance()->timeTokenTable();
 }
 
@@ -535,10 +536,12 @@ static bool isYesterday(struct tm &tm, struct tm &now) {
 	return n1 + 1 == n2;
 }
 
-static void sp_localtime_r(time_t *sec_now, struct tm *tm_now) { localtime_r(sec_now, tm_now); }
+static void sp_localtime_r(time_t *sec_now, struct tm *tm_now) {
+	__sprt_localtime_r(sec_now, tm_now);
+}
 
 template <typename T>
-static String localDate_impl(const std::array<T, toInt(TimeTokens::Max)> &table, Time t) {
+static String localDate_impl(const sprt::array<T, toInt(TimeTokens::Max)> &table, Time t) {
 	auto sec_now = time_t(Time::now().toSeconds());
 	struct tm tm_now;
 	sp_localtime_r(&sec_now, &tm_now);
@@ -566,7 +569,7 @@ String localDate(Time t) {
 	return localDate_impl(LocaleManager::getInstance()->timeTokenTable(), t);
 }
 
-String localDate(const std::array<StringView, toInt(TimeTokens::Max)> &table, Time t) {
+String localDate(const sprt::array<StringView, toInt(TimeTokens::Max)> &table, Time t) {
 	return localDate_impl(table, t);
 }
 

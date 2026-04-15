@@ -59,12 +59,12 @@ public:
 
 	virtual void exportComponent(Component *) = 0;
 
-	virtual const db::Scheme * exportScheme(const db::Scheme &) = 0;
+	virtual const db::Scheme *exportScheme(const db::Scheme &) = 0;
 
-	template <typename ... Args>
-	void define(db::Scheme &scheme, Args && ... args) {
+	template <typename... Args>
+	void define(db::Scheme &scheme, Args &&...args) {
 		exportScheme(scheme);
-		scheme.define(std::forward<Args>(args)...);
+		scheme.define(sprt::forward<Args>(args)...);
 	}
 };
 
@@ -98,6 +98,6 @@ protected:
 	mutable Vector<Pair<TaskCallback, Rc<Ref>>> _pendingTasks;
 };
 
-}
+} // namespace stappler::xenolith::storage
 
 #endif /* XENOLITH_RESOURCES_STORAGE_XLSTORAGECOMPONENT_H_ */

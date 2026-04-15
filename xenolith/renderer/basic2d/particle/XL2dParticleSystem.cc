@@ -24,7 +24,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
-static std::atomic<uint64_t> s_particleSystemId = 1;
+static sprt::atomic<uint64_t> s_particleSystemId = 1;
 
 bool ParticleSystem::init(uint32_t count, uint32_t frameInterval, float lifetime) {
 	_id = s_particleSystemId.fetch_add(1);

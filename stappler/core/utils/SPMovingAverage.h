@@ -76,7 +76,7 @@ public:
 		for (auto &it : _values) { it = value; }
 	}
 
-	MovingAverage() { memset(_values.data(), 0, _values.size() * sizeof(T)); }
+	MovingAverage() { sprt::memset(_values.data(), 0, _values.size() * sizeof(T)); }
 
 protected:
 	uint64_t _current = 0;

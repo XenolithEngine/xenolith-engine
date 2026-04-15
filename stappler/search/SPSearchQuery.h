@@ -106,7 +106,7 @@ struct SP_PUBLIC SearchQuery {
 	void clear();
 	void encode(const Callback<void(StringView)> &, Format = Stappler) const;
 
-	void describe(std::ostream &stream, size_t depth = 0) const;
+	void describe(const Callback<void(StringView)> &, size_t depth = 0) const;
 	void foreach (const Callback<void(StringView value, StringView source)> &) const;
 
 	bool isMatch(const SearchVector &) const;

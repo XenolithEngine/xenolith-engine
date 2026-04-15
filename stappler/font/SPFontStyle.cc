@@ -25,7 +25,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::font {
 
-static void s_getSpecializationArgs(std::ostream &out, const FontSpecializationVector &vec) {
+static void s_getSpecializationArgs(const Callback<void(StringView)> &out,
+		const FontSpecializationVector &vec) {
 	out << "?size=" << vec.fontSize.get();
 	out << "&weight=" << vec.fontWeight.get();
 	out << "&width=" << vec.fontStretch.get();

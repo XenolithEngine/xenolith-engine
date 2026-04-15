@@ -62,9 +62,9 @@ template <typename Interface>
 static size_t _writeData(char *data, size_t size, size_t nmemb, void *userptr) {
 	auto task = static_cast<HandleData<Interface> *>(userptr);
 
-	return std::visit([&](auto &&arg) {
-		using T = std::decay_t<decltype(arg)>;
-		if constexpr (std::is_same_v<T, typename HandleData<Interface>::IOCallback>) {
+	return sprt::visit([&](auto &&arg) {
+		using T = sprt::decay_t<decltype(arg)>;
+		if constexpr (sprt::is_same_v<T, typename HandleData<Interface>::IOCallback>) {
 			return arg(data, size * nmemb);
 		}
 		return size_t(size * nmemb);
@@ -111,18 +111,18 @@ static size_t _readData(char *data, size_t size, size_t nmemb, void *userptr) {
 	if (userptr != NULL) {
 		auto task = static_cast<HandleData<Interface> *>(userptr);
 
-		return std::visit([&](auto &&arg) {
-			using T = std::decay_t<decltype(arg)>;
-			if constexpr (std::is_same_v<T, typename HandleData<Interface>::IOCallback>) {
+		return sprt::visit([&](auto &&arg) {
+			using T = sprt::decay_t<decltype(arg)>;
+			if constexpr (sprt::is_same_v<T, typename HandleData<Interface>::IOCallback>) {
 				return arg(data, size * nmemb);
-			} else if constexpr (std::is_same_v<T, typename HandleData<Interface>::Bytes>) {
+			} else if constexpr (sprt::is_same_v<T, typename HandleData<Interface>::Bytes>) {
 				size_t remains = task->send.size;
 				if (size * nmemb <= remains) {
-					memcpy(data, arg.data() + (arg.size() - task->send.size), size * nmemb);
+					sprt::memcpy(data, arg.data() + (arg.size() - task->send.size), size * nmemb);
 					task->send.size -= size * nmemb;
 					return size * nmemb;
 				} else {
-					memcpy(data, arg.data() + (arg.size() - task->send.size), remains);
+					sprt::memcpy(data, arg.data() + (arg.size() - task->send.size), remains);
 					task->send.size = 0;
 					return remains;
 				}
@@ -244,7 +244,7 @@ inline void SetOpt(bool &check, CURL *curl, K opt, const T &value, bool optional
 		err = curl_easy_setopt(curl, opt, value);
 		if (err != CURLE_OK) {
 			if (!optional || err != CURLE_NOT_BUILT_IN) {
-				slog().debug("CURL", "curl_easy_setopt (", opt, ") failed: ", err);
+				slog().debug("CURL", "curl_easy_setopt (", int(opt), ") failed: ", err);
 				check = false;
 			}
 		}
@@ -324,9 +324,7 @@ static bool _setupHeaders(const HandleData<Interface> &iface, Context<Interface>
 	bool check = true;
 	StringView keySign;
 	if (iface.auth.authMethod == AuthMethod::PKey) {
-		if (auto sign = std::get_if<typename HandleData<Interface>::String>(&iface.auth.data)) {
-			keySign = StringView(*sign);
-		}
+		keySign = iface.auth.credentials;
 	}
 
 	ctx->headersData.reserve(vec.size());
@@ -497,12 +495,14 @@ static bool _setupReceive(HandleData<Interface> &iface, CURL *curl, FILE *&input
 		uint64_t &inputPos) {
 	bool check = true;
 	if (iface.send.method != Method::Head) {
-		std::visit([&](auto &&arg) {
-			using T = std::decay_t<decltype(arg)>;
-			if constexpr (std::is_same_v<T, typename HandleData<Interface>::String>) {
+		sprt::visit([&](auto &&arg) {
+			using T = sprt::decay_t<decltype(arg)>;
+			if constexpr (sprt::is_same_v<T, typename HandleData<Interface>::String>) {
 				iface.receive.offset = 0;
-				std::tie(inputFile, inputPos) =
-						_openFile<Interface>(FileInfo{arg}, false, iface.receive.resumeDownload);
+
+				auto op = _openFile<Interface>(FileInfo{arg}, false, iface.receive.resumeDownload);
+				inputFile = op.first;
+				inputPos = op.second;
 				if (inputFile) {
 					SetOpt(check, curl, CURLOPT_WRITEFUNCTION, (void *)NULL);
 					SetOpt(check, curl, CURLOPT_WRITEDATA, inputFile);
@@ -511,7 +511,7 @@ static bool _setupReceive(HandleData<Interface> &iface, CURL *curl, FILE *&input
 						SetOpt(check, curl, CURLOPT_RESUME_FROM_LARGE, inputPos);
 					}
 				}
-			} else if constexpr (std::is_same_v<T, typename HandleData<Interface>::IOCallback>) {
+			} else if constexpr (sprt::is_same_v<T, typename HandleData<Interface>::IOCallback>) {
 				SetOpt(check, curl, CURLOPT_WRITEFUNCTION, _writeData<Interface>);
 				SetOpt(check, curl, CURLOPT_WRITEDATA, &iface);
 				if (iface.receive.offset > 0) {
@@ -558,23 +558,25 @@ static bool _setupMethodHead(const HandleData<Interface> &iface, CURL *curl) {
 template <typename Interface>
 static void _setupSendData(bool &check, const HandleData<Interface> &iface, CURL *curl,
 		FILE *&outputFile) {
-	std::visit([&](auto &&arg) {
-		using T = std::decay_t<decltype(arg)>;
-		if constexpr (std::is_same_v<T, typename HandleData<Interface>::String>) {
+	sprt::visit([&](auto &&arg) {
+		using T = sprt::decay_t<decltype(arg)>;
+		if constexpr (sprt::is_same_v<T, typename HandleData<Interface>::String>) {
 			size_t size;
-			std::tie(outputFile, size) = _openFile<Interface>(FileInfo{arg}, true);
+			auto op = _openFile<Interface>(FileInfo{arg}, true);
+			outputFile = op.first;
+			size = op.second;
 			if (outputFile) {
 				SetOpt(check, curl, CURLOPT_READFUNCTION, (void *)NULL);
 				SetOpt(check, curl, CURLOPT_READDATA, outputFile);
 				SetOpt(check, curl, CURLOPT_POSTFIELDSIZE, size);
 				SetOpt(check, curl, CURLOPT_INFILESIZE, size);
 			}
-		} else if constexpr (std::is_same_v<T, typename HandleData<Interface>::IOCallback>) {
+		} else if constexpr (sprt::is_same_v<T, typename HandleData<Interface>::IOCallback>) {
 			SetOpt(check, curl, CURLOPT_READFUNCTION, _readData<Interface>);
 			SetOpt(check, curl, CURLOPT_READDATA, &iface);
 			SetOpt(check, curl, CURLOPT_POSTFIELDSIZE, iface.send.size);
 			SetOpt(check, curl, CURLOPT_INFILESIZE, iface.send.size);
-		} else if constexpr (std::is_same_v<T, typename HandleData<Interface>::Bytes>) {
+		} else if constexpr (sprt::is_same_v<T, typename HandleData<Interface>::Bytes>) {
 			SetOpt(check, curl, CURLOPT_POSTFIELDS, arg.data());
 			SetOpt(check, curl, CURLOPT_POSTFIELDSIZE, arg.size());
 			SetOpt(check, curl, CURLOPT_INFILESIZE, arg.size());
@@ -660,7 +662,7 @@ template <typename Interface>
 bool prepare(HandleData<Interface> &iface, Context<Interface> *ctx,
 		const Callback<bool(CURL *)> &onBeforePerform) {
 	if (iface.process.debug) {
-		iface.process.debugData = typename Interface::StringStreamType();
+		iface.process.debugData.clear();
 	}
 
 	iface.receive.parsed.clear();
@@ -694,11 +696,17 @@ bool prepare(HandleData<Interface> &iface, Context<Interface> *ctx,
 	check = (check) ? _setupDebug(iface, ctx->curl, iface.process.debug) : false;
 	check = (check) ? _setupHeaders(iface, ctx, iface.send.headers, &ctx->headers) : false;
 	check = (check) ? _setupUserAgent(iface, ctx->curl, iface.send.userAgent) : false;
-	if (auto u = std::get_if<Pair<typename HandleData<Interface>::String,
-					typename HandleData<Interface>::String>>(&iface.auth.data)) {
-		check = (check) ? _setupUser(iface, ctx->curl, u->first, u->second, iface.auth.authMethod)
+
+	switch (iface.auth.authMethod) {
+	case AuthMethod::Basic:
+	case AuthMethod::Digest:
+		check = (check) ? _setupUser(iface, ctx->curl, iface.auth.username, iface.auth.credentials,
+								  iface.auth.authMethod)
 						: false;
+		break;
+	default: break;
 	}
+
 	check = (check) ? _setupProgress(iface, ctx->curl) : false;
 	check = (check) ? _setupCookies(iface, ctx->curl, iface.process.cookieFile) : false;
 	check = (check) ? _setupProxy(iface, ctx->curl, iface.auth.proxyAddress, iface.auth.proxyAuth)
@@ -808,14 +816,14 @@ bool finalize(HandleData<Interface> &iface, Context<Interface> *ctx,
 		}
 	} else {
 		if (!iface.process.silent) {
-			log::format(log::Error, "CURL", SP_LOCATION, "fail to perform %s: (%ld) %s",
+			log::format(sprt::oslog::Error, "CURL", SP_LOCATION, "fail to perform %s: (%ld) %s",
 					iface.send.url.data(), iface.process.errorCode, ctx->error.data());
 		}
 		iface.process.error = ctx->error.data();
 		if (iface.process.debug) {
-			std::visit([&](auto &&arg) {
-				using T = std::decay_t<decltype(arg)>;
-				if constexpr (std::is_same_v<T, typename HandleData<Interface>::String>) {
+			sprt::visit([&](auto &&arg) {
+				using T = sprt::decay_t<decltype(arg)>;
+				if constexpr (sprt::is_same_v<T, typename HandleData<Interface>::String>) {
 					log::source().debug("CURL", "Input file: ", arg);
 				}
 			}, iface.receive.data);

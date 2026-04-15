@@ -112,7 +112,7 @@ FontLibrary::~FontLibrary() {
 
 Rc<FontFaceData> FontLibrary::openFontData(StringView dataName, FontLayoutParameters params,
 		bool isParamsPreconfigured, const Callback<FontData()> &dataCallback) {
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 
 	auto it = _data.find(dataName);
 	if (it != _data.end()) {
@@ -157,7 +157,7 @@ Rc<FontFaceObject> FontLibrary::openFontFace(StringView dataName,
 		const FontSpecializationVector &spec, const Callback<FontData()> &dataCallback) {
 	String faceName = mem_std::toString(dataName, spec.getSpecializationArgs<Interface>());
 
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	do {
 		auto it = _faces.find(faceName);
 		if (it != _faces.end()) {
@@ -215,7 +215,7 @@ Rc<FontFaceObject> FontLibrary::openFontFace(const Rc<FontFaceData> &dataObject,
 	String faceName =
 			mem_std::toString(dataObject->getName(), spec.getSpecializationArgs<Interface>());
 
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	do {
 		auto it = _faces.find(faceName);
 		if (it != _faces.end()) {
@@ -234,7 +234,7 @@ Rc<FontFaceObject> FontLibrary::openFontFace(const Rc<FontFaceData> &dataObject,
 }
 
 void FontLibrary::invalidate() {
-	std::unique_lock uniqueLock(_sharedMutex);
+	sprt::unique_lock uniqueLock(_sharedMutex);
 
 	_threads.clear();
 	_faces.clear();
@@ -243,7 +243,7 @@ void FontLibrary::invalidate() {
 
 void FontLibrary::update() {
 	Vector<Rc<FontFaceObject>> erased;
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 
 	do {
 		auto it = _faces.begin();
@@ -272,7 +272,7 @@ void FontLibrary::update() {
 
 	lock.unlock();
 
-	std::unique_lock uniqueLock(_sharedMutex);
+	sprt::unique_lock uniqueLock(_sharedMutex);
 	for (auto &it : erased) { _threads.erase(it.get()); }
 }
 
@@ -290,7 +290,7 @@ uint16_t FontLibrary::getNextId() {
 void FontLibrary::releaseId(uint16_t id) { _fontIds.reset(id); }
 
 Rc<FontFaceObjectHandle> FontLibrary::makeThreadHandle(const Rc<FontFaceObject> &obj) {
-	std::shared_lock sharedLock(_sharedMutex);
+	sprt::shared_lock sharedLock(_sharedMutex);
 	auto it = _threads.find(obj.get());
 	if (it != _threads.end()) {
 		auto iit = it->second.find(thread::Thread::getCurrentThreadId());
@@ -300,7 +300,7 @@ Rc<FontFaceObjectHandle> FontLibrary::makeThreadHandle(const Rc<FontFaceObject> 
 	}
 	sharedLock.unlock();
 
-	std::unique_lock uniqueLock(_sharedMutex);
+	sprt::unique_lock uniqueLock(_sharedMutex);
 	it = _threads.find(obj.get());
 	if (it != _threads.end()) {
 		auto iit = it->second.find(thread::Thread::getCurrentThreadId());
@@ -309,7 +309,7 @@ Rc<FontFaceObjectHandle> FontLibrary::makeThreadHandle(const Rc<FontFaceObject> 
 		}
 	}
 
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	auto face = newFontFace(obj->getData()->getView());
 	lock.unlock();
 	auto target = Rc<FontFaceObject>::create(obj->getName(), obj->getData(), _library, face,
@@ -323,7 +323,7 @@ Rc<FontFaceObjectHandle> FontLibrary::makeThreadHandle(const Rc<FontFaceObject> 
 					   .emplace(thread::Thread::getCurrentThreadId(),
 							   Rc<FontFaceObjectHandle>::create(this, move(target),
 									   [this](const FontFaceObjectHandle *obj) {
-		std::unique_lock lock(_mutex);
+		sprt::unique_lock lock(_mutex);
 		doneFontFace(obj->getFace());
 	})).first->second;
 	uniqueLock.unlock();

@@ -138,7 +138,8 @@ public:
 };
 
 template <class T>
-class SP_PUBLIC SchedulerUpdate<T, typename std::enable_if<std::is_base_of<Ref, T>::value>::type> {
+class SP_PUBLIC
+		SchedulerUpdate<T, typename sprt::enable_if<sprt::is_base_of<Ref, T>::value>::type> {
 public:
 	static void scheduleUpdate(Scheduler *scheduler, T *t, int32_t p, bool paused) {
 		auto ref = static_cast<Ref *>(t);
@@ -159,7 +160,7 @@ void Scheduler::scheduleUpdate(T *target, int32_t p, bool paused) {
 template <class T>
 SchedulerListener<T>::SchedulerListener(Scheduler *s, const Callback &cb, T *sub)
 : _scheduler(s), _binding(sub), _callback(cb) {
-	static_assert(std::is_convertible_v<T *, Subscription *>, "Invalid Type for DataListener<T>!");
+	static_assert(sprt::is_convertible_v<T *, Subscription *>, "Invalid Type for DataListener<T>!");
 	updateScheduler();
 }
 

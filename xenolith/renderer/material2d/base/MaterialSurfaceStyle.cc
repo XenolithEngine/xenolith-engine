@@ -27,9 +27,11 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::material2d {
 
-SurfaceStyle SurfaceStyle::Background = SurfaceStyle{SurfaceStyle::PrimarySchemeTag, ColorRole::Background, Elevation::Level0};
+SurfaceStyle SurfaceStyle::Background =
+		SurfaceStyle{SurfaceStyle::PrimarySchemeTag, ColorRole::Background, Elevation::Level0};
 
-bool SurfaceStyle::apply(SurfaceStyleData &data, const Size2 &contentSize, const StyleContainer *style, const SurfaceInterior *interior) {
+bool SurfaceStyle::apply(SurfaceStyleData &data, const Size2 &contentSize,
+		const StyleContainer *style, const SurfaceInterior *interior) {
 	bool dirty = false;
 
 	if (data.schemeTag != schemeTag) {
@@ -63,7 +65,8 @@ bool SurfaceStyle::apply(SurfaceStyleData &data, const Size2 &contentSize, const
 	case NodeStyle::SurfaceTonal:
 		targetColorHCT = scheme->values(colorRole);
 		targetColorBackground = scheme->values(ColorRole::Surface);
-		targetColorOn = scheme->values(ColorScheme::getColorRoleOn(ColorRole::Surface, scheme->type));
+		targetColorOn =
+				scheme->values(ColorScheme::getColorRoleOn(ColorRole::Surface, scheme->type));
 		hasBlendElevation = true;
 		switch (activityState) {
 		case ActivityState::Enabled: break;
@@ -78,18 +81,15 @@ bool SurfaceStyle::apply(SurfaceStyleData &data, const Size2 &contentSize, const
 			targetElevation = Elevation(toInt(targetElevation) + 1);
 			targetElevationValue = 0.08f;
 			break;
-		case ActivityState::Focused:
-			targetElevationValue = 0.12f;
-			break;
-		case ActivityState::Pressed:
-			targetElevationValue = 0.12f;
-			break;
+		case ActivityState::Focused: targetElevationValue = 0.12f; break;
+		case ActivityState::Pressed: targetElevationValue = 0.12f; break;
 		}
 		break;
 	case NodeStyle::SurfaceTonalElevated:
 		targetColorHCT = scheme->values(colorRole);
 		targetColorBackground = scheme->values(ColorRole::Surface);
-		targetColorOn = scheme->values(ColorScheme::getColorRoleOn(ColorRole::Surface, scheme->type));
+		targetColorOn =
+				scheme->values(ColorScheme::getColorRoleOn(ColorRole::Surface, scheme->type));
 		hasBlendElevation = hasShadow = true;
 		switch (activityState) {
 		case ActivityState::Enabled: break;
@@ -104,12 +104,8 @@ bool SurfaceStyle::apply(SurfaceStyleData &data, const Size2 &contentSize, const
 			targetElevation = Elevation(toInt(targetElevation) + 1);
 			targetElevationValue = 0.08f;
 			break;
-		case ActivityState::Focused:
-			targetElevationValue = 0.12f;
-			break;
-		case ActivityState::Pressed:
-			targetElevationValue = 0.12f;
-			break;
+		case ActivityState::Focused: targetElevationValue = 0.12f; break;
+		case ActivityState::Pressed: targetElevationValue = 0.12f; break;
 		}
 		break;
 	case NodeStyle::Elevated:
@@ -201,7 +197,8 @@ bool SurfaceStyle::apply(SurfaceStyleData &data, const Size2 &contentSize, const
 	case NodeStyle::FilledTonal:
 		targetColorHCT = scheme->values(ColorRole::SecondaryContainer);
 		targetColorBackground = scheme->values(ColorRole::SecondaryContainer);
-		targetColorOn = scheme->values(ColorScheme::getColorRoleOn(ColorRole::SecondaryContainer, scheme->type));
+		targetColorOn = scheme->values(
+				ColorScheme::getColorRoleOn(ColorRole::SecondaryContainer, scheme->type));
 		switch (activityState) {
 		case ActivityState::Enabled: break;
 		case ActivityState::Disabled:
@@ -229,7 +226,8 @@ bool SurfaceStyle::apply(SurfaceStyleData &data, const Size2 &contentSize, const
 	case NodeStyle::FilledTonalElevated:
 		targetColorHCT = scheme->values(ColorRole::SecondaryContainer);
 		targetColorBackground = scheme->values(ColorRole::SecondaryContainer);
-		targetColorOn = scheme->values(ColorScheme::getColorRoleOn(ColorRole::SecondaryContainer, scheme->type));
+		targetColorOn = scheme->values(
+				ColorScheme::getColorRoleOn(ColorRole::SecondaryContainer, scheme->type));
 		hasShadow = true;
 		switch (activityState) {
 		case ActivityState::Enabled: break;
@@ -317,15 +315,9 @@ bool SurfaceStyle::apply(SurfaceStyleData &data, const Size2 &contentSize, const
 	switch (activityState) {
 	case ActivityState::Focused:
 	case ActivityState::Hovered:
-	case ActivityState::Pressed:
-		targetColorOn.alpha = 1.0f;
-		break;
-	case ActivityState::Disabled:
-		targetColorOn.alpha = 0.34f;
-		break;
-	default:
-		targetColorOn.alpha = 0.85f;
-		break;
+	case ActivityState::Pressed: targetColorOn.alpha = 1.0f; break;
+	case ActivityState::Disabled: targetColorOn.alpha = 0.34f; break;
+	default: targetColorOn.alpha = 0.85f; break;
 	}
 
 	if (targetColorHCT != data.colorHCT.data) {
@@ -344,7 +336,7 @@ bool SurfaceStyle::apply(SurfaceStyleData &data, const Size2 &contentSize, const
 
 	if (hasBlendElevation) {
 		switch (targetElevation) {
-		case Elevation::Level0: targetElevationValue += 0.0f; break;	// 0dp
+		case Elevation::Level0: targetElevationValue += 0.0f; break; // 0dp
 		case Elevation::Level1: targetElevationValue += 0.05f; break; // 1dp 5%
 		case Elevation::Level2: targetElevationValue += 0.08f; break; // 3dp 8%
 		case Elevation::Level3: targetElevationValue += 0.11f; break; // 6dp 11%
@@ -371,7 +363,8 @@ bool SurfaceStyle::apply(SurfaceStyleData &data, const Size2 &contentSize, const
 	}
 
 	if (dirty) {
-		data.colorElevation = data.colorBackground.asColor4F() * (1.0f - data.elevationValue) + data.colorScheme * data.elevationValue;
+		data.colorElevation = data.colorBackground.asColor4F() * (1.0f - data.elevationValue)
+				+ data.colorScheme * data.elevationValue;
 	}
 
 	if (targetColorOn != data.colorOn.data) {
@@ -393,7 +386,9 @@ bool SurfaceStyle::apply(SurfaceStyleData &data, const Size2 &contentSize, const
 	case ShapeStyle::Medium: targetCornerRadius = 12.0f; break; // 12dp
 	case ShapeStyle::Large: targetCornerRadius = 16.0f; break; // 16dp
 	case ShapeStyle::ExtraLarge: targetCornerRadius = 28.0f; break; // 28dp
-	case ShapeStyle::Full: targetCornerRadius = std::min(contentSize.width, contentSize.height) / 2.0f; break;
+	case ShapeStyle::Full:
+		targetCornerRadius = sprt::min(contentSize.width, contentSize.height) / 2.0f;
+		break;
 	}
 
 	if (data.shapeFamily != shapeFamily) {
@@ -409,9 +404,10 @@ bool SurfaceStyle::apply(SurfaceStyleData &data, const Size2 &contentSize, const
 	return dirty;
 }
 
-SurfaceStyleData SurfaceStyleData::progress(const SurfaceStyleData &l, const SurfaceStyleData &r, float p) {
+SurfaceStyleData SurfaceStyleData::progress(const SurfaceStyleData &l, const SurfaceStyleData &r,
+		float p) {
 	SurfaceStyleData ret(r);
-	ret.schemeTag =  (p < 0.5f) ? l.schemeTag : r.schemeTag;
+	ret.schemeTag = (p < 0.5f) ? l.schemeTag : r.schemeTag;
 	ret.colorHCT = stappler::progress(l.colorHCT, r.colorHCT, p);
 	ret.colorBackground = stappler::progress(l.colorBackground, r.colorBackground, p);
 	ret.colorOn = stappler::progress(l.colorOn, r.colorOn, p);
@@ -423,7 +419,8 @@ SurfaceStyleData SurfaceStyleData::progress(const SurfaceStyleData &l, const Sur
 		ret.outlineValue = 0.0f;
 	}
 
-	ret.colorElevation = ret.colorBackground.asColor4F() * (1.0f - ret.elevationValue) + ret.colorScheme * ret.elevationValue;
+	ret.colorElevation = ret.colorBackground.asColor4F() * (1.0f - ret.elevationValue)
+			+ ret.colorScheme * ret.elevationValue;
 
 	if (l.shapeFamily == r.shapeFamily) {
 		ret.cornerRadius = stappler::progress(l.cornerRadius, r.cornerRadius, p);
@@ -440,4 +437,4 @@ SurfaceStyleData SurfaceStyleData::progress(const SurfaceStyleData &l, const Sur
 	return ret;
 }
 
-}
+} // namespace stappler::xenolith::material2d

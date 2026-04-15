@@ -79,7 +79,7 @@ protected:
 
 	bool _success = false;
 	bool _signRequest = false;
-	std::array<char, 256> _errorBuffer = {0};
+	sprt::array<char, 256> _errorBuffer = {0};
 
 	uint64_t _mtime = 0;
 	String _etag;

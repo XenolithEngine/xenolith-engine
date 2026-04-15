@@ -85,7 +85,7 @@ bool Handle::finalize(Context *ctx, bool ret) {
 		_etag = eTag.str<Interface>();
 	} else {
 		auto &f = getReceiveDataSource();
-		if (auto str = std::get_if<String>(&f)) {
+		if (auto str = sprt::get_if<String>(&f)) {
 			filesystem::remove(FileInfo{*str});
 		}
 	}
@@ -121,7 +121,7 @@ void Request::perform(Controller *c, CompleteCallback &&cb) {
 	_downloadProgress = pair(0, 0);
 
 	auto &source = _handle.getReceiveDataSource();
-	if (std::holds_alternative<std::monostate>(source)) {
+	if (sprt::holds_alternative<sprt::monostate>(source)) {
 		if (!_ignoreResponseData) {
 			_targetHeaderCallback = _handle.getHeaderCallback();
 
@@ -162,7 +162,7 @@ size_t Request::handleReceive(char *buf, size_t nbytes) {
 	if (_data.size() < (nbytes + _nbytes)) {
 		_data.resize(nbytes + _nbytes);
 	}
-	memcpy(_data.data() + _nbytes, buf, nbytes);
+	sprt::memcpy(_data.data() + _nbytes, buf, nbytes);
 	_nbytes += nbytes;
 	return nbytes;
 }
@@ -177,7 +177,7 @@ void Request::notifyOnComplete(bool success) {
 
 void Request::notifyOnUploadProgress(int64_t total, int64_t now) {
 	_uploadProgress =
-			pair(total, std::max(now, _uploadProgress.second)); // prevent out-of-order updates
+			pair(total, sprt::max(now, _uploadProgress.second)); // prevent out-of-order updates
 	if (_onUploadProgress && _uploadProgress.second == now) {
 		_onUploadProgress(*this, total, now);
 	}
@@ -185,7 +185,7 @@ void Request::notifyOnUploadProgress(int64_t total, int64_t now) {
 
 void Request::notifyOnDownloadProgress(int64_t total, int64_t now) {
 	_downloadProgress =
-			pair(total, std::max(now, _downloadProgress.second)); // prevent out-of-order updates
+			pair(total, sprt::max(now, _downloadProgress.second)); // prevent out-of-order updates
 	if (_onDownloadProgress && _downloadProgress.second == now) {
 		_onDownloadProgress(*this, total, now);
 	}

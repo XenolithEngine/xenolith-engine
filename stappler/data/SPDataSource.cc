@@ -38,7 +38,7 @@ struct Source::Slice {
 };
 
 struct Source::SliceRequest : public Ref {
-	std::vector<Slice> vec;
+	sprt::__malloc_vector<Slice> vec;
 	BatchCallback cb;
 	size_t ready = 0;
 	size_t requests = 0;
@@ -101,7 +101,7 @@ struct Source::SliceRequest : public Ref {
 };
 
 struct Source::BatchRequest {
-	std::vector<Id> vec;
+	sprt::__malloc_vector<Id> vec;
 	BatchCallback cb;
 	size_t requests = 0;
 	Rc<Source> cat;
@@ -130,7 +130,7 @@ struct Source::BatchRequest {
 	}
 
 	void onData(Id id, Value &&val) {
-		map.insert(std::make_pair(id, sp::move(val)));
+		map.insert(sprt::make_pair(id, sp::move(val)));
 		requests--;
 
 		if (requests == 0) {
@@ -336,7 +336,7 @@ bool Source::removeItem(Id n, const Value &v, uint32_t l, bool subcats) {
 
 size_t Source::getSliceData(const BatchCallback &cb, Id first, size_t count, uint32_t l,
 		bool subcats) {
-	SliceRequest *req = new (std::nothrow) SliceRequest(cb);
+	SliceRequest *req = new (sprt::nothrow) SliceRequest(cb);
 
 	size_t f = size_t(first.get());
 	onSlice(req->vec, f, count, l, subcats);
@@ -349,12 +349,12 @@ size_t Source::getSliceData(const BatchCallback &cb, Id first, size_t count, uin
 	}
 }
 
-std::pair<Source *, bool> Source::getItemCategory(Id n, uint32_t l, bool subcats) {
+sprt::pair<Source *, bool> Source::getItemCategory(Id n, uint32_t l, bool subcats) {
 	if (l > 0) {
 		for (auto &cat : _subCats) {
 			if (subcats) {
 				if (n.empty()) {
-					return std::make_pair(cat, true);
+					return sprt::make_pair(cat, true);
 				} else {
 					n--;
 				}
@@ -369,17 +369,17 @@ std::pair<Source *, bool> Source::getItemCategory(Id n, uint32_t l, bool subcats
 	}
 
 	if (!subcats) {
-		return std::make_pair(this, false);
+		return sprt::make_pair(this, false);
 	} else {
 		if (!_subCats.empty() && n.get() < (size_t)_subCats.size()) {
-			return std::make_pair(_subCats.at(size_t(n.get())), true);
+			return sprt::make_pair(_subCats.at(size_t(n.get())), true);
 		}
 
-		return std::make_pair(this, false);
+		return sprt::make_pair(this, false);
 	}
 }
 
-void Source::onSlice(std::vector<Slice> &vec, size_t &first, size_t &count, uint32_t l,
+void Source::onSlice(sprt::__malloc_vector<Slice> &vec, size_t &first, size_t &count, uint32_t l,
 		bool subcats) {
 	if (l > 0) {
 		for (auto it = _subCats.begin(); it != _subCats.end(); it++) {
@@ -408,7 +408,7 @@ void Source::onSlice(std::vector<Slice> &vec, size_t &first, size_t &count, uint
 	}
 
 	if (count > 0 && first < _orphanCount) {
-		auto c = std::min(count, _orphanCount - first);
+		auto c = sprt::min(count, _orphanCount - first);
 		vec.push_back(Slice(first, c, this));
 
 		first = 0;
@@ -424,15 +424,15 @@ void Source::onSliceRequest(const BatchCallback &cb, Id::Type first, size_t size
 			_sourceCallback([cb](Value &&val) {
 				Map<Id, Value> map;
 				if (val.isArray()) {
-					map.insert(std::make_pair(Self, sp::move(val.getValue(0))));
+					map.insert(sprt::make_pair(Self, sp::move(val.getValue(0))));
 				} else {
-					map.insert(std::make_pair(Self, sp::move(val)));
+					map.insert(sprt::make_pair(Self, sp::move(val)));
 				}
 				cb(map);
 			}, Self);
 		} else {
 			Map<Id, Value> map;
-			map.insert(std::make_pair(Self, _data));
+			map.insert(sprt::make_pair(Self, _data));
 			cb(map);
 		}
 	} else {

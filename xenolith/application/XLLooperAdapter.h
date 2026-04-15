@@ -93,16 +93,15 @@ public:
 
 	virtual Rc<sprt::window::HandleAdapter> listenPollableHandle(sprt::native_handle,
 			filesystem::PollFlags,
-			sprt::memory::dynfunction<Status(sprt::native_handle fd, filesystem::PollFlags flags)>
-					&&,
+			mem_std::Function<Status(sprt::native_handle fd, filesystem::PollFlags flags)> &&,
 			Ref * = nullptr) override;
 
-	virtual Status performOnThread(sprt::memory::dynfunction<void()> &&func, Ref *target = nullptr,
+	virtual Status performOnThread(mem_std::Function<void()> &&func, Ref *target = nullptr,
 			bool immediate = false,
 			StringView tag = __SPRT_LOCATION.function_name()) const override;
 
-	virtual Status performAsync(sprt::memory::dynfunction<void()> &&, Ref * = nullptr,
-			bool first = false, StringView tag = __SPRT_LOCATION.function_name()) const override;
+	virtual Status performAsync(mem_std::Function<void()> &&, Ref * = nullptr, bool first = false,
+			StringView tag = __SPRT_LOCATION.function_name()) const override;
 
 protected:
 	Rc<event::Looper> _looper;

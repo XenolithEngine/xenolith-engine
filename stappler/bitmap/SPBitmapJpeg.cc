@@ -25,7 +25,10 @@ THE SOFTWARE.
 #include "SPFilepath.h"
 #include "SPLog.h"
 #include "SPFilesystem.h"
-#include "jpeglib.h"
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <jpeglib.h>
 #include <setjmp.h>
 
 namespace STAPPLER_VERSIONIZED stappler::bitmap::jpeg {
@@ -49,7 +52,7 @@ static bool isJpg(const uint8_t *data, size_t dataLen) {
 	}
 
 	static const unsigned char JPG_SOI[] = {0xFF, 0xD8};
-	return memcmp(data, JPG_SOI, 2) == 0;
+	return sprt::memcmp(data, JPG_SOI, 2) == 0;
 }
 
 static bool getJpegImageSize(const io::Producer &file, StackBuffer<512> &data, uint32_t &width,

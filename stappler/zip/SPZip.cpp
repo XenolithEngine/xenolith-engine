@@ -23,6 +23,9 @@
 #include "SPCommon.h" // IWYU pragma: keep
 #include "SPZip.h"
 #include "SPLog.h"
+
+#include <stdint.h>
+
 #include "zip.h"
 
 #ifdef MODULE_STAPPLER_FILESYSTEM
@@ -46,9 +49,9 @@ static zip_t *_createZipArchive(FileInfo info, ZipBuffer<Interface> *d) {
 	uint8_t magicBuf[4] = {0};
 	f->read(magicBuf, 4);
 
-	if (memcmp(magicBuf, ZipArchive<Interface>::ZIP_SIG1, 4) != 0
-			&& memcmp(magicBuf, ZipArchive<Interface>::ZIP_SIG2, 4) != 0
-			&& memcmp(magicBuf, ZipArchive<Interface>::ZIP_SIG3, 4) != 0) {
+	if (sprt::memcmp(magicBuf, ZipArchive<Interface>::ZIP_SIG1, 4) != 0
+			&& sprt::memcmp(magicBuf, ZipArchive<Interface>::ZIP_SIG2, 4) != 0
+			&& sprt::memcmp(magicBuf, ZipArchive<Interface>::ZIP_SIG3, 4) != 0) {
 		f->close();
 		f->~File();
 		return nullptr;
@@ -154,9 +157,9 @@ static zip_t *_createZipArchive(BytesView b, ZipBuffer<Interface> *d, bool reado
 		if (b.size() < 4) {
 			return nullptr;
 		}
-		if (memcmp(b.data(), ZipArchive<Interface>::ZIP_SIG1, 4) != 0
-				&& memcmp(b.data(), ZipArchive<Interface>::ZIP_SIG2, 4) != 0
-				&& memcmp(b.data(), ZipArchive<Interface>::ZIP_SIG3, 4) != 0) {
+		if (sprt::memcmp(b.data(), ZipArchive<Interface>::ZIP_SIG1, 4) != 0
+				&& sprt::memcmp(b.data(), ZipArchive<Interface>::ZIP_SIG2, 4) != 0
+				&& sprt::memcmp(b.data(), ZipArchive<Interface>::ZIP_SIG3, 4) != 0) {
 			return nullptr;
 		}
 
@@ -178,7 +181,7 @@ static zip_t *_createZipArchive(BytesView b, ZipBuffer<Interface> *d, bool reado
 			break;
 		case ZIP_SOURCE_READ: {
 			auto v = d->data.template read<BytesView>(size);
-			memcpy(data, v.data(), v.size());
+			sprt::memcpy(data, v.data(), v.size());
 			return v.size();
 			break;
 		}
@@ -269,13 +272,13 @@ static bool addFileToArchive(zip_t *_handle, StringView name, BytesView data, bo
 	zip_source_t *source = nullptr;
 	uint8_t *buf = nullptr;
 
-	if constexpr (std::is_same<Interface, memory::PoolInterface>::value) {
+	if constexpr (sprt::is_same<Interface, memory::PoolInterface>::value) {
 		buf = (uint8_t *)memory::pool::palloc(memory::pool::acquire(), data.size());
-		memcpy(buf, data.data(), data.size());
+		sprt::memcpy(buf, data.data(), data.size());
 		source = zip_source_buffer(_handle, buf, data.size(), 0);
 	} else {
 		buf = new uint8_t[data.size()];
-		memcpy(buf, data.data(), data.size());
+		sprt::memcpy(buf, data.data(), data.size());
 		source = zip_source_buffer(_handle, buf, data.size(), 1);
 	}
 	if (source) {

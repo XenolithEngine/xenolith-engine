@@ -47,7 +47,7 @@
 	uint16_t _scancodes[128];
 	NSXLPL::MacosWindow *_engineWindow;
 	NSXL::WindowLayerFlags _buttonGripFlags;
-	std::bitset<64> _buttons;
+	sprt::bitset<64> _buttons;
 };
 
 - (instancetype _Nonnull)init:(NSSP::NotNull<NSXLPL::MacosWindow>)constroller
@@ -973,7 +973,7 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 	auto mods = NSXLPL::getInputModifiers(uint32_t(theEvent.modifierFlags)) | _currentModifiers;
 
 	NSXL::core::InputEventData event{
-		std::numeric_limits<uint32_t>::max(),
+		sprt::numeric_limits<uint32_t>::max(),
 		NSXL::core::InputEventName::MouseMove,
 		{{
 			NSXL::core::InputMouseButton::None,
@@ -1041,7 +1041,7 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 		}},
 	});
 	events.emplace_back(NSXL::core::InputEventData{
-		std::numeric_limits<uint32_t>::max(),
+		sprt::numeric_limits<uint32_t>::max(),
 		NSXL::core::InputEventName::MouseMove,
 		{{
 			NSXL::core::InputMouseButton::None,
@@ -1186,7 +1186,7 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 	_engineWindow->updateState(0, _engineWindow->getInfo()->state | NSXL::WindowState::Pointer);
 
 	events.emplace_back(NSXL::core::InputEventData{
-		std::numeric_limits<uint32_t>::max(),
+		sprt::numeric_limits<uint32_t>::max(),
 		NSXL::core::InputEventName::MouseMove,
 		{{
 			NSXL::core::InputMouseButton::None,
@@ -1277,19 +1277,19 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 }
 
 - (void)flagsChanged:(NSEvent *)theEvent {
-	static std::pair<NSXL::core::InputModifier, NSXL::core::InputKeyCode> testmask[] = {
-		std::make_pair(NSXL::core::InputModifier::ShiftL, NSXL::core::InputKeyCode::LEFT_SHIFT),
-		std::make_pair(NSXL::core::InputModifier::ShiftR, NSXL::core::InputKeyCode::RIGHT_SHIFT),
-		std::make_pair(NSXL::core::InputModifier::CtrlL, NSXL::core::InputKeyCode::LEFT_CONTROL),
-		std::make_pair(NSXL::core::InputModifier::CtrlR, NSXL::core::InputKeyCode::RIGHT_CONTROL),
-		std::make_pair(NSXL::core::InputModifier::AltL, NSXL::core::InputKeyCode::LEFT_ALT),
-		std::make_pair(NSXL::core::InputModifier::AltR, NSXL::core::InputKeyCode::RIGHT_ALT),
-		std::make_pair(NSXL::core::InputModifier::WinL, NSXL::core::InputKeyCode::LEFT_SUPER),
-		std::make_pair(NSXL::core::InputModifier::WinR, NSXL::core::InputKeyCode::RIGHT_SUPER),
-		std::make_pair(NSXL::core::InputModifier::CapsLock, NSXL::core::InputKeyCode::CAPS_LOCK),
-		std::make_pair(NSXL::core::InputModifier::NumLock, NSXL::core::InputKeyCode::NUM_LOCK),
-		std::make_pair(NSXL::core::InputModifier::Mod5, NSXL::core::InputKeyCode::WORLD_1),
-		std::make_pair(NSXL::core::InputModifier::Mod4, NSXL::core::InputKeyCode::WORLD_2),
+	static sprt::pair<NSXL::core::InputModifier, NSXL::core::InputKeyCode> testmask[] = {
+		sprt::make_pair(NSXL::core::InputModifier::ShiftL, NSXL::core::InputKeyCode::LEFT_SHIFT),
+		sprt::make_pair(NSXL::core::InputModifier::ShiftR, NSXL::core::InputKeyCode::RIGHT_SHIFT),
+		sprt::make_pair(NSXL::core::InputModifier::CtrlL, NSXL::core::InputKeyCode::LEFT_CONTROL),
+		sprt::make_pair(NSXL::core::InputModifier::CtrlR, NSXL::core::InputKeyCode::RIGHT_CONTROL),
+		sprt::make_pair(NSXL::core::InputModifier::AltL, NSXL::core::InputKeyCode::LEFT_ALT),
+		sprt::make_pair(NSXL::core::InputModifier::AltR, NSXL::core::InputKeyCode::RIGHT_ALT),
+		sprt::make_pair(NSXL::core::InputModifier::WinL, NSXL::core::InputKeyCode::LEFT_SUPER),
+		sprt::make_pair(NSXL::core::InputModifier::WinR, NSXL::core::InputKeyCode::RIGHT_SUPER),
+		sprt::make_pair(NSXL::core::InputModifier::CapsLock, NSXL::core::InputKeyCode::CAPS_LOCK),
+		sprt::make_pair(NSXL::core::InputModifier::NumLock, NSXL::core::InputKeyCode::NUM_LOCK),
+		sprt::make_pair(NSXL::core::InputModifier::Mod5, NSXL::core::InputKeyCode::WORLD_1),
+		sprt::make_pair(NSXL::core::InputModifier::Mod4, NSXL::core::InputKeyCode::WORLD_2),
 	};
 
 	NSXL::core::InputModifier mods = NSXLPL::getInputModifiers(uint32_t(theEvent.modifierFlags));

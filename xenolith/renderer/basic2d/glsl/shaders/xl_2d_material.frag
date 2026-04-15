@@ -4,7 +4,9 @@
 #extension GL_EXT_samplerless_texture_functions : enable
 #extension GL_EXT_nonuniform_qualifier : enable
 
-#include "SPGlslInit.h"
+// clang-format off
+
+#include "sprt_glsl.h"
 #include "XL2dGlslVertexData.h"
 
 layout (constant_id = 0) const int SAMPLERS_ARRAY_SIZE = 2;

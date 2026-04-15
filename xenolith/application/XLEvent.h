@@ -61,7 +61,7 @@ public:
 
 	template <typename T>
 	inline void operator()(Ref *object, T &&value) const {
-		send(object, std::forward<T>(value));
+		send(object, sprt::forward<T>(value));
 	}
 
 	inline void operator()(Ref *object) const { send(object); }
@@ -100,7 +100,7 @@ public:
 
 	template <class T = Ref>
 	inline T *getObject() const {
-		static_assert(std::is_convertible_v<T *, Ref *>,
+		static_assert(sprt::is_convertible_v<T *, Ref *>,
 				"Invalid Type for stappler::Event target!");
 		return static_cast<T *>(_object);
 	}

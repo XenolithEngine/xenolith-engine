@@ -36,7 +36,7 @@ static LayoutBlock::WideString Layout_getLatinBullet(int64_t v, bool uppercase) 
 
 	LayoutBlock::WideString ret;
 	bool isNegative = (v < 0);
-	v = std::abs(v);
+	v = sprt::abs(v);
 	do {
 		if (uppercase) {
 			ret = LayoutBlock::WideString(1, char16_t(u'A' + (v - 1) % mod)) + ret;
@@ -58,7 +58,7 @@ static LayoutBlock::WideString Layout_getGreekBullet(int64_t v) {
 
 	LayoutBlock::WideString ret;
 	bool isNegative = v < 0;
-	v = std::abs(v) - 1;
+	v = sprt::abs(v) - 1;
 	do {
 		ret = LayoutBlock::WideString(1, char16_t(u'α' + v % mod)) + ret;
 		v /= mod;
@@ -94,7 +94,7 @@ static LayoutBlock::WideString Layout_getRomanBullet(int64_t v, bool uppercase) 
 	LayoutBlock::WideString result;
 	if (v < 0) {
 		result += u"-";
-		v = std::abs(v);
+		v = sprt::abs(v);
 	}
 	if (v <= 12) {
 		result += (uppercase ? (u'Ⅰ' + (v - 1)) : (u'ⅰ' + (v - 1)));
@@ -189,8 +189,7 @@ void LayoutBlock::processListItemBullet(float parentPosY) {
 		float finalHeight = reader.getHeight() / density + offset;
 		float finalWidth = reader.getMaxLineX() / density;
 
-		float x = 0, w = engine->getMedia().surfaceSize.width;
-		std::tie(x, w) = engine->getFloatBounds(this, origin.y / density, finalHeight);
+		float x = engine->getFloatBounds(this, origin.y / density, finalHeight).first;
 
 		label->bbox = Rect(x - pos.position.x - finalWidth
 						- engine->getMedia().computeValueAuto(pStyle.listOffset, pos.size.width,

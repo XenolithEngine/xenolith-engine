@@ -199,7 +199,7 @@ Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err) {
 
 	auto makeStmt = [&]() -> Stmt * {
 		if (!stmt) {
-			stmt = new (std::nothrow) Stmt(err);
+			stmt = new (sprt::nothrow) Stmt(err);
 			stmt->type = StmtType::Word;
 		}
 		return stmt;
@@ -253,20 +253,20 @@ Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err) {
 					if (isMultiline) {
 						auto nl = countNewlines(skipWhitespace(str));
 						if (nl > 0) {
-							auto stmt = new (std::nothrow) Stmt(err, StmtType::Expansion, "\n");
+							auto stmt = new (sprt::nothrow) Stmt(err, StmtType::Expansion, "\n");
 							makeStmt()->add(stmt);
 						} else {
-							auto stmt = new (std::nothrow) Stmt(err, StmtType::Expansion, " ");
+							auto stmt = new (sprt::nothrow) Stmt(err, StmtType::Expansion, " ");
 							makeStmt()->add(stmt);
 						}
 					} else {
 						skipWhitespace(str);
-						auto stmt = new (std::nothrow) Stmt(err, StmtType::Expansion, " ");
+						auto stmt = new (sprt::nothrow) Stmt(err, StmtType::Expansion, " ");
 						makeStmt()->add(stmt);
 					}
 
 				} else {
-					auto stmt = new (std::nothrow) Stmt(err, StmtType::Expansion, str.sub(0, 1));
+					auto stmt = new (sprt::nothrow) Stmt(err, StmtType::Expansion, str.sub(0, 1));
 					makeStmt()->add(stmt);
 					++str;
 				}
@@ -321,11 +321,11 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 
 	auto addStmtWord = [&](Stmt *s) {
 		if (!stmt) {
-			stmt = new (std::nothrow) Stmt(err);
+			stmt = new (sprt::nothrow) Stmt(err);
 			stmt->type = type;
-			stmt->add(new (std::nothrow) StmtValue(s));
+			stmt->add(new (sprt::nothrow) StmtValue(s));
 		} else if (stmt->type == type) {
-			stmt->add(new (std::nothrow) StmtValue(s));
+			stmt->add(new (sprt::nothrow) StmtValue(s));
 		} else if (stmt->type == StmtType::ArgumentList) {
 			stmt->tail->stmt->add(s);
 		}
@@ -333,11 +333,11 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 
 	auto addStringWord = [&](StringView s) {
 		if (!stmt) {
-			stmt = new (std::nothrow) Stmt(err);
+			stmt = new (sprt::nothrow) Stmt(err);
 			stmt->type = type;
-			stmt->add(new (std::nothrow) StmtValue(s));
+			stmt->add(new (sprt::nothrow) StmtValue(s));
 		} else if (stmt->type == type) {
-			stmt->add(new (std::nothrow) StmtValue(s));
+			stmt->add(new (sprt::nothrow) StmtValue(s));
 		} else if (stmt->type == StmtType::ArgumentList) {
 			stmt->tail->stmt->add(s);
 		}
@@ -345,12 +345,12 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 
 	auto addStmtArgument = [&](Stmt *s) {
 		if (!stmt) {
-			stmt = new (std::nothrow) Stmt(err);
+			stmt = new (sprt::nothrow) Stmt(err);
 			stmt->type = StmtType::ArgumentList;
-			stmt->add(new (std::nothrow) StmtValue(s));
+			stmt->add(new (sprt::nothrow) StmtValue(s));
 		} else if (stmt->type == StmtType::ArgumentList) {
-			stmt->add(new (std::nothrow)
-							StmtValue(new (std::nothrow) Stmt(err, StmtType::WordList, s)));
+			stmt->add(new (sprt::nothrow)
+							StmtValue(new (sprt::nothrow) Stmt(err, StmtType::WordList, s)));
 		} else {
 			if (stmt->tail != stmt->value) {
 				auto firstArg = stmt->value->next;
@@ -358,15 +358,15 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 				stmt->tail = stmt->value;
 				stmt->value->next = nullptr;
 				stmt->type = StmtType::WordList;
-				stmt = new (std::nothrow) Stmt(err, StmtType::ArgumentList, stmt);
-				stmt->add(new (std::nothrow) StmtValue(
-						new (std::nothrow) Stmt(err, StmtType::WordList, firstArg, lastArg)));
+				stmt = new (sprt::nothrow) Stmt(err, StmtType::ArgumentList, stmt);
+				stmt->add(new (sprt::nothrow) StmtValue(
+						new (sprt::nothrow) Stmt(err, StmtType::WordList, firstArg, lastArg)));
 			} else {
-				stmt = new (std::nothrow) Stmt(err, StmtType::ArgumentList, stmt);
+				stmt = new (sprt::nothrow) Stmt(err, StmtType::ArgumentList, stmt);
 			}
 
-			stmt->add(new (std::nothrow)
-							StmtValue(new (std::nothrow) Stmt(err, StmtType::WordList, s)));
+			stmt->add(new (sprt::nothrow)
+							StmtValue(new (sprt::nothrow) Stmt(err, StmtType::WordList, s)));
 		}
 	};
 
@@ -399,7 +399,7 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 		auto sig = readContextIdentifier(tmp, ctx);
 		if (ending && tmp.is(ending)) {
 			++tmp;
-			stmt = new (std::nothrow) Stmt(err, StmtType::Expansion, sig);
+			stmt = new (sprt::nothrow) Stmt(err, StmtType::Expansion, sig);
 			str = tmp;
 			return stmt;
 		}
@@ -496,15 +496,15 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 Stmt::Stmt(const FileLocation &l) : loc(l) { }
 
 Stmt::Stmt(const FileLocation &l, StringView str) : type(StmtType::Word), loc(l) {
-	tail = value = new (std::nothrow) StmtValue(str);
+	tail = value = new (sprt::nothrow) StmtValue(str);
 }
 
 Stmt::Stmt(const FileLocation &l, StmtType t, StringView str) : type(t), loc(l) {
-	tail = value = new (std::nothrow) StmtValue(str);
+	tail = value = new (sprt::nothrow) StmtValue(str);
 }
 
 Stmt::Stmt(const FileLocation &l, StmtType t, Stmt *stmt) : type(t), loc(l) {
-	tail = value = new (std::nothrow) StmtValue(stmt);
+	tail = value = new (sprt::nothrow) StmtValue(stmt);
 }
 
 Stmt::Stmt(const FileLocation &l, StmtType _t, StmtValue *v, StmtValue *t)
@@ -543,10 +543,10 @@ void Stmt::add(StringView str) {
 			return;
 		}
 	}
-	add(new (std::nothrow) StmtValue(str));
+	add(new (sprt::nothrow) StmtValue(str));
 }
 
-void Stmt::add(Stmt *stmt) { add(new (std::nothrow) StmtValue(stmt)); }
+void Stmt::add(Stmt *stmt) { add(new (sprt::nothrow) StmtValue(stmt)); }
 
 void Stmt::describe(const Callback<void(StringView)> &out, uint32_t level) {
 	if (level == 0) {
@@ -573,7 +573,7 @@ void Stmt::describe(const Callback<void(StringView)> &out, uint32_t level) {
 }
 
 void Stmt::describe(uint32_t level) {
-	describe([](StringView str) { std::cout << str; }, level);
+	describe([](StringView str) { sprt::cout << str; }, level);
 }
 
 } // namespace stappler::makefile

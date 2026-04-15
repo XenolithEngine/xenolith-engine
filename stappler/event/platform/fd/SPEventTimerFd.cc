@@ -31,12 +31,12 @@
 namespace STAPPLER_VERSIONIZED stappler::event {
 
 bool TimerFdSource::init(const TimerInfo &info) {
-	int clockid = CLOCK_MONOTONIC;
+	int clockid = __SPRT_CLOCK_MONOTONIC;
 
 	switch (info.type) {
 	case ClockType::Default:
-	case ClockType::Monotonic: clockid = CLOCK_MONOTONIC; break;
-	case ClockType::Realtime: clockid = CLOCK_REALTIME; break;
+	case ClockType::Monotonic: clockid = __SPRT_CLOCK_MONOTONIC; break;
+	case ClockType::Realtime: clockid = __SPRT_CLOCK_REALTIME; break;
 	case ClockType::Process:
 		log::source().error("event::Queue",
 				"ClockType::Process is not supported for a timer on this system");
@@ -120,7 +120,7 @@ Status TimerFdHandle::read(uint64_t *target) {
 	if (ret == sizeof(uint64_t)) {
 		return Status::Ok;
 	} else if (ret < 0) {
-		return sprt::status::errnoToStatus(errno);
+		return sprt::status::errnoToStatus(__sprt_errno);
 	}
 	return Status::Declined;
 }
@@ -171,7 +171,7 @@ void TimerFdURingHandle::notify(URingData *uring, TimerFdSource *source, const N
 		// successful read
 		current += static_cast<uint32_t>(source->target);
 		if (count != Infinite) {
-			source->value = std::min(current, count);
+			source->value = sprt::min(current, count);
 		}
 	}
 
@@ -221,7 +221,7 @@ void TimerFdEPollHandle::notify(EPollData *epoll, TimerFdSource *source, const N
 		while (read(&value) == Status::Ok) {
 			current += static_cast<uint32_t>(value);
 			if (count != Infinite) {
-				source->value = std::min(current, count);
+				source->value = sprt::min(current, count);
 			}
 
 			if (current >= count) {
@@ -273,7 +273,7 @@ void TimerFdALooperHandle::notify(ALooperData *alooper, TimerFdSource *source,
 		while (read(&value) == Status::Ok) {
 			current += static_cast<uint32_t>(value);
 			if (count != Infinite) {
-				source->value = std::min(current, count);
+				source->value = sprt::min(current, count);
 			}
 
 			if (current >= count) {

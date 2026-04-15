@@ -26,7 +26,8 @@ THE SOFTWARE.
 #define STAPPLER_CORE_STRING_SPSTRING_H_
 
 #include "SPCoreCrypto.h"
-#include "SPStringStream.h"
+
+#include <sprt/cxx/cctype>
 
 namespace STAPPLER_VERSIONIZED stappler::platform {
 
@@ -85,8 +86,8 @@ inline uint32_t SP_MAKE_API_VERSION(StringView version) {
 
 template <typename Interface>
 inline auto getVersionDescription(uint32_t version) {
-	return string::toString<Interface>(version >> 29, ".", version >> 22, ".",
-			(version >> 12) & 0b11'1111'1111, ".", version & 0b1111'1111'1111);
+	return sprt::StreamTraits<char>::toString<typename Interface::StringType>(version >> 29, ".",
+			version >> 22, ".", (version >> 12) & 0b11'1111'1111, ".", version & 0b1111'1111'1111);
 }
 
 } // namespace STAPPLER_VERSIONIZED stappler
@@ -243,25 +244,6 @@ namespace STAPPLER_VERSIONIZED stappler::string {
 using Sha256 = crypto::Sha256;
 using Sha512 = crypto::Sha512;
 
-/* Very simple and quick hasher, do NOT use it in collision-sensative cases */
-inline uint32_t hash32(const StringView &key) {
-	return sprt::hash32(key.data(), uint32_t(key.size()));
-}
-inline uint64_t hash64(const StringView &key) { return sprt::hash64(key.data(), key.size()); }
-
-/* default stdlib hash 32/64-bit, platform depended, unsigned variant (do NOT use for storage) */
-template <typename StringType>
-inline uint64_t stdlibHashUnsigned(const StringType &key) {
-	std::hash<StringType> hasher;
-	return hasher(key);
-}
-
-/* default stdlib hash 32/64-bit, platform depended, signed variant, can be used for storage */
-template <typename StringType>
-inline int64_t stdlibHashSigned(const StringType &key) {
-	return reinterpretValue<int64_t>(stdlibHashUnsigned(key));
-}
-
 } // namespace stappler::string
 
 
@@ -278,14 +260,11 @@ template <typename Interface>
 SP_PUBLIC auto encode(const CoderSource &source, bool upper = false) ->
 		typename Interface::StringType;
 
-SP_PUBLIC void encode(std::basic_ostream<char> &stream, const CoderSource &source,
-		bool upper = false);
 SP_PUBLIC size_t encode(char *, size_t bsize, const CoderSource &source, bool upper = false);
 
 template <typename Interface>
 SP_PUBLIC auto decode(const CoderSource &source) -> typename Interface::BytesType;
 
-SP_PUBLIC void decode(std::basic_ostream<char> &stream, const CoderSource &source);
 SP_PUBLIC size_t decode(uint8_t *, size_t bsize, const CoderSource &source);
 
 } // namespace stappler::base16
@@ -299,13 +278,11 @@ SP_PUBLIC size_t decodeSize(size_t);
 template <typename Interface>
 SP_PUBLIC auto encode(const CoderSource &source) -> typename Interface::StringType;
 
-SP_PUBLIC void encode(std::basic_ostream<char> &stream, const CoderSource &source);
 SP_PUBLIC size_t encode(char *, size_t bsize, const CoderSource &source);
 
 template <typename Interface>
 SP_PUBLIC auto decode(const CoderSource &source) -> typename Interface::BytesType;
 
-SP_PUBLIC void decode(std::basic_ostream<char> &stream, const CoderSource &source);
 SP_PUBLIC size_t decode(uint8_t *, size_t bsize, const CoderSource &source);
 
 } // namespace stappler::base64
@@ -319,7 +296,6 @@ using stappler::base64::decodeSize;
 template <typename Interface>
 SP_PUBLIC auto encode(const CoderSource &source) -> typename Interface::StringType;
 
-SP_PUBLIC void encode(std::basic_ostream<char> &stream, const CoderSource &source);
 SP_PUBLIC size_t encode(char *, size_t bsize, const CoderSource &source);
 
 using stappler::base64::decode;
@@ -345,20 +321,6 @@ inline void toStringStreamConcat(StreamType &stream, const Container &c, const S
 		}
 		stream << it;
 	}
-}
-
-template <typename Container, typename StringType>
-inline auto toStringConcat(const Container &c) -> StringType {
-	typename traits::SelectStringStream<StringType>::Type stream;
-	toStringStreamConcat(stream, c);
-	return stream.str();
-}
-
-template <typename Container, typename Sep, typename StringType>
-inline auto toStringConcat(const Container &c, const Sep &s) -> StringType {
-	typename traits::SelectStringStream<StringType>::Type stream;
-	toStringStreamConcat(stream, c, s);
-	return stream.str();
 }
 
 } // namespace STAPPLER_VERSIONIZED stappler
@@ -554,87 +516,56 @@ auto StringTraits<Interface>::toUtf16(char32_t ch) -> WideString {
 	WideString utf16_str;
 	utf16_str.reserve(size);
 
-	unicode::utf16Encode(utf16_str, ch);
+	sprt::unicode::utf16EncodeCb([&](char16_t c) SPRT_LAMBDAINLINE { utf16_str.push_back(c); }, ch);
 
 	return utf16_str;
 }
 
 template <typename Interface>
 auto StringTraits<Interface>::toUtf16(const StringView &utf8_str) -> WideString {
-	const auto size = sprt::unicode::getUtf16Length(utf8_str);
+	size_t size = sprt::unicode::getUtf16Length(utf8_str);
 	WideString utf16_str;
-	utf16_str.reserve(size);
-
-	uint8_t offset = 0;
-	auto ptr = utf8_str.data();
-	auto len = utf8_str.size();
-	auto end = ptr + utf8_str.size();
-	while (ptr < end) {
-		auto c = sprt::unicode::utf8Decode32(ptr, len, offset);
-		unicode::utf16Encode(utf16_str, c);
-		ptr += offset;
-		len -= offset;
-	}
-
+	utf16_str.resize(size);
+	sprt::unicode::toUtf16(utf16_str.data(), utf16_str.size(), utf8_str, &size);
+	utf16_str.resize(size);
 	return utf16_str;
 }
 
 template <typename Interface>
 auto StringTraits<Interface>::toUtf16Html(const StringView &utf8_str) -> WideString {
-	const auto size = sprt::unicode::getUtf16HtmlLength(utf8_str);
+	size_t size = sprt::unicode::getUtf16HtmlLength(utf8_str);
 	WideString utf16_str;
-	utf16_str.reserve(size);
-
-	uint8_t offset = 0;
-	auto ptr = utf8_str.data();
-	auto len = utf8_str.size();
-	auto end = ptr + utf8_str.size();
-	while (ptr < end) {
-		auto c = sprt::unicode::utf8HtmlDecode32(ptr, len, offset);
-		unicode::utf16Encode(utf16_str, c);
-		ptr += offset;
-		len -= offset;
-	}
-
+	utf16_str.resize(size);
+	sprt::unicode::toUtf16Html(utf16_str.data(), utf16_str.size(), utf8_str, &size);
+	utf16_str.resize(size);
 	return utf16_str;
 }
 
 template <typename Interface>
-auto StringTraits<Interface>::toUtf8(const WideStringView &str) -> String {
-	const auto size = sprt::unicode::getUtf8Length(str);
-	String ret;
-	ret.reserve(size);
-
-	uint8_t offset;
-	auto ptr = str.data();
-	auto len = str.size();
-	auto end = ptr + str.size();
-	while (ptr < end) {
-		auto c = sprt::unicode::utf16Decode32(ptr, len, offset);
-		unicode::utf8Encode(ret, c);
-		ptr += offset;
-		len -= offset;
-	}
-
-	return ret;
+auto StringTraits<Interface>::toUtf8(const WideStringView &utf16_str) -> String {
+	size_t size = sprt::unicode::getUtf8Length(utf16_str);
+	String utf8_str;
+	utf8_str.resize(size);
+	sprt::unicode::toUtf8(utf8_str.data(), utf8_str.size(), utf16_str, &size);
+	utf8_str.resize(size);
+	return utf8_str;
 }
 
 template <typename Interface>
-auto StringTraits<Interface>::toUtf8(const StringViewBase<char32_t> &str) -> String {
-	const auto size = sprt::unicode::getUtf8Length(str);
-	String ret;
-	ret.reserve(size);
-
-	for (auto &c : str) { unicode::utf8Encode(ret, c); }
-
-	return ret;
+auto StringTraits<Interface>::toUtf8(const StringViewBase<char32_t> &utf32_str) -> String {
+	size_t size = sprt::unicode::getUtf8Length(utf32_str);
+	String utf8_str;
+	utf8_str.resize(size);
+	sprt::unicode::toUtf8(utf8_str.data(), utf8_str.size(), utf32_str, &size);
+	utf8_str.resize(size);
+	return utf8_str;
 }
 
 template <typename Interface>
 auto StringTraits<Interface>::toUtf8(char16_t c) -> String {
 	String ret;
 	ret.reserve(sprt::unicode::utf8EncodeLength(c));
-	unicode::utf8Encode(ret, c);
+	sprt::unicode::utf8EncodeCb([&](char ch) SPRT_LAMBDAINLINE { ret.push_back(ch); }, c);
 	return ret;
 }
 
@@ -642,7 +573,7 @@ template <typename Interface>
 auto StringTraits<Interface>::toUtf8(char32_t c) -> String {
 	String ret;
 	ret.reserve(sprt::unicode::utf8EncodeLength(c));
-	unicode::utf8Encode(ret, c);
+	sprt::unicode::utf8EncodeCb([&](char ch) SPRT_LAMBDAINLINE { ret.push_back(ch); }, c);
 	return ret;
 }
 
@@ -652,7 +583,7 @@ auto StringTraits<Interface>::toKoi8r(const WideStringView &str) -> String {
 	ret.reserve(str.size());
 	auto ptr = str.data();
 	auto end = ptr + str.size();
-	while (ptr < end) { ret.push_back(charToKoi8r(*ptr++)); }
+	while (ptr < end) { ret.push_back(sprt::unicode::toKoi8r(*ptr++)); }
 	return ret;
 }
 
@@ -711,7 +642,7 @@ auto StringTraits<Interface>::decodeHtml(const StringView &utf8_str) -> String {
 	while (ptr < end) {
 		if (*ptr == '&') {
 			auto c = sprt::unicode::utf8HtmlDecode32(ptr, len, offset);
-			unicode::utf8Encode(result_str, c);
+			sprt::unicode::utf8EncodeCb([&](char ch) { result_str.push_back(ch); }, c);
 			ptr += offset;
 			len -= offset;
 		} else {
@@ -738,30 +669,39 @@ bool StringTraits<Interface>::isUrlencodeChar(char c) {
 
 namespace STAPPLER_VERSIONIZED stappler::mem_pool {
 
-using String = stappler::memory::string;
-using WideString = stappler::memory::u16string;
-using StringStream = stappler::memory::ostringstream;
+using String = sprt::__pool_string;
+using WideString = sprt::__pool_u16string;
 using Interface = stappler::memory::PoolInterface;
 
 template <typename... Args>
 inline String toString(Args &&...args) {
-	return string::toString<Interface>(std::forward<Args>(args)...);
+	return sprt::StreamTraits<char>::toString<String>(sprt::forward<Args>(args)...);
 }
 
 } // namespace stappler::mem_pool
 
 namespace STAPPLER_VERSIONIZED stappler::mem_std {
 
-using String = std::string;
-using WideString = std::u16string;
-using StringStream = std::stringstream;
+using String = sprt::__malloc_string;
+using WideString = sprt::__malloc_u16string;
 using Interface = stappler::memory::StandartInterface;
 
 template <typename... Args>
 inline String toString(Args &&...args) {
-	return string::toString<Interface>(std::forward<Args>(args)...);
+	return sprt::StreamTraits<char>::toString<String>(sprt::forward<Args>(args)...);
 }
 
 } // namespace stappler::mem_std
+
+
+namespace STAPPLER_VERSIONIZED stappler::string {
+
+template <typename Interface, typename... Args>
+inline auto toString(Args &&...args) {
+	return sprt::StreamTraits<char>::toString<typename Interface::StringType>(
+			sprt::forward<Args>(args)...);
+}
+
+} // namespace stappler::string
 
 #endif /* STAPPLER_CORE_STRING_SPSTRING_H_ */

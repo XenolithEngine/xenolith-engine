@@ -69,7 +69,7 @@ struct SP_PUBLIC CmdSdfGroup2D {
 	float value = 0.0f;
 	float opacity = 1.0f;
 
-	memory::vector<SdfPrimitive2DHeader> data;
+	mem_pool::Vector<SdfPrimitive2DHeader> data;
 
 	void addCircle2D(Vec2 origin, float r);
 	void addRect2D(Rect rect);
@@ -134,7 +134,7 @@ struct SP_PUBLIC FrameContextHandle2d : public FrameContextHandle {
 	WindowDecorationsInput decorations;
 	Rc<CommandList> commands;
 
-	memory::map<uint64_t, ParticleSystemRenderInfo> particleEmitters;
+	mem_pool::Map<uint64_t, ParticleSystemRenderInfo> particleEmitters;
 };
 
 } // namespace stappler::xenolith::basic2d

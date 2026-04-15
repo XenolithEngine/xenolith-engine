@@ -24,10 +24,13 @@
 #ifndef XENOLITH_RENDERER_BASIC2D_GLSL_INCLUDE_XL2DGLSLDATA_H_
 #define XENOLITH_RENDERER_BASIC2D_GLSL_INCLUDE_XL2DGLSLDATA_H_
 
-#include "SPGlsl.h"
+#include "sprt_glsl.h"
 
 #ifndef SP_GLSL
 namespace STAPPLER_VERSIONIZED stappler::glsl {
+
+using namespace sprt::glsl;
+
 #endif
 
 #define XL_GLSL_MATERIAL_FLAG_HAS_ATLAS_INDEX 1

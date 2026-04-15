@@ -110,26 +110,25 @@ void Scene2d::FpsDisplay::update(const UpdateTime &) {
 			String str;
 			switch (_mode) {
 			case Fps:
-				str = toString(configData, " ", std::setprecision(3), "FPS: ", fps, " SPF: ", spf,
-						"\nGPU: ", fenceTime, " (", timestampTime, ")", "\nDir: ", tm,
-						" Ver: ", vertex, "\nF12 to switch");
-				break;
-			case Vertexes:
-				str = toString(std::setprecision(3), "V:", stat.vertexes, " T:", stat.triangles,
-						"\nZ:", stat.zPaths, " C:", stat.drawCalls, " M: ", stat.materials, "\n",
-						stat.solidCmds, "/", stat.surfaceCmds, "/", stat.transparentCmds,
+				str = toString(configData, " ", "FPS: ", fps, " SPF: ", spf, "\nGPU: ", fenceTime,
+						" (", timestampTime, ")", "\nDir: ", tm, " Ver: ", vertex,
 						"\nF12 to switch");
 				break;
+			case Vertexes:
+				str = toString("V:", stat.vertexes, " T:", stat.triangles, "\nZ:", stat.zPaths,
+						" C:", stat.drawCalls, " M: ", stat.materials, "\n", stat.solidCmds, "/",
+						stat.surfaceCmds, "/", stat.transparentCmds, "\nF12 to switch");
+				break;
 			case Cache:
-				str = toString(std::setprecision(3), "Cache:", stat.cachedFramebuffers, "/",
-						stat.cachedImages, "/", stat.cachedImageViews, "\nF12 to switch");
+				str = toString("Cache:", stat.cachedFramebuffers, "/", stat.cachedImages, "/",
+						stat.cachedImageViews, "\nF12 to switch");
 				break;
 			case Full:
-				str = toString(configData, " ", std::setprecision(3), "FPS: ", fps, " SPF: ", spf,
-						"\nGPU: ", fenceTime, " (", timestampTime, ")", "\nDir: ", tm,
-						" Ver: ", vertex, "\n", "V:", stat.vertexes, " T:", stat.triangles,
-						"\nZ:", stat.zPaths, " C:", stat.drawCalls, " M: ", stat.materials, "\n",
-						stat.solidCmds, "/", stat.surfaceCmds, "/", stat.transparentCmds, "\n",
+				str = toString(configData, " FPS: ", fps, " SPF: ", spf, "\nGPU: ", fenceTime, " (",
+						timestampTime, ")", "\nDir: ", tm, " Ver: ", vertex, "\n",
+						"V:", stat.vertexes, " T:", stat.triangles, "\nZ:", stat.zPaths,
+						" C:", stat.drawCalls, " M: ", stat.materials, "\n", stat.solidCmds, "/",
+						stat.surfaceCmds, "/", stat.transparentCmds, "\n",
 						"Cache:", stat.cachedFramebuffers, "/", stat.cachedImages, "/",
 						stat.cachedImageViews, "\nF12 to switch");
 				break;

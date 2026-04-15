@@ -25,8 +25,11 @@ THE SOFTWARE.
 #include "SPFilepath.h"
 #include "SPLog.h"
 #include "SPFilesystem.h"
-#include "webp/decode.h"
-#include "webp/encode.h"
+
+#include <stdint.h>
+#include <stdio.h>
+#include <webp/decode.h>
+#include <webp/encode.h>
 
 namespace STAPPLER_VERSIONIZED stappler::bitmap::webp {
 
@@ -38,8 +41,8 @@ static bool isWebpLossless(const uint8_t *data, size_t dataLen) {
 	static const char *WEBP_RIFF = "RIFF";
 	static const char *WEBP_WEBP = "WEBPVP8L";
 
-	return memcmp(data, WEBP_RIFF, 4) == 0
-			&& memcmp(static_cast<const unsigned char *>(data) + 8, WEBP_WEBP, 8) == 0;
+	return sprt::memcmp(data, WEBP_RIFF, 4) == 0
+			&& sprt::memcmp(static_cast<const unsigned char *>(data) + 8, WEBP_WEBP, 8) == 0;
 }
 
 static bool getWebpLosslessImageSize(const io::Producer &file, StackBuffer<512> &data,
@@ -70,8 +73,8 @@ static bool isWebp(const uint8_t *data, size_t dataLen) {
 	static const char *WEBP_RIFF = "RIFF";
 	static const char *WEBP_WEBP = "WEBP";
 
-	return memcmp(data, WEBP_RIFF, 4) == 0
-			&& memcmp(static_cast<const unsigned char *>(data) + 8, WEBP_WEBP, 4) == 0;
+	return sprt::memcmp(data, WEBP_RIFF, 4) == 0
+			&& sprt::memcmp(static_cast<const unsigned char *>(data) + 8, WEBP_WEBP, 4) == 0;
 }
 
 static bool getWebpImageSize(const io::Producer &file, StackBuffer<512> &data, uint32_t &width,
@@ -293,7 +296,7 @@ struct WebpStruct {
 
 		if (out) {
 			out->resize(out->target, uint32_t(writer.size));
-			memcpy(out->getData(out->target, 0), writer.mem, writer.size);
+			sprt::memcpy(out->getData(out->target, 0), writer.mem, writer.size);
 		}
 
 		return true;

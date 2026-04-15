@@ -25,7 +25,6 @@
 
 #include "SPData.h"
 #include "SPDataValue.h"
-#include "SPRef.h"
 
 namespace STAPPLER_VERSIONIZED stappler::pug {
 
@@ -50,10 +49,10 @@ template <typename T>
 using Vector = memory::PoolInterface::VectorType<T>;
 
 template <typename T>
-using Function = memory::function<T>;
+using Function = sprt::__pool_function<T>;
 
-using Mutex = std::mutex;
+using Mutex = sprt::qmutex;
 
-}
+} // namespace stappler::pug
 
 #endif /* EXTRA_WEBSERVER_PUG_SPPUG_H_ */

@@ -129,9 +129,6 @@ auto readIntoMemory(const FileInfo &info, size_t off = 0, size_t size = maxOf<si
 
 SP_PUBLIC StringView detectMimeType(StringView path);
 
-SP_PUBLIC std::ostream &operator<<(std::ostream &, ProtFlags);
-SP_PUBLIC std::ostream &operator<<(std::ostream &, const Stat &);
-
 template <typename Interface>
 SP_PUBLIC inline auto currentDir(StringView ipath, bool relative) ->
 		typename Interface::StringType {
@@ -167,5 +164,66 @@ SP_PUBLIC ProtFlags getProtFlagsFromMode(__sprt_mode_t m);
 SP_PUBLIC __sprt_mode_t getModeFromProtFlags(ProtFlags flags);
 
 } // namespace stappler::filesystem
+
+namespace sprt {
+
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::filesystem::ProtFlags> {
+	using ProtFlags = STAPPLER_VERSIONIZED_NAMESPACE::filesystem::ProtFlags;
+
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &stream,
+			const STAPPLER_VERSIONIZED_NAMESPACE::filesystem::ProtFlags &flags) {
+		char buf[11] = "----------";
+
+		if (hasFlag(flags, ProtFlags::AllExecute)) {
+			buf[9] = 'x';
+		}
+		if (hasFlag(flags, ProtFlags::AllWrite)) {
+			buf[8] = 'w';
+		}
+		if (hasFlag(flags, ProtFlags::AllRead)) {
+			buf[7] = 'r';
+		}
+		if (hasFlag(flags, ProtFlags::GroupExecute)) {
+			buf[6] = 'x';
+		}
+		if (hasFlag(flags, ProtFlags::GroupWrite)) {
+			buf[5] = 'w';
+		}
+		if (hasFlag(flags, ProtFlags::GroupRead)) {
+			buf[4] = 'r';
+		}
+		if (hasFlag(flags, ProtFlags::UserExecute)) {
+			buf[3] = 'x';
+		}
+		if (hasFlag(flags, ProtFlags::UserWrite)) {
+			buf[2] = 'w';
+		}
+		if (hasFlag(flags, ProtFlags::UserRead)) {
+			buf[1] = 'r';
+		}
+
+		stream << buf;
+	}
+};
+
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::filesystem::Stat> {
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &stream,
+			const STAPPLER_VERSIONIZED_NAMESPACE::filesystem::Stat &stat) {
+		stream << "Stat { size: " << stat.size << "; u: " << stat.user << "; g: " << stat.group
+			   << "; " << stat.type << "; " << stat.prot << "; ctime: "
+			   << stat.ctime.toHttp<STAPPLER_VERSIONIZED_NAMESPACE::memory::StandartInterface>()
+			   << "; mtime: "
+			   << stat.mtime.toHttp<STAPPLER_VERSIONIZED_NAMESPACE::memory::StandartInterface>()
+			   << "; atime: "
+			   << stat.atime.toHttp<STAPPLER_VERSIONIZED_NAMESPACE::memory::StandartInterface>()
+			   << " };";
+	}
+};
+
+} // namespace sprt
 
 #endif /* STAPPLER_FILESYSTEM_SPFILESYSTEM_H_ */

@@ -24,9 +24,10 @@
 #define CORE_FONT_SPFONT_H_
 
 #include "SPMemory.h"
-#include "SPGeometry.h"
-#include "SPVec2.h"
-#include "SPColor.h"
+
+#include <sprt/runtime/geom/geom.h>
+#include <sprt/runtime/geom/vec2.h>
+#include <sprt/runtime/geom/color.h>
 
 namespace STAPPLER_VERSIONIZED stappler::font {
 
@@ -86,13 +87,13 @@ struct SP_PUBLIC CharId final {
 	uint32_t anchor : 2;
 	uint32_t value	: 16;
 
-	CharId(uint32_t v) { memcpy(this, &v, sizeof(uint32_t)); }
+	CharId(uint32_t v) { sprt::memcpy(this, &v, sizeof(uint32_t)); }
 
 	CharId(uint16_t l, char16_t ch, CharAnchor a) : layout(l), anchor(toInt(a)), value(ch) { }
 
 	operator uint32_t() const {
 		uint32_t ret;
-		memcpy(&ret, this, sizeof(uint32_t));
+		sprt::memcpy(&ret, this, sizeof(uint32_t));
 		return ret;
 	}
 };
@@ -127,13 +128,13 @@ struct SP_PUBLIC CharTexture final {
 };
 
 struct SP_PUBLIC FontAtlasValue {
-	geom::Vec2 pos;
-	geom::Vec2 tex;
+	sprt::geom::Vec2 pos;
+	sprt::geom::Vec2 tex;
 };
 
 template <typename Value>
 struct SP_PUBLIC FontCharStorage {
-	using CellType = std::array<Value, 256>;
+	using CellType = sprt::array<Value, 256>;
 
 	FontCharStorage() { cells.fill(nullptr); }
 
@@ -150,7 +151,7 @@ struct SP_PUBLIC FontCharStorage {
 		auto cellId = ch / 256;
 		if (!cells[cellId]) {
 			cells[cellId] = new CellType;
-			memset(cells[cellId]->data(), 0, cells[cellId]->size() * sizeof(Value));
+			sprt::memset(cells[cellId]->data(), 0, cells[cellId]->size() * sizeof(Value));
 		}
 
 		(*cells[cellId])[ch % 256] = move(value);
@@ -167,7 +168,7 @@ struct SP_PUBLIC FontCharStorage {
 
 	template <typename Callback>
 	void foreach (const Callback &cb) {
-		static_assert(std::is_invocable_v<Callback, const Value &>, "Invalid callback type");
+		static_assert(sprt::is_invocable_v<Callback, const Value &>, "Invalid callback type");
 		for (auto &it : cells) {
 			if (it) {
 				for (auto &iit : *it) { cb(iit); }
@@ -175,7 +176,7 @@ struct SP_PUBLIC FontCharStorage {
 		}
 	}
 
-	std::array<CellType *, 256> cells;
+	sprt::array<CellType *, 256> cells;
 };
 
 inline bool operator<(const CharShape &l, const CharShape &c) { return l.charID < c.charID; }

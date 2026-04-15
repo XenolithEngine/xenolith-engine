@@ -24,15 +24,17 @@
 #define CORE_DB_SQLITE_SPSQLITEDRIVERHANDLE_H_
 
 #include "SPSqliteDriver.h"
-#include "SPDso.h"
-#include "sqlite3.h"
+
+#include <sqlite3.h>
+#include <sprt/runtime/dso.h>
+#include <sprt/cxx/mutex>
 
 namespace STAPPLER_VERSIONIZED stappler::db::sqlite {
 
 struct DriverSym : AllocBase {
 	static const DriverSym *getCurrent();
 
-	DriverSym(StringView n, Dso &&d);
+	DriverSym(StringView n, sprt::Dso &&d);
 	DriverSym(StringView n);
 
 	~DriverSym();
@@ -105,7 +107,7 @@ struct DriverSym : AllocBase {
 	decltype(&sqlite3_shutdown) _shutdown;
 
 	StringView name;
-	Dso ptr;
+	sprt::Dso ptr;
 	uint32_t refCount = 1;
 };
 
@@ -120,7 +122,7 @@ struct DriverHandle {
 	sqlite3_stmt *wordsQuery = nullptr;
 	int64_t userId = 0;
 	Time ctime;
-	std::mutex mutex;
+	sprt::mutex mutex;
 };
 
 struct TextQueryData : AllocBase {
@@ -130,8 +132,8 @@ struct TextQueryData : AllocBase {
 };
 
 struct DriverLibStorage {
-	std::mutex _driverMutex;
-	std::map<std::string, DriverSym, std::less<void>> _driverLibs;
+	sprt::mutex _driverMutex;
+	sprt::__malloc_map<sprt::__malloc_string, DriverSym, sprt::less<void>> _driverLibs;
 
 	static DriverLibStorage *getInstance();
 
@@ -146,7 +148,7 @@ static thread_local const DriverSym *tl_currentSym = nullptr;
 
 const DriverSym *DriverSym::getCurrent() { return tl_currentSym; }
 
-DriverSym::DriverSym(StringView n, Dso &&d) : name(n) {
+DriverSym::DriverSym(StringView n, sprt::Dso &&d) : name(n) {
 	_initialize = d.sym<decltype(_initialize)>("sqlite3_initialize");
 	_malloc = d.sym<decltype(_malloc)>("sqlite3_malloc");
 	_free = d.sym<decltype(_free)>("sqlite3_free");
@@ -318,9 +320,9 @@ DriverSym *DriverLibStorage::openSelf() {
 #if !defined(STAPPLER_SHARED) || defined(STAPPLER_SQLITE_LINKED)
 	return openLib(StringView());
 #else
-	std::unique_lock<std::mutex> lock(_driverMutex);
+	sprt::unique_lock<sprt::mutex> lock(_driverMutex);
 
-	std::string target;
+	sprt::string target;
 	auto it = _driverLibs.find(target);
 	if (it != _driverLibs.end()) {
 		++it->second.refCount;
@@ -343,7 +345,7 @@ DriverSym *DriverLibStorage::openSelf() {
 }
 
 DriverSym *DriverLibStorage::openLib(StringView lib) {
-	std::unique_lock<std::mutex> lock(_driverMutex);
+	sprt::unique_lock<sprt::mutex> lock(_driverMutex);
 
 #if STAPPLER_SHARED && !defined(STAPPLER_SQLITE_LINKED)
 	auto target = lib.str<stappler::memory::StandartInterface>();
@@ -369,7 +371,7 @@ DriverSym *DriverLibStorage::openLib(StringView lib) {
 	} else {
 		DriverSym syms(lib);
 		if (syms) {
-			auto ret = _driverLibs.emplace(std::string(), move(syms)).first;
+			auto ret = _driverLibs.emplace(sprt::__malloc_string(), move(syms)).first;
 			ret->second.name = ret->first;
 			return &ret->second;
 		}
@@ -379,7 +381,7 @@ DriverSym *DriverLibStorage::openLib(StringView lib) {
 }
 
 void DriverLibStorage::closeLib(DriverSym *sym) {
-	std::unique_lock<std::mutex> lock(_driverMutex);
+	sprt::unique_lock<sprt::mutex> lock(_driverMutex);
 	if (sym->refCount == 1) {
 		_driverLibs.erase(sym->name.str<stappler::memory::StandartInterface>());
 	} else {

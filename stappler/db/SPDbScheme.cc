@@ -61,7 +61,7 @@ Scheme::Scheme(const StringView &ns, Options f, uint32_t v)
 	for (size_t i = 0; i < _roles.size(); ++i) { _roles[i] = nullptr; }
 }
 
-Scheme::Scheme(const StringView &name, std::initializer_list<Field> il, Options f, uint32_t v)
+Scheme::Scheme(const StringView &name, sprt::initializer_list<Field> il, Options f, uint32_t v)
 : Scheme(name, f, v) {
 	for (auto &it : il) {
 		auto fname = it.getName();
@@ -79,7 +79,7 @@ bool Scheme::isCompressed() const { return (_flags & Options::Compressed) != Opt
 
 bool Scheme::hasFullText() const { return !_fullTextFields.empty(); }
 
-const Scheme &Scheme::define(std::initializer_list<Field> il) {
+const Scheme &Scheme::define(sprt::initializer_list<Field> il) {
 	for (auto &it : il) {
 		auto fname = it.getName();
 		if (it.getType() == Type::Image) {
@@ -162,7 +162,7 @@ const Scheme &Scheme::define(UniqueConstraintDef &&def) {
 	fields.reserve(def.fields.size());
 	for (auto &it : def.fields) {
 		if (auto f = getField(it)) {
-			auto iit = std::lower_bound(fields.begin(), fields.end(), f);
+			auto iit = sprt::lower_bound(fields.begin(), fields.end(), f);
 			if (iit == fields.end()) {
 				fields.emplace_back(f);
 			} else if (*iit != f) {
@@ -389,7 +389,7 @@ bool Scheme::isAtomicPatch(const Value &val) const {
 uint64_t Scheme::hash(ValidationLevel l) const {
 	StringStream stream;
 	for (auto &it : _fields) { it.second.hash(stream, l); }
-	return std::hash<String>{}(stream.weak());
+	return sprt::hash<StringView>{}(stream.weak());
 }
 
 const Vector<Scheme::ViewScheme *> &Scheme::getViews() const { return _views; }
@@ -413,7 +413,7 @@ const AccessRole *Scheme::getAccessRole(AccessRoleId id) const {
 
 void Scheme::setAccessRole(AccessRoleId id, AccessRole &&r) {
 	if (stappler::toInt(id) < stappler::toInt(AccessRoleId::Max)) {
-		_roles[stappler::toInt(id)] = new (std::nothrow) AccessRole(sp::move(r));
+		_roles[stappler::toInt(id)] = new (sprt::nothrow) AccessRole(sp::move(r));
 		_hasAccessControl = true;
 	}
 }
@@ -444,7 +444,7 @@ Value Scheme::createWithWorker(Worker &w, const Value &data, bool isProtected) c
 		auto &val = changeSet.getValue(f);
 		if (val.isNull()) {
 			w.getApplicationInterface()->error("Storage", "No value for required field",
-					Value({std::make_pair("field", Value(f))}));
+					Value({sprt::make_pair("field", Value(f))}));
 			return false;
 		}
 		return true;
@@ -506,30 +506,28 @@ Value Scheme::createWithWorker(Worker &w, const Value &data, bool isProtected) c
 }
 
 Value Scheme::updateWithWorker(Worker &w, uint64_t oid, const Value &data, bool isProtected) const {
-	bool success = false;
-	Value changeSet;
+	auto upd = prepareUpdate(data, isProtected);
 
-	std::tie(success, changeSet) = prepareUpdate(data, isProtected);
-	if (!success) {
+	if (!upd.first) {
 		return Value();
 	}
 
 	Value ret;
 	w.perform([&, this](const Transaction &t) -> bool {
-		Value filePatch(createFilePatch(t, data, changeSet));
-		if (changeSet.empty()) {
+		Value filePatch(createFilePatch(t, data, upd.second));
+		if (upd.second.empty()) {
 			w.getApplicationInterface()->error("Storage", "Empty changeset for id",
-					Value({std::make_pair("oid", Value((int64_t)oid))}));
+					Value({sprt::make_pair("oid", Value((int64_t)oid))}));
 			return false;
 		}
 
-		ret = patchOrUpdate(w, oid, changeSet);
+		ret = patchOrUpdate(w, oid, upd.second);
 		if (ret.isNull()) {
 			if (filePatch.isDictionary()) {
 				purgeFilePatch(t, filePatch);
 			}
 			w.getApplicationInterface()->error("Storage", "Fail to update object for id",
-					Value({std::make_pair("oid", Value((int64_t)oid))}));
+					Value({sprt::make_pair("oid", Value((int64_t)oid))}));
 			return false;
 		}
 		return true;
@@ -546,31 +544,28 @@ Value Scheme::updateWithWorker(Worker &w, const Value &obj, const Value &data,
 		return Value();
 	}
 
-	bool success = false;
-	Value changeSet;
-
-	std::tie(success, changeSet) = prepareUpdate(data, isProtected);
-	if (!success) {
+	auto upd = prepareUpdate(data, isProtected);
+	if (!upd.first) {
 		return Value();
 	}
 
 	Value ret;
 	w.perform([&, this](const Transaction &t) -> bool {
-		Value filePatch(createFilePatch(t, data, changeSet));
-		if (changeSet.empty()) {
+		Value filePatch(createFilePatch(t, data, upd.second));
+		if (upd.second.empty()) {
 			w.getApplicationInterface()->error("Storage", "Empty changeset for id",
-					Value({std::make_pair("oid", Value((int64_t)oid))}));
+					Value({sprt::make_pair("oid", Value((int64_t)oid))}));
 			return false;
 		}
 
 		Value tmp(obj);
-		ret = patchOrUpdate(w, tmp, changeSet);
+		ret = patchOrUpdate(w, tmp, upd.second);
 		if (ret.isNull()) {
 			if (filePatch.isDictionary()) {
 				purgeFilePatch(t, filePatch);
 			}
 			w.getApplicationInterface()->error("Storage", "No object for id to update",
-					Value({std::make_pair("oid", Value((int64_t)oid))}));
+					Value({sprt::make_pair("oid", Value((int64_t)oid))}));
 			return false;
 		}
 		return true;
@@ -595,7 +590,7 @@ stappler::Pair<bool, Value> Scheme::prepareUpdate(const Value &data, bool isProt
 			if (val.isNull() && it.second.hasFlag(Flags::Required)) {
 				log::source().error("Storage", "Value for required field can not be removed",
 						data::EncodeFormat::Pretty,
-						Value({std::make_pair("field", Value(it.first))}));
+						Value({sprt::make_pair("field", Value(it.first))}));
 				stop = true;
 			}
 		}
@@ -661,7 +656,7 @@ Value Scheme::updateObject(Worker &w, Value &obj, Value &changeSet) const {
 						|| _autoFieldReq.find(f) != _autoFieldReq.end()) {
 					for (auto &it : _views) {
 						if (it->fields.find(f) != it->fields.end()) {
-							auto lb = std::lower_bound(viewsToUpdate.begin(), viewsToUpdate.end(),
+							auto lb = sprt::lower_bound(viewsToUpdate.begin(), viewsToUpdate.end(),
 									it,
 									[](stappler::Pair<const ViewScheme *, Vector<uint64_t>> &l,
 											const ViewScheme *r) -> bool { return l.first < r; });
@@ -989,18 +984,19 @@ Value &Scheme::transform(Value &d, TransformAction a) const {
 		auto &dict = d.asDict();
 		auto it = dict.begin();
 		while (it != dict.end()) {
-			auto &field = _fields.at(it->first);
-			if (it->second.isNull()
-					&& (a == TransformAction::Update || a == TransformAction::ProtectedUpdate
-							|| a == TransformAction::Touch)) {
-				it++;
-			} else if (!field.transform(*this, d, it->second,
-							   (a == TransformAction::Create
-									   || a == TransformAction::ProtectedCreate))) {
-				it = dict.erase(it);
-			} else {
-				it++;
-			}
+			_fields.at(it->first).unwrap([&](auto &field) {
+				if (it->second.isNull()
+						&& (a == TransformAction::Update || a == TransformAction::ProtectedUpdate
+								|| a == TransformAction::Touch)) {
+					it++;
+				} else if (!field.transform(*this, d, it->second,
+								   (a == TransformAction::Create
+										   || a == TransformAction::ProtectedCreate))) {
+					it = dict.erase(it);
+				} else {
+					it++;
+				}
+			});
 		}
 	}
 
@@ -1079,7 +1075,7 @@ Value Scheme::makeObjectForPatch(const Transaction &t, uint64_t oid, const Value
 		if (it.second.getType() == Type::FullTextView) {
 			auto slot = it.second.getSlot<FieldFullTextView>();
 			for (auto &p_it : patch.asDict()) {
-				auto req_it = std::find(slot->requireFields.begin(), slot->requireFields.end(),
+				auto req_it = sprt::find(slot->requireFields.begin(), slot->requireFields.end(),
 						p_it.first);
 				if (req_it != slot->requireFields.end()) {
 					for (auto &it : slot->requireFields) {
@@ -1275,7 +1271,7 @@ void Scheme::addView(const Scheme *s, const Field *f) {
 	memory::context<pool_t *> ctx(_views.get_allocator(), memory::context<pool_t *>::conditional);
 
 	if (auto view = static_cast<const FieldView *>(f->getSlot())) {
-		_views.emplace_back(new (std::nothrow) ViewScheme{s, f, *view});
+		_views.emplace_back(new (sprt::nothrow) ViewScheme{s, f, *view});
 		auto viewScheme = _views.back();
 
 		bool linked = false;
@@ -1332,7 +1328,7 @@ void Scheme::addView(const Scheme *s, const Field *f) {
 void Scheme::addAutoField(const Scheme *s, const Field *f, const AutoFieldScheme &a) {
 	memory::context<pool_t *> ctx(_views.get_allocator(), memory::context<pool_t *>::conditional);
 
-	_views.emplace_back(new (std::nothrow) ViewScheme{s, f, a});
+	_views.emplace_back(new (sprt::nothrow) ViewScheme{s, f, a});
 	auto viewScheme = _views.back();
 
 	if (this == s && !a.linkage) {
@@ -1411,7 +1407,7 @@ void Scheme::addAutoField(const Scheme *s, const Field *f, const AutoFieldScheme
 void Scheme::addParent(const Scheme *s, const Field *f) {
 	memory::context<pool_t *> ctx(_parents.get_allocator(), memory::context<pool_t *>::conditional);
 
-	_parents.emplace_back(new (std::nothrow) ParentScheme(s, f));
+	_parents.emplace_back(new (sprt::nothrow) ParentScheme(s, f));
 	auto &p = _parents.back();
 
 	auto slot = static_cast<const FieldObject *>(f->getSlot());
@@ -1467,7 +1463,7 @@ void Scheme::updateView(const Transaction &t, const Value &obj, const ViewScheme
 
 	if (scheme->autoField) {
 		for (auto &it : orig) {
-			auto ids_it = std::find(ids.begin(), ids.begin(), it);
+			auto ids_it = sprt::find(ids.begin(), ids.begin(), it);
 			if (ids_it != ids.end()) {
 				ids.erase(ids_it);
 			}

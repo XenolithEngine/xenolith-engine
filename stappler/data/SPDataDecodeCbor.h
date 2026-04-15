@@ -91,7 +91,7 @@ void Decoder<Interface>::decodeUndefinedLength(Container &buf, MajorTypeEncoded 
 		tmpSize = buf.size();
 		size = min(r.size(), size);
 		buf.resize(tmpSize + size);
-		memcpy((void *)(buf.data() + tmpSize), r.data(), size);
+		sprt::memcpy((void *)(buf.data() + tmpSize), r.data(), size);
 		r.offset(size);
 	} while (type != toInt(Flags::UndefinedLength));
 }
@@ -102,14 +102,14 @@ void Decoder<Interface>::decodeByteString(uint8_t type, ValueType &v) {
 		auto size = size_t(_readIntValue(r, type));
 		size = min(r.size(), (size_t)size);
 		v._type = ValueType::Type::BYTESTRING;
-		v.bytesVal = new (std::nothrow) BytesType(r.data(), r.data() + size);
+		v.bytesVal = new (sprt::nothrow) BytesType(r.data(), r.data() + size);
 		r.offset(size);
 	} else {
 		// variable-length string
 		BytesType ret;
 		decodeUndefinedLength(ret, MajorTypeEncoded::ByteString);
 		v._type = ValueType::Type::BYTESTRING;
-		v.bytesVal = new (std::nothrow) BytesType(sp::move(ret));
+		v.bytesVal = new (sprt::nothrow) BytesType(sp::move(ret));
 	}
 }
 
@@ -119,7 +119,7 @@ void Decoder<Interface>::decodeCharString(uint8_t type, ValueType &v) {
 		auto size = size_t(_readIntValue(r, type));
 		size = min(r.size(), (size_t)size);
 		v._type = ValueType::Type::CHARSTRING;
-		v.strVal = new (std::nothrow) StringType((char *)r.data(), size);
+		v.strVal = new (sprt::nothrow) StringType((char *)r.data(), size);
 		r.offset(size);
 	} else {
 		// variable-length string
@@ -127,7 +127,7 @@ void Decoder<Interface>::decodeCharString(uint8_t type, ValueType &v) {
 		decodeUndefinedLength(ret, MajorTypeEncoded::CharString);
 		ret[ret.length()] = 0;
 		v._type = ValueType::Type::CHARSTRING;
-		v.strVal = new (std::nothrow) StringType(sp::move(ret));
+		v.strVal = new (sprt::nothrow) StringType(sp::move(ret));
 	}
 }
 
@@ -151,7 +151,7 @@ void Decoder<Interface>::decodeArray(uint8_t type, ValueType &ret) {
 	}
 
 	ret._type = ValueType::Type::ARRAY;
-	ret.arrayVal = new (std::nothrow) ArrayType();
+	ret.arrayVal = new (sprt::nothrow) ArrayType();
 	if (size != maxOf<size_t>()) {
 		ret.arrayVal->reserve(size);
 	}
@@ -199,12 +199,10 @@ void Decoder<Interface>::decodeMap(uint8_t type, ValueType &ret) {
 	}
 
 	ret._type = ValueType::Type::DICTIONARY;
-	ret.dictVal = new (std::nothrow) DictionaryType();
+	ret.dictVal = new (sprt::nothrow) DictionaryType();
 
-	if constexpr (Interface::usesMemoryPool()) {
-		if (size != maxOf<size_t>()) {
-			ret.dictVal->reserve(size);
-		}
+	if (size != maxOf<size_t>()) {
+		ret.dictVal->reserve(size);
 	}
 
 	while (!r.empty() && size > 0
@@ -215,11 +213,12 @@ void Decoder<Interface>::decodeMap(uint8_t type, ValueType &ret) {
 
 		switch (majorType) {
 		case MajorTypeEncoded::Unsigned:
-			parsedKey = string::toString<Interface>(_readIntValue(r, type));
+			parsedKey = sprt::StreamTraits<char>::toString<StringType>(_readIntValue(r, type));
 			key = StringView(parsedKey);
 			break;
 		case MajorTypeEncoded::Negative:
-			parsedKey = string::toString<Interface>(int64_t(-1 - _readIntValue(r, type)));
+			parsedKey = sprt::StreamTraits<char>::toString<StringType>(
+					int64_t(-1 - _readIntValue(r, type)));
 			key = StringView(parsedKey);
 			break;
 		case MajorTypeEncoded::ByteString:

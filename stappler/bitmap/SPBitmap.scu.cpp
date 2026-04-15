@@ -21,13 +21,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#include "SPCommon.h"
+#include "SPMemory.h"
 #include "SPBitmapCustom.cc"
 #include "SPBitmapGif.cc"
 #include "SPBitmapJpeg.cc"
 #include "SPBitmapPng.cc"
 #include "SPBitmapWebp.cc"
 #include "SPBitmapShared.cc"
+
+#include <sprt/cxx/mutex>
 
 namespace STAPPLER_VERSIONIZED stappler::bitmap {
 
@@ -45,8 +47,8 @@ static BitmapFormat s_defaultFormats[toInt(FileFormat::Custom)] = {
 	BitmapFormat(FileFormat::Tiff, &custom::isTiff, &custom::getTiffImageSize),
 };
 
-static std::mutex _formatListMutex;
-static std::vector<BitmapFormat *> _formatList;
+static sprt::qmutex _formatListMutex;
+static mem_std::Vector<BitmapFormat *> _formatList;
 
 const BitmapFormat *getDefaultFormat(FileFormat i) {
 	if (i < FileFormat::Custom) {
@@ -55,8 +57,8 @@ const BitmapFormat *getDefaultFormat(FileFormat i) {
 	return nullptr;
 }
 
-SPUNUSED static std::unique_lock<std::mutex> lockFormatList() {
-	return std::unique_lock<std::mutex>(_formatListMutex);
+SPUNUSED static sprt::unique_lock<sprt::mutex> lockFormatList() {
+	return sprt::unique_lock<sprt::mutex>(_formatListMutex);
 }
 
 SPUNUSED static void addCustomFormat(BitmapFormat &&fmt) {
@@ -64,7 +66,7 @@ SPUNUSED static void addCustomFormat(BitmapFormat &&fmt) {
 	_formatList.emplace_back(new BitmapFormat(move(fmt)));
 }
 
-SPUNUSED static const std::vector<BitmapFormat *> &getCustomFormats() { return _formatList; }
+SPUNUSED static const mem_std::Vector<BitmapFormat *> &getCustomFormats() { return _formatList; }
 
 const BitmapFormat *getCustomFormat(StringView name) {
 	auto lock = lockFormatList();

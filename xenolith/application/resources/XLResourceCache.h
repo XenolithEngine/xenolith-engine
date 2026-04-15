@@ -72,7 +72,7 @@ public:
 	const gl::BufferData * addExternalBuffer(StringView key, gl::BufferInfo &&, FilePath data);
 	const gl::BufferData * addExternalBuffer(StringView key, gl::BufferInfo &&, BytesView data);
 	const gl::BufferData * addExternalBuffer(StringView key, gl::BufferInfo &&, size_t,
-			const memory::function<void(const gl::BufferData::DataCallback &)> &cb);*/
+			const mem_pool::Function<void(const gl::BufferData::DataCallback &)> &cb);*/
 
 	Rc<Texture> addExternalBitmapImageByRef(StringView key, ImageInfo &&, BytesView data,
 			TimeInterval = TimeInterval(),
@@ -90,7 +90,7 @@ public:
 			TimeInterval = TimeInterval(),
 			TemporaryResourceFlags flags = TemporaryResourceFlags::None);
 	Rc<Texture> addExternalImage(StringView key, ImageInfo &&,
-			const memory::function<void(uint8_t *, uint64_t, const ImageData::DataCallback &)> &,
+			const mem_pool::Function<void(uint8_t *, uint64_t, const ImageData::DataCallback &)> &,
 			TimeInterval = TimeInterval(),
 			TemporaryResourceFlags flags = TemporaryResourceFlags::None);
 

@@ -8,7 +8,9 @@
 #define SP_GLSL
 #endif
 
-#include "SPGlslInit.h"
+// clang-format off
+
+#include "sprt_glsl.h"
 #include "XL2dGlslVertexData.h"
 
 layout (constant_id = 0) const int BUFFERS_ARRAY_SIZE = 8;

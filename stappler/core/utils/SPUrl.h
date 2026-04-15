@@ -25,7 +25,7 @@ THE SOFTWARE.
 #ifndef STAPPLER_CORE_UTILS_SPURLVIEW_H_
 #define STAPPLER_CORE_UTILS_SPURLVIEW_H_
 
-#include "SPStringView.h"
+#include "SPCore.h"
 
 #include <sprt/runtime/urlview.h>
 

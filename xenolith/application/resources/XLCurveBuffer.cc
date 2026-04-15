@@ -24,7 +24,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-static std::atomic<uint64_t> s_curveBufferId = 1;
+static sprt::atomic<uint64_t> s_curveBufferId = 1;
 
 // fill values with 0-1 interval
 bool CurveBuffer::init(uint32_t npoints, const Callback<float(float)> &cb) {
@@ -161,7 +161,7 @@ bool CurveBuffer::init(uint32_t npoints, const Interpolation &t) {
 	return true;
 }
 
-bool CurveBuffer::init(uint32_t npoints, const std::array<Interpolation, 2> &t) {
+bool CurveBuffer::init(uint32_t npoints, const sprt::array<Interpolation, 2> &t) {
 	_id = s_curveBufferId.fetch_add(1);
 	_type = CurveBufferType::Vec2;
 	_data.resize(npoints * 2);
@@ -178,7 +178,7 @@ bool CurveBuffer::init(uint32_t npoints, const std::array<Interpolation, 2> &t) 
 	return true;
 }
 
-bool CurveBuffer::init(uint32_t npoints, const std::array<Interpolation, 3> &t) {
+bool CurveBuffer::init(uint32_t npoints, const sprt::array<Interpolation, 3> &t) {
 	_id = s_curveBufferId.fetch_add(1);
 	_type = CurveBufferType::Vec3;
 	_data.resize(npoints * 3);
@@ -196,7 +196,7 @@ bool CurveBuffer::init(uint32_t npoints, const std::array<Interpolation, 3> &t) 
 	return true;
 }
 
-bool CurveBuffer::init(uint32_t npoints, const std::array<Interpolation, 4> &t) {
+bool CurveBuffer::init(uint32_t npoints, const sprt::array<Interpolation, 4> &t) {
 	_id = s_curveBufferId.fetch_add(1);
 	_type = CurveBufferType::Vec4;
 	_data.resize(npoints * 4);
@@ -221,8 +221,8 @@ static auto CurveBuffer_getVec(const CurveBuffer &buf, float val) {
 	auto size = buf.getSize();
 	auto v = val * size;
 
-	auto firstVal = math::clamp(std::floor(v), 0.0f, float(size - 1.0f));
-	auto secondVal = math::clamp(std::ceil(v), 0.0f, float(size - 1.0f));
+	auto firstVal = math::clamp(sprt::floor(v), 0.0f, float(size - 1.0f));
+	auto secondVal = math::clamp(sprt::ceil(v), 0.0f, float(size - 1.0f));
 
 	auto data = buf.getData();
 

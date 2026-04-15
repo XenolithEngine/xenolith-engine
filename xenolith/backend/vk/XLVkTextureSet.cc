@@ -40,10 +40,10 @@ uint32_t TextureSetLayout::getLayoutImageCount(const Device &dev,
 
 	auto maxResources = limits.maxPerStageResources - 8;
 
-	auto imageLimit = std::min(limits.maxPerStageDescriptorSampledImages,
+	auto imageLimit = sprt::min(limits.maxPerStageDescriptorSampledImages,
 			limits.maxDescriptorSetSampledImages);
 
-	auto imageCount = imageLimit = std::min(imageLimit - 2, maxImageCount);
+	auto imageCount = imageLimit = sprt::min(imageLimit - 2, maxImageCount);
 
 	if (imageCount > maxResources) {
 		imageCount = imageLimit = maxResources - 4;
@@ -184,7 +184,7 @@ void TextureSet::write(const core::MaterialLayout &set) {
 	auto table = ((Device *)_object.device)->getTable();
 	auto dev = ((Device *)_object.device)->getDevice();
 
-	std::forward_list<Vector<VkDescriptorImageInfo>> imagesList;
+	sprt::__malloc_forward_list<Vector<VkDescriptorImageInfo>> imagesList;
 	Vector<VkWriteDescriptorSet> writes;
 
 	writeImages(writes, set, imagesList);
@@ -222,7 +222,7 @@ void TextureSet::dropPendingBarriers() {
 Device *TextureSet::getDevice() const { return (Device *)_object.device; }
 
 void TextureSet::writeImages(Vector<VkWriteDescriptorSet> &writes, const core::MaterialLayout &set,
-		std::forward_list<Vector<VkDescriptorImageInfo>> &imagesList) {
+		sprt::__malloc_forward_list<Vector<VkDescriptorImageInfo>> &imagesList) {
 	Vector<VkDescriptorImageInfo> *localImages = nullptr;
 
 	VkWriteDescriptorSet imageWriteData({VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, nullptr,

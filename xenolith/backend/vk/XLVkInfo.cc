@@ -413,14 +413,14 @@ void DeviceInfo::Features::updateFrom12() {
 
 void DeviceInfo::Features::updateTo12(bool updateFlags) {
 	if (updateFlags) {
-		if (optionals[toInt(OptionalDeviceExtension::Storage16Bit)]) {
+		if (optionals.test(toInt(OptionalDeviceExtension::Storage16Bit))) {
 			if (device16bitStorage.storageBuffer16BitAccess == VK_TRUE) {
 				optionals.set(toInt(OptionalDeviceExtension::Storage16Bit));
 			} else {
 				optionals.reset(toInt(OptionalDeviceExtension::Storage16Bit));
 			}
 		}
-		if (optionals[toInt(OptionalDeviceExtension::Storage8Bit)]) {
+		if (optionals.test(toInt(OptionalDeviceExtension::Storage8Bit))) {
 			if (device8bitStorage.storageBuffer8BitAccess == VK_TRUE) {
 				optionals.set(toInt(OptionalDeviceExtension::Storage8Bit));
 			} else {
@@ -428,7 +428,7 @@ void DeviceInfo::Features::updateTo12(bool updateFlags) {
 			}
 		}
 
-		if (optionals[toInt(OptionalDeviceExtension::ShaderFloat16Int8)]) {
+		if (optionals.test(toInt(OptionalDeviceExtension::ShaderFloat16Int8))) {
 			if (deviceShaderFloat16Int8.shaderInt8 == VK_TRUE
 					&& deviceShaderFloat16Int8.shaderFloat16 == VK_TRUE) {
 				optionals.set(toInt(OptionalDeviceExtension::ShaderFloat16Int8));
@@ -437,7 +437,7 @@ void DeviceInfo::Features::updateTo12(bool updateFlags) {
 			}
 		}
 
-		if (optionals[toInt(OptionalDeviceExtension::DeviceAddress)]) {
+		if (optionals.test(toInt(OptionalDeviceExtension::DeviceAddress))) {
 			if (deviceBufferDeviceAddress.bufferDeviceAddress == VK_TRUE) {
 				optionals.set(toInt(OptionalDeviceExtension::DeviceAddress));
 			} else {
@@ -452,7 +452,7 @@ void DeviceInfo::Features::updateTo12(bool updateFlags) {
 	device11.storagePushConstant16 = device16bitStorage.storageBuffer16BitAccess;
 	device11.storageInputOutput16 = device16bitStorage.storageBuffer16BitAccess;
 
-	if (optionals[toInt(OptionalDeviceExtension::DrawIndirectCount)]) {
+	if (optionals.test(toInt(OptionalDeviceExtension::DrawIndirectCount))) {
 		device12.drawIndirectCount = VK_TRUE;
 	}
 
@@ -464,7 +464,7 @@ void DeviceInfo::Features::updateTo12(bool updateFlags) {
 	device12.shaderFloat16 = deviceShaderFloat16Int8.shaderFloat16;
 	device12.shaderInt8 = deviceShaderFloat16Int8.shaderInt8;
 
-	if (optionals[toInt(OptionalDeviceExtension::DescriptorIndexing)]) {
+	if (optionals.test(toInt(OptionalDeviceExtension::DescriptorIndexing))) {
 		device12.descriptorIndexing = VK_TRUE;
 	}
 
@@ -556,21 +556,23 @@ void DeviceInfo::Features::clear() {
 
 DeviceInfo::Features::Features() { clear(); }
 
-DeviceInfo::Features::Features(const Features &f) { memcpy((void *)this, &f, sizeof(Features)); }
+DeviceInfo::Features::Features(const Features &f) {
+	sprt::memcpy((void *)this, &f, sizeof(Features));
+}
 
 DeviceInfo::Features &DeviceInfo::Features::operator=(const Features &f) {
-	memcpy((void *)this, &f, sizeof(Features));
+	sprt::memcpy((void *)this, &f, sizeof(Features));
 	return *this;
 }
 
 DeviceInfo::Properties::Properties() { }
 
 DeviceInfo::Properties::Properties(const Properties &p) {
-	memcpy((void *)this, &p, sizeof(Properties));
+	sprt::memcpy((void *)this, &p, sizeof(Properties));
 }
 
 DeviceInfo::Properties &DeviceInfo::Properties::operator=(const Properties &p) {
-	memcpy((void *)this, &p, sizeof(Properties));
+	sprt::memcpy((void *)this, &p, sizeof(Properties));
 	return *this;
 }
 
@@ -1172,7 +1174,7 @@ String getVkMemoryPropertyFlags(VkMemoryPropertyFlags flags) {
 static uint32_t getIndexForExtension(const char *name) {
 	uint32_t ret = 0;
 	for (auto &it : s_optionalDeviceExtensions) {
-		if (it && strcmp(name, it) == 0) {
+		if (it && sprt::strcmp(name, it) == 0) {
 			return ret;
 		}
 		++ret;
@@ -1182,7 +1184,7 @@ static uint32_t getIndexForExtension(const char *name) {
 
 bool checkIfExtensionAvailable(uint32_t apiVersion, const char *name,
 		const Vector<VkExtensionProperties> &available, Vector<StringView> &optionals,
-		Vector<StringView> &promoted, std::bitset<toInt(OptionalDeviceExtension::Max)> &flags) {
+		Vector<StringView> &promoted, sprt::bitset<toInt(OptionalDeviceExtension::Max)> &flags) {
 	auto index = getIndexForExtension(name);
 	if (index == maxOf<uint32_t>()) {
 		log::source().error("Vk", "Extension is not registered as optional: ", name);
@@ -1192,7 +1194,7 @@ bool checkIfExtensionAvailable(uint32_t apiVersion, const char *name,
 #if VK_VERSION_1_4
 	if (apiVersion >= VK_API_VERSION_1_4) {
 		for (auto &it : s_promotedVk14Extensions) {
-			if (it && strcmp(name, it) == 0) {
+			if (it && sprt::strcmp(name, it) == 0) {
 				flags.set(index);
 				promoted.emplace_back(StringView(name));
 				return true;
@@ -1203,7 +1205,7 @@ bool checkIfExtensionAvailable(uint32_t apiVersion, const char *name,
 #if VK_VERSION_1_3
 	if (apiVersion >= VK_API_VERSION_1_3) {
 		for (auto &it : s_promotedVk13Extensions) {
-			if (it && strcmp(name, it) == 0) {
+			if (it && sprt::strcmp(name, it) == 0) {
 				flags.set(index);
 				promoted.emplace_back(StringView(name));
 				return true;
@@ -1213,7 +1215,7 @@ bool checkIfExtensionAvailable(uint32_t apiVersion, const char *name,
 #endif
 	if (apiVersion >= VK_API_VERSION_1_2) {
 		for (auto &it : s_promotedVk12Extensions) {
-			if (it && strcmp(name, it) == 0) {
+			if (it && sprt::strcmp(name, it) == 0) {
 				flags.set(index);
 				promoted.emplace_back(StringView(name));
 				return true;
@@ -1222,7 +1224,7 @@ bool checkIfExtensionAvailable(uint32_t apiVersion, const char *name,
 	}
 	if (apiVersion >= VK_API_VERSION_1_1) {
 		for (auto &it : s_promotedVk11Extensions) {
-			if (it && strcmp(name, it) == 0) {
+			if (it && sprt::strcmp(name, it) == 0) {
 				flags.set(index);
 				promoted.emplace_back(StringView(name));
 				return true;
@@ -1231,7 +1233,7 @@ bool checkIfExtensionAvailable(uint32_t apiVersion, const char *name,
 	}
 
 	for (auto &it : available) {
-		if (strcmp(name, it.extensionName) == 0) {
+		if (sprt::strcmp(name, it.extensionName) == 0) {
 			flags.set(index);
 			optionals.emplace_back(StringView(name));
 			return true;
@@ -1244,7 +1246,7 @@ bool isPromotedExtension(uint32_t apiVersion, StringView name) {
 	if (apiVersion >= VK_API_VERSION_1_2) {
 		for (auto &it : s_promotedVk12Extensions) {
 			if (it) {
-				if (strcmp(name.data(), it) == 0) {
+				if (sprt::strcmp(name.data(), it) == 0) {
 					return true;
 				}
 			}
@@ -1253,7 +1255,7 @@ bool isPromotedExtension(uint32_t apiVersion, StringView name) {
 	if (apiVersion >= VK_API_VERSION_1_1) {
 		for (auto &it : s_promotedVk11Extensions) {
 			if (it) {
-				if (strcmp(name.data(), it) == 0) {
+				if (sprt::strcmp(name.data(), it) == 0) {
 					return true;
 				}
 			}
@@ -1325,11 +1327,6 @@ Status getStatus(VkResult res) {
 	default: break;
 	}
 	return Status::ErrorUnknown;
-}
-
-std::ostream &operator<<(std::ostream &stream, VkResult res) {
-	stream << STAPPLER_VERSIONIZED_NAMESPACE::xenolith::vk::getVkResultName(res);
-	return stream;
 }
 
 } // namespace stappler::xenolith::vk

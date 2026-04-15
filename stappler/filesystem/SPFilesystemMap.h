@@ -31,7 +31,7 @@ using sprt::filesystem::MappingType;
 
 class SP_PUBLIC MemoryMappedRegion final {
 public:
-	using PlatformStorage = std::array<uint8_t, 16>;
+	using PlatformStorage = sprt::array<uint8_t, 16>;
 
 	static MemoryMappedRegion mapFile(const FileInfo &, MappingType, ProtFlags, size_t offset = 0,
 			size_t len = maxOf<size_t>());

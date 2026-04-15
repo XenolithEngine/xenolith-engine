@@ -378,20 +378,20 @@ bool MultiViewLayout::endSwipeProgress(const Vec2 &delta, const Vec2 &velocity) 
 		action = Rc<Sequence>::create(
 				ActionAcceleratedMove::createBounce(5'000, from, Vec2(_contentSize.width, yPos),
 						Vec2(velocity.x, 0), 200'000,
-						std::bind(&MultiViewLayout::onSwipeAction, this, std::placeholders::_1)),
+						sprt::bind(&MultiViewLayout::onSwipeAction, this, sprt::placeholders::_1)),
 				[this] { setPrevView(_currentViewIndex - 1); });
 	} else if (pos < -_contentSize.width / 2 && _nextView) {
 		action = Rc<Sequence>::create(
 				ActionAcceleratedMove::createBounce(5'000, from, Vec2(-_contentSize.width, yPos),
 						Vec2(velocity.x, 0), 200'000,
-						std::bind(&MultiViewLayout::onSwipeAction, this, std::placeholders::_1)),
+						sprt::bind(&MultiViewLayout::onSwipeAction, this, sprt::placeholders::_1)),
 				[this] { setNextView(_currentViewIndex + 1); });
 	} else {
 		if (from != Vec2(0, yPos)) {
 			action = Rc<Sequence>::create(ActionAcceleratedMove::createBounce(5'000, from,
 												  Vec2(0, yPos), Vec2(velocity.x, 0), 50'000,
-												  std::bind(&MultiViewLayout::onSwipeAction, this,
-														  std::placeholders::_1)),
+												  sprt::bind(&MultiViewLayout::onSwipeAction, this,
+														  sprt::placeholders::_1)),
 					[this] {
 				_swipeProgress = 0;
 				onSwipeProgress();

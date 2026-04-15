@@ -537,7 +537,7 @@ RenderingLevel Sprite::getRealRenderingLevel() const {
 		while (p) {
 			if (auto s = dynamic_cast<Sprite *>(p)) {
 				if (s->getRenderingLevel() != RenderingLevel::Default) {
-					parentLevel = std::max(s->getRenderingLevel(), parentLevel);
+					parentLevel = sprt::max(s->getRenderingLevel(), parentLevel);
 				}
 			}
 			p = p->getParent();
@@ -565,7 +565,7 @@ RenderingLevel Sprite::getRealRenderingLevel() const {
 			default: level = RenderingLevel::Transparent; break;
 			}
 		}
-		level = std::max(level, parentLevel);
+		level = sprt::max(level, parentLevel);
 	}
 	return level;
 }

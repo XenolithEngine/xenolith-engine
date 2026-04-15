@@ -27,9 +27,9 @@
 #include "SPPugTemplate.h"
 #include "SPFilesystem.h"
 
-#include "SPPlatformUnistd.h"
+#include <sprt/cxx/mutex>
 
-#if LINUX
+#if 0 && LINUX
 #include <sys/inotify.h>
 #endif
 
@@ -38,10 +38,6 @@
 #endif
 
 namespace STAPPLER_VERSIONIZED stappler::pug {
-
-#if LINUX
-static int s_FileNotifyMask = IN_CLOSE_WRITE;
-#endif
 
 Rc<FileRef> CacheFile::read(memory::pool_t *p, const FileInfo &path, Template::Options opts,
 		const Callback<void(const StringView &)> &cb, int watch, int wId) {
@@ -128,7 +124,7 @@ const Template::Options &CacheFile::getOpts() const { return _opts; }
 
 int CacheFile::regenerate(int notify, StringView fpath) {
 	if (_watch >= 0) {
-#if LINUX
+#if 0 && LINUX
 		inotify_rm_watch(notify, _watch);
 		_watch = inotify_add_watch(notify, SP_TERMINATED_DATA(fpath), s_FileNotifyMask);
 		return _watch;
@@ -141,7 +137,7 @@ StringView CacheFile::getKey() const { return _key; }
 
 Cache::Cache(Template::Options opts, const Function<void(const StringView &)> &err)
 : _pool(memory::pool::acquire()), _opts(opts), _errorCallback(err) {
-#if LINUX
+#if 0 && LINUX
 	_inotify = inotify_init1(IN_NONBLOCK);
 #endif
 	if (_inotify != -1) {
@@ -151,7 +147,7 @@ Cache::Cache(Template::Options opts, const Function<void(const StringView &)> &e
 
 Cache::~Cache() {
 	if (_inotify > 0) {
-#if LINUX
+#if 0 && LINUX
 		for (auto &it : _templates) {
 			auto fd = it.second->getWatch();
 			if (fd >= 0) {
@@ -164,14 +160,14 @@ Cache::~Cache() {
 }
 
 void Cache::update(int watch, bool regenerate) {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<Mutex> lock(_mutex);
 	auto it = _watches.find(watch);
 	if (it != _watches.end()) {
 		auto tIt = _templates.find(it->second);
 		if (tIt != _templates.end()) {
 			if (regenerate) {
 				_watches.erase(it);
-				if (auto tpl = openTemplate(it->second, -1, tIt->second->getOpts())) {
+				if (auto tpl = openTemplate(FileInfo{it->second}, -1, tIt->second->getOpts())) {
 					tIt->second = tpl;
 					watch = tIt->second->getWatch();
 					if (watch < 0) {
@@ -181,7 +177,7 @@ void Cache::update(int watch, bool regenerate) {
 					}
 				}
 			} else {
-				if (auto tpl = openTemplate(it->second, tIt->second->getWatch(),
+				if (auto tpl = openTemplate(FileInfo{it->second}, tIt->second->getWatch(),
 							tIt->second->getOpts())) {
 					tIt->second = tpl;
 				}
@@ -195,9 +191,9 @@ void Cache::update(memory::pool_t *pool, bool force) {
 	for (auto &it : _templates) {
 		if (it.second->getMtime() != Time()) {
 			filesystem::Stat stat;
-			filesystem::stat(it.first, stat);
+			filesystem::stat(FileInfo{it.first}, stat);
 			if (stat.mtime != it.second->getMtime() || force) {
-				if (auto tpl = openTemplate(it.first, -1, it.second->getOpts())) {
+				if (auto tpl = openTemplate(FileInfo{it.first}, -1, it.second->getOpts())) {
 					it.second = tpl;
 				}
 			}
@@ -208,7 +204,7 @@ void Cache::update(memory::pool_t *pool, bool force) {
 int Cache::getNotify() const { return _inotify; }
 
 bool Cache::isNotifyAvailable() {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<Mutex> lock(_mutex);
 	return _inotifyAvailable;
 }
 
@@ -265,7 +261,7 @@ bool Cache::runTemplate(StringView key, const RunCallback &cb, const OutStream &
 		return runTemplate(tpl, cb, out, tpl->getTemplate()->getOptions());
 	}
 
-	onError(string::toString<memory::PoolInterface>("No template '", key, "' found"));
+	onError(mem_pool::toString("No template '", key, "' found"));
 	return false;
 }
 
@@ -276,14 +272,14 @@ bool Cache::runTemplate(StringView key, const RunCallback &cb, const OutStream &
 		return runTemplate(tpl, cb, out, opts);
 	}
 
-	onError(string::toString<memory::PoolInterface>("No template '", key, "' found"));
+	onError(mem_pool::toString("No template '", key, "' found"));
 	return false;
 }
 
 bool Cache::addFile(const FileInfo &path) {
 	auto key = filepath::canonical<memory::StandartInterface>(path);
 
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<Mutex> lock(_mutex);
 	auto it = _templates.find(key);
 	if (it == _templates.end()) {
 		memory::context ctx(_pool);
@@ -295,20 +291,20 @@ bool Cache::addFile(const FileInfo &path) {
 			return true;
 		}
 	} else {
-		onError(string::toString<memory::PoolInterface>("Already added: '", path, "'"));
+		onError(mem_pool::toString("Already added: '", path, "'"));
 	}
 	return false;
 }
 
 bool Cache::addContent(StringView key, String &&data) {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<Mutex> lock(_mutex);
 	auto it = _templates.find(key);
 	if (it == _templates.end()) {
 		auto tpl = CacheFile::read(_pool, key, move(data), false, _opts);
 		_templates.emplace(tpl->getKey(), tpl);
 		return true;
 	} else {
-		onError(string::toString<memory::PoolInterface>("Already added: '", key, "'"));
+		onError(mem_pool::toString("Already added: '", key, "'"));
 	}
 	return false;
 }
@@ -318,24 +314,24 @@ bool Cache::addTemplate(StringView key, String &&data) {
 }
 
 bool Cache::addTemplate(StringView key, String &&data, Template::Options opts) {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<Mutex> lock(_mutex);
 	auto it = _templates.find(key);
 	if (it == _templates.end()) {
 		auto tpl = CacheFile::read(_pool, key, move(data), true, opts,
 				[&](const StringView &err) SP_COVERAGE_TRIVIAL {
-			std::cout << key << ":\n";
-			std::cout << err << "\n";
+			sprt::cout << key << ":\n";
+			sprt::cout << err << "\n";
 		});
 		_templates.emplace(tpl->getKey(), tpl);
 		return true;
 	} else {
-		onError(string::toString<memory::PoolInterface>("Already added: '", key, "'"));
+		onError(mem_pool::toString("Already added: '", key, "'"));
 	}
 	return false;
 }
 
 Rc<FileRef> Cache::get(StringView key) const {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<Mutex> lock(_mutex);
 	auto it = _templates.find(key);
 	if (it != _templates.end()) {
 		return it->second;
@@ -352,7 +348,7 @@ Rc<FileRef> Cache::acquireTemplate(const FileInfo &path, bool readOnly,
 		const Template::Options &opts) {
 	auto key = filepath::canonical<memory::StandartInterface>(path);
 
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<Mutex> lock(_mutex);
 	auto it = _templates.find(key);
 	if (it != _templates.end()) {
 		return it->second;
@@ -370,11 +366,11 @@ Rc<FileRef> Cache::acquireTemplate(const FileInfo &path, bool readOnly,
 
 Rc<FileRef> Cache::openTemplate(const FileInfo &path, int wId, const Template::Options &opts) {
 	auto ret = CacheFile::read(_pool, path, opts, [&](const StringView &err) SP_COVERAGE_TRIVIAL {
-		std::cout << path << ":\n";
-		std::cout << err << "\n";
+		sprt::cout << path << ":\n";
+		sprt::cout << err << "\n";
 	}, _inotify, wId);
 	if (!ret) {
-		onError(string::toString<memory::PoolInterface>("File not found: ", path));
+		onError(mem_pool::toString("File not found: ", path));
 	} else if (ret->isValid()) {
 		return ret;
 	}
@@ -391,9 +387,9 @@ bool Cache::runTemplate(Rc<FileRef> tpl, const RunCallback &cb, const OutStream 
 			exec.setIncludeCallback(
 					[this, iopts](const StringView &path, Context &exec, const OutStream &out,
 							Template::RunContext &rctx) -> bool {
-				Rc<FileRef> tpl = acquireTemplate(path, true, iopts);
+				Rc<FileRef> tpl = acquireTemplate(FileInfo(path), true, iopts);
 				if (!tpl) {
-					tpl = acquireTemplate(path, false, iopts);
+					tpl = acquireTemplate(FileInfo(path), false, iopts);
 				}
 
 				if (!tpl) {
@@ -417,8 +413,7 @@ bool Cache::runTemplate(Rc<FileRef> tpl, const RunCallback &cb, const OutStream 
 			}
 			return t->run(exec, out, opts);
 		} else {
-			onError(string::toString<memory::PoolInterface>("File '", tpl->getKey(),
-					"' is not executable"));
+			onError(mem_pool::toString("File '", tpl->getKey(), "' is not executable"));
 		}
 	} else {
 		onError("No template found");
@@ -428,13 +423,13 @@ bool Cache::runTemplate(Rc<FileRef> tpl, const RunCallback &cb, const OutStream 
 
 void Cache::onError(const StringView &str) {
 	if (str == "inotify limit is reached: fall back to timed watcher") {
-		std::unique_lock<Mutex> lock(_mutex);
+		sprt::unique_lock<Mutex> lock(_mutex);
 		_inotifyAvailable = false;
 	}
 	if (_errorCallback != nullptr) {
 		_errorCallback(str);
 	} else {
-		std::cout << str;
+		sprt::cout << str;
 	}
 }
 

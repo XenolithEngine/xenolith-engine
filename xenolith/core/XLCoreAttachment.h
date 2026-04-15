@@ -52,7 +52,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 */
 class SP_PUBLIC DependencyEvent final : public Ref {
 public:
-	using QueueSet = std::multiset<Rc<Queue>, std::less<Rc<Queue>>, std::allocator<Rc<Queue>>>;
+	using QueueSet = mem_std::Set<Rc<Queue>>;
 
 	static uint32_t GetNextId();
 

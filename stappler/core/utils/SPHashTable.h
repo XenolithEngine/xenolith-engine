@@ -95,34 +95,34 @@ struct HashTraitDiscovery;
 
 template <typename Value>
 struct HashTraitDiscovery<Rc<Value>> {
-	using type = typename std::conditional< std::is_base_of<NamedRef, Value>::value,
+	using type = typename sprt::conditional< sprt::is_base_of<NamedRef, Value>::value,
 			HashTraits<Rc<NamedRef>>, typename HashTraitDiscovery<Value *>::type>::type;
 };
 
 template <typename Value>
 struct HashTraitDiscovery<Value *> {
-	using type = typename std::conditional< std::is_base_of<NamedMem, Value>::value,
+	using type = typename sprt::conditional< sprt::is_base_of<NamedMem, Value>::value,
 			HashTraits<NamedMem *>, HashTraits<Value *>>::type;
 };
 
 template <typename Value>
 struct HashEntry {
-	using Type = typename std::remove_cv<typename std::remove_reference<Value>::type>::type;
+	using Type = typename sprt::remove_cv<typename sprt::remove_reference<Value>::type>::type;
 	using Traits = typename HashTraitDiscovery<Value>::type;
 
 	template <typename... Args>
 	static uint32_t getHash(uint32_t salt, Args &&...args) {
-		return Traits::hash(salt, std::forward<Args>(args)...);
+		return Traits::hash(salt, sprt::forward<Args>(args)...);
 	}
 
 	template <typename... Args>
 	static bool isEqual(const Value &l, Args &&...args) {
-		return Traits::equal(l, std::forward<Args>(args)...);
+		return Traits::equal(l, sprt::forward<Args>(args)...);
 	}
 
 	HashEntry *next;
 	uint32_t hash;
-	std::array<uint8_t, sizeof(Value)> data;
+	sprt::array<uint8_t, sizeof(Value)> data;
 
 	Value *get() { return (Value *)data.data(); }
 	const Value *get() const { return (const Value *)data.data(); }
@@ -130,7 +130,7 @@ struct HashEntry {
 
 template <typename Value>
 struct HashIndex {
-	using Type = typename std::remove_cv<typename std::remove_reference<Value>::type>::type;
+	using Type = typename sprt::remove_cv<typename sprt::remove_reference<Value>::type>::type;
 
 	HashTable<Value> *ht;
 	HashEntry<Type> **_bucket;
@@ -180,7 +180,7 @@ struct HashIndex {
 
 template <typename Value>
 struct ConstHashIndex {
-	using Type = typename std::remove_cv<typename std::remove_reference<Value>::type>::type;
+	using Type = typename sprt::remove_cv<typename sprt::remove_reference<Value>::type>::type;
 
 	const HashTable<Value> *ht;
 	const HashEntry<Type> *const *_bucket;
@@ -355,7 +355,7 @@ public:
 	Pair<iterator, bool> assign(Args &&...args) {
 		ValueType **hep = nullptr;
 		iterator iter;
-		auto ret = set_value(true, &hep, std::forward<Args>(args)...);
+		auto ret = set_value(true, &hep, sprt::forward<Args>(args)...);
 		iter._bucket = hep;
 		iter._self = ret.first;
 		iter._next = ret.first->next;
@@ -368,7 +368,7 @@ public:
 	Pair<iterator, bool> emplace(Args &&...args) {
 		ValueType **hep = nullptr;
 		iterator iter;
-		auto ret = set_value(false, &hep, std::forward<Args>(args)...);
+		auto ret = set_value(false, &hep, sprt::forward<Args>(args)...);
 		iter._bucket = hep;
 		iter._self = ret.first;
 		iter._next = ret.first->next;
@@ -379,7 +379,7 @@ public:
 
 	template <typename... Args>
 	bool contains(Args &&...args) const {
-		if (auto ret = get_value(nullptr, std::forward<Args>(args)...)) {
+		if (auto ret = get_value(nullptr, sprt::forward<Args>(args)...)) {
 			return true;
 		}
 		return false;
@@ -388,7 +388,7 @@ public:
 	template <typename... Args>
 	iterator find(Args &&...args) {
 		ValueType **hep = nullptr;
-		if (auto ret = get_value(&hep, std::forward<Args>(args)...)) {
+		if (auto ret = get_value(&hep, sprt::forward<Args>(args)...)) {
 			iterator iter;
 			iter._bucket = hep;
 			iter._self = ret;
@@ -403,7 +403,7 @@ public:
 	template <typename... Args>
 	const_iterator find(Args &&...args) const {
 		ValueType **hep = nullptr;
-		if (auto ret = get_value(&hep, std::forward<Args>(args)...)) {
+		if (auto ret = get_value(&hep, sprt::forward<Args>(args)...)) {
 			const_iterator iter;
 			iter._bucket = hep;
 			iter._self = ret;
@@ -417,7 +417,7 @@ public:
 
 	template <typename... Args>
 	const typename ValueType::Type get(Args &&...args) const {
-		if (auto ret = get_value(nullptr, std::forward<Args>(args)...)) {
+		if (auto ret = get_value(nullptr, sprt::forward<Args>(args)...)) {
 			return *ret->get();
 		}
 		return nullptr;
@@ -452,12 +452,12 @@ public:
 	template <typename... Args>
 	iterator erase(Args &&...args) {
 		ValueType **hep, *he;
-		const auto hash = ValueType::getHash(seed, std::forward<Args>(args)...);
+		const auto hash = ValueType::getHash(seed, sprt::forward<Args>(args)...);
 		const auto idx = hash & this->max;
 
 		/* scan linked list */
 		for (hep = &this->array[idx], he = *hep; he; hep = &he->next, he = *hep) {
-			if (he->hash == hash && ValueType::isEqual(*he->get(), std::forward<Args>(args)...)) {
+			if (he->hash == hash && ValueType::isEqual(*he->get(), sprt::forward<Args>(args)...)) {
 				break;
 			}
 		}
@@ -652,12 +652,12 @@ private:
 		}
 
 		ValueType **hep, *he;
-		const auto hash = ValueType::getHash(seed, std::forward<Args>(args)...);
+		const auto hash = ValueType::getHash(seed, sprt::forward<Args>(args)...);
 		const auto idx = hash & this->max;
 
 		/* scan linked list */
 		for (hep = &this->array[idx], he = *hep; he; hep = &he->next, he = *hep) {
-			if (he->hash == hash && ValueType::isEqual(*he->get(), std::forward<Args>(args)...)) {
+			if (he->hash == hash && ValueType::isEqual(*he->get(), sprt::forward<Args>(args)...)) {
 				break;
 			}
 		}
@@ -675,12 +675,12 @@ private:
 		}
 
 		ValueType **hep, *he;
-		const auto hash = ValueType::getHash(seed, std::forward<Args>(args)...);
+		const auto hash = ValueType::getHash(seed, sprt::forward<Args>(args)...);
 		const auto idx = hash & this->max;
 
 		/* scan linked list */
 		for (hep = &this->array[idx], he = *hep; he; hep = &he->next, he = *hep) {
-			if (he->hash == hash && ValueType::isEqual(*he->get(), std::forward<Args>(args)...)) {
+			if (he->hash == hash && ValueType::isEqual(*he->get(), sprt::forward<Args>(args)...)) {
 				break;
 			}
 		}
@@ -688,7 +688,7 @@ private:
 		if (he) {
 			if (replace) {
 				he->get()->~Value();
-				new (he->data.data()) Value(std::forward<Args>(args)...);
+				new (he->data.data()) Value(sprt::forward<Args>(args)...);
 			}
 			if (bucket) {
 				*bucket = hep;
@@ -696,16 +696,16 @@ private:
 			return pair(he, false);
 		} else {
 			/* add a new entry for non-NULL values */
-			if ((he = this->free) != NULL) {
+			if ((he = this->free) != nullptr) {
 				this->free = he->next;
 			} else {
 				he = allocate_value();
 			}
 
 			this->count++;
-			he->next = NULL;
+			he->next = nullptr;
 			he->hash = hash;
-			new (he->data.data()) Value(std::forward<Args>(args)...);
+			new (he->data.data()) Value(sprt::forward<Args>(args)...);
 
 			*hep = he;
 

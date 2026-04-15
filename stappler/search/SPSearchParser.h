@@ -25,7 +25,6 @@ THE SOFTWARE.
 #define STAPPLER_SEARCH_SPSEARCHPARSER_H_
 
 #include "SPSearchEnum.h"
-#include "SPStringView.h"
 #include "SPMemory.h"
 
 namespace STAPPLER_VERSIONIZED stappler::search {
@@ -131,11 +130,12 @@ SP_PUBLIC bool parsePhrase(StringView, const Callback<ParserStatus(StringView, P
 SP_PUBLIC StemmerEnv *getStemmer(Language lang);
 
 SP_PUBLIC bool stemWord(StringView word, const Callback<void(StringView)> &, StemmerEnv *env);
-SP_PUBLIC bool stemWord(StringView word, const Callback<void(StringView)> &, Language lang = Language::Unknown);
+SP_PUBLIC bool stemWord(StringView word, const Callback<void(StringView)> &,
+		Language lang = Language::Unknown);
 
 // lowercase, remove soft hyphens
 SP_PUBLIC String normalizeWord(const StringView &str);
 
-}
+} // namespace stappler::search
 
 #endif /* STAPPLER_SEARCH_SPSEARCHPARSER_H_ */

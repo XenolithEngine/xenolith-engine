@@ -49,11 +49,6 @@ auto encode<memory::StandartInterface>(const CoderSource &source) ->
 	return output;
 }
 
-void encode(std::basic_ostream<char> &stream, const CoderSource &source) {
-	sprt::base64::encode(source.data(), source.size(),
-			[&](const char *str, size_t size) { stream.write(str, size); });
-}
-
 size_t encode(char *buf, size_t bsize, const CoderSource &source) {
 	return sprt::base64::encode(source.data(), source.size(), buf, bsize);
 }
@@ -76,11 +71,6 @@ auto decode<memory::StandartInterface>(const CoderSource &source) ->
 	output.resize(sprt::base64::decode((const char *)source.data(), source.size(), output.data(),
 			output.size()));
 	return output;
-}
-
-void decode(std::basic_ostream<char> &stream, const CoderSource &source) {
-	sprt::base64::decode((const char *)source.data(), source.size(),
-			[&](const uint8_t *str, size_t size) { stream.write((const char *)str, size); });
 }
 
 size_t decode(uint8_t *buf, size_t bsize, const CoderSource &source) {
@@ -109,11 +99,6 @@ auto encode<memory::StandartInterface>(const CoderSource &source) ->
 	output.resize(
 			sprt::base64url::encode(source.data(), source.size(), output.data(), output.size()));
 	return output;
-}
-
-void encode(std::basic_ostream<char> &stream, const CoderSource &source) {
-	sprt::base64url::encode(source.data(), source.size(),
-			[&](const char *str, size_t size) { stream.write(str, size); });
 }
 
 size_t encode(char *buf, size_t bsize, const CoderSource &source) {
@@ -155,11 +140,6 @@ auto encode<memory::StandartInterface>(const CoderSource &source, bool upper) ->
 	return output;
 }
 
-void encode(std::basic_ostream<char> &stream, const CoderSource &source, bool upper) {
-	sprt::base16::encode(source.data(), source.size(),
-			[&](const char *str, size_t size) { stream.write(str, size); }, upper);
-}
-
 size_t encode(char *buf, size_t bsize, const CoderSource &source, bool upper) {
 	return sprt::base16::encode(source.data(), source.size(), buf, bsize, upper);
 }
@@ -182,11 +162,6 @@ auto decode<memory::StandartInterface>(const CoderSource &source) ->
 	output.resize(sprt::base16::decode((const char *)source.data(), source.size(), output.data(),
 			output.size()));
 	return output;
-}
-
-void decode(std::basic_ostream<char> &stream, const CoderSource &source) {
-	sprt::base16::decode((const char *)source.data(), source.size(),
-			[&](const uint8_t *str, size_t size) { stream.write((const char *)str, size); });
 }
 
 size_t decode(uint8_t *buf, size_t bsize, const CoderSource &source) {

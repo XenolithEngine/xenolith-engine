@@ -94,6 +94,6 @@ struct BufferChain : public Ref {
 	void clear();
 };
 
-}
+} // namespace stappler::event
 
 #endif /* CORE_EVENT_SPEVENTBUFFERCHAIN_H_ */

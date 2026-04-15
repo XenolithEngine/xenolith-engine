@@ -39,7 +39,7 @@ struct ConstraintRec {
 	db::RemovePolicy remove = db::RemovePolicy::Null;
 
 	ConstraintRec(Type t) : type(t) { }
-	ConstraintRec(Type t, std::initializer_list<String> il) : type(t), fields(il) { }
+	ConstraintRec(Type t, sprt::initializer_list<String> il) : type(t), fields(il) { }
 	ConstraintRec(Type t, const String &col, StringView ref = StringView(),
 			db::RemovePolicy r = db::RemovePolicy::Null)
 	: type(t), fields{col}, reference(ref.str<Interface>()), remove(r) { }
@@ -722,7 +722,7 @@ Map<StringView, TableRec> TableRec::parse(const Driver *driver, const BackendInt
 					StringStream hashStream;
 					hashStream << getDefaultFunctionVersion() << tblIt->first << "_delta";
 
-					size_t id = std::hash<String>{}(hashStream.weak());
+					size_t id = sprt::hash<StringView>{}(hashStream.weak());
 					hashStream.clear();
 					hashStream << "_trig_" << tblIt->first << "_" << id;
 					tblIt->second.triggers.emplace(
@@ -1062,7 +1062,7 @@ TableRec::TableRec(const Driver *driver, const BackendInterface::Config &cfg,
 	}
 
 	if (hasAfterTrigger) {
-		size_t id = std::hash<String>{}(hashStreamAfter.weak());
+		size_t id = sprt::hash<StringView>{}(hashStreamAfter.weak());
 
 		hashStreamAfter.clear();
 		hashStreamAfter << "_tr_a_" << scheme->getName() << "_" << id;
@@ -1070,7 +1070,7 @@ TableRec::TableRec(const Driver *driver, const BackendInterface::Config &cfg,
 	}
 
 	if (hasBeforeTrigger) {
-		size_t id = std::hash<String>{}(hashStreamBefore.weak());
+		size_t id = sprt::hash<StringView>{}(hashStreamBefore.weak());
 
 		hashStreamBefore.clear();
 		hashStreamBefore << "_tr_b_" << scheme->getName() << "_" << id;
@@ -1079,7 +1079,7 @@ TableRec::TableRec(const Driver *driver, const BackendInterface::Config &cfg,
 }
 
 static void Handle_insert_sorted(Vector<sprt::pair<StringView, int64_t>> &vec, StringView type) {
-	auto it = std::upper_bound(vec.begin(), vec.end(), type,
+	auto it = sprt::upper_bound(vec.begin(), vec.end(), type,
 			[](const StringView &l, const sprt::pair<StringView, int64_t> &r) -> bool {
 		return l < r.first;
 	});
@@ -1147,7 +1147,7 @@ bool Handle::init(const BackendInterface::Config &cfg, const Map<StringView, con
 	StringStream stream;
 	TableRec::writeCompareResult(stream, requiredTables, existedTables, s);
 
-	if (stream.size() > 3) {
+	if (stream.weak().size() > 3) {
 		bool success = true;
 		if (performSimpleQuery(stream.weak(), [&](const Value &errInfo) {
 			stream << "Server: " << cfg.name << "\n";
@@ -1161,7 +1161,7 @@ bool Handle::init(const BackendInterface::Config &cfg, const Map<StringView, con
 			success = false;
 		}
 
-		tables << "\n" << stream;
+		tables << "\n" << stream.weak();
 		_driver->getApplicationInterface()->reportDbUpdate(tables.weak(), success);
 		if (!success) {
 			return false;

@@ -63,7 +63,7 @@ DataScroll::ItemMap DataScrollHandlerSlice::run(Request t, DataMap &&data) {
 				origin.x -= item->getContentSize().width;
 			}
 
-			ret.insert(std::make_pair(it->first, item));
+			ret.insert(sprt::make_pair(it->first, item));
 		}
 	} else {
 		for (auto &it : data) {
@@ -75,7 +75,7 @@ DataScroll::ItemMap DataScrollHandlerSlice::run(Request t, DataMap &&data) {
 				origin.x += item->getContentSize().width;
 			}
 
-			ret.insert(std::make_pair(it.first, item));
+			ret.insert(sprt::make_pair(it.first, item));
 		}
 	}
 	return ret;

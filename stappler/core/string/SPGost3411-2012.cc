@@ -32,7 +32,9 @@
 #pragma clang diagnostic ignored "-Wunused-but-set-variable"
 #endif
 
+#define std sprt
 #include "simde/x86/sse2.h"
+#undef std
 
 #if XWIN
 #pragma clang diagnostic pop
@@ -1790,7 +1792,7 @@ static inline const unsigned long long &_Ax(int a, int b) {
 namespace {
 
 static inline void pad(Gost3411_Ctx *CTX) {
-	memset(&(CTX->buffer.B[CTX->bufsize]), 0, sizeof(CTX->buffer) - CTX->bufsize);
+	sprt::memset(&(CTX->buffer.B[CTX->bufsize]), 0, sizeof(CTX->buffer) - CTX->bufsize);
 	CTX->buffer.B[CTX->bufsize] = 1;
 }
 
@@ -1902,7 +1904,7 @@ static inline void stage3(Gost3411_Ctx *CTX) {
 	g(&(CTX->h), &(CTX->N), &(CTX->buffer));
 	add512(&(CTX->Sigma), &CTX->buffer);
 
-	memset(&(CTX->buffer.B[0]), 0, sizeof(uint512_u));
+	sprt::memset(&(CTX->buffer.B[0]), 0, sizeof(uint512_u));
 	CTX->buffer.QWORD[0] = sprt::byteorder::HostToLittle(CTX->bufsize << 3);
 	add512(&(CTX->N), &(CTX->buffer));
 
@@ -1914,7 +1916,7 @@ static inline void stage3(Gost3411_Ctx *CTX) {
  * Initialize gost2012 hash context structure
  */
 void gost3411_hash_init(Gost3411_Ctx *CTX, const unsigned int digest_size) {
-	memset(CTX, 0, sizeof(Gost3411_Ctx));
+	sprt::memset(CTX, 0, sizeof(Gost3411_Ctx));
 
 	CTX->digest_size = digest_size;
 	/*
@@ -1925,7 +1927,7 @@ void gost3411_hash_init(Gost3411_Ctx *CTX, const unsigned int digest_size) {
 	 * need to set it to 0x01-s for 256-bit hash.
 	 */
 	if (digest_size == 256) {
-		memset(&CTX->h, 0x01, sizeof(uint512_u));
+		sprt::memset(&CTX->h, 0x01, sizeof(uint512_u));
 	}
 }
 
@@ -1938,7 +1940,7 @@ void gost3411_hash_update(Gost3411_Ctx *CTX, const unsigned char *data, size_t l
 
 	if (bufsize == 0) {
 		while (len >= 64) {
-			memcpy(&CTX->buffer.B[0], data, 64);
+			sprt::memcpy(&CTX->buffer.B[0], data, 64);
 			stage2(CTX, &(CTX->buffer));
 			data += 64;
 			len -= 64;
@@ -1951,7 +1953,7 @@ void gost3411_hash_update(Gost3411_Ctx *CTX, const unsigned char *data, size_t l
 			chunksize = len;
 		}
 
-		memcpy(&CTX->buffer.B[bufsize], data, chunksize);
+		sprt::memcpy(&CTX->buffer.B[bufsize], data, chunksize);
 
 		bufsize += chunksize;
 		len -= chunksize;
@@ -1976,9 +1978,9 @@ void gost3411_hash_finish(Gost3411_Ctx *CTX, unsigned char *digest) {
 	CTX->bufsize = 0;
 
 	if (CTX->digest_size == 256) {
-		memcpy(digest, &(CTX->h.QWORD[4]), 32);
+		sprt::memcpy(digest, &(CTX->h.QWORD[4]), 32);
 	} else {
-		memcpy(digest, &(CTX->h.QWORD[0]), 64);
+		sprt::memcpy(digest, &(CTX->h.QWORD[0]), 64);
 	}
 }
 
@@ -1993,13 +1995,13 @@ Gost3411_512::Buf Gost3411_512::make(const CoderSource &source, const StringView
 
 Gost3411_512::Buf Gost3411_512::hmac(const CoderSource &data, const CoderSource &key) {
 	Buf ret;
-	std::array<uint8_t, Length * 2> keyData = {0};
+	sprt::array<uint8_t, Length * 2> keyData = {0};
 
 	Gost3411_512 hashCtx;
 	if (key.size() > Length * 2) {
 		hashCtx.update(key).final(keyData.data());
 	} else {
-		memcpy(keyData.data(), key.data(), key.size());
+		sprt::memcpy(keyData.data(), key.data(), key.size());
 	}
 
 	for (auto &it : keyData) { it ^= HMAC_I_PAD; }
@@ -2046,13 +2048,13 @@ Gost3411_256::Buf Gost3411_256::make(const CoderSource &source, const StringView
 
 Gost3411_256::Buf Gost3411_256::hmac(const CoderSource &data, const CoderSource &key) {
 	Buf ret;
-	std::array<uint8_t, Length * 2> keyData = {0};
+	sprt::array<uint8_t, Length * 2> keyData = {0};
 
 	Gost3411_256 hashCtx;
 	if (key.size() > Length * 2) {
 		hashCtx.update(key).final(keyData.data());
 	} else {
-		memcpy(keyData.data(), key.data(), key.size());
+		sprt::memcpy(keyData.data(), key.data(), key.size());
 	}
 
 	for (auto &it : keyData) { it ^= HMAC_I_PAD; }

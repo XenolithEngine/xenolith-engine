@@ -41,7 +41,7 @@ void ThreadIocpSource::cancel() {
 
 bool ThreadIocpHandle::init(HandleClass *cl) {
 	static_assert(sizeof(ThreadIocpSource) <= DataSize
-			&& std::is_standard_layout<ThreadIocpSource>::value);
+			&& sprt::is_standard_layout<ThreadIocpSource>::value);
 
 	if (!ThreadHandle::init(cl)) {
 		return false;
@@ -90,7 +90,7 @@ void ThreadIocpHandle::notify(IocpData *iocp, ThreadIocpSource *source, const No
 Status ThreadIocpHandle::perform(Rc<thread::Task> &&task) {
 	auto source = reinterpret_cast<ThreadIocpSource *>(_data);
 
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	_outputQueue.emplace_back(move(task));
 
 	_PostQueuedCompletionStatus(source->port, 1, reinterpret_cast<uintptr_t>(this), nullptr);
@@ -101,7 +101,7 @@ Status ThreadIocpHandle::perform(Rc<thread::Task> &&task) {
 Status ThreadIocpHandle::perform(mem_std::Function<void()> &&func, Ref *target, StringView tag) {
 	auto source = reinterpret_cast<ThreadIocpSource *>(_data);
 
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	_outputCallbacks.emplace_back(CallbackInfo{sp::move(func), target, tag});
 
 	_PostQueuedCompletionStatus(source->port, 1, reinterpret_cast<uintptr_t>(this), nullptr);

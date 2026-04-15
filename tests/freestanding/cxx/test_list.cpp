@@ -29,6 +29,8 @@ namespace sprt {
 void performMallocListTests() {
 	using list = __malloc_list<int>;
 
+	sprt::cout << "\n== list tests ==\n";
+
 	// Test 1: Default constructor and empty check
 	{
 		list l;
@@ -461,6 +463,56 @@ void performMallocListTests() {
 		auto alloc = l.get_allocator();
 		sprt::cout << "Test 30 - get_allocator: ";
 		if (alloc) {
+			sprt::cout << "PASS\n";
+		} else {
+			sprt::cout << "FAIL\n";
+		}
+	}
+
+	// Test 31: reserve
+	{
+		list l{1, 2, 3};
+		size_t initialCapacity = l.capacity();
+		l.reserve(10);
+		sprt::cout << "Test 31 - reserve: ";
+		if (l.capacity() >= 10 && l.capacity() > initialCapacity) {
+			sprt::cout << "PASS\n";
+		} else {
+			sprt::cout << "FAIL\n";
+		}
+	}
+
+	// Test 32: capacity
+	{
+		list l{1, 2, 3};
+		size_t cap = l.capacity();
+		sprt::cout << "Test 32 - capacity: ";
+		if (cap > 0) {
+			sprt::cout << "PASS\n";
+		} else {
+			sprt::cout << "FAIL\n";
+		}
+	}
+
+	// Test 33: shrink_to_fit
+	{
+		list l{1, 2, 3};
+		l.reserve(100);
+		l.shrink_to_fit();
+		sprt::cout << "Test 33 - shrink_to_fit: ";
+		if (l.capacity() == l.size()) {
+			sprt::cout << "PASS\n";
+		} else {
+			sprt::cout << "FAIL\n";
+		}
+	}
+
+	// Test 34: clear_deallocate
+	{
+		list l{1, 2, 3};
+		l.clear_deallocate();
+		sprt::cout << "Test 34 - clear_deallocate: ";
+		if (l.empty() && l.capacity() == 0) {
 			sprt::cout << "PASS\n";
 		} else {
 			sprt::cout << "FAIL\n";

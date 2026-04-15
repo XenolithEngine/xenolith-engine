@@ -28,12 +28,9 @@ THE SOFTWARE.
 #include "SPBase64.cc"
 #include "SPSha2.cc"
 #include "SPGost3411-2012.cc"
-#include "SPString.cc"
-#include "SPUnicode.cc"
 #include "SPHtmlParser.cc"
 #include "SPLog.cc"
 #include "SPTime.cc"
-#include "SPDso.cc"
 #include "SPSharedModule.cc"
 
 #include "platform/SPCoreRuntime.cc"
@@ -41,13 +38,14 @@ THE SOFTWARE.
 #include "SPUrl.cc"
 #include "SPValid.cc"
 #include "SPCommandLineParser.cc"
-#include "SPStatus.cc"
 #include "SPLocaleInfo.cc"
 
 #include "SPMetastring.h"
-#include <sprt/runtime/platform.h>
 
-#include <list>
+#include <sprt/cxx/forward_list>
+#include <sprt/runtime/platform.h>
+#include <sprt/cxx/mutex>
+
 
 #define STAPPLER_VERSION_VARIANT 0
 
@@ -64,10 +62,10 @@ struct InitializerManager {
 
 	InitializerManager &operator=(const InitializerManager &) = delete;
 
-	std::mutex mutex;
-	std::list<Initializer> list;
+	sprt::qmutex mutex;
+	sprt::__malloc_list<Initializer> list;
 	bool initialized = false;
-	memory::pool_t *pool = nullptr;
+	sprt::memory::pool_t *pool = nullptr;
 };
 
 InitializerManager &InitializerManager::get() {
@@ -98,7 +96,7 @@ bool initialize(int argc, const char *argv[], int &resultCode) {
 	sprt::memory::pool::push(pool);
 
 	auto &m = InitializerManager::get();
-	std::unique_lock lock(m.mutex);
+	sprt::unique_lock lock(m.mutex);
 	m.initialized = true;
 	m.pool = pool;
 
@@ -108,7 +106,7 @@ bool initialize(int argc, const char *argv[], int &resultCode) {
 
 void terminate() {
 	auto &m = InitializerManager::get();
-	std::unique_lock lock(m.mutex);
+	sprt::unique_lock lock(m.mutex);
 
 	// terminate in reverse oder
 	for (auto it = m.list.rbegin(); it != m.list.rend(); ++it) { it->term(it->userdata); }
@@ -123,7 +121,7 @@ void terminate() {
 
 bool addInitializer(void *ptr, NotNull<void(void *)> init, NotNull<void(void *)> term) {
 	auto &m = InitializerManager::get();
-	std::unique_lock lock(m.mutex);
+	sprt::unique_lock lock(m.mutex);
 	if (m.initialized) {
 		init.get()(ptr);
 	}

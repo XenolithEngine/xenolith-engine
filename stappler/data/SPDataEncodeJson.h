@@ -68,7 +68,7 @@ struct RawEncoder : public Interface::AllocBaseType {
 
 	inline void writeData(const char *data, size_t size) { (*stream) << StringView(data, size); }
 
-	inline void writeData(const char *data) { writeData(data, strlen(data)); }
+	inline void writeData(const char *data) { writeData(data, sprt::strlen(data)); }
 
 	inline void writeChar(char c) { (*stream) << c; }
 

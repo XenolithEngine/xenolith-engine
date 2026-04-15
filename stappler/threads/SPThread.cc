@@ -38,7 +38,7 @@ thread_local const Thread *tl_owner = nullptr;
 void *Thread::workerThread(void *tm) {
 	tl_owner = (Thread *)tm;
 
-	sprt::thread::callbacks cb;
+	sprt::_thread::callbacks cb;
 	cb.init = [](NotNull<Ref> obj) {
 		static_cast<Thread *>(obj.get())->threadInit(); //
 	};
@@ -51,22 +51,20 @@ void *Thread::workerThread(void *tm) {
 		return static_cast<Thread *>(obj.get())->worker(); //
 	};
 
-	sprt::thread::_entry(cb, (Thread *)tm);
+	sprt::_thread::_entry(cb, (Thread *)tm);
 	return nullptr;
 }
 
 const Thread *Thread::getCurrentThread() { return tl_owner; }
 
-Thread::Id Thread::getCurrentThreadId() { return gettid(); }
+Thread::Id Thread::getCurrentThreadId() { return sprt::this_thread::get_id(); }
 
 Thread::~Thread() {
-	if (_thisThread) {
-		if (getCurrentThreadId() == _thisThreadId) {
-			pthread_detach(_thisThread);
-		} else if ((_flags & ThreadFlags::Joinable) != ThreadFlags::None) {
-			_continueExecution.clear();
-			pthread_join(_thisThread, nullptr);
-		}
+	if (getCurrentThreadId() == _thisThreadId) {
+		_thisThread.detach();
+	} else if ((_flags & ThreadFlags::Joinable) != ThreadFlags::None) {
+		_continueExecution.clear();
+		_thisThread.join();
 	}
 }
 
@@ -80,21 +78,10 @@ bool Thread::run(ThreadFlags flags) {
 	_type = &(typeid(*this));
 	_continueExecution.test_and_set();
 	_parentThread = getCurrentThread();
+	_thisThread = sprt::thread(Thread::workerThread, this);
 
-	pthread_attr_t attr;
-	pthread_attr_init(&attr);
-	if ((flags & ThreadFlags::Joinable) == ThreadFlags::None) {
-		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-	} else {
-		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-	}
-
-	auto err = pthread_create(&_thisThread, &attr, Thread::workerThread, this);
-
-	pthread_attr_destroy(&attr);
-
-	if (err != 0) {
-		slog().error("Thread", "Fail to create thread: ", sprt::status::errnoToStatus(err));
+	if (_thisThread.native_handle() == nullptr) {
+		slog().error("Thread", "Fail to create thread");
 		return false;
 	}
 
@@ -108,7 +95,7 @@ void Thread::waitRunning() {
 		return;
 	}
 
-	std::unique_lock lock(_runningMutex);
+	sprt::unique_lock lock(_runningMutex);
 	if (_running.load()) {
 		return;
 	}
@@ -117,15 +104,14 @@ void Thread::waitRunning() {
 }
 
 void Thread::waitStopped() {
-	pthread_join(_thisThread, nullptr);
+	_thisThread.join();
 	_flags &= ~ThreadFlags::Joinable;
-	_thisThread = 0;
 }
 
 void Thread::threadInit() {
 	_thisThreadId = getCurrentThreadId();
 
-	std::unique_lock lock(_runningMutex);
+	sprt::unique_lock lock(_runningMutex);
 	_running.store(true);
 	_runningVar.notify_all();
 }

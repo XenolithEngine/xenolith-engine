@@ -164,19 +164,18 @@ Rc<sprt::window::HandleAdapter> LooperAdapter::listenPollableHandle(sprt::native
 
 Rc<sprt::window::HandleAdapter> LooperAdapter::listenPollableHandle(sprt::native_handle fd,
 		filesystem::PollFlags flags,
-		sprt::memory::dynfunction<Status(sprt::native_handle fd, filesystem::PollFlags flags)> &&cb,
-		Ref *ref) {
+		Function<Status(sprt::native_handle fd, filesystem::PollFlags flags)> &&cb, Ref *ref) {
 	return Rc<HandleAdapter>::create(HandleAdapter::Poll,
 			_looper->listenPollableHandle(fd, flags, sp::move(cb), ref));
 }
 
-Status LooperAdapter::performOnThread(sprt::memory::dynfunction<void()> &&func, Ref *target,
-		bool immediate, StringView tag) const {
+Status LooperAdapter::performOnThread(Function<void()> &&func, Ref *target, bool immediate,
+		StringView tag) const {
 	return _looper->performOnThread(sp::move(func), target, immediate, tag);
 }
 
 
-Status LooperAdapter::performAsync(sprt::memory::dynfunction<void()> &&cb, Ref *ref, bool first,
+Status LooperAdapter::performAsync(Function<void()> &&cb, Ref *ref, bool first,
 		StringView tag) const {
 	return _looper->performAsync(sp::move(cb), ref, first, tag);
 }

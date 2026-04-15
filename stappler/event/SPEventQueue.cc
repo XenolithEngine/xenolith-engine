@@ -112,8 +112,8 @@ Rc<PollHandle> Queue::listenPollableHandle(NativeHandle handle, PollFlags flags,
 	data->ref = ref;
 
 	auto h = listenPollableHandle(handle, flags,
-			CompletionHandle<Handle>::create<PollData>(data,
-					[](PollData *data, Handle *handle, uint32_t value, Status st) {
+			CompletionHandle<PollHandle>::create<PollData>(data,
+					[](PollData *data, PollHandle *handle, uint32_t value, Status st) {
 		if (st == Status::Ok) {
 			if (data->cb(data->handle, PollFlags(value)) != Status::Ok) {
 				handle->cancel();

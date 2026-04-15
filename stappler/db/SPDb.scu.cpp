@@ -173,10 +173,10 @@ static size_t processExtraVarSize(const FieldExtra *s) {
 		auto t = it.second.getType();
 		if (t == Type::Text || t == Type::Bytes) {
 			auto f = static_cast<const FieldText *>(it.second.getSlot());
-			ret = std::max(f->maxLength, ret);
+			ret = sprt::max(f->maxLength, ret);
 		} else if (t == Type::Extra) {
 			auto f = static_cast<const FieldExtra *>(it.second.getSlot());
-			ret = std::max(processExtraVarSize(f), ret);
+			ret = sprt::max(processExtraVarSize(f), ret);
 		}
 	}
 	return ret;
@@ -188,9 +188,9 @@ static size_t updateFieldLimits(const Map<String, Field> &vec) {
 		auto t = it.second.getType();
 		if (t == Type::Text || t == Type::Bytes) {
 			auto f = static_cast<const FieldText *>(it.second.getSlot());
-			ret += std::max(f->maxLength, f->inputSizeHint);
+			ret += sprt::max(f->maxLength, f->inputSizeHint);
 		} else if (t == Type::Data || t == Type::Array) {
-			ret += std::max(config::FIELD_EXTRA_DEFAULT_HINT_SIZE,
+			ret += sprt::max(config::FIELD_EXTRA_DEFAULT_HINT_SIZE,
 					it.second.getSlot()->inputSizeHint);
 		} else if (t == Type::Extra) {
 			auto f = static_cast<const FieldExtra *>(it.second.getSlot());
@@ -212,23 +212,23 @@ void InputConfig::updateLimits(const Map<String, Field> &fields) {
 		auto t = it.second.getType();
 		if (t == Type::File) {
 			auto f = static_cast<const FieldFile *>(it.second.getSlot());
-			maxFileSize = std::max(std::max(f->maxSize, f->inputSizeHint), maxFileSize);
-			maxRequestSize += std::max(f->maxSize, f->inputSizeHint) + 256;
+			maxFileSize = sprt::max(sprt::max(f->maxSize, f->inputSizeHint), maxFileSize);
+			maxRequestSize += sprt::max(f->maxSize, f->inputSizeHint) + 256;
 		} else if (t == Type::Image) {
 			auto f = static_cast<const FieldImage *>(it.second.getSlot());
-			maxFileSize = std::max(std::max(f->maxSize, f->inputSizeHint), maxFileSize);
-			maxRequestSize += std::max(f->maxSize, f->inputSizeHint) + 256;
+			maxFileSize = sprt::max(sprt::max(f->maxSize, f->inputSizeHint), maxFileSize);
+			maxRequestSize += sprt::max(f->maxSize, f->inputSizeHint) + 256;
 		} else if (t == Type::Text || t == Type::Bytes) {
 			auto f = static_cast<const FieldText *>(it.second.getSlot());
-			maxVarSize = std::max(std::max(f->maxLength, f->inputSizeHint), maxVarSize);
-			maxRequestSize += std::max(f->maxLength, f->inputSizeHint);
+			maxVarSize = sprt::max(sprt::max(f->maxLength, f->inputSizeHint), maxVarSize);
+			maxRequestSize += sprt::max(f->maxLength, f->inputSizeHint);
 		} else if (t == Type::Data || t == Type::Array) {
-			maxRequestSize += std::max(config::FIELD_EXTRA_DEFAULT_HINT_SIZE,
+			maxRequestSize += sprt::max(config::FIELD_EXTRA_DEFAULT_HINT_SIZE,
 					it.second.getSlot()->inputSizeHint);
 		} else if (t == Type::Extra) {
 			auto f = static_cast<const FieldExtra *>(it.second.getSlot());
 			maxRequestSize += updateFieldLimits(f->fields) + f->fields.size() * 8;
-			maxVarSize = std::max(processExtraVarSize(f), maxVarSize);
+			maxVarSize = sprt::max(processExtraVarSize(f), maxVarSize);
 		}
 	}
 }

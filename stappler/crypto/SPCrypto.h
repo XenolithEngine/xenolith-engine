@@ -26,7 +26,6 @@ THE SOFTWARE.
 #define STAPPLER_CRYPTO_SPCRYPTO_H_
 
 #include "SPIO.h"
-#include "SPStringView.h"
 #include "SPCoreCrypto.h"
 
 namespace STAPPLER_VERSIONIZED stappler::crypto {
@@ -119,7 +118,7 @@ struct KeyContext {
 struct SP_PUBLIC BlockKey256 {
 	uint16_t version = 0; // keygen version
 	BlockCipher cipher = BlockCipher::AES_CBC;
-	std::array<uint8_t, BlockKeySize256> data = {0};
+	sprt::array<uint8_t, BlockKeySize256> data = {0};
 
 	bool operator==(const BlockKey256 &) const = default;
 	bool operator!=(const BlockKey256 &) const = default;

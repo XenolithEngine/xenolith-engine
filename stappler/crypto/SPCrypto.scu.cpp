@@ -230,7 +230,7 @@ static void fillCryptoBlockHeader(uint8_t *buf, const BlockKey256 &key, BytesVie
 	header.cipher = sprt::byteorder::HostToLittle(toInt(key.cipher));
 	header.padding = 0;
 
-	memcpy(buf, &header, sizeof(BlockCryptoHeader));
+	sprt::memcpy(buf, &header, sizeof(BlockCryptoHeader));
 }
 
 static SignAlgorithm getSignForBlockCipher(const PrivateKey &key) {
@@ -322,7 +322,7 @@ BlockKey256 makeBlockKey(const PrivateKey &pkey, BytesView hash, BlockCipher b, 
 		}
 	} else if (version == 1) {
 		if (!pkey.sign([&](BytesView data) {
-			auto s = std::min(data.size(), size_t(256));
+			auto s = sprt::min(data.size(), size_t(256));
 			ret.data = hash256(pkey.getBackend(), CoderSource(BytesView(data, s)),
 					HashFunction::SHA_2);
 			ret.version = version;

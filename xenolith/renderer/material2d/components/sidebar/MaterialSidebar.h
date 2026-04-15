@@ -43,9 +43,9 @@ public:
 	virtual bool init(Position);
 	virtual void handleContentSizeDirty() override;
 
-	template <typename T, typename ... Args>
-	auto setNode(const Rc<T> &ptr, Args && ... args) -> T * {
-		setBaseNode(ptr.get(), std::forward<Args>(args)...);
+	template <typename T, typename... Args>
+	auto setNode(const Rc<T> &ptr, Args &&...args) -> T * {
+		setBaseNode(ptr.get(), sprt::forward<Args>(args)...);
 		return ptr.get();
 	}
 
@@ -110,6 +110,6 @@ protected:
 	BoolCallback _enabledCallback = nullptr;
 };
 
-}
+} // namespace stappler::xenolith::material2d
 
 #endif /* XENOLITH_RENDERER_MATERIAL2D_COMPONENTS_SIDEBAR_MATERIALSIDEBAR_H_ */

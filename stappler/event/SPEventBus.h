@@ -110,10 +110,10 @@ public:
 	void invalidateLooper(Looper *);
 
 protected:
-	void doAddListener(BusDelegate *, std::unique_lock<std::mutex> &);
-	void doRemoveListener(BusDelegate *, std::unique_lock<std::mutex> &);
+	void doAddListener(BusDelegate *, sprt::unique_lock<sprt::mutex> &);
+	void doRemoveListener(BusDelegate *, sprt::unique_lock<sprt::mutex> &);
 
-	mutable std::mutex _mutex;
+	mutable sprt::mutex _mutex;
 	mem_std::Vector<mem_std::String> _categories;
 	mem_std::Set<Rc<BusDelegate>> _listeners;
 	mem_std::Map<BusEventCategory, mem_std::HashSet<BusDelegate *>> _listenersByCategories;

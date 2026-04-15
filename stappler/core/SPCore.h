@@ -49,72 +49,119 @@ constexpr auto MODULE_APPCOMMON_NAME = "appcommon";
 
 } // namespace stappler::buildconfig
 
-// Link sprt with STL
-#define __SPRT_USE_STL 1
-
 #include "detail/SPPlatformInit.h"
+
 #include <sprt/runtime/notnull.h>
+#include <sprt/runtime/detail/value_wrapper.h>
+#include <sprt/runtime/enum.h>
+#include <sprt/runtime/ptr.h>
+#include <sprt/runtime/hash.h>
+#include <sprt/runtime/stringview.h>
+#include <sprt/runtime/ref.h>
+#include <sprt/runtime/io_traits.h>
 
-#include <assert.h>
+#include <sprt/cxx/utility>
+#include <sprt/cxx/algorithm>
+#include <sprt/cxx/initializer_list>
 
-// We need to wrap <locale> to carefully mimic original libc interface
-#include <sprt/wrappers/locale>
+#include <sprt/cxx/string>
+#include <sprt/cxx/vector>
+#include <sprt/cxx/unordered_map>
+#include <sprt/cxx/unordered_set>
 
-// From C++ standard library:
-#include <type_traits> // IWYU pragma: keep
-#include <typeindex> // IWYU pragma: keep
-#include <iterator> // IWYU pragma: keep
-#include <limits> // IWYU pragma: keep
-#include <utility> // IWYU pragma: keep
-#include <iterator> // IWYU pragma: keep
-#include <algorithm> // IWYU pragma: keep
-#include <tuple> // IWYU pragma: keep
-#include <cmath> // IWYU pragma: keep
+#include <assert.h> // IWYU pragma: keep
 
-#include <tuple> // IWYU pragma: keep
-#include <string> // IWYU pragma: keep
-#include <vector> // IWYU pragma: keep
-#include <functional> // IWYU pragma: keep
-#include <sstream> // IWYU pragma: keep
-#include <fstream> // IWYU pragma: keep
-#include <map> // IWYU pragma: keep
-#include <set> // IWYU pragma: keep
-#include <unordered_map> // IWYU pragma: keep
-#include <unordered_set> // IWYU pragma: keep
-#include <bitset> // IWYU pragma: keep
-#include <forward_list> // IWYU pragma: keep
-#include <array> // IWYU pragma: keep
-#include <deque> // IWYU pragma: keep
-#include <bit> // IWYU pragma: keep
-#include <bitset> // IWYU pragma: keep
 
-#include <istream> // IWYU pragma: keep
-#include <ostream> // IWYU pragma: keep
-#include <iostream> // IWYU pragma: keep
-#include <iomanip> // IWYU pragma: keep
-#include <mutex> // IWYU pragma: keep
-#include <shared_mutex> // IWYU pragma: keep
-#include <atomic> // IWYU pragma: keep
-#include <future> // IWYU pragma: keep
-#include <thread> // IWYU pragma: keep
-#include <condition_variable> // IWYU pragma: keep
-#include <initializer_list> // IWYU pragma: keep
-#include <optional> // IWYU pragma: keep
-#include <variant> // IWYU pragma: keep
-#include <chrono> // IWYU pragma: keep
-#include <compare> // IWYU pragma: keep
+/** SP_DEFINE_ENUM_AS_MASK is utility to make a bitwise-mask from typed enum
+ * It defines a set of overloaded operators, that allow some bitwise operations
+ * on this enum class
+ *
+ * Type should be unsigned, and SDK code style suggests to make it sized (uint32_t, uint64_t)
+ */
+#define SP_DEFINE_ENUM_AS_MASK(Type) SPRT_DEFINE_ENUM_AS_MASK(Type)
 
-#include "detail/SPHash.h" // IWYU pragma: keep
-#include "detail/SPMath.h" // IWYU pragma: keep
-#include "detail/SPValueWrapper.h" // IWYU pragma: keep
-#include "detail/SPEnum.h" // IWYU pragma: keep
-#include "detail/SPPtr.h" // IWYU pragma: keep
-
-#include "detail/SPPlatformCleanup.h" // IWYU pragma: keep
+/** SP_DEFINE_ENUM_AS_INCREMENTABLE adds operator++/operator-- for enumerations */
+#define SP_DEFINE_ENUM_AS_INCREMENTABLE(Type, First, Last) SPRT_DEFINE_ENUM_AS_INCREMENTABLE(Type, First, Last)
 
 namespace STAPPLER_VERSIONIZED sp = STAPPLER_VERSIONIZED_NAMESPACE;
 
 namespace STAPPLER_VERSIONIZED stappler {
+
+using sprt::move;
+using sprt::move_unsafe;
+
+using sprt::forward;
+using sprt::min;
+using sprt::max;
+
+using sprt::uint8_t;
+using sprt::uint16_t;
+using sprt::uint32_t;
+using sprt::uint64_t;
+using sprt::uintptr_t;
+using sprt::int8_t;
+using sprt::int16_t;
+using sprt::int32_t;
+using sprt::int64_t;
+using sprt::intptr_t;
+using sprt::size_t;
+using sprt::ssize_t;
+using sprt::time_t;
+using sprt::ptrdiff_t;
+
+using sprt::nullptr_t;
+
+using sprt::toInt;
+using sprt::each;
+using sprt::flags;
+
+using sprt::progress;
+
+using sprt::StringToNumber;
+
+using sprt::HasMultiplication;
+using sprt::ValueWrapper;
+
+using sprt::Ptr;
+using sprt::NotNull;
+
+using sprt::Status;
+
+namespace math = sprt::math;
+
+namespace chars = sprt::chars;
+
+using sprt::RefAlloc;
+using sprt::Ref;
+using sprt::Rc;
+using sprt::SharedRef;
+using sprt::SharedRefMode;
+
+using sprt::BytesReader;
+using sprt::StringViewBase;
+using sprt::StringView;
+using sprt::StringViewUtf8;
+using sprt::WideStringView;
+using sprt::BytesViewTemplate;
+using sprt::BytesView;
+using sprt::BytesViewNetwork;
+using sprt::BytesViewHost;
+using sprt::SpanView;
+
+using sprt::StringComparator;
+using sprt::StringCaseComparator;
+using sprt::StringUnicodeComparator;
+using sprt::StringUnicodeCaseComparator;
+
+using sprt::CharGroupId;
+
+template <typename T>
+using Callback = sprt::callback<T>;
+
+using CallbackStream = Callback<void(StringView)>;
+
+template <typename A, typename B>
+using Pair = sprt::pair<A, B>;
 
 inline constexpr uint32_t SP_MAKE_API_VERSION(uint32_t variant, uint32_t major, uint32_t minor,
 		uint32_t patch) {
@@ -122,33 +169,47 @@ inline constexpr uint32_t SP_MAKE_API_VERSION(uint32_t variant, uint32_t major, 
 			| uint32_t(patch & 0b1111'1111'1111);
 }
 
-using sprt::move;
-using sprt::move_unsafe;
-
-template <typename T>
-using NotNull = sprt::NotNull<T>;
-
-// Stappler requires only C++17, backport for std::bit_cast
-// Previously referenced as as `reinterpretValue`;
-template <class To, class From>
-std::enable_if_t< sizeof(To) == sizeof(From)
-				&& std::is_trivially_copyable_v<From> && std::is_trivially_copyable_v<To>,
-		To>
-bit_cast(const From &src) noexcept {
-	static_assert(std::is_trivially_constructible_v<To>,
-        "This implementation additionally requires "
-        "destination type to be trivially constructible");
-
-	To dst;
-	::memcpy(&dst, &src, sizeof(To));
-	return dst;
+// used for naming/hashing (like "MyTag"_tag)
+constexpr sprt::uint32_t operator""_hash(const char *str, sprt::size_t len) {
+	return sprt::hash32(str, sprt::uint32_t(len));
+}
+constexpr sprt::uint32_t operator""_tag(const char *str, sprt::size_t len) {
+	return sprt::hash32(str, sprt::uint32_t(len));
 }
 
-using std::forward;
-using std::min;
-using std::max;
+constexpr sprt::uint64_t operator""_hash64(const char *str, sprt::size_t len) {
+	return sprt::hash64(str, len);
+}
+constexpr sprt::uint64_t operator""_tag64(const char *str, sprt::size_t len) {
+	return sprt::hash64(str, len);
+}
 
-using nullptr_t = std::nullptr_t;
+constexpr long double operator""_to_rad(long double val) {
+	return val * sprt::numbers::Pi<long double> / 180.0;
+}
+constexpr long double operator""_to_rad(unsigned long long int val) {
+	return val * sprt::numbers::Pi<long double> / 180.0;
+}
+
+template <typename T = float>
+inline constexpr auto nan() -> T {
+	return sprt::NaN<T>;
+}
+
+template <typename T = float>
+inline constexpr auto epsilon() -> T {
+	return sprt::Epsilon<T>;
+}
+
+template <class T>
+inline constexpr T maxOf() {
+	return sprt::Max<T>;
+}
+
+template <class T>
+inline constexpr T minOf() {
+	return sprt::Min<T>;
+}
 
 /*
  *   User Defined literals
@@ -176,16 +237,10 @@ constexpr unsigned long long int operator""_KiB(unsigned long long int val) { re
 constexpr char16_t operator""_c16(unsigned long long int val) { return (char16_t)val; }
 constexpr char operator""_c8(unsigned long long int val) { return (char)val; }
 
-template <typename... Args>
-inline constexpr auto pair(Args &&...args) -> decltype(std::make_pair(sp::forward<Args>(args)...)) {
-	return std::make_pair(sp::forward<Args>(args)...);
-}
-
-template <typename T, typename V>
-using Pair = std::pair<T, V>;
+using sprt::pair;
 
 template <typename T>
-using InitializerList = std::initializer_list<T>;
+using InitializerList = sprt::initializer_list<T>;
 
 /** Functions for enum flags */
 template <typename T>

@@ -48,7 +48,7 @@ static constexpr ClockType FrameClockType = ClockType::Monotonic;
 
 static sprt::atomic<uint32_t> s_frameCount = 0;
 static sprt::qmutex s_frameMutex;
-static sprt::memory::dynset<FrameHandle *> s_activeFrames = sprt::memory::dynset<FrameHandle *>();
+static Set<FrameHandle *> s_activeFrames = Set<FrameHandle *>();
 
 FrameExternalTask::~FrameExternalTask() {
 	if (_frame) {
@@ -86,7 +86,8 @@ void FrameHandle::DescribeActiveFrames() {
 		for (auto &it : s_activeFrames) {
 			stream << "\tFrame: " << it->getOrder() << " refcount: " << it->getReferenceCount()
 				   << "; success: " << it->isValidFlag() << "; backtrace:\n";
-			it->foreachBacktrace([&](uint64_t id, Time time, const std::vector<std::string> &vec) {
+			it->foreachBacktrace(
+					[&](uint64_t id, Time time, const sprt::vector<sprt::string> &vec) {
 				stream << "[" << id << ":" << time.toHttp<Interface>() << "]:\n";
 				for (auto &it : vec) { stream << "\t" << it << "\n"; }
 			});
@@ -239,6 +240,8 @@ void FrameHandle::performOnGlThread(Function<void(FrameHandle &)> &&cb, Ref *ref
 
 void FrameHandle::performRequiredTask(Function<bool(FrameHandle &)> &&cb, Ref *ref,
 		StringView tag) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-lambda-capture"
 	auto task = acquireTask(ref, tag);
 	_loop->performInQueue(
 			Rc<thread::Task>::create([this, cb = sp::move(cb)](const thread::Task &) -> bool {
@@ -250,6 +253,7 @@ void FrameHandle::performRequiredTask(Function<bool(FrameHandle &)> &&cb, Ref *r
 			log::source().error("FrameHandle", "Async task failed: ", tag);
 		}
 	}, task));
+#pragma clang diagnostic pop
 }
 
 void FrameHandle::performRequiredTask(Function<bool(FrameHandle &)> &&perform,

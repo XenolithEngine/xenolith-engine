@@ -224,7 +224,7 @@ Status MacosContextController::readFromClipboard(Rc<ClipboardRequest> &&req) {
 	}
 
 	auto selectedType = req->typeCallback(targetTypes);
-	if (std::find(targetTypes.begin(), targetTypes.end(), selectedType) == targetTypes.end()) {
+	if (sprt::find(targetTypes.begin(), targetTypes.end(), selectedType) == targetTypes.end()) {
 		req->dataCallback(Status::ErrorInvalidArguemnt, BytesView(), StringView());
 		return Status::ErrorInvalidArguemnt;
 	}

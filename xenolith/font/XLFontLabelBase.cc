@@ -61,7 +61,9 @@ RangeLineIterator TextLayout::end() const { return _data.end(); }
 auto TextLayout::str(bool filter) const -> WideString {
 	WideString ret;
 	ret.reserve(_data.chars.size());
-	_data.str([&](char32_t ch) { unicode::utf16Encode(ret, ch); }, filter);
+	_data.str([&](char32_t ch) {
+		sprt::unicode::utf16EncodeCb([&](char16_t c) { ret.push_back(c); }, ch);
+	}, filter);
 	return ret;
 }
 
@@ -69,8 +71,9 @@ auto TextLayout::str(uint32_t s_start, uint32_t s_end, size_t maxWords, bool ell
 		bool filter) const -> WideString {
 	WideString ret;
 	ret.reserve(s_end - s_start + 2);
-	_data.str([&](char32_t ch) { unicode::utf16Encode(ret, ch); }, s_start, s_end, maxWords,
-			ellipsis, filter);
+	_data.str([&](char32_t ch) {
+		sprt::unicode::utf16EncodeCb([&](char16_t c) { ret.push_back(c); }, ch);
+	}, s_start, s_end, maxWords, ellipsis, filter);
 	return ret;
 }
 
@@ -90,26 +93,25 @@ Pair<uint32_t, uint32_t> TextLayout::selectWord(uint32_t origin) const {
 	return _data.selectWord(origin);
 }
 
-geom::Rect TextLayout::getLineRect(uint32_t lineId, float density, const geom::Vec2 &origin) const {
+Rect TextLayout::getLineRect(uint32_t lineId, float density, const Vec2 &origin) const {
 	return _data.getLineRect(lineId, density, origin);
 }
 
-geom::Rect TextLayout::getLineRect(const LineLayoutData &line, float density,
-		const geom::Vec2 &origin) const {
+Rect TextLayout::getLineRect(const LineLayoutData &line, float density, const Vec2 &origin) const {
 	return _data.getLineRect(line, density, origin);
 }
 
 auto TextLayout::getLabelRects(uint32_t firstCharId, uint32_t lastCharId, float density,
-		const geom::Vec2 &origin, const geom::Padding &p) const -> Vector<geom::Rect> {
-	Vector<geom::Rect> ret;
+		const Vec2 &origin, const Padding &p) const -> Vector<Rect> {
+	Vector<Rect> ret;
 	getLabelRects(ret, firstCharId, lastCharId, density, origin, p);
 	return ret;
 }
 
-void TextLayout::getLabelRects(Vector<geom::Rect> &ret, uint32_t firstCharId, uint32_t lastCharId,
-		float density, const geom::Vec2 &origin, const geom::Padding &p) const {
-	_data.getLabelRects([&](const geom::Rect &rect) { ret.push_back(rect); }, firstCharId,
-			lastCharId, density, origin, p);
+void TextLayout::getLabelRects(Vector<Rect> &ret, uint32_t firstCharId, uint32_t lastCharId,
+		float density, const Vec2 &origin, const Padding &p) const {
+	_data.getLabelRects([&](const Rect &rect) { ret.push_back(rect); }, firstCharId, lastCharId,
+			density, origin, p);
 }
 
 LabelBase::DescriptionStyle::DescriptionStyle() {
@@ -162,7 +164,7 @@ bool LabelBase::DescriptionStyle::operator!=(const DescriptionStyle &style) cons
 	return !((*this) == style);
 }
 
-LabelBase::Style::Value::Value() { memset(this, 0, sizeof(Value)); }
+LabelBase::Style::Value::Value() { sprt::memset(this, 0, sizeof(Value)); }
 
 void LabelBase::Style::set(const Param &p, bool force) {
 	if (force) {

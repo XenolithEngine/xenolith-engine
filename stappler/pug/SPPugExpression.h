@@ -120,19 +120,19 @@ struct SP_PUBLIC Expression : memory::AllocPool {
 		Options &enableAllOperators();
 		Options &disableAllOperators();
 
-		Options &enableOperators(std::initializer_list<Op> &&);
-		Options &disableOperators(std::initializer_list<Op> &&);
+		Options &enableOperators(sprt::initializer_list<Op> &&);
+		Options &disableOperators(sprt::initializer_list<Op> &&);
 
-		Options &setFlags(std::initializer_list<Flags> &&);
-		Options &clearFlags(std::initializer_list<Flags> &&);
+		Options &setFlags(sprt::initializer_list<Flags> &&);
+		Options &clearFlags(sprt::initializer_list<Flags> &&);
 
 		Options &useNewlineToken(const StringView &);
 
 		bool hasFlag(Flags) const;
 		bool hasOperator(Op) const;
 
-		std::bitset<toInt(UseNewlineToken) + 1> flags;
-		std::bitset<toInt(Op::Sequence) + 1> operators;
+		sprt::bitset<toInt(UseNewlineToken) + 1> flags;
+		sprt::bitset<toInt(Op::Sequence) + 1> operators;
 		StringView newlineToken;
 	};
 
@@ -161,6 +161,6 @@ struct SP_PUBLIC Expression : memory::AllocPool {
 	Value value;
 };
 
-}
+} // namespace stappler::pug
 
 #endif /* EXTRA_WEBSERVER_PUG_SPPUGEXPRESSION_H_ */

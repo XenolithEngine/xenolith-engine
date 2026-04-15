@@ -141,7 +141,7 @@ void SceneContent2d::replaceTopLayout(SceneLayout2d *node) {
 }
 
 void SceneContent2d::popLayout(SceneLayout2d *node) {
-	auto it = std::find(_layouts.begin(), _layouts.end(), node);
+	auto it = sprt::find(_layouts.begin(), _layouts.end(), node);
 	if (it == _layouts.end()) {
 		return;
 	}
@@ -355,7 +355,7 @@ bool SceneContent2d::pushOverlay(SceneLayout2d *l) {
 }
 
 bool SceneContent2d::popOverlay(SceneLayout2d *l) {
-	auto it = std::find(_overlays.begin(), _overlays.end(), l);
+	auto it = sprt::find(_overlays.begin(), _overlays.end(), l);
 	if (it == _overlays.end()) {
 		return false;
 	}
@@ -389,8 +389,8 @@ void SceneContent2d::updateLayoutNode(SceneLayout2d *node) {
 	Padding effectiveDecorations;
 
 	if (node->getTargetContentSize() != Size2::ZERO) {
-		size.width = std::min(size.width, node->getTargetContentSize().width);
-		size.height = std::min(size.height, node->getTargetContentSize().height);
+		size.width = sprt::min(size.width, node->getTargetContentSize().width);
+		size.height = sprt::min(size.height, node->getTargetContentSize().height);
 	}
 
 	if ((mask & DecorationMask::Top) != DecorationMask::None) {
@@ -601,8 +601,7 @@ void SceneContent2d::draw(FrameInfo &info, NodeVisitFlags flags) {
 	auto &theme = _director->getApplication()->getThemeInfo();
 
 	auto window = _director->getWindow();
-	if (hasFlag(window->getInfo()->flags,
-				WindowCreationFlags::UserSpaceDecorations)) {
+	if (hasFlag(window->getInfo()->flags, WindowCreationFlags::UserSpaceDecorations)) {
 		ctx->decorations.drawUserShadows = hasFlag(_director->getWindow()->getInfo()->capabilities,
 				WindowCapabilities::UserShadowsRequired);
 		ctx->decorations.borderRadius = theme.decorations.borderRadius;

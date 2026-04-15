@@ -23,32 +23,38 @@
 #ifndef CORE_TESS_SPTESSSIMD_HPP_
 #define CORE_TESS_SPTESSSIMD_HPP_
 
-#include "SPSIMD.h"
+#include "SPCommon.h"
+
+#include <sprt/runtime/geom/simd.h>
 
 namespace STAPPLER_VERSIONIZED stappler::geom {
 
-SP_ATTR_OPTIMIZE_INLINE_FN static inline simd::f32x4 getNormalizedVec(const float v0[2], const float v1[2], const float v2[2]) {
-	simd::f32x4 targetVec = simd::sub(
-		simd::load(v0[0], v0[1], v2[0], v2[1]),
-		simd::load(v1[0], v1[1], v1[0], v1[1])); // x0, y0, x1, y1
+namespace simd = sprt::geom::simd;
+
+SP_ATTR_OPTIMIZE_INLINE_FN static inline simd::f32x4 getNormalizedVec(const float v0[2],
+		const float v1[2], const float v2[2]) {
+	simd::f32x4 targetVec = simd::sub(simd::load(v0[0], v0[1], v2[0], v2[1]),
+			simd::load(v1[0], v1[1], v1[0], v1[1])); // x0, y0, x1, y1
 
 	simd::f32x4 squaredVec = simd::mul(targetVec, targetVec); // x0 * x0, y0 * y0, x1 * x1, y1 * y1
 
 	return simd::mul(targetVec,
-		simd::rsqrt( simd::add(squaredVec,
-			simde_mm_shuffle_ps(squaredVec, squaredVec, SIMDE_MM_SHUFFLE(2, 3, 0, 1))) ) // sse_rsqrt: n0, n0, n1, n1
-		); // nx0, ny0, nx1, ny1
+			simd::rsqrt(simd::add(squaredVec,
+					simde_mm_shuffle_ps(squaredVec, squaredVec,
+							SIMDE_MM_SHUFFLE(2, 3, 0, 1)))) // sse_rsqrt: n0, n0, n1, n1
+	); // nx0, ny0, nx1, ny1
 }
 
 SP_ATTR_OPTIMIZE_INLINE_FN static inline simd::f32x4 getBisectVec(const simd::f32x4 &normVec) {
 	simd::f32x4 tmpNHalf = simd::load(-0.5f);
-	simd::f32x4 normShuffleVec = simde_mm_shuffle_ps(normVec, normVec, SIMDE_MM_SHUFFLE(0, 1, 3, 2)); // nx1, ny1, ny0, nx0
+	simd::f32x4 normShuffleVec = simde_mm_shuffle_ps(normVec, normVec,
+			SIMDE_MM_SHUFFLE(0, 1, 3, 2)); // nx1, ny1, ny0, nx0
 
-	simd::f32x4 dotVec = simd::mul(normVec, normShuffleVec); // nx0 * nx1, ny0 * ny1, nx1 * ny0, ny1 * nx0
+	simd::f32x4 dotVec =
+			simd::mul(normVec, normShuffleVec); // nx0 * nx1, ny0 * ny1, nx1 * ny0, ny1 * nx0
 
-	simd::f32x4 crossVec = simd::sub(
-		simde_mm_movehl_ps(dotVec, dotVec),
-		simde_mm_shuffle_ps(dotVec, dotVec, SIMDE_MM_SHUFFLE(2, 3, 2, 3)));
+	simd::f32x4 crossVec = simd::sub(simde_mm_movehl_ps(dotVec, dotVec),
+			simde_mm_shuffle_ps(dotVec, dotVec, SIMDE_MM_SHUFFLE(2, 3, 2, 3)));
 
 	if (simde_mm_comieq_ss(crossVec, simde_mm_setzero_ps())) [[unlikely]] {
 
@@ -60,26 +66,27 @@ SP_ATTR_OPTIMIZE_INLINE_FN static inline simd::f32x4 getBisectVec(const simd::f3
 		// -ny1
 		// nx1
 
-		return simd::mul(
-			simd::load(0.0f, 1.0f, -1.0f, 1.0f),
-			simde_mm_shuffle_ps(simd::load(1.0f), normVec, SIMDE_MM_SHUFFLE(2, 3, 1, 0))
-		);
+		return simd::mul(simd::load(0.0f, 1.0f, -1.0f, 1.0f),
+				simde_mm_shuffle_ps(simd::load(1.0f), normVec, SIMDE_MM_SHUFFLE(2, 3, 1, 0)));
 	} else {
 		// -0.5      + -0.5
 		// nx0 * nx1 + ny0 * ny1
 		// nx0       + nx1
 		// ny0       + ny1
-		simd::f32x4 normTarget = simd::add(
-			simde_mm_movelh_ps(simde_mm_unpacklo_ps(tmpNHalf, dotVec), normVec),   // -0.5, nx0 * nx1, nx0, ny0,
-			simde_mm_movelh_ps(simde_mm_move_ss(dotVec, tmpNHalf), normShuffleVec) // -0.5, ny0 * ny1, nx1, ny1,
-		); // -1.0 , dot , tx (nx0 + nx1) , ty (ny0 + ny1)
+		simd::f32x4 normTarget =
+				simd::add(simde_mm_movelh_ps(simde_mm_unpacklo_ps(tmpNHalf, dotVec),
+								  normVec), // -0.5, nx0 * nx1, nx0, ny0,
+						simde_mm_movelh_ps(simde_mm_move_ss(dotVec, tmpNHalf),
+								normShuffleVec) // -0.5, ny0 * ny1, nx1, ny1,
+				); // -1.0 , dot , tx (nx0 + nx1) , ty (ny0 + ny1)
 
 		// -0.5  * -1.0
 		// -0.5 * dotValue
 		// tx   * tx
 		// ty   * ty
 
-		simd::f32x4 squaredVec = simd::mul(simde_mm_movehl_ps(normTarget, tmpNHalf), normTarget); // 0.5, -0.5 * dot, tx * tx, ty * ty
+		simd::f32x4 squaredVec = simd::mul(simde_mm_movehl_ps(normTarget, tmpNHalf),
+				normTarget); // 0.5, -0.5 * dot, tx * tx, ty * ty
 
 		// combined normalizing, length calculation, ccw test
 		// ccw = nx1 * ny0 - ny1 * nx0
@@ -87,17 +94,11 @@ SP_ATTR_OPTIMIZE_INLINE_FN static inline simd::f32x4 getBisectVec(const simd::f3
 		// ntx = tx *  rsqrt( tx*tx +  ty*ty )
 		// nty = ty *  rsqrt( tx*tx +  ty*ty )
 
-		return simde_mm_move_ss(
-			simd::mul(simde_mm_movehl_ps(normTarget, simd::load(1.0f)),
-				simd::rsqrt(
-					simd::add(
-						squaredVec,
-						simde_mm_shuffle_ps(squaredVec, squaredVec, SIMDE_MM_SHUFFLE(2, 3, 0, 1))
-					)
-				)
-			),
-			crossVec
-		);
+		return simde_mm_move_ss(simd::mul(simde_mm_movehl_ps(normTarget, simd::load(1.0f)),
+										simd::rsqrt(simd::add(squaredVec,
+												simde_mm_shuffle_ps(squaredVec, squaredVec,
+														SIMDE_MM_SHUFFLE(2, 3, 0, 1))))),
+				crossVec);
 	}
 }
 
@@ -107,12 +108,13 @@ SP_ATTR_OPTIMIZE_INLINE_FN static inline simd::f32x4 getBisectVec(const simd::f3
 // ntx = tx *  rsqrt( tx*tx +  ty*ty )
 // nty = ty *  rsqrt( tx*tx +  ty*ty )
 
-SP_ATTR_OPTIMIZE_FN static void getVertexNormal(const float v0[2], const float v1[], const float v2[], float result[4]) {
+SP_ATTR_OPTIMIZE_FN static void getVertexNormal(const float v0[2], const float v1[],
+		const float v2[], float result[4]) {
 	simd::f32x4 normVec = getNormalizedVec(v0, v1, v2);
 	simd::f32x4 bisectVec = getBisectVec(normVec);
 	simd::store(result, bisectVec);
 }
 
-}
+} // namespace stappler::geom
 
 #endif /* CORE_TESS_SPTESSSIMD_HPP_ */

@@ -174,7 +174,7 @@ Rc<FontController> FontComponent::acquireController(event::Looper *looper,
 		Rc<event::Looper> looper;
 
 		bool invalid = false;
-		std::atomic<size_t> pendingData = 0;
+		sprt::atomic<size_t> pendingData = 0;
 		FontComponent *ext = nullptr;
 
 		ControllerBuilder(FontController::Builder &&b) : builder(move(b)) {

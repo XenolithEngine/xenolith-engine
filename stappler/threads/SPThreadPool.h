@@ -25,8 +25,8 @@
 #define CORE_THREADS_SPTHREADPOOL_H_
 
 #include "SPThreadTask.h"
-#include "SPStatus.h"
 #include "SPMemory.h"
+#include <sprt/cxx/condition_variable>
 
 namespace STAPPLER_VERSIONIZED stappler::thread {
 
@@ -54,7 +54,7 @@ SP_DEFINE_ENUM_AS_MASK(ThreadPoolFlags);
 struct SP_PUBLIC ThreadPoolInfo {
 	ThreadPoolFlags flags = ThreadPoolFlags::None;
 	StringView name;
-	uint16_t threadCount = std::thread::hardware_concurrency();
+	uint16_t threadCount = sprt::thread::hardware_concurrency();
 	PerformInterface *complete = nullptr;
 	Rc<Ref> ref; // reference to store interface
 };
@@ -89,23 +89,23 @@ protected:
 		ThreadPoolInfo info;
 		ThreadPool *threadPool = nullptr;
 
-		std::atomic<bool> finalized;
-		std::atomic<size_t> tasksInExecution = 0;
-		std::atomic<size_t> tasksInQueue = 0;
+		sprt::atomic<bool> finalized;
+		sprt::atomic<size_t> tasksInExecution = 0;
+		sprt::atomic<size_t> tasksInQueue = 0;
 
 		mem_std::Vector<Worker *> workers;
 
-		std::mutex inputMutexQueue;
-		std::mutex inputMutexFree;
+		sprt::qmutex inputMutexQueue;
+		sprt::qmutex inputMutexFree;
 		memory::PriorityQueue<Rc<Task>> inputQueue;
-		std::condition_variable inputCondition;
+		sprt::condition_variable inputCondition;
 
 		WorkerContext();
 		~WorkerContext();
 
 		bool init(ThreadPoolInfo &&i, ThreadPool *p);
 
-		void wait(std::unique_lock<std::mutex> &lock);
+		void wait(sprt::unique_lock<sprt::qmutex> &lock);
 		void finalize();
 		void spawn();
 		void cancel();

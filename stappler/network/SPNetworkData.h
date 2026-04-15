@@ -29,6 +29,8 @@ THE SOFTWARE.
 #include "SPCrypto.h"
 #include "SPData.h"
 
+#include <sprt/cxx/variant>
+
 namespace STAPPLER_VERSIONIZED stappler::network {
 
 #if LINUX
@@ -48,9 +50,11 @@ enum class Method {
 };
 
 enum class AuthMethod {
+	None,
 	Basic,
 	Digest,
-	PKey, // custom serenity method
+	Bearer,
+	PKey, // custom serenity method; bearer with key pair
 };
 
 uint32_t getActiveHandles();
@@ -59,14 +63,11 @@ template <typename Interface>
 struct SP_PUBLIC AuthData {
 	using String = typename Interface::StringType;
 
-	std::variant< Pair<String, String>, // user, password
-			String // keySign
-			>
-			data;
-
+	String username;
+	String credentials;
 	String proxyAddress;
 	String proxyAuth;
-	AuthMethod authMethod = AuthMethod::Basic;
+	AuthMethod authMethod = AuthMethod::None;
 };
 
 template <typename Interface>
@@ -84,7 +85,7 @@ struct SP_PUBLIC SendData {
 	using Bytes = typename Interface::BytesType;
 	using IOCallback = Function<size_t(char *data, size_t size)>;
 
-	using DataSource = std::variant< std::monostate,
+	using DataSource = sprt::variant< sprt::monostate,
 			String, // filename
 			Bytes, // data
 			IOCallback // data callback
@@ -158,7 +159,7 @@ struct SP_PUBLIC ReceiveData {
 	using IOCallback = Function<size_t(char *data, size_t size)>;
 	using HeaderCallback = Function<void(StringView, StringView)>;
 
-	using DataSource = std::variant< std::monostate,
+	using DataSource = sprt::variant< sprt::monostate,
 			String, // filename
 			IOCallback // data callback
 			>;

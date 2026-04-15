@@ -28,14 +28,13 @@
 
 namespace STAPPLER_VERSIONIZED stappler::document {
 
-
 HtmlReader::String HtmlReader::encodePathString(StringView r) {
 	String ret;
 	ret.resize(r.size());
 
 	size_t offset = 0;
 	auto fn = [&](StringView v) {
-		memcpy(ret.data() + offset, v.data(), v.size());
+		sprt::memcpy(ret.data() + offset, v.data(), v.size());
 		offset += v.size();
 	};
 
@@ -87,13 +86,13 @@ void HtmlReader::onEndTag(Parser &p, HtmlTag &tag, bool isClosable) {
 		if ((tag.type == HtmlTag::Image || tag.node->getXType() == "image" || tag.name == "table")
 				&& tag.node->getHtmlId().empty()) {
 			tag.node->setAttribute("id",
-					string::toString<Interface>("__id__", _pseudoId, "__",
+					mem_pool::toString("__id__", _pseudoId, "__",
 							encodePathString(page->getPath())));
 			_pseudoId++;
 		}
 
 		if (tag.node->getXType() == "image") {
-			tag.node->setAttribute("href", string::toString<Interface>("#", tag.node->getHtmlId()));
+			tag.node->setAttribute("href", mem_pool::toString("#", tag.node->getHtmlId()));
 		}
 
 		if (tag.name == "img") {

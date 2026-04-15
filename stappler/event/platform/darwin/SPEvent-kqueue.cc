@@ -269,7 +269,7 @@ uint64_t KQueueTimerSource::getNextInterval() const {
 
 bool KQueueTimerHandle::init(HandleClass *cl, TimerInfo &&info) {
 	static_assert(sizeof(KQueueTimerSource) <= DataSize
-			&& std::is_standard_layout<KQueueTimerSource>::value);
+			&& sprt::is_standard_layout<KQueueTimerSource>::value);
 
 	if (!TimerHandle::init(cl, info.completion)) {
 		return false;
@@ -360,7 +360,7 @@ void KQueueThreadSource::cancel() { }
 
 bool KQueueThreadHandle::init(HandleClass *cl) {
 	static_assert(sizeof(KQueueThreadSource) <= DataSize
-			&& std::is_standard_layout<KQueueThreadSource>::value);
+			&& sprt::is_standard_layout<KQueueThreadSource>::value);
 
 	if (!ThreadHandle::init(cl)) {
 		return false;
@@ -415,7 +415,7 @@ void KQueueThreadHandle::notify(KQueueData *queue, KQueueThreadSource *source,
 
 Status KQueueThreadHandle::perform(Rc<thread::Task> &&task) {
 	auto q = reinterpret_cast<KQueueData *>(_class->info->data->_platformQueue);
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	_outputQueue.emplace_back(move(task));
 
 	struct kevent ev;
@@ -428,7 +428,7 @@ Status KQueueThreadHandle::perform(Rc<thread::Task> &&task) {
 Status KQueueThreadHandle::perform(mem_std::Function<void()> &&func, Ref *target, StringView tag) {
 	auto q = reinterpret_cast<KQueueData *>(_class->info->data->_platformQueue);
 
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	_outputCallbacks.emplace_back(CallbackInfo{sp::move(func), target, tag});
 
 	struct kevent ev;

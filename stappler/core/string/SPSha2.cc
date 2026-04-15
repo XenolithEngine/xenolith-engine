@@ -35,13 +35,13 @@ Sha1::Buf Sha1::make(const CoderSource &source, const StringView &salt) {
 
 Sha1::Buf Sha1::hmac(const CoderSource &data, const CoderSource &key) {
 	Buf ret;
-	std::array<uint8_t, Length * 2> keyData = {0};
+	sprt::array<uint8_t, Length * 2> keyData = {0};
 
 	Sha1 shaCtx;
 	if (key.size() > Length * 2) {
 		shaCtx.update(key).final(keyData.data());
 	} else {
-		memcpy(keyData.data(), key.data(), key.size());
+		sprt::memcpy(keyData.data(), key.data(), key.size());
 	}
 
 	for (auto &it : keyData) { it ^= HMAC_I_PAD; }
@@ -82,13 +82,13 @@ Sha512::Buf Sha512::make(const CoderSource &source, const StringView &salt) {
 
 Sha512::Buf Sha512::hmac(const CoderSource &data, const CoderSource &key) {
 	Buf ret;
-	std::array<uint8_t, Length * 2> keyData = {0};
+	sprt::array<uint8_t, Length * 2> keyData = {0};
 
 	Sha512 shaCtx;
 	if (key.size() > Length * 2) {
 		shaCtx.update(key).final(keyData.data());
 	} else {
-		memcpy(keyData.data(), key.data(), key.size());
+		sprt::memcpy(keyData.data(), key.data(), key.size());
 	}
 
 	for (auto &it : keyData) { it ^= HMAC_I_PAD; }
@@ -130,14 +130,14 @@ Sha256::Buf Sha256::make(const CoderSource &source, const StringView &salt) {
 
 Sha256::Buf Sha256::hmac(const CoderSource &data, const CoderSource &key) {
 	Buf ret;
-	std::array<uint8_t, Length * 2> keyData = {0};
-	memset(keyData.data(), 0, keyData.size());
+	sprt::array<uint8_t, Length * 2> keyData = {0};
+	sprt::memset(keyData.data(), 0, keyData.size());
 
 	Sha256 shaCtx;
 	if (key.size() > Length * 2) {
 		shaCtx.init().update(key).final(keyData.data());
 	} else {
-		memcpy(keyData.data(), key.data(), key.size());
+		sprt::memcpy(keyData.data(), key.data(), key.size());
 	}
 
 	for (auto &it : keyData) { it ^= HMAC_I_PAD; }

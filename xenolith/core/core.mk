@@ -28,7 +28,6 @@ MODULE_XENOLITH_CORE_INCLUDES_OBJS := $(XENOLITH_MODULE_DIR)/core $(XENOLITH_MOD
 MODULE_XENOLITH_CORE_DEPENDS_ON := \
 	stappler_bitmap \
 	stappler_event \
-	stappler_geom \
 	stappler_font
 
 MODULE_XENOLITH_CORE_CONFIG_VALUES := \

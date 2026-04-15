@@ -79,7 +79,7 @@ bool parseCommandLineOptions(Output &output, int argc, const char *argv[],
 			}
 		} else {
 			if (quoted > 0) {
-				size_t len = strlen(value);
+				size_t len = sprt::strlen(value);
 				if (len > 0 && value[len - 1] == quoted) {
 					--len;
 				}

@@ -50,14 +50,14 @@ SPUNUSED static VKAPI_ATTR VkBool32 VKAPI_CALL s_debugMessageCallback(
 		VkDebugUtilsMessageTypeFlagsEXT messageType,
 		const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
 	if (pCallbackData->pMessageIdName
-			&& strcmp(pCallbackData->pMessageIdName,
+			&& sprt::strcmp(pCallbackData->pMessageIdName,
 					   "VUID-VkSwapchainCreateInfoKHR-imageExtent-01274")
 					== 0) {
 		// this is normal for multithreaded engine
 		messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
 	}
 	if (pCallbackData->pMessageIdName
-			&& strcmp(pCallbackData->pMessageIdName, "Loader Message") == 0) {
+			&& sprt::strcmp(pCallbackData->pMessageIdName, "Loader Message") == 0) {
 		if (messageSeverity <= VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) {
 			if (StringView(pCallbackData->pMessage).starts_with("Instance Extension: ")
 					|| StringView(pCallbackData->pMessage).starts_with("Device Extension: ")) {
@@ -106,23 +106,23 @@ SPUNUSED static VKAPI_ATTR VkBool32 VKAPI_CALL s_debugMessageCallback(
 }
 
 void InstanceData::enableLayer(const char *str) {
-	auto it = std::find_if(layersToEnable.begin(), layersToEnable.end(),
-			[&](const char *ptr) { return strcmp(str, ptr) == 0; });
+	auto it = sprt::find_if(layersToEnable.begin(), layersToEnable.end(),
+			[&](const char *ptr) { return sprt::strcmp(str, ptr) == 0; });
 	if (it == layersToEnable.end()) {
 		layersToEnable.emplace_back(str);
 	}
 }
 
 void InstanceData::enableExtension(const char *str) {
-	auto it = std::find_if(extensionsToEnable.begin(), extensionsToEnable.end(),
-			[&](const char *ptr) { return strcmp(str, ptr) == 0; });
+	auto it = sprt::find_if(extensionsToEnable.begin(), extensionsToEnable.end(),
+			[&](const char *ptr) { return sprt::strcmp(str, ptr) == 0; });
 	if (it == extensionsToEnable.end()) {
 		extensionsToEnable.emplace_back(str);
 	}
 }
 
 Instance::Instance(VkInstance inst, const PFN_vkGetInstanceProcAddr getInstanceProcAddr,
-		uint32_t targetVersion, OptVec &&optionals, Dso &&vulkanModule,
+		uint32_t targetVersion, OptVec &&optionals, sprt::Dso &&vulkanModule,
 		PresentSupportCallback &&present, SurfaceBackendMask &&mask, core::InstanceFlags flags)
 : core::Instance(core::InstanceApi::Vulkan, flags, sp::move(vulkanModule))
 , InstanceTable(getInstanceProcAddr, inst)
@@ -248,8 +248,8 @@ Rc<Device> Instance::makeDevice(const core::LoopInfo &info) const {
 		if (!requiredExtensions.empty()) {
 			bool found = true;
 			for (auto &req : requiredExtensions) {
-				auto iit = std::find(dev.availableExtensions.begin(), dev.availableExtensions.end(),
-						req);
+				auto iit = sprt::find(dev.availableExtensions.begin(),
+						dev.availableExtensions.end(), req);
 				if (iit == dev.availableExtensions.end()) {
 					found = false;
 					break;
@@ -443,12 +443,12 @@ core::SurfaceInfo Instance::getSurfaceOptions(VkSurfaceKHR surface, VkPhysicalDe
 
 		for (auto &it : modes) { ret.presentModes.emplace_back(getGlPresentMode(it)); }
 
-		std::sort(ret.presentModes.begin(), ret.presentModes.end(),
+		sprt::sort(ret.presentModes.begin(), ret.presentModes.end(),
 				[&](core::PresentMode l, core::PresentMode r) { return toInt(l) > toInt(r); });
 	}
 
 	// index into s_optionalExtension
-	if (_optionals[toInt(OptionalInstanceExtension::SurfaceCapabilities2)]) {
+	if (_optionals.test(toInt(OptionalInstanceExtension::SurfaceCapabilities2))) {
 		vkGetPhysicalDeviceSurfaceCapabilities2KHR(device, &info, &caps);
 	} else {
 		vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &caps.surfaceCapabilities);
@@ -488,7 +488,7 @@ VkExtent2D Instance::getSurfaceExtent(VkSurfaceKHR surface, VkPhysicalDevice dev
 
 VkInstance Instance::getInstance() const { return _instance; }
 
-void Instance::printDevicesInfo(std::ostream &out, bool initOnly) const {
+void Instance::printDevicesInfo(const CallbackStream &out, bool initOnly) const {
 	out << "\n";
 
 	auto getDeviceTypeString = [&](VkPhysicalDeviceType type) -> const char * {
@@ -629,27 +629,27 @@ void Instance::getDeviceFeatures(const VkPhysicalDevice &device, DeviceInfo::Fea
 
 		features.updateFrom12();
 	} else {
-		if (flags[toInt(OptionalDeviceExtension::Storage16Bit)]) {
+		if (flags.test(toInt(OptionalDeviceExtension::Storage16Bit))) {
 			features.device16bitStorage.pNext = next;
 			next = &features.device16bitStorage;
 		}
-		if (flags[toInt(OptionalDeviceExtension::Storage8Bit)]) {
+		if (flags.test(toInt(OptionalDeviceExtension::Storage8Bit))) {
 			features.device8bitStorage.pNext = next;
 			next = &features.device8bitStorage;
 		}
-		if (flags[toInt(OptionalDeviceExtension::ShaderFloat16Int8)]) {
+		if (flags.test(toInt(OptionalDeviceExtension::ShaderFloat16Int8))) {
 			features.deviceShaderFloat16Int8.pNext = next;
 			next = &features.deviceShaderFloat16Int8;
 		}
-		if (flags[toInt(OptionalDeviceExtension::DescriptorIndexing)]) {
+		if (flags.test(toInt(OptionalDeviceExtension::DescriptorIndexing))) {
 			features.deviceDescriptorIndexing.pNext = next;
 			next = &features.deviceDescriptorIndexing;
 		}
-		if (flags[toInt(OptionalDeviceExtension::DeviceAddress)]) {
+		if (flags.test(toInt(OptionalDeviceExtension::DeviceAddress))) {
 			features.deviceBufferDeviceAddress.pNext = next;
 			next = &features.deviceBufferDeviceAddress;
 		}
-		if (flags[toInt(OptionalDeviceExtension::SwapchainMaintenance1)]) {
+		if (flags.test(toInt(OptionalDeviceExtension::SwapchainMaintenance1))) {
 			features.deviceSwapchainMaintenance1.pNext = next;
 			next = &features.deviceSwapchainMaintenance1;
 		}
@@ -683,11 +683,11 @@ void Instance::getDeviceProperties(const VkPhysicalDevice &device,
 		next = &properties.devicePortability;
 	}
 #endif
-	if (flags[toInt(OptionalDeviceExtension::Maintenance3)]) {
+	if (flags.test(toInt(OptionalDeviceExtension::Maintenance3))) {
 		properties.deviceMaintenance3.pNext = next;
 		next = &properties.deviceMaintenance3;
 	}
-	if (flags[toInt(OptionalDeviceExtension::DescriptorIndexing)]) {
+	if (flags.test(toInt(OptionalDeviceExtension::DescriptorIndexing))) {
 		properties.deviceDescriptorIndexing.pNext = next;
 		next = &properties.deviceDescriptorIndexing;
 	}
@@ -822,7 +822,7 @@ void Instance::getDeviceInfo(DeviceInfo &ret, VkPhysicalDevice device) const {
 
 		bool found = false;
 		for (auto &extension : availableExtensions) {
-			if (strcmp(extensionName, extension.extensionName) == 0) {
+			if (sprt::strcmp(extensionName, extension.extensionName) == 0) {
 				found = true;
 				break;
 			}

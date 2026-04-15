@@ -65,7 +65,7 @@ protected:
 class SP_PUBLIC MeshIndex final : public Resource {
 public:
 	using DataCallback = memory::callback<void(BytesView)>;
-	using BufferCallback = memory::function<void(uint8_t *, uint64_t, const DataCallback &)>;
+	using BufferCallback = mem_pool::Function<void(uint8_t *, uint64_t, const DataCallback &)>;
 
 	struct MeshBufferInfo {
 		uint64_t indexBufferSize;
@@ -95,7 +95,8 @@ class SP_PUBLIC MeshAttachment : public BufferAttachment {
 public:
 	virtual ~MeshAttachment();
 
-	virtual bool init(AttachmentBuilder &, const BufferInfo &info, Vector<Rc<MeshIndex>> &&initials);
+	virtual bool init(AttachmentBuilder &, const BufferInfo &info,
+			Vector<Rc<MeshIndex>> &&initials);
 
 	const Rc<MeshSet> &getMeshes() const;
 	void setMeshes(const Rc<MeshSet> &) const;
@@ -107,6 +108,6 @@ protected:
 	Vector<Rc<MeshIndex>> _initials;
 };
 
-}
+} // namespace stappler::xenolith::core
 
 #endif /* XENOLITH_CORE_XLCOREMESH_H_ */

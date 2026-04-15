@@ -460,7 +460,7 @@ bool validatePassord(const StringView &str, const BytesView &passwd, const Strin
 
 	string::Sha512::Buf source = string::Sha512::make(str, Config_getInternalPasswordKey());
 	uint8_t controlKey[16 + string::Sha512::Length] = {0};
-	memcpy(controlKey, passwd.data(), 16);
+	sprt::memcpy(controlKey, passwd.data(), 16);
 
 	string::Sha512 hash_ctx;
 	hash_ctx.update(passwd.data(), 16);
@@ -470,7 +470,7 @@ bool validatePassord(const StringView &str, const BytesView &passwd, const Strin
 	hash_ctx.update(source);
 	hash_ctx.final(controlKey + 16);
 
-	if (memcmp(passwd.data() + 16, controlKey + 16, string::Sha512::Length) == 0) {
+	if (sprt::memcmp(passwd.data() + 16, controlKey + 16, string::Sha512::Length) == 0) {
 		return true;
 	} else {
 		return false;
@@ -486,16 +486,16 @@ static const char *const pswd_lower = PSWD_LOWER;
 static const char *const pswd_upper = PSWD_UPPER;
 static const char *const pswd_all = PSWD_NUMBERS PSWD_LOWER PSWD_UPPER;
 
-static uint8_t pswd_numbersCount = uint8_t(strlen(PSWD_NUMBERS));
-static uint8_t pswd_lowerCount = uint8_t(strlen(PSWD_LOWER));
-static uint8_t pswd_upperCount = uint8_t(strlen(PSWD_UPPER));
-static uint8_t pswd_allCount = uint8_t(strlen(PSWD_NUMBERS PSWD_LOWER PSWD_UPPER));
+static uint8_t pswd_numbersCount = uint8_t(sprt::strlen(PSWD_NUMBERS));
+static uint8_t pswd_lowerCount = uint8_t(sprt::strlen(PSWD_LOWER));
+static uint8_t pswd_upperCount = uint8_t(sprt::strlen(PSWD_UPPER));
+static uint8_t pswd_allCount = uint8_t(sprt::strlen(PSWD_NUMBERS PSWD_LOWER PSWD_UPPER));
 
 
 template <typename Callback>
 static void generatePassword_buf(size_t len, const uint8_t *bytes, const Callback &cb) {
 	uint16_t meta = 0;
-	memcpy(&meta, bytes, sizeof(uint16_t));
+	sprt::memcpy(&meta, bytes, sizeof(uint16_t));
 
 	bool extraChars[3] = {false, false, false};
 	for (size_t i = 0; i < len - 3; ++i) {
@@ -578,7 +578,7 @@ uint32_t readIp(StringView r, bool &err) {
 	return 0;
 }
 
-Pair<uint32_t, uint32_t> readIpRange(StringView r) {
+sprt::pair<uint32_t, uint32_t> readIpRange(StringView r) {
 	uint32_t start = 0;
 	uint32_t end = 0;
 	uint32_t mask = 0;

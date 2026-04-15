@@ -29,10 +29,6 @@ namespace STAPPLER_VERSIONIZED stappler::filesystem {
 
 class SP_PUBLIC File final {
 public:
-	using traits_type = std::char_traits<char>;
-	using streamsize = std::streamsize;
-	using int_type = typename traits_type::int_type;
-
 	static File open_tmp(StringView prefix, OpenFlags, Status * = nullptr);
 	static File open(const FileInfo &info, OpenFlags, Status * = nullptr);
 	static File open(const LocationInfo &info, StringView path, OpenFlags, Status * = nullptr);
@@ -55,11 +51,11 @@ public:
 	size_t tell() const;
 	size_t size() const;
 
-	int_type xsgetc();
-	int_type xsputc(int_type c);
+	int xsgetc();
+	int xsputc(int c);
 
-	streamsize xsputn(const char *s, streamsize n);
-	streamsize xsgetn(char *s, streamsize n);
+	ssize_t xsputn(const char *s, ssize_t n);
+	ssize_t xsgetn(char *s, ssize_t n);
 
 	void close();
 	void close_remove();

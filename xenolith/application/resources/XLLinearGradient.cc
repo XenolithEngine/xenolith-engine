@@ -60,7 +60,7 @@ bool LinearGradient::updateWithData(const Vec2 &start, const Vec2 &end,
 	_data->end = end;
 	_data->steps = sp::move(steps);
 
-	std::sort(_data->steps.begin(), _data->steps.end(),
+	sprt::sort(_data->steps.begin(), _data->steps.end(),
 			[](const GradientStep &l, const GradientStep &r) { return l.value < r.value; });
 	/*if (_data->steps.front().value > 0.0f) {
 		_data->steps.insert(_data->steps.begin(), GradientStep{0.0f, _data->steps.front().color});

@@ -44,7 +44,7 @@ Rect ImageLayer::getCorrectRect(Size2 containerSize) {
 		ret.size.height = 0;
 	}
 
-	if (isnan(containerSize.width) || isnan(containerSize.height)) {
+	if (sprt::isnan(containerSize.width) || sprt::isnan(containerSize.height)) {
 		log::format(log::LogType::Error, "ImageLayer", SP_LOCATION,
 				"rect %f %f %f %f : %f %f %f %f", parentSize.width, parentSize.height,
 				containerSize.width, containerSize.height, ret.origin.x, ret.origin.y,
@@ -70,7 +70,7 @@ Vec2 ImageLayer::getCorrectPosition(Size2 containerSize, Vec2 point) {
 		ret.y = bounds.getMaxY();
 	}
 
-	if (isnan(ret.x) || isnan(ret.y)) {
+	if (sprt::isnan(ret.x) || sprt::isnan(ret.y)) {
 		log::format(log::LogType::Error, "ImageLayer", SP_LOCATION,
 				"pos %f %f %f %f : %f %f : %f %f", bounds.origin.x, bounds.origin.y,
 				bounds.size.width, bounds.size.height, point.x, point.y, ret.x, ret.y);
@@ -154,10 +154,10 @@ void ImageLayer::handleContentSizeDirty() {
 	_root->setContentSize(Size2(imageSize.width, imageSize.height));
 
 	if (!_scaleDisabled) {
-		_minScale = std::min(_contentSize.width / _image->getContentSize().width,
+		_minScale = sprt::min(_contentSize.width / _image->getContentSize().width,
 				_contentSize.height / _image->getContentSize().height);
 
-		_maxScale = std::max(_image->getContentSize().width * GetMaxScaleFactor()
+		_maxScale = sprt::max(_image->getContentSize().width * GetMaxScaleFactor()
 						/ _contentSize.width,
 				_image->getContentSize().height * GetMaxScaleFactor() / _contentSize.height);
 	} else {
@@ -224,10 +224,10 @@ void ImageLayer::setTexture(Rc<Texture> &&tex) {
 
 	if (_running) {
 		if (!_scaleDisabled) {
-			_minScale = std::min(_contentSize.width / _image->getContentSize().width,
+			_minScale = sprt::min(_contentSize.width / _image->getContentSize().width,
 					_contentSize.height / _image->getContentSize().height);
 
-			_maxScale = std::max(_image->getContentSize().width * GetMaxScaleFactor()
+			_maxScale = sprt::max(_image->getContentSize().width * GetMaxScaleFactor()
 							/ _contentSize.width,
 					_image->getContentSize().height * GetMaxScaleFactor() / _contentSize.height);
 

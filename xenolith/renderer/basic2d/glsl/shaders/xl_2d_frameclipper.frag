@@ -3,11 +3,13 @@
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_EXT_buffer_reference : require
 
+// clang-format off
+
+#include "sprt_glsl.h"
+#include "XL2dGlslVertexData.h"
+
 layout (location = 0) in vec2 fragTexCoord;
 layout (location = 0) out vec4 outColor;
-
-#include "SPGlslInit.h"
-#include "XL2dGlslVertexData.h"
 
 layout (std430, push_constant) uniform pcb {
 	FrameClipperData data;

@@ -37,7 +37,7 @@ Status EPollData::add(int fd, const epoll_event &ev) {
 	auto ret =
 			::__sprt_epoll_ctl(_epollFd, __SPRT_EPOLL_CTL_ADD, fd, const_cast<epoll_event *>(&ev));
 	if (ret < 0) {
-		return sprt::status::errnoToStatus(errno);
+		return sprt::status::errnoToStatus(__sprt_errno);
 	}
 	return Status::Ok;
 }
@@ -45,7 +45,7 @@ Status EPollData::add(int fd, const epoll_event &ev) {
 Status EPollData::remove(int fd) {
 	auto ret = ::__sprt_epoll_ctl(_epollFd, __SPRT_EPOLL_CTL_DEL, fd, nullptr);
 	if (ret < 0) {
-		return sprt::status::errnoToStatus(errno);
+		return sprt::status::errnoToStatus(__sprt_errno);
 	}
 	return Status::Ok;
 }
@@ -72,7 +72,7 @@ Status EPollData::runPoll(TimeInterval ival) {
 
 		return Status::Ok;
 	} else {
-		return sprt::status::errnoToStatus(errno);
+		return sprt::status::errnoToStatus(__sprt_errno);
 	}
 }
 

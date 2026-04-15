@@ -215,7 +215,7 @@ void FontFaceData::inspectVariableFont(FontLayoutParameters params, FT_Library l
 				_variations.grade.min = FontGrade(masters->axis[i].minimum >> 16);
 				_variations.grade.max = FontGrade(masters->axis[i].maximum >> 16);
 			}
-			/* std::cout << "Variable axis: [" << masters->axis[i].tag << "] "
+			/* sprt::cout << "Variable axis: [" << masters->axis[i].tag << "] "
 					<< (masters->axis[i].minimum >> 16) << " - " << (masters->axis[i].maximum >> 16)
 					<< " def: "<< (masters->axis[i].def >> 16) << "\n"; */
 		}
@@ -327,7 +327,7 @@ char16_t FontFaceObject::getCharId(char32_t theChar) const {
 
 bool FontFaceObject::acquireTexture(char32_t theChar,
 		const Callback<void(const CharTexture &)> &cb) {
-	std::unique_lock lock(_faceMutex);
+	sprt::unique_lock lock(_faceMutex);
 
 	return acquireTextureUnsafe(theChar, cb);
 }
@@ -366,8 +366,8 @@ bool FontFaceObject::acquireTextureUnsafe(char32_t theChar,
 		}
 	} else {
 		if (!sprt::chars::isspace(theChar) && theChar != char16_t(0x0A)) {
-			log::format(log::Warn, "Font", SP_LOCATION, "error: no bitmap for (%d) '%s'", theChar,
-					string::toUtf8<Interface>(theChar).data());
+			log::format(sprt::oslog::Warn, "Font", SP_LOCATION, "error: no bitmap for (%d) '%s'",
+					theChar, string::toUtf8<Interface>(theChar).data());
 		}
 	}
 	return false;
@@ -436,17 +436,17 @@ bool FontFaceObject::addCharGroup(CharGroupId g, Vector<char32_t> *failed) {
 }
 
 bool FontFaceObject::addRequiredChar(char32_t ch) {
-	std::unique_lock lock(_requiredMutex);
+	sprt::unique_lock lock(_requiredMutex);
 	return mem_std::emplace_ordered(_required, ch);
 }
 
 auto FontFaceObject::getRequiredChars() const -> Vector<char32_t> {
-	std::unique_lock lock(_requiredMutex);
+	sprt::unique_lock lock(_requiredMutex);
 	return _required;
 }
 
 size_t FontFaceObject::getRequiredCharsCount() const {
-	std::unique_lock lock(_requiredMutex);
+	sprt::unique_lock lock(_requiredMutex);
 	return _required.size();
 }
 
@@ -457,7 +457,7 @@ CharShape FontFaceObject::getChar(char32_t c) const {
 	}
 
 	auto ch = char16_t(c & 0xFFFF);
-	std::shared_lock lock(_charsMutex);
+	sprt::shared_lock lock(_charsMutex);
 	auto l = _chars.get(ch);
 	if (l && l->charID == ch) {
 		return CharShape{char32_t(l->charID) | (char32_t(_plane) << 16), l->xAdvance};
@@ -475,7 +475,7 @@ int16_t FontFaceObject::getKerningAmount(char32_t first, char32_t second) const 
 	auto firstCh = first & 0xFFFF;
 	auto secondCh = second & 0xFFFF;
 
-	std::shared_lock lock(_charsMutex);
+	sprt::shared_lock lock(_charsMutex);
 	uint32_t key = (firstCh << 16) | (secondCh & 0xffff);
 	auto it = _kerning.find(key);
 	if (it != _kerning.end()) {
@@ -487,7 +487,7 @@ int16_t FontFaceObject::getKerningAmount(char32_t first, char32_t second) const 
 bool FontFaceObject::addChar(char16_t theChar, bool &updated) {
 	do {
 		// try to get char with shared lock
-		std::shared_lock charsLock(_charsMutex);
+		sprt::shared_lock charsLock(_charsMutex);
 		auto value = _chars.get(theChar);
 		if (value) {
 			if (value->charID == theChar) {
@@ -498,7 +498,7 @@ bool FontFaceObject::addChar(char16_t theChar, bool &updated) {
 		}
 	} while (0);
 
-	std::unique_lock charsUniqueLock(_charsMutex);
+	sprt::unique_lock charsUniqueLock(_charsMutex);
 	auto value = _chars.get(theChar);
 	if (value) {
 		if (value->charID == theChar) {
@@ -508,7 +508,7 @@ bool FontFaceObject::addChar(char16_t theChar, bool &updated) {
 		}
 	}
 
-	std::unique_lock faceLock(_faceMutex);
+	sprt::unique_lock faceLock(_faceMutex);
 	FT_UInt cIdx = FT_Get_Char_Index(_face, theChar);
 	if (!cIdx) {
 		_chars.emplace(theChar, CharShape16{char16_t(0xFFFF)});
@@ -625,7 +625,7 @@ bool FontFaceSet::addString(const CharVector &str) {
 }
 
 bool FontFaceSet::addString(const CharVector &str, Vector<char32_t> &failed) {
-	std::shared_lock sharedLock(_mutex);
+	sprt::shared_lock sharedLock(_mutex);
 
 	bool shouldOpenFonts = false;
 	bool updated = false;
@@ -660,7 +660,7 @@ bool FontFaceSet::addString(const CharVector &str, Vector<char32_t> &failed) {
 
 	if (shouldOpenFonts) {
 		sharedLock.unlock();
-		std::unique_lock lock(_mutex);
+		sprt::unique_lock lock(_mutex);
 
 		for (; i < _faces.size(); ++i) {
 			if (_faces[i] == nullptr) {
@@ -686,7 +686,7 @@ bool FontFaceSet::addString(const CharVector &str, Vector<char32_t> &failed) {
 uint16_t FontFaceSet::getFontHeight() const { return _metrics.height; }
 
 int16_t FontFaceSet::getKerningAmount(char32_t first, char32_t second, uint16_t face) const {
-	std::shared_lock lock(_mutex);
+	sprt::shared_lock lock(_mutex);
 	for (auto &it : _faces) {
 		if (it) {
 			if (it->getId() == face) {
@@ -702,7 +702,7 @@ int16_t FontFaceSet::getKerningAmount(char32_t first, char32_t second, uint16_t 
 Metrics FontFaceSet::getMetrics() const { return _metrics; }
 
 CharShape FontFaceSet::getChar(char32_t ch, uint16_t &face) const {
-	std::shared_lock lock(_mutex);
+	sprt::shared_lock lock(_mutex);
 	for (auto &it : _faces) {
 		auto l = it->getChar(ch);
 		if (l.charID != 0) {
@@ -724,7 +724,7 @@ size_t FontFaceSet::getRequiredCharsCount() const {
 }
 
 bool FontFaceSet::addTextureChars(SpanView<CharLayoutData> chars) const {
-	std::shared_lock lock(_mutex);
+	sprt::shared_lock lock(_mutex);
 
 	bool ret = false;
 	for (auto &it : chars) {

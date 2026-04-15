@@ -25,48 +25,29 @@ THE SOFTWARE.
 #ifndef STAPPLER_CORE_MEMORY_SPMEMINTERFACE_H_
 #define STAPPLER_CORE_MEMORY_SPMEMINTERFACE_H_
 
-#include "SPMemDict.h" // IWYU pragma: keep
-#include "SPMemStringStream.h"
-
-#include <sprt/runtime/mem/function.h>
-#include <sprt/runtime/mem/forward_list.h>
-#include <sprt/runtime/mem/set.h>
-#include <sprt/runtime/mem/map.h>
-#include <sprt/runtime/mem/string.h>
-#include <sprt/runtime/mem/vector.h>
+#include <sprt/cxx/function>
+#include <sprt/cxx/forward_list>
+#include <sprt/cxx/set>
+#include <sprt/cxx/map>
+#include <sprt/cxx/string>
+#include <sprt/cxx/vector>
 #include <sprt/runtime/callback.h>
 #include <sprt/runtime/ref.h>
+#include <sprt/runtime/stream.h>
 
-namespace STAPPLER_VERSIONIZED stappler {
-
-using sprt::RefAlloc;
-using sprt::Ref;
-using sprt::Rc;
-using sprt::SharedRef;
-using sprt::SharedRefMode;
-
-} // namespace STAPPLER_VERSIONIZED stappler
+#include "SPCore.h"
 
 namespace STAPPLER_VERSIONIZED stappler::memory {
 
 using sprt::memory::allocator_t;
 using sprt::memory::pool_t;
-using sprt::memory::AllocPool;
+using sprt::detail::AllocPool;
 
 using sprt::memory::perform;
 using sprt::memory::perform_conditional;
 using sprt::memory::perform_clear;
 using sprt::memory::perform_temporary;
 
-using sprt::memory::function;
-using sprt::memory::basic_string;
-using sprt::memory::string;
-using sprt::memory::u16string;
-using sprt::memory::u32string;
-using sprt::memory::map;
-using sprt::memory::set;
-using sprt::memory::vector;
-using sprt::memory::forward_list;
 using sprt::memory::context;
 using sprt::callback;
 
@@ -104,62 +85,69 @@ using sprt::memory::pool::userdata_set;
 namespace STAPPLER_VERSIONIZED stappler::memory {
 
 struct SP_PUBLIC PoolInterface final {
-	using AllocBaseType = memory::AllocPool;
-	using StringType = sprt::memory::string;
-	using WideStringType = sprt::memory::u16string;
-	using BytesType = sprt::memory::vector<uint8_t>;
-
-	template <typename Value>
-	using BasicStringType = sprt::memory::basic_string<Value>;
-	template <typename Value>
-	using ArrayType = sprt::memory::vector<Value>;
-	template <typename Value>
-	using DictionaryType = sprt::memory::map<StringType, Value, std::less<>>;
-	template <typename Value>
-	using VectorType = sprt::memory::vector<Value>;
-
-	template <typename K, typename V, typename Compare = std::less<>>
-	using MapType = sprt::memory::map<K, V, Compare>;
-
-	template <typename T, typename Compare = std::less<>>
-	using SetType = sprt::memory::set<T, Compare>;
+	using AllocBaseType = sprt::detail::AllocPool;
 
 	template <typename T>
-	using FunctionType = sprt::memory::function<T>;
+	using Allocator = sprt::detail::AllocatorPool<T>;
 
-	using StringStreamType = memory::ostringstream;
+	using StringType = sprt::__pool_string;
+	using WideStringType = sprt::__pool_u16string;
+	using BytesType = sprt::__pool_vector<uint8_t>;
 
-	static constexpr bool usesMemoryPool() { return true; }
+	template <typename Value>
+	using BasicStringType = sprt::__pool_basic_string<Value>;
+	template <typename Value>
+	using ArrayType = sprt::__pool_vector<Value>;
+	template <typename Value>
+	using DictionaryType = sprt::__pool_map<StringType, Value, sprt::less<void>>;
+	template <typename Value>
+	using VectorType = sprt::__pool_vector<Value>;
+
+	template <typename K, typename V, typename Compare = sprt::less<void>>
+	using MapType = sprt::__pool_map<K, V, Compare>;
+
+	template <typename T, typename Compare = sprt::less<void>>
+	using SetType = sprt::__pool_set<T, Compare>;
+
+	using StringStreamType = sprt::__pool_stringstream;
+
+	template <typename T>
+	using FunctionType = sprt::__pool_function<T>;
+
+	static constexpr bool UsesMemoryPool = true;
 };
 
 struct SP_PUBLIC StandartInterface final {
 	using AllocBaseType = sprt::AllocBase;
 
-	using StringType = std::string;
-	using WideStringType = std::u16string;
-	using BytesType = std::vector<uint8_t>;
+	template <typename T>
+	using Allocator = sprt::detail::AllocatorMalloc<T>;
+
+	using StringType = sprt::__malloc_string;
+	using WideStringType = sprt::__malloc_u16string;
+	using BytesType = sprt::__malloc_vector<uint8_t>;
 
 	template <typename Value>
-	using BasicStringType = std::basic_string<Value>;
+	using BasicStringType = sprt::__malloc_basic_string<Value>;
 	template <typename Value>
-	using ArrayType = std::vector<Value>;
+	using ArrayType = sprt::__malloc_vector<Value>;
 	template <typename Value>
-	using DictionaryType = std::map<StringType, Value, std::less<>>;
+	using DictionaryType = sprt::__malloc_map<StringType, Value, sprt::less<void>>;
 	template <typename Value>
-	using VectorType = std::vector<Value>;
+	using VectorType = sprt::__malloc_vector<Value>;
 
-	template <typename K, typename V, typename Compare = std::less<>>
-	using MapType = std::map<K, V, Compare>;
+	template <typename K, typename V, typename Compare = sprt::less<void>>
+	using MapType = sprt::__malloc_map<K, V, Compare>;
 
-	template <typename T, typename Compare = std::less<>>
-	using SetType = std::set<T, Compare>;
+	template <typename T, typename Compare = sprt::less<void>>
+	using SetType = sprt::__malloc_set<T, Compare>;
+
+	using StringStreamType = sprt::__malloc_stringstream;
 
 	template <typename T>
-	using FunctionType = std::function<T>;
+	using FunctionType = sprt::__malloc_function<T>;
 
-	using StringStreamType = std::ostringstream;
-
-	static constexpr bool usesMemoryPool() { return false; }
+	static constexpr bool UsesMemoryPool = false;
 };
 
 } // namespace stappler::memory
@@ -182,16 +170,16 @@ struct InterfaceObject {
 	template <typename Value>
 	using Vector = typename Interface::template VectorType<Value>;
 
-	template <typename K, typename V, typename Compare = std::less<>>
+	template <typename K, typename V, typename Compare = sprt::less<void>>
 	using Map = typename Interface::template MapType<K, V, Compare>;
 
-	template <typename T, typename Compare = std::less<>>
+	template <typename T, typename Compare = sprt::less<void>>
 	using Set = typename Interface::template SetType<T, Compare>;
+
+	using StringStream = typename Interface::StringStreamType;
 
 	template <typename T>
 	using Function = typename Interface::template FunctionType<T>;
-
-	using StringStream = typename Interface::StringStreamType;
 };
 
 } // namespace STAPPLER_VERSIONIZED stappler
@@ -211,7 +199,7 @@ public:
 
 	template <typename Callback>
 	auto perform(Callback &&cb) {
-		return memory::perform(std::forward<Callback>(cb), _pool);
+		return memory::perform(sprt::forward<Callback>(cb), _pool);
 	}
 
 protected:
@@ -221,37 +209,7 @@ protected:
 
 } // namespace stappler::memory
 
-namespace STAPPLER_VERSIONIZED stappler::traits {
-
-template <typename StringType>
-struct SelectStringStream;
-
-template <>
-struct SelectStringStream<std::string> {
-	using Type = std::ostringstream;
-};
-
-template <>
-struct SelectStringStream<std::u16string> {
-	using Type = std::basic_ostringstream<char16_t>;
-};
-
-template <>
-struct SelectStringStream<sprt::memory::string> {
-	using Type = memory::ostringstream;
-};
-
-template <>
-struct SelectStringStream<sprt::memory::basic_string<char16_t>> {
-	using Type = memory::basic_ostringstream<char16_t>;
-};
-
-} // namespace stappler::traits
-
 namespace STAPPLER_VERSIONIZED stappler {
-
-template <typename T>
-using Callback = sprt::callback<T>;
 
 template <typename T>
 auto StringToNumber(const memory::StandartInterface::StringType &str) -> T {

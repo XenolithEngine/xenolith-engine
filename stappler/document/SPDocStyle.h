@@ -26,9 +26,10 @@
 
 #include "SPCore.h"
 #include "SPFontStyle.h"
-#include "SPColor.h"
-#include "SPGeometry.h"
-#include "SPPadding.h"
+
+#include <sprt/runtime/geom/color.h>
+#include <sprt/runtime/geom/geom.h>
+#include <sprt/runtime/geom/padding.h>
 
 namespace STAPPLER_VERSIONIZED stappler::document {
 
@@ -54,18 +55,18 @@ using StyleCallback = Callback<bool(StyleParameter &&)>;
 using StyleFunctionPtr = bool (*)(const StringView &, const StyleCallback &,
 		const StringCallback &);
 
-using geom::Color3B;
-using geom::Color4B;
-using geom::Color;
-using geom::Vec2;
-using geom::Size2;
-using geom::Padding;
-using geom::Margin;
-using geom::Rect;
+using sprt::geom::Color3B;
+using sprt::geom::Color4B;
+using sprt::geom::Color;
+using sprt::geom::Vec2;
+using sprt::geom::Size2;
+using sprt::geom::Padding;
+using sprt::geom::Margin;
+using sprt::geom::Rect;
 
 using font::FontVariations;
 
-using geom::Metric;
+using sprt::geom::Metric;
 using font::FontStyle;
 using font::FontWeight;
 using font::FontStretch;
@@ -623,12 +624,12 @@ SP_PUBLIC void getStyleForTag(StyleList &list, StringView, StringView parent = S
 /*String getFontConfigName(const StringView &, FontSize, FontStyle, FontWeight, FontStretch, FontVariant, bool caps);*/
 
 inline bool isStringCaseEqual(StringView l, StringView r) {
-	return string::detail::caseCompare_c(l, r) == 0;
+	return sprt::detail::caseCompare_c(l, r) == 0;
 }
 
 template <ParameterName Name, class Value>
 inline StyleParameter StyleParameter::create(const Value &v, MediaQueryId query, StyleRule r) {
-	static_assert(Name != ParameterName::CssFontSize || !std::is_same_v<Value, uint8_t>,
+	static_assert(Name != ParameterName::CssFontSize || !sprt::is_same_v<Value, uint8_t>,
 			"uint8_t as FontSize is deprecated");
 	StyleParameter p(Name, query, r);
 	p.set<Name>(v);

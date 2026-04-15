@@ -31,7 +31,7 @@ class StyleContainer;
 class SurfaceInterior;
 
 enum class Elevation {
-	Level0,	// 0dp
+	Level0, // 0dp
 	Level1, // 1dp 5%
 	Level2, // 3dp 8%
 	Level3, // 6dp 11%
@@ -82,9 +82,9 @@ struct SP_PUBLIC SurfaceStyle {
 
 	constexpr SurfaceStyle() = default;
 
-	template<typename ... Args>
-	constexpr SurfaceStyle(Args && ... args) {
-		define(std::forward<Args>(args)...);
+	template <typename... Args>
+	constexpr SurfaceStyle(Args &&...args) {
+		define(sprt::forward<Args>(args)...);
 	}
 
 	constexpr void setup(const SurfaceStyle &value) { *this = value; }
@@ -97,21 +97,24 @@ struct SP_PUBLIC SurfaceStyle {
 	constexpr void setup(ActivityState value) { activityState = value; }
 
 	template <typename T>
-	constexpr void setup(const T &) { static_assert("Invalid type"); }
+	constexpr void setup(const T &) {
+		static_assert("Invalid type");
+	}
 
 
 	template <typename T>
-	constexpr void define(T && t) {
-		setup(std::forward<T>(t));
+	constexpr void define(T &&t) {
+		setup(sprt::forward<T>(t));
 	}
 
-	template <typename T, typename ... Args>
-	constexpr void define(T && t, Args && ... args) {
-		define(std::forward<T>(t));
-		define(std::forward<Args>(args)...);
+	template <typename T, typename... Args>
+	constexpr void define(T &&t, Args &&...args) {
+		define(sprt::forward<T>(t));
+		define(sprt::forward<Args>(args)...);
 	}
 
-	bool apply(SurfaceStyleData &data, const Size2 &contentSize, const StyleContainer *, const SurfaceInterior *interior);
+	bool apply(SurfaceStyleData &data, const Size2 &contentSize, const StyleContainer *,
+			const SurfaceInterior *interior);
 
 	constexpr bool operator==(const SurfaceStyle &) const = default;
 	constexpr bool operator!=(const SurfaceStyle &) const = default;
@@ -145,14 +148,15 @@ struct SP_PUBLIC SurfaceStyleData {
 	bool operator!=(const SurfaceStyleData &) const = default;
 };
 
-}
+} // namespace stappler::xenolith::material2d
 
 namespace STAPPLER_VERSIONIZED stappler {
 
-inline auto progress(const xenolith::material2d::SurfaceStyleData &l, const xenolith::material2d::SurfaceStyleData &r, float p) {
+inline auto progress(const xenolith::material2d::SurfaceStyleData &l,
+		const xenolith::material2d::SurfaceStyleData &r, float p) {
 	return xenolith::material2d::SurfaceStyleData::progress(l, r, p);
 }
 
-}
+} // namespace STAPPLER_VERSIONIZED stappler
 
 #endif /* XENOLITH_RENDERER_MATERIAL2D_BASE_MATERIALSURFACESTYLE_H_ */

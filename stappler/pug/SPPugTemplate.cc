@@ -73,7 +73,7 @@ struct TemplateRender {
 	Template::Chunk *_current = nullptr;
 
 	size_t _stackSize = 0;
-	std::array<Template::Chunk *, 16> _chunkStack;
+	sprt::array<Template::Chunk *, 16> _chunkStack;
 	Vector<StringView> _includes;
 };
 
@@ -251,7 +251,7 @@ bool TemplateRender::renderToken(Token *tok) {
 
 bool TemplateRender::renderTokenTree(Token *tok) {
 	bool ret = false;
-	while (tok != NULL) {
+	while (tok != nullptr) {
 		if (renderToken(tok)) {
 			ret = true;
 		}
@@ -583,12 +583,12 @@ Template::Options Template::Options::getDefault() { return Options(); }
 
 Template::Options Template::Options::getPretty() { return Options().setFlags({Pretty}); }
 
-Template::Options &Template::Options::setFlags(std::initializer_list<Flags> &&il) {
+Template::Options &Template::Options::setFlags(sprt::initializer_list<Flags> &&il) {
 	for (auto &it : il) { flags.set(toInt(it)); }
 	return *this;
 }
 
-Template::Options &Template::Options::clearFlags(std::initializer_list<Flags> &&il) {
+Template::Options &Template::Options::clearFlags(sprt::initializer_list<Flags> &&il) {
 	for (auto &it : il) { flags.reset(toInt(it)); }
 	return *this;
 }
@@ -914,8 +914,7 @@ bool Template::runChunk(const Chunk &chunk, Context &exec, const Callback<void(S
 	auto runMixinChunk = [&, this](const Chunk &ch) -> bool {
 		auto mixin = exec.getMixin(ch.value);
 		if (!mixin) {
-			onError(string::toString<memory::PoolInterface>("Mixin with name ", ch.value,
-					" is not found"));
+			onError(mem_pool::toString("Mixin with name ", ch.value, " is not found"));
 			if (_opts.hasFlag(Options::StopOnError)) {
 				return false;
 			}
@@ -926,8 +925,7 @@ bool Template::runChunk(const Chunk &chunk, Context &exec, const Callback<void(S
 		Template_readMixinArgs(vars, ch.expr);
 
 		if (vars.size() < mixin->required) {
-			onError(string::toString<memory::PoolInterface>("Not enough arguments for mixin: ",
-					ch.value));
+			onError(mem_pool::toString("Not enough arguments for mixin: ", ch.value));
 			if (_opts.hasFlag(Options::StopOnError)) {
 				return false;
 			}
@@ -944,7 +942,7 @@ bool Template::runChunk(const Chunk &chunk, Context &exec, const Callback<void(S
 			} else if (it.second) {
 				n->second.assign(exec.exec(*it.second, out));
 			} else {
-				onError(string::toString<memory::PoolInterface>("Invalid argument for ", it.first));
+				onError(mem_pool::toString("Invalid argument for ", it.first));
 				if (_opts.hasFlag(Options::StopOnError)) {
 					return false;
 				}
@@ -1146,12 +1144,12 @@ bool Template::runChunk(const Chunk &chunk, Context &exec, const Callback<void(S
 			++it;
 			if (c.expr->op == Expression::Call && c.expr->left->isToken) {
 				if (!exec.setMixin(c.expr->left->value.getString(), &c)) {
-					onError(string::toString<memory::PoolInterface>("Invalid mixin declaration: ",
+					onError(mem_pool::toString("Invalid mixin declaration: ",
 							c.expr->left->value.getString()));
 				}
 			} else if (c.expr->op == Expression::NoOp && c.expr->isToken) {
 				if (!exec.setMixin(c.expr->value.getString(), &c)) {
-					onError(string::toString<memory::PoolInterface>("Invalid mixin declaration: ",
+					onError(mem_pool::toString("Invalid mixin declaration: ",
 							c.expr->value.getString()));
 				}
 			}

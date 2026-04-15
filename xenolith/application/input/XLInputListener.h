@@ -27,6 +27,8 @@
 #include "XLNodeInfo.h"
 #include "XLGestureRecognizer.h"
 
+#include <sprt/cxx/variant>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class Node;
@@ -36,14 +38,14 @@ class FocusGroup;
 
 class SP_PUBLIC InputListener : public System {
 public:
-	using EventMask = std::bitset<toInt(InputEventName::Max)>;
-	using ButtonMask = std::bitset<toInt(InputMouseButton::Max)>;
-	using KeyMask = std::bitset<toInt(InputKeyCode::Max)>;
+	using EventMask = sprt::bitset<toInt(InputEventName::Max)>;
+	using ButtonMask = sprt::bitset<toInt(InputMouseButton::Max)>;
+	using KeyMask = sprt::bitset<toInt(InputKeyCode::Max)>;
 
 	template <typename T>
 	using InputCallback = Function<bool(const T &)>;
 
-	using DefaultEventFilter = std::function<bool(const InputEvent &)>;
+	using DefaultEventFilter = mem_std::Function<bool(const InputEvent &)>;
 	using EventFilter = Function<bool(const InputEvent &, const DefaultEventFilter &)>;
 
 	virtual ~InputListener() = default;
@@ -154,7 +156,7 @@ protected:
 
 	void addEventMask(const EventMask &);
 
-	using EventCallback = std::variant<Function<bool()>, Function<bool(WindowState, WindowState)>>;
+	using EventCallback = sprt::variant<Function<bool()>, Function<bool(WindowState, WindowState)>>;
 
 	GestureRecognizer *addRecognizer(GestureRecognizer *);
 

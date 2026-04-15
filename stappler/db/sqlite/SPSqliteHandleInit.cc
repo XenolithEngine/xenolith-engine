@@ -1243,7 +1243,7 @@ bool Handle::init(const BackendInterface::Config &cfg, const Map<StringView, con
 			success = false;
 		}
 
-		tables << "\n" << stream;
+		tables << "\n" << stream.weak();
 		if (_driver->getApplicationInterface()) {
 			_driver->getApplicationInterface()->reportDbUpdate(tables.weak(), success);
 		}

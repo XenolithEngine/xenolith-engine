@@ -64,11 +64,11 @@ protected:
 	struct SP_PUBLIC OutputContext : PerformInterface {
 		Rc<PoolRef> pool;
 		TaskQueue *queue = nullptr;
-		std::mutex outputMutex;
+		sprt::qmutex outputMutex;
 		mem_std::Vector<Rc<Task>> outputQueue;
-		mem_std::Vector<Pair<std::function<void()>, Rc<Ref>>> outputCallbacks;
-		std::condition_variable outputCondition;
-		std::atomic<size_t> outputCounter = 0;
+		mem_std::Vector<Pair<mem_std::Function<void()>, Rc<Ref>>> outputCallbacks;
+		sprt::condition_variable outputCondition;
+		sprt::atomic<size_t> outputCounter = 0;
 		mem_std::Function<void()> wakeup;
 
 		virtual Status perform(Rc<thread::Task> &&task) override;

@@ -33,7 +33,7 @@ class Node;
 class SP_PUBLIC Action : public Ref {
 public:
 	/** Default tag used for all the actions. */
-	static const uint32_t INVALID_TAG = std::numeric_limits<uint32_t>::max();
+	static const uint32_t INVALID_TAG = sprt::Max<uint32_t>;
 
 	virtual ~Action() = default;
 
@@ -92,7 +92,7 @@ protected:
 	uint32_t _tag = INVALID_TAG;
 
 	// duration in seconds or NaN
-	float _duration = std::numeric_limits<float>::quiet_NaN();
+	float _duration = sprt::NaN<float>;
 };
 
 class SP_PUBLIC ActionInstant : public Action {
@@ -223,7 +223,7 @@ public:
 	bool init(Args &&...args) {
 		_duration = 0.0f;
 		reserve(sizeof...(Args));
-		return initWithActions(std::forward<Args>(args)...);
+		return initWithActions(sprt::forward<Args>(args)...);
 	}
 
 	virtual void stop(void) override;
@@ -267,15 +267,15 @@ protected:
 
 	template <typename T, typename... Args>
 	bool initWithActions(T &&t, Args &&...args) {
-		if (!addAction(std::forward<T>(t))) {
+		if (!addAction(sprt::forward<T>(t))) {
 			return false;
 		}
-		return initWithActions(std::forward<Args>(args)...);
+		return initWithActions(sprt::forward<Args>(args)...);
 	}
 
 	template <typename T>
 	bool initWithActions(T &&t) {
-		if (addAction(std::forward<T>(t))) {
+		if (addAction(sprt::forward<T>(t))) {
 			return ActionInterval::init(_duration);
 		}
 		return false;
@@ -301,7 +301,7 @@ public:
 	bool init(Args &&...args) {
 		_duration = 0.0f;
 		reserve(sizeof...(Args));
-		return initWithActions(std::forward<Args>(args)...);
+		return initWithActions(sprt::forward<Args>(args)...);
 	}
 
 	virtual void stop(void) override;
@@ -322,15 +322,15 @@ protected:
 
 	template <typename T, typename... Args>
 	bool initWithActions(T &&t, Args &&...args) {
-		if (!addAction(std::forward<T>(t))) {
+		if (!addAction(sprt::forward<T>(t))) {
 			return false;
 		}
-		return initWithActions(std::forward<Args>(args)...);
+		return initWithActions(sprt::forward<Args>(args)...);
 	}
 
 	template <typename T>
 	bool initWithActions(T &&t) {
-		if (addAction(std::forward<T>(t))) {
+		if (addAction(sprt::forward<T>(t))) {
 			return ActionInterval::init(_duration);
 		}
 		return false;

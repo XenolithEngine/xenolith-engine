@@ -103,7 +103,7 @@ inline void Decoder<Interface>::parseNumber(StringView &token, ValueType &result
 			return;
 		} else if (value.size() != size) {
 			result._type = ValueType::Type::CHARSTRING;
-			result.strVal = new (std::nothrow) StringType(data, size);
+			result.strVal = new (sprt::nothrow) StringType(data, size);
 		} else {
 			if (isFloat) {
 				value.readDouble().unwrap([&](double v) {
@@ -171,13 +171,13 @@ inline void Decoder<Interface>::parsePlainToken(ValueType &current, StringView t
 		break;
 	case '~':
 		current._type = ValueType::Type::BYTESTRING;
-		current.bytesVal = new (std::nothrow) BytesType();
+		current.bytesVal = new (sprt::nothrow) BytesType();
 		string::urldecode(*current.bytesVal, token);
 		return;
 		break;
 	}
 	current._type = ValueType::Type::CHARSTRING;
-	current.strVal = new (std::nothrow) StringType();
+	current.strVal = new (sprt::nothrow) StringType();
 	string::urldecode(*current.strVal, token);
 }
 
@@ -236,13 +236,13 @@ void Decoder<Interface>::parse(ValueType &val) {
 					key.clear();
 					string::urldecode(key, token);
 					back->_type = ValueType::Type::DICTIONARY;
-					back->dictVal = new (std::nothrow) typename ValueType::DictionaryType();
+					back->dictVal = new (sprt::nothrow) typename ValueType::DictionaryType();
 					backType = stack.back().first = BackIsPlainList;
 					push(BackIsGeneric,
 							&back->dictVal->emplace(key, ValueType::Type::EMPTY).first->second);
 				} else if (r.is(',')) {
 					back->_type = ValueType::Type::ARRAY;
-					back->arrayVal = new (std::nothrow) typename ValueType::ArrayType();
+					back->arrayVal = new (sprt::nothrow) typename ValueType::ArrayType();
 					back->arrayVal->emplace_back(ValueType::Type::EMPTY);
 					backType = stack.back().first = BackIsPlainList;
 					parsePlainToken(back->arrayVal->back(), token);
@@ -442,7 +442,7 @@ void Decoder<Interface>::parse(ValueType &val) {
 				}
 				if (r.is('(')) {
 					back->_type = ValueType::Type::ARRAY;
-					back->arrayVal = new (std::nothrow) typename ValueType::ArrayType();
+					back->arrayVal = new (sprt::nothrow) typename ValueType::ArrayType();
 					back->arrayVal->emplace_back(ValueType::Type::EMPTY);
 					backType = stack.back().first = BackIsArray;
 					push(BackIsGeneric, &back->arrayVal->back());
@@ -460,7 +460,7 @@ void Decoder<Interface>::parse(ValueType &val) {
 						key.clear();
 						string::urldecode(key, token);
 						back->_type = ValueType::Type::DICTIONARY;
-						back->dictVal = new (std::nothrow) typename ValueType::DictionaryType();
+						back->dictVal = new (sprt::nothrow) typename ValueType::DictionaryType();
 						backType = stack.back().first = BackIsDict;
 						push(BackIsPlain,
 								&back->dictVal->emplace(key, ValueType::Type::EMPTY).first->second);
@@ -471,13 +471,13 @@ void Decoder<Interface>::parse(ValueType &val) {
 						key.clear();
 						string::urldecode(key, token);
 						back->_type = ValueType::Type::DICTIONARY;
-						back->dictVal = new (std::nothrow) typename ValueType::DictionaryType();
+						back->dictVal = new (sprt::nothrow) typename ValueType::DictionaryType();
 						backType = stack.back().first = BackIsDict;
 						push(BackIsGeneric,
 								&back->dictVal->emplace(key, ValueType::Type::EMPTY).first->second);
 					} else if (r.is(',') || r.is(';')) {
 						back->_type = ValueType::Type::ARRAY;
-						back->arrayVal = new (std::nothrow) typename ValueType::ArrayType();
+						back->arrayVal = new (sprt::nothrow) typename ValueType::ArrayType();
 						back->arrayVal->emplace_back(ValueType::Type::EMPTY);
 						backType = stack.back().first = BackIsArray;
 						parsePlainToken(back->arrayVal->back(), token);

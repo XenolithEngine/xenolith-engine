@@ -62,7 +62,7 @@ Bytes MaterialAttachment::getMaterialData(NotNull<core::Material> m) const {
 
 				auto indexSize = buffer->getSize()
 						/ (image.image->atlas->getObjectSize() + sizeof(uint32_t) * 2);
-				auto pow2index = std::countr_zero(indexSize);
+				auto pow2index = sprt::countr_zero(indexSize);
 
 				material.flags |= (pow2index << XL_GLSL_MATERIAL_FLAG_ATLAS_POW2_INDEX_BIT_OFFSET);
 				if (buffer->getDeviceAddress() != 0) {
@@ -70,7 +70,7 @@ Bytes MaterialAttachment::getMaterialData(NotNull<core::Material> m) const {
 				}
 			}
 		}
-		memcpy(ret.data(), &material, sizeof(MaterialData));
+		sprt::memcpy(ret.data(), &material, sizeof(MaterialData));
 	}
 	return ret;
 }

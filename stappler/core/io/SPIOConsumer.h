@@ -28,18 +28,10 @@ THE SOFTWARE.
 
 namespace STAPPLER_VERSIONIZED stappler::io {
 
-struct ConsumerTraitsStream {
-	using stream_type = std::basic_ostream<char>;
-	static size_t WriteFn(void *ptr, const uint8_t *buf, size_t nbytes) {
-		((stream_type *)ptr)->write((const char *)buf, nbytes);
-		return nbytes;
-	}
-
-	static void FlushFn(void *ptr) { ((stream_type *)ptr)->flush(); }
-};
-
-template <typename T> size_t WriteFunction(T &, const uint8_t *buf, size_t nbytes);
-template <typename T> void FlushFunction(T &);
+template <typename T>
+size_t WriteFunction(T &, const uint8_t *buf, size_t nbytes);
+template <typename T>
+void FlushFunction(T &);
 
 template <class T>
 struct ConsumerTraitsOverload {
@@ -52,10 +44,7 @@ struct ConsumerTraitsOverload {
 
 template <typename T>
 struct ConsumerTraitsReolution {
-	using type = typename std::conditional<
-			std::is_base_of<std::basic_ostream<char>, T>::value,
-			ConsumerTraitsStream,
-			ConsumerTraitsOverload<T>>::type;
+	using type = ConsumerTraitsOverload<T>;
 };
 
 template <typename T>
@@ -70,7 +59,8 @@ struct ConsumerTraits {
 };
 
 struct SP_PUBLIC Consumer {
-	template <typename T, typename Traits = ConsumerTraits<typename std::decay<T>::type>> Consumer(T &t);
+	template <typename T, typename Traits = ConsumerTraits<typename sprt::decay<T>::type>>
+	Consumer(T &t);
 
 	size_t write(const uint8_t *buf, size_t nbytes) const;
 	size_t write(const Buffer &) const;
@@ -83,13 +73,13 @@ struct SP_PUBLIC Consumer {
 
 template <typename T, typename Traits>
 inline Consumer::Consumer(T &t)
-: ptr((void *)(&t))
-, write_ptr(&Traits::WriteFn)
-, flush_ptr(&Traits::FlushFn) { }
+: ptr((void *)(&t)), write_ptr(&Traits::WriteFn), flush_ptr(&Traits::FlushFn) { }
 
-inline size_t Consumer::write(const uint8_t *buf, size_t nbytes) const { return write_ptr(ptr, buf, nbytes); }
+inline size_t Consumer::write(const uint8_t *buf, size_t nbytes) const {
+	return write_ptr(ptr, buf, nbytes);
+}
 inline void Consumer::flush() const { flush_ptr(ptr); }
 
-}
+} // namespace stappler::io
 
 #endif /* STAPPLER_CORE_IO_SPIOCONSUMER_H_ */

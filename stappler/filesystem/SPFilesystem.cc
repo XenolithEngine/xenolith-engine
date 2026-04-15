@@ -26,7 +26,6 @@ THE SOFTWARE.
 #include "SPCore.h"
 #include "SPFilepath.h"
 #include "SPMemInterface.h"
-#include "SPStatus.h"
 #include "SPPlatform.h"
 
 #include <stdio.h>
@@ -308,7 +307,8 @@ static bool doCopyFile(const LocationInfo &fromLoc, StringView from, const Locat
 		auto fTo =
 				File::open(toLoc, to, OpenFlags::Write | OpenFlags::Create | OpenFlags::Truncate);
 		if (fFrom && fTo) {
-			BufferTemplate<memory::StandartInterface> buffer(std::min(size_t(4_MiB), fFrom.size()));
+			BufferTemplate<memory::StandartInterface> buffer(
+					sprt::min(size_t(4_MiB), fFrom.size()));
 			if (io::read(io::Producer(fFrom), io::Consumer(fTo), io::Buffer(buffer)) > 0) {
 				return true;
 			}
@@ -592,50 +592,6 @@ StringView detectMimeType(StringView path) {
 	}
 #endif
 	return StringView();
-}
-
-std::ostream &operator<<(std::ostream &stream, ProtFlags flags) {
-	char buf[11] = "----------";
-
-	if (hasFlag(flags, ProtFlags::AllExecute)) {
-		buf[9] = 'x';
-	}
-	if (hasFlag(flags, ProtFlags::AllWrite)) {
-		buf[8] = 'w';
-	}
-	if (hasFlag(flags, ProtFlags::AllRead)) {
-		buf[7] = 'r';
-	}
-	if (hasFlag(flags, ProtFlags::GroupExecute)) {
-		buf[6] = 'x';
-	}
-	if (hasFlag(flags, ProtFlags::GroupWrite)) {
-		buf[5] = 'w';
-	}
-	if (hasFlag(flags, ProtFlags::GroupRead)) {
-		buf[4] = 'r';
-	}
-	if (hasFlag(flags, ProtFlags::UserExecute)) {
-		buf[3] = 'x';
-	}
-	if (hasFlag(flags, ProtFlags::UserWrite)) {
-		buf[2] = 'w';
-	}
-	if (hasFlag(flags, ProtFlags::UserRead)) {
-		buf[1] = 'r';
-	}
-
-	stream << buf;
-	return stream;
-}
-
-std::ostream &operator<<(std::ostream &stream, const Stat &stat) {
-	stream << "Stat { size: " << stat.size << "; u: " << stat.user << "; g: " << stat.group << "; "
-		   << stat.type << "; " << stat.prot
-		   << "; ctime: " << stat.ctime.toHttp<memory::StandartInterface>()
-		   << "; mtime: " << stat.mtime.toHttp<memory::StandartInterface>()
-		   << "; atime: " << stat.atime.toHttp<memory::StandartInterface>() << " };";
-	return stream;
 }
 
 } // namespace stappler::filesystem

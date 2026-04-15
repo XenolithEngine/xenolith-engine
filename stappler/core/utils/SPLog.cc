@@ -29,6 +29,10 @@ THE SOFTWARE.
 #endif
 
 #include <sprt/runtime/thread/info.h>
+#include <sprt/cxx/mutex>
+
+#include <stdarg.h>
+#include <stdio.h>
 
 namespace STAPPLER_VERSIONIZED stappler::log {
 
@@ -48,19 +52,19 @@ static std::bitset<6> s_logMask = (1 | 2 | 4 | 8 | 16 | 32);
 static std::bitset<6> s_logMask = (1 | 2 | 4 | 8);
 #else
 // allow all
-static std::bitset<6> s_logMask = (0);
+static sprt::bitset<6> s_logMask = (0);
 #endif
 #endif
 
-using LogFeatures = sprt::log::LogFeatures;
+using LogFeatures = sprt::oslog::LogFeatures;
 
 struct CustomLogManager {
 	static void initialize(void *ptr) { reinterpret_cast<CustomLogManager *>(ptr)->init(); }
 	static void terminate(void *ptr) { reinterpret_cast<CustomLogManager *>(ptr)->term(); }
 
 	CustomLog::log_fn logFuncArr[MAX_LOG_FUNC] = {0};
-	std::atomic<int> logFuncCount;
-	std::mutex logFuncMutex;
+	sprt::atomic<int> logFuncCount;
+	sprt::qmutex logFuncMutex;
 
 	LogFeatures features;
 
@@ -79,7 +83,11 @@ static CustomLogManager s_logManager;
 
 static void DefaultLog2(LogType type, StringView tag, const sprt::source_location &source,
 		StringView text) {
-	std::stringstream prefixStream;
+	sprt::__malloc_string prefix;
+
+	auto out = [&](StringView str) { prefix.append(str.data(), str.size()); };
+
+	auto prefixStream = sprt::callback<void(StringView)>(out);
 
 #if !ANDROID
 	prefixStream << s_logManager.features.reverse << s_logManager.features.bold;
@@ -107,10 +115,10 @@ static void DefaultLog2(LogType type, StringView tag, const sprt::source_locatio
 #endif
 
 	prefixStream << s_logManager.features.italic;
-	if (auto local = sprt::thread::info::get()) {
+	if (auto local = sprt::_thread::info::get()) {
 		if (!local->managed) {
-			prefixStream << "[Thread:" << std::this_thread::get_id() << "]";
-		} else if (local->workerId == sprt::thread::info::DetachedWorker) {
+			prefixStream << "[Thread:" << __sprt_gettid() << "]";
+		} else if (local->workerId == sprt::_thread::info::DetachedWorker) {
 			prefixStream << "[" << local->name << "]";
 		} else {
 			prefixStream << "[" << local->name << ":" << local->workerId << "]";
@@ -120,18 +128,16 @@ static void DefaultLog2(LogType type, StringView tag, const sprt::source_locatio
 	}
 	prefixStream << s_logManager.features.drop << " ";
 
-	auto prefix = prefixStream.str();
-
 #if SP_SOURCE_DEBUG
 	auto f = source.file_name();
 	if (f && f[0] != 0) {
 		auto textToLog = mem_std::toString(text, " ", s_logManager.features.underline,
 				s_logManager.features.dim, f, ":", source.line(), s_logManager.features.drop);
-		sprt::log::print(type, sprt::StringView(prefix.data(), prefix.size()),
+		sprt::oslog::print(type, sprt::StringView(prefix.data(), prefix.size()),
 				sprt::StringView(tag.data(), tag.size()),
 				sprt::StringView(textToLog.data(), textToLog.size()));
 	} else {
-		sprt::log::print(type, sprt::StringView(prefix.data(), prefix.size()),
+		sprt::oslog::print(type, sprt::StringView(prefix.data(), prefix.size()),
 				sprt::StringView(tag.data(), tag.size()),
 				sprt::StringView(text.data(), text.size()));
 	}
@@ -166,7 +172,7 @@ static void DefaultLog(LogType type, StringView tag, const sprt::source_location
 
 CustomLogManager::CustomLogManager() { addInitializer(this, initialize, terminate); }
 
-void CustomLogManager::init() { features = sprt::log::LogFeatures::acquire(); }
+void CustomLogManager::init() { features = sprt::oslog::LogFeatures::acquire(); }
 
 void CustomLogManager::term() { }
 
@@ -249,13 +255,13 @@ CustomLog &CustomLog::operator=(CustomLog &&other) {
 	return *this;
 }
 
-static std::bitset<6> makeFilterMask(InitializerList<LogType> type) {
-	std::bitset<6> mask;
+static sprt::bitset<6> makeFilterMask(InitializerList<LogType> type) {
+	sprt::bitset<6> mask;
 	for (auto &it : type) { mask.set(toInt(it)); }
 	return mask;
 }
 
-std::bitset<6> None = makeFilterMask({
+sprt::bitset<6> None = makeFilterMask({
 	LogType::Verbose,
 	LogType::Debug,
 	LogType::Info,
@@ -263,21 +269,21 @@ std::bitset<6> None = makeFilterMask({
 	LogType::Error,
 	LogType::Fatal,
 });
-std::bitset<6> ErrorsOnly = makeFilterMask({
+sprt::bitset<6> ErrorsOnly = makeFilterMask({
 	LogType::Verbose,
 	LogType::Debug,
 	LogType::Info,
 	LogType::Warn,
 });
-std::bitset<6> Full = std::bitset<6>(0);
+sprt::bitset<6> Full = sprt::bitset<6>(0);
 
-void setLogFilterMask(const std::bitset<6> &mask) { s_logMask = mask; }
+void setLogFilterMask(const sprt::bitset<6> &mask) { s_logMask = mask; }
 
-void setLogFilterMask(std::bitset<6> &&mask) { s_logMask = sp::move(mask); }
+void setLogFilterMask(sprt::bitset<6> &&mask) { s_logMask = sp::move(mask); }
 
 void setLogFilterMask(InitializerList<LogType> types) { setLogFilterMask(makeFilterMask(types)); }
 
-std::bitset<6> getlogFilterMask() { return s_logMask; }
+sprt::bitset<6> getlogFilterMask() { return s_logMask; }
 
 void format(LogType type, const char *tag, const sprt::source_location &source, const char *fmt,
 		...) {

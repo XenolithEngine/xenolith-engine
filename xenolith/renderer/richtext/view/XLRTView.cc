@@ -185,9 +185,9 @@ void View::setSource(CommonSource *source) {
 			onSourceError(CommonSource::Error(ev.getDataValue().asInteger()));
 		});
 		_sourceUpdateListener = _eventListener->listenForEventWithObject(CommonSource::onUpdate,
-				_source, std::bind(&View::onSourceUpdate, this));
+				_source, sprt::bind(&View::onSourceUpdate, this));
 		_sourceAssetListener = _eventListener->listenForEventWithObject(CommonSource::onDocument,
-				_source, std::bind(&View::onSourceAsset, this));
+				_source, sprt::bind(&View::onSourceAsset, this));
 	}
 }
 
@@ -714,7 +714,7 @@ void View::Highlight::updateVertexes(FrameInfo &frame) {
 					auto l = obj->asLabel();
 					uint32_t size = uint32_t(l->layout.chars.size() - 1);
 					l->layout.getLabelRects([&](const Rect &rect) { rects.emplace_back(rect); },
-							std::min(it.first.position, size), std::min(it.second.position, size),
+							sprt::min(it.first.position, size), sprt::min(it.second.position, size),
 							density, obj->bbox.origin, Padding());
 				}
 			} else {
@@ -724,8 +724,8 @@ void View::Highlight::updateVertexes(FrameInfo &frame) {
 					auto label = firstObj->asLabel();
 					uint32_t size = uint32_t(label->layout.chars.size() - 1);
 					label->layout.getLabelRects([&](const Rect &rect) { rects.emplace_back(rect); },
-							std::min(it.first.position, size), size, density, firstObj->bbox.origin,
-							Padding());
+							sprt::min(it.first.position, size), size, density,
+							firstObj->bbox.origin, Padding());
 				}
 				for (size_t i = it.first.object + 1; i < it.second.object; ++i) {
 					auto obj = res->result->getObject(i);
@@ -741,7 +741,7 @@ void View::Highlight::updateVertexes(FrameInfo &frame) {
 					auto label = secondObj->asLabel();
 					uint32_t size = uint32_t(label->layout.chars.size() - 1);
 					label->layout.getLabelRects([&](const Rect &rect) { rects.emplace_back(rect); },
-							0, std::min(it.second.position, size), density, secondObj->bbox.origin,
+							0, sprt::min(it.second.position, size), density, secondObj->bbox.origin,
 							Padding());
 				}
 			}

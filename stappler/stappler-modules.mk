@@ -40,7 +40,6 @@ TOOLKIT_MODULE_LIST += \
 	$(STAPPLER_MODULE_DIR)/search/search.mk \
 	$(STAPPLER_MODULE_DIR)/sql/sql.mk \
 	$(STAPPLER_MODULE_DIR)/threads/threads.mk \
-	$(STAPPLER_MODULE_DIR)/geom/geom.mk \
 	$(STAPPLER_MODULE_DIR)/font/font.mk \
 	$(STAPPLER_MODULE_DIR)/tess/tess.mk \
 	$(STAPPLER_MODULE_DIR)/vg/vg.mk \

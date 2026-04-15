@@ -29,8 +29,8 @@
 #include "SPTime.h"
 
 struct _linux_timespec {
-	int64_t tv_sec; /* seconds */
-	int64_t tv_nsec; /* nanoseconds */
+	sprt::int64_t tv_sec; /* seconds */
+	sprt::int64_t tv_nsec; /* nanoseconds */
 };
 
 struct _linux_itimerspec {

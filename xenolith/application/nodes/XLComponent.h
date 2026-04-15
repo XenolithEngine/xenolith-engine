@@ -111,13 +111,13 @@ struct Component {
 			soo = 0;
 			destructor = [](void *ptr) { delete reinterpret_cast<T *>(ptr); };
 			dynamicStorage.size = sizeof(T);
-			auto d = new (std::nothrow) T(std::forward<Args>(args)...);
+			auto d = new (sprt::nothrow) T(sprt::forward<Args>(args)...);
 			dynamicStorage.data = d;
 			return d;
 		} else {
 			soo = 1;
 			destructor = [](void *ptr) { reinterpret_cast<T *>(ptr)->~T(); };
-			return new (staticStorage.bytes) T(std::forward<Args>(args)...);
+			return new (staticStorage.bytes) T(sprt::forward<Args>(args)...);
 		}
 	}
 
@@ -142,12 +142,12 @@ struct ComponentEqual {
 };
 
 struct ComponentHash {
-	using hash_type = std::hash<uint32_t>;
+	using hash_type = sprt::hash<uint32_t>;
 	using is_transparent = void;
 
-	std::size_t operator()(Component c) const { return hash_type{}(c.id); }
-	std::size_t operator()(ComponentId id) const { return hash_type{}(id.value); }
-	std::size_t operator()(uint32_t id) const { return hash_type{}(id); }
+	sprt::size_t operator()(Component c) const { return hash_type{}(c.id); }
+	sprt::size_t operator()(ComponentId id) const { return hash_type{}(id.value); }
+	sprt::size_t operator()(uint32_t id) const { return hash_type{}(id); }
 };
 
 class ComponentContainer {
@@ -211,7 +211,7 @@ const T *ComponentContainer::updateComponent(const Callback<bool(NotNull<T>)> &c
 
 template <typename T>
 const T *ComponentContainer::setOrUpdateComponent(const Callback<bool(NotNull<T>)> &cb) {
-	static_assert(std::is_default_constructible_v<T>,
+	static_assert(sprt::is_default_constructible_v<T>,
 			"Component with type T should be default constructable for Node::setOrUpdateComponent");
 	auto it = _components.find(T::Id);
 	if (it == _components.end()) {
@@ -248,7 +248,7 @@ bool ComponentContainer::removeComponent() {
 
 } // namespace stappler::xenolith
 
-namespace std {
+namespace sprt {
 
 template <>
 struct hash<STAPPLER_VERSIONIZED_NAMESPACE::xenolith::Component> {
@@ -270,6 +270,6 @@ struct hash<STAPPLER_VERSIONIZED_NAMESPACE::xenolith::ComponentId> {
 	}
 };
 
-} // namespace std
+} // namespace sprt
 
 #endif // XENOLITH_APPLICATION_NODES_XLCOMPONENT_H_

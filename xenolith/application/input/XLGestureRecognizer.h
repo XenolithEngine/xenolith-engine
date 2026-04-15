@@ -123,8 +123,8 @@ struct SP_PUBLIC GesturePinch : GestureData {
 
 class SP_PUBLIC GestureRecognizer : public Ref {
 public:
-	using EventMask = std::bitset<toInt(InputEventName::Max)>;
-	using ButtonMask = std::bitset<toInt(InputMouseButton::Max)>;
+	using EventMask = sprt::bitset<toInt(InputEventName::Max)>;
+	using ButtonMask = sprt::bitset<toInt(InputMouseButton::Max)>;
 
 	virtual ~GestureRecognizer() = default;
 
@@ -194,7 +194,7 @@ protected:
 class SP_PUBLIC GestureTapRecognizer : public GestureRecognizer {
 public:
 	using InputCallback = Function<void(const GestureTap &)>;
-	using ButtonMask = std::bitset<toInt(InputMouseButton::Max)>;
+	using ButtonMask = sprt::bitset<toInt(InputMouseButton::Max)>;
 
 	virtual ~GestureTapRecognizer() = default;
 
@@ -348,7 +348,7 @@ protected:
 class SP_PUBLIC GestureKeyRecognizer : public GestureRecognizer {
 public:
 	using InputCallback = Function<bool(const GestureData &)>;
-	using KeyMask = std::bitset<toInt(InputKeyCode::Max)>;
+	using KeyMask = sprt::bitset<toInt(InputKeyCode::Max)>;
 
 	virtual ~GestureKeyRecognizer() = default;
 
@@ -398,8 +398,24 @@ protected:
 	InputCallback _callback;
 };
 
-SP_PUBLIC std::ostream &operator<<(std::ostream &, GestureEvent);
-
 } // namespace stappler::xenolith
+
+namespace sprt {
+
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::xenolith::GestureEvent> {
+	using GestureEvent = STAPPLER_VERSIONIZED_NAMESPACE::xenolith::GestureEvent;
+	template <typename Callback>
+	static void encode(const Callback &stream, GestureEvent ev) {
+		switch (ev) {
+		case GestureEvent::Began: stream << "GestureEvent::Began"; break;
+		case GestureEvent::Activated: stream << "GestureEvent::Activated"; break;
+		case GestureEvent::Ended: stream << "GestureEvent::Ended"; break;
+		case GestureEvent::Cancelled: stream << "GestureEvent::Cancelled"; break;
+		}
+	}
+};
+
+} // namespace sprt
 
 #endif /* XENOLITH_APPLICATION_INPUT_XLGESTURERECOGNIZER_H_ */

@@ -38,7 +38,7 @@ public:
 	static EventHeader onDocument;
 	static EventHeader onLayout;
 
-	using PositionCallback = std::function<void(float)>;
+	using PositionCallback = sprt::function<void(float)>;
 	using PageData = document::LayoutPageData;
 
 	struct ViewPosition {

@@ -22,13 +22,13 @@ THE SOFTWARE.
 
 #include <sprt/runtime/stream.h>
 #include <sprt/cxx/unordered_map>
-#include <sprt/cxx/memory/allocator_malloc.h>
+#include <sprt/cxx/detail/allocator_malloc.h>
 
 namespace sprt {
 
 template <typename Key, typename Value>
 using test_unordered_map = __unordered_map<Key, Value, sprt::hash<void>, sprt::equal_to<void>,
-		sprt::memory::AllocatorMalloc<sprt::pair<const Key, Value>>>;
+		sprt::detail::AllocatorMalloc<sprt::pair<const Key, Value>>>;
 
 void performHashTests() {
 	test_unordered_map<int, const char *> map;

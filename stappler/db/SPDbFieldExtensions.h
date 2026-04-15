@@ -34,12 +34,14 @@ struct SP_PUBLIC FieldIntArray : db::FieldCustom {
 	static bool registerForPostgres(CustomFieldInfo &);
 	static bool registerForSqlite(CustomFieldInfo &);
 
-	template <typename ... Args>
-	FieldIntArray(String && n, Args && ... args) : FieldCustom(sp::move(n), std::forward<Args>(args)...) { }
+	template <typename... Args>
+	FieldIntArray(String &&n, Args &&...args)
+	: FieldCustom(sp::move(n), sprt::forward<Args>(args)...) { }
 
 	virtual StringView getDriverTypeName() const override { return FIELD_NAME; }
 
-	virtual bool transformValue(const db::Scheme &, const Value &obj, Value &val, bool isCreate) const override;
+	virtual bool transformValue(const db::Scheme &, const Value &obj, Value &val,
+			bool isCreate) const override;
 	virtual bool isSimpleLayout() const override;
 };
 
@@ -48,12 +50,14 @@ struct SP_PUBLIC FieldBigIntArray : db::FieldCustom {
 	static bool registerForPostgres(CustomFieldInfo &);
 	static bool registerForSqlite(CustomFieldInfo &);
 
-	template <typename ... Args>
-	FieldBigIntArray(String && n, Args && ... args) : FieldCustom(sp::move(n), std::forward<Args>(args)...) { }
+	template <typename... Args>
+	FieldBigIntArray(String &&n, Args &&...args)
+	: FieldCustom(sp::move(n), sprt::forward<Args>(args)...) { }
 
 	virtual StringView getDriverTypeName() const override { return FIELD_NAME; }
 
-	virtual bool transformValue(const db::Scheme &, const Value &obj, Value &val, bool isCreate) const override;
+	virtual bool transformValue(const db::Scheme &, const Value &obj, Value &val,
+			bool isCreate) const override;
 	virtual bool isSimpleLayout() const override;
 };
 
@@ -62,12 +66,14 @@ struct SP_PUBLIC FieldPoint : db::FieldCustom {
 	static bool registerForPostgres(CustomFieldInfo &);
 	static bool registerForSqlite(CustomFieldInfo &);
 
-	template <typename ... Args>
-	FieldPoint(String && n, Args && ... args) : FieldCustom(sp::move(n), std::forward<Args>(args)...) { }
+	template <typename... Args>
+	FieldPoint(String &&n, Args &&...args)
+	: FieldCustom(sp::move(n), sprt::forward<Args>(args)...) { }
 
 	virtual StringView getDriverTypeName() const override { return FIELD_NAME; }
 
-	virtual bool transformValue(const db::Scheme &, const Value &obj, Value &val, bool isCreate) const override;
+	virtual bool transformValue(const db::Scheme &, const Value &obj, Value &val,
+			bool isCreate) const override;
 	virtual bool isSimpleLayout() const override;
 };
 
@@ -76,15 +82,17 @@ struct SP_PUBLIC FieldTextArray : db::FieldCustom {
 	static bool registerForPostgres(CustomFieldInfo &);
 	static bool registerForSqlite(CustomFieldInfo &);
 
-	template <typename ... Args>
-	FieldTextArray(String && n, Args && ... args) : FieldCustom(sp::move(n), std::forward<Args>(args)...) { }
+	template <typename... Args>
+	FieldTextArray(String &&n, Args &&...args)
+	: FieldCustom(sp::move(n), sprt::forward<Args>(args)...) { }
 
 	virtual StringView getDriverTypeName() const override { return FIELD_NAME; }
 
-	virtual bool transformValue(const db::Scheme &, const Value &obj, Value &val, bool isCreate) const override;
+	virtual bool transformValue(const db::Scheme &, const Value &obj, Value &val,
+			bool isCreate) const override;
 	virtual bool isSimpleLayout() const override;
 };
 
-}
+} // namespace stappler::db
 
 #endif /* STAPPLER_DB_SPDBFIELDEXTENSIONS_H_ */

@@ -54,8 +54,9 @@ DataScroll::ItemMap DataScrollHandlerGrid::run(Request t, DataMap &&data) {
 		cols = 1;
 	}
 
-	auto cellWidth = (_autoPaddings?(std::min(_cellMinWidth, size.width / cols)):(size.width / cols));
-	auto cellHeight = (_fixedHeight?_cellHeight:cellWidth / _cellAspectRatio);
+	auto cellWidth =
+			(_autoPaddings ? (sprt::min(_cellMinWidth, size.width / cols)) : (size.width / cols));
+	auto cellHeight = (_fixedHeight ? _cellHeight : cellWidth / _cellAspectRatio);
 
 	_currentCellSize = Size2(cellWidth, cellHeight);
 	_currentCols = uint32_t(cols);
@@ -63,14 +64,12 @@ DataScroll::ItemMap DataScrollHandlerGrid::run(Request t, DataMap &&data) {
 
 	for (auto &it : data) {
 		auto item = onItem(sp::move(it.second), it.first);
-		ret.insert(std::make_pair(it.first, item));
+		ret.insert(sprt::make_pair(it.first, item));
 	}
 	return ret;
 }
 
-void DataScrollHandlerGrid::setCellMinWidth(float v) {
-	_cellMinWidth = v;
-}
+void DataScrollHandlerGrid::setCellMinWidth(float v) { _cellMinWidth = v; }
 
 void DataScrollHandlerGrid::setCellAspectRatio(float v) {
 	_cellAspectRatio = v;
@@ -81,13 +80,9 @@ void DataScrollHandlerGrid::setCellHeight(float v) {
 	_fixedHeight = true;
 }
 
-void DataScrollHandlerGrid::setAutoPaddings(bool value) {
-	_autoPaddings = value;
-}
+void DataScrollHandlerGrid::setAutoPaddings(bool value) { _autoPaddings = value; }
 
-bool DataScrollHandlerGrid::isAutoPaddings() const {
-	return _autoPaddings;
-}
+bool DataScrollHandlerGrid::isAutoPaddings() const { return _autoPaddings; }
 
 Rc<DataScroll::Item> DataScrollHandlerGrid::onItem(Value &&data, DataSource::Id id) {
 	DataSource::Id::Type row = id.get() / _currentCols;
@@ -98,4 +93,4 @@ Rc<DataScroll::Item> DataScrollHandlerGrid::onItem(Value &&data, DataSource::Id 
 	return Rc<DataScroll::Item>::create(sp::move(data), pos, _currentCellSize);
 }
 
-}
+} // namespace stappler::xenolith::material2d

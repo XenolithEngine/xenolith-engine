@@ -27,7 +27,9 @@
 #include "SPPBXTarget.h"
 #include "SPPBXFile.h"
 #include "SPXCodeProject.h"
+#include <stdlib.h>
 #include <unistd.h>
+#include <limits.h>
 
 namespace STAPPLER_VERSIONIZED stappler::makefile::xcode {
 
@@ -132,14 +134,14 @@ static int8_t *TSGenerateUniqueGlobalID(int8_t *buff) {
 	}
 	encoded_time = lasttime;
 	// now swap byte ordering
-	gid._time = byteorder::bswap32(encoded_time);
+	gid._time = sprt::byteswap(encoded_time);
 
 	// rotate the random value for output
 	int16_t random_rol = rotl16(random_value, 0x8);
 	gid._random = random_rol;
 
 	// copy to passed buffer, this will always be 12 bytes
-	memcpy(buffer, &gid, sizeof(Globalidentifier));
+	sprt::memcpy(buffer, &gid, sizeof(Globalidentifier));
 
 	// roll the rolled value again for storing
 	gid._random = rotl16(random_rol, 0x8);

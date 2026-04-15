@@ -300,7 +300,7 @@ protected:
 	Set<Rc<DescriptorSetBindings>> _descriptorSets;
 	Set<Rc<DeviceMemoryPool>> _memPool;
 
-	std::array<BindPoint, 2> _bindPoints;
+	sprt::array<BindPoint, 2> _bindPoints;
 
 	const GraphicPipeline *_boundGraphicPipeline = nullptr;
 	const ComputePipeline *_boundComputePipeline = nullptr;

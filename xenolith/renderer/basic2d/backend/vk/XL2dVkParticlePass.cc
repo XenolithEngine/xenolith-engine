@@ -82,7 +82,7 @@ void ParticleEmitterAttachmentHandle::enumerateAttachmentObjects(
 }
 
 Vector<uint64_t> ParticlePersistentData::updateEmitters(DeviceMemoryPool *pool,
-		const memory::map<uint64_t, ParticleSystemRenderInfo> &data, uint64_t clock) {
+		const mem_pool::Map<uint64_t, ParticleSystemRenderInfo> &data, uint64_t clock) {
 	Vector<uint64_t> ret;
 	auto it = _emitters.begin();
 	while (it != _emitters.end()) {
@@ -219,7 +219,7 @@ ParticlePersistentData::EmitterData ParticlePersistentData::spawnEmitter(DeviceM
 		auto points = reinterpret_cast<ParticleEmissionPoints *>(ptr);
 		points->count = static_cast<uint32_t>(s->emissionPoints.size());
 		ptr += sizeof(ParticleEmissionPoints);
-		memcpy(ptr, s->emissionPoints.data(), s->emissionPoints.size() * sizeof(Vec2));
+		sprt::memcpy(ptr, s->emissionPoints.data(), s->emissionPoints.size() * sizeof(Vec2));
 	});
 
 	return EmitterData{
@@ -334,7 +334,7 @@ bool ParticlePass::init(Queue::Builder &queueBuilder, QueuePassBuilder &passBuil
 		subpassBuilder.addComputePipeline(UpdatePipelineName, layout->defaultFamily,
 			SpecializationInfo(
 				particleUpdateComp,
-				memory::vector<SpecializationConstant>{
+				mem_pool::Vector<SpecializationConstant>{
 					SpecializationConstant(ENABLE_FEEDBACK),
 					SpecializationConstant(config::ParticleBufferArraySize)
 				}
@@ -439,12 +439,13 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 		auto renderInfo = aHandle->getEmitterRenderInfo(e.first);
 
 		auto lifetime = d.lifetime.init + d.lifetime.rnd;
-		auto framesInGen = uint32_t(
-				std::floor(TimeInterval::floatSeconds(lifetime).toMicros() / d.frameInterval));
+		auto framesInGen =
+				uint32_t(TimeInterval::floatSeconds(lifetime).toMicros() / d.frameInterval);
 
 		auto dt = ctx->clock - e.second.clock;
 		auto v = float(dt) / d.frameInterval;
-		auto nframes = std::min(renderInfo->maxFramesPerCall, static_cast<uint32_t>(std::floor(v)));
+		auto nframes =
+				sprt::min(renderInfo->maxFramesPerCall, static_cast<uint32_t>(sprt::floor(v)));
 
 		// corrent frame index if lifetime was decreased
 		while (e.second.frame >= framesInGen) { e.second.frame -= framesInGen; }
@@ -469,8 +470,9 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 					BufferInfo(core::ForceBufferUsage(core::BufferUsage::ShaderDeviceAddress),
 							sizeof(ParticleFeedback)));
 
-			feedback->map([&](uint8_t *buf, VkDeviceSize bufSize) { memset(buf, 0, bufSize); },
-					DeviceMemoryAccess::Flush);
+			feedback->map([&](uint8_t *buf, VkDeviceSize bufSize) {
+				sprt::memset(buf, 0, bufSize);
+			}, DeviceMemoryAccess::Flush);
 
 			pcb.feedbackPointer = UVec2::convertFromPacked(feedback->getDeviceAddress());
 

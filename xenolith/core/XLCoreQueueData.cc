@@ -101,8 +101,8 @@ void ProgramData::inspect(SpanView<uint32_t> data) {
 
 	entryPoints.reserve(shader.entry_point_count);
 	for (auto &it : makeSpanView(shader.entry_points, shader.entry_point_count)) {
-		entryPoints.emplace_back(ProgramEntryPointBlock({it.id, memory::string(it.name),
-			it.local_size.x, it.local_size.y, it.local_size.z}));
+		entryPoints.emplace_back(ProgramEntryPointBlock(
+				{it.id, it.name, it.local_size.x, it.local_size.y, it.local_size.z}));
 	}
 
 	spvReflectDestroyShaderModule(&shader);

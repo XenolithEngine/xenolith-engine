@@ -81,7 +81,7 @@ void InputTextContainer::update(const UpdateTime &time) {
 	if (_selectedPointer) {
 		if (hasHorizontalOverflow()) {
 			const auto width = _contentSize.width;
-			const auto offset = std::min(48.0f, width / 3.0f);
+			const auto offset = sprt::min(48.0f, width / 3.0f);
 			const auto xPos = _selectedPointer->getPosition().x;
 			const auto labelWidth = _label->getContentSize().width;
 			const auto labelPos = _label->getPosition().x;
@@ -92,10 +92,10 @@ void InputTextContainer::update(const UpdateTime &time) {
 
 			if (xPos < offset) {
 				const float relPos = 1.0f - math::clamp(xPos / offset, 0.0f, 1.0f);
-				_label->setPositionX(std::min(maxPos, labelPos + relPos * maxv * time.dt));
+				_label->setPositionX(sprt::min(maxPos, labelPos + relPos * maxv * time.dt));
 			} else if (xPos > width - offset) {
 				const float relPos = 1.0f - math::clamp((width - xPos) / offset, 0.0f, 1.0f);
-				_label->setPositionX(std::max(minPos, labelPos - relPos * maxv * time.dt));
+				_label->setPositionX(sprt::max(minPos, labelPos - relPos * maxv * time.dt));
 			}
 		}
 	}
@@ -350,13 +350,13 @@ void InputTextContainer::updateCursorPosition() {
 
 	const auto labelWidth = _label->getContentSize().width;
 	const auto width = _contentSize.width;
-	const auto minPos = width - std::max(labelWidth, cpos.x);
+	const auto minPos = width - sprt::max(labelWidth, cpos.x);
 	const auto maxPos = 0.0f;
 
 	if (labelWidth <= width) {
 		runAdjustLabel(0.0f);
 	} else {
-		auto maxWidth = std::min(width / 4.0f, 60.0f);
+		auto maxWidth = sprt::min(width / 4.0f, 60.0f);
 		auto containerPos = _label->getNodeToParentTransform().transformPoint(cpos);
 		if (containerPos.x < maxWidth || containerPos.x > width - maxWidth) {
 			auto newpos = width / 2.0f - cpos.x;
@@ -447,12 +447,12 @@ void InputTextContainer::runAdjustLabel(float pos) {
 	const float maxT = 0.35f;
 	const float labelPos = _label->getPosition().x;
 
-	auto dist = std::fabs(labelPos - pos);
+	auto dist = sprt::fabs(labelPos - pos);
 
 	if (_enabled) {
 		if (dist > _contentSize.width * 0.5f) {
 			auto targetPos =
-					labelPos - std::copysign(dist - _contentSize.width * 0.25f, labelPos - pos);
+					labelPos - sprt::copysign(dist - _contentSize.width * 0.25f, labelPos - pos);
 			_label->setPositionX(targetPos);
 			dist = _contentSize.width * 0.5f;
 		}

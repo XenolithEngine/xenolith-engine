@@ -143,14 +143,14 @@ CommandLineParser<ContextConfig> ContextConfig::getCommandLineParser() {
 			}
 			++i;
 		});
-		if (!isnan(f[0])) {
-			if (isnan(f[1])) {
+		if (!sprt::isnan(f[0])) {
+			if (sprt::isnan(f[1])) {
 				f[1] = f[0];
 			}
-			if (isnan(f[2])) {
+			if (sprt::isnan(f[2])) {
 				f[2] = f[0];
 			}
-			if (isnan(f[3])) {
+			if (sprt::isnan(f[3])) {
 				f[3] = f[1];
 			}
 			if (!target.window) {
@@ -206,8 +206,8 @@ ContextConfig::ContextConfig() {
 		context->appName = str;
 	}
 	context->appVersionCode = getAppconfigVersionIndex();
-	context->appVersion = sprt::StreamTraits<char>::toString(getAppconfigVersionVariant(), ".",
-			getAppconfigVersionApi(), ".", getAppconfigVersionRev(), ".",
+	context->appVersion = sprt::StreamTraits<char>::toString<String>(getAppconfigVersionVariant(),
+			".", getAppconfigVersionApi(), ".", getAppconfigVersionRev(), ".",
 			getAppconfigVersionBuild());
 
 	window->id = context->bundleName;
@@ -297,43 +297,6 @@ Value encodeThemeInfo(const ThemeInfo &info) {
 	ret.setValue(info.doubleClickInterval, "doubleClickInterval");
 	ret.setValue(encodeDecorationInfo(info.decorations), "decorations");
 	return ret;
-}
-
-const CallbackStream &operator<<(const CallbackStream &stream, NetworkFlags t) {
-	for (auto it : flags(t)) {
-		stream << " ";
-		switch (it) {
-		case NetworkFlags::None: break;
-		case NetworkFlags::Internet: stream << "NetworkFlags::Internet"; break;
-		case NetworkFlags::Congested: stream << "NetworkFlags::Congested"; break;
-		case NetworkFlags::Metered: stream << "NetworkFlags::Metered"; break;
-		case NetworkFlags::Restricted: stream << "NetworkFlags::Restricted"; break;
-		case NetworkFlags::Roaming: stream << "NetworkFlags::Roaming"; break;
-		case NetworkFlags::Suspended: stream << "NetworkFlags::Suspended"; break;
-		case NetworkFlags::Vpn: stream << "NetworkFlags::Vpn"; break;
-		case NetworkFlags::PrioritizeBandwidth:
-			stream << "NetworkFlags::PrioritizeBandwidth";
-			break;
-		case NetworkFlags::PrioritizeLatency: stream << "NetworkFlags::PrioritizeLatency"; break;
-		case NetworkFlags::TemporarilyNotMetered:
-			stream << "NetworkFlags::TemporarilyNotMetered";
-			break;
-		case NetworkFlags::Trusted: stream << "NetworkFlags::Trusted"; break;
-		case NetworkFlags::Validated: stream << "NetworkFlags::Validated"; break;
-		case NetworkFlags::WifiP2P: stream << "NetworkFlags::WifiP2P"; break;
-		case NetworkFlags::CaptivePortal: stream << "NetworkFlags::CaptivePortal"; break;
-		case NetworkFlags::Local: stream << "NetworkFlags::Local"; break;
-		case NetworkFlags::Wired: stream << "NetworkFlags::Wired"; break;
-		case NetworkFlags::WLAN: stream << "NetworkFlags::WLAN"; break;
-		case NetworkFlags::WWAN: stream << "NetworkFlags::WWAN"; break;
-		}
-	}
-	return stream;
-}
-
-std::ostream &operator<<(std::ostream &stream, NetworkFlags t) {
-	memory::makeCallback(stream) << t;
-	return stream;
 }
 
 } // namespace stappler::xenolith

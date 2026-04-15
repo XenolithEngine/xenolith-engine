@@ -27,8 +27,7 @@ namespace STAPPLER_VERSIONIZED stappler::pug {
 
 Token::Token(Type t, const StringView &d) : type(t), data(d) { }
 
-Token::Token(Type t, const StringView &d, Expression *e)
-: type(t), data(d), expression(e) { }
+Token::Token(Type t, const StringView &d, Expression *e) : type(t), data(d), expression(e) { }
 
 void Token::addChild(Token *tok) {
 	if (!child) {
@@ -41,15 +40,13 @@ void Token::addChild(Token *tok) {
 }
 
 /// Forward declaration
-static void stl_print_token(const Lexer::OutStream &stream, const Token * t, uint16_t depth);
-static void stl_print_token_tree(const Lexer::OutStream &stream, const Token * t, uint16_t depth);
+static void stl_print_token(const Lexer::OutStream &stream, const Token *t, uint16_t depth);
+static void stl_print_token_tree(const Lexer::OutStream &stream, const Token *t, uint16_t depth);
 
 /// Print contents of the token based on specified string
-static void stl_print_token(const Lexer::OutStream &stream, const Token * t, uint16_t depth) {
+static void stl_print_token(const Lexer::OutStream &stream, const Token *t, uint16_t depth) {
 	if (t) {
-		for (int i = 0; i < depth; ++i) {
-			stream << "  ";
-		}
+		for (int i = 0; i < depth; ++i) { stream << "  "; }
 
 		stream << "* " << toInt(t->type) << " ";
 		switch (t->type) {
@@ -126,15 +123,13 @@ static void stl_print_token(const Lexer::OutStream &stream, const Token * t, uin
 }
 
 /// Print contents of the token tree based on specified string
-static void stl_print_token_tree(const Lexer::OutStream &stream, const Token * t, uint16_t depth) {
-	while (t != NULL) {
+static void stl_print_token_tree(const Lexer::OutStream &stream, const Token *t, uint16_t depth) {
+	while (t != nullptr) {
 		stl_print_token(stream, t, depth);
 		t = t->next;
 	}
 }
 
-void Token::describe(const OutStream &stream) const {
-	stl_print_token(stream, this, 0);
-}
+void Token::describe(const OutStream &stream) const { stl_print_token(stream, this, 0); }
 
-}
+} // namespace stappler::pug

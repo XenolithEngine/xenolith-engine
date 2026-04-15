@@ -59,7 +59,7 @@ public:
 	virtual ~ParticlePersistentData() = default;
 
 	Vector<uint64_t> updateEmitters(DeviceMemoryPool *,
-			const memory::map<uint64_t, ParticleSystemRenderInfo> &data, uint64_t clock);
+			const mem_pool::Map<uint64_t, ParticleSystemRenderInfo> &data, uint64_t clock);
 
 	void updateEmitter(DeviceMemoryPool *, EmitterData &, ParticleSystemData *);
 	void addEmitter(DeviceMemoryPool *, uint64_t id, ParticleSystemData *, uint64_t clock);

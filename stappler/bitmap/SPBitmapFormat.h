@@ -24,9 +24,8 @@ THE SOFTWARE.
 #ifndef STAPPLER_BITMAP_SPBITMAPFORMAT_H_
 #define STAPPLER_BITMAP_SPBITMAPFORMAT_H_
 
-#include "SPIO.h"
-#include "SPStringView.h"
-#include "SPFilepath.h"
+#include "SPIO.h" // IWYU pragma: keep
+#include "SPFilepath.h" // IWYU pragma: keep
 
 namespace STAPPLER_VERSIONIZED stappler::bitmap {
 

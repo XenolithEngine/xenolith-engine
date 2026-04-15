@@ -74,7 +74,7 @@ struct VectorCanvasCacheData {
 };
 
 struct VectorCanvasCache {
-	static Mutex s_cacheMutex;
+	static sprt::mutex s_cacheMutex;
 	static VectorCanvasCache *s_instance;
 
 	static void retain();
@@ -91,7 +91,7 @@ struct VectorCanvasCache {
 };
 
 VectorCanvasCache *VectorCanvasCache::s_instance = nullptr;
-Mutex VectorCanvasCache::s_cacheMutex;
+sprt::mutex VectorCanvasCache::s_cacheMutex;
 
 struct VectorCanvas::Data : memory::AllocPool {
 	memory::pool_t *pool = nullptr;
@@ -109,7 +109,7 @@ struct VectorCanvas::Data : memory::AllocPool {
 	Rc<VectorImageData> image;
 
 	Vector<InstanceVertexData> *out = nullptr;
-	std::forward_list<Vector<TransformData>> *instances = nullptr;
+	sprt::__malloc_forward_list<Vector<TransformData>> *instances = nullptr;
 	Map<String, VectorCanvasResult::ObjectRef> *objects = nullptr;
 
 	Data(memory::pool_t *p, bool deferred);
@@ -166,7 +166,7 @@ Rc<VectorCanvas> VectorCanvas::getInstance(bool deferred) {
 	static thread_local Rc<VectorCanvas> tl_instance = nullptr;
 	if (!tl_instance) {
 		tl_instance = Rc<VectorCanvas>::create(deferred);
-		sprt::thread::info::add_cleanup([value = &tl_instance] {
+		sprt::_thread::info::add_cleanup([value = &tl_instance] {
 			// deallocate thread interface
 			*value = nullptr;
 		});
@@ -353,7 +353,7 @@ void VectorCanvas::Data::doDraw(const VectorPath &path, StringView id, StringVie
 
 			Vec3 scaleVec;
 			transform.getScale(&scaleVec);
-			float scale = std::max(scaleVec.x, scaleVec.y);
+			float scale = sprt::max(scaleVec.x, scaleVec.y);
 
 			VectorCanvasCacheData data{nullptr, 0, 0, 0, cache.str<Interface>(), quality, scale,
 				pathDrawer.relocateRule, style};
@@ -458,7 +458,7 @@ uint32_t VectorCanvasPathDrawer::draw(memory::pool_t *pool, const VectorPath &p,
 
 	Vec3 scale;
 	transform.getScale(&scale);
-	approxScale = std::max(scale.x, scale.y);
+	approxScale = sprt::max(scale.x, scale.y);
 
 	geom::LineDrawer line(approxScale * quality, Rc<geom::Tesselator>(fillTess),
 			Rc<geom::Tesselator>(strokeTess), Rc<geom::Tesselator>(sdfTess),
@@ -601,7 +601,7 @@ uint32_t VectorCanvasPathDrawer::draw(memory::pool_t *pool, const VectorPath &p,
 
 
 void VectorCanvasCache::retain() {
-	std::unique_lock<Mutex> lock(s_cacheMutex);
+	sprt::unique_lock<sprt::mutex > lock(s_cacheMutex);
 
 	if (!s_instance) {
 		s_instance = new VectorCanvasCache();
@@ -610,7 +610,7 @@ void VectorCanvasCache::retain() {
 }
 
 void VectorCanvasCache::release() {
-	std::unique_lock<Mutex> lock(s_cacheMutex);
+	sprt::unique_lock<sprt::mutex > lock(s_cacheMutex);
 
 	if (s_instance) {
 		if (s_instance->refCount == 1) {
@@ -623,7 +623,7 @@ void VectorCanvasCache::release() {
 }
 
 const VectorCanvasCacheData *VectorCanvasCache::getCacheData(const VectorCanvasCacheData &data) {
-	std::unique_lock<Mutex> lock(s_cacheMutex);
+	sprt::unique_lock<sprt::mutex > lock(s_cacheMutex);
 	if (!s_instance) {
 		return nullptr;
 	}
@@ -637,7 +637,7 @@ const VectorCanvasCacheData *VectorCanvasCache::getCacheData(const VectorCanvasC
 }
 
 const VectorCanvasCacheData *VectorCanvasCache::setCacheData(VectorCanvasCacheData &&data) {
-	std::unique_lock<Mutex> lock(s_cacheMutex);
+	sprt::unique_lock<sprt::mutex > lock(s_cacheMutex);
 	if (!s_instance) {
 		return nullptr;
 	}
@@ -724,8 +724,9 @@ void VectorCanvasResult::updateColor(const Color4F &color) {
 		auto ret = Rc<VertexData>::alloc();
 		ret->data.resize(data->data.size());
 		ret->indexes.resize(data->indexes.size());
-		memcpy(ret->data.data(), data->data.data(), data->data.size() * sizeof(Vertex));
-		memcpy(ret->indexes.data(), data->indexes.data(), data->indexes.size() * sizeof(uint32_t));
+		sprt::memcpy(ret->data.data(), data->data.data(), data->data.size() * sizeof(Vertex));
+		sprt::memcpy(ret->indexes.data(), data->indexes.data(),
+				data->indexes.size() * sizeof(uint32_t));
 		return ret;
 	};
 

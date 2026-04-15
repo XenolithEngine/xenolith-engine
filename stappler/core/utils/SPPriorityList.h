@@ -41,23 +41,19 @@ template <typename Value>
 struct HashTraits<PriorityListEntry<Value> *> {
 	using Entry = PriorityListEntry<Value>;
 	static constexpr auto ValueSize = sizeof(PriorityListEntry<Value>);
-	static constexpr auto ValueOffset = std::countr_zero(ValueSize);
+	static constexpr auto ValueOffset = sprt::countr_zero(ValueSize);
 
 	static uint32_t hash(uint32_t salt, const Entry *value) {
 		return uint32_t(reinterpret_cast<uintptr_t>(value->target) >> ValueOffset);
 	}
 
-	static uint32_t hash(uint32_t salt, const void * value) {
+	static uint32_t hash(uint32_t salt, const void *value) {
 		return uint32_t(reinterpret_cast<uintptr_t>(value) >> ValueOffset);
 	}
 
-	static bool equal(const Entry *l, const Entry *r) {
-		return l->target == r->target;
-	}
+	static bool equal(const Entry *l, const Entry *r) { return l->target == r->target; }
 
-	static bool equal(const Entry *l, const void * value) {
-		return l->target == value;
-	}
+	static bool equal(const Entry *l, const void *value) { return l->target == value; }
 };
 
 template <typename Value>
@@ -69,17 +65,15 @@ public:
 	PriorityList(Pool *p = nullptr)
 	: _pool(p ? p : memory::pool::acquire()), _hash(p ? p : memory::pool::acquire()) { }
 
-	~PriorityList() {
-		clear();
-	}
+	~PriorityList() { clear(); }
 
-	template <typename ... Args>
-	Value * emplace(void *, int32_t p, Args && ... args);
+	template <typename... Args>
+	Value *emplace(void *, int32_t p, Args &&...args);
 
-	Value * find(void *) const;
+	Value *find(void *) const;
 
 	// callback returns true if Entry should be removed
-	void foreach(const Callback<bool(void *target, int32_t priority, Value &)> &);
+	void foreach (const Callback<bool(void *target, int32_t priority, Value &)> &);
 
 	bool erase(const void *);
 
@@ -88,11 +82,11 @@ public:
 	bool empty() const;
 
 protected:
-	template <typename ... Args>
-	Value * emplace_list(bool ordered, Entry **, void *, int32_t p, Args && ... args);
+	template <typename... Args>
+	Value *emplace_list(bool ordered, Entry **, void *, int32_t p, Args &&...args);
 
-	template <typename ... Args>
-	Entry *allocate(void *, int32_t p, Args && ... args);
+	template <typename... Args>
+	Entry *allocate(void *, int32_t p, Args &&...args);
 
 	void erase_entry(Entry *);
 	void free(Entry *);
@@ -110,8 +104,8 @@ protected:
 };
 
 template <typename Value>
-template <typename ... Args>
-auto PriorityList<Value>::emplace(void *ptr, int32_t p, Args && ... args) -> Value * {
+template <typename... Args>
+auto PriorityList<Value>::emplace(void *ptr, int32_t p, Args &&...args) -> Value * {
 	auto it = _hash.find(ptr);
 	if (it != _hash.end()) {
 		auto entry = (Entry *)*it;
@@ -123,11 +117,11 @@ auto PriorityList<Value>::emplace(void *ptr, int32_t p, Args && ... args) -> Val
 	}
 
 	if (p == 0) {
-		return emplace_list(false, &_zeroList, ptr, p, std::forward<Args>(args)...);
+		return emplace_list(false, &_zeroList, ptr, p, sprt::forward<Args>(args)...);
 	} else if (p < 0) {
-		return emplace_list(true, &_negList, ptr, p, std::forward<Args>(args)...);
+		return emplace_list(true, &_negList, ptr, p, sprt::forward<Args>(args)...);
 	} else if (p > 0) {
-		return emplace_list(true, &_posList, ptr, p, std::forward<Args>(args)...);
+		return emplace_list(true, &_posList, ptr, p, sprt::forward<Args>(args)...);
 	}
 
 	return nullptr;
@@ -144,7 +138,8 @@ auto PriorityList<Value>::find(void *ptr) const -> Value * {
 }
 
 template <typename Value>
-void PriorityList<Value>::foreach(const Callback<bool(void *target, int32_t priority, Value &)> &cb) {
+void PriorityList<Value>::foreach (
+		const Callback<bool(void *target, int32_t priority, Value &)> &cb) {
 	foreach_list(_negList, cb);
 	foreach_list(_zeroList, cb);
 	foreach_list(_posList, cb);
@@ -188,9 +183,10 @@ bool PriorityList<Value>::empty() const {
 }
 
 template <typename Value>
-template <typename ... Args>
-auto PriorityList<Value>::emplace_list(bool ordered, Entry **target, void *ptr, int32_t p, Args && ... args) -> Value * {
-	Entry *newVal = allocate(ptr, p, std::forward<Args>(args)...);
+template <typename... Args>
+auto PriorityList<Value>::emplace_list(bool ordered, Entry **target, void *ptr, int32_t p,
+		Args &&...args) -> Value * {
+	Entry *newVal = allocate(ptr, p, sprt::forward<Args>(args)...);
 
 	if (ordered && *target && (*target)->priority < p) {
 		auto v = *target;
@@ -222,8 +218,8 @@ auto PriorityList<Value>::emplace_list(bool ordered, Entry **target, void *ptr, 
 }
 
 template <typename Value>
-template <typename ... Args>
-auto PriorityList<Value>::allocate(void *ptr, int32_t p, Args && ... args) -> Entry * {
+template <typename... Args>
+auto PriorityList<Value>::allocate(void *ptr, int32_t p, Args &&...args) -> Entry * {
 	Entry *ret = nullptr;
 	if (_free) {
 		ret = _free;
@@ -235,7 +231,7 @@ auto PriorityList<Value>::allocate(void *ptr, int32_t p, Args && ... args) -> En
 
 	ret->target = ptr;
 	ret->priority = p;
-	new (&ret->value) Value(std::forward<Args>(args)...);
+	new (&ret->value) Value(sprt::forward<Args>(args)...);
 
 	return ret;
 }
@@ -283,7 +279,8 @@ void PriorityList<Value>::free(Entry *v) {
 }
 
 template <typename Value>
-void PriorityList<Value>::foreach_list(Entry *v, const Callback<bool(void *target, int32_t priority, Value &)> &cb) {
+void PriorityList<Value>::foreach_list(Entry *v,
+		const Callback<bool(void *target, int32_t priority, Value &)> &cb) {
 	while (v) {
 		if (cb(v->target, v->priority, v->value)) {
 			auto next = v->next;
@@ -296,6 +293,6 @@ void PriorityList<Value>::foreach_list(Entry *v, const Callback<bool(void *targe
 	}
 }
 
-}
+} // namespace STAPPLER_VERSIONIZED stappler
 
 #endif /* STAPPLER_CORE_UTILS_SPPRIORITYLIST_H_ */

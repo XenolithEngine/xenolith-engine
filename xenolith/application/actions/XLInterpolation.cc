@@ -339,17 +339,17 @@ float quadraticInOut(float time) {
 
 static float evaluateCubic(float t, float p1, float p2) {
 	return
-			// std::pow(1.0f - t, 3.0f) * p0 // - p0 = 0.0f
-			3.0f * std::pow(1.0f - t, 2) * t * p1 + 3.0f * (1.0f - t) * std::pow(t, 2.0f) * p2
-			+ std::pow(t, 3.0f); // p3 = 1.0f
+			// sprt::pow(1.0f - t, 3.0f) * p0 // - p0 = 0.0f
+			3.0f * sprt::pow(1.0f - t, 2) * t * p1 + 3.0f * (1.0f - t) * sprt::pow(t, 2.0f) * p2
+			+ sprt::pow(t, 3.0f); // p3 = 1.0f
 }
 
 static constexpr float BezieratErrorBound = 0.001f;
 
 static float truncateBorders(float t) {
-	if (std::fabs(t) < BezieratErrorBound) {
+	if (sprt::fabs(t) < BezieratErrorBound) {
 		return 0.0f;
-	} else if (std::fabs(t - 1.0f) < BezieratErrorBound) {
+	} else if (sprt::fabs(t - 1.0f) < BezieratErrorBound) {
 		return 1.0f;
 	}
 	return t;
@@ -362,7 +362,7 @@ float bezieratFunction(float t, float x1, float y1, float x2, float y2) {
 	while (true) {
 		const float midpoint = (start + end) / 2;
 		const float estimate = evaluateCubic(midpoint, x1, x2);
-		if (std::abs(t - estimate) < BezieratErrorBound) {
+		if (sprt::abs(t - estimate) < BezieratErrorBound) {
 			return truncateBorders(evaluateCubic(midpoint, y1, y2));
 		}
 		if (estimate < t) {

@@ -114,7 +114,7 @@ bool DataScroll::init(DataSource *source, Layout l) {
 	setScrollMaxVelocity(5000.0f);
 
 	_sourceListener = addSystem(Rc<DataListener<DataSource>>::create(
-			std::bind(&DataScroll::onSourceDirty, this), source));
+			sprt::bind(&DataScroll::onSourceDirty, this), source));
 	_sourceListener->setSubscription(source);
 
 	setController(Rc<ScrollController>::create());
@@ -172,11 +172,11 @@ void DataScroll::setSource(DataSource *c) {
 			_controller->clear();
 
 			if (isVertical()) {
-				_controller->addItem(std::bind(&DataScroll::onLoaderRequest, this, Request::Reset),
+				_controller->addItem(sprt::bind(&DataScroll::onLoaderRequest, this, Request::Reset),
 						_loaderSize, 0.0f);
 			} else {
 				auto size = _contentSize.width - _paddingGlobal.left - _loaderSize;
-				_controller->addItem(std::bind(&DataScroll::onLoaderRequest, this, Request::Reset),
+				_controller->addItem(sprt::bind(&DataScroll::onLoaderRequest, this, Request::Reset),
 						max(_loaderSize, size), 0.0f);
 			}
 
@@ -246,12 +246,12 @@ void DataScroll::onSourceDirty() {
 	if (!_sourceListener->getSubscription() || _items.size() == 0) {
 		_controller->clear();
 		if (isVertical()) {
-			_controller->addItem(std::bind(&DataScroll::onLoaderRequest, this, Request::Reset),
+			_controller->addItem(sprt::bind(&DataScroll::onLoaderRequest, this, Request::Reset),
 					_loaderSize, 0.0f);
 		} else {
 			auto size = _contentSize.width - _paddingGlobal.left - _loaderSize;
-			_controller->addItem(std::bind(&DataScroll::onLoaderRequest, this, Request::Reset),
-					std::max(_loaderSize, size), 0.0f);
+			_controller->addItem(sprt::bind(&DataScroll::onLoaderRequest, this, Request::Reset),
+					sprt::max(_loaderSize, size), 0.0f);
 		}
 	}
 
@@ -299,9 +299,9 @@ size_t DataScroll::getMaxId() const {
 	}
 }
 
-std::pair<DataSource *, bool> DataScroll::getSourceCategory(int64_t id) {
+sprt::pair<DataSource *, bool> DataScroll::getSourceCategory(int64_t id) {
 	if (!_sourceListener->getSubscription()) {
-		return std::make_pair(nullptr, false);
+		return sprt::make_pair(nullptr, false);
 	}
 
 	return _sourceListener->getSubscription()->getItemCategory(DataSource::Id(id),
@@ -328,7 +328,7 @@ bool DataScroll::requestSlice(DataSource::Id first, size_t count, Request type) 
 
 	_invalidateAfter = stappler::Time::now();
 	_sourceListener->getSubscription()->getSliceData(
-			std::bind(&DataScroll::onSliceData, Rc<DataScroll>(this), std::placeholders::_1,
+			sprt::bind(&DataScroll::onSliceData, Rc<DataScroll>(this), sprt::placeholders::_1,
 					Time::now(), type),
 			first, count, _categoryLookupLevel, _itemsForSubcats);
 
@@ -336,7 +336,7 @@ bool DataScroll::requestSlice(DataSource::Id first, size_t count, Request type) 
 }
 
 bool DataScroll::updateSlice() {
-	auto size = std::max(_currentSliceLen, _sliceSize);
+	auto size = sprt::max(_currentSliceLen, _sliceSize);
 	auto first = _currentSliceStart;
 	if (size > _itemsCount) {
 		size = _itemsCount;
@@ -509,7 +509,7 @@ void DataScroll::updateItems() {
 	if (!_items.empty()) {
 		if (_items.begin()->first.get() > 0) {
 			Item *first = _items.begin()->second;
-			_controller->addItem(std::bind(&DataScroll::onLoaderRequest, this, Request::Front),
+			_controller->addItem(sprt::bind(&DataScroll::onLoaderRequest, this, Request::Front),
 					_loaderSize,
 					(_layout == Vertical) ? (first->getPosition().y - _loaderSize)
 										  : (first->getPosition().x - _loaderSize));
@@ -517,19 +517,19 @@ void DataScroll::updateItems() {
 
 		for (auto &it : _items) {
 			it.second->setControllerId(_controller->addItem(
-					std::bind(&DataScroll::onItemRequest, this, std::placeholders::_1, it.first),
+					sprt::bind(&DataScroll::onItemRequest, this, sprt::placeholders::_1, it.first),
 					it.second->getContentSize(), it.second->getPosition()));
 		}
 
 		if (_items.rbegin()->first.get() < _itemsCount - 1) {
 			Item *last = _items.rbegin()->second;
-			_controller->addItem(std::bind(&DataScroll::onLoaderRequest, this, Request::Back),
+			_controller->addItem(sprt::bind(&DataScroll::onLoaderRequest, this, Request::Back),
 					_loaderSize,
 					(_layout == Vertical) ? (last->getPosition().y + last->getContentSize().height)
 										  : (last->getPosition().x + last->getContentSize().width));
 		}
 	} else {
-		_controller->addItem(std::bind(&DataScroll::onLoaderRequest, this, Request::Reset),
+		_controller->addItem(sprt::bind(&DataScroll::onLoaderRequest, this, Request::Reset),
 				_loaderSize, 0.0f);
 	}
 

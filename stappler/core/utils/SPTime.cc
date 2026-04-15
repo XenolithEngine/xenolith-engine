@@ -45,22 +45,22 @@ float TimeStorage::toFloatSeconds() const { return _value / 1000000.0f; }
 double TimeStorage::toDoubleSeconds() const { return _value / 1000000.0; }
 
 tm TimeStorage::asLocal() const {
-	auto sec = time_t(toSeconds());
+	auto sec = sprt::time_t(toSeconds());
 	tm tm;
-	localtime_r(&sec, &tm);
+	__sprt_localtime_r(&sec, &tm);
 	return tm;
 }
 
 tm TimeStorage::asGmt() const {
-	auto sec = time_t(toSeconds());
+	auto sec = sprt::time_t(toSeconds());
 	tm tm;
-	gmtime_r(&sec, &tm);
+	__sprt_gmtime_r(&sec, &tm);
 	return tm;
 }
 
 void TimeStorage::setMicroseconds(uint64_t v) { _value = v; }
 void TimeStorage::setMilliseconds(uint64_t v) { _value = v * 1'000ULL; }
-void TimeStorage::setSeconds(time_t v) { _value = v * 1'000'000ULL; }
+void TimeStorage::setSeconds(sprt::time_t v) { _value = v * 1'000'000ULL; }
 
 void TimeStorage::clear() { _value = 0; }
 

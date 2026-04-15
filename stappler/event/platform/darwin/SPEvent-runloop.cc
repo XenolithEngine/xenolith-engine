@@ -240,7 +240,7 @@ double RunLoopTimerSource::getNextInterval() const {
 
 bool RunLoopTimerHandle::init(HandleClass *cl, TimerInfo &&info) {
 	static_assert(sizeof(RunLoopTimerSource) <= DataSize
-			&& std::is_standard_layout<RunLoopTimerSource>::value);
+			&& sprt::is_standard_layout<RunLoopTimerSource>::value);
 
 	if (!TimerHandle::init(cl, info.completion)) {
 		return false;
@@ -312,7 +312,7 @@ void RunLoopThreadSource::cancel() { }
 
 bool RunLoopThreadHandle::init(HandleClass *cl) {
 	static_assert(sizeof(RunLoopThreadSource) <= DataSize
-			&& std::is_standard_layout<RunLoopThreadSource>::value);
+			&& sprt::is_standard_layout<RunLoopThreadSource>::value);
 
 	if (!ThreadHandle::init(cl)) {
 		return false;
@@ -354,7 +354,7 @@ void RunLoopThreadHandle::notify(RunLoopData *queue, RunLoopThreadSource *source
 
 Status RunLoopThreadHandle::perform(Rc<thread::Task> &&task) {
 	auto q = reinterpret_cast<RunLoopData *>(_class->info->data->_platformQueue);
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	_outputQueue.emplace_back(move(task));
 
 	NotifyData n{1, 0, 0};
@@ -365,7 +365,7 @@ Status RunLoopThreadHandle::perform(Rc<thread::Task> &&task) {
 Status RunLoopThreadHandle::perform(mem_std::Function<void()> &&func, Ref *target, StringView tag) {
 	auto q = reinterpret_cast<RunLoopData *>(_class->info->data->_platformQueue);
 
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	_outputCallbacks.emplace_back(CallbackInfo{sp::move(func), target, tag});
 
 	NotifyData n{1, 0, 0};

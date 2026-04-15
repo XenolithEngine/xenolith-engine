@@ -36,7 +36,7 @@ bool DynamicImage::init(const Callback<bool(Builder &)> &cb) {
 }
 
 void DynamicImage::finalize() {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
 	if (_instance) {
 		_instance->userdata = nullptr;
 		_instance = nullptr;
@@ -44,7 +44,7 @@ void DynamicImage::finalize() {
 }
 
 Rc<DynamicImageInstance> DynamicImage::getInstance() {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
 	return _instance;
 }
 
@@ -64,7 +64,7 @@ void DynamicImage::updateInstance(Loop &loop, const Rc<ImageObject> &obj, Rc<Dat
 		newInstance->data.views.emplace_back(&newInstance->view);
 	}
 
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
 	if (!_instance) {
 		return;
 	}
@@ -77,22 +77,22 @@ void DynamicImage::updateInstance(Loop &loop, const Rc<ImageObject> &obj, Rc<Dat
 }
 
 void DynamicImage::addTracker(const MaterialAttachment *a) {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
 	_materialTrackers.emplace(a);
 }
 
 void DynamicImage::removeTracker(const MaterialAttachment *a) {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
 	_materialTrackers.erase(a);
 }
 
 ImageInfo DynamicImage::getInfo() const {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
 	return ImageInfo(static_cast<const ImageInfo &>(_data));
 }
 
 Extent3 DynamicImage::getExtent() const {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
 	if (_instance) {
 		return _instance->data.extent;
 	} else {
@@ -101,7 +101,7 @@ Extent3 DynamicImage::getExtent() const {
 }
 
 void DynamicImage::setImage(const Rc<ImageObject> &obj) {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
 
 	_data.image = obj;
 

@@ -212,27 +212,26 @@ struct Loop::Internal final : memory::AllocPool {
 	void signalDependencies(const Vector<Rc<DependencyEvent>> &events, Queue *queue, bool success) {
 		for (auto &it : events) {
 			if (it->signal(queue, success)) {
-				auto iit = dependencyRequests.equal_range(it.get());
-				auto tmp = iit;
-				while (iit.first != iit.second) {
-					auto &v = iit.first->second;
-					if (!success) {
-						v->success = false;
-					}
-					++v->signaled;
-					if (v->signaled == v->events.size()) {
+				auto iit = dependencyRequests.find(it.get());
+				if (iit != dependencyRequests.end()) {
+					for (auto &v : iit->second) {
+						if (!success) {
+							v->success = false;
+						}
+						++v->signaled;
+						if (v->signaled == v->events.size()) {
 #if XL_VK_DEPS_DEBUG
-						StringStream str;
-						str << "signalDependencies:";
-						for (auto &it : v->events) { str << " " << it->getId(); }
-						str << "\n";
-						log::source().debug("vk::Loop", "Signal: ", str.str());
+							StringStream str;
+							str << "signalDependencies:";
+							for (auto &it : v->events) { str << " " << it->getId(); }
+							str << "\n";
+							log::source().debug("vk::Loop", "Signal: ", str.str());
 #endif
-						v->callback(iit.first->second->success);
+							v->callback(v->success);
+						}
 					}
-					++iit.first;
 				}
-				mem_pool::perform([&] { dependencyRequests.erase(tmp.first, tmp.second); }, pool);
+				mem_pool::perform([&] { dependencyRequests.erase(iit); }, pool);
 			}
 		}
 	}
@@ -259,7 +258,12 @@ struct Loop::Internal final : memory::AllocPool {
 						}
 						++req->signaled;
 					} else {
-						dependencyRequests.emplace(it.get(), req);
+						auto rIt = dependencyRequests.find(it.get());
+						if (rIt == dependencyRequests.end()) {
+							dependencyRequests.emplace(it.get(), Vector{req});
+						} else {
+							rIt->second.emplace_back(req);
+						}
 					}
 				}
 			}, pool);
@@ -302,9 +306,9 @@ struct Loop::Internal final : memory::AllocPool {
 
 	Rc<event::TimerHandle> updateTimerHandle;
 
-	std::multimap<DependencyEvent *, Rc<DependencyRequest>, std::less<void>> dependencyRequests;
+	Map<DependencyEvent *, Vector<Rc<DependencyRequest>>> dependencyRequests;
 
-	Mutex resourceMutex;
+	sprt::mutex resourceMutex;
 
 	Rc<Instance> instance;
 	Rc<Device> device;
@@ -317,7 +321,7 @@ struct Loop::Internal final : memory::AllocPool {
 	Rc<MaterialCompiler> materialQueue;
 	Rc<MeshCompiler> meshQueue;
 
-	std::atomic<bool> _running = true;
+	sprt::atomic<bool> _running = true;
 
 	mem_pool::Vector<Rc<TransferResource>> _tmpResources;
 	mem_pool::Vector<Pair<Rc<core::MaterialInputData>, mem_pool::Vector<Rc<DependencyEvent>>>>
@@ -430,7 +434,7 @@ void Loop::stop() {
 #if SP_REF_DEBUG
 			if (_internal->loop->getReferenceCount() > 1) {
 				_internal->loop->foreachBacktrace(
-						[](uint64_t id, Time time, const std::vector<std::string> &backtrace) {
+						[](uint64_t id, Time time, const sprt::vector<sprt::string> &backtrace) {
 					StringStream out;
 					out << id << ": " << time.toHttp<Interface>() << ":\n";
 					for (auto &it : backtrace) { out << "\t" << it << "\n"; }
@@ -606,7 +610,7 @@ Rc<core::Fence> Loop::acquireFence(core::FenceType type) {
 				return;
 			}
 			fence->clear();
-			std::unique_lock<Mutex> lock(guard->_internal->resourceMutex);
+			sprt::unique_lock<sprt::mutex > lock(guard->_internal->resourceMutex);
 			switch (fence->getType()) {
 			case core::FenceType::Default:
 				guard->_internal->defaultFences.emplace_back(move(fence));
@@ -618,7 +622,7 @@ Rc<core::Fence> Loop::acquireFence(core::FenceType type) {
 		}, 0);
 	};
 
-	std::unique_lock<Mutex> lock(_internal->resourceMutex);
+	sprt::unique_lock<sprt::mutex > lock(_internal->resourceMutex);
 	switch (type) {
 	case core::FenceType::Default:
 		if (!_internal->defaultFences.empty()) {

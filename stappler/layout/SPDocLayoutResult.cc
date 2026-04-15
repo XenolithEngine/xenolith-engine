@@ -59,7 +59,7 @@ LayoutResult::~LayoutResult() {
 }
 
 bool LayoutResult::init(const MediaParameters &media, Document *doc) {
-	auto pool = memory::pool::create(memory::app_root_pool);
+	auto pool = memory::pool::create(sprt::memory::app_root_pool);
 	mem_pool::perform([&] {
 		_data = new (pool) Data;
 		_data->pool = pool;
@@ -145,10 +145,9 @@ size_t LayoutResult::getNumPages() const { return _data->numPages; }
 
 LayoutBoundIndex LayoutResult::getBoundsForPosition(float pos) const {
 	if (!_data->bounds.empty()) {
-		auto it = std::lower_bound(_data->bounds.begin(), _data->bounds.end(), pos,
+		auto it = sprt::lower_bound(_data->bounds.begin(), _data->bounds.end(), pos,
 				[](const LayoutBoundIndex &idx, float pos) { return idx.end < pos; });
-		if (it != _data->bounds.end()
-				&& fabs(pos - it->end) < std::numeric_limits<float>::epsilon()) {
+		if (it != _data->bounds.end() && fabs(pos - it->end) < sprt::Epsilon<float>) {
 			++it;
 		}
 		if (it == _data->bounds.end()) {
@@ -315,7 +314,7 @@ void LayoutResult::processContents(const DocumentContentRecord &rec, size_t leve
 		}
 
 		int64_t page = maxOf<int64_t>();
-		if (!isnan(pos)
+		if (!sprt::isnan(pos)
 				&& (_data->media.flags & RenderFlags::PaginatedLayout) != RenderFlags::None) {
 			page = int64_t(roundf(pos / _data->media.surfaceSize.height));
 		}

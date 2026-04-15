@@ -46,7 +46,7 @@ public:
 	virtual ~DataSource();
 
 	template <class T, class... Args>
-	bool init(const T &t, Args&&... args) {
+	bool init(const T &t, Args &&...args) {
 		auto ret = initValue(t);
 		if (ret) {
 			return init(args...);
@@ -56,23 +56,24 @@ public:
 
 	bool init();
 
-	DataSource * getCategory(size_t n);
+	DataSource *getCategory(size_t n);
 
 	size_t getCount(uint32_t l = 0, bool subcats = false) const;
 	size_t getSubcatCount() const; // number of subcats
 	size_t getItemsCount() const; // number of data items (not subcats)
 	size_t getGlobalCount() const; // number of all data items in cat and subcats
 
-	void setCategoryBounds(Id & first, size_t & count, uint32_t l = 0, bool subcats = false);
+	void setCategoryBounds(Id &first, size_t &count, uint32_t l = 0, bool subcats = false);
 
 	bool getItemData(const DataCallback &, Id index);
 	bool getItemData(const DataCallback &, Id index, uint32_t l, bool subcats = false);
-	size_t getSliceData(const BatchCallback &, Id first, size_t count, uint32_t l = 0, bool subcats = false);
+	size_t getSliceData(const BatchCallback &, Id first, size_t count, uint32_t l = 0,
+			bool subcats = false);
 
 	bool removeItem(Id index, const Value &);
 	bool removeItem(Id index, const Value &, uint32_t l, bool subcats = false);
 
-	std::pair<DataSource *, bool> getItemCategory(Id itemId, uint32_t l, bool subcats = false);
+	sprt::pair<DataSource *, bool> getItemCategory(Id itemId, uint32_t l, bool subcats = false);
 
 	Id getId() const;
 
@@ -97,7 +98,7 @@ protected:
 	struct SliceRequest;
 	struct Slice;
 
-	void onSlice(std::vector<Slice> &, size_t &first, size_t &count, uint32_t l, bool subcats);
+	void onSlice(sprt::vector<Slice> &, size_t &first, size_t &count, uint32_t l, bool subcats);
 
 	virtual bool initValue();
 	virtual bool initValue(const DataSourceCallback &);
@@ -121,6 +122,6 @@ protected:
 	RemoveSourceCallback _removeCallback = nullptr;
 };
 
-}
+} // namespace stappler::xenolith::material2d
 
 #endif /* XENOLITH_RENDERER_MATERIAL2D_BASE_MATERIALDATASOURCE_H_ */

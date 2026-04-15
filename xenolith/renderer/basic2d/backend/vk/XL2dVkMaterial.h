@@ -66,7 +66,7 @@ public:
 	const Rc<core::MaterialSet> getSet() const;
 
 protected:
-	std::mutex _mutex;
+	sprt::mutex _mutex;
 	mutable Rc<core::MaterialSet> _materials;
 };
 

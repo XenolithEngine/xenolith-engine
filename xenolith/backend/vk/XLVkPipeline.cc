@@ -34,7 +34,7 @@ static BytesView Shader_emplaceConstant(Bytes &data, BytesView constant) {
 	auto originalSize = data.size();
 	auto constantSize = constant.size();
 	data.resize(originalSize + constantSize);
-	memcpy(data.data() + originalSize, constant.data(), constantSize);
+	sprt::memcpy(data.data() + originalSize, constant.data(), constantSize);
 	return BytesView(data.data() + originalSize, constantSize);
 }
 

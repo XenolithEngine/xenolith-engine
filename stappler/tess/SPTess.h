@@ -24,11 +24,15 @@ THE SOFTWARE.
 #ifndef STAPPLER_TESS_SPTESS_H_
 #define STAPPLER_TESS_SPTESS_H_
 
-#include "SPVec2.h"
+#include "SPCommon.h"
+
+#include <sprt/runtime/geom/vec2.h>
 
 namespace STAPPLER_VERSIONIZED stappler::geom {
 
 struct HalfEdge;
+
+using sprt::geom::Vec2;
 
 enum class VerboseFlag : long {
 	None,

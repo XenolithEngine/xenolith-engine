@@ -58,7 +58,7 @@ struct LayoutEngine::Data : public memory::AllocPool,
 	NodeId maxNodeId = 0;
 
 	Vector<InlineContext *> contextStorage;
-	std::function<Rc<font::FontFaceSet>(const FontStyleParameters &)> fontCallback;
+	mem_std::Function<Rc<font::FontFaceSet>(const FontStyleParameters &)> fontCallback;
 
 	Data(memory::pool_t *p, LayoutEngine *, Document *doc, const MediaParameters &m,
 			SpanView<StringView> s);
@@ -84,7 +84,7 @@ struct LayoutEngine::Data : public memory::AllocPool,
 };
 
 LayoutEngine::LayoutEngine(Document *doc,
-		std::function<Rc<font::FontFaceSet>(const FontStyleParameters &)> &&fn,
+		mem_std::Function<Rc<font::FontFaceSet>(const FontStyleParameters &)> &&fn,
 		const MediaParameters &media, SpanView<StringView> spine) {
 	auto pool = memory::pool::create(memory::pool::acquire());
 	mem_pool::perform([&] {
@@ -458,11 +458,13 @@ void LayoutEngine::render() {
 Pair<float, float> LayoutEngine::getFloatBounds(const LayoutBlock *l, float y, float height) {
 	float x = 0, width = _data->media.surfaceSize.width;
 	if (!_data->layoutStack.empty()) {
-		std::tie(x, width) = _data->floatStack.back()->getAvailablePosition(y, height);
+		auto res = _data->floatStack.back()->getAvailablePosition(y, height);
+		x = res.first;
+		width = res.second;
 	}
 
 	float minX = 0, maxWidth = _data->media.surfaceSize.width;
-	if (l->pos.size.width == 0 || std::isnan(l->pos.size.width)) {
+	if (l->pos.size.width == 0 || sprt::isnan(l->pos.size.width)) {
 		auto f = _data->floatStack.back();
 		minX = f->root->pos.position.x;
 		maxWidth = f->root->pos.size.width;
@@ -515,8 +517,8 @@ font::Formatter::LinePosition LayoutEngine::getTextBounds(const LayoutBlock *l, 
 	if ((_data->media.flags & RenderFlags::PaginatedLayout) != RenderFlags::None
 			&& !l->pos.disablePageBreak) {
 		const float pageHeight = _data->media.surfaceSize.height;
-		uint32_t curr1 = uint32_t(std::floor(y / pageHeight));
-		uint32_t curr2 = uint32_t(std::floor((y + height) / pageHeight));
+		uint32_t curr1 = uint32_t(sprt::floor(y / pageHeight));
+		uint32_t curr2 = uint32_t(sprt::floor((y + height) / pageHeight));
 
 		if (curr1 != curr2) {
 			linePos += uint16_t((curr2 * pageHeight - y) * density) + 1 * density;
@@ -525,7 +527,9 @@ font::Formatter::LinePosition LayoutEngine::getTextBounds(const LayoutBlock *l, 
 	}
 
 	float x = 0, width = _data->media.surfaceSize.width;
-	std::tie(x, width) = getFloatBounds(l, y, height);
+	auto res = getFloatBounds(l, y, height);
+	x = res.first;
+	width = res.second;
 
 	uint16_t retX = uint16_t(floorf((x - l->pos.position.x) * density));
 	uint16_t retSize = uint16_t(floorf(width * density));
@@ -690,7 +694,7 @@ void LayoutEngine::Data::doPageBreak(LayoutBlock *lPtr, Vec2 &vec) {
 	}
 
 	const float pageHeight = media.surfaceSize.height;
-	float curr = std::ceil((vec.y - 1.1f) / pageHeight);
+	float curr = sprt::ceil((vec.y - 1.1f) / pageHeight);
 
 	if (vec.y > 0) {
 		vec.y = curr * pageHeight;
@@ -884,7 +888,7 @@ bool LayoutEngine::Data::processBlockNode(LayoutBlock &l, LayoutBlock::NodeInfo 
 		collapsableMarginTop = newL->pos.margin.bottom;
 
 		l.layouts.emplace_back(newL);
-		if (!std::isnan(l.pos.maxHeight) && height > l.pos.maxHeight) {
+		if (!sprt::isnan(l.pos.maxHeight) && height > l.pos.maxHeight) {
 			height = l.pos.maxHeight;
 			return false;
 		}
@@ -964,7 +968,7 @@ bool LayoutEngine::Data::processTableNode(LayoutBlock &l, LayoutBlock::NodeInfo 
 		collapsableMarginTop = table.layout->pos.margin.bottom;
 
 		l.layouts.emplace_back(table.layout);
-		if (!std::isnan(l.pos.maxHeight) && height > l.pos.maxHeight) {
+		if (!sprt::isnan(l.pos.maxHeight) && height > l.pos.maxHeight) {
 			height = l.pos.maxHeight;
 			return false;
 		}

@@ -67,9 +67,9 @@ public:
 	bool init(uint32_t npoints, interpolation::Type, SpanView<float> params);
 
 	bool init(uint32_t npoints, const Interpolation &);
-	bool init(uint32_t npoints, const std::array<Interpolation, 2> &);
-	bool init(uint32_t npoints, const std::array<Interpolation, 3> &);
-	bool init(uint32_t npoints, const std::array<Interpolation, 4> &);
+	bool init(uint32_t npoints, const sprt::array<Interpolation, 2> &);
+	bool init(uint32_t npoints, const sprt::array<Interpolation, 3> &);
+	bool init(uint32_t npoints, const sprt::array<Interpolation, 4> &);
 
 	float getFloat(float) const;
 	Vec2 getVec2(float) const;

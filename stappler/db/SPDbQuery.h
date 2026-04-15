@@ -60,11 +60,11 @@ public:
 		template <typename Str>
 		Field(Str &&, Vector<String> &&);
 		template <typename Str>
-		Field(Str &&, std::initializer_list<String> &&);
+		Field(Str &&, sprt::initializer_list<String> &&);
 		template <typename Str>
 		Field(Str &&, Vector<Field> &&);
 		template <typename Str>
-		Field(Str &&, std::initializer_list<Field> &&);
+		Field(Str &&, sprt::initializer_list<Field> &&);
 
 		void setName(const char *);
 		void setName(const StringView &);
@@ -109,7 +109,7 @@ public:
 	Query &select(const Value &);
 	Query &select(Vector<int64_t> &&id);
 	Query &select(SpanView<int64_t> id);
-	Query &select(std::initializer_list<int64_t> &&id);
+	Query &select(sprt::initializer_list<int64_t> &&id);
 
 	Query &select(const StringView &f, Comparation c, const Value &v1, const Value &v2 = Value());
 	Query &select(const StringView &f, const Value &v1); // special case for equality
@@ -219,36 +219,36 @@ protected:
 
 template <typename Str>
 inline Query::Field::Field(Str &&str) {
-	setName(std::forward<Str>(str));
+	setName(sprt::forward<Str>(str));
 }
 
 template <typename Str>
 inline Query::Field::Field(Str &&str, Vector<String> &&l) {
-	setName(std::forward<Str>(str));
+	setName(sprt::forward<Str>(str));
 	for (auto &it : l) { fields.emplace_back(sp::move(it)); }
 }
 
 template <typename Str>
-inline Query::Field::Field(Str &&str, std::initializer_list<String> &&l) {
-	setName(std::forward<Str>(str));
+inline Query::Field::Field(Str &&str, sprt::initializer_list<String> &&l) {
+	setName(sprt::forward<Str>(str));
 	for (auto &it : l) { fields.emplace_back(String(sp::move(it))); }
 }
 
 template <typename Str>
 inline Query::Field::Field(Str &&str, Vector<Field> &&l) : fields(sp::move(l)) {
-	setName(std::forward<Str>(str));
+	setName(sprt::forward<Str>(str));
 }
 
 template <typename Str>
-inline Query::Field::Field(Str &&str, std::initializer_list<Field> &&l) {
-	setName(std::forward<Str>(str));
+inline Query::Field::Field(Str &&str, sprt::initializer_list<Field> &&l) {
+	setName(sprt::forward<Str>(str));
 	for (auto &it : l) { fields.emplace_back(sp::move(it)); }
 }
 
 template <typename... Args>
 Query &Query::include(Field &&f, Args &&...args) {
 	include(sp::move(f));
-	include(std::forward<Args>(args)...);
+	include(sprt::forward<Args>(args)...);
 	return *this;
 }
 

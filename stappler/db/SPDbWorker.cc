@@ -32,7 +32,7 @@ Conflict Conflict::update(StringView f) {
 	return Conflict(f, Query::Select(), Conflict::Flags::WithoutCondition);
 }
 
-Conflict::Conflict(Conflict::Flags f): flags(f) { }
+Conflict::Conflict(Conflict::Flags f) : flags(f) { }
 
 Conflict::Conflict(StringView field, Query::Select &&cond, Flags f)
 : field(field.str<Interface>()), condition(sp::move(cond)), flags(f) { }
@@ -69,15 +69,11 @@ void Worker::RequiredFields::reset(const Scheme &s) {
 	scheme = &s;
 }
 
-void Worker::RequiredFields::include(std::initializer_list<StringView> il) {
-	for (auto &it : il) {
-		include(it);
-	}
+void Worker::RequiredFields::include(sprt::initializer_list<StringView> il) {
+	for (auto &it : il) { include(it); }
 }
 void Worker::RequiredFields::include(const Set<const Field *> &f) {
-	for (auto &it : f) {
-		include(it);
-	}
+	for (auto &it : f) { include(it); }
 }
 void Worker::RequiredFields::include(const StringView &name) {
 	if (auto f = scheme->getField(name)) {
@@ -85,7 +81,7 @@ void Worker::RequiredFields::include(const StringView &name) {
 	}
 }
 void Worker::RequiredFields::include(const Field *f) {
-	auto it = std::lower_bound(includeFields.begin(), includeFields.end(), f);
+	auto it = sprt::lower_bound(includeFields.begin(), includeFields.end(), f);
 	if (it == includeFields.end()) {
 		includeFields.emplace_back(f);
 	} else if (*it != f) {
@@ -94,15 +90,11 @@ void Worker::RequiredFields::include(const Field *f) {
 	includeNone = false;
 }
 
-void Worker::RequiredFields::exclude(std::initializer_list<StringView> il) {
-	for (auto &it : il) {
-		exclude(it);
-	}
+void Worker::RequiredFields::exclude(sprt::initializer_list<StringView> il) {
+	for (auto &it : il) { exclude(it); }
 }
 void Worker::RequiredFields::exclude(const Set<const Field *> &f) {
-	for (auto &it : f) {
-		exclude(it);
-	}
+	for (auto &it : f) { exclude(it); }
 }
 void Worker::RequiredFields::exclude(const StringView &name) {
 	if (auto f = scheme->getField(name)) {
@@ -110,7 +102,7 @@ void Worker::RequiredFields::exclude(const StringView &name) {
 	}
 }
 void Worker::RequiredFields::exclude(const Field *f) {
-	auto it = std::lower_bound(excludeFields.begin(), excludeFields.end(), f);
+	auto it = sprt::lower_bound(excludeFields.begin(), excludeFields.end(), f);
 	if (it == excludeFields.end()) {
 		excludeFields.emplace_back(f);
 	} else if (*it != f) {
@@ -148,7 +140,8 @@ void Worker::ConditionData::set(const Query::Select &sel, const Field *f) {
 	field = f;
 }
 
-Worker::Worker(const Scheme &s, const Adapter &a) : _scheme(&s), _transaction(Transaction::acquire(a)) {
+Worker::Worker(const Scheme &s, const Adapter &a)
+: _scheme(&s), _transaction(Transaction::acquire(a)) {
 	_required.scheme = _scheme;
 	// _transaction.retain(); //  acquire = retain
 }
@@ -166,12 +159,8 @@ Worker::~Worker() {
 	}
 }
 
-const Transaction &Worker::transaction() const {
-	return _transaction;
-}
-const Scheme &Worker::scheme() const {
-	return *_scheme;
-}
+const Transaction &Worker::transaction() const { return _transaction; }
+const Scheme &Worker::scheme() const { return *_scheme; }
 
 const ApplicationInterface *Worker::getApplicationInterface() const {
 	return _transaction.getAdapter().getApplicationInterface();
@@ -181,42 +170,30 @@ void Worker::includeNone() {
 	_required.clear();
 	_required.includeNone = true;
 }
-void Worker::clearRequiredFields() {
-	_required.clear();
-}
+void Worker::clearRequiredFields() { _required.clear(); }
 
-bool Worker::shouldIncludeNone() const {
-	return _required.includeNone;
-}
+bool Worker::shouldIncludeNone() const { return _required.includeNone; }
 
-bool Worker::shouldIncludeAll() const {
-	return _required.includeAll;
-}
+bool Worker::shouldIncludeAll() const { return _required.includeAll; }
 
 Worker &Worker::asSystem() {
 	_isSystem = true;
 	return *this;
 }
 
-bool Worker::isSystem() const {
-	return _isSystem;
-}
+bool Worker::isSystem() const { return _isSystem; }
 
-const Worker::RequiredFields &Worker::getRequiredFields() const {
-	return _required;
-}
+const Worker::RequiredFields &Worker::getRequiredFields() const { return _required; }
 
-const Map<const Field *, Worker::ConflictData> &Worker::getConflicts() const {
-	return _conflict;
-}
+const Map<const Field *, Worker::ConflictData> &Worker::getConflicts() const { return _conflict; }
 
-const Vector<Worker::ConditionData> &Worker::getConditions() const {
-	return _conditions;
-}
+const Vector<Worker::ConditionData> &Worker::getConditions() const { return _conditions; }
 
 Value Worker::get(uint64_t oid, UpdateFlags flags) {
 	Query query;
-	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) { _required.includeAll = true; }
+	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) {
+		_required.includeAll = true;
+	}
 	prepareGetQuery(query, oid, (flags & UpdateFlags::GetForUpdate) != UpdateFlags::None);
 	return reduceGetQuery(query, (flags & UpdateFlags::Cached) != UpdateFlags::None);
 }
@@ -226,7 +203,9 @@ Value Worker::get(const StringView &alias, UpdateFlags flags) {
 		return Value();
 	}
 	Query query;
-	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) { _required.includeAll = true; }
+	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) {
+		_required.includeAll = true;
+	}
 	prepareGetQuery(query, alias, (flags & UpdateFlags::GetForUpdate) != UpdateFlags::None);
 	return reduceGetQuery(query, (flags & UpdateFlags::Cached) != UpdateFlags::None);
 }
@@ -251,9 +230,11 @@ Value Worker::get(const Value &id, UpdateFlags flags) {
 	return Value();
 }
 
-Value Worker::get(uint64_t oid, std::initializer_list<StringView> &&fields, UpdateFlags flags) {
+Value Worker::get(uint64_t oid, sprt::initializer_list<StringView> &&fields, UpdateFlags flags) {
 	Query query;
-	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) { _required.includeAll = true; }
+	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) {
+		_required.includeAll = true;
+	}
 	prepareGetQuery(query, oid, (flags & UpdateFlags::GetForUpdate) != UpdateFlags::None);
 	for (auto &it : fields) {
 		if (auto f = _scheme->getField(it)) {
@@ -262,9 +243,12 @@ Value Worker::get(uint64_t oid, std::initializer_list<StringView> &&fields, Upda
 	}
 	return reduceGetQuery(query, (flags & UpdateFlags::Cached) != UpdateFlags::None);
 }
-Value Worker::get(const StringView &alias, std::initializer_list<StringView> &&fields, UpdateFlags flags) {
+Value Worker::get(const StringView &alias, sprt::initializer_list<StringView> &&fields,
+		UpdateFlags flags) {
 	Query query;
-	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) { _required.includeAll = true; }
+	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) {
+		_required.includeAll = true;
+	}
 	prepareGetQuery(query, alias, (flags & UpdateFlags::GetForUpdate) != UpdateFlags::None);
 	for (auto &it : fields) {
 		if (auto f = _scheme->getField(it)) {
@@ -273,7 +257,7 @@ Value Worker::get(const StringView &alias, std::initializer_list<StringView> &&f
 	}
 	return reduceGetQuery(query, (flags & UpdateFlags::Cached) != UpdateFlags::None);
 }
-Value Worker::get(const Value &id, std::initializer_list<StringView> &&fields, UpdateFlags flags) {
+Value Worker::get(const Value &id, sprt::initializer_list<StringView> &&fields, UpdateFlags flags) {
 	if (id.isDictionary()) {
 		if (auto oid = id.getInteger("__oid")) {
 			return get(oid, sp::move(fields), flags);
@@ -293,9 +277,11 @@ Value Worker::get(const Value &id, std::initializer_list<StringView> &&fields, U
 	return Value();
 }
 
-Value Worker::get(uint64_t oid, std::initializer_list<const char *> &&fields, UpdateFlags flags) {
+Value Worker::get(uint64_t oid, sprt::initializer_list<const char *> &&fields, UpdateFlags flags) {
 	Query query;
-	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) { _required.includeAll = true; }
+	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) {
+		_required.includeAll = true;
+	}
 	prepareGetQuery(query, oid, (flags & UpdateFlags::GetForUpdate) != UpdateFlags::None);
 	for (auto &it : fields) {
 		if (auto f = _scheme->getField(it)) {
@@ -304,9 +290,12 @@ Value Worker::get(uint64_t oid, std::initializer_list<const char *> &&fields, Up
 	}
 	return reduceGetQuery(query, (flags & UpdateFlags::Cached) != UpdateFlags::None);
 }
-Value Worker::get(const StringView &alias, std::initializer_list<const char *> &&fields, UpdateFlags flags) {
+Value Worker::get(const StringView &alias, sprt::initializer_list<const char *> &&fields,
+		UpdateFlags flags) {
 	Query query;
-	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) { _required.includeAll = true; }
+	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) {
+		_required.includeAll = true;
+	}
 	prepareGetQuery(query, alias, (flags & UpdateFlags::GetForUpdate) != UpdateFlags::None);
 	for (auto &it : fields) {
 		if (auto f = _scheme->getField(it)) {
@@ -315,7 +304,8 @@ Value Worker::get(const StringView &alias, std::initializer_list<const char *> &
 	}
 	return reduceGetQuery(query, (flags & UpdateFlags::Cached) != UpdateFlags::None);
 }
-Value Worker::get(const Value &id, std::initializer_list<const char *> &&fields, UpdateFlags flags) {
+Value Worker::get(const Value &id, sprt::initializer_list<const char *> &&fields,
+		UpdateFlags flags) {
 	if (id.isDictionary()) {
 		if (auto oid = id.getInteger("__oid")) {
 			return get(oid, sp::move(fields), flags);
@@ -335,25 +325,27 @@ Value Worker::get(const Value &id, std::initializer_list<const char *> &&fields,
 	return Value();
 }
 
-Value Worker::get(uint64_t oid, std::initializer_list<const Field *> &&fields, UpdateFlags flags) {
+Value Worker::get(uint64_t oid, sprt::initializer_list<const Field *> &&fields, UpdateFlags flags) {
 	Query query;
-	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) { _required.includeAll = true; }
+	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) {
+		_required.includeAll = true;
+	}
 	prepareGetQuery(query, oid, (flags & UpdateFlags::GetForUpdate) != UpdateFlags::None);
-	for (auto &it : fields) {
-		query.include(it->getName().str<Interface>());
-	}
+	for (auto &it : fields) { query.include(it->getName().str<Interface>()); }
 	return reduceGetQuery(query, (flags & UpdateFlags::Cached) != UpdateFlags::None);
 }
-Value Worker::get(const StringView &alias, std::initializer_list<const Field *> &&fields, UpdateFlags flags) {
+Value Worker::get(const StringView &alias, sprt::initializer_list<const Field *> &&fields,
+		UpdateFlags flags) {
 	Query query;
-	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) { _required.includeAll = true; }
-	prepareGetQuery(query, alias, (flags & UpdateFlags::GetForUpdate) != UpdateFlags::None);
-	for (auto &it : fields) {
-		query.include(it->getName().str<Interface>());
+	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) {
+		_required.includeAll = true;
 	}
+	prepareGetQuery(query, alias, (flags & UpdateFlags::GetForUpdate) != UpdateFlags::None);
+	for (auto &it : fields) { query.include(it->getName().str<Interface>()); }
 	return reduceGetQuery(query, (flags & UpdateFlags::Cached) != UpdateFlags::None);
 }
-Value Worker::get(const Value &id, std::initializer_list<const Field *> &&fields, UpdateFlags flags) {
+Value Worker::get(const Value &id, sprt::initializer_list<const Field *> &&fields,
+		UpdateFlags flags) {
 	if (id.isDictionary()) {
 		if (auto oid = id.getInteger("__oid")) {
 			return get(oid, sp::move(fields), flags);
@@ -375,20 +367,20 @@ Value Worker::get(const Value &id, std::initializer_list<const Field *> &&fields
 
 Value Worker::get(uint64_t oid, SpanView<const Field *> fields, UpdateFlags flags) {
 	Query query;
-	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) { _required.includeAll = true; }
-	prepareGetQuery(query, oid, (flags & UpdateFlags::GetForUpdate) != UpdateFlags::None);
-	for (auto &it : fields) {
-		query.include(it->getName().str<Interface>());
+	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) {
+		_required.includeAll = true;
 	}
+	prepareGetQuery(query, oid, (flags & UpdateFlags::GetForUpdate) != UpdateFlags::None);
+	for (auto &it : fields) { query.include(it->getName().str<Interface>()); }
 	return reduceGetQuery(query, (flags & UpdateFlags::Cached) != UpdateFlags::None);
 }
 Value Worker::get(const StringView &alias, SpanView<const Field *> fields, UpdateFlags flags) {
 	Query query;
-	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) { _required.includeAll = true; }
-	prepareGetQuery(query, alias, (flags & UpdateFlags::GetForUpdate) != UpdateFlags::None);
-	for (auto &it : fields) {
-		query.include(it->getName().str<Interface>());
+	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) {
+		_required.includeAll = true;
 	}
+	prepareGetQuery(query, alias, (flags & UpdateFlags::GetForUpdate) != UpdateFlags::None);
+	for (auto &it : fields) { query.include(it->getName().str<Interface>()); }
 	return reduceGetQuery(query, (flags & UpdateFlags::Cached) != UpdateFlags::None);
 }
 Value Worker::get(const Value &id, SpanView<const Field *> fields, UpdateFlags flags) {
@@ -413,7 +405,9 @@ Value Worker::get(const Value &id, SpanView<const Field *> fields, UpdateFlags f
 
 Value Worker::get(uint64_t oid, StringView it, UpdateFlags flags) {
 	Query query;
-	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) { _required.includeAll = true; }
+	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) {
+		_required.includeAll = true;
+	}
 	prepareGetQuery(query, oid, (flags & UpdateFlags::GetForUpdate) != UpdateFlags::None);
 	if (auto f = _scheme->getField(it)) {
 		query.include(f->getName().str<Interface>());
@@ -422,7 +416,9 @@ Value Worker::get(uint64_t oid, StringView it, UpdateFlags flags) {
 }
 Value Worker::get(const StringView &alias, StringView it, UpdateFlags flags) {
 	Query query;
-	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) { _required.includeAll = true; }
+	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) {
+		_required.includeAll = true;
+	}
 	prepareGetQuery(query, alias, (flags & UpdateFlags::GetForUpdate) != UpdateFlags::None);
 	if (auto f = _scheme->getField(it)) {
 		query.include(f->getName().str<Interface>());
@@ -449,7 +445,7 @@ Value Worker::get(const Value &id, StringView it, UpdateFlags flags) {
 	return Value();
 }
 
-bool Worker::foreach(const Query &query, const Callback<bool(Value &)> &cb, UpdateFlags flags) {
+bool Worker::foreach (const Query &query, const Callback<bool(Value &)> &cb, UpdateFlags flags) {
 	if ((flags & UpdateFlags::GetAll) != UpdateFlags::None) {
 		_required.includeAll = true;
 	}
@@ -472,7 +468,8 @@ Value Worker::create(const Value &data, UpdateFlags flags) {
 	if ((flags & UpdateFlags::NoReturn) != UpdateFlags::None) {
 		includeNone();
 	}
-	return _scheme->createWithWorker(*this, data, (flags & UpdateFlags::Protected) != UpdateFlags::None);
+	return _scheme->createWithWorker(*this, data,
+			(flags & UpdateFlags::Protected) != UpdateFlags::None);
 }
 
 Value Worker::create(const Value &data, UpdateFlags flags, const Conflict &c) {
@@ -482,7 +479,8 @@ Value Worker::create(const Value &data, UpdateFlags flags, const Conflict &c) {
 	if (!addConflict(c)) {
 		return Value();
 	}
-	return _scheme->createWithWorker(*this, data, (flags & UpdateFlags::Protected) != UpdateFlags::None);
+	return _scheme->createWithWorker(*this, data,
+			(flags & UpdateFlags::Protected) != UpdateFlags::None);
 }
 Value Worker::create(const Value &data, UpdateFlags flags, const Vector<Conflict> &c) {
 	if ((flags & UpdateFlags::NoReturn) != UpdateFlags::None) {
@@ -491,7 +489,8 @@ Value Worker::create(const Value &data, UpdateFlags flags, const Vector<Conflict
 	if (!addConflict(c)) {
 		return Value();
 	}
-	return _scheme->createWithWorker(*this, data, (flags & UpdateFlags::Protected) != UpdateFlags::None);
+	return _scheme->createWithWorker(*this, data,
+			(flags & UpdateFlags::Protected) != UpdateFlags::None);
 }
 Value Worker::create(const Value &data, Conflict::Flags flags) {
 	return create(data, Conflict(flags));
@@ -513,7 +512,7 @@ Value Worker::update(uint64_t oid, const Value &data, bool isProtected) {
 	return _scheme->updateWithWorker(*this, oid, data, isProtected);
 }
 
-Value Worker::update(const Value & obj, const Value &data, bool isProtected) {
+Value Worker::update(const Value &obj, const Value &data, bool isProtected) {
 	return _scheme->updateWithWorker(*this, obj, data, isProtected);
 }
 
@@ -521,14 +520,16 @@ Value Worker::update(uint64_t oid, const Value &data, UpdateFlags flags) {
 	if ((flags & UpdateFlags::NoReturn) != UpdateFlags::None) {
 		includeNone();
 	}
-	return _scheme->updateWithWorker(*this, oid, data, (flags & UpdateFlags::Protected) != UpdateFlags::None);
+	return _scheme->updateWithWorker(*this, oid, data,
+			(flags & UpdateFlags::Protected) != UpdateFlags::None);
 }
 
-Value Worker::update(const Value & obj, const Value &data, UpdateFlags flags) {
+Value Worker::update(const Value &obj, const Value &data, UpdateFlags flags) {
 	if ((flags & UpdateFlags::NoReturn) != UpdateFlags::None) {
 		includeNone();
 	}
-	return _scheme->updateWithWorker(*this, obj, data, (flags & UpdateFlags::Protected) != UpdateFlags::None);
+	return _scheme->updateWithWorker(*this, obj, data,
+			(flags & UpdateFlags::Protected) != UpdateFlags::None);
 }
 
 Value Worker::update(uint64_t oid, const Value &data, UpdateFlags flags, const Query::Select &sel) {
@@ -537,19 +538,22 @@ Value Worker::update(uint64_t oid, const Value &data, UpdateFlags flags, const Q
 	}
 	return update(oid, data, flags);
 }
-Value Worker::update(const Value & obj, const Value &data, UpdateFlags flags, const Query::Select &sel) {
+Value Worker::update(const Value &obj, const Value &data, UpdateFlags flags,
+		const Query::Select &sel) {
 	if (!addCondition(sel)) {
 		return Value();
 	}
 	return update(obj, data, flags);
 }
-Value Worker::update(uint64_t oid, const Value &data, UpdateFlags flags, const Vector<Query::Select> &sel) {
+Value Worker::update(uint64_t oid, const Value &data, UpdateFlags flags,
+		const Vector<Query::Select> &sel) {
 	if (!addCondition(sel)) {
 		return Value();
 	}
 	return update(oid, data, flags);
 }
-Value Worker::update(const Value & obj, const Value &data, UpdateFlags flags, const Vector<Query::Select> &sel) {
+Value Worker::update(const Value &obj, const Value &data, UpdateFlags flags,
+		const Vector<Query::Select> &sel) {
 	if (!addCondition(sel)) {
 		return Value();
 	}
@@ -562,7 +566,7 @@ Value Worker::update(uint64_t oid, const Value &data, const Query::Select &sel) 
 	}
 	return update(oid, data);
 }
-Value Worker::update(const Value & obj, const Value &data, const Query::Select &sel) {
+Value Worker::update(const Value &obj, const Value &data, const Query::Select &sel) {
 	if (!addCondition(sel)) {
 		return Value();
 	}
@@ -574,42 +578,34 @@ Value Worker::update(uint64_t oid, const Value &data, const Vector<Query::Select
 	}
 	return update(oid, data);
 }
-Value Worker::update(const Value & obj, const Value &data, const Vector<Query::Select> &sel) {
+Value Worker::update(const Value &obj, const Value &data, const Vector<Query::Select> &sel) {
 	if (!addCondition(sel)) {
 		return Value();
 	}
 	return update(obj, data);
 }
 
-bool Worker::remove(uint64_t oid) {
-	return _scheme->removeWithWorker(*this, oid);
-}
+bool Worker::remove(uint64_t oid) { return _scheme->removeWithWorker(*this, oid); }
 
 bool Worker::remove(const Value &data) {
 	return _scheme->removeWithWorker(*this, data.getInteger("__oid"));
 }
 
-size_t Worker::count() {
-	return _scheme->countWithWorker(*this, Query());
-}
-size_t Worker::count(const Query &q) {
-	return _scheme->countWithWorker(*this, q);
-}
+size_t Worker::count() { return _scheme->countWithWorker(*this, Query()); }
+size_t Worker::count(const Query &q) { return _scheme->countWithWorker(*this, q); }
 
-void Worker::touch(uint64_t oid) {
-	_scheme->touchWithWorker(*this, oid);
-}
-void Worker::touch(const Value & obj) {
-	_scheme->touchWithWorker(*this, obj);
-}
+void Worker::touch(uint64_t oid) { _scheme->touchWithWorker(*this, oid); }
+void Worker::touch(const Value &obj) { _scheme->touchWithWorker(*this, obj); }
 
-Value Worker::getField(uint64_t oid, const StringView &s, std::initializer_list<StringView> fields) {
+Value Worker::getField(uint64_t oid, const StringView &s,
+		sprt::initializer_list<StringView> fields) {
 	if (auto f = _scheme->getField(s)) {
 		return getField(oid, *f, getFieldSet(*f, fields));
 	}
 	return Value();
 }
-Value Worker::getField(const Value &obj, const StringView &s, std::initializer_list<StringView> fields) {
+Value Worker::getField(const Value &obj, const StringView &s,
+		sprt::initializer_list<StringView> fields) {
 	if (auto f = _scheme->getField(s)) {
 		return getField(obj, *f, getFieldSet(*f, fields));
 	}
@@ -651,13 +647,13 @@ Value Worker::setField(const Value &obj, const StringView &s, InputFile &file) {
 	return setField(obj.getInteger(s), s, file);
 }
 
-bool Worker::clearField(uint64_t oid, const StringView &s, Value && objs) {
+bool Worker::clearField(uint64_t oid, const StringView &s, Value &&objs) {
 	if (auto f = _scheme->getField(s)) {
 		return clearField(oid, *f, sp::move(objs));
 	}
 	return false;
 }
-bool Worker::clearField(const Value &obj, const StringView &s, Value && objs) {
+bool Worker::clearField(const Value &obj, const StringView &s, Value &&objs) {
 	if (auto f = _scheme->getField(s)) {
 		return clearField(obj, *f, sp::move(objs));
 	}
@@ -695,7 +691,7 @@ size_t Worker::countField(const Value &obj, const StringView &s) {
 	return 0;
 }
 
-Value Worker::getField(uint64_t oid, const Field &f, std::initializer_list<StringView> fields) {
+Value Worker::getField(uint64_t oid, const Field &f, sprt::initializer_list<StringView> fields) {
 	if (auto s = f.getForeignScheme()) {
 		_required.reset(*s);
 		include(fields);
@@ -704,7 +700,8 @@ Value Worker::getField(uint64_t oid, const Field &f, std::initializer_list<Strin
 	}
 	return _scheme->fieldWithWorker(Action::Get, *this, oid, f);
 }
-Value Worker::getField(const Value &obj, const Field &f, std::initializer_list<StringView> fields) {
+Value Worker::getField(const Value &obj, const Field &f,
+		sprt::initializer_list<StringView> fields) {
 	if (auto s = f.getForeignScheme()) {
 		_required.reset(*s);
 		include(fields);
@@ -727,7 +724,8 @@ Value Worker::getField(const Value &obj, const Field &f, const Set<const Field *
 	if (f.isSimpleLayout() && obj.hasValue(f.getName())) {
 		return obj.getValue(f.getName());
 	} else if (f.isFile() && fields.empty()) {
-		return File::getData(_transaction, obj.isInteger() ? obj.asInteger() : obj.getInteger(f.getName()));
+		return File::getData(_transaction,
+				obj.isInteger() ? obj.asInteger() : obj.getInteger(f.getName()));
 	}
 
 	if (auto s = f.getForeignScheme()) {
@@ -806,12 +804,11 @@ size_t Worker::countField(const Value &obj, const Field &f) {
 	return 0;
 }
 
-Set<const Field *> Worker::getFieldSet(const Field &f, std::initializer_list<StringView> il) const {
+Set<const Field *> Worker::getFieldSet(const Field &f,
+		sprt::initializer_list<StringView> il) const {
 	Set<const Field *> ret;
 	auto target = f.getForeignScheme();
-	for (auto &it : il) {
-		ret.emplace(target->getField(it));
-	}
+	for (auto &it : il) { ret.emplace(target->getField(it)); }
 	return ret;
 }
 
@@ -829,7 +826,8 @@ bool Worker::addConflict(const Conflict &c) {
 	} else {
 		auto f = scheme().getField(c.field);
 		if (!f || !f->hasFlag(Flags::Unique)) {
-			_transaction.getAdapter().getApplicationInterface()->error("db::Worker", "Invalid ON CONFLICT field - no unique constraint");
+			_transaction.getAdapter().getApplicationInterface()->error("db::Worker",
+					"Invalid ON CONFLICT field - no unique constraint");
 			return false;
 		}
 
@@ -841,8 +839,11 @@ bool Worker::addConflict(const Conflict &c) {
 		} else {
 			selField = scheme().getField(c.condition.field);
 			if (!selField || !selField->isIndexed()
-					|| !checkIfComparationIsValid(selField->getType(), c.condition.compare, selField->getFlags()) || !c.condition.textQuery.empty()) {
-				_transaction.getAdapter().getApplicationInterface()->error("db::Worker", "Invalid ON CONFLICT condition - not applicable");
+					|| !checkIfComparationIsValid(selField->getType(), c.condition.compare,
+							selField->getFlags())
+					|| !c.condition.textQuery.empty()) {
+				_transaction.getAdapter().getApplicationInterface()->error("db::Worker",
+						"Invalid ON CONFLICT condition - not applicable");
 				return false;
 			}
 		}
@@ -876,8 +877,11 @@ bool Worker::addConflict(const Vector<Conflict> &c) {
 
 bool Worker::addCondition(const Query::Select &sel) {
 	auto selField = scheme().getField(sel.field);
-	if (!selField || !checkIfComparationIsValid(selField->getType(), sel.compare, selField->getFlags()) || !sel.textQuery.empty()) {
-		_transaction.getAdapter().getApplicationInterface()->error("db::Worker", "Invalid ON CONFLICT condition - not applicable");
+	if (!selField
+			|| !checkIfComparationIsValid(selField->getType(), sel.compare, selField->getFlags())
+			|| !sel.textQuery.empty()) {
+		_transaction.getAdapter().getApplicationInterface()->error("db::Worker",
+				"Invalid ON CONFLICT condition - not applicable");
 		return false;
 	}
 
@@ -924,28 +928,25 @@ FieldResolver::FieldResolver(const Scheme &scheme, const Worker &w, const Query 
 FieldResolver::FieldResolver(const Scheme &scheme, const Worker &w)
 : scheme(&scheme), required(&w.getRequiredFields()) { }
 
-FieldResolver::FieldResolver(const Scheme &scheme, const Query &q)
-: scheme(&scheme), query(&q) { }
+FieldResolver::FieldResolver(const Scheme &scheme, const Query &q) : scheme(&scheme), query(&q) { }
 
 FieldResolver::FieldResolver(const Scheme &scheme, const Query &q, const Set<const Field *> &set)
 : scheme(&scheme), query(&q) {
-	for (auto &it : set) {
-		emplace_ordered(requiredFields, it);
-	}
+	for (auto &it : set) { emplace_ordered(requiredFields, it); }
 }
 
 FieldResolver::FieldResolver(const Scheme &scheme) : scheme(&scheme) { }
 
-FieldResolver::FieldResolver(const Scheme &scheme, const Set<const Field *> &set) : scheme(&scheme) {
-	for (auto &it : set) {
-		emplace_ordered(requiredFields, it);
-	}
+FieldResolver::FieldResolver(const Scheme &scheme, const Set<const Field *> &set)
+: scheme(&scheme) {
+	for (auto &it : set) { emplace_ordered(requiredFields, it); }
 }
 
 bool FieldResolver::shouldResolveFields() const {
 	if (!required) {
 		return true;
-	} else if (required->includeNone || (required->scheme != nullptr && required->scheme != scheme)) {
+	} else if (required->includeNone
+			|| (required->scheme != nullptr && required->scheme != scheme)) {
 		return false;
 	}
 	return true;
@@ -962,9 +963,7 @@ bool FieldResolver::hasIncludesOrExcludes() const {
 	return hasFields;
 }
 
-bool FieldResolver::shouldIncludeAll() const {
-	return required && required->includeAll;
-}
+bool FieldResolver::shouldIncludeAll() const { return required && required->includeAll; }
 
 bool FieldResolver::shouldIncludeField(const Field &f) const {
 	if (query) {
@@ -975,7 +974,8 @@ bool FieldResolver::shouldIncludeField(const Field &f) const {
 		}
 	}
 	if (required) {
-		auto it = std::lower_bound(required->includeFields.begin(), required->includeFields.end(), &f);
+		auto it = sprt::lower_bound(required->includeFields.begin(), required->includeFields.end(),
+				&f);
 		if (it != required->includeFields.end() && *it == &f) {
 			return true;
 		}
@@ -999,7 +999,8 @@ bool FieldResolver::shouldExcludeField(const Field &f) const {
 		}
 	}
 	if (required) {
-		auto it = std::lower_bound(required->excludeFields.begin(), required->excludeFields.end(), &f);
+		auto it = sprt::lower_bound(required->excludeFields.begin(), required->excludeFields.end(),
+				&f);
 		if (it != required->excludeFields.end() && *it == &f) {
 			return true;
 		}
@@ -1008,7 +1009,7 @@ bool FieldResolver::shouldExcludeField(const Field &f) const {
 }
 
 bool FieldResolver::isFieldRequired(const Field &f) const {
-	auto it = std::lower_bound(requiredFields.begin(), requiredFields.end(), &f);
+	auto it = sprt::lower_bound(requiredFields.begin(), requiredFields.end(), &f);
 	if (it == requiredFields.end() || *it != &f) {
 		return false;
 	}
@@ -1020,7 +1021,8 @@ Vector<const Field *> FieldResolver::getVirtuals() const {
 	if (!hasIncludesOrExcludes()) {
 		for (auto &it : scheme->getFields()) {
 			auto type = it.second.getType();
-			if (type == Type::Virtual && (!it.second.hasFlag(Flags::ForceExclude) || shouldIncludeAll())) {
+			if (type == Type::Virtual
+					&& (!it.second.hasFlag(Flags::ForceExclude) || shouldIncludeAll())) {
 				emplace_ordered(virtuals, &it.second);
 			}
 		}
@@ -1029,7 +1031,8 @@ Vector<const Field *> FieldResolver::getVirtuals() const {
 		for (auto &it : scheme->getFields()) {
 			auto type = it.second.getType();
 			if (type == Type::Virtual) {
-				if (it.second.hasFlag(Flags::ForceInclude) || forceInclude.find(&it.second) != forceInclude.end()) {
+				if (it.second.hasFlag(Flags::ForceInclude)
+						|| forceInclude.find(&it.second) != forceInclude.end()) {
 					emplace_ordered(virtuals, &it.second);
 				} else if (shouldIncludeField(it.second)) {
 					if (!shouldExcludeField(it.second)) {
@@ -1087,11 +1090,13 @@ bool FieldResolver::readFields(const Worker::FieldCallback &cb, bool isSimpleGet
 
 		for (auto &it : scheme->getFields()) {
 			auto type = it.second.getType();
-			if (type == Type::Set || type == Type::Array || type == Type::View || type == Type::FullTextView || type == Type::Virtual) {
+			if (type == Type::Set || type == Type::Array || type == Type::View
+					|| type == Type::FullTextView || type == Type::Virtual) {
 				continue;
 			}
 
-			if (it.second.hasFlag(Flags::ForceInclude) || isFieldRequired(it.second) || (!isSimpleGet && forceInclude.find(&it.second) != forceInclude.end())) {
+			if (it.second.hasFlag(Flags::ForceInclude) || isFieldRequired(it.second)
+					|| (!isSimpleGet && forceInclude.find(&it.second) != forceInclude.end())) {
 				cb(it.second.getName(), &it.second);
 			} else if (!isSimpleGet && shouldIncludeField(it.second)) {
 				if (!shouldExcludeField(it.second)) {
@@ -1109,4 +1114,4 @@ void FieldResolver::include(StringView mem) {
 	}
 }
 
-}
+} // namespace stappler::db

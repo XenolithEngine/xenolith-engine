@@ -81,8 +81,8 @@ public:
 	const HashTable<Rc<Resource>> &getLinkedResources() const;
 	Rc<Resource> getInternalResource() const;
 
-	const memory::vector<AttachmentData *> &getInputAttachments() const;
-	const memory::vector<AttachmentData *> &getOutputAttachments() const;
+	SpanView<AttachmentData *> getInputAttachments() const;
+	SpanView<AttachmentData *> getOutputAttachments() const;
 
 	template <typename T>
 	auto getInputAttachment() const -> const T *;
@@ -90,8 +90,8 @@ public:
 	template <typename T>
 	auto getOutputAttachment() const -> const T *;
 
-	const Attachment *getInputAttachment(std::type_index name) const;
-	const Attachment *getOutputAttachment(std::type_index name) const;
+	const Attachment *getInputAttachment(sprt::type_index name) const;
+	const Attachment *getOutputAttachment(sprt::type_index name) const;
 
 	const QueuePassData *getPass(StringView) const;
 	const ProgramData *getProgram(StringView) const;
@@ -237,7 +237,7 @@ public:
 	const GraphicPipelineData *addGraphicPipeline(StringView key, const PipelineFamilyData *family,
 			Args &&...args) {
 		if (auto p = emplacePipeline(key, family)) {
-			if (setPipelineOptions(*p, std::forward<Args>(args)...)) {
+			if (setPipelineOptions(*p, sprt::forward<Args>(args)...)) {
 				finalizePipeline(p);
 				return p;
 			}
@@ -249,10 +249,10 @@ public:
 	const ComputePipelineData *addComputePipeline(StringView key, const PipelineFamilyData *family,
 			SpecializationInfo &&);
 
-	void setPrepareCallback(memory::function<void(FrameQueue &, const SubpassData &)> &&);
+	void setPrepareCallback(mem_pool::Function<void(FrameQueue &, const SubpassData &)> &&);
 
 	void setCommandsCallback(
-			memory::function<void(FrameQueue &, const SubpassData &, CommandBuffer &)> &&);
+			mem_pool::Function<void(FrameQueue &, const SubpassData &, CommandBuffer &)> &&);
 
 protected:
 	friend class QueuePassBuilder;
@@ -267,15 +267,15 @@ protected:
 
 	template <typename T>
 	bool setPipelineOptions(GraphicPipelineData &f, T &&t) {
-		return setPipelineOption(f, std::forward<T>(t));
+		return setPipelineOption(f, sprt::forward<T>(t));
 	}
 
 	template <typename T, typename... Args>
 	bool setPipelineOptions(GraphicPipelineData &f, T &&t, Args &&...args) {
-		if (!setPipelineOption(f, std::forward<T>(t))) {
+		if (!setPipelineOption(f, sprt::forward<T>(t))) {
 			return false;
 		}
-		return setPipelineOptions(f, std::forward<Args>(args)...);
+		return setPipelineOptions(f, sprt::forward<Args>(args)...);
 	}
 
 	SubpassBuilder(SubpassData *);
@@ -302,12 +302,12 @@ public:
 			const Callback<void(AttachmentPassBuilder &)> &);
 
 	void setAvailabilityChecker(
-			memory::function<bool(const FrameQueue &, const QueuePassData &)> &&);
+			mem_pool::Function<bool(const FrameQueue &, const QueuePassData &)> &&);
 
 	void addSubmittedCallback(
-			memory::function<void(FrameQueue &, const QueuePassData &, bool success)> &&);
+			mem_pool::Function<void(FrameQueue &, const QueuePassData &, bool success)> &&);
 	void addCompleteCallback(
-			memory::function<void(FrameQueue &, const QueuePassData &, bool success)> &&);
+			mem_pool::Function<void(FrameQueue &, const QueuePassData &, bool success)> &&);
 
 	void setAcquireTimestamps(uint32_t);
 
@@ -347,7 +347,7 @@ public:
 
 	// add program, data will be acquired with callback when needed
 	const ProgramData *addProgram(StringView key,
-			const memory::function<void(Device &, const ProgramData::DataCallback &)> &,
+			const mem_pool::Function<void(Device &, const ProgramData::DataCallback &)> &,
 			const ProgramInfo * = nullptr);
 
 	const TextureSetLayoutData *addTextureSetLayout(StringView key, SpanView<SamplerInfo>,
@@ -372,7 +372,8 @@ public:
 	const BufferData *addBuffer(StringView key, BufferInfo &&, BytesView data,
 			Rc<DataAtlas> &&atlas = Rc<DataAtlas>(), AccessType = AccessType::ShaderRead);
 	const BufferData *addBuffer(StringView key, BufferInfo &&,
-			const memory::function<void(uint8_t *, uint64_t, const BufferData::DataCallback &)> &cb,
+			const mem_pool::Function<void(uint8_t *, uint64_t, const BufferData::DataCallback &)>
+					&cb,
 			Rc<DataAtlas> &&atlas = Rc<DataAtlas>(), AccessType = AccessType::ShaderRead);
 
 	const ImageData *addBitmapImageByRef(StringView key, ImageInfo &&, BytesView data,
@@ -391,7 +392,8 @@ public:
 			AttachmentLayout = AttachmentLayout::ShaderReadOnlyOptimal,
 			AccessType = AccessType::ShaderRead);
 	const ImageData *addImage(StringView key, ImageInfo &&img,
-			const memory::function<void(uint8_t *, uint64_t, const ImageData::DataCallback &)> &cb,
+			const mem_pool::Function<void(uint8_t *, uint64_t, const ImageData::DataCallback &)>
+					&cb,
 			AttachmentLayout = AttachmentLayout::ShaderReadOnlyOptimal,
 			AccessType = AccessType::ShaderRead);
 
@@ -407,7 +409,7 @@ protected:
 
 template <typename T>
 inline auto Queue::getInputAttachment() const -> const T * {
-	if (auto c = getInputAttachment(std::type_index(typeid(T)))) {
+	if (auto c = getInputAttachment(sprt::type_index(typeid(T)))) {
 		return static_cast<const T *>(c);
 	}
 
@@ -416,7 +418,7 @@ inline auto Queue::getInputAttachment() const -> const T * {
 
 template <typename T>
 inline auto Queue::getOutputAttachment() const -> const T * {
-	if (auto c = getOutputAttachment(std::type_index(typeid(T)))) {
+	if (auto c = getOutputAttachment(sprt::type_index(typeid(T)))) {
 		return static_cast<const T *>(c);
 	}
 

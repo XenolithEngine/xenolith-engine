@@ -25,7 +25,6 @@
 #define XENOLITH_BACKEND_VK_XLVKPLATFORM_H_
 
 #include "XLVkInstance.h"
-#include "SPDso.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk::platform {
 
@@ -34,7 +33,7 @@ public:
 	using LoaderTable::LoaderTable;
 
 	Rc<Instance> createInstance(NotNull<core::InstanceInfo>, NotNull<InstanceBackendInfo>,
-			Dso &&vulkanModule) const;
+			sprt::Dso &&vulkanModule) const;
 
 	explicit operator bool() const {
 		return vkGetInstanceProcAddr != nullptr && vkCreateInstance != nullptr
@@ -47,7 +46,7 @@ private:
 	bool prepareData(InstanceData &, const InstanceInfo &) const;
 	bool validateData(InstanceData &, const InstanceInfo &, bool &validationEnabled) const;
 
-	Rc<Instance> doCreateInstance(InstanceData &, const InstanceInfo &, Dso &&vulkanModule,
+	Rc<Instance> doCreateInstance(InstanceData &, const InstanceInfo &, sprt::Dso &&vulkanModule,
 			bool validationEnabled) const;
 
 	mutable uint32_t _instanceVersion = 0;

@@ -116,27 +116,4 @@ void getProgramStageDescription(const CallbackStream &stream, ProgramStage fmt) 
 	}
 }
 
-const CallbackStream &operator<<(const CallbackStream &out, ProgramStage stage) {
-	for (auto value : flags(stage)) {
-		switch (value) {
-		case ProgramStage::None: break;
-		case ProgramStage::Vertex: out << " Vertex"; break;
-		case ProgramStage::TesselationControl: out << " TesselationControl"; break;
-		case ProgramStage::TesselationEvaluation: out << " TesselationEvaluation"; break;
-		case ProgramStage::Geometry: out << " Geometry"; break;
-		case ProgramStage::Fragment: out << " Fragment"; break;
-		case ProgramStage::Compute: out << " Compute"; break;
-		case ProgramStage::RayGen: out << " RayGen"; break;
-		case ProgramStage::AnyHit: out << " AnyHit"; break;
-		case ProgramStage::ClosestHit: out << " ClosestHit"; break;
-		case ProgramStage::MissHit: out << " MissHit"; break;
-		case ProgramStage::Intersection: out << " Intersection"; break;
-		case ProgramStage::Callable: out << " Callable"; break;
-		case ProgramStage::Task: out << " Task"; break;
-		case ProgramStage::Mesh: out << " Mesh"; break;
-		}
-	}
-	return out;
-}
-
 } // namespace stappler::xenolith::core

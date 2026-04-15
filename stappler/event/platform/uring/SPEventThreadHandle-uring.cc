@@ -67,7 +67,8 @@ void FutexImpl::client_lock() {
 				// futex should have all three flags set at this moment
 				// wait for unlock
 				__sprt_futex2_wait(&_futex, FULL_VALUE, CLIENT_MASK,
-						__SPRT_FUTEX2_SIZE_U32 | __SPRT_FUTEX2_PRIVATE, nullptr, CLOCK_MONOTONIC);
+						__SPRT_FUTEX2_SIZE_U32 | __SPRT_FUTEX2_PRIVATE, nullptr,
+						__SPRT_CLOCK_MONOTONIC);
 			}
 			// check if lock still in place by fetching value and set all flags
 		} while (((c = atomicFetchOr(&_futex, FULL_VALUE)) & LOCK_VALUE) != 0);
@@ -84,7 +85,7 @@ bool FutexImpl::client_try_lock() {
 void FutexImpl::client_unlock() {
 	// drop LOCK flag, leave WAIT and SIGNAL in place
 	if ((atomicFetchAnd(&_futex, SIGNAL_VALUE | WAIT_VALUE) & SIGNAL_VALUE) == 0) {
-		//std::cout << "+";
+		//sprt::cout << "+";
 	}
 
 	// wake server or clients
@@ -419,7 +420,7 @@ void ThreadEventFdHandle::notify(URingData *uring, EventFdSource *source, const 
 }
 
 Status ThreadEventFdHandle::perform(Rc<thread::Task> &&task) {
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	_outputQueue.emplace_back(move(task));
 
 	if constexpr (URING_THREAD_DEBUG_SWITCH_TIMER) {
@@ -432,7 +433,7 @@ Status ThreadEventFdHandle::perform(Rc<thread::Task> &&task) {
 }
 
 Status ThreadEventFdHandle::perform(mem_std::Function<void()> &&func, Ref *target, StringView tag) {
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	_outputCallbacks.emplace_back(CallbackInfo{sp::move(func), target, tag});
 
 	if constexpr (URING_THREAD_DEBUG_SWITCH_TIMER) {

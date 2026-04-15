@@ -31,12 +31,12 @@ InputListenerStorage::~InputListenerStorage() { clear(); }
 
 InputListenerStorage::InputListenerStorage(PoolRef *p) : PoolRef(p) {
 	perform([&, this] {
-		_preSceneEvents = new (_pool) memory::vector<Rec>;
-		_sceneEvents = new (_pool) memory::vector<Rec>;
-		_postSceneEvents = new (_pool) memory::vector<Rec>;
+		_preSceneEvents = new (_pool) mem_pool::Vector<Rec>;
+		_sceneEvents = new (_pool) mem_pool::Vector<Rec>;
+		_postSceneEvents = new (_pool) mem_pool::Vector<Rec>;
 
-		_focus = new (_pool) memory::map<FocusGroup *, memory::vector<Rec *>>;
-		_focus->set_memory_persistent(true);
+		_focus = new (_pool) mem_pool::Map<FocusGroup *, mem_pool::Vector<Rec *>>;
+		_focus->memory_persistent(true);
 
 		_sceneEvents->reserve(256);
 	});
@@ -67,7 +67,7 @@ void InputListenerStorage::addListener(NotNull<InputListener> input, FocusGroup 
 			record =
 					&_sceneEvents->emplace_back(Rec{input.get(), focus, sp::move(layer), ++_order});
 		} else if (p < 0) {
-			auto lb = std::lower_bound(_postSceneEvents->begin(), _postSceneEvents->end(),
+			auto lb = sprt::lower_bound(_postSceneEvents->begin(), _postSceneEvents->end(),
 					Rec{input.get(), focus}, [](const Rec &l, const Rec &r) {
 				return l.listener->getPriority() < r.listener->getPriority();
 			});
@@ -80,7 +80,7 @@ void InputListenerStorage::addListener(NotNull<InputListener> input, FocusGroup 
 						Rec{input.get(), focus, sp::move(layer), ++_order});
 			}
 		} else {
-			auto lb = std::lower_bound(_preSceneEvents->begin(), _preSceneEvents->end(),
+			auto lb = sprt::lower_bound(_preSceneEvents->begin(), _preSceneEvents->end(),
 					Rec{input.get(), focus}, [](const Rec &l, const Rec &r) {
 				return l.listener->getPriority() < r.listener->getPriority();
 			});
@@ -96,7 +96,7 @@ void InputListenerStorage::addListener(NotNull<InputListener> input, FocusGroup 
 		if (focus) {
 			auto it = _focus->find(focus);
 			if (it == _focus->end()) {
-				it = _focus->emplace(focus, memory::vector<Rec *>()).first;
+				it = _focus->emplace(focus, mem_pool::Vector<Rec *>()).first;
 				it->second.reserve_block_optimal();
 			}
 			it->second.emplace_back(record);
@@ -106,7 +106,7 @@ void InputListenerStorage::addListener(NotNull<InputListener> input, FocusGroup 
 
 void InputListenerStorage::sort() {
 	for (auto &it : *_focus) {
-		std::sort(it.second.begin(), it.second.end(), [](const Rec *l, const Rec *r) {
+		sprt::sort(it.second.begin(), it.second.end(), [](const Rec *l, const Rec *r) {
 			auto lp = l->listener->getPriority();
 			auto rp = r->listener->getPriority();
 			// у кого приоритет больше - идёт первым
@@ -385,7 +385,7 @@ void InputDispatcher::EventHandlersInfo::handle(bool removeOnFail) {
 			}
 
 			if (exclusive) {
-				if (std::find(processed.begin(), processed.end(), exclusive.get())
+				if (sprt::find(processed.begin(), processed.end(), exclusive.get())
 						== processed.end()) {
 					auto res = exclusive->handleEvent(event);
 					if (res == InputEventState::Declined) {
@@ -401,7 +401,7 @@ void InputDispatcher::EventHandlersInfo::handle(bool removeOnFail) {
 		}
 
 		for (auto &it : listenerToRemove) {
-			auto iit = std::find(listeners.begin(), listeners.end(), it);
+			auto iit = sprt::find(listeners.begin(), listeners.end(), it);
 			if (iit != listeners.end()) {
 				listeners.erase(iit);
 			}
@@ -426,7 +426,7 @@ void InputDispatcher::EventHandlersInfo::setExclusive(const InputListener *l) {
 		return;
 	}
 
-	auto v = std::find(listeners.begin(), listeners.end(), l);
+	auto v = sprt::find(listeners.begin(), listeners.end(), l);
 	if (v != listeners.end()) {
 		exclusive = *v;
 

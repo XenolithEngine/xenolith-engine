@@ -186,14 +186,14 @@ bool Allocator::init(Device &dev, VkPhysicalDevice device, const DeviceInfo::Fea
 	_bufferImageGranularity = props.device10.properties.limits.bufferImageGranularity;
 	_nonCoherentAtomSize = props.device10.properties.limits.nonCoherentAtomSize;
 
-	if (features.optionals[toInt(OptionalDeviceExtension::GetMemoryRequirements2)]) {
+	if (features.optionals.test(toInt(OptionalDeviceExtension::GetMemoryRequirements2))) {
 		_hasMemReq2 = true;
 	}
-	if (features.optionals[toInt(OptionalDeviceExtension::DedicatedAllocation)]) {
+	if (features.optionals.test(toInt(OptionalDeviceExtension::DedicatedAllocation))) {
 		_hasDedicated = true;
 	}
 
-	if (features.optionals[toInt(OptionalDeviceExtension::MemoryBudget)]) {
+	if (features.optionals.test(toInt(OptionalDeviceExtension::MemoryBudget))) {
 		_memBudget.pNext = nullptr;
 		_memProperties.pNext = &_memBudget;
 		_hasBudget = true;
@@ -232,7 +232,7 @@ bool Allocator::init(Device &dev, VkPhysicalDevice device, const DeviceInfo::Fea
 		for (auto &jt : it.types) { _memTypes.emplace_back(&jt); }
 	}
 
-	std::sort(_memTypes.begin(), _memTypes.end(),
+	sprt::sort(_memTypes.begin(), _memTypes.end(),
 			[](const MemType *l, const MemType *r) { return l->idx < r->idx; });
 
 	if constexpr (s_printVkInfo) {
@@ -337,7 +337,7 @@ void Allocator::lock() { _mutex.lock(); }
 void Allocator::unlock() { _mutex.unlock(); }
 
 Allocator::MemNode Allocator::alloc(MemType *type, uint64_t in_size, bool persistent) {
-	std::unique_lock<Mutex> lock;
+	sprt::unique_lock<sprt::mutex> lock;
 
 	// PageSize boundary should be large enough to match all alignment requirements
 	uint64_t size = uint64_t(math::align<uint64_t>(in_size, PageSize));
@@ -354,7 +354,7 @@ Allocator::MemNode Allocator::alloc(MemType *type, uint64_t in_size, bool persis
 	/* First see if there are any nodes in the area we know
 	 * our node will fit into. */
 	if (index <= type->last) {
-		lock = std::unique_lock<Mutex>(_mutex);
+		lock = sprt::unique_lock<sprt::mutex>(_mutex);
 		/* Walk the free list to see if there are
 		 * any nodes on it of the requested size */
 		uint64_t max_index = type->last;
@@ -397,7 +397,7 @@ Allocator::MemNode Allocator::alloc(MemType *type, uint64_t in_size, bool persis
 			return node;
 		}
 	} else if (!type->buf[0].empty()) {
-		lock = std::unique_lock<Mutex>(_mutex);
+		lock = sprt::unique_lock<sprt::mutex>(_mutex);
 		/* If we found nothing, seek the sink (at index 0), if
 		 * it is not empty. */
 
@@ -482,7 +482,7 @@ Allocator::MemNode Allocator::alloc(MemType *type, uint64_t in_size, bool persis
 void Allocator::free(MemType *type, SpanView<MemNode> nodes) {
 	Vector<MemNode> freelist;
 
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex> lock(_mutex);
 
 	uint64_t max_index = type->last;
 	uint64_t max_free_index = type->max;
@@ -793,7 +793,7 @@ Rc<DeviceMemory> Allocator::emplaceObjects(AllocationUsage usage, SpanView<Image
 			if (!imageRequirements[i].requiresDedicated && !imageRequirements[i].prefersDedicated) {
 				if (it->getInfo().tiling == core::ImageTiling::Optimal) {
 					requiredMemory = math::align<VkDeviceSize>(requiredMemory,
-							std::max(imageRequirements[i].requirements.alignment,
+							sprt::max(imageRequirements[i].requirements.alignment,
 									nonCoherentAtomSize));
 					imageRequirements[i].targetOffset = requiredMemory;
 					requiredMemory += imageRequirements[i].requirements.size;
@@ -813,7 +813,7 @@ Rc<DeviceMemory> Allocator::emplaceObjects(AllocationUsage usage, SpanView<Image
 			if (!imageRequirements[i].requiresDedicated && !imageRequirements[i].prefersDedicated) {
 				if (it->getInfo().tiling != core::ImageTiling::Optimal) {
 					requiredMemory = math::align<VkDeviceSize>(requiredMemory,
-							std::max(imageRequirements[i].requirements.alignment,
+							sprt::max(imageRequirements[i].requirements.alignment,
 									nonCoherentAtomSize));
 					imageRequirements[i].targetOffset = requiredMemory;
 					requiredMemory += imageRequirements[i].requirements.size;
@@ -826,7 +826,7 @@ Rc<DeviceMemory> Allocator::emplaceObjects(AllocationUsage usage, SpanView<Image
 		for (auto &it : bufferRequirements) {
 			if (!it.requiresDedicated && !it.prefersDedicated) {
 				requiredMemory = math::align<VkDeviceSize>(requiredMemory,
-						std::max(it.requirements.alignment, nonCoherentAtomSize));
+						sprt::max(it.requirements.alignment, nonCoherentAtomSize));
 				it.targetOffset = requiredMemory;
 				requiredMemory += it.requirements.size;
 			}
@@ -1033,7 +1033,7 @@ Rc<Buffer> DeviceMemoryPool::spawn(AllocationUsage type, const BufferInfo &info)
 			return nullptr;
 		}
 
-		std::unique_lock<Mutex> lock(_mutex);
+		sprt::unique_lock<sprt::mutex> lock(_mutex);
 		MemData *pool = nullptr;
 		auto it = _heaps.find(memType->idx);
 		if (it == _heaps.end()) {
@@ -1070,7 +1070,7 @@ Rc<Image> DeviceMemoryPool::spawn(AllocationUsage type, StringView key, const Im
 			return nullptr;
 		}
 
-		std::unique_lock<Mutex> lock(_mutex);
+		sprt::unique_lock<sprt::mutex> lock(_mutex);
 		MemData *pool = nullptr;
 		auto it = _heaps.find(memType->idx);
 		if (it == _heaps.end()) {
@@ -1146,7 +1146,8 @@ Allocator::MemBlock DeviceMemoryPool::alloc(MemData *mem, VkDeviceSize in_size,
 				(type == AllocationUsage::DeviceLocal) ? false : _persistentMapping);
 		mem->mem.emplace_back(b);
 		node = &mem->mem.back();
-		node->mappingProtection = _mappingProtection.emplace(node->mem, new Mutex()).first->second;
+		node->mappingProtection =
+				_mappingProtection.emplace(node->mem, new sprt::mutex()).first->second;
 		alignedOffset = 0;
 	}
 
@@ -1175,14 +1176,14 @@ void DeviceMemoryPool::clear(MemData *mem) {
 
 Allocator::MemBlock DeviceMemoryPool::tryReuse(MemData *mem, VkDeviceSize size,
 		VkDeviceSize alignment, AllocationType allocType) {
-	auto targetAlignment = std::countr_zero(alignment);
+	auto targetAlignment = sprt::countr_zero(alignment);
 
 	auto fIt = mem->freed.begin();
 	while (fIt != mem->freed.end()) {
-		auto sourceAlignment = std::countr_zero(fIt->offset);
+		auto sourceAlignment = sprt::countr_zero(fIt->offset);
 		if (fIt->allocType == allocType && sourceAlignment >= targetAlignment
 				&& fIt->size >= size) {
-			auto ret = std::move(*fIt);
+			auto ret = sprt::move(*fIt);
 			mem->freed.erase(fIt);
 			return ret;
 		}

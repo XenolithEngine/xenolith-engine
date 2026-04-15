@@ -130,7 +130,7 @@ public:
 
 protected:
 	uint16_t _bufferGroup = 0;
-	std::mutex _mutex;
+	sprt::mutex _mutex;
 };
 
 } // namespace stappler::event

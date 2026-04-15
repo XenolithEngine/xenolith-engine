@@ -183,7 +183,7 @@ struct SP_PUBLIC alignas(32) URingData : public PlatformQueueData {
 	SqeBlock tryGetNextSqe(uint32_t count = 1);
 	SqeBlock getNextSqe(uint32_t count = 1);
 
-	Status pushSqe(std::initializer_list<uint8_t> ops,
+	Status pushSqe(sprt::initializer_list<uint8_t> ops,
 			const Callback<void(io_uring_sqe *, uint32_t n)> &, URingPushFlags);
 
 	// owner should keep ts buffer available until operation is consumed

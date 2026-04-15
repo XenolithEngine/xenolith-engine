@@ -129,8 +129,8 @@ void TimerIocpSource::cancel() {
 }
 
 bool TimerIocpHandle::init(HandleClass *cl, TimerInfo &&info) {
-	static_assert(
-			sizeof(TimerIocpSource) <= DataSize && std::is_standard_layout<TimerIocpSource>::value);
+	static_assert(sizeof(TimerIocpSource) <= DataSize
+			&& sprt::is_standard_layout<TimerIocpSource>::value);
 
 	if (!TimerHandle::init(cl, info.completion)) {
 		return false;

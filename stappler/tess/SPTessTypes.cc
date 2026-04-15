@@ -30,8 +30,6 @@ static constexpr VerboseFlag TessTypesVerbose = VerboseFlag::None;
 static constexpr bool IntersectDebug = false;
 static constexpr bool DictDebug = false;
 
-int TessVerboseInfo = std::ios_base::xalloc();
-
 bool EdgeDictNode::operator<(const EdgeDictNode &other) const {
 	if (value.y == other.value.y) {
 		return edge->direction < other.edge->direction;
@@ -252,7 +250,7 @@ uint32_t Edge::getLeftOrg() const { return inverted ? right.vertex : left.vertex
 uint32_t Edge::getRightOrg() const { return inverted ? left.vertex : right.vertex; }
 
 void Edge::updateInfo() {
-	if (std::isnan(direction)) {
+	if (sprt::isnan(direction)) {
 		inverted = !EdgeGoesRight(&left);
 		direction = EdgeDirection(getRightVec() - getLeftVec());
 	}
@@ -353,7 +351,7 @@ void ObjectAllocator::releaseVertex(uint32_t vDelId, uint32_t vNewId) {
 void ObjectAllocator::releaseVertex(Vertex *vDel) {
 	if (vDel) {
 		if constexpr (TessTypesVerbose != VerboseFlag::None) {
-			std::cout << "releaseVertex: " << vDel->_uniqueIdx << ": " << vDel->_exportIdx << "\n";
+			sprt::cout << "releaseVertex: " << vDel->_uniqueIdx << ": " << vDel->_exportIdx << "\n";
 		}
 		if (vDel->_exportIdx != maxOf<uint32_t>()) {
 			_exportVertexes[vDel->_exportIdx] = nullptr;
@@ -424,8 +422,8 @@ void ObjectAllocator::preallocateFaceEdges(uint32_t n) {
 	}
 }
 
-void ObjectAllocator::removeEdgeFromVec(memory::vector<HalfEdge *> &vec, HalfEdge *e) {
-	auto eOIt = std::find(vec.begin(), vec.end(), e);
+void ObjectAllocator::removeEdgeFromVec(sprt::__pool_vector<HalfEdge *> &vec, HalfEdge *e) {
+	auto eOIt = sprt::find(vec.begin(), vec.end(), e);
 	if (eOIt != vec.end()) {
 		*eOIt = nullptr;
 	}
@@ -468,13 +466,13 @@ VertexPriorityQueue::Handle VertexPriorityQueue::Heap::insert(Key keyNew) {
 		max <<= 1;
 
 		nodes = (Node *)memory::pool::palloc(pool, ((max + 1) * sizeof(Node)));
-		if (nodes != NULL) {
-			memcpy(nodes, saveNodes, ((tmpSize + 1) * sizeof(Node)));
+		if (nodes != nullptr) {
+			sprt::memcpy(nodes, saveNodes, ((tmpSize + 1) * sizeof(Node)));
 		}
 
 		handles = (Elem *)memory::pool::palloc(pool, ((max + 1) * sizeof(Elem)));
-		if (handles != NULL) {
-			memcpy(handles, saveHandles, (size_t)((tmpSize + 1) * sizeof(Elem)));
+		if (handles != nullptr) {
+			sprt::memcpy(handles, saveHandles, (size_t)((tmpSize + 1) * sizeof(Elem)));
 		}
 
 		memory::pool::free(pool, saveNodes, (tmpSize + 1) * sizeof(Node));
@@ -597,7 +595,8 @@ void VertexPriorityQueue::Heap::floatUp(int curr) {
 	}
 }
 
-VertexPriorityQueue::VertexPriorityQueue(memory::pool_t *p, const memory::vector<Vertex *> &vec)
+VertexPriorityQueue::VertexPriorityQueue(memory::pool_t *p,
+		const sprt::__pool_vector<Vertex *> &vec)
 : heap(p, uint32_t(vec.size())), max(uint32_t(vec.size())), pool(p) {
 	keys = (Key *)memory::pool::palloc(p, max * sizeof(Key));
 
@@ -716,7 +715,7 @@ VertexPriorityQueue::Handle VertexPriorityQueue::insert(Key keyNew) {
 		max <<= 1;
 		keys = (Key *)memory::pool::palloc(pool, max * sizeof(Key));
 		if (keys) {
-			memcpy(keys, saveKey, (size_t)(tmpSize * sizeof(Key)));
+			sprt::memcpy(keys, saveKey, (size_t)(tmpSize * sizeof(Key)));
 		}
 
 		memory::pool::free(pool, saveKey, tmpSize * sizeof(Key));
@@ -776,12 +775,12 @@ VertexPriorityQueue::Key VertexPriorityQueue::getMin() const {
 
 EdgeDict::EdgeDict(memory::pool_t *p, uint32_t size) : nodes(p), pool(p) {
 	nodes.reserve(size);
-	nodes.set_memory_persistent(true);
+	nodes.memory_persistent(true);
 }
 
 const EdgeDictNode *EdgeDict::push(Edge *edge, int16_t windingAbove) {
 	if constexpr (DictDebug) {
-		std::cout << "\t\tDict push: " << *edge << "\n";
+		sprt::cout << "\t\tDict push: " << *edge << "\n";
 	}
 
 	sprt_passert(edge, "edge should be defined");
@@ -793,22 +792,20 @@ const EdgeDictNode *EdgeDict::push(Edge *edge, int16_t windingAbove) {
 	if (org == event) {
 		auto norm = dst - event;
 		ret = &(*nodes.emplace(EdgeDictNode{event, norm, Vec4(event.x, event.y, dst.x, dst.y), edge,
-								   windingAbove,
-								   std::abs(norm.x) > std::numeric_limits<float>::epsilon()})
+								   windingAbove, sprt::abs(norm.x) > sprt::Epsilon<float>})
 						.first);
 	} else if (dst == event) {
 		auto norm = org - event;
 		ret = &(*nodes.emplace(EdgeDictNode{event, norm, Vec4(event.x, event.y, org.x, org.y), edge,
-								   windingAbove,
-								   std::abs(norm.x) > std::numeric_limits<float>::epsilon()})
+								   windingAbove, sprt::abs(norm.x) > sprt::Epsilon<float>})
 						.first);
 	} else {
 		ret = nullptr;
-		std::cout << "Fail to add edge: " << *edge << " for " << event << "\n";
+		sprt::cout << "Fail to add edge: " << *edge << " for " << event << "\n";
 	}
 
 	/*for (auto &it : nodes) {
-		std::cout << "Edge: " << it.org << " - " << Vec2(it.value.z, it.value.w)
+		sprt::cout << "Edge: " << it.org << " - " << Vec2(it.value.z, it.value.w)
 				<< " - " << Vec2(it.value.x, it.value.y) << " - " << it.windingAbove << "\n";
 	}*/
 
@@ -817,8 +814,8 @@ const EdgeDictNode *EdgeDict::push(Edge *edge, int16_t windingAbove) {
 
 void EdgeDict::pop(const EdgeDictNode *node) {
 	if constexpr (DictDebug) {
-		std::cout << "\t\tDict pop: " << *node->edge << "\n";
-		for (auto &it : nodes) { std::cout << "\t\t\t\tpop: " << it << "\n"; }
+		sprt::cout << "\t\tDict pop: " << *node->edge << "\n";
+		for (auto &it : nodes) { sprt::cout << "\t\t\t\tpop: " << it << "\n"; }
 	}
 
 	auto it = nodes.lower_bound(*node);
@@ -832,7 +829,7 @@ void EdgeDict::pop(const EdgeDictNode *node) {
 
 void EdgeDict::update(Vertex *v, float tolerance) {
 	if constexpr (DictDebug) {
-		for (auto &it : nodes) { std::cout << "\t\t\t\tupdate: " << it << "\n"; }
+		for (auto &it : nodes) { sprt::cout << "\t\t\t\tupdate: " << it << "\n"; }
 	}
 
 	event = v->_origin;
@@ -849,7 +846,7 @@ void EdgeDict::update(Vertex *v, float tolerance) {
 			const float tValue = (event.x - n.org.x) / (n.norm.x);
 			if (tValue < 0.0f || tValue > 1.0f) {
 				if constexpr (DictDebug) {
-					std::cout << "\t\t\tDict pop (t): " << *it->edge << "\n";
+					sprt::cout << "\t\t\tDict pop (t): " << *it->edge << "\n";
 				}
 				it->edge->node = nullptr;
 				it = nodes.erase(it);
@@ -862,7 +859,7 @@ void EdgeDict::update(Vertex *v, float tolerance) {
 			const float sValue = (event.y - n.org.y) / (n.norm.y);
 			if (sValue < 0.0f || sValue > 1.0f) {
 				if constexpr (DictDebug) {
-					std::cout << "\t\t\tDict pop (s): " << *it->edge << "\n";
+					sprt::cout << "\t\t\tDict pop (s): " << *it->edge << "\n";
 				}
 				it->edge->node = nullptr;
 				it = nodes.erase(it);
@@ -875,10 +872,10 @@ void EdgeDict::update(Vertex *v, float tolerance) {
 
 		auto curr = n.current();
 		auto dst = n.dst();
-		if (curr.x == dst.x && std::abs(curr.y - dst.y) < tolerance) {
+		if (curr.x == dst.x && sprt::abs(curr.y - dst.y) < tolerance) {
 			if (n.value.y < event.y) {
 				if constexpr (DictDebug) {
-					std::cout << "\t\t\tDict pop (y): " << *it->edge << "\n";
+					sprt::cout << "\t\t\tDict pop (y): " << *it->edge << "\n";
 				}
 				it->edge->node = nullptr;
 				it = nodes.erase(it);
@@ -899,7 +896,7 @@ const EdgeDictNode *EdgeDict::checkForIntersects(Vertex *v, Vec2 &intersectPoint
 	auto &org = v->_origin;
 
 	if constexpr (IntersectDebug) {
-		std::cout << "\t\t\t\tcheckForIntersects: " << *v << "\n";
+		sprt::cout << "\t\t\t\tcheckForIntersects: " << *v << "\n";
 	}
 
 	for (auto &n : nodes) {
@@ -907,7 +904,7 @@ const EdgeDictNode *EdgeDict::checkForIntersects(Vertex *v, Vec2 &intersectPoint
 		auto nDst = n.dst();
 
 		if constexpr (IntersectDebug) {
-			std::cout << "\t\t\t\t\t: " << *n.edge << "\n";
+			sprt::cout << "\t\t\t\t\t: " << *n.edge << "\n";
 		}
 
 		if (VertEq(nCurr, org, tolerance) && !VertEq(n.org, org, tolerance)) {
@@ -925,6 +922,8 @@ const EdgeDictNode *EdgeDict::checkForIntersects(Vertex *v, Vec2 &intersectPoint
 
 const EdgeDictNode *EdgeDict::checkForIntersects(HalfEdge *edge, Vec2 &intersectPoint,
 		IntersectionEvent &ev, float tolerance) const {
+	namespace simd = sprt::geom::simd;
+
 	if (nodes.empty()) {
 		return nullptr;
 	}
@@ -935,14 +934,14 @@ const EdgeDictNode *EdgeDict::checkForIntersects(HalfEdge *edge, Vec2 &intersect
 	auto simdVec1 = simd::load(org.x, org.y, dst.x, dst.y);
 
 	if constexpr (IntersectDebug) {
-		std::cout << "\t\t\t\tcheckForIntersects: " << *edge << "\n";
+		sprt::cout << "\t\t\t\tcheckForIntersects: " << *edge << "\n";
 	}
 
 	for (auto &n : nodes) {
 		auto nCurr = n.current();
 		auto nDst = n.dst();
 		if constexpr (IntersectDebug) {
-			std::cout << "\t\t\t\t\t: " << *n.edge << "\n";
+			sprt::cout << "\t\t\t\t\t: " << *n.edge << "\n";
 		}
 		// overlap check should be made in mergeVertexes
 		// so, should never happen
@@ -966,8 +965,8 @@ const EdgeDictNode *EdgeDict::checkForIntersects(HalfEdge *edge, Vec2 &intersect
 			Vec4 isect;
 			simd::store(&isect.x, intersect);
 			if (VertEq(nCurr, nDst, tolerance)) {
-				if (std::abs(isect.x) < tolerance) {
-					if (std::abs(isect.y) < tolerance) {
+				if (sprt::abs(isect.x) < tolerance) {
+					if (sprt::abs(isect.y) < tolerance) {
 						intersectPoint = nCurr;
 						ev = IntersectionEvent::EdgeConnection1; // n ends on edge;
 						return &n;
@@ -976,7 +975,7 @@ const EdgeDictNode *EdgeDict::checkForIntersects(HalfEdge *edge, Vec2 &intersect
 					auto S = (nDst.x - org.x) / (isect.x);
 					if (S >= 0.0f && S <= 1.0f) {
 						auto y = org.y + S * isect.y;
-						if (std::abs(nDst.y - y) <= tolerance) {
+						if (sprt::abs(nDst.y - y) <= tolerance) {
 							intersectPoint = nCurr;
 							ev = IntersectionEvent::EdgeConnection1; // n ends on edge;
 							return &n;
@@ -1025,7 +1024,7 @@ const EdgeDictNode *EdgeDict::getEdgeBelow(const Edge *e) const {
 	if constexpr (DictDebug) {
 		auto nIt = nodes.begin();
 		while (nIt != nodes.end()) {
-			std::cout << "\t\t\t\t" << (void *)nIt._node << " " << *nIt << "\n";
+			sprt::cout << "\t\t\t\t" << (void *)nIt._node << " " << *nIt << "\n";
 			++nIt;
 		}
 	}
@@ -1048,7 +1047,7 @@ const EdgeDictNode *EdgeDict::getEdgeBelow(const Edge *e) const {
 
 const EdgeDictNode *EdgeDict::getEdgeBelow(const Vec2 &vec, uint32_t vertex) const {
 	if constexpr (DictDebug) {
-		for (auto &it : nodes) { std::cout << "\t\t\t\t" << it << "\n"; }
+		for (auto &it : nodes) { sprt::cout << "\t\t\t\t" << it << "\n"; }
 	}
 
 	if (nodes.empty()) {
@@ -1068,116 +1067,6 @@ const EdgeDictNode *EdgeDict::getEdgeBelow(const Vec2 &vec, uint32_t vertex) con
 		// edge before it is less then e
 		return &(*it);
 	}
-}
-
-std::ostream &operator<<(std::ostream &out, const Vertex &v) {
-	switch (VerboseFlag(out.iword(TessVerboseInfo))) {
-	case VerboseFlag::None: out << "Vertex (" << v._uniqueIdx << ") : " << v._origin; break;
-	case VerboseFlag::General: out << "Vertex (" << v._uniqueIdx << ") : " << v._origin; break;
-	case VerboseFlag::Full:
-		out << "Vertex (" << v._uniqueIdx << ") : " << v._origin << "\n";
-		v.foreach ([&](const HalfEdge &e) {
-			Vec2 orgVec = e.origin;
-			Vec2 dstVec = e.sym()->origin;
-			uint32_t orgIdx = e.vertex;
-			uint32_t dstIdx = e.sym()->vertex;
-
-			out << "\tEdge (" << e.getIndex() << ":" << e.sym()->getIndex() << ") : " << orgVec
-				<< " - " << dstVec << "\n";
-			out << "\t\tDir: (" << e.getIndex() << "; org: " << orgIdx
-				<< "; left: " << e._leftNext->getIndex() << "; ccw: " << e._originNext->getIndex()
-				<< ")\n";
-			out << "\t\tSym: (" << e.sym()->getIndex() << "; org: " << dstIdx
-				<< "; left: " << e.sym()->_leftNext->getIndex()
-				<< "; ccw: " << e.sym()->_originNext->getIndex() << ")\n";
-		});
-		break;
-	}
-
-	return out;
-}
-
-std::ostream &operator<<(std::ostream &out, const HalfEdge &e) {
-	Vec2 orgVec = e.origin;
-	Vec2 dstVec = e.sym()->origin;
-	uint32_t orgIdx = e.vertex;
-	uint32_t dstIdx = e.sym()->vertex;
-
-	switch (VerboseFlag(out.iword(TessVerboseInfo))) {
-	case VerboseFlag::None:
-		out << "Edge (" << e.getIndex() << ":" << e.sym()->getIndex() << ") : " << orgVec << " - "
-			<< dstVec << "; " << e.vertex << " - " << e.sym()->vertex;
-		break;
-	case VerboseFlag::General:
-		out << "Edge (" << e.getIndex() << ":" << e.sym()->getIndex() << ") : " << orgVec << " - "
-			<< dstVec << "; " << e.vertex << " - " << e.sym()->vertex
-			<< " winding: " << e._realWinding << ":" << e._winding << ";";
-		if (e.goesLeft()) {
-			out << " goes left; ";
-		} else if (e.goesRight()) {
-			out << " goes right; ";
-		} else {
-			out << " unknown direction; ";
-		}
-		out << (void *)&e;
-		break;
-	case VerboseFlag::Full:
-		out << "Edge (" << e.getIndex() << ":" << e.sym()->getIndex() << ") : " << orgVec << " - "
-			<< dstVec << "; " << e.vertex << " - " << e.sym()->vertex
-			<< " winding: " << e._realWinding << ":" << e._winding << ";\n";
-		out << "\tDir: (" << e.getIndex() << "; org: " << orgIdx
-			<< "; left: " << e._leftNext->getIndex() << "; ccw: " << e._originNext->getIndex()
-			<< ")";
-		if (e.goesLeft()) {
-			out << " goes left;";
-		} else if (e.goesRight()) {
-			out << " goes right;";
-		} else {
-			out << " unknown direction;";
-		}
-		out << "\n";
-		out << "\tSym: (" << e.sym()->getIndex() << "; org: " << dstIdx
-			<< "; left: " << e.sym()->_leftNext->getIndex()
-			<< "; ccw: " << e.sym()->_originNext->getIndex() << ")";
-		if (e.sym()->goesLeft()) {
-			out << " goes left; ";
-		} else if (e.sym()->goesRight()) {
-			out << " goes right; ";
-		} else {
-			out << " unknown direction; ";
-		}
-		out << (void *)&e << "\n";
-		break;
-	}
-	return out;
-}
-
-std::ostream &operator<<(std::ostream &out, const FaceEdge &e) {
-	Vec2 orgVec = e._vertex->_origin;
-	Vec2 dstVec = e._next->_vertex->_origin;
-	uint32_t orgIdx = e._vertex->_uniqueIdx;
-	uint32_t dstIdx = e._next->_vertex->_uniqueIdx;
-	out << "FaceEdge (" << orgIdx << " - " << dstIdx << ") : " << orgVec << " - " << dstVec << ";";
-	return out;
-}
-
-std::ostream &operator<<(std::ostream &stream, VerboseFlag e) {
-	stream.iword(TessVerboseInfo) = toInt(e);
-	return stream;
-}
-
-std::ostream &operator<<(std::ostream &stream, const EdgeDictNode &e) {
-	stream << "EdgeDictNode(" << e.org << "; " << e.dst() << "; cur: " << e.current() << ");";
-	return stream;
-}
-
-std::ostream &operator<<(std::ostream &stream, const Edge &e) {
-	if (e.inverted) {
-		stream << e.right;
-	} else {
-		stream << e.left;
-	}
-	return stream;
 }
 
 } // namespace stappler::geom

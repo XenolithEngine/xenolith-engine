@@ -28,7 +28,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 uint64_t System::GetNextSystemId() {
-	static std::atomic<uint64_t> s_value = 1;
+	static sprt::atomic<uint64_t> s_value = 1;
 	return s_value.fetch_add(1);
 }
 

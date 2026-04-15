@@ -122,10 +122,10 @@ DrawStateValues DynamicStateSystem::updateDynamicState(const DrawStateValues &va
 			ret.scissor = viewRect;
 		} else if (ret.scissor.intersectsRect(viewRect)) {
 			ret.scissor = URect{
-				std::max(ret.scissor.x, viewRect.x),
-				std::max(ret.scissor.y, viewRect.y),
-				std::min(ret.scissor.width, viewRect.width),
-				std::min(ret.scissor.height, viewRect.height),
+				sprt::max(ret.scissor.x, viewRect.x),
+				sprt::max(ret.scissor.y, viewRect.y),
+				sprt::min(ret.scissor.width, viewRect.width),
+				sprt::min(ret.scissor.height, viewRect.height),
 			};
 		}
 	}
@@ -180,7 +180,7 @@ void DynamicStateSystem::popState(FrameInfo &info) {
 			ctx->stateStack.pop_back();
 		}
 
-		std::reverse(owners.begin(), owners.end());
+		sprt::reverse(owners.begin(), owners.end());
 
 		for (auto &it : owners) {
 			if (it.second) {

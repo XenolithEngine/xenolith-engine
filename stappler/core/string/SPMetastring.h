@@ -24,75 +24,76 @@ THE SOFTWARE.
 #ifndef STAPPLER_COMMON_STRING_SPMETASTRING_H_
 #define STAPPLER_COMMON_STRING_SPMETASTRING_H_
 
-#include "SPStringView.h"
+#include "SPCore.h"
 
 namespace STAPPLER_VERSIONIZED stappler::metastring {
 
 template <char... Chars>
 struct metastring {
 	template <typename Interface>
-	static constexpr auto string() -> typename Interface::StringType { return { Chars ... }; }
-	static std::string std_string() { return { Chars ... }; }
-	static memory::string memory_string() { return { Chars ... }; }
-	static constexpr std::array<char, sizeof... (Chars)> array() { return {{ Chars ... }}; }
+	static constexpr auto string() -> typename Interface::StringType {
+		return {Chars...};
+	}
+
+	template <typename String>
+	static constexpr auto string() -> String {
+		return {String::value_type(Chars)...};
+	}
+
+	static constexpr sprt::array<char, sizeof...(Chars)> array() { return {{Chars...}}; }
 
 	template <typename Interface>
-	auto to_string() -> typename Interface::StringType const { return { Chars ... }; }
+	auto to_string() -> typename Interface::StringType const {
+		return {Chars...};
+	}
 
-	std::string to_std_string() const { return {Chars ...}; }
-	std::u16string to_std_ustring() const { return {char16_t(Chars) ...}; }
+	constexpr sprt::array<char, sizeof...(Chars)> to_array() const { return {{Chars...}}; }
 
-	memory::string to_memory_string() const { return {Chars ...}; }
-	memory::u16string to_memory_ustring() const { return {char16_t(Chars) ...}; }
+	operator sprt::__malloc_string() const { return {Chars...}; }
+	operator sprt::__pool_string() const { return {Chars...}; }
 
-	constexpr std::array<char, sizeof... (Chars)> to_array() const { return {{Chars...}}; }
-
-	operator memory::string() const { return {Chars ...}; }
-	operator std::string() const { return {Chars ...}; }
-
-	constexpr size_t size() const { return sizeof ... (Chars); }
+	constexpr size_t size() const { return sizeof...(Chars); }
 };
 
-template <char... Lhs, char ... Rhs>
-constexpr inline auto merge(const metastring<Lhs ...> &, const metastring<Rhs ...> &) {
-	return metastring<Lhs ..., Rhs ...>();
+template <char... Lhs, char... Rhs>
+constexpr inline auto merge(const metastring<Lhs...> &, const metastring<Rhs...> &) {
+	return metastring<Lhs..., Rhs...>();
 }
 
-template <typename ... Args, char... Lhs, char ... Rhs>
-constexpr inline auto merge(const metastring<Lhs ...> &lhs, const metastring<Rhs ...> &rhs, Args && ... args) {
-	return merge(lhs, merge(rhs, args ...));
+template <typename... Args, char... Lhs, char... Rhs>
+constexpr inline auto merge(const metastring<Lhs...> &lhs, const metastring<Rhs...> &rhs,
+		Args &&...args) {
+	return merge(lhs, merge(rhs, args...));
 }
 
 template <char... Lhs>
-constexpr inline auto merge(const metastring<Lhs ...> &lhs) {
+constexpr inline auto merge(const metastring<Lhs...> &lhs) {
 	return lhs;
 }
 
-constexpr inline auto merge() {
-	return metastring<>();
-}
+constexpr inline auto merge() { return metastring<>(); }
 
-constexpr int num_digits (size_t x) { return x < 10 ? 1 : 1 + num_digits (x / 10); }
+constexpr int num_digits(size_t x) { return x < 10 ? 1 : 1 + num_digits(x / 10); }
 
-template<int size, size_t x, char... args>
+template <int size, size_t x, char... args>
 struct numeric_builder {
 	using type = typename numeric_builder<size - 1, x / 10, '0' + (x % 10), args...>::type;
 };
 
-template<size_t x, char... args>
+template <size_t x, char... args>
 struct numeric_builder<2, x, args...> {
 	using type = metastring<'0' + x / 10, '0' + (x % 10), args...>;
 };
 
-template<size_t x, char... args>
+template <size_t x, char... args>
 struct numeric_builder<1, x, args...> {
 	using type = metastring<'0' + x, args...>;
 };
 
-template<size_t x>
-using numeric = typename numeric_builder<num_digits (x), x>::type;
+template <size_t x>
+using numeric = typename numeric_builder<num_digits(x), x>::type;
 
-}
+} // namespace stappler::metastring
 
 
 namespace STAPPLER_VERSIONIZED stappler {
@@ -102,26 +103,35 @@ namespace STAPPLER_VERSIONIZED stappler {
 #pragma clang diagnostic ignored "-Wgnu-string-literal-operator-template"
 #endif
 
-template <typename CharType, CharType ... Chars> auto operator ""_meta() {
-	return metastring::metastring<Chars ...>();
+template <typename CharType, CharType... Chars>
+auto operator""_meta() {
+	return metastring::metastring<Chars...>();
 }
 
 #ifdef __clang__
 #pragma clang diagnostic pop
 #endif
 
-}
+} // namespace STAPPLER_VERSIONIZED stappler
 
+namespace sprt {
 
-namespace STAPPLER_VERSIONIZED stappler::metastring {
+template <char... Chars>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::metastring::metastring<Chars...>> {
+	template <io_character CharType>
+	static constexpr size_t length(
+			const STAPPLER_VERSIONIZED_NAMESPACE::metastring::metastring<Chars...> &value) {
+		return value.size();
+	}
 
-template <char ... Chars>
-inline std::basic_ostream<char> &
-operator << (std::basic_ostream<char> & os, const metastring<Chars ...> &str) {
-	auto arr = str.to_array();
-	return os.write(arr.data(), arr.size());
-}
+	template <io_character CharType>
+	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const STAPPLER_VERSIONIZED_NAMESPACE::metastring::metastring<Chars...> &value) {
+		auto arr = value.to_array();
+		cb(arr);
+	}
+};
 
-}
+} // namespace sprt
 
 #endif /* STAPPLER_CORE_STRING_SPMETASTRING_H_ */

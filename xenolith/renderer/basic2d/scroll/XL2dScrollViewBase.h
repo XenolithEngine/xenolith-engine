@@ -35,9 +35,9 @@ class ActionAcceleratedMove;
 
 class SP_PUBLIC ScrollViewBase : public Node {
 public:
-	using ScrollFilterCallback = std::function<float(float delta)>;
-	using ScrollCallback = std::function<void(float delta, bool finished)>;
-	using OverscrollCallback = std::function<void(float delta)>;
+	using ScrollFilterCallback = Function<float(float delta)>;
+	using ScrollCallback = Function<void(float delta, bool finished)>;
+	using OverscrollCallback = Function<void(float delta)>;
 
 	enum Layout {
 		Vertical,

@@ -26,10 +26,10 @@ THE SOFTWARE.
 #include "SPTime.h"
 
 #include "SPFilesystem.h"
-#include "SPThread.h"
+//#include "SPThread.h"
 
-#include "SPData.h"
-#include "SPDataValue.h"
+//#include "SPData.h"
+//#include "SPDataValue.h"
 
 #include <sprt/runtime/backtrace.h>
 #include <sprt/runtime/platform.h>
@@ -38,7 +38,7 @@ THE SOFTWARE.
 
 using namespace stappler;
 
-static sprt::rmutex s_mutex;
+/*static sprt::rmutex s_mutex;
 
 class TestThread : public thread::Thread {
 public:
@@ -199,21 +199,22 @@ static void performUnicodeTests() {
 			  << "\n";
 
 	std::cout << (test3 < test1) << " " << (test3 > test1) << '\n';
-}
+}*/
 
 int main(int argc, const char *argv[]) {
 	return perform_main(argc, argv, []() {
 		//printCaseTables();
 		//runDataCoverter();
 
-		performThreadTests();
+		/*performThreadTests();
 		performIdnTests();
 		performDynAllocTests();
 		performPathTests();
 		performTimeTests();
-		performUnicodeTests();
+		performUnicodeTests();*/
 
-		sprt::backtrace::getBacktrace(0, [](StringView str) { std::cout << str << "\n"; });
+		sprt::backtrace::getBacktrace(0,
+				[](uintptr_t, StringView str) { sprt::cout << str << "\n"; });
 
 		return 0;
 	});

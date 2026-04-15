@@ -39,7 +39,7 @@ public:
 	using QueryCallback = Function<void(db::Query &)>;
 
 	template <typename T>
-	using InitList = std::initializer_list<T>;
+	using InitList = sprt::initializer_list<T>;
 
 	struct ServerData;
 

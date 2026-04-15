@@ -47,9 +47,9 @@ public:
 	virtual Status perform(mem_std::Function<void()> &&func, Ref *target, StringView tag) override;
 
 protected:
-	std::mutex _mutex;
+	sprt::mutex _mutex;
 };
 
-}
+} // namespace stappler::event
 
 #endif /* CORE_EVENT_PLATFORM_ANDROID_SPEVENTTHREADHANDLE_ALOOPER_H_ */

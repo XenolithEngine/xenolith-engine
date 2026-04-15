@@ -45,7 +45,7 @@ DataScrollView::ItemMap DataScrollHandlerFixed::run(Request t, DataMap &&data) {
 				: Vec2(it.first.get() * _dataSize, 0.0f);
 
 		auto item = Rc<DataScrollView::Item>::create(sp::move(it.second), origin, size);
-		ret.insert(std::make_pair(it.first, item));
+		ret.insert(sprt::make_pair(it.first, item));
 	}
 	return ret;
 }

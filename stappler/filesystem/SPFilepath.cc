@@ -22,7 +22,6 @@ THE SOFTWARE.
 **/
 
 #include "SPFilepath.h"
-#include "SPStringView.h"
 #include "SPFilesystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler {
@@ -195,14 +194,18 @@ void _merge(const Callback<void(StringView)> &cb, bool init, StringView root) {
 
 void _merge(const Callback<void(StringView)> &cb, StringView root) { _merge(cb, false, root); }
 
-void merge(const Callback<void(StringView)> &cb, SpanView<std::string> vec) { doMerge(cb, vec); }
+void merge(const Callback<void(StringView)> &cb, SpanView<sprt::__malloc_string> vec) {
+	doMerge(cb, vec);
+}
 
-void merge(const Callback<void(StringView)> &cb, SpanView<memory::string> vec) { doMerge(cb, vec); }
+void merge(const Callback<void(StringView)> &cb, SpanView<sprt::__pool_string> vec) {
+	doMerge(cb, vec);
+}
 
 void merge(const Callback<void(StringView)> &cb, SpanView<StringView> vec) { doMerge(cb, vec); }
 
 template <>
-auto merge<memory::StandartInterface>(SpanView<std::string> vec)
+auto merge<memory::StandartInterface>(SpanView<sprt::__malloc_string> vec)
 		-> memory::StandartInterface::StringType {
 	memory::StandartInterface::StringType ret;
 	ret.reserve(getMergeSize(vec));
@@ -211,7 +214,8 @@ auto merge<memory::StandartInterface>(SpanView<std::string> vec)
 }
 
 template <>
-auto merge<memory::PoolInterface>(SpanView<std::string> vec) -> memory::PoolInterface::StringType {
+auto merge<memory::PoolInterface>(SpanView<sprt::__malloc_string> vec)
+		-> memory::PoolInterface::StringType {
 	memory::PoolInterface::StringType ret;
 	ret.reserve(getMergeSize(vec));
 	doMerge([&](StringView str) { ret.append(str.data(), str.size()); }, vec);
@@ -220,7 +224,7 @@ auto merge<memory::PoolInterface>(SpanView<std::string> vec) -> memory::PoolInte
 
 
 template <>
-auto merge<memory::StandartInterface>(SpanView<memory::string> vec)
+auto merge<memory::StandartInterface>(SpanView<sprt::__pool_string> vec)
 		-> memory::StandartInterface::StringType {
 	memory::StandartInterface::StringType ret;
 	ret.reserve(getMergeSize(vec));
@@ -229,7 +233,7 @@ auto merge<memory::StandartInterface>(SpanView<memory::string> vec)
 }
 
 template <>
-auto merge<memory::PoolInterface>(SpanView<memory::string> vec)
+auto merge<memory::PoolInterface>(SpanView<sprt::__pool_string> vec)
 		-> memory::PoolInterface::StringType {
 	memory::PoolInterface::StringType ret;
 	ret.reserve(getMergeSize(vec));

@@ -33,16 +33,6 @@ SP_PUBLIC void PriorityQueue_lock_noOp(void *) {
 	// no-op, really!
 }
 
-SP_PUBLIC void PriorityQueue_lock_std_mutex(void *ptr) {
-	std::mutex *mutex = (std::mutex *)ptr;
-	mutex->lock();
-}
-
-SP_PUBLIC void PriorityQueue_unlock_std_mutex(void *ptr) {
-	std::mutex *mutex = (std::mutex *)ptr;
-	mutex->unlock();
-}
-
 SP_PUBLIC void PriorityQueue_lock_qmutex(void *ptr) {
 	sprt::qmutex *mutex = (sprt::qmutex *)ptr;
 	mutex->lock();
@@ -53,6 +43,16 @@ SP_PUBLIC void PriorityQueue_unlock_qmutex(void *ptr) {
 	mutex->unlock();
 }
 
+SP_PUBLIC void PriorityQueue_lock_rmutex(void *ptr) {
+	sprt::rmutex *mutex = (sprt::rmutex *)ptr;
+	mutex->lock();
+}
+
+SP_PUBLIC void PriorityQueue_unlock_rmutex(void *ptr) {
+	sprt::rmutex *mutex = (sprt::rmutex *)ptr;
+	mutex->unlock();
+}
+
 uuid uuid::generate() {
 	uuid_t d;
 	sprt::genuuid(d.data());
@@ -60,9 +60,9 @@ uuid uuid::generate() {
 }
 
 void uuid::format(char *buf, const uuid_t &d) {
-	snprintf(buf, 37, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", d[0],
-			d[1], d[2], d[3], d[4], d[5], d[6], d[7], d[8], d[9], d[10], d[11], d[12], d[13], d[14],
-			d[15]);
+	__sprt_snprintf(buf, 37, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+			d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7], d[8], d[9], d[10], d[11], d[12], d[13],
+			d[14], d[15]);
 }
 
 static uint8_t parse_hexpair(const char *s) {
@@ -101,7 +101,7 @@ bool uuid::parse(uuid_t &d, StringView str) {
 
 	for (i = 0; i < FormattedLength; ++i) {
 		char c = uuid_str[i];
-		if (!isxdigit(c) && !(c == '-' && (i == 8 || i == 13 || i == 18 || i == 23))) {
+		if (!sprt::isxdigit(c) && !(c == '-' && (i == 8 || i == 13 || i == 18 || i == 23))) {
 			return false;
 		}
 	}

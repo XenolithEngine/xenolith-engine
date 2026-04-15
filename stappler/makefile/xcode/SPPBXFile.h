@@ -25,7 +25,6 @@
 #define CORE_MAKEFILE_XCODE_SPPBXFILE_H_
 
 #include "SPPBXObject.h"
-#include "SPStringView.h"
 
 namespace STAPPLER_VERSIONIZED stappler::makefile::xcode {
 
@@ -33,7 +32,8 @@ struct PBXFileSystemSynchronizedBuildFileExceptionSet : PBXObject {
 	static const PBXFileSystemSynchronizedBuildFileExceptionSet *create(XCodeExport &,
 			const Callback<void(PBXFileSystemSynchronizedBuildFileExceptionSet *)> &);
 
-	static void write(const CallbackStream &, const PBXFileSystemSynchronizedBuildFileExceptionSet &);
+	static void write(const CallbackStream &,
+			const PBXFileSystemSynchronizedBuildFileExceptionSet &);
 
 	Map<String, String> additionalCompilerFlagsByRelativePath;
 	Map<String, String> attributesByRelativePath;

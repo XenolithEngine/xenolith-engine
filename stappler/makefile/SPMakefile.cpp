@@ -71,7 +71,7 @@ bool Makefile::include(StringView name, StringView data, bool copyData, ErrorRep
 		err.callback = _logCallback;
 		err.ref = _logCallbackRef;
 
-		Block *rootBlock = new (std::nothrow) Block;
+		Block *rootBlock = new (sprt::nothrow) Block;
 		rootBlock->loc = err;
 		rootBlock->identifier = err.filename;
 		rootBlock->content = name.pdup(_pool);
@@ -226,11 +226,11 @@ const Variable *Makefile::appendToVariable(StringView identifier, Origin varOrig
 			switch (v->stmt->type) {
 			case StmtType::Word:
 				const_cast<Variable *>(v)->stmt =
-						new (std::nothrow) Stmt(err, StmtType::WordList, v->stmt);
-				const_cast<Variable *>(v)->stmt->add(new (std::nothrow) StmtValue(stmt));
+						new (sprt::nothrow) Stmt(err, StmtType::WordList, v->stmt);
+				const_cast<Variable *>(v)->stmt->add(new (sprt::nothrow) StmtValue(stmt));
 				break;
 			case StmtType::WordList:
-				const_cast<Variable *>(v)->stmt->add(new (std::nothrow) StmtValue(stmt));
+				const_cast<Variable *>(v)->stmt->add(new (sprt::nothrow) StmtValue(stmt));
 				break;
 			default: err.reportError("Invalid variable type for '+='"); break;
 			}
@@ -673,7 +673,7 @@ bool Makefile::processDefineLine(StringView &str, ErrorReporter &err) {
 		return false;
 	}
 
-	auto block = new (std::nothrow) Block;
+	auto block = new (sprt::nothrow) Block;
 	block->loc = err;
 	block->type = Keyword::Define;
 	block->origin = varOrigin;

@@ -74,7 +74,7 @@ bool URingData::checkSupport() {
 
 	auto ret = __sprt_io_uring_register(0, IORING_UNREGISTER_BUFFERS, NULL, 0);
 
-	if (ret == 0 && errno == ENOSYS) {
+	if (ret == 0 && __sprt_errno == ENOSYS) {
 		log::source().info("event::URingData", "io_uring disabled in OS");
 		return false;
 	} else {
@@ -226,7 +226,7 @@ URingData::SqeBlock URingData::getNextSqe(uint32_t count) {
 	return sqe;
 }
 
-Status URingData::pushSqe(std::initializer_list<uint8_t> ops,
+Status URingData::pushSqe(sprt::initializer_list<uint8_t> ops,
 		const Callback<void(io_uring_sqe *, uint32_t n)> &cb, URingPushFlags flags) {
 	for (auto &it : ops) {
 		if (!_probe.isOpcodeSupported(it)) {
@@ -237,7 +237,7 @@ Status URingData::pushSqe(std::initializer_list<uint8_t> ops,
 	auto size = uint32_t(ops.size());
 
 	Handle *handlesToRetain[size];
-	memset(handlesToRetain, 0, sizeof(handlesToRetain));
+	sprt::memset(handlesToRetain, 0, sizeof(handlesToRetain));
 
 	auto linked = hasFlag(flags, URingPushFlags::Linked);
 	auto sqe = getNextSqe(size);
@@ -332,7 +332,7 @@ static bool isCqePending(unsigned flags) {
 }
 
 int URingData::submitSqe(unsigned sub, unsigned wait, bool waitAvailable, bool force) {
-	std::atomic_thread_fence(std::memory_order_seq_cst);
+	sprt::atomic_thread_fence(sprt::memory_order::seq_cst);
 
 	unsigned targetFlags = 0;
 	unsigned sourceFlags = atomicLoadRelaxed(sq.flags);
@@ -484,10 +484,10 @@ void URingData::processEvent(int32_t res, uint32_t flags, uint64_t userdata) {
 		}
 	} else if (userdata == URING_USERDATA_IGNORED) {
 		// do nothing
-		//std::cout << "URING_USERDATA_IGNORED: " << res << " : " << flags << "\n";
+		//sprt::cout << "URING_USERDATA_IGNORED: " << res << " : " << flags << "\n";
 	} else if (userdata == URING_USERDATA_TIMEOUT) {
 		// graceful wakeup timeout
-		//std::cout << "URING_USERDATA_TIMEOUT: " << res << " : " << flags << "\n";
+		//sprt::cout << "URING_USERDATA_TIMEOUT: " << res << " : " << flags << "\n";
 		if (_runContext) {
 			if (_runContext->wakeupCounter != 0 && res == -ETIME) {
 				_runContext->state = RunContext::Stopped;
@@ -833,7 +833,7 @@ URingData::URingData(QueueRef *q, Queue::Data *data, const QueueInfo &info, Span
 	ringFd = __sprt_io_uring_setup(math::npot(info.submitQueueSize), &_params);
 	if (ringFd < 0) {
 		log::source().error("event::URingData",
-				"io_uring_setup: Fail to setup io_uring instance: ", errno);
+				"io_uring_setup: Fail to setup io_uring instance: ", __sprt_errno);
 		return;
 	}
 
@@ -899,7 +899,7 @@ URingData::URingData(QueueRef *q, Queue::Data *data, const QueueInfo &info, Span
 	cq.ringSize = _params.cq_off.cqes + _params.cq_entries * CQESize;
 
 	if (_params.features & IORING_FEAT_SINGLE_MMAP) {
-		cq.ringSize = sq.ringSize = std::max(sq.ringSize, cq.ringSize);
+		cq.ringSize = sq.ringSize = sprt::max(sq.ringSize, cq.ringSize);
 	}
 
 	sq.ring = (uint8_t *)::mmap(0, sq.ringSize, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE,

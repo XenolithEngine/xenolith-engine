@@ -29,21 +29,20 @@
 #include "SPFilesystem.h"
 #include "SPString.h"
 #include "SPThreadTask.h"
-#include "SPStringView.h"
 #include "SPLog.h"
 #include "SPHashTable.h"
 #include "SPPlatform.h"
 
-#include "SPVec1.h"
-#include "SPVec2.h"
-#include "SPVec3.h"
-#include "SPVec4.h"
-#include "SPGeometry.h"
-#include "SPQuaternion.h"
-#include "SPMat4.h"
-#include "SPPadding.h"
-#include "SPColor.h"
-#include "SPColorHCT.h"
+#include <sprt/runtime/geom/vec1.h>
+#include <sprt/runtime/geom/vec2.h>
+#include <sprt/runtime/geom/vec3.h>
+#include <sprt/runtime/geom/vec4.h>
+#include <sprt/runtime/geom/geom.h>
+#include <sprt/runtime/geom/quaternion.h>
+#include <sprt/runtime/geom/mat4.h>
+#include <sprt/runtime/geom/padding.h>
+#include <sprt/runtime/geom/color.h>
+#include <sprt/runtime/geom/color_hct.h>
 #include "SPFontStyle.h"
 #include "SPEvent.h"
 
@@ -91,34 +90,34 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 // Import std memory model as default
 using namespace mem_std;
 
-using geom::Vec1;
-using geom::Vec2;
-using geom::Vec3;
-using geom::Vec4;
-using geom::Mat4;
-using geom::Size2;
-using geom::Size3;
-using geom::Extent2;
-using geom::Extent3;
-using geom::Rect;
-using geom::URect;
-using geom::UVec2;
-using geom::UVec3;
-using geom::UVec4;
-using geom::IRect;
-using geom::IVec2;
-using geom::IVec3;
-using geom::IVec4;
-using geom::Quaternion;
-using geom::Color;
-using geom::Color3B;
-using geom::Color4B;
-using geom::Color4F;
-using geom::ColorHCT;
-using geom::ColorMask;
-using geom::Padding;
+using sprt::geom::Vec1;
+using sprt::geom::Vec2;
+using sprt::geom::Vec3;
+using sprt::geom::Vec4;
+using sprt::geom::Mat4;
+using sprt::geom::Size2;
+using sprt::geom::Size3;
+using sprt::geom::Extent2;
+using sprt::geom::Extent3;
+using sprt::geom::Rect;
+using sprt::geom::URect;
+using sprt::geom::UVec2;
+using sprt::geom::UVec3;
+using sprt::geom::UVec4;
+using sprt::geom::IRect;
+using sprt::geom::IVec2;
+using sprt::geom::IVec3;
+using sprt::geom::IVec4;
+using sprt::geom::Quaternion;
+using sprt::geom::Color;
+using sprt::geom::Color3B;
+using sprt::geom::Color4B;
+using sprt::geom::Color4F;
+using sprt::geom::ColorHCT;
+using sprt::geom::ColorMask;
+using sprt::geom::Padding;
 
-namespace Anchor = geom::Anchor;
+namespace Anchor = sprt::geom::Anchor;
 
 inline constexpr uint32_t XL_MAKE_API_VERSION(uint32_t variant, uint32_t major, uint32_t minor,
 		uint32_t patch) {

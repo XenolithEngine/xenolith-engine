@@ -461,7 +461,7 @@ Rc<RendererResource> CommonSource::prepareResource(ResourceCache *cache, Documen
 bool CommonSource::isAssetsSame(const Map<String, DocumentAssetMeta> &l,
 		const Map<String, DocumentAssetMeta> &r) {
 	return l.size() == r.size()
-			&& std::equal(l.begin(), l.end(), r.begin(),
+			&& sprt::equal(l.begin(), l.end(), r.begin(),
 					[](const Pair<const String, DocumentAssetMeta> &l,
 							const Pair<const String, DocumentAssetMeta> &r) {
 		return l.first == r.first && l.second.mtime == r.second.mtime

@@ -116,11 +116,11 @@ struct SP_PUBLIC FrameContextHandle : public core::AttachmentInputData {
 	Rc<Director> director; // allow to access director from rendering pipeline (to send stats)
 	FrameContext *context = nullptr;
 
-	memory::vector<sprt::pair<StateId, FrameStateOwnerInterface *>> stateStack;
-	memory::vector<DrawStateValues> states;
+	Vector<sprt::pair<StateId, FrameStateOwnerInterface *>> stateStack;
+	Vector<DrawStateValues> states;
 
 	StateId addState(DrawStateValues values) {
-		auto it = std::find(states.begin(), states.end(), values);
+		auto it = sprt::find(states.begin(), states.end(), values);
 		if (it != states.end()) {
 			//log::source().verbose("FrameContextHandle", "addStateRet ", it - states.begin(), " ", values.scissor);
 			return StateId(it - states.begin());
@@ -161,35 +161,35 @@ struct SP_PUBLIC FrameInfo {
 	Rc<InputListenerStorage> input;
 
 	// This is where the ZOrder value for the current nodes is stored as they are added (from parent to children)
-	memory::vector<ZOrder> zPath;
+	mem_pool::Vector<ZOrder> zPath;
 
 	// Transformation values ​​for screen space (View/Director) are stored here
-	memory::vector<Mat4> viewProjectionStack;
+	mem_pool::Vector<Mat4> viewProjectionStack;
 
 	// Transformation values ​​for the current nodes are stored here (from parent to child)
-	memory::vector<Mat4> modelTransformStack;
+	mem_pool::Vector<Mat4> modelTransformStack;
 
 	// Values ​​for the node positioning depth (from parent to child) are stored here.
 	// When processing the graph in depth, the value can only grow
 	// (child node must be higher than or at the same level as parent)
-	memory::vector<float> depthStack;
+	mem_pool::Vector<float> depthStack;
 
 	// Stack of context manipulators. The context corresponds to a separate render queue
 	// to which data will be sent when the context is popped from the stack
-	memory::vector<Rc<FrameContextHandle>> contextStack;
+	mem_pool::Vector<Rc<FrameContextHandle>> contextStack;
 
 	// A set of system stacks by their ID
 	// A node can add a new system of a certain type to the stack;
 	// this system will be placed on the stack corresponding to its ID and thereby replace
 	// for child nodes the system that was added to this stack earlier
-	memory::map<uint64_t, memory::vector<Rc<System>>> systemStack;
+	mem_pool::Map<uint64_t, mem_pool::Vector<Rc<System>>> systemStack;
 
 	// Render queue attachments for which data has already been prepared are added here
-	memory::set<const core::AttachmentData *> resolvedInputs;
+	mem_pool::Set<const core::AttachmentData *> resolvedInputs;
 
 	FrameContextHandle *currentContext = nullptr;
 
-	memory::vector<Rc<System>> *pushSystem(const Rc<System> &comp) {
+	mem_pool::Vector<Rc<System>> *pushSystem(const Rc<System> &comp) {
 		auto it = systemStack.find(comp->getFrameTag());
 		if (it == systemStack.end()) {
 			it = systemStack.emplace(comp->getFrameTag()).first;
@@ -198,7 +198,7 @@ struct SP_PUBLIC FrameInfo {
 		return &it->second;
 	}
 
-	void popSystem(memory::vector<Rc<System>> *vec) { vec->pop_back(); }
+	void popSystem(mem_pool::Vector<Rc<System>> *vec) { vec->pop_back(); }
 
 	template <typename T = System>
 	auto getSystem(uint64_t tag) const -> Rc<T> {
@@ -225,6 +225,7 @@ struct SP_PUBLIC FrameInfo {
 		}
 	}
 };
+
 } // namespace stappler::xenolith
 
 #endif /* XENOLITH_APPLICATION_DIRECTOR_XLFRAMECONTEXT_H_ */

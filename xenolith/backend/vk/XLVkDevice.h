@@ -28,6 +28,7 @@
 #include "XLVkInstance.h"
 #include "XLVkDeviceQueue.h"
 #include "XLVkLoop.h"
+#include <sprt/cxx/condition_variable>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
 
@@ -49,7 +50,7 @@ public:
 
 protected:
 	Rc<Allocator> _allocator;
-	Mutex _mutex;
+	sprt::mutex _mutex;
 	Map<void *, Rc<DeviceMemoryPool>> _memPools;
 };
 
@@ -94,7 +95,7 @@ public:
 
 	template <typename Callback>
 	void makeApiCall(const Callback &cb) {
-		static_assert(std::is_invocable_v<Callback, const DeviceTable &, VkDevice>,
+		static_assert(sprt::is_invocable_v<Callback, const DeviceTable &, VkDevice>,
 				"Invalid callback type");
 		//_apiMutex.lock();
 		cb(*getTable(), getDevice());
@@ -141,10 +142,10 @@ private:
 	// set this to false to forcefully disable any of DescriptorIndexing features
 	bool _useDescriptorIndexing = true;
 
-	std::unordered_map<VkFormat, VkFormatProperties> _formats;
+	HashMap<VkFormat, VkFormatProperties> _formats;
 
-	std::condition_variable _resourceQueueCond;
-	Mutex _apiMutex;
+	sprt::condition_variable _resourceQueueCond;
+	sprt::mutex _apiMutex;
 };
 
 } // namespace stappler::xenolith::vk

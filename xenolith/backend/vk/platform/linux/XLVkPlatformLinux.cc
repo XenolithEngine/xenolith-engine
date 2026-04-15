@@ -21,7 +21,6 @@
  **/
 
 #include "XLVkPlatform.h"
-#include "SPDso.h"
 
 #if LINUX
 
@@ -32,7 +31,7 @@ Rc<core::Instance> createInstance(Rc<core::InstanceInfo> &&info) {
 		return nullptr;
 	}
 
-	auto handle = Dso("libvulkan.so.1");
+	auto handle = sprt::Dso("libvulkan.so.1");
 	if (!handle) {
 		log::source().error("Vk", "Fail to open libvulkan.so.1");
 		return nullptr;

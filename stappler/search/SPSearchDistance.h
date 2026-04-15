@@ -24,7 +24,6 @@ THE SOFTWARE.
 #ifndef STAPPLER_SEARCH_SPSEARCHDISTANCE_H_
 #define STAPPLER_SEARCH_SPSEARCHDISTANCE_H_
 
-#include "SPStringView.h"
 #include "SPMemory.h"
 
 namespace STAPPLER_VERSIONIZED stappler::search {
@@ -57,10 +56,10 @@ public:
 
 		struct Size {
 			size_t size : sizeof(size_t) * 8 - 1;
-			size_t vec : 1;
+			size_t vec	: 1;
 		};
 
-		using Array = std::array<Struct, sizeof(Bytes) / sizeof(Struct)>;
+		using Array = sprt::array<Struct, sizeof(Bytes) / sizeof(Struct)>;
 		using Vec = Vector<Struct>;
 
 		static Storage merge(const Storage &, const Storage &);
@@ -99,7 +98,8 @@ public:
 	};
 
 	Distance() noexcept;
-	Distance(const StringView &origin, const StringView &canonical, size_t maxDistance = maxOf<size_t>());
+	Distance(const StringView &origin, const StringView &canonical,
+			size_t maxDistance = maxOf<size_t>());
 
 	Distance(const Distance &) noexcept;
 	Distance(Distance &&) noexcept;
@@ -119,7 +119,7 @@ public:
 
 	size_t nmatch() const;
 
-	memory::string info() const;
+	sprt::__pool_string info() const;
 
 	Storage storage() const;
 
@@ -128,6 +128,6 @@ protected:
 	Storage _storage;
 };
 
-}
+} // namespace stappler::search
 
 #endif /* STAPPLER_SEARCH_SPSEARCHDISTANCE_H_ */

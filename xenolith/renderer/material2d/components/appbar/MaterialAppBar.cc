@@ -51,10 +51,10 @@ bool AppBar::init(AppBarLayout layout, const SurfaceStyle &style) {
 	_inputListener->setSwallowEvents(InputListener::EventMaskTouch);
 
 	_actionMenuSourceListener = addSystem(
-			Rc<DataListener<MenuSource>>::create(std::bind(&AppBar::layoutSubviews, this)));
+			Rc<DataListener<MenuSource>>::create(sprt::bind(&AppBar::layoutSubviews, this)));
 
 	_navButton = addChild(Rc<Button>::create(NodeStyle::Text), ZOrder(1));
-	_navButton->setTapCallback(std::bind(&AppBar::handleNavTapped, this));
+	_navButton->setTapCallback(sprt::bind(&AppBar::handleNavTapped, this));
 	_navButton->setLeadingIconName(IconName::Navigation_menu_solid);
 	_navButton->setIconSize(24.0f);
 	_navButton->setNodeMask(Button::LeadingIcon);
@@ -285,13 +285,13 @@ float AppBar::updateMenu(Node *composer, MenuSource *source, size_t maxIcons) {
 		auto pos =
 				composer->getContentSize().width - 56 * (icons.size() - 1) - (hasExtMenu ? 8 : 36);
 		for (auto &it : icons) {
-			it->setContentSize(Size2(48, std::min(48.0f, getRealHeight())));
+			it->setContentSize(Size2(48, sprt::min(48.0f, getRealHeight())));
 			it->setAnchorPoint(Vec2(0.5, 0.5));
 			it->setPosition(Vec2(pos, baseline));
 			pos += 56;
 		}
 		if (hasExtMenu) {
-			icons.back()->setContentSize(Size2(24, std::min(48.0f, getRealHeight())));
+			icons.back()->setContentSize(Size2(24, sprt::min(48.0f, getRealHeight())));
 			icons.back()->setPosition(Vec2(composer->getContentSize().width - 24, baseline));
 		}
 	}
@@ -311,7 +311,7 @@ void AppBar::layoutSubviews() {
 	auto iconWidth = updateMenu(_iconsComposer, _actionMenuSourceListener->getSubscription(),
 			_maxActionIcons);
 	if (_replaceProgress != 1.0f && _iconWidth != 0.0f) {
-		_iconWidth = std::max(iconWidth, _iconWidth);
+		_iconWidth = sprt::max(iconWidth, _iconWidth);
 	} else {
 		_iconWidth = iconWidth;
 	}
@@ -358,7 +358,7 @@ void AppBar::layoutSubviews() {
 float AppBar::getBaseLine() const {
 	auto v = _defaultHeight;
 	if (!isnan(_basicHeight)) {
-		v = std::max(v, _basicHeight);
+		v = sprt::max(v, _basicHeight);
 	}
 	if (_contentSize.height > _basicHeight) {
 		return _contentSize.height - v / 2;
@@ -370,7 +370,7 @@ float AppBar::getBaseLine() const {
 float AppBar::getRealHeight() const {
 	auto v = _defaultHeight;
 	if (!isnan(_basicHeight)) {
-		v = std::max(v, _basicHeight);
+		v = sprt::max(v, _basicHeight);
 	}
 	return v;
 }

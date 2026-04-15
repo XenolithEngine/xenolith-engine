@@ -26,7 +26,6 @@
 #include "SPMemory.h"
 #include "SPPlatform.h"
 #include "SPFilesystem.h"
-#include "SPStatus.h"
 
 #include <sprt/runtime/native_handle.h>
 

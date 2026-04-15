@@ -107,7 +107,7 @@ public:
 	virtual Status perform(mem_std::Function<void()> &&func, Ref *target, StringView tag) override;
 
 protected:
-	std::mutex _mutex;
+	sprt::mutex _mutex;
 };
 
 } // namespace stappler::event

@@ -54,9 +54,9 @@ static bool File_validateFileField(const ApplicationInterface *app, const Field 
 	// check size
 	if (writeSize > ffield->maxSize) {
 		app->error("Storage", "File is larger then max file size in field",
-				Value{std::make_pair("field", Value(field.getName())),
-					std::make_pair("max", Value((int64_t)ffield->maxSize)),
-					std::make_pair("size", Value((int64_t)writeSize))});
+				Value{sprt::make_pair("field", Value(field.getName())),
+					sprt::make_pair("max", Value((int64_t)ffield->maxSize)),
+					sprt::make_pair("size", Value((int64_t)writeSize))});
 		return false;
 	}
 
@@ -72,8 +72,8 @@ static bool File_validateFileField(const ApplicationInterface *app, const Field 
 		}
 		if (!ret) {
 			app->error("Storage", "Invalid file type for field",
-					Value{std::make_pair("field", Value(field.getName())),
-						std::make_pair("type", Value(type))});
+					Value{sprt::make_pair("field", Value(field.getName())),
+						sprt::make_pair("type", Value(type))});
 			return false;
 		}
 	}
@@ -92,16 +92,16 @@ static bool File_validateImageField(const ApplicationInterface *app, const Field
 	// check size
 	if (writeSize > ffield->maxSize) {
 		app->error("Storage", "File is larger then max file size in field",
-				Value{std::make_pair("field", Value(field.getName())),
-					std::make_pair("max", Value((int64_t)ffield->maxSize)),
-					std::make_pair("size", Value((int64_t)writeSize))});
+				Value{sprt::make_pair("field", Value(field.getName())),
+					sprt::make_pair("max", Value((int64_t)ffield->maxSize)),
+					sprt::make_pair("size", Value((int64_t)writeSize))});
 		return false;
 	}
 
 	if (!File_isImage(type)) {
 		app->error("Storage", "Unknown image type for field",
-				Value{std::make_pair("field", Value(field.getName())),
-					std::make_pair("type", Value(type))});
+				Value{sprt::make_pair("field", Value(field.getName())),
+					sprt::make_pair("type", Value(type))});
 		return false;
 	}
 
@@ -117,8 +117,8 @@ static bool File_validateImageField(const ApplicationInterface *app, const Field
 		}
 		if (!ret) {
 			app->error("Storage", "Invalid file type for field",
-					Value{std::make_pair("field", Value(field.getName())),
-						std::make_pair("type", Value(type))});
+					Value{sprt::make_pair("field", Value(field.getName())),
+						sprt::make_pair("type", Value(type))});
 			return false;
 		}
 	}
@@ -133,12 +133,12 @@ static bool File_validateImageField(const ApplicationInterface *app, const Field
 		if (ffield->minImageSize.width > width || ffield->minImageSize.height > height) {
 			app->error("Storage", "Image is to small, rejected by policy rule",
 					Value{
-						std::make_pair("min",
-								Value{std::make_pair("width", Value(ffield->minImageSize.width)),
-									std::make_pair("height", Value(ffield->minImageSize.height))}),
-						std::make_pair("current",
-								Value{std::make_pair("width", Value(width)),
-									std::make_pair("height", Value(height))})});
+						sprt::make_pair("min",
+								Value{sprt::make_pair("width", Value(ffield->minImageSize.width)),
+									sprt::make_pair("height", Value(ffield->minImageSize.height))}),
+						sprt::make_pair("current",
+								Value{sprt::make_pair("width", Value(width)),
+									sprt::make_pair("height", Value(height))})});
 			return false;
 		}
 	}
@@ -147,12 +147,12 @@ static bool File_validateImageField(const ApplicationInterface *app, const Field
 		if (ffield->maxImageSize.width < width || ffield->maxImageSize.height < height) {
 			app->error("Storage", "Image is to large, rejected by policy rule",
 					Value{
-						std::make_pair("max",
-								Value{std::make_pair("width", Value(ffield->maxImageSize.width)),
-									std::make_pair("height", Value(ffield->maxImageSize.height))}),
-						std::make_pair("current",
-								Value{std::make_pair("width", Value(width)),
-									std::make_pair("height", Value(height))})});
+						sprt::make_pair("max",
+								Value{sprt::make_pair("width", Value(ffield->maxImageSize.width)),
+									sprt::make_pair("height", Value(ffield->maxImageSize.height))}),
+						sprt::make_pair("current",
+								Value{sprt::make_pair("width", Value(width)),
+									sprt::make_pair("height", Value(height))})});
 			return false;
 		}
 	}
@@ -307,7 +307,7 @@ static bool getTargetImageSize(uint32_t W, uint32_t H, const MinImageSize &min,
 		} else if (min.height == 0) {
 			scale = (float)min.width / (float)W;
 		} else {
-			scale = std::min((float)min.width / (float)W, (float)min.height / (float)H);
+			scale = sprt::min((float)min.width / (float)W, (float)min.height / (float)H);
 		}
 		tW = W * scale;
 		tH = H * scale;
@@ -321,7 +321,7 @@ static bool getTargetImageSize(uint32_t W, uint32_t H, const MinImageSize &min,
 		} else if (max.height == 0) {
 			scale = (float)max.width / (float)W;
 		} else {
-			scale = std::min((float)max.width / (float)W, (float)max.height / (float)H);
+			scale = sprt::min((float)max.width / (float)W, (float)max.height / (float)H);
 		}
 		tW = (size_t)W * scale;
 		tH = (size_t)H * scale;

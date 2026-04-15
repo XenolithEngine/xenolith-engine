@@ -167,7 +167,7 @@ protected:
 	HashSet<FramePassData *> _renderPassesPrepared;
 	HashSet<FrameAttachmentData *> _attachmentsInitial;
 
-	std::forward_list<Rc<Ref>> _autorelease;
+	sprt::__malloc_forward_list<Rc<Ref>> _autorelease;
 	uint32_t _renderPassSubmitted = 0;
 	uint32_t _renderPassCompleted = 0;
 

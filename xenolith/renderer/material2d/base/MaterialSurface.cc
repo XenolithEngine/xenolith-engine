@@ -222,7 +222,7 @@ void Surface::applyStyle(StyleContainer *, const SurfaceStyleData &style) {
 		return;
 	}
 
-	auto radius = std::min(std::min(_contentSize.width / 2.0f, _contentSize.height / 2.0f),
+	auto radius = sprt::min(sprt::min(_contentSize.width / 2.0f, _contentSize.height / 2.0f),
 			style.cornerRadius);
 
 	if (radius != _realCornerRadius || (_image && _contentSize != _image->getImageSize())

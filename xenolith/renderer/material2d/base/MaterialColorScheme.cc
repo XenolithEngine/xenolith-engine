@@ -31,11 +31,12 @@ CorePalette::CorePalette(const geom::Cam16 &cam, bool isContentColor)
 : CorePalette(cam.hue, cam.chroma, isContentColor) { }
 
 CorePalette::CorePalette(geom::Cam16Float hue, geom::Cam16Float chroma, bool is_content)
-: primary(hue, is_content ? chroma : std::fmax(chroma, geom::Cam16Float(48)))
+: primary(hue, is_content ? chroma : sprt::fmax(chroma, geom::Cam16Float(48)))
 , secondary(hue, is_content ? chroma / 3 : 16)
 , tertiary(hue + 60, is_content ? chroma / 2 : 24)
-, neutral(hue, is_content ? std::fmin(chroma / geom::Cam16Float(12), geom::Cam16Float(4)) : 4)
-, neutralVariant(hue, is_content ? std::fmin(chroma / geom::Cam16Float(6), geom::Cam16Float(8)) : 8)
+, neutral(hue, is_content ? sprt::fmin(chroma / geom::Cam16Float(12), geom::Cam16Float(4)) : 4)
+, neutralVariant(hue,
+		  is_content ? sprt::fmin(chroma / geom::Cam16Float(6), geom::Cam16Float(8)) : 8)
 , error(25, 84) { }
 
 ColorRole ColorScheme::getColorRoleOn(ColorRole role, ThemeType type) {
@@ -64,8 +65,12 @@ ColorRole ColorScheme::getColorRoleOn(ColorRole role, ThemeType type) {
 	case ColorRole::OnSurfaceVariant: return ColorRole::SurfaceVariant; break;
 	case ColorRole::Outline: return ColorRole::OnBackground; break;
 	case ColorRole::OutlineVariant: return ColorRole::OnBackground; break;
-	case ColorRole::Shadow: return (type == ThemeType::LightTheme) ? ColorRole::Background : ColorRole::OnBackground; break;
-	case ColorRole::Scrim: return (type == ThemeType::LightTheme) ? ColorRole::Background : ColorRole::OnBackground; break;
+	case ColorRole::Shadow:
+		return (type == ThemeType::LightTheme) ? ColorRole::Background : ColorRole::OnBackground;
+		break;
+	case ColorRole::Scrim:
+		return (type == ThemeType::LightTheme) ? ColorRole::Background : ColorRole::OnBackground;
+		break;
 	case ColorRole::InverseSurface: return ColorRole::InverseOnSurface; break;
 	case ColorRole::InverseOnSurface: return ColorRole::InverseSurface; break;
 	case ColorRole::InversePrimary: return ColorRole::OnBackground; break;
@@ -236,9 +241,7 @@ ColorHCT ColorScheme::hct(ColorRole name, float alpha) const {
 		case ColorRole::Max: break;
 		}
 		break;
-	case ThemeType::Custom:
-		return ColorHCT(colors[toInt(name)], alpha);
-		break;
+	case ThemeType::Custom: return ColorHCT(colors[toInt(name)], alpha); break;
 	}
 	return ColorHCT();
 }
@@ -315,11 +318,9 @@ ColorHCT::Values ColorScheme::values(ColorRole name, float alpha) const {
 		case ColorRole::Max: break;
 		}
 		break;
-	case ThemeType::Custom:
-		return ColorHCT(colors[toInt(name)], alpha).data;
-		break;
+	case ThemeType::Custom: return ColorHCT(colors[toInt(name)], alpha).data; break;
 	}
 	return ColorHCT::Values{0.0f, 50.0f, 0.0f, alpha};
 }
 
-}
+} // namespace stappler::xenolith::material2d

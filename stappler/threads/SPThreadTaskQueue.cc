@@ -108,7 +108,7 @@ void TaskQueue::update(uint32_t *count) {
 			task->run();
 		}
 
-		for (Pair<std::function<void()>, Rc<Ref>> &task : callbacks) { task.first(); }
+		for (Pair<mem_std::Function<void()>, Rc<Ref>> &task : callbacks) { task.first(); }
 	}, _outContext.pool->getPool());
 
 	if (count) {
@@ -133,23 +133,22 @@ Status TaskQueue::waitForAll(TimeInterval iv) {
 }
 
 Status TaskQueue::wait(uint32_t *count) {
-	std::unique_lock<std::mutex> waitLock(_outContext.outputMutex);
+	sprt::unique_lock<sprt::mutex> waitLock(_outContext.outputMutex);
 	_outContext.outputCondition.wait(waitLock);
 	update(count);
 	return Status::Ok;
 }
 
 Status TaskQueue::wait(TimeInterval iv, uint32_t *count) {
-	std::unique_lock<std::mutex> waitLock(_outContext.outputMutex);
+	sprt::unique_lock<sprt::mutex> waitLock(_outContext.outputMutex);
 	auto c = _outContext.outputCounter.load();
 	if (c > 0) {
 		waitLock.unlock();
 		update(count);
 		return Status::Ok;
 	}
-	auto ret =
-			_outContext.outputCondition.wait_for(waitLock, std::chrono::microseconds(iv.toMicros()),
-					[&, this] { return _outContext.outputCounter.load() > 0; });
+	auto ret = _outContext.outputCondition.wait_for(waitLock, iv.toMicros() * 1'000,
+			[&, this] { return _outContext.outputCounter.load() > 0; });
 	if (!ret) {
 		if (count) {
 			*count = 0;

@@ -169,7 +169,7 @@ protected:
 
 	Rc<ResourceCache> _resourceCache;
 
-	HashMap<std::type_index, Rc<ApplicationExtension>> _extensions;
+	HashMap<sprt::type_index, Rc<ApplicationExtension>> _extensions;
 	Map<Rc<Ref>, Function<void(const UpdateTime &, bool)>> _listeners;
 
 	Set<AppWindow *> _windows;
@@ -180,10 +180,10 @@ protected:
 
 template <typename T>
 auto AppThread::addExtension(Rc<T> &&t) -> T * {
-	auto it = _extensions.find(std::type_index(typeid(T)));
+	auto it = _extensions.find(sprt::type_index(typeid(T)));
 	if (it == _extensions.end()) {
 		auto ref = t.get();
-		it = _extensions.emplace(std::type_index(typeid(*t.get())), move(t)).first;
+		it = _extensions.emplace(sprt::type_index(typeid(*t.get())), move(t)).first;
 		if (_extensionsInitialized) {
 			ref->initialize(this);
 		}
@@ -193,7 +193,7 @@ auto AppThread::addExtension(Rc<T> &&t) -> T * {
 
 template <typename T>
 auto AppThread::getExtension() const -> T * {
-	auto it = _extensions.find(std::type_index(typeid(T)));
+	auto it = _extensions.find(sprt::type_index(typeid(T)));
 	if (it != _extensions.end()) {
 		return reinterpret_cast<T *>(it->second.get());
 	}

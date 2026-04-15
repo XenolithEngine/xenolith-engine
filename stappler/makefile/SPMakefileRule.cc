@@ -27,27 +27,27 @@ namespace STAPPLER_VERSIONIZED stappler::makefile {
 
 void Target::addPrerequisite(StringView str) {
 	if (!prerequisitesTail) {
-		prerequisitesTail = prerequisitesList = new (std::nothrow) Prerequisite(str.pdup());
+		prerequisitesTail = prerequisitesList = new (sprt::nothrow) Prerequisite(str.pdup());
 	} else {
-		prerequisitesTail->next = new (std::nothrow) Prerequisite(str.pdup());
+		prerequisitesTail->next = new (sprt::nothrow) Prerequisite(str.pdup());
 		prerequisitesTail = prerequisitesTail->next;
 	}
 }
 
 void Target::addOrderOnly(StringView str) {
 	if (!orderOnlyTail) {
-		orderOnlyTail = orderOnlyList = new (std::nothrow) Prerequisite(str.pdup());
+		orderOnlyTail = orderOnlyList = new (sprt::nothrow) Prerequisite(str.pdup());
 	} else {
-		orderOnlyTail->next = new (std::nothrow) Prerequisite(str.pdup());
+		orderOnlyTail->next = new (sprt::nothrow) Prerequisite(str.pdup());
 		orderOnlyTail = orderOnlyTail->next;
 	}
 }
 
 void Target::addRule(Stmt *stmt) {
 	if (!rulesTail) {
-		rulesTail = rulesList = new (std::nothrow) Rule(stmt);
+		rulesTail = rulesList = new (sprt::nothrow) Rule(stmt);
 	} else {
-		rulesTail->next = new (std::nothrow) Rule(stmt);
+		rulesTail->next = new (sprt::nothrow) Rule(stmt);
 		rulesTail = rulesTail->next;
 	}
 }

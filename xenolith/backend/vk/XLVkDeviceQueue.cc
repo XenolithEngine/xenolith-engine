@@ -437,7 +437,7 @@ void CommandBuffer::cmdPipelineBarrier(XPipelineStage srcFlags, XPipelineStage d
 }
 
 void CommandBuffer::cmdCopyBuffer(Buffer *src, Buffer *dst) {
-	VkBufferCopy copy{0, 0, std::min(src->getSize(), dst->getSize())};
+	VkBufferCopy copy{0, 0, sprt::min(src->getSize(), dst->getSize())};
 	cmdCopyBuffer(src, dst, makeSpanView(&copy, 1));
 }
 
@@ -702,7 +702,7 @@ void CommandBuffer::cmdBindDescriptorSets(RenderPass *pass, const Rc<DescriptorP
 		_table->vkCmdBindDescriptorSets(_buffer, pt->point, pt->boundLayout->getLayout(), firstSet,
 				uint32_t(bindSets.size()), bindSets.data(), 0, nullptr);
 
-		auto it = std::find(_availableDescriptors.begin(), _availableDescriptors.end(), pool);
+		auto it = sprt::find(_availableDescriptors.begin(), _availableDescriptors.end(), pool);
 		if (it == _availableDescriptors.end()) {
 			_usedDescriptors.emplace(pool);
 		}
@@ -943,7 +943,7 @@ bool CommandBuffer::updateBoundSets(BindPoint &point, SpanView<VkDescriptorSet> 
 		uint32_t firstSet) {
 	auto size = sets.size() + firstSet;
 	if (size <= point.boundSets.size()) {
-		if (memcmp(point.boundSets.data() + firstSet, sets.data(),
+		if (sprt::memcmp(point.boundSets.data() + firstSet, sets.data(),
 					sizeof(VkDescriptorSet) * sets.size())
 				== 0) {
 			return true;
@@ -951,7 +951,8 @@ bool CommandBuffer::updateBoundSets(BindPoint &point, SpanView<VkDescriptorSet> 
 	}
 
 	point.boundSets.resize(size);
-	memcpy(point.boundSets.data() + firstSet, sets.data(), sizeof(VkDescriptorSet) * sets.size());
+	sprt::memcpy(point.boundSets.data() + firstSet, sets.data(),
+			sizeof(VkDescriptorSet) * sets.size());
 	return false;
 }
 

@@ -21,17 +21,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#include "SPStringView.h"
+#include "SPCommon.h"
 
 namespace STAPPLER_VERSIONIZED stappler::network {
 
 static
 #ifndef __LCC__
-// LCC failed to process this large constant
-constexpr
+		// LCC failed to process this large constant
+		constexpr
 #endif
-StringView s_CABundle(
-R"CABundle(##
+		StringView s_CABundle(
+				R"CABundle(##
 ## Bundle of CA Root Certificates
 ##
 ## Certificate data from Mozilla as of: Tue May 30 03:12:04 2023 GMT
@@ -3478,4 +3478,4 @@ ZHuNM/m0TXt2wTTPL7JH2YC0gPz/BvvSzjksgzU5rLbRyUKQkgU=
 
 SPUNUSED static StringView getCABundle() { return s_CABundle; }
 
-}
+} // namespace stappler::network

@@ -24,9 +24,8 @@
 #ifndef EXTRA_DOCUMENT_DOCUMENT_SPDOCUMENT_H_
 #define EXTRA_DOCUMENT_DOCUMENT_SPDOCUMENT_H_
 
-#include "SPRef.h"
+#include <sprt/runtime/ref.h>
 #include "SPDocStyle.h"
-#include "SPMemForwardList.h"
 
 namespace STAPPLER_VERSIONIZED stappler::document {
 

@@ -181,7 +181,7 @@ float DecoratedLayout::getMaxDepthIndex() const {
 	float maxIndex = _depthIndex;
 	for (auto &it : _children) {
 		if (it != _background && it != _decorationRoot) {
-			maxIndex = std::max(it->getMaxDepthIndex(), maxIndex);
+			maxIndex = sprt::max(it->getMaxDepthIndex(), maxIndex);
 		}
 	}
 	return maxIndex;

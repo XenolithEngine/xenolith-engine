@@ -38,7 +38,7 @@ struct DataSource::Slice {
 };
 
 struct DataSource::SliceRequest : public Ref {
-	std::vector<Slice> vec;
+	sprt::vector<Slice> vec;
 	BatchCallback cb;
 	size_t ready = 0;
 	size_t requests = 0;
@@ -58,7 +58,7 @@ struct DataSource::SliceRequest : public Ref {
 
 			auto callId = retain();
 			auto linkId = cat->retain();
-			cat->onSliceRequest([this, ptr, cat, linkId, callId] (Map<Id, Value> &val) {
+			cat->onSliceRequest([this, ptr, cat, linkId, callId](Map<Id, Value> &val) {
 				onSliceData(ptr, val);
 				cat->release(linkId);
 				release(callId);
@@ -74,7 +74,7 @@ struct DataSource::SliceRequest : public Ref {
 		ptr->recieved = true;
 
 		auto front = val.begin()->first;
-		for(auto &it : val) {
+		for (auto &it : val) {
 			if (it.first != Self) {
 				data.emplace(it.first + Id(ptr->offset) - front, sp::move(it.second));
 			} else {
@@ -82,8 +82,8 @@ struct DataSource::SliceRequest : public Ref {
 			}
 		}
 
-		ready ++;
-		requests --;
+		ready++;
+		requests--;
 
 		if (ready >= vec.size() && requests == 0) {
 			for (auto &it : vec) {
@@ -101,25 +101,25 @@ struct DataSource::SliceRequest : public Ref {
 };
 
 struct DataSource::BatchRequest {
-	std::vector<Id> vec;
+	sprt::vector<Id> vec;
 	BatchCallback cb;
 	size_t requests = 0;
 	Rc<DataSource> cat;
 	Map<Id, Value> map;
 
-	static void request(const BatchCallback &cb, Id::Type first, size_t size, DataSource *cat, const DataSourceCallback &scb) {
+	static void request(const BatchCallback &cb, Id::Type first, size_t size, DataSource *cat,
+			const DataSourceCallback &scb) {
 		new BatchRequest(cb, first, size, cat, scb);
 	}
 
-	BatchRequest(const BatchCallback &cb, Id::Type first, size_t size, DataSource *cat, const DataSourceCallback &scb)
+	BatchRequest(const BatchCallback &cb, Id::Type first, size_t size, DataSource *cat,
+			const DataSourceCallback &scb)
 	: cb(cb), cat(cat) {
-		for (auto i = first; i < first + size; i++) {
-			vec.emplace_back(i);
-		}
+		for (auto i = first; i < first + size; i++) { vec.emplace_back(i); }
 
 		requests += vec.size();
 		for (auto &it : vec) {
-			scb([this, it] (Value &&val) {
+			scb([this, it](Value &&val) {
 				if (val.isArray()) {
 					onData(it, sp::move(val.getValue(0)));
 				} else {
@@ -130,8 +130,8 @@ struct DataSource::BatchRequest {
 	}
 
 	void onData(Id id, Value &&val) {
-		map.insert(std::make_pair(id, sp::move(val)));
-		requests --;
+		map.insert(sprt::make_pair(id, sp::move(val)));
+		requests--;
 
 		if (requests == 0) {
 			cb(map);
@@ -154,7 +154,7 @@ void DataSource::addSubcategry(DataSource *cat) {
 
 DataSource::~DataSource() { }
 
-DataSource * DataSource::getCategory(size_t n) {
+DataSource *DataSource::getCategory(size_t n) {
 	if (n < getSubcatCount()) {
 		return _subCats.at(n);
 	}
@@ -162,28 +162,18 @@ DataSource * DataSource::getCategory(size_t n) {
 }
 
 size_t DataSource::getCount(uint32_t l, bool subcats) const {
-	auto c = _orphanCount + ((subcats)?_subCats.size():0);
+	auto c = _orphanCount + ((subcats) ? _subCats.size() : 0);
 	if (l > 0) {
-		for (auto cat : _subCats) {
-			c += cat->getCount(l - 1, subcats);
-		}
+		for (auto cat : _subCats) { c += cat->getCount(l - 1, subcats); }
 	}
 	return c;
 }
 
-size_t DataSource::getSubcatCount() const {
-	return _subCats.size();
-}
-size_t DataSource::getItemsCount() const {
-	return _orphanCount;
-}
-size_t DataSource::getGlobalCount() const {
-	return _count;
-}
+size_t DataSource::getSubcatCount() const { return _subCats.size(); }
+size_t DataSource::getItemsCount() const { return _orphanCount; }
+size_t DataSource::getGlobalCount() const { return _count; }
 
-DataSource::Id DataSource::getId() const {
-	return _categoryId;
-}
+DataSource::Id DataSource::getId() const { return _categoryId; }
 
 void DataSource::setSubCategories(Vector<Rc<DataSource>> &&vec) {
 	_subCats = sp::move(vec);
@@ -193,9 +183,7 @@ void DataSource::setSubCategories(const Vector<Rc<DataSource>> &vec) {
 	_subCats = vec;
 	setDirty();
 }
-const Vector<Rc<DataSource>> &DataSource::getSubCategories() const {
-	return _subCats;
-}
+const Vector<Rc<DataSource>> &DataSource::getSubCategories() const { return _subCats; }
 
 void DataSource::setChildsCount(size_t count) {
 	_count -= _orphanCount;
@@ -204,27 +192,17 @@ void DataSource::setChildsCount(size_t count) {
 	setDirty();
 }
 
-size_t DataSource::getChildsCount() const {
-	return _orphanCount;
-}
+size_t DataSource::getChildsCount() const { return _orphanCount; }
 
-void DataSource::setData(const Value &val) {
-	_data = val;
-}
+void DataSource::setData(const Value &val) { _data = val; }
 
-void DataSource::setData(Value &&val) {
-	_data = sp::move(val);
-}
+void DataSource::setData(Value &&val) { _data = sp::move(val); }
 
-const Value &DataSource::getData() const {
-	return _data;
-}
+const Value &DataSource::getData() const { return _data; }
 
-void DataSource::setDirty() {
-	Subscription::setDirty();
-}
+void DataSource::setDirty() { Subscription::setDirty(); }
 
-void DataSource::setCategoryBounds(Id & first, size_t & count, uint32_t l, bool subcats) {
+void DataSource::setCategoryBounds(Id &first, size_t &count, uint32_t l, bool subcats) {
 	// first should be 0 or bound value, that <= first
 	if (l == 0 || _subCats.size() == 0) {
 		first = Id(0);
@@ -236,8 +214,8 @@ void DataSource::setCategoryBounds(Id & first, size_t & count, uint32_t l, bool 
 	do {
 		lowerBound += offset;
 		offset = _subCats.at(subcat)->getCount(l - 1, subcats);
-		subcat ++;
-	} while(subcat < (size_t)_subCats.size() && lowerBound + offset <= (size_t)first.get());
+		subcat++;
+	} while (subcat < (size_t)_subCats.size() && lowerBound + offset <= (size_t)first.get());
 
 	// check if we should skip last subcategory
 	if (lowerBound + offset <= first.get()) {
@@ -258,7 +236,7 @@ void DataSource::setCategoryBounds(Id & first, size_t & count, uint32_t l, bool 
 	while (subcat > 0 && upperBound - offset >= lowerBound + count) {
 		upperBound -= offset;
 		offset = _subCats.at(subcat - 1)->getCount(l - 1, subcats);
-		subcat --;
+		subcat--;
 	}
 
 	count = upperBound - lowerBound;
@@ -284,7 +262,7 @@ bool DataSource::getItemData(const DataCallback &cb, Id n, uint32_t l, bool subc
 				if (n.empty()) {
 					return cat->getItemData(cb, Self);
 				} else {
-					n --;
+					n--;
 				}
 			}
 			auto c = Id(cat->getCount(l - 1, subcats));
@@ -323,7 +301,7 @@ bool DataSource::removeItem(Id index, const Value &v) {
 
 bool DataSource::removeItem(Id n, const Value &v, uint32_t l, bool subcats) {
 	if (l > 0) {
-		for (auto catIt = _subCats.begin(); catIt != _subCats.end(); ++ catIt) {
+		for (auto catIt = _subCats.begin(); catIt != _subCats.end(); ++catIt) {
 			auto &cat = *catIt;
 			if (subcats) {
 				if (n.empty()) {
@@ -333,7 +311,7 @@ bool DataSource::removeItem(Id n, const Value &v, uint32_t l, bool subcats) {
 					}
 					return false;
 				} else {
-					n --;
+					n--;
 				}
 			}
 			auto c = Id(cat->getCount(l - 1, subcats));
@@ -356,8 +334,9 @@ bool DataSource::removeItem(Id n, const Value &v, uint32_t l, bool subcats) {
 	}
 }
 
-size_t DataSource::getSliceData(const BatchCallback &cb, Id first, size_t count, uint32_t l, bool subcats) {
-	SliceRequest *req = new (std::nothrow) SliceRequest(cb);
+size_t DataSource::getSliceData(const BatchCallback &cb, Id first, size_t count, uint32_t l,
+		bool subcats) {
+	SliceRequest *req = new (sprt::nothrow) SliceRequest(cb);
 
 	size_t f = size_t(first.get());
 	onSlice(req->vec, f, count, l, subcats);
@@ -370,14 +349,14 @@ size_t DataSource::getSliceData(const BatchCallback &cb, Id first, size_t count,
 	}
 }
 
-std::pair<DataSource *, bool> DataSource::getItemCategory(Id n, uint32_t l, bool subcats) {
+sprt::pair<DataSource *, bool> DataSource::getItemCategory(Id n, uint32_t l, bool subcats) {
 	if (l > 0) {
 		for (auto &cat : _subCats) {
 			if (subcats) {
 				if (n.empty()) {
-					return std::make_pair(cat, true);
+					return sprt::make_pair(cat, true);
 				} else {
-					n --;
+					n--;
 				}
 			}
 			auto c = cat->getCount(l - 1, subcats);
@@ -390,22 +369,23 @@ std::pair<DataSource *, bool> DataSource::getItemCategory(Id n, uint32_t l, bool
 	}
 
 	if (!subcats) {
-		return std::make_pair(this, false);
+		return sprt::make_pair(this, false);
 	} else {
 		if (!_subCats.empty() && n.get() < (size_t)_subCats.size()) {
-			return std::make_pair(_subCats.at(size_t(n.get())), true);
+			return sprt::make_pair(_subCats.at(size_t(n.get())), true);
 		}
 
-		return std::make_pair(this, false);
+		return sprt::make_pair(this, false);
 	}
 }
 
-void DataSource::onSlice(std::vector<Slice> &vec, size_t &first, size_t &count, uint32_t l, bool subcats) {
+void DataSource::onSlice(sprt::vector<Slice> &vec, size_t &first, size_t &count, uint32_t l,
+		bool subcats) {
 	if (l > 0) {
-		for (auto it = _subCats.begin(); it != _subCats.end(); it ++) {
+		for (auto it = _subCats.begin(); it != _subCats.end(); it++) {
 			if (first > 0) {
 				if (subcats) {
-					first --;
+					first--;
 				}
 
 				auto sCount = (*it)->getCount(l - 1, subcats);
@@ -428,7 +408,7 @@ void DataSource::onSlice(std::vector<Slice> &vec, size_t &first, size_t &count, 
 	}
 
 	if (count > 0 && first < _orphanCount) {
-		auto c = std::min(count, _orphanCount - first);
+		auto c = sprt::min(count, _orphanCount - first);
 		vec.push_back(Slice(first, c, this));
 
 		first = 0;
@@ -441,18 +421,18 @@ void DataSource::onSlice(std::vector<Slice> &vec, size_t &first, size_t &count, 
 void DataSource::onSliceRequest(const BatchCallback &cb, Id::Type first, size_t size) {
 	if (first == Self.get()) {
 		if (!_data) {
-			_sourceCallback([cb] (Value &&val) {
+			_sourceCallback([cb](Value &&val) {
 				Map<Id, Value> map;
 				if (val.isArray()) {
-					map.insert(std::make_pair(Self, sp::move(val.getValue(0))));
+					map.insert(sprt::make_pair(Self, sp::move(val.getValue(0))));
 				} else {
-					map.insert(std::make_pair(Self, sp::move(val)));
+					map.insert(sprt::make_pair(Self, sp::move(val)));
 				}
 				cb(map);
 			}, Self);
 		} else {
 			Map<Id, Value> map;
-			map.insert(std::make_pair(Self, _data));
+			map.insert(sprt::make_pair(Self, _data));
 			cb(map);
 		}
 	} else {
@@ -464,13 +444,9 @@ void DataSource::onSliceRequest(const BatchCallback &cb, Id::Type first, size_t 
 	}
 }
 
-bool DataSource::init() {
-	return true;
-}
+bool DataSource::init() { return true; }
 
-bool DataSource::initValue() {
-	return true;
-}
+bool DataSource::initValue() { return true; }
 
 bool DataSource::initValue(const DataSourceCallback &cb) {
 	_sourceCallback = cb;
@@ -502,4 +478,4 @@ bool DataSource::initValue(Value &&val) {
 	return true;
 }
 
-}
+} // namespace stappler::xenolith::material2d

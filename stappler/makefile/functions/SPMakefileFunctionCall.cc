@@ -56,7 +56,7 @@ static uint32_t Function_callGetSourceArgsCount(Stmt *arg) {
 	Makefile_foreachVarName([&](StringView str) {
 		auto n = str.readInteger(10).get(0);
 		if (n > 0 && str.empty()) {
-			ret = std::max(ret, uint32_t(n));
+			ret = sprt::max(ret, uint32_t(n));
 		}
 	}, arg);
 	return ret;
@@ -67,10 +67,10 @@ static bool Function_call(const Callback<void(StringView)> &out, void *, Variabl
 	auto callContext = engine.getCallContext();
 	auto name = engine.resolve(args[0], 0, *callContext->err);
 
-	/*std::cout << name << "\n";
+	/*sprt::cout << name << "\n";
 	uint32_t i = 0;
 	for (auto &it : args) {
-		std::cout << i << ": " << engine.resolve(it, 0, *engine.getCallContext()->err) << "\n";
+		sprt::cout << i << ": " << engine.resolve(it, 0, *engine.getCallContext()->err) << "\n";
 		++i;
 	}*/
 

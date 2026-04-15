@@ -26,7 +26,6 @@ THE SOFTWARE.
 
 #include "SPMemPriorityQueue.h"
 #include "SPMemory.h"
-#include "SPStringView.h"
 
 namespace STAPPLER_VERSIONIZED stappler::thread {
 
@@ -53,24 +52,24 @@ public:
 	Pair<size_t, size_t> getCounters() const; // <completed, added>
 
 protected:
-	std::atomic<size_t> _added = 0;
-	std::atomic<size_t> _completed = 0;
+	sprt::atomic<size_t> _added = 0;
+	sprt::atomic<size_t> _completed = 0;
 
 	mem_std::Function<void(const TaskGroup &, const Task &)> _notifyFn;
 };
 
 class SP_PUBLIC Task : public Ref {
 public:
-	static const uint32_t INVALID_TAG = std::numeric_limits<uint32_t>::max();
+	static const uint32_t INVALID_TAG = sprt::Max<uint32_t>;
 
 	/* Function to be executed in init phase */
-	using PrepareCallback = std::function<bool(const Task &)>;
+	using PrepareCallback = mem_std::Function<bool(const Task &)>;
 
 	/* Function to be executed in other thread */
-	using ExecuteCallback = std::function<bool(const Task &)>;
+	using ExecuteCallback = mem_std::Function<bool(const Task &)>;
 
 	/* Function to be executed after task is performed */
-	using CompleteCallback = std::function<void(const Task &, bool)>;
+	using CompleteCallback = mem_std::Function<void(const Task &, bool)>;
 
 	using PriorityType =
 			ValueWrapper<memory::PriorityQueue<Rc<Task>>::PriorityType, class PriorityTypeFlag>;
@@ -132,9 +131,9 @@ public:
 		return _state == TaskState::ExecutedSuccessful || _state == TaskState::CompletedSuccessful;
 	}
 
-	const std::vector<PrepareCallback> &getPrepareTasks() const { return _prepare; }
-	const std::vector<ExecuteCallback> &getExecuteTasks() const { return _execute; }
-	const std::vector<CompleteCallback> &getCompleteTasks() const { return _complete; }
+	const mem_std::Vector<PrepareCallback> &getPrepareTasks() const { return _prepare; }
+	const mem_std::Vector<ExecuteCallback> &getExecuteTasks() const { return _execute; }
+	const mem_std::Vector<CompleteCallback> &getCompleteTasks() const { return _complete; }
 
 public:
 	// run in one call on current thread
@@ -158,10 +157,10 @@ protected:
 	StringView _tag;
 	PriorityType _priority = PriorityType();
 
-	std::vector<Rc<Ref>> _refs;
-	std::vector<PrepareCallback> _prepare;
-	std::vector<ExecuteCallback> _execute;
-	std::vector<CompleteCallback> _complete;
+	mem_std::Vector<Rc<Ref>> _refs;
+	mem_std::Vector<PrepareCallback> _prepare;
+	mem_std::Vector<ExecuteCallback> _execute;
+	mem_std::Vector<CompleteCallback> _complete;
 	Rc<TaskGroup> _group;
 };
 

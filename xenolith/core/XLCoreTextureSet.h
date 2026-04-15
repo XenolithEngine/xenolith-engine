@@ -69,7 +69,7 @@ protected:
 	uint32_t _imageCount = 0;
 	uint32_t _samplersCount = 0;
 
-	mutable Mutex _mutex;
+	mutable sprt::mutex _mutex;
 	Vector<Rc<Sampler>> _samplers;
 	Vector<Rc<TextureSet>> _sets;
 

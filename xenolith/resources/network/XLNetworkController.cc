@@ -47,8 +47,8 @@ struct Controller::Data final : thread::Thread {
 	String _name;
 	Bytes _signKey;
 
-	Mutex _mutexQueue;
-	Mutex _mutexFree;
+	sprt::mutex _mutexQueue;
+	sprt::mutex _mutexFree;
 
 	CURLM *_handle = nullptr;
 
@@ -102,7 +102,7 @@ void Controller::Data::threadInit() {
 	_pending.setQueueLocking(_mutexQueue);
 	_pending.setFreeLocking(_mutexFree);
 
-	sprt::thread::info::set(_name);
+	sprt::_thread::info::set(_name);
 
 	_handle = curl_multi_init();
 
@@ -313,7 +313,7 @@ Rc<ApplicationExtension> Controller::createController(AppThread *app, StringView
 }
 
 Controller::Controller(AppThread *app, StringView name, Bytes &&signKey) {
-	_data = new (std::nothrow) Data(app, this, name, sp::move(signKey));
+	_data = new (sprt::nothrow) Data(app, this, name, sp::move(signKey));
 	_data->init();
 	_data->run();
 }

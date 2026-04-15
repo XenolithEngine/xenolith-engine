@@ -57,12 +57,12 @@ bool Tooltip::init(RendererResult *s, const Vector<String> &ids, WideStringView 
 		view = Rc<ListenerView>::create(ListenerView::Vertical, s->source, ids);
 		view->setAnchorPoint(Vec2(0, 0));
 		view->setPosition(Vec2(0, 0));
-		view->setResultCallback(std::bind(&Tooltip::onResult, this, std::placeholders::_1));
+		view->setResultCallback(sprt::bind(&Tooltip::onResult, this, sprt::placeholders::_1));
 		view->setUseSelection(true);
 		view->getInputListener()->setSwallowEvents(InputListener::EventMaskTouch);
 
 		auto el = Rc<EventListener>::create();
-		el->onEventWithObject(ListenerView::onSelection, view, std::bind(&Tooltip::onSelection, this));
+		el->onEventWithObject(ListenerView::onSelection, view, sprt::bind(&Tooltip::onSelection, this));
 		view->addComponent(el);
 
 		auto r = view->getRenderer();
@@ -79,11 +79,11 @@ bool Tooltip::init(RendererResult *s, const Vector<String> &ids, WideStringView 
 	_toolbar->setVisible(false);
 
 	_actions = Rc<material2d::MenuSource>::create();
-	_actions->addButton("", IconName::Navigation_close_solid, std::bind(&Tooltip::close, this));
+	_actions->addButton("", IconName::Navigation_close_solid, sprt::bind(&Tooltip::close, this));
 
 	_selectionActions = Rc<material2d::MenuSource>::create();
-	_selectionActions->addButton("", IconName::Content_content_copy_solid, std::bind(&Tooltip::copySelection, this));
-	_selectionActions->addButton("", IconName::Content_remove_circle_outline, std::bind(&Tooltip::cancelSelection, this));
+	_selectionActions->addButton("", IconName::Content_content_copy_solid, sprt::bind(&Tooltip::copySelection, this));
+	_selectionActions->addButton("", IconName::Content_remove_circle_outline, sprt::bind(&Tooltip::cancelSelection, this));
 
 	_toolbar->setActionMenuSource(_actions);
 	_toolbar->setNavButtonIcon(IconName::None);
@@ -116,10 +116,10 @@ void Tooltip::handleContentSizeDirty() {
 
 	if (_maxContentSize.width != 0.0f) {
 		setContentSize(Size2(_maxContentSize.width,
-				std::max(_contentSize.height, getCurrentFlexibleMax())));
+				sprt::max(_contentSize.height, getCurrentFlexibleMax())));
 	} else {
 		setContentSize(Size2(_contentSize.width,
-				std::max(_contentSize.height, getCurrentFlexibleMax())));
+				sprt::max(_contentSize.height, getCurrentFlexibleMax())));
 	}
 }
 
@@ -152,7 +152,7 @@ void Tooltip::setMaxContentSize(const Size2 &size) {
 	_maxContentSize = size;
 	if (getContentSize().width != _maxContentSize.width) {
 		auto initContentSize = Size2(_maxContentSize.width,
-				std::max(getContentSize().height, getCurrentFlexibleMax()));
+				sprt::max(getContentSize().height, getCurrentFlexibleMax()));
 		setContentSize(initContentSize);
 		setTargetContentSize(initContentSize);
 	}

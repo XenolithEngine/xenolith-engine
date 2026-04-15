@@ -304,7 +304,7 @@ Value Field::Slot::getDefault(const Value &patch) const {
 	if (defaultFn) {
 		return defaultFn(patch);
 	} else if (transform == Transform::Uuid && type == Type::Bytes) {
-		return Value(stappler::memory::uuid::generate().bytes());
+		return Value(BytesView(stappler::memory::uuid::generate().bytes()));
 	} else {
 		return def;
 	}

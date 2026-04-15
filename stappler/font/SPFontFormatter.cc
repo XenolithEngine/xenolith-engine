@@ -201,7 +201,7 @@ bool Formatter::updatePosition(uint16_t &linePos, uint16_t &height) {
 	if (linePositionFunc) {
 		auto pos = linePositionFunc(linePos, height, _primaryFontSet->getSpec().density);
 		lineOffset = pos.offset;
-		width = std::min(pos.width, defaultWidth);
+		width = sprt::min(pos.width, defaultWidth);
 
 		uint16_t maxHeight = lineHeight * 16;
 		uint16_t extraHeight = 0;
@@ -212,7 +212,7 @@ bool Formatter::updatePosition(uint16_t &linePos, uint16_t &height) {
 			linePos += lineHeight;
 			pos = linePositionFunc(linePos, height, _primaryFontSet->getSpec().density);
 			lineOffset = pos.offset;
-			width = std::min(pos.width, defaultWidth);
+			width = sprt::min(pos.width, defaultWidth);
 		}
 
 		if (extraHeight >= maxHeight) {
@@ -309,7 +309,7 @@ bool Formatter::pushChar(char32_t ch) {
 		if (ch == char32_t(0x00AD)) {
 			charDef = _primaryFontSet->getChar('-', faceId);
 		} else {
-			log::format(log::Warn, "RichTextFormatter", SP_LOCATION,
+			log::format(sprt::oslog::Warn, "RichTextFormatter", SP_LOCATION,
 					"%s: Attempted to use undefined character: %d '%s'",
 					_primaryFontSet->getName().data(), ch, string::toUtf8<Interface>(ch).c_str());
 			return true;
@@ -877,7 +877,7 @@ bool Formatter::read(const FontParameters &f, const TextParameters &s, const cha
 					if (blockSize > 0) {
 						readWithRange(RangeLayoutData{false, false, s.textDecoration,
 										  s.verticalAlign, uint32_t(_output.chars.size()), 0,
-										  geom::Color4B(s.color, s.opacity), h,
+										  Color4B(s.color, s.opacity), h,
 										  primaryLayout->getMetrics(), primaryLayout},
 								s, str + blockStart, blockSize, frontOffset, backOffset);
 					}
@@ -890,7 +890,7 @@ bool Formatter::read(const FontParameters &f, const TextParameters &s, const cha
 					if (blockSize > 0) {
 						readWithRange(RangeLayoutData{false, false, s.textDecoration,
 										  s.verticalAlign, uint32_t(_output.chars.size()), 0,
-										  geom::Color4B(s.color, s.opacity), h,
+										  Color4B(s.color, s.opacity), h,
 										  secondaryLayout->getMetrics(), secondaryLayout},
 								capsParams, str + blockStart, blockSize, frontOffset, backOffset);
 					}
@@ -904,22 +904,21 @@ bool Formatter::read(const FontParameters &f, const TextParameters &s, const cha
 			if (caps) {
 				return readWithRange(RangeLayoutData{false, false, s.textDecoration,
 										 s.verticalAlign, uint32_t(_output.chars.size()), 0,
-										 geom::Color4B(s.color, s.opacity), h,
+										 Color4B(s.color, s.opacity), h,
 										 secondaryLayout->getMetrics(), secondaryLayout},
 						capsParams, str + blockStart, blockSize, frontOffset, backOffset);
 			} else {
 				return readWithRange(RangeLayoutData{false, false, s.textDecoration,
 										 s.verticalAlign, uint32_t(_output.chars.size()), 0,
-										 geom::Color4B(s.color, s.opacity), h,
+										 Color4B(s.color, s.opacity), h,
 										 primaryLayout->getMetrics(), primaryLayout},
 						s, str + blockStart, blockSize, frontOffset, backOffset);
 			}
 		}
 	} else {
 		return readWithRange(RangeLayoutData{false, false, s.textDecoration, s.verticalAlign,
-								 uint32_t(_output.chars.size()), 0,
-								 geom::Color4B(s.color, s.opacity), h, primaryLayout->getMetrics(),
-								 primaryLayout},
+								 uint32_t(_output.chars.size()), 0, Color4B(s.color, s.opacity), h,
+								 primaryLayout->getMetrics(), primaryLayout},
 				s, str, len, frontOffset, backOffset);
 	}
 
@@ -932,7 +931,7 @@ bool Formatter::read(const FontParameters &f, const TextParameters &s, uint16_t 
 
 	Rc<FontFaceSet> primaryLayout = fontCallback(f);
 	return readWithRange(RangeLayoutData{false, false, s.textDecoration, s.verticalAlign,
-							 uint32_t(_output.chars.size()), 0, geom::Color4B(s.color, s.opacity),
+							 uint32_t(_output.chars.size()), 0, Color4B(s.color, s.opacity),
 							 blockHeight, primaryLayout->getMetrics(), primaryLayout},
 			s, blockWidth, blockHeight);
 }
@@ -1062,7 +1061,7 @@ bool Formatter::readWithRange(RangeLayoutData &&range, const TextParameters &s, 
 }
 
 uint16_t Formatter::getHeight() const { return lineY; }
-uint16_t Formatter::getWidth() const { return std::max(maxLineX, width); }
+uint16_t Formatter::getWidth() const { return sprt::max(maxLineX, width); }
 uint16_t Formatter::getMaxLineX() const { return maxLineX; }
 uint16_t Formatter::getLineHeight() const { return lineHeight; }
 

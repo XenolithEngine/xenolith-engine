@@ -24,6 +24,8 @@
 #include "SPDocFormat.h"
 #include "SPDocument.h"
 
+#include <sprt/cxx/mutex>
+
 namespace STAPPLER_VERSIONIZED stappler::document {
 
 struct FormatStorageLess {
@@ -38,26 +40,26 @@ struct FormatStorageLess {
 
 class FormatStorage {
 public:
-	static std::mutex &getMutex();
+	static sprt::mutex &getMutex();
 	static FormatStorage *getInstance();
 
 	void emplace(Format *);
 	void erase(Format *);
 
-	std::set<Format *, FormatStorageLess> get();
+	sprt::__malloc_set<Format *, FormatStorageLess> get();
 
 private:
-	std::set<Format *, FormatStorageLess> formatList;
+	sprt::__malloc_set<Format *, FormatStorageLess> formatList;
 };
 
-std::mutex &FormatStorage::getMutex() {
-	static std::mutex s_formatListMutex;
+sprt::mutex &FormatStorage::getMutex() {
+	static sprt::mutex s_formatListMutex;
 	return s_formatListMutex;
 }
 
 FormatStorage *FormatStorage::getInstance() {
 	static FormatStorage *s_sharedInstance = nullptr;
-	std::unique_lock mutex(getMutex());
+	sprt::unique_lock mutex(getMutex());
 	if (!s_sharedInstance) {
 		s_sharedInstance = new FormatStorage();
 	}
@@ -65,19 +67,19 @@ FormatStorage *FormatStorage::getInstance() {
 }
 
 void FormatStorage::emplace(Format *ptr) {
-	std::unique_lock mutex(getMutex());
+	sprt::unique_lock mutex(getMutex());
 	formatList.emplace(ptr);
 }
 
 void FormatStorage::erase(Format *ptr) {
-	std::unique_lock mutex(getMutex());
+	sprt::unique_lock mutex(getMutex());
 	formatList.erase(ptr);
 }
 
-std::set<Format *, FormatStorageLess> FormatStorage::get() {
-	std::set<Format *, FormatStorageLess> ret;
+sprt::__malloc_set<Format *, FormatStorageLess> FormatStorage::get() {
+	sprt::__malloc_set<Format *, FormatStorageLess> ret;
 
-	std::unique_lock mutex(getMutex());
+	sprt::unique_lock mutex(getMutex());
 	ret = formatList;
 
 	return ret;

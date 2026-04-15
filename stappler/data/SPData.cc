@@ -25,7 +25,6 @@ THE SOFTWARE.
 #include "SPData.h"
 #include "SPMemInterface.h"
 #include "SPString.h"
-#include "SPStringView.h"
 
 #ifdef MODULE_STAPPLER_FILESYSTEM
 #include "SPFilesystem.h"
@@ -45,7 +44,7 @@ namespace STAPPLER_VERSIONIZED stappler::data {
 EncodeFormat EncodeFormat::CborCompressed(EncodeFormat::Cbor, EncodeFormat::LZ4HCCompression);
 EncodeFormat EncodeFormat::JsonCompressed(EncodeFormat::Json, EncodeFormat::LZ4HCCompression);
 
-int EncodeFormat::EncodeStreamIndex = std::ios_base::xalloc();
+EncodeFormat s_currentEncodeFormat = EncodeFormat::Json;
 
 namespace serenity {
 
@@ -193,10 +192,10 @@ size_t compressData(const uint8_t *src, size_t srcSize, uint8_t *dest, size_t de
 		if (ret > 0) {
 			if (srcSize <= 0xFFFF) {
 				uint16_t sz = srcSize;
-				memcpy(dest, &sz, sizeof(sz));
+				sprt::memcpy(dest, &sz, sizeof(sz));
 			} else {
 				uint32_t sz = uint32_t(srcSize);
-				memcpy(dest, &sz, sizeof(sz));
+				sprt::memcpy(dest, &sz, sizeof(sz));
 			}
 			return ret + offSize;
 		}
@@ -208,10 +207,10 @@ size_t compressData(const uint8_t *src, size_t srcSize, uint8_t *dest, size_t de
 		if (ret > 0) {
 			if (srcSize <= 0xFFFF) {
 				uint16_t sz = srcSize;
-				memcpy(dest, &sz, sizeof(sz));
+				sprt::memcpy(dest, &sz, sizeof(sz));
 			} else {
 				uint32_t sz = uint32_t(srcSize);
-				memcpy(dest, &sz, sizeof(sz));
+				sprt::memcpy(dest, &sz, sizeof(sz));
 			}
 			return ret + offSize;
 		}
@@ -226,10 +225,10 @@ size_t compressData(const uint8_t *src, size_t srcSize, uint8_t *dest, size_t de
 				== BROTLI_TRUE) {
 			if (srcSize <= 0xFFFF) {
 				uint16_t sz = srcSize;
-				memcpy(dest, &sz, sizeof(sz));
+				sprt::memcpy(dest, &sz, sizeof(sz));
 			} else {
 				uint32_t sz = uint32_t(srcSize);
-				memcpy(dest, &sz, sizeof(sz));
+				sprt::memcpy(dest, &sz, sizeof(sz));
 			}
 			return ret + offSize;
 		}
@@ -248,17 +247,17 @@ void writeCompressionMark(uint8_t *data, size_t sourceSize, EncodeFormat::Compre
 	case EncodeFormat::LZ4HCCompression:
 		if (sourceSize <= 0xFFFF) {
 			switch (padding) {
-			case 0: memcpy(data, "LZ4S", 4); break;
-			case 1: memcpy(data, "LZ4T", 4); break;
-			case 2: memcpy(data, "LZ4U", 4); break;
-			case 3: memcpy(data, "LZ4V", 4); break;
+			case 0: sprt::memcpy(data, "LZ4S", 4); break;
+			case 1: sprt::memcpy(data, "LZ4T", 4); break;
+			case 2: sprt::memcpy(data, "LZ4U", 4); break;
+			case 3: sprt::memcpy(data, "LZ4V", 4); break;
 			}
 		} else {
 			switch (padding) {
-			case 0: memcpy(data, "LZ4W", 4); break;
-			case 1: memcpy(data, "LZ4X", 4); break;
-			case 2: memcpy(data, "LZ4Y", 4); break;
-			case 3: memcpy(data, "LZ4Z", 4); break;
+			case 0: sprt::memcpy(data, "LZ4W", 4); break;
+			case 1: sprt::memcpy(data, "LZ4X", 4); break;
+			case 2: sprt::memcpy(data, "LZ4Y", 4); break;
+			case 3: sprt::memcpy(data, "LZ4Z", 4); break;
 			}
 		}
 		break;
@@ -266,17 +265,17 @@ void writeCompressionMark(uint8_t *data, size_t sourceSize, EncodeFormat::Compre
 	case EncodeFormat::Brotli:
 		if (sourceSize <= 0xFFFF) {
 			switch (padding) {
-			case 0: memcpy(data, "SBrS", 4); break;
-			case 1: memcpy(data, "SBrT", 4); break;
-			case 2: memcpy(data, "SBrU", 4); break;
-			case 3: memcpy(data, "SBrV", 4); break;
+			case 0: sprt::memcpy(data, "SBrS", 4); break;
+			case 1: sprt::memcpy(data, "SBrT", 4); break;
+			case 2: sprt::memcpy(data, "SBrU", 4); break;
+			case 3: sprt::memcpy(data, "SBrV", 4); break;
 			}
 		} else {
 			switch (padding) {
-			case 0: memcpy(data, "SBrW", 4); break;
-			case 1: memcpy(data, "SBrX", 4); break;
-			case 2: memcpy(data, "SBrY", 4); break;
-			case 3: memcpy(data, "SBrZ", 4); break;
+			case 0: sprt::memcpy(data, "SBrW", 4); break;
+			case 1: sprt::memcpy(data, "SBrX", 4); break;
+			case 2: sprt::memcpy(data, "SBrY", 4); break;
+			case 3: sprt::memcpy(data, "SBrZ", 4); break;
 			}
 		}
 		break;
@@ -302,7 +301,7 @@ static inline auto doCompress(const uint8_t *src, size_t size, EncodeFormat::Com
 		typename Interface::BytesType ret;
 		ret.resize(targetSize);
 		writeCompressionMark(ret.data(), size, c, (targetExtra == 4) ? 0 : targetExtra);
-		memcpy(ret.data() + 4, tl_compressBuffer, encodeSize);
+		sprt::memcpy(ret.data() + 4, tl_compressBuffer, encodeSize);
 		return ret;
 	} else {
 		typename Interface::BytesType ret;

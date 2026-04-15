@@ -175,7 +175,7 @@ bool DeviceFrameHandle::init(Loop &loop, Device &device, Rc<FrameRequest> &&req,
 }
 
 DeviceMemoryPool *DeviceFrameHandle::getMemPool(void *key) {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex> lock(_mutex);
 	// experimental: multiple pools feature is disabled, advanced memory mapping protection can replace it completely
 	auto v = _memPools.find((void *)nullptr);
 	if (v == _memPools.end()) {
@@ -219,13 +219,13 @@ bool Device::init(const vk::Instance *inst, DeviceInfo &&info, const Features &f
 		for (auto &it : _families) {
 			if (it.index == info.index) {
 				it.preferred |= preferred;
-				it.count = std::min(it.count + count,
-						std::min(info.count, uint32_t(std::thread::hardware_concurrency())));
+				it.count = sprt::min(it.count + count,
+						sprt::min(info.count, uint32_t(sprt::thread::hardware_concurrency())));
 				return;
 			}
 		}
-		count = std::min(count,
-				std::min(info.count, uint32_t(std::thread::hardware_concurrency())));
+		count = sprt::min(count,
+				sprt::min(info.count, uint32_t(sprt::thread::hardware_concurrency())));
 		_families.emplace_back(core::DeviceQueueFamily({info.index, count, preferred, info.flags,
 			info.timestampValidBits, info.minImageTransferGranularity}));
 	};
@@ -234,11 +234,11 @@ bool Device::init(const vk::Instance *inst, DeviceInfo &&info, const Features &f
 
 	info.presentFamily.count = 1;
 
-	emplaceQueueFamily(info.graphicsFamily, std::thread::hardware_concurrency(),
+	emplaceQueueFamily(info.graphicsFamily, sprt::thread::hardware_concurrency(),
 			core::QueueFlags::Graphics);
 	emplaceQueueFamily(info.presentFamily, 1, core::QueueFlags::Present);
 	emplaceQueueFamily(info.transferFamily, 2, core::QueueFlags::Transfer);
-	emplaceQueueFamily(info.computeFamily, std::thread::hardware_concurrency(),
+	emplaceQueueFamily(info.computeFamily, sprt::thread::hardware_concurrency(),
 			core::QueueFlags::Compute);
 
 	if (!setup(inst, info.device, info.properties, _families, features, extensions)) {
@@ -538,7 +538,7 @@ bool Device::hasBufferDeviceAddresses() const {
 }
 
 bool Device::hasExternalFences() const {
-	return _info.features.optionals[toInt(OptionalDeviceExtension::ExternalFenceFd)]
+	return _info.features.optionals.test(toInt(OptionalDeviceExtension::ExternalFenceFd))
 			&& (_info.features.fenceSyncFd.externalFenceFeatures
 					& VK_EXTERNAL_FENCE_FEATURE_EXPORTABLE_BIT);
 }
@@ -553,7 +553,7 @@ bool Device::isPortabilityMode() const {
 }
 
 void Device::waitIdle() const {
-	std::unique_lock lock(_resourceMutex);
+	sprt::unique_lock lock(_resourceMutex);
 
 	_table->vkDeviceWaitIdle(_device);
 
@@ -617,8 +617,8 @@ void Device::compileImage(const Loop &loop, const Rc<core::DynamicImage> &img,
 							->dropPendingBarrier(); // hold reference while commands is active
 				}, this, "TextureSetLayout::compileImage transferBuffer->dropPendingBarrier");
 
-				loop.performInQueue(
-						Rc<thread::Task>::create([this, task](const thread::Task &) -> bool {
+				loop.performInQueue(Rc<thread::Task>::create(
+						thread::Task::ExecuteCallback([this, task](const thread::Task &) -> bool {
 					auto buf = task->pool->recordBuffer(*task->device, Vector<Rc<DescriptorPool>>(),
 							[&, this](CommandBuffer &buf) {
 						auto f = getQueueFamily(task->resultImage->getInfo().type);
@@ -632,7 +632,8 @@ void Device::compileImage(const Loop &loop, const Rc<core::DynamicImage> &img,
 						return true;
 					}
 					return false;
-				}, [task](const thread::Task &, bool success) {
+				}),
+						thread::Task::CompleteCallback([task](const thread::Task &, bool success) {
 					if (task->queue) {
 						task->device->releaseQueue(move(task->queue));
 					}
@@ -644,7 +645,7 @@ void Device::compileImage(const Loop &loop, const Rc<core::DynamicImage> &img,
 					}
 					task->fence->schedule(*task->loop);
 					task->fence = nullptr;
-				}));
+				})));
 			}, [task](core::Loop &) { task->callback(false); });
 		});
 	}, task);
@@ -682,7 +683,7 @@ bool Device::setup(const Instance *instance, VkPhysicalDevice p, const Propertie
 	Vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 
 	uint32_t maxQueues = 0;
-	for (auto &it : queueFamilies) { maxQueues = std::max(it.count, maxQueues); }
+	for (auto &it : queueFamilies) { maxQueues = sprt::max(it.count, maxQueues); }
 
 	Vector<float> queuePriority;
 	queuePriority.resize(maxQueues, 1.0f);
@@ -720,23 +721,23 @@ bool Device::setup(const Instance *instance, VkPhysicalDevice p, const Propertie
 		_enabledFeatures.device10.pNext = &_enabledFeatures.device11;
 		deviceCreateInfo.pNext = &_enabledFeatures.device11;
 	} else {
-		if (_enabledFeatures.optionals[toInt(OptionalDeviceExtension::Storage16Bit)]) {
+		if (_enabledFeatures.optionals.test(toInt(OptionalDeviceExtension::Storage16Bit))) {
 			_enabledFeatures.device16bitStorage.pNext = next;
 			next = &_enabledFeatures.device16bitStorage;
 		}
-		if (_enabledFeatures.optionals[toInt(OptionalDeviceExtension::Storage8Bit)]) {
+		if (_enabledFeatures.optionals.test(toInt(OptionalDeviceExtension::Storage8Bit))) {
 			_enabledFeatures.device8bitStorage.pNext = next;
 			next = &_enabledFeatures.device8bitStorage;
 		}
-		if (_enabledFeatures.optionals[toInt(OptionalDeviceExtension::ShaderFloat16Int8)]) {
+		if (_enabledFeatures.optionals.test(toInt(OptionalDeviceExtension::ShaderFloat16Int8))) {
 			_enabledFeatures.deviceShaderFloat16Int8.pNext = next;
 			next = &_enabledFeatures.deviceShaderFloat16Int8;
 		}
-		if (_enabledFeatures.optionals[toInt(OptionalDeviceExtension::DescriptorIndexing)]) {
+		if (_enabledFeatures.optionals.test(toInt(OptionalDeviceExtension::DescriptorIndexing))) {
 			_enabledFeatures.deviceDescriptorIndexing.pNext = next;
 			next = &_enabledFeatures.deviceDescriptorIndexing;
 		}
-		if (_enabledFeatures.optionals[toInt(OptionalDeviceExtension::DeviceAddress)]) {
+		if (_enabledFeatures.optionals.test(toInt(OptionalDeviceExtension::DeviceAddress))) {
 			_enabledFeatures.deviceBufferDeviceAddress.pNext = next;
 			next = &_enabledFeatures.deviceBufferDeviceAddress;
 		}

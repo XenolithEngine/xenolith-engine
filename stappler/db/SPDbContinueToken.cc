@@ -53,19 +53,19 @@ bool ContinueToken::hasNext() const {
 	return hasFlag(Flags::Inverted) ? hasPrevImpl() : hasNextImpl();
 }
 
-bool ContinueToken::isInit() const {
-	return _init;
-}
+bool ContinueToken::isInit() const { return _init; }
 
 String ContinueToken::encode() const {
-	return stappler::base64url::encode<Interface>(stappler::data::write<Interface>(Value({
-		Value(field),
-		Value(initVec),
-		Value(count),
-		Value(fetched),
-		Value(total),
-		Value(stappler::toInt(flags)),
-	}), EncodeFormat::Cbor));
+	return stappler::base64url::encode<Interface>(
+			stappler::data::write<Interface>(Value({
+												 Value(field),
+												 Value(initVec),
+												 Value(count),
+												 Value(fetched),
+												 Value(total),
+												 Value(stappler::toInt(flags)),
+											 }),
+					EncodeFormat::Cbor));
 }
 
 String ContinueToken::encodeNext() const {
@@ -80,75 +80,48 @@ size_t ContinueToken::getStart() const {
 	return hasFlag(Flags::Inverted) ? (getTotal() + 1 - fetched - getNumResults()) : (fetched + 1);
 }
 size_t ContinueToken::getEnd() const {
-	return hasFlag(Flags::Inverted) ? std::min(total, getTotal() - fetched) : std::min(total, fetched + getNumResults());
+	return hasFlag(Flags::Inverted) ? sprt::min(total, getTotal() - fetched)
+									: sprt::min(total, fetched + getNumResults());
 }
-size_t ContinueToken::getTotal() const {
-	return total;
-}
-size_t ContinueToken::getCount() const {
-	return count;
-}
-size_t ContinueToken::getFetched() const {
-	return fetched;
-}
-StringView ContinueToken::getField() const {
-	return field;
-}
+size_t ContinueToken::getTotal() const { return total; }
+size_t ContinueToken::getCount() const { return count; }
+size_t ContinueToken::getFetched() const { return fetched; }
+StringView ContinueToken::getField() const { return field; }
 
-size_t ContinueToken::getNumResults() const {
-	return _numResults;
-}
+size_t ContinueToken::getNumResults() const { return _numResults; }
 
-bool ContinueToken::hasFlag(Flags fl) const {
-	return (flags & fl) != Flags::None;
-}
+bool ContinueToken::hasFlag(Flags fl) const { return (flags & fl) != Flags::None; }
 
-void ContinueToken::setFlag(Flags fl) {
-	flags |= fl;
-}
-void ContinueToken::unsetFlag(Flags fl) {
-	flags &= (~fl);
-}
+void ContinueToken::setFlag(Flags fl) { flags |= fl; }
+void ContinueToken::unsetFlag(Flags fl) { flags &= (~fl); }
 
-const Value &ContinueToken::getFirstVec() const {
-	return firstVec;
-}
-const Value &ContinueToken::getLastVec() const {
-	return lastVec;
-}
+const Value &ContinueToken::getFirstVec() const { return firstVec; }
+const Value &ContinueToken::getLastVec() const { return lastVec; }
 
-bool ContinueToken::hasPrevImpl() const {
-	return _init && fetched != 0;
-}
+bool ContinueToken::hasPrevImpl() const { return _init && fetched != 0; }
 
-bool ContinueToken::hasNextImpl() const {
-	return _init && fetched + _numResults < total;
-}
+bool ContinueToken::hasNextImpl() const { return _init && fetched + _numResults < total; }
 
 String ContinueToken::encodeNextImpl() const {
 	Flags f = Flags::None;
-	if (hasFlag(Flags::Inverted)) { f |= Flags::Inverted; }
-	return stappler::base64url::encode<Interface>(stappler::data::write<Interface>(Value({
-		Value(field),
-		Value(lastVec),
-		Value(count),
-		Value(fetched + _numResults),
-		Value(total),
-		Value(stappler::toInt(f))
-	}), EncodeFormat::Cbor));
+	if (hasFlag(Flags::Inverted)) {
+		f |= Flags::Inverted;
+	}
+	return stappler::base64url::encode<Interface>(stappler::data::write<Interface>(
+			Value({Value(field), Value(lastVec), Value(count), Value(fetched + _numResults),
+				Value(total), Value(stappler::toInt(f))}),
+			EncodeFormat::Cbor));
 }
 
 String ContinueToken::encodePrevImpl() const {
 	Flags f = Flags::Reverse;
-	if (hasFlag(Flags::Inverted)) { f |= Flags::Inverted; }
-	return stappler::base64url::encode<Interface>(stappler::data::write<Interface>(Value({
-		Value(field),
-		Value(firstVec),
-		Value(count),
-		Value(fetched),
-		Value(total),
-		Value(stappler::toInt(f))
-	}), EncodeFormat::Cbor));
+	if (hasFlag(Flags::Inverted)) {
+		f |= Flags::Inverted;
+	}
+	return stappler::base64url::encode<Interface>(stappler::data::write<Interface>(
+			Value({Value(field), Value(firstVec), Value(count), Value(fetched), Value(total),
+				Value(stappler::toInt(f))}),
+			EncodeFormat::Cbor));
 }
 
 Value ContinueToken::perform(const Scheme &scheme, const Transaction &t, Query &q) {
@@ -169,13 +142,14 @@ Value ContinueToken::perform(const Scheme &scheme, const Transaction &t, Query &
 		return Value();
 	}
 
-	q.softLimit(field, hasFlag(Flags::Reverse) ? Ordering::Descending : Ordering::Ascending, count, Value(initVec));
+	q.softLimit(field, hasFlag(Flags::Reverse) ? Ordering::Descending : Ordering::Ascending, count,
+			Value(initVec));
 
 	auto d = scheme.select(t, q);
 	if (d.isArray()) {
 		_numResults = d.size();
 		if (hasFlag(Flags::Reverse)) {
-			fetched -= (std::min(fetched, _numResults));
+			fetched -= (sprt::min(fetched, _numResults));
 			firstVec = d.asArray().back().getValue(field);
 			lastVec = d.asArray().front().getValue(field);
 		} else {
@@ -192,7 +166,7 @@ Value ContinueToken::perform(const Scheme &scheme, const Transaction &t, Query &
 	auto rev = hasFlag(Flags::Reverse);
 	if (auto d = perform(scheme, t, q)) {
 		if ((ord == Ordering::Ascending && rev) || (ord == Ordering::Descending && !rev)) {
-			std::reverse(d.asArray().begin(), d.asArray().end());
+			sprt::reverse(d.asArray().begin(), d.asArray().end());
 		}
 		return d;
 	}
@@ -224,4 +198,4 @@ void ContinueToken::refresh(const Scheme &scheme, const Transaction &t, Query &q
 	fetched = newFetched;
 }
 
-}
+} // namespace stappler::db

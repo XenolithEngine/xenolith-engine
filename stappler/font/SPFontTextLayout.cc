@@ -29,16 +29,15 @@ inline static bool isSpaceOrLineBreak(char32_t c) {
 }
 
 template <typename Interface>
-static geom::Rect getLabelLineStartRect(const TextLayoutData<Interface> &f, uint16_t lineId,
+static Rect getLabelLineStartRect(const TextLayoutData<Interface> &f, uint16_t lineId,
 		float density, uint32_t c) {
-	geom::Rect rect;
+	Rect rect;
 	const LineLayoutData &line = f.lines.at(lineId);
 	if (line.count > 0) {
-		const CharLayoutData &firstChar = f.chars.at(std::max(line.start, c));
+		const CharLayoutData &firstChar = f.chars.at(sprt::max(line.start, c));
 		const CharLayoutData &lastChar = f.chars.at(line.start + line.count - 1);
-		rect.origin =
-				geom::Vec2((firstChar.pos) / density, (line.pos) / density - line.height / density);
-		rect.size = geom::Size2((lastChar.pos + lastChar.advance - firstChar.pos) / density,
+		rect.origin = Vec2((firstChar.pos) / density, (line.pos) / density - line.height / density);
+		rect.size = Size2((lastChar.pos + lastChar.advance - firstChar.pos) / density,
 				line.height / density);
 	}
 
@@ -46,31 +45,29 @@ static geom::Rect getLabelLineStartRect(const TextLayoutData<Interface> &f, uint
 }
 
 template <typename Interface>
-static geom::Rect getLabelLineEndRect(const TextLayoutData<Interface> &f, uint16_t lineId,
-		float density, uint32_t c) {
-	geom::Rect rect;
+static Rect getLabelLineEndRect(const TextLayoutData<Interface> &f, uint16_t lineId, float density,
+		uint32_t c) {
+	Rect rect;
 	const LineLayoutData &line = f.lines.at(lineId);
 	if (line.count > 0) {
 		const CharLayoutData &firstChar = f.chars.at(line.start);
-		const CharLayoutData &lastChar = f.chars.at(std::min(line.start + line.count - 1, c));
-		rect.origin =
-				geom::Vec2((firstChar.pos) / density, (line.pos) / density - line.height / density);
-		rect.size = geom::Size2((lastChar.pos + lastChar.advance - firstChar.pos) / density,
+		const CharLayoutData &lastChar = f.chars.at(sprt::min(line.start + line.count - 1, c));
+		rect.origin = Vec2((firstChar.pos) / density, (line.pos) / density - line.height / density);
+		rect.size = Size2((lastChar.pos + lastChar.advance - firstChar.pos) / density,
 				line.height / density);
 	}
 	return rect;
 }
 
 template <typename Interface>
-static geom::Rect getCharsRect(const TextLayoutData<Interface> &f, uint32_t lineId,
-		uint32_t firstCharId, uint32_t lastCharId, float density) {
-	geom::Rect rect;
+static Rect getCharsRect(const TextLayoutData<Interface> &f, uint32_t lineId, uint32_t firstCharId,
+		uint32_t lastCharId, float density) {
+	Rect rect;
 	const LineLayoutData &line = f.lines.at(lineId);
 	const CharLayoutData &firstChar = f.chars.at(firstCharId);
 	const CharLayoutData &lastChar = f.chars.at(lastCharId);
-	rect.origin =
-			geom::Vec2((firstChar.pos) / density, (line.pos) / density - line.height / density);
-	rect.size = geom::Size2((lastChar.pos + lastChar.advance - firstChar.pos) / density,
+	rect.origin = Vec2((firstChar.pos) / density, (line.pos) / density - line.height / density);
+	rect.size = Size2((lastChar.pos + lastChar.advance - firstChar.pos) / density,
 			line.height / density);
 	return rect;
 }
@@ -273,24 +270,24 @@ Pair<uint32_t, uint32_t> TextLayoutData_selectWord(const TextLayoutData<Interfac
 }
 
 template <typename Interface>
-geom::Rect TextLayoutData_getLineRect(const TextLayoutData<Interface> &f, uint32_t lineId,
-		float density, const geom::Vec2 &origin) {
+Rect TextLayoutData_getLineRect(const TextLayoutData<Interface> &f, uint32_t lineId, float density,
+		const Vec2 &origin) {
 	if (lineId >= f.lines.size()) {
-		return geom::Rect::ZERO;
+		return Rect::ZERO;
 	}
 	return TextLayoutData_getLineRect(f, f.lines[lineId], density, origin);
 }
 
 template <typename Interface>
-geom::Rect TextLayoutData_getLineRect(const TextLayoutData<Interface> &f,
-		const LineLayoutData &line, float density, const geom::Vec2 &origin) {
-	geom::Rect rect;
+Rect TextLayoutData_getLineRect(const TextLayoutData<Interface> &f, const LineLayoutData &line,
+		float density, const Vec2 &origin) {
+	Rect rect;
 	if (line.count > 0) {
 		const CharLayoutData &firstChar = f.chars.at(line.start);
 		const CharLayoutData &lastChar = f.chars.at(line.start + line.count - 1);
-		rect.origin = geom::Vec2((firstChar.pos) / density + origin.x,
+		rect.origin = Vec2((firstChar.pos) / density + origin.x,
 				(line.pos) / density - line.height / density + origin.y);
-		rect.size = geom::Size2((lastChar.pos + lastChar.advance - firstChar.pos) / density,
+		rect.size = Size2((lastChar.pos + lastChar.advance - firstChar.pos) / density,
 				line.height / density);
 	}
 	return rect;
@@ -298,8 +295,8 @@ geom::Rect TextLayoutData_getLineRect(const TextLayoutData<Interface> &f,
 
 template <typename Interface>
 void TextLayoutData_getLabelRects(const TextLayoutData<Interface> &f,
-		const Callback<void(geom::Rect)> &cb, uint32_t firstCharId, uint32_t lastCharId,
-		float density, const geom::Vec2 &origin, const geom::Padding &p) {
+		const Callback<void(Rect)> &cb, uint32_t firstCharId, uint32_t lastCharId, float density,
+		const Vec2 &origin, const Padding &p) {
 	auto firstLine = TextLayoutData_getLineNumber(f, firstCharId);
 	auto lastLine = TextLayoutData_getLineNumber(f, lastCharId);
 
@@ -309,12 +306,12 @@ void TextLayoutData_getLabelRects(const TextLayoutData<Interface> &f,
 		rect.origin.y += origin.y - p.top;
 		rect.size.width += p.left + p.right;
 		rect.size.height += p.bottom + p.top;
-		if (!rect.equals(geom::Rect::ZERO)) {
+		if (!rect.equals(Rect::ZERO)) {
 			cb(rect);
 		}
 	} else {
 		auto first = getLabelLineStartRect(f, firstLine, density, firstCharId);
-		if (!first.equals(geom::Rect::ZERO)) {
+		if (!first.equals(Rect::ZERO)) {
 			first.origin.x += origin.x;
 			first.origin.y += origin.y;
 			if (first.origin.x - p.left < 0.0f) {
@@ -334,13 +331,13 @@ void TextLayoutData_getLabelRects(const TextLayoutData<Interface> &f,
 			rect.origin.x += origin.x;
 			rect.origin.y += origin.y - p.top;
 			rect.size.height += p.bottom + p.top;
-			if (!rect.equals(geom::Rect::ZERO)) {
+			if (!rect.equals(Rect::ZERO)) {
 				cb(rect);
 			}
 		}
 
 		auto last = getLabelLineEndRect(f, lastLine, density, lastCharId);
-		if (!last.equals(geom::Rect::ZERO)) {
+		if (!last.equals(Rect::ZERO)) {
 			last.origin.x += origin.x;
 			last.origin.y += origin.y - p.top;
 			last.size.width += p.right;
@@ -453,40 +450,38 @@ Pair<uint32_t, uint32_t> TextLayoutData<memory::PoolInterface>::selectWord(
 }
 
 template <>
-geom::Rect TextLayoutData<memory::StandartInterface>::getLineRect(uint32_t lineId, float density,
-		const geom::Vec2 &origin) const {
+Rect TextLayoutData<memory::StandartInterface>::getLineRect(uint32_t lineId, float density,
+		const Vec2 &origin) const {
 	return TextLayoutData_getLineRect(*this, lineId, density, origin);
 }
 
 template <>
-geom::Rect TextLayoutData<memory::PoolInterface>::getLineRect(uint32_t lineId, float density,
-		const geom::Vec2 &origin) const {
+Rect TextLayoutData<memory::PoolInterface>::getLineRect(uint32_t lineId, float density,
+		const Vec2 &origin) const {
 	return TextLayoutData_getLineRect(*this, lineId, density, origin);
 }
 
 template <>
-geom::Rect TextLayoutData<memory::StandartInterface>::getLineRect(const LineLayoutData &line,
-		float density, const geom::Vec2 &origin) const {
+Rect TextLayoutData<memory::StandartInterface>::getLineRect(const LineLayoutData &line,
+		float density, const Vec2 &origin) const {
 	return TextLayoutData_getLineRect(*this, line, density, origin);
 }
 
 template <>
-geom::Rect TextLayoutData<memory::PoolInterface>::getLineRect(const LineLayoutData &line,
-		float density, const geom::Vec2 &origin) const {
+Rect TextLayoutData<memory::PoolInterface>::getLineRect(const LineLayoutData &line, float density,
+		const Vec2 &origin) const {
 	return TextLayoutData_getLineRect(*this, line, density, origin);
 }
 
 template <>
-void TextLayoutData<memory::StandartInterface>::getLabelRects(const Callback<void(geom::Rect)> &cb,
-		uint32_t first, uint32_t last, float density, const geom::Vec2 &origin,
-		const geom::Padding &p) const {
+void TextLayoutData<memory::StandartInterface>::getLabelRects(const Callback<void(Rect)> &cb,
+		uint32_t first, uint32_t last, float density, const Vec2 &origin, const Padding &p) const {
 	return TextLayoutData_getLabelRects(*this, cb, first, last, density, origin, p);
 }
 
 template <>
-void TextLayoutData<memory::PoolInterface>::getLabelRects(const Callback<void(geom::Rect)> &cb,
-		uint32_t first, uint32_t last, float density, const geom::Vec2 &origin,
-		const geom::Padding &p) const {
+void TextLayoutData<memory::PoolInterface>::getLabelRects(const Callback<void(Rect)> &cb,
+		uint32_t first, uint32_t last, float density, const Vec2 &origin, const Padding &p) const {
 	return TextLayoutData_getLabelRects(*this, cb, first, last, density, origin, p);
 }
 

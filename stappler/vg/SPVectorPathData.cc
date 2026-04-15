@@ -593,7 +593,7 @@ public: // utility
 	void emplace(const uint8_t *buf, size_t size) {
 		size_t tmpSize = buffer->size();
 		buffer->resize(tmpSize + size);
-		memcpy(buffer->data() + tmpSize, buf, size);
+		sprt::memcpy(buffer->data() + tmpSize, buf, size);
 	}
 
 private:
@@ -992,10 +992,10 @@ PathWriter &PathWriter::addArc(const Rect &oval, float startAngleInRadians,
 }
 
 PathWriter &PathWriter::addRect(float x, float y, float width, float height, float rx, float ry) {
-	if (isnan(rx)) {
+	if (sprt::isnan(rx)) {
 		rx = 0.0f;
 	}
-	if (isnan(ry)) {
+	if (sprt::isnan(ry)) {
 		ry = 0.0f;
 	}
 
@@ -1007,8 +1007,8 @@ PathWriter &PathWriter::addRect(float x, float y, float width, float height, flo
 		ry = rx;
 	}
 
-	rx = std::min(width / 2.0f, rx);
-	ry = std::min(height / 2.0f, ry);
+	rx = sprt::min(width / 2.0f, rx);
+	ry = sprt::min(height / 2.0f, ry);
 
 	moveTo(x + width - rx, y);
 	arcTo(rx, ry, 0, false, true, x + width, y + ry);

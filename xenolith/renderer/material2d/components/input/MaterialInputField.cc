@@ -149,7 +149,7 @@ bool InputField::init(InputFieldStyle fieldStyle, const SurfaceStyle &surfaceSty
 	});
 	_focusInputListener->setEnabled(false);
 
-	_handler.onData = std::bind(&InputField::handleTextInput, this, std::placeholders::_1);
+	_handler.onData = sprt::bind(&InputField::handleTextInput, this, sprt::placeholders::_1);
 
 	return true;
 }

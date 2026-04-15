@@ -128,14 +128,14 @@ void ScrollView::handleContentSizeDirty() {
 		_overflowFront->setDirection(Overscroll::Direction::Top);
 		_overflowFront->setPosition(Vec2(0, _contentSize.height - _overscrollFrontOffset));
 		_overflowFront->setContentSize(Size2(_contentSize.width,
-				std::min(_contentSize.width * Overscroll::OverscrollScale,
+				sprt::min(_contentSize.width * Overscroll::OverscrollScale,
 						Overscroll::OverscrollMaxHeight)));
 
 		_overflowBack->setAnchorPoint(Vec2(0.0f, 0.0f)); // bottom
 		_overflowBack->setDirection(Overscroll::Direction::Bottom);
 		_overflowBack->setPosition(Vec2(0, _overscrollBackOffset));
 		_overflowBack->setContentSize(Size2(_contentSize.width,
-				std::min(_contentSize.width * Overscroll::OverscrollScale,
+				sprt::min(_contentSize.width * Overscroll::OverscrollScale,
 						Overscroll::OverscrollMaxHeight)));
 
 	} else {
@@ -143,7 +143,7 @@ void ScrollView::handleContentSizeDirty() {
 		_overflowFront->setDirection(Overscroll::Direction::Left);
 		_overflowFront->setPosition(Vec2(_overscrollFrontOffset, 0));
 		_overflowFront->setContentSize(
-				Size2(std::min(_contentSize.height * Overscroll::OverscrollScale,
+				Size2(sprt::min(_contentSize.height * Overscroll::OverscrollScale,
 							  Overscroll::OverscrollMaxHeight),
 						_contentSize.height));
 
@@ -151,7 +151,7 @@ void ScrollView::handleContentSizeDirty() {
 		_overflowBack->setDirection(Overscroll::Direction::Right);
 		_overflowBack->setPosition(Vec2(_contentSize.width - _overscrollBackOffset, 0));
 		_overflowBack->setContentSize(
-				Size2(std::min(_contentSize.height * Overscroll::OverscrollScale,
+				Size2(sprt::min(_contentSize.height * Overscroll::OverscrollScale,
 							  Overscroll::OverscrollMaxHeight),
 						_contentSize.height));
 	}
@@ -180,7 +180,7 @@ Color4F ScrollView::getIndicatorColor() const { return _indicator->getColor(); }
 
 void ScrollView::setIndicatorVisible(bool value) {
 	_indicatorVisible = value;
-	if (!isnan(getScrollLength())) {
+	if (!sprt::isnan(getScrollLength())) {
 		_indicator->setVisible(value);
 	} else {
 		_indicator->setVisible(false);
@@ -251,7 +251,7 @@ void ScrollView::updateIndicatorPosition(Node *indicator, float size, float valu
 	float scrollHeight = _contentSize.height;
 
 	float scrollLength = getScrollLength();
-	if (isnan(scrollLength)) {
+	if (sprt::isnan(scrollLength)) {
 		indicator->setVisible(false);
 	} else {
 		indicator->setVisible(_indicatorVisible);
@@ -357,7 +357,7 @@ const ScrollView::AnimationCallback &ScrollView::getAnimationCallback() const {
 
 void ScrollView::update(const UpdateTime &time) {
 	auto newpos = getScrollPosition();
-	auto factor = std::min(64.0f, _adjustValue);
+	auto factor = sprt::min(64.0f, _adjustValue);
 
 	switch (_adjust) {
 	case Adjust::Front: newpos += (45.0f + progress(0.0f, 200.0f, factor / 32.0f)) * time.dt; break;
@@ -377,7 +377,7 @@ void ScrollView::update(const UpdateTime &time) {
 }
 
 void ScrollView::runAdjustPosition(float newPos, float factor) {
-	if (!isnan(newPos)) {
+	if (!sprt::isnan(newPos)) {
 		if (newPos < getScrollMinPosition()) {
 			newPos = getScrollMinPosition();
 		} else if (newPos > getScrollMaxPosition()) {

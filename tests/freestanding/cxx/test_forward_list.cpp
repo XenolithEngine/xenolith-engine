@@ -29,6 +29,8 @@ namespace sprt {
 void performMallocForwardListTests() {
 	using forward_list = __malloc_forward_list<int>;
 
+	sprt::cout << "\n== forward_list tests ==\n";
+
 	// Test 1: Default constructor and empty check
 	{
 		forward_list l;
@@ -340,6 +342,60 @@ void performMallocForwardListTests() {
 		auto alloc = l.get_allocator();
 		sprt::cout << "Test 23 - get_allocator: ";
 		if (alloc) {
+			sprt::cout << "PASS\n";
+		} else {
+			sprt::cout << "FAIL\n";
+		}
+	}
+
+
+	// Test 24: reserve function
+	{
+		forward_list l;
+		l.reserve(10);
+		sprt::cout << "Test 24 - reserve function: ";
+		if (l.capacity() >= 10) {
+			sprt::cout << "PASS\n";
+		} else {
+			sprt::cout << "FAIL\n";
+		}
+	}
+
+	// Test 25: capacity function
+	{
+		forward_list l;
+		l.reserve(5);
+		size_t initial_capacity = l.capacity();
+		l.push_front(1);
+		l.push_front(2);
+		sprt::cout << "Test 25 - capacity function: ";
+		if (l.capacity() >= initial_capacity) {
+			sprt::cout << "PASS\n";
+		} else {
+			sprt::cout << "FAIL\n";
+		}
+	}
+
+	// Test 26: shrink_to_fit function
+	{
+		forward_list l;
+		l.reserve(10);
+		l.push_front(1);
+		l.shrink_to_fit();
+		sprt::cout << "Test 26 - shrink_to_fit function: ";
+		if (l.capacity() >= l.size()) {
+			sprt::cout << "PASS\n";
+		} else {
+			sprt::cout << "FAIL\n";
+		}
+	}
+
+	// Test 27: clear_deallocate function
+	{
+		forward_list l{1, 2, 3};
+		l.clear_deallocate();
+		sprt::cout << "Test 27 - clear_deallocate function: ";
+		if (l.empty() && l.size() == 0 && l.capacity() == 0) {
 			sprt::cout << "PASS\n";
 		} else {
 			sprt::cout << "FAIL\n";

@@ -102,7 +102,7 @@ struct SP_PUBLIC FontStyle : ValueWrapper<int16_t, class FontStyleFlag> {
 	static const FontStyle Italic;
 	static const FontStyle Oblique;
 
-	static constexpr FontStyle FromDegrees(float d) { return FontStyle(std::floor(d * 64.0f)); }
+	static constexpr FontStyle FromDegrees(float d) { return FontStyle(sprt::floor(d * 64.0f)); }
 
 	using ValueWrapper::ValueWrapper;
 };
@@ -182,7 +182,7 @@ struct SP_PUBLIC FontSize {
 
 	static constexpr FontSize make(float v) {
 		FontSize ret;
-		ret.value = static_cast<uint16_t>(std::floor(v * 16.0f));
+		ret.value = static_cast<uint16_t>(sprt::floor(v * 16.0f));
 		return ret;
 	}
 
@@ -216,7 +216,7 @@ struct SP_PUBLIC TextParameters {
 	WhiteSpace whiteSpace = WhiteSpace::Normal;
 	Hyphens hyphens = Hyphens::Manual;
 	VerticalAlign verticalAlign = VerticalAlign::Baseline;
-	geom::Color3B color = geom::Color3B::BLACK;
+	sprt::geom::Color3B color = sprt::geom::Color3B::BLACK;
 	uint8_t opacity = 222;
 
 	inline bool operator==(const TextParameters &other) const = default;
@@ -345,7 +345,7 @@ inline font::FontSize progress(font::FontSize source, font::FontSize target, flo
 
 } // namespace STAPPLER_VERSIONIZED stappler
 
-namespace std {
+namespace sprt {
 
 template <>
 struct hash<STAPPLER_VERSIONIZED_NAMESPACE::font::FontSize> {
@@ -356,6 +356,6 @@ struct hash<STAPPLER_VERSIONIZED_NAMESPACE::font::FontSize> {
 	}
 };
 
-} // namespace std
+} // namespace sprt
 
 #endif /* CORE_GEOM_SPFONTSTYLE_H_ */

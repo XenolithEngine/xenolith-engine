@@ -27,7 +27,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 ComponentId::ComponentId() : value(Component::GetNextId()) { }
 
 uint32_t Component::GetNextId() {
-	static std::atomic<uint32_t> s_counter = 1;
+	static sprt::atomic<uint32_t> s_counter = 1;
 	return s_counter.fetch_add(1);
 }
 

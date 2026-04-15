@@ -23,15 +23,16 @@
 #ifndef CORE_VG_SPVECTORPATHDATA_H_
 #define CORE_VG_SPVECTORPATHDATA_H_
 
-#include "SPColor.h"
-#include "SPGeometry.h"
-#include "SPMat4.h"
+#include <sprt/runtime/geom/geom.h>
+#include <sprt/runtime/geom/color.h>
+#include <sprt/runtime/geom/mat4.h>
 #include "SPTessLine.h"
 #include "SPMemory.h"
 
 namespace STAPPLER_VERSIONIZED stappler::vg {
 
-using namespace geom;
+using namespace sprt::geom;
+using namespace stappler::geom;
 
 union SP_PUBLIC CommandData {
 	struct {
@@ -44,8 +45,15 @@ union SP_PUBLIC CommandData {
 		bool b;
 	} f;
 
-	CommandData(float x, float y) { p.x = x; p.y = y; }
-	CommandData(float r, bool a, bool b) { f.v = r; f.a = a; f.b = b; }
+	CommandData(float x, float y) {
+		p.x = x;
+		p.y = y;
+	}
+	CommandData(float r, bool a, bool b) {
+		f.v = r;
+		f.a = a;
+		f.b = b;
+	}
 	CommandData() { p = {0.0f, 0.0f}; }
 };
 
@@ -118,7 +126,7 @@ struct SP_PUBLIC PathWriter {
 	PathWriter(PathWriter &&) = default;
 	PathWriter &operator=(PathWriter &&) = default;
 
-	explicit operator bool () const;
+	explicit operator bool() const;
 
 	bool empty() const;
 
@@ -136,22 +144,26 @@ struct SP_PUBLIC PathWriter {
 	PathWriter &lineTo(const Vec2 &point, const Vec2 &uv = Vec2(nan(), nan()));
 
 	PathWriter &quadTo(float x1, float y1, float x2, float y2, float u = nan(), float v = nan());
-	PathWriter &quadTo(const Vec2& p1, const Vec2& p2, const Vec2 &uv = Vec2(nan(), nan()));
+	PathWriter &quadTo(const Vec2 &p1, const Vec2 &p2, const Vec2 &uv = Vec2(nan(), nan()));
 
-	PathWriter &cubicTo(float x1, float y1, float x2, float y2, float x3, float y3, float u = nan(), float v = nan());
-	PathWriter &cubicTo(const Vec2& p1, const Vec2& p2, const Vec2& p3, const Vec2 &uv = Vec2(nan(), nan()));
+	PathWriter &cubicTo(float x1, float y1, float x2, float y2, float x3, float y3, float u = nan(),
+			float v = nan());
+	PathWriter &cubicTo(const Vec2 &p1, const Vec2 &p2, const Vec2 &p3,
+			const Vec2 &uv = Vec2(nan(), nan()));
 
-	PathWriter &arcTo(float rx, float ry, float rotation, bool largeFlag, bool sweepFlag, float x, float y, float u = nan(), float v = nan());
-	PathWriter &arcTo(const Vec2 & r, float rotation, bool largeFlag, bool sweepFlag, const Vec2 &target, const Vec2 &uv = Vec2(nan(), nan()));
+	PathWriter &arcTo(float rx, float ry, float rotation, bool largeFlag, bool sweepFlag, float x,
+			float y, float u = nan(), float v = nan());
+	PathWriter &arcTo(const Vec2 &r, float rotation, bool largeFlag, bool sweepFlag,
+			const Vec2 &target, const Vec2 &uv = Vec2(nan(), nan()));
 	PathWriter &closePath();
 
-	PathWriter &addRect(const Rect& rect);
-	PathWriter &addRect(const Rect& rect, float rx, float ry);
+	PathWriter &addRect(const Rect &rect);
+	PathWriter &addRect(const Rect &rect, float rx, float ry);
 	PathWriter &addRect(float x, float y, float width, float height);
-	PathWriter &addOval(const Rect& oval);
+	PathWriter &addOval(const Rect &oval);
 	PathWriter &addCircle(float x, float y, float radius);
 	PathWriter &addEllipse(float x, float y, float rx, float ry);
-	PathWriter &addArc(const Rect& oval, float startAngleInRadians, float sweepAngleInRadians);
+	PathWriter &addArc(const Rect &oval, float startAngleInRadians, float sweepAngleInRadians);
 	PathWriter &addRect(float x, float y, float width, float height, float rx, float ry);
 
 	bool addPath(const PathData<memory::StandartInterface> &);
@@ -161,6 +173,6 @@ struct SP_PUBLIC PathWriter {
 };
 
 
-}
+} // namespace stappler::vg
 
 #endif /* CORE_VG_SPVECTORPATHDATA_H_ */

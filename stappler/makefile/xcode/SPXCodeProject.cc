@@ -35,7 +35,7 @@ void XCodeExport::write(const Callback<void(StringView)> &cb) {
 		cb << "/* Begin " << sectionName << " section */\n";
 
 		for (auto &obj : objects) {
-			if (std::find_if(isaList.begin(), isaList.end(), [&](ISA isa) {
+			if (sprt::find_if(isaList.begin(), isaList.end(), [&](ISA isa) {
 				return obj->isa == isa;
 			}) != isaList.end()) {
 				obj->write(cb);

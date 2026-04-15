@@ -41,7 +41,7 @@ void Device::end() {
 #if SP_REF_DEBUG
 	if (isRetainTrackerEnabled()) {
 		log::source().debug("Gl-Device", "Backtrace for ", (void *)this);
-		foreachBacktrace([](uint64_t id, Time time, const std::vector<std::string> &vec) {
+		foreachBacktrace([](uint64_t id, Time time, const sprt::vector<sprt::string> &vec) {
 			StringStream stream;
 			stream << "[" << id << ":" << time.toHttp<Interface>() << "]:\n";
 			for (auto &it : vec) { stream << "\t" << it << "\n"; }
@@ -52,7 +52,7 @@ void Device::end() {
 }
 
 Rc<Shader> Device::getProgram(StringView name) {
-	std::unique_lock<Mutex> lock(_shaderMutex);
+	sprt::unique_lock<sprt::mutex > lock(_shaderMutex);
 	auto it = _shaders.find(name);
 	if (it != _shaders.end()) {
 		return it->second;
@@ -61,7 +61,7 @@ Rc<Shader> Device::getProgram(StringView name) {
 }
 
 Rc<Shader> Device::addProgram(Rc<Shader> program) {
-	std::unique_lock<Mutex> lock(_shaderMutex);
+	sprt::unique_lock<sprt::mutex > lock(_shaderMutex);
 	auto it = _shaders.find(program->getName());
 	if (it == _shaders.end()) {
 		_shaders.emplace(program->getName().str<Interface>(), program);
@@ -137,7 +137,7 @@ Rc<DeviceQueue> Device::tryAcquireQueue(QueueFlags ops) {
 		return nullptr;
 	}
 
-	std::unique_lock<Mutex> lock(_resourceMutex);
+	sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 	if (!family->queues.empty()) {
 		// XL_VKDEVICE_LOG("tryAcquireQueueSync ", family->index, " (", family->count, ") ", getQueueFlagsDesc(family->flags));
 		auto queue = move(family->queues.back());
@@ -156,7 +156,7 @@ bool Device::acquireQueue(QueueFlags ops, FrameHandle &handle,
 		return false;
 	}
 
-	std::unique_lock<Mutex> lock(_resourceMutex);
+	sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 	Rc<DeviceQueue> queue;
 	if (!family->queues.empty()) {
 		queue = move(family->queues.back());
@@ -184,7 +184,7 @@ bool Device::acquireQueue(QueueFlags ops, Loop &loop,
 		return false;
 	}
 
-	std::unique_lock<Mutex> lock(_resourceMutex);
+	sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 	Rc<DeviceQueue> queue;
 	if (!family->queues.empty()) {
 		queue = move(family->queues.back());
@@ -219,7 +219,7 @@ void Device::releaseQueue(Rc<DeviceQueue> &&queue) {
 
 	queue->reset();
 
-	std::unique_lock<Mutex> lock(_resourceMutex);
+	sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 
 	// Проверяем, есть ли асинхронные ожидающие
 	if (family->waiters.empty()) {
@@ -289,7 +289,7 @@ Rc<CommandPool> Device::acquireCommandPool(QueueFlags c, uint32_t) {
 		return nullptr;
 	}
 
-	std::unique_lock<Mutex> lock(_resourceMutex);
+	sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 	if (!family->pools.empty()) {
 		auto ret = family->pools.back();
 		family->pools.pop_back();
@@ -305,7 +305,7 @@ Rc<CommandPool> Device::acquireCommandPool(uint32_t familyIndex) {
 		return nullptr;
 	}
 
-	std::unique_lock<Mutex> lock(_resourceMutex);
+	sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 	if (!family->pools.empty()) {
 		auto ret = family->pools.back();
 		family->pools.pop_back();
@@ -324,7 +324,7 @@ void Device::releaseCommandPool(core::Loop &loop, Rc<CommandPool> &&pool) {
 	}, [this, pool = Rc<CommandPool>(pool), refId](const thread::Task &, bool success) mutable {
 		if (success) {
 			auto idx = pool->getFamilyIdx();
-			std::unique_lock<Mutex> lock(_resourceMutex);
+			sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 			for (auto &it : _families) {
 				if (it.index == idx) {
 					it.pools.emplace_back(move(pool));
@@ -339,7 +339,7 @@ void Device::releaseCommandPool(core::Loop &loop, Rc<CommandPool> &&pool) {
 void Device::releaseCommandPoolUnsafe(Rc<CommandPool> &&pool) {
 	pool->reset(*this);
 
-	std::unique_lock<Mutex> lock(_resourceMutex);
+	sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 	for (auto &it : _families) {
 		if (it.index == pool->getFamilyIdx()) {
 			it.pools.emplace_back(move(pool));
@@ -354,7 +354,7 @@ Rc<QueryPool> Device::acquireQueryPool(QueueFlags c, const QueryPoolInfo &info) 
 		return nullptr;
 	}
 
-	std::unique_lock<Mutex> lock(_resourceMutex);
+	sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 	if (!family->queries.empty()) {
 		auto qIt = family->queries.find(info);
 		if (qIt != family->queries.end() && !qIt->second.empty()) {
@@ -373,7 +373,7 @@ Rc<QueryPool> Device::acquireQueryPool(uint32_t familyIndex, const QueryPoolInfo
 		return nullptr;
 	}
 
-	std::unique_lock<Mutex> lock(_resourceMutex);
+	sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 	if (!family->queries.empty()) {
 		auto qIt = family->queries.find(info);
 		if (qIt != family->queries.end() && !qIt->second.empty()) {
@@ -395,7 +395,7 @@ void Device::releaseQueryPool(core::Loop &loop, Rc<QueryPool> &&pool) {
 	}, [this, pool = Rc<QueryPool>(pool), refId](const thread::Task &, bool success) mutable {
 		if (success) {
 			auto idx = pool->getFamilyIdx();
-			std::unique_lock<Mutex> lock(_resourceMutex);
+			sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 			for (auto &it : _families) {
 				if (it.index == idx) {
 					auto qIt = it.queries.find(pool->getInfo());
@@ -414,7 +414,7 @@ void Device::releaseQueryPool(core::Loop &loop, Rc<QueryPool> &&pool) {
 void Device::releaseQueryPoolUnsafe(Rc<QueryPool> &&pool) {
 	pool->reset(*this);
 
-	std::unique_lock<Mutex> lock(_resourceMutex);
+	sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
 	for (auto &it : _families) {
 		if (it.index == pool->getFamilyIdx()) {
 			auto qIt = it.queries.find(pool->getInfo());
@@ -489,7 +489,7 @@ void Device::runTask(Loop &loop, Rc<DeviceQueueTask> &&t) {
 }
 
 void Device::invalidateSemaphore(Rc<Semaphore> &&sem) const {
-	std::unique_lock lock(_resourceMutex);
+	sprt::unique_lock lock(_resourceMutex);
 	_invalidatedSemaphores.emplace_back(move(sem));
 }
 
@@ -498,12 +498,12 @@ void Device::waitIdle() const { _invalidatedSemaphores.clear(); }
 const Vector<DeviceQueueFamily> &Device::getQueueFamilies() const { return _families; }
 
 void Device::addObject(Object *obj) {
-	std::unique_lock<Mutex> lock(_objectMutex);
+	sprt::unique_lock<sprt::mutex > lock(_objectMutex);
 	_objects.emplace(obj);
 }
 
 void Device::removeObject(Object *obj) {
-	std::unique_lock<Mutex> lock(_objectMutex);
+	sprt::unique_lock<sprt::mutex > lock(_objectMutex);
 	_objects.erase(obj);
 }
 
@@ -520,7 +520,7 @@ void Device::clearShaders() { _shaders.clear(); }
 void Device::invalidateObjects() {
 	Vector<ObjectData> data;
 
-	std::unique_lock<Mutex> lock(_objectMutex);
+	sprt::unique_lock<sprt::mutex > lock(_objectMutex);
 	for (auto &it : _objects) {
 		if (auto img = dynamic_cast<ImageObject *>(it)) {
 			log::source().warn("Gl-Device", "Image ", (void *)it, " \"", img->getName(), "\" ((",
@@ -548,7 +548,7 @@ void Device::invalidateObjects() {
 		}
 #if SP_REF_DEBUG
 		log::source().warn("Gl-Device", "Backtrace for ", (void *)it);
-		it->foreachBacktrace([](uint64_t id, Time time, const std::vector<std::string> &vec) {
+		it->foreachBacktrace([](uint64_t id, Time time, const sprt::vector<sprt::string> &vec) {
 			StringStream stream;
 			stream << "[" << id << ":" << time.toHttp<Interface>() << "]:\n";
 			for (auto &it : vec) { stream << "\t" << it << "\n"; }

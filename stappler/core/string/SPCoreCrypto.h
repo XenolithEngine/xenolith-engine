@@ -25,7 +25,6 @@ THE SOFTWARE.
 #define STAPPLER_CORE_STRING_SPCRYPTO_H_
 
 #include "SPIO.h"
-#include "SPStringView.h"
 #include <sprt/runtime/hash.h>
 
 namespace STAPPLER_VERSIONIZED stappler {
@@ -49,7 +48,7 @@ struct SP_PUBLIC CoderSource {
 	CoderSource(const BytesReader<char> &d);
 
 	template <size_t Size>
-	CoderSource(const std::array<uint8_t, Size> &d);
+	CoderSource(const sprt::array<uint8_t, Size> &d);
 
 	CoderSource();
 
@@ -93,7 +92,7 @@ struct SP_PUBLIC Sha1 {
 	using _Ctx = sprt::sha1::Ctx;
 
 	constexpr static uint32_t Length = 20;
-	using Buf = std::array<uint8_t, Length>;
+	using Buf = sprt::array<uint8_t, Length>;
 
 	static Buf make(const CoderSource &, const StringView &salt = StringView());
 	static Buf hmac(const CoderSource &data, const CoderSource &key);
@@ -125,7 +124,7 @@ struct SP_PUBLIC Sha512 {
 	using _Ctx = sprt::sha512::Ctx;
 
 	constexpr static uint32_t Length = 64;
-	using Buf = std::array<uint8_t, Length>;
+	using Buf = sprt::array<uint8_t, Length>;
 
 	static Buf make(const CoderSource &, const StringView &salt = StringView());
 	static Buf hmac(const CoderSource &data, const CoderSource &key);
@@ -157,7 +156,7 @@ struct SP_PUBLIC Sha256 {
 	using _Ctx = sprt::sha256::Ctx;
 
 	constexpr static uint32_t Length = 32;
-	using Buf = std::array<uint8_t, Length>;
+	using Buf = sprt::array<uint8_t, Length>;
 
 	static Buf make(const CoderSource &, const StringView &salt = StringView());
 	static Buf hmac(const CoderSource &data, const CoderSource &key);
@@ -202,7 +201,7 @@ struct SP_PUBLIC Gost3411_512 {
 	using _Ctx = Gost3411_Ctx;
 
 	constexpr static uint32_t Length = 64;
-	using Buf = std::array<uint8_t, Length>;
+	using Buf = sprt::array<uint8_t, Length>;
 
 	template <typename... Args>
 	static Buf perform(Args &&...args);
@@ -232,7 +231,7 @@ struct SP_PUBLIC Gost3411_256 {
 	using _Ctx = Gost3411_Ctx;
 
 	constexpr static uint32_t Length = 32;
-	using Buf = std::array<uint8_t, Length>;
+	using Buf = sprt::array<uint8_t, Length>;
 
 	template <typename... Args>
 	static Buf perform(Args &&...args);
@@ -267,7 +266,7 @@ inline CoderSource::CoderSource(const uint8_t *d, size_t len) : _data(d, len) { 
 
 inline CoderSource::CoderSource(const char *d, size_t len) : _data((uint8_t *)d, len) { }
 
-inline CoderSource::CoderSource(const char *d) : _data((uint8_t *)d, strlen(d)) { }
+inline CoderSource::CoderSource(const char *d) : _data((uint8_t *)d, sprt::strlen(d)) { }
 
 inline CoderSource::CoderSource(const StringView &d) : _data((uint8_t *)d.data(), d.size()) { }
 
@@ -292,7 +291,7 @@ inline CoderSource::CoderSource(const BytesReader<char> &d)
 : _data((const uint8_t *)d.data(), d.size()) { }
 
 template <size_t Size>
-inline CoderSource::CoderSource(const std::array<uint8_t, Size> &d)
+inline CoderSource::CoderSource(const sprt::array<uint8_t, Size> &d)
 : _data(d.data(), Size), _offset(0) { }
 
 inline CoderSource::CoderSource() { }
@@ -310,7 +309,7 @@ inline size_t CoderSource::read(uint8_t *buf, size_t nbytes) {
 	if (nbytes > remains) {
 		nbytes = remains;
 	}
-	memcpy(buf, _data.data() + _offset, nbytes);
+	sprt::memcpy(buf, _data.data() + _offset, nbytes);
 	_offset += nbytes;
 	return nbytes;
 }
@@ -358,73 +357,73 @@ namespace STAPPLER_VERSIONIZED stappler::crypto {
 template <typename... Args>
 inline Sha512::Buf Sha512::perform(Args &&...args) {
 	Sha512 ctx;
-	ctx._update(std::forward<Args>(args)...);
+	ctx._update(sprt::forward<Args>(args)...);
 	return ctx.final();
 }
 
 template <typename T, typename... Args>
 inline void Sha512::_update(T &&t, Args &&...args) {
-	update(std::forward<T>(t));
-	_update(std::forward<Args>(args)...);
+	update(sprt::forward<T>(t));
+	_update(sprt::forward<Args>(args)...);
 }
 
 template <typename T>
 inline void Sha512::_update(T &&t) {
-	update(std::forward<T>(t));
+	update(sprt::forward<T>(t));
 }
 
 template <typename... Args>
 inline Sha256::Buf Sha256::perform(Args &&...args) {
 	Sha256 ctx;
-	ctx._update(std::forward<Args>(args)...);
+	ctx._update(sprt::forward<Args>(args)...);
 	return ctx.final();
 }
 
 template <typename T, typename... Args>
 inline void Sha256::_update(T &&t, Args &&...args) {
-	update(std::forward<T>(t));
-	_update(std::forward<Args>(args)...);
+	update(sprt::forward<T>(t));
+	_update(sprt::forward<Args>(args)...);
 }
 
 template <typename T>
 inline void Sha256::_update(T &&t) {
-	update(std::forward<T>(t));
+	update(sprt::forward<T>(t));
 }
 
 template <typename... Args>
 inline Gost3411_512::Buf Gost3411_512::perform(Args &&...args) {
 	Gost3411_512 c;
-	c._update(std::forward<Args>(args)...);
+	c._update(sprt::forward<Args>(args)...);
 	return c.final();
 }
 
 template <typename T, typename... Args>
 inline void Gost3411_512::_update(T &&t, Args &&...args) {
-	update(std::forward<T>(t));
-	_update(std::forward<Args>(args)...);
+	update(sprt::forward<T>(t));
+	_update(sprt::forward<Args>(args)...);
 }
 
 template <typename T>
 inline void Gost3411_512::_update(T &&t) {
-	update(std::forward<T>(t));
+	update(sprt::forward<T>(t));
 }
 
 template <typename... Args>
 inline Gost3411_256::Buf Gost3411_256::perform(Args &&...args) {
 	Gost3411_256 c;
-	c._update(std::forward<Args>(args)...);
+	c._update(sprt::forward<Args>(args)...);
 	return c.final();
 }
 
 template <typename T, typename... Args>
 inline void Gost3411_256::_update(T &&t, Args &&...args) {
-	update(std::forward<T>(t));
-	_update(std::forward<Args>(args)...);
+	update(sprt::forward<T>(t));
+	_update(sprt::forward<Args>(args)...);
 }
 
 template <typename T>
 inline void Gost3411_256::_update(T &&t) {
-	update(std::forward<T>(t));
+	update(sprt::forward<T>(t));
 }
 
 } // namespace stappler::crypto

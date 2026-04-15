@@ -26,9 +26,9 @@ THE SOFTWARE.
 namespace STAPPLER_VERSIONIZED stappler::db::pq {
 
 struct ExecParamData {
-	std::array<const char *, 64> values;
-	std::array<int, 64> sizes;
-	std::array<int, 64> formats;
+	sprt::array<const char *, 64> values;
+	sprt::array<int, 64> sizes;
+	sprt::array<int, 64> formats;
 
 	Vector<const char *> valuesVec;
 	Vector<int> sizesVec;
@@ -190,15 +190,14 @@ size_t PgQueryInterface::push(StringStream &query, const Value &val, bool force,
 			break;
 		case Value::Type::INTEGER: query << val.asInteger(); break;
 		case Value::Type::DOUBLE:
-			if (std::isnan(val.asDouble())) {
+			if (sprt::isnan(val.asDouble())) {
 				query << "NaN";
-			} else if (val.asDouble() == std::numeric_limits<double>::infinity()) {
+			} else if (val.asDouble() == -sprt::Infinity<double>) {
 				query << "-Infinity";
-			} else if (-val.asDouble() == std::numeric_limits<double>::infinity()) {
+			} else if (val.asDouble() == sprt::Infinity<double>) {
 				query << "Infinity";
 			} else {
-				query << std::setprecision(std::numeric_limits<double>::max_digits10 + 1)
-					  << val.asDouble();
+				query << val.asDouble();
 			}
 			break;
 		case Value::Type::CHARSTRING:
@@ -238,9 +237,7 @@ void PgQueryInterface::bindInt(db::Binder &, StringStream &query, int64_t val) {
 
 void PgQueryInterface::bindUInt(db::Binder &, StringStream &query, uint64_t val) { query << val; }
 
-void PgQueryInterface::bindDouble(db::Binder &, StringStream &query, double val) {
-	query << std::setprecision(std::numeric_limits<double>::max_digits10 + 1) << val;
-}
+void PgQueryInterface::bindDouble(db::Binder &, StringStream &query, double val) { query << val; }
 
 void PgQueryInterface::bindString(db::Binder &, StringStream &query, const String &val) {
 	if (auto num = push(String(val))) {

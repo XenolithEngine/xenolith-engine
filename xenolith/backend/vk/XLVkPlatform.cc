@@ -35,7 +35,7 @@ SPUNUSED static VKAPI_ATTR VkBool32 VKAPI_CALL s_debugMessageCallback(
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk::platform {
 
 Rc<Instance> FunctionTable::createInstance(NotNull<core::InstanceInfo> instanceInfo,
-		NotNull<InstanceBackendInfo> backend, Dso &&vulkanModule) const {
+		NotNull<InstanceBackendInfo> backend, sprt::Dso &&vulkanModule) const {
 	InstanceInfo info = loadInfo();
 	info.flags = instanceInfo->flags;
 
@@ -91,7 +91,7 @@ InstanceInfo FunctionTable::loadInfo() const {
 	ret.availableExtensions = _instanceAvailableExtensions;
 
 	for (auto &extension : ret.availableExtensions) {
-		if (strcmp(VK_KHR_SURFACE_EXTENSION_NAME, extension.extensionName) == 0) {
+		if (sprt::strcmp(VK_KHR_SURFACE_EXTENSION_NAME, extension.extensionName) == 0) {
 			ret.hasSurfaceExtension = true;
 		} else {
 			auto b = getSurfaceBackendForExtension(StringView(extension.extensionName));
@@ -120,7 +120,7 @@ bool FunctionTable::validateData(InstanceData &data, const InstanceInfo &info,
 	if (hasFlag(info.flags, core::InstanceFlags::Validation)) {
 		for (const char *layerName : vk::s_validationLayers) {
 			for (const auto &layerProperties : _instanceAvailableLayers) {
-				if (strcmp(layerName, layerProperties.layerName) == 0) {
+				if (sprt::strcmp(layerName, layerProperties.layerName) == 0) {
 					data.enableLayer(layerName);
 					validationLayerFound = true;
 					break;
@@ -143,7 +143,7 @@ bool FunctionTable::validateData(InstanceData &data, const InstanceInfo &info,
 	const char *debugExt = nullptr;
 	for (auto &extension : _instanceAvailableExtensions) {
 		if (hasFlag(info.flags, core::InstanceFlags::Validation)) {
-			if (strcmp(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, extension.extensionName) == 0) {
+			if (sprt::strcmp(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, extension.extensionName) == 0) {
 				data.enableExtension(extension.extensionName);
 				debugExt = extension.extensionName;
 				continue;
@@ -164,7 +164,8 @@ bool FunctionTable::validateData(InstanceData &data, const InstanceInfo &info,
 				vkEnumerateInstanceExtensionProperties(layerName, &layerExtCount, layer_exts);
 
 				for (auto &extension : layer_exts) {
-					if (strcmp(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, extension.extensionName) == 0) {
+					if (sprt::strcmp(VK_EXT_DEBUG_UTILS_EXTENSION_NAME, extension.extensionName)
+							== 0) {
 						data.extensionsToEnable.emplace_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 						debugExt = extension.extensionName;
 						break;
@@ -206,7 +207,7 @@ bool FunctionTable::validateData(InstanceData &data, const InstanceInfo &info,
 
 		bool found = false;
 		for (auto &extension : info.availableExtensions) {
-			if (strcmp(it, extension.extensionName) == 0) {
+			if (sprt::strcmp(it, extension.extensionName) == 0) {
 				found = true;
 				data.enableExtension(it);
 			}
@@ -226,7 +227,7 @@ bool FunctionTable::validateData(InstanceData &data, const InstanceInfo &info,
 }
 
 Rc<Instance> FunctionTable::doCreateInstance(InstanceData &data, const InstanceInfo &info,
-		Dso &&vulkanModule, bool validationEnabled) const {
+		sprt::Dso &&vulkanModule, bool validationEnabled) const {
 	Instance::OptVec enabledOptionals;
 
 	uint32_t optIdx = 0;
@@ -235,7 +236,7 @@ Rc<Instance> FunctionTable::doCreateInstance(InstanceData &data, const InstanceI
 			break;
 		}
 		for (auto &extension : info.availableExtensions) {
-			if (strcmp(opt, extension.extensionName) == 0) {
+			if (sprt::strcmp(opt, extension.extensionName) == 0) {
 				enabledOptionals.set(optIdx);
 				data.enableExtension(opt);
 				break;

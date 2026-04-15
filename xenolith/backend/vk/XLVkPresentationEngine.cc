@@ -21,12 +21,12 @@
 **/
 
 #include "XLVkPresentationEngine.h"
-#include "SPStatus.h"
 #include "XLCorePresentationEngine.h"
 #include "XLCorePresentationFrame.h"
 #include "XLVkInfo.h"
 #include "XLVkSwapchain.h"
 #include "XlCoreMonitorInfo.h"
+
 #include <vulkan/vulkan_core.h>
 
 #define XL_VKPRESENT_DEBUG 0

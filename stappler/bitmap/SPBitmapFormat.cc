@@ -21,16 +21,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+#include "SPMemory.h"
 #include "SPBitmapFormat.h"
-#include "SPStringView.h"
-#include "SPFilepath.h"
 #include "SPFilesystem.h"
+
+#include <sprt/cxx/mutex>
 
 namespace STAPPLER_VERSIONIZED stappler::bitmap {
 
-static std::unique_lock<std::mutex> lockFormatList();
+static sprt::unique_lock<sprt::mutex> lockFormatList();
 static void addCustomFormat(BitmapFormat &&fmt);
-static const std::vector<BitmapFormat *> &getCustomFormats();
+static const mem_std::Vector<BitmapFormat *> &getCustomFormats();
 
 void BitmapFormat::add(BitmapFormat &&fmt) { addCustomFormat(move(fmt)); }
 
@@ -156,7 +157,7 @@ bool getImageSize(const io::Producer &file, uint32_t &width, uint32_t &height) {
 		}
 	}
 
-	memory::vector<BitmapFormat::size_fn> fns;
+	sprt::__pool_vector<BitmapFormat::size_fn> fns;
 
 	auto lock = lockFormatList();
 	fns.reserve(getCustomFormats().size());
@@ -188,7 +189,7 @@ bool getImageInfo(BytesView data, ImageInfo &info) {
 		}
 	}
 
-	memory::vector<BitmapFormat *> fns;
+	sprt::__pool_vector<BitmapFormat *> fns;
 
 	auto lock = lockFormatList();
 	fns.reserve(getCustomFormats().size());
@@ -232,7 +233,7 @@ bool isImage(const uint8_t *data, size_t dataLen, bool readable) {
 		}
 	}
 
-	memory::vector<BitmapFormat::check_fn> fns;
+	sprt::__pool_vector<BitmapFormat::check_fn> fns;
 
 	auto lock = lockFormatList();
 	fns.reserve(getCustomFormats().size());
@@ -276,7 +277,7 @@ sprt::pair<FileFormat, StringView> detectFormat(const uint8_t *data, size_t data
 		}
 	}
 
-	memory::vector<sprt::pair<StringView, BitmapFormat::check_fn>> fns;
+	sprt::__pool_vector<sprt::pair<StringView, BitmapFormat::check_fn>> fns;
 
 	auto lock = lockFormatList();
 	fns.reserve(getCustomFormats().size());
@@ -335,7 +336,7 @@ bool check(FileFormat fmt, const uint8_t *data, size_t dataLen) {
 }
 
 bool check(StringView name, const uint8_t *data, size_t dataLen) {
-	memory::vector<BitmapFormat::check_fn> fns;
+	sprt::__pool_vector<BitmapFormat::check_fn> fns;
 
 	auto lock = lockFormatList();
 	fns.reserve(getCustomFormats().size());
@@ -503,7 +504,7 @@ void convertLine<PixelFormat::A8, PixelFormat::IA88>(const uint8_t *in, uint8_t 
 template <>
 void convertLine<PixelFormat::A8, PixelFormat::RGB888>(const uint8_t *in, uint8_t *out,
 		uint32_t ins, uint32_t outs) {
-	memset(out, 0, outs);
+	sprt::memset(out, 0, outs);
 }
 
 template <>
@@ -520,7 +521,7 @@ void convertLine<PixelFormat::A8, PixelFormat::RGBA8888>(const uint8_t *in, uint
 template <>
 void convertLine<PixelFormat::RGB888, PixelFormat::A8>(const uint8_t *in, uint8_t *out,
 		uint32_t ins, uint32_t outs) {
-	memset(out, 0, outs);
+	sprt::memset(out, 0, outs);
 }
 
 } // namespace stappler::bitmap

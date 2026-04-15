@@ -50,7 +50,7 @@ static float VectorSprite_getPseudoSdfOffset(float value) {
 		return prefixSdf;
 	} else {
 		return prefixSdf
-				+ (std::floor(value) - prefixDepth) / (40.0f - prefixDepth)
+				+ (sprt::floor(value) - prefixDepth) / (40.0f - prefixDepth)
 				* (config::VGPseudoSdfOffset - prefixSdf);
 	}
 }

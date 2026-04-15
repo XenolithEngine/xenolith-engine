@@ -29,7 +29,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 uint32_t DependencyEvent::GetNextId() {
-	static std::atomic<uint32_t> s_eventId = 1;
+	static sprt::atomic<uint32_t> s_eventId = 1;
 	return s_eventId.fetch_add(1);
 }
 
@@ -252,7 +252,7 @@ Vector<ImageViewInfo> ImageAttachment::getImageViews(const ImageInfoData &info) 
 	Vector<ImageViewInfo> ret;
 
 	auto addView = [&](const ImageViewInfo &info) {
-		auto it = std::find(ret.begin(), ret.end(), info);
+		auto it = sprt::find(ret.begin(), ret.end(), info);
 		if (it == ret.end()) {
 			ret.emplace_back(info);
 		}

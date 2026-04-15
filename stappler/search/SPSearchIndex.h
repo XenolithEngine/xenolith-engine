@@ -54,6 +54,8 @@ public:
 	struct Slice {
 		uint16_t start = 0; // start position in node's canonical string
 		uint16_t size = 0; // length in node's canonical string
+
+		bool operator==(const Slice &) const = default;
 	};
 
 	struct Node {
@@ -66,18 +68,24 @@ public:
 	struct Token {
 		uint32_t index = 0; // node index
 		Slice slice; // slice from canonical
+
+		bool operator==(const Token &) const = default;
 	};
 
 	struct ResultToken {
 		uint32_t word = 0; // node index
 		uint16_t match = 0; // node index
 		Slice slice; // slice from canonical
+
+		bool operator==(const ResultToken &) const = default;
 	};
 
 	struct ResultNode {
 		float score = 0.0f;
 		const Node *node;
 		Vector<ResultToken> matches;
+
+		bool operator==(const ResultNode &) const = default;
 	};
 
 	struct Result {
@@ -105,7 +113,7 @@ public:
 
 		// token score is better for longer word
 		SizeCallback wordScore = [](uint32_t match, uint32_t size) -> float {
-			return (1.0f + log2f(size)) * (float(match) / float(size));
+			return (1.0f + sprt::log2f(size)) * (float(match) / float(size));
 		};
 
 		// token score is better if tokens match sequentially

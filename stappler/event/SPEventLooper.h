@@ -34,7 +34,7 @@ class Bus;
 struct SP_PUBLIC LooperInfo {
 	StringView name = StringView("Main");
 	uint16_t workersCount =
-			uint16_t(std::thread::hardware_concurrency()); // 0 if no workers required
+			uint16_t(sprt::thread::hardware_concurrency()); // 0 if no workers required
 	thread::ThreadPoolFlags workersFlags = thread::ThreadPoolFlags::LazyInit;
 	QueueEngine engineMask = QueueEngine::Any;
 };
@@ -132,8 +132,8 @@ protected:
 
 	Looper(LooperInfo &&, Rc<QueueRef> &&);
 
-	std::mutex _mutex;
-	std::atomic<bool> _active;
+	sprt::mutex _mutex;
+	sprt::atomic<bool> _active;
 	Data *_data = nullptr;
 };
 

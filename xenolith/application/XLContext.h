@@ -199,7 +199,7 @@ public:
 	virtual void handleNativeWindowConstraintsChanged(NotNull<NativeWindow>,
 			core::UpdateConstraintsFlags) override;
 	virtual void handleNativeWindowInputEvents(NotNull<NativeWindow>,
-			sprt::memory::dynvector<core::InputEventData> &&) override;
+			Vector<core::InputEventData> &&) override;
 	virtual void handleNativeWindowTextInput(NotNull<NativeWindow>,
 			const core::TextInputState &) override;
 
@@ -240,7 +240,7 @@ public:
 	virtual memory::pool_t *getTmpPool() const override { return _initializer.tmpPool; }
 
 	virtual Value saveStateValue() const;
-	virtual sprt::memory::dynbytes saveState() const override;
+	virtual Bytes saveState() const override;
 
 protected:
 	virtual Rc<sprt::window::gapi::Instance> makeInstance(
@@ -269,7 +269,7 @@ protected:
 
 	Rc<AppThread> _application;
 
-	HashMap<std::type_index, Rc<ContextComponent>> _components;
+	HashMap<sprt::type_index, Rc<ContextComponent>> _components;
 
 	Rc<event::TimerHandle> _liveReloadWatchdog;
 
@@ -280,9 +280,9 @@ protected:
 
 template <typename T>
 auto Context::addComponent(Rc<T> &&t) -> T * {
-	auto it = _components.find(std::type_index(typeid(T)));
+	auto it = _components.find(sprt::type_index(typeid(T)));
 	if (it == _components.end()) {
-		it = _components.emplace(std::type_index(typeid(*t.get())), move(t)).first;
+		it = _components.emplace(sprt::type_index(typeid(*t.get())), move(t)).first;
 		initializeComponent(it->second);
 	}
 	return it->second.get_cast<T>();
@@ -290,7 +290,7 @@ auto Context::addComponent(Rc<T> &&t) -> T * {
 
 template <typename T>
 auto Context::getComponent() const -> T * {
-	auto it = _components.find(std::type_index(typeid(T)));
+	auto it = _components.find(sprt::type_index(typeid(T)));
 	if (it != _components.end()) {
 		return reinterpret_cast<T *>(it->second.get());
 	}

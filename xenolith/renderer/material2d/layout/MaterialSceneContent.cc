@@ -71,7 +71,7 @@ bool Snackbar::init() {
 		if (data.event == GestureEvent::Began) {
 			stopAllActions();
 			runAction(Rc<Sequence>::create(_data.delayTime,
-					std::bind(&Snackbar::hide, this, nullptr)));
+					sprt::bind(&Snackbar::hide, this, nullptr)));
 		}
 		return true;
 	});
@@ -129,7 +129,7 @@ void Snackbar::setSnackbarData(SnackbarData &&data) {
 		setOpacity(1.0f);
 		runAction(Rc<Sequence>::create(
 				makeEasing(Rc<MoveTo>::create(0.25f, Vec2(_position.x, 0)), EasingType::Standard),
-				_data.delayTime, std::bind(&Snackbar::hide, this, nullptr)));
+				_data.delayTime, sprt::bind(&Snackbar::hide, this, nullptr)));
 	}
 }
 
@@ -142,7 +142,7 @@ void Snackbar::hide(Function<void()> &&cb) {
 		runAction(Rc<Sequence>::create(
 				makeEasing(Rc<MoveTo>::create(0.25f, Vec2(_position.x, -_contentSize.height)),
 						EasingType::Standard),
-				std::bind(&Snackbar::onHidden, this)));
+				sprt::bind(&Snackbar::onHidden, this)));
 	} else {
 		runAction(Rc<Sequence>::create(
 				makeEasing(Rc<MoveTo>::create(0.25f, Vec2(_position.x, -_contentSize.height)),
@@ -179,7 +179,7 @@ void Snackbar::onButton() {
 	}
 	if (!_scheduledUpdate) {
 		stopAllActions();
-		runAction(Rc<Sequence>::create(0.35f, std::bind(&Snackbar::hide, this, nullptr)));
+		runAction(Rc<Sequence>::create(0.35f, sprt::bind(&Snackbar::hide, this, nullptr)));
 	}
 }
 
@@ -208,7 +208,7 @@ void SceneContent::handleContentSizeDirty() {
 	_snackbarRoot->setContentSize(_contentSize);
 
 	_snackbar->onHidden();
-	_snackbar->setContentSize(Size2(std::min(_contentSize.width, 536.0f), 48.0f));
+	_snackbar->setContentSize(Size2(sprt::min(_contentSize.width, 536.0f), 48.0f));
 	_snackbar->setPosition(Vec2(_contentSize.width / 2, -48.0f));
 
 	_navigation->setPosition(Vec2::ZERO);
@@ -250,7 +250,7 @@ float SceneContent::getMaxDepthIndex() const {
 	float maxIndex = _depthIndex;
 	for (auto &it : _children) {
 		if (it != _snackbar && it != _snackbar && it->isVisible()) {
-			maxIndex = std::max(it->getMaxDepthIndex(), maxIndex);
+			maxIndex = sprt::max(it->getMaxDepthIndex(), maxIndex);
 		}
 	}
 	return maxIndex;

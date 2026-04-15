@@ -47,7 +47,7 @@ void setupIocpHandleClass(QueueHandleClassInfo *info, HandleClass *cl, bool susp
 
 	cl->createFn = [](HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize]) {
 		static_assert(sizeof(SourceType) <= Handle::DataSize
-				&& std::is_standard_layout<SourceType>::value);
+				&& sprt::is_standard_layout<SourceType>::value);
 		new (data) SourceType;
 		return HandleClass::create(cl, handle, data);
 	};

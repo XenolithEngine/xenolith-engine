@@ -56,47 +56,62 @@ public:
 	virtual bool writeQuery(Context &);
 	virtual bool writeQuery(Context &, const db::Scheme &scheme, uint64_t, const db::Field &f);
 
-	virtual void writeWhere(SqlQuery::SelectWhere &, db::Operator op, const db::Scheme &, const db::Query &);
-	virtual void writeWhere(SqlQuery::WhereContinue &, db::Operator op, const db::Scheme &, const db::Query &);
+	virtual void writeWhere(SqlQuery::SelectWhere &, db::Operator op, const db::Scheme &,
+			const db::Query &);
+	virtual void writeWhere(SqlQuery::WhereContinue &, db::Operator op, const db::Scheme &,
+			const db::Query &);
 
-	virtual void writeWhereItem(SqlQuery::WhereContinue &w, db::Operator op, const db::Scheme &scheme, const db::Query::Select &sel);
-	virtual void writeWhereCond(SqlQuery::WhereContinue &w, db::Operator op, const db::Scheme &scheme, const db::Worker::ConditionData &sel);
+	virtual void writeWhereItem(SqlQuery::WhereContinue &w, db::Operator op,
+			const db::Scheme &scheme, const db::Query::Select &sel);
+	virtual void writeWhereCond(SqlQuery::WhereContinue &w, db::Operator op,
+			const db::Scheme &scheme, const db::Worker::ConditionData &sel);
 
-	virtual void writeOrdering(SqlQuery::SelectFrom &, const db::Scheme &, const db::Query &, bool dropLimits = false);
+	virtual void writeOrdering(SqlQuery::SelectFrom &, const db::Scheme &, const db::Query &,
+			bool dropLimits = false);
 
-	virtual SelectFrom writeSelectFrom(GenericQuery &q, const db::QueryList::Item &item, bool idOnly, const StringView &scheme, const StringView &field, bool isSimpleGet = false);
+	virtual SelectFrom writeSelectFrom(GenericQuery &q, const db::QueryList::Item &item,
+			bool idOnly, const StringView &scheme, const StringView &field,
+			bool isSimpleGet = false);
 	virtual SelectFrom writeSelectFrom(Select &sel, Context &);
 
 	virtual void writeQueryReqest(SqlQuery::SelectFrom &s, const db::QueryList::Item &item);
-	virtual void writeQueryListItem(GenericQuery &sq, const db::QueryList &list, size_t idx, bool idOnly, const db::Field *field = nullptr, bool forSubquery = false);
-	virtual void writeQueryList(const db::QueryList &query, bool idOnly, size_t count = stappler::maxOf<size_t>());
-	virtual void writeQueryFile(const ApplicationInterface *app, const db::QueryList &query, const db::Field *field);
+	virtual void writeQueryListItem(GenericQuery &sq, const db::QueryList &list, size_t idx,
+			bool idOnly, const db::Field *field = nullptr, bool forSubquery = false);
+	virtual void writeQueryList(const db::QueryList &query, bool idOnly,
+			size_t count = stappler::maxOf<size_t>());
+	virtual void writeQueryFile(const ApplicationInterface *app, const db::QueryList &query,
+			const db::Field *field);
 	virtual void writeQueryArray(const db::QueryList &query, const db::Field *field);
 
-	virtual void writeQueryDelta(const db::Scheme &, const stappler::Time &, const Set<const db::Field *> &fields, bool idOnly);
-	virtual void writeQueryViewDelta(const db::QueryList &list, const stappler::Time &, const Set<const db::Field *> &fields, bool idOnly);
+	virtual void writeQueryDelta(const db::Scheme &, const stappler::Time &,
+			const Set<const db::Field *> &fields, bool idOnly);
+	virtual void writeQueryViewDelta(const db::QueryList &list, const stappler::Time &,
+			const Set<const db::Field *> &fields, bool idOnly);
 
 	template <typename T>
-	friend auto & operator << (SqlQuery &query, const T &value) {
+	friend auto &operator<<(SqlQuery &query, const T &value) {
 		return query.stream << value;
 	}
 
 	const StringStream &getQuery() const;
-	db::QueryInterface * getInterface() const;
+	db::QueryInterface *getInterface() const;
 
-	virtual void writeFullTextFrom(SelectFrom &sel, const Scheme &scheme, const db::Field *, const db::Query::Select &it);
+	virtual void writeFullTextFrom(SelectFrom &sel, const Scheme &scheme, const db::Field *,
+			const db::Query::Select &it);
 	virtual void writeFullTextRank(Select &sel, const Scheme &scheme, const db::Query &q);
 
-	virtual void writeFullTextWhere(WhereContinue &w, db::Operator op, const db::Scheme &scheme, const db::Query::Select &sel, StringView ftsQuery);
+	virtual void writeFullTextWhere(WhereContinue &w, db::Operator op, const db::Scheme &scheme,
+			const db::Query::Select &sel, StringView ftsQuery);
 
-	virtual StringView getFullTextQuery(const Scheme &scheme, const db::Field &f, const db::Query::Select &it);
+	virtual StringView getFullTextQuery(const Scheme &scheme, const db::Field &f,
+			const db::Query::Select &it);
 
 protected:
 	const Driver *_driver = nullptr;
-	std::forward_list<FullTextQuery> _parsedQueries;
+	sprt::__malloc_forward_list<FullTextQuery> _parsedQueries;
 	Map<String, String> _fulltextQueries;
 };
 
-}
+} // namespace stappler::db::sql
 
 #endif /* STAPPLER_DB_SQL_SPSQLQUERY_H_ */

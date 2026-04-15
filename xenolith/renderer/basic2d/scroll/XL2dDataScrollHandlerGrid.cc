@@ -56,7 +56,7 @@ DataScrollView::ItemMap DataScrollHandlerGrid::run(Request t, DataMap &&data) {
 	}
 
 	auto cellWidth =
-			(_autoPaddings ? (std::min(_cellMinWidth, size.width / cols)) : (size.width / cols));
+			(_autoPaddings ? (sprt::min(_cellMinWidth, size.width / cols)) : (size.width / cols));
 	auto cellHeight = (_fixedHeight ? _cellHeight : cellWidth / _cellAspectRatio);
 
 	_currentCellSize = Size2(cellWidth, cellHeight);
@@ -65,7 +65,7 @@ DataScrollView::ItemMap DataScrollHandlerGrid::run(Request t, DataMap &&data) {
 
 	for (auto &it : data) {
 		auto item = onItem(sp::move(it.second), it.first);
-		ret.insert(std::make_pair(it.first, item));
+		ret.insert(sprt::make_pair(it.first, item));
 	}
 	return ret;
 }

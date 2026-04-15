@@ -67,7 +67,7 @@ struct SP_PUBLIC VectorCanvasResult : public Ref {
 
 	Vector<InstanceVertexData> data;
 	Vector<InstanceVertexData> mut;
-	std::forward_list<Vector<TransformData>> instances;
+	sprt::__malloc_forward_list<Vector<TransformData>> instances;
 	Map<String, ObjectRef> objects;
 	VectorCanvasConfig config;
 	Mat4 targetTransform;

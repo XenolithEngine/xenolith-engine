@@ -35,7 +35,8 @@ public:
 
 	using OutStream = stappler::Callback<void(StringView)>;
 	using Callback = VarClass::Callback;
-	using IncludeCallback = Function<bool(const StringView &, Context &, const OutStream &, Template::RunContext &)>;
+	using IncludeCallback = Function<bool(const StringView &, Context &, const OutStream &,
+			Template::RunContext &)>;
 
 	struct Mixin {
 		const Template::Chunk *chunk;
@@ -44,8 +45,8 @@ public:
 	};
 
 	struct VarScope : memory::AllocPool {
-		memory::dict<String, VarStorage> namedVars;
-		memory::dict<String, Mixin> mixins;
+		sprt::__pool_unordered_map<String, VarStorage> namedVars;
+		sprt::__pool_unordered_map<String, Mixin> mixins;
 		VarScope *prev = nullptr;
 	};
 
@@ -53,18 +54,19 @@ public:
 		static constexpr size_t MinStaticVars = 8;
 
 		size_t staticCount = 0;
-		std::array<Var, MinStaticVars> staticList;
+		sprt::array<Var, MinStaticVars> staticList;
 		Vector<Var> dynamicList;
 
 		void emplace(Var &&);
 
 		size_t size() const;
-		Var * data();
+		Var *data();
 	};
 
 	static bool isConstExpression(const Expression &);
 	static bool printConstExpr(const Expression &, const OutStream &, bool escapeOutput = false);
-	static bool printAttrVar(const StringView &, const Expression &, const OutStream &, bool escapeOutput = false);
+	static bool printAttrVar(const StringView &, const Expression &, const OutStream &,
+			bool escapeOutput = false);
 	static bool printAttrExpr(const Expression &, const OutStream &);
 
 	Context();
@@ -72,7 +74,8 @@ public:
 	void setErrorStream(const OutStream &);
 
 	bool print(const Expression &, const OutStream &, bool escapeOutput = false);
-	bool printAttr(const StringView &name, const Expression &, const OutStream &, bool escapeOutput = false);
+	bool printAttr(const StringView &name, const Expression &, const OutStream &,
+			bool escapeOutput = false);
 	bool printAttrExprList(const Expression &, const OutStream &);
 	Var exec(const Expression &, const OutStream &, bool allowUndefined = false);
 
@@ -88,7 +91,7 @@ public:
 
 	const VarStorage *getVar(const StringView &name) const;
 
-	VarClass * set(const StringView &name, VarClass &&);
+	VarClass *set(const StringView &name, VarClass &&);
 
 	bool runInclude(const StringView &, const OutStream &, Template::RunContext &rctx);
 
@@ -106,6 +109,6 @@ protected:
 	Map<String, VarClass> classes;
 };
 
-}
+} // namespace stappler::pug
 
 #endif /* EXTRA_WEBSERVER_PUG_SPPUGCONTEXT_H_ */

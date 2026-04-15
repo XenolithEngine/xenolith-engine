@@ -31,8 +31,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::richtext {
 class SP_PUBLIC Tooltip : public material2d::FlexibleLayout {
 public:
 	using Result = document::LayoutResult;
-	using CloseCallback = std::function<void()>;
-	using CopyCallback = std::function<void(const String &)>;
+	using CloseCallback = sprt::function<void()>;
+	using CopyCallback = sprt::function<void(const String &)>;
 
 	static EventHeader onCopy;
 

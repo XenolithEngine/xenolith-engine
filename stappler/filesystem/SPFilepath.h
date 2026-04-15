@@ -62,17 +62,17 @@ SP_PUBLIC auto canonical(const FileInfo &) -> typename Interface::StringType;
 
 // merges two path component, removes or adds '/' where needed
 
-SP_PUBLIC void merge(const Callback<void(StringView)> &cb, SpanView<std::string>);
+SP_PUBLIC void merge(const Callback<void(StringView)> &cb, SpanView<sprt::__malloc_string>);
 
-SP_PUBLIC void merge(const Callback<void(StringView)> &cb, SpanView<memory::string>);
+SP_PUBLIC void merge(const Callback<void(StringView)> &cb, SpanView<sprt::__pool_string>);
 
 SP_PUBLIC void merge(const Callback<void(StringView)> &cb, SpanView<StringView>);
 
 template <typename Interface>
-SP_PUBLIC auto merge(SpanView<std::string>) -> typename Interface::StringType;
+SP_PUBLIC auto merge(SpanView<sprt::__malloc_string>) -> typename Interface::StringType;
 
 template <typename Interface>
-SP_PUBLIC auto merge(SpanView<memory::string>) -> typename Interface::StringType;
+SP_PUBLIC auto merge(SpanView<sprt::__pool_string>) -> typename Interface::StringType;
 
 template <typename Interface>
 SP_PUBLIC auto merge(SpanView<StringView>) -> typename Interface::StringType;
@@ -139,7 +139,7 @@ SP_PUBLIC void _merge(const Callback<void(StringView)> &cb, StringView root);
 template <typename Interface, class... Args>
 SP_PUBLIC inline auto merge(StringView root, StringView path, Args &&...args) ->
 		typename Interface::StringType {
-	return merge<Interface>(_merge<Interface>(root, path), std::forward<Args>(args)...);
+	return merge<Interface>(_merge<Interface>(root, path), sprt::forward<Args>(args)...);
 }
 
 template <typename Interface>

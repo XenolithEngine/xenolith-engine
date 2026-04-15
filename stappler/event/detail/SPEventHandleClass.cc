@@ -56,7 +56,7 @@ Status HandleClass::cancel(HandleClass *cl, Handle *handle, uint8_t[Handle::Data
 			--cl->info->suspendedHandles;
 			--cl->suspendedHandles;
 
-			//std::cout << "Cancel: " << cl->info << " " << handle << " " << handle->getStatus()
+			//sprt::cout << "Cancel: " << cl->info << " " << handle << " " << handle->getStatus()
 			//		  << " " << cl->info->suspendedHandles << " " << cl->info->runningHandles
 			//		  << "\n";
 		}
@@ -89,7 +89,7 @@ Status HandleClass::suspend(HandleClass *cl, Handle *handle, uint8_t[Handle::Dat
 	++cl->suspendedHandles;
 	++cl->info->suspendedHandles;
 
-	//std::cout << "Suspend: " << cl->info << " " << handle << " " << handle->getStatus() << " "
+	//sprt::cout << "Suspend: " << cl->info << " " << handle << " " << handle->getStatus() << " "
 	//		  << cl->info->suspendedHandles << " " << cl->info->runningHandles << "\n";
 
 	if (cl->info->suspendedHandles == cl->info->runningHandles) {
@@ -113,7 +113,7 @@ Status HandleClass::resume(HandleClass *cl, Handle *handle, uint8_t[Handle::Data
 		--cl->suspendedHandles;
 		--cl->info->suspendedHandles;
 
-		//std::cout << "Resume: " << cl->info << " " << handle << " " << handle->getStatus() << " "
+		//sprt::cout << "Resume: " << cl->info << " " << handle << " " << handle->getStatus() << " "
 		//		  << cl->info->suspendedHandles << " " << cl->info->runningHandles << "\n";
 	}
 

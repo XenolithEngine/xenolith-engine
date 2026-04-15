@@ -153,24 +153,24 @@ int Context::run(int argc, const char **argv) {
 			} else {
 				auto appName = filepath::lastComponent(StringView(argv[0]));
 
-				std::cout << appName << " <options>:\n";
+				sprt::cout << appName << " <options>:\n";
 				ContextConfig::getCommandLineParser().describe(
-						[&](StringView str) { std::cout << str; });
+						[&](StringView str) { sprt::cout << str; });
 
 				auto helpString = SharedModule::acquireTypedSymbol<SymbolHelpStringSignature>(
 						buildconfig::MODULE_APPCOMMON_NAME, SymbolHelpStringName);
 				if (helpString) {
-					std::cout << helpString << "\n";
+					sprt::cout << helpString << "\n";
 				}
 			}
 			return 0;
 		}
 
 		if (hasFlag(config.flags, CommonFlags::Verbose)) {
-			std::cerr << " Current work dir: " << stappler::filesystem::currentDir<Interface>()
-					  << "\n";
-			std::cerr << " Options: " << stappler::data::EncodeFormat::Pretty << config.encode()
-					  << "\n";
+			sprt::cerr << " Current work dir: " << stappler::filesystem::currentDir<Interface>()
+					   << "\n";
+			sprt::cerr << " Options: " << stappler::data::EncodeFormat::Pretty << config.encode()
+					   << "\n";
 		}
 
 		return Context_runWithConfig(sp::move(config), sp::move(init));
@@ -351,13 +351,13 @@ void Context::handleGraphicsLoaded(NotNull<sprt::window::gapi::Loop> loop) {
 
 Value Context::saveStateValue() const { return Value(); }
 
-sprt::memory::dynbytes Context::saveState() const {
+Bytes Context::saveState() const {
 	auto stateData = saveStateValue();
 	if (stateData) {
 		auto comp = data::write(stateData, EncodeFormat::CborCompressed);
-		return sprt::memory::dynbytes(comp.data(), comp.data() + comp.size());
+		return Bytes(comp.data(), comp.data() + comp.size());
 	}
-	return sprt::memory::dynbytes();
+	return Bytes();
 }
 
 void Context::handleAppThreadCreated(NotNull<AppThread>) {
@@ -374,7 +374,7 @@ core::SwapchainConfig Context::handleAppWindowSurfaceUpdate(NotNull<AppWindow> w
 		const SurfaceInfo &info, bool fastMode) {
 	SwapchainConfig ret;
 	ret.extent = info.currentExtent;
-	ret.imageCount = std::max(uint32_t(3), info.minImageCount);
+	ret.imageCount = sprt::max(uint32_t(3), info.minImageCount);
 
 	ret.presentMode = core::PresentMode::Unsupported;
 
@@ -405,7 +405,7 @@ core::SwapchainConfig Context::handleAppWindowSurfaceUpdate(NotNull<AppWindow> w
 
 	// use Immediate mode as fastest for quick transitions (like on manual window resize)
 	if (ret.presentMode != core::PresentMode::Mailbox) {
-		if (std::find(info.presentModes.begin(), info.presentModes.end(),
+		if (sprt::find(info.presentModes.begin(), info.presentModes.end(),
 					core::PresentMode::Immediate)
 				!= info.presentModes.end()) {
 			ret.presentModeFast = core::PresentMode::Immediate;
@@ -453,7 +453,7 @@ core::SwapchainConfig Context::handleAppWindowSurfaceUpdate(NotNull<AppWindow> w
 			(info.supportedUsageFlags & core::ImageUsage::TransferDst) != core::ImageUsage::None;
 
 	if (ret.presentMode == core::PresentMode::Mailbox) {
-		ret.imageCount = std::max(uint32_t(3), ret.imageCount);
+		ret.imageCount = sprt::max(uint32_t(3), ret.imageCount);
 	}
 
 	ret.transform = info.currentTransform;
@@ -495,7 +495,7 @@ void Context::handleNativeWindowConstraintsChanged(NotNull<NativeWindow> w,
 }
 
 void Context::handleNativeWindowInputEvents(NotNull<NativeWindow> w,
-		sprt::memory::dynvector<core::InputEventData> &&events) {
+		Vector<core::InputEventData> &&events) {
 	auto appWindow = static_cast<AppWindow *>(w->getAppWindow());
 	if (appWindow) {
 		appWindow->handleInputEvents(sp::move(events));
@@ -752,7 +752,8 @@ Rc<sprt::window::gapi::Loop> Context::makeLoop(NotNull<sprt::window::gapi::Insta
 				return true;
 			} else {
 				return dev.supportsPresentation()
-						&& std::find(dev.availableExtensions.begin(), dev.availableExtensions.end(),
+						&& sprt::find(dev.availableExtensions.begin(),
+								   dev.availableExtensions.end(),
 								   String(VK_KHR_SWAPCHAIN_EXTENSION_NAME))
 						!= dev.availableExtensions.end();
 			}

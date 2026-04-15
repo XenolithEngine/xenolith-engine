@@ -262,7 +262,7 @@ void BitmapTemplate<Interface>::loadBitmap(const uint8_t *d, uint32_t w, uint32_
 	setInfo(w, h, c, a, stride);
 	_data.clear();
 	_data.resize(_stride * h);
-	memcpy(_data.data(), d, _data.size());
+	sprt::memcpy(_data.data(), d, _data.size());
 	_originalFormat = FileFormat::Custom;
 	_originalFormatName.clear();
 }
@@ -331,7 +331,7 @@ void BitmapTemplate<Interface>::_setupWriter(BitmapWriter &w,
 		auto bytes = ((BitmapBytesTarget<BytesType> *)ptr)->bytes;
 		auto origSize = bytes->size();
 		bytes->resize(origSize + size);
-		memcpy(bytes->data() + origSize, data, size);
+		sprt::memcpy(bytes->data() + origSize, data, size);
 	};
 	w.resize = [](void *ptr, uint32_t size) {
 		((BitmapBytesTarget<BytesType> *)ptr)->bytes->resize(size);
@@ -342,7 +342,7 @@ void BitmapTemplate<Interface>::_setupWriter(BitmapWriter &w,
 	w.assign = [](void *ptr, const uint8_t *data, uint32_t size) {
 		auto bytes = ((BitmapBytesTarget<BytesType> *)ptr)->bytes;
 		bytes->resize(size);
-		memcpy(bytes->data(), data, size);
+		sprt::memcpy(bytes->data(), data, size);
 	};
 	w.clear = [](void *ptr) { ((BitmapBytesTarget<BytesType> *)ptr)->bytes->clear(); };
 }
@@ -354,7 +354,7 @@ void BitmapTemplate<Interface>::setInfo(uint32_t w, uint32_t h, PixelFormat c, A
 			"Bitmap: Format::Auto should not be used with Bitmap directly");
 	_width = w;
 	_height = h;
-	_stride = max(stride, w * getBytesPerPixel(c));
+	_stride = sprt::max(stride, w * getBytesPerPixel(c));
 	_color = c;
 	_alpha = a;
 }
@@ -369,7 +369,7 @@ bool BitmapTemplate<Interface>::updateStride(const StrideFn &strideFn) {
 		out.resize(_height * outStride);
 		size_t minStride = _width * getBytesPerPixel(_color);
 		for (size_t j = 0; j < _height; j++) {
-			memcpy(out.data() + j * outStride, _data.data() + j * _stride, minStride);
+			sprt::memcpy(out.data() + j * outStride, _data.data() + j * _stride, minStride);
 		}
 		_data = sp::move(out);
 		_stride = outStride;
@@ -461,11 +461,11 @@ size_t BitmapTemplate<Interface>::convertWithTarget(uint8_t *target, PixelFormat
 	case PixelFormat::A8:
 		switch (color) {
 		case PixelFormat::A8:
-			memcpy(target, _data.data(), out.size());
+			sprt::memcpy(target, _data.data(), out.size());
 			return out.size();
 			break;
 		case PixelFormat::I8:
-			memcpy(target, _data.data(), out.size());
+			sprt::memcpy(target, _data.data(), out.size());
 			return out.size();
 			break;
 		case PixelFormat::IA88:
@@ -485,11 +485,11 @@ size_t BitmapTemplate<Interface>::convertWithTarget(uint8_t *target, PixelFormat
 	case PixelFormat::I8:
 		switch (color) {
 		case PixelFormat::A8:
-			memcpy(target, _data.data(), out.size());
+			sprt::memcpy(target, _data.data(), out.size());
 			return out.size();
 			break;
 		case PixelFormat::I8:
-			memcpy(target, _data.data(), out.size());
+			sprt::memcpy(target, _data.data(), out.size());
 			return out.size();
 			break;
 		case PixelFormat::IA88:
@@ -515,7 +515,7 @@ size_t BitmapTemplate<Interface>::convertWithTarget(uint8_t *target, PixelFormat
 			return convertData<PixelFormat::IA88, PixelFormat::I8>(_data, out, _stride, outStride);
 			break;
 		case PixelFormat::IA88:
-			memcpy(target, _data.data(), out.size());
+			sprt::memcpy(target, _data.data(), out.size());
 			return out.size();
 			break;
 		case PixelFormat::RGB888:
@@ -544,7 +544,7 @@ size_t BitmapTemplate<Interface>::convertWithTarget(uint8_t *target, PixelFormat
 					outStride);
 			break;
 		case PixelFormat::RGB888:
-			memcpy(target, _data.data(), out.size());
+			sprt::memcpy(target, _data.data(), out.size());
 			return out.size();
 			break;
 		case PixelFormat::RGBA8888:
@@ -573,7 +573,7 @@ size_t BitmapTemplate<Interface>::convertWithTarget(uint8_t *target, PixelFormat
 					outStride);
 			break;
 		case PixelFormat::RGBA8888:
-			memcpy(target, _data.data(), out.size());
+			sprt::memcpy(target, _data.data(), out.size());
 			return out.size();
 			break;
 		case PixelFormat::Auto: return 0; break;

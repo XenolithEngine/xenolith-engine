@@ -57,8 +57,8 @@ enum class ISA {
 	XCSwiftPackageProductDependency
 };
 
-using Id = std::array<uint8_t, 12>;
-using StringId = std::array<char, 24>;
+using Id = sprt::array<uint8_t, 12>;
+using StringId = sprt::array<char, 24>;
 
 enum class BuildPhase {
 	carbonResources,

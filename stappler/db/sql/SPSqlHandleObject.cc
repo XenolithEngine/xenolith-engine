@@ -28,9 +28,11 @@ THE SOFTWARE.
 namespace STAPPLER_VERSIONIZED stappler::db::sql {
 
 template <typename Clause>
-static void SqlQuery_makeCustomFrom(const Driver *driver, SqlQuery &q, Clause &tmp, const Query &query, const Scheme &scheme);
+static void SqlQuery_makeCustomFrom(const Driver *driver, SqlQuery &q, Clause &tmp,
+		const Query &query, const Scheme &scheme);
 
-static bool Handle_hasPostUpdate(const SpanView<InputField> &idata, const SpanView<InputRow> &inputRows) {
+static bool Handle_hasPostUpdate(const SpanView<InputField> &idata,
+		const SpanView<InputRow> &inputRows) {
 	size_t i = 0;
 	for (auto &it : idata) {
 		auto t = it.field->getType();
@@ -51,13 +53,12 @@ static bool Handle_hasPostUpdate(const SpanView<InputField> &idata, const SpanVi
 				}
 			}
 			break;
-		default:
-			break;
+		default: break;
 		}
 		if (t == db::Type::Array || t == db::Type::Set || t == db::Type::Object) {
 			return true;
 		}
-		++ i;
+		++i;
 	}
 	return false;
 }
@@ -78,25 +79,24 @@ static Value Handle_preparePostUpdate(const Vector<InputField> &inputFields, Inp
 				postUpdate.setValue(sp::move(row.values[i].value), field.field->getName());
 			}
 			break;
-		default:
-			break;
+		default: break;
 		}
-		++ i;
+		++i;
 	}
 
 	return postUpdate;
 }
 
-bool SqlHandle::foreach(Worker &worker, const Query &q, const Callback<bool(Value &)> &cb) {
+bool SqlHandle::foreach (Worker &worker, const Query &q, const Callback<bool(Value &)> &cb) {
 	auto queryStorage = _driver->makeQueryStorage(worker.scheme().getName());
 	bool ret = false;
 	auto &scheme = worker.scheme();
-	makeQuery([&, this] (SqlQuery &query) {
+	makeQuery([&, this](SqlQuery &query) {
 		auto ordField = q.getQueryField();
 		if (ordField.empty()) {
 			SqlQuery::Context ctx(query, scheme, worker, q);
 			query.writeQuery(ctx);
-			ret = selectQuery(query, [&] (Result &res) -> bool {
+			ret = selectQuery(query, [&](Result &res) -> bool {
 				auto virtuals = ctx.getVirtuals();
 				for (auto it : res) {
 					auto d = it.toData(scheme, Map<String, db::Field>(), virtuals);
@@ -111,10 +111,11 @@ bool SqlHandle::foreach(Worker &worker, const Query &q, const Callback<bool(Valu
 			case Type::Set: {
 				SqlQuery::Context ctx(query, *f->getForeignScheme(), worker, q);
 				if (query.writeQuery(ctx, scheme, q.getQueryId(), *f)) {
-					ret = selectQuery(query, [&] (Result &res) -> bool {
+					ret = selectQuery(query, [&](Result &res) -> bool {
 						auto virtuals = ctx.getVirtuals();
 						for (auto it : res) {
-							auto d = it.toData(*f->getForeignScheme(), Map<String, db::Field>(), virtuals);
+							auto d = it.toData(*f->getForeignScheme(), Map<String, db::Field>(),
+									virtuals);
 							if (!cb(d)) {
 								return false;
 							}
@@ -124,8 +125,7 @@ bool SqlHandle::foreach(Worker &worker, const Query &q, const Callback<bool(Valu
 				}
 				break;
 			}
-			default:
-				break;
+			default: break;
 			}
 		}
 	}, &queryStorage);
@@ -137,7 +137,7 @@ Value SqlHandle::select(Worker &worker, const db::Query &q) {
 
 	Value ret;
 	auto &scheme = worker.scheme();
-	makeQuery([&, this] (SqlQuery &query) {
+	makeQuery([&, this](SqlQuery &query) {
 		auto ordField = q.getQueryField();
 		if (ordField.empty()) {
 			SqlQuery::Context ctx(query, scheme, worker, q);
@@ -145,21 +145,17 @@ Value SqlHandle::select(Worker &worker, const db::Query &q) {
 			ret = selectValueQuery(scheme, query, ctx.getVirtuals());
 		} else if (auto f = scheme.getField(ordField)) {
 			switch (f->getType()) {
-			case Type::Set:
-				ret = getSetField(worker, query, q.getQueryId(), *f, q);
-				break;
-			case Type::View:
-				ret = getViewField(worker, query, q.getQueryId(), *f, q);
-				break;
-			default:
-				break;
+			case Type::Set: ret = getSetField(worker, query, q.getQueryId(), *f, q); break;
+			case Type::View: ret = getViewField(worker, query, q.getQueryId(), *f, q); break;
+			default: break;
 			}
 		}
 	}, &queryStorage);
 	return ret;
 }
 
-Value SqlHandle::create(Worker &worker, const Vector<InputField> &inputFields, Vector<InputRow> &inputRows, bool multiCreate) {
+Value SqlHandle::create(Worker &worker, const Vector<InputField> &inputFields,
+		Vector<InputRow> &inputRows, bool multiCreate) {
 	if (inputRows.empty() || inputFields.empty()) {
 		return Value();
 	}
@@ -168,25 +164,24 @@ Value SqlHandle::create(Worker &worker, const Vector<InputField> &inputFields, V
 
 	auto &scheme = worker.scheme();
 
-	auto bindRow = [&] (Value &ret, stappler::sql::Query<Binder,Interface>::InsertValues &val, InputRow &input) {
-		for (size_t idx = 0; idx < inputFields.size(); ++ idx) {
+	auto bindRow = [&](Value &ret, stappler::sql::Query<Binder, Interface>::InsertValues &val,
+						   InputRow &input) {
+		for (size_t idx = 0; idx < inputFields.size(); ++idx) {
 			auto f = inputFields[idx].field;
 			switch (f->getType()) {
 			case Type::Set:
 			case Type::Array:
-			case Type::Virtual:
-				break;
+			case Type::Virtual: break;
 			default:
 				switch (input.values[idx].type) {
 				case InputValue::Type::Value: {
 					auto &v = ret.setValue(input.values[idx].value, f->getName());
-					val.value(db::Binder::DataField{f, v, f->isDataLayout(), f->hasFlag(db::Flags::Compressed)});
+					val.value(db::Binder::DataField{f, v, f->isDataLayout(),
+						f->hasFlag(db::Flags::Compressed)});
 					break;
 				}
 				case InputValue::Type::File:
-				case InputValue::Type::None:
-					val.def();
-					break;
+				case InputValue::Type::None: val.def(); break;
 				case InputValue::Type::TSV:
 					val.value(db::Binder::FullTextField{f, input.values[idx].tsv});
 					break;
@@ -196,22 +191,19 @@ Value SqlHandle::create(Worker &worker, const Vector<InputField> &inputFields, V
 		}
 	};
 
-	auto perform = [&, this] (InputRow &row) {
+	auto perform = [&, this](InputRow &row) {
 		int64_t id = 0;
 		Value ret;
 		Value postUpdate(Handle_preparePostUpdate(inputFields, row));
 
-		makeQuery([&, this] (SqlQuery &query) {
+		makeQuery([&, this](SqlQuery &query) {
 			auto ins = query.insert(scheme.getName());
 			for (auto &it : inputFields) {
 				switch (it.field->getType()) {
 				case Type::Set:
 				case Type::Array:
-				case Type::Virtual:
-					break;
-				default:
-					ins.field(it.field->getName());
-					break;
+				case Type::Virtual: break;
+				default: ins.field(it.field->getName()); break;
 				}
 			}
 
@@ -226,15 +218,20 @@ Value SqlHandle::create(Worker &worker, const Vector<InputField> &inputFields, V
 					auto c = val.onConflict(it.first->getName()).doUpdate();
 					for (auto &iit : ret.asDict()) {
 						auto f = scheme.getField(iit.first);
-						if (f && (it.second.mask.empty() || std::find(it.second.mask.begin(), it.second.mask.end(), f) != it.second.mask.end())) {
+						if (f
+								&& (it.second.mask.empty()
+										|| sprt::find(it.second.mask.begin(), it.second.mask.end(),
+												   f)
+												!= it.second.mask.end())) {
 							c.excluded(iit.first);
 						}
 					}
 
 					if (it.second.hasCondition()) {
-						c.where().parenthesis(db::Operator::And, [&] (SqlQuery::WhereBegin &wh) {
+						c.where().parenthesis(db::Operator::And, [&](SqlQuery::WhereBegin &wh) {
 							SqlQuery::WhereContinue iw(wh.query, wh.state);
-							query.writeWhereCond(iw, db::Operator::And, worker.scheme(), it.second.condition);
+							query.writeWhereCond(iw, db::Operator::And, worker.scheme(),
+									it.second.condition);
 						});
 					}
 				}
@@ -290,11 +287,9 @@ Value SqlHandle::create(Worker &worker, const Vector<InputField> &inputFields, V
 		}
 
 		Value ret;
-		makeQuery([&, this] (SqlQuery &query) {
+		makeQuery([&, this](SqlQuery &query) {
 			auto ins = query.insert(scheme.getName());
-			for (auto &it : inputFields) {
-				ins.field(it.field->getName());
-			}
+			for (auto &it : inputFields) { ins.field(it.field->getName()); }
 
 			auto val = ins.values();
 			for (auto &row : inputRows) {
@@ -310,26 +305,30 @@ Value SqlHandle::create(Worker &worker, const Vector<InputField> &inputFields, V
 				} else {
 					auto c = val.onConflict(it.first->getName()).doUpdate();
 					for (auto &iit : inputFields) {
-						if ((it.second.mask.empty() || std::find(it.second.mask.begin(), it.second.mask.end(), iit.field) != it.second.mask.end())) {
+						if ((it.second.mask.empty()
+									|| sprt::find(it.second.mask.begin(), it.second.mask.end(),
+											   iit.field)
+											!= it.second.mask.end())) {
 							c.excluded(iit.field->getName());
 						}
 					}
 
 					if (it.second.hasCondition()) {
-						c.where().parenthesis(db::Operator::And, [&] (SqlQuery::WhereBegin &wh) {
+						c.where().parenthesis(db::Operator::And, [&](SqlQuery::WhereBegin &wh) {
 							SqlQuery::WhereContinue iw(wh.query, wh.state);
-							query.writeWhereCond(iw, db::Operator::And, worker.scheme(), it.second.condition);
+							query.writeWhereCond(iw, db::Operator::And, worker.scheme(),
+									it.second.condition);
 						});
 					}
 				}
 			}
 
 			val.returning().field(SqlQuery::Field("__oid").as("id")).finalize();
-			selectQuery(query, [&] (Result &res) {
+			selectQuery(query, [&](Result &res) {
 				size_t i = 0;
 				for (auto it : res) {
 					ret.getValue(i).setInteger(it.toInteger(0), "__oid");
-					++ i;
+					++i;
 				}
 
 				for (auto &iit : ret.asArray()) {
@@ -350,7 +349,8 @@ Value SqlHandle::create(Worker &worker, const Vector<InputField> &inputFields, V
 	return Value();
 }
 
-Value SqlHandle::save(Worker &worker, uint64_t oid, const Value &data, const Vector<InputField> &inputFields, InputRow &inputRow) {
+Value SqlHandle::save(Worker &worker, uint64_t oid, const Value &data,
+		const Vector<InputField> &inputFields, InputRow &inputRow) {
 	if ((!data.isDictionary() && !data.empty()) || inputFields.empty() || inputRow.values.empty()) {
 		return Value();
 	}
@@ -362,10 +362,10 @@ Value SqlHandle::save(Worker &worker, uint64_t oid, const Value &data, const Vec
 
 	Value postUpdate(Handle_preparePostUpdate(inputFields, inputRow));
 
-	makeQuery([&, this] (SqlQuery &query) {
+	makeQuery([&, this](SqlQuery &query) {
 		auto upd = query.update(scheme.getName());
 
-		for (size_t idx = 0; idx < inputFields.size(); ++ idx) {
+		for (size_t idx = 0; idx < inputFields.size(); ++idx) {
 			auto &f = inputFields[idx];
 			auto &v = inputRow.values[idx];
 
@@ -373,8 +373,7 @@ Value SqlHandle::save(Worker &worker, uint64_t oid, const Value &data, const Vec
 			case Type::View:
 			case Type::Set:
 			case Type::Array:
-			case Type::Virtual:
-				break;
+			case Type::Virtual: break;
 			case Type::Object:
 				if (v.hasValue() && v.value.isDictionary() && v.value.isInteger("__oid")) {
 					upd.set(f.field->getName(), v.value.getInteger("__oid"));
@@ -386,15 +385,16 @@ Value SqlHandle::save(Worker &worker, uint64_t oid, const Value &data, const Vec
 				switch (v.type) {
 				case InputValue::Type::Value: {
 					ret.setValue(v.value, f.field->getName());
-					upd.set(f.field->getName(), db::Binder::DataField{f.field, v.value, f.field->isDataLayout(), f.field->hasFlag(db::Flags::Compressed)});
+					upd.set(f.field->getName(),
+							db::Binder::DataField{f.field, v.value, f.field->isDataLayout(),
+								f.field->hasFlag(db::Flags::Compressed)});
 					break;
 				}
 				case InputValue::Type::TSV:
 					upd.set(f.field->getName(), db::Binder::FullTextField{f.field, v.tsv});
 					break;
 				case InputValue::Type::File:
-				case InputValue::Type::None:
-					break;
+				case InputValue::Type::None: break;
 				}
 				break;
 			}
@@ -403,7 +403,7 @@ Value SqlHandle::save(Worker &worker, uint64_t oid, const Value &data, const Vec
 		auto q = upd.where("__oid", Comparation::Equal, oid);
 		auto &cond = worker.getConditions();
 		if (!cond.empty()) {
-			q.parenthesis(db::Operator::And, [&] (SqlQuery::WhereBegin &wh) {
+			q.parenthesis(db::Operator::And, [&](SqlQuery::WhereBegin &wh) {
 				SqlQuery::WhereContinue iw(wh.query, wh.state);
 				for (auto &it : cond) {
 					query.writeWhereCond(iw, db::Operator::And, worker.scheme(), it);
@@ -414,12 +414,8 @@ Value SqlHandle::save(Worker &worker, uint64_t oid, const Value &data, const Vec
 		FieldResolver resv(worker.scheme(), worker);
 		if (!worker.shouldIncludeNone()) {
 			auto returning = q.returning();
-			for (auto &it : data.asDict()) {
-				resv.include(it.first);
-			}
-			resv.readFields([&] (const StringView &name, const Field *) {
-				returning.field(name);
-			});
+			for (auto &it : data.asDict()) { resv.include(it.first); }
+			resv.readFields([&](const StringView &name, const Field *) { returning.field(name); });
 			q.finalize();
 		} else {
 			q.returning().field("__oid").finalize();
@@ -434,14 +430,15 @@ Value SqlHandle::save(Worker &worker, uint64_t oid, const Value &data, const Vec
 			}
 			ret = sp::move(obj);
 		} else if (!cond.empty() && isSuccess()) {
-			ret = Value({ stappler::pair("__oid", Value(oid)) });
+			ret = Value({stappler::pair("__oid", Value(oid))});
 		} else {
-			_driver->getApplicationInterface()->debug("Storage", "Fail to update object", Value({
-				std::make_pair("id", Value(oid)),
-				std::make_pair("query", Value(query.getStream().weak())),
-				std::make_pair("data", Value(data)),
-				std::make_pair("ret", Value(ret)),
-			}));
+			_driver->getApplicationInterface()->debug("Storage", "Fail to update object",
+					Value({
+						sprt::make_pair("id", Value(oid)),
+						sprt::make_pair("query", Value(query.getStream().weak())),
+						sprt::make_pair("data", Value(data)),
+						sprt::make_pair("ret", Value(ret)),
+					}));
 		}
 	}, &queryStorage);
 	return ret;
@@ -453,9 +450,8 @@ bool SqlHandle::remove(Worker &worker, uint64_t oid) {
 	auto queryStorage = _driver->makeQueryStorage(worker.scheme().getName());
 
 	bool ret = false;
-	makeQuery([&, this] (SqlQuery &query) {
-		auto q = query.remove(scheme.getName())
-				.where("__oid", Comparation::Equal, oid);
+	makeQuery([&, this](SqlQuery &query) {
+		auto q = query.remove(scheme.getName()).where("__oid", Comparation::Equal, oid);
 		q.finalize();
 		if (performQuery(query) == 1) { // one row affected
 			ret = true;
@@ -470,7 +466,7 @@ size_t SqlHandle::count(Worker &worker, const db::Query &q) {
 	auto queryStorage = _driver->makeQueryStorage(worker.scheme().getName());
 
 	size_t ret = 0;
-	makeQuery([&, this] (SqlQuery &query) {
+	makeQuery([&, this](SqlQuery &query) {
 		auto ordField = q.getQueryField();
 		if (ordField.empty()) {
 			auto f = query.select().count().from(scheme.getName());
@@ -483,7 +479,7 @@ size_t SqlHandle::count(Worker &worker, const db::Query &q) {
 			}
 
 			query.finalize();
-			selectQuery(query, [&] (Result &res) {
+			selectQuery(query, [&](Result &res) {
 				if (!res.empty()) {
 					ret = res.current().toInteger(0);
 					return true;
@@ -492,24 +488,20 @@ size_t SqlHandle::count(Worker &worker, const db::Query &q) {
 			});
 		} else if (auto f = scheme.getField(ordField)) {
 			switch (f->getType()) {
-			case Type::Set:
-				ret = getSetCount(worker, query, q.getQueryId(), *f, q);
-				break;
-			case Type::View:
-				ret = getViewCount(worker, query, q.getQueryId(), *f, q);
-				break;
-			default:
-				break;
+			case Type::Set: ret = getSetCount(worker, query, q.getQueryId(), *f, q); break;
+			case Type::View: ret = getViewCount(worker, query, q.getQueryId(), *f, q); break;
+			default: break;
 			}
 		}
 	}, &queryStorage);
 	return ret;
 }
 
-void SqlHandle::performPostUpdate(const db::Transaction &t, SqlQuery &query, const Scheme &s, Value &data, int64_t id, const Value &upd, bool clear) {
+void SqlHandle::performPostUpdate(const db::Transaction &t, SqlQuery &query, const Scheme &s,
+		Value &data, int64_t id, const Value &upd, bool clear) {
 	query.clear();
 
-	auto makeObject = [&] (const Field &field, const Value &obj) {
+	auto makeObject = [&](const Field &field, const Value &obj) {
 		int64_t targetId = 0;
 		if (obj.isDictionary()) {
 			Value val(sp::move(obj));
@@ -527,13 +519,13 @@ void SqlHandle::performPostUpdate(const db::Transaction &t, SqlQuery &query, con
 		if (targetId) {
 			Worker w(s, t);
 			w.includeNone();
-			Value patch{ stappler::pair(field.getName().str<Interface>(), Value(targetId)) };
+			Value patch{stappler::pair(field.getName().str<Interface>(), Value(targetId))};
 			t.patch(w, id, patch);
 			data.setInteger(targetId, field.getName().str<Interface>());
 		}
 	};
 
-	auto makeSet = [&, this] (const Field &field, const Value &obj) {
+	auto makeSet = [&, this](const Field &field, const Value &obj) {
 		auto f = field.getSlot<db::FieldObject>();
 		auto scheme = field.getForeignScheme();
 
@@ -560,7 +552,11 @@ void SqlHandle::performPostUpdate(const db::Transaction &t, SqlQuery &query, con
 						if (field.isReference()) {
 							toAdd.emplace_back(tmp);
 						} else if (auto link = s.getForeignLink(field)) {
-							if (auto val = Worker(*scheme, t).update(tmp, Value{stappler::pair(link->getName().str<Interface>(), Value(id))})) {
+							if (auto val = Worker(*scheme, t)
+											.update(tmp,
+													Value{stappler::pair(
+															link->getName().str<Interface>(),
+															Value(id))})) {
 								ret.addValue(sp::move(val));
 							}
 						}
@@ -572,9 +568,7 @@ void SqlHandle::performPostUpdate(const db::Transaction &t, SqlQuery &query, con
 				if (field.isReference()) {
 					query.clear();
 					if (insertIntoRefSet(query, s, id, field, toAdd)) {
-						for (auto &add_it : toAdd) {
-							ret.addInteger(add_it);
-						}
+						for (auto &add_it : toAdd) { ret.addInteger(add_it); }
 					}
 				}
 			}
@@ -609,11 +603,11 @@ Vector<int64_t> SqlHandle::performQueryListForIds(const QueryList &list, size_t 
 
 	auto queryStorage = _driver->makeQueryStorage(list.getScheme()->getName());
 
-	makeQuery([&, this] (SqlQuery &query) {
+	makeQuery([&, this](SqlQuery &query) {
 		query.writeQueryList(list, true, count);
 		query.finalize();
 
-		selectQuery(query, [&] (Result &res) {
+		selectQuery(query, [&](Result &res) {
 			for (auto it : res) {
 				ret.push_back(it.toInteger(0));
 				return true;
@@ -630,7 +624,7 @@ Value SqlHandle::performQueryList(const QueryList &list, size_t count, bool forU
 
 	auto queryStorage = _driver->makeQueryStorage(list.getScheme()->getName());
 
-	makeQuery([&, this] (SqlQuery &query) {
+	makeQuery([&, this](SqlQuery &query) {
 		FieldResolver resv(*list.getScheme(), list.getTopQuery());
 		query.writeQueryList(list, false, count);
 		if (forUpdate) {
@@ -650,26 +644,26 @@ bool SqlHandle::removeFromView(const db::FieldView &view, const Scheme *scheme, 
 
 		auto queryStorage = _driver->makeQueryStorage(view.owner->getName());
 
-		makeQuery([&, this] (SqlQuery &query) {
-			query << "DELETE FROM " << name << " WHERE \"" << view.scheme->getName() << "_id\"=" << oid << ";";
+		makeQuery([&, this](SqlQuery &query) {
+			query << "DELETE FROM " << name << " WHERE \"" << view.scheme->getName()
+				  << "_id\"=" << oid << ";";
 			ret = performQuery(query) != stappler::maxOf<size_t>();
 		}, &queryStorage);
 	}
 	return ret;
 }
 
-bool SqlHandle::addToView(const db::FieldView &view, const Scheme *scheme, uint64_t tag, const Value &data) {
+bool SqlHandle::addToView(const db::FieldView &view, const Scheme *scheme, uint64_t tag,
+		const Value &data) {
 	bool ret = false;
 	if (scheme) {
 		String name = toString(scheme->getName(), "_f_", view.name, "_view");
 
 		auto queryStorage = _driver->makeQueryStorage(view.owner->getName());
 
-		makeQuery([&, this] (SqlQuery &query) {
+		makeQuery([&, this](SqlQuery &query) {
 			auto ins = query.insert(name);
-			for (auto &it : data.asDict()) {
-				ins.field(it.first);
-			}
+			for (auto &it : data.asDict()) { ins.field(it.first); }
 
 			auto val = ins.values();
 			for (auto &it : data.asDict()) {
@@ -683,17 +677,18 @@ bool SqlHandle::addToView(const db::FieldView &view, const Scheme *scheme, uint6
 	return ret;
 }
 
-Vector<int64_t> SqlHandle::getReferenceParents(const Scheme &objectScheme, uint64_t oid, const Scheme *parentScheme, const Field *parentField) {
+Vector<int64_t> SqlHandle::getReferenceParents(const Scheme &objectScheme, uint64_t oid,
+		const Scheme *parentScheme, const Field *parentField) {
 	Vector<int64_t> vec;
 	if (parentField->isReference() && parentField->getType() == db::Type::Set) {
 		auto schemeName = toString(parentScheme->getName(), "_f_", parentField->getName());
 		auto queryStorage = _driver->makeQueryStorage(schemeName);
-		makeQuery([&, this] (SqlQuery &q) {
+		makeQuery([&, this](SqlQuery &q) {
 			q.select(toString(parentScheme->getName(), "_id"))
-				.from(schemeName)
-				.where(toString(objectScheme.getName(), "_id"), Comparation::Equal, oid);
+					.from(schemeName)
+					.where(toString(objectScheme.getName(), "_id"), Comparation::Equal, oid);
 
-			selectQuery(q, [&] (Result &res) {
+			selectQuery(q, [&](Result &res) {
 				vec.reserve(res.getRowsHint());
 				for (auto it : res) {
 					if (auto id = it.toInteger(0)) {
@@ -708,4 +703,4 @@ Vector<int64_t> SqlHandle::getReferenceParents(const Scheme &objectScheme, uint6
 	return vec;
 }
 
-}
+} // namespace stappler::db::sql

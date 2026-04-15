@@ -78,7 +78,7 @@ bool Sidebar::init(Position pos) {
 		}
 
 		if (s.event == GestureEvent::Began) {
-			if (std::abs(s.delta.y) < std::abs(s.delta.x) && !_node->isTouched(s.location())) {
+			if (sprt::abs(s.delta.y) < sprt::abs(s.delta.x) && !_node->isTouched(s.location())) {
 				stopNodeActions();
 				onSwipeDelta(s.delta.x / s.density);
 				return true;

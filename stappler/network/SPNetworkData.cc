@@ -76,7 +76,7 @@ static void Handle_addMailTo(HandleData<Interface> &data, StringView name) {
 		return;
 	}
 
-	auto lb = std::lower_bound(data.send.recipients.begin(), data.send.recipients.end(), nameStr);
+	auto lb = sprt::lower_bound(data.send.recipients.begin(), data.send.recipients.end(), nameStr);
 	if (lb != data.send.recipients.end() && *lb != name) {
 		data.send.recipients.emplace(lb, sp::move(nameStr));
 	} else if (lb != data.send.recipients.end()) {
@@ -91,7 +91,8 @@ static void Handle_setAuthority(HandleData<Interface> &data, StringView user, St
 		return;
 	}
 
-	data.auth.data = pair(user.str<Interface>(), passwd.str<Interface>());
+	data.auth.username = user.str<Interface>();
+	data.auth.credentials = passwd.str<Interface>();
 	data.auth.authMethod = method;
 }
 
@@ -105,8 +106,9 @@ static bool Handle_setPrivateKeyAuth(HandleData<Interface> &iface, const crypto:
 	bool ret = false;
 	pub.exportDer([&](BytesView pub) {
 		pk.sign([&](BytesView sign) {
-			iface.auth.data = base64::encode<Interface>(data::write(data::ValueTemplate<Interface>(
-					{data::ValueTemplate<Interface>(pub), data::ValueTemplate<Interface>(sign)})));
+			iface.auth.credentials = base64::encode<Interface>(
+					data::write(data::ValueTemplate<Interface>({data::ValueTemplate<Interface>(pub),
+						data::ValueTemplate<Interface>(sign)})));
 			iface.auth.authMethod = AuthMethod::PKey;
 			ret = true;
 		}, pub, crypto::SignAlgorithm::RSA_SHA512);

@@ -69,7 +69,7 @@ struct CountryInfo {
 };
 
 struct LocaleIdentifier {
-	std::array<char, 16> data;
+	sprt::array<char, 16> data;
 	StringView language;
 	StringView country;
 	StringView codeset;
@@ -105,10 +105,10 @@ struct LocaleInfo {
 template <typename Interface>
 auto LocaleIdentifier::getPosixName() -> typename Interface::StringType {
 	if (codeset.empty()) {
-		return string::toString<Interface>(language, "_",
+		return sprt::StreamTraits<char>::toString<Interface::Allocator>(language, "_",
 				string::toupper<memory::StandartInterface>(country));
 	} else {
-		return string::toString<Interface>(language, "_",
+		return sprt::StreamTraits<char>::toString<Interface::Allocator>(language, "_",
 				string::toupper<memory::StandartInterface>(country), ".", codeset);
 	}
 }

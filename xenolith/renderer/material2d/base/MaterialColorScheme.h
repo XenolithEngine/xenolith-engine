@@ -71,14 +71,11 @@ enum class ColorRole {
 struct SP_PUBLIC TonalPalette {
 	TonalPalette() = default;
 
-	explicit TonalPalette(const Color4F &color)
-	: TonalPalette(geom::Cam16::create(color)) { }
+	explicit TonalPalette(const Color4F &color) : TonalPalette(geom::Cam16::create(color)) { }
 
-	explicit TonalPalette(const geom::Cam16 &cam)
-	: hue(cam.hue), chroma(cam.chroma) { }
+	explicit TonalPalette(const geom::Cam16 &cam) : hue(cam.hue), chroma(cam.chroma) { }
 
-	TonalPalette(geom::Cam16Float hue, geom::Cam16Float chroma)
-	: hue(hue), chroma(chroma) { }
+	TonalPalette(geom::Cam16Float hue, geom::Cam16Float chroma) : hue(hue), chroma(chroma) { }
 
 	Color4F get(geom::Cam16Float tone, float alpha = 1.0f) const {
 		return ColorHCT::solveColor4F(hue, chroma, tone, alpha);
@@ -127,13 +124,9 @@ struct SP_PUBLIC ColorScheme {
 	void set(ThemeType, const Color4F &, bool isContent);
 	void set(ThemeType, const ColorHCT &, bool isContent);
 
-	Color4F get(ColorRole name) const {
-		return colors[toInt(name)];
-	}
+	Color4F get(ColorRole name) const { return colors[toInt(name)]; }
 
-	Color4F on(ColorRole name) const {
-		return colors[toInt(getColorRoleOn(name, type))];
-	}
+	Color4F on(ColorRole name) const { return colors[toInt(getColorRoleOn(name, type))]; }
 
 	ColorHCT hct(ColorRole name, float alpha = 1.0f) const;
 
@@ -141,10 +134,10 @@ struct SP_PUBLIC ColorScheme {
 	ColorHCT::Values values(ColorRole name, float alpha = 1.0f) const;
 
 	ThemeType type = ThemeType::LightTheme;
-	std::array<Color4F, toInt(ColorRole::Max)> colors;
+	sprt::array<Color4F, toInt(ColorRole::Max)> colors;
 	CorePalette palette;
 };
 
-}
+} // namespace stappler::xenolith::material2d
 
 #endif /* XENOLITH_RENDERER_MATERIAL2D_BASE_MATERIALCOLORSCHEME_H_ */

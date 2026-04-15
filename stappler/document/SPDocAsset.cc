@@ -60,7 +60,7 @@ DocumentAssetLock::DocumentAssetLock(Rc<DocumentAsset> &&a,
 Rc<DocumentAssetLock> DocumentAsset::lock(int64_t mtime) {
 	auto lock = doLockAsset(mtime);
 	if (lock) {
-		auto ret = new (std::nothrow) DocumentAssetLock(this,
+		auto ret = new (sprt::nothrow) DocumentAssetLock(this,
 				[this](const DocumentAsset &, Ref *lock) { doReleaseLock(lock); }, sp::move(lock));
 		auto ref = Rc<DocumentAssetLock>(ret);
 		ret->release(0);

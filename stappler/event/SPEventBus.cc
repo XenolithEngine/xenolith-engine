@@ -23,7 +23,6 @@
 #include "SPEventBus.h"
 #include "SPEventLooper.h"
 #include "SPMemInterface.h"
-#include <mutex>
 
 namespace stappler::event {
 
@@ -41,7 +40,7 @@ bool BusDelegate::init(NotNull<Looper> looper, SpanView<BusEventCategory> cat, N
 	_looper = looper;
 	_owner = ref;
 	_categories = cat.vec<memory::StandartInterface>();
-	_callback = std::move(cb);
+	_callback = sprt::move(cb);
 	return true;
 }
 
@@ -112,14 +111,14 @@ Bus::~Bus() {
 }
 
 BusEventCategory Bus::allocateCategory(StringView name) {
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 
 	_categories.emplace_back(name.str<memory::StandartInterface>());
 	return BusEventCategory(static_cast<uint32_t>(_categories.size()));
 }
 
 StringView Bus::getCategoryName(BusEventCategory id) const {
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	if (id.get() > _categories.size() || id.get() == 0) {
 		return StringView();
 	}
@@ -127,12 +126,12 @@ StringView Bus::getCategoryName(BusEventCategory id) const {
 }
 
 void Bus::addListener(NotNull<BusDelegate> delegate) {
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	doAddListener(delegate, lock);
 }
 
 void Bus::removeListener(NotNull<BusDelegate> delegate) {
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	doRemoveListener(delegate, lock);
 }
 
@@ -161,7 +160,7 @@ void Bus::dispatchEvent(NotNull<BusEvent> ev) {
 }
 
 void Bus::invalidateLooper(Looper *looper) {
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 
 	auto it = _loopers.find(looper);
 	if (it != _loopers.end()) {
@@ -173,7 +172,7 @@ void Bus::invalidateLooper(Looper *looper) {
 	}
 }
 
-void Bus::doAddListener(BusDelegate *delegate, std::unique_lock<std::mutex> &) {
+void Bus::doAddListener(BusDelegate *delegate, sprt::unique_lock<sprt::mutex> &) {
 	if (delegate->getBus()) {
 		log::source().error("event::BusDelegate", "BusDelegate already attached to bus");
 		return;
@@ -198,7 +197,7 @@ void Bus::doAddListener(BusDelegate *delegate, std::unique_lock<std::mutex> &) {
 	delegate->handleAdded(this);
 }
 
-void Bus::doRemoveListener(BusDelegate *delegate, std::unique_lock<std::mutex> &) {
+void Bus::doRemoveListener(BusDelegate *delegate, sprt::unique_lock<sprt::mutex> &) {
 	if (delegate->getBus() != this) {
 		log::source().error("event::BusDelegate", "BusDelegate is not attached to this bus");
 		return;

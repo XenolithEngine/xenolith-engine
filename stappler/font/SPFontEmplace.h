@@ -28,18 +28,18 @@
 namespace STAPPLER_VERSIONIZED stappler::font {
 
 struct SP_PUBLIC EmplaceCharInterface {
-	uint16_t (*getX) (void *) = nullptr;
-	uint16_t (*getY) (void *) = nullptr;
-	uint16_t (*getWidth) (void *) = nullptr;
-	uint16_t (*getHeight) (void *) = nullptr;
-	void (*setX) (void *, uint16_t) = nullptr;
-	void (*setY) (void *, uint16_t) = nullptr;
-	void (*setTex) (void *, uint16_t) = nullptr;
+	uint16_t (*getX)(void *) = nullptr;
+	uint16_t (*getY)(void *) = nullptr;
+	uint16_t (*getWidth)(void *) = nullptr;
+	uint16_t (*getHeight)(void *) = nullptr;
+	void (*setX)(void *, uint16_t) = nullptr;
+	void (*setY)(void *, uint16_t) = nullptr;
+	void (*setTex)(void *, uint16_t) = nullptr;
 };
 
-SP_PUBLIC geom::Extent2 emplaceChars(const EmplaceCharInterface &, const SpanView<void *> &,
-		float totalSquare = std::numeric_limits<float>::quiet_NaN());
+SP_PUBLIC sprt::geom::Extent2 emplaceChars(const EmplaceCharInterface &, const SpanView<void *> &,
+		float totalSquare = sprt::NaN<float>);
 
-}
+} // namespace stappler::font
 
 #endif /* CORE_FONT_SPFONTEMPLACE_H_ */

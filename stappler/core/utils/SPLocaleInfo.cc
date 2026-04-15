@@ -21,7 +21,6 @@ THE SOFTWARE.
 **/
 
 #include "SPLocaleInfo.h"
-#include "SPStringView.h"
 #include "SPString.h"
 #include "SPLog.h"
 
@@ -29,7 +28,7 @@ namespace STAPPLER_VERSIONIZED stappler {
 
 // clang-format off
 
-static constexpr std::array<StringView, 256> s_languagesArray({
+static constexpr sprt::array<StringView, 256> s_languagesArray({
 	StringView(),
 	StringView("th:Thai|ไทย|th|th|tha|tha|TH"),
 	StringView("ny:Chichewa|chiCheŵa|ny|ny|nya|nya|MW"),
@@ -288,7 +287,7 @@ static constexpr std::array<StringView, 256> s_languagesArray({
 	StringView(),
 });
 
-static constexpr std::array<StringView, 512> s_countriesArray({
+static constexpr sprt::array<StringView, 512> s_countriesArray({
 	StringView(),
 	StringView("ge:Georgia|საქართველო / Sakartwelo|GE|Asia|Western Asia|Tbilisi|Georgian Lari|lari|GEL|₾|Tetri|ka|🇬🇪|UTC+04:00|AM;AZ;RU;TR|####|GE|GEO|ge|GE|GE|268"),
 	StringView("td:Chad|جمهوريّة تشاد / Tchad|TD|Africa|Middle Africa|N'Djamena|Central African Franc|Central African CFA franc|XAF|Fr||fr;ar|🇹🇩|UTC+01:00|CM;CF;LY;NE;NG;SD||TD|TCD|td|TD|TD|148"),
@@ -805,7 +804,9 @@ static constexpr std::array<StringView, 512> s_countriesArray({
 
 // clang-format on
 
-static uint32_t getSymbolicIndex(StringView str, uint32_t cap) { return str.hash32() & (cap - 1); }
+static uint32_t getSymbolicIndex(StringView str, uint32_t cap) {
+	return sprt::hash32(str.data(), str.size()) & (cap - 1);
+}
 
 StringView findString(SpanView<StringView> data, StringView key) {
 	auto idx = getSymbolicIndex(key, data.size() - 1);
@@ -837,9 +838,9 @@ LanguageInfo LanguageInfo::get(StringView key) {
 }
 
 CountryInfo CountryInfo::get(StringView key) {
-	std::array< char, 4> buf = {0};
+	sprt::array< char, 4> buf = {0};
 
-	::memcpy(buf.data(), key.data(), std::min(size_t(3), key.size()));
+	sprt::memcpy(buf.data(), key.data(), sprt::min(size_t(3), key.size()));
 
 	string::apply_tolower_c(buf);
 
@@ -894,12 +895,12 @@ LocaleIdentifier::LocaleIdentifier(StringView iloc) noexcept {
 		}
 	}
 
-	::memset(data.data(), 0, data.size());
+	sprt::memset(data.data(), 0, data.size());
 
 	uint32_t remains = data.size();
 	uint32_t offset = 0;
 	if (!lang.empty() && remains > lang.size()) {
-		::memcpy(data.data() + offset, lang.data(), lang.size());
+		sprt::memcpy(data.data() + offset, lang.data(), lang.size());
 		language = StringView(data.data() + offset, lang.size());
 		offset += lang.size();
 		remains -= lang.size();
@@ -919,10 +920,10 @@ LocaleIdentifier::LocaleIdentifier(StringView iloc) noexcept {
 	}
 
 	if (!terr.empty() && remains > lang.size()) {
-		::memcpy(data.data() + offset, terr.data(), terr.size());
+		sprt::memcpy(data.data() + offset, terr.data(), terr.size());
 		country = StringView(data.data() + offset, terr.size());
 		for (uint32_t i = 0; i < terr.size(); ++i) {
-			data[offset + i] = ::tolower(data[offset + i]);
+			data[offset + i] = sprt::tolower_c(data[offset + i]);
 		}
 		offset += terr.size();
 		remains -= terr.size();
@@ -945,7 +946,7 @@ LocaleIdentifier::LocaleIdentifier(StringView iloc) noexcept {
 		}
 
 		if (!cp.empty() && remains > cp.size()) {
-			::memcpy(data.data() + offset, cp.data(), cp.size());
+			sprt::memcpy(data.data() + offset, cp.data(), cp.size());
 			codeset = StringView(data.data() + offset, cp.size());
 			offset += cp.size();
 			remains -= cp.size();
@@ -958,7 +959,7 @@ LocaleIdentifier::LocaleIdentifier(StringView iloc) noexcept {
 }
 
 LocaleIdentifier::LocaleIdentifier(const LocaleIdentifier &other) noexcept {
-	memcpy(data.data(), other.data.data(), data.size());
+	sprt::memcpy(data.data(), other.data.data(), data.size());
 
 	language = StringView(data.data() + (other.language.data() - other.data.data()),
 			other.language.size());
@@ -970,7 +971,7 @@ LocaleIdentifier::LocaleIdentifier(const LocaleIdentifier &other) noexcept {
 }
 
 LocaleIdentifier &LocaleIdentifier::operator=(const LocaleIdentifier &other) noexcept {
-	memcpy(data.data(), other.data.data(), data.size());
+	sprt::memcpy(data.data(), other.data.data(), data.size());
 
 	language = StringView(data.data() + (other.language.data() - other.data.data()),
 			other.language.size());

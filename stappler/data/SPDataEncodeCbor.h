@@ -77,10 +77,10 @@ struct Encoder : public Interface::AllocBaseType {
 	}
 
 	Encoder(bool prefix = false, size_t reserve = 1_KiB)
-	: type(Interface::usesMemoryPool() ? Vector : Buffered) {
+	: type(Interface::UsesMemoryPool ? Vector : Buffered) {
 		static thread_local typename ValueType::BytesType tl_buffer;
-		if constexpr (Interface::usesMemoryPool()) {
-			buffer = new (std::nothrow) typename ValueType::BytesType();
+		if constexpr (Interface::UsesMemoryPool) {
+			buffer = new (sprt::nothrow) typename ValueType::BytesType();
 		} else {
 			if (reserve <= 1_KiB) {
 				buffer = &tl_buffer;
@@ -88,7 +88,7 @@ struct Encoder : public Interface::AllocBaseType {
 				reserve = 1_KiB;
 			} else {
 				type = Vector;
-				buffer = new (std::nothrow) typename ValueType::BytesType();
+				buffer = new (sprt::nothrow) typename ValueType::BytesType();
 			}
 		}
 		buffer->reserve(reserve);
@@ -139,7 +139,7 @@ struct Encoder : public Interface::AllocBaseType {
 		case Vector:
 			tmpSize = buffer->size();
 			buffer->resize(tmpSize + size);
-			memcpy(buffer->data() + tmpSize, buf, size);
+			sprt::memcpy(buffer->data() + tmpSize, buf, size);
 			break;
 		default: break;
 		}
@@ -148,9 +148,9 @@ struct Encoder : public Interface::AllocBaseType {
 	void switchBuffer(size_t newSize) {
 		if (type == Buffered && newSize > 100_KiB) {
 			type = Vector;
-			auto newVec = new (std::nothrow) typename ValueType::BytesType();
+			auto newVec = new (sprt::nothrow) typename ValueType::BytesType();
 			newVec->resize(buffer->size());
-			memcpy(newVec->data(), buffer->data(), buffer->size());
+			sprt::memcpy(newVec->data(), buffer->data(), buffer->size());
 			buffer = newVec;
 		}
 	}
@@ -170,7 +170,7 @@ struct Encoder : public Interface::AllocBaseType {
 		if (type == Buffered) {
 			typename ValueType::BytesType ret;
 			ret.resize(buffer->size());
-			memcpy(ret.data(), buffer->data(), buffer->size());
+			sprt::memcpy(ret.data(), buffer->data(), buffer->size());
 			return ret;
 		} else if (type == Vector) {
 			typename ValueType::BytesType ret(sp::move(*buffer));

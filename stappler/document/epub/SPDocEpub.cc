@@ -72,7 +72,7 @@ bool DocumentEpub::isEpub(FileInfo path) {
 }
 
 bool DocumentEpub::init(FileInfo info, StringView ct) {
-	if (!Document::init(memory::app_root_pool, [&](memory::pool_t *pool) -> DocumentData * {
+	if (!Document::init(sprt::memory::app_root_pool, [&](memory::pool_t *pool) -> DocumentData * {
 		return new (pool) EpubData(pool, info, ct);
 	})) {
 		return false;
@@ -91,7 +91,7 @@ bool DocumentEpub::init(FileInfo info, StringView ct) {
 }
 
 bool DocumentEpub::init(BytesView data, StringView ct) {
-	if (!Document::init(memory::app_root_pool, [&](memory::pool_t *pool) -> DocumentData * {
+	if (!Document::init(sprt::memory::app_root_pool, [&](memory::pool_t *pool) -> DocumentData * {
 		return new (pool) EpubData(pool, data, ct);
 	})) {
 		return false;
@@ -254,7 +254,8 @@ static StringView _resolveEpubPath(StringView path, StringView root) {
 	} else {
 		path.skipChars<StringView::Chars<'/'>>();
 		root.backwardSkipChars<StringView::Chars<'/'>>();
-		return string::pdupString(root, "/", path);
+		return sprt::StreamTraits<char>::allocateStringView(memory::pool::acquire(), root, "/",
+				path);
 	}
 }
 
@@ -389,8 +390,8 @@ struct EpubContentReader {
 					if (tag.content->content.empty()) {
 						tag.content->content = it.second;
 					} else {
-						tag.content->content =
-								string::pdupString(tag.content->content, " ", it.second);
+						tag.content->content = sprt::StreamTraits<char>::allocateStringView(
+								memory::pool::acquire(), tag.content->content, " ", it.second);
 					}
 				}
 			}
@@ -414,8 +415,8 @@ struct EpubContentReader {
 					if (tag.content->content.empty()) {
 						tag.content->content = it.second;
 					} else {
-						tag.content->content =
-								string::pdupString(tag.content->content, " ", it.second);
+						tag.content->content = sprt::StreamTraits<char>::allocateStringView(
+								memory::pool::acquire(), tag.content->content, " ", it.second);
 					}
 				}
 			}
@@ -427,7 +428,8 @@ struct EpubContentReader {
 			if (tag.content->content.empty()) {
 				tag.content->content = s.pdup();
 			} else {
-				tag.content->content = string::pdupString(tag.content->content, " ", s);
+				tag.content->content = sprt::StreamTraits<char>::allocateStringView(
+						memory::pool::acquire(), tag.content->content, " ", s);
 			}
 		}
 	}
@@ -624,8 +626,8 @@ static void _epubReadXmlNav(EpubData *data, StringView content, StringView fileP
 					if (contents.back()->label.empty()) {
 						contents.back()->label = value.pdup();
 					} else {
-						contents.back()->label =
-								string::pdupString(contents.back()->label, " ", value);
+						contents.back()->label = sprt::StreamTraits<char>::allocateStringView(
+								memory::pool::acquire(), contents.back()->label, " ", value);
 					}
 				}
 				break;
@@ -713,7 +715,8 @@ static void _epubReadXmlNav(EpubData *data, StringView content, StringView fileP
 				if (contents.back()->label.empty()) {
 					contents.back()->label = s.pdup();
 				} else {
-					contents.back()->label = string::pdupString(contents.back()->label, " ", s);
+					contents.back()->label = sprt::StreamTraits<char>::allocateStringView(
+							memory::pool::acquire(), contents.back()->label, " ", s);
 				}
 				break;
 			default: break;
@@ -758,7 +761,8 @@ static void _processRootEpubPublication(EpubData *data, StringView content, Stri
 			if (mIt == data->meta.end()) {
 				data->meta.emplace(metaName, it->content);
 			} else {
-				mIt->second = string::pdupString(mIt->second, " ", it->content);
+				mIt->second = sprt::StreamTraits<char>::allocateStringView(memory::pool::acquire(),
+						mIt->second, " ", it->content);
 			}
 		}
 	}

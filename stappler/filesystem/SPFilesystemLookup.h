@@ -54,8 +54,6 @@ struct SP_PUBLIC FileInfo {
 	auto operator<=>(const FileInfo &) const = default;
 };
 
-SP_PUBLIC std::ostream &operator<<(std::ostream &, const FileInfo &);
-
 } // namespace STAPPLER_VERSIONIZED stappler
 
 namespace STAPPLER_VERSIONIZED stappler::filesystem {
@@ -273,50 +271,17 @@ SP_PUBLIC auto findPath(LocationCategory type, LookupFlags flags) ->
 
 } // namespace stappler::filesystem
 
-namespace sprt::filesystem {
+namespace sprt {
 
-inline std::ostream &operator<<(std::ostream &stream, LocationCategory cat) {
-	switch (cat) {
-	case LocationCategory::Exec: stream << "LocationCategory::Exec"; break;
-	case LocationCategory::Library: stream << "LocationCategory::Library"; break;
-	case LocationCategory::Fonts: stream << "LocationCategory::Fonts"; break;
-	case LocationCategory::UserHome: stream << "LocationCategory::UserHome"; break;
-	case LocationCategory::UserDesktop: stream << "LocationCategory::UserDesktop"; break;
-	case LocationCategory::UserDownload: stream << "LocationCategory::UserDownload"; break;
-	case LocationCategory::UserDocuments: stream << "LocationCategory::UserDocuments"; break;
-	case LocationCategory::UserMusic: stream << "LocationCategory::UserMusic"; break;
-	case LocationCategory::UserPictures: stream << "LocationCategory::UserPictures"; break;
-	case LocationCategory::UserVideos: stream << "LocationCategory::UserVideos"; break;
-	case LocationCategory::CommonData: stream << "LocationCategory::CommonData"; break;
-	case LocationCategory::CommonConfig: stream << "LocationCategory::CommonConfig"; break;
-	case LocationCategory::CommonState: stream << "LocationCategory::CommonState"; break;
-	case LocationCategory::CommonCache: stream << "LocationCategory::CommonCache"; break;
-	case LocationCategory::CommonRuntime: stream << "LocationCategory::CommonRuntime"; break;
-	case LocationCategory::AppData: stream << "LocationCategory::AppData"; break;
-	case LocationCategory::AppConfig: stream << "LocationCategory::AppConfig"; break;
-	case LocationCategory::AppState: stream << "LocationCategory::AppState"; break;
-	case LocationCategory::AppCache: stream << "LocationCategory::AppCache"; break;
-	case LocationCategory::AppRuntime: stream << "LocationCategory::AppRuntime"; break;
-	case LocationCategory::Bundled: stream << "LocationCategory::Bundled"; break;
-	case LocationCategory::Custom: stream << "LocationCategory::Custom"; break;
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::FileInfo> {
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const STAPPLER_VERSIONIZED_NAMESPACE::FileInfo &value) {
+		cb << "FileInfo{\"" << value.path << "\"," << value.category << "}";
 	}
-	return stream;
-}
+};
 
-inline std::ostream &operator<<(std::ostream &stream, FileType type) {
-	switch (type) {
-	case FileType::File: stream << "FileType::File"; break;
-	case FileType::Dir: stream << "FileType::Dir"; break;
-	case FileType::BlockDevice: stream << "FileType::BlockDevice"; break;
-	case FileType::CharDevice: stream << "FileType::CharDevice"; break;
-	case FileType::Pipe: stream << "FileType::Pipe"; break;
-	case FileType::Socket: stream << "FileType::Socket"; break;
-	case FileType::Link: stream << "FileType::Link"; break;
-	case FileType::Unknown: stream << "FileType::Unknown"; break;
-	}
-	return stream;
-}
-
-} // namespace sprt::filesystem
+} // namespace sprt
 
 #endif

@@ -24,9 +24,10 @@ THE SOFTWARE.
 #include "SPPqDriver.h"
 #include "SPPqHandle.h"
 #include "SPSqlHandle.h"
-#include "SPDso.h"
 #include "SPDbFieldExtensions.h"
 
+#include <sprt/cxx/mutex>
+#include <sprt/runtime/dso.h>
 #include <sprt/runtime/mem/userdata.h>
 
 namespace STAPPLER_VERSIONIZED stappler::db::pq {
@@ -104,7 +105,7 @@ struct DriverSym : AllocBase {
 	using PQgetResultType = void *(*)(void *conn);
 	using PQsetNoticeProcessorType = void (*)(void *conn, PQnoticeProcessor, void *);
 
-	DriverSym(StringView n, Dso &&d) : name(n), ptr(move(d)) {
+	DriverSym(StringView n, sprt::Dso &&d) : name(n), ptr(move(d)) {
 		this->PQresultStatus = ptr.sym<DriverSym::PQresultStatusType>("PQresultStatus");
 		this->PQconnectdbParams = ptr.sym<DriverSym::PQconnectdbParamsType>("PQconnectdbParams");
 		this->PQfinish = ptr.sym<DriverSym::PQfinishType>("PQfinish");
@@ -158,7 +159,7 @@ struct DriverSym : AllocBase {
 	DriverSym &operator=(DriverSym &&) = default;
 
 	StringView name;
-	Dso ptr;
+	sprt::Dso ptr;
 	PQconnectdbParamsType PQconnectdbParams = nullptr;
 	PQfinishType PQfinish = nullptr;
 	PQresultStatusType PQresultStatus = nullptr;
@@ -200,13 +201,13 @@ struct DriverHandle {
 };
 
 struct DriverLibStorage {
-	std::mutex s_driverMutex;
-	std::map<std::string, DriverSym, std::less<void>> s_driverLibs;
+	sprt::mutex s_driverMutex;
+	sprt::__malloc_map<sprt::__malloc_string, DriverSym, sprt::less<void>> s_driverLibs;
 
 	static DriverLibStorage *getInstance();
 
 	DriverSym *openLib(StringView lib) {
-		std::unique_lock<std::mutex> lock(s_driverMutex);
+		sprt::unique_lock<sprt::mutex> lock(s_driverMutex);
 
 		auto target = lib.str<stappler::memory::StandartInterface>();
 		auto it = s_driverLibs.find(target);
@@ -215,7 +216,7 @@ struct DriverLibStorage {
 			return &it->second;
 		}
 
-		if (auto d = Dso(target)) {
+		if (auto d = sprt::Dso(target)) {
 			DriverSym syms(target, move(d));
 			if (syms) {
 				auto ret = s_driverLibs.emplace(target, move(syms)).first;
@@ -228,7 +229,7 @@ struct DriverLibStorage {
 	}
 
 	void closeLib(DriverSym *sym) {
-		std::unique_lock<std::mutex> lock(s_driverMutex);
+		sprt::unique_lock<sprt::mutex> lock(s_driverMutex);
 		if (sym->refCount == 1) {
 			s_driverLibs.erase(sym->name.str<stappler::memory::StandartInterface>());
 		} else {
@@ -248,13 +249,13 @@ DriverLibStorage *DriverLibStorage::getInstance() {
 }
 
 void Driver_noticeMessage(void *arg, const char *message) {
-	// std::cout << "Notice: " << message << "\n";
+	// sprt::cout << "Notice: " << message << "\n";
 	// Silence libpq notices
 }
 
 static void Driver_insert_sorted(Vector<sprt::pair<uint32_t, BackendInterface::StorageType>> &vec,
 		uint32_t oid, BackendInterface::StorageType type) {
-	auto it = std::upper_bound(vec.begin(), vec.end(), oid,
+	auto it = sprt::upper_bound(vec.begin(), vec.end(), oid,
 			[](uint32_t l, const sprt::pair<uint32_t, BackendInterface::StorageType> &r) -> bool {
 		return l < r.first;
 	});
@@ -263,7 +264,7 @@ static void Driver_insert_sorted(Vector<sprt::pair<uint32_t, BackendInterface::S
 
 static void Driver_insert_sorted(Vector<sprt::pair<uint32_t, String>> &vec, uint32_t oid,
 		StringView type) {
-	auto it = std::upper_bound(vec.begin(), vec.end(), oid,
+	auto it = sprt::upper_bound(vec.begin(), vec.end(), oid,
 			[](uint32_t l, const sprt::pair<uint32_t, String> &r) -> bool { return l < r.first; });
 	vec.emplace(it, oid, type.str<Interface>());
 }
@@ -280,7 +281,7 @@ bool Driver::init(Handle handle, const Vector<StringView> &dbs) {
 
 		for (size_t i = 0; i < getNTuples(res); ++i) {
 			auto name = StringView(getValue(res, i, 0), getLength(res, i, 0));
-			auto it = std::find(toCreate.begin(), toCreate.end(), name);
+			auto it = sprt::find(toCreate.begin(), toCreate.end(), name);
 			if (it != toCreate.end()) {
 				toCreate.erase(it);
 			}
@@ -292,8 +293,8 @@ bool Driver::init(Handle handle, const Vector<StringView> &dbs) {
 			for (auto &it : toCreate) {
 				StringStream query;
 				query << "CREATE DATABASE " << it << ";";
-				auto q = query.data();
-				auto res = exec(conn, q);
+				auto q = query.weak();
+				auto res = exec(conn, q.data());
 				clearResult(res);
 			}
 		}
@@ -498,13 +499,13 @@ bool Driver::consumeNotifications(Handle handle, const Callback<void(StringView)
 		return false;
 	}
 	pgNotify *notify;
-	while ((notify = _handle->PQnotifies(conn)) != NULL) {
+	while ((notify = _handle->PQnotifies(conn)) != nullptr) {
 		cb(notify->relname);
 		_handle->PQfreemem(notify);
 	}
 	if (_handle->PQisBusy(conn) == 0) {
 		void *result;
-		while ((result = _handle->PQgetResult(conn)) != NULL) { _handle->PQclear(result); }
+		while ((result = _handle->PQgetResult(conn)) != nullptr) { _handle->PQclear(result); }
 	}
 	return true;
 }
@@ -616,7 +617,7 @@ Driver::Result Driver::exec(Connection conn, const char *command, int nParams,
 }
 
 BackendInterface::StorageType Driver::getTypeById(uint32_t oid) const {
-	auto it = std::lower_bound(_storageTypes.begin(), _storageTypes.end(), oid,
+	auto it = sprt::lower_bound(_storageTypes.begin(), _storageTypes.end(), oid,
 			[](const sprt::pair<uint32_t, BackendInterface::StorageType> &l, uint32_t r) -> bool {
 		return l.first < r;
 	});
@@ -627,7 +628,7 @@ BackendInterface::StorageType Driver::getTypeById(uint32_t oid) const {
 }
 
 StringView Driver::getTypeNameById(uint32_t oid) const {
-	auto it = std::lower_bound(_customTypes.begin(), _customTypes.end(), oid,
+	auto it = sprt::lower_bound(_customTypes.begin(), _customTypes.end(), oid,
 			[](const sprt::pair<uint32_t, String> &l, uint32_t r) -> bool { return l.first < r; });
 	if (it != _customTypes.end() && it->first == oid) {
 		return it->second;
@@ -771,8 +772,8 @@ BytesView ResultCursor::toBytes(size_t field) const {
 	} else {
 		auto val = driver->getValue(result, currentRow, field);
 		auto len = driver->getLength(result, currentRow, field);
-		if (len > 2 && memcmp(val, "\\x", 2) == 0) {
-			auto d = new (std::nothrow) Bytes(
+		if (len > 2 && sprt::memcmp(val, "\\x", 2) == 0) {
+			auto d = new (sprt::nothrow) Bytes(
 					stappler::base16::decode<Interface>(stappler::CoderSource(val + 2, len - 2)));
 			return BytesView(*d);
 		}
@@ -912,9 +913,9 @@ bool ResultCursor::next() {
 void ResultCursor::reset() { currentRow = 0; }
 Value ResultCursor::getInfo() const {
 	return Value({
-		stappler::pair("error", Value(stappler::toInt(err))),
-		stappler::pair("status", Value(driver->getStatusMessage(err))),
-		stappler::pair("desc",
+		sprt::make_pair("error", Value(stappler::toInt(err))),
+		sprt::make_pair("status", Value(driver->getStatusMessage(err))),
+		sprt::make_pair("desc",
 				Value(result.get() ? driver->getResultErrorMessage(result)
 								   : "Fatal database error")),
 	});

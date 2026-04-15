@@ -74,7 +74,7 @@ public:
 	};
 
 	using FieldVec = Vector<const Field *>;
-	using AccessTable = std::array<AccessRole *, stappler::toInt(AccessRoleId::Max)>;
+	using AccessTable = sprt::array<AccessRole *, stappler::toInt(AccessRoleId::Max)>;
 
 	// field list to send, when no field is required to return
 	static FieldVec EmptyFieldList() { return FieldVec{nullptr}; }
@@ -83,7 +83,7 @@ public:
 
 public:
 	Scheme(const StringView &name, Options = Options::None, uint32_t v = 0);
-	Scheme(const StringView &name, std::initializer_list<Field> il, Options = Options::None,
+	Scheme(const StringView &name, sprt::initializer_list<Field> il, Options = Options::None,
 			uint32_t v = 0);
 
 	Scheme(const Scheme &) = delete;
@@ -97,7 +97,7 @@ public:
 	bool isCompressed() const;
 	bool hasFullText() const;
 
-	const Scheme &define(std::initializer_list<Field> il);
+	const Scheme &define(sprt::initializer_list<Field> il);
 	const Scheme &define(Vector<Field> &&il);
 	const Scheme &define(AccessRole &&role);
 	const Scheme &define(UniqueConstraintDef &&);
@@ -142,7 +142,7 @@ public:
 
 	size_t getMaxRequestSize() const { return _config.maxRequestSize; }
 	size_t getMaxVarSize() const { return _config.maxVarSize; }
-	size_t getMaxFileSize() const { return std::max(_config.maxFileSize, _config.maxVarSize); }
+	size_t getMaxFileSize() const { return sprt::max(_config.maxFileSize, _config.maxVarSize); }
 
 	bool isAtomicPatch(const Value &) const;
 
@@ -163,13 +163,13 @@ public: // worker interface
 	template <typename Storage, typename _Value>
 	auto get(Storage &&, _Value &&, StringView, UpdateFlags = UpdateFlags::None) const -> Value;
 	template <typename Storage, typename _Value>
-	auto get(Storage &&, _Value &&, std::initializer_list<StringView> &&fields,
+	auto get(Storage &&, _Value &&, sprt::initializer_list<StringView> &&fields,
 			UpdateFlags = UpdateFlags::None) const -> Value;
 	template <typename Storage, typename _Value>
-	auto get(Storage &&, _Value &&, std::initializer_list<const char *> &&fields,
+	auto get(Storage &&, _Value &&, sprt::initializer_list<const char *> &&fields,
 			UpdateFlags = UpdateFlags::None) const -> Value;
 	template <typename Storage, typename _Value>
-	auto get(Storage &&, _Value &&, std::initializer_list<const Field *> &&fields,
+	auto get(Storage &&, _Value &&, sprt::initializer_list<const Field *> &&fields,
 			UpdateFlags = UpdateFlags::None) const -> Value;
 	template <typename Storage, typename _Value>
 	auto get(Storage &&, _Value &&, SpanView<const Field *> fields,
@@ -215,7 +215,7 @@ public: // worker interface
 
 	template <typename _Storage, typename _Value, typename _Field>
 	auto getProperty(_Storage &&, _Value &&, _Field &&,
-			std::initializer_list<StringView> fields) const -> Value;
+			sprt::initializer_list<StringView> fields) const -> Value;
 
 	template <typename _Storage, typename _Value, typename _Field>
 	auto getProperty(_Storage &&, _Value &&, _Field &&,
@@ -338,116 +338,116 @@ SP_DEFINE_ENUM_AS_MASK(Scheme::Options)
 
 template <typename Storage, typename _Value>
 inline auto Scheme::get(Storage &&s, _Value &&v, UpdateFlags flags) const -> Value {
-	return Worker(*this, std::forward<Storage>(s)).get(std::forward<_Value>(v), flags);
+	return Worker(*this, sprt::forward<Storage>(s)).get(sprt::forward<_Value>(v), flags);
 }
 
 template <typename Storage, typename _Value>
 inline auto Scheme::get(Storage &&s, _Value &&v, StringView it, UpdateFlags flags) const -> Value {
-	return Worker(*this, std::forward<Storage>(s)).get(std::forward<_Value>(v), it, flags);
+	return Worker(*this, sprt::forward<Storage>(s)).get(sprt::forward<_Value>(v), it, flags);
 }
 
 template <typename Storage, typename _Value>
-inline auto Scheme::get(Storage &&s, _Value &&v, std::initializer_list<StringView> &&fields,
+inline auto Scheme::get(Storage &&s, _Value &&v, sprt::initializer_list<StringView> &&fields,
 		UpdateFlags flags) const -> Value {
-	return Worker(*this, std::forward<Storage>(s))
-			.get(std::forward<_Value>(v), sp::move(fields), flags);
+	return Worker(*this, sprt::forward<Storage>(s))
+			.get(sprt::forward<_Value>(v), sp::move(fields), flags);
 }
 
 template <typename Storage, typename _Value>
-inline auto Scheme::get(Storage &&s, _Value &&v, std::initializer_list<const char *> &&fields,
+inline auto Scheme::get(Storage &&s, _Value &&v, sprt::initializer_list<const char *> &&fields,
 		UpdateFlags flags) const -> Value {
-	return Worker(*this, std::forward<Storage>(s))
-			.get(std::forward<_Value>(v), sp::move(fields), flags);
+	return Worker(*this, sprt::forward<Storage>(s))
+			.get(sprt::forward<_Value>(v), sp::move(fields), flags);
 }
 
 template <typename Storage, typename _Value>
-inline auto Scheme::get(Storage &&s, _Value &&v, std::initializer_list<const Field *> &&fields,
+inline auto Scheme::get(Storage &&s, _Value &&v, sprt::initializer_list<const Field *> &&fields,
 		UpdateFlags flags) const -> Value {
-	return Worker(*this, std::forward<Storage>(s))
-			.get(std::forward<_Value>(v), sp::move(fields), flags);
+	return Worker(*this, sprt::forward<Storage>(s))
+			.get(sprt::forward<_Value>(v), sp::move(fields), flags);
 }
 
 template <typename Storage, typename _Value>
 inline auto Scheme::get(Storage &&s, _Value &&v, SpanView<const Field *> fields,
 		UpdateFlags flags) const -> Value {
-	return Worker(*this, std::forward<Storage>(s)).get(std::forward<_Value>(v), fields, flags);
+	return Worker(*this, sprt::forward<Storage>(s)).get(sprt::forward<_Value>(v), fields, flags);
 }
 
 template <typename T>
 inline auto Scheme::foreach (T &&s, const Query &q, const Callback<bool(Value &)> &cb,
 		UpdateFlags flags) const -> bool {
-	return Worker(*this, std::forward<T>(s)).foreach (q, cb, flags);
+	return Worker(*this, sprt::forward<T>(s)).foreach (q, cb, flags);
 }
 
 template <typename T, typename... Args>
 inline auto Scheme::select(T &&t, Args &&...args) const -> Value {
-	return Worker(*this, std::forward<T>(t)).select(std::forward<Args>(args)...);
+	return Worker(*this, sprt::forward<T>(t)).select(sprt::forward<Args>(args)...);
 }
 
 template <typename T, typename... Args>
 inline auto Scheme::create(T &&t, Args &&...args) const -> Value {
-	return Worker(*this, std::forward<T>(t)).create(std::forward<Args>(args)...);
+	return Worker(*this, sprt::forward<T>(t)).create(sprt::forward<Args>(args)...);
 }
 
 template <typename T, typename... Args>
 inline auto Scheme::update(T &&t, Args &&...args) const -> Value {
-	return Worker(*this, std::forward<T>(t)).update(std::forward<Args>(args)...);
+	return Worker(*this, sprt::forward<T>(t)).update(sprt::forward<Args>(args)...);
 }
 
 template <typename T, typename... Args>
 inline auto Scheme::remove(T &&t, Args &&...args) const -> bool {
-	return Worker(*this, std::forward<T>(t)).remove(std::forward<Args>(args)...);
+	return Worker(*this, sprt::forward<T>(t)).remove(sprt::forward<Args>(args)...);
 }
 
 template <typename T, typename... Args>
 inline auto Scheme::count(T &&t, Args &&...args) const -> size_t {
-	return Worker(*this, std::forward<T>(t)).count(std::forward<Args>(args)...);
+	return Worker(*this, sprt::forward<T>(t)).count(sprt::forward<Args>(args)...);
 }
 
 template <typename T, typename... Args>
 inline auto Scheme::touch(T &&t, Args &&...args) const -> void {
-	Worker(*this, std::forward<T>(t)).touch(std::forward<Args>(args)...);
+	Worker(*this, sprt::forward<T>(t)).touch(sprt::forward<Args>(args)...);
 }
 
 
 template <typename _Storage, typename _Value, typename _Field>
 inline auto Scheme::getProperty(_Storage &&s, _Value &&v, _Field &&f,
-		std::initializer_list<StringView> fields) const -> Value {
-	return Worker(*this, std::forward<_Storage>(s))
-			.getField(std::forward<_Value>(v), std::forward<_Field>(f), fields);
+		sprt::initializer_list<StringView> fields) const -> Value {
+	return Worker(*this, sprt::forward<_Storage>(s))
+			.getField(sprt::forward<_Value>(v), sprt::forward<_Field>(f), fields);
 }
 
 template <typename _Storage, typename _Value, typename _Field>
 auto Scheme::getProperty(_Storage &&s, _Value &&v, _Field &&f,
 		const Set<const Field *> &fields) const -> Value {
-	return Worker(*this, std::forward<_Storage>(s))
-			.getField(std::forward<_Value>(v), std::forward<_Field>(f), fields);
+	return Worker(*this, sprt::forward<_Storage>(s))
+			.getField(sprt::forward<_Value>(v), sprt::forward<_Field>(f), fields);
 }
 
 template <typename T, typename... Args>
 inline auto Scheme::setProperty(T &&t, Args &&...args) const -> Value {
-	return Worker(*this, std::forward<T>(t)).setField(std::forward<Args>(args)...);
+	return Worker(*this, sprt::forward<T>(t)).setField(sprt::forward<Args>(args)...);
 }
 
 template <typename T, typename... Args>
 inline auto Scheme::appendProperty(T &&t, Args &&...args) const -> Value {
-	return Worker(*this, std::forward<T>(t)).appendField(std::forward<Args>(args)...);
+	return Worker(*this, sprt::forward<T>(t)).appendField(sprt::forward<Args>(args)...);
 }
 
 template <typename T, typename... Args>
 inline auto Scheme::clearProperty(T &&t, Args &&...args) const -> bool {
-	return Worker(*this, std::forward<T>(t)).clearField(std::forward<Args>(args)...);
+	return Worker(*this, sprt::forward<T>(t)).clearField(sprt::forward<Args>(args)...);
 }
 
 template <typename T, typename... Args>
 inline auto Scheme::countProperty(T &&t, Args &&...args) const -> size_t {
-	return Worker(*this, std::forward<T>(t)).countField(std::forward<Args>(args)...);
+	return Worker(*this, sprt::forward<T>(t)).countField(sprt::forward<Args>(args)...);
 }
 
 template <typename T, typename... Args>
 const Scheme &Scheme::define(T &&il, Args &&...args) {
-	define(std::forward<T>(il));
-	define(std::forward<Args>(args)...);
+	define(sprt::forward<T>(il));
+	define(sprt::forward<Args>(args)...);
 	return *this;
 }
 

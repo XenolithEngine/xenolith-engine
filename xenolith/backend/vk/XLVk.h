@@ -323,7 +323,7 @@ SP_PUBLIC String getVkMemoryPropertyFlags(VkMemoryPropertyFlags);
 
 SP_PUBLIC bool checkIfExtensionAvailable(uint32_t apiVersion, const char *name,
 		const Vector<VkExtensionProperties> &available, Vector<StringView> &optionals,
-		Vector<StringView> &promoted, std::bitset<toInt(OptionalDeviceExtension::Max)> &flags);
+		Vector<StringView> &promoted, sprt::bitset<toInt(OptionalDeviceExtension::Max)> &flags);
 
 SP_PUBLIC bool isPromotedExtension(uint32_t apiVersion, StringView name);
 
@@ -336,8 +336,23 @@ SP_PUBLIC void sanitizeVkStruct(T &t) {
 
 SP_PUBLIC Status getStatus(VkResult res);
 
-SP_PUBLIC std::ostream &operator<<(std::ostream &stream, VkResult res);
-
 } // namespace stappler::xenolith::vk
+
+namespace sprt {
+
+template <>
+struct io_traits<VkResult> {
+
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb, const VkResult &value) {
+		cb << STAPPLER_VERSIONIZED_NAMESPACE::xenolith::vk::getVkResultName(value);
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const VkResult &value) {
+		cb << STAPPLER_VERSIONIZED_NAMESPACE::xenolith::vk::getVkResultName(value);
+	}
+};
+
+} // namespace sprt
 
 #endif /* XENOLITH_BACKEND_VK_XLVK_H_ */

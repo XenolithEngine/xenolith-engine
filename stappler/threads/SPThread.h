@@ -25,9 +25,11 @@
 #ifndef STAPPLER_THREADS_SPTHREAD_H_
 #define STAPPLER_THREADS_SPTHREAD_H_
 
-#include "SPMemory.h"
+#include "SPMemory.h" // IWYU pragma: keep
 
-#include <pthread.h>
+#include <sprt/cxx/thread>
+#include <sprt/cxx/mutex>
+#include <sprt/cxx/condition_variable>
 
 namespace STAPPLER_VERSIONIZED stappler::thread {
 
@@ -41,7 +43,7 @@ SP_DEFINE_ENUM_AS_MASK(ThreadFlags)
 /* Interface for thread workers or handlers */
 class SP_PUBLIC Thread : public Ref {
 public:
-	using Id = uint32_t;
+	using Id = sprt::thread::id;
 
 	static void *workerThread(void *tm);
 
@@ -79,16 +81,16 @@ protected:
 
 	const Thread *_parentThread = nullptr;
 
-	const std::type_info *_type = nullptr;
+	const sprt::type_info *_type = nullptr;
 
-	pthread_t _thisThread = 0;
-	Id _thisThreadId;
+	sprt::thread _thisThread;
+	sprt::thread::id _thisThreadId;
 
-	std::atomic<bool> _running = false;
-	std::mutex _runningMutex;
-	std::condition_variable _runningVar;
+	sprt::atomic<bool> _running = false;
+	sprt::mutex _runningMutex;
+	sprt::condition_variable _runningVar;
 
-	mutable std::atomic_flag _continueExecution;
+	mutable sprt::atomic_flag _continueExecution;
 };
 
 template <typename T>

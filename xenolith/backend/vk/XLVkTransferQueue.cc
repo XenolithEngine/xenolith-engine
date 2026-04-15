@@ -276,7 +276,7 @@ bool TransferResource::initialize(AllocationUsage usage) {
 		if (!it.req.requiresDedicated && !it.req.prefersDedicated) {
 			if (it.info.tiling == VK_IMAGE_TILING_OPTIMAL) {
 				_requiredMemory = math::align<VkDeviceSize>(_requiredMemory,
-						std::max(it.req.requirements.alignment, _nonCoherentAtomSize));
+						sprt::max(it.req.requirements.alignment, _nonCoherentAtomSize));
 				it.offset = _requiredMemory;
 				_requiredMemory += it.req.requirements.size;
 			}
@@ -290,7 +290,7 @@ bool TransferResource::initialize(AllocationUsage usage) {
 		if (!it.req.requiresDedicated && !it.req.prefersDedicated) {
 			if (it.info.tiling != VK_IMAGE_TILING_OPTIMAL) {
 				_requiredMemory = math::align<VkDeviceSize>(_requiredMemory,
-						std::max(it.req.requirements.alignment, _nonCoherentAtomSize));
+						sprt::max(it.req.requirements.alignment, _nonCoherentAtomSize));
 				it.offset = _requiredMemory;
 				_requiredMemory += it.req.requirements.size;
 			}
@@ -300,7 +300,7 @@ bool TransferResource::initialize(AllocationUsage usage) {
 	for (auto &it : _buffers) {
 		if (!it.req.requiresDedicated && !it.req.prefersDedicated) {
 			_requiredMemory = math::align<VkDeviceSize>(_requiredMemory,
-					std::max(it.req.requirements.alignment, _nonCoherentAtomSize));
+					sprt::max(it.req.requirements.alignment, _nonCoherentAtomSize));
 			it.offset = _requiredMemory;
 			_requiredMemory += it.req.requirements.size;
 		}
@@ -711,7 +711,7 @@ size_t TransferResource::preTransferData() {
 		generalMem = (uint8_t *)targetMem;
 	}
 
-	size_t alignment = std::max(VkDeviceSize(0x10), _alloc->getNonCoherentAtomSize());
+	size_t alignment = sprt::max(VkDeviceSize(0x10), _alloc->getNonCoherentAtomSize());
 	size_t stagingSize = 0;
 
 	for (auto &it : _images) {

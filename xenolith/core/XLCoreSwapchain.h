@@ -118,7 +118,7 @@ protected:
 	uint64_t _presentedFrames = 0;
 	uint64_t _presentTime = 0;
 
-	Mutex _resourceMutex;
+	sprt::mutex _resourceMutex;
 	Rc<Surface> _surface;
 
 	Vector<Rc<Semaphore>> _invalidatedSemaphores;

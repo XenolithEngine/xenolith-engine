@@ -54,7 +54,7 @@ MemoryMappedRegion MemoryMappedRegion::mapFile(const FileInfo &info, MappingType
 		return MemoryMappedRegion();
 	}
 
-	len = std::min(len, size_t(stat.st_size));
+	len = sprt::min(len, size_t(stat.st_size));
 
 	if (offset > 0) {
 		if (offset > stat.st_size) {
@@ -63,7 +63,7 @@ MemoryMappedRegion MemoryMappedRegion::mapFile(const FileInfo &info, MappingType
 			return MemoryMappedRegion();
 		} else {
 			auto remains = stat.st_size - offset;
-			len = std::min(len, size_t(remains));
+			len = sprt::min(len, size_t(remains));
 		}
 	}
 
@@ -92,7 +92,7 @@ MemoryMappedRegion::MemoryMappedRegion(MemoryMappedRegion &&other) {
 	_prot = other._prot;
 
 	other._region = nullptr;
-	memset(other._storage.data(), 0, other._storage.size());
+	sprt::memset(other._storage.data(), 0, other._storage.size());
 }
 
 MemoryMappedRegion &MemoryMappedRegion::operator=(MemoryMappedRegion &&other) {
@@ -102,7 +102,7 @@ MemoryMappedRegion &MemoryMappedRegion::operator=(MemoryMappedRegion &&other) {
 	_prot = other._prot;
 
 	other._region = nullptr;
-	memset(other._storage.data(), 0, other._storage.size());
+	sprt::memset(other._storage.data(), 0, other._storage.size());
 	return *this;
 }
 

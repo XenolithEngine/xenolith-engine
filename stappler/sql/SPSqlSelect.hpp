@@ -69,7 +69,7 @@ template <typename Clause>
 template <typename... Args>
 auto Query<Binder, Interface>::FieldsClause<Clause>::fields(const Field &f, Args &&...args)
 		-> Clause & {
-	Expand<Clause>::fields((Clause &)*this, f, std::forward<Args>(args)...);
+	Expand<Clause>::fields((Clause &)*this, f, sprt::forward<Args>(args)...);
 	return (Clause &)*this;
 }
 
@@ -169,7 +169,7 @@ template <typename Binder, typename Interface>
 template <typename Callback>
 auto Query<Binder, Interface>::SelectFrom::innerJoinOn(const StringView &s, const Callback &cb)
 		-> SelectFrom & {
-	static_assert(std::is_invocable_v<Callback, WhereBegin &>, "Invalid callback type");
+	static_assert(sprt::is_invocable_v<Callback, WhereBegin &>, "Invalid callback type");
 	if (this->state == State::Some) {
 		this->query->stream << " INNER JOIN " << s << " ON(";
 		WhereBegin tmp(this->query);
@@ -183,7 +183,7 @@ template <typename Binder, typename Interface>
 template <typename Callback>
 auto Query<Binder, Interface>::SelectFrom::leftJoinOn(const StringView &s, const Callback &cb)
 		-> SelectFrom & {
-	static_assert(std::is_invocable_v<Callback, WhereBegin &>, "Invalid callback type");
+	static_assert(sprt::is_invocable_v<Callback, WhereBegin &>, "Invalid callback type");
 	if (this->state == State::Some) {
 		this->query->stream << " LEFT OUTER JOIN " << s << " ON(";
 		WhereBegin tmp(this->query);
@@ -197,7 +197,7 @@ template <typename Binder, typename Interface>
 template <typename Callback>
 auto Query<Binder, Interface>::SelectFrom::rightJoinOn(const StringView &s, const Callback &cb)
 		-> SelectFrom & {
-	static_assert(std::is_invocable_v<Callback, WhereBegin &>, "Invalid callback type");
+	static_assert(sprt::is_invocable_v<Callback, WhereBegin &>, "Invalid callback type");
 	if (this->state == State::Some) {
 		this->query->stream << " RIGHT OUTER JOIN " << s << " ON(";
 		WhereBegin tmp(this->query);
@@ -211,7 +211,7 @@ template <typename Binder, typename Interface>
 template <typename Callback>
 auto Query<Binder, Interface>::SelectFrom::fullJoinOn(const StringView &s, const Callback &cb)
 		-> SelectFrom & {
-	static_assert(std::is_invocable_v<Callback, WhereBegin &>, "Invalid callback type");
+	static_assert(sprt::is_invocable_v<Callback, WhereBegin &>, "Invalid callback type");
 	if (this->state == State::Some) {
 		this->query->stream << " FULL OUTER JOIN " << s << " ON(";
 		WhereBegin tmp(this->query);
@@ -226,7 +226,7 @@ template <typename... Args>
 auto Query<Binder, Interface>::SelectFrom::where(Args &&...args) -> SelectWhere {
 	this->query->stream << " WHERE";
 	SelectWhere q(this->query);
-	q.where(sql::Operator::And, std::forward<Args>(args)...);
+	q.where(sql::Operator::And, sprt::forward<Args>(args)...);
 	return q;
 }
 
@@ -281,7 +281,7 @@ template <typename Binder, typename Interface>
 template <typename... Args>
 auto Query<Binder, Interface>::SelectGroup::fields(const Field &f, Args &&...args)
 		-> SelectGroup & {
-	Expand<SelectGroup>::fields(*this, f, std::forward<Args>(args)...);
+	Expand<SelectGroup>::fields(*this, f, sprt::forward<Args>(args)...);
 	return *this;
 }
 

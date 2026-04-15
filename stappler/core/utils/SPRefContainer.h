@@ -34,11 +34,11 @@ struct RefContainer {
 	using Vector = typename Interface::template VectorType<T>;
 
 	static constexpr size_t ReserveItems =
-			std::max(sizeof(Vector<Item *>) / sizeof(Item *), size_t(4));
+			sprt::max(sizeof(Vector<Item *>) / sizeof(Item *), size_t(4));
 	static constexpr size_t ContainerSize =
-			std::max(sizeof(Vector<Item *>), sizeof(Item *) * ReserveItems);
+			sprt::max(sizeof(Vector<Item *>), sizeof(Item *) * ReserveItems);
 
-	std::array<uint8_t, ContainerSize> _container;
+	sprt::array<uint8_t, ContainerSize> _container;
 	size_t _nitems = 0;
 
 	~RefContainer();
@@ -79,7 +79,7 @@ RefContainer<Item, Interface>::~RefContainer() {
 		auto target = (Vector<Item *> *)_container.data();
 		for (auto &it : *target) { it->release(0); }
 		target->clear();
-		target->~vector();
+		sprt::destroy_at(target);
 	}
 }
 
@@ -121,7 +121,7 @@ auto RefContainer<Item, Interface>::addItem(Item *item) -> Item * {
 		item->retain();
 		acts.emplace_back(item);
 
-		new (_container.data()) Vector<Item *>(sp::move(acts));
+		new (_container.data(), sprt::nothrow) Vector<Item *>(sp::move(acts));
 		++_nitems;
 	}
 	return item;
@@ -132,8 +132,8 @@ void RefContainer<Item, Interface>::removeItem(Item *item) {
 	if (_nitems <= ReserveItems) {
 		auto target = (Item **)_container.data();
 		auto end = (Item **)(_container.data()) + _nitems;
-		auto it = std::remove(target, end, item);
-		if (std::distance(it, end) > 0) {
+		auto it = sprt::remove(target, end, item);
+		if (sprt::distance(it, end) > 0) {
 			item->release(0);
 			--_nitems;
 		}
@@ -222,7 +222,7 @@ void RefContainer<Item, Interface>::removeAllItemsByTag(uint32_t tag) {
 	if (_nitems <= ReserveItems) {
 		auto target = (Item **)_container.data();
 		auto end = (Item **)(_container.data()) + _nitems;
-		static_cast<void>(std::remove_if(target, end, [&, this](Item *a) {
+		static_cast<void>(sprt::remove_if(target, end, [&, this](Item *a) {
 			if (a->getTag() == tag) {
 				a->invalidate();
 				a->release(0);
@@ -251,7 +251,7 @@ bool RefContainer<Item, Interface>::cleanup() {
 	if (_nitems <= ReserveItems) {
 		auto target = (Item **)_container.data();
 		auto end = (Item **)(_container.data()) + _nitems;
-		static_cast<void>(std::remove_if(target, end, [&, this](Item *a) {
+		static_cast<void>(sprt::remove_if(target, end, [&, this](Item *a) {
 			if (a->isDone()) {
 				a->release(0);
 				--_nitems;
@@ -282,7 +282,7 @@ bool RefContainer<Item, Interface>::cleanup() {
 template <typename Item, typename Interface>
 template <typename Callback>
 void RefContainer<Item, Interface>::foreach (const Callback &cb) const {
-	static_assert(std::is_invocable_v<Callback, Item *>, "Invalid callback type");
+	static_assert(sprt::is_invocable_v<Callback, Item *>, "Invalid callback type");
 	if (_nitems <= ReserveItems) {
 		auto target = (Item **)_container.data();
 		auto end = (Item **)(_container.data()) + _nitems;

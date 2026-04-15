@@ -40,7 +40,7 @@ static bool isPng(const uint8_t *data, size_t dataLen) {
 	}
 
 	static const unsigned char PNG_SIGNATURE[] = {0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
-	return memcmp(PNG_SIGNATURE, data, sizeof(PNG_SIGNATURE)) == 0;
+	return sprt::memcmp(PNG_SIGNATURE, data, sizeof(PNG_SIGNATURE)) == 0;
 }
 
 SPUNUSED static bool getPngImageSize(const io::Producer &file, StackBuffer<512> &data,
@@ -58,7 +58,7 @@ SPUNUSED static bool getPngImageSize(const io::Producer &file, StackBuffer<512> 
 
 static void readDynamicData(png_structp pngPtr, png_bytep data, png_size_t length) {
 	auto state = (ReadState *)png_get_io_ptr(pngPtr);
-	memcpy(data, state->data + state->offset, length);
+	sprt::memcpy(data, state->data + state->offset, length);
 	state->offset += length;
 }
 
@@ -150,8 +150,7 @@ struct PngReadStruct {
 			info.width = 0;
 			info.height = 0;
 			info.stride = 0;
-			log::format(log::Error, "libpng", SP_LOCATION, "unsupported color type: %u",
-					(unsigned int)color_type);
+			slog().error("libpng", "unsupported color type: ", (unsigned int)color_type);
 			return false;
 		}
 

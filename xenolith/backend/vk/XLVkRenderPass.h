@@ -163,7 +163,7 @@ protected:
 
 	Vector<VkClearValue> _clearValues;
 
-	Mutex _descriptorPoolMutex;
+	sprt::mutex _descriptorPoolMutex;
 	Vector<Vector<Rc<DescriptorPool>>> _descriptorPools;
 };
 

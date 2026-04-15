@@ -48,7 +48,7 @@ auto operator""_locale() {
 #endif
 
 // localized token
-inline String operator""_token(const char *str, std::size_t len) {
+inline String operator""_token(const char *str, sprt::size_t len) {
 	String ret;
 	ret.reserve(len + 2);
 	ret.append("%");
@@ -104,8 +104,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::locale {
 // For definitions (`define`) you should always use LOWERCASE XML format.
 
 
-using LocaleInitList = std::initializer_list<Pair<StringView, StringView>>;
-using LocaleIndexList = std::initializer_list<Pair<uint32_t, StringView>>;
+using LocaleInitList = sprt::initializer_list<Pair<StringView, StringView>>;
+using LocaleIndexList = sprt::initializer_list<Pair<uint32_t, StringView>>;
 
 enum class TimeTokens {
 	Today = 0,
@@ -134,7 +134,7 @@ SP_PUBLIC void define(const StringView &locale, LocaleInitList &&);
 // Defines index-value pairs for locale-based substitutuion, locale must be an lowercased XML land-territory pair
 SP_PUBLIC void define(const StringView &locale, LocaleIndexList &&);
 SP_PUBLIC void define(const StringView &locale,
-		const std::array<StringView, toInt(TimeTokens::Max)> &);
+		const sprt::array<StringView, toInt(TimeTokens::Max)> &);
 
 // Set locale for the default lookup (if none were found for primary locale)
 SP_PUBLIC void setDefault(StringView);
@@ -176,10 +176,10 @@ SP_PUBLIC WideString resolveLocaleTags(const WideStringView &);
 
 SP_PUBLIC StringView timeToken(TimeTokens);
 
-SP_PUBLIC const std::array<memory::string, toInt(TimeTokens::Max)> &timeTokenTable();
+SP_PUBLIC const sprt::array<mem_pool::String, toInt(TimeTokens::Max)> &timeTokenTable();
 
 SP_PUBLIC String localDate(Time);
-SP_PUBLIC String localDate(const std::array<StringView, toInt(TimeTokens::Max)> &, Time);
+SP_PUBLIC String localDate(const sprt::array<StringView, toInt(TimeTokens::Max)> &, Time);
 
 } // namespace stappler::xenolith::locale
 

@@ -140,11 +140,11 @@ public:
 
 protected:
 	CURL *_curl = nullptr;
-	static std::atomic<uint32_t> s_activeHandles;
+	static sprt::atomic<uint32_t> s_activeHandles;
 	static thread_local CurlHandle *tl_handle;
 };
 
-std::atomic<uint32_t> CurlHandle::s_activeHandles = 0;
+sprt::atomic<uint32_t> CurlHandle::s_activeHandles = 0;
 thread_local CurlHandle *CurlHandle::tl_handle = nullptr;
 
 SPUNUSED static CURL *CurlHandle_alloc() { return CurlHandle::alloc(); }

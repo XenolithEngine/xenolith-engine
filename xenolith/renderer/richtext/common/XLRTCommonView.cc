@@ -81,8 +81,8 @@ void CommonObject::handleEnter(Scene *scene) {
 		initAsBackground((document::Background *)_object);
 		break;
 	case document::Object::Type::Path: initAsPath((document::PathObject *)_object); break;
-	case document::Object::Type::Ref: std::cout << "Ref\n"; break;
-	case document::Object::Type::Empty: std::cout << "Empty\n"; break;
+	case document::Object::Type::Ref: sprt::cout << "Ref\n"; break;
+	case document::Object::Type::Empty: sprt::cout << "Empty\n"; break;
 	}
 }
 
@@ -95,8 +95,8 @@ void CommonObject::handleContentSizeDirty() {
 	}
 
 	if (_overlay) {
-		auto size = Size2(std::min(_contentSize.width, ImageVideoSize),
-				std::min(_contentSize.height, ImageVideoSize));
+		auto size = Size2(sprt::min(_contentSize.width, ImageVideoSize),
+				sprt::min(_contentSize.height, ImageVideoSize));
 		_overlay->setContentSize(size);
 		_overlay->setPosition(_contentSize / 2.0f);
 	}
@@ -243,8 +243,8 @@ bool CommonView::init(Layout l, CommonSource *source, Vector<String> &&ids) {
 	setController(onScrollController());
 
 	_renderer = addSystem(Rc<Renderer>::create(sp::move(ids)));
-	_renderer->setRenderingCallback(
-			std::bind(&CommonView::onRenderer, this, std::placeholders::_1, std::placeholders::_2));
+	_renderer->setRenderingCallback(sprt::bind(&CommonView::onRenderer, this,
+			sprt::placeholders::_1, sprt::placeholders::_2));
 
 	_background = addChild(Rc<basic2d::Layer>::create(Color4B(238, 238, 238, 255)));
 	_background->setAnchorPoint(Vec2(0, 0));
@@ -452,11 +452,11 @@ void CommonView::emplaceResultData(RendererResult *res, float contentOffset) {
 		bool isSplitted = (media.flags & document::RenderFlags::SplitPages) != document::RenderFlags::None;
 		auto page = Size2(surface.width + res->getMedia().pageMargin.horizontal(), surface.height + res->getMedia().pageMargin.vertical());
 		for (size_t i = 0; i < num; ++ i) {
-			_controller->addItem(std::bind(&CommonView::onPageNode, this, i), page.width, page.width * i);
+			_controller->addItem(sprt::bind(&CommonView::onPageNode, this, i), page.width, page.width * i);
 		}
 
 		if (isSplitted && num % 2 == 1) {
-			_controller->addItem(std::bind(&CommonView::onPageNode, this, num), page.width, page.width * num);
+			_controller->addItem(sprt::bind(&CommonView::onPageNode, this, num), page.width, page.width * num);
 		}*/
 		_objectsOffset = 0;
 	} else {
@@ -465,7 +465,7 @@ void CommonView::emplaceResultData(RendererResult *res, float contentOffset) {
 		}
 
 		for (auto &obj : res->result->getObjects()) {
-			// std::cout << "Obj: " << int(toInt(obj->type)) << " " << obj->bbox << " " << obj->zIndex << "\n";
+			// sprt::cout << "Obj: " << int(toInt(obj->type)) << " " << obj->bbox << " " << obj->zIndex << "\n";
 			_controller->addItem(
 					[obj, res = Rc<RendererResult>(res)](
 							const basic2d::ScrollController::Item &item) {
@@ -547,9 +547,9 @@ Rc<ActionInterval> CommonView::onSwipeFinalizeAction(float velocity) {
 					fabsf(velocity), -fabsf(acceleration));
 
 			auto overscrollPath = path + ((velocity < 0) ? (distance) : (-distance));
-			if (fabs(overscrollPath) < std::numeric_limits<float>::epsilon()) {
+			if (fabs(overscrollPath) < sprt::numeric_limits<float>::epsilon()) {
 				auto cb = Rc<CallFunc>::create(
-						std::bind(&CommonView::onOverscroll, this, overscrollPath));
+						sprt::bind(&CommonView::onOverscroll, this, overscrollPath));
 				a = Rc<Sequence>::create(_movementAction, cb);
 			}
 		}

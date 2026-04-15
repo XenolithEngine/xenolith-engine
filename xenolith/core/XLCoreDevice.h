@@ -141,8 +141,8 @@ protected:
 
 	bool _started = false;
 	const Instance *_glInstance = nullptr;
-	Mutex _shaderMutex;
-	Mutex _objectMutex;
+	sprt::mutex _shaderMutex;
+	sprt::mutex _objectMutex;
 
 	Map<String, Rc<Shader>> _shaders;
 
@@ -151,7 +151,7 @@ protected:
 	Vector<ImageFormat> _depthFormats;
 	Vector<ImageFormat> _colorFormats;
 
-	mutable Mutex _resourceMutex;
+	mutable sprt::mutex _resourceMutex;
 	uint32_t _resourceQueueWaiters = 0;
 
 	Vector<DeviceQueueFamily> _families;

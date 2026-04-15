@@ -29,6 +29,7 @@ THE SOFTWARE.
 namespace STAPPLER_VERSIONIZED stappler::geom {
 
 static constexpr VerboseFlag TessVerbose = VerboseFlag::None;
+VerboseFlag TessVerboseInfo = TessVerbose;
 
 struct Tesselator::Data : ObjectAllocator {
 	// potential root face edges (connected to right non-convex angle)
@@ -38,7 +39,7 @@ struct Tesselator::Data : ObjectAllocator {
 	EdgeDict *_edgeDict = nullptr;
 	VertexPriorityQueue *_vertexQueue = nullptr;
 
-	float _mathTolerance = std::numeric_limits<float>::epsilon() * 4.0f;
+	float _mathTolerance = sprt::Epsilon<float> * 4.0f;
 
 	Winding _winding = Winding::NonZero;
 	float _boundaryOffset = 0.0f;
@@ -54,8 +55,8 @@ struct Tesselator::Data : ObjectAllocator {
 
 	Vertex *_eventVertex = nullptr;
 
-	memory::vector<Vertex *> _protectedVertexes;
-	memory::vector<HalfEdge *> _protectedEdges;
+	sprt::__pool_vector<Vertex *> _protectedVertexes;
+	sprt::__pool_vector<HalfEdge *> _protectedEdges;
 
 	Data(memory::pool_t *p);
 
@@ -159,8 +160,7 @@ bool Tesselator::pushVertex(Cursor &cursor, const Vec2 &vertex) {
 		}
 
 		if constexpr (TessVerbose != VerboseFlag::None) {
-			std::cout << std::setprecision(std::numeric_limits<float>::digits10 + 1)
-					  << "Push: " << vertex << "\n";
+			sprt::cout << "Push: " << vertex << "\n";
 		}
 
 		cursor.edge = _data->pushVertex(cursor.edge, vertex, cursor.isClockwise);
@@ -182,8 +182,7 @@ bool Tesselator::pushStrokeVertex(Cursor &cursor, const Vec2 &vertex, const Vec2
 		}
 
 		if constexpr (TessVerbose != VerboseFlag::None) {
-			std::cout << std::setprecision(std::numeric_limits<float>::digits10 + 1)
-					  << "Push (stroke): " << vertex << ", " << offset << "\n";
+			sprt::cout << "Push (stroke): " << vertex << ", " << offset << "\n";
 		}
 
 		if (!cursor.edge) {
@@ -213,8 +212,7 @@ bool Tesselator::pushStrokeTop(Cursor &cursor, const Vec2 &vertex) {
 		}
 
 		if constexpr (TessVerbose != VerboseFlag::None) {
-			std::cout << std::setprecision(std::numeric_limits<float>::digits10 + 1)
-					  << "Push (stroke-top): " << vertex << "\n";
+			sprt::cout << "Push (stroke-top): " << vertex << "\n";
 		}
 
 		if (!cursor.edge) {
@@ -241,8 +239,7 @@ bool Tesselator::pushStrokeBottom(Cursor &cursor, const Vec2 &vertex) {
 		}
 
 		if constexpr (TessVerbose != VerboseFlag::None) {
-			std::cout << std::setprecision(std::numeric_limits<float>::digits10 + 1)
-					  << "Push (stroke-bottom): " << vertex << "\n";
+			sprt::cout << "Push (stroke-bottom): " << vertex << "\n";
 		}
 
 		if (!cursor.edge) {
@@ -268,15 +265,14 @@ bool Tesselator::closeContour(Cursor &cursor) {
 
 	if (cursor.edge) {
 		if constexpr (TessVerbose != VerboseFlag::None) {
-			std::cout << "Contour:\n";
-			cursor.edge->foreachOnFace(
-					[&](HalfEdge &e) { std::cout << TessVerbose << "\t" << e << "\n"; });
+			sprt::cout << "Contour:\n";
+			cursor.edge->foreachOnFace([&](HalfEdge &e) { sprt::cout << "\t" << e << "\n"; });
 		}
 		_data->trimVertexes();
 		return true;
 	} else {
 		if constexpr (TessVerbose != VerboseFlag::None) {
-			std::cout << "Fail to add empty contour\n";
+			sprt::cout << "Fail to add empty contour\n";
 		}
 	}
 	_data->trimVertexes();
@@ -300,14 +296,13 @@ bool Tesselator::closeStrokeContour(Cursor &cursor) {
 
 	if (cursor.edge) {
 		if constexpr (TessVerbose != VerboseFlag::None) {
-			std::cout << "Contour:\n";
-			cursor.edge->foreachOnFace(
-					[&](HalfEdge &e) { std::cout << TessVerbose << "\t" << e << "\n"; });
+			sprt::cout << "Contour:\n";
+			cursor.edge->foreachOnFace([&](HalfEdge &e) { sprt::cout << "\t" << e << "\n"; });
 		}
 		return true;
 	} else {
 		if constexpr (TessVerbose != VerboseFlag::None) {
-			std::cout << "Fail to add empty contour\n";
+			sprt::cout << "Fail to add empty contour\n";
 		}
 	}
 	_data->trimVertexes();
@@ -333,8 +328,8 @@ bool Tesselator::prepare(TessResult &res) {
 		if constexpr (TessVerbose != VerboseFlag::None) {
 			for (auto &it : _data->_boundaries) {
 				if (!it->_degenerate) {
-					std::cout << "Boundary:\n";
-					it->foreach ([&](const FaceEdge &edge) { std::cout << "\t" << edge << "\n"; });
+					sprt::cout << "Boundary:\n";
+					it->foreach ([&](const FaceEdge &edge) { sprt::cout << "\t" << edge << "\n"; });
 				}
 			}
 		}
@@ -359,7 +354,7 @@ bool Tesselator::prepare(TessResult &res) {
 				}
 
 				if constexpr (TessVerbose != VerboseFlag::None) {
-					std::cout << "Vertex: " << *it << "\n";
+					sprt::cout << "Vertex: " << *it << "\n";
 				}
 
 				auto e = it->_edge;
@@ -536,12 +531,12 @@ bool Tesselator::write(TessResult &res) {
 							const auto qidx = v->_exportIdx;
 							triangle[vertex] = qidx + _data->_vertexOffset;
 						} else {
-							std::cout << "Invalid vertex: " << edge.vertex << "\n";
+							sprt::cout << "Invalid vertex: " << edge.vertex << "\n";
 							::abort();
 						}
 					} else {
-						std::cout << "Invalid vertex index: " << edge.vertex << " of "
-								  << _data->_vertexes.size() << "\n";
+						sprt::cout << "Invalid vertex index: " << edge.vertex << " of "
+								   << _data->_vertexes.size() << "\n";
 						::abort();
 					}
 #else
@@ -655,9 +650,9 @@ bool Tesselator::Data::tessellateInterior() {
 			if (isWindingInside(_winding, e->left._realWinding)) {
 				if constexpr (TessVerbose != VerboseFlag::None) {
 					uint32_t vertex = 0;
-					std::cout << "Inside Face: \n";
+					sprt::cout << "Inside Face: \n";
 					e->left.foreachOnFace([&](HalfEdge &edge) {
-						std::cout << "\t" << TessVerbose << vertex++ << "; " << edge << "\n";
+						sprt::cout << "\t" << vertex++ << "; " << edge << "\n";
 					});
 				}
 
@@ -672,9 +667,9 @@ bool Tesselator::Data::tessellateInterior() {
 			if (isWindingInside(_winding, e->right._realWinding)) {
 				if constexpr (TessVerbose != VerboseFlag::None) {
 					uint32_t vertex = 0;
-					std::cout << "Inside Face: \n";
+					sprt::cout << "Inside Face: \n";
 					e->right.foreachOnFace([&](HalfEdge &edge) {
-						std::cout << "\t" << TessVerbose << vertex++ << "; " << edge << "\n";
+						sprt::cout << "\t" << vertex++ << "; " << edge << "\n";
 					});
 				}
 
@@ -711,8 +706,8 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 	lo = up->getLeftLoopPrev();
 
 	if constexpr (TessVerbose == VerboseFlag::Full) {
-		std::cout << "Start: Up: " << *up << "\n";
-		std::cout << "Start: Lo: " << *lo << "\n";
+		sprt::cout << "Start: Up: " << *up << "\n";
+		sprt::cout << "Start: Lo: " << *lo << "\n";
 	}
 
 	up->_mark = v;
@@ -723,8 +718,8 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 	while (up->getLeftLoopNext() != lo) {
 		if (VertLeq(up->getDstVec(), lo->getOrgVec())) {
 			if constexpr (TessVerbose == VerboseFlag::Full) {
-				std::cout << "Lo: " << *lo << "\n";
-				std::cout << "Up: " << *up << "\n";
+				sprt::cout << "Lo: " << *lo << "\n";
+				sprt::cout << "Up: " << *up << "\n";
 			}
 
 			/* up->Dst is on the left.  It is safe to form triangles from lo->Org.
@@ -756,8 +751,8 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 			lo->_mark = v;
 		} else {
 			if constexpr (TessVerbose == VerboseFlag::Full) {
-				std::cout << "Up: " << *up << "\n";
-				std::cout << "Lo: " << *lo << "\n";
+				sprt::cout << "Up: " << *up << "\n";
+				sprt::cout << "Lo: " << *lo << "\n";
 			}
 
 			v0 = &up->getDstVec();
@@ -811,7 +806,7 @@ bool Tesselator::Data::tessellateMonoRegion(HalfEdge *edge, uint8_t v) {
 bool Tesselator::Data::sweepVertex(VertexPriorityQueue &pq, EdgeDict &dict, Vertex *v) {
 	auto doConnectEdges = [&, this](HalfEdge *source, HalfEdge *target) {
 		if constexpr (TessVerbose != VerboseFlag::None) {
-			std::cout << "\t\tConnect: \n\t\t\t" << *source << "\n\t\t\t" << *target << "\n";
+			sprt::cout << "\t\tConnect: \n\t\t\t" << *source << "\n\t\t\t" << *target << "\n";
 		}
 		auto eNew = connectEdges(source->getLeftLoopPrev(), target);
 		if (eNew) {
@@ -853,11 +848,11 @@ bool Tesselator::Data::sweepVertex(VertexPriorityQueue &pq, EdgeDict &dict, Vert
 			// 3. helper(e, j) <— v(i)
 			// 4. Insert e(i) in T and set helper(e, i) to v(i)
 			if constexpr (TessVerbose == VerboseFlag::Full) {
-				std::cout << "\t\te: " << *e << "\n";
+				sprt::cout << "\t\te: " << *e << "\n";
 			}
 			if (auto edgeBelow = dict.getEdgeBelow(e->origin, e->vertex)) {
 				if constexpr (TessVerbose != VerboseFlag::None) {
-					std::cout << "\t\tedgeBelow: " << *edgeBelow << "\n";
+					sprt::cout << "\t\tedgeBelow: " << *edgeBelow << "\n";
 				}
 				if (edgeBelow->helper.e1) {
 					auto tmpE = doConnectEdges(e, edgeBelow->helper.e1);
@@ -874,7 +869,7 @@ bool Tesselator::Data::sweepVertex(VertexPriorityQueue &pq, EdgeDict &dict, Vert
 			// 2. 	then Insert the diagonal connecting v, to helper(e, i-1) in D.
 			// 3. Delete e(i - 1) from T.
 			if constexpr (TessVerbose == VerboseFlag::Full) {
-				std::cout << "\t\tePrevEdge: " << *ePrevEdge << "\n";
+				sprt::cout << "\t\tePrevEdge: " << *ePrevEdge << "\n";
 			}
 			if (auto dictNode = ePrevEdge->node) {
 				if (dictNode->helper.type == VertexType::Merge) {
@@ -892,7 +887,7 @@ bool Tesselator::Data::sweepVertex(VertexPriorityQueue &pq, EdgeDict &dict, Vert
 			// 7. helper(e, j) <— v(i)
 			if (auto edgeBelow = dict.getEdgeBelow(e->origin, e->vertex)) {
 				if constexpr (TessVerbose != VerboseFlag::None) {
-					std::cout << "\t\tedgeBelow: " << *edgeBelow << "\n";
+					sprt::cout << "\t\tedgeBelow: " << *edgeBelow << "\n";
 				}
 				if (edgeBelow->helper.type == VertexType::Merge) {
 					e = doConnectEdges(e, edgeBelow->helper.e1);
@@ -906,7 +901,7 @@ bool Tesselator::Data::sweepVertex(VertexPriorityQueue &pq, EdgeDict &dict, Vert
 			// 4. Delete e(i-1) from T.
 			// 5. Insert e(i) in T and set helper(e, i) to v(i)
 			if constexpr (TessVerbose == VerboseFlag::Full) {
-				std::cout << "\t\tePrevEdge: " << *ePrevEdge << "\n";
+				sprt::cout << "\t\tePrevEdge: " << *ePrevEdge << "\n";
 			}
 			if (auto dictNode = ePrevEdge->node) {
 				if (dictNode->helper.type == VertexType::Merge) {
@@ -937,7 +932,7 @@ bool Tesselator::Data::sweepVertex(VertexPriorityQueue &pq, EdgeDict &dict, Vert
 	};
 
 	if constexpr (TessVerbose != VerboseFlag::None) {
-		std::cout << "Sweep event: " << v->_uniqueIdx << ": " << v->_origin << "\n";
+		sprt::cout << "Sweep event: " << v->_uniqueIdx << ": " << v->_origin << "\n";
 	}
 
 	_event = v->_origin;
@@ -1011,20 +1006,20 @@ bool Tesselator::Data::sweepVertex(VertexPriorityQueue &pq, EdgeDict &dict, Vert
 					}
 
 					if constexpr (TessVerbose != VerboseFlag::None) {
-						std::cout << "\tright-convex: " << e << " " << e->getDstVec() << " - "
-								  << e->getOrgVec() << " - " << e->_originNext->getDstVec() << " = "
-								  << e->_realWinding;
+						sprt::cout << "\tright-convex: " << e << " " << e->getDstVec() << " - "
+								   << e->getOrgVec() << " - " << e->_originNext->getDstVec()
+								   << " = " << e->_realWinding;
 					}
 
 					type = VertexType::Split;
 					if (isWindingInside(_winding, e->_realWinding)) {
 						if constexpr (TessVerbose != VerboseFlag::None) {
-							std::cout << "; Split\n";
+							sprt::cout << "; Split\n";
 						}
 						onVertex(VertexType::Split, fullEdge, e, e->_originNext);
 					} else {
 						if constexpr (TessVerbose != VerboseFlag::None) {
-							std::cout << "\n";
+							sprt::cout << "\n";
 						}
 					}
 				} else {
@@ -1034,21 +1029,21 @@ bool Tesselator::Data::sweepVertex(VertexPriorityQueue &pq, EdgeDict &dict, Vert
 							e->sym()->_realWinding + e->sym()->_winding;
 
 					if constexpr (TessVerbose != VerboseFlag::None) {
-						std::cout << "\tright: " << e << " " << e->getDstVec() << " - "
-								  << e->getOrgVec() << " - " << e->_originNext->getDstVec() << " = "
-								  << e->_realWinding << "(" << e->sym()->_realWinding << "+"
-								  << e->sym()->_winding << ")";
+						sprt::cout << "\tright: " << e << " " << e->getDstVec() << " - "
+								   << e->getOrgVec() << " - " << e->_originNext->getDstVec()
+								   << " = " << e->_realWinding << "(" << e->sym()->_realWinding
+								   << "+" << e->sym()->_winding << ")";
 					}
 
 					type = VertexType::Start;
 					if (isWindingInside(_winding, e->_realWinding)) {
 						if constexpr (TessVerbose != VerboseFlag::None) {
-							std::cout << "; Start\n";
+							sprt::cout << "; Start\n";
 						}
 						onVertex(VertexType::Start, fullEdge, e, e->_originNext);
 					} else {
 						if constexpr (TessVerbose != VerboseFlag::None) {
-							std::cout << "\n";
+							sprt::cout << "\n";
 						}
 					}
 				}
@@ -1057,26 +1052,26 @@ bool Tesselator::Data::sweepVertex(VertexPriorityQueue &pq, EdgeDict &dict, Vert
 				e->_realWinding = e->_originNext->sym()->_realWinding;
 
 				if constexpr (TessVerbose != VerboseFlag::None) {
-					std::cout << "\tright-to-left: " << e << " " << e->getDstVec() << " - "
-							  << e->getOrgVec() << " - " << e->_originNext->getDstVec() << " = "
-							  << e->_realWinding << "(" << e->_originNext->sym()->_realWinding
-							  << ":" << e->_originNext->_realWinding << ")";
+					sprt::cout << "\tright-to-left: " << e << " " << e->getDstVec() << " - "
+							   << e->getOrgVec() << " - " << e->_originNext->getDstVec() << " = "
+							   << e->_realWinding << "(" << e->_originNext->sym()->_realWinding
+							   << ":" << e->_originNext->_realWinding << ")";
 				}
 
 				type = VertexType::RegularBottom;
 				if (isWindingInside(_winding, e->_realWinding)) {
 					if constexpr (TessVerbose != VerboseFlag::None) {
-						std::cout << "; RegularBottom\n";
+						sprt::cout << "; RegularBottom\n";
 					}
 					onVertex(VertexType::RegularBottom, fullEdge, e, e->_originNext);
 				} else {
 					if constexpr (TessVerbose != VerboseFlag::None) {
-						std::cout << "\n";
+						sprt::cout << "\n";
 					}
 				}
 			}
 
-			// std::cout << "\t\tpush edge" << fullEdge->getLeftVec() << " - " << fullEdge->getRightVec()
+			// sprt::cout << "\t\tpush edge" << fullEdge->getLeftVec() << " - " << fullEdge->getRightVec()
 			//		<< " winding: " << e->_realWinding << "\n";
 
 			// push outcoming edge
@@ -1093,59 +1088,59 @@ bool Tesselator::Data::sweepVertex(VertexPriorityQueue &pq, EdgeDict &dict, Vert
 				e->_originNext->sym()->_realWinding = e->_realWinding;
 
 				if constexpr (TessVerbose != VerboseFlag::None) {
-					std::cout << "\tleft-to-right: " << e << " " << e->getDstVec() << " - "
-							  << e->getOrgVec() << " - " << e->_originNext->getDstVec() << " = "
-							  << e->_realWinding;
+					sprt::cout << "\tleft-to-right: " << e << " " << e->getDstVec() << " - "
+							   << e->getOrgVec() << " - " << e->_originNext->getDstVec() << " = "
+							   << e->_realWinding;
 				}
 
 				type = VertexType::RegularTop;
 				if (isWindingInside(_winding, e->_realWinding)) {
 					if constexpr (TessVerbose != VerboseFlag::None) {
-						std::cout << "; RegularTop\n";
+						sprt::cout << "; RegularTop\n";
 					}
 					onVertex(VertexType::RegularTop, fullEdge, e, e->_originNext);
 				} else {
 					if constexpr (TessVerbose != VerboseFlag::None) {
-						std::cout << "\n";
+						sprt::cout << "\n";
 					}
 				}
 
 			} else {
 				if (AngleIsConvex(e, e->_originNext)) {
 					if constexpr (TessVerbose != VerboseFlag::None) {
-						std::cout << "\tleft-convex: " << e << " " << e->getDstVec() << " - "
-								  << e->getOrgVec() << " - " << e->_originNext->getDstVec() << " = "
-								  << e->_realWinding;
+						sprt::cout << "\tleft-convex: " << e << " " << e->getDstVec() << " - "
+								   << e->getOrgVec() << " - " << e->_originNext->getDstVec()
+								   << " = " << e->_realWinding;
 					}
 
 					type = VertexType::Merge;
 					if (isWindingInside(_winding, e->_realWinding)) {
 						if constexpr (TessVerbose != VerboseFlag::None) {
-							std::cout << "; Merge\n";
+							sprt::cout << "; Merge\n";
 						}
 						onVertex(VertexType::Merge, fullEdge, e, e->_originNext);
 					} else {
 						if constexpr (TessVerbose != VerboseFlag::None) {
-							std::cout << "\n";
+							sprt::cout << "\n";
 						}
 					}
 
 				} else {
 					if constexpr (TessVerbose != VerboseFlag::None) {
-						std::cout << "\tleft: " << e << " " << e->getDstVec() << " - "
-								  << e->getOrgVec() << " - " << e->_originNext->getDstVec() << " = "
-								  << e->_realWinding;
+						sprt::cout << "\tleft: " << e << " " << e->getDstVec() << " - "
+								   << e->getOrgVec() << " - " << e->_originNext->getDstVec()
+								   << " = " << e->_realWinding;
 					}
 
 					type = VertexType::End;
 					if (isWindingInside(_winding, e->_realWinding)) {
 						if constexpr (TessVerbose != VerboseFlag::None) {
-							std::cout << "; End\n";
+							sprt::cout << "; End\n";
 						}
 						onVertex(VertexType::End, fullEdge, e, e->_originNext);
 					} else {
 						if constexpr (TessVerbose != VerboseFlag::None) {
-							std::cout << "\n";
+							sprt::cout << "\n";
 						}
 					}
 				}
@@ -1172,12 +1167,12 @@ HalfEdge *Tesselator::Data::processIntersect(Vertex *v, const EdgeDictNode *edge
 		Vec2 &intersect, IntersectionEvent ev) {
 	if constexpr (TessVerbose != VerboseFlag::None) {
 		if (edge2) {
-			std::cout << "Intersect: " << edge1->org << " - " << edge1->dst() << "  X  "
-					  << edge2->getOrgVec() << " - " << edge2->getDstVec() << " = " << intersect
-					  << ": " << ev << "\n";
+			sprt::cout << "Intersect: " << edge1->org << " - " << edge1->dst() << "  X  "
+					   << edge2->getOrgVec() << " - " << edge2->getDstVec() << " = " << intersect
+					   << ": " << ev << "\n";
 		} else {
-			std::cout << "Intersect: " << edge1->org << " - " << edge1->dst() << "  X  "
-					  << v->_origin << " = " << intersect << ": " << ev << "\n";
+			sprt::cout << "Intersect: " << edge1->org << " - " << edge1->dst() << "  X  "
+					   << v->_origin << " = " << intersect << ": " << ev << "\n";
 		}
 	}
 
@@ -1191,12 +1186,12 @@ HalfEdge *Tesselator::Data::processIntersect(Vertex *v, const EdgeDictNode *edge
 			tmp->norm = org - dst;
 			tmp->value.z = org.x;
 			tmp->value.w = org.y;
-			tmp->horizontal = std::abs(tmp->norm.x) > std::numeric_limits<float>::epsilon();
+			tmp->horizontal = sprt::abs(tmp->norm.x) > sprt::Epsilon<float>;
 		} else {
 			tmp->norm = dst - org;
 			tmp->value.z = dst.x;
 			tmp->value.w = dst.y;
-			tmp->horizontal = std::abs(tmp->norm.x) > std::numeric_limits<float>::epsilon();
+			tmp->horizontal = sprt::abs(tmp->norm.x) > sprt::Epsilon<float>;
 		}
 	};
 
@@ -1214,7 +1209,7 @@ HalfEdge *Tesselator::Data::processIntersect(Vertex *v, const EdgeDictNode *edge
 		vertex = splitEdge(edge1->edge->inverted ? &edge1->edge->right : &edge1->edge->left, edge2,
 				intersect);
 		if constexpr (TessVerbose != VerboseFlag::None) {
-			std::cout << "\tVertex: " << *vertex << "\n";
+			sprt::cout << "\tVertex: " << *vertex << "\n";
 		}
 		fixDictEdge(edge1);
 		checkRecursive(edge2);
@@ -1267,8 +1262,8 @@ HalfEdge *Tesselator::Data::processIntersect(Vertex *v, const EdgeDictNode *edge
 HalfEdge *Tesselator::Data::processIntersect(Vertex *v, const EdgeDictNode *edge1, Vec2 &intersect,
 		IntersectionEvent ev) {
 	if constexpr (TessVerbose != VerboseFlag::None) {
-		std::cout << "Intersect: " << edge1->org << " - " << edge1->dst() << "  X  " << v->_origin
-				  << " = " << intersect << ": " << ev << "\n";
+		sprt::cout << "Intersect: " << edge1->org << " - " << edge1->dst() << "  X  " << v->_origin
+				   << " = " << intersect << ": " << ev << "\n";
 	}
 
 	auto fixDictEdge = [&](const EdgeDictNode *e) {
@@ -1281,12 +1276,12 @@ HalfEdge *Tesselator::Data::processIntersect(Vertex *v, const EdgeDictNode *edge
 			tmp->norm = org - dst;
 			tmp->value.z = org.x;
 			tmp->value.w = org.y;
-			tmp->horizontal = std::abs(tmp->norm.x) > std::numeric_limits<float>::epsilon();
+			tmp->horizontal = sprt::abs(tmp->norm.x) > sprt::Epsilon<float>;
 		} else {
 			tmp->norm = dst - org;
 			tmp->value.z = dst.x;
 			tmp->value.w = dst.y;
-			tmp->horizontal = std::abs(tmp->norm.x) > std::numeric_limits<float>::epsilon();
+			tmp->horizontal = sprt::abs(tmp->norm.x) > sprt::Epsilon<float>;
 		}
 	};
 
@@ -1380,8 +1375,8 @@ HalfEdge *Tesselator::Data::pushVertex(HalfEdge *e, const Vec2 &origin, bool clo
 HalfEdge *Tesselator::Data::connectEdges(HalfEdge *eOrg, HalfEdge *eDst) {
 	if (eOrg->sym()->vertex == eDst->vertex) {
 		if constexpr (TessVerbose == VerboseFlag::General) {
-			std::cout << "ERROR: connectEdges on same vertex:\n\t" << *eOrg << "\n\t"
-					  << *eOrg->sym() << "\n\t" << *eDst << "\n";
+			sprt::cout << "ERROR: connectEdges on same vertex:\n\t" << *eOrg << "\n\t"
+					   << *eOrg->sym() << "\n\t" << *eDst << "\n";
 		}
 		log::source().error("geom::Tesselator", "Tesselation failed on connectEdges");
 		return nullptr;
@@ -1410,7 +1405,7 @@ HalfEdge *Tesselator::Data::connectEdges(HalfEdge *eOrg, HalfEdge *eDst) {
 	eDst->_originNext = eNewSym; // dst vertex chain
 
 	if constexpr (TessVerbose != VerboseFlag::None) {
-		std::cout << "\t\t\tConnected: " << *eNew << "\n";
+		sprt::cout << "\t\t\tConnected: " << *eNew << "\n";
 	}
 
 	edge->updateInfo();
@@ -1422,7 +1417,7 @@ Vertex *Tesselator::Data::splitEdge(HalfEdge *eOrg1, const Vec2 &vec) {
 	Vertex *v = nullptr;
 
 	if constexpr (TessVerbose != VerboseFlag::None) {
-		std::cout << "SplitEdge:\n\t" << *eOrg1 << "\n";
+		sprt::cout << "SplitEdge:\n\t" << *eOrg1 << "\n";
 	}
 
 	HalfEdge *eNew = &allocEdge()->left; // make new edge pair
@@ -1441,7 +1436,7 @@ Vertex *Tesselator::Data::splitEdge(HalfEdge *eOrg1, const Vec2 &vec) {
 	eNew->getEdge()->updateInfo();
 
 	if constexpr (TessVerbose != VerboseFlag::None) {
-		std::cout << "\t" << *eOrg1 << "\n\t" << *eNew << "\n";
+		sprt::cout << "\t" << *eOrg1 << "\n\t" << *eNew << "\n";
 	}
 
 	return v;
@@ -1557,22 +1552,22 @@ static bool Tesselator_checkConnectivity(HalfEdge *eOrg) {
 }
 
 bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
-	if (std::find(_protectedVertexes.begin(), _protectedVertexes.end(), org)
+	if (sprt::find(_protectedVertexes.begin(), _protectedVertexes.end(), org)
 			!= _protectedVertexes.end()) {
 		return true;
 	}
 
-	if (std::find(_protectedVertexes.begin(), _protectedVertexes.end(), merge)
+	if (sprt::find(_protectedVertexes.begin(), _protectedVertexes.end(), merge)
 			!= _protectedVertexes.end()) {
 		return true;
 	}
 
 	if constexpr (TessVerbose != VerboseFlag::None) {
-		std::cout << TessVerbose << "Merge:\n\t" << *org << "\n";
-		org->foreach ([&](const HalfEdge &e) { std::cout << "\t\t" << e << "\n"; });
+		sprt::cout << TessVerbose << "Merge:\n\t" << *org << "\n";
+		org->foreach ([&](const HalfEdge &e) { sprt::cout << "\t\t" << e << "\n"; });
 
-		std::cout << "\t" << *merge << "\n";
-		merge->foreach ([&](const HalfEdge &e) { std::cout << "\t\t" << e << "\n"; });
+		sprt::cout << "\t" << *merge << "\n";
+		merge->foreach ([&](const HalfEdge &e) { sprt::cout << "\t\t" << e << "\n"; });
 	}
 
 	auto insertNext = [&](HalfEdge *l, HalfEdge *r) {
@@ -1596,13 +1591,13 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 	auto mergeEdges = [&](HalfEdge *eOrg, HalfEdge *eMerge) {
 		if (eOrg->_leftNext->sym() == eMerge) {
 			if constexpr (TessVerbose != VerboseFlag::None) {
-				std::cout << "Merge next (auto):\n\t" << *eOrg << "\n\t" << *eMerge << "\n";
+				sprt::cout << "Merge next (auto):\n\t" << *eOrg << "\n\t" << *eMerge << "\n";
 			}
 
 			return insertNext(eOrg, eMerge);
 		} else if (eMerge->_leftNext->sym() == eOrg) {
 			if constexpr (TessVerbose != VerboseFlag::None) {
-				std::cout << "Merge prev (auto):\n\t" << *eOrg << "\n\t" << *eMerge << "\n";
+				sprt::cout << "Merge prev (auto):\n\t" << *eOrg << "\n\t" << *eMerge << "\n";
 			}
 
 			insertNext(eOrg->getOriginPrev(), eMerge);
@@ -1616,16 +1611,16 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 				if (eOrg->goesRight() && eMerge->goesRight()) {
 					if (VertLeq(eOrg->getDstVec(), eMerge->getDstVec())) {
 						if constexpr (TessVerbose != VerboseFlag::None) {
-							std::cout << "Merge prev (direct):\n\t" << *eOrg << "\n\t" << *eMerge
-									  << "\n";
+							sprt::cout << "Merge prev (direct):\n\t" << *eOrg << "\n\t" << *eMerge
+									   << "\n";
 						}
 
 						insertNext(eOrg->getOriginPrev(), eMerge);
 						return eOrg;
 					} else {
 						if constexpr (TessVerbose != VerboseFlag::None) {
-							std::cout << "Merge next (direct):\n\t" << *eOrg << "\n\t" << *eMerge
-									  << "\n";
+							sprt::cout << "Merge next (direct):\n\t" << *eOrg << "\n\t" << *eMerge
+									   << "\n";
 						}
 
 						return insertNext(eOrg, eMerge);
@@ -1633,15 +1628,15 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 				} else {
 					if (VertLeq(eOrg->getDstVec(), eMerge->getDstVec())) {
 						if constexpr (TessVerbose != VerboseFlag::None) {
-							std::cout << "Merge next (reverse):\n\t" << *eOrg << "\n\t" << *eMerge
-									  << "\n";
+							sprt::cout << "Merge next (reverse):\n\t" << *eOrg << "\n\t" << *eMerge
+									   << "\n";
 						}
 
 						return insertNext(eOrg, eMerge);
 					} else {
 						if constexpr (TessVerbose != VerboseFlag::None) {
-							std::cout << "Merge prev (reverse):\n\t" << *eOrg << "\n\t" << *eMerge
-									  << "\n";
+							sprt::cout << "Merge prev (reverse):\n\t" << *eOrg << "\n\t" << *eMerge
+									   << "\n";
 						}
 
 						insertNext(eOrg->getOriginPrev(), eMerge);
@@ -1650,14 +1645,14 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 				}
 			} else if (eOrgCcw) {
 				if constexpr (TessVerbose != VerboseFlag::None) {
-					std::cout << "Merge prev (ccw):\n\t" << *eOrg << "\n\t" << *eMerge << "\n";
+					sprt::cout << "Merge prev (ccw):\n\t" << *eOrg << "\n\t" << *eMerge << "\n";
 				}
 
 				auto r = insertNext(eOrg, eMerge);
 				return r;
 			} else {
 				if constexpr (TessVerbose != VerboseFlag::None) {
-					std::cout << "Merge next (ccw):\n\t" << *eOrg << "\n\t" << *eMerge << "\n";
+					sprt::cout << "Merge next (ccw):\n\t" << *eOrg << "\n\t" << *eMerge << "\n";
 				}
 
 				insertNext(eOrg->getOriginPrev(), eMerge);
@@ -1671,7 +1666,7 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 	auto eMergeEnd = eMerge;
 
 	float lA = EdgeAngle(eOrg->getNormVec(), eOrg->getOriginNext()->getNormVec());
-	if (isnan(lA)) {
+	if (sprt::isnan(lA)) {
 		return false;
 	}
 
@@ -1683,7 +1678,7 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 			org->_edge = removeEdge(eMerge);
 			releaseVertex(merge);
 			if constexpr (TessVerbose == VerboseFlag::Full) {
-				std::cout << TessVerbose << "Out:\n\t" << *org << "\n";
+				sprt::cout << TessVerbose << "Out:\n\t" << *org << "\n";
 			}
 			return true;
 		}
@@ -1702,10 +1697,10 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 
 		do {
 			if constexpr (TessVerbose != VerboseFlag::None) {
-				std::cout << "eMerge: " << *eMerge << "\n";
+				sprt::cout << "eMerge: " << *eMerge << "\n";
 			}
 			auto rA = EdgeAngle(eOrg->getNormVec(), eMerge->getNormVec());
-			if (isnan(rA)) {
+			if (sprt::isnan(rA)) {
 				return false;
 			}
 
@@ -1721,13 +1716,13 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 				eMerge->vertex = eOrg->vertex;
 				eOrg = tmpOrg;
 				lA = EdgeAngle(eOrg->getNormVec(), eOrg->getOriginNext()->getNormVec());
-				if (isnan(lA)) {
+				if (sprt::isnan(lA)) {
 					return false;
 				}
 				break;
 			} else if (rA < lA) {
 				if constexpr (TessVerbose != VerboseFlag::None) {
-					std::cout << "Insert next:\n\t" << *eOrg << "\n\t" << *eMerge << "\n";
+					sprt::cout << "Insert next:\n\t" << *eOrg << "\n\t" << *eMerge << "\n";
 				}
 
 				auto tmpOrg = insertNext(eOrg, eMerge);
@@ -1739,14 +1734,14 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 				eMerge->vertex = eOrg->vertex;
 				eOrg = tmpOrg;
 				lA = EdgeAngle(eOrg->getNormVec(), eOrg->getOriginNext()->getNormVec());
-				if (isnan(lA)) {
+				if (sprt::isnan(lA)) {
 					return false;
 				}
 				break;
 			} else {
 				eOrg = eOrg->_originNext;
 				lA = EdgeAngle(eOrg->getNormVec(), eOrg->getOriginNext()->getNormVec());
-				if (isnan(lA)) {
+				if (sprt::isnan(lA)) {
 					return false;
 				}
 			}
@@ -1784,7 +1779,7 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 
 	do {
 		if constexpr (TessVerbose != VerboseFlag::None) {
-			std::cout << TessVerbose << "\t\tRemoveEars: " << *eOrg << "\n";
+			sprt::cout << TessVerbose << "\t\tRemoveEars: " << *eOrg << "\n";
 		}
 
 		auto eOrgNext = eOrg->_originNext;
@@ -1794,8 +1789,8 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 			auto eOrgJoin = eOrgNext;
 
 			if constexpr (TessVerbose != VerboseFlag::None) {
-				std::cout << TessVerbose << "\t\t\t: " << *eOrg << "\n";
-				std::cout << TessVerbose << "\t\t\t: " << *eOrgJoin << "\n";
+				sprt::cout << TessVerbose << "\t\t\t: " << *eOrg << "\n";
+				sprt::cout << TessVerbose << "\t\t\t: " << *eOrgJoin << "\n";
 			}
 			eOrgNext = eOrgJoin->_originNext;
 
@@ -1856,11 +1851,11 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 	} while (eOrg != eOrgEnd);
 
 	if constexpr (TessVerbose != VerboseFlag::None) {
-		std::cout << "\tResult (pre): " << eOrg->vertex << "\n";
+		sprt::cout << "\tResult (pre): " << eOrg->vertex << "\n";
 		org->foreach ([&](const HalfEdge &e) {
-			std::cout << "\t\t" << e << "\n";
+			sprt::cout << "\t\t" << e << "\n";
 			if constexpr (TessVerbose == VerboseFlag::Full) {
-				e.foreachOnFace([&](const HalfEdge &e) { std::cout << "\t\t\t" << e << "\n"; });
+				e.foreachOnFace([&](const HalfEdge &e) { sprt::cout << "\t\t\t" << e << "\n"; });
 			}
 		});
 	}
@@ -1873,15 +1868,15 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 	while (!overlapProcessed) {
 		eOrgEnd = eOrg = org->_edge;
 		if constexpr (TessVerbose != VerboseFlag::None) {
-			std::cout << "Start overlap processing: " << eOrg->vertex << " ("
-					  << _protectedVertexes.size() << "): " << *eOrg << "\n";
+			sprt::cout << "Start overlap processing: " << eOrg->vertex << " ("
+					   << _protectedVertexes.size() << "): " << *eOrg << "\n";
 		}
 
 		do {
 			auto eOrgNext = eOrg->_originNext;
 
 			float a = EdgeAngle(eOrg->getNormVec(), eOrgNext->getNormVec());
-			if (isnan(a)) {
+			if (sprt::isnan(a)) {
 				return false;
 			}
 			if (EdgeAngleIsBelowTolerance(a, _mathTolerance)) {
@@ -1935,9 +1930,9 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 				}
 
 				if constexpr (TessVerbose != VerboseFlag::None) {
-					std::cout << "Remove loop: " << eOrg->vertex << " ("
-							  << _protectedVertexes.size() << "):\n" "\t" << *eOrg << "\n\t"
-							  << *eOrg->_leftNext << "\n";
+					sprt::cout << "Remove loop: " << eOrg->vertex << " ("
+							   << _protectedVertexes.size() << "):\n" "\t" << *eOrg << "\n\t"
+							   << *eOrg->_leftNext << "\n";
 				}
 
 				eOrgSymPrev->_leftNext = eNextSym;
@@ -1950,7 +1945,7 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 
 				if constexpr (TessVerbose != VerboseFlag::None) {
 					_vertexes[eOrgSymOrgPrev->vertex]->foreach ([&](const HalfEdge &e) {
-						std::cout << "\tVertex " << eOrgSymOrgPrev->vertex << ": " << e << "\n";
+						sprt::cout << "\tVertex " << eOrgSymOrgPrev->vertex << ": " << e << "\n";
 					});
 				}
 
@@ -1967,11 +1962,11 @@ bool Tesselator::Data::mergeVertexes(Vertex *org, Vertex *merge) {
 	} while (eOrg != eOrgEnd);
 
 	if constexpr (TessVerbose != VerboseFlag::None) {
-		std::cout << "\tResult (post): " << eOrg->vertex << "\n";
+		sprt::cout << "\tResult (post): " << eOrg->vertex << "\n";
 		org->foreach ([&](const HalfEdge &e) {
-			std::cout << "\t\t" << e << "\n";
+			sprt::cout << "\t\t" << e << "\n";
 			if constexpr (TessVerbose == VerboseFlag::Full) {
-				e.foreachOnFace([&](const HalfEdge &e) { std::cout << "\t\t\t" << e << "\n"; });
+				e.foreachOnFace([&](const HalfEdge &e) { sprt::cout << "\t\t\t" << e << "\n"; });
 			}
 		});
 	}
@@ -2018,7 +2013,7 @@ HalfEdge *Tesselator::Data::removeDegenerateEdges(HalfEdge *e, uint32_t *nedges,
 		while (VertEq(e->getOrgVec(), e->getDstVec(), _mathTolerance)
 				&& e->_leftNext->_leftNext != e) {
 			if constexpr (TessVerbose != VerboseFlag::None) {
-				std::cout << "Remove degenerate: " << *e << "\n";
+				sprt::cout << "Remove degenerate: " << *e << "\n";
 			}
 
 			auto vertex = _vertexes[e->sym()->vertex];
@@ -2103,26 +2098,26 @@ HalfEdge *Tesselator::Data::removeDegenerateEdges(HalfEdge *e, uint32_t *nedges,
 }
 
 bool Tesselator::Data::processEdgeOverlap(Vertex *org, HalfEdge *e1, HalfEdge *e2) {
-	if (std::find(_protectedEdges.begin(), _protectedEdges.end(), e1) != _protectedEdges.end()) {
+	if (sprt::find(_protectedEdges.begin(), _protectedEdges.end(), e1) != _protectedEdges.end()) {
 		return false;
 	}
 
-	if (std::find(_protectedEdges.begin(), _protectedEdges.end(), e2) != _protectedEdges.end()) {
+	if (sprt::find(_protectedEdges.begin(), _protectedEdges.end(), e2) != _protectedEdges.end()) {
 		return false;
 	}
 
 
 	if constexpr (TessVerbose != VerboseFlag::None) {
-		std::cout << "processEdgeOverlap:\n\t" << *e1 << "\n\t" << *e2 << "\n";
+		sprt::cout << "processEdgeOverlap:\n\t" << *e1 << "\n\t" << *e2 << "\n";
 	}
 
 	if (e1->goesLeft()) {
 		if (!VertLeq(e2->getDstVec(), e1->getDstVec())) {
-			std::swap(e1, e2); // split e2
+			sprt::swap(e1, e2); // split e2
 		}
 	} else {
 		if (!VertLeq(e1->getDstVec(), e2->getDstVec())) {
-			std::swap(e1, e2); // split e2
+			sprt::swap(e1, e2); // split e2
 		}
 	}
 
@@ -2134,7 +2129,7 @@ bool Tesselator::Data::processEdgeOverlap(Vertex *org, HalfEdge *e1, HalfEdge *e
 	}
 
 	if constexpr (TessVerbose != VerboseFlag::None) {
-		std::cout << "Overlap: " << *e2 << "\n";
+		sprt::cout << "Overlap: " << *e2 << "\n";
 	}
 
 	auto vOrgIdx = e1->sym()->vertex;
@@ -2147,12 +2142,12 @@ bool Tesselator::Data::processEdgeOverlap(Vertex *org, HalfEdge *e1, HalfEdge *e
 
 	do {
 		if (vOrg != vMerge) {
-			if (std::find(_protectedVertexes.begin(), _protectedVertexes.end(), vOrg)
+			if (sprt::find(_protectedVertexes.begin(), _protectedVertexes.end(), vOrg)
 					!= _protectedVertexes.end()) {
 				break;
 			}
 
-			if (std::find(_protectedVertexes.begin(), _protectedVertexes.end(), vMerge)
+			if (sprt::find(_protectedVertexes.begin(), _protectedVertexes.end(), vMerge)
 					!= _protectedVertexes.end()) {
 				break;
 			}
@@ -2361,8 +2356,8 @@ void Tesselator::Data::displaceBoundary(FaceEdge *edge) {
 		auto angle = M_PI - atan2f(cross, dot);
 		auto length = offsetValue * angle * _contentScale;
 
-		uint16_t minVertexes = static_cast<uint16_t>(std::floor(angle / M_PI_4));
-		uint16_t vertexes = static_cast<uint16_t>(std::floor(length / 4.0f));
+		uint16_t minVertexes = static_cast<uint16_t>(sprt::floor(angle / M_PI_4));
+		uint16_t vertexes = static_cast<uint16_t>(sprt::floor(length / 4.0f));
 
 		auto perp = Vec2(v1 - v0).getPerp();
 		perp.normalize();
@@ -2372,11 +2367,11 @@ void Tesselator::Data::displaceBoundary(FaceEdge *edge) {
 		rperp.normalize();
 		edge->_next->_rperp = v1 + rperp * offsetValue;
 
-		edge->_next->_nextra = std::max(minVertexes, vertexes);
+		edge->_next->_nextra = sprt::max(minVertexes, vertexes);
 		edge->_next->_value = 0.0f;
 		edge->_next->_angle = angle;
 	} else {
-		if (std::isnan(result.y) || result.y > 3.0f) {
+		if (sprt::isnan(result.y) || result.y > 3.0f) {
 			edge->_next->_value = 1.0f - 3.0f / result.y;
 			result.y = 3.0f;
 		}
@@ -2391,8 +2386,8 @@ void Tesselator::Data::displaceBoundary(FaceEdge *edge) {
 		if (edge->_next->_vertex) {
 			edge->_next->_vertex->relocate(
 					Vec2(v1.x - result.z * insetMod, v1.y - result.w * insetMod));
-			sprt_passert(!std::isnan(edge->_next->_vertex->_origin.x)
-							&& !std::isnan(edge->_next->_vertex->_origin.y),
+			sprt_passert(!sprt::isnan(edge->_next->_vertex->_origin.x)
+							&& !sprt::isnan(edge->_next->_vertex->_origin.y),
 					"Tess: displaced vertex is NaN");
 		}
 	}

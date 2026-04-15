@@ -25,17 +25,19 @@
 #define STAPPLER_CORE_MEMORY_SPMEMPRIORITYQUEUE_H_
 
 #include "SPMemInterface.h"
-#include <sprt/runtime/mutex.h>
+#include <sprt/runtime/thread/qmutex.h>
+#include <sprt/runtime/thread/rmutex.h>
+#include <sprt/cxx/__mutex/unique_lock.h>
 
 #define SP_PRIORITY_QUEUE_RANGE_DEBUG 0
 
 namespace STAPPLER_VERSIONIZED stappler::memory {
 
 SP_PUBLIC void PriorityQueue_lock_noOp(void *);
-SP_PUBLIC void PriorityQueue_lock_std_mutex(void *);
-SP_PUBLIC void PriorityQueue_unlock_std_mutex(void *);
 SP_PUBLIC void PriorityQueue_lock_qmutex(void *);
 SP_PUBLIC void PriorityQueue_unlock_qmutex(void *);
+SP_PUBLIC void PriorityQueue_lock_rmutex(void *);
+SP_PUBLIC void PriorityQueue_unlock_rmutex(void *);
 
 // Real-time task priority queue
 // It's designed for relatively low pending tasks (below PreallocatedNodes),
@@ -64,7 +66,7 @@ public:
 	};
 
 	struct StorageBlock {
-		std::array<Node, StorageNodes> nodes;
+		sprt::array<Node, StorageNodes> nodes;
 		uint32_t used = 0;
 	};
 
@@ -127,7 +129,7 @@ public:
 	size_t capacity() const { return _capacity; }
 
 	size_t free_capacity() {
-		std::unique_lock<LockInterface> lock(_free.lock);
+		sprt::unique_lock<LockInterface> lock(_free.lock);
 		size_t ret = 0;
 		auto node = _free.first;
 		while (node) {
@@ -154,18 +156,6 @@ public:
 		setFreeLocking(lockFn, unlockFn, ptr);
 	}
 
-	void setQueueLocking(std::mutex &mutex) {
-		_queue.lock.lockFn = PriorityQueue_lock_std_mutex;
-		_queue.lock.unlockFn = PriorityQueue_unlock_std_mutex;
-		_queue.lock.lockPtr = &mutex;
-	}
-
-	void setFreeLocking(std::mutex &mutex) {
-		_free.lock.lockFn = PriorityQueue_lock_std_mutex;
-		_free.lock.unlockFn = PriorityQueue_unlock_std_mutex;
-		_free.lock.lockPtr = &mutex;
-	}
-
 	void setQueueLocking(sprt::qmutex &mutex) {
 		_queue.lock.lockFn = PriorityQueue_lock_qmutex;
 		_queue.lock.unlockFn = PriorityQueue_unlock_qmutex;
@@ -178,7 +168,24 @@ public:
 		_free.lock.lockPtr = &mutex;
 	}
 
-	void setLocking(std::mutex &mutex) {
+	void setQueueLocking(sprt::rmutex &mutex) {
+		_queue.lock.lockFn = PriorityQueue_lock_rmutex;
+		_queue.lock.unlockFn = PriorityQueue_unlock_rmutex;
+		_queue.lock.lockPtr = &mutex;
+	}
+
+	void setFreeLocking(sprt::rmutex &mutex) {
+		_free.lock.lockFn = PriorityQueue_lock_rmutex;
+		_free.lock.unlockFn = PriorityQueue_unlock_rmutex;
+		_free.lock.lockPtr = &mutex;
+	}
+
+	void setLocking(sprt::qmutex &mutex) {
+		setQueueLocking(mutex);
+		setFreeLocking(mutex);
+	}
+
+	void setLocking(sprt::rmutex &mutex) {
 		setQueueLocking(mutex);
 		setFreeLocking(mutex);
 	}
@@ -215,13 +222,13 @@ public:
 	}
 
 	bool empty() {
-		std::unique_lock<LockInterface> lock(_queue.lock);
+		sprt::unique_lock<LockInterface> lock(_queue.lock);
 		return empty(lock);
 	}
 
 	// inform queue that lock already acquired
 	template <class T>
-	bool empty(std::unique_lock<T> &lock) {
+	bool empty(sprt::unique_lock<T> &lock) {
 		return _queue.first == nullptr;
 	}
 
@@ -229,13 +236,13 @@ public:
 	void push(PriorityType p, bool insertFirst, Args &&...args) {
 		auto node = allocateNode();
 		node->priority = p;
-		new (node->storage.buffer) Value(std::forward<Args>(args)...);
+		new (node->storage.buffer) Value(sprt::forward<Args>(args)...);
 		pushNode(node, insertFirst);
 	}
 
 	// pop node, move value into temporary, then free node, then call callback
 	// optimized for long callbacks and simple move constructor
-	bool pop_prefix(std::unique_lock<LockInterface> &lock,
+	bool pop_prefix(sprt::unique_lock<LockInterface> &lock,
 			const callback<void(PriorityType, Value &&)> &cb) {
 		if (auto node = popNode(lock)) {
 			auto p = node->priority;
@@ -264,7 +271,7 @@ public:
 
 	// pop node, run callback on value, directly stored in node, then free node
 	// no additional move, but with extra cost for detached node, that blocked until callback ends
-	bool pop_direct(std::unique_lock<LockInterface> &lock,
+	bool pop_direct(sprt::unique_lock<LockInterface> &lock,
 			const callback<void(PriorityType, Value &&)> &cb) {
 		if (auto node = popNode(lock)) {
 			Value *val = (Value *)(node->storage.buffer);
@@ -288,7 +295,7 @@ public:
 	}
 
 	void foreach (const callback<void(PriorityType, const Value &)> &cb) {
-		std::unique_lock<LockInterface> lock(_queue.lock);
+		sprt::unique_lock<LockInterface> lock(_queue.lock);
 
 		auto node = _queue.first;
 		while (node) {
@@ -300,7 +307,7 @@ public:
 protected:
 	void initNodes(Node *first, Node *last, StorageBlock *block) {
 #if SP_PRIORITY_QUEUE_RANGE_DEBUG
-		std::unique_lock rangesLock(_rangesLock);
+		sprt::unique_lock rangesLock(_rangesLock);
 		_ranges.emplace_back(uintptr_t(first), uintptr_t(last));
 		rangesLock.unlock();
 #endif
@@ -327,11 +334,11 @@ protected:
 	// - free (blocking)
 
 	Node *popNode() {
-		std::unique_lock<LockInterface> lock(_queue.lock);
+		sprt::unique_lock<LockInterface> lock(_queue.lock);
 		return popNode(lock);
 	}
 
-	Node *popNode(std::unique_lock<LockInterface> &lock) {
+	Node *popNode(sprt::unique_lock<LockInterface> &lock) {
 		Node *ret = nullptr;
 		if (_queue.first) {
 			ret = _queue.first;
@@ -346,7 +353,7 @@ protected:
 	}
 
 	void pushNode(Node *node, bool insertFirst) {
-		std::unique_lock<LockInterface> lock(_queue.lock);
+		sprt::unique_lock<LockInterface> lock(_queue.lock);
 		node->next = nullptr;
 		if (!_queue.first) {
 			_queue.last = _queue.first = node;
@@ -383,7 +390,7 @@ protected:
 
 	Node *allocateNode() {
 		Node *ret = nullptr;
-		std::unique_lock<LockInterface> lock(_free.lock);
+		sprt::unique_lock<LockInterface> lock(_free.lock);
 		if (_free.first) {
 			ret = _free.first;
 			if (_free.first == _free.last) {
@@ -415,7 +422,7 @@ protected:
 	void freeNode(Node *node) {
 		if (node->block) {
 			// add to the end of the list
-			std::unique_lock<LockInterface> lock(_free.lock);
+			sprt::unique_lock<LockInterface> lock(_free.lock);
 			node->next = nullptr;
 
 			--node->block->used;
@@ -472,7 +479,7 @@ protected:
 		} else {
 			// add to the front of list, so, it's more likely that extra nodes will be unused
 			// and extra block will be deallocated
-			std::unique_lock<LockInterface> lock(_free.lock);
+			sprt::unique_lock<LockInterface> lock(_free.lock);
 			node->next = _free.first;
 			_free.first = node;
 			if (!_free.last) {
@@ -485,16 +492,16 @@ protected:
 #endif
 	}
 
-	StorageBlock *allocateBlock(std::unique_lock<LockInterface> &lock) {
+	StorageBlock *allocateBlock(sprt::unique_lock<LockInterface> &lock) {
 		auto block = new StorageBlock();
 		initNodes(&block->nodes[0], &block->nodes[block->nodes.size() - 1], block);
 		_capacity += block->nodes.size();
 		return block;
 	}
 
-	void deallocateBlock(std::unique_lock<LockInterface> &lock, StorageBlock *block) {
+	void deallocateBlock(sprt::unique_lock<LockInterface> &lock, StorageBlock *block) {
 #if SP_PRIORITY_QUEUE_RANGE_DEBUG
-		std::unique_lock rangesLock(_rangesLock);
+		sprt::unique_lock rangesLock(_rangesLock);
 		_ranges.emplace_back(uintptr_t(&block->nodes.front()), uintptr_t(&block->nodes.back()));
 		rangesLock.unlock();
 #endif
@@ -503,7 +510,7 @@ protected:
 		delete block;
 	}
 
-	std::array<Node, PreallocatedNodes> _preallocated;
+	sprt::array<Node, PreallocatedNodes> _preallocated;
 
 	NodeInterface _queue;
 	NodeInterface _free;
@@ -515,7 +522,7 @@ protected:
 		if (!ptr) {
 			return;
 		}
-		std::unique_lock rangesLock(_rangesLock);
+		sprt::unique_lock rangesLock(_rangesLock);
 		auto i = (uintptr_t)ptr;
 		for (auto &it : _ranges) {
 			if (i >= it.first && i <= it.second) {
@@ -525,8 +532,8 @@ protected:
 		abort();
 	}
 
-	mutable std::mutex _rangesLock;
-	std::vector<std::pair<uintptr_t, uintptr_t>> _ranges;
+	mutable sprt::mutex _rangesLock;
+	sprt::vector<sprt::pair<uintptr_t, uintptr_t>> _ranges;
 #endif
 };
 

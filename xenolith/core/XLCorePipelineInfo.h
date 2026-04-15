@@ -184,10 +184,10 @@ public:
 	PipelineMaterialInfo &operator=(const PipelineMaterialInfo &) = default;
 
 	template <typename T, typename... Args,
-			typename = std::enable_if_t<std::negation_v<std::is_same<T, PipelineMaterialInfo>>> >
+			typename = sprt::enable_if_t<sprt::negation_v<sprt::is_same<T, PipelineMaterialInfo>>> >
 	PipelineMaterialInfo(T &&t, Args &&...args) : PipelineMaterialInfo() {
-		setup(std::forward<T>(t));
-		setup(std::forward<Args>(args)...);
+		setup(sprt::forward<T>(t));
+		setup(sprt::forward<Args>(args)...);
 	}
 
 	void setBlendInfo(const BlendInfo &);
@@ -242,13 +242,13 @@ protected:
 
 	template <typename T>
 	void setup(T &&t) {
-		_setup(std::forward<T>(t));
+		_setup(sprt::forward<T>(t));
 	}
 
 	template <typename T, typename... Args>
 	void setup(T &&t, Args &&...args) {
-		setup(std::forward<T>(t));
-		setup(std::forward<Args>(args)...);
+		setup(sprt::forward<T>(t));
+		setup(sprt::forward<Args>(args)...);
 	}
 
 	void setup() { }

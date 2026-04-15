@@ -78,12 +78,12 @@ public:
 		void clear();
 		void reset(const Scheme &);
 
-		void include(std::initializer_list<StringView>);
+		void include(sprt::initializer_list<StringView>);
 		void include(const Set<const Field *> &);
 		void include(const StringView &);
 		void include(const Field *);
 
-		void exclude(std::initializer_list<StringView>);
+		void exclude(sprt::initializer_list<StringView>);
 		void exclude(const Set<const Field *> &);
 		void exclude(const StringView &);
 		void exclude(const Field *);
@@ -135,13 +135,13 @@ public:
 
 	template <typename T>
 	Worker &include(T &&t) {
-		_required.include(std::forward<T>(t));
+		_required.include(sprt::forward<T>(t));
 		return *this;
 	}
 
 	template <typename T>
 	Worker &exclude(T &&t) {
-		_required.exclude(std::forward<T>(t));
+		_required.exclude(sprt::forward<T>(t));
 		return *this;
 	}
 
@@ -166,25 +166,25 @@ public:
 	Value get(const StringView &alias, StringView, UpdateFlags = UpdateFlags::None);
 	Value get(const Value &id, StringView, UpdateFlags = UpdateFlags::None);
 
-	Value get(uint64_t oid, std::initializer_list<StringView> &&fields,
+	Value get(uint64_t oid, sprt::initializer_list<StringView> &&fields,
 			UpdateFlags = UpdateFlags::None);
-	Value get(const StringView &alias, std::initializer_list<StringView> &&fields,
+	Value get(const StringView &alias, sprt::initializer_list<StringView> &&fields,
 			UpdateFlags = UpdateFlags::None);
-	Value get(const Value &id, std::initializer_list<StringView> &&fields,
-			UpdateFlags = UpdateFlags::None);
-
-	Value get(uint64_t oid, std::initializer_list<const char *> &&fields,
-			UpdateFlags = UpdateFlags::None);
-	Value get(const StringView &alias, std::initializer_list<const char *> &&fields,
-			UpdateFlags = UpdateFlags::None);
-	Value get(const Value &id, std::initializer_list<const char *> &&fields,
+	Value get(const Value &id, sprt::initializer_list<StringView> &&fields,
 			UpdateFlags = UpdateFlags::None);
 
-	Value get(uint64_t oid, std::initializer_list<const Field *> &&fields,
+	Value get(uint64_t oid, sprt::initializer_list<const char *> &&fields,
 			UpdateFlags = UpdateFlags::None);
-	Value get(const StringView &alias, std::initializer_list<const Field *> &&fields,
+	Value get(const StringView &alias, sprt::initializer_list<const char *> &&fields,
 			UpdateFlags = UpdateFlags::None);
-	Value get(const Value &id, std::initializer_list<const Field *> &&fields,
+	Value get(const Value &id, sprt::initializer_list<const char *> &&fields,
+			UpdateFlags = UpdateFlags::None);
+
+	Value get(uint64_t oid, sprt::initializer_list<const Field *> &&fields,
+			UpdateFlags = UpdateFlags::None);
+	Value get(const StringView &alias, sprt::initializer_list<const Field *> &&fields,
+			UpdateFlags = UpdateFlags::None);
+	Value get(const Value &id, sprt::initializer_list<const Field *> &&fields,
 			UpdateFlags = UpdateFlags::None);
 
 	Value get(uint64_t oid, SpanView<const Field *> fields, UpdateFlags = UpdateFlags::None);
@@ -232,8 +232,8 @@ public:
 	void touch(const Value &obj);
 
 public:
-	Value getField(uint64_t oid, const StringView &, std::initializer_list<StringView> fields);
-	Value getField(const Value &, const StringView &, std::initializer_list<StringView> fields);
+	Value getField(uint64_t oid, const StringView &, sprt::initializer_list<StringView> fields);
+	Value getField(const Value &, const StringView &, sprt::initializer_list<StringView> fields);
 	Value getField(uint64_t oid, const StringView &,
 			const Set<const Field *> & = Set<const Field *>());
 	Value getField(const Value &, const StringView &,
@@ -254,8 +254,8 @@ public:
 	size_t countField(const Value &, const StringView &);
 
 public:
-	Value getField(uint64_t oid, const Field &, std::initializer_list<StringView> fields);
-	Value getField(const Value &, const Field &, std::initializer_list<StringView> fields);
+	Value getField(uint64_t oid, const Field &, sprt::initializer_list<StringView> fields);
+	Value getField(const Value &, const Field &, sprt::initializer_list<StringView> fields);
 	Value getField(uint64_t oid, const Field &, const Set<const Field *> & = Set<const Field *>());
 	Value getField(const Value &, const Field &, const Set<const Field *> & = Set<const Field *>());
 
@@ -276,7 +276,7 @@ public:
 protected:
 	friend class Scheme;
 
-	Set<const Field *> getFieldSet(const Field &f, std::initializer_list<StringView> il) const;
+	Set<const Field *> getFieldSet(const Field &f, sprt::initializer_list<StringView> il) const;
 
 	bool addConflict(const Conflict &);
 	bool addConflict(const Vector<Conflict> &);
@@ -321,8 +321,8 @@ struct FieldResolver {
 
 template <typename Callback>
 inline bool Worker::perform(const Callback &cb) const {
-	static_assert(std::is_invocable_v<Callback, const Transaction &>, "Invalid callback type");
-	static_assert(std::is_same_v<bool, std::invoke_result_t<Callback, const Transaction &>>,
+	static_assert(sprt::is_invocable_v<Callback, const Transaction &>, "Invalid callback type");
+	static_assert(sprt::is_same_v<bool, sprt::invoke_result_t<Callback, const Transaction &>>,
 			"Invalid callback return type");
 	return _transaction.perform([&, this]() -> bool { return cb(_transaction); });
 }

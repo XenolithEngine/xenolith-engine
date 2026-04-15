@@ -23,7 +23,6 @@
 #include "SPCore.h"
 #include "SPFilepath.h"
 #include "SPMakefileVariable.h"
-#include "SPStringDetail.h"
 
 namespace STAPPLER_VERSIONIZED stappler::makefile {
 
@@ -283,18 +282,18 @@ struct SortNode : AllocBase {
 	SortNode(StringView s) : value(s) { }
 
 	void insert(StringView str) {
-		auto v = string::detail::compare_c(value, str);
+		auto v = sprt::detail::compare_c(value, str);
 		if (v < 0) {
 			// add to left
 			if (!left) {
-				left = new (std::nothrow) SortNode(str);
+				left = new (sprt::nothrow) SortNode(str);
 			} else {
 				left->insert(str);
 			}
 		} else if (v > 0) {
 			// add to right
 			if (!right) {
-				right = new (std::nothrow) SortNode(str);
+				right = new (sprt::nothrow) SortNode(str);
 			} else {
 				right->insert(str);
 			}
@@ -324,7 +323,7 @@ static bool Function_sort(const Callback<void(StringView)> &out, void *, Variabl
 	}
 	text.split<StringView::WhiteSpace>([&](StringView word) {
 		if (!node) {
-			node = new (std::nothrow) SortNode(word);
+			node = new (sprt::nothrow) SortNode(word);
 		} else {
 			node->insert(word);
 		}

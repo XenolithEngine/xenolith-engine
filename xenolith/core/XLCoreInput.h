@@ -47,20 +47,4 @@ using sprt::window::getInputModifiersNames;
 
 } // namespace stappler::xenolith::core
 
-namespace std {
-
-SP_PUBLIC inline std::ostream &operator<<(std::ostream &stream,
-		STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::InputKeyCode v) {
-	STAPPLER_VERSIONIZED_NAMESPACE::memory::makeCallback(stream) << v;
-	return stream;
-}
-
-SP_PUBLIC inline std::ostream &operator<<(std::ostream &stream,
-		STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::InputEventName v) {
-	STAPPLER_VERSIONIZED_NAMESPACE::memory::makeCallback(stream) << v;
-	return stream;
-}
-
-} // namespace std
-
 #endif /* XENOLITH_CORE_XLCOREINPUT_H_ */

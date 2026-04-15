@@ -39,7 +39,8 @@ using ExternalAssetsMap = memory::StandartInterface::MapType<memory::StandartInt
 class SP_PUBLIC LayoutEngine : public StyleInterface,
 							   public InterfaceObject<memory::PoolInterface> {
 public:
-	LayoutEngine(Document *, std::function<Rc<font::FontFaceSet>(const FontStyleParameters &)> &&,
+	LayoutEngine(Document *,
+			mem_std::Function<Rc<font::FontFaceSet>(const FontStyleParameters &)> &&,
 			const MediaParameters &, SpanView<StringView> spine = SpanView<StringView>());
 	virtual ~LayoutEngine();
 

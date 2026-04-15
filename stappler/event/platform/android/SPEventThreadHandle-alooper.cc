@@ -40,7 +40,7 @@ Status ThreadALooperHandle::read() {
 	auto source = reinterpret_cast<EventFdSource *>(_data);
 	auto ret = ::__sprt_eventfd_read(source->fd, &source->eventTarget);
 	if (ret < 0) {
-		return sprt::status::errnoToStatus(errno);
+		return sprt::status::errnoToStatus(__sprt_errno);
 	}
 	return Status::Ok;
 }
@@ -49,7 +49,7 @@ Status ThreadALooperHandle::write(uint64_t val) {
 	auto source = reinterpret_cast<EventFdSource *>(_data);
 	auto ret = ::__sprt_eventfd_write(source->fd, val);
 	if (ret < 0) {
-		return sprt::status::errnoToStatus(errno);
+		return sprt::status::errnoToStatus(__sprt_errno);
 	}
 	return Status::Ok;
 }
@@ -95,7 +95,7 @@ void ThreadALooperHandle::notify(ALooperData *alooper, EventFdSource *source,
 }
 
 Status ThreadALooperHandle::perform(Rc<thread::Task> &&task) {
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	_outputQueue.emplace_back(move(task));
 
 	uint64_t value = 1;
@@ -104,7 +104,7 @@ Status ThreadALooperHandle::perform(Rc<thread::Task> &&task) {
 }
 
 Status ThreadALooperHandle::perform(mem_std::Function<void()> &&func, Ref *target, StringView tag) {
-	std::unique_lock lock(_mutex);
+	sprt::unique_lock lock(_mutex);
 	_outputCallbacks.emplace_back(CallbackInfo{sp::move(func), target, tag});
 
 	uint64_t value = 1;

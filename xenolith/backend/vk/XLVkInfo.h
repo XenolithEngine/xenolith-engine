@@ -25,7 +25,6 @@
 #ifndef XENOLITH_BACKEND_VK_XLVKINFO_H_
 #define XENOLITH_BACKEND_VK_XLVKINFO_H_
 
-#include "SPGeometry.h"
 #include "XLVk.h"
 #include "XlCoreMonitorInfo.h"
 
@@ -68,7 +67,7 @@ struct SP_PUBLIC DisplayInfo {
 	operator core::MonitorInfo() const {
 		core::MonitorInfo mon;
 		mon.name = StringView(name).str<sprt::window::String>();
-		mon.rect = sprt::IRect{0, 0, extent.width, extent.height};
+		mon.rect = IRect{0, 0, extent.width, extent.height};
 		mon.mm = mm;
 
 		for (auto &it : modes) { mon.modes.emplace_back(it.info); }
@@ -78,7 +77,7 @@ struct SP_PUBLIC DisplayInfo {
 };
 
 struct SP_PUBLIC DeviceInfo {
-	using OptVec = std::bitset<toInt(OptionalDeviceExtension::Max)>;
+	using OptVec = sprt::bitset<toInt(OptionalDeviceExtension::Max)>;
 
 	struct Features {
 		static Features getRequired();

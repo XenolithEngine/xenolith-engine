@@ -117,7 +117,7 @@ void QueuePassHandle::autorelease(Ref *ref) const {
 		return;
 	}
 
-	std::unique_lock lock(_autoreleaseMutex);
+	sprt::unique_lock lock(_autoreleaseMutex);
 	_autorelease.emplace_back(ref);
 }
 

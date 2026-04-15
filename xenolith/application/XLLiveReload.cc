@@ -27,7 +27,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 LiveReloadLibrary::~LiveReloadLibrary() {
 	if (releaseLooper) {
-		auto tmp = new (std::nothrow) Dso(sp::move(library));
+		auto tmp = new (sprt::nothrow) sprt::Dso(sp::move(library));
 		releaseLooper->performOnThread([looper = releaseLooper, tmp, path = sp::move(path)] {
 			looper->schedule(TimeInterval::milliseconds(100),
 					[tmp, path = sp::move(path)](event::Handle *, bool) {
@@ -40,7 +40,7 @@ LiveReloadLibrary::~LiveReloadLibrary() {
 }
 
 bool LiveReloadLibrary::init(StringView p, Time time, uint32_t version, event::Looper *looper) {
-	library = Dso(p, version);
+	library = sprt::Dso(p, version);
 	if (library) {
 		path = p.str<Interface>();
 		mtime = time;

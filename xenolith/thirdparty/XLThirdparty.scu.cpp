@@ -25,6 +25,4 @@
 ///@ SP_EXCLUDE
  */
 
-#include <sprt/wrappers/locale>
-
 #include "SPIRV-Reflect/spirv_reflect.cc"

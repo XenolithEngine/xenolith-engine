@@ -34,6 +34,8 @@
 #include "glsl/include/XL2dGlslSdfData.h"
 #include "glsl/include/XL2dGlslParticle.h"
 
+#include <sprt/runtime/thread/qtimeline.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
 using glsl::VertexConstantData;

@@ -89,7 +89,7 @@ bool FloatingMenu::init(MenuSource *source, Menu *root) {
 		return false;
 	}
 
-	setMenuButtonCallback(std::bind(&FloatingMenu::onMenuButton, this, std::placeholders::_1));
+	setMenuButtonCallback(sprt::bind(&FloatingMenu::onMenuButton, this, sprt::placeholders::_1));
 
 	_root = root;
 
@@ -197,7 +197,7 @@ bool FloatingMenu::isReady() const { return _ready; }
 void FloatingMenu::onMenuButton(MenuButton *btn) {
 	if (!btn->getMenuSourceButton()->getNextMenu()) {
 		setEnabled(false);
-		runAction(Rc<Sequence>::create(0.15f, std::bind(&FloatingMenu::closeRecursive, this)));
+		runAction(Rc<Sequence>::create(0.15f, sprt::bind(&FloatingMenu::closeRecursive, this)));
 	}
 }
 

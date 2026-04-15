@@ -79,7 +79,7 @@ Instance::~Instance() {
 	log::source().debug("core::Instance", "~Instance");
 }
 
-Instance::Instance(InstanceApi api, InstanceFlags flags, Dso &&dso)
+Instance::Instance(InstanceApi api, InstanceFlags flags, sprt::Dso &&dso)
 : _api(api), _flags(flags), _dsoModule(sp::move(dso)) { }
 
 

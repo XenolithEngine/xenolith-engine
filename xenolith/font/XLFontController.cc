@@ -283,7 +283,7 @@ void FontController::Builder::addSources(FamilyQuery *query, Vector<const FontSo
 		query->sources.reserve(query->sources.size() + sources.size());
 		for (auto &iit : sources) {
 			XL_ASSERT(iit, "Source should not be nullptr");
-			if (std::find(query->sources.begin(), query->sources.end(), iit)
+			if (sprt::find(query->sources.begin(), query->sources.end(), iit)
 					== query->sources.end()) {
 				query->sources.emplace_back(iit);
 			}
@@ -291,7 +291,7 @@ void FontController::Builder::addSources(FamilyQuery *query, Vector<const FontSo
 	} else {
 		auto iit = query->sources.begin();
 		while (iit != query->sources.end()) {
-			if (std::find(sources.begin(), sources.end(), *iit) != sources.end()) {
+			if (sprt::find(sources.begin(), sources.end(), *iit) != sources.end()) {
 				iit = query->sources.erase(iit);
 			} else {
 				++iit;
@@ -303,7 +303,7 @@ void FontController::Builder::addSources(FamilyQuery *query, Vector<const FontSo
 		auto insertIt = query->sources.begin();
 		for (auto &source : sources) {
 			XL_ASSERT(source, "Source should not be nullptr");
-			if (std::find(query->sources.begin(), query->sources.end(), source)
+			if (sprt::find(query->sources.begin(), query->sources.end(), source)
 					== query->sources.end()) {
 				query->sources.emplace(insertIt, source);
 			}
@@ -343,7 +343,7 @@ void FontController::invalidate(AppThread *) {
 }
 
 void FontController::addFont(StringView family, Rc<FontFaceData> &&data, bool front) {
-	std::unique_lock lock(_layoutSharedMutex);
+	sprt::unique_lock lock(_layoutSharedMutex);
 	auto familyIt = _families.find(family);
 	if (familyIt == _families.end()) {
 		familyIt = _families.emplace(family.str<Interface>(), FamilySpec()).first;
@@ -361,7 +361,7 @@ void FontController::addFont(StringView family, Rc<FontFaceData> &&data, bool fr
 }
 
 void FontController::addFont(StringView family, Vector<Rc<FontFaceData>> &&data, bool front) {
-	std::unique_lock lock(_layoutSharedMutex);
+	sprt::unique_lock lock(_layoutSharedMutex);
 	auto familyIt = _families.find(family);
 	if (familyIt == _families.end()) {
 		familyIt = _families.emplace(family.str<Interface>(), FamilySpec()).first;
@@ -385,7 +385,7 @@ void FontController::addFont(StringView family, Vector<Rc<FontFaceData>> &&data,
 }
 
 bool FontController::addAlias(StringView newAlias, StringView familyName) {
-	std::unique_lock lock(_layoutSharedMutex);
+	sprt::unique_lock lock(_layoutSharedMutex);
 	if (_aliases.find(newAlias) != _aliases.end()) {
 		return false;
 	}
@@ -412,7 +412,7 @@ Rc<FontFaceSet> FontController::getLayout(FontParameters style) {
 	style.fontSize = style.fontSize * style.density;
 
 	// check if layout already loaded
-	std::shared_lock sharedLock(_layoutSharedMutex);
+	sprt::shared_lock sharedLock(_layoutSharedMutex);
 	if (!_loaded) {
 		return nullptr;
 	}
@@ -457,7 +457,7 @@ Rc<FontFaceSet> FontController::getLayout(FontParameters style) {
 
 	// we need to create new layout
 	sharedLock.unlock();
-	std::unique_lock uniqueLock(_layoutSharedMutex);
+	sprt::unique_lock uniqueLock(_layoutSharedMutex);
 
 	Vector<Rc<FontFaceData>> data;
 
@@ -509,8 +509,8 @@ Rc<core::DependencyEvent> FontController::addTextureChars(const Rc<FontFaceSet> 
 }
 
 uint32_t FontController::getFamilyIndex(StringView name) const {
-	std::shared_lock lock(_layoutSharedMutex);
-	auto it = std::find(_familiesNames.begin(), _familiesNames.end(), name);
+	sprt::shared_lock lock(_layoutSharedMutex);
+	auto it = sprt::find(_familiesNames.begin(), _familiesNames.end(), name);
 	if (it != _familiesNames.end()) {
 		return uint32_t(it - _familiesNames.begin());
 	}
@@ -518,7 +518,7 @@ uint32_t FontController::getFamilyIndex(StringView name) const {
 }
 
 StringView FontController::getFamilyName(uint32_t idx) const {
-	std::shared_lock lock(_layoutSharedMutex);
+	sprt::shared_lock lock(_layoutSharedMutex);
 	if (idx < _familiesNames.size()) {
 		return _familiesNames[idx];
 	}
@@ -530,14 +530,14 @@ void FontController::update(AppThread *app, const UpdateTime &clock, bool) {
 	removeUnusedLayouts();
 	if (_dirty && _loaded) {
 		Vector<FontUpdateRequest> objects;
-		std::shared_lock lock(_layoutSharedMutex);
+		sprt::shared_lock lock(_layoutSharedMutex);
 		for (auto &it : _layouts) {
 			for (auto &iit : it.second->getFaces()) {
 				if (!iit) {
 					continue;
 				}
 
-				auto lb = std::lower_bound(objects.begin(), objects.end(), iit,
+				auto lb = sprt::lower_bound(objects.begin(), objects.end(), iit,
 						[](const FontUpdateRequest &l, FontFaceObject *r) {
 					return l.object.get() < r;
 				});
@@ -616,20 +616,20 @@ FontSpecializationVector FontController::findSpecialization(const FamilySpec &fa
 		} else if (existed.fontStyle == FontStyle::Italic) {
 			if (required.fontStyle != FontStyle::Normal) {
 				ret += ((360 << 6)
-							   - std::abs(int(required.fontStyle.get())
+							   - sprt::abs(int(required.fontStyle.get())
 									   - int(FontStyle::Oblique.get())))
 						/ 2;
 			}
 		} else if (required.fontStyle == FontStyle::Italic) {
 			if (existed.fontStyle != FontStyle::Normal) {
 				ret += ((360 << 6)
-							   - std::abs(int(FontStyle::Oblique.get())
+							   - sprt::abs(int(FontStyle::Oblique.get())
 									   - int(existed.fontStyle.get())))
 						/ 2;
 			}
 		} else {
 			ret += (360 << 6)
-					- std::abs(int(required.fontStyle.get()) - int(existed.fontStyle.get()));
+					- sprt::abs(int(required.fontStyle.get()) - int(existed.fontStyle.get()));
 		}
 
 		if (existed.fontStyle == required.fontStyle
@@ -647,14 +647,15 @@ FontSpecializationVector FontController::findSpecialization(const FamilySpec &fa
 		}
 
 		if (existed.fontGrade == required.fontGrade) {
-			ret += (400 - std::abs(int(required.fontGrade.get()) - int(existed.fontGrade.get())))
+			ret += (400 - sprt::abs(int(required.fontGrade.get()) - int(existed.fontGrade.get())))
 					* 50;
 		}
 
-		ret += (1'000 - std::abs(int(required.fontWeight.get()) - int(existed.fontWeight.get())))
+		ret += (1'000 - sprt::abs(int(required.fontWeight.get()) - int(existed.fontWeight.get())))
 				* 100;
 		ret += ((250 << 1)
-					   - std::abs(int(required.fontStretch.get()) - int(existed.fontStretch.get())))
+					   - sprt::abs(
+							   int(required.fontStretch.get()) - int(existed.fontStretch.get())))
 				* 100;
 		return ret;
 	};
@@ -679,7 +680,7 @@ FontSpecializationVector FontController::findSpecialization(const FamilySpec &fa
 	}
 
 	if (dataList) {
-		std::sort(scores.begin(), scores.end(),
+		sprt::sort(scores.begin(), scores.end(),
 				[](const Pair<FontFaceData *, uint32_t> &l,
 						const Pair<FontFaceData *, uint32_t> &r) {
 			if (l.second == r.second) {
@@ -697,7 +698,7 @@ FontSpecializationVector FontController::findSpecialization(const FamilySpec &fa
 }
 
 void FontController::removeUnusedLayouts() {
-	std::unique_lock lock(_layoutSharedMutex);
+	sprt::unique_lock lock(_layoutSharedMutex);
 	auto it = _layouts.begin();
 	while (it != _layouts.end()) {
 		if (it->second->isPersistent()) {

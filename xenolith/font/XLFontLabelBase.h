@@ -67,17 +67,16 @@ public:
 
 	Pair<uint32_t, uint32_t> selectWord(uint32_t originChar) const;
 
-	geom::Rect getLineRect(uint32_t lineId, float density, const geom::Vec2 & = geom::Vec2()) const;
-	geom::Rect getLineRect(const LineLayoutData &, float density,
-			const geom::Vec2 & = geom::Vec2()) const;
+	Rect getLineRect(uint32_t lineId, float density, const Vec2 & = Vec2()) const;
+	Rect getLineRect(const LineLayoutData &, float density, const Vec2 & = Vec2()) const;
 
 	uint16_t getLineForCharId(uint32_t id) const;
 
-	Vector<geom::Rect> getLabelRects(uint32_t first, uint32_t last, float density,
-			const geom::Vec2 & = geom::Vec2(), const geom::Padding &p = geom::Padding()) const;
+	Vector<Rect> getLabelRects(uint32_t first, uint32_t last, float density, const Vec2 & = Vec2(),
+			const Padding &p = Padding()) const;
 
-	void getLabelRects(Vector<geom::Rect> &, uint32_t first, uint32_t last, float density,
-			const geom::Vec2 & = geom::Vec2(), const geom::Padding &p = geom::Padding()) const;
+	void getLabelRects(Vector<Rect> &, uint32_t first, uint32_t last, float density,
+			const Vec2 & = Vec2(), const Padding &p = Padding()) const;
 
 protected:
 	TextLayoutData<memory::StandartInterface> _data;
@@ -154,7 +153,7 @@ public:
 		Style &operator=(const Style &) = default;
 		Style &operator=(Style &&) = default;
 
-		Style(std::initializer_list<Param> il) : params(il) { }
+		Style(sprt::initializer_list<Param> il) : params(il) { }
 
 		template <class T>
 		Style(const T &value) {
@@ -206,7 +205,7 @@ public:
 			DescriptionStyle p;
 			p.font.fontFamily = family;
 			p.font.fontSize = size;
-			readParameters(p, std::forward<Args>(args)...);
+			readParameters(p, sprt::forward<Args>(args)...);
 			return p;
 		}
 
@@ -243,7 +242,7 @@ public:
 		template <typename T, typename... Args>
 		static void readParameters(DescriptionStyle &p, T &&t, Args &&...args) {
 			readParameter(p, t);
-			readParameters(p, std::forward<Args>(args)...);
+			readParameters(p, sprt::forward<Args>(args)...);
 		}
 
 		template <typename T>

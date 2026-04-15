@@ -85,7 +85,7 @@ bool DeviceMemory::map(const Callback<void(uint8_t *, VkDeviceSize)> &cb, VkDevi
 	bool hostCoherent = t->isHostCoherent();
 	auto range = calculateMappedMemoryRange(offset, size);
 
-	std::unique_lock<Mutex> lock(
+	sprt::unique_lock<sprt::mutex > lock(
 			_memBlock.mappingProtection ? *_memBlock.mappingProtection : _mappingProtectionMutex);
 
 	uint8_t *mapped = nullptr;
@@ -108,7 +108,7 @@ bool DeviceMemory::map(const Callback<void(uint8_t *, VkDeviceSize)> &cb, VkDevi
 				_allocator->getDevice()->getDevice(), 1, &range);
 	}
 
-	cb(static_cast<uint8_t *>(mapped), std::min(_info.size - offset, size));
+	cb(static_cast<uint8_t *>(mapped), sprt::min(_info.size - offset, size));
 
 	if (!hostCoherent && (access & DeviceMemoryAccess::Flush) != DeviceMemoryAccess::None) {
 		_allocator->getDevice()->getTable()->vkFlushMappedMemoryRanges(
@@ -131,11 +131,11 @@ void DeviceMemory::invalidateMappedRegion(VkDeviceSize offset, VkDeviceSize size
 		return;
 	}
 
-	size = std::min(_info.size, size);
+	size = sprt::min(_info.size, size);
 	offset += _memBlock.offset;
 
-	offset = std::max(_mappedOffset, offset);
-	size = std::min(_mappedSize, size);
+	offset = sprt::max(_mappedOffset, offset);
+	size = sprt::min(_mappedSize, size);
 
 	auto range = calculateMappedMemoryRange(offset, size);
 
@@ -149,11 +149,11 @@ void DeviceMemory::flushMappedRegion(VkDeviceSize offset, VkDeviceSize size) {
 		return;
 	}
 
-	size = std::min(_info.size, size);
+	size = sprt::min(_info.size, size);
 	offset += _memBlock.offset;
 
-	offset = std::max(_mappedOffset, offset);
-	size = std::min(_mappedSize, size);
+	offset = sprt::max(_mappedOffset, offset);
+	size = sprt::min(_mappedSize, size);
 
 	auto range = calculateMappedMemoryRange(offset, size);
 
@@ -165,7 +165,7 @@ VkMappedMemoryRange DeviceMemory::calculateMappedMemoryRange(VkDeviceSize offset
 		VkDeviceSize size) const {
 	auto t = _allocator->getType(_info.memoryType);
 
-	size = std::min(_info.size, size);
+	size = sprt::min(_info.size, size);
 	offset += _memBlock.offset;
 
 	VkDeviceSize atomSize = t->isHostCoherent() ? 1 : _allocator->getNonCoherentAtomSize();
@@ -175,7 +175,7 @@ VkMappedMemoryRange DeviceMemory::calculateMappedMemoryRange(VkDeviceSize offset
 	range.pNext = nullptr;
 	range.memory = _memory;
 	range.offset = math::align<VkDeviceSize>(offset - atomSize + 1, atomSize);
-	range.size = std::min(_info.size - range.offset,
+	range.size = sprt::min(_info.size - range.offset,
 			math::align<VkDeviceSize>(size + (offset - range.offset), atomSize));
 	return range;
 }
@@ -340,7 +340,7 @@ bool Buffer::bindMemory(Rc<DeviceMemory> &&mem, VkDeviceSize offset) {
 
 bool Buffer::map(const Callback<void(uint8_t *, VkDeviceSize)> &cb, VkDeviceSize offset,
 		VkDeviceSize size, DeviceMemoryAccess access) {
-	size = std::min(_info.size - offset, size);
+	size = sprt::min(_info.size - offset, size);
 	offset += _memoryOffset;
 	return _memory->map(cb, offset, size, access);
 }
@@ -361,20 +361,20 @@ uint8_t *Buffer::getPersistentMappedRegion(bool invalidate) {
 
 void Buffer::invalidateMappedRegion(VkDeviceSize offset, VkDeviceSize size) {
 	offset += _memoryOffset;
-	size = std::min(size, _info.size);
+	size = sprt::min(size, _info.size);
 
 	_memory->invalidateMappedRegion(offset, size);
 }
 
 void Buffer::flushMappedRegion(VkDeviceSize offset, VkDeviceSize size) {
 	offset += _memoryOffset;
-	size = std::min(size, _info.size);
+	size = sprt::min(size, _info.size);
 
 	_memory->flushMappedRegion(offset, size);
 }
 
 bool Buffer::setData(BytesView data, VkDeviceSize offset, DeviceMemoryAccess access) {
-	auto size = std::min(size_t(_info.size - offset), data.size());
+	auto size = sprt::min(size_t(_info.size - offset), data.size());
 
 	return _memory->map([&](uint8_t *ptr, VkDeviceSize size) {
 		::__sprt_memcpy(ptr, data.data(), size);
@@ -382,7 +382,7 @@ bool Buffer::setData(BytesView data, VkDeviceSize offset, DeviceMemoryAccess acc
 }
 
 Bytes Buffer::getData(VkDeviceSize size, VkDeviceSize offset, DeviceMemoryAccess access) {
-	size = std::min(_info.size - offset, size);
+	size = sprt::min(_info.size - offset, size);
 
 	Bytes ret;
 

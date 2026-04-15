@@ -35,7 +35,7 @@ public:
 
 	using PreStemCallback = Function<Vector<StringView>(StringView, ParserToken)>;
 
-	using WordMap = memory::dict<StringView, StringView>;
+	using WordMap = sprt::__malloc_unordered_map<StringView, StringView>;
 
 	struct HeadlineConfig {
 		static constexpr size_t DefaultMaxWords = 24;
@@ -45,7 +45,7 @@ public:
 		StringView startToken = StringView("<b>");
 		StringView stopToken = StringView("</b>");
 
-		StringView startFragment = StringView("<div>");;
+		StringView startFragment = StringView("<div>");
 		StringView stopFragment = StringView("</div>");
 		StringView separator = StringView("…");
 
@@ -77,23 +77,30 @@ public:
 
 	bool stemWord(const StringView &, ParserToken, const StemWordCallback &) const;
 
-	String makeHeadline(const HeadlineConfig &, const StringView &origin, const Vector<String> &stemList) const;
+	String makeHeadline(const HeadlineConfig &, const StringView &origin,
+			const Vector<String> &stemList) const;
 
-	String makeHtmlHeadlines(const HeadlineConfig &, const StringView &origin, const Vector<String> &stemList, size_t count = 1) const;
+	String makeHtmlHeadlines(const HeadlineConfig &, const StringView &origin,
+			const Vector<String> &stemList, size_t count = 1) const;
 
-	String makeHeadlines(const HeadlineConfig &, const Callback<void(const Function<bool(const StringView &frag, const StringView &tag)>)> &producer,
+	String makeHeadlines(const HeadlineConfig &,
+			const Callback<void(
+					const Function<bool(const StringView &frag, const StringView &tag)>)> &producer,
 			const Vector<String> &stemList, size_t count = 1) const;
 
 	Vector<String> stemQuery(const SearchQuery &query) const;
 
-	size_t makeSearchVector(SearchVector &, StringView phrase, SearchData::Rank rank = SearchData::Rank::Unknown, size_t counter = 0,
+	size_t makeSearchVector(SearchVector &, StringView phrase,
+			SearchData::Rank rank = SearchData::Rank::Unknown, size_t counter = 0,
 			const Callback<void(StringView, StringView, ParserToken)> & = nullptr) const;
 
 	// encode for postgres textual representation
-	String encodeSearchVectorPostgres(const SearchVector &, SearchData::Rank rank = SearchData::Rank::Unknown) const;
+	String encodeSearchVectorPostgres(const SearchVector &,
+			SearchData::Rank rank = SearchData::Rank::Unknown) const;
 
 	// encode for binary blob
-	Bytes encodeSearchVectorData(const SearchVector &, SearchData::Rank rank = SearchData::Rank::Unknown) const;
+	Bytes encodeSearchVectorData(const SearchVector &,
+			SearchData::Rank rank = SearchData::Rank::Unknown) const;
 
 	SearchQuery parseQuery(StringView, bool strict = false, StringView *err = nullptr) const;
 
@@ -110,6 +117,6 @@ protected:
 	Data *data;
 };
 
-}
+} // namespace stappler::search
 
 #endif /* STAPPLER_SEARCH_SPSEARCHCONFIGURATION_H_ */

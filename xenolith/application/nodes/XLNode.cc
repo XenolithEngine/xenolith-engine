@@ -48,7 +48,7 @@ ComponentId NodeData::Id;
 void ActionStorage::addAction(Rc<Action> &&a) { actionToStart.emplace_back(move(a)); }
 
 void ActionStorage::removeAction(Action *a) {
-	auto it = std::find(actionToStart.begin(), actionToStart.end(), a);
+	auto it = sprt::find(actionToStart.begin(), actionToStart.end(), a);
 	if (it != actionToStart.end()) {
 		actionToStart.erase(it);
 	}
@@ -423,7 +423,7 @@ void Node::removeChild(Node *child, bool cleanup) {
 		return;
 	}
 
-	auto it = std::find(_children.begin(), _children.end(), child);
+	auto it = sprt::find(_children.begin(), _children.end(), child);
 	if (it != _children.end()) {
 		if (_running) {
 			child->handleExit();
@@ -475,7 +475,7 @@ void Node::reorderChild(Node *child, ZOrder localZOrder) {
 bool Node::sortAllChildren() {
 	bool ret = false;
 	if (_reorderChildDirty && !_children.empty()) {
-		std::sort(std::begin(_children), std::end(_children), [&](const Node *l, const Node *r) {
+		sprt::sort(sprt::begin(_children), sprt::end(_children), [&](const Node *l, const Node *r) {
 			return l->getLocalZOrder() < r->getLocalZOrder();
 		});
 		handleReorderChildDirty();
@@ -831,7 +831,7 @@ void Node::handleGlobalTransformDirty(const Mat4 &parentTransform) {
 		scale.z *= _scale.z;
 	}
 
-	auto density = std::min(std::min(scale.x, scale.y), scale.z);
+	auto density = sprt::min(sprt::min(scale.x, scale.y), scale.z);
 	if (density != _inputDensity) {
 		_inputDensity = density;
 	}
@@ -1324,10 +1324,10 @@ bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInf
 	}
 
 	if (_depthIndex > 0.0f) {
-		info.depthStack.push_back(std::max(info.depthStack.back(), _depthIndex));
+		info.depthStack.push_back(sprt::max(info.depthStack.back(), _depthIndex));
 	}
 
-	memory::vector< memory::vector<Rc<System>> * > systems;
+	mem_pool::Vector< mem_pool::Vector<Rc<System>> * > systems;
 
 	for (auto &it : _systems) {
 		if (it->isEnabled() && hasFlag(it->getSystemFlags(), SystemFlags::AddToFrameStack)
@@ -1430,7 +1430,7 @@ float Node::getMaxDepthIndex() const {
 	float val = _depthIndex;
 	for (auto &it : _children) {
 		if (it->isVisible()) {
-			val = std::max(it->getMaxDepthIndex(), val);
+			val = sprt::max(it->getMaxDepthIndex(), val);
 		}
 	}
 	return val;

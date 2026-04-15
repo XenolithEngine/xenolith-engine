@@ -166,7 +166,7 @@ protected:
 
 	bool _loaded = false;
 	String _name;
-	std::atomic<uint64_t> _clock;
+	sprt::atomic<uint64_t> _clock;
 	TimeInterval _unusedInterval = 100_msec;
 	String _defaultFontFamily = "default";
 	Rc<Texture> _texture;
@@ -180,7 +180,7 @@ protected:
 	Rc<core::DependencyEvent> _dependency;
 
 	bool _dirty = false;
-	mutable std::shared_mutex _layoutSharedMutex;
+	mutable sprt::shared_mutex _layoutSharedMutex;
 };
 
 } // namespace stappler::xenolith::font

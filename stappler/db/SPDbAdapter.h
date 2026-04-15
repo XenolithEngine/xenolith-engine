@@ -36,52 +36,45 @@ public:
 
 	virtual ~ApplicationInterface();
 
-	template <typename ... Args>
-	void error(Args && ...args) const {
-		_pushError(std::forward<Args>(args)...);
+	template <typename... Args>
+	void error(Args &&...args) const {
+		_pushError(sprt::forward<Args>(args)...);
 	}
 
-	template <typename ... Args>
-	void debug(Args && ...args) const {
-		_pushDebug(std::forward<Args>(args)...);
+	template <typename... Args>
+	void debug(Args &&...args) const {
+		_pushDebug(sprt::forward<Args>(args)...);
 	}
 
 	template <typename Source, typename Text>
 	void _pushError(Source &&source, Text &&text) const {
-		pushErrorMessage(Value{
-			std::make_pair("source", Value(std::forward<Source>(source))),
-			std::make_pair("text", Value(std::forward<Text>(text)))
-		});
+		pushErrorMessage(Value{sprt::make_pair("source", Value(sprt::forward<Source>(source))),
+			sprt::make_pair("text", Value(sprt::forward<Text>(text)))});
 	}
 
 	template <typename Source, typename Text>
 	void _pushError(Source &&source, Text &&text, Value &&d) const {
-		pushErrorMessage(Value{
-			std::make_pair("source", Value(std::forward<Source>(source))),
-			std::make_pair("text", Value(std::forward<Text>(text))),
-			std::make_pair("data", sp::move(d))
-		});
+		pushErrorMessage(Value{sprt::make_pair("source", Value(sprt::forward<Source>(source))),
+			sprt::make_pair("text", Value(sprt::forward<Text>(text))),
+			sprt::make_pair("data", sp::move(d))});
 	}
 
 	template <typename Source, typename Text>
 	void _pushDebug(Source &&source, Text &&text) const {
-		pushDebugMessage(Value{
-			std::make_pair("source", Value(std::forward<Source>(source))),
-			std::make_pair("text", Value(std::forward<Text>(text)))
-		});
+		pushDebugMessage(Value{sprt::make_pair("source", Value(sprt::forward<Source>(source))),
+			sprt::make_pair("text", Value(sprt::forward<Text>(text)))});
 	}
 
 	template <typename Source, typename Text>
 	void _pushDebug(Source &&source, Text &&text, Value &&d) const {
-		pushDebugMessage(Value{
-			std::make_pair("source", Value(std::forward<Source>(source))),
-			std::make_pair("text", Value(std::forward<Text>(text))),
-			std::make_pair("data", sp::move(d))
-		});
+		pushDebugMessage(Value{sprt::make_pair("source", Value(sprt::forward<Source>(source))),
+			sprt::make_pair("text", Value(sprt::forward<Text>(text))),
+			sprt::make_pair("data", sp::move(d))});
 	}
 
 	virtual db::Adapter getAdapterFromContext() const;
-	virtual void scheduleAyncDbTask(const Callback<Function<void(const Transaction &)>(pool_t *)> &setupCb) const;
+	virtual void scheduleAyncDbTask(
+			const Callback<Function<void(const Transaction &)>(pool_t *)> &setupCb) const;
 
 	virtual StringView getDocumentRoot() const;
 
@@ -108,18 +101,21 @@ public:
 	Adapter(BackendInterface *, const ApplicationInterface *);
 
 	Adapter(const Adapter &);
-	Adapter& operator=(const Adapter &);
+	Adapter &operator=(const Adapter &);
 
-	explicit operator bool () const { return _interface != nullptr && _application != nullptr; }
+	explicit operator bool() const { return _interface != nullptr && _application != nullptr; }
 
-	bool operator==(const Adapter &other) const { return _interface == other._interface && _application == other._application; }
+	bool operator==(const Adapter &other) const {
+		return _interface == other._interface && _application == other._application;
+	}
 
 	const ApplicationInterface *getApplicationInterface() const { return _application; }
 	BackendInterface *getBackendInterface() const { return _interface; }
 
 	String getTransactionKey() const;
 
-	bool set(const CoderSource &, const Value &, TimeInterval = config::STORAGE_DEFAULT_KEY_VALUE_INTERVAL) const;
+	bool set(const CoderSource &, const Value &,
+			TimeInterval = config::STORAGE_DEFAULT_KEY_VALUE_INTERVAL) const;
 	Value get(const CoderSource &) const;
 	bool clear(const CoderSource &) const;
 
@@ -127,7 +123,7 @@ public:
 
 	void makeSessionsCleanup() const;
 
-	User * authorizeUser(const Auth &, const StringView &name, const StringView &password) const;
+	User *authorizeUser(const Auth &, const StringView &name, const StringView &password) const;
 
 	void broadcast(const Bytes &) const;
 	void broadcast(const Value &val) const;
@@ -135,7 +131,8 @@ public:
 
 	bool performWithTransaction(const Callback<bool(const db::Transaction &)> &cb) const;
 
-	Vector<int64_t> getReferenceParents(const Scheme &, uint64_t oid, const Scheme *, const Field *) const;
+	Vector<int64_t> getReferenceParents(const Scheme &, uint64_t oid, const Scheme *,
+			const Field *) const;
 
 	StringView getDatabaseName() const { return _interface->getDatabaseName(); }
 
@@ -145,14 +142,17 @@ protected:
 	int64_t getDeltaValue(const Scheme &); // scheme-based delta
 	int64_t getDeltaValue(const Scheme &, const FieldView &, uint64_t); // view-based delta
 
-	Vector<int64_t> performQueryListForIds(const QueryList &, size_t count = stappler::maxOf<size_t>()) const;
-	Value performQueryList(const QueryList &, size_t count = stappler::maxOf<size_t>(), bool forUpdate = false) const;
+	Vector<int64_t> performQueryListForIds(const QueryList &,
+			size_t count = stappler::maxOf<size_t>()) const;
+	Value performQueryList(const QueryList &, size_t count = stappler::maxOf<size_t>(),
+			bool forUpdate = false) const;
 
-	bool foreach(Worker &, const Query &, const Callback<bool(Value &)> &) const;
+	bool foreach (Worker &, const Query &, const Callback<bool(Value &)> &) const;
 	Value select(Worker &, const Query &) const;
 
 	Value create(Worker &, Value &) const;
-	Value save(Worker &, uint64_t oid, Value &obj, Value &patch, const Set<const Field *> &fields) const;
+	Value save(Worker &, uint64_t oid, Value &obj, Value &patch,
+			const Set<const Field *> &fields) const;
 
 	bool remove(Worker &, uint64_t oid) const;
 
@@ -171,12 +171,13 @@ protected:
 	bool isInTransaction() const;
 	TransactionStatus getTransactionStatus() const;
 
-	void processFullTextFields(const Scheme &, Value &patch, Vector<InputField> &ifields, Vector<InputRow> &ivalues) const;
+	void processFullTextFields(const Scheme &, Value &patch, Vector<InputField> &ifields,
+			Vector<InputRow> &ivalues) const;
 
 	const ApplicationInterface *_application = nullptr;
 	BackendInterface *_interface = nullptr;
 };
 
-}
+} // namespace stappler::db
 
 #endif /* STAPPLER_DB_SPDBADAPTER_H_ */

@@ -1053,14 +1053,4 @@ void GestureMouseOverRecognizer::updateState(const InputEvent &event) {
 	}
 }
 
-std::ostream &operator<<(std::ostream &stream, GestureEvent ev) {
-	switch (ev) {
-	case GestureEvent::Began: stream << "GestureEvent::Began"; break;
-	case GestureEvent::Activated: stream << "GestureEvent::Activated"; break;
-	case GestureEvent::Ended: stream << "GestureEvent::Ended"; break;
-	case GestureEvent::Cancelled: stream << "GestureEvent::Cancelled"; break;
-	}
-	return stream;
-}
-
 } // namespace stappler::xenolith

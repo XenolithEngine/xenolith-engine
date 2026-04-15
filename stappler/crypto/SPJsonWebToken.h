@@ -57,7 +57,8 @@ struct SP_PUBLIC JsonWebToken {
 	static SigAlg getAlg(StringView);
 	static StringView getAlgName(const SigAlg &);
 
-	static JsonWebToken make(StringView iss, StringView aud, TimeInterval maxage = TimeInterval(), StringView sub = StringView());
+	static JsonWebToken make(StringView iss, StringView aud, TimeInterval maxage = TimeInterval(),
+			StringView sub = StringView());
 
 	bool validate(StringView key) const;
 	bool validate(BytesView key) const;
@@ -72,12 +73,14 @@ struct SP_PUBLIC JsonWebToken {
 
 	String exportPlain(data::EncodeFormat = data::EncodeFormat::Json) const;
 
-	String exportSigned(SigAlg, StringView key,
-			const CoderSource &passwd = CoderSource(), data::EncodeFormat = data::EncodeFormat::Json) const;
-	String exportSigned(SigAlg, BytesView key,
-			const CoderSource &passwd = CoderSource(), data::EncodeFormat = data::EncodeFormat::Json) const;
-	String exportSigned(SigAlg, const crypto::PrivateKey &key, data::EncodeFormat = data::EncodeFormat::Json) const;
-	String exportSigned(const crypto::PrivateKey &key, data::EncodeFormat = data::EncodeFormat::Json) const;
+	String exportSigned(SigAlg, StringView key, const CoderSource &passwd = CoderSource(),
+			data::EncodeFormat = data::EncodeFormat::Json) const;
+	String exportSigned(SigAlg, BytesView key, const CoderSource &passwd = CoderSource(),
+			data::EncodeFormat = data::EncodeFormat::Json) const;
+	String exportSigned(SigAlg, const crypto::PrivateKey &key,
+			data::EncodeFormat = data::EncodeFormat::Json) const;
+	String exportSigned(const crypto::PrivateKey &key,
+			data::EncodeFormat = data::EncodeFormat::Json) const;
 
 	JsonWebToken(Value &&payload, TimeInterval maxage = TimeInterval());
 	JsonWebToken(const StringView &);
@@ -114,24 +117,27 @@ public:
 		Function<void(const crypto::HashCoderCallback &)> cb;
 
 		Fingerprint(crypto::HashFunction fn, BytesView v) : func(fn), fpb(v) { }
-		Fingerprint(crypto::HashFunction fn, Function<void(const crypto::HashCoderCallback &)> &&cb) : func(fn), cb(sp::move(cb)) { }
+		Fingerprint(crypto::HashFunction fn, Function<void(const crypto::HashCoderCallback &)> &&cb)
+		: func(fn), cb(sp::move(cb)) { }
 	};
 
 	// parse from JsonWebToken source
-	static AesToken parse(StringView token, const Fingerprint &, StringView iss, StringView aud = StringView(), Keys = Keys());
+	static AesToken parse(StringView token, const Fingerprint &, StringView iss,
+			StringView aud = StringView(), Keys = Keys());
 
 	// parse from data::Value source
 	static AesToken parse(const Value &, const Fingerprint &, Keys = Keys());
 
 	static AesToken create(Keys = Keys());
 
-	explicit operator bool () const;
+	explicit operator bool() const;
 
-	String exportToken(StringView iss, const Fingerprint &fpb, TimeInterval maxage, StringView sub) const;
+	String exportToken(StringView iss, const Fingerprint &fpb, TimeInterval maxage,
+			StringView sub) const;
 	Value exportData(const Fingerprint &fpb) const;
 
 protected:
-	static std::array<uint8_t, 64> getFingerprint(const Fingerprint &, Time t, BytesView secret);
+	static sprt::array<uint8_t, 64> getFingerprint(const Fingerprint &, Time t, BytesView secret);
 
 	Bytes encryptAes(const crypto::BlockKey256 &, const Value &) const;
 	static Value decryptAes(const crypto::BlockKey256 &, BytesView);
@@ -144,7 +150,7 @@ protected:
 };
 
 template <typename Interface>
-auto JsonWebToken<Interface>::getAlg(StringView name) -> typename JsonWebToken<Interface>::SigAlg  {
+auto JsonWebToken<Interface>::getAlg(StringView name) -> typename JsonWebToken<Interface>::SigAlg {
 	if (name == "HS256") {
 		return HS256;
 	} else if (name == "HS512") {
@@ -182,7 +188,8 @@ StringView JsonWebToken<Interface>::getAlgName(const SigAlg &alg) {
 }
 
 template <typename Interface>
-JsonWebToken<Interface> JsonWebToken<Interface>::make(StringView iss, StringView aud, TimeInterval maxage, StringView sub) {
+JsonWebToken<Interface> JsonWebToken<Interface>::make(StringView iss, StringView aud,
+		TimeInterval maxage, StringView sub) {
 	Value payload;
 	payload.setString(iss, "iss");
 	if (!sub.empty()) {
@@ -208,7 +215,7 @@ JsonWebToken<Interface>::JsonWebToken(const StringView &token) {
 	StringView r(token);
 	auto head = r.readUntil<StringView::Chars<'.'>>();
 	if (r.is('.')) {
-		++ r;
+		++r;
 	}
 
 	header = data::read<Interface>(base64::decode<Interface>(head));
@@ -225,7 +232,7 @@ JsonWebToken<Interface>::JsonWebToken(const StringView &token) {
 	message = String(token.data(), token.size() - r.size());
 
 	if (r.is('.')) {
-		++ r;
+		++r;
 	}
 
 	payload = data::read<Interface>(base64::decode<Interface>(pl));
@@ -330,43 +337,43 @@ auto JsonWebToken<Interface>::data() const -> Value {
 
 template <typename Interface>
 auto JsonWebToken<Interface>::exportPlain(data::EncodeFormat format) const -> String {
-	return string::toString<Interface>(
-			base64url::encode(data::write(header, format)), ".", base64url::encode(data::write(payload, format)));
+	return string::toString<Interface>(base64url::encode(data::write(header, format)), ".",
+			base64url::encode(data::write(payload, format)));
 }
 
 template <typename Interface>
-auto JsonWebToken<Interface>::exportSigned(SigAlg alg, StringView key,
-		const CoderSource &passwd, data::EncodeFormat format) const -> String {
+auto JsonWebToken<Interface>::exportSigned(SigAlg alg, StringView key, const CoderSource &passwd,
+		data::EncodeFormat format) const -> String {
 	return exportSigned(alg, BytesView((const uint8_t *)key.data(), key.size()), passwd, format);
 }
 
 template <typename Interface>
-auto JsonWebToken<Interface>::exportSigned(SigAlg alg, BytesView key,
-		const CoderSource &passwd, data::EncodeFormat format) const -> String {
+auto JsonWebToken<Interface>::exportSigned(SigAlg alg, BytesView key, const CoderSource &passwd,
+		data::EncodeFormat format) const -> String {
 
 	switch (alg) {
 	case HS256: {
 		Value hederData(header);
 		hederData.setString(getAlgName(alg), "alg");
 
-		auto data =  string::toString<Interface>(
-				base64url::encode<Interface>(data::write<Interface>(hederData, format)),
-				".", base64url::encode<Interface>(data::write<Interface>(payload, format)));
+		auto data = string::toString<Interface>(
+				base64url::encode<Interface>(data::write<Interface>(hederData, format)), ".",
+				base64url::encode<Interface>(data::write<Interface>(payload, format)));
 
-		return string::toString<Interface>(
-				data, ".", base64url::encode<Interface>(string::Sha256::hmac(data, key)));
+		return string::toString<Interface>(data, ".",
+				base64url::encode<Interface>(string::Sha256::hmac(data, key)));
 		break;
 	}
 	case HS512: {
 		Value hederData(header);
 		hederData.setString(getAlgName(alg), "alg");
 
-		auto data =  string::toString<Interface>(
-				base64url::encode<Interface>(data::write<Interface>(hederData, format)),
-				".", base64url::encode<Interface>(data::write<Interface>(payload, format)));
+		auto data = string::toString<Interface>(
+				base64url::encode<Interface>(data::write<Interface>(hederData, format)), ".",
+				base64url::encode<Interface>(data::write<Interface>(payload, format)));
 
-		return string::toString<Interface>(
-				data, ".", base64url::encode<Interface>(string::Sha512::hmac(data, key)));
+		return string::toString<Interface>(data, ".",
+				base64url::encode<Interface>(string::Sha512::hmac(data, key)));
 		break;
 	}
 	default: {
@@ -381,7 +388,8 @@ auto JsonWebToken<Interface>::exportSigned(SigAlg alg, BytesView key,
 }
 
 template <typename Interface>
-auto JsonWebToken<Interface>::exportSigned(SigAlg alg, const crypto::PrivateKey &pk, data::EncodeFormat format) const -> String {
+auto JsonWebToken<Interface>::exportSigned(SigAlg alg, const crypto::PrivateKey &pk,
+		data::EncodeFormat format) const -> String {
 	if (!pk) {
 		return String();
 	}
@@ -389,9 +397,9 @@ auto JsonWebToken<Interface>::exportSigned(SigAlg alg, const crypto::PrivateKey 
 	Value hederData(header);
 	hederData.setString(getAlgName(alg), "alg");
 
-	auto data =  string::toString<Interface>(
-			base64url::encode<Interface>(data::write<Interface>(hederData, format)),
-			".", base64url::encode<Interface>(data::write<Interface>(payload, format)));
+	auto data = string::toString<Interface>(
+			base64url::encode<Interface>(data::write<Interface>(hederData, format)), ".",
+			base64url::encode<Interface>(data::write<Interface>(payload, format)));
 
 	crypto::SignAlgorithm algo = crypto::SignAlgorithm::RSA_SHA512;
 	switch (alg) {
@@ -404,7 +412,7 @@ auto JsonWebToken<Interface>::exportSigned(SigAlg alg, const crypto::PrivateKey 
 	default: break;
 	}
 
-	if (pk.sign([&] (BytesView sign) {
+	if (pk.sign([&](BytesView sign) {
 		data = string::toString<Interface>(data, ".", base64url::encode<Interface>(sign));
 	}, data, algo)) {
 		return data;
@@ -414,29 +422,22 @@ auto JsonWebToken<Interface>::exportSigned(SigAlg alg, const crypto::PrivateKey 
 }
 
 template <typename Interface>
-auto JsonWebToken<Interface>::exportSigned(const crypto::PrivateKey &key, data::EncodeFormat fmt) const -> String {
+auto JsonWebToken<Interface>::exportSigned(const crypto::PrivateKey &key,
+		data::EncodeFormat fmt) const -> String {
 	switch (key.getType()) {
-	case crypto::KeyType::RSA:
-		return exportSigned(RS512, key, fmt);
-		break;
+	case crypto::KeyType::RSA: return exportSigned(RS512, key, fmt); break;
 	case crypto::KeyType::ECDSA:
-	case crypto::KeyType::EDDSA_ED448:
-		return exportSigned(ES512, key, fmt);
-		break;
-	case crypto::KeyType::GOST3410_2012_256:
-		return exportSigned(GS256, key, fmt);
-		break;
-	case crypto::KeyType::GOST3410_2012_512:
-		return exportSigned(GS512, key, fmt);
-		break;
-	default:
-		break;
+	case crypto::KeyType::EDDSA_ED448: return exportSigned(ES512, key, fmt); break;
+	case crypto::KeyType::GOST3410_2012_256: return exportSigned(GS256, key, fmt); break;
+	case crypto::KeyType::GOST3410_2012_512: return exportSigned(GS512, key, fmt); break;
+	default: break;
 	}
 	return String();
 }
 
 template <typename Interface>
-AesToken<Interface> AesToken<Interface>::parse(StringView token, const Fingerprint &fpb, StringView iss, StringView aud, Keys keys) {
+AesToken<Interface> AesToken<Interface>::parse(StringView token, const Fingerprint &fpb,
+		StringView iss, StringView aud, Keys keys) {
 	if (aud.empty()) {
 		aud = iss;
 	}
@@ -450,9 +451,11 @@ AesToken<Interface> AesToken<Interface>::parse(StringView token, const Fingerpri
 			auto v = crypto::getBlockInfo(input.payload.getBytes("p"));
 			crypto::BlockKey256 aesKey;
 			if (keys.priv) {
-				aesKey = crypto::makeBlockKey(*keys.priv, BytesView(fp.data(), fp.size()), v.cipher, v.version);
+				aesKey = crypto::makeBlockKey(*keys.priv, BytesView(fp.data(), fp.size()), v.cipher,
+						v.version);
 			} else {
-				aesKey = crypto::makeBlockKey(keys.secret, BytesView(fp.data(), fp.size()), v.cipher, v.version);
+				aesKey = crypto::makeBlockKey(keys.secret, BytesView(fp.data(), fp.size()),
+						v.cipher, v.version);
 			}
 
 			auto p = decryptAes(aesKey, input.payload.getBytes("p"));
@@ -465,7 +468,8 @@ AesToken<Interface> AesToken<Interface>::parse(StringView token, const Fingerpri
 }
 
 template <typename Interface>
-AesToken<Interface> AesToken<Interface>::parse(const Value &payload, const Fingerprint &fpb, Keys keys) {
+AesToken<Interface> AesToken<Interface>::parse(const Value &payload, const Fingerprint &fpb,
+		Keys keys) {
 	Time tf = Time::microseconds(payload.getInteger("tf"));
 	auto fp = getFingerprint(fpb, tf, keys.secret);
 
@@ -474,9 +478,11 @@ AesToken<Interface> AesToken<Interface>::parse(const Value &payload, const Finge
 
 		crypto::BlockKey256 aesKey;
 		if (keys.priv) {
-			aesKey = crypto::makeBlockKey(*keys.priv, BytesView(fp.data(), fp.size()), v.cipher, v.version);
+			aesKey = crypto::makeBlockKey(*keys.priv, BytesView(fp.data(), fp.size()), v.cipher,
+					v.version);
 		} else {
-			aesKey = crypto::makeBlockKey(keys.secret, BytesView(fp.data(), fp.size()), v.cipher, v.version);
+			aesKey = crypto::makeBlockKey(keys.secret, BytesView(fp.data(), fp.size()), v.cipher,
+					v.version);
 		}
 
 		auto p = decryptAes(aesKey, payload.getBytes("p"));
@@ -493,12 +499,13 @@ AesToken<Interface> AesToken<Interface>::create(Keys keys) {
 }
 
 template <typename Interface>
-AesToken<Interface>::operator bool () const {
+AesToken<Interface>::operator bool() const {
 	return !this->_data.isNull() && _keys.priv && *_keys.priv && !_keys.secret.empty();
 }
 
 template <typename Interface>
-auto AesToken<Interface>::exportToken(StringView iss, const Fingerprint &fpb, TimeInterval maxage, StringView sub) const -> String {
+auto AesToken<Interface>::exportToken(StringView iss, const Fingerprint &fpb, TimeInterval maxage,
+		StringView sub) const -> String {
 	auto t = Time::now();
 
 	JsonWebToken<Interface> token = JsonWebToken<Interface>::make(iss, iss, maxage, sub);
@@ -512,11 +519,10 @@ auto AesToken<Interface>::exportToken(StringView iss, const Fingerprint &fpb, Ti
 		switch (_keys.priv->getType()) {
 		case crypto::KeyType::GOST3410_2012_256:
 		case crypto::KeyType::GOST3410_2012_512:
-			aesKey = crypto::makeBlockKey(*_keys.priv, BytesView(fp.data(), fp.size()), crypto::BlockCipher::Gost3412_2015_CTR_ACPKM);
+			aesKey = crypto::makeBlockKey(*_keys.priv, BytesView(fp.data(), fp.size()),
+					crypto::BlockCipher::Gost3412_2015_CTR_ACPKM);
 			break;
-		default:
-			aesKey = crypto::makeBlockKey(*_keys.priv, BytesView(fp.data(), fp.size()));
-			break;
+		default: aesKey = crypto::makeBlockKey(*_keys.priv, BytesView(fp.data(), fp.size())); break;
 		}
 	} else {
 		aesKey = crypto::makeBlockKey(_keys.secret, BytesView(fp.data(), fp.size()));
@@ -540,11 +546,10 @@ auto AesToken<Interface>::exportData(const Fingerprint &fpb) const -> Value {
 		switch (_keys.priv->getType()) {
 		case crypto::KeyType::GOST3410_2012_256:
 		case crypto::KeyType::GOST3410_2012_512:
-			aesKey = crypto::makeBlockKey(*_keys.priv, BytesView(fp.data(), fp.size()), crypto::BlockCipher::Gost3412_2015_CTR_ACPKM);
+			aesKey = crypto::makeBlockKey(*_keys.priv, BytesView(fp.data(), fp.size()),
+					crypto::BlockCipher::Gost3412_2015_CTR_ACPKM);
 			break;
-		default:
-			aesKey = crypto::makeBlockKey(*_keys.priv, BytesView(fp.data(), fp.size()));
-			break;
+		default: aesKey = crypto::makeBlockKey(*_keys.priv, BytesView(fp.data(), fp.size())); break;
 		}
 	} else {
 		aesKey = crypto::makeBlockKey(_keys.secret, BytesView(fp.data(), fp.size()));
@@ -555,50 +560,60 @@ auto AesToken<Interface>::exportData(const Fingerprint &fpb) const -> Value {
 }
 
 template <typename Interface>
-std::array<uint8_t, 64> AesToken<Interface>::getFingerprint(const Fingerprint &fp, Time t, BytesView secret) {
+sprt::array<uint8_t, 64> AesToken<Interface>::getFingerprint(const Fingerprint &fp, Time t,
+		BytesView secret) {
 	auto v = byteorder::HostToBig(t.toMicros());
 	if (!fp.fpb.empty()) {
 		switch (fp.func) {
 		case crypto::HashFunction::SHA_2:
-			return crypto::Sha512().update(secret).update(fp.fpb).update(CoderSource((const uint8_t *)&v, sizeof(v))) .final();
+			return crypto::Sha512()
+					.update(secret)
+					.update(fp.fpb)
+					.update(CoderSource((const uint8_t *)&v, sizeof(v)))
+					.final();
 			break;
 		case crypto::HashFunction::GOST_3411:
-			return crypto::Gost3411_512().update(secret).update(fp.fpb).update(CoderSource((const uint8_t *)&v, sizeof(v))) .final();
+			return crypto::Gost3411_512()
+					.update(secret)
+					.update(fp.fpb)
+					.update(CoderSource((const uint8_t *)&v, sizeof(v)))
+					.final();
 			break;
 		}
 	} else if (fp.cb) {
-		return crypto::hash512([&] (const crypto::HashCoderCallback &cb) {
-			fp.cb(cb);
-		}, fp.func);
+		return crypto::hash512([&](const crypto::HashCoderCallback &cb) { fp.cb(cb); }, fp.func);
 	} else {
 		switch (fp.func) {
 		case crypto::HashFunction::SHA_2:
-			return crypto::Sha512().update(secret).update(CoderSource((const uint8_t *)&v, sizeof(v))).final();
+			return crypto::Sha512()
+					.update(secret)
+					.update(CoderSource((const uint8_t *)&v, sizeof(v)))
+					.final();
 			break;
 		case crypto::HashFunction::GOST_3411:
-			return crypto::Gost3411_512().update(secret).update(CoderSource((const uint8_t *)&v, sizeof(v))).final();
+			return crypto::Gost3411_512()
+					.update(secret)
+					.update(CoderSource((const uint8_t *)&v, sizeof(v)))
+					.final();
 			break;
 		}
 	}
-	return std::array<uint8_t, 64>();
+	return sprt::array<uint8_t, 64>();
 }
 
 template <typename Interface>
-auto AesToken<Interface>::encryptAes(const crypto::BlockKey256 &key, const Value &val) const -> Bytes {
+auto AesToken<Interface>::encryptAes(const crypto::BlockKey256 &key, const Value &val) const
+		-> Bytes {
 	auto d = data::write<Interface>(val, data::EncodeFormat::CborCompressed);
 	Bytes out;
-	crypto::encryptBlock(key, d, [&] (BytesView data) {
-		out = data.bytes<Interface>();
-	});
+	crypto::encryptBlock(key, d, [&](BytesView data) { out = data.bytes<Interface>(); });
 	return out;
 }
 
 template <typename Interface>
 auto AesToken<Interface>::decryptAes(const crypto::BlockKey256 &key, BytesView val) -> Value {
 	Value out;
-	crypto::decryptBlock(key, val, [&] (BytesView data) {
-		out = data::read<Interface>(data);
-	});
+	crypto::decryptBlock(key, val, [&](BytesView data) { out = data::read<Interface>(data); });
 	return out;
 }
 
@@ -609,9 +624,10 @@ template <typename Interface>
 AesToken<Interface>::AesToken(Keys keys) : _keys(keys) { }
 
 template <typename Interface>
-AesToken<Interface>::AesToken(Value &&v, Keys keys) : data::WrapperTemplate<Interface>(sp::move(v)), _keys(keys) { }
+AesToken<Interface>::AesToken(Value &&v, Keys keys)
+: data::WrapperTemplate<Interface>(sp::move(v)), _keys(keys) { }
 
-}
+} // namespace STAPPLER_VERSIONIZED stappler
 
 #else
 

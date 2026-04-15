@@ -300,12 +300,12 @@ Vector<const core::CommandBuffer *> MeshCompilerPassHandle::doPrepareCommands(Fr
 	do {
 		auto it = indexes.begin();
 		while (it != indexes.end()) {
-			auto iit = std::find(input->meshesToAdd.begin(), input->meshesToAdd.end(), it->index);
+			auto iit = sprt::find(input->meshesToAdd.begin(), input->meshesToAdd.end(), it->index);
 			if (iit != input->meshesToAdd.end()) {
 				input->meshesToAdd.erase(iit);
 			}
 
-			iit = std::find(input->meshesToRemove.begin(), input->meshesToRemove.end(), it->index);
+			iit = sprt::find(input->meshesToRemove.begin(), input->meshesToRemove.end(), it->index);
 			if (iit != input->meshesToRemove.end()) {
 				it = indexes.erase(it);
 			} else {

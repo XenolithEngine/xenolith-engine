@@ -25,6 +25,7 @@
 #define XENOLITH_CORE_XLCOREOBJECT_H_
 
 #include "XLCoreInfo.h"
+#include <sprt/cxx/mutex>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
@@ -457,7 +458,7 @@ protected:
 	FenceType _type = FenceType::Default;
 	State _state = Disabled;
 	Vector<ReleaseHandle> _release;
-	Mutex _mutex;
+	sprt::mutex _mutex;
 	DeviceQueue *_queue = nullptr;
 	uint64_t _armedTime = 0;
 	StringView _tag;

@@ -62,7 +62,7 @@ protected:
 	void runLayoutCallback();
 
 	struct SamplersCompilationData : public Ref {
-		std::atomic<uint32_t> samplersInProcess = 0;
+		sprt::atomic<uint32_t> samplersInProcess = 0;
 		core::TextureSetLayoutData *layout = nullptr;
 		Rc<Device> device;
 
@@ -74,9 +74,9 @@ protected:
 	bool _resourceCompiled = false;
 	bool _layoutsCompiled = false;
 	Function<void(bool)> _layoutCallback;
-	std::atomic<size_t> _layoutsInQueue = 0;
-	std::atomic<size_t> _programsInQueue = 0;
-	std::atomic<size_t> _pipelinesInQueue = 0;
+	sprt::atomic<size_t> _layoutsInQueue = 0;
+	sprt::atomic<size_t> _programsInQueue = 0;
+	sprt::atomic<size_t> _pipelinesInQueue = 0;
 	Rc<TransferResource> _resource;
 	Rc<RenderQueueInput> _input;
 	String _targetQueueName;

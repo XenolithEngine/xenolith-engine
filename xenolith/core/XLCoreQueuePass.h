@@ -135,7 +135,7 @@ protected:
 	Loop *_loop = nullptr;
 	Rc<Fence> _fence;
 
-	mutable Mutex _autoreleaseMutex;
+	mutable sprt::qmutex _autoreleaseMutex;
 	mutable Vector<Rc<Ref>> _autorelease;
 };
 

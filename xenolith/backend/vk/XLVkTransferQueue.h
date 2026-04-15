@@ -47,7 +47,7 @@ public:
 		VkDeviceSize stagingOffset = 0;
 		VkDeviceMemory dedicated = VK_NULL_HANDLE;
 		uint32_t dedicatedMemType = 0;
-		std::optional<BufferMemoryBarrier> barrier;
+		sprt::optional<BufferMemoryBarrier> barrier;
 		bool useStaging = false;
 
 		BufferAllocInfo() = default;
@@ -63,7 +63,7 @@ public:
 		VkDeviceSize stagingOffset = 0;
 		VkDeviceMemory dedicated = VK_NULL_HANDLE;
 		uint32_t dedicatedMemType = 0;
-		std::optional<ImageMemoryBarrier> barrier;
+		sprt::optional<ImageMemoryBarrier> barrier;
 		bool useStaging = false;
 
 		ImageAllocInfo() = default;

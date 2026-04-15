@@ -259,20 +259,20 @@ size_t BufferData::writeData(uint8_t *mem, size_t expected) const {
 
 	if (!data.empty()) {
 		auto outsize = data.size();
-		memcpy(mem, data.data(), size);
+		sprt::memcpy(mem, data.data(), size);
 		return outsize;
 	} else if (memCallback) {
 		size_t outsize = size;
 		memCallback(mem, expected, [&, this](BytesView data) {
 			outsize = data.size();
-			memcpy(mem, data.data(), size);
+			sprt::memcpy(mem, data.data(), size);
 		});
 		return outsize;
 	} else if (stdCallback) {
 		size_t outsize = size;
 		stdCallback(mem, expected, [&, this](BytesView data) {
 			outsize = data.size();
-			memcpy(mem, data.data(), size);
+			sprt::memcpy(mem, data.data(), size);
 		});
 		return outsize;
 	}
@@ -335,14 +335,14 @@ size_t ImageData::writeData(uint8_t *mem, size_t expected) const {
 
 	if (!data.empty()) {
 		auto size = data.size();
-		memcpy(mem, data.data(), size);
+		sprt::memcpy(mem, data.data(), size);
 		return size;
 	} else if (memCallback) {
 		size_t size = expectedSize;
 		size_t writeSize = 0;
 		memCallback(mem, expectedSize, [&](BytesView data) {
 			writeSize += data.size();
-			memcpy(mem, data.data(), size);
+			sprt::memcpy(mem, data.data(), size);
 			mem += data.size();
 		});
 		return writeSize != 0 ? writeSize : size;
@@ -351,7 +351,7 @@ size_t ImageData::writeData(uint8_t *mem, size_t expected) const {
 		size_t writeSize = 0;
 		stdCallback(mem, expectedSize, [&](BytesView data) {
 			writeSize += data.size();
-			memcpy(mem, data.data(), size);
+			sprt::memcpy(mem, data.data(), size);
 			mem += data.size();
 		});
 		return writeSize != 0 ? writeSize : size;
@@ -936,11 +936,6 @@ bool saveImage(const FileInfo &file, const ImageInfoData &info, BytesView bytes)
 	return false;
 }
 
-std::ostream &operator<<(std::ostream &stream, const ImageInfoData &value) {
-	stream << "ImageInfoData: " << value.extent << " Layers:" << value.arrayLayers.get();
-	return stream;
-}
-
 String PipelineMaterialInfo::data() const {
 	BytesView view(reinterpret_cast<const uint8_t *>(this), sizeof(PipelineMaterialInfo));
 	return toString(base16::encode<Interface>(view.sub(0, sizeof(BlendInfo))), "'",
@@ -970,7 +965,9 @@ String PipelineMaterialInfo::description() const {
 	return stream.str();
 }
 
-PipelineMaterialInfo::PipelineMaterialInfo() { memset(this, 0, sizeof(PipelineMaterialInfo)); }
+PipelineMaterialInfo::PipelineMaterialInfo() {
+	sprt::memset(this, 0, sizeof(PipelineMaterialInfo));
+}
 
 void PipelineMaterialInfo::setBlendInfo(const BlendInfo &info) {
 	if (info.isEnabled()) {
@@ -1018,13 +1015,13 @@ void PipelineMaterialInfo::enableStencil(const StencilInfo &f, const StencilInfo
 
 void PipelineMaterialInfo::disableStancil() {
 	stencil = 0;
-	memset(&front, 0, sizeof(StencilInfo));
-	memset(&back, 0, sizeof(StencilInfo));
+	sprt::memset(&front, 0, sizeof(StencilInfo));
+	sprt::memset(&back, 0, sizeof(StencilInfo));
 }
 
 void PipelineMaterialInfo::setLineWidth(float width) {
 	if (width == 0.0f) {
-		memset(&lineWidth, 0, sizeof(float));
+		sprt::memset(&lineWidth, 0, sizeof(float));
 	} else {
 		lineWidth = width;
 	}

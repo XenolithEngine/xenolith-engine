@@ -36,7 +36,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-Director::Director() { memset(&_drawStat, 0, sizeof(DrawStat)); }
+Director::Director() { sprt::memset(&_drawStat, 0, sizeof(DrawStat)); }
 
 Director::~Director() { log::source().info("Director", "~Director"); }
 
@@ -203,7 +203,7 @@ void Director::end() {
 			_scene = nullptr;
 
 			scene->foreachBacktrace(
-					[](uint64_t id, Time time, const std::vector<std::string> &vec) {
+					[](uint64_t id, Time time, const sprt::vector<sprt::string> &vec) {
 				StringStream stream;
 				stream << "[" << id << ":" << time.toHttp<Interface>() << "]:\n";
 				for (auto &it : vec) { stream << "\t" << it << "\n"; }

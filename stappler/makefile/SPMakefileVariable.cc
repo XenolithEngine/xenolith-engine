@@ -35,7 +35,7 @@ static Pair<StringView, Function> makeFn(StringView name, uint32_t nmin, uint32_
 	return pair(name, Function(name, nmin, nmax, nullptr, fn));
 }
 
-static std::unordered_map< StringView, Function > s_functions{
+static sprt::__malloc_unordered_map< StringView, Function > s_functions{
 	makeFn("foreach", 3, 3, Function_foreach),
 	makeFn("let", 3, 3, Function_let),
 	makeFn("shell", 1, 1, Function_shell),
@@ -184,9 +184,7 @@ void VariableEngine::addSubstitutionCallback(Origin o, VariableCallback::Fn fn, 
 }
 
 void VariableEngine::addSubstitutionCallback(VariableCallback *cb) {
-	_varCallbacks.emplace_back(cb);
-	std::sort(_varCallbacks.begin(), _varCallbacks.end(),
-			[](VariableCallback *l, VariableCallback *r) {
+	sprt::emplace_ordered(_varCallbacks, cb, [](VariableCallback *l, VariableCallback *r) {
 		return toInt(l->origin) > toInt(r->origin);
 	});
 }
@@ -508,7 +506,7 @@ bool VariableEngine::call(const Callback<void(StringView)> &out, StringView fn, 
 }
 
 bool VariableEngine::checkRecursion(StringView name, Stmt *stmt, ErrorReporter &err) {
-	if (std::find(_subStack.begin(), _subStack.end(), stmt) != _subStack.end()) {
+	if (sprt::find(_subStack.begin(), _subStack.end(), stmt) != _subStack.end()) {
 		err.reportError(toString("Infinite recursive expansion detected: ", name), stmt);
 		return true;
 	} else {

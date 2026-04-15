@@ -21,26 +21,20 @@ THE SOFTWARE.
 **/
 
 #include "SPSubscription.h"
-#include "SPStatus.h"
 #include "SPString.h"
 
 namespace STAPPLER_VERSIONIZED stappler {
 
 template <>
 SubscriptionId SubscriptionTemplate<memory::PoolInterface>::getNextId() {
-	static std::atomic<SubscriptionId::Type> nextId(0);
+	static sprt::atomic<SubscriptionId::Type> nextId(0);
 	return Id(nextId.fetch_add(1));
 }
 
 template <>
 SubscriptionId SubscriptionTemplate<memory::StandartInterface>::getNextId() {
-	static std::atomic<SubscriptionId::Type> nextId(0);
+	static sprt::atomic<SubscriptionId::Type> nextId(0);
 	return Id(nextId.fetch_add(1));
-}
-
-std::ostream &operator<<(std::ostream &stream, Status st) {
-	sprt::status::getStatusDescription(st, [&](StringView str) { stream << str; });
-	return stream;
 }
 
 } // namespace STAPPLER_VERSIONIZED stappler

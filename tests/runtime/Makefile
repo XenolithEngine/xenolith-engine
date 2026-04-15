@@ -34,9 +34,20 @@ LOCAL_MODULES ?= \
 	runtime \
 	stappler_core \
 	stappler_filesystem \
+	stappler_data \
 	stappler_threads \
+	stappler_bitmap \
+	stappler_crypto \
+	stappler_db \
+	stappler_document \
 	stappler_event \
-	stappler_data
+	stappler_font \
+	stappler_vg \
+	stappler_pug \
+	stappler_makefile \
+	stappler_layout \
+	stappler_network
+
 
 LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 

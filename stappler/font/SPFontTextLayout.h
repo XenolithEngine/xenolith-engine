@@ -24,9 +24,17 @@
 #define CORE_FONT_SPFONTLAYOUTDATA_H_
 
 #include "SPFontStyle.h"
-#include "SPPadding.h"
+
+#include <sprt/runtime/geom/padding.h>
+#include <sprt/runtime/geom/color.h>
 
 namespace STAPPLER_VERSIONIZED stappler::font {
+
+using sprt::geom::Color4B;
+using sprt::geom::Rect;
+using sprt::geom::Vec2;
+using sprt::geom::Size2;
+using sprt::geom::Padding;
 
 class FontFaceSet;
 
@@ -63,7 +71,7 @@ struct SP_PUBLIC RangeLayoutData final {
 	uint32_t start = 0;
 	uint32_t count = 0;
 
-	geom::Color4B color;
+	Color4B color;
 	uint16_t height = 0;
 
 	Metrics metrics;
@@ -74,12 +82,12 @@ struct SP_PUBLIC RangeLineIterator {
 	const RangeLayoutData *range;
 	const LineLayoutData *line;
 
-	uint32_t start() const { return std::max(range->start, line->start); }
+	uint32_t start() const { return sprt::max(range->start, line->start); }
 	uint32_t count() const {
-		return std::min(range->start + range->count, line->start + line->count) - start();
+		return sprt::min(range->start + range->count, line->start + line->count) - start();
 	}
 	uint32_t end() const {
-		return std::min(range->start + range->count, line->start + line->count);
+		return sprt::min(range->start + range->count, line->start + line->count);
 	}
 
 	RangeLineIterator &operator++() {
@@ -154,13 +162,11 @@ struct SP_PUBLIC TextLayoutData : public Interface::AllocBaseType {
 
 	Pair<uint32_t, uint32_t> selectWord(uint32_t originChar) const;
 
-	geom::Rect getLineRect(uint32_t lineId, float density, const geom::Vec2 & = geom::Vec2()) const;
-	geom::Rect getLineRect(const LineLayoutData &, float density,
-			const geom::Vec2 & = geom::Vec2()) const;
+	Rect getLineRect(uint32_t lineId, float density, const Vec2 & = Vec2()) const;
+	Rect getLineRect(const LineLayoutData &, float density, const Vec2 & = Vec2()) const;
 
-	void getLabelRects(const Callback<void(geom::Rect)> &, uint32_t first, uint32_t last,
-			float density, const geom::Vec2 & = geom::Vec2(),
-			const geom::Padding &p = geom::Padding()) const;
+	void getLabelRects(const Callback<void(Rect)> &, uint32_t first, uint32_t last, float density,
+			const Vec2 & = Vec2(), const Padding &p = Padding()) const;
 };
 
 } // namespace stappler::font

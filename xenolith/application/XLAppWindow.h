@@ -62,7 +62,7 @@ public:
 
 	virtual void close(bool graceful = true) override;
 
-	virtual void handleInputEvents(sprt::memory::dynvector<InputEventData> &&);
+	virtual void handleInputEvents(Vector<InputEventData> &&);
 	virtual void handleTextInput(const TextInputState &);
 
 	Context *getContext() const { return _context; }

@@ -26,11 +26,10 @@ THE SOFTWARE.
 
 #include "SPHtmlParser.h"
 #include "SPVectorPath.h"
-#include "SPGeometry.h"
 
 namespace STAPPLER_VERSIONIZED stappler::vg {
 
-using Metric = geom::Metric;
+using sprt::geom::Metric;
 
 struct SP_PUBLIC SvgTag : public html::Tag<StringView> {
 	SvgTag(StringView &r) : Tag(r) {
@@ -97,6 +96,6 @@ struct SP_PUBLIC SvgReader {
 	Interface::MapType<Interface::StringType, VectorPath> _paths;
 };
 
-}
+} // namespace stappler::vg
 
 #endif /* STAPPLER_VG_SPSVGREADER_H_ */

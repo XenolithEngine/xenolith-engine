@@ -26,10 +26,15 @@
 
 #include "SPDocument.h" // IWYU pragma: keep
 #include "SPDocStyle.h" // IWYU pragma: keep
-#include "SPVec2.h" // IWYU pragma: keep
-#include "SPGeometry.h" // IWYU pragma: keep
-#include "SPPadding.h" // IWYU pragma: keep
 
-namespace STAPPLER_VERSIONIZED stappler::document { }
+#include <sprt/runtime/geom/vec2.h>
+#include <sprt/runtime/geom/geom.h>
+#include <sprt/runtime/geom/padding.h>
+
+namespace STAPPLER_VERSIONIZED stappler::document {
+
+namespace geom = sprt::geom;
+
+} // namespace stappler::document
 
 #endif /* EXTRA_DOCUMENT_LAYOUT_SPDOCLAYOUT_H_ */

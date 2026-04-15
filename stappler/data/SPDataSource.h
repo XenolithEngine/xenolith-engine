@@ -79,7 +79,7 @@ public:
 	bool removeItem(Id index, const Value &);
 	bool removeItem(Id index, const Value &, uint32_t l, bool subcats = false);
 
-	std::pair<Source *, bool> getItemCategory(Id itemId, uint32_t l, bool subcats = false);
+	sprt::pair<Source *, bool> getItemCategory(Id itemId, uint32_t l, bool subcats = false);
 
 	Id getId() const;
 
@@ -104,7 +104,8 @@ protected:
 	struct SliceRequest;
 	struct Slice;
 
-	void onSlice(std::vector<Slice> &, size_t &first, size_t &count, uint32_t l, bool subcats);
+	void onSlice(sprt::__malloc_vector<Slice> &, size_t &first, size_t &count, uint32_t l,
+			bool subcats);
 
 	virtual bool initValue();
 	virtual bool initValue(const DataSourceCallback &);

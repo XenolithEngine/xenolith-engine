@@ -307,7 +307,7 @@ template <typename Clause>
 template <typename Callback>
 auto Query<Binder, Interface>::WhereClause<Clause>::parenthesis(Operator op, const Callback &cb)
 		-> Clause & {
-	static_assert(std::is_invocable_v<Callback, WhereBegin &>, "Invalid callback type");
+	static_assert(sprt::is_invocable_v<Callback, WhereBegin &>, "Invalid callback type");
 	if (this->state == State::None) {
 		this->state = State::Some;
 	} else {

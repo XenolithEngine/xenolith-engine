@@ -161,7 +161,7 @@ static bool Function_wildcard(const Callback<void(StringView)> &out, void *, Var
 	auto patterns = engine.resolve(args[0], 0, *engine.getCallContext()->err);
 	bool first = true;
 	patterns.split<StringView::WhiteSpace>([&](StringView pattern) {
-		//std::cout << "Pattern: " << pattern << "\n";
+		//sprt::cout << "Pattern: " << pattern << "\n";
 
 		StringView path = pattern.readUntil<StringView::Chars<'*'>>();
 		StringView pathSuffix;
@@ -181,7 +181,7 @@ static bool Function_wildcard(const Callback<void(StringView)> &out, void *, Var
 						out << ' ';
 					}
 					out << info.path << "/";
-					//std::cout << info.path << "/" << "\n";
+					//sprt::cout << info.path << "/" << "\n";
 				} else if (info.path.ends_with(pathSuffix)) {
 					if (first) {
 						first = false;
@@ -189,7 +189,7 @@ static bool Function_wildcard(const Callback<void(StringView)> &out, void *, Var
 						out << ' ';
 					}
 					out << info.path;
-					//std::cout << info.path << "\n";
+					//sprt::cout << info.path << "\n";
 				}
 			}
 			return true;

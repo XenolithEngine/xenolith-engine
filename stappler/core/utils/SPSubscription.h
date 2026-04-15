@@ -188,14 +188,14 @@ bool SubscriptionTemplate<Interface>::subscribe(Id id) {
 	if (_forwardedFlags) {
 		auto it = _forwardedFlags->find(id);
 		if (it == _forwardedFlags->end()) {
-			_forwardedFlags->insert(std::make_pair(id, Initial));
-			_flags.insert(std::make_pair(id, Initial));
+			_forwardedFlags->insert(sprt::make_pair(id, Initial));
+			_flags.insert(sprt::make_pair(id, Initial));
 			return true;
 		}
 	} else {
 		auto it = _flags.find(id);
 		if (it == _flags.end()) {
-			_flags.insert(std::make_pair(id, Initial));
+			_flags.insert(sprt::make_pair(id, Initial));
 			return true;
 		}
 	}

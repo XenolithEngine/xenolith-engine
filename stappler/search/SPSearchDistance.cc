@@ -49,19 +49,15 @@ Distance::Value Distance::Storage::Struct::get(uint8_t idx) const {
 Distance::Storage Distance::Storage::merge(const Storage &first, const Storage &last) {
 	Distance::Storage ret(first);
 	ret.reserve(first.size() + last.size());
-	for (size_t i = 0; i < last.size(); ++ i) {
-		ret.emplace_back(last.at(i));
-	}
+	for (size_t i = 0; i < last.size(); ++i) { ret.emplace_back(last.at(i)); }
 
 	return ret;
 }
 
-Distance::Storage::Storage() noexcept : _size({0, 0}) {
-	new (&_array) Array();
-}
+Distance::Storage::Storage() noexcept : _size({0, 0}) { new (&_array) Array(); }
 Distance::Storage::~Storage() noexcept {
 	if (isVecStorage()) {
-		_bytes.~vector();
+		_bytes.~__vector();
 	} else {
 		_array.~array();
 	}
@@ -110,13 +106,9 @@ Distance::Storage &Distance::Storage::operator=(Storage &&other) noexcept {
 	return *this;
 }
 
-bool Distance::Storage::empty() const {
-	return _size.size == 0;
-}
+bool Distance::Storage::empty() const { return _size.size == 0; }
 
-size_t Distance::Storage::size() const {
-	return _size.size;
-}
+size_t Distance::Storage::size() const { return _size.size; }
 
 size_t Distance::Storage::capacity() const {
 	if (isVecStorage()) {
@@ -134,18 +126,18 @@ void Distance::Storage::reserve(size_t s) {
 		_array.~array();
 		new (&_bytes) Vec();
 		_bytes.resize((s + 3) / 4);
-		memcpy(_bytes.data(), tmp.data(), tmp.size());
+		sprt::memcpy(_bytes.data(), tmp.data(), tmp.size());
 		_size.vec = 1;
 	}
 }
 
 void Distance::Storage::emplace_back(Value val) {
-	(isVecStorage() ? _bytes.data() : _array.data())[_size.size  / 4].set(_size.size  % 4, val);
-	++ _size.size;
+	(isVecStorage() ? _bytes.data() : _array.data())[_size.size / 4].set(_size.size % 4, val);
+	++_size.size;
 }
 
 void Distance::Storage::reverse() {
-	for (size_t i = 0; i < _size.size / 2; ++ i) {
+	for (size_t i = 0; i < _size.size / 2; ++i) {
 		auto b = at(_size.size - i - 1);
 		set(_size.size - i - 1, at(i));
 		set(i, b);
@@ -162,22 +154,18 @@ void Distance::Storage::set(size_t idx, Value val) {
 
 void Distance::Storage::clear() {
 	if (isVecStorage()) {
-		_bytes.~vector();
+		_bytes.~__vector();
 		new (&_array) Array();
 		_size.vec = 0;
 	} else {
-		memset(_array.data(), 0, _array.size());
+		sprt::memset(_array.data(), 0, _array.size());
 	}
 	_size.size = 0;
 }
 
-bool Distance::Storage::isVecStorage() const {
-	return _size.vec;
-}
+bool Distance::Storage::isVecStorage() const { return _size.vec; }
 
-bool Distance::Storage::isVecStorage(size_t s) const {
-	return (s + 3) / 4 > sizeof(Bytes);
-}
+bool Distance::Storage::isVecStorage(size_t s) const { return (s + 3) / 4 > sizeof(Bytes); }
 
 
 Distance::Distance() noexcept { }
@@ -194,13 +182,9 @@ Distance &Distance::operator=(Distance &&dist) noexcept {
 	return *this;
 }
 
-bool Distance::empty() const {
-	return _storage.empty() && _distance == 0;
-}
+bool Distance::empty() const { return _storage.empty() && _distance == 0; }
 
-size_t Distance::size() const {
-	return _storage.size();
-}
+size_t Distance::size() const { return _storage.size(); }
 
 int32_t Distance::diff_original(size_t pos, bool forward) const {
 	if (empty()) {
@@ -210,24 +194,20 @@ int32_t Distance::diff_original(size_t pos, bool forward) const {
 	int32_t ret = 0;
 	size_t i = 0;
 	pos = min(pos, size());
-	for (; i < pos; ++ i) {
+	for (; i < pos; ++i) {
 		switch (_storage.at(i)) {
 		case Value::Match:
 		case Value::Replace:
 			// do nothing
 			break;
-		case Value::Delete:
-			++ ret;
-			break;
-		case Value::Insert:
-			-- ret;
-			break;
+		case Value::Delete: ++ret; break;
+		case Value::Insert: --ret; break;
 		}
 	}
 	if (forward) {
 		while (i < size() && _storage.at(i) == Value::Delete) {
-			++ ret;
-			++ i;
+			++ret;
+			++i;
 		}
 	}
 	return ret;
@@ -241,24 +221,20 @@ int32_t Distance::diff_canonical(size_t pos, bool forward) const {
 	int32_t ret = 0;
 	size_t i = 0;
 	pos = min(pos, size());
-	for (; i < pos; ++ i) {
+	for (; i < pos; ++i) {
 		switch (_storage.at(i)) {
 		case Value::Match:
 		case Value::Replace:
 			// do nothing
 			break;
-		case Value::Delete:
-			-- ret;
-			break;
-		case Value::Insert:
-			++ ret;
-			break;
+		case Value::Delete: --ret; break;
+		case Value::Insert: ++ret; break;
 		}
 	}
 	if (forward) {
 		while (i < size() && _storage.at(i) == Value::Insert) {
-			++ ret;
-			++ i;
+			++ret;
+			++i;
 		}
 	}
 	return ret;
@@ -267,58 +243,54 @@ int32_t Distance::diff_canonical(size_t pos, bool forward) const {
 size_t Distance::nmatch() const {
 	size_t ret = 0;
 	size_t storageSize = _storage.size();
-	for (size_t i = 0; i < storageSize; ++ i) {
+	for (size_t i = 0; i < storageSize; ++i) {
 		switch (_storage.at(i)) {
-		case Value::Match:
-			++ ret;
-			break;
-		default:
-			break;
+		case Value::Match: ++ret; break;
+		default: break;
 		}
 	}
 	return ret;
 }
 
-memory::string Distance::info() const {
+sprt::__pool_string Distance::info() const {
 	const auto s = _storage.size();
-	memory::string ret; ret.reserve(s);
+	sprt::__pool_string ret;
+	ret.reserve(s);
 
-    char moveCodeToChar[] = {'=', '+', '-', 'X'};
+	char moveCodeToChar[] = {'=', '+', '-', 'X'};
 
-    char lastMove = 0;  // Char of last move. 0 if there was no previous move.
-    int numOfSameMoves = 0;
-    for (size_t i = 0; i <= s; i++) {
-        // if new sequence of same moves started
-        if (i == s || (moveCodeToChar[toInt(_storage.at(i))] != lastMove && lastMove != 0)) {
-            // Write number of moves to cigar string.
-            int numDigits = 0;
-            for (; numOfSameMoves; numOfSameMoves /= 10) {
-            	ret.push_back('0' + numOfSameMoves % 10);
-                numDigits++;
-            }
-            std::reverse(ret.end() - numDigits, ret.end());
-            // Write code of move to cigar string.
-            ret.push_back(lastMove);
-            // If not at the end, start new sequence of moves.
-            if (i < s) {
-                // Check if alignment has valid values.
-                if (toInt(_storage.at(i)) > 3) {
-                    return memory::string();
-                }
-                numOfSameMoves = 0;
-            }
-        }
-        if (i < s) {
-            lastMove = moveCodeToChar[toInt(_storage.at(i))];
-            numOfSameMoves++;
-        }
-    }
+	char lastMove = 0; // Char of last move. 0 if there was no previous move.
+	int numOfSameMoves = 0;
+	for (size_t i = 0; i <= s; i++) {
+		// if new sequence of same moves started
+		if (i == s || (moveCodeToChar[toInt(_storage.at(i))] != lastMove && lastMove != 0)) {
+			// Write number of moves to cigar string.
+			int numDigits = 0;
+			for (; numOfSameMoves; numOfSameMoves /= 10) {
+				ret.push_back('0' + numOfSameMoves % 10);
+				numDigits++;
+			}
+			sprt::reverse(ret.end() - numDigits, ret.end());
+			// Write code of move to cigar string.
+			ret.push_back(lastMove);
+			// If not at the end, start new sequence of moves.
+			if (i < s) {
+				// Check if alignment has valid values.
+				if (toInt(_storage.at(i)) > 3) {
+					return sprt::__pool_string();
+				}
+				numOfSameMoves = 0;
+			}
+		}
+		if (i < s) {
+			lastMove = moveCodeToChar[toInt(_storage.at(i))];
+			numOfSameMoves++;
+		}
+	}
 
 	return ret;
 }
 
-Distance::Storage Distance::storage() const {
-	return _storage;
-}
+Distance::Storage Distance::storage() const { return _storage; }
 
-}
+} // namespace stappler::search

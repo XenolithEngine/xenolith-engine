@@ -50,8 +50,8 @@ bool ShadowLightInput::addDirectLight(const Vec4 &pos, const Color4F &color, con
 }
 
 Extent2 ShadowLightInput::getShadowExtent(Size2 frameSize) const {
-	return Extent2(std::ceil((frameSize.width / sceneDensity) * shadowDensity),
-			std::ceil((frameSize.height / sceneDensity) * shadowDensity));
+	return Extent2(sprt::ceil((frameSize.width / sceneDensity) * shadowDensity),
+			sprt::ceil((frameSize.height / sceneDensity) * shadowDensity));
 }
 
 Size2 ShadowLightInput::getShadowSize(Size2 frameSize) const {

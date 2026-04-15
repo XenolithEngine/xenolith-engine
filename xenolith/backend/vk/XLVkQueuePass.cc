@@ -72,14 +72,14 @@ VkRect2D QueuePassHandle::rotateScissor(const core::FrameConstraints &constraint
 	case core::SurfaceTransformFlags::Rotate90:
 		scissorRect.offset.y = scissor.x;
 		scissorRect.offset.x = scissor.y;
-		std::swap(scissorRect.extent.width, scissorRect.extent.height);
+		sprt::swap(scissorRect.extent.width, scissorRect.extent.height);
 		break;
 	case core::SurfaceTransformFlags::Rotate180: scissorRect.offset.y = scissor.y; break;
 	case core::SurfaceTransformFlags::Rotate270:
 		scissorRect.offset.y = constraints.extent.height - scissor.x - scissor.width;
 		scissorRect.offset.x = constraints.extent.width - scissor.y - scissor.height;
 		//scissorRect.offset.x = extent.height - scissor.y;
-		std::swap(scissorRect.extent.width, scissorRect.extent.height);
+		sprt::swap(scissorRect.extent.width, scissorRect.extent.height);
 		break;
 	default: break;
 	}
@@ -371,8 +371,7 @@ auto QueuePassHandle::updateMaterials(FrameHandle &frame, NotNull<core::Material
 			}
 		}
 
-		return Rc<ImageView>::create(*_device, image.image->image.get_cast<Image>(),
-				image.info);
+		return Rc<ImageView>::create(*_device, image.image->image.get_cast<Image>(), image.info);
 	});
 
 	if (updated.empty()) {
@@ -411,7 +410,7 @@ auto QueuePassHandle::updateMaterials(FrameHandle &frame, NotNull<core::Material
 					stagingBuffer->getSize(), " vs ", targetBuffer->getSize(), ")");
 		} else {
 			stagingBuffer->map([&](uint8_t *ptr, VkDeviceSize size) {
-				memcpy(ptr, bufferData.data(), std::min(size_t(size), bufferData.size()));
+				sprt::memcpy(ptr, bufferData.data(), sprt::min(size_t(size), bufferData.size()));
 			}, DeviceMemoryAccess::Flush);
 
 			ret.emplace_back(

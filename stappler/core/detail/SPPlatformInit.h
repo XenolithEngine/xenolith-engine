@@ -182,31 +182,6 @@
 #define SP_HAVE_DEDICATED_SIZE_T 0
 #endif
 
-
-// Suppress windows MIN/MAX macro
-// Actually, windows-specific includes should be only in SPPlatformUnistd.h with proper filters for macro leaking
-#if WIN32
-
-#if XWIN
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wnonportable-include-path"
-#pragma clang diagnostic ignored "-Wignored-attributes"
-#pragma clang diagnostic ignored "-Wvla-cxx-extension"
-#pragma clang diagnostic ignored "-Wunused-local-typedef"
-#pragma clang diagnostic ignored "-Wunused-function"
-#pragma clang diagnostic ignored "-Wunused-value"
-#endif
-
-#define NOMINMAX 1
-#define _USE_MATH_DEFINES 1
-
-#define WIN32_LEAN_AND_MEAN
-#define UNICODE
-#define _UNICODE
-
-
-#endif
-
 #if DEBUG
 #if defined(__clang__)
 #define SP_BREAKPOINT() __builtin_debugtrap()
@@ -218,5 +193,21 @@
 #else
 #define SP_BREAKPOINT()
 #endif
+
+
+// GCC-specific formatting attribute
+#if defined(__GNUC__) && (__GNUC__ >= 4)
+#define SPPRINTF(formatPos, argPos) __attribute__((__format__(printf, formatPos, argPos)))
+#define SP_COVERAGE_TRIVIAL __attribute__ ((no_profile_instrument_function))
+#elif defined(__has_attribute)
+#if __has_attribute(format)
+#define SPPRINTF(formatPos, argPos) __attribute__((__format__(printf, formatPos, argPos)))
+#endif // __has_attribute(format)
+#define SP_COVERAGE_TRIVIAL
+#else
+#define SPPRINTF(formatPos, argPos)
+#define SP_COVERAGE_TRIVIAL
+#endif
+
 
 #endif /* CORE_CORE_DETAIL_SPPLATFORMDETECTION_H_ */

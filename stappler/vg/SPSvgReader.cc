@@ -248,29 +248,29 @@ void SvgReader::onEndTag(Parser &p, Tag &tag, bool isClosed) {
 
 	switch (tag.shape) {
 	case SvgTag::Rect:
-		if (!isnan(tag.mat.m[0]) && !isnan(tag.mat.m[1]) && !isnan(tag.mat.m[2])
-				&& tag.mat.m[2] > 0.0f && !isnan(tag.mat.m[3]) && tag.mat.m[3] > 0.0f
-				&& (isnan(tag.mat.m[4]) || tag.mat.m[4] >= 0.0f)
-				&& (isnan(tag.mat.m[5]) || tag.mat.m[5] >= 0.0f)) {
+		if (!sprt::isnan(tag.mat.m[0]) && !sprt::isnan(tag.mat.m[1]) && !sprt::isnan(tag.mat.m[2])
+				&& tag.mat.m[2] > 0.0f && !sprt::isnan(tag.mat.m[3]) && tag.mat.m[3] > 0.0f
+				&& (sprt::isnan(tag.mat.m[4]) || tag.mat.m[4] >= 0.0f)
+				&& (sprt::isnan(tag.mat.m[5]) || tag.mat.m[5] >= 0.0f)) {
 			tag.getWriter().addRect(tag.mat.m[0], tag.mat.m[1], tag.mat.m[2], tag.mat.m[3],
 					tag.mat.m[4], tag.mat.m[5]);
 		}
 		break;
 	case SvgTag::Circle:
-		if (!isnan(tag.mat.m[0]) && !isnan(tag.mat.m[1]) && !isnan(tag.mat.m[2])
+		if (!sprt::isnan(tag.mat.m[0]) && !sprt::isnan(tag.mat.m[1]) && !sprt::isnan(tag.mat.m[2])
 				&& tag.mat.m[2] >= 0.0f) {
 			tag.getWriter().addCircle(tag.mat.m[0], tag.mat.m[1], tag.mat.m[2]);
 		}
 		break;
 	case SvgTag::Ellipse:
-		if (!isnan(tag.mat.m[0]) && !isnan(tag.mat.m[1]) && !isnan(tag.mat.m[2])
-				&& !isnan(tag.mat.m[3]) && tag.mat.m[2] >= 0.0f && tag.mat.m[3] >= 0.0f) {
+		if (!sprt::isnan(tag.mat.m[0]) && !sprt::isnan(tag.mat.m[1]) && !sprt::isnan(tag.mat.m[2])
+				&& !sprt::isnan(tag.mat.m[3]) && tag.mat.m[2] >= 0.0f && tag.mat.m[3] >= 0.0f) {
 			tag.getWriter().addEllipse(tag.mat.m[0], tag.mat.m[1], tag.mat.m[2], tag.mat.m[3]);
 		}
 		break;
 	case SvgTag::Line:
-		if (!isnan(tag.mat.m[0]) && !isnan(tag.mat.m[1]) && !isnan(tag.mat.m[2])
-				&& !isnan(tag.mat.m[3])) {
+		if (!sprt::isnan(tag.mat.m[0]) && !sprt::isnan(tag.mat.m[1]) && !sprt::isnan(tag.mat.m[2])
+				&& !sprt::isnan(tag.mat.m[3])) {
 			tag.getWriter().moveTo(tag.mat.m[0], tag.mat.m[1]);
 			tag.getWriter().lineTo(tag.mat.m[2], tag.mat.m[3]);
 		}
@@ -346,7 +346,7 @@ void SvgReader::onStyleParameter(Tag &tag, StringReader &name, StringReader &val
 		});
 	} else if (name.equals("stroke-width")) {
 		auto val = svg_readCoordValue(value, _squareLength);
-		if (!isnan(val)) {
+		if (!sprt::isnan(val)) {
 			tag.getPath().setStrokeWidth(val);
 		}
 	} else if (name.equals("stroke-linecap")) {
@@ -373,12 +373,12 @@ void SvgReader::onStyleParameter(Tag &tag, StringReader &name, StringReader &val
 		});
 	} else if (name.equals("width") && tag.name.equals("svg")) {
 		auto val = svg_readCoordValue(value, 0.0f);
-		if (!isnan(val)) {
+		if (!sprt::isnan(val)) {
 			_width = val;
 		}
 	} else if (name.equals("height") && tag.name.equals("svg")) {
 		auto val = svg_readCoordValue(value, 0.0f);
-		if (!isnan(val)) {
+		if (!sprt::isnan(val)) {
 			_height = val;
 		}
 	}
@@ -405,12 +405,12 @@ void SvgReader::onTagAttribute(Parser &p, Tag &tag, StringReader &name, StringRe
 	if (tag.name.equals("svg")) {
 		if (name.equals<StringCaseComparator>("height")) {
 			auto val = svg_readCoordValue(value, 0.0f);
-			if (!isnan(val)) {
+			if (!sprt::isnan(val)) {
 				_height = val;
 			}
 		} else if (name.equals<StringCaseComparator>("width")) {
 			auto val = svg_readCoordValue(value, 0.0f);
-			if (!isnan(val)) {
+			if (!sprt::isnan(val)) {
 				_width = val;
 			}
 		} else if (name.equals<StringCaseComparator>("viewbox")) {

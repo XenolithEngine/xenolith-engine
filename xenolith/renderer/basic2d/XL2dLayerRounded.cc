@@ -35,7 +35,8 @@ bool LayerRounded::init(const Color4F &color, float borderRadius) {
 }
 
 void LayerRounded::handleContentSizeDirty() {
-	auto radius = std::min(std::min(_contentSize.width / 2.0f, _contentSize.height / 2.0f), _borderRadius);
+	auto radius = sprt::min(sprt::min(_contentSize.width / 2.0f, _contentSize.height / 2.0f),
+			_borderRadius);
 
 	if (radius != _realBorderRadius || _contentSize != _image->getImageSize()) {
 		if (radius <= 0.0f) {
@@ -49,20 +50,21 @@ void LayerRounded::handleContentSizeDirty() {
 
 		auto img = Rc<VectorImage>::create(_contentSize);
 		auto path = img->addPath();
-		path->openForWriting([&] (vg::PathWriter &writer) {
+		path->openForWriting([&](vg::PathWriter &writer) {
 			writer.moveTo(0.0f, radius)
-				.arcTo(radius, radius, 0.0f, false, true, radius, 0.0f)
-				.lineTo(_contentSize.width - radius, 0.0f)
-				.arcTo(radius, radius, 0.0f, false, true, _contentSize.width, radius)
-				.lineTo(_contentSize.width, _contentSize.height - radius)
-				.arcTo(radius, radius, 0.0f, false, true, _contentSize.width - radius, _contentSize.height)
-				.lineTo(radius, _contentSize.height)
-				.arcTo(radius, radius, 0.0f, false, true, 0.0f, _contentSize.height - radius)
-				.closePath();
+					.arcTo(radius, radius, 0.0f, false, true, radius, 0.0f)
+					.lineTo(_contentSize.width - radius, 0.0f)
+					.arcTo(radius, radius, 0.0f, false, true, _contentSize.width, radius)
+					.lineTo(_contentSize.width, _contentSize.height - radius)
+					.arcTo(radius, radius, 0.0f, false, true, _contentSize.width - radius,
+							_contentSize.height)
+					.lineTo(radius, _contentSize.height)
+					.arcTo(radius, radius, 0.0f, false, true, 0.0f, _contentSize.height - radius)
+					.closePath();
 		})
-			.setAntialiased(false)
-			.setFillColor(_pathColor)
-			.setStyle(vg::DrawFlags::Fill);
+				.setAntialiased(false)
+				.setFillColor(_pathColor)
+				.setStyle(vg::DrawFlags::Fill);
 
 		setImage(move(img));
 
@@ -80,15 +82,11 @@ void LayerRounded::setPathColor(const Color4B &color, bool withOpaity) {
 	}
 
 	if (!_image->getPaths().empty()) {
-		for (auto &it : _image->getPaths()) {
-			it.second->setFillColor(color);
-		}
+		for (auto &it : _image->getPaths()) { it.second->setFillColor(color); }
 	}
 }
 
-const Color4B &LayerRounded::getPathColor() const {
-	return _pathColor;
-}
+const Color4B &LayerRounded::getPathColor() const { return _pathColor; }
 
 void LayerRounded::setBorderRadius(float radius) {
 	if (_borderRadius != radius) {
@@ -97,4 +95,4 @@ void LayerRounded::setBorderRadius(float radius) {
 	}
 }
 
-}
+} // namespace stappler::xenolith::basic2d

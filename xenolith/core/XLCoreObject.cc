@@ -58,7 +58,7 @@ void Object::invalidate() {
 	}
 }
 
-static std::atomic<uint64_t> s_RenderPassImplCurrentIndex = 1;
+static sprt::atomic<uint64_t> s_RenderPassImplCurrentIndex = 1;
 
 bool RenderPass::init(Device &dev, ClearCallback cb, ObjectType type, ObjectHandle ptr, void *p) {
 	if (Object::init(dev, cb, type, ptr, p)) {
@@ -203,7 +203,7 @@ void DataAtlas::addObject(StringView name, void *data) {
 
 void DataAtlas::setBuffer(Rc<BufferObject> &&index) { _buffer = move(index); }
 
-static std::atomic<uint64_t> s_ImageViewCurrentIndex = 1;
+static sprt::atomic<uint64_t> s_ImageViewCurrentIndex = 1;
 
 ImageObject::~ImageObject() { }
 
@@ -316,9 +316,7 @@ String Shader::inspectShader(SpanView<uint32_t> data) {
 	default: break;
 	}
 
-	StringStream d;
-	auto out = memory::makeCallback(d);
-
+	StringStream out;
 	out << "[" << stage << "]\n";
 
 	for (auto &it : makeSpanView(shader.descriptor_bindings, shader.descriptor_binding_count)) {
@@ -332,7 +330,7 @@ String Shader::inspectShader(SpanView<uint32_t> data) {
 
 	spvReflectDestroyShaderModule(&shader);
 
-	return d.str();
+	return out.str();
 }
 
 String Shader::inspect(SpanView<uint32_t> data) { return inspectShader(data); }
@@ -384,7 +382,7 @@ void Fence::setReleaseCallback(Function<bool()> &&release) { _releaseFn = sp::mo
 void Fence::bindQueries(NotNull<QueryPool> q) { _queries.emplace_back(q); }
 
 void Fence::setArmed(DeviceQueue &q) {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
 	_state = Armed;
 	_queue = &q;
 	_queue->retainFence(*this);
@@ -392,7 +390,7 @@ void Fence::setArmed(DeviceQueue &q) {
 }
 
 void Fence::setArmed() {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
 	_state = Armed;
 	_armedTime = sp::platform::clock(ClockType::Monotonic);
 }
@@ -405,12 +403,12 @@ void Fence::addQueryCallback(Function<void(bool, SpanView<Rc<QueryPool>>)> &&cb,
 }
 
 void Fence::addRelease(Function<void(bool)> &&cb, Ref *ref, StringView tag) {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
 	_release.emplace_back(ReleaseHandle({sp::move(cb), ref, tag}));
 }
 
 bool Fence::schedule(Loop &loop) {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
 	if (_state != Armed) {
 		lock.unlock();
 		if (_releaseFn) {
@@ -456,7 +454,7 @@ bool Fence::schedule(Loop &loop) {
 }
 
 bool Fence::check(Loop &loop, bool lockfree) {
-	std::unique_lock<Mutex> lock(_mutex);
+	sprt::unique_lock<sprt::mutex > lock(_mutex);
 	if (_state != Armed) {
 		return true;
 	}

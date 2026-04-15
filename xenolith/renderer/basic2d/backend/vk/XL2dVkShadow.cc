@@ -62,7 +62,7 @@ void ShadowLightDataAttachmentHandle::allocateBuffer(DeviceFrameHandle *devFrame
 	_data->map([&, this](uint8_t *buf, VkDeviceSize size) {
 		ShadowData *data = reinterpret_cast<ShadowData *>(buf);
 
-		if (isnan(_input->lights.luminosity)) {
+		if (sprt::isnan(_input->lights.luminosity)) {
 			float l = _input->lights.globalColor.a;
 			for (uint32_t i = 0; i < _input->lights.ambientLightCount; ++i) {
 				l += _input->lights.ambientLights[i].color.a;
@@ -108,26 +108,26 @@ void ShadowLightDataAttachmentHandle::allocateBuffer(DeviceFrameHandle *devFrame
 		_shadowData.pix = data->pix =
 				Vec2(1.0f / float(screenSize.width), 1.0f / float(screenSize.height));
 
-		memcpy(data->ambientLights, _input->lights.ambientLights,
+		sprt::memcpy(data->ambientLights, _input->lights.ambientLights,
 				sizeof(AmbientLightData) * config::MaxAmbientLights);
-		memcpy(data->directLights, _input->lights.directLights,
+		sprt::memcpy(data->directLights, _input->lights.directLights,
 				sizeof(DirectLightData) * config::MaxDirectLights);
-		memcpy(_shadowData.ambientLights, _input->lights.ambientLights,
+		sprt::memcpy(_shadowData.ambientLights, _input->lights.ambientLights,
 				sizeof(AmbientLightData) * config::MaxAmbientLights);
-		memcpy(_shadowData.directLights, _input->lights.directLights,
+		sprt::memcpy(_shadowData.directLights, _input->lights.directLights,
 				sizeof(DirectLightData) * config::MaxDirectLights);
 	});
 }
 
 float ShadowLightDataAttachmentHandle::getBoxOffset(float value) const {
-	value = std::max(value, 2.0f);
+	value = sprt::max(value, 2.0f);
 	float bbox = 0.0f;
 	for (size_t i = 0; i < _input->lights.ambientLightCount; ++i) {
 		auto &l = _input->lights.ambientLights[i];
 		float n_2 = l.normal.x * l.normal.x + l.normal.y * l.normal.y;
-		float m = std::sqrt(n_2) / std::sqrt(1 - n_2);
+		float m = sprt::sqrt(n_2) / sprt::sqrt(1 - n_2);
 
-		bbox = std::max((m * value * 2.0f) + (std::ceil(l.normal.w * value)), bbox);
+		bbox = sprt::max((m * value * 2.0f) + (sprt::ceil(l.normal.w * value)), bbox);
 	}
 	return bbox;
 }

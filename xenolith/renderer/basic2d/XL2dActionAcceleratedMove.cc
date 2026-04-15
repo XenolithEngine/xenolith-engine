@@ -34,7 +34,7 @@ Rc<ActionInterval> ActionAcceleratedMove::createBounce(float acceleration, Vec2 
 	Vec2 diff = to - from;
 	float distance = diff.length();
 
-	if (std::fabs(distance) < std::numeric_limits<float>::epsilon()) {
+	if (sprt::fabs(distance) < sprt::Epsilon<float>) {
 		return Rc<DelayTime>::create(0.0f);
 	}
 
@@ -44,7 +44,7 @@ Rc<ActionInterval> ActionAcceleratedMove::createBounce(float acceleration, Vec2 
 	Vec2 velProject = velocity.project(normal);
 
 	float startSpeed;
-	if (std::fabs(normal.getAngle(velProject)) < M_PI_2) {
+	if (sprt::fabs(normal.getAngle(velProject)) < M_PI_2) {
 		startSpeed = velProject.length();
 	} else {
 		startSpeed = -velProject.length();
@@ -59,7 +59,7 @@ Rc<ActionInterval> ActionAcceleratedMove::createBounce(float acceleration, Vec2 
 	Vec2 diff = to - from;
 	float distance = diff.length();
 
-	if (std::fabs(distance) < std::numeric_limits<float>::epsilon()) {
+	if (sprt::fabs(distance) < sprt::Epsilon<float>) {
 		return Rc<DelayTime>::create(0.0f);
 	}
 
@@ -69,7 +69,7 @@ Rc<ActionInterval> ActionAcceleratedMove::createBounce(float acceleration, Vec2 
 	float startSpeed = velocity;
 
 	if (startSpeed == 0) {
-		float duration = std::sqrt(distance / acceleration);
+		float duration = sprt::sqrt(distance / acceleration);
 
 		auto a = ActionAcceleratedMove::createWithDuration(duration, normal, from, startSpeed,
 				acceleration);
@@ -86,7 +86,7 @@ Rc<ActionInterval> ActionAcceleratedMove::createBounce(float acceleration, Vec2 
 
 		if (startSpeed > 0 && distance > result) {
 			float pseudoDistance = distance + acceleration * t * t * 0.5;
-			float pseudoDuration = std::sqrt(pseudoDistance / acceleration);
+			float pseudoDuration = sprt::sqrt(pseudoDistance / acceleration);
 
 			auto a = ActionAcceleratedMove::createAccelerationTo(normal, from, startSpeed,
 					acceleration * pseudoDuration, acceleration);
@@ -101,7 +101,7 @@ Rc<ActionInterval> ActionAcceleratedMove::createBounce(float acceleration, Vec2 
 			if (bounceAcceleration == 0) {
 				acceleration = -acceleration;
 				float pseudoDistance = distance - result; // < 0
-				float pseudoDuration = std::sqrt(pseudoDistance / acceleration); // > 0
+				float pseudoDuration = sprt::sqrt(pseudoDistance / acceleration); // > 0
 
 				auto a = ActionAcceleratedMove::createAccelerationTo(normal, from, startSpeed,
 						acceleration * pseudoDuration, acceleration);
@@ -122,7 +122,7 @@ Rc<ActionInterval> ActionAcceleratedMove::createBounce(float acceleration, Vec2 
 				diff = to - tmpFrom;
 				distance = diff.length();
 				normal = diff.getNormalized();
-				float duration = std::sqrt(distance / acceleration);
+				float duration = sprt::sqrt(distance / acceleration);
 
 				auto a = ActionAcceleratedMove::createWithDuration(duration, normal, tmpFrom, 0,
 						acceleration);
@@ -142,13 +142,13 @@ Rc<ActionInterval> ActionAcceleratedMove::createBounce(float acceleration, Vec2 
 			if (bounceAcceleration) {
 				t = startSpeed / bounceAcceleration;
 				pseudoDistance =
-						distance + std::fabs((startSpeed * t) - bounceAcceleration * t * t * 0.5);
+						distance + sprt::fabs((startSpeed * t) - bounceAcceleration * t * t * 0.5);
 			} else {
 				pseudoDistance =
-						distance + std::fabs((startSpeed * t) - acceleration * t * t * 0.5);
+						distance + sprt::fabs((startSpeed * t) - acceleration * t * t * 0.5);
 			}
 
-			float pseudoDuration = std::sqrt(pseudoDistance / acceleration);
+			float pseudoDuration = sprt::sqrt(pseudoDistance / acceleration);
 
 			Rc<ActionAcceleratedMove> a1;
 			Rc<ActionAcceleratedMove> a2;
@@ -188,7 +188,7 @@ Rc<ActionInterval> ActionAcceleratedMove::createFreeBounce(float acceleration, V
 	Vec2 velProject = velocity.project(normal);
 
 	float startSpeed;
-	if (std::fabs(normal.getAngle(velProject)) < M_PI_2) {
+	if (sprt::fabs(normal.getAngle(velProject)) < M_PI_2) {
 		startSpeed = velProject.length();
 	} else {
 		startSpeed = -velProject.length();
@@ -230,11 +230,11 @@ Rc<ActionInterval> ActionAcceleratedMove::createWithBounds(float acceleration, V
 		pos = from.y;
 
 		v = velocity.y;
-		t = std::fabs(v) / std::fabs(acceleration);
-		dist = std::fabs(v) * t - std::fabs(acceleration) * t * t * 0.5;
+		t = sprt::fabs(v) / sprt::fabs(acceleration);
+		dist = sprt::fabs(v) * t - sprt::fabs(acceleration) * t * t * 0.5;
 
 		if (velocity.y > 0) {
-			if (std::fabs(pos - end) < std::numeric_limits<float>::epsilon()) {
+			if (sprt::fabs(pos - end) < sprt::Epsilon<float>) {
 				return Rc<DelayTime>::create(0.0f);
 			} else if (pos + dist < end) {
 				return createDecceleration(Vec2(0.0f, 1.0f), from, velocity.y, -acceleration,
@@ -244,13 +244,13 @@ Rc<ActionInterval> ActionAcceleratedMove::createWithBounds(float acceleration, V
 						sp::move(callback));
 			}
 		} else {
-			if (std::fabs(pos - start) < std::numeric_limits<float>::epsilon()) {
+			if (sprt::fabs(pos - start) < sprt::Epsilon<float>) {
 				return Rc<DelayTime>::create(0.0f);
 			} else if (pos - dist > start) {
 				return createDecceleration(Vec2(0.0f, -1.0f), from, velocity.y, -acceleration,
 						sp::move(callback));
 			} else {
-				return createAccelerationTo(from, Vec2(from.x, start), std::fabs(v), -acceleration,
+				return createAccelerationTo(from, Vec2(from.x, start), sprt::fabs(v), -acceleration,
 						sp::move(callback));
 			}
 		}
@@ -261,12 +261,12 @@ Rc<ActionInterval> ActionAcceleratedMove::createWithBounds(float acceleration, V
 		end = bounds.origin.x + bounds.size.width;
 		pos = from.x;
 
-		v = std::fabs(velocity.x);
-		t = v / std::fabs(acceleration);
-		dist = v * t - std::fabs(acceleration) * t * t * 0.5;
+		v = sprt::fabs(velocity.x);
+		t = v / sprt::fabs(acceleration);
+		dist = v * t - sprt::fabs(acceleration) * t * t * 0.5;
 
 		if (velocity.x > 0) {
-			if (std::fabs(pos - end) < std::numeric_limits<float>::epsilon()) {
+			if (sprt::fabs(pos - end) < sprt::Epsilon<float>) {
 				return Rc<DelayTime>::create(0.0f);
 			} else if (pos + dist < end) {
 				return createDecceleration(Vec2(1, 0), from, v, -acceleration, sp::move(callback));
@@ -275,7 +275,7 @@ Rc<ActionInterval> ActionAcceleratedMove::createWithBounds(float acceleration, V
 						sp::move(callback));
 			}
 		} else {
-			if (std::fabs(pos - start) < std::numeric_limits<float>::epsilon()) {
+			if (sprt::fabs(pos - start) < sprt::Epsilon<float>) {
 				return nullptr;
 			} else if (pos - dist > start) {
 				return createDecceleration(Vec2(-1, 0), from, v, -acceleration, sp::move(callback));
@@ -342,7 +342,7 @@ Rc<ActionInterval> ActionAcceleratedMove::createWithBounds(float acceleration, V
 		if (s_len > 0) {
 			a1->setCallback(Function<void(Node *)>(callback));
 			Vec2 diff = y - i;
-			if (diff.length() < std::numeric_limits<float>::epsilon()) {
+			if (diff.length() < sprt::Epsilon<float>) {
 				return a1;
 			}
 			Vec2 newNormal = diff.getNormalized();
@@ -443,8 +443,8 @@ Rc<ActionAcceleratedMove> ActionAcceleratedMove::createWithDuration(float durati
 
 bool ActionAcceleratedMove::initDecceleration(Vec2 normal, Vec2 startPoint, float startVelocity,
 		float acceleration, Function<void(Node *)> &&callback) {
-	acceleration = std::fabs(acceleration);
-	startVelocity = std::fabs(startVelocity);
+	acceleration = sprt::fabs(acceleration);
+	startVelocity = sprt::fabs(startVelocity);
 	if (startVelocity < 0 || acceleration < 0) {
 		XL_ACCELERATED_LOG("Deceleration failed: velocity:%f acceleration:%f", startVelocity,
 				acceleration);
@@ -471,7 +471,7 @@ bool ActionAcceleratedMove::initDecceleration(Vec2 normal, Vec2 startPoint, floa
 			__FUNCTION__, __LINE__, _acceleration, _startVelocity, _endVelocity, _accDuration,
 			_startPoint.x, _startPoint.y, _endPoint.x, _endPoint.y);
 
-	if (isnan(_endPoint.x) || isnan(_endPoint.y) || isnan(_accDuration)) {
+	if (sprt::isnan(_endPoint.x) || sprt::isnan(_endPoint.y) || sprt::isnan(_accDuration)) {
 		XL_ACCELERATED_LOG("Failed!");
 		return false;
 	}
@@ -483,12 +483,12 @@ bool ActionAcceleratedMove::initDecceleration(Vec2 normal, Vec2 startPoint, floa
 bool ActionAcceleratedMove::initDecceleration(Vec2 startPoint, Vec2 endPoint, float acceleration,
 		Function<void(Node *)> &&callback) {
 	float distance = startPoint.distance(endPoint);
-	acceleration = std::fabs(acceleration);
+	acceleration = sprt::fabs(acceleration);
 
-	if (std::fabs(distance) < std::numeric_limits<float>::epsilon()) {
+	if (sprt::fabs(distance) < sprt::Epsilon<float>) {
 		_accDuration = 0.0f;
 	} else {
-		_accDuration = std::sqrt((distance * 2.0f) / acceleration);
+		_accDuration = sprt::sqrt((distance * 2.0f) / acceleration);
 	}
 
 	if (!ActionInterval::init(_accDuration)) {
@@ -508,7 +508,7 @@ bool ActionAcceleratedMove::initDecceleration(Vec2 startPoint, Vec2 endPoint, fl
 			__FUNCTION__, __LINE__, _acceleration, _startVelocity, _endVelocity, _accDuration,
 			_startPoint.x, _startPoint.y, _endPoint.x, _endPoint.y);
 
-	if (isnan(_endPoint.x) || isnan(_endPoint.y) || isnan(_accDuration)) {
+	if (sprt::isnan(_endPoint.x) || sprt::isnan(_endPoint.y) || sprt::isnan(_accDuration)) {
 		XL_ACCELERATED_LOG("Failed!");
 		return false;
 	}
@@ -546,7 +546,7 @@ bool ActionAcceleratedMove::initAccelerationTo(Vec2 normal, Vec2 startPoint, flo
 			__FUNCTION__, __LINE__, _acceleration, _startVelocity, _endVelocity, _accDuration,
 			_startPoint.x, _startPoint.y, _endPoint.x, _endPoint.y);
 
-	if (isnan(_endPoint.x) || isnan(_endPoint.y) || isnan(_accDuration)) {
+	if (sprt::isnan(_endPoint.x) || sprt::isnan(_endPoint.y) || sprt::isnan(_accDuration)) {
 		XL_ACCELERATED_LOG("Failed!");
 		return false;
 	}
@@ -561,7 +561,7 @@ bool ActionAcceleratedMove::initAccelerationTo(Vec2 startPoint, Vec2 endPoint, f
 	float distance = -endPoint.distance(startPoint);
 	float d = startVelocity * startVelocity - 2 * acceleration * distance;
 
-	if (std::fabs(distance) < std::numeric_limits<float>::epsilon()) {
+	if (sprt::fabs(distance) < sprt::Epsilon<float>) {
 		XL_ACCELERATED_LOG("zero distance");
 	}
 
@@ -571,12 +571,12 @@ bool ActionAcceleratedMove::initAccelerationTo(Vec2 startPoint, Vec2 endPoint, f
 		return false;
 	}
 
-	float t1 = (-startVelocity + std::sqrt(d)) / acceleration;
-	float t2 = (-startVelocity - std::sqrt(d)) / acceleration;
+	float t1 = (-startVelocity + sprt::sqrt(d)) / acceleration;
+	float t2 = (-startVelocity - sprt::sqrt(d)) / acceleration;
 
 	if (distance != 0.0f) {
-		_accDuration = t1 < 0 ? t2 : (t2 < 0 ? t1 : std::min(t1, t2));
-		if (isnan(_accDuration)) {
+		_accDuration = t1 < 0 ? t2 : (t2 < 0 ? t1 : sprt::min(t1, t2));
+		if (sprt::isnan(_accDuration)) {
 			_accDuration = 0.0f;
 		}
 	} else {
@@ -608,7 +608,7 @@ bool ActionAcceleratedMove::initAccelerationTo(Vec2 startPoint, Vec2 endPoint, f
 			__FUNCTION__, __LINE__, _acceleration, _startVelocity, _endVelocity, _accDuration,
 			_startPoint.x, _startPoint.y, _endPoint.x, _endPoint.y);
 
-	if (isnan(_endPoint.x) || isnan(_endPoint.y) || isnan(_accDuration)) {
+	if (sprt::isnan(_endPoint.x) || sprt::isnan(_endPoint.y) || sprt::isnan(_accDuration)) {
 		XL_ACCELERATED_LOG("Failed!");
 		return false;
 	}
@@ -640,7 +640,7 @@ bool ActionAcceleratedMove::initWithDuration(float duration, Vec2 normal, Vec2 s
 			__FUNCTION__, __LINE__, _acceleration, _startVelocity, _endVelocity, _accDuration,
 			_startPoint.x, _startPoint.y, _endPoint.x, _endPoint.y);
 
-	if (isnan(_endPoint.x) || isnan(_endPoint.y) || isnan(_accDuration)) {
+	if (sprt::isnan(_endPoint.x) || sprt::isnan(_endPoint.y) || sprt::isnan(_accDuration)) {
 		XL_ACCELERATED_LOG("Failed!");
 		return false;
 	}

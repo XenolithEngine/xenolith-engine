@@ -27,7 +27,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::material2d {
 
-float MenuButton::getMaxWidthForButton(MenuSourceButton *btn, font::FontController *c, float density) {
+float MenuButton::getMaxWidthForButton(MenuSourceButton *btn, font::FontController *c,
+		float density) {
 	float widthFront = 12.0f;
 	float widthBack = 12.0f;
 
@@ -54,19 +55,15 @@ float MenuButton::getMaxWidthForButton(MenuSourceButton *btn, font::FontControll
 }
 
 bool MenuButton::init(Menu *menu, MenuSourceButton *button) {
-	if (!Button::init(SurfaceStyle({
-		Elevation::Level1,
-		ColorRole::Primary,
-		NodeStyle::Text,
-		ShapeStyle::None
-	}))) {
+	if (!Button::init(SurfaceStyle(
+				{Elevation::Level1, ColorRole::Primary, NodeStyle::Text, ShapeStyle::None}))) {
 		return false;
 	}
 
 	setMenu(menu);
 	setMenuSourceButton(button);
 	setFollowContentSize(false);
-	setTapCallback(std::bind(&MenuButton::handleButton, this));
+	setTapCallback(sprt::bind(&MenuButton::handleButton, this));
 
 	return true;
 }
@@ -78,9 +75,7 @@ void MenuButton::setWrapName(bool val) {
 	}
 }
 
-bool MenuButton::isWrapName() const {
-	return _wrapName;
-}
+bool MenuButton::isWrapName() const { return _wrapName; }
 
 void MenuButton::handleButton() {
 	if (auto s = _menuButtonListener->getSubscription()) {
@@ -90,10 +85,11 @@ void MenuButton::handleButton() {
 		}
 		if (auto nextMenu = s->getNextMenu()) {
 			if (auto content = dynamic_cast<SceneContent2d *>(_scene->getContent())) {
-				auto posRight = content->convertToNodeSpace(convertToWorldSpace(Vec2(_contentSize.width, _contentSize.height)));
+				auto posRight = content->convertToNodeSpace(
+						convertToWorldSpace(Vec2(_contentSize.width, _contentSize.height)));
 
-				FloatingMenu::push(content, nextMenu, posRight,
-					FloatingMenu::Binding::OriginRight, _menu);
+				FloatingMenu::push(content, nextMenu, posRight, FloatingMenu::Binding::OriginRight,
+						_menu);
 			}
 		}
 		if (menu) {
@@ -135,4 +131,4 @@ void MenuButton::layoutContent() {
 	}
 }
 
-}
+} // namespace stappler::xenolith::material2d

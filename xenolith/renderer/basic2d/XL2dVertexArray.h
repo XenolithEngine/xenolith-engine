@@ -50,7 +50,7 @@ public:
 		Quad &setGeometry(const Vec4 &origin, const Size2 &size);
 		Quad &setColor(const Color4F &color);
 		Quad &setColor(SpanView<Color4F>); // tl bl tr br
-		Quad &setColor(std::initializer_list<Color4F> &&); // tl bl tr br
+		Quad &setColor(sprt::initializer_list<Color4F> &&); // tl bl tr br
 
 		Quad &drawChar(const font::Metrics &m, char32_t l, int16_t charX, int16_t charY,
 				const Color4B &color, font::TextDecoration, uint16_t face, float layer = 0.0f);

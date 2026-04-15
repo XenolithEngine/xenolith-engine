@@ -60,7 +60,8 @@ bool NavigationDrawer::init() {
 	_navigation->setEnabled(false);
 	_listener->setEnabled(false);
 
-	setNodeWidthCallback([](const Size2 &size) { return std::min(size.width - 56, 64.0f * 5.0f); });
+	setNodeWidthCallback(
+			[](const Size2 &size) { return sprt::min(size.width - 56, 64.0f * 5.0f); });
 
 	return true;
 }

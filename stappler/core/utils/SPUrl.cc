@@ -23,7 +23,6 @@ THE SOFTWARE.
 
 #include "SPUrl.h"
 #include "SPString.h"
-#include "SPStringView.h"
 #include "SPSharedModule.h"
 
 namespace STAPPLER_VERSIONIZED stappler {

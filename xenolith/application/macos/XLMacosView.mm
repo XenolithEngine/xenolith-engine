@@ -109,13 +109,13 @@ static const NSRange kEmptyRange = {NSNotFound, 0};
 }
 
 - (void)deleteForward:(nullable id)sender {
-	std::cout << "deleteForward\n";
+	sprt::cout << "deleteForward\n";
 	//TextInputManager *m = _textInput.get();
 	//m->deleteForward();
 }
 
 - (void)deleteBackward:(nullable id)sender {
-	std::cout << "deleteBackward\n";
+	sprt::cout << "deleteBackward\n";
 	//TextInputManager *m = _textInput.get();
 	//m->deleteBackward();
 }
@@ -156,7 +156,7 @@ static const NSRange kEmptyRange = {NSNotFound, 0};
 - (void)setMarkedText:(id)string
 		   selectedRange:(NSRange)selectedRange
 		replacementRange:(NSRange)replacementRange {
-	std::cout << "setMarkedText\n";
+	sprt::cout << "setMarkedText\n";
 	NSString *characters;
 	if ([string isKindOfClass:[NSAttributedString class]]) {
 		characters = [(NSAttributedString *)string string];
@@ -214,7 +214,7 @@ static const NSRange kEmptyRange = {NSNotFound, 0};
 - (nullable NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range
 														 actualRange:(nullable NSRangePointer)
 																			 actualRange {
-	std::cout << "attributedSubstringForProposedRange\n";
+	sprt::cout << "attributedSubstringForProposedRange\n";
 	//TextInputManager *m = _textInput.get();
 	//WideStringView str = m->getStringByRange(TextCursor{uint32_t(range.location), uint32_t(range.length)});
 	//if (actualRange != nil) {
@@ -238,19 +238,19 @@ static const NSRange kEmptyRange = {NSNotFound, 0};
 */
 - (NSRect)firstRectForCharacterRange:(NSRange)range
 						 actualRange:(nullable NSRangePointer)actualRange {
-	std::cout << "firstRectForCharacterRange\n";
+	sprt::cout << "firstRectForCharacterRange\n";
 	return self.frame;
 }
 
 /* Returns the index for character that is nearest to point. point is in the screen coordinate system.
 */
 - (NSUInteger)characterIndexForPoint:(NSPoint)point {
-	std::cout << "characterIndexForPoint\n";
+	sprt::cout << "characterIndexForPoint\n";
 	return 0;
 }
 
 - (NSAttributedString *)attributedString {
-	std::cout << "attributedString\n";
+	sprt::cout << "attributedString\n";
 	//TextInputManager *m = _textInput.get();
 	//auto str = m->getString();
 
@@ -261,21 +261,21 @@ static const NSRange kEmptyRange = {NSNotFound, 0};
 /* Returns the fraction of distance for point from the left side of the character. This allows caller to perform precise selection handling.
 */
 - (CGFloat)fractionOfDistanceThroughGlyphForPoint:(NSPoint)point {
-	std::cout << "fractionOfDistanceThroughGlyphForPoint\n";
+	sprt::cout << "fractionOfDistanceThroughGlyphForPoint\n";
 	return 0.0f;
 }
 
 /* Returns the baseline position relative to the origin of rectangle returned by -firstRectForCharacterRange:actualRange:. This information allows the caller to access finer-grained character position inside the NSTextInputClient document.
 */
 - (CGFloat)baselineDeltaForCharacterAtIndex:(NSUInteger)anIndex {
-	std::cout << "baselineDeltaForCharacterAtIndex\n";
+	sprt::cout << "baselineDeltaForCharacterAtIndex\n";
 	return 0.0f;
 }
 
 /* Returns if the marked text is in vertical layout.
  */
 - (BOOL)drawsVerticallyForCharacterAtIndex:(NSUInteger)charIndex {
-	std::cout << "drawsVerticallyForCharacterAtIndex\n";
+	sprt::cout << "drawsVerticallyForCharacterAtIndex\n";
 	return NO;
 }
 

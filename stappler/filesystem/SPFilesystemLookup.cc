@@ -322,13 +322,3 @@ bool enumeratePrefixedPath(StringView ipath, FileFlags flags, Access a,
 }
 
 } // namespace stappler::filesystem
-
-
-namespace STAPPLER_VERSIONIZED stappler {
-
-std::ostream &operator<<(std::ostream &stream, const FileInfo &fileInfo) {
-	stream << "FileInfo{\"" << fileInfo.path << "\"," << fileInfo.category << "}";
-	return stream;
-}
-
-} // namespace STAPPLER_VERSIONIZED stappler

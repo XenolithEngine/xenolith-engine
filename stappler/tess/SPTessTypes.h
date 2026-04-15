@@ -24,10 +24,14 @@ THE SOFTWARE.
 #ifndef STAPPLER_TESS_SPTESSTYPES_H_
 #define STAPPLER_TESS_SPTESSTYPES_H_
 
-#include "SPVec4.h"
+#include <sprt/runtime/geom/vec4.h>
+#include <sprt/runtime/log.h>
+
 #include "SPTess.h"
 
 namespace STAPPLER_VERSIONIZED stappler::geom {
+
+using sprt::geom::Vec4;
 
 struct Vertex;
 struct FaceEdge;
@@ -41,7 +45,7 @@ static constexpr uint32_t EdgeSetPrealloc = 64;
 static constexpr uint32_t VertexAllocBatch = 32;
 static constexpr uint32_t EdgeAllocBatch = 32;
 
-extern int TessVerboseInfo;
+extern VerboseFlag TessVerboseInfo;
 
 enum class VertexType {
 	Start, // right non-convex angle
@@ -73,15 +77,15 @@ struct EdgeDictNode {
 	float dstX() const { return value.z; }
 	float dstY() const { return value.w; }
 
-	bool operator < (const EdgeDictNode &other) const;
-	bool operator < (const Edge &other) const;
-	bool operator < (const Vec2 &other) const;
-	bool operator <= (const EdgeDictNode &other) const;
-	bool operator== (const EdgeDictNode &other) const;
+	bool operator<(const EdgeDictNode &other) const;
+	bool operator<(const Edge &other) const;
+	bool operator<(const Vec2 &other) const;
+	bool operator<=(const EdgeDictNode &other) const;
+	bool operator==(const EdgeDictNode &other) const;
 };
 
 struct Vertex {
-	HalfEdge *_edge = nullptr;  /* a half-edge with this origin */
+	HalfEdge *_edge = nullptr; /* a half-edge with this origin */
 	Vec2 _origin;
 	Vec2 _norm;
 	uint32_t _uniqueIdx = maxOf<uint32_t>(); /* to allow identify unique vertices */
@@ -91,7 +95,7 @@ struct Vertex {
 	void insertBefore(HalfEdge *eOrig);
 	void removeFromList(Vertex *newOrg);
 
-	void foreach(const Callback<void(const HalfEdge &)> &) const;
+	void foreach (const Callback<void(const HalfEdge &)> &) const;
 
 	void relocate(const Vec2 &);
 };
@@ -110,18 +114,20 @@ struct FaceEdge : memory::AllocPool {
 	bool _splitVertex = false;
 	bool _degenerate = false;
 
-	void foreach(const Callback<void(const FaceEdge &)> &) const;
+	void foreach (const Callback<void(const FaceEdge &)> &) const;
 };
 
 struct HalfEdge {
 	HalfEdge *_originNext = nullptr; /* next edge CCW around origin */
 	HalfEdge *_leftNext = nullptr; /* next edge CCW around left face */
 	Vec2 origin;
-	uint32_t vertex = maxOf<uint32_t>(); // normally, we should not access vertex directly to improve data locality
+	uint32_t vertex = maxOf<
+			uint32_t>(); // normally, we should not access vertex directly to improve data locality
 	int16_t _realWinding = 0;
-	int16_t isRight : 2 = 0; // -1 or 1
+	int16_t isRight	   : 2 = 0; // -1 or 1
 	int16_t edgeOffset : 2 = 0; // 0 or 1
-	int16_t _winding : 2 = 0; /* change in winding number when crossing from the right face to the left face */
+	int16_t _winding   : 2 =
+			0; /* change in winding number when crossing from the right face to the left face */
 	int16_t _mark : 10 = 0;
 
 	static void splitEdgeLoops(HalfEdge *eOrg, HalfEdge *eNew, Vertex *v);
@@ -205,12 +211,12 @@ struct ObjectAllocator : public memory::AllocPool {
 	Edge *_freeEdges = nullptr;
 	FaceEdge *_freeFaces = nullptr;
 
-	memory::vector<Vertex *> _vertexes;
-	memory::vector<Vertex *> _exportVertexes;
-	memory::vector<HalfEdge *> _edgesOfInterests;
-	memory::vector<HalfEdge *> _faceEdges;
+	sprt::__pool_vector<Vertex *> _vertexes;
+	sprt::__pool_vector<Vertex *> _exportVertexes;
+	sprt::__pool_vector<HalfEdge *> _edgesOfInterests;
+	sprt::__pool_vector<HalfEdge *> _faceEdges;
 
-	memory::vector<FaceEdge *> _boundaries;
+	sprt::__pool_vector<FaceEdge *> _boundaries;
 
 	uint32_t _vertexOffset = 0;
 
@@ -229,7 +235,7 @@ struct ObjectAllocator : public memory::AllocPool {
 	void preallocateEdges(uint32_t n);
 	void preallocateFaceEdges(uint32_t n);
 
-	void removeEdgeFromVec(memory::vector<HalfEdge *> &, HalfEdge *);
+	void removeEdgeFromVec(sprt::__pool_vector<HalfEdge *> &, HalfEdge *);
 };
 
 struct VertexPriorityQueue {
@@ -278,7 +284,7 @@ struct VertexPriorityQueue {
 	memory::pool_t *pool = nullptr;
 	Handle freeList = 0;
 
-	VertexPriorityQueue(memory::pool_t *, const memory::vector<Vertex *> &);
+	VertexPriorityQueue(memory::pool_t *, const sprt::__pool_vector<Vertex *> &);
 	~VertexPriorityQueue();
 
 	bool init();
@@ -303,24 +309,26 @@ enum class IntersectionEvent {
 struct EdgeDict {
 	Vec2 event;
 
-	memory::set<EdgeDictNode> nodes;
+	sprt::__pool_set<EdgeDictNode> nodes;
 	memory::pool_t *pool = nullptr;
 
 	EdgeDict(memory::pool_t *, uint32_t size);
 
-	const EdgeDictNode * push(Edge *, int16_t windingAbove);
+	const EdgeDictNode *push(Edge *, int16_t windingAbove);
 	void pop(const EdgeDictNode *);
 
 	void update(Vertex *, float tolerance);
 
-	const EdgeDictNode * checkForIntersects(Vertex *, Vec2 &, IntersectionEvent &, float tolerance) const;
-	const EdgeDictNode * checkForIntersects(HalfEdge *, Vec2 &, IntersectionEvent &, float tolerance) const;
+	const EdgeDictNode *checkForIntersects(Vertex *, Vec2 &, IntersectionEvent &,
+			float tolerance) const;
+	const EdgeDictNode *checkForIntersects(HalfEdge *, Vec2 &, IntersectionEvent &,
+			float tolerance) const;
 
 	// find edge directly below edge (used for region winding)
-	const EdgeDictNode * getEdgeBelow(const Edge *) const;
+	const EdgeDictNode *getEdgeBelow(const Edge *) const;
 
 	// find edge directly below point (used for monotonize algo)
-	const EdgeDictNode * getEdgeBelow(const Vec2 &, uint32_t vertex) const;
+	const EdgeDictNode *getEdgeBelow(const Vec2 &, uint32_t vertex) const;
 };
 
 SP_ATTR_OPTIMIZE_INLINE_FN static inline bool VertLeq(const Vec2 &u, const Vec2 &v) {
@@ -328,10 +336,12 @@ SP_ATTR_OPTIMIZE_INLINE_FN static inline bool VertLeq(const Vec2 &u, const Vec2 
 }
 
 SP_ATTR_OPTIMIZE_INLINE_FN static inline bool VertLeq(const Vertex *u, const Vertex *v) {
-	return ((u->_origin.x < v->_origin.x) || (u->_origin.x == v->_origin.x && u->_origin.y <= v->_origin.y));
+	return ((u->_origin.x < v->_origin.x)
+			|| (u->_origin.x == v->_origin.x && u->_origin.y <= v->_origin.y));
 }
 
-SP_ATTR_OPTIMIZE_INLINE_FN static inline bool VertEq(const Vec2 &u, const Vec2 &v, float tolerance) {
+SP_ATTR_OPTIMIZE_INLINE_FN static inline bool VertEq(const Vec2 &u, const Vec2 &v,
+		float tolerance) {
 	return u.fuzzyEquals(v, tolerance);
 }
 
@@ -339,7 +349,8 @@ SP_ATTR_OPTIMIZE_INLINE_FN static inline bool FloatEq(float u, float v, float to
 	return u - tolerance <= v && v <= u + tolerance;
 }
 
-SP_ATTR_OPTIMIZE_INLINE_FN static inline bool VertEq(const Vertex *u, const Vertex *v, float tolerance) {
+SP_ATTR_OPTIMIZE_INLINE_FN static inline bool VertEq(const Vertex *u, const Vertex *v,
+		float tolerance) {
 	return VertEq(u->_origin, v->_origin, tolerance);
 }
 
@@ -392,9 +403,9 @@ SP_ATTR_OPTIMIZE_INLINE_FN static inline float EdgeAngle(const Vec2 &from, const
 	auto fromA = EdgeAngle(from);
 	auto toA = EdgeAngle(to);
 
-	if (std::isnan(fromA) || std::isnan(toA)) {
-		std::cerr << "EdgeAngle (NaN): " << from << " " << to << "\n";
-		return nan();
+	if (sprt::isnan(fromA) || sprt::isnan(toA)) {
+		sprt::oslog::vperror(__SPRT_LOCATION, "Tess", "EdgeAngle (NaN): ", from, " ", to);
+		return sprt::NaN<float>;
 	}
 
 	if (fromA <= toA) {
@@ -408,25 +419,6 @@ SP_ATTR_OPTIMIZE_INLINE_FN static inline bool EdgeAngleIsBelowTolerance(float A,
 	return A < tolerance || 8.0f - A < tolerance;
 }
 
-std::ostream &operator<<(std::ostream &out, const Vertex &v);
-std::ostream &operator<<(std::ostream &out, const HalfEdge &e);
-std::ostream &operator<<(std::ostream &out, const FaceEdge &e);
-std::ostream &operator<<(std::ostream &out, VerboseFlag e);
-std::ostream &operator<<(std::ostream &out, const EdgeDictNode &e);
-std::ostream &operator<<(std::ostream &out, const Edge &e);
-
-inline std::ostream &
-operator << (std::ostream & os, const IntersectionEvent & ev) {
-	switch (ev) {
-	case IntersectionEvent::Regular: os << "Regular"; break;
-	case IntersectionEvent::EventIsIntersection: os << "EventIsIntersection"; break;
-	case IntersectionEvent::EdgeConnection1: os << "EdgeConnection1"; break;
-	case IntersectionEvent::EdgeConnection2: os << "EdgeConnection2"; break;
-	case IntersectionEvent::Merge: os << "Merge"; break;
-	}
-	return os;
-}
-
 inline bool isWindingInside(Winding w, int16_t n) {
 	switch (w) {
 	case Winding::EvenOdd: return (n & 1); break;
@@ -438,6 +430,165 @@ inline bool isWindingInside(Winding w, int16_t n) {
 	return false;
 }
 
-}
+} // namespace stappler::geom
+
+namespace sprt {
+
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::geom::IntersectionEvent> {
+	using IntersectionEvent = STAPPLER_VERSIONIZED_NAMESPACE::geom::IntersectionEvent;
+
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &os,
+			const IntersectionEvent &ev) {
+		switch (ev) {
+		case IntersectionEvent::Regular: os << "Regular"; break;
+		case IntersectionEvent::EventIsIntersection: os << "EventIsIntersection"; break;
+		case IntersectionEvent::EdgeConnection1: os << "EdgeConnection1"; break;
+		case IntersectionEvent::EdgeConnection2: os << "EdgeConnection2"; break;
+		case IntersectionEvent::Merge: os << "Merge"; break;
+		}
+	}
+};
+
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::geom::Vertex> {
+	using VerboseFlag = STAPPLER_VERSIONIZED_NAMESPACE::geom::VerboseFlag;
+	using Vertex = STAPPLER_VERSIONIZED_NAMESPACE::geom::Vertex;
+	using HalfEdge = STAPPLER_VERSIONIZED_NAMESPACE::geom::HalfEdge;
+
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &out, const Vertex &v) {
+		switch (STAPPLER_VERSIONIZED_NAMESPACE::geom::TessVerboseInfo) {
+		case VerboseFlag::None: out << "Vertex (" << v._uniqueIdx << ") : " << v._origin; break;
+		case VerboseFlag::General: out << "Vertex (" << v._uniqueIdx << ") : " << v._origin; break;
+		case VerboseFlag::Full:
+			out << "Vertex (" << v._uniqueIdx << ") : " << v._origin << "\n";
+			v.foreach ([&](const HalfEdge &e) {
+				auto orgVec = e.origin;
+				auto dstVec = e.sym()->origin;
+				uint32_t orgIdx = e.vertex;
+				uint32_t dstIdx = e.sym()->vertex;
+
+				out << "\tEdge (" << e.getIndex() << ":" << e.sym()->getIndex() << ") : " << orgVec
+					<< " - " << dstVec << "\n";
+				out << "\t\tDir: (" << e.getIndex() << "; org: " << orgIdx
+					<< "; left: " << e._leftNext->getIndex()
+					<< "; ccw: " << e._originNext->getIndex() << ")\n";
+				out << "\t\tSym: (" << e.sym()->getIndex() << "; org: " << dstIdx
+					<< "; left: " << e.sym()->_leftNext->getIndex()
+					<< "; ccw: " << e.sym()->_originNext->getIndex() << ")\n";
+			});
+			break;
+		}
+	}
+};
+
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::geom::HalfEdge> {
+	using VerboseFlag = STAPPLER_VERSIONIZED_NAMESPACE::geom::VerboseFlag;
+	using Vertex = STAPPLER_VERSIONIZED_NAMESPACE::geom::Vertex;
+	using HalfEdge = STAPPLER_VERSIONIZED_NAMESPACE::geom::HalfEdge;
+
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &out, const HalfEdge &e) {
+
+		auto orgVec = e.origin;
+		auto dstVec = e.sym()->origin;
+		uint32_t orgIdx = e.vertex;
+		uint32_t dstIdx = e.sym()->vertex;
+
+		switch (STAPPLER_VERSIONIZED_NAMESPACE::geom::TessVerboseInfo) {
+		case VerboseFlag::None:
+			out << "Edge (" << e.getIndex() << ":" << e.sym()->getIndex() << ") : " << orgVec
+				<< " - " << dstVec << "; " << e.vertex << " - " << e.sym()->vertex;
+			break;
+		case VerboseFlag::General:
+			out << "Edge (" << e.getIndex() << ":" << e.sym()->getIndex() << ") : " << orgVec
+				<< " - " << dstVec << "; " << e.vertex << " - " << e.sym()->vertex
+				<< " winding: " << e._realWinding << ":" << e._winding << ";";
+			if (e.goesLeft()) {
+				out << " goes left; ";
+			} else if (e.goesRight()) {
+				out << " goes right; ";
+			} else {
+				out << " unknown direction; ";
+			}
+			out << (void *)&e;
+			break;
+		case VerboseFlag::Full:
+			out << "Edge (" << e.getIndex() << ":" << e.sym()->getIndex() << ") : " << orgVec
+				<< " - " << dstVec << "; " << e.vertex << " - " << e.sym()->vertex
+				<< " winding: " << e._realWinding << ":" << e._winding << ";\n";
+			out << "\tDir: (" << e.getIndex() << "; org: " << orgIdx
+				<< "; left: " << e._leftNext->getIndex() << "; ccw: " << e._originNext->getIndex()
+				<< ")";
+			if (e.goesLeft()) {
+				out << " goes left;";
+			} else if (e.goesRight()) {
+				out << " goes right;";
+			} else {
+				out << " unknown direction;";
+			}
+			out << "\n";
+			out << "\tSym: (" << e.sym()->getIndex() << "; org: " << dstIdx
+				<< "; left: " << e.sym()->_leftNext->getIndex()
+				<< "; ccw: " << e.sym()->_originNext->getIndex() << ")";
+			if (e.sym()->goesLeft()) {
+				out << " goes left; ";
+			} else if (e.sym()->goesRight()) {
+				out << " goes right; ";
+			} else {
+				out << " unknown direction; ";
+			}
+			out << (void *)&e << "\n";
+			break;
+		}
+	}
+};
+
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::geom::FaceEdge> {
+	using VerboseFlag = STAPPLER_VERSIONIZED_NAMESPACE::geom::VerboseFlag;
+	using FaceEdge = STAPPLER_VERSIONIZED_NAMESPACE::geom::FaceEdge;
+
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &out, const FaceEdge &e) {
+		auto orgVec = e._vertex->_origin;
+		auto dstVec = e._next->_vertex->_origin;
+		uint32_t orgIdx = e._vertex->_uniqueIdx;
+		uint32_t dstIdx = e._next->_vertex->_uniqueIdx;
+		out << "FaceEdge (" << orgIdx << " - " << dstIdx << ") : " << orgVec << " - " << dstVec
+			<< ";";
+	}
+};
+
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::geom::EdgeDictNode> {
+	using VerboseFlag = STAPPLER_VERSIONIZED_NAMESPACE::geom::VerboseFlag;
+	using EdgeDictNode = STAPPLER_VERSIONIZED_NAMESPACE::geom::EdgeDictNode;
+
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &out, const EdgeDictNode &e) {
+		out << "EdgeDictNode(" << e.org << "; " << e.dst() << "; cur: " << e.current() << ");";
+	}
+};
+
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::geom::Edge> {
+	using VerboseFlag = STAPPLER_VERSIONIZED_NAMESPACE::geom::VerboseFlag;
+	using Edge = STAPPLER_VERSIONIZED_NAMESPACE::geom::Edge;
+
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &out, const Edge &e) {
+		if (e.inverted) {
+			out << e.right;
+		} else {
+			out << e.left;
+		}
+	}
+};
+
+} // namespace sprt
 
 #endif /* STAPPLER_TESS_SPTESSTYPES_H_ */

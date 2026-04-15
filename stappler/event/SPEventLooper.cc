@@ -45,13 +45,13 @@ struct Looper::Data : public memory::AllocPool {
 	Rc<QueueRef> queue;
 	Rc<ThreadHandle> threadHandle;
 	Rc<thread::ThreadPool> threadPool;
-	const sprt::thread::info *threadInfo = nullptr;
+	const sprt::_thread::info *threadInfo = nullptr;
 	memory::pool_t *threadMemPool = nullptr;
 	thread::Thread::Id thisThreadId;
 	bool suspendThreadsOnWakeup = false;
 
 	mem_std::Set<Bus *> buses;
-	std::mutex *mutex = nullptr;
+	sprt::mutex *mutex = nullptr;
 
 	thread::ThreadPool *getThreadPool() {
 		if (!threadPool) {
@@ -68,7 +68,7 @@ struct Looper::Data : public memory::AllocPool {
 		// Looper cleanup can cause app finalization, so, prevent in with
 		// initialize + terminate
 		sprt::memory::pool::initialize();
-		std::unique_lock lock(l->_mutex);
+		sprt::unique_lock lock(l->_mutex);
 
 		d->queue->poll();
 
@@ -92,7 +92,7 @@ struct Looper::Data : public memory::AllocPool {
 		if (d->threadPool) {
 			d->threadPool->cancel();
 			d->threadPool = nullptr;
-			log::source().debug("Looper", "Cleanup: ", sprt::thread::info::get()->name);
+			log::source().debug("Looper", "Cleanup: ", sprt::_thread::info::get()->name);
 		}
 
 		if (d->queue) {
@@ -105,7 +105,7 @@ struct Looper::Data : public memory::AllocPool {
 				q = nullptr;
 
 				tmp->foreachBacktrace(
-						[](uint64_t id, time_t t, const memory::forward_list<StringView> &vec) {
+						[](uint64_t id, time_t t, const sprt::__pool_list<StringView> &vec) {
 					mem_std::StringStream stream;
 					stream << "[" << id << ":" << Time(t).toHttp<memory::StandartInterface>()
 						   << "]:\n";
@@ -124,12 +124,12 @@ struct Looper::Data : public memory::AllocPool {
 	}
 
 	void attachBus(Bus *bus) {
-		std::unique_lock lock(*mutex);
+		sprt::unique_lock lock(*mutex);
 		buses.emplace(bus);
 	}
 
 	void detachBus(Bus *bus) {
-		std::unique_lock lock(*mutex);
+		sprt::unique_lock lock(*mutex);
 		buses.erase(bus);
 	}
 };
@@ -281,9 +281,9 @@ Looper::Looper(LooperInfo &&info, Rc<QueueRef> &&q) {
 
 		_data->threadPoolInfo.name = StringView(mem_pool::toString(info.name, ":Worker")).pdup();
 
-		sprt::thread::info::set(info.name);
+		sprt::_thread::info::set(info.name);
 
-		_data->threadInfo = sprt::thread::info::get();
+		_data->threadInfo = sprt::_thread::info::get();
 		if (!_data->threadInfo || !_data->threadInfo->threadPool) {
 			_data->threadMemPool = pool;
 		} else {

@@ -30,6 +30,8 @@ THE SOFTWARE.
 #include "SPSearchQuery.cc"
 #include "SPSearchUrl.cc"
 
+#include <stdio.h>
+
 namespace STAPPLER_VERSIONIZED stappler::search {
 
 static StemmerEnv *Configuration_makeLocalConfig(StemmerEnv *orig) {
@@ -46,7 +48,7 @@ static StemmerEnv *Configuration_makeLocalConfig(StemmerEnv *orig) {
 	}
 
 	ret = (StemmerEnv *)memory::pool::palloc(p, sizeof(StemmerEnv));
-	memset(ret, 0, sizeof(StemmerEnv));
+	sprt::memset(ret, 0, sizeof(StemmerEnv));
 	ret->memalloc = orig->memalloc;
 	ret->memfree = orig->memfree;
 	ret->userData = p;

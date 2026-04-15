@@ -91,7 +91,7 @@ ThreadPool::Worker::Worker(ThreadPool::WorkerContext *queue, StringView name, ui
 ThreadPool::Worker::~Worker() { _queue->threadPool->release(_queueRefId); }
 
 void ThreadPool::Worker::threadInit() {
-	sprt::thread::info::set(_name, _workerId, true);
+	sprt::_thread::info::set(_name, _workerId, true);
 	Thread::threadInit();
 }
 
@@ -109,7 +109,7 @@ bool ThreadPool::Worker::worker() {
 	}
 
 	if (!task) {
-		std::unique_lock<std::mutex> lock(_queue->inputMutexQueue);
+		sprt::unique_lock<sprt::mutex> lock(_queue->inputMutexQueue);
 		if (_queue->tasksInQueue.load() > 0) {
 			// some task received after locking
 			return true;
@@ -144,14 +144,14 @@ bool ThreadPool::WorkerContext::init(ThreadPoolInfo &&i, ThreadPool *p) {
 	return true;
 }
 
-void ThreadPool::WorkerContext::wait(std::unique_lock<std::mutex> &lock) {
+void ThreadPool::WorkerContext::wait(sprt::unique_lock<sprt::qmutex> &lock) {
 	if (finalized.load() != true) {
 		inputCondition.wait(lock);
 	}
 }
 
 void ThreadPool::WorkerContext::spawn() {
-	std::unique_lock lock(inputMutexQueue);
+	sprt::unique_lock lock(inputMutexQueue);
 	if (workers.empty()) {
 		for (uint32_t i = 0; i < info.threadCount; i++) {
 			auto worker = new (sprt::nothrow) Worker(this, info.name, i);

@@ -26,7 +26,6 @@
 #include "SPDocument.h"
 #include "SPDocPageContainer.h" // IWYU pragma: keep
 #include "SPZip.h"
-#include "SPMemForwardList.h"
 
 namespace STAPPLER_VERSIONIZED stappler::document {
 
@@ -98,7 +97,7 @@ struct EpubContentNode {
 	StringView type;
 	StringView content;
 	StringView href;
-	memory::forward_list<Pair<StringView, StringView>> attributes;
+	sprt::__pool_list<Pair<StringView, StringView>> attributes;
 };
 
 struct EpubArchiveFile {
@@ -124,11 +123,11 @@ struct SP_PUBLIC EpubData : DocumentData {
 	StringView coverFile;
 	StringView tocFile;
 
-	memory::forward_list<EpubContentNode> epubContent;
-	memory::forward_list<EpubContentNode *> epubMetadata;
-	memory::forward_list<EpubContentNode *> epubManifest;
-	memory::forward_list<EpubContentNode *> epubSpine;
-	memory::map<StringView, EpubContentNode *> epubContentById;
+	sprt::__pool_list<EpubContentNode> epubContent;
+	sprt::__pool_list<EpubContentNode *> epubMetadata;
+	sprt::__pool_list<EpubContentNode *> epubManifest;
+	sprt::__pool_list<EpubContentNode *> epubSpine;
+	sprt::__pool_map<StringView, EpubContentNode *> epubContentById;
 
 	virtual ~EpubData();
 

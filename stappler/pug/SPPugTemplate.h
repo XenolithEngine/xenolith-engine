@@ -84,12 +84,12 @@ public:
 		static Options getDefault();
 		static Options getPretty();
 
-		Options &setFlags(std::initializer_list<Flags> &&);
-		Options &clearFlags(std::initializer_list<Flags> &&);
+		Options &setFlags(sprt::initializer_list<Flags> &&);
+		Options &clearFlags(sprt::initializer_list<Flags> &&);
 
 		bool hasFlag(Flags) const;
 
-		std::bitset<toInt(Flags::LineFeeds) + 1> flags;
+		sprt::bitset<toInt(Flags::LineFeeds) + 1> flags;
 	};
 
 	struct RunContext {
@@ -103,7 +103,8 @@ public:
 	static Template *read(const StringView &, const Options & = Options::getDefault(),
 			const Callback<void(StringView)> &err = nullptr);
 
-	static Template *read(memory::pool_t *, const StringView &, const Options & = Options::getDefault(),
+	static Template *read(memory::pool_t *, const StringView &,
+			const Options & = Options::getDefault(),
 			const Callback<void(StringView)> &err = nullptr);
 
 	Options getOptions() const { return _opts; }
@@ -131,6 +132,6 @@ protected:
 	Vector<StringView> _includes;
 };
 
-}
+} // namespace stappler::pug
 
 #endif /* EXTRA_WEBSERVER_PUG_SPPUGTEMPLATE_H_ */

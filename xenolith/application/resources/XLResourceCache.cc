@@ -245,7 +245,7 @@ Rc<Texture> ResourceCache::addExternalImage(StringView key, core::ImageInfo &&in
 }
 
 Rc<Texture> ResourceCache::addExternalImage(StringView key, core::ImageInfo &&info,
-		const memory::function<void(uint8_t *, uint64_t, const core::ImageData::DataCallback &)>
+		const mem_pool::Function<void(uint8_t *, uint64_t, const core::ImageData::DataCallback &)>
 				&cb,
 		TimeInterval ival, TemporaryResourceFlags flags) {
 	auto it = _temporaries.find(key);

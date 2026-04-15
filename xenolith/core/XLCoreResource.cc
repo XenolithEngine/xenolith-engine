@@ -98,7 +98,7 @@ static size_t Resource_loadImageDirect(uint8_t *glBuffer, uint64_t expectedSize,
 
 	imageInfo.format->load(encodedImageData.data(), encodedImageData.size(), w);
 
-	return std::max(data.offset, data.writableSize);
+	return sprt::max(data.offset, data.writableSize);
 }
 
 static uint64_t Resource_loadImageConverted(StringView path, uint8_t *glBuffer,
@@ -325,7 +325,7 @@ static T *Resource_conditionalInsert(HashTable<T *> &vec, StringView key, const 
 }
 
 template <typename T>
-static T *Resource_conditionalInsert(memory::vector<T *> &vec, StringView key,
+static T *Resource_conditionalInsert(mem_pool::Vector<T *> &vec, StringView key,
 		const Callback<T *()> &cb, memory::pool_t *pool) {
 	T *obj = nullptr;
 	perform([&] { obj = cb(); }, pool);
@@ -343,7 +343,7 @@ static void Resource_loadFileData(uint8_t *ptr, uint64_t size, StringView path,
 			uint64_t fsize = f.size();
 			f.seek(0, io::Seek::Set);
 			if (ptr) {
-				f.read(ptr, std::min(fsize, size));
+				f.read(ptr, sprt::min(fsize, size));
 				f.close();
 			} else {
 				auto mem = (uint8_t *)memory::pool::palloc(memory::pool::acquire(), fsize);
@@ -472,7 +472,7 @@ const BufferData *Resource::Builder::addBuffer(StringView key, BufferInfo &&info
 	return p;
 }
 const BufferData *Resource::Builder::addBuffer(StringView key, BufferInfo &&info,
-		const memory::function<void(uint8_t *, uint64_t, const BufferData::DataCallback &)> &cb,
+		const mem_pool::Function<void(uint8_t *, uint64_t, const BufferData::DataCallback &)> &cb,
 		Rc<DataAtlas> &&atlas, AccessType access) {
 	if (!_data) {
 		log::source().error("Resource", "Fail to add buffer: ", key, ", not initialized");
@@ -740,7 +740,7 @@ const ImageData *Resource::Builder::addBitmapImageByRef(StringView key, ImageInf
 	return p;
 }
 const ImageData *Resource::Builder::addImage(StringView key, ImageInfo &&img,
-		const memory::function<void(uint8_t *, uint64_t, const ImageData::DataCallback &)> &cb,
+		const mem_pool::Function<void(uint8_t *, uint64_t, const ImageData::DataCallback &)> &cb,
 		AttachmentLayout layout, AccessType access) {
 	if (!_data) {
 		log::source().error("Resource", "Fail to add image: ", key, ", not initialized");

@@ -25,14 +25,15 @@ THE SOFTWARE.
 #ifndef STAPPLER_CORE_SPMEMORY_H_
 #define STAPPLER_CORE_SPMEMORY_H_
 
-#include "SPMemInterface.h"
+#include "SPCore.h"
 #include "SPString.h" // IWYU pragma: keep
-#include "SPStringView.h"
 #include "SPTime.h"
 
 #ifdef MODULE_STAPPLER_DATA
 #include "SPData.h" // IWYU pragma: keep
 #endif
+
+#include <sprt/runtime/detail/emplace_ordered.h>
 
 namespace STAPPLER_VERSIONIZED stappler {
 
@@ -164,33 +165,38 @@ using stappler::SpanView;
 
 using AllocBase = stappler::memory::AllocPool;
 
-using String = stappler::memory::string;
-using WideString = stappler::memory::u16string;
-using Bytes = stappler::memory::vector<uint8_t>;
+template <typename T>
+using Allocator = sprt::detail::AllocatorPool<T>;
 
-using StringStream = stappler::memory::ostringstream;
-using OutputStream = std::ostream;
+using String = sprt::__pool_string;
+using WideString = sprt::__pool_u16string;
+using Bytes = sprt::__pool_vector<uint8_t>;
 
 template <typename T>
-using Vector = stappler::memory::vector<T>;
-
-template <typename K, typename V, typename Compare = std::less<void>>
-using Map = stappler::memory::map<K, V, Compare>;
-
-template <typename T, typename Compare = std::less<void>>
-using Set = stappler::memory::set<T, Compare>;
+using Vector = sprt::__pool_vector<T>;
 
 template <typename T>
-using Function = stappler::memory::function<T>;
+using List = sprt::__pool_list<T>;
+
+template <typename K, typename V, typename Compare = sprt::less<void>>
+using Map = sprt::__pool_map<K, V, Compare>;
+
+template <typename K, typename V>
+using HashMap = sprt::__pool_unordered_map<K, V>;
+
+template <typename T, typename Compare = sprt::less<void>>
+using Set = sprt::__pool_set<T, Compare>;
+
+template <typename V>
+using HashSet = sprt::__pool_unordered_set<V>;
+
+using StringStream = typename Interface::StringStreamType;
+
+template <typename T>
+using Function = sprt::__pool_function<T>;
 
 using stappler::Callback;
-
-using stappler::Pair;
-
-template <typename T, typename V, typename Compare = std::less<void>>
-using dict = stappler::memory::dict<T, V, Compare>;
-
-using Mutex = std::mutex;
+using stappler::CallbackStream;
 
 using sprt::makeSpanView;
 
@@ -198,11 +204,8 @@ using memory::perform;
 using memory::perform_clear;
 using memory::perform_temporary;
 
-template <typename Container, typename T>
-bool emplace_ordered(Container &vec, T val);
-
-template <typename Container, typename T>
-bool exists_ordered(const Container &vec, const T &val);
+using sprt::emplace_ordered;
+using sprt::exists_ordered;
 
 } // namespace stappler::mem_pool
 
@@ -226,36 +229,38 @@ using stappler::SpanView;
 
 using AllocBase = stappler::memory::StandartInterface::AllocBaseType;
 
-using String = std::string;
-using WideString = std::u16string;
-using Bytes = std::vector<uint8_t>;
+template <typename T>
+using Allocator = sprt::detail::AllocatorMalloc<T>;
 
-using StringStream = std::stringstream;
-using OutputStream = std::ostream;
+using String = sprt::__malloc_string;
+using WideString = sprt::__malloc_u16string;
+using Bytes = sprt::__malloc_vector<uint8_t>;
 
 template <typename T>
-using Vector = std::vector<T>;
+using Vector = sprt::__malloc_vector<T>;
 
-template <typename K, typename V, typename Compare = std::less<void>>
-using Map = std::map<K, V, Compare>;
+template <typename T>
+using List = sprt::__malloc_list<T>;
 
-template <typename T, typename Compare = std::less<void>>
-using Set = std::set<T, Compare>;
+template <typename K, typename V, typename Compare = sprt::less<void>>
+using Map = sprt::__malloc_map<K, V, Compare>;
 
 template <typename T, typename V>
-using HashMap = std::unordered_map<T, V, std::hash<T>, std::equal_to<T>>;
+using HashMap = sprt::__malloc_unordered_map<T, V, sprt::hash<T>, sprt::equal_to<T>>;
 
-template <typename T, typename Hash = std::hash<T>, typename Equal = std::equal_to<void>>
-using HashSet = std::unordered_set<T, Hash, Equal, std::allocator<T>>;
+template <typename T, typename Compare = sprt::less<void>>
+using Set = sprt::__malloc_set<T, Compare>;
+
+template <typename T, typename Hash = sprt::hash<T>, typename Equal = sprt::equal_to<void>>
+using HashSet = sprt::__malloc_unordered_set<T, Hash, Equal>;
+
+using StringStream = typename Interface::StringStreamType;
 
 template <typename T>
-using Function = std::function<T>;
+using Function = sprt::__malloc_function<T>;
 
 using stappler::Callback;
-
-using stappler::Pair;
-
-using Mutex = std::mutex;
+using stappler::CallbackStream;
 
 using sprt::makeSpanView;
 
@@ -263,11 +268,8 @@ using memory::perform;
 using memory::perform_clear;
 using memory::perform_temporary;
 
-template <typename Container, typename T>
-bool emplace_ordered(Container &vec, T val);
-
-template <typename Container, typename T>
-bool exists_ordered(const Container &vec, const T &val);
+using sprt::emplace_ordered;
+using sprt::exists_ordered;
 
 } // namespace stappler::mem_std
 
@@ -286,7 +288,7 @@ using Dictionary = Value::DictionaryType;
 using EncodeFormat = stappler::data::EncodeFormat;
 
 inline bool emplace_ordered(Vector<Value> &vec, const Value &val) {
-	auto lb = std::lower_bound(vec.begin(), vec.end(), val,
+	auto lb = sprt::lower_bound(vec.begin(), vec.end(), val,
 			[&](const Value &l, const Value &r) { return l.getInteger() < r.getInteger(); });
 	if (lb == vec.end()) {
 		vec.emplace_back(val);
@@ -309,7 +311,7 @@ using Dictionary = Value::DictionaryType;
 using EncodeFormat = stappler::data::EncodeFormat;
 
 inline bool emplace_ordered(Vector<Value> &vec, const Value &val) {
-	auto lb = std::lower_bound(vec.begin(), vec.end(), val,
+	auto lb = sprt::lower_bound(vec.begin(), vec.end(), val,
 			[&](const Value &l, const Value &r) { return l.getInteger() < r.getInteger(); });
 	if (lb == vec.end()) {
 		vec.emplace_back(val);
@@ -329,59 +331,6 @@ inline bool emplace_ordered(Vector<Value> &vec, const Value &val) {
 //
 // Implementation details
 //
-
-namespace STAPPLER_VERSIONIZED stappler::mem_pool {
-
-template <typename Container, typename T>
-inline bool emplace_ordered(Container &vec, T val) {
-	auto lb = std::lower_bound(vec.begin(), vec.end(), val);
-	if (lb == vec.end()) {
-		vec.emplace_back(val);
-		return true;
-	} else if (*lb != val) {
-		vec.emplace(lb, val);
-		return true;
-	}
-	return false;
-}
-
-template <typename Container, typename T>
-inline bool exists_ordered(const Container &vec, const T &val) {
-	auto lb = std::lower_bound(vec.begin(), vec.end(), val);
-	if (lb == vec.end() || *lb != val) {
-		return false;
-	}
-	return true;
-}
-
-} // namespace stappler::mem_pool
-
-
-namespace STAPPLER_VERSIONIZED stappler::mem_std {
-
-template <typename Container, typename T>
-inline bool emplace_ordered(Container &vec, T val) {
-	auto lb = std::lower_bound(vec.begin(), vec.end(), val);
-	if (lb == vec.end()) {
-		vec.emplace_back(val);
-		return true;
-	} else if (*lb != val) {
-		vec.emplace(lb, val);
-		return true;
-	}
-	return false;
-}
-
-template <typename Container, typename T>
-inline bool exists_ordered(const Container &vec, const T &val) {
-	auto lb = std::lower_bound(vec.begin(), vec.end(), val);
-	if (lb == vec.end() || *lb != val) {
-		return false;
-	}
-	return true;
-}
-
-} // namespace stappler::mem_std
 
 namespace STAPPLER_VERSIONIZED stappler {
 

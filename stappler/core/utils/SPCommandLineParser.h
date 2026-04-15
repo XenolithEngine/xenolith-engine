@@ -25,8 +25,8 @@
 #define CORE_CORE_UTILS_SPCOMMANDLINEPARSER_H_
 
 #include "SPString.h"
-#include "SPStringView.h"
 #include "SPMemory.h"
+#include "SPLog.h"
 
 namespace STAPPLER_VERSIONIZED stappler {
 
@@ -224,7 +224,7 @@ inline void CommandLineParser<Output>::add(InitializerList<CommandLineOption<Out
 							args.readUntil<StringView::WhiteSpace, StringView::Chars<'<'>>();
 					args.backwardSkipChars<StringView::WhiteSpace>();
 
-					auto prev = std::lower_bound(_charPatterns->begin(), _charPatterns->end(),
+					auto prev = sprt::lower_bound(_charPatterns->begin(), _charPatterns->end(),
 							patternInit.sub(0, 1));
 					if (prev != _charPatterns->end()
 							&& prev->pattern.starts_with(patternInit.sub(0, 1))) {

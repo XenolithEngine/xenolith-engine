@@ -72,7 +72,7 @@ bool Lexer::parseToken(const OutStream &OutStream, Token &tok) {
 
 	Token *currentTok = &tok;
 
-	std::array<Token *, 32> stack;
+	sprt::array<Token *, 32> stack;
 
 	while (!r.empty()) {
 		StringView tmp(r);
@@ -137,25 +137,26 @@ bool Lexer::parseToken(const OutStream &OutStream, Token &tok) {
 }
 
 bool Lexer::readAttributes(const OutStream &OutStream, Token *data, StringView &r) const {
-	auto attrs = new (std::nothrow) Token{Token::TagAttrList, r};
+	auto attrs = new (sprt::nothrow) Token{Token::TagAttrList, r};
 
 	auto readAttrName = [](StringView &r) -> Token * {
-		auto ret = new (std::nothrow) Token{Token::AttrName, r};
+		auto ret = new (sprt::nothrow) Token{Token::AttrName, r};
 		if (r.is('\'')) {
 			++r;
 			while (!r.empty() && !r.is('\'')) {
 				auto str = r.readUntil<StringView::Chars<'\'', '\\'>>();
 				if (r.is('\\')) {
 					if (!str.empty()) {
-						ret->addChild(new (std::nothrow) Token{Token::PlainText, str});
+						ret->addChild(new (sprt::nothrow) Token{Token::PlainText, str});
 					}
 					++r;
 					if (!r.empty()) {
-						ret->addChild(new (std::nothrow) Token{Token::PlainText, StringView(r, 1)});
+						ret->addChild(
+								new (sprt::nothrow) Token{Token::PlainText, StringView(r, 1)});
 						++r;
 					}
 				} else if (r.is('\'') && !str.empty()) {
-					ret->addChild(new (std::nothrow) Token{Token::PlainText, str});
+					ret->addChild(new (sprt::nothrow) Token{Token::PlainText, str});
 				}
 			}
 			if (r.is('\'')) {
@@ -169,15 +170,16 @@ bool Lexer::readAttributes(const OutStream &OutStream, Token *data, StringView &
 				auto str = r.readUntil<StringView::Chars<'"', '\\'>>();
 				if (r.is('\\')) {
 					if (!str.empty()) {
-						ret->addChild(new (std::nothrow) Token{Token::PlainText, str});
+						ret->addChild(new (sprt::nothrow) Token{Token::PlainText, str});
 					}
 					++r;
 					if (!r.empty()) {
-						ret->addChild(new (std::nothrow) Token{Token::PlainText, StringView(r, 1)});
+						ret->addChild(
+								new (sprt::nothrow) Token{Token::PlainText, StringView(r, 1)});
 						++r;
 					}
 				} else if (r.is('"') && !str.empty()) {
-					ret->addChild(new (std::nothrow) Token{Token::PlainText, str});
+					ret->addChild(new (sprt::nothrow) Token{Token::PlainText, str});
 				}
 			}
 			if (r.is('"')) {
@@ -195,7 +197,7 @@ bool Lexer::readAttributes(const OutStream &OutStream, Token *data, StringView &
 					}
 				}
 				r += str.size();
-				ret->addChild(new (std::nothrow) Token{Token::PlainText, str});
+				ret->addChild(new (sprt::nothrow) Token{Token::PlainText, str});
 			} else {
 				return nullptr;
 			}
@@ -206,7 +208,7 @@ bool Lexer::readAttributes(const OutStream &OutStream, Token *data, StringView &
 
 	r.skipChars<SpacingFilter, NewLineFilter>();
 	while (!r.is<NewLineFilter>() && !r.is(')') && !r.empty()) {
-		auto tok = new (std::nothrow) Token{Token::AttrPairEscaped, r};
+		auto tok = new (sprt::nothrow) Token{Token::AttrPairEscaped, r};
 		auto name = readAttrName(r);
 		if (!name) {
 			return onError(OutStream, r, StringView("Invalid attribute name"));
@@ -234,7 +236,7 @@ bool Lexer::readAttributes(const OutStream &OutStream, Token *data, StringView &
 
 		tok->addChild(name);
 
-		auto valTok = new (std::nothrow) Token{Token::AttrValue, r};
+		auto valTok = new (sprt::nothrow) Token{Token::AttrValue, r};
 		if (!readOutputExpression(valTok, r)) {
 			return onError(OutStream, r, StringView("Invalid attribute value"));
 		}
@@ -289,15 +291,15 @@ bool Lexer::readTagInfo(const OutStream &OutStream, Token *data, StringView &r,
 		case '.': {
 			auto word = r.readChars<TagWordFilter>();
 			if (!word.empty()) {
-				data->addChild(new (std::nothrow) Token{Token::TagClassNote, word});
+				data->addChild(new (sprt::nothrow) Token{Token::TagClassNote, word});
 			} else if (r.is<NewLineFilter>()) {
-				data->addChild(new (std::nothrow) Token{Token::TagTrailingDot, StringView()});
+				data->addChild(new (sprt::nothrow) Token{Token::TagTrailingDot, StringView()});
 			}
 			break;
 		}
 		case '#':
 			data->addChild(
-					new (std::nothrow) Token{Token::TagIdNote, r.readChars<TagWordFilter>()});
+					new (sprt::nothrow) Token{Token::TagIdNote, r.readChars<TagWordFilter>()});
 			break;
 		case '(':
 			if (!readAttributes(OutStream, data, r)) {
@@ -311,7 +313,7 @@ bool Lexer::readTagInfo(const OutStream &OutStream, Token *data, StringView &r,
 				if (auto expr = Expression::parse(r, Expression::Options::getDefaultInline())) {
 					if (r.is(')')) {
 						++r;
-						data->addChild(new (std::nothrow) Token{Token::TagAttrExpr,
+						data->addChild(new (sprt::nothrow) Token{Token::TagAttrExpr,
 							StringView(tmp, tmp.size() - r.size()), expr});
 					} else {
 						return onError(OutStream, r, "Invalid expression in &attributes");
@@ -324,15 +326,15 @@ bool Lexer::readTagInfo(const OutStream &OutStream, Token *data, StringView &r,
 			}
 			break;
 		case '/':
-			data->addChild(new (std::nothrow) Token{Token::TagTrailingSlash, StringView()});
+			data->addChild(new (sprt::nothrow) Token{Token::TagTrailingSlash, StringView()});
 			break;
 		case '=':
-			data->addChild(new (std::nothrow) Token{Token::TagTrailingEq, StringView()});
+			data->addChild(new (sprt::nothrow) Token{Token::TagTrailingEq, StringView()});
 			break;
 		case '!':
 			if (r.is('=')) {
 				++r;
-				data->addChild(new (std::nothrow) Token{Token::TagTrailingNEq, StringView()});
+				data->addChild(new (sprt::nothrow) Token{Token::TagTrailingNEq, StringView()});
 			}
 			break;
 		default: break;
@@ -355,9 +357,9 @@ bool Lexer::readTagInfo(const OutStream &OutStream, Token *data, StringView &r,
 			if (auto expr = Expression::parse(r, Expression::Options::getDefaultInline())) {
 				r.skipChars<SpacingFilter>();
 				if (r.is<NewLineFilter>() || r.empty() || (interpolated && r.is(']'))) {
-					data->addChild(new (std::nothrow) Token{data->tail->type == Token::TagTrailingEq
-								? Token::OutputEscaped
-								: Token::OutputUnescaped,
+					data->addChild(new (sprt::nothrow) Token{
+						data->tail->type == Token::TagTrailingEq ? Token::OutputEscaped
+																 : Token::OutputUnescaped,
 						StringView(tmp, tmp.size() - r.size()), expr});
 					return true;
 				}
@@ -386,7 +388,7 @@ bool Lexer::readCode(Token *data, StringView &r) const {
 			} else {
 				return false;
 			}
-			data->addChild(new (std::nothrow)
+			data->addChild(new (sprt::nothrow)
 							Token{Token::Code, StringView(tmp, tmp.size() - r.size()), expr});
 		} else {
 			return false;
@@ -408,7 +410,7 @@ bool Lexer::readCodeBlock(Token *data, StringView &r) const {
 			if (!r.is<NewLineFilter>() && !r.is(';')) {
 				return false;
 			}
-			data->addChild(new (std::nothrow)
+			data->addChild(new (sprt::nothrow)
 							Token{Token::Code, StringView(tmp, tmp.size() - r.size()), expr});
 		} else {
 			return false;
@@ -426,7 +428,7 @@ bool Lexer::readPlainTextInterpolation(const OutStream &OutStream, Token *data, 
 	StringView buf;
 	auto flushBuffer = [&]() {
 		if (!buf.empty()) {
-			data->addChild(new (std::nothrow) Token{Token::PlainText, buf});
+			data->addChild(new (sprt::nothrow) Token{Token::PlainText, buf});
 			buf.clear();
 		}
 	};
@@ -464,7 +466,7 @@ bool Lexer::readPlainTextInterpolation(const OutStream &OutStream, Token *data, 
 
 			auto tmp = line;
 			if (auto expr = Expression::parse(line, Expression::Options::getDefaultInline())) {
-				data->addChild(new (std::nothrow) Token{Token::OutputEscaped,
+				data->addChild(new (sprt::nothrow) Token{Token::OutputEscaped,
 					StringView(tmp, tmp.size() - line.size()), expr});
 				if (line.is('}')) {
 					++line;
@@ -478,8 +480,8 @@ bool Lexer::readPlainTextInterpolation(const OutStream &OutStream, Token *data, 
 
 			auto word = line.readChars<TagWordFilter>();
 			line.skipChars<SpacingFilter>();
-			auto retData = new (std::nothrow) Token{Token::LineData, tmp};
-			retData->addChild(new (std::nothrow) Token{Token::Tag, word});
+			auto retData = new (sprt::nothrow) Token{Token::LineData, tmp};
+			retData->addChild(new (sprt::nothrow) Token{Token::Tag, word});
 			if (!readTagInfo(OutStream, retData, line, true)) {
 				return false;
 			}
@@ -495,7 +497,7 @@ bool Lexer::readPlainTextInterpolation(const OutStream &OutStream, Token *data, 
 
 			auto tmp = line;
 			if (auto expr = Expression::parse(line, Expression::Options::getDefaultInline())) {
-				data->addChild(new (std::nothrow) Token{Token::OutputUnescaped,
+				data->addChild(new (sprt::nothrow) Token{Token::OutputUnescaped,
 					StringView(tmp, tmp.size() - line.size()), expr});
 				if (line.is('}')) {
 					++line;
@@ -521,7 +523,7 @@ bool Lexer::readPlainTextInterpolation(const OutStream &OutStream, Token *data, 
 
 static Token *Lexer_completeLine(Token *retData, const StringView &line, StringView &r) {
 	retData->data = StringView(retData->data, retData->data.size() - r.size());
-	auto retTok = new (std::nothrow) Token(Token::Line, StringView(line, line.size() - r.size()));
+	auto retTok = new (sprt::nothrow) Token(Token::Line, StringView(line, line.size() - r.size()));
 	retTok->addChild(retData);
 	return retTok;
 };
@@ -548,7 +550,7 @@ Token *Lexer::readLine(const OutStream &OutStream, const StringView &line, Strin
 }
 
 Token *Lexer::readPlainLine(const OutStream &OutStream, const StringView &line, StringView &r) {
-	auto retData = new (std::nothrow) Token{Token::LinePlainText, r};
+	auto retData = new (sprt::nothrow) Token{Token::LinePlainText, r};
 	r.skipChars<SpacingFilter>();
 	if (!r.is<NewLineFilter>()) {
 		if (!readPlainTextInterpolation(OutStream, retData, r)) {
@@ -562,13 +564,13 @@ Token *Lexer::readCommonLine(const OutStream &OutStream, const StringView &line,
 	StringView tmp(r);
 	if (r.is("//")) {
 		bool isHtml = false;
-		auto retData = new (std::nothrow) Token{Token::LineComment, tmp};
+		auto retData = new (sprt::nothrow) Token{Token::LineComment, tmp};
 		if (r.is("//-")) {
-			retData->addChild(new (std::nothrow) Token(Token::CommentTemplate, StringView(r, 3)));
+			retData->addChild(new (sprt::nothrow) Token(Token::CommentTemplate, StringView(r, 3)));
 			r += 3;
 		} else {
 			isHtml = true;
-			retData->addChild(new (std::nothrow) Token(Token::CommentHtml, StringView(r, 2)));
+			retData->addChild(new (sprt::nothrow) Token(Token::CommentHtml, StringView(r, 2)));
 			r += 2;
 		}
 
@@ -579,7 +581,7 @@ Token *Lexer::readCommonLine(const OutStream &OutStream, const StringView &line,
 				}
 			} else {
 				retData->addChild(
-						new (std::nothrow) Token{Token::PlainText, r.readUntil<NewLineFilter>()});
+						new (sprt::nothrow) Token{Token::PlainText, r.readUntil<NewLineFilter>()});
 			}
 		}
 
@@ -589,21 +591,21 @@ Token *Lexer::readCommonLine(const OutStream &OutStream, const StringView &line,
 	} else if (r.is('.') || r.is('#') || r.is('(') || r.is('&')) {
 		StringView t(r, 1, 1);
 		if (t.is<TagWordFilter>()) {
-			auto retData = new (std::nothrow) Token{Token::LineData, tmp};
-			retData->addChild(new (std::nothrow) Token{Token::Tag, r.readChars<TagWordFilter>()});
+			auto retData = new (sprt::nothrow) Token{Token::LineData, tmp};
+			retData->addChild(new (sprt::nothrow) Token{Token::Tag, r.readChars<TagWordFilter>()});
 			if (!readTagInfo(OutStream, retData, r)) {
 				return nullptr;
 			}
 			return Lexer_completeLine(retData, line, r);
 		} else if (r.is('.') && t.is<NewLineFilter>()) {
-			auto retData = new (std::nothrow) Token{Token::LineDot, tmp};
-			retData->addChild(new (std::nothrow) Token{Token::TagTrailingDot, StringView(r, 1)});
+			auto retData = new (sprt::nothrow) Token{Token::LineDot, tmp};
+			retData->addChild(new (sprt::nothrow) Token{Token::TagTrailingDot, StringView(r, 1)});
 			++r;
 			return Lexer_completeLine(retData, line, r);
 		}
 	} else if (r.is('|')) {
-		auto retData = new (std::nothrow) Token{Token::LinePiped, tmp};
-		retData->addChild(new (std::nothrow) Token{Token::PipeMark, StringView()});
+		auto retData = new (sprt::nothrow) Token{Token::LinePiped, tmp};
+		retData->addChild(new (sprt::nothrow) Token{Token::PipeMark, StringView()});
 		++r;
 		r.skipChars<SpacingFilter>();
 		if (!r.is<NewLineFilter>()) {
@@ -613,14 +615,14 @@ Token *Lexer::readCommonLine(const OutStream &OutStream, const StringView &line,
 		}
 		return Lexer_completeLine(retData, line, r);
 	} else if (r.is('=') || r.is("!=")) {
-		auto retData = new (std::nothrow) Token{Token::LineOut, tmp};
+		auto retData = new (sprt::nothrow) Token{Token::LineOut, tmp};
 		Token *exprToken = nullptr;
 		if (r.is('=')) {
 			++r;
-			exprToken = new (std::nothrow) Token{Token::OutputEscaped, StringView()};
+			exprToken = new (sprt::nothrow) Token{Token::OutputEscaped, StringView()};
 		} else {
 			r += 2;
-			exprToken = new (std::nothrow) Token{Token::OutputUnescaped, StringView()};
+			exprToken = new (sprt::nothrow) Token{Token::OutputUnescaped, StringView()};
 		}
 		r.skipChars<SpacingFilter>();
 
@@ -645,7 +647,7 @@ Token *Lexer::readCommonLine(const OutStream &OutStream, const StringView &line,
 	} else if (r.is('-')) {
 		++r;
 		if (!r.is<NewLineFilter>()) {
-			auto retData = new (std::nothrow) Token{Token::LineCode, tmp};
+			auto retData = new (sprt::nothrow) Token{Token::LineCode, tmp};
 			if (readCode(retData, r)) {
 				return Lexer_completeLine(retData, line, r);
 			} else {
@@ -653,7 +655,7 @@ Token *Lexer::readCommonLine(const OutStream &OutStream, const StringView &line,
 				return nullptr;
 			}
 		} else {
-			auto retData = new (std::nothrow) Token{Token::LineCodeBlock, tmp};
+			auto retData = new (sprt::nothrow) Token{Token::LineCodeBlock, tmp};
 			if (readCodeBlock(retData, r)) {
 				return Lexer_completeLine(retData, line, r);
 			} else {
@@ -663,7 +665,7 @@ Token *Lexer::readCommonLine(const OutStream &OutStream, const StringView &line,
 		}
 	} else if (r.is('+')) {
 		++r;
-		auto retData = new (std::nothrow) Token{Token::MixinCall, tmp};
+		auto retData = new (sprt::nothrow) Token{Token::MixinCall, tmp};
 		r.skipChars<SpacingFilter>();
 
 		auto name = r.readChars<TagWordFilter>();
@@ -677,7 +679,7 @@ Token *Lexer::readCommonLine(const OutStream &OutStream, const StringView &line,
 		if (r.is('(')) {
 			auto tmp = r;
 			if (auto expr = Expression::parse(r, Expression::Options::getDefaultInline())) {
-				auto exprToken = new (std::nothrow) Token{Token::MixinArgs, tmp};
+				auto exprToken = new (sprt::nothrow) Token{Token::MixinArgs, tmp};
 				r.skipChars<SpacingFilter>();
 				if (!r.is<NewLineFilter>() && !r.empty()) {
 					onError(OutStream, r, "Invalid expression after mixin call block");
@@ -694,13 +696,14 @@ Token *Lexer::readCommonLine(const OutStream &OutStream, const StringView &line,
 		}
 
 		auto retTok =
-				new (std::nothrow) Token(Token::Line, StringView(line, line.size() - r.size()));
+				new (sprt::nothrow) Token(Token::Line, StringView(line, line.size() - r.size()));
 		retTok->addChild(retData);
 		return retTok;
 	} else if (r.is('<')) {
-		auto retData = new (std::nothrow) Token{Token::LinePlainText, r.readUntil<NewLineFilter>()};
+		auto retData =
+				new (sprt::nothrow) Token{Token::LinePlainText, r.readUntil<NewLineFilter>()};
 		auto retTok =
-				new (std::nothrow) Token(Token::Line, StringView(line, line.size() - r.size()));
+				new (sprt::nothrow) Token(Token::Line, StringView(line, line.size() - r.size()));
 		retTok->addChild(retData);
 		return retTok;
 	} else if (r.is<NewLineFilter>() || r.empty()) {
@@ -716,7 +719,7 @@ Token *Lexer::readKeywordLine(const OutStream &OutStream, const StringView &line
 
 	auto readKeywordExpression = [&, this](StringView &r, Token::Type t) -> Token * {
 		if (auto expr = Expression::parse(r, Expression::Options::getDefaultInline())) {
-			auto retData = new (std::nothrow) Token{t, StringView(tmp, tmp.size() - r.size())};
+			auto retData = new (sprt::nothrow) Token{t, StringView(tmp, tmp.size() - r.size())};
 			retData->expression = expr;
 			if (t == Token::ControlMixin) {
 				if (!((retData->expression->op == Expression::Call
@@ -743,7 +746,7 @@ Token *Lexer::readKeywordLine(const OutStream &OutStream, const StringView &line
 			auto target = r.readUntil<NewLineFilter>();
 			target.trimChars<SpacingFilter>();
 			if (!target.empty()) {
-				return new (std::nothrow) Token{Token::Include, target};
+				return new (sprt::nothrow) Token{Token::Include, target};
 			} else {
 				return nullptr;
 			}
@@ -753,7 +756,7 @@ Token *Lexer::readKeywordLine(const OutStream &OutStream, const StringView &line
 			auto target = r.readUntil<NewLineFilter>();
 			target.trimChars<SpacingFilter>();
 			if (!target.empty()) {
-				return new (std::nothrow) Token{Token::Doctype, target};
+				return new (sprt::nothrow) Token{Token::Doctype, target};
 			} else {
 				return nullptr;
 			}
@@ -801,19 +804,19 @@ Token *Lexer::readKeywordLine(const OutStream &OutStream, const StringView &line
 						if (auto expr = Expression::parse(r,
 									Expression::Options::getDefaultInline())) {
 							if (!var2.empty()) {
-								auto retData = new (std::nothrow) Token{Token::ControlEachPair,
+								auto retData = new (sprt::nothrow) Token{Token::ControlEachPair,
 									StringView(tmp, tmp.size() - r.size())};
-								retData->addChild(
-										new (std::nothrow) Token(Token::ControlEachVariable, var1));
-								retData->addChild(
-										new (std::nothrow) Token(Token::ControlEachVariable, var2));
+								retData->addChild(new (sprt::nothrow)
+												Token(Token::ControlEachVariable, var1));
+								retData->addChild(new (sprt::nothrow)
+												Token(Token::ControlEachVariable, var2));
 								retData->expression = expr;
 								return retData;
 							} else {
-								auto retData = new (std::nothrow) Token{Token::ControlEach,
+								auto retData = new (sprt::nothrow) Token{Token::ControlEach,
 									StringView(tmp, tmp.size() - r.size())};
-								retData->addChild(
-										new (std::nothrow) Token(Token::ControlEachVariable, var1));
+								retData->addChild(new (sprt::nothrow)
+												Token(Token::ControlEachVariable, var1));
 								retData->expression = expr;
 								return retData;
 							}
@@ -831,7 +834,7 @@ Token *Lexer::readKeywordLine(const OutStream &OutStream, const StringView &line
 
 	if (word == "default") {
 		if (r.is(':') || r.is<NewLineFilter>()) {
-			return new (std::nothrow)
+			return new (sprt::nothrow)
 					Token{Token::ControlDefault, StringView(tmp, tmp.size() - r.size())};
 		} else {
 			onError(OutStream, r, "Invalid 'default' line");
@@ -839,7 +842,7 @@ Token *Lexer::readKeywordLine(const OutStream &OutStream, const StringView &line
 		}
 	} else if (word == "else") {
 		if (r.is(':') || r.is<NewLineFilter>()) {
-			return new (std::nothrow)
+			return new (sprt::nothrow)
 					Token{Token::ControlElse, StringView(tmp, tmp.size() - r.size())};
 		} else {
 			onError(OutStream, r, "Invalid 'else' line");
@@ -847,8 +850,8 @@ Token *Lexer::readKeywordLine(const OutStream &OutStream, const StringView &line
 		}
 	}
 
-	auto retData = new (std::nothrow) Token{Token::LineData, tmp};
-	retData->addChild(new (std::nothrow) Token{Token::Tag, word});
+	auto retData = new (sprt::nothrow) Token{Token::LineData, tmp};
+	retData->addChild(new (sprt::nothrow) Token{Token::Tag, word});
 	if (!hasSpacing) {
 		if (!readTagInfo(OutStream, retData, r)) {
 			return nullptr;
@@ -865,11 +868,10 @@ Token *Lexer::readKeywordLine(const OutStream &OutStream, const StringView &line
 
 bool Lexer::onError(const OutStream &OutStream, const StringView &pos,
 		const StringView &str) const {
-	StringStream tmpOut;
-	std::ostream *out = &std::cout;
+	auto out = &OutStream;
 
-	if (OutStream) {
-		out = &tmpOut;
+	if (!OutStream) {
+		out = &sprt::cout;
 	}
 
 	StringView r(content.data(), content.size() - pos.size());
@@ -918,10 +920,6 @@ bool Lexer::onError(const OutStream &OutStream, const StringView &pos,
 
 	*out << "^\n";
 	*out << "Lexer error: " << str << "\n";
-
-	if (OutStream) {
-		OutStream(tmpOut.weak());
-	}
 
 	return false;
 }

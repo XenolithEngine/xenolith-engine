@@ -329,13 +329,13 @@ void Label::handleEnter(xenolith::Scene *scene) {
 		_listener->clear();
 
 		_listener->listenForEventWithObject(font::FontController::onFontSourceUpdated, source,
-				std::bind(&Label::onFontSourceUpdated, this));
+				[this](const Event &) { onFontSourceUpdated(); });
 
 		if (source->isLoaded()) {
 			setTexture(Rc<Texture>(source->getTexture()));
 		} else {
 			_listener->listenForEventWithObject(font::FontController::onLoaded, source,
-					std::bind(&Label::onFontSourceLoaded, this), true);
+					[this](const Event &) { onFontSourceUpdated(); }, true);
 		}
 
 		_source = source;
@@ -512,7 +512,7 @@ void Label::updateLabelScale(const Mat4 &parent) {
 		scale.z *= _scale.z;
 	}
 
-	auto density = std::min(std::min(scale.x, scale.y), scale.z);
+	auto density = sprt::min(sprt::min(scale.x, scale.y), scale.z);
 	if (density != _labelDensity) {
 		_labelDensity = density;
 		setLabelDirty();

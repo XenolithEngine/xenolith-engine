@@ -183,7 +183,7 @@ void SignalFdSource::cancel() {
 
 bool SignalFdHandle::init(HandleClass *cl, SpanView<int> sigs) {
 	static_assert(
-			sizeof(SignalFdSource) <= DataSize && std::is_standard_layout<SignalFdSource>::value);
+			sizeof(SignalFdSource) <= DataSize && sprt::is_standard_layout<SignalFdSource>::value);
 
 	if (!Handle::init(cl,
 				CompletionHandle<SignalFdHandle>::create<SignalFdHandle>(this,

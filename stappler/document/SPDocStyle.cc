@@ -1594,11 +1594,11 @@ BackgroundParameters::BackgroundParameters(Autofit a) {
 float MediaParameters::getDefaultFontSize() const { return FontSize::Medium.get() * fontScale; }
 
 void MediaParameters::addOption(const StringView &str) {
-	auto value = string::hash32(str);
+	auto value = sprt::hash32(str.data(), str.size());
 	_options.insert(pair(value, str.str<memory::StandartInterface>()));
 }
 void MediaParameters::removeOption(const StringView &str) {
-	auto value = string::hash32(str);
+	auto value = sprt::hash32(str.data(), str.size());
 	auto it = _options.find(value);
 	if (it != _options.end()) {
 		_options.erase(it);
@@ -1606,7 +1606,7 @@ void MediaParameters::removeOption(const StringView &str) {
 }
 
 bool MediaParameters::hasOption(const StringView &str) const {
-	return hasOption(string::hash32(str));
+	return hasOption(sprt::hash32(str.data(), str.size()));
 }
 bool MediaParameters::hasOption(StringId value) const {
 	auto it = _options.find(value);
@@ -1753,19 +1753,19 @@ float MediaParameters::computeValueStrong(Metric m, float base, float fontSize) 
 	case Metric::Auto: return nan(); break;
 	case Metric::Px: return m.value; break;
 	case Metric::Em:
-		return (!isnan(fontSize)) ? fontSize * m.value : getDefaultFontSize() * m.value;
+		return (!sprt::isnan(fontSize)) ? fontSize * m.value : getDefaultFontSize() * m.value;
 		break;
 	case Metric::Rem: return getDefaultFontSize() * m.value; break;
-	case Metric::Percent: return (!std::isnan(base) ? (base * m.value) : nan()); break;
+	case Metric::Percent: return (!sprt::isnan(base) ? (base * m.value) : nan()); break;
 	case Metric::Cover: return base; break;
 	case Metric::Contain: return base; break;
 	case Metric::Vw: return m.value * surfaceSize.width * 0.01; break;
 	case Metric::Vh: return m.value * surfaceSize.height * 0.01; break;
 	case Metric::VMin:
-		return m.value * std::min(surfaceSize.width, surfaceSize.height) * 0.01;
+		return m.value * sprt::min(surfaceSize.width, surfaceSize.height) * 0.01;
 		break;
 	case Metric::VMax:
-		return m.value * std::max(surfaceSize.width, surfaceSize.height) * 0.01;
+		return m.value * sprt::max(surfaceSize.width, surfaceSize.height) * 0.01;
 		break;
 	default: return 0.0f; break;
 	}
@@ -1805,7 +1805,7 @@ float SimpleStyleInterface::getFontScale() const { return _fontScale; }
 
 Color4B SimpleStyleInterface::getTextColor() const { return Color4B::WHITE; }
 
-StyleValue::StyleValue() { memset(reinterpret_cast<void *>(this), 0, sizeof(StyleValue)); }
+StyleValue::StyleValue() { sprt::memset(reinterpret_cast<void *>(this), 0, sizeof(StyleValue)); }
 
 StyleParameter::StyleParameter(ParameterName name, MediaQueryId query, StyleRule r)
 : name(name), mediaQuery(query), rule(r) { }

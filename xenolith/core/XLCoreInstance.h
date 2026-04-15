@@ -25,8 +25,8 @@
 #define XENOLITH_CORE_XLCOREINSTANCE_H_
 
 #include "XLCore.h" // IWYU pragma: keep
-#include "SPDso.h"
 
+#include <sprt/runtime/dso.h>
 #include <sprt/runtime/window/gapi.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
@@ -71,7 +71,7 @@ public:
 
 	virtual ~Instance();
 
-	Instance(InstanceApi b, InstanceFlags flags, Dso &&);
+	Instance(InstanceApi b, InstanceFlags flags, sprt::Dso &&);
 
 	virtual Rc<Loop> makeLoop(NotNull<event::Looper>, Rc<core::LoopInfo> &&) const;
 
@@ -81,7 +81,7 @@ public:
 protected:
 	InstanceApi _api = InstanceApi::None;
 	InstanceFlags _flags = InstanceFlags::None;
-	Dso _dsoModule;
+	sprt::Dso _dsoModule;
 };
 
 SP_PUBLIC StringView getInstanceApiName(InstanceApi);

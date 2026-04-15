@@ -73,7 +73,7 @@ bool AssetComponentContainer::init(StringView name, AssetLibrary *l) {
 
 void AssetComponentContainer::handleStorageInit(storage::ComponentLoader &loader) {
 	ComponentContainer::handleStorageInit(loader);
-	_component = new (std::nothrow) AssetComponent(this, loader, "AssetComponent");
+	_component = new (sprt::nothrow) AssetComponent(this, loader, "AssetComponent");
 }
 
 void AssetComponentContainer::handleStorageDisposed(const db::Transaction &t) {

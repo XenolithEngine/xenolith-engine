@@ -78,7 +78,7 @@ public:
 		AllocationType lastAllocation =
 				AllocationType::Unknown; // last allocation type (for bufferImageGranularity)
 		void *ptr = nullptr;
-		Mutex *mappingProtection = nullptr;
+		sprt::mutex *mappingProtection = nullptr;
 
 		explicit operator bool() const { return mem != VK_NULL_HANDLE; }
 
@@ -92,7 +92,7 @@ public:
 		VkDeviceSize size = 0; // reserved size after offset
 		uint32_t type = 0; // memory type index
 		void *ptr = nullptr;
-		Mutex *mappingProtection = nullptr;
+		sprt::mutex *mappingProtection = nullptr;
 		AllocationType allocType = AllocationType::Unknown;
 
 		explicit operator bool() const { return mem != VK_NULL_HANDLE; }
@@ -105,7 +105,7 @@ public:
 		uint64_t last = 0; // largest used index into free
 		uint64_t max = PreservePages; // Pages to preserve, 0 - do not preserve
 		uint64_t current = PreservePages; // current allocated size in BOUNDARY_SIZE
-		std::array<Vector<MemNode>, MaxIndex> buf;
+		sprt::array<Vector<MemNode>, MaxIndex> buf;
 
 		bool isDeviceLocal() const {
 			return (type.propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
@@ -155,7 +155,7 @@ public:
 	VkDeviceSize getBufferImageGranularity() const { return _bufferImageGranularity; }
 	VkDeviceSize getNonCoherentAtomSize() const { return _nonCoherentAtomSize; }
 
-	Mutex &getMutex() const { return _mutex; }
+	sprt::mutex &getMutex() const { return _mutex; }
 
 	const MemType *getType(uint32_t) const;
 
@@ -186,7 +186,7 @@ protected:
 	bool allocateDedicated(AllocationUsage usage, Buffer *);
 	bool allocateDedicated(AllocationUsage usage, Image *);
 
-	mutable Mutex _mutex;
+	mutable sprt::mutex _mutex;
 	VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;
 	Device *_device = nullptr;
 	VkPhysicalDeviceMemoryBudgetPropertiesEXT _memBudget = {
@@ -223,7 +223,7 @@ public:
 	Device *getDevice() const;
 	Allocator *getAllocator() const { return _allocator; }
 
-	Mutex &getMutex() { return _mutex; }
+	sprt::mutex &getMutex() { return _mutex; }
 
 	Allocator::MemBlock alloc(MemData *, VkDeviceSize size, VkDeviceSize alignment,
 			AllocationType allocType, AllocationUsage type);
@@ -235,41 +235,39 @@ protected:
 	Allocator::MemBlock tryReuse(MemData *, VkDeviceSize size, VkDeviceSize alignment,
 			AllocationType allocType);
 
-	Mutex _mutex;
+	sprt::mutex _mutex;
 	bool _persistentMapping = false;
 	Rc<Allocator> _allocator;
 	Map<int64_t, MemData> _heaps;
-	Map<VkDeviceMemory, Mutex *> _mappingProtection;
-	std::forward_list<Rc<Buffer>> _buffers;
-	std::forward_list<Rc<Image>> _images;
+	Map<VkDeviceMemory, sprt::mutex *> _mappingProtection;
+	sprt::__malloc_forward_list<Rc<Buffer>> _buffers;
+	sprt::__malloc_forward_list<Rc<Image>> _images;
 };
 
 } // namespace stappler::xenolith::vk
 
-namespace std {
+namespace sprt {
 
-inline std::ostream &operator<<(std::ostream &stream,
-		STAPPLER_VERSIONIZED_NAMESPACE::xenolith::vk::AllocationUsage usage) {
-	switch (usage) {
-	case STAPPLER_VERSIONIZED_NAMESPACE::xenolith::vk::AllocationUsage::DeviceLocal:
-		stream << "DeviceLocal";
-		break;
-	case STAPPLER_VERSIONIZED_NAMESPACE::xenolith::vk::AllocationUsage::DeviceLocalHostVisible:
-		stream << "DeviceLocalHostVisible";
-		break;
-	case STAPPLER_VERSIONIZED_NAMESPACE::xenolith::vk::AllocationUsage::DeviceLocalLazilyAllocated:
-		stream << "DeviceLocalLazilyAllocated";
-		break;
-	case STAPPLER_VERSIONIZED_NAMESPACE::xenolith::vk::AllocationUsage::HostTransitionSource:
-		stream << "HostTransitionSource";
-		break;
-	case STAPPLER_VERSIONIZED_NAMESPACE::xenolith::vk::AllocationUsage::HostTransitionDestination:
-		stream << "HostTransitionDestination";
-		break;
+template <>
+struct io_traits<STAPPLER_VERSIONIZED_NAMESPACE::xenolith::vk::AllocationUsage> {
+	using AllocationUsage = STAPPLER_VERSIONIZED_NAMESPACE::xenolith::vk::AllocationUsage;
+
+	template <typename Callback>
+	static void encode(const Callback &stream, AllocationUsage usage) {
+		switch (usage) {
+		case AllocationUsage::DeviceLocal: stream << "DeviceLocal"; break;
+		case AllocationUsage::DeviceLocalHostVisible: stream << "DeviceLocalHostVisible"; break;
+		case AllocationUsage::DeviceLocalLazilyAllocated:
+			stream << "DeviceLocalLazilyAllocated";
+			break;
+		case AllocationUsage::HostTransitionSource: stream << "HostTransitionSource"; break;
+		case AllocationUsage::HostTransitionDestination:
+			stream << "HostTransitionDestination";
+			break;
+		}
 	}
-	return stream;
-}
+};
 
-} // namespace std
+} // namespace sprt
 
 #endif /* XENOLITH_BACKEND_VK_XLVKALLOCATOR_H_ */

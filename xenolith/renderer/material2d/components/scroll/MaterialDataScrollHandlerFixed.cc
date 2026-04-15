@@ -36,16 +36,17 @@ bool DataScrollHandlerFixed::init(DataScroll *s, float size) {
 
 DataScroll::ItemMap DataScrollHandlerFixed::run(Request t, DataMap &&data) {
 	DataScroll::ItemMap ret;
-	Size2 size = (_layout == DataScroll::Layout::Vertical)?Size2(_size.width, _dataSize):Size2(_dataSize, _size.height);
+	Size2 size = (_layout == DataScroll::Layout::Vertical) ? Size2(_size.width, _dataSize)
+														   : Size2(_dataSize, _size.height);
 	for (auto &it : data) {
 		Vec2 origin = (_layout == DataScroll::Layout::Vertical)
-				?Vec2(0.0f, it.first.get() * _dataSize)
-				:Vec2(it.first.get() * _dataSize, 0.0f);
+				? Vec2(0.0f, it.first.get() * _dataSize)
+				: Vec2(it.first.get() * _dataSize, 0.0f);
 
 		auto item = Rc<DataScroll::Item>::create(sp::move(it.second), origin, size);
-		ret.insert(std::make_pair(it.first, item));
+		ret.insert(sprt::make_pair(it.first, item));
 	}
 	return ret;
 }
 
-}
+} // namespace stappler::xenolith::material2d

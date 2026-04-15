@@ -45,10 +45,10 @@ static inline uint16_t getDefaultMainThreads() { return 2; }
 static inline uint16_t getDefaultAppThreads() { return 2; }
 #else
 static inline uint16_t getDefaultMainThreads() {
-	return static_cast<uint16_t>(std::thread::hardware_concurrency()) / 2;
+	return static_cast<uint16_t>(sprt::thread::hardware_concurrency()) / 2;
 }
 static inline uint16_t getDefaultAppThreads() {
-	return static_cast<uint16_t>(std::thread::hardware_concurrency()) / 2;
+	return static_cast<uint16_t>(sprt::thread::hardware_concurrency()) / 2;
 }
 #endif
 

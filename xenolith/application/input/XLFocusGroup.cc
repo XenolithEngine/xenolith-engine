@@ -85,13 +85,13 @@ void FocusGroup::updateWithListeners(SpanView<InputListener *> listeners) {
 		return;
 	}
 
-	auto currentIt = std::find_if(listeners.begin(), listeners.end(),
+	auto currentIt = sprt::find_if(listeners.begin(), listeners.end(),
 			[&](InputListener *l) { return l->getId() == _focusedListener; });
 
 	if (currentIt == listeners.end()) {
 		// we lost focused listener
 
-		auto nextIt = std::find_if(listeners.begin(), listeners.end(),
+		auto nextIt = sprt::find_if(listeners.begin(), listeners.end(),
 				[&](InputListener *l) { return l->getId() == _nextListener; });
 
 		if (nextIt != listeners.end()) {
@@ -103,7 +103,7 @@ void FocusGroup::updateWithListeners(SpanView<InputListener *> listeners) {
 		}
 		_nextListener = 0;
 	} else if (_nextListener && _focusedListener != _nextListener) {
-		auto nextIt = std::find_if(listeners.begin(), listeners.end(),
+		auto nextIt = sprt::find_if(listeners.begin(), listeners.end(),
 				[&](InputListener *l) { return l->getId() == _nextListener; });
 
 		if (nextIt != listeners.end()) {

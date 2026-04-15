@@ -115,7 +115,7 @@ protected:
 	uint32_t _index = 0;
 	uint64_t _frameIdx = 0;
 	QueueFlags _flags = QueueFlags::None;
-	std::atomic<uint32_t> _nfences;
+	sprt::atomic<uint32_t> _nfences;
 	Status _lastStatus = Status::ErrorUnknown;
 };
 

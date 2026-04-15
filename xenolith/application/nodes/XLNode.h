@@ -131,13 +131,13 @@ public:
 
 	template <typename N, typename... Args>
 	auto addChild(N *child, Args &&...args) -> N * {
-		addChildNode(child, std::forward<Args>(args)...);
+		addChildNode(child, sprt::forward<Args>(args)...);
 		return child;
 	}
 
 	template <typename N, typename... Args>
 	auto addChild(const Rc<N> &child, Args &&...args) -> N * {
-		addChildNode(child.get(), std::forward<Args>(args)...);
+		addChildNode(child.get(), sprt::forward<Args>(args)...);
 		return child.get();
 	}
 

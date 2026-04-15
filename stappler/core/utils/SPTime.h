@@ -24,7 +24,7 @@ THE SOFTWARE.
 #ifndef STAPPLER_CORE_UTILS_SPTIME_H_
 #define STAPPLER_CORE_UTILS_SPTIME_H_
 
-#include "SPStringView.h"
+#include "SPCore.h"
 #include <sprt/runtime/time.h>
 
 #define SP_COMPILE_TIME (STAPPLER_VERSIONIZED_NAMESPACE::Time::fromCompileTime(__DATE__, __TIME__))
@@ -57,7 +57,7 @@ public:
 
 	void setMicroseconds(uint64_t);
 	void setMilliseconds(uint64_t);
-	void setSeconds(time_t);
+	void setSeconds(sprt::time_t);
 
 	void clear();
 
@@ -85,7 +85,9 @@ public:
 	constexpr static TimeInterval milliseconds(uint64_t msec) {
 		return TimeInterval(msec * 1'000ULL);
 	}
-	constexpr static TimeInterval seconds(time_t sec) { return TimeInterval(sec * 1'000'000ULL); }
+	constexpr static TimeInterval seconds(sprt::time_t sec) {
+		return TimeInterval(sec * 1'000'000ULL);
+	}
 	constexpr static TimeInterval floatSeconds(float sec) {
 		return TimeInterval(uint64_t(sec * 1000000.0f));
 	}
@@ -144,7 +146,7 @@ public:
 
 	static Time microseconds(uint64_t mksec);
 	static Time milliseconds(uint64_t msec);
-	static Time seconds(time_t sec);
+	static Time seconds(sprt::time_t sec);
 	static Time floatSeconds(float sec);
 
 	template <typename Interface>
@@ -231,7 +233,7 @@ protected:
 };
 
 constexpr TimeInterval operator""_sec(unsigned long long int val) {
-	return TimeInterval::seconds((time_t)val);
+	return TimeInterval::seconds((sprt::time_t)val);
 }
 constexpr TimeInterval operator""_msec(unsigned long long int val) {
 	return TimeInterval::milliseconds(val);
@@ -268,18 +270,18 @@ inline TimeInterval &TimeInterval::operator-=(const TimeInterval &v) {
 }
 
 inline const TimeInterval TimeInterval::operator*(float s) const {
-	return TimeInterval(_value * fabsf(s));
+	return TimeInterval(_value * sprt::fabsf(s));
 }
 inline TimeInterval &TimeInterval::operator*=(float s) {
-	_value *= fabsf(s);
+	_value *= sprt::fabsf(s);
 	return *this;
 }
 
 inline const TimeInterval TimeInterval::operator/(float s) const {
-	return TimeInterval(_value / fabsf(s));
+	return TimeInterval(_value / sprt::fabsf(s));
 }
 inline TimeInterval &TimeInterval::operator/=(float s) {
-	_value /= fabsf(s);
+	_value /= sprt::fabsf(s);
 	return *this;
 }
 

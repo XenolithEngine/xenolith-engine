@@ -161,7 +161,8 @@ void SearchQuery::encode(const Callback<void(StringView)> &cb, Format fmt) const
 	}
 }
 
-static void SearchQuery_print(std::ostream &stream, const SearchQuery *t, uint16_t depth) {
+static void SearchQuery_print(const Callback<void(StringView)> &stream, const SearchQuery *t,
+		uint16_t depth) {
 	if (t->args.empty()) {
 		for (size_t i = 0; i < depth; ++i) { stream << "  "; }
 
@@ -210,7 +211,7 @@ static void SearchQuery_print(std::ostream &stream, const SearchQuery *t, uint16
 	}
 }
 
-void SearchQuery::describe(std::ostream &stream, size_t depth) const {
+void SearchQuery::describe(const Callback<void(StringView)> &stream, size_t depth) const {
 	SearchQuery_print(stream, this, depth);
 }
 
@@ -309,7 +310,7 @@ static bool SearchQuery_isFollow(Vector< sprt::pair<SearchData::Rank, Vector<siz
 
 			// find closest position of next word
 			auto nextIt =
-					std::lower_bound(arr.begin(), arr.end(), sprt::pair(targetPosition, it->first),
+					sprt::lower_bound(arr.begin(), arr.end(), sprt::pair(targetPosition, it->first),
 							[&](const auto &l, const sprt::pair<size_t, SearchData::Rank> &r) {
 				if (SearchQuery_toInt(l.first) != SearchQuery_toInt(r.first)) {
 					return SearchQuery_toInt(l.first) < SearchQuery_toInt(r.first);
@@ -464,7 +465,7 @@ static float SearchQuery_rankQuery(const SearchQuery &query, const SearchVectorT
 	});
 
 	if ((norm & Normalization::DocLengthLog) != Normalization::Default) {
-		accum /= 1.0f + std::log(float(docLength));
+		accum /= 1.0f + sprt::log(float(docLength));
 	}
 
 	if ((norm & Normalization::DocLength) != Normalization::Default) {
@@ -476,7 +477,7 @@ static float SearchQuery_rankQuery(const SearchQuery &query, const SearchVectorT
 	}
 
 	if ((norm & Normalization::UniqueWordsCountLog) != Normalization::Default) {
-		accum /= 1.0f + std::log(float(wordsCount));
+		accum /= 1.0f + sprt::log(float(wordsCount));
 	}
 
 	if ((norm & Normalization::Self) != Normalization::Default) {

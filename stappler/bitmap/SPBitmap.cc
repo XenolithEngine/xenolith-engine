@@ -22,19 +22,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+#include "SPMemory.h"
 #include "SPBitmap.h"
-#include "SPStringView.h"
 #include "SPFilepath.h"
 #include "SPString.h"
 #include "SPBuffer.h"
 #include "SPLog.h"
 #include "SPFilesystem.h"
 
+#include <sprt/cxx/mutex>
+
 namespace STAPPLER_VERSIONIZED stappler::bitmap {
 
-SPUNUSED static std::unique_lock<std::mutex> lockFormatList();
+SPUNUSED static sprt::unique_lock<sprt::mutex> lockFormatList();
 SPUNUSED static void addCustomFormat(BitmapFormat &&fmt);
-SPUNUSED static const std::vector<BitmapFormat *> &getCustomFormats();
+SPUNUSED static const mem_std::Vector<BitmapFormat *> &getCustomFormats();
 
 static Pair<FileFormat, StringView> _loadData(BitmapWriter &w, const uint8_t *data,
 		size_t dataLen) {
@@ -47,7 +49,7 @@ static Pair<FileFormat, StringView> _loadData(BitmapWriter &w, const uint8_t *da
 		}
 	}
 
-	memory::vector<BitmapFormat *> fns;
+	sprt::__pool_vector<BitmapFormat *> fns;
 
 	auto lock = lockFormatList();
 

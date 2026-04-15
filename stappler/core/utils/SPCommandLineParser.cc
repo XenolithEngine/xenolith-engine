@@ -203,7 +203,7 @@ bool CommandLineParserBase::parse(void *output, int argc, const char *argv[],
 					StringView tmp = value.sub(2);
 					auto init = tmp.readUntil<StringView::WhiteSpace, StringView::Chars<'='>>();
 
-					auto it = std::lower_bound(_stringPatterns->begin(), _stringPatterns->end(),
+					auto it = sprt::lower_bound(_stringPatterns->begin(), _stringPatterns->end(),
 							init);
 					if (it != _stringPatterns->end() && it->pattern == init) {
 						if (tmp.is('=')) {
@@ -220,7 +220,7 @@ bool CommandLineParserBase::parse(void *output, int argc, const char *argv[],
 				} else {
 					StringView init = value.sub(1);
 					while (!init.empty()) {
-						auto it = std::lower_bound(_charPatterns->begin(), _charPatterns->end(),
+						auto it = sprt::lower_bound(_charPatterns->begin(), _charPatterns->end(),
 								init.sub(0, 1));
 
 						if (it != _charPatterns->end() && init.starts_with(it->pattern)) {
@@ -274,11 +274,11 @@ void CommandLineParserBase::describe(const Callback<void(StringView)> &out) cons
 }
 
 void CommandLineParserBase::swap(CommandLineParserBase &other) {
-	std::swap(_alloc, other._alloc);
-	std::swap(_pool, other._pool);
-	std::swap(_stringPatterns, other._stringPatterns);
-	std::swap(_charPatterns, other._charPatterns);
-	std::swap(_options, other._options);
+	sprt::swap(_alloc, other._alloc);
+	sprt::swap(_pool, other._pool);
+	sprt::swap(_stringPatterns, other._stringPatterns);
+	sprt::swap(_charPatterns, other._charPatterns);
+	sprt::swap(_options, other._options);
 }
 
 template <char C>

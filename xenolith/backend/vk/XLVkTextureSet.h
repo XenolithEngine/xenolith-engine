@@ -74,7 +74,7 @@ protected:
 	using core::TextureSet::init;
 
 	void writeImages(Vector<VkWriteDescriptorSet> &writes, const core::MaterialLayout &set,
-			std::forward_list<Vector<VkDescriptorImageInfo>> &imagesList);
+			sprt::__malloc_forward_list<Vector<VkDescriptorImageInfo>> &imagesList);
 
 	bool _partiallyBound = false;
 	const TextureSetLayout *_layout = nullptr;

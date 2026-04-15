@@ -142,7 +142,7 @@ protected:
 
 	Map<const AttachmentData *, WaitInputData> _waitForInputs;
 	FrameHandle *_frame = nullptr;
-	std::forward_list<Rc<Ref>> _autorelease;
+	sprt::__malloc_forward_list<Rc<Ref>> _autorelease;
 };
 
 } // namespace stappler::xenolith::core

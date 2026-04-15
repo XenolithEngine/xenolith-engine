@@ -381,7 +381,7 @@ void VertexMaterialDynamicData::emplaceWritePlan(FrameContextHandle2d *input,
 				excludeIndexes += vIt.data->indexes.size();
 			}
 
-			maxShadowValue = std::max(maxShadowValue, cmd->depthValue);
+			maxShadowValue = sprt::max(maxShadowValue, cmd->depthValue);
 
 			bool drawAsInstances = false;
 			if (vIt.instances.size() > 1) {
@@ -466,9 +466,9 @@ void VertexMaterialDynamicData::applyNormalized(SpanView<InstanceVertexData> &ve
 				auto modelTransform = cmd->modelTransform * inst.transform;
 
 				Mat4 newMV;
-				newMV.m[12] = std::floor(modelTransform.m[12]);
-				newMV.m[13] = std::floor(modelTransform.m[13]);
-				newMV.m[14] = std::floor(modelTransform.m[14]);
+				newMV.m[12] = sprt::floor(modelTransform.m[12]);
+				newMV.m[13] = sprt::floor(modelTransform.m[13]);
+				newMV.m[14] = sprt::floor(modelTransform.m[14]);
 
 				const_cast<TransformData &>(inst).transform = cmd->viewTransform * newMV;
 			}
@@ -568,13 +568,13 @@ void VertexMaterialDynamicData::pushInitial(WriteTarget &writeTarget) {
 	if (writeTarget.transform) {
 		TransformData nullTransforml;
 		nullTransforml.offset = Vec4::ZERO;
-		memcpy(writeTarget.transform, &nullTransforml, sizeof(TransformData));
+		sprt::memcpy(writeTarget.transform, &nullTransforml, sizeof(TransformData));
 		++writeTarget.transtormOffset;
 	}
 
 	if (writeTarget.indexes) {
 		Vector<uint32_t> indexes{0, 2, 1, 0, 3, 2, 4, 6, 5, 4, 7, 6};
-		memcpy(writeTarget.indexes, indexes.data(), indexes.size() * sizeof(uint32_t));
+		sprt::memcpy(writeTarget.indexes, indexes.data(), indexes.size() * sizeof(uint32_t));
 		writeTarget.indexOffset += indexes.size();
 	}
 
@@ -627,7 +627,7 @@ void VertexMaterialDynamicData::pushInitial(WriteTarget &writeTarget) {
 		default: break;
 		}
 
-		memcpy(writeTarget.vertexes, vertexes.data(), vertexes.size() * sizeof(Vertex));
+		sprt::memcpy(writeTarget.vertexes, vertexes.data(), vertexes.size() * sizeof(Vertex));
 		writeTarget.vertexOffset += vertexes.size();
 	}
 }
@@ -637,7 +637,8 @@ void VertexMaterialDynamicData::pushPlanVertexes(WriteTarget &writeTarget,
 	auto pushVertexes = [&](core::MaterialId materialId, const MaterialWritePlan &plan,
 								uint32_t transform, const InstanceVertexData &vertexes) {
 		auto target = reinterpret_cast<Vertex *>(writeTarget.vertexes) + writeTarget.vertexOffset;
-		memcpy(target, vertexes.data->data.data(), vertexes.data->data.size() * sizeof(Vertex));
+		sprt::memcpy(target, vertexes.data->data.data(),
+				vertexes.data->data.size() * sizeof(Vertex));
 
 		size_t idx = 0;
 		if (plan.atlas) {
@@ -699,7 +700,7 @@ void VertexMaterialDynamicData::pushPlanVertexes(WriteTarget &writeTarget,
 								  const StateData *stateData, uint32_t preTransform) -> uint32_t {
 		auto ret = preTransform ? preTransform : writeTarget.transtormOffset;
 		auto instanceTarget = writeTarget.transform + ret;
-		memcpy(instanceTarget, &inst, sizeof(TransformData));
+		sprt::memcpy(instanceTarget, &inst, sizeof(TransformData));
 		instanceTarget->offset.z = zOffset;
 		instanceTarget->shadowValue = depthValue;
 		if (stateData) {
@@ -779,11 +780,11 @@ void VertexMaterialDynamicData::pushPlanVertexes(WriteTarget &writeTarget,
 				float d = norm.y * norm.y / (norm.x * norm.x + norm.y * norm.y);
 
 				Vec2 axisAngle;
-				if (std::abs(norm.y) > std::abs(norm.x)) {
-					axisAngle.x = std::copysign(norm.length(), norm.y);
+				if (sprt::abs(norm.y) > sprt::abs(norm.x)) {
+					axisAngle.x = sprt::copysign(norm.length(), norm.y);
 					axisAngle.y = d;
 				} else {
-					axisAngle.x = std::copysign(norm.length(), norm.x);
+					axisAngle.x = sprt::copysign(norm.length(), norm.x);
 					axisAngle.y = d;
 				}
 
@@ -845,7 +846,7 @@ void VertexMaterialDynamicData::drawWritePlan(VertexProcessor *processor, WriteT
 		if (drawOrder.empty()) {
 			drawOrder.emplace_back(&it);
 		} else {
-			auto lb = std::lower_bound(drawOrder.begin(), drawOrder.end(), &it,
+			auto lb = sprt::lower_bound(drawOrder.begin(), drawOrder.end(), &it,
 					[](const sprt::pair<const core::MaterialId, MaterialWritePlan> *l,
 							const sprt::pair<const core::MaterialId, MaterialWritePlan> *r) {
 				if (l->second.material->getPipeline() != l->second.material->getPipeline()) {
@@ -870,7 +871,7 @@ void VertexMaterialDynamicData::drawWritePlan(VertexProcessor *processor, WriteT
 	auto writeIndexes = [](uint32_t *indexTarget, const uint32_t *indexSource, uint32_t indexCount,
 								uint32_t vertexOffset) {
 		if (vertexOffset == 0) {
-			memcpy(indexTarget, indexSource, indexCount * sizeof(uint32_t));
+			sprt::memcpy(indexTarget, indexSource, indexCount * sizeof(uint32_t));
 		} else {
 			for (size_t i = 0; i < indexCount; ++i) {
 				*(indexTarget++) = *(indexSource++) + vertexOffset;
@@ -1220,7 +1221,7 @@ void VertexPassHandle::doProcessQueries(FrameQueue &, SpanView<Rc<core::QueryPoo
 				auto mksec = nticks
 						* _device->getInfo().properties.device10.properties.limits.timestampPeriod
 						/ 1000.0f;
-				_queueData->deviceTime = static_cast<uint64_t>(std::ceil(mksec));
+				_queueData->deviceTime = static_cast<uint64_t>(sprt::ceil(mksec));
 			}
 		}
 	}

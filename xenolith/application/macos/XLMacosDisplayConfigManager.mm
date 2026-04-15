@@ -223,7 +223,7 @@ void MacosDisplayConfigManager::updateDisplayConfig(Function<void(DisplayConfig 
 			static_cast<uint32_t>(CGDisplayModeGetPixelWidth(currentMode)),
 			static_cast<uint32_t>(CGDisplayModeGetPixelHeight(currentMode)),
 			static_cast<uint32_t>(CGDisplayModeGetRefreshRate(currentMode) * 1'000),
-			std::max(float(CGDisplayModeGetPixelWidth(currentMode))
+			sprt::max(float(CGDisplayModeGetPixelWidth(currentMode))
 							/ float(CGDisplayModeGetWidth(currentMode)),
 					float(CGDisplayModeGetPixelHeight(currentMode))
 							/ float(CGDisplayModeGetHeight(currentMode))),
@@ -262,7 +262,7 @@ void MacosDisplayConfigManager::updateDisplayConfig(Function<void(DisplayConfig 
 					static_cast<uint32_t>(pw),
 					static_cast<uint32_t>(ph),
 					static_cast<uint32_t>(CGDisplayModeGetRefreshRate(mode) * 1'000),
-					std::max(float(pw) / float(w), float(ph) / float(h)),
+					sprt::max(float(pw) / float(w), float(ph) / float(h)),
 				},
 				"",
 				toString(m.mode.width, "x", m.mode.height, "@", m.mode.rate),
@@ -291,7 +291,7 @@ void MacosDisplayConfigManager::updateDisplayConfig(Function<void(DisplayConfig 
 		CFRelease(modes);
 		CFRelease(currentMode);
 
-		std::reverse(mon.modes.begin(), mon.modes.end());
+		sprt::reverse(mon.modes.begin(), mon.modes.end());
 
 		if (CGDisplayPrimaryDisplay(displayId) == displayId) {
 			const NSRect frameRect = [screen visibleFrame];
@@ -300,7 +300,7 @@ void MacosDisplayConfigManager::updateDisplayConfig(Function<void(DisplayConfig 
 					static_cast<int32_t>(frameRect.origin.y),
 					static_cast<uint32_t>(frameRect.size.width),
 					static_cast<uint32_t>(frameRect.size.height)},
-				std::max(scaleX, scaleY), 0, screen == [NSScreen mainScreen],
+				sprt::max(scaleX, scaleY), 0, screen == [NSScreen mainScreen],
 				Vector<MonitorId> { mon.id }});
 		}
 	}

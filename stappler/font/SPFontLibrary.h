@@ -102,14 +102,14 @@ protected:
 	FT_Face newFontFace(BytesView);
 	void doneFontFace(FT_Face);
 
-	mem_std::Mutex _mutex;
-	std::shared_mutex _sharedMutex;
+	sprt::mutex _mutex;
+	sprt::shared_mutex _sharedMutex;
 	Map<StringView, Rc<FontFaceObject>> _faces;
 	Map<StringView, Rc<FontFaceData>> _data;
 	Map<FontFaceObject *, Map<thread::Thread::Id, Rc<FontFaceObjectHandle>>> _threads;
 	FT_Library _library = nullptr;
 
-	std::bitset<1'024 * 16> _fontIds;
+	sprt::bitset<1'024 * 16> _fontIds;
 };
 
 } // namespace stappler::font

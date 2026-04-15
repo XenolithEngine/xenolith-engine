@@ -30,6 +30,8 @@
 #include "XLCoreObject.h"
 #include "XLCoreImageStorage.h" // IWYU pragma: keep
 
+#include <sprt/cxx/optional>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
 
 class Surface;
@@ -95,7 +97,7 @@ protected:
 	VkDeviceSize _mappedOffset = 0;
 	VkDeviceSize _mappedSize = 0;
 
-	Mutex _mappingProtectionMutex;
+	sprt::mutex _mappingProtectionMutex;
 };
 
 class SP_PUBLIC Image : public core::ImageObject {
@@ -125,7 +127,7 @@ protected:
 
 	Rc<DeviceMemory> _memory;
 	VkImage _image = VK_NULL_HANDLE;
-	std::optional<ImageMemoryBarrier> _barrier;
+	sprt::optional<ImageMemoryBarrier> _barrier;
 };
 
 class SP_PUBLIC Buffer : public core::BufferObject {
@@ -170,9 +172,9 @@ protected:
 	Rc<DeviceMemory> _memory;
 	VkDeviceSize _memoryOffset = 0;
 	VkBuffer _buffer = VK_NULL_HANDLE;
-	std::optional<BufferMemoryBarrier> _barrier;
+	sprt::optional<BufferMemoryBarrier> _barrier;
 
-	std::atomic<uint64_t> _targetOffset = 0;
+	sprt::atomic<uint64_t> _targetOffset = 0;
 };
 
 class SP_PUBLIC ImageView : public core::ImageView {

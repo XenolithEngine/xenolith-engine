@@ -3,7 +3,9 @@
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_buffer_reference_uvec2 : require
 
-#include "SPGlslInit.h"
+// clang-format off
+
+#include "sprt_glsl.h"
 #include "XL2dGlslParticle.h"
 #include "XL2dGlslVertexData.h"
 

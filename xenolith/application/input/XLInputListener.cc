@@ -32,7 +32,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-static std::atomic<uint64_t> s_inputListenerId = 1;
+static sprt::atomic<uint64_t> s_inputListenerId = 1;
 
 InputListener::EventMask EventMaskTouch = makeEventMask({
 	InputEventName::Begin,
@@ -49,7 +49,7 @@ InputListener::EventMask EventMaskKeyboard = makeEventMask({
 	InputEventName::KeyCanceled,
 });
 
-InputButtonMask makeButtonMask(std::initializer_list<InputMouseButton> &&il) {
+InputButtonMask makeButtonMask(sprt::initializer_list<InputMouseButton> &&il) {
 	InputButtonMask ret;
 	for (auto &it : il) { ret.set(toInt(it)); }
 	return ret;
@@ -61,7 +61,7 @@ InputButtonMask makeButtonMask(InputMouseButton val) {
 	return ret;
 }
 
-InputEventMask makeEventMask(std::initializer_list<InputEventName> &&il) {
+InputEventMask makeEventMask(sprt::initializer_list<InputEventName> &&il) {
 	InputEventMask ret;
 	for (auto &it : il) { ret.set(toInt(it)); }
 	return ret;
@@ -73,7 +73,7 @@ InputEventMask makeEventMask(InputEventName val) {
 	return ret;
 }
 
-InputKeyMask makeKeyMask(std::initializer_list<InputKeyCode> &&il) {
+InputKeyMask makeKeyMask(sprt::initializer_list<InputKeyCode> &&il) {
 	InputKeyMask ret;
 	for (auto &it : il) { ret.set(toInt(it)); }
 	return ret;
@@ -241,8 +241,8 @@ InputEventState InputListener::handleEvent(const InputEvent &event) {
 	if (it != _callbacks.end()) {
 		switch (event.data.event) {
 		case core::InputEventName::WindowState:
-			if (auto f = std::get_if<Function<bool(WindowState, WindowState)>>(&it->second)) {
-				ret = std::max((*f)(event.data.window.state, event.data.window.changes)
+			if (auto f = sprt::get_if<Function<bool(WindowState, WindowState)>>(&it->second)) {
+				ret = sprt::max((*f)(event.data.window.state, event.data.window.changes)
 								? InputEventState::Processed
 								: InputEventState::Declined,
 						ret);
@@ -279,7 +279,7 @@ InputEventState InputListener::handleEvent(const InputEvent &event) {
 		if (result == InputEventState::Processed && shouldSwallowEvent(event)) {
 			result = InputEventState::Captured;
 		}
-		ret = std::max(result, ret);
+		ret = sprt::max(result, ret);
 	}
 	return ret;
 }
@@ -389,7 +389,8 @@ bool InputListener::shouldProcessEvent(const InputEvent &event) const {
 	if (!_eventFilter) {
 		return _shouldProcessEvent(event);
 	} else {
-		return _eventFilter(event, std::bind(&InputListener::_shouldProcessEvent, this, event));
+		return _eventFilter(event,
+				[this](const InputEvent &ev) { return _shouldProcessEvent(ev); });
 	}
 }
 

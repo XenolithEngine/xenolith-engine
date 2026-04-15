@@ -339,8 +339,8 @@ QueueData::QueueData(QueueRef *ref, QueueFlags flags)
 , _info(QueueHandleClassInfo{ref, this, ref->getPool()})
 , _flags(flags)
 , _threadId(thread::Thread::getCurrentThreadId()) {
-	_pendingHandles.set_memory_persistent(true);
-	_suspendableHandles.set_memory_persistent(true);
+	_pendingHandles.memory_persistent(true);
+	_suspendableHandles.memory_persistent(true);
 }
 
 Status PlatformQueueData::suspendHandles(RunContext *ctx) {

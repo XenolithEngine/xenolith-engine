@@ -76,7 +76,7 @@ SearchIndex::Result SearchIndex::performSearch(const StringView &v, size_t minMa
 	uint32_t wordIndex = 0;
 
 	auto tokenFn = [&, this](const StringView &str) {
-		auto lb = std::lower_bound(_tokens.begin(), _tokens.end(), str,
+		auto lb = sprt::lower_bound(_tokens.begin(), _tokens.end(), str,
 				[&, this](const Token &l, const StringView &r) {
 			return sprt::detail::compare_c(makeStringView(l.index, l.slice), r) < 0;
 		});
@@ -88,7 +88,7 @@ SearchIndex::Result SearchIndex::performSearch(const StringView &v, size_t minMa
 			while (lb != _tokens.end() && value.size() >= str.size()
 					&& sprt::__constexpr_strcompare(value.data(), str.data(), str.size()) == 0) {
 				if (!filter || filter(node)) {
-					auto ret_it = std::lower_bound(res.nodes.begin(), res.nodes.end(), node,
+					auto ret_it = sprt::lower_bound(res.nodes.begin(), res.nodes.end(), node,
 							[&](const ResultNode &l, const Node *r) { return l.node < r; });
 					if (ret_it == res.nodes.end() || ret_it->node != node) {
 						res.nodes.emplace(ret_it,
@@ -117,10 +117,16 @@ SearchIndex::Result SearchIndex::performSearch(const StringView &v, size_t minMa
 	}
 
 	if (cb) {
-		for (auto &it : res.nodes) { it.score = cb(*this, it); }
+		Vector<ResultNode> outNodes;
 
-		std::sort(res.nodes.begin(), res.nodes.end(),
-				[](const ResultNode &l, const ResultNode &r) { return l.score > r.score; });
+		for (auto &it : res.nodes) {
+			it.score = cb(*this, it);
+
+			emplace_ordered(outNodes, sprt::move(it),
+					[](const auto &l, const auto &r) { return l.score > r.score; });
+		}
+
+		res.nodes = sprt::move(outNodes);
 	}
 
 	return res;
@@ -158,7 +164,7 @@ StringView SearchIndex::makeStringView(uint32_t idx, const Slice &sl) const {
 
 void SearchIndex::onToken(Vector<Token> &vec, const StringView &rep, uint32_t idx,
 		const Slice &sl) {
-	auto insert_it = std::lower_bound(vec.begin(), vec.end(), rep,
+	auto insert_it = sprt::lower_bound(vec.begin(), vec.end(), rep,
 			[&, this](const Token &l, const StringView &r) {
 		return sprt::detail::compare_c(makeStringView(l.index, l.slice), r) < 0;
 	});
@@ -182,7 +188,7 @@ float SearchIndex::Heuristic::operator()(const SearchIndex &index,
 	for (const SearchIndex::ResultToken &token_it : node.matches) {
 		if (excludeEqualMatches) {
 			auto t = index.resolveToken(*node.node, token_it);
-			if (std::find(matches.begin(), matches.end(), t) == matches.end()) {
+			if (sprt::find(matches.begin(), matches.end(), t) == matches.end()) {
 				matches.push_back(t);
 			} else {
 				continue;

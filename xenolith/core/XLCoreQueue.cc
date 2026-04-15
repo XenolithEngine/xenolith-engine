@@ -449,7 +449,7 @@ static void Queue_addRequiredPass(QueuePassData &pass, const QueuePassData &requ
 		return;
 	}
 
-	auto lb = std::lower_bound(pass.required.begin(), pass.required.end(), &required,
+	auto lb = sprt::lower_bound(pass.required.begin(), pass.required.end(), &required,
 			[&](const QueuePassRequirements &l, const QueuePassData *r) { return l.data < r; });
 	if (lb == pass.required.end()) {
 		pass.required.emplace_back(QueuePassRequirements(required, requiredState, lockedState));
@@ -457,9 +457,9 @@ static void Queue_addRequiredPass(QueuePassData &pass, const QueuePassData &requ
 		pass.required.emplace(lb, QueuePassRequirements(required, requiredState, lockedState));
 	} else {
 		lb->requiredState =
-				FrameRenderPassState(std::max(toInt(lb->requiredState), toInt(requiredState)));
+				FrameRenderPassState(sprt::max(toInt(lb->requiredState), toInt(requiredState)));
 		lb->lockedState =
-				FrameRenderPassState(std::min(toInt(lb->lockedState), toInt(lockedState)));
+				FrameRenderPassState(sprt::min(toInt(lb->lockedState), toInt(lockedState)));
 	}
 }
 
@@ -647,7 +647,7 @@ static void Queue_updateLayout(AttachmentSubpassData *attachemnt, Device &dev) {
 }
 
 static void Queue_sortRefs(AttachmentPassData *attachemnt, Device &dev) {
-	std::sort(attachemnt->subpasses.begin(), attachemnt->subpasses.end(),
+	sprt::sort(attachemnt->subpasses.begin(), attachemnt->subpasses.end(),
 			[&](const AttachmentSubpassData *l, const AttachmentSubpassData *r) {
 		return l->subpass->index < r->subpass->index;
 	});
@@ -655,8 +655,8 @@ static void Queue_sortRefs(AttachmentPassData *attachemnt, Device &dev) {
 	for (auto &it : attachemnt->subpasses) {
 		Queue_updateLayout(it, dev);
 
-		attachemnt->dependency.requiredRenderPassState =
-				FrameRenderPassState(std::max(toInt(attachemnt->dependency.requiredRenderPassState),
+		attachemnt->dependency.requiredRenderPassState = FrameRenderPassState(
+				sprt::max(toInt(attachemnt->dependency.requiredRenderPassState),
 						toInt(it->dependency.requiredRenderPassState)));
 	}
 
@@ -687,7 +687,7 @@ static void Queue_sortDescriptors(AttachmentData *attachemnt, Device &dev) {
 		}
 	}
 
-	std::sort(attachemnt->passes.begin(), attachemnt->passes.end(),
+	sprt::sort(attachemnt->passes.begin(), attachemnt->passes.end(),
 			[&](const AttachmentPassData *l, const AttachmentPassData *r) {
 		return l->pass->ordering < r->pass->ordering;
 	});
@@ -720,7 +720,7 @@ static void Queue_validateShaderPipelineLayout(StringView pipelineName,
 				d->stages |= info->stage;
 				if (!hasFlag(d->requestFlags, DescriptorFlags::PredefinedCount)) {
 					if (binding.count < maxOf<uint32_t>()) {
-						d->count = std::max(binding.count, d->count);
+						d->count = sprt::max(binding.count, d->count);
 					}
 				} else if (binding.count < maxOf<uint32_t>() && binding.count > d->count) {
 					log::source().warn("renderqueue::Queue", "[", layout->key, ":", pipelineName,
@@ -833,13 +833,11 @@ const HashTable<Rc<Resource>> &Queue::getLinkedResources() const { return _data-
 
 Rc<Resource> Queue::getInternalResource() const { return _data->resource; }
 
-const memory::vector<AttachmentData *> &Queue::getInputAttachments() const { return _data->input; }
+SpanView<AttachmentData *> Queue::getInputAttachments() const { return _data->input; }
 
-const memory::vector<AttachmentData *> &Queue::getOutputAttachments() const {
-	return _data->output;
-}
+SpanView<AttachmentData *> Queue::getOutputAttachments() const { return _data->output; }
 
-const Attachment *Queue::getInputAttachment(std::type_index name) const {
+const Attachment *Queue::getInputAttachment(sprt::type_index name) const {
 	auto it = _data->typedInput.find(name);
 	if (it != _data->typedInput.end()) {
 		return it->second;
@@ -847,7 +845,7 @@ const Attachment *Queue::getInputAttachment(std::type_index name) const {
 	return nullptr;
 }
 
-const Attachment *Queue::getOutputAttachment(std::type_index name) const {
+const Attachment *Queue::getOutputAttachment(sprt::type_index name) const {
 	auto it = _data->typedOutput.find(name);
 	if (it != _data->typedOutput.end()) {
 		return it->second;
@@ -947,12 +945,12 @@ bool Queue::prepare(Device &dev) {
 
 	for (auto &it : _data->input) {
 		auto &r = *it->attachment.get();
-		_data->typedInput.emplace(std::type_index(typeid(r)), it->attachment.get());
+		_data->typedInput.emplace(sprt::type_index(typeid(r)), it->attachment.get());
 	}
 
 	for (auto &it : _data->output) {
 		auto &r = *it->attachment.get();
-		_data->typedOutput.emplace(std::type_index(typeid(r)), it->attachment.get());
+		_data->typedOutput.emplace(sprt::type_index(typeid(r)), it->attachment.get());
 	}
 
 	// fill attachment descriptors
@@ -1387,12 +1385,12 @@ const ComputePipelineData *SubpassBuilder::addComputePipeline(StringView key,
 }
 
 void SubpassBuilder::setPrepareCallback(
-		memory::function<void(FrameQueue &, const SubpassData &)> &&cb) {
+		mem_pool::Function<void(FrameQueue &, const SubpassData &)> &&cb) {
 	_data->prepareCallback = move(cb);
 }
 
 void SubpassBuilder::setCommandsCallback(
-		memory::function<void(FrameQueue &, const SubpassData &, CommandBuffer &)> &&cb) {
+		mem_pool::Function<void(FrameQueue &, const SubpassData &, CommandBuffer &)> &&cb) {
 	_data->commandsCallback = move(cb);
 }
 
@@ -1568,17 +1566,17 @@ const AttachmentPassData *QueuePassBuilder::addAttachment(const AttachmentData *
 }
 
 void QueuePassBuilder::setAvailabilityChecker(
-		memory::function<bool(const FrameQueue &, const QueuePassData &)> &&cb) {
+		mem_pool::Function<bool(const FrameQueue &, const QueuePassData &)> &&cb) {
 	_data->checkAvailable = move(cb);
 }
 
 void QueuePassBuilder::addSubmittedCallback(
-		memory::function<void(FrameQueue &, const QueuePassData &, bool success)> &&cb) {
+		mem_pool::Function<void(FrameQueue &, const QueuePassData &, bool success)> &&cb) {
 	_data->submittedCallbacks.emplace_back(move(cb));
 }
 
 void QueuePassBuilder::addCompleteCallback(
-		memory::function<void(FrameQueue &, const QueuePassData &, bool success)> &&cb) {
+		mem_pool::Function<void(FrameQueue &, const QueuePassData &, bool success)> &&cb) {
 	_data->submittedCallbacks.emplace_back(move(cb));
 }
 
@@ -1635,7 +1633,7 @@ Queue::Builder::~Builder() {
 	}
 }
 
-static std::atomic<uint64_t> s_AttachmentCurrentIndex = 1;
+static sprt::atomic<uint64_t> s_AttachmentCurrentIndex = 1;
 
 void Queue::Builder::setDefaultSyncPassState(FrameRenderPassState val) {
 	_data->defaultSyncPassState = val;
@@ -1743,7 +1741,7 @@ const ProgramData *Queue::Builder::addProgramByRef(StringView key, SpanView<uint
 }
 
 const ProgramData *Queue::Builder::addProgram(StringView key,
-		const memory::function<void(Device &, const ProgramData::DataCallback &)> &cb,
+		const mem_pool::Function<void(Device &, const ProgramData::DataCallback &)> &cb,
 		const ProgramInfo *info) {
 	if (!_data) {
 		log::source().error("Resource", "Fail to add shader: ", key, ", not initialized");
@@ -1848,7 +1846,7 @@ const BufferData *Queue::Builder::addBuffer(StringView key, BufferInfo &&info, B
 }
 
 const BufferData *Queue::Builder::addBuffer(StringView key, BufferInfo &&info,
-		const memory::function<void(uint8_t *, uint64_t, const BufferData::DataCallback &)> &cb,
+		const mem_pool::Function<void(uint8_t *, uint64_t, const BufferData::DataCallback &)> &cb,
 		Rc<DataAtlas> &&atlas, AccessType access) {
 	return _internalResource.addBuffer(key, move(info), cb, move(atlas), access);
 }
@@ -1874,7 +1872,7 @@ const ImageData *Queue::Builder::addImage(StringView key, ImageInfo &&info, cons
 	return _internalResource.addImage(key, move(info), data, layout, access);
 }
 const ImageData *Queue::Builder::addImage(StringView key, ImageInfo &&info,
-		const memory::function<void(uint8_t *, uint64_t, const ImageData::DataCallback &)> &cb,
+		const mem_pool::Function<void(uint8_t *, uint64_t, const ImageData::DataCallback &)> &cb,
 		AttachmentLayout layout, AccessType access) {
 	return _internalResource.addImage(key, move(info), cb, layout, access);
 }

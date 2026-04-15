@@ -105,7 +105,7 @@ bool ActionInterval::init(float duration) {
 	// prevent division by 0
 	// This comparison could be in step:, but it might decrease the performance
 	// by 3% in heavy based action games.
-	_duration = std::max(_duration, sprt::Epsilon<float>);
+	_duration = sprt::max(_duration, sprt::Epsilon<float>);
 	if (_duration == 0) {
 		_duration = sprt::Epsilon<float>;
 	}
@@ -140,7 +140,7 @@ void ActionInterval::startWithTarget(Node *target) {
 }
 
 void ActionInterval::setDuration(float duration) {
-	_duration = std::max(_duration, sprt::Epsilon<float>);
+	_duration = sprt::max(_duration, sprt::Epsilon<float>);
 }
 
 bool Speed::init(Rc<ActionInterval> &&action, float speed) {
@@ -178,13 +178,12 @@ void Sequence::stop(void) {
 		auto end = _actions.end();
 
 		front->action->stop();
-		finalizeInstants =
-				(_prevTime - std::numeric_limits<float>::epsilon()) >= front->maxThreshold;
+		finalizeInstants = (_prevTime - sprt::Epsilon<float>) >= front->maxThreshold;
 		++front;
 		++_currentIdx;
 
 		if (finalizeInstants) {
-			while (front != end && front->threshold <= std::numeric_limits<float>::epsilon()) {
+			while (front != end && front->threshold <= sprt::Epsilon<float>) {
 				front->action->startWithTarget(_target);
 				front->action->update(1.0);
 				front->action->stop();
@@ -218,7 +217,7 @@ void Sequence::update(float t) {
 
 	while (front != end && dt != 0) {
 		// process instants
-		if (front->threshold <= std::numeric_limits<float>::epsilon()) {
+		if (front->threshold <= sprt::Epsilon<float>) {
 			do {
 				front->action->startWithTarget(_target);
 				front->action->update(1.0);
@@ -241,7 +240,7 @@ void Sequence::update(float t) {
 		auto timeFromActionStart = t - front->minThreshold;
 		auto actionRelativeTime = timeFromActionStart / front->threshold;
 
-		if (actionRelativeTime >= 1.0f - std::numeric_limits<float>::epsilon() || t == 1.0f) {
+		if (actionRelativeTime >= 1.0f - sprt::Epsilon<float> || t == 1.0f) {
 			front->action->update(1.0f);
 			dt = t - front->maxThreshold;
 			front->action->stop();
@@ -253,7 +252,7 @@ void Sequence::update(float t) {
 			if (front == end) {
 				_prevTime = t;
 				return;
-			} else if (front->threshold > std::numeric_limits<float>::epsilon()) {
+			} else if (front->threshold > sprt::Epsilon<float>) {
 				front->action->startWithTarget(_target);
 				front->action->update(0.0);
 			}
@@ -265,7 +264,7 @@ void Sequence::update(float t) {
 	}
 
 	auto tmp = front;
-	while (front != end && front->threshold <= std::numeric_limits<float>::epsilon()) {
+	while (front != end && front->threshold <= sprt::Epsilon<float>) {
 		front->action->startWithTarget(_target);
 		front->action->update(1.0);
 		front->action->stop();
@@ -355,11 +354,11 @@ void Spawn::update(float t) {
 void Spawn::startWithTarget(Node *target) {
 	ActionInterval::startWithTarget(target);
 	for (auto &it : _actions) {
-		it.threshold = it.action->getDuration() / _duration - std::numeric_limits<float>::epsilon();
+		it.threshold = it.action->getDuration() / _duration - sprt::Epsilon<float>;
 		it.action->startWithTarget(target);
 	}
 
-	_prevTime = -std::numeric_limits<float>::epsilon() * 2;
+	_prevTime = -sprt::Epsilon<float> * 2;
 }
 
 bool Spawn::reserve(size_t s) {
@@ -378,7 +377,7 @@ bool Spawn::addAction(float time) {
 }
 
 bool Spawn::addAction(Action *a) {
-	_duration = std::max(_duration, a->getDuration());
+	_duration = sprt::max(_duration, a->getDuration());
 	_actions.emplace_back(ActionData{a});
 	return true;
 }
@@ -565,7 +564,7 @@ bool MoveTo::init(float duration, const Vec3 &position) {
 void MoveTo::startWithTarget(Node *target) {
 	ActionInterval::startWithTarget(target);
 	_startPosition = target->getPosition();
-	if (isnan(_endPosition.z)) {
+	if (sprt::isnan(_endPosition.z)) {
 		_endPosition.z = _startPosition.z;
 	}
 }

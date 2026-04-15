@@ -304,7 +304,7 @@ static ECDSA_SIG *hook_ossl_gost_ec_sign(const unsigned char *dgst, int dlen, EC
 		do {
 			auto hexPrivKey = BN_bn2hex(priv_key);
 			auto privBytes = base16::decode<memory::StandartInterface>(StringView(hexPrivKey));
-			std::reverse(privBytes.begin(), privBytes.end());
+			sprt::reverse(privBytes.begin(), privBytes.end());
 			OPENSSL_free(hexPrivKey);
 
 			auto randSeed = Gost3411_512::hmac(privBytes, BytesView(dgst, dlen));
@@ -1443,7 +1443,7 @@ static BackendCtx s_openSSLCtx = {
 			uint8_t *buf = out;
 			buf = writeRSAKey(buf, modulus, exp);
 
-			std::stringstream stream;
+			sprt::__malloc_stringstream stream;
 			stream << "-----BEGIN RSA PUBLIC KEY-----\n";
 			sprt::base64::encode(out, buf - out, [&] (const char *str, size_t len) {
 				while (len > 80) {
@@ -1474,7 +1474,7 @@ static BackendCtx s_openSSLCtx = {
 				return value;
 			};
 
-			std::string tmp = stream.str();
+			auto tmp = stream.str();
 
 			bioData = BIO_new_mem_buf(tmp.data(), int(tmp.size()));
 			ctx.keyCtx = PEM_read_bio_PUBKEY(bioData, NULL, NULL, NULL);

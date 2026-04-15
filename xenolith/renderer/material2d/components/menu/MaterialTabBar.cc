@@ -55,7 +55,7 @@ bool TabBarButton::init(MenuSourceButton *btn, const TabButtonCallback &cb,
 	}
 
 	setShapeStyle(ShapeStyle::None);
-	setTapCallback(std::bind(&TabBarButton::onTabButton, this));
+	setTapCallback(sprt::bind(&TabBarButton::onTabButton, this));
 
 	initialize(cb, style, swallow, wrapped);
 	setMenuSourceButton(btn);
@@ -175,7 +175,7 @@ bool TabBar::init(MenuSource *source, ButtonStyle button, BarStyle bar, Alignmen
 	_scroll->setController(Rc<ScrollController>::create());
 	_scroll->setOverscrollVisible(false);
 	_scroll->setIndicatorVisible(false);
-	_scroll->setScrollCallback(std::bind(&TabBar::onScrollPosition, this));
+	_scroll->setScrollCallback(sprt::bind(&TabBar::onScrollPosition, this));
 
 	_layer = _scroll->getRoot()->addChild(Rc<Layer>::create(), ZOrder(1));
 	_layer->setAnchorPoint(Vec2(0.0f, 0.0f));
@@ -280,7 +280,7 @@ void TabBar::handleContentSizeDirty() {
 	float currentWidth = 0.0f;
 	for (auto &it : itemWidth) {
 		if (it.primary) {
-			c->addItem(std::bind(&TabBar::onItem, this, it.button, it.wrapped), it.width * scale);
+			c->addItem(sprt::bind(&TabBar::onItem, this, it.button, it.wrapped), it.width * scale);
 			_positions.emplace_back(currentWidth, it.width * scale);
 			currentWidth += it.width * scale;
 		} else {
@@ -290,7 +290,7 @@ void TabBar::handleContentSizeDirty() {
 
 	if (extraSource) {
 		_extra = extraSource;
-		c->addItem(std::bind(&TabBar::onItem, this, nullptr, false), extraWidth * scale);
+		c->addItem(sprt::bind(&TabBar::onItem, this, nullptr, false), extraWidth * scale);
 	}
 
 	_scrollWidth = width;
@@ -418,7 +418,7 @@ float TabBar::getItemSize(const String &name, bool extended, bool selected) cons
 		if (extended) {
 			width += 16.0f;
 		}
-		return std::max(width, TAB_MIN_WIDTH);
+		return sprt::max(width, TAB_MIN_WIDTH);
 	} else {
 		auto desc = TypescaleLabel::getTypescaleRoleStyle(TypescaleRole::BodyLarge, _inputDensity);
 		desc.font.fontSize = font::FontSize(12);
@@ -429,7 +429,7 @@ float TabBar::getItemSize(const String &name, bool extended, bool selected) cons
 			desc.font.fontSize = font::FontSize(8);
 			width = ceilf(Label::getStringWidth(fc, desc, name, true));
 		}
-		return std::max(width + 16.0f, TAB_MIN_WIDTH);
+		return sprt::max(width + 16.0f, TAB_MIN_WIDTH);
 	}
 }
 

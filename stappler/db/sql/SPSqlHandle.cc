@@ -159,7 +159,7 @@ db::User *SqlHandle::authorizeUser(const db::Auth &auth, const StringView &iname
 
 		auto userId = ud.getInteger("__oid");
 		if (auth.authorizeWithPassword(password, passwd, count)) {
-			ret = new (std::nothrow) db::User(sp::move(ud), auth.getScheme());
+			ret = new (sprt::nothrow) db::User(sp::move(ud), auth.getScheme());
 			success = true;
 		}
 
@@ -384,7 +384,7 @@ static void Handle_mergeViews(Value &objs, Value &vals) {
 		}
 
 		if (auto oid = it.getInteger("__oid")) {
-			auto v_it = std::lower_bound(vals.asArray().begin(), vals.asArray().end(), oid,
+			auto v_it = sprt::lower_bound(vals.asArray().begin(), vals.asArray().end(), oid,
 					[&](const Value &l, int64_t r) -> bool {
 				return (l.isInteger() ? l.getInteger() : l.getInteger("__oid")) < r;
 			});

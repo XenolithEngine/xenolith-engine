@@ -45,7 +45,7 @@ public:
 		Exclusive = 1 << 2,
 	};
 
-	using EventMask = std::bitset<toInt(InputEventName::Max)>;
+	using EventMask = sprt::bitset<toInt(InputEventName::Max)>;
 
 	static uint64_t Id;
 

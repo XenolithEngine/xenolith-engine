@@ -63,7 +63,7 @@ struct ContextFn {
 
 template <typename Callback>
 bool ContextFn::extractValue(Var &var, const Callback &cb) {
-	static_assert(std::is_invocable_v<Callback, Value &&>, "Invalid callback type");
+	static_assert(sprt::is_invocable_v<Callback, Value &&>, "Invalid callback type");
 	switch (var.type) {
 	case Var::Temporary:
 		switch (var.temporaryStorage.type) {
@@ -97,7 +97,7 @@ bool ContextFn::extractValue(Var &var, const Callback &cb) {
 
 template <typename Callback>
 bool ContextFn::extractName(Var &var, const Callback &cb) {
-	static_assert(std::is_invocable_v<Callback, StringView>, "Invalid callback type");
+	static_assert(sprt::is_invocable_v<Callback, StringView>, "Invalid callback type");
 	switch (var.type) {
 	case Var::Temporary:
 	case Var::Variable:
@@ -118,7 +118,7 @@ bool ContextFn::extractName(Var &var, const Callback &cb) {
 Var ContextFn::execOperator(const Expression &expr, Expression::Op op) {
 	Context::VarList list;
 	if (prepareArgsList(list, expr, Expression::Operator) != maxOf<size_t>()) {
-		auto val = new (std::nothrow) Value(Value::Type::DICTIONARY);
+		auto val = new (sprt::nothrow) Value(Value::Type::DICTIONARY);
 		auto &dict = val->asDict();
 		auto d = list.data();
 		auto s = list.size();
@@ -146,7 +146,7 @@ Var ContextFn::execOperator(const Expression &expr, Expression::Op op) {
 Var ContextFn::execComposition(const Expression &expr, Expression::Op op) {
 	Context::VarList list;
 	if (prepareArgsList(list, expr, Expression::Composition) != maxOf<size_t>()) {
-		auto val = new (std::nothrow) Value(Value::Type::ARRAY);
+		auto val = new (sprt::nothrow) Value(Value::Type::ARRAY);
 		auto &arr = val->asArray();
 		auto d = list.data();
 		auto s = list.size();
@@ -353,12 +353,11 @@ Var ContextFn::execExpr(const Expression &expr, Expression::Op op, bool assignab
 						return Var(nullptr);
 					}
 				} else {
-					onError(string::toString<memory::PoolInterface>(
-							"Invalid argument for <dot> operator"));
+					onError(mem_pool::toString("Invalid argument for <dot> operator"));
 					return Var();
 				}
 			} else {
-				onError(string::toString<memory::PoolInterface>("Fail to read <dot>: <undefined>.",
+				onError(mem_pool::toString("Fail to read <dot>: <undefined>.",
 						expr.right->value.getString()));
 				return Var();
 			}
@@ -377,7 +376,7 @@ Var ContextFn::execExpr(const Expression &expr, Expression::Op op, bool assignab
 			if (var) {
 				return performUnaryOp(var, expr.op);
 			} else {
-				onError(string::toString<memory::PoolInterface>("Invalid call <neg> <undefined>"));
+				onError(mem_pool::toString("Invalid call <neg> <undefined>"));
 				return Var(Value(true));
 			}
 		} else if (expr.op != Expression::Var) {
@@ -458,7 +457,7 @@ Var ContextFn::performVarExpr(const Expression &expr, Expression::Op op) {
 			auto p_it = currentScope->namedVars.emplace(n, VarStorage());
 			return Var(&p_it.first->second);
 		} else {
-			onError(string::toString<memory::PoolInterface>("Variable name conflict for ", n));
+			onError(mem_pool::toString("Variable name conflict for ", n));
 		}
 	}
 	return Var();
@@ -483,8 +482,7 @@ Var ContextFn::performUnaryOp(Var &v, Expression::Op op) {
 				*mut = Value(i - 1);
 				return Var(Value(i));
 			} else {
-				onError(string::toString<memory::PoolInterface>(
-						"Fail to write into constant value"));
+				onError(mem_pool::toString("Fail to write into constant value"));
 				return Var();
 			}
 			break;
@@ -494,8 +492,7 @@ Var ContextFn::performUnaryOp(Var &v, Expression::Op op) {
 				*mut = Value(val.asInteger() + 1);
 				return v;
 			} else {
-				onError(string::toString<memory::PoolInterface>(
-						"Fail to write into constant value"));
+				onError(mem_pool::toString("Fail to write into constant value"));
 				return Var();
 			}
 			break;
@@ -505,8 +502,7 @@ Var ContextFn::performUnaryOp(Var &v, Expression::Op op) {
 				*mut = Value(val.asInteger() - 1);
 				return v;
 			} else {
-				onError(string::toString<memory::PoolInterface>(
-						"Fail to write into constant value"));
+				onError(mem_pool::toString("Fail to write into constant value"));
 				return Var();
 			}
 			break;
@@ -522,8 +518,7 @@ Var ContextFn::performUnaryOp(Var &v, Expression::Op op) {
 		case Expression::BitNot: return Var(Value(~val.asInteger())); break;
 
 		default:
-			onError(string::toString<memory::PoolInterface>("Invalid unary operator: ",
-					int(toInt(op))));
+			onError(mem_pool::toString("Invalid unary operator: ", int(toInt(op))));
 			return Var();
 			break;
 		}
@@ -540,7 +535,7 @@ Var ContextFn::performUnaryOp(Var &v, Expression::Op op) {
 
 template <typename Callback>
 static bool Variable_assign(Var &target, const Var &var, Callback &&cb) {
-	static_assert(std::is_invocable_v<Callback, Value &, const Value &>, "Invalid callback type");
+	static_assert(sprt::is_invocable_v<Callback, Value &, const Value &>, "Invalid callback type");
 	if (auto mut = target.getMutable()) {
 		if (cb(*mut, var.readValue())) {
 			return true;
@@ -704,11 +699,11 @@ Var ContextFn::performBinaryOp(Var &l, Var &r, Expression::Op op) {
 			} else if (lV.isDictionary() && rV.isDictionary()) {
 				auto d = lV.asDict();
 				for (auto &it : rV.asDict()) { d.emplace(it.first, it.second); }
-				return Var(false, new (std::nothrow) Value(sp::move(d)));
+				return Var(false, new (sprt::nothrow) Value(sp::move(d)));
 			} else if (lV.isArray() && rV.isArray()) {
 				auto d = lV.asArray();
 				for (auto &it : rV.asArray()) { d.emplace_back(it); }
-				return Var(false, new (std::nothrow) Value(sp::move(d)));
+				return Var(false, new (sprt::nothrow) Value(sp::move(d)));
 			} else {
 				return Var(Value(lV.asDouble() + rV.asDouble()));
 			}
@@ -786,13 +781,12 @@ Var ContextFn::performBinaryOp(Var &l, Var &r, Expression::Op op) {
 		case Expression::AndAssignment:
 		case Expression::XorAssignment:
 		case Expression::OrAssignment:
-			onError(string::toString<memory::PoolInterface>("Operator not implemented: ",
-					int(toInt(op))));
+			onError(mem_pool::toString("Operator not implemented: ", int(toInt(op))));
 			return Var();
 			break;
 
 		case Expression::NoOp:
-			onError(string::toString<memory::PoolInterface>("Call of NoOp"));
+			onError(mem_pool::toString("Call of NoOp"));
 			return Var();
 			break;
 
@@ -803,8 +797,7 @@ Var ContextFn::performBinaryOp(Var &l, Var &r, Expression::Op op) {
 		case Expression::Minus:
 		case Expression::Neg:
 		case Expression::BitNot:
-			onError(string::toString<memory::PoolInterface>("Unary operator called as binary: ",
-					int(toInt(op))));
+			onError(mem_pool::toString("Unary operator called as binary: ", int(toInt(op))));
 			return Var();
 			break;
 		}
@@ -817,9 +810,7 @@ Var ContextFn::performBinaryOp(Var &l, Var &r, Expression::Op op) {
 
 		auto valToDouble = [&](const Value &v, const Var &var) {
 			return (v) ? v.asInteger()
-					   : ((var.getType() == Var::SoftUndefined)
-										 ? std::numeric_limits<double>::quiet_NaN()
-										 : double(0.0));
+					   : ((var.getType() == Var::SoftUndefined) ? sprt::NaN<double> : double(0.0));
 		};
 
 		auto numNullOp = [&, this](const Value &lVal, const Value &rVal, auto intOp,
@@ -858,7 +849,7 @@ Var ContextFn::performBinaryOp(Var &l, Var &r, Expression::Op op) {
 		case Expression::And: return Var(Value(false)); break;
 		case Expression::Or: return Var(Value(ContextFn_asBool(lV) || ContextFn_asBool(rV))); break;
 		default:
-			onError(string::toString<memory::PoolInterface>("Invalid operation with undefined"));
+			onError(mem_pool::toString("Invalid operation with undefined"));
 			return Var();
 			break;
 		}
@@ -876,7 +867,7 @@ Value *ContextFn::getMutableValue(Var &val) const {
 
 void ContextFn::onError(const StringView &err) const {
 	if (!outStream) {
-		std::cout << "Context error: " << err << "\n";
+		sprt::cout << "Context error: " << err << "\n";
 	} else {
 		*outStream << "<!-- " << "Context error: " << err << " -->";
 	}
@@ -888,7 +879,7 @@ Var ContextFn::getVar(const StringView &key) const {
 		ret = getVar(currentScope, key);
 	}
 	if (!ret && !allowUndefined) {
-		onError(string::toString<memory::PoolInterface>("Access to undefined variable: ", key));
+		onError(mem_pool::toString("Access to undefined variable: ", key));
 	}
 
 	if (!ret && allowUndefined) {
@@ -1081,7 +1072,7 @@ void Context::set(const StringView &name, VarClass *cl) {
 
 void Context::set(const StringView &name, Callback &&cb) {
 	auto it = currentScope->namedVars.emplace(name.str<memory::PoolInterface>()).first;
-	it->second.set(new (std::nothrow) Callback(move(cb)));
+	it->second.set(new (sprt::nothrow) Callback(move(cb)));
 }
 
 VarClass *Context::set(const StringView &name, VarClass &&cl) {

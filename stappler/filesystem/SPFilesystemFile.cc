@@ -192,8 +192,8 @@ size_t File::tell() const {
 
 size_t File::size() const { return _size; }
 
-typename File::int_type File::xsgetc() {
-	int_type ret = traits_type::eof();
+int File::xsgetc() {
+	int ret = __SPRT_EOF;
 	if (is_open()) {
 		uint8_t buf = 0;
 		if (read(&buf, 1) == 1) {
@@ -203,9 +203,8 @@ typename File::int_type File::xsgetc() {
 	return ret;
 }
 
-typename File::int_type File::xsputc(int_type c) {
-	int_type ret = traits_type::eof();
-
+int File::xsputc(int c) {
+	int ret = __SPRT_EOF;
 	uint8_t buf = c;
 	if (write(&buf, 1) == 1) {
 		ret = buf;
@@ -214,8 +213,8 @@ typename File::int_type File::xsputc(int_type c) {
 	return ret;
 }
 
-typename File::streamsize File::xsputn(const char *s, streamsize n) {
-	streamsize ret = -1;
+ssize_t File::xsputn(const char *s, ssize_t n) {
+	ssize_t ret = -1;
 	if (is_open()) {
 		if (write((const uint8_t *)s, n) == n) {
 			ret = n;
@@ -225,8 +224,8 @@ typename File::streamsize File::xsputn(const char *s, streamsize n) {
 	return ret;
 }
 
-typename File::streamsize File::xsgetn(char *s, streamsize n) {
-	streamsize ret = -1;
+ssize_t File::xsgetn(char *s, ssize_t n) {
+	ssize_t ret = -1;
 	if (is_open()) {
 		ret = read(reinterpret_cast<uint8_t *>(s), n);
 	}
@@ -293,7 +292,7 @@ bool File::close_rename(const FileInfo &info) {
 
 			if (fFrom && fTo) {
 				BufferTemplate<memory::StandartInterface> buffer(
-						std::min(size_t(4_MiB), fFrom.size()));
+						sprt::min(size_t(4_MiB), fFrom.size()));
 				if (io::read(io::Producer(fFrom), io::Consumer(fTo), io::Buffer(buffer)) > 0) {
 					success = true;
 					return false;
@@ -310,9 +309,9 @@ bool File::is_open() const { return _file != nullptr; }
 const char *File::path() const { return _filepath; }
 
 void File::set_tmp_path(const char *buf) {
-	auto len = strlen(buf);
+	auto len = sprt::strlen(buf);
 	auto path = new char[len + 1];
-	memcpy(path, buf, len + 1);
+	sprt::memcpy(path, buf, len + 1);
 	_filepath = path;
 }
 

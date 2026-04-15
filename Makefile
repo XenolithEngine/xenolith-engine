@@ -49,7 +49,6 @@ LOCAL_MODULES ?= \
 	stappler_crypto \
 	stappler_search \
 	stappler_db \
-	stappler_geom \
 	stappler_vg \
 	stappler_tess \
 	stappler_threads \

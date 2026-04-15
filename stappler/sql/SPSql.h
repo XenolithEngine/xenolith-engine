@@ -79,23 +79,26 @@ SP_PUBLIC Pair<Comparation, bool> decodeComparation(StringView);
 
 template <typename T>
 struct PatternComparator {
-	using Type = typename std::remove_reference<T>::type;
+	using Type = typename sprt::remove_reference<T>::type;
 	Comparation cmp = Comparation::Prefix;
 	const Type *value = nullptr;
 };
 
 template <typename Interface>
 struct SP_PUBLIC SimpleBinder : public Interface::AllocBaseType {
-	void writeBind(std::ostream &stream, const data::ValueTemplate<Interface> &val) {
+	void writeBind(const Callback<void(StringView)> &stream,
+			const data::ValueTemplate<Interface> &val) {
 		stream << data::toString(val);
 	}
-	void writeBind(std::ostream &stream, const typename Interface::StringType &val) {
+	void writeBind(const Callback<void(StringView)> &stream,
+			const typename Interface::StringType &val) {
 		stream << val;
 	}
-	void writeBind(std::ostream &stream, const typename Interface::BytesType &val) {
+	void writeBind(const Callback<void(StringView)> &stream,
+			const typename Interface::BytesType &val) {
 		base16::encode(stream, val);
 	}
-	void writeBind(std::ostream &stream,
+	void writeBind(const Callback<void(StringView)> &stream,
 			const PatternComparator<data::ValueTemplate<Interface>> &val) {
 		switch (val.cmp) {
 		case Comparation::Prefix: stream << val.value->asString() << "%"; break;
@@ -104,7 +107,8 @@ struct SP_PUBLIC SimpleBinder : public Interface::AllocBaseType {
 		default: break;
 		}
 	}
-	void writeBindArray(std::ostream &stream, const data::ValueTemplate<Interface> &val) {
+	void writeBindArray(const Callback<void(StringView)> &stream,
+			const data::ValueTemplate<Interface> &val) {
 		stream << "(";
 		bool first = true;
 		if (val.isArray()) {
@@ -188,8 +192,8 @@ public:
 
 		Field(const StringView &str) : name(str) { }
 		Field(const char *str) : name(str) { }
-		Field(const std::string &str) : name(str) { }
-		Field(const memory::string &str) : name(str) { }
+		Field(const sprt::__malloc_string &str) : name(str) { }
+		Field(const sprt::__pool_string &str) : name(str) { }
 
 		Field(const StringView &str, Flags f) : name(str), plain(f == PlainText) { }
 
@@ -199,11 +203,11 @@ public:
 			alias = StringView(str);
 			return *this;
 		}
-		Field &as(const std::string &str) {
+		Field &as(const sprt::__malloc_string &str) {
 			alias = StringView(str);
 			return *this;
 		}
-		Field &as(const memory::string &str) {
+		Field &as(const sprt::__pool_string &str) {
 			alias = StringView(str);
 			return *this;
 		}
@@ -212,11 +216,11 @@ public:
 			source = StringView(str);
 			return *this;
 		}
-		Field &from(const std::string &str) {
+		Field &from(const sprt::__malloc_string &str) {
 			source = StringView(str);
 			return *this;
 		}
-		Field &from(const memory::string &str) {
+		Field &from(const sprt::__pool_string &str) {
 			source = StringView(str);
 			return *this;
 		}
@@ -611,14 +615,14 @@ void Query<Binder, Interface>::QueryHandle::finalize() {
 template <typename Binder, typename Interface>
 template <typename Value>
 void Query<Binder, Interface>::writeBind(Value &&val) {
-	BinderTraits<Binder, Interface, typename std::remove_reference<Value>::type>::writeBind(*this,
+	BinderTraits<Binder, Interface, typename sprt::remove_reference<Value>::type>::writeBind(*this,
 			this->binder, sprt::forward<Value>(val));
 }
 
 template <typename Binder, typename Interface>
 template <typename Value>
 void Query<Binder, Interface>::writeBindArray(Value &&val) {
-	BinderTraits<Binder, Interface, typename std::remove_reference<Value>::type>::writeBindArray(
+	BinderTraits<Binder, Interface, typename sprt::remove_reference<Value>::type>::writeBindArray(
 			*this, this->binder, sprt::forward<Value>(val));
 }
 
@@ -717,7 +721,7 @@ template <typename Binder, typename Interface>
 template <typename Callback>
 auto Query<Binder, Interface>::GenericQuery::with(const StringView &alias, const Callback &cb)
 		-> GenericQuery & {
-	static_assert(std::is_invocable_v<Callback, GenericQuery &>, "Invalid callback type");
+	static_assert(sprt::is_invocable_v<Callback, GenericQuery &>, "Invalid callback type");
 	switch (this->state) {
 	case State::None:
 		this->query->stream << "WITH ";

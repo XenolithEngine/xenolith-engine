@@ -92,9 +92,9 @@ void Transaction::release() const {
 	auto p = pool::acquire();
 	auto stack = pool::get<Stack>(p, config::STORAGE_TRANSACTION_STACK_KEY);
 	if (stack) {
-		auto it = std::find(stack->stack.rbegin(), stack->stack.rend(), _data);
+		auto it = sprt::find(stack->stack.rbegin(), stack->stack.rend(), _data);
 		if (it != stack->stack.rend()) {
-			stack->stack.erase(std::next(it).base());
+			stack->stack.erase(sprt::next(it).base());
 		}
 	}
 }
@@ -672,7 +672,7 @@ static void Transaction_runAutoFields(const Transaction &t, const Vector<uint64_
 	auto &defs = field.getSlot()->autoField;
 	if (defs.defaultFn) {
 		auto includeSelf =
-				(std::find(defs.requireFields.begin(), defs.requireFields.end(), field.getName())
+				(sprt::find(defs.requireFields.begin(), defs.requireFields.end(), field.getName())
 						== defs.requireFields.end());
 		for (auto &id : vec) {
 			Query q;

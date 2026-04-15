@@ -29,8 +29,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-static void Scene_findUnresolvedInputs(const memory::vector<core::AttachmentData *> &queue,
-		const memory::set<const core::AttachmentData *> &resolved) {
+static void Scene_findUnresolvedInputs(SpanView<core::AttachmentData *> queue,
+		const mem_pool::Set<const core::AttachmentData *> &resolved) {
 	for (auto &it : queue) {
 		auto iit = resolved.find(it);
 		if (iit == resolved.end()) {

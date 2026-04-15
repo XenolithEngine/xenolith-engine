@@ -71,7 +71,7 @@ public:
 protected:
 	friend class Builder;
 
-	mutable Mutex _mutex;
+	mutable sprt::mutex _mutex;
 	String _keyData;
 	Bytes _imageData;
 	ImageData _data;

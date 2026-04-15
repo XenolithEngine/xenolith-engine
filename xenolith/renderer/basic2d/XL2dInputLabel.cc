@@ -29,7 +29,9 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
 InputLabelDelegate::~InputLabelDelegate() { }
 bool InputLabelDelegate::handleInputChar(char16_t) { return true; }
-bool InputLabelDelegate::handleInputString(const WideStringView &str, const Cursor &c) { return true; }
+bool InputLabelDelegate::handleInputString(const WideStringView &str, const Cursor &c) {
+	return true;
+}
 
 void InputLabelDelegate::handleCursor(const Cursor &) { }
 void InputLabelDelegate::handleInput() { }
@@ -50,41 +52,37 @@ bool InputLabel::Selection::init() {
 	return true;
 }
 
-void InputLabel::Selection::clear() {
-	_vertexes.clear();
-}
+void InputLabel::Selection::clear() { _vertexes.clear(); }
 
 void InputLabel::Selection::emplaceRect(const Rect &rect) {
 	_vertexes.addQuad().setGeometry(
-			Vec4(rect.origin.x, _contentSize.height - rect.origin.y - rect.size.height, 0.0f, 0.0f), rect.size);
+			Vec4(rect.origin.x, _contentSize.height - rect.origin.y - rect.size.height, 0.0f, 0.0f),
+			rect.size);
 }
 
-void InputLabel::Selection::updateColor() {
-	Sprite::updateColor();
-}
+void InputLabel::Selection::updateColor() { Sprite::updateColor(); }
 
-bool InputLabel::init() {
-	return init(nullptr, DescriptionStyle());
-}
+bool InputLabel::init() { return init(nullptr, DescriptionStyle()); }
 
-bool InputLabel::init(StringView str) {
-	return init(nullptr, DescriptionStyle(), str);
-}
+bool InputLabel::init(StringView str) { return init(nullptr, DescriptionStyle(), str); }
 
 bool InputLabel::init(StringView str, float w, TextAlign a) {
 	return init(nullptr, DescriptionStyle(), str, w, a);
 }
 
-bool InputLabel::init(font::FontController *controller, const DescriptionStyle &desc, StringView str, float width, TextAlign a) {
+bool InputLabel::init(font::FontController *controller, const DescriptionStyle &desc,
+		StringView str, float width, TextAlign a) {
 	if (!Label::init(controller, desc, str, width, a)) {
 		return false;
 	}
 
 	_emplaceAllChars = true;
 
-	_handler.onText = std::bind(&InputLabel::onText, this, std::placeholders::_1, std::placeholders::_2);
-	_handler.onKeyboard = std::bind(&InputLabel::onKeyboard, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-	_handler.onInput = std::bind(&InputLabel::onInput, this, std::placeholders::_1);
+	_handler.onText =
+			sprt::bind(&InputLabel::onText, this, sprt::placeholders::_1, sprt::placeholders::_2);
+	_handler.onKeyboard = sprt::bind(&InputLabel::onKeyboard, this, sprt::placeholders::_1,
+			sprt::placeholders::_2, sprt::placeholders::_3);
+	_handler.onInput = sprt::bind(&InputLabel::onInput, this, sprt::placeholders::_1);
 
 	_cursorLayer = addChild(Rc<Layer>::create(Color::Grey_500));
 	_cursorLayer->setVisible(false);
@@ -96,10 +94,10 @@ bool InputLabel::init(font::FontController *controller, const DescriptionStyle &
 	_cursorPointer->setContentSize(Size2(24.0f, 24.0f));
 	_cursorPointer->setColor(Color::Grey_500);
 	_cursorPointer->addPath(VectorPath()
-		.moveTo(12.0f, 0.0f)
-		.lineTo(5.0f, 7.0f)
-		.arcTo(7.0f * sqrt(2.0f), 7.0f * sqrt(2.0f), 0.0f, true, false, 19.0f, 7.0f)
-		.closePath());
+					.moveTo(12.0f, 0.0f)
+					.lineTo(5.0f, 7.0f)
+					.arcTo(7.0f * sqrt(2.0f), 7.0f * sqrt(2.0f), 0.0f, true, false, 19.0f, 7.0f)
+					.closePath());
 	_cursorPointer->setAnchorPoint(Vec2(0.5f, _cursorAnchor));
 	_cursorPointer->setOpacity(OpacityValue(222));
 	_cursorPointer->setVisible(false);
@@ -107,10 +105,10 @@ bool InputLabel::init(font::FontController *controller, const DescriptionStyle &
 
 	_cursorStart = addChild(Rc<VectorSprite>::create(Size2(48, 48)));
 	_cursorStart->addPath(VectorPath()
-		.moveTo(48, 0)
-		.lineTo(24, 0)
-		.arcTo(24, 24, 0, true, false, 48, 24)
-		.closePath());
+					.moveTo(48, 0)
+					.lineTo(24, 0)
+					.arcTo(24, 24, 0, true, false, 48, 24)
+					.closePath());
 	_cursorStart->setContentSize(Size2(24.0f, 24.0f));
 	_cursorStart->setAnchorPoint(Vec2(1.0f, _cursorAnchor));
 	_cursorStart->setColor(_selectionColor);
@@ -120,10 +118,10 @@ bool InputLabel::init(font::FontController *controller, const DescriptionStyle &
 
 	_cursorEnd = addChild(Rc<VectorSprite>::create(Size2(48, 48)));
 	_cursorEnd->addPath(VectorPath()
-		.moveTo(0, 0)
-		.lineTo(0, 24)
-		.arcTo(24, 24, 0, true, false, 24, 0)
-		.closePath());
+					.moveTo(0, 0)
+					.lineTo(0, 24)
+					.arcTo(24, 24, 0, true, false, 24, 0)
+					.closePath());
 	_cursorEnd->setContentSize(Size2(24.0f, 24.0f));
 	_cursorEnd->setAnchorPoint(Vec2(0.0f, _cursorAnchor));
 	_cursorEnd->setColor(_selectionColor);
@@ -179,7 +177,8 @@ Vec2 InputLabel::getCursorMarkPosition() const {
 	if (_cursor.length > 0) {
 		auto line = _format->getLine(_cursor.start);
 		if (line) {
-			auto last = std::min(_cursor.start + _cursor.length - 1, line->start + line->count - 1);
+			auto last =
+					sprt::min(_cursor.start + _cursor.length - 1, line->start + line->count - 1);
 			auto startPos = getCursorPosition(_cursor.start, true);
 			auto endPos = getCursorPosition(last, false);
 
@@ -203,9 +202,7 @@ void InputLabel::setCursorColor(const Color &color, bool pointer) {
 	}
 	//_cursorSelection->setColor(color);
 }
-const Color &InputLabel::getCursorColor() const {
-	return _cursorColor;
-}
+const Color &InputLabel::getCursorColor() const { return _cursorColor; }
 
 void InputLabel::setPointerColor(const Color &color) {
 	_selectionColor = color;
@@ -215,13 +212,9 @@ void InputLabel::setPointerColor(const Color &color) {
 	_cursorStart->setColor(color);
 	_cursorEnd->setColor(color);
 }
-const Color &InputLabel::getPointerColor() const {
-	return _selectionColor;
-}
+const Color &InputLabel::getPointerColor() const { return _selectionColor; }
 
-void InputLabel::setString(const StringView &str) {
-	setString(string::toUtf16<Interface>(str));
-}
+void InputLabel::setString(const StringView &str) { setString(string::toUtf16<Interface>(str)); }
 
 void InputLabel::setString(const WideStringView &str) {
 	updateString(str, Cursor(uint32_t(_inputString.length()), 0));
@@ -230,9 +223,7 @@ void InputLabel::setString(const WideStringView &str) {
 	}
 }
 
-WideStringView InputLabel::getString() const {
-	return _inputString;
-}
+WideStringView InputLabel::getString() const { return _inputString; }
 
 void InputLabel::setCursor(const Cursor &c) {
 	_cursor = c;
@@ -242,31 +233,19 @@ void InputLabel::setCursor(const Cursor &c) {
 	updateCursor();
 }
 
-const InputLabel::Cursor &InputLabel::getCursor() const {
-	return _cursor;
-}
+const InputLabel::Cursor &InputLabel::getCursor() const { return _cursor; }
 
-void InputLabel::setInputType(InputType t) {
-	_inputType = t;
-}
-InputLabel::InputType InputLabel::getInputType() const {
-	return _inputType;
-}
+void InputLabel::setInputType(InputType t) { _inputType = t; }
+InputLabel::InputType InputLabel::getInputType() const { return _inputType; }
 
 void InputLabel::setPasswordMode(PasswordMode p) {
 	_password = p;
 	updateString(_inputString, _cursor);
 }
-InputLabel::PasswordMode InputLabel::getPasswordMode() {
-	return _password;
-}
+InputLabel::PasswordMode InputLabel::getPasswordMode() { return _password; }
 
-void InputLabel::setDelegate(InputLabelDelegate *d) {
-	_delegate = d;
-}
-InputLabelDelegate *InputLabel::getDelegate() const {
-	return _delegate;
-}
+void InputLabel::setDelegate(InputLabelDelegate *d) { _delegate = d; }
+InputLabelDelegate *InputLabel::getDelegate() const { return _delegate; }
 
 void InputLabel::setEnabled(bool value) {
 	if (value != _enabled) {
@@ -280,30 +259,16 @@ void InputLabel::setEnabled(bool value) {
 		}
 	}
 }
-bool InputLabel::isEnabled() const {
-	return _enabled;
-}
+bool InputLabel::isEnabled() const { return _enabled; }
 
-void InputLabel::setRangeAllowed(bool value) {
-	_rangeAllowed = value;
-}
-bool InputLabel::isRangeAllowed() const {
-	return _rangeAllowed;
-}
+void InputLabel::setRangeAllowed(bool value) { _rangeAllowed = value; }
+bool InputLabel::isRangeAllowed() const { return _rangeAllowed; }
 
-void InputLabel::setAllowMultiline(bool v) {
-	_allowMultiline = v;
-}
-bool InputLabel::isAllowMultiline() const {
-	return _allowMultiline;
-}
+void InputLabel::setAllowMultiline(bool v) { _allowMultiline = v; }
+bool InputLabel::isAllowMultiline() const { return _allowMultiline; }
 
-void InputLabel::setAllowAutocorrect(bool v) {
-	_allowAutocorrect = v;
-}
-bool InputLabel::isAllowAutocorrect() const {
-	return _allowAutocorrect;
-}
+void InputLabel::setAllowAutocorrect(bool v) { _allowAutocorrect = v; }
+bool InputLabel::isAllowAutocorrect() const { return _allowAutocorrect; }
 
 void InputLabel::setCursorAnchor(float value) {
 	if (_cursorAnchor != value) {
@@ -314,34 +279,25 @@ void InputLabel::setCursorAnchor(float value) {
 		_cursorEnd->setAnchorPoint(Vec2(0.0f, _cursorAnchor));
 	}
 }
-float InputLabel::getCursorAnchor() const {
-	return _cursorAnchor;
-}
+float InputLabel::getCursorAnchor() const { return _cursorAnchor; }
 
 void InputLabel::acquireInput() {
 	if (_director) {
 		_cursor.start = uint32_t(getCharsCount());
 		_cursor.length = 0;
 
-		_handler.run(_director->getTextInputManager(), _inputString, _cursor, TextCursor::InvalidCursor, getInputTypeValue());
+		_handler.run(_director->getTextInputManager(), _inputString, _cursor,
+				TextCursor::InvalidCursor, getInputTypeValue());
 		updateCursor();
 	}
 }
-void InputLabel::releaseInput() {
-	_handler.cancel();
-}
+void InputLabel::releaseInput() { _handler.cancel(); }
 
-bool InputLabel::empty() const {
-	return _inputString.empty();
-}
+bool InputLabel::empty() const { return _inputString.empty(); }
 
-bool InputLabel::isActive() const {
-	return _handler.isActive() && _inputEnabled;
-}
+bool InputLabel::isActive() const { return _handler.isActive() && _inputEnabled; }
 
-bool InputLabel::isPointerEnabled() const {
-	return _pointerEnabled;
-}
+bool InputLabel::isPointerEnabled() const { return _pointerEnabled; }
 
 String InputLabel::getSelectedString() const {
 	if (_cursor.length > 0) {
@@ -351,9 +307,7 @@ String InputLabel::getSelectedString() const {
 	}
 }
 
-void InputLabel::pasteString(const String &str) {
-	pasteString(string::toUtf16<Interface>(str));
-}
+void InputLabel::pasteString(const String &str) { pasteString(string::toUtf16<Interface>(str)); }
 
 void InputLabel::pasteString(const WideString &str) {
 	auto newString = _inputString;
@@ -416,7 +370,8 @@ bool InputLabel::onPressBegin(const Vec2 &vec) {
 	return true;
 }
 bool InputLabel::onLongPress(const Vec2 &vec, const TimeInterval &time, int count) {
-	if (!_rangeAllowed || _inputString.empty() || _selectedCursor != nullptr || (!_inputEnabled && _director->getTextInputManager()->isInputEnabled())) {
+	if (!_rangeAllowed || _inputString.empty() || _selectedCursor != nullptr
+			|| (!_inputEnabled && _director->getTextInputManager()->isInputEnabled())) {
 		return false;
 	}
 
@@ -428,7 +383,9 @@ bool InputLabel::onLongPress(const Vec2 &vec, const TimeInterval &time, int coun
 		_isLongPress = true;
 		auto pos = convertToNodeSpace(vec);
 
-		auto chIdx = _format->getChar(pos.x * _labelDensity, _format->height - pos.y * _labelDensity, FormatSpec::Center).first;
+		auto chIdx = _format->getChar(pos.x * _labelDensity,
+									_format->height - pos.y * _labelDensity, FormatSpec::Center)
+							 .first;
 		if (chIdx != maxOf<uint32_t>()) {
 			auto word = _format->selectWord(chIdx);
 			setCursor(word);
@@ -447,7 +404,8 @@ bool InputLabel::onPressEnd(const Vec2 &vec) {
 	if (!_handler.isActive() && isTouched(vec)) {
 		if (_isLongPress) {
 			if (_director) {
-				_handler.run(_director->getTextInputManager(), _inputString, _cursor, TextCursor::InvalidCursor, getInputTypeValue());
+				_handler.run(_director->getTextInputManager(), _inputString, _cursor,
+						TextCursor::InvalidCursor, getInputTypeValue());
 				updateCursor();
 			}
 		} else {
@@ -495,7 +453,8 @@ bool InputLabel::onPressEnd(const Vec2 &vec) {
 bool InputLabel::onPressCancel(const Vec2 &vec) {
 	if (!_handler.isActive() && _isLongPress) {
 		if (_director) {
-			_handler.run(_director->getTextInputManager(), _inputString, _cursor, TextCursor::InvalidCursor, getInputTypeValue());
+			_handler.run(_director->getTextInputManager(), _inputString, _cursor,
+					TextCursor::InvalidCursor, getInputTypeValue());
 			updateCursor();
 		}
 	}
@@ -522,7 +481,8 @@ bool InputLabel::onSwipe(const Vec2 &vec, const Vec2 &) {
 	if (_selectedCursor) {
 		auto size = _selectedCursor->getContentSize();
 		auto anchor = _selectedCursor->getAnchorPoint();
-		auto offset = Vec2(anchor.x * size.width - size.width / 2.0f, (anchor.y + 1.0f) * size.height);
+		auto offset =
+				Vec2(anchor.x * size.width - size.width / 2.0f, (anchor.y + 1.0f) * size.height);
 
 		auto locInLabel = convertToNodeSpace(vec) + offset;
 
@@ -531,7 +491,7 @@ bool InputLabel::onSwipe(const Vec2 &vec, const Vec2 &) {
 			if (chIdx.first != maxOf<uint32_t>()) {
 				auto cursorIdx = chIdx.first;
 				if (chIdx.second) {
-					++ cursorIdx;
+					++cursorIdx;
 				}
 
 				if (_cursor.start != cursorIdx) {
@@ -539,18 +499,25 @@ bool InputLabel::onSwipe(const Vec2 &vec, const Vec2 &) {
 				}
 			}
 		} else if (_selectedCursor == _cursorStart) {
-			uint32_t charNumber = _format->getChar(int32_t(roundf(locInLabel.x * _labelDensity)),
-					_format->height - int32_t(roundf(locInLabel.y * _labelDensity)), font::FormatSpec::Prefix).first;
+			uint32_t charNumber =
+					_format->getChar(int32_t(roundf(locInLabel.x * _labelDensity)),
+								   _format->height - int32_t(roundf(locInLabel.y * _labelDensity)),
+								   font::FormatSpec::Prefix)
+							.first;
 			if (charNumber != maxOf<uint32_t>()) {
 				if (charNumber != _cursor.start && charNumber < _cursor.start + _cursor.length) {
 					setCursor(Cursor(charNumber, (_cursor.start + _cursor.length) - charNumber));
 				}
 			}
 		} else if (_selectedCursor == _cursorEnd) {
-			uint32_t charNumber = _format->getChar(int32_t(roundf(locInLabel.x * _labelDensity)),
-					_format->height - int32_t(roundf(locInLabel.y * _labelDensity)), font::FormatSpec::Suffix).first;
+			uint32_t charNumber =
+					_format->getChar(int32_t(roundf(locInLabel.x * _labelDensity)),
+								   _format->height - int32_t(roundf(locInLabel.y * _labelDensity)),
+								   font::FormatSpec::Suffix)
+							.first;
 			if (charNumber != maxOf<uint32_t>()) {
-				if (charNumber != _cursor.start + _cursor.length - 1 && charNumber >= _cursor.start) {
+				if (charNumber != _cursor.start + _cursor.length - 1
+						&& charNumber >= _cursor.start) {
 					setCursor(Cursor(_cursor.start, charNumber - _cursor.start + 1));
 				}
 			}
@@ -568,21 +535,13 @@ bool InputLabel::onSwipeEnd(const Vec2 &) {
 	return false;
 }
 
-Layer *InputLabel::getCursorLayer() const {
-	return _cursorLayer;
-}
+Layer *InputLabel::getCursorLayer() const { return _cursorLayer; }
 
-VectorSprite *InputLabel::getCursorPointer() const {
-	return _cursorPointer;
-}
+VectorSprite *InputLabel::getCursorPointer() const { return _cursorPointer; }
 
-VectorSprite *InputLabel::getCursorStart() const {
-	return _cursorStart;
-}
+VectorSprite *InputLabel::getCursorStart() const { return _cursorStart; }
 
-VectorSprite *InputLabel::getCursorEnd() const {
-	return _cursorEnd;
-}
+VectorSprite *InputLabel::getCursorEnd() const { return _cursorEnd; }
 
 void InputLabel::onText(const WideStringView &str, const Cursor &c) {
 	if (updateString(str, c)) {
@@ -607,9 +566,7 @@ void InputLabel::onInput(bool value) {
 		_delegate->handleActivated(value);
 	}
 }
-void InputLabel::onEnded() {
-	updateFocus();
-}
+void InputLabel::onEnded() { updateFocus(); }
 
 void InputLabel::onError(Error err) {
 	if (_delegate) {
@@ -641,10 +598,9 @@ void InputLabel::updateCursor() {
 		_cursorStart->setPosition(getCursorPosition(_cursor.start, true));
 		_cursorEnd->setPosition(getCursorPosition(_cursor.start + _cursor.length - 1, false));
 		_cursorSelection->clear();
-		auto rects = _format->getLabelRects(_cursor.start, _cursor.start + _cursor.length - 1, _labelDensity);
-		for (auto &rect: rects) {
-			_cursorSelection->emplaceRect(rect);
-		}
+		auto rects = _format->getLabelRects(_cursor.start, _cursor.start + _cursor.length - 1,
+				_labelDensity);
+		for (auto &rect : rects) { _cursorSelection->emplaceRect(rect); }
 		_cursorSelection->updateColor();
 	}
 
@@ -689,7 +645,8 @@ bool InputLabel::updateString(const WideStringView &str, const Cursor &c) {
 		if (_password == PasswordMode::ShowAll || _password == PasswordMode::NotPassword) {
 			Label::setString(_inputString);
 		} else {
-			WideString wstr; wstr.resize(_inputString.length(), u'*');
+			WideString wstr;
+			wstr.resize(_inputString.length(), u'*');
 			Label::setString(wstr);
 			if (isInsert) {
 				showLastChar();
@@ -733,13 +690,15 @@ void InputLabel::showLastChar() {
 		str += _inputString.back();
 		Label::setString(str);
 		stopActionByTag("InputLabelLastChar"_tag);
-		runAction(Rc<Sequence>::create(2.0f, std::bind(&InputLabel::hideLastChar, this)), "InputLabelLastChar"_tag);
+		runAction(Rc<Sequence>::create(2.0f, sprt::bind(&InputLabel::hideLastChar, this)),
+				"InputLabelLastChar"_tag);
 	}
 }
 
 void InputLabel::hideLastChar() {
 	if (_password == PasswordMode::ShowChar && !_inputString.empty()) {
-		WideString str; str.resize(_inputString.length(), u'*');
+		WideString str;
+		str.resize(_inputString.length(), u'*');
 		Label::setString(str);
 		updateCursor();
 	}
@@ -749,15 +708,12 @@ void InputLabel::scheduleCursorPointer() {
 	setPointerEnabled(true);
 	stopAllActionsByTag("TextFieldCursorPointer"_tag);
 	if (_cursor.length == 0) {
-		runAction(Rc<Sequence>::create(3.5f, [this] {
-			setPointerEnabled(false);
-		}), "TextFieldCursorPointer"_tag);
+		runAction(Rc<Sequence>::create(3.5f, [this] { setPointerEnabled(false); }),
+				"TextFieldCursorPointer"_tag);
 	}
 }
 
-void InputLabel::unscheduleCursorPointer() {
-	stopAllActionsByTag("TextFieldCursorPointer"_tag);
-}
+void InputLabel::unscheduleCursorPointer() { stopAllActionsByTag("TextFieldCursorPointer"_tag); }
 
 void InputLabel::setPointerEnabled(bool value) {
 	if (_pointerEnabled != value) {
@@ -808,14 +764,12 @@ void InputLabelContainer::setLabel(Rc<InputLabel> &&l, ZOrder zIndex) {
 		_label = nullptr;
 	}
 	if (l) {
-		l->setTransformDirtyCallback(std::bind(&InputLabelContainer::onLabelPosition, this));
+		l->setTransformDirtyCallback(sprt::bind(&InputLabelContainer::onLabelPosition, this));
 		_label = addChild(move(l), zIndex);
 	}
 }
 
-InputLabel *InputLabelContainer::getLabel() const {
-	return _label;
-}
+InputLabel *InputLabelContainer::getLabel() const { return _label; }
 
 void InputLabelContainer::update(const UpdateTime &time) {
 	if (!_label) {
@@ -828,17 +782,12 @@ void InputLabelContainer::update(const UpdateTime &time) {
 	auto max = 0.0f;
 	auto newpos = _label->getPosition().x;
 
-	auto factor = std::min(32.0f, _adjustPosition);
+	auto factor = sprt::min(32.0f, _adjustPosition);
 
 	switch (_adjust) {
-	case Left:
-		newpos += (45.0f + progress(0.0f, 200.0f, factor / 32.0f)) * time.dt;
-		break;
-	case Right:
-		newpos -= (45.0f + progress(0.0f, 200.0f, factor / 32.0f)) * time.dt;
-		break;
-	default:
-		break;
+	case Left: newpos += (45.0f + progress(0.0f, 200.0f, factor / 32.0f)) * time.dt; break;
+	case Right: newpos -= (45.0f + progress(0.0f, 200.0f, factor / 32.0f)) * time.dt; break;
+	default: break;
 	}
 
 	if (newpos != _label->getPosition().x) {
@@ -853,9 +802,7 @@ void InputLabelContainer::update(const UpdateTime &time) {
 	}
 }
 
-void InputLabelContainer::onCursor() {
-	onLabelPosition();
-}
+void InputLabelContainer::onCursor() { onLabelPosition(); }
 
 void InputLabelContainer::onInput() {
 	if (!_label) {
@@ -968,19 +915,27 @@ void InputLabelContainer::onLabelPosition() {
 	if (_contentSize.width > 0.0f) {
 		node = _label->getCursorLayer();
 		pos = node->getPosition().x + _label->getPosition().x;
-		node->setOpacity(progress(255, 0, math::clamp(math::clamp_distance(pos, 0.0f, _contentSize.width) / 8.0f, 0.0f, 1.0f)));
+		node->setOpacity(progress(255, 0,
+				math::clamp(math::clamp_distance(pos, 0.0f, _contentSize.width) / 8.0f, 0.0f,
+						1.0f)));
 
 		node = _label->getCursorPointer();
 		pos = node->getPosition().x + _label->getPosition().x;
-		node->setOpacity(progress(222, 0, math::clamp(math::clamp_distance(pos, 0.0f, _contentSize.width) / 8.0f, 0.0f, 1.0f)));
+		node->setOpacity(progress(222, 0,
+				math::clamp(math::clamp_distance(pos, 0.0f, _contentSize.width) / 8.0f, 0.0f,
+						1.0f)));
 
 		node = _label->getCursorStart();
 		pos = node->getPosition().x + _label->getPosition().x;
-		node->setOpacity(progress(192, 0, math::clamp(math::clamp_distance(pos, 0.0f, _contentSize.width) / 8.0f, 0.0f, 1.0f)));
+		node->setOpacity(progress(192, 0,
+				math::clamp(math::clamp_distance(pos, 0.0f, _contentSize.width) / 8.0f, 0.0f,
+						1.0f)));
 
 		node = _label->getCursorLayer();
 		pos = node->getPosition().x + _label->getPosition().x;
-		node->setOpacity(progress(192, 0, math::clamp(math::clamp_distance(pos, 0.0f, _contentSize.width) / 8.0f, 0.0f, 1.0f)));
+		node->setOpacity(progress(192, 0,
+				math::clamp(math::clamp_distance(pos, 0.0f, _contentSize.width) / 8.0f, 0.0f,
+						1.0f)));
 	}
 }
 
@@ -1015,4 +970,4 @@ void InputLabelContainer::scheduleAdjust(Adjust a, const Vec2 &vec, float pos) {
 	}
 }
 
-}
+} // namespace stappler::xenolith::basic2d

@@ -154,7 +154,7 @@ void AppWindow::close(bool graceful) {
 	}
 }
 
-void AppWindow::handleInputEvents(sprt::memory::dynvector<InputEventData> &&events) {
+void AppWindow::handleInputEvents(Vector<InputEventData> &&events) {
 	if (!_presentationEngine) {
 		return;
 	}
@@ -468,7 +468,7 @@ WindowState AppWindow::getUpdatableStateFlags() const {
 }
 
 bool AppWindow::enableState(WindowState state) {
-	auto c = std::popcount(toInt(state));
+	auto c = sprt::popcount(toInt(state));
 	if (c != 1 && state != WindowState::Maximized) {
 		log::source().error("AppWindow", "enableState: only one flag should be defined in state");
 		return false;
@@ -484,7 +484,7 @@ bool AppWindow::enableState(WindowState state) {
 }
 
 bool AppWindow::disableState(WindowState state) {
-	auto c = std::popcount(toInt(state));
+	auto c = sprt::popcount(toInt(state));
 	if (c != 1 && state != WindowState::Maximized) {
 		log::source().error("AppWindow", "enableState: only one flag should be defined in state");
 		return false;

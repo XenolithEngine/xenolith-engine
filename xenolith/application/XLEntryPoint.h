@@ -40,7 +40,7 @@ SP_USED static STAPPLER_VERSIONIZED_NAMESPACE::SharedExtension __macro_appMakeCo
 				[]Function));
 
 #define DEFINE_SCENE_FACTORY(SceneFactoryFunction) \
-static_assert(::std::is_same_v<decltype(&SceneFactoryFunction),\
+static_assert(::sprt::is_same_v<decltype(&SceneFactoryFunction),\
 	STAPPLER_VERSIONIZED_NAMESPACE::xenolith::Context::SymbolMakeSceneSignature>, \
 	"Scene factory function should match :Context::SymbolMakeSceneSignature"); \
 SP_USED static STAPPLER_VERSIONIZED_NAMESPACE::SharedExtension __macro_appCommonSceneFactorySymbol(\
@@ -59,7 +59,7 @@ DEFINE_SCENE_FACTORY(__macro_makeScene)
 
 
 #define DEFINE_APP_THREAD_CONSTRUCTOR(AppThreadConstructorFunction) \
-static_assert(::std::is_same_v<decltype(&AppThreadConstructorFunction),\
+static_assert(::sprt::is_same_v<decltype(&AppThreadConstructorFunction),\
 	STAPPLER_VERSIONIZED_NAMESPACE::xenolith::Context::SymbolMakeAppThreadSignature>, \
 	"AppThread constructor function should match Context::SymbolMakeAppThreadSignature"); \
 SP_USED static STAPPLER_VERSIONIZED_NAMESPACE::SharedExtension __macro_appCommonAppThreadConstructorSymbol(\
@@ -76,7 +76,7 @@ DEFINE_APP_THREAD_CONSTRUCTOR(__macro_makeAppThread)
 
 
 #define DEFINE_CONTEXT_CONSTRUCTOR(ContextConstructorFunction) \
-static_assert(::std::is_same_v<decltype(&ContextConstructorFunction),\
+static_assert(::sprt::is_same_v<decltype(&ContextConstructorFunction),\
 	STAPPLER_VERSIONIZED_NAMESPACE::xenolith::Context::SymbolMakeContextSignature>, \
 	"Context constructor function should match :Context::SymbolMakeContextSignature"); \
 SP_USED static STAPPLER_VERSIONIZED_NAMESPACE::SharedExtension __macro_appCommonContextConstructorSymbol(\

@@ -256,7 +256,7 @@ void PresentationEngine::end() {
 
 	Vector<Rc<Ref>> releaseList;
 
-	auto activeFrames = std::move(_activeFrames);
+	auto activeFrames = sprt::move(_activeFrames);
 	_activeFrames.clear();
 
 	for (auto &it : activeFrames) {
@@ -264,7 +264,7 @@ void PresentationEngine::end() {
 		it->invalidate();
 	}
 
-	auto totalFrames = std::move(_totalFrames);
+	auto totalFrames = sprt::move(_totalFrames);
 	_totalFrames.clear();
 
 	for (auto &it : totalFrames) {

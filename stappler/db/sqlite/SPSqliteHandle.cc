@@ -79,15 +79,14 @@ size_t SqliteQueryInterface::push(StringStream &query, const Value &val, bool fo
 		case Value::Type::BOOLEAN: query << (val.asBool() ? "TRUE" : "FALSE"); break;
 		case Value::Type::INTEGER: query << val.asInteger(); break;
 		case Value::Type::DOUBLE:
-			if (std::isnan(val.asDouble())) {
+			if (sprt::isnan(val.asDouble())) {
 				query << "'NaN'";
-			} else if (val.asDouble() == std::numeric_limits<double>::infinity()) {
+			} else if (val.asDouble() == -sprt::Infinity<double>) {
 				query << "'-Infinity'";
-			} else if (-val.asDouble() == std::numeric_limits<double>::infinity()) {
+			} else if (val.asDouble() == sprt::Infinity<double>) {
 				query << "'Infinity'";
 			} else {
-				query << std::setprecision(std::numeric_limits<double>::max_digits10 + 1)
-					  << val.asDouble();
+				query << val.asDouble();
 			}
 			break;
 		case Value::Type::CHARSTRING: query << "?" << push(val.getString()); break;
@@ -117,7 +116,7 @@ void SqliteQueryInterface::bindUInt(db::Binder &, StringStream &query, uint64_t 
 	query << val;
 }
 void SqliteQueryInterface::bindDouble(db::Binder &, StringStream &query, double val) {
-	query << std::setprecision(std::numeric_limits<double>::max_digits10 + 1) << val;
+	query << val;
 }
 void SqliteQueryInterface::bindString(db::Binder &, StringStream &query, const String &val) {
 	if (auto num = push(String(val))) {
@@ -232,7 +231,7 @@ void SqliteQueryInterface::bindFullTextQuery(db::Binder &, StringStream &query,
 		it = storage->data->find(query.weak());
 	}
 
-	auto q = new (std::nothrow) TextQueryData;
+	auto q = new (sprt::nothrow) TextQueryData;
 	q->query = &d.query;
 	q->query->decompose([&, this](StringView pos) {
 		emplace_ordered(q->pos, ((const Driver *)driver)->insertWord(handle, pos));

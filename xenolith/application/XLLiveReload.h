@@ -30,7 +30,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 struct SP_PUBLIC LiveReloadLibrary : public Ref {
 	String path;
 	Time mtime;
-	Dso library;
+	sprt::Dso library;
 
 	// we need toi release library only after all references are dead
 	event::Looper *releaseLooper = nullptr;

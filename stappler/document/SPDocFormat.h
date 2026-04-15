@@ -24,7 +24,7 @@
 #ifndef CORE_DOCUMENT_SPDOCFORMAT_H_
 #define CORE_DOCUMENT_SPDOCFORMAT_H_
 
-#include "SPRef.h"
+#include <sprt/runtime/ref.h>
 #include "SPFilesystem.h" // IWYU pragma: keep
 
 namespace STAPPLER_VERSIONIZED stappler::document {
