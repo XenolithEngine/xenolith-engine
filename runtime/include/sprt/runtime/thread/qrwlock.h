@@ -78,10 +78,14 @@ public:
 	}
 
 	template <int (*WakeFn)(value_type *, flags_type)>
-	static Status _unlock_fair(rwlock_data *__data, flags_type flags) {
+	static Status _unlock_fair(rwlock_data *__data, flags_type flags, value_type type = 0) {
 		Status ret = Status::Ok;
 
 		auto expected = _atomic::loadSeq(&__data->value);
+
+		if (type != 0 && (expected & type) == 0) {
+			return Status::ErrorInvalidArguemnt;
+		}
 
 		if ((expected & ReadLock) != 0) {
 			bool shouldUnlock = (_atomic::fetchSub(&__data->counter, uint32_t(1)) == 1);

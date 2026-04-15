@@ -864,18 +864,31 @@ using __malloc_u16string = __basic_string<char16_t, detail::AllocatorMalloc<char
 using __malloc_u32string = __basic_string<char32_t, detail::AllocatorMalloc<char32_t>>;
 
 template <typename CharType>
-using __pool_basic_string = __basic_string<CharType, detail::AllocatorPool<char>>;
+using __pool_basic_string = __basic_string<CharType, detail::AllocatorPool<CharType>>;
 
 template <typename CharType>
-using __malloc_basic_string = __basic_string<CharType, detail::AllocatorMalloc<char>>;
+using __malloc_basic_string = __basic_string<CharType, detail::AllocatorMalloc<CharType>>;
+
+template <typename Allocator>
+struct hash<__basic_string<char, Allocator>> {
+	constexpr size_t operator()(const sprt::__basic_string<char, Allocator> &s) const noexcept {
+		if constexpr (sizeof(size_t) == 8) {
+			return sprt::hash64(s.data(), s.size() * sizeof(char));
+		} else {
+			return sprt::hash32(s.data(), s.size() * sizeof(char));
+		}
+	}
+};
 
 template <typename CharType, typename Allocator>
 struct hash<__basic_string<CharType, Allocator>> {
-	constexpr size_t operator()(const sprt::__basic_string<CharType, Allocator> &s) const noexcept {
+	size_t operator()(const sprt::__basic_string<CharType, Allocator> &s) const noexcept {
 		if constexpr (sizeof(size_t) == 8) {
-			return sprt::hash64(s.data(), s.size() * sizeof(CharType));
+			return sprt::hash64(reinterpret_cast<const char *>(s.data()),
+					s.size() * sizeof(CharType));
 		} else {
-			return sprt::hash32(s.data(), s.size() * sizeof(CharType));
+			return sprt::hash32(reinterpret_cast<const char *>(s.data()),
+					s.size() * sizeof(CharType));
 		}
 	}
 };

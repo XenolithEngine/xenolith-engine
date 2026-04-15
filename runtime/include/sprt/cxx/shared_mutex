@@ -1,0 +1,184 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_SHARED_MUTEX_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_SHARED_MUTEX_H_
+
+#include <sprt/runtime/thread/qrwlock.h>
+
+#include <sprt/cxx/__mutex/lock_guard.h>
+
+namespace sprt {
+
+class shared_mutex {
+public:
+	using native_handle_type = qrwlock_base::rwlock_data;
+
+	shared_mutex() { }
+	~shared_mutex() { }
+
+	shared_mutex(const shared_mutex &) = delete;
+	shared_mutex &operator=(const shared_mutex &) = delete;
+
+	// exclusive ownership
+	void lock() {
+		qrwlock_base::_wrlock_fair<__sprt_sprt_qlock_wait, __sprt_sprt_qlock_wake_one, nullptr>(
+				&__native, nullptr, 0);
+	}
+	bool try_lock() {
+		return qrwlock_base::_trywrlock_fair<__sprt_sprt_qlock_wake_one>(&__native, 0)
+				== Status::Ok;
+	}
+	void unlock() {
+		qrwlock_base::_unlock_fair<__sprt_sprt_qlock_wake_one>(&__native, 0,
+				qrwlock_base::WriteLock);
+	}
+
+	// shared ownership
+	void lock_shared() {
+		qrwlock_base::_rdlock_fair<__sprt_sprt_qlock_wait, __sprt_sprt_qlock_wake_one, nullptr>(
+				&__native, nullptr, 0);
+	}
+	bool try_lock_shared() {
+		return qrwlock_base::_tryrdlock_fair<__sprt_sprt_qlock_wake_one>(&__native, 0)
+				== Status::Ok;
+	}
+	void unlock_shared() {
+		qrwlock_base::_unlock_fair<__sprt_sprt_qlock_wake_one>(&__native, 0,
+				qrwlock_base::ReadLock);
+	}
+
+	native_handle_type native_handle() const noexcept { return __native; }
+
+protected:
+	native_handle_type __native;
+};
+
+
+template <typename _Mutex>
+class shared_lock {
+public:
+	using mutex_type = _Mutex;
+
+	shared_lock() noexcept : __m_(nullptr), __owns_(false) { }
+
+	explicit shared_lock(mutex_type &__m) : __m_(sprt::addressof(__m)), __owns_(true) {
+		__m_->lock_shared();
+	}
+
+	shared_lock(mutex_type &__m, defer_lock_t) noexcept
+	: __m_(sprt::addressof(__m)), __owns_(false) { }
+
+	shared_lock(mutex_type &__m, try_to_lock_t)
+	: __m_(sprt::addressof(__m)), __owns_(__m.try_lock_shared()) { }
+
+	shared_lock(mutex_type &__m, adopt_lock_t) : __m_(sprt::addressof(__m)), __owns_(true) { }
+
+	~shared_lock() {
+		if (__owns_) {
+			__m_->unlock_shared();
+		}
+	}
+
+	shared_lock(shared_lock const &) = delete;
+	shared_lock &operator=(shared_lock const &) = delete;
+
+	shared_lock(shared_lock &&__u) noexcept : __m_(__u.__m_), __owns_(__u.__owns_) {
+		__u.__m_ = nullptr;
+		__u.__owns_ = false;
+	}
+
+	shared_lock &operator=(shared_lock &&__u) noexcept {
+		if (__owns_) {
+			__m_->unlock_shared();
+		}
+		__m_ = nullptr;
+		__owns_ = false;
+		__m_ = __u.__m_;
+		__owns_ = __u.__owns_;
+		__u.__m_ = nullptr;
+		__u.__owns_ = false;
+		return *this;
+	}
+
+	void lock();
+	bool try_lock();
+	void unlock();
+
+	// Setters
+	void swap(shared_lock &__u) noexcept {
+		sprt::swap(__m_, __u.__m_);
+		sprt::swap(__owns_, __u.__owns_);
+	}
+
+	mutex_type *release() noexcept {
+		mutex_type *__m = __m_;
+		__m_ = nullptr;
+		__owns_ = false;
+		return __m;
+	}
+
+	// Getters
+	bool owns_lock() const noexcept { return __owns_; }
+
+	explicit operator bool() const noexcept { return __owns_; }
+
+	mutex_type *mutex() const noexcept { return __m_; }
+
+protected:
+	mutex_type *__m_;
+	bool __owns_;
+};
+
+template <typename _Mutex>
+void shared_lock<_Mutex>::lock() {
+	sprt_passert(__m_ != nullptr, "shared_lock::lock: references null mutex");
+	sprt_passert(!__owns_, "shared_lock::lock: already locked");
+	__m_->lock_shared();
+	__owns_ = true;
+}
+
+template <typename _Mutex>
+bool shared_lock<_Mutex>::try_lock() {
+	sprt_passert(__m_ != nullptr, "shared_lock::try_lock: references null mutex");
+	sprt_passert(!__owns_, "shared_lock::try_lock: already locked");
+	__owns_ = __m_->try_lock_shared();
+	return __owns_;
+}
+
+
+template <typename _Mutex>
+void shared_lock<_Mutex>::unlock() {
+	sprt_passert(__m_ != nullptr, "shared_lock::unlock: references null mutex");
+	sprt_passert(__owns_, "shared_lock::unlock: not locked");
+	__m_->unlock_shared();
+	__owns_ = false;
+}
+
+template <typename _Mutex>
+inline void swap(shared_lock<_Mutex> &__x, shared_lock<_Mutex> &__y) noexcept {
+	__x.swap(__y);
+}
+
+} // namespace sprt
+
+#endif

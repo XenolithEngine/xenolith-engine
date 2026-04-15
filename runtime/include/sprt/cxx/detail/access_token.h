@@ -202,7 +202,7 @@ public:
 
 	template <typename Callback>
 	constexpr sprt::enable_if_t<sprt::is_invocable_v<Callback, const mapped_type &>, bool> unwrap(
-			const Callback &) const noexcept {
+			const Callback &cb) const noexcept {
 		if (_iterator != sprt::end(*_container)) {
 			cb(aligned_storage_kv_traits<container_key_type, value_type>::extract_value(
 					*_iterator));

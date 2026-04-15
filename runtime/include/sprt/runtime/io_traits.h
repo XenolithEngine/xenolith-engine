@@ -31,8 +31,26 @@ THE SOFTWARE.
 #include <sprt/cxx/cstring>
 #include <sprt/cxx/typeinfo>
 #include <sprt/cxx/thread>
+#include <sprt/cxx/atomic>
 
 namespace sprt {
+
+enum class io_int_base {
+	decimial,
+	hex,
+};
+
+template <signed_or_unsigned_integer T>
+struct io_int {
+	T value;
+	io_int_base base = io_int_base::decimial;
+};
+
+
+template <signed_or_unsigned_integer T>
+inline io_int<T> io_hex(T value) {
+	return io_int<T>{value, io_int_base::hex};
+}
 
 template <typename T>
 struct io_traits;
@@ -48,7 +66,7 @@ struct io_traits<void> {
 		} else {
 			// use 'encode' if there is no quick length acquisition
 			size_t ret = 0;
-			io_traits<Type>::template encode<CharType>(
+			io_traits<void>::template encode<CharType>(
 					[&](StringViewBase<CharType> str) { ret += str.size(); }, value);
 			return ret;
 		}
@@ -56,7 +74,17 @@ struct io_traits<void> {
 
 	template <io_character CharType, typename Type>
 	static void encode(const callback<void(StringViewBase<CharType>)> &cb, const Type &value) {
-		return io_traits<Type>::encode(cb, value);
+		io_traits<Type>::encode(cb, value);
+	}
+
+	template <typename Type>
+	static void encode(const callback<void(StringViewUtf8)> &cb, const Type &value) {
+		io_traits<Type>::encode(cb, value);
+	}
+
+	template <sprt::endian E, typename Type>
+	static void encode(const callback<void(BytesViewTemplate<E>)> &cb, const Type &value) {
+		io_traits<Type>::encode(cb, value);
 	}
 };
 
@@ -67,9 +95,18 @@ struct io_traits<T &> {
 		return io_traits<T>::template length<CharType>(value);
 	}
 
-	template <io_character CharType, typename Type>
+	template <io_character CharType>
 	static void encode(const callback<void(StringViewBase<CharType>)> &cb, const T &value) {
-		return io_traits<T>::encode(cb, value);
+		io_traits<T>::encode(cb, value);
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const T &value) {
+		io_traits<T>::encode(cb, value);
+	}
+
+	template <sprt::endian E>
+	static void encode(const callback<void(BytesViewTemplate<E>)> &cb, const T &value) {
+		io_traits<T>::encode(cb, value);
 	}
 };
 
@@ -80,9 +117,63 @@ struct io_traits<const T &> {
 		return io_traits<T>::template length<CharType>(value);
 	}
 
-	template <io_character CharType, typename Type>
+	template <io_character CharType>
 	static void encode(const callback<void(StringViewBase<CharType>)> &cb, const T &value) {
-		return io_traits<T>::encode(cb, value);
+		io_traits<T>::encode(cb, value);
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const T &value) {
+		io_traits<T>::encode(cb, value);
+	}
+
+	template <sprt::endian E>
+	static void encode(const callback<void(BytesViewTemplate<E>)> &cb, const T &value) {
+		io_traits<T>::encode(cb, value);
+	}
+};
+
+template <typename T>
+struct io_traits<atomic<T>> {
+	template <io_character CharType>
+	static size_t length(const atomic<T> &value) {
+		return io_traits<T>::template length<CharType>(value.load());
+	}
+
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb, const atomic<T> &value) {
+		io_traits<T>::encode(cb, value.load());
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const atomic<T> &value) {
+		io_traits<T>::encode(cb, value.load());
+	}
+
+	template <sprt::endian E>
+	static void encode(const callback<void(BytesViewTemplate<E>)> &cb, const atomic<T> &value) {
+		io_traits<T>::encode(cb, value.load());
+	}
+};
+
+template <enumeration E>
+struct io_traits<E> {
+	template <io_character CharType>
+	static size_t length(const E &value) {
+		return io_traits<sprt::underlying_type_t<E>>::template length<CharType>(
+				sprt::to_underlying(value));
+	}
+
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb, const E &value) {
+		io_traits<sprt::underlying_type_t<E>>::encode(cb, sprt::to_underlying(value));
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const E &value) {
+		io_traits<sprt::underlying_type_t<E>>::encode(cb, sprt::to_underlying(value));
+	}
+
+	template <sprt::endian Endian>
+	static void encode(const callback<void(BytesViewTemplate<Endian>)> &cb, const E &value) {
+		io_traits<sprt::underlying_type_t<E>>::encode(cb, sprt::to_underlying(value));
 	}
 };
 
@@ -95,12 +186,72 @@ struct io_traits<I> {
 		return _itoa::_itoa_len(value);
 	}
 
+	template <io_character CharType, typename View>
+	static constexpr void __encode(const callback<void(View)> &cb, const I &value) {
+		CharType buf[MAX_DIGITS + 1];
+		auto ret = _itoa::unsigned_to_decimal(buf, value, MAX_DIGITS);
+		cb(StringViewBase<CharType>(buf + MAX_DIGITS - ret, ret));
+	}
+
 	template <io_character CharType>
 	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
 			const I &value) {
-		CharType buf[MAX_DIGITS];
-		auto ret = _itoa::unsigned_to_decimal(buf, value, MAX_DIGITS);
+		__encode<CharType>(cb, value);
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const I &value) {
+		__encode<char>(cb, value);
+	}
+
+	template <sprt::endian E>
+	static void encode(const callback<void(BytesViewTemplate<E>)> &cb, const I &value) {
+		if constexpr (E == sprt::endian::native) {
+			cb(BytesViewTemplate<E>(reinterpret_cast<const uint8_t *>(&value), sizeof(value)));
+		} else {
+			I v = byteswap(value);
+			cb(BytesViewTemplate<E>(reinterpret_cast<const uint8_t *>(&v), sizeof(v)));
+		}
+	}
+};
+
+template <unsigned_integer I>
+struct io_traits<io_int<I>> {
+	static constexpr size_t MAX_DIGITS = Digits10<I> + 4;
+
+	template <io_character CharType>
+	static constexpr size_t length(const io_int<I> &value) {
+		switch (value.base) {
+		case io_int_base::decimial: return _itoa::_itoa_len(value.value); break;
+		case io_int_base::hex: return _itoa::_itoa_hex_len(value.value) + 2; break;
+		}
+	}
+
+	template <io_character CharType, typename View>
+	static constexpr void __encode(const callback<void(View)> &cb, const io_int<I> &value) {
+		CharType buf[MAX_DIGITS + 1];
+		size_t ret = 0;
+		switch (value.base) {
+		case io_int_base::decimial:
+			ret = _itoa::unsigned_to_decimal(buf, value.value, MAX_DIGITS);
+			break;
+		case io_int_base::hex:
+			ret = _itoa::unsigned_to_hex(buf, value.value, MAX_DIGITS, false);
+			buf[MAX_DIGITS - ret++ - 1] = 'x';
+			buf[MAX_DIGITS - ret++ - 1] = '0';
+			break;
+		}
+
 		cb(StringViewBase<CharType>(buf + MAX_DIGITS - ret, ret));
+	}
+
+	template <io_character CharType>
+	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const io_int<I> &value) {
+		__encode<CharType>(cb, value);
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const io_int<I> &value) {
+		__encode<char>(cb, value);
 	}
 };
 
@@ -113,10 +264,9 @@ struct io_traits<I> {
 		return _itoa::_itoa_len(value);
 	}
 
-	template <io_character CharType>
-	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
-			const I &value) {
-		CharType buf[MAX_DIGITS];
+	template <io_character CharType, typename View>
+	static constexpr void __encode(const callback<void(View)> &cb, const I &value) {
+		CharType buf[MAX_DIGITS + 1];
 
 		size_t ret = 0;
 		if (value < 0) {
@@ -128,6 +278,71 @@ struct io_traits<I> {
 		}
 
 		cb(StringViewBase<CharType>(buf + MAX_DIGITS - ret, ret));
+	}
+
+	template <io_character CharType>
+	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const I &value) {
+		__encode<CharType>(cb, value);
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const I &value) {
+		__encode<char>(cb, value);
+	}
+};
+
+template <signed_integer I>
+struct io_traits<io_int<I>> {
+	static constexpr size_t MAX_DIGITS = Digits10<I> + 4;
+
+	template <io_character CharType>
+	static constexpr size_t length(const io_int<I> &value) {
+		switch (value.base) {
+		case io_int_base::decimial: return _itoa::_itoa_len(value.value); break;
+		case io_int_base::hex: return _itoa::_itoa_hex_len(value.value) + 2; break;
+		}
+	}
+
+	template <io_character CharType, typename View>
+	static constexpr void __encode(const callback<void(View)> &cb, const io_int<I> &value) {
+		CharType buf[MAX_DIGITS + 1];
+		size_t ret = 0;
+		switch (value.base) {
+		case io_int_base::decimial:
+			if (value.value < 0) {
+				ret = _itoa::unsigned_to_decimal(buf, make_unsigned_t<I>(-value.value), MAX_DIGITS);
+				buf[MAX_DIGITS - ret++ - 1] = '-';
+			} else {
+				ret = _itoa::unsigned_to_decimal(buf, make_unsigned_t<I>(value.value), MAX_DIGITS);
+			}
+			break;
+		case io_int_base::hex:
+			if (value.value < 0) {
+				ret = _itoa::unsigned_to_hex(buf, make_unsigned_t<I>(-value.value), MAX_DIGITS,
+						false);
+				buf[MAX_DIGITS - ret++ - 1] = 'x';
+				buf[MAX_DIGITS - ret++ - 1] = '0';
+				buf[MAX_DIGITS - ret++ - 1] = '-';
+			} else {
+				ret = _itoa::unsigned_to_hex(buf, make_unsigned_t<I>(value.value), MAX_DIGITS,
+						false);
+				buf[MAX_DIGITS - ret++ - 1] = 'x';
+				buf[MAX_DIGITS - ret++ - 1] = '0';
+			}
+			break;
+		}
+
+		cb(StringViewBase<CharType>(buf + MAX_DIGITS - ret, ret));
+	}
+
+	template <io_character CharType>
+	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const io_int<I> &value) {
+		__encode<CharType>(cb, value);
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const io_int<I> &value) {
+		__encode<char>(cb, value);
 	}
 };
 
@@ -147,6 +362,12 @@ struct io_traits<double> {
 		auto ret = sprt::dtoa(value, buf, DOUBLE_MAX_DIGITS);
 		cb(StringViewBase<CharType>(buf, ret));
 	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const double &value) {
+		char buf[DOUBLE_MAX_DIGITS];
+		auto ret = sprt::dtoa(value, buf, DOUBLE_MAX_DIGITS);
+		cb(StringViewUtf8(buf, ret));
+	}
 };
 
 template <>
@@ -158,8 +379,12 @@ struct io_traits<float> {
 
 	template <io_character CharType>
 	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
-			const double &value) {
-		return io_traits<double>::encode(cb, value);
+			const float &value) {
+		io_traits<double>::encode(cb, value);
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const float &value) {
+		io_traits<double>::encode(cb, value);
 	}
 };
 
@@ -175,6 +400,10 @@ struct io_traits<char> {
 			const char &value) {
 		CharType out(value);
 		cb(StringViewBase<CharType>(&out, 1));
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const char &value) {
+		cb(StringViewUtf8(&value, 1));
 	}
 };
 
@@ -212,6 +441,14 @@ struct io_traits<char16_t> {
 		} else {
 			static_assert(false, "unknown output char type");
 		}
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const char16_t &value) {
+		auto bufSize = unicode::utf8EncodeLength(value) + 1;
+		auto buf = __sprt_typed_malloca(char, bufSize);
+		auto ret = unicode::utf8EncodeBuf(buf, bufSize, value);
+		cb(StringViewUtf8(buf, ret));
+		__sprt_freea(buf);
 	}
 };
 
@@ -253,6 +490,13 @@ struct io_traits<char32_t> {
 			static_assert(false, "unknown output char type");
 		}
 	}
+	static void encode(const callback<void(StringViewUtf8)> &cb, const char32_t &value) {
+		auto bufSize = unicode::utf8EncodeLength(value) + 1;
+		auto buf = __sprt_typed_malloca(char, bufSize);
+		auto ret = unicode::utf8EncodeBuf(buf, bufSize, value);
+		cb(StringViewUtf8(buf, ret));
+		__sprt_freea(buf);
+	}
 };
 
 template <>
@@ -279,6 +523,10 @@ struct io_traits<StringView> {
 		} else {
 			static_assert(false, "unknown output char type");
 		}
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const StringView &value) {
+		cb(value);
 	}
 };
 
@@ -313,6 +561,10 @@ struct io_traits<WideStringView> {
 			static_assert(false, "unknown output char type");
 		}
 	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const WideStringView &value) {
+		unicode::toUtf8(cb, value);
+	}
 };
 
 template <>
@@ -340,6 +592,11 @@ struct io_traits<StringViewBase<char32_t>> {
 		} else {
 			static_assert(false, "unknown output char type");
 		}
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb,
+			const StringViewBase<char32_t> &value) {
+		unicode::toUtf8(cb, value);
 	}
 };
 
@@ -371,6 +628,20 @@ struct io_traits<StringViewUtf8> {
 			static_assert(false, "unknown output char type");
 		}
 	}
+
+	static constexpr void encode(const callback<void(StringViewUtf8)> &cb,
+			const StringViewUtf8 &value) {
+		cb(value);
+	}
+};
+
+template <sprt::endian OrgignalEndian>
+struct io_traits<BytesViewTemplate<OrgignalEndian>> {
+	template <sprt::endian TargetEndian>
+	static constexpr void encode(const callback<void(BytesViewTemplate<TargetEndian>)> &cb,
+			const BytesViewTemplate<OrgignalEndian> &value) {
+		cb(value);
+	}
 };
 
 template <io_character C>
@@ -383,6 +654,10 @@ struct io_traits<C *> {
 	template <io_character CharType>
 	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb, C *value) {
 		io_traits<StringViewBase<C>>::encode(cb, StringViewBase<C>(value));
+	}
+
+	static constexpr void encode(const callback<void(StringViewUtf8)> &cb, C *value) {
+		io_traits<StringViewUtf8>::encode(cb, StringViewUtf8(value));
 	}
 };
 
@@ -398,6 +673,10 @@ struct io_traits<const C *> {
 			const C *value) {
 		io_traits<StringViewBase<C>>::encode(cb, StringViewBase<C>(value));
 	}
+
+	static constexpr void encode(const callback<void(StringViewUtf8)> &cb, const C *value) {
+		io_traits<StringViewUtf8>::encode(cb, StringViewUtf8(value));
+	}
 };
 
 template <io_character C, size_t N>
@@ -411,6 +690,10 @@ struct io_traits<const C (&)[N]> {
 	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
 			const C (&value)[N]) {
 		io_traits<StringViewBase<C>>::encode(cb, StringViewBase<C>(value, N));
+	}
+
+	static constexpr void encode(const callback<void(StringViewUtf8)> &cb, const C (&value)[N]) {
+		io_traits<StringViewUtf8>::encode(cb, StringViewUtf8(value, N));
 	}
 };
 
@@ -426,6 +709,10 @@ struct io_traits<C[N]> {
 			const C value[N]) {
 		io_traits<StringViewBase<C>>::encode(cb, StringViewBase<C>(value, N));
 	}
+
+	static constexpr void encode(const callback<void(StringViewUtf8)> &cb, const C value[N]) {
+		io_traits<StringViewUtf8>::encode(cb, StringViewUtf8(value, N));
+	}
 };
 
 template <io_character C, size_t N>
@@ -440,6 +727,29 @@ struct io_traits<const C[N]> {
 			const C value[N]) {
 		io_traits<StringViewBase<C>>::encode(cb, StringViewBase<C>(value, N));
 	}
+
+	static constexpr void encode(const callback<void(StringViewUtf8)> &cb, const C value[N]) {
+		io_traits<StringViewUtf8>::encode(cb, StringViewUtf8(value, N));
+	}
+};
+
+template <io_character C, size_t N>
+struct io_traits<sprt::array<C, N>> {
+	template <io_character CharType>
+	static constexpr size_t length(const sprt::array<C, N> value) {
+		return io_traits<StringViewBase<C>>::template length<CharType>(StringViewBase<C>(value, N));
+	}
+
+	template <io_character CharType>
+	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const sprt::array<C, N> value) {
+		io_traits<StringViewBase<C>>::encode(cb, StringViewBase<C>(value, N));
+	}
+
+	static constexpr void encode(const callback<void(StringViewUtf8)> &cb,
+			const sprt::array<C, N> value) {
+		io_traits<StringViewUtf8>::encode(cb, StringViewUtf8(value, N));
+	}
 };
 
 template <io_character StringCharType, typename Allocator>
@@ -452,6 +762,11 @@ struct io_traits<__basic_string<StringCharType, Allocator>> {
 
 	template <io_character CharType>
 	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const __basic_string<StringCharType, Allocator> &str) {
+		io_traits<StringViewBase<StringCharType>>::encode(cb, StringViewBase<StringCharType>(str));
+	}
+
+	static constexpr void encode(const callback<void(StringViewUtf8)> &cb,
 			const __basic_string<StringCharType, Allocator> &str) {
 		io_traits<StringViewBase<StringCharType>>::encode(cb, StringViewBase<StringCharType>(str));
 	}
@@ -493,12 +808,42 @@ struct io_traits<type_info> {
 	}
 };
 
+template <typename T>
+struct io_traits<const T *> {
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb, const T *value) {
+		cb << "(" << typeid(const T *) << ")" << sprt::io_hex(reinterpret_cast<uintptr_t>(value));
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const T *value) {
+		cb << "(" << typeid(const T *) << ")" << sprt::io_hex(reinterpret_cast<uintptr_t>(value));
+	}
+};
+
+template <typename T>
+struct io_traits<T *> {
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb, T *value) {
+		cb << "(" << typeid(T *) << ")" << sprt::io_hex(reinterpret_cast<uintptr_t>(value));
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, T *value) {
+		cb << "(" << typeid(T *) << ")" << sprt::io_hex(reinterpret_cast<uintptr_t>(value));
+	}
+};
+
 template <>
 struct io_traits<Status> {
 	template <io_character CharType>
 	static void encode(const callback<void(StringViewBase<CharType>)> &cb, const Status &value) {
 		status::getStatusDescription(value,
 				[&](StringView str) { io_traits<StringView>::encode(cb, str); });
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const Status &value) {
+		status::getStatusDescription(value, [&](StringView str) {
+			io_traits<StringViewUtf8>::encode(cb, StringViewUtf8(str));
+		});
 	}
 };
 
@@ -512,7 +857,12 @@ struct io_traits<thread::id> {
 	template <io_character CharType>
 	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
 			const thread::id &value) {
-		return io_traits<thread::id::__type>::template encode<CharType>(cb, value.__native);
+		io_traits<thread::id::__type>::template encode<CharType>(cb, value.__native);
+	}
+
+	static constexpr void encode(const callback<void(StringViewUtf8)> &cb,
+			const thread::id &value) {
+		io_traits<thread::id::__type>::encode(cb, value.__native);
 	}
 };
 

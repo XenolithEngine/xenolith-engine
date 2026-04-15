@@ -27,7 +27,9 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_uint32_t.h>
 #include <sprt/c/bits/__sprt_uint64_t.h>
 
+// Default nanoseconds timeout
 typedef __SPRT_ID(uint64_t) __SPRT_ID(sprt_timeout_t);
+
 typedef __SPRT_ID(uint32_t) __SPRT_ID(sprt_lock_flags_t);
 
 /*

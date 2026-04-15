@@ -26,6 +26,10 @@
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/stream.h>
+#include <sprt/runtime/geom/geom.h>
+#include <sprt/runtime/geom/vec4.h>
+#include <sprt/runtime/geom/padding.h>
+#include <sprt/runtime/geom/color.h>
 #include <sprt/cxx/string>
 #include <sprt/cxx/vector>
 #include <sprt/cxx/set>
@@ -33,6 +37,30 @@
 #include <sprt/cxx/function>
 
 namespace sprt::window {
+
+using geom::UVec2;
+using geom::UVec3;
+using geom::UVec4;
+using geom::IVec2;
+using geom::IVec3;
+using geom::IVec4;
+using geom::Vec2;
+using geom::Vec3;
+using geom::Vec4;
+using geom::Mat4;
+using geom::Quaternion;
+using geom::Size2;
+using geom::Size3;
+using geom::Extent2;
+using geom::Extent3;
+using geom::Rect;
+using geom::IRect;
+using geom::Padding;
+
+using geom::Color3B;
+using geom::Color4B;
+using geom::Color4S;
+using geom::Color4F;
 
 using String = __malloc_string;
 

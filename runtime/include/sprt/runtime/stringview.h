@@ -35,12 +35,14 @@ THE SOFTWARE.
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/runtime/mem/context.h>
 
+#include <sprt/cxx/cstring>
 #include <sprt/cxx/functional>
 #include <sprt/cxx/__algorithm/lexicographical_compare.h>
 #include <sprt/cxx/detail/pointer_iterator.h>
 #include <sprt/cxx/string>
 #include <sprt/cxx/vector>
 #include <sprt/cxx/array>
+#include <sprt/cxx/compare>
 
 #include <sprt/c/__sprt_string.h>
 
@@ -353,7 +355,12 @@ public:
 	Self &operator-=(const Self &) const;
 
 	constexpr uint64_t hash() const {
-		return sprt::hashSize(this->data(), this->size() * sizeof(CharType));
+		if constexpr (sizeof(CharType) == 1) {
+			return sprt::hashSize(this->data(), this->size() * sizeof(CharType));
+		} else {
+			return sprt::hashSize(reinterpret_cast<const char *>(this->data()),
+					this->size() * sizeof(CharType));
+		}
 	}
 
 public:
@@ -1217,19 +1224,24 @@ inline int compare_u(const L &l, const R &r) {
 
 template <typename L, typename R, typename CharType>
 inline int caseCompare_c(const L &l, const R &r) {
-	auto ret = sprt::lexicographical_compare_pointer(l.data(), l.data() + l.size(), r.data(),
-			r.data() + r.size(), [&](const CharType &l, const CharType &r) -> int {
+	strong_ordering ret = sprt::lexicographical_compare_pointer(l.data(), l.data() + l.size(),
+			r.data(), r.data() + r.size(), [&](const CharType &l, const CharType &r) {
 		auto lc = __constexpr_toupper_c(l);
 		auto rc = __constexpr_toupper_c(r);
 		if (lc == rc) {
-			return 0;
+			return strong_ordering::equal;
 		} else if (lc < rc) {
-			return -1;
+			return strong_ordering::less;
 		} else {
-			return 1;
+			return strong_ordering::greater;
 		}
 	});
-	return ret;
+	if (ret == strong_ordering::less) {
+		return -1;
+	} else if (ret == strong_ordering::greater) {
+		return 1;
+	}
+	return 0;
 }
 
 template <typename L, typename R, typename CharType>
@@ -1292,12 +1304,31 @@ inline bool operator!=(const StringViewBase<C> &l, const C *r) {
 	return detail::compare_c(l, StringViewBase<C>(r)) != 0;
 }
 
+template <typename C, typename Allocator>
+inline bool operator==(const StringViewBase<C> &l, const __basic_string<C, Allocator> &r) {
+	return detail::compare_c(l, StringViewBase<C>(r)) == 0;
+}
+template <typename C, typename Allocator>
+inline bool operator!=(const StringViewBase<C> &l, const __basic_string<C, Allocator> &r) {
+	return detail::compare_c(l, StringViewBase<C>(r)) != 0;
+}
+
 template <typename C>
 inline bool operator==(const C *l, const StringViewBase<C> &r) {
 	return detail::compare_c(StringViewBase<C>(l), r) == 0;
 }
 template <typename C>
 inline bool operator!=(const C *l, const StringViewBase<C> &r) {
+	return detail::compare_c(StringViewBase<C>(l), r) != 0;
+}
+
+template <typename C, typename Allocator>
+inline bool operator==(const __basic_string<C, Allocator> &l, const StringViewBase<C> &r) {
+	return detail::compare_c(StringViewBase<C>(l), r) == 0;
+}
+
+template <typename C, typename Allocator>
+inline bool operator!=(const __basic_string<C, Allocator> &l, const StringViewBase<C> &r) {
 	return detail::compare_c(StringViewBase<C>(l), r) != 0;
 }
 
@@ -2346,7 +2377,7 @@ auto BytesViewTemplate<Endianess>::pdup(memory::pool_t *p) const -> Self {
 		p = sprt::memory::pool::acquire();
 	}
 	auto buf = (uint8_t *)sprt::memory::pool::palloc(p, this->size() * sizeof(uint8_t));
-	memcpy(buf, this->data(), this->size() * sizeof(uint8_t));
+	sprt::memcpy(buf, this->data(), this->size() * sizeof(uint8_t));
 	return Self(buf, this->size());
 }
 

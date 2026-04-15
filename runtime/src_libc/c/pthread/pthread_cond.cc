@@ -28,102 +28,70 @@ namespace sprt::_thread {
 
 // based on https://www.remlab.net/op/futex-condvar.shtml
 
+static uint64_t __cond_mutex_id(void *mutex) {
+	return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(mutex));
+}
+
+static Status __cond_mutex_lock(void *mutex) {
+	return status::errnoToStatus(
+			reinterpret_cast<mutex_t *>(mutex)->lock(__SPRT_SPRT_TIMEOUT_INFINITE));
+}
+
+static Status __cond_mutex_unlock(void *mutex) {
+	return status::errnoToStatus(reinterpret_cast<mutex_t *>(mutex)->unlock());
+}
+
 int cond_t::wait(mutex_t *mutex, __sprt_sprt_timeout_t timeout) {
-	uint64_t desired = static_cast<uint64_t>(bit_cast<uintptr_t>(mutex));
-	uint64_t expected = 0;
-	if (_atomic::compareSwap(&mutexid, &expected, desired)) {
-		// condition captured by new mutex
-		_atomic::fetchAdd(&counter, uint32_t(1));
-	} else if (expected == desired) {
-		// comdition was captured by this mutex
-		_atomic::fetchAdd(&counter, uint32_t(1));
-	} else {
-		// captured by different mutex
-		return EINVAL;
-	}
-
-	uint32_t v = _atomic::loadSeq(&value);
-	_atomic::storeSeq(&previous, v);
-
-	int result = 0;
-
 	__sprt_sprt_lock_flags_t condFlag = 0;
-	if (hasFlag(flags, CondAttrFlags::Shared)) {
+	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::Shared)) {
 		condFlag = __SPRT_SPRT_LOCK_FLAG_SHARED;
 	}
-	if (hasFlag(flags, CondAttrFlags::ClockRealtime)) {
+	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::ClockRealtime)) {
 		condFlag = __SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME;
 	}
 
-	__sprt_sprt_timeout_t now =
-			(timeout == __SPRT_SPRT_TIMEOUT_INFINITE) ? 0 : __sprt_sprt_qlock_now(condFlag);
-	__sprt_sprt_timeout_t next = 0;
-
-	mutex->unlock();
-	while (v == _atomic::loadSeq(&value)) {
-		if (timeout == 0) {
-			result = ETIMEDOUT;
-			break;
-		}
-
-		result = __sprt_sprt_qlock_wait(&value, v, timeout, condFlag);
-		if (result != 0) {
-			if (__sprt_errno == ETIMEDOUT) {
-				result = ETIMEDOUT;
-				break;
-			}
-		}
-
-		if (timeout != __SPRT_SPRT_TIMEOUT_INFINITE) {
-			next = __sprt_sprt_qlock_now(condFlag);
-			timeout -= min((next - now), timeout);
-			now = next;
-		}
+	Status ret = Status::Ok;
+	if (timeout == __SPRT_SPRT_TIMEOUT_INFINITE) {
+		ret = qcondvar_base::_wait<__sprt_sprt_qlock_wait, nullptr, __cond_mutex_id,
+				__cond_mutex_lock, __cond_mutex_unlock>(&data, mutex, nullptr, condFlag);
+	} else {
+		ret = qcondvar_base::_wait<__sprt_sprt_qlock_wait, __sprt_sprt_qlock_now, __cond_mutex_id,
+				__cond_mutex_lock, __cond_mutex_unlock>(&data, mutex, &timeout, condFlag);
 	}
-	result = mutex->lock(__SPRT_SPRT_TIMEOUT_INFINITE);
 
-	if (result == 0) {
-		if (_atomic::fetchSub(&counter, 1U) == 1) {
-			_atomic::storeSeq(&mutexid, uint64_t(0));
-		}
+	switch (ret) {
+	case Status::Done: return 0; break;
+	case Status::Ok: return 0; break;
+	case Status::Timeout: return ETIMEDOUT; break;
+	default: status::toErrno(ret); break;
 	}
-	return result;
+	return 0;
 }
 
 int cond_t::signal() {
-	uint64_t mid = _atomic::loadSeq(&mutexid);
-	if (mid == 0) {
-		// no waiters
-		return 0;
+	__sprt_sprt_lock_flags_t condFlag = 0;
+	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::Shared)) {
+		condFlag = __SPRT_SPRT_LOCK_FLAG_SHARED;
+	}
+	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::ClockRealtime)) {
+		condFlag = __SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME;
 	}
 
-	__sprt_sprt_lock_flags_t __condFlags = 0;
-	if (hasFlag(flags, CondAttrFlags::Shared)) {
-		__condFlags |= __SPRT_SPRT_LOCK_FLAG_SHARED;
-	}
-
-	uint32_t v = 1u + _atomic::loadSeq(&previous);
-	_atomic::storeSeq(&value, v);
-	__sprt_sprt_qlock_wake_one(&value, __condFlags);
-	return 0;
+	auto ret = qcondvar_base::_signal<__sprt_sprt_qlock_wake_one>(&data, condFlag);
+	return status::toErrno(ret);
 }
 
 int cond_t::broadcast() {
-	uint64_t mid = _atomic::loadSeq(&mutexid);
-	if (mid == 0) {
-		// no waiters
-		return 0;
+	__sprt_sprt_lock_flags_t condFlag = 0;
+	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::Shared)) {
+		condFlag = __SPRT_SPRT_LOCK_FLAG_SHARED;
+	}
+	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::ClockRealtime)) {
+		condFlag = __SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME;
 	}
 
-	__sprt_sprt_lock_flags_t __condFlags = 0;
-	if (hasFlag(flags, CondAttrFlags::Shared)) {
-		__condFlags |= __SPRT_SPRT_LOCK_FLAG_SHARED;
-	}
-
-	uint32_t v = 1u + _atomic::loadSeq(&previous);
-	_atomic::storeSeq(&value, v);
-	__sprt_sprt_qlock_wake_all(&value, __condFlags);
-	return 0;
+	auto ret = qcondvar_base::_signal<__sprt_sprt_qlock_wake_all>(&data, condFlag);
+	return status::toErrno(ret);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(pthread_condattr_init)(__SPRT_ID(pthread_condattr_t) * attr) {
@@ -217,7 +185,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_cond_init)(__SPRT_ID(pthread_cond_t) * __SPR
 
 	auto tcond = new (reinterpret_cast<_thread::cond_t *>(cond), nothrow) _thread::cond_t();
 	if (attr) {
-		tcond->flags = reinterpret_cast<const _thread::condattr_t *>(attr)->flags;
+		tcond->data.padding = toInt(reinterpret_cast<const _thread::condattr_t *>(attr)->flags);
 	}
 	return 0;
 }
@@ -276,11 +244,47 @@ __SPRT_C_FUNC int __SPRT_ID(
 	}
 
 	__SPRT_TIMESPEC_NAME curTv;
-	if (hasFlag(tcond->flags, CondAttrFlags::ClockRealtime)) {
+	if (hasFlag(CondAttrFlags(tcond->data.padding), CondAttrFlags::ClockRealtime)) {
 		__sprt_clock_gettime(__sprt_sprt_qlock_getclock(__SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME),
 				&curTv);
 	} else {
 		__sprt_clock_gettime(__sprt_sprt_qlock_getclock(0), &curTv);
+	}
+
+	auto diffTv = __sprt_timespec_diff(tv, &curTv);
+
+	if (diffTv.tv_sec < 0) {
+		return ETIMEDOUT;
+	}
+
+	__sprt_sprt_timeout_t nanoTimeout = diffTv.tv_sec * 1'000'000'000 + diffTv.tv_nsec;
+
+	return tcond->wait(mtx, nanoTimeout);
+}
+
+SPRT_API int __SPRT_ID(pthread_cond_clockwait)(__SPRT_ID(pthread_cond_t) * __SPRT_RESTRICT cond,
+		__SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT mutex, __SPRT_ID(clockid_t) clock_id,
+		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT tv) {
+	if (!cond || !mutex || !tv || tv->tv_nsec < 0 || tv->tv_nsec >= 1'000'000'000) {
+		return EINVAL;
+	}
+
+	auto mtx = reinterpret_cast<_thread::mutex_t *>(mutex);
+	auto tcond = reinterpret_cast<_thread::cond_t *>(cond);
+
+	if (mtx->has_ownedship()) {
+		if (!mtx->is_owned_by_this_thread()) {
+			return EINVAL;
+		}
+	} else {
+		if (!mtx->is_locked()) {
+			return EINVAL;
+		}
+	}
+
+	__SPRT_TIMESPEC_NAME curTv;
+	if (__sprt_clock_gettime(clock_id, &curTv) != 0) {
+		return __sprt_errno;
 	}
 
 	auto diffTv = __sprt_timespec_diff(tv, &curTv);

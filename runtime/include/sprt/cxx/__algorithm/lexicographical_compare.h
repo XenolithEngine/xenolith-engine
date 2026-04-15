@@ -28,6 +28,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__algorithm/minmax.h>
 #include <sprt/cxx/functional>
 #include <sprt/cxx/__functional/invoke.h>
+#include <sprt/cxx/compare>
 
 namespace sprt {
 
@@ -35,11 +36,11 @@ struct lexicographical_type_compare {
 	template <typename Type1, typename Type2>
 	constexpr auto operator()(const Type1 &__t, const Type2 &__u) const noexcept {
 		if (__t == __u) {
-			return 0;
+			return strong_ordering::equal;
 		} else if (__t < __u) {
-			return -1;
+			return strong_ordering::less;
 		} else {
-			return 1;
+			return strong_ordering::greater;
 		}
 	}
 

@@ -24,29 +24,29 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_CXX_MUTEX_H_
 
 #include <sprt/c/__sprt_pthread.h>
+#include <sprt/cxx/__mutex/unique_lock.h>
+#include <sprt/cxx/__mutex/lock_guard.h>
+#include <sprt/cxx/__mutex/timed_mutex.h>
+#include <sprt/cxx/__mutex/recursive_timed_mutex.h>
+#include <sprt/runtime/thread/qmutex.h>
+#include <sprt/runtime/thread/qonce.h>
+#include <sprt/runtime/thread/rmutex.h>
 
 namespace sprt {
 
-class mutex {
-public:
-	using native_handle_type = __sprt_pthread_mutex_t *;
+// Just use qmutex as common std::mutex
+using mutex = qmutex;
 
-	constexpr mutex() = default;
+using recursive_mutex = rmutex;
 
-	mutex(const mutex &) = delete;
-	mutex &operator=(const mutex &) = delete;
+using once_flag = sprt::qonce;
 
-	~mutex();
-
-	void lock();
-	bool try_lock() noexcept;
-	void unlock() noexcept;
-
-	native_handle_type native_handle() { return &_mutex; }
-
-protected:
-	__sprt_pthread_mutex_t _mutex = __SPRT_PTHREAD_MUTEX_INITIALIZER;
-};
+template < typename Callable, typename... Args >
+void call_once(sprt::once_flag &flag, Callable &&f, Args &&...args) {
+	flag([f = sprt::forward<Callable>(f), ... args = sprt::forward<Args>(args)]() mutable {
+		sprt::__invoke(f, sprt::forward<Args>(args)...);
+	});
+}
 
 } // namespace sprt
 

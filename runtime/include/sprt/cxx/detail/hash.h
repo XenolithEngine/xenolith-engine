@@ -46,6 +46,13 @@ struct hash<I> {
 	}
 };
 
+template <enumeration Enum>
+struct hash<Enum> {
+	constexpr size_t operator()(const Enum &i) const noexcept {
+		return hash< sprt::underlying_type_t<Enum>>()(sprt::to_underlying(i));
+	}
+};
+
 template <>
 struct hash<float> {
 	constexpr size_t operator()(const float &value) const noexcept {

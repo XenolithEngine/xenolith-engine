@@ -34,6 +34,11 @@ THE SOFTWARE.
 
 namespace sprt {
 
+template <typename ExternalKey, typename Set>
+concept __set_compatible_key = requires(const typename Set::key_type &k, const ExternalKey &ek) {
+	typename Set::key_compare()(k, ek);
+};
+
 template <typename Value, typename Comp, typename Allocator>
 class __set : public Allocator::base_class {
 public:
@@ -57,8 +62,6 @@ public:
 	using size_type = size_t;
 	using difference_type = ptrdiff_t;
 
-	static constexpr bool is_transparent_keys = __is_transparent_v<key_compare>;
-
 	__set() noexcept : __set(Comp()) { }
 	explicit __set(const Comp &comp, const Allocator &alloc = Allocator()) noexcept
 	: _tree(comp, alloc) { }
@@ -74,7 +77,7 @@ public:
 	: _tree(x._tree,
 			  sprt::allocator_traits<allocator_type>::select_on_container_copy_construction(
 					  x.get_allocator())) { }
-	__set(__set &&x) noexcept : _tree(sprt::move_unsafe(x._tree, x.get_allocator())) { }
+	__set(__set &&x) noexcept : _tree(sprt::move_unsafe(x._tree), x.get_allocator()) { }
 
 	explicit __set(const Allocator &alloc) noexcept : _tree(Comp(), alloc) { }
 
@@ -156,8 +159,8 @@ public:
 	pair<iterator, bool> insert(value_type &&value) noexcept {
 		return emplace(sprt::move_unsafe(value));
 	}
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, pair<iterator, bool>> insert(K &&x) noexcept {
+	template <__set_compatible_key<__set> K>
+	pair<iterator, bool> insert(K &&x) noexcept {
 		return emplace(sprt::forward<K>(x));
 	}
 
@@ -167,8 +170,8 @@ public:
 	iterator insert(const_iterator hint, value_type &&value) noexcept {
 		return emplace_hint(hint, sprt::move_unsafe(value));
 	}
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, iterator> insert(const_iterator hint, K &&x) noexcept {
+	template <__set_compatible_key<__set> K>
+	iterator insert(const_iterator hint, K &&x) noexcept {
 		return emplace_hint(hint, sprt::forward<K>(x));
 	}
 
@@ -183,8 +186,8 @@ public:
 
 	iterator erase(const_iterator pos) noexcept { return _tree.erase(pos); }
 	size_type erase(const key_type &x) noexcept { return _tree.erase_unique(x); }
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, size_type> erase(K &&x) noexcept {
+	template <__set_compatible_key<__set> K>
+	size_type erase(K &&x) noexcept {
 		return _tree.erase_unique(x);
 	}
 	iterator erase(const_iterator first, const_iterator last) noexcept {
@@ -198,24 +201,24 @@ public:
 
 	iterator find(const key_type &x) { return _tree.find(x); }
 	const_iterator find(const key_type &x) const { return _tree.find(x); }
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, iterator> find(const K &x) {
+	template < __set_compatible_key<__set> K >
+	iterator find(const K &x) {
 		return _tree.find(x);
 	}
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, const_iterator> find(const K &x) const {
+	template < __set_compatible_key<__set> K >
+	const_iterator find(const K &x) const {
 		return _tree.find(x);
 	}
 
 	size_type count(const key_type &x) const { return _tree.count_unique(x); }
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, size_t> count(const K &x) const {
+	template < __set_compatible_key<__set> K >
+	size_t count(const K &x) const {
 		return _tree.count_unique(x);
 	}
 
 	bool contains(const key_type &x) const { return _tree.find(x) != _tree.end(); }
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, bool> contains(const K &x) const {
+	template <__set_compatible_key<__set> K>
+	bool contains(const K &x) const {
 		return _tree.find(x) != _tree.end();
 	}
 
@@ -223,24 +226,24 @@ public:
 	iterator lower_bound(const key_type &x) { return _tree.lower_bound(x); }
 	const_iterator lower_bound(const key_type &x) const { return _tree.lower_bound(x); }
 
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, iterator> lower_bound(const K &x) {
+	template < __set_compatible_key<__set> K >
+	iterator lower_bound(const K &x) {
 		return _tree.lower_bound(x);
 	}
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, const_iterator> lower_bound(const K &x) const {
+	template < __set_compatible_key<__set> K >
+	const_iterator lower_bound(const K &x) const {
 		return _tree.lower_bound(x);
 	}
 
 	iterator upper_bound(const key_type &x) { return _tree.upper_bound(x); }
 	const_iterator upper_bound(const key_type &x) const { return _tree.upper_bound(x); }
 
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, iterator> upper_bound(const K &x) {
+	template < __set_compatible_key<__set> K >
+	iterator upper_bound(const K &x) {
 		return _tree.upper_bound(x);
 	}
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, const_iterator> upper_bound(const K &x) const {
+	template < __set_compatible_key<__set> K >
+	const_iterator upper_bound(const K &x) const {
 		return _tree.upper_bound(x);
 	}
 
@@ -249,13 +252,12 @@ public:
 		return _tree.equal_range(x);
 	}
 
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, pair<iterator, iterator>> equal_range(const K &x) {
+	template < __set_compatible_key<__set> K >
+	pair<iterator, iterator> equal_range(const K &x) {
 		return _tree.equal_range(x);
 	}
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, pair<const_iterator, const_iterator>> equal_range(
-			const K &x) const {
+	template < __set_compatible_key<__set> K >
+	pair<const_iterator, const_iterator> equal_range(const K &x) const {
 		return _tree.equal_range(x);
 	}
 

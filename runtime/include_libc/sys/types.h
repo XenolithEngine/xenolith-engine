@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <sprt/c/cross/__sprt_pthread.h>
+#include <sprt/c/__sprt_pthread.h>
 #include <sprt/c/cross/__sprt_socket.h>
 #include <sprt/c/cross/__sprt_signal.h>
 #include <sprt/c/bits/__sprt_size_t.h>

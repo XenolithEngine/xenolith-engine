@@ -24,6 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_NOTIFICATIONS_H_
 
 #include <sprt/runtime/enum.h>
+#include <sprt/runtime/stringview.h>
 
 namespace sprt::window {
 
@@ -64,5 +65,61 @@ enum class NetworkFlags : uint32_t {
 SPRT_DEFINE_ENUM_AS_MASK(NetworkFlags)
 
 } // namespace sprt::window
+
+namespace sprt {
+
+template <typename T>
+struct io_traits;
+
+template <>
+struct io_traits<sprt::window::NetworkFlags> {
+	using NetworkFlags = sprt::window::NetworkFlags;
+
+	template <typename Callback>
+	static void __envode(const Callback &stream, const NetworkFlags &value) {
+		for (auto it : flags(value)) {
+			stream << " ";
+			switch (it) {
+			case NetworkFlags::None: break;
+			case NetworkFlags::Internet: stream << "NetworkFlags::Internet"; break;
+			case NetworkFlags::Congested: stream << "NetworkFlags::Congested"; break;
+			case NetworkFlags::Metered: stream << "NetworkFlags::Metered"; break;
+			case NetworkFlags::Restricted: stream << "NetworkFlags::Restricted"; break;
+			case NetworkFlags::Roaming: stream << "NetworkFlags::Roaming"; break;
+			case NetworkFlags::Suspended: stream << "NetworkFlags::Suspended"; break;
+			case NetworkFlags::Vpn: stream << "NetworkFlags::Vpn"; break;
+			case NetworkFlags::PrioritizeBandwidth:
+				stream << "NetworkFlags::PrioritizeBandwidth";
+				break;
+			case NetworkFlags::PrioritizeLatency:
+				stream << "NetworkFlags::PrioritizeLatency";
+				break;
+			case NetworkFlags::TemporarilyNotMetered:
+				stream << "NetworkFlags::TemporarilyNotMetered";
+				break;
+			case NetworkFlags::Trusted: stream << "NetworkFlags::Trusted"; break;
+			case NetworkFlags::Validated: stream << "NetworkFlags::Validated"; break;
+			case NetworkFlags::WifiP2P: stream << "NetworkFlags::WifiP2P"; break;
+			case NetworkFlags::CaptivePortal: stream << "NetworkFlags::CaptivePortal"; break;
+			case NetworkFlags::Local: stream << "NetworkFlags::Local"; break;
+			case NetworkFlags::Wired: stream << "NetworkFlags::Wired"; break;
+			case NetworkFlags::WLAN: stream << "NetworkFlags::WLAN"; break;
+			case NetworkFlags::WWAN: stream << "NetworkFlags::WWAN"; break;
+			}
+		}
+	}
+
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb,
+			const NetworkFlags &value) {
+		__envode(cb, value);
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const NetworkFlags &value) {
+		__envode(cb, value);
+	}
+};
+
+} // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_NOTIFICATIONS_H_

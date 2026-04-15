@@ -23,6 +23,7 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_ARRAY_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_ARRAY_H_
 
+#include <sprt/cxx/__algorithm/bounds.h>
 #include <sprt/cxx/detail/ctypes.h>
 
 namespace sprt {
@@ -78,6 +79,10 @@ struct array {
 
 	constexpr value_type *data() noexcept { return _elems; }
 	constexpr const value_type *data() const noexcept { return _elems; }
+
+	constexpr bool operator==(const array &other) const {
+		return sprt::equal(begin(), other.begin(), end());
+	}
 };
 
 } // namespace sprt

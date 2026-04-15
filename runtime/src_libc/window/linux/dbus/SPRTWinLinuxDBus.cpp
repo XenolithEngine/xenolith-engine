@@ -20,6 +20,8 @@
  THE SOFTWARE.
  **/
 
+#define __SPRT_BUILD 1
+
 #include <sprt/runtime/config.h>
 #include <sprt/c/bits/__sprt_def.h>
 

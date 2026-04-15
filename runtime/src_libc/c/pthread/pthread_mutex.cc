@@ -711,10 +711,25 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_mutex_trylock)(__SPRT_ID(pthread_mutex_t) * 
 __SPRT_C_FUNC int __SPRT_ID(
 		pthread_mutex_timedlock)(__SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT mutex,
 		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT tv) {
-	_thread::timeout_t nanotime = tv->tv_sec * 1'000'000'000 + tv->tv_nsec;
+	if (!mutex || !tv || tv->tv_nsec < 0 || tv->tv_nsec >= 1'000'000'000) {
+		return EINVAL;
+	}
+
+	__SPRT_TIMESPEC_NAME curTv;
+	if (__sprt_clock_gettime(__SPRT_CLOCK_REALTIME, &curTv) != 0) {
+		return __sprt_errno;
+	}
+
+	auto diffTv = __sprt_timespec_diff(tv, &curTv);
+
+	if (diffTv.tv_sec < 0) {
+		return ETIMEDOUT;
+	}
+
+	__sprt_sprt_timeout_t nanoTimeout = diffTv.tv_sec * 1'000'000'000 + diffTv.tv_nsec;
 
 	auto mtx = reinterpret_cast<_thread::mutex_t *>(mutex);
-	return mtx->lock(nanotime);
+	return mtx->lock(nanoTimeout);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(pthread_mutex_consistent)(__SPRT_ID(pthread_mutex_t) * mutex) {

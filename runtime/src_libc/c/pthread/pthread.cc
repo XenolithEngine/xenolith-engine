@@ -219,6 +219,8 @@ void thread_t::registerThread() {
 
 	threadMemPool = memory::get_thread_support_pool();
 
+	threadId = __sprt_gettid();
+
 	// read actual attributes
 	native::__initNativeHandle(this);
 

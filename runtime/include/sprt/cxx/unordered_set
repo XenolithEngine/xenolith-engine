@@ -34,6 +34,13 @@ THE SOFTWARE.
 
 namespace sprt {
 
+template <typename ExternalKey, typename Set>
+concept __unordered_set_compatible_key =
+		requires(const typename Set::key_type &k, const ExternalKey &ek) {
+			typename Set::key_equal()(k, ek);
+			typename Set::hasher()(ek);
+		};
+
 template <typename Key, typename Hash, typename Pred, typename Allocator>
 class __unordered_set : public Allocator::base_class {
 public:
@@ -57,9 +64,6 @@ public:
 	using local_iterator = container_type::const_local_iterator;
 	using const_local_iterator = container_type::const_local_iterator;
 	using node_type = container_type::node_type;
-
-	static constexpr bool is_transparent_keys =
-			__is_transparent_v<hasher> && __is_transparent_v<key_equal>;
 
 	~__unordered_set() { }
 
@@ -227,8 +231,8 @@ public:
 		}
 		return 0;
 	}
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, size_type> erase(K &&x) {
+	template <__unordered_set_compatible_key<__unordered_set> K>
+	size_type erase(K &&x) {
 		size_t ret = 0;
 		auto it = _container.find(x);
 		while (it != _container.end()) {
@@ -255,15 +259,15 @@ public:
 	// map operations
 	const_iterator find(const key_type &k) const { return _container.find(k); }
 
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, const_iterator> find(const K &k) const {
+	template <__unordered_set_compatible_key<__unordered_set> K>
+	const_iterator find(const K &k) const {
 		return _container.find(k);
 	}
 
 	size_type count(const key_type &k) const { return _container.count(k); }
 
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, size_type> count(const K &k) const {
+	template <__unordered_set_compatible_key<__unordered_set> K>
+	size_type count(const K &k) const {
 		return _container.count(k);
 	}
 
@@ -271,8 +275,8 @@ public:
 		return _container.find(k) != _container.end(); //
 	}
 
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, bool> contains(const K &k) const {
+	template <__unordered_set_compatible_key<__unordered_set> K>
+	bool contains(const K &k) const {
 		return _container.find(k) != _container.end();
 	}
 
@@ -281,13 +285,13 @@ public:
 		return _container.equal_range(k);
 	}
 
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, pair<iterator, iterator>> equal_range(const K &k) {
+	template <__unordered_set_compatible_key<__unordered_set> K>
+	iterator equal_range(const K &k) {
 		return _container.equal_range(k);
 	}
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, pair<const_iterator, const_iterator>> equal_range(
-			const K &k) const {
+
+	template <__unordered_set_compatible_key<__unordered_set> K>
+	pair<const_iterator, const_iterator> equal_range(const K &k) const {
 		return _container.equal_range(k);
 	}
 

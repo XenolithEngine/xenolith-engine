@@ -169,4 +169,14 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_timedjoin_np)(__SPRT_ID(pthread_t) thread, v
 			diffTv.tv_nsec + diffTv.tv_sec * 1'000'000'000, false);
 }
 
+__SPRT_C_FUNC int __SPRT_ID(
+		pthread_getid_np)(__SPRT_ID(pthread_t) thread, __SPRT_ID(pid_t) * idPtr) {
+	if (!idPtr || !thread) {
+		return EINVAL;
+	}
+
+	*idPtr = reinterpret_cast<thread_t *>(thread)->threadId;
+	return 0;
+}
+
 } // namespace sprt::_thread

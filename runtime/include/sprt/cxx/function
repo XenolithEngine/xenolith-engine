@@ -115,16 +115,19 @@ public:
 		return *this;
 	}
 
-	template <typename FunctionT,
-			typename = typename enable_if<
-					!is_same< typename remove_cv<typename remove_reference<FunctionT>::type>::type,
-							__function<Allocator, ReturnType(ArgumentTypes...) >>::value>::type>
+	template <typename FunctionT>
+	requires (!is_same_v<typename sprt::remove_cvref_t<FunctionT>,
+					  __function<Allocator, ReturnType(ArgumentTypes...) >>
+			&& sprt::is_invocable_r_v<ReturnType, FunctionT, ArgumentTypes...>)
 	__function(FunctionT &&f, const allocator_type &alloc = allocator_type()) noexcept
 	: mAllocator(alloc) {
 		mCallback = makeFreeFunction(sprt::forward<FunctionT>(f), mAllocator, mBuffer.data());
 	}
 
 	template <typename FunctionT>
+	requires (!is_same_v<typename sprt::remove_cvref_t<FunctionT>,
+					  __function<Allocator, ReturnType(ArgumentTypes...) >>
+			&& sprt::is_invocable_r_v<ReturnType, FunctionT, ArgumentTypes...>)
 	__function &operator=(FunctionT &&f) noexcept {
 		clear();
 		mCallback = makeFreeFunction(sprt::forward<FunctionT>(f), mAllocator, mBuffer.data());
@@ -153,7 +156,7 @@ public:
 
 	const allocator_type &get_allocator() const { return mAllocator; }
 
-private:
+protected:
 	static constexpr auto OptBufferSize = 16;
 
 	using invoke_pointer = ReturnType (*)(const void *, ArgumentTypes...);
@@ -177,7 +180,14 @@ private:
 		if constexpr (sizeof(BaseType) <= OptBufferSize) {
 			static functor_traits traits{
 				.invoke = [](const void *arg, ArgumentTypes... args) -> ReturnType {
-				return (*static_cast<const BaseType *>(arg))(sprt::forward<ArgumentTypes>(args)...);
+				if constexpr (sprt::is_same_v<ReturnType, void>) {
+					sprt::__invoke(*const_cast<BaseType *>(static_cast<const BaseType *>(arg)),
+							sprt::forward<ArgumentTypes>(args)...);
+				} else {
+					return sprt::__invoke(
+							*const_cast<BaseType *>(static_cast<const BaseType *>(arg)),
+							sprt::forward<ArgumentTypes>(args)...);
+				}
 			},
 				.destroy =
 						[](void *arg) {
@@ -200,7 +210,11 @@ private:
 				.invoke = [](const void *arg, ArgumentTypes... args) -> ReturnType {
 				auto fnPtr =
 						const_cast<StorageType *>(static_cast<const StorageType *>(arg))->ptr();
-				return (*fnPtr)(sprt::forward<ArgumentTypes>(args)...);
+				if constexpr (sprt::is_same_v<ReturnType, void>) {
+					sprt::__invoke(*fnPtr, sprt::forward<ArgumentTypes>(args)...);
+				} else {
+					return sprt::__invoke(*fnPtr, sprt::forward<ArgumentTypes>(args)...);
+				}
 			},
 				.destroy =
 						[](void *arg) {
@@ -242,7 +256,7 @@ private:
 
 			if constexpr (is_convertible_v<allocator_type, memory::pool_t *>) {
 				memory::perform_conditional([&] {
-					new (mem.ptr(), sprt::nothrow) BaseType(sprt::forward<FunctionT>(f));
+					new (mem->ptr(), sprt::nothrow) BaseType(sprt::forward<FunctionT>(f));
 				}, alloc);
 			} else {
 				new (mem->ptr(), sprt::nothrow) BaseType(sprt::forward<FunctionT>(f));
@@ -267,10 +281,33 @@ private:
 };
 
 template <typename Sig>
-using __pool_function = __function<detail::AllocatorPool<void *>, Sig>;
+class __pool_function : public __function<detail::AllocatorPool<void *>, Sig> {
+public:
+	using __function<detail::AllocatorPool<void *>, Sig>::__function;
+	using __function<detail::AllocatorPool<void *>, Sig>::operator=;
+	using __function<detail::AllocatorPool<void *>, Sig>::operator();
+	using __function<detail::AllocatorPool<void *>, Sig>::operator==;
+	using __function<detail::AllocatorPool<void *>, Sig>::operator!=;
+	using __function<detail::AllocatorPool<void *>, Sig>::operator bool;
+	using __function<detail::AllocatorPool<void *>, Sig>::get_allocator;
+};
+
+template < typename R, typename... ArgTypes >
+__pool_function(R (*)(ArgTypes...)) -> __pool_function<R(ArgTypes...)>;
 
 template <typename Sig>
-using __malloc_function = __function<detail::AllocatorMalloc<void *>, Sig>;
+class __malloc_function : public __function<detail::AllocatorMalloc<void *>, Sig> {
+public:
+	using __function<detail::AllocatorMalloc<void *>, Sig>::__function;
+	using __function<detail::AllocatorMalloc<void *>, Sig>::operator=;
+	using __function<detail::AllocatorMalloc<void *>, Sig>::operator();
+	using __function<detail::AllocatorMalloc<void *>, Sig>::operator==;
+	using __function<detail::AllocatorMalloc<void *>, Sig>::operator!=;
+	using __function<detail::AllocatorMalloc<void *>, Sig>::operator bool;
+};
+
+template < typename R, typename... ArgTypes >
+__malloc_function(R (*)(ArgTypes...)) -> __malloc_function<R(ArgTypes...)>;
 
 } // namespace sprt
 

@@ -35,10 +35,16 @@ inline const callback<void(StringType)> &operator<<(const callback<void(StringTy
 		const T &val) {
 	static_assert(sprt::is_same_v<StringType, StringViewBase<char>>
 					|| sprt::is_same_v<StringType, StringViewBase<char16_t>>
+					|| sprt::is_same_v<StringType, StringViewBase<char32_t>>
 					|| sprt::is_same_v<StringType, StringViewUtf8>
 					|| sprt::is_same_v<StringType, BytesView>,
 			"Functional stream argument should be one of StringView, WideStringView, "
-			"StringViewUtf8, BytesView");
+			"StringViewBase<char32_t>, StringViewUtf8, BytesView");
+
+	static_assert(requires(const callback<void(StringType)> &cb,
+						  const T &val) { io_traits<T>::encode(cb, val); },
+			"sprt::io_traits<T> is not defined correctly; Be sure that `encode` function "
+			"defined with correct callback and argument type");
 
 	io_traits<T>::encode(cb, val);
 	return cb;
@@ -95,6 +101,14 @@ struct StreamTraits {
 	}
 
 	template <typename... Args>
+	static auto allocateStringView(memory::pool_t *pool, Args &&...args) -> StringView {
+		auto bufferSize = calculateSize(sprt::forward<Args>(args)...) + 1;
+		auto buf = (char *)memory::pool::palloc(pool, bufferSize);
+		bufferSize = toStringBuf(buf, bufferSize, sprt::forward<Args>(args)...);
+		return StringView(buf, bufferSize);
+	}
+
+	template <typename... Args>
 	static constexpr void merge(const callback<void(StringView)> &cb, Args &&...args) {
 		auto bufferSize = calculateSize(sprt::forward<Args>(args)...);
 
@@ -147,6 +161,10 @@ struct __basic_stringstream
 	bool empty() const { return this->template getFunction<buffer_type>().empty(); }
 
 	void clear() { this->template getFunction<buffer_type>().clear(); }
+
+	void write(const char *str, size_t len) { (*this)(StringView(str, len)); }
+
+	void reserve(size_t s) { this->template getFunction<buffer_type>().reserve(s); }
 
 	StringViewBase<CharType> weak() const {
 		return StringViewBase<CharType>(this->template getFunction<buffer_type>());

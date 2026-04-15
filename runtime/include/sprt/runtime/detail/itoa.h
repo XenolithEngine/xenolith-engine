@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 #include <sprt/runtime/init.h>
 #include <sprt/cxx/detail/constexpr.h>
+#include <sprt/cxx/bit>
 
 namespace sprt::_itoa {
 
@@ -35,19 +36,19 @@ constexpr inline void copy2(Char *dst, const Char *src) {
 template <typename Char>
 constexpr inline auto digits2(size_t value) -> const Char * {
 	if constexpr (sizeof(Char) == sizeof(char)) {
-		return (Char *)&"0001020304050607080910111213141516171819"
+		return &"0001020304050607080910111213141516171819"
 				"2021222324252627282930313233343536373839"
 				"4041424344454647484950515253545556575859"
 				"6061626364656667686970717273747576777879"
 				"8081828384858687888990919293949596979899"[value * 2];
 	} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
-		return (Char *)&u"0001020304050607080910111213141516171819"
+		return &u"0001020304050607080910111213141516171819"
 				u"2021222324252627282930313233343536373839"
 				u"4041424344454647484950515253545556575859"
 				u"6061626364656667686970717273747576777879"
 				u"8081828384858687888990919293949596979899"[value * 2];
 	} else if constexpr (sizeof(Char) == sizeof(char32_t)) {
-		return (Char *)&U"0001020304050607080910111213141516171819"
+		return &U"0001020304050607080910111213141516171819"
 				U"2021222324252627282930313233343536373839"
 				U"4041424344454647484950515253545556575859"
 				U"6061626364656667686970717273747576777879"
@@ -87,11 +88,46 @@ constexpr inline size_t unsigned_to_decimal_len(IntType value) {
 	return ret + 2;
 }
 
+template <typename IntType, typename Char>
+constexpr inline size_t unsigned_to_hex(Char *out, IntType value, size_t size,
+		bool lowervase = true) {
+	out += size - 1;
+	Char *end = out;
+	if (lowervase) {
+		do {
+			if constexpr (sizeof(Char) == sizeof(char)) {
+				*out-- = "0123456789Aabcdef"[value & 0xF];
+			} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
+				*out-- = u"0123456789Aabcdef"[value & 0xF];
+			} else if constexpr (sizeof(Char) == sizeof(char32_t)) {
+				*out-- = U"0123456789Aabcdef"[value & 0xF];
+			}
+			value >>= 4;
+		} while (value > 0);
+	} else {
+		do {
+			if constexpr (sizeof(Char) == sizeof(char)) {
+				*out-- = "0123456789ABCDEF"[value & 0xF];
+			} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
+				*out-- = u"0123456789ABCDEF"[value & 0xF];
+			} else if constexpr (sizeof(Char) == sizeof(char32_t)) {
+				*out-- = U"0123456789ABCDEF"[value & 0xF];
+			}
+			value >>= 4;
+		} while (value > 0);
+	}
+	return end - out;
+}
+
+template <typename IntType>
+constexpr inline size_t unsigned_to_hex_len(IntType value) {
+	return value != 0 ? ((sizeof(IntType) * 8) - countl_zero(value)) / 4 : 1;
+}
+
 template <signed_integer IntType>
 constexpr inline size_t _itoa_len(IntType number) {
 	if (number < 0) {
-		auto ret = unsigned_to_decimal_len(sprt::make_unsigned_t<IntType>(-number));
-		return ret + 1;
+		return unsigned_to_decimal_len(sprt::make_unsigned_t<IntType>(-number)) + 1;
 	} else {
 		return unsigned_to_decimal_len(sprt::make_unsigned_t<IntType>(number));
 	}
@@ -100,6 +136,20 @@ constexpr inline size_t _itoa_len(IntType number) {
 template <unsigned_integer IntType>
 constexpr inline size_t _itoa_len(IntType number) {
 	return unsigned_to_decimal_len(number);
+}
+
+template <signed_integer IntType>
+constexpr inline size_t _itoa_hex_len(IntType number) {
+	if (number < 0) {
+		return unsigned_to_hex_len(sprt::make_unsigned_t<IntType>(-number)) + 1;
+	} else {
+		return unsigned_to_hex_len(sprt::make_unsigned_t<IntType>(number));
+	}
+}
+
+template <unsigned_integer IntType>
+constexpr inline size_t _itoa_hex_len(IntType number) {
+	return unsigned_to_hex_len(number);
 }
 
 } // namespace sprt::_itoa

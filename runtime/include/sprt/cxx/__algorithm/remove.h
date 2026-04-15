@@ -1,5 +1,5 @@
 /**
-Copyright (c) 2025 Stappler Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,20 +20,40 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_PTHREAD_H_
-#define CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_PTHREAD_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX___ALGORITHM_REMOVE_H_
+#define RUNTIME_INCLUDE_SPRT_CXX___ALGORITHM_REMOVE_H_
 
-#include <sprt/c/bits/__sprt_def.h>
-#include <sprt/c/bits/__sprt_int32_t.h>
-#include <sprt/c/bits/__sprt_uint32_t.h>
-#include <sprt/c/bits/__sprt_uint64_t.h>
-#include <sprt/c/bits/__sprt_int64_t.h>
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/cross/__sprt_config.h>
+#include <sprt/cxx/__algorithm/find.h>
+#include <sprt/cxx/__iterator/iterator_ops.h>
 
-// clang-format off
-#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/pthread.h)
-// clang-format on
+namespace sprt {
 
+template <class ForwardIt, class T = typename sprt::iterator_traits<ForwardIt>::value_type>
+ForwardIt remove(ForwardIt first, ForwardIt last, const T &value) {
+	first = sprt::find(first, last, value);
+	if (first != last) {
+		for (ForwardIt i = first; ++i != last;) {
+			if (!(*i == value)) {
+				*first++ = sprt::move_unsafe(*i);
+			}
+		}
+	}
+	return first;
+}
 
-#endif // CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_PTHREAD_H_
+template <class ForwardIt, class UnaryPred>
+ForwardIt remove_if(ForwardIt first, ForwardIt last, UnaryPred p) {
+	first = sprt::find_if(first, last, p);
+	if (first != last) {
+		for (ForwardIt i = first; ++i != last;) {
+			if (!p(*i)) {
+				*first++ = sprt::move_unsafe(*i);
+			}
+		}
+	}
+	return first;
+}
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX___ALGORITHM_REMOVE_H_

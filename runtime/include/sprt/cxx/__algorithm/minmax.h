@@ -60,6 +60,19 @@ inline constexpr const Type &max(const Type &l, const Type &r) {
 	return max(l, r, less<void>());
 }
 
+template <typename T, typename... Args>
+constexpr const T &__vmax(const T &first, const Args &...args) {
+	auto result = &first;
+	((result = &sprt::max(*result, args)), ...); // Unary right fold over ','
+	return *result;
+}
+
+template <typename T, typename... Args>
+constexpr const T &__vmin(const T &first, const Args &...args) {
+	auto result = &first;
+	((result = &sprt::min(*result, args)), ...); // Unary right fold over ','
+	return *result;
+}
 
 } // namespace sprt
 

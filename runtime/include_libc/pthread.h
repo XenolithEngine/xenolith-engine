@@ -452,10 +452,8 @@ SPRT_FORCEINLINE int pthread_atfork(void (*prepare)(void), void (*parent)(void),
 	return __sprt_pthread_atfork(prepare, parent, child);
 }
 
-#if __SPRT_CONFIG_HAVE_PTHREAD_CONCURRENCY || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_getconcurrency(void) { return __sprt_pthread_getconcurrency(); }
 SPRT_FORCEINLINE int pthread_setconcurrency(int v) { return __sprt_pthread_setconcurrency(v); }
-#endif
 
 #if __SPRT_CONFIG_HAVE_PTHREAD_AFFINITY || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_FORCEINLINE int pthread_getaffinity_np(pthread_t thread, size_t n, cpu_set_t *set) {

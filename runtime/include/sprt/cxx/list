@@ -197,7 +197,7 @@ inline __list<T, Allocator>::__list(const __list &other) noexcept
 
 template <typename T, typename Allocator>
 inline __list<T, Allocator>::__list(__list &&other) noexcept
-: _base(sprt::move_unsafe(other), other.get_allocator()) { }
+: _base(sprt::move_unsafe(other._base), other.get_allocator()) { }
 
 template <typename T, typename Allocator>
 inline __list<T, Allocator>::__list(const __list &other,

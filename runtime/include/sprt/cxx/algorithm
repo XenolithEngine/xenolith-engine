@@ -30,5 +30,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__algorithm/next_permutation.h>
 #include <sprt/cxx/__algorithm/minmax.h>
 #include <sprt/cxx/__algorithm/lexicographical_compare.h>
+#include <sprt/cxx/__algorithm/sort.h>
+#include <sprt/cxx/__algorithm/remove.h>
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_ALGORITHM_

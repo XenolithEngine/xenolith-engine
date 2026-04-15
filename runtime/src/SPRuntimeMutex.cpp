@@ -30,6 +30,7 @@
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/sys/__sprt_futex.h>
+#include <sprt/cxx/__mutex/recursive_timed_mutex.h>
 
 #include <sys/winapi.h>
 #include <sys/darwin.h>
@@ -128,6 +129,72 @@ bool rmutex::unlock() {
 	}
 
 	return _unlock<__sprt_sprt_rlock_wake>(_data.value, tid, &_data.counter, 0) == Status::Ok;
+}
+
+recursive_timed_mutex::~recursive_timed_mutex() {
+	rmutex_base::value_type zero = {0};
+	auto value = _atomic::exchange(rmutex_base::getNativeValue(_mutex),
+						 *rmutex_base::getNativeValue(zero))
+			& rmutex_base::VALUE_MASK;
+	if (value != 0) {
+		oslog::vprint(oslog::LogType::Fatal, __SPRT_LOCATION, "sprt::recursive_qmutex",
+				"Mutex is locked when it's destroyed, aborting: tid:", value);
+		::__sprt_abort();
+	}
+}
+
+void recursive_timed_mutex::lock() {
+	// we can not use thread locals until full initialization is complete
+	// becouse some static inits may use mutexes, but thread locals can be initialized after statics
+	__sprt_sprt_rlock_t tid;
+	if (isInitialized()) {
+		*rmutex_base::getNativeValue(tid) = tl_tid;
+	} else {
+		*rmutex_base::getNativeValue(tid) = sys_gettid();
+	}
+
+	auto res = rmutex_base::_lock<__sprt_sprt_rlock_wait, nullptr,
+			bool(__SPRT_SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(_mutex.value, tid, 0, 0);
+	switch (res) {
+	case Status::Ok:
+	case Status::Propagate: ++_mutex.counter; break;
+	default: break;
+	}
+}
+
+bool recursive_timed_mutex::try_lock() noexcept {
+	// we can not use thread locals until full initialization is complete
+	// becouse some static inits may use mutexes, but thread locals can be initialized after statics
+	__sprt_sprt_rlock_t tid;
+	if (isInitialized()) {
+		*rmutex_base::getNativeValue(tid) = tl_tid;
+	} else {
+		*rmutex_base::getNativeValue(tid) = sys_gettid();
+	}
+
+	auto res = rmutex_base::_try_lock<__sprt_sprt_rlock_try_wait>(_mutex.value, tid, 0);
+	switch (res) {
+	case Status::Ok:
+	case Status::Propagate:
+		++_mutex.counter;
+		return true;
+		break;
+	default: break;
+	}
+	return false;
+}
+
+void recursive_timed_mutex::unlock() {
+	// we can not use thread locals until full initialization is complete
+	// becouse some static inits may use mutexes, but thread locals can be initialized after statics
+	__sprt_sprt_rlock_t tid;
+	if (isInitialized()) {
+		*rmutex_base::getNativeValue(tid) = tl_tid;
+	} else {
+		*rmutex_base::getNativeValue(tid) = sys_gettid();
+	}
+
+	rmutex_base::_unlock<__sprt_sprt_rlock_wake>(_mutex.value, tid, &_mutex.counter, 0);
 }
 
 } // namespace sprt

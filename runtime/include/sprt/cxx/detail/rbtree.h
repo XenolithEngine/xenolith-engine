@@ -126,35 +126,35 @@ struct RbTreeIterator {
 	using node_ptr = RbTreeNodeBase *;
 	using link_ptr = RbTreeNode<Value> *;
 
-	RbTreeIterator() noexcept : _node() { }
+	constexpr RbTreeIterator() noexcept : _node() { }
 
-	explicit RbTreeIterator(node_ptr x) noexcept : _node(x) { }
+	constexpr explicit RbTreeIterator(node_ptr x) noexcept : _node(x) { }
 
-	reference operator*() const noexcept { return *node_type::cast(_node); }
-	pointer operator->() const noexcept { return node_type::cast(_node); }
+	constexpr reference operator*() const noexcept { return *node_type::cast(_node); }
+	constexpr pointer operator->() const noexcept { return node_type::cast(_node); }
 
-	self &operator++() noexcept {
+	constexpr self &operator++() noexcept {
 		_node = node_type::increment(_node);
 		return *this;
 	}
-	self operator++(int) noexcept {
+	constexpr self operator++(int) noexcept {
 		self ret = *this;
 		_node = node_type::increment(_node);
 		return ret;
 	}
 
-	self &operator--() noexcept {
+	constexpr self &operator--() noexcept {
 		_node = node_type::decrement(_node);
 		return *this;
 	}
-	self operator--(int) noexcept {
+	constexpr self operator--(int) noexcept {
 		self ret = *this;
 		_node = node_type::decrement(_node);
 		return ret;
 	}
 
-	bool operator==(const self &other) const noexcept { return _node == other._node; }
-	bool operator!=(const self &other) const noexcept { return _node != other._node; }
+	constexpr bool operator==(const self &other) const noexcept { return _node == other._node; }
+	constexpr bool operator!=(const self &other) const noexcept { return _node != other._node; }
 
 	node_ptr _node;
 };
@@ -177,41 +177,41 @@ struct RbTreeConstIterator {
 	using node_ptr = const RbTreeNodeBase *;
 	using link_ptr = const RbTreeNode<Value> *;
 
-	RbTreeConstIterator() noexcept : _node() { }
+	constexpr RbTreeConstIterator() noexcept : _node() { }
 
-	explicit RbTreeConstIterator(node_ptr x) noexcept : _node(x) { }
+	constexpr explicit RbTreeConstIterator(node_ptr x) noexcept : _node(x) { }
 
-	RbTreeConstIterator(const iterator &it) noexcept : _node(it._node) { }
+	constexpr RbTreeConstIterator(const iterator &it) noexcept : _node(it._node) { }
 
-	iterator constcast() const noexcept {
+	constexpr iterator constcast() const noexcept {
 		return iterator(const_cast<typename iterator::node_ptr>(_node));
 	}
 
-	reference operator*() const noexcept { return *node_type::cast(_node); }
-	pointer operator->() const noexcept { return node_type::cast(_node); }
+	constexpr reference operator*() const noexcept { return *node_type::cast(_node); }
+	constexpr pointer operator->() const noexcept { return node_type::cast(_node); }
 
-	self &operator++() noexcept {
+	constexpr self &operator++() noexcept {
 		_node = node_type::increment(_node);
 		return *this;
 	}
-	self operator++(int) noexcept {
+	constexpr self operator++(int) noexcept {
 		self tmp = *this;
 		_node = node_type::increment(_node);
 		return tmp;
 	}
 
-	self &operator--() noexcept {
+	constexpr self &operator--() noexcept {
 		_node = node_type::decrement(_node);
 		return *this;
 	}
-	self operator--(int) noexcept {
+	constexpr self operator--(int) noexcept {
 		self tmp = *this;
 		_node = node_type::decrement(_node);
 		return tmp;
 	}
 
-	bool operator==(const self &x) const noexcept { return _node == x._node; }
-	bool operator!=(const self &x) const noexcept { return _node != x._node; }
+	constexpr bool operator==(const self &x) const noexcept { return _node == x._node; }
+	constexpr bool operator!=(const self &x) const noexcept { return _node != x._node; }
 
 	node_ptr _node;
 };
@@ -389,7 +389,7 @@ public:
 		for (auto it = first; it != last; it++) {
 			deleteNode(const_cast<RbTreeNodeBase *>(it._node));
 		}
-		return last;
+		return last.constcast();
 	}
 
 	template <typename K>
@@ -642,13 +642,8 @@ protected:
 	}
 
 	template <typename M>
-	void constructAssign(RbTreeNode<Value> *n, const M &m) {
-		n->value.ref() = m;
-	}
-
-	template <typename M>
 	void constructAssign(RbTreeNode<Value> *n, M &&m) {
-		n->value.ref() = sprt::move_unsafe(m);
+		n->value.ref().second = sprt::forward<M>(m);
 	}
 
 	bool getInsertPositionUnique_search(InsertData &d) {
@@ -824,7 +819,7 @@ protected:
 	pair<RbTreeNode<Value> *, bool> tryAssignNodeUnique(K &&k, M &&m) {
 		InsertData d = constructKey(sprt::forward<K>(k));
 		if (!getInsertPositionUnique(d)) {
-			constructAssign(d.current, sprt::forward<M>(m));
+			constructAssign(static_cast<RbTreeNode<Value> *>(d.current), sprt::forward<M>(m));
 			return pair(static_cast<RbTreeNode<Value> *>(d.current), false);
 		}
 

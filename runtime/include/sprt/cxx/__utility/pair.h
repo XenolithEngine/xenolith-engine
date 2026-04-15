@@ -191,6 +191,9 @@ inline constexpr pair<unwrap_ref_decay_t<_T1>, unwrap_ref_decay_t<_T2> > make_pa
 			sprt::forward<_T2>(__t2));
 }
 
+template <class T1, class T2>
+pair(T1, T2) -> pair<T1, T2>;
+
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_PAIR_H_

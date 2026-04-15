@@ -23,7 +23,7 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_SURFACE_INFO_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_SURFACE_INFO_H_
 
-#include <sprt/runtime/geom.h>
+#include <sprt/runtime/geom/geom.h>
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/window/types.h>
 #include <sprt/runtime/window/mode.h>

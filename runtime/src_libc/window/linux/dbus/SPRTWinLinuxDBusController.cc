@@ -673,7 +673,7 @@ static void readThemeData(ThemeInfo &out, StringView data, ThemeFormat fmt) {
 
 static void readThemeFile(ThemeInfo &out, const filesystem::LocationInfo &locInfo, StringView path,
 		ThemeFormat fmt) {
-	stat st;
+	struct __SPRT_STAT_NAME st;
 	if (locInfo.interface->_stat(locInfo, path, &st) == Status::Ok) {
 		if (!__SPRT_S_ISREG(st.st_mode)) {
 			return;

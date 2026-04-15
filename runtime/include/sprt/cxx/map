@@ -36,6 +36,11 @@ THE SOFTWARE.
 
 namespace sprt {
 
+template <typename ExternalKey, typename Map>
+concept __map_compatible_key = requires(const typename Map::key_type &k, const ExternalKey &ek) {
+	typename Map::key_compare()(k, ek);
+};
+
 template <typename Key, typename Value, typename Comp, typename Allocator>
 class __map : public Allocator::base_class {
 public:
@@ -54,7 +59,7 @@ public:
 
 	using iterator = typename tree_type::iterator;
 	using const_iterator = typename tree_type::const_iterator;
-	using reverse_iterator = typename tree_type::const_reverse_iterator;
+	using reverse_iterator = typename tree_type::reverse_iterator;
 	using const_reverse_iterator = typename tree_type::const_reverse_iterator;
 	using size_type = size_t;
 	using difference_type = ptrdiff_t;
@@ -75,8 +80,6 @@ public:
 
 	template <typename AccessType = key_type>
 	using const_access_token = detail::const_access_token<__map, AccessType>;
-
-	static constexpr bool is_transparent_keys = __is_transparent_v<key_compare>;
 
 	__map() noexcept : __map(Comp()) { }
 
@@ -174,20 +177,20 @@ public:
 	access_token<key_type> operator[](key_type &&k) {
 		return access_token<key_type>(*this, sprt::move_unsafe(k));
 	}
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, access_token<K>> operator[](K &&k) {
+	template <__map_compatible_key<__map> K>
+	access_token<K> operator[](K &&k) {
 		return access_token<K>(*this, sprt::forward<K>(k));
 	}
 	access_token<key_type> at(const key_type &k) { return access_token<key_type>(*this, k); }
 	const_access_token<key_type> at(const key_type &k) const {
 		return const_access_token<key_type>(*this, k);
 	}
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, access_token<K>> at(const K &k) {
+	template <__map_compatible_key<__map> K>
+	access_token<K> at(const K &k) {
 		return access_token<K>(*this, k);
 	}
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, const_access_token<K>> at(const K &k) const {
+	template <__map_compatible_key<__map> K>
+	const_access_token<K> at(const K &k) const {
 		return const_access_token<K>(*this, k);
 	}
 
@@ -248,9 +251,8 @@ public:
 		return _tree.try_emplace(sprt::move_unsafe(k), sprt::forward<Args>(args)...);
 	}
 
-	template <typename K, typename... Args>
-	sprt::enable_if_t<is_transparent_keys, pair<iterator, bool>> try_emplace(K &&k,
-			Args &&...args) {
+	template <__map_compatible_key<__map> K, typename... Args>
+	pair<iterator, bool> try_emplace(K &&k, Args &&...args) {
 		return _tree.try_emplace(sprt::forward<K>(k), sprt::forward<Args>(args)...);
 	}
 
@@ -264,24 +266,23 @@ public:
 		return _tree.try_emplace(hint, sprt::move_unsafe(k), sprt::forward<Args>(args)...);
 	}
 
-	template <typename K, typename... Args>
-	sprt::enable_if_t<is_transparent_keys, iterator> try_emplace(const_iterator hint, K &&k,
-			Args &&...args) {
+	template <__map_compatible_key<__map> K, typename... Args>
+	iterator try_emplace(const_iterator hint, K &&k, Args &&...args) {
 		return _tree.try_emplace(hint, sprt::forward<K>(k), sprt::forward<Args>(args)...);
 	}
 
 	template <typename M>
 	pair<iterator, bool> insert_or_assign(const key_type &k, M &&obj) {
-		return _tree.insert_or_assign(k, obj);
+		return _tree.insert_or_assign(k, sprt::forward<M>(obj));
 	}
 
 	template <typename M>
 	pair<iterator, bool> insert_or_assign(key_type &&k, M &&obj) {
-		return _tree.insert_or_assign(sprt::move_unsafe(k), obj);
+		return _tree.insert_or_assign(sprt::move_unsafe(k), sprt::forward<M>(obj));
 	}
 
-	template <typename K, typename M>
-	sprt::enable_if_t<is_transparent_keys, pair<iterator, bool>> insert_or_assign(K &&k, M &&obj) {
+	template <__map_compatible_key<__map> K, typename M>
+	pair<iterator, bool> insert_or_assign(K &&k, M &&obj) {
 		return _tree.insert_or_assign(sprt::forward<K>(k), obj);
 	}
 
@@ -295,17 +296,16 @@ public:
 		return _tree.insert_or_assign(hint, sprt::move_unsafe(k), obj);
 	}
 
-	template <typename K, typename M>
-	sprt::enable_if_t<is_transparent_keys, iterator> insert_or_assign(const_iterator hint, K &&k,
-			M &&obj) {
+	template <__map_compatible_key<__map> K, typename M>
+	iterator insert_or_assign(const_iterator hint, K &&k, M &&obj) {
 		return _tree.insert_or_assign(hint, sprt::forward<K>(k), obj);
 	}
 
 	iterator erase(iterator pos) { return _tree.erase(pos); }
 	iterator erase(const_iterator pos) { return _tree.erase(pos); }
 	size_type erase(const key_type &key) { return _tree.erase_unique(key); }
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, size_type> erase(K &&x) {
+	template <__map_compatible_key<__map> K>
+	size_type erase(K &&x) {
 		return _tree.erase_unique(sprt::forward<K>(x));
 	}
 	iterator erase(const_iterator first, const_iterator last) { return _tree.erase(first, last); }
@@ -331,48 +331,48 @@ public:
 		return _tree.find(k);
 	}
 
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, iterator> find(const K &x) {
+	template < __map_compatible_key<__map> K >
+	iterator find(const K &x) {
 		return _tree.find(x);
 	}
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, const_iterator> find(const K &x) const {
+	template < __map_compatible_key<__map> K >
+	const_iterator find(const K &x) const {
 		return _tree.find(x);
 	}
 
 	size_type count(const key_type &x) const { return _tree.count_unique(x); }
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, size_type> count(const K &x) const {
+	template < __map_compatible_key<__map> K >
+	size_type count(const K &x) const {
 		return _tree.count_unique(x);
 	}
 
 	bool contains(const key_type &x) const { return _tree.find(x) != _tree.end(); }
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, bool> contains(const K &x) const {
+	template <__map_compatible_key<__map> K>
+	bool contains(const K &x) const {
 		return _tree.find(x) != _tree.end();
 	}
 
 	iterator lower_bound(const key_type &x) { return _tree.lower_bound(x); }
 	const_iterator lower_bound(const key_type &x) const { return _tree.lower_bound(x); }
 
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, iterator> lower_bound(const K &x) {
+	template < __map_compatible_key<__map> K >
+	iterator lower_bound(const K &x) {
 		return _tree.lower_bound(x);
 	}
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, const_iterator> lower_bound(const K &x) const {
+	template < __map_compatible_key<__map> K >
+	const_iterator lower_bound(const K &x) const {
 		return _tree.lower_bound(x);
 	}
 
 	iterator upper_bound(const key_type &x) { return _tree.upper_bound(x); }
 	const_iterator upper_bound(const key_type &x) const { return _tree.upper_bound(x); }
 
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, iterator> upper_bound(const K &x) {
+	template < __map_compatible_key<__map> K >
+	iterator upper_bound(const K &x) {
 		return _tree.upper_bound(x);
 	}
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, const_iterator> upper_bound(const K &x) const {
+	template < __map_compatible_key<__map> K >
+	const_iterator upper_bound(const K &x) const {
 		return _tree.upper_bound(x);
 	}
 
@@ -381,13 +381,12 @@ public:
 		return _tree.equal_range(x);
 	}
 
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, pair<iterator, iterator>> equal_range(const K &x) {
+	template < __map_compatible_key<__map> K >
+	pair<iterator, iterator> equal_range(const K &x) {
 		return _tree.equal_range(x);
 	}
-	template < typename K >
-	sprt::enable_if_t<is_transparent_keys, pair<const_iterator, const_iterator>> equal_range(
-			const K &x) const {
+	template < __map_compatible_key<__map> K >
+	pair<const_iterator, const_iterator> equal_range(const K &x) const {
 		return _tree.equal_range(x);
 	}
 

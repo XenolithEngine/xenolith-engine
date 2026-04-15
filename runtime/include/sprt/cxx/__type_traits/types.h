@@ -126,6 +126,9 @@ concept signed_or_unsigned_integer = signed_integer<_Tp> || unsigned_integer<_Tp
 template <typename _Tp>
 concept io_character = is_same_v<_Tp, char> || is_same_v<_Tp, char16_t> || is_same_v<_Tp, char32_t>;
 
+template <typename _Tp>
+concept enumeration = is_enum_v<_Tp>;
+
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_TYPES_H_

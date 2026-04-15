@@ -124,7 +124,14 @@ public:
 */
 class qmutex final : private qmutex_base {
 public:
+	using native_handle_type = value_type;
+
 	~qmutex();
+
+	qmutex() { }
+
+	qmutex(const qmutex &) = delete;
+	qmutex &operator=(const qmutex &) = delete;
 
 	void lock() { _lock<__sprt_sprt_qlock_wait, nullptr>(&_data, 0, 0); }
 
@@ -132,6 +139,8 @@ public:
 
 	// returns true if we have some waiters
 	bool unlock() { return _unlock<__sprt_sprt_qlock_wake_one>(&_data, 0) == Status::Ok; }
+
+	native_handle_type native_handle() const noexcept { return _data; }
 
 protected:
 	value_type _data;

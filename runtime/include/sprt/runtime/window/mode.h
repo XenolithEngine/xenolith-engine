@@ -24,7 +24,6 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_MODE_H_
 
 #include <sprt/runtime/ref.h>
-#include <sprt/runtime/geom.h>
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/window/types.h>
 

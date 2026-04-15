@@ -23,7 +23,6 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_INPUT_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_INPUT_H_
 
-#include <sprt/runtime/geom.h>
 #include <sprt/runtime/window/window_info.h>
 
 namespace sprt::window {

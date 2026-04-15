@@ -24,7 +24,6 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_THEME_INFO_H_
 
 #include <sprt/runtime/stringview.h>
-#include <sprt/runtime/geom.h>
 #include <sprt/runtime/window/types.h>
 
 namespace sprt::window {

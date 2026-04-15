@@ -65,14 +65,14 @@ struct aligned_storage {
 	constexpr const Value &ref() const noexcept { return *ptr(); }
 
 	template <typename Allocator, typename... Args>
-	constexpr Value *construct(const Allocator &alloc, Args &&...args) {
+	constexpr Value *construct(const Allocator &alloc, Args &&...args) noexcept {
 		auto pointer = ptr();
 		alloc.construct(pointer, sprt::forward<Args>(args)...);
 		return pointer;
 	}
 
 	template <typename Allocator>
-	constexpr void destroy(const Allocator &alloc) {
+	constexpr void destroy(const Allocator &alloc) noexcept {
 		alloc.destroy(ptr());
 	}
 };

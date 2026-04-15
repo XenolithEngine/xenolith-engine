@@ -317,6 +317,11 @@ class rmutex final : private rmutex_base {
 public:
 	~rmutex();
 
+	rmutex() { }
+
+	rmutex(const rmutex &) = delete;
+	rmutex &operator=(const rmutex &) = delete;
+
 	void lock();
 	bool try_lock();
 

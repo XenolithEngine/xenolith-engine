@@ -36,6 +36,13 @@ THE SOFTWARE.
 
 namespace sprt {
 
+template <typename ExternalKey, typename Map>
+concept __unordered_map_compatible_key =
+		requires(const typename Map::key_type &k, const ExternalKey &ek) {
+			typename Map::key_equal()(k, ek);
+			typename Map::hasher()(ek);
+		};
+
 template <typename Key, typename Value, typename Hash, typename Pred, typename Allocator>
 class __unordered_map : public Allocator::base_class {
 public:
@@ -67,9 +74,6 @@ public:
 
 	template <typename AccessType = key_type>
 	using const_access_token = detail::const_access_token<__unordered_map, AccessType>;
-
-	static constexpr bool is_transparent_keys =
-			__is_transparent_v<hasher> && __is_transparent_v<key_equal>;
 
 	~__unordered_map() { }
 
@@ -115,10 +119,12 @@ public:
 		_container.move_from(sprt::move(other._container));
 	}
 
-	__unordered_map(initializer_list<value_type> il, size_type n, const hasher &hf = hasher(),
+	__unordered_map(initializer_list<value_type> il, size_type n = 0, const hasher &hf = hasher(),
 			const key_equal &eql = key_equal(), const allocator_type &a = allocator_type()) noexcept
-	: _container(sprt::max(n, __builtin_floorf(il.size() * container_type::CoverageLoadFactor)), hf,
-			  eql, a) {
+	: _container(sprt::max(static_cast<size_type>(n),
+						 static_cast<size_type>(
+								 __builtin_floorf(il.size() * container_type::CoverageLoadFactor))),
+			  hf, eql, a) {
 		for (auto &it : il) { _container.insert(it); }
 	}
 
@@ -321,8 +327,9 @@ public:
 		}
 		return 0;
 	}
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, size_type> erase(K &&x) {
+
+	template <__unordered_map_compatible_key<__unordered_map> K>
+	size_type erase(K &&x) {
 		size_t ret = 0;
 		auto it = _container.find(x);
 		while (it != _container.end()) {
@@ -359,20 +366,21 @@ public:
 	iterator find(const key_type &k) { return _container.find(k); }
 	const_iterator find(const key_type &k) const { return _container.find(k); }
 
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, iterator> find(const K &k) {
+
+	template <__unordered_map_compatible_key<__unordered_map> K>
+	iterator find(const K &k) {
 		return _container.find(k);
 	}
 
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, const_iterator> find(const K &k) const {
+	template <__unordered_map_compatible_key<__unordered_map> K>
+	const_iterator find(const K &k) const {
 		return _container.find(k);
 	}
 
 	size_type count(const key_type &k) const { return _container.count(k); }
 
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, size_type> count(const K &k) const {
+	template <__unordered_map_compatible_key<__unordered_map> K>
+	size_type count(const K &k) const {
 		return _container.count(k);
 	}
 
@@ -380,8 +388,8 @@ public:
 		return _container.find(k) != _container.end(); //
 	}
 
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, bool> contains(const K &k) const {
+	template <__unordered_map_compatible_key<__unordered_map> K>
+	bool contains(const K &k) const {
 		return _container.find(k) != _container.end();
 	}
 
@@ -390,13 +398,14 @@ public:
 		return _container.equal_range(k);
 	}
 
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, pair<iterator, iterator>> equal_range(const K &k) {
+
+	template <__unordered_map_compatible_key<__unordered_map> K>
+	pair<iterator, iterator> equal_range(const K &k) {
 		return _container.equal_range(k);
 	}
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, pair<const_iterator, const_iterator>> equal_range(
-			const K &k) const {
+
+	template <__unordered_map_compatible_key<__unordered_map> K>
+	pair<const_iterator, const_iterator> equal_range(const K &k) const {
 		return _container.equal_range(k);
 	}
 
@@ -407,20 +416,25 @@ public:
 	access_token<key_type> operator[](key_type &&k) {
 		return access_token<key_type>(*this, sprt::move_unsafe(k));
 	}
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, access_token<K>> operator[](K &&k) {
+
+	template <__unordered_map_compatible_key<__unordered_map> K>
+	access_token<K> operator[](K &&k) {
 		return access_token<K>(*this, sprt::forward<K>(k));
 	}
 	access_token<key_type> at(const key_type &k) { return access_token<key_type>(*this, k); }
 	const_access_token<key_type> at(const key_type &k) const {
 		return const_access_token<key_type>(*this, k);
 	}
-	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, access_token<K>> at(const K &k) {
+
+	template <__unordered_map_compatible_key<__unordered_map> K>
+	access_token<K> at(const K &k) {
 		return access_token<K>(*this, k);
 	}
 	template <typename K>
-	sprt::enable_if_t<is_transparent_keys, const_access_token<K>> at(const K &k) const {
+	sprt::enable_if_t<sprt::is_invocable_r_v<key_equal, key_type, K>
+					&& sprt::is_invocable_v<hasher, K>,
+			const_access_token<K>>
+	at(const K &k) const {
 		return const_access_token<K>(*this, k);
 	}
 

@@ -34,6 +34,7 @@
 #include <sprt/runtime/thread/qonce.h>
 #include <sprt/runtime/thread/qrwlock.h>
 #include <sprt/runtime/thread/qbarrier.h>
+#include <sprt/runtime/thread/qcondvar.h>
 #include <sprt/cxx/__mutex/unique_lock.h>
 #include <sprt/c/__sprt_setjmp.h>
 #include <sprt/c/__sprt_sched.h>
@@ -167,7 +168,7 @@ struct thread_t {
 	qmutex mutex;
 	qtimeline state;
 
-	unsigned int threadId = 0;
+	__sprt_pid_t threadId = 0;
 	thread_result_t result = 0;
 	void *(*cb)(void *) = nullptr;
 	void *arg = nullptr;
@@ -275,11 +276,7 @@ struct alignas(COMMON_ALIGNMENT) condattr_t {
 };
 
 struct alignas(COMMON_ALIGNMENT) cond_t {
-	CondAttrFlags flags = CondAttrFlags::None;
-	uint32_t counter = 0;
-	uint32_t value = 0;
-	uint32_t previous = 0;
-	uint64_t mutexid = 0;
+	__qcondvar_data data;
 
 	int wait(mutex_t *mutex, timeout_t timeout);
 
