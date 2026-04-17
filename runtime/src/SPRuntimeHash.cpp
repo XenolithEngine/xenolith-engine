@@ -21,7 +21,7 @@
  **/
 
 #include <sprt/runtime/hash.h>
-#include <sprt/runtime/endian.h>
+#include <sprt/runtime/utils/byteorder.h>
 #include <sprt/c/__sprt_string.h>
 
 namespace sprt::sha1 {

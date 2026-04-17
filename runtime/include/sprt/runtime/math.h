@@ -229,28 +229,17 @@ constexpr inline T sub_cyclic(const T &value, const T &decrement, const T &lo, c
 
 // next power of two
 inline uint32_t npot(uint32_t n) {
-	--n;
-
-	n |= n >> 1;
-	n |= n >> 2;
-	n |= n >> 4;
-	n |= n >> 8;
-	n |= n >> 16;
-
-	return n + 1;
+	if (n <= 1) {
+		return 1;
+	}
+	return uint32_t(1) << (32 - __builtin_clzg(n - 1));
 }
 
 inline uint64_t npot(uint64_t n) {
-	--n;
-
-	n |= n >> 1;
-	n |= n >> 2;
-	n |= n >> 4;
-	n |= n >> 8;
-	n |= n >> 16;
-	n |= n >> 32;
-
-	return n + 1;
+	if (n <= 1) {
+		return 1;
+	}
+	return uint64_t(1) << (32 - __builtin_clzg(n - 1));
 }
 
 // Align on a power of 2 boundary

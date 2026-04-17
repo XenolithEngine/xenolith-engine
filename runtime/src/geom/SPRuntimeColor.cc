@@ -25,7 +25,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#include <sprt/runtime/base16.h>
+#include <sprt/runtime/utils/base16.h>
 #include <sprt/runtime/geom/color.h>
 #include <sprt/runtime/stream.h>
 

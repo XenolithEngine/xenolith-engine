@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -29,12 +29,41 @@
 
 namespace sprt {
 
-// Enumeration utilities, usage like:
-//
-// for (auto value : each<EnumClass>()>) { }
-//
-// EnumClass should contains value with name Max
-//
+/**
+ * @file enum.h
+ * @brief Enumeration utilities for iterating over enum values and flags
+ * 
+ * Public interfaces:
+ * - toInt<E>(e)         Convert enum E to underlying integer type
+ *                       Example: sprt::toInt(MyEnum::Value1)
+ * 
+ * - each<>()            Iterate over range of enum values using for-loop
+ *                       Examples:
+ *                         for (auto e : each<MyEnum>()) { } // 0 to Max-1
+ *                         for (auto e : each<MyEnum, MyEnum::First, MyEnum::Last>()) { }
+ * 
+ * - flags<>()           Iterate over set bits in unsigned enum flags
+ *                       Examples:
+ *                         for (auto bit : flags(MyFlags::A | MyFlags::B)) { }
+ *                         for (auto bit : flags<MyFlags::READ | MyFlags::WRITE>()) { }
+ * 
+ * - hasFlag(mask, flag) Check if any bits from flag are present in mask
+ *                       Example: if (sprt::hasFlag(flags, MyFlags::READ)) { }
+ * 
+ * - hasFlagAll(mask, flag) Check if all bits from flag are set in mask
+ *                         Example: if (sprt::hasFlagAll(flags, MyFlags::READ | MyFlags::WRITE)) { }
+ * 
+ * - SPRT_DEFINE_ENUM_AS_INCREMENTABLE(Type, First, Last)  Macro adding cyclic operator++/operator-- to enum
+ *                       Usage: Define enum with First/Last values, then apply macro
+ *                         enum class State { Init, Running, Stopped };
+ *                         SPRT_DEFINE_ENUM_AS_INCREMENTABLE(State, State::Init, State::Stopped);
+ * 
+ * - SPRT_DEFINE_ENUM_AS_MASK(Type)                      Macro adding bitwise operators to enum as bitmask
+ *                                                       Example:
+ *                                                         enum class Flags : uint32_t { A = 1, B = 2 };
+ *                                                         SPRT_DEFINE_ENUM_AS_MASK(Flags);
+ *                                                         auto combined = Flags::A | Flags::B;
+ */
 
 namespace detail {
 

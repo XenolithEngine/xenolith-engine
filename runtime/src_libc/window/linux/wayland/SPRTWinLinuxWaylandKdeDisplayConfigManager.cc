@@ -27,7 +27,7 @@
 #include "private/window/linux/SPRTWinLinuxWaylandDisplay.h"
 
 #include <sprt/runtime/log.h>
-#include <sprt/runtime/base64.h>
+#include <sprt/runtime/utils/base64.h>
 
 #include <wayland-util.h>
 #include <xcb/randr.h>

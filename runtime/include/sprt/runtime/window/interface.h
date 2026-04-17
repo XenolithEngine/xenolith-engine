@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -24,7 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_INTERFACE_H_
 
 #include <sprt/runtime/ref.h>
-#include <sprt/runtime/native_handle.h>
+#include <sprt/runtime/utils/native_handle.h>
 #include <sprt/runtime/window/surface_info.h>
 #include <sprt/runtime/window/presentation.h>
 #include <sprt/runtime/window/types.h>

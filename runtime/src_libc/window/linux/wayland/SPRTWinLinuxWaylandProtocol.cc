@@ -28,8 +28,8 @@
 #include "private/window/linux/SPRTWinLinux.h"
 
 #include <sprt/runtime/window/types.h>
+#include <sprt/runtime/utils/compress.h>
 #include <sprt/runtime/log.h>
-#include <sprt/runtime/compress.h>
 
 #include <sys/mman.h>
 #include <fcntl.h>

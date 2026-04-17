@@ -82,7 +82,7 @@ static struct wl_data_device_listener s_dataDeviceListener{
 	.data_offer = [](void *data, struct wl_data_device *wl_data_device, struct wl_data_offer *id) {
 		auto device = reinterpret_cast<WaylandDataDevice *>(data);
 		auto offer = Rc<WaylandDataOffer>::create(device->wayland, id);
-		offer->retain();
+		sprt::retain(offer, 0);
 	},
 
 	.enter = [](void *data, struct wl_data_device *wl_data_device, uint32_t serial, struct wl_surface *surface,
@@ -257,9 +257,9 @@ void WaylandDataInputTransfer::cancel() {
 }
 
 void WaylandDataOutputTransfer::create(Bytes &&d, int fd) {
-	auto obj = new (sprt::nothrow) WaylandDataOutputTransfer;
+	auto obj = __new<WaylandDataOutputTransfer>();
 	obj->init(sprt::move(d), fd);
-	obj->release(0);
+	sprt::release(obj, 0);
 }
 
 WaylandDataOutputTransfer::~WaylandDataOutputTransfer() {
@@ -393,7 +393,7 @@ void WaylandDataDevice::setSelection(NotNull<WaylandDataOffer> offer) {
 		selectionOffer = offer;
 		if (!offer->attached) {
 			offer->attached = true;
-			offer->release(0);
+			sprt::release(offer, 0);
 		}
 		seat->root->handleClipboardChanged();
 	}
@@ -404,7 +404,7 @@ void WaylandDataDevice::enter(NotNull<WaylandDataOffer> offer) {
 		dnd = offer;
 		if (!offer->attached) {
 			offer->attached = true;
-			offer->release(0);
+			sprt::release(offer, 0);
 		}
 	}
 }

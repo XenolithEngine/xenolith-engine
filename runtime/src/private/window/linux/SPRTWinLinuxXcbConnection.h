@@ -27,7 +27,7 @@
 
 #if SPRT_LINUX
 
-#include <sprt/runtime/ptr.h>
+#include <sprt/runtime/utils/ptr.h>
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/window/types.h>
 #include <sprt/runtime/window/display_config.h>

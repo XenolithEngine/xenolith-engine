@@ -22,7 +22,7 @@
 
 #include <sprt/runtime/platform.h>
 #include <sprt/runtime/ref.h>
-#include <sprt/runtime/backtrace.h>
+#include <sprt/runtime/utils/backtrace.h>
 #include <sprt/c/__sprt_assert.h>
 #include <sprt/cxx/forward_list>
 #include <sprt/cxx/list>
@@ -31,99 +31,14 @@
 
 namespace sprt {
 
-struct RefAllocData {
-	void *lastPtr = nullptr;
-
-	__malloc_forward_list<memory::pool_t *> delayedPools;
-	__malloc_forward_list<memory::allocator_t *> delayedAllocs;
-
-	static RefAllocData *get() {
-		static thread_local RefAllocData tl_RefAllocData;
-
-		return &tl_RefAllocData;
-	}
-
-	RefAllocData() {
-		delayedPools.memory_persistent(true);
-		delayedAllocs.memory_persistent(true);
-	}
-
-	~RefAllocData() { clear(); }
-
-	void clear() {
-		while (!delayedPools.empty()) {
-			sprt::memory::pool::destroy(delayedPools.front());
-			delayedPools.pop_front();
-		}
-
-		delayedPools.clear();
-		while (!delayedAllocs.empty()) {
-			sprt::memory::allocator::destroy(delayedAllocs.front());
-			delayedAllocs.pop_front();
-		}
-
-		delayedAllocs.clear();
-	}
-};
-
-void *RefAlloc::operator new(size_t size, memory::pool_t *pool) noexcept {
-	sprt_passert(pool, "Context pool should be defined for allocation");
-
-	auto ptr = sprt::memory::pool::palloc(pool, size);
-	RefAllocData::get()->lastPtr = ptr;
-	return ptr;
+void RefAlloc::operator delete(RefAlloc *ptr, sprt::destroying_delete_t) noexcept {
+	// should newer be called normally
+	::__sprt_abort();
 }
 
+RefAlloc::~RefAlloc() { }
 
-void RefAlloc::__abi_operator_delete(void *ptr) noexcept {
-	auto d = RefAllocData::get();
-	if (ptr != d->lastPtr) {
-		__sprt_free(ptr);
-	}
-	d->lastPtr = nullptr;
-	d->clear();
-}
-
-void RefAlloc::__abi_operator_delete(void *ptr, size_t al) noexcept {
-	auto d = RefAllocData::get();
-	if (ptr != d->lastPtr) {
-		if (toInt(al) <= alignof(__sprt_max_align_t)) {
-			return __sprt_free(ptr);
-		} else {
-			return __sprt_aligned_free(ptr);
-		}
-	}
-	d->lastPtr = nullptr;
-	d->clear();
-}
-
-RefAlloc::~RefAlloc() {
-	if ((_referenceCount.load() & PoolAllocBit) != 0) {
-		RefAllocData::get()->lastPtr = this;
-	}
-}
-
-RefAlloc::RefAlloc() noexcept {
-	auto d = RefAllocData::get();
-	if (d->lastPtr == this) {
-		_referenceCount.fetch_or(PoolAllocBit);
-	}
-	d->lastPtr = nullptr;
-}
-
-void RefAlloc::destroySelfContained(memory::pool_t *pool) {
-	auto d = RefAllocData::get();
-	d->delayedPools.emplace_front(pool);
-}
-
-void RefAlloc::destroySelfContained(memory::allocator_t *alloc) {
-	auto d = RefAllocData::get();
-	d->delayedAllocs.emplace_front(alloc);
-}
-
-void getBacktrace(size_t offset, const callback<void(uintptr_t, StringView)> &cb) {
-	sprt::backtrace::getBacktrace(offset + 1, cb);
-}
+RefAlloc::RefAlloc() noexcept { }
 
 } // namespace sprt
 
@@ -194,7 +109,7 @@ uint64_t retainBacktrace(const Ref *ptr, uint64_t id) {
 		btInfo = new (btPool) BackraceInfo;
 		btInfo->pool = btPool;
 
-		getBacktrace(2, [&](uintptr_t, StringView str) {
+		sprt::backtrace::getBacktrace(2, [&](uintptr_t, StringView str) {
 			btInfo->backtrace.emplace_back(str.pdup(btPool));
 		});
 	}, btPool);

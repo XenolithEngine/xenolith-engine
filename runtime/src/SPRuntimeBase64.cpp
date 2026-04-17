@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -20,8 +20,8 @@
  THE SOFTWARE.
  **/
 
-#include <sprt/runtime/base64.h>
-#include <sprt/runtime/base16.h>
+#include <sprt/runtime/utils/base64.h>
+#include <sprt/runtime/utils/base16.h>
 #include <sprt/runtime/stringview.h>
 #include <sprt/c/__sprt_stdlib.h>
 

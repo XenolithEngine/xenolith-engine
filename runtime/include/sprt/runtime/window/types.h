@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -89,7 +89,6 @@ template <typename... Args>
 static inline String toString(Args &&...args) {
 	return StreamTraits<char>::toString<String>(sprt::forward<Args>(args)...);
 }
-
 
 } // namespace sprt::window
 

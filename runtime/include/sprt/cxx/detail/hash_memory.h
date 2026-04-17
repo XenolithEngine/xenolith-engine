@@ -223,15 +223,17 @@ public:
 		bool equalNodeFound = false;
 		size_type offset = 0;
 		node_type *prev = chain;
+		auto hashPosition = hashValue % _capacity;
 
 		if (chain->active) {
 			// If chain is active, we can use chain->hash to early detect equality,
 			// before using _equal.
 			// Note that ->next node is always also active
-			while (chain->next != 0 && chain->hash != hashValue
-					&& !(equalNodeFound = _equal(key,
-								 aligned_storage_kv_traits<Key, Value>::extract_key(
-										 chain->value)))) {
+			while (chain->next != 0 && chain->hash % _capacity == hashPosition
+					&& (chain->hash != hashValue
+							|| !(equalNodeFound = _equal(key,
+										 aligned_storage_kv_traits<Key, Value>::extract_key(
+												 chain->value))))) {
 				chain += chain->next;
 				if (chain >= storage + capacity) {
 					chain -= capacity;
@@ -336,13 +338,17 @@ public:
 
 		size_type hashMisses = 0;
 
+		auto size = _size;
+
 		if (rehashTo(ptr, allocSize, hashMisses)) {
+
 			clear_deallocate();
 
-			_storage = ptr;
+			_size = size;
 			_capacity = allocSize;
 			_allocated = allocated;
 			_hashMisses = hashMisses;
+			_storage = ptr;
 
 			return true;
 		} else {
@@ -593,6 +599,7 @@ public:
 		}
 
 		auto hashValue = _hasher(k);
+		auto hashPosition = _hasher(k) % _capacity;
 
 		auto chain = lookup_bucket_chain(const_cast<node_type *>(_storage), _capacity, hashValue);
 		if (!chain->active) {
@@ -604,10 +611,11 @@ public:
 			// If chain is active, we can use chain->hash to early detect equality,
 			// before using _equal.
 			// Note that ->next node is always also active
-			while (chain->next != 0 && chain->hash != hashValue
-					&& !(equalNodeFound = _equal(k,
-								 aligned_storage_kv_traits<Key, Value>::extract_key(
-										 chain->value)))) {
+			while (chain->next != 0 && chain->hash % _capacity == hashPosition
+					&& (chain->hash != hashValue
+							|| !(equalNodeFound = _equal(k,
+										 aligned_storage_kv_traits<Key, Value>::extract_key(
+												 chain->value))))) {
 				chain += chain->next;
 				if (chain >= _storage + _capacity) {
 					chain -= _capacity;

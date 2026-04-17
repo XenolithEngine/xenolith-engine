@@ -23,7 +23,7 @@
 #ifndef CORE_RUNTIME_PRIVATE_SPRTDSO_H_
 #define CORE_RUNTIME_PRIVATE_SPRTDSO_H_
 
-#include <sprt/runtime/dso.h>
+#include <sprt/runtime/utils/dso.h>
 
 #define SPRT_DEFINE_PROTO(name) decltype(&::name) name = nullptr;
 #define SPRT_LOAD_PROTO(handle, name) this->name = handle.sym<decltype(this->name)>(#name);

@@ -33,7 +33,7 @@
 #include "private/window/linux/SPRTWinLinuxWaylandKdeDisplayConfigManager.h"
 #include "private/window/linux/SPRTWinLinuxXkbLibrary.h"
 
-#include <sprt/runtime/verutils.h>
+#include <sprt/runtime/utils/verutils.h>
 
 #include <stdlib.h>
 
@@ -83,6 +83,8 @@ Rc<LinuxContextController> LinuxContextController::create(NotNull<Context> ctx, 
 		NotNull<LooperAdapter> looper) {
 	return Rc<LinuxContextController>::create(ctx, sprt::move(cfg), looper);
 }
+
+LinuxContextController::~LinuxContextController() { }
 
 bool LinuxContextController::init(NotNull<Context> ctx, ContextConfig &&config,
 		NotNull<LooperAdapter> looper) {

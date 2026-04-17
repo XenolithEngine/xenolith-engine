@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -24,7 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_WINDOW_CONFIG_H_
 
 #include <sprt/runtime/init.h>
-#include <sprt/runtime/thread/info.h>
+#include <sprt/runtime/dispatch/thread_info.h>
 
 #include <sprt/cxx/thread>
 

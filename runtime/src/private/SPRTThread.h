@@ -23,8 +23,8 @@
 #ifndef RUNTIME_SRC_PRIVATE_SPRTTHREAD_H_
 #define RUNTIME_SRC_PRIVATE_SPRTTHREAD_H_
 
-#include <sprt/runtime/thread/entry.h>
-#include <sprt/runtime/thread/info.h>
+#include <sprt/runtime/dispatch/entry.h>
+#include <sprt/runtime/dispatch/thread_info.h>
 
 #include <sprt/cxx/unordered_map>
 #include <sprt/cxx/unordered_set>
@@ -337,12 +337,6 @@ struct alignas(COMMON_ALIGNMENT) barrier_t {
 
 	int wait();
 };
-
-SPRT_LOCAL void _entry_platform(const callbacks &, NotNull<Ref>);
-
-SPRT_LOCAL void _init(const callbacks &cb, Ref *tm);
-SPRT_LOCAL bool _worker(const callbacks &cb, Ref *tm);
-SPRT_LOCAL void _dispose(const callbacks &cb, Ref *tm);
 
 } // namespace sprt::_thread
 

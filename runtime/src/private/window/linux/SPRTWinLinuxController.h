@@ -50,7 +50,7 @@ public:
 	static Rc<LinuxContextController> create(NotNull<Context>, ContextConfig &&,
 			NotNull<LooperAdapter>);
 
-	virtual ~LinuxContextController() = default;
+	virtual ~LinuxContextController();
 
 	virtual bool init(NotNull<Context>, ContextConfig &&, NotNull<LooperAdapter>);
 

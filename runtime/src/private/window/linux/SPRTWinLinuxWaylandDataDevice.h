@@ -28,7 +28,7 @@
 #if SPRT_LINUX
 
 #include <sprt/runtime/ref.h>
-#include <sprt/runtime/stack_buffer.h>
+#include <sprt/runtime/utils/stack_buffer.h>
 #include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/runtime/window/types.h>
 #include <sprt/runtime/window/clipboard.h>

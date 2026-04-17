@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#include <sprt/runtime/uuid.h>
+#include <sprt/runtime/utils/uuid.h>
 #include <sprt/runtime/platform.h>
 #include <sprt/runtime/hash.h>
 

@@ -32,7 +32,8 @@
 namespace std {
 // support for a constexpr construct_at
 template <typename _Tp, typename... _Args,
-		typename = decltype(::new (sprt::declval<void *>()) _Tp(sprt::declval<_Args>()...))>
+		typename = decltype(::new (sprt::declval<void *>(), sprt::nothrow)
+						_Tp(sprt::declval<_Args>()...))>
 constexpr _Tp *construct_at(_Tp *__location, _Args &&...__args) {
 	return ::new (static_cast<void *>(__location)) _Tp(sprt::forward<_Args>(__args)...);
 }
@@ -43,6 +44,12 @@ constexpr _Tp *construct_at(_Tp *__location, _Args &&...__args) {
 
 namespace sprt {
 
+template <typename _Tp, typename... _Args>
+constexpr _Tp *__construct_at(_Tp *__location, _Args &&...__args) {
+	return ::new (static_cast<void *>(__location), sprt::nothrow)
+			_Tp(sprt::forward<_Args>(__args)...);
+}
+
 template <typename _Tp, typename... _Args,
 		typename = decltype(::new (sprt::declval<void *>(), sprt::nothrow)
 						_Tp(sprt::declval<_Args>()...))>
@@ -50,17 +57,18 @@ constexpr _Tp *construct_at(_Tp *__location, _Args &&...__args) {
 	if (__builtin_is_constant_evaluated()) {
 		return std::construct_at(__location, sprt::forward<_Args>(__args)...);
 	} else {
-		return ::new (static_cast<void *>(__location), sprt::nothrow)
-				_Tp(sprt::forward<_Args>(__args)...);
+		return __construct_at(__location, sprt::forward<_Args>(__args)...);
 	}
 }
 
-template <typename _Tp, enable_if_t<!is_array_v<_Tp>, int> = 0>
+template <typename _Tp>
+requires (!is_array_v<_Tp>)
 constexpr void destroy_at(_Tp *__loc) {
 	__loc->~_Tp();
 }
 
-template <typename _Tp, enable_if_t<is_array_v<_Tp>, int> = 0>
+template <typename _Tp>
+requires (is_array_v<_Tp>)
 constexpr void destroy_at(_Tp *__loc) {
 	for (auto &&__val : *__loc) { sprt::destroy_at(sprt::addressof(__val)); }
 }

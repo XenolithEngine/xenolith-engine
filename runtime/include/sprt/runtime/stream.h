@@ -37,7 +37,8 @@ inline const callback<void(StringType)> &operator<<(const callback<void(StringTy
 					|| sprt::is_same_v<StringType, StringViewBase<char16_t>>
 					|| sprt::is_same_v<StringType, StringViewBase<char32_t>>
 					|| sprt::is_same_v<StringType, StringViewUtf8>
-					|| sprt::is_same_v<StringType, BytesView>,
+					|| sprt::is_same_v<StringType, BytesViewTemplate<endian::big>>
+					|| sprt::is_same_v<StringType, BytesViewTemplate<endian::little>>,
 			"Functional stream argument should be one of StringView, WideStringView, "
 			"StringViewBase<char32_t>, StringViewUtf8, BytesView");
 
@@ -132,6 +133,9 @@ struct __c_ostream_wrapper {
 		__sprt_fwrite(str.data(), 1, str.size(), StreamGetter()); //
 	}
 };
+
+inline auto __cout() { return makeCallback(__c_ostream_wrapper<&__sprt_stdout_impl>{}); }
+inline auto __cerr() { return makeCallback(__c_ostream_wrapper<&__sprt_stderr_impl>{}); }
 
 static auto cout = makeCallback(__c_ostream_wrapper<&__sprt_stdout_impl>{});
 static auto cerr = makeCallback(__c_ostream_wrapper<&__sprt_stderr_impl>{});

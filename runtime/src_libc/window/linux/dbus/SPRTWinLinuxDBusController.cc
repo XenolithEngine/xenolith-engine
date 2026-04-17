@@ -25,7 +25,7 @@
 #include "private/window/linux/SPRTWinLinuxDBusGnome.h"
 #include "private/window/linux/SPRTWinLinuxDBusKde.h"
 
-#include <sprt/runtime/readconf.h>
+#include <sprt/runtime/utils/readconf.h>
 
 namespace sprt::window::dbus {
 
@@ -151,12 +151,12 @@ dbus_bool_t Controller::handleDbusEvent(dbus::Connection *c, const dbus::Event &
 		});
 		handle->setUserdata(c);
 
-		handle->retain(0);
+		sprt::retain(handle, 0);
 		_dbus->dbus_watch_set_data(ev.watch, handle.get(), [](void *ptr) {
 			auto handle = reinterpret_cast<HandleAdapter *>(ptr);
 			handle->cancel(Status::ErrorCancelled);
 			handle->setUserdata(nullptr);
-			handle->release(0);
+			sprt::release(handle, 0);
 		});
 
 		if (!_dbus->dbus_watch_get_enabled(ev.watch)) {
@@ -219,25 +219,25 @@ dbus_bool_t Controller::handleDbusEvent(dbus::Connection *c, const dbus::Event &
 								c->lib->dbus_timeout_get_interval((DBusTimeout *)timeout) * 1'000,
 								1);
 
-						handle->retain(0);
+						sprt::retain(handle, 0);
 						c->lib->dbus_timeout_set_data((DBusTimeout *)timeout, handle,
 								[](void *ptr) {
 							auto handle = reinterpret_cast<HandleAdapter *>(ptr);
 							handle->cancel(Status::ErrorCancelled);
 							handle->setUserdata(nullptr);
-							handle->release(0);
+							sprt::release(handle, 0);
 						});
 					}
 				}
 			});
 			handle->setUserdata(c);
 
-			handle->retain(0);
+			sprt::retain(handle, 0);
 			_dbus->dbus_timeout_set_data(ev.timeout, handle.get(), [](void *ptr) {
 				auto handle = reinterpret_cast<HandleAdapter *>(ptr);
 				handle->cancel(Status::ErrorCancelled);
 				handle->setUserdata(nullptr);
-				handle->release(0);
+				sprt::release(handle, 0);
 			});
 
 			if (!_dbus->dbus_timeout_get_enabled(ev.timeout)) {

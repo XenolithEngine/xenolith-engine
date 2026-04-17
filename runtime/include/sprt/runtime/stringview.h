@@ -24,17 +24,17 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_STRINGVIEW_H_
 
 #include <sprt/runtime/math.h>
-#include <sprt/runtime/notnull.h>
 #include <sprt/runtime/chargroup.h>
 #include <sprt/runtime/string.h>
 #include <sprt/runtime/hash.h>
-#include <sprt/runtime/endian.h>
-#include <sprt/cxx/detail/constexpr.h>
 #include <sprt/runtime/unicode.h>
-#include <sprt/runtime/halffloat.h>
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/runtime/mem/context.h>
+#include <sprt/runtime/utils/notnull.h>
+#include <sprt/runtime/utils/byteorder.h>
+#include <sprt/runtime/utils/halffloat.h>
 
+#include <sprt/cxx/detail/constexpr.h>
 #include <sprt/cxx/cstring>
 #include <sprt/cxx/functional>
 #include <sprt/cxx/__algorithm/lexicographical_compare.h>

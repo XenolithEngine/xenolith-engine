@@ -196,7 +196,7 @@ void ContextController::handleStateChanged(ContextState prevState, ContextState 
 		return;
 	}
 
-	auto refId = retain();
+	auto refId = sprt::retain(this);
 
 	switch (newState) {
 	case ContextState::None:
@@ -226,7 +226,7 @@ void ContextController::handleStateChanged(ContextState prevState, ContextState 
 		break;
 	}
 
-	release(refId);
+	sprt::release(this, refId);
 }
 
 void ContextController::handleContextWillDestroy() {

@@ -57,6 +57,12 @@ public:
 	constexpr void deallocate(_Tp *__p, size_type __n) noexcept { ::operator delete(__p); }
 };
 
+struct destroying_delete_t {
+	explicit destroying_delete_t() = default;
+};
+
+inline constexpr destroying_delete_t destroying_delete{};
+
 } // namespace std
 
 #endif
@@ -71,6 +77,9 @@ extern const nothrow_t nothrow;
 
 enum class align_val_t : sprt::size_t {
 };
+
+using std::destroying_delete_t;
+using std::destroying_delete;
 
 } // namespace sprt
 

@@ -21,7 +21,7 @@
  THE SOFTWARE.
  **/
 
-#include <sprt/runtime/idn.h>
+#include <sprt/runtime/utils/idn.h>
 #include <sprt/runtime/detail/emplace_ordered.h>
 #include <sprt/cxx/set>
 #include <sprt/c/__sprt_stdlib.h>

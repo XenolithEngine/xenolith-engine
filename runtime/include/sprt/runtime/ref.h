@@ -23,11 +23,12 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_REF_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_REF_H_
 
-#include <sprt/runtime/notnull.h>
+#include <sprt/runtime/utils/notnull.h>
 #include <sprt/runtime/stringview.h>
 
 #include <sprt/cxx/list>
 #include <sprt/cxx/new>
+#include <sprt/cxx/memory>
 #include <sprt/cxx/atomic>
 
 // enable Ref debug mode to track retain/release sources
@@ -46,6 +47,18 @@
 namespace sprt {
 
 class SPRT_API Ref;
+
+template <typename T, typename... Args>
+inline T *__new(Args &&...args);
+
+template <typename T>
+inline void __delete(T *t);
+
+template <typename T>
+inline uint64_t retain(T *t, uint64_t value = Max<uint64_t>);
+
+template <typename T>
+inline void release(T *t, uint64_t value);
 
 namespace memleak {
 
@@ -67,55 +80,68 @@ SPRT_API void foreachBacktrace(const Ref *,
 
 class SPRT_API RefAlloc : AllocBase {
 public:
-	static constexpr uint32_t PoolAllocBit = 0x8000'0000;
+	template <typename T, typename... Args>
+	static T *__new(Args &&...args) {
+		T *uninitialized = nullptr;
+		if constexpr (toInt(alignof(T)) <= alignof(__sprt_max_align_t)) {
+			uninitialized = reinterpret_cast<T *>(__sprt_malloc(sizeof(T)));
+		} else {
+			uninitialized = reinterpret_cast<T *>(__sprt_aligned_alloc(alignof(T), sizeof(T)));
+		}
 
+		return sprt::__construct_at(uninitialized, sprt::forward<Args>(args)...);
+	}
+
+	template <typename T, typename... Args>
+	static T *__pnew(memory::pool_t *pool, Args &&...args) {
+		// Use __construct_at with disabled checker to use with protected constructors
+		return sprt::__construct_at(
+				reinterpret_cast<T *>(sprt::memory::pool::palloc(pool, sizeof(T), alignof(T))),
+				sprt::forward<Args>(args)...);
+	}
+
+	template <typename T>
+	static void __delete(T *t) {
+		sprt::destroy_at(t);
+		if constexpr (toInt(alignof(T)) <= alignof(__sprt_max_align_t)) {
+			__sprt_free(t);
+		} else {
+			__sprt_aligned_free(t);
+		}
+	}
+
+	// Disable default ABI operators
 	static void *operator new(size_t size) = delete;
 	static void *operator new[](size_t size) = delete;
 
-	static void *operator new(size_t size, const sprt::nothrow_t &tag) noexcept {
-		return __sprt_malloc(size);
-	}
-	static void *operator new(size_t size, sprt::align_val_t al,
-			const sprt::nothrow_t &tag) noexcept {
-		if (toInt(al) <= alignof(__sprt_max_align_t)) {
-			return __sprt_malloc(size);
-		} else {
-			return __sprt_aligned_alloc(toInt(al), size);
-		}
-	}
+	// Disable placements
 	static void *operator new(size_t size, void *ptr) noexcept = delete;
-	static void *operator new(size_t size, memory::pool_t *ptr) noexcept;
 
-	static inline void operator delete(void *ptr) noexcept { __abi_operator_delete(ptr); }
-	static inline void operator delete(void *ptr, align_val_t al) noexcept {
-		__abi_operator_delete(ptr, toInt(al));
-	}
+	static void *operator new(size_t size, sprt::align_val_t al,
+			const sprt::nothrow_t &tag) noexcept = delete;
+
+	static void *operator new(size_t size, sprt::align_val_t al,
+			memory::pool_t *ptr) noexcept = delete;
+
+	static inline void operator delete(void *ptr) noexcept = delete;
+	static inline void operator delete(void *ptr, align_val_t al) noexcept = delete;
+
+	static void operator delete(RefAlloc *ptr, sprt::destroying_delete_t) noexcept;
 
 	virtual ~RefAlloc();
 
 	uint32_t getReferenceCount() const noexcept;
-	bool isPoolAllocated() const noexcept;
 
 protected:
 	RefAlloc() noexcept;
 
-	// DO NOT USE THIS DIRECTLY, use Ref::retain
+	// DO NOT USE THIS DIRECTLY, use sprt::retain
 	void incrementReferenceCount();
 
-	// DO NOT USE THIS DIRECTLY, use Ref::release
+	// DO NOT USE THIS DIRECTLY, use sprt::release
 	bool decrementReferenceCount();
 
-	// use this function to destroy memory pool, that contains ref itself
-	void destroySelfContained(memory::pool_t *);
-
-	// use this function to destroy memory allocator, that contains ref itself
-	void destroySelfContained(memory::allocator_t *);
-
 	atomic<uint32_t> _referenceCount = 1;
-
-private:
-	static void __abi_operator_delete(void *ptr) noexcept;
-	static void __abi_operator_delete(void *ptr, size_t) noexcept;
 };
 
 class SPRT_API Ref : public RefAlloc {
@@ -132,23 +158,6 @@ public:
 		}
 	}
 
-	virtual uint64_t retain(uint64_t value = Max<uint64_t>) {
-		incrementReferenceCount();
-		if (isRetainTrackerEnabled()) {
-			return memleak::retainBacktrace(this, value);
-		}
-		return 0;
-	}
-
-	virtual void release(uint64_t v) {
-		if (isRetainTrackerEnabled()) {
-			memleak::releaseBacktrace(this, v);
-		}
-		if (decrementReferenceCount()) {
-			delete this;
-		}
-	}
-
 	virtual void foreachBacktrace(
 			const callback<void(uint64_t, time_t, const __pool_list<StringView> &)> &cb) const {
 		memleak::foreachBacktrace(this, cb);
@@ -157,15 +166,47 @@ public:
 #else
 	virtual ~Ref() = default;
 
+#endif
+
+private:
+	template <typename U>
+	friend uint64_t retain(U *, uint64_t);
+
+	template <typename U>
+	friend void release(U *, uint64_t);
+
+#if SPRT_REF_DEBUG
+	virtual uint64_t retain(uint64_t value = Max<uint64_t>) {
+		incrementReferenceCount();
+		if (isRetainTrackerEnabled()) {
+			return memleak::retainBacktrace(this, value);
+		}
+		return 0;
+	}
+
+	[[nodiscard("Caller should delete object with __delete if release returns true")]]
+	virtual bool release(uint64_t v) {
+		if (isRetainTrackerEnabled()) {
+			memleak::releaseBacktrace(this, v);
+		}
+		if (decrementReferenceCount()) {
+			return true;
+		}
+		return false;
+	}
+#else
 	uint64_t retain(uint64_t value = Max<uint64_t>) {
 		(void)value;
 		incrementReferenceCount();
 		return 0;
 	}
-	void release(uint64_t id) {
+
+	[[nodiscard("Caller should delete object with __delete if release returns true")]]
+	bool release(uint64_t id) {
 		if (decrementReferenceCount()) {
-			delete this;
+			return true;
 		}
+		return false
 	}
 #endif
 
@@ -193,7 +234,7 @@ enum class SharedRefMode {
  */
 
 template <typename T>
-class SPRT_API SharedRef : public Ref {
+class SPRT_API SharedRef final : public Ref {
 public:
 	template <typename... Args>
 	static SharedRef *create(Args &&...);
@@ -227,6 +268,17 @@ protected:
 	//	virtual bool isRetainTrackerEnabled() const { return true; }
 	//#endif
 
+	template <typename U>
+	friend uint64_t retain(U *, uint64_t);
+
+	template <typename U>
+	friend void release(U *, uint64_t);
+
+	static void __delete(SharedRef *t) { sprt::destroy_at(t); }
+
+	template <typename _Tp, typename... _Args>
+	friend constexpr _Tp *__construct_at(_Tp *__location, _Args &&...__args);
+
 	SharedRef(SharedRefMode m, memory::allocator_t *, memory::pool_t *) noexcept;
 
 	memory::allocator_t *_allocator = nullptr;
@@ -235,6 +287,12 @@ protected:
 	T *_shared = nullptr;
 	SharedRefMode _mode = SharedRefMode::Pool;
 };
+
+template <typename T>
+struct __is_shared_ref : false_type { };
+
+template <typename T>
+struct __is_shared_ref<SharedRef<T>> : true_type { };
 
 template <typename _Base, typename _Pointer>
 class RcBase {
@@ -454,20 +512,14 @@ auto ref_cast(const Rc<Source> &source) -> Rc<Target> {
 // Implementation
 //
 
-inline uint32_t RefAlloc::getReferenceCount() const noexcept {
-	return _referenceCount.load() & (~PoolAllocBit);
-}
-
-inline bool RefAlloc::isPoolAllocated() const noexcept {
-	return (_referenceCount.load() & PoolAllocBit) == PoolAllocBit;
-}
+inline uint32_t RefAlloc::getReferenceCount() const noexcept { return _referenceCount.load(); }
 
 // DO NOT USE THIS DIRECTLY, use Ref::retain
 inline void RefAlloc::incrementReferenceCount() { ++_referenceCount; }
 
 // DO NOT USE THIS DIRECTLY, use Ref::release
 inline bool RefAlloc::decrementReferenceCount() {
-	if ((_referenceCount.fetch_sub(1) & (~PoolAllocBit)) == 1) {
+	if (_referenceCount.fetch_sub(1) == 1) {
 		return true;
 	}
 	return false;
@@ -480,9 +532,9 @@ auto SharedRef<T>::create(Args &&...args) -> SharedRef * {
 
 	SharedRef *shared = nullptr;
 	memory::perform([&] {
-		shared = new (pool) SharedRef(SharedRefMode::Pool, nullptr, pool);
+		shared = __pnew<SharedRef>(pool, SharedRefMode::Pool, nullptr, pool);
 		if (shared) {
-			shared->_shared = new (pool) T(shared, pool, sprt::forward<Args>(args)...);
+			shared->_shared = __pnew<T>(pool, shared, pool, sprt::forward<Args>(args)...);
 		}
 	}, pool);
 	return shared;
@@ -495,9 +547,9 @@ auto SharedRef<T>::create(memory::pool_t *p, Args &&...args) -> SharedRef * {
 
 	SharedRef *shared = nullptr;
 	memory::perform([&] {
-		shared = new (pool) SharedRef(SharedRefMode::Pool, nullptr, pool);
+		shared = __pnew<SharedRef>(pool, SharedRefMode::Pool, nullptr, pool);
 		if (shared) {
-			shared->_shared = new (pool) T(shared, pool, sprt::forward<Args>(args)...);
+			shared->_shared = __pnew<T>(pool, shared, pool, sprt::forward<Args>(args)...);
 		}
 		if (p) {
 			shared->_parent = p;
@@ -523,9 +575,9 @@ auto SharedRef<T>::create(SharedRefMode mode, Args &&...args) -> SharedRef * {
 
 	SharedRef *shared = nullptr;
 	memory::perform([&] {
-		shared = new (pool) SharedRef(mode, alloc, pool);
+		shared = __pnew<SharedRef>(pool, mode, alloc, pool);
 		if (shared) {
-			shared->_shared = new (pool) T(shared, pool, sprt::forward<Args>(args)...);
+			shared->_shared = __pnew<T>(pool, shared, pool, sprt::forward<Args>(args)...);
 		}
 	}, pool);
 	return shared;
@@ -545,7 +597,7 @@ Status SharedRef<T>::invaldate(void *ptr) {
 template <typename T>
 SharedRef<T>::~SharedRef() {
 	if (_shared) {
-		memory::perform([&, this] { delete _shared; }, _pool);
+		memory::perform([&, this] { sprt::destroy_at(_shared); }, _pool);
 		_shared = nullptr;
 	}
 
@@ -563,10 +615,10 @@ SharedRef<T>::~SharedRef() {
 	_allocator = nullptr;
 
 	if (pool) {
-		destroySelfContained(pool);
+		sprt::memory::pool::destroy(pool);
 	}
 	if (allocator) {
-		destroySelfContained(allocator);
+		sprt::memory::allocator::destroy(allocator);
 	}
 }
 
@@ -814,11 +866,11 @@ inline void RcBase<_Base, _Pointer>::doRetain() {
 
 #if SPRT_REF_DEBUG
 	if (ptr) {
-		_id = ptr->retain();
+		_id = sprt::retain(ptr);
 	}
 #else
 	if (ptr) {
-		ptr->retain();
+		sprt::retain(ptr);
 	}
 #endif
 }
@@ -833,11 +885,11 @@ inline void RcBase<_Base, _Pointer>::doRelease() {
 
 #if SPRT_REF_DEBUG
 	if (ptr) {
-		ptr->release(_id);
+		sprt::release(ptr, _id);
 	}
 #else
 	if (ptr) {
-		ptr->release(0);
+		sprt::release(ptr, 0);
 	}
 #endif
 }
@@ -855,19 +907,19 @@ inline auto RcBase<_Base, _Pointer>::doSwap(Pointer _value) -> Pointer {
 #if SPRT_REF_DEBUG
 	uint64_t id = 0;
 	if (value) {
-		id = value->retain();
+		id = sprt::retain(value);
 	}
 	if (ptr) {
-		ptr->release(_id);
+		sprt::release(ptr, _id);
 	}
 	_id = id;
 	return (Pointer)value;
 #else
 	if (value) {
-		value->retain();
+		sprt::retain(value);
 	}
 	if (ptr) {
-		ptr->release(0);
+		sprt::release(ptr, 0);
 	}
 	return (Pointer)value;
 #endif
@@ -895,23 +947,28 @@ template <typename... Args>
 inline auto Rc<_Base>::create(Args &&...args) -> Self {
 	static_assert(is_base_of<Ref, _Base>::value, "Rc base class should be derived from Ref");
 
-	if constexpr (requires(Type *pRet, Args &&...args) {
-					  pRet->init(sprt::forward<Args>(args)...);
-				  }) {
-		auto pRet = new (nothrow) Type();
+	constexpr auto hasInit =
+			requires(Type *pRet, Args &&...args) { pRet->init(sprt::forward<Args>(args)...); };
+
+	constexpr auto hasNew =
+			requires(Args &&...args) { RefAlloc::__new<Type>(sprt::forward<Args>(args)...); };
+
+	static_assert(hasInit || hasNew,
+			"Fail to detect Type::init(...) or Type(...) with arguments provided");
+
+	if constexpr (hasInit) {
+		auto pRet = RefAlloc::__new<Type>();
 		if (pRet->init(sprt::forward<Args>(args)...)) {
 			return Self(pRet, true); // unsafe assignment
 		} else {
-			delete pRet;
+			RefAlloc::__delete(pRet);
 			return Self(nullptr);
 		}
-	} else if constexpr (requires(Args &&...args) {
-							 new (nothrow) Type(sprt::forward<Args>(args)...);
-						 }) {
-		auto pRet = new (nothrow) Type(sprt::forward<Args>(args)...);
+	} else if constexpr (hasNew) {
+		auto pRet = RefAlloc::__new<Type>(sprt::forward<Args>(args)...);
 		return Self(pRet, true); // unsafe assignment
 	} else {
-		static_assert(false, "Fail to detect Type::init(...) or Type(...) with arguments provided");
+		static_assert(false);
 		return nullptr;
 	}
 }
@@ -919,14 +976,14 @@ inline auto Rc<_Base>::create(Args &&...args) -> Self {
 template <typename _Base>
 inline auto Rc<_Base>::alloc() -> Self {
 	static_assert(is_base_of<Ref, _Base>::value, "Rc base class should be derived from Ref");
-	return Self(new (nothrow) Type(), true);
+	return Self(RefAlloc::__new<Type>(), true);
 }
 
 template <typename _Base>
 template <typename... Args>
 inline auto Rc<_Base>::alloc(Args &&...args) -> Self {
 	static_assert(is_base_of<Ref, _Base>::value, "Rc base class should be derived from Ref");
-	return Self(new (nothrow) Type(sprt::forward<Args>(args)...), true);
+	return Self(RefAlloc::__new<Type>(sprt::forward<Args>(args)...), true);
 }
 
 template <typename _Base>
@@ -1026,7 +1083,7 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(Args &&.
 		}
 	});
 	if (!ret) {
-		delete pRet;
+		RefAlloc::__delete(pRet);
 	}
 	return ret;
 }
@@ -1043,7 +1100,7 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(memory::
 		}
 	});
 	if (!ret) {
-		delete pRet;
+		RefAlloc::__delete(pRet);
 	}
 	return ret;
 }
@@ -1060,7 +1117,7 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(SharedRe
 		}
 	});
 	if (!ret) {
-		delete pRet;
+		RefAlloc::__delete(pRet);
 	}
 	return ret;
 }
@@ -1088,6 +1145,53 @@ template <typename... Args>
 inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::alloc(SharedRefMode mode,
 		Args &&...args) {
 	return Self(Type::create(mode, sprt::forward<Args>(args)...), true);
+}
+
+
+template <typename T, typename... Args>
+inline T *__new(Args &&...args) {
+	return RefAlloc::__new<T>(sprt::forward<Args>(args)...);
+}
+
+template <typename T>
+inline void __delete(T *t) {
+	return RefAlloc::__delete(t);
+}
+
+template <typename T>
+inline uint64_t retain(T *t, uint64_t value) {
+	return t->retain(value);
+}
+
+template <typename T>
+inline void release(T *t, uint64_t value) {
+	if (t->release(value)) {
+		if constexpr (__is_shared_ref<T>::value) {
+			T::__delete(t);
+		} else {
+			RefAlloc::__delete(t);
+		}
+	}
+}
+
+template <typename T>
+inline uint64_t retain(const Rc<T> &t, uint64_t value = Max<uint64_t>) {
+	return sprt::retain(t.get(), value);
+}
+
+template <typename T>
+inline void release(const Rc<T> &t, uint64_t value) {
+	sprt::release(t.get(), value);
+}
+
+template <typename T>
+inline uint64_t retain(const NotNull<T> &t, uint64_t value = Max<uint64_t>) {
+	return sprt::retain(t.get(), value);
+}
+
+template <typename T>
+inline void release(const NotNull<T> &t, uint64_t value) {
+	sprt::release(t.get(), value);
 }
 
 } // namespace sprt

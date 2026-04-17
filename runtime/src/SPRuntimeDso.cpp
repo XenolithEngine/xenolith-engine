@@ -20,9 +20,7 @@
  THE SOFTWARE.
  **/
 
-#include <sprt/runtime/dso.h>
-#include "private/SPRTDso.h"
-
+#include <sprt/runtime/utils/dso.h>
 #include <sprt/c/__sprt_dlfcn.h>
 
 namespace sprt {

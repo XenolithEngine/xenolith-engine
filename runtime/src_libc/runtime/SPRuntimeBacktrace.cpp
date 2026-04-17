@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD
 
-#include <sprt/runtime/backtrace.h>
+#include <sprt/runtime/utils/backtrace.h>
 #include <sprt/runtime/log.h>
 
 #include <unwind.h>

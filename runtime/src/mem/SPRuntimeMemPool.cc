@@ -537,7 +537,7 @@ Pool *create(Pool *p) {
 		return p->make_child();
 	} else {
 #if DEBUG
-		assert(s_global_pool);
+		sprt_passert(s_global_pool, "Memory pool subsystem was not initialized");
 #endif
 		return s_global_pool->make_child();
 	}
