@@ -69,12 +69,12 @@ void WindowsContextController::acquireDefaultConfig(ContextConfig &config, Nativ
 }
 
 Rc<WindowsContextController> WindowsContextController::create(NotNull<Context> ctx,
-		ContextConfig &&cfg, NotNull<LooperAdapter> looper) {
+		ContextConfig &&cfg, NotNull<dispatch::Looper> looper) {
 	return Rc<WindowsContextController>::create(ctx, sprt::move(cfg), looper);
 }
 
 bool WindowsContextController::init(NotNull<Context> ctx, ContextConfig &&config,
-		NotNull<LooperAdapter> looper) {
+		NotNull<dispatch::Looper> looper) {
 	if (!ContextController::init(ctx, looper)) {
 		return false;
 	}

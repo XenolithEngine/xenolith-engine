@@ -112,7 +112,7 @@ static void *__threadWrapper(void *ptr) {
 		d->fn();
 	}
 
-	delete d;
+	__delete(d);
 	return nullptr;
 }
 

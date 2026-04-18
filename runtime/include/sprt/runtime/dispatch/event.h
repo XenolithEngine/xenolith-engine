@@ -89,7 +89,7 @@ struct SPRT_API TimerInfo {
 
 	// ClockType for a timer only partially usable on non-Linux systems
 	// Just leave it Default
-	__sprt_clockid_t clock = __SPRT_CLOCK_BOOTTIME;
+	__sprt_clockid_t clock = __SPRT_CLOCK_REALTIME;
 
 	// Set this = true if you want to use `TimerHandle::reset`.
 	//

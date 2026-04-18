@@ -97,8 +97,8 @@ public:
 	uint64_t sec() const { return toSeconds(); }
 	float fsec() const { return toFloatSeconds(); }
 
-	tm asLocal() const;
-	tm asGmt() const;
+	__SPRT_TM_NAME asLocal() const;
+	__SPRT_TM_NAME asGmt() const;
 
 	void setMicros(uint64_t value) { setMicroseconds(value); }
 	void setMillis(uint64_t value) { setMilliseconds(value); }

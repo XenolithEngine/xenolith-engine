@@ -33,7 +33,6 @@
 namespace sprt::window {
 
 class NativeWindow;
-class LooperAdapter;
 class ContextController;
 
 class SPRT_API Context : public Ref {

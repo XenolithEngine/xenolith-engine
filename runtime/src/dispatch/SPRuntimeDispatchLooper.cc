@@ -156,8 +156,18 @@ Looper *Looper::acquire(LooperInfo &&info, QueueInfo &&qinfo) {
 
 Looper *Looper::getIfExists() { return tl_looper; }
 
+Status Looper::cleanup(Looper *l) {
+	l->_active = false;
+	Data::cleanup(l->_data, l);
+	l->_data = nullptr;
+	tl_looper = nullptr;
+	return Status::Ok;
+}
+
 Looper::~Looper() {
 	if (_data) {
+		memory::pool::cleanup_kill(_data->threadMemPool, this,
+				reinterpret_cast<memory::cleanup_fn>(cleanup));
 		Data::cleanup(_data, this);
 		_data = nullptr;
 	}
@@ -284,14 +294,9 @@ Looper::Looper(LooperInfo &&info, Rc<QueueRef> &&q) {
 			_data->threadMemPool = pool;
 		} else {
 			_data->threadMemPool = _data->threadInfo->threadPool;
-			memory::pool::cleanup_register(_data->threadMemPool, this, [](void *d) -> Status {
-				auto l = (Looper *)d;
-				l->_active = false;
-				Data::cleanup(l->_data, l);
-				l->_data = nullptr;
-				tl_looper = nullptr;
-				return Status::Ok;
-			}, memory::pool::cleanup_flags::cleanup_flags_plain);
+			memory::pool::cleanup_register(_data->threadMemPool, this,
+					reinterpret_cast<memory::cleanup_fn>(cleanup),
+					memory::pool::cleanup_flags::cleanup_flags_plain);
 		}
 
 		_data->thisThreadId = Thread::getCurrentThreadId();

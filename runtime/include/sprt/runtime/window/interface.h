@@ -44,57 +44,6 @@ public:
 	virtual bool waitUntilFrame() = 0;
 };
 
-class SPRT_API HandleAdapter : public Ref {
-public:
-	virtual ~HandleAdapter() = default;
-
-	virtual Status getStatus() const = 0;
-
-	virtual Status resume() = 0;
-	virtual Status pause() = 0;
-
-	virtual Status cancel(Status = Status::ErrorCancelled, uint32_t value = 0) = 0;
-	virtual void setUserdata(Ref *) = 0;
-	virtual Ref *getUserdata() const = 0;
-
-	virtual bool resetPoll(filesystem::PollFlags) = 0;
-	virtual bool resetTimer(time_t timeout, time_t interval, uint32_t count) = 0;
-};
-
-class SPRT_API LooperAdapter : public Ref {
-public:
-	static constexpr uint32_t TimerInfinite = Max<uint32_t>;
-
-	static LooperAdapter *getForThread();
-	static void setForThread(LooperAdapter *);
-
-	virtual ~LooperAdapter() = default;
-
-	virtual void poll() = 0;
-	virtual Status wakeup(bool graceful = false) = 0;
-	virtual Status run() = 0;
-
-	virtual bool isOnThisThread() const = 0;
-
-	virtual sprt::native_handle getHandle() const = 0;
-
-	virtual Rc<HandleAdapter> scheduleTimer(time_t timeout, time_t interval, uint32_t count, void *,
-			void (*)(void *, HandleAdapter *, uint32_t flags, Status status)) = 0;
-
-	virtual Rc<HandleAdapter> listenPollableHandle(native_handle, filesystem::PollFlags, void *,
-			void (*)(void *, HandleAdapter *, uint32_t flags, Status status)) = 0;
-
-	virtual Rc<HandleAdapter> listenPollableHandle(native_handle, filesystem::PollFlags,
-			Function<Status(sprt::native_handle fd, filesystem::PollFlags flags)> &&,
-			Ref * = nullptr) = 0;
-
-	virtual Status performOnThread(Function<void()> &&func, Ref *target = nullptr,
-			bool immediate = false, StringView tag = __SPRT_LOCATION.function_name()) const = 0;
-
-	virtual Status performAsync(Function<void()> &&, Ref * = nullptr, bool first = false,
-			StringView tag = __SPRT_LOCATION.function_name()) const = 0;
-};
-
 } // namespace sprt::window
 
 #endif

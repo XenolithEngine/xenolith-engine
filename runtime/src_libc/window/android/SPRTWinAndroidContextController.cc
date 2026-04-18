@@ -131,7 +131,7 @@ void AndroidContextController::acquireDefaultConfig(ContextConfig &cfg) {
 }
 
 Rc<AndroidContextController> AndroidContextController::create(NotNull<Context> ctx,
-		ContextConfig &&cfg, NotNull<LooperAdapter> looper) {
+		ContextConfig &&cfg, NotNull<dispatch::Looper> looper) {
 	return Rc<AndroidContextController>::create(ctx, sprt::move(cfg), looper);
 }
 
@@ -143,7 +143,7 @@ AndroidContextController::~AndroidContextController() {
 }
 
 bool AndroidContextController::init(NotNull<Context> ctx, ContextConfig &&config,
-		NotNull<LooperAdapter> looper) {
+		NotNull<dispatch::Looper> looper) {
 	if (!ContextController::init(ctx, looper)) {
 		return false;
 	}

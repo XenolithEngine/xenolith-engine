@@ -55,7 +55,7 @@ SPRT_UNUSED static constexpr auto GNOME_DISPLAY_CONFIG_SERVICE = "org.gnome.Mutt
 
 SPRT_UNUSED static constexpr auto KSCREEN_SERVICE = "org.kde.KScreen";
 
-Controller::Controller(NotNull<Library> dbus, NotNull<LooperAdapter> looper,
+Controller::Controller(NotNull<Library> dbus, NotNull<dispatch::Looper> looper,
 		NotNull<LinuxContextController> c) {
 	_dbus = dbus;
 	_looper = looper;
@@ -127,14 +127,16 @@ dbus_bool_t Controller::handleDbusEvent(dbus::Connection *c, const dbus::Event &
 	case dbus::Event::None: break;
 	case dbus::Event::AddWatch: {
 		if (auto d = _dbus->dbus_watch_get_data(ev.watch)) {
-			auto handle = reinterpret_cast<HandleAdapter *>(d);
-			handle->resetPoll(dbus::getPollFlags(_dbus->dbus_watch_get_flags(ev.watch)));
+			auto handle = reinterpret_cast<dispatch::PollHandle *>(d);
+			handle->reset(dbus::getPollFlags(_dbus->dbus_watch_get_flags(ev.watch)));
 			return 1;
 		}
 
 		auto handle = _looper->listenPollableHandle(_dbus->dbus_watch_get_unix_fd(ev.watch),
-				dbus::getPollFlags(_dbus->dbus_watch_get_flags(ev.watch)), ev.watch,
-				[](void *watch, HandleAdapter *handle, uint32_t flags, Status status) {
+				dbus::getPollFlags(_dbus->dbus_watch_get_flags(ev.watch)),
+				dispatch::CompletionHandle<dispatch::PollHandle>::create<DBusWatch>(ev.watch,
+						[](DBusWatch *watch, dispatch::PollHandle *handle, uint32_t flags,
+								Status status) {
 			if (sprt::status::isErrno(status)) {
 				return;
 			}
@@ -148,12 +150,12 @@ dbus_bool_t Controller::handleDbusEvent(dbus::Connection *c, const dbus::Event &
 						filesystem::PollFlags(flags))) {
 				handle->cancel();
 			}
-		});
+		}));
 		handle->setUserdata(c);
 
 		sprt::retain(handle, 0);
 		_dbus->dbus_watch_set_data(ev.watch, handle.get(), [](void *ptr) {
-			auto handle = reinterpret_cast<HandleAdapter *>(ptr);
+			auto handle = reinterpret_cast<dispatch::Handle *>(ptr);
 			handle->cancel(Status::ErrorCancelled);
 			handle->setUserdata(nullptr);
 			sprt::release(handle, 0);
@@ -167,14 +169,15 @@ dbus_bool_t Controller::handleDbusEvent(dbus::Connection *c, const dbus::Event &
 		break;
 	}
 	case dbus::Event::ToggleWatch: {
-		auto handle = reinterpret_cast<HandleAdapter *>(_dbus->dbus_watch_get_data(ev.watch));
+		auto handle = reinterpret_cast<dispatch::Handle *>(_dbus->dbus_watch_get_data(ev.watch));
 		if (!_dbus->dbus_watch_get_enabled(ev.watch)) {
 			if (handle->getStatus() != Status::Declined) {
 				handle->pause();
 			}
 		} else {
 			if (handle->getStatus() == Status::Declined) {
-				handle->resetPoll(dbus::getPollFlags(_dbus->dbus_watch_get_flags(ev.watch)));
+				reinterpret_cast<dispatch::PollHandle *>(handle)->reset(
+						dbus::getPollFlags(_dbus->dbus_watch_get_flags(ev.watch)));
 				handle->resume();
 			}
 		}
@@ -182,7 +185,7 @@ dbus_bool_t Controller::handleDbusEvent(dbus::Connection *c, const dbus::Event &
 		break;
 	}
 	case dbus::Event::RemoveWatch: {
-		auto handle = reinterpret_cast<HandleAdapter *>(_dbus->dbus_watch_get_data(ev.watch));
+		auto handle = reinterpret_cast<dispatch::Handle *>(_dbus->dbus_watch_get_data(ev.watch));
 		handle->cancel(Status::Done);
 		handle->setUserdata(nullptr);
 		_dbus->dbus_watch_set_data(ev.watch, nullptr, nullptr);
@@ -192,14 +195,21 @@ dbus_bool_t Controller::handleDbusEvent(dbus::Connection *c, const dbus::Event &
 	case dbus::Event::TriggerWatch: break;
 	case dbus::Event::AddTimeout:
 		if (auto d = _dbus->dbus_timeout_get_data(ev.timeout)) {
-			auto handle = reinterpret_cast<HandleAdapter *>(d);
-			handle->resetTimer(0, _dbus->dbus_timeout_get_interval(ev.timeout) * 1'000, 1);
+			auto handle = reinterpret_cast<dispatch::TimerHandle *>(d);
+			handle->reset(dispatch::TimerInfo{
+				.timeout = dispatch::TimeInterval::milliseconds(
+						_dbus->dbus_timeout_get_interval(ev.timeout)),
+				.count = 1,
+			});
 			result = 1;
 		} else {
-			auto handle = _looper->scheduleTimer(0,
-					_dbus->dbus_timeout_get_interval(ev.timeout) * 1'000, 1, ev.timeout,
-					[](void *timeout, HandleAdapter *handle, uint32_t flags, Status status) {
-				if (sprt::status::isErrno(status)) {
+			auto handle = _looper->scheduleTimer(
+					dispatch::TimerInfo{
+						.completion = dispatch::CompletionHandle<dispatch::TimerHandle>::create<
+								DBusTimeout>(ev.timeout,
+								[](DBusTimeout *timeout, dispatch::TimerHandle *handle,
+										uint32_t flags, Status status) {
+				if (status::isErrno(status)) {
 					return;
 				}
 
@@ -208,33 +218,30 @@ dbus_bool_t Controller::handleDbusEvent(dbus::Connection *c, const dbus::Event &
 					return;
 				}
 
-				if (!c->handle(dbus::Event{dbus::Event::TriggerTimeout,
-								   {.timeout = (DBusTimeout *)timeout}},
-							filesystem::PollFlags(flags))) {
+				if (!c->handle(dbus::Event{dbus::Event::TriggerTimeout, {.timeout = timeout}},
+							dispatch::PollFlags(flags))) {
 					handle->cancel();
-				} else if (c->lib->dbus_timeout_get_enabled((DBusTimeout *)timeout)) {
-					auto ival = c->lib->dbus_timeout_get_interval((DBusTimeout *)timeout) * 1'000;
+				} else if (c->lib->dbus_timeout_get_enabled(timeout)) {
+					auto ival = dispatch::TimeInterval::milliseconds(
+							c->lib->dbus_timeout_get_interval(timeout));
 					if (ival) {
-						handle->resetTimer(0,
-								c->lib->dbus_timeout_get_interval((DBusTimeout *)timeout) * 1'000,
-								1);
-
-						sprt::retain(handle, 0);
-						c->lib->dbus_timeout_set_data((DBusTimeout *)timeout, handle,
-								[](void *ptr) {
-							auto handle = reinterpret_cast<HandleAdapter *>(ptr);
-							handle->cancel(Status::ErrorCancelled);
-							handle->setUserdata(nullptr);
-							sprt::release(handle, 0);
+						handle->reset(dispatch::TimerInfo{
+							.timeout = dispatch::TimeInterval::milliseconds(
+									c->lib->dbus_timeout_get_interval(timeout)),
+							.count = 1,
 						});
 					}
 				}
-			});
-			handle->setUserdata(c);
+			}),
+						.timeout = dispatch::TimeInterval::milliseconds(
+								_dbus->dbus_timeout_get_interval(ev.timeout)),
+						.count = 1,
+					},
+					c);
 
 			sprt::retain(handle, 0);
 			_dbus->dbus_timeout_set_data(ev.timeout, handle.get(), [](void *ptr) {
-				auto handle = reinterpret_cast<HandleAdapter *>(ptr);
+				auto handle = reinterpret_cast<dispatch::Handle *>(ptr);
 				handle->cancel(Status::ErrorCancelled);
 				handle->setUserdata(nullptr);
 				sprt::release(handle, 0);
@@ -247,14 +254,19 @@ dbus_bool_t Controller::handleDbusEvent(dbus::Connection *c, const dbus::Event &
 		}
 		break;
 	case dbus::Event::ToggleTimeout: {
-		auto handle = reinterpret_cast<HandleAdapter *>(_dbus->dbus_timeout_get_data(ev.timeout));
+		auto handle =
+				reinterpret_cast<dispatch::TimerHandle *>(_dbus->dbus_timeout_get_data(ev.timeout));
 		if (!_dbus->dbus_timeout_get_enabled(ev.timeout)) {
 			if (handle->getStatus() != Status::Declined) {
 				handle->pause();
 			}
 		} else {
 			if (handle->getStatus() == Status::Declined) {
-				handle->resetTimer(0, _dbus->dbus_timeout_get_interval(ev.timeout) * 1'000, 1);
+				handle->reset(dispatch::TimerInfo{
+					.timeout = dispatch::TimeInterval::milliseconds(
+							_dbus->dbus_timeout_get_interval(ev.timeout)),
+					.count = 1,
+				});
 				handle->resume();
 			}
 		}
@@ -262,7 +274,8 @@ dbus_bool_t Controller::handleDbusEvent(dbus::Connection *c, const dbus::Event &
 		break;
 	}
 	case dbus::Event::RemoveTimeout: {
-		auto handle = reinterpret_cast<HandleAdapter *>(_dbus->dbus_timeout_get_data(ev.timeout));
+		auto handle =
+				reinterpret_cast<dispatch::Handle *>(_dbus->dbus_timeout_get_data(ev.timeout));
 		handle->cancel(Status::ErrorCancelled);
 		handle->setUserdata(nullptr);
 		_dbus->dbus_timeout_set_data(ev.timeout, nullptr, nullptr);

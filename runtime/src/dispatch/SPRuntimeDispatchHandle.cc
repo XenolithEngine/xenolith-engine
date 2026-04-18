@@ -294,9 +294,15 @@ uint32_t ThreadHandle::performAll(const Callback<void(uint32_t)> &unlockCallback
 
 	unlockCallback(static_cast<uint32_t>(stack.size() + callbacks.size()));
 
-	for (auto &it : stack) { _engine->perform(move(it)); }
-	for (auto &it : callbacks) { _engine->perform(sprt::move(it.fn), sprt::move(it.ref), it.tag); }
-	for (auto &it : _unsafeQueue) { _engine->perform(sprt::move(it)); }
+	for (auto &it : stack) {
+		_engine->perform(move(it)); //
+	}
+	for (auto &it : callbacks) {
+		_engine->perform(sprt::move(it.fn), sprt::move(it.ref), it.tag); //
+	}
+	for (auto &it : _unsafeQueue) {
+		_engine->perform(sprt::move(it)); //
+	}
 	for (auto &it : _unsafeCallbacks) {
 		_engine->perform(sprt::move(it.fn), sprt::move(it.ref), it.tag);
 	}

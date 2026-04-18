@@ -386,7 +386,7 @@ Status URingData::cancelOp(uint64_t userdata, URingCancelFlags cancelFlags) {
 		uint32_t cFlags = 0;
 
 		if (hasFlag(cancelFlags, URingCancelFlags::Suspend)) {
-			udata = URING_USERDATA_SUSPENDED;
+			udata = (userdata & URING_USERDATA_PTR_MASK) | URING_USERDATA_SUSPEND_BIT;
 		}
 		if (hasFlag(cancelFlags, URingCancelFlags::All)) {
 			cFlags |= IORING_ASYNC_CANCEL_ALL;
@@ -496,22 +496,28 @@ void URingData::processEvent(int32_t res, uint32_t flags, uint64_t userdata) {
 				_runContext->wakeupStatus = Status::ErrorTimerExpired;
 			}
 		}
-	} else if (userdata == URING_USERDATA_SUSPENDED) {
+	} else if ((userFlags & URING_USERDATA_SUSPEND_BIT) != 0) {
 		// graceful wakeup suspend task completed
-		if (_data->_info.suspendedHandles == _data->_info.runningHandles && _runContext
-				&& _runContext->state == RunContext::Stopping) {
-			_runContext->state = RunContext::Stopped;
 
-			if (_runContext->wakeupTimeout) {
-				pushSqe({IORING_OP_TIMEOUT_REMOVE}, [&](io_uring_sqe *sqe, uint32_t n) {
-					sqe->addr = URING_USERDATA_TIMEOUT;
-					sqe->len = 0;
-					sqe->off = 0;
-					sqe->user_data = URING_USERDATA_IGNORED;
-				}, URingPushFlags::Submit);
+		if (_runContext && _runContext->state == RunContext::Stopping) {
+			//sprt::cout << "URING_USERDATA_SUSPEND_BIT: " << reinterpret_cast<Handle *>(userptr) << "\n";
+			_runContext->_awaitingHandles.erase(reinterpret_cast<Handle *>(userptr));
+
+			if (_runContext->_awaitingHandles.empty()) {
+				_runContext->state = RunContext::Stopped;
+
+				if (_runContext->wakeupTimeout) {
+					// Kill wakeup timeout
+					pushSqe({IORING_OP_TIMEOUT_REMOVE}, [&](io_uring_sqe *sqe, uint32_t n) {
+						sqe->addr = URING_USERDATA_TIMEOUT;
+						sqe->len = 0;
+						sqe->off = 0;
+						sqe->user_data = URING_USERDATA_IGNORED;
+					}, URingPushFlags::Submit);
+				}
+
+				_runContext->wakeupStatus = Status::Ok;
 			}
-
-			_runContext->wakeupStatus = Status::Ok;
 		}
 	} else if (userdata) {
 		if (hasContext(reinterpret_cast<void *>(userptr))) {
@@ -706,10 +712,16 @@ void URingData::cancel() {
 URingData::URingData(QueueRef *q, Queue::Data *data, const QueueInfo &info, SpanView<int> sigs)
 : PlatformQueueData(q, data, info.flags) {
 
-	_suspend = [](RunContext *ctx) {
-		if (ctx->wakeupCounter == 0) {
+	_suspend = [](RunContext *ctx, uint32_t nhandles, Handle **handles) {
+		if (nhandles == 0) {
+			// no need to wait for suspended handles
 			static_cast<URingData *>(ctx->queue)->submitPending();
 			return Status::Done;
+		}
+
+		while (nhandles-- > 0) {
+			ctx->_awaitingHandles.emplace(*handles);
+			++handles;
 		}
 
 		// we will receive reports from all commands, or it will be forced wakeup on timeout

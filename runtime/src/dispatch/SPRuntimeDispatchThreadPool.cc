@@ -173,7 +173,7 @@ void ThreadPool::WorkerContext::cancel() {
 
 		for (auto &it : workers) {
 			it->waitStopped();
-			RefAlloc::__delete(it);
+			__delete(it);
 		}
 		workers.clear();
 	}

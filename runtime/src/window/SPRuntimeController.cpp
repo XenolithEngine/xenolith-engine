@@ -46,7 +46,7 @@
 namespace sprt::window {
 
 Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextConfig &&info,
-		NotNull<LooperAdapter> a) {
+		NotNull<dispatch::Looper> a) {
 #if SPRT_LINUX
 	return LinuxContextController::create(ctx, move(info), a);
 #endif
@@ -78,7 +78,7 @@ void ContextController::acquireDefaultConfig(ContextConfig &config, NativeContex
 #endif
 }
 
-bool ContextController::init(NotNull<Context> ctx, NotNull<LooperAdapter> a) {
+bool ContextController::init(NotNull<Context> ctx, NotNull<dispatch::Looper> a) {
 	_context = ctx;
 	_looper = a;
 	return true;

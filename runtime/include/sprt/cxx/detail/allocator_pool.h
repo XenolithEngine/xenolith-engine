@@ -454,7 +454,7 @@ inline memory::pool_t *AllocPool::getCurrentPool() { return memory::pool::acquir
 
 template <typename T>
 inline Status AllocPool::cleanupObjectFromPool(void *data) {
-	delete ((T *)data);
+	__delete(reinterpret_cast<T *>(data));
 	return Status::Ok;
 }
 

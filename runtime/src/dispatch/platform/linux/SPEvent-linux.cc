@@ -98,8 +98,6 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupUringHandleClass<TimerURingHandle, TimerUringSource>(&_info, &_uringTimerClass, true);
 		setupUringHandleClass<ThreadEventFdHandle, EventFdSource>(&_info, &_uringThreadEventFdClass,
 				true);
-		setupUringHandleClass<ThreadUringHandle, ThreadUringSource>(&_info, &_uringThreadFenceClass,
-				true);
 		setupUringHandleClass<EventFdURingHandle, EventFdSource>(&_info, &_uringEventFdClass, true);
 		setupUringHandleClass<SignalFdURingHandle, SignalFdSource>(&_info, &_uringSignalFdClass,
 				true);
@@ -137,20 +135,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 
 			_thread = [](QueueData *d, void *ptr) -> Rc<ThreadHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
-				if constexpr (URING_THREAD_USE_FUTEX_HANDLE) {
-#ifdef SP_URING_THREAD_FENCE_HANDLE
-					auto uring = reinterpret_cast<URingData *>(ptr);
-					if (hasFlag(uring->_uflags, URingFlags::FutexSupported)) {
-						return Rc<ThreadUringHandle>::create(&data->_uringThreadFenceClass);
-					} else {
-						return Rc<ThreadEventFdHandle>::create(&data->_uringThreadEventFdClass);
-					}
-#else
-					return Rc<ThreadEventFdHandle>::create(&data->_uringThreadEventFdClass);
-#endif
-				} else {
-					return Rc<ThreadEventFdHandle>::create(&data->_uringThreadEventFdClass);
-				}
+				return Rc<ThreadEventFdHandle>::create(&data->_uringThreadEventFdClass);
 			};
 
 			_listenHandle = [](QueueData *d, void *ptr, NativeHandle handle, PollFlags flags,
@@ -225,7 +210,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 namespace sprt::dispatch::platform {
 
 Rc<QueueRef> getThreadQueue(QueueInfo &&info) {
-#if LINUX
+#if SPRT_LINUX
 	info.engineMask &= QueueEngine::URing | QueueEngine::EPoll;
 #else
 	info.engineMask &= QueueEngine::EPoll | QueueEngine::ALooper;

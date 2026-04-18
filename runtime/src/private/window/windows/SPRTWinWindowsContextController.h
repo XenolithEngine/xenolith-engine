@@ -39,11 +39,11 @@ public:
 	static void acquireDefaultConfig(ContextConfig &, NativeContextHandle *);
 
 	static Rc<WindowsContextController> create(NotNull<Context>, ContextConfig &&,
-			NotNull<LooperAdapter>);
+			NotNull<dispatch::Looper>);
 
 	virtual ~WindowsContextController() = default;
 
-	virtual bool init(NotNull<Context> ctx, ContextConfig &&, NotNull<LooperAdapter>);
+	virtual bool init(NotNull<Context> ctx, ContextConfig &&, NotNull<dispatch::Looper>);
 
 	virtual int run(NotNull<ContextContainer> ctx) override;
 

@@ -40,13 +40,12 @@ struct URingData;
 static constexpr uint64_t URING_USERDATA_USER_MASK = 0b1'1111;
 static constexpr uint64_t URING_USERDATA_SERIAL_MASK = 0b0'0111;
 static constexpr uint64_t URING_USERDATA_RETAIN_BIT = 0b0'1000;
-static constexpr uint64_t URING_USERDATA_ALT_BIT = 0b1'0000;
+static constexpr uint64_t URING_USERDATA_SUSPEND_BIT = 0b1'0000;
 static constexpr uint64_t URING_USERDATA_PTR_MASK = ~URING_USERDATA_USER_MASK;
 
 // Special userdata values
 // DO NOT set RETAIN bit for special values
 static constexpr uint64_t URING_USERDATA_IGNORED = Max<uint64_t> & URING_USERDATA_PTR_MASK;
-static constexpr uint64_t URING_USERDATA_SUSPENDED = Max<uint64_t> & (URING_USERDATA_PTR_MASK | 1);
 static constexpr uint64_t URING_USERDATA_TIMEOUT = Max<uint64_t> & (URING_USERDATA_PTR_MASK | 2);
 
 template <typename TimeSpec>

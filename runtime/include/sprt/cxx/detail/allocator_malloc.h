@@ -244,7 +244,7 @@ constexpr inline void AllocatorMalloc<T>::destroy(pointer p, size_t size) const 
 	if constexpr (!is_destructible<T>::value || is_scalar<T>::value) {
 		// do nothing
 	} else {
-		for (size_t i = 0; i < size; ++i) { sprt::destroy_at(p + 1); }
+		for (size_t i = 0; i < size; ++i) { sprt::destroy_at(p + i); }
 	}
 }
 

@@ -119,7 +119,8 @@ struct SPRT_API QueueData : public PerformEngine {
 	bool isWithinNotify() const { return _performEnabled > 0; }
 
 	// returns number of operations suspended
-	uint32_t suspendAll();
+	// Suspended handle pointers written to buffer provided
+	uint32_t suspendAll(Handle **);
 
 	// returns number of operations suspended
 	uint32_t resumeAll();
@@ -175,7 +176,7 @@ struct alignas(32) PlatformQueueData : public sprt::detail::AllocPool {
 		PlatformQueueData *queue = nullptr;
 
 		WakeupFlags runWakeupFlags = WakeupFlags::None;
-		uint32_t wakeupCounter = 0;
+		uint32_t wakeupCounter = 0; // how many handles we need suspend for a graceful wakeup
 		Status wakeupStatus = Status::Suspended;
 		TimeInterval wakeupTimeout;
 
@@ -183,10 +184,12 @@ struct alignas(32) PlatformQueueData : public sprt::detail::AllocPool {
 		uint32_t nevents = 0;
 
 		_linux_timespec wakeupTimespec;
+
+		HashSet<Handle *> _awaitingHandles;
 	};
 
 	using StopContextCallback = void (*)(RunContext *);
-	using SuspendCallback = Status (*)(RunContext *);
+	using SuspendCallback = Status (*)(RunContext *, uint32_t nhandles, Handle **);
 	using SuspendedCallback = void (*)(RunContext *);
 
 	QueueRef *_queue = nullptr;

@@ -34,11 +34,11 @@ public:
 	static void acquireDefaultConfig(ContextConfig &, NativeContextHandle *);
 
 	static Rc<MacosContextController> create(NotNull<Context>, ContextConfig &&,
-			NotNull<LooperAdapter>);
+			NotNull<dispatch::Looper>);
 
 	virtual ~MacosContextController();
 
-	virtual bool init(NotNull<Context> ctx, ContextConfig &&, NotNull<LooperAdapter>);
+	virtual bool init(NotNull<Context> ctx, ContextConfig &&, NotNull<dispatch::Looper>);
 
 	ContextInfo *getContextInfo() const { return _contextInfo; }
 

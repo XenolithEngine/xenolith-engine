@@ -23,6 +23,7 @@
 #ifndef CORE_RUNTIME_PRIVATE_WINDOW_LINUX_SPRTWINLINUXCONTROLLER_H_
 #define CORE_RUNTIME_PRIVATE_WINDOW_LINUX_SPRTWINLINUXCONTROLLER_H_
 
+#include <sprt/runtime/dispatch/handle.h>
 #include <sprt/runtime/window/controller.h>
 
 #if SPRT_LINUX
@@ -48,11 +49,11 @@ public:
 	static void acquireDefaultConfig(ContextConfig &, NativeContextHandle *);
 
 	static Rc<LinuxContextController> create(NotNull<Context>, ContextConfig &&,
-			NotNull<LooperAdapter>);
+			NotNull<dispatch::Looper>);
 
 	virtual ~LinuxContextController();
 
-	virtual bool init(NotNull<Context>, ContextConfig &&, NotNull<LooperAdapter>);
+	virtual bool init(NotNull<Context>, ContextConfig &&, NotNull<dispatch::Looper>);
 
 	virtual int run(NotNull<ContextContainer>) override;
 
@@ -91,8 +92,8 @@ protected:
 	Rc<XcbConnection> _xcbConnection;
 	Rc<WaylandDisplay> _waylandDisplay;
 
-	Rc<HandleAdapter> _xcbPollHandle;
-	Rc<HandleAdapter> _waylandPollHandle;
+	Rc<dispatch::Handle> _xcbPollHandle;
+	Rc<dispatch::Handle> _waylandPollHandle;
 };
 
 } // namespace sprt::window

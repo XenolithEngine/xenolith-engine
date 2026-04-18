@@ -721,14 +721,14 @@ uint64_t TimeStorage::toSeconds() const { return _value / 1'000'000ULL; }
 float TimeStorage::toFloatSeconds() const { return _value / 1000000.0f; }
 double TimeStorage::toDoubleSeconds() const { return _value / 1000000.0; }
 
-tm TimeStorage::asLocal() const {
+__SPRT_TM_NAME TimeStorage::asLocal() const {
 	auto sec = sprt::time_t(toSeconds());
 	tm tm;
 	__sprt_localtime_r(&sec, &tm);
 	return tm;
 }
 
-tm TimeStorage::asGmt() const {
+__SPRT_TM_NAME TimeStorage::asGmt() const {
 	auto sec = sprt::time_t(toSeconds());
 	tm tm;
 	__sprt_gmtime_r(&sec, &tm);

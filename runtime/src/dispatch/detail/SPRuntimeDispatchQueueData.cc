@@ -165,14 +165,20 @@ void PerformEngine::cleanup() {
 PerformEngine::PerformEngine(memory::pool_t *pool)
 : _pool(pool), _tmpPool(memory::pool::create(pool)) { }
 
-uint32_t QueueData::suspendAll() {
+uint32_t QueueData::suspendAll(Handle **buf) {
 	uint32_t ret = 0;
 	_running = false;
 	for (auto &it : _suspendableHandles) {
-		if (it->getStatus() == Status::Ok || it->getStatus() == Status::Suspended) {
+		if (it->getStatus() == Status::Ok) {
 			if (isSuccessful(it->suspend())) {
+				if (buf) {
+					*buf = it.get();
+					++buf;
+				}
 				++ret;
 			}
+		} else if (it->getStatus() == Status::Suspended) {
+			// do nothing
 		} else if (it->getStatus() != Status::Declined) {
 			oslog::vperror(__SPRT_LOCATION, "dispatch::QueueData",
 					"suspendAll: Invalid status for a resumable handle: ", it->getStatus());
@@ -351,14 +357,17 @@ Status PlatformQueueData::suspendHandles(RunContext *ctx) {
 
 	ctx->wakeupStatus = Status::Suspended;
 
-	auto nhandles = _data->suspendAll();
+	auto handlesBuffer = __sprt_typed_malloca(Handle *, _data->_suspendableHandles.size());
+
+	auto nhandles = _data->suspendAll(handlesBuffer);
 	ctx->wakeupCounter = nhandles;
 
+	Status result = Status::Done;
 	if (_suspend) {
-		return _suspend(ctx);
-	} else {
-		return Status::Done;
+		result = _suspend(ctx, nhandles, handlesBuffer);
 	}
+	__sprt_freea(handlesBuffer);
+	return result;
 }
 
 Status PlatformQueueData::stopContext(RunContext *contextToStop, WakeupFlags flags,

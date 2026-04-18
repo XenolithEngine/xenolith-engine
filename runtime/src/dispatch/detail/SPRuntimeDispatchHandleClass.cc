@@ -109,7 +109,7 @@ Status HandleClass::resume(HandleClass *cl, Handle *handle, uint8_t[Handle::Data
 	}
 
 	// increment counters only if handle was externally suspended
-	if (handle->getStatus() == Status::Declined) {
+	if (handle->getStatus() == Status::Declined || handle->getStatus() == Status::Suspended) {
 		--cl->suspendedHandles;
 		--cl->info->suspendedHandles;
 

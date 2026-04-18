@@ -80,14 +80,14 @@ void LinuxContextController::acquireDefaultConfig(ContextConfig &config,
 }
 
 Rc<LinuxContextController> LinuxContextController::create(NotNull<Context> ctx, ContextConfig &&cfg,
-		NotNull<LooperAdapter> looper) {
+		NotNull<dispatch::Looper> looper) {
 	return Rc<LinuxContextController>::create(ctx, sprt::move(cfg), looper);
 }
 
 LinuxContextController::~LinuxContextController() { }
 
 bool LinuxContextController::init(NotNull<Context> ctx, ContextConfig &&config,
-		NotNull<LooperAdapter> looper) {
+		NotNull<dispatch::Looper> looper) {
 	if (!ContextController::init(ctx, looper)) {
 		return false;
 	}
@@ -406,7 +406,7 @@ void LinuxContextController::handleContextDidDestroy() {
 	_xcbConnection = nullptr;
 
 	if (_looper) {
-		_looper->wakeup(true);
+		_looper->wakeup(dispatch::WakeupFlags::Graceful);
 	}
 }
 

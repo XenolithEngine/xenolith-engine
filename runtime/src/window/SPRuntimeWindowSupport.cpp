@@ -1027,10 +1027,4 @@ void getWindowStateDescription(const callback<void(StringView)> &out, WindowStat
 	}
 }
 
-thread_local LooperAdapter *tl_threadLooper;
-
-LooperAdapter *LooperAdapter::getForThread() { return tl_threadLooper; }
-
-void LooperAdapter::setForThread(LooperAdapter *) { tl_threadLooper = nullptr; }
-
 } // namespace sprt::window

@@ -100,16 +100,6 @@ public:
 				sprt::forward<Args>(args)...);
 	}
 
-	template <typename T>
-	static void __delete(T *t) {
-		sprt::destroy_at(t);
-		if constexpr (toInt(alignof(T)) <= alignof(__sprt_max_align_t)) {
-			__sprt_free(t);
-		} else {
-			__sprt_aligned_free(t);
-		}
-	}
-
 	// Disable default ABI operators
 	static void *operator new(size_t size) = delete;
 	static void *operator new[](size_t size) = delete;
@@ -168,7 +158,7 @@ public:
 
 #endif
 
-private:
+protected:
 	template <typename U>
 	friend uint64_t retain(U *, uint64_t);
 
@@ -274,7 +264,19 @@ protected:
 	template <typename U>
 	friend void release(U *, uint64_t);
 
-	static void __delete(SharedRef *t) { sprt::destroy_at(t); }
+	static void __delete(SharedRef *t) {
+		auto allocator = t->_allocator;
+		auto pool = t->_pool;
+
+		sprt::destroy_at(t);
+
+		if (pool) {
+			sprt::memory::pool::destroy(pool);
+		}
+		if (allocator) {
+			sprt::memory::allocator::destroy(allocator);
+		}
+	}
 
 	template <typename _Tp, typename... _Args>
 	friend constexpr _Tp *__construct_at(_Tp *__location, _Args &&...__args);
@@ -601,8 +603,6 @@ SharedRef<T>::~SharedRef() {
 		_shared = nullptr;
 	}
 
-	auto pool = _pool;
-	auto allocator = _allocator;
 	auto parent = _parent;
 
 	if (parent) {
@@ -613,13 +613,6 @@ SharedRef<T>::~SharedRef() {
 	_parent = nullptr;
 	_pool = nullptr;
 	_allocator = nullptr;
-
-	if (pool) {
-		sprt::memory::pool::destroy(pool);
-	}
-	if (allocator) {
-		sprt::memory::allocator::destroy(allocator);
-	}
 }
 
 template <typename T>
@@ -961,7 +954,7 @@ inline auto Rc<_Base>::create(Args &&...args) -> Self {
 		if (pRet->init(sprt::forward<Args>(args)...)) {
 			return Self(pRet, true); // unsafe assignment
 		} else {
-			RefAlloc::__delete(pRet);
+			__delete(pRet);
 			return Self(nullptr);
 		}
 	} else if constexpr (hasNew) {
@@ -1083,7 +1076,7 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(Args &&.
 		}
 	});
 	if (!ret) {
-		RefAlloc::__delete(pRet);
+		__delete(pRet);
 	}
 	return ret;
 }
@@ -1100,7 +1093,7 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(memory::
 		}
 	});
 	if (!ret) {
-		RefAlloc::__delete(pRet);
+		__delete(pRet);
 	}
 	return ret;
 }
@@ -1117,7 +1110,7 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(SharedRe
 		}
 	});
 	if (!ret) {
-		RefAlloc::__delete(pRet);
+		__delete(pRet);
 	}
 	return ret;
 }
@@ -1154,11 +1147,6 @@ inline T *__new(Args &&...args) {
 }
 
 template <typename T>
-inline void __delete(T *t) {
-	return RefAlloc::__delete(t);
-}
-
-template <typename T>
 inline uint64_t retain(T *t, uint64_t value) {
 	return t->retain(value);
 }
@@ -1169,7 +1157,7 @@ inline void release(T *t, uint64_t value) {
 		if constexpr (__is_shared_ref<T>::value) {
 			T::__delete(t);
 		} else {
-			RefAlloc::__delete(t);
+			__delete(t);
 		}
 	}
 }

@@ -461,7 +461,7 @@ public:
 
 	node_type *erase_node(node_type *node) noexcept {
 		auto returnNext = [&](node_type *n) {
-			do { ++n; } while (!n->active && n < (_storage + _capacity));
+			do { ++n; } while (n < (_storage + _capacity) && !n->active);
 			return node;
 		};
 

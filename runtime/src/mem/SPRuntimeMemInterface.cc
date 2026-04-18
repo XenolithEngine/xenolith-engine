@@ -479,7 +479,7 @@ allocator_t *create_apr(void *mutex) {
 void destroy(allocator_t *alloc) {
 	if constexpr (config::AprCompatible) {
 		if (isStappler(alloc)) {
-			delete (impl::Allocator *)alloc;
+			__delete(reinterpret_cast<impl::Allocator *>(alloc));
 		} else {
 			apr::allocator::destroy((apr_allocator_t *)alloc);
 		}

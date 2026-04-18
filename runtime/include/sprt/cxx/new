@@ -27,6 +27,19 @@ THE SOFTWARE.
 #include <sprt/cxx/detail/ctypes.h>
 #include <sprt/cxx/__utility/common.h>
 
+namespace sprt {
+
+struct nothrow_t {
+	explicit nothrow_t() = default;
+};
+
+extern const nothrow_t nothrow;
+
+enum class align_val_t : sprt::size_t {
+};
+
+} // namespace sprt
+
 #if __SPRT_USE_STL
 
 #include <memory>
@@ -63,20 +76,19 @@ struct destroying_delete_t {
 
 inline constexpr destroying_delete_t destroying_delete{};
 
+// support for a constexpr construct_at
+template <typename _Tp, typename... _Args,
+		typename = decltype(::new (sprt::declval<void *>(), sprt::nothrow)
+						_Tp(sprt::declval<_Args>()...))>
+constexpr _Tp *construct_at(_Tp *__location, _Args &&...__args) {
+	return ::new (static_cast<void *>(__location)) _Tp(sprt::forward<_Args>(__args)...);
+}
+
 } // namespace std
 
 #endif
 
 namespace sprt {
-
-struct nothrow_t {
-	explicit nothrow_t() = default;
-};
-
-extern const nothrow_t nothrow;
-
-enum class align_val_t : sprt::size_t {
-};
 
 using std::destroying_delete_t;
 using std::destroying_delete;
@@ -323,6 +335,46 @@ struct Allocator_SelectFirst<A, Args...> {
 	using type = A;
 };
 } // namespace
+
+
+template <typename _Tp, typename... _Args>
+constexpr _Tp *__construct_at(_Tp *__location, _Args &&...__args) {
+	return ::new (static_cast<void *>(__location), sprt::nothrow)
+			_Tp(sprt::forward<_Args>(__args)...);
+}
+
+template <typename _Tp, typename... _Args,
+		typename = decltype(::new (sprt::declval<void *>(), sprt::nothrow)
+						_Tp(sprt::declval<_Args>()...))>
+constexpr _Tp *construct_at(_Tp *__location, _Args &&...__args) {
+	if (__builtin_is_constant_evaluated()) {
+		return std::construct_at(__location, sprt::forward<_Args>(__args)...);
+	} else {
+		return __construct_at(__location, sprt::forward<_Args>(__args)...);
+	}
+}
+
+template <typename _Tp>
+requires (!is_array_v<_Tp>)
+constexpr void destroy_at(_Tp *__loc) {
+	__loc->~_Tp();
+}
+
+template <typename _Tp>
+requires (is_array_v<_Tp>)
+constexpr void destroy_at(_Tp *__loc) {
+	for (auto &&__val : *__loc) { sprt::destroy_at(sprt::addressof(__val)); }
+}
+
+template <typename T>
+inline void __delete(T *t) {
+	sprt::destroy_at(t);
+	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(t);
+	} else {
+		__sprt_aligned_free(t);
+	}
+}
 
 } // namespace sprt
 

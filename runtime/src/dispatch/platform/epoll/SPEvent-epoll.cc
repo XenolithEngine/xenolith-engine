@@ -144,12 +144,30 @@ Status EPollData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval w
 	Rc<Handle> timerHandle;
 	if (ival && ival != TimeInterval::Infinite) {
 		// set timeout
-		timerHandle = _queue->get()->schedule(ival,
-				[this, wakeupFlags, ctx = &ctx](Handle *, bool success) {
-			if (success) {
-				stopContext(ctx, wakeupFlags, false);
+		struct WakeupParams : Ref {
+			RunContext *ctx = nullptr;
+			WakeupFlags wakeupFlags = WakeupFlags::None;
+		};
+
+		auto p = Rc<WakeupParams>::alloc();
+		p->ctx = &ctx;
+		p->wakeupFlags = wakeupFlags;
+
+		timerHandle = _queue->get()->scheduleTimer(
+				TimerInfo{
+					.completion = TimerInfo::Completion::create<EPollData>(this,
+							[](EPollData *data, TimerHandle *handle, uint32_t value,
+									Status status) {
+			if (status == Status::Done) {
+				auto p = static_cast<WakeupParams *>(handle->getUserdata());
+				data->stopContext(p->ctx, p->wakeupFlags, false);
 			}
-		});
+		}),
+					.timeout = ival,
+					.interval = TimeInterval(),
+					.count = 1,
+				},
+				p);
 	}
 
 	pushContext(&ctx, RunContext::Run);

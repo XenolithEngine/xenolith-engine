@@ -27,6 +27,8 @@
 
 #if SPRT_LINUX
 
+#include <sprt/runtime/dispatch/looper.h>
+
 #include <sprt/runtime/window/notifications.h>
 #include <sprt/runtime/window/theme_info.h>
 #include <sprt/runtime/window/interface.h>
@@ -100,7 +102,7 @@ public:
 
 	virtual ~Controller() = default;
 
-	Controller(NotNull<Library>, NotNull<LooperAdapter>, NotNull<LinuxContextController>);
+	Controller(NotNull<Library>, NotNull<dispatch::Looper>, NotNull<LinuxContextController>);
 
 	bool setup();
 	void cancel();
@@ -125,7 +127,7 @@ protected:
 	void handleSystemConnected(NotNull<dbus::Connection>);
 
 	Rc<Library> _dbus;
-	Rc<LooperAdapter> _looper;
+	Rc<dispatch::Looper> _looper;
 	LinuxContextController *_controller = nullptr;
 
 	Rc<Connection> _sessionBus;

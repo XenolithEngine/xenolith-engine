@@ -185,7 +185,7 @@ bool WaylandDataInputTransfer::init(StringView t, NotNull<WaylandDataOffer> o,
 	return false;
 }
 
-void WaylandDataInputTransfer::schedule(NotNull<LooperAdapter> looper) {
+void WaylandDataInputTransfer::schedule(NotNull<dispatch::Looper> looper) {
 	if (pipefd[1] != -1) {
 		::close(pipefd[1]);
 		pipefd[1] = -1;
@@ -284,27 +284,30 @@ bool WaylandDataOutputTransfer::init(Bytes &&d, int fd) {
 		return true;
 	} else if (!success && (errno == EAGAIN || errno == EWOULDBLOCK)) {
 		// make handle to wait for other end
-		handle = LooperAdapter::getForThread()->listenPollableHandle(targetFd,
-				filesystem::PollFlags::Out, [this](native_handle fd, filesystem::PollFlags flags) {
-			if (hasFlag(flags, filesystem::PollFlags::Out)) {
-				write();
-				if (offset == data.size()) {
+		auto looper = dispatch::Looper::getIfExists();
+		if (looper) {
+			handle = looper->listenPollableHandle(targetFd, filesystem::PollFlags::Out,
+					[this](native_handle fd, filesystem::PollFlags flags) {
+				if (hasFlag(flags, filesystem::PollFlags::Out)) {
+					write();
+					if (offset == data.size()) {
+						if (targetFd != -1) {
+							::close(targetFd);
+							targetFd = -1;
+						}
+						return Status::Done;
+					}
+				}
+				if (hasFlag(flags, filesystem::PollFlags::Err)) {
 					if (targetFd != -1) {
 						::close(targetFd);
 						targetFd = -1;
 					}
 					return Status::Done;
 				}
-			}
-			if (hasFlag(flags, filesystem::PollFlags::Err)) {
-				if (targetFd != -1) {
-					::close(targetFd);
-					targetFd = -1;
-				}
-				return Status::Done;
-			}
-			return Status::Ok;
-		}, this);
+				return Status::Ok;
+			}, this);
+		}
 	}
 	return true;
 }
@@ -429,7 +432,7 @@ Status WaylandDataDevice::readFromClipboard(Rc<ClipboardRequest> &&req) {
 			Rc<WaylandDataInputTransfer>::create(selectedType, selectionOffer, sprt::move(req));
 	if (transfer) {
 		wl_display_flush(seat->root->display);
-		transfer->schedule(LooperAdapter::getForThread());
+		transfer->schedule(dispatch::Looper::getIfExists());
 		return Status::Ok;
 	}
 

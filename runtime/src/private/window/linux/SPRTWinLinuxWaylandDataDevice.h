@@ -28,6 +28,8 @@
 #if SPRT_LINUX
 
 #include <sprt/runtime/ref.h>
+#include <sprt/runtime/dispatch/looper.h>
+#include <sprt/runtime/dispatch/handle.h>
 #include <sprt/runtime/utils/stack_buffer.h>
 #include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/runtime/window/types.h>
@@ -79,7 +81,7 @@ struct SPRT_API WaylandDataInputTransfer : public Ref {
 
 	bool init(StringView type, NotNull<WaylandDataOffer>, Rc<ClipboardRequest> &&req);
 
-	void schedule(NotNull<LooperAdapter>);
+	void schedule(NotNull<dispatch::Looper>);
 	void commit();
 	void cancel();
 
@@ -88,7 +90,7 @@ struct SPRT_API WaylandDataInputTransfer : public Ref {
 	Rc<ClipboardRequest> request;
 	int pipefd[2] = {-1, -1};
 	StackBuffer<256_KiB> buffer;
-	Rc<HandleAdapter> handle;
+	Rc<dispatch::Handle> handle;
 	Vector<Bytes> chunks;
 };
 
@@ -106,7 +108,7 @@ struct SPRT_API WaylandDataOutputTransfer : public Ref {
 	size_t blockSize = 64_KiB;
 	int targetFd = -1;
 
-	Rc<HandleAdapter> handle;
+	Rc<dispatch::Handle> handle;
 };
 
 struct SPRT_API WaylandDataSource : public Ref {

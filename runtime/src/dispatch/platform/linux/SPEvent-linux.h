@@ -37,7 +37,6 @@ struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _uringTimerFdClass;
 	HandleClass _uringTimerClass;
 	HandleClass _uringThreadEventFdClass;
-	HandleClass _uringThreadFenceClass;
 	HandleClass _uringSignalFdClass;
 	HandleClass _uringEventFdClass;
 	HandleClass _uringPollFdClass;

@@ -25,6 +25,7 @@
 
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/platform.h>
+#include <sprt/runtime/dispatch/looper.h>
 #include <sprt/runtime/window/types.h>
 #include <sprt/runtime/window/window_info.h>
 #include <sprt/runtime/window/input.h>
@@ -78,18 +79,18 @@ struct ContextConfig {
 class ContextController : public Ref {
 public:
 	static Rc<ContextController> create(NotNull<Context>, ContextConfig &&info,
-			NotNull<LooperAdapter>);
+			NotNull<dispatch::Looper>);
 
 	static void acquireDefaultConfig(ContextConfig &, NativeContextHandle *);
 
 	virtual ~ContextController() = default;
 
-	virtual bool init(NotNull<Context>, NotNull<LooperAdapter>);
+	virtual bool init(NotNull<Context>, NotNull<dispatch::Looper>);
 
 	virtual int run(NotNull<ContextContainer>);
 
 	Context *getContext() const { return _context; }
-	LooperAdapter *getLooper() const { return _looper; }
+	dispatch::Looper *getLooper() const { return _looper; }
 
 	DisplayConfigManager *getDisplayConfigManager() const { return _displayConfigManager; }
 
@@ -174,7 +175,7 @@ protected:
 	int _resultCode = 0;
 	ContextState _state = ContextState::Created;
 	Context *_context = nullptr;
-	Rc<LooperAdapter> _looper;
+	Rc<dispatch::Looper> _looper;
 
 	Rc<ContextInfo> _contextInfo;
 	Rc<WindowInfo> _windowInfo;

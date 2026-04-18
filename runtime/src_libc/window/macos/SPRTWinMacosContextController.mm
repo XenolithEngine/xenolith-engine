@@ -101,14 +101,14 @@ void MacosContextController::acquireDefaultConfig(ContextConfig &config, NativeC
 }
 
 Rc<MacosContextController> MacosContextController::create(NotNull<Context> ctx, ContextConfig &&cfg,
-		NotNull<LooperAdapter> looper) {
+		NotNull<dispatch::Looper> looper) {
 	return Rc<MacosContextController>::create(ctx, sprt::move(cfg), looper);
 }
 
 MacosContextController::~MacosContextController() { _appDelegate = nullptr; }
 
 bool MacosContextController::init(NotNull<Context> ctx, ContextConfig &&config,
-		NotNull<LooperAdapter> looper) {
+		NotNull<dispatch::Looper> looper) {
 	if (!ContextController::init(ctx, looper)) {
 		return false;
 	}
