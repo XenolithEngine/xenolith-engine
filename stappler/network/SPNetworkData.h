@@ -25,7 +25,6 @@ THE SOFTWARE.
 #define STAPPLER_NETWORK_SPNETWORKHANDLEDATA_H_
 
 #include "SPCommon.h"
-#include "SPTime.h"
 #include "SPCrypto.h"
 #include "SPData.h"
 

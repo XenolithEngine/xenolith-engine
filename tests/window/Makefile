@@ -59,6 +59,8 @@ LOCAL_APPLICATION_MK := $(LOCAL_ROOT)/proj.android/app/Application.mk # path to 
 LOCAL_ANDROID_TARGET := application # target to build
 LOCAL_ANDROID_PLATFORM := android-24 # android platform version
 
+ASAN := 1
+
 # Подключения системы сборки
 include $(STAPPLER_BUILD_ROOT)/universal.mk
 

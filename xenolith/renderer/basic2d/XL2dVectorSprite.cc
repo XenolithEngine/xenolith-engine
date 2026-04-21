@@ -30,8 +30,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
-static Rc<VectorCanvasDeferredResult> VectorSprite_runDeferredVectorCavas(event::Looper *queue,
-		Rc<VectorImageData> &&image, const VectorCanvasConfig &config, bool waitOnReady) {
+static Rc<VectorCanvasDeferredResult> VectorSprite_runDeferredVectorCavas(
+		sprt::dispatch::Looper *queue, Rc<VectorImageData> &&image,
+		const VectorCanvasConfig &config, bool waitOnReady) {
 	Rc<VectorCanvasDeferredResult> ret = Rc<VectorCanvasDeferredResult>::create(waitOnReady);
 	queue->performAsync([image = move(image), config, ret]() mutable {
 		auto canvas = VectorCanvas::getInstance();

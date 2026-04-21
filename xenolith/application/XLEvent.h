@@ -26,7 +26,8 @@ THE SOFTWARE.
 #define XENOLITH_APPLICATION_XLEVENT_H_
 
 #include "XLCommon.h" // IWYU pragma: keep
-#include "SPEventBus.h"
+
+#include <sprt/runtime/dispatch/bus.h>
 
 #define XL_DECLARE_EVENT_CLASS(class, event) \
 	STAPPLER_VERSIONIZED_NAMESPACE::xenolith::EventHeader class::event(#class "." #event);
@@ -38,7 +39,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class Event;
 
-using EventId = event::BusEventCategory;
+using EventId = sprt::dispatch::BusEventCategory;
 
 class SP_PUBLIC EventHeader {
 public:
@@ -84,9 +85,9 @@ protected:
 	EventId _category = EventId::zero();
 };
 
-class SP_PUBLIC Event : public event::BusEvent {
+class SP_PUBLIC Event : public sprt::dispatch::BusEvent {
 public:
-	static event::Bus *getBus();
+	static sprt::dispatch::Bus *getBus();
 
 	virtual ~Event() = default;
 

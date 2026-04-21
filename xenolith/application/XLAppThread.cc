@@ -24,11 +24,12 @@
 #include "XLAppThread.h"
 #include "XLContext.h"
 #include "SPSharedModule.h"
-#include "SPEventTimerHandle.h"
 #include "XLEvent.h"
 #include "XLAppWindow.h"
 #include "XLDirector.h"
 #include "XLScene.h"
+
+#include <sprt/runtime/dispatch/handle.h>
 
 #if MODULE_XENOLITH_FONT
 
@@ -41,6 +42,8 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 XL_DECLARE_EVENT_CLASS(AppThread, onNetworkState)
 XL_DECLARE_EVENT_CLASS(AppThread, onThemeInfo)
 
+AppThread::~AppThread() { }
+
 bool AppThread::init(NotNull<Context> ctx) {
 	_context = ctx;
 	return true;
@@ -51,19 +54,19 @@ void AppThread::run() { Thread::run(); }
 void AppThread::threadInit() {
 	_thisThreadId = getCurrentThreadId();
 
-	_appLooper = event::Looper::acquire(event::LooperInfo{.name = StringView("Application"),
+	_appLooper = sprt::dispatch::Looper::acquire(sprt::dispatch::LooperInfo{
+		.name = StringView("Application"),
 		.workersCount = _context->getInfo()->appThreadsCount,
 
 		// Disable ALooper for internal queue, it can not be stopped gracefully
-		.engineMask = event::QueueEngine::Any & ~event::QueueEngine::ALooper});
+		.engineMask = sprt::dispatch::QueueEngine::Any & ~sprt::dispatch::QueueEngine::ALooper});
 
-	_timer = _appLooper->scheduleTimer(event::TimerInfo{
-		.completion = event::TimerInfo::Completion::create<AppThread>(this,
-				[](AppThread *data, event::TimerHandle *self, uint32_t value, Status status) {
-		data->performUpdate(false);
-	}),
+	_timer = _appLooper->scheduleTimer(sprt::dispatch::TimerInfo{
+		.completion = sprt::dispatch::TimerInfo::Completion::create<AppThread>(this,
+				[](AppThread *data, sprt::dispatch::TimerHandle *self, uint32_t value,
+						Status status) { data->performUpdate(false); }),
 		.interval = _context->getInfo()->appUpdateInterval,
-		.count = event::TimerInfo::Infinite,
+		.count = sprt::dispatch::TimerInfo::Infinite,
 	});
 
 	loadExtensions();
@@ -81,7 +84,8 @@ void AppThread::threadInit() {
 
 	if (_context->isLiveReloadEnabled()) {
 		_liveReloadListener = Rc<EventDelegate>::create(this, Context::onLiveReload,
-				[](event::Bus &, const event::BusEvent &ev, event::BusDelegate &d) {
+				[](sprt::dispatch::Bus &, const sprt::dispatch::BusEvent &ev,
+						sprt::dispatch::BusDelegate &d) {
 			auto &xev = static_cast<const Event &>(ev);
 			auto thread = static_cast<AppThread *>(d.getOwner());
 			thread->performLiveReload(static_cast<LiveReloadLibrary *>(xev.getObjectValue()));
@@ -122,7 +126,8 @@ bool AppThread::worker() {
 void AppThread::stop() {
 	Thread::stop();
 
-	_appLooper->wakeup(event::WakeupFlags::Graceful | event::WakeupFlags::SuspendThreads);
+	_appLooper->wakeup(
+			sprt::dispatch::WakeupFlags::Graceful | sprt::dispatch::WakeupFlags::SuspendThreads);
 }
 
 void AppThread::wakeup() {

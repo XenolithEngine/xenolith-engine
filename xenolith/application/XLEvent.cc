@@ -31,28 +31,28 @@ struct EventBus {
 	EventBus() {
 		addInitializer(this, initialize, terminate);
 
-		bus = Rc<event::Bus>::alloc();
+		bus = Rc<sprt::dispatch::Bus>::alloc();
 	}
 
 	void init() { }
 	void term() { bus = nullptr; }
 
-	event::BusEventCategory allocateCategory(StringView name) {
+	sprt::dispatch::BusEventCategory allocateCategory(StringView name) {
 		sprt_passert(bus, "Bus should be initialized");
 		return bus->allocateCategory(name);
 	}
 
-	void dispatchEvent(NotNull<event::BusEvent> ev) {
+	void dispatchEvent(NotNull<sprt::dispatch::BusEvent> ev) {
 		sprt_passert(bus, "Bus should be initialized");
 		bus->dispatchEvent(ev);
 	}
 
-	StringView getCategoryName(event::BusEventCategory id) {
+	StringView getCategoryName(sprt::dispatch::BusEventCategory id) {
 		sprt_passert(bus, "Bus should be initialized");
 		return bus->getCategoryName(id);
 	}
 
-	Rc<event::Bus> bus;
+	Rc<sprt::dispatch::Bus> bus;
 };
 
 static EventBus *getEventBus() {
@@ -119,7 +119,7 @@ void EventHeader::send(Ref *object, Value &&value) const {
 }
 void EventHeader::send(Ref *object) const { EventHeader_send(*this, object); }
 
-event::Bus *Event::getBus() { return getEventBus()->bus; }
+sprt::dispatch::Bus *Event::getBus() { return getEventBus()->bus; }
 
 EventId Event::getEventId() const { return getCategory(); }
 

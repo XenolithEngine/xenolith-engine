@@ -146,14 +146,16 @@ struct SP_PUBLIC FrameContextHandle : public core::AttachmentInputData {
 
 class SP_PUBLIC FrameStateOwnerInterface {
 public:
+	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 	virtual ~FrameStateOwnerInterface() = default;
+	__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 	// Object should use context to fully rebuild previously pushed state
 	virtual StateId rebuildState(FrameContextHandle &) = 0;
 };
 
 struct SP_PUBLIC FrameInfo {
-	Rc<PoolRef> pool;
+	Rc<sprt::PoolRef> pool;
 
 	Rc<core::FrameRequest> request;
 	Rc<Director> director;

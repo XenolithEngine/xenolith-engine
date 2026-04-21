@@ -35,12 +35,10 @@ LOCAL_MODULES ?= \
 	stappler_core \
 	stappler_filesystem \
 	stappler_data \
-	stappler_threads \
 	stappler_bitmap \
 	stappler_crypto \
 	stappler_db \
 	stappler_document \
-	stappler_event \
 	stappler_font \
 	stappler_vg \
 	stappler_pug \

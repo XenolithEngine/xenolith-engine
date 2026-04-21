@@ -21,12 +21,17 @@
  **/
 
 #include "XLEventListener.h"
-#include "SPEventBus.h"
 #include "XLAppThread.h"
 #include "XLScene.h"
 #include "XLDirector.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
+
+EventDelegate::~EventDelegate() {
+	if (_looper) {
+		disable();
+	}
+}
 
 bool EventDelegate::init(Ref *owner, const EventHeader &ev, BusEventCallback &&cb) {
 	_owner = owner;
@@ -52,7 +57,7 @@ bool EventDelegate::init(Ref *owner, Vector<EventId> &&evs, BusEventCallback &&c
 	return true;
 }
 
-void EventDelegate::enable(event::Looper *looper) {
+void EventDelegate::enable(sprt::dispatch::Looper *looper) {
 	_looper = looper;
 	Event::getBus()->addListener(this);
 }
@@ -90,20 +95,20 @@ void EventListener::handleRemoved() {
 	System::handleRemoved();
 }
 
-event::BusDelegate *EventListener::listenForEvent(const EventHeader &h, EventCallback &&callback,
-		bool removeAfterEvent) {
+sprt::dispatch::BusDelegate *EventListener::listenForEvent(const EventHeader &h,
+		EventCallback &&callback, bool removeAfterEvent) {
 	auto d = Rc<EventDelegate>::create(this, h,
-			[this, callback = sp::move(callback), removeAfterEvent](event::Bus &bus,
-					const event::BusEvent &event, event::BusDelegate &d) {
+			[this, callback = sp::move(callback), removeAfterEvent](sprt::dispatch::Bus &bus,
+					const sprt::dispatch::BusEvent &event, sprt::dispatch::BusDelegate &d) {
 		if (_enabled && _owner && _running) {
-			auto refId = retain();
+			auto refId = sprt::retain(this);
 			callback(static_cast<const Event &>(event));
 			if (removeAfterEvent) {
 				_listeners.erase(static_cast<EventDelegate *>(&d));
 				bus.removeListener(&d);
 				d.invalidate();
 			}
-			release(refId);
+			sprt::release(this, refId);
 		}
 	});
 	_listeners.emplace(d);
@@ -115,11 +120,11 @@ event::BusDelegate *EventListener::listenForEvent(const EventHeader &h, EventCal
 	return d;
 }
 
-event::BusDelegate *EventListener::listenForEventWithObject(const EventHeader &h, Ref *obj,
+sprt::dispatch::BusDelegate *EventListener::listenForEventWithObject(const EventHeader &h, Ref *obj,
 		EventCallback &&callback, bool removeAfterEvent) {
 	auto d = Rc<EventDelegate>::create(this, h,
-			[this, callback = sp::move(callback), removeAfterEvent, obj](event::Bus &bus,
-					const event::BusEvent &event, event::BusDelegate &d) {
+			[this, callback = sp::move(callback), removeAfterEvent, obj](sprt::dispatch::Bus &bus,
+					const sprt::dispatch::BusEvent &event, sprt::dispatch::BusDelegate &d) {
 		if (_enabled && _owner && callback) {
 			auto &ev = static_cast<const Event &>(event);
 			if (ev.getObject() == obj) {
@@ -141,7 +146,7 @@ event::BusDelegate *EventListener::listenForEventWithObject(const EventHeader &h
 	return d;
 }
 
-void EventListener::removeDelegate(event::BusDelegate *d) {
+void EventListener::removeDelegate(sprt::dispatch::BusDelegate *d) {
 	auto it = _listeners.find(d);
 	if (it != _listeners.end()) {
 		Rc<EventDelegate> l = (*it);

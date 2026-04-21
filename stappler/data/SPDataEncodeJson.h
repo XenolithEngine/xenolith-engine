@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 #include "SPDataValue.h"
 
-#include <sprt/runtime/base64.h>
+#include <sprt/runtime/utils/base64.h>
 
 #if MODULE_STAPPLER_FILESYSTEM
 #include "SPFilesystem.h"
@@ -124,7 +124,9 @@ struct PrettyEncoder : public Interface::AllocBaseType {
 						|| lastKey.find("date") != maxOf<size_t>()
 						|| lastKey.find("Date") != maxOf<size_t>())
 				&& (value > 1'000'000'000'000'000 && value < 10'000'000'000'000'000)) {
-			(*stream) << " /* " << Time::microseconds(value).toHttp<Interface>() << " */";
+			(*stream) << " /* "
+					  << Time::microseconds(value).toHttp<typename Interface::StringType>()
+					  << " */";
 		}
 	}
 	void write(double value) {

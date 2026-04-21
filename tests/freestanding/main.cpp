@@ -29,70 +29,38 @@ THE SOFTWARE.
 #include <sprt/runtime/platform.h>
 
 #include <sprt/cxx/new>
+#include <sprt/cxx/unordered_map>
 #include <sprt/cxx/memory>
 
-namespace sprt {
+#include "tests.h"
 
-void performUnameTest();
-void performUnistdTest();
-void performDirTest();
-void performLinkTest();
-void performListTests();
+static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
+	{"libc_uname", &sprt::performUnameTest},
+	{"libc_unistd", &sprt::performUnistdTest},
+	{"libc_dir", &sprt::performDirTest},
+	{"libc_link", &sprt::performLinkTest},
+	{"libc_pthread", &sprt::performPthreadCreateTest},
+	{"libc_pthread_mutex", &sprt::performPthreadMutexTest},
+	{"libc_pthread_cond", &sprt::performPthreadCondTest},
+	{"libc_pthread_rwlock", &sprt::performPthreadRwlockTest},
+	{"libc_pthread_barrier", &sprt::performPthreadBarrierTest},
+	{"libc_pthread_spinlock", &sprt::performPthreadSpinlockTest},
 
-void performPthreadCreateTest();
-void performPthreadMutexTest();
-void performPthreadCondTest();
-void performPthreadRwlockTest();
-void performPthreadBarrierTest();
-void performPthreadSpinlockTest();
+	{"libcxx_malloc_string", &sprt::performMallocStringTests},
+	{"libcxx_malloc_unordered_map", &sprt::performMallocUnorderedMapTests},
+	{"libcxx_malloc_unordered_set", &sprt::performMallocUnorderedSetTests},
+	{"libcxx_malloc_list", &sprt::performMallocListTests},
+	{"libcxx_malloc_forward_list", &sprt::performMallocForwardListTests},
+	{"libcxx_thread", &sprt::performThreadTests},
+	{"libcxx_variant", &sprt::performVariantTests},
+	{"libcxx_optional", &sprt::performOptionalTests},
+	{"libcxx_sort", &sprt::performSortTests},
+	{"libcxx_constexpr", &sprt::performConstexprTest},
+	{"libcxx_shared_mutex", &sprt::performSharedMutexStressTests},
 
-void performMallocStringTests();
-
-void performMallocUnorderedMapTests();
-void performMallocUnorderedSetTests();
-void performMallocListTests();
-void performThreadTests();
-void performMallocForwardListTests();
-void performVariantTests();
-void performOptionalTests();
-void performSortTests();
-
-void performHashTests();
-
-} // namespace sprt
-
-struct CustomType {
-	int x = 0;
-	int y = 0;
-
-	constexpr CustomType &operator+=(const CustomType &other) {
-		x += other.x;
-		y += other.y;
-		return *this;
-	}
+	{"runtime_ref", &sprt::performRefTests},
+	{"runtime_dispatch", &sprt::performDispatchTests},
 };
-
-consteval int get_value() {
-	auto t = sprt::memory::allocate<CustomType>();
-	auto v = sprt::memory::allocate<CustomType>();
-
-	using forward_list = sprt::__malloc_forward_list<int>;
-
-	forward_list list{1, 2, 3};
-
-	sprt::construct_at(t, CustomType{1, 2});
-	sprt::construct_at(v, CustomType{3, 4});
-
-	*t += *v;
-
-	auto ret = t->x + t->y;
-
-	sprt::memory::deallocate(t);
-	sprt::memory::deallocate(v);
-	return ret + list.front();
-}
-
-consteval int get_max_value() { return sprt::__vmax(1, 3, 5, 7, 2, 4); }
 
 int main(int argc, const char *argv[]) {
 	auto str =
@@ -100,41 +68,26 @@ int main(int argc, const char *argv[]) {
 
 	fwrite(str, strlen(str), 1, stdout);
 
-	sprt::cout << "\nTest constevals: " << get_value() << "\n";
+	int result = 0;
+	sprt::initialize(sprt::AppConfig(), result);
+	if (result != 0) {
+		return result;
+	}
 
-	sprt::cout << &fwrite << " " << (void *)str << " " << 12'345 << " " << sprt::io_hex(12'345)
-			   << " " << sprt::io_hex(-12'345) << "\n";
+	if (argc == 1) {
+		for (auto &it : s_testList) { it.second(); }
+		result = 0;
+	} else if (argc == 2) {
+		auto it = s_testList.find(argv[1]);
+		if (it != s_testList.end()) {
+			it->second();
+			result = 0;
+		} else {
+			sprt::cerr << "Test not found: " << argv[1] << "\n";
+			result = -1;
+		}
+	}
 
-	sprt::cout << get_max_value() << "\n";
-	/*sprt::performMallocUnorderedMapTests();
-	sprt::performMallocUnorderedSetTests();
-	sprt::performMallocForwardListTests();
-	sprt::performMallocListTests();*/
-
-	sprt::performSortTests();
-	sprt::performOptionalTests();
-	sprt::performVariantTests();
-	sprt::performThreadTests();
-
-	sprt::performPthreadCreateTest();
-	sprt::performPthreadMutexTest();
-	sprt::performPthreadCondTest();
-	sprt::performPthreadRwlockTest();
-	sprt::performPthreadBarrierTest();
-	sprt::performPthreadSpinlockTest();
-	/**/
-
-	/*sprt::performHashTests();
-	sprt::performMallocStringTests();
-
-	sprt::oslog::vpinfo(__SPRT_LOCATION, "main", "Exec path: ", sprt::platform::getExecPath());
-	sprt::oslog::vpinfo(__SPRT_LOCATION, "main", "Home path: ", sprt::platform::getHomePath());
-	sprt::oslog::vpinfo(__SPRT_LOCATION, "main",
-			"Unique Device Id: ", sprt::platform::getUniqueDeviceId());
-
-	sprt::performUnameTest();
-	sprt::performUnistdTest();
-	sprt::performDirTest();
-	sprt::performLinkTest();*/
-	return 0;
+	sprt::terminate();
+	return result;
 }

@@ -82,7 +82,7 @@ public:
 
 	Rc<AttachmentInputData> getInputData(const AttachmentData *attachment);
 
-	const Rc<PoolRef> &getPool() const { return _pool; }
+	const Rc<sprt::PoolRef> &getPool() const { return _pool; }
 
 	Rc<ImageStorage> getRenderTarget(const AttachmentData *);
 
@@ -115,7 +115,7 @@ protected:
 	FrameRequest(const FrameRequest &) = delete;
 	FrameRequest &operator=(const FrameRequest &) = delete;
 
-	Rc<PoolRef> _pool;
+	Rc<sprt::PoolRef> _pool;
 	Rc<PresentationFrame> _presentationFrame;
 	Rc<Queue> _queue;
 	FrameConstraints _constraints;

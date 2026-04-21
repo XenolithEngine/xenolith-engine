@@ -72,8 +72,10 @@ struct SP_PUBLIC InputEvent {
 
 class SP_PUBLIC TextInputViewInterface {
 public:
+	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 	SP_COVERAGE_TRIVIAL
 	virtual ~TextInputViewInterface() { }
+	__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 	virtual void updateTextCursor(uint32_t pos, uint32_t len) = 0;
 	virtual void updateTextInput(WideStringView str, uint32_t pos, uint32_t len, TextInputType) = 0;

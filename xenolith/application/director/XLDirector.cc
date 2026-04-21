@@ -45,8 +45,8 @@ bool Director::init(NotNull<AppThread> app, const core::FrameConstraints &constr
 	_application = app;
 	_window = window;
 	_engine = window->getPresentationEngine();
-	_allocator = Rc<AllocRef>::alloc();
-	_pool = Rc<PoolRef>::alloc(_allocator);
+	_allocator = Rc<sprt::AllocRef>::alloc();
+	_pool = Rc<sprt::PoolRef>::alloc(_allocator);
 	_pool->perform([&, this] {
 		_scheduler = Rc<Scheduler>::create();
 		_actionManager = Rc<ActionManager>::create();
@@ -114,7 +114,7 @@ bool Director::acquireFrame(FrameRequest *req) {
 			return;
 		}
 
-		auto pool = Rc<PoolRef>::alloc(_allocator);
+		auto pool = Rc<sprt::PoolRef>::alloc(_allocator);
 
 		pool->perform([&, this] {
 			_scene->renderRequest(req, pool);
@@ -254,7 +254,7 @@ void Director::runScene(Rc<Scene> &&scene) {
 
 	log::source().debug("Director", "runScene");
 
-	auto linkId = retain();
+	auto linkId = sprt::retain(this);
 	auto &queue = scene->getQueue();
 
 	_nextScene = scene;
@@ -270,7 +270,7 @@ void Director::runScene(Rc<Scene> &&scene) {
 				w->setReadyForNextFrame();
 			}, w, false);
 		}
-		release(linkId);
+		sprt::release(this, linkId);
 	});
 }
 

@@ -28,7 +28,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 
 struct SP_PUBLIC DeferredRequest : Ref {
-	static void runFontRenderer(event::Looper *, const Rc<FontComponent> &,
+	static void runFontRenderer(sprt::dispatch::Looper *, const Rc<FontComponent> &,
 			const Vector<FontUpdateRequest> &req,
 			Function<void(uint32_t reqIdx, const CharTexture &texData)> &&, Function<void()> &&);
 

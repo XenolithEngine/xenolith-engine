@@ -58,7 +58,7 @@ bool Scene::init(Queue::Builder &&builder, const core::FrameConstraints &constra
 	return true;
 }
 
-void Scene::renderRequest(const Rc<FrameRequest> &req, PoolRef *pool) {
+void Scene::renderRequest(const Rc<FrameRequest> &req, sprt::PoolRef *pool) {
 	if (!_director) {
 		return;
 	}
@@ -162,9 +162,9 @@ void Scene::handleFinished(Director *dir) {
 	}
 }
 
-void Scene::handleFrameStarted(FrameRequest &req) { req.setSceneId(retain()); }
+void Scene::handleFrameStarted(FrameRequest &req) { req.setSceneId(sprt::retain(this)); }
 
-void Scene::handleFrameEnded(FrameRequest &req) { release(req.getSceneId()); }
+void Scene::handleFrameEnded(FrameRequest &req) { sprt::release(this, req.getSceneId()); }
 
 void Scene::handleFrameAttached(const FrameHandle *frame) { }
 

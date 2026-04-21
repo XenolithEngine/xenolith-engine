@@ -193,7 +193,8 @@ bool Instance::readDeviceProperties(size_t n, sprt::window::gapi::DeviceProperti
 	return true;
 }
 
-Rc<core::Loop> Instance::makeLoop(NotNull<event::Looper> looper, Rc<core::LoopInfo> &&info) const {
+Rc<core::Loop> Instance::makeLoop(NotNull<sprt::dispatch::Looper> looper,
+		Rc<core::LoopInfo> &&info) const {
 	return Rc<vk::Loop>::create(looper, const_cast<Instance *>(this), move(info));
 }
 

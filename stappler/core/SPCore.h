@@ -51,14 +51,15 @@ constexpr auto MODULE_APPCOMMON_NAME = "appcommon";
 
 #include "detail/SPPlatformInit.h"
 
-#include <sprt/runtime/notnull.h>
-#include <sprt/runtime/detail/value_wrapper.h>
 #include <sprt/runtime/enum.h>
-#include <sprt/runtime/ptr.h>
 #include <sprt/runtime/hash.h>
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/ref.h>
 #include <sprt/runtime/io_traits.h>
+#include <sprt/runtime/utils/notnull.h>
+#include <sprt/runtime/utils/ptr.h>
+#include <sprt/runtime/utils/time.h>
+#include <sprt/runtime/detail/value_wrapper.h>
 
 #include <sprt/cxx/utility>
 #include <sprt/cxx/algorithm>
@@ -131,6 +132,9 @@ namespace math = sprt::math;
 
 namespace chars = sprt::chars;
 
+using sprt::time::Time;
+using sprt::time::TimeInterval;
+
 using sprt::RefAlloc;
 using sprt::Ref;
 using sprt::Rc;
@@ -154,6 +158,10 @@ using sprt::StringUnicodeComparator;
 using sprt::StringUnicodeCaseComparator;
 
 using sprt::CharGroupId;
+
+using sprt::time::operator""_sec;
+using sprt::time::operator""_msec;
+using sprt::time::operator""_mksec;
 
 template <typename T>
 using Callback = sprt::callback<T>;

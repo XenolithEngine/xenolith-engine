@@ -40,7 +40,8 @@ public:
 
 	virtual ~Loop();
 
-	virtual bool init(NotNull<event::Looper>, NotNull<core::Instance>, Rc<LoopInfo> &&) override;
+	virtual bool init(NotNull<sprt::dispatch::Looper>, NotNull<core::Instance>,
+			Rc<LoopInfo> &&) override;
 
 	virtual void run() override;
 	virtual void stop() override;
@@ -61,7 +62,7 @@ public:
 	virtual void runRenderQueue(Rc<FrameRequest> &&req, uint64_t gen = 0,
 			Function<void(bool)> && = nullptr) override;
 
-	virtual void performInQueue(Rc<thread::Task> &&) const override;
+	virtual void performInQueue(Rc<sprt::dispatch::Task> &&) const override;
 	virtual void performInQueue(Function<void()> &&func, Ref *target = nullptr) const override;
 
 	virtual void performOnThread(Function<void()> &&func, Ref *target = nullptr,

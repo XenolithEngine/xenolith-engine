@@ -122,7 +122,7 @@ QueryFieldResolver::QueryFieldResolver() : root(nullptr) { }
 
 QueryFieldResolver::QueryFieldResolver(const ApplicationInterface *app, const Scheme &scheme,
 		const Query &query, const Vector<StringView> &extraFields) {
-	root = new Data{&scheme, &scheme.getFields(), &query.getIncludeFields(),
+	root = new (sprt::nothrow) Data{&scheme, &scheme.getFields(), &query.getIncludeFields(),
 		&query.getExcludeFields()};
 	doResolve(app, root, extraFields, 0, query.getResolveDepth());
 }

@@ -24,14 +24,14 @@
 #ifndef XENOLITH_CORE_XLCOREPRESENTATIONENGINE_H_
 #define XENOLITH_CORE_XLCOREPRESENTATIONENGINE_H_
 
-#include "XLCore.h"
 #include "XLCoreDeviceQueue.h"
 #include "XLCoreInfo.h"
 #include "XLCoreSwapchain.h"
 #include "XLCorePresentationFrame.h"
 #include "SPMovingAverage.h"
-#include "SPEventHandle.h"
 #include "XlCoreMonitorInfo.h"
+
+#include <sprt/runtime/dispatch/handle.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
@@ -39,7 +39,9 @@ class PresentationFrame;
 
 class SP_PUBLIC PresentationWindow {
 public:
+	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 	virtual ~PresentationWindow() = default;
+	__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 	virtual ImageInfo getSwapchainImageInfo(const SwapchainConfig &cfg) const = 0;
 	virtual ImageViewInfo getSwapchainImageViewInfo(const ImageInfo &image) const = 0;
@@ -253,7 +255,7 @@ protected:
 	Vector< Pair<Rc<PresentationFrame>, Rc<ImageStorage>>> _scheduledForPresent;
 
 	// Handles, waiting for their present windows
-	Set<Rc<event::Handle>> _scheduledPresentHandles;
+	Set<Rc<sprt::dispatch::Handle>> _scheduledPresentHandles;
 
 	// Async request for a swapchain images
 	Set<Swapchain::SwapchainAcquiredImage *> _requestedSwapchainImage;
@@ -267,7 +269,7 @@ protected:
 
 	UpdateConstraintsFlags _deprecationFlags = UpdateConstraintsFlags::None;
 	Vector<Function<void(bool)>> _deprecationCallbacks;
-	Rc<event::TimerHandle> _acquisitionTimer;
+	Rc<sprt::dispatch::TimerHandle> _acquisitionTimer;
 };
 
 } // namespace stappler::xenolith::core

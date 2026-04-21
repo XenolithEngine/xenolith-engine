@@ -25,7 +25,6 @@ THE SOFTWARE.
 #define STAPPLER_ZIP_SPZIP_H_
 
 #include "SPBuffer.h"
-#include "SPTime.h"
 
 #include <stdio.h>
 

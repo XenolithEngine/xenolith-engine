@@ -131,8 +131,8 @@ struct SP_PUBLIC BufferData : BufferInfo {
 	using DataCallback = memory::callback<void(BytesView)>;
 
 	BytesView data;
-	mem_std::Function<void(uint8_t *, uint64_t, const DataCallback &)> memCallback = nullptr;
-	mem_pool::Function<void(uint8_t *, uint64_t, const DataCallback &)> stdCallback = nullptr;
+	mem_pool::Function<void(uint8_t *, uint64_t, const DataCallback &)> memCallback = nullptr;
+	mem_std::Function<void(uint8_t *, uint64_t, const DataCallback &)> stdCallback = nullptr;
 	Rc<BufferObject> buffer; // GL implementation-dependent object
 	Rc<DataAtlas> atlas;
 	const Resource *resource = nullptr; // owning resource;
@@ -408,8 +408,8 @@ struct SP_PUBLIC ImageData : ImageInfo {
 
 	BytesView data;
 
-	mem_std::Function<void(uint8_t *, uint64_t, const DataCallback &)> memCallback = nullptr;
-	mem_pool::Function<void(uint8_t *, uint64_t, const DataCallback &)> stdCallback = nullptr;
+	mem_pool::Function<void(uint8_t *, uint64_t, const DataCallback &)> memCallback = nullptr;
+	mem_std::Function<void(uint8_t *, uint64_t, const DataCallback &)> stdCallback = nullptr;
 	Rc<ImageObject> image; // GL implementation-dependent object
 	Rc<DataAtlas> atlas;
 	const Resource *resource = nullptr; // owning resource;

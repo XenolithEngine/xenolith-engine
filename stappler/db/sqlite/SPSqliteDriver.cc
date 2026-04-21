@@ -550,7 +550,9 @@ bool ResultCursor::statusIsSuccess(int x) {
 ResultCursor::ResultCursor(const Driver *d, Driver::Connection conn, Driver::Result res, int status)
 : driver(d), conn(conn), result(res), err(status) { }
 
+__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 ResultCursor::~ResultCursor() { clear(); }
+__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 bool ResultCursor::isBinaryFormat(size_t field) const { return true; }
 

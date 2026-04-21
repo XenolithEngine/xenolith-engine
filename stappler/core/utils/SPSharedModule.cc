@@ -24,7 +24,7 @@
 #include "SPLog.h"
 
 #include <sprt/cxx/mutex>
-#include <sprt/runtime/dso.h>
+#include <sprt/runtime/utils/dso.h>
 
 namespace STAPPLER_VERSIONIZED stappler {
 
@@ -53,13 +53,12 @@ struct SharedModuleManager {
 };
 
 SharedModuleManager *SharedModuleManager::getInstance() {
-	static sprt::qmutex s_mutex;
+	static sprt::qonce s_once;
 	static SharedModuleManager *s_instance = nullptr;
-
-	sprt::unique_lock lock(s_mutex);
-	if (!s_instance) {
-		s_instance = new SharedModuleManager();
-	}
+	s_once([] {
+		s_instance = new (sprt::nothrow) SharedModuleManager();
+		s_instance->_modules.max_load_factor(2.0f);
+	});
 	return s_instance;
 }
 

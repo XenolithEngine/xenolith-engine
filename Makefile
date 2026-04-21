@@ -51,7 +51,6 @@ LOCAL_MODULES ?= \
 	stappler_db \
 	stappler_vg \
 	stappler_tess \
-	stappler_threads \
 	stappler_idn \
 	stappler_network \
 	stappler_font \

@@ -277,10 +277,12 @@ static bool addFileToArchive(zip_t *_handle, StringView name, BytesView data, bo
 		sprt::memcpy(buf, data.data(), data.size());
 		source = zip_source_buffer(_handle, buf, data.size(), 0);
 	} else {
-		buf = new uint8_t[data.size()];
+		buf = sprt::__new_n<uint8_t>(data.size());
 		sprt::memcpy(buf, data.data(), data.size());
 		source = zip_source_buffer(_handle, buf, data.size(), 1);
 	}
+
+	bool ret = false;
 	if (source) {
 		auto idx = zip_file_add(_handle,
 				name.terminated() ? name.data() : name.str<Interface>().data(), source,
@@ -291,17 +293,21 @@ static bool addFileToArchive(zip_t *_handle, StringView name, BytesView data, bo
 				log::source().error("ZIP", zip_error_strerror(err));
 			}
 
-			zip_source_free(source);
-			return false;
-		}
+			ret = false;
+		} else {
+			if (uncompressed) {
+				zip_set_file_compression(_handle, idx, ZIP_CM_STORE, 0);
+			}
 
-		if (uncompressed) {
-			zip_set_file_compression(_handle, idx, ZIP_CM_STORE, 0);
+			ret = true;
 		}
-
-		return true;
 	}
-	return false;
+	zip_source_free(source);
+
+	if constexpr (!sprt::is_same_v<Interface, memory::PoolInterface>) {
+		sprt::__delete_n(buf);
+	}
+	return ret;
 }
 
 template <>
@@ -494,7 +500,7 @@ static bool _readFile(zip_t *handle, uint64_t index, const Callback<void(BytesVi
 		return false;
 	}
 
-	auto buf = new uint8_t[stat.size];
+	auto buf = sprt::__new_n<uint8_t>(stat.size);
 
 	bool success = false;
 	if (zip_fread(f, buf, stat.size) == zip_int64_t(stat.size)) {
@@ -503,7 +509,7 @@ static bool _readFile(zip_t *handle, uint64_t index, const Callback<void(BytesVi
 	}
 
 	zip_fclose(f);
-	delete[] buf;
+	sprt::__delete_n(buf);
 
 	return success;
 }

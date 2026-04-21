@@ -77,7 +77,7 @@ static void SwapchainHandle_destroy(core::Device *dev, core::ObjectType, core::O
 	});
 
 	data->invalidate(*dev);
-	delete data;
+	sprt::__delete(data);
 }
 
 bool SwapchainHandle::init(Device &dev, const core::SurfaceInfo &info,
@@ -145,7 +145,7 @@ bool SwapchainHandle::init(Device &dev, const core::SurfaceInfo &info,
 	});
 
 	if (result == VK_SUCCESS) {
-		auto data = new SwapchainHandleData;
+		auto data = new (sprt::nothrow) SwapchainHandleData;
 		data->swapchain = swapchain;
 
 		Vector<VkImage> swapchainImages;

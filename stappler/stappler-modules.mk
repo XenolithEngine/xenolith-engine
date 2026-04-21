@@ -32,14 +32,11 @@ TOOLKIT_MODULE_LIST += \
 	$(STAPPLER_MODULE_DIR)/bitmap/bitmap.mk \
 	$(STAPPLER_MODULE_DIR)/data/data.mk \
 	$(STAPPLER_MODULE_DIR)/db/db.mk \
-	$(STAPPLER_MODULE_DIR)/event/event.mk \
 	$(STAPPLER_MODULE_DIR)/filesystem/filesystem.mk \
-	$(STAPPLER_MODULE_DIR)/threads/threads.mk \
 	$(STAPPLER_MODULE_DIR)/crypto/crypto.mk \
 	$(STAPPLER_MODULE_DIR)/network/network.mk \
 	$(STAPPLER_MODULE_DIR)/search/search.mk \
 	$(STAPPLER_MODULE_DIR)/sql/sql.mk \
-	$(STAPPLER_MODULE_DIR)/threads/threads.mk \
 	$(STAPPLER_MODULE_DIR)/font/font.mk \
 	$(STAPPLER_MODULE_DIR)/tess/tess.mk \
 	$(STAPPLER_MODULE_DIR)/vg/vg.mk \

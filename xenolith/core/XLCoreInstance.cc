@@ -83,7 +83,9 @@ Instance::Instance(InstanceApi api, InstanceFlags flags, sprt::Dso &&dso)
 : _api(api), _flags(flags), _dsoModule(sp::move(dso)) { }
 
 
-Rc<Loop> Instance::makeLoop(NotNull<event::Looper>, Rc<LoopInfo> &&) const { return nullptr; }
+Rc<Loop> Instance::makeLoop(NotNull<sprt::dispatch::Looper>, Rc<LoopInfo> &&) const {
+	return nullptr;
+}
 
 StringView getInstanceApiName(InstanceApi backend) {
 	switch (backend) {

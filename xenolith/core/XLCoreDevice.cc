@@ -24,9 +24,11 @@
 #include "XLCoreDevice.h"
 #include "XLCoreDeviceQueue.h"
 
+#include <sprt/cxx/debugging>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
-Device::Device() { }
+Device::Device() { _objects.max_load_factor(2.0f); }
 
 Device::~Device() { invalidateObjects(); }
 
@@ -316,12 +318,14 @@ Rc<CommandPool> Device::acquireCommandPool(uint32_t familyIndex) {
 }
 
 void Device::releaseCommandPool(core::Loop &loop, Rc<CommandPool> &&pool) {
-	auto refId = retain();
-	loop.performInQueue(Rc<thread::Task>::create(
-			[this, pool = Rc<CommandPool>(pool)](const thread::Task &) -> bool {
+	auto refId = sprt::retain(this);
+	loop.performInQueue(Rc<sprt::dispatch::Task>::create(
+			[this, pool = Rc<CommandPool>(pool)](const sprt::dispatch::Task &) -> bool {
 		pool->reset(*this);
 		return true;
-	}, [this, pool = Rc<CommandPool>(pool), refId](const thread::Task &, bool success) mutable {
+	},
+			[this, pool = Rc<CommandPool>(pool), refId](const sprt::dispatch::Task &,
+					bool success) mutable {
 		if (success) {
 			auto idx = pool->getFamilyIdx();
 			sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
@@ -332,8 +336,9 @@ void Device::releaseCommandPool(core::Loop &loop, Rc<CommandPool> &&pool) {
 				}
 			}
 		}
-		release(refId);
-	}, this));
+		sprt::release(this, refId);
+	},
+			this));
 }
 
 void Device::releaseCommandPoolUnsafe(Rc<CommandPool> &&pool) {
@@ -387,12 +392,14 @@ Rc<QueryPool> Device::acquireQueryPool(uint32_t familyIndex, const QueryPoolInfo
 }
 
 void Device::releaseQueryPool(core::Loop &loop, Rc<QueryPool> &&pool) {
-	auto refId = retain();
-	loop.performInQueue(Rc<thread::Task>::create(
-			[this, pool = Rc<QueryPool>(pool)](const thread::Task &) -> bool {
+	auto refId = sprt::retain(this);
+	loop.performInQueue(Rc<sprt::dispatch::Task>::create(
+			[this, pool = Rc<QueryPool>(pool)](const sprt::dispatch::Task &) -> bool {
 		pool->reset(*this);
 		return true;
-	}, [this, pool = Rc<QueryPool>(pool), refId](const thread::Task &, bool success) mutable {
+	},
+			[this, pool = Rc<QueryPool>(pool), refId](const sprt::dispatch::Task &,
+					bool success) mutable {
 		if (success) {
 			auto idx = pool->getFamilyIdx();
 			sprt::unique_lock<sprt::mutex > lock(_resourceMutex);
@@ -407,8 +414,9 @@ void Device::releaseQueryPool(core::Loop &loop, Rc<QueryPool> &&pool) {
 				}
 			}
 		}
-		release(refId);
-	}, this));
+		sprt::release(this, refId);
+	},
+			this));
 }
 
 void Device::releaseQueryPoolUnsafe(Rc<QueryPool> &&pool) {
@@ -464,7 +472,8 @@ void Device::runTask(Loop &loop, Rc<DeviceQueueTask> &&t) {
 				taskData->task->handleComplete(success);
 			}, this, "TextureSetLayout::readImage transferBuffer->dropPendingBarrier");
 
-			loop.performInQueue(Rc<thread::Task>::create([taskData](const thread::Task &) -> bool {
+			loop.performInQueue(Rc<sprt::dispatch::Task>::create(
+					[taskData](const sprt::dispatch::Task &) -> bool {
 				auto buf = taskData->pool->recordBuffer(*taskData->device, [&](CommandBuffer &buf) {
 					taskData->task->fillCommandBuffer(*taskData->device, buf);
 					return true;
@@ -474,7 +483,7 @@ void Device::runTask(Loop &loop, Rc<DeviceQueueTask> &&t) {
 					return true;
 				}
 				return false;
-			}, [taskData](const thread::Task &, bool success) {
+			}, [taskData](const sprt::dispatch::Task &, bool success) {
 				if (taskData->queue) {
 					taskData->device->releaseQueue(move(taskData->queue));
 				}
@@ -504,7 +513,16 @@ void Device::addObject(Object *obj) {
 
 void Device::removeObject(Object *obj) {
 	sprt::unique_lock<sprt::mutex > lock(_objectMutex);
+#if DEBUG
+	auto it = _objects.find(obj);
+	if (it != _objects.end()) {
+		_objects.erase(it);
+	} else {
+		sprt::breakpoint();
+	}
+#else
 	_objects.erase(obj);
+#endif
 }
 
 void Device::onLoopStarted(Loop &loop) { }

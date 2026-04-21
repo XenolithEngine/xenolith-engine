@@ -79,7 +79,7 @@ public:
 	virtual ~QueuePassHandle();
 
 	virtual bool init(QueuePass &, const FrameQueue &);
-	virtual void setQueueData(FramePassData &);
+	virtual void setQueueData(FramePassData *);
 	virtual const FramePassData *getQueueData() const;
 
 	virtual StringView getName() const override;

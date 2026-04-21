@@ -26,59 +26,43 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::storage {
 
 SP_COVERAGE_TRIVIAL
-Component::~Component() {
+Component::~Component() { }
 
-}
-
-Component::Component(ComponentLoader &loader, StringView name)
-: _name(name.str<db::Interface>()) {
+Component::Component(ComponentLoader &loader, StringView name) : _name(name.str<db::Interface>()) {
 	loader.exportComponent(this);
 }
 
-void Component::handleChildInit(const Server &, const db::Transaction &) {
+void Component::handleChildInit(const Server &, const db::Transaction &) { }
 
-}
-
-void Component::handleChildRelease(const Server &, const db::Transaction &) {
-
-}
+void Component::handleChildRelease(const Server &, const db::Transaction &) { }
 
 void Component::handleStorageTransaction(db::Transaction &) { }
 
 void Component::handleHeartbeat(const Server &) { }
 
+__SPRT_PUSH_ALLOW_CXXABI_ALLOC
+SP_COVERAGE_TRIVIAL
+ComponentLoader::~ComponentLoader() { }
+__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 SP_COVERAGE_TRIVIAL
-ComponentLoader::~ComponentLoader() {
-
-}
-
-SP_COVERAGE_TRIVIAL
-ComponentContainer::~ComponentContainer() {
-
-}
+ComponentContainer::~ComponentContainer() { }
 
 bool ComponentContainer::init(StringView str) {
 	_name = str.str<Interface>();
 	return true;
 }
 
-void ComponentContainer::handleStorageInit(ComponentLoader &loader) {
+void ComponentContainer::handleStorageInit(ComponentLoader &loader) { }
 
-}
-
-void ComponentContainer::handleStorageDisposed(const db::Transaction &t) {
-
-}
+void ComponentContainer::handleStorageDisposed(const db::Transaction &t) { }
 
 void ComponentContainer::handleComponentsLoaded(const Server &serv) {
 	_loaded = true;
 	_server = &serv;
 
 	if (!_pendingTasks.empty()) {
-		for (auto &it : _pendingTasks) {
-			perform(sp::move(it.first), it.second);
-		}
+		for (auto &it : _pendingTasks) { perform(sp::move(it.first), it.second); }
 		_pendingTasks.clear();
 	}
 }
@@ -88,7 +72,8 @@ void ComponentContainer::handleComponentsUnloaded(const Server &serv) {
 	_loaded = false;
 }
 
-bool ComponentContainer::perform(Function<bool(const Server &, const db::Transaction &)> &&cb, Ref *ref) const {
+bool ComponentContainer::perform(Function<bool(const Server &, const db::Transaction &)> &&cb,
+		Ref *ref) const {
 	if (!_server || !_loaded) {
 		_pendingTasks.emplace_back(pair(sp::move(cb), Rc<Ref>(ref)));
 		return false;
@@ -97,4 +82,4 @@ bool ComponentContainer::perform(Function<bool(const Server &, const db::Transac
 	return _server->perform(sp::move(cb), ref);
 }
 
-}
+} // namespace stappler::xenolith::storage

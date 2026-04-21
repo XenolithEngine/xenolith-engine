@@ -151,7 +151,7 @@ CommandList::~CommandList() {
 	}, _pool->getPool());
 }
 
-bool CommandList::init(const Rc<PoolRef> &pool) {
+bool CommandList::init(const Rc<sprt::PoolRef> &pool) {
 	_pool = pool;
 	return true;
 }

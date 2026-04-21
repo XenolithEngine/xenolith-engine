@@ -93,7 +93,7 @@ struct SP_PUBLIC Command {
 class SP_PUBLIC CommandList : public Ref {
 public:
 	virtual ~CommandList();
-	bool init(const Rc<PoolRef> &);
+	bool init(const Rc<sprt::PoolRef> &);
 
 	void pushVertexArray(Rc<VertexData> &&, const Mat4 &, CmdInfo &&info,
 			CommandFlags = CommandFlags::None);
@@ -120,7 +120,7 @@ public:
 protected:
 	void addCommand(Command *);
 
-	Rc<PoolRef> _pool;
+	Rc<sprt::PoolRef> _pool;
 	Command *_first = nullptr;
 	Command *_last = nullptr;
 	size_t _size = 0;

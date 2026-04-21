@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 #include "SPIOBuffer.h"
 
-#include <sprt/runtime/stack_buffer.h>
+#include <sprt/runtime/utils/stack_buffer.h>
 #include <sprt/runtime/stream.h>
 
 namespace STAPPLER_VERSIONIZED stappler {

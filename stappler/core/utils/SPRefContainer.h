@@ -72,12 +72,12 @@ RefContainer<Item, Interface>::~RefContainer() {
 		auto target = (Item **)_container.data();
 		auto end = (Item **)(_container.data()) + _nitems;
 		while (target != end) {
-			(*target)->release(0);
+			sprt::release((*target), 0);
 			++target;
 		}
 	} else {
 		auto target = (Vector<Item *> *)_container.data();
-		for (auto &it : *target) { it->release(0); }
+		for (auto &it : *target) { sprt::release(it, 0); }
 		target->clear();
 		sprt::destroy_at(target);
 	}
@@ -103,12 +103,12 @@ template <typename Item, typename Interface>
 auto RefContainer<Item, Interface>::addItem(Item *item) -> Item * {
 	if (_nitems < ReserveItems) {
 		auto target = _container.data() + sizeof(Item *) * _nitems;
-		item->retain();
+		sprt::retain(item);
 		memcpy(target, &item, sizeof(Item *));
 		++_nitems;
 	} else if (_nitems > ReserveItems) {
 		auto target = (Vector<Item *> *)_container.data();
-		item->retain();
+		sprt::retain(item);
 		target->emplace_back(item);
 	} else {
 		// update to Vector storage
@@ -118,7 +118,7 @@ auto RefContainer<Item, Interface>::addItem(Item *item) -> Item * {
 			acts.emplace_back(a);
 			return true;
 		});
-		item->retain();
+		sprt::retain(item);
 		acts.emplace_back(item);
 
 		new (_container.data(), sprt::nothrow) Vector<Item *>(sp::move(acts));
@@ -134,7 +134,7 @@ void RefContainer<Item, Interface>::removeItem(Item *item) {
 		auto end = (Item **)(_container.data()) + _nitems;
 		auto it = sprt::remove(target, end, item);
 		if (sprt::distance(it, end) > 0) {
-			item->release(0);
+			sprt::release(item, 0);
 			--_nitems;
 		}
 	} else {
@@ -142,7 +142,7 @@ void RefContainer<Item, Interface>::removeItem(Item *item) {
 		auto it = target->begin();
 		while (it != target->end()) {
 			if (*it == item) {
-				item->release(0);
+				sprt::release(item, 0);
 				it = target->erase(it);
 				break;
 			} else {
@@ -184,7 +184,7 @@ bool RefContainer<Item, Interface>::removeItemByTag(uint32_t tag) {
 		while (target != end) {
 			if ((*target)->getTag() == tag) {
 				(*target)->invalidate();
-				(*target)->release(0);
+				sprt::release(*target, 0);
 				if (target + 1 != end) {
 					memmove(target, target + 1, (end - (target + 1)) * sizeof(Item *));
 				}
@@ -200,7 +200,7 @@ bool RefContainer<Item, Interface>::removeItemByTag(uint32_t tag) {
 		while (it != target->end()) {
 			if ((*it)->getTag() == tag) {
 				(*it)->invalidate();
-				(*it)->release(0);
+				sprt::release(*it, 0);
 				it = target->erase(it);
 				return true;
 			} else {
@@ -225,7 +225,7 @@ void RefContainer<Item, Interface>::removeAllItemsByTag(uint32_t tag) {
 		static_cast<void>(sprt::remove_if(target, end, [&, this](Item *a) {
 			if (a->getTag() == tag) {
 				a->invalidate();
-				a->release(0);
+				sprt::release(a, 0);
 				--_nitems;
 				return true;
 			}
@@ -237,7 +237,7 @@ void RefContainer<Item, Interface>::removeAllItemsByTag(uint32_t tag) {
 		while (it != target->end()) {
 			if ((*it)->getTag() == tag) {
 				(*it)->invalidate();
-				(*it)->release(0);
+				sprt::release(*it, 0);
 				it = target->erase(it);
 			} else {
 				++it;
@@ -253,7 +253,7 @@ bool RefContainer<Item, Interface>::cleanup() {
 		auto end = (Item **)(_container.data()) + _nitems;
 		static_cast<void>(sprt::remove_if(target, end, [&, this](Item *a) {
 			if (a->isDone()) {
-				a->release(0);
+				sprt::release(a, 0);
 				--_nitems;
 				return true;
 			}
@@ -265,7 +265,7 @@ bool RefContainer<Item, Interface>::cleanup() {
 		auto it = target->begin();
 		while (it != target->end()) {
 			if ((*it)->isDone()) {
-				(*it)->release(0);
+				sprt::release(*it, 0);
 				it = target->erase(it);
 			} else {
 				++it;

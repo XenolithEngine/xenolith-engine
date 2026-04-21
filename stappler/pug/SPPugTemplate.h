@@ -66,7 +66,7 @@ public:
 		VirtualTag,
 	};
 
-	struct Chunk {
+	struct Chunk : public memory::AllocPool {
 		ChunkType type = Block;
 		String value;
 		Expression *expr = nullptr;

@@ -28,7 +28,6 @@
 #include "SPMemory.h"
 #include "SPFilesystem.h"
 #include "SPString.h"
-#include "SPThreadTask.h"
 #include "SPLog.h"
 #include "SPHashTable.h"
 #include "SPPlatform.h"
@@ -43,9 +42,8 @@
 #include <sprt/runtime/geom/padding.h>
 #include <sprt/runtime/geom/color.h>
 #include <sprt/runtime/geom/color_hct.h>
-#include "SPFontStyle.h"
-#include "SPEvent.h"
 
+#include "SPFontStyle.h"
 #include "XLCoreConfig.h"
 
 #define XL_ASSERT(cond, msg)  do { if (!(cond)) { stappler::log::text(stappler::log::LogType::Fatal, "Assert", msg); } assert((cond)); } while (0)

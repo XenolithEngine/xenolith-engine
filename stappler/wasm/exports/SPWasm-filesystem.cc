@@ -185,7 +185,7 @@ static uint32_t StapplerFilesystemOpen(wasm_exec_env_t exec_env, char *ptr, uint
 		auto obj = new filesystem::File(move(f));
 
 		return mod->addHandle(obj, [obj] {
-			delete obj;
+			sprt::__delete( obj);
 		});
 	}
 	return ModuleInstance::InvalidHandle;
@@ -199,7 +199,7 @@ static uint32_t StapplerFilesystemOpenTmp(wasm_exec_env_t exec_env, char *ptr, u
 		auto obj = new filesystem::File(move(f));
 
 		return mod->addHandle(obj, [obj] {
-			delete obj;
+			sprt::__delete(obj);
 		});
 	}
 	return ModuleInstance::InvalidHandle;

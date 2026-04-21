@@ -141,7 +141,7 @@ struct SP_PUBLIC FontCharStorage {
 	~FontCharStorage() {
 		for (auto &it : cells) {
 			if (it) {
-				delete it;
+				sprt::__delete(it);
 				it = nullptr;
 			}
 		}
@@ -150,7 +150,7 @@ struct SP_PUBLIC FontCharStorage {
 	void emplace(char16_t ch, Value &&value) {
 		auto cellId = ch / 256;
 		if (!cells[cellId]) {
-			cells[cellId] = new CellType;
+			cells[cellId] = new (sprt::nothrow) CellType;
 			sprt::memset(cells[cellId]->data(), 0, cells[cellId]->size() * sizeof(Value));
 		}
 

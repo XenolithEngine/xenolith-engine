@@ -32,7 +32,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class DirectorWindow;
 
-class SP_PUBLIC InputListenerStorage : public PoolRef {
+class SP_PUBLIC InputListenerStorage : public sprt::PoolRef {
 public:
 	struct Rec {
 		Rc<InputListener> listener;
@@ -72,7 +72,7 @@ class SP_PUBLIC InputDispatcher : public Ref {
 public:
 	virtual ~InputDispatcher() = default;
 
-	bool init(PoolRef *, WindowState state);
+	bool init(sprt::PoolRef *, WindowState state);
 
 	void update(const UpdateTime &time);
 
@@ -128,7 +128,7 @@ protected:
 	HashMap<uint32_t, EventHandlersInfo> _activeKeySyms;
 	Rc<InputListenerStorage> _events;
 	Rc<InputListenerStorage> _tmpEvents;
-	Rc<PoolRef> _pool;
+	Rc<sprt::PoolRef> _pool;
 
 	Vec2 _pointerLocation = Vec2::ZERO;
 	WindowState _windowState = WindowState::None;

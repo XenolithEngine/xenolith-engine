@@ -24,7 +24,7 @@ THE SOFTWARE.
 #ifndef STAPPLER_DB_SPDBCONFIG_H_
 #define STAPPLER_DB_SPDBCONFIG_H_
 
-#include "SPTime.h"
+#include "SPCommon.h"
 
 // Server frameworks usually provides their own config for db module
 
@@ -59,11 +59,13 @@ constexpr auto FIELD_TEXT_DEFAULT_MAX_SIZE = 256;
 
 constexpr StringView FIELD_PASSWORD_DEFAULT_SALT = StringView("StapplerUserPasswordKey");
 
-constexpr auto STORAGE_DEFAULT_KEY_VALUE_INTERVAL = TimeInterval::seconds(60 * 60 * 24 * 365); // one year
+constexpr auto STORAGE_DEFAULT_KEY_VALUE_INTERVAL =
+		TimeInterval::seconds(60 * 60 * 24 * 365); // one year
 constexpr auto STORAGE_DEFAULT_INTERNAL_INTERVAL = TimeInterval::seconds(60 * 60 * 24 * 30);
 
 constexpr auto STORAGE_INTERFACE_KEY = StringView("SP.StorageInterface");
-constexpr auto STORAGE_TRANSACTION_PREFIX = StringView("ST.Tr."); // limit for 6 chars to use with SOO opts (6 + 16 < 23)
+constexpr auto STORAGE_TRANSACTION_PREFIX =
+		StringView("ST.Tr."); // limit for 6 chars to use with SOO opts (6 + 16 < 23)
 constexpr auto STORAGE_TRANSACTION_STACK_KEY = StringView("ST.Transaction.Stack");
 
 constexpr auto UPLOAD_TMP_FILE_PREFIX = StringView("sa.upload");
@@ -75,7 +77,7 @@ constexpr uint16_t RESOURCE_RESOLVE_MAX_DEPTH = 4;
 
 constexpr auto DEFAULT_PASSWORD_SALT = "SP_USER_PASSWORD_KEY";
 
-}
+} // namespace stappler::db::config
 
 #endif
 

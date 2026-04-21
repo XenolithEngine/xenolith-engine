@@ -23,23 +23,24 @@
 #ifndef XENOLITH_APPLICATION_NODES_XLEVENTLISTENER_H_
 #define XENOLITH_APPLICATION_NODES_XLEVENTLISTENER_H_
 
-#include "SPEventBus.h"
 #include "XLEvent.h"
 #include "XLSystem.h"
+
+#include <sprt/runtime/dispatch/bus.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 using EventCallback = Function<void(const Event &)>;
 
-class SP_PUBLIC EventDelegate : public event::BusDelegate {
+class SP_PUBLIC EventDelegate : public sprt::dispatch::BusDelegate {
 public:
-	virtual ~EventDelegate() = default;
+	virtual ~EventDelegate();
 
 	bool init(Ref *, const EventHeader &h, BusEventCallback &&);
 	bool init(Ref *, SpanView<EventId>, BusEventCallback &&);
 	bool init(Ref *, Vector<EventId> &&, BusEventCallback &&);
 
-	void enable(event::Looper *);
+	void enable(sprt::dispatch::Looper *);
 	void disable();
 };
 
@@ -54,13 +55,13 @@ public:
 
 	virtual void handleRemoved() override;
 
-	event::BusDelegate *listenForEvent(const EventHeader &h, EventCallback &&,
+	sprt::dispatch::BusDelegate *listenForEvent(const EventHeader &h, EventCallback &&,
 			bool removeAfterEvent = false);
 
-	event::BusDelegate *listenForEventWithObject(const EventHeader &h, Ref *obj, EventCallback &&,
-			bool removeAfterEvent = false);
+	sprt::dispatch::BusDelegate *listenForEventWithObject(const EventHeader &h, Ref *obj,
+			EventCallback &&, bool removeAfterEvent = false);
 
-	void removeDelegate(event::BusDelegate *);
+	void removeDelegate(sprt::dispatch::BusDelegate *);
 
 	void clear();
 

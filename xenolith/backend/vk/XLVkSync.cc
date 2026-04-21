@@ -98,8 +98,8 @@ bool Fence::init(Device &dev, core::FenceType type) {
 	return false;
 }
 
-Rc<event::Handle> Fence::exportFence(Loop &loop, Function<void()> &&cb) {
-	using namespace event;
+Rc<sprt::dispatch::Handle> Fence::exportFence(Loop &loop, Function<void()> &&cb) {
+	using namespace sprt::dispatch;
 
 	if (!_exportable) {
 		return nullptr;

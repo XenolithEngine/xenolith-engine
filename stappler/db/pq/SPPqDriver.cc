@@ -27,7 +27,7 @@ THE SOFTWARE.
 #include "SPDbFieldExtensions.h"
 
 #include <sprt/cxx/mutex>
-#include <sprt/runtime/dso.h>
+#include <sprt/runtime/utils/dso.h>
 #include <sprt/runtime/mem/userdata.h>
 
 namespace STAPPLER_VERSIONIZED stappler::db::pq {
@@ -243,7 +243,7 @@ SPUNUSED static String pg_numeric_to_string(BytesViewNetwork r);
 
 DriverLibStorage *DriverLibStorage::getInstance() {
 	if (!s_libStorage) {
-		s_libStorage = new DriverLibStorage;
+		s_libStorage = new (sprt::nothrow) DriverLibStorage;
 	}
 	return s_libStorage;
 }
@@ -709,7 +709,9 @@ ResultCursor::ResultCursor(const Driver *d, Driver::Result res) : driver(d), res
 	nrows = driver->getNTuples(result);
 }
 
+__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 ResultCursor::~ResultCursor() { clear(); }
+__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 bool ResultCursor::isBinaryFormat(size_t field) const {
 	return driver->isBinaryFormat(result, field) != 0;

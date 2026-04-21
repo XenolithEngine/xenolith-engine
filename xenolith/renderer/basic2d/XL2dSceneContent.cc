@@ -146,7 +146,7 @@ void SceneContent2d::popLayout(SceneLayout2d *node) {
 		return;
 	}
 
-	auto linkId = node->retain();
+	auto linkId = sprt::retain(node);
 	_layouts.erase(it);
 
 	node->handlePopTransitionBegan(this, false);
@@ -165,7 +165,7 @@ void SceneContent2d::popLayout(SceneLayout2d *node) {
 				}
 			});
 		}
-		node->release(linkId);
+		sprt::release(node, linkId);
 	};
 
 	if (auto exit = node->makeExitTransition(this)) {
@@ -360,14 +360,14 @@ bool SceneContent2d::popOverlay(SceneLayout2d *l) {
 		return false;
 	}
 
-	auto linkId = l->retain();
+	auto linkId = sprt::retain(l);
 	_overlays.erase(it);
 	l->handlePopTransitionBegan(this, false);
 
 	auto fn = [this, l, linkId] {
 		eraseOverlay(l);
 		l->handlePop(this, false);
-		l->release(linkId);
+		sprt::release(l, linkId);
 	};
 
 	if (auto exit = l->makeExitTransition(this)) {

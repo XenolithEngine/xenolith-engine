@@ -33,11 +33,11 @@ struct SP_PUBLIC LiveReloadLibrary : public Ref {
 	sprt::Dso library;
 
 	// we need toi release library only after all references are dead
-	event::Looper *releaseLooper = nullptr;
+	sprt::dispatch::Looper *releaseLooper = nullptr;
 
 	virtual ~LiveReloadLibrary();
 
-	bool init(StringView, Time, uint32_t version, event::Looper *);
+	bool init(StringView, Time, uint32_t version, sprt::dispatch::Looper *);
 
 	uint32_t getVersion() const { return library.getVersion(); }
 };

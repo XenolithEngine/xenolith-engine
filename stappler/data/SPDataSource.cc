@@ -56,17 +56,15 @@ struct Source::SliceRequest : public Ref {
 			auto ptr = &it;
 			auto cat = it.cat;
 
-			auto callId = retain();
-			auto linkId = cat->retain();
+			auto callId = sprt::retain(this);
+			auto linkId = sprt::retain(cat);
 			cat->onSliceRequest([this, ptr, cat, linkId, callId](Map<Id, Value> &val) {
 				onSliceData(ptr, val);
-				cat->release(linkId);
-				release(callId);
+				sprt::release(cat, linkId);
+				sprt::release(this, callId);
 			}, it.idx, it.len);
 			ret += it.len;
 		}
-		// this will destroy (*this), if direct data access available
-		release(0); // free or decrement ref-count
 		return ret;
 	}
 
@@ -109,7 +107,7 @@ struct Source::BatchRequest {
 
 	static void request(const BatchCallback &cb, Id::Type first, size_t size, Source *cat,
 			const DataSourceCallback &scb) {
-		new BatchRequest(cb, first, size, cat, scb);
+		new (sprt::nothrow) BatchRequest(cb, first, size, cat, scb);
 	}
 
 	BatchRequest(const BatchCallback &cb, Id::Type first, size_t size, Source *cat,
@@ -135,7 +133,7 @@ struct Source::BatchRequest {
 
 		if (requests == 0) {
 			cb(map);
-			delete this;
+			sprt::__delete(this);
 		}
 	}
 };
@@ -336,7 +334,7 @@ bool Source::removeItem(Id n, const Value &v, uint32_t l, bool subcats) {
 
 size_t Source::getSliceData(const BatchCallback &cb, Id first, size_t count, uint32_t l,
 		bool subcats) {
-	SliceRequest *req = new (sprt::nothrow) SliceRequest(cb);
+	auto req = Rc<SliceRequest>::create(cb);
 
 	size_t f = size_t(first.get());
 	onSlice(req->vec, f, count, l, subcats);
@@ -344,7 +342,6 @@ size_t Source::getSliceData(const BatchCallback &cb, Id first, size_t count, uin
 	if (!req->vec.empty()) {
 		return req->request(size_t(first.get()));
 	} else {
-		delete req;
 		return 0;
 	}
 }

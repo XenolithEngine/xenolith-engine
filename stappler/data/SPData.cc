@@ -30,7 +30,7 @@ THE SOFTWARE.
 #include "SPFilesystem.h"
 #endif
 
-#include <sprt/runtime/compress.h>
+#include <sprt/runtime/utils/compress.h>
 
 #ifdef MODULE_STAPPLER_BROTLI_LIB
 #include "brotli/encode.h"

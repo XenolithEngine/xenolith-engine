@@ -96,21 +96,25 @@ public:
 	virtual void makeSessionsCleanup() { }
 
 	// force broadcast data processing
-	virtual int64_t processBroadcasts(const Callback<void(BytesView)> &, int64_t value) { return 0; }
+	virtual int64_t processBroadcasts(const Callback<void(BytesView)> &, int64_t value) {
+		return 0;
+	}
 
 	// perform select operation with result cursor callback
 	// fields will not be resolved in this case, you should call `decode` or `toData` from result manually
-	virtual bool foreach(Worker &, const Query &, const Callback<bool(Value &)> &) = 0;
+	virtual bool foreach (Worker &, const Query &, const Callback<bool(Value &)> &) = 0;
 
 	// perform select operation, returns resolved data
 	virtual Value select(Worker &, const Query &) = 0;
 
 	// create new object or objects, returns new values
-	virtual Value create(Worker &, const Vector<InputField> &inputField, Vector<InputRow> &inputRows, bool multiCreate) = 0;
+	virtual Value create(Worker &, const Vector<InputField> &inputField,
+			Vector<InputRow> &inputRows, bool multiCreate) = 0;
 	// virtual Value create(Worker &, Map<StringView, InputValue> &) = 0;
 
 	// perform update operation (read-modify-write), update only specified fields in new object
-	virtual Value save(Worker &, uint64_t oid, const Value &obj, const Vector<InputField> &, InputRow &) = 0;
+	virtual Value save(Worker &, uint64_t oid, const Value &obj, const Vector<InputField> &,
+			InputRow &) = 0;
 
 	// delete object by id
 	virtual bool remove(Worker &, uint64_t oid) = 0;
@@ -132,7 +136,8 @@ public:
 	virtual bool removeFromView(const FieldView &, const Scheme *, uint64_t oid) = 0;
 
 	// find in which sets object with id can be found
-	virtual Vector<int64_t> getReferenceParents(const Scheme &, uint64_t oid, const Scheme *, const Field *) = 0;
+	virtual Vector<int64_t> getReferenceParents(const Scheme &, uint64_t oid, const Scheme *,
+			const Field *) = 0;
 
 public: // others
 	virtual bool beginTransaction() = 0;
@@ -140,7 +145,8 @@ public: // others
 
 	// try to authorize user with name and password, using fields and scheme from Auth object
 	// authorization is protected with internal '__login" scheme to prevent bruteforce attacks
-	virtual User * authorizeUser(const Auth &, const StringView &name, const StringView &password) = 0;
+	virtual User *authorizeUser(const Auth &, const StringView &name,
+			const StringView &password) = 0;
 
 	// send broadcast with data
 	virtual void broadcast(const Bytes &) = 0;
@@ -170,7 +176,7 @@ public:
 
 protected:
 	StringView dbName;
-    TransactionStatus transactionStatus = TransactionStatus::None;
+	TransactionStatus transactionStatus = TransactionStatus::None;
 };
 
 class SP_PUBLIC Binder {
@@ -210,12 +216,11 @@ public:
 		StringView type;
 
 		template <typename Str, typename Type>
-		TypeString(Str && str, Type && type)
-		: str(str), type(type) { }
+		TypeString(Str &&str, Type &&type) : str(str), type(type) { }
 	};
 
 	void setInterface(QueryInterface *);
-	QueryInterface * getInterface() const;
+	QueryInterface *getInterface() const;
 
 	void writeBind(StringStream &, int64_t);
 	void writeBind(StringStream &, uint64_t);
@@ -254,7 +259,9 @@ protected:
 
 class SP_PUBLIC QueryInterface {
 public:
+	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 	virtual ~QueryInterface() = default;
+	__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 	virtual void bindInt(Binder &, StringStream &, int64_t) = 0;
 	virtual void bindUInt(Binder &, StringStream &, uint64_t) = 0;
@@ -281,7 +288,9 @@ public:
 
 class SP_PUBLIC ResultCursor {
 public:
+	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 	virtual ~ResultCursor() = default;
+	__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 	virtual bool isBinaryFormat(size_t field) const = 0;
 
@@ -317,8 +326,8 @@ public:
 
 struct SP_PUBLIC ResultRow {
 	ResultRow(const db::ResultCursor *, size_t);
-	ResultRow(const ResultRow & other) noexcept;
-	ResultRow & operator=(const ResultRow &other) noexcept;
+	ResultRow(const ResultRow &other) noexcept;
+	ResultRow &operator=(const ResultRow &other) noexcept;
 
 	size_t size() const;
 	Value toData(const db::Scheme &, const Map<String, db::Field> & = Map<String, db::Field>(),
@@ -349,10 +358,14 @@ struct SP_PUBLIC ResultRow {
 class SP_PUBLIC Result {
 public:
 	struct Iter {
-		Iter() noexcept {}
+		Iter() noexcept { }
 		Iter(Result *res, size_t n) noexcept : result(res), row(n) { }
 
-		Iter& operator=(const Iter &other) { result = other.result; row = other.row; return *this; }
+		Iter &operator=(const Iter &other) {
+			result = other.result;
+			row = other.row;
+			return *this;
+		}
 		bool operator==(const Iter &other) const { return row == other.row; }
 		bool operator!=(const Iter &other) const { return row != other.row; }
 		bool operator<(const Iter &other) const { return row < other.row; }
@@ -360,7 +373,12 @@ public:
 		bool operator<=(const Iter &other) const { return row <= other.row; }
 		bool operator>=(const Iter &other) const { return row >= other.row; }
 
-		Iter& operator++() { if (!result->next()) { row = stappler::maxOf<size_t>(); } return *this; }
+		Iter &operator++() {
+			if (!result->next()) {
+				row = stappler::maxOf<size_t>();
+			}
+			return *this;
+		}
 
 		ResultRow operator*() const { return ResultRow(result->_cursor, row); }
 
@@ -373,12 +391,12 @@ public:
 	~Result();
 
 	Result(const Result &) = delete;
-	Result & operator=(const Result &) = delete;
+	Result &operator=(const Result &) = delete;
 
 	Result(Result &&);
-	Result & operator=(Result &&);
+	Result &operator=(Result &&);
 
-	explicit operator bool () const;
+	explicit operator bool() const;
 	bool success() const;
 
 	Value info() const;
@@ -416,6 +434,6 @@ protected:
 	size_t _nfields = 0;
 };
 
-}
+} // namespace stappler::db
 
 #endif /* STAPPLER_DB_SPDBINTERFACE_H_ */

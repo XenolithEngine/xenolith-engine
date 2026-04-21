@@ -75,7 +75,9 @@ InputEventMask makeEventMask(InputEventName val) {
 
 InputKeyMask makeKeyMask(sprt::initializer_list<InputKeyCode> &&il) {
 	InputKeyMask ret;
-	for (auto &it : il) { ret.set(toInt(it)); }
+	for (auto &it : il) {
+		ret.set(toInt(it)); //
+	}
 	return ret;
 }
 

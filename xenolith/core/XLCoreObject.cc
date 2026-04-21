@@ -509,10 +509,10 @@ void Fence::scheduleReset(Loop &loop) {
 		_queries.clear();
 	}
 	if (_releaseFn) {
-		loop.performInQueue(Rc<thread::Task>::create([this](const thread::Task &) {
+		loop.performInQueue(Rc<sprt::dispatch::Task>::create([this](const sprt::dispatch::Task &) {
 			doResetFence();
 			return true;
-		}, [this](const thread::Task &, bool success) {
+		}, [this](const sprt::dispatch::Task &, bool success) {
 			auto releaseFn = sp::move(_releaseFn);
 			_releaseFn = nullptr;
 			releaseFn();
@@ -524,10 +524,10 @@ void Fence::scheduleReset(Loop &loop) {
 
 void Fence::scheduleReleaseReset(Loop &loop, bool s) {
 	if (_releaseFn) {
-		loop.performInQueue(Rc<thread::Task>::create([this](const thread::Task &) {
+		loop.performInQueue(Rc<sprt::dispatch::Task>::create([this](const sprt::dispatch::Task &) {
 			doResetFence();
 			return true;
-		}, [this, s, loop = &loop](const thread::Task &, bool success) {
+		}, [this, s, loop = &loop](const sprt::dispatch::Task &, bool success) {
 			doRelease(loop, s);
 
 			auto releaseFn = sp::move(_releaseFn);

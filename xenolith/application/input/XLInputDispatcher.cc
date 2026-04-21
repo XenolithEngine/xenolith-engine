@@ -131,7 +131,7 @@ SpanView<InputListenerStorage::Rec *> InputListenerStorage::getFocusGroupListene
 	return SpanView<Rec *>();
 }
 
-bool InputDispatcher::init(PoolRef *pool, WindowState state) {
+bool InputDispatcher::init(sprt::PoolRef *pool, WindowState state) {
 	_pool = pool;
 	_windowState = state;
 	return true;

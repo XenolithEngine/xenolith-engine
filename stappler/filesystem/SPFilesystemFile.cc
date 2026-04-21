@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -126,7 +126,7 @@ File &File::operator=(File &&f) {
 File::~File() {
 	close();
 	if (_filepath) {
-		delete _filepath;
+		sprt::__delete_n(_filepath, sprt::strlen(_filepath) + 1);
 		_filepath = nullptr;
 	}
 }
@@ -240,7 +240,7 @@ void File::close() {
 		}
 		_location->interface->_close(_file, &st);
 		if (_filepath) {
-			delete[] _filepath;
+			sprt::__delete_n(_filepath, sprt::strlen(_filepath) + 1);
 			_filepath = nullptr;
 		}
 		_file = nullptr;
@@ -257,7 +257,7 @@ void File::close_remove() {
 		_location->interface->_close(_file, &st);
 
 		if (_filepath) {
-			delete[] _filepath;
+			sprt::__delete_n(_filepath, sprt::strlen(_filepath) + 1);
 			_filepath = nullptr;
 		}
 		_file = nullptr;
@@ -310,7 +310,7 @@ const char *File::path() const { return _filepath; }
 
 void File::set_tmp_path(const char *buf) {
 	auto len = sprt::strlen(buf);
-	auto path = new char[len + 1];
+	auto path = sprt::__new_n<char>(len + 1);
 	sprt::memcpy(path, buf, len + 1);
 	_filepath = path;
 }

@@ -32,23 +32,24 @@
 #include "XLApplicationExtension.h"
 #include "XLEventListener.h"
 #include "XLLiveReload.h"
-#include "SPThread.h"
+
+#include <sprt/runtime/dispatch/handle.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class Director;
 
-class SP_PUBLIC AppThread : public thread::Thread {
+class SP_PUBLIC AppThread : public sprt::dispatch::Thread {
 public:
 	static EventHeader onNetworkState;
 	static EventHeader onThemeInfo;
 
-	using Task = thread::Task;
+	using Task = sprt::dispatch::Task;
 
 	using ExecuteCallback = Function<bool(const Task &)>;
 	using CompleteCallback = Function<void(const Task &, bool)>;
 
-	virtual ~AppThread() = default;
+	virtual ~AppThread();
 
 	virtual bool init(NotNull<Context>);
 
@@ -115,7 +116,7 @@ public:
 	void acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&, Ref * = nullptr);
 
 	Context *getContext() const { return _context; }
-	event::Looper *getLooper() const { return _appLooper; }
+	sprt::dispatch::Looper *getLooper() const { return _appLooper; }
 
 	NetworkFlags getNetworkFlags() const { return _networkFlags; }
 	const ThemeInfo &getThemeInfo() const { return _themeInfo; }
@@ -155,8 +156,8 @@ protected:
 	virtual void performLiveReload(NotNull<LiveReloadLibrary> lib);
 
 	Context *_context = nullptr;
-	event::Looper *_appLooper = nullptr;
-	Rc<event::TimerHandle> _timer;
+	sprt::dispatch::Looper *_appLooper = nullptr;
+	Rc<sprt::dispatch::TimerHandle> _timer;
 	UpdateTime _time;
 	uint64_t _clock = 0;
 	uint64_t _startTime = 0;

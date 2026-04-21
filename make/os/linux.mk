@@ -43,7 +43,7 @@ OSTYPE_LIB_LDFLAGS := -rdynamic -Wl,--exclude-libs,ALL
 ifeq ($(ASAN),1)
 	OSTYPE_GENERAL_CFLAGS += -fsanitize=address
 	OSTYPE_GENERAL_CXXFLAGS += -fsanitize=address
-	OSTYPE_EXEC_LDFLAGS += -fsanitize=address -static-libasan
+	OSTYPE_EXEC_LDFLAGS += -fsanitize=address
 endif
 
 ifdef BUILD_SHARED

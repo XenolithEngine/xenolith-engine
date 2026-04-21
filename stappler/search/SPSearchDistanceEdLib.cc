@@ -54,19 +54,19 @@ struct AlignmentData {
 		// We build a complete table and mark first and last block for each column
 		// (because algorithm is banded so only part of each columns is used).
 		// TODO: do not build a whole table, but just enough blocks for each column.
-		Ps = new Word[maxNumBlocks * targetLength];
-		Ms = new Word[maxNumBlocks * targetLength];
-		scores = new int[maxNumBlocks * targetLength];
-		firstBlocks = new int[targetLength];
-		lastBlocks = new int[targetLength];
+		Ps = sprt::__new_n<Word>(maxNumBlocks * targetLength);
+		Ms = sprt::__new_n<Word>(maxNumBlocks * targetLength);
+		scores = sprt::__new_n<int>(maxNumBlocks * targetLength);
+		firstBlocks = sprt::__new_n<int>(targetLength);
+		lastBlocks = sprt::__new_n<int>(targetLength);
 	}
 
 	~AlignmentData() {
-		delete[] Ps;
-		delete[] Ms;
-		delete[] scores;
-		delete[] firstBlocks;
-		delete[] lastBlocks;
+		sprt::__delete_n(Ps);
+		sprt::__delete_n(Ms);
+		sprt::__delete_n(scores);
+		sprt::__delete_n(firstBlocks);
+		sprt::__delete_n(lastBlocks);
 	}
 };
 
@@ -342,18 +342,18 @@ static EdlibAlignResult edlibAlign(const char *const queryOriginal, const int qu
 			obtainAlignment(query, rQuery, queryLength, alnTarget, rAlnTarget, alnTargetLength,
 					equalityDefinition, static_cast<int>(alphabet.size()), result.editDistance,
 					&(result.alignment), &(result.alignmentLength));
-			delete[] rAlnTarget;
-			delete[] rQuery;
+			sprt::__delete_n(rAlnTarget);
+			sprt::__delete_n(rQuery);
 		}
 	}
 	/*-------------------------------------------------------*/
 
 	//--- Free memory ---//
-	delete[] Peq;
+	sprt::__delete(Peq);
 	free(query);
 	free(target);
 	if (alignData) {
-		delete alignData;
+		sprt::__delete(alignData);
 	}
 	//-------------------//
 
@@ -370,7 +370,7 @@ static inline Word *buildPeq(const int alphabetLength, const unsigned char *cons
 		const int queryLength, const EqualityDefinition &equalityDefinition) {
 	int maxNumBlocks = ceilDiv(queryLength, WORD_SIZE);
 	// table of dimensions alphabetLength+1 x maxNumBlocks. Last symbol is wildcard.
-	Word *Peq = new Word[(alphabetLength + 1) * maxNumBlocks];
+	Word *Peq = sprt::__new_n<Word>((alphabetLength + 1) * maxNumBlocks);
 
 	// Build Peq (1 is match, 0 is mismatch). NOTE: last column is wildcard(symbol that matches anything) with just 1s
 	for (int symbol = 0; symbol <= alphabetLength; symbol++) {
@@ -399,7 +399,7 @@ static inline Word *buildPeq(const int alphabetLength, const unsigned char *cons
  * Free returned array with delete[].
  */
 static inline unsigned char *createReverseCopy(const unsigned char *const seq, const int length) {
-	unsigned char *rSeq = new unsigned char[length];
+	unsigned char *rSeq = sprt::__new_n<unsigned char>(length);
 	for (int i = 0; i < length; i++) { rSeq[i] = seq[length - i - 1]; }
 	return rSeq;
 }
@@ -597,7 +597,7 @@ static int myersCalcEditDistanceNW(const Word *const Peq, const int W, const int
 			- 1;
 	Block *bl; // Current block
 
-	Block *blocks = new Block[maxNumBlocks];
+	Block *blocks = sprt::__new_n<Block>(maxNumBlocks);
 
 	// Initialize P, M and score
 	bl = blocks;
@@ -610,9 +610,9 @@ static int myersCalcEditDistanceNW(const Word *const Peq, const int W, const int
 
 	// If we want to find alignment, we have to store needed data.
 	if (findAlignment) {
-		*alignData = new AlignmentData(maxNumBlocks, targetLength);
+		*alignData = new (sprt::nothrow) AlignmentData(maxNumBlocks, targetLength);
 	} else if (targetStopPosition > -1) {
-		*alignData = new AlignmentData(maxNumBlocks, 1);
+		*alignData = new (sprt::nothrow) AlignmentData(maxNumBlocks, 1);
 	} else {
 		*alignData = nullptr;
 	}
@@ -730,7 +730,7 @@ static int myersCalcEditDistanceNW(const Word *const Peq, const int W, const int
 		// If band stops to exist finish
 		if (lastBlock < firstBlock) {
 			*bestScore_ = *position_ = -1;
-			delete[] blocks;
+			sprt::__delete(blocks);
 			return EDLIB_STATUS_OK;
 		}
 		//------------------------------------------------------------------//
@@ -760,7 +760,7 @@ static int myersCalcEditDistanceNW(const Word *const Peq, const int W, const int
 			(*alignData)->lastBlocks[0] = lastBlock;
 			*bestScore_ = -1;
 			*position_ = targetStopPosition;
-			delete[] blocks;
+			sprt::__delete(blocks);
 			return EDLIB_STATUS_OK;
 		}
 		//----------------------------------------------------//
@@ -774,13 +774,13 @@ static int myersCalcEditDistanceNW(const Word *const Peq, const int W, const int
 		if (bestScore <= k) {
 			*bestScore_ = bestScore;
 			*position_ = targetLength - 1;
-			delete[] blocks;
+			sprt::__delete(blocks);
 			return EDLIB_STATUS_OK;
 		}
 	}
 
 	*bestScore_ = *position_ = -1;
-	delete[] blocks;
+	sprt::__delete_n(blocks);
 	return EDLIB_STATUS_OK;
 }
 
@@ -1077,8 +1077,8 @@ static int obtainAlignment(const unsigned char *const query, const unsigned char
 
 		statusCode = obtainAlignmentTraceback(queryLength, targetLength, bestScore, alignData,
 				alignment, alignmentLength);
-		delete alignData;
-		delete[] Peq;
+		sprt::__delete(alignData);
+		sprt::__delete_n(Peq);
 	} else {
 		statusCode =
 				obtainAlignmentHirschberg(query, rQuery, queryLength, target, rTarget, targetLength,
@@ -1134,15 +1134,15 @@ static int obtainAlignmentHirschberg(const unsigned char *const query,
 			targetLength, bestScore, &score_, &endLocation_, false, &alignDataRightHalf,
 			rightHalfWidth - 1);
 
-	delete[] Peq;
-	delete[] rPeq;
+	sprt::__delete(Peq);
+	sprt::__delete(rPeq);
 
 	if (leftHalfCalcStatus == EDLIB_STATUS_ERROR || rightHalfCalcStatus == EDLIB_STATUS_ERROR) {
 		if (alignDataLeftHalf) {
-			delete alignDataLeftHalf;
+			sprt::__delete(alignDataLeftHalf);
 		}
 		if (alignDataRightHalf) {
-			delete alignDataRightHalf;
+			sprt::__delete(alignDataRightHalf);
 		}
 		return EDLIB_STATUS_ERROR;
 	}
@@ -1154,7 +1154,7 @@ static int obtainAlignmentHirschberg(const unsigned char *const query,
 	// scoresLeft contains scores from left column, starting with scoresLeftStartIdx row (query index)
 	// and ending with scoresLeftEndIdx row (0-indexed).
 	int scoresLeftLength = (lastBlockIdxLeft - firstBlockIdxLeft + 1) * WORD_SIZE;
-	int *scoresLeft = new int[scoresLeftLength];
+	int *scoresLeft = sprt::__new<int>(scoresLeftLength);
 	for (int blockIdx = firstBlockIdxLeft; blockIdx <= lastBlockIdxLeft; blockIdx++) {
 		Block block(alignDataLeftHalf->Ps[blockIdx], alignDataLeftHalf->Ms[blockIdx],
 				alignDataLeftHalf->scores[blockIdx]);
@@ -1170,7 +1170,7 @@ static int obtainAlignmentHirschberg(const unsigned char *const query,
 	int firstBlockIdxRight = alignDataRightHalf->firstBlocks[0];
 	int lastBlockIdxRight = alignDataRightHalf->lastBlocks[0];
 	int scoresRightLength = (lastBlockIdxRight - firstBlockIdxRight + 1) * WORD_SIZE;
-	int *scoresRight = new int[scoresRightLength];
+	int *scoresRight = sprt::__new_n<int>(scoresRightLength);
 	int *scoresRightOriginalStart = scoresRight;
 	for (int blockIdx = firstBlockIdxRight; blockIdx <= lastBlockIdxRight; blockIdx++) {
 		Block block(alignDataRightHalf->Ps[blockIdx], alignDataRightHalf->Ms[blockIdx],
@@ -1187,8 +1187,8 @@ static int obtainAlignmentHirschberg(const unsigned char *const query,
 		scoresRightLength -= W;
 	}
 
-	delete alignDataLeftHalf;
-	delete alignDataRightHalf;
+	sprt::__delete(alignDataLeftHalf);
+	sprt::__delete(alignDataRightHalf);
 
 	//--------------------- Find the best move ----------------//
 	// Find the query/row index of cell in left column which together with its lower right neighbour
@@ -1232,8 +1232,8 @@ static int obtainAlignmentHirschberg(const unsigned char *const query,
 		}
 	}
 
-	delete[] scoresLeft;
-	delete[] scoresRightOriginalStart;
+	sprt::__delete_n(scoresLeft);
+	sprt::__delete_n(scoresRightOriginalStart);
 
 	if (queryIdxLeftAlignmentFound == false) {
 		// If there was no move that is part of optimal alignment, then there is no such alignment

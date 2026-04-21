@@ -22,9 +22,8 @@
 
 #include "XL2dVectorCanvas.h"
 #include "SPFilepath.h"
-#include "SPThread.h"
 
-#include <sprt/runtime/thread/info.h>
+#include <sprt/runtime/dispatch/thread_info.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
@@ -166,7 +165,7 @@ Rc<VectorCanvas> VectorCanvas::getInstance(bool deferred) {
 	static thread_local Rc<VectorCanvas> tl_instance = nullptr;
 	if (!tl_instance) {
 		tl_instance = Rc<VectorCanvas>::create(deferred);
-		sprt::_thread::info::add_cleanup([value = &tl_instance] {
+		sprt::dispatch::thread_info::add_cleanup([value = &tl_instance] {
 			// deallocate thread interface
 			*value = nullptr;
 		});
@@ -604,7 +603,7 @@ void VectorCanvasCache::retain() {
 	sprt::unique_lock<sprt::mutex > lock(s_cacheMutex);
 
 	if (!s_instance) {
-		s_instance = new VectorCanvasCache();
+		s_instance = new (sprt::nothrow) VectorCanvasCache();
 	}
 	++s_instance->refCount;
 }
@@ -614,7 +613,7 @@ void VectorCanvasCache::release() {
 
 	if (s_instance) {
 		if (s_instance->refCount == 1) {
-			delete s_instance;
+			sprt::__delete(s_instance);
 			s_instance = nullptr;
 		} else {
 			--s_instance->refCount;

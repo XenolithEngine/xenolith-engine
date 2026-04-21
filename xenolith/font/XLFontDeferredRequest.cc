@@ -24,7 +24,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 
-void DeferredRequest::runFontRenderer(event::Looper *queue, const Rc<FontComponent> &ext,
+void DeferredRequest::runFontRenderer(sprt::dispatch::Looper *queue, const Rc<FontComponent> &ext,
 		const Vector<FontUpdateRequest> &req,
 		Function<void(uint32_t reqIdx, const CharTexture &texData)> &&onTex,
 		Function<void()> &&onComp) {

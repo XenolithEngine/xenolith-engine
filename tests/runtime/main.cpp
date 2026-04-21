@@ -23,7 +23,6 @@ THE SOFTWARE.
 #include "SPCommon.h"
 #include "SPString.h"
 #include "SPMemInterface.h"
-#include "SPTime.h"
 
 #include "SPFilesystem.h"
 //#include "SPThread.h"
@@ -31,10 +30,10 @@ THE SOFTWARE.
 //#include "SPData.h"
 //#include "SPDataValue.h"
 
-#include <sprt/runtime/backtrace.h>
 #include <sprt/runtime/platform.h>
-#include <sprt/runtime/compress.h>
-#include <sprt/runtime/idn.h>
+#include <sprt/runtime/utils/backtrace.h>
+#include <sprt/runtime/utils/compress.h>
+#include <sprt/runtime/utils/idn.h>
 
 using namespace stappler;
 

@@ -363,7 +363,7 @@ void Label::setStyle(const DescriptionStyle &style) {
 
 const Label::DescriptionStyle &Label::getStyle() const { return _style; }
 
-Rc<LabelDeferredResult> Label::runDeferred(event::Looper *queue, TextLayout *format,
+Rc<LabelDeferredResult> Label::runDeferred(sprt::dispatch::Looper *queue, TextLayout *format,
 		const Color4F &color) {
 	Rc<LabelDeferredResult> ret = Rc<LabelDeferredResult>::create();
 	queue->performAsync(

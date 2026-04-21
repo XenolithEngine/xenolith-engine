@@ -726,7 +726,9 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 	return success;
 }
 
+__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 LabelBase::~LabelBase() { }
+__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 bool LabelBase::isLabelDirty() const { return _labelDirty; }
 

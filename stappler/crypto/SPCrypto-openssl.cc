@@ -26,7 +26,7 @@ THE SOFTWARE.
 #include "SPCrypto.h"
 #include "SPValid.h"
 
-#include <sprt/runtime/base64.h>
+#include <sprt/runtime/utils/base64.h>
 
 #if __CDT_PARSER__
 #define MODULE_STAPPLER_CRYPTO_OPENSSL 1
@@ -579,6 +579,7 @@ static BackendCtx s_openSSLCtx = {
 		if (s_opensslHasGost) {
 			SP_ERR_unload_GOST_strings();
 		}
+		OPENSSL_cleanup();
 	},
 	.encryptBlock = [] (const BlockKey256 &key, BytesView d, const Callback<void(BytesView)> &cb) -> bool {
 		auto cipherBlockSize = getBlockSize(key.cipher);

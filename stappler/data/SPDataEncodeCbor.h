@@ -63,7 +63,7 @@ struct Encoder : public Interface::AllocBaseType {
 	Encoder(const FileInfo &info) : type(File) {
 		auto f = filesystem::File::open(info, filesystem::OpenFlags::Override);
 		if (f) {
-			file = new filesystem::File(sprt::move(f));
+			file = new (sprt::nothrow) filesystem::File(sprt::move(f));
 			cbor::_writeId(*this);
 		}
 	}
@@ -103,11 +103,11 @@ struct Encoder : public Interface::AllocBaseType {
 		case File:
 			file->flush();
 			file->close();
-			delete file;
+			sprt::__delete(file);
 			break;
 #endif
 		case Stream: break;
-		case Vector: delete buffer; break;
+		case Vector: sprt::__delete(buffer); break;
 		default: break;
 		}
 	}

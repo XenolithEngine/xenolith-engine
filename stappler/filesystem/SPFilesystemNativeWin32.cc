@@ -457,7 +457,7 @@ Status ftw_fn(StringView path, const Callback<bool(StringView, FileType)> &callb
 	}
 
 	auto ret = _ftw_fn(*ftw, dir, StringView(), callback, depth, dirFirst);
-	delete ftw;
+	sprt::__delete(ftw);
 	return ret;
 }
 

@@ -57,7 +57,7 @@ public:
 				void *data = nullptr;
 				memory::pool::userdata_get(&data, NetworkUserdataKey, pool);
 				if (!data) {
-					data = new CurlHandle();
+					data = new (sprt::nothrow) CurlHandle();
 					memory::pool::userdata_set(data, NetworkUserdataKey, [](void *obj) {
 						((CurlHandle *)obj)->~CurlHandle();
 						return Status::Ok;
@@ -66,7 +66,7 @@ public:
 
 				return ((CurlHandle *)data)->get();
 			} else if (!tl_handle) {
-				tl_handle = new CurlHandle();
+				tl_handle = new (sprt::nothrow) CurlHandle();
 			}
 			return tl_handle->get();
 		} else {

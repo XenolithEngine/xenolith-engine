@@ -46,8 +46,7 @@ MODULE_STAPPLER_CORE_INCLUDES_INTERNAL := \
 	$(STAPPLER_MODULE_DIR)/thirdparty/libbacktrace
 
 MODULE_STAPPLER_CORE_SHARED_CONSUME := \
-	stappler_filesystem \
-	stappler_threads
+	stappler_filesystem
 
 ifdef TOOLCHAIN_INCLUDEDIR_LIBCXX
 MODULE_STAPPLER_CORE_INCLUDES_OBJS += $(addprefix --isystem ,$(TOOLCHAIN_INCLUDEDIR_LIBCXX))

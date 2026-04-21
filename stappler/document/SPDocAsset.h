@@ -68,7 +68,8 @@ public:
 	bool load(const Callback<void(BytesView)> &cb) const;
 
 protected:
-	friend class DocumentAsset;
+	template <typename T, typename... Args>
+	friend constexpr T *sprt::__construct_at(T *, Args &&...) noexcept;
 
 	DocumentAssetLock(Rc<DocumentAsset> &&, Function<void(const DocumentAsset &, Ref *)> &&,
 			Rc<Ref> &&lock);

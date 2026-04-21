@@ -161,7 +161,7 @@ public:
 protected:
 	using Sprite::init;
 
-	virtual Rc<LabelDeferredResult> runDeferred(event::Looper *, TextLayout *format,
+	virtual Rc<LabelDeferredResult> runDeferred(sprt::dispatch::Looper *, TextLayout *format,
 			const Color4F &color);
 
 	virtual void applyLayout(TextLayout *);

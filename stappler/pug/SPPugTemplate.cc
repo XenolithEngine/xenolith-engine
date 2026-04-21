@@ -83,7 +83,8 @@ TemplateRender::TemplateRender(Template::Chunk *root, bool pretty)
 bool TemplateRender::renderControlToken(Token *tok, Template::ChunkType type, bool allowEmpty) {
 	if (allowEmpty || tok->child) {
 		flushBuffer();
-		_current->chunks.emplace_back(new Template::Chunk{type, String(), tok->expression});
+		_current->chunks.emplace_back(
+				new (sprt::nothrow) Template::Chunk{{}, type, String(), tok->expression});
 		if (type == Template::ControlMixin) {
 			if (tok->expression->op == Expression::Call && tok->expression->left->isToken) {
 				_current->chunks.back()->value = tok->expression->left->value.getString();
@@ -154,8 +155,8 @@ bool TemplateRender::renderToken(Token *tok) {
 		case Token::LineCodeBlock: return renderTokenTree(tok->child->child); break;
 		case Token::MixinCall:
 			flushBuffer();
-			_current->chunks.emplace_back(new Template::Chunk{Template::MixinCall,
-				tok->child->data.str<memory::PoolInterface>(), nullptr});
+			_current->chunks.emplace_back(new (sprt::nothrow) Template::Chunk{{},
+				Template::MixinCall, tok->child->data.str<memory::PoolInterface>(), nullptr});
 			if (tok->child->child && tok->child->child->type == Token::MixinArgs) {
 				_current->chunks.back()->expr = tok->child->child->expression;
 			}
@@ -191,8 +192,8 @@ bool TemplateRender::renderToken(Token *tok) {
 		if (tok->child && tok->child->next) {
 			flushBuffer();
 			auto var = tok->child->data;
-			_current->chunks.emplace_back(new Template::Chunk{Template::ControlEach,
-				String(var.data(), var.size()), tok->expression});
+			_current->chunks.emplace_back(new (sprt::nothrow) Template::Chunk{{},
+				Template::ControlEach, String(var.data(), var.size()), tok->expression});
 			pushChunk(_current->chunks.back());
 			auto ret = renderTokenTree(tok->child);
 			popChunk();
@@ -204,8 +205,8 @@ bool TemplateRender::renderToken(Token *tok) {
 			flushBuffer();
 			StringStream str;
 			str << tok->child->data << " " << tok->child->next->data;
-			_current->chunks.emplace_back(
-					new Template::Chunk{Template::ControlEachPair, str.str(), tok->expression});
+			_current->chunks.emplace_back(new (sprt::nothrow) Template::Chunk{{},
+				Template::ControlEachPair, str.str(), tok->expression});
 			pushChunk(_current->chunks.back());
 			auto ret = renderTokenTree(tok->child);
 			popChunk();
@@ -214,7 +215,7 @@ bool TemplateRender::renderToken(Token *tok) {
 		break;
 	case Token::Include:
 		flushBuffer();
-		_current->chunks.emplace_back(new Template::Chunk{Template::Include,
+		_current->chunks.emplace_back(new (sprt::nothrow) Template::Chunk{{}, Template::Include,
 			String(tok->data.data(), tok->data.size()), nullptr, _indentation});
 		_includes.emplace_back(StringView(_current->chunks.back()->value));
 		return true;
@@ -391,8 +392,8 @@ Token *TemplateRender::renderTagAttributes(Token *tok) {
 			Context::printAttrVar(name, *expression, [&](StringView str) { _buffer << str; }, esc);
 		} else {
 			flushBuffer();
-			_current->chunks.emplace_back(new Template::Chunk{esc ? Template::AttributeEscaped
-																  : Template::AttributeUnescaped,
+			_current->chunks.emplace_back(new (sprt::nothrow) Template::Chunk{{},
+				esc ? Template::AttributeEscaped : Template::AttributeUnescaped,
 				String(name.data(), name.size()), expression});
 		}
 	};
@@ -424,8 +425,8 @@ Token *TemplateRender::renderTagAttributes(Token *tok) {
 				Context::printAttrExpr(*expr, [&](StringView str) { _buffer << str; });
 			} else {
 				flushBuffer();
-				_current->chunks.emplace_back(
-						new Template::Chunk{Template::AttributeList, String(), expr});
+				_current->chunks.emplace_back(new (sprt::nothrow)
+								Template::Chunk{{}, Template::AttributeList, String(), expr});
 			}
 		}
 	};
@@ -506,7 +507,8 @@ bool TemplateRender::pushOutput(Expression *expr, Template::ChunkType type) {
 				type == Template::OutputEscaped);
 	} else {
 		flushBuffer();
-		_current->chunks.emplace_back(new Template::Chunk{type, String(), expr});
+		_current->chunks.emplace_back(
+				new (sprt::nothrow) Template::Chunk{{}, type, String(), expr});
 	}
 	return false;
 }
@@ -530,14 +532,16 @@ bool TemplateRender::runCode(Expression *expr, Token::Type type) {
 	flushBuffer();
 	switch (type) {
 	case Token::OutputEscaped:
-		_current->chunks.emplace_back(new Template::Chunk{Template::OutputEscaped, String(), expr});
+		_current->chunks.emplace_back(
+				new (sprt::nothrow) Template::Chunk{{}, Template::OutputEscaped, String(), expr});
 		break;
 	case Token::OutputUnescaped:
 		_current->chunks.emplace_back(
-				new Template::Chunk{Template::OutputUnescaped, String(), expr});
+				new (sprt::nothrow) Template::Chunk{{}, Template::OutputUnescaped, String(), expr});
 		break;
 	default:
-		_current->chunks.emplace_back(new Template::Chunk{Template::Code, String(), expr});
+		_current->chunks.emplace_back(
+				new (sprt::nothrow) Template::Chunk{{}, Template::Code, String(), expr});
 		break;
 	}
 	return true;
@@ -545,7 +549,7 @@ bool TemplateRender::runCode(Expression *expr, Token::Type type) {
 
 Template::Chunk *TemplateRender::flushBuffer(Template::ChunkType type) {
 	if (!_buffer.empty() && _current) {
-		auto c = new Template::Chunk{type, _buffer.str(), nullptr};
+		auto c = new (sprt::nothrow) Template::Chunk{{}, type, _buffer.str(), nullptr};
 		_current->chunks.emplace_back(c);
 		_buffer.clear();
 		return c;
@@ -999,8 +1003,8 @@ bool Template::runChunk(const Chunk &chunk, Context &exec, const Callback<void(S
 				string::apply_tolower_c(name);
 				if (tagStack.tagStack.empty() && name != "<html") {
 					out << "<html>";
-					tagStack.tagStack.push_back(
-							new Template::Chunk{VirtualTag, String("</html>"), nullptr});
+					tagStack.tagStack.push_back(new (sprt::nothrow)
+									Template::Chunk{{}, VirtualTag, String("</html>"), nullptr});
 				}
 				if (name == "<html") {
 					tagStack.tagStack.push_back(&c);
@@ -1012,8 +1016,8 @@ bool Template::runChunk(const Chunk &chunk, Context &exec, const Callback<void(S
 							tagStack.withinBody = true;
 						} else if (!tagStack.withinBody) {
 							out << "<body>";
-							tagStack.tagStack.push_back(
-									new Template::Chunk{VirtualTag, String("</body>"), nullptr});
+							tagStack.tagStack.push_back(new (sprt::nothrow) Template::Chunk{{},
+								VirtualTag, String("</body>"), nullptr});
 							tagStack.withinBody = true;
 						}
 					}
@@ -1033,14 +1037,14 @@ bool Template::runChunk(const Chunk &chunk, Context &exec, const Callback<void(S
 			string::apply_tolower_c(name);
 			if (tagStack.tagStack.empty() && name != "<html") {
 				out << "<html>";
-				tagStack.tagStack.push_back(
-						new Template::Chunk{VirtualTag, String("</html>"), nullptr});
+				tagStack.tagStack.push_back(new (sprt::nothrow)
+								Template::Chunk{{}, VirtualTag, String("</html>"), nullptr});
 			}
 			if (name != "<head" && !tagStack.withinHead) {
 				if (name != "<body" && !tagStack.withinBody) {
 					out << "<body>";
-					tagStack.tagStack.push_back(
-							new Template::Chunk{VirtualTag, String("</body>"), nullptr});
+					tagStack.tagStack.push_back(new (sprt::nothrow)
+									Template::Chunk{{}, VirtualTag, String("</body>"), nullptr});
 					tagStack.withinBody = true;
 				}
 			}

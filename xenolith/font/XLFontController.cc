@@ -43,18 +43,18 @@ struct FontController::Builder::Data {
 
 FontController::Builder::~Builder() {
 	if (_data) {
-		delete _data;
+		sprt::__delete(_data);
 		_data = nullptr;
 	}
 }
 
 FontController::Builder::Builder(StringView name) {
-	_data = new Data();
+	_data = new (sprt::nothrow) Data();
 	_data->name = name.str<Interface>();
 }
 
 FontController::Builder::Builder(FontController *target) {
-	_data = new Data();
+	_data = new (sprt::nothrow) Data();
 	_data->target = target;
 }
 
@@ -65,7 +65,7 @@ FontController::Builder::Builder(Builder &&other) {
 
 FontController::Builder &FontController::Builder::operator=(Builder &&other) {
 	if (_data) {
-		delete _data;
+		sprt::__delete(_data);
 		_data = nullptr;
 	}
 

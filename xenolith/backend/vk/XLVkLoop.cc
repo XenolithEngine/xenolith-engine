@@ -34,8 +34,8 @@
 #include "XLVkMaterialCompiler.h"
 #include "XLVkPresentationEngine.h"
 
-#include "SPEventLooper.h"
-#include "SPEventTimerHandle.h"
+#include <sprt/runtime/dispatch/looper.h>
+#include <sprt/runtime/dispatch/handle.h>
 
 #define XL_VK_DEPS_DEBUG 0
 #define XL_VK_PAUSE_TIMER 1
@@ -179,7 +179,9 @@ struct Loop::Internal final : memory::AllocPool {
 				renderQueueCompiler->makeRequest(move(input)), 0);
 		if (cb) {
 			h->setCompleteCallback(
-					[cb = sp::move(cb), req](FrameHandle &handle) { cb(handle.isValid()); });
+					[cb = sp::move(cb), req = Rc<core::Queue>(req)](FrameHandle &handle) {
+				cb(handle.isValid()); //
+			});
 		}
 
 		h->update(true);
@@ -304,7 +306,7 @@ struct Loop::Internal final : memory::AllocPool {
 	Loop *loop = nullptr;
 	Rc<core::LoopInfo> info;
 
-	Rc<event::TimerHandle> updateTimerHandle;
+	Rc<sprt::dispatch::TimerHandle> updateTimerHandle;
 
 	Map<DependencyEvent *, Vector<Rc<DependencyRequest>>> dependencyRequests;
 
@@ -353,7 +355,7 @@ Loop::~Loop() {
 	}, nullptr);
 }
 
-bool Loop::init(NotNull<event::Looper> looper, NotNull<core::Instance> instance,
+bool Loop::init(NotNull<sprt::dispatch::Looper> looper, NotNull<core::Instance> instance,
 		Rc<LoopInfo> &&info) {
 	if (!core::Loop::init(looper, instance, move(info))) {
 		return false;
@@ -396,9 +398,9 @@ bool Loop::init(NotNull<event::Looper> looper, NotNull<core::Instance> instance,
 
 void Loop::run() {
 	_looper->performOnThread([&] {
-		_internal->updateTimerHandle = _looper->scheduleTimer(event::TimerInfo{
-			.completion = event::TimerInfo::Completion::create<Loop>(this,
-					[](Loop *loop, event::TimerHandle *, uint32_t valuu, Status status) {
+		_internal->updateTimerHandle = _looper->scheduleTimer(sprt::dispatch::TimerInfo{
+			.completion = sprt::dispatch::TimerInfo::Completion::create<Loop>(this,
+					[](Loop *loop, sprt::dispatch::TimerHandle *, uint32_t valuu, Status status) {
 			if (loop->_internal) {
 				loop->_internal->update();
 			}
@@ -407,7 +409,7 @@ void Loop::run() {
 			}
 		}),
 			.interval = TimeInterval::microseconds(config::PresentationSchedulerInterval),
-			.count = event::TimerInfo::Infinite});
+			.count = sprt::dispatch::TimerInfo::Infinite});
 		_internal->updateTimerHandle->setUserdata(this);
 	}, this, true);
 }
@@ -512,7 +514,7 @@ void Loop::runRenderQueue(Rc<FrameRequest> &&req, uint64_t gen, Function<void(bo
 	}, this, true);
 }
 
-void Loop::performInQueue(Rc<thread::Task> &&task) const {
+void Loop::performInQueue(Rc<sprt::dispatch::Task> &&task) const {
 	if (!_internal || !_internal->_running.load()) {
 		task->cancel();
 		return;

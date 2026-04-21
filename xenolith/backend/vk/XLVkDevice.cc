@@ -31,7 +31,6 @@
 #include "XLCoreFrameHandle.h"
 #include "XLCoreFrameRequest.h"
 #include "XLVkRenderPass.h"
-#include "SPEventLooper.h"
 
 #ifndef XL_VKDEVICE_LOG
 #define XL_VKDEVICE_LOG(...)
@@ -201,7 +200,7 @@ Device::~Device() {
 		invalidateObjects();
 
 		_table->vkDestroyDevice(_device, nullptr);
-		delete _table;
+		sprt::__delete(_table);
 
 		_device = nullptr;
 		_table = nullptr;
@@ -617,8 +616,9 @@ void Device::compileImage(const Loop &loop, const Rc<core::DynamicImage> &img,
 							->dropPendingBarrier(); // hold reference while commands is active
 				}, this, "TextureSetLayout::compileImage transferBuffer->dropPendingBarrier");
 
-				loop.performInQueue(Rc<thread::Task>::create(
-						thread::Task::ExecuteCallback([this, task](const thread::Task &) -> bool {
+				loop.performInQueue(Rc<sprt::dispatch::Task>::create(
+						sprt::dispatch::Task::ExecuteCallback(
+								[this, task](const sprt::dispatch::Task &) -> bool {
 					auto buf = task->pool->recordBuffer(*task->device, Vector<Rc<DescriptorPool>>(),
 							[&, this](CommandBuffer &buf) {
 						auto f = getQueueFamily(task->resultImage->getInfo().type);
@@ -633,7 +633,8 @@ void Device::compileImage(const Loop &loop, const Rc<core::DynamicImage> &img,
 					}
 					return false;
 				}),
-						thread::Task::CompleteCallback([task](const thread::Task &, bool success) {
+						sprt::dispatch::Task::CompleteCallback(
+								[task](const sprt::dispatch::Task &, bool success) {
 					if (task->queue) {
 						task->device->releaseQueue(move(task->queue));
 					}
@@ -766,7 +767,7 @@ bool Device::setup(const Instance *instance, VkPhysicalDevice p, const Propertie
 	_original = new DeviceTable(instance->vkGetDeviceProcAddr, _device);
 	_table = hookTable;
 #else
-	_table = new DeviceTable(instance->vkGetDeviceProcAddr, _device);
+	_table = new (sprt::nothrow) DeviceTable(instance->vkGetDeviceProcAddr, _device);
 #endif
 
 	return true;

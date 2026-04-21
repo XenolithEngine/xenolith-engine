@@ -26,8 +26,6 @@
 
 #include "XLAppThread.h"
 #include "SPNetworkHandle.h"
-#include "SPThreadTaskQueue.h"
-#include "SPThread.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::network {
 

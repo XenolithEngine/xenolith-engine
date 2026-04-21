@@ -30,6 +30,7 @@
 #include "SPSharedModule.h" // IWYU pragma: keep
 
 #include <sprt/runtime/window/native_window.h>
+#include <sprt/runtime/dispatch/handle.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::platform {
 
@@ -156,7 +157,7 @@ public:
 
 	virtual bool init(ContextConfig &&, ContentInitializer &&);
 
-	event::Looper *getLooper() const { return _looper; }
+	sprt::dispatch::Looper *getLooper() const { return _looper; }
 
 	virtual sprt::window::gapi::Loop *getGlLoop() const override { return _loop; }
 
@@ -259,7 +260,7 @@ protected:
 
 	ContentInitializer _initializer;
 
-	event::Looper *_looper = nullptr;
+	sprt::dispatch::Looper *_looper = nullptr;
 
 	bool _running = false;
 
@@ -271,7 +272,7 @@ protected:
 
 	HashMap<sprt::type_index, Rc<ContextComponent>> _components;
 
-	Rc<event::TimerHandle> _liveReloadWatchdog;
+	Rc<sprt::dispatch::TimerHandle> _liveReloadWatchdog;
 
 	// preserve last unloaded version until all async actions finished
 	Rc<LiveReloadLibrary> _unloadedLiveReloadLibrary;

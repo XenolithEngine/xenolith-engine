@@ -22,36 +22,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#include "SPMemPriorityQueue.h"
 #include "SPMemUuid.h"
 #include "SPString.h"
-#include <sprt/runtime/uuid.h>
+#include <sprt/runtime/utils/uuid.h>
 
 namespace STAPPLER_VERSIONIZED stappler::memory {
-
-SP_PUBLIC void PriorityQueue_lock_noOp(void *) {
-	// no-op, really!
-}
-
-SP_PUBLIC void PriorityQueue_lock_qmutex(void *ptr) {
-	sprt::qmutex *mutex = (sprt::qmutex *)ptr;
-	mutex->lock();
-}
-
-SP_PUBLIC void PriorityQueue_unlock_qmutex(void *ptr) {
-	sprt::qmutex *mutex = (sprt::qmutex *)ptr;
-	mutex->unlock();
-}
-
-SP_PUBLIC void PriorityQueue_lock_rmutex(void *ptr) {
-	sprt::rmutex *mutex = (sprt::rmutex *)ptr;
-	mutex->lock();
-}
-
-SP_PUBLIC void PriorityQueue_unlock_rmutex(void *ptr) {
-	sprt::rmutex *mutex = (sprt::rmutex *)ptr;
-	mutex->unlock();
-}
 
 uuid uuid::generate() {
 	uuid_t d;

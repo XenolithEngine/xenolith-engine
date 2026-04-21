@@ -23,7 +23,6 @@
 #include "XL2dVkParticlePass.h"
 #include "SPMemory.h"
 #include "SPPlatform.h"
-#include "SPTime.h"
 #include "SPValid.h"
 #include "XL2d.h"
 #include "XL2dCommandList.h"

@@ -307,7 +307,7 @@ bool AttachmentHandle::init(Attachment &attachment, const FrameQueue &frame) {
 	return init(&attachment, frame);
 }
 
-void AttachmentHandle::setQueueData(FrameAttachmentData &data) { _queueData = &data; }
+void AttachmentHandle::setQueueData(FrameAttachmentData *data) { _queueData = data; }
 
 // returns true for immediate setup, false if seyup job was scheduled
 bool AttachmentHandle::setup(FrameQueue &, Function<void(bool)> &&) { return true; }

@@ -53,7 +53,7 @@ static uint32_t StapplerDataRead(wasm_exec_env_t exec_env, uint8_t *buf, uint32_
 		c->source->value = move(val);
 		c->value = &c->source->value;
 
-		return mod->addHandle(c, [c] { delete c; });
+		return mod->addHandle(c, [c] { sprt::__delete(c); });
 	}
 
 	return ModuleInstance::InvalidHandle;
@@ -70,7 +70,7 @@ static uint32_t StapplerDataReadFile(wasm_exec_env_t exec_env, char *buf, uint32
 		c->source->value = move(val);
 		c->value = &c->source->value;
 
-		return mod->addHandle(c, [c] { delete c; });
+		return mod->addHandle(c, [c] { sprt::__delete(c); });
 	}
 
 	return ModuleInstance::InvalidHandle;
@@ -83,7 +83,7 @@ static uint32_t stappler_wasm_data_constructor_value(wasm_exec_env_t exec_env) {
 	c->source = Rc<ValueSource>::alloc();
 	c->value = &c->source->value;
 
-	return mod->addHandle(c, [c] { delete c; });
+	return mod->addHandle(c, [c] { sprt::__delete(c); });
 }
 
 static uint32_t StapplerDataCopy(wasm_exec_env_t exec_env, uint32_t handle) {
@@ -99,7 +99,7 @@ static uint32_t StapplerDataCopy(wasm_exec_env_t exec_env, uint32_t handle) {
 	c->source->value = *val->value;
 	c->value = &c->source->value;
 
-	return mod->addHandle(c, [c] { delete c; });
+	return mod->addHandle(c, [c] { sprt::__delete(c); });
 }
 
 static void StapplerDataDrop(wasm_exec_env_t exec_env, uint32_t handle) {
@@ -849,7 +849,7 @@ static uint32_t stappler_wasm_data_method_value_get_value_by_idx(wasm_exec_env_t
 	c->source = val->source;
 	c->value = &newVal;
 
-	return mod->addHandle(c, [c] { delete c; });
+	return mod->addHandle(c, [c] { sprt::__delete(c); });
 }
 
 static int64_t stappler_wasm_data_method_value_get_integer_by_idx(wasm_exec_env_t exec_env,
@@ -966,7 +966,7 @@ static uint32_t stappler_wasm_data_method_value_get_value_by_key(wasm_exec_env_t
 	c->source = val->source;
 	c->value = &newVal;
 
-	return mod->addHandle(c, [c] { delete c; });
+	return mod->addHandle(c, [c] { sprt::__delete(c); });
 }
 
 static int64_t stappler_wasm_data_method_value_get_integer_by_key(wasm_exec_env_t exec_env,
@@ -1260,7 +1260,7 @@ static uint32_t stappler_wasm_data_method_value_set_dict_for_idx(wasm_exec_env_t
 	auto c = new ValueContainer;
 	c->source = val->source;
 	c->value = &v;
-	return inst->addHandle(c, [c] { delete c; });
+	return inst->addHandle(c, [c] { sprt::__delete(c); });
 }
 static uint32_t stappler_wasm_data_method_value_set_array_for_idx(wasm_exec_env_t exec_env,
 		uint32_t handle, uint32_t index) {
@@ -1276,7 +1276,7 @@ static uint32_t stappler_wasm_data_method_value_set_array_for_idx(wasm_exec_env_
 	auto c = new ValueContainer;
 	c->source = val->source;
 	c->value = &v;
-	return inst->addHandle(c, [c] { delete c; });
+	return inst->addHandle(c, [c] { sprt::__delete(c); });
 }
 static uint32_t stappler_wasm_data_method_value_set_value_for_idx(wasm_exec_env_t exec_env,
 		uint32_t handle, uint32_t index) {
@@ -1292,7 +1292,7 @@ static uint32_t stappler_wasm_data_method_value_set_value_for_idx(wasm_exec_env_
 	auto c = new ValueContainer;
 	c->source = val->source;
 	c->value = &v;
-	return inst->addHandle(c, [c] { delete c; });
+	return inst->addHandle(c, [c] { sprt::__delete(c); });
 }
 static uint32_t stappler_wasm_data_method_value_set_value_copy_for_idx(wasm_exec_env_t exec_env,
 		uint32_t handle, uint32_t value, uint32_t index) {
@@ -1313,7 +1313,7 @@ static uint32_t stappler_wasm_data_method_value_set_value_copy_for_idx(wasm_exec
 	auto c = new ValueContainer;
 	c->source = val->source;
 	c->value = &v;
-	return inst->addHandle(c, [c] { delete c; });
+	return inst->addHandle(c, [c] { sprt::__delete(c); });
 }
 static void stappler_wasm_data_method_value_set_null_for_key(wasm_exec_env_t exec_env,
 		uint32_t handle, char *key, uint32_t keyLen) {
@@ -1401,7 +1401,7 @@ static uint32_t stappler_wasm_data_method_value_set_dict_for_key(wasm_exec_env_t
 	auto c = new ValueContainer;
 	c->source = val->source;
 	c->value = &v;
-	return inst->addHandle(c, [c] { delete c; });
+	return inst->addHandle(c, [c] { sprt::__delete(c); });
 }
 static uint32_t stappler_wasm_data_method_value_set_array_for_key(wasm_exec_env_t exec_env,
 		uint32_t handle, char *key, uint32_t keyLen) {
@@ -1417,7 +1417,7 @@ static uint32_t stappler_wasm_data_method_value_set_array_for_key(wasm_exec_env_
 	auto c = new ValueContainer;
 	c->source = val->source;
 	c->value = &v;
-	return inst->addHandle(c, [c] { delete c; });
+	return inst->addHandle(c, [c] { sprt::__delete(c); });
 }
 static uint32_t stappler_wasm_data_method_value_set_value_for_key(wasm_exec_env_t exec_env,
 		uint32_t handle, char *key, uint32_t keyLen) {
@@ -1433,7 +1433,7 @@ static uint32_t stappler_wasm_data_method_value_set_value_for_key(wasm_exec_env_
 	auto c = new ValueContainer;
 	c->source = val->source;
 	c->value = &v;
-	return inst->addHandle(c, [c] { delete c; });
+	return inst->addHandle(c, [c] { sprt::__delete(c); });
 }
 static uint32_t stappler_wasm_data_method_value_set_value_copy_for_key(wasm_exec_env_t exec_env,
 		uint32_t handle, uint32_t value, char *key, uint32_t keyLen) {
@@ -1455,7 +1455,7 @@ static uint32_t stappler_wasm_data_method_value_set_value_copy_for_key(wasm_exec
 	auto c = new ValueContainer;
 	c->source = val->source;
 	c->value = &v;
-	return inst->addHandle(c, [c] { delete c; });
+	return inst->addHandle(c, [c] { sprt::__delete(c); });
 }
 static void stappler_wasm_data_method_value_add_null(wasm_exec_env_t exec_env, uint32_t handle) {
 	auto env = ExecEnv::get(exec_env);
@@ -1542,7 +1542,7 @@ static uint32_t stappler_wasm_data_method_value_add_dict(wasm_exec_env_t exec_en
 	auto c = new ValueContainer;
 	c->source = val->source;
 	c->value = &v;
-	return inst->addHandle(c, [c] { delete c; });
+	return inst->addHandle(c, [c] { sprt::__delete(c); });
 }
 static uint32_t stappler_wasm_data_method_value_add_array(wasm_exec_env_t exec_env,
 		uint32_t handle) {
@@ -1558,7 +1558,7 @@ static uint32_t stappler_wasm_data_method_value_add_array(wasm_exec_env_t exec_e
 	auto c = new ValueContainer;
 	c->source = val->source;
 	c->value = &v;
-	return inst->addHandle(c, [c] { delete c; });
+	return inst->addHandle(c, [c] { sprt::__delete(c); });
 }
 static uint32_t stappler_wasm_data_method_value_add_value(wasm_exec_env_t exec_env,
 		uint32_t handle) {
@@ -1574,7 +1574,7 @@ static uint32_t stappler_wasm_data_method_value_add_value(wasm_exec_env_t exec_e
 	auto c = new ValueContainer;
 	c->source = val->source;
 	c->value = &v;
-	return inst->addHandle(c, [c] { delete c; });
+	return inst->addHandle(c, [c] { sprt::__delete(c); });
 }
 static uint32_t stappler_wasm_data_method_value_add_value_copy(wasm_exec_env_t exec_env,
 		uint32_t handle, uint32_t value) {
@@ -1596,7 +1596,7 @@ static uint32_t stappler_wasm_data_method_value_add_value_copy(wasm_exec_env_t e
 	auto c = new ValueContainer;
 	c->source = val->source;
 	c->value = &v;
-	return inst->addHandle(c, [c] { delete c; });
+	return inst->addHandle(c, [c] { dsprt::__delete(c); });
 }
 static uint32_t stappler_wasm_data_method_value_erase_for_idx(wasm_exec_env_t exec_env,
 		uint32_t handle, uint32_t idx) {

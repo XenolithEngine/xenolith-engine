@@ -22,14 +22,16 @@
 
 #include "XLCoreLoop.h"
 #include "XLCoreInstance.h"
-#include "SPEventLooper.h"
 #include "SPBitmap.h"
+
+#include <sprt/runtime/dispatch/looper.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 Loop::~Loop() { log::source().debug("core::Loop", "~Loop"); }
 
-bool Loop::init(NotNull<event::Looper> looper, NotNull<Instance> inst, Rc<LoopInfo> &&info) {
+bool Loop::init(NotNull<sprt::dispatch::Looper> looper, NotNull<Instance> inst,
+		Rc<LoopInfo> &&info) {
 	_instance = inst;
 	_info = move(info);
 	_looper = looper;

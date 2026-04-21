@@ -200,27 +200,27 @@ Rc<FrameExternalTask> FrameHandle::acquireTask(Ref *ref, StringView tag) {
 }
 
 void FrameHandle::performInQueue(Function<void(FrameHandle &)> &&cb, Ref *ref, StringView tag) {
-	auto linkId = retain();
-	_loop->performInQueue(
-			Rc<thread::Task>::create([this, cb = sp::move(cb)](const thread::Task &) -> bool {
+	auto linkId = sprt::retain(this);
+	_loop->performInQueue(Rc<sprt::dispatch::Task>::create(
+			[this, cb = sp::move(cb)](const sprt::dispatch::Task &) -> bool {
 		cb(*this);
 		return true;
-	}, [=, this](const thread::Task &, bool) {
+	}, [=, this](const sprt::dispatch::Task &, bool) {
 		XL_FRAME_LOG(XL_FRAME_LOG_INFO, "thread performed: '", tag, "'");
-		release(linkId);
+		sprt::release(this, linkId);
 	}, ref));
 }
 
 void FrameHandle::performInQueue(Function<bool(FrameHandle &)> &&perform,
 		Function<void(FrameHandle &, bool)> &&complete, Ref *ref, StringView tag) {
-	auto linkId = retain();
-	_loop->performInQueue(Rc<thread::Task>::create(
-			[this, perform = sp::move(perform)](const thread::Task &) -> bool {
+	auto linkId = sprt::retain(this);
+	_loop->performInQueue(Rc<sprt::dispatch::Task>::create(
+			[this, perform = sp::move(perform)](const sprt::dispatch::Task &) -> bool {
 		return perform(*this);
-	}, [=, this, complete = sp::move(complete)](const thread::Task &, bool success) {
+	}, [=, this, complete = sp::move(complete)](const sprt::dispatch::Task &, bool success) {
 		XL_FRAME_PROFILE(complete(*this, success), tag, 1'000);
 		XL_FRAME_LOG(XL_FRAME_LOG_INFO, "thread performed: '", tag, "'");
-		release(linkId);
+		sprt::release(this, linkId);
 	}, ref));
 }
 
@@ -229,11 +229,11 @@ void FrameHandle::performOnGlThread(Function<void(FrameHandle &)> &&cb, Ref *ref
 	if (immediate && _loop->isOnThisThread()) {
 		XL_FRAME_PROFILE(cb(*this), tag, 1'000);
 	} else {
-		auto linkId = retain();
+		auto linkId = sprt::retain(this);
 		_loop->performOnThread([=, this, cb = sp::move(cb)]() {
 			XL_FRAME_PROFILE(cb(*this);, tag, 1'000);
 			XL_FRAME_LOG(XL_FRAME_LOG_INFO, "thread performed: '", tag, "'");
-			release(linkId);
+			sprt::release(this, linkId);
 		}, ref);
 	}
 }
@@ -243,27 +243,28 @@ void FrameHandle::performRequiredTask(Function<bool(FrameHandle &)> &&cb, Ref *r
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-lambda-capture"
 	auto task = acquireTask(ref, tag);
-	_loop->performInQueue(
-			Rc<thread::Task>::create([this, cb = sp::move(cb)](const thread::Task &) -> bool {
-		return cb(*this);
-	}, [this, tag = tag.str<Interface>(), task = task.get()](const thread::Task &, bool success) {
+	_loop->performInQueue(Rc< sprt::dispatch::Task>::create(
+			[this, cb = sp::move(cb)](const sprt::dispatch::Task &) -> bool { return cb(*this); },
+			[this, tag = tag.str<Interface>(), task = task.get()](const sprt::dispatch::Task &,
+					bool success) {
 		XL_FRAME_LOG(XL_FRAME_LOG_INFO, "thread performed: '", tag, "'");
 		if (!success) {
 			task->invalidate();
 			log::source().error("FrameHandle", "Async task failed: ", tag);
 		}
-	}, task));
+	},
+			task));
 #pragma clang diagnostic pop
 }
 
 void FrameHandle::performRequiredTask(Function<bool(FrameHandle &)> &&perform,
 		Function<void(FrameHandle &, bool)> &&complete, Ref *ref, StringView tag) {
 	auto task = acquireTask(ref, tag);
-	_loop->performInQueue(Rc<thread::Task>::create(
+	_loop->performInQueue(Rc<sprt::dispatch::Task>::create(
 			[this, perform = sp::move(perform)](
-					const thread::Task &) -> bool { return perform(*this); },
+					const sprt::dispatch::Task &) -> bool { return perform(*this); },
 			[this, complete = sp::move(complete), tag = tag.str<Interface>(),
-					task = task.get()](const thread::Task &, bool success) {
+					task = task.get()](const sprt::dispatch::Task &, bool success) {
 		XL_FRAME_PROFILE(complete(*this, success), tag, 1'000);
 		XL_FRAME_LOG(XL_FRAME_LOG_INFO, "thread performed: '", tag, "'");
 		if (!success) {
@@ -288,7 +289,7 @@ Rc<AttachmentInputData> FrameHandle::getInputData(const AttachmentData *attachme
 void FrameHandle::invalidate() {
 	if (_loop->isOnThisThread()) {
 		if (_valid) {
-			auto id = retain();
+			auto id = sprt::retain(this);
 			if (!_timeEnd) {
 				_timeEnd = sp::platform::clock(FrameClockType);
 			}
@@ -299,7 +300,7 @@ void FrameHandle::invalidate() {
 			HashMap<const AttachmentData *, FrameAttachmentData *> attachments;
 			for (auto &it : _queues) {
 				for (auto &iit : it->getAttachments()) {
-					if (iit.second.handle->isOutput()) {
+					if (iit.second->handle->isOutput()) {
 						attachments.emplace(iit.first, (FrameAttachmentData *)&iit.second);
 					}
 				}
@@ -330,7 +331,7 @@ void FrameHandle::invalidate() {
 					req->signalDependencies(*_loop, it->getQueue(), success);
 				}
 			}
-			release(id);
+			sprt::release(this, id);
 		}
 	} else {
 		_loop->performOnThread([this] { invalidate(); }, this);
@@ -389,20 +390,20 @@ void FrameHandle::releaseTask(FrameExternalTask *task, bool success) {
 	}, this, true);
 }
 
-bool FrameHandle::onOutputAttachment(FrameAttachmentData &data) {
-	return _request->onOutputReady(*_loop, data);
+bool FrameHandle::onOutputAttachment(FrameAttachmentData *data) {
+	return _request->onOutputReady(*_loop, *data);
 }
 
-void FrameHandle::onOutputAttachmentInvalidated(FrameAttachmentData &data) {
-	_request->onOutputInvalidated(*_loop, data);
+void FrameHandle::onOutputAttachmentInvalidated(FrameAttachmentData *data) {
+	_request->onOutputInvalidated(*_loop, *data);
 }
 
 void FrameHandle::waitForDependencies(const Vector<Rc<DependencyEvent>> &events,
 		Function<void(FrameHandle &, bool)> &&cb) {
-	auto linkId = retain();
+	auto linkId = sprt::retain(this);
 	_loop->waitForDependencies(events, [this, cb = sp::move(cb), linkId](bool success) {
 		cb(*this, success);
-		release(linkId);
+		sprt::release(this, linkId);
 	});
 }
 
@@ -433,7 +434,7 @@ void FrameHandle::onComplete() {
 		HashMap<const AttachmentData *, FrameAttachmentData *> attachments;
 		for (auto &it : _queues) {
 			for (auto &iit : it->getAttachments()) {
-				if (iit.second.handle->isOutput()) {
+				if (iit.second->handle->isOutput()) {
 					attachments.emplace(iit.first, (FrameAttachmentData *)&iit.second);
 				}
 			}

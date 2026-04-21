@@ -26,6 +26,7 @@
 
 #include "XLCoreQueueData.h"
 #include "XLCoreImageStorage.h"
+#include <sprt/runtime/mem/pool_ref.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
@@ -39,7 +40,7 @@ struct SP_PUBLIC FrameSyncAttachment {
 	PipelineStage stages = PipelineStage::None;
 };
 
-struct SP_PUBLIC FramePassData {
+struct SP_PUBLIC FramePassData : public Ref {
 	FrameRenderPassState state = FrameRenderPassState::Initial;
 	Rc<QueuePassHandle> handle;
 	const QueuePassData *data = nullptr;
@@ -56,9 +57,11 @@ struct SP_PUBLIC FramePassData {
 
 	uint64_t submitTime = 0;
 	uint64_t deviceTime = 0;
+
+	FramePassData(FrameRenderPassState s, QueuePassHandle *h, const QueuePassData *d);
 };
 
-struct SP_PUBLIC FrameAttachmentData {
+struct SP_PUBLIC FrameAttachmentData : public Ref {
 	FrameAttachmentState state = FrameAttachmentState::Initial;
 	Rc<AttachmentHandle> handle;
 	ImageInfoData info;
@@ -70,6 +73,8 @@ struct SP_PUBLIC FrameAttachmentData {
 
 	Rc<ImageStorage> image;
 	bool waitForResult = false;
+
+	FrameAttachmentData(FrameAttachmentState s, AttachmentHandle *h);
 };
 
 struct SP_PUBLIC FrameSyncImage {
@@ -88,7 +93,7 @@ class SP_PUBLIC FrameQueue final : public Ref {
 public:
 	virtual ~FrameQueue();
 
-	bool init(const Rc<PoolRef> &, const Rc<Queue> &, FrameHandle &);
+	bool init(const Rc<sprt::PoolRef> &, const Rc<Queue> &, FrameHandle &);
 
 	bool setup();
 	void update();
@@ -97,14 +102,14 @@ public:
 	bool isFinalized() const { return _finalized; }
 
 	const Rc<FrameHandle> &getFrame() const { return _frame; }
-	const Rc<PoolRef> &getPool() const { return _pool; }
+	const Rc<sprt::PoolRef> &getPool() const { return _pool; }
 	const Rc<Queue> &getQueue() const { return _queue; }
 	Loop *getLoop() const;
 
-	const HashMap<const QueuePassData *, FramePassData> &getRenderPasses() const {
+	const HashMap<const QueuePassData *, Rc<FramePassData>> &getRenderPasses() const {
 		return _renderPasses;
 	}
-	const HashMap<const AttachmentData *, FrameAttachmentData> &getAttachments() const {
+	const HashMap<const AttachmentData *, Rc<FrameAttachmentData>> &getAttachments() const {
 		return _attachments;
 	}
 	uint64_t getSubmissionTime() const { return _submissionTime; }
@@ -114,44 +119,44 @@ public:
 	const FramePassData *getRenderPass(const QueuePassData *) const;
 
 protected:
-	bool isResourcePending(const FrameAttachmentData &);
-	void waitForResource(const FrameAttachmentData &, Function<void(bool)> &&);
+	bool isResourcePending(const FrameAttachmentData *);
+	void waitForResource(const FrameAttachmentData *, Function<void(bool)> &&);
 
-	bool isResourcePending(const FramePassData &);
-	void waitForResource(const FramePassData &, Function<void()> &&);
+	bool isResourcePending(const FramePassData *);
+	void waitForResource(const FramePassData *, Function<void()> &&);
 
-	void onAttachmentSetupComplete(FrameAttachmentData &);
-	void onAttachmentInput(FrameAttachmentData &);
-	void onAttachmentAcquire(FrameAttachmentData &);
-	void onAttachmentRelease(FrameAttachmentData &,
+	void onAttachmentSetupComplete(FrameAttachmentData *);
+	void onAttachmentInput(FrameAttachmentData *);
+	void onAttachmentAcquire(FrameAttachmentData *);
+	void onAttachmentRelease(FrameAttachmentData *,
 			FrameAttachmentState state = FrameAttachmentState::ResourcesReleased);
 
-	bool isRenderPassReady(const FramePassData &) const;
-	bool isRenderPassReadyForState(const FramePassData &, FrameRenderPassState) const;
-	void updateRenderPassState(FramePassData &, FrameRenderPassState);
+	bool isRenderPassReady(const FramePassData *) const;
+	bool isRenderPassReadyForState(const FramePassData *, FrameRenderPassState) const;
+	void updateRenderPassState(FramePassData *, FrameRenderPassState);
 
-	void onRenderPassReady(FramePassData &);
-	void onRenderPassResourcesAcquired(FramePassData &);
-	void onRenderPassPrepared(FramePassData &);
-	void onRenderPassSubmission(FramePassData &);
-	void onRenderPassSubmitted(FramePassData &);
-	void onRenderPassComplete(FramePassData &);
+	void onRenderPassReady(FramePassData *);
+	void onRenderPassResourcesAcquired(FramePassData *);
+	void onRenderPassPrepared(FramePassData *);
+	void onRenderPassSubmission(FramePassData *);
+	void onRenderPassSubmitted(FramePassData *);
+	void onRenderPassComplete(FramePassData *);
 
-	Rc<FrameSync> makeRenderPassSync(FramePassData &) const;
-	PipelineStage getWaitStageForAttachment(FramePassData &data,
+	Rc<FrameSync> makeRenderPassSync(FramePassData *) const;
+	PipelineStage getWaitStageForAttachment(FramePassData *data,
 			const AttachmentHandle *handle) const;
 
 	void onComplete();
 	void onFinalized();
 
-	void invalidate(FrameAttachmentData &);
-	void invalidate(FramePassData &);
+	void invalidate(FrameAttachmentData *);
+	void invalidate(FramePassData *);
 
 	void tryReleaseFrame();
 
-	void finalizeAttachment(FrameAttachmentData &);
+	void finalizeAttachment(FrameAttachmentData *);
 
-	Rc<PoolRef> _pool;
+	Rc<sprt::PoolRef> _pool;
 	Rc<Queue> _queue;
 	Rc<FrameHandle> _frame;
 	Loop *_loop = nullptr;
@@ -160,8 +165,8 @@ protected:
 	bool _success = false;
 	bool _invalidated = false;
 
-	HashMap<const QueuePassData *, FramePassData> _renderPasses;
-	HashMap<const AttachmentData *, FrameAttachmentData> _attachments;
+	HashMap<const QueuePassData *, Rc<FramePassData>> _renderPasses;
+	HashMap<const AttachmentData *, Rc<FrameAttachmentData>> _attachments;
 
 	HashSet<FramePassData *> _renderPassesInitial;
 	HashSet<FramePassData *> _renderPassesPrepared;

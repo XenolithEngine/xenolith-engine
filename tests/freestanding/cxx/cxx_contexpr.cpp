@@ -1,6 +1,5 @@
 /**
-Copyright (c) 2022 Roman Katuntsev <sbkarr@stappler.org>
-Copyright (c) 2023-2025 Stappler LLC <admin@stappler.dev>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,9 +20,48 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#include "SPCommon.h"
+#include <sprt/cxx/new>
+#include <sprt/cxx/forward_list>
+#include <sprt/runtime/stream.h>
 
-#include "SPThread.cc"
-#include "SPThreadTask.cc"
-#include "SPThreadPool.cc"
-#include "SPThreadTaskQueue.cc"
+namespace sprt {
+
+struct CustomType {
+	int x = 0;
+	int y = 0;
+
+	constexpr CustomType &operator+=(const CustomType &other) {
+		x += other.x;
+		y += other.y;
+		return *this;
+	}
+};
+
+consteval int get_value() {
+	auto t = sprt::memory::allocate<CustomType>();
+	auto v = sprt::memory::allocate<CustomType>();
+
+	using forward_list = sprt::__malloc_forward_list<int>;
+
+	forward_list list{1, 2, 3};
+
+	sprt::construct_at(t, CustomType{1, 2});
+	sprt::construct_at(v, CustomType{3, 4});
+
+	*t += *v;
+
+	auto ret = t->x + t->y;
+
+	sprt::memory::deallocate(t);
+	sprt::memory::deallocate(v);
+	return ret + list.front();
+}
+
+consteval int get_max_value() { return sprt::__vmax(1, 3, 5, 7, 2, 4); }
+
+void performConstexprTest() {
+	sprt::cout << "Constexpr test:\n calculated: " << get_value() << " " << get_max_value()
+			   << "\n\n";
+}
+
+} // namespace sprt

@@ -26,6 +26,7 @@
 
 #include "XLCoreQueue.h"
 #include "XLCoreAttachment.h"
+#include <sprt/runtime/mem/pool_ref.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
@@ -80,7 +81,7 @@ public:
 
 	const Rc<Queue> &getQueue() const;
 	const FrameConstraints &getFrameConstraints() const;
-	const Rc<PoolRef> &getPool() const { return _pool; }
+	const Rc<sprt::PoolRef> &getPool() const { return _pool; }
 	const Rc<FrameRequest> &getRequest() const { return _request; }
 
 	const ImageInfoData *getImageSpecialization(const ImageAttachment *) const;
@@ -125,8 +126,8 @@ public:
 	virtual void onQueueSubmitted(FrameQueue &);
 	virtual void onQueueComplete(FrameQueue &);
 	virtual void onQueueInvalidated(FrameQueue &);
-	virtual bool onOutputAttachment(FrameAttachmentData &);
-	virtual void onOutputAttachmentInvalidated(FrameAttachmentData &);
+	virtual bool onOutputAttachment(FrameAttachmentData *);
+	virtual void onOutputAttachmentInvalidated(FrameAttachmentData *);
 
 	virtual void waitForDependencies(const Vector<Rc<DependencyEvent>> &,
 			Function<void(FrameHandle &, bool)> &&);
@@ -152,7 +153,7 @@ protected:
 
 	Loop *_loop = nullptr; // loop can not die until frames are performed
 	Rc<Device> _device;
-	Rc<PoolRef> _pool;
+	Rc<sprt::PoolRef> _pool;
 	Rc<FrameRequest> _request;
 
 	uint64_t _timeStart = 0;

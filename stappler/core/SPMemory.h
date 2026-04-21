@@ -27,7 +27,6 @@ THE SOFTWARE.
 
 #include "SPCore.h"
 #include "SPString.h" // IWYU pragma: keep
-#include "SPTime.h"
 
 #ifdef MODULE_STAPPLER_DATA
 #include "SPData.h" // IWYU pragma: keep
@@ -80,66 +79,6 @@ public:
 	void (*clear_fn)(void *) = nullptr;
 	void (*reserve_fn)(void *, size_t) = nullptr;
 	void (*resize_fn)(void *, size_t) = nullptr;
-};
-
-class SP_PUBLIC AllocRef : public Ref {
-public:
-	virtual ~AllocRef() { sprt::memory::allocator::destroy(_allocator); }
-
-	AllocRef() { _allocator = sprt::memory::allocator::create(); }
-
-	memory::allocator_t *getAllocator() const { return _allocator; }
-
-	void setOwner(memory::pool_t *p) { sprt::memory::allocator::owner_set(_allocator, p); }
-	memory::pool_t *getOwner() const { return sprt::memory::allocator::owner_get(_allocator); }
-
-protected:
-	memory::allocator_t *_allocator = nullptr;
-};
-
-class SP_PUBLIC PoolRef : public Ref {
-public:
-	virtual ~PoolRef() {
-		if (_ownsAllocator) {
-			_allocator->setOwner(nullptr);
-		}
-		sprt::memory::pool::destroy(_pool);
-		_pool = nullptr;
-		_allocator = nullptr;
-		_ownsAllocator = false;
-	}
-
-	PoolRef(AllocRef *alloc = nullptr) {
-		_allocator = alloc;
-		if (!_allocator) {
-			_allocator = Rc<AllocRef>::alloc();
-			_ownsAllocator = true;
-		}
-		_pool = sprt::memory::pool::create(_allocator->getAllocator());
-		if (_ownsAllocator) {
-			_allocator->setOwner(_pool);
-		}
-	}
-
-	PoolRef(PoolRef *pool) {
-		_ownsAllocator = false;
-		_allocator = pool->_allocator;
-		_pool = sprt::memory::pool::create(_allocator->getAllocator());
-	}
-
-	memory::pool_t *getPool() const { return _pool; }
-
-	void *palloc(size_t size) { return sprt::memory::pool::palloc(_pool, size); }
-
-	template <typename Callable>
-	auto perform(const Callable &cb) {
-		return memory::perform(cb, _pool);
-	}
-
-protected:
-	Rc<AllocRef> _allocator;
-	memory::pool_t *_pool = nullptr;
-	bool _ownsAllocator = false;
 };
 
 } // namespace STAPPLER_VERSIONIZED stappler

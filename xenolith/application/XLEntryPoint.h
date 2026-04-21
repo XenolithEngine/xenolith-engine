@@ -26,7 +26,6 @@
 #include "XLContext.h" // IWYU pragma: keep
 #include "XLDirector.h" // IWYU pragma: keep
 #include "XLScene.h" // IWYU pragma: keep
-#include "SPEventTimerHandle.h" // IWYU pragma: keep
 
 // Syntactic sugar for SharedModule definition
 

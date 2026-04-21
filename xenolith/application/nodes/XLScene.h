@@ -46,7 +46,7 @@ public:
 
 	virtual bool init(Queue::Builder &&, const core::FrameConstraints &);
 
-	virtual void renderRequest(const Rc<FrameRequest> &, PoolRef *pool);
+	virtual void renderRequest(const Rc<FrameRequest> &, sprt::PoolRef *pool);
 	virtual void render(FrameInfo &info);
 
 	virtual void handleEnter(Scene *) override;

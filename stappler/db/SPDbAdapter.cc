@@ -90,7 +90,9 @@ void ApplicationInterface::defineErrorScheme(Scheme &scheme) {
 	// clang-format on
 }
 
+__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 ApplicationInterface::~ApplicationInterface() { }
+__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 db::Adapter ApplicationInterface::getAdapterFromContext() const {
 	if (auto p = pool::acquire()) {

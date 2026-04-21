@@ -30,7 +30,8 @@
 #include FT_ADVANCES_H
 
 #include "SPFontFace.h"
-#include "SPThread.h"
+
+#include <sprt/runtime/dispatch/thread.h>
 
 namespace STAPPLER_VERSIONIZED stappler::font {
 
@@ -293,7 +294,7 @@ Rc<FontFaceObjectHandle> FontLibrary::makeThreadHandle(const Rc<FontFaceObject> 
 	sprt::shared_lock sharedLock(_sharedMutex);
 	auto it = _threads.find(obj.get());
 	if (it != _threads.end()) {
-		auto iit = it->second.find(thread::Thread::getCurrentThreadId());
+		auto iit = it->second.find(sprt::dispatch::Thread::getCurrentThreadId());
 		if (iit != it->second.end()) {
 			return iit->second;
 		}
@@ -303,7 +304,7 @@ Rc<FontFaceObjectHandle> FontLibrary::makeThreadHandle(const Rc<FontFaceObject> 
 	sprt::unique_lock uniqueLock(_sharedMutex);
 	it = _threads.find(obj.get());
 	if (it != _threads.end()) {
-		auto iit = it->second.find(thread::Thread::getCurrentThreadId());
+		auto iit = it->second.find(sprt::dispatch::Thread::getCurrentThreadId());
 		if (iit != it->second.end()) {
 			return iit->second;
 		}
@@ -316,11 +317,13 @@ Rc<FontFaceObjectHandle> FontLibrary::makeThreadHandle(const Rc<FontFaceObject> 
 			obj->getSpec(), obj->getId());
 
 	if (it == _threads.end()) {
-		it = _threads.emplace(obj.get(), Map<thread::Thread::Id, Rc<FontFaceObjectHandle>>()).first;
+		it = _threads.emplace(obj.get(),
+							 Map<sprt::dispatch::Thread::Id, Rc<FontFaceObjectHandle>>())
+					 .first;
 	}
 
 	auto iit = it->second
-					   .emplace(thread::Thread::getCurrentThreadId(),
+					   .emplace(sprt::dispatch::Thread::getCurrentThreadId(),
 							   Rc<FontFaceObjectHandle>::create(this, move(target),
 									   [this](const FontFaceObjectHandle *obj) {
 		sprt::unique_lock lock(_mutex);

@@ -67,7 +67,7 @@ bool QueuePassHandle::init(QueuePass &pass, const FrameQueue &queue) {
 	return true;
 }
 
-void QueuePassHandle::setQueueData(FramePassData &data) { _queueData = &data; }
+void QueuePassHandle::setQueueData(FramePassData *data) { _queueData = data; }
 
 const FramePassData *QueuePassHandle::getQueueData() const { return _queueData; }
 

@@ -30,7 +30,6 @@
 #include "XLAppThread.cc"
 #include "XLAppWindow.cc"
 #include "XLLiveReload.cc"
-#include "XLLooperAdapter.cc"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 

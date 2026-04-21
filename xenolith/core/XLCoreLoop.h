@@ -53,11 +53,11 @@ public:
 
 	virtual ~Loop();
 
-	virtual bool init(NotNull<event::Looper>, NotNull<Instance>, Rc<LoopInfo> &&);
+	virtual bool init(NotNull<sprt::dispatch::Looper>, NotNull<Instance>, Rc<LoopInfo> &&);
 
 	Instance *getInstance() const { return _instance; }
 	FrameCache *getFrameCache() const { return _frameCache; }
-	event::Looper *getLooper() const { return _looper; }
+	sprt::dispatch::Looper *getLooper() const { return _looper; }
 
 	bool isOnThisThread() const;
 
@@ -79,7 +79,7 @@ public:
 	virtual void runRenderQueue(Rc<FrameRequest> &&req, uint64_t gen = 0,
 			Function<void(bool)> && = nullptr) = 0;
 
-	virtual void performInQueue(Rc<thread::Task> &&) const = 0;
+	virtual void performInQueue(Rc<sprt::dispatch::Task> &&) const = 0;
 	virtual void performInQueue(Function<void()> &&func, Ref *target = nullptr) const = 0;
 
 	virtual void performOnThread(Function<void()> &&func, Ref *target = nullptr,
@@ -128,7 +128,7 @@ protected:
 
 	Rc<Instance> _instance;
 	Rc<FrameCache> _frameCache;
-	event::Looper *_looper = nullptr;
+	sprt::dispatch::Looper *_looper = nullptr;
 };
 
 } // namespace stappler::xenolith::core

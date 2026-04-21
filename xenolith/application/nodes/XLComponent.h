@@ -109,7 +109,7 @@ struct Component {
 
 		if constexpr (sizeof(T) > STATIC_SIZE) {
 			soo = 0;
-			destructor = [](void *ptr) { delete reinterpret_cast<T *>(ptr); };
+			destructor = [](void *ptr) { sprt::__delete(reinterpret_cast<T *>(ptr)); };
 			dynamicStorage.size = sizeof(T);
 			auto d = new (sprt::nothrow) T(sprt::forward<Args>(args)...);
 			dynamicStorage.data = d;

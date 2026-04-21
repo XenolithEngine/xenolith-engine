@@ -69,6 +69,9 @@ public:
 protected:
 	friend class Asset;
 
+	template <typename T, typename... Args>
+	friend constexpr T *sprt::__construct_at(T *, Args &&...) noexcept;
+
 	AssetLock(Rc<Asset> &&, const AssetVersionData &, Function<void(const AssetVersionData &)> &&,
 			Ref *owner);
 

@@ -21,7 +21,8 @@
  **/
 
 #include "XLLiveReload.h"
-#include "SPEventLooper.h"
+
+#include <sprt/runtime/dispatch/looper.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -30,16 +31,17 @@ LiveReloadLibrary::~LiveReloadLibrary() {
 		auto tmp = new (sprt::nothrow) sprt::Dso(sp::move(library));
 		releaseLooper->performOnThread([looper = releaseLooper, tmp, path = sp::move(path)] {
 			looper->schedule(TimeInterval::milliseconds(100),
-					[tmp, path = sp::move(path)](event::Handle *, bool) {
+					[tmp, path = sp::move(path)](sprt::dispatch::Handle *, bool) {
 				tmp->close();
-				delete tmp;
+				sprt::__delete(tmp);
 				filesystem::remove(FileInfo(path));
 			});
 		}, nullptr, false);
 	}
 }
 
-bool LiveReloadLibrary::init(StringView p, Time time, uint32_t version, event::Looper *looper) {
+bool LiveReloadLibrary::init(StringView p, Time time, uint32_t version,
+		sprt::dispatch::Looper *looper) {
 	library = sprt::Dso(p, version);
 	if (library) {
 		path = p.str<Interface>();

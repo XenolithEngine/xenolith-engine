@@ -27,6 +27,8 @@ THE SOFTWARE.
 #include "XLVk.h"
 #include "XLCoreObject.h"
 
+#include <sprt/runtime/dispatch/handle.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
 
 class Device;
@@ -65,7 +67,7 @@ public:
 
 	VkFence getFence() const { return _fence; }
 
-	Rc<event::Handle> exportFence(Loop &, Function<void()> &&);
+	Rc<sprt::dispatch::Handle> exportFence(Loop &, Function<void()> &&);
 
 protected:
 	using core::Object::init;
@@ -77,6 +79,6 @@ protected:
 	bool _exportable = false;
 };
 
-}
+} // namespace stappler::xenolith::vk
 
 #endif /* XENOLITH_BACKEND_VK_XLVKSYNC_H_ */

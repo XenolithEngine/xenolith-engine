@@ -127,7 +127,7 @@ void performDirTest() {
 
 static void removeFileAt(const char *dirPath, const char *fileName) {
 	filepath::merge([&](sprt::StringView filepath) {
-		filepath.performWithTerminated([&](const char *cFilePath, size_t) { remove(cFilePath); });
+		filepath.performWithTerminated([&](const char *cFilePath, size_t) { ::remove(cFilePath); });
 	}, dirPath, fileName);
 }
 
@@ -190,12 +190,12 @@ void performDirLinkTest(const char *originalDirPath, const char *linkDirPath) {
 						performFileLinkatTest(dirfd, originalDirPath, "testfile.txt",
 								"testfile_link.txt");
 						performFileLinkTest(cFilePath, linkFilePath);
-						remove(linkFilePath); //
+						::remove(linkFilePath); //
 					}
 				});
 			}, originalDirPath, "testfile_link.txt");
 
-			if (remove(cFilePath) != 0) {
+			if (::remove(cFilePath) != 0) {
 				sprt::oslog::vperror(__SPRT_LOCATION, "main", "fail to remove file",
 						sprt::status::errnoToStatus(errno));
 			}
@@ -244,7 +244,7 @@ void performLinkTest() {
 
 	sprt::filepath::merge([](sprt::StringView path) {
 		path.performWithTerminated([&](const char *cDirPath, size_t) {
-			auto ret = remove(cDirPath);
+			auto ret = ::remove(cDirPath);
 			if (ret != 0) {
 				sprt::oslog::vperror(__SPRT_LOCATION, "main",
 						"fail to remove directory: ", sprt::status::errnoToStatus(errno));
@@ -254,7 +254,7 @@ void performLinkTest() {
 
 	sprt::filepath::merge([](sprt::StringView path) {
 		path.performWithTerminated([&](const char *cDirPath, size_t) {
-			auto ret = remove(cDirPath);
+			auto ret = ::remove(cDirPath);
 			if (ret != 0) {
 				sprt::oslog::vperror(__SPRT_LOCATION, "main",
 						"fail to remove directory: ", sprt::status::errnoToStatus(errno));

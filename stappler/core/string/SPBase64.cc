@@ -23,8 +23,8 @@ THE SOFTWARE.
 
 #include "SPString.h"
 
-#include <sprt/runtime/base64.h>
-#include <sprt/runtime/base16.h>
+#include <sprt/runtime/utils/base64.h>
+#include <sprt/runtime/utils/base16.h>
 
 namespace STAPPLER_VERSIONIZED stappler::base64 {
 

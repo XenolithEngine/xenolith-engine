@@ -26,10 +26,9 @@
 #include "SPFilesystem.h"
 #include "XLStorageComponent.h"
 #include "SPValid.h"
-#include "SPThread.h"
 #include "SPSqlDriver.h"
 
-#include <sprt/runtime/thread/info.h>
+#include <sprt/runtime/dispatch/thread_info.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::storage {
 
@@ -82,11 +81,11 @@ struct ServerDataStorage : memory::AllocPool {
 	db::Map<StringView, const db::Scheme *> predefinedSchemes;
 	db::Map<ComponentContainer *, ServerComponentData *> components;
 	db::String documentRoot;
-	memory::PriorityQueue<ServerDataTaskCallback> queue;
+	sprt::dispatch::PriorityQueue<ServerDataTaskCallback> queue;
 	StringView serverName;
 };
 
-struct Server::ServerData : public thread::Thread, public db::ApplicationInterface {
+struct Server::ServerData : public sprt::dispatch::Thread, public db::ApplicationInterface {
 	memory::allocator_t *_serverAlloc = nullptr;
 	memory::pool_t *serverPool = nullptr;
 	memory::pool_t *threadPool = nullptr;
@@ -160,7 +159,7 @@ bool Server::init(AppThread *app, const Value &params) {
 
 	memory::context ctx(pool);
 
-	_data = new (sprt::nothrow) ServerData;
+	_data = sprt::RefAlloc::__new<ServerData>();
 	_data->_serverAlloc = alloc;
 	_data->serverPool = pool;
 	_data->application = app;
@@ -206,7 +205,7 @@ void Server::invalidate(AppThread *) {
 		memory::pool::destroy(serverPool);
 		memory::allocator::destroy(alloc);
 		_data->storage = nullptr;
-		_data->release(0);
+		sprt::release(_data, 0);
 		_data = nullptr;
 	}
 }
@@ -257,12 +256,12 @@ bool Server::removeComponentContainer(const Rc<ComponentContainer> &comp) {
 		return false;
 	}
 
-	auto refId = _data->application->retain();
-	auto selfRefId = retain();
+	auto refId = sprt::retain(_data->application);
+	auto selfRefId = sprt::retain(this);
 	perform([this, comp, refId, selfRefId](const Server &serv, const db::Transaction &t) -> bool {
 		_data->removeComponent(comp, t);
-		_data->application->release(refId);
-		release(selfRefId);
+		sprt::release(_data->application, refId);
+		sprt::release(this, selfRefId);
 		return true;
 	}, comp);
 	_data->appComponents.erase(it);
@@ -766,7 +765,7 @@ bool Server::perform(Function<bool(const Server &, const db::Transaction &)> &&c
 		return false;
 	}
 
-	if (thread::Thread::getCurrentThreadId() == _data->getThreadId()) {
+	if (sprt::dispatch::Thread::getCurrentThreadId() == _data->getThreadId()) {
 		_data->execute(ServerDataTaskCallback(sp::move(cb), ref));
 	} else {
 		_data->storage->queue.push(0, false, ServerDataTaskCallback(sp::move(cb), ref));
@@ -902,7 +901,7 @@ void Server::ServerData::threadInit() {
 	runAsync();
 
 	if (!storage->serverName.empty()) {
-		sprt::_thread::info::set(storage->serverName);
+		sprt::dispatch::thread_info::set(storage->serverName);
 	}
 
 	now = sp::platform::clock(ClockType::Monotonic);
@@ -923,8 +922,9 @@ bool Server::ServerData::worker() {
 
 	ServerDataTaskCallback task;
 	do {
-		storage->queue.pop_direct([&](memory::PriorityQueue<ServerDataTaskCallback>::PriorityType,
-										  ServerDataTaskCallback &&cb) { task = move(cb); });
+		storage->queue.pop_direct(
+				[&](sprt::dispatch::PriorityQueue<ServerDataTaskCallback>::PriorityType,
+						ServerDataTaskCallback &&cb) { task = move(cb); });
 	} while (0);
 
 	if (!task.callback) {
@@ -950,7 +950,7 @@ void Server::ServerData::threadDispose() {
 		ServerDataTaskCallback task;
 		do {
 			storage->queue.pop_direct(
-					[&](memory::PriorityQueue<ServerDataTaskCallback>::PriorityType,
+					[&](sprt::dispatch::PriorityQueue<ServerDataTaskCallback>::PriorityType,
 							ServerDataTaskCallback &&cb) SP_COVERAGE_TRIVIAL { task = move(cb); });
 		} while (0);
 
@@ -1061,12 +1061,14 @@ void Server::ServerData::initTransaction(db::Transaction &t) const {
 	}
 }
 
+__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 ServerComponentLoader::~ServerComponentLoader() {
 	if (_pool) {
 		memory::pool::destroy(_pool);
 		_pool = nullptr;
 	}
 }
+__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 ServerComponentLoader::ServerComponentLoader(Server::ServerData *data, const db::Transaction &t)
 : _data(data)

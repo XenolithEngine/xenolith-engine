@@ -474,7 +474,8 @@ Value SqlHandle::getHistory(const Scheme &scheme, const stappler::Time &time, bo
 						default: break;
 						}
 					} else if (name == "time") {
-						d.setString(Time::microseconds(it.toInteger(i)).toHttp<Interface>(),
+						d.setString(Time::microseconds(it.toInteger(i))
+											.toHttp<typename Interface::StringType>(),
 								"http-date");
 						d.setInteger(it.toInteger(i), "time");
 					} else if (name == "user" && resolveUsers) {
@@ -522,7 +523,8 @@ Value SqlHandle::getHistory(const db::FieldView &view, const Scheme *scheme, uin
 					if (name == "tag") {
 						d.setInteger(it.toInteger(i), "tag");
 					} else if (name == "time") {
-						d.setString(Time::microseconds(it.toInteger(i)).toHttp<Interface>(),
+						d.setString(Time::microseconds(it.toInteger(i))
+											.toHttp<typename Interface::StringType>(),
 								"http-date");
 						d.setInteger(it.toInteger(i), "time");
 					} else if (name == "user" && resolveUsers) {

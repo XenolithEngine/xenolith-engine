@@ -26,7 +26,8 @@
 
 #include "XLCore.h" // IWYU pragma: keep
 
-#include <sprt/runtime/dso.h>
+#include <sprt/runtime/dispatch/looper.h>
+#include <sprt/runtime/utils/dso.h>
 #include <sprt/runtime/window/gapi.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
@@ -73,7 +74,7 @@ public:
 
 	Instance(InstanceApi b, InstanceFlags flags, sprt::Dso &&);
 
-	virtual Rc<Loop> makeLoop(NotNull<event::Looper>, Rc<core::LoopInfo> &&) const;
+	virtual Rc<Loop> makeLoop(NotNull<sprt::dispatch::Looper>, Rc<core::LoopInfo> &&) const;
 
 	InstanceApi getApi() const { return _api; }
 	InstanceFlags getFlags() const { return _flags; }

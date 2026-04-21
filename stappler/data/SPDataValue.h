@@ -27,7 +27,6 @@ THE SOFTWARE.
 
 #include "SPString.h"
 #include "SPLog.h"
-#include "SPTime.h"
 #include "SPDataTraits.h"
 
 namespace STAPPLER_VERSIONIZED stappler::data {
@@ -963,19 +962,19 @@ void ValueTemplate<Interface>::clear() {
 	case Type::DOUBLE: doubleVal = 0.0; break;
 	case Type::BOOLEAN: boolVal = false; break;
 	case Type::CHARSTRING:
-		delete strVal;
+		sprt::__delete(strVal);
 		strVal = nullptr;
 		break;
 	case Type::BYTESTRING:
-		delete bytesVal;
+		sprt::__delete(bytesVal);
 		bytesVal = nullptr;
 		break;
 	case Type::ARRAY:
-		delete arrayVal;
+		sprt::__delete(arrayVal);
 		arrayVal = nullptr;
 		break;
 	case Type::DICTIONARY:
-		delete dictVal;
+		sprt::__delete(dictVal);
 		dictVal = nullptr;
 		break;
 	default: break;
@@ -1007,7 +1006,7 @@ void ValueTemplate<Interface>::reset(Type type) {
 template <typename Interface>
 template <class Val, class Key>
 auto ValueTemplate<Interface>::setValue(Val &&value, Key &&key) -> Self & {
-	if constexpr (sprt::is_integral<typename sprt::remove_reference<Key>::type>::value) {
+	if constexpr (sprt::is_integral_v<sprt::remove_reference_t<Key>>) {
 		if (convertToArray((int)key)) {
 			arrayVal->at(key) = sprt::forward<Val>(value);
 			return arrayVal->at(key);
@@ -1020,9 +1019,7 @@ auto ValueTemplate<Interface>::setValue(Val &&value, Key &&key) -> Self & {
 				i->second = sprt::forward<Val>(value);
 				return i->second;
 			} else {
-				if constexpr (sprt::is_same_v<StringView,
-									  typename sprt::remove_cv<
-											  typename sprt::remove_reference< Key>::type>::type>) {
+				if constexpr (sprt::is_same_v<StringView, typename sprt::remove_cvref_t< Key>>) {
 					return dictVal
 							->emplace(key.template str<typename Interface::StringType>(),
 									sprt::forward<Val>(value))

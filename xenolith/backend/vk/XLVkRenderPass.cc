@@ -1114,14 +1114,14 @@ bool RenderPass::initGraphicsPass(Device &dev, QueuePassData &data) {
 	}
 
 	if (initDescriptors(dev, data, pass)) {
-		auto l = new Data(move(pass));
+		auto l = new (sprt::nothrow) Data(move(pass));
 		_data = l;
 		return core::RenderPass::init(dev,
 				[](core::Device *dev, core::ObjectType, ObjectHandle, void *ptr) {
 			auto d = ((Device *)dev);
 			auto l = (Data *)ptr;
 			l->cleanup(*d);
-			delete l;
+			sprt::__delete(l);
 		}, core::ObjectType::RenderPass, ObjectHandle(_data->renderPass), l);
 	}
 
@@ -1131,14 +1131,14 @@ bool RenderPass::initGraphicsPass(Device &dev, QueuePassData &data) {
 bool RenderPass::initComputePass(Device &dev, QueuePassData &data) {
 	Data pass;
 	if (initDescriptors(dev, data, pass)) {
-		auto l = new Data(move(pass));
+		auto l = new (sprt::nothrow) Data(move(pass));
 		_data = l;
 		return core::RenderPass::init(dev,
 				[](core::Device *dev, core::ObjectType, ObjectHandle, void *ptr) {
 			auto d = ((Device *)dev);
 			auto l = (Data *)ptr;
 			l->cleanup(*d);
-			delete l;
+			sprt::__delete(l);
 		}, core::ObjectType::RenderPass, ObjectHandle(_data->renderPass), l);
 	}
 
@@ -1147,27 +1147,27 @@ bool RenderPass::initComputePass(Device &dev, QueuePassData &data) {
 
 bool RenderPass::initTransferPass(Device &dev, QueuePassData &) {
 	// init nothing - no descriptors or render pass implementation needed
-	auto l = new Data();
+	auto l = new (sprt::nothrow) Data();
 	_data = l;
 	return core::RenderPass::init(dev,
 			[](core::Device *dev, core::ObjectType, ObjectHandle, void *ptr) {
 		auto d = ((Device *)dev);
 		auto l = (Data *)ptr;
 		l->cleanup(*d);
-		delete l;
+		sprt::__delete(l);
 	}, core::ObjectType::RenderPass, ObjectHandle(_data->renderPass), l);
 }
 
 bool RenderPass::initGenericPass(Device &dev, QueuePassData &) {
 	// init nothing - no descriptors or render pass implementation needed
-	auto l = new Data();
+	auto l = new (sprt::nothrow) Data();
 	_data = l;
 	return core::RenderPass::init(dev,
 			[](core::Device *dev, core::ObjectType, ObjectHandle, void *ptr) {
 		auto d = ((Device *)dev);
 		auto l = (Data *)ptr;
 		l->cleanup(*d);
-		delete l;
+		sprt::__delete(l);
 	}, core::ObjectType::RenderPass, ObjectHandle(_data->renderPass), l);
 }
 

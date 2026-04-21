@@ -234,7 +234,7 @@ public:
 	virtual bool init(const Rc<Attachment> &, const FrameQueue &);
 	virtual bool init(Attachment &, const FrameQueue &);
 
-	virtual void setQueueData(FrameAttachmentData &);
+	virtual void setQueueData(FrameAttachmentData *);
 
 	virtual FrameAttachmentData *getQueueData() const { return _queueData; }
 

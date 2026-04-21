@@ -26,7 +26,7 @@
 #include "SPSqliteDriver.h"
 
 #include <sqlite3.h>
-#include <sprt/runtime/dso.h>
+#include <sprt/runtime/utils/dso.h>
 #include <sprt/cxx/mutex>
 
 namespace STAPPLER_VERSIONIZED stappler::db::sqlite {
@@ -311,7 +311,7 @@ int DriverSym::finalize(sqlite3_stmt *pStmt) const {
 
 DriverLibStorage *DriverLibStorage::getInstance() {
 	if (!s_libStorage) {
-		s_libStorage = new DriverLibStorage;
+		s_libStorage = new (sprt::nothrow) DriverLibStorage;
 	}
 	return s_libStorage;
 }

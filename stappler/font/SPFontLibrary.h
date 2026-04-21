@@ -24,7 +24,8 @@
 #define CORE_FONT_SPFONTLIBRARY_H_
 
 #include "SPFontFace.h"
-#include "SPThread.h"
+
+#include <sprt/runtime/dispatch/thread.h>
 
 namespace STAPPLER_VERSIONIZED stappler::font {
 
@@ -106,7 +107,7 @@ protected:
 	sprt::shared_mutex _sharedMutex;
 	Map<StringView, Rc<FontFaceObject>> _faces;
 	Map<StringView, Rc<FontFaceData>> _data;
-	Map<FontFaceObject *, Map<thread::Thread::Id, Rc<FontFaceObjectHandle>>> _threads;
+	Map<FontFaceObject *, Map<sprt::dispatch::Thread::Id, Rc<FontFaceObjectHandle>>> _threads;
 	FT_Library _library = nullptr;
 
 	sprt::bitset<1'024 * 16> _fontIds;

@@ -24,7 +24,6 @@ THE SOFTWARE.
 #include "SPNetworkData.h"
 
 #include "SPFilepath.h"
-#include "SPTime.h"
 #include "SPValid.h"
 #include "SPCrypto.h"
 #include "SPFilesystem.h"

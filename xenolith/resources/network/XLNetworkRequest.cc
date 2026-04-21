@@ -47,7 +47,7 @@ bool Handle::prepare(Context *ctx) {
 	auto appInfo = _controller->getApplication()->getContext()->getInfo();
 
 	if (_mtime > 0) {
-		auto httpTime = Time::microseconds(_mtime).toHttp<Interface>();
+		auto httpTime = Time::microseconds(_mtime).toHttp<typename Interface::StringType>();
 		ctx->headers =
 				curl_slist_append(ctx->headers, toString("If-Modified-Since: ", httpTime).data());
 	}

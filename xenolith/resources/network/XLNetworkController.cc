@@ -27,7 +27,7 @@
 #include "XLNetworkRequest.h"
 #include "XLContext.h"
 
-#include <sprt/runtime/thread/info.h>
+#include <sprt/runtime/dispatch/thread_info.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::network {
 
@@ -39,7 +39,7 @@ struct ControllerHandle {
 	Context context;
 };
 
-struct Controller::Data final : thread::Thread {
+struct Controller::Data final : sprt::dispatch::Thread {
 	using Context = stappler::network::Context<Interface>;
 
 	AppThread *_application = nullptr;
@@ -52,7 +52,7 @@ struct Controller::Data final : thread::Thread {
 
 	CURLM *_handle = nullptr;
 
-	memory::PriorityQueue<Rc<Request>> _pending;
+	sprt::dispatch::PriorityQueue<Rc<Request>> _pending;
 
 	Map<String, void *> _sharegroups;
 
@@ -102,7 +102,7 @@ void Controller::Data::threadInit() {
 	_pending.setQueueLocking(_mutexQueue);
 	_pending.setFreeLocking(_mutexFree);
 
-	sprt::_thread::info::set(_name);
+	sprt::dispatch::thread_info::set(_name);
 
 	_handle = curl_multi_init();
 
@@ -115,8 +115,9 @@ bool Controller::Data::worker() {
 	}
 
 	do {
-		if (!_pending.pop_direct([&, this](memory::PriorityQueue<Rc<Handle>>::PriorityType type,
-										 Rc<Request> &&it) {
+		if (!_pending.pop_direct(
+					[&, this](sprt::dispatch::PriorityQueue<Rc<Handle>>::PriorityType type,
+							Rc<Request> &&it) {
 			auto h = curl_easy_init();
 			auto networkHandle = const_cast<Handle *>(&it->getHandle());
 			auto i = _handles.emplace(h, ControllerHandle{move(it), networkHandle}).first;
@@ -266,7 +267,7 @@ bool Controller::Data::onComplete(Handle *handle, bool success) {
 }
 
 void Controller::Data::sign(NetworkHandle &handle, Context &ctx) const {
-	String date = Time::now().toHttp<Interface>();
+	String date = Time::now().toHttp<typename Interface::StringType>();
 
 	auto appInfo = _application->getContext()->getInfo();
 
@@ -313,7 +314,7 @@ Rc<ApplicationExtension> Controller::createController(AppThread *app, StringView
 }
 
 Controller::Controller(AppThread *app, StringView name, Bytes &&signKey) {
-	_data = new (sprt::nothrow) Data(app, this, name, sp::move(signKey));
+	_data = sprt::RefAlloc::__new<Data>(app, this, name, sp::move(signKey));
 	_data->init();
 	_data->run();
 }
@@ -326,7 +327,7 @@ void Controller::invalidate(AppThread *) {
 	_data->stop();
 	curl_multi_wakeup(_data->_handle);
 	_data->waitStopped();
-	delete _data;
+	sprt::__delete(_data);
 	_data = nullptr;
 }
 

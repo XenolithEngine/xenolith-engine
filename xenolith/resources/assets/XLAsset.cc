@@ -95,11 +95,8 @@ Rc<AssetLock> Asset::lockVersion(int64_t id, Ref *owner) {
 	for (auto &it : _versions) {
 		if (it.id == id && it.complete) {
 			++it.locked;
-			auto ret = new (sprt::nothrow) AssetLock(this, it,
+			return Rc<AssetLock>::create(this, it,
 					[this](const VersionData &data) { releaseLock(data); }, owner);
-			auto ref = Rc<AssetLock>(ret);
-			ret->release(0);
-			return ref;
 		}
 	}
 	return nullptr;
@@ -110,11 +107,8 @@ Rc<AssetLock> Asset::lockReadableVersion(Ref *owner) {
 	for (auto &it : _versions) {
 		if (it.complete && filesystem::exists(FileInfo{it.path})) {
 			++it.locked;
-			auto ret = new (sprt::nothrow) AssetLock(this, it,
+			return Rc<AssetLock>::create(this, it,
 					[this](const VersionData &data) { releaseLock(data); }, owner);
-			auto ref = Rc<AssetLock>(ret);
-			ret->release(0);
-			return ref;
 		}
 	}
 	return nullptr;

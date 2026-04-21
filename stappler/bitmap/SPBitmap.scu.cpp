@@ -63,7 +63,7 @@ SPUNUSED static sprt::unique_lock<sprt::mutex> lockFormatList() {
 
 SPUNUSED static void addCustomFormat(BitmapFormat &&fmt) {
 	auto lock = lockFormatList();
-	_formatList.emplace_back(new BitmapFormat(move(fmt)));
+	_formatList.emplace_back(new (sprt::nothrow) BitmapFormat(move(fmt)));
 }
 
 SPUNUSED static const mem_std::Vector<BitmapFormat *> &getCustomFormats() { return _formatList; }

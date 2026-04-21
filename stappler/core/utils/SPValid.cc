@@ -25,7 +25,7 @@ THE SOFTWARE.
 #include "SPUrl.h"
 #include "SPString.h"
 #include <sprt/runtime/platform.h>
-#include <sprt/runtime/idn.h>
+#include <sprt/runtime/utils/idn.h>
 
 #include <sys/random.h>
 

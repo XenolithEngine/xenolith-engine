@@ -28,7 +28,7 @@ THE SOFTWARE.
 #include "SPThread.h"
 #endif
 
-#include <sprt/runtime/thread/info.h>
+#include <sprt/runtime/dispatch/thread_info.h>
 #include <sprt/cxx/mutex>
 
 #include <stdarg.h>
@@ -115,10 +115,10 @@ static void DefaultLog2(LogType type, StringView tag, const sprt::source_locatio
 #endif
 
 	prefixStream << s_logManager.features.italic;
-	if (auto local = sprt::_thread::info::get()) {
+	if (auto local = sprt::dispatch::thread_info::get()) {
 		if (!local->managed) {
 			prefixStream << "[Thread:" << __sprt_gettid() << "]";
-		} else if (local->workerId == sprt::_thread::info::DetachedWorker) {
+		} else if (local->workerId == sprt::dispatch::thread_info::DetachedWorker) {
 			prefixStream << "[" << local->name << "]";
 		} else {
 			prefixStream << "[" << local->name << ":" << local->workerId << "]";
@@ -158,10 +158,10 @@ static void DefaultLog(LogType type, StringView tag, const sprt::source_location
 		int size = ::vsnprintf(stackBuf, size_t(1_KiB - 1), va.format.format, tmpList);
 		va_end(tmpList);
 		if (size > int(1_KiB - 1)) {
-			char *buf = new char[size + 1];
+			char *buf = __sprt_typed_malloca(char, size + 1);
 			size = ::vsnprintf(buf, size_t(size), va.format.format, va.format.args);
 			DefaultLog2(type, tag, source, StringView(buf, size));
-			delete[] buf;
+			__sprt_freea(buf);
 		} else if (size >= 0) {
 			DefaultLog2(type, tag, source, StringView(stackBuf, size));
 		} else {

@@ -27,7 +27,6 @@
 
 #include "SPIO.h" // IWYU pragma: keep
 #include "SPLog.h" // IWYU pragma: keep
-#include "SPTime.h"
 #include "SPFilepath.h"
 #include "SPFilesystemFile.h"
 

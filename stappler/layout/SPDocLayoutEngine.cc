@@ -97,7 +97,7 @@ LayoutEngine::~LayoutEngine() {
 	if (_data) {
 		auto p = _data->pool;
 		_data->document = nullptr;
-		delete _data;
+		sprt::__delete(_data);
 		memory::pool::destroy(p);
 		_data = nullptr;
 	}

@@ -61,7 +61,7 @@ FormatStorage *FormatStorage::getInstance() {
 	static FormatStorage *s_sharedInstance = nullptr;
 	sprt::unique_lock mutex(getMutex());
 	if (!s_sharedInstance) {
-		s_sharedInstance = new FormatStorage();
+		s_sharedInstance = new (sprt::nothrow) FormatStorage();
 	}
 	return s_sharedInstance;
 }

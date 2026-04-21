@@ -127,7 +127,7 @@ private:
 			const Vector<StringView> &requiredExtension);
 
 	const vk::Instance *_vkInstance = nullptr;
-	const DeviceTable *_table = nullptr;
+	DeviceTable *_table = nullptr;
 #if VK_HOOK_DEBUG
 	const DeviceTable *_original = nullptr;
 #endif

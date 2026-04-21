@@ -94,7 +94,8 @@ public:
 
 	virtual bool readDeviceProperties(size_t, sprt::window::gapi::DeviceProperties &) override;
 
-	virtual Rc<core::Loop> makeLoop(NotNull<event::Looper>, Rc<core::LoopInfo> &&) const override;
+	virtual Rc<core::Loop> makeLoop(NotNull<sprt::dispatch::Looper>,
+			Rc<core::LoopInfo> &&) const override;
 
 	Rc<Device> makeDevice(const core::LoopInfo &) const;
 

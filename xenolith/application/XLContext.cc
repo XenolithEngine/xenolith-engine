@@ -28,13 +28,13 @@
 #include "XLCoreEnum.h"
 #include "XLDirector.h"
 #include "XLScene.h"
-#include "XLLooperAdapter.h"
 
 #if MODULE_XENOLITH_BACKEND_VK
 #include "XLVkInstance.h"
 #endif
 
 #include <sprt/runtime/window/native_window.h>
+#include <sprt/runtime/window/display_config.h>
 #include <sprt/runtime/window/controller.h>
 #include <sprt/runtime/window/clipboard.h>
 
@@ -140,7 +140,26 @@ static int Context_runWithConfig(ContextConfig &&config, ContentInitializer &&in
 	container->context = sprt::move(ctx);
 	container->controller = container->context->getController();
 
-	return container->controller->run(container);
+	auto ret = container->controller->run(container);
+
+#if DEBUG
+	if (container->controller->getReferenceCount() > 1) {
+		auto c = container->controller.get();
+		container->controller = nullptr;
+
+		c->foreachBacktrace([](uint64_t id, time_t t, const sprt::__pool_list<StringView> &list) {
+			sprt::cout << "Ref:" << id << "\n";
+			for (auto &it : list) {
+				sprt::cout << it << "\n\n"; //
+			}
+		});
+	}
+#endif
+
+	container->controller = nullptr;
+	container->context = nullptr;
+
+	return ret;
 }
 
 int Context::run(int argc, const char **argv) {
@@ -229,7 +248,10 @@ int Context::run(NativeContextHandle *ctx) {
 
 Context::Context() { }
 
-Context::~Context() { _initializer.terminate(); }
+Context::~Context() {
+	_controller = nullptr;
+	_initializer.terminate();
+}
 
 bool Context::init(ContextConfig &&info, ContentInitializer &&init) {
 	_initializer = sp::move(init);
@@ -239,18 +261,17 @@ bool Context::init(ContextConfig &&info, ContentInitializer &&init) {
 
 	_info = info.context;
 
-	auto engineMask = event::QueueEngine::Any;
+	auto engineMask = sprt::dispatch::QueueEngine::Any;
 #if ANDROID
 	engineMask = event::QueueEngine::EPoll;
 #endif
 
-	_looper = event::Looper::acquire(event::LooperInfo{
+	_looper = sprt::dispatch::Looper::acquire(sprt::dispatch::LooperInfo{
 		.workersCount = info.context->mainThreadsCount,
 		.engineMask = engineMask,
 	});
 
-	_controller = sprt::window::ContextController::create(this, move(info),
-			Rc<LooperAdapter>::create(_looper));
+	_controller = sprt::window::ContextController::create(this, move(info), _looper);
 
 	if (!_controller) {
 		log::source().error("Context", "Fail to create ContextController");
@@ -274,13 +295,12 @@ bool Context::init(ContextConfig &&info, ContentInitializer &&init) {
 		// add timer-based watchdog
 		// later we implement watchdog, based on event queue
 		_liveReloadWatchdog = _looper->scheduleTimer(
-				event::TimerInfo{
-					.completion = event::TimerInfo::Completion::create<Context>(this,
-							[](Context *ctx, event::TimerHandle *, uint32_t value, Status) {
-			ctx->updateLiveReload();
-		}),
+				sprt::dispatch::TimerInfo{
+					.completion = sprt::dispatch::TimerInfo::Completion::create<Context>(this,
+							[](Context *ctx, sprt::dispatch::TimerHandle *, uint32_t value,
+									Status) { ctx->updateLiveReload(); }),
 					.interval = TimeInterval::milliseconds(250),
-					.count = event::TimerInfo::Infinite,
+					.count = sprt::dispatch::TimerInfo::Infinite,
 				},
 				this);
 	}

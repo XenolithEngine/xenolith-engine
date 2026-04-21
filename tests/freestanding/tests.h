@@ -1,6 +1,5 @@
 /**
-Copyright (c) 2022 Roman Katuntsev <sbkarr@stappler.org>
-Copyright (c) 2023-2025 Stappler LLC <admin@stappler.dev>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -21,29 +20,34 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#include "SPCommon.h"
-#include "SPThreadTaskQueue.h"
+namespace sprt {
 
-#if (LINUX)
+void performUnameTest();
+void performUnistdTest();
+void performDirTest();
+void performLinkTest();
 
-namespace STAPPLER_VERSIONIZED stappler::thread {
+void performPthreadCreateTest();
+void performPthreadMutexTest();
+void performPthreadCondTest();
+void performPthreadRwlockTest();
+void performPthreadBarrierTest();
+void performPthreadSpinlockTest();
 
-struct ThreadCallbacks;
+void performMallocStringTests();
 
-static void ThreadCallbacks_init(const ThreadCallbacks &, Thread *tm);
-static bool ThreadCallbacks_worker(const ThreadCallbacks &, Thread *tm);
-static void ThreadCallbacks_dispose(const ThreadCallbacks &, Thread *tm);
+void performMallocUnorderedMapTests();
+void performMallocUnorderedSetTests();
+void performMallocListTests();
+void performThreadTests();
+void performMallocForwardListTests();
+void performVariantTests();
+void performOptionalTests();
+void performSortTests();
+void performConstexprTest();
+void performSharedMutexStressTests();
 
-static void _setThreadName(StringView name) {
-	pthread_setname_np(pthread_self(), name.data());
-}
+void performRefTests();
+void performDispatchTests();
 
-static void _workerThread(const ThreadCallbacks &cb, Thread *tm) {
-	ThreadCallbacks_init(cb, tm);
-    while (ThreadCallbacks_worker(cb, tm)) { }
-    ThreadCallbacks_dispose(cb, tm);
-}
-
-}
-
-#endif
+} // namespace sprt

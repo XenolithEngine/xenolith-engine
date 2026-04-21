@@ -30,7 +30,6 @@ THE SOFTWARE.
 #include "SPGost3411-2012.cc"
 #include "SPHtmlParser.cc"
 #include "SPLog.cc"
-#include "SPTime.cc"
 #include "SPSharedModule.cc"
 
 #include "platform/SPCoreRuntime.cc"

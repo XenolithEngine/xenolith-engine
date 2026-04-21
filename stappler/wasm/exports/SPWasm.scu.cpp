@@ -58,7 +58,7 @@ static NativeModule s_wasmModule("stappler:wasm/wasm", stapper_wasm_symbols,
 Runtime *Runtime::getInstance() {
 	std::unique_lock lock(s_loadMutex);
 	if (!s_instance) {
-		s_instance = new Runtime;
+		s_instance = new (sprt::nothrow) Runtime;
 	}
 	return s_instance;
 }
@@ -69,7 +69,7 @@ Runtime::~Runtime() {
 		_data->enabled = false;
 	}
 	if (_data) {
-		delete _data;
+		sprt::__delete(_data);
 		_data = nullptr;
 	}
 }

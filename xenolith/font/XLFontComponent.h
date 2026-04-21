@@ -34,7 +34,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 class FontComponent;
 
 struct SP_PUBLIC RenderFontInput : public core::AttachmentInputData {
-	Rc<event::Looper> queue;
+	Rc<sprt::dispatch::Looper> queue;
 	Rc<core::DynamicImage> image;
 	Rc<FontComponent> ext;
 	Vector<FontUpdateRequest> requests;
@@ -47,8 +47,8 @@ public:
 
 	static Rc<ContextComponent> createFontComponent(Context *);
 
-	static Rc<FontController> createDefaultController(FontComponent *, event::Looper *looper,
-			StringView);
+	static Rc<FontController> createDefaultController(FontComponent *,
+			sprt::dispatch::Looper *looper, StringView);
 
 	static FontController::Builder makeDefaultControllerBuilder(StringView);
 
@@ -69,19 +69,20 @@ public:
 
 	virtual void update();
 
-	Rc<FontController> acquireController(event::Looper *, FontController::Builder &&);
+	Rc<FontController> acquireController(sprt::dispatch::Looper *, FontController::Builder &&);
 
 	// run font rendering query for DynamicImage
 	// Looper will be used for async font rendering via FreeType
 	// Rendering will use all of Looper's async threads, so, avoid to stall main (GL) looper
-	void updateImage(event::Looper *, const Rc<core::DynamicImage> &, Vector<FontUpdateRequest> &&,
-			Rc<core::DependencyEvent> &&, Function<void(bool)> &&complete);
+	void updateImage(sprt::dispatch::Looper *, const Rc<core::DynamicImage> &,
+			Vector<FontUpdateRequest> &&, Rc<core::DependencyEvent> &&,
+			Function<void(bool)> &&complete);
 
 protected:
 	void handleActivated();
 
 	struct ImageQuery {
-		Rc<event::Looper> looper;
+		Rc<sprt::dispatch::Looper> looper;
 		Rc<core::DynamicImage> image;
 		Vector<FontUpdateRequest> chars;
 		Rc<core::DependencyEvent> dependency;

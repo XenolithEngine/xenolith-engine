@@ -25,7 +25,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
+__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 ActionContainer::~ActionContainer() { }
+__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 ActionContainer::ActionContainer(Node *t) : target(t) { }
 

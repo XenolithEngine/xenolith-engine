@@ -32,7 +32,6 @@
 #include "SPCore.h" // IWYU pragma: keep
 #include "SPMemInterface.h"
 #include "SPMemUuid.h" // IWYU pragma: keep
-#include "SPTime.h" // IWYU pragma: keep
 
 namespace STAPPLER_VERSIONIZED stappler {
 

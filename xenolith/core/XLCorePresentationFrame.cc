@@ -134,7 +134,7 @@ void PresentationFrame::invalidate() {
 
 	_flags |= Invalidated;
 
-	auto refId = retain();
+	auto refId = sprt::retain(this);
 
 	if (auto sw = getSwapchainImage()) {
 		sw->invalidateImage();
@@ -163,7 +163,7 @@ void PresentationFrame::invalidate() {
 	_target = nullptr;
 	_frameRequest = nullptr;
 
-	release(refId);
+	sprt::release(this, refId);
 }
 
 void PresentationFrame::cancelFrameHandle() {

@@ -29,7 +29,9 @@
 #include "XLCoreFrameQueue.h"
 #include "XLAppThread.h"
 #include "XLVkFontQueue.h"
-#include "SPEventLooper.h"
+
+#include <sprt/runtime/dispatch/looper.h>
+
 #include "ft2build.h"
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
@@ -45,8 +47,8 @@ Rc<ContextComponent> FontComponent::createFontComponent(Context *a) {
 	return Rc<FontComponent>::create(a);
 }
 
-Rc<FontController> FontComponent::createDefaultController(FontComponent *ext, event::Looper *looper,
-		StringView name) {
+Rc<FontController> FontComponent::createDefaultController(FontComponent *ext,
+		sprt::dispatch::Looper *looper, StringView name) {
 	auto builder = FontComponent::makeDefaultControllerBuilder(name);
 	return ext->acquireController(looper, move(builder));
 }
@@ -140,13 +142,13 @@ void FontComponent::handleStart(Context *a) {
 	if (_queue->isCompiled()) {
 		handleActivated();
 	} else {
-		auto linkId = retain();
+		auto linkId = sprt::retain(this);
 		static_cast<core::Loop *>(a->getGlLoop())
 				->compileQueue(_queue, [this, linkId](bool success) {
 			if (success) {
 				handleActivated();
 			}
-			release(linkId);
+			sprt::release(this, linkId);
 		});
 	}
 }
@@ -166,12 +168,12 @@ void FontComponent::handleSystemNotification(Context *a, SystemNotification note
 
 void FontComponent::update() { _library->update(); }
 
-Rc<FontController> FontComponent::acquireController(event::Looper *looper,
+Rc<FontController> FontComponent::acquireController(sprt::dispatch::Looper *looper,
 		FontController::Builder &&b) {
 	struct ControllerBuilder : Ref {
 		FontController::Builder builder;
 		Rc<FontController> controller;
-		Rc<event::Looper> looper;
+		Rc<sprt::dispatch::Looper> looper;
 
 		bool invalid = false;
 		sprt::atomic<size_t> pendingData = 0;
@@ -268,7 +270,7 @@ Rc<FontController> FontComponent::acquireController(event::Looper *looper,
 	return builder->controller;
 }
 
-void FontComponent::updateImage(event::Looper *looper, const Rc<core::DynamicImage> &image,
+void FontComponent::updateImage(sprt::dispatch::Looper *looper, const Rc<core::DynamicImage> &image,
 		Vector<font::FontUpdateRequest> &&data, Rc<core::DependencyEvent> &&dep,
 		Function<void(bool)> &&complete) {
 	if (!_active || !_queue) {

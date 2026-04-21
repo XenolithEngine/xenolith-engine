@@ -28,8 +28,9 @@
 #include "XLCoreFrameRequest.h"
 #include "XLCoreFrameQueue.h"
 #include "XLCoreDevice.h"
-#include "SPEventLooper.h"
-#include "SPEventTimerHandle.h"
+
+#include <sprt/runtime/dispatch/looper.h>
+#include <sprt/runtime/dispatch/handle.h>
 
 #define XL_COREPRESENT_DEBUG 0
 #ifndef XL_VKAPI_LOG
@@ -319,7 +320,7 @@ bool PresentationEngine::present(PresentationFrame *frame, ImageStorage *image) 
 			// schedule image until next present window
 			auto handle = _loop->getLooper()->schedule(TimeInterval::microseconds(frameTimeout),
 					[this, frame = Rc<PresentationFrame>(frame), image = Rc<ImageStorage>(image),
-							presentWindow](event::Handle *h, bool success) {
+							presentWindow](sprt::dispatch::Handle *h, bool success) {
 				if (success) {
 					runScheduledPresent(frame, image, presentWindow);
 				} else {
@@ -747,9 +748,10 @@ Status PresentationEngine::acquireScheduledImage() {
 }
 
 void PresentationEngine::scheduleImageAcquisition() {
-	_acquisitionTimer = _loop->getLooper()->scheduleTimer(event::TimerInfo{
-		.completion = event::CompletionHandle<event::TimerHandle>::create<PresentationEngine>(this,
-				[](PresentationEngine *e, event::TimerHandle *h, uint32_t, Status st) {
+	_acquisitionTimer = _loop->getLooper()->scheduleTimer(sprt::dispatch::TimerInfo{
+		.completion = sprt::dispatch::CompletionHandle<sprt::dispatch::TimerHandle>::create<
+				PresentationEngine>(this,
+				[](PresentationEngine *e, sprt::dispatch::TimerHandle *h, uint32_t, Status st) {
 		if (st == Status::Ok && e->acquireScheduledImage() != Status::Timeout) {
 			h->cancel();
 			if (e->_acquisitionTimer == h) {
@@ -758,7 +760,7 @@ void PresentationEngine::scheduleImageAcquisition() {
 		}
 	}),
 		.interval = config::PresentationSchedulerInterval,
-		.count = event::TimerInfo::Infinite,
+		.count = sprt::dispatch::TimerInfo::Infinite,
 	});
 }
 

@@ -1003,7 +1003,7 @@ bool Allocator::allocateDedicated(AllocationUsage usage, Image *target) {
 }
 
 DeviceMemoryPool::~DeviceMemoryPool() {
-	for (auto &it : _mappingProtection) { delete it.second; }
+	for (auto &it : _mappingProtection) { sprt::__delete(it.second); }
 
 	if (_allocator) {
 		for (auto &it : _buffers) { it->invalidate(); }
@@ -1147,7 +1147,8 @@ Allocator::MemBlock DeviceMemoryPool::alloc(MemData *mem, VkDeviceSize in_size,
 		mem->mem.emplace_back(b);
 		node = &mem->mem.back();
 		node->mappingProtection =
-				_mappingProtection.emplace(node->mem, new sprt::mutex()).first->second;
+				_mappingProtection.emplace(node->mem, new (sprt::nothrow) sprt::mutex())
+						.first->second;
 		alignedOffset = 0;
 	}
 

@@ -46,6 +46,9 @@ FrameRequest::~FrameRequest() {
 		setQueue(nullptr);
 	}
 	_renderTargets.clear();
+	if (_waitForInputs.capacity() > 0) {
+		_waitForInputs.shrink_to_fit();
+	}
 	_pool = nullptr;
 }
 
@@ -60,14 +63,14 @@ bool FrameRequest::init(const Rc<PresentationFrame> &pFrame, const Rc<Queue> &q,
 }
 
 bool FrameRequest::init(const Rc<PresentationFrame> &pFrame, const FrameConstraints &constraints) {
-	_pool = Rc<PoolRef>::alloc();
+	_pool = Rc<sprt::PoolRef>::alloc();
 	_presentationFrame = pFrame;
 	_constraints = constraints;
 	return true;
 }
 
 bool FrameRequest::init(const Rc<Queue> &q) {
-	_pool = Rc<PoolRef>::alloc();
+	_pool = Rc<sprt::PoolRef>::alloc();
 	setQueue(q);
 	return true;
 }

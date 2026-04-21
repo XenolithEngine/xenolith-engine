@@ -425,12 +425,12 @@ void DataScrollView::acquireItemsForSlice(DataMap &val, Time time, Request type)
 
 	auto deferred = _director->getApplication();
 
-	deferred->perform(Rc<thread::Task>::create(
-			[handler, itemPtr, dataPtr, time, type](const thread::Task &) -> bool {
+	deferred->perform(Rc<sprt::dispatch::Task>::create(
+			[handler, itemPtr, dataPtr, time, type](const sprt::dispatch::Task &) -> bool {
 		(*itemPtr) = handler->run(type, sp::move(*dataPtr));
 		for (auto &it : (*itemPtr)) { it.second->setId(it.first.get()); }
 		return true;
-	}, [this, handler, itemPtr, dataPtr, time, type](const thread::Task &, bool) {
+	}, [this, handler, itemPtr, dataPtr, time, type](const sprt::dispatch::Task &, bool) {
 		updateSliceItems(sp::move(*itemPtr), time, type);
 
 		auto interval = Time::now() - time;

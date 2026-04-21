@@ -46,7 +46,7 @@ public:
 	Handle(Handle &&) = delete;
 	Handle &operator=(Handle &&) = delete;
 
-	explicit operator bool () const;
+	explicit operator bool() const;
 
 	const Driver *getDriver() const { return driver; }
 
@@ -55,7 +55,8 @@ public:
 
 	virtual bool isNotificationsSupported() const override { return true; }
 
-	virtual void makeQuery(const Callback<void(sql::SqlQuery &)> &cb, const sql::QueryStorageHandle *) override;
+	virtual void makeQuery(const Callback<void(sql::SqlQuery &)> &cb,
+			const sql::QueryStorageHandle *) override;
 
 	virtual bool selectQuery(const db::sql::SqlQuery &, const Callback<bool(Result &)> &cb,
 			const Callback<void(const Value &)> &err = nullptr) override;
@@ -69,10 +70,13 @@ public:
 	void close();
 
 public: // adapter interface
-	virtual bool init(const BackendInterface::Config &cfg, const Map<StringView, const Scheme *> &) override;
+	virtual bool init(const BackendInterface::Config &cfg,
+			const Map<StringView, const Scheme *> &) override;
 
 protected:
-	virtual bool beginTransaction() override { return beginTransaction_pg(TransactionLevel::ReadCommited); }
+	virtual bool beginTransaction() override {
+		return beginTransaction_pg(TransactionLevel::ReadCommited);
+	}
 	virtual bool endTransaction() override { return endTransaction_pg(); }
 
 	bool beginTransaction_pg(TransactionLevel l);
@@ -89,7 +93,9 @@ protected:
 	TransactionLevel level = TransactionLevel::ReadCommited;
 };
 
+__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 class SP_PUBLIC PgQueryInterface : public db::QueryInterface {
+	__SPRT_POP_ALLOW_CXXABI_ALLOC
 public:
 	using Binder = db::Binder;
 
@@ -108,17 +114,26 @@ public:
 	virtual void bindStringView(db::Binder &, StringStream &query, const StringView &val) override;
 	virtual void bindBytes(db::Binder &, StringStream &query, const Bytes &val) override;
 	virtual void bindMoveBytes(db::Binder &, StringStream &query, Bytes &&val) override;
-	virtual void bindCoderSource(db::Binder &, StringStream &query, const stappler::CoderSource &val) override;
+	virtual void bindCoderSource(db::Binder &, StringStream &query,
+			const stappler::CoderSource &val) override;
 	virtual void bindValue(db::Binder &, StringStream &query, const Value &val) override;
-	virtual void bindDataField(db::Binder &, StringStream &query, const db::Binder::DataField &f) override;
-	virtual void bindTypeString(db::Binder &, StringStream &query, const db::Binder::TypeString &type) override;
-	virtual void bindFullText(db::Binder &, StringStream &query, const db::Binder::FullTextField &) override;
-	virtual void bindFullTextFrom(db::Binder &, StringStream &query, const db::Binder::FullTextFrom &) override;
-	virtual void bindFullTextRank(db::Binder &, StringStream &query, const db::Binder::FullTextRank &) override;
-	virtual void bindFullTextQuery(db::Binder &, StringStream &query, const db::Binder::FullTextQueryRef &d) override;
+	virtual void bindDataField(db::Binder &, StringStream &query,
+			const db::Binder::DataField &f) override;
+	virtual void bindTypeString(db::Binder &, StringStream &query,
+			const db::Binder::TypeString &type) override;
+	virtual void bindFullText(db::Binder &, StringStream &query,
+			const db::Binder::FullTextField &) override;
+	virtual void bindFullTextFrom(db::Binder &, StringStream &query,
+			const db::Binder::FullTextFrom &) override;
+	virtual void bindFullTextRank(db::Binder &, StringStream &query,
+			const db::Binder::FullTextRank &) override;
+	virtual void bindFullTextQuery(db::Binder &, StringStream &query,
+			const db::Binder::FullTextQueryRef &d) override;
 	virtual void bindIntVector(Binder &, StringStream &query, const Vector<int64_t> &vec) override;
-	virtual void bindDoubleVector(Binder &b, StringStream &query, const Vector<double> &vec) override;
-	virtual void bindStringVector(Binder &b, StringStream &query, const Vector<StringView> &vec) override;
+	virtual void bindDoubleVector(Binder &b, StringStream &query,
+			const Vector<double> &vec) override;
+	virtual void bindStringVector(Binder &b, StringStream &query,
+			const Vector<StringView> &vec) override;
 	virtual void clear() override;
 
 public:
@@ -128,6 +143,6 @@ public:
 	const sql::QueryStorageHandle *storage = nullptr;
 };
 
-}
+} // namespace stappler::db::pq
 
 #endif /* STAPPLER_DB_PQ_STPGHANDLE_H_ */
