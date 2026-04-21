@@ -271,9 +271,6 @@ public:
 		return mFunctor != nullptr && mcallback != nullptr;
 	}
 
-	template <typename T, typename OutType>
-	friend const callback<void(OutType)> &operator<<(const callback<void(OutType)> &, const T &);
-
 private:
 	using FunctionPointer = ReturnType (*)(const void *, ArgumentTypes...);
 

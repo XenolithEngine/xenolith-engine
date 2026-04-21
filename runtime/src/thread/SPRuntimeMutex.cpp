@@ -60,7 +60,7 @@ static thread_local uint32_t tl_tid = sys_gettid();
 
 qmutex::~qmutex() {
 	auto value = _atomic::exchange(&_data, uint32_t(0));
-	if (value != 0) {
+	if ((value & LOCK_BIT) != 0) {
 		oslog::vprint(oslog::LogType::Fatal, __SPRT_LOCATION, "sprt::qmutex",
 				"Mutex is locked when it's destroyed, aborting");
 		::__sprt_abort();

@@ -192,6 +192,7 @@ Connection::Connection(Library *lib, EventCallback &&cb, DBusBusType type)
 		lib->dbus_connection_add_filter(connection,
 				[](DBusConnection *, DBusMessage *msg, void *data) -> DBusHandlerResult {
 			auto conn = reinterpret_cast<Connection *>(data);
+			conn->lib->dbus_message_ref(msg);
 			for (auto &it : conn->matchFilters) {
 				if (it->handler) {
 					// check if interface message
@@ -199,6 +200,7 @@ Connection::Connection(Library *lib, EventCallback &&cb, DBusBusType type)
 								it->signal.data())) {
 						auto res = it->handler(it, msg);
 						if (res == DBUS_HANDLER_RESULT_HANDLED) {
+							conn->lib->dbus_message_unref(msg);
 							return DBUS_HANDLER_RESULT_HANDLED;
 						}
 
@@ -210,6 +212,7 @@ Connection::Connection(Library *lib, EventCallback &&cb, DBusBusType type)
 						if (name == it->interface) {
 							auto res = it->handler(it, msg);
 							if (res == DBUS_HANDLER_RESULT_HANDLED) {
+								conn->lib->dbus_message_unref(msg);
 								return DBUS_HANDLER_RESULT_HANDLED;
 							}
 						}
@@ -217,7 +220,11 @@ Connection::Connection(Library *lib, EventCallback &&cb, DBusBusType type)
 				}
 			}
 
-			return DBusHandlerResult(conn->callback(conn, Event{Event::Message, {.message = msg}}));
+			auto result = DBusHandlerResult(
+					conn->callback(conn, Event{Event::Message, {.message = msg}}));
+
+			conn->lib->dbus_message_unref(msg);
+			return result;
 		}, this, nullptr);
 	}
 }
@@ -296,7 +303,7 @@ DBusPendingCall *Connection::callMethod(StringView bus, StringView path, StringV
 
 		static void freeMessage(void *user_data) {
 			auto data = reinterpret_cast<MessageData *>(user_data);
-			delete data;
+			sprt::__delete(data);
 		}
 	};
 
@@ -318,7 +325,7 @@ DBusPendingCall *Connection::callMethod(StringView bus, StringView path, StringV
 			lib->dbus_connection_send_with_reply(connection, message, &ret, DBUS_TIMEOUT_INFINITE);
 
 	if (success && ret) {
-		auto data = new MessageData;
+		auto data = new (sprt::nothrow) MessageData;
 		data->interface = lib;
 		data->connection = this;
 		data->callback = sprt::move(resultCallback);
@@ -329,7 +336,7 @@ DBusPendingCall *Connection::callMethod(StringView bus, StringView path, StringV
 		flush();
 	}
 
-	//lib->dbus_message_unref(message);
+	lib->dbus_message_unref(message);
 	return ret;
 }
 
@@ -410,6 +417,7 @@ bool Library::open(Dso &handle) {
 	SPRT_LOAD_PROTO(handle, dbus_message_append_args)
 	SPRT_LOAD_PROTO(handle, dbus_message_is_signal)
 	SPRT_LOAD_PROTO(handle, dbus_message_is_error)
+	SPRT_LOAD_PROTO(handle, dbus_message_ref)
 	SPRT_LOAD_PROTO(handle, dbus_message_unref)
 	SPRT_LOAD_PROTO(handle, dbus_message_iter_init)
 	SPRT_LOAD_PROTO(handle, dbus_message_iter_recurse)

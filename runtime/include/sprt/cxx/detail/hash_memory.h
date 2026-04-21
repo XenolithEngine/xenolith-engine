@@ -74,7 +74,7 @@ public:
 	iterator &operator++() {
 		if (current != end) {
 			++current;
-			while (!current->active && current != end) { ++current; }
+			while (current != end && !current->active) { ++current; }
 		}
 		return *this;
 	}
@@ -82,14 +82,14 @@ public:
 		auto tmp = *this;
 		if (current != end) {
 			++current;
-			while (!current->active && current != end) { ++current; }
+			while (current != end && !current->active) { ++current; }
 		}
 		return tmp;
 	}
 	iterator &operator--() {
 		if (current != begin) {
 			--current;
-			while (!current->active && current != begin) { --current; }
+			while (current != begin && !current->active) { --current; }
 		}
 		return *this;
 	}
@@ -97,7 +97,7 @@ public:
 		auto tmp = *this;
 		if (current != begin) {
 			--current;
-			while (!current->active && current != begin) { --current; }
+			while (current != begin && !current->active) { --current; }
 		}
 		return tmp;
 	}
@@ -133,12 +133,13 @@ struct hash_node {
 
 	aligned_storage<Value> value;
 	HashType hash;
-	SizeType next	: sizeof(SizeType) *__CHAR_BIT__ - 1 = 0;
-	SizeType active : 1 = 0;
+	SizeType next	  : sizeof(SizeType) *__CHAR_BIT__ - 2 = 0;
+	SizeType is_first : 1 = 0;
+	SizeType active	  : 1 = 0;
 };
 
 template <typename Key, typename Value, typename HashFn, typename EqualFn, typename Allocator,
-		bool ForCxxStl = true>
+		bool ForCxxStl = false>
 class hash_memory {
 public:
 	using size_type = size_t;
@@ -158,7 +159,7 @@ public:
 
 	// Find first node in chain with hashValue, or empty node to insert with hashValue
 	static node_type *lookup_bucket_chain(node_type *storage, size_type capacity,
-			hash_type hashValue) noexcept {
+			hash_type hashValue, node_type *erased = nullptr) noexcept {
 		auto end = storage + capacity;
 		auto targetPos = hashValue % capacity;
 		node_type *node = storage + targetPos;
@@ -166,7 +167,7 @@ public:
 		// Node at insert pos can store value with hash != hashValue;
 		// In this case node->hash != insertPos
 		// Skip this nodes and use first non-active or node, where node->hash == insertPos
-		while (node->active && (node->hash % capacity) != targetPos) {
+		while (node == erased || (node->active && (node->hash % capacity) != targetPos)) {
 			++node;
 			if (node >= end) {
 				node -= capacity;
@@ -244,7 +245,12 @@ public:
 		if (equalNodeFound) {
 			// equality found - return it
 			return pair<node_type *, bool>{chain, false};
-		} else if (chain->active && chain->next == 0) {
+		} else if (chain->active) {
+			if (chain->next != 0) {
+				// Fail to find a space for node, should not happen normally
+				return pair<node_type *, bool>{nullptr, false};
+			}
+
 			// we found the end of chain, all chain nodes has different values
 			// we should now find a new node for emplace
 			prev = chain;
@@ -264,6 +270,10 @@ public:
 				// Fail to find a space for node, should not happen normally
 				return pair<node_type *, bool>{nullptr, false};
 			}
+			chain->is_first = 0;
+		} else {
+			// Node will be first in chain
+			chain->is_first = 1;
 		}
 
 		aligned_storage_kv_traits<Key, Value>::construct(_allocator, chain->value,
@@ -360,16 +370,18 @@ public:
 	}
 
 	node_type *find_bucket_or_grow(size_type hashValue) noexcept {
+		auto newCapacity = sprt::max(size_t(4), _capacity * 2);
+
 		auto chain = lookup_bucket_chain(_storage, _capacity, hashValue);
 		if (!chain) {
 			// failed to
-			rehash(_capacity * 2);
+			rehash(newCapacity);
 
 			chain = lookup_bucket_chain(_storage, _capacity, hashValue);
 		} else if (chain->active) {
-			float newLoadFactor = float(_size) / (float(_size) - float(_hashMisses + 1));
-			if (newLoadFactor > _maxLoadFactor) {
-				rehash(_capacity * 2);
+			float newLoadFactor = float(_size + 1) / (float(_size + 1) - float(_hashMisses + 1));
+			if (newLoadFactor > _maxLoadFactor || _size + 1 >= _capacity) {
+				rehash(newCapacity);
 
 				chain = lookup_bucket_chain(_storage, _capacity, hashValue);
 			}
@@ -404,7 +416,7 @@ public:
 
 	template <typename K, typename... Args>
 	pair<iterator, bool> try_emplace(K &&key, Args &&...args) noexcept {
-		if (_size == _capacity) {
+		if (_size + 1 >= _capacity) {
 			rehash(_capacity * 2);
 		}
 
@@ -461,8 +473,11 @@ public:
 
 	node_type *erase_node(node_type *node) noexcept {
 		auto returnNext = [&](node_type *n) {
-			do { ++n; } while (n < (_storage + _capacity) && !n->active);
-			return node;
+			make_consistent_after_erase(n);
+			do {
+				++n; //
+			} while (n < (_storage + _capacity) && !n->active);
+			return n;
 		};
 
 		node->value.destroy(_allocator);
@@ -478,23 +493,40 @@ public:
 			// If we are last node in chain - check, if we need to update previous node
 
 			// On right-placed node we have no previous node, just disable self
-			if (node->hash % _capacity != node - _storage) {
+			if (node->hash % _capacity == node - _storage) {
 				return returnNext(node);
 			}
 
+			// Node was a hash miss, decrement hash misses for stats
 			--_hashMisses;
 
-			// Otherwise - find chain's root
-			auto chain = lookup_bucket_chain(_storage, _capacity, node->hash);
+			// First node in chain also can be safely removed
+			//if (node->is_first) {
+			//return returnNext(node);
+			//}
 
-			// if we are head of chain - it's also simple case
-			if (node == chain) {
-				return returnNext(node);
+			auto prev = find_prev_in_chain(node);
+			if (prev) {
+				// mark prev node as new last node in chain
+				prev->next = 0;
 			}
+			return returnNext(node);
+		} else {
+			// we will remove a single hash miss
+			--_hashMisses;
 
-			// Find prev node by iterating through chain
+			// Without C++ STL, we can invalidate iterators. With this algorithm, we move-assign last
+			// node in chain to this node. It provides more optimal layout, reducing search and insertion penalty.
+
+			// We have some next nodes it chain
+			// In this case, we replace self with the last node in chain to maintain optimal layout
+			// No need to care about previous nodes, chain before this node remains consistent
+			// Current node also remains active
+
+			// We need to know the last node in chain and node before it to mark it as last
+			auto chain = node;
 			auto prev = chain;
-			while (chain != node && chain->active && chain->next) {
+			while (chain->next != 0) {
 				prev = chain;
 				chain += chain->next;
 				if (chain >= _storage + _capacity) {
@@ -502,73 +534,23 @@ public:
 				}
 			}
 
-			sprt_passert(chain == node, "hash_memory: corrupted container: invalid hash chain");
-
-			// mark prev node as new last node in chain
+			// mark prev node as last
+			// if prev == node (initial node is the one before end) - it's also valid
 			prev->next = 0;
-			return returnNext(node);
-		} else {
 
-			--_hashMisses;
+			// Move value from the last node using move constructor
+			node->value.construct(_allocator, sprt::move_unsafe(chain->value.ref()));
+			node->hash = chain->hash;
 
-			// There are more effective algorithm, if we should not follow c++ STL limitations.
-			if constexpr (ForCxxStl) {
-				// We need to maintain container consistency to match c++ standard:
-				// no interators or reference except for this one should be invalidated
+			// Clear last node
+			chain->value.destroy(_allocator);
+			chain->active = 0;
+			chain->next = 0;
 
-				// We should find previous node in chain, and set it to point the next one from current
-				auto chain = lookup_bucket_chain(_storage, _capacity, node->hash);
-				auto prev = chain;
-				while (chain != node && chain->active && chain->next) {
-					prev = chain;
-					chain += chain->next;
-					if (chain >= _storage + _capacity) {
-						chain -= _capacity;
-					}
-				}
+			make_consistent_after_erase(chain);
 
-				prev->next += node->next;
-				if (prev->next > _capacity) {
-					// handle potential chain overflow by remove extra cycle
-					prev->next -= _capacity;
-				}
-				node->active = 0;
-				return returnNext(node);
-			} else {
-				// Without C++ STL, we can invalidate iterators. With this algorithm, we move-assign last
-				// node in chain to this node. It provides more optimal layout, reducing search and insertion penalty.
-
-				// We have some next nodes it chain
-				// In this case, we replace self with the last node in chain to maintain optimal layout
-				// No need to care about previous nodes, chain before this node remains consistent
-				// Current node also remains active
-
-				// We need to know the last node in chain and node before it to mark it as last
-				auto chain = node;
-				auto prev = chain;
-				while (chain->next != 0) {
-					prev = chain;
-					chain += chain->next;
-					if (chain >= _storage + _capacity) {
-						chain -= _capacity;
-					}
-				}
-
-				// mark prev node as last
-				// if prev == node (initial node is the one before end) - it's also valid
-				prev->next = 0;
-
-				// Move value from the last node using move constructor
-				node->value.construct(_allocator, sprt::move_unsafe(chain->value.ref()));
-
-				// Clear last node
-				chain->value.destroy(_allocator);
-				chain->active = 0;
-				chain->next = 0;
-
-				// return self as a next iterator
-				return node;
-			}
+			// return self as a next iterator
+			return node;
 		}
 	}
 
@@ -599,33 +581,28 @@ public:
 		}
 
 		auto hashValue = _hasher(k);
-		auto hashPosition = _hasher(k) % _capacity;
+		auto hashPosition = hashValue % _capacity;
 
 		auto chain = lookup_bucket_chain(const_cast<node_type *>(_storage), _capacity, hashValue);
 		if (!chain->active) {
 			return nullptr;
 		}
 
-		bool equalNodeFound = false;
 		if (chain->active) {
 			// If chain is active, we can use chain->hash to early detect equality,
 			// before using _equal.
 			// Note that ->next node is always also active
-			while (chain->next != 0 && chain->hash % _capacity == hashPosition
-					&& (chain->hash != hashValue
-							|| !(equalNodeFound = _equal(k,
-										 aligned_storage_kv_traits<Key, Value>::extract_key(
-												 chain->value))))) {
+			do {
+				if (chain->hash == hashValue
+						&& _equal(k,
+								aligned_storage_kv_traits<Key, Value>::extract_key(chain->value))) {
+					return chain;
+				}
 				chain += chain->next;
 				if (chain >= _storage + _capacity) {
 					chain -= _capacity;
 				}
-			}
-		}
-
-		// target node found
-		if (equalNodeFound) {
-			return chain;
+			} while (chain->next != 0 && chain->hash % _capacity == hashPosition);
 		}
 
 		// tail node was not checked for equality
@@ -806,6 +783,106 @@ public:
 	void max_load_factor(float ml) noexcept { _maxLoadFactor = sprt::max(ml, 1.0f); }
 
 protected:
+	node_type *find_prev_in_chain(node_type *node, node_type *erased = nullptr) {
+		auto chain = lookup_bucket_chain(_storage, _capacity, node->hash, erased);
+
+		// if we are the head of chain
+		if (node == chain) {
+			return nullptr;
+		}
+
+		// Find prev node by iterating through chain
+		auto prev = chain;
+		while (chain != node && chain->active && chain->next) {
+			prev = chain;
+			chain += chain->next;
+			if (chain >= _storage + _capacity) {
+				chain -= _capacity;
+			}
+		}
+
+		sprt_passert(chain == node, "hash_memory: corrupted container: invalid hash chain");
+		return prev;
+	};
+
+	// when node is erased, there can be some neighbor nodes, that should take it's place
+	void make_consistent_after_erase(node_type *erase_pos) {
+		auto moveBackward = [&](node_type *neighbor) {
+			size_t offset = neighbor + _capacity - erase_pos;
+			if (offset > _capacity) {
+				offset -= _capacity;
+			}
+
+			auto prev = find_prev_in_chain(neighbor, erase_pos);
+
+			erase_pos->value.construct(_allocator, sprt::move_unsafe(neighbor->value.ref()));
+			erase_pos->next = (neighbor->next == 0) ? 0 : (neighbor->next + offset) % _capacity;
+			erase_pos->hash = neighbor->hash;
+			erase_pos->active = 1;
+
+			//if (!neighbor->is_first) {
+			if (prev) {
+				if (prev->next > offset) {
+					prev->next -= offset;
+				} else {
+					// swap prev and erase_pos in chain
+					size_t prevOffset = prev + _capacity - erase_pos;
+					if (prevOffset > _capacity) {
+						prevOffset -= _capacity;
+					}
+
+					erase_pos->next = prevOffset;
+					prev->next = (neighbor->next + (offset - prevOffset)) % _capacity;
+				}
+			}
+			//};
+
+			neighbor->value.destroy(_allocator);
+			neighbor->active = 0;
+			neighbor->next = 0;
+
+			make_consistent_after_erase(neighbor);
+		};
+
+		auto hashPos = erase_pos - _storage;
+
+		node_type *neighbor = erase_pos + 1;
+		if (neighbor >= _storage + _capacity) {
+			neighbor -= _capacity;
+		}
+
+		size_t offset = 1;
+		size_t targetScore = Max<size_t>;
+		node_type *target = nullptr;
+
+		size_t posOff = 0;
+		while (neighbor->active) {
+			if (neighbor->hash % _capacity == hashPos) {
+				moveBackward(neighbor);
+				return;
+			}
+
+			posOff = ((neighbor - _storage) + _capacity - (neighbor->hash % _capacity)) % _capacity;
+
+			if (posOff > offset) {
+				if (posOff - offset < targetScore) {
+					targetScore = posOff - offset;
+					target = neighbor;
+				}
+			}
+
+			++offset;
+			++neighbor;
+			if (neighbor >= _storage + _capacity) {
+				neighbor -= _capacity;
+			}
+		}
+
+		if (target) {
+			moveBackward(target);
+		}
+	}
+
 	[[no_unique_address]]
 	HashFn _hasher;
 

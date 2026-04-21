@@ -45,6 +45,15 @@ struct check_signature<Func, Ret(Args...),
 template <typename Allocator, typename UnusedType>
 class SPRT_API __function;
 
+template <typename T>
+class __is_function_type : public false_type { };
+
+template <typename Allocator, typename UnusedType>
+class __is_function_type<__function<Allocator, UnusedType>> : public true_type { };
+
+template <typename T>
+constexpr auto __is_function_type_v = __is_function_type<T>::value;
+
 template <typename Allocator, typename ReturnType, typename... ArgumentTypes>
 class SPRT_API __function<Allocator, ReturnType(ArgumentTypes...)> : public Allocator::base_class {
 public:
@@ -69,7 +78,7 @@ public:
 	: mAllocator(alloc) {
 		mCallback = other.mCallback;
 		if (mCallback) {
-			mCallback()->copy(other.mBuffer.data(), mAllocator, mBuffer.data());
+			mCallback()->copy(other.mBuffer, mAllocator, mBuffer);
 		}
 	}
 
@@ -81,7 +90,7 @@ public:
 		clear();
 		mCallback = other.mCallback;
 		if (mCallback) {
-			mCallback()->copy(other.mBuffer.data(), mAllocator, mBuffer.data());
+			mCallback()->copy(other.mBuffer, mAllocator, mBuffer);
 		}
 		return *this;
 	}
@@ -91,10 +100,11 @@ public:
 		mCallback = other.mCallback;
 		if (mCallback) {
 			if (other.mAllocator == mAllocator) {
-				mCallback()->move(other.mBuffer.data(), mAllocator, mBuffer.data());
+				mCallback()->move(other.mBuffer, mAllocator, mBuffer);
 			} else {
-				mCallback()->copy(other.mBuffer.data(), mAllocator, mBuffer.data());
+				mCallback()->copy(other.mBuffer, mAllocator, mBuffer);
 			}
+			other.mCallback = nullptr;
 		}
 	}
 
@@ -107,17 +117,17 @@ public:
 		mCallback = other.mCallback;
 		if (mCallback) {
 			if (other.mAllocator == mAllocator) {
-				mCallback()->move(other.mBuffer.data(), mAllocator, mBuffer.data());
+				mCallback()->move(other.mBuffer, mAllocator, mBuffer);
 			} else {
-				mCallback()->copy(other.mBuffer.data(), mAllocator, mBuffer.data());
+				mCallback()->copy(other.mBuffer, mAllocator, mBuffer);
 			}
+			other.mCallback = nullptr;
 		}
 		return *this;
 	}
 
 	template <typename FunctionT>
-	requires (!is_same_v<typename sprt::remove_cvref_t<FunctionT>,
-					  __function<Allocator, ReturnType(ArgumentTypes...) >>
+	requires (!__is_function_type_v<FunctionT>
 			&& sprt::is_invocable_r_v<ReturnType, FunctionT, ArgumentTypes...>)
 	__function(FunctionT &&f, const allocator_type &alloc = allocator_type()) noexcept
 	: mAllocator(alloc) {
@@ -125,8 +135,7 @@ public:
 	}
 
 	template <typename FunctionT>
-	requires (!is_same_v<typename sprt::remove_cvref_t<FunctionT>,
-					  __function<Allocator, ReturnType(ArgumentTypes...) >>
+	requires (!__is_function_type_v<FunctionT>
 			&& sprt::is_invocable_r_v<ReturnType, FunctionT, ArgumentTypes...>)
 	__function &operator=(FunctionT &&f) noexcept {
 		clear();
@@ -159,10 +168,12 @@ public:
 protected:
 	static constexpr auto OptBufferSize = 16;
 
+	using buffer_type = sprt::array<uint8_t, OptBufferSize>;
+
 	using invoke_pointer = ReturnType (*)(const void *, ArgumentTypes...);
-	using destroy_pointer = void (*)(void *);
-	using copy_pointer = void *(*)(const void *, allocator_type &, uint8_t *);
-	using move_pointer = void *(*)(void *, allocator_type &, uint8_t *);
+	using destroy_pointer = void (*)(buffer_type &, allocator_type &);
+	using copy_pointer = void *(*)(const buffer_type &, allocator_type &, buffer_type &);
+	using move_pointer = void *(*)(buffer_type &, allocator_type &, buffer_type &);
 
 	struct functor_traits {
 		invoke_pointer invoke;
@@ -176,7 +187,6 @@ protected:
 	template <typename FunctionT>
 	static functor_traits *makeFunctionTraits() noexcept {
 		using BaseType = typename remove_cv<typename remove_reference<FunctionT>::type>::type;
-		using StorageType = detail::aligned_storage<BaseType>;
 		if constexpr (sizeof(BaseType) <= OptBufferSize) {
 			static functor_traits traits{
 				.invoke = [](const void *arg, ArgumentTypes... args) -> ReturnType {
@@ -190,26 +200,33 @@ protected:
 				}
 			},
 				.destroy =
-						[](void *arg) {
-				if (arg) {
-					(*static_cast<BaseType *>(arg)).~BaseType();
+						[](buffer_type &sourceBuffer, allocator_type &alloc) {
+				auto fn = reinterpret_cast<const BaseType *>(sourceBuffer.data());
+				if (fn) {
+					sprt::destroy_at(fn);
 				}
 			},
-				.copy = [](const void *arg, allocator_type &alloc, uint8_t *buf) -> void * {
-				return new (buf, nothrow) BaseType(*static_cast<const BaseType *>(arg));
+				.copy = [](const buffer_type &sourceBuffer, allocator_type &alloc,
+								buffer_type &targetBuffer) -> void * {
+				return new (targetBuffer.data(), nothrow)
+						BaseType(*reinterpret_cast<const BaseType *>(sourceBuffer.data()));
 			},
-				.move = [](void *arg, allocator_type &alloc, uint8_t *buf) -> void * {
-				return new (buf, nothrow)
-						BaseType(sprt::move_unsafe(*static_cast<BaseType *>(arg)));
+				.move = [](buffer_type &sourceBuffer, allocator_type &alloc,
+								buffer_type &targetBuffer) -> void * {
+				auto ret = new (targetBuffer.data(), nothrow) BaseType(
+						sprt::move_unsafe(*reinterpret_cast<BaseType *>(sourceBuffer.data())));
+				__sprt_memset(sourceBuffer.data(), 0, sourceBuffer.size());
+				return ret;
 			},
 			};
 
 			return &traits;
 		} else {
+			using StorageType = detail::aligned_storage<BaseType>;
 			static functor_traits traits{
 				.invoke = [](const void *arg, ArgumentTypes... args) -> ReturnType {
-				auto fnPtr =
-						const_cast<StorageType *>(static_cast<const StorageType *>(arg))->ptr();
+				auto node = *static_cast<StorageType *const *>(arg);
+				auto fnPtr = const_cast<BaseType *>(node->ptr());
 				if constexpr (sprt::is_same_v<ReturnType, void>) {
 					sprt::__invoke(*fnPtr, sprt::forward<ArgumentTypes>(args)...);
 				} else {
@@ -217,24 +234,31 @@ protected:
 				}
 			},
 				.destroy =
-						[](void *arg) {
-				auto ptr = static_cast<StorageType *>(arg);
-				if (ptr) {
-					ptr->ptr()->~BaseType();
-					new (arg, nothrow)(const BaseType *)(nullptr);
+						[](buffer_type &sourceBuffer, allocator_type &alloc) {
+				auto node = *reinterpret_cast<StorageType *const *>(sourceBuffer.data());
+				if (node) {
+					typename Allocator::template rebind<BaseType>::other ialloc = alloc;
+					node->destroy(ialloc);
+
+					typename Allocator::template rebind<StorageType>::other salloc = alloc;
+					salloc.deallocate(node, sizeof(StorageType));
 				}
 			},
-				.copy = [](const void *arg, allocator_type &alloc, uint8_t *buf) -> void * {
+				.copy = [](const buffer_type &sourceBuffer, allocator_type &alloc,
+								buffer_type &targetBuffer) -> void * {
+				auto node = *reinterpret_cast<StorageType *const *>(sourceBuffer.data());
+
 				typename Allocator::template rebind<StorageType>::other ialloc = alloc;
 				auto mem = ialloc.allocate(1);
-				new (mem->ptr(), sprt::nothrow)
-						BaseType(*static_cast<const StorageType *>(arg)->ptr());
-				return new (buf, nothrow)(const StorageType *)(mem);
+				new (mem->ptr(), sprt::nothrow) BaseType(*node->ptr());
+
+				return new (targetBuffer.data(), nothrow)(const StorageType *)(mem);
 			},
-				.move = [](void *arg, allocator_type &alloc, uint8_t *buf) -> void * {
-				auto ret =
-						new (buf, nothrow)(const StorageType *)((static_cast<StorageType *>(arg)));
-				new (arg, nothrow)(const StorageType *)(nullptr);
+				.move = [](buffer_type &sourceBuffer, allocator_type &alloc,
+								buffer_type &targetBuffer) -> void * {
+				auto node = *reinterpret_cast<StorageType **>(sourceBuffer.data());
+				auto ret = new (targetBuffer.data(), nothrow)(const StorageType *)(node);
+				new (sourceBuffer.data(), nothrow)(const StorageType *)(nullptr);
 				return ret;
 			},
 			};
@@ -246,14 +270,17 @@ protected:
 	template <typename FunctionT>
 	static traits_callback makeFreeFunction(FunctionT &&f, allocator_type &alloc,
 			uint8_t *buf) noexcept {
-		using BaseType = typename remove_cv<typename remove_reference<FunctionT>::type>::type;
+		using BaseType = remove_cvref_t<FunctionT>;
 		using StorageType = detail::aligned_storage<BaseType>;
-		if constexpr (sizeof(BaseType) <= OptBufferSize) {
+		if constexpr (sizeof(BaseType) <= OptBufferSize
+				&& alignof(BaseType) <= alignof(max_align_t)) {
 			new (buf, nothrow) BaseType(sprt::forward<FunctionT>(f));
 		} else {
+			// allocate storage for function
 			typename Allocator::template rebind<StorageType>::other ialloc = alloc;
 			auto mem = ialloc.allocate(1);
 
+			// emplace function to storage with placement new
 			if constexpr (is_convertible_v<allocator_type, memory::pool_t *>) {
 				memory::perform_conditional([&] {
 					new (mem->ptr(), sprt::nothrow) BaseType(sprt::forward<FunctionT>(f));
@@ -262,6 +289,7 @@ protected:
 				new (mem->ptr(), sprt::nothrow) BaseType(sprt::forward<FunctionT>(f));
 			}
 
+			// emplace storage to internal buffer with placement new
 			new (buf, sprt::nothrow)(const StorageType *)(mem);
 		}
 		return &makeFunctionTraits<FunctionT>;
@@ -270,14 +298,15 @@ protected:
 	void clear() {
 		if (mCallback) {
 			auto t = mCallback();
-			t->destroy(mBuffer.data());
+			t->destroy(mBuffer, mAllocator);
+			__sprt_memset(mBuffer.data(), 0, mBuffer.size());
 			mCallback = nullptr;
 		}
 	}
 
 	allocator_type mAllocator;
 	traits_callback mCallback = nullptr;
-	array<uint8_t, OptBufferSize> mBuffer;
+	alignas(max_align_t) buffer_type mBuffer;
 };
 
 template <typename Sig>

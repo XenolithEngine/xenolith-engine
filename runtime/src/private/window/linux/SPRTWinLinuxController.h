@@ -83,6 +83,8 @@ protected:
 	virtual void handleContextWillDestroy() override;
 	virtual void handleContextDidDestroy() override;
 
+	virtual bool isRetainTrackerEnabled() const override { return true; }
+
 	Rc<XcbLibrary> _xcb;
 	Rc<WaylandLibrary> _wayland;
 	Rc<XkbLibrary> _xkb;

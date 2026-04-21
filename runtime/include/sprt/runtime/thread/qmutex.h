@@ -128,7 +128,7 @@ public:
 
 	~qmutex();
 
-	qmutex() { }
+	qmutex() : _data(0) { }
 
 	qmutex(const qmutex &) = delete;
 	qmutex &operator=(const qmutex &) = delete;

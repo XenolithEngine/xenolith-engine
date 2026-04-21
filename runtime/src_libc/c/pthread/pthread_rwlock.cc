@@ -90,7 +90,7 @@ int rwlock_t::tryrdlock() {
 		return EDEADLK;
 	}
 
-	auto st = qrwlock_base::_tryrdlock_fair<__sprt_sprt_qlock_wake_one>(&data, fl);
+	auto st = qrwlock_base::_tryrdlock_fair(&data, fl);
 	if (st == Status::ErrorBusy) {
 		return EBUSY;
 	} else if (!status::isSuccessful(st)) {
@@ -162,7 +162,7 @@ int rwlock_t::trywrlock() {
 		return EDEADLK;
 	}
 
-	auto st = qrwlock_base::_trywrlock_fair<__sprt_sprt_qlock_wake_one>(&data, fl);
+	auto st = qrwlock_base::_trywrlock_fair(&data, fl);
 	if (st == Status::ErrorBusy) {
 		return EBUSY;
 	} else if (!status::isSuccessful(st)) {
@@ -194,7 +194,7 @@ int rwlock_t::unlock() {
 		return EPERM;
 	}
 
-	auto st = qrwlock_base::_unlock_fair<__sprt_sprt_qlock_wake_one>(&data, fl);
+	auto st = qrwlock_base::_unlock_fair(&data, fl);
 	if (st == Status::Propagate) {
 		if (has_rd) {
 			if (rd_it->second > 1) {
@@ -227,7 +227,7 @@ void rwlock_t::force_unlock(bool isReadLock) {
 		fl |= __SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME;
 	}
 
-	qrwlock_base::_unlock_fair<__sprt_sprt_qlock_wake_one>(&data, fl);
+	qrwlock_base::_unlock_fair(&data, fl);
 }
 
 

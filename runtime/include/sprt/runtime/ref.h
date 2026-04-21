@@ -49,16 +49,16 @@ namespace sprt {
 class SPRT_API Ref;
 
 template <typename T, typename... Args>
-inline T *__new(Args &&...args);
+inline T *__new(Args &&...args) noexcept;
 
 template <typename T>
-inline void __delete(T *t);
+inline void __delete(T *t) noexcept;
 
 template <typename T>
-inline uint64_t retain(T *t, uint64_t value = Max<uint64_t>);
+inline uint64_t retain(T *t, uint64_t value = Max<uint64_t>) noexcept;
 
 template <typename T>
-inline void release(T *t, uint64_t value);
+inline void release(T *t, uint64_t value) noexcept;
 
 namespace memleak {
 
@@ -160,10 +160,10 @@ public:
 
 protected:
 	template <typename U>
-	friend uint64_t retain(U *, uint64_t);
+	friend uint64_t retain(U *, uint64_t) noexcept;
 
 	template <typename U>
-	friend void release(U *, uint64_t);
+	friend void release(U *, uint64_t) noexcept;
 
 #if SPRT_REF_DEBUG
 	virtual uint64_t retain(uint64_t value = Max<uint64_t>) {
@@ -259,12 +259,12 @@ protected:
 	//#endif
 
 	template <typename U>
-	friend uint64_t retain(U *, uint64_t);
+	friend uint64_t retain(U *, uint64_t) noexcept;
 
 	template <typename U>
-	friend void release(U *, uint64_t);
+	friend void release(U *, uint64_t) noexcept;
 
-	static void __delete(SharedRef *t) {
+	static void __delete(SharedRef *t) noexcept {
 		auto allocator = t->_allocator;
 		auto pool = t->_pool;
 
@@ -279,7 +279,7 @@ protected:
 	}
 
 	template <typename _Tp, typename... _Args>
-	friend constexpr _Tp *__construct_at(_Tp *__location, _Args &&...__args);
+	friend constexpr _Tp *__construct_at(_Tp *__location, _Args &&...__args) noexcept;
 
 	SharedRef(SharedRefMode m, memory::allocator_t *, memory::pool_t *) noexcept;
 
@@ -1142,17 +1142,17 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::alloc(SharedRef
 
 
 template <typename T, typename... Args>
-inline T *__new(Args &&...args) {
+inline T *__new(Args &&...args) noexcept {
 	return RefAlloc::__new<T>(sprt::forward<Args>(args)...);
 }
 
 template <typename T>
-inline uint64_t retain(T *t, uint64_t value) {
+inline uint64_t retain(T *t, uint64_t value) noexcept {
 	return t->retain(value);
 }
 
 template <typename T>
-inline void release(T *t, uint64_t value) {
+inline void release(T *t, uint64_t value) noexcept {
 	if (t->release(value)) {
 		if constexpr (__is_shared_ref<T>::value) {
 			T::__delete(t);
@@ -1163,22 +1163,22 @@ inline void release(T *t, uint64_t value) {
 }
 
 template <typename T>
-inline uint64_t retain(const Rc<T> &t, uint64_t value = Max<uint64_t>) {
+inline uint64_t retain(const Rc<T> &t, uint64_t value = Max<uint64_t>) noexcept {
 	return sprt::retain(t.get(), value);
 }
 
 template <typename T>
-inline void release(const Rc<T> &t, uint64_t value) {
+inline void release(const Rc<T> &t, uint64_t value) noexcept {
 	sprt::release(t.get(), value);
 }
 
 template <typename T>
-inline uint64_t retain(const NotNull<T> &t, uint64_t value = Max<uint64_t>) {
+inline uint64_t retain(const NotNull<T> &t, uint64_t value = Max<uint64_t>) noexcept {
 	return sprt::retain(t.get(), value);
 }
 
 template <typename T>
-inline void release(const NotNull<T> &t, uint64_t value) {
+inline void release(const NotNull<T> &t, uint64_t value) noexcept {
 	sprt::release(t.get(), value);
 }
 

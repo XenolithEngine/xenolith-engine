@@ -157,12 +157,40 @@ constexpr void deallocate(T *t, size_t n) {
 
 } // namespace sprt::memory
 
+#define __SPRT_PUSH_ALLOW_CXXABI_ALLOC \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"")
+
+#define __SPRT_POP_ALLOW_CXXABI_ALLOC \
+    _Pragma("clang diagnostic pop")
+
 #if __SPRT_USE_STL == 0
+
+[[nodiscard]] [[deprecated(
+		"It's unsafe to use direct new within freestanding code, use, new (sprt::nothrow)")]]
+void *operator new(sprt::size_t);
+
+[[nodiscard]] [[deprecated(
+		"It's unsafe to use direct new within freestanding code, use, new (sprt::nothrow)")]]
+void *operator new[](sprt::size_t);
+
+[[deprecated("It's unsafe to use direct delete within freestanding code, use, sprt::__delete()")]]
+void operator delete(void *) noexcept;
+
+[[deprecated("It's unsafe to use direct delete within freestanding code, use, sprt::__delete()")]]
+void operator delete[](void *) noexcept;
+
+[[deprecated("It's unsafe to use direct delete within freestanding code, use, sprt::__delete()")]]
+void operator delete(void *, sprt::size_t) noexcept;
+
+[[deprecated("It's unsafe to use direct delete within freestanding code, use, sprt::__delete()")]]
+void operator delete[](void *, sprt::size_t) noexcept;
+
 [[nodiscard]]
 inline void *operator new(sprt::size_t, void *__p) noexcept {
 	return __p;
 }
-[[__nodiscard__]]
+[[nodiscard]]
 inline void *operator new[](sprt::size_t, void *__p) noexcept {
 	return __p;
 }
@@ -338,7 +366,7 @@ struct Allocator_SelectFirst<A, Args...> {
 
 
 template <typename _Tp, typename... _Args>
-constexpr _Tp *__construct_at(_Tp *__location, _Args &&...__args) {
+constexpr _Tp *__construct_at(_Tp *__location, _Args &&...__args) noexcept {
 	return ::new (static_cast<void *>(__location), sprt::nothrow)
 			_Tp(sprt::forward<_Args>(__args)...);
 }
@@ -346,7 +374,7 @@ constexpr _Tp *__construct_at(_Tp *__location, _Args &&...__args) {
 template <typename _Tp, typename... _Args,
 		typename = decltype(::new (sprt::declval<void *>(), sprt::nothrow)
 						_Tp(sprt::declval<_Args>()...))>
-constexpr _Tp *construct_at(_Tp *__location, _Args &&...__args) {
+constexpr _Tp *construct_at(_Tp *__location, _Args &&...__args) noexcept {
 	if (__builtin_is_constant_evaluated()) {
 		return std::construct_at(__location, sprt::forward<_Args>(__args)...);
 	} else {
@@ -356,24 +384,70 @@ constexpr _Tp *construct_at(_Tp *__location, _Args &&...__args) {
 
 template <typename _Tp>
 requires (!is_array_v<_Tp>)
-constexpr void destroy_at(_Tp *__loc) {
+constexpr void destroy_at(_Tp *__loc) noexcept {
 	__loc->~_Tp();
 }
 
 template <typename _Tp>
 requires (is_array_v<_Tp>)
-constexpr void destroy_at(_Tp *__loc) {
+constexpr void destroy_at(_Tp *__loc) noexcept {
 	for (auto &&__val : *__loc) { sprt::destroy_at(sprt::addressof(__val)); }
 }
 
 template <typename T>
-inline void __delete(T *t) {
+inline void __delete(T *t) noexcept {
 	sprt::destroy_at(t);
 	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
-		__sprt_free(t);
+		__sprt_free(static_cast<void *>(t));
 	} else {
-		__sprt_aligned_free(t);
+		__sprt_aligned_free(static_cast<void *>(t));
 	}
+}
+
+template <typename T>
+requires (sprt::is_same_v<T, char> || sprt::is_same_v<T, unsigned char>)
+inline void __delete(const T *t) noexcept {
+	__delete(const_cast<T *>(t));
+}
+
+template <typename T>
+inline T *__new_n(size_t sz) {
+	return new (sprt::nothrow) T[sz];
+}
+
+template <typename T>
+inline void __delete_n(T *t, size_t __n) noexcept {
+	if constexpr (!sprt::is_trivially_destructible_v<T>) {
+		for (; __n > 0; (void)++t, --__n) { sprt::destroy_at(t); }
+	}
+
+	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(static_cast<void *>(t));
+	} else {
+		__sprt_aligned_free(static_cast<void *>(t));
+	}
+}
+
+template <typename T>
+requires (sprt::is_trivially_destructible_v<T>)
+inline void __delete_n(T *t) noexcept {
+	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(static_cast<void *>(t));
+	} else {
+		__sprt_aligned_free(static_cast<void *>(t));
+	}
+}
+
+template <typename T>
+requires (sprt::is_same_v<T, char> || sprt::is_same_v<T, unsigned char>)
+inline void __delete_n(const T *t, size_t __n) noexcept {
+	__delete_n(const_cast<T *>(t), __n);
+}
+
+template <typename T>
+requires (sprt::is_same_v<T, char> || sprt::is_same_v<T, unsigned char>)
+inline void __delete_n(const T *t) noexcept {
+	__delete_n(const_cast<T *>(t));
 }
 
 } // namespace sprt

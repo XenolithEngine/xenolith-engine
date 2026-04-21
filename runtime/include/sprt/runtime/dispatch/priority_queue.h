@@ -493,7 +493,7 @@ protected:
 	}
 
 	StorageBlock *allocateBlock(sprt::unique_lock<LockInterface> &lock) {
-		auto block = new StorageBlock();
+		auto block = new (sprt::nothrow) StorageBlock();
 		initNodes(&block->nodes[0], &block->nodes[block->nodes.size() - 1], block);
 		_capacity += block->nodes.size();
 		return block;
@@ -507,7 +507,7 @@ protected:
 #endif
 
 		_capacity -= block->nodes.size();
-		delete block;
+		sprt::__delete(block);
 	}
 
 	sprt::array<Node, PreallocatedNodes> _preallocated;

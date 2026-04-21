@@ -389,13 +389,22 @@ bool LinuxContextController::loadWindow() {
 void LinuxContextController::handleContextWillDestroy() {
 	if (_xcbPollHandle) {
 		_xcbPollHandle->cancel();
+		_xcbPollHandle->setUserdata(nullptr);
 		_xcbPollHandle = nullptr;
+	}
+
+	if (_waylandPollHandle) {
+		_waylandPollHandle->cancel();
+		_waylandPollHandle->setUserdata(nullptr);
+		_waylandPollHandle = nullptr;
 	}
 
 	if (_dbusController) {
 		_dbusController->cancel();
 		_dbusController = nullptr;
 	}
+
+	_looper->poll();
 
 	ContextController::handleContextWillDestroy();
 }
@@ -404,6 +413,9 @@ void LinuxContextController::handleContextDidDestroy() {
 	ContextController::handleContextDidDestroy();
 
 	_xcbConnection = nullptr;
+	_waylandDisplay = nullptr;
+	_dbus = nullptr;
+	_xkb = nullptr;
 
 	if (_looper) {
 		_looper->wakeup(dispatch::WakeupFlags::Graceful);

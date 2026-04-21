@@ -296,7 +296,7 @@ struct alignas(COMMON_ALIGNMENT) rwlockattr_t {
 	RwlockAttrFlags flags = RwlockAttrFlags::None;
 };
 
-struct rwlock_t {
+struct alignas(COMMON_ALIGNMENT) rwlock_t {
 	static constexpr uint32_t ReadLock = 1;
 	static constexpr uint32_t WriteLock = 2;
 	static constexpr uint32_t Waiters = 4;

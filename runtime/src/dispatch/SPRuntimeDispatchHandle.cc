@@ -249,6 +249,7 @@ bool Handle::reset() {
 	return false;
 }
 
+__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 ThreadHandle::~ThreadHandle() {
 	_outputQueue.clear();
 	_outputCallbacks.clear();
@@ -256,6 +257,7 @@ ThreadHandle::~ThreadHandle() {
 	_unsafeCallbacks.clear();
 	_engine->cleanup();
 }
+__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 bool ThreadHandle::init(HandleClass *cl) {
 	if (!Handle::init(cl, CompletionHandle<void>())) {

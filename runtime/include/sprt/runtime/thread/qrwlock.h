@@ -45,9 +45,40 @@ public:
 		// rdlock will perfrom lock/unlock on this mutex before readlock process,
 		// so, if there are writer - read locking process will wait on this mutex until
 		// writer unlocks it
-		value_type mutex = 0;
+		value_type gatekeeper_mutex = 0;
 
-		// Readers counter, reader should not release lock if this counter is not 0
+		/*
+			The read-unlock operation must be atomic.
+			Since the counter is separate from the main mutex, a dedicated mutex is
+			required to ensure this atomicity. Otherwise, if incrementing the counter
+			and initiating the read lock occur between decrementing the counter and
+			performing the unlock, a deadlock will arise.
+
+			Deadlock pattern is:
+			T1					T2
+			-					decrement to 0 (causes rdunlock)
+			increment to 1		-
+			rdlock				-
+			-					rdunlock
+
+			With mutex, it become:
+			T1					T2
+			-					mtx lock
+			-					decrement to 0 (causes rdunlock)
+			-					rdunlock
+			-					mtx unlock
+			mtx lock			-
+			increment to 1		-
+			mtx unlock			-  (note, that we do not protect rdlock, only it's relative ordering)
+			rdlock				-
+			-					
+		*/
+		value_type counter_mutex = 0;
+
+		/*
+			The counter must be separated from the main mutex to avoid unnecessary wakeups when
+			a new reader is added (the futex may be woken because the value has changed).
+		*/
 		uint32_t counter = 0;
 	};
 
@@ -55,7 +86,7 @@ public:
 	static Status _funlock(value_type *__value, flags_type flags, value_type unlockMode) {
 		auto expected = _atomic::loadSeq(__value);
 		if ((expected & unlockMode) != 0) {
-			_atomic::storeSeq(__value, value_type(0));
+			expected = _atomic::exchange(__value, value_type(0));
 			if ((expected & Waiters) != 0) {
 				if (WakeFn(__value, flags) != 0) {
 					return status::errnoToStatus(__sprt_errno);
@@ -77,7 +108,62 @@ public:
 		return Status::Ok;
 	}
 
-	template <int (*WakeFn)(value_type *, flags_type)>
+	static Status _rd_decrement(rwlock_data *__data, flags_type flags) {
+		auto st = qmutex_base::_lock<__sprt_sprt_qlock_wait, nullptr>(&__data->counter_mutex,
+				nullptr, flags);
+
+		if (status::isSuccessful(st)) {
+			_atomic::fetchSub(&__data->counter, uint32_t(1));
+
+			st = qmutex_base::_unlock<__sprt_sprt_qlock_wake_one>(&__data->counter_mutex, flags);
+		}
+		return st;
+	}
+
+	static Status _rd_decrement_unlock(rwlock_data *__data, flags_type flags, value_type expected) {
+		auto st = qmutex_base::_lock<__sprt_sprt_qlock_wait, nullptr>(&__data->counter_mutex,
+				nullptr, flags);
+
+		if (status::isSuccessful(st)) {
+			if (expected == 0) {
+				expected = _atomic::loadSeq(&__data->value);
+			}
+
+			bool shouldWake = false;
+			auto fs = _atomic::fetchSub(&__data->counter, uint32_t(1));
+
+			if ((expected & ReadLock) != 0) {
+				if (fs == 1) {
+					auto current = _atomic::exchange(&__data->value, value_type(0));
+					if ((current & Waiters) != 0) {
+						shouldWake = true;
+					}
+				}
+			}
+
+			st = qmutex_base::_unlock<__sprt_sprt_qlock_wake_one>(&__data->counter_mutex, flags);
+
+			if (shouldWake) {
+				if (__sprt_sprt_qlock_wake_all(&__data->value, flags) != 0) {
+					st = status::errnoToStatus(__sprt_errno);
+				}
+			}
+		}
+		return st;
+	}
+
+	static Status _rd_increment(rwlock_data *__data, flags_type flags) {
+		auto st = qmutex_base::_lock<__sprt_sprt_qlock_wait, nullptr>(&__data->counter_mutex,
+				nullptr, flags);
+
+		if (sprt::status::isSuccessful(st)) {
+			_atomic::fetchAdd(&__data->counter, uint32_t(1));
+
+			st = qmutex_base::_unlock<__sprt_sprt_qlock_wake_one>(&__data->counter_mutex, flags);
+		}
+		return st;
+	}
+
 	static Status _unlock_fair(rwlock_data *__data, flags_type flags, value_type type = 0) {
 		Status ret = Status::Ok;
 
@@ -88,20 +174,18 @@ public:
 		}
 
 		if ((expected & ReadLock) != 0) {
-			bool shouldUnlock = (_atomic::fetchSub(&__data->counter, uint32_t(1)) == 1);
-			if (!shouldUnlock) {
-				return Status::Propagate;
-			}
+			return _rd_decrement_unlock(__data, flags, expected);
 		}
 
 		auto current = _atomic::exchange(&__data->value, value_type(0));
+		if ((current & WriteLock) != 0) {
+			qmutex_base::_unlock<__sprt_sprt_qlock_wake_one>(&__data->gatekeeper_mutex, flags);
+		}
+
 		if ((current & Waiters) != 0) {
-			if (WakeFn(&__data->value, flags) != 0) {
+			if (__sprt_sprt_qlock_wake_all(&__data->value, flags) != 0) {
 				ret = status::errnoToStatus(__sprt_errno);
 			}
-		}
-		if ((current & WriteLock) != 0) {
-			qmutex_base::_unlock<WakeFn>(&__data->mutex, flags);
 		}
 		return ret;
 	}
@@ -128,6 +212,32 @@ public:
 			// If our lock will be successful - set Waiters flag immediately
 			desired |= Waiters;
 
+			auto doLock = [&](value_type lockValue) {
+				auto st = WaitFn(__value, lockValue,
+						timeout ? *timeout : __SPRT_SPRT_TIMEOUT_INFINITE, flags);
+				if (st != 0) {
+					if (__sprt_errno == ETIMEDOUT) {
+						return Status::Timeout;
+					}
+					if (__sprt_errno != EAGAIN) {
+						return status::errnoToStatus(__sprt_errno);
+					}
+				}
+
+				if constexpr (ClockFn != nullptr) {
+					if (timeout) {
+						next = ClockFn(flags);
+						*timeout -= min((next - now), *timeout);
+						now = next;
+					}
+				}
+
+				// value was changed, now it's 0 or other lock value
+				// assume 0 and try to set lock with ReadLock
+				expected = 0;
+				return Status::Ok;
+			};
+
 			do {
 				// check if read lock already set
 				if ((expected & ReadLock) == ReadLock) {
@@ -141,35 +251,22 @@ public:
 					}
 				}
 
-				// set waiters flag
-				if ((expected & Waiters) != 0
-						// If we set Waiters flag, and original value is not WriteLock - we should not wait
-						|| ((expected = _atomic::fetchOr(__value, Waiters) | Waiters) & ~Waiters)
-								== WriteLock) {
-					// we successfully set waiters flag (or it was set before)
-					auto st = WaitFn(__value, expected,
-							timeout ? *timeout : __SPRT_SPRT_TIMEOUT_INFINITE, flags);
-					if (st != 0) {
-						if (__sprt_errno == ETIMEDOUT) {
-							return Status::Timeout;
+				if ((expected & WriteLock) == WriteLock) {
+					if ((expected & Waiters) == Waiters) {
+						auto st = doLock(expected);
+						if (st != Status::Ok) {
+							return st;
 						}
-						if (__sprt_errno != EAGAIN) {
-							return status::errnoToStatus(__sprt_errno);
-						}
-					}
-
-					if constexpr (ClockFn != nullptr) {
-						if (timeout) {
-							next = ClockFn(flags);
-							*timeout -= min((next - now), *timeout);
-							now = next;
+					} else {
+						expected = _atomic::fetchOr(__value, Waiters) | Waiters;
+						if ((expected & WriteLock) == WriteLock) {
+							auto st = doLock(expected);
+							if (st != Status::Ok) {
+								return st;
+							}
 						}
 					}
 				}
-
-				// value was changed, now it's 0 or other lock value
-				// assume 0 and try to set lock with ReadLock
-				expected = 0;
 			} while (!_atomic::compareSwap(__value, &expected, desired));
 		}
 		return Status::Ok;
@@ -187,24 +284,23 @@ public:
 	static Status _rdlock_fair(rwlock_data *__data, timeout_type *timeout, flags_type flags) {
 		Status st = Status::Ok;
 
-		// do lock-unlock cycle on mutex
+		// do lock-unlock cycle on Gatekeeper mutex
 		// this mutex prevents reader to lock if there are writer waiting
-		st = qmutex_base::_lock<WaitFn, ClockFn>(&__data->mutex, timeout, flags);
-
+		st = qmutex_base::_lock<WaitFn, ClockFn>(&__data->gatekeeper_mutex, timeout, flags);
 		if (st == Status::Timeout || (timeout && *timeout == 0)) {
 			return Status::Timeout;
 		} else if (!status::isSuccessful(st)) {
 			return st;
 		}
 
-		st = qmutex_base::_unlock<WakeFn>(&__data->mutex, flags);
+		st = qmutex_base::_unlock<WakeFn>(&__data->gatekeeper_mutex, flags);
 		if (!status::isSuccessful(st)) {
 			return st;
 		}
 
 		// Pre-increment counter;
 		// This prevents existing readlocks from unlocking while this thread is active
-		_atomic::fetchAdd(&__data->counter, value_type(1));
+		_rd_increment(__data, flags);
 
 		st = qrwlock_base::_rdlock<WaitFn, ClockFn>(&__data->value, timeout, flags);
 
@@ -216,14 +312,10 @@ public:
 		// we are write-locked (readers will be blocked on mutex), but we should gracefully
 		// process edge-cases
 		if (st == Status::Timeout || (timeout && *timeout == 0)) {
-			if (_atomic::fetchSub(&__data->counter, value_type(1)) == 0) {
-				qrwlock_base::_funlock<WakeFn>(&__data->value, flags, ReadLock);
-			}
+			_rd_decrement_unlock(__data, flags, 0);
 			return Status::Timeout;
 		} else if (!status::isSuccessful(st)) {
-			if (_atomic::fetchSub(&__data->counter, value_type(1)) == 0) {
-				qrwlock_base::_funlock<WakeFn>(&__data->value, flags, ReadLock);
-			}
+			_rd_decrement_unlock(__data, flags, 0);
 			return st;
 		}
 
@@ -245,27 +337,32 @@ public:
 		return Status::Ok;
 	}
 
-	template <int (*WakeFn)(value_type *, flags_type)>
 	static Status _tryrdlock_fair(rwlock_data *__data, flags_type flags) {
 		// First - try gatekeeper mutex
-		if (qmutex_base::_try_lock(&__data->mutex) == Status::ErrorBusy) {
+		if (qmutex_base::_try_lock(&__data->gatekeeper_mutex) == Status::ErrorBusy) {
 			return Status::ErrorBusy;
 		}
 
 		// Gatekeeper passed - unlock it
-		Status st = qmutex_base::_unlock<WakeFn>(&__data->mutex, flags);
+		Status st =
+				qmutex_base::_unlock<__sprt_sprt_qlock_wake_one>(&__data->gatekeeper_mutex, flags);
 		if (!status::isSuccessful(st)) {
 			return st;
 		}
 
 		// Pre-increment counter;
 		// This prevents existing readlocks from unlocking while this thread is active
-		_atomic::fetchAdd(&__data->counter, value_type(1));
+		_rd_increment(__data, flags);
 
 		if (qrwlock_base::_tryrdlock(&__data->value) == Status::ErrorBusy) {
-			if (_atomic::fetchSub(&__data->counter, value_type(1)) == 0) {
-				qrwlock_base::_funlock<WakeFn>(&__data->value, flags, ReadLock);
-			}
+			/*
+				Failure to acquire a read lock means it is locked for writing.
+				Nevertheless, between the attempt to acquire and the decrement
+				of the counter, another thread may obtain a read lock followed
+				by its release. This makes the current thread responsible for
+				releasing the read lock. 
+			*/
+			_rd_decrement_unlock(__data, flags, 0);
 			return Status::ErrorBusy;
 		}
 
@@ -291,6 +388,31 @@ public:
 
 			// Assume that there are other waiters
 			desired |= Waiters;
+
+			auto doLock = [&](value_type lockValue) {
+				auto st = WaitFn(__value, lockValue,
+						timeout ? *timeout : __SPRT_SPRT_TIMEOUT_INFINITE, flags);
+				if (st != 0) {
+					if (__sprt_errno == ETIMEDOUT) {
+						return Status::Timeout;
+					}
+					if (__sprt_errno != EAGAIN) {
+						return status::errnoToStatus(__sprt_errno);
+					}
+				}
+
+				if constexpr (ClockFn != nullptr) {
+					if (timeout) {
+						next = ClockFn(flags);
+						*timeout -= min((next - now), *timeout);
+						now = next;
+					}
+				}
+
+				expected = 0;
+				return Status::Ok;
+			};
+
 			do {
 				if constexpr (ClockFn != nullptr) {
 					if (timeout && *timeout == 0) {
@@ -298,34 +420,22 @@ public:
 					}
 				}
 
-				// set waiters flag
-				if ((expected & Waiters) != 0
-						|| ((expected = _atomic::fetchOr(__value, Waiters) | Waiters) & ~Waiters)
-								!= 0) {
-					// we successfully set waiters flag (or it was set before)
-					auto st = WaitFn(__value, expected,
-							timeout ? *timeout : __SPRT_SPRT_TIMEOUT_INFINITE, flags);
-					if (st != 0) {
-						if (__sprt_errno == ETIMEDOUT) {
-							return Status::Timeout;
+				if ((expected & ~Waiters) != 0) {
+					if ((expected & Waiters) == Waiters) {
+						auto st = doLock(expected);
+						if (st != Status::Ok) {
+							return st;
 						}
-						if (__sprt_errno != EAGAIN) {
-							return status::errnoToStatus(__sprt_errno);
-						}
-					}
-
-					if constexpr (ClockFn != nullptr) {
-						if (timeout) {
-							next = ClockFn(flags);
-							*timeout -= min((next - now), *timeout);
-							now = next;
+					} else {
+						expected = _atomic::fetchOr(__value, Waiters) | Waiters;
+						if ((expected & ~Waiters) != 0) {
+							auto st = doLock(expected);
+							if (st != Status::Ok) {
+								return st;
+							}
 						}
 					}
 				}
-
-				// value was changed, now it's 0 or other lock value
-				// assume 0 and try to set lock with WriteLock
-				expected = 0;
 			} while (!_atomic::compareSwap(__value, &expected, desired));
 		}
 		return Status::Ok;
@@ -344,12 +454,13 @@ public:
 		Status st = Status::Ok;
 
 		// lock gatekeeper mutex
-		st = qmutex_base::_lock<WaitFn, ClockFn>(&__data->mutex, timeout, flags);
+		st = qmutex_base::_lock<WaitFn, ClockFn>(&__data->gatekeeper_mutex, timeout, flags);
 		if (!status::isSuccessful(st)) {
 			return st;
 		}
 
-		return qrwlock_base::_wrlock<WaitFn, ClockFn>(&__data->value, timeout, flags);
+		st = qrwlock_base::_wrlock<WaitFn, ClockFn>(&__data->value, timeout, flags);
+		return st;
 	}
 
 	static Status _trywrlock(value_type *__value) {
@@ -363,15 +474,14 @@ public:
 		return Status::Ok;
 	};
 
-	template <int (*WakeFn)(value_type *, flags_type)>
 	static Status _trywrlock_fair(rwlock_data *__data, flags_type flags) {
-		if (qmutex_base::_try_lock(&__data->mutex) == Status::ErrorBusy) {
+		if (qmutex_base::_try_lock(&__data->gatekeeper_mutex) == Status::ErrorBusy) {
 			return Status::ErrorBusy;
 		}
 
 		auto st = _trywrlock(&__data->value);
 		if (st == Status::ErrorBusy) {
-			qmutex_base::_unlock<WakeFn>(&__data->mutex, flags);
+			qmutex_base::_unlock<__sprt_sprt_qlock_wake_one>(&__data->gatekeeper_mutex, flags);
 			return Status::ErrorBusy;
 		}
 		return st;

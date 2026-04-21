@@ -45,13 +45,10 @@ public:
 				&__native, nullptr, 0);
 	}
 	bool try_lock() {
-		return qrwlock_base::_trywrlock_fair<__sprt_sprt_qlock_wake_one>(&__native, 0)
-				== Status::Ok;
+		auto st = qrwlock_base::_trywrlock_fair(&__native, 0);
+		return st == Status::Ok;
 	}
-	void unlock() {
-		qrwlock_base::_unlock_fair<__sprt_sprt_qlock_wake_one>(&__native, 0,
-				qrwlock_base::WriteLock);
-	}
+	void unlock() { qrwlock_base::_unlock_fair(&__native, 0, qrwlock_base::WriteLock); }
 
 	// shared ownership
 	void lock_shared() {
@@ -59,13 +56,10 @@ public:
 				&__native, nullptr, 0);
 	}
 	bool try_lock_shared() {
-		return qrwlock_base::_tryrdlock_fair<__sprt_sprt_qlock_wake_one>(&__native, 0)
-				== Status::Ok;
+		auto st = qrwlock_base::_tryrdlock_fair(&__native, 0);
+		return st == Status::Ok;
 	}
-	void unlock_shared() {
-		qrwlock_base::_unlock_fair<__sprt_sprt_qlock_wake_one>(&__native, 0,
-				qrwlock_base::ReadLock);
-	}
+	void unlock_shared() { qrwlock_base::_unlock_fair(&__native, 0, qrwlock_base::ReadLock); }
 
 	native_handle_type native_handle() const noexcept { return __native; }
 

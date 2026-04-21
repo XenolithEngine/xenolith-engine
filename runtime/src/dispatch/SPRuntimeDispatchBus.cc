@@ -22,6 +22,7 @@
 
 #include <sprt/runtime/dispatch/bus.h>
 #include <sprt/runtime/log.h>
+#include <sprt/cxx/debugging>
 
 namespace sprt::dispatch {
 
@@ -91,9 +92,13 @@ void BusDelegate::handleEvent(Bus &bus, const BusEvent &event) {
 	}
 }
 
-void BusDelegate::handleAdded(Bus *bus) { _bus = bus; }
+void BusDelegate::handleAdded(Bus *bus) {
+	_bus = bus; //
+}
 
-void BusDelegate::handleRemoved(Bus *) { _bus = nullptr; }
+void BusDelegate::handleRemoved(Bus *) {
+	_bus = nullptr; //
+}
 
 void BusDelegate::finalize() {
 	_owner = nullptr;
@@ -167,7 +172,9 @@ void Bus::invalidateLooper(Looper *looper) {
 		auto v = sprt::move(it->second);
 		_loopers.erase(it);
 
-		for (auto &it : v) { doRemoveListener(it, lock); }
+		for (auto &it : v) {
+			doRemoveListener(it, lock); //
+		}
 	}
 }
 
@@ -219,7 +226,16 @@ void Bus::doRemoveListener(BusDelegate *delegate, sprt::unique_lock<sprt::mutex>
 
 	auto lIt = _loopers.find(delegate->getLooper());
 	if (lIt != _loopers.end()) {
+#if DEBUG
+		auto iit = lIt->second.find(delegate);
+		if (iit != lIt->second.end()) {
+			lIt->second.erase(iit);
+		} else {
+			sprt::breakpoint();
+		}
+#else
 		lIt->second.erase(delegate);
+#endif
 		if (lIt->second.empty()) {
 			lIt->first->detachBus(this);
 			_loopers.erase(lIt);

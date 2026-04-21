@@ -22,6 +22,7 @@
 
 #include <sprt/runtime/utils/urlview.h>
 #include <sprt/runtime/utils/idn.h>
+#include <sprt/runtime/stream.h>
 
 namespace sprt {
 

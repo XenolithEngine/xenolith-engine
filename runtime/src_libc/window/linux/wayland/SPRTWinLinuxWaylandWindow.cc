@@ -123,7 +123,9 @@ WaylandWindow::~WaylandWindow() {
 	_display = nullptr;
 }
 
-WaylandWindow::WaylandWindow() { }
+WaylandWindow::WaylandWindow() {
+	_controller = nullptr; //
+}
 
 bool WaylandWindow::init(NotNull<WaylandDisplay> display, Rc<WindowInfo> &&info,
 		NotNull<LinuxContextController> c) {

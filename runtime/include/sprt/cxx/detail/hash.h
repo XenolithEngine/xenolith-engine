@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__type_traits/modifications.h>
 #include <sprt/runtime/hash.h>
 #include <sprt/cxx/__type_traits/types.h>
+#include <sprt/c/__sprt_math.h>
 
 namespace sprt {
 
@@ -95,9 +96,9 @@ struct hash<const char (&)[N]> {
 
 template <typename T>
 struct hash<T *> {
-	constexpr size_t operator()(const T *value) const noexcept {
-		return static_cast<size_t>(sprt::rotr(reinterpret_cast<uintptr_t>(value),
-				sprt::countr_zero(alignof(max_align_t))));
+	size_t operator()(const T *value) const noexcept {
+		static const size_t shift = (size_t)__sprt_log2(1 + sizeof(T));
+		return reinterpret_cast<size_t>(value) >> shift;
 	}
 };
 

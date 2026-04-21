@@ -251,7 +251,7 @@ void ContextController::handleContextDidDestroy() {
 	_loopInfo = nullptr;
 	_context->handleDidDestroy();
 	_looper->poll();
-	_looper->wakeup();
+	_looper->wakeup(dispatch::WakeupFlags::Graceful);
 	_looper = nullptr;
 	_context = nullptr;
 }

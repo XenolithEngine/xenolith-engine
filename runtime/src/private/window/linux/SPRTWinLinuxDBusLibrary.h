@@ -229,6 +229,7 @@ public:
 	SPRT_DEFINE_PROTO(dbus_message_append_args)
 	SPRT_DEFINE_PROTO(dbus_message_is_signal)
 	SPRT_DEFINE_PROTO(dbus_message_is_error)
+	SPRT_DEFINE_PROTO(dbus_message_ref)
 	SPRT_DEFINE_PROTO(dbus_message_unref)
 	SPRT_DEFINE_PROTO(dbus_message_iter_init)
 	SPRT_DEFINE_PROTO(dbus_message_iter_recurse)

@@ -387,7 +387,7 @@ static kde_output_configuration_v2_listener s_kdeOutputConfigurationListener{
 		l->callback(Status::Ok);
 	}
 	kde_output_configuration_v2_destroy(l->config);
-	delete l;
+	sprt::__delete(l);
 },
 
 .failed = [](void *data, struct kde_output_configuration_v2 *kde_output_configuration_v2) {
@@ -396,7 +396,7 @@ static kde_output_configuration_v2_listener s_kdeOutputConfigurationListener{
 		l->callback(Status::ErrorInvalidArguemnt);
 	}
 	kde_output_configuration_v2_destroy(l->config);
-	delete l;
+	sprt::__delete(l);
 },
 
 .failure_reason = [](void *data, struct kde_output_configuration_v2 *kde_output_configuration_v2, const char *reason) {
@@ -577,7 +577,7 @@ void WaylandKdeDisplayConfigManager::applyDisplayConfig(NotNull<DisplayConfig> c
 		kde_output_configuration_v2_destroy(c);
 		cb(Status::Declined);
 	} else {
-		auto listener = new OutputConfigurationListener;
+		auto listener = new (sprt::nothrow) OutputConfigurationListener;
 		listener->wayland = _wayland;
 		listener->config = c;
 		listener->callback = sprt::move(cb);

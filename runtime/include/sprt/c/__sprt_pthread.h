@@ -159,7 +159,7 @@ typedef struct alignas(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
 } __SPRT_ID(pthread_barrierattr_t);
 
 typedef struct alignas(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
-	__SPRT_ID(uint32_t) __size[4];
+	__SPRT_ID(uint32_t) __size[5];
 } __SPRT_ID(pthread_rwlock_t);
 
 typedef struct alignas(__SPRT_PTHREAD_COMMON_ALIGNMENT) {

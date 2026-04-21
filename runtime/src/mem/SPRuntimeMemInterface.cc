@@ -484,7 +484,7 @@ void destroy(allocator_t *alloc) {
 			apr::allocator::destroy((apr_allocator_t *)alloc);
 		}
 	} else {
-		delete (impl::Allocator *)alloc;
+		__delete((impl::Allocator *)alloc);
 	}
 }
 

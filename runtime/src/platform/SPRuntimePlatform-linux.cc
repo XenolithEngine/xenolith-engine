@@ -453,13 +453,14 @@ struct i18n {
 		}
 
 		status = U_ZERO_ERROR;
-		auto targetBuf = new char16_t[len + 1];
+
+		auto targetBuf = __sprt_typed_malloca(char16_t, len + 1);
 		len = icuFn(targetBuf, len + 1, data.data(), data.size(), nullptr, &status);
 		if (len <= int32_t(len)) {
 			cb(WideStringView(targetBuf, len));
 			ret = true;
 		}
-		delete[] targetBuf;
+		__sprt_freea(targetBuf);
 		return ret;
 	}
 
@@ -467,7 +468,7 @@ struct i18n {
 			unistring_iface::u8_case_fn ustrFn) {
 		bool ret = false;
 		size_t targetSize = data.size();
-		auto targetBuf = new char[data.size() + 1];
+		auto targetBuf = __sprt_typed_malloca(char, data.size() + 1);
 
 		auto buf = ustrFn((const uint8_t *)data.data(), data.size(), unistring.uc_locale_language(),
 				nullptr, (uint8_t *)targetBuf, &targetSize);
@@ -479,7 +480,7 @@ struct i18n {
 			cb(StringView((const char *)buf, targetSize));
 			ret = true;
 		}
-		delete[] targetBuf;
+		__sprt_freea(targetBuf);
 		return ret;
 	}
 
@@ -487,7 +488,7 @@ struct i18n {
 			unistring_iface::u16_case_fn ustrFn) {
 		bool ret = false;
 		size_t targetSize = data.size();
-		auto targetBuf = new char16_t[data.size() + 1];
+		auto targetBuf = __sprt_typed_malloca(char16_t, data.size() + 1);
 
 		auto buf = ustrFn((const uint16_t *)data.data(), data.size(),
 				unistring.uc_locale_language(), nullptr, (uint16_t *)targetBuf, &targetSize);
@@ -499,7 +500,7 @@ struct i18n {
 			cb(WideStringView((const char16_t *)buf, targetSize));
 			ret = true;
 		}
-		delete[] targetBuf;
+		__sprt_freea(targetBuf);
 		return ret;
 	}
 
@@ -575,7 +576,7 @@ struct i18n {
 				return false;
 			}
 
-			auto targetBuf = new char16_t[len + 1];
+			auto targetBuf = __sprt_typed_malloca(char16_t, len + 1);
 			status = U_ZERO_ERROR;
 
 			len = icu.u_strToTitle_fn(targetBuf, len + 1, data.data(), data.size(), nullptr,
@@ -584,7 +585,7 @@ struct i18n {
 				cb(WideStringView(targetBuf, len));
 				ret = true;
 			}
-			delete[] targetBuf;
+			__sprt_freea(targetBuf);
 			return ret;
 		} else if (unistring.u16_totitle) {
 			return applyUnistringFunction(cb, data, unistring.u16_totitle);

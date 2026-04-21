@@ -65,6 +65,7 @@ struct __thread_pool {
 	qmutex mutex;
 
 	__thread_pool();
+	~__thread_pool();
 
 	bool isPrioValid(int policy, int prio);
 	bool isPrioValid(ThreadAttrFlags policy, int prio);

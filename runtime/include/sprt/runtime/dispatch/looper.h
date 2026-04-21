@@ -130,7 +130,7 @@ protected:
 	static Status cleanup(Looper *);
 
 	template <typename _Tp, typename... _Args>
-	friend constexpr _Tp *sprt::__construct_at(_Tp *__location, _Args &&...__args);
+	friend constexpr _Tp *sprt::__construct_at(_Tp *__location, _Args &&...__args) noexcept;
 
 	Looper(LooperInfo &&, Rc<QueueRef> &&);
 

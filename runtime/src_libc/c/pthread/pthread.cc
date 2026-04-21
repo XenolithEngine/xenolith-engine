@@ -65,6 +65,15 @@ __thread_pool::__thread_pool() {
 	otherPrioMax = __sprt_sched_get_priority_max(__SPRT_SCHED_OTHER);
 }
 
+__thread_pool::~__thread_pool() {
+	while (free) {
+		auto tmp = free;
+		free = free->next;
+
+		__sprt_free(tmp);
+	}
+}
+
 bool __thread_pool::isPrioValid(int policy, int prio) {
 	switch (policy) {
 	case __SPRT_SCHED_RR:
@@ -115,6 +124,8 @@ static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg) {
 
 	auto tid = __sprt_gettid();
 
+	__sprt_printf("Thread: %d\n", tid);
+
 	unique_lock globalLock(s_handlePool.mutex);
 	s_handlePool.activeThreads.emplace(tid, thread);
 	globalLock.unlock();
@@ -138,8 +149,8 @@ static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg) {
 
 	auto result = thread->result;
 
-	thread->state.set_and_signal(thread_t::StateFinalized);
 	lock.unlock(); // unlock before mutex's memory destroyed
+	thread->state.set_and_signal(thread_t::StateFinalized);
 
 	return result;
 }

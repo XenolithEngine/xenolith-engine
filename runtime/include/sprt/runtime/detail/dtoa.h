@@ -258,8 +258,10 @@ constexpr inline unsigned CountDecimalDigit32(uint32_t n) {
 	return 10;
 }
 
-static constexpr const uint32_t kPow10[] = {1, 10, 100, 1'000, 10'000, 100'000, 1'000'000,
-	10'000'000, 100'000'000, 1'000'000'000};
+static constexpr const uint64_t kPow10[] = {1, 10, 100, 1'000, 10'000, 100'000, 1'000'000,
+	10'000'000, 100'000'000, 1'000'000'000, 10'000'000'000, 100'000'000'000, 1'000'000'000'000,
+	10'000'000'000'000, 100'000'000'000'000, 1'000'000'000'000'000, 10'000'000'000'000'000,
+	100'000'000'000'000'000, 1'000'000'000'000'000'000};
 
 template <typename Char>
 constexpr inline void DigitGen(const DiyFp &W, const DiyFp &Mp, uint64_t delta, Char *buffer,

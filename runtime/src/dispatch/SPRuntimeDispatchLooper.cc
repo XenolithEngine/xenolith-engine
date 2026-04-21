@@ -71,6 +71,7 @@ struct Looper::Data : public detail::AllocPool {
 
 		auto tmp = sprt::move(d->buses);
 		d->buses.clear();
+		d->buses.shrink_to_fit();
 
 		for (auto &it : tmp) { it->invalidateLooper(l); }
 

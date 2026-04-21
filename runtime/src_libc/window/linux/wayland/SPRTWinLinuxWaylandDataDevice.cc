@@ -372,7 +372,6 @@ void WaylandDataSource::cancel() {
 WaylandDataDevice::~WaylandDataDevice() {
 	if (device) {
 		wl_data_device_release(device);
-		wl_data_device_destroy(device);
 		device = nullptr;
 	}
 

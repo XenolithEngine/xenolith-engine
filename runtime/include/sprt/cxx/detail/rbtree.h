@@ -301,9 +301,7 @@ public:
 	}
 
 	~RbTree() noexcept {
-		if (_size > 0) {
-			clear();
-		}
+		clear_deallocate();
 		if (_header.flag.size > 0 && _free) {
 			allocator_helper::template release_blocks<false>(_allocator, &_free,
 					_header.flag.index);
@@ -343,40 +341,40 @@ public:
 	}
 
 	template <typename... Args>
-	pair<iterator, bool> emplace(Args &&...args) {
+	pair<iterator, bool> emplace(Args &&...args) noexcept {
 		auto ret = insertNodeUnique(sprt::forward<Args>(args)...);
 		return pair(iterator(ret.first), ret.second);
 	}
 
 	template <typename... Args>
-	iterator emplace_hint(const_iterator hint, Args &&...args) {
+	iterator emplace_hint(const_iterator hint, Args &&...args) noexcept {
 		return iterator(insertNodeUniqueHint(hint, sprt::forward<Args>(args)...));
 	}
 
 	template <typename K, typename... Args>
-	pair<iterator, bool> try_emplace(K &&k, Args &&...args) {
+	pair<iterator, bool> try_emplace(K &&k, Args &&...args) noexcept {
 		auto ret = tryInsertNodeUnique(sprt::forward<K>(k), sprt::forward<Args>(args)...);
 		return pair(iterator(ret.first), ret.second);
 	}
 
 	template <typename K, typename... Args>
-	iterator try_emplace(const_iterator hint, K &&k, Args &&...args) {
+	iterator try_emplace(const_iterator hint, K &&k, Args &&...args) noexcept {
 		return iterator(
 				tryInsertNodeUniqueHint(hint, sprt::forward<K>(k), sprt::forward<Args>(args)...));
 	}
 
 	template <typename K, typename M>
-	pair<iterator, bool> insert_or_assign(K &&k, M &&m) {
+	pair<iterator, bool> insert_or_assign(K &&k, M &&m) noexcept {
 		auto ret = tryAssignNodeUnique(sprt::forward<K>(k), sprt::forward<M>(m));
 		return pair(iterator(ret.first), ret.second);
 	}
 
 	template <typename K, typename M>
-	iterator insert_or_assign(const_iterator hint, K &&k, M &&m) {
+	iterator insert_or_assign(const_iterator hint, K &&k, M &&m) noexcept {
 		return iterator(tryAssignNodeUniqueHint(hint, sprt::forward<K>(k), sprt::forward<M>(m)));
 	}
 
-	iterator erase(const_iterator pos) {
+	iterator erase(const_iterator pos) noexcept {
 		if (pos._node != &_header) {
 			auto next = RbTreeNodeBase::increment(pos.constcast()._node);
 			deleteNode(const_cast<RbTreeNodeBase *>(pos._node));
@@ -385,7 +383,7 @@ public:
 		return pos.constcast();
 	}
 
-	iterator erase(const_iterator first, const_iterator last) {
+	iterator erase(const_iterator first, const_iterator last) noexcept {
 		for (auto it = first; it != last; it++) {
 			deleteNode(const_cast<RbTreeNodeBase *>(it._node));
 		}
@@ -393,7 +391,7 @@ public:
 	}
 
 	template <typename K>
-	size_t erase_unique(const K &key) {
+	size_t erase_unique(const K &key) noexcept {
 		auto node = find_impl(key);
 		if (node) {
 			deleteNode(node);
@@ -468,61 +466,61 @@ public:
 	}
 
 	template < typename K >
-	iterator find(const K &x) {
+	iterator find(const K &x) noexcept {
 		auto ptr = find_impl(x);
 		return (ptr) ? iterator(ptr) : end();
 	}
 
 	template < typename K >
-	const_iterator find(const K &x) const {
+	const_iterator find(const K &x) const noexcept {
 		auto ptr = find_impl(x);
 		return (ptr) ? const_iterator(ptr) : end();
 	}
 
 	template < typename K >
-	iterator lower_bound(const K &x) {
+	iterator lower_bound(const K &x) noexcept {
 		auto ptr = lower_bound_ptr(x);
 		return (ptr) ? iterator(ptr) : end();
 	}
 
 	template < typename K >
-	const_iterator lower_bound(const K &x) const {
+	const_iterator lower_bound(const K &x) const noexcept {
 		auto ptr = lower_bound_ptr(x);
 		return (ptr) ? const_iterator(ptr) : end();
 	}
 
 	template < typename K >
-	iterator upper_bound(const K &x) {
+	iterator upper_bound(const K &x) noexcept {
 		auto ptr = upper_bound_ptr(x);
 		return (ptr) ? iterator(ptr) : end();
 	}
 
 	template < typename K >
-	const_iterator upper_bound(const K &x) const {
+	const_iterator upper_bound(const K &x) const noexcept {
 		auto ptr = upper_bound_ptr(x);
 		return (ptr) ? const_iterator(ptr) : end();
 	}
 	template < typename K >
-	pair<iterator, iterator> equal_range(const K &x) {
+	pair<iterator, iterator> equal_range(const K &x) noexcept {
 		return pair(lower_bound(x), upper_bound(x));
 	}
 
 	template < typename K >
-	pair<const_iterator, const_iterator> equal_range(const K &x) const {
+	pair<const_iterator, const_iterator> equal_range(const K &x) const noexcept {
 		return pair(lower_bound(x), upper_bound(x));
 	}
 
 	template < typename K >
-	size_t count(const K &x) const {
+	size_t count(const K &x) const noexcept {
 		return count_impl(x);
 	}
 
 	template < typename K >
-	size_t count_unique(const K &x) const {
+	size_t count_unique(const K &x) const noexcept {
 		return findNode(x) ? 1 : 0;
 	}
 
-	void reserve(size_t c) {
+	void reserve(size_t c) noexcept {
 		// if requested count is greater then size + pending preallocated nodes
 		if (c > _size + _header.flag.size) {
 			allocate_block(c - (_size + _header.flag.size));
@@ -551,38 +549,49 @@ protected:
 	size_t _size = 0;
 	RbTreeNode<Value> *_free = nullptr;
 
-	inline node_ptr root() { return static_cast<node_ptr>(_header.left); }
-	inline const_node_ptr root() const { return static_cast<const_node_ptr>(_header.left); }
-	inline void setroot(base_type n) {
+	inline node_ptr root() noexcept { return static_cast<node_ptr>(_header.left); }
+	inline const_node_ptr root() const noexcept {
+		return static_cast<const_node_ptr>(_header.left);
+	}
+	inline void setroot(base_type n) noexcept {
 		_header.left = n;
 		n->parent = &_header;
 	}
 
-	inline node_ptr left() { return static_cast<node_ptr>(_header.parent); }
-	inline const_node_ptr left() const { return static_cast<const_node_ptr>(_header.parent); }
-	inline void setleft(base_type n) { _header.parent = (n == &_header) ? nullptr : n; }
+	inline node_ptr left() noexcept { return static_cast<node_ptr>(_header.parent); }
+	inline const_node_ptr left() const noexcept {
+		return static_cast<const_node_ptr>(_header.parent);
+	}
+	inline void setleft(base_type n) noexcept { _header.parent = (n == &_header) ? nullptr : n; }
 
-	inline node_ptr right() { return static_cast<node_ptr>(_header.right); }
-	inline const_node_ptr right() const { return static_cast<const_node_ptr>(_header.right); }
-	inline void setright(base_type n) { _header.right = (n == &_header) ? nullptr : n; }
+	inline node_ptr right() noexcept { return static_cast<node_ptr>(_header.right); }
+	inline const_node_ptr right() const noexcept {
+		return static_cast<const_node_ptr>(_header.right);
+	}
+	inline void setright(base_type n) noexcept { _header.right = (n == &_header) ? nullptr : n; }
 
-	inline const Key &extract(const Value &val) const {
+	inline const Key &extract(const Value &val) const noexcept {
 		return aligned_storage_kv_traits<Key, Value>::extract_key(val);
 	}
-	inline const Key &extract(const aligned_storage<Value> &s) const {
+	inline const Key &extract(const aligned_storage<Value> &s) const noexcept {
 		return aligned_storage_kv_traits<Key, Value>::extract_key(s);
 	}
-	inline const Key &extract(const RbTreeNodeBase *s) const {
+	inline const Key &extract(const RbTreeNodeBase *s) const noexcept {
 		return extract(static_cast<const RbTreeNode<Value> *>(s)->value.ref());
 	}
 
-	inline bool compareLtKey(const Key &l, const Key &r) const { return _comp(l, r); }
-	inline bool compareEqKey(const Key &l, const Key &r) const {
+	template <typename A, typename B>
+	inline bool compareLtKey(const A &l, const B &r) const noexcept {
+		return _comp(l, r);
+	}
+
+	template <typename A, typename B>
+	inline bool compareEqKey(const A &l, const B &r) const noexcept {
 		return !compareLtKey(l, r) && !compareLtKey(r, l);
 	}
 
 	template <typename A, typename B>
-	inline bool compareLtTransparent(const A &l, const B &r) const {
+	inline bool compareLtTransparent(const A &l, const B &r) const noexcept {
 		if constexpr (impl::is_detected_v<RbTreeDetectTransparent, Comp>) {
 			return _comp(l, r);
 		} else if constexpr (sprt::is_same_v<A, B>) {
@@ -595,15 +604,16 @@ protected:
 		}
 	}
 
-	inline bool compareEqValue(const Value &l, const Value &r) const {
+	inline bool compareEqValue(const Value &l, const Value &r) const noexcept {
 		return compareEqKey(extract(l), extract(r));
 	}
-	inline bool compareLtValue(const Value &l, const Value &r) const {
+	inline bool compareLtValue(const Value &l, const Value &r) const noexcept {
 		return compareLtKey(extract(l), extract(r));
 	}
 
+	template <typename K = Key>
 	struct InsertData {
-		const Key *key;
+		const K *key;
 		RbTreeNode<Value> *val;
 		RbTreeNodeBase *current;
 		RbTreeNodeBase *parent;
@@ -611,7 +621,7 @@ protected:
 	};
 
 	template <typename... Args>
-	InsertData constructNode(Args &&...args) {
+	InsertData<Key> constructNode(Args &&...args) noexcept {
 		RbTreeNode<Value> *ret = allocateNode();
 		ret->parent = nullptr;
 		ret->left = nullptr;
@@ -622,14 +632,8 @@ protected:
 		return InsertData{&extract(ret->value), ret, nullptr, nullptr, false};
 	}
 
-	InsertData constructKey(const Key &k) {
-		return InsertData{&k, nullptr, nullptr, nullptr, false};
-	}
-
-	InsertData constructKey(Key &&k) { return InsertData{&k, nullptr, nullptr, nullptr, false}; }
-
 	template <typename K, typename... Args>
-	RbTreeNode<Value> *constructEmplace(K &&k, Args &&...args) {
+	RbTreeNode<Value> *constructEmplace(K &&k, Args &&...args) noexcept {
 		RbTreeNode<Value> *ret = allocateNode();
 		ret->parent = nullptr;
 		ret->left = nullptr;
@@ -642,18 +646,20 @@ protected:
 	}
 
 	template <typename M>
-	void constructAssign(RbTreeNode<Value> *n, M &&m) {
+	void constructAssign(RbTreeNode<Value> *n, M &&m) noexcept {
 		n->value.ref().second = sprt::forward<M>(m);
 	}
 
-	bool getInsertPositionUnique_search(InsertData &d) {
+	template <typename K>
+	bool getInsertPositionUnique_search(InsertData<K> &d) noexcept {
 		while (d.current != nullptr) {
 			d.parent = d.current;
 			if (compareLtKey(*(d.key), extract(d.current))) {
 				d.isLeft = true;
 				d.current = static_cast<RbTreeNode<Value> *>(d.current->left);
 			} else {
-				if (!compareLtKey(extract(d.current), *(d.key))) { // equality check
+				// equality check !lt(A, B) && !lt(B, A) == eq(A, B)
+				if (!compareLtKey(extract(d.current), *(d.key))) {
 					return false;
 				}
 				d.isLeft = false;
@@ -663,7 +669,8 @@ protected:
 		return true;
 	}
 
-	bool getInsertPosition_tryRoot(InsertData &d) {
+	template <typename K>
+	bool getInsertPosition_tryRoot(InsertData<K> &d) noexcept {
 		if (_size == 0) {
 			d.parent = nullptr;
 			d.isLeft = true;
@@ -673,7 +680,8 @@ protected:
 		return false;
 	}
 
-	bool getInsertPositionUnique_tryHint(InsertData &d) {
+	template <typename K>
+	bool getInsertPositionUnique_tryHint(InsertData<K> &d) noexcept {
 		if (d.current == nullptr) {
 			return false; // no hint provided
 		}
@@ -722,7 +730,8 @@ protected:
 		return false;
 	}
 
-	bool getInsertPositionUnique_tryLeft(InsertData &d) {
+	template <typename K>
+	bool getInsertPositionUnique_tryLeft(InsertData<K> &d) noexcept {
 		if (auto l = left()) {
 			if (compareLtKey(*(d.key), extract(l->value))) {
 				d.current = nullptr;
@@ -737,7 +746,8 @@ protected:
 		return false;
 	}
 
-	bool getInsertPositionUnique_tryRight(InsertData &d) {
+	template <typename K>
+	bool getInsertPositionUnique_tryRight(InsertData<K> &d) noexcept {
 		if (auto r = right()) {
 			if (compareLtKey(extract(r->value), *(d.key))) {
 				d.current = nullptr;
@@ -752,7 +762,8 @@ protected:
 		return false;
 	}
 
-	bool getInsertPositionUnique(InsertData &d) {
+	template <typename K>
+	bool getInsertPositionUnique(InsertData<K> &d) noexcept {
 		// *_try* functions should return true with non-nullptr d.current
 		// if new node is not unique to stop search process
 		if (getInsertPosition_tryRoot(d) || getInsertPositionUnique_tryHint(d)
@@ -769,7 +780,7 @@ protected:
 	}
 
 	template <typename... Args>
-	pair<RbTreeNode<Value> *, bool> insertNodeUnique(Args &&...args) {
+	pair<RbTreeNode<Value> *, bool> insertNodeUnique(Args &&...args) noexcept {
 		InsertData d = constructNode(sprt::forward<Args>(args)...);
 		if (!getInsertPositionUnique(d)) {
 			destroyNode(d.val);
@@ -780,7 +791,7 @@ protected:
 	}
 
 	template <typename... Args>
-	RbTreeNode<Value> *insertNodeUniqueHint(const_iterator hint, Args &&...args) {
+	RbTreeNode<Value> *insertNodeUniqueHint(const_iterator hint, Args &&...args) noexcept {
 		InsertData d = constructNode(sprt::forward<Args>(args)...);
 		d.current = hint.constcast()._node;
 		if (!getInsertPositionUnique(d)) {
@@ -792,8 +803,8 @@ protected:
 	}
 
 	template <typename K, typename... Args>
-	pair<RbTreeNode<Value> *, bool> tryInsertNodeUnique(K &&k, Args &&...args) {
-		InsertData d = constructKey(sprt::forward<K>(k));
+	pair<RbTreeNode<Value> *, bool> tryInsertNodeUnique(K &&k, Args &&...args) noexcept {
+		InsertData d{&k, nullptr, nullptr, nullptr, false};
 		if (!getInsertPositionUnique(d)) {
 			return pair(static_cast<RbTreeNode<Value> *>(d.current), false);
 		}
@@ -804,8 +815,9 @@ protected:
 	}
 
 	template <typename K, typename... Args>
-	RbTreeNode<Value> *tryInsertNodeUniqueHint(const_iterator hint, K &&k, Args &&...args) {
-		InsertData d = constructKey(sprt::forward<K>(k));
+	RbTreeNode<Value> *tryInsertNodeUniqueHint(const_iterator hint, K &&k,
+			Args &&...args) noexcept {
+		InsertData d{&k, nullptr, nullptr, nullptr, false};
 		d.current = hint.constcast()._node;
 		if (!getInsertPositionUnique(d)) {
 			return static_cast<RbTreeNode<Value> *>(d.current);
@@ -816,8 +828,8 @@ protected:
 	}
 
 	template <typename K, typename M>
-	pair<RbTreeNode<Value> *, bool> tryAssignNodeUnique(K &&k, M &&m) {
-		InsertData d = constructKey(sprt::forward<K>(k));
+	pair<RbTreeNode<Value> *, bool> tryAssignNodeUnique(K &&k, M &&m) noexcept {
+		InsertData d{&k, nullptr, nullptr, nullptr, false};
 		if (!getInsertPositionUnique(d)) {
 			constructAssign(static_cast<RbTreeNode<Value> *>(d.current), sprt::forward<M>(m));
 			return pair(static_cast<RbTreeNode<Value> *>(d.current), false);
@@ -829,8 +841,8 @@ protected:
 	}
 
 	template <typename K, typename M>
-	RbTreeNode<Value> *tryAssignNodeUniqueHint(const_iterator hint, K &&k, M &&m) {
-		InsertData d = constructKey(sprt::forward<K>(k));
+	RbTreeNode<Value> *tryAssignNodeUniqueHint(const_iterator hint, K &&k, M &&m) noexcept {
+		InsertData d{&k, nullptr, nullptr, nullptr, false};
 		d.current = hint.constcast()._node;
 		if (!getInsertPositionUnique(d)) {
 			constructAssign(d.current, sprt::forward<M>(m));
@@ -841,7 +853,8 @@ protected:
 				d.isLeft);
 	}
 
-	RbTreeNode<Value> *makeInsert(RbTreeNode<Value> *n, RbTreeNodeBase *parent, bool isLeft) {
+	RbTreeNode<Value> *makeInsert(RbTreeNode<Value> *n, RbTreeNodeBase *parent,
+			bool isLeft) noexcept {
 		n->parent = parent;
 		if (parent) {
 			if (isLeft) {
@@ -866,7 +879,7 @@ protected:
 		return n;
 	}
 
-	void deleteNode(RbTreeNodeBase *z) {
+	void deleteNode(RbTreeNodeBase *z) noexcept {
 		RbTreeNodeBase *x = nullptr;
 		RbTreeNodeBase *y = nullptr;
 
@@ -943,7 +956,7 @@ protected:
 		--_size;
 	}
 
-	void clear_visit(RbTreeNode<Value> *target) {
+	void clear_visit(RbTreeNode<Value> *target) noexcept {
 		if (target->left) {
 			clear_visit(static_cast<RbTreeNode<Value> *>(target->left));
 		}
@@ -953,7 +966,7 @@ protected:
 		destroyNode(target);
 	}
 
-	void clone_visit(const RbTreeNode<Value> *source, RbTreeNode<Value> *target) {
+	void clone_visit(const RbTreeNode<Value> *source, RbTreeNode<Value> *target) noexcept {
 		target->value.construct(_allocator, source->value.ref());
 		target->setColor(source->getColor());
 		if (source->left) {
@@ -981,7 +994,7 @@ protected:
 		}
 	}
 
-	void clone(const RbTree &other) {
+	void clone(const RbTree &other) noexcept {
 		// prevent 'clear' from dealloc anything
 		auto preallocTmp = memory_persistent();
 		set_memory_persistent(true);
@@ -1011,7 +1024,7 @@ protected:
 	}
 
 	template < typename K >
-	node_ptr find_impl(const K &x) const {
+	node_ptr find_impl(const K &x) const noexcept {
 		const_node_ptr current = root();
 		while (current) {
 			auto &key = extract(current);
@@ -1028,7 +1041,7 @@ protected:
 	}
 
 	template < typename K >
-	node_ptr lower_bound_ptr(const K &x) const {
+	node_ptr lower_bound_ptr(const K &x) const noexcept {
 		const_node_ptr current = root();
 		const_node_ptr saved = nullptr;
 		while (current) {
@@ -1043,7 +1056,7 @@ protected:
 	}
 
 	template < typename K >
-	node_ptr upper_bound_ptr(const K &x) const {
+	node_ptr upper_bound_ptr(const K &x) const noexcept {
 		const_node_ptr current = root();
 		const_node_ptr saved = current;
 		while (current) {
@@ -1058,7 +1071,7 @@ protected:
 	}
 
 	template < typename K >
-	size_t count_impl(const K &x) const {
+	size_t count_impl(const K &x) const noexcept {
 		auto c = find_impl(x);
 		if (!c) {
 			return 0;
@@ -1086,7 +1099,7 @@ protected:
 		}
 	}
 
-	void destroyNode(RbTreeNode<Value> *n) {
+	void destroyNode(RbTreeNode<Value> *n) noexcept {
 		_allocator.destroy(n->value.ptr());
 		if (!_free) {
 			// no saved node - always hold one
@@ -1104,7 +1117,7 @@ protected:
 		}
 	}
 
-	RbTreeNode<Value> *allocateNode() {
+	RbTreeNode<Value> *allocateNode() noexcept {
 		if (_free) {
 			auto ret = _free;
 			_free = (RbTreeNode<Value> *)ret->parent;
@@ -1120,7 +1133,7 @@ protected:
 		}
 	}
 
-	void allocate_block(size_t count) {
+	void allocate_block(size_t count) noexcept {
 		RbTreeNode<Value> *block = nullptr, *tail = nullptr;
 		if (_header.flag.index < node_type::Flag::MaxIndex) {
 			uintptr_t preallocIdx = ++_header.flag.index;

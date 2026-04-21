@@ -55,6 +55,27 @@ inline io_int<T> io_hex(T value) {
 template <typename T>
 struct io_traits;
 
+template <typename T, typename StringType>
+static inline const callback<void(StringType)> &operator<<(const callback<void(StringType)> &cb,
+		const T &val) {
+	static_assert(sprt::is_same_v<StringType, StringViewBase<char>>
+					|| sprt::is_same_v<StringType, StringViewBase<char16_t>>
+					|| sprt::is_same_v<StringType, StringViewBase<char32_t>>
+					|| sprt::is_same_v<StringType, StringViewUtf8>
+					|| sprt::is_same_v<StringType, BytesViewTemplate<endian::big>>
+					|| sprt::is_same_v<StringType, BytesViewTemplate<endian::little>>,
+			"Functional stream argument should be one of StringView, WideStringView, "
+			"StringViewBase<char32_t>, StringViewUtf8, BytesView");
+
+	static_assert(requires(const callback<void(StringType)> &cb,
+						  const T &val) { io_traits<T>::encode(cb, val); },
+			"sprt::io_traits<T> is not defined correctly; Be sure that `encode` function "
+			"defined with correct callback and argument type");
+
+	io_traits<T>::encode(cb, val);
+	return cb;
+}
+
 template <>
 struct io_traits<void> {
 	template <io_character CharType, typename Type>
@@ -85,6 +106,28 @@ struct io_traits<void> {
 	template <sprt::endian E, typename Type>
 	static void encode(const callback<void(BytesViewTemplate<E>)> &cb, const Type &value) {
 		io_traits<Type>::encode(cb, value);
+	}
+};
+
+template <typename T>
+struct io_traits<const T> {
+	template <io_character CharType>
+	static size_t length(const T &value) {
+		return io_traits<T>::template length<CharType>(value);
+	}
+
+	template <io_character CharType>
+	static void encode(const callback<void(StringViewBase<CharType>)> &cb, const T &value) {
+		io_traits<T>::encode(cb, value);
+	}
+
+	static void encode(const callback<void(StringViewUtf8)> &cb, const T &value) {
+		io_traits<T>::encode(cb, value);
+	}
+
+	template <sprt::endian E>
+	static void encode(const callback<void(BytesViewTemplate<E>)> &cb, const T &value) {
+		io_traits<T>::encode(cb, value);
 	}
 };
 

@@ -30,27 +30,6 @@ THE SOFTWARE.
 
 namespace sprt {
 
-template <typename T, typename StringType>
-inline const callback<void(StringType)> &operator<<(const callback<void(StringType)> &cb,
-		const T &val) {
-	static_assert(sprt::is_same_v<StringType, StringViewBase<char>>
-					|| sprt::is_same_v<StringType, StringViewBase<char16_t>>
-					|| sprt::is_same_v<StringType, StringViewBase<char32_t>>
-					|| sprt::is_same_v<StringType, StringViewUtf8>
-					|| sprt::is_same_v<StringType, BytesViewTemplate<endian::big>>
-					|| sprt::is_same_v<StringType, BytesViewTemplate<endian::little>>,
-			"Functional stream argument should be one of StringView, WideStringView, "
-			"StringViewBase<char32_t>, StringViewUtf8, BytesView");
-
-	static_assert(requires(const callback<void(StringType)> &cb,
-						  const T &val) { io_traits<T>::encode(cb, val); },
-			"sprt::io_traits<T> is not defined correctly; Be sure that `encode` function "
-			"defined with correct callback and argument type");
-
-	io_traits<T>::encode(cb, val);
-	return cb;
-}
-
 template <typename CharType, typename Type>
 void __processArgs(const callback<void(StringViewBase<CharType>)> &cb, Type &&arg) {
 	cb << arg;

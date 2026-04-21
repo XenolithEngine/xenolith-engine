@@ -61,7 +61,9 @@ public:
 	void unlock();
 
 protected:
+	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 	struct SPRT_API OutputContext : PerformInterface {
+		__SPRT_POP_ALLOW_CXXABI_ALLOC
 		Rc<PoolRef> pool;
 		TaskQueue *queue = nullptr;
 		sprt::qmutex outputMutex;

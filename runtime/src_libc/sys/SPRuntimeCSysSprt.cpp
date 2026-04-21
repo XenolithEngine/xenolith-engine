@@ -127,45 +127,62 @@ __SPRT_C_FUNC int __SPRT_ID(sprt_qlock_wait)(__SPRT_ID(sprt_qlock_t) * value,
 
 __SPRT_C_FUNC int __SPRT_ID(
 		sprt_qlock_wake_one)(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_lock_flags_t) flags) {
+	int result = 0;
 #if SPRT_LINUX || SPRT_ANDROID
 	int _flags = __SPRT_FUTEX_PRIVATE_FLAG;
 	if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_SHARED))) {
 		_flags &= ~__SPRT_FUTEX_PRIVATE_FLAG;
 	}
-	return ::syscall(SYS_FUTEX_V1, value, __SPRT_FUTEX_WAKE | (_flags & __SPRT_FUTEX_FLAG_MASK), 1);
-
+	result = ::syscall(SYS_FUTEX_V1, value, __SPRT_FUTEX_WAKE | (_flags & __SPRT_FUTEX_FLAG_MASK),
+			1);
+	if (result > 0) {
+		result = 0;
+	}
 #elif SPRT_MACOS
-	return os_sync_wake_by_address_any((void *)value, sizeof(uint32_t),
+	result = os_sync_wake_by_address_any((void *)value, sizeof(uint32_t),
 			OS_SYNC_WAKE_BY_ADDRESS_NONE);
 
 #elif SPRT_WINDOWS
 	WakeByAddressSingle((void *)value);
-	return 0;
 #else
 #error not implemented
 #endif
+#if DEBUG
+	if (result != 0 && __sprt_errno != EAGAIN && __sprt_errno != ETIMEDOUT) {
+		__sprt_printf("sprt_qlock_wait error: %d\n", __sprt_errno);
+	}
+#endif
+	return result;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		sprt_qlock_wake_all)(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_lock_flags_t) flags) {
+	int result = 0;
 #if SPRT_LINUX || SPRT_ANDROID
 	int _flags = __SPRT_FUTEX_PRIVATE_FLAG;
 	if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_SHARED))) {
 		_flags &= ~__SPRT_FUTEX_PRIVATE_FLAG;
 	}
-	return ::syscall(SYS_FUTEX_V1, value, __SPRT_FUTEX_WAKE | (_flags & __SPRT_FUTEX_FLAG_MASK),
+	result = ::syscall(SYS_FUTEX_V1, value, __SPRT_FUTEX_WAKE | (_flags & __SPRT_FUTEX_FLAG_MASK),
 			__SPRT_INT_MAX);
-
+	if (result > 0) {
+		result = 0;
+	}
 #elif SPRT_MACOS
-	return os_sync_wake_by_address_all((void *)value, sizeof(uint32_t),
+	result = os_sync_wake_by_address_all((void *)value, sizeof(uint32_t),
 			OS_SYNC_WAKE_BY_ADDRESS_NONE);
 
 #elif SPRT_WINDOWS
 	WakeByAddressAll((void *)value);
-	return 0;
 #else
 #error not implemented
 #endif
+#if DEBUG
+	if (result != 0 && __sprt_errno != EAGAIN && __sprt_errno != ETIMEDOUT) {
+		__sprt_printf("sprt_qlock_wait error: %d\n", __sprt_errno);
+	}
+#endif
+	return result;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(sprt_rlock_supports)(__SPRT_ID(sprt_lock_flags_t) flags) {

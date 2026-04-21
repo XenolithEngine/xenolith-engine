@@ -31,7 +31,9 @@ namespace sprt::dispatch {
 
 class SPRT_API PerformInterface {
 public:
+	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 	virtual ~PerformInterface() = default;
+	__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 	// Perform Task's complete functions on this event queue
 	virtual Status perform(Rc<Task> &&task) { return Status::ErrorNotImplemented; }

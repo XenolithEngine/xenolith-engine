@@ -233,6 +233,24 @@ struct NodeBlockAllocatorHelper {
 		PreallocatedData data[nCells];
 
 		// iterate until all known indexes processed
+		if (nblocks == 0) {
+
+			while (*segment) {
+				auto node = *segment;
+				if (!node->isPrealloc()) {
+					// node is not indexed - just deallocate it
+					auto next = static_cast<Node *>(node->getNextStorage());
+
+					alloc.destroy(node);
+					alloc.__deallocate(node, 1, node->getSize());
+
+					*segment = next;
+					++ret;
+				}
+			}
+			return ret;
+		}
+
 		while (offset < nblocks) {
 			for (auto &it : data) { it = PreallocatedData(); }
 
