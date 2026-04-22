@@ -60,6 +60,8 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 
 	{"runtime_ref", &sprt::performRefTests},
 	{"runtime_dispatch", &sprt::performDispatchTests},
+	{"runtime_unicode", &sprt::performUnicodeTests},
+	{"runtime_dtoa", &sprt::performDtoaTests},
 };
 
 int main(int argc, const char *argv[]) {

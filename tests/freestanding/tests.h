@@ -49,5 +49,7 @@ void performSharedMutexStressTests();
 
 void performRefTests();
 void performDispatchTests();
+void performUnicodeTests();
+void performDtoaTests();
 
 } // namespace sprt
