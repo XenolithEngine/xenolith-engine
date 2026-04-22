@@ -52,6 +52,37 @@ inline io_int<T> io_hex(T value) {
 	return io_int<T>{value, io_int_base::hex};
 }
 
+template <floating_point T>
+struct io_float {
+	T value;
+	_dtoa::dtoa_options opts;
+};
+
+template <floating_point T>
+inline io_float<T> io_precision(T value, uint16_t n) {
+	return io_float<T>{value, {.precision = n}};
+}
+
+template <floating_point T>
+inline io_float<T> io_fixed(T value) {
+	return io_float<T>{value, {.mode = _dtoa::dtoa_options::fixed}};
+}
+
+template <floating_point T>
+inline io_float<T> io_scientific(T value) {
+	return io_float<T>{value, {.mode = _dtoa::dtoa_options::scientific}};
+}
+
+template <floating_point T>
+inline io_float<T> io_fixed(T value, uint16_t n) {
+	return io_float<T>{value, {.precision = n, .mode = _dtoa::dtoa_options::fixed}};
+}
+
+template <floating_point T>
+inline io_float<T> io_scientific(T value, uint16_t n) {
+	return io_float<T>{value, {.precision = n, .mode = _dtoa::dtoa_options::scientific}};
+}
+
 template <typename T>
 struct io_traits;
 
@@ -389,45 +420,51 @@ struct io_traits<io_int<I>> {
 	}
 };
 
-template <>
-struct io_traits<double> {
+template <floating_point T>
+struct io_traits<T> {
 	static constexpr size_t MAX_DIGITS = DOUBLE_MAX_DIGITS;
 
 	template <io_character CharType>
-	static constexpr size_t length(const double &value) {
+	static constexpr size_t length(const T &value) {
 		return _dtoa::dtoa_len(value);
 	}
 
 	template <io_character CharType>
 	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
-			const double &value) {
-		CharType buf[DOUBLE_MAX_DIGITS];
-		auto ret = sprt::dtoa(value, buf, DOUBLE_MAX_DIGITS);
-		cb(StringViewBase<CharType>(buf, ret));
+			const T &value) {
+		CharType buf[MAX_DIGITS + 1];
+		auto ret = sprt::dtoa(value, buf, MAX_DIGITS);
+		cb(StringViewBase<CharType>(buf + MAX_DIGITS - ret, ret));
 	}
 
-	static void encode(const callback<void(StringViewUtf8)> &cb, const double &value) {
-		char buf[DOUBLE_MAX_DIGITS];
-		auto ret = sprt::dtoa(value, buf, DOUBLE_MAX_DIGITS);
-		cb(StringViewUtf8(buf, ret));
+	static void encode(const callback<void(StringViewUtf8)> &cb, const T &value) {
+		char buf[MAX_DIGITS + 1];
+		auto ret = sprt::dtoa(value, buf, MAX_DIGITS);
+		cb(StringViewUtf8(buf + MAX_DIGITS - ret, ret));
 	}
 };
 
-template <>
-struct io_traits<float> {
+template <floating_point T>
+struct io_traits<io_float<T>> {
+	static constexpr size_t MAX_DIGITS = DOUBLE_MAX_DIGITS;
+
 	template <io_character CharType>
-	static constexpr size_t length(const double &value) {
-		return io_traits<double>::template length<CharType>(value);
+	static constexpr size_t length(const io_float<T> &value) {
+		return _dtoa::dtoa_len(value.value, value.opts);
 	}
 
 	template <io_character CharType>
 	static constexpr void encode(const callback<void(StringViewBase<CharType>)> &cb,
-			const float &value) {
-		io_traits<double>::encode(cb, value);
+			const io_float<T> &value) {
+		CharType buf[MAX_DIGITS + 1];
+		auto ret = sprt::dtoa(value.value, buf, MAX_DIGITS, value.opts);
+		cb(StringViewBase<CharType>(buf + MAX_DIGITS - ret, ret));
 	}
 
-	static void encode(const callback<void(StringViewUtf8)> &cb, const float &value) {
-		io_traits<double>::encode(cb, value);
+	static void encode(const callback<void(StringViewUtf8)> &cb, const io_float<T> &value) {
+		char buf[MAX_DIGITS + 1];
+		auto ret = sprt::dtoa(value.value, buf, MAX_DIGITS, value.opts);
+		cb(StringViewUtf8(buf + MAX_DIGITS - ret, ret));
 	}
 };
 

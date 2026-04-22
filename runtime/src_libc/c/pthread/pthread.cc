@@ -124,8 +124,6 @@ static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg) {
 
 	auto tid = __sprt_gettid();
 
-	__sprt_printf("Thread: %d\n", tid);
-
 	unique_lock globalLock(s_handlePool.mutex);
 	s_handlePool.activeThreads.emplace(tid, thread);
 	globalLock.unlock();

@@ -44,8 +44,26 @@ using int16_t = __SPRT_ID(int16_t);
 using int32_t = __SPRT_ID(int32_t);
 using int64_t = __SPRT_ID(int64_t);
 
+using int_least8_t = __SPRT_ID(int_least8_t);
+using int_least16_t = __SPRT_ID(int_least16_t);
+using int_least32_t = __SPRT_ID(int_least32_t);
+using int_least64_t = __SPRT_ID(int_least64_t);
+
+using int_fast8_t = __SPRT_ID(int_fast8_t);
+using int_fast16_t = __SPRT_ID(int_fast16_t);
+using int_fast32_t = __SPRT_ID(int_fast32_t);
+using int_fast64_t = __SPRT_ID(int_fast64_t);
+
+using uint_least8_t = __SPRT_ID(uint_least8_t);
+using uint_least16_t = __SPRT_ID(uint_least16_t);
 using uint_least32_t = __SPRT_ID(uint_least32_t);
+using uint_least64_t = __SPRT_ID(uint_least64_t);
+
+using uint_fast8_t = __SPRT_ID(uint_fast8_t);
+using uint_fast16_t = __SPRT_ID(uint_fast16_t);
 using uint_fast32_t = __SPRT_ID(uint_fast32_t);
+using uint_fast64_t = __SPRT_ID(uint_fast64_t);
+
 
 using size_t = __SPRT_ID(size_t);
 using rsize_t = __SPRT_ID(rsize_t);

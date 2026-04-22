@@ -449,7 +449,7 @@ bool idnToUnicode(const callback<void(StringView)> &cb, StringView source) {
 // Mimic IDN2 API for CURL
 namespace sprt::idn {
 
-static constexpr auto IDN2_VERSION = "2.3.2-lisbstappler";
+static constexpr auto IDN2_VERSION = "2.3.2-libstappler";
 
 static constexpr auto IDN2_OK = 0;
 

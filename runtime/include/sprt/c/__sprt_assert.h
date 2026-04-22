@@ -48,6 +48,9 @@ SPRT_API extern void __sprt_assert_fail(const char *cond, const char *file, unsi
 
 __SPRT_END_DECL
 
+#define __sprt_assert(Expr) \
+	(__SPRT_ASSERT_TEST(Expr) ? __SPRT_ASSERT_UNUSED(0) : __sprt_assert_fail(#Expr, __FILE__, __LINE__, __SPRT_FUNCTION__, __SPRT_NULL))
+
 #ifndef __SPRT_BUILD
 #define assert(Expr) \
 	(__SPRT_ASSERT_TEST(Expr) ? __SPRT_ASSERT_UNUSED(0) : __sprt_assert_fail(#Expr, __FILE__, __LINE__, __SPRT_FUNCTION__, __SPRT_NULL))

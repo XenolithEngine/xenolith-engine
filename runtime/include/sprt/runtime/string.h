@@ -87,13 +87,14 @@ constexpr inline size_t itoa(uint64_t number, CharType *buffer, size_t bufSize) 
 
 static constexpr size_t DOUBLE_MAX_DIGITS = 27; // Safe buffer size
 
-template <typename CharType>
-constexpr inline size_t dtoa(double number, CharType *buffer, size_t bufSize) {
+template <typename CharType, typename T>
+constexpr inline size_t dtoa(T number, CharType *buffer, size_t bufSize,
+		const _dtoa::dtoa_options &opts = _dtoa::dtoa_options()) {
 	if (buffer == nullptr) {
-		return _dtoa::dtoa_len(number);
+		return _dtoa::dtoa_len(number, opts);
 	}
 
-	return _dtoa::dtoa_milo(number, buffer);
+	return _dtoa::dtoa(buffer, number, bufSize, opts);
 }
 
 /*

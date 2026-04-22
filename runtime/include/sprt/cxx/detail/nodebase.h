@@ -241,8 +241,9 @@ struct NodeBlockAllocatorHelper {
 					// node is not indexed - just deallocate it
 					auto next = static_cast<Node *>(node->getNextStorage());
 
+					auto size = node->getSize();
 					alloc.destroy(node);
-					alloc.__deallocate(node, 1, node->getSize());
+					alloc.__deallocate(node, 1, size);
 
 					*segment = next;
 					++ret;

@@ -20,6 +20,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_ITOA_H_
+#define RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_ITOA_H_
+
 #include <sprt/runtime/init.h>
 #include <sprt/cxx/detail/constexpr.h>
 #include <sprt/cxx/bit>
@@ -153,3 +156,5 @@ constexpr inline size_t _itoa_hex_len(IntType number) {
 }
 
 } // namespace sprt::_itoa
+
+#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_ITOA_H_

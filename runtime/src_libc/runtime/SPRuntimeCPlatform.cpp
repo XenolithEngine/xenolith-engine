@@ -22,6 +22,12 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
+#include <sprt/c/bits/__sprt_def.h>
+
+#if SPRT_LINUX
+#include "../platform/linux/unicode.cc"
+#endif
+
 #if SPRT_ANDROID
 #include "../platform/android/filesystem.cc"
 #include "../platform/android/unicode.cc"
