@@ -36,6 +36,7 @@ THE SOFTWARE.
 
 #include "stdlib/env.cc"
 #include "stdlib/rand.cc"
+#include "stdlib/getsubopt.cc"
 
 #if SPRT_WINDOWS
 #include "platform/windows/stdlib.cc"
@@ -108,8 +109,8 @@ __SPRT_C_FUNC void *__SPRT_ID(aligned_alloc)(size_t align, size_t size) {
 	if (align <= _Alignof(__SPRT_ID(max_align_t))) {
 		return ::malloc(size);
 	}
-	if (platform::_aligned_alloc) {
-		return platform::_aligned_alloc(align, size);
+	if (sprt::platform::_aligned_alloc) {
+		return sprt::platform::_aligned_alloc(align, size);
 	}
 
 	void *__result = nullptr;
@@ -118,7 +119,7 @@ __SPRT_C_FUNC void *__SPRT_ID(aligned_alloc)(size_t align, size_t size) {
 		return __result;
 	}
 
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
+	sprt::oslog::vprint(sprt::oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
@@ -190,19 +191,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 __SPRT_C_FUNC int __SPRT_ID(mkstemp)(char *tpl) { return mkstemp(tpl); }
 __SPRT_C_FUNC int __SPRT_ID(mkostemp)(char *tpl, int n) { return mkostemp(tpl, n); }
 __SPRT_C_FUNC char *__SPRT_ID(mkdtemp)(char *tpl) { return mkdtemp(tpl); }
-__SPRT_C_FUNC int __SPRT_ID(getsubopt)(char **opts, char *const *toks, char **vals) {
-#if SPRT_ANDROID
-	if (platform::_getsubopt) {
-		return platform::_getsubopt(opts, toks, vals);
-	}
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (Android: API not available)");
-	*__sprt___errno_location() = ENOSYS;
-	return -1;
-#else
-	return getsubopt(opts, toks, vals);
-#endif
-}
+
 __SPRT_C_FUNC char *__SPRT_ID(
 		realpath)(const char *__SPRT_RESTRICT path, char *__SPRT_RESTRICT out) {
 	return realpath(path, out);

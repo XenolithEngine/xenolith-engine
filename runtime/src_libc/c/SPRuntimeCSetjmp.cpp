@@ -58,9 +58,9 @@ __SPRT_C_FUNC int __SPRT_ID(setjmp)(__SPRT_ID(jmp_buf) buf) {
 #if SPRT_LINUX
 	return ::setjmp(reinterpret_cast<struct __jmp_buf_tag *>(buf->__native));
 #elif SPRT_ANDROID || SPRT_MACOS
-	return ::setjmp(buf->_native);
+	return ::setjmp(buf->__native);
 #elif SPRT_WINDOWS
-	return ::setjmp(reinterpret_cast<_JBTYPE *>(buf->native));
+	return ::setjmp(reinterpret_cast<_JBTYPE *>(buf->__native));
 #else
 #error Not implemented
 #endif

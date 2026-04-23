@@ -1578,19 +1578,6 @@ __SPRT_C_FUNC void __SPRT_ID(swab)(const void *__SPRT_RESTRICT __from, void *__S
 #endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(getentropy)(void *__buffer, __SPRT_ID(size_t) __length) {
-#if SPRT_ANDROID
-	if (platform::_getentropy) {
-		return platform::_getentropy(__buffer, __length);
-	} else {
-		arc4random_buf(__buffer, __length);
-		return 0;
-	}
-#else
-	return getentropy(__buffer, __length);
-#endif
-}
-
 __SPRT_C_FUNC int __SPRT_ID(
 		symlinkat)(const char *__old_path, int __new_dir_fd, const char *__new_path) {
 	return symlinkat(__old_path, __new_dir_fd, __new_path);

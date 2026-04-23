@@ -152,7 +152,7 @@ public:
 	linear_memory_soo(const allocator &alloc) : _allocator(alloc) {
 		sprt_passert(_allocator, "Allocator should be defined");
 		new (_storage.data(), sprt::nothrow) large_mem();
-		_storage[sizeof(large_mem) - 1] |= getSmallMask();
+		_storage[getStorageSize() - 1] |= getSmallMask();
 	}
 
 	~linear_memory_soo() noexcept {
@@ -160,7 +160,7 @@ public:
 			auto large = get_large_mem();
 			large->clear_dealloc(_allocator);
 			large->~large_mem();
-			_storage[sizeof(large_mem) - 1] &= ~getSmallMask();
+			_storage[getStorageSize() - 1] &= ~getSmallMask();
 		}
 	}
 
@@ -371,8 +371,8 @@ private:
 		return sprt::max(alignof(large_mem), alignof(Type));
 	}
 
-	bool is_small() const { return (_storage[sizeof(large_mem) - 1] & getSmallMask()) == 0; }
-	bool is_large() const { return (_storage[sizeof(large_mem) - 1] & getSmallMask()) != 0; }
+	bool is_small() const { return (_storage[getStorageSize() - 1] & getSmallMask()) == 0; }
+	bool is_large() const { return (_storage[getStorageSize() - 1] & getSmallMask()) != 0; }
 
 	large_mem *get_large_mem() { return reinterpret_cast<large_mem *>(_storage.data()); }
 	const large_mem *get_large_mem() const {
@@ -385,7 +385,7 @@ private:
 			new (_storage.data(), sprt::nothrow) large_mem();
 		}
 
-		_storage[sizeof(large_mem) - 1] |= getSmallMask();
+		_storage[getStorageSize() - 1] |= getSmallMask();
 		return reinterpret_cast<large_mem *>(_storage.data());
 	}
 
@@ -397,7 +397,7 @@ private:
 			small_mem::force_clear(_storage);
 		}
 
-		_storage[sizeof(large_mem) - 1] &= ~getSmallMask();
+		_storage[getStorageSize() - 1] &= ~getSmallMask();
 	}
 
 	// Debug assist: allow user to read large_mem and small_mem contents

@@ -28,7 +28,7 @@
 #include <private/window/android/SPRTWinAndroid.h>
 
 #include <android/hardware_buffer.h>
-#include <sprt/runtime/mutex.h>
+#include <sprt/cxx/mutex>
 #include <sprt/jni/jni.h>
 #include <sprt/jni/native_activity.h>
 

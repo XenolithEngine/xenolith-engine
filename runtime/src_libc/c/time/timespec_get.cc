@@ -1,5 +1,5 @@
 /**
-Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,40 +22,23 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include <sprt/c/sys/__sprt_random.h>
-
-#if SPRT_WINDOWS
-#include "../platform/windows/getrandom.cc"
-#else
-#include <stdlib.h>
-#include <sys/random.h>
-#include "private/SPRTSpecific.h"
-#endif
-
-#if SPRT_MACOS
-#include <Security/SecRandom.h>
-#endif
-
-#if SPRT_ANDROID
-#include "../platform/android/getrandom.cc"
-#endif
+#include <sprt/c/__sprt_time.h>
 
 namespace sprt {
 
-__SPRT_C_FUNC int __SPRT_ID(getentropy)(void *__buffer, __SPRT_ID(size_t) __length) {
-	return getentropy(__buffer, __length);
-}
-
-__SPRT_C_FUNC __SPRT_ID(ssize_t)
-		__SPRT_ID(getrandom)(void *__buffer, __SPRT_ID(size_t) __length, unsigned __flags) {
-#if SPRT_MACOS
-	auto ret = SecRandomCopyBytes(kSecRandomDefault, __length, __buffer);
-	if (ret == 0) {
-		return __length;
-	}
-	return -1;
+__SPRT_C_FUNC int __SPRT_ID(timespec_get)(__SPRT_TIMESPEC_NAME *spec, int base) {
+#if SPRT_WINDOWS
+	struct _timespec64 nativeSpec;
+	auto ret = ::_timespec64_get(&nativeSpec, base);
+	spec->tv_sec = nativeSpec.tv_sec;
+	spec->tv_nsec = nativeSpec.tv_nsec;
+	return ret;
 #else
-	return getrandom(__buffer, __length, __flags);
+	if (base != __SPRT_TIME_UTC) {
+		return 0;
+	}
+	int ret = __sprt_clock_gettime(__SPRT_CLOCK_REALTIME, spec);
+	return ret < 0 ? 0 : base;
 #endif
 }
 

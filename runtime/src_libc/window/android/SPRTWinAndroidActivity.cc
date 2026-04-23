@@ -25,9 +25,9 @@
 #include "private/window/android/SPRTWinAndroidContextController.h"
 #include "private/window/android/SPRTWinAndroidInput.h"
 
-#include <sprt/runtime/mutex.h>
+#include <sprt/cxx/mutex>
 #include <sprt/runtime/window/types.h>
-#include <sprt/runtime/thread/info.h>
+#include <sprt/runtime/dispatch/thread_info.h>
 
 #include <sprt/jni/jni.h>
 #include <sprt/jni/native_activity.h>
@@ -116,7 +116,7 @@ bool AndroidActivity::init(AndroidContextController *controller, ANativeActivity
 }
 
 bool AndroidActivity::run() {
-	memory::context ctx(thread::info::get()->threadPool);
+	memory::context ctx(dispatch::thread_info::get()->threadPool);
 
 	_activity->instance = this;
 
@@ -422,7 +422,7 @@ void AndroidActivity::handleDestroy() {
 		XL_ANDROID_LOG("AndroidActivity::handleDestroy: ", (void *)_activity);
 		_controller->destroyActivity(this);
 	});
-	release(id);
+	sprt::release(this, id);
 }
 
 void AndroidActivity::handleWindowFocusChanged(int focused) {

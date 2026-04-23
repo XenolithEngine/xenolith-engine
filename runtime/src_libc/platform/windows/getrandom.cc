@@ -1,5 +1,5 @@
 /**
-Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -23,40 +23,27 @@ THE SOFTWARE.
 #define __SPRT_BUILD 1
 
 #include <sprt/c/sys/__sprt_random.h>
-
-#if SPRT_WINDOWS
-#include "../platform/windows/getrandom.cc"
-#else
-#include <stdlib.h>
-#include <sys/random.h>
-#include "private/SPRTSpecific.h"
-#endif
-
-#if SPRT_MACOS
-#include <Security/SecRandom.h>
-#endif
-
-#if SPRT_ANDROID
-#include "../platform/android/getrandom.cc"
-#endif
+#include <sprt/c/__sprt_errno.h>
+#include <sprt/cxx/detail/ctypes.h>
 
 namespace sprt {
 
-__SPRT_C_FUNC int __SPRT_ID(getentropy)(void *__buffer, __SPRT_ID(size_t) __length) {
-	return getentropy(__buffer, __length);
-}
-
-__SPRT_C_FUNC __SPRT_ID(ssize_t)
-		__SPRT_ID(getrandom)(void *__buffer, __SPRT_ID(size_t) __length, unsigned __flags) {
-#if SPRT_MACOS
-	auto ret = SecRandomCopyBytes(kSecRandomDefault, __length, __buffer);
+static ssize_t getrandom(void *__buffer, size_t __length, unsigned flags) {
+	auto ret = BCryptGenRandom(nullptr, (unsigned char *)__buffer, __length,
+			BCRYPT_USE_SYSTEM_PREFERRED_RNG);
 	if (ret == 0) {
 		return __length;
 	}
 	return -1;
-#else
-	return getrandom(__buffer, __length, __flags);
-#endif
+}
+
+static int getentropy(void *__buffer, __SPRT_ID(size_t) __length) {
+	if (__length > 256 || __length == 0 || !__buffer) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+
+	return __sprt_getrandom(__buffer, __length, __SPRT_GRND_RANDOM);
 }
 
 } // namespace sprt

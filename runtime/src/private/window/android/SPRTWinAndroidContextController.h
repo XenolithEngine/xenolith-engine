@@ -82,7 +82,7 @@ protected:
 	Rc<ClipboardListener> _clipboardListener;
 	Rc<ContextContainer> _container;
 	Set<Rc<AndroidActivity>> _activities;
-	Rc<HandleAdapter> _stopTimer;
+	Rc<dispatch::Handle> _stopTimer;
 
 	jni::Global _clipboardClip = nullptr;
 	Rc<ClipboardData> _clipboardData;

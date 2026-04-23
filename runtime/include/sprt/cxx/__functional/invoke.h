@@ -103,14 +103,6 @@ inline const bool is_nothrow_invocable_r_v =
 
 #else // __has_builtin(__builtin_invoke)
 
-template <typename _Tp, typename _Up, typename = void>
-struct __is_core_convertible : public false_type { };
-
-template <typename _Tp, typename _Up>
-struct __is_core_convertible<_Tp, _Up,
-		decltype(static_cast<void (*)(_Up)>(0)(static_cast<_Tp (*)()>(0)()))> : public true_type {
-};
-
 template <typename _DecayedFp>
 struct __member_pointer_typename_type { };
 

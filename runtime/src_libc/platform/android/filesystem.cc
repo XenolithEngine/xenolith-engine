@@ -26,8 +26,9 @@ THE SOFTWARE.
 
 #include <sprt/runtime/stream.h>
 #include <sprt/runtime/log.h>
-#include <sprt/runtime/mem/vector.h>
-#include <sprt/runtime/mem/map.h>
+#include <sprt/cxx/vector>
+#include <sprt/cxx/map>
+#include <sprt/cxx/mutex>
 #include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/runtime/enum.h>
 #include <sprt/jni/jni.h>
@@ -42,7 +43,7 @@ THE SOFTWARE.
 namespace sprt::filesystem::detail {
 
 struct PathInfo {
-	using String = String;
+	using String = __malloc_string;
 
 	String _apkPath;
 	struct __SPRT_STAT_NAME _apkStat;
@@ -343,12 +344,9 @@ static constexpr auto MEDIA_MOUNTED = "mounted";
 static constexpr auto MEDIA_MOUNTED_READ_ONLY = "mounted_ro";
 
 PathInfo *PathInfo::getInstance() {
-	static qmutex s_mutex;
+	static qonce s_once;
 	static PathInfo *s_paths = nullptr;
-	unique_lock lock(s_mutex);
-	if (!s_paths) {
-		s_paths = new PathInfo;
-	}
+	s_once([&] { s_paths = new (sprt::nothrow) PathInfo; });
 	return s_paths;
 }
 

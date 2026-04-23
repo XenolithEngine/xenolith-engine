@@ -106,6 +106,8 @@ struct alignas(COMMON_ALIGNMENT) attr_t {
 	uint32_t stackSize = 0;
 
 	uint32_t guardSize = 0;
+	uint32_t padding = 0;
+
 	void *stack = 0;
 };
 

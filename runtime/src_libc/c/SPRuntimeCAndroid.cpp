@@ -40,7 +40,7 @@ __SPRT_C_FUNC int __system_property_get(const char *__name, char *__value);
 namespace sprt {
 
 __SPRT_C_FUNC int __sprt_android_get_application_target_sdk_version() {
-#if APRT_ANDROID
+#if SPRT_ANDROID
 	return android_get_application_target_sdk_version();
 #else
 	return 0;
@@ -48,7 +48,7 @@ __SPRT_C_FUNC int __sprt_android_get_application_target_sdk_version() {
 }
 
 __SPRT_C_FUNC int __sprt_android_get_device_api_level() {
-#if APRT_ANDROID
+#if SPRT_ANDROID
 	char value[92] = {0};
 	if (__system_property_get("ro.build.version.sdk", value) < 1) {
 		return -1;

@@ -25,7 +25,7 @@ THE SOFTWARE.
 #if SPRT_ANDROID
 
 #include <sprt/runtime/stringview.h>
-#include <sprt/runtime/mutex.h>
+#include <sprt/cxx/mutex>
 #include <sprt/runtime/platform.h>
 #include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/jni/jni.h>
@@ -258,7 +258,7 @@ bool tolower(const callback<void(StringView)> &cb, StringView data) {
 
 bool toupper(const callback<void(WideStringView)> &cb, WideStringView data) {
 	if (s_icuNative) {
-		memory::dynu16string str;
+		__malloc_u16string str;
 		str.resize(data.size());
 
 		int status = 0;
@@ -287,7 +287,7 @@ bool toupper(const callback<void(WideStringView)> &cb, WideStringView data) {
 
 bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
 	if (s_icuNative) {
-		memory::dynu16string str;
+		__malloc_u16string str;
 		str.resize(data.size());
 
 		int status = 0;
@@ -317,7 +317,7 @@ bool totitle(const callback<void(WideStringView)> &cb, WideStringView data) {
 
 bool tolower(const callback<void(WideStringView)> &cb, WideStringView data) {
 	if (s_icuNative) {
-		memory::dynu16string str;
+		__malloc_u16string str;
 		str.resize(data.size());
 
 		int status = 0;
@@ -494,7 +494,7 @@ extern "C" SPRT_GLOBAL int idn2_lookup_u8(const uint8_t *src, uint8_t **lookupna
 	if (str) {
 		auto out = str.getString();
 
-		auto buf = new char[out.size() + 1];
+		auto buf = (char *)__sprt_malloc(out.size() + 1);
 		::__sprt_memcpy(buf, out.data(), out.size());
 		buf[out.size()] = 0;
 
@@ -534,7 +534,7 @@ extern "C" SPRT_GLOBAL int idn2_lookup_ul(const char *src, char **lookupname, in
 	if (str) {
 		auto out = str.getString();
 
-		auto buf = new char[out.size() + 1];
+		auto buf = (char *)__sprt_malloc(out.size() + 1);
 		::__sprt_memcpy(buf, out.data(), out.size());
 		buf[out.size()] = 0;
 
@@ -574,7 +574,7 @@ extern "C" SPRT_GLOBAL int idn2_to_unicode_8z8z(const char *src, char **lookupna
 	if (str) {
 		auto out = str.getString();
 
-		auto buf = new char[out.size() + 1];
+		auto buf = (char *)__sprt_malloc(out.size() + 1);
 		::__sprt_memcpy(buf, out.data(), out.size());
 		buf[out.size()] = 0;
 
@@ -607,7 +607,7 @@ extern "C" SPRT_GLOBAL const char *idn2_strerror_name(int rc) {
 
 extern "C" SPRT_GLOBAL void idn2_free(void *ptr) {
 	if (ptr) {
-		delete[] (char *)ptr;
+		__sprt_free(ptr);
 	}
 }
 

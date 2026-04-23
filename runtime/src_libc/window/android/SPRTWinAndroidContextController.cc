@@ -28,9 +28,10 @@
 
 #include <sprt/jni/jni.h>
 #include <sprt/jni/native_activity.h>
-#include <sprt/runtime/mutex.h>
-#include <sprt/runtime/verutils.h>
-#include <sprt/runtime/urlview.h>
+#include <sprt/cxx/mutex>
+#include <sprt/runtime/dispatch/handle.h>
+#include <sprt/runtime/utils/verutils.h>
+#include <sprt/runtime/utils/urlview.h>
 #include <sprt/runtime/filesystem/filepath.h>
 
 namespace sprt::window {
@@ -208,7 +209,7 @@ bool AndroidContextController::init(NotNull<Context> ctx, ContextConfig &&config
 }
 
 int AndroidContextController::run(NotNull<ContextContainer> c) {
-	memory::context ctx(thread::info::get()->threadPool);
+	memory::context ctx(dispatch::thread_info::get()->threadPool);
 
 	_displayConfigManager =
 			Rc<AndroidDisplayConfigManager>::create(this, [this](NotNull<DisplayConfigManager> m) {
@@ -217,7 +218,7 @@ int AndroidContextController::run(NotNull<ContextContainer> c) {
 
 	auto instance = _context->makeInstance(_instanceInfo);
 	if (!instance) {
-		log::vperror(__SPRT_LOCATION, "AndroidContextController", "Fail to load gAPI instance");
+		oslog::vperror(__SPRT_LOCATION, "AndroidContextController", "Fail to load gAPI instance");
 		_resultCode = -1;
 		return -1;
 	} else {
@@ -225,7 +226,7 @@ int AndroidContextController::run(NotNull<ContextContainer> c) {
 			_context->handleGraphicsLoaded(loop);
 			loop = nullptr;
 		} else {
-			log::vperror(__SPRT_LOCATION, "AndroidContextController", "Fail to create gAPI loop");
+			oslog::vperror(__SPRT_LOCATION, "AndroidContextController", "Fail to create gAPI loop");
 			_resultCode = -1;
 			return -1;
 		}
@@ -234,7 +235,7 @@ int AndroidContextController::run(NotNull<ContextContainer> c) {
 	auto alooper = ALooper_forThread();
 
 	if (_looper) {
-		ALooper_addFd(alooper, _looper->getHandle().fd, 0, ALOOPER_EVENT_INPUT,
+		ALooper_addFd(alooper, _looper->getQueue()->getHandle().fd, 0, ALOOPER_EVENT_INPUT,
 				[](int fd, int events, void *data) {
 			auto controller = reinterpret_cast<AndroidContextController *>(data);
 			if ((events & ALOOPER_EVENT_INPUT) != 0) {
@@ -252,12 +253,12 @@ int AndroidContextController::run(NotNull<ContextContainer> c) {
 	});
 
 	app->setLowMemoryHandler([this] {
-		log::vpinfo(__SPRT_LOCATION, "AndroidContextController", "onLowMemory");
+		oslog::vpinfo(__SPRT_LOCATION, "AndroidContextController", "onLowMemory");
 		handleSystemNotification(SystemNotification::LowMemory);
 	});
 
 	app->setConfigurationHandler([this](sprt::jni::ApplicationInfo *info) {
-		log::vpinfo(__SPRT_LOCATION, "AndroidContextController", "onConfigurationChanged");
+		oslog::vpinfo(__SPRT_LOCATION, "AndroidContextController", "onConfigurationChanged");
 		handleSystemNotification(SystemNotification::ConfigurationChanged);
 	});
 
@@ -300,11 +301,8 @@ void AndroidContextController::destroyActivity(NotNull<AndroidActivity> a) {
 			_stopTimer->cancel();
 			_stopTimer = nullptr;
 		}
-		_stopTimer = _looper->scheduleTimer(20 * 1'000'000, 0, 1, (void *)this,
-				[](void *ptr, HandleAdapter *, uint32_t flags, Status status) {
-			auto thiz = (AndroidContextController *)ptr;
-			thiz->stop();
-		});
+		_stopTimer = _looper->schedule(dispatch::TimeInterval::seconds(19),
+				[this](dispatch::Handle *, bool success) { stop(); });
 	}
 }
 

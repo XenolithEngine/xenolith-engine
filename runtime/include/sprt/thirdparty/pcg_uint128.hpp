@@ -36,8 +36,7 @@
 #ifndef PCG_UINT128_HPP_INCLUDED
 #define PCG_UINT128_HPP_INCLUDED 1
 
-#include <sprt/runtime/int.h>
-#include <sprt/runtime/pair.h>
+#include <sprt/cxx/detail/ctypes.h>
 #include <sprt/c/__sprt_limits.h>
 
 /*

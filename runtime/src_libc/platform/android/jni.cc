@@ -26,7 +26,8 @@
 #if SPRT_ANDROID
 
 #include <sprt/c/__sprt_ctype.h>
-#include <sprt/runtime/mutex.h>
+#include <sprt/cxx/mutex>
+#include <sprt/cxx/new>
 
 #include <android/configuration.h>
 #include <android/asset_manager.h>
@@ -46,8 +47,6 @@ namespace sprt::platform {
 
 static Dso s_self;
 
-int (*_timespec_get)(struct timespec *__ts, int __base) = nullptr;
-int (*_timespec_getres)(struct timespec *__ts, int __base) = nullptr;
 int (*_getlogin_r)(char *__buffer, size_t __buffer_size) = nullptr;
 ssize_t (*_copy_file_range)(int __fd_in, off_t *__off_in, int __fd_out, off_t *__off_out,
 		size_t __length, unsigned int __flags) = nullptr;
@@ -67,12 +66,6 @@ int (*_catclose)(nl_catd __catalog) = nullptr;
 int (*_pthread_setschedprio)(pthread_t __pthread, int __priority) = nullptr;
 
 char *(*_ctermid)(char *__buf) = nullptr;
-
-int (*_getsubopt)(char **__option, char *const *__tokens, char **__value_ptr) = nullptr;
-
-int (*_getentropy)(void *__buffer, size_t __buffer_size) = nullptr;
-
-ssize_t (*_getrandom)(void *__buffer, size_t __buffer_size, unsigned int __flags) = nullptr;
 
 size_t (*_wcsftime_l)(wchar_t *__buf, size_t __n, const wchar_t *__fmt, const struct tm *__tm,
 		locale_t __l) = nullptr;
@@ -396,7 +389,7 @@ GlobalClass RefClass::getGlobal() const { return GlobalClass(*this); }
 
 static sprt::qmutex s_infoMutex;
 
-App *App::alloc(const RefClass &cl) { return new (sprt::nothrow) App(cl); }
+App *App::alloc(const RefClass &cl) { return RefAlloc::__new<App>(cl); }
 
 App::~App() {
 	auto env = Env::getEnv();
@@ -443,7 +436,8 @@ void App::inspectDrawables(const callback<void(StringView, jint)> &cb) {
 
 	auto packageName = Application.getPackageName(jAppRef);
 
-	auto drawableClassName = StreamTraits<char>::toString(packageName.getString(), ".R$drawable");
+	auto drawableClassName =
+			StreamTraits<char>::toString<String>(packageName.getString(), ".R$drawable");
 	auto drawablesClass = classLoader.findClass(env, drawableClassName);
 	if (drawablesClass) {
 		classLoader.foreachField(drawablesClass,
@@ -490,7 +484,7 @@ static String getApplicationName(App *proxy, const jni::Ref &ctx) {
 	auto labelRes = proxy->ApplicationInfo.labelRes(jAppInfo);
 	if (labelRes == 0) {
 		auto jNonLocalizedLabel = proxy->ApplicationInfo.nonLocalizedLabel(jAppInfo);
-		return StreamTraits<char>::toString(
+		return StreamTraits<char>::toString<String>(
 				proxy->CharSequence.toString(jNonLocalizedLabel).getString());
 	} else {
 		auto jAppName = proxy->Application.getString(ctx, jint(labelRes));
@@ -706,10 +700,6 @@ void Env::loadJava(JavaVM *vm) {
 
 	platform::s_self = Dso(StringView(), DsoFlags::Self);
 	if (platform::s_self) {
-		platform::_timespec_get =
-				platform::s_self.sym<decltype(platform::_timespec_get)>("timespec_get");
-		platform::_timespec_getres =
-				platform::s_self.sym<decltype(platform::_timespec_getres)>("timespec_getres");
 		platform::_getlogin_r = platform::s_self.sym<decltype(platform::_getlogin_r)>("getlogin_r");
 		platform::_copy_file_range =
 				platform::s_self.sym<decltype(platform::_copy_file_range)>("copy_file_range");
@@ -728,9 +718,6 @@ void Env::loadJava(JavaVM *vm) {
 				platform::s_self.sym<decltype(platform::_pthread_setschedprio)>(
 						"pthread_setschedprio");
 		platform::_ctermid = platform::s_self.sym<decltype(platform::_ctermid)>("ctermid");
-		platform::_getsubopt = platform::s_self.sym<decltype(platform::_getsubopt)>("getsubopt");
-		platform::_getentropy = platform::s_self.sym<decltype(platform::_getentropy)>("getentropy");
-		platform::_getrandom = platform::s_self.sym<decltype(platform::_getrandom)>("getrandom");
 		platform::_wcsftime_l = platform::s_self.sym<decltype(platform::_wcsftime_l)>("wcsftime_l");
 		platform::_aligned_alloc =
 				platform::s_self.sym<decltype(platform::_aligned_alloc)>("aligned_alloc");
@@ -754,7 +741,7 @@ void Env::loadJava(JavaVM *vm) {
 	}
 
 	if (!s_app) {
-		log:: vprint(oslog::LogType::Fatal, __SPRT_LOCATION, "JNI",
+		oslog:: vprint(oslog::LogType::Fatal, __SPRT_LOCATION, "JNI",
 						"Fail to load AppProxy; org/stappler/runtime/Application class was not "
 						"defined " "properly?");
 	}
@@ -860,7 +847,7 @@ ClassProxy::ClassProxy(const char *name) {
 	}
 }
 
-ApplicationInfo *ApplicationInfo::alloc() { return new (sprt::nothrow) ApplicationInfo; }
+ApplicationInfo *ApplicationInfo::alloc() { return RefAlloc::__new<ApplicationInfo>(); }
 
 bool ApplicationInfo::init(const jni::Ref &ref) {
 	jConfig = ref;

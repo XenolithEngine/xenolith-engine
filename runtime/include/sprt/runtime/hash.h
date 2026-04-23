@@ -274,17 +274,7 @@ inline constexpr sprt::size_t hashSize(const char *str, sprt::size_t len, sprt::
 
 #else
 
-namespace std {
-
-template <typename T>
-struct hash;
-
-
-/*template <typename T>
-struct hash<sprt::enable_if_t<sprt::is_arithmetic_v<T>, T>> { }*/
-
-
-} // namespace std
+namespace std { } // namespace std
 
 #endif
 

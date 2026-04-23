@@ -163,6 +163,10 @@ THE SOFTWARE.
 #error "Unknown arch"
 #endif
 
+#if !defined(DEBUG) && !defined(NDEBUG)
+#define DEBUG 1
+#endif
+
 // clang-format off
 #if __STDC_VERSION__ >= 202311L
 #define __SPRT_STDC_23__ __STDC_VERSION__

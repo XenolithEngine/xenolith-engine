@@ -279,7 +279,7 @@ class bitset
 : private __bitset<_Size == 0 ? 0 : (_Size - 1) / (sizeof(uint64_t) * __CHAR_BIT__) + 1, _Size> {
 public:
 	static const unsigned __n_words =
-			_Size == 0 ? 0 : (_Size - 1) / (sizeof(size_t) * __CHAR_BIT__) + 1;
+			_Size == 0 ? 0 : (_Size - 1) / (sizeof(uint64_t) * __CHAR_BIT__) + 1;
 	typedef __bitset<__n_words, _Size> __base;
 
 	constexpr bitset() noexcept { }

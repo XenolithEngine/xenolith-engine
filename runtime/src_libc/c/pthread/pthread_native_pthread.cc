@@ -38,7 +38,9 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr) 
 	pthread_attr_setdetachstate(&pattr, PTHREAD_CREATE_DETACHED);
 
 	if (hasFlag(attr->attr, ThreadAttrFlags::ExplicitSched)) {
+#ifndef SPRT_ANDROID
 		pthread_attr_setinheritsched(&pattr, PTHREAD_EXPLICIT_SCHED);
+#endif
 
 		if (hasFlag(attr->attr, ThreadAttrFlags::PrioRR)) {
 			pthread_attr_setschedpolicy(&pattr, SCHED_RR);
@@ -46,7 +48,9 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr) 
 			pthread_attr_setschedparam(&pattr, &param);
 		}
 	} else {
+#ifndef SPRT_ANDROID
 		pthread_attr_setinheritsched(&pattr, PTHREAD_INHERIT_SCHED);
+#endif
 	}
 
 	if (hasFlag(attr->attr, ThreadAttrFlags::GuardSizeCustomized)) {
@@ -108,12 +112,14 @@ static void __initNativeHandle(thread_t *thread) {
 
 	if (!hasFlag(thread->attr.attr, ThreadAttrFlags::Unmanaged)) {
 		// if it's SPRT's thread, we need to setup async cancel to use it
+#ifndef SPRT_ANDROID
 		int oldv = 0;
 		if (pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldv) == 0
 				&& pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &oldv) == 0) {
 			// set flag to notify, that thread can be cancelled with PTHREAD_CANCEL_ASYNCHRONOUS
 			thread->attr.attr |= ThreadAttrFlags::CancelAsyncSupported;
 		}
+#endif
 	}
 }
 
@@ -139,7 +145,11 @@ static int __applyThreadPrio(thread_t *thread, int32_t dprio) {
 }
 
 static int __cancelThreadAsync(thread_t *thread) {
+#if SPRT_ANDROID
+	return ENOSYS;
+#else
 	return pthread_cancel(reinterpret_cast<pthread_t>(thread->handle));
+#endif
 }
 
 SPRT_UNUSED static bool validate_attr_setguardsize(size_t size) { return true; }
@@ -209,13 +219,21 @@ int thread_t::getcpuclockid(__sprt_clockid_t *clock) const {
 }
 
 int thread_t::getaffinity(__SPRT_ID(size_t) n, __SPRT_ID(cpu_set_t) * set) {
+#if SPRT_ANDROID
+	return ENOSYS;
+#else
 	return pthread_getaffinity_np(reinterpret_cast<pthread_t>(handle), n,
 			reinterpret_cast<cpu_set_t *>(set));
+#endif
 }
 
 int thread_t::setaffinity(__SPRT_ID(size_t) n, const __SPRT_ID(cpu_set_t) * set) {
+#if SPRT_ANDROID
+	return ENOSYS;
+#else
 	return pthread_setaffinity_np(reinterpret_cast<pthread_t>(handle), n,
 			reinterpret_cast<const cpu_set_t *>(set));
+#endif
 }
 
 int thread_t::setname_native(const char *name) {

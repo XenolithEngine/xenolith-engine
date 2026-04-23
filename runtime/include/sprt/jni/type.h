@@ -23,8 +23,9 @@
 #ifndef RUNTIME_INCLUDE_SPRT_JNI_TYPE_H_
 #define RUNTIME_INCLUDE_SPRT_JNI_TYPE_H_
 
+#include <sprt/cxx/__utility/integer_sequence.h>
 #include <sprt/runtime/stringview.h> // IWYU pragma: keep
-#include <sprt/cxx/array.h>
+#include <sprt/cxx/array>
 
 #if SPRT_ANDROID
 

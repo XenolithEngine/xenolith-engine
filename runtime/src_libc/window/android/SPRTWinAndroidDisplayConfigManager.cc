@@ -115,7 +115,7 @@ void AndroidDisplayConfigManager::updateDisplayConfig(Function<void(DisplayConfi
 		auto &monIt = info->monitors.emplace_back(PhysicalDisplay{
 			id,
 			idx,
-			MonitorId{StringView(name.getString()).str<String >()},
+			MonitorId{StringView(name.getString()).str<String>()},
 			mmSize,
 		});
 
@@ -202,8 +202,8 @@ void AndroidDisplayConfigManager::updateDisplayConfig(Function<void(DisplayConfi
 				}
 			}
 
-			log::vpinfo(__SPRT_LOCATION, "AndroidDisplayConfigManager", "Topology: ", key, " ", top,
-					" ", right, " ", bottom, " ", left);
+			oslog::vpinfo(__SPRT_LOCATION, "AndroidDisplayConfigManager", "Topology: ", key, " ",
+					top, " ", right, " ", bottom, " ", left);
 		}
 	}
 

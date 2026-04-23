@@ -1086,15 +1086,6 @@ static ssize_t copy_file_range(int fd_in, long long *off_in, int fd_out, long lo
 	return (ssize_t)total;
 }
 
-static int getentropy(void *__buffer, __SPRT_ID(size_t) __length) {
-	if (__length > 256 || __length == 0 || !__buffer) {
-		errno = EINVAL;
-		return -1;
-	}
-
-	return __sprt_getrandom(__buffer, __length, __SPRT_GRND_RANDOM);
-}
-
 static int symlinkat(const char *__old_path, int __new_dir_fd, const char *__new_path) {
 	int ret = 0;
 	if (!platform::openAtPath(__new_dir_fd, __new_path, [&](const char *to, size_t size) {

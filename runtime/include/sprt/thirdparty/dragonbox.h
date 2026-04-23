@@ -2290,7 +2290,7 @@ struct compressed_cache_holder<ieee754_binary32, Dummy> {
 					cache_entry_type((((mul_result.high64() << ShiftAmountType(32 - alpha))
 											  | (mul_result.low32() >> alpha))
 											 + 1)
-							& UINT64_C(0xffff'ffff'ffff'ffff));
+							& __SPRT_UINT64_C(0xffff'ffff'ffff'ffff));
 #endif
 			__sprt_assert(recovered_cache != 0);
 

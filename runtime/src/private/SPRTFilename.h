@@ -93,7 +93,6 @@ static inline auto performBinaryMode(const char *mode, const Callback &cb) {
 	}
 }
 
-
 } // namespace sprt::internal
 
 #endif

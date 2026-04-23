@@ -27,7 +27,7 @@
 
 namespace sprt {
 
-struct __qcondvar_data {
+struct alignas(8) __qcondvar_data {
 	uint64_t mutexid = 0;
 	qmutex_base::value_type counter = 0;
 	qmutex_base::value_type value = 0;
@@ -46,7 +46,8 @@ public:
 			flags_type flags) {
 		uint64_t desired = MutexId(mutex);
 		uint64_t expected = 0;
-		if (_atomic::compareSwap(&data->mutexid, &expected, desired)) {
+		if (__atomic_compare_exchange_n(&data->mutexid, &expected, desired, false, __ATOMIC_SEQ_CST,
+					__ATOMIC_SEQ_CST)) {
 			// condition captured by new mutex
 			_atomic::fetchAdd(&data->counter, uint32_t(1));
 		} else if (expected == desired) {
@@ -57,8 +58,8 @@ public:
 			return Status::ErrorInvalidArguemnt;
 		}
 
-		value_type v = _atomic::loadSeq(&data->value);
-		_atomic::storeSeq(&data->previous, v);
+		value_type v = __atomic_load_n(&data->value, __ATOMIC_SEQ_CST);
+		__atomic_store_n(&data->previous, v, __ATOMIC_SEQ_CST);
 
 		Status result = Status::Ok;
 
@@ -70,7 +71,7 @@ public:
 		}
 
 		UnlockFn(mutex);
-		while (v == _atomic::loadSeq(&data->value)) {
+		while (v == __atomic_load_n(&data->value, __ATOMIC_SEQ_CST)) {
 			if (timeout == 0) {
 				result = Status::Ok;
 				break;
@@ -97,7 +98,7 @@ public:
 		result = LockFn(mutex);
 		if (result == Status::Ok) {
 			if (_atomic::fetchSub(&data->counter, 1U) == 1) {
-				_atomic::storeSeq(&data->mutexid, uint64_t(0));
+				__atomic_store_n(&data->mutexid, uint64_t(0), __ATOMIC_SEQ_CST);
 			}
 		}
 		return result;
@@ -105,14 +106,14 @@ public:
 
 	template <int (*WakeFn)(value_type *, flags_type)>
 	static Status _signal(__qcondvar_data *data, flags_type flags) {
-		uint64_t mid = _atomic::loadSeq(&data->mutexid);
+		uint64_t mid = __atomic_load_n(&data->mutexid, __ATOMIC_SEQ_CST);
 		if (mid == 0) {
 			// no waiters
 			return Status::Ok;
 		}
 
-		value_type v = 1u + _atomic::loadSeq(&data->previous);
-		_atomic::storeSeq(&data->value, v);
+		value_type v = 1u + __atomic_load_n(&data->previous, __ATOMIC_SEQ_CST);
+		__atomic_store_n(&data->value, v, __ATOMIC_SEQ_CST);
 		if (WakeFn(&data->value, flags) != 0) {
 			return status::errnoToStatus(__sprt_errno);
 		}

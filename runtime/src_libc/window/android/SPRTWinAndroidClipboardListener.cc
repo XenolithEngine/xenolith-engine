@@ -23,9 +23,9 @@
 #include "private/window/android/SPRTWinAndroidContextController.h"
 #include "private/window/android/SPRTWinAndroidClipboardListener.h"
 
-#include <sprt/runtime/mutex.h>
+#include <sprt/cxx/mutex>
 #include <sprt/runtime/window/types.h>
-#include <sprt/runtime/thread/info.h>
+#include <sprt/runtime/dispatch/thread_info.h>
 
 #include <sprt/jni/jni.h>
 #include <sprt/jni/native_activity.h>

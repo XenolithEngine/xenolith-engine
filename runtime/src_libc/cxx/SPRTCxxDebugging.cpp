@@ -24,6 +24,8 @@ THE SOFTWARE.
 
 #include <sprt/cxx/debugging>
 
+#include <stdio.h>
+#include <string.h>
 #include <sys/ptrace.h>
 
 namespace sprt {

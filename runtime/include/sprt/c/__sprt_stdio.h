@@ -44,11 +44,11 @@ SPRT_API __SPRT_ID(size_t) __SPRT_ID(fpath_to_native)(const char *, __SPRT_ID(si
 		char *buf, __SPRT_ID(size_t) bufSize);
 
 #if SPRT_WINDOWS
-SPRT_API int __SPRT_ID(fpath_is_native)(const char *, __SPRT_ID(size_t));
-SPRT_API int __SPRT_ID(fpath_is_posix)(const char *, __SPRT_ID(size_t));
+SPRT_API int __SPRT_ID(fpath_is_native)(const char *path, __SPRT_ID(size_t) len);
+SPRT_API int __SPRT_ID(fpath_is_posix)(const char *path, __SPRT_ID(size_t) len);
 #else
-inline int __SPRT_ID(fpath_is_native)(const char *, __SPRT_ID(size_t)) { return 1; }
-inline int __SPRT_ID(fpath_is_posix)(const char *, __SPRT_ID(size_t)) { return 1; }
+inline int __SPRT_ID(fpath_is_native)(const char *path, __SPRT_ID(size_t) len) { return 1; }
+inline int __SPRT_ID(fpath_is_posix)(const char *path, __SPRT_ID(size_t) len) { return 1; }
 #endif
 
 SPRT_API __SPRT_ID(FILE) * __SPRT_ID(stdin_impl)();

@@ -26,7 +26,7 @@
 
 #include <sprt/jni/call.h> // IWYU pragma: keep
 #include <sprt/runtime/ref.h>
-#include <sprt/runtime/mem/function.h>
+#include <sprt/cxx/function>
 
 #if SPRT_ANDROID
 
@@ -59,6 +59,11 @@ using L = detail::ObjectSignature<Value>;
 
 template <typename T>
 using A = detail::ArraySignature<T>;
+
+using String = sprt::__malloc_string;
+
+template <typename T>
+using Function = sprt::__malloc_function<T>;
 
 struct ApplicationProxy : ClassProxy {
 	StaticField<"s_application", L<SP_JAVA_APPLICATION_CLASS>> s_application = this;

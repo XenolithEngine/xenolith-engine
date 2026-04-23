@@ -42,7 +42,7 @@ THE SOFTWARE.
 #ifdef __STDC_HOSTED__
 #define __SPRT_STDC_HOSTED__ 1
 #undef __STDC_HOSTED__
-#define SIMDE_STDC_HOSTED 1
+//#define SIMDE_STDC_HOSTED 1
 #endif
 
 #include <sprt/runtime/geom/simd_attr.h>

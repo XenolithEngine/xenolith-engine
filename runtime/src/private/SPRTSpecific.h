@@ -89,7 +89,6 @@ void setFutexVersion(int v);
 namespace sprt::platform {
 
 extern int (*_timespec_get)(struct timespec *__ts, int __base);
-extern int (*_timespec_getres)(struct timespec *__ts, int __base);
 extern int (*_getlogin_r)(char *__buffer, size_t __buffer_size);
 extern ssize_t (*_copy_file_range)(int __fd_in, off_t *__off_in, int __fd_out, off_t *__off_out,
 		size_t __length, unsigned int __flags);
@@ -104,12 +103,6 @@ extern int (*_mlock2)(const void *__addr, size_t __size, int __flags);
 extern int (*_memfd_create)(const char *__name, unsigned __flags);
 
 extern char *(*_ctermid)(char *__buf);
-
-extern int (*_getsubopt)(char **__option, char *const *__tokens, char **__value_ptr);
-
-extern int (*_getentropy)(void *__buffer, size_t __buffer_size);
-
-extern ssize_t (*_getrandom)(void *__buffer, size_t __buffer_size, unsigned int __flags);
 
 extern void *(*_aligned_alloc)(size_t __alignment, size_t __size);
 

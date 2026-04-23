@@ -22,7 +22,6 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_time.h>
 
@@ -166,34 +165,6 @@ __SPRT_C_FUNC char *__SPRT_ID(ctime)(const __SPRT_ID(time_t) * t) {
 #else
 	::time_t native = *t;
 	return ::ctime(&native);
-#endif
-}
-
-__SPRT_C_FUNC int __SPRT_ID(timespec_get)(__SPRT_TIMESPEC_NAME *spec, int base) {
-#if SPRT_ANDROID
-	struct timespec nativeSpec;
-	if (!platform::_timespec_get) {
-		oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-				" not available for this platform (Android: API not available)");
-		*__sprt___errno_location() = ENOSYS;
-		return -1;
-	}
-	auto ret = platform::_timespec_get(&nativeSpec, base);
-	spec->tv_sec = nativeSpec.tv_sec;
-	spec->tv_nsec = nativeSpec.tv_nsec;
-	return ret;
-#elif SPRT_WINDOWS
-	struct _timespec64 nativeSpec;
-	auto ret = ::_timespec64_get(&nativeSpec, base);
-	spec->tv_sec = nativeSpec.tv_sec;
-	spec->tv_nsec = nativeSpec.tv_nsec;
-	return ret;
-#else
-	struct timespec nativeSpec;
-	auto ret = ::timespec_get(&nativeSpec, base);
-	spec->tv_sec = nativeSpec.tv_sec;
-	spec->tv_nsec = nativeSpec.tv_nsec;
-	return ret;
 #endif
 }
 

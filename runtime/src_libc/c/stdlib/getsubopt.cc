@@ -1,5 +1,5 @@
 /**
-Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,41 +22,36 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
-#include <sprt/c/sys/__sprt_random.h>
-
-#if SPRT_WINDOWS
-#include "../platform/windows/getrandom.cc"
-#else
-#include <stdlib.h>
-#include <sys/random.h>
-#include "private/SPRTSpecific.h"
-#endif
-
-#if SPRT_MACOS
-#include <Security/SecRandom.h>
-#endif
-
-#if SPRT_ANDROID
-#include "../platform/android/getrandom.cc"
-#endif
+#include <sprt/c/__sprt_stdlib.h>
+#include <sprt/cxx/cstring>
 
 namespace sprt {
 
-__SPRT_C_FUNC int __SPRT_ID(getentropy)(void *__buffer, __SPRT_ID(size_t) __length) {
-	return getentropy(__buffer, __length);
-}
+__SPRT_C_FUNC int __SPRT_ID(getsubopt)(char **opt, char *const *keys, char **val) {
+	char *s = *opt;
+	int i;
 
-__SPRT_C_FUNC __SPRT_ID(ssize_t)
-		__SPRT_ID(getrandom)(void *__buffer, __SPRT_ID(size_t) __length, unsigned __flags) {
-#if SPRT_MACOS
-	auto ret = SecRandomCopyBytes(kSecRandomDefault, __length, __buffer);
-	if (ret == 0) {
-		return __length;
+	*val = nullptr;
+	*opt = strchr(s, ',');
+	if (*opt) {
+		*(*opt)++ = 0;
+	} else {
+		*opt = s + strlen(s);
+	}
+
+	for (i = 0; keys[i]; i++) {
+		size_t l = strlen(keys[i]);
+		if (strncmp(keys[i], s, l)) {
+			continue;
+		}
+		if (s[l] == '=') {
+			*val = s + l + 1;
+		} else if (s[l]) {
+			continue;
+		}
+		return i;
 	}
 	return -1;
-#else
-	return getrandom(__buffer, __length, __flags);
-#endif
 }
 
 } // namespace sprt

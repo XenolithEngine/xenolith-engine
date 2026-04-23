@@ -441,7 +441,7 @@ void AndroidWindow::postFrameCallback() {
 		AndroidWindow *window;
 	};
 
-	auto data = new AndroidWindowFrameData;
+	auto data = new (sprt::nothrow) AndroidWindowFrameData;
 	data->window = this;
 
 	if (_choreographer) {
@@ -450,20 +450,20 @@ void AndroidWindow::postFrameCallback() {
 					[](const AChoreographerFrameCallbackData *callbackData, void *data) {
 				auto d = reinterpret_cast<AndroidWindowFrameData *>(data);
 				d->window->postDisplayLink();
-				delete d;
+				__delete(d);
 			}, data);
 		} else if (_AChoreographer_postFrameCallback64) {
 			_AChoreographer_postFrameCallback64(_choreographer,
 					[](int64_t frameTimeNanos, void *data) {
 				auto d = reinterpret_cast<AndroidWindowFrameData *>(data);
 				d->window->postDisplayLink();
-				delete d;
+				__delete(d);
 			}, data);
 		} else {
 			AChoreographer_postFrameCallback(_choreographer, [](long frameTimeNanos, void *data) {
 				auto d = reinterpret_cast<AndroidWindowFrameData *>(data);
 				d->window->postDisplayLink();
-				delete d;
+				__delete(d);
 			}, data);
 		}
 	}

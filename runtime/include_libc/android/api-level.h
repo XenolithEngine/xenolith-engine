@@ -27,7 +27,7 @@
  */
 
 // Here we provide the Android API versioning functions required by external systems
-// so as not to create dependencies on the Android NDK and Bionic
+// to avoid dependencies on the Android NDK and Bionic
 
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_ANDROID_API_LEVEL
 #define CORE_RUNTIME_INCLUDE_LIBC_ANDROID_API_LEVEL
@@ -177,9 +177,6 @@
  */
 #define __ANDROID_API_V__ 35
 
-/* This file is included in <features.h>, and might be used from .S files. */
-#if !defined(__ASSEMBLY__)
-
 __SPRT_BEGIN_DECL
 
 /**
@@ -216,8 +213,6 @@ int __sprt_android_get_device_api_level();
 #endif
 
 __SPRT_END_DECL
-
-#endif /* defined(__ASSEMBLY__) */
 
 /** @} */
 

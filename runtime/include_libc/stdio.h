@@ -127,7 +127,7 @@ SPRT_FORCEINLINE int printf(const char *__SPRT_RESTRICT fmt, ...) {
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vprintf(fmt, list);
+	int ret = __sprt_vprintf(fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -137,7 +137,7 @@ SPRT_FORCEINLINE int fprintf(FILE *__SPRT_RESTRICT file, const char *__SPRT_REST
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vfprintf(file, fmt, list);
+	int ret = __sprt_vfprintf(file, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -147,7 +147,7 @@ SPRT_FORCEINLINE int sprintf(char *__SPRT_RESTRICT buf, const char *__SPRT_RESTR
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vsprintf(buf, fmt, list);
+	int ret = __sprt_vsprintf(buf, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -158,7 +158,7 @@ SPRT_FORCEINLINE int snprintf(char *__SPRT_RESTRICT buf, size_t n, const char *_
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vsnprintf(buf, n, fmt, list);
+	int ret = __sprt_vsnprintf(buf, n, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -188,7 +188,7 @@ SPRT_FORCEINLINE int scanf(const char *__SPRT_RESTRICT fmt, ...) {
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vscanf(fmt, list);
+	int ret = __sprt_vscanf(fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -198,7 +198,7 @@ SPRT_FORCEINLINE int fscanf(FILE *__SPRT_RESTRICT file, const char *__SPRT_RESTR
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vfscanf(file, fmt, list);
+	int ret = __sprt_vfscanf(file, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -208,7 +208,7 @@ SPRT_FORCEINLINE int sscanf(const char *__SPRT_RESTRICT buf, const char *__SPRT_
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vsscanf(buf, fmt, list);
+	int ret = __sprt_vsscanf(buf, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -247,7 +247,7 @@ SPRT_FORCEINLINE int asprintf(char **out, const char *fmt, ...) {
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vasprintf(out, fmt, list);
+	int ret = __sprt_vasprintf(out, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -278,7 +278,7 @@ SPRT_FORCEINLINE int dprintf(int n, const char *__SPRT_RESTRICT fmt, ...) {
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vdprintf(n, fmt, list);
+	int ret = __sprt_vdprintf(n, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -311,7 +311,7 @@ SPRT_FORCEINLINE int scanf_l(__SPRT_ID(locale_t) loc, const char *__SPRT_RESTRIC
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vscanf_l(loc, fmt, list);
+	int ret = __sprt_vscanf_l(loc, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -323,7 +323,7 @@ SPRT_FORCEINLINE int fscanf_l(FILE *__SPRT_RESTRICT stream, __SPRT_ID(locale_t) 
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_fscanf_l(stream, loc, fmt, list);
+	int ret = __sprt_fscanf_l(stream, loc, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -334,7 +334,7 @@ SPRT_FORCEINLINE int sscanf_l(const char *__SPRT_RESTRICT buf, __SPRT_ID(locale_
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vsscanf_l(buf, loc, fmt, list);
+	int ret = __sprt_vsscanf_l(buf, loc, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -360,7 +360,7 @@ SPRT_FORCEINLINE int snprintf_l(char *__SPRT_RESTRICT buf, __SPRT_ID(size_t) len
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vsnprintf_l(buf, len, loc, fmt, list);
+	int ret = __sprt_vsnprintf_l(buf, len, loc, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -377,7 +377,7 @@ SPRT_FORCEINLINE int asprintf_l(char **__SPRT_RESTRICT target,
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vasprintf_l(target, loc, fmt, list);
+	int ret = __sprt_vasprintf_l(target, loc, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;

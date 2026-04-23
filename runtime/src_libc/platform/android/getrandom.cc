@@ -1,5 +1,5 @@
 /**
-Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -22,41 +22,56 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
+#include <sprt/c/__sprt_errno.h>
+#include <sprt/cxx/detail/ctypes.h>
+#include <sprt/c/__sprt_unistd.h>
+#include <sprt/c/__sprt_fcntl.h>
 #include <sprt/c/sys/__sprt_random.h>
 
-#if SPRT_WINDOWS
-#include "../platform/windows/getrandom.cc"
-#else
+#include <unistd.h>
 #include <stdlib.h>
-#include <sys/random.h>
-#include "private/SPRTSpecific.h"
-#endif
 
-#if SPRT_MACOS
-#include <Security/SecRandom.h>
-#endif
+#include <linux/unistd.h>
 
-#if SPRT_ANDROID
-#include "../platform/android/getrandom.cc"
-#endif
+__SPRT_C_FUNC int __sprt_android_get_device_api_level();
 
 namespace sprt {
 
-__SPRT_C_FUNC int __SPRT_ID(getentropy)(void *__buffer, __SPRT_ID(size_t) __length) {
-	return getentropy(__buffer, __length);
+static ssize_t getrandom(void *buf, size_t buflen, unsigned flags) {
+	static int apiVersion = __sprt_android_get_device_api_level();
+	long ret = -1;
+	if (apiVersion >= 28) {
+		ret = ::syscall(__NR_getrandom, buf, buflen, flags);
+	}
+	if (ret == -1) {
+		int fd = __sprt_open("/dev/urandom", __SPRT_O_RDONLY);
+		if (fd < 0) {
+			return -1;
+		}
+
+		size_t total_read = 0;
+		while (total_read < buflen) {
+			ssize_t nread = __sprt_read(fd, (char *)buf + total_read, buflen - total_read);
+			if (nread <= 0) {
+				__sprt_close(fd);
+				return -1;
+			}
+			total_read += nread;
+		}
+
+		__sprt_close(fd);
+		return total_read;
+	}
+	return ret;
 }
 
-__SPRT_C_FUNC __SPRT_ID(ssize_t)
-		__SPRT_ID(getrandom)(void *__buffer, __SPRT_ID(size_t) __length, unsigned __flags) {
-#if SPRT_MACOS
-	auto ret = SecRandomCopyBytes(kSecRandomDefault, __length, __buffer);
-	if (ret == 0) {
-		return __length;
+static int getentropy(void *buffer, size_t buffer_size) {
+	if (buffer_size > 256) {
+		__sprt_errno = EIO;
+		return -1;
 	}
-	return -1;
-#else
-	return getrandom(__buffer, __length, __flags);
-#endif
+
+	return getrandom(buffer, buffer_size, __SPRT_GRND_NONBLOCK);
 }
 
 } // namespace sprt
