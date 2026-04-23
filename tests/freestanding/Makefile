@@ -44,6 +44,12 @@ LOCAL_INCLUDES_OBJS :=
 
 LOCAL_MAIN := main.cpp
 
+# Android config
+LOCAL_ANDROID_MK := $(LOCAL_ROOT)/proj.android/app/Android.mk # path to root Android.mk
+LOCAL_APPLICATION_MK := $(LOCAL_ROOT)/proj.android/app/Application.mk # path to Application.mk
+LOCAL_ANDROID_TARGET := application # target to build
+LOCAL_ANDROID_PLATFORM := android-24 # android platform version
+
 APPCONFIG_APP_NAME := FreestandingRuntimeTest
 APPCONFIG_BUNDLE_NAME := org.stappler.FreestandingRuntimeTest
 APPCONFIG_APP_PATH_COMMON := 3

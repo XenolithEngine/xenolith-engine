@@ -60,7 +60,6 @@ static EventBus *getEventBus() {
 	return &s_eventBus;
 }
 
-
 static void EventHeader_send(const EventHeader &header, Ref *object, Value &&dataVal = Value(),
 		Ref *objVal = nullptr) {
 	auto ev = Rc<Event>::alloc(header, object, move(dataVal), objVal);

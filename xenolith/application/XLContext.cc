@@ -156,8 +156,7 @@ static int Context_runWithConfig(ContextConfig &&config, ContentInitializer &&in
 	}
 #endif
 
-	container->controller = nullptr;
-	container->context = nullptr;
+	container = nullptr;
 
 	return ret;
 }
@@ -263,7 +262,7 @@ bool Context::init(ContextConfig &&info, ContentInitializer &&init) {
 
 	auto engineMask = sprt::dispatch::QueueEngine::Any;
 #if ANDROID
-	engineMask = event::QueueEngine::EPoll;
+	engineMask = sprt::dispatch::QueueEngine::EPoll;
 #endif
 
 	_looper = sprt::dispatch::Looper::acquire(sprt::dispatch::LooperInfo{

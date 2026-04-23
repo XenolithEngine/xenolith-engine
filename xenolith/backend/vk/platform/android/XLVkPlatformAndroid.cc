@@ -27,9 +27,9 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk::platform {
 
 Rc<core::Instance> createInstance(Rc<core::InstanceInfo> &&info) {
-	auto handle = Dso("libvulkan.so.1");
+	auto handle = sprt::Dso("libvulkan.so.1");
 	if (!handle) {
-		handle = Dso("libvulkan.so");
+		handle = sprt::Dso("libvulkan.so");
 		if (!handle) {
 			log::source().error("Vk", "Fail to open libvulkan.so");
 			return nullptr;

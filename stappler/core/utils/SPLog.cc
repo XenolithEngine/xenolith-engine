@@ -40,16 +40,16 @@ static const constexpr int MAX_LOG_FUNC = 16;
 
 #ifndef STAPPLER_LOG_LEVEL
 #if DEBUG
-static std::bitset<6> s_logMask;
+static sprt::bitset<6> s_logMask;
 #else
-static std::bitset<6> s_logMask = (1 | 2 | 4 | 8);
+static sprt::bitset<6> s_logMask = (1 | 2 | 4 | 8);
 #endif
 #else
 #if STAPPLER_LOG_LEVEL == 0
 // restrict all
-static std::bitset<6> s_logMask = (1 | 2 | 4 | 8 | 16 | 32);
+static sprt::bitset<6> s_logMask = (1 | 2 | 4 | 8 | 16 | 32);
 #elif STAPPLER_LOG_LEVEL == 1
-static std::bitset<6> s_logMask = (1 | 2 | 4 | 8);
+static sprt::bitset<6> s_logMask = (1 | 2 | 4 | 8);
 #else
 // allow all
 static sprt::bitset<6> s_logMask = (0);

@@ -25,7 +25,12 @@ OSTYPE_DSO_SUFFIX := .so
 OSTYPE_LIB_SUFFIX := .a
 OSTYPE_LIB_PREFIX := lib
 
+# Non-NDK Android also uses common linux preset, but with ANDROID config flag
+ifeq ($(TARGET_SYSTEM),Android)
+OSTYPE_CONFIG_FLAGS := ANDROID
+else
 OSTYPE_CONFIG_FLAGS := LINUX
+endif
 
 OSTYPE_GENERAL_CFLAGS := -Wall -fvisibility=hidden
 OSTYPE_LIB_CFLAGS := -fPIC -DPIC

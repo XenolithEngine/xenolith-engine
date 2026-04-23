@@ -50,6 +50,13 @@ void performStringTests() {
 	size_t passed = 0;
 
 	runTest(stream, "Default ctor test", count, passed, [&] {
+		String s("Встроенный экран");
+
+		auto s2 = s;
+		return s2 == s;
+	});
+
+	runTest(stream, "Default ctor test", count, passed, [&] {
 		String s;
 		return s.empty() && (s.length() == 0) && (s.size() == 0);
 	});

@@ -205,7 +205,7 @@ struct InputKeyInfo {
 
 } // namespace stappler::xenolith
 
-namespace std {
+namespace sprt {
 
 template <>
 struct SP_PUBLIC hash<STAPPLER_VERSIONIZED_NAMESPACE::xenolith::InputEventData> {
@@ -214,6 +214,6 @@ struct SP_PUBLIC hash<STAPPLER_VERSIONIZED_NAMESPACE::xenolith::InputEventData> 
 	}
 };
 
-} // namespace std
+} // namespace sprt
 
 #endif /* XENOLITH_APPLICATION_INPUT_XLINPUT_H_ */

@@ -37,6 +37,9 @@
 
 #include "MonitorModeSelectionLayout.cc"
 
+#include <sys/random.h>
+#include <sprt/runtime/utils/base16.h>
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 bool ExampleScene::init(NotNull<AppThread> app, NotNull<AppWindow> window,
@@ -74,6 +77,14 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<AppWindow> window,
 	setFpsVisible(true);
 
 	_liveReloadAllowed = true;
+
+	uint8_t buf[256] = {0};
+	if (getrandom(buf, 256, 0) == 256) {
+		sprt::base16::encode(buf, 256, [] (const char *buf, size_t size) {
+			slog().info("Random", StringView(buf, size));
+		});
+	}
+
 
 	return true;
 }
