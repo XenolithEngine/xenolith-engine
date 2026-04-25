@@ -27,9 +27,16 @@ include $(dir $(CONFIGURE_MAKEFILE))utils/init-shell.mk
 include $(dir $(CONFIGURE_MAKEFILE))utils/names.mk
 
 ifdef DARWIN
+UNAME := $(shell uname)
+ifeq ($(UNAME),Darwin)
+SP_MACOS_SDK ?= $(shell xcrun --show-sdk-path)
+SP_IOS_SDK ?= $(shell xcrun --sdk iphoneos --show-sdk-path)
+SP_IOSSIM_SDK ?= $(shell xcrun --sdk iphonesimulator --show-sdk-path)
+else
 SP_MACOS_SDK ?= $(abspath $(LIB_SRC_DIR))/MacOSX.sdk
 SP_IOS_SDK ?= $(abspath $(LIB_SRC_DIR))/iPhoneOS.sdk
 SP_IOSSIM_SDK ?= $(abspath $(LIB_SRC_DIR))/iPhoneSimulator.sdk
+endif
 endif
 
 export PKG_CONFIG_PATH=$(SP_INSTALL_PREFIX)/usr/lib/pkgconfig

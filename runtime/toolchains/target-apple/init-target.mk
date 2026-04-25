@@ -23,9 +23,15 @@ THIS_FILE := $(lastword $(MAKEFILE_LIST))
 include $(dir $(THIS_FILE))../common/utils/detect-platform.mk
 include $(dir $(THIS_FILE))../common/utils/find-recursive.mk
 
+ifeq ($(UNAME),Darwin)
+SP_MACOS_SDK ?= $(shell xcrun --show-sdk-path)
+SP_IOS_SDK ?= $(shell xcrun --sdk iphoneos --show-sdk-path)
+SP_IOSSIM_SDK ?= $(shell xcrun --sdk iphonesimulator --show-sdk-path)
+else
 SP_MACOS_SDK ?= $(abspath $(dir $(THIS_FILE))../src)/MacOSX.sdk
 SP_IOS_SDK ?= $(abspath $(dir $(THIS_FILE))../src)/iPhoneOS.sdk
 SP_IOSSIM_SDK ?= $(abspath $(dir $(THIS_FILE))../src)/iPhoneSimulator.sdk
+endif
 
 ifeq ($(SP_SYSNAME),Darwin)
 SP_SDK_ROOT := $(SP_MACOS_SDK)

@@ -51,7 +51,11 @@ HOST_ARCH := $(shell uname -m)
 
 ifeq ($(UNAME),Darwin)
 
+ifeq ($(HOST_ARCH),arm64)
+HOST_ID := aarch64-apple-macosx
+else
 HOST_ID := $(HOST_ARCH)-apple-macosx
+endif
 HOST_TOOLCHAIN := host-macosx
 HOST_ANDROID := darwin-$(HOST_ARCH)
 
