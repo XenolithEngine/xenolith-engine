@@ -61,7 +61,7 @@ ifeq ($(UNAME),Darwin)
 
 ANDROID_HOST := darwin-$(STAPPLER_HOST_ARCH)
 
-STAPPLER_HOST := $(STAPPLER_HOST_ARCH)-apple-darwin
+STAPPLER_HOST := $(STAPPLER_HOST_ARCH)-apple-macosx
 
 else ifeq ($(UNAME),Linux)
 
