@@ -31,11 +31,13 @@ static void RunLoopData_terminate(_CFRunLoopTimerRef timer, void *ptr) {
 }
 
 static const void *RunLoopData_retainTimer(const void *ptr) {
-	((RunLoopTimerHandle *)ptr)->retain();
+	sprt::retain(((RunLoopTimerHandle *)ptr));
 	return ptr;
 }
 
-static void RunLoopData_releaseTimer(const void *ptr) { ((RunLoopTimerHandle *)ptr)->release(0); }
+static void RunLoopData_releaseTimer(const void *ptr) {
+	sprt::release(((RunLoopTimerHandle *)ptr), 0);
+}
 
 static void RunLoopData_performTimer(_CFRunLoopTimerRef timer, void *ptr) {
 	auto handle = (RunLoopTimerHandle *)ptr;
@@ -82,15 +84,15 @@ void RunLoopData::removeTimer(RunLoopTimerHandle *handle, RunLoopTimerSource *so
 }
 
 void RunLoopData::trigger(Handle *handle, NotifyData notifyData) {
-	auto hRefId = handle->retain(); // protect handle from removal
-	auto qRefId = _queue->retain(); // protect self from removal
+	auto hRefId = sprt::retain(handle); // protect handle from removal
+	auto qRefId = sprt::retain(_queue); // protect self from removal
 	_CFRunLoopPerformBlock(_runLoop, _kCFRunLoopCommonModes, ^{
 	  if (_runContext) {
 		  ++_runContext->nevents;
 	  }
 	  _data->notify(handle, notifyData);
-	  handle->release(hRefId);
-	  _queue->release(qRefId);
+	  sprt::release(handle, hRefId);
+	  sprt::release(_queue, qRefId);
 	});
 	_CFRunLoopWakeUp(_runLoop);
 }
@@ -185,21 +187,21 @@ Status RunLoopData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval
 }
 
 Status RunLoopData::wakeup(WakeupFlags flags) {
-	auto refId = _queue->retain();
+	auto refId = sprt::retain(_queue);
 	_CFRunLoopPerformBlock(_runLoop, _kCFRunLoopCommonModes, ^{
 	  stopContext(nullptr, flags, true);
-	  _queue->release(refId);
+	  sprt::release(_queue, refId);
 	});
 	return Status::Ok;
 }
 
 void RunLoopData::cancel() {
 	// we do not need to explicitly stop RunContext, if we on main thread, and we don't have one
-	if (_data->_threadId != thread::Thread::getCurrentThreadId() || _runContext) {
-		auto refId = _queue->retain();
+	if (_data->_threadId != dispatch::Thread::getCurrentThreadId() || _runContext) {
+		auto refId = sprt::retain(_queue);
 		_CFRunLoopPerformBlock(_runLoop, _kCFRunLoopCommonModes, ^{
 		  stopRootContext(WakeupFlags::ContextDefault, true);
-		  _queue->release(refId);
+		  sprt::release(_queue, refId);
 		});
 	}
 }
@@ -352,7 +354,7 @@ void RunLoopThreadHandle::notify(RunLoopData *queue, RunLoopThreadSource *source
 	}
 }
 
-Status RunLoopThreadHandle::perform(Rc<thread::Task> &&task) {
+Status RunLoopThreadHandle::perform(Rc<Task> &&task) {
 	auto q = reinterpret_cast<RunLoopData *>(_class->info->data->_platformQueue);
 	sprt::unique_lock lock(_mutex);
 	_outputQueue.emplace_back(move(task));
@@ -362,7 +364,8 @@ Status RunLoopThreadHandle::perform(Rc<thread::Task> &&task) {
 	return Status::Ok;
 }
 
-Status RunLoopThreadHandle::perform(mem_std::Function<void()> &&func, Ref *target, StringView tag) {
+Status RunLoopThreadHandle::perform(dispatch::Function<void()> &&func, Ref *target,
+		StringView tag) {
 	auto q = reinterpret_cast<RunLoopData *>(_class->info->data->_platformQueue);
 
 	sprt::unique_lock lock(_mutex);

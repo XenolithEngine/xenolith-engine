@@ -20,50 +20,12 @@
 
 .DEFAULT_GOAL := all
 
-LIBNAME = spirv-tools
+LIBNAME = vulkan-utility
 
 include ../common/configure.mk
 
-TARGET_LDFLAGS := $(SPIRV_EXTRA_LINKER_FLAGS)
-TARGET_CFLAGS := $(CONFIGURE_CMAKE_C_FLAGS_INIT)
-
-ifdef LINUX
-TARGET_LDFLAGS +=  -Wl,--gc-sections -lc++ -lc++abi
-TARGET_CFLAGS += -ffunction-sections -fdata-sections
-endif
-
-ifdef ANDROID
-TARGET_LDFLAGS +=  -Wl,--gc-sections
-TARGET_CFLAGS += -ffunction-sections -fdata-sections
-endif
-
-ifdef DARWIN
-ifeq ($(SP_SYSNAME),Darwin)
-TARGET_LDFLAGS += --sysroot=$(SP_MACOS_SDK) -lc++
-endif # Darwin
-
-ifeq ($(SP_SYSNAME),iOS)
-ifdef SP_IOSSIM
-TARGET_LDFLAGS += --sysroot=$(SP_IOSSIM_SDK) -lc++
-else # SP_IOSSIM
-TARGET_LDFLAGS += --sysroot=$(SP_IOS_SDK) -lc++
-endif # SP_IOSSIM
-endif # iOS
-
-endif # DARWIN
-
 CONFIGURE := \
 	$(CONFIGURE_CMAKE) \
-	-DSPIRV-Headers_SOURCE_DIR=$(LIB_SRC_DIR)/spirv-headers \
-	-DCMAKE_INSTALL_BINDIR=$(SP_INSTALL_PREFIX)/bin \
-	-DCMAKE_C_FLAGS_INIT="$(TARGET_CFLAGS)" \
-	-DCMAKE_CXX_FLAGS_INIT="$(TARGET_CFLAGS)" \
-	-DCMAKE_EXE_LINKER_FLAGS="$(TARGET_LDFLAGS)" \
-	-DCMAKE_SHARED_LINKER_FLAGS="$(TARGET_LDFLAGS)" \
-	-DSPIRV_WERROR=Off \
-	-DSPIRV_TOOLS_BUILD_STATIC=On \
-	-DSPIRV_SKIP_EXECUTABLES=On \
-	-DBUILD_SHARED_LIBS=Off
 
 all:
 	$(call rule_rm,$(LIBNAME))

@@ -28,6 +28,13 @@ THE SOFTWARE.
 #include <string.h>
 #include <sys/ptrace.h>
 
+#if SPRT_MACOS
+#include <sys/types.h>
+#include <sys/sysctl.h>
+#include <sys/user.h>
+#include <unistd.h>
+#endif
+
 namespace sprt {
 
 bool is_debugger_present() noexcept {
@@ -53,6 +60,28 @@ bool is_debugger_present() noexcept {
 		return true;
 	}
 	return false;
+#elif SPRT_MACOS
+	int mib[4];
+	struct kinfo_proc info;
+	size_t size;
+
+	// Initialize the Management Information Base (MIB)
+	mib[0] = CTL_KERN;
+	mib[1] = KERN_PROC;
+	mib[2] = KERN_PROC_PID;
+	mib[3] = getpid(); // Get current process ID
+
+	// Initialize the info structure
+	size = sizeof(info);
+	info.kp_proc.p_flag = 0;
+
+	// Query the system for process info
+	if (sysctl(mib, 4, &info, &size, NULL, 0) == -1) {
+		return false; // Error occurred
+	}
+
+	// Check if the P_TRACED flag is set
+	return (info.kp_proc.p_flag & P_TRACED) != 0;
 #else
 #error "Not implemented
 #endif

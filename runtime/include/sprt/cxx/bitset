@@ -126,6 +126,29 @@ protected:
 		return (__first_[n / __bits_per_word] & (__storage_type(1) << (n % __bits_per_word))) != 0;
 	}
 
+	constexpr size_t find_first_set() const noexcept {
+		for (size_t __i = 0; __i < _N_words; ++__i) {
+			if (__first_[__i] != 0) {
+				return __i * __bits_per_word + static_cast<size_t>(countr_zero(__first_[__i]));
+			}
+		}
+		return _Size;
+	}
+
+	constexpr size_t find_first_not_set() const noexcept {
+		for (size_t __i = 0; __i < _N_words; ++__i) {
+			if (__i == _N_words - 1 && _Size % __bits_per_word != 0) {
+				__storage_type __m = (~__storage_type(1) << (_Size % __bits_per_word));
+				if ((__first_[__i] & __m) != __m) {
+					return __i * __bits_per_word + static_cast<size_t>(countr_zero(~__first_[__i]));
+				}
+			} else if (__first_[__i] != ~__storage_type(0)) {
+				return __i * __bits_per_word + static_cast<size_t>(countr_zero(~__first_[__i]));
+			}
+		}
+		return _Size;
+	}
+
 private:
 	struct __bit_not {
 		template <typename _Tp>
@@ -228,6 +251,21 @@ protected:
 	}
 
 	constexpr bool test(size_t n) const { return (__first_ & (__storage_type(1) << n)) != 0; }
+
+	constexpr size_t find_first_set() const noexcept {
+		if (__first_ != 0) {
+			return static_cast<size_t>(countr_zero(__first_));
+		}
+		return _Size;
+	}
+
+	constexpr size_t find_first_not_set() const noexcept {
+		__storage_type __m = ~__storage_type(0) >> (__bits_per_word - _Size);
+		if ((__first_ & __m) != __m) {
+			return static_cast<size_t>(countr_zero(~__first_));
+		}
+		return _Size;
+	}
 };
 
 template <>
@@ -265,6 +303,9 @@ protected:
 	constexpr int compare(const __bitset &) const { return 0; }
 
 	constexpr bool test(size_t n) const { return false; }
+
+	constexpr size_t find_first_set() const noexcept { return 0; }
+	constexpr size_t find_first_not_set() const noexcept { return 0; }
 };
 
 inline constexpr __bitset<0, 0>::__bitset() noexcept { }
@@ -307,6 +348,9 @@ public:
 	constexpr bool all() const noexcept { return __base::all(); }
 	constexpr bool any() const noexcept { return __base::any(); }
 	constexpr bool none() const noexcept { return !any(); }
+
+	constexpr size_t find_first_set() const noexcept;
+	constexpr size_t find_first_not_set() const noexcept;
 };
 
 template <size_t _Size>
@@ -399,6 +443,16 @@ constexpr bool bitset<_Size>::test(size_t __pos) const {
 	}
 
 	return __base::test(__pos);
+}
+
+template <size_t _Size>
+inline constexpr size_t bitset<_Size>::find_first_set() const noexcept {
+	return __base::find_first_set();
+}
+
+template <size_t _Size>
+inline constexpr size_t bitset<_Size>::find_first_not_set() const noexcept {
+	return __base::find_first_not_set();
 }
 
 template <size_t _Size>

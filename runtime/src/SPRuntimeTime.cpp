@@ -32,8 +32,8 @@ namespace sprt::time {
 time_exp_t time_exp_t::get(bool localtime) {
 	time_exp_t ret;
 	auto clock = platform::clock(platform::ClockType::Realtime);
-	time_t time = clock / USEC_PER_SEC;
-	auto usec = clock % USEC_PER_SEC;
+	time_t time = clock / __USEC_PER_SEC;
+	auto usec = clock % __USEC_PER_SEC;
 
 	if (localtime) {
 		__sprt_localtime_r(&time, &ret);
@@ -70,8 +70,8 @@ time_exp_t::time_exp_t(int64_t t, int32_t offs) : time_exp_t(t, offs, false) { }
 time_exp_t::time_exp_t(int64_t t) : time_exp_t(t, false) { }
 
 time_exp_t::time_exp_t(int64_t t, bool use_localtime) {
-	__sprt_time_t tt = __sprt_time_t(t / int64_t(USEC_PER_SEC));
-	tm_usec = t % int64_t(USEC_PER_SEC);
+	__sprt_time_t tt = __sprt_time_t(t / int64_t(__USEC_PER_SEC));
+	tm_usec = t % int64_t(__USEC_PER_SEC);
 
 	if (use_localtime) {
 		__sprt_localtime_r(&tt, this);
@@ -97,17 +97,18 @@ int64_t time_exp_t::geti() const {
 	days += dayoffset[tm_mon] + tm_mday - 1;
 	days -= 25'508; /* 1 jan 1970 is 25508 days since 1 mar 1900 */
 
-	return int64_t((((days * 24 + tm_hour) * 60 + tm_min) * 60 + tm_sec) * USEC_PER_SEC + tm_usec);
+	return int64_t(
+			(((days * 24 + tm_hour) * 60 + tm_min) * 60 + tm_sec) * __USEC_PER_SEC + tm_usec);
 }
 
-int64_t time_exp_t::gmt_geti() const { return int64_t(geti() - tm_gmtoff * USEC_PER_SEC); }
+int64_t time_exp_t::gmt_geti() const { return int64_t(geti() - tm_gmtoff * __USEC_PER_SEC); }
 
 int64_t time_exp_t::ltz_geti() const {
 	__sprt_time_t t = ::__sprt_time(nullptr);
 	struct __SPRT_TM_NAME lt = {0};
 
 	__sprt_localtime_r(&t, &lt);
-	return int64_t(geti() - lt.tm_gmtoff * USEC_PER_SEC);
+	return int64_t(geti() - lt.tm_gmtoff * __USEC_PER_SEC);
 }
 
 /*
@@ -671,7 +672,7 @@ size_t time_exp_t::encodeIso8601(char *date_str, size_t bufSize, size_t precisio
 		};
 
 		push('.');
-		const int desc = USEC_PER_SEC / intpow(10, int(precision));
+		const int desc = __USEC_PER_SEC / intpow(10, int(precision));
 		auto val = int32_t(::round(tm_usec / double(desc)));
 		while (precision > 0) {
 			auto d = val / intpow(10, int(precision - 1));
@@ -700,7 +701,7 @@ size_t time_exp_t::encodeIso8601(char *date_str, size_t bufSize, size_t precisio
 
 size_t strftime(char *buf, size_t bufSize, const char *format, uint64_t usec) {
 	struct __SPRT_TM_NAME tm;
-	__sprt_time_t tt = usec / USEC_PER_SEC;
+	__sprt_time_t tt = usec / __USEC_PER_SEC;
 	__sprt_gmtime_r(&tt, &tm);
 	return __sprt_strftime(buf, bufSize, format, &tm);
 }

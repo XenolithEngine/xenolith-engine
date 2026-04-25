@@ -46,6 +46,8 @@ LIBS = \
 	wasm-micro-runtime \
 	vulkan-headers \
 	vulkan-loader \
+	vulkan-validationlayers \
+	vulkan-utility \
 	moltenvk \
 	spirv-headers \
 	glslang \
@@ -224,6 +226,14 @@ $(SRC_ROOT)/spirv-tools: | prepare
 # https://github.com/KhronosGroup/Vulkan-Loader # revised: 14 mar 2026
 $(SRC_ROOT)/vulkan-loader: | prepare
 	cd $(SRC_ROOT);  git clone  --recurse-submodules --branch vulkan-sdk-$(VULKAN_SDK_VER) --depth 1 https://github.com/KhronosGroup/Vulkan-Loader.git vulkan-loader
+
+# https://github.com/KhronosGroup/Vulkan-ValidationLayers # revised: 14 mar 2026
+$(SRC_ROOT)/vulkan-validationlayers: | prepare
+	cd $(SRC_ROOT);  git clone  --recurse-submodules --branch vulkan-sdk-$(VULKAN_SDK_VER) --depth 1 https://github.com/KhronosGroup/Vulkan-ValidationLayers vulkan-validationlayers
+
+# https://github.com/KhronosGroup/Vulkan-Utility-Libraries # revised: 14 mar 2026
+$(SRC_ROOT)/vulkan-utility: | prepare
+	cd $(SRC_ROOT);  git clone  --recurse-submodules --branch vulkan-sdk-$(VULKAN_SDK_VER) --depth 1 https://github.com/KhronosGroup/Vulkan-Utility-Libraries vulkan-utility
 
 # https://github.com/KhronosGroup/MoltenVK/releases # revised: 14 mar 2026
 $(SRC_ROOT)/moltenvk: | prepare

@@ -20,10 +20,11 @@
  THE SOFTWARE.
  **/
 
-#include "SPEventQueue.h"
 #include "SPEvent-kqueue.h"
 #include "SPEvent-darwin.h"
+
 #include <unistd.h>
+#include <sprt/runtime/log.h>
 
 namespace sprt::dispatch {
 
@@ -78,7 +79,7 @@ uint32_t KQueueData::processEvents(RunContext *ctx) {
 	auto processHandleEvent = [&](const struct kevent &ev) {
 		if (ev.udata && ev.udata != this) {
 			auto h = (Handle *)ev.udata;
-			auto refId = h->retain();
+			auto refId = sprt::retain(h);
 
 			NotifyData data;
 			data.result = ev.data;
@@ -87,7 +88,7 @@ uint32_t KQueueData::processEvents(RunContext *ctx) {
 
 			_data->notify(h, data);
 
-			h->release(refId);
+			sprt::release(h, refId);
 		}
 	};
 
@@ -178,7 +179,7 @@ Status KQueueData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval 
 		if (status == Status::Ok) {
 			processEvents(&ctx);
 		} else if (status != Status::ErrorInterrupted) {
-			log::source().error("event::KQueueData", "kqueue error: ", status);
+			sprt::oslog::vperror(__SPRT_LOCATION, "event::KQueueData", "kqueue error: ", status);
 			ctx.wakeupStatus = status;
 			break;
 		}
@@ -232,7 +233,7 @@ KQueueData::KQueueData(QueueRef *q, Queue::Data *data, const QueueInfo &info, Sp
 	}
 	_events.resize(size);
 
-	mem_std::Vector<struct kevent> ev;
+	dispatch::Vector<struct kevent> ev;
 	ev.reserve(sigs.size() + 1);
 
 	EV_SET(&ev.emplace_back(), reinterpret_cast<uintptr_t>(this), EVFILT_USER, EV_ADD | EV_CLEAR,
@@ -413,7 +414,7 @@ void KQueueThreadHandle::notify(KQueueData *queue, KQueueThreadSource *source,
 	}
 }
 
-Status KQueueThreadHandle::perform(Rc<thread::Task> &&task) {
+Status KQueueThreadHandle::perform(Rc<Task> &&task) {
 	auto q = reinterpret_cast<KQueueData *>(_class->info->data->_platformQueue);
 	sprt::unique_lock lock(_mutex);
 	_outputQueue.emplace_back(move(task));
@@ -425,7 +426,7 @@ Status KQueueThreadHandle::perform(Rc<thread::Task> &&task) {
 	return Status::Ok;
 }
 
-Status KQueueThreadHandle::perform(mem_std::Function<void()> &&func, Ref *target, StringView tag) {
+Status KQueueThreadHandle::perform(dispatch::Function<void()> &&func, Ref *target, StringView tag) {
 	auto q = reinterpret_cast<KQueueData *>(_class->info->data->_platformQueue);
 
 	sprt::unique_lock lock(_mutex);

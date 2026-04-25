@@ -27,6 +27,8 @@ INSTALL_TARGET_FILE := $(MAKE_ROOT)install-target.mk
 
 TOOLCHAIN_OUTPUT_DIR ?= $(abspath $(MAKE_ROOT)intermediate)
 
+TOOLCHAIN_TARGETS ?= $(abspath $(MAKE_ROOT)targets)
+
 MKDIR = mkdir -p
 
 SP_MACOS_VER := 14.4
@@ -35,10 +37,10 @@ SP_IOS_VER := 17.4
 INCLUDES := \
 	simde/simde-arch.h \
 	spirv/unified1/spirv.h \
+	spirv-tools/libspirv.hpp \
 	vulkan/vulkan.h
 
 LIBS := \
-	libc++.a \
 	libz.a \
 	libbz2.a \
 	liblzma.a \
@@ -64,7 +66,9 @@ LIBS := \
 	libbacktrace.a \
 	libxml2.a \
 	libvulkan.dylib \
-	libMoltenVK.dylib
+	libMoltenVK.dylib \
+	libVulkanLayerSettings.a \
+	libVkLayer_khronos_validation.dylib
 
 ifndef SP_ARCH
 
@@ -197,13 +201,15 @@ ifdef SP_TOOLCHAIN_PREFIX
 FORWARD_VARS += SP_TOOLCHAIN_PREFIX=$(SP_TOOLCHAIN_PREFIX)
 endif
 
-ARCH_LIBS = $(addprefix $(SP_INSTALL_PREFIX)/usr/lib/,$(LIBS))
+ARCH_LIBS = \
+	$(SP_INSTALL_PREFIX)/lib/clang/lib/darwin/libclang_rt.osx.a \
+	$(addprefix $(SP_INSTALL_PREFIX)/usr/lib/,$(LIBS))
 
 ARCH_INCLUDES  = $(addprefix $(SP_INSTALL_PREFIX)/usr/include/,$(INCLUDES))
 
 all: $(ARCH_LIBS) $(ARCH_INCLUDES) $(SP_INSTALL_PREFIX)/share/licenses
 
-$(SP_INSTALL_PREFIX)/usr/lib/libc++.a: $(MAKE_ROOT)libc++.mk
+$(SP_INSTALL_PREFIX)/lib/clang/lib/darwin/libclang_rt.osx.a: $(MAKE_ROOT)libc++.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/libz.a: ../common/zlib.mk
@@ -278,6 +284,14 @@ $(SP_INSTALL_PREFIX)/usr/lib/libxml2.a: ../common/libxml2.mk $(SP_INSTALL_PREFIX
 $(SP_INSTALL_PREFIX)/usr/lib/libvulkan.dylib: $(MAKE_ROOT)vulkan-loader.mk $(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h
 	$(MAKE) -f $< $(FORWARD_VARS)
 
+$(SP_INSTALL_PREFIX)/usr/lib/libVulkanLayerSettings.a: $(MAKE_ROOT)vulkan-utility.mk $(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h \
+		$(SP_INSTALL_PREFIX)/usr/include/spirv/unified1/spirv.h
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libVkLayer_khronos_validation.dylib: $(MAKE_ROOT)vulkan-validation.mk $(SP_INSTALL_PREFIX)/usr/lib/libVulkanLayerSettings.a \
+		$(SP_INSTALL_PREFIX)/usr/include/spirv-tools/libspirv.hpp
+	$(MAKE) -f $< $(FORWARD_VARS)
+
 $(SP_INSTALL_PREFIX)/usr/lib/libMoltenVK.dylib: $(MAKE_ROOT)moltenvk.mk $(SP_INSTALL_PREFIX)/usr/lib/libvulkan.dylib
 	$(MAKE) -f $< $(FORWARD_VARS)
 
@@ -288,6 +302,10 @@ $(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h: ../common/vulkan-headers.mk
 $(SP_INSTALL_PREFIX)/usr/include/spirv/unified1/spirv.h: ../common/spirv-headers.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 	touch $(SP_INSTALL_PREFIX)/usr/include/spirv/unified1/spirv.h
+
+$(SP_INSTALL_PREFIX)/usr/include/spirv-tools/libspirv.hpp: ../common/spirv-tools.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+	touch $(SP_INSTALL_PREFIX)/usr/include/spirv-tools/libspirv.hpp
 
 $(SP_INSTALL_PREFIX)/usr/include/simde/simde-arch.h: ../common/simde.mk
 	$(MAKE) -f $< $(FORWARD_VARS)

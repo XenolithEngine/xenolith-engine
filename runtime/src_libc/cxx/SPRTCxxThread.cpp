@@ -20,6 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+#define __SPRT_BUILD 1
+
 #include <sprt/cxx/thread>
 
 #include <sprt/c/__sprt_unistd.h>
@@ -134,7 +136,7 @@ thread::id get_id() noexcept { return {_thread::thread_t::self()->threadId}; }
 void yield() noexcept { __sprt_sched_yield(); }
 
 void sleep_for(const timeout_t &rel_time) {
-	struct timespec ts = {
+	struct __SPRT_TIMESPEC_NAME ts = {
 		static_cast<__sprt_time_t>(rel_time / 1'000'000'000),
 		static_cast<__sprt_int64_t>(rel_time % 1'000'000'000),
 	};

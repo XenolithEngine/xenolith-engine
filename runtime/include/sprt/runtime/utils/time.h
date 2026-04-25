@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 namespace sprt::time {
 
-static constexpr uint64_t USEC_PER_SEC(1'000'000);
+static constexpr uint64_t __USEC_PER_SEC(1'000'000);
 
 struct SPRT_API time_exp_t : public __SPRT_TM_NAME {
 	static constexpr size_t Rfc822BufferSize = 32;

@@ -35,11 +35,6 @@ namespace sprt {
 
 #if __SPRT_CONFIG_HAVE_DARWIN
 
-#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_15
-static_assert(OS_UNFAIR_LOCK_FLAG_NONE == __SPRT_OS_UNFAIR_LOCK_FLAG_NONE);
-static_assert(OS_UNFAIR_LOCK_FLAG_ADAPTIVE_SPIN == __SPRT_OS_UNFAIR_LOCK_FLAG_ADAPTIVE_SPIN);
-#endif
-
 static_assert(OS_SYNC_WAIT_ON_ADDRESS_NONE == __SPRT_OS_SYNC_WAIT_ON_ADDRESS_NONE);
 static_assert(OS_SYNC_WAIT_ON_ADDRESS_SHARED == __SPRT_OS_SYNC_WAIT_ON_ADDRESS_SHARED);
 
@@ -53,45 +48,6 @@ extern "C" const __SPRT_ID(_CFRunLoopMode)
 
 extern "C" const __SPRT_ID(_CFRunLoopMode)
 		__SPRT_ID(_kCFRunLoopCommonModes) = (__SPRT_ID(_CFRunLoopMode))kCFRunLoopCommonModes;
-
-__SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_lock)(
-		__SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	os_unfair_lock_lock(os_unfair_lock_t(lock));
-}
-
-__SPRT_C_FUNC bool __SPRT_ID(_os_unfair_lock_trylock)(
-		__SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	return os_unfair_lock_trylock(os_unfair_lock_t(lock));
-}
-
-__SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_unlock)(
-		__SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	os_unfair_lock_unlock(os_unfair_lock_t(lock));
-}
-
-__SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_assert_owner)(
-		const __SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	os_unfair_lock_assert_owner((const os_unfair_lock *)lock);
-}
-
-__SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_assert_not_owner)(
-		const __SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	os_unfair_lock_assert_not_owner((const os_unfair_lock *)lock);
-}
-
-#if MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_15
-__SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_lock_with_flags)(__SPRT_ID(_os_unfair_lock) * lock,
-		__SPRT_ID(uint32_t) flags) {
-	os_unfair_lock_lock_with_flags(os_unfair_lock_t(lock), os_unfair_lock_flags_t(flags));
-}
-#else
-__SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_lock_with_flags)(__SPRT_ID(_os_unfair_lock) * lock,
-		__SPRT_ID(uint32_t) flags) {
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (MAC_OS_X_VERSION_MIN_REQUIRED < "
-			"MAC_OS_X_VERSION_10_15)");
-}
-#endif
 
 __SPRT_C_FUNC int __SPRT_ID(_os_sync_wait_on_address)(void *addr, __SPRT_ID(uint64_t) value,
 		__SPRT_ID(size_t) size, __SPRT_ID(uint32_t) flags) __SPRT_NOEXCEPT {
@@ -203,43 +159,6 @@ __SPRT_C_FUNC void __SPRT_ID(_CFRunLoopRemoveTimer)(__SPRT_ID(_CFRunLoopRef) rl,
 extern "C" const __SPRT_ID(_CFRunLoopMode) __SPRT_ID(_kCFRunLoopDefaultMode) = nullptr;
 
 extern "C" const __SPRT_ID(_CFRunLoopMode) __SPRT_ID(_kCFRunLoopCommonModes) = nullptr;
-
-__SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_lock)(
-		__SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
-}
-
-__SPRT_C_FUNC bool __SPRT_ID(_os_unfair_lock_trylock)(
-		__SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
-	return false;
-}
-
-__SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_unlock)(
-		__SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
-}
-
-__SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_assert_owner)(
-		const __SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
-}
-
-__SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_assert_not_owner)(
-		const __SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
-}
-
-__SPRT_C_FUNC void __SPRT_ID(_os_unfair_lock_lock_with_flags)(__SPRT_ID(_os_unfair_lock) * lock,
-		__SPRT_ID(uint32_t) flags) {
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (__SPRT_CONFIG_HAVE_DARWIN)");
-}
 
 __SPRT_C_FUNC int __SPRT_ID(_os_sync_wait_on_address)(void *addr, __SPRT_ID(uint64_t) value,
 		__SPRT_ID(size_t) size, __SPRT_ID(uint32_t) flags) __SPRT_NOEXCEPT {

@@ -31,8 +31,6 @@ THE SOFTWARE.
 #include <time64.h>
 #endif
 
-#include <time.h>
-
 #if SPRT_WINDOWS
 #include "platform/windows/time.cc"
 #endif
@@ -78,6 +76,8 @@ static_assert(CLOCK_SGI_CYCLE == __SPRT_CLOCK_SGI_CYCLE);
 static_assert(CLOCK_TAI == __SPRT_CLOCK_TAI);
 #endif
 
+#include "time/clock_gettime.cc"
+#include "time/timespec_get.cc"
 
 namespace sprt {
 
@@ -314,50 +314,6 @@ __SPRT_C_FUNC int __SPRT_ID(nanosleep)(const __SPRT_TIMESPEC_NAME *ts, __SPRT_TI
 #endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(clock_getres)(__SPRT_ID(clockid_t) clock, __SPRT_TIMESPEC_NAME *out) {
-#if SPRT_WINDOWS
-	return clock_getres(clock, out);
-#else
-	struct timespec rem;
-	auto ret = ::clock_getres(clockid_t(clock), &rem);
-	if (out) {
-		out->tv_nsec = rem.tv_nsec;
-		out->tv_sec = rem.tv_sec;
-	}
-	return ret;
-#endif
-}
-
-__SPRT_C_FUNC int __SPRT_ID(clock_gettime)(__SPRT_ID(clockid_t) clock, __SPRT_TIMESPEC_NAME *out) {
-#if SPRT_WINDOWS
-	return clock_gettime(clock, out);
-#else
-	struct timespec rem;
-	auto ret = ::clock_gettime(clockid_t(clock), &rem);
-	if (out) {
-		out->tv_nsec = rem.tv_nsec;
-		out->tv_sec = rem.tv_sec;
-	}
-	return ret;
-#endif
-}
-
-__SPRT_C_FUNC int __SPRT_ID(
-		clock_settime)(__SPRT_ID(clockid_t) clock, const __SPRT_TIMESPEC_NAME *ts) {
-#if __SPRT_CONFIG_HAVE_TIME_CLOCK_SETTIME
-	struct timespec native;
-	if (ts) {
-		native.tv_nsec = ts->tv_nsec;
-		native.tv_sec = ts->tv_sec;
-	}
-
-	return ::clock_settime(clockid_t(clock), ts ? &native : nullptr);
-#else
-	__sprt_errno = ENOSYS;
-	return -1;
-#endif
-}
-
 __SPRT_C_FUNC int __SPRT_ID(clock_nanosleep)(__SPRT_ID(clockid_t) clock, int v,
 		const __SPRT_TIMESPEC_NAME *ts, __SPRT_TIMESPEC_NAME *out) {
 #if SPRT_WINDOWS
@@ -394,15 +350,14 @@ __SPRT_C_FUNC int __SPRT_ID(
 	}
 	return CLOCK_PROCESS_CPUTIME_ID;
 #else
-	return ::clock_getcpuclockid(pid, clock);
+	clockid_t id = 0;
+	auto ret = ::clock_getcpuclockid(pid, &id);
+	if (ret == 0) {
+		*clock = static_cast<__sprt_clockid_t>(id);
+		return 0;
+	}
+	return ret;
 #endif
-}
-
-__SPRT_C_FUNC __SPRT_ID(uint64_t) __SPRT_ID(clock_gettime_nsec_np)(__SPRT_ID(clockid_t) __clock) {
-	struct timespec __tp;
-	clock_gettime(__clock, &__tp);
-	return static_cast<uint64_t>(__tp.tv_sec) * static_cast<uint64_t>(1'000'000'000LLU)
-			+ static_cast<uint64_t>(__tp.tv_nsec);
 }
 
 } // namespace sprt

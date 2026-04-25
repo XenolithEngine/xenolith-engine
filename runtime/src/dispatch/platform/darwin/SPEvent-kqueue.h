@@ -23,10 +23,9 @@
 #ifndef CORE_EVENT_PLATFORM_DARWIN_SPEVENT_KQUEUE_H_
 #define CORE_EVENT_PLATFORM_DARWIN_SPEVENT_KQUEUE_H_
 
-#include "SPEventQueue.h"
-#include "SPEventTimerHandle.h"
-#include "SPEventThreadHandle.h"
-#include "detail/SPEventQueueData.h"
+#include <sprt/runtime/dispatch/queue.h>
+#include <sprt/runtime/dispatch/handle.h>
+#include "../../detail/SPRuntimeDispatchQueueData.h"
 
 #include <sys/types.h>
 #include <sys/event.h>
@@ -39,7 +38,7 @@ static constexpr bool KQUEUE_THREAD_NONBLOCK = false;
 struct SPRT_API KQueueData : public PlatformQueueData {
 	int _kqueueFd = -1;
 
-	mem_pool::Vector<struct kevent> _events;
+	Queue::Vector<struct kevent> _events;
 
 	uint32_t _receivedEvents = 0;
 	uint32_t _processedEvents = 0;
@@ -106,8 +105,8 @@ public:
 
 	void notify(KQueueData *, KQueueThreadSource *, const NotifyData &);
 
-	virtual Status perform(Rc<thread::Task> &&task) override;
-	virtual Status perform(mem_std::Function<void()> &&func, Ref *target, StringView tag) override;
+	virtual Status perform(Rc<Task> &&task) override;
+	virtual Status perform(dispatch::Function<void()> &&func, Ref *target, StringView tag) override;
 
 protected:
 	sprt::mutex _mutex;

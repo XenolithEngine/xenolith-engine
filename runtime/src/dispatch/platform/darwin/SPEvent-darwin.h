@@ -23,11 +23,11 @@
 #ifndef CORE_EVENT_PLATFORM_DARWIN_SPEVENT_DARWIN_H_
 #define CORE_EVENT_PLATFORM_DARWIN_SPEVENT_DARWIN_H_
 
-#include "SPEventQueue.h"
-#include "detail/SPEventQueueData.h"
-#include "detail/SPEventHandleClass.h"
+#include <sprt/runtime/dispatch/queue.h>
+#include "../../detail/SPRuntimeDispatchHandleClass.h"
+#include "../../detail/SPRuntimeDispatchQueueData.h"
 
-#if MACOS
+#if SPRT_MACOS
 
 namespace sprt::dispatch {
 

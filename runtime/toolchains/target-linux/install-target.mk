@@ -21,7 +21,8 @@
 T_INTERMEDIATE ?= $(abspath $(LIBS_MAKE_ROOT))/intermediate/x86_64-unknown-linux-gnu
 T_TARGET ?= $(abspath $(LIBS_MAKE_ROOT))/targets/x86_64-unknown-linux-gnu
 
-ALL_STATIC_LIBS := $(wildcard $(T_INTERMEDIATE)/usr/lib/*.a)
+ALL_STATIC_LIBS := $(filter-out %/libc++.a %/libc++experimental.a,\
+	$(wildcard $(T_INTERMEDIATE)/usr/lib/*.a))
 ALL_INSTALL_STATIC_LIBS := $(patsubst $(T_INTERMEDIATE)/%,$(T_TARGET)/%,$(ALL_STATIC_LIBS))
 
 $(T_TARGET):
@@ -36,6 +37,7 @@ $(T_TARGET)/usr/include: $(T_INTERMEDIATE)/usr/include | $(T_TARGET)
 	@mkdir -p $(dir $@)
 	rm -rf $@
 	cp -rf $< $@
+	rm -rf $@/c++
 
 $(T_TARGET)/lib: $(T_INTERMEDIATE)/lib | $(T_TARGET)
 	@mkdir -p $(dir $@)

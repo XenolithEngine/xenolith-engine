@@ -24,10 +24,14 @@ LIBNAME = glslang
 
 include ../common/configure.mk
 
-TARGET_LDFLAGS := $(SPIRV_EXTRA_LINKER_FLAGS) -Wl,--gc-sections
+TARGET_LDFLAGS := $(SPIRV_EXTRA_LINKER_FLAGS)
 
 ifdef LINUX
-TARGET_LDFLAGS += -lc++ -lc++abi
+TARGET_LDFLAGS +=  -Wl,--gc-sections -lc++ -lc++abi
+endif
+
+ifdef ANDROID
+TARGET_LDFLAGS +=  -Wl,--gc-sections
 endif
 
 CONFIGURE := \

@@ -29,7 +29,7 @@
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/stream.h>
 #include <sprt/runtime/log.h>
-#include <sprt/runtime/mem/vector.h>
+#include <sprt/cxx/vector>
 #include <sprt/runtime/enum.h>
 #include <sprt/c/__sprt_unistd.h>
 #include "private/SPRTFilesystem.h"
@@ -78,7 +78,7 @@ static bool s_isSandboxed = false;
 
 void _initSystemPaths(LookupData &data) {
 	auto homePath = platform::getHomePath();
-	auto execPath = platform::getExecPath();
+	//auto execPath = platform::getExecPath();
 	auto defaultInterface = getDefaultInterface();
 	if (homePath.empty()) {
 		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "filesystem", "$HOME is not defined");

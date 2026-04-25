@@ -45,6 +45,9 @@ THE SOFTWARE.
 //#define SIMDE_STDC_HOSTED 1
 #endif
 
+#define SIMDE_MATH_NO_LIBM 1
+#define std sprt
+
 #include <sprt/runtime/geom/simd_attr.h>
 
 #if SP_GEOM_DEFAULT_SIMD == SP_GEOM_DEFAULT_SIMD_NEON
@@ -75,6 +78,7 @@ THE SOFTWARE.
 #include <sprt/runtime/geom/simd_neon64.h>
 #endif
 
+#undef std
 
 namespace sprt::geom::simd {
 

@@ -75,7 +75,12 @@ static constexpr auto _FP_ILOGBNAN = __SPRT_FP_ILOGBNAN;
 static constexpr auto _MATH_ERRNO = __SPRT_MATH_ERRNO;
 static constexpr auto _MATH_ERREXCEPT = __SPRT_MATH_ERREXCEPT;
 
+#if SPRT_MACOS
+// _math_errhandling is a function in Mac SDK
+#define _math_errhandling __SPRT_math_errhandling
+#else
 static constexpr auto _math_errhandling = __SPRT_math_errhandling;
+#endif
 
 SPRT_FORCEINLINE auto acos(float x) { return __builtin_acosf(x); }
 SPRT_FORCEINLINE auto acosf(float x) { return __builtin_acosf(x); }

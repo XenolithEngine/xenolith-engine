@@ -47,8 +47,6 @@
 
 // clang-format on
 
-typedef __SPRT_ID(uint32_t) __SPRT_ID(_os_unfair_lock);
-
 typedef __SPRT_ID(uint64_t) __SPRT_ID(_CFTypeID);
 typedef __SPRT_ID(uint64_t) __SPRT_ID(_CFOptionFlags);
 typedef __SPRT_ID(uint64_t) __SPRT_ID(_CFHashCode);
@@ -95,31 +93,6 @@ __SPRT_BEGIN_DECL
 SPRT_API extern const __SPRT_ID(_CFRunLoopMode) __SPRT_ID(_kCFRunLoopDefaultMode);
 
 SPRT_API extern const __SPRT_ID(_CFRunLoopMode) __SPRT_ID(_kCFRunLoopCommonModes);
-
-__SPRT_CONFIG_HAVE_DARWIN_NOTICE
-SPRT_API void __SPRT_ID(_os_unfair_lock_lock)(__SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT;
-
-__SPRT_CONFIG_HAVE_DARWIN_NOTICE
-SPRT_API bool __SPRT_ID(_os_unfair_lock_trylock)(__SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT;
-
-__SPRT_CONFIG_HAVE_DARWIN_NOTICE
-SPRT_API void __SPRT_ID(_os_unfair_lock_unlock)(__SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT;
-
-__SPRT_CONFIG_HAVE_DARWIN_NOTICE
-SPRT_API void __SPRT_ID(_os_unfair_lock_assert_owner)(
-		const __SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT;
-
-__SPRT_CONFIG_HAVE_DARWIN_NOTICE
-SPRT_API void __SPRT_ID(_os_unfair_lock_assert_not_owner)(
-		const __SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT;
-
-// clang-format off
-#if __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ >= 101500
-__SPRT_CONFIG_HAVE_DARWIN_NOTICE
-SPRT_API void __SPRT_ID(_os_unfair_lock_lock_with_flags)(__SPRT_ID(_os_unfair_lock) * lock,
-		__SPRT_ID(uint32_t) flags);
-#endif
-// clang-format on
 
 __SPRT_CONFIG_HAVE_DARWIN_NOTICE
 SPRT_API int __SPRT_ID(_os_sync_wait_on_address)(void *addr, __SPRT_ID(uint64_t) value,

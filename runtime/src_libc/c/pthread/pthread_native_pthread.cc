@@ -28,6 +28,10 @@ THE SOFTWARE.
 
 #include <pthread.h>
 
+#if SPRT_MACOS
+#include <mach/port.h>
+#endif
+
 namespace sprt::_thread::native {
 
 static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr) {
@@ -74,16 +78,17 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr) 
 }
 
 static void __initNativeHandle(thread_t *thread) {
-	thread->handle = reinterpret_cast<void *>(pthread_self());
-
-	pthread_attr_t attr;
-	pthread_getattr_np(reinterpret_cast<pthread_t>(thread->handle),
-			&attr); // Get current thread's actual attributes
-
 	size_t stackSize = 0;
 	void *stackptr = nullptr;
 
+	thread->handle = reinterpret_cast<void *>(pthread_self());
+
+#if !SPRT_MACOS
+	pthread_attr_t attr;
+	pthread_getattr_np(reinterpret_cast<pthread_t>(thread->handle),
+			&attr); // Get current thread's actual attributes
 	pthread_attr_getstack(&attr, &stackptr, &stackSize);
+#endif
 
 	int sched = 0;
 	struct sched_param param;
@@ -215,11 +220,31 @@ SPRT_UNUSED static bool validate_barrierattr_setpshared(int v) {
 namespace sprt::_thread {
 
 int thread_t::getcpuclockid(__sprt_clockid_t *clock) const {
-	return pthread_getcpuclockid(reinterpret_cast<pthread_t>(handle), clock);
+	if (!clock) {
+		return EINVAL;
+	}
+
+#if SPRT_MACOS
+	auto portId = pthread_mach_thread_np(pthread_self());
+	if (portId == MACH_PORT_DEAD) {
+		return ESRCH;
+	}
+
+	*clock = (static_cast<__sprt_clockid_t>(portId) & 0x7FFF'FFFF) | 0x8000'0000;
+	return 0;
+#else
+	clockid_t id = 0;
+	auto ret = pthread_getcpuclockid(reinterpret_cast<pthread_t>(handle), &id);
+	if (ret == 0) {
+		*clock = static_cast<__sprt_clockid_t>(id);
+		return 0;
+	}
+	return ret;
+#endif
 }
 
 int thread_t::getaffinity(__SPRT_ID(size_t) n, __SPRT_ID(cpu_set_t) * set) {
-#if SPRT_ANDROID
+#if SPRT_ANDROID || SPRT_MACOS
 	return ENOSYS;
 #else
 	return pthread_getaffinity_np(reinterpret_cast<pthread_t>(handle), n,
@@ -228,7 +253,7 @@ int thread_t::getaffinity(__SPRT_ID(size_t) n, __SPRT_ID(cpu_set_t) * set) {
 }
 
 int thread_t::setaffinity(__SPRT_ID(size_t) n, const __SPRT_ID(cpu_set_t) * set) {
-#if SPRT_ANDROID
+#if SPRT_ANDROID || SPRT_MACOS
 	return ENOSYS;
 #else
 	return pthread_setaffinity_np(reinterpret_cast<pthread_t>(handle), n,
@@ -237,7 +262,11 @@ int thread_t::setaffinity(__SPRT_ID(size_t) n, const __SPRT_ID(cpu_set_t) * set)
 }
 
 int thread_t::setname_native(const char *name) {
+#if SPRT_MACOS
+	return pthread_setname_np(name);
+#else
 	return pthread_setname_np(reinterpret_cast<pthread_t>(handle), name);
+#endif
 }
 
 } // namespace sprt::_thread

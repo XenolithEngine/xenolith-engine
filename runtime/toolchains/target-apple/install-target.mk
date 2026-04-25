@@ -21,12 +21,22 @@
 T_INTERMEDIATE ?= $(abspath $(LIBS_MAKE_ROOT))/intermediate/x86_64-unknown-linux-gnu
 T_TARGET ?= $(abspath $(LIBS_MAKE_ROOT))/targets/x86_64-unknown-linux-gnu
 
-ALL_STATIC_LIBS := $(wildcard $(T_INTERMEDIATE)/usr/lib/*.a) $(wildcard $(T_INTERMEDIATE)/usr/lib/*.o)
+ALL_STATIC_LIBS := \
+	$(filter-out \
+			%/libSPIRV-Tools.a \
+			%/libSPIRV-Tools-diff.a \
+			%/libSPIRV-Tools-link.a \
+			%/libSPIRV-Tools-lint.a \
+			%/libSPIRV-Tools-opt.a \
+			%/libSPIRV-Tools-reduce.a \
+		,$(wildcard $(T_INTERMEDIATE)/usr/lib/*.a)) \
+	$(wildcard $(T_INTERMEDIATE)/usr/lib/*.o)
 ALL_INSTALL_STATIC_LIBS := $(patsubst $(T_INTERMEDIATE)/%,$(T_TARGET)/%,$(ALL_STATIC_LIBS))
 
 ALL_SHARED_LIBS := $(addprefix $(T_INTERMEDIATE)/usr/lib/,\
 	libvulkan.dylib \
 	libMoltenVK.dylib \
+	libVkLayer_khronos_validation.dylib \
 )
 
 ALL_INSTALL_SHARED_LIBS := $(patsubst $(T_INTERMEDIATE)/%,$(T_TARGET)/%,$(ALL_SHARED_LIBS))
@@ -55,8 +65,15 @@ $(T_TARGET)/share/licenses: | $(T_TARGET)
 	rm -rf $@
 	cp -rf ../licenses $(T_TARGET)/share
 
+$(T_TARGET)/share/vulkan: | $(T_TARGET)
+	@mkdir -p $(dir $@)
+	rm -rf $@
+	cp -rf $(T_INTERMEDIATE)/usr/share/vulkan $(T_TARGET)/share
+	rm -rf $@/registry
+
 all: $(ALL_INSTALL_STATIC_LIBS) $(ALL_INSTALL_SHARED_LIBS) \
-	$(T_TARGET)/lib $(T_TARGET)/usr/include $(T_TARGET)/share/licenses $(T_TARGET)/target.mk \
+	$(T_TARGET)/lib $(T_TARGET)/usr/include $(T_TARGET)/share/licenses $(T_TARGET)/share/vulkan \
+	$(T_TARGET)/target.mk \
 	$(T_TARGET)
 
 .PHONY: all

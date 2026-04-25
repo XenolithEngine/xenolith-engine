@@ -144,7 +144,7 @@ void MacosContextController::handleContextDidStop() {
 void MacosContextController::handleContextWillStart() {
 	auto instance = _context->makeInstance(_instanceInfo);
 	if (!instance) {
-		log::vperror(__SPRT_LOCATION, "MacosContextController", "Fail to load gAPI instance");
+		oslog::vperror(__SPRT_LOCATION, "MacosContextController", "Fail to load gAPI instance");
 		_resultCode = -1;
 		[_appDelegate terminate];
 		return;
@@ -208,7 +208,7 @@ Status MacosContextController::readFromClipboard(Rc<ClipboardRequest> &&req) {
 			auto u = utTypes.emplace(mime.str<String>(), v).first;
 			targetTypes.emplace_back(u->first);
 		} else {
-			log::vpwarn(__SPRT_LOCATION, "MacosContextController",
+			oslog::vpwarn(__SPRT_LOCATION, "MacosContextController",
 					"Pasteboard type dublicate: ", mime, " for ", v.UTF8String);
 		}
 	};

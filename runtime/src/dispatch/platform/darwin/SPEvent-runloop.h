@@ -23,10 +23,9 @@
 #ifndef CORE_EVENT_PLATFORM_DARWIN_SPEVENT_RUNLOOP_H_
 #define CORE_EVENT_PLATFORM_DARWIN_SPEVENT_RUNLOOP_H_
 
-#include "SPEventQueue.h"
-#include "SPEventTimerHandle.h"
-#include "SPEventThreadHandle.h"
-#include "detail/SPEventQueueData.h"
+#include <sprt/runtime/dispatch/queue.h>
+#include <sprt/runtime/dispatch/handle.h>
+#include "../../detail/SPRuntimeDispatchQueueData.h"
 
 #include <sys/darwin.h>
 
@@ -103,8 +102,8 @@ public:
 
 	void notify(RunLoopData *, RunLoopThreadSource *, const NotifyData &);
 
-	virtual Status perform(Rc<thread::Task> &&task) override;
-	virtual Status perform(mem_std::Function<void()> &&func, Ref *target, StringView tag) override;
+	virtual Status perform(Rc<Task> &&task) override;
+	virtual Status perform(dispatch::Function<void()> &&func, Ref *target, StringView tag) override;
 
 protected:
 	sprt::mutex _mutex;

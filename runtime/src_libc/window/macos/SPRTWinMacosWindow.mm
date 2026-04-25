@@ -21,7 +21,6 @@
  **/
 
 #define __SPRT_BUILD 1
-#define __SPRT_USE_STL 1
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -31,7 +30,7 @@
 #pragma clang diagnostic ignored "-Wavailability"
 
 #import <AppKit/AppKit.h>
-#import <MetalKit/MetalKit.h>
+//#import <MetalKit/MetalKit.h>
 
 #pragma clang diagnostic pop
 
@@ -1003,7 +1002,7 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 	auto mods = NSSPWIN::getInputModifiers(uint32_t(theEvent.modifierFlags)) | _currentModifiers;
 
 	NSSPWIN::InputEventData event{
-		std::numeric_limits<uint32_t>::max(),
+		sprt::Max<uint32_t>,
 		NSSPWIN::InputEventName::MouseMove,
 		{{
 			NSSPWIN::InputMouseButton::None,
@@ -1071,7 +1070,7 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 		}},
 	});
 	events.emplace_back(NSSPWIN::InputEventData{
-		std::numeric_limits<uint32_t>::max(),
+		sprt::Max<uint32_t>,
 		NSSPWIN::InputEventName::MouseMove,
 		{{
 			NSSPWIN::InputMouseButton::None,
@@ -1216,7 +1215,7 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 	_engineWindow->updateState(0, _engineWindow->getInfo()->state | NSSPWIN::WindowState::Pointer);
 
 	events.emplace_back(NSSPWIN::InputEventData{
-		std::numeric_limits<uint32_t>::max(),
+		sprt::Max<uint32_t>,
 		NSSPWIN::InputEventName::MouseMove,
 		{{
 			NSSPWIN::InputMouseButton::None,
@@ -1307,19 +1306,19 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 }
 
 - (void)flagsChanged:(NSEvent *)theEvent {
-	static std::pair<NSSPWIN::InputModifier, NSSPWIN::InputKeyCode> testmask[] = {
-		std::make_pair(NSSPWIN::InputModifier::ShiftL, NSSPWIN::InputKeyCode::LEFT_SHIFT),
-		std::make_pair(NSSPWIN::InputModifier::ShiftR, NSSPWIN::InputKeyCode::RIGHT_SHIFT),
-		std::make_pair(NSSPWIN::InputModifier::CtrlL, NSSPWIN::InputKeyCode::LEFT_CONTROL),
-		std::make_pair(NSSPWIN::InputModifier::CtrlR, NSSPWIN::InputKeyCode::RIGHT_CONTROL),
-		std::make_pair(NSSPWIN::InputModifier::AltL, NSSPWIN::InputKeyCode::LEFT_ALT),
-		std::make_pair(NSSPWIN::InputModifier::AltR, NSSPWIN::InputKeyCode::RIGHT_ALT),
-		std::make_pair(NSSPWIN::InputModifier::WinL, NSSPWIN::InputKeyCode::LEFT_SUPER),
-		std::make_pair(NSSPWIN::InputModifier::WinR, NSSPWIN::InputKeyCode::RIGHT_SUPER),
-		std::make_pair(NSSPWIN::InputModifier::CapsLock, NSSPWIN::InputKeyCode::CAPS_LOCK),
-		std::make_pair(NSSPWIN::InputModifier::NumLock, NSSPWIN::InputKeyCode::NUM_LOCK),
-		std::make_pair(NSSPWIN::InputModifier::Mod5, NSSPWIN::InputKeyCode::WORLD_1),
-		std::make_pair(NSSPWIN::InputModifier::Mod4, NSSPWIN::InputKeyCode::WORLD_2),
+	static sprt::pair<NSSPWIN::InputModifier, NSSPWIN::InputKeyCode> testmask[] = {
+		sprt::make_pair(NSSPWIN::InputModifier::ShiftL, NSSPWIN::InputKeyCode::LEFT_SHIFT),
+		sprt::make_pair(NSSPWIN::InputModifier::ShiftR, NSSPWIN::InputKeyCode::RIGHT_SHIFT),
+		sprt::make_pair(NSSPWIN::InputModifier::CtrlL, NSSPWIN::InputKeyCode::LEFT_CONTROL),
+		sprt::make_pair(NSSPWIN::InputModifier::CtrlR, NSSPWIN::InputKeyCode::RIGHT_CONTROL),
+		sprt::make_pair(NSSPWIN::InputModifier::AltL, NSSPWIN::InputKeyCode::LEFT_ALT),
+		sprt::make_pair(NSSPWIN::InputModifier::AltR, NSSPWIN::InputKeyCode::RIGHT_ALT),
+		sprt::make_pair(NSSPWIN::InputModifier::WinL, NSSPWIN::InputKeyCode::LEFT_SUPER),
+		sprt::make_pair(NSSPWIN::InputModifier::WinR, NSSPWIN::InputKeyCode::RIGHT_SUPER),
+		sprt::make_pair(NSSPWIN::InputModifier::CapsLock, NSSPWIN::InputKeyCode::CAPS_LOCK),
+		sprt::make_pair(NSSPWIN::InputModifier::NumLock, NSSPWIN::InputKeyCode::NUM_LOCK),
+		sprt::make_pair(NSSPWIN::InputModifier::Mod5, NSSPWIN::InputKeyCode::WORLD_1),
+		sprt::make_pair(NSSPWIN::InputModifier::Mod4, NSSPWIN::InputKeyCode::WORLD_2),
 	};
 
 	NSSPWIN::InputModifier mods = NSSPWIN::getInputModifiers(uint32_t(theEvent.modifierFlags));

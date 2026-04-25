@@ -42,8 +42,6 @@
 
 // clang-format on
 
-typedef __SPRT_ID(_os_unfair_lock) _os_unfair_lock;
-
 typedef __SPRT_ID(_CFTypeID) _CFTypeID;
 typedef __SPRT_ID(_CFOptionFlags) _CFOptionFlags;
 typedef __SPRT_ID(_CFHashCode) _CFHashCode;
@@ -77,37 +75,6 @@ typedef __SPRT_ID(_CFRunLoopTimerCallBack) _CFRunLoopTimerCallBack;
 #define _kCFRunLoopCommonModes __SPRT_ID(_kCFRunLoopCommonModes)
 
 __SPRT_BEGIN_DECL
-
-SPRT_FORCEINLINE void _os_unfair_lock_lock(__SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	__sprt__os_unfair_lock_lock(lock);
-}
-
-SPRT_FORCEINLINE bool _os_unfair_lock_trylock(__SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	return __sprt__os_unfair_lock_trylock(lock);
-}
-
-SPRT_FORCEINLINE void _os_unfair_lock_unlock(__SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	__sprt__os_unfair_lock_unlock(lock);
-}
-
-SPRT_FORCEINLINE void _os_unfair_lock_assert_owner(
-		const __SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	__sprt__os_unfair_lock_assert_owner(lock);
-}
-
-SPRT_FORCEINLINE void _os_unfair_lock_assert_not_owner(
-		const __SPRT_ID(_os_unfair_lock) * lock) __SPRT_NOEXCEPT {
-	__sprt__os_unfair_lock_assert_not_owner(lock);
-}
-
-// clang-format off
-#if __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ >= 101500
-SPRT_FORCEINLINE void _os_unfair_lock_lock_with_flags(__SPRT_ID(_os_unfair_lock) * lock,
-		__SPRT_ID(uint32_t) flags) {
-	__sprt__os_unfair_lock_lock_with_flags(lock, flags);
-}
-#endif
-// clang-format on
 
 SPRT_FORCEINLINE int _os_sync_wait_on_address(void *addr, __SPRT_ID(uint64_t) value,
 		__SPRT_ID(size_t) size, __SPRT_ID(uint32_t) flags) __SPRT_NOEXCEPT {

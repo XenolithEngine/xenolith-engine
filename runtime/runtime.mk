@@ -87,7 +87,7 @@ MODULE_RUNTIME_PRIVATE_CXXFLAGS := -nostdinc++
 ifeq ($(TARGET_SYSTEM),Linux)
 MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc -nostdinc++
 MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc -nostdinc++
-MODULE_RUNTIME_LIBS += -l:libbacktrace.a -l:libc++abi.a
+MODULE_RUNTIME_LIBS += -l:libbacktrace.a -l:libc++abi.a -lm
 endif
 
 ifeq ($(TARGET_SYSTEM),Android)
@@ -124,7 +124,7 @@ MODULE_RUNTIME_GENERAL_LDFLAGS += -L$(TARGET_LIB_DIR) \
 	-framework IOKit \
 	-framework QuartzCore \
 	-framework Metal \
-	-L$(OSTYPE_SDK_PATH)/usr/lib -lSystem -licucore -lobjc -liconv
+	-L$(OSTYPE_SDK_PATH)/usr/lib -lSystem -licucore -lobjc -liconv -lc++abi
 MODULE_RUNTIME_LIBS += -l:libbacktrace.a
 endif
 

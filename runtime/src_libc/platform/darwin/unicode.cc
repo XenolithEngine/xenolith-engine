@@ -30,7 +30,8 @@ THE SOFTWARE.
 #include <sprt/runtime/callback.h>
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/unicode.h>
-#include <sprt/runtime/uuid.h>
+#include <sprt/runtime/utils/uuid.h>
+#include <sprt/cxx/mutex>
 
 #include <unicode/uidna.h>
 

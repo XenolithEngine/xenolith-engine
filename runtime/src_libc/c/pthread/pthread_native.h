@@ -25,6 +25,8 @@ THE SOFTWARE.
 
 #include "private/SPRTThread.h"
 
+#include <sprt/cxx/bitset>
+
 #if SPRT_WINDOWS
 #define SPRT_RUNTHREAD_CALLCONV __stdcall
 #else
@@ -32,6 +34,8 @@ THE SOFTWARE.
 #endif
 
 namespace sprt::_thread {
+
+static constexpr size_t MaxActiveThreads = 8'192;
 
 // thread_local slot to store current thread info
 struct __thread_slot {

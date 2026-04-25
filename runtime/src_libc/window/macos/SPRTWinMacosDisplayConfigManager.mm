@@ -36,7 +36,7 @@
 
 #pragma clang diagnostic pop
 
-#include <sprt/runtime/base16.h>
+#include <sprt/runtime/utils/base16.h>
 
 #include "private/window/macos/SPRTWinMacosDisplayConfigManager.h"
 #include "private/window/macos/SPRTWinMacosContextController.h"
@@ -52,7 +52,7 @@ struct MacosEdidData {
 };
 
 static String getMonitorIdString(uint32_t idx) {
-	idx = byteorder::bswap32(idx);
+	idx = sprt::byteswap(idx);
 
 	char buf[10] = {0};
 	base16::encode((const uint8_t *)&idx, 4, buf, 10);
@@ -286,7 +286,7 @@ void MacosDisplayConfigManager::updateDisplayConfig(Function<void(DisplayConfig 
 					sprt::max(float(pw) / float(w), float(ph) / float(h)),
 				},
 				"",
-				StreamTraits<char>::toString(pw, "x", ph, "@", rate),
+				StreamTraits<char>::toString<String>(pw, "x", ph, "@", rate),
 			});
 
 			m.current = m.mode == currentModeInfo;

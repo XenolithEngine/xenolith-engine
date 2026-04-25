@@ -68,7 +68,7 @@ __SPRT_C_FUNC int __SPRT_ID(setjmp)(__SPRT_ID(jmp_buf) buf) {
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, int ret) {
 	using jmp_buf_t = decltype(buf);
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_NMACOS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
 	// TODO: Maybe, add some additional info for unwinder?
 
 	// Preserve result on jmp_buf.

@@ -103,6 +103,7 @@ $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'TARGET_LIB_CFLAGS :=' >> $@
 	@echo 'TARGET_LIB_CXXFLAGS :=' >> $@
 	@echo 'TARGET_LIB_LDFLAGS :=' >> $@
+	@echo 'TARGET_OSVER := $(SP_OSVER)' >> $@
 	@echo 'TARGET_SDK_NAME := $(SP_SDK_NAME)' >> $@
 	@echo 'TARGET_SDK_FALLBACK := $$(realpath $$(TARGET_SYSROOT)/../../src/$(SP_SDK_FALLBACK))' >> $@
 
