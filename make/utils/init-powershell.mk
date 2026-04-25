@@ -20,6 +20,8 @@
 
 $(call print_verbose,(init-powershell.mk) Init with powershell)
 
+" := ", [char]0x22, "
+
 UNAME := Windows
 SHELL = powershell.exe
 

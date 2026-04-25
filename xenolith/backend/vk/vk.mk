@@ -27,10 +27,6 @@ MODULE_XENOLITH_BACKEND_VK_INCLUDES_DIRS :=
 MODULE_XENOLITH_BACKEND_VK_INCLUDES_OBJS := $(XENOLITH_MODULE_DIR)/backend/vk
 MODULE_XENOLITH_BACKEND_VK_DEPENDS_ON := xenolith_core
 
-ifdef VULKAN_SDK_PREFIX
-MODULE_XENOLITH_CORE_INCLUDES_OBJS += $(call sp_os_path,$(VULKAN_SDK_PREFIX)/include)
-endif
-
 #spec
 
 MODULE_XENOLITH_BACKEND_VK_SHARED_SPEC_SUMMARY := Xenolith on Vulkan API
@@ -43,50 +39,36 @@ endef
 # module name resolution
 $(call define_module, xenolith_backend_vk, MODULE_XENOLITH_BACKEND_VK)
 
-ifdef WIN32
-MODULE_XENOLITH_BACKEND_VK_LIBS :=
-MODULE_XENOLITH_BACKEND_VK_GENERAL_LDFLAGS :=
-endif
 
-ifdef MACOS
+ifeq ($(TARGET_SYSTEM),Darwin)
 
 MODULE_XENOLITH_BACKEND_VK_GENERAL_LDFLAGS := -framework Metal
 
-$(info VULKAN_SDK_PREFIX $(VULKAN_SDK_PREFIX) $(realpath $(VULKAN_SDK_PREFIX)/lib/libvulkan.1.dylib))
-VULKAN_LOADER_PATH = $(realpath $(VULKAN_SDK_PREFIX)/lib/libvulkan.1.dylib)
-VULKAN_MOLTENVK_PATH = $(realpath $(VULKAN_SDK_PREFIX)/lib/libMoltenVK.dylib)
-VULKAN_MOLTENVK_ICD_PATH = $(realpath $(VULKAN_SDK_PREFIX)/share/vulkan/icd.d/MoltenVK_icd.json)
-VULKAN_LAYERS_PATH = $(realpath $(VULKAN_SDK_PREFIX)/share/vulkan/explicit_layer.d)
-VULKAN_LIBDIR = $(dir $(BUILD_EXECUTABLE))vulkan
+BUILD_MOLTENVK_ICD_PATH := $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Resources/vulkan/icd.d/MoltenVK_icd.json
+BUILD_VULKAN_LOADER_PATH := $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Frameworks/libvulkan.dylib
+BUILD_VULKAN_MOLTENVK_PATH := $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Frameworks/libMoltenVK.dylib
 
-$(VULKAN_LIBDIR)/icd.d/MoltenVK_icd.json: $(VULKAN_MOLTENVK_ICD_PATH)
-	@$(call rule_mkdir,$(VULKAN_LIBDIR)/icd.d)
-	sed 's/..\/..\/..\/lib\/libMoltenVK/..\/lib\/libMoltenVK/g' $(VULKAN_MOLTENVK_ICD_PATH) >  $(VULKAN_LIBDIR)/icd.d/MoltenVK_icd.json
+$(BUILD_MOLTENVK_ICD_PATH): $(BUILD_VULKAN_MOLTENVK_PATH)
+	@$(call rule_mkdir,$(dir $@))
+	@echo '{"file_format_version":"1.0.0","ICD" {"library_path":"../../../Frameworks/libMoltenVK.dylib","api_version":"1.4.0","is_portability_driver":true}}' > $@
 
-$(VULKAN_LIBDIR)/explicit_layer.d/%.json: $(VULKAN_LAYERS_PATH)/%.json
-	@$(call rule_mkdir,$(VULKAN_LIBDIR)/explicit_layer.d)
-	sed 's/..\/..\/..\/lib\/libVkLayer/..\/lib\/libVkLayer/g' $(VULKAN_LAYERS_PATH)/$*.json > $(VULKAN_LIBDIR)/explicit_layer.d/$*.json
-
-$(VULKAN_LIBDIR)/lib/%.dylib: $(VULKAN_SDK_PREFIX)/lib/%.dylib
-	@$(call rule_mkdir,$(VULKAN_LIBDIR)/lib)
-	cp $(VULKAN_SDK_PREFIX)/lib/$*.dylib $(VULKAN_LIBDIR)/lib/$*.dylib
+$(abspath $(dir $(BUILD_EXECUTABLE))/..)/Frameworks/%.dylib: $(TARGET_LIB_DIR)/%.dylib
+	@$(call rule_mkdir,$(dir $@))
+	$(GLOBAL_CP) $< $@
 
 $(BUILD_EXECUTABLE): \
-	$(VULKAN_LIBDIR)/lib/libvulkan.1.dylib \
-	$(VULKAN_LIBDIR)/lib/libMoltenVK.dylib \
-	$(subst $(VULKAN_LAYERS_PATH),$(VULKAN_LIBDIR)/explicit_layer.d,$(wildcard $(VULKAN_LAYERS_PATH)/*.json)) \
-	$(subst $(VULKAN_SDK_PREFIX),$(VULKAN_LIBDIR),$(wildcard $(VULKAN_SDK_PREFIX)/lib/libVkLayer_*.dylib))
+	$(BUILD_VULKAN_LOADER_PATH) \
+	$(BUILD_VULKAN_MOLTENVK_PATH) \
+	$(BUILD_MOLTENVK_ICD_PATH)
 
 $(BUILD_SHARED_LIBRARY): \
-	$(VULKAN_LIBDIR)/lib/libvulkan.1.dylib \
-	$(VULKAN_LIBDIR)/lib/libMoltenVK.dylib \
-	$(subst $(VULKAN_LAYERS_PATH),$(VULKAN_LIBDIR)/explicit_layer.d,$(wildcard $(VULKAN_LAYERS_PATH)/*.json)) \
-	$(subst $(VULKAN_SDK_PREFIX),$(VULKAN_LIBDIR),$(wildcard $(VULKAN_SDK_PREFIX)/lib/libVkLayer_*.dylib))
+	$(BUILD_VULKAN_LOADER_PATH) \
+	$(BUILD_VULKAN_MOLTENVK_PATH) \
+	$(BUILD_MOLTENVK_ICD_PATH)
 
 $(BUILD_STATIC_LIBRARY): \
-	$(VULKAN_LIBDIR)/lib/libvulkan.1.dylib \
-	$(VULKAN_LIBDIR)/lib/libMoltenVK.dylib \
-	$(subst $(VULKAN_LAYERS_PATH),$(VULKAN_LIBDIR)/explicit_layer.d,$(wildcard $(VULKAN_LAYERS_PATH)/*.json)) \
-	$(subst $(VULKAN_SDK_PREFIX),$(VULKAN_LIBDIR),$(wildcard $(VULKAN_SDK_PREFIX)/lib/libVkLayer_*.dylib))
+	$(BUILD_VULKAN_LOADER_PATH) \
+	$(BUILD_VULKAN_MOLTENVK_PATH) \
+	$(BUILD_MOLTENVK_ICD_PATH)
 
 endif

@@ -20,6 +20,8 @@
 
 $(call print_verbose,(init-sh.mk) Init with sh)
 
+" := "
+
 # Проверяем хостовую систему, у Darwin нет опции -o для uname
 UNAME := $(shell uname)
 

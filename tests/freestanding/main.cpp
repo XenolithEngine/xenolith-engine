@@ -57,6 +57,7 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"libcxx_sort", &sprt::performSortTests},
 	{"libcxx_constexpr", &sprt::performConstexprTest},
 	{"libcxx_shared_mutex", &sprt::performSharedMutexStressTests},
+	{"libcxx_bitset", &sprt::performBitsetTests},
 
 	{"runtime_ref", &sprt::performRefTests},
 	{"runtime_dispatch", &sprt::performDispatchTests},

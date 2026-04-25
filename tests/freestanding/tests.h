@@ -46,6 +46,7 @@ void performOptionalTests();
 void performSortTests();
 void performConstexprTest();
 void performSharedMutexStressTests();
+void performBitsetTests();
 
 void performRefTests();
 void performDispatchTests();

@@ -24,8 +24,6 @@
 
 #if MACOS
 
-#include "SPDso.h"
-
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk::platform {
 
 Rc<core::Instance> createInstance(Rc<core::InstanceInfo> &&info) {
@@ -60,7 +58,7 @@ Rc<core::Instance> createInstance(Rc<core::InstanceInfo> &&info) {
 				1);
 	}
 
-	Dso handle(loaderPath);
+	sprt::Dso handle(loaderPath);
 	if (!handle) {
 		log::source().error("Vulkan", "Fail to dlopen loader: ", loaderPath);
 		return nullptr;

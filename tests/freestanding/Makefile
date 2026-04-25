@@ -56,4 +56,6 @@ APPCONFIG_APP_PATH_COMMON := 3
 
 #verbose=1
 
+# ASAN:= 1
+
 include $(STAPPLER_BUILD_ROOT)/universal.mk
