@@ -20,6 +20,7 @@
  THE SOFTWARE.
  **/
 
+#include "SPFilesystem.h"
 #include "XLVkPlatform.h"
 
 #if MACOS
@@ -31,27 +32,45 @@ Rc<core::Instance> createInstance(Rc<core::InstanceInfo> &&info) {
 		return nullptr;
 	}
 
-	auto execPath = sprt::platform::getExecPath();
-
-	auto bundledPath = filepath::merge<Interface>(filepath::root(filepath::root(execPath)),
-			"Frameworks", "libvulkan.1.dylib");
-	auto flatPath =
-			filepath::merge<Interface>(filepath::root(execPath), "vulkan/lib", "libvulkan.1.dylib");
-
 	bool isBundled = false;
 
-	if (filesystem::exists(FileInfo{bundledPath})) {
+	auto execPath = sprt::platform::getExecPath();
+
+	String loaderPath;
+
+	auto root = filepath::root(filepath::root(execPath));
+	auto infoPlistPath = filepath::merge<Interface>(root, "Info.plist");
+	if (filesystem::exists(FileInfo(infoPlistPath))) {
+		auto bundledPath = filepath::merge<Interface>(root, "Frameworks", "libvulkan.1.dylib");
+		if (!filesystem::exists(FileInfo{bundledPath})) {
+			bundledPath = filepath::merge<Interface>(root, "Frameworks", "libvulkan.dylib");
+
+			if (!filesystem::exists(FileInfo{bundledPath})) {
+				log::source().error("Vulkan", "Vulkan loader is not found on paths: ", bundledPath);
+				return nullptr;
+			}
+		}
+
+		loaderPath = bundledPath;
 		isBundled = true;
+	} else {
+		auto flatPath = filepath::merge<Interface>(filepath::root(execPath), "vulkan/lib",
+				"libvulkan.1.dylib");
+		if (!filesystem::exists(FileInfo{flatPath})) {
+			flatPath = filepath::merge<Interface>(filepath::root(execPath), "libvulkan.dylib");
+		}
+
+		if (!filesystem::exists(FileInfo{flatPath})) {
+			log::source().error("Vulkan", "Vulkan loader is not found on path: ", flatPath);
+			return nullptr;
+		}
+
+		loaderPath = flatPath;
+		isBundled = false;
 	}
 
-	if (!isBundled && !filesystem::exists(FileInfo{flatPath})) {
-		log::source().error("Vulkan", "Vulkan loader is not found on paths: ", bundledPath, "; ",
-				flatPath);
-		return nullptr;
-	}
-
-	String loaderPath = isBundled ? bundledPath : flatPath;
 	if (!isBundled) {
+		// Point to where is layers located when we not in bundle
 		::setenv("VK_LAYER_PATH",
 				filepath::merge<Interface>(filepath::root(execPath), "vulkan", "explicit_layer.d")
 						.data(),

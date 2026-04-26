@@ -356,6 +356,22 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 #endif
 		break;
 	}
+	case sprt::window::SurfaceBackend::Metal: {
+#if defined(VK_EXT_metal_surface)
+		VkMetalSurfaceCreateInfoEXT createInfo{
+			VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
+			nullptr,
+			0,
+			info.metal.layer,
+		};
+
+		if (instance->vkCreateMetalSurfaceEXT(instance->getInstance(), &createInfo, nullptr,
+					&surface)
+				!= VK_SUCCESS) {
+			return nullptr;
+		}
+#endif
+	}
 	default: break;
 	}
 

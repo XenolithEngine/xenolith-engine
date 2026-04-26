@@ -50,7 +50,7 @@ BUILD_VULKAN_MOLTENVK_PATH := $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Framework
 
 $(BUILD_MOLTENVK_ICD_PATH): $(BUILD_VULKAN_MOLTENVK_PATH)
 	@$(call rule_mkdir,$(dir $@))
-	@echo '{"file_format_version":"1.0.0","ICD" {"library_path":"../../../Frameworks/libMoltenVK.dylib","api_version":"1.4.0","is_portability_driver":true}}' > $@
+	@echo '{"file_format_version":"1.0.0","ICD":{"library_path":"../../../Frameworks/libMoltenVK.dylib","api_version":"1.4.0","is_portability_driver":true}}' > $@
 
 $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Frameworks/%.dylib: $(TARGET_LIB_DIR)/%.dylib
 	@$(call rule_mkdir,$(dir $@))

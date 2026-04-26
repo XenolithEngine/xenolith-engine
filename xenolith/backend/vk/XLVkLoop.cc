@@ -489,6 +489,10 @@ void Loop::compileImage(const Rc<core::DynamicImage> &img, Function<void(bool)> 
 		if (!_internal) {
 			return;
 		}
+		if (!_internal->device) {
+			slog().error("vk::Loop", "No device loaded");
+			return;
+		}
 		_internal->device->compileImage(*this, img, sp::move(callback));
 	}, const_cast<Loop *>(this), true);
 }
