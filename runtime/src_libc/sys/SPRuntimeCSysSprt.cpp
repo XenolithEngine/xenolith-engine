@@ -64,8 +64,11 @@ __SPRT_C_FUNC int __SPRT_ID(sprt_qlock_wait)(__SPRT_ID(sprt_qlock_t) * value,
 		__SPRT_ID(sprt_lock_flags_t) flags) {
 	int result = sprt_qlock_wait(value, expected, timeout, flags);
 #if DEBUG
-	if (result != 0 && __sprt_errno != EAGAIN && __sprt_errno != ETIMEDOUT) {
-		__sprt_printf("sprt_qlock_wait error: %d\n", __sprt_errno);
+	if (result != 0) {
+		auto err = __sprt_errno;
+		if (err != EAGAIN && err != ETIMEDOUT) {
+			__sprt_printf("sprt_qlock_wake_one error: %d\n", err);
+		}
 	}
 #endif
 	return result;
@@ -75,8 +78,11 @@ __SPRT_C_FUNC int __SPRT_ID(
 		sprt_qlock_wake_one)(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_lock_flags_t) flags) {
 	int result = sprt_qlock_wake_one(value, flags);
 #if DEBUG
-	if (result != 0 && __sprt_errno != EAGAIN && __sprt_errno != ETIMEDOUT) {
-		__sprt_printf("sprt_qlock_wake_one error: %d\n", __sprt_errno);
+	if (result != 0) {
+		auto err = __sprt_errno;
+		if (err != EAGAIN && err != ENOENT && err != ETIMEDOUT) {
+			__sprt_printf("sprt_qlock_wake_one error: %d\n", err);
+		}
 	}
 #endif
 	return result;
@@ -86,8 +92,11 @@ __SPRT_C_FUNC int __SPRT_ID(
 		sprt_qlock_wake_all)(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_lock_flags_t) flags) {
 	int result = sprt_qlock_wake_all(value, flags);
 #if DEBUG
-	if (result != 0 && __sprt_errno != EAGAIN && __sprt_errno != ETIMEDOUT) {
-		__sprt_printf("sprt_qlock_wake_all error: %d\n", __sprt_errno);
+	if (result != 0) {
+		auto err = __sprt_errno;
+		if (err != EAGAIN && err != ENOENT && err != ETIMEDOUT) {
+			__sprt_printf("sprt_qlock_wake_one error: %d\n", err);
+		}
 	}
 #endif
 	return result;

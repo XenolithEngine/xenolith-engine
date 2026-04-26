@@ -140,7 +140,9 @@ bool ContextController::notifyWindowClosed(NotNull<NativeWindow> w, WindowCloseO
 	}
 }
 
-void ContextController::notifyWindowAllocated(NotNull<NativeWindow> w) { _allWindows.emplace(w); }
+void ContextController::notifyWindowAllocated(NotNull<NativeWindow> w) {
+	_allWindows.emplace(w); //
+}
 
 void ContextController::notifyWindowDeallocated(NotNull<NativeWindow> w) {
 	auto it = _allWindows.find(w);

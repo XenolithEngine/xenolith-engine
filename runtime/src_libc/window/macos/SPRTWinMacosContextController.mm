@@ -347,6 +347,13 @@ void MacosContextController::openUrl(StringView url) {
 	});
 }
 
+SurfaceSupportInfo MacosContextController::getSupportInfo() const {
+	SurfaceSupportInfo ret;
+	ret.backendMask.set(toInt(SurfaceBackend::MacOS));
+	ret.backendMask.set(toInt(SurfaceBackend::Metal));
+	return ret;
+}
+
 } // namespace sprt::window
 
 

@@ -61,6 +61,8 @@ public:
 
 	virtual void openUrl(StringView) override;
 
+	virtual SurfaceSupportInfo getSupportInfo() const override;
+
 protected:
 	SPRTMacosAppDelegate *_appDelegate = nullptr;
 	Rc<ContextContainer> _container;

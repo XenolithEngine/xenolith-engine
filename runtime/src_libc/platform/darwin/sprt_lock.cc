@@ -49,6 +49,9 @@ static int sprt_qlock_wait(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_qlock
 		result = os_sync_wait_on_address_with_timeout((void *)value, expected, sizeof(uint32_t),
 				_flags, OS_CLOCK_MACH_ABSOLUTE_TIME, timeout);
 	}
+	if (result > 0) {
+		result = 0;
+	}
 	return result;
 }
 
@@ -84,18 +87,22 @@ static int sprt_rlock_supports(__SPRT_ID(sprt_lock_flags_t) flags) {
 
 static int sprt_rlock_wait(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_rlock_t) * expected,
 		__SPRT_ID(sprt_timeout_t) timeout, __SPRT_ID(sprt_lock_flags_t) flags) {
+	int result = 0;
 	os_sync_wait_on_address_flags_t _flags = OS_SYNC_WAIT_ON_ADDRESS_NONE;
 	if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_SHARED))) {
 		_flags = os_sync_wait_on_address_flags_t(_flags | OS_SYNC_WAIT_ON_ADDRESS_SHARED);
 	}
 	if (timeout == __SPRT_SPRT_TIMEOUT_INFINITE) {
-		return os_sync_wait_on_address((void *)&value->u64, expected->u64, sizeof(uint64_t),
+		result = os_sync_wait_on_address((void *)&value->u64, expected->u64, sizeof(uint64_t),
 				_flags);
 	} else {
-		return os_sync_wait_on_address_with_timeout((void *)&value->u64, expected->u64,
+		result = os_sync_wait_on_address_with_timeout((void *)&value->u64, expected->u64,
 				sizeof(uint64_t), _flags, OS_CLOCK_MACH_ABSOLUTE_TIME, timeout);
 	}
-	return 0;
+	if (result > 0) {
+		result = 0;
+	}
+	return result;
 }
 
 static int sprt_rlock_try_wait(__SPRT_ID(sprt_rlock_t) * value,

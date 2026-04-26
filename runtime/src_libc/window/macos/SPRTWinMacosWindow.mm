@@ -137,10 +137,10 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 	_window.collectionBehavior |=
 			_window.collectionBehavior | NSWindowCollectionBehaviorFullScreenPrimary;
 
-
 	_initialized = true;
 
 	if (_windowLoaded) {
+		_controller->notifyWindowCreated(this);
 		[_window display];
 	}
 	return true;
@@ -218,7 +218,6 @@ PresentationOptions MacosWindow::getPreferredOptions() const {
 void MacosWindow::handleWindowLoaded() {
 	_windowLoaded = true;
 	if (_initialized) {
-		_controller->notifyWindowCreated(this);
 		[_window makeKeyAndOrderFront:_rootViewController];
 	}
 }
