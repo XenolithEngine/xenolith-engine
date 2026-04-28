@@ -38,14 +38,15 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdio.h>
 
 #include <sprt/runtime/stream.h>
-#include <sprt/runtime/mem/set.h>
+#include <sprt/cxx/set>
+#include <sprt/cxx/mutex>
 
 #include "private/SPRTFilename.h"
 #include "private/SPRTSpecific.h"
 
-#define VC_EXTRALEAN
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
+#include <sprt/wrappers/windows/basic_api.h>
+#include <sprt/wrappers/windows/process_api.h>
+#include <sprt/wrappers/windows/dl_api.h>
 
 #ifdef __clang__
 #pragma clang diagnostic push
@@ -62,7 +63,9 @@ struct DlError {
 	bool errorIsSet = false;
 };
 
-static Set<HMODULE> s_locals;
+static __malloc_set<HMODULE> s_locals;
+static mutex s_localsMutex;
+
 static thread_local DlError tl_errorData;
 
 /* Load Psapi.dll at runtime, this avoids linking caveat */
@@ -127,6 +130,7 @@ static int dlclose(void *ptr) {
 	}
 
 	if (dwProcModsBefore != dwProcModsAfter) {
+		unique_lock lock(s_localsMutex);
 		s_locals.erase(HMODULE(ptr));
 	}
 
@@ -207,8 +211,10 @@ static void *dlopen(const char *path, int __flags) {
 	* already loaded.
 	*/
 	if ((__flags & __SPRT_RTLD_GLOBAL) == 0 && dwProcModsBefore != dwProcModsAfter) {
+		unique_lock lock(s_localsMutex);
 		s_locals.emplace(h);
 	} else if ((__flags & __SPRT_RTLD_GLOBAL) != 0 && dwProcModsBefore == dwProcModsAfter) {
+		unique_lock lock(s_localsMutex);
 		// erase module marked as global from local list
 		s_locals.erase(h);
 	}
@@ -231,7 +237,8 @@ static void *dlsym(void *__SPRT_RESTRICT __handle, const char *__SPRT_RESTRICT _
 			return *(void **)(&s);
 		} else if (self != __handle) {
 			StreamTraits<char>::toStringBuf(tl_errorData.buffer, DlError::BufferSize,
-					"Fail to dlsym ", __name, ": ", status::lastErrorToStatus(GetLastError()));
+					"Fail to dlsym ", (const char *)__name, ": ",
+					status::lastErrorToStatus(GetLastError()));
 			tl_errorData.errorIsSet = true;
 			return nullptr;
 		}
@@ -241,7 +248,8 @@ static void *dlsym(void *__SPRT_RESTRICT __handle, const char *__SPRT_RESTRICT _
 					(LPCWSTR)__builtin_extract_return_addr(__builtin_return_address(0)),
 					&hCaller)) {
 			StreamTraits<char>::toStringBuf(tl_errorData.buffer, DlError::BufferSize,
-					"Fail to dlsym ", __name, ": ", status::lastErrorToStatus(GetLastError()));
+					"Fail to dlsym ", (const char *)__name, ": ",
+					status::lastErrorToStatus(GetLastError()));
 			tl_errorData.errorIsSet = true;
 			return nullptr;
 		}
@@ -262,7 +270,7 @@ static void *dlsym(void *__SPRT_RESTRICT __handle, const char *__SPRT_RESTRICT _
 		auto modules = (HMODULE *)LocalAlloc(LPTR, dwSize);
 		if (!modules) {
 			StreamTraits<char>::toStringBuf(tl_errorData.buffer, DlError::BufferSize,
-					"Fail to dlsym ", __name, ": ",
+					"Fail to dlsym ", (const char *)__name, ": ",
 					status::lastErrorToStatus(ERROR_NOT_ENOUGH_MEMORY));
 			tl_errorData.errorIsSet = true;
 			return nullptr;
@@ -270,6 +278,7 @@ static void *dlsym(void *__SPRT_RESTRICT __handle, const char *__SPRT_RESTRICT _
 
 		if (__EnumProcessModules(hCurrentProc, modules, dwSize, &cbNeeded) != 0
 				&& dwSize == cbNeeded) {
+			unique_lock lock(s_localsMutex);
 			for (size_t i = 0; i < dwSize / sizeof(HMODULE); i++) {
 				if (__handle == __SPRT_RTLD_NEXT && hCaller) {
 					/* Next modules can be used for RTLD_NEXT */
@@ -293,7 +302,7 @@ static void *dlsym(void *__SPRT_RESTRICT __handle, const char *__SPRT_RESTRICT _
 
 	if (symbol == nullptr) {
 		StreamTraits<char>::toStringBuf(tl_errorData.buffer, DlError::BufferSize, "Fail to dlsym ",
-				__name, ": ", status::lastErrorToStatus(ERROR_PROC_NOT_FOUND));
+				(const char *)__name, ": ", status::lastErrorToStatus(ERROR_PROC_NOT_FOUND));
 		tl_errorData.errorIsSet = true;
 		return nullptr;
 	}
@@ -308,8 +317,8 @@ static void *dlsym(void *__SPRT_RESTRICT __handle, const char *__SPRT_RESTRICT _
 /* Get specific image section */
 static BOOL get_image_section(HMODULE module, int index, void **ptr, DWORD *size) {
 	IMAGE_DOS_HEADER *dosHeader;
-	IMAGE_NT_HEADERS *ntHeaders;
-	IMAGE_OPTIONAL_HEADER *optionalHeader;
+	IMAGE_NT_HEADERS64 *ntHeaders;
+	IMAGE_OPTIONAL_HEADER64 *optionalHeader;
 
 	dosHeader = (IMAGE_DOS_HEADER *)module;
 
@@ -317,7 +326,7 @@ static BOOL get_image_section(HMODULE module, int index, void **ptr, DWORD *size
 		return FALSE;
 	}
 
-	ntHeaders = (IMAGE_NT_HEADERS *)((BYTE *)dosHeader + dosHeader->e_lfanew);
+	ntHeaders = (IMAGE_NT_HEADERS64 *)((BYTE *)dosHeader + dosHeader->e_lfanew);
 
 	if (ntHeaders->Signature != IMAGE_NT_SIGNATURE) {
 		return FALSE;
@@ -325,7 +334,7 @@ static BOOL get_image_section(HMODULE module, int index, void **ptr, DWORD *size
 
 	optionalHeader = &ntHeaders->OptionalHeader;
 
-	if (optionalHeader->Magic != IMAGE_NT_OPTIONAL_HDR_MAGIC) {
+	if (optionalHeader->Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
 		return FALSE;
 	}
 

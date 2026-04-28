@@ -81,7 +81,7 @@ using timeout_t = __sprt_sprt_timeout_t;
 using key_t = uint32_t;
 
 #if SPRT_WINDOWS
-using thread_result_t = unsigned int;
+using thread_result_t = unsigned long;
 #else
 using thread_result_t = void *;
 #endif

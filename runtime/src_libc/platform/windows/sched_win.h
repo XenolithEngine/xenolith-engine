@@ -23,14 +23,8 @@ THE SOFTWARE.
 #ifndef RUNTIME_SRC_LIBC_PLATFORM_WINDOWS_SCHED_WIN_H_
 #define RUNTIME_SRC_LIBC_PLATFORM_WINDOWS_SCHED_WIN_H_
 
-#ifndef __SPRT_BUILD
-#define __SPRT_BUILD
-#endif
-
-#include <sprt/c/__sprt_stdint.h>
-#include <sprt/runtime/int.h>
-
-#include <Windows.h>
+#include <sprt/cxx/detail/ctypes.h>
+#include <sprt/wrappers/windows/thread_api.h>
 
 namespace sprt {
 

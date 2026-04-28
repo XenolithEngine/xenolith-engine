@@ -26,10 +26,11 @@ THE SOFTWARE.
 
 #ifndef SPRT_WINDOWS
 #include <pthread.h>
-#endif
 
 #include "pthread_native_pthread.cc"
+#else
 #include "pthread_native_winapi.cc"
+#endif
 
 #include <sprt/cxx/cstring>
 

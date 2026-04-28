@@ -26,7 +26,9 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 
-#define __SPRT_CPU_SETSIZE 1'024
+// clang-format off
+#define __SPRT_CPU_SETSIZE 1024
+// clang-format on
 
 typedef struct {
 	unsigned long __bits[__SPRT_CPU_SETSIZE / sizeof(long)];

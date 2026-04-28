@@ -29,23 +29,21 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdio.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_stdarg.h>
+#include <sprt/c/__sprt_unistd.h>
 
 #include <sprt/runtime/string.h>
 #include <sprt/runtime/enum.h>
 
 #include "private/SPRTFilename.h"
-
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
-#include <shlwapi.h>
-#include <corecrt_io.h>
-#include <fcntl.h>
-
 #include "private/SPRTSpecific.h"
 
 #ifdef __clang__
 #pragma clang diagnostic ignored "-Wunused-function"
 #endif
+
+#include <sprt/wrappers/windows/basic_api.h>
+#include <sprt/wrappers/windows/file_api.h>
+#include <sprt/wrappers/windows/security_api.h>
 
 namespace sprt::platform {
 
@@ -130,7 +128,7 @@ bool openAtPath(int fd, const char *path, const callback<void(const char *, size
 		auto pathlen = strlen(path);
 		auto isNative = __sprt_fpath_is_native(path, pathlen);
 
-		auto bufLen = max(pathlen + 1, 8);
+		auto bufLen = sprt::max(pathlen + 1, size_t(8));
 
 		auto buf = __sprt_typed_malloca(char, bufLen + 1);
 		auto target = buf;
@@ -154,7 +152,7 @@ bool openAtPath(int fd, const char *path, const callback<void(const char *, size
 		return true;
 	}
 
-	auto extraPathLen = path ? max(strlen(path) + 2, 8) : 0;
+	auto extraPathLen = path ? sprt::max(strlen(path) + 2, size_t(8)) : 0;
 
 	auto nativePath = allocateNativePath(fd);
 	if (nativePath.empty()) {
@@ -202,14 +200,14 @@ bool openAtPath(int fd, const char *path, const callback<void(const char *, size
 }
 
 uint32_t getRid(void *sid) {
-	if (!GetSidSubAuthorityCount(sid)) {
-		errno = EINVAL;
+	if (!GetSidSubAuthorityCount((LPSID)sid)) {
+		__sprt_errno = EINVAL;
 		return uint32_t(-1);
 	}
 
-	DWORD sub_count = *GetSidSubAuthorityCount(sid);
+	DWORD sub_count = *GetSidSubAuthorityCount((LPSID)sid);
 
-	return (uint32_t)*GetSidSubAuthority(sid, sub_count - 1);
+	return (uint32_t)*GetSidSubAuthority((LPSID)sid, sub_count - 1);
 }
 
 } // namespace sprt::platform
@@ -349,14 +347,14 @@ static int __open(const char *path, int __flags, __SPRT_ID(mode_t) __mode) {
 	}
 
 	int accessFlags = __flags & (__SPRT_O_RDONLY | __SPRT_O_WRONLY | __SPRT_O_RDWR);
-	int openHandleFlags = _O_BINARY;
+	int openHandleFlags = 0;
 	if (__flags & __SPRT_O_APPEND) {
-		openHandleFlags |= _O_APPEND;
+		openHandleFlags |= OSFHANDLE_APPEND;
 	}
 	if (accessFlags == __SPRT_O_RDONLY) {
-		openHandleFlags |= _O_RDONLY;
+		openHandleFlags |= OSFHANDLE_RDONLY;
 	}
-	return _open_osfhandle(intptr_t(h), openHandleFlags);
+	return _open_osfhandle(h, openHandleFlags);
 }
 
 static HANDLE __reopen(HANDLE h, int __flags, __SPRT_ID(mode_t) __mode) {
@@ -423,13 +421,13 @@ static int fcntl(int __fd, int __cmd, unsigned long arg) {
 	}
 
 	switch (__cmd) {
-	case __SPRT_F_DUPFD: return _dup(__fd); break;
+	case __SPRT_F_DUPFD: return __sprt_dup(__fd); break;
 	case __SPRT_F_DUPFD_CLOEXEC: {
-		auto nfd = _dup(__fd);
+		auto nfd = __sprt_dup(__fd);
 		auto nhandle = (HANDLE)_get_osfhandle(nfd);
 
 		if (!handle || handle == INVALID_HANDLE_VALUE) {
-			_close(nfd);
+			__sprt_close(nfd);
 			__sprt_errno = EBADF;
 			return -1;
 		}
@@ -440,7 +438,7 @@ static int fcntl(int __fd, int __cmd, unsigned long arg) {
 		if (SetHandleInformation(nhandle, flagsMask, flagsToSet)) {
 			return nfd;
 		} else {
-			_close(nfd);
+			__sprt_close(nfd);
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
 			return -1;
 		}

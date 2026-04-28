@@ -541,10 +541,10 @@ protected:
 
 	RbTreeNodeBase _header; // root is _header.left
 
-	[[no_unique_address]]
+	SPRT_NO_UNIQUE_ADDRESS
 	comparator_type _comp;
 
-	[[no_unique_address]]
+	SPRT_NO_UNIQUE_ADDRESS
 	value_allocator_type _allocator;
 	size_t _size = 0;
 	RbTreeNode<Value> *_free = nullptr;

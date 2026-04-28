@@ -37,11 +37,9 @@ __SPRT_C_FUNC int __SPRT_ID(uname)(struct __SPRT_UTSNAME_NAME *buf) {
 
 #else // SPRT_WINDOWS
 
-#define WIN32_LEAN_AND_MEAN
-#define _WIN32_DCOM
-#include <windows.h>
-#include <comdef.h>
-#include <Wbemidl.h>
+#include <sprt/wrappers/windows/windows.h>
+
+#include <sprt/runtime/stringview.h>
 
 namespace sprt {
 
@@ -82,7 +80,7 @@ static bool __queryRegisterVersion(struct __SPRT_UTSNAME_NAME *buf) {
 }
 
 static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
-	auto hres = CoInitializeSecurity(NULL,
+	/*auto hres = CoInitializeSecurity(NULL,
 			-1, // COM authentication
 			NULL, // Authentication services
 			NULL, // Reserved
@@ -98,6 +96,12 @@ static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
 	}
 
 	IWbemLocator *pLoc = NULL;
+
+	GUID CLSID_WbemLocator = {0x4590'f811, 0x1d3a, 0x11d0,
+		{0x89, 0x1f, 0x00, 0xaa, 0x00, 0x4b, 0x2e, 0x24}};
+
+	GUID IID_IWbemLocator = {0xdc12'a687, 0x737f, 0x11cf,
+		{0x88, 0x4d, 0x00, 0xaa, 0x00, 0x4b, 0x2e, 0x24}};
 
 	hres = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER, IID_IWbemLocator,
 			(LPVOID *)&pLoc);
@@ -196,7 +200,8 @@ static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
 									WideStringView((char16_t *)vtProp.bstrVal));
 						}
 					}
-					/*wprintf(L"  %s: ", strName);
+						#if 0
+					wprintf(L"  %s: ", strName);
 				if (vtProp.vt == VT_BSTR && vtProp.bstrVal) {
 					wprintf(L"%s", vtProp.bstrVal);
 				} else if (vtProp.vt == VT_I4) {
@@ -206,7 +211,8 @@ static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
 				} else if (vtProp.vt == VT_BOOL) {
 					wprintf(L"%s", vtProp.boolVal ? L"True" : L"False");
 				}
-				wprintf(L"\n");*/
+				wprintf(L"\n");
+				#endif
 					SysFreeString(strName);
 					VariantClear(&vtProp);
 					VariantInit(&vtProp);
@@ -247,7 +253,9 @@ static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
 						unicode::toUtf8(buf->domainname, 64,
 								WideStringView((char16_t *)vtProp.bstrVal));
 					}
-					/*wprintf(L"  %s: ", strName);
+					
+						#if 0
+						wprintf(L"  %s: ", strName);
 					if (vtProp.vt == VT_BSTR && vtProp.bstrVal) {
 						wprintf(L"%s", vtProp.bstrVal);
 					} else if (vtProp.vt == VT_I4) {
@@ -257,7 +265,8 @@ static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
 					} else if (vtProp.vt == VT_BOOL) {
 						wprintf(L"%s", vtProp.boolVal ? L"True" : L"False");
 					}
-					wprintf(L"\n");*/
+					wprintf(L"\n");
+					#endif
 					SysFreeString(strName);
 					VariantClear(&vtProp);
 					VariantInit(&vtProp);
@@ -273,7 +282,7 @@ static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
 	}
 
 	pSvc->Release();
-	pLoc->Release();
+	pLoc->Release();*/
 	return true;
 }
 

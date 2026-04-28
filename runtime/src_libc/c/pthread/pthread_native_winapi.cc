@@ -28,22 +28,31 @@ THE SOFTWARE.
 
 #if SPRT_WINDOWS
 
-namespace sprt::_thread {
+#include "private/SPRTSpecific.h"
+#include "../../platform/windows/sched_win.h"
+
+#include <sprt/wrappers/windows/basic_api.h>
+#include <sprt/wrappers/windows/thread_api.h>
+#include <sprt/wrappers/windows/process_api.h>
+#include <sprt/wrappers/windows/windows.h>
+
+namespace sprt::_thread::native {
 
 static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr) {
-	auto handle = (HANDLE)_beginthreadex(nullptr, attr->stackSize, &__runthead, thread,
-			((thread->attr.stackSize > 0) ? STACK_SIZE_PARAM_IS_A_RESERVATION : 0),
-			&thread->threadId);
+	DWORD id = 0;
+	auto handle = (HANDLE)CreateThread(nullptr, attr->stackSize, &__runthead, thread,
+			((thread->attr.stackSize > 0) ? STACK_SIZE_PARAM_IS_A_RESERVATION : 0), &id);
 	if (!handle || handle == INVALID_HANDLE_VALUE) {
 		return platform::lastErrorToErrno(GetLastError());
 	} else {
-		__attachNativeThread(thread, reinterpret_cast<void *>(pthread));
+		thread->threadId = id;
+		__attachNativeThread(thread, reinterpret_cast<void *>(handle));
 		return 0;
 	}
 }
 
 static void __closeNativeHandle(void *handle) {
-	CloseHandle(thread->handle); //
+	CloseHandle((HANDLE)handle); //
 }
 
 static void __initNativeHandle(thread_t *thread) {
@@ -55,13 +64,12 @@ static void __initNativeHandle(thread_t *thread) {
 
 	GetCurrentThreadStackLimits(&thread->lowStack, &thread->highStack);
 
-	thread->attr.stackSize = (highStack - lowStack);
+	thread->attr.stackSize = (thread->highStack - thread->lowStack);
 
 	// SetThreadPriority if it's requested, or get current priority for unmanaged and if
 	// priority was not explicitly set
 	if (!hasFlag(thread->attr.attr, ThreadAttrFlags::Unmanaged)
-			&& hasFlagAll(thread->attr.attr,
-					ThreadAttrFlags::ApplyPrio | ThreadAttrFlags::ExplicitSched)) {
+			&& hasFlagAll(thread->attr.attr, ThreadAttrFlags::ExplicitSched)) {
 		SetThreadPriority(thread->handle, __mapPriority(thread->attr.prio));
 	} else {
 		thread->attr.prio = __unmapPriority(GetThreadPriority(thread->handle));
@@ -76,34 +84,22 @@ static bool __isNativeHandleValid(thread_t *thread) {
 	return true;
 }
 
-static void __exitNativeThread(void *ret) { _endthreadex((unsigned int)(ptrdiff_t)ret); }
-
-static int __joinThread(thread_t *thread, timeout_t ns_timeout) {
-	// Timeout -> milliseconds
-	auto waitret = WaitForSingleObject(thread->handle, (ns_timeout == Infinite) : INFINITE ? timeout / 1'000'000);
-	if (waitret == WAIT_TIMEOUT) {
-		lock.lock();
-		thread->attr.attr &= ThreadAttrFlags::JoinRequested;
-		return ETIMEDOUT;
-	} else if (waitret == WAIT_FAILED) {
-		return platform::lastErrorToErrno(GetLastError());
-	}
-	return 0;
-}
+static void __exitNativeThread(void *ret) { ExitThread((ptrdiff_t)ret); }
 
 static void __pthread_cancel_callback(ULONG_PTR Parameter) { thread_t::exit((void *)Parameter); }
 
-static int __cancelThread(thread_t *thread) {
+static int __cancelThreadAsync(thread_t *thread) {
 	// Break user's context to call __pthread_cancel_callback on target thread
 	// QueueUserAPC2 will unwind the stack for current user context
 	// Then, pthread_exit should unwind the remaining stack with longjmp, if possible.
 
 	QueueUserAPC2(__pthread_cancel_callback, thread->handle, (ULONG_PTR)__SPRT_PTHREAD_CANCELED,
 			QUEUE_USER_APC_FLAGS_SPECIAL_USER_APC);
+	return EINVAL;
 }
 
 static int __applyThreadPrio(thread_t *thread, int32_t dprio) {
-	if (hasFlag(thread->attr.attr, ThreadAttrFlags::RRPrio)) {
+	if (hasFlag(thread->attr.attr, ThreadAttrFlags::PrioMask)) {
 		if (!SetThreadPriority(thread->handle, THREAD_PRIORITY_NORMAL)) {
 			return EINVAL;
 		}
@@ -115,7 +111,69 @@ static int __applyThreadPrio(thread_t *thread, int32_t dprio) {
 	return 0;
 }
 
-/*
+SPRT_UNUSED static bool validate_attr_setguardsize(size_t size) { return false; }
+
+SPRT_UNUSED static bool validate_attr_setstacksize(size_t size) { return true; }
+
+SPRT_UNUSED static bool validate_attr_setstack(void *, size_t) { return false; }
+
+SPRT_UNUSED static bool validate_attr_setschedpolicy(int) { return true; }
+
+SPRT_UNUSED static bool validate_attr_setschedparam(int) { return true; }
+
+SPRT_UNUSED static bool validate_attr_setinheritsched(int) { return true; }
+
+SPRT_UNUSED static bool validate_mutexattr_setprioceiling(int) { return true; }
+
+SPRT_UNUSED static bool validate_mutexattr_setprotocol(int) { return true; }
+
+SPRT_UNUSED static bool validate_mutexattr_setpshared(int v) {
+	if (v == __SPRT_PTHREAD_PROCESS_SHARED) {
+		return __sprt_sprt_qlock_supports(__SPRT_SPRT_LOCK_FLAG_SHARED) == 0
+				&& __sprt_sprt_rlock_supports(__SPRT_SPRT_LOCK_FLAG_SHARED) == 0;
+	}
+	return true;
+}
+
+SPRT_UNUSED static bool validate_condattr_setclock(int clock) {
+	switch (clock) {
+	case __SPRT_CLOCK_REALTIME:
+		return __sprt_sprt_qlock_supports(__SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME);
+		break;
+	case __SPRT_CLOCK_MONOTONIC: return true; break;
+	}
+	return true;
+}
+
+SPRT_UNUSED static bool validate_condattr_setpshared(int v) {
+	if (v == __SPRT_PTHREAD_PROCESS_SHARED) {
+		return __sprt_sprt_qlock_supports(__SPRT_SPRT_LOCK_FLAG_SHARED) == 0
+				&& __sprt_sprt_rlock_supports(__SPRT_SPRT_LOCK_FLAG_SHARED) == 0;
+	}
+	return true;
+}
+
+SPRT_UNUSED static bool validate_rwlockattr_setpshared(int v) {
+	if (v == __SPRT_PTHREAD_PROCESS_SHARED) {
+		return __sprt_sprt_qlock_supports(__SPRT_SPRT_LOCK_FLAG_SHARED) == 0
+				&& __sprt_sprt_rlock_supports(__SPRT_SPRT_LOCK_FLAG_SHARED) == 0;
+	}
+	return true;
+}
+
+SPRT_UNUSED static bool validate_barrierattr_setpshared(int v) {
+	if (v == __SPRT_PTHREAD_PROCESS_SHARED) {
+		return __sprt_sprt_qlock_supports(__SPRT_SPRT_LOCK_FLAG_SHARED) == 0
+				&& __sprt_sprt_rlock_supports(__SPRT_SPRT_LOCK_FLAG_SHARED) == 0;
+	}
+	return true;
+}
+
+
+} // namespace sprt::_thread::native
+
+namespace sprt::_thread {
+
 static bool __fillCpuSet(SpanView<ULONG> ids, size_t cpusetsize, __sprt_cpu_set_t *set) {
 	ULONG bufferSize = 0;
 	if (!GetSystemCpuSetInformation(nullptr, 0, &bufferSize, GetCurrentProcess(), 0)) {
@@ -155,50 +213,6 @@ static bool __fillCpuSet(SpanView<ULONG> ids, size_t cpusetsize, __sprt_cpu_set_
 
 	__sprt_freea(buf);
 	return true;
-}
-
-static int pthread_getaffinity_np(pthread_t thread, size_t cpusetsize, __sprt_cpu_set_t *set) {
-	if (!thread) {
-		return ESRCH;
-	}
-	if (!set) {
-		return EINVAL;
-	}
-
-	SYSTEM_INFO sysInfo;
-	GetNativeSystemInfo(&sysInfo);
-
-	DWORD kernelSetSize =
-			sysInfo.dwNumberOfProcessors / 8 + ((sysInfo.dwNumberOfProcessors % 8) ? 1 : 0);
-
-	if (cpusetsize < kernelSetSize) {
-		return EINVAL;
-	}
-
-	ULONG nCpus = 0;
-	if (!GetThreadSelectedCpuSets(thread->handle, nullptr, 0, &nCpus)) {
-		return EINVAL;
-	}
-
-	__SPRT_CPU_ZERO_S(cpusetsize, set);
-	if (nCpus == 0) {
-		return 0;
-	}
-
-	auto cpus = __sprt_typed_malloca(ULONG, nCpus);
-
-	if (!GetThreadSelectedCpuSets(thread->handle, cpus, nCpus, &nCpus)) {
-		__sprt_freea(cpus);
-		return EINVAL;
-	}
-
-	if (__fillCpuSet(SpanView<ULONG>(cpus, nCpus), cpusetsize, set)) {
-		__sprt_freea(cpus);
-		return 0;
-	}
-
-	__sprt_freea(cpus);
-	return EINVAL;
 }
 
 static uint32_t __fillCpuIds(ULONG *cpuids, size_t cpusetsize, const __sprt_cpu_set_t *set) {
@@ -241,15 +255,53 @@ static uint32_t __fillCpuIds(ULONG *cpuids, size_t cpusetsize, const __sprt_cpu_
 	return ncpus;
 }
 
-static int pthread_setaffinity_np(pthread_t thread, size_t cpusetsize,
-		const __sprt_cpu_set_t *set) {
-	if (!thread) {
+int thread_t::getcpuclockid(__sprt_clockid_t *clock) const {
+	if (threadId & uint32_t(1U << 31)) {
 		return ESRCH;
 	}
-	if (!set) {
+
+	*clock = (static_cast<__sprt_clockid_t>(threadId) & 0x7FFF'FFFF) | 0x8000'0000;
+	return 0;
+}
+
+int thread_t::getaffinity(__SPRT_ID(size_t) cpusetsize, __SPRT_ID(cpu_set_t) * set) {
+	SYSTEM_INFO sysInfo;
+	GetNativeSystemInfo(&sysInfo);
+
+	DWORD kernelSetSize =
+			sysInfo.dwNumberOfProcessors / 8 + ((sysInfo.dwNumberOfProcessors % 8) ? 1 : 0);
+
+	if (cpusetsize < kernelSetSize) {
 		return EINVAL;
 	}
 
+	ULONG nCpus = 0;
+	if (!GetThreadSelectedCpuSets((HANDLE)handle, nullptr, 0, &nCpus)) {
+		return EINVAL;
+	}
+
+	__SPRT_CPU_ZERO_S(cpusetsize, set);
+	if (nCpus == 0) {
+		return 0;
+	}
+
+	auto cpus = __sprt_typed_malloca(ULONG, nCpus);
+
+	if (!GetThreadSelectedCpuSets((HANDLE)handle, cpus, nCpus, &nCpus)) {
+		__sprt_freea(cpus);
+		return EINVAL;
+	}
+
+	if (__fillCpuSet(SpanView<ULONG>(cpus, nCpus), cpusetsize, set)) {
+		__sprt_freea(cpus);
+		return 0;
+	}
+
+	__sprt_freea(cpus);
+	return EINVAL;
+}
+
+int thread_t::setaffinity(__SPRT_ID(size_t) cpusetsize, const __SPRT_ID(cpu_set_t) * set) {
 	auto nCpus = __SPRT_CPU_COUNT_S(cpusetsize, set);
 	if (nCpus == 0) {
 		return EINVAL;
@@ -263,7 +315,7 @@ static int pthread_setaffinity_np(pthread_t thread, size_t cpusetsize,
 		return EINVAL;
 	}
 
-	if (SetThreadSelectedCpuSets(thread->handle, cpus, nCpus)) {
+	if (SetThreadSelectedCpuSets((HANDLE)handle, cpus, nCpus)) {
 		__sprt_freea(cpus);
 		return 0;
 	}
@@ -272,87 +324,16 @@ static int pthread_setaffinity_np(pthread_t thread, size_t cpusetsize,
 	return EINVAL;
 }
 
-static int pthread_getattr_np(pthread_t thread, pthread_attr_t *attr) {
-}
-static int pthread_setname_np(pthread_t thread, const char *name) {
-	if (!thread || !name) {
-		return EINVAL;
-	}
-
+int thread_t::setname_native(const char *name) {
 	int ret = 0;
-
 	unicode::toUtf16([&](WideStringView wname) {
-		auto hr = SetThreadDescription(thread->handle, (wchar_t *)wname.data());
+		auto hr = SetThreadDescription((HANDLE)handle, (wchar_t *)wname.data());
 		if (FAILED(hr)) {
 			ret = EINVAL;
 		}
 	}, StringView(name));
-
 	return ret;
 }
-
-static int pthread_getname_np(pthread_t thread, char *buf, size_t len) {
-	if (!thread || !buf) {
-		return EINVAL;
-	}
-
-	wchar_t *wbuf = nullptr;
-	auto hr = GetThreadDescription(thread->handle, &wbuf);
-	if (FAILED(hr)) {
-		return EINVAL;
-	}
-
-	int ret = 0;
-	unicode::toUtf8([&](StringView name) {
-		if (name.size() <= len) {
-			__sprt_memcpy(buf, name.data(), name.size());
-		} else {
-			__sprt_memcpy(buf, name.data(), len);
-			ret = ERANGE;
-		}
-	}, WideStringView((char16_t *)wbuf));
-
-	return ret;
-}
-
-static int pthread_getattr_default_np(pthread_attr_t *attr) {
-	if (!attr) {
-		return EINVAL;
-	}
-
-	unique_lock lock(s_handlePool.mutex);
-	*attr = s_handlePool.defaultAttr;
-	return 0;
-}
-
-static int pthread_setattr_default_np(const pthread_attr_t *attr) {
-	if (!attr) {
-		return EINVAL;
-	}
-
-	unique_lock lock(s_handlePool.mutex);
-	s_handlePool.defaultAttr = *attr;
-
-	return 0;
-}
-
-static int pthread_tryjoin_np(pthread_t thread, void **ret) {
-	return __pthread_join(thread, ret, INFINITE, true);
-}
-
-static int pthread_timedjoin_np(pthread_t thread, void **ret, const __SPRT_TIMESPEC_NAME *tv) {
-	__SPRT_TIMESPEC_NAME curTv;
-	__sprt_clock_gettime(__SPRT_CLOCK_REALTIME, &curTv);
-
-	auto diffTv = __sprt_timespec_diff(tv, &curTv);
-
-	if (diffTv.tv_sec < 0) {
-		return ETIMEDOUT;
-	}
-
-	DWORD millis = diffTv.tv_sec * 1'000 + diffTv.tv_nsec / 1'000'000;
-	return __pthread_join(thread, ret, millis, false);
-}*/
 
 } // namespace sprt::_thread
 

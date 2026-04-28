@@ -27,24 +27,24 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_utime.h>
 #include <sprt/c/__sprt_stdio.h>
-#include <sprt/c/__sprt_locale.h>
 #include <sprt/c/__sprt_nl_types.h>
 
 #include <sprt/runtime/math.h>
 #include <sprt/runtime/log.h>
 #include "private/SPRTFilename.h"
 
+#if __STDC_HOSTED__ == 0
+
+#else
+
 #include <stddef.h>
 #include <locale.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <float.h>
-
-#ifndef SPRT_WINDOWS
 #include <utime.h>
 #include <nl_types.h>
-#else
-#include <sys/utime.h>
+
 #endif
 
 #include "private/SPRTSpecific.h"
@@ -53,6 +53,8 @@ THE SOFTWARE.
 #include "common/fenv.cc"
 #include "common/signal.cc"
 #include "common/uname.cc"
+#include "common/abort.cc"
+#include "common/locale.cc"
 
 #if SPRT_ANDROID
 namespace sprt::platform {
@@ -65,98 +67,6 @@ extern int (*_catclose)(nl_catd __catalog);
 #endif
 
 namespace sprt {
-
-__SPRT_C_FUNC void __sprt_assert_fail(const char *cond, const char *file, unsigned int line,
-		const char *fn, const char *text) __SPRT_NOEXCEPT {
-	auto features = oslog::LogFeatures::acquire();
-	__malloc_string prefix;
-#if !SPRT_ANDROID
-	prefix = StreamTraits<char>::toString<__malloc_string>(features.reverse, features.bold,
-			features.fred, "[F]", features.fdef, features.drop);
-#endif
-
-	StringView sCond = cond ? StringView(cond) : StringView("<undefined>");
-	StringView sFile = file ? StringView(file) : StringView("<file>");
-	StringView sFn = fn ? StringView(fn) : StringView("<function>");
-
-	if (text && text[0] != 0) {
-		oslog::vprint(oslog::LogType::Fatal, source_location_ext{file, fn, line, 0}, "Assert", sFn,
-				": (", sCond, ") failed: ", text, " ", features.underline, features.dim, sFile, ":",
-				line, features.drop);
-	} else {
-		oslog::vprint(oslog::LogType::Fatal, source_location_ext{file, fn, line, 0}, "Assert", sFn,
-				": (", sCond, ") failed: ", features.underline, features.dim, sFile, ":", line,
-				features.drop);
-	}
-	::abort();
-}
-
-__SPRT_C_FUNC int __SPRT_ID(__flt_rounds)(void) { return FLT_ROUNDS; }
-
-__SPRT_C_FUNC char *__SPRT_ID(setlocale)(int cat, const char *locale) {
-	return ::setlocale(cat, locale);
-}
-
-__SPRT_C_FUNC struct __SPRT_ID(lconv) * __SPRT_ID(localeconv)(void) {
-	return (struct __SPRT_ID(lconv) *)::localeconv();
-}
-
-__SPRT_C_FUNC __SPRT_ID(locale_t) __SPRT_ID(duplocale)(__SPRT_ID(locale_t) loc) {
-#if !__SPRT_CONFIG_HAVE_LOCALE_EXT
-	*__sprt___errno_location() = ENOSYS;
-	return nullptr;
-#else
-	return ::duplocale(loc);
-#endif
-}
-__SPRT_C_FUNC void __SPRT_ID(freelocale)(__SPRT_ID(locale_t) loc) {
-#if __SPRT_CONFIG_HAVE_LOCALE_EXT
-	::freelocale(loc);
-#endif
-}
-__SPRT_C_FUNC __SPRT_ID(locale_t)
-		__SPRT_ID(newlocale)(int v, const char *name, __SPRT_ID(locale_t) loc) {
-#if !__SPRT_CONFIG_HAVE_LOCALE_EXT
-	*__sprt___errno_location() = ENOSYS;
-	return nullptr;
-#else
-	return ::newlocale(v, name, loc);
-#endif
-}
-__SPRT_C_FUNC __SPRT_ID(locale_t) __SPRT_ID(uselocale)(__SPRT_ID(locale_t) loc) {
-#if !__SPRT_CONFIG_HAVE_LOCALE_EXT
-	*__sprt___errno_location() = ENOSYS;
-	return nullptr;
-#else
-	return ::uselocale(loc);
-#endif
-}
-
-__SPRT_C_FUNC int __SPRT_ID(sigemptyset)(__SPRT_ID(sigset_t) * set) {
-	for (auto &it : set->__bits) { it = 0; }
-	return 0;
-}
-
-__SPRT_C_FUNC int __SPRT_ID(utime)(const char *path, const struct __SPRT_UTIMBUF_NAME *buf) {
-	return internal::performWithNativePath(path, [&](const char *target) {
-#if SPRT_WINDOWS
-		struct __utimbuf64 nativeBuf;
-		if (buf) {
-			nativeBuf.actime = buf->actime;
-			nativeBuf.modtime = buf->modtime;
-		}
-		return ::_utime64(target, buf ? &nativeBuf : nullptr);
-#else
-		struct utimbuf nativeBuf;
-		if (buf) {
-			nativeBuf.actime = buf->actime;
-			nativeBuf.modtime = buf->modtime;
-		}
-		// call with native path
-		return ::utime(target, buf ? &nativeBuf : nullptr);
-#endif
-	}, -1);
-}
 
 __SPRT_C_FUNC __SPRT_ID(nl_catd) __SPRT_ID(catopen)(const char *path, int v) {
 #if __SPRT_CONFIG_HAVE_NLTYPES_CAT

@@ -136,18 +136,6 @@ __SPRT_C_FUNC void __SPRT_ID(aligned_free)(void *memblock) {
 #endif
 }
 
-__SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(abort_impl)(void) { ::abort(); }
-
-__SPRT_C_FUNC int __SPRT_ID(atexit_impl)(void (*cb)(void)) { return ::atexit(cb); }
-
-__SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(exit_impl)(int ret) { ::exit(ret); }
-
-__SPRT_C_FUNC void __SPRT_ID(_Exit_impl)(int ret) { ::_Exit(ret); }
-
-__SPRT_C_FUNC int __SPRT_ID(at_quick_exit_impl)(void (*cb)(void)) { return ::at_quick_exit(cb); }
-
-__SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(quick_exit_impl)(int ret) { ::quick_exit(ret); }
-
 __SPRT_C_FUNC int __SPRT_ID(system_impl)(const char *cmd) { return ::system(cmd); }
 
 __SPRT_C_FUNC void *__SPRT_ID(bsearch_impl)(const void *key, void *base, size_t nmemb, size_t size,

@@ -29,7 +29,7 @@ THE SOFTWARE.
 #include <sprt/runtime/log.h>
 
 #if SPRT_WINDOWS
-#include "platform/windows/sched.cc"
+#include "../platform/windows/sched.cc"
 #else
 #include <sched.h>
 #endif

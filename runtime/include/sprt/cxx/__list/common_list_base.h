@@ -192,7 +192,7 @@ protected:
 		}
 	}
 
-	[[no_unique_address]]
+	SPRT_NO_UNIQUE_ADDRESS
 	node_allocator_type _alloc;
 	size_type _size = 0;
 	basic_node_type _root;

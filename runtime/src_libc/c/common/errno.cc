@@ -24,6 +24,20 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_errno.h>
 
+#if __STDC_HOSTED__ == 0
+
+namespace sprt {
+
+static thread_local int s_errnoLocation = 0;
+
+__SPRT_C_FUNC __SPRT_FALLBACK_ATTR(const) int *__SPRT_ID(__errno_location)(void) {
+	return &s_errnoLocation;
+}
+
+} // namespace sprt
+
+#else
+
 #include <errno.h>
 
 namespace sprt {
@@ -43,3 +57,5 @@ __SPRT_C_FUNC __SPRT_FALLBACK_ATTR(const) int *__SPRT_ID(__errno_location)(void)
 }
 
 } // namespace sprt
+
+#endif

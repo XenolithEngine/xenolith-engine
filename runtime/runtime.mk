@@ -21,6 +21,76 @@
 
 RUNTIME_MODULE_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
+# TODO - detect when we need it
+MODULE_RUNTIME_USE_MUSL_LIBC := 1
+
+# Musl-libc adapters for non-OS-dependent functions live here
+MODULE_RUNTIME_MUSL_DIRS := \
+	$(addprefix $(RUNTIME_MODULE_DIR)/musl-libc/src/, fenv math string)
+
+MODULE_RUNTIME_MUSL_ARCH_FILES := \
+	$(sort $(wildcard $(addsuffix /$(TARGET_ARCH)/*.[sS],$(MODULE_RUNTIME_MUSL_DIRS))))  
+
+MODULE_RUNTIME_MUSL_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
+MODULE_RUNTIME_MUSL_PRIVATE_STANDALONE := 1
+MODULE_RUNTIME_MUSL_LIBS :=
+MODULE_RUNTIME_MUSL_FLAGS :=
+MODULE_RUNTIME_MUSL_GENERAL_CFLAGS :=
+MODULE_RUNTIME_MUSL_GENERAL_CXXFLAGS :=
+MODULE_RUNTIME_MUSL_SRCS_DIRS := $(RUNTIME_MODULE_DIR)/musl-adapters
+MODULE_RUNTIME_MUSL_SRCS_OBJS := $(MODULE_RUNTIME_MUSL_ARCH_FILES)
+MODULE_RUNTIME_MUSL_INCLUDES_DIRS :=
+MODULE_RUNTIME_MUSL_INCLUDES_OBJS :=
+MODULE_RUNTIME_MUSL_PRIVATE_INCLUDES :=
+
+MODULE_RUNTIME_MUSL_PRIVATE_COMMON_FLAGS := \
+	-I$(RUNTIME_MODULE_DIR)/musl-adapters/include \
+	-I$(RUNTIME_MODULE_DIR)/musl-libc/arch/$(TARGET_ARCH) \
+	-I$(RUNTIME_MODULE_DIR)/musl-libc/arch/generic \
+	-I$(RUNTIME_MODULE_DIR)/musl-libc/src/internal \
+	-I$(RUNTIME_MODULE_DIR)/musl-libc/src/include \
+	-I$(RUNTIME_MODULE_DIR)/musl-libc/include \
+	-I$(RUNTIME_MODULE_DIR)/include \
+	-std=c99 -pipe \
+	-Wno-pointer-to-int-cast \
+	-Werror=implicit-function-declaration \
+	-Werror=implicit-int \
+	-Werror=pointer-sign \
+	-Werror=pointer-arith \
+	-Werror=int-conversion \
+	-Werror=incompatible-pointer-types \
+	-Werror=ignored-qualifiers \
+	-Waddress \
+	-Warray-bounds \
+	-Wchar-subscripts \
+	-Wduplicate-decl-specifier \
+	-Winit-self \
+	-Wreturn-type \
+	-Wsequence-point \
+	-Wstrict-aliasing \
+	-Wunused-function \
+	-Wunused-label \
+	-Wunused-variable \
+	-Wno-bitwise-op-parentheses \
+	-Wno-shift-op-parentheses \
+	-Wno-unused-but-set-variable
+
+MODULE_RUNTIME_MUSL_PRIVATE_SFLAGS += $(MODULE_RUNTIME_MUSL_PRIVATE_COMMON_FLAGS)
+
+MODULE_RUNTIME_MUSL_PRIVATE_CFLAGS += $(MODULE_RUNTIME_MUSL_PRIVATE_COMMON_FLAGS) \
+	-O2 -nostdinc \
+	-ffreestanding \
+	-fexcess-precision=standard \
+	-frounding-math \
+	-fno-strict-aliasing \
+	-fno-align-functions \
+	-fomit-frame-pointer \
+	-fno-unwind-tables \
+	-fno-asynchronous-unwind-tables \
+
+$(call define_module, runtime_musl, MODULE_RUNTIME_MUSL)
+
+
 # Isolate the umbrella libc so that other modules do not see the platform libc headers
 MODULE_RUNTIME_LIBC_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
 MODULE_RUNTIME_LIBC_PRIVATE_STANDALONE := 1
@@ -38,6 +108,7 @@ MODULE_RUNTIME_LIBC_PRIVATE_INCLUDES := \
 
 MODULE_RUNTIME_LIBC_PRIVATE_CXXFLAGS := -nostdinc++
 
+
 ifdef TARGET_INCLUDE_DIR_LIBC
 MODULE_RUNTIME_LIBC_PRIVATE_CFLAGS += $(addprefix -idirafter ,$(TARGET_INCLUDE_DIR_LIBC))
 MODULE_RUNTIME_LIBC_PRIVATE_CXXFLAGS += $(addprefix -idirafter ,$(TARGET_INCLUDE_DIR_LIBC))
@@ -51,13 +122,12 @@ MODULE_RUNTIME_LIBC_PRIVATE_CXXFLAGS += $(HOST_GENERAL_CFLAGS) \
 	-idirafter $(OSTYPE_SDK_PATH)/usr/include -F$(OSTYPE_SDK_PATH)/System/Library/Frameworks
 endif
 
-$(call define_module, runtime_libc, MODULE_RUNTIME_LIBC)
-
-ifdef WIN32
-MODULE_RUNTIME_LIBC_PRIVATE_FLAGS_FILTER := -nostdinc
-MODULE_RUNTIME_LIBC_PRIVATE_CFLAGS :=
-MODULE_RUNTIME_LIBC_PRIVATE_CXXFLAGS :=
+ifeq ($(TARGET_SYSTEM),Windows)
+MODULE_RUNTIME_LIBC_PRIVATE_CFLAGS += -ffreestanding -fbuiltin -funwind-tables -fasynchronous-unwind-tables
+MODULE_RUNTIME_LIBC_PRIVATE_CXXFLAGS += -ffreestanding -fbuiltin -funwind-tables -fasynchronous-unwind-tables
 endif
+
+$(call define_module, runtime_libc, MODULE_RUNTIME_LIBC)
 
 
 MODULE_RUNTIME_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
@@ -82,12 +152,16 @@ MODULE_RUNTIME_PRIVATE_INCLUDES := \
 
 MODULE_RUNTIME_DEPENDS_ON := runtime_libc
 
+ifeq ($(MODULE_RUNTIME_USE_MUSL_LIBC),1)
+MODULE_RUNTIME_DEPENDS_ON += runtime_musl
+endif
+
 MODULE_RUNTIME_PRIVATE_CXXFLAGS := -nostdinc++
 
 ifeq ($(TARGET_SYSTEM),Linux)
 MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc -nostdinc++
 MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc -nostdinc++
-MODULE_RUNTIME_LIBS += -l:libbacktrace.a -l:libc++abi.a -lm
+MODULE_RUNTIME_LIBS += -l:libbacktrace.a -l:libc++abi.a
 endif
 
 ifeq ($(TARGET_SYSTEM),Android)

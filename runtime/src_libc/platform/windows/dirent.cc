@@ -28,25 +28,21 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/__sprt_stdio.h>
+#include <sprt/c/__sprt_unistd.h>
 
 #include <sprt/runtime/string.h>
 #include <sprt/runtime/enum.h>
 
-#include <stdlib.h>
-#include <fcntl.h>
-#include <corecrt_io.h>
-
 #include "private/SPRTFilename.h"
-
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
-
 #include "private/SPRTSpecific.h"
+
+#include <sprt/wrappers/windows/basic_api.h>
+#include <sprt/wrappers/windows/file_api.h>
 
 struct __dirstream {
 	static constexpr size_t DefaultSize = 4'096;
 	static constexpr size_t MaxFilenameSize = 256 + 768;
-	static constexpr int RootFd = INT_MIN;
+	static constexpr int RootFd = sprt::Min<int>;
 
 	struct __SPRT_DIRENT_NAME dent;
 	char extraNameBuffer[768];
@@ -75,6 +71,8 @@ struct __rootdirinfo {
 #pragma clang diagnostic ignored "-Wunused-function"
 #endif
 
+#define offsetof(type, member) ((size_t)&(((type *)0)->member))
+
 namespace sprt {
 
 static bool __isdir(HANDLE handle) {
@@ -92,7 +90,7 @@ static bool __isdir(HANDLE handle) {
 }
 
 static __dirstream *__wopenroot() {
-	auto ds = new (malloc(__dirstream::DefaultSize), nothrow) __dirstream;
+	auto ds = new (__sprt_malloc(__dirstream::DefaultSize), nothrow) __dirstream;
 	if (!ds) {
 		__sprt_errno = ENOMEM;
 		return nullptr;
@@ -131,7 +129,7 @@ static __dirstream *__wopendir(const char *path) {
 		return nullptr;
 	}
 
-	auto ds = new (malloc(__dirstream::DefaultSize), nothrow) __dirstream;
+	auto ds = new (__sprt_malloc(__dirstream::DefaultSize), nothrow) __dirstream;
 	if (!ds) {
 		__sprt_errno = ENOMEM;
 		return nullptr;
@@ -159,7 +157,7 @@ static __dirstream *fdopendir(int __dir_fd) {
 		__sprt_errno = EBADF;
 		return nullptr;
 	}
-	auto h = HANDLE(_get_osfhandle(__dir_fd));
+	auto h = _get_osfhandle(__dir_fd);
 	if (!h || h == INVALID_HANDLE_VALUE) {
 		__sprt_errno = EBADF;
 		return nullptr;
@@ -170,7 +168,7 @@ static __dirstream *fdopendir(int __dir_fd) {
 		return nullptr;
 	}
 
-	auto ds = new (malloc(__dirstream::DefaultSize), nothrow) __dirstream;
+	auto ds = new (__sprt_malloc(__dirstream::DefaultSize), nothrow) __dirstream;
 	if (!ds) {
 		__sprt_errno = ENOMEM;
 		return nullptr;
@@ -260,7 +258,7 @@ static int closedir(__dirstream *__dir) {
 	}
 
 	if (__dir->fd >= 0) {
-		_close(__dir->fd);
+		__sprt_close(__dir->fd);
 	} else if (__dir->handle) {
 		CloseHandle(__dir->handle);
 	}
@@ -268,7 +266,7 @@ static int closedir(__dirstream *__dir) {
 	__dir->fd = -1;
 	__dir->handle = nullptr;
 
-	free(__dir);
+	__sprt_free(__dir);
 	return 0;
 }
 
@@ -343,7 +341,7 @@ static int dirfd(__dirstream *__dir) {
 	}
 
 	if (__dir->fd < 0) {
-		__dir->fd = _open_osfhandle(intptr_t(__dir->handle), _O_RDONLY);
+		__dir->fd = _open_osfhandle(__dir->handle, OSFHANDLE_RDONLY);
 	}
 
 	if (__dir->fd >= 0) {
@@ -366,28 +364,28 @@ static int __scandir(__SPRT_ID(DIR) * d, struct __SPRT_DIRENT_NAME ***__name_lis
 	// Original code from MUSL (scandir.c)
 	struct __SPRT_DIRENT_NAME *de, **names = 0, **tmp;
 	size_t cnt = 0, len = 0;
-	int old_errno = errno;
+	int old_errno = __sprt_errno;
 
 	if (!d) {
 		return -1;
 	}
 
-	while ((errno = 0), (de = __sprt_readdir(d))) {
+	while ((__sprt_errno = 0), (de = __sprt_readdir(d))) {
 		if (__filter && !__filter(de)) {
 			continue;
 		}
 		if (cnt >= len) {
 			len = 2 * len + 1;
-			if (len > SIZE_MAX / sizeof *names) {
+			if (len > Max<size_t> / sizeof *names) {
 				break;
 			}
-			tmp = (struct __SPRT_DIRENT_NAME **)realloc(names, len * sizeof *names);
+			tmp = (struct __SPRT_DIRENT_NAME **)__sprt_realloc(names, len * sizeof *names);
 			if (!tmp) {
 				break;
 			}
 			names = tmp;
 		}
-		names[cnt] = (struct __SPRT_DIRENT_NAME *)malloc(de->d_reclen);
+		names[cnt] = (struct __SPRT_DIRENT_NAME *)__sprt_malloc(de->d_reclen);
 		if (!names[cnt]) {
 			break;
 		}
@@ -396,17 +394,17 @@ static int __scandir(__SPRT_ID(DIR) * d, struct __SPRT_DIRENT_NAME ***__name_lis
 
 	__sprt_closedir(d);
 
-	if (errno) {
+	if (__sprt_errno) {
 		if (names) {
-			while (cnt-- > 0) { free(names[cnt]); }
+			while (cnt-- > 0) { __sprt_free(names[cnt]); }
 		}
-		free(names);
+		__sprt_free(names);
 		return -1;
 	}
-	errno = old_errno;
+	__sprt_errno = old_errno;
 
 	if (__comparator) {
-		qsort(names, cnt, sizeof *names, (int (*)(const void *, const void *))__comparator);
+		__sprt_qsort(names, cnt, sizeof *names, (int (*)(const void *, const void *))__comparator);
 	}
 	*__name_list = names;
 	return cnt;

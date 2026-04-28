@@ -1,3 +1,5 @@
+// clang-format off
+
 #define __SPRT_O_CREAT        0100
 #define __SPRT_O_EXCL         0200
 #define __SPRT_O_NOCTTY       0400
@@ -19,6 +21,11 @@
 #define __SPRT_O_TMPFILE 020200000 // not implemented
 #define __SPRT_O_NDELAY __SPRT_O_NONBLOCK
 
+#define __SPRT_O_ACCMODE 03
+#define __SPRT_O_RDONLY  00
+#define __SPRT_O_WRONLY  01
+#define __SPRT_O_RDWR    02
+
 #define __SPRT_F_DUPFD  0
 #define __SPRT_F_GETFD  1
 #define __SPRT_F_SETFD  2
@@ -32,7 +39,22 @@
 #define __SPRT_F_SETSIG 10
 #define __SPRT_F_GETSIG 11
 
+#define __SPRT_F_DUPFD_CLOEXEC 1030
+
 #define __SPRT_F_SETOWN_EX 15
 #define __SPRT_F_GETOWN_EX 16
 
 #define __SPRT_F_GETOWNER_UIDS 17
+
+#define __SPRT_FD_CLOEXEC	1
+
+#define __SPRT_AT_FDCWD - 100
+#define __SPRT_AT_SYMLINK_NOFOLLOW 0x100
+#define __SPRT_AT_SYMLINK_FOLLOW 0x400
+#define __SPRT_AT_NO_AUTOMOUNT 0x800
+#define __SPRT_AT_EMPTY_PATH 0x1000
+#define __SPRT_AT_RECURSIVE 0x8000
+#define __SPRT_AT_EACCESS 0x200
+#define __SPRT_AT_REMOVEDIR 0x200
+
+// clang-format on

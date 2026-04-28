@@ -31,6 +31,10 @@ THE SOFTWARE.
 
 #include <sprt/runtime/log.h>
 
+#if __STDC_HOSTED__ == 0
+
+#else
+
 #include <fcntl.h>
 
 static_assert(SEEK_SET == __SPRT_SEEK_SET);
@@ -156,6 +160,8 @@ static_assert(POSIX_FADV_DONTNEED == __SPRT_POSIX_FADV_DONTNEED);
 static_assert(POSIX_FADV_NOREUSE == __SPRT_POSIX_FADV_NOREUSE);
 #endif
 
+#endif
+
 // Bionic forcefully renames *64 versions with linker script, so, it can call non-64 recursively
 // To deal with it, we acquire direct pointers for *64 functions from libc
 #if SPRT_ANDROID
@@ -173,7 +179,7 @@ extern int (*_sync_file_range)(int __fd, off64_t __offset, off64_t __length, uns
 #endif
 
 #ifdef SPRT_WINDOWS
-#include "platform/windows/fcntl.cc"
+#include "../platform/windows/fcntl.cc"
 #endif
 
 namespace sprt {

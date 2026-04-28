@@ -63,7 +63,7 @@ struct __SPRT_TM_NAME {
 	__SPRT_ID(int32_t) tm_isdst; /** daylight saving time */
 	__SPRT_ID(int32_t) tm_gmtoff; /** seconds east of UTC */
 	const char *tm_zone;
-	__SPRT_ID(tm_gmt_e) tm_gmt_type; /** do we know if time is local or GMT?  */
+	enum __SPRT_ID(tm_gmt_e) tm_gmt_type; /** do we know if time is local or GMT?  */
 };
 
 SPRT_API __SPRT_ID(clock_t) __SPRT_ID(clock)(void);
@@ -76,7 +76,7 @@ SPRT_API struct __SPRT_TM_NAME *__SPRT_ID(gmtime)(const __SPRT_ID(time_t) *);
 SPRT_API struct __SPRT_TM_NAME *__SPRT_ID(localtime)(const __SPRT_ID(time_t) *);
 SPRT_API char *__SPRT_ID(asctime)(const struct __SPRT_TM_NAME *);
 SPRT_API char *__SPRT_ID(ctime)(const __SPRT_ID(time_t) *);
-SPRT_API int __SPRT_ID(timespec_get)(__SPRT_TIMESPEC_NAME *, int);
+SPRT_API int __SPRT_ID(timespec_get)(struct __SPRT_TIMESPEC_NAME *, int);
 
 SPRT_API struct __SPRT_TM_NAME *__SPRT_ID(
 		gmtime_r)(const __SPRT_ID(time_t) *, struct __SPRT_TM_NAME *);
@@ -93,19 +93,20 @@ SPRT_API char *__SPRT_ID(ctime_r)(const __SPRT_ID(time_t) *, char *);
 
 SPRT_API void __SPRT_ID(tzset)(void);
 
-SPRT_API int __SPRT_ID(nanosleep)(const __SPRT_TIMESPEC_NAME *, __SPRT_TIMESPEC_NAME *);
-SPRT_API int __SPRT_ID(clock_getres)(__SPRT_ID(clockid_t), __SPRT_TIMESPEC_NAME *);
-SPRT_API int __SPRT_ID(clock_gettime)(__SPRT_ID(clockid_t), __SPRT_TIMESPEC_NAME *);
+SPRT_API int __SPRT_ID(
+		nanosleep)(const struct __SPRT_TIMESPEC_NAME *, struct __SPRT_TIMESPEC_NAME *);
+SPRT_API int __SPRT_ID(clock_getres)(__SPRT_ID(clockid_t), struct __SPRT_TIMESPEC_NAME *);
+SPRT_API int __SPRT_ID(clock_gettime)(__SPRT_ID(clockid_t), struct __SPRT_TIMESPEC_NAME *);
 
 #if __SPRT_CONFIG_HAVE_TIME_CLOCK_SETTIME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 
 __SPRT_CONFIG_HAVE_TIME_CLOCK_SETTIME_NOTICE
-SPRT_API int __SPRT_ID(clock_settime)(__SPRT_ID(clockid_t), const __SPRT_TIMESPEC_NAME *);
+SPRT_API int __SPRT_ID(clock_settime)(__SPRT_ID(clockid_t), const struct __SPRT_TIMESPEC_NAME *);
 
 #endif
 
-SPRT_API int __SPRT_ID(clock_nanosleep)(__SPRT_ID(clockid_t), int, const __SPRT_TIMESPEC_NAME *,
-		__SPRT_TIMESPEC_NAME *);
+SPRT_API int __SPRT_ID(clock_nanosleep)(__SPRT_ID(clockid_t), int,
+		const struct __SPRT_TIMESPEC_NAME *, struct __SPRT_TIMESPEC_NAME *);
 SPRT_API int __SPRT_ID(clock_getcpuclockid)(__SPRT_ID(pid_t), __SPRT_ID(clockid_t) *);
 
 SPRT_FORCEINLINE struct __SPRT_TIMESPEC_NAME __SPRT_ID(timespec_diff)(

@@ -32,23 +32,25 @@ THE SOFTWARE.
 #include "private/SPRTFilename.h"
 #include "private/SPRTPrivate.h"
 
-#ifndef SPRT_WINDOWS
-
-#include <dirent.h>
-
-#else
-
-#include "platform/windows/dirent.cc"
-
-#endif
-
 #if SPRT_MACOS
 #include <sys/syslimits.h>
 #include <unistd.h>
 #include <fcntl.h>
 #endif
 
+#ifndef SPRT_WINDOWS
+
+#include <dirent.h>
+
 static_assert(sizeof(struct dirent) == sizeof(struct __SPRT_DIRENT_NAME));
+
+#else
+
+#include "../platform/windows/dirent.cc"
+
+typedef __SPRT_ID(DIR) DIR;
+
+#endif
 
 namespace sprt {
 

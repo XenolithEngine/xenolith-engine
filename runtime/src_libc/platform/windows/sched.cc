@@ -27,12 +27,9 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_sched.h>
 #include <sprt/c/__sprt_errno.h>
 
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX 1
-#include <Windows.h>
-#include <tlhelp32.h>
-
-#undef __deallocate
+#include <sprt/wrappers/windows/basic_api.h>
+#include <sprt/wrappers/windows/process_api.h>
+#include <sprt/wrappers/windows/thread_api.h>
 
 #include "private/SPRTSpecific.h" // IWYU pragma: keep
 

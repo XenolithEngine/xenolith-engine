@@ -24,16 +24,24 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_setjmp.h>
 
+#if SPRT_WINDOWS
+
+#include "../platform/windows/setjmp.cc"
+
+#else
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <setjmp.h>
 #include <unwind.h>
 
-#include <sprt/cxx/detail/ctypes.h>
-
 #include "private/SPRTThread.h"
 
 static_assert(sizeof(jmp_buf) == sizeof(__sprt_native_jmp_buf));
+
+#endif
+
+#include <sprt/cxx/detail/ctypes.h>
 
 namespace sprt {
 
@@ -60,15 +68,15 @@ __SPRT_C_FUNC int __SPRT_ID(setjmp)(__SPRT_ID(jmp_buf) buf) {
 #elif SPRT_ANDROID || SPRT_MACOS
 	return ::setjmp(buf->__native);
 #elif SPRT_WINDOWS
-	return ::setjmp(reinterpret_cast<_JBTYPE *>(buf->__native));
+	return setjmp(buf);
 #else
 #error Not implemented
 #endif
 }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, int ret) {
-	using jmp_buf_t = decltype(buf);
 #if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
+	using jmp_buf_t = decltype(buf);
 	// TODO: Maybe, add some additional info for unwinder?
 
 	// Preserve result on jmp_buf.
@@ -99,7 +107,7 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 	abort();
 #elif SPRT_WINDOWS
 	// Just call longjmp, SEH will do all the work for us
-	::longjmp(reinterpret_cast<_JBTYPE *>(buf->native), ret);
+	longjmp(buf, ret);
 #else
 #error Not implemented
 #endif

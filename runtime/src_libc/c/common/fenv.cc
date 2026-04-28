@@ -25,6 +25,32 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_fenv.h>
 #include <sprt/cxx/type_traits>
 
+#if __STDC_HOSTED__ == 0
+
+#define FLT_ROUNDS __flt_rounds()
+
+typedef __sprt_fenv_t fenv_t;
+
+__SPRT_C_FUNC int __flt_rounds(void);
+
+__SPRT_C_FUNC int feclearexcept(int);
+__SPRT_C_FUNC int fegetexceptflag(__sprt_fexcept_t *, int);
+__SPRT_C_FUNC int feraiseexcept(int);
+__SPRT_C_FUNC int fesetexceptflag(const __sprt_fexcept_t *, int);
+__SPRT_C_FUNC int fetestexcept(int);
+
+__SPRT_C_FUNC int fegetround(void);
+__SPRT_C_FUNC int fesetround(int);
+
+__SPRT_C_FUNC int fegetenv(fenv_t *);
+__SPRT_C_FUNC int feholdexcept(fenv_t *);
+__SPRT_C_FUNC int fesetenv(const fenv_t *);
+__SPRT_C_FUNC int feupdateenv(const fenv_t *);
+
+#define FE_DFL_ENV __SPRT_FE_DFL_ENV
+
+#else
+
 #include <fenv.h>
 
 static_assert(FE_INEXACT == __SPRT_FE_INEXACT);
@@ -50,9 +76,14 @@ static_assert(FE_FLUSHTOZERO == __SPRT_FE_FLUSHTOZERO);
 static_assert(sizeof(fenv_t) == sizeof(__sprt_fenv_t));
 static_assert(sprt::is_same_v<fexcept_t, __sprt_fexcept_t>);
 
+#endif
+
+
 namespace sprt {
 
 __SPRT_C_FUNC __sprt_fenv_t *__sprt_arch_FE_DFL_ENV_fn() { return (__sprt_fenv_t *)FE_DFL_ENV; }
+
+__SPRT_C_FUNC int __SPRT_ID(__flt_rounds)(void) { return FLT_ROUNDS; }
 
 __SPRT_C_FUNC int __SPRT_ID(feclearexcept)(int v) { return ::feclearexcept(v); }
 __SPRT_C_FUNC int __SPRT_ID(fegetexceptflag)(__SPRT_ID(fexcept_t) * ex, int v) {

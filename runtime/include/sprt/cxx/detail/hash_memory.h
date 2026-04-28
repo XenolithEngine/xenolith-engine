@@ -883,13 +883,13 @@ protected:
 		}
 	}
 
-	[[no_unique_address]]
+	SPRT_NO_UNIQUE_ADDRESS
 	HashFn _hasher;
 
-	[[no_unique_address]]
+	SPRT_NO_UNIQUE_ADDRESS
 	EqualFn _equal;
 
-	[[no_unique_address]]
+	SPRT_NO_UNIQUE_ADDRESS
 	allocator_type _allocator;
 
 	node_type *_storage = nullptr;

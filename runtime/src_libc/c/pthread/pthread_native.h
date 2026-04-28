@@ -86,6 +86,8 @@ SPRT_UNUSED static void __attachNativeThread(thread_t *thread, void *handle);
 SPRT_UNUSED static void __detachAndDeallocateThread(thread_t *thread,
 		unique_lock<qmutex> *externalLock);
 
+SPRT_UNUSED static void __deallocateThread(thread_t *handle);
+
 SPRT_UNUSED static int __pthread_join(thread_t *thread, void **ret, timeout_t timeout,
 		bool tryjoin);
 

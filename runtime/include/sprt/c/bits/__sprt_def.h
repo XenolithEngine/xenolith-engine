@@ -98,6 +98,9 @@ THE SOFTWARE.
 #define __SPRT_ARCH_NAME_AARCH64 aarch64_sprt
 #define __SPRT_ARCH_ID_AARCH64 1
 
+#define __SPRT_ARCH_NAME_ARM64 __SPRT_ARCH_NAME_AARCH64
+#define __SPRT_ARCH_ID_ARM64 __SPRT_ARCH_ID_AARCH64
+
 #define __SPRT_ARCH_NAME_ARM arm_sprt
 #define __SPRT_ARCH_ID_ARM 2
 
@@ -106,6 +109,9 @@ THE SOFTWARE.
 
 #define __SPRT_ARCH_NAME_X86_64 x86_64_sprt
 #define __SPRT_ARCH_ID_X86_64 4
+
+#define __SPRT_ARCH_NAME_AMD64 __SPRT_ARCH_NAME_X86_64
+#define __SPRT_ARCH_ID_AMD64 __SPRT_ARCH_ID_X86_64
 
 #define __SPRT_ARCH_NAME_E2K e2k_sprt
 #define __SPRT_ARCH_ID_E2K 5
@@ -347,6 +353,12 @@ THE SOFTWARE.
 #define SPRT_FORCEINLINE __SPRT_FALLBACK_ATTR(always_inline) inline
 #else
 #define SPRT_FORCEINLINE __forceinline inline
+#endif
+
+#if SPRT_WINDOWS
+#define SPRT_NO_UNIQUE_ADDRESS [[msvc::no_unique_address]]
+#else
+#define SPRT_NO_UNIQUE_ADDRESS [[no_unique_address]]
 #endif
 
 #else // __cplusplus

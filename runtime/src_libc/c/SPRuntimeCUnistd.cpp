@@ -1661,6 +1661,27 @@ __SPRT_C_FUNC int __SPRT_ID(pipe2)(int fds[2], int flags) {
 #endif
 }
 
+__SPRT_C_FUNC int __SPRT_ID(utime)(const char *path, const struct __SPRT_UTIMBUF_NAME *buf) {
+	return internal::performWithNativePath(path, [&](const char *target) {
+#if SPRT_WINDOWS
+		struct __utimbuf64 nativeBuf;
+		if (buf) {
+			nativeBuf.actime = buf->actime;
+			nativeBuf.modtime = buf->modtime;
+		}
+		return ::_utime64(target, buf ? &nativeBuf : nullptr);
+#else
+		struct utimbuf nativeBuf;
+		if (buf) {
+			nativeBuf.actime = buf->actime;
+			nativeBuf.modtime = buf->modtime;
+		}
+		// call with native path
+		return ::utime(target, buf ? &nativeBuf : nullptr);
+#endif
+	}, -1);
+}
+
 } // namespace sprt
 
 #if __clang__

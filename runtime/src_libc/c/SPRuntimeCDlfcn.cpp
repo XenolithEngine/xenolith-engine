@@ -32,7 +32,7 @@ THE SOFTWARE.
 
 #else
 
-#include "platform/windows/dlfcn.cc"
+#include "../platform/windows/dlfcn.cc"
 
 #endif
 

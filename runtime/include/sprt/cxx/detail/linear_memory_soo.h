@@ -115,7 +115,7 @@ protected:
 	using base::_ptr;
 	using base::_used;
 
-	[[no_unique_address]]
+	SPRT_NO_UNIQUE_ADDRESS
 	allocator _allocator;
 };
 
@@ -133,7 +133,7 @@ public:
 
 	static constexpr auto getStorageSize() {
 		struct layout_t {
-			[[no_unique_address]]
+			SPRT_NO_UNIQUE_ADDRESS
 			Allocator alloc;
 
 			large_mem large;
@@ -351,7 +351,7 @@ protected:
 		}
 	}
 
-	[[no_unique_address]]
+	SPRT_NO_UNIQUE_ADDRESS
 	allocator _allocator;
 
 private:
