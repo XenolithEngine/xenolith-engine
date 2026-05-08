@@ -1881,12 +1881,19 @@ auto StringViewBase<_CharType>::readUntilString(const Self &str) -> Self {
 template <typename _CharType>
 template <typename Separator, typename Callback>
 auto StringViewBase<_CharType>::split(const Callback &cb) const -> void {
+	static_assert(is_invocable_v<Callback, StringView>);
 	Self str(*this);
 	while (!str.empty()) {
 		str.skipChars<Separator>();
 		auto tmp = str.readUntil<Separator>();
 		if (!tmp.empty()) {
-			cb(tmp);
+			if constexpr (is_same_v<invoke_result_t<Callback, StringView>, bool>) {
+				if (!cb(tmp)) {
+					return;
+				}
+			} else {
+				cb(tmp);
+			}
 		}
 	}
 }

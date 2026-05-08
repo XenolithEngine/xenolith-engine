@@ -23,11 +23,13 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_INTTYPES_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_INTTYPES_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <inttypes.h>
 
 #else
+
+#include <stdint.h>
 
 #endif
 

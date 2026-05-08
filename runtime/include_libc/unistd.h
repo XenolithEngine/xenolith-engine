@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_UNISTD_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_UNISTD_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <unistd.h>
 
@@ -587,96 +587,201 @@ typedef __SPRT_ID(gid_t) gid_t;
 typedef __SPRT_ID(pid_t) pid_t;
 typedef __SPRT_ID(intptr_t) intptr_t;
 
-SPRT_FORCEINLINE int access(const char *path, int __type) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int access(const char *path, int __type) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_access(path, __type);
 }
+#endif
 
-SPRT_FORCEINLINE int eaccess(const char *path, int __type) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int eaccess(const char *path, int __type) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_eaccess(path, __type);
 }
+#endif
 
-SPRT_FORCEINLINE off_t lseek(int __fd, off_t __offset, int __whence) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+off_t lseek(int __fd, off_t __offset, int __whence) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_lseek(__fd, __offset, __whence);
 }
+#endif
 
-SPRT_FORCEINLINE int close(int __fd) { return __sprt_close(__fd); }
+SPRT_UMBRELLA_FUNC
+int close(int __fd) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_close(__fd);
+}
+#endif
 
-SPRT_FORCEINLINE ssize_t read(int __fd, void *__buf, size_t __nbytes) {
+SPRT_UMBRELLA_FUNC
+ssize_t read(int __fd, void *__buf, size_t __nbytes) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_read(__fd, __buf, __nbytes);
 }
+#endif
 
-SPRT_FORCEINLINE ssize_t write(int __fd, const void *__buf, size_t __n) {
+SPRT_UMBRELLA_FUNC
+ssize_t write(int __fd, const void *__buf, size_t __n) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_write(__fd, __buf, __n);
 }
+#endif
 
-SPRT_FORCEINLINE ssize_t pread(int __fd, void *__buf, size_t __count, off_t __offset) {
+SPRT_UMBRELLA_FUNC
+ssize_t pread(int __fd, void *__buf, size_t __count, off_t __offset) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_pread(__fd, __buf, __count, __offset);
 }
+#endif
 
-SPRT_FORCEINLINE ssize_t pwrite(int __fd, const void *__buf, size_t __count, off_t __offset) {
+SPRT_UMBRELLA_FUNC
+ssize_t pwrite(int __fd, const void *__buf, size_t __count, off_t __offset) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_pwrite(__fd, __buf, __count, __offset);
 }
+#endif
 
-SPRT_FORCEINLINE unsigned int sleep(unsigned int __seconds) { return __sprt_sleep(__seconds); }
+SPRT_UMBRELLA_FUNC
+unsigned int sleep(unsigned int __seconds) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sleep(__seconds);
+}
+#endif
 
-SPRT_FORCEINLINE int usleep(time_t __useconds) { return __sprt_usleep(__useconds); }
+SPRT_UMBRELLA_FUNC
+int usleep(time_t __useconds) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_usleep(__useconds);
+}
+#endif
 
 #if __SPRT_CONFIG_HAVE_UNISTD_CHOWN || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int chown(const char *__file, uid_t __owner, gid_t __group) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int chown(const char *__file, uid_t __owner, gid_t __group) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_chown(__file, __owner, __group);
 }
 #endif
+#endif
 
-SPRT_FORCEINLINE int fchown(int __fd, uid_t __owner, gid_t __group) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int fchown(int __fd, uid_t __owner, gid_t __group) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_fchown(__fd, __owner, __group);
 }
+#endif
 
-SPRT_FORCEINLINE int chdir(const char *path) __SPRT_NOEXCEPT { return __sprt_chdir(path); }
+SPRT_UMBRELLA_FUNC
+int chdir(const char *path) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_chdir(path);
+}
+#endif
 
-SPRT_FORCEINLINE int fchdir(int __fd) __SPRT_NOEXCEPT { return __sprt_fchdir(__fd); }
+SPRT_UMBRELLA_FUNC
+int fchdir(int __fd) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fchdir(__fd);
+}
+#endif
 
-SPRT_FORCEINLINE char *getcwd(char *__buf, size_t __size) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+char *getcwd(char *__buf, size_t __size) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_getcwd(__buf, __size);
 }
+#endif
 
-#if __SPRT_CONFIG_HAVE_UNISTD_DUP || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int dup(int __fd) __SPRT_NOEXCEPT { return __sprt_dup(__fd); }
+SPRT_UMBRELLA_FUNC
+int dup(int __fd) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_dup(__fd);
+}
+#endif
 
-SPRT_FORCEINLINE int dup2(int __fd, int __fd2) __SPRT_NOEXCEPT { return __sprt_dup2(__fd, __fd2); }
+SPRT_UMBRELLA_FUNC
+int dup2(int __fd, int __fd2) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_dup2(__fd, __fd2);
+}
 #endif
 
 #if __SPRT_CONFIG_HAVE_UNISTD_DUP3 || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int dup3(int __fd, int __fd2, int __flags) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int dup3(int __fd, int __fd2, int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_dup3(__fd, __fd2, __flags);
 }
+#endif
 #endif
 
 #if __SPRT_CONFIG_HAVE_UNISTD_EXEC || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 
-SPRT_FORCEINLINE int execve(const char *__path, char *const __argv[],
-		char *const __envp[]) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int execve(const char *__path, char *const __argv[], char *const __envp[]) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_execve(__path, __argv, __envp);
 }
+#endif
 
-SPRT_FORCEINLINE int fexecve(int __fd, char *const __argv[], char *const __envp[]) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int fexecve(int __fd, char *const __argv[], char *const __envp[]) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_fexecve(__fd, __argv, __envp);
 }
+#endif
 
-SPRT_FORCEINLINE int execv(const char *__path, char *const __argv[]) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int execv(const char *__path, char *const __argv[]) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_execv(__path, __argv);
 }
+#endif
 
-SPRT_FORCEINLINE int execvp(const char *__file, char *const __argv[]) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int execvp(const char *__file, char *const __argv[]) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_execvp(__file, __argv);
 }
+#endif
 
-SPRT_FORCEINLINE int execvpe(const char *__file, char *const __argv[],
-		char *const __envp[]) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int execvpe(const char *__file, char *const __argv[], char *const __envp[]) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_execvpe(__file, __argv, __envp);
 }
+#endif
 
 
-SPRT_FORCEINLINE int execle(const char *__path, const char *__arg, ...) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int execle(const char *__path, const char *__arg, ...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	int argc;
 	__sprt_va_list ap;
 	__sprt_va_start(ap, __arg);
@@ -688,15 +793,19 @@ SPRT_FORCEINLINE int execle(const char *__path, const char *__arg, ...) __SPRT_N
 	char **envp;
 	__sprt_va_start(ap, __arg);
 	argv[0] = (char *)__arg;
-	for (i = 1; i <= argc; i++) { argv[i] = __sprt_va_arg(ap, char *); }
+	for (i = 1; i <= argc; i++) { argv[i] = __sprt_va_arg(ap, char *); } //
 	envp = __sprt_va_arg(ap, char **);
 	__sprt_va_end(ap);
 	int ret = __sprt_execve(__path, argv, envp);
 	__sprt_freea(argv);
 	return ret;
 }
+#endif
 
-SPRT_FORCEINLINE int execl(const char *__path, const char *__arg, ...) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int execl(const char *__path, const char *__arg, ...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	int argc;
 	__sprt_va_list ap;
 	__sprt_va_start(ap, __arg);
@@ -707,15 +816,19 @@ SPRT_FORCEINLINE int execl(const char *__path, const char *__arg, ...) __SPRT_NO
 	char **argv = __sprt_typed_malloca(char *, argc + 1);
 	__sprt_va_start(ap, __arg);
 	argv[0] = (char *)__arg;
-	for (i = 1; i < argc; i++) { argv[i] = __sprt_va_arg(ap, char *); }
+	for (i = 1; i < argc; i++) { argv[i] = __sprt_va_arg(ap, char *); } //
 	argv[i] = nullptr;
 	__sprt_va_end(ap);
 	int ret = __sprt_execv(__path, argv);
 	__sprt_freea(argv);
 	return ret;
 }
+#endif
 
-SPRT_FORCEINLINE int execlp(const char *__file, const char *__arg, ...) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int execlp(const char *__file, const char *__arg, ...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	int argc;
 	__sprt_va_list ap;
 	__sprt_va_start(ap, __arg);
@@ -726,195 +839,528 @@ SPRT_FORCEINLINE int execlp(const char *__file, const char *__arg, ...) __SPRT_N
 	char **argv = __sprt_typed_malloca(char *, argc + 1);
 	__sprt_va_start(ap, __arg);
 	argv[0] = (char *)__arg;
-	for (i = 1; i < argc; i++) { argv[i] = __sprt_va_arg(ap, char *); }
+	for (i = 1; i < argc; i++) { argv[i] = __sprt_va_arg(ap, char *); } //
 	argv[i] = nullptr;
 	__sprt_va_end(ap);
 	int ret = __sprt_execvp(__file, argv);
 	__sprt_freea(argv);
 	return ret;
 }
+#endif
 
 #endif
 
 #if __SPRT_CONFIG_HAVE_UNISTD_NICE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int nice(int __inc) __SPRT_NOEXCEPT { return __sprt_nice(__inc); }
+SPRT_UMBRELLA_FUNC
+int nice(int __inc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_nice(__inc);
+}
+#endif
 #endif
 
-SPRT_FORCEINLINE long int pathconf(const char *__path, int __name) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+long int pathconf(const char *__path, int __name) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_pathconf(__path, __name);
 }
-
-SPRT_FORCEINLINE long int fpathconf(int __fd, int __name) __SPRT_NOEXCEPT {
-	return __sprt_fpathconf(__fd, __name);
-}
-
-SPRT_FORCEINLINE long int sysconf(int __name) __SPRT_NOEXCEPT { return __sprt_sysconf(__name); }
-
-SPRT_FORCEINLINE pid_t getpid(void) __SPRT_NOEXCEPT { return __sprt_getpid(); }
-
-#if __SPRT_CONFIG_HAVE_UNISTD_GETPPID || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE pid_t getppid(void) __SPRT_NOEXCEPT { return __sprt_getppid(); }
 #endif
 
-SPRT_FORCEINLINE uid_t getuid(void) __SPRT_NOEXCEPT { return __sprt_getuid(); }
+SPRT_UMBRELLA_FUNC
+long int fpathconf(int __fd, int __name) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fpathconf(__fd, __name);
+}
+#endif
 
-SPRT_FORCEINLINE uid_t geteuid(void) __SPRT_NOEXCEPT { return __sprt_geteuid(); }
+SPRT_UMBRELLA_FUNC
+long int sysconf(int __name) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sysconf(__name);
+}
+#endif
 
-SPRT_FORCEINLINE gid_t getgid(void) __SPRT_NOEXCEPT { return __sprt_getgid(); }
+SPRT_UMBRELLA_FUNC
+pid_t getpid(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_getpid();
+}
+#endif
 
-SPRT_FORCEINLINE gid_t getegid(void) __SPRT_NOEXCEPT { return __sprt_getegid(); }
+#if __SPRT_CONFIG_HAVE_UNISTD_GETPPID || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+SPRT_UMBRELLA_FUNC
+pid_t getppid(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_getppid();
+}
+#endif
+#endif
 
-SPRT_FORCEINLINE int getresuid(uid_t *__ruid, uid_t *__euid, uid_t *__suid) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+uid_t getuid(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_getuid();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+uid_t geteuid(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_geteuid();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+gid_t getgid(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_getgid();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+gid_t getegid(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_getegid();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int getresuid(uid_t *__ruid, uid_t *__euid, uid_t *__suid) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_getresuid(__ruid, __euid, __suid);
 }
-SPRT_FORCEINLINE int getresgid(gid_t *__rgid, gid_t *__egid, gid_t *__sgid) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int getresgid(gid_t *__rgid, gid_t *__egid, gid_t *__sgid) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_getresgid(__rgid, __egid, __sgid);
 }
+#endif
 
-SPRT_FORCEINLINE int getgroups(int __size, gid_t __list[]) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int getgroups(int __size, gid_t __list[]) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_getgroups(__size, __list);
 }
+#endif
 
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int setuid(uid_t __uid) __SPRT_NOEXCEPT { return __sprt_setuid(__uid); }
-SPRT_FORCEINLINE int setreuid(uid_t __ruid, uid_t __euid) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int setuid(uid_t __uid) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_setuid(__uid);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int setreuid(uid_t __ruid, uid_t __euid) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_setreuid(__ruid, __euid);
 }
-SPRT_FORCEINLINE int seteuid(uid_t __uid) __SPRT_NOEXCEPT { return __sprt_seteuid(__uid); }
-SPRT_FORCEINLINE int setgid(gid_t __gid) __SPRT_NOEXCEPT { return __sprt_setgid(__gid); }
-SPRT_FORCEINLINE int setregid(gid_t __rgid, gid_t __egid) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int seteuid(uid_t __uid) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_seteuid(__uid);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int setgid(gid_t __gid) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_setgid(__gid);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int setregid(gid_t __rgid, gid_t __egid) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_setregid(__rgid, __egid);
 }
-SPRT_FORCEINLINE int setegid(gid_t __gid) __SPRT_NOEXCEPT { return __sprt_setegid(__gid); }
-SPRT_FORCEINLINE int setresuid(uid_t __ruid, uid_t __euid, uid_t __suid) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int setegid(gid_t __gid) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_setegid(__gid);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int setresuid(uid_t __ruid, uid_t __euid, uid_t __suid) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_setresuid(__ruid, __euid, __suid);
 }
-SPRT_FORCEINLINE int setresgid(gid_t __rgid, gid_t __egid, gid_t __sgid) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int setresgid(gid_t __rgid, gid_t __egid, gid_t __sgid) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_setresgid(__rgid, __egid, __sgid);
 }
 #endif
-
-#if __SPRT_CONFIG_HAVE_UNISTD_FORK || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE pid_t fork(void) __SPRT_NOEXCEPT { return __sprt_fork(); }
-SPRT_FORCEINLINE pid_t vfork(void) __SPRT_NOEXCEPT { return __sprt_vfork(); }
 #endif
 
-SPRT_FORCEINLINE char *ttyname(int __fd) __SPRT_NOEXCEPT { return __sprt_ttyname(__fd); }
-SPRT_FORCEINLINE int ttyname_r(int __fd, char *__buf, size_t __buflen) __SPRT_NOEXCEPT {
+#if __SPRT_CONFIG_HAVE_UNISTD_FORK || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+SPRT_UMBRELLA_FUNC
+pid_t fork(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fork();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+pid_t vfork(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_vfork();
+}
+#endif
+#endif
+
+SPRT_UMBRELLA_FUNC
+char *ttyname(int __fd) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ttyname(__fd);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int ttyname_r(int __fd, char *__buf, size_t __buflen) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_ttyname_r(__fd, __buf, __buflen);
 }
-SPRT_FORCEINLINE int isatty(int __fd) __SPRT_NOEXCEPT { return __sprt_isatty(__fd); }
+#endif
 
-SPRT_FORCEINLINE int link(const char *__from, const char *__to) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int isatty(int __fd) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isatty(__fd);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int link(const char *__from, const char *__to) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_link(__from, __to);
 }
-SPRT_FORCEINLINE int symlink(const char *__from, const char *__to) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int symlink(const char *__from, const char *__to) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_symlink(__from, __to);
 }
-SPRT_FORCEINLINE ssize_t readlink(const char *__SPRT_RESTRICT __path, char *__SPRT_RESTRICT __buf,
-		size_t __len) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC
+ssize_t readlink(const char *__SPRT_RESTRICT __path, char *__SPRT_RESTRICT __buf,
+		size_t __len) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_readlink(__path, __buf, __len);
 }
-SPRT_FORCEINLINE int unlink(const char *__name) __SPRT_NOEXCEPT { return __sprt_unlink(__name); }
-SPRT_FORCEINLINE int rmdir(const char *__path) __SPRT_NOEXCEPT { return __sprt_rmdir(__path); }
-SPRT_FORCEINLINE char *getlogin(void) { return __sprt_getlogin(); }
-SPRT_FORCEINLINE int getlogin_r(char *__name, size_t __name_len) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int unlink(const char *__name) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_unlink(__name);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int rmdir(const char *__path) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_rmdir(__path);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+char *getlogin(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_getlogin();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int getlogin_r(char *__name, size_t __name_len) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_getlogin_r(__name, __name_len);
 }
+#endif
 
 #if __SPRT_CONFIG_HAVE_UNISTD_SETLOGIN || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int setlogin(const char *__name) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int setlogin(const char *__name) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_setlogin(__name);
 }
 #endif
+#endif
 
-SPRT_FORCEINLINE int gethostname(char *__name, size_t __len) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int gethostname(char *__name, size_t __len) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_gethostname(__name, __len);
 }
+#endif
 
 #if __SPRT_CONFIG_HAVE_UNISTD_SETHOSTNAME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int sethostname(const char *__name, size_t __len) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int sethostname(const char *__name, size_t __len) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_sethostname(__name, __len);
 }
 #endif
+#endif
 
 #if __SPRT_CONFIG_HAVE_UNISTD_DOMAINNAME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int getdomainname(char *__name, size_t __len) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int getdomainname(char *__name, size_t __len) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_getdomainname(__name, __len);
 }
-SPRT_FORCEINLINE int setdomainname(const char *__name, size_t __len) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int setdomainname(const char *__name, size_t __len) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_setdomainname(__name, __len);
 }
 #endif
-
-SPRT_FORCEINLINE int fsync(int __fd) { return __sprt_fsync(__fd); }
-SPRT_FORCEINLINE void sync(void) __SPRT_NOEXCEPT { return __sprt_sync(); }
-SPRT_FORCEINLINE int getpagesize(void) __SPRT_NOEXCEPT { return __sprt_getpagesize(); }
-SPRT_FORCEINLINE int getdtablesize(void) __SPRT_NOEXCEPT { return __sprt_getdtablesize(); }
-SPRT_FORCEINLINE int truncate(const char *__file, off_t length) __SPRT_NOEXCEPT {
-	return __sprt_truncate(__file, length);
-}
-SPRT_FORCEINLINE int ftruncate(int __fd, off_t length) __SPRT_NOEXCEPT {
-	return __sprt_ftruncate(__fd, length);
-}
-
-#if __SPRT_CONFIG_HAVE_UNISTD_BRK || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int brk(void *__addr) __SPRT_NOEXCEPT { return __sprt_brk(__addr); }
-SPRT_FORCEINLINE void *sbrk(intptr_t __delta) __SPRT_NOEXCEPT { return __sprt_sbrk(__delta); }
 #endif
 
-SPRT_FORCEINLINE int lockf(int __fd, int __cmd, off_t len) {
+SPRT_UMBRELLA_FUNC
+int fsync(int __fd) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fsync(__fd);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void sync(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sync();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int getpagesize(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_getpagesize();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int getdtablesize(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_getdtablesize();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int truncate(const char *__file, off_t length) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_truncate(__file, length);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int ftruncate(int __fd, off_t length) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ftruncate(__fd, length);
+}
+#endif
+
+#if __SPRT_CONFIG_HAVE_UNISTD_BRK || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+SPRT_UMBRELLA_FUNC
+int brk(void *__addr) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_brk(__addr);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void *sbrk(intptr_t __delta) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sbrk(__delta);
+}
+#endif
+#endif
+
+SPRT_UMBRELLA_FUNC
+int lockf(int __fd, int __cmd, off_t len) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_lockf(__fd, __cmd, len);
 }
+#endif
 
 #if __SPRT_CONFIG_HAVE_UNISTD_COPY_FILE_RANGE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE ssize_t copy_file_range(int __infd, off_t *__pinoff, int __outfd, off_t *__poutoff,
-		size_t __length, unsigned int __flags) {
+SPRT_UMBRELLA_FUNC
+ssize_t copy_file_range(int __infd, off_t *__pinoff, int __outfd, off_t *__poutoff, size_t __length,
+		unsigned int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_copy_file_range(__infd, __pinoff, __outfd, __poutoff, __length, __flags);
 }
 #endif
+#endif
 
-SPRT_FORCEINLINE pid_t gettid(void) { return __sprt_gettid(); }
-SPRT_FORCEINLINE int fdatasync(int __fildes) { return __sprt_fdatasync(__fildes); }
+SPRT_UMBRELLA_FUNC
+pid_t gettid(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_gettid();
+}
+#endif
 
-SPRT_FORCEINLINE void swab(const void *__SPRT_RESTRICT __from, void *__SPRT_RESTRICT __to,
-		ssize_t __n) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int fdatasync(int __fildes) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fdatasync(__fildes);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void swab(const void *__SPRT_RESTRICT __from, void *__SPRT_RESTRICT __to,
+		ssize_t __n) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_swab(__from, __to, __n);
 }
-SPRT_FORCEINLINE int getentropy(void *__buffer, size_t __length) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int getentropy(void *__buffer, size_t __length) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_getentropy(__buffer, __length);
 }
+#endif
 
-SPRT_FORCEINLINE int symlinkat(const char *__old_path, int __new_dir_fd, const char *__new_path) {
+SPRT_UMBRELLA_FUNC
+int symlinkat(const char *__old_path, int __new_dir_fd, const char *__new_path) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_symlinkat(__old_path, __new_dir_fd, __new_path);
 }
+#endif
 
-SPRT_FORCEINLINE ssize_t readlinkat(int __dir_fd, const char *__path, char *__buf,
-		size_t __buf_size) {
+SPRT_UMBRELLA_FUNC
+ssize_t readlinkat(int __dir_fd, const char *__path, char *__buf,
+		size_t __buf_size) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_readlinkat(__dir_fd, __path, __buf, __buf_size);
 }
+#endif
 
-SPRT_FORCEINLINE int fchownat(int __dir_fd, const char *__path, uid_t __owner, gid_t __group,
-		int __flags) {
+SPRT_UMBRELLA_FUNC
+int fchownat(int __dir_fd, const char *__path, uid_t __owner, gid_t __group,
+		int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_fchownat(__dir_fd, __path, __owner, __group, __flags);
 }
+#endif
 
-SPRT_FORCEINLINE int faccessat(int __dirfd, const char *__path, int __mode, int __flags) {
+SPRT_UMBRELLA_FUNC
+int faccessat(int __dirfd, const char *__path, int __mode, int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_faccessat(__dirfd, __path, __mode, __flags);
 }
+#endif
 
-SPRT_FORCEINLINE int linkat(int __old_dir_fd, const char *__old_path, int __new_dir_fd,
-		const char *__new_path, int __flags) {
+SPRT_UMBRELLA_FUNC
+int linkat(int __old_dir_fd, const char *__old_path, int __new_dir_fd, const char *__new_path,
+		int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_linkat(__old_dir_fd, __old_path, __new_dir_fd, __new_path, __flags);
 }
-SPRT_FORCEINLINE int unlinkat(int __dirfd, const char *__path, int __flags) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int unlinkat(int __dirfd, const char *__path, int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_unlinkat(__dirfd, __path, __flags);
 }
+#endif
 
-SPRT_FORCEINLINE long gethostid(void) { return __sprt_gethostid(); }
+SPRT_UMBRELLA_FUNC
+long gethostid(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_gethostid();
+}
+#endif
 
-SPRT_FORCEINLINE int pipe(int fds[2]) { return __sprt_pipe(fds); }
-SPRT_FORCEINLINE int pipe2(int fds[2], int flags) { return __sprt_pipe2(fds, flags); }
+SPRT_UMBRELLA_FUNC
+int pipe(int fds[2]) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_pipe(fds);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int pipe2(int fds[2], int flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_pipe2(fds, flags);
+}
+#endif
 
 __SPRT_END_DECL
 

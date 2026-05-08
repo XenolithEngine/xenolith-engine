@@ -1,0 +1,437 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#include "../../include/__impl_libc.h"
+#include "unistd.h"
+#include "sys/ioctl.h"
+#include "specific.h"
+
+#include <sprt/c/__sprt_fcntl.h>
+#include <sprt/c/sys/__sprt_ioctl.h>
+#include <sprt/c/bits/__sprt_ssize_t.h>
+#include <sprt/wrappers/windows/basic_api.h>
+#include <sprt/wrappers/windows/file_api.h>
+#include <sprt/wrappers/windows/process_api.h>
+
+namespace sprt {
+
+static ssize_t __file_read(struct __fd_slot *fp, void *buf, size_t nbytes, off64_t *offset,
+		uint32_t flags) {
+	if (!fp->handle) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
+	LARGE_INTEGER orig_pos;
+	if (offset) {
+		if (!SetFilePointerEx(fp->handle, LARGE_INTEGER{{0, 0}}, &orig_pos, FILE_CURRENT)) {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return -1;
+		}
+
+		// Seek to target
+		LARGE_INTEGER target = {.QuadPart = *offset};
+		if (!SetFilePointerEx(fp->handle, target, NULL, FILE_BEGIN)) {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return -1;
+		}
+	}
+
+	DWORD read;
+	if (!ReadFile(fp->handle, buf, (DWORD)nbytes, &read, NULL)) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+
+	if (offset) {
+		SetFilePointerEx(fp->handle, orig_pos, NULL, FILE_BEGIN);
+	}
+
+	return (ssize_t)read;
+}
+
+static ssize_t __file_write(struct __fd_slot *fp, const void *buf, size_t nbytes, off64_t *offset,
+		uint32_t flags) {
+	if (!fp->handle) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
+	LARGE_INTEGER orig_pos;
+	if (offset) {
+		if (!SetFilePointerEx(fp->handle, LARGE_INTEGER{{0, 0}}, &orig_pos, FILE_CURRENT)) {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return -1;
+		}
+
+		// Seek to target
+		LARGE_INTEGER target = {.QuadPart = *offset};
+		if (!SetFilePointerEx(fp->handle, target, NULL, FILE_BEGIN)) {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return -1;
+		}
+	}
+
+	DWORD written;
+	if (!WriteFile(fp->handle, buf, (DWORD)nbytes, &written, NULL)) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+
+	if (offset) {
+		SetFilePointerEx(fp->handle, orig_pos, NULL, FILE_BEGIN);
+	}
+
+	return (ssize_t)written;
+}
+
+static int __file_close(__fd_slot *fp) {
+	if (!fp->handle) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
+	if (CloseHandle(fp->handle)) {
+		return 0;
+	}
+
+	__sprt_errno = platform::lastErrorToErrno(GetLastError());
+	return -1;
+}
+
+static int __file_dup(__fd_slot *fp, int *target, uint32_t flags) {
+	if (!fp->handle) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
+	if (target) {
+		if (*target < 0 || *target >= MAX_FDS) {
+			__sprt_errno = EBADF;
+			return -1;
+		}
+	}
+
+	HANDLE newHandle = nullptr;
+	BOOL result = DuplicateHandle(GetCurrentProcess(), fp->handle, GetCurrentProcess(), &newHandle,
+			0L, TRUE, DUPLICATE_SAME_ACCESS);
+	if (!result) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+
+	if (flags & __SPRT_FD_CLOEXEC) {
+		DWORD flagsMask = HANDLE_FLAG_INHERIT;
+		DWORD flagsToSet = 0;
+
+		if (!SetHandleInformation(newHandle, flagsMask, flagsToSet)) {
+			CloseHandle(newHandle);
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return -1;
+		}
+	}
+
+	auto libc = __libc::get();
+	if (!target) {
+		auto fd = libc->create_fd(newHandle, &libc->fdFileOps, fp->flags, fp->mode);
+		if (fd < 0) {
+			CloseHandle(newHandle);
+			return -1;
+		}
+
+		return fd;
+	} else {
+		unique_lock lock(libc->fdMutex);
+		libc->fdDispatch->bits.set(*target);
+		auto fdSlot = libc->get_fd_slot(*target);
+		if (fdSlot->handle) {
+			if (fdSlot->ops->fo_close) {
+				CloseHandle(newHandle);
+				__sprt_errno = EBADF;
+				return -1;
+			}
+			fdSlot->ops->fo_close(fdSlot);
+		}
+
+		*fdSlot = __fd_slot{newHandle, &libc->fdFileOps, fp->flags, fp->mode};
+		return *target;
+	}
+}
+
+static HANDLE __file_reopen(HANDLE h, int __flags, __SPRT_ID(mode_t) __mode) {
+	if ((__flags & __SPRT_O_TMPFILE) || (__flags & __SPRT_O_NONBLOCK)) {
+		__sprt_errno = ENOSYS;
+		return nullptr;
+	}
+
+	if ((__flags & __SPRT_O_PATH) || (__flags & __SPRT_O_DIRECTORY)) {
+		__sprt_errno = EINVAL;
+		return nullptr;
+	}
+
+	platform::OpenInfo info(__flags, __mode);
+
+	auto newH = ReOpenFile(h, info.dwDesiredAccess, info.dwShareMode, info.dwFlagsAndAttributes);
+	if (!newH || newH == INVALID_HANDLE_VALUE) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return nullptr;
+	}
+
+	// Handle O_TRUNC explicitly (avoids FILE_ATTRIBUTE_READONLY issues)
+	if ((__flags & __SPRT_O_SYNC) != 0 && info.dwCreationDisposition == OPEN_ALWAYS
+			&& GetLastError() == ERROR_ALREADY_EXISTS) {
+		SetFilePointer(h, 0, NULL, FILE_BEGIN);
+		SetEndOfFile(h);
+	}
+
+	CloseHandle(h);
+
+	return newH;
+}
+
+static int __file_ioctl(__fd_slot *fp, int fd, int cmd, intptr_t arg, __fd_ctl_mode mode) {
+	if (!fp->handle) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
+	if (mode == __fd_ctl_mode::fnctl) {
+		switch (cmd) {
+		case __SPRT_F_DUPFD: return __file_dup(fp, nullptr, 0); break;
+		case __SPRT_F_DUPFD_CLOEXEC: return __file_dup(fp, nullptr, __SPRT_FD_CLOEXEC); break;
+		case __SPRT_F_GETFD: {
+			DWORD flags = 0;
+			if (GetHandleInformation(fp->handle, &flags)) {
+				int ret = 0;
+				if (flags & HANDLE_FLAG_INHERIT) {
+					ret |= __SPRT_FD_CLOEXEC;
+				}
+				return ret;
+			} else {
+				__sprt_errno = platform::lastErrorToErrno(GetLastError());
+				return -1;
+			}
+			break;
+		}
+		case __SPRT_F_SETFD: {
+			DWORD flagsMask = HANDLE_FLAG_INHERIT;
+			DWORD flagsToSet = 0;
+			if (arg & __SPRT_FD_CLOEXEC) {
+				flagsToSet |= HANDLE_FLAG_INHERIT;
+				arg &= ~(unsigned long)__SPRT_FD_CLOEXEC;
+			}
+			if (arg != 0) {
+				// unknown flags, fail with EINVAL
+				__sprt_errno = EINVAL;
+				return -1;
+			}
+			if (SetHandleInformation(fp->handle, flagsMask, flagsToSet)) {
+				return 0;
+			} else {
+				__sprt_errno = platform::lastErrorToErrno(GetLastError());
+				return -1;
+			}
+			break;
+		}
+		case __SPRT_F_GETFL: {
+			return int(fp->flags);
+		}
+		case __SPRT_F_SETFL: {
+			auto newHandle = __file_reopen(fp->handle, arg, fp->mode);
+			if (!newHandle) {
+				return -1;
+			}
+
+			fp->handle = newHandle;
+			fp->flags = arg;
+			return 0;
+		}
+		}
+	} else if (mode == __fd_ctl_mode::ioctl) {
+		switch (cmd) {
+		case __SPRT_TIOCGWINSZ: {
+			HANDLE hConsole = nullptr;
+			CONSOLE_SCREEN_BUFFER_INFO csbi;
+
+			switch (fd) {
+			case 0: hConsole = GetStdHandle(STD_INPUT_HANDLE); break;
+			case 1: hConsole = GetStdHandle(STD_OUTPUT_HANDLE); break;
+			case 2: hConsole = GetStdHandle(STD_ERROR_HANDLE); break;
+			default: __sprt_errno = EINVAL; return -1;
+			}
+			// 1. Get handle to current console
+			if (!hConsole || hConsole == INVALID_HANDLE_VALUE) {
+				__sprt_errno = EINVAL;
+				return -1;
+			}
+
+			// 2. Get console screen buffer information
+			if (!GetConsoleScreenBufferInfo(hConsole, &csbi)) {
+				return -1;
+			}
+
+			// 3. Fill in the winsize structure
+			auto ws = reinterpret_cast<struct winsize *>(arg);
+			ws->ws_row = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+			ws->ws_col = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+			return 0;
+			break;
+		}
+
+		case __SPRT_TIOCSWINSZ: break;
+		}
+	}
+	__sprt_errno = EINVAL;
+	return -1;
+}
+
+static ssize_t __file_readv(__fd_slot *fp, const struct iovec *iov, int iovcnt) {
+	if (!fp->handle) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
+	if (iov == nullptr || iovcnt <= 0) {
+		if (iov == nullptr && iovcnt == 0) {
+			return 0;
+		}
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+
+	// Calculate total bytes across all segments
+	DWORD totalBytes = 0;
+	for (int i = 0; i < iovcnt; i++) {
+		if (iov[i].iov_len > 0) {
+			totalBytes += (DWORD)iov[i].iov_len;
+		}
+	}
+
+	// Allocate segment array for ReadFileScatter
+	auto segmentArray = __sprt_typed_malloca(FILE_SEGMENT_ELEMENT, (size_t)iovcnt);
+
+	// Build the scatter array - each element points to one iovec buffer
+	for (int i = 0; i < iovcnt; i++) {
+		if (iov[i].iov_len > 0) {
+			segmentArray[i].Buffer = iov[i].iov_base;
+		} else {
+			segmentArray[i].Buffer = nullptr;
+		}
+	}
+
+	DWORD readBytes = 0;
+	BOOL result = ReadFileScatter(fp->handle, segmentArray, totalBytes, &readBytes, nullptr);
+
+	__sprt_freea(segmentArray);
+
+	if (!result) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+
+	return (ssize_t)readBytes;
+}
+
+static ssize_t __file_writev(__fd_slot *fp, const struct iovec *iov, int iovcnt) {
+	if (!fp->handle) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
+	if (iov == nullptr || iovcnt <= 0) {
+		if (iov == nullptr && iovcnt == 0) {
+			return 0;
+		}
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+
+	// Calculate total bytes across all segments
+	DWORD totalBytes = 0;
+	for (int i = 0; i < iovcnt; i++) {
+		if (iov[i].iov_len > 0) {
+			totalBytes += (DWORD)iov[i].iov_len;
+		}
+	}
+
+	// Allocate segment array for WriteFileGather
+	auto segmentArray = __sprt_typed_malloca(FILE_SEGMENT_ELEMENT, (size_t)iovcnt);
+
+	// Build the gather array - each element points to one iovec buffer
+	for (int i = 0; i < iovcnt; i++) {
+		if (iov[i].iov_len > 0) {
+			segmentArray[i].Buffer = const_cast<void *>(iov[i].iov_base);
+		} else {
+			segmentArray[i].Buffer = nullptr;
+		}
+	}
+
+	DWORD writtenBytes = 0;
+	BOOL result = WriteFileGather(fp->handle, segmentArray, totalBytes, &writtenBytes, nullptr);
+
+	__sprt_freea(segmentArray);
+
+	if (!result) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+
+	return (ssize_t)writtenBytes;
+}
+
+static off_t __file_seek(__fd_slot *fp, off_t off, int whence) {
+	if (!fp->handle) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
+	LARGE_INTEGER seek_pos = {.QuadPart = off};
+
+	int winWhence = 0;
+	switch (whence) {
+	case __SPRT_SEEK_SET: winWhence = FILE_BEGIN; break;
+	case __SPRT_SEEK_CUR: winWhence = FILE_CURRENT; break;
+	case __SPRT_SEEK_END: winWhence = FILE_END; break;
+	}
+
+	LARGE_INTEGER new_pos = {.QuadPart = 0};
+	if (!SetFilePointerEx(fp->handle, seek_pos, &new_pos, winWhence)) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+
+	return new_pos.QuadPart;
+}
+
+void __libc::load_file_fd_ops(__fd_ops *ops) {
+	ops->mask = __fd_ops_mask::opendir;
+	ops->fo_read = &__file_read;
+	ops->fo_write = &__file_write;
+	ops->fo_close = &__file_close;
+	ops->fo_dup = &__file_dup;
+	ops->fo_ioctl = &__file_ioctl;
+	ops->fo_readv = &__file_readv;
+	ops->fo_writev = &__file_writev;
+	ops->fo_seek = &__file_seek;
+}
+
+} // namespace sprt

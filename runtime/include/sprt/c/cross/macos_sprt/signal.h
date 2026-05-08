@@ -43,6 +43,8 @@ typedef int __SPRT_ID(sig_atomic_t);
 #define __SPRT_SIG_ATOMIC_MIN __SPRT_INT_MAX
 #define __SPRT_SIG_ATOMIC_MAX (-1-__SPRT_INT_MAX)
 
+#define __SPRT_SIGSET_WORDS 1
+
 typedef struct __SPRT_ID(__sigset_t) {
-	__SPRT_ID(uint32_t) __bits[1];
+	__SPRT_ID(uint32_t) __bits[__SPRT_SIGSET_WORDS];
 } __SPRT_ID(sigset_t);

@@ -27,21 +27,11 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/constants.h>
 
 // clang-format off
-#define OSFHANDLE_RDONLY      0x0000  // open for reading only
-#define OSFHANDLE_WRONLY      0x0001  // open for writing only
-#define OSFHANDLE_RDWR        0x0002  // open for reading and writing
-#define OSFHANDLE_APPEND      0x0008  // writes done at eof
-
-/* File access */
-#define DELETE                           (0x00010000L)
-#define READ_CONTROL                     (0x00020000L)
-#define WRITE_DAC                        (0x00040000L)
-#define WRITE_OWNER                      (0x00080000L)
-#define SYNCHRONIZE                      (0x00100000L)
-#define STANDARD_RIGHTS_REQUIRED         (0x000F0000L)
-#define STANDARD_RIGHTS_READ             (READ_CONTROL)
-#define STANDARD_RIGHTS_WRITE            (READ_CONTROL)
-#define STANDARD_RIGHTS_EXECUTE          (READ_CONTROL)
+#define CREATE_NEW          1
+#define CREATE_ALWAYS       2
+#define OPEN_EXISTING       3
+#define OPEN_ALWAYS         4
+#define TRUNCATE_EXISTING   5
 
 #define FILE_READ_DATA            ( 0x0001 )    // file & pipe
 #define FILE_LIST_DIRECTORY       ( 0x0001 )    // directory
@@ -97,6 +87,23 @@ THE SOFTWARE.
 #define FILE_ATTRIBUTE_RECALL_ON_OPEN       0x00040000
 #define FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS 0x00400000
 
+#define FILE_VOLUME_IS_COMPRESSED           0x00008000  
+#define FILE_SUPPORTS_OBJECT_IDS            0x00010000  
+#define FILE_SUPPORTS_ENCRYPTION            0x00020000  
+#define FILE_NAMED_STREAMS                  0x00040000  
+#define FILE_READ_ONLY_VOLUME               0x00080000  
+#define FILE_SEQUENTIAL_WRITE_ONCE          0x00100000  
+#define FILE_SUPPORTS_TRANSACTIONS          0x00200000  
+#define FILE_SUPPORTS_HARD_LINKS            0x00400000  
+#define FILE_SUPPORTS_EXTENDED_ATTRIBUTES   0x00800000  
+#define FILE_SUPPORTS_OPEN_BY_FILE_ID       0x01000000  
+#define FILE_SUPPORTS_USN_JOURNAL           0x02000000  
+#define FILE_SUPPORTS_INTEGRITY_STREAMS     0x04000000  
+#define FILE_SUPPORTS_BLOCK_REFCOUNTING     0x08000000  
+#define FILE_SUPPORTS_SPARSE_VDL            0x10000000  
+#define FILE_DAX_VOLUME                     0x20000000  
+#define FILE_SUPPORTS_GHOSTING              0x40000000 
+
 /* File flags for CreateFileW (winbase.h) */
 #define FILE_FLAG_WRITE_THROUGH         0x80000000
 #define FILE_FLAG_OVERLAPPED            0x40000000
@@ -111,9 +118,12 @@ THE SOFTWARE.
 #define FILE_FLAG_OPEN_NO_RECALL        0x00100000
 #define FILE_FLAG_FIRST_PIPE_INSTANCE   0x00080000
 
-/* File access modes */
-#define GENERIC_READ                0x80000000
-#define GENERIC_WRITE               0x40000000
+#define MOVEFILE_REPLACE_EXISTING       0x00000001
+#define MOVEFILE_COPY_ALLOWED           0x00000002
+#define MOVEFILE_DELAY_UNTIL_REBOOT     0x00000004
+#define MOVEFILE_WRITE_THROUGH          0x00000008
+#define MOVEFILE_CREATE_HARDLINK        0x00000010
+#define MOVEFILE_FAIL_IF_NOT_TRACKABLE  0x00000020
 
 /* File move flags */
 #define FILE_BEGIN                  0
@@ -123,6 +133,24 @@ THE SOFTWARE.
 /* Final path name flags */
 #define FILE_NAME_NORMALIZED        0x00000000
 #define FILE_NAME_OPENED            0x00000008
+
+#define FILE_MAP_WRITE            SECTION_MAP_WRITE
+#define FILE_MAP_READ             SECTION_MAP_READ
+#define FILE_MAP_ALL_ACCESS       SECTION_ALL_ACCESS
+
+#define FILE_MAP_EXECUTE          SECTION_MAP_EXECUTE_EXPLICIT  // not included in FILE_MAP_ALL_ACCESS
+
+#define FILE_MAP_COPY             0x00000001
+
+#define FILE_MAP_RESERVE          0x80000000
+#define FILE_MAP_TARGETS_INVALID  0x40000000
+#define FILE_MAP_LARGE_PAGES      0x20000000
+
+#define SYMBOLIC_LINK_FLAG_DIRECTORY                    (0x1)
+#define SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE    (0x2)
+
+#define SEC_HUGE_PAGES              0x00020000  
+#define SEC_LARGE_PAGES             0x80000000
 
 // clang-format on
 
@@ -306,6 +334,11 @@ typedef struct _FILE_ID_BOTH_DIR_INFO {
 	WCHAR FileName[1];
 } FILE_ID_BOTH_DIR_INFO, *PFILE_ID_BOTH_DIR_INFO;
 
+typedef union _FILE_SEGMENT_ELEMENT {
+	PVOID Buffer;
+	ULONGLONG Alignment;
+} FILE_SEGMENT_ELEMENT, *PFILE_SEGMENT_ELEMENT;
+
 __SPRT_BEGIN_DECL
 
 /* ---- File I/O (handleapi.h, fileapi.h) ---- */
@@ -409,8 +442,8 @@ WINAPI BOOL SetFileAttributesW(LPCWSTR lpFileName, DWORD dwFileAttributes);
  * @return TRUE on success, FALSE on failure.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfileinformationbyhandle
  */
-WINAPI BOOL SetFileInformationByHandle(HANDLE hFile, FILE_INFORMATION_CLASS FileInformationClass,
-		LPVOID lpFileInformation, DWORD dwSize);
+WINAPI BOOL SetFileInformationByHandle(HANDLE hFile, FILE_INFO_BY_HANDLE_CLASS FileInformationClass,
+		LPVOID lpFileInformation, DWORD dwBufferSize);
 
 /**
  * Creates a new directory.
@@ -500,9 +533,8 @@ WINAPI HANDLE ReOpenFile(HANDLE hOriginalFile, DWORD dwDesiredAccess, DWORD dwSh
  * @return Handle to the file mapping object, or NULL on failure.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-createfilemappingw
  */
-WINAPI HANDLE CreateFileMappingW(HANDLE hFile, LPSECURITY_ATTRIBUTES lpFileAttributes,
-		DWORD dwMaximumSizeHigh, DWORD dwMaximumSizeLow, LPCWSTR lpName, DWORD flProtect,
-		DWORD dwDesiredAccess);
+WINAPI HANDLE CreateFileMappingW(HANDLE hFile, LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
+		DWORD flProtect, DWORD dwMaximumSizeHigh, DWORD dwMaximumSizeLow, LPCWSTR lpName);
 
 /**
  * Creates a view of a file mapping object in the address space of the calling process.
@@ -518,7 +550,7 @@ WINAPI LPVOID MapViewOfFile(HANDLE hFileMappingObject, DWORD dwDesiredAccess,
 		DWORD dwFileOffsetHigh, DWORD dwFileOffsetLow, SIZE_T dwNumberOfBytesToMap);
 
 /**
- * Unmaps a mapped view of a file from the calling process's address space.
+ * Unmaps a mapped view of a file from the calling processs address space.
  * @param lpBaseAddress Base address of the view to unmap.
  * @return TRUE on success, FALSE on failure.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-unmapviewoffile
@@ -534,9 +566,54 @@ WINAPI BOOL UnmapViewOfFile(LPCVOID lpBaseAddress);
  */
 WINAPI BOOL FlushViewOfFile(LPCVOID lpBaseAddress, SIZE_T dwNumberOfBytesToFlush);
 
-HANDLE _get_osfhandle(int fd);
+/**
+ * Deletes an existing file.
+ * @param lpFileName Name of the file to delete.
+ * @return TRUE on success, FALSE on failure.
+ * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilew
+ */
+WINAPI BOOL DeleteFileW(LPCWSTR lpFileName);
 
-int _open_osfhandle(HANDLE osfhandle, int flags);
+/**
+ * Removes an empty directory.
+ * @param lpPathName Name of the directory to remove.
+ * @return TRUE on success, FALSE on failure.
+ * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectoryw
+ */
+WINAPI BOOL RemoveDirectoryW(LPCWSTR lpPathName);
+
+WINAPI DWORD GetFileAttributesW(LPCWSTR lpFileName);
+
+WINAPI BOOL MoveFileExW(LPCWSTR lpExistingFileName, LPCWSTR lpNewFileName, DWORD dwFlags);
+
+WINAPI BOOL SetCurrentDirectoryW(LPCWSTR lpPathName);
+
+WINAPI BOOL GetVolumeInformationW(LPCWSTR lpRootPathName, LPWSTR lpVolumeNameBuffer,
+		DWORD nVolumeNameSize, LPDWORD lpVolumeSerialNumber, LPDWORD lpMaximumComponentLength,
+		LPDWORD lpFileSystemFlags, LPWSTR lpFileSystemNameBuffer, DWORD nFileSystemNameSize);
+
+WINAPI BOOL GetDiskFreeSpaceExW(LPCWSTR lpDirectoryName,
+		PULARGE_INTEGER lpFreeBytesAvailableToCaller, PULARGE_INTEGER lpTotalNumberOfBytes,
+		PULARGE_INTEGER lpTotalNumberOfFreeBytes);
+
+WINAPI BOOL CreateHardLinkW(LPCWSTR lpFileName, LPCWSTR lpExistingFileName,
+		LPSECURITY_ATTRIBUTES lpSecurityAttributes);
+
+WINAPI BOOLEAN CreateSymbolicLinkW(LPCWSTR lpSymlinkFileName, LPCWSTR lpTargetFileName,
+		DWORD dwFlags);
+
+WINAPI BOOL CreatePipe(PHANDLE hReadPipe, PHANDLE hWritePipe,
+		LPSECURITY_ATTRIBUTES lpPipeAttributes, DWORD nSize);
+
+WINAPI DWORD GetTempPathW(DWORD nBufferLength, LPWSTR lpBuffer);
+
+WINAPI HRESULT PathAllocCanonicalize(PCWSTR pszPathIn, ULONG dwFlags, PWSTR *ppszPathOut);
+
+WINAPI BOOL ReadFileScatter(HANDLE hFile, FILE_SEGMENT_ELEMENT aSegmentArray[],
+		DWORD nNumberOfBytesToRead, LPDWORD lpReserved, LPOVERLAPPED lpOverlapped);
+
+WINAPI BOOL WriteFileGather(HANDLE hFile, FILE_SEGMENT_ELEMENT aSegmentArray[],
+		DWORD nNumberOfBytesToWrite, LPDWORD lpReserved, LPOVERLAPPED lpOverlapped);
 
 __SPRT_END_DECL
 

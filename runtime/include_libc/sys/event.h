@@ -23,7 +23,7 @@
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_EVENT_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_EVENT_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sys/event.h>
 
@@ -126,17 +126,27 @@
 
 __SPRT_BEGIN_DECL
 
-SPRT_FORCEINLINE int kqueue(void) { return __sprt_kqueue(); }
+SPRT_UMBRELLA_FUNC
+int kqueue(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_kqueue();
+}
+#endif
 
-SPRT_FORCEINLINE int kevent(int kq, const struct __SPRT_KEVENT_NAME *changelist, int nchanges,
+SPRT_UMBRELLA_FUNC
+int kevent(int kq, const struct __SPRT_KEVENT_NAME *changelist, int nchanges,
 		struct __SPRT_KEVENT_NAME *eventlist, int nevents,
-		const struct __SPRT_TIMESPEC_NAME *timeout) {
+		const struct __SPRT_TIMESPEC_NAME *timeout) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_kevent(kq, changelist, nchanges, eventlist, nevents, timeout);
 }
+#endif
 
 __SPRT_END_DECL
 
-#endif
+#endif // __SPRT_CONFIG_HAVE_KQUEUE
 
 #endif // __SPRT_BUILD
 

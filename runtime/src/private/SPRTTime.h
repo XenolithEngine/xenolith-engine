@@ -25,10 +25,10 @@
 
 #include <sprt/runtime/init.h>
 #include <sprt/c/__sprt_time.h>
-#include <time.h>
 
 namespace sprt::internal {
 
+#if __STDC_HOSTED__ == 1
 SPRT_UNUSED static struct tm getNativeTm(const struct __SPRT_TM_NAME *_tm) {
 	struct tm target{
 		.tm_sec = _tm->tm_sec,
@@ -66,6 +66,7 @@ SPRT_UNUSED static void getRuntimeTm(struct __SPRT_TM_NAME *_tm, const struct tm
 	_tm->tm_zone = 0;
 #endif
 }
+#endif
 
 } // namespace sprt::internal
 

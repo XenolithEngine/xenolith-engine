@@ -23,7 +23,7 @@
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_UTNAME_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_UTNAME_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #if __has_include(<sys/utsname.h>)
 #include_next <sys/utsname.h>
@@ -35,7 +35,13 @@
 
 __SPRT_BEGIN_DECL
 
-SPRT_FORCEINLINE int uname(struct __SPRT_UTSNAME_NAME *buf) { return __sprt_uname(buf); }
+SPRT_UMBRELLA_FUNC
+int uname(struct __SPRT_UTSNAME_NAME *buf) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_uname(buf);
+}
+#endif
 
 __SPRT_END_DECL
 

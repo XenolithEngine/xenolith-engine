@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_STAT_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_STAT_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sys/stat.h>
 
@@ -84,66 +84,141 @@ __SPRT_BEGIN_DECL
 typedef __SPRT_ID(mode_t) mode_t;
 typedef __SPRT_ID(dev_t) dev_t;
 
-SPRT_FORCEINLINE int stat(const char *__SPRT_RESTRICT path,
-		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) {
+SPRT_UMBRELLA_FUNC
+int stat(const char *__SPRT_RESTRICT path,
+		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_stat(path, __stat);
 }
+#endif
 
-SPRT_FORCEINLINE int fstat(int __fd, struct __SPRT_STAT_NAME *__stat) {
+SPRT_UMBRELLA_FUNC
+int fstat(int __fd, struct __SPRT_STAT_NAME *__stat) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_fstat(__fd, __stat);
 }
-SPRT_FORCEINLINE int lstat(const char *__SPRT_RESTRICT path,
-		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int lstat(const char *__SPRT_RESTRICT path,
+		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_lstat(path, __stat);
 }
+#endif
 
-SPRT_FORCEINLINE int fstatat(int __fd, const char *__SPRT_RESTRICT path,
-		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat, int flags) {
+SPRT_UMBRELLA_FUNC
+int fstatat(int __fd, const char *__SPRT_RESTRICT path,
+		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat, int flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_fstatat(__fd, path, __stat, flags);
 }
+#endif
 
-SPRT_FORCEINLINE int chmod(const char *path, mode_t mode) { return __sprt_chmod(path, mode); }
+SPRT_UMBRELLA_FUNC
+int chmod(const char *path, mode_t mode) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_chmod(path, mode);
+}
+#endif
 
-SPRT_FORCEINLINE int fchmod(int fd, mode_t mode) { return __sprt_fchmod(fd, mode); }
+SPRT_UMBRELLA_FUNC
+int fchmod(int fd, mode_t mode) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fchmod(fd, mode);
+}
+#endif
 
-SPRT_FORCEINLINE int fchmodat(int fd, const char *path, mode_t mode, int flags) {
+SPRT_UMBRELLA_FUNC
+int fchmodat(int fd, const char *path, mode_t mode, int flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_fchmodat(fd, path, mode, flags);
 }
+#endif
 
-SPRT_FORCEINLINE mode_t umask(mode_t mode) { return __sprt_umask(mode); }
+SPRT_UMBRELLA_FUNC
+mode_t umask(mode_t mode) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_umask(mode);
+}
+#endif
 
-SPRT_FORCEINLINE int mkdir(const char *path, mode_t mode) { return __sprt_mkdir(path, mode); }
+SPRT_UMBRELLA_FUNC
+int mkdir(const char *path, mode_t mode) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_mkdir(path, mode);
+}
+#endif
 
-SPRT_FORCEINLINE int mkdirat(int fd, const char *path, mode_t mode) {
+SPRT_UMBRELLA_FUNC
+int mkdirat(int fd, const char *path, mode_t mode) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_mkdirat(fd, path, mode);
 }
+#endif
 
 #if __SPRT_CONFIG_HAVE_STAT_MKFIFO || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int mkfifo(const char *path, mode_t mode) { return __sprt_mkfifo(path, mode); }
+SPRT_UMBRELLA_FUNC
+int mkfifo(const char *path, mode_t mode) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_mkfifo(path, mode);
+}
+#endif
 
-SPRT_FORCEINLINE int mkfifoat(int fd, const char *path, mode_t mode) {
+SPRT_UMBRELLA_FUNC
+int mkfifoat(int fd, const char *path, mode_t mode) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_mkfifoat(fd, path, mode);
 }
 #endif
+#endif // __SPRT_CONFIG_HAVE_STAT_MKFIFO
 
 #if __SPRT_CONFIG_HAVE_STAT_MKNOD || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int mknod(const char *path, mode_t mode, dev_t dev) {
+SPRT_UMBRELLA_FUNC
+int mknod(const char *path, mode_t mode, dev_t dev) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_mknod(path, mode, dev);
-}
-
-SPRT_FORCEINLINE int mknodat(int fd, const char *path, mode_t mode, dev_t dev) {
-	return __sprt_mknodat(fd, path, mode, dev);
 }
 #endif
 
-SPRT_FORCEINLINE int futimens(int fd, const struct __SPRT_TIMESPEC_NAME ts[2]) {
+SPRT_UMBRELLA_FUNC
+int mknodat(int fd, const char *path, mode_t mode, dev_t dev) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_mknodat(fd, path, mode, dev);
+}
+#endif
+#endif // __SPRT_CONFIG_HAVE_STAT_MKNOD
+
+SPRT_UMBRELLA_FUNC
+int futimens(int fd, const struct __SPRT_TIMESPEC_NAME ts[2]) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_futimens(fd, ts);
 }
+#endif
 
-SPRT_FORCEINLINE int utimensat(int fd, const char *path, const struct __SPRT_TIMESPEC_NAME ts[2],
-		int flags) {
+SPRT_UMBRELLA_FUNC
+int utimensat(int fd, const char *path, const struct __SPRT_TIMESPEC_NAME ts[2],
+		int flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_utimensat(fd, path, ts, flags);
 }
+#endif
 
 __SPRT_END_DECL
 

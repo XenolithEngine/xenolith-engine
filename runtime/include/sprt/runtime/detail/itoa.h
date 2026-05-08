@@ -38,7 +38,13 @@ constexpr inline void copy2(Char *dst, const Char *src) {
 // Converts value in the range [0, 100) to a string.
 template <typename Char>
 constexpr inline auto digits2(size_t value) -> const Char * {
-	if constexpr (sizeof(Char) == sizeof(char)) {
+	if constexpr (sprt::is_same_v<sprt::remove_cvref_t<Char>, wchar_t>) {
+		return &L"0001020304050607080910111213141516171819"
+				L"2021222324252627282930313233343536373839"
+				L"4041424344454647484950515253545556575859"
+				L"6061626364656667686970717273747576777879"
+				L"8081828384858687888990919293949596979899"[value * 2];
+	} else if constexpr (sizeof(Char) == sizeof(char)) {
 		return &"0001020304050607080910111213141516171819"
 				"2021222324252627282930313233343536373839"
 				"4041424344454647484950515253545556575859"

@@ -21,8 +21,8 @@
  **/
 
 #include "SPEventTimerIocp.h"
-#include "SPStatus.h"
-#include "platform/windows/SPEvent-iocp.h"
+
+#include <sprt/runtime/log.h>
 
 namespace sprt::dispatch {
 
@@ -60,7 +60,7 @@ bool TimerIocpSource::init(const TimerInfo &info) {
 		result = _SetWaitableTimerEx(handle, &dueDate, 0, 0, 0, 0, 0);
 	}
 	if (!result) {
-		log::source().error("dispatch::Queue",
+		oslog::vperror(__SPRT_LOCATION, "dispatch::Queue",
 				"Fail to create WaitableTimer: ", sprt::status::lastErrorToStatus(_GetLastError()));
 	}
 

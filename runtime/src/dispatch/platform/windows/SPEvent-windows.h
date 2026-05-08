@@ -23,11 +23,11 @@
 #ifndef CORE_EVENT_PLATFORM_WINDOWS_SPEVENT_WINDOWS_H_
 #define CORE_EVENT_PLATFORM_WINDOWS_SPEVENT_WINDOWS_H_
 
-#include "SPEventQueue.h"
-#include "detail/SPEventQueueData.h"
-#include "detail/SPEventHandleClass.h"
+#include <sprt/runtime/dispatch/queue.h>
+#include "../../detail/SPRuntimeDispatchHandleClass.h"
+#include "../../detail/SPRuntimeDispatchQueueData.h"
 
-#if WIN32
+#if SPRT_WINDOWS
 
 namespace sprt::dispatch {
 

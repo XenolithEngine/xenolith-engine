@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_RANDOM_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_RANDOM_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sys/random.h>
 
@@ -40,9 +40,13 @@ __SPRT_BEGIN_DECL
 typedef __SPRT_ID(ssize_t) ssize_t;
 typedef __SPRT_ID(size_t) size_t;
 
-SPRT_FORCEINLINE ssize_t getrandom(void *__buffer, size_t __length, unsigned __flags) {
+SPRT_UMBRELLA_FUNC
+ssize_t getrandom(void *__buffer, size_t __length, unsigned __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(getrandom)(__buffer, __length, __flags);
 }
+#endif
 
 __SPRT_END_DECL
 

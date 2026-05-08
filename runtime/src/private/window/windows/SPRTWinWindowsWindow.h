@@ -31,6 +31,8 @@
 #include <sprt/runtime/window/types.h>
 #include <sprt/runtime/window/display_config.h>
 
+#include <sprt/wrappers/windows/user_api.h>
+
 namespace sprt::window {
 
 class WindowsContextController;
@@ -51,8 +53,6 @@ public:
 	virtual SurfaceInterfaceInfo getSurfaceInterfaceInfo() const override;
 
 	virtual SurfaceInfo getSurfaceOptions(SurfaceInfo &&info) const override;
-
-	virtual FrameConstraints exportConstraints() const override;
 
 	virtual Extent2 getExtent() const override;
 

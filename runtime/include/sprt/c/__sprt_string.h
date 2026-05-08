@@ -26,6 +26,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_null.h>
+#include <sprt/c/cross/__sprt_locale.h>
 
 __SPRT_BEGIN_DECL
 
@@ -242,6 +243,13 @@ SPRT_API __SPRT_ID(errno_t)
 		__SPRT_ID(strerror_s)(char *buf, __SPRT_ID(rsize_t) bufsz, __SPRT_ID(errno_t) errnum);
 
 SPRT_API int __SPRT_ID(strverscmp)(const char *l0, const char *r0);
+
+SPRT_API int __SPRT_ID(strcasecmp)(const char *, const char *);
+SPRT_API int __SPRT_ID(strncasecmp)(const char *, const char *, __SPRT_ID(rsize_t));
+
+SPRT_API int __SPRT_ID(strcasecmp_l)(const char *, const char *, __SPRT_ID(locale_t));
+SPRT_API int __SPRT_ID(
+		strncasecmp_l)(const char *, const char *, __SPRT_ID(rsize_t), __SPRT_ID(locale_t));
 
 __SPRT_END_DECL
 

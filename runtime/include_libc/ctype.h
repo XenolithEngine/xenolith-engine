@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_CTYPE_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_CTYPE_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <ctype.h>
 
@@ -33,53 +33,245 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-SPRT_FORCEINLINE int isalnum(int c) { return __sprt_isalnum(c); }
+SPRT_UMBRELLA_FUNC
+int isalnum(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isalnum(c);
+}
+#endif
 
-SPRT_FORCEINLINE int isalpha(int c) { return __sprt_isalpha(c); }
+SPRT_UMBRELLA_FUNC
+int isalpha(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isalpha(c);
+}
+#endif
 
-SPRT_FORCEINLINE int isblank(int c) { return __sprt_isblank(c); }
+SPRT_UMBRELLA_FUNC
+int isblank(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isblank(c);
+}
+#endif
 
-SPRT_FORCEINLINE int iscntrl(int c) { return __sprt_iscntrl(c); }
+SPRT_UMBRELLA_FUNC
+int iscntrl(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_iscntrl(c);
+}
+#endif
 
-SPRT_FORCEINLINE int isdigit(int c) { return __sprt_isdigit(c); }
+SPRT_UMBRELLA_FUNC
+int isdigit(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isdigit(c);
+}
+#endif
 
-SPRT_FORCEINLINE int isgraph(int c) { return __sprt_isgraph(c); }
+SPRT_UMBRELLA_FUNC
+int isgraph(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isgraph(c);
+}
+#endif
 
-SPRT_FORCEINLINE int islower(int c) { return __sprt_islower(c); }
+SPRT_UMBRELLA_FUNC
+int islower(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_islower(c);
+}
+#endif
 
-SPRT_FORCEINLINE int isprint(int c) { return __sprt_isprint(c); }
+SPRT_UMBRELLA_FUNC
+int isprint(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isprint(c);
+}
+#endif
 
-SPRT_FORCEINLINE int ispunct(int c) { return __sprt_ispunct(c); }
+SPRT_UMBRELLA_FUNC
+int ispunct(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ispunct(c);
+}
+#endif
 
-SPRT_FORCEINLINE int isspace(int c) { return __sprt_isspace(c); }
+SPRT_UMBRELLA_FUNC
+int isspace(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isspace(c);
+}
+#endif
 
-SPRT_FORCEINLINE int isupper(int c) { return __sprt_isupper(c); }
+SPRT_UMBRELLA_FUNC
+int isupper(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isupper(c);
+}
+#endif
 
-SPRT_FORCEINLINE int isxdigit(int c) { return __sprt_isxdigit(c); }
+SPRT_UMBRELLA_FUNC
+int isxdigit(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isxdigit(c);
+}
+#endif
 
-SPRT_FORCEINLINE int tolower(int c) { return __sprt_tolower(c); }
+SPRT_UMBRELLA_FUNC
+int tolower(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_tolower(c);
+}
+#endif
 
-SPRT_FORCEINLINE int toupper(int c) { return __sprt_toupper(c); }
+SPRT_UMBRELLA_FUNC
+int toupper(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_toupper(c);
+}
+#endif
 
-SPRT_FORCEINLINE int isalnum_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isalnum_l(c, loc); }
-SPRT_FORCEINLINE int isalpha_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isalpha_l(c, loc); }
-SPRT_FORCEINLINE int isblank_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isblank_l(c, loc); }
-SPRT_FORCEINLINE int iscntrl_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_iscntrl_l(c, loc); }
-SPRT_FORCEINLINE int isdigit_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isdigit_l(c, loc); }
-SPRT_FORCEINLINE int isgraph_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isgraph_l(c, loc); }
-SPRT_FORCEINLINE int islower_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_islower_l(c, loc); }
-SPRT_FORCEINLINE int isprint_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isprint_l(c, loc); }
-SPRT_FORCEINLINE int ispunct_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_ispunct_l(c, loc); }
-SPRT_FORCEINLINE int isspace_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isspace_l(c, loc); }
-SPRT_FORCEINLINE int isupper_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_isupper_l(c, loc); }
-SPRT_FORCEINLINE int isxdigit_l(int c, __SPRT_ID(locale_t) loc) {
+SPRT_UMBRELLA_FUNC
+int isalnum_l(int c, __SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isalnum_l(c, loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int isalpha_l(int c, __SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isalpha_l(c, loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int isblank_l(int c, __SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isblank_l(c, loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int iscntrl_l(int c, __SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_iscntrl_l(c, loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int isdigit_l(int c, __SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isdigit_l(c, loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int isgraph_l(int c, __SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isgraph_l(c, loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int islower_l(int c, __SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_islower_l(c, loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int isprint_l(int c, __SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isprint_l(c, loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int ispunct_l(int c, __SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ispunct_l(c, loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int isspace_l(int c, __SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isspace_l(c, loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int isupper_l(int c, __SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isupper_l(c, loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int isxdigit_l(int c, __SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_isxdigit_l(c, loc);
 }
-SPRT_FORCEINLINE int tolower_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_tolower_l(c, loc); }
-SPRT_FORCEINLINE int toupper_l(int c, __SPRT_ID(locale_t) loc) { return __sprt_toupper_l(c, loc); }
+#endif
 
-SPRT_FORCEINLINE int isascii(int c) { return __sprt_isascii(c); }
-SPRT_FORCEINLINE int toascii(int c) { return __sprt_toascii(c); }
+SPRT_UMBRELLA_FUNC
+int tolower_l(int c, __SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_tolower_l(c, loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int toupper_l(int c, __SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_toupper_l(c, loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int isascii(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_isascii(c);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int toascii(int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_toascii(c);
+}
+#endif
 
 __SPRT_END_DECL
 

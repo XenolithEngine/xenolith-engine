@@ -237,7 +237,7 @@
 #endif
 
 #if defined(_MSC_VER)
-#include <intrin.h>
+//#include <intrin.h>
 #elif defined(__INTEL_COMPILER)
 #include <immintrin.h>
 #endif
@@ -767,8 +767,8 @@ struct uint128 {
 		// https://learn.microsoft.com/en-us/cpp/c-runtime-library/standard-types
 		// and https://learn.microsoft.com/en-us/cpp/cpp/int8-int16-int32-int64.
 		static_assert(stdr::is_same<unsigned long long, stdr::uint_least64_t>::value, "");
-		auto const carry = _addcarry_u64(0, low_, n, &low_);
-		_addcarry_u64(carry, high_, 0, &high_);
+		auto const carry = __builtin_ia32_addcarryx_u64(0, low_, n, &low_);
+		__builtin_ia32_addcarryx_u64(carry, high_, 0, &high_);
 #elif defined(__INTEL_COMPILER) && (defined(_M_X64) || defined(__x86_64))
 		// Cannot find any documentation on how things are defined, but hopefully this
 		// is always true...

@@ -26,36 +26,37 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
 
+// clang-format off
 #define IMAGE_NUMBEROF_DIRECTORY_ENTRIES    16
 
 #define IMAGE_DOS_SIGNATURE                 0x5A4D      // MZ
 #define IMAGE_OS2_SIGNATURE                 0x454E      // NE
 #define IMAGE_OS2_SIGNATURE_LE              0x454C      // LE
 #define IMAGE_VXD_SIGNATURE                 0x454C      // LE
-#define IMAGE_NT_SIGNATURE                  0x0000'4550  // PE00
+#define IMAGE_NT_SIGNATURE                  0x00004550  // PE00
 
 #define IMAGE_NT_OPTIONAL_HDR64_MAGIC      0x20b
 
-#define MEM_COMMIT                      0x0000'1000
-#define MEM_RESERVE                     0x0000'2000
-#define MEM_REPLACE_PLACEHOLDER         0x0000'4000
-#define MEM_RESERVE_PLACEHOLDER         0x0004'0000
-#define MEM_RESET                       0x0008'0000
-#define MEM_TOP_DOWN                    0x0010'0000
-#define MEM_WRITE_WATCH                 0x0020'0000
-#define MEM_PHYSICAL                    0x0040'0000
-#define MEM_ROTATE                      0x0080'0000
-#define MEM_DIFFERENT_IMAGE_BASE_OK     0x0080'0000
-#define MEM_RESET_UNDO                  0x0100'0000
-#define MEM_LARGE_PAGES                 0x2000'0000
-#define MEM_4MB_PAGES                   0x8000'0000
+#define MEM_COMMIT                      0x00001000
+#define MEM_RESERVE                     0x00002000
+#define MEM_REPLACE_PLACEHOLDER         0x00004000
+#define MEM_RESERVE_PLACEHOLDER         0x00040000
+#define MEM_RESET                       0x00080000
+#define MEM_TOP_DOWN                    0x00100000
+#define MEM_WRITE_WATCH                 0x00200000
+#define MEM_PHYSICAL                    0x00400000
+#define MEM_ROTATE                      0x00800000
+#define MEM_DIFFERENT_IMAGE_BASE_OK     0x00800000
+#define MEM_RESET_UNDO                  0x01000000
+#define MEM_LARGE_PAGES                 0x20000000
+#define MEM_4MB_PAGES                   0x80000000
 #define MEM_64K_PAGES                   (MEM_LARGE_PAGES | MEM_PHYSICAL)
-#define MEM_UNMAP_WITH_TRANSIENT_BOOST  0x0000'0001
-#define MEM_COALESCE_PLACEHOLDERS       0x0000'0001
-#define MEM_PRESERVE_PLACEHOLDER        0x0000'0002
-#define MEM_DECOMMIT                    0x0000'4000
-#define MEM_RELEASE                     0x0000'8000
-#define MEM_FREE                        0x0001'0000
+#define MEM_UNMAP_WITH_TRANSIENT_BOOST  0x00000001
+#define MEM_COALESCE_PLACEHOLDERS       0x00000001
+#define MEM_PRESERVE_PLACEHOLDER        0x00000002
+#define MEM_DECOMMIT                    0x00004000
+#define MEM_RELEASE                     0x00008000
+#define MEM_FREE                        0x00010000
 
 #define PAGE_NOACCESS           0x01
 #define PAGE_READONLY           0x02
@@ -85,9 +86,17 @@ THE SOFTWARE.
 #define IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT   13   // Delay Load Import Descriptors
 #define IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR 14   // COM Runtime descriptor
 
-#define GET_MODULE_HANDLE_EX_FLAG_PIN                 (0x0000'0001)
-#define GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT  (0x0000'0002)
-#define GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS        (0x0000'0004)
+#define GET_MODULE_HANDLE_EX_FLAG_PIN                 (0x00000001)
+#define GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT  (0x00000002)
+#define GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS        (0x00000004)
+
+#define DLL_PROCESS_ATTACH   1
+#define DLL_THREAD_ATTACH    2
+#define DLL_THREAD_DETACH    3
+#define DLL_PROCESS_DETACH   0
+// clang-format on
+
+typedef VOID (*PIMAGE_TLS_CALLBACK)(PVOID DllHandle, DWORD Reason, PVOID Reserved);
 
 typedef struct _IMAGE_IMPORT_DESCRIPTOR {
 	union {
@@ -156,6 +165,22 @@ typedef struct _IMAGE_DATA_DIRECTORY {
 	DWORD Size;
 } IMAGE_DATA_DIRECTORY, *PIMAGE_DATA_DIRECTORY;
 
+typedef struct _IMAGE_TLS_DIRECTORY64 {
+	ULONGLONG StartAddressOfRawData;
+	ULONGLONG EndAddressOfRawData;
+	ULONGLONG AddressOfIndex; // PDWORD
+	ULONGLONG AddressOfCallBacks; // PIMAGE_TLS_CALLBACK *;
+	DWORD SizeOfZeroFill;
+	union {
+		DWORD Characteristics;
+		struct {
+			DWORD Reserved0 : 20;
+			DWORD Alignment : 4;
+			DWORD Reserved1 : 8;
+		};
+	};
+} IMAGE_TLS_DIRECTORY64, *PIMAGE_TLS_DIRECTORY64;
+
 typedef struct _IMAGE_OPTIONAL_HEADER64 {
 	WORD Magic;
 	BYTE MajorLinkerVersion;
@@ -205,10 +230,47 @@ typedef struct _IMAGE_NT_HEADERS64 {
 	IMAGE_OPTIONAL_HEADER64 OptionalHeader;
 } IMAGE_NT_HEADERS64, *PIMAGE_NT_HEADERS64;
 
+typedef struct _LDR_DATA_TABLE_ENTRY {
+	struct _LIST_ENTRY InLoadOrderLinks; //0x0
+	struct _LIST_ENTRY InMemoryOrderLinks; //0x10
+	union {
+		struct _LIST_ENTRY InInitializationOrderLinks; //0x20
+		struct _LIST_ENTRY InProgressLinks; //0x20
+	};
+	void *DllBase; //0x30
+	void *EntryPoint; //0x38
+	unsigned long SizeOfImage; //0x40
+	struct _UNICODE_STRING FullDllName; //0x48
+	struct _UNICODE_STRING BaseDllName; //0x58
+} LDR_DATA_TABLE_ENTRY, *PLDR_DATA_TABLE_ENTRY;
+
+typedef struct _PEB_LDR_DATA {
+	DWORD length;
+	DWORD init;
+	void *SsHandle; // Session state handle
+
+	// Linked list of loaded modules
+	LIST_ENTRY InLoadOrderModuleList; // Modules in load order
+	LIST_ENTRY InMemoryOrderModuleList; // Modules in memory order
+	LIST_ENTRY InInitializationOrderModuleList;
+} PEB_LDR_DATA, *PPEB_LDR_DATA;
+
+typedef struct _PEB {
+	BYTE Reserved1[2];
+	BYTE BeingDebugged;
+	BYTE Reserved2[1];
+	BYTE Padding0[4];
+	void *Mutant;
+	void *ImageBaseAddress;
+	PPEB_LDR_DATA Ldr;
+	// ... etc
+} PEB, *PPEB;
 
 __SPRT_BEGIN_DECL
 
 WINAPI SIZE_T VirtualQuery(LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength);
+
+__declspec(noreturn) WINAPI VOID ExitProcess(UINT uExitCode);
 
 /**
  * Loads the specified module into the address space of the calling process.

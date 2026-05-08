@@ -315,9 +315,19 @@ public:
 */
 class rmutex final : private rmutex_base {
 public:
+	enum init_type {
+		enabled,
+		disabled,
+	};
+
 	~rmutex();
 
-	rmutex() { }
+	rmutex(init_type t = enabled) {
+		switch (t) {
+		case enabled: break;
+		case disabled: _data.value.u64 = Max<uint64_t>; break;
+		}
+	}
 
 	rmutex(const rmutex &) = delete;
 	rmutex &operator=(const rmutex &) = delete;
@@ -327,6 +337,14 @@ public:
 
 	// returns true if we have some waiters
 	bool unlock();
+
+	bool is_locked_by(tid_type t) const {
+		return ((*getNativeValue(_data.value)) & THREAD_ID_MASK) == (t & THREAD_ID_MASK);
+	}
+	bool is_enabled() const { return _data.value.u64 != Max<uint64_t>; }
+
+	void disable();
+	void enable();
 
 protected:
 	__rmutex_data _data;

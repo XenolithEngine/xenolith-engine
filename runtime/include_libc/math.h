@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_MATH_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_MATH_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <math.h>
 
@@ -74,415 +74,1428 @@ __SPRT_BEGIN_DECL
 #define signbit(x) __sprt_signbit(x)
 #endif
 
-SPRT_FORCEINLINE double acos(double value) { return __sprt_acos(value); }
+SPRT_UMBRELLA_FUNC
+double acos(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_acos(value);
+}
+#endif
 
-SPRT_FORCEINLINE float acosf(float value) { return __sprt_acosf(value); }
+SPRT_UMBRELLA_FUNC
+float acosf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_acosf(value);
+}
+#endif
 
-SPRT_FORCEINLINE long double acosl(long double value) { return __sprt_acosl(value); }
-
-
-SPRT_FORCEINLINE double acosh(double value) { return __sprt_acosh(value); }
-
-SPRT_FORCEINLINE float acoshf(float value) { return __sprt_acoshf(value); }
-
-SPRT_FORCEINLINE long double acoshl(long double value) { return __sprt_acoshl(value); }
-
-
-SPRT_FORCEINLINE double asin(double value) { return __sprt_asin(value); }
-
-SPRT_FORCEINLINE float asinf(float value) { return __sprt_asinf(value); }
-
-SPRT_FORCEINLINE long double asinl(long double value) { return __sprt_asinl(value); }
-
-
-SPRT_FORCEINLINE double asinh(double value) { return __sprt_asinh(value); }
-
-SPRT_FORCEINLINE float asinhf(float value) { return __sprt_asinhf(value); }
-
-SPRT_FORCEINLINE long double asinhl(long double value) { return __sprt_asinhl(value); }
+SPRT_UMBRELLA_FUNC
+long double acosl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_acosl(value);
+}
+#endif
 
 
-SPRT_FORCEINLINE double atan(double value) { return __sprt_atan(value); }
+SPRT_UMBRELLA_FUNC
+double acosh(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_acosh(value);
+}
+#endif
 
-SPRT_FORCEINLINE float atanf(float value) { return __sprt_atanf(value); }
+SPRT_UMBRELLA_FUNC
+float acoshf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_acoshf(value);
+}
+#endif
 
-SPRT_FORCEINLINE long double atanl(long double value) { return __sprt_atanl(value); }
-
-
-SPRT_FORCEINLINE double atan2(double a, double b) { return __sprt_atan2(a, b); }
-
-SPRT_FORCEINLINE float atan2f(float a, float b) { return __sprt_atan2f(a, b); }
-
-SPRT_FORCEINLINE long double atan2l(long double a, long double b) { return __sprt_atan2l(a, b); }
-
-
-SPRT_FORCEINLINE double atanh(double value) { return __sprt_atanh(value); }
-
-SPRT_FORCEINLINE float atanhf(float value) { return __sprt_atanhf(value); }
-
-SPRT_FORCEINLINE long double atanhl(long double value) { return __sprt_atanhl(value); }
-
-
-SPRT_FORCEINLINE double cbrt(double value) { return __sprt_cbrt(value); }
-
-SPRT_FORCEINLINE float cbrtf(float value) { return __sprt_cbrtf(value); }
-
-SPRT_FORCEINLINE long double cbrtl(long double value) { return __sprt_cbrtl(value); }
+SPRT_UMBRELLA_FUNC
+long double acoshl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_acoshl(value);
+}
+#endif
 
 
-SPRT_FORCEINLINE double ceil(double value) { return __sprt_ceil(value); }
+SPRT_UMBRELLA_FUNC
+double asin(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_asin(value);
+}
+#endif
 
-SPRT_FORCEINLINE float ceilf(float value) { return __sprt_ceilf(value); }
+SPRT_UMBRELLA_FUNC
+float asinf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_asinf(value);
+}
+#endif
 
-SPRT_FORCEINLINE long double ceill(long double value) { return __sprt_ceill(value); }
+SPRT_UMBRELLA_FUNC
+long double asinl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_asinl(value);
+}
+#endif
 
 
-SPRT_FORCEINLINE double copysign(double a, double b) { return __sprt_copysign(a, b); }
+SPRT_UMBRELLA_FUNC
+double asinh(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_asinh(value);
+}
+#endif
 
-SPRT_FORCEINLINE float copysignf(float a, float b) { return __sprt_copysignf(a, b); }
+SPRT_UMBRELLA_FUNC
+float asinhf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_asinhf(value);
+}
+#endif
 
-SPRT_FORCEINLINE long double copysignl(long double a, long double b) {
+SPRT_UMBRELLA_FUNC
+long double asinhl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_asinhl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double atan(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_atan(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float atanf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_atanf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double atanl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_atanl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double atan2(double a, double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_atan2(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float atan2f(float a, float b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_atan2f(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double atan2l(long double a, long double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_atan2l(a, b);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double atanh(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_atanh(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float atanhf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_atanhf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double atanhl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_atanhl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double cbrt(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_cbrt(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float cbrtf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_cbrtf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double cbrtl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_cbrtl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double ceil(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ceil(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float ceilf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ceilf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double ceill(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ceill(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double copysign(double a, double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_copysign(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float copysignf(float a, float b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_copysignf(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double copysignl(long double a, long double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_copysignl(a, b);
 }
+#endif
 
 
-SPRT_FORCEINLINE double cos(double value) { return __sprt_cos(value); }
+SPRT_UMBRELLA_FUNC
+double cos(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_cos(value);
+}
+#endif
 
-SPRT_FORCEINLINE float cosf(float value) { return __sprt_cosf(value); }
+SPRT_UMBRELLA_FUNC
+float cosf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_cosf(value);
+}
+#endif
 
-SPRT_FORCEINLINE long double cosl(long double value) { return __sprt_cosl(value); }
-
-
-SPRT_FORCEINLINE double cosh(double value) { return __sprt_cosh(value); }
-
-SPRT_FORCEINLINE float coshf(float value) { return __sprt_coshf(value); }
-
-SPRT_FORCEINLINE long double coshl(long double value) { return __sprt_coshl(value); }
-
-
-SPRT_FORCEINLINE double erf(double value) { return __sprt_erf(value); }
-
-SPRT_FORCEINLINE float erff(float value) { return __sprt_erff(value); }
-
-SPRT_FORCEINLINE long double erfl(long double value) { return __sprt_erfl(value); }
-
-
-SPRT_FORCEINLINE double erfc(double value) { return __sprt_erfc(value); }
-
-SPRT_FORCEINLINE float erfcf(float value) { return __sprt_erfcf(value); }
-
-SPRT_FORCEINLINE long double erfcl(long double value) { return __sprt_erfcl(value); }
+SPRT_UMBRELLA_FUNC
+long double cosl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_cosl(value);
+}
+#endif
 
 
-SPRT_FORCEINLINE double exp(double value) { return __sprt_exp(value); }
+SPRT_UMBRELLA_FUNC
+double cosh(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_cosh(value);
+}
+#endif
 
-SPRT_FORCEINLINE float expf(float value) { return __sprt_expf(value); }
+SPRT_UMBRELLA_FUNC
+float coshf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_coshf(value);
+}
+#endif
 
-SPRT_FORCEINLINE long double expl(long double value) { return __sprt_expl(value); }
-
-
-SPRT_FORCEINLINE double exp2(double value) { return __sprt_exp2(value); }
-
-SPRT_FORCEINLINE float exp2f(float value) { return __sprt_exp2f(value); }
-
-SPRT_FORCEINLINE long double exp2l(long double value) { return __sprt_exp2l(value); }
-
-
-SPRT_FORCEINLINE double expm1(double value) { return __sprt_expm1(value); }
-
-SPRT_FORCEINLINE float expm1f(float value) { return __sprt_expm1f(value); }
-
-SPRT_FORCEINLINE long double expm1l(long double value) { return __sprt_expm1l(value); }
-
-
-SPRT_FORCEINLINE double fabs(double value) { return __sprt_fabs(value); }
-
-SPRT_FORCEINLINE float fabsf(float value) { return __sprt_fabsf(value); }
-
-SPRT_FORCEINLINE long double fabsl(long double value) { return __sprt_fabsl(value); }
+SPRT_UMBRELLA_FUNC
+long double coshl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_coshl(value);
+}
+#endif
 
 
-SPRT_FORCEINLINE double fdim(double a, double b) { return __sprt_fdim(a, b); }
+SPRT_UMBRELLA_FUNC
+double erf(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_erf(value);
+}
+#endif
 
-SPRT_FORCEINLINE float fdimf(float a, float b) { return __sprt_fdimf(a, b); }
+SPRT_UMBRELLA_FUNC
+float erff(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_erff(value);
+}
+#endif
 
-SPRT_FORCEINLINE long double fdiml(long double a, long double b) { return __sprt_fdiml(a, b); }
+SPRT_UMBRELLA_FUNC
+long double erfl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_erfl(value);
+}
+#endif
 
 
-SPRT_FORCEINLINE double floor(double value) { return __sprt_floor(value); }
+SPRT_UMBRELLA_FUNC
+double erfc(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_erfc(value);
+}
+#endif
 
-SPRT_FORCEINLINE float floorf(float value) { return __sprt_floorf(value); }
+SPRT_UMBRELLA_FUNC
+float erfcf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_erfcf(value);
+}
+#endif
 
-SPRT_FORCEINLINE long double floorl(long double value) { return __sprt_floorl(value); }
+SPRT_UMBRELLA_FUNC
+long double erfcl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_erfcl(value);
+}
+#endif
 
 
-SPRT_FORCEINLINE double fma(double a, double b, double c) { return __sprt_fma(a, b, c); }
+SPRT_UMBRELLA_FUNC
+double exp(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_exp(value);
+}
+#endif
 
-SPRT_FORCEINLINE float fmaf(float a, float b, float c) { return __sprt_fmaf(a, b, c); }
+SPRT_UMBRELLA_FUNC
+float expf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_expf(value);
+}
+#endif
 
-SPRT_FORCEINLINE long double fmal(long double a, long double b, long double c) {
+SPRT_UMBRELLA_FUNC
+long double expl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_expl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double exp2(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_exp2(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float exp2f(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_exp2f(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double exp2l(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_exp2l(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double expm1(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_expm1(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float expm1f(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_expm1f(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double expm1l(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_expm1l(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double fabs(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fabs(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float fabsf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fabsf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double fabsl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fabsl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double fdim(double a, double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fdim(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float fdimf(float a, float b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fdimf(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double fdiml(long double a, long double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fdiml(a, b);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double floor(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_floor(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float floorf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_floorf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double floorl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_floorl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double fma(double a, double b, double c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fma(a, b, c);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float fmaf(float a, float b, float c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fmaf(a, b, c);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double fmal(long double a, long double b, long double c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_fmal(a, b, c);
 }
-
-
-SPRT_FORCEINLINE double fmax(double a, double b) { return __sprt_fmax(a, b); }
-
-SPRT_FORCEINLINE float fmaxf(float a, float b) { return __sprt_fmaxf(a, b); }
-
-SPRT_FORCEINLINE long double fmaxl(long double a, long double b) { return __sprt_fmaxl(a, b); }
-
-
-SPRT_FORCEINLINE double fmin(double a, double b) { return __sprt_fmin(a, b); }
-
-SPRT_FORCEINLINE float fminf(float a, float b) { return __sprt_fminf(a, b); }
-
-SPRT_FORCEINLINE long double fminl(long double a, long double b) { return __sprt_fminl(a, b); }
-
-
-SPRT_FORCEINLINE double fmod(double a, double b) { return __sprt_fmod(a, b); }
-
-SPRT_FORCEINLINE float fmodf(float a, float b) { return __sprt_fmodf(a, b); }
-
-SPRT_FORCEINLINE long double fmodl(long double a, long double b) { return __sprt_fmodl(a, b); }
-
-
-SPRT_FORCEINLINE double frexp(double a, int *b) { return __sprt_frexp(a, b); }
-
-SPRT_FORCEINLINE float frexpf(float a, int *b) { return __sprt_frexpf(a, b); }
-
-SPRT_FORCEINLINE long double frexpl(long double a, int *b) { return __sprt_frexpl(a, b); }
-
-
-SPRT_FORCEINLINE double hypot(double a, double b) { return __sprt_hypot(a, b); }
-
-SPRT_FORCEINLINE float hypotf(float a, float b) { return __sprt_hypotf(a, b); }
-
-SPRT_FORCEINLINE long double hypotl(long double a, long double b) { return __sprt_hypotl(a, b); }
-
-
-SPRT_FORCEINLINE int ilogb(double value) { return __sprt_ilogb(value); }
-
-SPRT_FORCEINLINE int ilogbf(float value) { return __sprt_ilogbf(value); }
-
-SPRT_FORCEINLINE int ilogbl(long double value) { return __sprt_ilogbl(value); }
-
-
-SPRT_FORCEINLINE double ldexp(double a, int b) { return __sprt_ldexp(a, b); }
-
-SPRT_FORCEINLINE float ldexpf(float a, int b) { return __sprt_ldexpf(a, b); }
-
-SPRT_FORCEINLINE long double ldexpl(long double a, int b) { return __sprt_ldexpl(a, b); }
-
-
-SPRT_FORCEINLINE double lgamma(double value) { return __sprt_lgamma(value); }
-
-SPRT_FORCEINLINE float lgammaf(float value) { return __sprt_lgammaf(value); }
-
-SPRT_FORCEINLINE long double lgammal(long double value) { return __sprt_lgammal(value); }
-
-
-SPRT_FORCEINLINE long long llrint(double value) { return __sprt_llrint(value); }
-
-SPRT_FORCEINLINE long long llrintf(float value) { return __sprt_llrintf(value); }
-
-SPRT_FORCEINLINE long long llrintl(long double value) { return __sprt_llrintl(value); }
-
-
-SPRT_FORCEINLINE long long llround(double value) { return __sprt_llround(value); }
-
-SPRT_FORCEINLINE long long llroundf(float value) { return __sprt_llroundf(value); }
-
-SPRT_FORCEINLINE long long llroundl(long double value) { return __sprt_llroundl(value); }
-
-
-SPRT_FORCEINLINE double log(double value) { return __sprt_log(value); }
-
-SPRT_FORCEINLINE float logf(float value) { return __sprt_logf(value); }
-
-SPRT_FORCEINLINE long double logl(long double value) { return __sprt_logl(value); }
-
-
-SPRT_FORCEINLINE double log10(double value) { return __sprt_log10(value); }
-
-SPRT_FORCEINLINE float log10f(float value) { return __sprt_log10f(value); }
-
-SPRT_FORCEINLINE long double log10l(long double value) { return __sprt_log10l(value); }
-
-
-SPRT_FORCEINLINE double log1p(double value) { return __sprt_log1p(value); }
-
-SPRT_FORCEINLINE float log1pf(float value) { return __sprt_log1pf(value); }
-
-SPRT_FORCEINLINE long double log1pl(long double value) { return __sprt_log1pl(value); }
-
-
-SPRT_FORCEINLINE double log2(double value) { return __sprt_log2(value); }
-
-SPRT_FORCEINLINE float log2f(float value) { return __sprt_log2f(value); }
-
-SPRT_FORCEINLINE long double log2l(long double value) { return __sprt_log2l(value); }
-
-
-SPRT_FORCEINLINE double logb(double value) { return __sprt_logb(value); }
-
-SPRT_FORCEINLINE float logbf(float value) { return __sprt_logbf(value); }
-
-SPRT_FORCEINLINE long double logbl(long double value) { return __sprt_logbl(value); }
-
-
-SPRT_FORCEINLINE long lrint(double value) { return __sprt_lrint(value); }
-
-SPRT_FORCEINLINE long lrintf(float value) { return __sprt_lrintf(value); }
-
-SPRT_FORCEINLINE long lrintl(long double value) { return __sprt_lrintl(value); }
-
-
-SPRT_FORCEINLINE long lround(double value) { return __sprt_lround(value); }
-
-SPRT_FORCEINLINE long lroundf(float value) { return __sprt_lroundf(value); }
-
-SPRT_FORCEINLINE long lroundl(long double value) { return __sprt_lroundl(value); }
-
-
-SPRT_FORCEINLINE double modf(double a, double *b) { return __sprt_modf(a, b); }
-
-SPRT_FORCEINLINE float modff(float a, float *b) { return __sprt_modff(a, b); }
-
-SPRT_FORCEINLINE long double modfl(long double a, long double *b) { return __sprt_modfl(a, b); }
-
-
-SPRT_FORCEINLINE double nan(const char *value) { return __sprt_nan(value); }
-
-SPRT_FORCEINLINE float nanf(const char *value) { return __sprt_nanf(value); }
-
-SPRT_FORCEINLINE long double nanl(const char *value) { return __sprt_nanl(value); }
-
-
-SPRT_FORCEINLINE double nearbyint(double value) { return __sprt_nearbyint(value); }
-
-SPRT_FORCEINLINE float nearbyintf(float value) { return __sprt_nearbyintf(value); }
-
-SPRT_FORCEINLINE long double nearbyintl(long double value) { return __sprt_nearbyintl(value); }
-
-
-SPRT_FORCEINLINE double nextafter(double a, double b) { return __sprt_nextafter(a, b); }
-
-SPRT_FORCEINLINE float nextafterf(float a, float b) { return __sprt_nextafterf(a, b); }
-
-SPRT_FORCEINLINE long double nextafterl(long double a, long double b) {
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double fmax(double a, double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fmax(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float fmaxf(float a, float b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fmaxf(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double fmaxl(long double a, long double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fmaxl(a, b);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double fmin(double a, double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fmin(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float fminf(float a, float b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fminf(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double fminl(long double a, long double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fminl(a, b);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double fmod(double a, double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fmod(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float fmodf(float a, float b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fmodf(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double fmodl(long double a, long double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fmodl(a, b);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double frexp(double a, int *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_frexp(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float frexpf(float a, int *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_frexpf(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double frexpl(long double a, int *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_frexpl(a, b);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double hypot(double a, double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_hypot(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float hypotf(float a, float b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_hypotf(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double hypotl(long double a, long double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_hypotl(a, b);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+int ilogb(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ilogb(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int ilogbf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ilogbf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int ilogbl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ilogbl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double ldexp(double a, int b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ldexp(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float ldexpf(float a, int b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ldexpf(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double ldexpl(long double a, int b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ldexpl(a, b);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double lgamma(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_lgamma(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float lgammaf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_lgammaf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double lgammal(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_lgammal(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+long long llrint(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_llrint(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long long llrintf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_llrintf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long long llrintl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_llrintl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+long long llround(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_llround(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long long llroundf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_llroundf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long long llroundl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_llroundl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double log(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_log(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float logf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_logf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double logl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_logl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double log10(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_log10(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float log10f(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_log10f(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double log10l(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_log10l(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double log1p(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_log1p(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float log1pf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_log1pf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double log1pl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_log1pl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double log2(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_log2(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float log2f(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_log2f(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double log2l(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_log2l(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double logb(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_logb(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float logbf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_logbf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double logbl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_logbl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+long lrint(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_lrint(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long lrintf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_lrintf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long lrintl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_lrintl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+long lround(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_lround(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long lroundf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_lroundf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long lroundl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_lroundl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double modf(double a, double *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_modf(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float modff(float a, float *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_modff(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double modfl(long double a, long double *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_modfl(a, b);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double nan(const char *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_nan(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float nanf(const char *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_nanf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double nanl(const char *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_nanl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double nearbyint(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_nearbyint(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float nearbyintf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_nearbyintf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double nearbyintl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_nearbyintl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double nextafter(double a, double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_nextafter(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float nextafterf(float a, float b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_nextafterf(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double nextafterl(long double a, long double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_nextafterl(a, b);
 }
+#endif
 
 
-SPRT_FORCEINLINE double nexttoward(double a, long double b) { return __sprt_nexttoward(a, b); }
+SPRT_UMBRELLA_FUNC
+double nexttoward(double a, long double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_nexttoward(a, b);
+}
+#endif
 
-SPRT_FORCEINLINE float nexttowardf(float a, long double b) { return __sprt_nexttowardf(a, b); }
+SPRT_UMBRELLA_FUNC
+float nexttowardf(float a, long double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_nexttowardf(a, b);
+}
+#endif
 
-SPRT_FORCEINLINE long double nexttowardl(long double a, long double b) {
+SPRT_UMBRELLA_FUNC
+long double nexttowardl(long double a, long double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_nexttowardl(a, b);
 }
+#endif
 
 
-SPRT_FORCEINLINE double pow(double a, double b) { return __sprt_pow(a, b); }
+SPRT_UMBRELLA_FUNC
+double pow(double a, double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_pow(a, b);
+}
+#endif
 
-SPRT_FORCEINLINE float powf(float a, float b) { return __sprt_powf(a, b); }
+SPRT_UMBRELLA_FUNC
+float powf(float a, float b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_powf(a, b);
+}
+#endif
 
-SPRT_FORCEINLINE long double powl(long double a, long double b) { return __sprt_powl(a, b); }
+SPRT_UMBRELLA_FUNC
+long double powl(long double a, long double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_powl(a, b);
+}
+#endif
 
 
-SPRT_FORCEINLINE double remainder(double a, double b) { return __sprt_remainder(a, b); }
+SPRT_UMBRELLA_FUNC
+double remainder(double a, double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_remainder(a, b);
+}
+#endif
 
-SPRT_FORCEINLINE float remainderf(float a, float b) { return __sprt_remainderf(a, b); }
+SPRT_UMBRELLA_FUNC
+float remainderf(float a, float b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_remainderf(a, b);
+}
+#endif
 
-SPRT_FORCEINLINE long double remainderl(long double a, long double b) {
+SPRT_UMBRELLA_FUNC
+long double remainderl(long double a, long double b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_remainderl(a, b);
 }
+#endif
 
 
-SPRT_FORCEINLINE double remquo(double a, double b, int *c) { return __sprt_remquo(a, b, c); }
+SPRT_UMBRELLA_FUNC
+double remquo(double a, double b, int *c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_remquo(a, b, c);
+}
+#endif
 
-SPRT_FORCEINLINE float remquof(float a, float b, int *c) { return __sprt_remquof(a, b, c); }
+SPRT_UMBRELLA_FUNC
+float remquof(float a, float b, int *c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_remquof(a, b, c);
+}
+#endif
 
-SPRT_FORCEINLINE long double remquol(long double a, long double b, int *c) {
+SPRT_UMBRELLA_FUNC
+long double remquol(long double a, long double b, int *c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_remquol(a, b, c);
 }
+#endif
+
+SPRT_UMBRELLA_FUNC
+double rint(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_rint(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float rintf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_rintf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double rintl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_rintl(value);
+}
+#endif
 
 
-SPRT_FORCEINLINE double rint(double value) { return __sprt_rint(value); }
+SPRT_UMBRELLA_FUNC
+double round(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_round(value);
+}
+#endif
 
-SPRT_FORCEINLINE float rintf(float value) { return __sprt_rintf(value); }
+SPRT_UMBRELLA_FUNC
+float roundf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_roundf(value);
+}
+#endif
 
-SPRT_FORCEINLINE long double rintl(long double value) { return __sprt_rintl(value); }
-
-
-SPRT_FORCEINLINE double round(double value) { return __sprt_round(value); }
-
-SPRT_FORCEINLINE float roundf(float value) { return __sprt_roundf(value); }
-
-SPRT_FORCEINLINE long double roundl(long double value) { return __sprt_roundl(value); }
-
-
-SPRT_FORCEINLINE double scalbln(double a, long b) { return __sprt_scalbln(a, b); }
-
-SPRT_FORCEINLINE float scalblnf(float a, long b) { return __sprt_scalblnf(a, b); }
-
-SPRT_FORCEINLINE long double scalblnl(long double a, long b) { return __sprt_scalblnl(a, b); }
-
-
-SPRT_FORCEINLINE double scalbn(double a, int b) { return __sprt_scalbn(a, b); }
-
-SPRT_FORCEINLINE float scalbnf(float a, int b) { return __sprt_scalbnf(a, b); }
-
-SPRT_FORCEINLINE long double scalbnl(long double a, int b) { return __sprt_scalbnl(a, b); }
+SPRT_UMBRELLA_FUNC
+long double roundl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_roundl(value);
+}
+#endif
 
 
-SPRT_FORCEINLINE double sin(double value) { return __sprt_sin(value); }
+SPRT_UMBRELLA_FUNC
+double scalbln(double a, long b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_scalbln(a, b);
+}
+#endif
 
-SPRT_FORCEINLINE float sinf(float value) { return __sprt_sinf(value); }
+SPRT_UMBRELLA_FUNC
+float scalblnf(float a, long b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_scalblnf(a, b);
+}
+#endif
 
-SPRT_FORCEINLINE long double sinl(long double value) { return __sprt_sinl(value); }
-
-
-SPRT_FORCEINLINE double sinh(double value) { return __sprt_sinh(value); }
-
-SPRT_FORCEINLINE float sinhf(float value) { return __sprt_sinhf(value); }
-
-SPRT_FORCEINLINE long double sinhl(long double value) { return __sprt_sinhl(value); }
-
-
-SPRT_FORCEINLINE double sqrt(double value) { return __sprt_sqrt(value); }
-
-SPRT_FORCEINLINE float sqrtf(float value) { return __sprt_sqrtf(value); }
-
-SPRT_FORCEINLINE long double sqrtl(long double value) { return __sprt_sqrtl(value); }
-
-
-SPRT_FORCEINLINE double tan(double value) { return __sprt_tan(value); }
-
-SPRT_FORCEINLINE float tanf(float value) { return __sprt_tanf(value); }
-
-SPRT_FORCEINLINE long double tanl(long double value) { return __sprt_tanl(value); }
+SPRT_UMBRELLA_FUNC
+long double scalblnl(long double a, long b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_scalblnl(a, b);
+}
+#endif
 
 
-SPRT_FORCEINLINE double tanh(double value) { return __sprt_tanh(value); }
+SPRT_UMBRELLA_FUNC
+double scalbn(double a, int b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_scalbn(a, b);
+}
+#endif
 
-SPRT_FORCEINLINE float tanhf(float value) { return __sprt_tanhf(value); }
+SPRT_UMBRELLA_FUNC
+float scalbnf(float a, int b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_scalbnf(a, b);
+}
+#endif
 
-SPRT_FORCEINLINE long double tanhl(long double value) { return __sprt_tanhl(value); }
+SPRT_UMBRELLA_FUNC
+long double scalbnl(long double a, int b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_scalbnl(a, b);
+}
+#endif
 
 
-SPRT_FORCEINLINE double tgamma(double value) { return __sprt_tgamma(value); }
+SPRT_UMBRELLA_FUNC
+double sin(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sin(value);
+}
+#endif
 
-SPRT_FORCEINLINE float tgammaf(float value) { return __sprt_tgammaf(value); }
+SPRT_UMBRELLA_FUNC
+float sinf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sinf(value);
+}
+#endif
 
-SPRT_FORCEINLINE long double tgammal(long double value) { return __sprt_tgammal(value); }
+SPRT_UMBRELLA_FUNC
+long double sinl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sinl(value);
+}
+#endif
 
 
-SPRT_FORCEINLINE double trunc(double value) { return __sprt_trunc(value); }
+SPRT_UMBRELLA_FUNC
+double sinh(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sinh(value);
+}
+#endif
 
-SPRT_FORCEINLINE float truncf(float value) { return __sprt_truncf(value); }
+SPRT_UMBRELLA_FUNC
+float sinhf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sinhf(value);
+}
+#endif
 
-SPRT_FORCEINLINE long double truncl(long double value) { return __sprt_truncl(value); }
+SPRT_UMBRELLA_FUNC
+long double sinhl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sinhl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double sqrt(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sqrt(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float sqrtf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sqrtf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double sqrtl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sqrtl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double tan(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_tan(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float tanf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_tanf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double tanl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_tanl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double tanh(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_tanh(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float tanhf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_tanhf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double tanhl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_tanhl(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double tgamma(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_tgamma(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float tgammaf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_tgammaf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double tgammal(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_tgammal(value);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+double trunc(double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_trunc(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float truncf(float value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_truncf(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double truncl(long double value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_truncl(value);
+}
+#endif
 
 __SPRT_END_DECL
 

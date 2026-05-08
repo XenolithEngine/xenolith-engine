@@ -23,7 +23,7 @@
 #ifndef CORE_EVENT_PLATFORM_WINDOWS_SPEVENTTIMERIOCP_H_
 #define CORE_EVENT_PLATFORM_WINDOWS_SPEVENTTIMERIOCP_H_
 
-#include "SPEventTimerHandle.h"
+#include <sprt/runtime/dispatch/handle.h>
 #include "SPEvent-iocp.h"
 
 namespace sprt::dispatch {

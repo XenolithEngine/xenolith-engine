@@ -21,9 +21,7 @@
  **/
 
 #include "SPEventThreadIocp.h"
-#include "SPStatus.h"
-#include "detail/SPEventHandleClass.h"
-#include "platform/windows/SPEvent-iocp.h"
+#include "../../detail/SPRuntimeDispatchHandleClass.h"
 
 #include <unistd.h>
 
@@ -87,7 +85,7 @@ void ThreadIocpHandle::notify(IocpData *iocp, ThreadIocpSource *source, const No
 	}
 }
 
-Status ThreadIocpHandle::perform(Rc<thread::Task> &&task) {
+Status ThreadIocpHandle::perform(Rc<Task> &&task) {
 	auto source = reinterpret_cast<ThreadIocpSource *>(_data);
 
 	sprt::unique_lock lock(_mutex);
@@ -98,7 +96,7 @@ Status ThreadIocpHandle::perform(Rc<thread::Task> &&task) {
 	return Status::Ok;
 }
 
-Status ThreadIocpHandle::perform(mem_std::Function<void()> &&func, Ref *target, StringView tag) {
+Status ThreadIocpHandle::perform(dispatch::Function<void()> &&func, Ref *target, StringView tag) {
 	auto source = reinterpret_cast<ThreadIocpSource *>(_data);
 
 	sprt::unique_lock lock(_mutex);

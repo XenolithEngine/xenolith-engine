@@ -3,7 +3,9 @@
 
 #include <sprt/c/bits/__sprt_def.h>
 
-#define __SPRT_FD_SETSIZE 1'024
+// clang-format off
+#define __SPRT_FD_SETSIZE 1024
+// clang-format on
 
 typedef unsigned long __SPRT_ID(fd_mask);
 

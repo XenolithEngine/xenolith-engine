@@ -26,7 +26,7 @@
 
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/platform.h>
-#include <sprt/runtime/mutex.h>
+#include <sprt/cxx/mutex>
 #include <sprt/runtime/filesystem/filepath.h>
 
 #include <sys/winapi.h>

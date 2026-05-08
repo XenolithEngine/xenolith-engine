@@ -65,6 +65,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_cpuset_t.h>
 #include <sprt/c/bits/__sprt_uint64_t.h>
 #include <sprt/c/bits/__sprt_uint32_t.h>
+#include <sprt/c/bits/sched_param.h>
 #include <sprt/c/cross/__sprt_signal.h>
 
 // clang-format off
@@ -124,17 +125,17 @@ THE SOFTWARE.
 
 typedef void *__SPRT_ID(pthread_t);
 
-typedef struct alignas(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
+typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
 	__SPRT_ID(uint32_t) __data[6];
 } __SPRT_ID(pthread_attr_t);
 
 typedef __SPRT_ID(uint32_t) __SPRT_ID(pthread_once_t);
 
-typedef struct alignas(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
+typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
 	__SPRT_ID(uint32_t) __data[1];
 } __SPRT_ID(pthread_mutexattr_t);
 
-typedef struct alignas(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
+typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
 	__SPRT_ID(uint64_t) __data[3];
 } __SPRT_ID(pthread_mutex_t);
 
@@ -142,27 +143,27 @@ typedef __SPRT_ID(uint32_t) __SPRT_ID(pthread_key_t);
 
 typedef volatile __SPRT_ID(uint32_t) __SPRT_ID(pthread_spinlock_t);
 
-typedef struct alignas(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
+typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
 	__SPRT_ID(uint64_t) __size[3];
 } __SPRT_ID(pthread_cond_t);
 
-typedef struct alignas(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
+typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
 	__SPRT_ID(uint32_t) __size[2];
 } __SPRT_ID(pthread_condattr_t);
 
-typedef struct alignas(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
+typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
 	__SPRT_ID(uint32_t) __size[1];
 } __SPRT_ID(pthread_rwlockattr_t);
 
-typedef struct alignas(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
+typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
 	__SPRT_ID(uint32_t) __size[1];
 } __SPRT_ID(pthread_barrierattr_t);
 
-typedef struct alignas(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
+typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
 	__SPRT_ID(uint32_t) __size[5];
 } __SPRT_ID(pthread_rwlock_t);
 
-typedef struct alignas(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
+typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
 	__SPRT_ID(uint32_t) __size[5];
 } __SPRT_ID(pthread_barrier_t);
 
@@ -197,9 +198,9 @@ SPRT_API int __SPRT_ID(pthread_attr_setschedpolicy)(__SPRT_ID(pthread_attr_t) *,
 
 SPRT_API int __SPRT_ID(
 		pthread_attr_getschedparam)(const __SPRT_ID(pthread_attr_t) * __SPRT_RESTRICT,
-		struct __SPRT_ID(sched_param) * __SPRT_RESTRICT);
+		struct __SPRT_SCHED_PARAM_NAME *__SPRT_RESTRICT);
 SPRT_API int __SPRT_ID(pthread_attr_setschedparam)(__SPRT_ID(pthread_attr_t) * __SPRT_RESTRICT,
-		const struct __SPRT_ID(sched_param) * __SPRT_RESTRICT);
+		const struct __SPRT_SCHED_PARAM_NAME *__SPRT_RESTRICT);
 
 SPRT_API int __SPRT_ID(pthread_attr_getinheritsched)(
 		const __SPRT_ID(pthread_attr_t) * __SPRT_RESTRICT, int *__SPRT_RESTRICT);
@@ -232,9 +233,9 @@ SPRT_API void __SPRT_ID(pthread_testcancel)(void);
 SPRT_API int __SPRT_ID(pthread_cancel)(__SPRT_ID(pthread_t));
 
 SPRT_API int __SPRT_ID(pthread_getschedparam)(__SPRT_ID(pthread_t), int *__SPRT_RESTRICT,
-		struct __SPRT_ID(sched_param) * __SPRT_RESTRICT);
+		struct __SPRT_SCHED_PARAM_NAME *__SPRT_RESTRICT);
 SPRT_API int __SPRT_ID(
-		pthread_setschedparam)(__SPRT_ID(pthread_t), int, const struct __SPRT_ID(sched_param) *);
+		pthread_setschedparam)(__SPRT_ID(pthread_t), int, const struct __SPRT_SCHED_PARAM_NAME *);
 SPRT_API int __SPRT_ID(pthread_setschedprio)(__SPRT_ID(pthread_t), int);
 
 SPRT_API int __SPRT_ID(pthread_getcpuclockid)(__SPRT_ID(pthread_t), __SPRT_ID(clockid_t) *);
@@ -304,7 +305,7 @@ SPRT_API int __SPRT_ID(pthread_mutex_trylock)(__SPRT_ID(pthread_mutex_t) *);
 // Relative timeout then passed to actual lock with it's default clock,
 // which is not CLOCK_REALTIME in most cases
 SPRT_API int __SPRT_ID(pthread_mutex_timedlock)(__SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT,
-		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT abs_timeout);
+		const struct __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT abs_timeout);
 
 SPRT_API int __SPRT_ID(pthread_mutex_destroy)(__SPRT_ID(pthread_mutex_t) *);
 SPRT_API int __SPRT_ID(pthread_mutex_consistent)(__SPRT_ID(pthread_mutex_t) *);
@@ -340,14 +341,15 @@ SPRT_API int __SPRT_ID(pthread_cond_destroy)(__SPRT_ID(pthread_cond_t) *);
 SPRT_API int __SPRT_ID(pthread_cond_wait)(__SPRT_ID(pthread_cond_t) * __SPRT_RESTRICT,
 		__SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT);
 SPRT_API int __SPRT_ID(pthread_cond_timedwait)(__SPRT_ID(pthread_cond_t) * __SPRT_RESTRICT,
-		__SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT, const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT);
+		__SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT,
+		const struct __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT);
 
 // Timeout is measured against specified clock, then converted to relative.
 // Relative timeout then passed to actual lock with the clock, that was set in
 // pthread_condattr_setclock, or default sprt_qlock_t clock
 SPRT_API int __SPRT_ID(pthread_cond_clockwait)(__SPRT_ID(pthread_cond_t) * __SPRT_RESTRICT,
 		__SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT, __SPRT_ID(clockid_t) clock_id,
-		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT);
+		const struct __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT);
 
 SPRT_API int __SPRT_ID(pthread_cond_broadcast)(__SPRT_ID(pthread_cond_t) *);
 SPRT_API int __SPRT_ID(pthread_cond_signal)(__SPRT_ID(pthread_cond_t) *);
@@ -406,7 +408,7 @@ SPRT_API int __SPRT_ID(pthread_rwlock_tryrdlock)(__SPRT_ID(pthread_rwlock_t) *);
 // Relative timeout then passed to actual lock with it's default clock,
 // which is always not CLOCK_REALTIME
 SPRT_API int __SPRT_ID(pthread_rwlock_timedrdlock)(__SPRT_ID(pthread_rwlock_t) * __SPRT_RESTRICT,
-		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT);
+		const struct __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT);
 
 SPRT_API int __SPRT_ID(pthread_rwlock_wrlock)(__SPRT_ID(pthread_rwlock_t) *);
 SPRT_API int __SPRT_ID(pthread_rwlock_trywrlock)(__SPRT_ID(pthread_rwlock_t) *);
@@ -415,7 +417,7 @@ SPRT_API int __SPRT_ID(pthread_rwlock_trywrlock)(__SPRT_ID(pthread_rwlock_t) *);
 // Relative timeout then passed to actual lock with it's default clock,
 // which is always not CLOCK_REALTIME
 SPRT_API int __SPRT_ID(pthread_rwlock_timedwrlock)(__SPRT_ID(pthread_rwlock_t) * __SPRT_RESTRICT,
-		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT);
+		const struct __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT);
 
 SPRT_API int __SPRT_ID(pthread_rwlock_unlock)(__SPRT_ID(pthread_rwlock_t) *);
 
@@ -464,11 +466,15 @@ SPRT_API int __SPRT_ID(pthread_setattr_default_np)(const __SPRT_ID(pthread_attr_
 SPRT_API int __SPRT_ID(pthread_tryjoin_np)(__SPRT_ID(pthread_t), void **);
 
 SPRT_API int __SPRT_ID(
-		pthread_timedjoin_np)(__SPRT_ID(pthread_t), void **, const __SPRT_TIMESPEC_NAME *);
+		pthread_timedjoin_np)(__SPRT_ID(pthread_t), void **, const struct __SPRT_TIMESPEC_NAME *);
 
 // Returns system thread identifier (like gettid()) for all platforms;
 // In SPRT, gettid is also implemented for all platforms.
 SPRT_API int __SPRT_ID(pthread_getid_np)(__SPRT_ID(pthread_t), __SPRT_ID(pid_t) *);
+
+SPRT_API __SPRT_ID(pthread_t) __SPRT_ID(pthread_self_noattach_np)(void);
+
+SPRT_API __SPRT_ID(pid_t) __SPRT_ID(pthread_get_id_np)(void);
 
 __SPRT_END_DECL
 

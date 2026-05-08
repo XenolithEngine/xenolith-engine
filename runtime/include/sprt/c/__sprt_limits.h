@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/bits/__sprt_int.h>
+#include <sprt/c/bits/__sprt_ssize_t.h>
 
 // clang-format off
 #if '\xff' > 0

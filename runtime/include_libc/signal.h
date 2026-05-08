@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SIGNAL_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SIGNAL_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <signal.h>
 
@@ -186,30 +186,98 @@ __SPRT_BEGIN_DECL
 
 typedef __SPRT_ID(sigset_t) sigset_t;
 
-SPRT_FORCEINLINE int sigemptyset(sigset_t *set) { return __SPRT_ID(sigemptyset)(set); }
-SPRT_FORCEINLINE int sigfillset(sigset_t *set) { return __SPRT_ID(sigfillset)(set); }
-SPRT_FORCEINLINE int sigaddset(sigset_t *set, int s) { return __SPRT_ID(sigaddset)(set, s); }
-SPRT_FORCEINLINE int sigdelset(sigset_t *set, int s) { return __SPRT_ID(sigdelset)(set, s); }
-SPRT_FORCEINLINE int sigismember(const sigset_t *set, int s) {
-	return __SPRT_ID(sigismember)(set, s);
+SPRT_UMBRELLA_FUNC
+int sigemptyset(sigset_t *set) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(sigemptyset)(set);
 }
-
-#if __SPRT_CONFIG_HAVE_SIGNAL_SIGPROCMASK || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int sigprocmask(int mode, const sigset_t *__SPRT_RESTRICT a,
-		sigset_t *__SPRT_RESTRICT b) {
-	return __SPRT_ID(sigprocmask)(mode, a, b);
-}
-SPRT_FORCEINLINE int sigsuspend(const sigset_t *set) { return __SPRT_ID(sigsuspend)(set); }
-SPRT_FORCEINLINE int sigpending(sigset_t *set) { return __SPRT_ID(sigpending)(set); }
 #endif
 
-SPRT_FORCEINLINE int sigisemptyset(const sigset_t *set) { return __SPRT_ID(sigisemptyset)(set); }
-SPRT_FORCEINLINE int sigorset(sigset_t *set, const sigset_t *a, const sigset_t *b) {
+SPRT_UMBRELLA_FUNC
+int sigfillset(sigset_t *set) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(sigfillset)(set);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int sigaddset(sigset_t *set, int s) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(sigaddset)(set, s);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int sigdelset(sigset_t *set, int s) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(sigdelset)(set, s);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int sigismember(const sigset_t *set, int s) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(sigismember)(set, s);
+}
+#endif
+
+#if __SPRT_CONFIG_HAVE_SIGNAL_SIGPROCMASK || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+
+SPRT_UMBRELLA_FUNC
+int sigprocmask(int mode, const sigset_t *__SPRT_RESTRICT a,
+		sigset_t *__SPRT_RESTRICT b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(sigprocmask)(mode, a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int sigsuspend(const sigset_t *set) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(sigsuspend)(set);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int sigpending(sigset_t *set) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(sigpending)(set);
+}
+#endif
+
+#endif // __SPRT_CONFIG_HAVE_SIGNAL_SIGPROCMASK
+
+SPRT_UMBRELLA_FUNC
+int sigisemptyset(const sigset_t *set) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(sigisemptyset)(set);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int sigorset(sigset_t *set, const sigset_t *a, const sigset_t *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(sigorset)(set, a, b);
 }
-SPRT_FORCEINLINE int sigandset(sigset_t *set, const sigset_t *a, const sigset_t *b) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int sigandset(sigset_t *set, const sigset_t *a, const sigset_t *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(sigandset)(set, a, b);
 }
+#endif
 
 __SPRT_END_DECL
 

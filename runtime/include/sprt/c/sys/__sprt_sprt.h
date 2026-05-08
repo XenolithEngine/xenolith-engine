@@ -23,6 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SPRT_H_
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SPRT_H_
 
+#include <sprt/c/cross/__sprt_sysid.h>
 #include <sprt/c/bits/__sprt_time_t.h>
 #include <sprt/c/bits/__sprt_uint32_t.h>
 #include <sprt/c/bits/__sprt_uint64_t.h>
@@ -69,6 +70,15 @@ typedef union __SPRT_ID(sprt_rlock_u) {
 	};
 } __SPRT_ID(sprt_rlock_t);
 
+/*
+	sprt_plock_t - universal mutex, that protects some resource by it's pointer.
+
+	No pre-initialization or termination required for sprt_plock_t
+	(that actually void * - any pointer), all primitives managed internally.
+*/
+
+typedef void *__SPRT_ID(sprt_plock_t);
+
 // Infinite timeout value
 #define __SPRT_SPRT_TIMEOUT_INFINITE __SPRT_UINT64_MAX
 
@@ -84,6 +94,17 @@ typedef union __SPRT_ID(sprt_rlock_u) {
 // Use realtime system clock for timeout instead of monotonic clock
 #define __SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME 4
 
+// Only for sprt_plock_t - mark resource as dead
+// (e.g. when you delete resource, when it's lock is held)
+// After this, next successful lock on this resource (if it was initiated when resource was alive)
+// returns -1 with EOWNERDIED in errno
+// Note that if you free/delete memory pointer with sprt_plock_t on it,
+// allocator can immediately reuse sprt_plock_t address for other resource, before you call
+// `sprt_plock_unlock`, and SPRT_LOCK_FLAG_RESOURCE_DIED will be asigned to new resource address.
+// To mitigate this, do `sprt_plock_unlock` before free/delete resource by address, when you use
+// SPRT_LOCK_FLAG_RESOURCE_DIED
+#define __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED 8
+
 // Did OS implements extended locking logic by itself?
 // This flag changes locking protocol to use sprt_rlock_t
 // (see sprt/runtime/thread/rmutex.h)
@@ -95,40 +116,87 @@ typedef union __SPRT_ID(sprt_rlock_u) {
 
 __SPRT_BEGIN_DECL
 
+/*
+	sprt_qlock API
+*/
+
 // Check for runtime support of the combination of flags for sprt_qlock_t
 // Returns 0 if flags are supported, -1 otherwise
-SPRT_API int __SPRT_ID(sprt_qlock_supports)(__SPRT_ID(sprt_lock_flags_t));
+SPRT_API
+int __SPRT_ID(sprt_qlock_supports)(__SPRT_ID(sprt_lock_flags_t));
 
-SPRT_API int __SPRT_ID(sprt_qlock_wait)(__SPRT_ID(sprt_qlock_t) * value,
-		__SPRT_ID(sprt_qlock_t) expected, __SPRT_ID(sprt_timeout_t), __SPRT_ID(sprt_lock_flags_t));
+SPRT_API
+int __SPRT_ID(sprt_qlock_wait)(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_qlock_t) expected,
+		__SPRT_ID(sprt_timeout_t), __SPRT_ID(sprt_lock_flags_t));
 
-SPRT_API int __SPRT_ID(
-		sprt_qlock_wake_one)(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_lock_flags_t));
+SPRT_API
+int __SPRT_ID(sprt_qlock_wake_one)(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_lock_flags_t));
 
-SPRT_API int __SPRT_ID(
-		sprt_qlock_wake_all)(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_lock_flags_t));
+SPRT_API
+int __SPRT_ID(sprt_qlock_wake_all)(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_lock_flags_t));
 
-SPRT_API __SPRT_ID(sprt_timeout_t) __SPRT_ID(sprt_qlock_now)(__SPRT_ID(sprt_lock_flags_t));
+/*
+	"Oneshot" API - if you just need a quick mutex
+*/
+SPRT_API
+int __SPRT_ID(
+		sprt_qlock_oneshot_lock)(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_lock_flags_t));
 
-SPRT_API __SPRT_ID(clockid_t) __SPRT_ID(sprt_qlock_getclock)(__SPRT_ID(sprt_lock_flags_t));
+SPRT_API
+int __SPRT_ID(sprt_qlock_oneshot_trylock)(__SPRT_ID(sprt_qlock_t) * value);
+
+SPRT_API
+int __SPRT_ID(
+		sprt_qlock_oneshot_unlock)(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_lock_flags_t));
+
+
+SPRT_API
+__SPRT_ID(sprt_timeout_t) __SPRT_ID(sprt_qlock_now)(__SPRT_ID(sprt_lock_flags_t));
+
+SPRT_API
+__SPRT_ID(clockid_t) __SPRT_ID(sprt_qlock_getclock)(__SPRT_ID(sprt_lock_flags_t));
+
+/*
+	sprt_rlock API
+*/
 
 // Check for runtime support of the combination of flags for sprt_rlock_t
 // Usage of flags compination, for that sprt_rlock_supports returns -1 leads to undefined behavior
-SPRT_API int __SPRT_ID(sprt_rlock_supports)(__SPRT_ID(sprt_lock_flags_t));
+SPRT_API
+int __SPRT_ID(sprt_rlock_supports)(__SPRT_ID(sprt_lock_flags_t));
 
-SPRT_API int __SPRT_ID(sprt_rlock_wait)(__SPRT_ID(sprt_rlock_t) * value,
-		__SPRT_ID(sprt_rlock_t) * expected, __SPRT_ID(sprt_timeout_t),
-		__SPRT_ID(sprt_lock_flags_t));
+SPRT_API
+int __SPRT_ID(sprt_rlock_wait)(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_rlock_t) * expected,
+		__SPRT_ID(sprt_timeout_t), __SPRT_ID(sprt_lock_flags_t));
 
-SPRT_API int __SPRT_ID(
-		sprt_rlock_try_wait)(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_lock_flags_t));
+SPRT_API
+int __SPRT_ID(sprt_rlock_try_wait)(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_lock_flags_t));
 
-SPRT_API int __SPRT_ID(
-		sprt_rlock_wake)(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_lock_flags_t));
+SPRT_API
+int __SPRT_ID(sprt_rlock_wake)(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_lock_flags_t));
 
-SPRT_API __SPRT_ID(sprt_timeout_t) __SPRT_ID(sprt_rlock_now)(__SPRT_ID(sprt_lock_flags_t));
+SPRT_API
+__SPRT_ID(sprt_timeout_t) __SPRT_ID(sprt_rlock_now)(__SPRT_ID(sprt_lock_flags_t));
 
-SPRT_API __SPRT_ID(clockid_t) __SPRT_ID(sprt_rlock_getclock)(__SPRT_ID(sprt_lock_flags_t));
+SPRT_API
+__SPRT_ID(clockid_t) __SPRT_ID(sprt_rlock_getclock)(__SPRT_ID(sprt_lock_flags_t));
+
+/*
+	sprt_plock API
+*/
+
+SPRT_API
+int __SPRT_ID(sprt_plock_lock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock_flags_t),
+		__SPRT_ID(pid_t) *);
+
+SPRT_API
+int __SPRT_ID(sprt_plock_trylock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock_flags_t),
+		__SPRT_ID(pid_t) *);
+
+SPRT_API
+int __SPRT_ID(sprt_plock_unlock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock_flags_t),
+		__SPRT_ID(pid_t) *);
+
 
 // OS version API
 
@@ -140,12 +208,14 @@ SPRT_API __SPRT_ID(clockid_t) __SPRT_ID(sprt_rlock_getclock)(__SPRT_ID(sprt_lock
 
 	Useful to check if some API is available at runtime
 */
-SPRT_API const char *__SPRT_ID(sprt_get_os_kernel_version)();
+SPRT_API
+const char *__SPRT_ID(sprt_get_os_kernel_version)();
 
 /*
 	Effectively performs strverscmp(sprt_get_os_kernel_version(), <version>);
 */
-SPRT_API int __SPRT_ID(sprt_compare_os_kernel_version)(const char *version);
+SPRT_API
+int __SPRT_ID(sprt_compare_os_kernel_version)(const char *version);
 
 __SPRT_END_DECL
 

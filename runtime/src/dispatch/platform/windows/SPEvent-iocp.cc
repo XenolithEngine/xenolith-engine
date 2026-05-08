@@ -23,8 +23,8 @@
 
 #include "SPEvent-iocp.h"
 #include "SPEvent-windows.h"
-#include "SPStatus.h"
-#include "SPTime.h"
+
+#include <sprt/runtime/log.h>
 
 namespace sprt::dispatch {
 
@@ -38,7 +38,7 @@ void IocpData::pollMessages() {
 	winmsg msg = {};
 	int hasMessage = 1;
 	while (hasMessage) {
-		mem_pool::perform_clear([&] {
+		memory::perform_clear([&] {
 			hasMessage = _PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE);
 			if (hasMessage) {
 				_TranslateMessage(&msg);
@@ -109,7 +109,7 @@ uint32_t IocpData::processEvents(RunContext *ctx) {
 		} else {
 			auto h = (Handle *)ev.lpCompletionKey;
 
-			auto refId = h->retain();
+			auto refId = sprt::retain(h);
 
 			data.result = ev.dwNumberOfBytesTransferred;
 			data.queueFlags = 0;
@@ -117,7 +117,7 @@ uint32_t IocpData::processEvents(RunContext *ctx) {
 
 			_data->notify(h, data);
 
-			h->release(refId);
+			sprt::release(h, refId);
 			++count;
 		}
 	}
@@ -181,7 +181,8 @@ Status IocpData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval wa
 		if (status == Status::Ok) {
 			processEvents(&ctx);
 		} else {
-			log::source().error("event::IOCP", "GetQueuedCompletionStatusEx error: ", status);
+			oslog::vperror(__SPRT_LOCATION, "event::IOCP",
+					"GetQueuedCompletionStatusEx error: ", status);
 			ctx.wakeupStatus = status;
 			break;
 		}
@@ -209,7 +210,7 @@ Status IocpData::suspendHandles() {
 
 	_runContext->wakeupStatus = Status::Suspended;
 
-	auto nhandles = _data->suspendAll();
+	auto nhandles = _data->suspendAll(nullptr);
 	_runContext->wakeupCounter = nhandles;
 
 	return Status::Done;
@@ -222,9 +223,9 @@ void IocpData::cancel() {
 
 IocpData::IocpData(QueueRef *q, Queue::Data *data, const QueueInfo &info)
 : PlatformQueueData(q, data, info.flags) {
-	_port = _CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 1);
+	_port = _CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1);
 	if (!_port) {
-		log::source().error("dispatch::Queue",
+		oslog::vperror(__SPRT_LOCATION, "dispatch::Queue",
 				"Fail to create IOCP: ", sprt::status::lastErrorToStatus(_GetLastError()));
 		return;
 	}

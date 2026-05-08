@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_FENV_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_FENV_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <fenv.h>
 
@@ -52,23 +52,93 @@ __SPRT_BEGIN_DECL
 typedef __SPRT_ID(fexcept_t) fexcept_t;
 typedef __SPRT_ID(fenv_t) fenv_t;
 
-SPRT_FORCEINLINE int feclearexcept(int v) { return __sprt_feclearexcept(v); }
-SPRT_FORCEINLINE int fegetexceptflag(fexcept_t *ex, int v) { return __sprt_fegetexceptflag(ex, v); }
-SPRT_FORCEINLINE int feraiseexcept(int v) { return __sprt_feraiseexcept(v); }
-SPRT_FORCEINLINE int fesetexceptflag(const fexcept_t *ex, int v) {
+SPRT_UMBRELLA_FUNC
+int feclearexcept(int v) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_feclearexcept(v);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int fegetexceptflag(fexcept_t *ex, int v) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fegetexceptflag(ex, v);
+}
+#endif
+SPRT_UMBRELLA_FUNC
+int feraiseexcept(int v) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_feraiseexcept(v);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int fesetexceptflag(const fexcept_t *ex, int v) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_fesetexceptflag(ex, v);
 }
-SPRT_FORCEINLINE int fetestexcept(int v) { return __sprt_fetestexcept(v); }
+#endif
+SPRT_UMBRELLA_FUNC
+int fetestexcept(int v) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fetestexcept(v);
+}
+#endif
 
-SPRT_FORCEINLINE int fegetround(void) { return __sprt_fegetround(); }
-SPRT_FORCEINLINE int fesetround(int v) { return __sprt_fesetround(v); }
 
-SPRT_FORCEINLINE int fegetenv(fenv_t *ex) { return __sprt_fegetenv((fenv_t *)ex); }
-SPRT_FORCEINLINE int feholdexcept(fenv_t *ex) { return __sprt_feholdexcept((fenv_t *)ex); }
-SPRT_FORCEINLINE int fesetenv(const fenv_t *ex) { return __sprt_fesetenv((const fenv_t *)ex); }
-SPRT_FORCEINLINE int feupdateenv(const fenv_t *ex) {
+SPRT_UMBRELLA_FUNC
+int fegetround(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fegetround();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int fesetround(int v) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fesetround(v);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+int fegetenv(fenv_t *ex) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fegetenv((fenv_t *)ex);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int feholdexcept(fenv_t *ex) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_feholdexcept((fenv_t *)ex);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int fesetenv(const fenv_t *ex) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fesetenv((const fenv_t *)ex);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int feupdateenv(const fenv_t *ex) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_feupdateenv((const fenv_t *)ex);
 }
+#endif
 
 __SPRT_END_DECL
 

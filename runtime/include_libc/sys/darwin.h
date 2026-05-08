@@ -76,102 +76,199 @@ typedef __SPRT_ID(_CFRunLoopTimerCallBack) _CFRunLoopTimerCallBack;
 
 __SPRT_BEGIN_DECL
 
-SPRT_FORCEINLINE int _os_sync_wait_on_address(void *addr, __SPRT_ID(uint64_t) value,
-		__SPRT_ID(size_t) size, __SPRT_ID(uint32_t) flags) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC
+int _os_sync_wait_on_address(void *addr, __SPRT_ID(uint64_t) value, __SPRT_ID(size_t) size,
+		__SPRT_ID(uint32_t) flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt__os_sync_wait_on_address(addr, value, size, flags);
-}
-
-SPRT_FORCEINLINE int _os_sync_wait_on_address_with_deadline(void *addr, __SPRT_ID(uint64_t) value,
-		__SPRT_ID(size_t) size, __SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) clockid,
-		__SPRT_ID(uint64_t) deadline) __SPRT_NOEXCEPT {
-	return __sprt__os_sync_wait_on_address_with_deadline(addr, value, size, flags, clockid,
-			deadline);
-}
-
-SPRT_FORCEINLINE int _os_sync_wait_on_address_with_timeout(void *addr, __SPRT_ID(uint64_t) value,
-		__SPRT_ID(size_t) size, __SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) clockid,
-		__SPRT_ID(uint64_t) timeout_ns) __SPRT_NOEXCEPT {
-	return __sprt__os_sync_wait_on_address_with_timeout(addr, value, size, flags, clockid,
-			timeout_ns);
-}
-
-SPRT_FORCEINLINE int _os_sync_wake_by_address_any(void *addr, __SPRT_ID(size_t) size,
-		__SPRT_ID(uint32_t) flags) __SPRT_NOEXCEPT {
-	return __sprt__os_sync_wake_by_address_any(addr, size, flags);
-}
-
-SPRT_FORCEINLINE int _os_sync_wake_by_address_all(void *addr, __SPRT_ID(size_t) size,
-		__SPRT_ID(uint32_t) flags) __SPRT_NOEXCEPT {
-	return __sprt__os_sync_wake_by_address_all(addr, size, flags);
-}
-
-SPRT_FORCEINLINE void _CFRelease(void *ptr) { __sprt__CFRelease(ptr); }
-
-SPRT_FORCEINLINE __SPRT_ID(_CFAbsoluteTime) _CFAbsoluteTimeGetCurrent(void) {
-	return __sprt__CFAbsoluteTimeGetCurrent();
-}
-
-SPRT_FORCEINLINE __SPRT_ID(_CFStringRef)
-		_CFStringCreateWithUTF8String(__SPRT_ID(_CFAllocatorRef alloc), const char *cStr) {
-	return __sprt__CFStringCreateWithUTF8String(alloc, cStr);
-}
-
-SPRT_FORCEINLINE __SPRT_ID(_CFRunLoopRef) _CFRunLoopGetCurrent(void) {
-	return __sprt__CFRunLoopGetCurrent();
-}
-
-SPRT_FORCEINLINE __SPRT_ID(_CFRunLoopRef) _CFRunLoopGetMain(void) {
-	return __sprt__CFRunLoopGetMain();
-}
-
-SPRT_FORCEINLINE void _CFRunLoopRun(void) { __sprt__CFRunLoopRun(); }
-
-SPRT_FORCEINLINE __SPRT_ID(_CFRunLoopRunResult) _CFRunLoopRunInMode(__SPRT_ID(_CFRunLoopMode) mode,
-		__SPRT_ID(_CFTimeInterval) seconds, int returnAfterSourceHandled) {
-	return __sprt__CFRunLoopRunInMode(mode, seconds, returnAfterSourceHandled);
-}
-
-SPRT_FORCEINLINE int _CFRunLoopIsWaiting(__SPRT_ID(_CFRunLoopRef) rl) {
-	return __sprt__CFRunLoopIsWaiting(rl);
-}
-
-SPRT_FORCEINLINE void _CFRunLoopWakeUp(__SPRT_ID(_CFRunLoopRef) rl) { __sprt__CFRunLoopWakeUp(rl); }
-
-SPRT_FORCEINLINE void _CFRunLoopStop(__SPRT_ID(_CFRunLoopRef) rl) { __sprt__CFRunLoopStop(rl); }
-
-#if defined(__has_feature) && __has_feature(blocks)
-SPRT_FORCEINLINE void _CFRunLoopPerformBlock(__SPRT_ID(_CFRunLoopRef) rl, const void *mode,
-		void (^block)(void)) {
-	__sprt__CFRunLoopPerformBlock(rl, mode, block);
 }
 #endif
 
-SPRT_FORCEINLINE void _CFRunLoopAddCommonMode(__SPRT_ID(_CFRunLoopRef) rl,
-		__SPRT_ID(_CFRunLoopMode) mode) {
+SPRT_UMBRELLA_FUNC
+int _os_sync_wait_on_address_with_deadline(void *addr, __SPRT_ID(uint64_t) value,
+		__SPRT_ID(size_t) size, __SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) clockid,
+		__SPRT_ID(uint64_t) deadline) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt__os_sync_wait_on_address_with_deadline(addr, value, size, flags, clockid,
+			deadline);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int _os_sync_wait_on_address_with_timeout(void *addr, __SPRT_ID(uint64_t) value,
+		__SPRT_ID(size_t) size, __SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) clockid,
+		__SPRT_ID(uint64_t) timeout_ns) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt__os_sync_wait_on_address_with_timeout(addr, value, size, flags, clockid,
+			timeout_ns);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int _os_sync_wake_by_address_any(void *addr, __SPRT_ID(size_t) size,
+		__SPRT_ID(uint32_t) flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt__os_sync_wake_by_address_any(addr, size, flags);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int _os_sync_wake_by_address_all(void *addr, __SPRT_ID(size_t) size,
+		__SPRT_ID(uint32_t) flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt__os_sync_wake_by_address_all(addr, size, flags);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void _CFRelease(void *ptr) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt__CFRelease(ptr);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+__SPRT_ID(_CFAbsoluteTime)
+_CFAbsoluteTimeGetCurrent(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt__CFAbsoluteTimeGetCurrent();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+__SPRT_ID(_CFStringRef)
+_CFStringCreateWithUTF8String(__SPRT_ID(_CFAllocatorRef alloc), const char *cStr) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt__CFStringCreateWithUTF8String(alloc, cStr);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+__SPRT_ID(_CFRunLoopRef)
+_CFRunLoopGetCurrent(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt__CFRunLoopGetCurrent();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+__SPRT_ID(_CFRunLoopRef)
+_CFRunLoopGetMain(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt__CFRunLoopGetMain();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void _CFRunLoopRun(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt__CFRunLoopRun();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+__SPRT_ID(_CFRunLoopRunResult)
+_CFRunLoopRunInMode(__SPRT_ID(_CFRunLoopMode) mode, __SPRT_ID(_CFTimeInterval) seconds,
+		int returnAfterSourceHandled) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt__CFRunLoopRunInMode(mode, seconds, returnAfterSourceHandled);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int _CFRunLoopIsWaiting(__SPRT_ID(_CFRunLoopRef) rl) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt__CFRunLoopIsWaiting(rl);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void _CFRunLoopWakeUp(__SPRT_ID(_CFRunLoopRef) rl) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt__CFRunLoopWakeUp(rl);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void _CFRunLoopStop(__SPRT_ID(_CFRunLoopRef) rl) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt__CFRunLoopStop(rl);
+}
+#endif
+
+#if defined(__has_feature) && __has_feature(blocks)
+SPRT_UMBRELLA_FUNC
+void _CFRunLoopPerformBlock(__SPRT_ID(_CFRunLoopRef) rl, const void *mode,
+		void (^block)(void)) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt__CFRunLoopPerformBlock(rl, mode, block);
+}
+#endif
+#endif
+
+SPRT_UMBRELLA_FUNC
+void _CFRunLoopAddCommonMode(__SPRT_ID(_CFRunLoopRef) rl,
+		__SPRT_ID(_CFRunLoopMode) mode) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	__sprt__CFRunLoopAddCommonMode(rl, mode);
 }
+#endif
 
-SPRT_FORCEINLINE __SPRT_ID(_CFRunLoopTimerRef) _CFRunLoopTimerCreate(__SPRT_ID(_CFAllocatorRef) a,
-		__SPRT_ID(_CFAbsoluteTime) fireDate, __SPRT_ID(_CFTimeInterval) interval,
-		__SPRT_ID(_CFOptionFlags) flags, __SPRT_ID(_CFIndex) order,
-		__SPRT_ID(_CFRunLoopTimerCallBack) callout, __SPRT_ID(_CFRunLoopTimerContext) * context) {
+SPRT_UMBRELLA_FUNC
+__SPRT_ID(_CFRunLoopTimerRef)
+_CFRunLoopTimerCreate(__SPRT_ID(_CFAllocatorRef) a, __SPRT_ID(_CFAbsoluteTime) fireDate,
+		__SPRT_ID(_CFTimeInterval) interval, __SPRT_ID(_CFOptionFlags) flags,
+		__SPRT_ID(_CFIndex) order, __SPRT_ID(_CFRunLoopTimerCallBack) callout,
+		__SPRT_ID(_CFRunLoopTimerContext) * context) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt__CFRunLoopTimerCreate(a, fireDate, interval, flags, order, callout, context);
 }
+#endif
 
-SPRT_FORCEINLINE int _CFRunLoopContainsTimer(__SPRT_ID(_CFRunLoopRef) rl,
-		__SPRT_ID(_CFRunLoopTimerRef) timer, __SPRT_ID(_CFRunLoopMode) mode) {
+SPRT_UMBRELLA_FUNC
+int _CFRunLoopContainsTimer(__SPRT_ID(_CFRunLoopRef) rl, __SPRT_ID(_CFRunLoopTimerRef) timer,
+		__SPRT_ID(_CFRunLoopMode) mode) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt__CFRunLoopContainsTimer(rl, timer, mode);
 }
+#endif
 
-SPRT_FORCEINLINE void _CFRunLoopAddTimer(__SPRT_ID(_CFRunLoopRef) rl,
-		__SPRT_ID(_CFRunLoopTimerRef) timer, __SPRT_ID(_CFRunLoopMode) mode) {
+SPRT_UMBRELLA_FUNC
+void _CFRunLoopAddTimer(__SPRT_ID(_CFRunLoopRef) rl, __SPRT_ID(_CFRunLoopTimerRef) timer,
+		__SPRT_ID(_CFRunLoopMode) mode) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	__sprt__CFRunLoopAddTimer(rl, timer, mode);
 }
+#endif
 
-SPRT_FORCEINLINE void _CFRunLoopRemoveTimer(__SPRT_ID(_CFRunLoopRef) rl,
-		__SPRT_ID(_CFRunLoopTimerRef) timer, __SPRT_ID(_CFRunLoopMode) mode) {
+SPRT_UMBRELLA_FUNC
+void _CFRunLoopRemoveTimer(__SPRT_ID(_CFRunLoopRef) rl, __SPRT_ID(_CFRunLoopTimerRef) timer,
+		__SPRT_ID(_CFRunLoopMode) mode) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	__sprt__CFRunLoopRemoveTimer(rl, timer, mode);
 }
+#endif
 
 __SPRT_END_DECL
 

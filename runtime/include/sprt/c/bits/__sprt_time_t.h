@@ -78,6 +78,7 @@ struct __SPRT_ITIMERSPEC_NAME {
 };
 
 typedef unsigned __SPRT_ID(clockid_t);
+typedef int __SPRT_ID(timer_t);
 
 #ifdef __SPRT_BUILD
 #define __SPRT_TM_NAME __SPRT_ID(tm)

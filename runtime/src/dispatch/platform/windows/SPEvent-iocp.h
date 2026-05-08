@@ -23,8 +23,8 @@
 #ifndef CORE_EVENT_PLATFORM_WINDOWS_SPEVENT_IOCP_H_
 #define CORE_EVENT_PLATFORM_WINDOWS_SPEVENT_IOCP_H_
 
-#include "SPEventQueue.h"
-#include "detail/SPEventQueueData.h"
+#include <sprt/runtime/dispatch/queue.h>
+#include "../../detail/SPRuntimeDispatchQueueData.h"
 #include <sys/winapi.h>
 
 namespace sprt::dispatch {
@@ -35,7 +35,7 @@ struct SPRT_API IocpData : public PlatformQueueData {
 
 	void *_port = nullptr;
 
-	mem_pool::Vector<overlapped_entry> _events;
+	Queue::Vector<overlapped_entry> _events;
 
 	uint32_t _receivedEvents = 0;
 	uint32_t _processedEvents = 0;

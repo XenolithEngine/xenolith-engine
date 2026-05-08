@@ -23,10 +23,9 @@
 #ifndef CORE_EVENT_PLATFORM_WINDOWS_SPEVENTPOLLIOCP_H_
 #define CORE_EVENT_PLATFORM_WINDOWS_SPEVENTPOLLIOCP_H_
 
-#include "SPEventHandle.h"
-#include "SPEventPollHandle.h"
+#include <sprt/runtime/dispatch/handle.h>
 
-#if WIN32
+#if SPRT_WINDOWS
 
 #include "SPEvent-iocp.h"
 

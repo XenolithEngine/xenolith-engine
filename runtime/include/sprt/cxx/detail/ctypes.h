@@ -80,6 +80,9 @@ using ptrdiff_t = __SPRT_ID(ptrdiff_t);
 using uintptr_t = __SPRT_ID(uintptr_t);
 using intptr_t = __SPRT_ID(intptr_t);
 
+using uintmax_t = __SPRT_ID(uintmax_t);
+using intmax_t = __SPRT_ID(intmax_t);
+
 using max_align_t = __SPRT_ID(max_align_t);
 
 static_assert(sizeof(uint8_t) == 1, "Invalid int length");

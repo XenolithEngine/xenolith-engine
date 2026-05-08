@@ -27,10 +27,11 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
+// clang-format off
 #define __SPRT_RTLD_LAZY   1
 #define __SPRT_RTLD_NOW    2
 #define __SPRT_RTLD_NOLOAD 4
-#define __SPRT_RTLD_NODELETE 4'096
+#define __SPRT_RTLD_NODELETE 4096
 #define __SPRT_RTLD_GLOBAL 256
 #define __SPRT_RTLD_LOCAL  0
 
@@ -38,6 +39,7 @@ __SPRT_BEGIN_DECL
 #define __SPRT_RTLD_DEFAULT ((void *)0)
 
 #define __SPRT_RTLD_DI_LINKMAP 2
+// clang-format on
 
 typedef struct {
 	const char *dli_fname;

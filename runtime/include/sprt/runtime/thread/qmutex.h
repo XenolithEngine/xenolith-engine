@@ -35,9 +35,20 @@ public:
 	using timeout_type = __sprt_sprt_timeout_t;
 	using flags_type = __sprt_sprt_lock_flags_t;
 
+	// Bit to indicate mutex locking
 	static constexpr value_type LOCK_BIT = 0b0001;
+
+	// Bit to indicate, that some threads waiting on this mutex
 	static constexpr value_type WAIT_BIT = 0b0010;
+
+	// Bit to indicate that qonce was performed successfully
 	static constexpr value_type COMPLETE_BIT = 0b0100;
+
+	// All bits, that can be set by qmutex implementation
+	static constexpr value_type BIT_MASK = LOCK_BIT | WAIT_BIT | COMPLETE_BIT;
+
+	// First unused bit
+	static constexpr value_type BIT_MAX = 0b0'1000;
 
 	template <int (*WaitFn)(value_type *, value_type, timeout_type, flags_type),
 			timeout_type (*ClockFn)(flags_type)>

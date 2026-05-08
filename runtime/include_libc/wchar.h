@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_WCHAR_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_WCHAR_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <wchar.h>
 
@@ -48,136 +48,330 @@ typedef __SPRT_ID(wint_t) wint_t;
 typedef __SPRT_ID(FILE) FILE;
 typedef __SPRT_ID(locale_t) locale_t;
 
-SPRT_FORCEINLINE wchar_t *wcscpy(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b) {
+SPRT_UMBRELLA_FUNC
+wchar_t *wcscpy(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcscpy(a, b);
 }
-SPRT_FORCEINLINE wchar_t *wcsncpy(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b,
-		size_t s) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+wchar_t *wcsncpy(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b,
+		size_t s) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcsncpy(a, b, s);
 }
+#endif
 
-SPRT_FORCEINLINE wchar_t *wcscat(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b) {
+SPRT_UMBRELLA_FUNC
+wchar_t *wcscat(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcscat(a, b);
 }
-SPRT_FORCEINLINE wchar_t *wcsncat(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b,
-		size_t s) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+wchar_t *wcsncat(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b,
+		size_t s) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcsncat(a, b, s);
 }
+#endif
 
-SPRT_FORCEINLINE int wcscmp(const wchar_t *a, const wchar_t *b) { return __sprt_wcscmp(a, b); }
-SPRT_FORCEINLINE int wcsncmp(const wchar_t *a, const wchar_t *b, size_t s) {
+SPRT_UMBRELLA_FUNC
+int wcscmp(const wchar_t *a, const wchar_t *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcscmp(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int wcsncmp(const wchar_t *a, const wchar_t *b, size_t s) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcsncmp(a, b, s);
 }
+#endif
 
-SPRT_FORCEINLINE int wcscoll(const wchar_t *a, const wchar_t *b) { return __sprt_wcscoll(a, b); }
-SPRT_FORCEINLINE size_t wcsxfrm(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b,
-		size_t s) {
+SPRT_UMBRELLA_FUNC
+int wcscoll(const wchar_t *a, const wchar_t *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcscoll(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+size_t wcsxfrm(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b,
+		size_t s) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcsxfrm(a, b, s);
 }
+#endif
 
-SPRT_FORCEINLINE const wchar_t *wcschr(const wchar_t *a, wchar_t c) { return __sprt_wcschr(a, c); }
-SPRT_FORCEINLINE const wchar_t *wcsrchr(const wchar_t *a, wchar_t c) {
+SPRT_UMBRELLA_FUNC
+const wchar_t *wcschr(const wchar_t *a, wchar_t c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcschr(a, c);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+const wchar_t *wcsrchr(const wchar_t *a, wchar_t c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcsrchr(a, c);
 }
+#endif
 
-SPRT_FORCEINLINE size_t wcscspn(const wchar_t *a, const wchar_t *b) { return __sprt_wcscspn(a, b); }
-SPRT_FORCEINLINE size_t wcsspn(const wchar_t *a, const wchar_t *b) { return __sprt_wcsspn(a, b); }
-SPRT_FORCEINLINE const wchar_t *wcspbrk(const wchar_t *a, const wchar_t *b) {
+SPRT_UMBRELLA_FUNC
+size_t wcscspn(const wchar_t *a, const wchar_t *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcscspn(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+size_t wcsspn(const wchar_t *a, const wchar_t *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcsspn(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+const wchar_t *wcspbrk(const wchar_t *a, const wchar_t *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcspbrk(a, b);
 }
+#endif
 
-SPRT_FORCEINLINE wchar_t *wcstok(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b,
-		wchar_t **__SPRT_RESTRICT ret) {
+SPRT_UMBRELLA_FUNC
+wchar_t *wcstok(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b,
+		wchar_t **__SPRT_RESTRICT ret) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcstok(a, b, ret);
 }
+#endif
 
-SPRT_FORCEINLINE size_t wcslen(const wchar_t *ret) { return __sprt_wcslen(ret); }
+SPRT_UMBRELLA_FUNC
+size_t wcslen(const wchar_t *ret) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcslen(ret);
+}
+#endif
 
-SPRT_FORCEINLINE const wchar_t *wcsstr(const wchar_t *__SPRT_RESTRICT a,
-		const wchar_t *__SPRT_RESTRICT b) {
+SPRT_UMBRELLA_FUNC
+const wchar_t *wcsstr(const wchar_t *__SPRT_RESTRICT a,
+		const wchar_t *__SPRT_RESTRICT b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcsstr(a, b);
 }
-SPRT_FORCEINLINE const wchar_t *wcswcs(const wchar_t *a, const wchar_t *b) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+const wchar_t *wcswcs(const wchar_t *a, const wchar_t *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcswcs(a, b);
 }
+#endif
 
-SPRT_FORCEINLINE const wchar_t *wmemchr(const wchar_t *a, wchar_t c, size_t s) {
+SPRT_UMBRELLA_FUNC
+const wchar_t *wmemchr(const wchar_t *a, wchar_t c, size_t s) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wmemchr(a, c, s);
 }
-SPRT_FORCEINLINE int wmemcmp(const wchar_t *a, const wchar_t *b, size_t s) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int wmemcmp(const wchar_t *a, const wchar_t *b, size_t s) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wmemcmp(a, b, s);
 }
-SPRT_FORCEINLINE wchar_t *wmemcpy(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b,
-		size_t s) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+wchar_t *wmemcpy(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b,
+		size_t s) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wmemcpy(a, b, s);
 }
-SPRT_FORCEINLINE wchar_t *wmemmove(wchar_t *a, const wchar_t *b, size_t s) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+wchar_t *wmemmove(wchar_t *a, const wchar_t *b, size_t s) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wmemmove(a, b, s);
 }
-SPRT_FORCEINLINE wchar_t *wmemset(wchar_t *a, wchar_t c, size_t s) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+wchar_t *wmemset(wchar_t *a, wchar_t c, size_t s) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wmemset(a, c, s);
 }
+#endif
 
-SPRT_FORCEINLINE wint_t btowc(int value) { return __sprt_btowc(value); }
-SPRT_FORCEINLINE int wctob(wint_t value) { return __sprt_wctob(value); }
+SPRT_UMBRELLA_FUNC
+wint_t btowc(int value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_btowc(value);
+}
+#endif
 
-SPRT_FORCEINLINE int mbsinit(const mbstate_t *value) { return __sprt_mbsinit(value); }
-SPRT_FORCEINLINE size_t mbrtowc(wchar_t *__SPRT_RESTRICT a, const char *__SPRT_RESTRICT b, size_t s,
-		mbstate_t *__SPRT_RESTRICT state) {
+SPRT_UMBRELLA_FUNC
+int wctob(wint_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wctob(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int mbsinit(const mbstate_t *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_mbsinit(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+size_t mbrtowc(wchar_t *__SPRT_RESTRICT a, const char *__SPRT_RESTRICT b, size_t s,
+		mbstate_t *__SPRT_RESTRICT state) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_mbrtowc(a, b, s, state);
 }
-SPRT_FORCEINLINE size_t wcrtomb(char *__SPRT_RESTRICT a, wchar_t c,
-		mbstate_t *__SPRT_RESTRICT state) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+size_t wcrtomb(char *__SPRT_RESTRICT a, wchar_t c,
+		mbstate_t *__SPRT_RESTRICT state) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcrtomb(a, c, state);
 }
+#endif
 
-SPRT_FORCEINLINE size_t mbrlen(const char *__SPRT_RESTRICT a, size_t s,
-		mbstate_t *__SPRT_RESTRICT state) {
+SPRT_UMBRELLA_FUNC
+size_t mbrlen(const char *__SPRT_RESTRICT a, size_t s,
+		mbstate_t *__SPRT_RESTRICT state) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_mbrlen(a, s, state);
 }
+#endif
 
-SPRT_FORCEINLINE size_t mbsrtowcs(wchar_t *__SPRT_RESTRICT a, const char **__SPRT_RESTRICT ret,
-		size_t s, mbstate_t *__SPRT_RESTRICT state) {
+SPRT_UMBRELLA_FUNC
+size_t mbsrtowcs(wchar_t *__SPRT_RESTRICT a, const char **__SPRT_RESTRICT ret, size_t s,
+		mbstate_t *__SPRT_RESTRICT state) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_mbsrtowcs(a, ret, s, state);
 }
+#endif
 
-SPRT_FORCEINLINE size_t wcsrtombs(char *__SPRT_RESTRICT a, const wchar_t **__SPRT_RESTRICT ret,
-		size_t s, mbstate_t *__SPRT_RESTRICT state) {
+SPRT_UMBRELLA_FUNC
+size_t wcsrtombs(char *__SPRT_RESTRICT a, const wchar_t **__SPRT_RESTRICT ret, size_t s,
+		mbstate_t *__SPRT_RESTRICT state) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcsrtombs(a, ret, s, state);
 }
+#endif
 
-SPRT_FORCEINLINE float wcstof(const wchar_t *__SPRT_RESTRICT a, wchar_t **__SPRT_RESTRICT ret) {
+SPRT_UMBRELLA_FUNC
+float wcstof(const wchar_t *__SPRT_RESTRICT a, wchar_t **__SPRT_RESTRICT ret) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcstof(a, ret);
 }
-SPRT_FORCEINLINE double wcstod(const wchar_t *__SPRT_RESTRICT a, wchar_t **__SPRT_RESTRICT ret) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+double wcstod(const wchar_t *__SPRT_RESTRICT a, wchar_t **__SPRT_RESTRICT ret) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcstod(a, ret);
 }
-SPRT_FORCEINLINE long double wcstold(const wchar_t *__SPRT_RESTRICT a,
-		wchar_t **__SPRT_RESTRICT ret) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double wcstold(const wchar_t *__SPRT_RESTRICT a,
+		wchar_t **__SPRT_RESTRICT ret) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcstold(a, ret);
 }
+#endif
 
-SPRT_FORCEINLINE long wcstol(const wchar_t *__SPRT_RESTRICT a, wchar_t **__SPRT_RESTRICT ret,
-		int value) {
+SPRT_UMBRELLA_FUNC
+long wcstol(const wchar_t *__SPRT_RESTRICT a, wchar_t **__SPRT_RESTRICT ret,
+		int value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcstol(a, ret, value);
 }
-SPRT_FORCEINLINE unsigned long wcstoul(const wchar_t *__SPRT_RESTRICT a,
-		wchar_t **__SPRT_RESTRICT ret, int value) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+unsigned long wcstoul(const wchar_t *__SPRT_RESTRICT a, wchar_t **__SPRT_RESTRICT ret,
+		int value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcstoul(a, ret, value);
 }
+#endif
 
-SPRT_FORCEINLINE long long wcstoll(const wchar_t *__SPRT_RESTRICT a, wchar_t **__SPRT_RESTRICT ret,
-		int value) {
+SPRT_UMBRELLA_FUNC
+long long wcstoll(const wchar_t *__SPRT_RESTRICT a, wchar_t **__SPRT_RESTRICT ret,
+		int value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcstoll(a, ret, value);
 }
-SPRT_FORCEINLINE unsigned long long wcstoull(const wchar_t *__SPRT_RESTRICT a,
-		wchar_t **__SPRT_RESTRICT ret, int value) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+unsigned long long wcstoull(const wchar_t *__SPRT_RESTRICT a, wchar_t **__SPRT_RESTRICT ret,
+		int value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcstoull(a, ret, value);
 }
+#endif
 
-SPRT_FORCEINLINE int fwide(FILE *f, int value) { return __sprt_fwide(f, value); }
+SPRT_UMBRELLA_FUNC
+int fwide(FILE *f, int value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fwide(f, value);
+}
+#endif
 
-SPRT_FORCEINLINE int wprintf(const wchar_t *__SPRT_RESTRICT fmt, ...) {
+SPRT_UMBRELLA_FUNC
+int wprintf(const wchar_t *__SPRT_RESTRICT fmt, ...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -186,9 +380,13 @@ SPRT_FORCEINLINE int wprintf(const wchar_t *__SPRT_RESTRICT fmt, ...) {
 	__sprt_va_end(list);
 	return ret;
 }
+#endif
 
-SPRT_FORCEINLINE int fwprintf(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
-		const wchar_t *__SPRT_RESTRICT fmt, ...) {
+SPRT_UMBRELLA_FUNC
+int fwprintf(__SPRT_ID(FILE) * __SPRT_RESTRICT f, const wchar_t *__SPRT_RESTRICT fmt,
+		...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -197,9 +395,13 @@ SPRT_FORCEINLINE int fwprintf(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 	__sprt_va_end(list);
 	return ret;
 }
+#endif
 
-SPRT_FORCEINLINE int swprintf(wchar_t *__SPRT_RESTRICT buf, __SPRT_ID(size_t) size,
-		const wchar_t *__SPRT_RESTRICT fmt, ...) {
+SPRT_UMBRELLA_FUNC
+int swprintf(wchar_t *__SPRT_RESTRICT buf, __SPRT_ID(size_t) size,
+		const wchar_t *__SPRT_RESTRICT fmt, ...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -208,22 +410,38 @@ SPRT_FORCEINLINE int swprintf(wchar_t *__SPRT_RESTRICT buf, __SPRT_ID(size_t) si
 	__sprt_va_end(list);
 	return ret;
 }
+#endif
 
-SPRT_FORCEINLINE int vwprintf(const wchar_t *__SPRT_RESTRICT fmt, __sprt_va_list list) {
+SPRT_UMBRELLA_FUNC
+int vwprintf(const wchar_t *__SPRT_RESTRICT fmt, __sprt_va_list list) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return ::__sprt_vwprintf(fmt, list);
 }
+#endif
 
-SPRT_FORCEINLINE int vfwprintf(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
-		const wchar_t *__SPRT_RESTRICT fmt, __sprt_va_list list) {
+SPRT_UMBRELLA_FUNC
+int vfwprintf(__SPRT_ID(FILE) * __SPRT_RESTRICT f, const wchar_t *__SPRT_RESTRICT fmt,
+		__sprt_va_list list) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return ::__sprt_vfwprintf(f, fmt, list);
 }
+#endif
 
-SPRT_FORCEINLINE int vswprintf(wchar_t *__SPRT_RESTRICT buf, __SPRT_ID(size_t) size,
-		const wchar_t *__SPRT_RESTRICT fmt, __sprt_va_list list) {
+SPRT_UMBRELLA_FUNC
+int vswprintf(wchar_t *__SPRT_RESTRICT buf, __SPRT_ID(size_t) size,
+		const wchar_t *__SPRT_RESTRICT fmt, __sprt_va_list list) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return ::__sprt_vswprintf(buf, size, fmt, list);
 }
+#endif
 
-SPRT_FORCEINLINE int wscanf(const wchar_t *__SPRT_RESTRICT fmt, ...) {
+SPRT_UMBRELLA_FUNC
+int wscanf(const wchar_t *__SPRT_RESTRICT fmt, ...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -232,9 +450,13 @@ SPRT_FORCEINLINE int wscanf(const wchar_t *__SPRT_RESTRICT fmt, ...) {
 	__sprt_va_end(list);
 	return ret;
 }
+#endif
 
-SPRT_FORCEINLINE int fwscanf(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
-		const wchar_t *__SPRT_RESTRICT fmt, ...) {
+SPRT_UMBRELLA_FUNC
+int fwscanf(__SPRT_ID(FILE) * __SPRT_RESTRICT f, const wchar_t *__SPRT_RESTRICT fmt,
+		...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -243,9 +465,13 @@ SPRT_FORCEINLINE int fwscanf(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
 	__sprt_va_end(list);
 	return ret;
 }
+#endif
 
-SPRT_FORCEINLINE int swscanf(const wchar_t *__SPRT_RESTRICT buf, const wchar_t *__SPRT_RESTRICT fmt,
-		...) {
+SPRT_UMBRELLA_FUNC
+int swscanf(const wchar_t *__SPRT_RESTRICT buf, const wchar_t *__SPRT_RESTRICT fmt,
+		...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
@@ -254,123 +480,317 @@ SPRT_FORCEINLINE int swscanf(const wchar_t *__SPRT_RESTRICT buf, const wchar_t *
 	__sprt_va_end(list);
 	return ret;
 }
+#endif
 
-SPRT_FORCEINLINE int vwscanf(const wchar_t *__SPRT_RESTRICT fmt, __sprt_va_list list) {
+SPRT_UMBRELLA_FUNC
+int vwscanf(const wchar_t *__SPRT_RESTRICT fmt, __sprt_va_list list) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return ::__sprt_vwscanf(fmt, list);
-}
-
-SPRT_FORCEINLINE int vfwscanf(__SPRT_ID(FILE) * __SPRT_RESTRICT f,
-		const wchar_t *__SPRT_RESTRICT fmt, __sprt_va_list list) {
-	return ::__sprt_vfwscanf(f, fmt, list);
-}
-
-SPRT_FORCEINLINE int vswscanf(const wchar_t *__SPRT_RESTRICT buf,
-		const wchar_t *__SPRT_RESTRICT fmt, __sprt_va_list list) {
-	return ::__sprt_vswscanf(buf, fmt, list);
-}
-
-
-SPRT_FORCEINLINE wint_t fgetwc(FILE *value) { return __sprt_fgetwc(value); }
-SPRT_FORCEINLINE wint_t getwc(FILE *value) { return __sprt_getwc(value); }
-SPRT_FORCEINLINE wint_t getwchar() { return __sprt_getwchar(); }
-
-SPRT_FORCEINLINE wint_t fputwc(wchar_t c, FILE *value) { return __sprt_fputwc(c, value); }
-SPRT_FORCEINLINE wint_t putwc(wchar_t c, FILE *value) { return __sprt_putwc(c, value); }
-SPRT_FORCEINLINE wint_t putwchar(wchar_t value) { return __sprt_putwchar(value); }
-
-SPRT_FORCEINLINE wchar_t *fgetws(wchar_t *__SPRT_RESTRICT ptr, int c, FILE *__SPRT_RESTRICT value) {
-	return __sprt_fgetws(ptr, c, value);
-}
-SPRT_FORCEINLINE int fputws(const wchar_t *__SPRT_RESTRICT ptr, FILE *__SPRT_RESTRICT value) {
-	return __sprt_fputws(ptr, value);
-}
-
-SPRT_FORCEINLINE wint_t ungetwc(wint_t c, FILE *value) { return __sprt_ungetwc(c, value); }
-
-SPRT_FORCEINLINE size_t wcsftime(wchar_t *__SPRT_RESTRICT ptr, size_t s,
-		const wchar_t *__SPRT_RESTRICT fmt, const struct tm *__SPRT_RESTRICT value) {
-	return __sprt_wcsftime(ptr, s, fmt, value);
-}
-
-SPRT_FORCEINLINE wint_t fgetwc_unlocked(FILE *value) { return __sprt_fgetwc_unlocked(value); }
-
-SPRT_FORCEINLINE wint_t getwc_unlocked(FILE *value) { return __sprt_getwc_unlocked(value); }
-
-SPRT_FORCEINLINE wint_t getwchar_unlocked(void) { return __sprt_getwchar_unlocked(); }
-SPRT_FORCEINLINE wint_t fputwc_unlocked(wchar_t c, FILE *value) {
-	return __sprt_fputwc_unlocked(c, value);
-}
-SPRT_FORCEINLINE wint_t putwc_unlocked(wchar_t c, FILE *value) {
-	return __sprt_putwc_unlocked(c, value);
-}
-SPRT_FORCEINLINE wint_t putwchar_unlocked(wchar_t value) { return __sprt_putwchar_unlocked(value); }
-SPRT_FORCEINLINE wchar_t *fgetws_unlocked(wchar_t *__SPRT_RESTRICT ptr, int c,
-		FILE *__SPRT_RESTRICT value) {
-	return __sprt_fgetws_unlocked(ptr, c, value);
-}
-SPRT_FORCEINLINE int fputws_unlocked(const wchar_t *__SPRT_RESTRICT ptr,
-		FILE *__SPRT_RESTRICT value) {
-	return __sprt_fputws_unlocked(ptr, value);
-}
-
-SPRT_FORCEINLINE size_t wcsftime_l(wchar_t *__SPRT_RESTRICT ptr, size_t s,
-		const wchar_t *__SPRT_RESTRICT fmt, const struct tm *__SPRT_RESTRICT tm, locale_t value) {
-	return __sprt_wcsftime_l(ptr, s, fmt, tm, value);
-}
-
-#if __SPRT_CONFIG_HAVE_STDIO_OPEN_MEMSTREAM || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE FILE *open_wmemstream(wchar_t **ptr, size_t *value) {
-	return __sprt_open_wmemstream(ptr, value);
 }
 #endif
 
-SPRT_FORCEINLINE size_t mbsnrtowcs(wchar_t *__SPRT_RESTRICT ptr, const char **__SPRT_RESTRICT ret,
-		size_t a, size_t b, mbstate_t *__SPRT_RESTRICT value) {
+SPRT_UMBRELLA_FUNC
+int vfwscanf(__SPRT_ID(FILE) * __SPRT_RESTRICT f, const wchar_t *__SPRT_RESTRICT fmt,
+		__sprt_va_list list) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return ::__sprt_vfwscanf(f, fmt, list);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int vswscanf(const wchar_t *__SPRT_RESTRICT buf, const wchar_t *__SPRT_RESTRICT fmt,
+		__sprt_va_list list) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return ::__sprt_vswscanf(buf, fmt, list);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+wint_t fgetwc(FILE *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fgetwc(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wint_t getwc(FILE *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_getwc(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wint_t getwchar() SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_getwchar();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wint_t fputwc(wchar_t c, FILE *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fputwc(c, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wint_t putwc(wchar_t c, FILE *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_putwc(c, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wint_t putwchar(wchar_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_putwchar(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wchar_t *fgetws(wchar_t *__SPRT_RESTRICT ptr, int c, FILE *__SPRT_RESTRICT value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fgetws(ptr, c, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int fputws(const wchar_t *__SPRT_RESTRICT ptr, FILE *__SPRT_RESTRICT value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fputws(ptr, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wint_t ungetwc(wint_t c, FILE *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ungetwc(c, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+size_t wcsftime(wchar_t *__SPRT_RESTRICT ptr, size_t s, const wchar_t *__SPRT_RESTRICT fmt,
+		const struct tm *__SPRT_RESTRICT value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcsftime(ptr, s, fmt, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wint_t fgetwc_unlocked(FILE *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fgetwc_unlocked(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wint_t getwc_unlocked(FILE *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_getwc_unlocked(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wint_t getwchar_unlocked(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_getwchar_unlocked();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wint_t fputwc_unlocked(wchar_t c, FILE *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fputwc_unlocked(c, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wint_t putwc_unlocked(wchar_t c, FILE *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_putwc_unlocked(c, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wint_t putwchar_unlocked(wchar_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_putwchar_unlocked(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wchar_t *fgetws_unlocked(wchar_t *__SPRT_RESTRICT ptr, int c,
+		FILE *__SPRT_RESTRICT value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fgetws_unlocked(ptr, c, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int fputws_unlocked(const wchar_t *__SPRT_RESTRICT ptr,
+		FILE *__SPRT_RESTRICT value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fputws_unlocked(ptr, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+size_t wcsftime_l(wchar_t *__SPRT_RESTRICT ptr, size_t s, const wchar_t *__SPRT_RESTRICT fmt,
+		const struct tm *__SPRT_RESTRICT tm, locale_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcsftime_l(ptr, s, fmt, tm, value);
+}
+#endif
+
+#if __SPRT_CONFIG_HAVE_STDIO_OPEN_MEMSTREAM || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+SPRT_UMBRELLA_FUNC
+FILE *open_wmemstream(wchar_t **ptr, size_t *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_open_wmemstream(ptr, value);
+}
+#endif
+#endif
+
+SPRT_UMBRELLA_FUNC
+size_t mbsnrtowcs(wchar_t *__SPRT_RESTRICT ptr, const char **__SPRT_RESTRICT ret, size_t a,
+		size_t b, mbstate_t *__SPRT_RESTRICT value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_mbsnrtowcs(ptr, ret, a, b, value);
 }
-SPRT_FORCEINLINE size_t wcsnrtombs(char *__SPRT_RESTRICT ptr, const wchar_t **__SPRT_RESTRICT ret,
-		size_t a, size_t b, mbstate_t *__SPRT_RESTRICT value) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+size_t wcsnrtombs(char *__SPRT_RESTRICT ptr, const wchar_t **__SPRT_RESTRICT ret, size_t a,
+		size_t b, mbstate_t *__SPRT_RESTRICT value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcsnrtombs(ptr, ret, a, b, value);
 }
-SPRT_FORCEINLINE wchar_t *wcsdup(const wchar_t *value) { return __sprt_wcsdup(value); }
+#endif
 
-SPRT_FORCEINLINE size_t wcsnlen(const wchar_t *ptr, size_t value) {
+SPRT_UMBRELLA_FUNC
+wchar_t *wcsdup(const wchar_t *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcsdup(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+size_t wcsnlen(const wchar_t *ptr, size_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcsnlen(ptr, value);
 }
+#endif
 
-SPRT_FORCEINLINE wchar_t *wcpcpy(wchar_t *__SPRT_RESTRICT ptr,
-		const wchar_t *__SPRT_RESTRICT value) {
+SPRT_UMBRELLA_FUNC
+wchar_t *wcpcpy(wchar_t *__SPRT_RESTRICT ptr,
+		const wchar_t *__SPRT_RESTRICT value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcpcpy(ptr, value);
 }
-SPRT_FORCEINLINE wchar_t *wcpncpy(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b,
-		size_t value) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+wchar_t *wcpncpy(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b,
+		size_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcpncpy(a, b, value);
 }
-SPRT_FORCEINLINE int wcscasecmp(const wchar_t *a, const wchar_t *b) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int wcscasecmp(const wchar_t *a, const wchar_t *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcscasecmp(a, b);
 }
-SPRT_FORCEINLINE int wcscasecmp_l(const wchar_t *a, const wchar_t *b, locale_t value) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int wcscasecmp_l(const wchar_t *a, const wchar_t *b, locale_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcscasecmp_l(a, b, value);
 }
-SPRT_FORCEINLINE int wcsncasecmp(const wchar_t *a, const wchar_t *b, size_t value) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int wcsncasecmp(const wchar_t *a, const wchar_t *b, size_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcsncasecmp(a, b, value);
 }
-SPRT_FORCEINLINE int wcsncasecmp_l(const wchar_t *a, const wchar_t *b, size_t s, locale_t value) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int wcsncasecmp_l(const wchar_t *a, const wchar_t *b, size_t s, locale_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcsncasecmp_l(a, b, s, value);
 }
-SPRT_FORCEINLINE int wcscoll_l(const wchar_t *a, const wchar_t *b, locale_t value) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int wcscoll_l(const wchar_t *a, const wchar_t *b, locale_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcscoll_l(a, b, value);
 }
-SPRT_FORCEINLINE size_t wcsxfrm_l(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b,
-		size_t s, locale_t value) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+size_t wcsxfrm_l(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b, size_t s,
+		locale_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcsxfrm_l(a, b, s, value);
 }
+#endif
 
-SPRT_FORCEINLINE int wcwidth(wchar_t value) { return __sprt_wcwidth(value); }
+SPRT_UMBRELLA_FUNC
+int wcwidth(wchar_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcwidth(value);
+}
+#endif
 
-SPRT_FORCEINLINE int wcswidth(const wchar_t *ptr, size_t value) {
+SPRT_UMBRELLA_FUNC
+int wcswidth(const wchar_t *ptr, size_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_wcswidth(ptr, value);
 }
+#endif
 
 __SPRT_END_DECL
 

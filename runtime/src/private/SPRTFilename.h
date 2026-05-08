@@ -31,68 +31,6 @@
 #include <sprt/runtime/stringview.h>
 #include <sprt/cxx/__functional/invoke.h>
 
-namespace sprt::internal {
-
-template <typename Result, typename Callback>
-static inline auto performWithNativePath(const char *path, const Callback &cb,
-		const Result &error) {
-	static_assert(is_invocable_v<Callback, const char *>);
-
-	auto pathlen = path ? __sprt_strlen(path) : 0;
-	auto isNative = __sprt_fpath_is_native(path, pathlen);
-	if (!path || isNative) {
-		return cb(path);
-	} else {
-		auto buflen = sprt::max((__SPRT_ID(size_t))8, pathlen + 1);
-		auto buf = __sprt_typed_malloca(char, buflen);
-		if (__sprt_fpath_to_native(path, pathlen, buf, buflen) > 0) {
-			return cb(buf);
-		}
-		__sprt_freea(buf);
-	}
-	*__sprt___errno_location() = EINVAL;
-	return error;
-}
-
-template <typename Result, typename Callback>
-static inline auto performWithPosixePath(const char *path, const Callback &cb,
-		const Result &error) {
-	static_assert(is_invocable_v<Callback, const char *>);
-
-	auto pathlen = path ? __sprt_strlen(path) : 0;
-	auto isPosix = __sprt_fpath_is_posix(path, pathlen);
-	if (!path || isPosix) {
-		return cb(path);
-	} else {
-		auto buf = __sprt_typed_malloca(char, pathlen + 1);
-		if (__sprt_fpath_to_posix(path, pathlen, buf, pathlen + 1) > 0) {
-			return cb(buf);
-		}
-		__sprt_freea(buf);
-	}
-	*__sprt___errno_location() = EINVAL;
-	return error;
-}
-
-template < typename Callback>
-static inline auto performBinaryMode(const char *mode, const Callback &cb) {
-	static_assert(is_invocable_v<Callback, const char *>);
-	StringView smode(mode);
-	if (smode.find('b') == Max<size_t>) {
-		// add 'b' to mode string
-		auto modeLen = __constexpr_strlen(mode) + 2;
-		auto modeBuf = __sprt_typed_malloca(char, modeLen);
-		auto target = modeBuf;
-
-		target = strappend(target, &modeLen, smode.data(), smode.size());
-		target = strappend(target, &modeLen, "b", 1);
-
-		cb(modeBuf);
-	} else {
-		cb(mode);
-	}
-}
-
-} // namespace sprt::internal
+namespace sprt::internal { } // namespace sprt::internal
 
 #endif

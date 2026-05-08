@@ -1,1 +1,1 @@
-typedef struct _iobuf __SPRT_ID(FILE);
+typedef struct __sprt_file_struct __SPRT_ID(FILE);

@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_DIRENT_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_DIRENT_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <dirent.h>
 
@@ -47,39 +47,96 @@ typedef __SPRT_ID(DIR) DIR;
 
 __SPRT_BEGIN_DECL
 
-SPRT_FORCEINLINE DIR *opendir(const char *path) { return __sprt_opendir(path); }
+SPRT_UMBRELLA_FUNC
+DIR *opendir(const char *path) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_opendir(path);
+}
+#endif
 
-SPRT_FORCEINLINE DIR *fdopendir(int __dir_fd) { return __sprt_fdopendir(__dir_fd); }
+SPRT_UMBRELLA_FUNC
+DIR *fdopendir(int __dir_fd) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_fdopendir(__dir_fd);
+}
+#endif
 
-SPRT_FORCEINLINE struct dirent *readdir(DIR *__dir) { return __sprt_readdir(__dir); }
+SPRT_UMBRELLA_FUNC
+struct dirent *readdir(DIR *__dir) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_readdir(__dir);
+}
+#endif
 
-SPRT_FORCEINLINE int closedir(DIR *__dir) { return __sprt_closedir(__dir); }
+SPRT_UMBRELLA_FUNC
+int closedir(DIR *__dir) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_closedir(__dir);
+}
+#endif
 
-SPRT_FORCEINLINE int rewinddir(DIR *__dir) { return __sprt_rewinddir(__dir); }
+SPRT_UMBRELLA_FUNC
+int rewinddir(DIR *__dir) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_rewinddir(__dir);
+}
+#endif
 
-SPRT_FORCEINLINE int seekdir(DIR *__dir, long __location) {
+SPRT_UMBRELLA_FUNC
+int seekdir(DIR *__dir, long __location) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_seekdir(__dir, __location);
 }
+#endif
 
-SPRT_FORCEINLINE long telldir(DIR *__dir) { return __sprt_telldir(__dir); }
+SPRT_UMBRELLA_FUNC
+long telldir(DIR *__dir) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_telldir(__dir);
+}
+#endif
 
-SPRT_FORCEINLINE int dirfd(DIR *__dir) { return __sprt_dirfd(__dir); }
+SPRT_UMBRELLA_FUNC
+int dirfd(DIR *__dir) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_dirfd(__dir);
+}
+#endif
 
-SPRT_FORCEINLINE int alphasort(const struct dirent **__lhs, const struct dirent **__rhs) {
+SPRT_UMBRELLA_FUNC
+int alphasort(const struct dirent **__lhs, const struct dirent **__rhs) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_alphasort(__lhs, __rhs);
 }
+#endif
 
-SPRT_FORCEINLINE int scandir(const char *path, struct dirent ***__name_list,
-		int (*__filter)(const struct dirent *),
-		int (*__comparator)(const struct dirent **, const struct dirent **)) {
+SPRT_UMBRELLA_FUNC
+int scandir(const char *path, struct dirent ***__name_list, int (*__filter)(const struct dirent *),
+		int (*__comparator)(const struct dirent **, const struct dirent **)) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_scandir(path, __name_list, __filter, __comparator);
 }
+#endif
 
-SPRT_FORCEINLINE int scandirat(int __dir_fd, const char *path, struct dirent ***__name_list,
+SPRT_UMBRELLA_FUNC
+int scandirat(int __dir_fd, const char *path, struct dirent ***__name_list,
 		int (*__filter)(const struct dirent *),
-		int (*__comparator)(const struct dirent **, const struct dirent **)) {
+		int (*__comparator)(const struct dirent **, const struct dirent **)) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_scandirat(__dir_fd, path, __name_list, __filter, __comparator);
 }
+#endif
 
 __SPRT_END_DECL
 

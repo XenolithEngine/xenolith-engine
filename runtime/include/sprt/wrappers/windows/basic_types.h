@@ -42,72 +42,96 @@
 /* Basic Types                                                  */
 /* ============================================================ */
 
-typedef char CCHAR;
-typedef void VOID;
 typedef void *HANDLE;
 typedef HANDLE *PHANDLE;
-typedef void *HMODULE;
-typedef HMODULE *PHMODULE;
-typedef unsigned char BYTE;
-typedef unsigned short WORD;
-typedef unsigned long DWORD;
-typedef DWORD *PDWORD;
-typedef BYTE *LPBYTE;
 
-typedef signed long LONG;
-typedef unsigned int UINT;
+typedef HANDLE HMODULE, HINSTANCE, HKEY, *PHMODULE;
 
-typedef LONG HRESULT;
-typedef unsigned long ULONG;
-typedef unsigned short USHORT;
-typedef unsigned char UCHAR;
-typedef unsigned long long ULONGLONG;
-typedef unsigned long long ULONG64;
-typedef long long LONGLONG;
-typedef unsigned __int64 ULONG_PTR;
-typedef unsigned __int64 DWORD_PTR;
-typedef unsigned long *PULONG;
-typedef void *PVOID;
-typedef ULONGLONG QWORD;
-typedef short SHORT;
-typedef float FLOAT;
-typedef double DOUBLE;
+typedef void VOID, *PVOID, *LPVOID;
 
-typedef unsigned __int64 *PULONG_PTR;
+typedef char CHAR, *PCHAR;
+typedef unsigned char BYTE, *PBYTE, *LPBYTE, UCHAR, *PUCHAR;
 
+typedef unsigned short WORD, *PWORD;
+typedef unsigned long DWORD, *PDWORD, *LPDWORD;
+typedef unsigned __int64 DWORDLONG, *PDWORDLONG;
+typedef unsigned __int64 DWORD_PTR, *PDWORD_PTR;
 typedef unsigned __int64 DWORD64, *PDWORD64;
 
-/* FARPROC - pointer to function returning int and taking variable args */
-typedef int (*FARPROC)(void);
+
+typedef unsigned short USHORT, *PUSHORT;
+typedef unsigned int UINT, *PUINT;
+typedef unsigned long ULONG, *PULONG;
+typedef unsigned __int64 ULONGLONG, *PULONGLONG;
+typedef unsigned __int64 ULONG64, *PULONG64;
+typedef unsigned __int64 ULONG_PTR, *PULONG_PTR, UINT_PTR, *PUINT_PTR;
+
+typedef signed short SHORT, *PSHORT;
+typedef signed int INT, *PINT;
+typedef signed long LONG, *PLONG;
+typedef signed __int64 LONGLONG, *PLONGLONG;
+typedef signed __int64 LONG64, *PLONG64, QWORD, *PQWORD;
+typedef signed __int64 LONG_PTR, *PLONG_PTR, INT_PTR, *PINT_PTR;
+
+typedef float FLOAT, *PFLOAT;
+typedef double DOUBLE, *PDOUBLE;
 
 /* BOOL type */
 typedef int BOOL;
 
 /* BOOLEAN type */
 typedef BYTE BOOLEAN;
+typedef BOOLEAN *PBOOLEAN;
+
+/* FARPROC - pointer to function returning int and taking variable args */
+typedef int (*FARPROC)(void);
+
 
 // clang-format off
-#if __cplusplus >= 201103L || !defined(__cplusplus)
-/* C++11 or C99+: wchar_t is a built-in type */
-typedef wchar_t WCHAR;
+#if defined(__cplusplus)
+typedef wchar_t WCHAR, *PWCHAR;
 #else
 /* Pre-C++11: need to define it ourselves */
-typedef unsigned short WCHAR;
+typedef unsigned short WCHAR, *PWCHAR;
 #endif
 // clang-format on
 
-typedef wchar_t *LPWSTR;
-typedef const wchar_t *LPCWSTR;
-typedef const wchar_t *PCWSTR;
+typedef WCHAR *PWSTR, *LPWSTR, *LPWCH, *PWCH;
+typedef const WCHAR *PCWSTR, *LPCWSTR, *LPCWCH, *PCWCH;
 
-typedef char *LPSTR;
-typedef const char *LPCSTR;
+typedef char *PSTR, *LPSTR;
+typedef const char *PCSTR, *LPCSTR;
 
-typedef void *LPVOID;
-typedef const void *LPCVOID;
+typedef const void *PCVOID, *LPCVOID;
 
-typedef DWORD *LPDWORD;
+typedef __SPRT_ID(size_t) SIZE_T, *PSIZE_T;
 
-typedef __SPRT_ID(size_t) SIZE_T;
+typedef char CCHAR, *PCCHAR;
+typedef short CSHORT, *PCSHORT;
+typedef ULONG CLONG, *PCLONG;
+
+typedef UINT_PTR WPARAM;
+typedef LONG_PTR LPARAM;
+typedef LONG_PTR LRESULT;
+
+typedef LONG HRESULT;
+typedef LONG NTSTATUS;
+typedef LONG LSTATUS;
+
+typedef DWORD ACCESS_MASK;
+typedef ACCESS_MASK REGSAM;
+
+typedef WORD ATOM;
+
+typedef DWORD SECURITY_INFORMATION, *PSECURITY_INFORMATION;
+
+typedef SHORT VARIANT_BOOL;
+typedef unsigned short VARTYPE;
+
+typedef WCHAR *BSTR;
+
+typedef struct _PROC_THREAD_ATTRIBUTE_LIST *PPROC_THREAD_ATTRIBUTE_LIST,
+		*LPPROC_THREAD_ATTRIBUTE_LIST;
+
 
 #endif // SPRT_WRAPPERS_WINDOWS_BASIC_TYPES_H_

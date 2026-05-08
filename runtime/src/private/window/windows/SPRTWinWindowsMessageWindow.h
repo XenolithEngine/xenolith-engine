@@ -31,6 +31,9 @@
 #include <sprt/runtime/window/theme_info.h>
 #include <sprt/runtime/window/clipboard.h>
 
+#include <sprt/wrappers/windows/message_api.h>
+#include <sprt/wrappers/windows/user_api.h>
+
 namespace sprt::window {
 
 class WindowsContextController;

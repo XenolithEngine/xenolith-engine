@@ -324,10 +324,14 @@ THE SOFTWARE.
 #endif
 
 // clang-format off
+#ifdef _WIN32
+#define SPRT_ALIGNAS(N) __declspec(align(N))
+#else
 #if __STDC_VERSION__ >= 201112L
 #define SPRT_ALIGNAS(N) _Alignas(N)
 #else
 #define SPRT_ALIGNAS(N) __SPRT_FALLBACK_ATTR(aligned(N))
+#endif
 #endif
 // clang-format on
 
@@ -372,6 +376,20 @@ THE SOFTWARE.
 #endif
 
 #endif // __cplusplus
+
+
+// If we have any working libc (internal or from OS) - we use ubrella inlines;
+// When we have no libc - we define prototypes for libc functions
+#define SPRT_UMBRELLA_REQUIRED (__STDC_HOSTED__ == 1)
+
+#if SPRT_UMBRELLA_REQUIRED
+#define SPRT_UMBRELLA_FUNC SPRT_FORCEINLINE
+#define SPRT_UMBRELLA_END __SPRT_NOEXCEPT
+#else
+#define SPRT_UMBRELLA_FUNC
+#define SPRT_UMBRELLA_END __SPRT_NOEXCEPT;
+#endif
+
 
 #define __SPRT_ID(Def) __sprt_ ## Def
 

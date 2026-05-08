@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_FCNTL_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_FCNTL_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <fcntl.h>
 
@@ -31,6 +31,7 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_fcntl.h>
 #include <sprt/c/__sprt_stdarg.h>
+#include <sprt/c/bits/__sprt_intptr_t.h>
 
 #ifndef SEEK_SET
 #define SEEK_SET __SPRT_SEEK_SET
@@ -56,8 +57,14 @@ THE SOFTWARE.
 #define O_CLOEXEC __SPRT_O_CLOEXEC
 #define O_ASYNC __SPRT_O_ASYNC
 #define O_NDELAY __SPRT_O_NDELAY
+
+#ifdef __SPRT_O_SEARCH
 #define O_SEARCH __SPRT_O_SEARCH
+#endif
+
+#ifdef __SPRT_O_EXEC
 #define O_EXEC __SPRT_O_EXEC
+#endif
 
 #ifdef __SPRT_O_RSYNC
 #define O_RSYNC __SPRT_O_RSYNC
@@ -143,20 +150,40 @@ typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(ssize_t) ssize_t;
 typedef __SPRT_ID(off_t) off_t;
 typedef __SPRT_ID(mode_t) mode_t;
+typedef __SPRT_ID(intptr_t) intptr_t;
 
-SPRT_FORCEINLINE int fcntl(int __fd, int __cmd, ...) {
-	unsigned long arg;
+SPRT_UMBRELLA_FUNC
+int fcntl(int __fd, int __cmd, ...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	intptr_t arg;
 	__sprt_va_list ap;
 	__sprt_va_start(ap, __cmd);
-	arg = __sprt_va_arg(ap, unsigned long);
+	arg = __sprt_va_arg(ap, intptr_t);
 	__sprt_va_end(ap);
 
 	return __sprt_fcntl(__fd, __cmd, arg);
 }
+#endif
 
-SPRT_FORCEINLINE int creat(const char *path, mode_t __mode) { return __sprt_creat(path, __mode); }
 
-SPRT_FORCEINLINE int open(const char *path, int __flags, ...) {
+#define creat64 creat
+
+SPRT_UMBRELLA_FUNC
+int creat(const char *path, mode_t __mode) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_creat(path, __mode);
+}
+#endif
+
+
+#define open64 open
+
+SPRT_UMBRELLA_FUNC
+int open(const char *path, int __flags, ...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	mode_t __mode = 0;
 
 	if ((__flags & __SPRT_O_CREAT)
@@ -172,8 +199,12 @@ SPRT_FORCEINLINE int open(const char *path, int __flags, ...) {
 
 	return __sprt_open(path, __flags, __mode);
 }
+#endif
 
-SPRT_FORCEINLINE int openat(int __dir_fd, const char *path, int __flags, ...) {
+SPRT_UMBRELLA_FUNC
+int openat(int __dir_fd, const char *path, int __flags, ...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	mode_t __mode = 0;
 
 	if ((__flags & __SPRT_O_CREAT)
@@ -189,47 +220,76 @@ SPRT_FORCEINLINE int openat(int __dir_fd, const char *path, int __flags, ...) {
 
 	return __sprt_openat(__dir_fd, path, __flags, __mode);
 }
+#endif
 
 #if __SPRT_CONFIG_HAVE_FCNTL_SPLICE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE ssize_t splice(int __in_fd, off_t *__in_offset, int __out_fd, off_t *__out_offset,
-		size_t __length, unsigned int __flags) {
+SPRT_UMBRELLA_FUNC
+ssize_t splice(int __in_fd, off_t *__in_offset, int __out_fd, off_t *__out_offset, size_t __length,
+		unsigned int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_splice(__in_fd, __in_offset, __out_fd, __out_offset, __length, __flags);
 }
 #endif
 
 #if __SPRT_CONFIG_HAVE_FCNTL_TEE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE ssize_t tee(int __in_fd, int __out_fd, size_t __length, unsigned int __flags) {
+SPRT_UMBRELLA_FUNC
+ssize_t tee(int __in_fd, int __out_fd, size_t __length, unsigned int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_tee(__in_fd, __out_fd, __length, __flags);
 }
 #endif
+#endif
 
 #if __SPRT_CONFIG_HAVE_FCNTL_FALLOCATE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int fallocate(int __fd, int __mode, off_t __offset, off_t __length) {
+SPRT_UMBRELLA_FUNC
+int fallocate(int __fd, int __mode, off_t __offset, off_t __length) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_fallocate(__fd, __mode, __offset, __length);
 }
+#endif
+#endif
 
-SPRT_FORCEINLINE int posix_fallocate(int __fd, off_t __offset, off_t __length) {
+SPRT_UMBRELLA_FUNC
+int posix_fallocate(int __fd, off_t __offset, off_t __length) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_posix_fallocate(__fd, __offset, __length);
 }
 #endif
+#endif
 
 #if __SPRT_CONFIG_HAVE_FCNTL_FADVICE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int posix_fadvise(int __fd, off_t __offset, off_t __length, int __advice) {
+SPRT_UMBRELLA_FUNC
+int posix_fadvise(int __fd, off_t __offset, off_t __length, int __advice) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_posix_fadvise(__fd, __offset, __length, __advice);
 }
 #endif
+#endif
 
 #if __SPRT_CONFIG_HAVE_FCNTL_READAHEAD || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE ssize_t readahead(int __fd, off_t __offset, size_t __length) {
+SPRT_UMBRELLA_FUNC
+ssize_t readahead(int __fd, off_t __offset, size_t __length) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_readahead(__fd, __offset, __length);
 }
 #endif
+#endif
 
 #if __SPRT_CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int sync_file_range(int __fd, off_t __offset, off_t __length,
-		unsigned int __flags) {
+SPRT_UMBRELLA_FUNC
+int sync_file_range(int __fd, off_t __offset, off_t __length,
+		unsigned int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_sync_file_range(__fd, __offset, __length, __flags);
 }
+#endif
 #endif
 
 __SPRT_END_DECL

@@ -82,9 +82,6 @@ SPRT_LOCAL bool idnToUnicode(const callback<void(StringView)> &, StringView sour
 
 namespace sprt::platform {
 
-uint32_t getEffectiveFileUid();
-uint32_t getEffectiveFileGid();
-
 bool isAppContainer();
 
 void destroyAppContainer(StringView appConfigBundleName);

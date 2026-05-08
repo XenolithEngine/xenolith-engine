@@ -30,6 +30,7 @@ THE SOFTWARE.
  * Windows threading and timer types
  */
 
+// clang-format off
 #define THREAD_TERMINATE                 (0x0001)
 #define THREAD_SUSPEND_RESUME            (0x0002)
 #define THREAD_GET_CONTEXT               (0x0008)
@@ -57,13 +58,18 @@ THE SOFTWARE.
 #define THREAD_PRIORITY_TIME_CRITICAL   THREAD_BASE_PRIORITY_LOWRT
 #define THREAD_PRIORITY_IDLE            THREAD_BASE_PRIORITY_IDLE
 
-#define TH32CS_SNAPHEAPLIST 0x0000'0001
-#define TH32CS_SNAPPROCESS  0x0000'0002
-#define TH32CS_SNAPTHREAD   0x0000'0004
-#define TH32CS_SNAPMODULE   0x0000'0008
-#define TH32CS_SNAPMODULE32 0x0000'0010
+#define TH32CS_SNAPHEAPLIST 0x00000001
+#define TH32CS_SNAPPROCESS  0x00000002
+#define TH32CS_SNAPTHREAD   0x00000004
+#define TH32CS_SNAPMODULE   0x00000008
+#define TH32CS_SNAPMODULE32 0x00000010
 #define TH32CS_SNAPALL      (TH32CS_SNAPHEAPLIST | TH32CS_SNAPPROCESS | TH32CS_SNAPTHREAD | TH32CS_SNAPMODULE)
-#define TH32CS_INHERIT      0x8000'0000
+#define TH32CS_INHERIT      0x80000000
+
+#define RTL_SRWLOCK_INIT {0}
+#define SRWLOCK_INIT RTL_SRWLOCK_INIT
+
+// clang-format on
 
 /* Timer APC routine callback type */
 typedef void (*PTIMERAPCROUTINE)(LPVOID lpArgToCompletionRoutine, DWORD dwTimerLowValue,
@@ -74,11 +80,13 @@ typedef DWORD(__stdcall *LPTHREAD_START_ROUTINE)(LPVOID lpThreadParameter);
 
 typedef void(__stdcall *PAPCFUNC)(DWORD_PTR dwParam);
 
+// clang-format off
 typedef enum _QUEUE_USER_APC_FLAGS {
-	QUEUE_USER_APC_FLAGS_NONE = 0x0000'0000,
-	QUEUE_USER_APC_FLAGS_SPECIAL_USER_APC = 0x0000'0001,
-	QUEUE_USER_APC_CALLBACK_DATA_CONTEXT = 0x0001'0000,
+	QUEUE_USER_APC_FLAGS_NONE = 0x00000000,
+	QUEUE_USER_APC_FLAGS_SPECIAL_USER_APC = 0x00000001,
+	QUEUE_USER_APC_CALLBACK_DATA_CONTEXT = 0x00010000,
 } QUEUE_USER_APC_FLAGS;
+// clang-format on
 
 
 typedef enum _CPU_SET_INFORMATION_TYPE {
@@ -132,6 +140,12 @@ typedef THREADENTRY32 *LPTHREADENTRY32;
 
 typedef struct _SYSTEM_CPU_SET_INFORMATION SYSTEM_CPU_SET_INFORMATION, *PSYSTEM_CPU_SET_INFORMATION;
 
+typedef struct _RTL_SRWLOCK {
+	PVOID Ptr;
+} RTL_SRWLOCK, *PRTL_SRWLOCK;
+
+typedef RTL_SRWLOCK SRWLOCK, *PSRWLOCK;
+
 __SPRT_BEGIN_DECL
 
 /* ---- Process and Thread Management (processthreadsapi.h) ---- */
@@ -159,17 +173,6 @@ WINAPI HANDLE CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes, SIZE_T dwSt
  */
 WINAPI HANDLE OpenThread(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwThreadId);
 
-/**
- * Retrieves the handle for a thread object and sets the last error.
- * @param dwThreadId Thread identifier.
- * @param bInheritHandle TRUE if the handle should be inherited by child processes.
- * @param dwDesiredAccess Desired access rights.
- * @return Handle to the thread, or NULL on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openthread
- */
-WINAPI HANDLE GetCurrentThreadForAccess(DWORD dwThreadId, BOOL bInheritHandle,
-		DWORD dwDesiredAccess);
-
 WINAPI HANDLE GetCurrentThread(void);
 
 WINAPI DWORD GetCurrentThreadId(void);
@@ -183,20 +186,6 @@ WINAPI BOOL SetThreadPriority(HANDLE hThread, int nPriority);
 WINAPI void ExitThread(DWORD dwExitCode);
 
 BOOL QueueUserAPC2(PAPCFUNC ApcRoutine, HANDLE Thread, ULONG_PTR Data, QUEUE_USER_APC_FLAGS Flags);
-
-/**
- * Sets a waitable timer's state.
- * @param hTimer Handle to the timer object.
- * @param ftDueTime Time at which to signal the timer (negative = relative).
- * @param dwPeriod Period between signals in milliseconds (0 = single-shot).
- * @param lpCompletionRoutine Completion routine (NULL = no callback).
- * @param lpArgument Argument for completion routine.
- * @param fResume TRUE to resume system from low-power state.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-setwaitabletimer
- */
-WINAPI BOOL SetWaitableTimer(HANDLE hTimer, const LARGE_INTEGER *ftDueTime, LONG dwPeriod,
-		PTIMERAPCROUTINE lpCompletionRoutine, LPVOID lpArgument, BOOL fResume);
 
 WINAPI HRESULT SetThreadDescription(HANDLE hThread, PCWSTR lpThreadDescription);
 
@@ -213,6 +202,22 @@ WINAPI HANDLE CreateToolhelp32Snapshot(DWORD dwFlags, DWORD th32ProcessID);
 WINAPI BOOL Thread32First(HANDLE hSnapshot, LPTHREADENTRY32 lpte);
 
 WINAPI BOOL Thread32Next(HANDLE hSnapshot, LPTHREADENTRY32 lpte);
+
+WINAPI VOID InitializeSRWLock(PSRWLOCK SRWLock);
+
+WINAPI VOID ReleaseSRWLockExclusive(PSRWLOCK SRWLock);
+
+WINAPI VOID ReleaseSRWLockShared(PSRWLOCK SRWLock);
+
+WINAPI VOID AcquireSRWLockExclusive(PSRWLOCK SRWLock);
+
+WINAPI VOID AcquireSRWLockShared(PSRWLOCK SRWLock);
+
+WINAPI BOOLEAN TryAcquireSRWLockExclusive(PSRWLOCK SRWLock);
+
+WINAPI BOOLEAN TryAcquireSRWLockShared(PSRWLOCK SRWLock);
+
+WINAPI BOOL SwitchToThread(VOID);
 
 __SPRT_END_DECL
 

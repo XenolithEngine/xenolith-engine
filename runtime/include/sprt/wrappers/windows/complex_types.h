@@ -42,21 +42,6 @@ typedef struct tagPROCESSENTRY32W {
 	WCHAR szExeFile[MAX_PATH];
 } PROCESSENTRY32W, *PPROCESSENTRY32W, *LPPROCESSENTRY32W;
 
-/* Token structures */
-typedef struct _SID_AND_ATTRIBUTES {
-	void *Sid;
-	DWORD Attributes;
-} SID_AND_ATTRIBUTES, *PSID_AND_ATTRIBUTES;
-
-typedef struct _TOKEN_USER {
-	SID_AND_ATTRIBUTES User;
-} TOKEN_USER, *PTOKEN_USER;
-
-typedef struct _TOKEN_GROUPS {
-	DWORD GroupCount;
-	SID_AND_ATTRIBUTES Groups[1];
-} TOKEN_GROUPS, *PTOKEN_GROUPS;
-
 /* Working set information for QueryWorkingSetEx */
 typedef struct _PSAPI_WORKING_SET_EX_BLOCK {
 	ULONG_PTR Valid			  : 1;

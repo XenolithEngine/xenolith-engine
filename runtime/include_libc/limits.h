@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_LIMITS_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_LIMITS_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <limits.h>
 
@@ -49,7 +49,6 @@ THE SOFTWARE.
 #define PIPE_BUF __SPRT_PIPE_BUF
 #define FILESIZEBITS __SPRT_FILESIZEBITS
 #define NAME_MAX __SPRT_NAME_MAX
-#define PATH_MAX __SPRT_PATH_MAX
 #define NGROUPS_MAX __SPRT_NGROUPS_MAX
 #define ARG_MAX __SPRT_ARG_MAX
 #define IOV_MAX __SPRT_IOV_MAX
@@ -64,6 +63,10 @@ THE SOFTWARE.
 #define UINT_MAX __SPRT_UINT_MAX
 #define ULONG_MAX __SPRT_ULONG_MAX
 #define ULLONG_MAX __SPRT_ULLONG_MAX
+
+#if !defined(_MSC_VER) || !defined(__SPRT_MSC_COMPAT)
+#define PATH_MAX __SPRT_PATH_MAX
+#endif
 
 #endif
 

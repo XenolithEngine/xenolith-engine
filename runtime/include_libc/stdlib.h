@@ -23,13 +23,17 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_STDLIB_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_STDLIB_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <stdlib.h>
 
 #else
 
 #include <sprt/c/__sprt_stdlib.h>
+
+#ifndef NULL
+#define NULL __SPRT_NULL
+#endif
 
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(div_t) div_t;
@@ -45,143 +49,449 @@ typedef __SPRT_ID(lldiv_t) lldiv_t;
 
 __SPRT_BEGIN_DECL
 
-SPRT_FORCEINLINE int atoi(const char *value) { return __sprt_atoi(value); }
-SPRT_FORCEINLINE long atol(const char *value) { return __sprt_atol(value); }
-SPRT_FORCEINLINE long long atoll(const char *value) { return __sprt_atoll(value); }
-SPRT_FORCEINLINE double atof(const char *value) { return __sprt_atof(value); }
+SPRT_UMBRELLA_FUNC
+int atoi(const char *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_atoi(value);
+}
+#endif
 
-SPRT_FORCEINLINE float strtof(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT value) {
+SPRT_UMBRELLA_FUNC
+long atol(const char *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_atol(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long long atoll(const char *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_atoll(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+double atof(const char *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_atof(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+float strtof(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_strtof(str, value);
 }
+#endif
 
-SPRT_FORCEINLINE double strtod(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT value) {
+SPRT_UMBRELLA_FUNC
+double strtod(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_strtod(str, value);
 }
-SPRT_FORCEINLINE long double strtold(const char *__SPRT_RESTRICT str,
-		char **__SPRT_RESTRICT value) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double strtold(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_strtold(str, value);
 }
+#endif
 
-SPRT_FORCEINLINE long strtol(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
-		int value) {
+SPRT_UMBRELLA_FUNC
+long strtol(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
+		int value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_strtol(str, endp, value);
 }
-SPRT_FORCEINLINE unsigned long strtoul(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
-		int value) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+unsigned long strtoul(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
+		int value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_strtoul(str, endp, value);
 }
-SPRT_FORCEINLINE long long strtoll(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
-		int value) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+long long strtoll(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
+		int value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_strtoll(str, endp, value);
 }
-SPRT_FORCEINLINE unsigned long long strtoull(const char *__SPRT_RESTRICT str,
-		char **__SPRT_RESTRICT endp, int value) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+unsigned long long strtoull(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
+		int value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_strtoull(str, endp, value);
 }
+#endif
 
-SPRT_FORCEINLINE int rand(void) { return __sprt_rand(); }
-SPRT_FORCEINLINE void srand(unsigned value) { return __sprt_srand(value); }
+SPRT_UMBRELLA_FUNC
+int rand(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_rand();
+}
+#endif
 
-SPRT_FORCEINLINE void *malloc(size_t value) { return __sprt_malloc(value); }
-SPRT_FORCEINLINE void *calloc(size_t a, size_t value) { return __sprt_calloc(a, value); }
-SPRT_FORCEINLINE void *realloc(void *ptr, size_t value) { return __sprt_realloc(ptr, value); }
-SPRT_FORCEINLINE void free(void *value) { return __sprt_free(value); }
+SPRT_UMBRELLA_FUNC
+void srand(unsigned value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_srand(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void *malloc(size_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_malloc(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void *calloc(size_t a, size_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_calloc(a, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void *realloc(void *ptr, size_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_realloc(ptr, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void free(void *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_free(value);
+}
+#endif
 
 /*
 	WARNING: use aligned_free to safely free aligned memory.
 	It's MSVC requirement, but safe to follow this rule everywhere
 */
-SPRT_FORCEINLINE int posix_memalign(void **ptr, size_t size, size_t align) {
+SPRT_UMBRELLA_FUNC
+int posix_memalign(void **ptr, size_t size, size_t align) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_posix_memalign(ptr, size, align);
 }
+#endif
 
 /*
 	WARNING: use aligned_free to safely free aligned memory.
 	It's MSVC requirement, but safe to follow this rule everywhere
 */
-SPRT_FORCEINLINE void *aligned_alloc(size_t a, size_t value) {
+SPRT_UMBRELLA_FUNC
+void *aligned_alloc(size_t a, size_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_aligned_alloc(a, value);
 }
+#endif
 
-SPRT_FORCEINLINE void aligned_free(void *memblock) { __sprt_aligned_free(memblock); }
-
-SPRT_FORCEINLINE __SPRT_NORETURN void abort(void) { __sprt_abort(); }
-
-SPRT_FORCEINLINE int atexit(void (*value)(void)) { return __sprt_atexit(value); }
-
-SPRT_FORCEINLINE __SPRT_NORETURN void exit(int value) { __sprt_exit(value); }
-SPRT_FORCEINLINE __SPRT_NORETURN void _Exit(int value) { __sprt__Exit(value); }
-SPRT_FORCEINLINE int at_quick_exit(void (*value)(void)) { return __sprt_at_quick_exit(value); }
-SPRT_FORCEINLINE __SPRT_NORETURN void quick_exit(int value) { __sprt_quick_exit(value); }
-
-SPRT_FORCEINLINE char *getenv(const char *value) { return __sprt_getenv(value); }
-
-SPRT_FORCEINLINE int getenv_s(size_t *pReturnValue, char *buffer, size_t numberOfElements,
-		const char *varname) {
-	return __sprt_getenv_s(pReturnValue, buffer, numberOfElements, varname);
+SPRT_UMBRELLA_FUNC
+void aligned_free(void *memblock) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt_aligned_free(memblock);
 }
+#endif
 
-SPRT_FORCEINLINE int system(const char *value) { return __sprt_system(value); }
+SPRT_UMBRELLA_FUNC
+__SPRT_NORETURN void abort(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt_abort();
+}
+#endif
 
-SPRT_FORCEINLINE void *bsearch(const void *a, void *b, size_t c, size_t d,
-		int (*value)(const void *, const void *)) {
+SPRT_UMBRELLA_FUNC
+int atexit(void (*value)(void)) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_atexit(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+__SPRT_NORETURN void exit(int value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt_exit(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+__SPRT_NORETURN void _Exit(int value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt__Exit(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int at_quick_exit(void (*value)(void)) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_at_quick_exit(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+__SPRT_NORETURN void quick_exit(int value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt_quick_exit(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+char *getenv(const char *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_getenv(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int system(const char *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_system(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void *bsearch(const void *a, const void *b, size_t c, size_t d,
+		int (*value)(const void *, const void *)) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_bsearch(a, b, c, d, value);
 }
-SPRT_FORCEINLINE void qsort(void *a, size_t b, size_t c, int (*value)(const void *, const void *)) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+void qsort(void *a, size_t b, size_t c, int (*value)(const void *, const void *)) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_qsort(a, b, c, value);
 }
+#endif
 
-SPRT_FORCEINLINE int abs(int value) { return __sprt_abs(value); }
-SPRT_FORCEINLINE long labs(long value) { return __sprt_labs(value); }
-SPRT_FORCEINLINE long long llabs(long long value) { return __sprt_llabs(value); }
+SPRT_UMBRELLA_FUNC
+int abs(int value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_abs(value);
+}
+#endif
 
-SPRT_FORCEINLINE div_t div(int a, int value) { return __sprt_div(a, value); }
-SPRT_FORCEINLINE ldiv_t ldiv(long a, long value) { return __sprt_ldiv(a, value); }
-SPRT_FORCEINLINE lldiv_t lldiv(long long a, long long value) { return __sprt_lldiv(a, value); }
+SPRT_UMBRELLA_FUNC
+long labs(long value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_labs(value);
+}
+#endif
 
-SPRT_FORCEINLINE int setenv(const char *n, const char *v, int r) { return __sprt_setenv(n, v, r); }
-SPRT_FORCEINLINE int unsetenv(const char *n) { return __sprt_unsetenv(n); }
-SPRT_FORCEINLINE int mkstemp(char *tpl) { return __sprt_mkstemp(tpl); }
-SPRT_FORCEINLINE int mkostemp(char *tpl, int n) { return __sprt_mkostemp(tpl, n); }
-SPRT_FORCEINLINE char *mkdtemp(char *tpl) { return __sprt_mkdtemp(tpl); }
-SPRT_FORCEINLINE int getsubopt(char **opts, char *const *toks, char **vals) {
+SPRT_UMBRELLA_FUNC
+long long llabs(long long value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_llabs(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+div_t div(int a, int value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_div(a, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+ldiv_t ldiv(long a, long value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ldiv(a, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+lldiv_t lldiv(long long a, long long value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_lldiv(a, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int setenv(const char *n, const char *v, int r) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_setenv(n, v, r);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int unsetenv(const char *n) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_unsetenv(n);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int mkstemp(char *tpl) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_mkstemp(tpl);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int mkostemp(char *tpl, int n) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_mkostemp(tpl, n);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+char *mkdtemp(char *tpl) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_mkdtemp(tpl);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int getsubopt(char **opts, char *const *toks, char **vals) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_getsubopt(opts, toks, vals);
 }
-SPRT_FORCEINLINE int rand_r(unsigned *v) { return __sprt_rand_r(v); }
-SPRT_FORCEINLINE char *realpath(const char *__SPRT_RESTRICT path, char *__SPRT_RESTRICT out) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+int rand_r(unsigned *v) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_rand_r(v);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+char *realpath(const char *__SPRT_RESTRICT path, char *__SPRT_RESTRICT out) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_realpath(path, out);
 }
-SPRT_FORCEINLINE long int random(void) { return __sprt_random(); }
-SPRT_FORCEINLINE void srandom(unsigned int seed) { __sprt_srandom(seed); }
+#endif
 
-SPRT_FORCEINLINE long strtol_l(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
-		int base, __SPRT_ID(locale_t) loc) {
+SPRT_UMBRELLA_FUNC
+long int random(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_random();
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void srandom(unsigned int seed) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt_srandom(seed);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+long strtol_l(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp, int base,
+		__SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_strtol_l(str, endp, base, loc);
 }
-SPRT_FORCEINLINE long long strtoll_l(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
-		int base, __SPRT_ID(locale_t) loc) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+long long strtoll_l(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp, int base,
+		__SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_strtoll_l(str, endp, base, loc);
 }
-SPRT_FORCEINLINE unsigned long strtoul_l(const char *__SPRT_RESTRICT str,
-		char **__SPRT_RESTRICT endp, int base, __SPRT_ID(locale_t) loc) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+unsigned long strtoul_l(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp, int base,
+		__SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_strtoul_l(str, endp, base, loc);
 }
-SPRT_FORCEINLINE unsigned long long strtoull_l(const char *__SPRT_RESTRICT str,
-		char **__SPRT_RESTRICT endp, int base, __SPRT_ID(locale_t) loc) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+unsigned long long strtoull_l(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
+		int base, __SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_strtoull_l(str, endp, base, loc);
 }
-SPRT_FORCEINLINE float strtof_l(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
-		__SPRT_ID(locale_t) loc) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+float strtof_l(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
+		__SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_strtof_l(str, endp, loc);
 }
-SPRT_FORCEINLINE double strtod_l(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
-		__SPRT_ID(locale_t) loc) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+double strtod_l(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
+		__SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_strtod_l(str, endp, loc);
 }
-SPRT_FORCEINLINE long double strtold_l(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
-		__SPRT_ID(locale_t) loc) {
+#endif
+
+SPRT_UMBRELLA_FUNC
+long double strtold_l(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
+		__SPRT_ID(locale_t) loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_strtold_l(str, endp, loc);
 }
+#endif
 
 __SPRT_END_DECL
 
@@ -191,19 +501,37 @@ __SPRT_END_DECL
 #if defined(__cplusplus) \
 		&& (__SPRT_CONFIG_HAVE_STDLIB_MB || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS)
 
-SPRT_FORCEINLINE size_t mbstowcs(wchar_t *__dst, const char *__src, size_t __n) {
+SPRT_UMBRELLA_FUNC
+size_t mbstowcs(wchar_t *__dst, const char *__src, size_t __n) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(mbstowcs)(__dst, __src, __n);
 }
+#endif
 
-SPRT_FORCEINLINE int mbtowc(wchar_t *__wc_ptr, const char *__s, size_t __n) {
+SPRT_UMBRELLA_FUNC
+int mbtowc(wchar_t *__wc_ptr, const char *__s, size_t __n) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(mbtowc)(__wc_ptr, __s, __n);
 }
+#endif
 
-SPRT_FORCEINLINE int wctomb(char *__dst, wchar_t __wc) { return __SPRT_ID(wctomb)(__dst, __wc); }
+SPRT_UMBRELLA_FUNC
+int wctomb(char *__dst, wchar_t __wc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(wctomb)(__dst, __wc);
+}
+#endif
 
-SPRT_FORCEINLINE size_t wcstombs(char *__dst, const wchar_t *__src, size_t __n) {
+SPRT_UMBRELLA_FUNC
+size_t wcstombs(char *__dst, const wchar_t *__src, size_t __n) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(wcstombs)(__dst, __src, __n);
 }
+#endif
 
 #define MB_CUR_MAX __SPRT_ID(__ctype_get_mb_cur_max)()
 #endif

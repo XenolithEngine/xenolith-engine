@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_MMAN_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_MMAN_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sys/mman.h>
 
@@ -128,40 +128,86 @@ __SPRT_BEGIN_DECL
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(off_t) off_t;
 
-SPRT_FORCEINLINE void *mmap(void *__addr, size_t __size, int __prot, int __flags, int __fd,
-		off_t __offset) {
+SPRT_UMBRELLA_FUNC
+void *mmap(void *__addr, size_t __size, int __prot, int __flags, int __fd,
+		off_t __offset) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_mmap(__addr, __size, __prot, __flags, __fd, __offset);
 }
-
-SPRT_FORCEINLINE int munmap(void *__addr, size_t __size) { return __sprt_munmap(__addr, __size); }
-
-SPRT_FORCEINLINE int mprotect(void *__addr, size_t __size, int __flags) {
-	return __sprt_mprotect(__addr, __size, __flags);
-}
-
-SPRT_FORCEINLINE int msync(void *__addr, size_t __size, int __flags) {
-	return __sprt_msync(__addr, __size, __flags);
-}
-
-SPRT_FORCEINLINE int posix_madvise(void *__addr, size_t __size, int __flags) {
-	return __sprt_posix_madvise(__addr, __size, __flags);
-}
-
-SPRT_FORCEINLINE int mlock(const void *__addr, size_t __size) {
-	return __sprt_mlock(__addr, __size);
-}
-SPRT_FORCEINLINE int munlock(const void *__addr, size_t __size) {
-	return __sprt_munlock(__addr, __size);
-}
-
-#if __SPRT_CONFIG_HAVE_MMAN_MLOCKALL || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int mlockall(int __flags) { return __sprt_mlockall(__flags); }
-SPRT_FORCEINLINE int munlockall(void) { return __sprt_munlockall(); }
 #endif
 
+SPRT_UMBRELLA_FUNC
+int munmap(void *__addr, size_t __size) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_munmap(__addr, __size);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int mprotect(void *__addr, size_t __size, int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_mprotect(__addr, __size, __flags);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int msync(void *__addr, size_t __size, int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_msync(__addr, __size, __flags);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int posix_madvise(void *__addr, size_t __size, int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_posix_madvise(__addr, __size, __flags);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int mlock(const void *__addr, size_t __size) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_mlock(__addr, __size);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int munlock(const void *__addr, size_t __size) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_munlock(__addr, __size);
+}
+#endif
+
+#if __SPRT_CONFIG_HAVE_MMAN_MLOCKALL || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+SPRT_UMBRELLA_FUNC
+int mlockall(int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_mlockall(__flags);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int munlockall(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_munlockall();
+}
+#endif
+#endif // __SPRT_CONFIG_HAVE_MMAN_MLOCKALL
+
 #if __SPRT_CONFIG_HAVE_MMAN_MREMAP || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE void *mremap(void *__addr, size_t __old_size, size_t __new_size, int __flags,
-		...) {
+SPRT_UMBRELLA_FUNC
+void *mremap(void *__addr, size_t __old_size, size_t __new_size, int __flags, ...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	__sprt_va_list ap;
 	void *new_addr = 0;
 	if (__flags & MREMAP_FIXED) {
@@ -173,24 +219,41 @@ SPRT_FORCEINLINE void *mremap(void *__addr, size_t __old_size, size_t __new_size
 	return __sprt_mremap(__addr, __old_size, __new_size, __flags, new_addr);
 }
 #endif
+#endif // __SPRT_CONFIG_HAVE_MMAN_MREMAP
 
-SPRT_FORCEINLINE int mlock2(const void *__addr, size_t __size, int __flags) {
+SPRT_UMBRELLA_FUNC
+int mlock2(const void *__addr, size_t __size, int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_mlock2(__addr, __size, __flags);
 }
+#endif
 
-SPRT_FORCEINLINE int madvise(void *__addr, size_t __size, int __flags) {
+SPRT_UMBRELLA_FUNC
+int madvise(void *__addr, size_t __size, int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_madvise(__addr, __size, __flags);
 }
+#endif
 
-SPRT_FORCEINLINE int mincore(void *__addr, size_t __size, unsigned char *__vec) {
+SPRT_UMBRELLA_FUNC
+int mincore(void *__addr, size_t __size, unsigned char *__vec) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_mincore(__addr, __size, __vec);
 }
+#endif
 
 #if __SPRT_CONFIG_HAVE_MMAN_MEMFD || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int memfd_create(const char *name, unsigned flags) {
+SPRT_UMBRELLA_FUNC
+int memfd_create(const char *name, unsigned flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_memfd_create(name, flags);
 }
 #endif
+#endif // __SPRT_CONFIG_HAVE_MMAN_MEMFD
 
 __SPRT_END_DECL
 

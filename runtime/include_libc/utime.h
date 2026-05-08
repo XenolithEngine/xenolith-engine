@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_UTIME_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_UTIME_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <utime.h>
 
@@ -33,9 +33,13 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-SPRT_FORCEINLINE int utime(const char *path, const struct __SPRT_UTIMBUF_NAME *buf) {
+SPRT_UMBRELLA_FUNC
+int utime(const char *path, const struct __SPRT_UTIMBUF_NAME *buf) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_utime(path, buf);
 }
+#endif
 
 __SPRT_END_DECL
 

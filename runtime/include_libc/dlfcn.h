@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_DLFCN_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_DLFCN_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <dlfcn.h>
 
@@ -45,16 +45,45 @@ __SPRT_BEGIN_DECL
 
 typedef __SPRT_ID(Dl_info) Dl_info;
 
-SPRT_FORCEINLINE int dlclose(void *h) { return __sprt_dlclose(h); }
-SPRT_FORCEINLINE char *dlerror(void) { return __sprt_dlerror(); }
+SPRT_UMBRELLA_FUNC
+int dlclose(void *h) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_dlclose(h);
+}
+#endif
 
-SPRT_FORCEINLINE void *dlopen(const char *path, int flags) { return __sprt_dlopen(path, flags); }
+SPRT_UMBRELLA_FUNC
+char *dlerror(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_dlerror();
+}
+#endif
 
-SPRT_FORCEINLINE void *dlsym(void *__SPRT_RESTRICT h, const char *__SPRT_RESTRICT sym) {
+SPRT_UMBRELLA_FUNC
+void *dlopen(const char *path, int flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_dlopen(path, flags);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void *dlsym(void *__SPRT_RESTRICT h, const char *__SPRT_RESTRICT sym) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_dlsym(h, sym);
 }
+#endif
 
-SPRT_FORCEINLINE int dladdr(const void *h, Dl_info *info) { return __sprt_dladdr(h, info); }
+SPRT_UMBRELLA_FUNC
+int dladdr(const void *h, Dl_info *info) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_dladdr(h, info);
+}
+#endif
 
 __SPRT_END_DECL
 

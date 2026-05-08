@@ -157,16 +157,12 @@ SPRT_API char *__SPRT_ID(getenv_impl)(const char *);
 #define __sprt_getenv __SPRT_ID(getenv_impl)
 
 
-SPRT_API int __SPRT_ID(getenv_s)(__SPRT_ID(size_t) * pReturnValue, char *buffer,
-		__SPRT_ID(size_t) numberOfElements, const char *varname);
-
-
 SPRT_API int __SPRT_ID(system_impl)(const char *);
 #define __sprt_system __SPRT_ID(system_impl)
 
 
-SPRT_API void *__SPRT_ID(bsearch_impl)(const void *, void *, __SPRT_ID(size_t), __SPRT_ID(size_t),
-		int (*)(const void *, const void *));
+SPRT_API void *__SPRT_ID(bsearch_impl)(const void *, const void *, __SPRT_ID(size_t),
+		__SPRT_ID(size_t), int (*)(const void *, const void *));
 #define __sprt_bsearch __SPRT_ID(bsearch_impl)
 
 

@@ -36,14 +36,14 @@ THE SOFTWARE.
 #define __SPRT_LC_MESSAGES 5
 #define __SPRT_LC_ALL      6
 
-#define __SPRT_LC_GLOBAL_LOCALE ((locale_t)-1)
+#define __SPRT_LC_GLOBAL_LOCALE ((__sprt_locale_t)-1)
 
-#define __SPRT_LC_CTYPE_MASK    (1<<LC_CTYPE)
-#define __SPRT_LC_NUMERIC_MASK  (1<<LC_NUMERIC)
-#define __SPRT_LC_TIME_MASK     (1<<LC_TIME)
-#define __SPRT_LC_COLLATE_MASK  (1<<LC_COLLATE)
-#define __SPRT_LC_MONETARY_MASK (1<<LC_MONETARY)
-#define __SPRT_LC_MESSAGES_MASK (1<<LC_MESSAGES)
+#define __SPRT_LC_CTYPE_MASK    (1<<__SPRT_LC_CTYPE)
+#define __SPRT_LC_NUMERIC_MASK  (1<<__SPRT_LC_NUMERIC)
+#define __SPRT_LC_TIME_MASK     (1<<__SPRT_LC_TIME)
+#define __SPRT_LC_COLLATE_MASK  (1<<__SPRT_LC_COLLATE)
+#define __SPRT_LC_MONETARY_MASK (1<<__SPRT_LC_MONETARY)
+#define __SPRT_LC_MESSAGES_MASK (1<<__SPRT_LC_MESSAGES)
 #define __SPRT_LC_ALL_MASK      0x7fffffff
 // clang-format on
 

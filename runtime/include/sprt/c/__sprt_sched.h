@@ -25,13 +25,10 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_time_t.h>
 #include <sprt/c/bits/__sprt_cpuset_t.h>
+#include <sprt/c/bits/sched_param.h>
 #include <sprt/c/cross/__sprt_sysid.h>
 
 __SPRT_BEGIN_DECL
-
-struct __SPRT_ID(sched_param) {
-	int sched_priority;
-};
 
 SPRT_API int __SPRT_ID(sched_get_priority_max)(int);
 SPRT_API int __SPRT_ID(sched_get_priority_min)(int);
@@ -40,33 +37,35 @@ SPRT_API int __SPRT_ID(sched_yield)(void);
 #if __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 
 __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER_NOTICE
-SPRT_API int __SPRT_ID(sched_getparam)(__SPRT_ID(pid_t), struct __SPRT_ID(sched_param) *);
+SPRT_API int __SPRT_ID(sched_getparam)(__SPRT_ID(pid_t), struct __SPRT_SCHED_PARAM_NAME *);
 
 __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER_NOTICE
 SPRT_API int __SPRT_ID(sched_getscheduler)(__SPRT_ID(pid_t));
 
 __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER_NOTICE
-SPRT_API int __SPRT_ID(sched_rr_get_interval)(__SPRT_ID(pid_t), __SPRT_TIMESPEC_NAME *);
+SPRT_API int __SPRT_ID(sched_rr_get_interval)(__SPRT_ID(pid_t), struct __SPRT_TIMESPEC_NAME *);
 
 __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER_NOTICE
-SPRT_API int __SPRT_ID(sched_setparam)(__SPRT_ID(pid_t), const struct __SPRT_ID(sched_param) *);
+SPRT_API int __SPRT_ID(sched_setparam)(__SPRT_ID(pid_t), const struct __SPRT_SCHED_PARAM_NAME *);
 
 __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER_NOTICE
 SPRT_API int __SPRT_ID(
-		sched_setscheduler)(__SPRT_ID(pid_t), int, const struct __SPRT_ID(sched_param) *);
+		sched_setscheduler)(__SPRT_ID(pid_t), int, const struct __SPRT_SCHED_PARAM_NAME *);
 
 #endif
 
 SPRT_API int __SPRT_ID(
 		__sched_cpucount)(__SPRT_ID(size_t) nbytes, const __SPRT_ID(cpu_set_t) * set);
 
+// clang-format off
 #define __SPRT_SCHED_OTHER 0
 #define __SPRT_SCHED_FIFO 1
 #define __SPRT_SCHED_RR 2
 #define __SPRT_SCHED_BATCH 3
 #define __SPRT_SCHED_IDLE 5
 #define __SPRT_SCHED_DEADLINE 6
-#define __SPRT_SCHED_RESET_ON_FORK 0x4000'0000
+#define __SPRT_SCHED_RESET_ON_FORK 0x40000000
+// clang-format on
 
 __SPRT_END_DECL
 

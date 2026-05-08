@@ -23,11 +23,35 @@
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_UIO_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_UIO_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sys/uio.h>
 
 #else
+
+#include <sprt/c/__sprt_unistd.h>
+
+typedef __SPRT_ID(ssize_t) ssize_t;
+
+__SPRT_BEGIN_DECL
+
+SPRT_UMBRELLA_FUNC
+ssize_t readv(int __fd, const struct __SPRT_IOVEC_NAME *iov, int iovcnt) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_readv(__fd, iov, iovcnt);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+ssize_t writev(int __fd, const struct __SPRT_IOVEC_NAME *iov, int iovcnt) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_writev(__fd, iov, iovcnt);
+}
+#endif
+
+__SPRT_END_DECL
 
 #endif
 

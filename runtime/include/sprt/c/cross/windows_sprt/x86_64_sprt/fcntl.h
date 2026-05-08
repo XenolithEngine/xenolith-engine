@@ -39,6 +39,10 @@
 #define __SPRT_F_SETSIG 10
 #define __SPRT_F_GETSIG 11
 
+#define __SPRT_F_RDLCK 0
+#define __SPRT_F_WRLCK 1
+#define __SPRT_F_UNLCK 2
+
 #define __SPRT_F_DUPFD_CLOEXEC 1030
 
 #define __SPRT_F_SETOWN_EX 15

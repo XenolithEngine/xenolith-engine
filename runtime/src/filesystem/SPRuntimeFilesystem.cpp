@@ -39,6 +39,10 @@
 #include "SPRuntimeFilesystem-linux.cc"
 #endif
 
+#if __SPRT_CONFIG_HAVE_WINAPI
+#include <sys/winapi.h>
+#endif
+
 namespace sprt::filesystem {
 
 bool getCurrentDir(const callback<void(StringView)> &cb, StringView path) {

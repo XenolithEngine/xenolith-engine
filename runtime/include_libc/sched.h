@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SCHED_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SCHED_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sched.h>
 
@@ -34,7 +34,6 @@ THE SOFTWARE.
 __SPRT_BEGIN_DECL
 
 typedef __SPRT_ID(pid_t) pid_t;
-typedef struct __SPRT_ID(sched_param) sched_param;
 typedef __SPRT_TIMESPEC_NAME timespec;
 typedef __SPRT_ID(cpu_set_t) cpu_set_t;
 
@@ -66,29 +65,69 @@ typedef __SPRT_ID(cpu_set_t) cpu_set_t;
 #define CPU_ZERO(set) __SPRT_CPU_ZERO(set)
 #define CPU_EQUAL(s1, s2) __SPRT_CPU_EQUAL(s1,s2)
 
-SPRT_FORCEINLINE int sched_get_priority_max(int t) { return __sprt_sched_get_priority_max(t); }
+SPRT_UMBRELLA_FUNC
+int sched_get_priority_max(int t) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sched_get_priority_max(t);
+}
+#endif
 
-SPRT_FORCEINLINE int sched_get_priority_min(int t) { return __sprt_sched_get_priority_min(t); }
+SPRT_UMBRELLA_FUNC
+int sched_get_priority_min(int t) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sched_get_priority_min(t);
+}
+#endif
 
-SPRT_FORCEINLINE int sched_getparam(pid_t pid, sched_param *p) {
+SPRT_UMBRELLA_FUNC
+int sched_getparam(pid_t pid, struct __SPRT_SCHED_PARAM_NAME *p) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_sched_getparam(pid, p);
 }
+#endif
 
-SPRT_FORCEINLINE int sched_getscheduler(pid_t pid) { return __sprt_sched_getscheduler(pid); }
+SPRT_UMBRELLA_FUNC
+int sched_getscheduler(pid_t pid) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sched_getscheduler(pid);
+}
+#endif
 
-SPRT_FORCEINLINE int sched_rr_get_interval(pid_t pid, timespec *t) {
+SPRT_UMBRELLA_FUNC
+int sched_rr_get_interval(pid_t pid, timespec *t) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_sched_rr_get_interval(pid, t);
 }
+#endif
 
-SPRT_FORCEINLINE int sched_setparam(pid_t pid, const sched_param *p) {
+SPRT_UMBRELLA_FUNC
+int sched_setparam(pid_t pid, const struct __SPRT_SCHED_PARAM_NAME *p) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_sched_setparam(pid, p);
 }
+#endif
 
-SPRT_FORCEINLINE int sched_setscheduler(pid_t pid, int t, const sched_param *p) {
+SPRT_UMBRELLA_FUNC
+int sched_setscheduler(pid_t pid, int t, const struct __SPRT_SCHED_PARAM_NAME *p) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_sched_setscheduler(pid, t, p);
 }
+#endif
 
-SPRT_FORCEINLINE int sched_yield(void) { return __sprt_sched_yield(); }
+SPRT_UMBRELLA_FUNC
+int sched_yield(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_sched_yield();
+}
+#endif
 
 __SPRT_END_DECL
 

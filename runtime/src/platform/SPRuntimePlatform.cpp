@@ -41,8 +41,6 @@
 
 namespace sprt {
 
-const nothrow_t nothrow;
-
 static int s_isInitialized = 0;
 
 bool isInitialized() { return s_isInitialized == 1; }

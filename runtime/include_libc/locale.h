@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_LOCALE_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_LOCALE_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <locale.h>
 
@@ -54,18 +54,53 @@ typedef __SPRT_ID(locale_t) locale_t;
 
 __SPRT_BEGIN_DECL
 
-SPRT_FORCEINLINE char *setlocale(int cat, const char *locale) {
+SPRT_UMBRELLA_FUNC
+char *setlocale(int cat, const char *locale) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_setlocale(cat, locale);
 }
+#endif
 
-SPRT_FORCEINLINE lconv *localeconv(void) { return __sprt_localeconv(); }
+SPRT_UMBRELLA_FUNC
+lconv *localeconv(void) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_localeconv();
+}
+#endif
 
-SPRT_FORCEINLINE locale_t duplocale(locale_t loc) { return __sprt_duplocale(loc); }
-SPRT_FORCEINLINE void freelocale(locale_t loc) { __sprt_freelocale(loc); }
-SPRT_FORCEINLINE locale_t newlocale(int v, const char *name, locale_t loc) {
+SPRT_UMBRELLA_FUNC
+locale_t duplocale(locale_t loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_duplocale(loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void freelocale(locale_t loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt_freelocale(loc);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+locale_t newlocale(int v, const char *name, locale_t loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_newlocale(v, name, loc);
 }
-SPRT_FORCEINLINE locale_t uselocale(locale_t loc) { return __sprt_uselocale(loc); }
+#endif
+
+SPRT_UMBRELLA_FUNC
+locale_t uselocale(locale_t loc) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_uselocale(loc);
+}
+#endif
 
 __SPRT_END_DECL
 

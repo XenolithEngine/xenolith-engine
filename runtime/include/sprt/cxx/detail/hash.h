@@ -103,6 +103,11 @@ struct hash<T *> {
 };
 
 template <>
+struct hash<void *> {
+	size_t operator()(const void *value) const noexcept { return reinterpret_cast<size_t>(value); }
+};
+
+template <>
 struct hash<void> {
 	using is_transparent = void;
 

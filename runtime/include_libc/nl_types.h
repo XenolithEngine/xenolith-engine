@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_NS_TYPES_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_NS_TYPES_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <nl_types.h>
 
@@ -40,11 +40,31 @@ typedef __SPRT_ID(nl_item) nl_item;
 typedef __SPRT_ID(nl_catd) nl_catd;
 
 #if __SPRT_CONFIG_HAVE_NLTYPES_CAT || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE nl_catd catopen(const char *path, int v) { return __sprt_catopen(path, v); }
-SPRT_FORCEINLINE char *catgets(nl_catd cat, int a, int b, const char *str) {
+
+SPRT_UMBRELLA_FUNC
+nl_catd catopen(const char *path, int v) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_catopen(path, v);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+char *catgets(nl_catd cat, int a, int b, const char *str) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_catgets(cat, a, b, str);
 }
-SPRT_FORCEINLINE int catclose(nl_catd cat) { return __sprt_catclose(cat); }
+#endif
+
+SPRT_UMBRELLA_FUNC
+int catclose(nl_catd cat) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_catclose(cat);
+}
+#endif
+
 #endif
 
 __SPRT_END_DECL

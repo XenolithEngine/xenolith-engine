@@ -23,7 +23,7 @@
 #ifndef CORE_EVENT_PLATFORM_WINDOWS_SPEVENTTHREADIOCP_H_
 #define CORE_EVENT_PLATFORM_WINDOWS_SPEVENTTHREADIOCP_H_
 
-#include "SPEventThreadHandle.h"
+#include <sprt/runtime/dispatch/handle.h>
 #include "SPEvent-iocp.h"
 
 namespace sprt::dispatch {
@@ -31,7 +31,7 @@ namespace sprt::dispatch {
 static constexpr bool IOCP_THREAD_NONBLOCK = false;
 
 struct SPRT_API ThreadIocpSource {
-	pid_t currentThread = 0;
+	__sprt_pid_t currentThread = 0;
 	void *port = nullptr;
 
 	bool init();
@@ -49,8 +49,8 @@ public:
 
 	void notify(IocpData *, ThreadIocpSource *, const NotifyData &);
 
-	virtual Status perform(Rc<thread::Task> &&task) override;
-	virtual Status perform(mem_std::Function<void()> &&func, Ref *target, StringView tag) override;
+	virtual Status perform(Rc<Task> &&task) override;
+	virtual Status perform(dispatch::Function<void()> &&func, Ref *target, StringView tag) override;
 
 protected:
 	sprt::mutex _mutex;

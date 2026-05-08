@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_TIME_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_TIME_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sys/time.h>
 
@@ -34,48 +34,84 @@ THE SOFTWARE.
 __SPRT_BEGIN_DECL
 
 #if __SPRT_CONFIG_HAVE_TIME_TIMEOFDAY || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int gettimeofday(struct timeval *__SPRT_RESTRICT __tv,
-		struct timezone *__SPRT_RESTRICT __tz) {
+SPRT_UMBRELLA_FUNC
+int gettimeofday(struct timeval *__SPRT_RESTRICT __tv,
+		struct timezone *__SPRT_RESTRICT __tz) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_gettimeofday(__tv, __tz);
 }
+#endif
 
-SPRT_FORCEINLINE int settimeofday(const timeval *__tv, const struct timezone *__tz) {
+SPRT_UMBRELLA_FUNC
+int settimeofday(const timeval *__tv, const struct timezone *__tz) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_settimeofday(__tv, __tz);
 }
 #endif
+#endif // __SPRT_CONFIG_HAVE_TIME_TIMEOFDAY
 
 #if __SPRT_CONFIG_HAVE_TIME_TIMER || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int getitimer(int __w, struct itimerval *__tv) {
+SPRT_UMBRELLA_FUNC
+int getitimer(int __w, struct itimerval *__tv) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_getitimer(__w, __tv);
 }
+#endif
 
-SPRT_FORCEINLINE int setitimer(int __w, const struct itimerval *__SPRT_RESTRICT __tv,
-		struct itimerval *__SPRT_RESTRICT __atv) {
+SPRT_UMBRELLA_FUNC
+int setitimer(int __w, const struct itimerval *__SPRT_RESTRICT __tv,
+		struct itimerval *__SPRT_RESTRICT __atv) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_setitimer(__w, __tv, __atv);
 }
 #endif
+#endif // __SPRT_CONFIG_HAVE_TIME_TIMER
 
-SPRT_FORCEINLINE int utimes(const char *path, const __SPRT_TIMEVAL_NAME ts[2]) {
+SPRT_UMBRELLA_FUNC
+int utimes(const char *path, const __SPRT_TIMEVAL_NAME ts[2]) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_utimes(path, ts);
 }
+#endif
 
-SPRT_FORCEINLINE int futimes(int fd, const __SPRT_TIMEVAL_NAME ts[2]) {
+SPRT_UMBRELLA_FUNC
+int futimes(int fd, const __SPRT_TIMEVAL_NAME ts[2]) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_futimes(fd, ts);
 }
+#endif
 
-SPRT_FORCEINLINE int futimesat(int fd, const char *path, const __SPRT_TIMEVAL_NAME ts[2]) {
+SPRT_UMBRELLA_FUNC
+int futimesat(int fd, const char *path, const __SPRT_TIMEVAL_NAME ts[2]) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_futimesat(fd, path, ts);
 }
+#endif
 
-SPRT_FORCEINLINE int lutimes(const char *path, const __SPRT_TIMEVAL_NAME ts[2]) {
+SPRT_UMBRELLA_FUNC
+int lutimes(const char *path, const __SPRT_TIMEVAL_NAME ts[2]) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_lutimes(path, ts);
 }
+#endif
 
 #if __SPRT_CONFIG_HAVE_TIME_ADJTIME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-SPRT_FORCEINLINE int adjtime(const __SPRT_TIMEVAL_NAME *__tv, __SPRT_TIMEVAL_NAME *__otv) {
+SPRT_UMBRELLA_FUNC
+int adjtime(const __SPRT_TIMEVAL_NAME *__tv, __SPRT_TIMEVAL_NAME *__otv) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __sprt_adjtime(__tv, __otv);
 }
 #endif
+#endif // __SPRT_CONFIG_HAVE_TIME_ADJTIME
 
 __SPRT_END_DECL
 

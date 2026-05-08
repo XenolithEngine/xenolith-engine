@@ -33,6 +33,7 @@ THE SOFTWARE.
 #include <sprt/c/cross/__sprt_sysid.h>
 #include <sprt/c/bits/seek.h>
 #include <sprt/c/bits/access.h>
+#include <sprt/c/bits/iovec.h>
 
 #define __SPRT_F_ULOCK 0	/* Unlock a previously locked region.  */
 #define __SPRT_F_LOCK  1	/* Lock a region for exclusive use.  */
@@ -52,6 +53,12 @@ SPRT_API int __SPRT_ID(close)(int __fd);
 SPRT_API __SPRT_ID(ssize_t) __SPRT_ID(read)(int __fd, void *__buf, __SPRT_ID(size_t) __nbytes);
 
 SPRT_API __SPRT_ID(ssize_t) __SPRT_ID(write)(int __fd, const void *__buf, __SPRT_ID(size_t) __n);
+
+SPRT_API __SPRT_ID(ssize_t)
+		__SPRT_ID(readv)(int __fd, const struct __SPRT_IOVEC_NAME *iov, int iovcnt);
+
+SPRT_API __SPRT_ID(ssize_t)
+		__SPRT_ID(writev)(int __fd, const struct __SPRT_IOVEC_NAME *iov, int iovcnt);
 
 SPRT_API __SPRT_ID(ssize_t) __SPRT_ID(
 		pread)(int __fd, void *__buf, __SPRT_ID(size_t) __count, __SPRT_ID(off_t) __offset);
@@ -80,15 +87,9 @@ SPRT_API int __SPRT_ID(fchdir)(int __fd) __SPRT_NOEXCEPT;
 
 SPRT_API char *__SPRT_ID(getcwd)(char *__buf, __SPRT_ID(size_t) __size) __SPRT_NOEXCEPT;
 
-#if __SPRT_CONFIG_HAVE_UNISTD_DUP || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-
-__SPRT_CONFIG_HAVE_UNISTD_DUP_NOTICE
 SPRT_API int __SPRT_ID(dup)(int __fd) __SPRT_NOEXCEPT;
 
-__SPRT_CONFIG_HAVE_UNISTD_DUP_NOTICE
 SPRT_API int __SPRT_ID(dup2)(int __fd, int __fd2) __SPRT_NOEXCEPT;
-
-#endif
 
 #if __SPRT_CONFIG_HAVE_UNISTD_DUP3 || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 

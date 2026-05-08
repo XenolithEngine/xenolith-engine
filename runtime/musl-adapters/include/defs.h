@@ -6,6 +6,11 @@
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_locale.h>
 
+#if SPRT_WINDOWS
+#define __GNUC__ 4
+#define __GNUC_MINOR__ 17
+#endif
+
 #ifndef M_E
 /*#define M_E __SPRT_M_E
 #define M_LOG2E __SPRT_M_LOG2E
@@ -22,6 +27,9 @@
 #define M_SQRT1_2 __SPRT_M_SQRT1_2*/
 #endif
 
+#ifndef __LONG_MAX
+#define __LONG_MAX __SPRT_LONG_MAX
+#endif
 
 #ifndef __BYTE_ORDER__
 #error "__BYTE_ORDER__ is not defined"
