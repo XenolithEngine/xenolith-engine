@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2025 Stappler LLC <admin@stappler.dev>
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -26,30 +26,17 @@ STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../../make
 LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
 LOCAL_EXECUTABLE := runtimetest
 
-LOCAL_PRIVATE_INCLUDE_PCH := SPCommon.h
+LOCAL_PRIVATE_INCLUDE_PCH :=
 
-LOCAL_MODULES_PATHS = stappler/stappler-modules.mk
+LOCAL_MODULES_PATHS =
 
 LOCAL_MODULES ?= \
-	runtime \
-	stappler_core \
-	stappler_filesystem \
-	stappler_data \
-	stappler_bitmap \
-	stappler_crypto \
-	stappler_db \
-	stappler_document \
-	stappler_font \
-	stappler_vg \
-	stappler_pug \
-	stappler_makefile \
-	stappler_layout \
-	stappler_network
+	runtime_libc \
+	runtime
 
+LOCAL_ROOT = $(abspath $(dir $(LOCAL_MAKEFILE)))
 
-LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
-
-LOCAL_SRCS_DIRS :=
+LOCAL_SRCS_DIRS := runtime cxx c
 LOCAL_SRCS_OBJS :=
 
 LOCAL_INCLUDES_DIRS :=
@@ -57,8 +44,18 @@ LOCAL_INCLUDES_OBJS :=
 
 LOCAL_MAIN := main.cpp
 
-APPCONFIG_APP_NAME := RuntimeTest
-APPCONFIG_BUNDLE_NAME := org.stappler.RuntimeTest
+# Android config
+LOCAL_ANDROID_MK := $(LOCAL_ROOT)/proj.android/app/Android.mk # path to root Android.mk
+LOCAL_APPLICATION_MK := $(LOCAL_ROOT)/proj.android/app/Application.mk # path to Application.mk
+LOCAL_ANDROID_TARGET := application # target to build
+LOCAL_ANDROID_PLATFORM := android-24 # android platform version
+
+APPCONFIG_APP_NAME := FreestandingRuntimeTest
+APPCONFIG_BUNDLE_NAME := org.stappler.FreestandingRuntimeTest
 APPCONFIG_APP_PATH_COMMON := 3
+
+#verbose=1
+
+# ASAN:= 1
 
 include $(STAPPLER_BUILD_ROOT)/universal.mk

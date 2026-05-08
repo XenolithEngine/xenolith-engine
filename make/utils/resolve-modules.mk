@@ -75,7 +75,7 @@ $(2)_CONSUMED_BY := $(1)
 endef # define_consumed
 
 define merge_module =
-TOOLKIT_MODULE_VARS += $(1)
+TOOLKIT_MODULE_VARS := $(sort $(TOOLKIT_MODULE_VARS) $(1))
 $(foreach module,$($(1)_SHARED_CONSUME),$(eval $(call define_consumed,$(2),$(MODULE_$(module)))))
 endef # merge_module
 

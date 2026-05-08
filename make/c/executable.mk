@@ -93,6 +93,17 @@ sp_build_.S_exec_rule_counted = \
 # $(2) - target path
 # $(3) - extra deps
 # $(4) - extra flags
+sp_build_.s_exec_rule_counted = \
+	$(eval \
+		$(call BUILD_S_rule,$(1),$(2),$(TOOLKIT_EXEC_GCH) $(3),$(4))\
+		$(call BUILD_EXEC_template,$(2),$(LOCAL_EXECUTABLE),$(BUILD_EXEC_WORDS))\
+	)\
+	$(eval $(call BUILD_add_target_exec,$(2)))
+
+# $(1) - source path
+# $(2) - target path
+# $(3) - extra deps
+# $(4) - extra flags
 sp_build_.cpp_exec_rule_counted = \
 	$(eval \
 		$(call BUILD_cpp_rule,$(1),$(2),$(TOOLKIT_EXEC_GCH) $(3),$(4))\
@@ -119,12 +130,14 @@ $(foreach target,$(TOOLKIT_EXEC_GCH),\
 	$(eval $(call BUILD_EXEC_template,$(target),$(LOCAL_EXECUTABLE),$(BUILD_EXEC_WORDS))))
 
 BUILD_EXEC_.c_FLAGS := $(BUILD_EXEC_CFLAGS)
-BUILD_EXEC_.S_FLAGS := $(BUILD_EXEC_CFLAGS)
+BUILD_EXEC_.S_FLAGS := $(BUILD_EXEC_SFLAGS)
+BUILD_EXEC_.s_FLAGS := $(BUILD_EXEC_SFLAGS)
 BUILD_EXEC_.cpp_FLAGS := $(BUILD_EXEC_CXXFLAGS)
 BUILD_EXEC_.mm_FLAGS := $(BUILD_EXEC_CXXFLAGS)
 
 BUILD_PRIVATE_EXEC_.c_FLAGS := $(BUILD_PRIVATE_EXEC_CFLAGS)
-BUILD_PRIVATE_EXEC_.S_FLAGS := $(BUILD_PRIVATE_EXEC_CFLAGS)
+BUILD_PRIVATE_EXEC_.S_FLAGS := $(BUILD_PRIVATE_EXEC_SFLAGS)
+BUILD_PRIVATE_EXEC_.s_FLAGS := $(BUILD_PRIVATE_EXEC_SFLAGS)
 BUILD_PRIVATE_EXEC_.cpp_FLAGS := $(BUILD_PRIVATE_EXEC_CXXFLAGS)
 BUILD_PRIVATE_EXEC_.mm_FLAGS := $(BUILD_PRIVATE_EXEC_CXXFLAGS)
 

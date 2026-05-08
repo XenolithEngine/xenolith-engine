@@ -34,11 +34,13 @@ endif
 
 sp_compile_command = $(1) $(2) $(call sp_compile_dep, $(5), $(3)) -c -o $(5) $(4)
 
+sp_compile_command_asm = $(1) $(2) $(3) -c -o $(5) $(4)
+
 sp_compile_gch = $(GLOBAL_QUIET_CPP) $(call rule_mkdir,$(dir $@));\
 	$(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_GCH_FILE),$(1),$<,$@)
 
 sp_compile_S = $(GLOBAL_QUIET_CC) $(call rule_mkdir,$(dir $@));\
-	$(call sp_compile_command,$(GLOBAL_CC),,$(1),$<,$@)
+	$(call sp_compile_command_asm,$(GLOBAL_CC),,$(1),$<,$@)
 
 sp_compile_c = $(GLOBAL_QUIET_CC) $(call rule_mkdir,$(dir $@));\
 	$(call sp_compile_command,$(GLOBAL_CC),$(OSTYPE_C_FILE),$(1),$<,$@)
@@ -52,7 +54,7 @@ sp_compile_mm = $(GLOBAL_QUIET_CPP) $(call rule_mkdir,$(dir $@));\
 sp_copy_header = @$(call rule_mkdir,$(dir $@)); $(GLOBAL_CP) $< $@
 
 sp_toolkit_source_list_c = $(call sp_make_general_source_list,$(1),$(2),$(GLOBAL_ROOT),\
-	*.cpp *.c *.S $(if $(BUILD_OBJC),*.mm),\
+	*.cpp *.c *.S *.s $(if $(BUILD_OBJC),*.mm),\
 	$(if $(BUILD_OBJC),,%.mm))
 
 sp_toolkit_source_list = $(call sp_toolkit_source_list_c,$(1),$(filter-out %.wit,$(2)))
@@ -78,7 +80,12 @@ sp_toolkit_include_flags = \
 # $(4) - default flags
 # $(5) - private default flags
 sp_toolkit_private_flags = $(strip \
-	$(if $(filter %.S %.c,$(2)),$($(1)_PRIVATE_CFLAGS)) \
+	$(if $($(1)_PRIVATE_STANDALONE),\
+		$(if $($(1)_PRIVATE_FLAGS_FILTER),$(filter-out $($(1)_PRIVATE_FLAGS_FILTER),$(5)),$(5)),\
+		$(if $($(1)_PRIVATE_FLAGS_FILTER),$(filter-out $($(1)_PRIVATE_FLAGS_FILTER),$(4)),$(4))\
+	) \
+	$(if $(filter %.s %.S,$(2)),$($(1)_PRIVATE_SFLAGS)) \
+	$(if $(filter %.c,$(2)),$($(1)_PRIVATE_CFLAGS)) \
 	$(if $(filter %.cpp,$(2)),\
 		$(addprefix -include-pch ,$(addprefix $(strip $(3))/,$(addsuffix $(OSTYPE_GCH_SUFFIX),$($(1)_PRIVATE_INCLUDE_PCH)))) \
 		$($(1)_PRIVATE_CXXFLAGS) \
@@ -87,10 +94,6 @@ sp_toolkit_private_flags = $(strip \
 		$($(1)_PRIVATE_CXXFLAGS) \
 	) \
 	$(addprefix -I,$(call sp_toolkit_include_list,,$($(1)_PRIVATE_INCLUDES))) \
-	$(if $($(1)_PRIVATE_STANDALONE),\
-		$(if $($(1)_PRIVATE_FLAGS_FILTER),$(filter-out $($(1)_PRIVATE_FLAGS_FILTER),$(5)),$(5)),\
-		$(if $($(1)_PRIVATE_FLAGS_FILTER),$(filter-out $($(1)_PRIVATE_FLAGS_FILTER),$(4)),$(4))\
-	) \
 )
 
 # $(1) - filename
@@ -106,7 +109,7 @@ sp_local_private_flags = \
 
 
 sp_local_source_list_c = $(call sp_make_general_source_list,$(1),$(2),$(LOCAL_ROOT),\
-	*.cpp *.c *.S $(if $(BUILD_OBJC),*.mm),\
+	*.cpp *.c *.S *.s $(if $(BUILD_OBJC),*.mm),\
 	$(if $(BUILD_OBJC),,%.mm))
 
 sp_local_source_list = $(call sp_local_source_list_c,$(1),$(filter-out %.wit,$(2)))

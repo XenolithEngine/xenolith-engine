@@ -6,10 +6,10 @@
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -18,37 +18,42 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-OSTYPE_IS_WIN32 := 1
+# force to rebuild if this makefile changed
+LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
-OSTYPE_EXEC_SUFFIX := .exe
-OSTYPE_DSO_SUFFIX := .dll
-OSTYPE_LIB_SUFFIX := .lib
-OSTYPE_LIB_PREFIX :=
+STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../../make
 
-OSTYPE_CONFIG_FLAGS := WIN32
+LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
+LOCAL_EXECUTABLE := builtintest
 
-OSTYPE_CFLAGS := -Wall -D_MT -Wno-vla-cxx-extension -Wno-microsoft-include\
-	-D_CRT_STDIO_ISO_WIDE_SPECIFIERS=1 -fno-exceptions
+LOCAL_PRIVATE_INCLUDE_PCH :=
 
-ifeq ($(RELEASE),1)
-OSTYPE_CFLAGS +=
-OSTYPE_LDFLAGS :=
-else
-OSTYPE_CFLAGS += -g -gcodeview
-OSTYPE_LDFLAGS := -g
-endif
+LOCAL_MODULES_PATHS =
 
-OSTYPE_GENERAL_CFLAGS := $(OSTYPE_CFLAGS)
-OSTYPE_LIB_CFLAGS := -fPIC -DPIC
-OSTYPE_EXEC_CFLAGS :=
+LOCAL_MODULES := runtime_libc_impl
 
-OSTYPE_GENERAL_CXXFLAGS :=  $(OSTYPE_CFLAGS) -Wno-overloaded-virtual -frtti
-OSTYPE_LIB_CXXFLAGS := -fPIC -DPIC
-OSTYPE_EXEC_CXXFLAGS :=
+LOCAL_ROOT = $(abspath $(dir $(LOCAL_MAKEFILE)))
 
-OSTYPE_GENERAL_LDFLAGS := $(OSTYPE_LDFLAGS) -fuse-ld=lld -Xlinker -nodefaultlib
-OSTYPE_EXEC_LDFLAGS :=
-OSTYPE_LIB_LDFLAGS :=
+LOCAL_SRCS_DIRS := c
+LOCAL_SRCS_OBJS :=
 
-WIN32 := 1
-WINDOWS := 1
+LOCAL_INCLUDES_DIRS :=
+LOCAL_INCLUDES_OBJS :=
+
+LOCAL_MAIN := main.cpp
+
+# Android config
+LOCAL_ANDROID_MK := $(LOCAL_ROOT)/proj.android/app/Android.mk # path to root Android.mk
+LOCAL_APPLICATION_MK := $(LOCAL_ROOT)/proj.android/app/Application.mk # path to Application.mk
+LOCAL_ANDROID_TARGET := application # target to build
+LOCAL_ANDROID_PLATFORM := android-24 # android platform version
+
+APPCONFIG_APP_NAME := FreestandingRuntimeTest
+APPCONFIG_BUNDLE_NAME := org.stappler.FreestandingRuntimeTest
+APPCONFIG_APP_PATH_COMMON := 3
+
+#verbose=1
+
+# ASAN:= 1
+
+include $(STAPPLER_BUILD_ROOT)/universal.mk

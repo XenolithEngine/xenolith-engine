@@ -57,6 +57,17 @@ sp_build_.S_lib_rule_counted = \
 # $(2) - target path
 # $(3) - extra deps
 # $(4) - extra flags
+sp_build_.s_lib_rule_counted = \
+	$(eval \
+		$(call BUILD_S_rule,$(1),$(2),$(TOOLKIT_LIB_GCH) $(3),$(BUILD_LIB_CFLAGS) $(4))\
+		$(call BUILD_LIB_template,$(2),$(LOCAL_LIBRARY),$(BUILD_LIB_WORDS))\
+	)\
+	$(eval $(call BUILD_add_target_lib,$(2)))
+
+# $(1) - source path
+# $(2) - target path
+# $(3) - extra deps
+# $(4) - extra flags
 sp_build_.cpp_lib_rule_counted = \
 	$(eval \
 		$(call BUILD_cpp_rule,$(1),$(2),$(TOOLKIT_LIB_GCH) $(3),$(BUILD_LIB_CXXFLAGS) $(4))\
@@ -80,12 +91,14 @@ $(foreach target,$(TOOLKIT_LIB_GCH),\
 	$(eval $(call BUILD_LIB_template,$(target),$(LOCAL_LIBRARY),$(BUILD_LIB_WORDS))))
 
 BUILD_LIB_.c_FLAGS := $(BUILD_LIB_CFLAGS)
-BUILD_LIB_.S_FLAGS := $(BUILD_LIB_CFLAGS)
+BUILD_LIB_.S_FLAGS := $(BUILD_LIB_SFLAGS)
+BUILD_LIB_.s_FLAGS := $(BUILD_LIB_SFLAGS)
 BUILD_LIB_.cpp_FLAGS := $(BUILD_LIB_CXXFLAGS)
 BUILD_LIB_.mm_FLAGS := $(BUILD_LIB_CXXFLAGS)
 
 BUILD_PRIVATE_LIB_.c_FLAGS := $(BUILD_PRIVATE_LIB_CFLAGS)
-BUILD_PRIVATE_LIB_.S_FLAGS := $(BUILD_PRIVATE_LIB_CFLAGS)
+BUILD_PRIVATE_LIB_.S_FLAGS := $(BUILD_PRIVATE_LIB_SFLAGS)
+BUILD_PRIVATE_LIB_.s_FLAGS := $(BUILD_PRIVATE_LIB_SFLAGS)
 BUILD_PRIVATE_LIB_.cpp_FLAGS := $(BUILD_PRIVATE_LIB_CXXFLAGS)
 BUILD_PRIVATE_LIB_.mm_FLAGS := $(BUILD_PRIVATE_LIB_CXXFLAGS)
 

@@ -1,5 +1,5 @@
 /**
-Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,201 +20,77 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#include "SPCommon.h"
-#include "SPString.h"
-#include "SPMemInterface.h"
+#include <sprt/cxx/forward_list>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 
-#include "SPFilesystem.h"
-//#include "SPThread.h"
-
-//#include "SPData.h"
-//#include "SPDataValue.h"
-
+#include <sprt/runtime/log.h>
 #include <sprt/runtime/platform.h>
-#include <sprt/runtime/utils/backtrace.h>
-#include <sprt/runtime/utils/compress.h>
-#include <sprt/runtime/utils/idn.h>
 
-using namespace stappler;
+#include <sprt/cxx/new>
+#include <sprt/cxx/unordered_map>
+#include <sprt/cxx/memory>
 
-/*static sprt::rmutex s_mutex;
+#include "tests.h"
 
-class TestThread : public thread::Thread {
-public:
-	virtual void threadInit() override {
-		sprt::unique_lock lock(s_mutex);
-		Thread::threadInit();
-		slog().debug("Thread", "threadInit: ", getThreadId());
-	}
-	virtual void threadDispose() override {
-		sprt::unique_lock lock(s_mutex);
-		Thread::threadDispose();
-		slog().debug("Thread", "threadDispose: ", getThreadId());
-	}
-	virtual bool worker() override {
-		sprt::unique_lock lock(s_mutex);
-		slog().debug("Thread", "worker: ", getThreadId());
-		return false;
-	}
+static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
+	{"libc_uname", &sprt::performUnameTest},
+	{"libc_unistd", &sprt::performUnistdTest},
+	{"libc_dir", &sprt::performDirTest},
+	{"libc_link", &sprt::performLinkTest},
+	{"libc_pthread", &sprt::performPthreadCreateTest},
+	{"libc_pthread_mutex", &sprt::performPthreadMutexTest},
+	{"libc_pthread_cond", &sprt::performPthreadCondTest},
+	{"libc_pthread_rwlock", &sprt::performPthreadRwlockTest},
+	{"libc_pthread_barrier", &sprt::performPthreadBarrierTest},
+	{"libc_pthread_spinlock", &sprt::performPthreadSpinlockTest},
+
+	{"libcxx_malloc_string", &sprt::performMallocStringTests},
+	{"libcxx_malloc_unordered_map", &sprt::performMallocUnorderedMapTests},
+	{"libcxx_malloc_unordered_set", &sprt::performMallocUnorderedSetTests},
+	{"libcxx_malloc_list", &sprt::performMallocListTests},
+	{"libcxx_malloc_forward_list", &sprt::performMallocForwardListTests},
+	{"libcxx_thread", &sprt::performThreadTests},
+	{"libcxx_variant", &sprt::performVariantTests},
+	{"libcxx_optional", &sprt::performOptionalTests},
+	{"libcxx_sort", &sprt::performSortTests},
+	{"libcxx_constexpr", &sprt::performConstexprTest},
+	{"libcxx_shared_mutex", &sprt::performSharedMutexStressTests},
+	{"libcxx_bitset", &sprt::performBitsetTests},
+
+	{"runtime_ref", &sprt::performRefTests},
+	{"runtime_dispatch", &sprt::performDispatchTests},
+	{"runtime_unicode", &sprt::performUnicodeTests},
+	{"runtime_dtoa", &sprt::performDtoaTests},
 };
 
-static void performIdnTests() {
-	sprt::idn::puny_encode([](StringView str) {
-		std::cout << str << "\n"; //
-	}, "рф", true);
+int main(int argc, const char *argv[]) {
+	auto str =
+			"Проверяю работоспособность вывода в UTF-8, строка должна быть читаема из терминала\n";
 
-	sprt::idn::puny_decode([](StringView str) {
-		std::cout << str << "\n"; //
-	}, "p1ai", true);
+	fwrite(str, strlen(str), 1, stdout);
 
-	sprt::idn::puny_decode([](StringView str) {
-		std::cout << str << "\n"; //
-	}, "xn--p1ai", true);
-
-	sprt::idn::puny_decode([](StringView str) {
-		std::cout << str << "\n"; //
-	}, "XN--P1AI", true);
-
-	std::cout << sprt::idn::is_known_tld("рф") << "\n";
-}
-
-static void performThreadTests() {
-	s_mutex.lock();
-
-	auto t = Rc<TestThread>::create();
-	t->run();
-
-	sprt::platform::sleep(1'000);
-
-	slog().debug("Thread", "performThreadTests");
-
-	s_mutex.unlock();
-
-	t->waitStopped();
-}
-
-static void performDynAllocTests() {
-	sprt::String str;
-	str += "test 1234567890 1234567890 1234567890\n";
-
-	std::cout << str;
-
-	auto str2 = sprt::StreamTraits<char>::toString("test", 1, " ", 0.56, " 123456 |", '\n');
-
-	std::cout << str2;
-}
-
-static void performPathTests() {
-	std::cout << "UniqueDeviceId: " << sprt::platform::getUniqueDeviceId() << "\n";
-	std::cout << "ExecPath: " << sprt::platform::getExecPath() << "\n";
-	std::cout << "HomePath: " << sprt::platform::getHomePath() << "\n";
-
-	for (auto it : each<LocationCategory>()) {
-		filesystem::enumeratePaths(it, [&](const LocationInfo &, StringView path) {
-			std::cout << it << ": " << path << "\n";
-			return true;
-		});
+	int result = 0;
+	sprt::initialize(sprt::AppConfig(), result);
+	if (result != 0) {
+		return result;
 	}
 
-	auto execDir = filepath::root(sprt::platform::getExecPath());
+	if (argc == 1) {
+		for (auto &it : s_testList) { it.second(); }
+		result = 0;
+	} else if (argc == 2) {
+		auto it = s_testList.find(argv[1]);
+		if (it != s_testList.end()) {
+			it->second();
+			result = 0;
+		} else {
+			sprt::cerr << "Test not found: " << argv[1] << "\n";
+			result = -1;
+		}
+	}
 
-	filesystem::copy(FileInfo("exec_objs", LocationCategory::Bundled),
-			FileInfo("", LocationCategory::AppRuntime));
-
-	filesystem::move(FileInfo("exec_objs", LocationCategory::AppRuntime),
-			FileInfo("exec_objs", LocationCategory::AppCache));
-
-	filesystem::remove(FileInfo("exec_objs", LocationCategory::AppCache), true);
-
-	filesystem::ftw(FileInfo(execDir), [](const FileInfo &info, FileType t) {
-		std::cout << info << " (" << t << ")\n";
-		return true;
-	});
-
-	filesystem::ftw(FileInfo("exec_objs", LocationCategory::Bundled),
-			[](const FileInfo &info, FileType t) {
-		std::cout << info << " (" << t << ")\n";
-		return true;
-	});
-}
-
-static void performTimeTests() {
-	char timebuf[sprt::time::time_exp_t::Iso8601BufferSize] = {0};
-	auto tm1 = sprt::time::time_exp_t::get(false);
-	tm1.encodeIso8601(timebuf, sprt::time::time_exp_t::Iso8601BufferSize, 6);
-	std::cout << timebuf << "\n";
-	tm1.encodeRfc822(timebuf, sprt::time::time_exp_t::Iso8601BufferSize);
-	std::cout << timebuf << "\n";
-
-	auto tm2 = sprt::time::time_exp_t::get(true);
-	tm2.encodeIso8601(timebuf, sprt::time::time_exp_t::Iso8601BufferSize, 6);
-	std::cout << timebuf << "\n";
-	tm2.encodeRfc822(timebuf, sprt::time::time_exp_t::Iso8601BufferSize);
-	std::cout << timebuf << "\n";
-
-	auto tnow = sprt::platform::clock(sprt::platform::ClockType::Realtime);
-	sprt::time::time_exp_t tm3(tnow);
-	tm3.encodeIso8601(timebuf, sprt::time::time_exp_t::Iso8601BufferSize, 6);
-	std::cout << timebuf << "\n";
-	tm3.encodeRfc822(timebuf, sprt::time::time_exp_t::Iso8601BufferSize);
-	std::cout << timebuf << "\n";
-
-	sprt::time::time_exp_t tm4(tnow, true);
-	tm4.encodeIso8601(timebuf, sprt::time::time_exp_t::Iso8601BufferSize, 6);
-	std::cout << timebuf << "\n";
-	tm4.encodeRfc822(timebuf, sprt::time::time_exp_t::Iso8601BufferSize);
-	std::cout << timebuf << "\n";
-
-	sprt::time::time_exp_t tm5("2025-12-31T20:21:28.039509+08:00");
-	tm5.encodeIso8601(timebuf, sprt::time::time_exp_t::Iso8601BufferSize, 6);
-	std::cout << timebuf << "\n";
-}
-
-static void performUnicodeTests() {
-	StringView test1 = "Тест";
-	StringView test2 = "ТЕСТ";
-	StringView test3 = "ТЕСТ";
-
-	WideStringView wtest1 = u"Тест1";
-	WideStringView wtest2 = u"ТЕСТ1";
-	WideStringView wtest3 = u"тест1";
-
-	std::cout << platform::toupper<memory::StandartInterface>(test1) << "\n";
-	std::cout << platform::tolower<memory::StandartInterface>(test1) << "\n";
-	std::cout << platform::totitle<memory::StandartInterface>(test1) << "\n";
-
-	std::cout << platform::toupper<memory::StandartInterface>(test2) << "\n";
-	std::cout << platform::tolower<memory::StandartInterface>(test2) << "\n";
-	std::cout << platform::totitle<memory::StandartInterface>(test2) << "\n";
-
-	std::cout << "StringUnicodeCaseComparator: "
-			  << test1.equals<sprt::StringUnicodeCaseComparator>(test2) << "\n";
-	std::cout << "StringCaseComparator: " << test1.equals<sprt::StringCaseComparator>(test2)
-			  << "\n";
-
-	std::cout << "StringUnicodeCaseComparator: "
-			  << wtest1.equals<sprt::StringUnicodeCaseComparator>(wtest2) << "\n";
-	std::cout << "StringCaseComparator: " << wtest1.equals<sprt::StringCaseComparator>(wtest2)
-			  << "\n";
-
-	std::cout << (test3 < test1) << " " << (test3 > test1) << '\n';
-}*/
-
-int main(int argc, const char *argv[]) {
-	return perform_main(argc, argv, []() {
-		//printCaseTables();
-		//runDataCoverter();
-
-		/*performThreadTests();
-		performIdnTests();
-		performDynAllocTests();
-		performPathTests();
-		performTimeTests();
-		performUnicodeTests();*/
-
-		sprt::backtrace::getBacktrace(0,
-				[](uintptr_t, StringView str) { sprt::cout << str << "\n"; });
-
-		return 0;
-	});
+	sprt::terminate();
+	return result;
 }
