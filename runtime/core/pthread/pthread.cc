@@ -151,6 +151,8 @@ static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg) {
 	lock.unlock(); // unlock before mutex's memory destroyed
 	thread->state.set_and_signal(thread_t::StateFinalized);
 
+	__sprt_libc_thread_exit(true);
+
 	return result;
 }
 

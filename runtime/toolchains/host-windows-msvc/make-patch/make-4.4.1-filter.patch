@@ -1,0 +1,20 @@
+--- make-4.4.1-orig/src/function.c	2023-01-12 03:51:34.000000000 +0300
++++ make-4.4.1/src/function.c	2024-09-18 09:23:10.970908100 +0300
+@@ -1103,7 +1103,7 @@
+           wp = hash_find_item (&a_word_table, &a_word_key);
+           while (wp)
+             {
+-              wp->matched |= 1;
++              wp->matched = 1;
+               wp = wp->chain;
+             }
+         }
+@@ -1117,7 +1117,7 @@
+   for (wp = words; wp < word_end; ++wp)
+     if (is_filter ? wp->matched : !wp->matched)
+       {
+-        o = variable_buffer_output (o, wp->str, strlen (wp->str));
++        o = variable_buffer_output (o, wp->str, wp->length);
+         o = variable_buffer_output (o, " ", 1);
+         doneany = 1;
+       }

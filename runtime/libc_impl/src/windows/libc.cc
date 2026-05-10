@@ -83,6 +83,7 @@ void __init_default_fds(__libc *libc) {
 
 	libc->fdDispatch->bits.set(__libc::STDIN_FD);
 	auto &stdinFd = libc->fdPages[0]->fds[__libc::STDIN_FD];
+	stdinFd.ops = &libc->fdFileOps;
 	stdinFd.handle = GetStdHandle(STD_INPUT_HANDLE);
 	if (stdinFd.handle == INVALID_HANDLE_VALUE) {
 		stdinFd.handle = nullptr;
@@ -90,6 +91,7 @@ void __init_default_fds(__libc *libc) {
 
 	libc->fdDispatch->bits.set(__libc::STDOUT_FD);
 	auto &stdoutFd = libc->fdPages[0]->fds[__libc::STDOUT_FD];
+	stdoutFd.ops = &libc->fdFileOps;
 	stdoutFd.handle = GetStdHandle(STD_OUTPUT_HANDLE);
 	if (stdoutFd.handle == INVALID_HANDLE_VALUE) {
 		stdoutFd.handle = nullptr;
@@ -97,6 +99,7 @@ void __init_default_fds(__libc *libc) {
 
 	libc->fdDispatch->bits.set(__libc::STDERR_FD);
 	auto &stderrFd = libc->fdPages[0]->fds[__libc::STDERR_FD];
+	stderrFd.ops = &libc->fdFileOps;
 	stderrFd.handle = GetStdHandle(STD_ERROR_HANDLE);
 	if (stderrFd.handle == INVALID_HANDLE_VALUE) {
 		stderrFd.handle = nullptr;

@@ -52,8 +52,6 @@ MODULE_RUNTIME_JEMALLOC_PRIVATE_COMMON_CFLAGS := \
 	-nostdinc \
 	-ffreestanding \
 	-fbuiltin \
-	-fno-unwind-tables \
-	-fno-asynchronous-unwind-tables \
 	-DJEMALLOC_NO_PRIVATE_NAMESPACE
 
 MODULE_RUNTIME_JEMALLOC_PRIVATE_CFLAGS += $(MODULE_RUNTIME_JEMALLOC_PRIVATE_COMMON_CFLAGS)

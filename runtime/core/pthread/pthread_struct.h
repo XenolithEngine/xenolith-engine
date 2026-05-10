@@ -28,6 +28,12 @@
 #include <sprt/c/__sprt_pthread.h>
 #include <sprt/c/__sprt_stdio.h>
 
+namespace sprt {
+
+void __sprt_libc_thread_exit(bool);
+
+}
+
 namespace sprt::_thread {
 
 struct thread_base_t {

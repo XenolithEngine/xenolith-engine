@@ -3,7 +3,7 @@
 namespace sprt {
 
 struct DwmapiTable : DllTable {
-	DwmapiTable() : DllTable(L"dwapi.dll", &__dwmapi_begin, &__dwmapi_end) { }
+	DwmapiTable() : DllTable(L"dwmapi.dll", &__dwmapi_begin, &__dwmapi_end) { }
 
 	DllTableRecord __dwmapi_begin;
 	SPWIN_DEFINE_PROTO(DwmpDxGetWindowSharedSurface)

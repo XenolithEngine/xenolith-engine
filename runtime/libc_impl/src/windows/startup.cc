@@ -99,7 +99,9 @@ void __dyn_tls_init(PVOID, DWORD dwReason, LPVOID) noexcept {
 	__initterm(&__tls_init_start_fn, &__tls_init_end_fn);
 }
 
-void __dyn_tls_on_demand_init() noexcept { __dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr); }
+void __dyn_tls_on_demand_init() noexcept {
+	__dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr); //
+}
 
 /*
 	/Zc:threadSafeInit support
@@ -202,7 +204,7 @@ SAFELOADER void __security_init_cookie() {
 
 static unsigned char s_libcBuffer[sizeof(sprt::__libc)];
 
-int _fltused = -1;
+int _fltused;
 
 sprt::__libc *sprt::__libc::get() { return reinterpret_cast<__libc *>(s_libcBuffer); }
 
@@ -218,14 +220,14 @@ __cdecl int mainCRTStartup() {
 
 	{ __security_init_cookie(); }
 
-	__dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr);
-
 	if (__initterm(__c_init_start, __c_init_end) != 0) {
 		return LOADER_ERROR_STATIC_C_INIT_FAILED; // Error in c initialization
 	}
 	if (__initterm(__cxx_init_start, __cxx_init_end) != 0) {
 		return LOADER_ERROR_STATIC_CXX_INIT_FAILED; // Error in c++ initialization
 	}
+
+	__dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr);
 
 	ret = main(0, nullptr);
 

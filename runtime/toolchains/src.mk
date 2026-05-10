@@ -71,7 +71,7 @@ ifeq ($(findstring Windows,$(OS)),Windows)
 
 unpack_tar = $(MKDIR) $(SRC_ROOT) | Out-Null; $(MKDIR) $(TMP_DIR)/$(firstword $(2)) | Out-Null; \
 	cd $(TMP_DIR); \
-	$(WGET) -o $(notdir $(1)) $(1); \
+	Invoke-WebRequest -Uri "$(1)" -OutFile "$(notdir $(1))"; \
 	$(TAR_XF) $(notdir $(1)) --strip-components=1 -C $(firstword $(2)); \
 	Remove-Item -Path "$(SRC_ROOT)/$(firstword $(2))" -Recurse -Force -ErrorAction SilentlyContinue; \
 	Move-Item -Path $(firstword $(2)) -Destination $(SRC_ROOT)/$(firstword $(2)); \
@@ -160,22 +160,22 @@ $(SRC_ROOT)/harfbuzz: | prepare
 	$(call unpack_tar, https://github.com/harfbuzz/harfbuzz/releases/download/12.3.2/harfbuzz-12.3.2.tar.xz, harfbuzz)
 
 
-# https://www.sqlite.org/download.html # revised: 22 feb 2026
-SQLITE_URL := https://www.sqlite.org/2026/sqlite-amalgamation-3510200.zip
+# https://www.sqlite.org/download.html # revised: 9 may 2026
+SQLITE_URL := https://sqlite.org/2026/sqlite-amalgamation-3530100.zip
 ifeq ($(findstring Windows,$(OS)),Windows)
 $(SRC_ROOT)/sqlite: | prepare
 	@$(MKDIR) $(SRC_ROOT); $(MKDIR) $(TMP_DIR)
-	cd $(TMP_DIR); $(WGET) $(SQLITE_URL) -O sqlite-amalgamation.zip
+	cd $(TMP_DIR); Invoke-WebRequest -Uri "$(SQLITE_URL)" -OutFile "sqlite-amalgamation.zip";
 	cd $(TMP_DIR); Expand-Archive -Path sqlite-amalgamation.zip -DestinationPath .
 	$(RM) $(TMP_DIR)/sqlite-amalgamation.zip
-	powershell Move-Item -Path $(TMP_DIR)/sqlite-amalgamation-3510200  -Destination $(SRC_ROOT)/sqlite
+	powershell Move-Item -Path $(TMP_DIR)/sqlite-amalgamation-3530100  -Destination $(SRC_ROOT)/sqlite
 else
 $(SRC_ROOT)/sqlite: | prepare
 	@$(MKDIR) $(SRC_ROOT); $(MKDIR) $(TMP_DIR)
 	cd $(TMP_DIR); $(WGET) $(SQLITE_URL) -O sqlite-amalgamation.zip
 	cd $(TMP_DIR); unzip sqlite-amalgamation.zip -d .
 	rm $(TMP_DIR)/sqlite-amalgamation.zip
-	mv -f $(TMP_DIR)/sqlite-amalgamation-3510200 $(SRC_ROOT)/sqlite
+	mv -f $(TMP_DIR)/sqlite-amalgamation-3530100 $(SRC_ROOT)/sqlite
 endif
 
 

@@ -25,6 +25,7 @@ THE SOFTWARE.
 #include <sprt/cxx/detail/ctypes.h>
 
 #include <sprt/wrappers/windows/dl_api.h>
+#include <sprt/wrappers/windows/thread_api.h>
 
 #include "stdlib.h"
 #include "../../include/__impl_libc.h"
@@ -126,6 +127,14 @@ __SPRT_C_FUNC int at_quick_exit(__funcptr fn) __SPRT_NOEXCEPT {
 	return 0;
 }
 
+void __sprt_libc_thread_exit(bool fromExternalThread) {
+	__callDtors(&tl_dtors_list);
+
+	if (fromExternalThread) {
+		ExitThread(0);
+	}
+}
+
 __SPRT_C_FUNC int __tlregdtor(__funcptr fn) __SPRT_NOEXCEPT {
 	if (!__addDtor(&tl_dtors_list, &tl_dtors_head, fn)) {
 		return ENOMEM;
@@ -135,12 +144,13 @@ __SPRT_C_FUNC int __tlregdtor(__funcptr fn) __SPRT_NOEXCEPT {
 
 __SPRT_C_FUNC void exit(int result) __SPRT_NOEXCEPT {
 	// call atexit registrations
-	__callDtors(&s_atexit_list);
+
+	__sprt_libc_thread_exit(false);
 
 	__initterm(__c_preterm_start, __c_preterm_end);
 	__initterm(__c_term_start, __c_term_end);
 
-	__callDtors(&tl_dtors_list);
+	__callDtors(&s_atexit_list);
 
 	__stdio_exit();
 

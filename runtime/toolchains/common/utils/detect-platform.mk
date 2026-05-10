@@ -23,7 +23,7 @@
 ifeq ($(findstring Windows,$(OS)),Windows)
 
 UNAME := Windows
-
+SHELL := powershell.exe
 HOST_ID := x86_64-pc-windows-msvc
 WINARCH := $(shell [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)
 
