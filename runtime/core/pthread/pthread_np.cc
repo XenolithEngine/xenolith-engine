@@ -170,7 +170,7 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_timedjoin_np)(__SPRT_ID(pthread_t) thread, v
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
-		pthread_getid_np)(__SPRT_ID(pthread_t) thread, __SPRT_ID(pid_t) * idPtr) {
+		pthread_getid_np)(__SPRT_ID(pthread_t) thread, __SPRT_ID(pid_t) * idPtr) __SPRT_NOEXCEPT {
 	if (!idPtr || !thread) {
 		return EINVAL;
 	}

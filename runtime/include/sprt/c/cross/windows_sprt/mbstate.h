@@ -4,10 +4,15 @@
 #define __SPRT_WEOF 0xffff
 #endif
 
+#ifdef __cplusplus
+typedef wchar_t __SPRT_ID(wchar_t);
+#else
+typedef unsigned short __SPRT_ID(wchar_t);
+#endif
+
 typedef unsigned short __SPRT_ID(wctype_t);
 
 typedef struct {
-	unsigned long _Wchar;
-	unsigned short _Byte;
-	unsigned short _State;
+	unsigned int _Char;
+	unsigned int _State;
 } __SPRT_MBSTATE_NAME;

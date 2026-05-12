@@ -26,9 +26,7 @@ THE SOFTWARE.
 #include <sprt/runtime/init.h>
 #include <sprt/cxx/cctype>
 
-#if __STDC_HOSTED__ == 0
-#include "../freestanding/include/string.h"
-#else
+#if __STDC_HOSTED__ == 1
 // clang-format off
 #ifdef __STDC_VERSION__
 #define _POSIX_C_SOURCE __STDC_VERSION__
@@ -37,10 +35,11 @@ THE SOFTWARE.
 #endif
 #define __STDC_WANT_LIB_EXT1__ 1
 #undef _GNU_SOURCE
-#include <string.h>
-#include <ctype.h>
 // clang-format on
 #endif
+
+#include <string.h>
+#include <ctype.h>
 
 namespace sprt {
 

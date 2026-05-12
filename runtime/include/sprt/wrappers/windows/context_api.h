@@ -83,18 +83,98 @@ THE SOFTWARE.
 #define UNW_FLAG_UHANDLER       0x2
 #define UNW_FLAG_CHAININFO      0x4
 
-#define STATUS_LONGJUMP                  ((NTSTATUS)0x80000026L)    // winnt
+#define STILL_ACTIVE                        STATUS_PENDING
+#define EXCEPTION_ACCESS_VIOLATION          STATUS_ACCESS_VIOLATION
+#define EXCEPTION_DATATYPE_MISALIGNMENT     STATUS_DATATYPE_MISALIGNMENT
+#define EXCEPTION_BREAKPOINT                STATUS_BREAKPOINT
+#define EXCEPTION_SINGLE_STEP               STATUS_SINGLE_STEP
+#define EXCEPTION_ARRAY_BOUNDS_EXCEEDED     STATUS_ARRAY_BOUNDS_EXCEEDED
+#define EXCEPTION_FLT_DENORMAL_OPERAND      STATUS_FLOAT_DENORMAL_OPERAND
+#define EXCEPTION_FLT_DIVIDE_BY_ZERO        STATUS_FLOAT_DIVIDE_BY_ZERO
+#define EXCEPTION_FLT_INEXACT_RESULT        STATUS_FLOAT_INEXACT_RESULT
+#define EXCEPTION_FLT_INVALID_OPERATION     STATUS_FLOAT_INVALID_OPERATION
+#define EXCEPTION_FLT_OVERFLOW              STATUS_FLOAT_OVERFLOW
+#define EXCEPTION_FLT_STACK_CHECK           STATUS_FLOAT_STACK_CHECK
+#define EXCEPTION_FLT_UNDERFLOW             STATUS_FLOAT_UNDERFLOW
+#define EXCEPTION_INT_DIVIDE_BY_ZERO        STATUS_INTEGER_DIVIDE_BY_ZERO
+#define EXCEPTION_INT_OVERFLOW              STATUS_INTEGER_OVERFLOW
+#define EXCEPTION_PRIV_INSTRUCTION          STATUS_PRIVILEGED_INSTRUCTION
+#define EXCEPTION_IN_PAGE_ERROR             STATUS_IN_PAGE_ERROR
+#define EXCEPTION_ILLEGAL_INSTRUCTION       STATUS_ILLEGAL_INSTRUCTION
+#define EXCEPTION_NONCONTINUABLE_EXCEPTION  STATUS_NONCONTINUABLE_EXCEPTION
+#define EXCEPTION_STACK_OVERFLOW            STATUS_STACK_OVERFLOW
+#define EXCEPTION_INVALID_DISPOSITION       STATUS_INVALID_DISPOSITION
+#define EXCEPTION_GUARD_PAGE                STATUS_GUARD_PAGE_VIOLATION
+#define EXCEPTION_INVALID_HANDLE            STATUS_INVALID_HANDLE
+#define EXCEPTION_POSSIBLE_DEADLOCK         STATUS_POSSIBLE_DEADLOCK
+#define CONTROL_C_EXIT                      STATUS_CONTROL_C_EXIT
+
+#define EXCEPTION_EXECUTE_HANDLER      1
+#define EXCEPTION_CONTINUE_SEARCH      0
+#define EXCEPTION_CONTINUE_EXECUTION (-1)
 
 #define EXCEPTION_MAXIMUM_PARAMETERS 15 // maximum number of exception parameters
 // clang-format on
 
+
+typedef struct _IMAGE_RUNTIME_FUNCTION_ENTRY RUNTIME_FUNCTION, *PRUNTIME_FUNCTION;
+
+typedef enum _EXCEPTION_DISPOSITION {
+	ExceptionContinueExecution,
+	ExceptionContinueSearch,
+	ExceptionNestedException,
+	ExceptionCollidedUnwind
+} EXCEPTION_DISPOSITION;
+
+struct _EXCEPTION_RECORD;
+struct _CONTEXT;
+
+typedef EXCEPTION_DISPOSITION EXCEPTION_ROUTINE(struct _EXCEPTION_RECORD *ExceptionRecord,
+		PVOID EstablisherFrame, struct _CONTEXT *ContextRecord, PVOID DispatcherContext);
+
+typedef EXCEPTION_ROUTINE *PEXCEPTION_ROUTINE;
+
 #if __SPRT_ARCH_ID == __SPRT_ARCH_ID_X86_64
+
+// clang-format off
+#define CONTEXT_AMD64                            0x00100000L
+#define CONTEXT_CONTROL         (CONTEXT_AMD64 | 0x00000001L)
+#define CONTEXT_INTEGER         (CONTEXT_AMD64 | 0x00000002L)
+#define CONTEXT_SEGMENTS        (CONTEXT_AMD64 | 0x00000004L)
+#define CONTEXT_FLOATING_POINT  (CONTEXT_AMD64 | 0x00000008L)
+#define CONTEXT_DEBUG_REGISTERS (CONTEXT_AMD64 | 0x00000010L)
+
+#define CONTEXT_FULL (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT)
+
+#define CONTEXT_ALL  (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_SEGMENTS | CONTEXT_FLOATING_POINT | CONTEXT_DEBUG_REGISTERS)
+
+// clang-format on
+
+typedef union _UNWIND_CODE {
+	struct {
+		unsigned char CodeOffset;
+		unsigned char UnwindOp : 4;
+		unsigned char OpInfo   : 4;
+	};
+	unsigned short FrameOffset;
+} UNWIND_CODE, *PUNWIND_CODE;
+
+typedef struct _UNWIND_INFO {
+	unsigned char Version : 3;
+	unsigned char Flags	  : 5;
+	unsigned char SizeOfProlog;
+	unsigned char CountOfCodes;
+	unsigned char FrameRegister : 4;
+	unsigned char FrameOffset	: 4;
+	UNWIND_CODE UnwindCode[1];
+} UNWIND_INFO, *PUNWIND_INFO;
 
 typedef struct SPRT_ALIGNAS(16) _SETJMP_FLOAT128 {
 	unsigned __int64 Part[2];
 } SETJMP_FLOAT128;
 
-#define _JBLEN  16
+#define _JBLEN  24
+
 typedef SETJMP_FLOAT128 _JBTYPE;
 
 typedef struct SPRT_ALIGNAS(16) _M128A {
@@ -124,123 +204,131 @@ typedef struct SPRT_ALIGNAS(16) _XSAVE_FORMAT {
 typedef XSAVE_FORMAT XMM_SAVE_AREA32, *PXMM_SAVE_AREA32;
 
 typedef struct SPRT_ALIGNAS(16) _CONTEXT {
+	DWORD64 P1Home; /* 000 */
+	DWORD64 P2Home; /* 008 */
+	DWORD64 P3Home; /* 010 */
+	DWORD64 P4Home; /* 018 */
+	DWORD64 P5Home; /* 020 */
+	DWORD64 P6Home; /* 028 */
 
-	//
-	// Register parameter home addresses.
-	//
-	// N.B. These fields are for convience - they could be used to extend the
-	//      context record in the future.
-	//
+	/* Control flags */
+	DWORD ContextFlags; /* 030 */
+	DWORD MxCsr; /* 034 */
 
-	DWORD64 P1Home;
-	DWORD64 P2Home;
-	DWORD64 P3Home;
-	DWORD64 P4Home;
-	DWORD64 P5Home;
-	DWORD64 P6Home;
+	/* Segment */
+	WORD SegCs; /* 038 */
+	WORD SegDs; /* 03a */
+	WORD SegEs; /* 03c */
+	WORD SegFs; /* 03e */
+	WORD SegGs; /* 040 */
+	WORD SegSs; /* 042 */
+	DWORD EFlags; /* 044 */
 
-	//
-	// Control flags.
-	//
+	/* Debug */
+	DWORD64 Dr0; /* 048 */
+	DWORD64 Dr1; /* 050 */
+	DWORD64 Dr2; /* 058 */
+	DWORD64 Dr3; /* 060 */
+	DWORD64 Dr6; /* 068 */
+	DWORD64 Dr7; /* 070 */
 
-	DWORD ContextFlags;
-	DWORD MxCsr;
+	/* Integer */
+	DWORD64 Rax; /* 078 */
+	DWORD64 Rcx; /* 080 */
+	DWORD64 Rdx; /* 088 */
+	DWORD64 Rbx; /* 090 */
+	DWORD64 Rsp; /* 098 */
+	DWORD64 Rbp; /* 0a0 */
+	DWORD64 Rsi; /* 0a8 */
+	DWORD64 Rdi; /* 0b0 */
+	DWORD64 R8; /* 0b8 */
+	DWORD64 R9; /* 0c0 */
+	DWORD64 R10; /* 0c8 */
+	DWORD64 R11; /* 0d0 */
+	DWORD64 R12; /* 0d8 */
+	DWORD64 R13; /* 0e0 */
+	DWORD64 R14; /* 0e8 */
+	DWORD64 R15; /* 0f0 */
 
-	//
-	// Segment Registers and processor flags.
-	//
+	/* Counter */
+	DWORD64 Rip; /* 0f8 */
 
-	WORD SegCs;
-	WORD SegDs;
-	WORD SegEs;
-	WORD SegFs;
-	WORD SegGs;
-	WORD SegSs;
-	DWORD EFlags;
-
-	//
-	// Debug registers
-	//
-
-	DWORD64 Dr0;
-	DWORD64 Dr1;
-	DWORD64 Dr2;
-	DWORD64 Dr3;
-	DWORD64 Dr6;
-	DWORD64 Dr7;
-
-	//
-	// Integer registers.
-	//
-
-	DWORD64 Rax;
-	DWORD64 Rcx;
-	DWORD64 Rdx;
-	DWORD64 Rbx;
-	DWORD64 Rsp;
-	DWORD64 Rbp;
-	DWORD64 Rsi;
-	DWORD64 Rdi;
-	DWORD64 R8;
-	DWORD64 R9;
-	DWORD64 R10;
-	DWORD64 R11;
-	DWORD64 R12;
-	DWORD64 R13;
-	DWORD64 R14;
-	DWORD64 R15;
-
-	//
-	// Program counter.
-	//
-
-	DWORD64 Rip;
-
-	//
-	// Floating point state.
-	//
-
+	/* Floating point */
 	union {
-		XMM_SAVE_AREA32 FltSave;
+		XMM_SAVE_AREA32 FltSave; /* 100 */
 		struct {
-			M128A Header[2];
-			M128A Legacy[8];
-			M128A Xmm0;
-			M128A Xmm1;
-			M128A Xmm2;
-			M128A Xmm3;
-			M128A Xmm4;
-			M128A Xmm5;
-			M128A Xmm6;
-			M128A Xmm7;
-			M128A Xmm8;
-			M128A Xmm9;
-			M128A Xmm10;
-			M128A Xmm11;
-			M128A Xmm12;
-			M128A Xmm13;
-			M128A Xmm14;
-			M128A Xmm15;
+			M128A Header[2]; /* 100 */
+			M128A Legacy[8]; /* 120 */
+			M128A Xmm0; /* 1a0 */
+			M128A Xmm1; /* 1b0 */
+			M128A Xmm2; /* 1c0 */
+			M128A Xmm3; /* 1d0 */
+			M128A Xmm4; /* 1e0 */
+			M128A Xmm5; /* 1f0 */
+			M128A Xmm6; /* 200 */
+			M128A Xmm7; /* 210 */
+			M128A Xmm8; /* 220 */
+			M128A Xmm9; /* 230 */
+			M128A Xmm10; /* 240 */
+			M128A Xmm11; /* 250 */
+			M128A Xmm12; /* 260 */
+			M128A Xmm13; /* 270 */
+			M128A Xmm14; /* 280 */
+			M128A Xmm15; /* 290 */
 		};
 	};
 
-	//
-	// Vector registers.
-	//
+	M128A VectorRegister[26]; /* 300 */
+	DWORD64 VectorControl; /* 4a0 */
 
-	M128A VectorRegister[26];
-	DWORD64 VectorControl;
-
-	//
-	// Special debug control registers.
-	//
-
-	DWORD64 DebugControl;
-	DWORD64 LastBranchToRip;
-	DWORD64 LastBranchFromRip;
-	DWORD64 LastExceptionToRip;
-	DWORD64 LastExceptionFromRip;
+	DWORD64 DebugControl; /* 4a8 */
+	DWORD64 LastBranchToRip; /* 4b0 */
+	DWORD64 LastBranchFromRip; /* 4b8 */
+	DWORD64 LastExceptionToRip; /* 4c0 */
+	DWORD64 LastExceptionFromRip; /* 4c8 */
 } CONTEXT, *PCONTEXT;
+
+typedef struct _DISPATCHER_CONTEXT {
+	DWORD64 ControlPc;
+	DWORD64 ImageBase;
+	PRUNTIME_FUNCTION FunctionEntry;
+	DWORD64 EstablisherFrame;
+	DWORD64 TargetIp;
+	PCONTEXT ContextRecord;
+	PEXCEPTION_ROUTINE LanguageHandler;
+	PVOID HandlerData;
+	struct _UNWIND_HISTORY_TABLE *HistoryTable;
+	DWORD ScopeIndex;
+	DWORD Fill0;
+} DISPATCHER_CONTEXT, *PDISPATCHER_CONTEXT;
+
+struct SPRT_ALIGNAS(16) _JUMP_BUFFER {
+	unsigned __int64 Frame;
+	unsigned __int64 Rbx;
+	unsigned __int64 Rsp;
+	unsigned __int64 Rbp;
+	unsigned __int64 Rsi;
+	unsigned __int64 Rdi;
+	unsigned __int64 R12;
+	unsigned __int64 R13;
+	unsigned __int64 R14;
+	unsigned __int64 R15;
+	unsigned __int64 Rip;
+	unsigned long MxCsr;
+	unsigned short FpCsr;
+	unsigned short Spare;
+
+	SETJMP_FLOAT128 Xmm6;
+	SETJMP_FLOAT128 Xmm7;
+	SETJMP_FLOAT128 Xmm8;
+	SETJMP_FLOAT128 Xmm9;
+	SETJMP_FLOAT128 Xmm10;
+	SETJMP_FLOAT128 Xmm11;
+	SETJMP_FLOAT128 Xmm12;
+	SETJMP_FLOAT128 Xmm13;
+	SETJMP_FLOAT128 Xmm14;
+	SETJMP_FLOAT128 Xmm15;
+};
 
 typedef struct _IMAGE_RUNTIME_FUNCTION_ENTRY {
 	DWORD BeginAddress;
@@ -248,7 +336,7 @@ typedef struct _IMAGE_RUNTIME_FUNCTION_ENTRY {
 	union {
 		DWORD UnwindInfoAddress;
 		DWORD UnwindData;
-	} DUMMYUNIONNAME;
+	};
 } IMAGE_RUNTIME_FUNCTION_ENTRY, *PIMAGE_RUNTIME_FUNCTION_ENTRY;
 
 #elif __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
@@ -359,8 +447,6 @@ typedef struct _EXCEPTION_RECORD {
 
 #define UNWIND_HISTORY_TABLE_SIZE 12
 
-typedef struct _IMAGE_RUNTIME_FUNCTION_ENTRY RUNTIME_FUNCTION, *PRUNTIME_FUNCTION;
-
 typedef struct _UNWIND_HISTORY_TABLE_ENTRY {
 	ULONG_PTR ImageBase;
 	PRUNTIME_FUNCTION FunctionEntry;
@@ -379,17 +465,12 @@ typedef struct _UNWIND_HISTORY_TABLE {
 
 typedef EXCEPTION_RECORD *PEXCEPTION_RECORD;
 
-typedef enum _EXCEPTION_DISPOSITION {
-	ExceptionContinueExecution,
-	ExceptionContinueSearch,
-	ExceptionNestedException,
-	ExceptionCollidedUnwind
-} EXCEPTION_DISPOSITION;
+typedef struct _EXCEPTION_POINTERS {
+	PEXCEPTION_RECORD ExceptionRecord;
+	PCONTEXT ContextRecord;
+} EXCEPTION_POINTERS, *PEXCEPTION_POINTERS;
 
-typedef EXCEPTION_DISPOSITION EXCEPTION_ROUTINE(struct _EXCEPTION_RECORD *ExceptionRecord,
-		PVOID EstablisherFrame, struct _CONTEXT *ContextRecord, PVOID DispatcherContext);
-
-typedef EXCEPTION_ROUTINE *PEXCEPTION_ROUTINE;
+typedef LONG (*PVECTORED_EXCEPTION_HANDLER)(PEXCEPTION_POINTERS ExceptionInfo);
 
 __SPRT_BEGIN_DECL
 
@@ -407,10 +488,23 @@ PEXCEPTION_ROUTINE RtlVirtualUnwind(DWORD HandlerType, DWORD64 ImageBase, DWORD6
 		PRUNTIME_FUNCTION FunctionEntry, PCONTEXT ContextRecord, PVOID *HandlerData,
 		PDWORD64 EstablisherFrame, PVOID ContextPointers);
 
-// Function prototypes
-int setjmp(jmp_buf _Buf);
+WORD RtlCaptureStackBackTrace(DWORD FramesToSkip, DWORD FramesToCapture, PVOID *BackTrace,
+		PDWORD BackTraceHash);
 
-__SPRT_NORETURN void __cdecl longjmp(jmp_buf _Buf, int _Value) __SPRT_NOEXCEPT;
+WINAPI PVOID AddVectoredExceptionHandler(ULONG First, PVECTORED_EXCEPTION_HANDLER Handler);
+
+WINAPI ULONG RemoveVectoredExceptionHandler(PVOID Handle);
+
+WINAPI PVOID AddVectoredContinueHandler(ULONG First, PVECTORED_EXCEPTION_HANDLER Handler);
+
+WINAPI ULONG RemoveVectoredContinueHandler(PVOID Handle);
+
+WINAPI NTSTATUS NtContinueEx(CONTEXT *context, void *args);
+
+// Function prototypes
+__attribute__((returns_twice)) int setjmp(struct _JUMP_BUFFER *_Buf, void *);
+
+__SPRT_NORETURN void __cdecl longjmp(struct _JUMP_BUFFER *, int _Value);
 
 __SPRT_END_DECL
 

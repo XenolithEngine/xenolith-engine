@@ -1,3 +1,5 @@
+# MUSL wersion on amd64 memcpy, can be used instead of ntdll's
+# Adopted for Win32 calling conventions
 .global memcpy
 memcpy:
 	push %rbp

@@ -20,8 +20,6 @@
  THE SOFTWARE.
  **/
 
-#include "private/SPRTSpecific.h"
-
 #include <sprt/c/sys/__sprt_uring.h>
 #include <sprt/c/cross/__sprt_signal.h>
 #include <sprt/c/__sprt_errno.h>

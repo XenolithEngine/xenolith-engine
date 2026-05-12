@@ -27,7 +27,7 @@ THE SOFTWARE.
 #include <sprt/cxx/type_traits>
 
 #if __STDC_HOSTED__ == 0
-#include "../../../freestanding/include/signal.h"
+#include "signal.h"
 #else // __STDC_HOSTED__ != 0
 
 #include <signal.h>

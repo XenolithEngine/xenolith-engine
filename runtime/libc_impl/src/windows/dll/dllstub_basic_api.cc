@@ -24,7 +24,88 @@
 
 #include "dllloader.h"
 
+#include <string.h>
+#include <wchar.h>
+
 extern "C" {
+
+// Preloaded string functions
+
+__SPRT_C_FUNC int memcmp(const void *s1, const void *s2, size_t len) __SPRT_NOEXCEPT {
+	auto loader = sprt::DllLoader::get();
+	return reinterpret_cast<decltype(&memcmp)>(loader->ntdll.memcmp.fn)(s1, s2, len);
+}
+
+__SPRT_C_FUNC void *memcpy(void *__SPRT_RESTRICT dest, const void *__SPRT_RESTRICT source,
+		size_t size) __SPRT_NOEXCEPT {
+	auto loader = sprt::DllLoader::get();
+	return reinterpret_cast<decltype(&memcpy)>(loader->ntdll.memcpy.fn)(dest, source, size);
+}
+
+__SPRT_C_FUNC void *memmove(void *dst, const void *src, size_t len) __SPRT_NOEXCEPT {
+	auto loader = sprt::DllLoader::get();
+	return reinterpret_cast<decltype(&memmove)>(loader->ntdll.memmove.fn)(dst, src, len);
+}
+
+__SPRT_C_FUNC void *memset(void *dst, int c, size_t len) __SPRT_NOEXCEPT {
+	auto loader = sprt::DllLoader::get();
+	return reinterpret_cast<decltype(&memset)>(loader->ntdll.memset.fn)(dst, c, len);
+}
+
+__SPRT_C_FUNC char *strcpy(char *__SPRT_RESTRICT dest,
+		const char *__SPRT_RESTRICT src) __SPRT_NOEXCEPT {
+	auto loader = sprt::DllLoader::get();
+	return reinterpret_cast<decltype(&strcpy)>(loader->ntdll.strcpy.fn)(dest, src);
+}
+
+__SPRT_C_FUNC size_t strlen(const char *s) __SPRT_NOEXCEPT {
+	auto loader = sprt::DllLoader::get();
+	return reinterpret_cast<decltype(&strlen)>(loader->ntdll.strlen.fn)(s);
+}
+
+__SPRT_C_FUNC char *strncpy(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src,
+		size_t size) __SPRT_NOEXCEPT {
+	auto loader = sprt::DllLoader::get();
+	return reinterpret_cast<decltype(&strncpy)>(loader->ntdll.strncpy.fn)(dest, src, size);
+}
+
+__SPRT_C_FUNC size_t strnlen(const char *s, size_t size) __SPRT_NOEXCEPT {
+	auto loader = sprt::DllLoader::get();
+	return reinterpret_cast<decltype(&strnlen)>(loader->ntdll.strnlen.fn)(s, size);
+}
+
+__SPRT_C_FUNC const char *strstr(const char *str, const char *nstr) __SPRT_NOEXCEPT {
+	auto loader = sprt::DllLoader::get();
+	return reinterpret_cast<decltype(&strstr)>(loader->ntdll.strstr.fn)(str, nstr);
+}
+
+__SPRT_C_FUNC wchar_t *wcscpy(wchar_t *__SPRT_RESTRICT dest,
+		const wchar_t *__SPRT_RESTRICT src) __SPRT_NOEXCEPT {
+	auto loader = sprt::DllLoader::get();
+	return reinterpret_cast<decltype(&wcscpy)>(loader->ntdll.wcscpy.fn)(dest, src);
+}
+
+__SPRT_C_FUNC size_t wcslen(const wchar_t *s) __SPRT_NOEXCEPT {
+	auto loader = sprt::DllLoader::get();
+	return reinterpret_cast<decltype(&wcslen)>(loader->ntdll.wcslen.fn)(s);
+}
+
+__SPRT_C_FUNC wchar_t *wcsncpy(wchar_t *__SPRT_RESTRICT dest, const wchar_t *__SPRT_RESTRICT src,
+		size_t size) __SPRT_NOEXCEPT {
+	auto loader = sprt::DllLoader::get();
+	return reinterpret_cast<decltype(&wcsncpy)>(loader->ntdll.wcsncpy.fn)(dest, src, size);
+}
+
+__SPRT_C_FUNC size_t wcsnlen(const wchar_t *s, size_t size) __SPRT_NOEXCEPT {
+	auto loader = sprt::DllLoader::get();
+	return reinterpret_cast<decltype(&wcsnlen)>(loader->ntdll.wcsnlen.fn)(s, size);
+}
+
+__SPRT_C_FUNC const wchar_t *wcsstr(const wchar_t *str, const wchar_t *nstr) __SPRT_NOEXCEPT {
+	auto loader = sprt::DllLoader::get();
+	return reinterpret_cast<decltype(&wcsstr)>(loader->ntdll.wcsstr.fn)(str, nstr);
+}
+
 
 // ---- Local Memory Functions (kernel32) ----
 

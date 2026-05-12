@@ -26,22 +26,42 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_uintptr_t.h>
 #include <sprt/c/cross/__sprt_setjmp.h>
 
-__SPRT_BEGIN_DECL
-
 /*
 	SPRT guarantees that C++ destructors (and any others,
 	including Rust and Go) will be called correctly during
-	longjmp. However, this requires buffer expansion
-	compared to the native implementation.
+	longjmp. However, this requires some extra space for a buffer.
+
+	Note, that this behavior is possible only if function, that called
+	setjmp remains on stack, which is a general requirement for setjmp.
 
 	It's also used in SPRT's pthread implementation, so, pthread_exit/pthread_cancel should be safe
 	for a threads, that created with SPRT's pthread_create and C++ sprt::thread
 
 	OS support:
-	* Windows: *-pc-windows-msvc with -fasync-exceptions already performs stack unwinding on longjmp
+	* Windows: *-pc-windows-msvc with -fexceptions (no unwinding possible when exceptions disabled)
 	* Linux/Android - uses _Unwind_ForcedUnwind
 	* MacOS - uses _Unwind_ForcedUnwind
 */
+
+// We should not spawn extra stack frame, so we acquire native setjmp pointer,
+// then call it within caller context, and then call CFA lookup with native result
+
+#if _WIN32
+
+// Windows ABI setjmp have 2 arguments,
+#define __sprt_setjmp(Buf) __sprt_cfa_setjmp(__sprt_get_setjmp_fn()(Buf[0].__native, nullptr), Buf)
+
+typedef int (*__SPRT_ID(setjmp_fn))(__SPRT_ID(native_jmp_buf), void *);
+
+#else
+
+#define __sprt_setjmp(Buf) __sprt_cfa_setjmp(__sprt_get_setjmp_fn()(Buf[0].__native), Buf)
+
+typedef int (*__SPRT_ID(setjmp_fn))(__SPRT_ID(native_jmp_buf));
+
+#endif
+
+__SPRT_BEGIN_DECL
 
 typedef struct __SPRT_ID(__ext_jmp_buf) {
 	__SPRT_ID(native_jmp_buf) __native; // OS-defined jmp_buf
@@ -49,9 +69,15 @@ typedef struct __SPRT_ID(__ext_jmp_buf) {
 	int __result; // We need to store result value from longjmp during stack unwind
 } __SPRT_ID(jmp_buf)[1];
 
-
-SPRT_API int __SPRT_ID(setjmp)(__SPRT_ID(jmp_buf));
+// Performs longjmp
 SPRT_API __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf), int);
+
+// Returns native setjmp function pointer
+SPRT_API __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)();
+
+// Writes CFA vaule to jmpbuf for stack unwinding, if arg is 0, and returns 0
+// Returns arg immediately if it is not 0
+SPRT_API int __SPRT_ID(cfa_setjmp)(int arg, __SPRT_ID(jmp_buf));
 
 __SPRT_END_DECL
 

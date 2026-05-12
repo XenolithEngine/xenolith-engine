@@ -37,7 +37,7 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/thread_api.h>
 #endif
 
-#include "private/SPRTDso.h"
+#include <sprt/runtime/utils/dso.h>
 
 namespace sprt::backtrace::detail {
 
@@ -304,8 +304,6 @@ static void performBacktrace(State &state, size_t offset,
 } // namespace sprt::backtrace::detail
 
 #endif
-
-#include "private/SPRTThread.h"
 
 namespace sprt::backtrace {
 

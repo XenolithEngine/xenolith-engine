@@ -27,7 +27,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_unistd.h>
 #include <sprt/runtime/log.h>
 
-#include "private/SPRTThread.h"
+#include "../../core/pthread/pthread_impl.h"
 
 namespace sprt {
 

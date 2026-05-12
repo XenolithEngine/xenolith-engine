@@ -255,7 +255,7 @@ static struct __SPRT_DIRENT_NAME *__readdir64(__dirstream *__dir, off_t target) 
 	return &__dir->dent;
 }
 
-__SPRT_C_FUNC struct __SPRT_DIRENT_NAME *readdir64(__dirstream *__dir) {
+__SPRT_C_FUNC struct __SPRT_DIRENT_NAME *readdir64(__dirstream *__dir) __SPRT_NOEXCEPT {
 	return __readdir64(__dir, 0);
 }
 

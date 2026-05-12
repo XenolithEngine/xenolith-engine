@@ -202,3 +202,17 @@ __SPRT_C_FUNC FILE *volatile __stdout_used = &__stdout_FILE;
 
 __SPRT_C_FUNC FILE *const stderr = &__stderr_FILE;
 __SPRT_C_FUNC FILE *volatile __stderr_used = &__stderr_FILE;
+
+__SPRT_C_FUNC int vdprintf(int fd, const char *__restrict fmt,
+		__builtin_va_list ap) __SPRT_NOEXCEPT {
+	FILE f = {
+		.write = __stdio_write,
+		.buf = (unsigned char *)fmt,
+		.buf_size = 0,
+		.fd = fd,
+		.lbf = EOF,
+		.__lock_pid = -1,
+	};
+
+	return vfprintf(&f, fmt, ap);
+}

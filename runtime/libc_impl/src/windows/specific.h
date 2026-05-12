@@ -23,8 +23,10 @@ THE SOFTWARE.
 #ifndef RUNTIME_FREESTANDING_SRC_WINDOWS_MALLOCA_STRING_H_
 #define RUNTIME_FREESTANDING_SRC_WINDOWS_MALLOCA_STRING_H_
 
+#include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/basic_types.h>
 #include <sprt/runtime/stringview.h>
+#include <sprt/c/sys/__sprt_stat.h>
 
 namespace sprt::platform {
 
@@ -98,6 +100,30 @@ static inline auto performBinaryMode(const char *mode, const Callback &cb) {
 	}
 }
 
+static inline struct __SPRT_TIMESPEC_NAME __toTimespec(const FILETIME &ft) {
+	constexpr unsigned __int64 TICKS_PER_SEC = 10'000'000ULL;
+	constexpr unsigned __int64 EPOCH_DIFFERENCE = 11'644'473'600ULL;
+
+	ULARGE_INTEGER ull;
+	ull.LowPart = ft.dwLowDateTime;
+	ull.HighPart = ft.dwHighDateTime;
+
+	struct __SPRT_TIMESPEC_NAME ts;
+	ts.tv_sec = (time_t)((ull.QuadPart / TICKS_PER_SEC) - EPOCH_DIFFERENCE);
+	ts.tv_nsec = (long)((ull.QuadPart % TICKS_PER_SEC) * 100);
+	return ts;
+}
+
+static inline LARGE_INTEGER __toFiletime(const struct __SPRT_TIMESPEC_NAME *ts) {
+	constexpr unsigned __int64 EPOCH_DIFF_NS100 = (11'644'473'600ULL * 10'000'000ULL);
+
+	LARGE_INTEGER ret;
+	unsigned __int64 total_ns100 = (unsigned __int64)ts->tv_sec * 10'000'000ULL + ts->tv_nsec;
+	total_ns100 += EPOCH_DIFF_NS100;
+	ret.QuadPart = total_ns100;
+	return ret;
+}
+
 bool isAppContainer();
 
 int lastErrorToErrno(unsigned long winerr);
@@ -106,6 +132,10 @@ int lastErrorToErrno(unsigned long winerr);
 bool openAtPath(int fd, const char *path, const callback<void(const char *, size_t)> &);
 
 uint32_t getRid(void *sid);
+
+int hstat(HANDLE h, struct __SPRT_STAT_NAME *__stat);
+
+int hutimens(HANDLE hFile, const struct __SPRT_TIMESPEC_NAME *times);
 
 struct __wstring {
 	static wchar_t *toWStringBuf(wchar_t *buf, const char *source) {

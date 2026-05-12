@@ -39,16 +39,14 @@ THE SOFTWARE.
 #define _LARGEFILE64_SOURCE 1
 #endif
 
-#include "private/SPRTFilename.h"
-#include "private/SPRTSpecific.h"
-
 #if SPRT_MACOS
 #include <sys/random.h>
 #include <pthread.h>
 #endif
 
 #if __STDC_HOSTED__ == 0
-#include "../freestanding/include/unistd.h"
+#include "unistd.h"
+#include "utime.h"
 #else
 #include <fcntl.h>
 #include <unistd.h>

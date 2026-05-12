@@ -29,8 +29,6 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdarg.h>
 
 #include <sprt/runtime/log.h>
-#include "private/SPRTFilename.h"
-#include "private/SPRTPrivate.h"
 
 #if SPRT_MACOS
 #include <sys/syslimits.h>
@@ -38,13 +36,9 @@ THE SOFTWARE.
 #include <fcntl.h>
 #endif
 
-#if __STDC_HOSTED__ == 0
-#include "../../freestanding/include/dirent.h"
-#else
 #include <dirent.h>
 
 static_assert(sizeof(struct dirent) == sizeof(struct __SPRT_DIRENT_NAME));
-#endif
 
 namespace sprt {
 

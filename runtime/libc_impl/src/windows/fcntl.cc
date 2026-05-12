@@ -621,16 +621,10 @@ static int __open(const char *path, int __flags, __SPRT_ID(mode_t) __mode) {
 	}
 
 	auto libc = __libc::get();
-	auto newFd = libc->allocate_fd();
+	auto newFd = libc->create_fd(h, &libc->fdFileOps, __flags, __mode);
 	if (newFd < 0) {
 		CloseHandle(h);
-		return newFd;
 	}
-
-	auto slot = libc->get_fd_slot(newFd);
-	slot->handle = h;
-	slot->flags = __flags;
-	slot->mode = __mode;
 	return newFd;
 }
 

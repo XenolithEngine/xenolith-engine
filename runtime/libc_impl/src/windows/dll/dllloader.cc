@@ -261,7 +261,7 @@ __declspec(safebuffers) int DllLoader::unload() {
 
 
 DllTable::DllTable(const wchar_t *n, DllTableRecord *start, DllTableRecord *end,
-		DllTableRecord *preloads)
+		DllTableRecord **preloads)
 : __name(n), __start(start), __end(end), __preloads(preloads) { }
 
 bool DllTable::init(HANDLE h) {
@@ -271,13 +271,13 @@ bool DllTable::init(HANDLE h) {
 
 	DllTableRecord *rec = nullptr;
 	if (__preloads) {
-		rec = __preloads;
-		while (rec != __end && rec->name) {
-			rec->fn = loader->__GetProcAddress(__handle, rec->name);
-			if (!rec->fn) {
+		auto preloadRec = __preloads;
+		while (*preloadRec) {
+			(*preloadRec)->fn = loader->__GetProcAddress(__handle, (*preloadRec)->name);
+			if (!(*preloadRec)->fn) {
 				return false;
 			}
-			++rec;
+			++preloadRec;
 		}
 	}
 

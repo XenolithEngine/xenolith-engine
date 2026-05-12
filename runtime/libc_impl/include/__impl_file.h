@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/runtime/thread/rmutex.h>
 #include <sprt/runtime/thread/qmutex.h>
 #include <sprt/c/__sprt_pthread.h>
+#include <sprt/c/__sprt_unistd.h>
 
 #include "stdio.h"
 #include "sys/sprt.h"
@@ -38,6 +39,10 @@ THE SOFTWARE.
 
 #define UNGET 8
 #define BUFSIZ 1'024
+
+#define _IOFBF 0
+#define _IOLBF 1
+#define _IONBF 2
 
 #define F_PERM 1
 #define F_NORD 4
@@ -76,7 +81,7 @@ struct __sprt_file_struct {
 
 	int __lock() {
 		// do not lock files, that specifically marked with -1 or files that already locked
-		if (__lock_pid < 0 || __lock_pid == __sprt_pthread_get_id_np()) {
+		if (__lock_pid < 0 || __lock_pid == __sprt_gettid()) {
 			return 1;
 		} else {
 			return sprt_plock_lock(this, 0, &__lock_pid);
@@ -114,9 +119,7 @@ void __stdio_exit(void);
 int __overflow(FILE *, int);
 int __uflow(FILE *);
 
-int __fseeko(FILE *, off_t, int);
 int __fseeko_unlocked(FILE *, off_t, int);
-off_t __ftello(FILE *);
 off_t __ftello_unlocked(FILE *);
 size_t __fwritex(const unsigned char *, size_t, FILE *);
 int __putc_unlocked(int, FILE *);

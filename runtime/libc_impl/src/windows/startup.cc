@@ -29,8 +29,10 @@ THE SOFTWARE.
 #include <sprt/cxx/condition_variable>
 
 #include <sprt/wrappers/windows/dl_api.h>
+#include <sprt/wrappers/windows/context_api.h>
 
 #include "stdlib.h"
+#include "stdio.h"
 #include "../../include/__impl_libc.h"
 
 #include "initterm.h"
@@ -39,6 +41,11 @@ THE SOFTWARE.
 #define DEFAULT_SECURITY_COOKIE 0x0000'2B99'2DDF'A232ll
 
 __cdecl int main(int argc, const char *argv[]);
+
+struct NonTrivialType {
+	NonTrivialType() { printf("%s\n", "constructed"); }
+	~NonTrivialType() { printf("%s\n", "destroyed"); }
+};
 
 extern "C" {
 
@@ -103,18 +110,23 @@ void __dyn_tls_on_demand_init() noexcept {
 	__dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr); //
 }
 
+int _fltused;
+
+} // extern "C"
+
+
 /*
 	/Zc:threadSafeInit support
 */
 
-int _Init_global_epoch = sprt::Min<int>;
-__declspec(thread) int _Init_thread_epoch = sprt::Min<int>;
+__SPRT_C_FUNC int _Init_global_epoch = sprt::Min<int>;
+__SPRT_C_FUNC __declspec(thread) int _Init_thread_epoch = sprt::Min<int>;
 
 // With some compiler support, it's implementable with a pure futex, but not today...
 static sprt::mutex s_threadGuardMutex;
 static sprt::condition_variable s_threadGuardWaitCond;
 
-void __cdecl _Init_thread_header(int *const pOnce) noexcept {
+__SPRT_C_FUNC void __cdecl _Init_thread_header(int *const pOnce) noexcept {
 	sprt::unique_lock lock(s_threadGuardMutex);
 
 	if (*pOnce == 0) {
@@ -133,7 +145,7 @@ void __cdecl _Init_thread_header(int *const pOnce) noexcept {
 
 // Exception during init, we should drop LOCK_BIT and signal to wakeup
 // Calling thread should own the lock
-extern "C" void __cdecl _Init_thread_abort(__sprt_uint32_t *const pOnce) noexcept {
+__SPRT_C_FUNC void __cdecl _Init_thread_abort(__sprt_uint32_t *const pOnce) noexcept {
 	// set complete flag and check for a waiters
 	s_threadGuardMutex.lock();
 	*pOnce = 0;
@@ -143,7 +155,7 @@ extern "C" void __cdecl _Init_thread_abort(__sprt_uint32_t *const pOnce) noexcep
 	s_threadGuardWaitCond.notify_one();
 }
 
-extern "C" void __cdecl _Init_thread_footer(__sprt_uint32_t *const pOnce) noexcept {
+__SPRT_C_FUNC void __cdecl _Init_thread_footer(__sprt_uint32_t *const pOnce) noexcept {
 	// set complete flag and check for a waiters
 	s_threadGuardMutex.lock();
 	++_Init_global_epoch;
@@ -159,8 +171,9 @@ extern "C" void __cdecl _Init_thread_footer(__sprt_uint32_t *const pOnce) noexce
 	GS support (based on https://github.com/sysfce2/nocrt/blob/main/nocrt_exe.c)
 */
 
-__declspec(selectany) UINT_PTR __security_cookie = DEFAULT_SECURITY_COOKIE;
-__declspec(selectany) UINT_PTR __security_cookie_complement = ~(DEFAULT_SECURITY_COOKIE);
+__SPRT_C_FUNC __declspec(selectany) UINT_PTR __security_cookie = DEFAULT_SECURITY_COOKIE;
+__SPRT_C_FUNC __declspec(selectany) UINT_PTR __security_cookie_complement =
+		~(DEFAULT_SECURITY_COOKIE);
 
 SAFELOADER UINT_PTR __gencookie() {
 	auto loader = sprt::DllLoader::get();
@@ -202,39 +215,61 @@ SAFELOADER void __security_init_cookie() {
 	__security_cookie_complement = ~cookie;
 }
 
+// The libc struct lives in this uninitialized static memory block,
 static unsigned char s_libcBuffer[sizeof(sprt::__libc)];
-
-int _fltused;
 
 sprt::__libc *sprt::__libc::get() { return reinterpret_cast<__libc *>(s_libcBuffer); }
 
-__cdecl int mainCRTStartup() {
-	auto ret = sprt::DllLoader::construct()->load();
+__SPRT_C_FUNC int mainCRTStartup() {
+	// Load all required DLLs for SPRT.
+	// If some DLLs are missed, or some required functions are missed - abort immediately
+	auto loader = sprt::DllLoader::construct();
+	auto ret = loader->load();
 	if (ret != 0) {
 		return ret;
 	}
 
-	new (s_libcBuffer, sprt::nothrow) sprt::__libc;
-
-	_fltused = 1;
-
+	// Init security cookie for stack protection
 	{ __security_init_cookie(); }
 
+	// Create __libc struct in static memory block
+	// this will initialize fds locales, exceptions and all other required libc features
+	new (s_libcBuffer, sprt::nothrow) sprt::__libc;
+
+	// Show legacy floating point library support flag
+	_fltused = 1;
+
+	// At this moment, there are no other code running in application, except for mainCRTStartup.
+	// No other code -> no other threads -> no race conditions possible -> no need for locking
+	// This will change after static initializers calling.
+
+	// Call c initializers
 	if (__initterm(__c_init_start, __c_init_end) != 0) {
 		return LOADER_ERROR_STATIC_C_INIT_FAILED; // Error in c initialization
 	}
+
+	// Call static c++ constructors
 	if (__initterm(__cxx_init_start, __cxx_init_end) != 0) {
 		return LOADER_ERROR_STATIC_CXX_INIT_FAILED; // Error in c++ initialization
 	}
 
+	// Call thread_local constructors for the main thread.
+	// If static initializers uses thread_local variables - thread_local
+	// constructors should be already called, but, __tls_guard handles this case
 	__dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr);
 
-	ret = main(0, nullptr);
+	// __try/__finally wrapper is required for windows CRT/Loader interoperability logic
+	__try {
+		ret = main(0, nullptr);
+	}
+	__finally {
+	}
 
+	// Exit normally
 	exit(ret);
 
+	// Are you dead yet?
 	__builtin_unreachable();
 
 	return ret;
-}
 }

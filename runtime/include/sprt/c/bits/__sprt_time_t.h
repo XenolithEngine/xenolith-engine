@@ -50,7 +50,7 @@ typedef __SPRT_ID(time_t) __SPRT_ID(clock_t);
 
 typedef __SPRT_ID(int64_t) __SPRT_ID(suseconds_t);
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 #define __SPRT_TM_NAME __SPRT_ID(tm)
 #define __SPRT_TIMESPEC_NAME __SPRT_ID(timespec)
 #define __SPRT_TIMEVAL_NAME __SPRT_ID(timeval)
@@ -79,12 +79,6 @@ struct __SPRT_ITIMERSPEC_NAME {
 
 typedef unsigned __SPRT_ID(clockid_t);
 typedef int __SPRT_ID(timer_t);
-
-#ifdef __SPRT_BUILD
-#define __SPRT_TM_NAME __SPRT_ID(tm)
-#else
-#define __SPRT_TM_NAME tm
-#endif
 
 struct __SPRT_TM_NAME;
 

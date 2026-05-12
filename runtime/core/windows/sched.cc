@@ -39,11 +39,11 @@ THE SOFTWARE.
 
 namespace sprt {
 
-static int sched_get_priority_max(int t) { return __SPRT_SCHED_PRIO_MAX; }
+__SPRT_C_FUNC int sched_get_priority_max(int t) __SPRT_NOEXCEPT { return __SPRT_SCHED_PRIO_MAX; }
 
-static int sched_get_priority_min(int t) { return __SPRT_SCHED_PRIO_MIN; }
+__SPRT_C_FUNC int sched_get_priority_min(int t) __SPRT_NOEXCEPT { return __SPRT_SCHED_PRIO_MIN; }
 
-static int sched_getparam(__SPRT_ID(pid_t) pid, struct sched_param *p) {
+__SPRT_C_FUNC int sched_getparam(__SPRT_ID(pid_t) pid, struct sched_param *p) __SPRT_NOEXCEPT {
 	if (!p) {
 		__sprt_errno = EINVAL;
 		return -1;
@@ -88,7 +88,7 @@ static int sched_getparam(__SPRT_ID(pid_t) pid, struct sched_param *p) {
 	return 0;
 }
 
-static int sched_getscheduler(__SPRT_ID(pid_t) pid) {
+__SPRT_C_FUNC int sched_getscheduler(__SPRT_ID(pid_t) pid) __SPRT_NOEXCEPT {
 	HANDLE hProcess = nullptr;
 	if (pid == GetCurrentProcessId()) {
 		hProcess = GetCurrentProcess();
@@ -112,22 +112,25 @@ static int sched_getscheduler(__SPRT_ID(pid_t) pid) {
 	return __SPRT_SCHED_OTHER;
 }
 
-static int sched_rr_get_interval(__SPRT_ID(pid_t) pid, __SPRT_TIMESPEC_NAME *t) {
+__SPRT_C_FUNC int sched_rr_get_interval(__SPRT_ID(pid_t) pid,
+		__SPRT_TIMESPEC_NAME *t) __SPRT_NOEXCEPT {
 	__sprt_errno = ENOSYS;
 	return -1;
 }
 
-static int sched_setparam(__SPRT_ID(pid_t) pid, const struct sched_param *p) {
+__SPRT_C_FUNC int sched_setparam(__SPRT_ID(pid_t) pid,
+		const struct sched_param *p) __SPRT_NOEXCEPT {
 	__sprt_errno = ENOSYS;
 	return -1;
 }
 
-static int sched_setscheduler(__SPRT_ID(pid_t) pid, int t, const struct sched_param *p) {
+__SPRT_C_FUNC int sched_setscheduler(__SPRT_ID(pid_t) pid, int t,
+		const struct sched_param *p) __SPRT_NOEXCEPT {
 	__sprt_errno = ENOSYS;
 	return -1;
 }
 
-static int sched_yield(void) {
+__SPRT_C_FUNC int sched_yield(void) __SPRT_NOEXCEPT {
 	YieldProcessor();
 	return 0;
 }

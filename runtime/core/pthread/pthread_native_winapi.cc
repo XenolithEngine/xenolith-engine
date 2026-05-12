@@ -71,6 +71,7 @@ static void __initNativeHandle(thread_t *thread) {
 	GetCurrentThreadStackLimits(&thread->lowStack, &thread->highStack);
 
 	thread->attr.stackSize = (thread->highStack - thread->lowStack);
+	thread->attr.stack = (void *)thread->lowStack;
 
 	// SetThreadPriority if it's requested, or get current priority for unmanaged and if
 	// priority was not explicitly set

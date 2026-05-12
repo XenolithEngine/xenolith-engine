@@ -49,6 +49,9 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
+#define fopen64 fopen
+#define freopen64 freopen
+
 #if __STDC_HOSTED__ == 1
 #define stdin  __SPRT_ID(stdin_impl)()
 #define stdout  __SPRT_ID(stdout_impl)()

@@ -28,16 +28,12 @@ THE SOFTWARE.
 
 #include <sprt/runtime/log.h>
 
-#if SPRT_WINDOWS
-#include "../platform/windows/sched.cc"
-#else
 #include <sched.h>
-#endif
 
 namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(
-		sched_getparam)(__SPRT_ID(pid_t) pid, struct __SPRT_ID(sched_param) * p) {
+		sched_getparam)(__SPRT_ID(pid_t) pid, struct __SPRT_SCHED_PARAM_NAME *p) {
 #if __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER
 	struct sched_param param;
 	auto ret = sched_getparam(pid, &param);
@@ -86,7 +82,7 @@ __SPRT_C_FUNC int __SPRT_ID(sched_rr_get_interval)(__SPRT_ID(pid_t) pid, __SPRT_
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
-		sched_setparam)(__SPRT_ID(pid_t) pid, const struct __SPRT_ID(sched_param) * p) {
+		sched_setparam)(__SPRT_ID(pid_t) pid, const struct __SPRT_SCHED_PARAM_NAME *p) {
 #if __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER
 	struct sched_param param;
 	__sprt_memset(&param, 0, sizeof(struct sched_param));
@@ -103,7 +99,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
-		sched_setscheduler)(__SPRT_ID(pid_t) pid, int t, const struct __SPRT_ID(sched_param) * p) {
+		sched_setscheduler)(__SPRT_ID(pid_t) pid, int t, const struct __SPRT_SCHED_PARAM_NAME *p) {
 #if __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER
 	struct sched_param param;
 	__sprt_memset(&param, 0, sizeof(struct sched_param));

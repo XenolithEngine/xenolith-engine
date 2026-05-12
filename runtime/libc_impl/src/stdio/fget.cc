@@ -11,7 +11,7 @@ static int locking_getc(FILE *f) {
 }
 
 static inline int do_getc(FILE *f) {
-	if (f->__lock_pid < 0 || f->__lock_pid == __sprt_pthread_get_id_np()) {
+	if (f->__lock_pid < 0 || f->__lock_pid == __sprt_gettid()) {
 		return __getc_unlocked(f);
 	}
 	return locking_getc(f);
@@ -77,3 +77,46 @@ __SPRT_C_FUNC char *fgets(char *__restrict s, int n, FILE *__restrict f) __SPRT_
 }
 
 weak_alias(fgets, fgets_unlocked);
+
+__SPRT_C_FUNC int getc(FILE *f) __SPRT_NOEXCEPT { return do_getc(f); }
+
+__SPRT_C_FUNC FILE *const stdin;
+
+__SPRT_C_FUNC int getchar(void) __SPRT_NOEXCEPT { return do_getc(stdin); }
+
+__SPRT_C_FUNC int ungetc(int c, FILE *f) __SPRT_NOEXCEPT {
+	if (c == EOF) {
+		return c;
+	}
+
+	FLOCK(f);
+
+	if (!f->rpos) {
+		__toread(f);
+	}
+	if (!f->rpos || f->rpos <= f->buf - UNGET) {
+		FUNLOCK(f);
+		return EOF;
+	}
+
+	*--f->rpos = c;
+	f->flags &= ~F_EOF;
+
+	FUNLOCK(f);
+	return (unsigned char)c;
+}
+
+__SPRT_C_FUNC char *gets(char *s) __SPRT_NOEXCEPT {
+	size_t i = 0;
+	int c;
+	FLOCK(stdin);
+	while ((c = getc_unlocked(stdin)) != EOF && c != '\n') { s[i++] = c; }
+	s[i] = 0;
+	if (c != '\n' && (!feof(stdin) || !i)) {
+		s = 0;
+	}
+	FUNLOCK(stdin);
+	return s;
+}
+
+__SPRT_C_FUNC int getchar_unlocked(void) __SPRT_NOEXCEPT { return getc_unlocked(stdin); }

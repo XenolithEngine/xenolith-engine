@@ -51,7 +51,8 @@ __SPRT_C_FUNC ssize_t write(int __fd, const void *__buf,
 	return fdSlot->ops->fo_write(fdSlot, __buf, __nbytes, nullptr, 0);
 }
 
-__SPRT_C_FUNC ssize_t pread64(int __fd, void *__buf, size_t __nbytes, off64_t __offset) {
+__SPRT_C_FUNC ssize_t pread64(int __fd, void *__buf, size_t __nbytes,
+		off64_t __offset) __SPRT_NOEXCEPT {
 	auto libc = __libc::get();
 	auto fdSlot = libc->get_fd_slot(__fd);
 	if (!fdSlot || !fdSlot->handle || !fdSlot->ops->fo_read) {
@@ -62,7 +63,8 @@ __SPRT_C_FUNC ssize_t pread64(int __fd, void *__buf, size_t __nbytes, off64_t __
 	return fdSlot->ops->fo_read(fdSlot, __buf, __nbytes, &__offset, 0);
 }
 
-__SPRT_C_FUNC ssize_t pwrite64(int __fd, const void *__buf, size_t __nbytes, off64_t __offset) {
+__SPRT_C_FUNC ssize_t pwrite64(int __fd, const void *__buf, size_t __nbytes,
+		off64_t __offset) __SPRT_NOEXCEPT {
 	auto libc = __libc::get();
 	auto fdSlot = libc->get_fd_slot(__fd);
 	if (!fdSlot || !fdSlot->handle || !fdSlot->ops->fo_write) {
@@ -157,7 +159,7 @@ __SPRT_C_FUNC int dup3(int __fd, int __target, int __flags) __SPRT_NOEXCEPT {
 	return fdSlot->ops->fo_dup(fdSlot, nullptr, __flags);
 }
 
-__SPRT_C_FUNC off_t lseek64(int __fd, off_t off, int whence) {
+__SPRT_C_FUNC off_t lseek(int __fd, off_t off, int whence) __SPRT_NOEXCEPT {
 	auto libc = __libc::get();
 	auto fdSlot = libc->get_fd_slot(__fd);
 	if (!fdSlot || !fdSlot->handle || !fdSlot->ops->fo_seek) {
@@ -166,10 +168,6 @@ __SPRT_C_FUNC off_t lseek64(int __fd, off_t off, int whence) {
 	}
 
 	return fdSlot->ops->fo_seek(fdSlot, off, whence);
-}
-
-__SPRT_C_FUNC off_t lseek(int __fd, off_t off, int whence) __SPRT_NOEXCEPT {
-	return lseek64(__fd, off, whence);
 }
 
 } // namespace sprt

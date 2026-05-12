@@ -31,7 +31,6 @@ THE SOFTWARE.
 
 #include <sprt/runtime/math.h>
 #include <sprt/runtime/log.h>
-#include "private/SPRTFilename.h"
 
 #if __STDC_HOSTED__ == 1
 
@@ -44,8 +43,6 @@ THE SOFTWARE.
 #include <nl_types.h>
 
 #endif
-
-#include "private/SPRTSpecific.h"
 
 #include "common/errno.cc"
 #include "common/fenv.cc"

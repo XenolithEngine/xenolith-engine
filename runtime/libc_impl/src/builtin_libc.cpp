@@ -61,6 +61,10 @@ __libc::__libc() {
 	load_file_fd_ops(&fdFileOps);
 	load_dir_fd_ops(&fdDirOps);
 
+	// For debug purposes, it's better to have fd set up before exceptions
+	// (priintf will work properly)
+	__init_exceptions();
+
 	localeCache.max_load_factor(2.0);
 
 	defaultLocale = __locale_struct{
@@ -82,6 +86,8 @@ __libc::~__libc() {
 
 	// release memory for extra-fd
 	while (fdPagesAllocated > 1) { sprt::__delete(fdPages[--fdPagesAllocated]); }
+
+	__cleanup_exceptions();
 }
 
 struct __locale_map *__libc::get_cached_locale(const char *name, size_t len,
@@ -176,7 +182,7 @@ int __SPRT_ID(sprt_plock_lock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock
 	ulock.unlock();
 
 	__sprt_sprt_rlock_t tid;
-	*rmutex_base::getNativeValue(tid) = __sprt_pthread_get_id_np();
+	*rmutex_base::getNativeValue(tid) = __sprt_gettid();
 
 	auto res = rmutex_base::_lock<sprt_rlock_wait, nullptr,
 			bool(SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(it->second.data.value, tid, 0,
@@ -212,7 +218,7 @@ int __SPRT_ID(sprt_plock_trylock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_l
 
 		// It's a new lock, this should return immediately
 		__sprt_sprt_rlock_t tid;
-		*rmutex_base::getNativeValue(tid) = __sprt_pthread_get_id_np();
+		*rmutex_base::getNativeValue(tid) = __sprt_gettid();
 
 		auto res = rmutex_base::_lock<sprt_rlock_wait, nullptr,
 				bool(SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(it->second.data.value, tid, 0,
@@ -228,7 +234,7 @@ int __SPRT_ID(sprt_plock_trylock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_l
 		return 0;
 	} else {
 		__sprt_sprt_rlock_t tid;
-		*rmutex_base::getNativeValue(tid) = __sprt_pthread_get_id_np();
+		*rmutex_base::getNativeValue(tid) = __sprt_gettid();
 
 		auto res = rmutex_base::_try_lock<sprt_rlock_try_wait>(it->second.data.value, tid,
 				SPRT_LOCK_FLAG_PI);
@@ -261,7 +267,7 @@ int __SPRT_ID(sprt_plock_unlock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lo
 		__SPRT_ID(pid_t) * tidPtr) {
 
 	auto doUnlock = [&](rmutex_base::value_type &data, uint32_t *counter) {
-		rmutex_base::tid_type tidWithPrio = __sprt_pthread_get_id_np();
+		rmutex_base::tid_type tidWithPrio = __sprt_gettid();
 		rmutex_base::value_type zero = {0};
 
 		rmutex_base::value_type expected;

@@ -108,11 +108,3 @@
 #include "src/witness.c"
 
 //#include "src/zone.c"
-
-__SPRT_C_FUNC void *__SPRT_ID(malloc_impl)(size_t size) { return malloc(size); }
-
-__SPRT_C_FUNC void *__SPRT_ID(calloc_impl)(size_t n, size_t size) { return calloc(n, size); }
-
-__SPRT_C_FUNC void *__SPRT_ID(realloc_impl)(void *ptr, size_t size) { return realloc(ptr, size); }
-
-__SPRT_C_FUNC void __SPRT_ID(free_impl)(void *ptr) { return free(ptr); }

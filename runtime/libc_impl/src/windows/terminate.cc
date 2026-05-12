@@ -174,4 +174,6 @@ __SPRT_C_FUNC void _Exit(int result) __SPRT_NOEXCEPT {
 	ExitProcess((UINT)result); //
 }
 
+__SPRT_C_FUNC void __std_terminate() { abort(); }
+
 } // namespace sprt

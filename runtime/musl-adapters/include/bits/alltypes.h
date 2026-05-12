@@ -11,13 +11,6 @@
 #include <sprt/c/__sprt_sched.h>
 #include <sprt/c/__sprt_pthread.h>
 
-#ifdef __SPRT_BUILD
-struct timespec {
-	__SPRT_ID(time_t) tv_sec;
-	__SPRT_ID(int64_t) tv_nsec;
-};
-#endif
-
 typedef __SPRT_ID(intmax_t) intmax_t;
 typedef __SPRT_ID(intptr_t) intptr_t;
 typedef __SPRT_ID(int8_t) int8_t;

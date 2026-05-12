@@ -66,10 +66,6 @@ int __fmodeflags(const char *mode) {
 #include "stdio/__overflow.cc"
 #include "stdio/__stdio.cc"
 
-#include "stdio/stdin.cc"
-#include "stdio/stderr.cc"
-#include "stdio/stdout.cc"
-
 #include "stdio/fflush.cc"
 #include "stdio/fread.cc"
 #include "stdio/fwrite.cc"
@@ -79,12 +75,14 @@ int __fmodeflags(const char *mode) {
 #include "stdio/__toread.cc"
 #include "stdio/__towrite.cc"
 
+#include "stdio/freopen.cc"
 #include "stdio/fclose.cc"
 #include "stdio/ferror.cc"
 #include "stdio/feof.cc"
 #include "stdio/fput.cc"
 #include "stdio/fget.cc"
 #include "stdio/flockfile.cc"
+#include "stdio/fseek.cc"
 
 namespace sprt {
 extern "C" {

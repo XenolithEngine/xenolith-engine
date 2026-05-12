@@ -575,6 +575,12 @@ THE SOFTWARE.
 #define PC_2_SYMLINKS __SPRT_PC_2_SYMLINKS
 #endif
 
+#define lseek64 lseek
+#define pread64 pread
+#define pwrite64 pwrite
+#define truncate64 truncate
+#define ftruncate64 ftruncate
+#define lockf64 lockf
 
 __SPRT_BEGIN_DECL
 

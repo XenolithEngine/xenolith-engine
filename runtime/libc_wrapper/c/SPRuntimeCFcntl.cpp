@@ -32,7 +32,8 @@ THE SOFTWARE.
 #include <sprt/runtime/log.h>
 
 #if __STDC_HOSTED__ == 0
-#include "../../freestanding/include/unistd.h"
+#include "unistd.h"
+#include "fcntl.h"
 #else
 
 #include <fcntl.h>

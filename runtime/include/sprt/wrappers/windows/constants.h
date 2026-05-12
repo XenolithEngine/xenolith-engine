@@ -185,14 +185,10 @@ typedef enum tag_WBEM_GENERIC_FLAG_TYPE {
 #define DUPLICATE_CLOSE_SOURCE      0x00000001  
 #define DUPLICATE_SAME_ACCESS       0x00000002  
 
-/* Wait result codes */
-#define STATUS_WAIT_0                    ((NTSTATUS)0x00000000L) // winnt
-#define STATUS_ABANDONED_WAIT_0          ((NTSTATUS)0x00000080L)    // winnt
-
-#define WAIT_FAILED ((DWORD)0xFFFFFFFF)
-#define WAIT_OBJECT_0       ((STATUS_WAIT_0 ) + 0 )
-#define WAIT_ABANDONED         ((STATUS_ABANDONED_WAIT_0 ) + 0 )
-#define WAIT_ABANDONED_0       ((STATUS_ABANDONED_WAIT_0 ) + 0 )
+#define WAIT_FAILED       ((DWORD)0xFFFFFFFF)
+#define WAIT_OBJECT_0     ((STATUS_WAIT_0 ) + 0 )
+#define WAIT_ABANDONED    ((STATUS_ABANDONED_WAIT_0 ) + 0 )
+#define WAIT_ABANDONED_0  ((STATUS_ABANDONED_WAIT_0 ) + 0 )
 
 /* Special values */
 #define INVALID_HANDLE_VALUE        ((HANDLE)(ULONG_PTR)-1)

@@ -27,10 +27,12 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_fcntl.h>
 #include <sprt/c/sys/__sprt_ioctl.h>
+#include <sprt/c/sys/__sprt_stat.h>
 #include <sprt/c/bits/__sprt_ssize_t.h>
 #include <sprt/wrappers/windows/basic_api.h>
 #include <sprt/wrappers/windows/file_api.h>
 #include <sprt/wrappers/windows/process_api.h>
+#include <sprt/wrappers/windows/security_api.h>
 
 namespace sprt {
 
@@ -321,34 +323,19 @@ static ssize_t __file_readv(__fd_slot *fp, const struct iovec *iov, int iovcnt) 
 	// Calculate total bytes across all segments
 	DWORD totalBytes = 0;
 	for (int i = 0; i < iovcnt; i++) {
+		DWORD readBytes = 0;
 		if (iov[i].iov_len > 0) {
-			totalBytes += (DWORD)iov[i].iov_len;
+			BOOL result =
+					ReadFile(fp->handle, iov[i].iov_base, iov[i].iov_len, &readBytes, nullptr);
+			totalBytes += readBytes;
+			if (!result) {
+				__sprt_errno = platform::lastErrorToErrno(GetLastError());
+				return -1;
+			}
 		}
 	}
 
-	// Allocate segment array for ReadFileScatter
-	auto segmentArray = __sprt_typed_malloca(FILE_SEGMENT_ELEMENT, (size_t)iovcnt);
-
-	// Build the scatter array - each element points to one iovec buffer
-	for (int i = 0; i < iovcnt; i++) {
-		if (iov[i].iov_len > 0) {
-			segmentArray[i].Buffer = iov[i].iov_base;
-		} else {
-			segmentArray[i].Buffer = nullptr;
-		}
-	}
-
-	DWORD readBytes = 0;
-	BOOL result = ReadFileScatter(fp->handle, segmentArray, totalBytes, &readBytes, nullptr);
-
-	__sprt_freea(segmentArray);
-
-	if (!result) {
-		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		return -1;
-	}
-
-	return (ssize_t)readBytes;
+	return (ssize_t)totalBytes;
 }
 
 static ssize_t __file_writev(__fd_slot *fp, const struct iovec *iov, int iovcnt) {
@@ -365,37 +352,21 @@ static ssize_t __file_writev(__fd_slot *fp, const struct iovec *iov, int iovcnt)
 		return -1;
 	}
 
+	DWORD totalWritten = 0;
 	// Calculate total bytes across all segments
-	DWORD totalBytes = 0;
 	for (int i = 0; i < iovcnt; i++) {
+		DWORD written = 0;
 		if (iov[i].iov_len > 0) {
-			totalBytes += (DWORD)iov[i].iov_len;
+			BOOL result = WriteFile(fp->handle, iov[i].iov_base, iov[i].iov_len, &written, nullptr);
+			totalWritten += written;
+			if (!result) {
+				__sprt_errno = platform::lastErrorToErrno(GetLastError());
+				return -1;
+			}
 		}
 	}
 
-	// Allocate segment array for WriteFileGather
-	auto segmentArray = __sprt_typed_malloca(FILE_SEGMENT_ELEMENT, (size_t)iovcnt);
-
-	// Build the gather array - each element points to one iovec buffer
-	for (int i = 0; i < iovcnt; i++) {
-		if (iov[i].iov_len > 0) {
-			segmentArray[i].Buffer = const_cast<void *>(iov[i].iov_base);
-		} else {
-			segmentArray[i].Buffer = nullptr;
-		}
-	}
-
-	DWORD writtenBytes = 0;
-	BOOL result = WriteFileGather(fp->handle, segmentArray, totalBytes, &writtenBytes, nullptr);
-
-	__sprt_freea(segmentArray);
-
-	if (!result) {
-		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		return -1;
-	}
-
-	return (ssize_t)writtenBytes;
+	return (ssize_t)totalWritten;
 }
 
 static off_t __file_seek(__fd_slot *fp, off_t off, int whence) {
@@ -422,6 +393,55 @@ static off_t __file_seek(__fd_slot *fp, off_t off, int whence) {
 	return new_pos.QuadPart;
 }
 
+static int __file_stat(__fd_slot *fp, struct __SPRT_STAT_NAME *__stat) {
+	if (!fp->handle) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
+	return platform::hstat(fp->handle, __stat);
+}
+
+static int __file_chmod(__fd_slot *fp, mode_t __mode) {
+	if (!fp->handle) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
+	if (fp->mode == __mode) {
+		return 0;
+	}
+
+	FILE_BASIC_INFO fbi;
+	if (!GetFileInformationByHandleEx(fp->handle, FileBasicInfo, &fbi, sizeof(FILE_BASIC_INFO))) {
+		return -1;
+	}
+
+	if (__mode & __SPRT_S_IWUSR) {
+		fbi.FileAttributes &= ~FILE_ATTRIBUTE_READONLY;
+	} else {
+		fbi.FileAttributes |= FILE_ATTRIBUTE_READONLY;
+	}
+
+	if (!SetFileInformationByHandle(fp->handle, FileBasicInfo, &fbi, sizeof(FILE_BASIC_INFO))) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+
+	fp->mode = __mode;
+
+	return 0;
+}
+
+static int __flie_utimens(__fd_slot *fp, const struct __SPRT_TIMESPEC_NAME *times) {
+	if (!fp->handle) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
+	return platform::hutimens(fp->handle, times);
+}
+
 void __libc::load_file_fd_ops(__fd_ops *ops) {
 	ops->mask = __fd_ops_mask::opendir;
 	ops->fo_read = &__file_read;
@@ -432,6 +452,9 @@ void __libc::load_file_fd_ops(__fd_ops *ops) {
 	ops->fo_readv = &__file_readv;
 	ops->fo_writev = &__file_writev;
 	ops->fo_seek = &__file_seek;
+	ops->fo_stat = &__file_stat;
+	ops->fo_chmod = &__file_chmod;
+	ops->fo_utimens = &__flie_utimens;
 }
 
 } // namespace sprt

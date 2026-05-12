@@ -45,6 +45,7 @@ typedef __SPRT_MBSTATE_NAME mbstate_t;
 #endif
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(wint_t) wint_t;
+typedef __SPRT_ID(wctype_t) wctype_t;
 typedef __SPRT_ID(FILE) FILE;
 typedef __SPRT_ID(locale_t) locale_t;
 
@@ -789,6 +790,22 @@ int wcswidth(const wchar_t *ptr, size_t value) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_wcswidth(ptr, value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wint_t towlower(wint_t c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_towlower(c);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+wint_t towupper(wint_t c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_towupper(c);
 }
 #endif
 

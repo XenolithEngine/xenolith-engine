@@ -63,7 +63,7 @@ static int __wcscasecmp(const wchar_t *l, const wchar_t *r) { return __wcsncasec
 
 extern "C" {
 
-__sprt_wint_t towlower(__sprt_wint_t ch) {
+__sprt_wint_t towlower(__sprt_wint_t ch) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_CTYPE);
 	if (map == __get_default_locale()) {
 		return __towlower(ch);
@@ -71,7 +71,7 @@ __sprt_wint_t towlower(__sprt_wint_t ch) {
 	return __towlower_l(ch, map);
 }
 
-__sprt_wint_t towupper(__sprt_wint_t ch) {
+__sprt_wint_t towupper(__sprt_wint_t ch) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_CTYPE);
 	if (map == __get_default_locale()) {
 		return __towupper(ch);
@@ -135,6 +135,8 @@ size_t wcsxfrm(wchar_t *__restrict dest, const wchar_t *__restrict src, size_t n
 }
 }
 
-__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcslen)(const __SPRT_WCHAR_T *v) { return wcslen(v); }
+__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcslen)(const __SPRT_ID(wchar_t) * v) {
+	return wcslen(v);
+}
 
 } // namespace sprt

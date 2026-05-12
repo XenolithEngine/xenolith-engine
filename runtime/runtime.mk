@@ -52,6 +52,7 @@ MODULE_RUNTIME_JEMALLOC_PRIVATE_COMMON_CFLAGS := \
 	-nostdinc \
 	-ffreestanding \
 	-fbuiltin \
+	 -funwind-tables -fasynchronous-unwind-tables \
 	-DJEMALLOC_NO_PRIVATE_NAMESPACE
 
 MODULE_RUNTIME_JEMALLOC_PRIVATE_CFLAGS += $(MODULE_RUNTIME_JEMALLOC_PRIVATE_COMMON_CFLAGS)
@@ -109,10 +110,9 @@ MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_CFLAGS := \
 	-fexcess-precision=standard \
 	-frounding-math \
 	-fno-strict-aliasing \
-	-fno-align-functions \
 	-fomit-frame-pointer \
-	-fno-unwind-tables \
-	-fno-asynchronous-unwind-tables
+	-funwind-tables \
+	-fasynchronous-unwind-tables
 
 MODULE_RUNTIME_MUSL_LIBC_PRIVATE_CFLAGS += $(MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_CFLAGS) 
 	-std=c99 -pipe
@@ -135,7 +135,8 @@ MODULE_RUNTIME_LIBC_IMPL_PRIVATE_INCLUDES := \
 	$(RUNTIME_MODULE_DIR)/include \
 	$(RUNTIME_MODULE_DIR)/include_libc
 
-MODULE_RUNTIME_LIBC_IMPL_PRIVATE_COMMON_CFLAGS := -nostdinc -ffreestanding -fbuiltin
+MODULE_RUNTIME_LIBC_IMPL_PRIVATE_COMMON_CFLAGS := -nostdinc \
+	-ffreestanding -fbuiltin -funwind-tables -fasynchronous-unwind-tables
 
 MODULE_RUNTIME_LIBC_IMPL_PRIVATE_SFLAGS += $(MODULE_RUNTIME_LIBC_IMPL_PRIVATE_COMMON_FLAGS)
 MODULE_RUNTIME_LIBC_IMPL_PRIVATE_CFLAGS += $(MODULE_RUNTIME_LIBC_IMPL_PRIVATE_COMMON_CFLAGS) 
@@ -178,7 +179,9 @@ MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CXXFLAGS += $(HOST_GENERAL_CFLAGS) \
 endif
 
 ifeq ($(TARGET_SYSTEM),Windows)
-MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_INCLUDES += $(TARGET_INCLUDE_DIR)
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_INCLUDES += \
+	$(TARGET_INCLUDE_DIR) \
+	$(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += -ffreestanding -fbuiltin -funwind-tables -fasynchronous-unwind-tables
 MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CXXFLAGS += -ffreestanding -fbuiltin -funwind-tables -fasynchronous-unwind-tables
 endif

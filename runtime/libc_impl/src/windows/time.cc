@@ -20,35 +20,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef __SPRT_BUILD
-#define __SPRT_BUILD
-#endif
+#include <time.h>
+#include <errno.h>
 
-#include <sprt/c/__sprt_time.h>
-#include <sprt/c/__sprt_errno.h>
-
-#include "private/SPRTSpecific.h"
+#include "specific.h"
 
 #include <sprt/wrappers/windows/time_api.h>
 #include <sprt/wrappers/windows/thread_api.h>
 #include <sprt/wrappers/windows/windows.h>
 #include <sprt/wrappers/windows/process_api.h>
 
-#ifdef __clang__
-#pragma clang diagnostic ignored "-Wunused-function"
-#endif
-
-namespace sprt::platform {
-
-int lastErrorToErrno(unsigned long);
-
-}
-
 namespace sprt {
 
-static int _clock_gettime(__SPRT_ID(clockid_t) clk_id, struct __SPRT_TIMESPEC_NAME *tp);
-
-static int __getLocalGmtOff(bool isDst) {
+/*static int __getLocalGmtOff(bool isDst) {
 	TIME_ZONE_INFORMATION tzi;
 	GetTimeZoneInformation(&tzi);
 	long bias = tzi.Bias;
@@ -65,7 +49,7 @@ static int __getLocalGmtOff(bool isDst) {
 	}
 
 	return -bias * 60;
-}
+}*/
 
 static ULONGLONG __nano_now() {
 	static LARGE_INTEGER qpc_freq = {{0, 0}};
@@ -81,7 +65,8 @@ static ULONGLONG __nano_now() {
 	return pc.QuadPart * 1'000'000'000ULL / qpc_freq.QuadPart;
 }
 
-static int nanosleep(const struct __SPRT_TIMESPEC_NAME *req, struct __SPRT_TIMESPEC_NAME *rem) {
+__SPRT_C_FUNC int nanosleep(const struct __SPRT_TIMESPEC_NAME *req,
+		struct __SPRT_TIMESPEC_NAME *rem) __SPRT_NOEXCEPT {
 	static LARGE_INTEGER qpc_freq = {{0, 0}};
 
 	if (qpc_freq.QuadPart == 0) {
@@ -178,14 +163,8 @@ static int nanosleep(const struct __SPRT_TIMESPEC_NAME *req, struct __SPRT_TIMES
 	return 0;
 }
 
-static ULONGLONG __nano_now(__SPRT_ID(clockid_t) clock) {
-	__SPRT_TIMESPEC_NAME ts;
-	_clock_gettime(clock, &ts);
-	return ts.tv_nsec + ts.tv_sec * 1'000'000'000ULL;
-}
-
-static int clock_nanosleep(__SPRT_ID(clockid_t) clock, int v, const __SPRT_TIMESPEC_NAME *ireq,
-		__SPRT_TIMESPEC_NAME *rem) {
+__SPRT_C_FUNC int clock_nanosleep(__SPRT_ID(clockid_t) clock, int v,
+		const __SPRT_TIMESPEC_NAME *ireq, __SPRT_TIMESPEC_NAME *rem) __SPRT_NOEXCEPT {
 	constexpr const ULONGLONG SPIN_NS = 100'000ULL; // 100mks spin limit
 
 	if (!ireq || !rem) {
@@ -203,7 +182,7 @@ static int clock_nanosleep(__SPRT_ID(clockid_t) clock, int v, const __SPRT_TIMES
 
 	if (v & __SPRT_TIMER_ABSTIME) {
 		__SPRT_TIMESPEC_NAME curTv;
-		_clock_gettime(clock, &curTv);
+		__sprt_clock_gettime(clock, &curTv);
 
 		auto diffTv = __sprt_timespec_diff(req, &curTv);
 
@@ -217,14 +196,14 @@ static int clock_nanosleep(__SPRT_ID(clockid_t) clock, int v, const __SPRT_TIMES
 		req = &diff;
 	}
 
-	auto nanoStart = __nano_now(clock);
+	auto nanoStart = __sprt_clock_gettime_nsec_np(clock);
 	auto nanoToSleep = req->tv_nsec + req->tv_sec * 1'000'000'000ULL;
 
 	if (nanoToSleep <= SPIN_NS) {
 		// Spin-wait
 		while (1) {
 			YieldProcessor();
-			auto v = __nano_now(clock);
+			auto v = __sprt_clock_gettime_nsec_np(clock);
 			if (v >= nanoToSleep) {
 				break;
 			}
@@ -254,7 +233,7 @@ static int clock_nanosleep(__SPRT_ID(clockid_t) clock, int v, const __SPRT_TIMES
 		}
 	}
 
-	auto elapsed = __nano_now(clock) - nanoStart;
+	auto elapsed = __sprt_clock_gettime_nsec_np(clock) - nanoStart;
 	if (rem) {
 		if (nanoToSleep > elapsed) {
 			auto remains = nanoToSleep - elapsed;

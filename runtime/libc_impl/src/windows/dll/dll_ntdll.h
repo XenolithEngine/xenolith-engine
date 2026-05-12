@@ -3,7 +3,7 @@
 namespace sprt {
 
 struct NtdllTable : DllTable {
-	NtdllTable() : DllTable(L"ntdll.dll", &__ntdll_begin, &__ntdll_end) { }
+	NtdllTable() : DllTable(L"ntdll.dll", &__ntdll_begin, &__ntdll_end, __preloads) { }
 
 	DllTableRecord __ntdll_begin;
 	SPWIN_DEFINE_PROTO(A_SHAFinal)
@@ -1460,6 +1460,32 @@ struct NtdllTable : DllTable {
 	SPWIN_DEFINE_PROTO(wcstombs)
 	SPWIN_DEFINE_PROTO(wcstoul)
 	DllTableRecord __ntdll_end;
+
+	DllTableRecord *__preloads[23] = {
+		&RtlCaptureContext,
+		&RtlRestoreContext,
+		&RtlLookupFunctionEntry,
+		&RtlUnwindEx,
+		&RtlVirtualUnwind,
+		&__C_specific_handler,
+		&longjmp,
+		&_setjmpex,
+		&memcmp,
+		&memcpy,
+		&memmove,
+		&memset,
+		&strcpy,
+		&strlen,
+		&strncpy,
+		&strnlen,
+		&strstr,
+		&wcscpy,
+		&wcslen,
+		&wcsncpy,
+		&wcsnlen,
+		&wcsstr,
+		nullptr,
+	};
 };
 
 } // namespace sprt

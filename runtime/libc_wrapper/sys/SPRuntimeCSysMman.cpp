@@ -30,13 +30,7 @@ THE SOFTWARE.
 
 #include <sprt/runtime/log.h>
 
-#include "private/SPRTSpecific.h"
-
-#if SPRT_WINDOWS
-#include "../platform/windows/mman.cc"
-#else
 #include <sys/mman.h>
-#endif
 
 namespace sprt {
 

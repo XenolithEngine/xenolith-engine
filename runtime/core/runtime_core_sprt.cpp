@@ -242,7 +242,8 @@ void rmutex::lock() {
 	}
 
 	__sprt_sprt_rlock_t tid;
-	*getNativeValue(tid) = __sprt_pthread_get_id_np();
+
+	*getNativeValue(tid) = __sprt_gettid();
 
 	auto res = _lock<__sprt_sprt_rlock_wait, nullptr,
 			bool(__SPRT_SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(_data.value, tid, 0,
@@ -260,7 +261,7 @@ bool rmutex::try_lock() {
 	}
 
 	__sprt_sprt_rlock_t tid;
-	*getNativeValue(tid) = __sprt_pthread_get_id_np();
+	*getNativeValue(tid) = __sprt_gettid();
 
 	auto res = _try_lock<__sprt_sprt_rlock_try_wait>(_data.value, tid, __SPRT_SPRT_LOCK_FLAG_PI);
 	switch (res) {
@@ -280,7 +281,7 @@ bool rmutex::unlock() {
 	}
 
 	__sprt_sprt_rlock_t tid;
-	*getNativeValue(tid) = __sprt_pthread_get_id_np();
+	*getNativeValue(tid) = __sprt_gettid();
 
 	return _unlock<__sprt_sprt_rlock_wake>(_data.value, tid, &_data.counter,
 				   __SPRT_SPRT_LOCK_FLAG_PI)
@@ -315,7 +316,7 @@ void recursive_timed_mutex::lock() {
 	// we can not use thread locals until full initialization is complete
 	// becouse some static inits may use mutexes, but thread locals can be initialized after statics
 	__sprt_sprt_rlock_t tid;
-	*rmutex_base::getNativeValue(tid) = __sprt_pthread_get_id_np();
+	*rmutex_base::getNativeValue(tid) = __sprt_gettid();
 
 	auto res = rmutex_base::_lock<__sprt_sprt_rlock_wait, nullptr,
 			bool(__SPRT_SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(_mutex.value, tid, 0, 0);
@@ -330,7 +331,7 @@ bool recursive_timed_mutex::try_lock() noexcept {
 	// we can not use thread locals until full initialization is complete
 	// becouse some static inits may use mutexes, but thread locals can be initialized after statics
 	__sprt_sprt_rlock_t tid;
-	*rmutex_base::getNativeValue(tid) = __sprt_pthread_get_id_np();
+	*rmutex_base::getNativeValue(tid) = __sprt_gettid();
 
 	auto res = rmutex_base::_try_lock<__sprt_sprt_rlock_try_wait>(_mutex.value, tid, 0);
 	switch (res) {
@@ -348,7 +349,7 @@ void recursive_timed_mutex::unlock() {
 	// we can not use thread locals until full initialization is complete
 	// becouse some static inits may use mutexes, but thread locals can be initialized after statics
 	__sprt_sprt_rlock_t tid;
-	*rmutex_base::getNativeValue(tid) = __sprt_pthread_get_id_np();
+	*rmutex_base::getNativeValue(tid) = __sprt_gettid();
 
 	rmutex_base::_unlock<__sprt_sprt_rlock_wake>(_mutex.value, tid, &_mutex.counter, 0);
 }

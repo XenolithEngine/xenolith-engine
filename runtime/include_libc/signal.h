@@ -182,9 +182,11 @@ THE SOFTWARE.
 
 #define _NSIG __SPRT__NSIG
 
-__SPRT_BEGIN_DECL
+typedef __SPRT_ID(sighandler) sighandler;
 
 typedef __SPRT_ID(sigset_t) sigset_t;
+
+__SPRT_BEGIN_DECL
 
 SPRT_UMBRELLA_FUNC
 int sigemptyset(sigset_t *set) SPRT_UMBRELLA_END
@@ -276,6 +278,22 @@ int sigandset(sigset_t *set, const sigset_t *a, const sigset_t *b) SPRT_UMBRELLA
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __SPRT_ID(sigandset)(set, a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+sighandler signal(int sig, sighandler act) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(signal)(sig, act);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int raise(int sig) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(raise)(sig);
 }
 #endif
 

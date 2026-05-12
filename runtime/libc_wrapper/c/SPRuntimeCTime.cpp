@@ -32,21 +32,14 @@ THE SOFTWARE.
 #include <time64.h>
 #endif
 
-#if SPRT_WINDOWS
-#include "../platform/windows/time.cc"
-#endif
-
 #if SPRT_MACOS
 #include <xlocale.h>
 #include <unistd.h>
 #endif
 
-#include "private/SPRTSpecific.h"
-#include "private/SPRTTime.h"
-
 #if __STDC_HOSTED__ == 0
-#include "../freestanding/include/locale.h"
-#include "../freestanding/include/time.h"
+#include "locale.h"
+#include "time.h"
 #else
 #if SPRT_MACOS
 #define CLOCK_MONOTONIC_COARSE CLOCK_MONOTONIC_RAW_APPROX
@@ -78,7 +71,6 @@ static_assert(CLOCK_TAI == __SPRT_CLOCK_TAI);
 #endif
 #endif
 
-#include "time/clock_gettime.cc"
 #include "time/timespec_get.cc"
 
 namespace sprt {

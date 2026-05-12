@@ -86,16 +86,8 @@ __SPRT_C_FUNC __SPRT_ID(pthread_t) __SPRT_ID(pthread_self)(void) {
 	return reinterpret_cast<__SPRT_ID(pthread_t)>(_thread::thread_t::self());
 }
 
-__SPRT_C_FUNC __SPRT_ID(pthread_t) __SPRT_ID(pthread_self_noattach_np)(void) {
+__SPRT_C_FUNC __SPRT_ID(pthread_t) __SPRT_ID(pthread_self_noattach_np)(void) __SPRT_NOEXCEPT {
 	return reinterpret_cast<__SPRT_ID(pthread_t)>(_thread::thread_t::self_noattach());
-}
-
-__SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(pthread_get_id_np)(void) {
-	auto thread = _thread::thread_t::self_noattach();
-	if (!thread) {
-		return __sprt_gettid();
-	}
-	return thread->threadId;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(pthread_equal)(__SPRT_ID(pthread_t) t1, __SPRT_ID(pthread_t) t2) {

@@ -22,8 +22,6 @@
 
 #define __SPRT_BUILD 1
 
-#include "private/SPRTSpecific.h"
-
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/sys/__sprt_alooper.h>
 #include <sprt/c/sys/__sprt_alog.h>

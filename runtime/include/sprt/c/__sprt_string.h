@@ -65,6 +65,7 @@ SPRT_API const char *__SPRT_ID(strstr_impl)(const char *, const char *);
 SPRT_API char *__SPRT_ID(strtok_impl)(char *__SPRT_RESTRICT, const char *__SPRT_RESTRICT);
 
 SPRT_API __SPRT_ID(size_t) __SPRT_ID(strlen_impl)(const char *);
+SPRT_API __SPRT_ID(size_t) __SPRT_ID(strnlen_impl)(const char *, __SPRT_ID(size_t));
 
 SPRT_API char *__SPRT_ID(strerror_impl)(int);
 
@@ -236,6 +237,16 @@ SPRT_FORCEINLINE __SPRT_ID(size_t) __SPRT_ID(strlen)(const char *str) {
 #else
 #define __sprt_strlen __SPRT_ID(strlen_impl)
 #endif
+
+
+#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_strnlen)
+SPRT_FORCEINLINE __SPRT_ID(size_t) __SPRT_ID(strnlen)(const char *str, __SPRT_ID(size_t) n) {
+	return __builtin_strnlen(str, n);
+}
+#else
+#define __sprt_strnlen __SPRT_ID(strnlen_impl)
+#endif
+
 
 #define __sprt_strerror __SPRT_ID(strerror_impl)
 

@@ -27,12 +27,8 @@
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/sys/__sprt_winapi.h>
 
-#include "private/SPRTPrivate.h"
-
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/log.h>
-
-#include "private/SPRTSpecific.h"
 
 #include <sprt/wrappers/windows/basic_api.h>
 #include <sprt/wrappers/windows/thread_api.h>

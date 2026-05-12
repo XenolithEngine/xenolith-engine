@@ -20,8 +20,6 @@
  THE SOFTWARE.
  **/
 
-#include "private/SPRTSpecific.h"
-
 #include <sprt/c/sys/__sprt_futex.h>
 #include <sprt/c/__sprt_errno.h>
 

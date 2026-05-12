@@ -30,6 +30,8 @@ THE SOFTWARE.
 #define __SPRT_SIG_UNBLOCK 1
 #define __SPRT_SIG_SETMASK 2
 
+typedef void (*__SPRT_ID(sighandler))(int);
+
 __SPRT_BEGIN_DECL
 
 SPRT_API int __SPRT_ID(sigemptyset)(__SPRT_ID(sigset_t) * set);
@@ -58,7 +60,7 @@ SPRT_API int __SPRT_ID(
 SPRT_API int __SPRT_ID(
 		sigandset)(__SPRT_ID(sigset_t) *, const __SPRT_ID(sigset_t) *, const __SPRT_ID(sigset_t) *);
 
-SPRT_API void (*__SPRT_ID(signal)(int, void (*)(int)))(int);
+SPRT_API __SPRT_ID(sighandler) __SPRT_ID(signal)(int, __SPRT_ID(sighandler));
 SPRT_API int __SPRT_ID(raise)(int);
 
 __SPRT_END_DECL

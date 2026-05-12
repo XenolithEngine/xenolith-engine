@@ -33,10 +33,18 @@ THE SOFTWARE.
 
 namespace sprt {
 
+static constexpr unsigned ThreadIdBit = 0x8000'0000;
+
 static int _clock_getres(__SPRT_ID(clockid_t) clk_id, struct __SPRT_TIMESPEC_NAME *tp) {
 	if (!tp) {
 		__sprt_errno = EFAULT;
 		return -1;
+	}
+
+	if (clk_id & ThreadIdBit) {
+		tp->tv_sec = 0;
+		tp->tv_nsec = 100;
+		return 0; // actual resolution is around 15.6 ms
 	}
 
 	switch (clk_id) {
@@ -80,7 +88,7 @@ static int _clock_getres(__SPRT_ID(clockid_t) clk_id, struct __SPRT_TIMESPEC_NAM
 	case __SPRT_CLOCK_THREAD_CPUTIME_ID: {
 		tp->tv_sec = 0;
 		tp->tv_nsec = 100;
-		return 0;
+		return 0; // actual resolution is around 15.6 ms
 	}
 
 	default: break;
@@ -95,6 +103,24 @@ static int _clock_gettime(__SPRT_ID(clockid_t) clk_id, struct __SPRT_TIMESPEC_NA
 	if (!tp) {
 		__sprt_errno = EFAULT;
 		return -1;
+	}
+
+	// Note that this will not work for thread id greather then 0x7FFF'FFFF,
+	// pthread_getcpuclockid will return ESRCH for them
+	if (clk_id & ThreadIdBit) {
+		FILETIME creation, exit, kernel, user;
+
+		HANDLE hThread = OpenThread(THREAD_QUERY_INFORMATION, FALSE, clk_id & ~ThreadIdBit);
+
+		GetThreadTimes(hThread, &creation, &exit, &kernel, &user);
+
+		ULARGE_INTEGER ul;
+		ul.LowPart = user.dwLowDateTime;
+		ul.HighPart = user.dwHighDateTime;
+
+		tp->tv_sec = ul.QuadPart / 10'000'000;
+		tp->tv_nsec = (ul.QuadPart % 10'000'000) * 100;
+		return 0;
 	}
 
 	static LARGE_INTEGER qpc_freq = {{0, 0}};

@@ -30,7 +30,7 @@ THE SOFTWARE.
 
 namespace sprt {
 
-static constexpr unsigned ThreadIdBit = 0x800'0000;
+static constexpr unsigned ThreadIdBit = 0x8000'0000;
 
 static int _clock_getres(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
 	if (clk_id & ThreadIdBit) {

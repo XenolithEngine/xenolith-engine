@@ -29,19 +29,13 @@ THE SOFTWARE.
 
 #include <sprt/runtime/log.h>
 
-#if __STDC_HOSTED__ == 0
-#else
 #include <sys/time.h>
-#endif
 
 #if SPRT_MACOS
 #include <sys/syslimits.h>
 #include <sys/fcntl.h>
 #include <unistd.h>
 #endif
-
-#include "private/SPRTFilename.h"
-#include "private/SPRTSpecific.h"
 
 namespace sprt {
 

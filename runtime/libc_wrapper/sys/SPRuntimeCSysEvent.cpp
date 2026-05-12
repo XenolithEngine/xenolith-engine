@@ -31,8 +31,6 @@
 #include <time.h>
 #endif
 
-#include "private/SPRTSpecific.h"
-
 namespace sprt {
 
 #if __SPRT_CONFIG_HAVE_KQUEUE

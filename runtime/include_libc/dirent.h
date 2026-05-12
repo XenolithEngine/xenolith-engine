@@ -31,10 +31,6 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_dirent.h>
 
-typedef __SPRT_ID(ssize_t) ssize_t;
-typedef __SPRT_ID(off_t) off_t;
-typedef __SPRT_ID(DIR) DIR;
-
 #define DT_UNKNOWN __SPRT_DT_UNKNOWN
 #define DT_FIFO __SPRT_DT_FIFO
 #define DT_CHR __SPRT_DT_CHR
@@ -44,6 +40,16 @@ typedef __SPRT_ID(DIR) DIR;
 #define DT_LNK __SPRT_DT_LNK
 #define DT_SOCK __SPRT_DT_SOCK
 #define DT_WHT __SPRT_DT_WHT
+
+#define dirent64 dirent
+#define readdir64 readdir
+#define alphasort64 alphasort
+#define scandir64 scandir
+#define scandirat64 scandirat
+
+typedef __SPRT_ID(ssize_t) ssize_t;
+typedef __SPRT_ID(off_t) off_t;
+typedef __SPRT_ID(DIR) DIR;
 
 __SPRT_BEGIN_DECL
 

@@ -11,6 +11,12 @@
 
 typedef long __SPRT_ID(wctype_t);
 
+#ifdef __cplusplus
+typedef wchar_t __SPRT_ID(wchar_t);
+#else
+typedef unsigned int __SPRT_ID(wchar_t);
+#endif
+
 typedef struct {
 	unsigned char __seq[4];
 #ifdef __LP64__

@@ -11,6 +11,12 @@ typedef __SPRT_ID(uint32_t) __SPRT_ID(wctype_t);
 typedef unsigned long __SPRT_ID(wctype_t);
 #endif
 
+#ifdef __cplusplus
+typedef wchar_t __SPRT_ID(wchar_t);
+#else
+typedef unsigned int __SPRT_ID(wchar_t);
+#endif
+
 typedef union {
 	char __mbstate8[128];
 	long long _mbstateL; /* for alignment */

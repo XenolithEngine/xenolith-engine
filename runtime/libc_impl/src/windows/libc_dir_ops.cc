@@ -62,6 +62,8 @@ void __libc::load_dir_fd_ops(__fd_ops *ops) {
 	ops->fo_readv = nullptr;
 	ops->fo_writev = nullptr;
 	ops->fo_seek = nullptr;
+	ops->fo_stat = nullptr;
+	ops->fo_chmod = nullptr;
 }
 
 } // namespace sprt

@@ -469,12 +469,10 @@ SPRT_API int __SPRT_ID(
 		pthread_timedjoin_np)(__SPRT_ID(pthread_t), void **, const struct __SPRT_TIMESPEC_NAME *);
 
 // Returns system thread identifier (like gettid()) for all platforms;
-// In SPRT, gettid is also implemented for all platforms.
-SPRT_API int __SPRT_ID(pthread_getid_np)(__SPRT_ID(pthread_t), __SPRT_ID(pid_t) *);
+// In SPRT, gettid uses this function as fast path, or retrive id from platform-specific function
+SPRT_API int __SPRT_ID(pthread_getid_np)(__SPRT_ID(pthread_t), __SPRT_ID(pid_t) *) __SPRT_NOEXCEPT;
 
-SPRT_API __SPRT_ID(pthread_t) __SPRT_ID(pthread_self_noattach_np)(void);
-
-SPRT_API __SPRT_ID(pid_t) __SPRT_ID(pthread_get_id_np)(void);
+SPRT_API __SPRT_ID(pthread_t) __SPRT_ID(pthread_self_noattach_np)(void) __SPRT_NOEXCEPT;
 
 __SPRT_END_DECL
 

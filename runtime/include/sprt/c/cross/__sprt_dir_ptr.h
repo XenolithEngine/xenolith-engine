@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_DIR_PTR_H_
 #define CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_DIR_PTR_H_
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 #define __SPRT_DIRENT_NAME __SPRT_ID(dirent)
 #else
 #define __SPRT_DIRENT_NAME dirent

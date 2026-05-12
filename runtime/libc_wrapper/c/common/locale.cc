@@ -25,11 +25,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_locale.h>
 #include <sprt/c/__sprt_errno.h>
 
-#if __STDC_HOSTED__ == 0
-#include "../freestanding/include/locale.h"
-#else
 #include <locale.h>
-#endif
 
 namespace sprt {
 

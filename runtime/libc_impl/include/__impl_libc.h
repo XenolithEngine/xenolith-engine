@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/sys/__sprt_sprt.h>
+#include <sprt/c/sys/__sprt_stat.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 
 #include <sprt/cxx/mutex>
@@ -36,6 +37,7 @@ THE SOFTWARE.
 
 #include "unistd.h"
 #include "sys/sprt.h"
+#include "sys/stat.h"
 
 namespace sprt {
 
@@ -78,16 +80,20 @@ enum class __fd_ctl_mode {
 struct __fd_ops {
 	__fd_ops_mask mask = __fd_ops_mask::none;
 
-	ssize_t (*fo_read)(__fd_slot *fp, void *buf, size_t nbyte, off64_t *offset, uint32_t flags);
+	ssize_t (*fo_read)(__fd_slot *fp, void *buf, size_t nbyte, off64_t *offset,
+			uint32_t flags) = nullptr;
 	ssize_t (*fo_write)(__fd_slot *fp, const void *buf, size_t nbyte, off64_t *offset,
-			uint32_t flags);
-	int (*fo_ioctl)(__fd_slot *fp, int fd, int cmd, intptr_t arg, __fd_ctl_mode);
-	int (*fo_dup)(__fd_slot *fp, int *target, uint32_t flags);
-	int (*fo_close)(__fd_slot *fp);
+			uint32_t flags) = nullptr;
+	int (*fo_ioctl)(__fd_slot *fp, int fd, int cmd, intptr_t arg, __fd_ctl_mode) = nullptr;
+	int (*fo_dup)(__fd_slot *fp, int *target, uint32_t flags) = nullptr;
+	int (*fo_close)(__fd_slot *fp) = nullptr;
 
-	ssize_t (*fo_readv)(__fd_slot *fp, const iovec *iov, int iovcnt);
-	ssize_t (*fo_writev)(__fd_slot *fp, const iovec *iov, int iovcnt);
-	off_t (*fo_seek)(__fd_slot *fp, off_t, int);
+	ssize_t (*fo_readv)(__fd_slot *fp, const iovec *iov, int iovcnt) = nullptr;
+	ssize_t (*fo_writev)(__fd_slot *fp, const iovec *iov, int iovcnt) = nullptr;
+	off_t (*fo_seek)(__fd_slot *fp, off_t, int) = nullptr;
+	int (*fo_stat)(__fd_slot *fp, struct __SPRT_STAT_NAME *__stat) = nullptr;
+	int (*fo_chmod)(__fd_slot *fp, mode_t mode) = nullptr;
+	int (*fo_utimens)(__fd_slot *fp, const struct __SPRT_TIMESPEC_NAME *times) = nullptr;
 };
 
 struct __fd_page {
@@ -157,6 +163,9 @@ void __init_locale();
 __locale_map *__get_default_locale();
 __locale_map *__get_locale(int cat, const char *, size_t);
 void __free_locale(__locale_map *);
+
+bool __init_exceptions();
+void __cleanup_exceptions();
 
 void __init_default_fds(__libc *);
 

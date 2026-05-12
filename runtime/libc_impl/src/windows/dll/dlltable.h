@@ -40,12 +40,12 @@ struct DllTable {
 	const wchar_t *__name = nullptr;
 	DllTableRecord *__start = nullptr;
 	DllTableRecord *__end = nullptr;
-	DllTableRecord *__preloads = nullptr;
+	DllTableRecord **__preloads = nullptr;
 	HANDLE __handle = nullptr;
 	bool __debug = false;
 
 	DllTable(const wchar_t *, DllTableRecord *start, DllTableRecord *end,
-			DllTableRecord *preloads = nullptr);
+			DllTableRecord **preloads = nullptr);
 
 	bool init(HANDLE);
 

@@ -23,6 +23,8 @@ THE SOFTWARE.
 #define __SPRT_BUILD 1
 
 #include <sprt/c/__sprt_setjmp.h>
+#include <sprt/c/__sprt_string.h>
+#include <sprt/c/__sprt_pthread.h>
 
 #if SPRT_WINDOWS
 
@@ -39,13 +41,29 @@ THE SOFTWARE.
 
 #endif
 
-static_assert(sizeof(jmp_buf) == sizeof(__sprt_native_jmp_buf));
+//static_assert(sizeof(jmp_buf) == sizeof(__sprt_native_jmp_buf));
 
 #include <sprt/cxx/detail/ctypes.h>
 
 namespace sprt {
 
-__SPRT_C_FUNC int __SPRT_ID(setjmp)(__SPRT_ID(jmp_buf) buf) {
+__SPRT_ID(setjmp_fn) get_setjmp_fn();
+
+__SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_NMACOS
+	return &setjmp;
+#elif SPRT_WINDOWS
+	return get_setjmp_fn();
+#else
+#error Not implemented
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(cfa_setjmp)(int arg, __SPRT_ID(jmp_buf) buf) {
+	if (arg != 0) {
+		return arg;
+	}
+
 	struct CFALookup {
 		int offset = 1; // lookup for an address for frame directly above us
 		uintptr_t result = 0;
@@ -63,16 +81,7 @@ __SPRT_C_FUNC int __SPRT_ID(setjmp)(__SPRT_ID(jmp_buf) buf) {
 #endif
 	buf->__cfa = lookup.result;
 
-#if SPRT_LINUX
-	return ::setjmp(reinterpret_cast<struct __jmp_buf_tag *>(buf->__native));
-#elif SPRT_ANDROID || SPRT_MACOS
-	return ::setjmp(buf->__native);
-#elif SPRT_WINDOWS
-#warning TODO: Make CFA lookup
-	return setjmp((_JBTYPE *)buf->__native);
-#else
-#error Not implemented
-#endif
+	return 0;
 }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, int ret) {
@@ -107,8 +116,8 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 	sprt_passert(code, "__sprt_longjmp: _Unwind_ForcedUnwind failed");
 	abort();
 #elif SPRT_WINDOWS
-#warning TODO: Make CFA unwind
-	longjmp((_JBTYPE *)buf->__native, ret);
+	// On windows, longjmp is already an SPRT wrapper (see libc_impl/src/windows/except.cc)
+	longjmp((_JUMP_BUFFER *)buf->__native, ret);
 #else
 #error Not implemented
 #endif

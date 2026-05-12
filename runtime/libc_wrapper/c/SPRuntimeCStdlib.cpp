@@ -29,15 +29,8 @@ THE SOFTWARE.
 
 #include <sprt/runtime/log.h>
 
-#include "private/SPRTFilename.h"
-#include "private/SPRTSpecific.h"
-
-#if __STDC_HOSTED__ == 0
-#include "../freestanding/include/stdlib.h"
-#include "../freestanding/include/locale.h"
-#else
 #include <stdlib.h>
-#endif
+#include <locale.h>
 
 
 #include "stdlib/env.cc"

@@ -123,6 +123,8 @@ THE SOFTWARE.
 #define MFD_ALLOW_SEALING __SPRT_MFD_ALLOW_SEALING
 #define MFD_HUGETLB __SPRT_MFD_HUGETLB
 
+#define mmap64 mmap
+
 __SPRT_BEGIN_DECL
 
 typedef __SPRT_ID(size_t) size_t;

@@ -178,6 +178,12 @@ __SPRT_C_FUNC __SPRT_ID(uint64_t) __SPRT_ID(clock_gettime_nsec_np)(__SPRT_ID(clo
 }
 
 __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
+	auto t = __sprt_pthread_self_noattach_np();
+	if (t) {
+		__SPRT_ID(pid_t) tid = 0;
+		__sprt_pthread_getid_np(t, &tid);
+		return tid;
+	}
 #if SPRT_MACOS
 	return pthread_mach_thread_np(pthread_self());
 #elif SPRT_WINDOWS

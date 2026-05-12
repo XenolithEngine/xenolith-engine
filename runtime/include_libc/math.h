@@ -74,6 +74,15 @@ __SPRT_BEGIN_DECL
 #define signbit(x) __sprt_signbit(x)
 #endif
 
+#if __STDC_HOSTED__ == 0
+int __fpclassify(double);
+int __fpclassifyf(float);
+int __fpclassifyl(long double);
+int __signbit(double);
+int __signbitf(float);
+int __signbitl(long double);
+#endif
+
 SPRT_UMBRELLA_FUNC
 double acos(double value) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED

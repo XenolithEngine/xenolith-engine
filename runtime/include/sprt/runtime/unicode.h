@@ -79,6 +79,10 @@ SPRT_INLINE constexpr inline bool isUtf16LowSurrogate(char16_t c) {
 	return c >= 0xDC00 && c <= 0xDFFF;
 }
 
+SPRT_INLINE constexpr inline char32_t utf16CombineSurrogates(char16_t ch1, char16_t ch2) {
+	return char32_t(0b0000'0011'1111'1111 & ch1) << 10 | char32_t(0b0000'0011'1111'1111 & ch2);
+}
+
 constexpr inline char32_t utf8Decode32(const char *ptr, size_t len, uint8_t &offset) {
 	uint8_t mask = sprt::unicode::utf8_length_mask[uint8_t(*ptr)];
 	offset = sprt::unicode::utf8_length_data[uint8_t(*ptr)];
@@ -198,8 +202,7 @@ SPRT_INLINE constexpr inline char32_t utf16Decode32(const char16_t *ptr, size_t 
 		if (offset > len) {
 			return 0;
 		}
-		return char32_t(0b0000'0011'1111'1111 & ptr[0]) << 10
-				| char32_t(0b0000'0011'1111'1111 & ptr[1]);
+		return utf16CombineSurrogates(ptr[0], ptr[1]);
 	} else {
 		offset = 1;
 		if (offset > len) {

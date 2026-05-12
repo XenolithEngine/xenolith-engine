@@ -30,6 +30,7 @@ THE SOFTWARE.
 #else
 
 #include <sprt/c/__sprt_stdlib.h>
+#include <sprt/c/__sprt_wchar.h>
 
 #ifndef NULL
 #define NULL __SPRT_NULL
@@ -40,6 +41,10 @@ typedef __SPRT_ID(div_t) div_t;
 typedef __SPRT_ID(ldiv_t) ldiv_t;
 typedef __SPRT_ID(lldiv_t) lldiv_t;
 
+#ifndef __cplusplus
+typedef __SPRT_ID(wchar_t) wchar_t;
+#endif
+
 #ifdef __sprt_malloca
 #define _malloca(Sz) __sprt_malloca(Sz)
 #define _freea(Ptr) __sprt_freea(Ptr)
@@ -48,6 +53,10 @@ typedef __SPRT_ID(lldiv_t) lldiv_t;
 #define RAND_MAX  __SPRT_RAND_MAX
 
 __SPRT_BEGIN_DECL
+
+#if __STDC_HOSTED__ == 0
+size_t ___mb_cur_max_func();
+#endif
 
 SPRT_UMBRELLA_FUNC
 int atoi(const char *value) SPRT_UMBRELLA_END
@@ -493,14 +502,6 @@ long double strtold_l(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT en
 }
 #endif
 
-__SPRT_END_DECL
-
-// Bionic/BSD specific functions
-//
-// Expose them only for C++ to avoid C wchar_t definitiom
-#if defined(__cplusplus) \
-		&& (__SPRT_CONFIG_HAVE_STDLIB_MB || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS)
-
 SPRT_UMBRELLA_FUNC
 size_t mbstowcs(wchar_t *__dst, const char *__src, size_t __n) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -534,7 +535,8 @@ size_t wcstombs(char *__dst, const wchar_t *__src, size_t __n) SPRT_UMBRELLA_END
 #endif
 
 #define MB_CUR_MAX __SPRT_ID(__ctype_get_mb_cur_max)()
-#endif
+
+__SPRT_END_DECL
 
 #ifdef _LIBCPP_MSVCRT
 #define _strtol_l strtol_l

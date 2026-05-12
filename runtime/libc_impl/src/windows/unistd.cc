@@ -839,14 +839,14 @@ static int __truncate(const char *path, off64_t length) {
 	return 0;
 }
 
-int truncate64(const char *__path, off64_t length) {
+int truncate64(const char *__path, off64_t length) __SPRT_NOEXCEPT {
 	return platform::performWithNativePath(__path, [&](const char *path) {
 		return __truncate(path, length); //
 	}, -1);
 }
 
 // @AI-geerated
-int ftruncate64(int __fd, off64_t length) {
+int ftruncate64(int __fd, off64_t length) __SPRT_NOEXCEPT {
 	if (__fd < 0) {
 		__sprt_errno = EBADF;
 		return -1;
@@ -884,7 +884,7 @@ struct flock {
 };
 
 // from musl-libc
-int lockf64(int fd, int op, off_t size) {
+int lockf64(int fd, int op, off_t size) __SPRT_NOEXCEPT {
 	flock l = {
 		.l_type = __SPRT_F_WRLCK,
 		.l_whence = __SPRT_SEEK_CUR,

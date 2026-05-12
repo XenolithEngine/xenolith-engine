@@ -13,6 +13,12 @@
 
 typedef unsigned long __SPRT_ID(wctype_t);
 
+#ifdef __cplusplus
+typedef wchar_t __SPRT_ID(wchar_t);
+#else
+typedef unsigned int __SPRT_ID(wchar_t);
+#endif
+
 typedef struct {
 	unsigned __opaque1;
 	unsigned __opaque2;

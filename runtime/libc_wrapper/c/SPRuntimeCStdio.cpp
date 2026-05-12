@@ -27,18 +27,10 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_errno.h>
 
 #include <sprt/runtime/log.h>
-#include "private/SPRTFilename.h"
-#include "private/SPRTSpecific.h"
-
-#if __STDC_HOSTED__ == 0
-
-#include "../freestanding/include/file.h"
-#include "../freestanding/include/locale.h"
-
-#else
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <locale.h>
 
 #if SPRT_LINUX || SPRT_ANDROID
 #include <locale.h>
@@ -46,8 +38,6 @@ THE SOFTWARE.
 
 #if SPRT_MACOS
 #include <xlocale.h>
-#endif
-
 #endif
 
 namespace sprt {
@@ -93,16 +83,6 @@ __SPRT_C_FUNC int __SPRT_ID(fseek_impl)(__SPRT_ID(FILE) * file, long pos, int wh
 __SPRT_C_FUNC long __SPRT_ID(ftell_impl)(__SPRT_ID(FILE) * file) { return ::ftell(file); }
 
 __SPRT_C_FUNC void __SPRT_ID(rewind_impl)(__SPRT_ID(FILE) * file) { return ::rewind(file); }
-
-__SPRT_C_FUNC size_t __SPRT_ID(fread_impl)(void *__SPRT_RESTRICT buf, size_t n, size_t count,
-		__SPRT_ID(FILE) * __SPRT_RESTRICT file) {
-	return ::fread(buf, n, count, file);
-}
-
-__SPRT_C_FUNC size_t __SPRT_ID(fwrite_impl)(const void *__SPRT_RESTRICT buf, size_t n, size_t count,
-		__SPRT_ID(FILE) * __SPRT_RESTRICT file) {
-	return ::fwrite(buf, n, count, file);
-}
 
 __SPRT_C_FUNC int __SPRT_ID(fgetc_impl)(__SPRT_ID(FILE) * file) { return ::fgetc(file); }
 

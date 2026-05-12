@@ -72,6 +72,10 @@ THE SOFTWARE.
 #define __SPRT_TTY_NAME_MAX 32
 #define __SPRT_HOST_NAME_MAX 255
 
+#define __SPRT_NL_ARGMAX 9
+#define __SPRT_NL_MSGMAX 32767
+#define __SPRT_NL_SETMAX 255
+#define __SPRT_NL_TEXTMAX 2048
 // clang-format on
 
 #endif // CORE_RUNTIME_INCLUDE_C___SPRT_LIMITS_H_

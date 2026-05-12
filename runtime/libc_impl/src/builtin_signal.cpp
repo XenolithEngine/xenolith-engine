@@ -25,8 +25,6 @@ THE SOFTWARE.
 #include "signal.h"
 #include "stdlib.h"
 
-typedef void (*sighandler)(int);
-
 // Thread-local signal handler state for freestanding environment.
 // Each thread maintains its own set of installed handlers and blocked signals.
 struct __signal_thread_state {
@@ -275,5 +273,3 @@ __SPRT_C_FUNC int __SPRT_ID(sigemptyset)(__SPRT_ID(sigset_t) * set) {
 	for (auto &it : set->__bits) { it = 0; }
 	return 0;
 }
-
-__SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(abort_impl)(void) { ::abort(); }

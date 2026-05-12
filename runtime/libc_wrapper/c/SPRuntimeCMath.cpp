@@ -27,7 +27,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdio.h>
 
 #if __STDC_HOSTED__ == 0
-#include "../freestanding/include/math.h"
+#include "math.h"
 #else
 
 #include <math.h>

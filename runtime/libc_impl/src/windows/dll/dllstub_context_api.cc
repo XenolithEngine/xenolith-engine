@@ -26,16 +26,19 @@
 
 extern "C" {
 
+int printf(const char *, ...) __SPRT_NOEXCEPT;
+__SPRT_NORETURN void abort() __SPRT_NOEXCEPT;
+
 VOID RtlCaptureContext(PCONTEXT ContextRecord) {
-	auto loader = sprt::DllLoader::get();
-	loader->kernel32.call<decltype(&RtlCaptureContext)>(loader->kernel32.RtlCaptureContext,
-			ContextRecord);
+	printf("FATAL: RtlCaptureContext function used directly, without SPRT wrapper. This is "
+		   "prohibited, as it leads to stack smashing or other similar errors\n");
+	abort();
 }
 
 VOID RtlRestoreContext(PCONTEXT ContextRecord, _EXCEPTION_RECORD *ExceptionRecord) {
 	auto loader = sprt::DllLoader::get();
-	loader->kernel32.call<decltype(&RtlRestoreContext)>(loader->kernel32.RtlRestoreContext,
-			ContextRecord, ExceptionRecord);
+	loader->ntdll.call<decltype(&RtlRestoreContext)>(loader->ntdll.RtlRestoreContext, ContextRecord,
+			ExceptionRecord);
 }
 
 PRUNTIME_FUNCTION RtlLookupFunctionEntry(DWORD64 ControlPc, PDWORD64 ImageBase,
@@ -61,14 +64,62 @@ PEXCEPTION_ROUTINE RtlVirtualUnwind(DWORD HandlerType, DWORD64 ImageBase, DWORD6
 			EstablisherFrame, ContextPointers);
 }
 
-int setjmp(jmp_buf _Buf) {
+WORD RtlCaptureStackBackTrace(DWORD FramesToSkip, DWORD FramesToCapture, PVOID *BackTrace,
+		PDWORD BackTraceHash) {
 	auto loader = sprt::DllLoader::get();
-	return loader->ntdll.call<decltype(&setjmp)>(loader->ntdll._setjmp, _Buf);
+	return loader->kernel32.call<decltype(&RtlCaptureStackBackTrace)>(
+			loader->kernel32.RtlCaptureStackBackTrace, FramesToSkip, FramesToCapture, BackTrace,
+			BackTraceHash);
 }
 
-__SPRT_NORETURN void __cdecl longjmp(jmp_buf _Buf, int _Value) __SPRT_NOEXCEPT {
+WINAPI PVOID AddVectoredExceptionHandler(ULONG First, PVECTORED_EXCEPTION_HANDLER Handler) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&AddVectoredExceptionHandler)>(
+			loader->kernel32.AddVectoredExceptionHandler, First, Handler);
+}
+
+WINAPI ULONG RemoveVectoredExceptionHandler(PVOID Handle) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&RemoveVectoredExceptionHandler)>(
+			loader->kernel32.RemoveVectoredExceptionHandler, Handle);
+}
+
+WINAPI PVOID AddVectoredContinueHandler(ULONG First, PVECTORED_EXCEPTION_HANDLER Handler) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&AddVectoredContinueHandler)>(
+			loader->kernel32.AddVectoredContinueHandler, First, Handler);
+}
+
+WINAPI ULONG RemoveVectoredContinueHandler(PVOID Handle) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&RemoveVectoredContinueHandler)>(
+			loader->kernel32.RemoveVectoredContinueHandler, Handle);
+}
+
+WINAPI NTSTATUS NtContinueEx(CONTEXT *context, void *args) {
+	auto loader = sprt::DllLoader::get();
+	return loader->ntdll.call<decltype(&NtContinueEx)>(loader->ntdll.NtContinueEx, context, args);
+}
+
+__attribute__((returns_twice)) int setjmp(_JUMP_BUFFER *_Buf, void *ptr) {
+	printf("FATAL: setjmp function used directly, without SPRT wrapper. This is prohibited, as it "
+		   "leads to stack smashing or other similar errors\n");
+	abort();
+}
+
+// longjmp itself replaced with SPRT's wrapper
+/*__SPRT_NORETURN void __cdecl longjmp(_JUMP_BUFFER *_Buf, int _Value) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
 	loader->ntdll.call<decltype(&longjmp)>(loader->ntdll.longjmp, _Buf, _Value);
 	__builtin_unreachable();
+}*/
+
+EXCEPTION_DISPOSITION __C_specific_handler(struct _EXCEPTION_RECORD *ExceptionRecord,
+		void *EstablisherFrame, struct _CONTEXT *ContextRecord,
+		struct _DISPATCHER_CONTEXT *DispatcherContext) {
+	auto loader = sprt::DllLoader::get();
+	auto ptr = reinterpret_cast<decltype(&__C_specific_handler)>(
+			loader->ntdll.__C_specific_handler.fn);
+	return ptr(ExceptionRecord, EstablisherFrame, ContextRecord, DispatcherContext);
 }
 }

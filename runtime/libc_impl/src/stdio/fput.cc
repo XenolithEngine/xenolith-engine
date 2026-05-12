@@ -10,7 +10,7 @@ static int locking_putc(int c, FILE *f) {
 }
 
 static inline int do_putc(int c, FILE *f) {
-	if (f->__lock_pid < 0 || f->__lock_pid == __sprt_pthread_get_id_np()) {
+	if (f->__lock_pid < 0 || f->__lock_pid == __sprt_gettid()) {
 		return __putc_unlocked(c, f);
 	}
 	return locking_putc(c, f);
@@ -29,3 +29,19 @@ __SPRT_C_FUNC int fputs(const char *__restrict s, FILE *__restrict f) __SPRT_NOE
 }
 
 weak_alias(fputs, fputs_unlocked);
+
+__SPRT_C_FUNC int putc(int c, FILE *f) __SPRT_NOEXCEPT { return do_putc(c, f); }
+
+__SPRT_C_FUNC FILE *const stdout;
+
+__SPRT_C_FUNC int putchar(int c) __SPRT_NOEXCEPT { return do_putc(c, stdout); }
+
+__SPRT_C_FUNC int putchar_unlocked(int c) __SPRT_NOEXCEPT { return putc_unlocked(c, stdout); }
+
+__SPRT_C_FUNC int puts(const char *s) __SPRT_NOEXCEPT {
+	int r;
+	FLOCK(stdout);
+	r = -(fputs(s, stdout) < 0 || putc_unlocked('\n', stdout) < 0);
+	FUNLOCK(stdout);
+	return r;
+}

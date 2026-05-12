@@ -28,6 +28,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_null.h>
 #include <sprt/c/cross/__sprt_locale.h>
+#include <sprt/c/cross/__sprt_mbstate.h>
 
 __SPRT_BEGIN_DECL
 
@@ -303,28 +304,27 @@ SPRT_FORCEINLINE void __sprt_alloca_freea(void *ptr) {
 
 // Bionic/BSD specific functions
 //
-// Expose them only for C++ to avoid C wchar_t definitiom
-#ifdef __cplusplus
+// Expose them only for C++ to avoid C __SPRT_ID(wchar_t) definitiom
+
 #if __SPRT_CONFIG_HAVE_STDLIB_MB || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 
 __SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
 __SPRT_ID(size_t)
-__SPRT_ID(mbstowcs)(wchar_t *__dst, const char *__src, __SPRT_ID(size_t) __n);
+__SPRT_ID(mbstowcs)(__SPRT_ID(wchar_t) * __dst, const char *__src, __SPRT_ID(size_t) __n);
 
 __SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
-int __SPRT_ID(mbtowc)(wchar_t *__wc_ptr, const char *__s, __SPRT_ID(size_t) __n);
+int __SPRT_ID(mbtowc)(__SPRT_ID(wchar_t) * __wc_ptr, const char *__s, __SPRT_ID(size_t) __n);
 
 __SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
-int __SPRT_ID(wctomb)(char *__dst, wchar_t __wc);
+int __SPRT_ID(wctomb)(char *__dst, __SPRT_ID(wchar_t) __wc);
 
 __SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
 __SPRT_ID(size_t)
-__SPRT_ID(wcstombs)(char *__dst, const wchar_t *__src, __SPRT_ID(size_t) __n);
+__SPRT_ID(wcstombs)(char *__dst, const __SPRT_ID(wchar_t) * __src, __SPRT_ID(size_t) __n);
 
 __SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
 __SPRT_ID(size_t) __SPRT_ID(__ctype_get_mb_cur_max)(void);
 
-#endif
 #endif
 
 __SPRT_END_DECL

@@ -215,6 +215,14 @@ size_t strlen(const char *str) SPRT_UMBRELLA_END
 #endif
 
 SPRT_UMBRELLA_FUNC
+size_t strnlen(const char *str, size_t n) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strnlen(str, n);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
 char *strerror(int err) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {

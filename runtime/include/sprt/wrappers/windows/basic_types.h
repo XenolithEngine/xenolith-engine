@@ -114,9 +114,9 @@ typedef UINT_PTR WPARAM;
 typedef LONG_PTR LPARAM;
 typedef LONG_PTR LRESULT;
 
-typedef LONG HRESULT;
-typedef LONG NTSTATUS;
-typedef LONG LSTATUS;
+typedef DWORD HRESULT;
+typedef DWORD NTSTATUS;
+typedef DWORD LSTATUS;
 
 typedef DWORD ACCESS_MASK;
 typedef ACCESS_MASK REGSAM;

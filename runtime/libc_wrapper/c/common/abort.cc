@@ -26,11 +26,7 @@ THE SOFTWARE.
 #include <sprt/cxx/string>
 #include <sprt/runtime/log.h>
 
-#if __STDC_HOSTED__ == 0
-#include "../freestanding/include/stdlib.h"
-#else
 #include <stdlib.h>
-#endif
 
 namespace sprt {
 

@@ -39,4 +39,5 @@ THE SOFTWARE.
 #include "windows/startup.cc"
 #include "windows/terminate.cc"
 #include "windows/memory.cc"
+#include "windows/except.cc"
 #endif

@@ -20,54 +20,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef __SPRT_BUILD
-#define __SPRT_BUILD
-#endif
-
 #include <sprt/c/sys/__sprt_stat.h>
 #include <sprt/c/__sprt_time.h>
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/log.h>
 
-#include "private/SPRTSpecific.h" // IWYU pragma: keep
-#include "private/SPRTFilename.h" // IWYU pragma: keep
+#include "specific.h" // IWYU pragma: keep
+#include "sys/stat.h" // IWYU pragma: keep
 
 #include <sprt/wrappers/windows/file_api.h>
 #include <sprt/wrappers/windows/security_api.h>
 #include <sprt/wrappers/windows/basic_api.h>
 
-#ifdef __clang__
-#pragma clang diagnostic ignored "-Wunused-function"
-#endif
+namespace sprt::platform {
 
-namespace sprt {
-
-static struct __SPRT_TIMESPEC_NAME __toTimespec(const FILETIME &ft) {
-	constexpr unsigned __int64 TICKS_PER_SEC = 10'000'000ULL;
-	constexpr unsigned __int64 EPOCH_DIFFERENCE = 11'644'473'600ULL;
-
-	ULARGE_INTEGER ull;
-	ull.LowPart = ft.dwLowDateTime;
-	ull.HighPart = ft.dwHighDateTime;
-
-	struct __SPRT_TIMESPEC_NAME ts;
-	ts.tv_sec = (time_t)((ull.QuadPart / TICKS_PER_SEC) - EPOCH_DIFFERENCE);
-	ts.tv_nsec = (long)((ull.QuadPart % TICKS_PER_SEC) * 100);
-	return ts;
-}
-
-
-LARGE_INTEGER __toFiletime(const struct __SPRT_TIMESPEC_NAME *ts) {
-	constexpr unsigned __int64 EPOCH_DIFF_NS100 = (11'644'473'600ULL * 10'000'000ULL);
-
-	LARGE_INTEGER ret;
-	unsigned __int64 total_ns100 = (unsigned __int64)ts->tv_sec * 10'000'000ULL + ts->tv_nsec;
-	total_ns100 += EPOCH_DIFF_NS100;
-	ret.QuadPart = total_ns100;
-	return ret;
-}
-
-static int __hstat(HANDLE h, struct __SPRT_STAT_NAME *__stat) {
+int hstat(HANDLE h, struct __SPRT_STAT_NAME *__stat) {
 	PSID owner_sid = nullptr;
 	PSID group_sid = nullptr;
 
@@ -133,158 +100,7 @@ static int __hstat(HANDLE h, struct __SPRT_STAT_NAME *__stat) {
 	return 0;
 }
 
-static int __wstat(const char *__SPRT_RESTRICT path,
-		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat, bool reparsePoint) {
-	auto wpath = __MALLOCA_WSTRING(path);
-	HANDLE h = CreateFileW(wpath, GENERIC_READ,
-			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
-			FILE_FLAG_BACKUP_SEMANTICS | (reparsePoint ? FILE_FLAG_OPEN_REPARSE_POINT : 0), NULL);
-	__sprt_freea(wpath);
-	if (h == INVALID_HANDLE_VALUE) {
-		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		return -1;
-	}
-
-	auto ret = __hstat(h, __stat);
-	CloseHandle(h);
-	return ret;
-}
-
-static int stat(const char *__SPRT_RESTRICT path, struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) {
-	return internal::performWithNativePath(path, [&](const char *target) {
-		return __wstat(target, __stat, false); //
-	}, -1);
-}
-
-static int lstat(const char *__SPRT_RESTRICT path,
-		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) {
-	return internal::performWithNativePath(path, [&](const char *target) {
-		return __wstat(target, __stat, true); //
-	}, -1);
-}
-
-static int fstat(int fd, struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) {
-	if (fd < 0) {
-		__sprt_errno = EBADF;
-		return -1;
-	}
-
-	HANDLE h = (HANDLE)_get_osfhandle(fd);
-	if (h && h != INVALID_HANDLE_VALUE) {
-		return __hstat(h, __stat);
-	}
-	__sprt_errno = EBADF;
-	return -1;
-}
-
-static int fstatat(int fd, const char *__path, struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat,
-		int __flags) {
-	int ret = -1;
-	platform::openAtPath(fd, __path, [&](const char *path, size_t) {
-		ret = __wstat(path, __stat, (__flags & __SPRT_AT_SYMLINK_NOFOLLOW) ? true : false);
-	});
-	return ret;
-}
-
-static int __wchmod(const wchar_t *__path, __SPRT_ID(mode_t) mode) {
-	auto origAttr = GetFileAttributesW(__path);
-	auto attr = origAttr;
-	if (attr == INVALID_FILE_ATTRIBUTES) {
-		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		return -1;
-	}
-	if (mode & __SPRT_S_IWUSR) {
-		// Make file writable -> clear READONLY
-		attr &= ~FILE_ATTRIBUTE_READONLY;
-	} else {
-		// No write bit -> read-only
-		attr |= FILE_ATTRIBUTE_READONLY;
-	}
-	if (attr != origAttr) {
-		if (!SetFileAttributesW(__path, attr)) {
-			__sprt_errno = platform::lastErrorToErrno(GetLastError());
-			return -1;
-		}
-	}
-	return 0;
-}
-
-static int chmod(const char *__path, __SPRT_ID(mode_t) mode) {
-	return internal::performWithNativePath(__path, [&](const char *target) {
-		auto wpath = __MALLOCA_WSTRING(target);
-		auto ret = __wchmod(wpath, mode); //
-		__sprt_freea(wpath);
-		return ret;
-	}, -1);
-}
-
-static int fchmod(int __fd, __SPRT_ID(mode_t) mode) {
-	if (__fd < 0) {
-		__sprt_errno = EBADF;
-		return -1;
-	}
-
-	HANDLE hFile = (HANDLE)_get_osfhandle(__fd);
-	if (!hFile || hFile == INVALID_HANDLE_VALUE) {
-		__sprt_errno = EBADF;
-		return -1;
-	}
-
-	FILE_BASIC_INFO fbi;
-	if (!GetFileInformationByHandleEx(hFile, FileBasicInfo, &fbi, sizeof(FILE_BASIC_INFO))) {
-		return -1;
-	}
-
-	if (mode & __SPRT_S_IWUSR) {
-		fbi.FileAttributes &= ~FILE_ATTRIBUTE_READONLY;
-	} else {
-		fbi.FileAttributes |= FILE_ATTRIBUTE_READONLY;
-	}
-
-	if (!SetFileInformationByHandle(hFile, FileBasicInfo, &fbi, sizeof(FILE_BASIC_INFO))) {
-		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		return -1;
-	}
-	return 0;
-}
-
-static int fchmodat(int __fd, const char *__path, __SPRT_ID(mode_t) mode, int flags) {
-	int ret = -1;
-	platform::openAtPath(__fd, __path, [&](const char *path, size_t) {
-		auto wpath = __MALLOCA_WSTRING(path);
-		ret = __wchmod(wpath, mode); //
-		__sprt_freea(wpath);
-	});
-	return ret;
-}
-
-static int __wmkdir(const char *__path, __SPRT_ID(mode_t) mode) {
-	auto wpath = __MALLOCA_WSTRING(__path);
-	if (!CreateDirectoryW(wpath, nullptr)) {
-		__sprt_freea(wpath);
-		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		return -1;
-	}
-	__wchmod(wpath, mode);
-	__sprt_freea(wpath);
-	return 0;
-}
-
-static int mkdir(const char *__path, __SPRT_ID(mode_t) mode) {
-	return internal::performWithNativePath(__path, [&](const char *target) {
-		return __wmkdir(target, mode); //
-	}, -1);
-}
-
-static int mkdirat(int __fd, const char *__path, __SPRT_ID(mode_t) mode) {
-	int ret = -1;
-	platform::openAtPath(__fd, __path, [&](const char *path, size_t) {
-		ret = __wmkdir(path, mode); //
-	});
-	return ret;
-}
-
-static int __wfutimens(HANDLE hFile, const struct __SPRT_TIMESPEC_NAME *times) {
+int hutimens(HANDLE hFile, const struct __SPRT_TIMESPEC_NAME *times) {
 	FILE_BASIC_INFO fbi;
 
 	if (!GetFileInformationByHandleEx(hFile, FileBasicInfo, &fbi, sizeof(FILE_BASIC_INFO))) {
@@ -318,22 +134,122 @@ static int __wfutimens(HANDLE hFile, const struct __SPRT_TIMESPEC_NAME *times) {
 	return 0;
 }
 
-static int futimens(int __fd, const struct __SPRT_TIMESPEC_NAME *times) {
-	if (__fd < 0) {
-		__sprt_errno = EBADF;
+} // namespace sprt::platform
+
+namespace sprt {
+
+static int __wstat(const char *__SPRT_RESTRICT path,
+		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat, bool reparsePoint) {
+	auto wpath = __MALLOCA_WSTRING(path);
+	HANDLE h = CreateFileW(wpath, GENERIC_READ,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+			FILE_FLAG_BACKUP_SEMANTICS | (reparsePoint ? FILE_FLAG_OPEN_REPARSE_POINT : 0), NULL);
+	__sprt_freea(wpath);
+	if (h == INVALID_HANDLE_VALUE) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
 
-	HANDLE hFile = (HANDLE)_get_osfhandle(__fd);
-	if (!hFile || hFile == INVALID_HANDLE_VALUE) {
-		__sprt_errno = EBADF;
-		return -1;
-	}
-
-	return __wfutimens(hFile, times);
+	auto ret = platform::hstat(h, __stat);
+	CloseHandle(h);
+	return ret;
 }
 
-static int utimensat(int __fd, const char *__path, const __SPRT_TIMESPEC_NAME *times, int flags) {
+__SPRT_C_FUNC int stat(const char *__SPRT_RESTRICT path,
+		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) __SPRT_NOEXCEPT {
+	return platform::performWithNativePath(path, [&](const char *target) {
+		return __wstat(target, __stat, false); //
+	}, -1);
+}
+
+__SPRT_C_FUNC int lstat(const char *__SPRT_RESTRICT path,
+		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) __SPRT_NOEXCEPT {
+	return platform::performWithNativePath(path, [&](const char *target) {
+		return __wstat(target, __stat, true); //
+	}, -1);
+}
+
+__SPRT_C_FUNC int fstatat(int fd, const char *__path,
+		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat, int __flags) __SPRT_NOEXCEPT {
+	int ret = -1;
+	platform::openAtPath(fd, __path, [&](const char *path, size_t) {
+		ret = __wstat(path, __stat, (__flags & __SPRT_AT_SYMLINK_NOFOLLOW) ? true : false);
+	});
+	return ret;
+}
+
+static int __wchmod(const wchar_t *__path, __SPRT_ID(mode_t) mode) {
+	auto origAttr = GetFileAttributesW(__path);
+	auto attr = origAttr;
+	if (attr == INVALID_FILE_ATTRIBUTES) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+	if (mode & __SPRT_S_IWUSR) {
+		// Make file writable -> clear READONLY
+		attr &= ~FILE_ATTRIBUTE_READONLY;
+	} else {
+		// No write bit -> read-only
+		attr |= FILE_ATTRIBUTE_READONLY;
+	}
+	if (attr != origAttr) {
+		if (!SetFileAttributesW(__path, attr)) {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return -1;
+		}
+	}
+	return 0;
+}
+
+__SPRT_C_FUNC int chmod(const char *__path, __SPRT_ID(mode_t) mode) __SPRT_NOEXCEPT {
+	return platform::performWithNativePath(__path, [&](const char *target) {
+		auto wpath = __MALLOCA_WSTRING(target);
+		auto ret = __wchmod(wpath, mode); //
+		__sprt_freea(wpath);
+		return ret;
+	}, -1);
+}
+
+
+__SPRT_C_FUNC int fchmodat(int __fd, const char *__path, __SPRT_ID(mode_t) mode,
+		int flags) __SPRT_NOEXCEPT {
+	int ret = -1;
+	platform::openAtPath(__fd, __path, [&](const char *path, size_t) {
+		auto wpath = __MALLOCA_WSTRING(path);
+		ret = __wchmod(wpath, mode); //
+		__sprt_freea(wpath);
+	});
+	return ret;
+}
+
+static int __wmkdir(const char *__path, __SPRT_ID(mode_t) mode) {
+	auto wpath = __MALLOCA_WSTRING(__path);
+	if (!CreateDirectoryW(wpath, nullptr)) {
+		__sprt_freea(wpath);
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+	__wchmod(wpath, mode);
+	__sprt_freea(wpath);
+	return 0;
+}
+
+__SPRT_C_FUNC int mkdir(const char *__path, __SPRT_ID(mode_t) mode) __SPRT_NOEXCEPT {
+	return platform::performWithNativePath(__path, [&](const char *target) {
+		return __wmkdir(target, mode); //
+	}, -1);
+}
+
+__SPRT_C_FUNC int mkdirat(int __fd, const char *__path, __SPRT_ID(mode_t) mode) __SPRT_NOEXCEPT {
+	int ret = -1;
+	platform::openAtPath(__fd, __path, [&](const char *path, size_t) {
+		ret = __wmkdir(path, mode); //
+	});
+	return ret;
+}
+
+__SPRT_C_FUNC int utimensat(int __fd, const char *__path, const __SPRT_TIMESPEC_NAME *times,
+		int flags) __SPRT_NOEXCEPT {
 	int ret = -1;
 	platform::openAtPath(__fd, __path, [&](const char *path, size_t) {
 		auto wpath = __MALLOCA_WSTRING(path);
@@ -347,7 +263,7 @@ static int utimensat(int __fd, const char *__path, const __SPRT_TIMESPEC_NAME *t
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
 			ret = -1;
 		} else {
-			ret = __wfutimens(hFile, times);
+			ret = platform::hutimens(hFile, times);
 		}
 	});
 	return ret;

@@ -3,7 +3,7 @@
 
 #include <sprt/c/bits/__sprt_def.h>
 
-#ifdef __SPRT_BUILD
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 #define __SPRT_SCHED_PARAM_NAME __SPRT_ID(sched_param)
 #else
 #define __SPRT_SCHED_PARAM_NAME sched_param

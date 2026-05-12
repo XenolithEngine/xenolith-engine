@@ -28,18 +28,8 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdio.h>
 #include <sprt/runtime/log.h>
 
-#include "private/SPRTFilename.h"
-
-
-#if __STDC_HOSTED__ == 0
-#include "../freestanding/include/unistd.h"
-#endif
-
-#if SPRT_WINDOWS
-#include "../platform/windows/stat.cc"
-#else
+#include "unistd.h"
 #include <sys/stat.h>
-#endif
 
 namespace sprt {
 

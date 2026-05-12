@@ -902,11 +902,9 @@ bool getMachineId(const callback<void(StringView)> &cb) {
 
 } // namespace sprt::platform
 
-#undef interface
-
+#if 0
 #include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/runtime/filesystem/filepath.h>
-#include "private/SPRTFilesystem.h"
 
 namespace sprt::filesystem::detail {
 
@@ -1127,5 +1125,6 @@ void _initSystemPaths(LookupData &data) {
 }
 
 void _termSystemPaths(LookupData &data) { }
-
 } // namespace sprt::filesystem::detail
+
+#endif
