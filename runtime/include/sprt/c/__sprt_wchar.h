@@ -230,9 +230,6 @@ SPRT_API __SPRT_ID(size_t) __SPRT_ID(wcsxfrm_l)(__SPRT_ID(wchar_t) * __SPRT_REST
 SPRT_API int __SPRT_ID(wcwidth)(__SPRT_ID(wchar_t));
 SPRT_API int __SPRT_ID(wcswidth)(const __SPRT_ID(wchar_t) *, __SPRT_ID(size_t));
 
-SPRT_API __SPRT_ID(wint_t) __SPRT_ID(towlower)(__SPRT_ID(wint_t) wc);
-SPRT_API __SPRT_ID(wint_t) __SPRT_ID(towupper)(__SPRT_ID(wint_t) wc);
-
 __SPRT_END_DECL
 
 #endif

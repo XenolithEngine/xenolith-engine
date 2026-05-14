@@ -26,6 +26,12 @@
 
 extern "C" {
 
+WINAPI DWORD GetDynamicTimeZoneInformation(PDYNAMIC_TIME_ZONE_INFORMATION pTimeZoneInformation) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetDynamicTimeZoneInformation)>(
+			loader->kernel32.GetDynamicTimeZoneInformation, pTimeZoneInformation);
+}
+
 // ---- Time Zone Functions (kernel32) ----
 
 WINAPI DWORD GetTimeZoneInformation(LPTIME_ZONE_INFORMATION lpTimeZoneInformation) {

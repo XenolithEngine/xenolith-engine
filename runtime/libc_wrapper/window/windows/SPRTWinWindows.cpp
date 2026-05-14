@@ -29,7 +29,7 @@
 
 #include <sprt/runtime/stringview.h>
 
-#include <private/window/windows/SPRTWinWindows.h>
+#include "SPRTWinWindows.h"
 
 #include <sprt/wrappers/windows/user_api.h>
 

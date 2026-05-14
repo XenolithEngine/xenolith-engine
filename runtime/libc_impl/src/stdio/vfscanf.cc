@@ -18,6 +18,8 @@
 #define SIZE_L   2
 #define SIZE_ll  3
 
+__SPRT_C_FUNC FILE *const stdin;
+
 static void store_int(void *dest, int size, unsigned long long i) {
 	if (!dest) {
 		return;
@@ -408,8 +410,6 @@ __SPRT_C_FUNC int vsscanf(const char *__restrict s, const char *__restrict fmt,
 }
 
 weak_alias(vsscanf, __isoc99_vsscanf);
-
-__SPRT_C_FUNC FILE *const stdin;
 
 __SPRT_C_FUNC int vscanf(const char *__restrict fmt, va_list ap) __SPRT_NOEXCEPT {
 	return vfscanf(stdin, fmt, ap);

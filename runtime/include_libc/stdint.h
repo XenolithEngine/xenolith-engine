@@ -81,6 +81,8 @@ THE SOFTWARE.
 
 typedef __SPRT_ID(wint_t) wint_t;
 
+typedef __SPRT_ID(ptrdiff_t) ptrdiff_t;
+
 typedef __SPRT_ID(intmax_t) intmax_t;
 typedef __SPRT_ID(intptr_t) intptr_t;
 typedef __SPRT_ID(int8_t) int8_t;

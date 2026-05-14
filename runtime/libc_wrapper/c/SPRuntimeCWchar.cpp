@@ -125,11 +125,9 @@ __SPRT_C_FUNC __SPRT_ID(wchar_t)
 	return ::wcstok(a, b, c);
 }
 
-#if __STDC_HOSTED__ == 1
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcslen)(const __SPRT_ID(wchar_t) * v) {
 	return wcslen(v);
 }
-#endif
 
 __SPRT_C_FUNC const __SPRT_ID(wchar_t)
 		* __SPRT_ID(wcsstr)(const __SPRT_ID(wchar_t) * __SPRT_RESTRICT a,

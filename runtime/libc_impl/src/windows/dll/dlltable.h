@@ -52,7 +52,7 @@ struct DllTable {
 	bool load(DllTableRecord *);
 
 	template <typename FnPointerType, typename... Args>
-	inline auto call(DllTableRecord &rec, Args &&...args) {
+	SPRT_FORCEINLINE auto call(DllTableRecord &rec, Args &&...args) {
 		if (!rec.fn) {
 			if (!load(&rec)) {
 				__sprt_abort();

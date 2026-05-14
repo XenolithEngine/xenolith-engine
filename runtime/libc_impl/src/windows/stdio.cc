@@ -26,7 +26,10 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_errno.h>
 
 #include "specific.h"
+#include "stdlib.h"
+#include "unistd.h"
 #include "stdio.h"
+#include "errno.h"
 
 #include <sprt/wrappers/windows/process_api.h>
 #include <sprt/wrappers/windows/basic_api.h>
@@ -242,6 +245,92 @@ __SPRT_C_FUNC int renameat(int oldfd, const char *oldPath, int newfd,
 		});
 	});
 	return ret;
+}
+
+bool __mktmppath(char *__itpl, size_t suffixLen, const Callback<bool(const char *, size_t)> &cb);
+
+thread_local char tl_tmpnam_buf[L_tmpnam + 1] = {0};
+
+struct _TmpPathStorage {
+	static constexpr size_t wPathBufferLen = MAX_PATH + 2;
+	wchar_t wtmpDirPath[wPathBufferLen] = {0};
+	char tmpDirPath[wPathBufferLen * 3] = {0};
+	size_t dirLength = 0;
+
+	_TmpPathStorage() {
+		auto wdirLength = GetTempPathW(wPathBufferLen, wtmpDirPath);
+		if (wdirLength > 0) {
+			unicode::toUtf8(tmpDirPath, wPathBufferLen * 3,
+					WideStringView((char16_t *)wtmpDirPath, wdirLength), &dirLength);
+		}
+	}
+};
+
+static _TmpPathStorage s_tmpDirStorage;
+
+__SPRT_C_FUNC char *tmpnam(char *s) __SPRT_NOEXCEPT {
+	if (s_tmpDirStorage.dirLength == 0) {
+		errno = ENOSPC;
+		return nullptr;
+	}
+
+	if (!s) {
+		s = tl_tmpnam_buf;
+	}
+
+	auto target = s;
+	size_t bufLen = L_tmpnam;
+
+	target = strappend(target, &bufLen, s_tmpDirStorage.tmpDirPath, s_tmpDirStorage.dirLength);
+	target = strappend(target, &bufLen, "tmpnam_XXXXXX", "tmpnam_XXXXXX"_len);
+
+	if (bufLen > 0) {
+		if (__mktmppath(s, 0, [](const char *path, size_t) {
+			return ::access(path, F_OK) == 0; //
+		})) {
+			return s;
+		}
+		return nullptr;
+	}
+
+	errno = ENOBUFS;
+	return nullptr;
+}
+
+__SPRT_C_FUNC char *tmpnam_r(char *s) __SPRT_NOEXCEPT {
+	if (!s) {
+		return nullptr;
+	}
+
+	return tmpnam(s);
+}
+
+__SPRT_C_FUNC FILE *tmpfile(void) __SPRT_NOEXCEPT {
+	if (s_tmpDirStorage.dirLength == 0) {
+		errno = ENOSPC;
+		return nullptr;
+	}
+
+	char buf[L_tmpnam + 1] = {0};
+
+	auto target = buf;
+	size_t bufLen = L_tmpnam;
+
+	target = strappend(target, &bufLen, s_tmpDirStorage.tmpDirPath, s_tmpDirStorage.dirLength);
+	target = strappend(target, &bufLen, "tmpnam_XXXXXX", "tmpnam_XXXXXX"_len);
+
+	auto fd = mkstemp(target);
+	if (!fd) {
+		return nullptr;
+	}
+
+	auto f = fdopen(fd, "w+");
+	if (!f) {
+		close(fd);
+		return nullptr;
+	}
+
+	return f;
 }
 
 } // namespace sprt

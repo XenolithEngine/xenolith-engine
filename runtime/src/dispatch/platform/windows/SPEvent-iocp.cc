@@ -23,6 +23,8 @@
 
 #include "SPEvent-iocp.h"
 #include "SPEvent-windows.h"
+#include <sprt/wrappers/windows/windows.h>
+#include <sprt/wrappers/windows/message_api.h>
 
 #include <sprt/runtime/log.h>
 
@@ -35,14 +37,14 @@ void IocpData::pollMessages() {
 
 	auto tmpPool = memory::pool::create(_data->_tmpPool);
 
-	winmsg msg = {};
+	MSG msg = {};
 	int hasMessage = 1;
 	while (hasMessage) {
 		memory::perform_clear([&] {
-			hasMessage = _PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE);
+			hasMessage = PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE);
 			if (hasMessage) {
-				_TranslateMessage(&msg);
-				_DispatchMessage(&msg);
+				TranslateMessage(&msg);
+				DispatchMessageW(&msg);
 			}
 		}, tmpPool);
 
@@ -61,16 +63,16 @@ Status IocpData::runPoll(TimeInterval ival, bool infinite) {
 
 	unsigned long nevents = 0;
 
-	_MsgWaitForMultipleObjectsEx(1, &_port, infinite ? _WINAPI_INFINITE : ival.toMillis(),
-			QS_ALLINPUT, MWMO_ALERTABLE | MWMO_INPUTAVAILABLE);
+	MsgWaitForMultipleObjectsEx(1, &_port, infinite ? INFINITE : ival.toMillis(), QS_ALLINPUT,
+			MWMO_ALERTABLE | MWMO_INPUTAVAILABLE);
 
 	// Prevent from recursive message polling
 	if (_data->_performEnabled == 0) {
 		pollMessages();
 	}
 
-	if (!_GetQueuedCompletionStatusEx(_port, _events.data(), _events.size(), &nevents, 0, 1)) {
-		auto err = _GetLastError();
+	if (!GetQueuedCompletionStatusEx(_port, _events.data(), _events.size(), &nevents, 0, 1)) {
+		auto err = GetLastError();
 		if (err == WAIT_TIMEOUT) {
 			_processedEvents = 0;
 			_receivedEvents = 0;
@@ -85,7 +87,7 @@ Status IocpData::runPoll(TimeInterval ival, bool infinite) {
 	if (nevents >= 0) {
 		return Status::Ok;
 	} else {
-		return sprt::status::lastErrorToStatus(_GetLastError());
+		return sprt::status::lastErrorToStatus(GetLastError());
 	}
 }
 
@@ -168,7 +170,7 @@ Status IocpData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval wa
 		timerHandle =
 				_queue->get()->schedule(ival, [this, wakeupFlags](Handle *handle, bool success) {
 			if (success) {
-				_PostQueuedCompletionStatus(_port, toInt(wakeupFlags) | InternalFlag,
+				PostQueuedCompletionStatus(_port, toInt(wakeupFlags) | InternalFlag,
 						reinterpret_cast<uintptr_t>(this), nullptr);
 			}
 		});
@@ -199,7 +201,7 @@ Status IocpData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval wa
 }
 
 Status IocpData::wakeup(WakeupFlags flags) {
-	_PostQueuedCompletionStatus(_port, toInt(flags), reinterpret_cast<uintptr_t>(this), nullptr);
+	PostQueuedCompletionStatus(_port, toInt(flags), reinterpret_cast<uintptr_t>(this), nullptr);
 	return Status::Ok;
 }
 
@@ -217,16 +219,16 @@ Status IocpData::suspendHandles() {
 }
 
 void IocpData::cancel() {
-	_PostQueuedCompletionStatus(_port, toInt(WakeupFlags::ContextDefault) | CancelFlag,
+	PostQueuedCompletionStatus(_port, toInt(WakeupFlags::ContextDefault) | CancelFlag,
 			reinterpret_cast<uintptr_t>(this), nullptr);
 }
 
 IocpData::IocpData(QueueRef *q, Queue::Data *data, const QueueInfo &info)
 : PlatformQueueData(q, data, info.flags) {
-	_port = _CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1);
+	_port = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1);
 	if (!_port) {
 		oslog::vperror(__SPRT_LOCATION, "dispatch::Queue",
-				"Fail to create IOCP: ", sprt::status::lastErrorToStatus(_GetLastError()));
+				"Fail to create IOCP: ", sprt::status::lastErrorToStatus(GetLastError()));
 		return;
 	}
 
@@ -242,7 +244,7 @@ IocpData::IocpData(QueueRef *q, Queue::Data *data, const QueueInfo &info)
 
 IocpData::~IocpData() {
 	if (_port) {
-		_CloseHandle(_port);
+		CloseHandle(_port);
 		_port = nullptr;
 	}
 }

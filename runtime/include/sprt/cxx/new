@@ -143,14 +143,22 @@ constexpr void deallocate(T *t) {
 }
 
 template <typename T>
-constexpr void deallocate(T *t, size_t n) {
+constexpr void deallocate(T *t, size_t n, size_t nbytes = 0) {
 	if (__builtin_is_constant_evaluated()) {
 		return std::allocator<T>().deallocate(t, n);
 	} else {
 		if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
-			__sprt_free(t);
+			if (nbytes > alignof(__sprt_max_align_t)) {
+				__sprt_free_sized(t, nbytes);
+			} else {
+				__sprt_free(t);
+			}
 		} else {
-			__sprt_aligned_free(t);
+			if (nbytes > alignof(__sprt_max_align_t)) {
+				__sprt_free_aligned_sized(t, alignof(T), nbytes);
+			} else {
+				__sprt_aligned_free(t);
+			}
 		}
 	}
 }

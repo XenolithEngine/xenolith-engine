@@ -22,6 +22,7 @@
 
 #include "SPEventThreadIocp.h"
 #include "../../detail/SPRuntimeDispatchHandleClass.h"
+#include <sprt/wrappers/windows/windows.h>
 
 #include <unistd.h>
 
@@ -91,7 +92,7 @@ Status ThreadIocpHandle::perform(Rc<Task> &&task) {
 	sprt::unique_lock lock(_mutex);
 	_outputQueue.emplace_back(move(task));
 
-	_PostQueuedCompletionStatus(source->port, 1, reinterpret_cast<uintptr_t>(this), nullptr);
+	PostQueuedCompletionStatus(source->port, 1, reinterpret_cast<uintptr_t>(this), nullptr);
 
 	return Status::Ok;
 }
@@ -102,7 +103,7 @@ Status ThreadIocpHandle::perform(dispatch::Function<void()> &&func, Ref *target,
 	sprt::unique_lock lock(_mutex);
 	_outputCallbacks.emplace_back(CallbackInfo{sprt::move(func), target, tag});
 
-	_PostQueuedCompletionStatus(source->port, 1, reinterpret_cast<uintptr_t>(this), nullptr);
+	PostQueuedCompletionStatus(source->port, 1, reinterpret_cast<uintptr_t>(this), nullptr);
 
 	return Status::Ok;
 }

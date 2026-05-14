@@ -109,4 +109,16 @@ BOOL CreateProcessW(LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
 			lpProcessInformation);
 }
 
+WINAPI BOOL TerminateProcess(HANDLE hProcess, UINT uExitCode) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&TerminateProcess)>(loader->kernel32.TerminateProcess,
+			hProcess, uExitCode);
+}
+
+WINAPI BOOL ShellExecuteExW(SHELLEXECUTEINFOW *pExecInfo) {
+	auto loader = sprt::DllLoader::get();
+	return loader->shell32.call<decltype(&ShellExecuteExW)>(loader->shell32.ShellExecuteExW,
+			pExecInfo);
+}
+
 } // extern "C"

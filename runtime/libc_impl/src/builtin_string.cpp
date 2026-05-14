@@ -28,30 +28,6 @@ THE SOFTWARE.
 #include "windows/string.cc"
 #endif
 
-__SPRT_C_FUNC int isalnum(int c) __SPRT_NOEXCEPT { return sprt::__constexpr_isalnum_c(c); }
-
-__SPRT_C_FUNC int isalpha(int c) __SPRT_NOEXCEPT { return sprt::__constexpr_isalpha_c(c); }
-
-__SPRT_C_FUNC int isblank(int c) __SPRT_NOEXCEPT { return sprt::__constexpr_isblank_c(c); }
-
-__SPRT_C_FUNC int iscntrl(int c) __SPRT_NOEXCEPT { return sprt::__constexpr_iscntrl_c(c); }
-
-__SPRT_C_FUNC int isdigit(int c) __SPRT_NOEXCEPT { return sprt::__constexpr_isdigit_c(c); }
-
-__SPRT_C_FUNC int isgraph(int c) __SPRT_NOEXCEPT { return sprt::__constexpr_isgraph_c(c); }
-
-__SPRT_C_FUNC int islower(int c) __SPRT_NOEXCEPT { return sprt::__constexpr_islower_c(c); }
-
-__SPRT_C_FUNC int isprint(int c) __SPRT_NOEXCEPT { return sprt::__constexpr_isprint_c(c); }
-
-__SPRT_C_FUNC int ispunct(int c) __SPRT_NOEXCEPT { return sprt::__constexpr_ispunct_c(c); }
-
-__SPRT_C_FUNC int isspace(int c) __SPRT_NOEXCEPT { return sprt::__constexpr_isspace_c(c); }
-
-__SPRT_C_FUNC int isupper(int c) __SPRT_NOEXCEPT { return sprt::__constexpr_isupper_c(c); }
-
-__SPRT_C_FUNC int isxdigit(int c) __SPRT_NOEXCEPT { return sprt::__constexpr_isxdigit_c(c); }
-
 __SPRT_C_FUNC int tolower(int c) __SPRT_NOEXCEPT {
 	if (c > 0 && c <= 0x7F) {
 		return int(sprt::__constexpr_tolower_c(char(c)));

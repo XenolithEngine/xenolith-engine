@@ -36,7 +36,7 @@
 #endif
 
 #if SPRT_WINDOWS
-#include "private/window/windows/SPRTWinWindowsContextController.h"
+#include "../libc_wrapper/window/windows/SPRTWinWindowsContextController.h"
 #endif
 
 #if SPRT_MACOS

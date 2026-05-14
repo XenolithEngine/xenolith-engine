@@ -118,7 +118,7 @@ void *__libc::get_fd_handle(int fd) const {
 		return nullptr;
 	}
 
-	return &fdPages[pageNumber]->fds[fd % FDS_PER_PAGE];
+	return fdPages[pageNumber]->fds[fd % FDS_PER_PAGE].handle;
 }
 
 int __libc::create_fd(void *handle, const __fd_ops *ops, uint32_t flags, uint32_t mode) {

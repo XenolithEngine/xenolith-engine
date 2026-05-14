@@ -178,7 +178,7 @@ constexpr inline void AllocatorMalloc<T>::deallocate(T *t, size_t n) const noexc
 template <typename T>
 constexpr inline void AllocatorMalloc<T>::__deallocate(T *t, size_t n,
 		size_t bytes) const noexcept {
-	sprt::memory::deallocate<T>(t, n);
+	sprt::memory::deallocate<T>(t, n, bytes);
 }
 
 template <typename T>

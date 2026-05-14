@@ -29,6 +29,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_pthread.h>
 #include <sprt/c/__sprt_unistd.h>
 
+#include "locale.h"
 #include "stdio.h"
 #include "sys/sprt.h"
 
@@ -36,9 +37,6 @@ THE SOFTWARE.
 #define hidden __attribute__((__visibility__("hidden")))
 #define weak_alias(old, new) \
 	extern __typeof(old) new __attribute__((__weak__, __alias__(#old)))
-
-#define UNGET 8
-#define BUFSIZ 1'024
 
 #define _IOFBF 0
 #define _IOLBF 1
@@ -66,7 +64,7 @@ struct __sprt_file_struct {
 	sprt::size_t buf_size;
 	FILE *prev, *next;
 	int fd;
-	int pipe_pid;
+	void *pipe_handle;
 	int mode;
 	int lbf;
 	void *cookie;
@@ -76,7 +74,7 @@ struct __sprt_file_struct {
 	unsigned char *shend;
 	sprt::off_t shlim, shcnt;
 	FILE *prev_locked, *next_locked;
-	struct __locale_struct *locale;
+	locale_t locale;
 	__sprt_pid_t __lock_pid;
 
 	int __lock() {

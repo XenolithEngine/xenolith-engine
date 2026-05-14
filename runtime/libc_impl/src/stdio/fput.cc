@@ -2,6 +2,8 @@
 #include <string.h>
 #include "../../include/__impl_file.h"
 
+__SPRT_C_FUNC FILE *const stdout;
+
 static int locking_putc(int c, FILE *f) {
 	auto tok = f->__lock();
 	c = __putc_unlocked(c, f);
@@ -31,8 +33,6 @@ __SPRT_C_FUNC int fputs(const char *__restrict s, FILE *__restrict f) __SPRT_NOE
 weak_alias(fputs, fputs_unlocked);
 
 __SPRT_C_FUNC int putc(int c, FILE *f) __SPRT_NOEXCEPT { return do_putc(c, f); }
-
-__SPRT_C_FUNC FILE *const stdout;
 
 __SPRT_C_FUNC int putchar(int c) __SPRT_NOEXCEPT { return do_putc(c, stdout); }
 

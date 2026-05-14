@@ -64,4 +64,9 @@ __SPRT_C_FUNC int futimens(int __fd, const struct __SPRT_TIMESPEC_NAME *times) _
 	return fdSlot->ops->fo_utimens(fdSlot, times);
 }
 
+__SPRT_C_FUNC mode_t umask(mode_t mask) __SPRT_NOEXCEPT {
+	mask &= 0777;
+	return __libc::get()->umask.exchange(mask);
+}
+
 } // namespace sprt

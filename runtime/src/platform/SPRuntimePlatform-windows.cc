@@ -29,14 +29,15 @@
 #include <sprt/cxx/mutex>
 #include <sprt/runtime/filesystem/filepath.h>
 
-#include <sys/winapi.h>
-
 #include "private/SPRTPrivate.h"
+
+#include <sprt/wrappers/windows/windows.h>
 
 namespace sprt::unicode {
 
 static auto mapBuffer(WideStringView data, char16_t *buf, size_t count, int flags) {
-	return _LCMapString(LOCALE_NAME_USER_DEFAULT, flags, data.data(), data.size(), buf, int(count));
+	return LCMapStringEx(LOCALE_NAME_USER_DEFAULT, flags, (wchar_t *)data.data(), data.size(),
+			(wchar_t *)buf, int(count), nullptr, nullptr, 0);
 }
 
 template <typename Interface>
@@ -188,8 +189,8 @@ bool compare(StringView l, StringView r, int *result) {
 }
 
 bool compare(WideStringView l, WideStringView r, int *result) {
-	auto ret = _CompareString(LOCALE_NAME_SYSTEM_DEFAULT, NORM_LINGUISTIC_CASING, l.data(),
-			l.size(), r.data(), r.size());
+	auto ret = CompareStringEx(LOCALE_NAME_SYSTEM_DEFAULT, NORM_LINGUISTIC_CASING,
+			(wchar_t *)l.data(), l.size(), (wchar_t *)r.data(), r.size(), nullptr, nullptr, 0);
 	if (ret > 0) {
 		*result = ret - CSTR_EQUAL;
 		return true;
@@ -206,8 +207,8 @@ bool caseCompare(StringView l, StringView r, int *result) {
 }
 
 bool caseCompare(WideStringView l, WideStringView r, int *result) {
-	auto ret = _CompareString(LOCALE_NAME_SYSTEM_DEFAULT, NORM_LINGUISTIC_CASING | NORM_IGNORECASE,
-			l.data(), l.size(), r.data(), r.size());
+	auto ret = CompareStringEx(LOCALE_NAME_SYSTEM_DEFAULT, NORM_LINGUISTIC_CASING | NORM_IGNORECASE,
+			(wchar_t *)l.data(), l.size(), (wchar_t *)r.data(), r.size(), nullptr, nullptr, 0);
 	if (ret > 0) {
 		*result = ret - CSTR_EQUAL;
 		return true;
@@ -218,14 +219,15 @@ bool caseCompare(WideStringView l, WideStringView r, int *result) {
 bool idnToAscii(const callback<void(StringView)> &cb, StringView source) {
 	bool ret = false;
 	unicode::toUtf16([&](WideStringView usource) {
-		auto bufSize = _IdnToAscii(0, usource.data(), usource.size(), nullptr, 0);
+		auto bufSize = IdnToAscii(0, (wchar_t *)usource.data(), usource.size(), nullptr, 0);
 		if (bufSize == 0) {
 			return;
 		}
 
 		auto buf = __sprt_typed_malloca(char16_t, bufSize + 1);
 
-		bufSize = _IdnToAscii(0, usource.data(), usource.size(), buf, bufSize + 1);
+		bufSize = IdnToAscii(0, (wchar_t *)usource.data(), usource.size(), (wchar_t *)buf,
+				bufSize + 1);
 		if (bufSize == 0) {
 			__sprt_freea(buf);
 			return;
@@ -243,14 +245,15 @@ bool idnToAscii(const callback<void(StringView)> &cb, StringView source) {
 bool idnToUnicode(const callback<void(StringView)> &cb, StringView source) {
 	bool ret = false;
 	unicode::toUtf16([&](WideStringView usource) {
-		auto bufSize = _IdnToUnicode(0, usource.data(), usource.size(), nullptr, 0);
+		auto bufSize = IdnToUnicode(0, (wchar_t *)usource.data(), usource.size(), nullptr, 0);
 		if (bufSize == 0) {
 			return;
 		}
 
 		auto buf = __sprt_typed_malloca(char16_t, bufSize + 1);
 
-		bufSize = _IdnToUnicode(0, usource.data(), usource.size(), buf, bufSize + 1);
+		bufSize = IdnToUnicode(0, (wchar_t *)usource.data(), usource.size(), (wchar_t *)buf,
+				bufSize + 1);
 		if (bufSize == 0) {
 			__sprt_freea(buf);
 			return;
@@ -269,6 +272,7 @@ bool idnToUnicode(const callback<void(StringView)> &cb, StringView source) {
 
 namespace sprt::platform {
 
+char GlobalConfig::localeBuf[6] = "en-us";
 static GlobalConfig s_globalConfig;
 
 bool initialize(AppConfig &&cfg, int &resultCode) {
@@ -310,7 +314,7 @@ memory::pool_t *getConfigPool() { return s_globalConfig._pool; }
 StringView getOsLocale() {
 	static char locale[32] = {0};
 	static char16_t wlocale[32] = {0};
-	auto len = _GetUserDefaultLocaleName(wlocale, 32);
+	auto len = GetUserDefaultLocaleName((wchar_t *)wlocale, 32);
 
 	if (locale[0] == 0) {
 		auto writePtr = locale;

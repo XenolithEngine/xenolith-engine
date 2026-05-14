@@ -313,7 +313,8 @@ WINAPI BOOL GetModuleHandleExW(DWORD dwFlags, LPCWSTR lpModuleName, PHMODULE phM
 
 WINAPI DWORD GetModuleFileNameW(HMODULE hModule, LPWSTR lpFilename, DWORD nSize);
 
-__SPRT_END_DECL
+WINAPI PVOID RtlPcToFileHeader(PVOID PcValue, PVOID *BaseOfImage);
 
+__SPRT_END_DECL
 
 #endif // SPRT_WRAPPERS_WINDOWS_DL_API_H_

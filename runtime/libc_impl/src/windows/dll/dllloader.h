@@ -39,6 +39,8 @@ THE SOFTWARE.
 #include "dll_shcore.h"
 #include "dll_dwmapi.h"
 #include "dll_userenv.h"
+#include "dll_bcrypt.h"
+#include "dll_ws2_32.h"
 
 // Mark all loader functions with this to remove buffer checks from functions,
 // that can be called before security cookie initialization
@@ -82,8 +84,10 @@ struct DllLoader {
 	ShcoreTable shcore; // 11
 	DwmapiTable dwmapi; // 12
 	UserenvTable userenv; // 13
+	BCryptTable bcrypt; // 14
+	Ws2_32Table ws2_32; // 15
 
-	DllTable *__tables[16];
+	DllTable *__tables[17];
 
 	DllLoader()
 	: __tables{
@@ -101,6 +105,8 @@ struct DllLoader {
 		  &shcore,
 		  &dwmapi,
 		  &userenv,
+		  &bcrypt,
+		  &ws2_32,
 		  nullptr,
 	  } { }
 

@@ -114,7 +114,7 @@ __SPRT_C_FUNC __SPRT_ID(time_t) __SPRT_ID(mktime)(struct __SPRT_TM_NAME *_tm) {
 #endif
 }
 
-__SPRT_C_FUNC __SPRT_ID(time_t)
+__SPRT_C_FUNC __SPRT_ID(size_t)
 		__SPRT_ID(strftime)(char *__SPRT_RESTRICT buf, __SPRT_ID(size_t) size,
 				const char *__SPRT_RESTRICT fmt, const struct __SPRT_TM_NAME *__SPRT_RESTRICT _tm) {
 #if __STDC_HOSTED__ == 0

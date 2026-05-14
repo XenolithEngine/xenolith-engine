@@ -78,4 +78,11 @@ DWORD GetModuleFileNameW(HMODULE hModule, LPWSTR lpFilename, DWORD nSize) {
 	return loader->kernel32.call<decltype(&GetModuleFileNameW)>(loader->kernel32.GetModuleFileNameW,
 			hModule, lpFilename, nSize);
 }
+
+WINAPI PVOID RtlPcToFileHeader(PVOID PcValue, PVOID *BaseOfImage) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&RtlPcToFileHeader)>(loader->kernel32.RtlPcToFileHeader,
+			PcValue, BaseOfImage);
+}
+
 } // extern "C"

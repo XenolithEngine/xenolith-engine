@@ -35,6 +35,7 @@ THE SOFTWARE.
 #include "windows/dll/dllstub_time_api.cc"
 #include "windows/dll/dllstub_user_api.cc"
 #include "windows/dll/dllstub_windows.cc"
+#include "windows/dll/dllstub_winsock.cc"
 #include "windows/dll/dllstub_security_api.cc"
 #include "windows/startup.cc"
 #include "windows/terminate.cc"

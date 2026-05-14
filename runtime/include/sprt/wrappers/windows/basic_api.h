@@ -222,6 +222,10 @@ WINAPI DWORD GetEnvironmentVariableA(LPCSTR lpName, LPSTR lpBuffer, DWORD nSize)
 
 WINAPI BOOL SetEnvironmentVariableA(LPCSTR lpName, LPCSTR lpValue);
 
+WINAPI DWORD GetEnvironmentVariableW(LPCWSTR lpName, LPWSTR lpBuffer, DWORD nSize);
+
+WINAPI BOOL SetEnvironmentVariableW(LPCWSTR lpName, LPCWSTR lpValue);
+
 WINAPI VOID Sleep(DWORD dwMilliseconds);
 
 WINAPI BOOL WaitOnAddress(volatile VOID *Address, PVOID CompareAddress, SIZE_T AddressSize,

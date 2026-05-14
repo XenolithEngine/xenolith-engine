@@ -65,6 +65,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_cpuset_t.h>
 #include <sprt/c/bits/__sprt_uint64_t.h>
 #include <sprt/c/bits/__sprt_uint32_t.h>
+#include <sprt/c/bits/pthread.h>
 #include <sprt/c/bits/sched_param.h>
 #include <sprt/c/cross/__sprt_signal.h>
 
@@ -114,58 +115,12 @@ THE SOFTWARE.
 
 #define __SPRT_PTHREAD_NULL (( __SPRT_ID(pthread_t))0)
 
-#define __SPRT_PTHREAD_COMMON_ALIGNMENT 8
-
 // clang-format off
 #define __SPRT_PTHREAD_KEYS_MAX (0xFFFFFFFFu - 1u)
 #define __SPRT_PTHREAD_DESTRUCTOR_ITERATIONS 4
 // clang-format on
 
 #define __SPRT_PTHREAD_NAMEMAXLEN 255
-
-typedef void *__SPRT_ID(pthread_t);
-
-typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
-	__SPRT_ID(uint32_t) __data[6];
-} __SPRT_ID(pthread_attr_t);
-
-typedef __SPRT_ID(uint32_t) __SPRT_ID(pthread_once_t);
-
-typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
-	__SPRT_ID(uint32_t) __data[1];
-} __SPRT_ID(pthread_mutexattr_t);
-
-typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
-	__SPRT_ID(uint64_t) __data[3];
-} __SPRT_ID(pthread_mutex_t);
-
-typedef __SPRT_ID(uint32_t) __SPRT_ID(pthread_key_t);
-
-typedef volatile __SPRT_ID(uint32_t) __SPRT_ID(pthread_spinlock_t);
-
-typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
-	__SPRT_ID(uint64_t) __size[3];
-} __SPRT_ID(pthread_cond_t);
-
-typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
-	__SPRT_ID(uint32_t) __size[2];
-} __SPRT_ID(pthread_condattr_t);
-
-typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
-	__SPRT_ID(uint32_t) __size[1];
-} __SPRT_ID(pthread_rwlockattr_t);
-
-typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
-	__SPRT_ID(uint32_t) __size[1];
-} __SPRT_ID(pthread_barrierattr_t);
-
-typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
-	__SPRT_ID(uint32_t) __size[5];
-} __SPRT_ID(pthread_rwlock_t);
-
-typedef struct SPRT_ALIGNAS(__SPRT_PTHREAD_COMMON_ALIGNMENT) {
-	__SPRT_ID(uint32_t) __size[5];
-} __SPRT_ID(pthread_barrier_t);
 
 __SPRT_BEGIN_DECL
 

@@ -55,7 +55,7 @@ typedef __SPRT_ID(wchar_t) wchar_t;
 __SPRT_BEGIN_DECL
 
 #if __STDC_HOSTED__ == 0
-size_t ___mb_cur_max_func();
+size_t ___mb_cur_max_func() __SPRT_NOEXCEPT;
 #endif
 
 SPRT_UMBRELLA_FUNC
@@ -195,6 +195,22 @@ void free(void *value) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_free(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void free_sized(void *value, size_t size) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_free_sized(value, size);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+void free_aligned_sized(void *value, size_t alignment, size_t size) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_free_aligned_sized(value, alignment, size);
 }
 #endif
 

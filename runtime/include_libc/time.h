@@ -91,7 +91,7 @@ time_t mktime(struct tm *_tm) SPRT_UMBRELLA_END
 #endif
 
 SPRT_UMBRELLA_FUNC
-time_t strftime(char *__SPRT_RESTRICT buf, size_t size, const char *__SPRT_RESTRICT fmt,
+size_t strftime(char *__SPRT_RESTRICT buf, size_t size, const char *__SPRT_RESTRICT fmt,
 		const struct tm *__SPRT_RESTRICT _tm) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {

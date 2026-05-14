@@ -25,17 +25,17 @@
 
 #include <sprt/runtime/dispatch/queue.h>
 #include "../../detail/SPRuntimeDispatchQueueData.h"
-#include <sys/winapi.h>
+#include <sprt/wrappers/windows/file_api.h>
 
 namespace sprt::dispatch {
 
 struct SPRT_API IocpData : public PlatformQueueData {
-	static constexpr uint32_t InternalFlag = 1 << 29;
-	static constexpr uint32_t CancelFlag = 1 << 30;
+	static constexpr DWORD InternalFlag = 1 << 29;
+	static constexpr DWORD CancelFlag = 1 << 30;
 
 	void *_port = nullptr;
 
-	Queue::Vector<overlapped_entry> _events;
+	Queue::Vector<OVERLAPPED_ENTRY> _events;
 
 	uint32_t _receivedEvents = 0;
 	uint32_t _processedEvents = 0;

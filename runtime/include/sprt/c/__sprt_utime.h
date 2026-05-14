@@ -34,7 +34,7 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-struct __SPRT_ID(utimbuf) {
+struct __SPRT_UTIMBUF_NAME {
 	__SPRT_ID(time_t) actime;
 	__SPRT_ID(time_t) modtime;
 };

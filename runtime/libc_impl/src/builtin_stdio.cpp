@@ -61,6 +61,7 @@ int __fmodeflags(const char *mode) {
 #if SPRT_WINDOWS
 #include "windows/file.cc"
 #include "windows/stdio.cc"
+#include "windows/popen.cc"
 #endif
 
 #include "stdio/__overflow.cc"
@@ -137,5 +138,7 @@ ssize_t getline(char **__SPRT_RESTRICT lineptr, size_t *__SPRT_RESTRICT n,
 		FILE *__SPRT_RESTRICT stream) __SPRT_NOEXCEPT {
 	return getdelim(lineptr, n, '\n', stream);
 }
+
+int __acrt_iob_func(FILE *f) __SPRT_NOEXCEPT { return fileno(f); }
 }
 } // namespace sprt

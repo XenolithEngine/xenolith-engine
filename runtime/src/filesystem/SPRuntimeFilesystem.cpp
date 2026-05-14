@@ -39,9 +39,7 @@
 #include "SPRuntimeFilesystem-linux.cc"
 #endif
 
-#if __SPRT_CONFIG_HAVE_WINAPI
-#include <sys/winapi.h>
-#endif
+#include <sprt/wrappers/windows/file_api.h>
 
 namespace sprt::filesystem {
 
@@ -52,13 +50,13 @@ bool getCurrentDir(const callback<void(StringView)> &cb, StringView path) {
 	}
 
 #if __SPRT_CONFIG_HAVE_WINAPI
-	auto bufferLen = _GetCurrentDirectory(0, nullptr);
+	auto bufferLen = GetCurrentDirectoryW(0, nullptr);
 	if (bufferLen == 0) {
 		return false;
 	}
 
 	auto buf = __sprt_typed_malloca(char16_t, bufferLen + 1);
-	bufferLen = _GetCurrentDirectory(bufferLen + 1, buf);
+	bufferLen = GetCurrentDirectoryW(bufferLen + 1, (wchar_t *)buf);
 	buf[bufferLen] = 0;
 	if (bufferLen == 0) {
 		return false;

@@ -39,10 +39,12 @@ THE SOFTWARE.
 
 #pragma clang diagnostic ignored "-Wbuiltin-macro-redefined"
 
+#if !SPRT_WINDOWS
 #ifdef __STDC_HOSTED__
 #define __SPRT_STDC_HOSTED__ 1
 #undef __STDC_HOSTED__
 //#define SIMDE_STDC_HOSTED 1
+#endif
 #endif
 
 #define SIMDE_MATH_NO_LIBM 1
@@ -57,8 +59,10 @@ THE SOFTWARE.
 #include <simde/x86/sse.h>
 #endif
 
+#if !SPRT_WINDOWS
 #ifdef __SPRT_STDC_HOSTED__
 #define __STDC_HOSTED__ __SPRT_STDC_HOSTED__
+#endif
 #endif
 
 // Defined by build system

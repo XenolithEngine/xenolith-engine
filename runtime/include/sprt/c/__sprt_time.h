@@ -70,7 +70,7 @@ SPRT_API __SPRT_ID(clock_t) __SPRT_ID(clock)(void);
 SPRT_API __SPRT_ID(time_t) __SPRT_ID(time)(__SPRT_ID(time_t) *);
 SPRT_API double __SPRT_ID(difftime)(__SPRT_ID(time_t), __SPRT_ID(time_t));
 SPRT_API __SPRT_ID(time_t) __SPRT_ID(mktime)(struct __SPRT_TM_NAME *);
-SPRT_API __SPRT_ID(time_t) __SPRT_ID(strftime)(char *__SPRT_RESTRICT, __SPRT_ID(size_t),
+SPRT_API __SPRT_ID(size_t) __SPRT_ID(strftime)(char *__SPRT_RESTRICT, __SPRT_ID(size_t),
 		const char *__SPRT_RESTRICT, const struct __SPRT_TM_NAME *__SPRT_RESTRICT);
 SPRT_API struct __SPRT_TM_NAME *__SPRT_ID(gmtime)(const __SPRT_ID(time_t) *);
 SPRT_API struct __SPRT_TM_NAME *__SPRT_ID(localtime)(const __SPRT_ID(time_t) *);

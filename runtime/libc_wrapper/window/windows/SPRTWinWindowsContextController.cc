@@ -21,11 +21,11 @@
  **/
 
 
-#include "private/window/windows/SPRTWinWindowsContextController.h"
-#include "private/window/windows/SPRTWinWindowsDisplayConfigManager.h"
-#include "private/window/windows/SPRTWinWindowsMessageWindow.h"
-#include "private/window/windows/SPRTWinWindowsWindow.h"
-#include "private/window/windows/SPRTWinWindowsWindowClass.h"
+#include "SPRTWinWindowsContextController.h"
+#include "SPRTWinWindowsDisplayConfigManager.h"
+#include "SPRTWinWindowsMessageWindow.h"
+#include "SPRTWinWindowsWindow.h"
+#include "SPRTWinWindowsWindowClass.h"
 
 #include <sprt/runtime/log.h>
 

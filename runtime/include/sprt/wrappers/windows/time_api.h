@@ -26,6 +26,14 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
 
+// clang-format off
+#define TIME_ZONE_ID_UNKNOWN  0
+#define TIME_ZONE_ID_STANDARD 1
+#define TIME_ZONE_ID_DAYLIGHT 2
+
+#define TIME_ZONE_ID_INVALID ((DWORD)0xFFFFFFFF)
+// clang-format on
+
 typedef struct _SYSTEMTIME {
 	WORD wYear;
 	WORD wMonth;
@@ -47,7 +55,21 @@ typedef struct _TIME_ZONE_INFORMATION {
 	LONG DaylightBias;
 } TIME_ZONE_INFORMATION, *PTIME_ZONE_INFORMATION, *LPTIME_ZONE_INFORMATION;
 
+typedef struct _TIME_DYNAMIC_ZONE_INFORMATION {
+	LONG Bias;
+	WCHAR StandardName[32];
+	SYSTEMTIME StandardDate;
+	LONG StandardBias;
+	WCHAR DaylightName[32];
+	SYSTEMTIME DaylightDate;
+	LONG DaylightBias;
+	WCHAR TimeZoneKeyName[128];
+	BOOLEAN DynamicDaylightTimeDisabled;
+} DYNAMIC_TIME_ZONE_INFORMATION, *PDYNAMIC_TIME_ZONE_INFORMATION;
+
 __SPRT_BEGIN_DECL
+
+WINAPI DWORD GetDynamicTimeZoneInformation(PDYNAMIC_TIME_ZONE_INFORMATION pTimeZoneInformation);
 
 WINAPI DWORD GetTimeZoneInformation(LPTIME_ZONE_INFORMATION lpTimeZoneInformation);
 

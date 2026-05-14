@@ -20,7 +20,7 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/windows/SPRTWinWindowsDisplayConfigManager.h"
+#include "SPRTWinWindowsDisplayConfigManager.h"
 
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/detail/emplace_ordered.h>
@@ -437,7 +437,7 @@ void WindowsDisplayConfigManager::applyDisplayConfig(NotNull<DisplayConfig> conf
 		};
 
 		ModeData(wchar_t *n) : name(n) {
-			ZeroMemory(&dm, sizeof(dm));
+			memset(&dm, 0, sizeof(dm));
 			dm.dmSize = sizeof(dm);
 		}
 	};

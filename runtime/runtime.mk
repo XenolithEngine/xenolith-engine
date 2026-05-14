@@ -107,6 +107,7 @@ MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_CFLAGS := \
 	$(MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_FLAGS) \
 	-nostdinc \
 	-ffreestanding \
+	-fbuiltin \
 	-fexcess-precision=standard \
 	-frounding-math \
 	-fno-strict-aliasing \

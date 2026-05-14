@@ -41,13 +41,28 @@ struct __locale_map {
 static_assert(sprt::is_trivially_constructible_v<__locale_map>);
 
 static __locale_map s_localeMapCUtf8;
+static __freestanding_locale_struct s_localeStructCUtf8;
 
 void __init_locale() {
 	memcpy(s_localeMapCUtf8.name, "C.UTF8", 7);
 	memcpy(s_localeMapCUtf8.wname, L"C.UTF8", 7 * sizeof(wchar_t));
+
+	s_localeStructCUtf8 = __freestanding_locale_struct{
+		__locale_struct{
+			&s_localeMapCUtf8,
+			&s_localeMapCUtf8,
+			&s_localeMapCUtf8,
+			&s_localeMapCUtf8,
+			&s_localeMapCUtf8,
+			&s_localeMapCUtf8,
+		},
+		1,
+	};
 }
 
 __locale_map *__get_default_locale() { return &s_localeMapCUtf8; }
+
+__freestanding_locale_struct *__get_default_locale_struct() { return &s_localeStructCUtf8; }
 
 __locale_map *__get_locale(int cat, const char *localeName, size_t len) {
 	if (!localeName) {
@@ -229,7 +244,7 @@ static bool __populate_lconv(lconv *lconv, const wchar_t *localeNameNimeric,
 		return false;
 	}
 
-	memset(lconv, 0, sizeof(__sprt_lconv));
+	sprt::memset(lconv, 0, sizeof(__sprt_lconv));
 
 	tl_lconvData[0] = 0;
 	char *targetBuf = tl_lconvData;

@@ -64,6 +64,15 @@ char *strerror(int);
 int strerror_r(int err, char *buf, size_t buflen);
 
 void qsort(void *a, size_t b, size_t c, int (*value)(const void *, const void *));
+
+void *malloc(size_t value);
+void *calloc(size_t a, size_t value);
+void *realloc(void *ptr, size_t value);
+void free(void *value);
+void free_sized(void *value, size_t s);
+void free_aligned_sized(void *value, size_t al, size_t s);
+
+void abort();
 }
 
 #endif // RUNTIME_CORE_WINDOWS_LIBC_H_

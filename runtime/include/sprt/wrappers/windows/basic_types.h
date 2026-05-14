@@ -77,7 +77,7 @@ typedef float FLOAT, *PFLOAT;
 typedef double DOUBLE, *PDOUBLE;
 
 /* BOOL type */
-typedef int BOOL;
+typedef int BOOL, *LPBOOL;
 
 /* BOOLEAN type */
 typedef BYTE BOOLEAN;
@@ -106,7 +106,7 @@ typedef const void *PCVOID, *LPCVOID;
 
 typedef __SPRT_ID(size_t) SIZE_T, *PSIZE_T;
 
-typedef char CCHAR, *PCCHAR;
+typedef char CCHAR, *PCCHAR, *LPCCH;
 typedef short CSHORT, *PCSHORT;
 typedef ULONG CLONG, *PCLONG;
 

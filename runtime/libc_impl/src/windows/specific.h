@@ -23,10 +23,12 @@ THE SOFTWARE.
 #ifndef RUNTIME_FREESTANDING_SRC_WINDOWS_MALLOCA_STRING_H_
 #define RUNTIME_FREESTANDING_SRC_WINDOWS_MALLOCA_STRING_H_
 
+#include <sprt/wrappers/windows/basic_api.h>
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/basic_types.h>
 #include <sprt/runtime/stringview.h>
 #include <sprt/c/sys/__sprt_stat.h>
+#include <sprt/c/sys/__sprt_mman.h>
 
 namespace sprt::platform {
 
@@ -122,6 +124,26 @@ static inline LARGE_INTEGER __toFiletime(const struct __SPRT_TIMESPEC_NAME *ts) 
 	total_ns100 += EPOCH_DIFF_NS100;
 	ret.QuadPart = total_ns100;
 	return ret;
+}
+
+inline DWORD __getProtectFlags(int prot) {
+	DWORD flProtect = 0;
+	if (prot & __SPRT_PROT_EXEC) {
+		if (prot & __SPRT_PROT_WRITE) {
+			flProtect = PAGE_EXECUTE_READWRITE;
+		} else if (prot & __SPRT_PROT_READ) {
+			flProtect = PAGE_EXECUTE_READ;
+		} else {
+			flProtect |= PAGE_EXECUTE;
+		}
+	} else if (prot & __SPRT_PROT_WRITE) {
+		flProtect = PAGE_READWRITE;
+	} else if (prot & __SPRT_PROT_READ) {
+		flProtect = PAGE_READONLY;
+	} else {
+		flProtect = PAGE_NOACCESS;
+	}
+	return flProtect;
 }
 
 bool isAppContainer();

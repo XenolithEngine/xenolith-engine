@@ -23,6 +23,7 @@ THE SOFTWARE.
 #include "../../include/__impl_libc.h"
 #include "unistd.h"
 #include "sys/ioctl.h"
+#include "sys/mman.h"
 #include "specific.h"
 
 #include <sprt/c/__sprt_fcntl.h>
@@ -442,6 +443,121 @@ static int __flie_utimens(__fd_slot *fp, const struct __SPRT_TIMESPEC_NAME *time
 	return platform::hutimens(fp->handle, times);
 }
 
+static void *__file_mmap(__fd_slot *fp, void *addr, size_t length, int prot, int flags,
+		off_t offset) {
+	auto flProtect = platform::__getProtectFlags(prot);
+
+	if (flProtect == PAGE_NOACCESS) {
+		__sprt_errno = EINVAL;
+		return __SPRT_MAP_FAILED;
+	}
+
+	if (flags & __SPRT_MAP_HUGETLB) {
+		flProtect |= SEC_LARGE_PAGES;
+	}
+
+	LARGE_INTEGER liOffset = {
+		.QuadPart = offset,
+	};
+
+	HANDLE hMap = CreateFileMappingW(fp->handle, NULL, flProtect, liOffset.HighPart,
+			liOffset.LowPart, NULL);
+	if (!hMap) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return __SPRT_MAP_FAILED;
+	}
+
+	DWORD dwDesiredAccess = FILE_MAP_READ;
+	if (prot & __SPRT_PROT_WRITE) {
+		dwDesiredAccess |= FILE_MAP_WRITE;
+	}
+	if (prot & __SPRT_PROT_EXEC) {
+		dwDesiredAccess |= FILE_MAP_EXECUTE;
+	}
+
+	if (flags & __SPRT_MAP_PRIVATE) {
+		dwDesiredAccess |= FILE_MAP_COPY;
+	}
+
+	if (flags & __SPRT_MAP_HUGETLB) {
+		dwDesiredAccess |= FILE_MAP_LARGE_PAGES;
+	}
+
+	void *pMap = MapViewOfFile(hMap, dwDesiredAccess, liOffset.HighPart, liOffset.LowPart, length);
+
+	CloseHandle(hMap); // MapViewOfFile owns ref
+
+	if (!pMap) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		CloseHandle(hMap);
+		return __SPRT_MAP_FAILED;
+	}
+
+	return pMap;
+}
+
+static int __file_munmap(__fd_slot *fp, void *addr, size_t length) {
+	BOOL ok = UnmapViewOfFile(addr);
+	if (!ok) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+	return 0;
+}
+
+static int __file_msync(__fd_slot *fp, void *addr, size_t length, int flags) {
+	if (!addr || length == 0) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+
+	// MS_ASYNC: Windows schedules automatically (noop)
+	if (flags == __SPRT_MS_ASYNC) {
+		return 0;
+	}
+
+	// MS_SYNC or MS_INVALIDATE: flush dirty pages
+	if (flags != __SPRT_MS_SYNC && flags != __SPRT_MS_INVALIDATE) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+
+	BOOL ok = FlushViewOfFile(addr, length);
+	if (!ok) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+
+	if (fp->handle != INVALID_HANDLE_VALUE) {
+		FlushFileBuffers(fp->handle);
+		return 0;
+	}
+
+	__sprt_errno = EBADF;
+	return -1;
+}
+
+void *__file_mmap_anon(void *addr, size_t length, int prot, int flags, off_t offset) {
+	auto flProtect = platform::__getProtectFlags(prot);
+
+	auto retAddr = VirtualAlloc(addr, length, MEM_COMMIT | MEM_RESERVE, flProtect);
+	if (retAddr) {
+		return retAddr;
+	} else {
+		__sprt_errno = ENOMEM;
+		return __SPRT_MAP_FAILED;
+	}
+}
+
+int __file_munmap_anon(void *addr, size_t length) {
+	BOOL ok = VirtualFree(addr, 0, MEM_RELEASE);
+	if (!ok) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
+	}
+	return 0;
+}
+
 void __libc::load_file_fd_ops(__fd_ops *ops) {
 	ops->mask = __fd_ops_mask::opendir;
 	ops->fo_read = &__file_read;
@@ -455,6 +571,9 @@ void __libc::load_file_fd_ops(__fd_ops *ops) {
 	ops->fo_stat = &__file_stat;
 	ops->fo_chmod = &__file_chmod;
 	ops->fo_utimens = &__flie_utimens;
+	ops->fo_mmap = &__file_mmap;
+	ops->fo_munmap = &__file_munmap;
+	ops->fo_msync = &__file_msync;
 }
 
 } // namespace sprt

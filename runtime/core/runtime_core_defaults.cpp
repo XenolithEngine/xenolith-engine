@@ -264,6 +264,37 @@ __SPRT_C_FUNC void __SPRT_ID(qsort_impl)(void *array, size_t n, size_t size,
 	qsort(array, n, size, comparator);
 }
 
+__SPRT_C_FUNC void *__SPRT_ID(malloc_impl)(size_t size) __SPRT_NOEXCEPT { return ::malloc(size); }
+
+__SPRT_C_FUNC void *__SPRT_ID(calloc_impl)(size_t n, size_t size) __SPRT_NOEXCEPT {
+	return ::calloc(n, size);
+}
+
+__SPRT_C_FUNC void *__SPRT_ID(realloc_impl)(void *ptr, size_t size) __SPRT_NOEXCEPT {
+	return ::realloc(ptr, size);
+}
+
+__SPRT_C_FUNC void __SPRT_ID(free_impl)(void *ptr) __SPRT_NOEXCEPT { return ::free(ptr); }
+
+__SPRT_C_FUNC void __SPRT_ID(free_sized)(void *ptr, size_t size) __SPRT_NOEXCEPT {
+#if SPRT_WINDOWS
+	return ::free_sized(ptr, size);
+#else
+	return ::free(ptr);
+#endif
+}
+
+__SPRT_C_FUNC void __SPRT_ID(
+		free_aligned_sized)(void *ptr, size_t alignment, size_t size) __SPRT_NOEXCEPT {
+#if SPRT_WINDOWS
+	return ::free_aligned_sized(ptr, alignment, size);
+#else
+	return ::free(ptr);
+#endif
+}
+
+__SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(abort_impl)(void) { ::abort(); }
+
 } // namespace sprt
 
 

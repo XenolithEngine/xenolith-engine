@@ -21,6 +21,7 @@
  **/
 
 #include <sprt/wrappers/windows/windows.h>
+#include <sprt/wrappers/windows/com_api.h>
 
 #include "dllloader.h"
 
@@ -350,6 +351,14 @@ WINAPI int CompareStringEx(LPCWSTR lpLocaleName, DWORD dwCmpFlags, LPCWCH lpStri
 			lpVersionInformation, lpReserved, lParam);
 }
 
+WINAPI int WideCharToMultiByte(UINT CodePage, DWORD dwFlags, LPCWCH lpWideCharStr, int cchWideChar,
+		LPSTR lpMultiByteStr, int cbMultiByte, LPCCH lpDefaultChar, LPBOOL lpUsedDefaultChar) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&WideCharToMultiByte)>(
+			loader->kernel32.WideCharToMultiByte, CodePage, dwFlags, lpWideCharStr, cchWideChar,
+			lpMultiByteStr, cbMultiByte, lpDefaultChar, lpUsedDefaultChar);
+}
+
 WINAPI int GetLocaleInfoEx(LPCWSTR lpLocaleName, LCTYPE LCType, LPWSTR lpLCData, int cchData) {
 	auto loader = sprt::DllLoader::get();
 	return loader->kernel32.call<decltype(&GetLocaleInfoEx)>(loader->kernel32.GetLocaleInfoEx,
@@ -396,6 +405,87 @@ WINAPI void CoUninitialize() {
 WINAPI void CoTaskMemFree(LPVOID pv) {
 	auto loader = sprt::DllLoader::get();
 	loader->combase.call<decltype(&CoTaskMemFree)>(loader->combase.CoTaskMemFree, pv);
+}
+
+WINAPI HRESULT SHGetKnownFolderPath(REFKNOWNFOLDERID rfid, DWORD dwFlags, HANDLE hToken,
+		PWSTR *ppszPath) {
+	auto loader = sprt::DllLoader::get();
+	return loader->shell32.call<decltype(&SHGetKnownFolderPath)>(
+			loader->shell32.SHGetKnownFolderPath, rfid, dwFlags, hToken, ppszPath);
+}
+
+WINAPI int RestartEventCompletion2(void *hPacket, void *hIOCP, void *hEvent,
+		DWORD dwNumberOfBytesTransferred, UINT_PTR dwCompletionKey, void *lpOverlapped) {
+	HRESULT hr = NtAssociateWaitCompletionPacket(hPacket, hIOCP, hEvent, (PVOID)dwCompletionKey,
+			(PVOID)lpOverlapped, 0, dwNumberOfBytesTransferred, NULL);
+	if (SUCCEEDED(hr)) {
+		return TRUE;
+	} else {
+		switch (hr) {
+		case STATUS_NO_MEMORY: SetLastError(ERROR_OUTOFMEMORY); break;
+		case STATUS_INVALID_HANDLE: // not valid handle passed for hIOCP
+		case STATUS_OBJECT_TYPE_MISMATCH: // incorrect handle passed for hIOCP
+		case STATUS_INVALID_PARAMETER_1:
+		case STATUS_INVALID_PARAMETER_2: SetLastError(ERROR_INVALID_PARAMETER); break;
+		case STATUS_INVALID_PARAMETER_3:
+			if (hEvent) {
+				SetLastError(ERROR_INVALID_HANDLE);
+			} else {
+				SetLastError(ERROR_INVALID_PARAMETER);
+			}
+			break;
+		default: SetLastError(hr);
+		}
+		return FALSE;
+	}
+}
+
+WINAPI int RestartEventCompletion(void *hPacket, void *hIOCP, void *hEvent,
+		const void **ncompletion) {
+	if (!ncompletion) {
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+
+	auto completion = (const OVERLAPPED_ENTRY *)ncompletion;
+
+	return RestartEventCompletion2(hPacket, hIOCP, hEvent, completion->dwNumberOfBytesTransferred,
+			completion->lpCompletionKey, completion->lpOverlapped);
+}
+
+WINAPI int CancelEventCompletion(void *hPacket, int cancel) {
+	HRESULT hr = NtCancelWaitCompletionPacket(hPacket, cancel);
+	if (SUCCEEDED(hr)) {
+		return TRUE;
+	} else {
+		SetLastError(hr);
+		return FALSE;
+	}
+}
+
+WINAPI void *ReportEventAsCompletion(void *hIOCP, void *hEvent, DWORD dwNumberOfBytesTransferred,
+		UINT_PTR dwCompletionKey, void *lpOverlapped) {
+
+	HANDLE hPacket = NULL;
+	HRESULT hr = NtCreateWaitCompletionPacket(&hPacket, GENERIC_ALL, NULL);
+
+	if (SUCCEEDED(hr)) {
+		OVERLAPPED_ENTRY completion{};
+		completion.dwNumberOfBytesTransferred = dwNumberOfBytesTransferred;
+		completion.lpCompletionKey = dwCompletionKey;
+		completion.lpOverlapped = (LPOVERLAPPED)lpOverlapped;
+
+		if (!RestartEventCompletion(hPacket, hIOCP, hEvent, (const void **)&completion)) {
+			NtClose(hPacket);
+			hPacket = NULL;
+		}
+	} else {
+		switch (hr) {
+		case STATUS_NO_MEMORY: SetLastError(ERROR_OUTOFMEMORY); break;
+		default: SetLastError(hr);
+		}
+	}
+	return hPacket;
 }
 
 } // extern "C"

@@ -3,6 +3,8 @@
 
 #include "../../include/__impl_file.h"
 
+__SPRT_C_FUNC FILE *const stdin;
+
 static int locking_getc(FILE *f) {
 	auto tok = f->__lock();
 	int c = __getc_unlocked(f);
@@ -79,8 +81,6 @@ __SPRT_C_FUNC char *fgets(char *__restrict s, int n, FILE *__restrict f) __SPRT_
 weak_alias(fgets, fgets_unlocked);
 
 __SPRT_C_FUNC int getc(FILE *f) __SPRT_NOEXCEPT { return do_getc(f); }
-
-__SPRT_C_FUNC FILE *const stdin;
 
 __SPRT_C_FUNC int getchar(void) __SPRT_NOEXCEPT { return do_getc(stdin); }
 

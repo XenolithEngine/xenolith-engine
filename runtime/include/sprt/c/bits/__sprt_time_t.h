@@ -72,10 +72,12 @@ struct __SPRT_TIMEVAL_NAME {
 	__SPRT_ID(suseconds_t) tv_usec;
 };
 
+#ifndef _TIME_H
 struct __SPRT_ITIMERSPEC_NAME {
 	struct __SPRT_TIMESPEC_NAME it_interval;
 	struct __SPRT_TIMESPEC_NAME it_value;
 };
+#endif
 
 typedef unsigned __SPRT_ID(clockid_t);
 typedef int __SPRT_ID(timer_t);

@@ -25,3 +25,5 @@ THE SOFTWARE.
 #include "stdio/vfprintf.cc"
 #include "stdio/vfscanf.cc"
 #include "stdio/setvbuf.cc"
+#include "stdio/fmemopen.cc"
+#include "stdio/open_memstream.cc"

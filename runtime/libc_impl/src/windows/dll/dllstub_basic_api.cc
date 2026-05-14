@@ -21,6 +21,7 @@
  **/
 
 #include <sprt/wrappers/windows/basic_api.h>
+#include <sprt/wrappers/windows/bcrypt_api.h>
 
 #include "dllloader.h"
 
@@ -222,14 +223,26 @@ BOOL VirtualUnlock(LPVOID lpAddress, SIZE_T dwSize) {
 
 DWORD GetEnvironmentVariableA(LPCSTR lpName, LPSTR lpBuffer, DWORD nSize) {
 	auto loader = sprt::DllLoader::get();
-	return loader->kernelbase.call<decltype(&GetEnvironmentVariableA)>(
-			loader->kernelbase.GetEnvironmentVariableA, lpName, lpBuffer, nSize);
+	return loader->kernel32.call<decltype(&GetEnvironmentVariableA)>(
+			loader->kernel32.GetEnvironmentVariableA, lpName, lpBuffer, nSize);
 }
 
 BOOL SetEnvironmentVariableA(LPCSTR lpName, LPCSTR lpValue) {
 	auto loader = sprt::DllLoader::get();
-	return loader->kernelbase.call<decltype(&SetEnvironmentVariableA)>(
-			loader->kernelbase.SetEnvironmentVariableA, lpName, lpValue);
+	return loader->kernel32.call<decltype(&SetEnvironmentVariableA)>(
+			loader->kernel32.SetEnvironmentVariableA, lpName, lpValue);
+}
+
+DWORD GetEnvironmentVariableW(LPCWSTR lpName, LPWSTR lpBuffer, DWORD nSize) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetEnvironmentVariableW)>(
+			loader->kernel32.GetEnvironmentVariableW, lpName, lpBuffer, nSize);
+}
+
+BOOL SetEnvironmentVariableW(LPCWSTR lpName, LPCWSTR lpValue) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&SetEnvironmentVariableW)>(
+			loader->kernel32.SetEnvironmentVariableW, lpName, lpValue);
 }
 
 // ---- Sleep Function (kernel32) ----
@@ -324,4 +337,10 @@ WINAPI DWORD GetCurrentProcessorNumber(VOID) {
 			loader->kernel32.GetCurrentProcessorNumber);
 }
 
+WINAPI NTSTATUS BCryptGenRandom(BCRYPT_ALG_HANDLE hAlgorithm, PUCHAR pbBuffer, ULONG cbBuffer,
+		ULONG dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return loader->bcrypt.call<decltype(&BCryptGenRandom)>(loader->bcrypt.BCryptGenRandom,
+			hAlgorithm, pbBuffer, cbBuffer, dwFlags);
+}
 } // extern "C"

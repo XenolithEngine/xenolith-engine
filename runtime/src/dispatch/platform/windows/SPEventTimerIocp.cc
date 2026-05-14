@@ -23,19 +23,20 @@
 #include "SPEventTimerIocp.h"
 
 #include <sprt/runtime/log.h>
+#include <sprt/wrappers/windows/windows.h>
 
 namespace sprt::dispatch {
 
-static void timeToFileTime(int64_t &ftime, TimeInterval ival) {
+static void timeToFileTime(LARGE_INTEGER &ftime, TimeInterval ival) {
 	// ticks in 100ns
 	auto ticks = ival.toMicros() * 10;
-	ftime = -ticks;
+	ftime.QuadPart = -ticks;
 }
 
 bool TimerIocpSource::init(const TimerInfo &info) {
 	cancel();
 
-	handle = _CreateWaitableTimerEx(0, 0, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+	handle = CreateWaitableTimerExW(0, 0, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
 	if (!handle) {
 		return false;
 	}
@@ -44,7 +45,7 @@ bool TimerIocpSource::init(const TimerInfo &info) {
 	count = info.count;
 
 	int result = 1;
-	int64_t dueDate;
+	LARGE_INTEGER dueDate;
 	timeToFileTime(dueDate, info.timeout);
 
 	if (interval.toMicros() < 1'000) {
@@ -53,15 +54,15 @@ bool TimerIocpSource::init(const TimerInfo &info) {
 
 	if (info.count == 1) {
 		// oneshot timer
-		result = _SetWaitableTimerEx(handle, &dueDate, 0, 0, 0, 0, 0);
+		result = SetWaitableTimerEx(handle, &dueDate, 0, 0, 0, 0, 0);
 	} else if (!subintervals) {
-		result = _SetWaitableTimerEx(handle, &dueDate, interval.toMillis(), 0, 0, 0, 0);
+		result = SetWaitableTimerEx(handle, &dueDate, interval.toMillis(), 0, 0, 0, 0);
 	} else {
-		result = _SetWaitableTimerEx(handle, &dueDate, 0, 0, 0, 0, 0);
+		result = SetWaitableTimerEx(handle, &dueDate, 0, 0, 0, 0, 0);
 	}
 	if (!result) {
 		oslog::vperror(__SPRT_LOCATION, "dispatch::Queue",
-				"Fail to create WaitableTimer: ", sprt::status::lastErrorToStatus(_GetLastError()));
+				"Fail to create WaitableTimer: ", sprt::status::lastErrorToStatus(GetLastError()));
 	}
 
 	active = true;
@@ -70,19 +71,19 @@ bool TimerIocpSource::init(const TimerInfo &info) {
 
 bool TimerIocpSource::start() {
 	if (!handle) {
-		handle = _CreateWaitableTimerEx(0, 0, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
+		handle = CreateWaitableTimerExW(0, 0, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
 				TIMER_ALL_ACCESS);
 		active = false;
 	}
 
 	int result = 1;
 	if (!active) {
-		int64_t dueDate;
+		LARGE_INTEGER dueDate;
 		timeToFileTime(dueDate, interval);
 		if (!subintervals) {
-			result = _SetWaitableTimerEx(handle, &dueDate, interval.toMillis(), 0, 0, 0, 0);
+			result = SetWaitableTimerEx(handle, &dueDate, interval.toMillis(), 0, 0, 0, 0);
 		} else {
-			result = _SetWaitableTimerEx(handle, &dueDate, 0, 0, 0, 0, 0);
+			result = SetWaitableTimerEx(handle, &dueDate, 0, 0, 0, 0, 0);
 		}
 		if (result) {
 			active = true;
@@ -95,21 +96,21 @@ void TimerIocpSource::stop() {
 	active = false;
 
 	if (event) {
-		_CancelEventCompletion(event, true);
+		CancelEventCompletion(event, true);
 		event = nullptr;
 	}
 
 	if (handle && active) {
-		_CancelWaitableTimer(handle);
+		CancelWaitableTimer(handle);
 		active = false;
 	}
 }
 
 void TimerIocpSource::reset() {
-	int64_t dueDate;
+	LARGE_INTEGER dueDate;
 	if (subintervals && handle) {
 		timeToFileTime(dueDate, interval);
-		_SetWaitableTimer(handle, &dueDate, 0, 0, 0, 0);
+		SetWaitableTimer(handle, &dueDate, 0, 0, 0, 0);
 	}
 }
 
@@ -117,13 +118,13 @@ void TimerIocpSource::cancel() {
 	active = false;
 
 	if (event) {
-		_CancelEventCompletion(event, true);
+		CancelEventCompletion(event, true);
 		event = nullptr;
 	}
 
 	if (handle) {
-		_CancelWaitableTimer(handle);
-		_CloseHandle(handle);
+		CancelWaitableTimer(handle);
+		CloseHandle(handle);
 		handle = nullptr;
 	}
 }
@@ -165,15 +166,15 @@ Status TimerIocpHandle::rearm(IocpData *iocp, TimerIocpSource *source) {
 			source->reset();
 		}
 		if (!source->event) {
-			source->event = _ReportEventAsCompletion(iocp->_port, source->handle, _timeline,
+			source->event = ReportEventAsCompletion(iocp->_port, source->handle, _timeline,
 					reinterpret_cast<uintptr_t>(this), nullptr);
 			if (!source->event) {
-				return sprt::status::lastErrorToStatus(_GetLastError());
+				return sprt::status::lastErrorToStatus(GetLastError());
 			}
 		} else {
-			if (!_RestartEventCompletion2(source->event, iocp->_port, source->handle, _timeline,
+			if (!RestartEventCompletion2(source->event, iocp->_port, source->handle, _timeline,
 						reinterpret_cast<uintptr_t>(this), nullptr)) {
-				return sprt::status::lastErrorToStatus(_GetLastError());
+				return sprt::status::lastErrorToStatus(GetLastError());
 			}
 		}
 	}

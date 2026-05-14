@@ -34,6 +34,8 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/dl_api.h>
 #include <sprt/c/bits/__sprt_errno.h>
 
+#include "../src/private/SPRTFilesystem.h"
+
 /*
 	AI-Generated
 */
@@ -902,7 +904,6 @@ bool getMachineId(const callback<void(StringView)> &cb) {
 
 } // namespace sprt::platform
 
-#if 0
 #include <sprt/runtime/filesystem/lookup.h>
 #include <sprt/runtime/filesystem/filepath.h>
 
@@ -1125,6 +1126,5 @@ void _initSystemPaths(LookupData &data) {
 }
 
 void _termSystemPaths(LookupData &data) { }
-} // namespace sprt::filesystem::detail
 
-#endif
+} // namespace sprt::filesystem::detail

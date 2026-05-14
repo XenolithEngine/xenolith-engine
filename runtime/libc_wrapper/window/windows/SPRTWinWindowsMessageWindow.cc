@@ -29,8 +29,8 @@
 #include <winrt/Windows.Storage.Streams.h>
 */
 
-#include "private/window/windows/SPRTWinWindowsContextController.h"
-#include "private/window/windows/SPRTWinWindowsMessageWindow.h"
+#include "SPRTWinWindowsContextController.h"
+#include "SPRTWinWindowsMessageWindow.h"
 
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/detail/emplace_ordered.h>

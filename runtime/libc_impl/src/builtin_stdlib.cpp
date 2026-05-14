@@ -31,6 +31,8 @@ THE SOFTWARE.
 #include "stdlib/wcstod.cc"
 #include "stdlib/wcstol.cc"
 
+#include "stdlib/mkstemp.cc"
+
 #if SPRT_WINDOWS
 #include "windows/stdlib.cc"
 #endif

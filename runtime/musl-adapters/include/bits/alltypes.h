@@ -8,8 +8,8 @@
 #include <sprt/c/__sprt_stdint.h>
 #include <sprt/c/__sprt_float.h>
 #include <sprt/c/bits/__sprt_ssize_t.h>
-#include <sprt/c/__sprt_sched.h>
-#include <sprt/c/__sprt_pthread.h>
+#include <sprt/c/bits/pthread.h>
+#include <sprt/c/cross/__sprt_signal.h>
 
 typedef __SPRT_ID(intmax_t) intmax_t;
 typedef __SPRT_ID(intptr_t) intptr_t;
@@ -56,6 +56,7 @@ typedef __SPRT_ID(pthread_rwlock_t) pthread_rwlock_t;
 typedef __SPRT_ID(pthread_barrier_t) pthread_barrier_t;
 
 typedef __SPRT_ID(sigset_t) sigset_t;
+
 
 #ifndef __cplusplus
 #if SPRT_WINDOWS

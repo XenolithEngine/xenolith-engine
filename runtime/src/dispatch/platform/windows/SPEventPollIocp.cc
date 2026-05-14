@@ -22,6 +22,7 @@
 
 #include "SPEventPollIocp.h"
 #include "SPEvent-windows.h"
+#include <sprt/wrappers/windows/windows.h>
 
 namespace sprt::dispatch {
 
@@ -56,15 +57,15 @@ Status PollIocpHandle::rearm(IocpData *iocp, PollIocpSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
 		if (!source->event) {
-			source->event = _ReportEventAsCompletion(iocp->_port, source->handle, 1,
+			source->event = ReportEventAsCompletion(iocp->_port, source->handle, 1,
 					reinterpret_cast<uintptr_t>(this), nullptr);
 			if (!source->event) {
-				return sprt::status::lastErrorToStatus(_GetLastError());
+				return sprt::status::lastErrorToStatus(GetLastError());
 			}
 		} else {
-			if (!_RestartEventCompletion2(source->event, iocp->_port, source->handle, 1,
+			if (!RestartEventCompletion2(source->event, iocp->_port, source->handle, 1,
 						reinterpret_cast<uintptr_t>(this), nullptr)) {
-				return sprt::status::lastErrorToStatus(_GetLastError());
+				return sprt::status::lastErrorToStatus(GetLastError());
 			}
 		}
 	}
@@ -75,7 +76,7 @@ Status PollIocpHandle::disarm(IocpData *iocp, PollIocpSource *source) {
 	auto status = prepareDisarm();
 	if (status == Status::Ok) {
 		if (source->event) {
-			_CancelEventCompletion(source->event, true);
+			CancelEventCompletion(source->event, true);
 			source->event = nullptr;
 		}
 		++_timeline;

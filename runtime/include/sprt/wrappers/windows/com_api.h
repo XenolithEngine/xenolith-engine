@@ -170,12 +170,8 @@ WINAPI void CoUninitialize();
 
 WINAPI void CoTaskMemFree(LPVOID pv);
 
-HRESULT SHSetKnownFolderPath(REFKNOWNFOLDERID rfid, DWORD /* KNOWN_FOLDER_FLAG */ dwFlags,
-		HANDLE hToken, PCWSTR pszPath);
-
-HRESULT SHGetKnownFolderPath(REFKNOWNFOLDERID rfid, DWORD /* KNOWN_FOLDER_FLAG */ dwFlags,
-		HANDLE hToken,
-		PWSTR *ppszPath); // free *ppszPath with CoTaskMemFree
+WINAPI HRESULT SHGetKnownFolderPath(REFKNOWNFOLDERID rfid, DWORD dwFlags, HANDLE hToken,
+		PWSTR *ppszPath);
 
 __SPRT_END_DECL
 

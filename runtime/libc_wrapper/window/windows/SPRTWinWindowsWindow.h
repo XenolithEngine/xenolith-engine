@@ -23,7 +23,7 @@
 #ifndef CORE_RUNTIME_PRIVATE_WINDOW_WINDOWS_SPRTWINWINDOWSWINDOW_H_
 #define CORE_RUNTIME_PRIVATE_WINDOW_WINDOWS_SPRTWINWINDOWSWINDOW_H_
 
-#include "private/window/windows/SPRTWinWindows.h" // IWYU pragma: keep
+#include "SPRTWinWindows.h" // IWYU pragma: keep
 
 #if SPRT_WINDOWS
 

@@ -175,6 +175,12 @@ __SPRT_C_FUNC __declspec(selectany) UINT_PTR __security_cookie = DEFAULT_SECURIT
 __SPRT_C_FUNC __declspec(selectany) UINT_PTR __security_cookie_complement =
 		~(DEFAULT_SECURITY_COOKIE);
 
+__SPRT_C_FUNC void __fastcall __security_check_cookie(UINT_PTR cookie) __SPRT_NOEXCEPT {
+	if (cookie != __security_cookie) {
+		__debugbreak();
+	}
+}
+
 SAFELOADER UINT_PTR __gencookie() {
 	auto loader = sprt::DllLoader::get();
 	UINT_PTR cookie = 0;

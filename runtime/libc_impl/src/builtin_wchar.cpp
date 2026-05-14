@@ -23,7 +23,10 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_locale.h>
 
 #include "../include/__impl_libc.h"
-#include "wchar.h" // IWYU pragma: keep
+
+#include "wchar.h"
+#include "locale.h"
+#include "stdlib.h"
 
 namespace sprt {
 
@@ -135,8 +138,23 @@ size_t wcsxfrm(wchar_t *__restrict dest, const wchar_t *__restrict src, size_t n
 }
 }
 
-__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcslen)(const __SPRT_ID(wchar_t) * v) {
-	return wcslen(v);
+__SPRT_C_FUNC wint_t btowc(int c) __SPRT_NOEXCEPT {
+	if (c == __SPRT_EOF) {
+		return WEOF;
+	} else {
+		int b = (unsigned char)c;
+		return b < 128U ? b : (0xdfff & (signed char)(c));
+	}
+}
+
+__SPRT_C_FUNC int wctob(wint_t c) __SPRT_NOEXCEPT {
+	if (c < 128U) {
+		return c;
+	}
+	if ((unsigned)(c)-0xdf80 < 0x80) {
+		return (unsigned char)c;
+	}
+	return __SPRT_EOF;
 }
 
 } // namespace sprt

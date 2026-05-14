@@ -56,6 +56,50 @@ THE SOFTWARE.
 #define PROC_THREAD_ATTRIBUTE_INPUT     0x00020000  // Attribute is input only
 #define PROC_THREAD_ATTRIBUTE_ADDITIVE  0x00040000  // Attribute may be "accumulated," e.g. bitmasks, counters, etc.
 
+#define STARTF_USESHOWWINDOW       0x00000001
+#define STARTF_USESIZE             0x00000002
+#define STARTF_USEPOSITION         0x00000004
+#define STARTF_USECOUNTCHARS       0x00000008
+#define STARTF_USEFILLATTRIBUTE    0x00000010
+#define STARTF_RUNFULLSCREEN       0x00000020
+#define STARTF_FORCEONFEEDBACK     0x00000040
+#define STARTF_FORCEOFFFEEDBACK    0x00000080
+#define STARTF_USESTDHANDLES       0x00000100
+
+#define DEBUG_PROCESS                     0x00000001
+#define DEBUG_ONLY_THIS_PROCESS           0x00000002
+#define CREATE_SUSPENDED                  0x00000004
+#define DETACHED_PROCESS                  0x00000008
+#define CREATE_NEW_CONSOLE                0x00000010
+#define NORMAL_PRIORITY_CLASS             0x00000020
+#define IDLE_PRIORITY_CLASS               0x00000040
+#define HIGH_PRIORITY_CLASS               0x00000080
+#define REALTIME_PRIORITY_CLASS           0x00000100
+#define CREATE_NEW_PROCESS_GROUP          0x00000200
+#define CREATE_UNICODE_ENVIRONMENT        0x00000400
+#define CREATE_SEPARATE_WOW_VDM           0x00000800
+#define CREATE_SHARED_WOW_VDM             0x00001000
+#define CREATE_FORCEDOS                   0x00002000
+#define BELOW_NORMAL_PRIORITY_CLASS       0x00004000
+#define ABOVE_NORMAL_PRIORITY_CLASS       0x00008000
+#define INHERIT_PARENT_AFFINITY           0x00010000
+#define INHERIT_CALLER_PRIORITY           0x00020000    // Deprecated
+#define CREATE_PROTECTED_PROCESS          0x00040000
+#define EXTENDED_STARTUPINFO_PRESENT      0x00080000
+#define PROCESS_MODE_BACKGROUND_BEGIN     0x00100000
+#define PROCESS_MODE_BACKGROUND_END       0x00200000
+#define CREATE_SECURE_PROCESS             0x00400000
+#define CREATE_BREAKAWAY_FROM_JOB         0x01000000
+#define CREATE_PRESERVE_CODE_AUTHZ_LEVEL  0x02000000
+#define CREATE_DEFAULT_ERROR_MODE         0x04000000
+#define CREATE_NO_WINDOW                  0x08000000
+#define PROFILE_USER                      0x10000000
+#define PROFILE_KERNEL                    0x20000000
+#define PROFILE_SERVER                    0x40000000
+#define CREATE_IGNORE_SYSTEM_DEFAULT      0x80000000
+
+#define SEE_MASK_NOCLOSEPROCESS    0x00000040   // SHELLEXECUTEINFO.hProcess
+
 #define ProcThreadAttributeValue(Number, Thread, Input, Additive) \
     (((Number) & PROC_THREAD_ATTRIBUTE_NUMBER) | \
      ((Thread != FALSE) ? PROC_THREAD_ATTRIBUTE_THREAD : 0) | \
@@ -125,6 +169,27 @@ typedef struct _STARTUPINFOEXW {
 	LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList;
 } STARTUPINFOEXW, *LPSTARTUPINFOEXW;
 
+typedef struct _SHELLEXECUTEINFOW {
+	DWORD cbSize; // in, required, sizeof of this structure
+	ULONG fMask; // in, SEE_MASK_XXX values
+	HANDLE hwnd; // in, optional
+	LPCWSTR lpVerb; // in, optional when unspecified the default verb is choosen
+	LPCWSTR lpFile; // in, either this value or lpIDList must be specified
+	LPCWSTR lpParameters; // in, optional
+	LPCWSTR lpDirectory; // in, optional
+	int nShow; // in, required
+	HINSTANCE hInstApp; // out when SEE_MASK_NOCLOSEPROCESS is specified
+	void *lpIDList; // in, valid when SEE_MASK_IDLIST is specified, PCIDLIST_ABSOLUTE, for use with SEE_MASK_IDLIST & SEE_MASK_INVOKEIDLIST
+	LPCWSTR lpClass; // in, valid when SEE_MASK_CLASSNAME is specified
+	HKEY hkeyClass; // in, valid when SEE_MASK_CLASSKEY is specified
+	DWORD dwHotKey; // in, valid when SEE_MASK_HOTKEY is specified
+	union {
+		HANDLE hIcon; // not used
+		HANDLE hMonitor; // in, valid when SEE_MASK_HMONITOR specified
+	};
+	HANDLE hProcess; // out, valid when SEE_MASK_NOCLOSEPROCESS specified
+} SHELLEXECUTEINFOW, *LPSHELLEXECUTEINFOW;
+
 __SPRT_BEGIN_DECL
 
 /**
@@ -172,6 +237,10 @@ WINAPI BOOL CreateProcessW(LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
 		BOOL bInheritHandles, DWORD dwCreationFlags, LPVOID lpEnvironment,
 		LPCWSTR lpCurrentDirectory, LPSTARTUPINFOW lpStartupInfo,
 		LPPROCESS_INFORMATION lpProcessInformation);
+
+WINAPI BOOL TerminateProcess(HANDLE hProcess, UINT uExitCode);
+
+WINAPI BOOL ShellExecuteExW(SHELLEXECUTEINFOW *pExecInfo);
 
 __SPRT_END_DECL
 

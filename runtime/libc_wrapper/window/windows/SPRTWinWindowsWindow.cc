@@ -22,9 +22,9 @@
 
 #define __SPRT_BUILD 1
 
-#include "private/window/windows/SPRTWinWindowsContextController.h"
-#include "private/window/windows/SPRTWinWindowsWindow.h"
-#include "private/window/windows/SPRTWinWindowsWindowClass.h"
+#include "SPRTWinWindowsContextController.h"
+#include "SPRTWinWindowsWindow.h"
+#include "SPRTWinWindowsWindowClass.h"
 
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/enum.h>
@@ -268,7 +268,7 @@ void WindowsWindow::openWindowMenu(Vec2 pos) {
 		}
 
 		LPARAM cmd = TrackPopupMenu(hMenu, (TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD),
-				winrect.left, winrect.top, NULL, _window, NULL);
+				winrect.left, winrect.top, 0, _window, NULL);
 
 		if (cmd) {
 			PostMessageW(_window, WM_SYSCOMMAND, cmd, 0);

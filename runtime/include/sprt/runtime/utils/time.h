@@ -44,6 +44,8 @@ struct SPRT_API time_exp_t : public __SPRT_TM_NAME {
 
 	time_exp_t();
 
+	time_exp_t(const __SPRT_TM_NAME &);
+
 	// Convert UTC time in microseconds to tm
 	time_exp_t(int64_t t);
 

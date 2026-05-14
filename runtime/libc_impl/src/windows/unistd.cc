@@ -1134,11 +1134,13 @@ int pipe2(int fds[2], int flags) __SPRT_NOEXCEPT {
 	auto slotRead = libc->get_fd_slot(fdRead);
 	slotRead->handle = hRead;
 	slotRead->flags = __SPRT_O_RDONLY;
+	slotRead->ops = &libc->fdFileOps;
 	slotRead->mode = 0;
 
 	auto slotWrite = libc->get_fd_slot(fdWrite);
 	slotWrite->handle = hWrite;
 	slotWrite->flags = __SPRT_O_WRONLY;
+	slotWrite->ops = &libc->fdFileOps;
 	slotWrite->mode = 0;
 
 	// Convert to fds: read first, write second (POSIX convention)

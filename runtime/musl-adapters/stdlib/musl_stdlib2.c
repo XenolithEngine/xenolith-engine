@@ -11,3 +11,8 @@
 #pragma clang diagnostic ignored "-Wignored-attributes"
 
 #include "../../musl-libc/src/stdlib/qsort.c"
+
+#include "../../musl-libc/src/stdlib/atof.c"
+#include "../../musl-libc/src/stdlib/atoi.c"
+#include "../../musl-libc/src/stdlib/atol.c"
+#include "../../musl-libc/src/stdlib/atoll.c"

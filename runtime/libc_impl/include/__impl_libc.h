@@ -38,6 +38,7 @@ THE SOFTWARE.
 #include "unistd.h"
 #include "sys/sprt.h"
 #include "sys/stat.h"
+#include "sys/uio.h"
 
 namespace sprt {
 
@@ -88,12 +89,17 @@ struct __fd_ops {
 	int (*fo_dup)(__fd_slot *fp, int *target, uint32_t flags) = nullptr;
 	int (*fo_close)(__fd_slot *fp) = nullptr;
 
-	ssize_t (*fo_readv)(__fd_slot *fp, const iovec *iov, int iovcnt) = nullptr;
-	ssize_t (*fo_writev)(__fd_slot *fp, const iovec *iov, int iovcnt) = nullptr;
+	ssize_t (*fo_readv)(__fd_slot *fp, const __SPRT_IOVEC_NAME *iov, int iovcnt) = nullptr;
+	ssize_t (*fo_writev)(__fd_slot *fp, const __SPRT_IOVEC_NAME *iov, int iovcnt) = nullptr;
 	off_t (*fo_seek)(__fd_slot *fp, off_t, int) = nullptr;
 	int (*fo_stat)(__fd_slot *fp, struct __SPRT_STAT_NAME *__stat) = nullptr;
 	int (*fo_chmod)(__fd_slot *fp, mode_t mode) = nullptr;
 	int (*fo_utimens)(__fd_slot *fp, const struct __SPRT_TIMESPEC_NAME *times) = nullptr;
+
+	void *(*fo_mmap)(__fd_slot *fp, void *addr, size_t length, int prot, int flags,
+			off_t offset) = nullptr;
+	int (*fo_munmap)(__fd_slot *fp, void *addr, size_t length) = nullptr;
+	int (*fo_msync)(__fd_slot *fp, void *addr, size_t length, int flags) = nullptr;
 };
 
 struct __fd_page {
@@ -145,6 +151,8 @@ struct __libc {
 	mutable mutex plockMutex;
 	__malloc_unordered_map<sprt_plock_t, __libc_plock> plocks;
 
+	atomic<mode_t> umask;
+
 	__libc();
 	~__libc();
 
@@ -161,6 +169,7 @@ struct __libc {
 
 void __init_locale();
 __locale_map *__get_default_locale();
+__freestanding_locale_struct *__get_default_locale_struct();
 __locale_map *__get_locale(int cat, const char *, size_t);
 void __free_locale(__locale_map *);
 
@@ -168,6 +177,9 @@ bool __init_exceptions();
 void __cleanup_exceptions();
 
 void __init_default_fds(__libc *);
+
+void *__file_mmap_anon(void *addr, size_t length, int prot, int flags, off_t offset);
+int __file_munmap_anon(void *addr, size_t length);
 
 // Note that maps are cached, immutable, and persistent - no locking required after acquisition
 const __locale_map *__get_effective_locale_map(int);
@@ -190,5 +202,10 @@ int __scandir(__SPRT_ID(DIR) * d, struct __SPRT_DIRENT_NAME ***__name_list,
 				const struct __SPRT_DIRENT_NAME **));
 
 } // namespace sprt
+
+struct __freestanding_locale_struct {
+	sprt::__locale_struct data;
+	__sprt_uint32_t refcount;
+};
 
 #endif // RUNTIME_FREESTANDING_INCLUDE_IMPL_LIBC_H_

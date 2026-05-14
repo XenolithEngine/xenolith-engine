@@ -60,3 +60,16 @@ fail:
 	fclose(f);
 	return NULL;
 }
+
+__SPRT_C_FUNC int fileno(FILE *f) __SPRT_NOEXCEPT {
+	FLOCK(f);
+	int fd = f->fd;
+	FUNLOCK(f);
+	if (fd < 0) {
+		errno = EBADF;
+		return -1;
+	}
+	return fd;
+}
+
+weak_alias(fileno, fileno_unlocked);

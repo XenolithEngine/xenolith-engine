@@ -89,15 +89,7 @@ __SPRT_C_FUNC unsigned long long __SPRT_ID(
 }
 #endif
 
-__SPRT_C_FUNC void *__SPRT_ID(malloc_impl)(size_t size) { return ::malloc(size); }
-
-__SPRT_C_FUNC void *__SPRT_ID(calloc_impl)(size_t n, size_t size) { return ::calloc(n, size); }
-
-__SPRT_C_FUNC void *__SPRT_ID(realloc_impl)(void *ptr, size_t size) { return ::realloc(ptr, size); }
-
-__SPRT_C_FUNC void __SPRT_ID(free_impl)(void *ptr) { return ::free(ptr); }
-
-__SPRT_C_FUNC void *__SPRT_ID(aligned_alloc)(size_t align, size_t size) {
+__SPRT_C_FUNC void *__SPRT_ID(aligned_alloc)(size_t align, size_t size) __SPRT_NOEXCEPT {
 #if SPRT_ANDROID
 	if (align <= _Alignof(__SPRT_ID(max_align_t))) {
 		return ::malloc(size);
@@ -122,7 +114,8 @@ __SPRT_C_FUNC void *__SPRT_ID(aligned_alloc)(size_t align, size_t size) {
 }
 
 __SPRT_C_FUNC void __SPRT_ID(aligned_free)(void *memblock) {
-#if __STDC_HOSTED__ == 0
+#if 0
+	// Windows UCRT requires special handling, but we do not support in any more
 	::aligned_free(memblock);
 #else
 	::free(memblock);

@@ -23,13 +23,9 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_def.h>
 
 #include "locale.h"
+#include "string.h"
 #include "wctype.h"
 #include "../include/__impl_libc.h"
-
-struct __freestanding_locale_struct {
-	sprt::__locale_struct data;
-	__sprt_uint32_t refcount;
-};
 
 #if SPRT_WINDOWS
 #include "windows/locale.cc"
@@ -162,7 +158,7 @@ void freelocale(locale_t loc) __SPRT_NOEXCEPT {
 	}
 }
 
-wchar_t towlower_l(wchar_t ch, locale_t loc) __SPRT_NOEXCEPT {
+wint_t towlower_l(wint_t ch, locale_t loc) __SPRT_NOEXCEPT {
 	if (loc == nullptr || loc == __SPRT_LC_GLOBAL_LOCALE) {
 		return __towlower_l(ch, nullptr);
 	} else {
@@ -170,7 +166,7 @@ wchar_t towlower_l(wchar_t ch, locale_t loc) __SPRT_NOEXCEPT {
 	}
 }
 
-wchar_t towupper_l(wchar_t ch, locale_t loc) __SPRT_NOEXCEPT {
+wint_t towupper_l(wint_t ch, locale_t loc) __SPRT_NOEXCEPT {
 	if (loc == nullptr || loc == __SPRT_LC_GLOBAL_LOCALE) {
 		return __towupper_l(ch, nullptr);
 	} else {
@@ -213,3 +209,16 @@ size_t wcsxfrm_l(wchar_t *__restrict dest, const wchar_t *__restrict src, __sprt
 }
 }
 } // namespace sprt
+
+__SPRT_C_FUNC size_t strxfrm_l(char *__restrict dest, const char *__restrict src, size_t n,
+		locale_t loc) __SPRT_NOEXCEPT {
+	size_t l = strlen(src);
+	if (n > l) {
+		strcpy(dest, src);
+	}
+	return l;
+}
+
+__SPRT_C_FUNC size_t strxfrm(char *dest, const char *src, size_t n) __SPRT_NOEXCEPT {
+	return strxfrm_l(dest, src, n, nullptr);
+}

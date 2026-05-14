@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <locale.h>
 #include "shgetc.h"
 #include "floatscan.h"
 #include "../../include/__impl_file.h"
@@ -25,4 +26,19 @@ __SPRT_C_FUNC double strtod(const char *__restrict s, char **__restrict p) __SPR
 
 __SPRT_C_FUNC long double strtold(const char *__restrict s, char **__restrict p) __SPRT_NOEXCEPT {
 	return strtox(s, p, 2);
+}
+
+__SPRT_C_FUNC float strtof_l(const char *__restrict s, char **__restrict p,
+		locale_t) __SPRT_NOEXCEPT {
+	return strtof(s, p);
+}
+
+__SPRT_C_FUNC double strtod_l(const char *__restrict s, char **__restrict p,
+		locale_t) __SPRT_NOEXCEPT {
+	return strtod(s, p);
+}
+
+__SPRT_C_FUNC long double strtold_l(const char *__restrict s, char **__restrict p,
+		locale_t) __SPRT_NOEXCEPT {
+	return strtold(s, p);
 }

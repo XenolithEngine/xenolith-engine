@@ -24,14 +24,13 @@ THE SOFTWARE.
 #include <sprt/runtime/platform.h>
 #include <sprt/c/__sprt_time.h>
 
-#include <math.h>
-#include <time.h>
+extern "C" double round(double) __SPRT_NOEXCEPT;
 
 namespace sprt::time {
 
 time_exp_t time_exp_t::get(bool localtime) {
 	time_exp_t ret;
-	auto clock = platform::clock(platform::ClockType::Realtime);
+	auto clock = __sprt_clock_gettime_nsec_np(__SPRT_CLOCK_REALTIME) / 1'000;
 	time_t time = clock / __USEC_PER_SEC;
 	auto usec = clock % __USEC_PER_SEC;
 
@@ -58,6 +57,8 @@ time_exp_t::time_exp_t() {
 	tm_isdst = 0;
 	tm_gmtoff = 0;
 }
+
+time_exp_t::time_exp_t(const __SPRT_TM_NAME &s) : __SPRT_TM_NAME(s) { }
 
 time_exp_t::time_exp_t(int64_t t, int32_t offset, bool use_localtime)
 : time_exp_t(t, use_localtime) {

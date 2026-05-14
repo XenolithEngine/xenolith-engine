@@ -27,8 +27,8 @@ THE SOFTWARE.
 #include <sprt/c/sys/__sprt_mman.h>
 #include <sprt/cxx/mutex>
 #include <sprt/cxx/unordered_map>
+#include <sys/mman.h>
 
-#include "../../include/libc.h"
 #include "specific.h"
 
 #include <sprt/wrappers/windows/basic_api.h>
@@ -37,170 +37,21 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/windows.h>
 #include <sprt/wrappers/windows/process_api.h>
 
+#include "../../include/__impl_libc.h"
+
 #ifdef __clang__
 #pragma clang diagnostic ignored "-Wunused-function"
 #endif
 
 namespace sprt {
 
-struct MappingRegion {
-	void *addr = nullptr;
-	size_t length = 0;
-	int fd = -1;
-};
-
-struct MappingInfo {
-	qmutex mutex;
-	__malloc_unordered_map<void *, MappingRegion> regions;
-
-	static void attachRegion(void *, size_t, int fd);
-	static void detachRegion(void *);
-	static bool isRegionExists(void *, size_t, int *fd);
-};
-
-static MappingInfo s_mappingInfo;
-
-static DWORD __getProtectFlags(int prot) {
-	DWORD flProtect = 0;
-	if (prot & __SPRT_PROT_EXEC) {
-		if (prot & __SPRT_PROT_WRITE) {
-			flProtect = PAGE_EXECUTE_READWRITE;
-		} else if (prot & __SPRT_PROT_READ) {
-			flProtect = PAGE_EXECUTE_READ;
-		} else {
-			flProtect |= PAGE_EXECUTE;
-		}
-	} else if (prot & __SPRT_PROT_WRITE) {
-		flProtect = PAGE_READWRITE;
-	} else if (prot & __SPRT_PROT_READ) {
-		flProtect = PAGE_READONLY;
-	} else {
-		flProtect = PAGE_NOACCESS;
-	}
-	return flProtect;
-}
-
-__SPRT_C_FUNC void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
-	if (length == 0) {
-		return __SPRT_MAP_FAILED;
-	}
-
-	auto flProtect = __getProtectFlags(prot);
-
-	// ANONYMOUS mapping
-	if (flags & __SPRT_MAP_ANONYMOUS || fd == -1) {
-		auto retAddr = VirtualAlloc(addr, length, MEM_COMMIT | MEM_RESERVE, flProtect);
-		if (retAddr) {
-			/*MEMORY_BASIC_INFORMATION mbi;
-			SIZE_T result = VirtualQuery(retAddr, &mbi, sizeof(mbi));
-
-			if (result == 0) {
-				VirtualFree(retAddr, length, MEM_RELEASE);
-				errno = ENOMEM;
-				return __SPRT_MAP_FAILED;
-			}*/
-
-			MappingInfo::attachRegion(retAddr, length, -1);
-
-			return retAddr;
-		} else {
-			__sprt_errno = ENOMEM;
-			return __SPRT_MAP_FAILED;
-		}
-	}
-
-	// File mapping
-	if (flProtect == PAGE_NOACCESS) {
-		__sprt_errno = EINVAL;
-		return __SPRT_MAP_FAILED;
-	}
-
-	if (fd < 0) {
-		__sprt_errno = EBADF;
-		return __SPRT_MAP_FAILED;
-	}
-
-	HANDLE hFile = __libc::get()->get_fd_handle(fd) if (hFile == INVALID_HANDLE_VALUE) {
-		__sprt_errno = EBADF;
-		return __SPRT_MAP_FAILED;
-	}
-
-	if (flags & __SPRT_MAP_HUGETLB) {
-		flProtect |= SEC_LARGE_PAGES;
-	}
-
-	LARGE_INTEGER liOffset = {.QuadPart = offset};
-	HANDLE hMap =
-			CreateFileMappingW(hFile, NULL, flProtect, liOffset.HighPart, liOffset.LowPart, NULL);
-	if (!hMap) {
-		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		return __SPRT_MAP_FAILED;
-	}
-
-	DWORD dwDesiredAccess = FILE_MAP_READ;
-	if (prot & __SPRT_PROT_WRITE) {
-		dwDesiredAccess |= FILE_MAP_WRITE;
-	}
-	if (prot & __SPRT_PROT_EXEC) {
-		dwDesiredAccess |= FILE_MAP_EXECUTE;
-	}
-
-	if (flags & __SPRT_MAP_PRIVATE) {
-		dwDesiredAccess |= FILE_MAP_COPY;
-	}
-
-	if (flags & __SPRT_MAP_HUGETLB) {
-		dwDesiredAccess |= FILE_MAP_LARGE_PAGES;
-	}
-
-	void *pMap = MapViewOfFile(hMap, dwDesiredAccess, liOffset.HighPart, liOffset.LowPart, length);
-
-	CloseHandle(hMap); // Mapping owns ref
-
-	if (!pMap) {
-		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		CloseHandle(hMap);
-		return __SPRT_MAP_FAILED;
-	}
-
-	MappingInfo::attachRegion(pMap, length, fd);
-
-	return pMap;
-}
-
-static int munmap(void *addr, size_t length) {
-	int fd = -1;
-	if (!MappingInfo::isRegionExists(addr, length, &fd)) {
-		__sprt_errno = EINVAL;
-		return -1;
-	}
-
-	if (fd > -1) {
-		BOOL ok = UnmapViewOfFile(addr);
-		if (!ok) {
-			__sprt_errno = platform::lastErrorToErrno(GetLastError());
-			return -1;
-		}
-		MappingInfo::detachRegion(addr);
-		return 0;
-	} else {
-		BOOL ok = VirtualFree(addr, 0, MEM_RELEASE);
-		if (!ok) {
-			__sprt_errno = platform::lastErrorToErrno(GetLastError());
-			return -1;
-		}
-		MappingInfo::detachRegion(addr);
-		return 0;
-	}
-}
-
-static int mprotect(void *addr, size_t len, int prot) {
+__SPRT_C_FUNC int mprotect(void *addr, size_t len, int prot) __SPRT_NOEXCEPT {
 	if (!addr || len == 0) {
 		__sprt_errno = EINVAL;
 		return -1;
 	}
 
-	auto flProtect = __getProtectFlags(prot);
+	auto flProtect = platform::__getProtectFlags(prot);
 
 	DWORD old_protect = 0;
 	BOOL ok = VirtualProtect(addr, len, flProtect, &old_protect);
@@ -213,57 +64,7 @@ static int mprotect(void *addr, size_t len, int prot) {
 	return 0;
 }
 
-static int msync(void *addr, size_t length, int flags) {
-	if (!addr || length == 0) {
-		__sprt_errno = EINVAL;
-		return -1;
-	}
-
-	int fd = -1;
-	if (!MappingInfo::isRegionExists(addr, length, &fd)) {
-		__sprt_errno = ENOMEM;
-		return -1;
-	}
-
-	if (fd < 0) {
-		__sprt_errno = ENOMEM;
-		return -1;
-	}
-
-	// MS_ASYNC: Windows schedules automatically (noop)
-	if (flags == __SPRT_MS_ASYNC) {
-		return 0;
-	}
-
-	// MS_SYNC or MS_INVALIDATE: flush dirty pages
-	if (flags != __SPRT_MS_SYNC && flags != __SPRT_MS_INVALIDATE) {
-		__sprt_errno = EINVAL;
-		return -1;
-	}
-
-	BOOL ok = FlushViewOfFile(addr, length);
-	if (!ok) {
-		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		return -1;
-	}
-
-	// Flush file buffers for disk durability
-	if (fd < 0) {
-		__sprt_errno = EBADF;
-		return -1;
-	}
-
-	HANDLE hFile = (HANDLE)_get_osfhandle(fd);
-	if (hFile != INVALID_HANDLE_VALUE) {
-		FlushFileBuffers(hFile);
-		return 0;
-	}
-
-	__sprt_errno = EBADF;
-	return -1;
-}
-
-static int posix_madvise(void *addr, size_t len, int advice) {
+__SPRT_C_FUNC int posix_madvise(void *addr, size_t len, int advice) __SPRT_NOEXCEPT {
 	if (!addr || len == 0) {
 		__sprt_errno = EINVAL;
 		return -1;
@@ -289,7 +90,7 @@ static int posix_madvise(void *addr, size_t len, int advice) {
 	}
 }
 
-static int mlock(const void *addr, size_t len) {
+__SPRT_C_FUNC int mlock(const void *addr, size_t len) __SPRT_NOEXCEPT {
 	if (!addr || len == 0) {
 		__sprt_errno = EINVAL;
 		return -1;
@@ -308,7 +109,7 @@ static int mlock(const void *addr, size_t len) {
 	return 0;
 }
 
-static int munlock(const void *addr, size_t len) {
+__SPRT_C_FUNC int munlock(const void *addr, size_t len) __SPRT_NOEXCEPT {
 	if (!addr || len == 0) {
 		__sprt_errno = EINVAL;
 		return -1;
@@ -323,7 +124,7 @@ static int munlock(const void *addr, size_t len) {
 	return 0;
 }
 
-static int mlock2(const void *addr, size_t len, int __flags) {
+__SPRT_C_FUNC int mlock2(const void *addr, size_t len, int __flags) __SPRT_NOEXCEPT {
 	if (__flags != 0) {
 		__sprt_errno = ENOTSUP;
 		return -1;
@@ -331,7 +132,7 @@ static int mlock2(const void *addr, size_t len, int __flags) {
 	return mlock(addr, len);
 }
 
-static int madvise(void *addr, size_t len, int advice) {
+__SPRT_C_FUNC int madvise(void *addr, size_t len, int advice) __SPRT_NOEXCEPT {
 	if (!addr || len == 0) {
 		__sprt_errno = EINVAL;
 		return -1;
@@ -375,7 +176,7 @@ static int madvise(void *addr, size_t len, int advice) {
 	}
 }
 
-static int mincore(void *addr, size_t length, unsigned char *vec) {
+__SPRT_C_FUNC int mincore(void *addr, size_t length, unsigned char *vec) __SPRT_NOEXCEPT {
 	if (!addr || !length || !vec) {
 		__sprt_errno = EINVAL;
 		return -1;
@@ -420,31 +221,6 @@ static int mincore(void *addr, size_t length, unsigned char *vec) {
 
 	__sprt_freea(WsInfo);
 	return 0;
-}
-
-
-void MappingInfo::attachRegion(void *ptr, size_t size, int fd) {
-	unique_lock lock(s_mappingInfo.mutex);
-	s_mappingInfo.regions.emplace(ptr, MappingRegion(ptr, size, fd));
-}
-
-void MappingInfo::detachRegion(void *ptr) {
-	unique_lock lock(s_mappingInfo.mutex);
-	s_mappingInfo.regions.erase(ptr);
-}
-
-bool MappingInfo::isRegionExists(void *ptr, size_t size, int *fd) {
-	unique_lock lock(s_mappingInfo.mutex);
-	auto it = s_mappingInfo.regions.find(ptr);
-	if (it != s_mappingInfo.regions.end()) {
-		if (it->second.length == size) {
-			if (fd) {
-				*fd = it->second.fd;
-			}
-			return true;
-		}
-	}
-	return false;
 }
 
 } // namespace sprt

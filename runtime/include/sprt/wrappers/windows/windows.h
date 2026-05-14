@@ -248,6 +248,13 @@ THE SOFTWARE.
 #define LOCALE_S1159                  LOCALE_SAM   // DEPRECATED: Please use LOCALE_SAM, which is more readable.
 #define LOCALE_S2359                  LOCALE_SPM   // DEPRECATED: Please use LOCALE_SPM, which is more readable.
 
+#define CREATE_WAITABLE_TIMER_MANUAL_RESET  0x00000001
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+
+#define TIMER_QUERY_STATE       0x0001
+#define TIMER_MODIFY_STATE      0x0002
+
+#define TIMER_ALL_ACCESS (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | TIMER_QUERY_STATE | TIMER_MODIFY_STATE)
 
 // clang-format on
 
@@ -683,6 +690,9 @@ WINAPI int CompareStringEx(LPCWSTR lpLocaleName, DWORD dwCmpFlags, LPCWCH lpStri
 		LPCWCH lpString2, int cchCount2, LPNLSVERSIONINFO lpVersionInformation, LPVOID lpReserved,
 		LPARAM lParam);
 
+WINAPI int WideCharToMultiByte(UINT CodePage, DWORD dwFlags, LPCWCH lpWideCharStr, int cchWideChar,
+		LPSTR lpMultiByteStr, int cbMultiByte, LPCCH lpDefaultChar, LPBOOL lpUsedDefaultChar);
+
 WINAPI int GetLocaleInfoEx(LPCWSTR lpLocaleName, LCTYPE LCType, LPWSTR lpLCData, int cchData);
 
 WINAPI BOOL IsValidLocaleName(LPCWSTR lpLocaleName);
@@ -695,16 +705,18 @@ WINAPI int IdnToAscii(DWORD dwFlags, LPCWSTR lpUnicodeCharStr, int cchUnicodeCha
 WINAPI int IdnToUnicode(DWORD dwFlags, LPCWSTR lpASCIICharStr, int cchASCIIChar,
 		LPWSTR lpUnicodeCharStr, int cchUnicodeChar);
 
-/* RtlZeroMemory is the underlying implementation for ZeroMemory macro */
-#define RtlZeroMemory(Destination, Length) \
-    FillMemory((Destination), (Length), 0)
-/**
- * ZeroMemory - Fills a block of memory with zeros.
- * @param Destination Pointer to the start of the memory block.
- * @param Length Number of bytes to zero.
- */
-#define ZeroMemory(Destination, Length) \
-    RtlZeroMemory((Destination), (Length))
+// Extended IOCP API from Windows 11, not supported on Wine for now
+
+WINAPI int RestartEventCompletion2(void *hPacket, void *hIOCP, void *hEvent,
+		DWORD dwNumberOfBytesTransferred, UINT_PTR dwCompletionKey, void *lpOverlapped);
+
+WINAPI int RestartEventCompletion(void *hPacket, void *hIOCP, void *hEvent,
+		const void **ncompletion);
+
+WINAPI int CancelEventCompletion(void *hPacket, int cancel);
+
+WINAPI void *ReportEventAsCompletion(void *hIOCP, void *hEvent, DWORD dwNumberOfBytesTransferred,
+		UINT_PTR dwCompletionKey, void *lpOverlapped);
 
 __SPRT_END_DECL
 

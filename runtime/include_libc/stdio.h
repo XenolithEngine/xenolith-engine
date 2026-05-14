@@ -47,6 +47,22 @@ THE SOFTWARE.
 #define SEEK_END __SPRT_SEEK_END
 #endif
 
+#ifdef __SPRT_BUFSIZ
+#define BUFSIZ __SPRT_BUFSIZ
+#endif
+
+#ifdef __SPRT_FILENAME_MAX
+#define FILENAME_MAX __SPRT_FILENAME_MAX
+#endif
+
+#ifdef __SPRT_L_tmpnam
+#define L_tmpnam __SPRT_L_tmpnam
+#endif
+
+#ifdef __SPRT_UNGET
+#define UNGET __SPRT_UNGET
+#endif
+
 __SPRT_BEGIN_DECL
 
 #define fopen64 fopen

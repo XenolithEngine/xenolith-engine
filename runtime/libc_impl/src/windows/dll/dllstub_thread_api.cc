@@ -77,6 +77,11 @@ void ExitThread(DWORD dwExitCode) {
 	loader->kernel32.call<decltype(&ExitThread)>(loader->kernel32.ExitThread, dwExitCode);
 }
 
+DWORD ResumeThread(HANDLE hThread) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&ResumeThread)>(loader->kernel32.ResumeThread, hThread);
+}
+
 BOOL QueueUserAPC2(PAPCFUNC ApcRoutine, HANDLE Thread, ULONG_PTR Data, QUEUE_USER_APC_FLAGS Flags) {
 	auto loader = sprt::DllLoader::get();
 	return loader->kernel32.call<decltype(&QueueUserAPC2)>(loader->kernel32.QueueUserAPC2,

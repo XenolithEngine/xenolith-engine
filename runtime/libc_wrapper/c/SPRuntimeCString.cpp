@@ -128,10 +128,13 @@ __SPRT_C_FUNC const char *__SPRT_ID(strstr_impl)(const char *str, const char *ns
 	return ::strstr(str, nstr);
 }
 
-__SPRT_C_FUNC char *__SPRT_ID(
-		strtok_impl)(char *__SPRT_RESTRICT str, const char *__SPRT_RESTRICT tok) {
-	return ::strtok(str, tok);
+__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(strlen_impl)(const char *__SPRT_RESTRICT str) {
+	return ::strlen(str);
 }
 
+__SPRT_C_FUNC __SPRT_ID(size_t)
+		__SPRT_ID(strnlen_impl)(const char *__SPRT_RESTRICT str, __SPRT_ID(size_t) n) {
+	return ::strnlen(str, n);
+}
 
 } // namespace sprt

@@ -40,94 +40,13 @@ THE SOFTWARE.
 
 #include "specific.h"
 #include "stdlib.h"
+#include "stdio.h"
+#include "fcntl.h"
 
 #include <sprt/wrappers/windows/basic_api.h>
 #include <sprt/wrappers/windows/file_api.h>
 
 namespace sprt {
-
-/*template <typename Callback>
-static bool __mktmppath(char *itpl, const Callback &cb) {
-	static constexpr size_t PathBufferLen = MAX_PATH + 2;
-
-	wchar_t tmpDirPath[PathBufferLen] = {0};
-	wchar_t tmpFilePath[PathBufferLen] = {0};
-
-	auto dirLength = GetTempPathW(PathBufferLen, tmpDirPath);
-	if (dirLength < 0) {
-		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		return -1;
-	}
-
-	auto wtpl = __MALLOCA_WSTRING(itpl);
-
-	StringViewBase<wchar_t> tpl(wtpl);
-	if (!tpl.ends_with(L"XXXXXX")) {
-		__sprt_freea(wtpl);
-		__sprt_errno = EINVAL;
-		return -1;
-	}
-
-	uint8_t randomBytes[6];
-	char b64Bytes[8];
-
-	__sprt_getrandom(randomBytes, 6, __SPRT_GRND_RANDOM);
-
-	base64url::encode(randomBytes, 6, b64Bytes, 8);
-	memcpy((char *)(tpl.data() + tpl.size() - 6), b64Bytes, 6);
-
-	size_t tmpPrefixPathBufLen = PathBufferLen;
-	auto target = tmpFilePath;
-
-	target = strappend(target, &tmpPrefixPathBufLen, tmpDirPath, dirLength);
-	target = strappend(target, &tmpPrefixPathBufLen, L"\\", 1);
-	target = strappend(target, &tmpPrefixPathBufLen, tpl.data(), tpl.size());
-	if (tmpPrefixPathBufLen == 0) {
-		__sprt_errno = ERANGE;
-		return false;
-	}
-
-	cb(tmpFilePath, target - tmpFilePath);
-
-	__sprt_freea(wtpl);
-	return true;
-}
-
-static int mkostemp(char *itpl, int _flags) {
-	int fd = -1;
-	if (!__mktmppath(itpl, [&](const wchar_t *path, size_t pathLength) {
-		auto flags = _O_CREAT | _O_SHORT_LIVED | _O_TEMPORARY | _O_RDWR | _O_BINARY;
-		for (auto f : sprt::flags(uint32_t(_flags))) {
-			switch (f) {
-			case __SPRT_O_APPEND: flags |= _O_APPEND; break;
-			case __SPRT_O_CLOEXEC: flags |= _O_NOINHERIT; break;
-			case __SPRT_O_SYNC: break;
-			}
-		}
-
-		_wsopen_s(&fd, path, flags, _SH_DENYRW, _S_IREAD | _S_IWRITE);
-	})) {
-		return -1;
-	}
-
-	return fd;
-}
-
-static int mkstemp(char *itpl) { return mkostemp(itpl, 0); }
-
-static char *mkdtemp(char *itpl) {
-	char *ret = nullptr;
-	if (!__mktmppath(itpl, [&](const wchar_t *path, size_t pathLength) {
-		if (!CreateDirectoryW(path, nullptr)) {
-			__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		} else {
-			ret = itpl;
-		}
-	})) {
-		return nullptr;
-	}
-	return ret;
-}*/
 
 struct _EnvBlock {
 	_EnvBlock() { }

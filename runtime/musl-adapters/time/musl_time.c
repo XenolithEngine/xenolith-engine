@@ -1,0 +1,12 @@
+#include "time.h"
+#include "../include/defs.h"
+
+#include "../../musl-libc/src/time/__tm_to_secs.c"
+#include "../../musl-libc/src/time/__month_to_secs.c"
+#include "../../musl-libc/src/time/__year_to_secs.c"
+#include "../../musl-libc/src/time/difftime.c"
+#include "../../musl-libc/src/time/gmtime.c"
+#include "../../musl-libc/src/time/localtime.c"
+#include "../../musl-libc/src/time/asctime.c"
+#include "../../musl-libc/src/time/ctime_r.c"
+#include "../../musl-libc/src/time/ctime.c"

@@ -185,6 +185,8 @@ WINAPI BOOL SetThreadPriority(HANDLE hThread, int nPriority);
 
 WINAPI void ExitThread(DWORD dwExitCode);
 
+WINAPI DWORD ResumeThread(HANDLE hThread);
+
 BOOL QueueUserAPC2(PAPCFUNC ApcRoutine, HANDLE Thread, ULONG_PTR Data, QUEUE_USER_APC_FLAGS Flags);
 
 WINAPI HRESULT SetThreadDescription(HANDLE hThread, PCWSTR lpThreadDescription);

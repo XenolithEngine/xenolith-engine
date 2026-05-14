@@ -29,6 +29,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_ssize_t.h>
 #include <sprt/c/cross/__sprt_file_ptr.h>
 #include <sprt/c/cross/__sprt_locale.h>
+#include <sprt/c/cross/__sprt_stdio.h>
 #include <sprt/c/bits/seek.h>
 
 #ifndef __SPRT_EOF
