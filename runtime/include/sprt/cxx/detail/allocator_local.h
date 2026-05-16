@@ -20,8 +20,8 @@
  THE SOFTWARE.
  **/
 
-#ifndef RUNTIME_INCLUDE_SPRT_CXX_DETAIL_ALLOCATOR_MALLOC_H_
-#define RUNTIME_INCLUDE_SPRT_CXX_DETAIL_ALLOCATOR_MALLOC_H_
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_DETAIL_ALLOCATOR_LOCAL_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_DETAIL_ALLOCATOR_LOCAL_H_
 
 #include <sprt/c/__sprt_stdio.h>
 #include <sprt/c/__sprt_assert.h>
@@ -32,8 +32,12 @@
 
 namespace sprt::detail {
 
+/*
+	AllocatorLocal is a special variant of AllocatorMalloc to use within
+	freestanding context before actual malloc is initialized.
+*/
 template <typename T>
-class AllocatorMalloc {
+class AllocatorLocal {
 public:
 	using base_class = AllocBase;
 
@@ -53,24 +57,24 @@ public:
 
 	template <typename U>
 	struct rebind {
-		using other = AllocatorMalloc<U>;
+		using other = AllocatorLocal<U>;
 	};
 
 public:
 	// Default allocator uses pool from top of thread's AllocStack
-	constexpr AllocatorMalloc() noexcept { }
+	constexpr AllocatorLocal() noexcept { }
 
 	template <typename B>
-	constexpr AllocatorMalloc(const AllocatorMalloc<B> &a) noexcept { }
+	constexpr AllocatorLocal(const AllocatorLocal<B> &a) noexcept { }
 	template <typename B>
-	constexpr AllocatorMalloc(AllocatorMalloc<B> &&a) noexcept { }
+	constexpr AllocatorLocal(AllocatorLocal<B> &&a) noexcept { }
 
 	template <typename B>
-	constexpr AllocatorMalloc<T> &operator=(const AllocatorMalloc<B> &a) noexcept {
+	constexpr AllocatorLocal<T> &operator=(const AllocatorLocal<B> &a) noexcept {
 		return *this;
 	}
 	template <typename B>
-	constexpr AllocatorMalloc<T> &operator=(AllocatorMalloc<B> &&a) noexcept {
+	constexpr AllocatorLocal<T> &operator=(AllocatorLocal<B> &&a) noexcept {
 		return *this;
 	}
 
@@ -81,12 +85,12 @@ public:
 	constexpr void __deallocate(T *t, size_t n, size_t bytes) const noexcept;
 
 	template <typename B>
-	constexpr inline bool operator==(const AllocatorMalloc<B> &p) const noexcept {
+	constexpr inline bool operator==(const AllocatorLocal<B> &p) const noexcept {
 		return true;
 	}
 
 	template <typename B>
-	constexpr inline bool operator!=(const AllocatorMalloc<B> &p) const noexcept {
+	constexpr inline bool operator!=(const AllocatorLocal<B> &p) const noexcept {
 		return false;
 	}
 
@@ -110,8 +114,8 @@ public:
 //
 
 template <typename T>
-constexpr inline auto AllocatorMalloc<T>::allocate(size_t n) const noexcept -> T * {
-	T *ptr = n == 1 ? sprt::memory::allocate<T>() : sprt::memory::allocate<T>(n);
+constexpr inline auto AllocatorLocal<T>::allocate(size_t n) const noexcept -> T * {
+	T *ptr = n == 1 ? sprt::memory::local_allocate<T>() : sprt::memory::allocate<T>(n);
 	if (!ptr) {
 		__sprt_perror("allocation error");
 	}
@@ -120,8 +124,8 @@ constexpr inline auto AllocatorMalloc<T>::allocate(size_t n) const noexcept -> T
 }
 
 template <typename T>
-constexpr inline auto AllocatorMalloc<T>::__allocate(size_t &n) const noexcept -> T * {
-	T *ptr = sprt::memory::allocate<T>(n);
+constexpr inline auto AllocatorLocal<T>::__allocate(size_t &n) const noexcept -> T * {
+	T *ptr = sprt::memory::local_allocate<T>(n);
 	if (!ptr) {
 		__sprt_perror("allocation error");
 	}
@@ -130,9 +134,8 @@ constexpr inline auto AllocatorMalloc<T>::__allocate(size_t &n) const noexcept -
 }
 
 template <typename T>
-constexpr inline auto AllocatorMalloc<T>::__allocate(size_t n, size_t &bytes) const noexcept
-		-> T * {
-	T *ptr = sprt::memory::allocate<T>(n);
+constexpr inline auto AllocatorLocal<T>::__allocate(size_t n, size_t &bytes) const noexcept -> T * {
+	T *ptr = sprt::memory::local_allocate<T>(n);
 	if (!ptr) {
 		__sprt_perror("allocation error");
 	}
@@ -142,19 +145,18 @@ constexpr inline auto AllocatorMalloc<T>::__allocate(size_t n, size_t &bytes) co
 }
 
 template <typename T>
-constexpr inline void AllocatorMalloc<T>::deallocate(T *t, size_t n) const noexcept {
-	sprt::memory::deallocate<T>(t, n, n * sizeof(T));
+constexpr inline void AllocatorLocal<T>::deallocate(T *t, size_t n) const noexcept {
+	sprt::memory::local_deallocate<T>(t, n, n * sizeof(T));
 }
 
 template <typename T>
-constexpr inline void AllocatorMalloc<T>::__deallocate(T *t, size_t n,
-		size_t bytes) const noexcept {
-	sprt::memory::deallocate<T>(t, n, bytes);
+constexpr inline void AllocatorLocal<T>::__deallocate(T *t, size_t n, size_t bytes) const noexcept {
+	sprt::memory::local_deallocate<T>(t, n, bytes);
 }
 
 template <typename T>
 template <typename... Args>
-constexpr inline void AllocatorMalloc<T>::construct(pointer p, Args &&...args) const noexcept {
+constexpr inline void AllocatorLocal<T>::construct(pointer p, Args &&...args) const noexcept {
 	static_assert(is_constructible_v<T, Args...>, "Invalid arguments for constructor");
 	if constexpr (is_constructible_v<T, Args...>) {
 		sprt::construct_at(p, sprt::forward<Args>(args)...);
@@ -162,7 +164,7 @@ constexpr inline void AllocatorMalloc<T>::construct(pointer p, Args &&...args) c
 }
 
 template <typename T>
-constexpr inline void AllocatorMalloc<T>::destroy(pointer p) const noexcept {
+constexpr inline void AllocatorLocal<T>::destroy(pointer p) const noexcept {
 	if constexpr (!is_destructible_v<T> || is_trivially_destructible_v<T>) {
 		// do nothing
 	} else {
@@ -171,7 +173,7 @@ constexpr inline void AllocatorMalloc<T>::destroy(pointer p) const noexcept {
 }
 
 template <typename T>
-constexpr inline void AllocatorMalloc<T>::destroy(pointer p, size_t size) const noexcept {
+constexpr inline void AllocatorLocal<T>::destroy(pointer p, size_t size) const noexcept {
 	if constexpr (!is_destructible_v<T> || is_trivially_destructible_v<T>) {
 		// do nothing
 	} else {
@@ -181,4 +183,4 @@ constexpr inline void AllocatorMalloc<T>::destroy(pointer p, size_t size) const 
 
 } // namespace sprt::detail
 
-#endif // RUNTIME_INCLUDE_SPRT_CXX_DETAIL_ALLOCATOR_MALLOC_H_
+#endif // RUNTIME_INCLUDE_SPRT_CXX_DETAIL_ALLOCATOR_LOCAL_H_

@@ -242,11 +242,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t)
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(__ctype_get_mb_cur_max)(void) {
 #if __SPRT_CONFIG_HAVE_STDLIB_MB
-#if SPRT_WINDOWS
-	return ::___mb_cur_max_func();
-#else
 	return ::__ctype_get_mb_cur_max();
-#endif
 #else
 	__sprt_errno = ENOSYS;
 	return 0;

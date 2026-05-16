@@ -68,47 +68,47 @@ public:
 	linear_memory_large(self &&other) = delete;
 	self &operator=(self &&other) = delete;
 
-	void assign(allocator &a, const_pointer ptr, size_type count) {
+	void assign(allocator &alloc, const_pointer ptr, size_type count) {
 		if (capacity() < count) {
-			reserve(a, count);
+			reserve(alloc, count);
 			if (!_ptr) {
-				reserve(a, count);
+				reserve(alloc, count);
 			}
 		}
-		a.copy_rewrite(data(), size(), ptr, count);
+		__allocator_copy_rewrite(alloc, data(), size(), ptr, count);
 		if (_used > count) {
-			a.destroy(data() + count, _used - count);
+			alloc.destroy(data() + count, _used - count);
 		}
 		_used = count;
 		drop_unused();
 	}
 
-	void move_assign(allocator &a, pointer ptr, size_type count) {
+	void move_assign(allocator &alloc, pointer ptr, size_type count) {
 		if (capacity() < count) {
-			reserve(a, count);
+			reserve(alloc, count);
 		}
-		a.move_rewrite(_ptr, _used, ptr, count);
+		__allocator_move_rewrite(alloc, _ptr, _used, ptr, count);
 		if (_used > count) {
-			a.destroy(data() + count, _used - count);
+			alloc.destroy(data() + count, _used - count);
 		}
 		_used = count;
 		drop_unused();
 	}
 
-	void assign_mem(allocator &a, pointer ptr, size_type s, size_type nalloc) {
-		clear_dealloc(a);
+	void assign_mem(allocator &alloc, pointer ptr, size_type s, size_type nalloc) {
+		clear_dealloc(alloc);
 		_ptr = ptr;
 		_used = s;
 		_allocated_with_soo_bit = wrap_allocated(nalloc - Extra);
 	}
 
-	void reserve(allocator &a, size_type s) {
-		grow_alloc(a, s);
+	void reserve(allocator &alloc, size_type s) {
+		grow_alloc(alloc, s);
 		drop_unused();
 	}
 
-	void replace_content(allocator &a, linear_memory_large &other) {
-		clear_dealloc(a);
+	void replace_content(allocator &alloc, linear_memory_large &other) {
+		clear_dealloc(alloc);
 		_ptr = other._ptr;
 		other._ptr = nullptr;
 
@@ -119,15 +119,15 @@ public:
 		other._allocated_with_soo_bit = wrap_allocated(0);
 	}
 
-	void clear_dealloc(allocator &a) {
+	void clear_dealloc(allocator &alloc) {
 		if (_ptr) {
 			if (_used) {
-				a.destroy(_ptr, _used);
+				alloc.destroy(_ptr, _used);
 			}
 
 			auto _allocated = capacity();
 			if (_allocated) {
-				a.deallocate(_ptr, _allocated + Extra);
+				alloc.deallocate(_ptr, _allocated + Extra);
 			}
 		}
 		_ptr = nullptr;
@@ -156,22 +156,22 @@ public:
 		}
 	}
 
-	void grow_alloc(allocator &a, size_type newsize) {
+	void grow_alloc(allocator &alloc, size_type newsize) {
 		size_t alloc_size = newsize + Extra;
 
 		// use extra memory if provided by allocator
 		size_t allocated = alloc_size * sizeof(Type); // real memory block size returned
-		auto ptr = a.__allocate(alloc_size, allocated);
+		auto ptr = alloc.__allocate(alloc_size, allocated);
 
 		alloc_size = allocated / sizeof(Type);
 
 		if (_used > 0 && _ptr) {
-			a.move(ptr, _ptr, _used);
+			__allocator_move(alloc, ptr, _ptr, _used);
 		}
 
 		auto _allocated = capacity();
 		if (_ptr && _allocated > 0) {
-			a.deallocate(_ptr, _allocated);
+			alloc.deallocate(_ptr, _allocated);
 		}
 
 		_ptr = ptr;

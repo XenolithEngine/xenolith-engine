@@ -2,6 +2,11 @@
 #define __SPRT_MSC_COMPAT
 
 #include <unistd.h>
+#include <sys/mman.h>
+#include <pthread.h>
+#include <signal.h>
+#include <sys/time.h>
+
 
 #ifdef _WIN32
 #include <sprt/wrappers/windows/basic_api.h>

@@ -55,7 +55,7 @@ typedef __SPRT_ID(wchar_t) wchar_t;
 __SPRT_BEGIN_DECL
 
 #if __STDC_HOSTED__ == 0
-size_t ___mb_cur_max_func() __SPRT_NOEXCEPT;
+size_t __ctype_get_mb_cur_max() __SPRT_NOEXCEPT;
 #endif
 
 SPRT_UMBRELLA_FUNC

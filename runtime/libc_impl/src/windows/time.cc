@@ -30,6 +30,11 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/windows.h>
 #include <sprt/wrappers/windows/process_api.h>
 
+#include "../../include/__impl_libc.h"
+
+static constexpr time_t TICKS_PER_SECOND = 10'000'000ULL;
+static constexpr time_t EPOCH_DIFFERENCE = 11'644'473'600ULL;
+
 namespace sprt {
 
 /*static int __getLocalGmtOff(bool isDst) {
@@ -98,7 +103,7 @@ __SPRT_C_FUNC int nanosleep(const struct __SPRT_TIMESPEC_NAME *req,
 		}
 
 		LARGE_INTEGER due;
-		due.QuadPart = -((req->tv_sec * 10'000'000LL) + (req->tv_nsec / 100LL));
+		due.QuadPart = -((req->tv_sec * TICKS_PER_SECOND) + (req->tv_nsec / 100LL));
 
 		timeBeginPeriod(1);
 		BOOL ok = SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE);
@@ -217,7 +222,7 @@ __SPRT_C_FUNC int clock_nanosleep(__SPRT_ID(clockid_t) clock, int v,
 		}
 
 		LARGE_INTEGER due;
-		due.QuadPart = -((req->tv_sec * 10'000'000LL) + (req->tv_nsec / 100LL));
+		due.QuadPart = -((req->tv_sec * TICKS_PER_SECOND) + (req->tv_nsec / 100LL));
 
 		timeBeginPeriod(1);
 		BOOL ok = SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE);
@@ -248,3 +253,65 @@ __SPRT_C_FUNC int clock_nanosleep(__SPRT_ID(clockid_t) clock, int v,
 }
 
 } // namespace sprt
+
+static time_t FileTimeToTime(FILETIME *input) {
+	time_t temp;
+	temp = (static_cast<time_t>(input->dwHighDateTime) << 32 | input->dwLowDateTime)
+			/ TICKS_PER_SECOND;
+	temp = temp - EPOCH_DIFFERENCE;
+	return temp;
+}
+
+__SPRT_C_FUNC struct tm *localtime_r(const time_t *__restrict t,
+		struct tm *__restrict tm) __SPRT_NOEXCEPT {
+	// get local SYSTEMTIME
+	SYSTEMTIME st, localTime;
+
+	ULARGE_INTEGER uli;
+	uli.QuadPart = ((ULONGLONG)*t * TICKS_PER_SECOND) + EPOCH_DIFFERENCE * TICKS_PER_SECOND;
+
+	FILETIME ft, localFt;
+	ft.dwLowDateTime = uli.LowPart;
+	ft.dwHighDateTime = uli.HighPart;
+
+	if (!FileTimeToSystemTime(&ft, &st) || !SystemTimeToTzSpecificLocalTime(NULL, &st, &localTime)
+			|| !SystemTimeToFileTime(&localTime, &localFt)) {
+		errno = sprt::platform::lastErrorToErrno(GetLastError());
+		return nullptr;
+	}
+
+	auto local = FileTimeToTime(&localFt);
+	if (gmtime_r(&local, tm)) {
+		// Get TZ info for specified year
+		TIME_ZONE_INFORMATION tzi;
+		if (!GetTimeZoneInformationForYear(localTime.wYear, nullptr, &tzi)) {
+			errno = sprt::platform::lastErrorToErrno(GetLastError());
+			return nullptr;
+		}
+
+		auto dstOffset = -(tzi.Bias + tzi.DaylightBias) * 60;
+
+		auto off = local - *t;
+		tm->tm_usec = 0;
+		tm->tm_gmtoff = off;
+		tm->tm_isdst = (dstOffset == off) ? 1 : 0;
+		tm->tm_gmt_type = __sprt_gmt_local;
+
+		if (off == 0) {
+			tm->tm_zone = __utc;
+		} else {
+			size_t len = 0;
+			char tzBuf[64];
+			if (sprt::unicode::toUtf8(tzBuf, 64,
+						(const char16_t *)(tm->tm_isdst ? tzi.DaylightName : tzi.StandardName),
+						&len)
+					== sprt::Status::Ok) {
+				tm->tm_zone = sprt::__libc::get()->preserve_tz_name(sprt::StringView(tzBuf, len));
+			}
+		}
+
+		return tm;
+	}
+
+	return nullptr;
+}

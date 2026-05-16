@@ -27,12 +27,6 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdio.h>
 #include <sprt/cxx/__mutex/unique_lock.h>
 
-extern "C" {
-void *malloc(size_t);
-void free(void *);
-void abort();
-}
-
 namespace sprt::memory::impl {
 
 static atomic<size_t> s_nAllocators = 0;
@@ -85,7 +79,7 @@ static MemNode *Allocator_malloc(size_t size, uint32_t index) {
 	if (ptr) {
 		mapped = 1;
 	} else {
-		ptr = reinterpret_cast<uint8_t *>(::malloc(size));
+		ptr = reinterpret_cast<uint8_t *>(::__sprt_local_alloc(size));
 	}
 
 	return new (ptr) MemNode{
@@ -105,7 +99,7 @@ static void Allocator_free(MemNode *ptr) {
 		Allocator_unmmap(reinterpret_cast<uint8_t *>(ptr),
 				ptr->endp - reinterpret_cast<uint8_t *>(ptr));
 	} else {
-		::free(ptr);
+		::__sprt_local_free(ptr, 0);
 	}
 }
 
@@ -121,7 +115,7 @@ Allocator::~Allocator() {
 
 #if DEBUG
 		if (!isValidNode(node)) {
-			abort();
+			__sprt_abort();
 		}
 #endif
 
@@ -290,7 +284,7 @@ void Allocator::free(MemNode *node) {
 
 #if DEBUG
 			if (!isValidNode(buf[index])) {
-				abort();
+				__sprt_abort();
 			}
 #endif
 		} else {
@@ -317,7 +311,7 @@ void Allocator::free(MemNode *node) {
 
 	if (i >= 1'024 * 128) {
 		__sprt_perror("ERRER: pool double-free detected!\n");
-		abort();
+		__sprt_abort();
 	}
 #endif
 

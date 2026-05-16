@@ -34,8 +34,9 @@ THE SOFTWARE.
 __SPRT_BEGIN_DECL
 
 typedef __SPRT_ID(pid_t) pid_t;
-typedef __SPRT_TIMESPEC_NAME timespec;
+typedef struct __SPRT_TIMESPEC_NAME timespec;
 typedef __SPRT_ID(cpu_set_t) cpu_set_t;
+typedef __SPRT_ID(cpu_set_t) cpuset_t;
 
 #define CPU_SETSIZE __SPRT_CPU_SETSIZE
 

@@ -32,10 +32,6 @@
 #include <sprt/c/sys/__sprt_stat.h>
 #endif
 
-#if SPRT_WINDOWS
-
-#endif
-
 namespace sprt::oslog {
 
 struct LogFeaturesInit : LogFeatures {

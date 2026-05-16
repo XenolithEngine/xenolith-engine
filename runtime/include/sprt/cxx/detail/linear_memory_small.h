@@ -46,26 +46,27 @@ struct linear_memory_small {
 		return (sizeof(Type) < ByteCount) ? ((ByteCount - 1) / sizeof(Type)) : 0;
 	}
 
-	static void assign(strage_type &storage, allocator &a, const_pointer ptr, size_type s) {
+	static void assign(strage_type &storage, allocator &alloc, const_pointer ptr, size_type s) {
 		const auto current = size(storage);
-		a.copy_rewrite(data(storage), size(storage), ptr, s);
+		__allocator_copy_rewrite(alloc, data(storage), size(storage), ptr, s);
 		if (current > s) {
-			a.destroy(data(storage) + s, current - s);
+			alloc.destroy(data(storage) + s, current - s);
 		}
 		set_size(storage, s);
 	}
 
-	static void move_assign(strage_type &storage, allocator &a, pointer source, size_type count) {
+	static void move_assign(strage_type &storage, allocator &alloc, pointer source,
+			size_type count) {
 		const auto current = size(storage);
-		a.move_rewrite(data(storage), current, source, count);
+		__allocator_move_rewrite(alloc, data(storage), current, source, count);
 		if (current > count) {
-			a.destroy(data(storage) + count, current - count);
+			alloc.destroy(data(storage) + count, current - count);
 		}
 		set_size(storage, count);
 	}
 
-	static void clear(strage_type &storage, allocator &a) {
-		a.destroy(data(storage), size(storage));
+	static void clear(strage_type &storage, allocator &alloc) {
+		alloc.destroy(data(storage), size(storage));
 		set_size(storage, 0);
 	}
 

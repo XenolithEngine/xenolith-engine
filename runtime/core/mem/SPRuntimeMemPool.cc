@@ -291,7 +291,7 @@ void Pool::clear() {
 Pool *Pool::create(Allocator *alloc) {
 	Allocator *allocator = alloc;
 	if (allocator == nullptr) {
-		allocator = new (sprt::nothrow) Allocator();
+		allocator = new (__sprt_local_alloc(sizeof(Allocator)), sprt::nothrow) Allocator();
 	}
 
 	auto node = allocator->alloc(config::MIN_ALLOC - SIZEOF_MEMNODE);
@@ -356,7 +356,8 @@ Pool::~Pool() {
 
 	allocator->free(active);
 	if (allocator->owner == this) {
-		sprt::__delete(allocator);
+		sprt::destroy_at(allocator);
+		__sprt_local_free(allocator, sizeof(Allocator));
 	}
 
 	--s_nPools;
@@ -512,7 +513,8 @@ void initialize() {
 	// We do not know, what thread calls this first!
 	if (s_global_init.fetch_add(1) == 0) {
 		if (!s_global_allocator) {
-			s_global_allocator = new (sprt::nothrow) Allocator();
+			s_global_allocator =
+					new (__sprt_local_alloc(sizeof(Allocator)), sprt::nothrow) Allocator();
 		}
 		s_global_pool = Pool::create(s_global_allocator);
 		s_global_pool->allocmngr.name = "Global";
@@ -526,7 +528,8 @@ void terminate() {
 			s_global_pool = nullptr;
 		}
 		if (s_global_allocator) {
-			sprt::__delete(s_global_allocator);
+			sprt::destroy_at(s_global_allocator);
+			__sprt_local_free(s_global_allocator, sizeof(Allocator));
 			s_global_allocator = nullptr;
 		}
 	}

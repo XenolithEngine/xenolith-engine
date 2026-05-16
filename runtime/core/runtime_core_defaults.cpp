@@ -162,7 +162,7 @@ __SPRT_C_FUNC int __SPRT_ID(clock_getres)(__SPRT_ID(clockid_t) clock, __SPRT_TIM
 }
 
 __SPRT_C_FUNC int __SPRT_ID(clock_gettime)(__SPRT_ID(clockid_t) clock, __SPRT_TIMESPEC_NAME *out) {
-	return _clock_gettime(clock, out);
+	return clock_gettime(clock, out);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
@@ -172,7 +172,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 
 __SPRT_C_FUNC __SPRT_ID(uint64_t) __SPRT_ID(clock_gettime_nsec_np)(__SPRT_ID(clockid_t) __clock) {
 	struct __SPRT_TIMESPEC_NAME __tp;
-	_clock_gettime(__clock, &__tp);
+	clock_gettime(__clock, &__tp);
 	return static_cast<uint64_t>(__tp.tv_sec) * static_cast<uint64_t>(1'000'000'000LLU)
 			+ static_cast<uint64_t>(__tp.tv_nsec);
 }
@@ -290,6 +290,22 @@ __SPRT_C_FUNC void __SPRT_ID(
 	return ::free_aligned_sized(ptr, alignment, size);
 #else
 	return ::free(ptr);
+#endif
+}
+
+__SPRT_C_FUNC void *__SPRT_ID(local_alloc)(size_t size) __SPRT_NOEXCEPT {
+#if SPRT_WINDOWS
+	return ::local_alloc(size);
+#else
+	return ::malloc(size);
+#endif
+}
+
+__SPRT_C_FUNC void __SPRT_ID(local_free)(void *value, size_t size) __SPRT_NOEXCEPT {
+#if SPRT_WINDOWS
+	return ::local_free(value, size);
+#else
+	return ::free(value);
 #endif
 }
 

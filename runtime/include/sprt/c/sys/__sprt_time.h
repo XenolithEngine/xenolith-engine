@@ -42,8 +42,8 @@ THE SOFTWARE.
 __SPRT_BEGIN_DECL
 
 struct __SPRT_ITIMERVAL_NAME {
-	__SPRT_TIMEVAL_NAME it_interval;
-	__SPRT_TIMEVAL_NAME it_value;
+	struct __SPRT_TIMEVAL_NAME it_interval;
+	struct __SPRT_TIMEVAL_NAME it_value;
 };
 
 struct __SPRT_TIMEZONE_NAME {
@@ -74,39 +74,41 @@ SPRT_API int __SPRT_ID(setitimer)(int, const struct __SPRT_ITIMERVAL_NAME *__SPR
 
 #endif
 
-SPRT_API int __SPRT_ID(utimes)(const char *, const __SPRT_TIMEVAL_NAME[2]);
+SPRT_API int __SPRT_ID(utimes)(const char *, const struct __SPRT_TIMEVAL_NAME[2]);
 
-SPRT_API int __SPRT_ID(futimes)(int, const __SPRT_TIMEVAL_NAME[2]);
-SPRT_API int __SPRT_ID(futimesat)(int, const char *, const __SPRT_TIMEVAL_NAME[2]);
-SPRT_API int __SPRT_ID(lutimes)(const char *, const __SPRT_TIMEVAL_NAME[2]);
+SPRT_API int __SPRT_ID(futimes)(int, const struct __SPRT_TIMEVAL_NAME[2]);
+SPRT_API int __SPRT_ID(futimesat)(int, const char *, const struct __SPRT_TIMEVAL_NAME[2]);
+SPRT_API int __SPRT_ID(lutimes)(const char *, const struct __SPRT_TIMEVAL_NAME[2]);
 
 
 #if __SPRT_CONFIG_HAVE_TIME_ADJTIME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 
 __SPRT_CONFIG_HAVE_TIME_ADJTIME_NOTICE
-SPRT_API int __SPRT_ID(adjtime)(const __SPRT_TIMEVAL_NAME *, __SPRT_TIMEVAL_NAME *);
+SPRT_API int __SPRT_ID(adjtime)(const struct __SPRT_TIMEVAL_NAME *, struct __SPRT_TIMEVAL_NAME *);
 
 #endif
 
+// clang-format off
 #define __sprt_timerisset(t) ((t)->tv_sec || (t)->tv_usec)
 #define __sprt_timerclear(t) ((t)->tv_sec = (t)->tv_usec = 0)
 #define __sprt_timercmp(s, t, op) ((s)->tv_sec == (t)->tv_sec ? \
 	(s)->tv_usec op (t)->tv_usec : (s)->tv_sec op (t)->tv_sec)
 #define __sprt_timeradd(s, t, a) (void) ( (a)->tv_sec = (s)->tv_sec + (t)->tv_sec, \
-	((a)->tv_usec = (s)->tv_usec + (t)->tv_usec) >= 1'000'000 && \
-	((a)->tv_usec -= 1'000'000, (a)->tv_sec++) )
+	((a)->tv_usec = (s)->tv_usec + (t)->tv_usec) >= 1000000 && \
+	((a)->tv_usec -= 1000000, (a)->tv_sec++) )
 #define __sprt_timersub(s, t, a) (void) ( (a)->tv_sec = (s)->tv_sec - (t)->tv_sec, \
 	((a)->tv_usec = (s)->tv_usec - (t)->tv_usec) < 0 && \
-	((a)->tv_usec += 1'000'000, (a)->tv_sec--) )
+	((a)->tv_usec += 1000000, (a)->tv_sec--) )
 
 #define __SPRT_TIMEVAL_TO_TIMESPEC(tv, ts) ( \
 	(ts)->tv_sec = (tv)->tv_sec, \
-	(ts)->tv_nsec = (tv)->tv_usec * 1'000, \
+	(ts)->tv_nsec = (tv)->tv_usec * 1000, \
 	(void)0 )
 #define __SPRT_TIMESPEC_TO_TIMEVAL(tv, ts) ( \
 	(tv)->tv_sec = (ts)->tv_sec, \
-	(tv)->tv_usec = (ts)->tv_nsec / 1'000, \
+	(tv)->tv_usec = (ts)->tv_nsec / 1000, \
 	(void)0 )
+// clang-format on
 
 __SPRT_END_DECL
 

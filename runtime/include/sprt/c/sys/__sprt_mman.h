@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_ssize_t.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 
+// clang-format off
 #define __SPRT_MAP_FAILED ((void *) -1)
 
 #define __SPRT_MAP_SHARED     0x01
@@ -42,11 +43,11 @@ THE SOFTWARE.
 #define __SPRT_MAP_EXECUTABLE 0x1000
 #define __SPRT_MAP_LOCKED     0x2000
 #define __SPRT_MAP_POPULATE   0x8000
-#define __SPRT_MAP_NONBLOCK   0x1'0000
-#define __SPRT_MAP_STACK      0x2'0000
-#define __SPRT_MAP_HUGETLB    0x4'0000
-#define __SPRT_MAP_SYNC       0x8'0000
-#define __SPRT_MAP_FIXED_NOREPLACE 0x10'0000
+#define __SPRT_MAP_NONBLOCK   0x10000
+#define __SPRT_MAP_STACK      0x20000
+#define __SPRT_MAP_HUGETLB    0x40000
+#define __SPRT_MAP_SYNC       0x80000
+#define __SPRT_MAP_FIXED_NOREPLACE 0x100000
 #define __SPRT_MAP_FILE       0
 
 #define __SPRT_MAP_HUGE_SHIFT 26
@@ -69,8 +70,8 @@ THE SOFTWARE.
 #define __SPRT_PROT_READ      1
 #define __SPRT_PROT_WRITE     2
 #define __SPRT_PROT_EXEC      4
-#define __SPRT_PROT_GROWSDOWN 0x0100'0000
-#define __SPRT_PROT_GROWSUP   0x0200'0000
+#define __SPRT_PROT_GROWSDOWN 0x01000000
+#define __SPRT_PROT_GROWSUP   0x02000000
 
 #define __SPRT_MS_ASYNC       1
 #define __SPRT_MS_INVALIDATE  2
@@ -117,6 +118,7 @@ THE SOFTWARE.
 #define __SPRT_MFD_CLOEXEC 0x0001U
 #define __SPRT_MFD_ALLOW_SEALING 0x0002U
 #define __SPRT_MFD_HUGETLB 0x0004U
+// clang-format on
 
 __SPRT_BEGIN_DECL
 

@@ -163,6 +163,34 @@ constexpr void deallocate(T *t, size_t n, size_t nbytes = 0) {
 	}
 }
 
+template <typename T>
+constexpr T *local_allocate() {
+	static_assert(alignof(T) <= alignof(__sprt_max_align_t),
+			"Only default alignment supported by local_alloc");
+	return reinterpret_cast<T *>(__sprt_local_alloc(sizeof(T)));
+}
+
+template <typename T>
+constexpr T *local_allocate(size_t n) {
+	static_assert(alignof(T) <= alignof(__sprt_max_align_t),
+			"Only default alignment supported by local_alloc");
+	return reinterpret_cast<T *>(__sprt_local_alloc(sizeof(T) * n));
+}
+
+template <typename T>
+constexpr void local_deallocate(T *t) {
+	__sprt_local_free(t, sizeof(T));
+}
+
+template <typename T>
+constexpr void local_deallocate(T *t, size_t n, size_t nbytes = 0) {
+	if (nbytes > alignof(__sprt_max_align_t)) {
+		__sprt_local_free(t, nbytes);
+	} else {
+		__sprt_local_free(t, n * sizeof(T));
+	}
+}
+
 } // namespace sprt::memory
 
 #define __SPRT_PUSH_ALLOW_CXXABI_ALLOC \

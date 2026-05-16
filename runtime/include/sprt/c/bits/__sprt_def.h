@@ -380,7 +380,9 @@ THE SOFTWARE.
 
 // If we have any working libc (internal or from OS) - we use ubrella inlines;
 // When we have no libc - we define prototypes for libc functions
+#ifndef SPRT_UMBRELLA_REQUIRED
 #define SPRT_UMBRELLA_REQUIRED (__STDC_HOSTED__ == 1)
+#endif
 
 #if SPRT_UMBRELLA_REQUIRED
 #define SPRT_UMBRELLA_FUNC SPRT_FORCEINLINE

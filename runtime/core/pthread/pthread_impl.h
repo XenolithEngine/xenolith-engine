@@ -186,7 +186,7 @@ struct thread_t : thread_base_t {
 	sprt::array<char, __SPRT_PTHREAD_NAMEMAXLEN + 1> threadName;
 
 	// should be called from thread itself to acquire actual attibutes it running with
-	void registerThread();
+	void registerThread(bool withThreadSupportPool = true, __sprt_pid_t tid = 0);
 
 	void addMutex(mutex_t *, int32_t mutexPrio);
 
@@ -365,6 +365,8 @@ struct __thread_pool {
 
 	// thread_t *active = nullptr;
 	thread_t *free = nullptr;
+
+	thread_t main;
 
 	attr_t defaultAttr;
 

@@ -76,6 +76,9 @@ THE SOFTWARE.
 
 #define PTHREAD_NULL __SPRT_PTHREAD_NULL
 
+typedef __SPRT_ID(cpu_set_t) cpu_set_t;
+typedef __SPRT_ID(cpu_set_t) cpuset_t;
+
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(pthread_t) pthread_t;
 typedef __SPRT_ID(pthread_once_t) pthread_once_t;
@@ -196,6 +199,16 @@ int pthread_setschedprio(pthread_t thread, int p) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_pthread_setschedprio(thread, p);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
+int pthread_sigmask(int how, const __SPRT_ID(sigset_t) * set,
+		__SPRT_ID(sigset_t) * oldset) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_pthread_sigmask(how, set, oldset);
 }
 #endif
 

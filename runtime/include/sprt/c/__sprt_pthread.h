@@ -97,7 +97,7 @@ THE SOFTWARE.
 #define __SPRT_PTHREAD_PROCESS_PRIVATE 0
 #define __SPRT_PTHREAD_PROCESS_SHARED 1
 
-#define __SPRT_PTHREAD_MUTEX_INITIALIZER {{0}}
+#define __SPRT_PTHREAD_MUTEX_INITIALIZER {{0, 0, 0}}
 #define __SPRT_PTHREAD_RWLOCK_INITIALIZER {{0}}
 #define __SPRT_PTHREAD_COND_INITIALIZER {{0}}
 #define __SPRT_PTHREAD_ONCE_INIT 0
@@ -194,6 +194,9 @@ SPRT_API int __SPRT_ID(
 SPRT_API int __SPRT_ID(pthread_setschedprio)(__SPRT_ID(pthread_t), int);
 
 SPRT_API int __SPRT_ID(pthread_getcpuclockid)(__SPRT_ID(pthread_t), __SPRT_ID(clockid_t) *);
+
+SPRT_API int __SPRT_ID(
+		pthread_sigmask)(int how, const __SPRT_ID(sigset_t) * set, __SPRT_ID(sigset_t) * oldset);
 
 // No-op
 SPRT_API int __SPRT_ID(pthread_atfork)(void (*)(void), void (*)(void), void (*)(void));

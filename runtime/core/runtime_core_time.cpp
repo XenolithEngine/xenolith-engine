@@ -72,13 +72,13 @@ time_exp_t::time_exp_t(int64_t t) : time_exp_t(t, false) { }
 
 time_exp_t::time_exp_t(int64_t t, bool use_localtime) {
 	__sprt_time_t tt = __sprt_time_t(t / int64_t(__USEC_PER_SEC));
-	tm_usec = t % int64_t(__USEC_PER_SEC);
 
 	if (use_localtime) {
 		__sprt_localtime_r(&tt, this);
 	} else {
 		__sprt_gmtime_r(&tt, this);
 	}
+	tm_usec = t % int64_t(__USEC_PER_SEC);
 }
 
 int64_t time_exp_t::geti() const {
@@ -102,14 +102,24 @@ int64_t time_exp_t::geti() const {
 			(((days * 24 + tm_hour) * 60 + tm_min) * 60 + tm_sec) * __USEC_PER_SEC + tm_usec);
 }
 
-int64_t time_exp_t::gmt_geti() const { return int64_t(geti() - tm_gmtoff * __USEC_PER_SEC); }
+int64_t time_exp_t::gmt_geti() const {
+	auto ret = int64_t(geti());
+	if (tm_gmt_type != __sprt_gmt_set) {
+		return ret - int64_t(tm_gmtoff) * __USEC_PER_SEC;
+	}
+	return ret;
+}
 
 int64_t time_exp_t::ltz_geti() const {
-	__sprt_time_t t = ::__sprt_time(nullptr);
-	struct __SPRT_TM_NAME lt = {0};
+	if (tm_gmt_type != __sprt_gmt_set) {
+		return int64_t(geti());
+	} else {
+		__sprt_time_t t = ::__sprt_time(nullptr);
+		struct __SPRT_TM_NAME lt = {0};
 
-	__sprt_localtime_r(&t, &lt);
-	return int64_t(geti() - lt.tm_gmtoff * __USEC_PER_SEC);
+		__sprt_localtime_r(&t, &lt);
+		return int64_t(geti() - lt.tm_gmtoff * __USEC_PER_SEC);
+	}
 }
 
 /*
@@ -516,7 +526,61 @@ bool time_exp_t::read(StringView r) {
 
 static const char sp_month_snames[12][4] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
 	"Sep", "Oct", "Nov", "Dec"};
+
+static const char *sp_month_Bnames[] = {"January", "February", "March", "April", "May", "June",
+	"July", "August", "September", "October", "November", "December"};
+
 static const char sp_day_snames[7][4] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+
+static const char *sp_day_anames[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday",
+	"Friday", "Saturday"};
+
+// Sun Sep 16 01:03:52 1973\n\0
+size_t time_exp_t::asctime(char *date_str, size_t bufSize) const {
+	auto start = date_str;
+	const char *s;
+	int real_year;
+
+	auto push = [&](char c) {
+		if (bufSize > 0) {
+			*date_str = c;
+			++date_str;
+			--bufSize;
+		}
+	};
+
+	s = &sp_day_snames[tm_wday][0];
+	push(*s++);
+	push(*s++);
+	push(*s++);
+	push(' ');
+	s = &sp_month_snames[tm_mon][0];
+	push(*s++);
+	push(*s++);
+	push(*s++);
+	push(' ');
+	push(tm_mday / 10 + '0');
+	push(tm_mday % 10 + '0');
+	push(' ');
+	push(tm_hour / 10 + '0');
+	push(tm_hour % 10 + '0');
+	push(':');
+	push(tm_min / 10 + '0');
+	push(tm_min % 10 + '0');
+	push(':');
+	push(tm_sec / 10 + '0');
+	push(tm_sec % 10 + '0');
+	push(' ');
+	real_year = 1'900 + tm_year;
+	/* This routine isn't y10k ready. */
+	push(real_year / 1'000 + '0');
+	push(real_year % 1'000 / 100 + '0');
+	push(real_year % 100 / 10 + '0');
+	push(real_year % 10 + '0');
+	push('\n');
+	push(0);
+	return date_str - start - 1;
+}
 
 size_t time_exp_t::encodeRfc822(char *date_str, size_t bufSize) const {
 	auto start = date_str;
@@ -700,11 +764,368 @@ size_t time_exp_t::encodeIso8601(char *date_str, size_t bufSize, size_t precisio
 	return date_str - start - 1;
 }
 
-size_t strftime(char *buf, size_t bufSize, const char *format, uint64_t usec) {
-	struct __SPRT_TM_NAME tm;
-	__sprt_time_t tt = usec / __USEC_PER_SEC;
-	__sprt_gmtime_r(&tt, &tm);
-	return __sprt_strftime(buf, bufSize, format, &tm);
+static int __month_to_secs(int month, int is_leap) {
+	static const int secs_through_month[] = {0, 31 * 86'400, 59 * 86'400, 90 * 86'400, 120 * 86'400,
+		151 * 86'400, 181 * 86'400, 212 * 86'400, 243 * 86'400, 273 * 86'400, 304 * 86'400,
+		334 * 86'400};
+	int t = secs_through_month[month];
+	if (is_leap && month >= 2) {
+		t += 86'400;
+	}
+	return t;
+}
+
+static long long __year_to_secs(long long year, int *is_leap) {
+	if (year - 2ULL <= 136) {
+		int y = year;
+		int leaps = (y - 68) >> 2;
+		if (!((y - 68) & 3)) {
+			leaps--;
+			if (is_leap) {
+				*is_leap = 1;
+			}
+		} else if (is_leap) {
+			*is_leap = 0;
+		}
+		return 31'536'000 * (y - 70) + 86'400 * leaps;
+	}
+
+	int cycles, centuries, leaps, rem, dummy;
+
+	if (!is_leap) {
+		is_leap = &dummy;
+	}
+	cycles = (year - 100) / 400;
+	rem = (year - 100) % 400;
+	if (rem < 0) {
+		cycles--;
+		rem += 400;
+	}
+	if (!rem) {
+		*is_leap = 1;
+		centuries = 0;
+		leaps = 0;
+	} else {
+		if (rem >= 200) {
+			if (rem >= 300) {
+				centuries = 3, rem -= 300;
+			} else {
+				centuries = 2, rem -= 200;
+			}
+		} else {
+			if (rem >= 100) {
+				centuries = 1, rem -= 100;
+			} else {
+				centuries = 0;
+			}
+		}
+		if (!rem) {
+			*is_leap = 0;
+			leaps = 0;
+		} else {
+			leaps = rem / 4U;
+			rem %= 4U;
+			*is_leap = !rem;
+		}
+	}
+
+	leaps += 97 * cycles + 24 * centuries - *is_leap;
+
+	return (year - 100) * 31'536'000LL + leaps * 86'400LL + 946'684'800 + 86'400;
+}
+
+static long long __tm_to_secs(const struct tm *tm) {
+	int is_leap;
+	long long year = tm->tm_year;
+	int month = tm->tm_mon;
+	if (month >= 12 || month < 0) {
+		int adj = month / 12;
+		month %= 12;
+		if (month < 0) {
+			adj--;
+			month += 12;
+		}
+		year += adj;
+	}
+	long long t = __year_to_secs(year, &is_leap);
+	t += __month_to_secs(month, is_leap);
+	t += 86'400LL * (tm->tm_mday - 1);
+	t += 3'600LL * tm->tm_hour;
+	t += 60LL * tm->tm_min;
+	t += tm->tm_sec;
+	return t;
+}
+
+static int is_leap(int y) {
+	/* Avoid overflow */
+	if (y > __SPRT_INT_MAX - 1'900) {
+		y -= 2'000;
+	}
+	y += 1'900;
+	return !(y % 4) && ((y % 100) || !(y % 400));
+}
+
+static int week_num(const struct tm *tm) {
+	int val = (tm->tm_yday + 7U - (tm->tm_wday + 6U) % 7) / 7;
+	/* If 1 Jan is just 1-3 days past Monday,
+	 * the previous week is also in this year. */
+	if ((tm->tm_wday + 371U - tm->tm_yday - 2) % 7 <= 2) {
+		val++;
+	}
+	if (!val) {
+		val = 52;
+		/* If 31 December of prev year a Thursday,
+		 * or Friday of a leap year, then the
+		 * prev year has 53 weeks. */
+		int dec31 = (tm->tm_wday + 7U - tm->tm_yday - 1) % 7;
+		if (dec31 == 4 || (dec31 == 5 && is_leap(tm->tm_year % 400 - 1))) {
+			val++;
+		}
+	} else if (val == 53) {
+		/* If 1 January is not a Thursday, and not
+		 * a Wednesday of a leap year, then this
+		 * year has only 52 weeks. */
+		int jan1 = (tm->tm_wday + 371U - tm->tm_yday) % 7;
+		if (jan1 != 4 && (jan1 != 3 || !is_leap(tm->tm_year))) {
+			val = 1;
+		}
+	}
+	return val;
+}
+
+static const char *__strftime_fmt_1(char (*s)[100], size_t *l, int f, const time_exp_t *tm,
+		int pad) {
+	long long val;
+	const char *item = nullptr;
+	const char *fmt = "-";
+	int width = 2, def_pad = '0';
+
+	switch (f) {
+	case 'a':
+		if (tm->tm_wday > 6U) {
+			goto string;
+		}
+		item = sp_day_snames[tm->tm_wday];
+		goto nl_strcat;
+	case 'A':
+		if (tm->tm_wday > 6U) {
+			goto string;
+		}
+		item = sp_day_anames[tm->tm_wday];
+		goto nl_strcat;
+	case 'h':
+	case 'b':
+		if (tm->tm_mon > 11U) {
+			goto string;
+		}
+		item = sp_month_snames[tm->tm_mon];
+		goto nl_strcat;
+	case 'B':
+		if (tm->tm_mon > 11U) {
+			goto string;
+		}
+		item = sp_month_Bnames[tm->tm_mon];
+		goto nl_strcat;
+	case 'c': fmt = "%a %b %e %H:%M:%S %Y"; goto recu_strftime;
+	case 'C': val = (1'900LL + tm->tm_year) / 100; goto number;
+	case 'e': def_pad = '_';
+	case 'd': val = tm->tm_mday; goto number;
+	case 'D': fmt = "%m/%d/%y"; goto recu_strftime;
+	case 'F': fmt = "%Y-%m-%d"; goto recu_strftime;
+	case 'g':
+	case 'G':
+		val = tm->tm_year + 1'900LL;
+		if (tm->tm_yday < 3 && week_num(tm) != 1) {
+			val--;
+		} else if (tm->tm_yday > 360 && week_num(tm) == 1) {
+			val++;
+		}
+		if (f == 'g') {
+			val %= 100;
+		} else {
+			width = 4;
+		}
+		goto number;
+	case 'H': val = tm->tm_hour; goto number;
+	case 'I':
+		val = tm->tm_hour;
+		if (!val) {
+			val = 12;
+		} else if (val > 12) {
+			val -= 12;
+		}
+		goto number;
+	case 'j':
+		val = tm->tm_yday + 1;
+		width = 3;
+		goto number;
+	case 'm': val = tm->tm_mon + 1; goto number;
+	case 'M': val = tm->tm_min; goto number;
+	case 'n': *l = 1; return "\n";
+	case 'p': item = tm->tm_hour >= 12 ? "PM" : "AM"; goto nl_strcat;
+	case 'r': fmt = "%I:%M:%S %p"; goto recu_strftime;
+	case 'R': fmt = "%H:%M"; goto recu_strftime;
+	case 's':
+		val = __tm_to_secs(tm) - tm->tm_gmtoff;
+		width = 1;
+		goto number;
+	case 'S': val = tm->tm_sec; goto number;
+	case 't': *l = 1; return "\t";
+	case 'T': fmt = "%H:%M:%S"; goto recu_strftime;
+	case 'u':
+		val = tm->tm_wday ? tm->tm_wday : 7;
+		width = 1;
+		goto number;
+	case 'U': val = (tm->tm_yday + 7U - tm->tm_wday) / 7; goto number;
+	case 'W': val = (tm->tm_yday + 7U - (tm->tm_wday + 6U) % 7) / 7; goto number;
+	case 'V': val = week_num(tm); goto number;
+	case 'w':
+		val = tm->tm_wday;
+		width = 1;
+		goto number;
+	case 'x': fmt = "%m/%d/%y"; goto recu_strftime;
+	case 'X': fmt = "%H:%M:%S"; goto recu_strftime;
+	case 'y':
+		val = (tm->tm_year + 1'900LL) % 100;
+		if (val < 0) {
+			val = -val;
+		}
+		goto number;
+	case 'Y':
+		val = tm->tm_year + 1'900LL;
+		if (val >= 10'000) {
+			*l = __sprt_snprintf(*s, sizeof *s, "+%lld", val);
+			return *s;
+		}
+		width = 4;
+		goto number;
+	case 'Z':
+		if (tm->tm_isdst < 0) {
+			*l = 0;
+			return "";
+		}
+		if (tm->tm_gmtoff == 0) {
+			fmt = "UTC";
+			goto string;
+		}
+		[[fallthrough]];
+	case 'z':
+		if (tm->tm_isdst < 0) {
+			*l = 0;
+			return "";
+		}
+		*l = __sprt_snprintf(*s, sizeof *s, "%+.4ld",
+				tm->tm_gmtoff / 3'600 * 100 + tm->tm_gmtoff % 3'600 / 60);
+		return *s;
+	case '%': *l = 1; return "%";
+	default: return 0;
+	}
+number:
+	switch (pad ? pad : def_pad) {
+	case '-': *l = __sprt_snprintf(*s, sizeof *s, "%lld", val); break;
+	case '_': *l = __sprt_snprintf(*s, sizeof *s, "%*lld", width, val); break;
+	case '0':
+	default: *l = __sprt_snprintf(*s, sizeof *s, "%0*lld", width, val); break;
+	}
+	return *s;
+nl_strcat:
+	fmt = item;
+string:
+	*l = strlen(fmt);
+	return fmt;
+recu_strftime:
+	*l = tm->strftime(*s, sizeof *s, fmt);
+	if (!*l) {
+		return 0;
+	}
+	return *s;
+}
+
+size_t time_exp_t::strftime(char *s, size_t n, const char *f) const {
+	size_t l, k;
+	char buf[100];
+	char *p;
+	const char *t;
+	int pad, plus;
+	unsigned long width;
+	for (l = 0; l < n; f++) {
+		if (!*f) {
+			s[l] = 0;
+			return l;
+		}
+		if (*f != '%') {
+			s[l++] = *f;
+			continue;
+		}
+		f++;
+		pad = 0;
+		if (*f == '-' || *f == '_' || *f == '0') {
+			pad = *f++;
+		}
+		if ((plus = (*f == '+'))) {
+			f++;
+		}
+		if (__sprt_isdigit(*f)) {
+			width = __sprt_strtoul(f, &p, 10);
+		} else {
+			width = 0;
+			p = (char *)f;
+		}
+		if (*p == 'C' || *p == 'F' || *p == 'G' || *p == 'Y') {
+			if (!width && p != f) {
+				width = 1;
+			}
+		} else {
+			width = 0;
+		}
+		f = p;
+		if (*f == 'E' || *f == 'O') {
+			f++;
+		}
+		t = __strftime_fmt_1(&buf, &k, *f, this, pad);
+		if (!t) {
+			break;
+		}
+		if (width) {
+			/* Trim off any sign and leading zeros, then
+			 * count remaining digits to determine behavior
+			 * for the + flag. */
+			if (*t == '+' || *t == '-') {
+				t++, k--;
+			}
+			for (; *t == '0' && t[1] - '0' < 10U; t++, k--);
+			if (width < k) {
+				width = k;
+			}
+			size_t d;
+			for (d = 0; t[d] - '0' < 10U; d++);
+			if (tm_year < -1'900) {
+				s[l++] = '-';
+				width--;
+			} else if (plus && d + (width - k) >= (*p == 'C' ? 3 : 5)) {
+				s[l++] = '+';
+				width--;
+			}
+			for (; width > k && l < n; width--) { s[l++] = '0'; }
+		}
+		if (k > n - l) {
+			k = n - l;
+		}
+		memcpy(s + l, t, k);
+		l += k;
+	}
+	if (n) {
+		if (l == n) {
+			l = n - 1;
+		}
+		s[l] = 0;
+	}
+	return 0;
+}
+
+size_t strftime(char *buf, size_t bufSize, const char *fmt, uint64_t usec) {
+	time_exp_t exp(usec);
+	return exp.strftime(buf, bufSize, fmt);
 }
 
 TimeInterval TimeInterval::Infinite(Max<uint64_t>);

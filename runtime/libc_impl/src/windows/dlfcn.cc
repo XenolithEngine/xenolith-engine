@@ -48,6 +48,8 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/process_api.h>
 #include <sprt/wrappers/windows/dl_api.h>
 
+#include "../../include/__impl_libc.h"
+
 #ifdef __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-function"
@@ -67,6 +69,7 @@ static __malloc_set<HMODULE> s_locals;
 static mutex s_localsMutex;
 
 static thread_local DlError tl_errorData;
+static DlError s_errorData;
 
 /* Load Psapi.dll at runtime, this avoids linking caveat */
 static BOOL __EnumProcessModules(HANDLE hProcess, HMODULE *lphModule, DWORD cb,
@@ -119,9 +122,11 @@ __SPRT_C_FUNC int dlclose(void *ptr) __SPRT_NOEXCEPT {
 	}
 
 	if (!FreeLibrary(HMODULE(ptr))) {
-		StreamTraits<char>::toStringBuf(tl_errorData.buffer, DlError::BufferSize,
+		auto &err = (__libc::get()->mainThread == __sprt_gettid()) ? s_errorData : tl_errorData;
+
+		StreamTraits<char>::toStringBuf(err.buffer, DlError::BufferSize,
 				"Fail to dlclose: ", status::lastErrorToStatus(GetLastError()));
-		tl_errorData.errorIsSet = true;
+		err.errorIsSet = true;
 		return -1;
 	}
 
@@ -138,9 +143,11 @@ __SPRT_C_FUNC int dlclose(void *ptr) __SPRT_NOEXCEPT {
 }
 
 __SPRT_C_FUNC char *dlerror(void) __SPRT_NOEXCEPT {
-	if (tl_errorData.errorIsSet) {
-		tl_errorData.errorIsSet = false;
-		return tl_errorData.buffer;
+	auto &err = (__libc::get()->mainThread == __sprt_gettid()) ? s_errorData : tl_errorData;
+
+	if (err.errorIsSet) {
+		err.errorIsSet = false;
+		return err.buffer;
 	}
 	return nullptr;
 }
@@ -158,9 +165,11 @@ __SPRT_C_FUNC void *dlopen(const char *path, int __flags) __SPRT_NOEXCEPT {
 	if (!path) {
 		// GetModuleHandleExA increments refcount and reuires FreeLibrary;
 		if (!GetModuleHandleExW(0, nullptr, &h)) {
-			StreamTraits<char>::toStringBuf(tl_errorData.buffer, DlError::BufferSize,
-					"Fail to dlopen ", path, ": ", status::lastErrorToStatus(GetLastError()));
-			tl_errorData.errorIsSet = true;
+			auto &err = (__libc::get()->mainThread == __sprt_gettid()) ? s_errorData : tl_errorData;
+
+			StreamTraits<char>::toStringBuf(err.buffer, DlError::BufferSize, "Fail to dlopen ",
+					path, ": ", status::lastErrorToStatus(GetLastError()));
+			err.errorIsSet = true;
 			return nullptr;
 		}
 	} else {
@@ -191,9 +200,11 @@ __SPRT_C_FUNC void *dlopen(const char *path, int __flags) __SPRT_NOEXCEPT {
 	}
 
 	if (!h) {
-		StreamTraits<char>::toStringBuf(tl_errorData.buffer, DlError::BufferSize, "Fail to dlopen ",
-				path, ": ", status::lastErrorToStatus(GetLastError()));
-		tl_errorData.errorIsSet = true;
+		auto &err = (__libc::get()->mainThread == __sprt_gettid()) ? s_errorData : tl_errorData;
+
+		StreamTraits<char>::toStringBuf(err.buffer, DlError::BufferSize, "Fail to dlopen ", path,
+				": ", status::lastErrorToStatus(GetLastError()));
+		err.errorIsSet = true;
 		return nullptr;
 	}
 
@@ -237,10 +248,11 @@ __SPRT_C_FUNC void *dlsym(void *__SPRT_RESTRICT __handle,
 		if (s) {
 			return *(void **)(&s);
 		} else if (self != __handle) {
-			StreamTraits<char>::toStringBuf(tl_errorData.buffer, DlError::BufferSize,
-					"Fail to dlsym ", (const char *)__name, ": ",
-					status::lastErrorToStatus(GetLastError()));
-			tl_errorData.errorIsSet = true;
+			auto &err = (__libc::get()->mainThread == __sprt_gettid()) ? s_errorData : tl_errorData;
+
+			StreamTraits<char>::toStringBuf(err.buffer, DlError::BufferSize, "Fail to dlsym ",
+					(const char *)__name, ": ", status::lastErrorToStatus(GetLastError()));
+			err.errorIsSet = true;
 			return nullptr;
 		}
 	} else {
@@ -248,10 +260,11 @@ __SPRT_C_FUNC void *dlsym(void *__SPRT_RESTRICT __handle,
 							| GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
 					(LPCWSTR)__builtin_extract_return_addr(__builtin_return_address(0)),
 					&hCaller)) {
-			StreamTraits<char>::toStringBuf(tl_errorData.buffer, DlError::BufferSize,
-					"Fail to dlsym ", (const char *)__name, ": ",
-					status::lastErrorToStatus(GetLastError()));
-			tl_errorData.errorIsSet = true;
+			auto &err = (__libc::get()->mainThread == __sprt_gettid()) ? s_errorData : tl_errorData;
+
+			StreamTraits<char>::toStringBuf(err.buffer, DlError::BufferSize, "Fail to dlsym ",
+					(const char *)__name, ": ", status::lastErrorToStatus(GetLastError()));
+			err.errorIsSet = true;
 			return nullptr;
 		}
 	}
@@ -270,10 +283,11 @@ __SPRT_C_FUNC void *dlsym(void *__SPRT_RESTRICT __handle,
 	if (__EnumProcessModules(hCurrentProc, nullptr, 0, &dwSize) != 0) {
 		auto modules = (HMODULE *)LocalAlloc(LPTR, dwSize);
 		if (!modules) {
-			StreamTraits<char>::toStringBuf(tl_errorData.buffer, DlError::BufferSize,
-					"Fail to dlsym ", (const char *)__name, ": ",
-					status::lastErrorToStatus(ERROR_NOT_ENOUGH_MEMORY));
-			tl_errorData.errorIsSet = true;
+			auto &err = (__libc::get()->mainThread == __sprt_gettid()) ? s_errorData : tl_errorData;
+
+			StreamTraits<char>::toStringBuf(err.buffer, DlError::BufferSize, "Fail to dlsym ",
+					(const char *)__name, ": ", status::lastErrorToStatus(ERROR_NOT_ENOUGH_MEMORY));
+			err.errorIsSet = true;
 			return nullptr;
 		}
 
@@ -302,9 +316,11 @@ __SPRT_C_FUNC void *dlsym(void *__SPRT_RESTRICT __handle,
 	}
 
 	if (symbol == nullptr) {
-		StreamTraits<char>::toStringBuf(tl_errorData.buffer, DlError::BufferSize, "Fail to dlsym ",
+		auto &err = (__libc::get()->mainThread == __sprt_gettid()) ? s_errorData : tl_errorData;
+
+		StreamTraits<char>::toStringBuf(err.buffer, DlError::BufferSize, "Fail to dlsym ",
 				(const char *)__name, ": ", status::lastErrorToStatus(ERROR_PROC_NOT_FOUND));
-		tl_errorData.errorIsSet = true;
+		err.errorIsSet = true;
 		return nullptr;
 	}
 

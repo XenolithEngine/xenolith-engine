@@ -37,8 +37,6 @@ __SPRT_C_FUNC __SPRT_FALLBACK_ATTR(const) int *__SPRT_ID(__errno_location)(void)
 	return ::__errno_location();
 #elif SPRT_ANDROID
 	return ::__errno();
-#elif SPRT_WINDOWS
-	return ::_errno();
 #elif SPRT_MACOS
 	return __error();
 #else

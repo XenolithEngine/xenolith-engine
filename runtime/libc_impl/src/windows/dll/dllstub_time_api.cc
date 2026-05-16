@@ -93,6 +93,33 @@ WINAPI BOOL GetThreadTimes(HANDLE hThread, LPFILETIME lpCreationTime, LPFILETIME
 			hThread, lpCreationTime, lpExitTime, lpKernelTime, lpUserTime);
 }
 
+WINAPI BOOL SystemTimeToFileTime(const SYSTEMTIME *lpSystemTime, LPFILETIME lpFileTime) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&SystemTimeToFileTime)>(
+			loader->kernel32.SystemTimeToFileTime, lpSystemTime, lpFileTime);
+}
+
+WINAPI BOOL FileTimeToSystemTime(const FILETIME *lpFileTime, LPSYSTEMTIME lpSystemTime) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&FileTimeToSystemTime)>(
+			loader->kernel32.FileTimeToSystemTime, lpFileTime, lpSystemTime);
+}
+
+WINAPI BOOL SystemTimeToTzSpecificLocalTime(const TIME_ZONE_INFORMATION *lpTimeZoneInformation,
+		const SYSTEMTIME *lpUniversalTime, LPSYSTEMTIME lpLocalTime) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&SystemTimeToTzSpecificLocalTime)>(
+			loader->kernel32.SystemTimeToTzSpecificLocalTime, lpTimeZoneInformation,
+			lpUniversalTime, lpLocalTime);
+}
+
+WINAPI BOOL GetTimeZoneInformationForYear(USHORT wYear, PDYNAMIC_TIME_ZONE_INFORMATION pdtzi,
+		LPTIME_ZONE_INFORMATION ptzi) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetTimeZoneInformationForYear)>(
+			loader->kernel32.GetTimeZoneInformationForYear, wYear, pdtzi, ptzi);
+}
+
 /* ---- Multimedia Timer Services (winmm.dll / mmsystem.h) ---- */
 
 /**

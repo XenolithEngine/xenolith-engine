@@ -153,7 +153,7 @@ public:
 			return iterator(data() + size() - 1);
 		} else {
 			_ptr = reserve(_size + 1, true);
-			_allocator.move(_ptr + pos + 1, _ptr + pos, _size - pos);
+			__allocator_move(_allocator, _ptr + pos + 1, _ptr + pos, _size - pos);
 			_allocator.construct(_ptr + pos, sprt::forward<Args>(args)...);
 			modify_size(1);
 			return iterator(_ptr + pos);
@@ -171,8 +171,8 @@ public:
 		} else {
 			_ptr = reserve(_used + 2, true);
 			_allocator.construct(_ptr + _used + 1, sprt::forward<Args>(args)...);
-			_allocator.move(_ptr + pos + 1, _ptr + pos, _used - pos);
-			_allocator.move(_ptr + pos, _ptr + _used + 1, 1);
+			__allocator_move(_allocator, _ptr + pos + 1, _ptr + pos, _used - pos);
+			__allocator_move(_allocator, _ptr + pos, _ptr + _used + 1, 1);
 			modify_size(1);
 			return iterator(_ptr + pos);
 		}
@@ -181,7 +181,7 @@ public:
 	void insert_back(const_pointer ptr, size_type s) {
 		const auto _used = size();
 		auto _ptr = reserve(_used + s, true);
-		_allocator.copy(_ptr + _used, ptr, s);
+		__allocator_copy(_allocator, _ptr + _used, ptr, s);
 		modify_size(s);
 	}
 
@@ -194,8 +194,8 @@ public:
 	void insert(size_type pos, const_pointer ptr, size_type s) {
 		const auto _used = size();
 		auto _ptr = reserve(_used + s, true);
-		_allocator.move(_ptr + pos + s, _ptr + pos, _used - pos);
-		_allocator.copy(_ptr + pos, ptr, s);
+		__allocator_move(_allocator, _ptr + pos + s, _ptr + pos, _used - pos);
+		__allocator_copy(_allocator, _ptr + pos, ptr, s);
 		modify_size(s);
 	}
 
@@ -209,7 +209,7 @@ public:
 	void insert(size_type pos, size_type s, Args &&...args) {
 		const auto _used = size();
 		auto _ptr = reserve(_used + s, true);
-		_allocator.move(_ptr + pos + s, _ptr + pos, _used - pos);
+		__allocator_move(_allocator, _ptr + pos + s, _ptr + pos, _used - pos);
 		for (size_type i = pos; i < pos + s; i++) {
 			_allocator.construct(_ptr + i, sprt::forward<Args>(args)...);
 		}
@@ -231,7 +231,7 @@ public:
 		auto size = sprt::distance(first, last);
 		_ptr = reserve(_used + size, true);
 		if (pos - _used > 0) {
-			_allocator.move(_ptr + pos + size, _ptr + pos, _used - pos);
+			__allocator_move(_allocator, _ptr + pos + size, _ptr + pos, _used - pos);
 		}
 		auto i = pos;
 		for (auto it = first; it != last; ++it, ++i) { _allocator.construct(_ptr + i, *it); }
@@ -245,7 +245,7 @@ public:
 		len = min(len, _used - pos);
 		_allocator.destroy(_ptr + pos, len); // удаляем указанный блок
 		if (pos + len < _used) { // смещаем остаток
-			_allocator.move(_ptr + pos, _ptr + pos + len, _used - pos - len);
+			__allocator_move(_allocator, _ptr + pos, _ptr + pos + len, _used - pos - len);
 		}
 		auto s = modify_size(-len);
 		__builtin_memset((void *)(_ptr + s), 0, len * sizeof(Type));
@@ -257,7 +257,7 @@ public:
 		auto pos = it - _ptr;
 		_allocator.destroy(const_cast<pointer>(&(*it)));
 		if (pos < _used - 1) {
-			_allocator.move(_ptr + pos, _ptr + pos + 1, _used - pos - 1);
+			__allocator_move(_allocator, _ptr + pos, _ptr + pos + 1, _used - pos - 1);
 		}
 		auto s = modify_size(-1);
 		__builtin_memset((void *)(_ptr + s), 0, sizeof(Type));
@@ -277,7 +277,7 @@ public:
 		auto _ptr = reserve(_used - len + nlen, true);
 		_allocator.destroy(_ptr + pos, len);
 		if (pos + len < _used) {
-			_allocator.move(_ptr + pos + nlen, _ptr + pos + len,
+			__allocator_move(_allocator, _ptr + pos + nlen, _ptr + pos + len,
 					_used - pos - len); // смещаем данные
 		}
 		return _ptr + pos;
@@ -286,7 +286,7 @@ public:
 	void replace(size_type pos, size_type len, const_pointer ptr, size_type nlen) {
 		const auto _used = size();
 		len = min(len, _used - pos);
-		_allocator.copy(prepare_replace(pos, len, nlen), ptr, nlen);
+		__allocator_copy(_allocator, prepare_replace(pos, len, nlen), ptr, nlen);
 
 		const auto s = modify_size(nlen - len);
 

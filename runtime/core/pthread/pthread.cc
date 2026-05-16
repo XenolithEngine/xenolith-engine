@@ -34,6 +34,9 @@ THE SOFTWARE.
 
 #include <sprt/cxx/cstring>
 
+__SPRT_C_FUNC int __libc_started;
+__SPRT_C_FUNC __sprt_pid_t __libc_main_thread;
+
 namespace sprt::_thread {
 
 thread_local __thread_slot tl_self;
@@ -67,6 +70,10 @@ __thread_pool::__thread_pool() {
 }
 
 __thread_pool::~__thread_pool() {
+	if (main.threadMemPool) {
+		memory::pool::destroy(main.threadMemPool);
+	}
+
 	while (free) {
 		auto tmp = free;
 		free = static_cast<thread_t *>(free->next);
@@ -206,6 +213,22 @@ static void __detachAndDeallocateThread(thread_t *thread, unique_lock<qmutex> *e
 }
 
 thread_t *thread_t::self() {
+	if (__libc_main_thread == __sprt_gettid()) {
+		auto thread = &s_handlePool.main;
+		if (!hasFlag(thread->attr.attr, ThreadAttrFlags::Detached)) {
+			thread->attr.attr |= ThreadAttrFlags::Detached | ThreadAttrFlags::Unmanaged;
+			thread->threadMemPool = memory::pool::create();
+			thread->registerThread(false, __libc_main_thread);
+			thread->state.set_and_signal(StateExternalInit);
+		}
+
+		if (__libc_started) {
+			if (tl_self.thread == nullptr) {
+				tl_self.thread = thread;
+			}
+		}
+		return thread;
+	}
 	if (tl_self.thread == nullptr) {
 		// make pthread_t for external thread
 
@@ -222,16 +245,26 @@ thread_t *thread_t::self() {
 	return tl_self.thread;
 }
 
-thread_t *thread_t::self_noattach() { return tl_self.thread; }
+thread_t *thread_t::self_noattach() {
+	if (__libc_started > 0) {
+		return tl_self.thread;
+	}
+	return nullptr;
+}
 
-void thread_t::registerThread() {
-	if (threadMemPool) {
-		return;
+void thread_t::registerThread(bool withThreadSupportPool, __sprt_pid_t tid) {
+	if (withThreadSupportPool) {
+		if (threadMemPool) {
+			return;
+		}
+		threadMemPool = memory::get_thread_support_pool();
 	}
 
-	threadMemPool = memory::get_thread_support_pool();
-
-	threadId = __sprt_gettid();
+	if (tid) {
+		threadId = __sprt_gettid();
+	} else {
+		threadId = tid;
+	}
 
 	// read actual attributes
 	native::__initNativeHandle(this);

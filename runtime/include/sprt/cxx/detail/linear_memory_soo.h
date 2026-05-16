@@ -55,7 +55,7 @@ public:
 
 	void assign(const_pointer ptr, size_type size) {
 		reserve(size, false);
-		_allocator.copy_rewrite(_ptr, _used, ptr, size);
+		__allocator_copy_rewrite(_allocator, _ptr, _used, ptr, size);
 		if (_used > size) {
 			_allocator.destroy(data() + size, _used - size);
 		}
@@ -285,7 +285,7 @@ public:
 		} else {
 			auto s = small_mem::size(_storage);
 			auto ptr = _allocator.allocate(s + Extra);
-			_allocator.move(ptr, small_mem::data(_storage), s);
+			__allocator_move(_allocator, ptr, small_mem::data(_storage), s);
 			if constexpr (Extra) {
 				// zero-terminated, bypass -Wclass-memaccess
 				__builtin_memset((void *)(ptr + s), 0, Extra * sizeof(Type));

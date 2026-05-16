@@ -89,6 +89,16 @@ WINAPI BOOL GetProcessTimes(HANDLE hProcess, LPFILETIME lpCreationTime, LPFILETI
 WINAPI BOOL GetThreadTimes(HANDLE hThread, LPFILETIME lpCreationTime, LPFILETIME lpExitTime,
 		LPFILETIME lpKernelTime, LPFILETIME lpUserTime);
 
+WINAPI BOOL SystemTimeToFileTime(const SYSTEMTIME *lpSystemTime, LPFILETIME lpFileTime);
+
+WINAPI BOOL FileTimeToSystemTime(const FILETIME *lpFileTime, LPSYSTEMTIME lpSystemTime);
+
+WINAPI BOOL SystemTimeToTzSpecificLocalTime(const TIME_ZONE_INFORMATION *lpTimeZoneInformation,
+		const SYSTEMTIME *lpUniversalTime, LPSYSTEMTIME lpLocalTime);
+
+WINAPI BOOL GetTimeZoneInformationForYear(USHORT wYear, PDYNAMIC_TIME_ZONE_INFORMATION pdtzi,
+		LPTIME_ZONE_INFORMATION ptzi);
+
 /* ---- Multimedia Timer Services (mmsystem.h) ---- */
 /**
  * Sets the resolution of the timer interrupt.

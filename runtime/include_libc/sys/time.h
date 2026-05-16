@@ -44,7 +44,7 @@ int gettimeofday(struct timeval *__SPRT_RESTRICT __tv,
 #endif
 
 SPRT_UMBRELLA_FUNC
-int settimeofday(const timeval *__tv, const struct timezone *__tz) SPRT_UMBRELLA_END
+int settimeofday(const struct timeval *__tv, const struct timezone *__tz) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_settimeofday(__tv, __tz);
@@ -72,7 +72,7 @@ int setitimer(int __w, const struct itimerval *__SPRT_RESTRICT __tv,
 #endif // __SPRT_CONFIG_HAVE_TIME_TIMER
 
 SPRT_UMBRELLA_FUNC
-int utimes(const char *path, const __SPRT_TIMEVAL_NAME ts[2]) SPRT_UMBRELLA_END
+int utimes(const char *path, const struct __SPRT_TIMEVAL_NAME ts[2]) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_utimes(path, ts);
@@ -80,7 +80,7 @@ int utimes(const char *path, const __SPRT_TIMEVAL_NAME ts[2]) SPRT_UMBRELLA_END
 #endif
 
 SPRT_UMBRELLA_FUNC
-int futimes(int fd, const __SPRT_TIMEVAL_NAME ts[2]) SPRT_UMBRELLA_END
+int futimes(int fd, const struct __SPRT_TIMEVAL_NAME ts[2]) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_futimes(fd, ts);
@@ -88,7 +88,7 @@ int futimes(int fd, const __SPRT_TIMEVAL_NAME ts[2]) SPRT_UMBRELLA_END
 #endif
 
 SPRT_UMBRELLA_FUNC
-int futimesat(int fd, const char *path, const __SPRT_TIMEVAL_NAME ts[2]) SPRT_UMBRELLA_END
+int futimesat(int fd, const char *path, const struct __SPRT_TIMEVAL_NAME ts[2]) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_futimesat(fd, path, ts);
@@ -96,7 +96,7 @@ int futimesat(int fd, const char *path, const __SPRT_TIMEVAL_NAME ts[2]) SPRT_UM
 #endif
 
 SPRT_UMBRELLA_FUNC
-int lutimes(const char *path, const __SPRT_TIMEVAL_NAME ts[2]) SPRT_UMBRELLA_END
+int lutimes(const char *path, const struct __SPRT_TIMEVAL_NAME ts[2]) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_lutimes(path, ts);
@@ -105,7 +105,8 @@ int lutimes(const char *path, const __SPRT_TIMEVAL_NAME ts[2]) SPRT_UMBRELLA_END
 
 #if __SPRT_CONFIG_HAVE_TIME_ADJTIME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_UMBRELLA_FUNC
-int adjtime(const __SPRT_TIMEVAL_NAME *__tv, __SPRT_TIMEVAL_NAME *__otv) SPRT_UMBRELLA_END
+int adjtime(const struct __SPRT_TIMEVAL_NAME *__tv,
+		struct __SPRT_TIMEVAL_NAME *__otv) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_adjtime(__tv, __otv);

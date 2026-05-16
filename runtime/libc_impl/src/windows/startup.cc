@@ -30,6 +30,8 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/dl_api.h>
 #include <sprt/wrappers/windows/context_api.h>
+#include <sprt/wrappers/windows/process_api.h>
+#include <sprt/wrappers/windows/basic_api.h>
 
 #include "stdlib.h"
 #include "stdio.h"
@@ -119,7 +121,7 @@ int _fltused;
 	/Zc:threadSafeInit support
 */
 
-__SPRT_C_FUNC int _Init_global_epoch = sprt::Min<int>;
+__SPRT_C_FUNC sprt::atomic<int> _Init_global_epoch = sprt::Min<int>;
 __SPRT_C_FUNC __declspec(thread) int _Init_thread_epoch = sprt::Min<int>;
 
 // With some compiler support, it's implementable with a pure futex, but not today...
@@ -127,44 +129,34 @@ static sprt::mutex s_threadGuardMutex;
 static sprt::condition_variable s_threadGuardWaitCond;
 
 __SPRT_C_FUNC void __cdecl _Init_thread_header(int *const pOnce) noexcept {
-	sprt::unique_lock lock(s_threadGuardMutex);
-
+	sprt_plock_lock(pOnce, 0, nullptr);
 	if (*pOnce == 0) {
 		*pOnce = -1;
-		return;
 	} else {
-		while (*pOnce == -1) {
-			s_threadGuardWaitCond.wait(lock);
-			if (*pOnce == 0) {
-				*pOnce = -1;
-				return;
-			}
-		}
+		// successfully set before us, exit
+		sprt_plock_unlock(pOnce, 0, nullptr);
 	}
 }
 
 // Exception during init, we should drop LOCK_BIT and signal to wakeup
 // Calling thread should own the lock
 __SPRT_C_FUNC void __cdecl _Init_thread_abort(__sprt_uint32_t *const pOnce) noexcept {
-	// set complete flag and check for a waiters
-	s_threadGuardMutex.lock();
-	*pOnce = 0;
-	s_threadGuardMutex.unlock();
-
-	// Wake only one thread to try initialization again
-	s_threadGuardWaitCond.notify_one();
+	if (*pOnce == -1) {
+		*pOnce = 0;
+		sprt_plock_unlock(pOnce, 0, nullptr);
+	}
 }
 
 __SPRT_C_FUNC void __cdecl _Init_thread_footer(__sprt_uint32_t *const pOnce) noexcept {
-	// set complete flag and check for a waiters
-	s_threadGuardMutex.lock();
-	++_Init_global_epoch;
-	_Init_thread_epoch = _Init_global_epoch;
-	*pOnce = _Init_thread_epoch;
-	s_threadGuardMutex.unlock();
+	if (*pOnce == -1) {
+		// we already hold the lock
 
-	// Wake all of the threads to exit from _Init_thread_header
-	s_threadGuardWaitCond.notify_all();
+		++_Init_global_epoch;
+		_Init_thread_epoch = _Init_global_epoch;
+		*pOnce = _Init_thread_epoch;
+
+		sprt_plock_unlock(pOnce, 0, nullptr);
+	}
 }
 
 /*
@@ -226,6 +218,9 @@ static unsigned char s_libcBuffer[sizeof(sprt::__libc)];
 
 sprt::__libc *sprt::__libc::get() { return reinterpret_cast<__libc *>(s_libcBuffer); }
 
+__SPRT_C_FUNC int __libc_started = 0;
+__SPRT_C_FUNC pid_t __libc_main_thread = 0;
+
 __SPRT_C_FUNC int mainCRTStartup() {
 	// Load all required DLLs for SPRT.
 	// If some DLLs are missed, or some required functions are missed - abort immediately
@@ -240,7 +235,9 @@ __SPRT_C_FUNC int mainCRTStartup() {
 
 	// Create __libc struct in static memory block
 	// this will initialize fds locales, exceptions and all other required libc features
-	new (s_libcBuffer, sprt::nothrow) sprt::__libc;
+	auto libc = new (s_libcBuffer, sprt::nothrow) sprt::__libc;
+
+	__libc_main_thread = libc->mainThread;
 
 	// Show legacy floating point library support flag
 	_fltused = 1;
@@ -264,9 +261,42 @@ __SPRT_C_FUNC int mainCRTStartup() {
 	// constructors should be already called, but, __tls_guard handles this case
 	__dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr);
 
+	__libc_started = 1;
+
 	// __try/__finally wrapper is required for windows CRT/Loader interoperability logic
 	__try {
-		ret = main(0, nullptr);
+		auto wCommandLine = GetCommandLineW();
+		if (wCommandLine) {
+			int argc = 0;
+			auto wargv = CommandLineToArgvW(wCommandLine, &argc);
+
+			size_t blockSize = argc * sizeof(char *);
+			for (size_t i = 0; i < argc; ++i) {
+				blockSize += wcstombs(nullptr, wargv[i], 0) + 2; //
+			}
+
+			char *buf = (char *)malloc(blockSize);
+			char **argvTarget = (char **)buf;
+			auto stringsTarget = buf + argc * sizeof(char *);
+			size_t bufferSize = blockSize - argc * sizeof(char *);
+
+			for (size_t i = 0; i < argc; ++i) {
+				auto strlen = wcstombs(stringsTarget, wargv[i], bufferSize);
+				stringsTarget[strlen] = 0;
+
+				argvTarget[i] = stringsTarget;
+				stringsTarget += strlen + 1;
+				bufferSize -= strlen + 1;
+			}
+
+			LocalFree(wargv);
+
+			ret = main(argc, (const char **)argvTarget);
+
+			free(buf);
+		} else {
+			ret = main(0, nullptr);
+		}
 	}
 	__finally {
 	}

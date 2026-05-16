@@ -138,15 +138,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	__builtin_va_list list;
 	__builtin_va_start(list, fmt);
 
-
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#ifdef SPRT_WINDOWS
 	auto ret = ::vsprintf(buf, fmt, list);
-#else
-	auto ret = ::vsprintf(buf, fmt, list);
-#endif
-#pragma clang diagnostic pop
 
 	__builtin_va_end(list);
 	return ret;
@@ -175,14 +167,7 @@ __SPRT_C_FUNC int __SPRT_ID(vfprintf_impl)(__SPRT_ID(FILE) * __SPRT_RESTRICT fil
 
 __SPRT_C_FUNC int __SPRT_ID(vsprintf_impl)(char *__SPRT_RESTRICT buf,
 		const char *__SPRT_RESTRICT fmt, __SPRT_ID(va_list) arg) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#ifdef SPRT_WINDOWS
 	return ::vsprintf(buf, fmt, arg);
-#else
-	return ::vsprintf(buf, fmt, arg);
-#endif
-#pragma clang diagnostic pop
 }
 
 __SPRT_C_FUNC int __SPRT_ID(vsnprintf_impl)(char *__SPRT_RESTRICT buf, size_t n,

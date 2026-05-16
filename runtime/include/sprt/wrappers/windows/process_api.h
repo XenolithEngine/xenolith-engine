@@ -232,6 +232,8 @@ WINAPI VOID DeleteProcThreadAttributeList(LPPROC_THREAD_ATTRIBUTE_LIST lpAttribu
 
 WINAPI LPWSTR GetCommandLineW(VOID);
 
+WINAPI LPWSTR *CommandLineToArgvW(LPCWSTR lpCmdLine, int *pNumArgs);
+
 WINAPI BOOL CreateProcessW(LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
 		LPSECURITY_ATTRIBUTES lpProcessAttributes, LPSECURITY_ATTRIBUTES lpThreadAttributes,
 		BOOL bInheritHandles, DWORD dwCreationFlags, LPVOID lpEnvironment,

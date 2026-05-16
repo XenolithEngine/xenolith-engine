@@ -43,6 +43,8 @@ THE SOFTWARE.
 #include "stdio.h"
 #include "fcntl.h"
 
+#include "../../include/__impl_libc.h"
+
 #include <sprt/wrappers/windows/basic_api.h>
 #include <sprt/wrappers/windows/file_api.h>
 
@@ -59,7 +61,7 @@ struct _EnvBlock {
 
 		auto it = _envs.find(name);
 		if (it == _envs.end()) {
-			it = _envs.emplace(name, __malloc_string()).first;
+			it = _envs.emplace(name, __local_string()).first;
 		}
 
 		it->second.resize(bufSize - 1); // strip nullptr from size
@@ -71,12 +73,21 @@ struct _EnvBlock {
 		return nullptr;
 	}
 
-	__malloc_unordered_map<__malloc_string, __malloc_string> _envs;
+	__local_unordered_map<__local_string, __local_string> _envs;
 };
 
-thread_local _EnvBlock tl_env;
+__SPRT_C_FUNC int __libc_started;
 
-__SPRT_C_FUNC char *getenv(const char *name) __SPRT_NOEXCEPT { return tl_env.get(name); }
+thread_local _EnvBlock tl_env;
+static _EnvBlock s_env;
+
+__SPRT_C_FUNC char *getenv(const char *name) __SPRT_NOEXCEPT {
+	if (__libc::get()->mainThread == __sprt_gettid()) {
+		return s_env.get(name);
+	} else {
+		return tl_env.get(name);
+	}
+}
 
 __SPRT_C_FUNC int setenv(const char *name, const char *value, int override) __SPRT_NOEXCEPT {
 	if (!override) {
@@ -208,6 +219,14 @@ __SPRT_C_FUNC char *realpath(const char *__SPRT_RESTRICT ipath,
 		});
 	}
 	return ret;
+}
+
+__SPRT_C_FUNC void *local_alloc(size_t value) __SPRT_NOEXCEPT {
+	return (void *)HeapAlloc(GetProcessHeap(), 0, value);
+}
+
+__SPRT_C_FUNC void local_free(void *ptr, size_t value) __SPRT_NOEXCEPT {
+	HeapFree(GetProcessHeap(), 0, ptr);
 }
 
 } // namespace sprt

@@ -95,6 +95,12 @@ LPWSTR GetCommandLineW(VOID) {
 	return loader->kernel32.call<decltype(&GetCommandLineW)>(loader->kernel32.GetCommandLineW);
 }
 
+LPWSTR *CommandLineToArgvW(LPCWSTR lpCmdLine, int *pNumArgs) {
+	auto loader = sprt::DllLoader::get();
+	return loader->shell32.call<decltype(&CommandLineToArgvW)>(loader->shell32.CommandLineToArgvW,
+			lpCmdLine, pNumArgs);
+}
+
 // ---- Process Creation Function (kernel32) ----
 
 BOOL CreateProcessW(LPCWSTR lpApplicationName, LPWSTR lpCommandLine,

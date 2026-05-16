@@ -705,7 +705,8 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_mutex_trylock)(__SPRT_ID(pthread_mutex_t) * 
 	}
 
 	auto mtx = reinterpret_cast<_thread::mutex_t *>(mutex);
-	return mtx->try_lock();
+	auto result = mtx->try_lock();
+	return result;
 }
 
 __SPRT_C_FUNC int __SPRT_ID(

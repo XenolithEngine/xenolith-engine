@@ -35,7 +35,8 @@ namespace sprt {
 
 static constexpr unsigned ThreadIdBit = 0x8000'0000;
 
-static int _clock_getres(__SPRT_ID(clockid_t) clk_id, struct __SPRT_TIMESPEC_NAME *tp) {
+__SPRT_C_FUNC int _clock_getres(__SPRT_ID(clockid_t) clk_id,
+		struct __SPRT_TIMESPEC_NAME *tp) __SPRT_NOEXCEPT {
 	if (!tp) {
 		__sprt_errno = EFAULT;
 		return -1;
@@ -99,7 +100,8 @@ static int _clock_getres(__SPRT_ID(clockid_t) clk_id, struct __SPRT_TIMESPEC_NAM
 }
 
 // @AI-generated
-static int _clock_gettime(__SPRT_ID(clockid_t) clk_id, struct __SPRT_TIMESPEC_NAME *tp) {
+__SPRT_C_FUNC int clock_gettime(__SPRT_ID(clockid_t) clk_id,
+		struct __SPRT_TIMESPEC_NAME *tp) __SPRT_NOEXCEPT {
 	if (!tp) {
 		__sprt_errno = EFAULT;
 		return -1;

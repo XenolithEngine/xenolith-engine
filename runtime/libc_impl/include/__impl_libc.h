@@ -30,7 +30,9 @@ THE SOFTWARE.
 
 #include <sprt/cxx/mutex>
 #include <sprt/cxx/unordered_map>
+#include <sprt/cxx/unordered_set>
 #include <sprt/cxx/bitset>
+#include <sprt/cxx/detail/allocator_local.h>
 #include <sprt/runtime/stringview.h>
 
 #include <sprt/c/__sprt_dirent.h>
@@ -117,6 +119,17 @@ struct __libc_plock {
 	uint32_t flags = 0;
 };
 
+
+template <typename Key, typename Value, typename Hash = sprt::hash<void>,
+		typename Pred = sprt::equal_to<void>>
+using __local_unordered_map =
+		__unordered_map<Key, Value, Hash, Pred, detail::AllocatorLocal<pair<const Key, Value>>>;
+
+template <typename Key, typename Hash = sprt::hash<void>, typename Pred = sprt::equal_to<void>>
+using __local_unordered_set = __unordered_set<Key, Hash, Pred, detail::AllocatorLocal<Key>>;
+
+using __local_string = __basic_string<char, detail::AllocatorLocal<char>>;
+
 struct __libc {
 	static constexpr size_t FD_PAGES_COUNT = MAX_FDS / (1'024 * 16 / sizeof(__fd_slot));
 	static constexpr size_t FDS_PER_PAGE = FD_MEMORY_PAGE_SIZE / sizeof(__fd_slot);
@@ -137,7 +150,7 @@ struct __libc {
 	uint32_t egid = 0;
 	bool isAppContainer = false;
 
-	__malloc_unordered_map<StringView, __locale_map *> localeCache;
+	__local_unordered_map<StringView, __locale_map *> localeCache;
 
 	mutex fdMutex;
 	__fd_dispatch *fdDispatch;
@@ -149,9 +162,14 @@ struct __libc {
 	__fd_ops fdDirOps;
 
 	mutable mutex plockMutex;
-	__malloc_unordered_map<sprt_plock_t, __libc_plock> plocks;
+	__local_unordered_map<sprt_plock_t, __libc_plock *> plocks;
 
 	atomic<mode_t> umask;
+
+	pid_t mainThread = 0;
+
+	mutex tzMutex;
+	__local_unordered_set<StringView> tzCache;
 
 	__libc();
 	~__libc();
@@ -165,6 +183,8 @@ struct __libc {
 	int create_fd(void *, const __fd_ops *, uint32_t flags, uint32_t mode);
 	int allocate_fd();
 	void release_fd(int);
+
+	const char *preserve_tz_name(StringView name);
 };
 
 void __init_locale();

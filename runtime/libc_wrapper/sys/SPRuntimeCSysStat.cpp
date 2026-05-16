@@ -33,7 +33,7 @@ THE SOFTWARE.
 
 namespace sprt {
 
-#ifndef SPRT_WINDOWS
+#if __STDC_HOSTED == 1
 
 #if __DARWIN_64_BIT_INO_T
 #define stat64 stat
@@ -83,7 +83,7 @@ static auto convertModeToNative(__SPRT_ID(mode_t) mode) { return mode; }
 
 __SPRT_C_FUNC int __SPRT_ID(
 		stat)(const char *__SPRT_RESTRICT path, struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) {
-#if SPRT_WINDOWS
+#if __STDC_HOSTED == 0
 	return stat(path, __stat);
 #else
 	struct stat64 native;
@@ -96,7 +96,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fstat)(int __fd, struct __SPRT_STAT_NAME *__stat) {
-#if SPRT_WINDOWS
+#if __STDC_HOSTED == 0
 	return fstat(__fd, __stat);
 #else
 	struct stat64 native;
@@ -110,7 +110,7 @@ __SPRT_C_FUNC int __SPRT_ID(fstat)(int __fd, struct __SPRT_STAT_NAME *__stat) {
 
 __SPRT_C_FUNC int __SPRT_ID(
 		lstat)(const char *__SPRT_RESTRICT path, struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) {
-#if SPRT_WINDOWS
+#if __STDC_HOSTED == 0
 	return lstat(path, __stat);
 #else
 	struct stat64 native;
@@ -124,7 +124,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 
 __SPRT_C_FUNC int __SPRT_ID(fstatat)(int __fd, const char *__SPRT_RESTRICT path,
 		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat, int flags) {
-#if SPRT_WINDOWS
+#if __STDC_HOSTED == 0
 	return fstatat(__fd, path, __stat, flags);
 #else
 	struct stat64 native;
@@ -210,7 +210,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 }
 
 __SPRT_C_FUNC int __SPRT_ID(futimens)(int fd, const __SPRT_TIMESPEC_NAME ts[2]) {
-#if SPRT_WINDOWS
+#if __STDC_HOSTED == 0
 	return futimens(fd, ts);
 #else
 	struct timespec nativeTs[2];
@@ -227,7 +227,7 @@ __SPRT_C_FUNC int __SPRT_ID(futimens)(int fd, const __SPRT_TIMESPEC_NAME ts[2]) 
 
 __SPRT_C_FUNC int __SPRT_ID(
 		utimensat)(int fd, const char *path, const __SPRT_TIMESPEC_NAME ts[2], int flags) {
-#if SPRT_WINDOWS
+#if __STDC_HOSTED == 0
 	return utimensat(fd, path, ts, flags);
 #else
 	struct timespec nativeTs[2];

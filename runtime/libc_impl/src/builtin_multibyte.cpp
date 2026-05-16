@@ -157,7 +157,10 @@ __SPRT_C_FUNC size_t wcsnrtombs(char *__SPRT_RESTRICT __dst, const wchar_t **__S
 			return ret;
 		}
 		(*__src) += 1;
-		__dst += converted;
+		if (__dst) {
+			__dst += converted;
+		}
+		ret += converted;
 		__dsize -= converted;
 	}
 
@@ -165,7 +168,9 @@ __SPRT_C_FUNC size_t wcsnrtombs(char *__SPRT_RESTRICT __dst, const wchar_t **__S
 	__ps->_State = 0;
 
 	if (__dsize > 0) {
-		*__dst = 0;
+		if (__dst) {
+			*__dst = 0;
+		}
 	}
 	return ret;
 }
@@ -291,15 +296,20 @@ __SPRT_C_FUNC size_t mbsnrtowcs(wchar_t *__SPRT_RESTRICT __dst, const char **__S
 		} else if (converted == -2) {
 			return ret;
 		}
-		__dst += converted;
+		if (__dst) {
+			__dst += converted;
+		}
 		__dsize -= converted;
+		ret += converted;
 	}
 
 	__ps->_Char = 0;
 	__ps->_State = 0;
 
 	if (__dsize > 0) {
-		*__dst = 0;
+		if (__dst) {
+			*__dst = 0;
+		}
 	}
 	return ret;
 }
@@ -321,7 +331,7 @@ __SPRT_C_FUNC int mbsinit(const mbstate_t *value) __SPRT_NOEXCEPT {
 	return 0;
 }
 
-__SPRT_C_FUNC size_t ___mb_cur_max_func() __SPRT_NOEXCEPT { return _MB_CUR_MAX; }
+__SPRT_C_FUNC size_t __ctype_get_mb_cur_max() __SPRT_NOEXCEPT { return _MB_CUR_MAX; }
 
 __SPRT_C_FUNC int wcwidth(wchar_t wc) __SPRT_NOEXCEPT {
 	return unicode::utf8EncodeLength(char32_t(wc));

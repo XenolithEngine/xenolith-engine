@@ -72,6 +72,9 @@ void free(void *value);
 void free_sized(void *value, size_t s);
 void free_aligned_sized(void *value, size_t al, size_t s);
 
+void *local_alloc(size_t value);
+void local_free(void *value, size_t s);
+
 void abort();
 }
 

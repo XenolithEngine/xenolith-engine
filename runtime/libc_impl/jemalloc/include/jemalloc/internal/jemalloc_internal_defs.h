@@ -86,13 +86,13 @@
 #ifndef _WIN32
 /* Defined if pthread_atfork(3) is available. */
 #define JEMALLOC_HAVE_PTHREAD_ATFORK
+#endif
 
 /* Defined if pthread_setname_np(3) is available. */
 #define JEMALLOC_HAVE_PTHREAD_SETNAME_NP
 
 /* Defined if pthread_getname_np(3) is available. */
 #define JEMALLOC_HAVE_PTHREAD_GETNAME_NP
-#endif
 
 /* Defined if pthread_set_name_np(3) is available. */
 /* #undef JEMALLOC_HAVE_PTHREAD_SET_NAME_NP */
@@ -139,9 +139,9 @@
  * Among other things, it must be possible to initialize a mutex without
  * triggering allocation in order for threaded allocation to be safe.
  */
-#ifndef _WIN32
+//#ifndef _WIN32
 #define JEMALLOC_THREADED_INIT
-#endif
+//#endif
 
 /*
  * Defined if the pthreads implementation defines
@@ -304,12 +304,12 @@
  * JEMALLOC_SYSCTL_VM_OVERCOMMIT: FreeBSD's vm.overcommit sysctl.
  */
 /* #undef JEMALLOC_SYSCTL_VM_OVERCOMMIT */
+#ifndef _WIN32
 #define JEMALLOC_PROC_SYS_VM_OVERCOMMIT_MEMORY
+#endif
 
 /* Defined if madvise(2) is available. */
-#ifndef _WIN32
 #define JEMALLOC_HAVE_MADVISE
-#endif
 
 /*
  * Defined if transparent huge pages are supported via the MADV_[NO]HUGEPAGE
@@ -340,9 +340,10 @@
  *                                 MADV_FREE, though typically with higher
  *                                 system overhead.
  */
-#ifndef _WIN32
+
 #define JEMALLOC_PURGE_MADVISE_FREE
 #define JEMALLOC_PURGE_MADVISE_DONTNEED
+#ifndef _WIN32
 #define JEMALLOC_PURGE_MADVISE_DONTNEED_ZEROS
 #endif
 
@@ -367,9 +368,8 @@
 /* #undef EXPERIMENTAL_SYS_PROCESS_MADVISE_NR */
 
 /* Defined if mprotect(2) is available. */
-#ifndef _WIN32
 #define JEMALLOC_HAVE_MPROTECT
-#endif
+
 
 /* Defined if sys/sdt.h is available and sdt tracing enabled */
 /* #undef JEMALLOC_EXPERIMENTAL_USDT_STAP */
@@ -451,10 +451,10 @@
 #define JEMALLOC_HAVE_GETTID
 
 /* GNU specific sched_getcpu support */
-#define JEMALLOC_HAVE_SCHED_GETCPU
+//#define JEMALLOC_HAVE_SCHED_GETCPU
 
 /* GNU specific sched_setaffinity support */
-#define JEMALLOC_HAVE_SCHED_SETAFFINITY
+//#define JEMALLOC_HAVE_SCHED_SETAFFINITY
 
 /* pthread_setaffinity_np support */
 #define JEMALLOC_HAVE_PTHREAD_SETAFFINITY_NP
@@ -462,7 +462,7 @@
 /*
  * If defined, all the features necessary for background threads are present.
  */
-//#define JEMALLOC_BACKGROUND_THREAD
+#define JEMALLOC_BACKGROUND_THREAD
 
 /*
  * If defined, jemalloc symbols are not exported (doesn't work when

@@ -75,9 +75,12 @@ struct SPRT_API time_exp_t : public __SPRT_TM_NAME {
 	int64_t gmt_geti() const;
 	int64_t ltz_geti() const;
 
+	size_t asctime(char *, size_t) const;
 	size_t encodeRfc822(char *, size_t) const;
 	size_t encodeCTime(char *, size_t) const;
 	size_t encodeIso8601(char *, size_t, size_t precision) const;
+
+	size_t strftime(char *buf, size_t bufSize, const char *fmt) const;
 };
 
 

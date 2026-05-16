@@ -1,5 +1,6 @@
 /**
 Copyright (c) 2025 Stappler Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -28,6 +29,8 @@ THE SOFTWARE.
 
 #include <sprt/runtime/mem/pool.h>
 #include <sprt/runtime/mem/context.h>
+
+#include <sprt/cxx/detail/allocator_utils.h>
 
 namespace sprt::detail {
 
@@ -131,16 +134,7 @@ public:
 	operator memory::pool_t *() const noexcept;
 	memory::pool_t *getPool() const noexcept;
 
-	void copy(T *dest, const T *source, size_t count) noexcept;
-
-	void copy_rewrite(T *dest, size_t dcount, const T *source, size_t count) noexcept;
-
-	void move(T *dest, T *source, size_t count) noexcept;
-	void move_rewrite(T *dest, size_t dcount, T *source, size_t count) noexcept;
-
 private:
-	static memory::pool_t *pool_ptr(memory::pool_t *p) noexcept { return p; }
-
 	memory::pool_t *pool = nullptr;
 };
 
@@ -166,14 +160,14 @@ inline AllocatorPool<T>::AllocatorPool(AllocatorPool<B> &&a) noexcept : pool(a.g
 template <typename T>
 template <typename B>
 inline auto AllocatorPool<T>::operator=(const AllocatorPool<B> &a) noexcept -> AllocatorPool<T> & {
-	pool = pool_ptr(a.pool);
+	pool = a.pool;
 	return *this;
 }
 
 template <typename T>
 template <typename B>
 inline auto AllocatorPool<T>::operator=(AllocatorPool<B> &&a) noexcept -> AllocatorPool<T> & {
-	pool = pool_ptr(a.pool);
+	pool = a.pool;
 	return *this;
 }
 
@@ -190,7 +184,7 @@ inline auto AllocatorPool<T>::allocate(size_t n) const noexcept -> T * {
 template <typename T>
 inline auto AllocatorPool<T>::__allocate(size_t &n) const noexcept -> T * {
 	size_t size = sizeof(T) * n;
-	auto ptr = static_cast<T *>(memory::pool::alloc(pool_ptr(pool), size, alignof(T)));
+	auto ptr = static_cast<T *>(memory::pool::alloc(pool, size, alignof(T)));
 
 	sprt_passert(ptr, "allocation should always be successful");
 
@@ -201,7 +195,7 @@ inline auto AllocatorPool<T>::__allocate(size_t &n) const noexcept -> T * {
 template <typename T>
 inline auto AllocatorPool<T>::__allocate(size_t n, size_t &bytes) const noexcept -> T * {
 	size_t size = sizeof(T) * n;
-	auto ptr = static_cast<T *>(memory::pool::alloc(pool_ptr(pool), size, alignof(T)));
+	auto ptr = static_cast<T *>(memory::pool::alloc(pool, size, alignof(T)));
 
 	sprt_passert(ptr, "allocation should always be successful");
 
@@ -211,24 +205,24 @@ inline auto AllocatorPool<T>::__allocate(size_t n, size_t &bytes) const noexcept
 
 template <typename T>
 inline void AllocatorPool<T>::deallocate(T *t, size_t n) const noexcept {
-	memory::pool::free(pool_ptr(pool), t, n * sizeof(T));
+	memory::pool::free(pool, t, n * sizeof(T));
 }
 
 template <typename T>
 inline void AllocatorPool<T>::__deallocate(T *t, size_t n, size_t bytes) const noexcept {
-	memory::pool::free(pool_ptr(pool), t, bytes);
+	memory::pool::free(pool, t, bytes);
 }
 
 template <typename T>
 template <typename B>
 inline bool AllocatorPool<T>::operator==(const AllocatorPool<B> &p) const noexcept {
-	return pool_ptr(p.pool) == pool_ptr(pool);
+	return p.pool == pool;
 }
 
 template <typename T>
 template <typename B>
 inline bool AllocatorPool<T>::operator!=(const AllocatorPool<B> &p) const noexcept {
-	return pool_ptr(p.pool) != pool_ptr(pool);
+	return p.pool != pool;
 }
 
 template <typename T>
@@ -305,121 +299,17 @@ inline void AllocatorPool<T>::destroy(pointer p, size_t size) const noexcept {
 
 template <typename T>
 inline AllocatorPool<T>::operator bool() const noexcept {
-	return pool_ptr(pool) != nullptr;
+	return pool != nullptr;
 }
 
 template <typename T>
 inline AllocatorPool<T>::operator memory::pool_t *() const noexcept {
-	return pool_ptr(pool);
+	return pool;
 }
 
 template <typename T>
 inline memory::pool_t *AllocatorPool<T>::getPool() const noexcept {
-	return pool_ptr(pool);
-}
-
-template <typename T>
-inline void AllocatorPool<T>::copy(T *dest, const T *source, size_t count) noexcept {
-	if constexpr (is_trivially_copyable<T>::value) {
-		__constexpr_memmove(dest, source, count);
-	} else {
-		if (dest == source) {
-			return;
-		} else if (uintptr_t(dest) > uintptr_t(source)) {
-			for (size_t i = count; i > 0; i--) { construct(dest + i - 1, *(source + i - 1)); }
-		} else {
-			for (size_t i = 0; i < count; i++) { construct(dest + i, *(source + i)); }
-		}
-	}
-}
-
-template <typename T>
-inline void AllocatorPool<T>::copy_rewrite(T *dest, size_t dcount, const T *source,
-		size_t count) noexcept {
-	if constexpr (is_trivially_copyable<T>::value) {
-		__constexpr_memmove(dest, source, count);
-	} else {
-		if (dest == source) {
-			return;
-		} else if (uintptr_t(dest) > uintptr_t(source)) {
-			size_t i = count;
-			size_t m = min(count, dcount);
-			for (; i > m; i--) { construct(dest + i - 1, *(source + i - 1)); }
-			for (; i > 0; i--) {
-				destroy(dest + i - 1);
-				construct(dest + i - 1, *(source + i - 1));
-			}
-		} else {
-			size_t i = 0;
-			size_t m = min(count, dcount);
-			for (; i < m; ++i) {
-				destroy(dest + i);
-				construct(dest + i, *(source + i));
-			}
-			for (; i < count; ++i) { construct(dest + i, *(source + i)); }
-		}
-	}
-}
-
-template <typename T>
-inline void AllocatorPool<T>::move(T *dest, T *source, size_t count) noexcept {
-	if constexpr (is_trivially_copyable<T>::value) {
-		__constexpr_memmove(dest, source, count);
-	} else if constexpr (is_trivially_move_constructible<T>::value) {
-		__constexpr_memmove(dest, source, count);
-	} else {
-		if (dest == source) {
-			return;
-		} else if (uintptr_t(dest) > uintptr_t(source)) {
-			for (size_t i = count; i > 0; i--) {
-				construct(dest + i - 1, sprt::move_unsafe(*(source + i - 1)));
-				destroy(source + i - 1);
-			}
-		} else {
-			for (size_t i = 0; i < count; i++) {
-				construct(dest + i, sprt::move_unsafe(*(source + i)));
-				destroy(source + i);
-			}
-		}
-	}
-}
-
-template <typename T>
-inline void AllocatorPool<T>::move_rewrite(T *dest, size_t dcount, T *source,
-		size_t count) noexcept {
-	if constexpr (is_trivially_copyable<T>::value) {
-		__constexpr_memmove(dest, source, count);
-	} else if constexpr (is_trivially_move_constructible<T>::value) {
-		__constexpr_memmove(dest, source, count);
-	} else {
-		if (dest == source) {
-			return;
-		} else if (uintptr_t(dest) > uintptr_t(source)) {
-			size_t i = count;
-			size_t m = min(count, dcount);
-			for (; i > m; i--) {
-				construct(dest + i - 1, sprt::move_unsafe(*(source + i - 1)));
-				destroy(source + i - 1);
-			}
-			for (; i > 0; i--) {
-				destroy(dest + i - 1);
-				construct(dest + i - 1, sprt::move_unsafe(*(source + i - 1)));
-				destroy(source + i - 1);
-			}
-		} else {
-			size_t i = 0;
-			size_t m = min(count, dcount);
-			for (; i < m; ++i) {
-				destroy(dest + i);
-				construct(dest + i, sprt::move_unsafe(*(source + i)));
-				destroy(source + i);
-			}
-			for (; i < count; ++i) {
-				construct(dest + i, sprt::move_unsafe(*(source + i)));
-				destroy(source + i);
-			}
-		}
-	}
+	return pool;
 }
 
 inline void *AllocPool::operator new(size_t size, const nothrow_t &tag) noexcept {
@@ -440,15 +330,9 @@ inline void *AllocPool::operator new(size_t size, void *mem, const nothrow_t &ta
 	return mem;
 }
 
-inline void AllocPool::operator delete(void *) noexcept {
-	// APR doesn't require to free object's memory
-	// It can be optimized if we'd know true allocation size
-}
+inline void AllocPool::operator delete(void *) noexcept { }
 
-inline void AllocPool::operator delete(void *, align_val_t al) noexcept {
-	// APR doesn't require to free object's memory,
-	// It can be optimized if we'd know true allocation size
-}
+inline void AllocPool::operator delete(void *, align_val_t al) noexcept { }
 
 inline memory::pool_t *AllocPool::getCurrentPool() { return memory::pool::acquire(); }
 

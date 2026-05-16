@@ -77,12 +77,21 @@ __libc::__libc() {
 	};
 
 	plocks.max_load_factor(2.0);
+
+	mainThread = __sprt_gettid();
 }
 
 __libc::~__libc() {
 	// Release locale maps
-	for (auto &it : localeCache) { __free_locale(it.second); }
+	for (auto &it : localeCache) {
+		__free_locale(it.second); //
+	}
 	localeCache.clear();
+
+	for (auto &it : tzCache) {
+		__sprt_local_free((void *)it.data(), it.size() + 1); //
+	}
+	tzCache.clear();
 
 	// release memory for extra-fd
 	while (fdPagesAllocated > 1) { sprt::__delete(fdPages[--fdPagesAllocated]); }
@@ -164,6 +173,21 @@ void __libc::release_fd(int fd) {
 	fdDispatch->bits.reset(fd);
 }
 
+const char *__libc::preserve_tz_name(StringView name) {
+	unique_lock<mutex> lock(tzMutex);
+
+	auto it = tzCache.find(name);
+	if (it != tzCache.end()) {
+		return it->data();
+	}
+
+	auto data = (char *)__sprt_local_alloc(name.size() + 1);
+	memcpy(data, name.data(), name.size());
+	data[name.size()] = 0;
+
+	return tzCache.emplace(StringView(data, name.size())).first->data();
+}
+
 __SPRT_C_FUNC
 int __SPRT_ID(sprt_plock_lock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock_flags_t) flags,
 		__SPRT_ID(pid_t) * tidPtr) {
@@ -173,10 +197,11 @@ int __SPRT_ID(sprt_plock_lock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock
 
 	auto it = libc->plocks.find(lock);
 	if (it == libc->plocks.end()) {
-		it = libc->plocks.emplace(lock).first;
-		it->second.refcount = 1;
+		auto newplock = (__libc_plock *)__sprt_local_alloc(sizeof(__libc_plock));
+		it = libc->plocks.emplace(lock, new (newplock, nothrow) __libc_plock).first;
+		it->second->refcount = 1;
 	} else {
-		++it->second.refcount;
+		++it->second->refcount;
 	}
 
 	ulock.unlock();
@@ -185,15 +210,15 @@ int __SPRT_ID(sprt_plock_lock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock
 	*rmutex_base::getNativeValue(tid) = __sprt_gettid();
 
 	auto res = rmutex_base::_lock<sprt_rlock_wait, nullptr,
-			bool(SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(it->second.data.value, tid, 0,
+			bool(SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(it->second->data.value, tid, 0,
 			SPRT_LOCK_FLAG_PI);
 	switch (res) {
 	case Status::Ok:
-	case Status::Propagate: ++it->second.data.counter; break;
+	case Status::Propagate: ++it->second->data.counter; break;
 	default: return -1; break;
 	}
 
-	if (it->second.flags & SPRT_LOCK_FLAG_RESOURCE_DIED) {
+	if (it->second->flags & SPRT_LOCK_FLAG_RESOURCE_DIED) {
 		sprt_plock_unlock(lock, SPRT_LOCK_FLAG_RESOURCE_DIED, tidPtr);
 		__sprt_errno = EOWNERDEAD;
 		return -1;
@@ -214,18 +239,18 @@ int __SPRT_ID(sprt_plock_trylock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_l
 	auto it = libc->plocks.find(lock);
 	if (it == libc->plocks.end()) {
 		it = libc->plocks.emplace(lock).first;
-		it->second.refcount = 1;
+		it->second->refcount = 1;
 
 		// It's a new lock, this should return immediately
 		__sprt_sprt_rlock_t tid;
 		*rmutex_base::getNativeValue(tid) = __sprt_gettid();
 
 		auto res = rmutex_base::_lock<sprt_rlock_wait, nullptr,
-				bool(SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(it->second.data.value, tid, 0,
+				bool(SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(it->second->data.value, tid, 0,
 				SPRT_LOCK_FLAG_PI);
 		switch (res) {
 		case Status::Ok:
-		case Status::Propagate: ++it->second.data.counter; break;
+		case Status::Propagate: ++it->second->data.counter; break;
 		default: return -1; break;
 		}
 		if (tidPtr != nullptr) {
@@ -236,16 +261,16 @@ int __SPRT_ID(sprt_plock_trylock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_l
 		__sprt_sprt_rlock_t tid;
 		*rmutex_base::getNativeValue(tid) = __sprt_gettid();
 
-		auto res = rmutex_base::_try_lock<sprt_rlock_try_wait>(it->second.data.value, tid,
+		auto res = rmutex_base::_try_lock<sprt_rlock_try_wait>(it->second->data.value, tid,
 				SPRT_LOCK_FLAG_PI);
 		switch (res) {
 		case Status::Ok:
 		case Status::Propagate:
-			++it->second.refcount;
+			++it->second->refcount;
 			ulock.unlock();
 
-			++it->second.data.counter;
-			if (it->second.flags & SPRT_LOCK_FLAG_RESOURCE_DIED) {
+			++it->second->data.counter;
+			if (it->second->flags & SPRT_LOCK_FLAG_RESOURCE_DIED) {
 				sprt_plock_unlock(lock, SPRT_LOCK_FLAG_RESOURCE_DIED, tidPtr);
 				__sprt_errno = EOWNERDEAD;
 				return -1;
@@ -326,16 +351,18 @@ int __SPRT_ID(sprt_plock_unlock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lo
 		return -1;
 	}
 
-	auto recount = it->second.refcount;
+	auto recount = it->second->refcount;
 	if (recount == 1) {
-		doUnlock(it->second.data.value, &it->second.data.counter);
+		doUnlock(it->second->data.value, &it->second->data.counter);
+		destroy_at(it->second);
+		__sprt_local_free((void *)it->second, sizeof(__libc_plock));
 		libc->plocks.erase(it);
 	} else {
 		if (flags & SPRT_LOCK_FLAG_RESOURCE_DIED) {
-			it->second.flags |= SPRT_LOCK_FLAG_RESOURCE_DIED;
+			it->second->flags |= SPRT_LOCK_FLAG_RESOURCE_DIED;
 		}
-		--it->second.refcount;
-		doUnlock(it->second.data.value, &it->second.data.counter);
+		--it->second->refcount;
+		doUnlock(it->second->data.value, &it->second->data.counter);
 	}
 	return 0;
 }

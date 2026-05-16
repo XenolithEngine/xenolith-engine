@@ -159,19 +159,18 @@ SPRT_API void terminate();
 
 /*
 	Creates a memory pool associated with its own internal allocator.
-	Such memory pools do not require prior stappler initialization
+	For such memory pools, no preinitialization of the runtime is required.
 */
 SPRT_API pool_t *create();
 
 /*
 	Creates a memory pool associated with its own internal allocator.
-	Such memory pools do not require prior stappler initialization
+	For such memory pools, no preinitialization of the runtime is required.
 */
 SPRT_API pool_t *create_tagged(const char *);
 
 /*
-	Create a pool with a dedicated an allocator
-	Such memory pools do not require prior stappler initialization
+	Create a pool with a dedicated allocator
 */
 SPRT_API pool_t *create(allocator_t *);
 

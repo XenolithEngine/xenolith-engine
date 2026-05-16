@@ -102,8 +102,6 @@ __SPRT_C_FUNC __SPRT_ID(time_t) __SPRT_ID(mktime)(struct __SPRT_TM_NAME *_tm) {
 	auto native = internal::getNativeTm(_tm);
 #if SPRT_ANDROID && !defined(__LP64__)
 	auto ret = ::mktime64(&native);
-#elif SPRT_WINDOWS
-	auto ret = ::_mktime64(&native);
 #else
 	auto ret = ::mktime(&native);
 #endif
@@ -155,8 +153,6 @@ __SPRT_C_FUNC char *__SPRT_ID(ctime)(const __SPRT_ID(time_t) * t) {
 #if SPRT_ANDROID && !defined(__LP64__)
 	::time64_t native = *t;
 	return ::ctime64(&native);
-#elif SPRT_WINDOWS
-	return ::_ctime64(t);
 #else
 	::time_t native = *t;
 	return ::ctime(&native);
