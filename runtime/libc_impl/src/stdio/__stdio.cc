@@ -121,7 +121,7 @@ FILE __stdout_FILE = {
 	.buf_size = sizeof __stdout_buf - UNGET,
 	.fd = 1,
 	.lbf = '\n',
-	.__lock_pid = -1,
+	.__lock_pid = 0,
 };
 
 static unsigned char __stderr_buf[UNGET];

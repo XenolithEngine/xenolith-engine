@@ -41,6 +41,7 @@ THE SOFTWARE.
 #include "dll_userenv.h"
 #include "dll_bcrypt.h"
 #include "dll_ws2_32.h"
+#include "dll_oleaut32.h"
 
 // Mark all loader functions with this to remove buffer checks from functions,
 // that can be called before security cookie initialization
@@ -86,8 +87,9 @@ struct DllLoader {
 	UserenvTable userenv; // 13
 	BCryptTable bcrypt; // 14
 	Ws2_32Table ws2_32; // 15
+	Oleaut32Table oleaut32; // 15
 
-	DllTable *__tables[17];
+	DllTable *__tables[18];
 
 	DllLoader()
 	: __tables{
@@ -107,6 +109,7 @@ struct DllLoader {
 		  &userenv,
 		  &bcrypt,
 		  &ws2_32,
+		  &oleaut32,
 		  nullptr,
 	  } { }
 

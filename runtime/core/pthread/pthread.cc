@@ -23,6 +23,7 @@ THE SOFTWARE.
 #define __SPRT_BUILD 1
 
 #include <sprt/c/__sprt_time.h>
+#include <sprt/c/__sprt_sched.h>
 
 #ifndef SPRT_WINDOWS
 #include <pthread.h>
@@ -34,28 +35,13 @@ THE SOFTWARE.
 
 #include <sprt/cxx/cstring>
 
-__SPRT_C_FUNC int __libc_started;
-__SPRT_C_FUNC __sprt_pid_t __libc_main_thread;
+__SPRT_C_FUNC __sprt_uint64_t __libc_main_thread;
 
 namespace sprt::_thread {
 
 thread_local __thread_slot tl_self;
 
 static __thread_pool s_handlePool;
-
-__thread_slot::__thread_slot() : tid(__sprt_gettid()) { }
-
-__thread_slot::~__thread_slot() {
-	if (tid != 0) {
-		s_handlePool.activeThreads.erase(tid);
-	}
-	if (thread && hasFlag(thread->attr.attr, ThreadAttrFlags::Detached)) {
-		// We are here because detached thread has completed execution
-		// Destroy/return it's resources
-		__detachAndDeallocateThread(thread, nullptr);
-	}
-	thread = nullptr;
-}
 
 __thread_pool *__thread_pool::get() { return &s_handlePool; }
 
@@ -70,15 +56,23 @@ __thread_pool::__thread_pool() {
 }
 
 __thread_pool::~__thread_pool() {
+	main.state.set_and_signal(thread_t::StateFinalized);
+
 	if (main.threadMemPool) {
 		memory::pool::destroy(main.threadMemPool);
+	}
+	memory::allocator::terminate(&main.threadAlloc);
+
+	if (main.handle) {
+		native::__closeNativeHandle(main.handle);
+		main.handle = nullptr;
 	}
 
 	while (free) {
 		auto tmp = free;
 		free = static_cast<thread_t *>(free->next);
 
-		__sprt_free(tmp);
+		__sprt_local_free(tmp, sizeof(thread_t));
 	}
 }
 
@@ -132,10 +126,6 @@ static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg) {
 
 	auto tid = __sprt_gettid();
 
-	unique_lock globalLock(s_handlePool.mutex);
-	s_handlePool.activeThreads.emplace(tid, thread);
-	globalLock.unlock();
-
 	thread->registerThread();
 
 	tl_self.thread = thread;
@@ -147,7 +137,7 @@ static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg) {
 		thread->arg = thread->cb(thread->arg);
 	}
 
-	globalLock.lock();
+	unique_lock globalLock(s_handlePool.mutex);
 	s_handlePool.activeThreads.erase(tid);
 	globalLock.unlock();
 
@@ -158,12 +148,24 @@ static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg) {
 	lock.unlock(); // unlock before mutex's memory destroyed
 	thread->state.set_and_signal(thread_t::StateFinalized);
 
+	if (thread && hasFlag(thread->attr.attr, ThreadAttrFlags::Detached)) {
+		// We are here because detached thread has completed execution
+		// Destroy/return it's resources
+		__detachAndDeallocateThread(thread, nullptr);
+	}
+	thread = nullptr;
+
 	__sprt_libc_thread_exit(true);
 
 	return result;
 }
 
-static void __attachNativeThread(thread_t *thread, void *handle) { thread->handle = handle; }
+static void __attachNativeThread(thread_t *thread, void *handle) {
+	thread->handle = handle;
+
+	unique_lock globalLock(s_handlePool.mutex);
+	s_handlePool.activeThreads.emplace(thread->threadId, thread);
+}
 
 static thread_t *__allocateThread(const attr_t *attr) {
 	thread_t *handle = nullptr;
@@ -175,7 +177,7 @@ static thread_t *__allocateThread(const attr_t *attr) {
 		handle->next = nullptr;
 	} else {
 		lock.unlock();
-		handle = (thread_t *)__sprt_malloc(sizeof(thread_t));
+		handle = (thread_t *)__sprt_local_alloc(sizeof(thread_t));
 		handle->next = nullptr;
 	}
 
@@ -191,11 +193,19 @@ static void __deallocateThread(thread_t *handle) {
 	unique_lock lock(s_handlePool.mutex);
 
 	handle->~thread_t();
-	handle->next = s_handlePool.free;
-	s_handlePool.free = handle;
+	if (handle != &s_handlePool.main) {
+		handle->next = s_handlePool.free;
+		s_handlePool.free = handle;
+	}
 }
 
 static void __detachAndDeallocateThread(thread_t *thread, unique_lock<qmutex> *externalLock) {
+	if (thread->threadMemPool) {
+		memory::pool::destroy(thread->threadMemPool);
+		thread->threadMemPool = nullptr;
+	}
+	memory::allocator::terminate(&thread->threadAlloc);
+
 	unique_lock lock(s_handlePool.mutex);
 
 	if (thread->handle) {
@@ -208,63 +218,84 @@ static void __detachAndDeallocateThread(thread_t *thread, unique_lock<qmutex> *e
 		externalLock->unlock();
 	}
 	thread->~thread_t();
-	thread->next = s_handlePool.free;
-	s_handlePool.free = thread;
+	if (native::__getNativeThreadId() != __libc_main_thread) {
+		thread->next = s_handlePool.free;
+		s_handlePool.free = thread;
+	}
+}
+
+static void destroyThisThread() {
+	auto thread = tl_self.thread;
+	if (!thread) {
+		return;
+	}
+
+	thread->state.set_and_signal(thread_t::StateFinalized);
+
+	__detachAndDeallocateThread(thread, nullptr);
+};
+
+static void attachExternalThread(thread_t *thread) {
+	thread->attr.attr |= ThreadAttrFlags::Detached | ThreadAttrFlags::Unmanaged;
+
+	memory::allocator::initialize(&thread->threadAlloc);
+	thread->threadMemPool = memory::pool::create(&thread->threadAlloc);
+
+	thread->registerThread();
+
+	thread->state.set_and_signal(thread_t::StateExternalInit);
+
+	tl_self.thread = thread;
+
+	if (thread != &s_handlePool.main) {
+		// WARNING: This will init thread-local storage on Windows
+		native::__registerForDestruction(&destroyThisThread);
+	}
 }
 
 thread_t *thread_t::self() {
-	if (__libc_main_thread == __sprt_gettid()) {
-		auto thread = &s_handlePool.main;
-		if (!hasFlag(thread->attr.attr, ThreadAttrFlags::Detached)) {
-			thread->attr.attr |= ThreadAttrFlags::Detached | ThreadAttrFlags::Unmanaged;
-			thread->threadMemPool = memory::pool::create();
-			thread->registerThread(false, __libc_main_thread);
-			thread->state.set_and_signal(StateExternalInit);
-		}
-
-		if (__libc_started) {
-			if (tl_self.thread == nullptr) {
-				tl_self.thread = thread;
-			}
-		}
-		return thread;
+	if (tl_self.thread) {
+		return tl_self.thread;
 	}
+
+	auto nativeId = native::__getNativeThreadId();
+
+	if (__libc_main_thread == nativeId) {
+		attachExternalThread(&s_handlePool.main);
+		return tl_self.thread;
+	}
+
 	if (tl_self.thread == nullptr) {
-		// make pthread_t for external thread
+		// We can be here for two reasons.
+		// The first one is an external thread created outside of SPRT.
+		// The second is that we are trying to access the thread data
+		// before its main function called
 
-		auto thread = __allocateThread(nullptr);
+		// First - check, if we have registred thread with out tid:
+		unique_lock lock(s_handlePool.mutex);
+		auto it = s_handlePool.activeThreads.find(nativeId);
+		if (it != s_handlePool.activeThreads.end()) {
+			tl_self.thread = it->second;
+			return it->second;
+		}
 
-		thread->attr.attr |= ThreadAttrFlags::Detached | ThreadAttrFlags::Unmanaged;
+		lock.unlock();
 
-		thread->registerThread();
-
-		thread->state.set_and_signal(StateExternalInit);
-
-		tl_self.thread = thread;
+		// it's an external thread, create pthread_t handle
+		attachExternalThread(__allocateThread(nullptr));
 	}
 	return tl_self.thread;
 }
 
 thread_t *thread_t::self_noattach() {
-	if (__libc_started > 0) {
+	if (tl_self.thread) {
 		return tl_self.thread;
 	}
 	return nullptr;
 }
 
-void thread_t::registerThread(bool withThreadSupportPool, __sprt_pid_t tid) {
-	if (withThreadSupportPool) {
-		if (threadMemPool) {
-			return;
-		}
-		threadMemPool = memory::get_thread_support_pool();
-	}
-
-	if (tid) {
-		threadId = __sprt_gettid();
-	} else {
-		threadId = tid;
-	}
+void thread_t::registerThread() {
+	threadId = __sprt_gettid();
 
 	// read actual attributes
 	native::__initNativeHandle(this);
@@ -409,6 +440,11 @@ int thread_t::create(thread_t **__SPRT_RESTRICT outthread, const attr_t *__SPRT_
 	auto thread = __allocateThread(attr);
 	thread->cb = cb;
 	thread->arg = arg;
+
+	// Thread locals will be initialized before we acquire control over the new thread;
+	// We need to provide allocator and pool before it
+	memory::allocator::initialize(&thread->threadAlloc);
+	thread->threadMemPool = memory::pool::create(&thread->threadAlloc);
 
 	auto ret = native::__createThread(thread, attr ? attr : &s_handlePool.defaultAttr);
 	if (ret != 0) {

@@ -142,6 +142,19 @@ SPRT_API void max_free_set(allocator_t *alloc, size_t size);
 
 SPRT_API void destroy(allocator_t *);
 
+/*
+	Initializes a statically stored allocator.
+	The allocator must be deinitialized using `terminate` to avoid memory leaks.
+	Do not use `destroy` on such an allocator—this leads to an error.
+*/
+SPRT_API void initialize(allocator_t *);
+
+/*
+	Clears the memory of a statically stored allocator, previosly initialized by `initialize`.
+	After that, any memory allocated from it becomes invalid; accessing it leads to an error.
+*/
+SPRT_API void terminate(allocator_t *);
+
 } // namespace sprt::memory::allocator
 
 

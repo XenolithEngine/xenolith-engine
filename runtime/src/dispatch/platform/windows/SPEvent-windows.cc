@@ -26,6 +26,7 @@
 #include "SPEvent-windows.h"
 #include "SPEventTimerIocp.h"
 #include "SPEventThreadIocp.h"
+#include "SPEventTimerWin.h"
 #include "SPEventPollIocp.h"
 #include "platform/windows/SPEvent-iocp.h"
 
@@ -36,6 +37,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupIocpHandleClass<TimerIocpHandle, TimerIocpSource>(&_info, &_iocpTimerClass, true);
 		setupIocpHandleClass<ThreadIocpHandle, ThreadIocpSource>(&_info, &_iocpThreadClass, true);
 		setupIocpHandleClass<PollIocpHandle, PollIocpSource>(&_info, &_iocpPollClass, true);
+		setupIocpHandleClass<TimerWinHandle, TimerWinSource>(&_info, &_winTimerClass, true);
 
 		auto iocp = new (memory::pool::acquire()) IocpData(_info.queue, this, info);
 		if (iocp->_port) {
@@ -54,18 +56,23 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 			_destroy = [](void *ptr) { delete reinterpret_cast<IocpData *>(ptr); };
 
 			_timer = [](QueueData *d, void *ptr, TimerInfo &&info) -> Rc<TimerHandle> {
-				auto data = reinterpret_cast<Queue::Data *>(d);
-				return Rc<TimerIocpHandle>::create(&data->_iocpTimerClass, move(info));
+				auto iocp = static_cast<IocpData *>(ptr);
+				auto data = static_cast<Queue::Data *>(d);
+				if (iocp->_hasCompletionPackage) {
+					return Rc<TimerIocpHandle>::create(&data->_iocpTimerClass, move(info));
+				} else {
+					return Rc<TimerWinHandle>::create(&data->_winTimerClass, move(info));
+				}
 			};
 
 			_thread = [](QueueData *d, void *ptr) -> Rc<ThreadHandle> {
-				auto data = reinterpret_cast<Queue::Data *>(d);
+				auto data = static_cast<Queue::Data *>(d);
 				return Rc<ThreadIocpHandle>::create(&data->_iocpThreadClass);
 			};
 
 			_listenHandle = [](QueueData *d, void *ptr, NativeHandle handle, PollFlags flags,
 									CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
-				auto data = reinterpret_cast<Queue::Data *>(d);
+				auto data = static_cast<Queue::Data *>(d);
 				return Rc<PollIocpHandle>::create(&data->_iocpPollClass, handle.handle, flags,
 						sprt::move(cb));
 			};

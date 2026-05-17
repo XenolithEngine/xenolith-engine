@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -20,42 +20,45 @@
  THE SOFTWARE.
  **/
 
-#ifndef RUNTIME_CORE_PTHREAD_PTHREAD_STRUCT_H_
-#define RUNTIME_CORE_PTHREAD_PTHREAD_STRUCT_H_
+#ifndef CORE_EVENT_PLATFORM_WINDOWS_SPEVENTTIMERWIN_H_
+#define CORE_EVENT_PLATFORM_WINDOWS_SPEVENTTIMERWIN_H_
 
-#include <sprt/cxx/detail/ctypes.h>
-#include <sprt/runtime/mem/pool.h>
-#include <sprt/c/__sprt_pthread.h>
-#include <sprt/c/__sprt_stdio.h>
+#include <sprt/runtime/dispatch/handle.h>
+#include "SPEvent-iocp.h"
 
-namespace sprt {
+namespace sprt::dispatch {
 
-void __sprt_libc_thread_exit(bool);
-
-}
-
-namespace sprt::_thread {
-
-struct thread_base_t {
-	thread_base_t *next = nullptr;
+struct SPRT_API TimerWinSource {
 	void *handle = nullptr;
-	__sprt_pid_t threadId = 0;
+	TimeInterval interval;
+	uint32_t count = 0;
+	uint32_t value = 0;
+	uint32_t descriptor = 0;
+	bool subintervals = false;
+	bool active = false;
 
-	void *(*cb)(void *) = nullptr;
-	void *arg = nullptr;
+	bool init(const TimerInfo &info);
 
-	uintptr_t lowStack = 0;
-	uintptr_t highStack = 0;
-
-	// static space for allocator
-	sprt::memory::allocator_t threadAlloc;
-
-	// Memory pool to use with thread-scoped memory, uses threadAlloc
-	memory::pool_t *threadMemPool = nullptr;
-
-	__SPRT_ID(FILE) *ioLocks = nullptr;
+	bool start();
+	void stop();
+	void reset();
+	void cancel();
 };
 
-} // namespace sprt::_thread
+class SPRT_API TimerWinHandle : public TimerHandle {
+public:
+	virtual ~TimerWinHandle() = default;
 
-#endif // RUNTIME_CORE_PTHREAD_PTHREAD_STRUCT_H_
+	bool init(HandleClass *, TimerInfo &&);
+
+	virtual bool reset(TimerInfo &&) override;
+
+	Status rearm(IocpData *, TimerWinSource *);
+	Status disarm(IocpData *, TimerWinSource *);
+
+	void notify(IocpData *, TimerWinSource *source, const NotifyData &);
+};
+
+} // namespace sprt::dispatch
+
+#endif // CORE_EVENT_PLATFORM_WINDOWS_SPEVENTTIMERWIN_H_

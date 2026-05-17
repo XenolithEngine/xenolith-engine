@@ -42,17 +42,36 @@ int lastErrorToErrno(unsigned long winerr);
 
 }
 
+typedef void(__cdecl *__funcptr)(void);
+
+__SPRT_C_FUNC int __tlregdtor(__funcptr fn) __SPRT_NOEXCEPT;
+
 namespace sprt::_thread::native {
+
+static uint64_t __getNativeThreadId() { return GetCurrentThreadId(); }
+
+static void __registerForDestruction(void (*fn)(void)) { __tlregdtor(fn); }
 
 static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr) {
 	DWORD id = 0;
+	// Thread-local variables must be able to locate this thread's
+	// data before the main thread function gains control.
+	// We create thread as suspended, then register it's global data, and then resume it
 	auto handle = (HANDLE)CreateThread(nullptr, attr->stackSize, &__runthead, thread,
-			((thread->attr.stackSize > 0) ? STACK_SIZE_PARAM_IS_A_RESERVATION : 0), &id);
+			((thread->attr.stackSize > 0) ? STACK_SIZE_PARAM_IS_A_RESERVATION : 0)
+					| CREATE_SUSPENDED,
+			&id);
 	if (!handle || handle == INVALID_HANDLE_VALUE) {
 		return platform::lastErrorToErrno(GetLastError());
 	} else {
+		// attach thread's data as globally available by it's id
 		thread->threadId = id;
 		__attachNativeThread(thread, reinterpret_cast<void *>(handle));
+
+		// Resume thread
+		// this will run thread-local initializers, then thread main func
+		ResumeThread(handle);
+
 		return 0;
 	}
 }

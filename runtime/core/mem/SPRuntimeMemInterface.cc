@@ -45,8 +45,8 @@ static apr_allocator_t *create() {
 		s_aprInterface.apr_allocator_create(&ret);
 		return ret;
 	}
-	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-			"APR interface is not available");
+	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+			": APR interface is not available");
 	return nullptr;
 }
 
@@ -62,8 +62,8 @@ static apr_allocator_t *create(void *mutex) {
 		s_aprInterface.apr_allocator_mutex_set(ret, (apr_thread_mutex_t *)mutex);
 		return ret;
 	}
-	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-			"APR interface is not available");
+	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+			": APR interface is not available");
 	return nullptr;
 }
 
@@ -71,8 +71,8 @@ static void destroy(apr_allocator_t *alloc) {
 	if (s_aprInterface) {
 		s_aprInterface.apr_allocator_destroy(alloc);
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 	}
 }
 
@@ -80,16 +80,16 @@ static void owner_set(apr_allocator_t *alloc, apr_pool_t *pool) {
 	if (s_aprInterface) {
 		s_aprInterface.apr_allocator_owner_set(alloc, pool);
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 	}
 }
 static apr_pool_t *owner_get(apr_allocator_t *alloc) {
 	if (s_aprInterface) {
 		return s_aprInterface.apr_allocator_owner_get(alloc);
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 		return nullptr;
 	}
 }
@@ -97,8 +97,8 @@ static void max_free_set(apr_allocator_t *alloc, size_t size) {
 	if (s_aprInterface) {
 		s_aprInterface.apr_allocator_max_free_set(alloc, size);
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 	}
 }
 
@@ -128,7 +128,7 @@ static void initialize() {
 		s_aprInterface.apr_pool_initialize();
 	} else {
 		//oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-		//		"APR interface is not available");
+		//		__FUNCTION__, ": APR interface is not available");
 	}
 }
 
@@ -144,8 +144,8 @@ static apr_pool_t *create() {
 		s_aprInterface.apr_pool_create_unmanaged_ex(&ret, nullptr, nullptr);
 		return ret;
 	}
-	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-			"APR interface is not available");
+	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+			": APR interface is not available");
 	return nullptr;
 }
 
@@ -155,8 +155,8 @@ static apr_pool_t *create(apr_allocator_t *alloc) {
 		s_aprInterface.apr_pool_create_unmanaged_ex(&ret, nullptr, alloc);
 		return ret;
 	}
-	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-			"APR interface is not available");
+	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+			": APR interface is not available");
 	return nullptr;
 }
 
@@ -170,8 +170,8 @@ static apr_pool_t *create(apr_pool_t *p) {
 		}
 		return ret;
 	}
-	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-			"APR interface is not available");
+	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+			": APR interface is not available");
 	return nullptr;
 }
 
@@ -181,8 +181,8 @@ static apr_pool_t *createTagged(const char *tag) {
 		s_aprInterface.apr_pool_tag(ret, tag);
 		return ret;
 	}
-	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-			"APR interface is not available");
+	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+			": APR interface is not available");
 	return nullptr;
 }
 
@@ -192,8 +192,8 @@ static apr_pool_t *createTagged(apr_pool_t *p, const char *tag) {
 		s_aprInterface.apr_pool_tag(ret, tag);
 		return ret;
 	}
-	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-			"APR interface is not available");
+	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+			": APR interface is not available");
 	return nullptr;
 }
 
@@ -201,8 +201,8 @@ static void destroy(apr_pool_t *p) {
 	if (s_aprInterface) {
 		s_aprInterface.apr_pool_destroy(p);
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 	}
 }
 
@@ -210,8 +210,8 @@ static void clear(apr_pool_t *p) {
 	if (s_aprInterface) {
 		s_aprInterface.apr_pool_clear(p);
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 	}
 }
 
@@ -229,8 +229,8 @@ static void *alloc(apr_pool_t *p, size_t &size) {
 		}
 		return s_aprInterface.apr_palloc(p, size);
 	}
-	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-			"APR interface is not available");
+	oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+			": APR interface is not available");
 	return nullptr;
 }
 
@@ -244,8 +244,8 @@ static void free(apr_pool_t *p, void *ptr, size_t size) {
 			}
 		}
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 	}
 }
 
@@ -264,8 +264,8 @@ static void cleanup_kill(apr_pool_t *p, void *ptr, apr_status_t (*cb)(void *)) {
 	if (s_aprInterface) {
 		s_aprInterface.apr_pool_cleanup_kill(p, ptr, cb);
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 	}
 }
 
@@ -291,8 +291,8 @@ static void cleanup_register(apr_pool_t *p, void *ptr, apr_status_t (*cb)(void *
 		s_aprInterface.apr_pool_cleanup_register(p, data, &__CleaupData::doCleanup,
 				s_aprInterface.apr_pool_cleanup_null);
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 	}
 }
 
@@ -304,8 +304,8 @@ static void pre_cleanup_register(apr_pool_t *p, void *ptr, apr_status_t (*cb)(vo
 		data->callback = cb;
 		s_aprInterface.apr_pool_pre_cleanup_register(p, data, &__CleaupData::doCleanup);
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 	}
 }
 
@@ -315,8 +315,8 @@ static apr_status_t userdata_set(const void *data, const char *key, cleanup_fn c
 		return s_aprInterface.apr_pool_userdata_set(data, key,
 				reinterpret_cast<apr_status_t (*)(void *)>(cb), pool);
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 		return -1;
 	}
 }
@@ -327,8 +327,8 @@ static apr_status_t userdata_setn(const void *data, const char *key, cleanup_fn 
 		return s_aprInterface.apr_pool_userdata_setn(data, key,
 				reinterpret_cast<apr_status_t (*)(void *)>(cb), pool);
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 		return -1;
 	}
 }
@@ -337,8 +337,8 @@ static apr_status_t userdata_get(void **data, const char *key, apr_pool_t *pool)
 	if (s_aprInterface) {
 		return s_aprInterface.apr_pool_userdata_get(data, key, pool);
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 		return -1;
 	}
 }
@@ -350,8 +350,8 @@ static apr_allocator_t *get_allocator(apr_pool_t *p) {
 	if (s_aprInterface) {
 		return s_aprInterface.apr_pool_allocator_get(p);
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 		return nullptr;
 	}
 }
@@ -360,8 +360,8 @@ static void *pmemdup(apr_pool_t *a, const void *m, size_t n) {
 	if (s_aprInterface) {
 		return s_aprInterface.apr_pmemdup(a, m, n);
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 		return nullptr;
 	}
 }
@@ -369,8 +369,8 @@ static char *pstrdup(apr_pool_t *a, const char *s) {
 	if (s_aprInterface) {
 		return s_aprInterface.apr_pstrdup(a, s);
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 		return nullptr;
 	}
 }
@@ -414,8 +414,8 @@ static impl::AllocManager *allocmngr_get(apr_pool_t *pool) {
 		p->tag = (const char *)m;
 		return m;
 	} else {
-		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
-				"APR interface is not available");
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory", __FUNCTION__,
+				": APR interface is not available");
 		return nullptr;
 	}
 }
@@ -479,12 +479,37 @@ allocator_t *create_apr(void *mutex) {
 void destroy(allocator_t *alloc) {
 	if constexpr (config::AprCompatible) {
 		if (isStappler(alloc)) {
-			__delete(reinterpret_cast<impl::Allocator *>(alloc));
+			auto a = reinterpret_cast<impl::Allocator *>(alloc);
+			if (a->padding == 0) {
+				__delete(reinterpret_cast<impl::Allocator *>(alloc));
+			} else {
+				oslog::
+						vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
+								"sprt::memory::allocator::destroy called on object, that was "
+								"initialized " "with sprtt::memory::allocator::iniatialize");
+			}
 		} else {
 			apr::allocator::destroy((apr_allocator_t *)alloc);
 		}
 	} else {
 		__delete((impl::Allocator *)alloc);
+	}
+}
+
+void initialize(allocator_t *alloc) {
+	auto a = new (alloc, sprt::nothrow) impl::Allocator;
+	a->padding = 1; // to mark static allocation
+}
+
+void terminate(allocator_t *alloc) {
+	auto a = reinterpret_cast<impl::Allocator *>(alloc);
+	if (a->padding == 1) {
+		sprt::destroy_at(a);
+		memset(alloc, 0, sizeof(allocator_t));
+	} else {
+		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
+				"sprt::memory::allocator::terminate called on object, that was not initialized "
+				"with " "sprtt::memory::allocator::iniatialize");
 	}
 }
 

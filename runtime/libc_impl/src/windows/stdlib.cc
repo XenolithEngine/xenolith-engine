@@ -51,8 +51,6 @@ THE SOFTWARE.
 namespace sprt {
 
 struct _EnvBlock {
-	_EnvBlock() { }
-
 	char *get(const char *name) {
 		auto bufSize = GetEnvironmentVariableA(name, nullptr, 0);
 		if (bufSize == 0) {
@@ -75,8 +73,6 @@ struct _EnvBlock {
 
 	__local_unordered_map<__local_string, __local_string> _envs;
 };
-
-__SPRT_C_FUNC int __libc_started;
 
 thread_local _EnvBlock tl_env;
 static _EnvBlock s_env;

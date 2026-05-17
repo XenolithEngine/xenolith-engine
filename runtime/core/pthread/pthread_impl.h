@@ -26,191 +26,13 @@
 #include <sprt/runtime/dispatch/entry.h>
 #include <sprt/runtime/dispatch/thread_info.h>
 
-#include <sprt/cxx/unordered_map>
-#include <sprt/cxx/unordered_set>
-#include <sprt/runtime/thread/rmutex.h>
-#include <sprt/runtime/thread/qmutex.h>
-#include <sprt/runtime/thread/qtimeline.h>
-#include <sprt/runtime/thread/qonce.h>
-#include <sprt/runtime/thread/qrwlock.h>
 #include <sprt/runtime/thread/qbarrier.h>
 #include <sprt/runtime/thread/qcondvar.h>
-#include <sprt/cxx/__mutex/unique_lock.h>
-#include <sprt/c/__sprt_setjmp.h>
-#include <sprt/c/__sprt_sched.h>
-#include <sprt/c/__sprt_pthread.h>
+#include <sprt/runtime/thread/qrwlock.h>
 
-typedef __SPRT_ID(intptr_t) intptr_t;
-typedef __SPRT_ID(uintptr_t) uintptr_t;
-typedef __SPRT_ID(uint64_t) uint64_t;
-
-#include <unwind.h>
-
-#include "pthread_struct.h"
-
-#if SPRT_WINDOWS
-#define SPRT_RUNTHREAD_CALLCONV __stdcall
-#else
-#define SPRT_RUNTHREAD_CALLCONV
-#endif
+#include "pthread_thread_t.h"
 
 namespace sprt::_thread {
-
-// platform-specific unwinding information
-struct __UnwindInfo {
-	_Unwind_Exception excpt;
-};
-
-static constexpr int DESTRUCTOR_ITERATIONS = 4;
-static constexpr int COMMON_ALIGNMENT = 8;
-
-enum class ThreadAttrFlags : uint16_t {
-	None = 0,
-	Detached = 1 << 0,
-	ExplicitSched = 1 << 2,
-	Unmanaged = 1 << 3,
-	CancelabilityDisabled = 1 << 4,
-	CancelabilityAsync = 1 << 5,
-	CancelAsyncSupported = 1 << 6,
-	CancelRequested = 1 << 7,
-
-	JoinRequested = 1 << 8,
-	GuardSizeCustomized = 1 << 9,
-	StackPointerCustomized = 1 << 10,
-	StackSizeCustomized = 1 << 11,
-
-	PrioRR = 1 << 14,
-	PrioFifo = 2 << 14,
-	PrioMask = PrioRR | PrioFifo,
-};
-
-struct mutex_t;
-struct rwlock_t;
-
-// in nanoseconds
-using timeout_t = __sprt_sprt_timeout_t;
-
-using key_t = uint32_t;
-
-#if SPRT_WINDOWS
-using thread_result_t = unsigned long;
-#else
-using thread_result_t = void *;
-#endif
-
-static constexpr timeout_t Infinite = __SPRT_SPRT_TIMEOUT_INFINITE;
-
-struct __key_data {
-	void (*destructor)(void *);
-	uint32_t refcount = 1;
-};
-
-struct __key_specific {
-	__key_data *data = nullptr;
-	const void *value = nullptr;
-};
-
-SPRT_DEFINE_ENUM_AS_MASK(ThreadAttrFlags)
-
-struct alignas(COMMON_ALIGNMENT) attr_t {
-	ThreadAttrFlags attr = ThreadAttrFlags::None;
-	int16_t prio = 0;
-	uint32_t stackSize = 0;
-
-	uint32_t guardSize = 0;
-	uint32_t padding = 0;
-
-	void *stack = 0;
-};
-
-struct thread_t : thread_base_t {
-	// set by new thread when it successfully initializes it's data
-	// pthread_create will wait for it
-	static constexpr qtimeline::value_type StateInternalInit = 1;
-
-	// set by pthread_create after it's completely initialize thread
-	// thread will wait for it before run user's callback
-	static constexpr qtimeline::value_type StateExternalInit = 2;
-
-	static constexpr qtimeline::value_type StateCancelling = 4;
-
-	// set when thread ready to be joined or detached to free it's resources
-	static constexpr qtimeline::value_type StateFinalized = 6;
-
-	static thread_t *self();
-	static thread_t *self_noattach();
-
-	static int create(thread_t **__SPRT_RESTRICT outthread, const attr_t *__SPRT_RESTRICT attr,
-			void *(*cb)(void *), void *__SPRT_RESTRICT arg);
-	static int detach(thread_t *thread);
-
-	__SPRT_NORETURN static void exit(void *exitCode);
-
-	static int join(thread_t *thread, void **exitCode);
-
-	static int setcancelstate(int v, int *p);
-	static int setcanceltype(int v, int *p);
-	static void testcancel(void);
-
-	static int cancel(thread_t *thread);
-
-	static int getschedparam(thread_t *thread, int *__SPRT_RESTRICT policy,
-			struct __SPRT_SCHED_PARAM_NAME *__SPRT_RESTRICT p);
-	static int setschedparam(thread_t *thread, int n,
-			const struct __SPRT_SCHED_PARAM_NAME *__SPRT_RESTRICT p);
-	static int setschedprio(thread_t *thread, int p);
-
-	struct mutex_info {
-		int32_t prio;
-	};
-
-	__pool_unordered_map<mutex_t *, mutex_info> *threadRobustMutexes = nullptr;
-	__pool_unordered_set<rwlock_t *> *threadWrLocks = nullptr;
-	__pool_unordered_map<rwlock_t *, uint32_t> *threadRdLocks = nullptr;
-	__pool_unordered_map<uint32_t, __key_specific> *threadKeyStorage = nullptr;
-
-	attr_t attr;
-
-	// qmutex and qtimeline has no priority invertion mitigation - use with care
-	qmutex mutex;
-	qtimeline state;
-
-	thread_result_t result = 0;
-
-	// Note that SPRT's jmp_buf is safe for destructors
-	__sprt_jmp_buf jmpToRunthread;
-	__UnwindInfo unwinder;
-
-	sprt::atomic<int32_t> dynamicPrio;
-
-	sprt::array<char, __SPRT_PTHREAD_NAMEMAXLEN + 1> threadName;
-
-	// should be called from thread itself to acquire actual attibutes it running with
-	void registerThread(bool withThreadSupportPool = true, __sprt_pid_t tid = 0);
-
-	void addMutex(mutex_t *, int32_t mutexPrio);
-
-	// Priority inheritance protocol - some thread with higher priority wants this mutex
-	void promoteMutex(mutex_t *, int32_t mutexPrio);
-
-	void removeMutex(mutex_t *);
-
-	bool has_wrlock(const rwlock_t *) const;
-	bool has_rdlock(const rwlock_t *) const;
-
-	void recalculateDynamicPriority(unique_lock<qmutex> &);
-
-	void updateThreadPrio(unique_lock<qmutex> &, int32_t);
-
-	int getcpuclockid(__SPRT_ID(clockid_t) *) const;
-	int getaffinity(__SPRT_ID(size_t) n, __SPRT_ID(cpu_set_t) * set);
-	int setaffinity(__SPRT_ID(size_t) n, const __SPRT_ID(cpu_set_t) * set);
-
-	int setname(const char *name);
-	int getname(char *buf, size_t bufLen);
-
-	int setname_native(const char *name);
-};
 
 using spinlock_t = uint32_t;
 
@@ -340,12 +162,9 @@ struct alignas(COMMON_ALIGNMENT) barrier_t {
 
 
 // thread_local slot to store current thread info
+// It should not have thread-local constructor to be accessable before any initializers
 struct __thread_slot {
-	__sprt_pid_t tid = 0;
 	thread_t *thread = nullptr;
-
-	__thread_slot();
-	~__thread_slot();
 };
 
 // application-wide thread pool, with linked list for active and free threads
@@ -361,7 +180,9 @@ struct __thread_pool {
 	atomic<int> concurency = 0;
 	atomic<uint32_t> nkeys = 1;
 	sprt::__malloc_unordered_map<key_t, __key_data> keys;
-	sprt::__malloc_unordered_map<uint32_t, thread_t *> activeThreads;
+
+	// Thread locators are system-specific type with 64-bit width max
+	sprt::__malloc_unordered_map<uint64_t, thread_t *> activeThreads;
 
 	// thread_t *active = nullptr;
 	thread_t *free = nullptr;
@@ -396,6 +217,10 @@ SPRT_UNUSED static int __pthread_join(thread_t *thread, void **ret, timeout_t ti
 		bool tryjoin);
 
 namespace native {
+
+SPRT_UNUSED static uint64_t __getNativeThreadId();
+
+SPRT_UNUSED static void __registerForDestruction(void (*)(void));
 
 SPRT_UNUSED static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr);
 

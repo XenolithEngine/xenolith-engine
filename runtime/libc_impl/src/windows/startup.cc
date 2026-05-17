@@ -218,8 +218,7 @@ static unsigned char s_libcBuffer[sizeof(sprt::__libc)];
 
 sprt::__libc *sprt::__libc::get() { return reinterpret_cast<__libc *>(s_libcBuffer); }
 
-__SPRT_C_FUNC int __libc_started = 0;
-__SPRT_C_FUNC pid_t __libc_main_thread = 0;
+__SPRT_C_FUNC __sprt_uint64_t __libc_main_thread = 0;
 
 __SPRT_C_FUNC int mainCRTStartup() {
 	// Load all required DLLs for SPRT.
@@ -261,7 +260,8 @@ __SPRT_C_FUNC int mainCRTStartup() {
 	// constructors should be already called, but, __tls_guard handles this case
 	__dyn_tls_init(nullptr, DLL_THREAD_ATTACH, nullptr);
 
-	__libc_started = 1;
+	// This will attach and initialize main thread as pthread, if it was not initializd before
+	__sprt_pthread_self();
 
 	// __try/__finally wrapper is required for windows CRT/Loader interoperability logic
 	__try {

@@ -35,6 +35,7 @@ THE SOFTWARE.
 namespace sprt::_thread::native {
 
 static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr) {
+#warning TODO: implement thrad-local initializers access for thread
 	pthread_attr_t pattr;
 	pthread_attr_init(&pattr);
 

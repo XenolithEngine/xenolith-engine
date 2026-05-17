@@ -20,42 +20,62 @@
  THE SOFTWARE.
  **/
 
-#ifndef RUNTIME_CORE_PTHREAD_PTHREAD_STRUCT_H_
-#define RUNTIME_CORE_PTHREAD_PTHREAD_STRUCT_H_
+#ifndef RUNTIME_CORE_PTHREAD_COMMON_H_
+#define RUNTIME_CORE_PTHREAD_COMMON_H_
 
+#include <sprt/c/sys/__sprt_sprt.h>
 #include <sprt/cxx/detail/ctypes.h>
-#include <sprt/runtime/mem/pool.h>
-#include <sprt/c/__sprt_pthread.h>
-#include <sprt/c/__sprt_stdio.h>
 
-namespace sprt {
+typedef __SPRT_ID(intptr_t) intptr_t;
+typedef __SPRT_ID(uintptr_t) uintptr_t;
+typedef __SPRT_ID(uint64_t) uint64_t;
 
-void __sprt_libc_thread_exit(bool);
+#include <unwind.h>
 
-}
+#include "pthread_struct.h"
+
+#if SPRT_WINDOWS
+#define SPRT_RUNTHREAD_CALLCONV __stdcall
+#else
+#define SPRT_RUNTHREAD_CALLCONV
+#endif
 
 namespace sprt::_thread {
 
-struct thread_base_t {
-	thread_base_t *next = nullptr;
-	void *handle = nullptr;
-	__sprt_pid_t threadId = 0;
+// platform-specific unwinding information
+struct __UnwindInfo {
+	_Unwind_Exception excpt;
+};
 
-	void *(*cb)(void *) = nullptr;
-	void *arg = nullptr;
+static constexpr int DESTRUCTOR_ITERATIONS = 4;
+static constexpr int COMMON_ALIGNMENT = 8;
 
-	uintptr_t lowStack = 0;
-	uintptr_t highStack = 0;
+struct mutex_t;
+struct rwlock_t;
 
-	// static space for allocator
-	sprt::memory::allocator_t threadAlloc;
+// in nanoseconds
+using timeout_t = __sprt_sprt_timeout_t;
 
-	// Memory pool to use with thread-scoped memory, uses threadAlloc
-	memory::pool_t *threadMemPool = nullptr;
+using key_t = uint32_t;
 
-	__SPRT_ID(FILE) *ioLocks = nullptr;
+#if SPRT_WINDOWS
+using thread_result_t = unsigned long;
+#else
+using thread_result_t = void *;
+#endif
+
+static constexpr timeout_t Infinite = __SPRT_SPRT_TIMEOUT_INFINITE;
+
+struct __key_data {
+	void (*destructor)(void *);
+	uint32_t refcount = 1;
+};
+
+struct __key_specific {
+	__key_data *data = nullptr;
+	const void *value = nullptr;
 };
 
 } // namespace sprt::_thread
 
-#endif // RUNTIME_CORE_PTHREAD_PTHREAD_STRUCT_H_
+#endif // RUNTIME_CORE_PTHREAD_COMMON_H_

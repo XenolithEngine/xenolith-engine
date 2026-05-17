@@ -29,6 +29,8 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_assert.h>
 #include <sprt/c/__sprt_unistd.h>
 
+#include "../pthread/pthread_struct.h"
+
 namespace sprt::memory {
 
 pool_t *get_zero_pool() {
@@ -49,34 +51,13 @@ pool_t *get_zero_pool() {
 	return (pool_t *)s_struct._pool;
 }
 
-static __sprt_pid_t s_mainThread = __sprt_gettid();
-
-struct ThreadLocalPoolStorage {
-	~ThreadLocalPoolStorage() {
-		if (_pool) {
-			pool::destroy(_pool);
-		}
+pool_t *get_thread_support_pool() {
+	auto thread = __sprt_pthread_self();
+	if (thread) {
+		return reinterpret_cast<_thread::thread_base_t *>(thread)->threadMemPool;
 	}
-
-	pool_t *get() {
-		if (s_mainThread == owner) {
-			return get_zero_pool();
-		}
-
-		if (!_pool) [[unlikely]] {
-			_pool = pool::create((allocator_t *)&_alloc);
-		}
-		return _pool;
-	}
-
-	pool_t *_pool = nullptr;
-	impl::Allocator _alloc;
-	__sprt_pid_t owner = __sprt_gettid();
-};
-
-thread_local ThreadLocalPoolStorage tl_poolStorage;
-
-pool_t *get_thread_support_pool() { return tl_poolStorage.get(); }
+	return nullptr;
+}
 
 } // namespace sprt::memory
 

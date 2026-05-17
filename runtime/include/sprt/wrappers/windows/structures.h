@@ -201,7 +201,7 @@ typedef struct tagVARIANT VARIANT;
 #pragma clang diagnostic ignored "-Wmicrosoft-anon-tag"
 struct tagVARIANT {
 	union {
-		struct __tagVARIANT {
+		struct {
 			VARTYPE vt;
 			WORD wReserved1;
 			WORD wReserved2;

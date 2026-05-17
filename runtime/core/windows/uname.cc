@@ -25,6 +25,7 @@ THE SOFTWARE.
 #include <sprt/c/sys/__sprt_utsname.h>
 
 #include <sprt/wrappers/windows/windows.h>
+#include <sprt/wrappers/windows/com_cxx.hpp>
 
 #include <sprt/runtime/stringview.h>
 
@@ -67,7 +68,7 @@ static bool __queryRegisterVersion(struct __SPRT_UTSNAME_NAME *buf) {
 }
 
 static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
-	/*auto hres = CoInitializeSecurity(NULL,
+	auto hres = CoInitializeSecurity(NULL,
 			-1, // COM authentication
 			NULL, // Authentication services
 			NULL, // Reserved
@@ -103,12 +104,12 @@ static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
 	// Connect to the root\cimv2 namespace with
 	// the current user and obtain pointer pSvc
 	// to make IWbemServices calls.
-	hres = pLoc->ConnectServer(_bstr_t(L"ROOT\\CIMV2"), // Object path of WMI namespace
+	hres = pLoc->ConnectServer((wchar_t *)L"ROOT\\CIMV2", // Object path of WMI namespace
 			NULL, // User name. NULL = current user
 			NULL, // User password. NULL = current
-			0, // Locale. NULL indicates current
-			NULL, // Security flags.
-			0, // Authority (for example, Kerberos)
+			NULL, // Locale. NULL indicates current
+			0, // Security flags.
+			NULL, // Authority (for example, Kerberos)
 			0, // Context object
 			&pSvc // pointer to IWbemServices proxy
 	);
@@ -141,7 +142,7 @@ static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
 	// For example, get the name of the operating system
 	IEnumWbemClassObject *pEnumerator = NULL;
 
-	hres = pSvc->ExecQuery(bstr_t("WQL"), bstr_t("SELECT * FROM Win32_OperatingSystem"),
+	hres = pSvc->ExecQuery((wchar_t *)L"WQL", (wchar_t *)L"SELECT * FROM Win32_OperatingSystem",
 			WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, NULL, &pEnumerator);
 
 	if (SUCCEEDED(hres)) {
@@ -163,10 +164,10 @@ static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
 				VARIANT vtProp;
 				VariantInit(&vtProp);
 				while (pclsObj->Next(0, &strName, &vtProp, NULL, NULL) == S_OK) {
-					if (wcscmp(strName, L"Caption") == 0 && vtProp.vt == VT_BSTR) {
+					if (__sprt_wcscmp(strName, L"Caption") == 0 && vtProp.vt == VT_BSTR) {
 						unicode::toUtf8(buf->release, 64,
 								WideStringView((char16_t *)vtProp.bstrVal));
-					} else if (wcscmp(strName, L"Version") == 0 && vtProp.vt == VT_BSTR) {
+					} else if (__sprt_wcscmp(strName, L"Version") == 0 && vtProp.vt == VT_BSTR) {
 						if (buf->version[0] != 0) {
 							// preserve version string
 							char preserveVersion[65];
@@ -187,7 +188,7 @@ static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
 									WideStringView((char16_t *)vtProp.bstrVal));
 						}
 					}
-						#if 0
+#if 0
 					wprintf(L"  %s: ", strName);
 				if (vtProp.vt == VT_BSTR && vtProp.bstrVal) {
 					wprintf(L"%s", vtProp.bstrVal);
@@ -199,7 +200,7 @@ static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
 					wprintf(L"%s", vtProp.boolVal ? L"True" : L"False");
 				}
 				wprintf(L"\n");
-				#endif
+#endif
 					SysFreeString(strName);
 					VariantClear(&vtProp);
 					VariantInit(&vtProp);
@@ -214,7 +215,7 @@ static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
 		// end @AI-Generated
 	}
 
-	hres = pSvc->ExecQuery(bstr_t("WQL"), bstr_t("SELECT * FROM Win32_ComputerSystem "),
+	hres = pSvc->ExecQuery((wchar_t *)L"WQL", (wchar_t *)L"SELECT * FROM Win32_ComputerSystem ",
 			WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, NULL, &pEnumerator);
 
 	if (SUCCEEDED(hres)) {
@@ -236,12 +237,12 @@ static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
 				VARIANT vtProp;
 				VariantInit(&vtProp);
 				while (pclsObj->Next(0, &strName, &vtProp, NULL, NULL) == S_OK) {
-					if (wcscmp(strName, L"Domain") == 0 && vtProp.vt == VT_BSTR) {
+					if (__sprt_wcscmp(strName, L"Domain") == 0 && vtProp.vt == VT_BSTR) {
 						unicode::toUtf8(buf->domainname, 64,
 								WideStringView((char16_t *)vtProp.bstrVal));
 					}
-					
-						#if 0
+
+#if 0
 						wprintf(L"  %s: ", strName);
 					if (vtProp.vt == VT_BSTR && vtProp.bstrVal) {
 						wprintf(L"%s", vtProp.bstrVal);
@@ -253,7 +254,7 @@ static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
 						wprintf(L"%s", vtProp.boolVal ? L"True" : L"False");
 					}
 					wprintf(L"\n");
-					#endif
+#endif
 					SysFreeString(strName);
 					VariantClear(&vtProp);
 					VariantInit(&vtProp);
@@ -269,7 +270,7 @@ static bool __queryWmiVersion(struct __SPRT_UTSNAME_NAME *buf) {
 	}
 
 	pSvc->Release();
-	pLoc->Release();*/
+	pLoc->Release();
 	return true;
 }
 

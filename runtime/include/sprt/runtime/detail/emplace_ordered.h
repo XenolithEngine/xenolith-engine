@@ -72,6 +72,26 @@ inline bool exists_ordered(const Container &vec, const T &val, const Comp &comp)
 	return true;
 }
 
+template <typename Container, typename T>
+inline bool erase_ordered(Container &vec, const T &val) {
+	auto lb = sprt::lower_bound(vec.begin(), vec.end(), val);
+	if (lb == vec.end() || *lb != val) {
+		return false;
+	}
+	vec.erase(lb);
+	return true;
+}
+
+template <typename Container, typename T, typename Comp>
+inline bool erase_ordered(Container &vec, const T &val, const Comp &comp) {
+	auto lb = sprt::lower_bound(vec.begin(), vec.end(), val, comp);
+	if (lb == vec.end() || *lb != val) {
+		return false;
+	}
+	vec.erase(lb);
+	return true;
+}
+
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_DETAIL_EMPLACE_ORDERED_H_

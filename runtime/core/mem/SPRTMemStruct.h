@@ -193,6 +193,7 @@ struct SPRT_LOCAL Allocator {
 	AllocMutex mutex;
 	array<MemNode *, config::MAX_INDEX> buf;
 	atomic<size_t> allocated;
+	uint64_t padding = 0;
 
 	static size_t getAllocatorsCount();
 
@@ -207,6 +208,8 @@ struct SPRT_LOCAL Allocator {
 	void lock();
 	void unlock();
 };
+
+static_assert(sizeof(Allocator) == sizeof(allocator_t));
 
 struct SPRT_LOCAL Pool : public AllocPlacement {
 	Pool *parent = nullptr;

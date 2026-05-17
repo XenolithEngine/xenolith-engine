@@ -116,6 +116,12 @@ public:
 	template <typename T, typename Compare = sprt::less<void>>
 	using Set = sprt::__pool_set<T, Compare>;
 
+	template <typename K, typename V>
+	using HashMap = sprt::__pool_unordered_map<K, V>;
+
+	template <typename T>
+	using HashSet = sprt::__pool_unordered_set<T>;
+
 	using StringStream = sprt::__pool_stringstream;
 
 	template <typename T>

@@ -98,7 +98,10 @@ using std::destroying_delete;
 namespace sprt::memory {
 
 class OpaquePool;
-class OpaqueAllocator;
+
+struct OpaqueAllocator {
+	uint64_t __opaque[28];
+};
 
 using pool_t = OpaquePool;
 using allocator_t = OpaqueAllocator;

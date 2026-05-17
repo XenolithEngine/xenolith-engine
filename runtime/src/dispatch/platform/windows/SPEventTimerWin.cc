@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -20,14 +20,14 @@
  THE SOFTWARE.
  **/
 
-#include "SPEventTimerIocp.h"
+#include "SPEventTimerWin.h"
 
 #include <sprt/runtime/log.h>
 #include <sprt/wrappers/windows/windows.h>
 
 namespace sprt::dispatch {
 
-bool TimerIocpSource::init(const TimerInfo &info) {
+bool TimerWinSource::init(const TimerInfo &info) {
 	cancel();
 
 	handle = CreateWaitableTimerExW(0, 0, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
@@ -61,11 +61,10 @@ bool TimerIocpSource::init(const TimerInfo &info) {
 				"Fail to create WaitableTimer: ", sprt::status::lastErrorToStatus(GetLastError()));
 	}
 
-	active = true;
 	return result;
 }
 
-bool TimerIocpSource::start() {
+bool TimerWinSource::start() {
 	if (!handle) {
 		handle = CreateWaitableTimerExW(0, 0, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
 				TIMER_ALL_ACCESS);
@@ -88,13 +87,8 @@ bool TimerIocpSource::start() {
 	return result;
 }
 
-void TimerIocpSource::stop() {
+void TimerWinSource::stop() {
 	active = false;
-
-	if (event) {
-		CancelEventCompletion(event, true);
-		event = nullptr;
-	}
 
 	if (handle && active) {
 		CancelWaitableTimer(handle);
@@ -102,7 +96,7 @@ void TimerIocpSource::stop() {
 	}
 }
 
-void TimerIocpSource::reset() {
+void TimerWinSource::reset() {
 	LARGE_INTEGER dueDate;
 	if (subintervals && handle) {
 		timeToFileTime(dueDate, interval);
@@ -110,13 +104,8 @@ void TimerIocpSource::reset() {
 	}
 }
 
-void TimerIocpSource::cancel() {
+void TimerWinSource::cancel() {
 	active = false;
-
-	if (event) {
-		CancelEventCompletion(event, true);
-		event = nullptr;
-	}
 
 	if (handle) {
 		CancelWaitableTimer(handle);
@@ -125,9 +114,9 @@ void TimerIocpSource::cancel() {
 	}
 }
 
-bool TimerIocpHandle::init(HandleClass *cl, TimerInfo &&info) {
-	static_assert(sizeof(TimerIocpSource) <= DataSize
-			&& sprt::is_standard_layout<TimerIocpSource>::value);
+bool TimerWinHandle::init(HandleClass *cl, TimerInfo &&info) {
+	static_assert(
+			sizeof(TimerWinSource) <= DataSize && sprt::is_standard_layout<TimerWinSource>::value);
 
 	if (!TimerHandle::init(cl, info.completion)) {
 		return false;
@@ -139,48 +128,53 @@ bool TimerIocpHandle::init(HandleClass *cl, TimerInfo &&info) {
 		info.timeout = info.interval;
 	}
 
-	auto source = new (_data) TimerIocpSource();
+	auto source = new (_data) TimerWinSource();
 	return source->init(info);
 }
 
-bool TimerIocpHandle::reset(TimerInfo &&info) {
+bool TimerWinHandle::reset(TimerInfo &&info) {
+	bool shouldResume = false;
+	Status st = Status::Ok;
+	if (_status == Status::Ok) {
+		st = suspend();
+		if (st != Status::Ok) {
+			return false;
+		}
+		shouldResume = true;
+	}
 	if (info.completion) {
 		_completion = move(info.completion);
 		_userdata = nullptr;
 	}
 
-	auto source = reinterpret_cast<TimerIocpSource *>(_data);
-	return source->init(info) && Handle::reset();
+	auto source = reinterpret_cast<TimerWinSource *>(_data);
+	if (source->init(info)) {
+		if (shouldResume) {
+			resume();
+		}
+		return true;
+	}
+	return false;
 }
 
-Status TimerIocpHandle::rearm(IocpData *iocp, TimerIocpSource *source) {
+Status TimerWinHandle::rearm(IocpData *iocp, TimerWinSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
 		if (!source->active) {
+			iocp->addWaitableObject(source->handle, this);
 			source->start();
 		} else {
 			source->reset();
-		}
-		if (!source->event) {
-			source->event = ReportEventAsCompletion(iocp->_port, source->handle, _timeline,
-					reinterpret_cast<uintptr_t>(this), nullptr);
-			if (!source->event) {
-				return sprt::status::lastErrorToStatus(GetLastError());
-			}
-		} else {
-			if (!RestartEventCompletion2(source->event, iocp->_port, source->handle, _timeline,
-						reinterpret_cast<uintptr_t>(this), nullptr)) {
-				return sprt::status::lastErrorToStatus(GetLastError());
-			}
 		}
 	}
 	return status;
 }
 
-Status TimerIocpHandle::disarm(IocpData *iocp, TimerIocpSource *source) {
+Status TimerWinHandle::disarm(IocpData *iocp, TimerWinSource *source) {
 	auto status = prepareDisarm();
 	if (status == Status::Ok) {
 		source->stop();
+		iocp->removeWaitableObject(source->handle);
 		++_timeline;
 	} else if (status == Status::ErrorAlreadyPerformed) {
 		return Status::Ok;
@@ -188,13 +182,12 @@ Status TimerIocpHandle::disarm(IocpData *iocp, TimerIocpSource *source) {
 	return status;
 }
 
-void TimerIocpHandle::notify(IocpData *iocp, TimerIocpSource *source, const NotifyData &data) {
+void TimerWinHandle::notify(IocpData *iocp, TimerWinSource *source, const NotifyData &data) {
 	if (_status != Status::Ok) {
 		return;
 	}
 
 	// event handling is suspended when we receive notification
-	_status = Status::Suspended;
 
 	auto count = source->count;
 	auto current = source->value;
@@ -203,6 +196,7 @@ void TimerIocpHandle::notify(IocpData *iocp, TimerIocpSource *source, const Noti
 	source->value = current;
 
 	if (count == TimerInfo::Infinite || current < count) {
+		_status = Status::Suspended;
 		rearm(iocp, source);
 	} else {
 		cancel(Status::Done, source->value);

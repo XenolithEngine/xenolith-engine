@@ -37,6 +37,7 @@ struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _iocpThreadClass;
 	HandleClass _iocpTimerClass;
 	HandleClass _iocpPollClass;
+	HandleClass _winTimerClass;
 
 	Data(QueueRef *q, const QueueInfo &info);
 };

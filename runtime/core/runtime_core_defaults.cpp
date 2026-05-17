@@ -182,7 +182,9 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
 	if (t) {
 		__SPRT_ID(pid_t) tid = 0;
 		__sprt_pthread_getid_np(t, &tid);
-		return tid;
+		if (tid) {
+			return tid;
+		}
 	}
 #if SPRT_MACOS
 	return pthread_mach_thread_np(pthread_self());

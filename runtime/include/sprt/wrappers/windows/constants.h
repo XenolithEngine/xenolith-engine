@@ -295,17 +295,9 @@ typedef enum tag_WBEM_GENERIC_FLAG_TYPE {
 /* Computer name limits */
 #define MAX_COMPUTERNAME_LENGTH  15
 
-#define RPC_C_AUTHN_LEVEL_DEFAULT       0
-#define RPC_C_AUTHN_LEVEL_NONE          1
-#define RPC_C_AUTHN_LEVEL_CONNECT       2
-#define RPC_C_AUTHN_LEVEL_CALL          3
-#define RPC_C_AUTHN_LEVEL_PKT           4
-#define RPC_C_AUTHN_LEVEL_PKT_INTEGRITY 5
-#define RPC_C_AUTHN_LEVEL_PKT_PRIVACY   6
-
 /* HRESULT helper macros */
-#define SUCCEEDED(hr)   (((HRESULT)(hr)) >= 0)
-#define FAILED(hr)      (((HRESULT)(hr)) < 0)
+#define SUCCEEDED(hr)   (((long)(hr)) >= 0)
+#define FAILED(hr)      (((long)(hr)) < 0)
 
 /* ============================================================ */
 /* Memory Functions (memoryapi.h, winbase.h)                    */

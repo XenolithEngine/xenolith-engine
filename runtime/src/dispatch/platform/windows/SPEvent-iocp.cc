@@ -23,6 +23,7 @@
 
 #include "SPEvent-iocp.h"
 #include "SPEvent-windows.h"
+#include <sprt/runtime/detail/emplace_ordered.h>
 #include <sprt/wrappers/windows/windows.h>
 #include <sprt/wrappers/windows/message_api.h>
 
@@ -63,10 +64,24 @@ Status IocpData::runPoll(TimeInterval ival, bool infinite) {
 
 	unsigned long nevents = 0;
 
-	MsgWaitForMultipleObjectsEx(1, &_port, infinite ? INFINITE : ival.toMillis(), QS_ALLINPUT,
+	auto objCount = _winHandles.size();
+
+	auto ret = MsgWaitForMultipleObjectsEx(objCount, _winHandles.data(),
+			infinite ? INFINITE : ival.toMillis(), QS_ALLINPUT,
 			MWMO_ALERTABLE | MWMO_INPUTAVAILABLE);
 
 	// Prevent from recursive message polling
+	if (ret > WAIT_OBJECT_0 && ret < WAIT_OBJECT_0 + objCount) {
+		auto h = _winHandles[ret - WAIT_OBJECT_0];
+		auto it = _queueHandles.find(h);
+		if (it != _queueHandles.end()) {
+			PostQueuedCompletionStatus(_port, 1, reinterpret_cast<uintptr_t>(it->second), nullptr);
+		} else {
+			oslog::vperror(__SPRT_LOCATION, "dispatch::Queue",
+					"Fail to dispatch timer event to handle");
+		}
+	}
+
 	if (_data->_performEnabled == 0) {
 		pollMessages();
 	}
@@ -223,8 +238,35 @@ void IocpData::cancel() {
 			reinterpret_cast<uintptr_t>(this), nullptr);
 }
 
+void IocpData::addWaitableObject(HANDLE obj, Handle *h) {
+	if (emplace_ordered(_winHandles, obj)) {
+		_queueHandles.emplace(obj, h);
+	}
+}
+
+void IocpData::removeWaitableObject(HANDLE obj) {
+	if (erase_ordered(_winHandles, obj)) {
+		_queueHandles.erase(obj);
+	}
+}
+
 IocpData::IocpData(QueueRef *q, Queue::Data *data, const QueueInfo &info)
 : PlatformQueueData(q, data, info.flags) {
+	if (!NtCompletionPacketAvailable()) {
+		_hasCompletionPackage = false;
+
+		if ((info.completeQueueSize > MAXIMUM_WAIT_OBJECTS
+					|| info.submitQueueSize > MAXIMUM_WAIT_OBJECTS)) {
+			// Without NtCompletionPacket, we have only MAX_HANDLES slots for queue
+			oslog::
+				vperror(__SPRT_LOCATION, "dispatch::Queue",
+						"NtCompletionPacket is not available; Maximum number of objects in the "
+						"queue " "exceeded; current maximum is: ",
+						MAXIMUM_WAIT_OBJECTS);
+			return;
+		}
+	}
+
 	_port = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1);
 	if (!_port) {
 		oslog::vperror(__SPRT_LOCATION, "dispatch::Queue",
@@ -233,11 +275,13 @@ IocpData::IocpData(QueueRef *q, Queue::Data *data, const QueueInfo &info)
 	}
 
 	auto size = info.completeQueueSize;
-
 	if (size == 0) {
 		size = info.submitQueueSize;
 	}
-	_events.resize(size);
+
+	_events.resize(max(size, uint32_t(32)));
+	_winHandles.reserve(max(info.submitQueueSize, uint32_t(32)));
+	_winHandles.emplace_back(_port);
 
 	_data->_handle = _port;
 }

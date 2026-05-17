@@ -27,6 +27,37 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/constants.h>
 
 // clang-format off
+#define RPC_C_AUTHZ_NONE    0
+#define RPC_C_AUTHZ_NAME    1
+#define RPC_C_AUTHZ_DCE     2
+#define RPC_C_AUTHZ_DEFAULT 0xffffffff
+
+#define RPC_C_AUTHN_NONE          0
+#define RPC_C_AUTHN_DCE_PRIVATE   1
+#define RPC_C_AUTHN_DCE_PUBLIC    2
+#define RPC_C_AUTHN_DEC_PUBLIC    4
+#define RPC_C_AUTHN_GSS_NEGOTIATE 9
+#define RPC_C_AUTHN_WINNT        10
+#define RPC_C_AUTHN_GSS_SCHANNEL 14
+#define RPC_C_AUTHN_GSS_KERBEROS 16
+#define RPC_C_AUTHN_DPA          17
+#define RPC_C_AUTHN_MSN          18
+
+#define RPC_C_AUTHN_LEVEL_DEFAULT       0
+#define RPC_C_AUTHN_LEVEL_NONE          1
+#define RPC_C_AUTHN_LEVEL_CONNECT       2
+#define RPC_C_AUTHN_LEVEL_CALL          3
+#define RPC_C_AUTHN_LEVEL_PKT           4
+#define RPC_C_AUTHN_LEVEL_PKT_INTEGRITY 5
+#define RPC_C_AUTHN_LEVEL_PKT_PRIVACY   6
+
+#define RPC_C_IMP_LEVEL_DEFAULT      0
+#define RPC_C_IMP_LEVEL_ANONYMOUS    1
+#define RPC_C_IMP_LEVEL_IDENTIFY     2
+#define RPC_C_IMP_LEVEL_IMPERSONATE  3
+#define RPC_C_IMP_LEVEL_DELEGATE     4
+
+
 typedef enum {
 	KF_FLAG_DEFAULT = 0x00000000,
 
@@ -135,9 +166,35 @@ enum _KF_DEFINITION_FLAGS {
 	KFDF_NO_REDIRECT_UI = 0x40
 };
 
+typedef enum tagEOLE_AUTHENTICATION_CAPABILITIES {
+	EOAC_NONE = 0,
+	EOAC_MUTUAL_AUTH = 0x1,
+	EOAC_STATIC_CLOAKING = 0x20,
+	EOAC_DYNAMIC_CLOAKING = 0x40,
+	EOAC_ANY_AUTHORITY = 0x80,
+	EOAC_MAKE_FULLSIC = 0x100,
+	EOAC_DEFAULT = 0x800,
+	EOAC_SECURE_REFS = 0x2,
+	EOAC_ACCESS_CONTROL = 0x4,
+	EOAC_APPID = 0x8,
+	EOAC_DYNAMIC = 0x10,
+	EOAC_REQUIRE_FULLSIC = 0x200,
+	EOAC_AUTO_IMPERSONATE = 0x400,
+	EOAC_DISABLE_AAA = 0x1000,
+	EOAC_NO_CUSTOM_MARSHAL = 0x2000,
+	EOAC_RESERVED1 = 0x4000
+} EOLE_AUTHENTICATION_CAPABILITIES;
+
 typedef GUID FOLDERTYPEID;
 typedef GUID KNOWNFOLDERID; // used to identify Known Folders within the system
 
+typedef GUID IID;
+typedef IID *LPIID;
+
+typedef WCHAR OLECHAR;
+typedef OLECHAR *LPOLESTR;
+typedef const OLECHAR *LPCOLESTR;
+typedef CLSID *LPCLSID;
 typedef DWORD KF_DEFINITION_FLAGS;
 
 typedef struct KNOWNFOLDER_DEFINITION {
@@ -164,6 +221,58 @@ typedef struct KNOWNFOLDER_DEFINITION {
 
 __SPRT_BEGIN_DECL
 
+/* ============================================================ */
+/* COM/CoInitialize API (combaseapi.h)                          */
+/* ============================================================ */
+
+/**
+ * Sets the security levels on a process for incoming calls.
+ * @param pSecDesc Pointer to a security descriptor (NULL = default).
+ * @param cAuthSvc Security services array (NULL = none).
+ * @param asAuthSvc Array of authentication service structures.
+ * @param pReserved1 Reserved; must be NULL.
+ * @param dwAuthnLevel Authentication level for incoming calls.
+ * @param dwImpLevel Impersonation level for incoming calls.
+ * @param pAuthList Pointer to an array of authentication identities.
+ * @param dwCapabilities Capability flags (e.g., EOAC_NONE).
+ * @param pReserved2 Reserved; must be NULL.
+ * @return S_OK on success, or an HRESULT error code otherwise.
+ * @see https://docs.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializesecurity
+ */
+WINAPI HRESULT CoInitializeSecurity(PSECURITY_DESCRIPTOR pSecDesc, LONG cAuthSvc,
+		SOLE_AUTHENTICATION_SERVICE *asAuthSvc, void *pReserved1, DWORD dwAuthnLevel,
+		DWORD dwImpLevel, void *pAuthList, DWORD dwCapabilities, void *pReserved3);
+
+/**
+ * Creates an instance of a COM object.
+ * @param rclsid Class identifier (CLSID) for the object to create.
+ * @param pUnkOuter Pointer to IUnknown interface of aggregated object (NULL if not aggregating).
+ * @param dwClsContext Context in which to run the code.
+ * @param riid Interface identifier (IID) requested from the new object.
+ * @param ppv Address of pointer variable that receives the interface pointer.
+ * @return S_OK on success, or an HRESULT error code otherwise.
+ * @see https://docs.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-ocreateinstance
+ */
+WINAPI HRESULT CoCreateInstance(REFCLSID rclsid, IUnknown *pUnkOuter, DWORD dwClsContext,
+		REFIID riid, LPVOID *ppv);
+
+/**
+ * Sets security capabilities on a proxy.
+ * @param pProxy Pointer to the proxy to set capabilities on.
+ * @param dwAuthnSvc Authentication service to use for the proxy.
+ * @param dwAuthzSvc Authorization service to use for the proxy.
+ * @param pServerPrincName Server principal name.
+ * @param dwAuthnLevel Authentication level for calls through the proxy.
+ * @param dwImpLevel Impersonation level for the proxy.
+ * @param pAuthIdentity Client identity.
+ * @param dwCapabilities Capability flags (e.g., EOAC_NONE).
+ * @return S_OK on success, or an HRESULT error code otherwise.
+ * @see https://docs.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-cosetproxyblanket
+ */
+WINAPI HRESULT CoSetProxyBlanket(IUnknown *pProxy, DWORD dwAuthnSvc, DWORD dwAuthzSvc,
+		LPCWSTR pServerPrincName, DWORD dwAuthnLevel, DWORD dwImpLevel, void *pAuthIdentity,
+		DWORD dwCapabilities);
+
 WINAPI HRESULT CoInitializeEx(LPVOID pvReserved, DWORD dwCoInit);
 
 WINAPI void CoUninitialize();
@@ -172,6 +281,20 @@ WINAPI void CoTaskMemFree(LPVOID pv);
 
 WINAPI HRESULT SHGetKnownFolderPath(REFKNOWNFOLDERID rfid, DWORD dwFlags, HANDLE hToken,
 		PWSTR *ppszPath);
+
+WINAPI void VariantInit(VARIANTARG *pvarg);
+
+WINAPI HRESULT VariantClear(VARIANTARG *pvarg);
+
+WINAPI HRESULT VariantCopy(VARIANTARG *pvargDest, const VARIANTARG *pvargSrc);
+
+WINAPI void SysFreeString(BSTR bstrString);
+
+WINAPI HRESULT StringFromCLSID(REFCLSID rclsid, LPOLESTR *lplpsz);
+
+WINAPI HRESULT CLSIDFromString(LPCOLESTR lpsz, LPCLSID pclsid);
+
+WINAPI HRESULT IIDFromString(LPCOLESTR lpsz, LPIID lpiid);
 
 __SPRT_END_DECL
 

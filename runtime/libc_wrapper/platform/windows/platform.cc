@@ -29,7 +29,7 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/security_api.h>
 #include <sprt/wrappers/windows/process_api.h>
 #include <sprt/wrappers/windows/windows.h>
-#include <sprt/wrappers/windows/com_api.h>
+#include <sprt/wrappers/windows/com_cxx.hpp>
 #include <sprt/wrappers/windows/file_api.h>
 #include <sprt/wrappers/windows/dl_api.h>
 #include <sprt/c/bits/__sprt_errno.h>
@@ -955,7 +955,25 @@ StringView _readEnvExt(memory::pool_t *pool, StringView key) {
 	return StringView();
 }
 
-/*static void processKnownDir(LookupData &data, const KnownFolderInfo &info, IKnownFolder *dir) {
+static void processKnownDirPath(LookupData &data, const KnownFolderInfo &info,
+		wchar_t *pathAppWide) {
+	unicode::toUtf8([&](StringView uPath) {
+		auto len = __sprt_fpath_to_posix(uPath.data(), uPath.size(), (char *)uPath.data(),
+				uPath.size() + 1);
+
+		auto &res = data._resourceLocations[toInt(info.category)];
+
+		res.paths.emplace_back(LocationInfo{
+			.path = StringView(uPath.data(), len).pdup(data._pool),
+			.lookupType = info.flags,
+			.locationFlags = LocationFlags::Locateable,
+			.interface = getDefaultInterface(),
+		});
+		res.init = true;
+	}, WideStringView((const char16_t *)pathAppWide));
+}
+
+static void processKnownDir(LookupData &data, const KnownFolderInfo &info, IKnownFolder *dir) {
 	KNOWNFOLDER_DEFINITION def;
 	dir->GetFolderDefinition(&def);
 
@@ -967,25 +985,10 @@ StringView _readEnvExt(memory::pool_t *pool, StringView key) {
 	dir->GetPath(dirFlagsAppWide, &pathAppWide);
 
 	if (pathAppWide) {
-		unicode::toUtf8([&](StringView uPath) {
-			auto len = __sprt_fpath_to_posix(uPath.data(), uPath.size(), (char *)uPath.data(),
-					uPath.size() + 1);
-
-
-			auto &res = data._resourceLocations[toInt(info.category)];
-
-			res.paths.emplace_back(LocationInfo{
-				.path = StringView(uPath.data(), len).pdup(data._pool),
-				.lookupType = info.flags,
-				.locationFlags = LocationFlags::Locateable,
-				.interface = getDefaultInterface(),
-			});
-			res.init = true;
-		}, WideStringView((const char16_t *)pathAppWide));
-
+		processKnownDirPath(data, info, pathAppWide);
 		CoTaskMemFree(pathAppWide);
 	}
-}*/
+}
 
 static void defineAppPathFromCommon(LookupData &data, StringView bundleName) {
 	// init with CommonData and CommonCache paths
@@ -1037,15 +1040,15 @@ void _initSystemPaths(LookupData &data) {
 	auto exeecPath = platform::getExecPath();
 	auto defaultInterface = getDefaultInterface();
 
-	/*CLSID _CLSID_KnownFolderManager;
+	CLSID _CLSID_KnownFolderManager;
 	CLSIDFromString(L"4df0c730-df9d-4ae3-9153-aa6b82e9795a", &_CLSID_KnownFolderManager);
 
 	IID _IID_IKnownFolderManager;
 	IIDFromString(L"8BE2D872-86AA-4d47-B776-32CCA40C7018", &_IID_IKnownFolderManager);
 
 	IKnownFolderManager *manager = nullptr;
-	auto hr = CoCreateInstance(_CLSID_KnownFolderManager, nullptr, CLSCTX_INPROC_SERVER,
-			_IID_IKnownFolderManager, (void **)&manager);
+	auto hr = CoCreateInstance(_CLSID_KnownFolderManager, 0, CLSCTX_INPROC_SERVER,
+			_IID_IKnownFolderManager, (LPVOID *)&manager);
 	if (SUCCEEDED(hr)) {
 		IKnownFolder *pKnownFolder = nullptr;
 		for (auto &it : s_defaultKnownFolders) {
@@ -1056,7 +1059,31 @@ void _initSystemPaths(LookupData &data) {
 			}
 		}
 		manager->Release();
-	}*/
+	} else {
+		auto dirFlagsAppWide = KF_FLAG_DONT_UNEXPAND | KF_FLAG_NO_ALIAS
+				| KF_FLAG_RETURN_FILTER_REDIRECTION_TARGET | KF_FLAG_CREATE;
+		auto dirFlagsLocal = KF_FLAG_DONT_UNEXPAND | KF_FLAG_NO_ALIAS | KF_FLAG_CREATE;
+		wchar_t *commonDirPath = nullptr;
+		for (auto &it : s_defaultKnownFolders) {
+			hr = SHGetKnownFolderPath(*it.folder, dirFlagsAppWide, nullptr, &commonDirPath);
+			if (SUCCEEDED(hr)) {
+				unicode::toUtf8([&](StringView str) {
+					__sprt_printf("%s\n", str.data()); //
+				}, WideStringView((char16_t *)commonDirPath));
+				processKnownDirPath(data, it, commonDirPath);
+				CoTaskMemFree(commonDirPath); // Free memory allocated by the function
+			} else {
+				hr = SHGetKnownFolderPath(*it.folder, dirFlagsLocal, nullptr, &commonDirPath);
+				if (SUCCEEDED(hr)) {
+					unicode::toUtf8([&](StringView str) {
+						__sprt_printf("%s\n", str.data()); //
+					}, WideStringView((char16_t *)commonDirPath));
+					processKnownDirPath(data, it, commonDirPath);
+					CoTaskMemFree(commonDirPath); // Free memory allocated by the function
+				}
+			}
+		}
+	}
 
 	auto &appConfig = getAppConfig();
 

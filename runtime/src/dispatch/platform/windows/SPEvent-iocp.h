@@ -26,14 +26,25 @@
 #include <sprt/runtime/dispatch/queue.h>
 #include "../../detail/SPRuntimeDispatchQueueData.h"
 #include <sprt/wrappers/windows/file_api.h>
+#include <sprt/cxx/bitset>
 
 namespace sprt::dispatch {
+
+static inline void timeToFileTime(LARGE_INTEGER &ftime, TimeInterval ival) {
+	// ticks in 100ns
+	auto ticks = ival.toMicros() * 10;
+	ftime.QuadPart = -ticks;
+}
 
 struct SPRT_API IocpData : public PlatformQueueData {
 	static constexpr DWORD InternalFlag = 1 << 29;
 	static constexpr DWORD CancelFlag = 1 << 30;
 
-	void *_port = nullptr;
+	HANDLE _port = nullptr;
+	bool _hasCompletionPackage = true;
+
+	Queue::Vector<HANDLE> _winHandles;
+	Queue::HashMap<HANDLE, Handle *> _queueHandles;
 
 	Queue::Vector<OVERLAPPED_ENTRY> _events;
 
@@ -55,6 +66,9 @@ struct SPRT_API IocpData : public PlatformQueueData {
 	Status suspendHandles();
 
 	void cancel();
+
+	void addWaitableObject(HANDLE, Handle *);
+	void removeWaitableObject(HANDLE);
 
 	IocpData(QueueRef *, Queue::Data *data, const QueueInfo &info);
 	~IocpData();

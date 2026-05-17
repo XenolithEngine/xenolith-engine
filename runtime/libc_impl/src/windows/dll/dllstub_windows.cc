@@ -176,7 +176,7 @@ WINAPI HRESULT CoInitializeSecurity(PSECURITY_DESCRIPTOR pSecDesc, LONG cAuthSvc
 		SOLE_AUTHENTICATION_SERVICE *asAuthSvc, void *pReserved1, DWORD dwAuthnLevel,
 		DWORD dwImpLevel, void *pAuthList, DWORD dwCapabilities, void *pReserved3) {
 	auto loader = sprt::DllLoader::get();
-	return loader->kernelbase.call<decltype(&CoInitializeSecurity)>(
+	return loader->combase.call<decltype(&CoInitializeSecurity)>(
 			loader->combase.CoInitializeSecurity, pSecDesc, cAuthSvc, asAuthSvc, pReserved1,
 			dwAuthnLevel, dwImpLevel, pAuthList, dwCapabilities, pReserved3);
 }
@@ -184,7 +184,7 @@ WINAPI HRESULT CoInitializeSecurity(PSECURITY_DESCRIPTOR pSecDesc, LONG cAuthSvc
 WINAPI HRESULT CoCreateInstance(REFCLSID rclsid, IUnknown *pUnkOuter, DWORD dwClsContext,
 		REFIID riid, LPVOID *ppv) {
 	auto loader = sprt::DllLoader::get();
-	return loader->kernelbase.call<decltype(&CoCreateInstance)>(loader->combase.CoCreateInstance,
+	return loader->combase.call<decltype(&CoCreateInstance)>(loader->combase.CoCreateInstance,
 			rclsid, pUnkOuter, dwClsContext, riid, ppv);
 }
 
@@ -192,7 +192,7 @@ WINAPI HRESULT CoSetProxyBlanket(IUnknown *pProxy, DWORD dwAuthnSvc, DWORD dwAut
 		LPCWSTR pServerPrincName, DWORD dwAuthnLevel, DWORD dwImpLevel, void *pAuthIdentity,
 		DWORD dwCapabilities) {
 	auto loader = sprt::DllLoader::get();
-	return loader->kernelbase.call<decltype(&CoSetProxyBlanket)>(loader->combase.CoSetProxyBlanket,
+	return loader->combase.call<decltype(&CoSetProxyBlanket)>(loader->combase.CoSetProxyBlanket,
 			pProxy, dwAuthnSvc, dwAuthzSvc, pServerPrincName, dwAuthnLevel, dwImpLevel,
 			pAuthIdentity, dwCapabilities);
 }
@@ -219,13 +219,13 @@ WINAPI void GetNativeSystemInfo(LPSYSTEM_INFO pSystemInfo) {
 
 WINAPI void CopyMemory(LPVOID Destination, const VOID *Source, SIZE_T Length) {
 	auto loader = sprt::DllLoader::get();
-	loader->kernelbase.call<decltype(&CopyMemory)>(loader->ntdll.RtlCopyMemory, Destination, Source,
+	loader->ntdll.call<decltype(&CopyMemory)>(loader->ntdll.RtlCopyMemory, Destination, Source,
 			Length);
 }
 
 WINAPI void FillMemory(LPVOID Destination, SIZE_T Length, BYTE Value) {
 	auto loader = sprt::DllLoader::get();
-	loader->kernelbase.call<decltype(&FillMemory)>(loader->ntdll.RtlFillMemory, Destination, Length,
+	loader->ntdll.call<decltype(&FillMemory)>(loader->ntdll.RtlFillMemory, Destination, Length,
 			Value);
 }
 
@@ -297,6 +297,26 @@ WINAPI BOOL PostQueuedCompletionStatus(HANDLE CompletionPort, DWORD dwNumberOfBy
 /* ============================================================ */
 /* NT Functions (ntdll.h)                                       */
 /* ============================================================ */
+
+WINAPI BOOL NtCompletionPacketAvailable() {
+	auto loader = sprt::DllLoader::get();
+	if (!loader->ntdll.NtCreateWaitCompletionPacket.fn) {
+		if (!loader->ntdll.load(&loader->ntdll.NtCreateWaitCompletionPacket)) {
+			return FALSE;
+		}
+	}
+	if (!loader->ntdll.NtAssociateWaitCompletionPacket.fn) {
+		if (!loader->ntdll.load(&loader->ntdll.NtAssociateWaitCompletionPacket)) {
+			return FALSE;
+		}
+	}
+	if (!loader->ntdll.NtCancelWaitCompletionPacket.fn) {
+		if (!loader->ntdll.load(&loader->ntdll.NtCancelWaitCompletionPacket)) {
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
 
 WINAPI NTSTATUS NtCreateWaitCompletionPacket(PHANDLE WaitCompletionPacketHandle,
 		ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes) {
@@ -486,6 +506,45 @@ WINAPI void *ReportEventAsCompletion(void *hIOCP, void *hEvent, DWORD dwNumberOf
 		}
 	}
 	return hPacket;
+}
+
+WINAPI void VariantInit(VARIANTARG *pvarg) {
+	auto loader = sprt::DllLoader::get();
+	loader->oleaut32.call<decltype(&VariantInit)>(loader->oleaut32.VariantInit, pvarg);
+}
+
+WINAPI HRESULT VariantClear(VARIANTARG *pvarg) {
+	auto loader = sprt::DllLoader::get();
+	return loader->oleaut32.call<decltype(&VariantClear)>(loader->oleaut32.VariantClear, pvarg);
+}
+
+WINAPI HRESULT VariantCopy(VARIANTARG *pvargDest, const VARIANTARG *pvargSrc) {
+	auto loader = sprt::DllLoader::get();
+	return loader->oleaut32.call<decltype(&VariantCopy)>(loader->oleaut32.VariantCopy, pvargDest,
+			pvargSrc);
+}
+
+WINAPI void SysFreeString(BSTR bstrString) {
+	auto loader = sprt::DllLoader::get();
+	loader->oleaut32.call<decltype(&SysFreeString)>(loader->oleaut32.SysFreeString, bstrString);
+}
+
+WINAPI HRESULT StringFromCLSID(REFCLSID rclsid, LPOLESTR *lplpsz) {
+	auto loader = sprt::DllLoader::get();
+	return loader->combase.call<decltype(&StringFromCLSID)>(loader->combase.StringFromCLSID, rclsid,
+			lplpsz);
+}
+
+WINAPI HRESULT CLSIDFromString(LPCOLESTR lpsz, LPCLSID pclsid) {
+	auto loader = sprt::DllLoader::get();
+	return loader->combase.call<decltype(&CLSIDFromString)>(loader->combase.CLSIDFromString, lpsz,
+			pclsid);
+}
+
+WINAPI HRESULT IIDFromString(LPCOLESTR lpsz, LPIID lpiid) {
+	auto loader = sprt::DllLoader::get();
+	return loader->combase.call<decltype(&IIDFromString)>(loader->combase.IIDFromString, lpsz,
+			lpiid);
 }
 
 } // extern "C"

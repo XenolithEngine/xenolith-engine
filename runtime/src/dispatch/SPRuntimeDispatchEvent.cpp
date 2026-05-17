@@ -46,6 +46,7 @@
 #include "platform/windows/SPEvent-windows.cc"
 #include "platform/windows/SPEvent-iocp.cc"
 #include "platform/windows/SPEventTimerIocp.cc"
+#include "platform/windows/SPEventTimerWin.cc"
 #include "platform/windows/SPEventThreadIocp.cc"
 #include "platform/windows/SPEventPollIocp.cc"
 #endif
