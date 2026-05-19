@@ -46,10 +46,10 @@ THE SOFTWARE.
 // We should not spawn extra stack frame, so we acquire native setjmp pointer,
 // then call it within caller context, and then call CFA lookup with native result
 
-#if _WIN32
+#if defined(_WIN32) || defined(__SPRT_WINDOWS)
 
 // Windows ABI setjmp have 2 arguments,
-#define __sprt_setjmp(Buf) __sprt_cfa_setjmp(__sprt_get_setjmp_fn()(Buf[0].__native, nullptr), Buf)
+#define __sprt_setjmp(Buf) __sprt_cfa_setjmp(__sprt_get_setjmp_fn()(Buf[0].__native, __SPRT_NULL), Buf)
 
 typedef int (*__SPRT_ID(setjmp_fn))(__SPRT_ID(native_jmp_buf), void *);
 

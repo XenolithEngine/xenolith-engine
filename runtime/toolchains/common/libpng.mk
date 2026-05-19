@@ -29,12 +29,16 @@ CONFIGURE := \
 	-DPNG_SHARED=OFF \
 	-DPNG_TARGET_ARCHITECTURE=$(SP_ARCH)
 
+ifdef WINDOWS
+CONFIGURE += -DCYGWIN=1
+endif
+
 all:
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_mkdir,$(LIBNAME))
 	cd $(LIBNAME); cmake -G "Ninja" $(CONFIGURE) $(LIB_SRC_DIR)/$(LIBNAME)
 	cd $(LIBNAME); cmake  --build . --config Release --target install --parallel
 	$(call rule_rm,$(LIBNAME))
-	$(if $(WINDOWS),$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/libpng16_static.lib,$(SP_INSTALL_PREFIX)/lib/libpng16.lib))
+	$(if $(WINDOWS),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/libpng16_static.lib,$(SP_INSTALL_PREFIX)/usr/lib/png16.lib))
 
 .PHONY: all

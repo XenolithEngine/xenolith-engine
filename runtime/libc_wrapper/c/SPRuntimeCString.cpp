@@ -137,4 +137,8 @@ __SPRT_C_FUNC __SPRT_ID(size_t)
 	return ::strnlen(str, n);
 }
 
+__SPRT_C_FUNC char *__SPRT_ID(strtok_r)(char *s, const char *sep, char **p) {
+	return ::strtok_r(s, sep, p);
+}
+
 } // namespace sprt

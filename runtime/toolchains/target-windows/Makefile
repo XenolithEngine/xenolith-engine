@@ -24,20 +24,25 @@ THIS_FILE := $(lastword $(MAKEFILE_LIST))
 MAKE_FILE := $(realpath $(lastword $(MAKEFILE_LIST)))
 MAKE_ROOT := $(dir $(MAKE_FILE))
 
-SHELL = powershell.exe
+include $(dir $(THIS_FILE))../common/utils/detect-platform.mk
+
+TARGET_FILE := $(MAKE_ROOT)init-target.mk
+INSTALL_TARGET_FILE := $(MAKE_ROOT)install-target.mk
+
+TOOLCHAIN_OUTPUT_DIR ?= $(abspath $(MAKE_ROOT)intermediate)
 
 SP_OPT := -O3
 
 LIBS := \
-	libz.lib \
-	libbz2.lib \
-	liblzma.lib \
-	libzstd.lib \
-	libbrotlienc.lib \
-	libjpeg.lib \
-	libpng16.lib \
-	libgif.lib \
-	libwebp.lib \
+	z.lib \
+	bz2.lib \
+	lzma.lib \
+	zstd.lib \
+	brotlienc.lib \
+	jpeg.lib \
+	png16.lib \
+	gif.lib \
+#	libwebp.lib \
 	libtiff.lib \
 	libfreetype.lib \
 	libharfbuzz.lib \
@@ -52,68 +57,79 @@ LIBS := \
 	libiwasm-release.lib \
 	libiwasm-debug.lib \
 
-BINS := \
-	spirv-opt.exe \
-	glslang.exe
-
 INCLUDES := \
-	spirv/unified1/spirv.h \
+#	spirv/unified1/spirv.h \
 	vulkan/vulkan.h \
 	simde/simde-arch.h
 
-ifndef ARCH
+ifndef SP_ARCH
 
 ARCHS := x86_64
+
+SP_ARCH_x86_64_INFO_BASE := \
+	SP_ARCH=x86_64 \
+	SP_RES_ARCH=x86_64 \
+	SP_ARCH_TARGET_CLANG=x86_64-pc-windows-msvc
+
+SP_ARCH_x86_64_INFO := \
+	$(SP_ARCH_x86_64_INFO_BASE) \
+	SP_TARGET=x86_64-pc-windows-msvc \
+	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-pc-windows-msvc
+
+SP_ARCH_aarch64_INFO_BASE := \
+	SP_ARCH=aarch64 \
+	SP_RES_ARCH=aarch64 \
+	SP_ARCH_TARGET_CLANG=aarch64-pc-windows-msvc
+
+SP_ARCH_aarch64_INFO := \
+	$(SP_ARCH_arm64_INFO_BASE) \
+	SP_TARGET=aarch64-pc-windows-msvc \
+	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-pc-windows-msvc
 
 all: $(ARCHS)
 
 clean:
 
 x86_64:
-	$(MAKE) -f $(THIS_FILE) ARCH=x86_64 SP_TARGET=x86_64-pc-windows-msvc OUT_SYSROOT=$(OUT_SYSROOT)
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/x86_64-pc-windows-msvc/usr/include $(TOOLCHAIN_OUTPUT_DIR)/x86_64-pc-windows-msvc/usr/lib
+	$(MAKE) -f $(TARGET_FILE) $(SP_ARCH_x86_64_INFO)
+	$(MAKE) -f $(THIS_FILE) $(SP_ARCH_x86_64_INFO)
 
 aarch64:
-	$(MAKE) -f $(THIS_FILE) ARCH=aarch64 SP_TARGET=aarch64-pc-windows-msvc OUT_SYSROOT=$(OUT_SYSROOT)
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-pc-windows-msvc/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-pc-windows-msvc/usr/lib
+	$(MAKE) -f $(TARGET_FILE) $(SP_ARCH_aarch64_INFO)
+	$(MAKE) -f $(THIS_FILE) $(SP_ARCH_aarch64_INFO)
 
 .PHONY: all x86_64 aarch64
 
-else # ARCH
+else # SP_ARCH
 
-ifeq ($(OUT_SYSROOT),)
-override OUT_SYSROOT := $(realpath ../$(SP_TARGET))
+OUT_SYSROOT ?= $(realpath ../$(SP_TARGET))
 
-$(info OUT_SYSROOT $(OUT_SYSROOT) $(realpath ../$(SP_TARGET)) $(SP_TARGET))
-endif
+SP_INSTALL_PREFIX ?= $(TOOLCHAIN_OUTPUT_DIR)
 
-
-SP_TOOLCHAIN_PREFIX ?= $(OUT_SYSROOT)
-SP_INSTALL_PREFIX ?= $(OUT_SYSROOT)
-
-SP_CC := $(abspath $(SP_TOOLCHAIN_PREFIX)/bin/clang.exe)
-SP_CXX := $(abspath $(SP_TOOLCHAIN_PREFIX)/bin/clang.exe)
-SP_AR := $(abspath $(SP_TOOLCHAIN_PREFIX)/bin/llvm-ar.exe)
-SP_RC := $(abspath $(SP_TOOLCHAIN_PREFIX)/bin/llvm-rc.exe)
+SP_CC := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/cc)
+SP_CXX := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/c++)
+SP_AR := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/ar)
 
 LIB_SRC_DIR := $(realpath $(MAKE_ROOT)../src)
 
 FORWARD_VARS := \
 	WINDOWS=1 \
-	ARCH=$(ARCH) \
+	SP_SYSNAME=Windows \
+	SP_ARCH=$(SP_ARCH) \
 	SP_INSTALL_PREFIX=$(SP_INSTALL_PREFIX) \
+	SP_TOOLCHAIN_FILE=$(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake \
+	SP_TOOLCHAIN_PREFIX=$(TOOLCHAIN_OUTPUT_DIR) \
 	SP_TARGET=$(SP_TARGET) \
 	SP_CC=$(SP_CC) \
 	SP_CXX=$(SP_CXX) \
 	SP_AR=$(SP_AR) \
 	SP_OPT="$(SP_OPT)" \
-	SP_RC="$(SP_RC)" \
 	LIB_SRC_DIR=$(LIB_SRC_DIR) \
 	MAKE_ROOT=$(MAKE_ROOT)
 
-ifdef SP_TOOLCHAIN_PREFIX
-FORWARD_VARS += SP_TOOLCHAIN_PREFIX=$(SP_TOOLCHAIN_PREFIX)
-endif
-
-ARCH_LIBS = $(addprefix $(SP_INSTALL_PREFIX)/lib/,$(LIBS))
+ARCH_LIBS = $(addprefix $(SP_INSTALL_PREFIX)/usr/lib/,$(LIBS))
 
 ARCH_INCLUDES  = $(addprefix $(SP_INSTALL_PREFIX)/include/,$(INCLUDES))
 
@@ -121,29 +137,29 @@ ARCH_BINS  = $(addprefix $(SP_INSTALL_PREFIX)/bin/,$(BINS))
 
 all: $(ARCH_LIBS) $(ARCH_INCLUDES) $(ARCH_BINS) $(SP_INSTALL_PREFIX)/share/licenses
 
-$(SP_INSTALL_PREFIX)/lib/libz.lib:  ../common/zlib.mk
+$(SP_INSTALL_PREFIX)/usr/lib/z.lib:  ../common/zlib.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/libbz2.lib: : ../common/bzip2.mk
+$(SP_INSTALL_PREFIX)/usr/lib/bz2.lib: ../common/bzip2.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/lzma.lib: $(MAKE_ROOT)xz.mk
-	$(MAKE) -f $(MAKE_ROOT)xz.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/lib/lzma.lib:  ../common/xz.mk
+	$(MAKE) -f  $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/zstd.lib: $(MAKE_ROOT)zstd.mk
-	$(MAKE) -f $(MAKE_ROOT)zstd.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/lib/zstd.lib:  ../common/zstd.mk
+	$(MAKE) -f  $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/brotlienc.lib: $(MAKE_ROOT)brotli.mk
-	$(MAKE) -f $(MAKE_ROOT)brotli.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/lib/brotlienc.lib:  ../common/brotli.mk
+	$(MAKE) -f  $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/jpeg.lib: $(MAKE_ROOT)libjpeg-turbo.mk
-	$(MAKE) -f $(MAKE_ROOT)libjpeg-turbo.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/lib/jpeg.lib:  ../common/libjpeg-turbo.mk
+	$(MAKE) -f  $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/png16.lib: $(MAKE_ROOT)libpng.mk
-	$(MAKE) -f $(MAKE_ROOT)libpng.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/lib/png16.lib:  ../common/libpng.mk
+	$(MAKE) -f  $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/gif.lib: $(MAKE_ROOT)gif.mk
-	$(MAKE) -f $(MAKE_ROOT)gif.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/lib/gif.lib:  ../common/gif.mk
+	$(MAKE) -f  $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/lib/webp.lib: $(MAKE_ROOT)libwebp.mk $(SP_INSTALL_PREFIX)/lib/png16.lib $(SP_INSTALL_PREFIX)/lib/jpeg.lib $(SP_INSTALL_PREFIX)/lib/gif.lib
 	$(MAKE) -f $(MAKE_ROOT)libwebp.mk $(FORWARD_VARS)
@@ -203,8 +219,8 @@ $(SP_INSTALL_PREFIX)/bin/glslang.exe: $(MAKE_ROOT)glslang.mk $(SP_INSTALL_PREFIX
 	$(MAKE) -f $(MAKE_ROOT)glslang.mk $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/share/licenses:
-	powershell 'if (Test-Path "$(SP_INSTALL_PREFIX)/share/licenses") { Remove-Item -Recurse -Force -ErrorAction Ignore -Path "$(SP_INSTALL_PREFIX)/share/licenses" }'
-	powershell Copy-Item -Path "../licenses" -Destination "$(SP_INSTALL_PREFIX)/share/licenses" -Force -Recurse
+	$(call rule_rm,$(SP_INSTALL_PREFIX)/share/licenses)
+	$(call rule_cpr,../licenses,$(SP_INSTALL_PREFIX)/share/licenses)
 
 .PHONY: all
 

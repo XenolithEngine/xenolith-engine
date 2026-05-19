@@ -26,6 +26,8 @@ THE SOFTWARE.
 
 #if SPRT_WINDOWS
 #include "windows/libcxx.cc"
+#include "windows/Demangle/MicrosoftDemangle.cc"
+#include "windows/Demangle/MicrosoftDemangleNodes.cc"
 #endif
 
 namespace std {

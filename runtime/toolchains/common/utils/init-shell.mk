@@ -30,8 +30,6 @@ rule_cp = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force
 rule_cpr = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force -Recurse
 rule_mv = powershell Move-Item -Path "$(1)" -Destination "$(2)" -Force
 
-mklibname = $(addprefix lib,$(addsuffix .lib, $(1)))
-
 else
 
 MKDIR = mkdir -p
@@ -43,6 +41,10 @@ rule_cp = cp -f $(1) $(2)
 rule_cpr = cp -rf $(1) $(2)
 rule_mv = mv -f $(1) $(2)
 
-mklibname = $(addprefix lib,$(addsuffix .a, $(1)))
+endif
 
+ifdef WINDOWS
+mklibname = $(addsuffix .lib, $(1))
+else
+mklibname = $(addprefix lib,$(addsuffix .a, $(1)))
 endif

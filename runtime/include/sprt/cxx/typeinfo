@@ -34,7 +34,7 @@ class SPRT_API type_info {
 	type_info(const type_info &);
 
 	mutable struct {
-		const char *__undecorated_name;
+		const char *__undecorated_name; // Actually unused in SPRT
 		const char __decorated_name[1];
 	} __data;
 
@@ -126,7 +126,7 @@ public:
 #ifndef SPRT_TYPEINFO_TARGET_IMPL
 
 // Windows and AIX binaries can't merge typeinfos, so use the NonUnique implementation.
-#if defined(_WIN32) || defined(_AIX)
+#if defined(_WIN32) || defined(_AIX) || defined(__SPRT_WINDOWS)
 #define SPRT_TYPEINFO_TARGET_IMPL SPRT_TYPEINFO_NONUNIQUE_IMPL
 
 // On arm64 on Apple platforms, use the special NonUniqueARMRTTIBit implementation.
@@ -282,13 +282,9 @@ using sprt::type_info;
 }
 #endif
 
-#ifndef SPRT_WINDOWS
-
 namespace abi {
 extern "C" char *__cxa_demangle(const char *mangled_name, char *output_buffer,
 		__SPRT_ID(size_t) * length, int *status);
 }
-
-#endif
 
 #endif

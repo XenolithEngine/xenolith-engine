@@ -73,11 +73,6 @@ static size_t print(char *buf, size_t bufLen, uintptr_t pc, StringView filename,
 	}
 
 	if (!function.empty()) {
-#if SPRT_WINDOWS
-		w = __sprt_snprintf(target, bufLen, " - %.*s", int(function.size()), function.data());
-		bufLen -= w;
-		target += w;
-#else
 		int status = 0;
 		auto ptr = abi::__cxa_demangle(function.data(), nullptr, nullptr, &status);
 		if (ptr) {
@@ -90,7 +85,6 @@ static size_t print(char *buf, size_t bufLen, uintptr_t pc, StringView filename,
 			bufLen -= w;
 			target += w;
 		}
-#endif
 	}
 	return target - buf;
 }

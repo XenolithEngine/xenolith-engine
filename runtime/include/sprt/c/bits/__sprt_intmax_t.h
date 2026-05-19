@@ -69,7 +69,7 @@ typedef __INTMAX_TYPE__ __SPRT_ID(intmax_t);
 #else // __INTMAX_TYPE__
 // clang-format off
 // Use Data models specifications
-#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__)
+#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__SPRT_WINDOWS)
 
 typedef long long int __SPRT_ID(intmax_t);
 #define __SPRT_INTMAX_MAX __SPRT_LLINT_MAX

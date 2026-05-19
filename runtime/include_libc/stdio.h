@@ -63,6 +63,8 @@ THE SOFTWARE.
 #define UNGET __SPRT_UNGET
 #endif
 
+#define _TRUNCATE ((__SPRT_ID(size_t))-1)
+
 __SPRT_BEGIN_DECL
 
 #define fopen64 fopen
@@ -153,7 +155,7 @@ void clearerr(FILE *file) SPRT_UMBRELLA_END
 #endif
 
 SPRT_UMBRELLA_FUNC
-int fseek(FILE *file, long pos, int when) SPRT_UMBRELLA_END
+int fseek(FILE *file, __SPRT_ID(off_t) pos, int when) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_fseek(file, pos, when);
@@ -161,7 +163,8 @@ int fseek(FILE *file, long pos, int when) SPRT_UMBRELLA_END
 #endif
 
 SPRT_UMBRELLA_FUNC
-long ftell(FILE *file) SPRT_UMBRELLA_END
+__SPRT_ID(off_t)
+ftell(FILE *file) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_ftell(file);
@@ -397,6 +400,21 @@ int fscanf(FILE *__SPRT_RESTRICT file, const char *__SPRT_RESTRICT fmt, ...) SPR
 
 SPRT_UMBRELLA_FUNC
 int sscanf(const char *__SPRT_RESTRICT buf, const char *__SPRT_RESTRICT fmt, ...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt_va_list list;
+	__sprt_va_start(list, fmt);
+
+	int ret = __sprt_vsscanf(buf, fmt, list);
+
+	__sprt_va_end(list);
+	return ret;
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int sscanf_s(const char *__SPRT_RESTRICT buf, const char *__SPRT_RESTRICT fmt,
+		...) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	__sprt_va_list list;
@@ -782,16 +800,28 @@ int vasprintf_l(char **__SPRT_RESTRICT target, __SPRT_ID(locale_t) __SPRT_RESTRI
 }
 #endif
 
+SPRT_UMBRELLA_FUNC int _snprintf_s(char *buf, size_t bufSize, size_t maxChars, const char *fmt,
+		...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt_va_list list;
+	__sprt_va_start(list, fmt);
+
+	int ret = __sprt_snprintf(buf, bufSize, fmt, list);
+
+	__sprt_va_end(list);
+	return ret;
+}
+#endif
+
 __SPRT_END_DECL
 
-#ifdef _LIBCPP_MSVCRT
 #define _scanf_l(fmt, loc, ...) scanf_l(loc, fmt, __VA_ARGS__)
 #define _fscanf_l(stream, fmt, loc, ...) fscanf_l(stream, loc, fmt, __VA_ARGS__)
 #define _sscanf_l(str, fmt, loc, ...) sscanf_l(str, loc, fmt, __VA_ARGS__)
 #define _vscanf_l(fmt, loc, ...) vscanf_l(loc, fmt, __VA_ARGS__)
 #define _vfscanf_l(stream, fmt, loc, ...) vfscanf_l(stream, loc, fmt, __VA_ARGS__)
 #define _vsscanf_l(str, fmt, loc, ...) vsscanf_l(str, loc, fmt, __VA_ARGS__)
-#endif
 
 #endif
 

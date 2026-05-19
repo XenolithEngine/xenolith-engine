@@ -64,7 +64,7 @@ typedef long long int __SPRT_ID(ptrdiff_t);
 #define __SPRT_PTRDIFF_FMTd __SPRT_ULLINT_FMTd
 #define __SPRT_PTRDIFF_FMTi __SPRT_ULLINT_FMTi
 
-#elif defined(_WIN32) || defined(__ILP32__)
+#elif defined(_WIN32) || defined(__ILP32__) || defined(__SPRT_WINDOWS)
 
 typedef int __SPRT_ID(ptrdiff_t);
 #define __SPRT_PTRDIFF_MAX __SPRT_INT_MAX

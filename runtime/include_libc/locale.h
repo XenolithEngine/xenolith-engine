@@ -49,7 +49,7 @@ THE SOFTWARE.
 #define LC_MESSAGES_MASK __SPRT_LC_MESSAGES_MASK
 #define LC_ALL_MASK __SPRT_LC_ALL_MASK
 
-typedef __SPRT_ID(lconv) lconv;
+typedef struct __SPRT_ID(lconv) lconv;
 typedef __SPRT_ID(locale_t) locale_t;
 
 __SPRT_BEGIN_DECL

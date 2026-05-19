@@ -43,6 +43,8 @@ all:
 	cd $(LIBNAME); cmake -G "Ninja" $(LIB_SRC_DIR)/$(LIBNAME)/build/cmake $(CONFIGURE);
 	cd $(LIBNAME); cmake --build . --parallel
 	cd $(LIBNAME); cmake --install .
+	$(if $(WINDOWS),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/zstd.lib))
+	$(if $(WINDOWS),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/zstd_static.lib,$(SP_INSTALL_PREFIX)/usr/lib/zstd.lib))
 	$(call rule_rm,$(LIBNAME))
 
 .PHONY: all

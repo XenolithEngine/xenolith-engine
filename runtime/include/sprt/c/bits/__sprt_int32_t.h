@@ -65,7 +65,7 @@ typedef __INT32_TYPE__ __SPRT_ID(int32_t);
 #else // __INT32_TYPE__
 // clang-format off
 // Use Data models specifications
-#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__LP64__)
+#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__LP64__) || defined(__SPRT_WINDOWS)
 
 typedef int __SPRT_ID(int32_t);
 #define __SPRT_INT32_MAX __SPRT_INT_MAX

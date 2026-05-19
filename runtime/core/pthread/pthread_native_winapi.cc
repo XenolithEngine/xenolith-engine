@@ -70,7 +70,9 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr) 
 
 		// Resume thread
 		// this will run thread-local initializers, then thread main func
-		ResumeThread(handle);
+		if (!hasFlag(attr->attr, ThreadAttrFlags::CreateSuspended)) {
+			ResumeThread(handle);
+		}
 
 		return 0;
 	}

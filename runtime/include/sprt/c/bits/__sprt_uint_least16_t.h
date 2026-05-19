@@ -65,7 +65,7 @@ typedef __UINT_LEAST16_TYPE__ __SPRT_ID(uint_least16_t);
 #else // __UINT_LEAST16_TYPE__
 // clang-format off
 // Use Data models specifications
-#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__LP64__)
+#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__LP64__) || defined(__SPRT_WINDOWS)
 
 typedef unsigned short int __SPRT_ID(uint_least16_t);
 #define __SPRT_UINT_LEAST16_MAX __SPRT_USHRT_MAX

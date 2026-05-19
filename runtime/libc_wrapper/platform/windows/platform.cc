@@ -1067,17 +1067,11 @@ void _initSystemPaths(LookupData &data) {
 		for (auto &it : s_defaultKnownFolders) {
 			hr = SHGetKnownFolderPath(*it.folder, dirFlagsAppWide, nullptr, &commonDirPath);
 			if (SUCCEEDED(hr)) {
-				unicode::toUtf8([&](StringView str) {
-					__sprt_printf("%s\n", str.data()); //
-				}, WideStringView((char16_t *)commonDirPath));
 				processKnownDirPath(data, it, commonDirPath);
 				CoTaskMemFree(commonDirPath); // Free memory allocated by the function
 			} else {
 				hr = SHGetKnownFolderPath(*it.folder, dirFlagsLocal, nullptr, &commonDirPath);
 				if (SUCCEEDED(hr)) {
-					unicode::toUtf8([&](StringView str) {
-						__sprt_printf("%s\n", str.data()); //
-					}, WideStringView((char16_t *)commonDirPath));
 					processKnownDirPath(data, it, commonDirPath);
 					CoTaskMemFree(commonDirPath); // Free memory allocated by the function
 				}

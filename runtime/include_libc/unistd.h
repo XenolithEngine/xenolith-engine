@@ -823,7 +823,7 @@ int execl(const char *__path, const char *__arg, ...) SPRT_UMBRELLA_END
 	__sprt_va_start(ap, __arg);
 	argv[0] = (char *)__arg;
 	for (i = 1; i < argc; i++) { argv[i] = __sprt_va_arg(ap, char *); } //
-	argv[i] = nullptr;
+	argv[i] = __SPRT_NULL;
 	__sprt_va_end(ap);
 	int ret = __sprt_execv(__path, argv);
 	__sprt_freea(argv);
@@ -846,7 +846,7 @@ int execlp(const char *__file, const char *__arg, ...) SPRT_UMBRELLA_END
 	__sprt_va_start(ap, __arg);
 	argv[0] = (char *)__arg;
 	for (i = 1; i < argc; i++) { argv[i] = __sprt_va_arg(ap, char *); } //
-	argv[i] = nullptr;
+	argv[i] = __SPRT_NULL;
 	__sprt_va_end(ap);
 	int ret = __sprt_execvp(__file, argv);
 	__sprt_freea(argv);

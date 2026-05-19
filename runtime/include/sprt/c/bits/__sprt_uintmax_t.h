@@ -81,7 +81,7 @@ typedef __UINTMAX_TYPE__ __SPRT_ID(uintmax_t);
 #else // __UINTMAX_TYPE__
 // clang-format off
 // Use Data models specifications
-#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__)
+#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__SPRT_WINDOWS)
 
 typedef unsigned long long int __SPRT_ID(uintmax_t);
 #define __SPRT_UINTMAX_MAX __SPRT_ULLINT_MAX

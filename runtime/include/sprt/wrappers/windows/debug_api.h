@@ -158,6 +158,9 @@ WINAPI BOOL SymGetSymFromAddr64(HANDLE hProcess, DWORD64 qwAddr, PDWORD64 pdwDis
 WINAPI BOOL SymGetLineFromAddr64(HANDLE hProcess, DWORD64 qwAddr, PDWORD pdwDisplacement,
 		PIMAGEHLP_LINE64 Line64);
 
+WINAPI DWORD UnDecorateSymbolName(PCSTR name, PSTR outputString, DWORD maxStringLength,
+		DWORD flags);
+
 __SPRT_END_DECL
 
 #endif // SPRT_WRAPPERS_WINDOWS_DEBUG_API_H_

@@ -26,9 +26,9 @@ struct __SPRT_STAT_NAME {
 	__SPRT_ID(blksize_t) st_blksize;
 	__SPRT_ID(blkcnt_t) st_blocks;
 
-	__SPRT_TIMESPEC_NAME st_atim;
-	__SPRT_TIMESPEC_NAME st_mtim;
-	__SPRT_TIMESPEC_NAME st_ctim;
+	struct __SPRT_TIMESPEC_NAME st_atim;
+	struct __SPRT_TIMESPEC_NAME st_mtim;
+	struct __SPRT_TIMESPEC_NAME st_ctim;
 };
 
 #endif // CORE_RUNTIME_INCLUDE_C_BITS_STAT_H_

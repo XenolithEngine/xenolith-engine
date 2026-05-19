@@ -22,6 +22,11 @@
 
 LIBNAME = brotli
 
+ifdef WINDOWS
+SP_USER_CFLAGS += -D__SPRT_WINDOWS_PROTECTED
+SP_USER_CXXFLAGS += -D__SPRT_WINDOWS_PROTECTED
+endif
+
 include ../common/configure.mk
 
 all:

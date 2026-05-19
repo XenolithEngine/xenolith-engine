@@ -29,6 +29,8 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/file_api.h>
 #include <sprt/wrappers/windows/thread_api.h>
 
+#include <sprt/wrappers/windows/__sprt_threads.h>
+
 /* ============================================================ */
 /* WinAPI Function Declarations                                 */
 /* Based on Microsoft documentation: https://docs.microsoft.com/ */

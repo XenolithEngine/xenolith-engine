@@ -47,6 +47,7 @@ enum class ThreadAttrFlags : uint16_t {
 	GuardSizeCustomized = 1 << 9,
 	StackPointerCustomized = 1 << 10,
 	StackSizeCustomized = 1 << 11,
+	CreateSuspended = 1 << 12,
 
 	PrioRR = 1 << 14,
 	PrioFifo = 2 << 14,

@@ -25,7 +25,8 @@ LIBNAME = libjpeg-turbo
 include ../common/configure.mk
 
 CONFIGURE := \
-	$(CONFIGURE_CMAKE) -DENABLE_SHARED=FALSE -DWITH_TURBOJPEG=FALSE
+	$(CONFIGURE_CMAKE) -DENABLE_SHARED=FALSE -DWITH_TURBOJPEG=FALSE \
+	-DWITH_TESTS=Off -DWITH_CRT_DLL=1
 
 all:
 	$(call rule_rm,$(LIBNAME))
@@ -33,4 +34,4 @@ all:
 	cd $(LIBNAME); cmake -G "Ninja" $(CONFIGURE) $(LIB_SRC_DIR)/$(LIBNAME)
 	cd $(LIBNAME); cmake  --build . --config Release --target install --parallel
 	$(call rule_rm,$(LIBNAME))
-	$(if $(WINDOWS),$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/jpeg-static.lib,$(SP_INSTALL_PREFIX)/lib/libjpeg.lib))
+	$(if $(WINDOWS),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/jpeg-static.lib,$(SP_INSTALL_PREFIX)/usr/lib/jpeg.lib))

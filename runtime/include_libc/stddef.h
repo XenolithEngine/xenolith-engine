@@ -35,6 +35,14 @@ typedef __SPRT_ID(max_align_t) max_align_t;
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(ptrdiff_t) ptrdiff_t;
 
+#ifndef __cplusplus
+typedef __SPRT_ID(wchar_t) wchar_t;
+#endif
+
+#ifndef NULL
+#define NULL __SPRT_NULL
+#endif
+
 #define offsetof(type, member) __SPRT_offsetof(type, member)
 
 #endif

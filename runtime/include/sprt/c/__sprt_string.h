@@ -262,6 +262,8 @@ SPRT_API int __SPRT_ID(strcasecmp_l)(const char *, const char *, __SPRT_ID(local
 SPRT_API int __SPRT_ID(
 		strncasecmp_l)(const char *, const char *, __SPRT_ID(rsize_t), __SPRT_ID(locale_t));
 
+SPRT_API char *__SPRT_ID(strtok_r)(char *, const char *, char **);
+
 __SPRT_END_DECL
 
 #endif // CORE_RUNTIME_INCLUDE_LIBC_STRING_H_

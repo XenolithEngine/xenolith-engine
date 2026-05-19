@@ -53,7 +53,7 @@ typedef __INT_FAST64_TYPE__ __SPRT_ID(int_fast64_t);
 #else // __INT_FAST64_TYPE__
 // clang-format off
 // Use Data models specifications
-#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__)
+#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__SPRT_WINDOWS)
 
 typedef long long int __SPRT_ID(int_fast64_t);
 #define __SPRT_INT_FAST64_MAX __SPRT_LLINT_MAX

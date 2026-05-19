@@ -302,6 +302,10 @@ SPRT_API int __SPRT_ID(pthread_cond_timedwait)(__SPRT_ID(pthread_cond_t) * __SPR
 		__SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT,
 		const struct __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT);
 
+SPRT_API int __SPRT_ID(pthread_cond_timedwait_relative_np)(
+		__SPRT_ID(pthread_cond_t) * __SPRT_RESTRICT, __SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT,
+		const struct __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT);
+
 // Timeout is measured against specified clock, then converted to relative.
 // Relative timeout then passed to actual lock with the clock, that was set in
 // pthread_condattr_setclock, or default sprt_qlock_t clock

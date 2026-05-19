@@ -26,26 +26,48 @@ THE SOFTWARE.
 typedef void(__cdecl *__funcptr)(void);
 typedef int(__cdecl *__ifuncptr)(void);
 
-inline int __initterm(__funcptr *__begin, __funcptr *__end) {
-	while (__begin < __end) {
-		if (*__begin != nullptr) {
-			(*__begin)();
+inline int __initterm(__funcptr *__begin, __funcptr *__end, bool reverse = false) {
+	if (reverse) {
+		while (__end > __begin) {
+			--__end;
+			if (*__end != nullptr) {
+				(*__end)();
+			}
 		}
-		++__begin;
+	} else {
+		while (__begin < __end) {
+			if (*__begin != nullptr) {
+				(*__begin)();
+			}
+			++__begin;
+		}
 	}
 	return 0;
 }
 
-inline int __initterm(__ifuncptr *__begin, __ifuncptr *__end) {
+inline int __initterm(__ifuncptr *__begin, __ifuncptr *__end, bool reverse = false) {
 	int result = 0;
-	while (__begin < __end) {
-		if (*__begin != nullptr) {
-			result = (*__begin)();
-			if (result != 0) {
-				break;
+
+	if (reverse) {
+		while (__end > __begin) {
+			--__end;
+			if (*__end != nullptr) {
+				result = (*__end)();
+				if (result != 0) {
+					break;
+				}
 			}
 		}
-		++__begin;
+	} else {
+		while (__begin < __end) {
+			if (*__begin != nullptr) {
+				result = (*__begin)();
+				if (result != 0) {
+					break;
+				}
+			}
+			++__begin;
+		}
 	}
 	return result;
 }

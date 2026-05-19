@@ -50,4 +50,21 @@ __SPRT_C_FUNC int __SPRT_ID(unsetenv)(const char *n) { return unsetenv(n); }
 
 __SPRT_C_FUNC char *__SPRT_ID(getenv_impl)(const char *name) { return getenv(name); }
 
+__SPRT_C_FUNC int getenv_s(size_t *ret, char *buf, rsize_t bufSize,
+		char const *name) __SPRT_NOEXCEPT {
+	if (!ret || (!buf && bufSize > 0) || !name) {
+		return EINVAL;
+	}
+	auto env = getenv(name);
+	auto len = strlen(env);
+	if (ret) {
+		*ret = len + 1;
+	}
+	if (buf && bufSize < len + 1) {
+		return ERANGE;
+	}
+	memcpy(buf, env, len + 1);
+	return 0;
+}
+
 } // namespace sprt

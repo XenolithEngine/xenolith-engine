@@ -331,6 +331,15 @@ int pthread_cond_timedwait(pthread_cond_t *__SPRT_RESTRICT cond,
 }
 #endif
 
+SPRT_UMBRELLA_FUNC int pthread_cond_timedwait_relative_np(pthread_cond_t *__SPRT_RESTRICT cond,
+		pthread_mutex_t *__SPRT_RESTRICT mutex,
+		const timespec *__SPRT_RESTRICT tv) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_pthread_cond_timedwait_relative_np(cond, mutex, tv);
+}
+#endif
+
 SPRT_UMBRELLA_FUNC
 int pthread_cond_broadcast(pthread_cond_t *cond) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED

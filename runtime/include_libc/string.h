@@ -246,6 +246,14 @@ int strverscmp(const char *l0, const char *r0) SPRT_UMBRELLA_END
 }
 #endif
 
+SPRT_UMBRELLA_FUNC
+char *strtok_r(char *s, const char *sep, char **p) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strtok_r(s, sep, p);
+}
+#endif
+
 __SPRT_END_DECL
 
 #endif

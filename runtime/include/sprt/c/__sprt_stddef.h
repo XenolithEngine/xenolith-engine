@@ -26,6 +26,8 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_ptrdiff_t.h>
+#include <sprt/c/bits/__sprt_null.h>
+#include <sprt/c/cross/__sprt_mbstate.h>
 
 #if __cplusplus || __SPRT_STDC_23__
 typedef typeof(nullptr) __SPRT_ID(nullptr_t);

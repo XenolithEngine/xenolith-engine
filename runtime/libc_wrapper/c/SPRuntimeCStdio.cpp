@@ -76,11 +76,13 @@ __SPRT_C_FUNC int __SPRT_ID(ferror_impl)(__SPRT_ID(FILE) * file) { return ::ferr
 
 __SPRT_C_FUNC void __SPRT_ID(clearerr_impl)(__SPRT_ID(FILE) * file) { return ::clearerr(file); }
 
-__SPRT_C_FUNC int __SPRT_ID(fseek_impl)(__SPRT_ID(FILE) * file, long pos, int when) {
+__SPRT_C_FUNC int __SPRT_ID(fseek_impl)(__SPRT_ID(FILE) * file, __SPRT_ID(off_t) pos, int when) {
 	return ::fseek(file, pos, when);
 }
 
-__SPRT_C_FUNC long __SPRT_ID(ftell_impl)(__SPRT_ID(FILE) * file) { return ::ftell(file); }
+__SPRT_C_FUNC __SPRT_ID(off_t) __SPRT_ID(ftell_impl)(__SPRT_ID(FILE) * file) {
+	return ::ftell(file);
+}
 
 __SPRT_C_FUNC void __SPRT_ID(rewind_impl)(__SPRT_ID(FILE) * file) { return ::rewind(file); }
 
@@ -514,5 +516,9 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_native)(const char *path,
 	return pathSize;
 }
 #endif
+
+__SPRT_C_FUNC int setmode(int, int) __SPRT_NOEXCEPT { return 0; }
+
+__SPRT_C_FUNC int _setmode(int, int) __SPRT_NOEXCEPT { return 0; }
 
 } // namespace sprt

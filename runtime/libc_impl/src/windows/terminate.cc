@@ -147,8 +147,8 @@ __SPRT_C_FUNC void exit(int result) __SPRT_NOEXCEPT {
 
 	__sprt_libc_thread_exit(false);
 
-	__initterm(__c_preterm_start, __c_preterm_end);
-	__initterm(__c_term_start, __c_term_end);
+	__initterm(__c_preterm_start, __c_preterm_end, true);
+	__initterm(__c_term_start, __c_term_end, true);
 
 	__callDtors(&s_atexit_list);
 

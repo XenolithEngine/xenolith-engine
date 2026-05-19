@@ -31,9 +31,18 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/__sprt_wchar.h>
+#include <sprt/c/bits/__sprt_uint64_t.h>
 
 #ifndef NULL
 #define NULL __SPRT_NULL
+#endif
+
+#ifndef EXIT_SUCCESS
+#define EXIT_SUCCESS 0
+#endif
+
+#ifndef EXIT_FAILURE
+#define EXIT_FAILURE 1
 #endif
 
 typedef __SPRT_ID(size_t) size_t;
@@ -328,6 +337,16 @@ void qsort(void *a, size_t b, size_t c, int (*value)(const void *, const void *)
 #endif
 
 SPRT_UMBRELLA_FUNC
+void qsort_r(void *a, size_t b, size_t c, int (*cmp)(const void *, const void *, void *),
+		void *ctx) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_qsort_r(a, b, c, cmp, ctx);
+}
+#endif
+
+
+SPRT_UMBRELLA_FUNC
 int abs(int value) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
@@ -552,9 +571,18 @@ size_t wcstombs(char *__dst, const wchar_t *__src, size_t __n) SPRT_UMBRELLA_END
 
 #define MB_CUR_MAX __SPRT_ID(__ctype_get_mb_cur_max)()
 
+__SPRT_C_FUNC unsigned short _byteswap_ushort(unsigned short _Number) __SPRT_NOEXCEPT;
+__SPRT_C_FUNC unsigned long _byteswap_ulong(unsigned long _Number) __SPRT_NOEXCEPT;
+__SPRT_C_FUNC __SPRT_ID(uint64_t) _byteswap_uint64(__SPRT_ID(uint64_t) _Number) __SPRT_NOEXCEPT;
+
+__SPRT_C_FUNC int qsort_s(void *a, size_t b, size_t c,
+		int (*cmp)(void *, const void *, const void *), void *ctx) __SPRT_NOEXCEPT;
+
+__SPRT_C_FUNC int getenv_s(size_t *ret, char *buf, __SPRT_ID(rsize_t) bufSize,
+		char const *name) __SPRT_NOEXCEPT;
+
 __SPRT_END_DECL
 
-#ifdef _LIBCPP_MSVCRT
 #define _strtol_l strtol_l
 #define _strtoll_l strtoll_l
 #define _strtoul_l strtoul_l
@@ -565,7 +593,6 @@ __SPRT_END_DECL
 
 #define _strtoi64_l strtoll_l
 #define _strtoui64_l strtoull_l
-#endif
 
 #endif
 

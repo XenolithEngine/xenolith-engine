@@ -31,11 +31,6 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_assert.h>
 
-#undef assert
-
-#define assert(Expr) \
-	(__SPRT_ASSERT_TEST(Expr) ? __SPRT_ASSERT_UNUSED(0) : __sprt_assert_fail(#Expr, __FILE__, __LINE__, __SPRT_FUNCTION__, __SPRT_NULL))
-
 #endif
 
 #endif // CORE_RUNTIME_INCLUDE_LIBC_ASSERT_H_

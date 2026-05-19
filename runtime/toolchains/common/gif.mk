@@ -42,10 +42,6 @@ OBJS := $(SRCS:.c=.o)
 
 TARGET_CFLAGS := $(SP_CFLAGS) -D_FILE_OFFSET_BITS=64 -Wno-deprecated-declarations -std=gnu99 -Wall
 
-ifdef WINDOWS
-TARGET_CFLAGS += -Dstrtok_r=strtok_s
-endif
-
 $(LIBNAME)/%.o: $(LIB_SRC_DIR)/$(LIBNAME)/%.c | prepare
 	$(SP_CC) $(TARGET_CFLAGS) -c $< -o $@
 

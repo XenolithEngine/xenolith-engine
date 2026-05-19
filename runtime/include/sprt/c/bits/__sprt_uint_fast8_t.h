@@ -65,7 +65,7 @@ typedef __UINT_FAST8_TYPE__ __SPRT_ID(uint_fast8_t);
 #else // __UINT_FAST8_TYPE__
 // clang-format off
 // Use Data models specifications
-#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__LP64__)
+#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__LP64__) || defined(__SPRT_WINDOWS)
 
 typedef unsigned char __SPRT_ID(uint_fast8_t);
 #define __SPRT_UINT_FAST8_MAX __SPRT_USSHRT_MAX

@@ -29,7 +29,8 @@ THE SOFTWARE.
 // ssize_t is always 64-bit for sprt to work with large files on all platforms
 
 // Use Data models specifications
-#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__)
+#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) \
+		|| defined(__SPRT_WINDOWS)
 
 typedef long long int __SPRT_ID(ssize_t);
 #define __SPRT_SSIZE_MAX __SPRT_LLINT_MAX

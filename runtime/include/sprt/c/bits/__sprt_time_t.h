@@ -30,7 +30,8 @@ THE SOFTWARE.
 // time_t is always 64-bit for sprt
 
 // Use Data models specifications
-#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__)
+#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) \
+		|| defined(__SPRT_WINDOWS)
 
 typedef long long int __SPRT_ID(time_t);
 #define __SPRT_TIME_MAX __SPRT_LLINT_MAX

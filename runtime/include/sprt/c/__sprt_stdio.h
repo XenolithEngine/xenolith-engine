@@ -89,10 +89,10 @@ SPRT_API void __SPRT_ID(clearerr_impl)(__SPRT_ID(FILE) *);
 #define __sprt_clearerr __SPRT_ID(clearerr_impl)
 
 
-SPRT_API int __SPRT_ID(fseek_impl)(__SPRT_ID(FILE) *, long, int);
+SPRT_API int __SPRT_ID(fseek_impl)(__SPRT_ID(FILE) *, __SPRT_ID(off_t), int);
 #define __sprt_fseek __SPRT_ID(fseek_impl)
 
-SPRT_API long __SPRT_ID(ftell_impl)(__SPRT_ID(FILE) *);
+SPRT_API __SPRT_ID(off_t) __SPRT_ID(ftell_impl)(__SPRT_ID(FILE) *);
 #define __sprt_ftell __SPRT_ID(ftell_impl)
 
 SPRT_API void __SPRT_ID(rewind_impl)(__SPRT_ID(FILE) *);

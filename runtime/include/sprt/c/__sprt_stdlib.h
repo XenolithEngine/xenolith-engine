@@ -182,6 +182,8 @@ SPRT_API void __SPRT_ID(qsort_impl)(void *, __SPRT_ID(size_t), __SPRT_ID(size_t)
 		int (*)(const void *, const void *));
 #define __sprt_qsort __SPRT_ID(qsort_impl)
 
+SPRT_API void __SPRT_ID(qsort_r)(void *, __SPRT_ID(size_t), __SPRT_ID(size_t),
+		int (*)(const void *, const void *, void *), void *);
 
 SPRT_API int __SPRT_ID(abs_impl)(int);
 

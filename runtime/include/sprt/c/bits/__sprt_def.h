@@ -75,7 +75,7 @@ THE SOFTWARE.
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_DARWIN_UNKNOWN
 #define SPRT_DARWIN_UNKNOWN __SPRT_PLATFORM_ID_DARWIN_UNKNOWN
 #endif
-#elif defined(_WIN32) || defined(_WIN64)
+#elif defined(_WIN32) || defined(_WIN64) || defined(__SPRT_WINDOWS)
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_WINDOWS
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_WINDOWS
 #define SPRT_WINDOWS __SPRT_PLATFORM_ID_WINDOWS
@@ -324,7 +324,7 @@ THE SOFTWARE.
 #endif
 
 // clang-format off
-#ifdef _WIN32
+#if defined(_WIN32) || defined(_WIN64) || defined(__SPRT_WINDOWS)
 #define SPRT_ALIGNAS(N) __declspec(align(N))
 #else
 #if __STDC_VERSION__ >= 201112L

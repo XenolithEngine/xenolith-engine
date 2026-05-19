@@ -187,7 +187,7 @@ THE SOFTWARE.
 #define __SPRT_SSHRT_BIT 8
 #endif
 
-#elif defined(_WIN32) || defined(__ILP32__)
+#elif defined(_WIN32) || defined(__ILP32__) || defined(__SPRT_WINDOWS)
 
 #ifndef __SPRT_LLONG_MAX
 #define __SPRT_LLONG_MAX 0x7fffffffffffffffLL

@@ -856,7 +856,6 @@ template <>
 struct io_traits<type_info> {
 	template <io_character CharType>
 	static constexpr size_t length(const type_info &value) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
 		int status = 0;
 		auto name = abi::__cxa_demangle(value.name(), nullptr, nullptr, &status);
 		if (status == 0) {
@@ -866,14 +865,10 @@ struct io_traits<type_info> {
 		} else {
 			return strlen(value.name());
 		}
-#else
-		return strlen(value.name());
-#endif
 	}
 
 	template <io_character CharType>
 	static void encode(const callback<void(StringViewBase<CharType>)> &cb, const type_info &value) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
 		int status = 0;
 		auto name = abi::__cxa_demangle(value.name(), nullptr, nullptr, &status);
 		if (status == 0) {
@@ -882,9 +877,6 @@ struct io_traits<type_info> {
 		} else {
 			io_traits<StringView>::encode(cb, StringView(value.name()));
 		}
-#else
-		io_traits<StringView>::encode(cb, StringView(value.name()));
-#endif
 	}
 };
 

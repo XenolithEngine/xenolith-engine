@@ -262,6 +262,33 @@ __SPRT_C_FUNC int __SPRT_ID(
 	return tcond->wait(mtx, nanoTimeout);
 }
 
+__SPRT_C_FUNC int __SPRT_ID(
+		pthread_cond_timedwait_relative_np)(__SPRT_ID(pthread_cond_t) * __SPRT_RESTRICT cond,
+		__SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT mutex,
+		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT tv) {
+
+	if (!cond || !mutex || !tv || tv->tv_nsec < 0 || tv->tv_nsec >= 1'000'000'000) {
+		return EINVAL;
+	}
+
+	auto mtx = reinterpret_cast<_thread::mutex_t *>(mutex);
+	auto tcond = reinterpret_cast<_thread::cond_t *>(cond);
+
+	if (mtx->has_ownedship()) {
+		if (!mtx->is_owned_by_this_thread()) {
+			return EINVAL;
+		}
+	} else {
+		if (!mtx->is_locked()) {
+			return EINVAL;
+		}
+	}
+
+	__sprt_sprt_timeout_t nanoTimeout = tv->tv_sec * 1'000'000'000 + tv->tv_nsec;
+
+	return tcond->wait(mtx, nanoTimeout);
+}
+
 SPRT_API int __SPRT_ID(pthread_cond_clockwait)(__SPRT_ID(pthread_cond_t) * __SPRT_RESTRICT cond,
 		__SPRT_ID(pthread_mutex_t) * __SPRT_RESTRICT mutex, __SPRT_ID(clockid_t) clock_id,
 		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT tv) {

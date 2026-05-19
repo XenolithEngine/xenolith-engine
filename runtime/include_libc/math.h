@@ -39,6 +39,12 @@ THE SOFTWARE.
 #define FP_NORMAL __SPRT_FP_NORMAL
 #endif
 
+
+#ifndef FP_ILOGBNAN
+#define FP_ILOGBNAN __SPRT_FP_ILOGBNAN
+#define FP_ILOGB0 __SPRT_FP_ILOGB0
+#endif
+
 #ifndef M_E
 #define M_E __SPRT_M_E
 #define M_LOG2E __SPRT_M_LOG2E
@@ -62,6 +68,9 @@ THE SOFTWARE.
 #define HUGE_VALF __SPRT_HUGE_VALF
 #define HUGE_VALL  __SPRT_HUGE_VALL
 #endif
+
+typedef __SPRT_ID(float_t) float_t;
+typedef __SPRT_ID(double_t) double_t;
 
 __SPRT_BEGIN_DECL
 

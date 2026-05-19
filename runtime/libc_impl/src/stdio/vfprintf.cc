@@ -981,9 +981,19 @@ __SPRT_C_FUNC int dprintf(int fd, const char *__restrict fmt, ...) __SPRT_NOEXCE
 }
 
 __SPRT_C_FUNC int __cdecl __stdio_common_vfprintf(int64_t const options, FILE *f, char const *fmt,
-		locale_t locale, va_list args) {
+		locale_t locale, va_list args) __SPRT_NOEXCEPT {
 	auto old = uselocale(locale);
 	auto ret = vfprintf(f, fmt, args);
 	uselocale(old);
+	return ret;
+}
+
+weak __SPRT_C_FUNC int fprintf(FILE *__restrict f, const char *__restrict fmt,
+		...) __SPRT_NOEXCEPT {
+	int ret;
+	va_list ap;
+	va_start(ap, fmt);
+	ret = vfprintf(f, fmt, ap);
+	va_end(ap);
 	return ret;
 }

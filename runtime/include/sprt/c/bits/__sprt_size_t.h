@@ -80,7 +80,7 @@ typedef unsigned long long int __SPRT_ID(size_t);
 #define __SPRT_SIZE_FMTu __SPRT_ULLINT_FMTu
 #define __SPRT_SIZE_FMTx __SPRT_ULLINT_FMTx
 
-#elif defined(_WIN32) || defined(__ILP32__)
+#elif defined(_WIN32) || defined(__ILP32__) || defined(__SPRT_WINDOWS)
 
 typedef unsigned long int __SPRT_ID(size_t);
 #define __SPRT_SIZE_MAX __SPRT_ULINT_MAX

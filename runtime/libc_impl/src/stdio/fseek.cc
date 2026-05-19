@@ -44,7 +44,7 @@ __SPRT_C_FUNC int fseeko(FILE *f, off_t off, int whence) __SPRT_NOEXCEPT {
 	return result;
 }
 
-__SPRT_C_FUNC int fseek(FILE *f, long off, int whence) __SPRT_NOEXCEPT {
+__SPRT_C_FUNC int fseek(FILE *f, off_t off, int whence) __SPRT_NOEXCEPT {
 	return fseeko(f, off, whence);
 }
 
@@ -71,14 +71,7 @@ __SPRT_C_FUNC off_t ftello(FILE *f) __SPRT_NOEXCEPT {
 	return pos;
 }
 
-__SPRT_C_FUNC long ftell(FILE *f) __SPRT_NOEXCEPT {
-	off_t pos = ftello(f);
-	if (pos > __SPRT_LONG_MAX) {
-		errno = EOVERFLOW;
-		return -1;
-	}
-	return pos;
-}
+__SPRT_C_FUNC off_t ftell(FILE *f) __SPRT_NOEXCEPT { return ftello(f); }
 
 __SPRT_C_FUNC void rewind(FILE *f) __SPRT_NOEXCEPT {
 	FLOCK(f);

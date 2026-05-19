@@ -66,8 +66,16 @@ SP_LDFLAGS := --sysroot=$(SP_TOOLCHAIN_PREFIX) $(SP_LDFLAGS)
 endif # SP_TOOLCHAIN_PREFIX
 
 ifdef WINDOWS
-SP_CFLAGS +=  -D_CRT_SECURE_NO_WARNINGS -Wno-deprecated-declarations -Xclang --dependent-lib=libcmt
-SP_CXXFLAGS +=  -D_CRT_SECURE_NO_WARNINGS -Wno-deprecated-declarations -Xclang --dependent-lib=libcmt
+SP_CFLAGS += -Xclang --dependent-lib=sprt -nostdlib \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include_libc) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include/sprt/wrappers/windows) \
+	-D__SPRT_WINDOWS
+SP_CXXFLAGS += -Xclang --dependent-lib=sprt -nostdlib \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include_libc) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include/sprt/wrappers/windows) \
+	-D__SPRT_WINDOWS
 endif # WINDOWS
 
 ifdef DARWIN
@@ -239,6 +247,22 @@ endif # iOS
 
 endif # DARWIN
 
+
+ifdef WINDOWS
+CONFIGURE_CMAKE_C_FLAGS_INIT += -nostdlib \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include_libc) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include/sprt/wrappers/windows) \
+	-D__SPRT_WINDOWS
+CONFIGURE_CMAKE_CXX_FLAGS_INIT += -nostdlib \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include_libc) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include/sprt/wrappers/windows) \
+	-D__SPRT_WINDOWS
+CONFIGURE_EXE_LINKER_FLAGS_INIT += -nostdlib
+CONFIGURE_SHARED_LINKER_FLAGS_INIT += -nostdlib
+endif
+
 CONFIGURE_CMAKE += \
 	-DSP_C_FLAGS="$(CONFIGURE_CMAKE_C_FLAGS_INIT)" \
 	-DSP_CXX_FLAGS="$(CONFIGURE_CMAKE_CXX_FLAGS_INIT)" \
@@ -253,7 +277,10 @@ CONFIGURE_CMAKE += \
 	-DCMAKE_VERBOSE_MAKEFILE=On
 
 ifdef WINDOWS
-CONFIGURE_CMAKE += -DCMAKE_RC_COMPILER=$(SP_RC) -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DCMAKE_POLICY_DEFAULT_CMP0091=NEW
+CONFIGURE_CMAKE += \
+	-DCMAKE_RC_COMPILER=$(SP_RC) \
+	-DCMAKE_POLICY_DEFAULT_CMP0091=NEW \
+	-DENABLE_EXPORTS=Off 
 endif
 
 ifeq ($(DEBUG),1)

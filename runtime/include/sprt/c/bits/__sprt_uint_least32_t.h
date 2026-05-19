@@ -65,7 +65,7 @@ typedef __UINT_LEAST32_TYPE__ __SPRT_ID(uint_least32_t);
 #else // __UINT_LEAST32_TYPE__
 // clang-format off
 // Use Data models specifications
-#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__LP64__)
+#if defined(__LLP64__) || defined(_WIN64) || defined(_WIN32) || defined(__ILP32__) || defined(__LP64__) || defined(__SPRT_WINDOWS)
 
 typedef unsigned int __SPRT_ID(uint_least32_t);
 #define __SPRT_UINT_LEAST32_MAX __SPRT_UINT_MAX

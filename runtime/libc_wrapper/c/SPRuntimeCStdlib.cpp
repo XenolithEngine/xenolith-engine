@@ -32,9 +32,10 @@ THE SOFTWARE.
 #include <stdlib.h>
 #include <locale.h>
 
-
 #include "stdlib/env.cc"
 #include "stdlib/getsubopt.cc"
+#include "stdlib/byteswap.cc"
+#include "stdlib/qsort_s.cc"
 
 #if SPRT_MACOS
 #include <xlocale.h>
@@ -135,6 +136,12 @@ __SPRT_C_FUNC void __SPRT_ID(qsort_impl)(void *array, size_t n, size_t size,
 	::qsort(array, n, size, comparator);
 }
 #endif
+
+SPRT_API void __SPRT_ID(qsort_r)(void *array, __SPRT_ID(size_t) n, __SPRT_ID(size_t) size,
+		int (*cmp)(const void *, const void *, void *), void *ctx) {
+	::qsort_r(array, n, size, cmp, ctx);
+}
+
 
 __SPRT_C_FUNC int __SPRT_ID(abs_impl)(int v) { return ::abs(v); }
 

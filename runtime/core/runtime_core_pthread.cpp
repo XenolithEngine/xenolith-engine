@@ -36,6 +36,9 @@ THE SOFTWARE.
 #include "pthread/pthread_spin.cc"
 #include "pthread/pthread_np.cc"
 
+// It's simplier to make Windows API available everywhere
+#include <sprt/wrappers/windows/__sprt_threads.h>
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wundefined-internal"
 
@@ -160,7 +163,6 @@ __SPRT_C_FUNC int __SPRT_ID(
 	return reinterpret_cast<_thread::thread_t *>(thread)->getcpuclockid(clock);
 }
 
-
 __SPRT_C_FUNC int __SPRT_ID(
 		pthread_sigmask)(int how, const __SPRT_ID(sigset_t) * set, __SPRT_ID(sigset_t) * oldset) {
 #if SPRT_WINDOWS
@@ -170,6 +172,49 @@ __SPRT_C_FUNC int __SPRT_ID(
 #endif
 }
 
+struct _beginthreadexwrapper {
+	_beginthreadex_proc_type _StartAddress;
+	void *_ArgList;
+};
+
+static void *_beginthreadex_fn(void *arg) {
+	auto w = (_beginthreadexwrapper *)arg;
+	return (void *)(uintptr_t)w->_StartAddress(w->_ArgList);
+}
+
+__SPRT_C_FUNC __SPRT_ID(uintptr_t)
+		_beginthreadex(void *_Security, unsigned _StackSize, _beginthreadex_proc_type _StartAddress,
+				void *_ArgList, unsigned _InitFlag, unsigned *_ThrdAddr) __SPRT_NOEXCEPT {
+	_thread::thread_t *__t = nullptr;
+	_thread::attr_t attr;
+
+	if (_StackSize > 0) {
+		attr.stackSize = _StackSize;
+	}
+
+	if (_InitFlag & CREATE_SUSPENDED) {
+#if SPRT_WINDOWS
+		attr.attr |= _thread::ThreadAttrFlags::CreateSuspended;
+#else
+		return 0; // Not supported
+#endif
+	}
+
+	_beginthreadexwrapper w{_StartAddress, _ArgList};
+
+	auto ret = _thread::thread_t::create(&__t, &attr, _beginthreadex_fn, &w);
+	if (ret == 0) {
+		if (_ThrdAddr) {
+			*_ThrdAddr = __t->threadId;
+		}
+		return (uintptr_t)__t->handle;
+	}
+	return 0;
+}
+
+__SPRT_C_FUNC void _endthreadex(unsigned _ReturnCode) __SPRT_NOEXCEPT {
+	__sprt_pthread_exit((void *)(uintptr_t)_ReturnCode);
+}
 
 } // namespace sprt
 

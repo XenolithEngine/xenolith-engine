@@ -23,9 +23,16 @@ THE SOFTWARE.
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 
 #include <sprt/cxx/typeinfo>
+#include <sprt/cxx/new>
+#include <sprt/cxx/detail/hash.h>
 #include <sprt/wrappers/windows/dl_api.h>
+#include <sprt/wrappers/windows/debug_api.h>
+#include <sprt/cxx/mutex>
+
+#include "Demangle/Demangle.h"
 
 using vtable_fn = void (*)(void);
 
@@ -86,10 +93,10 @@ __SPRT_C_FUNC const type_info *__RTtypeid(void *obj) {
 
 	auto locator = (const RTTICompleteObjectLocator *)(*(const vtable_fn **)obj)[-1];
 
-	// Now we know the absolute address of locator; using rvaSelf field, we can find
+	// Now we know the absolute address of locator; with rvaSelf field, we can find
 	// an address for base module of the object
 
-	// It's possible, that locator is empty, in this case we need general loocup from OS
+	// It's possible, that locator is empty, in this case we need general lookup from OS
 	UINT_PTR base = 0;
 	if (!locator->signature) {
 		void *module = nullptr;
@@ -106,79 +113,32 @@ __SPRT_C_FUNC const type_info *__RTtypeid(void *obj) {
 	return (const type_info *)(base + locator->rvaTypeDescriptor);
 }
 
-/*
-__SPRT_C_FUNC void *__thiscall type_info_vector_dtor(type_info *_this, unsigned int flags) {
-	if (flags & 2) {
-		 we have an array, with the number of elements stored before the first object 
-		INT_PTR i, *ptr = (INT_PTR *)_this - 1;
+namespace sprt {
 
-		//for (i = *ptr - 1; i >= 0; i--) { free(_this[i].name); }
-		free(ptr);
-	} else {
-		//free(_this->name);
-		if (flags & 1) {
-			free(_this);
-		}
-	}
-	return _this;
+int type_info::__compare(const type_info &__rhs) const noexcept {
+	return strcmp(__data.__decorated_name, __rhs.__data.__decorated_name);
 }
 
-struct __rtti_data {
-	__type_info type_info = {
-		.vtable = &type_info_vtable,
-		.__undecorated_name = NULL,
-	};
+__SPRT_PUSH_ALLOW_CXXABI_ALLOC
+type_info::~type_info() { }
+__SPRT_POP_ALLOW_CXXABI_ALLOC
 
-	RTTIBaseClassDescriptor base[1] = {
-		{
-			-1,
-			0,
-			{0, -1, 0},
-			64,
-			0,
-		},
-	};
+const char *type_info::name() const noexcept {
+	return __data.__decorated_name; //
+}
 
-	RTTIBaseClassArray baseArray;
+size_t type_info::hash_code() const noexcept {
+	return sprt::hash<void>()((const char *)__data.__decorated_name);
+}
 
-	RTTIClassHierarchyDescriptor hierarchy = {
-		0,
-		0,
-		0,
-	};
+} // namespace sprt
 
-	void init(UINT_PTR moduleBase, RTTICompleteObjectLocator *locator, const char *mangled_name) {
-		base[0].rvaTypeDescriptor = reinterpret_cast<UINT_PTR>(&type_info) - moduleBase;
+namespace abi {
 
-		baseArray.rvaBases[0] = reinterpret_cast<UINT_PTR>(&base) - moduleBase;
+static sprt::mutex s_cxa_demangle_lock;
 
-		hierarchy.pBaseClassArray = reinterpret_cast<UINT_PTR>(&baseArray) - moduleBase;
-
-		locator->rvaTypeDescriptor = reinterpret_cast<UINT_PTR>(&type_info) - moduleBase;
-		locator->rvaClassDescriptor = reinterpret_cast<UINT_PTR>(&hierarchy) - moduleBase;
-		locator->rvaSelf = reinterpret_cast<UINT_PTR>(locator) - moduleBase;
-	}
-};
-
-
-__SPRT_C_FUNC RTTICompleteObjectLocator type_info_rtti = {
-	.signature = 1,
-	.classOffset = 0,
-	.cdOffset = 0,
-	.rvaTypeDescriptor = -1,
-	.rvaClassDescriptor = -1,
-	.rvaSelf = -1,
-};
-
-#define __ASM_VTABLE(name, funcs) \
-    __asm__(".data\n" \
-            "\t.balign 8\n" \
-            "\t.quad " #name "_rtti" "\n" \
-            __ASM_GLOBL(#name "_vtable") "\n" \
-            funcs "\n\t.text")
-
-#define __ASM_GLOBL(name) ".globl " name "\n" name ":"
-*/
-//#define VTABLE_ADD_FUNC(name) "\t.quad " #name "\n"
-
-//__ASM_VTABLE(type_info, VTABLE_ADD_FUNC(type_info_vector_dtor));
+extern "C" char *__cxa_demangle(const char *mangled_name, char *output_buffer,
+		__SPRT_ID(size_t) * length, int *status) {
+	return llvm::microsoftDemangle(mangled_name, length, status, llvm::MSDF_None);
+}
+} // namespace abi

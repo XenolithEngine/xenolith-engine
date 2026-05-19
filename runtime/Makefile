@@ -6,10 +6,10 @@
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -18,41 +18,36 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-.DEFAULT_GOAL := all
+# force to rebuild if this makefile changed
+LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
-LIBNAME = openssl
+STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../make
 
-include ../common/configure.mk
+LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
+LOCAL_BUILD_STATIC := 1
+LOCAL_BUILD_SHARED := 0
 
-OPENSSL_TARGET := VC-WIN64A
+LOCAL_LIBRARY := sprt
+# LOCAL_EXECUTABLE := sprt
 
-CONFIGURE := $(OPENSSL_TARGET) \
-	--prefix=$(SP_INSTALL_PREFIX) \
-	--release \
-	no-tests \
-	no-module \
-	no-legacy \
-	no-srtp \
-	no-srp \
-	no-dso \
-	no-docs \
-	no-filenames \
-	no-shared \
-	no-autoload-config \
-	no-makedepend
+LOCAL_PRIVATE_INCLUDE_PCH :=
 
-VCINIT := C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat
+LOCAL_MODULES_PATHS =
 
-undefine MAKEFLAGS
+LOCAL_MODULES ?= \
+	runtime_libc_wrapper \
+	runtime
 
-all:
-	$(call rule_rm,$(LIBNAME))
-	$(MKDIR) $(LIBNAME) | Out-Null
-	cd $(LIBNAME); perl ..\..\src\openssl\Configure $(CONFIGURE)
-	cmd.exe /c "`"$(VCINIT)`" x64 & cd /d `"$(LIBNAME)`" & nmake /f makefile"
-	cmd.exe /c "`"$(VCINIT)`" x64 & cd /d `"$(LIBNAME)`" & nmake /f makefile install"
-	$(call rule_rm,$(LIBNAME))
-	$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/libcrypto.lib,$(SP_INSTALL_PREFIX)/lib/crypto.lib)
-	$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/libssl.lib,$(SP_INSTALL_PREFIX)/lib/ssl.lib)
+LOCAL_ROOT = $(abspath $(dir $(LOCAL_MAKEFILE)))
 
-.PHONY: all
+LOCAL_SRCS_DIRS :=
+LOCAL_SRCS_OBJS :=
+
+LOCAL_INCLUDES_DIRS :=
+LOCAL_INCLUDES_OBJS :=
+
+LOCAL_MAIN := main.c
+
+LOCAL_OPTIMIZATION := -O3
+
+include $(STAPPLER_BUILD_ROOT)/universal.mk

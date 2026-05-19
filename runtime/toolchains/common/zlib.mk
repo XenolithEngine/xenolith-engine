@@ -43,6 +43,6 @@ all:
 	cd $(LIBNAME); cmake --install .
 	$(call rule_rm,$(LIBNAME))
 	$(if $(WINDOWS),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/zlib.lib))
-	$(if $(WINDOWS),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib//zlibstatic.lib,$(SP_INSTALL_PREFIX)/usr/lib/z.lib))
+	$(if $(WINDOWS),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/zs.lib,$(SP_INSTALL_PREFIX)/usr/lib/z.lib))
 
 .PHONY: all
