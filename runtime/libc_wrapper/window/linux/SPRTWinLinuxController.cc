@@ -20,18 +20,18 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/linux/SPRTWinLinuxController.h"
-#include "private/window/linux/SPRTWinLinuxDBusController.h"
-#include "private/window/linux/SPRTWinLinuxXcbConnection.h"
-#include "private/window/linux/SPRTWinLinuxXcbWindow.h"
-#include "private/window/linux/SPRTWinLinuxXcbLibrary.h"
-#include "private/window/linux/SPRTWinLinuxWaylandDisplay.h"
-#include "private/window/linux/SPRTWinLinuxWaylandWindow.h"
-#include "private/window/linux/SPRTWinLinuxWaylandLibrary.h"
-#include "private/window/linux/SPRTWinLinuxWaylandSeat.h"
-#include "private/window/linux/SPRTWinLinuxWaylandDataDevice.h"
-#include "private/window/linux/SPRTWinLinuxWaylandKdeDisplayConfigManager.h"
-#include "private/window/linux/SPRTWinLinuxXkbLibrary.h"
+#include "SPRTWinLinuxController.h"
+#include "dbus/SPRTWinLinuxDBusController.h"
+#include "xcb/SPRTWinLinuxXcbConnection.h"
+#include "xcb/SPRTWinLinuxXcbWindow.h"
+#include "xcb/SPRTWinLinuxXcbLibrary.h"
+#include "wayland/SPRTWinLinuxWaylandDisplay.h"
+#include "wayland/SPRTWinLinuxWaylandWindow.h"
+#include "wayland/SPRTWinLinuxWaylandLibrary.h"
+#include "wayland/SPRTWinLinuxWaylandSeat.h"
+#include "wayland/SPRTWinLinuxWaylandDataDevice.h"
+#include "wayland/SPRTWinLinuxWaylandKdeDisplayConfigManager.h"
+#include "SPRTWinLinuxXkbLibrary.h"
 
 #include <sprt/runtime/utils/verutils.h>
 

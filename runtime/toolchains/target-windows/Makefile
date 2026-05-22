@@ -25,11 +25,13 @@ MAKE_FILE := $(realpath $(lastword $(MAKEFILE_LIST)))
 MAKE_ROOT := $(dir $(MAKE_FILE))
 
 include $(dir $(THIS_FILE))../common/utils/detect-platform.mk
+include $(dir $(THIS_FILE))../common/utils/init-shell.mk
 
 TARGET_FILE := $(MAKE_ROOT)init-target.mk
 INSTALL_TARGET_FILE := $(MAKE_ROOT)install-target.mk
 
 TOOLCHAIN_OUTPUT_DIR ?= $(abspath $(MAKE_ROOT)intermediate)
+TOOLCHAIN_TARGETS ?= $(abspath $(MAKE_ROOT)targets)
 
 SP_OPT := -O3
 
@@ -42,23 +44,19 @@ LIBS := \
 	jpeg.lib \
 	png16.lib \
 	gif.lib \
-#	libwebp.lib \
-	libtiff.lib \
-	libfreetype.lib \
-	libharfbuzz.lib \
-	libsqlite3.lib \
-	libmbedtls.lib \
-	libnghttp3.lib \
-	libssl.lib \
-	libgost_engine.lib \
-	libcurl-openssl.lib \
-	libcurl-mbedtls.lib \
-	libzip.lib \
-	libiwasm-release.lib \
-	libiwasm-debug.lib \
+	webp.lib \
+	tiff.lib \
+	freetype.lib \
+	harfbuzz.lib \
+	sqlite3.lib \
+	nghttp3.lib \
+	ssl.lib \
+	gost_engine.lib \
+	curl-openssl.lib \
+	zip.lib
 
 INCLUDES := \
-#	spirv/unified1/spirv.h \
+	spirv/unified1/spirv.h \
 	vulkan/vulkan.h \
 	simde/simde-arch.h
 
@@ -66,7 +64,14 @@ ifndef SP_ARCH
 
 ARCHS := x86_64
 
+LIB_SRC_DIR := $(realpath $(MAKE_ROOT)../src)
+
+SP_ARCH_COMMON := \
+	LIB_SRC_DIR=$(LIB_SRC_DIR) \
+	SP_RUNTIME_ROOT=$(realpath $(MAKE_ROOT)/../..)
+
 SP_ARCH_x86_64_INFO_BASE := \
+	$(SP_ARCH_COMMON) \
 	SP_ARCH=x86_64 \
 	SP_RES_ARCH=x86_64 \
 	SP_ARCH_TARGET_CLANG=x86_64-pc-windows-msvc
@@ -76,7 +81,13 @@ SP_ARCH_x86_64_INFO := \
 	SP_TARGET=x86_64-pc-windows-msvc \
 	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-pc-windows-msvc
 
+SP_ARCH_x86_64_INSTALL := \
+	$(SP_ARCH_x86_64_INFO_BASE) \
+	T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-pc-windows-msvc \
+	T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-pc-windows-msvc
+
 SP_ARCH_aarch64_INFO_BASE := \
+	$(SP_ARCH_COMMON) \
 	SP_ARCH=aarch64 \
 	SP_RES_ARCH=aarch64 \
 	SP_ARCH_TARGET_CLANG=aarch64-pc-windows-msvc
@@ -86,6 +97,11 @@ SP_ARCH_aarch64_INFO := \
 	SP_TARGET=aarch64-pc-windows-msvc \
 	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-pc-windows-msvc
 
+SP_ARCH_aarch64_INSTALL := \
+	$(SP_ARCH_arm64_INFO_BASE) \
+	T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-pc-windows-msvc \
+	T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-pc-windows-msvc
+
 all: $(ARCHS)
 
 clean:
@@ -94,11 +110,13 @@ x86_64:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/x86_64-pc-windows-msvc/usr/include $(TOOLCHAIN_OUTPUT_DIR)/x86_64-pc-windows-msvc/usr/lib
 	$(MAKE) -f $(TARGET_FILE) $(SP_ARCH_x86_64_INFO)
 	$(MAKE) -f $(THIS_FILE) $(SP_ARCH_x86_64_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_ARCH_x86_64_INSTALL)
 
 aarch64:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-pc-windows-msvc/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-pc-windows-msvc/usr/lib
 	$(MAKE) -f $(TARGET_FILE) $(SP_ARCH_aarch64_INFO)
 	$(MAKE) -f $(THIS_FILE) $(SP_ARCH_aarch64_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_ARCH_aarch64_INSTALL)
 
 .PHONY: all x86_64 aarch64
 
@@ -111,6 +129,7 @@ SP_INSTALL_PREFIX ?= $(TOOLCHAIN_OUTPUT_DIR)
 SP_CC := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/cc)
 SP_CXX := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/c++)
 SP_AR := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/ar)
+SP_RC := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/llvm-rc)
 
 LIB_SRC_DIR := $(realpath $(MAKE_ROOT)../src)
 
@@ -125,13 +144,16 @@ FORWARD_VARS := \
 	SP_CC=$(SP_CC) \
 	SP_CXX=$(SP_CXX) \
 	SP_AR=$(SP_AR) \
+	SP_RC=$(SP_RC) \
 	SP_OPT="$(SP_OPT)" \
 	LIB_SRC_DIR=$(LIB_SRC_DIR) \
 	MAKE_ROOT=$(MAKE_ROOT)
 
-ARCH_LIBS = $(addprefix $(SP_INSTALL_PREFIX)/usr/lib/,$(LIBS))
 
-ARCH_INCLUDES  = $(addprefix $(SP_INSTALL_PREFIX)/include/,$(INCLUDES))
+ARCH_LIBS = \
+	$(addprefix $(SP_INSTALL_PREFIX)/usr/lib/,$(LIBS))
+
+ARCH_INCLUDES  = $(addprefix $(SP_INSTALL_PREFIX)/usr/include/,$(INCLUDES))
 
 ARCH_BINS  = $(addprefix $(SP_INSTALL_PREFIX)/bin/,$(BINS))
 
@@ -161,62 +183,53 @@ $(SP_INSTALL_PREFIX)/usr/lib/png16.lib:  ../common/libpng.mk
 $(SP_INSTALL_PREFIX)/usr/lib/gif.lib:  ../common/gif.mk
 	$(MAKE) -f  $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/webp.lib: $(MAKE_ROOT)libwebp.mk $(SP_INSTALL_PREFIX)/lib/png16.lib $(SP_INSTALL_PREFIX)/lib/jpeg.lib $(SP_INSTALL_PREFIX)/lib/gif.lib
-	$(MAKE) -f $(MAKE_ROOT)libwebp.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/lib/webp.lib:  ../common/libwebp.mk $(SP_INSTALL_PREFIX)/usr/lib/png16.lib $(SP_INSTALL_PREFIX)/usr/lib/jpeg.lib $(SP_INSTALL_PREFIX)/usr/lib/gif.lib
+	$(MAKE) -f  $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/tiff.lib: $(MAKE_ROOT)tiff.mk $(SP_INSTALL_PREFIX)/lib/webp.lib $(SP_INSTALL_PREFIX)/lib/lzma.lib $(SP_INSTALL_PREFIX)/lib/zstd.lib
-	$(MAKE) -f $(MAKE_ROOT)tiff.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/lib/tiff.lib:  ../common/tiff.mk $(SP_INSTALL_PREFIX)/usr/lib/webp.lib $(SP_INSTALL_PREFIX)/usr/lib/lzma.lib $(SP_INSTALL_PREFIX)/usr/lib/zstd.lib
+	$(MAKE) -f  $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/freetype.lib: $(MAKE_ROOT)freetype.mk $(SP_INSTALL_PREFIX)/lib/brotlienc.lib $(SP_INSTALL_PREFIX)/lib/png16.lib $(SP_INSTALL_PREFIX)/lib/bz2.lib
-	$(MAKE) -f $(MAKE_ROOT)freetype.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/lib/freetype.lib:  ../common/freetype.mk $(SP_INSTALL_PREFIX)/usr/lib/brotlienc.lib $(SP_INSTALL_PREFIX)/usr/lib/png16.lib $(SP_INSTALL_PREFIX)/usr/lib/bz2.lib
+	$(MAKE) -f  $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/harfbuzz.lib: $(MAKE_ROOT)harfbuzz.mk $(SP_INSTALL_PREFIX)/lib/freetype.lib
-	$(MAKE) -f $(MAKE_ROOT)harfbuzz.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/lib/harfbuzz.lib:  ../common/harfbuzz.mk $(SP_INSTALL_PREFIX)/usr/lib/freetype.lib
+	$(MAKE) -f  $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/sqlite3.lib: $(MAKE_ROOT)sqlite.mk
-	$(MAKE) -f $(MAKE_ROOT)sqlite.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/lib/sqlite3.lib: ../common/sqlite.mk
+	$(MAKE) -f  $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/mbedtls.lib: $(MAKE_ROOT)mbedtls.mk
-	$(MAKE) -f $(MAKE_ROOT)mbedtls.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/lib/nghttp3.lib: ../common/nghttp3.mk
+	$(MAKE) -f  $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/nghttp3.lib: $(MAKE_ROOT)nghttp3.mk
-	$(MAKE) -f $(MAKE_ROOT)nghttp3.mk $(FORWARD_VARS)
-
-$(SP_INSTALL_PREFIX)/lib/ssl.lib: $(MAKE_ROOT)openssl.mk
+$(SP_INSTALL_PREFIX)/usr/lib/ssl.lib: $(MAKE_ROOT)openssl.mk
 	$(MAKE) -f $(MAKE_ROOT)openssl.mk $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/gost_engine.lib: $(MAKE_ROOT)gost.mk $(SP_INSTALL_PREFIX)/lib/ssl.lib
-	$(MAKE) -f $(MAKE_ROOT)gost.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/lib/gost_engine.lib: ../common/gost.mk $(SP_INSTALL_PREFIX)/usr/lib/ssl.lib
+	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/curl-openssl.lib: $(MAKE_ROOT)curl.mk $(SP_INSTALL_PREFIX)/lib/ssl.lib
-	$(MAKE) -f $(MAKE_ROOT)curl.mk $(FORWARD_VARS) VARIANT=openssl
+$(SP_INSTALL_PREFIX)/usr/lib/curl-openssl.lib: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/ssl.lib
+	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
-$(SP_INSTALL_PREFIX)/lib/curl-mbedtls.lib: $(MAKE_ROOT)curl.mk $(SP_INSTALL_PREFIX)/lib/mbedtls.lib
+$(SP_INSTALL_PREFIX)/usr/lib/curl-mbedtls.lib: $(MAKE_ROOT)curl.mk $(SP_INSTALL_PREFIX)/usr/lib/mbedtls.lib
 	$(MAKE) -f $(MAKE_ROOT)curl.mk $(FORWARD_VARS) VARIANT=mbedtls
 
-$(SP_INSTALL_PREFIX)/lib/zip.lib: $(MAKE_ROOT)libzip.mk
-	$(MAKE) -f $(MAKE_ROOT)libzip.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/lib/zip.lib: ../common/libzip.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/lib/iwasm-release.lib $(SP_INSTALL_PREFIX)/lib/iwasm-debug.lib: $(MAKE_ROOT)wamr.mk $(SP_INSTALL_PREFIX)/lib/z.lib
+$(SP_INSTALL_PREFIX)/usr/lib/iwasm-release.lib $(SP_INSTALL_PREFIX)/usr/lib/iwasm-debug.lib: $(MAKE_ROOT)wamr.mk $(SP_INSTALL_PREFIX)/usr/lib/z.lib
 	$(MAKE) -f $(MAKE_ROOT)wamr.mk $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/include/vulkan/vulkan.h: $(MAKE_ROOT)vulkan-headers.mk
-	$(MAKE) -f $(MAKE_ROOT)vulkan-headers.mk $(FORWARD_VARS)
-	(Get-Item "$(SP_INSTALL_PREFIX)/include/vulkan/vulkan.h").LastWriteTime = $$(Get-Date);
+$(SP_INSTALL_PREFIX)/usr/include/vulkan/vulkan.h: ../common/vulkan-headers.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+	$(call rule_touch,$(SP_INSTALL_PREFIX)/usr//include/vulkan/vulkan.h)
 
-$(SP_INSTALL_PREFIX)/include/spirv/unified1/spirv.h: $(MAKE_ROOT)spirv-headers.mk
-	$(MAKE) -f $(MAKE_ROOT)spirv-headers.mk $(FORWARD_VARS)
-	(Get-Item "$(SP_INSTALL_PREFIX)/include/spirv/unified1/spirv.h").LastWriteTime = $$(Get-Date);
+$(SP_INSTALL_PREFIX)/usr/include/spirv/unified1/spirv.h: ../common/spirv-headers.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+	$(call rule_touch,$(SP_INSTALL_PREFIX)/usr/include/spirv/unified1/spirv.h)
 
-$(SP_INSTALL_PREFIX)/include/simde/simde-arch.h: $(MAKE_ROOT)simde.mk
-	$(MAKE) -f $(MAKE_ROOT)simde.mk $(FORWARD_VARS)
-	(Get-Item "$(SP_INSTALL_PREFIX)/include/simde/simde-arch.h").LastWriteTime = $$(Get-Date);
-
-$(SP_INSTALL_PREFIX)/bin/spirv-opt.exe: $(MAKE_ROOT)spirv-tools.mk $(SP_INSTALL_PREFIX)/include/spirv/unified1/spirv.h
-	$(MAKE) -f $(MAKE_ROOT)spirv-tools.mk $(FORWARD_VARS)
-
-$(SP_INSTALL_PREFIX)/bin/glslang.exe: $(MAKE_ROOT)glslang.mk $(SP_INSTALL_PREFIX)/bin/spirv-opt.exe $(SP_INSTALL_PREFIX)/include/vulkan/vulkan.h
-	$(MAKE) -f $(MAKE_ROOT)glslang.mk $(FORWARD_VARS)
+$(SP_INSTALL_PREFIX)/usr/include/simde/simde-arch.h: ../common/simde.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+	$(call rule_touch,$(SP_INSTALL_PREFIX)/usr//include/simde/simde-arch.h)
 
 $(SP_INSTALL_PREFIX)/share/licenses:
 	$(call rule_rm,$(SP_INSTALL_PREFIX)/share/licenses)

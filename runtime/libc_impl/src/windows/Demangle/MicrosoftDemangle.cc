@@ -1017,7 +1017,7 @@ void Demangler::memorizeIdentifier(IdentifierNode *Identifier) {
 	Identifier->output(OB, OF_Default);
 	sprt::StringView Owned = copyString(OB);
 	memorizeString(Owned);
-	sprt::free(OB.getBuffer());
+	free(OB.getBuffer());
 }
 
 IdentifierNode *Demangler::demangleTemplateInstantiationName(sprt::StringView &MangledName,
@@ -1341,12 +1341,12 @@ EncodedStringLiteralNode *Demangler::demangleStringLiteral(sprt::StringView &Man
 	// Prefix indicating the beginning of a string literal
 	if (!consumeFront(MangledName, "@_")) {
 		Error = true;
-		sprt::free(OB.getBuffer());
+		free(OB.getBuffer());
 		return nullptr;
 	}
 	if (MangledName.empty()) {
 		Error = true;
-		sprt::free(OB.getBuffer());
+		free(OB.getBuffer());
 		return nullptr;
 	}
 
@@ -1358,7 +1358,7 @@ EncodedStringLiteralNode *Demangler::demangleStringLiteral(sprt::StringView &Man
 	case '0': break;
 	default:
 		Error = true;
-		sprt::free(OB.getBuffer());
+		free(OB.getBuffer());
 		return nullptr;
 	}
 
@@ -1443,12 +1443,12 @@ EncodedStringLiteralNode *Demangler::demangleStringLiteral(sprt::StringView &Man
 	}
 
 	Result->DecodedString = copyString(OB);
-	sprt::free(OB.getBuffer());
+	free(OB.getBuffer());
 	return Result;
 
 StringLiteralError:
 	Error = true;
-	sprt::free(OB.getBuffer());
+	free(OB.getBuffer());
 	return nullptr;
 }
 
@@ -1523,7 +1523,7 @@ NamedIdentifierNode *Demangler::demangleLocallyScopedNamePiece(sprt::StringView 
 	OB << "::`" << Number << "'";
 
 	Identifier->Name = copyString(OB);
-	sprt::free(OB.getBuffer());
+	free(OB.getBuffer());
 	return Identifier;
 }
 
@@ -2425,7 +2425,7 @@ void Demangler::dumpBackReferences() {
 		sprt::StringView B = OB;
 		__sprt_printf("  [%d] - %.*s\n", (int)I, (int)B.size(), B.data());
 	}
-	sprt::free(OB.getBuffer());
+	free(OB.getBuffer());
 
 	if (Backrefs.FunctionParamCount > 0) {
 		__sprt_printf("\n");

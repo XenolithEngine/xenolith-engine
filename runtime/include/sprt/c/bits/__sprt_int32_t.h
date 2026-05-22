@@ -45,7 +45,7 @@ typedef __INT32_TYPE__ __SPRT_ID(int32_t);
 #endif
 
 #ifdef __INT32_FMTi__
-#define __SPRT_INT32_FMTo __INT32_FMTi__
+#define __SPRT_INT32_FMTi __INT32_FMTi__
 #else
 #error "Compiler-assisted __INT32_FMTi__ is not defined"
 #endif

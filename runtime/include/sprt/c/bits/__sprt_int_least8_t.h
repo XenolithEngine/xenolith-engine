@@ -45,7 +45,7 @@ typedef __INT_LEAST8_TYPE__ __SPRT_ID(int_least8_t);
 #endif
 
 #ifdef __INT_LEAST8_FMTi__
-#define __SPRT_INT_LEAST8_FMTo __INT_LEAST8_FMTi__
+#define __SPRT_INT_LEAST8_FMTi __INT_LEAST8_FMTi__
 #else
 #error "Compiler-assisted __INT_LEAST8_FMTi__ is not defined"
 #endif

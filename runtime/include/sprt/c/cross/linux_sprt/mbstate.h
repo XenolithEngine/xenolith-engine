@@ -16,7 +16,7 @@ typedef unsigned long __SPRT_ID(wctype_t);
 #ifdef __cplusplus
 typedef wchar_t __SPRT_ID(wchar_t);
 #else
-typedef unsigned int __SPRT_ID(wchar_t);
+typedef __WCHAR_TYPE__ __SPRT_ID(wchar_t);
 #endif
 
 typedef struct {

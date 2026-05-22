@@ -31,7 +31,7 @@ THE SOFTWARE.
 
 namespace sprt {
 
-static int _clock_getres(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
+static int clock_getres(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
 	struct timespec rem;
 	auto ret = ::clock_getres(clockid_t(clk_id), &rem);
 	if (out) {
@@ -41,7 +41,7 @@ static int _clock_getres(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
 	return ret;
 }
 
-static int _clock_gettime(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
+static int clock_gettime(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
 	struct timespec rem;
 	auto ret = ::clock_gettime(clockid_t(clk_id), &rem);
 	if (out) {

@@ -203,26 +203,30 @@ constexpr void local_deallocate(T *t, size_t n, size_t nbytes = 0) {
 #define __SPRT_POP_ALLOW_CXXABI_ALLOC \
     _Pragma("clang diagnostic pop")
 
+#define __SPRT_DISALLOW_NEW \
+	[[deprecated("It's unsafe to use direct new within freestanding code, use, new (sprt::nothrow)")]]
+
+#define __SPRT_DISALLOW_DELETE \
+	[[deprecated("It's unsafe to use direct delete within freestanding code, use, sprt::__delete()")]]
+
 #if __SPRT_USE_STL == 0
 
-[[nodiscard]] [[deprecated(
-		"It's unsafe to use direct new within freestanding code, use, new (sprt::nothrow)")]]
-void *operator new(sprt::size_t);
+[[nodiscard]]
+__SPRT_DISALLOW_NEW void *operator new(sprt::size_t);
 
-[[nodiscard]] [[deprecated(
-		"It's unsafe to use direct new within freestanding code, use, new (sprt::nothrow)")]]
-void *operator new[](sprt::size_t);
+[[nodiscard]]
+__SPRT_DISALLOW_NEW void *operator new[](sprt::size_t);
 
-[[deprecated("It's unsafe to use direct delete within freestanding code, use, sprt::__delete()")]]
+__SPRT_DISALLOW_DELETE
 void operator delete(void *) noexcept;
 
-[[deprecated("It's unsafe to use direct delete within freestanding code, use, sprt::__delete()")]]
+__SPRT_DISALLOW_DELETE
 void operator delete[](void *) noexcept;
 
-[[deprecated("It's unsafe to use direct delete within freestanding code, use, sprt::__delete()")]]
+__SPRT_DISALLOW_DELETE
 void operator delete(void *, sprt::size_t) noexcept;
 
-[[deprecated("It's unsafe to use direct delete within freestanding code, use, sprt::__delete()")]]
+__SPRT_DISALLOW_DELETE
 void operator delete[](void *, sprt::size_t) noexcept;
 
 [[nodiscard]]
@@ -367,6 +371,7 @@ struct SPRT_API AllocBase : public AllocPlacement {
 	static void operator delete[](void *ptr) noexcept {
 		__sprt_free(ptr); //
 	}
+
 	static void operator delete(void *ptr, sprt::align_val_t al) noexcept {
 		if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
 			__sprt_free(ptr);

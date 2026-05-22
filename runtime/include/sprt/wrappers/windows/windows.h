@@ -28,6 +28,15 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/basic_api.h>
 #include <sprt/wrappers/windows/file_api.h>
 #include <sprt/wrappers/windows/thread_api.h>
+#include <sprt/wrappers/windows/dl_api.h>
+#include <sprt/wrappers/windows/message_api.h>
+#include <sprt/wrappers/windows/process_api.h>
+#include <sprt/wrappers/windows/time_api.h>
+#include <sprt/wrappers/windows/context_api.h>
+#include <sprt/wrappers/windows/user_api.h>
+#include <sprt/wrappers/windows/security_api.h>
+
+#include <sprt/wrappers/windows/winver.h>
 
 #include <sprt/wrappers/windows/__sprt_threads.h>
 
@@ -37,6 +46,8 @@ THE SOFTWARE.
 /* ============================================================ */
 
 // clang-format off
+#define WINBASEAPI
+
 #define ALL_PROCESSOR_GROUPS        0xffff
 
 #define LOCALE_NAME_MAX_LENGTH   85
@@ -258,6 +269,11 @@ THE SOFTWARE.
 
 #define TIMER_ALL_ACCESS (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | TIMER_QUERY_STATE | TIMER_MODIFY_STATE)
 
+#define MB_PRECOMPOSED            0x00000001  // DEPRECATED: use single precomposed characters when possible.
+#define MB_COMPOSITE              0x00000002  // DEPRECATED: use multiple discrete characters when possible.
+#define MB_USEGLYPHCHARS          0x00000004  // DEPRECATED: use glyph chars, not ctrl chars
+#define MB_ERR_INVALID_CHARS      0x00000008  // error for invalid chars
+
 // clang-format on
 
 typedef DWORD LCTYPE;
@@ -375,6 +391,13 @@ typedef struct _REASON_CONTEXT {
 	} Reason;
 } REASON_CONTEXT, *PREASON_CONTEXT;
 
+typedef struct _CONSOLE_READCONSOLE_CONTROL {
+	ULONG nLength;
+	ULONG nInitialChars;
+	ULONG dwCtrlWakeupMask;
+	ULONG dwControlKeyState;
+} CONSOLE_READCONSOLE_CONTROL, *PCONSOLE_READCONSOLE_CONTROL;
+
 __SPRT_BEGIN_DECL
 
 /**
@@ -385,6 +408,8 @@ __SPRT_BEGIN_DECL
  * @see https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitsingleobject
  */
 WINAPI DWORD WaitForSingleObject(HANDLE hHandle, DWORD dwMilliseconds);
+
+WINAPI DWORD WaitForSingleObjectEx(HANDLE hHandle, DWORD dwMilliseconds, BOOL bAlertable);
 
 /**
  * Duplicates an object handle.
@@ -649,6 +674,9 @@ WINAPI int CompareStringEx(LPCWSTR lpLocaleName, DWORD dwCmpFlags, LPCWCH lpStri
 		LPCWCH lpString2, int cchCount2, LPNLSVERSIONINFO lpVersionInformation, LPVOID lpReserved,
 		LPARAM lParam);
 
+WINAPI int MultiByteToWideChar(UINT CodePage, DWORD dwFlags, LPCCH lpMultiByteStr, int cbMultiByte,
+		LPWSTR lpWideCharStr, int cchWideChar);
+
 WINAPI int WideCharToMultiByte(UINT CodePage, DWORD dwFlags, LPCWCH lpWideCharStr, int cchWideChar,
 		LPSTR lpMultiByteStr, int cbMultiByte, LPCCH lpDefaultChar, LPBOOL lpUsedDefaultChar);
 
@@ -676,6 +704,32 @@ WINAPI int CancelEventCompletion(void *hPacket, int cancel);
 
 WINAPI void *ReportEventAsCompletion(void *hIOCP, void *hEvent, DWORD dwNumberOfBytesTransferred,
 		UINT_PTR dwCompletionKey, void *lpOverlapped);
+
+WINAPI UINT GetACP(void);
+
+WINAPI BOOL ReadConsoleA(HANDLE hConsoleInput, LPVOID lpBuffer, DWORD nNumberOfCharsToRead,
+		LPDWORD lpNumberOfCharsRead, PCONSOLE_READCONSOLE_CONTROL pInputControl);
+
+WINAPI BOOL ReadConsoleW(HANDLE hConsoleInput, LPVOID lpBuffer, DWORD nNumberOfCharsToRead,
+		LPDWORD lpNumberOfCharsRead, PCONSOLE_READCONSOLE_CONTROL pInputControl);
+
+WINAPI UINT GetSystemDirectoryA(LPSTR lpBuffer, UINT uSize);
+
+WINAPI UINT GetSystemDirectoryW(LPWSTR lpBuffer, UINT uSize);
+
+WINAPI DWORD WaitForMultipleObjects(DWORD nCount, const HANDLE *lpHandles, BOOL bWaitAll,
+		DWORD dwMilliseconds);
+
+WINAPI BOOL PeekNamedPipe(HANDLE hNamedPipe, LPVOID lpBuffer, DWORD nBufferSize,
+		LPDWORD lpBytesRead, LPDWORD lpTotalBytesAvail, LPDWORD lpBytesLeftThisMessage);
+
+#ifdef UNICODE
+#define ReadConsole  ReadConsoleW
+#define GetSystemDirectory  GetSystemDirectoryW
+#else
+#define ReadConsole  ReadConsoleA
+#define GetSystemDirectory  GetSystemDirectoryA
+#endif // !UNICODE
 
 __SPRT_END_DECL
 

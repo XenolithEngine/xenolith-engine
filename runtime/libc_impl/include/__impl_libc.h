@@ -42,6 +42,8 @@ THE SOFTWARE.
 #include "sys/stat.h"
 #include "sys/uio.h"
 
+#include "../../core/include/__plock.h"
+
 namespace sprt {
 
 // static limit of 32k
@@ -113,13 +115,6 @@ static_assert(sizeof(__fd_dispatch) == 4'096);
 // 16k-page optimized
 static_assert(sizeof(__fd_page) == FD_MEMORY_PAGE_SIZE);
 
-struct __libc_plock {
-	__rmutex_data data;
-	uint32_t refcount = 0;
-	uint32_t flags = 0;
-};
-
-
 template <typename Key, typename Value, typename Hash = sprt::hash<void>,
 		typename Pred = sprt::equal_to<void>>
 using __local_unordered_map =
@@ -161,15 +156,14 @@ struct __libc {
 	__fd_ops fdFileOps;
 	__fd_ops fdDirOps;
 
-	mutable mutex plockMutex;
-	__local_unordered_map<sprt_plock_t, __libc_plock *> plocks;
-
 	atomic<mode_t> umask;
 
 	pid_t mainThread = 0;
 
 	mutex tzMutex;
 	__local_unordered_set<StringView> tzCache;
+
+	__plock_storage plockStorage;
 
 	__libc();
 	~__libc();

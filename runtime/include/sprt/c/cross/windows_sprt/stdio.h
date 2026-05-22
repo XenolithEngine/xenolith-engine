@@ -3,4 +3,9 @@
 #define __SPRT_FILENAME_MAX 4096
 #define __SPRT_L_tmpnam 260
 #define __SPRT_UNGET 8
+
+#define __SPRT_IOFBF 0
+#define __SPRT_IOLBF 1
+#define __SPRT_IONBF 2
+
 // clang-format on

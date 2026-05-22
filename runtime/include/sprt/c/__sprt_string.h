@@ -250,6 +250,8 @@ SPRT_FORCEINLINE __SPRT_ID(size_t) __SPRT_ID(strnlen)(const char *str, __SPRT_ID
 
 #define __sprt_strerror __SPRT_ID(strerror_impl)
 
+SPRT_API char *__SPRT_ID(strdup)(const char *str);
+
 SPRT_API __SPRT_ID(errno_t)
 		__SPRT_ID(strerror_s)(char *buf, __SPRT_ID(rsize_t) bufsz, __SPRT_ID(errno_t) errnum);
 

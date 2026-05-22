@@ -20,11 +20,11 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/linux/SPRTWinLinuxXcbConnection.h"
-#include "private/window/linux/SPRTWinLinux.h"
-#include "private/window/linux/SPRTWinLinuxXcbDisplayConfigManager.h"
-#include "private/window/linux/SPRTWinLinuxXcbSupportWindow.h"
-#include "private/window/linux/SPRTWinLinuxXcbWindow.h"
+#include "SPRTWinLinuxXcbConnection.h"
+#include "../SPRTWinLinux.h"
+#include "SPRTWinLinuxXcbDisplayConfigManager.h"
+#include "SPRTWinLinuxXcbSupportWindow.h"
+#include "SPRTWinLinuxXcbWindow.h"
 
 #include <sprt/runtime/detail/emplace_ordered.h>
 #include <sprt/runtime/log.h>

@@ -29,6 +29,7 @@ MAKE_ROOT := $(dir $(MAKE_FILE))
 INSTALL_TARGET_FILE := $(MAKE_ROOT)install-target.mk
 
 OUT_SYSROOT ?= $(abspath $(MAKE_ROOT)intermediate)
+TOOLCHAIN_TARGETS ?= $(abspath $(MAKE_ROOT)targets)
 
 include $(MAKE_ROOT)../common/utils/detect-platform.mk
 

@@ -28,7 +28,7 @@
 #if __SPRT_RUNTIME_CONFIG_HAVE_WINDOW
 
 #if SPRT_LINUX
-#include "private/window/linux/SPRTWinLinuxController.h"
+#include "../libc_wrapper/window/linux/SPRTWinLinuxController.h"
 #endif
 
 #if SPRT_ANDROID

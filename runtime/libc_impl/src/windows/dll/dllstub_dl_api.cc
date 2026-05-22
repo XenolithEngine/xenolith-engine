@@ -45,6 +45,12 @@ HMODULE LoadLibraryW(LPCWSTR lpLibFileName) {
 	return loader->__LoadLibraryW(lpLibFileName);
 }
 
+HMODULE LoadLibraryA(LPCSTR lpLibFileName) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&LoadLibraryA)>(loader->kernel32.LoadLibraryA,
+			lpLibFileName);
+}
+
 HMODULE LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, DWORD dwFlags) {
 	auto loader = sprt::DllLoader::get();
 	return loader->kernel32.call<decltype(&LoadLibraryExW)>(loader->kernel32.LoadLibraryExW,

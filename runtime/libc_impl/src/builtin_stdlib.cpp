@@ -76,3 +76,7 @@ __SPRT_C_FUNC unsigned long long __SPRT_ID(
 		strtoull_impl)(const char *__SPRT_RESTRICT buf, char **__SPRT_RESTRICT out, int base) {
 	return strtoull(buf, out, base);
 }
+
+__SPRT_C_FUNC size_t malloc_usable_size(const void *ptr) __SPRT_NOEXCEPT;
+
+__SPRT_C_FUNC size_t _msize(void *ptr) __SPRT_NOEXCEPT { return malloc_usable_size(ptr); }

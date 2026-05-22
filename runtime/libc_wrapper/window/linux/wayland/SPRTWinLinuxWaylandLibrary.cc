@@ -20,8 +20,8 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/linux/SPRTWinLinuxWaylandLibrary.h"
-#include "private/window/linux/SPRTWinLinuxDBusLibrary.h"
+#include "SPRTWinLinuxWaylandLibrary.h"
+#include "../dbus/SPRTWinLinuxDBusLibrary.h"
 
 #include <sprt/c/__sprt_assert.h>
 

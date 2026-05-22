@@ -70,7 +70,17 @@ WINAPI VOID GetSystemTimeAsFileTime(LPFILETIME lpSystemTimeAsFileTime) {
 			loader->kernel32.GetSystemTimeAsFileTime, lpSystemTimeAsFileTime);
 }
 
+WINAPI VOID GetSystemTime(LPSYSTEMTIME lpSystemTime) {
+	auto loader = sprt::DllLoader::get();
+	loader->kernel32.call<decltype(&GetSystemTime)>(loader->kernel32.GetSystemTime, lpSystemTime);
+}
+
 // ---- Tick Count Functions (kernel32) ----
+
+WINAPI DWORD GetTickCount() {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetTickCount)>(loader->kernel32.GetTickCount);
+}
 
 WINAPI ULONGLONG GetTickCount64() {
 	auto loader = sprt::DllLoader::get();

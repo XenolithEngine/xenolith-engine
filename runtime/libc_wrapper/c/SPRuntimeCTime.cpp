@@ -41,6 +41,10 @@ THE SOFTWARE.
 #include "locale.h"
 #include "time.h"
 #else
+#include <time.h>
+
+#include "time/time_internals.h"
+
 #if SPRT_MACOS
 #define CLOCK_MONOTONIC_COARSE CLOCK_MONOTONIC_RAW_APPROX
 #define CLOCK_BOOTTIME CLOCK_UPTIME_RAW

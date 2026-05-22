@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <stdint.h>
+#include <sprt/wrappers/libc/inttypes.h>
 
 #endif
 

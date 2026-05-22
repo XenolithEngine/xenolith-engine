@@ -112,10 +112,11 @@ SPRT_API void __SPRT_ID(free_impl)(void *) __SPRT_NOEXCEPT;
 #define __sprt_free __SPRT_ID(free_impl)
 
 SPRT_API
-void __SPRT_ID(free_sized)(void *value, size_t size) __SPRT_NOEXCEPT;
+void __SPRT_ID(free_sized)(void *value, __SPRT_ID(size_t) size) __SPRT_NOEXCEPT;
 
 SPRT_API
-void __SPRT_ID(free_aligned_sized)(void *value, size_t alignment, size_t size) __SPRT_NOEXCEPT;
+void __SPRT_ID(free_aligned_sized)(void *value, __SPRT_ID(size_t) alignment,
+		__SPRT_ID(size_t) size) __SPRT_NOEXCEPT;
 
 SPRT_API void *__SPRT_ID(malloc_impl)(__SPRT_ID(size_t)) __SPRT_MALLOC __SPRT_NOEXCEPT;
 #define __sprt_malloc __SPRT_ID(malloc_impl)
@@ -132,9 +133,9 @@ SPRT_API void *__SPRT_ID(
 
 SPRT_API void __SPRT_ID(aligned_free)(void *) __SPRT_MALLOC;
 
-SPRT_API void *__SPRT_ID(local_alloc)(size_t size) __SPRT_NOEXCEPT;
+SPRT_API void *__SPRT_ID(local_alloc)(__SPRT_ID(size_t) size) __SPRT_NOEXCEPT;
 
-SPRT_API void __SPRT_ID(local_free)(void *value, size_t size) __SPRT_NOEXCEPT;
+SPRT_API void __SPRT_ID(local_free)(void *value, __SPRT_ID(size_t) size) __SPRT_NOEXCEPT;
 
 SPRT_API __SPRT_NORETURN void __SPRT_ID(abort_impl)(void);
 

@@ -174,7 +174,7 @@ inline auto AllocatorPool<T>::operator=(AllocatorPool<B> &&a) noexcept -> Alloca
 template <typename T>
 inline auto AllocatorPool<T>::allocate(size_t n) const noexcept -> T * {
 	size_t size = sizeof(T) * n;
-	auto ptr = static_cast<T *>(memory::pool::alloc(pool_ptr(pool), size, alignof(T)));
+	auto ptr = static_cast<T *>(memory::pool::alloc(pool, size, alignof(T)));
 
 	sprt_passert(ptr, "allocation should always be successful");
 
@@ -259,8 +259,8 @@ inline void AllocatorPool<T>::construct(pointer p, Args &&...args) const noexcep
 
 		if constexpr (Allocator_protect_construct<T>::value) {
 			perform_conditional([&] {
-				new ((T *)p, sprt::nothrow) T(sprt::forward<Args>(args)...);
-			}, pool_ptr(pool));
+				new ((T *)p, sprt::nothrow) T(sprt::forward<Args>(args)...); //
+			}, pool);
 			return;
 		}
 		new ((T *)p, sprt::nothrow) T(sprt::forward<Args>(args)...);
@@ -273,7 +273,7 @@ inline void AllocatorPool<T>::destroy(pointer p) const noexcept {
 		// do nothing
 	} else {
 		if constexpr (Allocator_protect_construct<T>::value) {
-			perform_conditional([&] { p->~T(); }, pool_ptr(pool));
+			perform_conditional([&] { p->~T(); }, pool);
 			return;
 		}
 
@@ -288,8 +288,8 @@ inline void AllocatorPool<T>::destroy(pointer p, size_t size) const noexcept {
 	} else {
 		if constexpr (Allocator_protect_construct<T>::value) {
 			perform_conditional([&] {
-				for (size_t i = 0; i < size; ++i) { (p + i)->~T(); }
-			}, pool_ptr(pool));
+				for (size_t i = 0; i < size; ++i) { (p + i)->~T(); } //
+			}, pool);
 			return;
 		}
 

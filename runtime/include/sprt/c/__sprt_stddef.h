@@ -28,10 +28,16 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_ptrdiff_t.h>
 #include <sprt/c/bits/__sprt_null.h>
 #include <sprt/c/cross/__sprt_mbstate.h>
+#include <sprt/c/bits/__sprt_uintptr_t.h>
+#include <sprt/c/bits/__sprt_intptr_t.h>
 
-#if __cplusplus || __SPRT_STDC_23__
+#if defined(__cplusplus)
+typedef decltype(nullptr) __SPRT_ID(nullptr_t);
+#elif __SPRT_STDC_23__
 typedef typeof(nullptr) __SPRT_ID(nullptr_t);
 #endif
+
+typedef int __SPRT_ID(errno_t);
 
 typedef struct {
 	long long __ll;

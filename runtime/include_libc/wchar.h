@@ -30,6 +30,7 @@ THE SOFTWARE.
 #else
 
 #include <sprt/c/__sprt_wchar.h>
+#include <sprt/c/__sprt_wctype.h>
 #include <sprt/c/__sprt_stdarg.h>
 
 #ifndef __cplusplus
@@ -376,7 +377,7 @@ int wprintf(const wchar_t *__SPRT_RESTRICT fmt, ...) SPRT_UMBRELLA_END
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = ::__sprt_vwprintf(fmt, list);
+	auto ret = __sprt_vwprintf(fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -391,7 +392,7 @@ int fwprintf(__SPRT_ID(FILE) * __SPRT_RESTRICT f, const wchar_t *__SPRT_RESTRICT
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = ::__sprt_vfwprintf(f, fmt, list);
+	auto ret = __sprt_vfwprintf(f, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -406,7 +407,37 @@ int swprintf(wchar_t *__SPRT_RESTRICT buf, __SPRT_ID(size_t) size,
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = ::__sprt_vswprintf(buf, size, fmt, list);
+	auto ret = __sprt_vswprintf(buf, size, fmt, list);
+
+	__sprt_va_end(list);
+	return ret;
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int snwprintf(wchar_t *__SPRT_RESTRICT buf, __SPRT_ID(size_t) size,
+		const wchar_t *__SPRT_RESTRICT fmt, ...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt_va_list list;
+	__sprt_va_start(list, fmt);
+
+	auto ret = __sprt_vswprintf(buf, size, fmt, list);
+
+	__sprt_va_end(list);
+	return ret;
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int _snwprintf(wchar_t *__SPRT_RESTRICT buf, __SPRT_ID(size_t) size,
+		const wchar_t *__SPRT_RESTRICT fmt, ...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__sprt_va_list list;
+	__sprt_va_start(list, fmt);
+
+	auto ret = __sprt_vswprintf(buf, size, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -417,7 +448,7 @@ SPRT_UMBRELLA_FUNC
 int vwprintf(const wchar_t *__SPRT_RESTRICT fmt, __sprt_va_list list) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return ::__sprt_vwprintf(fmt, list);
+	return __sprt_vwprintf(fmt, list);
 }
 #endif
 
@@ -426,7 +457,7 @@ int vfwprintf(__SPRT_ID(FILE) * __SPRT_RESTRICT f, const wchar_t *__SPRT_RESTRIC
 		__sprt_va_list list) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return ::__sprt_vfwprintf(f, fmt, list);
+	return __sprt_vfwprintf(f, fmt, list);
 }
 #endif
 
@@ -435,7 +466,7 @@ int vswprintf(wchar_t *__SPRT_RESTRICT buf, __SPRT_ID(size_t) size,
 		const wchar_t *__SPRT_RESTRICT fmt, __sprt_va_list list) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return ::__sprt_vswprintf(buf, size, fmt, list);
+	return __sprt_vswprintf(buf, size, fmt, list);
 }
 #endif
 
@@ -446,7 +477,7 @@ int wscanf(const wchar_t *__SPRT_RESTRICT fmt, ...) SPRT_UMBRELLA_END
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = ::__sprt_vwscanf(fmt, list);
+	auto ret = __sprt_vwscanf(fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -461,7 +492,7 @@ int fwscanf(__SPRT_ID(FILE) * __SPRT_RESTRICT f, const wchar_t *__SPRT_RESTRICT 
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = ::__sprt_vfwscanf(f, fmt, list);
+	auto ret = __sprt_vfwscanf(f, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -476,7 +507,7 @@ int swscanf(const wchar_t *__SPRT_RESTRICT buf, const wchar_t *__SPRT_RESTRICT f
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = ::__sprt_vswscanf(buf, fmt, list);
+	auto ret = __sprt_vswscanf(buf, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -487,7 +518,7 @@ SPRT_UMBRELLA_FUNC
 int vwscanf(const wchar_t *__SPRT_RESTRICT fmt, __sprt_va_list list) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return ::__sprt_vwscanf(fmt, list);
+	return __sprt_vwscanf(fmt, list);
 }
 #endif
 
@@ -496,7 +527,7 @@ int vfwscanf(__SPRT_ID(FILE) * __SPRT_RESTRICT f, const wchar_t *__SPRT_RESTRICT
 		__sprt_va_list list) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return ::__sprt_vfwscanf(f, fmt, list);
+	return __sprt_vfwscanf(f, fmt, list);
 }
 #endif
 
@@ -505,7 +536,7 @@ int vswscanf(const wchar_t *__SPRT_RESTRICT buf, const wchar_t *__SPRT_RESTRICT 
 		__sprt_va_list list) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return ::__sprt_vswscanf(buf, fmt, list);
+	return __sprt_vswscanf(buf, fmt, list);
 }
 #endif
 
@@ -703,6 +734,14 @@ wchar_t *wcsdup(const wchar_t *value) SPRT_UMBRELLA_END
 #endif
 
 SPRT_UMBRELLA_FUNC
+wchar_t *_wcsdup(const wchar_t *value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcsdup(value);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
 size_t wcsnlen(const wchar_t *ptr, size_t value) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
@@ -808,6 +847,14 @@ wint_t towupper(wint_t c) SPRT_UMBRELLA_END
 	return __sprt_towupper(c);
 }
 #endif
+
+SPRT_API int wcscpy_s(wchar_t *dest, size_t dest_size, const wchar_t *src);
+
+SPRT_API int wcsncpy_s(wchar_t *strDest, size_t numberOfElements, const wchar_t *strSource,
+		size_t count);
+
+SPRT_API int wcstombs_s(size_t *pReturnValue, char *mbstr, size_t sizeInBytes, const wchar_t *wcstr,
+		size_t count);
 
 __SPRT_END_DECL
 

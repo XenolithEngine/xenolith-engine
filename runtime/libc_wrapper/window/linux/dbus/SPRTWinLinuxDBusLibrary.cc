@@ -20,7 +20,7 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/linux/SPRTWinLinuxDBusLibrary.h"
+#include "SPRTWinLinuxDBusLibrary.h"
 
 #include <string.h>
 

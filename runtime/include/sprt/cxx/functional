@@ -27,6 +27,8 @@ THE SOFTWARE.
 #include <sprt/cxx/__utility/common.h>
 #include <sprt/cxx/__functional/compare.h>
 
+#include <sprt/cxx/detail/hash.h>
+
 namespace sprt {
 
 template <typename Type, typename _Up, typename = void>

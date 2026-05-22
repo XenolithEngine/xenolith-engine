@@ -170,7 +170,7 @@ typedef struct _UNWIND_INFO {
 } UNWIND_INFO, *PUNWIND_INFO;
 
 typedef struct SPRT_ALIGNAS(16) _SETJMP_FLOAT128 {
-	unsigned __int64 Part[2];
+	__uint64 Part[2];
 } SETJMP_FLOAT128;
 
 #define _JBLEN  24
@@ -303,17 +303,17 @@ typedef struct _DISPATCHER_CONTEXT {
 } DISPATCHER_CONTEXT, *PDISPATCHER_CONTEXT;
 
 struct SPRT_ALIGNAS(16) _JUMP_BUFFER {
-	unsigned __int64 Frame;
-	unsigned __int64 Rbx;
-	unsigned __int64 Rsp;
-	unsigned __int64 Rbp;
-	unsigned __int64 Rsi;
-	unsigned __int64 Rdi;
-	unsigned __int64 R12;
-	unsigned __int64 R13;
-	unsigned __int64 R14;
-	unsigned __int64 R15;
-	unsigned __int64 Rip;
+	__uint64 Frame;
+	__uint64 Rbx;
+	__uint64 Rsp;
+	__uint64 Rbp;
+	__uint64 Rsi;
+	__uint64 Rdi;
+	__uint64 R12;
+	__uint64 R13;
+	__uint64 R14;
+	__uint64 R15;
+	__uint64 Rip;
 	unsigned long MxCsr;
 	unsigned short FpCsr;
 	unsigned short Spare;
@@ -342,7 +342,7 @@ typedef struct _IMAGE_RUNTIME_FUNCTION_ENTRY {
 #elif __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
 
 #define _JBLEN  24
-#define _JBTYPE unsigned __int64
+#define _JBTYPE __uint64
 
 #define ARM_MAX_BREAKPOINTS     8
 #define ARM_MAX_WATCHPOINTS     1
@@ -434,8 +434,6 @@ typedef struct _IMAGE_RUNTIME_FUNCTION_ENTRY {
 
 #endif
 
-typedef _JBTYPE jmp_buf[_JBLEN];
-
 typedef struct _EXCEPTION_RECORD {
 	DWORD ExceptionCode;
 	DWORD ExceptionFlags;
@@ -472,6 +470,17 @@ typedef struct _EXCEPTION_POINTERS {
 
 typedef LONG (*PVECTORED_EXCEPTION_HANDLER)(PEXCEPTION_POINTERS ExceptionInfo);
 
+typedef struct _NT_TIB {
+	struct _EXCEPTION_REGISTRATION_RECORD *ExceptionList;
+	PVOID StackBase;
+	PVOID StackLimit;
+	PVOID SubSystemTib;
+	PVOID FiberData;
+	PVOID ArbitraryUserPointer;
+	struct _NT_TIB *Self;
+} NT_TIB;
+typedef NT_TIB *PNT_TIB;
+
 __SPRT_BEGIN_DECL
 
 VOID RtlCaptureContext(PCONTEXT ContextRecord);
@@ -484,6 +493,7 @@ PRUNTIME_FUNCTION RtlLookupFunctionEntry(DWORD64 ControlPc, PDWORD64 ImageBase,
 VOID RtlUnwindEx(PVOID TargetFrame, PVOID TargetIp, PEXCEPTION_RECORD ExceptionRecord,
 		PVOID ReturnValue, PCONTEXT ContextRecord, PUNWIND_HISTORY_TABLE HistoryTable);
 
+__SPRT_DLLIMPORT
 PEXCEPTION_ROUTINE RtlVirtualUnwind(DWORD HandlerType, DWORD64 ImageBase, DWORD64 ControlPc,
 		PRUNTIME_FUNCTION FunctionEntry, PCONTEXT ContextRecord, PVOID *HandlerData,
 		PDWORD64 EstablisherFrame, PVOID ContextPointers);
@@ -501,10 +511,36 @@ WINAPI ULONG RemoveVectoredContinueHandler(PVOID Handle);
 
 WINAPI NTSTATUS NtContinueEx(CONTEXT *context, void *args);
 
+WINAPI VOID RaiseException(DWORD dwExceptionCode, DWORD dwExceptionFlags, DWORD nNumberOfArguments,
+		const ULONG_PTR *lpArguments);
+
+__SPRT_C_FUNC unsigned __int64 __readgsqword(unsigned long);
+__SPRT_C_FUNC unsigned short __readgsword(unsigned long);
+
+SPRT_FORCEINLINE PVOID GetCurrentFiber(VOID) {
+	return (PVOID)__readgsqword(FIELD_OFFSET(NT_TIB, FiberData));
+}
+
+SPRT_FORCEINLINE PVOID GetFiberData(VOID) { return *(PVOID *)GetCurrentFiber(); }
+
 // Function prototypes
+// When <setjmp is included - this should not be visible
+#ifndef CORE_RUNTIME_INCLUDE_LIBC_SETJMP_H_
 __attribute__((returns_twice)) int setjmp(struct _JUMP_BUFFER *_Buf, void *);
 
 __SPRT_NORETURN void __cdecl longjmp(struct _JUMP_BUFFER *, int _Value);
+#endif
+
+#define GetExceptionCode            _exception_code
+#define exception_code              _exception_code
+#define GetExceptionInformation()   ((struct _EXCEPTION_POINTERS *)_exception_info())
+#define exception_info()            ((struct _EXCEPTION_POINTERS *)_exception_info())
+#define AbnormalTermination         _abnormal_termination
+#define abnormal_termination        _abnormal_termination
+
+__SPRT_C_FUNC unsigned long _exception_code(void);
+__SPRT_C_FUNC void *_exception_info(void);
+__SPRT_C_FUNC int _abnormal_termination(void);
 
 __SPRT_END_DECL
 

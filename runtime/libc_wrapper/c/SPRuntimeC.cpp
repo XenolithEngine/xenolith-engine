@@ -47,7 +47,6 @@ THE SOFTWARE.
 #include "common/errno.cc"
 #include "common/fenv.cc"
 #include "common/signal.cc"
-#include "common/uname.cc"
 #include "common/abort.cc"
 #include "common/locale.cc"
 #include "common/rand.cc"

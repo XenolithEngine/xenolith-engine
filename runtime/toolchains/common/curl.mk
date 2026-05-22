@@ -27,6 +27,11 @@ LIBNAME = curl
 SP_USER_CFLAGS := -DNGHTTP3_STATICLIB
 SP_USER_CXXFLAGS := -DNGHTTP3_STATICLIB
 
+ifdef WINDOWS
+SP_USER_CFLAGS += -DSIZEOF_CURL_OFF_T=8 -Wno-incompatible-pointer-types-discards-qualifiers -Wno-cast-function-type-strict
+SP_USER_CXXFLAGS += -DSIZEOF_CURL_OFF_T=8 -Wno-incompatible-pointer-types-discards-qualifiers -Wno-cast-function-type-strict
+endif
+
 include ../common/configure.mk
 
 CONFIGURE := \
@@ -79,7 +84,9 @@ all:
 	cd $(LIBNAME); cmake --build . --parallel
 	cd $(LIBNAME); cmake --install .
 	$(call rule_rm,$(LIBNAME))
-	$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,curl),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,curl-$(VARIANT)))
-	$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,curl))
+	$(if $(WINDOWS),,$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,curl),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,curl-$(VARIANT))))
+	$(if $(WINDOWS),,$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,curl)))
+	$(if $(WINDOWS),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,libcurl),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,curl-$(VARIANT))))
+	$(if $(WINDOWS),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,libcurl)))
 
 .PHONY: all

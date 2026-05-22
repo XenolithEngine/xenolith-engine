@@ -59,19 +59,4 @@ typedef struct _PSAPI_WORKING_SET_EX_INFORMATION {
 	PSAPI_WORKING_SET_EX_BLOCK VirtualAttributes;
 } PSAPI_WORKING_SET_EX_INFORMATION, *PPSAPI_WORKING_SET_EX_INFORMATION;
 
-/* RTL_OSVERSIONINFOEXW structure for version information */
-typedef struct _RTL_OSVERSIONINFOEXW {
-	DWORD dwOSVersionInfoSize;
-	DWORD dwMajorVersion;
-	DWORD dwMinorVersion;
-	DWORD dwBuildNumber;
-	DWORD dwPlatformId;
-	WCHAR szCSDVersion[128];
-	WORD wServicePackMajor;
-	WORD wServicePackMinor;
-	WORD wSuiteMask;
-	BYTE wProductType;
-	BYTE wReserved;
-} RTL_OSVERSIONINFOEXW, *PRTL_OSVERSIONINFOEXW;
-
 #endif // SPRT_WRAPPERS_WINDOWS_COMPLEX_TYPES_H_

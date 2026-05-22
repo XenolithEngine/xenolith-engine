@@ -41,8 +41,8 @@ THE SOFTWARE.
 
 #if !SPRT_WINDOWS
 #ifdef __STDC_HOSTED__
-#define __SPRT_STDC_HOSTED__ 1
-#undef __STDC_HOSTED__
+//#define __SPRT_STDC_HOSTED__ 1
+//#undef __STDC_HOSTED__
 //#define SIMDE_STDC_HOSTED 1
 #endif
 #endif
@@ -61,7 +61,7 @@ THE SOFTWARE.
 
 #if !SPRT_WINDOWS
 #ifdef __SPRT_STDC_HOSTED__
-#define __STDC_HOSTED__ __SPRT_STDC_HOSTED__
+//#define __STDC_HOSTED__ __SPRT_STDC_HOSTED__
 #endif
 #endif
 

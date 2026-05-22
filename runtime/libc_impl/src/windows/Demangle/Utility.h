@@ -47,9 +47,9 @@ class OutputBuffer {
 			if (BufferCapacity < Need) {
 				BufferCapacity = Need;
 			}
-			Buffer = static_cast<char *>(sprt::realloc(Buffer, BufferCapacity));
+			Buffer = static_cast<char *>(realloc(Buffer, BufferCapacity));
 			if (Buffer == nullptr) {
-				sprt::abort();
+				abort();
 			}
 		}
 	}

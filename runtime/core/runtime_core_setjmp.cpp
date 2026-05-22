@@ -37,21 +37,25 @@ THE SOFTWARE.
 #include <setjmp.h>
 #include <unwind.h>
 
-#include "private/SPRTThread.h"
-
 #endif
 
-//static_assert(sizeof(jmp_buf) == sizeof(__sprt_native_jmp_buf));
+#ifndef SPRT_WINDOWS
+static_assert(sizeof(jmp_buf) == sizeof(__sprt_native_jmp_buf));
+#endif
 
 #include <sprt/cxx/detail/ctypes.h>
 
+#include "pthread/pthread_thread_t.h"
+
 namespace sprt {
 
+#if SPRT_WINDOWS
 __SPRT_ID(setjmp_fn) get_setjmp_fn();
+#endif
 
 __SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
 #if SPRT_LINUX || SPRT_ANDROID || SPRT_NMACOS
-	return &setjmp;
+	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(&setjmp);
 #elif SPRT_WINDOWS
 	return get_setjmp_fn();
 #else

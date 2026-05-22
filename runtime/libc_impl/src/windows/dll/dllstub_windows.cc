@@ -37,6 +37,12 @@ WINAPI DWORD WaitForSingleObject(HANDLE hHandle, DWORD dwMilliseconds) {
 			loader->kernelbase.WaitForSingleObject, hHandle, dwMilliseconds);
 }
 
+WINAPI DWORD WaitForSingleObjectEx(HANDLE hHandle, DWORD dwMilliseconds, BOOL bAlertable) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernelbase.call<decltype(&WaitForSingleObjectEx)>(
+			loader->kernelbase.WaitForSingleObjectEx, hHandle, dwMilliseconds, bAlertable);
+}
+
 /* ============================================================ */
 /* Security API (securitybaseapi.h)                             */
 /* ============================================================ */
@@ -371,6 +377,14 @@ WINAPI int CompareStringEx(LPCWSTR lpLocaleName, DWORD dwCmpFlags, LPCWCH lpStri
 			lpVersionInformation, lpReserved, lParam);
 }
 
+WINAPI int MultiByteToWideChar(UINT CodePage, DWORD dwFlags, LPCCH lpMultiByteStr, int cbMultiByte,
+		LPWSTR lpWideCharStr, int cchWideChar) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&MultiByteToWideChar)>(
+			loader->kernel32.MultiByteToWideChar, CodePage, dwFlags, lpMultiByteStr, cbMultiByte,
+			lpWideCharStr, cchWideChar);
+}
+
 WINAPI int WideCharToMultiByte(UINT CodePage, DWORD dwFlags, LPCWCH lpWideCharStr, int cchWideChar,
 		LPSTR lpMultiByteStr, int cbMultiByte, LPCCH lpDefaultChar, LPBOOL lpUsedDefaultChar) {
 	auto loader = sprt::DllLoader::get();
@@ -508,6 +522,64 @@ WINAPI void *ReportEventAsCompletion(void *hIOCP, void *hEvent, DWORD dwNumberOf
 	return hPacket;
 }
 
+WINAPI BOOL GetVersionExA(LPOSVERSIONINFOA lpVersionInformation) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetVersionExA)>(loader->kernel32.GetVersionExA,
+			lpVersionInformation);
+}
+
+WINAPI BOOL GetVersionExW(LPOSVERSIONINFOW lpVersionInformation) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetVersionExW)>(loader->kernel32.GetVersionExW,
+			lpVersionInformation);
+}
+
+WINAPI UINT GetACP(void) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetACP)>(loader->kernel32.GetACP);
+}
+
+WINAPI BOOL ReadConsoleA(HANDLE hConsoleInput, LPVOID lpBuffer, DWORD nNumberOfCharsToRead,
+		LPDWORD lpNumberOfCharsRead, PCONSOLE_READCONSOLE_CONTROL pInputControl) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&ReadConsoleA)>(loader->kernel32.ReadConsoleA,
+			hConsoleInput, lpBuffer, nNumberOfCharsToRead, lpNumberOfCharsRead, pInputControl);
+}
+
+WINAPI BOOL ReadConsoleW(HANDLE hConsoleInput, LPVOID lpBuffer, DWORD nNumberOfCharsToRead,
+		LPDWORD lpNumberOfCharsRead, PCONSOLE_READCONSOLE_CONTROL pInputControl) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&ReadConsoleW)>(loader->kernel32.ReadConsoleW,
+			hConsoleInput, lpBuffer, nNumberOfCharsToRead, lpNumberOfCharsRead, pInputControl);
+}
+
+WINAPI UINT GetSystemDirectoryA(LPSTR lpBuffer, UINT uSize) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetSystemDirectoryA)>(
+			loader->kernel32.GetSystemDirectoryA, lpBuffer, uSize);
+}
+
+WINAPI UINT GetSystemDirectoryW(LPWSTR lpBuffer, UINT uSize) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetSystemDirectoryW)>(
+			loader->kernel32.GetSystemDirectoryW, lpBuffer, uSize);
+}
+
+WINAPI DWORD WaitForMultipleObjects(DWORD nCount, const HANDLE *lpHandles, BOOL bWaitAll,
+		DWORD dwMilliseconds) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&WaitForMultipleObjects)>(
+			loader->kernel32.WaitForMultipleObjects, nCount, lpHandles, bWaitAll, dwMilliseconds);
+}
+
+WINAPI BOOL PeekNamedPipe(HANDLE hNamedPipe, LPVOID lpBuffer, DWORD nBufferSize,
+		LPDWORD lpBytesRead, LPDWORD lpTotalBytesAvail, LPDWORD lpBytesLeftThisMessage) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&PeekNamedPipe)>(loader->kernel32.PeekNamedPipe,
+			hNamedPipe, lpBuffer, nBufferSize, lpBytesRead, lpTotalBytesAvail,
+			lpBytesLeftThisMessage);
+}
+
 WINAPI void VariantInit(VARIANTARG *pvarg) {
 	auto loader = sprt::DllLoader::get();
 	loader->oleaut32.call<decltype(&VariantInit)>(loader->oleaut32.VariantInit, pvarg);
@@ -546,5 +618,19 @@ WINAPI HRESULT IIDFromString(LPCOLESTR lpsz, LPIID lpiid) {
 	return loader->combase.call<decltype(&IIDFromString)>(loader->combase.IIDFromString, lpsz,
 			lpiid);
 }
+
+WINAPI ULONGLONG VerSetConditionMask(ULONGLONG ConditionMask, DWORD TypeMask, BYTE Condition) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&VerSetConditionMask)>(
+			loader->kernel32.VerSetConditionMask, ConditionMask, TypeMask, Condition);
+}
+
+WINAPI BOOL VerifyVersionInfoW(LPOSVERSIONINFOEXW lpVersionInformation, DWORD dwTypeMask,
+		DWORDLONG dwlConditionMask) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&VerifyVersionInfoW)>(loader->kernel32.VerifyVersionInfoW,
+			lpVersionInformation, dwTypeMask, dwlConditionMask);
+}
+
 
 } // extern "C"

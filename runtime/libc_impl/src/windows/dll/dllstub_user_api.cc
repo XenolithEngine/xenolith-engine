@@ -294,4 +294,10 @@ UINT MapVirtualKeyW(UINT uCode, UINT uMapType) {
 			uMapType);
 }
 
+WINAPI int MessageBoxW(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType) {
+	auto loader = sprt::DllLoader::get();
+	return loader->user32.call<decltype(&MessageBoxW)>(loader->user32.MessageBoxW, hWnd, lpText,
+			lpCaption, uType);
+}
+
 } // extern "C"

@@ -20,8 +20,8 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/linux/SPRTWinLinuxXkbLibrary.h"
-#include "private/window/linux/SPRTWinLinuxXcbLibrary.h"
+#include "SPRTWinLinuxXkbLibrary.h"
+#include "xcb/SPRTWinLinuxXcbLibrary.h"
 
 #include <sprt/runtime/log.h>
 

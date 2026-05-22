@@ -22,10 +22,10 @@
 
 #define __SPRT_BUILD 1
 
-#include "private/window/linux/SPRTWinLinuxWaylandProtocol.h"
-#include "private/window/linux/SPRTWinLinuxWaylandLibrary.h"
-#include "private/window/linux/SPRTWinLinuxWaylandKeys.h"
-#include "private/window/linux/SPRTWinLinux.h"
+#include "SPRTWinLinuxWaylandProtocol.h"
+#include "SPRTWinLinuxWaylandLibrary.h"
+#include "SPRTWinLinuxWaylandKeys.h"
+#include "../SPRTWinLinux.h"
 
 #include <sprt/runtime/window/types.h>
 #include <sprt/runtime/utils/compress.h>

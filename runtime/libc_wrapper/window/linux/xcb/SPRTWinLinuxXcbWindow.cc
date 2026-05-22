@@ -20,10 +20,10 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/linux/SPRTWinLinuxXcbWindow.h"
-#include "private/window/linux/SPRTWinLinuxController.h"
-#include "private/window/linux/SPRTWinLinux.h"
-#include "private/window/linux/SPRTWinLinuxXcbDisplayConfigManager.h"
+#include "SPRTWinLinuxXcbWindow.h"
+#include "../SPRTWinLinuxController.h"
+#include "../SPRTWinLinux.h"
+#include "SPRTWinLinuxXcbDisplayConfigManager.h"
 
 #include <sprt/runtime/enum.h>
 

@@ -21,7 +21,7 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/linux/SPRTWinLinuxXcbLibrary.h"
+#include "SPRTWinLinuxXcbLibrary.h"
 
 #include <sprt/runtime/log.h>
 

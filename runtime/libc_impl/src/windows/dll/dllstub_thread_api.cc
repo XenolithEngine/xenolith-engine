@@ -72,6 +72,12 @@ BOOL SetThreadPriority(HANDLE hThread, int nPriority) {
 			hThread, (DWORD)nPriority);
 }
 
+BOOL GetExitCodeThread(HANDLE hThread, LPDWORD lpExitCode) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetExitCodeThread)>(loader->kernel32.GetExitCodeThread,
+			hThread, lpExitCode);
+}
+
 void ExitThread(DWORD dwExitCode) {
 	auto loader = sprt::DllLoader::get();
 	loader->kernel32.call<decltype(&ExitThread)>(loader->kernel32.ExitThread, dwExitCode);
@@ -181,6 +187,113 @@ WINAPI BOOLEAN TryAcquireSRWLockShared(PSRWLOCK SRWLock) {
 WINAPI BOOL SwitchToThread(VOID) {
 	auto loader = sprt::DllLoader::get();
 	return loader->kernel32.call<decltype(&SwitchToThread)>(loader->kernel32.SwitchToThread);
+}
+
+WINAPI HANDLE CreateMutexW(LPSECURITY_ATTRIBUTES lpMutexAttributes, BOOL bInitialOwner,
+		LPCWSTR lpName) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&CreateMutexW)>(loader->kernel32.CreateMutexW,
+			lpMutexAttributes, bInitialOwner, lpName);
+}
+
+WINAPI HANDLE CreateSemaphoreW(LPSECURITY_ATTRIBUTES lpSemaphoreAttributes, LONG lInitialCount,
+		LONG lMaximumCount, LPCWSTR lpName) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&CreateSemaphoreW)>(loader->kernel32.CreateSemaphoreW,
+			lpSemaphoreAttributes, lInitialCount, lMaximumCount, lpName);
+}
+
+WINAPI HANDLE CreateSemaphoreA(LPSECURITY_ATTRIBUTES lpSemaphoreAttributes, LONG lInitialCount,
+		LONG lMaximumCount, LPCSTR lpName) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&CreateSemaphoreA)>(loader->kernel32.CreateSemaphoreA,
+			lpSemaphoreAttributes, lInitialCount, lMaximumCount, lpName);
+}
+
+WINAPI HANDLE CreateEventW(LPSECURITY_ATTRIBUTES lpEventAttributes, BOOL bManualReset,
+		BOOL bInitialState, LPCWSTR lpName) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&CreateEventW)>(loader->kernel32.CreateEventW,
+			lpEventAttributes, bManualReset, bInitialState, lpName);
+}
+
+WINAPI BOOL SetEvent(HANDLE hEvent) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&SetEvent)>(loader->kernel32.SetEvent, hEvent);
+}
+
+WINAPI BOOL ResetEvent(HANDLE hEvent) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&ResetEvent)>(loader->kernel32.ResetEvent, hEvent);
+}
+
+WINAPI BOOL ReleaseSemaphore(HANDLE hSemaphore, LONG lReleaseCount, LPLONG lpPreviousCount) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&ReleaseSemaphore)>(loader->kernel32.ReleaseSemaphore,
+			hSemaphore, lReleaseCount, lpPreviousCount);
+}
+
+WINAPI VOID SwitchToFiber(LPVOID lpFiber) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&SwitchToFiber)>(loader->kernel32.SwitchToFiber, lpFiber);
+}
+
+WINAPI VOID DeleteFiber(LPVOID lpFiber) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&DeleteFiber)>(loader->kernel32.DeleteFiber, lpFiber);
+}
+
+WINAPI BOOL ConvertFiberToThread(VOID) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&ConvertFiberToThread)>(
+			loader->kernel32.ConvertFiberToThread);
+}
+
+WINAPI LPVOID CreateFiberEx(SIZE_T dwStackCommitSize, SIZE_T dwStackReserveSize, DWORD dwFlags,
+		LPFIBER_START_ROUTINE lpStartAddress, LPVOID lpParameter) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&CreateFiberEx)>(loader->kernel32.CreateFiberEx,
+			dwStackCommitSize, dwStackReserveSize, dwFlags, lpStartAddress, lpParameter);
+}
+
+WINAPI LPVOID ConvertThreadToFiberEx(LPVOID lpParameter, DWORD dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&ConvertThreadToFiberEx)>(
+			loader->kernel32.ConvertThreadToFiberEx, lpParameter, dwFlags);
+}
+
+WINAPI LPVOID CreateFiber(SIZE_T dwStackSize, LPFIBER_START_ROUTINE lpStartAddress,
+		LPVOID lpParameter) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&CreateFiber)>(loader->kernel32.CreateFiber, dwStackSize,
+			lpStartAddress, lpParameter);
+}
+
+WINAPI LPVOID ConvertThreadToFiber(LPVOID lpParameter) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&ConvertThreadToFiber)>(
+			loader->kernel32.ConvertThreadToFiber, lpParameter);
+}
+
+WINAPI DWORD TlsAlloc(VOID) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&TlsAlloc)>(loader->kernel32.TlsAlloc);
+}
+
+WINAPI LPVOID TlsGetValue(DWORD dwTlsIndex) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&TlsGetValue)>(loader->kernel32.TlsGetValue, dwTlsIndex);
+}
+
+WINAPI BOOL TlsSetValue(DWORD dwTlsIndex, LPVOID lpTlsValue) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&TlsSetValue)>(loader->kernel32.TlsSetValue, dwTlsIndex,
+			lpTlsValue);
+}
+
+WINAPI BOOL TlsFree(DWORD dwTlsIndex) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&TlsFree)>(loader->kernel32.TlsFree, dwTlsIndex);
 }
 
 } // extern "C"

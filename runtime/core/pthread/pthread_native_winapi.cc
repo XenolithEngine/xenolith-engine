@@ -52,11 +52,14 @@ static uint64_t __getNativeThreadId() { return GetCurrentThreadId(); }
 
 static void __registerForDestruction(void (*fn)(void)) { __tlregdtor(fn); }
 
-static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr) {
+static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
+		__thread_pool *pool) {
 	DWORD id = 0;
 	// Thread-local variables must be able to locate this thread's
 	// data before the main thread function gains control.
 	// We create thread as suspended, then register it's global data, and then resume it
+	unique_lock globalLock(pool->mutex);
+
 	auto handle = (HANDLE)CreateThread(nullptr, attr->stackSize, &__runthead, thread,
 			((thread->attr.stackSize > 0) ? STACK_SIZE_PARAM_IS_A_RESERVATION : 0)
 					| CREATE_SUSPENDED,
@@ -66,7 +69,8 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr) 
 	} else {
 		// attach thread's data as globally available by it's id
 		thread->threadId = id;
-		__attachNativeThread(thread, reinterpret_cast<void *>(handle));
+		__attachNativeThread(thread, reinterpret_cast<void *>(handle), id, globalLock);
+		globalLock.unlock();
 
 		// Resume thread
 		// this will run thread-local initializers, then thread main func
@@ -364,5 +368,17 @@ int thread_t::setname_native(const char *name) {
 }
 
 } // namespace sprt::_thread
+
+__SPRT_C_FUNC int sigprocmask(int how, const __SPRT_ID(sigset_t) * set,
+		__SPRT_ID(sigset_t) * oldset) __SPRT_NOEXCEPT;
+
+namespace sprt {
+
+__SPRT_C_FUNC int __SPRT_ID(
+		pthread_sigmask)(int how, const __SPRT_ID(sigset_t) * set, __SPRT_ID(sigset_t) * oldset) {
+	return sigprocmask(how, set, oldset);
+}
+
+} // namespace sprt
 
 #endif // SPRT_WINDOWS

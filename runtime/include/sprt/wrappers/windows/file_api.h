@@ -33,6 +33,10 @@ THE SOFTWARE.
 #define OPEN_ALWAYS         4
 #define TRUNCATE_EXISTING   5
 
+#define INVALID_FILE_SIZE ((DWORD)0xFFFFFFFF)
+#define INVALID_SET_FILE_POINTER ((DWORD)-1)
+#define INVALID_FILE_ATTRIBUTES ((DWORD)-1)
+
 #define FILE_READ_DATA            ( 0x0001 )    // file & pipe
 #define FILE_LIST_DIRECTORY       ( 0x0001 )    // directory
 #define FILE_WRITE_DATA           ( 0x0002 )    // file & pipe
@@ -118,6 +122,54 @@ THE SOFTWARE.
 #define FILE_FLAG_OPEN_NO_RECALL        0x00100000
 #define FILE_FLAG_FIRST_PIPE_INSTANCE   0x00080000
 
+
+#define IO_REPARSE_TAG_RESERVED_INVALID         (0xC0008000L)       
+#define IO_REPARSE_TAG_MOUNT_POINT              (0xA0000003L)       
+#define IO_REPARSE_TAG_HSM                      (0xC0000004L)       
+#define IO_REPARSE_TAG_HSM2                     (0x80000006L)       
+#define IO_REPARSE_TAG_SIS                      (0x80000007L)       
+#define IO_REPARSE_TAG_WIM                      (0x80000008L)       
+#define IO_REPARSE_TAG_CSV                      (0x80000009L)       
+#define IO_REPARSE_TAG_DFS                      (0x8000000AL)       
+#define IO_REPARSE_TAG_SYMLINK                  (0xA000000CL)       
+#define IO_REPARSE_TAG_DFSR                     (0x80000012L)       
+#define IO_REPARSE_TAG_DEDUP                    (0x80000013L)       
+#define IO_REPARSE_TAG_NFS                      (0x80000014L)       
+#define IO_REPARSE_TAG_FILE_PLACEHOLDER         (0x80000015L)       
+#define IO_REPARSE_TAG_WOF                      (0x80000017L)       
+#define IO_REPARSE_TAG_WCI                      (0x80000018L)       
+#define IO_REPARSE_TAG_WCI_1                    (0x90001018L)       
+#define IO_REPARSE_TAG_GLOBAL_REPARSE           (0xA0000019L)       
+#define IO_REPARSE_TAG_CLOUD                    (0x9000001AL)       
+#define IO_REPARSE_TAG_CLOUD_1                  (0x9000101AL)       
+#define IO_REPARSE_TAG_CLOUD_2                  (0x9000201AL)       
+#define IO_REPARSE_TAG_CLOUD_3                  (0x9000301AL)       
+#define IO_REPARSE_TAG_CLOUD_4                  (0x9000401AL)       
+#define IO_REPARSE_TAG_CLOUD_5                  (0x9000501AL)       
+#define IO_REPARSE_TAG_CLOUD_6                  (0x9000601AL)       
+#define IO_REPARSE_TAG_CLOUD_7                  (0x9000701AL)       
+#define IO_REPARSE_TAG_CLOUD_8                  (0x9000801AL)       
+#define IO_REPARSE_TAG_CLOUD_9                  (0x9000901AL)       
+#define IO_REPARSE_TAG_CLOUD_A                  (0x9000A01AL)       
+#define IO_REPARSE_TAG_CLOUD_B                  (0x9000B01AL)       
+#define IO_REPARSE_TAG_CLOUD_C                  (0x9000C01AL)       
+#define IO_REPARSE_TAG_CLOUD_D                  (0x9000D01AL)       
+#define IO_REPARSE_TAG_CLOUD_E                  (0x9000E01AL)       
+#define IO_REPARSE_TAG_CLOUD_F                  (0x9000F01AL)       
+#define IO_REPARSE_TAG_CLOUD_MASK               (0x0000F000L)       
+#define IO_REPARSE_TAG_APPEXECLINK              (0x8000001BL)       
+#define IO_REPARSE_TAG_PROJFS                   (0x9000001CL)       
+#define IO_REPARSE_TAG_STORAGE_SYNC             (0x8000001EL)       
+#define IO_REPARSE_TAG_WCI_TOMBSTONE            (0xA000001FL)       
+#define IO_REPARSE_TAG_UNHANDLED                (0x80000020L)       
+#define IO_REPARSE_TAG_ONEDRIVE                 (0x80000021L)       
+#define IO_REPARSE_TAG_PROJFS_TOMBSTONE         (0xA0000022L)       
+#define IO_REPARSE_TAG_AF_UNIX                  (0x80000023L)       
+#define IO_REPARSE_TAG_STORAGE_SYNC_FOLDER      (0x90000027L)       
+#define IO_REPARSE_TAG_WCI_LINK                 (0xA0000027L)       
+#define IO_REPARSE_TAG_WCI_LINK_1               (0xA0001027L)       
+#define IO_REPARSE_TAG_DATALESS_CIM             (0xA0000028L)       
+
 #define MOVEFILE_REPLACE_EXISTING       0x00000001
 #define MOVEFILE_COPY_ALLOWED           0x00000002
 #define MOVEFILE_DELAY_UNTIL_REBOOT     0x00000004
@@ -151,6 +203,9 @@ THE SOFTWARE.
 
 #define SEC_HUGE_PAGES              0x00020000  
 #define SEC_LARGE_PAGES             0x80000000
+
+#define LOCKFILE_FAIL_IMMEDIATELY   0x00000001
+#define LOCKFILE_EXCLUSIVE_LOCK     0x00000002
 
 // clang-format on
 
@@ -271,6 +326,11 @@ typedef enum _FILE_INFO_BY_HANDLE_CLASS {
 	MaximumFileInfoByHandleClass
 } FILE_INFO_BY_HANDLE_CLASS, *PFILE_INFO_BY_HANDLE_CLASS;
 
+typedef enum _GET_FILEEX_INFO_LEVELS {
+	GetFileExInfoStandard,
+	GetFileExMaxInfoLevel
+} GET_FILEEX_INFO_LEVELS;
+
 typedef struct _BY_HANDLE_FILE_INFORMATION {
 	DWORD dwFileAttributes;
 	FILETIME ftCreationTime;
@@ -339,6 +399,41 @@ typedef union _FILE_SEGMENT_ELEMENT {
 	ULONGLONG Alignment;
 } FILE_SEGMENT_ELEMENT, *PFILE_SEGMENT_ELEMENT;
 
+typedef struct _WIN32_FILE_ATTRIBUTE_DATA {
+	DWORD dwFileAttributes;
+	FILETIME ftCreationTime;
+	FILETIME ftLastAccessTime;
+	FILETIME ftLastWriteTime;
+	DWORD nFileSizeHigh;
+	DWORD nFileSizeLow;
+} WIN32_FILE_ATTRIBUTE_DATA, *LPWIN32_FILE_ATTRIBUTE_DATA;
+
+typedef struct _WIN32_FIND_DATAA {
+	DWORD dwFileAttributes;
+	FILETIME ftCreationTime;
+	FILETIME ftLastAccessTime;
+	FILETIME ftLastWriteTime;
+	DWORD nFileSizeHigh;
+	DWORD nFileSizeLow;
+	DWORD dwReserved0;
+	DWORD dwReserved1;
+	CHAR cFileName[MAX_PATH];
+	CHAR cAlternateFileName[14];
+} WIN32_FIND_DATAA, *PWIN32_FIND_DATAA, *LPWIN32_FIND_DATAA;
+
+typedef struct _WIN32_FIND_DATAW {
+	DWORD dwFileAttributes;
+	FILETIME ftCreationTime;
+	FILETIME ftLastAccessTime;
+	FILETIME ftLastWriteTime;
+	DWORD nFileSizeHigh;
+	DWORD nFileSizeLow;
+	DWORD dwReserved0;
+	DWORD dwReserved1;
+	WCHAR cFileName[MAX_PATH];
+	WCHAR cAlternateFileName[14];
+} WIN32_FIND_DATAW, *PWIN32_FIND_DATAW, *LPWIN32_FIND_DATAW;
+
 __SPRT_BEGIN_DECL
 
 /* ---- File I/O (handleapi.h, fileapi.h) ---- */
@@ -355,6 +450,10 @@ __SPRT_BEGIN_DECL
  * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
  */
 WINAPI HANDLE CreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,
+		LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition,
+		DWORD dwFlagsAndAttributes, HANDLE hTemplateFile);
+
+WINAPI HANDLE CreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,
 		LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition,
 		DWORD dwFlagsAndAttributes, HANDLE hTemplateFile);
 
@@ -432,6 +531,8 @@ WINAPI DWORD GetFinalPathNameByHandleW(HANDLE hHandle, LPWSTR lpFilePath, DWORD 
  * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfileattributesw
  */
 WINAPI BOOL SetFileAttributesW(LPCWSTR lpFileName, DWORD dwFileAttributes);
+
+WINAPI BOOL SetFileAttributesA(LPCSTR lpFileName, DWORD dwFileAttributes);
 
 /**
  * Sets file information for an open file or directory handle.
@@ -536,6 +637,9 @@ WINAPI HANDLE ReOpenFile(HANDLE hOriginalFile, DWORD dwDesiredAccess, DWORD dwSh
 WINAPI HANDLE CreateFileMappingW(HANDLE hFile, LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
 		DWORD flProtect, DWORD dwMaximumSizeHigh, DWORD dwMaximumSizeLow, LPCWSTR lpName);
 
+WINAPI HANDLE CreateFileMappingA(HANDLE hFile, LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
+		DWORD flProtect, DWORD dwMaximumSizeHigh, DWORD dwMaximumSizeLow, LPCSTR lpName);
+
 /**
  * Creates a view of a file mapping object in the address space of the calling process.
  * @param hFileMappingObject Handle to the file mapping object.
@@ -574,6 +678,8 @@ WINAPI BOOL FlushViewOfFile(LPCVOID lpBaseAddress, SIZE_T dwNumberOfBytesToFlush
  */
 WINAPI BOOL DeleteFileW(LPCWSTR lpFileName);
 
+WINAPI BOOL DeleteFileA(LPCSTR lpFileName);
+
 /**
  * Removes an empty directory.
  * @param lpPathName Name of the directory to remove.
@@ -584,7 +690,17 @@ WINAPI BOOL RemoveDirectoryW(LPCWSTR lpPathName);
 
 WINAPI DWORD GetFileAttributesW(LPCWSTR lpFileName);
 
+WINAPI DWORD GetFileAttributesA(LPCSTR lpFileName);
+
+WINAPI BOOL GetFileAttributesExW(LPCWSTR lpFileName, GET_FILEEX_INFO_LEVELS fInfoLevelId,
+		LPVOID lpFileInformation);
+
+WINAPI BOOL GetFileAttributesExA(LPCSTR lpFileName, GET_FILEEX_INFO_LEVELS fInfoLevelId,
+		LPVOID lpFileInformation);
+
 WINAPI BOOL MoveFileExW(LPCWSTR lpExistingFileName, LPCWSTR lpNewFileName, DWORD dwFlags);
+
+WINAPI BOOL MoveFileExA(LPCSTR lpExistingFileName, LPCSTR lpNewFileName, DWORD dwFlags);
 
 WINAPI BOOL SetCurrentDirectoryW(LPCWSTR lpPathName);
 
@@ -607,6 +723,8 @@ WINAPI BOOL CreatePipe(PHANDLE hReadPipe, PHANDLE hWritePipe,
 
 WINAPI DWORD GetTempPathW(DWORD nBufferLength, LPWSTR lpBuffer);
 
+WINAPI DWORD GetTempPathA(DWORD nBufferLength, LPSTR lpBuffer);
+
 WINAPI HRESULT PathAllocCanonicalize(PCWSTR pszPathIn, ULONG dwFlags, PWSTR *ppszPathOut);
 
 WINAPI BOOL ReadFileScatter(HANDLE hFile, FILE_SEGMENT_ELEMENT aSegmentArray[],
@@ -614,6 +732,75 @@ WINAPI BOOL ReadFileScatter(HANDLE hFile, FILE_SEGMENT_ELEMENT aSegmentArray[],
 
 WINAPI BOOL WriteFileGather(HANDLE hFile, FILE_SEGMENT_ELEMENT aSegmentArray[],
 		DWORD nNumberOfBytesToWrite, LPDWORD lpReserved, LPOVERLAPPED lpOverlapped);
+
+WINAPI DWORD GetFileSize(HANDLE hFile, LPDWORD lpFileSizeHigh);
+
+WINAPI BOOL GetFileSizeEx(HANDLE hFile, PLARGE_INTEGER lpFileSize);
+
+WINAPI DWORD GetFileType(HANDLE hFile);
+
+WINAPI BOOL AreFileApisANSI(VOID);
+
+WINAPI BOOL GetDiskFreeSpaceA(LPCSTR lpRootPathName, LPDWORD lpSectorsPerCluster,
+		LPDWORD lpBytesPerSector, LPDWORD lpNumberOfFreeClusters, LPDWORD lpTotalNumberOfClusters);
+
+WINAPI BOOL GetDiskFreeSpaceW(LPCWSTR lpRootPathName, LPDWORD lpSectorsPerCluster,
+		LPDWORD lpBytesPerSector, LPDWORD lpNumberOfFreeClusters, LPDWORD lpTotalNumberOfClusters);
+
+WINAPI DWORD GetFullPathNameW(LPCWSTR lpFileName, DWORD nBufferLength, LPWSTR lpBuffer,
+		LPWSTR *lpFilePart);
+
+WINAPI DWORD GetFullPathNameA(LPCSTR lpFileName, DWORD nBufferLength, LPSTR lpBuffer,
+		LPSTR *lpFilePart);
+
+WINAPI BOOL LockFile(HANDLE hFile, DWORD dwFileOffsetLow, DWORD dwFileOffsetHigh,
+		DWORD nNumberOfBytesToLockLow, DWORD nNumberOfBytesToLockHigh);
+
+WINAPI BOOL LockFileEx(HANDLE hFile, DWORD dwFlags, DWORD dwReserved, DWORD nNumberOfBytesToLockLow,
+		DWORD nNumberOfBytesToLockHigh, LPOVERLAPPED lpOverlapped);
+
+WINAPI BOOL UnlockFile(HANDLE hFile, DWORD dwFileOffsetLow, DWORD dwFileOffsetHigh,
+		DWORD nNumberOfBytesToUnlockLow, DWORD nNumberOfBytesToUnlockHigh);
+
+WINAPI BOOL UnlockFileEx(HANDLE hFile, DWORD dwReserved, DWORD nNumberOfBytesToUnlockLow,
+		DWORD nNumberOfBytesToUnlockHigh, LPOVERLAPPED lpOverlapped);
+
+WINAPI HANDLE FindFirstFileW(LPCWSTR lpFileName, LPWIN32_FIND_DATAW lpFindFileData);
+
+WINAPI HANDLE FindFirstFileA(LPCSTR lpFileName, LPWIN32_FIND_DATAW lpFindFileData);
+
+WINAPI BOOL FindNextFileW(HANDLE hFindFile, LPWIN32_FIND_DATAW lpFindFileData);
+
+WINAPI BOOL FindNextFileA(HANDLE hFindFile, LPWIN32_FIND_DATAA lpFindFileData);
+
+WINAPI BOOL FindClose(HANDLE hFindFile);
+
+WINAPI LONG CompareFileTime(const FILETIME *lpFileTime1, const FILETIME *lpFileTime2);
+
+WINAPI BOOL GetFileTime(HANDLE hFile, LPFILETIME lpCreationTime, LPFILETIME lpLastAccessTime,
+		LPFILETIME lpLastWriteTime);
+
+#ifdef UNICODE
+#define CreateFileMapping  CreateFileMappingW
+#define CreateFile  CreateFileW
+#define FindFirstFile  FindFirstFileW
+#define FindNextFile  FindNextFileW
+#define MoveFileEx  MoveFileExW
+
+typedef WIN32_FIND_DATAW WIN32_FIND_DATA;
+typedef PWIN32_FIND_DATAW PWIN32_FIND_DATA;
+typedef LPWIN32_FIND_DATAW LPWIN32_FIND_DATA;
+
+#else
+
+#define CreateFileMapping  CreateFileMappingA
+#define CreateFile  CreateFileA
+
+typedef WIN32_FIND_DATAA WIN32_FIND_DATA;
+typedef PWIN32_FIND_DATAA PWIN32_FIND_DATA;
+typedef LPWIN32_FIND_DATAA LPWIN32_FIND_DATA;
+
+#endif
 
 __SPRT_END_DECL
 

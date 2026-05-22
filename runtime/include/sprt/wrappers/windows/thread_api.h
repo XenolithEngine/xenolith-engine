@@ -69,6 +69,10 @@ THE SOFTWARE.
 #define RTL_SRWLOCK_INIT {0}
 #define SRWLOCK_INIT RTL_SRWLOCK_INIT
 
+#define FIBER_FLAG_FLOAT_SWITCH 0x1     // context switch floating point
+
+#define TLS_OUT_OF_INDEXES ((DWORD)0xFFFFFFFF)
+
 // clang-format on
 
 /* Timer APC routine callback type */
@@ -76,9 +80,9 @@ typedef void (*PTIMERAPCROUTINE)(LPVOID lpArgToCompletionRoutine, DWORD dwTimerL
 		DWORD dwTimerHighValue);
 
 /* Thread start routine - function pointer for thread entry points */
-typedef DWORD(__stdcall *LPTHREAD_START_ROUTINE)(LPVOID lpThreadParameter);
+typedef DWORD(WINAPI *LPTHREAD_START_ROUTINE)(LPVOID lpThreadParameter);
 
-typedef void(__stdcall *PAPCFUNC)(DWORD_PTR dwParam);
+typedef void(WINAPI *PAPCFUNC)(DWORD_PTR dwParam);
 
 // clang-format off
 typedef enum _QUEUE_USER_APC_FLAGS {
@@ -146,6 +150,9 @@ typedef struct _RTL_SRWLOCK {
 
 typedef RTL_SRWLOCK SRWLOCK, *PSRWLOCK;
 
+typedef VOID(WINAPI *PFIBER_START_ROUTINE)(LPVOID lpFiberParameter);
+typedef PFIBER_START_ROUTINE LPFIBER_START_ROUTINE;
+
 __SPRT_BEGIN_DECL
 
 /* ---- Process and Thread Management (processthreadsapi.h) ---- */
@@ -182,6 +189,8 @@ WINAPI VOID GetCurrentThreadStackLimits(PULONG_PTR LowLimit, PULONG_PTR HighLimi
 WINAPI int GetThreadPriority(HANDLE hThread);
 
 WINAPI BOOL SetThreadPriority(HANDLE hThread, int nPriority);
+
+WINAPI BOOL GetExitCodeThread(HANDLE hThread, LPDWORD lpExitCode);
 
 WINAPI void ExitThread(DWORD dwExitCode);
 
@@ -220,6 +229,53 @@ WINAPI BOOLEAN TryAcquireSRWLockExclusive(PSRWLOCK SRWLock);
 WINAPI BOOLEAN TryAcquireSRWLockShared(PSRWLOCK SRWLock);
 
 WINAPI BOOL SwitchToThread(VOID);
+
+WINAPI HANDLE CreateMutexW(LPSECURITY_ATTRIBUTES lpMutexAttributes, BOOL bInitialOwner,
+		LPCWSTR lpName);
+
+WINAPI HANDLE CreateSemaphoreW(LPSECURITY_ATTRIBUTES lpSemaphoreAttributes, LONG lInitialCount,
+		LONG lMaximumCount, LPCWSTR lpName);
+
+WINAPI HANDLE CreateSemaphoreA(LPSECURITY_ATTRIBUTES lpSemaphoreAttributes, LONG lInitialCount,
+		LONG lMaximumCount, LPCSTR lpName);
+
+WINAPI HANDLE CreateEventW(LPSECURITY_ATTRIBUTES lpEventAttributes, BOOL bManualReset,
+		BOOL bInitialState, LPCWSTR lpName);
+
+WINAPI BOOL SetEvent(HANDLE hEvent);
+
+WINAPI BOOL ResetEvent(HANDLE hEvent);
+
+WINAPI BOOL ReleaseSemaphore(HANDLE hSemaphore, LONG lReleaseCount, LPLONG lpPreviousCount);
+
+WINAPI VOID SwitchToFiber(LPVOID lpFiber);
+
+WINAPI VOID DeleteFiber(LPVOID lpFiber);
+
+WINAPI BOOL ConvertFiberToThread(VOID);
+
+WINAPI LPVOID CreateFiberEx(SIZE_T dwStackCommitSize, SIZE_T dwStackReserveSize, DWORD dwFlags,
+		LPFIBER_START_ROUTINE lpStartAddress, LPVOID lpParameter);
+
+WINAPI LPVOID ConvertThreadToFiberEx(LPVOID lpParameter, DWORD dwFlags);
+
+WINAPI LPVOID CreateFiber(SIZE_T dwStackSize, LPFIBER_START_ROUTINE lpStartAddress,
+		LPVOID lpParameter);
+
+WINAPI LPVOID ConvertThreadToFiber(LPVOID lpParameter);
+
+WINAPI DWORD TlsAlloc(VOID);
+
+WINAPI LPVOID TlsGetValue(DWORD dwTlsIndex);
+
+WINAPI BOOL TlsSetValue(DWORD dwTlsIndex, LPVOID lpTlsValue);
+
+WINAPI BOOL TlsFree(DWORD dwTlsIndex);
+
+#ifdef UNICODE
+#define CreateSemaphore  CreateSemaphoreW
+#define CreateEvent  CreateEventW
+#endif
 
 __SPRT_END_DECL
 

@@ -29,6 +29,7 @@ rule_rm = powershell 'if (Test-Path "$(1)") { Remove-Item -Recurse -Force -Error
 rule_cp = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force
 rule_cpr = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force -Recurse
 rule_mv = powershell Move-Item -Path "$(1)" -Destination "$(2)" -Force
+rule_touch = powershell (Get-Item "$(1)").LastWriteTime = $$(Get-Date)
 
 else
 
@@ -40,6 +41,7 @@ rule_rm = rm -rf $(1)
 rule_cp = cp -f $(1) $(2)
 rule_cpr = cp -rf $(1) $(2)
 rule_mv = mv -f $(1) $(2)
+rule_touch = touch $(1)
 
 endif
 

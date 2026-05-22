@@ -31,6 +31,13 @@ THE SOFTWARE.
 
 #include <sprt/c/sys/__sprt_select.h>
 
+typedef __SPRT_ID(fd_set) fd_set;
+
+#define FD_CLR(fd, set) __SPRT_FD_CLR(fd, set)
+#define FD_SET(fd, set) __SPRT_FD_SET(fd, set)
+#define FD_ZERO(set) __SPRT_FD_ZERO(set)
+#define FD_ISSET(fd, set) __SPRT_FD_ISSET(fd, set)
+
 #endif
 
 #endif // CORE_RUNTIME_INCLUDE_LIBC_SYS_SELECT_H_

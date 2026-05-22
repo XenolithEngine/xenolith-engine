@@ -27,7 +27,7 @@
 
 #if __SPRT_RUNTIME_CONFIG_HAVE_WINDOW && SPRT_LINUX
 
-#include <private/window/linux/SPRTWinLinux.h>
+#include "SPRTWinLinux.h"
 
 #include <X11/keysym.h>
 

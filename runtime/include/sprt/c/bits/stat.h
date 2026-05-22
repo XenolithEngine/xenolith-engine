@@ -6,7 +6,6 @@
 #include <sprt/c/cross/__sprt_fstypes.h>
 #include <sprt/c/cross/__sprt_sysid.h>
 
-
 #ifdef __SPRT_BUILD
 #define __SPRT_STAT_NAME __SPRT_ID(stat)
 #else
@@ -14,21 +13,7 @@
 #endif
 
 struct __SPRT_STAT_NAME {
-	__SPRT_ID(dev_t) st_dev;
-	__SPRT_ID(ino_t) st_ino;
-	__SPRT_ID(nlink_t) st_nlink;
-
-	__SPRT_ID(mode_t) st_mode;
-	__SPRT_ID(uid_t) st_uid;
-	__SPRT_ID(gid_t) st_gid;
-	__SPRT_ID(dev_t) st_rdev;
-	__SPRT_ID(off_t) st_size;
-	__SPRT_ID(blksize_t) st_blksize;
-	__SPRT_ID(blkcnt_t) st_blocks;
-
-	struct __SPRT_TIMESPEC_NAME st_atim;
-	struct __SPRT_TIMESPEC_NAME st_mtim;
-	struct __SPRT_TIMESPEC_NAME st_ctim;
+#include <sprt/c/bits/stat_data.h>
 };
 
 #endif // CORE_RUNTIME_INCLUDE_C_BITS_STAT_H_

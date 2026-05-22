@@ -45,7 +45,7 @@ typedef __INT_FAST8_TYPE__ __SPRT_ID(int_fast8_t);
 #endif
 
 #ifdef __INT_FAST8_FMTi__
-#define __SPRT_INT_FAST8_FMTo __INT_FAST8_FMTi__
+#define __SPRT_INT_FAST8_FMTi __INT_FAST8_FMTi__
 #else
 #error "Compiler-assisted __INT_FAST8_FMTi__ is not defined"
 #endif

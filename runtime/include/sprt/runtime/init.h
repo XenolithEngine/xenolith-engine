@@ -30,7 +30,8 @@ THE SOFTWARE.
 	but should not depend on its headers (including the libc and libc++ headers)
 */
 
-#include <sprt/cxx/detail/ctypes.h>
+#include <sprt/cxx/cstddef>
+#include <sprt/cxx/cstdint>
 
 #include <sprt/runtime/config.h>
 

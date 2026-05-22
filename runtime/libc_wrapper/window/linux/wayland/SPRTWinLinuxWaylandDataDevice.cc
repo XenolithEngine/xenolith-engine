@@ -22,10 +22,10 @@
 
 #define __SPRT_BUILD 1
 
-#include "private/window/linux/SPRTWinLinuxWaylandDataDevice.h"
-#include "private/window/linux/SPRTWinLinuxWaylandLibrary.h"
-#include "private/window/linux/SPRTWinLinuxWaylandDisplay.h"
-#include "private/window/linux/SPRTWinLinuxWaylandSeat.h"
+#include "SPRTWinLinuxWaylandDataDevice.h"
+#include "SPRTWinLinuxWaylandLibrary.h"
+#include "SPRTWinLinuxWaylandDisplay.h"
+#include "SPRTWinLinuxWaylandSeat.h"
 
 #include <errno.h>
 #include <fcntl.h>

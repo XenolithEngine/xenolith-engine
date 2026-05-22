@@ -27,6 +27,13 @@ THE SOFTWARE.
 
 #include_next <malloc.h>
 
+#elif defined(__SPRT_AS_STD) && defined(__cplusplus)
+
+#include <cstdlib>
+
+#define _aligned_malloc(Size, Align) sprt::aligned_alloc(Align, Size)
+#define _aligned_free(Ptr) sprt::aligned_free(Ptr)
+
 #else
 
 #include <stdlib.h>

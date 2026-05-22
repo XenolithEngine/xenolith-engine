@@ -25,6 +25,12 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_config.h>
 
+/* External configuraion:
+
+	__SPRT_AS_STD - define std namespace as sprt alias
+	__SPRT_WINDOWS - force tu use windows platform definition (for specific cross-compilation targets)
+*/
+
 /*
 	Known platforms
 */
@@ -239,6 +245,7 @@ THE SOFTWARE.
 
 #endif // __cplusplus
 
+#define SPRT_NOEXCEPT __SPRT_NOEXCEPT
 
 #ifndef __SPRT_NORETURN
 #if __SPRT_HAS_ATTR(noreturn)
@@ -387,9 +394,11 @@ THE SOFTWARE.
 #if SPRT_UMBRELLA_REQUIRED
 #define SPRT_UMBRELLA_FUNC SPRT_FORCEINLINE
 #define SPRT_UMBRELLA_END __SPRT_NOEXCEPT
+#define SPRT_UMBRELLA_END_EXCEPT
 #else
 #define SPRT_UMBRELLA_FUNC
 #define SPRT_UMBRELLA_END __SPRT_NOEXCEPT;
+#define SPRT_UMBRELLA_END_EXCEPT ;
 #endif
 
 

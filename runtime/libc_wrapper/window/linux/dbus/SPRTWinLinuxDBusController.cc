@@ -20,10 +20,10 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/linux/SPRTWinLinuxController.h"
-#include "private/window/linux/SPRTWinLinuxDBusController.h"
-#include "private/window/linux/SPRTWinLinuxDBusGnome.h"
-#include "private/window/linux/SPRTWinLinuxDBusKde.h"
+#include "../SPRTWinLinuxController.h"
+#include "SPRTWinLinuxDBusController.h"
+#include "SPRTWinLinuxDBusGnome.h"
+#include "SPRTWinLinuxDBusKde.h"
 
 #include <sprt/runtime/utils/readconf.h>
 

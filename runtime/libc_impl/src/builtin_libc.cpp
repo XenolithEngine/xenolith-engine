@@ -46,6 +46,8 @@ __SPRT_C_FUNC __SPRT_FALLBACK_ATTR(const) int *___errno_location(void) { return 
 
 __SPRT_C_FUNC void __stdio_exit_needed() { }
 
+__plock_storage *__libc_get_plock_storage() { return &__libc::get()->plockStorage; }
+
 __libc::__libc() {
 	__init_locale();
 
@@ -76,7 +78,7 @@ __libc::__libc() {
 		__get_locale(__SPRT_LC_MESSAGES, "C", 1),
 	};
 
-	plocks.max_load_factor(2.0);
+	plockStorage.plocks.max_load_factor(2.0);
 
 	mainThread = __sprt_gettid();
 }
@@ -186,185 +188,6 @@ const char *__libc::preserve_tz_name(StringView name) {
 	data[name.size()] = 0;
 
 	return tzCache.emplace(StringView(data, name.size())).first->data();
-}
-
-__SPRT_C_FUNC
-int __SPRT_ID(sprt_plock_lock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock_flags_t) flags,
-		__SPRT_ID(pid_t) * tidPtr) {
-	auto libc = __libc::get();
-
-	unique_lock ulock(libc->plockMutex);
-
-	auto it = libc->plocks.find(lock);
-	if (it == libc->plocks.end()) {
-		auto newplock = (__libc_plock *)__sprt_local_alloc(sizeof(__libc_plock));
-		it = libc->plocks.emplace(lock, new (newplock, nothrow) __libc_plock).first;
-		it->second->refcount = 1;
-	} else {
-		++it->second->refcount;
-	}
-
-	ulock.unlock();
-
-	__sprt_sprt_rlock_t tid;
-	*rmutex_base::getNativeValue(tid) = __sprt_gettid();
-
-	auto res = rmutex_base::_lock<sprt_rlock_wait, nullptr,
-			bool(SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(it->second->data.value, tid, 0,
-			SPRT_LOCK_FLAG_PI);
-	switch (res) {
-	case Status::Ok:
-	case Status::Propagate: ++it->second->data.counter; break;
-	default: return -1; break;
-	}
-
-	if (it->second->flags & SPRT_LOCK_FLAG_RESOURCE_DIED) {
-		sprt_plock_unlock(lock, SPRT_LOCK_FLAG_RESOURCE_DIED, tidPtr);
-		__sprt_errno = EOWNERDEAD;
-		return -1;
-	}
-	if (tidPtr != nullptr) {
-		*tidPtr = (*rmutex_base::getNativeValue(tid)) & rmutex_base::THREAD_ID_MASK;
-	}
-	return 0;
-}
-
-__SPRT_C_FUNC
-int __SPRT_ID(sprt_plock_trylock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock_flags_t),
-		__SPRT_ID(pid_t) * tidPtr) {
-	auto libc = __libc::get();
-
-	unique_lock ulock(libc->plockMutex);
-
-	auto it = libc->plocks.find(lock);
-	if (it == libc->plocks.end()) {
-		it = libc->plocks.emplace(lock).first;
-		it->second->refcount = 1;
-
-		// It's a new lock, this should return immediately
-		__sprt_sprt_rlock_t tid;
-		*rmutex_base::getNativeValue(tid) = __sprt_gettid();
-
-		auto res = rmutex_base::_lock<sprt_rlock_wait, nullptr,
-				bool(SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(it->second->data.value, tid, 0,
-				SPRT_LOCK_FLAG_PI);
-		switch (res) {
-		case Status::Ok:
-		case Status::Propagate: ++it->second->data.counter; break;
-		default: return -1; break;
-		}
-		if (tidPtr != nullptr) {
-			*tidPtr = (*rmutex_base::getNativeValue(tid)) & rmutex_base::THREAD_ID_MASK;
-		}
-		return 0;
-	} else {
-		__sprt_sprt_rlock_t tid;
-		*rmutex_base::getNativeValue(tid) = __sprt_gettid();
-
-		auto res = rmutex_base::_try_lock<sprt_rlock_try_wait>(it->second->data.value, tid,
-				SPRT_LOCK_FLAG_PI);
-		switch (res) {
-		case Status::Ok:
-		case Status::Propagate:
-			++it->second->refcount;
-			ulock.unlock();
-
-			++it->second->data.counter;
-			if (it->second->flags & SPRT_LOCK_FLAG_RESOURCE_DIED) {
-				sprt_plock_unlock(lock, SPRT_LOCK_FLAG_RESOURCE_DIED, tidPtr);
-				__sprt_errno = EOWNERDEAD;
-				return -1;
-			}
-			if (tidPtr != nullptr) {
-				*tidPtr = (*rmutex_base::getNativeValue(tid)) & rmutex_base::THREAD_ID_MASK;
-			}
-			return 0;
-			break;
-		default: break;
-		}
-	}
-	__sprt_errno = 0;
-	return -1;
-}
-
-__SPRT_C_FUNC
-int __SPRT_ID(sprt_plock_unlock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock_flags_t) flags,
-		__SPRT_ID(pid_t) * tidPtr) {
-
-	auto doUnlock = [&](rmutex_base::value_type &data, uint32_t *counter) {
-		rmutex_base::tid_type tidWithPrio = __sprt_gettid();
-		rmutex_base::value_type zero = {0};
-
-		rmutex_base::value_type expected;
-		*rmutex_base::getNativeValue(expected) =
-				_atomic::loadRel(rmutex_base::getNativeValue(data));
-
-		if (counter && *counter <= 0) {
-			return Status::ErrorNotPermitted;
-		}
-
-		if ((*rmutex_base::getNativeValue(expected) & rmutex_base::THREAD_ID_MASK)
-				!= (tidWithPrio & rmutex_base::THREAD_ID_MASK)) {
-			return Status::ErrorNotPermitted;
-		}
-
-		if (counter && --*counter > 0) {
-			// some recursive locks still in place
-			return Status::Propagate;
-		}
-
-		if (tidPtr) {
-			*tidPtr = 0;
-		}
-
-		// We check if we already know about the waiting threads.
-		// If we don’t know, then we try to atomically unlock the mutex.
-		bool unlocked = false;
-		if ((*rmutex_base::getNativeValue(expected) & rmutex_base::WAITERS_BIT) != 0
-				|| !(unlocked = _atomic::compareSwap(rmutex_base::getNativeValue(data),
-							 rmutex_base::getNativeValue(expected),
-							 *rmutex_base::getNativeValue(zero)))) {
-			// Now we know for sure that there are waiting threads
-			if (!unlocked) {
-				// CAS failed (Waiters flag was added)
-				// or WAITERS_BIT was already set, CAS was not performed
-				//
-				// Force-set data to 0;
-				_atomic::storeSeq(rmutex_base::getNativeValue(data),
-						*rmutex_base::getNativeValue(zero));
-			}
-			if (sprt_rlock_wake(&data, 0) != 0) {
-				return status::errnoToStatus(__sprt_errno);
-			}
-			return Status::Ok;
-		}
-		return Status::Done;
-	};
-
-	auto libc = __libc::get();
-
-	unique_lock ulock(libc->plockMutex);
-
-	auto it = libc->plocks.find(lock);
-	if (it == libc->plocks.end()) {
-		__sprt_errno = ESRCH;
-		return -1;
-	}
-
-	auto recount = it->second->refcount;
-	if (recount == 1) {
-		doUnlock(it->second->data.value, &it->second->data.counter);
-		destroy_at(it->second);
-		__sprt_local_free((void *)it->second, sizeof(__libc_plock));
-		libc->plocks.erase(it);
-	} else {
-		if (flags & SPRT_LOCK_FLAG_RESOURCE_DIED) {
-			it->second->flags |= SPRT_LOCK_FLAG_RESOURCE_DIED;
-		}
-		--it->second->refcount;
-		doUnlock(it->second->data.value, &it->second->data.counter);
-	}
-	return 0;
 }
 
 } // namespace sprt

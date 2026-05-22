@@ -40,5 +40,6 @@ all:
 	cd $(LIBNAME); cmake  --build . --config Release --target install --parallel
 	$(call rule_rm,$(LIBNAME))
 	$(if $(WINDOWS),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/libpng16_static.lib,$(SP_INSTALL_PREFIX)/usr/lib/png16.lib))
+	$(if $(WINDOWS),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/libpng.lib))
 
 .PHONY: all

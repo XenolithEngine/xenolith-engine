@@ -126,14 +126,9 @@ __SPRT_C_FUNC void __SPRT_ID(aligned_free)(void *memblock) {
 __SPRT_C_FUNC int __SPRT_ID(system_impl)(const char *cmd) { return ::system(cmd); }
 
 #if __STDC_HOSTED__ == 1
-__SPRT_C_FUNC void *__SPRT_ID(bsearch_impl)(const void *key, void *base, size_t nmemb, size_t size,
-		int (*compar)(const void *, const void *)) {
+__SPRT_C_FUNC void *__SPRT_ID(bsearch_impl)(const void *key, const void *base, size_t nmemb,
+		size_t size, int (*compar)(const void *, const void *)) {
 	return ::bsearch(key, base, nmemb, size, compar);
-}
-
-__SPRT_C_FUNC void __SPRT_ID(qsort_impl)(void *array, size_t n, size_t size,
-		int (*comparator)(const void *lhs, const void *rhs)) {
-	::qsort(array, n, size, comparator);
 }
 #endif
 

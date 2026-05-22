@@ -20,8 +20,8 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/linux/SPRTWinLinuxXcbDisplayConfigManager.h"
-#include "private/window/linux/SPRTWinLinuxXcbConnection.h"
+#include "SPRTWinLinuxXcbDisplayConfigManager.h"
+#include "SPRTWinLinuxXcbConnection.h"
 
 #include <sprt/c/__sprt_math.h>
 #include <sprt/runtime/detail/emplace_ordered.h>

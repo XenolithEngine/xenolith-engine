@@ -72,8 +72,6 @@ struct __rootdirinfo {
 #pragma clang diagnostic ignored "-Wunused-function"
 #endif
 
-#define offsetof(type, member) ((size_t)&(((type *)0)->member))
-
 namespace sprt {
 
 static bool __isdir(HANDLE handle) {

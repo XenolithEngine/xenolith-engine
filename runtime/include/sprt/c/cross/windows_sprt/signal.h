@@ -6,6 +6,7 @@
 #define __SPRT_SIG_ERR __SPRT_SIG_SGE
 
 typedef int __SPRT_ID(sig_atomic_t);
+typedef __SPRT_ID(sig_atomic_t) sig_atomic_t;
 
 #define __SPRT_SIG_ATOMIC_MIN __SPRT_INT_MAX
 #define __SPRT_SIG_ATOMIC_MAX (-1-__SPRT_INT_MAX)

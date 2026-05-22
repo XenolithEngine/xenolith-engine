@@ -119,4 +119,18 @@ struct hash<void> {
 
 } // namespace sprt
 
+#ifdef __SPRT_AS_STD
+namespace std {
+
+template <typename T>
+struct hash {
+	template <typename T>
+	constexpr size_t operator()(T &&value) const noexcept {
+		return sprt::hash<T>()(sprt::forward<T>(value));
+	}
+};
+
+} // namespace std
+#endif
+
 #endif // RUNTIME_INCLUDE_SPRT_CXX_HASH_H_

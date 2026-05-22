@@ -31,4 +31,17 @@ THE SOFTWARE.
 #include <sprt/cxx/__utility/pair.h>
 #include <sprt/cxx/__utility/integer_sequence.h>
 
+#ifdef __SPRT_AS_STD
+namespace std {
+using namespace sprt;
+
+template <typename Type>
+[[nodiscard]]
+constexpr typename sprt::remove_reference<Type>::type &&move(Type &&value) noexcept {
+	return static_cast<typename sprt::remove_reference<Type>::type &&>(value);
+}
+
+} // namespace std
+#endif
+
 #endif // RUNTIME_INCLUDE_SPRT_CXX_UTILITY_H_

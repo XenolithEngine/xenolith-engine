@@ -20,6 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+#define __SPRT_BUILD 1
+
 #include <sprt/c/bits/__sprt_cpuset_t.h>
 #include <sprt/cxx/detail/constexpr.h>
 #include <sprt/c/__sprt_string.h>
@@ -28,9 +30,15 @@ THE SOFTWARE.
 
 #if SPRT_LINUX || SPRT_ANDROID
 #include <sched.h>
+#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <dlfcn.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "linux/clock_gettime.cc"
+#include "linux/libc.cc"
 
 #elif SPRT_MACOS
 #include <sched.h>
@@ -158,7 +166,7 @@ __SPRT_C_FUNC int __SPRT_ID(strverscmp)(const char *l0, const char *r0) {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(clock_getres)(__SPRT_ID(clockid_t) clock, __SPRT_TIMESPEC_NAME *out) {
-	return _clock_getres(clock, out);
+	return clock_getres(clock, out);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(clock_gettime)(__SPRT_ID(clockid_t) clock, __SPRT_TIMESPEC_NAME *out) {
@@ -238,15 +246,6 @@ __SPRT_C_FUNC long double __SPRT_ID(log2l_impl)(long double value) { return ::lo
 
 __SPRT_C_FUNC char *__SPRT_ID(strerror_impl)(int err) { return ::strerror(err); }
 
-__SPRT_C_FUNC __SPRT_ID(errno_t)
-		__SPRT_ID(strerror_s)(char *buf, __SPRT_ID(rsize_t) bufsz, __SPRT_ID(errno_t) errnum) {
-#if __STDC_LIB_EXT1__
-	return ::strerror_s(buf, bufsz, errnum);
-#else
-	return ::strerror_r(errnum, buf, bufsz);
-#endif
-}
-
 __SPRT_C_FUNC int __SPRT_ID(tolower_impl)(int c) {
 	if (c > 0 && c <= 0x7F) {
 		return int(sprt::__constexpr_tolower_c(char(c)));
@@ -312,6 +311,34 @@ __SPRT_C_FUNC void __SPRT_ID(local_free)(void *value, size_t size) __SPRT_NOEXCE
 }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(abort_impl)(void) { ::abort(); }
+
+
+__SPRT_C_FUNC int __SPRT_ID(sigisemptyset)(const __SPRT_ID(sigset_t) * set) {
+	for (auto &it : set->__bits) {
+		if (it != 0) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(sigorset)(__SPRT_ID(sigset_t) * set, const __SPRT_ID(sigset_t) * a,
+		const __SPRT_ID(sigset_t) * b) {
+	auto s = sizeof(set->__bits) / sizeof(set->__bits[0]);
+	for (size_t i = 0; i < s; ++i) { set->__bits[i] = a->__bits[i] | b->__bits[i]; }
+	return 0;
+}
+__SPRT_C_FUNC int __SPRT_ID(sigandset)(__SPRT_ID(sigset_t) * set, const __SPRT_ID(sigset_t) * a,
+		const __SPRT_ID(sigset_t) * b) {
+	auto s = sizeof(set->__bits) / sizeof(set->__bits[0]);
+	for (size_t i = 0; i < s; ++i) { set->__bits[i] = a->__bits[i] & b->__bits[i]; }
+	return 0;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(sigemptyset)(__SPRT_ID(sigset_t) * set) {
+	for (auto &it : set->__bits) { it = 0; }
+	return 0;
+}
 
 } // namespace sprt
 

@@ -2,6 +2,7 @@
 #define CORE_RUNTIME_INCLUDE_SPRT_C_BITS_IOVEC_H_
 
 #include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/bits/__sprt_size_t.h>
 
 #ifdef __SPRT_BUILD
 #define __SPRT_IOVEC_NAME __SPRT_ID(iovec)
@@ -11,7 +12,7 @@
 
 struct __SPRT_IOVEC_NAME {
 	void *iov_base; /* Starting address */
-	size_t iov_len; /* Length in bytes */
+	__SPRT_ID(size_t) iov_len; /* Length in bytes */
 };
 
 #endif // CORE_RUNTIME_INCLUDE_SPRT_C_BITS_IOVEC_H_

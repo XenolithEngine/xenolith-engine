@@ -203,7 +203,8 @@ struct __thread_pool {
 // Initial function
 SPRT_UNUSED static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg);
 
-SPRT_UNUSED static void __attachNativeThread(thread_t *thread, void *handle);
+SPRT_UNUSED static void __attachNativeThread(thread_t *thread, void *handle, uint64_t id,
+		unique_lock<qmutex> &lock);
 
 // Remove thread from active list and deallocate it's resources atomically,
 // Some memory can be preserved to use for future threads;
@@ -222,7 +223,8 @@ SPRT_UNUSED static uint64_t __getNativeThreadId();
 
 SPRT_UNUSED static void __registerForDestruction(void (*)(void));
 
-SPRT_UNUSED static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr);
+SPRT_UNUSED static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
+		__thread_pool *pool);
 
 // Setup thread with actual native thread's attributes;
 // Also, this will replace temporary native handle with the permanent one

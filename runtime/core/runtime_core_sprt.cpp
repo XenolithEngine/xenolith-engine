@@ -33,6 +33,15 @@ THE SOFTWARE.
 #include <sprt/runtime/thread/qonce.h>
 #include <sprt/c/sys/__sprt_utsname.h>
 #include <sprt/c/__sprt_pthread.h>
+#include <sprt/c/__sprt_unistd.h>
+
+#include <sprt/runtime/thread/qmutex.h>
+#include <sprt/runtime/thread/rmutex.h>
+#include <sprt/cxx/mutex>
+#include <sprt/cxx/unordered_map>
+#include <sprt/cxx/detail/allocator_local.h>
+
+#include "include/__plock.h"
 
 #if SPRT_LINUX || SPRT_ANDROID
 #include <unistd.h>
@@ -200,14 +209,191 @@ __SPRT_C_FUNC int __SPRT_ID(sprt_qlock_oneshot_unlock)(__SPRT_ID(sprt_qlock_t) *
 	return 0;
 }
 
+__SPRT_C_FUNC
+int __SPRT_ID(sprt_plock_lock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock_flags_t) flags,
+		__SPRT_ID(pid_t) * tidPtr) {
+	auto storage = __libc_get_plock_storage();
+
+	unique_lock ulock(storage->plockMutex);
+
+	auto it = storage->plocks.find(lock);
+	if (it == storage->plocks.end()) {
+		auto newplock = (__plock_data *)__sprt_local_alloc(sizeof(__plock_data));
+		it = storage->plocks.emplace(lock, new (newplock, nothrow) __plock_data).first;
+		it->second->refcount = 1;
+	} else {
+		++it->second->refcount;
+	}
+
+	ulock.unlock();
+
+	__sprt_sprt_rlock_t tid;
+	*rmutex_base::getNativeValue(tid) = __sprt_gettid();
+
+	auto res = rmutex_base::_lock<sprt_rlock_wait, nullptr,
+			bool(__SPRT_SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(it->second->data.value, tid, 0,
+			__SPRT_SPRT_LOCK_FLAG_PI);
+	switch (res) {
+	case Status::Ok:
+	case Status::Propagate: ++it->second->data.counter; break;
+	default: return -1; break;
+	}
+
+	if (it->second->flags & __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED) {
+		__sprt_sprt_plock_unlock(lock, __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED, tidPtr);
+		__sprt_errno = EOWNERDEAD;
+		return -1;
+	}
+	if (tidPtr != nullptr) {
+		*tidPtr = (*rmutex_base::getNativeValue(tid)) & rmutex_base::THREAD_ID_MASK;
+	}
+	return 0;
+}
+
+__SPRT_C_FUNC
+int __SPRT_ID(sprt_plock_trylock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock_flags_t),
+		__SPRT_ID(pid_t) * tidPtr) {
+	auto storage = __libc_get_plock_storage();
+
+	unique_lock ulock(storage->plockMutex);
+
+	auto it = storage->plocks.find(lock);
+	if (it == storage->plocks.end()) {
+		it = storage->plocks.emplace(lock).first;
+		it->second->refcount = 1;
+
+		// It's a new lock, this should return immediately
+		__sprt_sprt_rlock_t tid;
+		*rmutex_base::getNativeValue(tid) = __sprt_gettid();
+
+		auto res = rmutex_base::_lock<sprt_rlock_wait, nullptr,
+				bool(__SPRT_SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(it->second->data.value, tid, 0,
+				__SPRT_SPRT_LOCK_FLAG_PI);
+		switch (res) {
+		case Status::Ok:
+		case Status::Propagate: ++it->second->data.counter; break;
+		default: return -1; break;
+		}
+		if (tidPtr != nullptr) {
+			*tidPtr = (*rmutex_base::getNativeValue(tid)) & rmutex_base::THREAD_ID_MASK;
+		}
+		return 0;
+	} else {
+		__sprt_sprt_rlock_t tid;
+		*rmutex_base::getNativeValue(tid) = __sprt_gettid();
+
+		auto res = rmutex_base::_try_lock<sprt_rlock_try_wait>(it->second->data.value, tid,
+				__SPRT_SPRT_LOCK_FLAG_PI);
+		switch (res) {
+		case Status::Ok:
+		case Status::Propagate:
+			++it->second->refcount;
+			ulock.unlock();
+
+			++it->second->data.counter;
+			if (it->second->flags & __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED) {
+				__sprt_sprt_plock_unlock(lock, __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED, tidPtr);
+				__sprt_errno = EOWNERDEAD;
+				return -1;
+			}
+			if (tidPtr != nullptr) {
+				*tidPtr = (*rmutex_base::getNativeValue(tid)) & rmutex_base::THREAD_ID_MASK;
+			}
+			return 0;
+			break;
+		default: break;
+		}
+	}
+	__sprt_errno = 0;
+	return -1;
+}
+
+__SPRT_C_FUNC
+int __SPRT_ID(sprt_plock_unlock)(__SPRT_ID(sprt_plock_t) lock, __SPRT_ID(sprt_lock_flags_t) flags,
+		__SPRT_ID(pid_t) * tidPtr) {
+
+	auto doUnlock = [&](rmutex_base::value_type &data, uint32_t *counter) {
+		rmutex_base::tid_type tidWithPrio = __sprt_gettid();
+		rmutex_base::value_type zero = {0};
+
+		rmutex_base::value_type expected;
+		*rmutex_base::getNativeValue(expected) =
+				_atomic::loadRel(rmutex_base::getNativeValue(data));
+
+		if (counter && *counter <= 0) {
+			return Status::ErrorNotPermitted;
+		}
+
+		if ((*rmutex_base::getNativeValue(expected) & rmutex_base::THREAD_ID_MASK)
+				!= (tidWithPrio & rmutex_base::THREAD_ID_MASK)) {
+			return Status::ErrorNotPermitted;
+		}
+
+		if (counter && --*counter > 0) {
+			// some recursive locks still in place
+			return Status::Propagate;
+		}
+
+		if (tidPtr) {
+			*tidPtr = 0;
+		}
+
+		// We check if we already know about the waiting threads.
+		// If we don’t know, then we try to atomically unlock the mutex.
+		bool unlocked = false;
+		if ((*rmutex_base::getNativeValue(expected) & rmutex_base::WAITERS_BIT) != 0
+				|| !(unlocked = _atomic::compareSwap(rmutex_base::getNativeValue(data),
+							 rmutex_base::getNativeValue(expected),
+							 *rmutex_base::getNativeValue(zero)))) {
+			// Now we know for sure that there are waiting threads
+			if (!unlocked) {
+				// CAS failed (Waiters flag was added)
+				// or WAITERS_BIT was already set, CAS was not performed
+				//
+				// Force-set data to 0;
+				_atomic::storeSeq(rmutex_base::getNativeValue(data),
+						*rmutex_base::getNativeValue(zero));
+			}
+			if (sprt_rlock_wake(&data, 0) != 0) {
+				return status::errnoToStatus(__sprt_errno);
+			}
+			return Status::Ok;
+		}
+		return Status::Done;
+	};
+
+	auto storage = __libc_get_plock_storage();
+
+	unique_lock ulock(storage->plockMutex);
+
+	auto it = storage->plocks.find(lock);
+	if (it == storage->plocks.end()) {
+		__sprt_errno = ESRCH;
+		return -1;
+	}
+
+	auto recount = it->second->refcount;
+	if (recount == 1) {
+		doUnlock(it->second->data.value, &it->second->data.counter);
+		destroy_at(it->second);
+		__sprt_local_free((void *)it->second, sizeof(__plock_data));
+		storage->plocks.erase(it);
+	} else {
+		if (flags & __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED) {
+			it->second->flags |= __SPRT_SPRT_LOCK_FLAG_RESOURCE_DIED;
+		}
+		--it->second->refcount;
+		doUnlock(it->second->data.value, &it->second->data.counter);
+	}
+	return 0;
+}
+
 } // namespace sprt
 
 /*
 	Mutex ABI
 */
 
-#include <sprt/runtime/thread/qmutex.h>
-#include <sprt/runtime/thread/rmutex.h>
 #include <sprt/wrappers/windows/thread_api.h>
 #include <sprt/cxx/__mutex/recursive_timed_mutex.h>
 #include <sprt/c/__sprt_unistd.h>

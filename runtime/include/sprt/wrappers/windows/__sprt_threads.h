@@ -39,6 +39,12 @@ SPRT_FORCEINLINE VOID InitializeCriticalSection(
 	__sprt_pthread_mutex_init(lpCriticalSection, __SPRT_NULL);
 }
 
+SPRT_FORCEINLINE BOOL InitializeCriticalSectionAndSpinCount(LPCRITICAL_SECTION lpCriticalSection,
+		DWORD v) __SPRT_NOEXCEPT {
+	__sprt_pthread_mutex_init(lpCriticalSection, __SPRT_NULL);
+	return TRUE;
+}
+
 SPRT_FORCEINLINE VOID EnterCriticalSection(LPCRITICAL_SECTION lpCriticalSection) __SPRT_NOEXCEPT {
 	__sprt_pthread_mutex_lock(lpCriticalSection);
 }
@@ -92,13 +98,54 @@ SPRT_FORCEINLINE BOOL SleepConditionVariableCS(PCONDITION_VARIABLE ConditionVari
 	return FALSE;
 }
 
-typedef unsigned(__stdcall *_beginthreadex_proc_type)(void *);
+typedef unsigned(WINAPI *_beginthreadex_proc_type)(void *);
 
 WINAPI __SPRT_ID(uintptr_t)
 		_beginthreadex(void *_Security, unsigned _StackSize, _beginthreadex_proc_type _StartAddress,
 				void *_ArgList, unsigned _InitFlag, unsigned *_ThrdAddr) __SPRT_NOEXCEPT;
 
 WINAPI void _endthreadex(unsigned _ReturnCode) __SPRT_NOEXCEPT;
+
+/*SPRT_FORCEINLINE LONG InterlockedCompareExchange(LONG volatile *Destination, LONG Exchange,
+		LONG Comperand) {
+	LONG expected = Comperand;
+	__atomic_compare_exchange_n(Destination, &expected, Exchange, 0, __ATOMIC_SEQ_CST,
+			__ATOMIC_SEQ_CST);
+	return expected;
+}*/
+
+__SPRT_C_FUNC long _InterlockedOr(long volatile *_Value, long _Mask);
+__SPRT_C_FUNC long _InterlockedExchangeAdd(long volatile *_Addend, long _Value);
+__SPRT_C_FUNC void *_InterlockedExchangePointer(void *volatile *_Target, void *_Value);
+__SPRT_C_FUNC long _InterlockedCompareExchange(long volatile *_Destination, long _Exchange,
+		long _Comparand);
+__SPRT_C_FUNC long _InterlockedExchange(long volatile *_Target, long _Value);
+__SPRT_C_FUNC __int64 _InterlockedExchange64(__int64 volatile *_Target, __int64 _Value);
+__SPRT_C_FUNC __int64 _InterlockedOr64(__int64 volatile *_Value, __int64 _Mask);
+__SPRT_C_FUNC __int64 _InterlockedAnd64(__int64 volatile *, __int64);
+
+__SPRT_C_FUNC SPRT_FORCEINLINE __int64 _InterlockedAdd64(__int64 volatile *target, __int64 value) {
+	return __atomic_fetch_add(target, value, __ATOMIC_ACQ_REL);
+}
+
+#pragma intrinsic(_InterlockedOr)
+#pragma intrinsic(_InterlockedExchangeAdd)
+#pragma intrinsic(_InterlockedExchangePointer)
+#pragma intrinsic(_InterlockedCompareExchange)
+#pragma intrinsic(_InterlockedExchange)
+#pragma intrinsic(_InterlockedExchange64)
+#pragma intrinsic(_InterlockedOr64)
+#pragma intrinsic(_InterlockedAnd64)
+
+#define InterlockedOr _InterlockedOr
+#define InterlockedExchange64 _InterlockedExchange64
+#define InterlockedOr64 _InterlockedOr64
+#define InterlockedExchangeAdd _InterlockedExchangeAdd
+#define InterlockedExchangePointer _InterlockedExchangePointer
+#define InterlockedCompareExchange _InterlockedCompareExchange
+#define InterlockedExchange _InterlockedExchange
+#define InterlockedAdd64 _InterlockedAdd64
+#define InterlockedAnd64 _InterlockedAnd64
 
 __SPRT_END_DECL
 

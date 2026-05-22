@@ -20,6 +20,8 @@
  THE SOFTWARE.
  **/
 
+#define __SPRT_BUILD 1
+
 #include <sprt/runtime/status.h>
 #include <sprt/runtime/stream.h>
 

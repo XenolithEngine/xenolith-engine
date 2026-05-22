@@ -43,6 +43,7 @@ THE SOFTWARE.
 #include "dll_ws2_32.h"
 #include "dll_oleaut32.h"
 #include "dll_dbghelp.h"
+#include "dll_crypt32.h"
 
 // Mark all loader functions with this to remove buffer checks from functions,
 // that can be called before security cookie initialization
@@ -90,8 +91,9 @@ struct DllLoader {
 	Ws2_32Table ws2_32; // 15
 	Oleaut32Table oleaut32; // 16
 	DbghelpTable dbghelp; // 17
+	Crypt32Table crypt32; // 18
 
-	DllTable *__tables[19];
+	DllTable *__tables[20];
 
 	DllLoader()
 	: __tables{
@@ -113,6 +115,7 @@ struct DllLoader {
 		  &ws2_32,
 		  &oleaut32,
 		  &dbghelp,
+		  &crypt32,
 		  nullptr,
 	  } { }
 

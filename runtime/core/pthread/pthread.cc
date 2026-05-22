@@ -160,11 +160,11 @@ static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg) {
 	return result;
 }
 
-static void __attachNativeThread(thread_t *thread, void *handle) {
+static void __attachNativeThread(thread_t *thread, void *handle, uint64_t id,
+		unique_lock<qmutex> &lock) {
 	thread->handle = handle;
 
-	unique_lock globalLock(s_handlePool.mutex);
-	s_handlePool.activeThreads.emplace(thread->threadId, thread);
+	s_handlePool.activeThreads.emplace(id, thread);
 }
 
 static thread_t *__allocateThread(const attr_t *attr) {
@@ -446,7 +446,8 @@ int thread_t::create(thread_t **__SPRT_RESTRICT outthread, const attr_t *__SPRT_
 	memory::allocator::initialize(&thread->threadAlloc);
 	thread->threadMemPool = memory::pool::create(&thread->threadAlloc);
 
-	auto ret = native::__createThread(thread, attr ? attr : &s_handlePool.defaultAttr);
+	auto ret =
+			native::__createThread(thread, attr ? attr : &s_handlePool.defaultAttr, &s_handlePool);
 	if (ret != 0) {
 		__deallocateThread(thread);
 		return ret;

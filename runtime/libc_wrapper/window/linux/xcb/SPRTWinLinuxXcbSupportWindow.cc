@@ -20,10 +20,10 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/linux/SPRTWinLinux.h"
-#include "private/window/linux/SPRTWinLinuxXcbSupportWindow.h"
-#include "private/window/linux/SPRTWinLinuxXcbConnection.h"
-#include "private/window/linux/SPRTWinLinuxXcbDisplayConfigManager.h"
+#include "../SPRTWinLinux.h"
+#include "SPRTWinLinuxXcbSupportWindow.h"
+#include "SPRTWinLinuxXcbConnection.h"
+#include "SPRTWinLinuxXcbDisplayConfigManager.h"
 
 #include <sprt/runtime/log.h>
 

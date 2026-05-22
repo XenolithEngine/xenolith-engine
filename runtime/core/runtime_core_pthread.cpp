@@ -42,11 +42,6 @@ THE SOFTWARE.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wundefined-internal"
 
-#if SPRT_WINDOWS
-__SPRT_C_FUNC int sigprocmask(int mode, const __SPRT_ID(sigset_t) * __SPRT_RESTRICT a,
-		__SPRT_ID(sigset_t) * __SPRT_RESTRICT b);
-#endif
-
 namespace sprt {
 
 static_assert(sizeof(sprt::_thread::thread_t *) == sizeof(__sprt_pthread_t));
@@ -163,15 +158,6 @@ __SPRT_C_FUNC int __SPRT_ID(
 	return reinterpret_cast<_thread::thread_t *>(thread)->getcpuclockid(clock);
 }
 
-__SPRT_C_FUNC int __SPRT_ID(
-		pthread_sigmask)(int how, const __SPRT_ID(sigset_t) * set, __SPRT_ID(sigset_t) * oldset) {
-#if SPRT_WINDOWS
-	return sigprocmask(how, set, oldset);
-#else
-	return pthread_sigmask(how, (const sigset_t *)set, (sigset_t *)oldset);
-#endif
-}
-
 struct _beginthreadexwrapper {
 	_beginthreadex_proc_type _StartAddress;
 	void *_ArgList;
@@ -181,6 +167,10 @@ static void *_beginthreadex_fn(void *arg) {
 	auto w = (_beginthreadexwrapper *)arg;
 	return (void *)(uintptr_t)w->_StartAddress(w->_ArgList);
 }
+
+#ifndef CREATE_SUSPENDED
+#define CREATE_SUSPENDED                  0x0000'0004
+#endif
 
 __SPRT_C_FUNC __SPRT_ID(uintptr_t)
 		_beginthreadex(void *_Security, unsigned _StackSize, _beginthreadex_proc_type _StartAddress,

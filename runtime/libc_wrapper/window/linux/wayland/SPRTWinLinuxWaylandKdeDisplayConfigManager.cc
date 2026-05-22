@@ -22,9 +22,9 @@
 
 #define __SPRT_BUILD 1
 
-#include "private/window/linux/SPRTWinLinuxWaylandKdeDisplayConfigManager.h"
-#include "private/window/linux/SPRTWinLinuxWaylandLibrary.h"
-#include "private/window/linux/SPRTWinLinuxWaylandDisplay.h"
+#include "SPRTWinLinuxWaylandKdeDisplayConfigManager.h"
+#include "SPRTWinLinuxWaylandLibrary.h"
+#include "SPRTWinLinuxWaylandDisplay.h"
 
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/utils/base64.h>

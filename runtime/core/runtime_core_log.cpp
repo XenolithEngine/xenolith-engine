@@ -20,6 +20,8 @@
  THE SOFTWARE.
  **/
 
+#define __SPRT_BUILD 1
+
 #include <sprt/runtime/log.h>
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/__sprt_stdio.h>
@@ -30,7 +32,26 @@
 
 #if SPRT_LINUX
 #include <sprt/c/sys/__sprt_stat.h>
+#undef _GNU_SOURCE
+#include <string.h>
 #endif
+
+#if SPRT_WINDOWS
+__SPRT_C_FUNC int strerror_r(__SPRT_ID(errno_t) errnum, char *buf, __SPRT_ID(rsize_t) bufsz);
+#endif
+
+namespace sprt {
+
+__SPRT_C_FUNC __SPRT_ID(errno_t)
+		__SPRT_ID(strerror_s)(char *buf, __SPRT_ID(rsize_t) bufsz, __SPRT_ID(errno_t) errnum) {
+#if __STDC_LIB_EXT1__
+	return ::strerror_s(buf, bufsz, errnum);
+#else
+	return ::strerror_r(errnum, buf, bufsz);
+#endif
+}
+
+} // namespace sprt
 
 namespace sprt::oslog {
 
@@ -206,7 +227,7 @@ static bool parseLogFeatures(BytesView data, LogFeaturesInit &ret) {
 
 static bool checkLogFeatureWithFilename(StringView str, LogFeaturesInit &ret) {
 	bool result = false;
-	struct stat s;
+	struct __SPRT_STAT_NAME s;
 	auto r = ::__sprt_stat(str.data(), &s);
 	if (r == 0 && s.st_size > 0) {
 		auto buf = (uint8_t *)__sprt_malloca(s.st_size);

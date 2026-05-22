@@ -43,8 +43,8 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-SPRT_API extern void __sprt_assert_fail(const char *cond, const char *file, unsigned int line,
-		const char *fn, const char *text) __SPRT_NOEXCEPT __SPRT_NORETURN;
+SPRT_API __SPRT_NORETURN extern void __sprt_assert_fail(const char *cond, const char *file,
+		unsigned int line, const char *fn, const char *text) __SPRT_NOEXCEPT;
 
 __SPRT_END_DECL
 

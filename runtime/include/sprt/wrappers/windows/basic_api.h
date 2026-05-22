@@ -30,6 +30,11 @@ typedef HANDLE HGLOBAL;
 typedef HANDLE HLOCAL;
 
 // clang-format off
+#define CP_ACP                    0
+#define CP_OEMCP                  1
+#define CP_MACCP                  2
+#define CP_THREAD_ACP             3
+#define CP_SYMBOL                 42
 #define CP_UTF8                   65001
 
 #define STD_INPUT_HANDLE    ((DWORD)-10)
@@ -128,6 +133,14 @@ WINAPI LPVOID HeapReAlloc(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem, SIZE_T dwBy
 WINAPI BOOL HeapFree(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem);
 
 WINAPI SIZE_T HeapSize(HANDLE hHeap, DWORD dwFlags, LPCVOID lpMem);
+
+WINAPI HANDLE HeapCreate(DWORD flOptions, SIZE_T dwInitialSize, SIZE_T dwMaximumSize);
+
+WINAPI BOOL HeapDestroy(HANDLE hHeap);
+
+WINAPI BOOL HeapValidate(HANDLE hHeap, DWORD dwFlags, LPCVOID lpMem);
+
+WINAPI SIZE_T HeapCompact(HANDLE hHeap, DWORD dwFlags);
 
 WINAPI HANDLE GetProcessHeap(VOID);
 
@@ -228,6 +241,8 @@ WINAPI BOOL SetEnvironmentVariableW(LPCWSTR lpName, LPCWSTR lpValue);
 
 WINAPI VOID Sleep(DWORD dwMilliseconds);
 
+WINAPI DWORD SleepEx(DWORD dwMilliseconds, BOOL bAlertable);
+
 WINAPI BOOL WaitOnAddress(volatile VOID *Address, PVOID CompareAddress, SIZE_T AddressSize,
 		DWORD dwMilliseconds);
 
@@ -251,6 +266,10 @@ WINAPI BOOL GetConsoleMode(HANDLE hConsoleHandle, LPDWORD lpMode);
 WINAPI BOOL SetConsoleMode(HANDLE hConsoleHandle, DWORD dwMode);
 
 WINAPI DWORD GetCurrentProcessorNumber(VOID);
+
+WINAPI VOID OutputDebugStringA(LPCSTR lpOutputString);
+
+WINAPI VOID OutputDebugStringW(LPCWSTR lpOutputString);
 
 __SPRT_END_DECL
 

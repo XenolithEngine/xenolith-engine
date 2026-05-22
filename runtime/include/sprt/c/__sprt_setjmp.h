@@ -49,13 +49,13 @@ THE SOFTWARE.
 #if defined(_WIN32) || defined(__SPRT_WINDOWS)
 
 // Windows ABI setjmp have 2 arguments,
-#define __sprt_setjmp(Buf) __sprt_cfa_setjmp(__sprt_get_setjmp_fn()(Buf[0].__native, __SPRT_NULL), Buf)
+#define __sprt_setjmp(Buf) __sprt_cfa_setjmp(__sprt_get_setjmp_fn()( ((Buf)[0].__native ), __SPRT_NULL), Buf)
 
 typedef int (*__SPRT_ID(setjmp_fn))(__SPRT_ID(native_jmp_buf), void *);
 
 #else
 
-#define __sprt_setjmp(Buf) __sprt_cfa_setjmp(__sprt_get_setjmp_fn()(Buf[0].__native), Buf)
+#define __sprt_setjmp(Buf) __sprt_cfa_setjmp(__sprt_get_setjmp_fn()( ((Buf)[0].__native) ), Buf)
 
 typedef int (*__SPRT_ID(setjmp_fn))(__SPRT_ID(native_jmp_buf));
 

@@ -178,6 +178,20 @@ target-ios: \
 target-apple: target-macosx target-ios
 
 
+#
+# Windows targets
+#
+
+target-x86_64-pc-windows-msvc: host
+	$(MAKE) -C target-windows TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) x86_64
+
+target-aarch64-pc-windows-msvc: host
+	$(MAKE) -C target-windows TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64
+
+target-windows: \
+	target-x86_64-pc-windows-msvc \
+	target-aarch64-pc-windows-msvc
+
 .PHONY: all clean prepare compress host download \
 	target-linux \
 	target-x86_64-unknown-linux-gnu \
@@ -198,6 +212,9 @@ target-apple: target-macosx target-ios
 	target-ios \
 	target-aarch64-apple-ios \
 	target-x86_64-apple-ios-simulator \
-	target-aarch64-apple-ios-simulator
+	target-aarch64-apple-ios-simulator \
+	target-windows \
+	target-x86_64-pc-windows-msvc \
+	target-aarch64-pc-windows-msvc
 
 .DEFAULT_GOAL := host

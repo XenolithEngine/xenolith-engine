@@ -94,6 +94,14 @@ THE SOFTWARE.
 #define DLL_THREAD_ATTACH    2
 #define DLL_THREAD_DETACH    3
 #define DLL_PROCESS_DETACH   0
+
+#define UOI_FLAGS       1
+#define UOI_NAME        2
+#define UOI_TYPE        3
+#define UOI_USER_SID    4
+#define UOI_HEAPSIZE    5
+#define UOI_IO          6
+#define UOI_TIMERPROC_EXCEPTION_SUPPRESSION       7
 // clang-format on
 
 typedef VOID (*PIMAGE_TLS_CALLBACK)(PVOID DllHandle, DWORD Reason, PVOID Reserved);
@@ -280,6 +288,8 @@ __declspec(noreturn) WINAPI VOID ExitProcess(UINT uExitCode);
  */
 WINAPI HMODULE LoadLibraryW(LPCWSTR lpLibFileName);
 
+WINAPI HMODULE LoadLibraryA(LPCSTR lpLibFileName);
+
 WINAPI HMODULE LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, DWORD dwFlags);
 
 /**
@@ -314,6 +324,11 @@ WINAPI BOOL GetModuleHandleExW(DWORD dwFlags, LPCWSTR lpModuleName, PHMODULE phM
 WINAPI DWORD GetModuleFileNameW(HMODULE hModule, LPWSTR lpFilename, DWORD nSize);
 
 WINAPI PVOID RtlPcToFileHeader(PVOID PcValue, PVOID *BaseOfImage);
+
+#ifdef UNICODE
+#define GetModuleHandle GetModuleHandleW
+#define LoadLibrary LoadLibraryW
+#endif
 
 __SPRT_END_DECL
 

@@ -246,7 +246,7 @@ struct tagVARIANT {
 				ULONGLONG *pullVal;
 				INT *pintVal;
 				UINT *puintVal;
-				struct __tagBRECORD {
+				struct {
 					PVOID pvRecord;
 					IRecordInfo *pRecInfo;
 				};

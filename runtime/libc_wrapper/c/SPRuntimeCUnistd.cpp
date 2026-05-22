@@ -52,6 +52,7 @@ THE SOFTWARE.
 #include <unistd.h>
 #include <sys/resource.h>
 #include <stdlib.h>
+#include <utime.h>
 #if __clang__
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wvla-cxx-extension"
@@ -846,10 +847,7 @@ __SPRT_C_FUNC int __SPRT_ID(chown)(const char *__file, __SPRT_ID(uid_t) __owner,
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #else
-	return internal::performWithNativePath(__file, [&](const char *target) {
-		// call with native path
-		return ::chown(target, __owner, __group);
-	}, -1);
+	return ::chown(__file, __owner, __group);
 #endif
 }
 

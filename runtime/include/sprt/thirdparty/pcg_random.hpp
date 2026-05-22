@@ -202,7 +202,7 @@ protected:
 	static constexpr bool is_mcg = false;
 
 	// Is never called, but is provided for symmetry with specific_stream
-	void set_stream(...) { sprt::abort(); }
+	void set_stream(...) { abort(); }
 
 public:
 	typedef itype state_type;
@@ -232,7 +232,7 @@ protected:
 	static constexpr bool is_mcg = true;
 
 	// Is never called, but is provided for symmetry with specific_stream
-	void set_stream(...) { sprt::abort(); }
+	void set_stream(...) { abort(); }
 
 public:
 	typedef itype state_type;
@@ -258,7 +258,7 @@ protected:
 	static constexpr bool is_mcg = false;
 
 	// Is never called, but is provided for symmetry with specific_stream
-	void set_stream(...) { sprt::abort(); }
+	void set_stream(...) { abort(); }
 
 public:
 	typedef itype state_type;

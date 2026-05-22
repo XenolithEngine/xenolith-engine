@@ -81,6 +81,10 @@ WINAPI VOID GetSystemTimePreciseAsFileTime(LPFILETIME lpSystemTimeAsFileTime);
 
 WINAPI VOID GetSystemTimeAsFileTime(LPFILETIME lpSystemTimeAsFileTime);
 
+WINAPI VOID GetSystemTime(LPSYSTEMTIME lpSystemTime);
+
+WINAPI DWORD GetTickCount();
+
 WINAPI ULONGLONG GetTickCount64();
 
 WINAPI BOOL GetProcessTimes(HANDLE hProcess, LPFILETIME lpCreationTime, LPFILETIME lpExitTime,

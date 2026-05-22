@@ -45,7 +45,7 @@ typedef __INT_LEAST16_TYPE__ __SPRT_ID(int_least16_t);
 #endif
 
 #ifdef __INT_LEAST16_FMTi__
-#define __SPRT_INT_LEAST16_FMTo __INT_LEAST16_FMTi__
+#define __SPRT_INT_LEAST16_FMTi __INT_LEAST16_FMTi__
 #else
 #error "Compiler-assisted __INT_LEAST16_FMTi__ is not defined"
 #endif

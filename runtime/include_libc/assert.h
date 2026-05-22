@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 #else
 
-#include <sprt/c/__sprt_assert.h>
+#include <sprt/wrappers/libc/assert.h>
 
 #endif
 

@@ -6,3 +6,5 @@ struct __SPRT_SOCKADDR_NAME {
 	__SPRT_ID(socklen_t) sa_family; /* [XSI] address family */
 	char sa_data[14]; /* [XSI] addr value */
 };
+
+typedef int SOCKET;

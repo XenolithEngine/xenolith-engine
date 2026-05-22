@@ -28,40 +28,6 @@ THE SOFTWARE.
 
 #if SPRT_LINUX || SPRT_ANDROID
 
-#ifndef __SPRT_BUILD
-__SPRT_C_FUNC long int syscall(long int __sysno, ...) noexcept;
-#endif
-
-#if defined(__x86_64__)
-
-static constexpr int SYS_GETTID = 186;
-static constexpr int SYS_FUTEX_V1 = 202;
-
-#elif defined(__i386__)
-
-static constexpr int SYS_GETTID = 224;
-static constexpr int SYS_FUTEX_V1 = 422;
-
-#elif defined(__aarch64__)
-
-static constexpr int SYS_GETTID = 178;
-static constexpr int SYS_FUTEX_V1 = 98;
-
-#elif defined(__arm__)
-
-static constexpr int SYS_GETTID = 224;
-static constexpr int SYS_FUTEX_V1 = 422;
-
-#elif defined(__riscv)
-
-static constexpr int SYS_GETTID = 178;
-static constexpr int SYS_FUTEX_V1 = 422;
-
-#endif
-
-static constexpr int SYS_FUTEX_V2_WAKE = 454;
-static constexpr int SYS_FUTEX_V2_WAIT = 455;
-static constexpr int SYS_EPOLL_PWAIT2 = 441;
 static constexpr int SYS_IO_URING_SETUP = 425;
 static constexpr int SYS_IO_URING_ENTER = 426;
 static constexpr int SYS_IO_URING_REGISTER = 427;

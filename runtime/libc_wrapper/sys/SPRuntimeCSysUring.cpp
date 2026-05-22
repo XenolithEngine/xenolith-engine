@@ -22,32 +22,38 @@
 
 #include <sprt/c/sys/__sprt_uring.h>
 #include <sprt/c/cross/__sprt_signal.h>
+#include <sprt/c/cross/__sprt_syscall.h>
 #include <sprt/c/__sprt_errno.h>
 
 #include <sprt/runtime/log.h>
+
+#if __SPRT_CONFIG_HAVE_URING
+__SPRT_C_FUNC long int syscall(long int __sysno, ...);
+#endif
 
 namespace sprt {
 
 #if __SPRT_CONFIG_HAVE_URING
 
 __SPRT_C_FUNC int __SPRT_ID(io_uring_setup)(unsigned entries, struct io_uring_params *p) {
-	return (int)syscall(SYS_IO_URING_SETUP, entries, p);
+	return (int)syscall(__SPRT_SYSCALL_io_uring_setup, entries, p);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(io_uring_enter)(int ring_fd, unsigned int to_submit,
 		unsigned int min_complete, unsigned int flags, const __SPRT_ID(sigset_t) * sig) {
-	return (int)syscall(SYS_IO_URING_ENTER, ring_fd, to_submit, min_complete, flags, sig,
+	return (int)syscall(__SPRT_SYSCALL_io_uring_enter, ring_fd, to_submit, min_complete, flags, sig,
 			__SPRT__NSIG / 8);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(io_uring_enter2)(int ring_fd, unsigned int to_submit,
 		unsigned int min_complete, unsigned int flags, void *arg, __SPRT_ID(size_t) argsize) {
-	return (int)syscall(SYS_IO_URING_ENTER, ring_fd, to_submit, min_complete, flags, arg, argsize);
+	return (int)syscall(__SPRT_SYSCALL_io_uring_enter, ring_fd, to_submit, min_complete, flags, arg,
+			argsize);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(io_uring_register)(unsigned int fd, unsigned int opcode,
 		const void *arg, unsigned int nr_args) {
-	return (int)syscall(SYS_IO_URING_REGISTER, fd, opcode, arg, nr_args);
+	return (int)syscall(__SPRT_SYSCALL_io_uring_register, fd, opcode, arg, nr_args);
 }
 
 #else

@@ -67,3 +67,10 @@ __SPRT_C_FUNC int __SPRT_ID(memcmp_impl)(const void *l, const void *r, size_t si
 __SPRT_C_FUNC const void *__SPRT_ID(memchr_impl)(const void *str, int c, size_t size) {
 	return ::memchr(str, c, size);
 }
+
+__SPRT_C_FUNC int strerror_r(int err, char *buf, size_t buflen);
+
+__SPRT_C_FUNC int strerror_s(char *buf, __SPRT_ID(rsize_t) bufsz,
+		__SPRT_ID(errno_t) errnum) __SPRT_NOEXCEPT {
+	return ::strerror_r(errnum, buf, bufsz);
+}

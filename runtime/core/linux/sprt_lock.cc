@@ -23,9 +23,10 @@ THE SOFTWARE.
 #include <sprt/c/sys/__sprt_sprt.h>
 #include <sprt/c/sys/__sprt_futex.h>
 #include <sprt/c/cross/__sprt_sysid.h>
+#include <sprt/c/cross/__sprt_syscall.h>
 #include <sprt/runtime/thread/qonce.h>
 
-#include "private/SPRTSpecific.h"
+#include <unistd.h>
 
 namespace sprt {
 
@@ -58,7 +59,7 @@ static int sprt_qlock_wait(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_qlock
 		_flags &= ~__SPRT_FUTEX_CLOCK_REALTIME;
 	}
 	if (timeout == __SPRT_SPRT_TIMEOUT_INFINITE) {
-		result = ::syscall(SYS_FUTEX_V1, value,
+		result = ::syscall(__SPRT_SYSCALL_futex, value,
 				__SPRT_FUTEX_WAIT | (_flags & __SPRT_FUTEX_FLAG_MASK), expected, nullptr);
 	} else {
 		struct timespec ts{
@@ -66,7 +67,7 @@ static int sprt_qlock_wait(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_qlock
 			static_cast<decltype(sprt::declval<struct timespec>().tv_nsec)>(timeout % 1'000'000),
 		};
 
-		result = ::syscall(SYS_FUTEX_V1, value,
+		result = ::syscall(__SPRT_SYSCALL_futex, value,
 				__SPRT_FUTEX_WAIT | (_flags & __SPRT_FUTEX_FLAG_MASK), expected, &ts);
 	}
 	return result;
@@ -79,8 +80,8 @@ static int sprt_qlock_wake_one(__SPRT_ID(sprt_qlock_t) * value,
 	if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_SHARED))) {
 		_flags &= ~__SPRT_FUTEX_PRIVATE_FLAG;
 	}
-	result = ::syscall(SYS_FUTEX_V1, value, __SPRT_FUTEX_WAKE | (_flags & __SPRT_FUTEX_FLAG_MASK),
-			1);
+	result = ::syscall(__SPRT_SYSCALL_futex, value,
+			__SPRT_FUTEX_WAKE | (_flags & __SPRT_FUTEX_FLAG_MASK), 1);
 	if (result > 0) {
 		result = 0;
 	}
@@ -94,8 +95,8 @@ static int sprt_qlock_wake_all(__SPRT_ID(sprt_qlock_t) * value,
 	if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_SHARED))) {
 		_flags &= ~__SPRT_FUTEX_PRIVATE_FLAG;
 	}
-	result = ::syscall(SYS_FUTEX_V1, value, __SPRT_FUTEX_WAKE | (_flags & __SPRT_FUTEX_FLAG_MASK),
-			__SPRT_INT_MAX);
+	result = ::syscall(__SPRT_SYSCALL_futex, value,
+			__SPRT_FUTEX_WAKE | (_flags & __SPRT_FUTEX_FLAG_MASK), __SPRT_INT_MAX);
 	if (result > 0) {
 		result = 0;
 	}
@@ -142,12 +143,12 @@ static int sprt_rlock_wait(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_rlock
 	}
 	if (timeout == __SPRT_SPRT_TIMEOUT_INFINITE) {
 		if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_PI))) {
-			return ::syscall(SYS_FUTEX_V1, &value->u32_2,
+			return ::syscall(__SPRT_SYSCALL_futex, &value->u32_2,
 					(above_5_14 ? __SPRT_FUTEX_LOCK_PI2 : __SPRT_FUTEX_LOCK_PI)
 							| (_flags & __SPRT_FUTEX_FLAG_MASK),
 					0, nullptr);
 		} else {
-			return ::syscall(SYS_FUTEX_V1, &value->u32_2,
+			return ::syscall(__SPRT_SYSCALL_futex, &value->u32_2,
 					__SPRT_FUTEX_WAIT | (_flags & __SPRT_FUTEX_FLAG_MASK), expected->u32_2,
 					nullptr);
 		}
@@ -159,12 +160,12 @@ static int sprt_rlock_wait(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_rlock
 		};
 
 		if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_PI))) {
-			return ::syscall(SYS_FUTEX_V1, &value->u32_2,
+			return ::syscall(__SPRT_SYSCALL_futex, &value->u32_2,
 					(above_5_14 ? __SPRT_FUTEX_LOCK_PI2 : __SPRT_FUTEX_LOCK_PI)
 							| (_flags & __SPRT_FUTEX_FLAG_MASK),
 					0, &ts);
 		} else {
-			return ::syscall(SYS_FUTEX_V1, &value->u32_2,
+			return ::syscall(__SPRT_SYSCALL_futex, &value->u32_2,
 					__SPRT_FUTEX_WAIT | (_flags & __SPRT_FUTEX_FLAG_MASK), expected->u32_2, &ts);
 		}
 	}
@@ -177,7 +178,7 @@ static int sprt_rlock_try_wait(__SPRT_ID(sprt_rlock_t) * value,
 		if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_SHARED))) {
 			_flags &= ~__SPRT_FUTEX_PRIVATE_FLAG;
 		}
-		return ::syscall(SYS_FUTEX_V1, &value->u32_2,
+		return ::syscall(__SPRT_SYSCALL_futex, &value->u32_2,
 				__SPRT_FUTEX_TRYLOCK_PI | (_flags & __SPRT_FUTEX_FLAG_MASK));
 	}
 	return 0;
@@ -191,11 +192,11 @@ static int sprt_rlock_wake(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_lock_
 
 	int result = 0;
 	if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_PI))) {
-		result = ::syscall(SYS_FUTEX_V1, &value->u32_2,
+		result = ::syscall(__SPRT_SYSCALL_futex, &value->u32_2,
 				__SPRT_FUTEX_UNLOCK_PI | (_flags & __SPRT_FUTEX_FLAG_MASK));
 	} else {
 		_atomic::storeSeq(&value->u32_2, uint32_t(0));
-		result = ::syscall(SYS_FUTEX_V1, &value->u32_2,
+		result = ::syscall(__SPRT_SYSCALL_futex, &value->u32_2,
 				__SPRT_FUTEX_WAKE | (_flags & __SPRT_FUTEX_FLAG_MASK), 1);
 	}
 	if (result > 0) {

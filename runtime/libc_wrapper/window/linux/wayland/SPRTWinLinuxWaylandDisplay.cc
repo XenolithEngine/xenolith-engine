@@ -22,13 +22,13 @@
 
 #define __SPRT_BUILD 1
 
-#include "private/window/linux/SPRTWinLinuxWaylandDisplay.h"
-#include "private/window/linux/SPRTWinLinuxWaylandLibrary.h"
-#include "private/window/linux/SPRTWinLinuxWaylandWindow.h"
-#include "private/window/linux/SPRTWinLinuxWaylandSeat.h"
-#include "private/window/linux/SPRTWinLinuxWaylandDataDevice.h"
-#include "private/window/linux/SPRTWinLinuxWaylandKeys.h"
-#include "private/window/linux/SPRTWinLinuxWaylandKdeDisplayConfigManager.h"
+#include "SPRTWinLinuxWaylandDisplay.h"
+#include "SPRTWinLinuxWaylandLibrary.h"
+#include "SPRTWinLinuxWaylandWindow.h"
+#include "SPRTWinLinuxWaylandSeat.h"
+#include "SPRTWinLinuxWaylandDataDevice.h"
+#include "SPRTWinLinuxWaylandKeys.h"
+#include "SPRTWinLinuxWaylandKdeDisplayConfigManager.h"
 
 #include <sprt/runtime/log.h>
 

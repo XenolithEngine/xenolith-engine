@@ -90,7 +90,17 @@
 
 #define E_ACCESSDENIED                   HRESULT(0x80070005L)
 #define E_INVALIDARG                     HRESULT(0x80070057L)
+
+#define EVENTLOG_SUCCESS                0x0000
+#define EVENTLOG_ERROR_TYPE             0x0001
+#define EVENTLOG_WARNING_TYPE           0x0002
+#define EVENTLOG_INFORMATION_TYPE       0x0004
+#define EVENTLOG_AUDIT_SUCCESS          0x0008
+#define EVENTLOG_AUDIT_FAILURE          0x0010
+
 // clang-format on
+
+DECLARE_HANDLE(HWINSTA);
 
 typedef enum _SE_OBJECT_TYPE {
 	SE_UNKNOWN_OBJECT_TYPE = 0,
@@ -276,6 +286,28 @@ WINAPI DWORD SetNamedSecurityInfoW(LPWSTR pObjectName, SE_OBJECT_TYPE ObjectType
 		SECURITY_INFORMATION SecurityInfo, PSID psidOwner, PSID psidGroup, PACL pDacl, PACL pSacl);
 
 WINAPI BOOL ConvertSidToStringSidW(PSID Sid, LPWSTR *StringSid);
+
+WINAPI BOOL CloseWindowStation(HWINSTA hWinSta);
+
+WINAPI BOOL SetProcessWindowStation(HWINSTA hWinSta);
+
+WINAPI HWINSTA GetProcessWindowStation(VOID);
+
+WINAPI BOOL GetUserObjectInformationW(HANDLE hObj, int nIndex, PVOID pvInfo, DWORD nLength,
+		LPDWORD lpnLengthNeeded);
+
+WINAPI HANDLE RegisterEventSourceW(LPCWSTR lpUNCServerName, LPCWSTR lpSourceName);
+
+WINAPI BOOL DeregisterEventSource(HANDLE hEventLog);
+
+WINAPI BOOL ReportEventW(HANDLE hEventLog, WORD wType, WORD wCategory, DWORD dwEventID,
+		PSID lpUserSid, WORD wNumStrings, DWORD dwDataSize, LPCWSTR *lpStrings, LPVOID lpRawData);
+
+#ifdef UNICODE
+#define ReportEvent  ReportEventW
+#define GetUserObjectInformation  GetUserObjectInformationW
+#define RegisterEventSource  RegisterEventSourceW
+#endif
 
 __SPRT_END_DECL
 

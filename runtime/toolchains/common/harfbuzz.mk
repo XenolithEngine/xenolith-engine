@@ -22,11 +22,16 @@
 
 LIBNAME = harfbuzz
 
+ifdef WINDOWS
+SP_USER_CXXFLAGS += -isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include/sprt/cxx) -D__SPRT_AS_STD
+endif
+
 include ../common/configure.mk
 
 CONFIGURE := \
 	$(CONFIGURE_CMAKE) \
 	-DHB_HAVE_FREETYPE=On \
+	-DCMAKE_CXX_STANDARD=20 \
 	-DFREETYPE_INCLUDE_DIRS=$(SP_INSTALL_PREFIX)/include
 
 all:

@@ -25,32 +25,4 @@
 
 #include <sprt/runtime/utils/dso.h>
 
-#define SPRT_DEFINE_PROTO(name) decltype(&::name) name = nullptr;
-#define SPRT_LOAD_PROTO(handle, name) this->name = handle.sym<decltype(this->name)>(#name);
-
-namespace sprt {
-
-template <typename T>
-static bool clearFunctionList(T first, T last) {
-	while (first != last) {
-		*first = nullptr;
-		++first;
-	}
-	return true;
-}
-
-template <typename T>
-static bool validateFunctionList(T first, T last) {
-	while (first != last) {
-		if (*first == nullptr) {
-			clearFunctionList(first, last);
-			return false;
-		}
-		++first;
-	}
-	return true;
-}
-
-} // namespace sprt
-
 #endif // CORE_RUNTIME_PRIVATE_SPRTDSO_H_

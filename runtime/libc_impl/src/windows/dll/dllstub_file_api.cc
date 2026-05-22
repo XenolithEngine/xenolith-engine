@@ -37,6 +37,15 @@ HANDLE CreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,
 			dwFlagsAndAttributes, hTemplateFile);
 }
 
+HANDLE CreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,
+		LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition,
+		DWORD dwFlagsAndAttributes, HANDLE hTemplateFile) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernelbase.call<decltype(&CreateFileA)>(loader->kernelbase.CreateFileA,
+			lpFileName, dwDesiredAccess, dwShareMode, lpSecurityAttributes, dwCreationDisposition,
+			dwFlagsAndAttributes, hTemplateFile);
+}
+
 // ---- File I/O (kernel32) ----
 
 BOOL ReadFile(HANDLE hFile, LPVOID lpBuffer, DWORD nNumberOfBytesToRead,
@@ -83,6 +92,12 @@ BOOL SetFileAttributesW(LPCWSTR lpFileName, DWORD dwFileAttributes) {
 	auto loader = sprt::DllLoader::get();
 	return loader->kernelbase.call<decltype(&SetFileAttributesW)>(
 			loader->kernelbase.SetFileAttributesW, lpFileName, dwFileAttributes);
+}
+
+BOOL SetFileAttributesA(LPCSTR lpFileName, DWORD dwFileAttributes) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernelbase.call<decltype(&SetFileAttributesA)>(
+			loader->kernelbase.SetFileAttributesA, lpFileName, dwFileAttributes);
 }
 
 BOOL SetFileInformationByHandle(HANDLE hFile, FILE_INFO_BY_HANDLE_CLASS FileInformationClass,
@@ -174,6 +189,13 @@ HANDLE CreateFileMappingW(HANDLE hFile, LPSECURITY_ATTRIBUTES lpFileMappingAttri
 			dwMaximumSizeHigh, dwMaximumSizeLow, lpName);
 }
 
+HANDLE CreateFileMappingA(HANDLE hFile, LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
+		DWORD flProtect, DWORD dwMaximumSizeHigh, DWORD dwMaximumSizeLow, LPCSTR lpName) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&CreateFileMappingA)>(loader->kernel32.CreateFileMappingA,
+			hFile, lpFileMappingAttributes, flProtect, dwMaximumSizeHigh, dwMaximumSizeLow, lpName);
+}
+
 LPVOID MapViewOfFile(HANDLE hFileMappingObject, DWORD dwDesiredAccess, DWORD dwFileOffsetHigh,
 		DWORD dwFileOffsetLow, SIZE_T dwNumberOfBytesToMap) {
 	auto loader = sprt::DllLoader::get();
@@ -202,6 +224,12 @@ BOOL DeleteFileW(LPCWSTR lpFileName) {
 			lpFileName);
 }
 
+WINAPI BOOL DeleteFileA(LPCSTR lpFileName) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernelbase.call<decltype(&DeleteFileA)>(loader->kernelbase.DeleteFileA,
+			lpFileName);
+}
+
 BOOL RemoveDirectoryW(LPCWSTR lpPathName) {
 	auto loader = sprt::DllLoader::get();
 	return loader->kernelbase.call<decltype(&RemoveDirectoryW)>(loader->kernelbase.RemoveDirectoryW,
@@ -214,9 +242,35 @@ DWORD GetFileAttributesW(LPCWSTR lpFileName) {
 			loader->kernelbase.GetFileAttributesW, lpFileName);
 }
 
+DWORD GetFileAttributesA(LPCSTR lpFileName) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernelbase.call<decltype(&GetFileAttributesA)>(
+			loader->kernelbase.GetFileAttributesA, lpFileName);
+}
+
+BOOL GetFileAttributesExW(LPCWSTR lpFileName, GET_FILEEX_INFO_LEVELS fInfoLevelId,
+		LPVOID lpFileInformation) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernelbase.call<decltype(&GetFileAttributesExW)>(
+			loader->kernelbase.GetFileAttributesExW, lpFileName, fInfoLevelId, lpFileInformation);
+}
+
+BOOL GetFileAttributesExA(LPCSTR lpFileName, GET_FILEEX_INFO_LEVELS fInfoLevelId,
+		LPVOID lpFileInformation) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernelbase.call<decltype(&GetFileAttributesExA)>(
+			loader->kernelbase.GetFileAttributesExA, lpFileName, fInfoLevelId, lpFileInformation);
+}
+
 BOOL MoveFileExW(LPCWSTR lpExistingFileName, LPCWSTR lpNewFileName, DWORD dwFlags) {
 	auto loader = sprt::DllLoader::get();
 	return loader->kernelbase.call<decltype(&MoveFileExW)>(loader->kernelbase.MoveFileExW,
+			lpExistingFileName, lpNewFileName, dwFlags);
+}
+
+BOOL MoveFileExA(LPCSTR lpExistingFileName, LPCSTR lpNewFileName, DWORD dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&MoveFileExA)>(loader->kernel32.MoveFileExA,
 			lpExistingFileName, lpNewFileName, dwFlags);
 }
 
@@ -278,6 +332,12 @@ DWORD GetTempPathW(DWORD nBufferLength, LPWSTR lpBuffer) {
 			nBufferLength, lpBuffer);
 }
 
+WINAPI DWORD GetTempPathA(DWORD nBufferLength, LPSTR lpBuffer) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernelbase.call<decltype(&GetTempPathA)>(loader->kernelbase.GetTempPathA,
+			nBufferLength, lpBuffer);
+}
+
 // ---- Path Canonicalization (kernelbase) ----
 
 HRESULT PathAllocCanonicalize(PCWSTR pszPathIn, ULONG dwFlags, PWSTR *ppszPathOut) {
@@ -300,4 +360,126 @@ WINAPI BOOL WriteFileGather(HANDLE hFile, FILE_SEGMENT_ELEMENT aSegmentArray[],
 			hFile, aSegmentArray, nNumberOfBytesToWrite, lpReserved, lpOverlapped);
 }
 
+WINAPI DWORD GetFileSize(HANDLE hFile, LPDWORD lpFileSizeHigh) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetFileSize)>(loader->kernel32.GetFileSize, hFile,
+			lpFileSizeHigh);
+}
+
+WINAPI BOOL GetFileSizeEx(HANDLE hFile, PLARGE_INTEGER lpFileSize) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetFileSizeEx)>(loader->kernel32.GetFileSizeEx, hFile,
+			lpFileSize);
+}
+
+WINAPI DWORD GetFileType(HANDLE hFile) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetFileType)>(loader->kernel32.GetFileType, hFile);
+}
+
+WINAPI BOOL AreFileApisANSI(VOID) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&AreFileApisANSI)>(loader->kernel32.AreFileApisANSI);
+}
+
+WINAPI BOOL GetDiskFreeSpaceA(LPCSTR lpRootPathName, LPDWORD lpSectorsPerCluster,
+		LPDWORD lpBytesPerSector, LPDWORD lpNumberOfFreeClusters, LPDWORD lpTotalNumberOfClusters) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetDiskFreeSpaceA)>(loader->kernel32.GetDiskFreeSpaceA,
+			lpRootPathName, lpSectorsPerCluster, lpBytesPerSector, lpNumberOfFreeClusters,
+			lpTotalNumberOfClusters);
+}
+
+WINAPI BOOL GetDiskFreeSpaceW(LPCWSTR lpRootPathName, LPDWORD lpSectorsPerCluster,
+		LPDWORD lpBytesPerSector, LPDWORD lpNumberOfFreeClusters, LPDWORD lpTotalNumberOfClusters) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetDiskFreeSpaceW)>(loader->kernel32.GetDiskFreeSpaceW,
+			lpRootPathName, lpSectorsPerCluster, lpBytesPerSector, lpNumberOfFreeClusters,
+			lpTotalNumberOfClusters);
+}
+
+WINAPI DWORD GetFullPathNameW(LPCWSTR lpFileName, DWORD nBufferLength, LPWSTR lpBuffer,
+		LPWSTR *lpFilePart) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetFullPathNameW)>(loader->kernel32.GetFullPathNameW,
+			lpFileName, nBufferLength, lpBuffer, lpFilePart);
+}
+
+WINAPI DWORD GetFullPathNameA(LPCSTR lpFileName, DWORD nBufferLength, LPSTR lpBuffer,
+		LPSTR *lpFilePart) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetFullPathNameA)>(loader->kernel32.GetFullPathNameA,
+			lpFileName, nBufferLength, lpBuffer, lpFilePart);
+}
+
+WINAPI BOOL LockFile(HANDLE hFile, DWORD dwFileOffsetLow, DWORD dwFileOffsetHigh,
+		DWORD nNumberOfBytesToLockLow, DWORD nNumberOfBytesToLockHigh) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&LockFile)>(loader->kernel32.LockFile, hFile,
+			dwFileOffsetLow, dwFileOffsetHigh, nNumberOfBytesToLockLow, nNumberOfBytesToLockHigh);
+}
+
+WINAPI BOOL LockFileEx(HANDLE hFile, DWORD dwFlags, DWORD dwReserved, DWORD nNumberOfBytesToLockLow,
+		DWORD nNumberOfBytesToLockHigh, LPOVERLAPPED lpOverlapped) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&LockFileEx)>(loader->kernel32.LockFileEx, hFile, dwFlags,
+			dwReserved, nNumberOfBytesToLockLow, nNumberOfBytesToLockHigh, lpOverlapped);
+}
+
+WINAPI BOOL UnlockFile(HANDLE hFile, DWORD dwFileOffsetLow, DWORD dwFileOffsetHigh,
+		DWORD nNumberOfBytesToUnlockLow, DWORD nNumberOfBytesToUnlockHigh) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&UnlockFile)>(loader->kernel32.UnlockFile, hFile,
+			dwFileOffsetLow, dwFileOffsetHigh, nNumberOfBytesToUnlockLow,
+			nNumberOfBytesToUnlockHigh);
+}
+
+WINAPI BOOL UnlockFileEx(HANDLE hFile, DWORD dwReserved, DWORD nNumberOfBytesToUnlockLow,
+		DWORD nNumberOfBytesToUnlockHigh, LPOVERLAPPED lpOverlapped) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&UnlockFileEx)>(loader->kernel32.UnlockFileEx, hFile,
+			dwReserved, nNumberOfBytesToUnlockLow, nNumberOfBytesToUnlockHigh, lpOverlapped);
+}
+
+WINAPI HANDLE FindFirstFileW(LPCWSTR lpFileName, LPWIN32_FIND_DATAW lpFindFileData) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&FindFirstFileW)>(loader->kernel32.FindFirstFileW,
+			lpFileName, lpFindFileData);
+}
+
+WINAPI HANDLE FindFirstFileA(LPCSTR lpFileName, LPWIN32_FIND_DATAW lpFindFileData) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&FindFirstFileA)>(loader->kernel32.FindFirstFileA,
+			lpFileName, lpFindFileData);
+}
+
+WINAPI BOOL FindNextFileW(HANDLE hFindFile, LPWIN32_FIND_DATAW lpFindFileData) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&FindNextFileW)>(loader->kernel32.FindNextFileW,
+			hFindFile, lpFindFileData);
+}
+
+WINAPI BOOL FindNextFileA(HANDLE hFindFile, LPWIN32_FIND_DATAA lpFindFileData) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&FindNextFileA)>(loader->kernel32.FindNextFileA,
+			hFindFile, lpFindFileData);
+}
+
+WINAPI BOOL FindClose(HANDLE hFindFile) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&FindClose)>(loader->kernel32.FindClose, hFindFile);
+}
+
+WINAPI LONG CompareFileTime(const FILETIME *lpFileTime1, const FILETIME *lpFileTime2) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&CompareFileTime)>(loader->kernel32.CompareFileTime,
+			lpFileTime1, lpFileTime2);
+}
+
+WINAPI BOOL GetFileTime(HANDLE hFile, LPFILETIME lpCreationTime, LPFILETIME lpLastAccessTime,
+		LPFILETIME lpLastWriteTime) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&GetFileTime)>(loader->kernel32.GetFileTime, hFile,
+			lpCreationTime, lpLastAccessTime, lpLastWriteTime);
+}
 } // extern "C"

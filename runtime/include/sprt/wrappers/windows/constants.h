@@ -41,6 +41,8 @@ THE SOFTWARE.
 #define MAX_PATH 260
 #endif
 
+#define MAXIMUM_WAIT_OBJECTS 64
+
 // clang-format off
 #define HKEY_CLASSES_ROOT                   (( HKEY ) (ULONG_PTR)((LONG)0x80000000) )
 #define HKEY_CURRENT_USER                   (( HKEY ) (ULONG_PTR)((LONG)0x80000001) )
@@ -190,6 +192,8 @@ typedef enum tag_WBEM_GENERIC_FLAG_TYPE {
 #define WAIT_ABANDONED    ((STATUS_ABANDONED_WAIT_0 ) + 0 )
 #define WAIT_ABANDONED_0  ((STATUS_ABANDONED_WAIT_0 ) + 0 )
 
+#define WAIT_IO_COMPLETION                  STATUS_USER_APC
+
 /* Special values */
 #define INVALID_HANDLE_VALUE        ((HANDLE)(ULONG_PTR)-1)
 #define INVALID_FILE_ATTRIBUTES     ((DWORD)-1)
@@ -273,6 +277,16 @@ typedef enum tag_WBEM_GENERIC_FLAG_TYPE {
                                   &                           \
                                  (~SYNCHRONIZE))
 
+#define VS_FFI_STRUCVERSION     0x00010000L
+#define VS_FFI_FILEFLAGSMASK    0x0000003FL
+
+#define VFT_UNKNOWN             0x00000000L
+#define VFT_APP                 0x00000001L
+#define VFT_DLL                 0x00000002L
+#define VFT_DRV                 0x00000003L
+#define VFT_FONT                0x00000004L
+#define VFT_VXD                 0x00000005L
+#define VFT_STATIC_LIB          0x00000007L
 // clang-format on
 
 /* Processor architecture constants */
@@ -326,5 +340,15 @@ typedef enum tag_WBEM_GENERIC_FLAG_TYPE {
                             SECTION_MAP_READ |       \
                             SECTION_MAP_EXECUTE |    \
                             SECTION_EXTEND_SIZE)
+
+#define VER_PLATFORM_WIN32s             0
+#define VER_PLATFORM_WIN32_WINDOWS      1
+#define VER_PLATFORM_WIN32_NT           2
+
+#define FILE_TYPE_UNKNOWN   0x0000
+#define FILE_TYPE_DISK      0x0001
+#define FILE_TYPE_CHAR      0x0002
+#define FILE_TYPE_PIPE      0x0003
+#define FILE_TYPE_REMOTE    0x8000
 
 #endif // SPRT_WRAPPERS_WINDOWS_CONSTANTS_H_

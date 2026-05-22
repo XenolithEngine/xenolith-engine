@@ -20,23 +20,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#define __SPRT_BUILD 1
-
-#include <sprt/c/__sprt_string.h>
-#include <sprt/runtime/init.h>
-#include <sprt/cxx/cctype>
-
 #if __STDC_HOSTED__ == 1
 // clang-format off
+#define __SPRT_BUILD 1
 #ifdef __STDC_VERSION__
 #define _POSIX_C_SOURCE __STDC_VERSION__
 #else
 #define _POSIX_C_SOURCE 200112L
 #endif
+
 #define __STDC_WANT_LIB_EXT1__ 1
-#undef _GNU_SOURCE
+#define __USE_XOPEN2K8 1
 // clang-format on
 #endif
+
+#include <sprt/c/__sprt_string.h>
+#include <sprt/runtime/init.h>
+#include <sprt/cxx/cctype>
 
 #include <string.h>
 #include <ctype.h>
@@ -140,5 +140,7 @@ __SPRT_C_FUNC __SPRT_ID(size_t)
 __SPRT_C_FUNC char *__SPRT_ID(strtok_r)(char *s, const char *sep, char **p) {
 	return ::strtok_r(s, sep, p);
 }
+
+__SPRT_C_FUNC char *__SPRT_ID(strdup)(const char *str) { return ::strdup(str); }
 
 } // namespace sprt

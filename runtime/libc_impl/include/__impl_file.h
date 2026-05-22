@@ -38,10 +38,6 @@ THE SOFTWARE.
 #define weak_alias(old, new) \
 	extern __typeof(old) new __attribute__((__weak__, __alias__(#old)))
 
-#define _IOFBF 0
-#define _IOLBF 1
-#define _IONBF 2
-
 #define F_PERM 1
 #define F_NORD 4
 #define F_NOWR 8

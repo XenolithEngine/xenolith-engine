@@ -45,7 +45,7 @@ typedef __INT_LEAST32_TYPE__ __SPRT_ID(int_least32_t);
 #endif
 
 #ifdef __INT_LEAST32_FMTi__
-#define __SPRT_INT_LEAST32_FMTo __INT_LEAST32_FMTi__
+#define __SPRT_INT_LEAST32_FMTi __INT_LEAST32_FMTi__
 #else
 #error "Compiler-assisted __INT_LEAST32_FMTi__ is not defined"
 #endif

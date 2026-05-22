@@ -25,10 +25,12 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_def.h>
 
-#ifdef __cplusplus
+// clang-format off
+#if defined(__cplusplus) || __STDC_VERSION__ >= 202311L
 #define __SPRT_NULL nullptr
 #else
 #define __SPRT_NULL ((void *)0)
 #endif
+// clang-format on
 
 #endif // CORE_RUNTIME_INCLUDE_C_BITS___SPRT_NULL_H_

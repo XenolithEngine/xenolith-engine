@@ -32,67 +32,22 @@ THE SOFTWARE.
 
 #include <sprt/cxx/__type_traits/types.h>
 
+#include <sprt/cxx/cstdint>
+#include <sprt/cxx/cstddef>
+
 namespace sprt {
 
-using uint8_t = __SPRT_ID(uint8_t);
-using uint16_t = __SPRT_ID(uint16_t);
-using uint32_t = __SPRT_ID(uint32_t);
-using uint64_t = __SPRT_ID(uint64_t);
-
-using int8_t = __SPRT_ID(int8_t);
-using int16_t = __SPRT_ID(int16_t);
-using int32_t = __SPRT_ID(int32_t);
-using int64_t = __SPRT_ID(int64_t);
-
-using int_least8_t = __SPRT_ID(int_least8_t);
-using int_least16_t = __SPRT_ID(int_least16_t);
-using int_least32_t = __SPRT_ID(int_least32_t);
-using int_least64_t = __SPRT_ID(int_least64_t);
-
-using int_fast8_t = __SPRT_ID(int_fast8_t);
-using int_fast16_t = __SPRT_ID(int_fast16_t);
-using int_fast32_t = __SPRT_ID(int_fast32_t);
-using int_fast64_t = __SPRT_ID(int_fast64_t);
-
-using uint_least8_t = __SPRT_ID(uint_least8_t);
-using uint_least16_t = __SPRT_ID(uint_least16_t);
-using uint_least32_t = __SPRT_ID(uint_least32_t);
-using uint_least64_t = __SPRT_ID(uint_least64_t);
-
-using uint_fast8_t = __SPRT_ID(uint_fast8_t);
-using uint_fast16_t = __SPRT_ID(uint_fast16_t);
-using uint_fast32_t = __SPRT_ID(uint_fast32_t);
-using uint_fast64_t = __SPRT_ID(uint_fast64_t);
-
-
-using size_t = __SPRT_ID(size_t);
 using rsize_t = __SPRT_ID(rsize_t);
 using ssize_t = __SPRT_ID(ssize_t);
-using off_t = __SPRT_ID(off_t);
-using time_t = __SPRT_ID(time_t);
 using clock_t = __SPRT_ID(clock_t);
 
 // Always 64-bit in SPRT
+using off_t = __SPRT_ID(off_t);
 using off64_t = __SPRT_ID(off_t);
+
+using time_t = __SPRT_ID(time_t);
 using time64_t = __SPRT_ID(time_t);
 
-using ptrdiff_t = __SPRT_ID(ptrdiff_t);
-using uintptr_t = __SPRT_ID(uintptr_t);
-using intptr_t = __SPRT_ID(intptr_t);
-
-using uintmax_t = __SPRT_ID(uintmax_t);
-using intmax_t = __SPRT_ID(intmax_t);
-
-using max_align_t = __SPRT_ID(max_align_t);
-
-static_assert(sizeof(uint8_t) == 1, "Invalid int length");
-static_assert(sizeof(int8_t) == 1, "Invalid int length");
-static_assert(sizeof(uint16_t) == 2, "Invalid int length");
-static_assert(sizeof(int16_t) == 2, "Invalid int length");
-static_assert(sizeof(uint32_t) == 4, "Invalid int length");
-static_assert(sizeof(int32_t) == 4, "Invalid int length");
-static_assert(sizeof(uint64_t) == 8, "Invalid int length");
-static_assert(sizeof(uint64_t) == 8, "Invalid int length");
 
 template <typename T>
 constexpr inline const int Digits = 0;

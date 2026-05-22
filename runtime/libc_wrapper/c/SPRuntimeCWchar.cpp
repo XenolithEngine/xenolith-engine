@@ -32,6 +32,8 @@ THE SOFTWARE.
 #include <wctype.h>
 #include <time.h>
 
+#include "time/time_internals.h"
+
 #if SPRT_ANDROID
 namespace sprt::platform {
 

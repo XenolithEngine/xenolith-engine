@@ -20,7 +20,7 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/linux/SPRTWinLinuxDBusKde.h"
+#include "SPRTWinLinuxDBusKde.h"
 
 namespace sprt::window::dbus {
 

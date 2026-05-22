@@ -34,77 +34,77 @@ extern "C" {
 
 __SPRT_C_FUNC int memcmp(const void *s1, const void *s2, size_t len) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&memcmp)>(loader->ntdll.memcmp.fn)(s1, s2, len);
+	return reinterpret_cast<decltype(&::memcmp)>(loader->ntdll.memcmp.fn)(s1, s2, len);
 }
 
 __SPRT_C_FUNC void *memcpy(void *__SPRT_RESTRICT dest, const void *__SPRT_RESTRICT source,
 		size_t size) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&memcpy)>(loader->ntdll.memcpy.fn)(dest, source, size);
+	return reinterpret_cast<decltype(&::memcpy)>(loader->ntdll.memcpy.fn)(dest, source, size);
 }
 
 __SPRT_C_FUNC void *memmove(void *dst, const void *src, size_t len) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&memmove)>(loader->ntdll.memmove.fn)(dst, src, len);
+	return reinterpret_cast<decltype(&::memmove)>(loader->ntdll.memmove.fn)(dst, src, len);
 }
 
 __SPRT_C_FUNC void *memset(void *dst, int c, size_t len) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&memset)>(loader->ntdll.memset.fn)(dst, c, len);
+	return reinterpret_cast<decltype(&::memset)>(loader->ntdll.memset.fn)(dst, c, len);
 }
 
 __SPRT_C_FUNC char *strcpy(char *__SPRT_RESTRICT dest,
 		const char *__SPRT_RESTRICT src) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&strcpy)>(loader->ntdll.strcpy.fn)(dest, src);
+	return reinterpret_cast<decltype(&::strcpy)>(loader->ntdll.strcpy.fn)(dest, src);
 }
 
 __SPRT_C_FUNC size_t strlen(const char *s) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&strlen)>(loader->ntdll.strlen.fn)(s);
+	return reinterpret_cast<decltype(&::strlen)>(loader->ntdll.strlen.fn)(s);
 }
 
 __SPRT_C_FUNC char *strncpy(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src,
 		size_t size) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&strncpy)>(loader->ntdll.strncpy.fn)(dest, src, size);
+	return reinterpret_cast<decltype(&::strncpy)>(loader->ntdll.strncpy.fn)(dest, src, size);
 }
 
 __SPRT_C_FUNC size_t strnlen(const char *s, size_t size) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&strnlen)>(loader->ntdll.strnlen.fn)(s, size);
+	return reinterpret_cast<decltype(&::strnlen)>(loader->ntdll.strnlen.fn)(s, size);
 }
 
 __SPRT_C_FUNC const char *strstr(const char *str, const char *nstr) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&strstr)>(loader->ntdll.strstr.fn)(str, nstr);
+	return reinterpret_cast<decltype(&::strstr)>(loader->ntdll.strstr.fn)(str, nstr);
 }
 
 __SPRT_C_FUNC wchar_t *wcscpy(wchar_t *__SPRT_RESTRICT dest,
 		const wchar_t *__SPRT_RESTRICT src) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&wcscpy)>(loader->ntdll.wcscpy.fn)(dest, src);
+	return reinterpret_cast<decltype(&::wcscpy)>(loader->ntdll.wcscpy.fn)(dest, src);
 }
 
 __SPRT_C_FUNC size_t wcslen(const wchar_t *s) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&wcslen)>(loader->ntdll.wcslen.fn)(s);
+	return reinterpret_cast<decltype(&::wcslen)>(loader->ntdll.wcslen.fn)(s);
 }
 
 __SPRT_C_FUNC wchar_t *wcsncpy(wchar_t *__SPRT_RESTRICT dest, const wchar_t *__SPRT_RESTRICT src,
 		size_t size) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&wcsncpy)>(loader->ntdll.wcsncpy.fn)(dest, src, size);
+	return reinterpret_cast<decltype(&::wcsncpy)>(loader->ntdll.wcsncpy.fn)(dest, src, size);
 }
 
 __SPRT_C_FUNC size_t wcsnlen(const wchar_t *s, size_t size) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&wcsnlen)>(loader->ntdll.wcsnlen.fn)(s, size);
+	return reinterpret_cast<decltype(&::wcsnlen)>(loader->ntdll.wcsnlen.fn)(s, size);
 }
 
 __SPRT_C_FUNC const wchar_t *wcsstr(const wchar_t *str, const wchar_t *nstr) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&wcsstr)>(loader->ntdll.wcsstr.fn)(str, nstr);
+	return reinterpret_cast<decltype(&::wcsstr)>(loader->ntdll.wcsstr.fn)(str, nstr);
 }
 
 
@@ -145,6 +145,29 @@ SIZE_T HeapSize(HANDLE hHeap, DWORD dwFlags, LPCVOID lpMem) {
 	auto loader = sprt::DllLoader::get();
 	return loader->kernelbase.call<decltype(&HeapSize)>(loader->kernelbase.HeapSize, hHeap, dwFlags,
 			lpMem);
+}
+
+HANDLE HeapCreate(DWORD flOptions, SIZE_T dwInitialSize, SIZE_T dwMaximumSize) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernelbase.call<decltype(&HeapCreate)>(loader->kernelbase.HeapCreate, flOptions,
+			dwInitialSize, dwMaximumSize);
+}
+
+BOOL HeapDestroy(HANDLE hHeap) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernelbase.call<decltype(&HeapDestroy)>(loader->kernelbase.HeapDestroy, hHeap);
+}
+
+BOOL HeapValidate(HANDLE hHeap, DWORD dwFlags, LPCVOID lpMem) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernelbase.call<decltype(&HeapValidate)>(loader->kernelbase.HeapValidate, hHeap,
+			dwFlags, lpMem);
+}
+
+SIZE_T HeapCompact(HANDLE hHeap, DWORD dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernelbase.call<decltype(&HeapCompact)>(loader->kernelbase.HeapCompact, hHeap,
+			dwFlags);
 }
 
 HANDLE GetProcessHeap(VOID) {
@@ -252,6 +275,12 @@ VOID Sleep(DWORD dwMilliseconds) {
 	loader->kernel32.call<decltype(&Sleep)>(loader->kernel32.Sleep, dwMilliseconds);
 }
 
+WINAPI DWORD SleepEx(DWORD dwMilliseconds, BOOL bAlertable) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&SleepEx)>(loader->kernel32.SleepEx, dwMilliseconds,
+			bAlertable);
+}
+
 // ---- Address Wait/Wake Functions (kernelbase) ----
 
 BOOL WaitOnAddress(volatile VOID *Address, PVOID CompareAddress, SIZE_T AddressSize,
@@ -337,10 +366,116 @@ WINAPI DWORD GetCurrentProcessorNumber(VOID) {
 			loader->kernel32.GetCurrentProcessorNumber);
 }
 
+WINAPI VOID OutputDebugStringA(LPCSTR lpOutputString) {
+	auto loader = sprt::DllLoader::get();
+	loader->kernel32.call<decltype(&OutputDebugStringA)>(loader->kernel32.OutputDebugStringA,
+			lpOutputString);
+}
+
+WINAPI VOID OutputDebugStringW(LPCWSTR lpOutputString) {
+	auto loader = sprt::DllLoader::get();
+	loader->kernel32.call<decltype(&OutputDebugStringW)>(loader->kernel32.OutputDebugStringW,
+			lpOutputString);
+}
+
 WINAPI NTSTATUS BCryptGenRandom(BCRYPT_ALG_HANDLE hAlgorithm, PUCHAR pbBuffer, ULONG cbBuffer,
 		ULONG dwFlags) {
 	auto loader = sprt::DllLoader::get();
 	return loader->bcrypt.call<decltype(&BCryptGenRandom)>(loader->bcrypt.BCryptGenRandom,
 			hAlgorithm, pbBuffer, cbBuffer, dwFlags);
 }
+
+WINAPI NTSTATUS BCryptGenerateSymmetricKey(BCRYPT_ALG_HANDLE hAlgorithm, BCRYPT_KEY_HANDLE *phKey,
+		PUCHAR pbKeyObject, ULONG cbKeyObject, PUCHAR pbSecret, ULONG cbSecret, ULONG dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return loader->bcrypt.call<decltype(&BCryptGenerateSymmetricKey)>(
+			loader->bcrypt.BCryptGenerateSymmetricKey, hAlgorithm, phKey, pbKeyObject, cbKeyObject,
+			pbSecret, cbSecret, dwFlags);
+}
+
+WINAPI NTSTATUS BCryptDestroyKey(BCRYPT_KEY_HANDLE hKey) {
+	auto loader = sprt::DllLoader::get();
+	return loader->bcrypt.call<decltype(&BCryptDestroyKey)>(loader->bcrypt.BCryptDestroyKey, hKey);
+}
+
+WINAPI NTSTATUS BCryptCreateHash(BCRYPT_ALG_HANDLE hAlgorithm, BCRYPT_HASH_HANDLE *phHash,
+		PUCHAR pbHashObject, ULONG cbHashObject, PUCHAR pbSecret, ULONG cbSecret, ULONG dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return loader->bcrypt.call<decltype(&BCryptCreateHash)>(loader->bcrypt.BCryptCreateHash,
+			hAlgorithm, phHash, pbHashObject, cbHashObject, pbSecret, cbSecret, dwFlags);
+}
+
+WINAPI NTSTATUS BCryptHashData(BCRYPT_HASH_HANDLE hHash, PUCHAR pbInput, ULONG cbInput,
+		ULONG dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return loader->bcrypt.call<decltype(&BCryptHashData)>(loader->bcrypt.BCryptHashData, hHash,
+			pbInput, cbInput, dwFlags);
+}
+
+WINAPI NTSTATUS BCryptFinishHash(BCRYPT_HASH_HANDLE hHash, PUCHAR pbOutput, ULONG cbOutput,
+		ULONG dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return loader->bcrypt.call<decltype(&BCryptFinishHash)>(loader->bcrypt.BCryptFinishHash, hHash,
+			pbOutput, cbOutput, dwFlags);
+}
+
+WINAPI NTSTATUS BCryptDestroyHash(BCRYPT_HASH_HANDLE hHash) {
+	auto loader = sprt::DllLoader::get();
+	return loader->bcrypt.call<decltype(&BCryptDestroyHash)>(loader->bcrypt.BCryptDestroyHash,
+			hHash);
+}
+
+WINAPI NTSTATUS BCryptGetProperty(BCRYPT_HANDLE hObject, LPCWSTR pszProperty, PUCHAR pbOutput,
+		ULONG cbOutput, ULONG *pcbResult, ULONG dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return loader->bcrypt.call<decltype(&BCryptGetProperty)>(loader->bcrypt.BCryptGetProperty,
+			hObject, pszProperty, pbOutput, cbOutput, pcbResult, dwFlags);
+}
+
+WINAPI NTSTATUS BCryptSetProperty(BCRYPT_HANDLE hObject, LPCWSTR pszProperty, PUCHAR pbInput,
+		ULONG cbInput, ULONG dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return loader->bcrypt.call<decltype(&BCryptSetProperty)>(loader->bcrypt.BCryptSetProperty,
+			hObject, pszProperty, pbInput, cbInput, dwFlags);
+}
+
+WINAPI NTSTATUS BCryptOpenAlgorithmProvider(BCRYPT_ALG_HANDLE *phAlgorithm, LPCWSTR pszAlgId,
+		LPCWSTR pszImplementation, ULONG dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return loader->bcrypt.call<decltype(&BCryptOpenAlgorithmProvider)>(
+			loader->bcrypt.BCryptOpenAlgorithmProvider, phAlgorithm, pszAlgId, pszImplementation,
+			dwFlags);
+}
+
+WINAPI NTSTATUS BCryptCloseAlgorithmProvider(BCRYPT_ALG_HANDLE hAlgorithm, ULONG dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return loader->bcrypt.call<decltype(&BCryptCloseAlgorithmProvider)>(
+			loader->bcrypt.BCryptCloseAlgorithmProvider, hAlgorithm, dwFlags);
+}
+
+WINAPI NTSTATUS BCryptDeriveKeyPBKDF2(BCRYPT_ALG_HANDLE hPrf, PUCHAR pbPassword, ULONG cbPassword,
+		PUCHAR pbSalt, ULONG cbSalt, ULONGLONG cIterations, PUCHAR pbDerivedKey, ULONG cbDerivedKey,
+		ULONG dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return loader->bcrypt.call<decltype(&BCryptDeriveKeyPBKDF2)>(
+			loader->bcrypt.BCryptDeriveKeyPBKDF2, hPrf, pbPassword, cbPassword, pbSalt, cbSalt,
+			cIterations, pbDerivedKey, cbDerivedKey, dwFlags);
+}
+
+WINAPI NTSTATUS BCryptEncrypt(BCRYPT_KEY_HANDLE hKey, PUCHAR pbInput, ULONG cbInput,
+		VOID *pPaddingInfo, PUCHAR pbIV, ULONG cbIV, PUCHAR pbOutput, ULONG cbOutput,
+		ULONG *pcbResult, ULONG dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return loader->bcrypt.call<decltype(&BCryptEncrypt)>(loader->bcrypt.BCryptEncrypt, hKey,
+			pbInput, cbInput, pPaddingInfo, pbIV, cbIV, pbOutput, cbOutput, pcbResult, dwFlags);
+}
+
+WINAPI NTSTATUS BCryptDecrypt(BCRYPT_KEY_HANDLE hKey, PUCHAR pbInput, ULONG cbInput,
+		VOID *pPaddingInfo, PUCHAR pbIV, ULONG cbIV, PUCHAR pbOutput, ULONG cbOutput,
+		ULONG *pcbResult, ULONG dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return loader->bcrypt.call<decltype(&BCryptDecrypt)>(loader->bcrypt.BCryptEncrypt, hKey,
+			pbInput, cbInput, pPaddingInfo, pbIV, cbIV, pbOutput, cbOutput, pcbResult, dwFlags);
+}
+
 } // extern "C"

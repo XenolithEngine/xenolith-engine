@@ -45,7 +45,7 @@ typedef __INT_FAST16_TYPE__ __SPRT_ID(int_fast16_t);
 #endif
 
 #ifdef __INT_FAST16_FMTi__
-#define __SPRT_INT_FAST16_FMTo __INT_FAST16_FMTi__
+#define __SPRT_INT_FAST16_FMTi __INT_FAST16_FMTi__
 #else
 #error "Compiler-assisted __INT_FAST16_FMTi__ is not defined"
 #endif

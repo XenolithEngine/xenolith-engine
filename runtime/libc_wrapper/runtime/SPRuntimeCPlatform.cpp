@@ -20,7 +20,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+#if !SPRT_WINDOWS
 #define __SPRT_BUILD 1
+#endif
 
 #include <sprt/c/bits/__sprt_def.h>
 

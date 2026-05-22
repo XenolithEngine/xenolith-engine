@@ -26,6 +26,9 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/bits/__sprt_int32_t.h>
 #include <sprt/c/bits/__sprt_uint32_t.h>
+#include <sprt/c/bits/__sprt_uint16_t.h>
+#include <sprt/c/bits/__sprt_uint64_t.h>
+#include <sprt/c/bits/__sprt_int64_t.h>
 
 #ifdef __SPRT_BUILD
 #define __SPRT_SOCKADDR_NAME __SPRT_ID(sockaddr)
@@ -33,11 +36,40 @@ THE SOFTWARE.
 #define __SPRT_SOCKADDR_NAME sockaddr
 #endif
 
+#ifdef __SPRT_BUILD
+#define __SPRT_IN_ADDR_NAME __SPRT_ID(in_addr)
+#else
+#define __SPRT_IN_ADDR_NAME in_addr
+#endif
+
+#ifdef __SPRT_BUILD
+#define __SPRT_IN6_ADDR_NAME __SPRT_ID(in6_addr)
+#else
+#define __SPRT_IN6_ADDR_NAME in6_addr
+#endif
+
+#ifdef __SPRT_BUILD
+#define __SPRT_SOCKADDR_IN_NAME __SPRT_ID(sockaddr_in)
+#else
+#define __SPRT_SOCKADDR_IN_NAME sockaddr_in
+#endif
+
+#ifdef __SPRT_BUILD
+#define __SPRT_SOCKADDR_IN6_NAME __SPRT_ID(sockaddr_in6)
+#else
+#define __SPRT_SOCKADDR_IN6_NAME sockaddr_in6
+#endif
+
 struct __SPRT_SOCKADDR_NAME;
+struct __SPRT_IN_ADDR_NAME;
+struct __SPRT_IN6_ADDR_NAME;
+struct __SPRT_SOCKADDR_IN_NAME;
+struct __SPRT_SOCKADDR_IN6_NAME;
 
 #include <sprt/c/cross/__sprt_config.h>
 
 // clang-format off
+#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/sockdef.h)
 #include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/socket.h)
 // clang-format on
 

@@ -23,6 +23,7 @@ THIS_FILE := $(lastword $(MAKEFILE_LIST))
 include $(dir $(THIS_FILE))../common/utils/detect-platform.mk
 include $(dir $(THIS_FILE))../common/utils/find-recursive.mk
 include $(dir $(THIS_FILE))../common/utils/names.mk
+include $(dir $(THIS_FILE))../common/utils/init-shell.mk
 
 TOOLCHAIN_CFLAGS :=  -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(SP_ARCH_TARGET_CLANG)
 
@@ -32,7 +33,7 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(lastword $(MAKEFILE_LIST))
 	@echo 'set(CMAKE_CXX_SIMULATE_ID MSVC)' >> $@
 	@echo 'set(CMAKE_MSVC_RUNTIME_LIBRARY "Sprt")' >> $@
 	@echo 'set(CMAKE_C_COMPILE_OPTIONS_MSVC_RUNTIME_LIBRARY_Sprt -Xclang --dependent-lib=sprt)' >> $@
-	@echo 'set(CMAKE_CXX_COMPILE_OPTIONS_MSVC_RUNTIME_LIBRARY_Sprt -Xclang --dependent-lib=sprt)' >> $@
+	@echo 'set(CMAKE_CXX_COMPILE_OPTIONS_MSVC_RUNTIME_LIBRARY_Sprt -Xclang --dependent-lib=sprt -std=gnu++20)' >> $@
 	@echo 'set(CMAKE_SYSTEM_PROCESSOR $(SP_ARCH))' >> $@
 	@echo 'set(CMAKE_SYSROOT "$${CMAKE_CURRENT_LIST_DIR}")' >> $@
 	@echo 'set(CMAKE_C_COMPILER_TARGET "$(SP_ARCH_TARGET_CLANG)")' >> $@
@@ -70,7 +71,6 @@ $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'TARGET_ARCH := $(SP_ARCH)' >> $@
 	@echo 'TARGET_NAME := $(SP_ARCH_TARGET_CLANG)$(ANDROID_PLATFORM_LEVEL)' >> $@
 	@echo 'TARGET_INCLUDE_DIR := $$(TARGET_SYSROOT)/usr/include' >> $@
-	@echo 'TARGET_INCLUDE_DIR_LIBC := $$(TARGET_SYSROOT)/include_libc' >> $@
 	@echo 'TARGET_LIB_DIR := $$(TARGET_SYSROOT)/usr/lib' >> $@
 	@echo 'TARGET_LIB_DIR_LIBC := $$(TARGET_SYSROOT)/lib' >> $@
 	@echo 'TARGET_GENERAL_CFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -D_WIN32_WINNT=0x0A00' >> $@
@@ -83,7 +83,36 @@ $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'TARGET_LIB_CXXFLAGS :=' >> $@
 	@echo 'TARGET_LIB_LDFLAGS :=' >> $@
 
-all: $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake $(TOOLCHAIN_OUTPUT_DIR)/target.mk
+#
+# We need SIMDE to build sprt static library
+#
+SIMDE_CONFIGURE := \
+	-DCMAKE_INSTALL_PREFIX="${TOOLCHAIN_OUTPUT_DIR}" \
+	-DCMAKE_INSTALL_LIBDIR="${TOOLCHAIN_OUTPUT_DIR}/usr/lib" \
+	-DCMAKE_INSTALL_INCLUDEDIR="${TOOLCHAIN_OUTPUT_DIR}/usr/include" \
+	-DPKG_CONFIG_PATH="$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/pkgconfig"
+
+$(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h: ../common/simde.mk
+	$(call rule_rm,simde)
+	$(call rule_mkdir,simde)
+	cd simde; cmake -G "Ninja" $(LIB_SRC_DIR)/simde $(SIMDE_CONFIGURE);
+	cd simde; cmake --build .
+	cd simde; cmake --install .
+	$(call rule_rm,simde)
+	$(call rule_touch,$(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h)
+
+$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/sprt.lib: \
+		$(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h \
+		$(TOOLCHAIN_OUTPUT_DIR)/target.mk
+	$(MAKE)  -C $(SP_RUNTIME_ROOT) \
+		STAPPLER_HOST_FILE=$(TOOLCHAIN_OUTPUT_DIR)/host/host.mk \
+		STAPPLER_TARGET_FILE=$(TOOLCHAIN_OUTPUT_DIR)/target.mk \
+		STAPPLER_TARGET=$(SP_ARCH_TARGET_CLANG) RELEASE=1
+	$(call rule_cp,$(SP_RUNTIME_ROOT)/stappler-build/$(SP_ARCH_TARGET_CLANG)/release/cc/sprt.lib,$@)
+
+all: $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake $(TOOLCHAIN_OUTPUT_DIR)/target.mk \
+	$(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h \
+	$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/sprt.lib
 
 .PHONY: all
 .DEFAULT_GOAL := all

@@ -36,7 +36,9 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_time_t.h>
 #include <sprt/c/bits/__sprt_ssize_t.h>
 #include <sprt/c/bits/__sprt_time_t.h>
-#include <sprt/c/bits/fdset.h>
+#include <sprt/c/cross/__sprt_fdset.h>
+
+#include <inttypes.h>
 
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(rsize_t) rsize_t;

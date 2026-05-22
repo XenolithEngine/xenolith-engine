@@ -246,30 +246,3 @@ _Noreturn void abort() __SPRT_NOEXCEPT {
 	__builtin_unreachable();
 }
 }
-
-__SPRT_C_FUNC int __SPRT_ID(sigisemptyset)(const __SPRT_ID(sigset_t) * set) {
-	for (auto &it : set->__bits) {
-		if (it != 0) {
-			return 0;
-		}
-	}
-	return 1;
-}
-
-__SPRT_C_FUNC int __SPRT_ID(sigorset)(__SPRT_ID(sigset_t) * set, const __SPRT_ID(sigset_t) * a,
-		const __SPRT_ID(sigset_t) * b) {
-	auto s = sizeof(set->__bits) / sizeof(set->__bits[0]);
-	for (size_t i = 0; i < s; ++i) { set->__bits[i] = a->__bits[i] | b->__bits[i]; }
-	return 0;
-}
-__SPRT_C_FUNC int __SPRT_ID(sigandset)(__SPRT_ID(sigset_t) * set, const __SPRT_ID(sigset_t) * a,
-		const __SPRT_ID(sigset_t) * b) {
-	auto s = sizeof(set->__bits) / sizeof(set->__bits[0]);
-	for (size_t i = 0; i < s; ++i) { set->__bits[i] = a->__bits[i] & b->__bits[i]; }
-	return 0;
-}
-
-__SPRT_C_FUNC int __SPRT_ID(sigemptyset)(__SPRT_ID(sigset_t) * set) {
-	for (auto &it : set->__bits) { it = 0; }
-	return 0;
-}

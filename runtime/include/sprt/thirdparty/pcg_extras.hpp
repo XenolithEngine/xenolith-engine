@@ -329,10 +329,10 @@ void generate_to_impl(SeedSeq &&generator, DestIter dest, sprt::false_type) {
 		generator.generate(buffer, buffer + FROM_ELEMS);
 		uneven_copy(buffer, dest, dest + size);
 	} else {
-		uint32_t *buffer = static_cast<uint32_t *>(sprt::malloc(GEN_SIZE * FROM_ELEMS));
+		uint32_t *buffer = static_cast<uint32_t *>(malloc(GEN_SIZE * FROM_ELEMS));
 		generator.generate(buffer, buffer + FROM_ELEMS);
 		uneven_copy(buffer, dest, dest + size);
-		sprt::free(static_cast<void *>(buffer));
+		free(static_cast<void *>(buffer));
 	}
 }
 

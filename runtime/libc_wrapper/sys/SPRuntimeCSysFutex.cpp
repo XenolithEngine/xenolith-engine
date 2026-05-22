@@ -22,8 +22,13 @@
 
 #include <sprt/c/sys/__sprt_futex.h>
 #include <sprt/c/__sprt_errno.h>
+#include <sprt/c/cross/__sprt_syscall.h>
 
 #include <sprt/runtime/log.h>
+
+#if __SPRT_CONFIG_HAVE_FUTEX
+#include <unistd.h>
+#endif
 
 namespace sprt {
 
@@ -32,22 +37,22 @@ namespace sprt {
 // FUTEX_WAKE(2const): https://man7.org/linux/man-pages/man2/FUTEX_WAKE.2const.html
 __SPRT_C_FUNC long __SPRT_ID(futex_wake)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) val) {
-	return ::syscall(SYS_FUTEX_V1, uaddr, __SPRT_FUTEX_WAKE | (flags & __SPRT_FUTEX_FLAG_MASK),
-			val);
+	return ::syscall(__SPRT_SYSCALL_futex, uaddr,
+			__SPRT_FUTEX_WAKE | (flags & __SPRT_FUTEX_FLAG_MASK), val);
 }
 
 // FUTEX_WAIT(2const): https://man7.org/linux/man-pages/man2/FUTEX_WAIT.2const.html
 __SPRT_C_FUNC long __SPRT_ID(futex_wait)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) val, __SPRT_TIMESPEC_NAME *timespec) {
-	return ::syscall(SYS_FUTEX_V1, uaddr, __SPRT_FUTEX_WAIT | (flags & __SPRT_FUTEX_FLAG_MASK), val,
-			timespec);
+	return ::syscall(__SPRT_SYSCALL_futex, uaddr,
+			__SPRT_FUTEX_WAIT | (flags & __SPRT_FUTEX_FLAG_MASK), val, timespec);
 }
 
 // FUTEX_WAIT_BITSET(2const): https://man7.org/linux/man-pages/man2/FUTEX_WAIT_BITSET.2const.html
 __SPRT_C_FUNC long __SPRT_ID(futex_wait_bitset)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) val, __SPRT_TIMESPEC_NAME *timespec,
 		__SPRT_ID(uint32_t) bitset) {
-	return ::syscall(SYS_FUTEX_V1, uaddr,
+	return ::syscall(__SPRT_SYSCALL_futex, uaddr,
 			__SPRT_FUTEX_WAIT_BITSET | (flags & __SPRT_FUTEX_FLAG_MASK), val, timespec, nullptr,
 			bitset);
 }
@@ -55,7 +60,7 @@ __SPRT_C_FUNC long __SPRT_ID(futex_wait_bitset)(volatile __SPRT_ID(uint32_t) * u
 // FUTEX_WAIT_BITSET(2const): https://man7.org/linux/man-pages/man2/FUTEX_WAIT_BITSET.2const.html
 __SPRT_C_FUNC long __SPRT_ID(futex_wake_bitset)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) val, __SPRT_ID(uint32_t) bitset) {
-	return ::syscall(SYS_FUTEX_V1, uaddr,
+	return ::syscall(__SPRT_SYSCALL_futex, uaddr,
 			__SPRT_FUTEX_WAKE_BITSET | (flags & __SPRT_FUTEX_FLAG_MASK), val, nullptr, nullptr,
 			bitset);
 }
@@ -63,21 +68,21 @@ __SPRT_C_FUNC long __SPRT_ID(futex_wake_bitset)(volatile __SPRT_ID(uint32_t) * u
 // FUTEX_LOCK_PI(2const): https://man7.org/linux/man-pages/man2/FUTEX_LOCK_PI.2const.html
 __SPRT_C_FUNC long __SPRT_ID(futex_lock_pi)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_TIMESPEC_NAME *timespec) {
-	return ::syscall(SYS_FUTEX_V1, uaddr, __SPRT_FUTEX_LOCK_PI | (flags & __SPRT_FUTEX_FLAG_MASK),
-			0, timespec);
+	return ::syscall(__SPRT_SYSCALL_futex, uaddr,
+			__SPRT_FUTEX_LOCK_PI | (flags & __SPRT_FUTEX_FLAG_MASK), 0, timespec);
 }
 
 // FUTEX_TRYLOCK_PI(2const): https://man7.org/linux/man-pages/man2/FUTEX_TRYLOCK_PI.2const.html
 __SPRT_C_FUNC long __SPRT_ID(
 		futex_trylock_pi)(volatile __SPRT_ID(uint32_t) * uaddr, __SPRT_ID(uint32_t) flags) {
-	return ::syscall(SYS_FUTEX_V1, uaddr,
+	return ::syscall(__SPRT_SYSCALL_futex, uaddr,
 			__SPRT_FUTEX_TRYLOCK_PI | (flags & __SPRT_FUTEX_FLAG_MASK));
 }
 
 // FUTEX_UNLOCK_PI(2const): https://man7.org/linux/man-pages/man2/FUTEX_UNLOCK_PI.2const.html
 __SPRT_C_FUNC long __SPRT_ID(
 		futex_unlock_pi)(volatile __SPRT_ID(uint32_t) * uaddr, __SPRT_ID(uint32_t) flags) {
-	return ::syscall(SYS_FUTEX_V1, uaddr,
+	return ::syscall(__SPRT_SYSCALL_futex, uaddr,
 			__SPRT_FUTEX_UNLOCK_PI | (flags & __SPRT_FUTEX_FLAG_MASK));
 }
 
@@ -85,13 +90,13 @@ __SPRT_C_FUNC long __SPRT_ID(
 
 __SPRT_C_FUNC long __SPRT_ID(futex2_wake)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) bitset, int nr_wake, __SPRT_ID(uint32_t) flags) {
-	return syscall(SYS_FUTEX_V2_WAKE, uaddr, bitset, nr_wake, flags);
+	return syscall(__SPRT_SYSCALL_futex_wake, uaddr, bitset, nr_wake, flags);
 }
 
 __SPRT_C_FUNC long __SPRT_ID(futex2_wait)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) val, __SPRT_ID(uint32_t) bitset, __SPRT_ID(uint32_t) flags,
 		__SPRT_TIMESPEC_NAME *timespec, __SPRT_ID(clockid_t) clockid) {
-	return syscall(SYS_FUTEX_V2_WAIT, uaddr, val, bitset, flags, timespec, clockid);
+	return syscall(__SPRT_SYSCALL_futex_wait, uaddr, val, bitset, flags, timespec, clockid);
 }
 
 #else

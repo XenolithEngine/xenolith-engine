@@ -1,3 +1,4 @@
 /stappler-build/
 /libc_impl/src/stdio/musl
 **/.DS_Store
+/compile_commands.json

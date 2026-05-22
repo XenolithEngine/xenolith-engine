@@ -25,6 +25,7 @@
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/sys/__sprt_epoll.h>
 #include <sprt/c/cross/__sprt_signal.h>
+#include <sprt/c/cross/__sprt_syscall.h>
 #include <sprt/runtime/log.h>
 
 #if __SPRT_CONFIG_HAVE_EPOLL
@@ -62,8 +63,8 @@ __SPRT_C_FUNC int __SPRT_ID(epoll_pwait2)(int efd, struct __SPRT_EPOLL_EVENT_NAM
 		return ::epoll_pwait(efd, (struct epoll_event *)ev, maxevents, 0, (const sigset_t *)sig);
 	}
 
-	auto ret = syscall(SYS_EPOLL_PWAIT2, efd, (struct epoll_event *)ev, maxevents, tv, sig,
-			__SPRT__NSIG / 8);
+	auto ret = syscall(__SPRT_SYSCALL_epoll_pwait2, efd, (struct epoll_event *)ev, maxevents, tv,
+			sig, __SPRT__NSIG / 8);
 	if (ret == -1 && *__sprt___errno_location() == ENOSYS) {
 		// if there is no epoll_pwait2 - call epoll_pwait as fallback
 		unsigned millis = tv->tv_sec * 1'000 + tv->tv_nsec / 1'000'000;

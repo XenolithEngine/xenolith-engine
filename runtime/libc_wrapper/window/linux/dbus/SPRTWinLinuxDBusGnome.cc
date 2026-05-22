@@ -20,7 +20,7 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/linux/SPRTWinLinuxDBusGnome.h"
+#include "SPRTWinLinuxDBusGnome.h"
 #include <sprt/c/__sprt_math.h>
 
 namespace sprt::window::dbus {

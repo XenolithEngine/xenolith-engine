@@ -76,7 +76,6 @@ constexpr typename remove_reference<Type>::type &&move(Type &&value) noexcept {
 	return static_cast<typename remove_reference<Type>::type &&>(value);
 }
 
-
 template <typename _Tp>
 using __move_if_noexcept_result_t = conditional_t<!is_nothrow_move_constructible<_Tp>::value
 				&& is_copy_constructible<_Tp>::value,

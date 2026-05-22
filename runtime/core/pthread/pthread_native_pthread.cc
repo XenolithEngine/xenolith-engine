@@ -32,10 +32,26 @@ THE SOFTWARE.
 #include <mach/port.h>
 #endif
 
+extern "C" __attribute((weak)) void *__dso_handle;
+
+__SPRT_C_FUNC int __cxa_thread_atexit(void (*cb)(void *), void *obj,
+		void *dso_symbol) __SPRT_NOEXCEPT;
+
 namespace sprt::_thread::native {
 
-static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr) {
-#warning TODO: implement thrad-local initializers access for thread
+static uint64_t __getNativeThreadId() { return static_cast<uint64_t>(pthread_self()); }
+
+static void __doDestroy(void *cb) {
+	auto dtor = reinterpret_cast<void (*)(void)>(cb);
+	dtor();
+}
+
+static void __registerForDestruction(void (*cb)(void)) {
+	__cxa_thread_atexit(__doDestroy, (void *)cb, __dso_handle);
+}
+
+static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
+		__thread_pool *pool) {
 	pthread_attr_t pattr;
 	pthread_attr_init(&pattr);
 
@@ -69,9 +85,13 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr) 
 	}
 
 	pthread_t pthread;
+	unique_lock globalLock(pool->mutex);
+
 	auto ret = pthread_create(&pthread, &pattr, __runthead, thread);
 	if (ret == 0) {
-		__attachNativeThread(thread, reinterpret_cast<void *>(pthread));
+		__attachNativeThread(thread, reinterpret_cast<void *>(pthread),
+				static_cast<uint64_t>(pthread), globalLock);
+		globalLock.unlock();
 	}
 
 	pthread_attr_destroy(&pattr);
@@ -271,3 +291,14 @@ int thread_t::setname_native(const char *name) {
 }
 
 } // namespace sprt::_thread
+
+#include <signal.h>
+
+namespace sprt {
+
+__SPRT_C_FUNC int __SPRT_ID(
+		pthread_sigmask)(int how, const __SPRT_ID(sigset_t) * set, __SPRT_ID(sigset_t) * oldset) {
+	return pthread_sigmask(how, (const sigset_t *)set, (sigset_t *)oldset);
+}
+
+} // namespace sprt

@@ -24,6 +24,8 @@ LIBNAME = tiff
 
 include ../common/configure.mk
 
+SP_USER_CFLAGS := -Wno-incompatible-pointer-types
+
 CONFIGURE := \
 	$(CONFIGURE_CMAKE) \
 	-Dprefix=$(SP_INSTALL_PREFIX) \
@@ -32,6 +34,7 @@ CONFIGURE := \
 	-Dtiff-tests=OFF \
 	-Dtiff-contrib=OFF \
 	-Dtiff-docs=OFF \
+	-Dtiff-cxx=OFF \
 	-DHAVE_LD_VERSION_SCRIPT=FALSE
 
 all:

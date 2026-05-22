@@ -65,18 +65,18 @@ SP_CPPFLAGS := --sysroot=$(SP_TOOLCHAIN_PREFIX) -idirafter $(SP_TOOLCHAIN_PREFIX
 SP_LDFLAGS := --sysroot=$(SP_TOOLCHAIN_PREFIX) $(SP_LDFLAGS)
 endif # SP_TOOLCHAIN_PREFIX
 
+
 ifdef WINDOWS
-SP_CFLAGS += -Xclang --dependent-lib=sprt -nostdlib \
-	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include_libc) \
-	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include) \
-	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include/sprt/wrappers/windows) \
-	-D__SPRT_WINDOWS
-SP_CXXFLAGS += -Xclang --dependent-lib=sprt -nostdlib \
-	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include_libc) \
-	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include) \
-	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include/sprt/wrappers/windows) \
-	-D__SPRT_WINDOWS
+SP_WINDOWS_INCLIUDES := \
+	-isystem $(SP_RUNTIME_ROOT)/include_libc \
+	-isystem $(SP_RUNTIME_ROOT)/include \
+	-isystem $(SP_RUNTIME_ROOT)/include/sprt/wrappers/windows \
+	-isystem $(SP_RUNTIME_ROOT)/include/sprt/wrappers/windows/casemap
+
+SP_CFLAGS += -Xclang --dependent-lib=sprt -nostdlib $(SP_WINDOWS_INCLIUDES) -D__SPRT_WINDOWS
+SP_CXXFLAGS += -Xclang --dependent-lib=sprt -nostdlib  $(SP_WINDOWS_INCLIUDES) -D__SPRT_WINDOWS
 endif # WINDOWS
+
 
 ifdef DARWIN
 
@@ -249,16 +249,9 @@ endif # DARWIN
 
 
 ifdef WINDOWS
-CONFIGURE_CMAKE_C_FLAGS_INIT += -nostdlib \
-	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include_libc) \
-	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include) \
-	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include/sprt/wrappers/windows) \
-	-D__SPRT_WINDOWS
-CONFIGURE_CMAKE_CXX_FLAGS_INIT += -nostdlib \
-	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include_libc) \
-	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include) \
-	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include/sprt/wrappers/windows) \
-	-D__SPRT_WINDOWS
+CONFIGURE_CMAKE_C_FLAGS_INIT += -nostdlib $(SP_WINDOWS_INCLIUDES) -D__SPRT_WINDOWS
+CONFIGURE_CMAKE_CXX_FLAGS_INIT += -nostdlib $(SP_WINDOWS_INCLIUDES) -D__SPRT_WINDOWS
+CONFIGURE_CMAKE_RC_FLAGS_INIT += -nostdlib $(SP_WINDOWS_INCLIUDES) -D__SPRT_WINDOWS
 CONFIGURE_EXE_LINKER_FLAGS_INIT += -nostdlib
 CONFIGURE_SHARED_LINKER_FLAGS_INIT += -nostdlib
 endif
@@ -279,6 +272,7 @@ CONFIGURE_CMAKE += \
 ifdef WINDOWS
 CONFIGURE_CMAKE += \
 	-DCMAKE_RC_COMPILER=$(SP_RC) \
+	-DCMAKE_RC_FLAGS_INIT="$(CONFIGURE_CMAKE_RC_FLAGS_INIT)" \
 	-DCMAKE_POLICY_DEFAULT_CMP0091=NEW \
 	-DENABLE_EXPORTS=Off 
 endif

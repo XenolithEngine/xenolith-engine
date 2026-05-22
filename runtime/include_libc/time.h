@@ -147,6 +147,13 @@ struct tm *gmtime_r(const time_t *t, struct tm *_tm) SPRT_UMBRELLA_END
 }
 #endif
 
+SPRT_FORCEINLINE int gmtime_s(struct tm *const _Tm, const __SPRT_ID(time_t) * _Time) SPRT_NOEXCEPT {
+	if (__sprt_gmtime_r(_Time, _Tm) != __SPRT_NULL) {
+		return 0;
+	}
+	return -1;
+}
+
 SPRT_UMBRELLA_FUNC
 struct tm *localtime_r(const time_t *t, struct tm *_tm) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -235,6 +242,15 @@ int clock_getcpuclockid(pid_t pid, clockid_t *clock) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_clock_getcpuclockid(pid, clock);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+__SPRT_ID(uint64_t)
+clock_gettime_nsec_np(clockid_t clock) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_clock_gettime_nsec_np(clock);
 }
 #endif
 

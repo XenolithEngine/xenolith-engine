@@ -97,7 +97,7 @@ sprt::__malloc_string Node::toString(OutputFlags Flags) const {
 	this->output(OB, Flags);
 	sprt::StringView SV = OB;
 	sprt::__malloc_string Owned(SV.begin(), SV.end());
-	sprt::free(OB.getBuffer());
+	free(OB.getBuffer());
 	return Owned;
 }
 

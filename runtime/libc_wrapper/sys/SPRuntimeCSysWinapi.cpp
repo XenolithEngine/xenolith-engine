@@ -30,10 +30,12 @@
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/log.h>
 
+#if __SPRT_CONFIG_HAVE_WINAPI
 #include <sprt/wrappers/windows/basic_api.h>
 #include <sprt/wrappers/windows/thread_api.h>
 #include <sprt/wrappers/windows/message_api.h>
 #include <sprt/wrappers/windows/windows.h>
+#endif
 
 namespace sprt {
 

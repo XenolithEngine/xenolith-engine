@@ -55,14 +55,14 @@ VOID RtlUnwindEx(PVOID TargetFrame, PVOID TargetIp, PEXCEPTION_RECORD ExceptionR
 			TargetIp, ExceptionRecord, ReturnValue, ContextRecord, HistoryTable);
 }
 
-PEXCEPTION_ROUTINE RtlVirtualUnwind(DWORD HandlerType, DWORD64 ImageBase, DWORD64 ControlPc,
+/*PEXCEPTION_ROUTINE RtlVirtualUnwind(DWORD HandlerType, DWORD64 ImageBase, DWORD64 ControlPc,
 		PRUNTIME_FUNCTION FunctionEntry, PCONTEXT ContextRecord, PVOID *HandlerData,
 		PDWORD64 EstablisherFrame, PVOID ContextPointers) {
 	auto loader = sprt::DllLoader::get();
 	return loader->kernel32.call<decltype(&RtlVirtualUnwind)>(loader->kernel32.RtlVirtualUnwind,
 			HandlerType, ImageBase, ControlPc, FunctionEntry, ContextRecord, HandlerData,
 			EstablisherFrame, ContextPointers);
-}
+}*/
 
 WORD RtlCaptureStackBackTrace(DWORD FramesToSkip, DWORD FramesToCapture, PVOID *BackTrace,
 		PDWORD BackTraceHash) {
@@ -99,6 +99,13 @@ WINAPI ULONG RemoveVectoredContinueHandler(PVOID Handle) {
 WINAPI NTSTATUS NtContinueEx(CONTEXT *context, void *args) {
 	auto loader = sprt::DllLoader::get();
 	return loader->ntdll.call<decltype(&NtContinueEx)>(loader->ntdll.NtContinueEx, context, args);
+}
+
+WINAPI VOID RaiseException(DWORD dwExceptionCode, DWORD dwExceptionFlags, DWORD nNumberOfArguments,
+		const ULONG_PTR *lpArguments) {
+	auto loader = sprt::DllLoader::get();
+	return loader->kernel32.call<decltype(&RaiseException)>(loader->kernel32.RaiseException,
+			dwExceptionCode, dwExceptionFlags, nNumberOfArguments, lpArguments);
 }
 
 __attribute__((returns_twice)) int setjmp(_JUMP_BUFFER *_Buf, void *ptr) {
