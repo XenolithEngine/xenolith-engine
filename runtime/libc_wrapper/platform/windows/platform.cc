@@ -24,7 +24,7 @@ THE SOFTWARE.
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/log.h>
 #include <sprt/cxx/detail/ctypes.h>
-#include <sprt/wrappers/windows/errors.h>
+#include <sprt/wrappers/windows/winerror.h>
 #include <sprt/wrappers/windows/basic_types.h>
 #include <sprt/wrappers/windows/security_api.h>
 #include <sprt/wrappers/windows/process_api.h>
@@ -789,11 +789,11 @@ bool runSelfInContainer(int &resultCode) {
 	sc.CapabilityCount = capsCount;
 
 	STARTUPINFOEXW si;
-	memset(&si, 0, sizeof(STARTUPINFOEXW));
+	sprt::memset(&si, 0, sizeof(STARTUPINFOEXW));
 	si.StartupInfo.cb = sizeof(STARTUPINFOEXW);
 
 	PROCESS_INFORMATION pi;
-	memset(&pi, 0, sizeof(PROCESS_INFORMATION));
+	sprt::memset(&pi, 0, sizeof(PROCESS_INFORMATION));
 
 	SIZE_T AttributesSize;
 	InitializeProcThreadAttributeList(NULL, 1, 0, &AttributesSize);

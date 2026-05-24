@@ -25,7 +25,7 @@ size_t __fwritex(const unsigned char *__restrict s, size_t l, FILE *__restrict f
 		}
 	}
 
-	memcpy(f->wpos, s, l);
+	sprt::memcpy(f->wpos, s, l);
 	f->wpos += l;
 	return l + i;
 }

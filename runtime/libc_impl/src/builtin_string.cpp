@@ -42,7 +42,9 @@ __SPRT_C_FUNC int toupper(int c) __SPRT_NOEXCEPT {
 	return c;
 }
 
-__SPRT_C_FUNC int __SPRT_ID(strcmp_impl)(const char *l, const char *r) { return ::strcmp(l, r); }
+__SPRT_C_FUNC int __SPRT_ID(strcmp_impl)(const char *l, const char *r) {
+	return sprt::strcmp(l, r);
+}
 
 __SPRT_C_FUNC int __SPRT_ID(strncmp_impl)(const char *l, const char *r, size_t size) {
 	return ::strncmp(l, r, size);

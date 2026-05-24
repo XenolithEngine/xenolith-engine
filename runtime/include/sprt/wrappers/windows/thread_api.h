@@ -167,9 +167,9 @@ __SPRT_BEGIN_DECL
  * @return Handle to the new thread, or NULL on failure.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createthread
  */
-WINAPI HANDLE CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes, SIZE_T dwStackSize,
-		LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter, DWORD dwCreationFlags,
-		LPDWORD lpThreadId);
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes,
+		SIZE_T dwStackSize, LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter,
+		DWORD dwCreationFlags, LPDWORD lpThreadId);
 
 /**
  * Retrieves a handle to the specified thread object.
@@ -178,99 +178,103 @@ WINAPI HANDLE CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes, SIZE_T dwSt
  * @return Handle to the thread, or NULL on failure.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthread
  */
-WINAPI HANDLE OpenThread(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwThreadId);
+__SPRT_WIN_IMPORT WINAPI HANDLE OpenThread(DWORD dwDesiredAccess, BOOL bInheritHandle,
+		DWORD dwThreadId);
 
-WINAPI HANDLE GetCurrentThread(void);
+__SPRT_WIN_IMPORT WINAPI HANDLE GetCurrentThread(void);
 
-WINAPI DWORD GetCurrentThreadId(void);
+__SPRT_WIN_IMPORT WINAPI DWORD GetCurrentThreadId(void);
 
-WINAPI VOID GetCurrentThreadStackLimits(PULONG_PTR LowLimit, PULONG_PTR HighLimit);
+__SPRT_WIN_IMPORT WINAPI VOID GetCurrentThreadStackLimits(PULONG_PTR LowLimit,
+		PULONG_PTR HighLimit);
 
-WINAPI int GetThreadPriority(HANDLE hThread);
+__SPRT_WIN_IMPORT WINAPI int GetThreadPriority(HANDLE hThread);
 
-WINAPI BOOL SetThreadPriority(HANDLE hThread, int nPriority);
+__SPRT_WIN_IMPORT WINAPI BOOL SetThreadPriority(HANDLE hThread, int nPriority);
 
-WINAPI BOOL GetExitCodeThread(HANDLE hThread, LPDWORD lpExitCode);
+__SPRT_WIN_IMPORT WINAPI BOOL GetExitCodeThread(HANDLE hThread, LPDWORD lpExitCode);
 
-WINAPI void ExitThread(DWORD dwExitCode);
+__SPRT_WIN_IMPORT WINAPI void ExitThread(DWORD dwExitCode);
 
-WINAPI DWORD ResumeThread(HANDLE hThread);
+__SPRT_WIN_IMPORT WINAPI DWORD ResumeThread(HANDLE hThread);
 
 BOOL QueueUserAPC2(PAPCFUNC ApcRoutine, HANDLE Thread, ULONG_PTR Data, QUEUE_USER_APC_FLAGS Flags);
 
-WINAPI HRESULT SetThreadDescription(HANDLE hThread, PCWSTR lpThreadDescription);
+__SPRT_WIN_IMPORT WINAPI HRESULT SetThreadDescription(HANDLE hThread, PCWSTR lpThreadDescription);
 
-WINAPI BOOL GetSystemCpuSetInformation(PSYSTEM_CPU_SET_INFORMATION Information, ULONG BufferLength,
-		PULONG ReturnedLength, HANDLE Process, ULONG Flags);
+__SPRT_WIN_IMPORT WINAPI BOOL GetSystemCpuSetInformation(PSYSTEM_CPU_SET_INFORMATION Information,
+		ULONG BufferLength, PULONG ReturnedLength, HANDLE Process, ULONG Flags);
 
-WINAPI BOOL SetThreadSelectedCpuSets(HANDLE Thread, const ULONG *CpuSetIds, ULONG CpuSetIdCount);
+__SPRT_WIN_IMPORT WINAPI BOOL SetThreadSelectedCpuSets(HANDLE Thread, const ULONG *CpuSetIds,
+		ULONG CpuSetIdCount);
 
-WINAPI BOOL GetThreadSelectedCpuSets(HANDLE Thread, PULONG CpuSetIds, ULONG CpuSetIdCount,
-		PULONG RequiredIdCount);
+__SPRT_WIN_IMPORT WINAPI BOOL GetThreadSelectedCpuSets(HANDLE Thread, PULONG CpuSetIds,
+		ULONG CpuSetIdCount, PULONG RequiredIdCount);
 
-WINAPI HANDLE CreateToolhelp32Snapshot(DWORD dwFlags, DWORD th32ProcessID);
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateToolhelp32Snapshot(DWORD dwFlags, DWORD th32ProcessID);
 
-WINAPI BOOL Thread32First(HANDLE hSnapshot, LPTHREADENTRY32 lpte);
+__SPRT_WIN_IMPORT WINAPI BOOL Thread32First(HANDLE hSnapshot, LPTHREADENTRY32 lpte);
 
-WINAPI BOOL Thread32Next(HANDLE hSnapshot, LPTHREADENTRY32 lpte);
+__SPRT_WIN_IMPORT WINAPI BOOL Thread32Next(HANDLE hSnapshot, LPTHREADENTRY32 lpte);
 
-WINAPI VOID InitializeSRWLock(PSRWLOCK SRWLock);
+__SPRT_WIN_IMPORT WINAPI VOID InitializeSRWLock(PSRWLOCK SRWLock);
 
-WINAPI VOID ReleaseSRWLockExclusive(PSRWLOCK SRWLock);
+__SPRT_WIN_IMPORT WINAPI VOID ReleaseSRWLockExclusive(PSRWLOCK SRWLock);
 
-WINAPI VOID ReleaseSRWLockShared(PSRWLOCK SRWLock);
+__SPRT_WIN_IMPORT WINAPI VOID ReleaseSRWLockShared(PSRWLOCK SRWLock);
 
-WINAPI VOID AcquireSRWLockExclusive(PSRWLOCK SRWLock);
+__SPRT_WIN_IMPORT WINAPI VOID AcquireSRWLockExclusive(PSRWLOCK SRWLock);
 
-WINAPI VOID AcquireSRWLockShared(PSRWLOCK SRWLock);
+__SPRT_WIN_IMPORT WINAPI VOID AcquireSRWLockShared(PSRWLOCK SRWLock);
 
-WINAPI BOOLEAN TryAcquireSRWLockExclusive(PSRWLOCK SRWLock);
+__SPRT_WIN_IMPORT WINAPI BOOLEAN TryAcquireSRWLockExclusive(PSRWLOCK SRWLock);
 
-WINAPI BOOLEAN TryAcquireSRWLockShared(PSRWLOCK SRWLock);
+__SPRT_WIN_IMPORT WINAPI BOOLEAN TryAcquireSRWLockShared(PSRWLOCK SRWLock);
 
-WINAPI BOOL SwitchToThread(VOID);
+__SPRT_WIN_IMPORT WINAPI BOOL SwitchToThread(VOID);
 
-WINAPI HANDLE CreateMutexW(LPSECURITY_ATTRIBUTES lpMutexAttributes, BOOL bInitialOwner,
-		LPCWSTR lpName);
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateMutexW(LPSECURITY_ATTRIBUTES lpMutexAttributes,
+		BOOL bInitialOwner, LPCWSTR lpName);
 
-WINAPI HANDLE CreateSemaphoreW(LPSECURITY_ATTRIBUTES lpSemaphoreAttributes, LONG lInitialCount,
-		LONG lMaximumCount, LPCWSTR lpName);
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateSemaphoreW(LPSECURITY_ATTRIBUTES lpSemaphoreAttributes,
+		LONG lInitialCount, LONG lMaximumCount, LPCWSTR lpName);
 
-WINAPI HANDLE CreateSemaphoreA(LPSECURITY_ATTRIBUTES lpSemaphoreAttributes, LONG lInitialCount,
-		LONG lMaximumCount, LPCSTR lpName);
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateSemaphoreA(LPSECURITY_ATTRIBUTES lpSemaphoreAttributes,
+		LONG lInitialCount, LONG lMaximumCount, LPCSTR lpName);
 
-WINAPI HANDLE CreateEventW(LPSECURITY_ATTRIBUTES lpEventAttributes, BOOL bManualReset,
-		BOOL bInitialState, LPCWSTR lpName);
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateEventW(LPSECURITY_ATTRIBUTES lpEventAttributes,
+		BOOL bManualReset, BOOL bInitialState, LPCWSTR lpName);
 
-WINAPI BOOL SetEvent(HANDLE hEvent);
+__SPRT_WIN_IMPORT WINAPI BOOL SetEvent(HANDLE hEvent);
 
-WINAPI BOOL ResetEvent(HANDLE hEvent);
+__SPRT_WIN_IMPORT WINAPI BOOL ResetEvent(HANDLE hEvent);
 
-WINAPI BOOL ReleaseSemaphore(HANDLE hSemaphore, LONG lReleaseCount, LPLONG lpPreviousCount);
+__SPRT_WIN_IMPORT WINAPI BOOL ReleaseSemaphore(HANDLE hSemaphore, LONG lReleaseCount,
+		LPLONG lpPreviousCount);
 
-WINAPI VOID SwitchToFiber(LPVOID lpFiber);
+__SPRT_WIN_IMPORT WINAPI VOID SwitchToFiber(LPVOID lpFiber);
 
-WINAPI VOID DeleteFiber(LPVOID lpFiber);
+__SPRT_WIN_IMPORT WINAPI VOID DeleteFiber(LPVOID lpFiber);
 
-WINAPI BOOL ConvertFiberToThread(VOID);
+__SPRT_WIN_IMPORT WINAPI BOOL ConvertFiberToThread(VOID);
 
-WINAPI LPVOID CreateFiberEx(SIZE_T dwStackCommitSize, SIZE_T dwStackReserveSize, DWORD dwFlags,
+__SPRT_WIN_IMPORT WINAPI LPVOID CreateFiberEx(SIZE_T dwStackCommitSize, SIZE_T dwStackReserveSize,
+		DWORD dwFlags, LPFIBER_START_ROUTINE lpStartAddress, LPVOID lpParameter);
+
+__SPRT_WIN_IMPORT WINAPI LPVOID ConvertThreadToFiberEx(LPVOID lpParameter, DWORD dwFlags);
+
+__SPRT_WIN_IMPORT WINAPI LPVOID CreateFiber(SIZE_T dwStackSize,
 		LPFIBER_START_ROUTINE lpStartAddress, LPVOID lpParameter);
 
-WINAPI LPVOID ConvertThreadToFiberEx(LPVOID lpParameter, DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI LPVOID ConvertThreadToFiber(LPVOID lpParameter);
 
-WINAPI LPVOID CreateFiber(SIZE_T dwStackSize, LPFIBER_START_ROUTINE lpStartAddress,
-		LPVOID lpParameter);
+__SPRT_WIN_IMPORT WINAPI DWORD TlsAlloc(VOID);
 
-WINAPI LPVOID ConvertThreadToFiber(LPVOID lpParameter);
+__SPRT_WIN_IMPORT WINAPI LPVOID TlsGetValue(DWORD dwTlsIndex);
 
-WINAPI DWORD TlsAlloc(VOID);
+__SPRT_WIN_IMPORT WINAPI BOOL TlsSetValue(DWORD dwTlsIndex, LPVOID lpTlsValue);
 
-WINAPI LPVOID TlsGetValue(DWORD dwTlsIndex);
-
-WINAPI BOOL TlsSetValue(DWORD dwTlsIndex, LPVOID lpTlsValue);
-
-WINAPI BOOL TlsFree(DWORD dwTlsIndex);
+__SPRT_WIN_IMPORT WINAPI BOOL TlsFree(DWORD dwTlsIndex);
 
 #ifdef UNICODE
 #define CreateSemaphore  CreateSemaphoreW

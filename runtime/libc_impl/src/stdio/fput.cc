@@ -26,7 +26,7 @@ __SPRT_C_FUNC int putc_unlocked(int c, FILE *f) __SPRT_NOEXCEPT { return __putc_
 __SPRT_C_FUNC int fputc(int c, FILE *f) __SPRT_NOEXCEPT { return do_putc(c, f); }
 
 __SPRT_C_FUNC int fputs(const char *__restrict s, FILE *__restrict f) __SPRT_NOEXCEPT {
-	size_t l = strlen(s);
+	size_t l = sprt::strlen(s);
 	return (fwrite(s, 1, l, f) == l) - 1;
 }
 

@@ -50,7 +50,7 @@ __SPRT_C_FUNC char *fgets(char *__restrict s, int n, FILE *__restrict f) __SPRT_
 			z = (unsigned char *)memchr(f->rpos, '\n', f->rend - f->rpos);
 			k = z ? z - f->rpos + 1 : f->rend - f->rpos;
 			k = sprt::min(k, size_t(n));
-			memcpy(p, f->rpos, k);
+			sprt::memcpy(p, f->rpos, k);
 			f->rpos += k;
 			p += k;
 			n -= k;

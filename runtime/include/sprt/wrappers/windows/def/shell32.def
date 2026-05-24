@@ -1,0 +1,7 @@
+LIBRARY setupapi.dll
+EXPORTS
+	SHGetKnownFolderPath
+	ShellExecuteA
+	ShellExecuteW
+	CommandLineToArgvW
+	ShellExecuteExW

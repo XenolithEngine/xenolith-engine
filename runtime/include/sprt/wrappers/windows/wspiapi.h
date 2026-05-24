@@ -23,8 +23,6 @@ THE SOFTWARE.
 #ifndef SPRT_WRAPPERS_WINDOWS_WSPIAPI_H_
 #define SPRT_WRAPPERS_WINDOWS_WSPIAPI_H_
 
-#include <sprt/wrappers/windows/complex_types.h>
-#include <sprt/wrappers/windows/constants.h>
 #include <sprt/wrappers/windows/winsock.h>
 
 #endif // SPRT_WRAPPERS_WINDOWS_WSPIAPI_H_

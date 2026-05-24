@@ -49,20 +49,6 @@ THE SOFTWARE.
 #endif
 
 /*
-	Define library functions as inlined builtins where possible
-*/
-#ifndef __SPRT_CONFIG_BUILTIN_INLINES
-#define __SPRT_CONFIG_BUILTIN_INLINES 0
-#endif
-
-/*
-	Define library functions as inlined builtins where possible
-*/
-#ifndef __SPRT_CONFIG_BUILTIN_MATH_INLINES
-#define __SPRT_CONFIG_BUILTIN_MATH_INLINES 0
-#endif
-
-/*
 	Use STL headers for integration with standard library functions
 	(three-way comparison, iterator categories, etc.)
 

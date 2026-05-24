@@ -18,7 +18,7 @@ __SPRT_C_FUNC size_t fread(void *__restrict destv, size_t size, size_t nmemb,
 	if (f->rpos != f->rend) {
 		/* First exhaust the buffer. */
 		k = MIN(f->rend - f->rpos, l);
-		memcpy(dest, f->rpos, k);
+		sprt::memcpy(dest, f->rpos, k);
 		f->rpos += k;
 		dest += k;
 		l -= k;

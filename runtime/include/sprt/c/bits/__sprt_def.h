@@ -344,6 +344,10 @@ THE SOFTWARE.
 
 #ifdef __cplusplus
 
+/*
+`SPRT_LAMBDAINLINE` is used to mark a lambda function as predominantly inline
+`SPRT_ALWAYSINLINE` is applied for the same purposes but for regular functions
+*/
 #if __SPRT_HAS_ATTR(always_inline)
 #define SPRT_LAMBDAINLINE __SPRT_FALLBACK_ATTR(always_inline)
 #define SPRT_ALWAYSINLINE __SPRT_FALLBACK_ATTR(always_inline)
@@ -358,6 +362,10 @@ THE SOFTWARE.
 #define SPRT_INTERNAL static
 #endif
 
+/*
+`SPRT_FORCEINLINE` – marks a function to be used **only** as an inline function.
+Unlike `SPRT_ALWAYSINLINE`, such a function should not be visible in the ABI.
+*/
 #if __SPRT_HAS_ATTR(always_inline) && __SPRT_HAS_ATTR(internal_linkage)
 #define SPRT_FORCEINLINE __SPRT_FALLBACK_ATTR(always_inline,internal_linkage) inline
 #elif __SPRT_HAS_ATTR(always_inline)

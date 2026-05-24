@@ -1,0 +1,6 @@
+LIBRARY setupapi.dll
+EXPORTS
+	SetupDiOpenDevRegKey
+	SetupDiGetClassDevsExW
+	SetupDiEnumDeviceInterfaces
+	SetupDiGetDeviceInterfaceDetailW

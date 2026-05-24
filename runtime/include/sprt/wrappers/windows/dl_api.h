@@ -276,54 +276,29 @@ typedef struct _PEB {
 
 __SPRT_BEGIN_DECL
 
-WINAPI SIZE_T VirtualQuery(LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength);
+__SPRT_WIN_IMPORT WINAPI SIZE_T VirtualQuery(LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer,
+		SIZE_T dwLength);
 
-__declspec(noreturn) WINAPI VOID ExitProcess(UINT uExitCode);
+__SPRT_WIN_IMPORT __declspec(noreturn) WINAPI VOID ExitProcess(UINT uExitCode);
 
-/**
- * Loads the specified module into the address space of the calling process.
- * @param lpLibFileName Module filename (UTF-16).
- * @return Handle to the loaded module, or NULL on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibraryw
- */
-WINAPI HMODULE LoadLibraryW(LPCWSTR lpLibFileName);
+__SPRT_WIN_IMPORT WINAPI HMODULE LoadLibraryW(LPCWSTR lpLibFileName);
 
-WINAPI HMODULE LoadLibraryA(LPCSTR lpLibFileName);
+__SPRT_WIN_IMPORT WINAPI HMODULE LoadLibraryA(LPCSTR lpLibFileName);
 
-WINAPI HMODULE LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI HMODULE LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, DWORD dwFlags);
 
-/**
- * Freels a loaded dynamic-link library.
- * @param hModule Handle to the library being unloaded.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-freelibrary
- */
-WINAPI BOOL FreeLibrary(HMODULE hModule);
+__SPRT_WIN_IMPORT WINAPI BOOL FreeLibrary(HMODULE hModule);
 
-/**
- * Retrieves the address of an exported function or variable from the specified module.
- * @param hModule Handle to the DLL module containing the function.
- * @param lpProcName Function name or ordinal.
- * @return Address of the exported function/variable, or NULL on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress
- */
-WINAPI FARPROC GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
+__SPRT_WIN_IMPORT WINAPI FARPROC GetProcAddress(HMODULE hModule, LPCSTR lpProcName);
 
-WINAPI HMODULE GetModuleHandleW(LPCWSTR lpModuleName);
+__SPRT_WIN_IMPORT WINAPI HMODULE GetModuleHandleW(LPCWSTR lpModuleName);
 
-/**
- * Retrieves a module handle for the specified module.
- * @param dwFlags Flags controlling behavior.
- * @param lpModuleName Module name (NULL = calling process).
- * @param phModule Pointer to receive module handle.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulehandleexw
- */
-WINAPI BOOL GetModuleHandleExW(DWORD dwFlags, LPCWSTR lpModuleName, PHMODULE phModule);
+__SPRT_WIN_IMPORT WINAPI BOOL GetModuleHandleExW(DWORD dwFlags, LPCWSTR lpModuleName,
+		PHMODULE phModule);
 
-WINAPI DWORD GetModuleFileNameW(HMODULE hModule, LPWSTR lpFilename, DWORD nSize);
+__SPRT_WIN_IMPORT WINAPI DWORD GetModuleFileNameW(HMODULE hModule, LPWSTR lpFilename, DWORD nSize);
 
-WINAPI PVOID RtlPcToFileHeader(PVOID PcValue, PVOID *BaseOfImage);
+__SPRT_WIN_IMPORT WINAPI PVOID RtlPcToFileHeader(PVOID PcValue, PVOID *BaseOfImage);
 
 #ifdef UNICODE
 #define GetModuleHandle GetModuleHandleW

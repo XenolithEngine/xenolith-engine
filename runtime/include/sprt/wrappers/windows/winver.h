@@ -83,14 +83,15 @@ typedef struct _OSVERSIONINFOA {
 
 __SPRT_BEGIN_DECL
 
-WINAPI BOOL GetVersionExA(LPOSVERSIONINFOA lpVersionInformation);
+__SPRT_WIN_IMPORT WINAPI BOOL GetVersionExA(LPOSVERSIONINFOA lpVersionInformation);
 
-WINAPI BOOL GetVersionExW(LPOSVERSIONINFOW lpVersionInformation);
+__SPRT_WIN_IMPORT WINAPI BOOL GetVersionExW(LPOSVERSIONINFOW lpVersionInformation);
 
-WINAPI ULONGLONG VerSetConditionMask(ULONGLONG ConditionMask, DWORD TypeMask, BYTE Condition);
+__SPRT_WIN_IMPORT WINAPI ULONGLONG VerSetConditionMask(ULONGLONG ConditionMask, DWORD TypeMask,
+		BYTE Condition);
 
-WINAPI BOOL VerifyVersionInfoW(LPOSVERSIONINFOEXW lpVersionInformation, DWORD dwTypeMask,
-		DWORDLONG dwlConditionMask);
+__SPRT_WIN_IMPORT WINAPI BOOL VerifyVersionInfoW(LPOSVERSIONINFOEXW lpVersionInformation,
+		DWORD dwTypeMask, DWORDLONG dwlConditionMask);
 
 #ifdef UNICODE
 #define VerifyVersionInfo VerifyVersionInfoW

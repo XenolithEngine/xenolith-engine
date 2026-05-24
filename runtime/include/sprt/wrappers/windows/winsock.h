@@ -328,84 +328,88 @@ typedef struct _WSANETWORKEVENTS {
 
 __SPRT_BEGIN_DECL
 
-WINAPI INT getaddrinfo(PCSTR pNodeName, PCSTR pServiceName, const ADDRINFOA *pHints,
-		PADDRINFOA *ppResult);
+__SPRT_WIN_IMPORT WINAPI INT getaddrinfo(PCSTR pNodeName, PCSTR pServiceName,
+		const ADDRINFOA *pHints, PADDRINFOA *ppResult);
 
-WINAPI VOID freeaddrinfo(PADDRINFOA pAddrInfo);
+__SPRT_WIN_IMPORT WINAPI VOID freeaddrinfo(PADDRINFOA pAddrInfo);
 
-WINAPI struct hostent *gethostbyname(const char *name);
+__SPRT_WIN_IMPORT WINAPI struct hostent *gethostbyname(const char *name);
 
-WINAPI struct servent *getservbyname(const char *name, const char *proto);
+__SPRT_WIN_IMPORT WINAPI struct servent *getservbyname(const char *name, const char *proto);
 
-WINAPI int getsockname(SOCKET s, struct __SPRT_SOCKADDR_NAME *name, int *namelen);
+__SPRT_WIN_IMPORT WINAPI int getsockname(SOCKET s, struct __SPRT_SOCKADDR_NAME *name, int *namelen);
 
-WINAPI int getsockopt(SOCKET s, int level, int optname, char *optval, int *optlen);
+__SPRT_WIN_IMPORT WINAPI int getsockopt(SOCKET s, int level, int optname, char *optval,
+		int *optlen);
 
-WINAPI SOCKET accept(SOCKET s, struct __SPRT_SOCKADDR_NAME *addr, int *addrlen);
+__SPRT_WIN_IMPORT WINAPI SOCKET accept(SOCKET s, struct __SPRT_SOCKADDR_NAME *addr, int *addrlen);
 
-WINAPI int bind(SOCKET s, const struct __SPRT_SOCKADDR_NAME *addr, int namelen);
+__SPRT_WIN_IMPORT WINAPI int bind(SOCKET s, const struct __SPRT_SOCKADDR_NAME *addr, int namelen);
 
-WINAPI int closesocket(SOCKET s);
+__SPRT_WIN_IMPORT WINAPI int closesocket(SOCKET s);
 
-WINAPI int connect(SOCKET s, const struct __SPRT_SOCKADDR_NAME *name, int namelen);
+__SPRT_WIN_IMPORT WINAPI int connect(SOCKET s, const struct __SPRT_SOCKADDR_NAME *name,
+		int namelen);
 
-WINAPI int ioctlsocket(SOCKET s, long cmd, unsigned long *argp);
+__SPRT_WIN_IMPORT WINAPI int ioctlsocket(SOCKET s, long cmd, unsigned long *argp);
 
-WINAPI int getpeername(SOCKET s, struct __SPRT_SOCKADDR_NAME *name, int *namelen);
+__SPRT_WIN_IMPORT WINAPI int getpeername(SOCKET s, struct __SPRT_SOCKADDR_NAME *name, int *namelen);
 
-WINAPI int listen(SOCKET s, int backlog);
+__SPRT_WIN_IMPORT WINAPI int listen(SOCKET s, int backlog);
 
-WINAPI int recv(SOCKET s, char *buf, int len, int flags);
+__SPRT_WIN_IMPORT WINAPI int recv(SOCKET s, char *buf, int len, int flags);
 
-WINAPI int recvfrom(SOCKET s, char *buf, int len, int flags, struct sockaddr *from, int *fromlen);
+__SPRT_WIN_IMPORT WINAPI int recvfrom(SOCKET s, char *buf, int len, int flags,
+		struct sockaddr *from, int *fromlen);
 
-WINAPI int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+__SPRT_WIN_IMPORT WINAPI int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 		const struct timeval *timeout);
 
-WINAPI int send(SOCKET s, const char *buf, int len, int flags);
+__SPRT_WIN_IMPORT WINAPI int send(SOCKET s, const char *buf, int len, int flags);
 
-WINAPI int sendto(SOCKET s, const char *buf, int len, int flags, const struct sockaddr *to,
-		int tolen);
+__SPRT_WIN_IMPORT WINAPI int sendto(SOCKET s, const char *buf, int len, int flags,
+		const struct sockaddr *to, int tolen);
 
-WINAPI int setsockopt(SOCKET s, int level, int optname, const char *optval, int optlen);
+__SPRT_WIN_IMPORT WINAPI int setsockopt(SOCKET s, int level, int optname, const char *optval,
+		int optlen);
 
-WINAPI int shutdown(SOCKET s, int how);
+__SPRT_WIN_IMPORT WINAPI int shutdown(SOCKET s, int how);
 
-WINAPI SOCKET socket(int af, int type, int protocol);
+__SPRT_WIN_IMPORT WINAPI SOCKET socket(int af, int type, int protocol);
 
-WINAPI SOCKET WSASocketA(int af, int type, int protocol, LPWSAPROTOCOL_INFOA lpProtocolInfo,
-		GROUP g, DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI SOCKET WSASocketA(int af, int type, int protocol,
+		LPWSAPROTOCOL_INFOA lpProtocolInfo, GROUP g, DWORD dwFlags);
 
-WINAPI SOCKET WSASocketW(int af, int type, int protocol, LPWSAPROTOCOL_INFOW lpProtocolInfo,
-		GROUP g, DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI SOCKET WSASocketW(int af, int type, int protocol,
+		LPWSAPROTOCOL_INFOW lpProtocolInfo, GROUP g, DWORD dwFlags);
 
-WINAPI int WSAIoctl(SOCKET s, DWORD dwIoControlCode, LPVOID lpvInBuffer, DWORD cbInBuffer,
-		LPVOID lpvOutBuffer, DWORD cbOutBuffer, LPDWORD lpcbBytesReturned,
+__SPRT_WIN_IMPORT WINAPI int WSAIoctl(SOCKET s, DWORD dwIoControlCode, LPVOID lpvInBuffer,
+		DWORD cbInBuffer, LPVOID lpvOutBuffer, DWORD cbOutBuffer, LPDWORD lpcbBytesReturned,
 		LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
 
-WINAPI int WSAStartup(WORD wVersionRequested, LPWSADATA lpWSAData);
+__SPRT_WIN_IMPORT WINAPI int WSAStartup(WORD wVersionRequested, LPWSADATA lpWSAData);
 
-WINAPI int WSACleanup(void);
+__SPRT_WIN_IMPORT WINAPI int WSACleanup(void);
 
-WINAPI void WSASetLastError(int iError);
+__SPRT_WIN_IMPORT WINAPI void WSASetLastError(int iError);
 
-WINAPI int WSAGetLastError(void);
+__SPRT_WIN_IMPORT WINAPI int WSAGetLastError(void);
 
-WINAPI WSAEVENT WSACreateEvent(void);
+__SPRT_WIN_IMPORT WINAPI WSAEVENT WSACreateEvent(void);
 
-WINAPI int WSAEventSelect(SOCKET s, WSAEVENT hEventObject, long lNetworkEvents);
+__SPRT_WIN_IMPORT WINAPI int WSAEventSelect(SOCKET s, WSAEVENT hEventObject, long lNetworkEvents);
 
-WINAPI DWORD WSAWaitForMultipleEvents(DWORD cEvents, const WSAEVENT *lphEvents, BOOL fWaitAll,
-		DWORD dwTimeout, BOOL fAlertable);
+__SPRT_WIN_IMPORT WINAPI DWORD WSAWaitForMultipleEvents(DWORD cEvents, const WSAEVENT *lphEvents,
+		BOOL fWaitAll, DWORD dwTimeout, BOOL fAlertable);
 
-WINAPI int WSAEnumNetworkEvents(SOCKET s, WSAEVENT hEventObject,
+__SPRT_WIN_IMPORT WINAPI int WSAEnumNetworkEvents(SOCKET s, WSAEVENT hEventObject,
 		LPWSANETWORKEVENTS lpNetworkEvents);
 
-WINAPI BOOL WSASetEvent(WSAEVENT hEvent);
+__SPRT_WIN_IMPORT WINAPI BOOL WSASetEvent(WSAEVENT hEvent);
 
-WINAPI BOOL WSAResetEvent(WSAEVENT hEvent);
+__SPRT_WIN_IMPORT WINAPI BOOL WSAResetEvent(WSAEVENT hEvent);
 
-WINAPI BOOL WSACloseEvent(WSAEVENT hEvent);
+__SPRT_WIN_IMPORT WINAPI BOOL WSACloseEvent(WSAEVENT hEvent);
 
 __SPRT_END_DECL
 

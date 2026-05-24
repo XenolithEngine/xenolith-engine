@@ -13,7 +13,7 @@ typedef struct fd_set {
 extern "C" {
 #endif
 
-extern __SPRT_DLLIMPORT int __WSAFDIsSet(SOCKET, __SPRT_ID(fd_set) *);
+__SPRT_WIN_IMPORT int __WSAFDIsSet(SOCKET, __SPRT_ID(fd_set) *);
 
 #ifdef __cplusplus
 }

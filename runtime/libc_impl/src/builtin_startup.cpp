@@ -24,20 +24,41 @@ THE SOFTWARE.
 
 #if SPRT_WINDOWS
 #include "windows/dll/dllloader.cc"
-#include "windows/dll/dllstub_basic_api.cc"
-#include "windows/dll/dllstub_context_api.cc"
-#include "windows/dll/dllstub_dl_api.cc"
-#include "windows/dll/dllstub_file_api.cc"
-#include "windows/dll/dllstub_message_api.cc"
-#include "windows/dll/dllstub_monitor_api.cc"
-#include "windows/dll/dllstub_process_api.cc"
-#include "windows/dll/dllstub_thread_api.cc"
-#include "windows/dll/dllstub_time_api.cc"
-#include "windows/dll/dllstub_user_api.cc"
-#include "windows/dll/dllstub_windows.cc"
-#include "windows/dll/dllstub_winsock.cc"
-#include "windows/dll/dllstub_security_api.cc"
-#include "windows/dll/dllstub_debug_api.cc"
+
+#include "windows/dll/dllstub_nt_extras.cc"
+
+
+#if !__SPRT_WIN_USE_IMPORT_STRING_LIB
+
+#include "windows/dll/dllstub_gen_strings.cc"
+
+#endif
+
+
+#if !__SPRT_WIN_USE_IMPORT_LIB
+
+#include "windows/dll/dllstub2_advapi32.cc"
+#include "windows/dll/dllstub2_bcrypt.cc"
+#include "windows/dll/dllstub2_combase.cc"
+#include "windows/dll/dllstub2_crypt32.cc"
+#include "windows/dll/dllstub2_dbghelp.cc"
+#include "windows/dll/dllstub2_dwmapi.cc"
+#include "windows/dll/dllstub2_dxva2.cc"
+#include "windows/dll/dllstub2_gdi32.cc"
+#include "windows/dll/dllstub2_kernel32.cc"
+#include "windows/dll/dllstub2_kernelbase.cc"
+#include "windows/dll/dllstub2_ntdll.cc"
+#include "windows/dll/dllstub2_oleaut32.cc"
+#include "windows/dll/dllstub2_setupapi.cc"
+#include "windows/dll/dllstub2_shcore.cc"
+#include "windows/dll/dllstub2_shell32.cc"
+#include "windows/dll/dllstub2_user32.cc"
+#include "windows/dll/dllstub2_userenv.cc"
+#include "windows/dll/dllstub2_uxtheme.cc"
+#include "windows/dll/dllstub2_ws2_32.cc"
+
+#endif
+
 #include "windows/startup.cc"
 #include "windows/terminate.cc"
 #include "windows/memory.cc"

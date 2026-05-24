@@ -221,80 +221,39 @@ typedef struct KNOWNFOLDER_DEFINITION {
 
 __SPRT_BEGIN_DECL
 
-/* ============================================================ */
-/* COM/CoInitialize API (combaseapi.h)                          */
-/* ============================================================ */
-
-/**
- * Sets the security levels on a process for incoming calls.
- * @param pSecDesc Pointer to a security descriptor (NULL = default).
- * @param cAuthSvc Security services array (NULL = none).
- * @param asAuthSvc Array of authentication service structures.
- * @param pReserved1 Reserved; must be NULL.
- * @param dwAuthnLevel Authentication level for incoming calls.
- * @param dwImpLevel Impersonation level for incoming calls.
- * @param pAuthList Pointer to an array of authentication identities.
- * @param dwCapabilities Capability flags (e.g., EOAC_NONE).
- * @param pReserved2 Reserved; must be NULL.
- * @return S_OK on success, or an HRESULT error code otherwise.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializesecurity
- */
-WINAPI HRESULT CoInitializeSecurity(PSECURITY_DESCRIPTOR pSecDesc, LONG cAuthSvc,
+__SPRT_WIN_IMPORT WINAPI HRESULT CoInitializeSecurity(PSECURITY_DESCRIPTOR pSecDesc, LONG cAuthSvc,
 		SOLE_AUTHENTICATION_SERVICE *asAuthSvc, void *pReserved1, DWORD dwAuthnLevel,
 		DWORD dwImpLevel, void *pAuthList, DWORD dwCapabilities, void *pReserved3);
 
-/**
- * Creates an instance of a COM object.
- * @param rclsid Class identifier (CLSID) for the object to create.
- * @param pUnkOuter Pointer to IUnknown interface of aggregated object (NULL if not aggregating).
- * @param dwClsContext Context in which to run the code.
- * @param riid Interface identifier (IID) requested from the new object.
- * @param ppv Address of pointer variable that receives the interface pointer.
- * @return S_OK on success, or an HRESULT error code otherwise.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-ocreateinstance
- */
-WINAPI HRESULT CoCreateInstance(REFCLSID rclsid, IUnknown *pUnkOuter, DWORD dwClsContext,
-		REFIID riid, LPVOID *ppv);
+__SPRT_WIN_IMPORT WINAPI HRESULT CoCreateInstance(REFCLSID rclsid, IUnknown *pUnkOuter,
+		DWORD dwClsContext, REFIID riid, LPVOID *ppv);
 
-/**
- * Sets security capabilities on a proxy.
- * @param pProxy Pointer to the proxy to set capabilities on.
- * @param dwAuthnSvc Authentication service to use for the proxy.
- * @param dwAuthzSvc Authorization service to use for the proxy.
- * @param pServerPrincName Server principal name.
- * @param dwAuthnLevel Authentication level for calls through the proxy.
- * @param dwImpLevel Impersonation level for the proxy.
- * @param pAuthIdentity Client identity.
- * @param dwCapabilities Capability flags (e.g., EOAC_NONE).
- * @return S_OK on success, or an HRESULT error code otherwise.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-cosetproxyblanket
- */
-WINAPI HRESULT CoSetProxyBlanket(IUnknown *pProxy, DWORD dwAuthnSvc, DWORD dwAuthzSvc,
-		LPCWSTR pServerPrincName, DWORD dwAuthnLevel, DWORD dwImpLevel, void *pAuthIdentity,
-		DWORD dwCapabilities);
+__SPRT_WIN_IMPORT WINAPI HRESULT CoSetProxyBlanket(IUnknown *pProxy, DWORD dwAuthnSvc,
+		DWORD dwAuthzSvc, LPCWSTR pServerPrincName, DWORD dwAuthnLevel, DWORD dwImpLevel,
+		void *pAuthIdentity, DWORD dwCapabilities);
 
-WINAPI HRESULT CoInitializeEx(LPVOID pvReserved, DWORD dwCoInit);
+__SPRT_WIN_IMPORT WINAPI HRESULT CoInitializeEx(LPVOID pvReserved, DWORD dwCoInit);
 
-WINAPI void CoUninitialize();
+__SPRT_WIN_IMPORT WINAPI void CoUninitialize();
 
-WINAPI void CoTaskMemFree(LPVOID pv);
+__SPRT_WIN_IMPORT WINAPI void CoTaskMemFree(LPVOID pv);
 
-WINAPI HRESULT SHGetKnownFolderPath(REFKNOWNFOLDERID rfid, DWORD dwFlags, HANDLE hToken,
-		PWSTR *ppszPath);
+__SPRT_WIN_IMPORT WINAPI HRESULT SHGetKnownFolderPath(REFKNOWNFOLDERID rfid, DWORD dwFlags,
+		HANDLE hToken, PWSTR *ppszPath);
 
-WINAPI void VariantInit(VARIANTARG *pvarg);
+__SPRT_WIN_IMPORT WINAPI void VariantInit(VARIANTARG *pvarg);
 
-WINAPI HRESULT VariantClear(VARIANTARG *pvarg);
+__SPRT_WIN_IMPORT WINAPI HRESULT VariantClear(VARIANTARG *pvarg);
 
-WINAPI HRESULT VariantCopy(VARIANTARG *pvargDest, const VARIANTARG *pvargSrc);
+__SPRT_WIN_IMPORT WINAPI HRESULT VariantCopy(VARIANTARG *pvargDest, const VARIANTARG *pvargSrc);
 
-WINAPI void SysFreeString(BSTR bstrString);
+__SPRT_WIN_IMPORT WINAPI void SysFreeString(BSTR bstrString);
 
-WINAPI HRESULT StringFromCLSID(REFCLSID rclsid, LPOLESTR *lplpsz);
+__SPRT_WIN_IMPORT WINAPI HRESULT StringFromCLSID(REFCLSID rclsid, LPOLESTR *lplpsz);
 
-WINAPI HRESULT CLSIDFromString(LPCOLESTR lpsz, LPCLSID pclsid);
+__SPRT_WIN_IMPORT WINAPI HRESULT CLSIDFromString(LPCOLESTR lpsz, LPCLSID pclsid);
 
-WINAPI HRESULT IIDFromString(LPCOLESTR lpsz, LPIID lpiid);
+__SPRT_WIN_IMPORT WINAPI HRESULT IIDFromString(LPCOLESTR lpsz, LPIID lpiid);
 
 __SPRT_END_DECL
 

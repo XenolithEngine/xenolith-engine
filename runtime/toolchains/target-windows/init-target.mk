@@ -101,18 +101,38 @@ $(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h: ../common/simde.mk
 	$(call rule_rm,simde)
 	$(call rule_touch,$(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h)
 
-$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/sprt.lib: \
+RUNTIME_IMPORT_DEFS := $(wildcard $(SP_RUNTIME_ROOT)/include/sprt/wrappers/windows/def/*.def)
+RUNTIME_IMPORT_LIBS := $(addprefix $(TOOLCHAIN_OUTPUT_DIR)/lib/,$(notdir $(RUNTIME_IMPORT_DEFS:.def=.lib)))
+
+$(TOOLCHAIN_OUTPUT_DIR)/lib/%.lib : $(SP_RUNTIME_ROOT)/include/sprt/wrappers/windows/def/%.def
+	$(call rule_rm,$@)
+	$(TOOLCHAIN_OUTPUT_DIR)/host/bin/llvm-lib /def:$< /out:$@ /machine:$(SP_ARCH_WIN)
+
+# Merge import libs with SPRT for dependencies build
+$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/sprt.lib: $(RUNTIME_IMPORT_LIBS) \
 		$(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h \
 		$(TOOLCHAIN_OUTPUT_DIR)/target.mk
-	$(MAKE)  -C $(SP_RUNTIME_ROOT) \
+	$(call rule_rm,$@)
+	$(MAKE) -j8 -C $(SP_RUNTIME_ROOT) \
 		STAPPLER_HOST_FILE=$(TOOLCHAIN_OUTPUT_DIR)/host/host.mk \
 		STAPPLER_TARGET_FILE=$(TOOLCHAIN_OUTPUT_DIR)/target.mk \
 		STAPPLER_TARGET=$(SP_ARCH_TARGET_CLANG) RELEASE=1
-	$(call rule_cp,$(SP_RUNTIME_ROOT)/stappler-build/$(SP_ARCH_TARGET_CLANG)/release/cc/sprt.lib,$@)
+	$(TOOLCHAIN_OUTPUT_DIR)/host/bin/llvm-lib /out:$@ \
+			$(RUNTIME_IMPORT_LIBS) \
+			$(SP_RUNTIME_ROOT)/stappler-build/$(SP_ARCH_TARGET_CLANG)/release/cc/sprt.lib \
+			/machine:$(SP_ARCH_WIN)
 
-all: $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake $(TOOLCHAIN_OUTPUT_DIR)/target.mk \
+$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/import.lib: $(RUNTIME_IMPORT_LIBS)
+	$(call rule_rm,$@)
+	$(TOOLCHAIN_OUTPUT_DIR)/host/bin/llvm-lib /out:$@ \
+			$(RUNTIME_IMPORT_LIBS) \
+			/machine:$(SP_ARCH_WIN)
+
+all: $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake \
+	$(TOOLCHAIN_OUTPUT_DIR)/target.mk \
 	$(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h \
-	$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/sprt.lib
+	$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/sprt.lib \
+	$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/import.lib
 
 .PHONY: all
 .DEFAULT_GOAL := all

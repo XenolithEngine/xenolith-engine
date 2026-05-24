@@ -788,7 +788,7 @@ SymbolNode *Demangler::demangleMD5Name(sprt::StringView &MangledName) {
 	// This is an MD5 mangled name.  We can't demangle it, just return the
 	// mangled name.
 	// An MD5 mangled name is ??@ followed by 32 characters and a terminating @.
-	size_t MD5Last = MangledName.find('@', strlen("??@"));
+	size_t MD5Last = MangledName.find('@', sprt::strlen("??@"));
 	if (MD5Last == sprt::Max<size_t>) {
 		Error = true;
 		return nullptr;
@@ -1165,7 +1165,7 @@ static void outputHex(OutputBuffer &OB, unsigned C) {
 	// most 4 bytes, we need a 4*4+1 = 17 character temporary buffer.
 	char TempBuffer[17];
 
-	::memset(TempBuffer, 0, sizeof(TempBuffer));
+	sprt::memset(TempBuffer, 0, sizeof(TempBuffer));
 	constexpr int MaxPos = sizeof(TempBuffer) - 1;
 
 	int Pos = MaxPos - 1; // TempBuffer[MaxPos] is the terminating \0.

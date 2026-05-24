@@ -140,7 +140,7 @@ static void pad(FILE *f, char c, int w, int l, int fl) {
 		return;
 	}
 	l = w - l;
-	memset(pad, c, l > sizeof pad ? sizeof pad : l);
+	sprt::memset(pad, c, l > sizeof pad ? sizeof pad : l);
 	for (; l >= sizeof pad; l -= sizeof pad) { out(f, pad, sizeof pad); }
 	out(f, pad, l);
 }
@@ -725,7 +725,7 @@ narrow_c:
 			} else {
 			case 's': a = arg.p ? (char *)arg.p : (char *)"(null)";
 			}
-			z = a + strnlen(a, p < 0 ? INT_MAX : p);
+			z = a + sprt::strnlen(a, p < 0 ? INT_MAX : p);
 			if (p < 0 && *z) {
 				goto overflow;
 			}
@@ -901,13 +901,13 @@ static size_t sn_write(FILE *f, const unsigned char *s, size_t l) {
 	vsnprintf_cookie *c = (vsnprintf_cookie *)f->cookie;
 	size_t k = sprt::min(c->n, size_t(f->wpos - f->wbase));
 	if (k) {
-		memcpy(c->s, f->wbase, k);
+		sprt::memcpy(c->s, f->wbase, k);
 		c->s += k;
 		c->n -= k;
 	}
 	k = sprt::min(c->n, l);
 	if (k) {
-		memcpy(c->s, s, k);
+		sprt::memcpy(c->s, s, k);
 		c->s += k;
 		c->n -= k;
 	}

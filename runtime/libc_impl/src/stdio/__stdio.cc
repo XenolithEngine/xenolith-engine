@@ -142,7 +142,7 @@ __SPRT_C_FUNC FILE *fdopen(int fd, const char *mode) __SPRT_NOEXCEPT {
 	struct winsize wsz;
 
 	/* Check for valid initial mode character */
-	if (!strchr("rwa", *mode)) {
+	if (!sprt::strchr("rwa", *mode)) {
 		errno = EINVAL;
 		return 0;
 	}
@@ -153,15 +153,15 @@ __SPRT_C_FUNC FILE *fdopen(int fd, const char *mode) __SPRT_NOEXCEPT {
 	}
 
 	/* Zero-fill only the struct, not the buffer */
-	memset(f, 0, sizeof *f);
+	sprt::memset(f, 0, sizeof *f);
 
 	/* Impose mode restrictions */
-	if (!strchr(mode, '+')) {
+	if (!sprt::strchr(mode, '+')) {
 		f->flags = (*mode == 'r') ? F_NOWR : F_NORD;
 	}
 
 	/* Apply close-on-exec flag */
-	if (strchr(mode, 'e')) {
+	if (sprt::strchr(mode, 'e')) {
 		fcntl(fd, F_SETFD, FD_CLOEXEC);
 	}
 

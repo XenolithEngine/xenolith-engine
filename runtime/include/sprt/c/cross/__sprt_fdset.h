@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/bits/__sprt_uintptr_t.h>
+#include <sprt/wrappers/windows/__sprt_config.h>
 
 // clang-format off
 #include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/fdset.h)

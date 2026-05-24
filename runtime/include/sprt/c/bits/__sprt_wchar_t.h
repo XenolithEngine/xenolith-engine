@@ -29,6 +29,8 @@ THE SOFTWARE.
 
 #ifndef __cplusplus
 typedef __WCHAR_TYPE__ __SPRT_ID(wchar_t);
+#else
+typedef wchar_t __SPRT_ID(wchar_t);
 #endif
 
 #ifdef __WCHAR_MAX__
@@ -55,6 +57,8 @@ typedef __WCHAR_TYPE__ __SPRT_ID(wchar_t);
 
 #ifndef __cplusplus
 typedef unsigned short __SPRT_ID(wchar_t);
+#else
+typedef wchar_t __SPRT_ID(wchar_t);
 #endif
 
 #define __SPRT_WCHAR_MAX (0xffff)
@@ -65,6 +69,8 @@ typedef unsigned short __SPRT_ID(wchar_t);
 
 #ifndef __cplusplus
 typedef int __SPRT_ID(wchar_t);
+#else
+typedef wchar_t __SPRT_ID(wchar_t);
 #endif
 
 #define __SPRT_WCHAR_MAX 0x7fff'ffff

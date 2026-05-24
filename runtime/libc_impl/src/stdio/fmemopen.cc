@@ -43,7 +43,7 @@ static size_t mread(FILE *f, unsigned char *buf, size_t len) {
 		len = rem;
 		f->flags |= F_EOF;
 	}
-	memcpy(buf, c->buf + c->pos, len);
+	sprt::memcpy(buf, c->buf + c->pos, len);
 	c->pos += len;
 	rem -= len;
 	if (rem > f->buf_size) {
@@ -51,7 +51,7 @@ static size_t mread(FILE *f, unsigned char *buf, size_t len) {
 	}
 	f->rpos = f->buf;
 	f->rend = f->buf + rem;
-	memcpy(f->rpos, c->buf + c->pos, rem);
+	sprt::memcpy(f->rpos, c->buf + c->pos, rem);
 	c->pos += rem;
 	return len;
 }
@@ -73,7 +73,7 @@ static size_t mwrite(FILE *f, const unsigned char *buf, size_t len) {
 	if (len > rem) {
 		len = rem;
 	}
-	memcpy(c->buf + c->pos, buf, len);
+	sprt::memcpy(c->buf + c->pos, buf, len);
 	c->pos += len;
 	if (c->pos > c->len) {
 		c->len = c->pos;
@@ -91,9 +91,9 @@ static int mclose(FILE *m) { return 0; }
 __SPRT_C_FUNC FILE *fmemopen(void *__restrict buf, size_t size,
 		const char *__restrict mode) __SPRT_NOEXCEPT {
 	struct mem_FILE *f;
-	int plus = !!strchr(mode, '+');
+	int plus = !!sprt::strchr(mode, '+');
 
-	if (!strchr("rwa", *mode)) {
+	if (!sprt::strchr("rwa", *mode)) {
 		errno = EINVAL;
 		return 0;
 	}
@@ -107,7 +107,7 @@ __SPRT_C_FUNC FILE *fmemopen(void *__restrict buf, size_t size,
 	if (!f) {
 		return 0;
 	}
-	memset(f, 0, offsetof(struct mem_FILE, buf));
+	sprt::memset(f, 0, offsetof(struct mem_FILE, buf));
 	f->f.cookie = &f->c;
 	f->f.fd = -1;
 	f->f.lbf = EOF;
@@ -115,7 +115,7 @@ __SPRT_C_FUNC FILE *fmemopen(void *__restrict buf, size_t size,
 	f->f.buf_size = sizeof f->buf - UNGET;
 	if (!buf) {
 		buf = f->buf2;
-		memset(buf, 0, size);
+		sprt::memset(buf, 0, size);
 	}
 
 	f->c.buf = (unsigned char *)buf;
@@ -128,7 +128,7 @@ __SPRT_C_FUNC FILE *fmemopen(void *__restrict buf, size_t size,
 	if (*mode == 'r') {
 		f->c.len = size;
 	} else if (*mode == 'a') {
-		f->c.len = f->c.pos = strnlen((const char *)buf, size);
+		f->c.len = f->c.pos = sprt::strnlen((const char *)buf, size);
 	} else if (plus) {
 		*f->c.buf = 0;
 	}

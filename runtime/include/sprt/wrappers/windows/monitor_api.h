@@ -20,8 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef SPRT_WRAPPERS_WINDOWS_DEBUG_API_H_
-#define SPRT_WRAPPERS_WINDOWS_DEBUG_API_H_
+#ifndef SPRT_WRAPPERS_WINDOWS_MONITOR_API_H_
+#define SPRT_WRAPPERS_WINDOWS_MONITOR_API_H_
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
@@ -166,12 +166,11 @@ THE SOFTWARE.
 #define DISP_CHANGE_BADDUALVIEW     -6
 // clang-format on
 
-typedef enum DPI_AWARENESS {
-	DPI_AWARENESS_INVALID = -1,
-	DPI_AWARENESS_UNAWARE = 0,
-	DPI_AWARENESS_SYSTEM_AWARE = 1,
-	DPI_AWARENESS_PER_MONITOR_AWARE = 2
-} DPI_AWARENESS;
+typedef enum PROCESS_DPI_AWARENESS {
+	PROCESS_DPI_UNAWARE = 0,
+	PROCESS_SYSTEM_DPI_AWARE = 1,
+	PROCESS_PER_MONITOR_DPI_AWARE = 2
+} PROCESS_DPI_AWARENESS;
 
 typedef enum MONITOR_DPI_TYPE {
 	MDT_EFFECTIVE_DPI = 0,
@@ -179,6 +178,13 @@ typedef enum MONITOR_DPI_TYPE {
 	MDT_RAW_DPI = 2,
 	MDT_DEFAULT = MDT_EFFECTIVE_DPI
 } MONITOR_DPI_TYPE;
+
+typedef enum DPI_AWARENESS {
+	DPI_AWARENESS_INVALID = -1,
+	DPI_AWARENESS_UNAWARE = 0,
+	DPI_AWARENESS_SYSTEM_AWARE = 1,
+	DPI_AWARENESS_PER_MONITOR_AWARE = 2
+} DPI_AWARENESS;
 
 typedef HANDLE DPI_AWARENESS_CONTEXT, HMONITOR, HDC, HDEVINFO, HWND;
 
@@ -281,57 +287,66 @@ typedef BOOL (*MONITORENUMPROC)(HMONITOR, HDC, LPRECT, LPARAM);
 
 __SPRT_BEGIN_DECL
 
-WINAPI BOOL GetMonitorInfoW(HMONITOR hMonitor, LPMONITORINFO lpmi);
+__SPRT_WIN_IMPORT WINAPI BOOL GetMonitorInfoW(HMONITOR hMonitor, LPMONITORINFO lpmi);
 
-WINAPI BOOL GetNumberOfPhysicalMonitorsFromHMONITOR(HMONITOR hMonitor,
+__SPRT_WIN_IMPORT WINAPI BOOL GetNumberOfPhysicalMonitorsFromHMONITOR(HMONITOR hMonitor,
 		LPDWORD pdwNumberOfPhysicalMonitors);
 
-WINAPI BOOL GetPhysicalMonitorsFromHMONITOR(HMONITOR hMonitor, DWORD dwPhysicalMonitorArraySize,
+__SPRT_WIN_IMPORT WINAPI BOOL GetPhysicalMonitorsFromHMONITOR(HMONITOR hMonitor,
+		DWORD dwPhysicalMonitorArraySize, LPPHYSICAL_MONITOR pPhysicalMonitorArray);
+
+__SPRT_WIN_IMPORT WINAPI HRESULT SetProcessDpiAwareness(PROCESS_DPI_AWARENESS value);
+
+__SPRT_WIN_IMPORT WINAPI HRESULT GetProcessDpiAwareness(HANDLE hprocess,
+		PROCESS_DPI_AWARENESS *value);
+
+__SPRT_WIN_IMPORT WINAPI HRESULT GetDpiForMonitor(HMONITOR hmonitor, MONITOR_DPI_TYPE dpiType,
+		UINT *dpiX, UINT *dpiY);
+
+__SPRT_WIN_IMPORT WINAPI BOOL EnumDisplayDevicesW(LPCWSTR lpDevice, DWORD iDevNum,
+		PDISPLAY_DEVICEW lpDisplayDevice, DWORD dwFlags);
+
+__SPRT_WIN_IMPORT WINAPI HDC CreateDCW(LPCWSTR pwszDriver, LPCWSTR pwszDevice, LPCWSTR pszPort,
+		const DEVMODEW *pdm);
+
+__SPRT_WIN_IMPORT WINAPI int GetDeviceCaps(HDC hdc, int index);
+
+__SPRT_WIN_IMPORT WINAPI BOOL EnumDisplayMonitors(HDC hdc, LPCRECT lprcClip,
+		MONITORENUMPROC lpfnEnum, LPARAM dwData);
+
+__SPRT_WIN_IMPORT WINAPI BOOL DeleteDC(HDC hdc);
+
+__SPRT_WIN_IMPORT WINAPI BOOL EnumDisplaySettingsW(LPCWSTR lpszDeviceName, DWORD iModeNum,
+		DEVMODEW *lpDevMode);
+
+__SPRT_WIN_IMPORT WINAPI LONG ChangeDisplaySettingsExW(LPCWSTR lpszDeviceName, DEVMODEW *lpDevMode,
+		HWND hwnd, DWORD dwflags, LPVOID lParam);
+
+__SPRT_WIN_IMPORT WINAPI BOOL DestroyPhysicalMonitor(HANDLE hMonitor);
+
+__SPRT_WIN_IMPORT WINAPI BOOL DestroyPhysicalMonitors(DWORD dwPhysicalMonitorArraySize,
 		LPPHYSICAL_MONITOR pPhysicalMonitorArray);
 
-WINAPI HRESULT GetDpiForMonitor(HMONITOR hmonitor, MONITOR_DPI_TYPE dpiType, UINT *dpiX,
-		UINT *dpiY);
+__SPRT_WIN_IMPORT WINAPI BOOL SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT value);
 
-WINAPI BOOL EnumDisplayDevicesW(LPCWSTR lpDevice, DWORD iDevNum, PDISPLAY_DEVICEW lpDisplayDevice,
-		DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI int GetSystemMetricsForDpi(int nIndex, UINT dpi);
 
-WINAPI HDC CreateDCW(LPCWSTR pwszDriver, LPCWSTR pwszDevice, LPCWSTR pszPort, const DEVMODEW *pdm);
+__SPRT_WIN_IMPORT WINAPI HKEY SetupDiOpenDevRegKey(HDEVINFO DeviceInfoSet,
+		PSP_DEVINFO_DATA DeviceInfoData, DWORD Scope, DWORD HwProfile, DWORD KeyType,
+		REGSAM samDesired);
 
-WINAPI int GetDeviceCaps(HDC hdc, int index);
+__SPRT_WIN_IMPORT WINAPI HDEVINFO SetupDiGetClassDevsExW(const GUID *ClassGuid, PCWSTR Enumerator,
+		HWND hwndParent, DWORD Flags, HDEVINFO DeviceInfoSet, PCWSTR MachineName, PVOID Reserved);
 
-WINAPI BOOL EnumDisplayMonitors(HDC hdc, LPCRECT lprcClip, MONITORENUMPROC lpfnEnum, LPARAM dwData);
-
-WINAPI BOOL DeleteDC(HDC hdc);
-
-WINAPI BOOL EnumDisplaySettingsW(LPCWSTR lpszDeviceName, DWORD iModeNum, DEVMODEW *lpDevMode);
-
-WINAPI LONG ChangeDisplaySettingsExW(LPCWSTR lpszDeviceName, DEVMODEW *lpDevMode, HWND hwnd,
-		DWORD dwflags, LPVOID lParam);
-
-WINAPI BOOL DestroyPhysicalMonitor(HANDLE hMonitor);
-
-WINAPI BOOL DestroyPhysicalMonitors(DWORD dwPhysicalMonitorArraySize,
-		LPPHYSICAL_MONITOR pPhysicalMonitorArray);
-
-WINAPI BOOL SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT value);
-
-WINAPI int GetSystemMetricsForDpi(int nIndex, UINT dpi);
-
-WINAPI HKEY SetupDiOpenDevRegKey(HDEVINFO DeviceInfoSet, PSP_DEVINFO_DATA DeviceInfoData,
-		DWORD Scope, DWORD HwProfile, DWORD KeyType, REGSAM samDesired);
-
-WINAPI HDEVINFO SetupDiGetClassDevsExW(const GUID *ClassGuid, PCWSTR Enumerator, HWND hwndParent,
-		DWORD Flags, HDEVINFO DeviceInfoSet, PCWSTR MachineName, PVOID Reserved);
-
-WINAPI BOOL SetupDiEnumDeviceInterfaces(HDEVINFO DeviceInfoSet, PSP_DEVINFO_DATA DeviceInfoData,
-		const GUID *InterfaceClassGuid, DWORD MemberIndex,
+__SPRT_WIN_IMPORT WINAPI BOOL SetupDiEnumDeviceInterfaces(HDEVINFO DeviceInfoSet,
+		PSP_DEVINFO_DATA DeviceInfoData, const GUID *InterfaceClassGuid, DWORD MemberIndex,
 		PSP_DEVICE_INTERFACE_DATA DeviceInterfaceData);
 
-WINAPI BOOL SetupDiGetDeviceInterfaceDetailW(HDEVINFO DeviceInfoSet,
+__SPRT_WIN_IMPORT WINAPI BOOL SetupDiGetDeviceInterfaceDetailW(HDEVINFO DeviceInfoSet,
 		PSP_DEVICE_INTERFACE_DATA DeviceInterfaceData,
 		PSP_DEVICE_INTERFACE_DETAIL_DATA_W DeviceInterfaceDetailData,
 		DWORD DeviceInterfaceDetailDataSize, PDWORD RequiredSize, PSP_DEVINFO_DATA DeviceInfoData);
 
 __SPRT_END_DECL
 
-#endif
+#endif // SPRT_WRAPPERS_WINDOWS_MONITOR_API_H_

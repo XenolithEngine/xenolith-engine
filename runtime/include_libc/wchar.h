@@ -33,6 +33,8 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_wctype.h>
 #include <sprt/c/__sprt_stdarg.h>
 
+#include <sprt/wrappers/windows/__sprt_config.h>
+
 #ifndef __cplusplus
 typedef __SPRT_ID(wchar_t) wchar_t;
 #endif
@@ -50,6 +52,8 @@ typedef __SPRT_ID(wctype_t) wctype_t;
 typedef __SPRT_ID(FILE) FILE;
 typedef __SPRT_ID(locale_t) locale_t;
 
+
+#if !__SPRT_WIN_USE_IMPORT_STRING_LIB
 SPRT_UMBRELLA_FUNC
 wchar_t *wcscpy(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -65,6 +69,32 @@ wchar_t *wcsncpy(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b,
 {
 	return __sprt_wcsncpy(a, b, s);
 }
+#endif
+
+SPRT_UMBRELLA_FUNC
+size_t wcslen(const wchar_t *ret) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcslen(ret);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+const wchar_t *wcsstr(const wchar_t *__SPRT_RESTRICT a,
+		const wchar_t *__SPRT_RESTRICT b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcsstr(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+size_t wcsnlen(const wchar_t *ptr, size_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcsnlen(ptr, value);
+}
+#endif
 #endif
 
 SPRT_UMBRELLA_FUNC
@@ -163,23 +193,6 @@ wchar_t *wcstok(wchar_t *__SPRT_RESTRICT a, const wchar_t *__SPRT_RESTRICT b,
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_wcstok(a, b, ret);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-size_t wcslen(const wchar_t *ret) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_wcslen(ret);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-const wchar_t *wcsstr(const wchar_t *__SPRT_RESTRICT a,
-		const wchar_t *__SPRT_RESTRICT b) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_wcsstr(a, b);
 }
 #endif
 
@@ -738,14 +751,6 @@ wchar_t *_wcsdup(const wchar_t *value) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_wcsdup(value);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-size_t wcsnlen(const wchar_t *ptr, size_t value) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_wcsnlen(ptr, value);
 }
 #endif
 

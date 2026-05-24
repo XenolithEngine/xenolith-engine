@@ -78,6 +78,7 @@ SAFELOADER size_t __wcslen(const wchar_t *s) {
 
 PPEB GetPEB(void) { return (PPEB)__readgsqword(0x60); }
 
+[[maybe_unused]]
 SAFELOADER HMODULE GetKernel32Module(void) {
 	wchar_t Kernel32Name[] = L"kernel32.dll";
 	int nameLen = __wcslen(Kernel32Name);
@@ -131,6 +132,7 @@ SAFELOADER int FindExportNameIndex(HMODULE hModule, PIMAGE_EXPORT_DIRECTORY expo
 	return -1; // Not found
 }
 
+[[maybe_unused]]
 SAFELOADER __funcptr LookupFunctionInModule(HMODULE hModule, const char *functionName) {
 	// 1. Get DOS header to find PE offset
 	PIMAGE_DOS_HEADER dosHeader = (PIMAGE_DOS_HEADER)hModule;
@@ -184,11 +186,12 @@ __declspec(safebuffers) DllLoader *DllLoader::construct() {
 	return new (s_loaderBuffer, sprt::nothrow) DllLoader;
 }
 
-__declspec(safebuffers) DllLoader *DllLoader::get() {
+SPRT_ALWAYSINLINE __declspec(safebuffers) DllLoader *DllLoader::get() {
 	return reinterpret_cast<DllLoader *>(s_loaderBuffer);
 }
 
 __declspec(safebuffers) int DllLoader::load() {
+#if !__SPRT_WIN_USE_IMPORT_LIB
 	// Note that this is not reference-counted handle, use only for initial loading;
 	// For actual usage, use LoadLibraryW("kernel32.dll")
 	auto _rootKernel32 = GetKernel32Module();
@@ -219,6 +222,12 @@ __declspec(safebuffers) int DllLoader::load() {
 	__LoadLibraryW = _LoadLibraryW;
 	__FreeLibrary = _FreeLibrary;
 	__ExitProcess = _ExitProcess;
+#else
+	__GetProcAddress = &GetProcAddress;
+	__LoadLibraryW = &LoadLibraryW;
+	__FreeLibrary = &FreeLibrary;
+	__ExitProcess = &ExitProcess;
+#endif
 
 	int ret = 0;
 	for (auto &it : __tables) {
@@ -226,10 +235,13 @@ __declspec(safebuffers) int DllLoader::load() {
 			break;
 		}
 
-		auto lib = __LoadLibraryW(it->__name);
+		auto lib = GetModuleHandleW(it->__name);
 		if (!lib) {
-			ret = LOADER_ERROR_NO_BASE_DLLS;
-			break;
+			lib = __LoadLibraryW(it->__name);
+			if (!lib) {
+				ret = LOADER_ERROR_NO_BASE_DLLS;
+				break;
+			}
 		}
 
 		if (!it->init(lib)) {
@@ -308,3 +320,29 @@ bool DllTable::load(DllTableRecord *rec) {
 }
 
 } // namespace sprt
+
+extern "C" {
+#if !__SPRT_WIN_USE_IMPORT_LIB
+__declspec(noreturn) VOID ExitProcess(UINT uExitCode) {
+	auto loader = sprt::DllLoader::get();
+	loader->__ExitProcess(uExitCode);
+	__builtin_unreachable();
+}
+
+HMODULE LoadLibraryW(LPCWSTR lpLibFileName) {
+	auto loader = sprt::DllLoader::get();
+	return loader->__LoadLibraryW(lpLibFileName);
+}
+
+BOOL FreeLibrary(HMODULE hModule) {
+	auto loader = sprt::DllLoader::get();
+	return loader->__FreeLibrary(hModule);
+}
+
+FARPROC GetProcAddress(HMODULE hModule, LPCSTR lpProcName) {
+	auto loader = sprt::DllLoader::get();
+	return loader->__GetProcAddress(hModule, lpProcName);
+}
+
+#endif
+} // extern "C"

@@ -39,7 +39,7 @@ static FILE *__fopen(const char *__restrict filename, const char *__restrict mod
 	int flags;
 
 	/* Check for valid initial mode character */
-	if (!::strchr("rwa", *mode)) {
+	if (!sprt::strchr("rwa", *mode)) {
 		__sprt_errno = EINVAL;
 		return 0;
 	}

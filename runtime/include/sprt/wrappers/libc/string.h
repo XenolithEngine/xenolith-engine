@@ -4,12 +4,21 @@
 #include <sprt/c/__sprt_string.h>
 #include <sprt/wrappers/libc/stddef.h>
 
+// For windows string function imports;
+// If __SPRT_WIN_USE_IMPORT_STRING_LIB == 1, some string functions declared as dllimport,
+// We should not redeclare it
+#include <sprt/wrappers/windows/__sprt_config.h>
+
 #ifdef __cplusplus
 #include <sprt/cxx/detail/constexpr.h>
 
 namespace sprt {
-inline namespace _cstring {
 
+
+inline namespace _cstring_dll {
+SPRT_FORCEINLINE int memcmp(const void *s1, const void *s2, size_t n) {
+	return __builtin_memcmp(s1, s2, n);
+}
 SPRT_FORCEINLINE void *memcpy(void *s1, const void *s2, size_t n) {
 	return __builtin_memcpy(s1, s2, n);
 }
@@ -20,12 +29,46 @@ SPRT_FORCEINLINE char *strcpy(char *s1, const char *s2) { return __builtin_strcp
 SPRT_FORCEINLINE char *strncpy(char *s1, const char *s2, size_t n) {
 	return __builtin_strncpy(s1, s2, n);
 }
+SPRT_FORCEINLINE void *memset(void *s, int c, size_t n) { return __builtin_memset(s, c, n); }
+
+SPRT_FORCEINLINE constexpr size_t strlen(const char *s) { return __constexpr_strlen(s); }
+SPRT_FORCEINLINE constexpr size_t strlen(const char16_t *s) { return __constexpr_strlen(s); }
+SPRT_FORCEINLINE constexpr size_t strlen(const char32_t *s) { return __constexpr_strlen(s); }
+SPRT_FORCEINLINE constexpr size_t strlen(const wchar_t *s) { return __constexpr_strlen(s); }
+
+SPRT_FORCEINLINE constexpr size_t strnlen(const char *s, size_t size) {
+	return __constexpr_strlen(s);
+}
+SPRT_FORCEINLINE constexpr size_t strnlen(const char16_t *s, size_t size) {
+	return __constexpr_strlen(s);
+}
+SPRT_FORCEINLINE constexpr size_t strnlen(const char32_t *s, size_t size) {
+	return __constexpr_strlen(s);
+}
+SPRT_FORCEINLINE constexpr size_t strnlen(const wchar_t *s, size_t size) {
+	return __constexpr_strlen(s);
+}
+
+SPRT_FORCEINLINE const char *strstr(const char *s1, const char *s2) {
+	return __builtin_strstr(s1, s2);
+}
+
+SPRT_FORCEINLINE const char *strchr(const char *s, int c) { return __builtin_strchr(s, c); }
+SPRT_FORCEINLINE char *strchr(char *s, int c) { return __builtin_strchr(s, c); }
+
+SPRT_FORCEINLINE int strcmp(const char *s1, const char *s2) { return __builtin_strcmp(s1, s2); }
+
+SPRT_FORCEINLINE int strncmp(const char *s1, const char *s2, size_t n) {
+	return __builtin_strncmp(s1, s2, n);
+}
+
+} // namespace _cstring_dll
+
+inline namespace _cstring {
+
 SPRT_FORCEINLINE char *strcat(char *s1, const char *s2) { return __builtin_strcat(s1, s2); }
 SPRT_FORCEINLINE char *strncat(char *s1, const char *s2, size_t n) {
 	return __builtin_strncat(s1, s2, n);
-}
-SPRT_FORCEINLINE int memcmp(const void *s1, const void *s2, size_t n) {
-	return __builtin_memcmp(s1, s2, n);
 }
 SPRT_FORCEINLINE int strcoll(const char *s1, const char *s2) { return __sprt_strcoll(s1, s2); }
 
@@ -36,8 +79,6 @@ SPRT_FORCEINLINE const void *memchr(const void *s, int c, size_t n) {
 	return __builtin_memchr(s, c, n);
 }
 SPRT_FORCEINLINE void *memchr(void *s, int c, size_t n) { return __builtin_memchr(s, c, n); }
-SPRT_FORCEINLINE const char *strchr(const char *s, int c) { return __builtin_strchr(s, c); }
-SPRT_FORCEINLINE char *strchr(char *s, int c) { return __builtin_strchr(s, c); }
 SPRT_FORCEINLINE size_t strcspn(const char *s1, const char *s2) {
 	return __builtin_strcspn(s1, s2);
 }
@@ -48,36 +89,25 @@ SPRT_FORCEINLINE char *strpbrk(char *s1, const char *s2) { return __builtin_strp
 SPRT_FORCEINLINE const char *strrchr(const char *s, int c) { return __builtin_strrchr(s, c); }
 SPRT_FORCEINLINE char *strrchr(char *s, int c) { return __builtin_strrchr(s, c); }
 SPRT_FORCEINLINE size_t strspn(const char *s1, const char *s2) { return __builtin_strspn(s1, s2); }
-SPRT_FORCEINLINE const char *strstr(const char *s1, const char *s2) {
-	return __builtin_strstr(s1, s2);
-}
 SPRT_FORCEINLINE char *strstr(char *s1, const char *s2) { return __builtin_strstr(s1, s2); }
 SPRT_FORCEINLINE char *strtok(char *s1, const char *s2) { return __sprt_strtok(s1, s2); }
-SPRT_FORCEINLINE void *memset(void *s, int c, size_t n) { return __builtin_memset(s, c, n); }
 SPRT_FORCEINLINE char *strerror(int errnum) { return __sprt_strerror(errnum); }
-
-SPRT_FORCEINLINE constexpr size_t strlen(const char *s) { return __constexpr_strlen(s); }
-SPRT_FORCEINLINE constexpr size_t strlen(const char16_t *s) { return __constexpr_strlen(s); }
-SPRT_FORCEINLINE constexpr size_t strlen(const char32_t *s) { return __constexpr_strlen(s); }
-SPRT_FORCEINLINE constexpr size_t strlen(const wchar_t *s) { return __constexpr_strlen(s); }
-
-SPRT_FORCEINLINE int strcmp(const char *s1, const char *s2) { return __builtin_strcmp(s1, s2); }
-
-SPRT_FORCEINLINE int strncmp(const char *s1, const char *s2, size_t n) {
-	return __builtin_strncmp(s1, s2, n);
-}
 
 } // namespace _cstring
 } // namespace sprt
 
 #if !defined(__SPRT_BUILD)
+#if !__SPRT_WIN_USE_IMPORT_STRING_LIB
+using namespace sprt::_cstring_dll;
+#endif
 using namespace sprt::_cstring;
 #endif
 
 #ifdef __SPRT_AS_STD
 namespace std {
+using namespace sprt::_cstring_dll;
 using namespace sprt::_cstring;
-}
+} // namespace std
 #endif
 #endif // __cplusplus
 
@@ -85,6 +115,8 @@ using namespace sprt::_cstring;
 #if !defined(__SPRT_BUILD) && !defined(__cplusplus)
 __SPRT_BEGIN_DECL
 
+
+#if !__SPRT_WIN_USE_IMPORT_STRING_LIB
 SPRT_UMBRELLA_FUNC
 void *memcpy(void *__SPRT_RESTRICT dest, const void *__SPRT_RESTRICT source,
 		size_t size) SPRT_UMBRELLA_END
@@ -119,15 +151,6 @@ int memcmp(const void *l, const void *r, size_t size) SPRT_UMBRELLA_END
 #endif
 
 SPRT_UMBRELLA_FUNC
-const void *memchr(const void *str, int c, size_t size) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_memchr(str, c, size);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
 char *strcpy(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
@@ -144,6 +167,54 @@ char *strncpy(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src,
 }
 #endif
 
+SPRT_UMBRELLA_FUNC
+const char *strstr(const char *str, const char *nstr) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strstr(str, nstr);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+size_t strlen(const char *str) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strlen(str);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int strcmp(const char *l, const char *r) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strcmp(l, r);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int strncmp(const char *l, const char *r, size_t size) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strncmp(l, r, size);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+char *strchr(const char *str, int c) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return (char *)__sprt_strchr(str, c);
+}
+#endif
+#endif
+
+SPRT_UMBRELLA_FUNC
+const void *memchr(const void *str, int c, size_t size) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_memchr(str, c, size);
+}
+#endif
 
 SPRT_UMBRELLA_FUNC
 char *strcat(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src) SPRT_UMBRELLA_END
@@ -162,24 +233,6 @@ char *strncat(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src,
 }
 #endif
 
-
-SPRT_UMBRELLA_FUNC
-int strcmp(const char *l, const char *r) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_strcmp(l, r);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-int strncmp(const char *l, const char *r, size_t size) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_strncmp(l, r, size);
-}
-#endif
-
-
 SPRT_UMBRELLA_FUNC
 int strcoll(const char *str, const char *loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -194,15 +247,6 @@ size_t strxfrm(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src,
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_strxfrm(dest, src, size);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-char *strchr(const char *str, int c) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return (char *)__sprt_strchr(str, c);
 }
 #endif
 
@@ -239,26 +283,10 @@ const char *strpbrk(const char *str, const char *span) SPRT_UMBRELLA_END
 #endif
 
 SPRT_UMBRELLA_FUNC
-const char *strstr(const char *str, const char *nstr) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_strstr(str, nstr);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
 char *strtok(char *__SPRT_RESTRICT str, const char *__SPRT_RESTRICT tok) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_strtok(str, tok);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-size_t strlen(const char *str) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_strlen(str);
 }
 #endif
 
@@ -277,12 +305,17 @@ __SPRT_END_DECL
 #if !defined(__SPRT_BUILD)
 __SPRT_BEGIN_DECL
 
+
+#if !__SPRT_WIN_USE_IMPORT_STRING_LIB
+
 SPRT_UMBRELLA_FUNC
 size_t strnlen(const char *str, size_t n) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_strnlen(str, n);
 }
+#endif
+
 #endif
 
 SPRT_UMBRELLA_FUNC

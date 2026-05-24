@@ -483,39 +483,39 @@ typedef NT_TIB *PNT_TIB;
 
 __SPRT_BEGIN_DECL
 
-VOID RtlCaptureContext(PCONTEXT ContextRecord);
+__SPRT_WIN_IMPORT WINAPI VOID RtlCaptureContext(PCONTEXT ContextRecord);
 
-VOID RtlRestoreContext(PCONTEXT ContextRecord, EXCEPTION_RECORD *ExceptionRecord);
+__SPRT_WIN_IMPORT WINAPI VOID RtlRestoreContext(PCONTEXT ContextRecord,
+		EXCEPTION_RECORD *ExceptionRecord);
 
-PRUNTIME_FUNCTION RtlLookupFunctionEntry(DWORD64 ControlPc, PDWORD64 ImageBase,
+__SPRT_WIN_IMPORT WINAPI PRUNTIME_FUNCTION RtlLookupFunctionEntry(DWORD64 ControlPc,
+		PDWORD64 ImageBase, PUNWIND_HISTORY_TABLE HistoryTable);
+
+__SPRT_WIN_IMPORT WINAPI VOID RtlUnwindEx(PVOID TargetFrame, PVOID TargetIp,
+		PEXCEPTION_RECORD ExceptionRecord, PVOID ReturnValue, PCONTEXT ContextRecord,
 		PUNWIND_HISTORY_TABLE HistoryTable);
 
-VOID RtlUnwindEx(PVOID TargetFrame, PVOID TargetIp, PEXCEPTION_RECORD ExceptionRecord,
-		PVOID ReturnValue, PCONTEXT ContextRecord, PUNWIND_HISTORY_TABLE HistoryTable);
+__SPRT_WIN_IMPORT WINAPI PEXCEPTION_ROUTINE RtlVirtualUnwind(DWORD HandlerType, DWORD64 ImageBase,
+		DWORD64 ControlPc, PRUNTIME_FUNCTION FunctionEntry, PCONTEXT ContextRecord,
+		PVOID *HandlerData, PDWORD64 EstablisherFrame, PVOID ContextPointers);
 
-__SPRT_DLLIMPORT
-PEXCEPTION_ROUTINE RtlVirtualUnwind(DWORD HandlerType, DWORD64 ImageBase, DWORD64 ControlPc,
-		PRUNTIME_FUNCTION FunctionEntry, PCONTEXT ContextRecord, PVOID *HandlerData,
-		PDWORD64 EstablisherFrame, PVOID ContextPointers);
+__SPRT_WIN_IMPORT WINAPI WORD RtlCaptureStackBackTrace(DWORD FramesToSkip, DWORD FramesToCapture,
+		PVOID *BackTrace, PDWORD BackTraceHash);
 
-WORD RtlCaptureStackBackTrace(DWORD FramesToSkip, DWORD FramesToCapture, PVOID *BackTrace,
-		PDWORD BackTraceHash);
+__SPRT_WIN_IMPORT WINAPI PVOID AddVectoredExceptionHandler(ULONG First,
+		PVECTORED_EXCEPTION_HANDLER Handler);
 
-WINAPI PVOID AddVectoredExceptionHandler(ULONG First, PVECTORED_EXCEPTION_HANDLER Handler);
+__SPRT_WIN_IMPORT WINAPI ULONG RemoveVectoredExceptionHandler(PVOID Handle);
 
-WINAPI ULONG RemoveVectoredExceptionHandler(PVOID Handle);
+__SPRT_WIN_IMPORT WINAPI PVOID AddVectoredContinueHandler(ULONG First,
+		PVECTORED_EXCEPTION_HANDLER Handler);
 
-WINAPI PVOID AddVectoredContinueHandler(ULONG First, PVECTORED_EXCEPTION_HANDLER Handler);
+__SPRT_WIN_IMPORT WINAPI ULONG RemoveVectoredContinueHandler(PVOID Handle);
 
-WINAPI ULONG RemoveVectoredContinueHandler(PVOID Handle);
+__SPRT_WIN_IMPORT WINAPI NTSTATUS NtContinueEx(CONTEXT *context, void *args);
 
-WINAPI NTSTATUS NtContinueEx(CONTEXT *context, void *args);
-
-WINAPI VOID RaiseException(DWORD dwExceptionCode, DWORD dwExceptionFlags, DWORD nNumberOfArguments,
-		const ULONG_PTR *lpArguments);
-
-__SPRT_C_FUNC unsigned __int64 __readgsqword(unsigned long);
-__SPRT_C_FUNC unsigned short __readgsword(unsigned long);
+__SPRT_WIN_IMPORT WINAPI VOID RaiseException(DWORD dwExceptionCode, DWORD dwExceptionFlags,
+		DWORD nNumberOfArguments, const ULONG_PTR *lpArguments);
 
 SPRT_FORCEINLINE PVOID GetCurrentFiber(VOID) {
 	return (PVOID)__readgsqword(FIELD_OFFSET(NT_TIB, FiberData));
@@ -530,17 +530,6 @@ __attribute__((returns_twice)) int setjmp(struct _JUMP_BUFFER *_Buf, void *);
 
 __SPRT_NORETURN void __cdecl longjmp(struct _JUMP_BUFFER *, int _Value);
 #endif
-
-#define GetExceptionCode            _exception_code
-#define exception_code              _exception_code
-#define GetExceptionInformation()   ((struct _EXCEPTION_POINTERS *)_exception_info())
-#define exception_info()            ((struct _EXCEPTION_POINTERS *)_exception_info())
-#define AbnormalTermination         _abnormal_termination
-#define abnormal_termination        _abnormal_termination
-
-__SPRT_C_FUNC unsigned long _exception_code(void);
-__SPRT_C_FUNC void *_exception_info(void);
-__SPRT_C_FUNC int _abnormal_termination(void);
 
 __SPRT_END_DECL
 

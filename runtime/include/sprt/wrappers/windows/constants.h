@@ -24,7 +24,7 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS_CONSTANTS_H_
 
 #include <sprt/wrappers/windows/basic_types.h>
-#include <sprt/wrappers/windows/errors.h>
+#include <sprt/wrappers/windows/winerror.h>
 #include <sprt/c/bits/__sprt_null.h>
 
 #ifndef NULL

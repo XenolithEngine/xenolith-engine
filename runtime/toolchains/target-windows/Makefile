@@ -72,6 +72,7 @@ SP_ARCH_COMMON := \
 
 SP_ARCH_x86_64_INFO_BASE := \
 	$(SP_ARCH_COMMON) \
+	SP_ARCH_WIN=x64 \
 	SP_ARCH=x86_64 \
 	SP_RES_ARCH=x86_64 \
 	SP_ARCH_TARGET_CLANG=x86_64-pc-windows-msvc
@@ -88,6 +89,7 @@ SP_ARCH_x86_64_INSTALL := \
 
 SP_ARCH_aarch64_INFO_BASE := \
 	$(SP_ARCH_COMMON) \
+	SP_ARCH_WIN=arm64 \
 	SP_ARCH=aarch64 \
 	SP_RES_ARCH=aarch64 \
 	SP_ARCH_TARGET_CLANG=aarch64-pc-windows-msvc

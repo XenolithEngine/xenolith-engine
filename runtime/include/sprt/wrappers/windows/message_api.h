@@ -484,42 +484,43 @@ typedef struct __MIDL___MIDL_itf_dimm_0000_0000_0004 {
 
 __SPRT_BEGIN_DECL
 
-DWORD FormatMessageW(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId, DWORD dwLanguageId,
-		LPWSTR lpBuffer, DWORD nSize, __builtin_va_list *Arguments);
+__SPRT_WIN_IMPORT WINAPI DWORD FormatMessageW(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId,
+		DWORD dwLanguageId, LPWSTR lpBuffer, DWORD nSize, __builtin_va_list *Arguments);
 
-DWORD FormatMessageA(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId, DWORD dwLanguageId,
-		LPSTR lpBuffer, DWORD nSize, __builtin_va_list *Arguments);
+__SPRT_WIN_IMPORT WINAPI DWORD FormatMessageA(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId,
+		DWORD dwLanguageId, LPSTR lpBuffer, DWORD nSize, __builtin_va_list *Arguments);
 
-WINAPI LRESULT SendMessageW(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+__SPRT_WIN_IMPORT WINAPI LRESULT SendMessageW(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
 
-WINAPI BOOL PostMessageW(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
+__SPRT_WIN_IMPORT WINAPI BOOL PostMessageW(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
 
-WINAPI VOID PostQuitMessage(int nExitCode);
+__SPRT_WIN_IMPORT WINAPI VOID PostQuitMessage(int nExitCode);
 
-WINAPI BOOL PeekMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax,
-		UINT wRemoveMsg);
+__SPRT_WIN_IMPORT WINAPI BOOL PeekMessageW(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin,
+		UINT wMsgFilterMax, UINT wRemoveMsg);
 
-WINAPI BOOL TranslateMessage(const MSG *lpMsg);
+__SPRT_WIN_IMPORT WINAPI BOOL TranslateMessage(const MSG *lpMsg);
 
-WINAPI LRESULT DispatchMessageW(const MSG *lpMsg);
+__SPRT_WIN_IMPORT WINAPI LRESULT DispatchMessageW(const MSG *lpMsg);
 
-WINAPI LONG GetMessageTime(VOID);
+__SPRT_WIN_IMPORT WINAPI LONG GetMessageTime(VOID);
 
-WINAPI DWORD MsgWaitForMultipleObjectsEx(DWORD nCount, const HANDLE *pHandles, DWORD dwMilliseconds,
-		DWORD dwWakeMask, DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI DWORD MsgWaitForMultipleObjectsEx(DWORD nCount, const HANDLE *pHandles,
+		DWORD dwMilliseconds, DWORD dwWakeMask, DWORD dwFlags);
 
-WINAPI BOOL GetSystemPowerStatus(LPSYSTEM_POWER_STATUS lpSystemPowerStatus);
+__SPRT_WIN_IMPORT WINAPI BOOL GetSystemPowerStatus(LPSYSTEM_POWER_STATUS lpSystemPowerStatus);
 
-WINAPI HRESULT GetCurrentThemeName(LPWSTR pszThemeFileName, int cchMaxNameChars,
+__SPRT_WIN_IMPORT WINAPI HRESULT GetCurrentThemeName(LPWSTR pszThemeFileName, int cchMaxNameChars,
 		LPWSTR pszColorBuff, int cchMaxColorChars, LPWSTR pszSizeBuff, int cchMaxSizeChars);
 
-WINAPI int GetSystemMetrics(int nIndex);
+__SPRT_WIN_IMPORT WINAPI int GetSystemMetrics(int nIndex);
 
-WINAPI BOOL SystemParametersInfoW(UINT uiAction, UINT uiParam, PVOID pvParam, UINT fWinIni);
+__SPRT_WIN_IMPORT WINAPI BOOL SystemParametersInfoW(UINT uiAction, UINT uiParam, PVOID pvParam,
+		UINT fWinIni);
 
-WINAPI HANDLE GetStockObject(int i);
+__SPRT_WIN_IMPORT WINAPI HANDLE GetStockObject(int i);
 
-WINAPI int GetObjectW(HANDLE h, int c, LPVOID pv);
+__SPRT_WIN_IMPORT WINAPI int GetObjectW(HANDLE h, int c, LPVOID pv);
 
 __SPRT_END_DECL
 

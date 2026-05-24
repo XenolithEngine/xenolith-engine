@@ -433,59 +433,62 @@ typedef const CERT_ENHKEY_USAGE *PCCERT_ENHKEY_USAGE;
 
 __SPRT_BEGIN_DECL
 
-WINAPI BOOL CryptAcquireContextW(HCRYPTPROV *phProv, LPCWSTR szContainer, LPCWSTR szProvider,
-		DWORD dwProvType, DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI BOOL CryptAcquireContextW(HCRYPTPROV *phProv, LPCWSTR szContainer,
+		LPCWSTR szProvider, DWORD dwProvType, DWORD dwFlags);
 
-WINAPI BOOL CryptReleaseContext(HCRYPTPROV hProv, DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI BOOL CryptReleaseContext(HCRYPTPROV hProv, DWORD dwFlags);
 
-WINAPI BOOL CryptGenRandom(HCRYPTPROV hProv, DWORD dwLen, BYTE *pbBuffer);
+__SPRT_WIN_IMPORT WINAPI BOOL CryptGenRandom(HCRYPTPROV hProv, DWORD dwLen, BYTE *pbBuffer);
 
-WINAPI BOOL CertFreeCertificateContext(PCCERT_CONTEXT pCertContext);
+__SPRT_WIN_IMPORT WINAPI BOOL CertFreeCertificateContext(PCCERT_CONTEXT pCertContext);
 
-WINAPI PCCERT_CONTEXT CertEnumCertificatesInStore(HCERTSTORE hCertStore,
+__SPRT_WIN_IMPORT WINAPI PCCERT_CONTEXT CertEnumCertificatesInStore(HCERTSTORE hCertStore,
 		PCCERT_CONTEXT pPrevCertContext);
 
-WINAPI PCCERT_CONTEXT CertFindCertificateInStore(HCERTSTORE hCertStore, DWORD dwCertEncodingType,
-		DWORD dwFindFlags, DWORD dwFindType, const void *pvFindPara,
+__SPRT_WIN_IMPORT WINAPI PCCERT_CONTEXT CertFindCertificateInStore(HCERTSTORE hCertStore,
+		DWORD dwCertEncodingType, DWORD dwFindFlags, DWORD dwFindType, const void *pvFindPara,
 		PCCERT_CONTEXT pPrevCertContext);
 
-WINAPI BOOL CertGetIntendedKeyUsage(DWORD dwCertEncodingType, PCERT_INFO pCertInfo,
-		BYTE *pbKeyUsage, DWORD cbKeyUsage);
+__SPRT_WIN_IMPORT WINAPI BOOL CertGetIntendedKeyUsage(DWORD dwCertEncodingType,
+		PCERT_INFO pCertInfo, BYTE *pbKeyUsage, DWORD cbKeyUsage);
 
-WINAPI BOOL CertGetEnhancedKeyUsage(PCCERT_CONTEXT pCertContext, DWORD dwFlags,
+__SPRT_WIN_IMPORT WINAPI BOOL CertGetEnhancedKeyUsage(PCCERT_CONTEXT pCertContext, DWORD dwFlags,
 		PCERT_ENHKEY_USAGE pUsage, DWORD *pcbUsage);
 
-WINAPI HCERTSTORE CertOpenSystemStoreA(HCRYPTPROV_LEGACY hProv, LPCSTR szSubsystemProtocol);
+__SPRT_WIN_IMPORT WINAPI HCERTSTORE CertOpenSystemStoreA(HCRYPTPROV_LEGACY hProv,
+		LPCSTR szSubsystemProtocol);
 
-WINAPI HCERTSTORE CertOpenSystemStoreW(HCRYPTPROV_LEGACY hProv, LPCWSTR szSubsystemProtocol);
+__SPRT_WIN_IMPORT WINAPI HCERTSTORE CertOpenSystemStoreW(HCRYPTPROV_LEGACY hProv,
+		LPCWSTR szSubsystemProtocol);
 
-WINAPI BOOL CertCloseStore(HCERTSTORE hCertStore, DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI BOOL CertCloseStore(HCERTSTORE hCertStore, DWORD dwFlags);
 
-WINAPI BOOL CryptExportKey(HCRYPTKEY hKey, HCRYPTKEY hExpKey, DWORD dwBlobType, DWORD dwFlags,
-		BYTE *pbData, DWORD *pdwDataLen);
+__SPRT_WIN_IMPORT WINAPI BOOL CryptExportKey(HCRYPTKEY hKey, HCRYPTKEY hExpKey, DWORD dwBlobType,
+		DWORD dwFlags, BYTE *pbData, DWORD *pdwDataLen);
 
-WINAPI BOOL CryptImportKey(HCRYPTPROV hProv, const BYTE *pbData, DWORD dwDataLen, HCRYPTKEY hPubKey,
-		DWORD dwFlags, HCRYPTKEY *phKey);
+__SPRT_WIN_IMPORT WINAPI BOOL CryptImportKey(HCRYPTPROV hProv, const BYTE *pbData, DWORD dwDataLen,
+		HCRYPTKEY hPubKey, DWORD dwFlags, HCRYPTKEY *phKey);
 
-WINAPI BOOL CryptEncrypt(HCRYPTKEY hKey, HCRYPTHASH hHash, BOOL Final, DWORD dwFlags, BYTE *pbData,
-		DWORD *pdwDataLen, DWORD dwBufLen);
+__SPRT_WIN_IMPORT WINAPI BOOL CryptEncrypt(HCRYPTKEY hKey, HCRYPTHASH hHash, BOOL Final,
+		DWORD dwFlags, BYTE *pbData, DWORD *pdwDataLen, DWORD dwBufLen);
 
-WINAPI BOOL CryptDecrypt(HCRYPTKEY hKey, HCRYPTHASH hHash, BOOL Final, DWORD dwFlags, BYTE *pbData,
-		DWORD *pdwDataLen);
+__SPRT_WIN_IMPORT WINAPI BOOL CryptDecrypt(HCRYPTKEY hKey, HCRYPTHASH hHash, BOOL Final,
+		DWORD dwFlags, BYTE *pbData, DWORD *pdwDataLen);
 
-WINAPI BOOL CryptDestroyKey(HCRYPTKEY hKey);
+__SPRT_WIN_IMPORT WINAPI BOOL CryptDestroyKey(HCRYPTKEY hKey);
 
-WINAPI BOOL CryptGetHashParam(HCRYPTHASH hHash, DWORD dwParam, BYTE *pbData, DWORD *pdwDataLen,
+__SPRT_WIN_IMPORT WINAPI BOOL CryptGetHashParam(HCRYPTHASH hHash, DWORD dwParam, BYTE *pbData,
+		DWORD *pdwDataLen, DWORD dwFlags);
+
+__SPRT_WIN_IMPORT WINAPI BOOL CryptCreateHash(HCRYPTPROV hProv, ALG_ID Algid, HCRYPTKEY hKey,
+		DWORD dwFlags, HCRYPTHASH *phHash);
+
+__SPRT_WIN_IMPORT WINAPI BOOL CryptHashData(HCRYPTHASH hHash, const BYTE *pbData, DWORD dwDataLen,
 		DWORD dwFlags);
 
-WINAPI BOOL CryptCreateHash(HCRYPTPROV hProv, ALG_ID Algid, HCRYPTKEY hKey, DWORD dwFlags,
-		HCRYPTHASH *phHash);
+__SPRT_WIN_IMPORT WINAPI BOOL CryptHashSessionKey(HCRYPTHASH hHash, HCRYPTKEY hKey, DWORD dwFlags);
 
-WINAPI BOOL CryptHashData(HCRYPTHASH hHash, const BYTE *pbData, DWORD dwDataLen, DWORD dwFlags);
-
-WINAPI BOOL CryptHashSessionKey(HCRYPTHASH hHash, HCRYPTKEY hKey, DWORD dwFlags);
-
-WINAPI BOOL CryptDestroyHash(HCRYPTHASH hHash);
+__SPRT_WIN_IMPORT WINAPI BOOL CryptDestroyHash(HCRYPTHASH hHash);
 
 #ifdef _UNICODE
 #define CryptAcquireContext CryptAcquireContextW

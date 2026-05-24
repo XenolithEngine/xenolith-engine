@@ -212,9 +212,9 @@ size_t wcsxfrm_l(wchar_t *__restrict dest, const wchar_t *__restrict src, __sprt
 
 __SPRT_C_FUNC size_t strxfrm_l(char *__restrict dest, const char *__restrict src, size_t n,
 		locale_t loc) __SPRT_NOEXCEPT {
-	size_t l = strlen(src);
+	size_t l = sprt::strlen(src);
 	if (n > l) {
-		strcpy(dest, src);
+		sprt::strcpy(dest, src);
 	}
 	return l;
 }

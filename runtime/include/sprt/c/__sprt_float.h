@@ -32,12 +32,13 @@ THE SOFTWARE.
 // Stappler runtime is designed to work in conjunction with a compiler in the toolchain,
 // therefore, if the compiler has preferences regarding limits, we use them first
 
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_flt_rounds)
-#define __SPRT_FLT_ROUNDS (__builtin_flt_rounds())
-#else
+__SPRT_BEGIN_DECL
+
 int __SPRT_ID(__flt_rounds)(void);
+
+__SPRT_END_DECL
+
 #define __SPRT_FLT_ROUNDS (__SPRT_ID(__flt_rounds)())
-#endif
 
 #ifdef __FLT_EVAL_METHOD__
 #define __SPRT_FLT_EVAL_METHOD __FLT_EVAL_METHOD__

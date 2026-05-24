@@ -407,25 +407,10 @@ __SPRT_BEGIN_DECL
  * @return One of WAIT_OBJECT_0, WAIT_ABANDONED, WAIT_TIMEOUT, or WAIT_FAILED.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitsingleobject
  */
-WINAPI DWORD WaitForSingleObject(HANDLE hHandle, DWORD dwMilliseconds);
+__SPRT_WIN_IMPORT WINAPI DWORD WaitForSingleObject(HANDLE hHandle, DWORD dwMilliseconds);
 
-WINAPI DWORD WaitForSingleObjectEx(HANDLE hHandle, DWORD dwMilliseconds, BOOL bAlertable);
-
-/**
- * Duplicates an object handle.
- * @param hSourceProcessHandle Handle to the source process.
- * @param hSourceHandle Handle to duplicate.
- * @param hTargetProcessHandle Handle to target process.
- * @param lpTargetHandle Pointer to receive duplicated handle.
- * @param dwDesiredAccess Desired access for new handle.
- * @param bInheritHandle TRUE if new handle is inheritable.
- * @param dwOptions Duplication options.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-duplicatehandle
- */
-WINAPI BOOL DuplicateHandle(HANDLE hSourceProcessHandle, HANDLE hSourceHandle,
-		HANDLE hTargetProcessHandle, PHANDLE lpTargetHandle, DWORD dwDesiredAccess,
-		BOOL bInheritHandle, DWORD dwOptions);
+__SPRT_WIN_IMPORT WINAPI DWORD WaitForSingleObjectEx(HANDLE hHandle, DWORD dwMilliseconds,
+		BOOL bAlertable);
 
 /**
  * Opens the access token associated with a process.
@@ -435,7 +420,8 @@ WINAPI BOOL DuplicateHandle(HANDLE hSourceProcessHandle, HANDLE hSourceHandle,
  * @return TRUE on success, FALSE on failure.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-openprocesstoken
  */
-WINAPI BOOL OpenProcessToken(HANDLE ProcessHandle, DWORD DesiredAccess, PHANDLE TokenHandle);
+__SPRT_WIN_IMPORT WINAPI BOOL OpenProcessToken(HANDLE ProcessHandle, DWORD DesiredAccess,
+		PHANDLE TokenHandle);
 
 /**
  * Retrieves specified information about a security token.
@@ -447,8 +433,9 @@ WINAPI BOOL OpenProcessToken(HANDLE ProcessHandle, DWORD DesiredAccess, PHANDLE 
  * @return TRUE on success, FALSE on failure.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation
  */
-WINAPI BOOL GetTokenInformation(HANDLE TokenHandle, TOKEN_INFORMATION_CLASS TokenInformationClass,
-		LPVOID TokenInformation, DWORD TokenInformationLength, PDWORD ReturnLength);
+__SPRT_WIN_IMPORT WINAPI BOOL GetTokenInformation(HANDLE TokenHandle,
+		TOKEN_INFORMATION_CLASS TokenInformationClass, LPVOID TokenInformation,
+		DWORD TokenInformationLength, PDWORD ReturnLength);
 
 SPRT_FORCEINLINE HANDLE GetCurrentProcessToken(VOID) { return (HANDLE)(LONG_PTR)-4; }
 
@@ -464,9 +451,9 @@ SPRT_FORCEINLINE HANDLE GetCurrentThreadEffectiveToken(VOID) { return (HANDLE)(L
  * @return TRUE on success, FALSE on failure.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/tlhelp32/nf-tlhelp32-process32firstw
  */
-WINAPI BOOL Process32FirstW(HANDLE hSnapshot, LPPROCESSENTRY32W lpEntry);
+__SPRT_WIN_IMPORT WINAPI BOOL Process32FirstW(HANDLE hSnapshot, LPPROCESSENTRY32W lpEntry);
 
-WINAPI BOOL Process32NextW(HANDLE hSnapshot, LPPROCESSENTRY32W lppe);
+__SPRT_WIN_IMPORT WINAPI BOOL Process32NextW(HANDLE hSnapshot, LPPROCESSENTRY32W lppe);
 
 /* ---- User Environment (winbase.h) ---- */
 /**
@@ -476,7 +463,7 @@ WINAPI BOOL Process32NextW(HANDLE hSnapshot, LPPROCESSENTRY32W lppe);
  * @return TRUE on success, FALSE on failure.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getusernamew
  */
-WINAPI BOOL GetUserNameW(LPWSTR lpBuffer, LPDWORD lpnSize);
+__SPRT_WIN_IMPORT WINAPI BOOL GetUserNameW(LPWSTR lpBuffer, LPDWORD lpnSize);
 
 /* ---- Memory Management (memoryapi.h) ---- */
 
@@ -489,11 +476,11 @@ WINAPI BOOL GetUserNameW(LPWSTR lpBuffer, LPDWORD lpnSize);
  * @return Handle to the new timer object, or NULL on failure.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-creatwaitabletimerw
  */
-WINAPI HANDLE CreateWaitableTimerW(LPSECURITY_ATTRIBUTES lpAttributes, BOOL bManualReset,
-		LPCWSTR lpTimerName);
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateWaitableTimerW(LPSECURITY_ATTRIBUTES lpAttributes,
+		BOOL bManualReset, LPCWSTR lpTimerName);
 
-WINAPI HANDLE CreateWaitableTimerExW(LPSECURITY_ATTRIBUTES lpTimerAttributes, LPCWSTR lpTimerName,
-		DWORD dwFlags, DWORD dwDesiredAccess);
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateWaitableTimerExW(LPSECURITY_ATTRIBUTES lpTimerAttributes,
+		LPCWSTR lpTimerName, DWORD dwFlags, DWORD dwDesiredAccess);
 
 /**
  * Sets a waitable timers state.
@@ -506,14 +493,14 @@ WINAPI HANDLE CreateWaitableTimerExW(LPSECURITY_ATTRIBUTES lpTimerAttributes, LP
  * @return TRUE on success, FALSE on failure.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-setwaitabletimer
  */
-WINAPI BOOL SetWaitableTimer(HANDLE hTimer, const LARGE_INTEGER *ftDueTime, LONG dwPeriod,
-		PTIMERAPCROUTINE lpCompletionRoutine, LPVOID lpArgument, BOOL fResume);
+__SPRT_WIN_IMPORT WINAPI BOOL SetWaitableTimer(HANDLE hTimer, const LARGE_INTEGER *ftDueTime,
+		LONG dwPeriod, PTIMERAPCROUTINE lpCompletionRoutine, LPVOID lpArgument, BOOL fResume);
 
-WINAPI BOOL SetWaitableTimerEx(HANDLE hTimer, const LARGE_INTEGER *lpDueTime, LONG lPeriod,
-		PTIMERAPCROUTINE pfnCompletionRoutine, LPVOID lpArgToCompletionRoutine,
+__SPRT_WIN_IMPORT WINAPI BOOL SetWaitableTimerEx(HANDLE hTimer, const LARGE_INTEGER *lpDueTime,
+		LONG lPeriod, PTIMERAPCROUTINE pfnCompletionRoutine, LPVOID lpArgToCompletionRoutine,
 		PREASON_CONTEXT WakeContext, ULONG TolerableDelay);
 
-WINAPI BOOL CancelWaitableTimer(HANDLE hTimer);
+__SPRT_WIN_IMPORT WINAPI BOOL CancelWaitableTimer(HANDLE hTimer);
 
 /* ---- PSAPI (psapi.h) ---- */
 /**
@@ -525,7 +512,8 @@ WINAPI BOOL CancelWaitableTimer(HANDLE hTimer);
  * @return TRUE on success, FALSE on failure.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-enumprocessmodules
  */
-WINAPI BOOL EnumProcessModules(HANDLE hProcess, HMODULE *lphModule, DWORD cb, LPDWORD lpcbNeeded);
+__SPRT_WIN_IMPORT WINAPI BOOL EnumProcessModules(HANDLE hProcess, HMODULE *lphModule, DWORD cb,
+		LPDWORD lpcbNeeded);
 
 /**
  * Extended working set query for memory monitoring.
@@ -535,7 +523,7 @@ WINAPI BOOL EnumProcessModules(HANDLE hProcess, HMODULE *lphModule, DWORD cb, LP
  * @return TRUE on success, FALSE on failure.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-queryworkingsetchain
  */
-WINAPI BOOL QueryWorkingSetEx(HANDLE hProcess, PVOID pWsInfo, DWORD cb);
+__SPRT_WIN_IMPORT WINAPI BOOL QueryWorkingSetEx(HANDLE hProcess, PVOID pWsInfo, DWORD cb);
 
 /* ============================================================ */
 /* Registry API (winreg.h)                                      */
@@ -552,8 +540,8 @@ WINAPI BOOL QueryWorkingSetEx(HANDLE hProcess, PVOID pWsInfo, DWORD cb);
  * @return ERROR_SUCCESS if successful, or a Win32 error code otherwise.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regopenkeyexw
  */
-WINAPI LONG RegOpenKeyExW(HKEY hKey, LPCWSTR lpSubKey, DWORD Reserved, DWORD samDesired,
-		PHANDLE phkResult);
+__SPRT_WIN_IMPORT WINAPI LONG RegOpenKeyExW(HKEY hKey, LPCWSTR lpSubKey, DWORD Reserved,
+		DWORD samDesired, PHANDLE phkResult);
 
 /**
  * Retrieves data from a specified registry value.
@@ -566,11 +554,12 @@ WINAPI LONG RegOpenKeyExW(HKEY hKey, LPCWSTR lpSubKey, DWORD Reserved, DWORD sam
  * @return ERROR_SUCCESS if successful, or a Win32 error code otherwise.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-reggetvaluew
  */
-WINAPI LSTATUS RegGetValueW(HKEY hkey, LPCWSTR lpSubKey, LPCWSTR lpValue, DWORD dwFlags,
-		LPDWORD pdwType, PVOID pvData, LPDWORD pcbData);
+__SPRT_WIN_IMPORT WINAPI LSTATUS RegGetValueW(HKEY hkey, LPCWSTR lpSubKey, LPCWSTR lpValue,
+		DWORD dwFlags, LPDWORD pdwType, PVOID pvData, LPDWORD pcbData);
 
-WINAPI LSTATUS RegEnumValueW(HKEY hKey, DWORD dwIndex, LPWSTR lpValueName, LPDWORD lpcchValueName,
-		LPDWORD lpReserved, LPDWORD lpType, LPBYTE lpData, LPDWORD lpcbData);
+__SPRT_WIN_IMPORT WINAPI LSTATUS RegEnumValueW(HKEY hKey, DWORD dwIndex, LPWSTR lpValueName,
+		LPDWORD lpcchValueName, LPDWORD lpReserved, LPDWORD lpType, LPBYTE lpData,
+		LPDWORD lpcbData);
 
 /**
  * Closes a registry key handle.
@@ -578,7 +567,7 @@ WINAPI LSTATUS RegEnumValueW(HKEY hKey, DWORD dwIndex, LPWSTR lpValueName, LPDWO
  * @return ERROR_SUCCESS if successful, or a Win32 error code otherwise.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regclosekey
  */
-WINAPI LONG RegCloseKey(HKEY hKey);
+__SPRT_WIN_IMPORT WINAPI LONG RegCloseKey(HKEY hKey);
 
 /* ============================================================ */
 /* System Information API (winbase.h, sysinfoapi.h)             */
@@ -591,68 +580,99 @@ WINAPI LONG RegCloseKey(HKEY hKey);
  * @return TRUE on success, FALSE on failure.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getcomputernamew
  */
-WINAPI BOOL GetComputerNameW(LPWSTR lpBuffer, LPDWORD nSize);
+__SPRT_WIN_IMPORT WINAPI BOOL GetComputerNameW(LPWSTR lpBuffer, LPDWORD nSize);
 
 /**
  * Retrieves information about the processor architecture and other system details.
  * @param pSystemInfo Pointer to a SYSTEM_INFO structure that receives the information.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getnativesysteminfo
  */
-WINAPI void GetNativeSystemInfo(LPSYSTEM_INFO pSystemInfo);
+__SPRT_WIN_IMPORT WINAPI void GetNativeSystemInfo(LPSYSTEM_INFO pSystemInfo);
 
 /* ============================================================ */
 /* Memory Functions (memoryapi.h, winbase.h)                    */
 /* ============================================================ */
 
-/**
- * Copies a block of memory from one location to another.
- * @param Destination Pointer to the destination block of memory.
- * @param Source Pointer to the source block of memory.
- * @param Length Number of bytes to copy.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-copymemory
- */
-WINAPI void CopyMemory(LPVOID Destination, const VOID *Source, SIZE_T Length);
+__SPRT_WIN_IMPORT WINAPI void GetSystemInfo(LPSYSTEM_INFO lpSystemInfo);
 
-/**
- * Sets a block of memory to a specified value.
- * @param Destination Pointer to the destination block of memory.
- * @param Value The value to set (typically 0 for ZeroMemory).
- * @param Length Number of bytes to set.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-fillmemory
- */
-WINAPI void FillMemory(LPVOID Destination, SIZE_T Length, BYTE Value);
+__SPRT_WIN_IMPORT WINAPI DWORD GetActiveProcessorCount(WORD GroupNumber);
 
-WINAPI void GetSystemInfo(LPSYSTEM_INFO lpSystemInfo);
+__SPRT_WIN_IMPORT WINAPI BOOL GetLogicalProcessorInformation(
+		PSYSTEM_LOGICAL_PROCESSOR_INFORMATION Buffer, PDWORD ReturnedLength);
 
-WINAPI DWORD GetActiveProcessorCount(WORD GroupNumber);
+__SPRT_WIN_IMPORT WINAPI BOOL GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer);
 
-WINAPI BOOL GetLogicalProcessorInformation(PSYSTEM_LOGICAL_PROCESSOR_INFORMATION Buffer,
-		PDWORD ReturnedLength);
+__SPRT_WIN_IMPORT WINAPI BOOL GetComputerNameExW(COMPUTER_NAME_FORMAT NameType, LPWSTR lpBuffer,
+		LPDWORD nSize);
 
-WINAPI BOOL GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer);
+__SPRT_WIN_IMPORT WINAPI UINT SetErrorMode(UINT uMode);
 
-WINAPI BOOL GetComputerNameExW(COMPUTER_NAME_FORMAT NameType, LPWSTR lpBuffer, LPDWORD nSize);
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateIoCompletionPort(HANDLE FileHandle,
+		HANDLE ExistingCompletionPort, ULONG_PTR CompletionKey, DWORD NumberOfConcurrentThreads);
 
-WINAPI UINT SetErrorMode(UINT uMode);
-
-WINAPI HANDLE CreateIoCompletionPort(HANDLE FileHandle, HANDLE ExistingCompletionPort,
-		ULONG_PTR CompletionKey, DWORD NumberOfConcurrentThreads);
-
-WINAPI BOOL GetQueuedCompletionStatusEx(HANDLE CompletionPort,
+__SPRT_WIN_IMPORT WINAPI BOOL GetQueuedCompletionStatusEx(HANDLE CompletionPort,
 		LPOVERLAPPED_ENTRY lpCompletionPortEntries, ULONG ulCount, PULONG ulNumEntriesRemoved,
 		DWORD dwMilliseconds, BOOL fAlertable);
 
-WINAPI BOOL PostQueuedCompletionStatus(HANDLE CompletionPort, DWORD dwNumberOfBytesTransferred,
-		ULONG_PTR dwCompletionKey, LPOVERLAPPED lpOverlapped);
+__SPRT_WIN_IMPORT WINAPI BOOL PostQueuedCompletionStatus(HANDLE CompletionPort,
+		DWORD dwNumberOfBytesTransferred, ULONG_PTR dwCompletionKey, LPOVERLAPPED lpOverlapped);
+
+__SPRT_WIN_IMPORT WINAPI NTSTATUS NtClose(HANDLE Handle);
+
+__SPRT_WIN_IMPORT WINAPI int LCMapStringEx(LPCWSTR lpLocaleName, DWORD dwMapFlags, LPCWSTR lpSrcStr,
+		int cchSrc, LPWSTR lpDestStr, int cchDest, LPNLSVERSIONINFO lpVersionInformation,
+		LPVOID lpReserved, LPARAM sortHandle);
+
+__SPRT_WIN_IMPORT WINAPI int CompareStringEx(LPCWSTR lpLocaleName, DWORD dwCmpFlags,
+		LPCWCH lpString1, int cchCount1, LPCWCH lpString2, int cchCount2,
+		LPNLSVERSIONINFO lpVersionInformation, LPVOID lpReserved, LPARAM lParam);
+
+__SPRT_WIN_IMPORT WINAPI int MultiByteToWideChar(UINT CodePage, DWORD dwFlags, LPCCH lpMultiByteStr,
+		int cbMultiByte, LPWSTR lpWideCharStr, int cchWideChar);
+
+__SPRT_WIN_IMPORT WINAPI int WideCharToMultiByte(UINT CodePage, DWORD dwFlags, LPCWCH lpWideCharStr,
+		int cchWideChar, LPSTR lpMultiByteStr, int cbMultiByte, LPCCH lpDefaultChar,
+		LPBOOL lpUsedDefaultChar);
+
+__SPRT_WIN_IMPORT WINAPI int GetLocaleInfoEx(LPCWSTR lpLocaleName, LCTYPE LCType, LPWSTR lpLCData,
+		int cchData);
+
+__SPRT_WIN_IMPORT WINAPI BOOL IsValidLocaleName(LPCWSTR lpLocaleName);
+
+__SPRT_WIN_IMPORT WINAPI int GetUserDefaultLocaleName(LPWSTR lpLocaleName, int cchLocaleName);
+
+__SPRT_WIN_IMPORT WINAPI int IdnToAscii(DWORD dwFlags, LPCWSTR lpUnicodeCharStr, int cchUnicodeChar,
+		LPWSTR lpASCIICharStr, int cchASCIIChar);
+
+__SPRT_WIN_IMPORT WINAPI int IdnToUnicode(DWORD dwFlags, LPCWSTR lpASCIICharStr, int cchASCIIChar,
+		LPWSTR lpUnicodeCharStr, int cchUnicodeChar);
+
+// Extended IOCP API from Windows 11, not supported on Wine for now
+
+__SPRT_WIN_IMPORT WINAPI UINT GetACP(void);
+
+__SPRT_WIN_IMPORT WINAPI BOOL ReadConsoleA(HANDLE hConsoleInput, LPVOID lpBuffer,
+		DWORD nNumberOfCharsToRead, LPDWORD lpNumberOfCharsRead,
+		PCONSOLE_READCONSOLE_CONTROL pInputControl);
+
+__SPRT_WIN_IMPORT WINAPI BOOL ReadConsoleW(HANDLE hConsoleInput, LPVOID lpBuffer,
+		DWORD nNumberOfCharsToRead, LPDWORD lpNumberOfCharsRead,
+		PCONSOLE_READCONSOLE_CONTROL pInputControl);
+
+__SPRT_WIN_IMPORT WINAPI UINT GetSystemDirectoryA(LPSTR lpBuffer, UINT uSize);
+
+__SPRT_WIN_IMPORT WINAPI UINT GetSystemDirectoryW(LPWSTR lpBuffer, UINT uSize);
+
+__SPRT_WIN_IMPORT WINAPI DWORD WaitForMultipleObjects(DWORD nCount, const HANDLE *lpHandles,
+		BOOL bWaitAll, DWORD dwMilliseconds);
+
+__SPRT_WIN_IMPORT WINAPI BOOL PeekNamedPipe(HANDLE hNamedPipe, LPVOID lpBuffer, DWORD nBufferSize,
+		LPDWORD lpBytesRead, LPDWORD lpTotalBytesAvail, LPDWORD lpBytesLeftThisMessage);
+
 
 /*
-	Checks whether the functions required for fully asynchronous packet processing
-	are available at runtime:
-	- NtCreateWaitCompletionPacket
-	- NtAssociateWaitCompletionPacket
-	- NtCancelWaitCompletionPacket
+	Extended IOCP API for async event processing
 */
-WINAPI BOOL NtCompletionPacketAvailable();
 
 WINAPI NTSTATUS NtCreateWaitCompletionPacket(PHANDLE WaitCompletionPacketHandle,
 		ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes);
@@ -664,64 +684,31 @@ WINAPI NTSTATUS NtAssociateWaitCompletionPacket(HANDLE WaitCompletionPacketHandl
 WINAPI NTSTATUS NtCancelWaitCompletionPacket(HANDLE WaitCompletionPacketHandle,
 		BOOLEAN RemoveSignaledPacket);
 
-WINAPI NTSTATUS NtClose(HANDLE Handle);
+/*
+	Checks whether the functions required for fully asynchronous packet processing
+	are available at runtime:
+	- NtCreateWaitCompletionPacket
+	- NtAssociateWaitCompletionPacket
+	- NtCancelWaitCompletionPacket
 
-WINAPI int LCMapStringEx(LPCWSTR lpLocaleName, DWORD dwMapFlags, LPCWSTR lpSrcStr, int cchSrc,
-		LPWSTR lpDestStr, int cchDest, LPNLSVERSIONINFO lpVersionInformation, LPVOID lpReserved,
-		LPARAM sortHandle);
+	If this routines is not available, next APIs WILL crush:
+	- __sprt_RestartEventCompletion2
+	- __sprt_RestartEventCompletion
+	- __sprt_CancelEventCompletion
+	- __sprt_ReportEventAsCompletion
+*/
+WINAPI BOOL NtCompletionPacketAvailable();
 
-WINAPI int CompareStringEx(LPCWSTR lpLocaleName, DWORD dwCmpFlags, LPCWCH lpString1, int cchCount1,
-		LPCWCH lpString2, int cchCount2, LPNLSVERSIONINFO lpVersionInformation, LPVOID lpReserved,
-		LPARAM lParam);
-
-WINAPI int MultiByteToWideChar(UINT CodePage, DWORD dwFlags, LPCCH lpMultiByteStr, int cbMultiByte,
-		LPWSTR lpWideCharStr, int cchWideChar);
-
-WINAPI int WideCharToMultiByte(UINT CodePage, DWORD dwFlags, LPCWCH lpWideCharStr, int cchWideChar,
-		LPSTR lpMultiByteStr, int cbMultiByte, LPCCH lpDefaultChar, LPBOOL lpUsedDefaultChar);
-
-WINAPI int GetLocaleInfoEx(LPCWSTR lpLocaleName, LCTYPE LCType, LPWSTR lpLCData, int cchData);
-
-WINAPI BOOL IsValidLocaleName(LPCWSTR lpLocaleName);
-
-WINAPI int GetUserDefaultLocaleName(LPWSTR lpLocaleName, int cchLocaleName);
-
-WINAPI int IdnToAscii(DWORD dwFlags, LPCWSTR lpUnicodeCharStr, int cchUnicodeChar,
-		LPWSTR lpASCIICharStr, int cchASCIIChar);
-
-WINAPI int IdnToUnicode(DWORD dwFlags, LPCWSTR lpASCIICharStr, int cchASCIIChar,
-		LPWSTR lpUnicodeCharStr, int cchUnicodeChar);
-
-// Extended IOCP API from Windows 11, not supported on Wine for now
-
-WINAPI int RestartEventCompletion2(void *hPacket, void *hIOCP, void *hEvent,
+WINAPI int __sprt_RestartEventCompletion2(void *hPacket, void *hIOCP, void *hEvent,
 		DWORD dwNumberOfBytesTransferred, UINT_PTR dwCompletionKey, void *lpOverlapped);
 
-WINAPI int RestartEventCompletion(void *hPacket, void *hIOCP, void *hEvent,
+WINAPI int __sprt_RestartEventCompletion(void *hPacket, void *hIOCP, void *hEvent,
 		const void **ncompletion);
 
-WINAPI int CancelEventCompletion(void *hPacket, int cancel);
+WINAPI int __sprt_CancelEventCompletion(void *hPacket, int cancel);
 
-WINAPI void *ReportEventAsCompletion(void *hIOCP, void *hEvent, DWORD dwNumberOfBytesTransferred,
-		UINT_PTR dwCompletionKey, void *lpOverlapped);
-
-WINAPI UINT GetACP(void);
-
-WINAPI BOOL ReadConsoleA(HANDLE hConsoleInput, LPVOID lpBuffer, DWORD nNumberOfCharsToRead,
-		LPDWORD lpNumberOfCharsRead, PCONSOLE_READCONSOLE_CONTROL pInputControl);
-
-WINAPI BOOL ReadConsoleW(HANDLE hConsoleInput, LPVOID lpBuffer, DWORD nNumberOfCharsToRead,
-		LPDWORD lpNumberOfCharsRead, PCONSOLE_READCONSOLE_CONTROL pInputControl);
-
-WINAPI UINT GetSystemDirectoryA(LPSTR lpBuffer, UINT uSize);
-
-WINAPI UINT GetSystemDirectoryW(LPWSTR lpBuffer, UINT uSize);
-
-WINAPI DWORD WaitForMultipleObjects(DWORD nCount, const HANDLE *lpHandles, BOOL bWaitAll,
-		DWORD dwMilliseconds);
-
-WINAPI BOOL PeekNamedPipe(HANDLE hNamedPipe, LPVOID lpBuffer, DWORD nBufferSize,
-		LPDWORD lpBytesRead, LPDWORD lpTotalBytesAvail, LPDWORD lpBytesLeftThisMessage);
+WINAPI void *__sprt_ReportEventAsCompletion(void *hIOCP, void *hEvent,
+		DWORD dwNumberOfBytesTransferred, UINT_PTR dwCompletionKey, void *lpOverlapped);
 
 #ifdef UNICODE
 #define ReadConsole  ReadConsoleW

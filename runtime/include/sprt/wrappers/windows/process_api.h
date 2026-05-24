@@ -192,57 +192,43 @@ typedef struct _SHELLEXECUTEINFOW {
 
 __SPRT_BEGIN_DECL
 
-/**
- * Retrieves a handle to the current process object.
- * @return Pseudo-handle for the calling process (PROCESS_ALL_ACCESS access).
- * @see https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess
- */
-WINAPI HANDLE GetCurrentProcess(void);
+__SPRT_WIN_IMPORT WINAPI HANDLE GetCurrentProcess(void);
 
-/**
- * Retrieves the identifier of the current process.
- * @return Process ID of the calling process.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocessid
- */
-WINAPI DWORD GetCurrentProcessId(void);
+__SPRT_WIN_IMPORT WINAPI DWORD GetCurrentProcessId(void);
 
-WINAPI HANDLE OpenProcess(DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwProcessId);
+__SPRT_WIN_IMPORT WINAPI HANDLE OpenProcess(DWORD dwDesiredAccess, BOOL bInheritHandle,
+		DWORD dwProcessId);
 
-/**
- * Retrieves the termination status of the specified process.
- * @param hProcess Handle to the process.
- * @param lpExitCode Pointer to a variable that receives the termination status code.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getexitcodeprocess
- */
-WINAPI BOOL GetExitCodeProcess(HANDLE hProcess, LPDWORD lpExitCode);
+__SPRT_WIN_IMPORT WINAPI BOOL GetExitCodeProcess(HANDLE hProcess, LPDWORD lpExitCode);
 
-WINAPI DWORD GetPriorityClass(HANDLE hProcess);
+__SPRT_WIN_IMPORT WINAPI DWORD GetPriorityClass(HANDLE hProcess);
 
-WINAPI VOID YieldProcessor();
+__SPRT_WIN_IMPORT WINAPI BOOL InitializeProcThreadAttributeList(
+		LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList, DWORD dwAttributeCount, DWORD dwFlags,
+		PSIZE_T lpSize);
 
-WINAPI BOOL InitializeProcThreadAttributeList(LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList,
-		DWORD dwAttributeCount, DWORD dwFlags, PSIZE_T lpSize);
+__SPRT_WIN_IMPORT WINAPI BOOL UpdateProcThreadAttribute(
+		LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList, DWORD dwFlags, DWORD_PTR Attribute,
+		PVOID lpValue, SIZE_T cbSize, PVOID lpPreviousValue, PSIZE_T lpReturnSize);
 
-WINAPI BOOL UpdateProcThreadAttribute(LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList, DWORD dwFlags,
-		DWORD_PTR Attribute, PVOID lpValue, SIZE_T cbSize, PVOID lpPreviousValue,
-		PSIZE_T lpReturnSize);
+__SPRT_WIN_IMPORT WINAPI VOID DeleteProcThreadAttributeList(
+		LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList);
 
-WINAPI VOID DeleteProcThreadAttributeList(LPPROC_THREAD_ATTRIBUTE_LIST lpAttributeList);
+__SPRT_WIN_IMPORT WINAPI LPWSTR GetCommandLineW(VOID);
 
-WINAPI LPWSTR GetCommandLineW(VOID);
+__SPRT_WIN_IMPORT WINAPI LPWSTR *CommandLineToArgvW(LPCWSTR lpCmdLine, int *pNumArgs);
 
-WINAPI LPWSTR *CommandLineToArgvW(LPCWSTR lpCmdLine, int *pNumArgs);
-
-WINAPI BOOL CreateProcessW(LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
+__SPRT_WIN_IMPORT WINAPI BOOL CreateProcessW(LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
 		LPSECURITY_ATTRIBUTES lpProcessAttributes, LPSECURITY_ATTRIBUTES lpThreadAttributes,
 		BOOL bInheritHandles, DWORD dwCreationFlags, LPVOID lpEnvironment,
 		LPCWSTR lpCurrentDirectory, LPSTARTUPINFOW lpStartupInfo,
 		LPPROCESS_INFORMATION lpProcessInformation);
 
-WINAPI BOOL TerminateProcess(HANDLE hProcess, UINT uExitCode);
+__SPRT_WIN_IMPORT WINAPI BOOL TerminateProcess(HANDLE hProcess, UINT uExitCode);
 
-WINAPI BOOL ShellExecuteExW(SHELLEXECUTEINFOW *pExecInfo);
+__SPRT_WIN_IMPORT WINAPI BOOL ShellExecuteExW(SHELLEXECUTEINFOW *pExecInfo);
+
+SPRT_FORCEINLINE VOID YieldProcessor() { _mm_pause(); }
 
 __SPRT_END_DECL
 

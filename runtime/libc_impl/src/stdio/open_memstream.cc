@@ -52,10 +52,10 @@ static size_t ms_write(FILE *f, const unsigned char *buf, size_t len) {
 			return 0;
 		}
 		*c->bufp = c->buf = newbuf;
-		memset(c->buf + c->space, 0, len2 - c->space);
+		sprt::memset(c->buf + c->space, 0, len2 - c->space);
 		c->space = len2;
 	}
-	memcpy(c->buf + c->pos, buf, len);
+	sprt::memcpy(c->buf + c->pos, buf, len);
 	c->pos += len;
 	if (c->pos >= c->len) {
 		c->len = c->pos;
@@ -77,8 +77,8 @@ __SPRT_C_FUNC FILE *open_memstream(char **bufp, size_t *sizep) __SPRT_NOEXCEPT {
 		free(f);
 		return 0;
 	}
-	memset(&f->f, 0, sizeof f->f);
-	memset(&f->c, 0, sizeof f->c);
+	sprt::memset(&f->f, 0, sizeof f->f);
+	sprt::memset(&f->c, 0, sizeof f->c);
 	f->f.cookie = &f->c;
 
 	f->c.bufp = bufp;

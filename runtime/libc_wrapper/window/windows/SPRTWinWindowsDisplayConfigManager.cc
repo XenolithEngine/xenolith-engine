@@ -437,7 +437,7 @@ void WindowsDisplayConfigManager::applyDisplayConfig(NotNull<DisplayConfig> conf
 		};
 
 		ModeData(wchar_t *n) : name(n) {
-			memset(&dm, 0, sizeof(dm));
+			sprt::memset(&dm, 0, sizeof(dm));
 			dm.dmSize = sizeof(dm);
 		}
 	};

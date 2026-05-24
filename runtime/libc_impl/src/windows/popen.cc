@@ -61,7 +61,7 @@ __SPRT_C_FUNC FILE *popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {
 	PROCESS_INFORMATION pi;
 
 	STARTUPINFOW si;
-	::memset(&si, 0, sizeof(STARTUPINFOW));
+	sprt::memset(&si, 0, sizeof(STARTUPINFOW));
 	si.cb = sizeof(STARTUPINFOW);
 	si.dwFlags = STARTF_USESTDHANDLES;
 
@@ -141,7 +141,7 @@ __SPRT_C_FUNC int system(const char *cmd) __SPRT_NOEXCEPT {
 	}
 
 	SHELLEXECUTEINFOW sei;
-	::memset(&sei, 0, sizeof(sei));
+	sprt::memset(&sei, 0, sizeof(sei));
 
 	sei.cbSize = sizeof(sei);
 	sei.fMask = SEE_MASK_NOCLOSEPROCESS;

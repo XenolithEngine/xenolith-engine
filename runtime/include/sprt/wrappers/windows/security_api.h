@@ -234,74 +234,62 @@ typedef struct _TOKEN_APPCONTAINER_INFORMATION {
 
 __SPRT_BEGIN_DECL
 
-/* ---- Security Functions (securitybaseapi.h) ---- */
+__SPRT_WIN_IMPORT WINAPI BOOL AllocateAndInitializeSid(
+		PSID_IDENTIFIER_AUTHORITY pIdentifierAuthority, BYTE nSubAuthorityCount,
+		DWORD nSubAuthority0, DWORD nSubAuthority1, DWORD nSubAuthority2, DWORD nSubAuthority3,
+		DWORD nSubAuthority4, DWORD nSubAuthority5, DWORD nSubAuthority6, DWORD nSubAuthority7,
+		PSID *pSid);
 
-WINAPI BOOL AllocateAndInitializeSid(PSID_IDENTIFIER_AUTHORITY pIdentifierAuthority,
-		BYTE nSubAuthorityCount, DWORD nSubAuthority0, DWORD nSubAuthority1, DWORD nSubAuthority2,
-		DWORD nSubAuthority3, DWORD nSubAuthority4, DWORD nSubAuthority5, DWORD nSubAuthority6,
-		DWORD nSubAuthority7, PSID *pSid);
+__SPRT_WIN_IMPORT WINAPI LPBYTE GetSidSubAuthorityCount(LPSID Sid);
 
-/**
- * Retrieves a pointer to the count of subauthorities in a security identifier (SID).
- * @param Sid Pointer to the SID structure.
- * @return Pointer to the count of subauthorities in the SID.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-getsidsubauthoritycount
- */
-WINAPI LPBYTE GetSidSubAuthorityCount(LPSID Sid);
+__SPRT_WIN_IMPORT WINAPI LPDWORD GetSidSubAuthority(LPSID Sid, DWORD nSubAuthority);
 
-/**
- * Retrieves a pointer to the specified subauthority value in a security identifier (SID).
- * @param Sid Pointer to the SID structure.
- * @param nSubAuthority Index of the subauthority value to retrieve (zero-based).
- * @return Pointer to the requested subauthority value.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-getsidsubauthority
- */
-WINAPI LPDWORD GetSidSubAuthority(LPSID Sid, DWORD nSubAuthority);
+__SPRT_WIN_IMPORT WINAPI PVOID FreeSid(PSID pSid);
 
-WINAPI PVOID FreeSid(PSID pSid);
-
-WINAPI DWORD GetSecurityInfo(HANDLE handle, SE_OBJECT_TYPE ObjectType,
+__SPRT_WIN_IMPORT WINAPI DWORD GetSecurityInfo(HANDLE handle, SE_OBJECT_TYPE ObjectType,
 		SECURITY_INFORMATION SecurityInfo, PSID *ppsidOwner, PSID *ppsidGroup, PACL *ppDacl,
 		PACL *ppSacl, PSECURITY_DESCRIPTOR *ppSecurityDescriptor);
 
-WINAPI HRESULT CreateAppContainerProfile(PCWSTR pszAppContainerName, PCWSTR pszDisplayName,
-		PCWSTR pszDescription, PSID_AND_ATTRIBUTES pCapabilities, DWORD dwCapabilityCount,
-		PSID *ppSidAppContainerSid);
+__SPRT_WIN_IMPORT WINAPI HRESULT CreateAppContainerProfile(PCWSTR pszAppContainerName,
+		PCWSTR pszDisplayName, PCWSTR pszDescription, PSID_AND_ATTRIBUTES pCapabilities,
+		DWORD dwCapabilityCount, PSID *ppSidAppContainerSid);
 
-WINAPI HRESULT DeriveAppContainerSidFromAppContainerName(PCWSTR pszAppContainerName,
-		PSID *ppsidAppContainerSid);
+__SPRT_WIN_IMPORT WINAPI HRESULT DeriveAppContainerSidFromAppContainerName(
+		PCWSTR pszAppContainerName, PSID *ppsidAppContainerSid);
 
-WINAPI HRESULT GetAppContainerFolderPath(PCWSTR pszAppContainerSid, PWSTR *ppszPath);
+__SPRT_WIN_IMPORT WINAPI HRESULT GetAppContainerFolderPath(PCWSTR pszAppContainerSid,
+		PWSTR *ppszPath);
 
-WINAPI HRESULT DeleteAppContainerProfile(PCWSTR pszAppContainerName);
+__SPRT_WIN_IMPORT WINAPI HRESULT DeleteAppContainerProfile(PCWSTR pszAppContainerName);
 
-WINAPI DWORD GetNamedSecurityInfoW(LPCWSTR pObjectName, SE_OBJECT_TYPE ObjectType,
+__SPRT_WIN_IMPORT WINAPI DWORD GetNamedSecurityInfoW(LPCWSTR pObjectName, SE_OBJECT_TYPE ObjectType,
 		SECURITY_INFORMATION SecurityInfo, PSID *ppsidOwner, PSID *ppsidGroup, PACL *ppDacl,
 		PACL *ppSacl, PSECURITY_DESCRIPTOR *ppSecurityDescriptor);
 
-WINAPI DWORD SetEntriesInAclW(ULONG cCountOfExplicitEntries,
+__SPRT_WIN_IMPORT WINAPI DWORD SetEntriesInAclW(ULONG cCountOfExplicitEntries,
 		PEXPLICIT_ACCESS_W pListOfExplicitEntries, PACL OldAcl, PACL *NewAcl);
 
-WINAPI DWORD SetNamedSecurityInfoW(LPWSTR pObjectName, SE_OBJECT_TYPE ObjectType,
+__SPRT_WIN_IMPORT WINAPI DWORD SetNamedSecurityInfoW(LPWSTR pObjectName, SE_OBJECT_TYPE ObjectType,
 		SECURITY_INFORMATION SecurityInfo, PSID psidOwner, PSID psidGroup, PACL pDacl, PACL pSacl);
 
-WINAPI BOOL ConvertSidToStringSidW(PSID Sid, LPWSTR *StringSid);
+__SPRT_WIN_IMPORT WINAPI BOOL ConvertSidToStringSidW(PSID Sid, LPWSTR *StringSid);
 
-WINAPI BOOL CloseWindowStation(HWINSTA hWinSta);
+__SPRT_WIN_IMPORT WINAPI BOOL CloseWindowStation(HWINSTA hWinSta);
 
-WINAPI BOOL SetProcessWindowStation(HWINSTA hWinSta);
+__SPRT_WIN_IMPORT WINAPI BOOL SetProcessWindowStation(HWINSTA hWinSta);
 
-WINAPI HWINSTA GetProcessWindowStation(VOID);
+__SPRT_WIN_IMPORT WINAPI HWINSTA GetProcessWindowStation(VOID);
 
-WINAPI BOOL GetUserObjectInformationW(HANDLE hObj, int nIndex, PVOID pvInfo, DWORD nLength,
-		LPDWORD lpnLengthNeeded);
+__SPRT_WIN_IMPORT WINAPI BOOL GetUserObjectInformationW(HANDLE hObj, int nIndex, PVOID pvInfo,
+		DWORD nLength, LPDWORD lpnLengthNeeded);
 
-WINAPI HANDLE RegisterEventSourceW(LPCWSTR lpUNCServerName, LPCWSTR lpSourceName);
+__SPRT_WIN_IMPORT WINAPI HANDLE RegisterEventSourceW(LPCWSTR lpUNCServerName, LPCWSTR lpSourceName);
 
-WINAPI BOOL DeregisterEventSource(HANDLE hEventLog);
+__SPRT_WIN_IMPORT WINAPI BOOL DeregisterEventSource(HANDLE hEventLog);
 
-WINAPI BOOL ReportEventW(HANDLE hEventLog, WORD wType, WORD wCategory, DWORD dwEventID,
-		PSID lpUserSid, WORD wNumStrings, DWORD dwDataSize, LPCWSTR *lpStrings, LPVOID lpRawData);
+__SPRT_WIN_IMPORT WINAPI BOOL ReportEventW(HANDLE hEventLog, WORD wType, WORD wCategory,
+		DWORD dwEventID, PSID lpUserSid, WORD wNumStrings, DWORD dwDataSize, LPCWSTR *lpStrings,
+		LPVOID lpRawData);
 
 #ifdef UNICODE
 #define ReportEvent  ReportEventW

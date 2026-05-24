@@ -20,15 +20,34 @@
  THE SOFTWARE.
  **/
 
-#include <sprt/wrappers/windows/debug_api.h>
+#include <sprt/wrappers/windows/windows.h>
+#include <sprt/wrappers/windows/monitor_api.h>
 
 #include "dllloader.h"
 
 extern "C" {
-WINAPI DWORD UnDecorateSymbolName(PCSTR name, PSTR outputString, DWORD maxStringLength,
-		DWORD flags) {
+HANDLE GetStockObject(int i) {
 	auto loader = sprt::DllLoader::get();
-	return loader->dbghelp.call<decltype(&UnDecorateSymbolName)>(
-			loader->dbghelp.UnDecorateSymbolName, name, outputString, maxStringLength, flags);
+	return DLL_LOAD_AND_CALL(loader, gdi32, GetStockObject, i);
+}
+
+int GetObjectW(HANDLE h, int c, LPVOID pv) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, gdi32, GetObjectW, h, c, pv);
+}
+
+WINAPI HDC CreateDCW(LPCWSTR pwszDriver, LPCWSTR pwszDevice, LPCWSTR pszPort, const DEVMODEW *pdm) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, gdi32, CreateDCW, pwszDriver, pwszDevice, pszPort, pdm);
+}
+
+WINAPI int GetDeviceCaps(HDC hdc, int index) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, gdi32, GetDeviceCaps, hdc, index);
+}
+
+WINAPI BOOL DeleteDC(HDC hdc) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, gdi32, DeleteDC, hdc);
 }
 }

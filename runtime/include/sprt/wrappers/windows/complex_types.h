@@ -25,7 +25,6 @@
 
 #include <sprt/wrappers/windows/basic_types.h>
 #include <sprt/wrappers/windows/structures.h>
-#include <sprt/wrappers/windows/enums.h>
 #include <sprt/wrappers/windows/constants.h>
 
 /* PROCESSENTRY32 for process enumeration */

@@ -27,6 +27,8 @@
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_int64_t.h>
 #include <sprt/c/bits/__sprt_uint64_t.h>
+#include <sprt/wrappers/windows/__sprt_config.h>
+#include <sprt/wrappers/windows/__sprt_intrin.h>
 
 // Some developers expects, that wchar.h functions will be defined when windows headers are included;
 // When we build SPRT itself, it should not be defined
@@ -177,10 +179,6 @@ typedef WCHAR TCHAR, *PTCHAR, *LPTCHAR;
 #else
 typedef CHAR TCHAR, *PTCHAR, *LPTCHAR;
 #endif
-
-__SPRT_C_FUNC void __faststorefence(void);
-
-#pragma intrinsic(__faststorefence)
 
 #if !defined(_M_ARM64EC)
 

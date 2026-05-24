@@ -44,8 +44,6 @@ THE SOFTWARE.
 #include <sprt/cxx/array>
 #include <sprt/cxx/compare>
 
-#include <sprt/c/__sprt_string.h>
-
 namespace sprt {
 
 template <typename _Type>

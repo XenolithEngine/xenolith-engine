@@ -1461,7 +1461,7 @@ struct NtdllTable : DllTable {
 	SPWIN_DEFINE_PROTO(wcstoul)
 	DllTableRecord __ntdll_end;
 
-	DllTableRecord *__preloads[23] = {
+	DllTableRecord *__preloads[26] = {
 		&RtlCaptureContext,
 		&RtlRestoreContext,
 		&RtlLookupFunctionEntry,
@@ -1479,6 +1479,9 @@ struct NtdllTable : DllTable {
 		&strncpy,
 		&strnlen,
 		&strstr,
+		&strchr,
+		&strcmp,
+		&strncmp,
 		&wcscpy,
 		&wcslen,
 		&wcsncpy,

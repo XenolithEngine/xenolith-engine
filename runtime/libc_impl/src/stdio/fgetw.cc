@@ -130,7 +130,7 @@ __SPRT_C_FUNC wint_t ungetwc(wint_t c, FILE *f) __SPRT_NOEXCEPT {
 	if (isascii(c)) {
 		*--f->rpos = c;
 	} else {
-		memcpy(f->rpos -= l, mbc, l);
+		sprt::memcpy(f->rpos -= l, mbc, l);
 	}
 
 	f->flags &= ~F_EOF;

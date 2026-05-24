@@ -33,17 +33,17 @@ THE SOFTWARE.
 
 int __fmodeflags(const char *mode) {
 	int flags;
-	if (strchr(mode, '+')) {
+	if (sprt::strchr(mode, '+')) {
 		flags = __SPRT_O_RDWR;
 	} else if (*mode == 'r') {
 		flags = __SPRT_O_RDONLY;
 	} else {
 		flags = __SPRT_O_WRONLY;
 	}
-	if (strchr(mode, 'x')) {
+	if (sprt::strchr(mode, 'x')) {
 		flags |= __SPRT_O_EXCL;
 	}
-	if (strchr(mode, 'e')) {
+	if (sprt::strchr(mode, 'e')) {
 		flags |= __SPRT_O_CLOEXEC;
 	}
 	if (*mode != 'r') {

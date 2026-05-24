@@ -26,7 +26,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/cxx/detail/ctypes.h>
 
-#include <sprt/wrappers/windows/bcrypt_api.h>
+#include <sprt/wrappers/windows/bcrypt.h>
 
 namespace sprt {
 

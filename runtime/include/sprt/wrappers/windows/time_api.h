@@ -69,39 +69,44 @@ typedef struct _TIME_DYNAMIC_ZONE_INFORMATION {
 
 __SPRT_BEGIN_DECL
 
-WINAPI DWORD GetDynamicTimeZoneInformation(PDYNAMIC_TIME_ZONE_INFORMATION pTimeZoneInformation);
+__SPRT_WIN_IMPORT WINAPI DWORD GetDynamicTimeZoneInformation(
+		PDYNAMIC_TIME_ZONE_INFORMATION pTimeZoneInformation);
 
-WINAPI DWORD GetTimeZoneInformation(LPTIME_ZONE_INFORMATION lpTimeZoneInformation);
+__SPRT_WIN_IMPORT WINAPI DWORD GetTimeZoneInformation(
+		LPTIME_ZONE_INFORMATION lpTimeZoneInformation);
 
-WINAPI BOOL QueryPerformanceFrequency(LARGE_INTEGER *lpFrequency);
+__SPRT_WIN_IMPORT WINAPI BOOL QueryPerformanceFrequency(LARGE_INTEGER *lpFrequency);
 
-WINAPI BOOL QueryPerformanceCounter(LARGE_INTEGER *lpPerformanceCount);
+__SPRT_WIN_IMPORT WINAPI BOOL QueryPerformanceCounter(LARGE_INTEGER *lpPerformanceCount);
 
-WINAPI VOID GetSystemTimePreciseAsFileTime(LPFILETIME lpSystemTimeAsFileTime);
+__SPRT_WIN_IMPORT WINAPI VOID GetSystemTimePreciseAsFileTime(LPFILETIME lpSystemTimeAsFileTime);
 
-WINAPI VOID GetSystemTimeAsFileTime(LPFILETIME lpSystemTimeAsFileTime);
+__SPRT_WIN_IMPORT WINAPI VOID GetSystemTimeAsFileTime(LPFILETIME lpSystemTimeAsFileTime);
 
-WINAPI VOID GetSystemTime(LPSYSTEMTIME lpSystemTime);
+__SPRT_WIN_IMPORT WINAPI VOID GetSystemTime(LPSYSTEMTIME lpSystemTime);
 
-WINAPI DWORD GetTickCount();
+__SPRT_WIN_IMPORT WINAPI DWORD GetTickCount();
 
-WINAPI ULONGLONG GetTickCount64();
+__SPRT_WIN_IMPORT WINAPI ULONGLONG GetTickCount64();
 
-WINAPI BOOL GetProcessTimes(HANDLE hProcess, LPFILETIME lpCreationTime, LPFILETIME lpExitTime,
-		LPFILETIME lpKernelTime, LPFILETIME lpUserTime);
+__SPRT_WIN_IMPORT WINAPI BOOL GetProcessTimes(HANDLE hProcess, LPFILETIME lpCreationTime,
+		LPFILETIME lpExitTime, LPFILETIME lpKernelTime, LPFILETIME lpUserTime);
 
-WINAPI BOOL GetThreadTimes(HANDLE hThread, LPFILETIME lpCreationTime, LPFILETIME lpExitTime,
-		LPFILETIME lpKernelTime, LPFILETIME lpUserTime);
+__SPRT_WIN_IMPORT WINAPI BOOL GetThreadTimes(HANDLE hThread, LPFILETIME lpCreationTime,
+		LPFILETIME lpExitTime, LPFILETIME lpKernelTime, LPFILETIME lpUserTime);
 
-WINAPI BOOL SystemTimeToFileTime(const SYSTEMTIME *lpSystemTime, LPFILETIME lpFileTime);
+__SPRT_WIN_IMPORT WINAPI BOOL SystemTimeToFileTime(const SYSTEMTIME *lpSystemTime,
+		LPFILETIME lpFileTime);
 
-WINAPI BOOL FileTimeToSystemTime(const FILETIME *lpFileTime, LPSYSTEMTIME lpSystemTime);
+__SPRT_WIN_IMPORT WINAPI BOOL FileTimeToSystemTime(const FILETIME *lpFileTime,
+		LPSYSTEMTIME lpSystemTime);
 
-WINAPI BOOL SystemTimeToTzSpecificLocalTime(const TIME_ZONE_INFORMATION *lpTimeZoneInformation,
-		const SYSTEMTIME *lpUniversalTime, LPSYSTEMTIME lpLocalTime);
+__SPRT_WIN_IMPORT WINAPI BOOL SystemTimeToTzSpecificLocalTime(
+		const TIME_ZONE_INFORMATION *lpTimeZoneInformation, const SYSTEMTIME *lpUniversalTime,
+		LPSYSTEMTIME lpLocalTime);
 
-WINAPI BOOL GetTimeZoneInformationForYear(USHORT wYear, PDYNAMIC_TIME_ZONE_INFORMATION pdtzi,
-		LPTIME_ZONE_INFORMATION ptzi);
+__SPRT_WIN_IMPORT WINAPI BOOL GetTimeZoneInformationForYear(USHORT wYear,
+		PDYNAMIC_TIME_ZONE_INFORMATION pdtzi, LPTIME_ZONE_INFORMATION ptzi);
 
 /* ---- Multimedia Timer Services (mmsystem.h) ---- */
 /**
@@ -110,14 +115,14 @@ WINAPI BOOL GetTimeZoneInformationForYear(USHORT wYear, PDYNAMIC_TIME_ZONE_INFOR
  * @return Error code if an error occurs, otherwise zero.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/mmsystem/nf-mmsystem-timebeginperiod
  */
-WINAPI UINT timeBeginPeriod(UINT uPeriod);
+__SPRT_WIN_IMPORT WINAPI UINT timeBeginPeriod(UINT uPeriod);
 
 /**
  * Restores the resolution of the timer interrupt to its default setting.
  * @param uPeriod Timer period previously set by timeBeginPeriod.
  * @see https://docs.microsoft.com/en-us/windows/win32/api/mmsystem/nf-mmsystem-timeendperiod
  */
-WINAPI VOID timeEndPeriod(UINT uPeriod);
+__SPRT_WIN_IMPORT WINAPI VOID timeEndPeriod(UINT uPeriod);
 
 __SPRT_END_DECL
 

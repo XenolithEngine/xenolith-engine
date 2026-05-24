@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
+#include <sprt/c/__sprt_string.h>
 
 typedef HANDLE HGLOBAL;
 typedef HANDLE HLOCAL;
@@ -108,6 +109,66 @@ typedef HANDLE HLOCAL;
 #define PAGE_NOCACHE           0x200
 #define PAGE_WRITECOMBINE      0x400
 
+typedef enum _SYSTEM_CPU_SET_INFORMATION_CLASS {
+	SystemCpuSetInformationBasic = 0,
+	SystemCpuSetInformationGroup = 1
+} SYSTEM_CPU_SET_INFORMATION_CLASS, *PSYSTEM_CPU_SET_INFORMATION_CLASS;
+
+/* Token information classes */
+typedef enum _TOKEN_INFORMATION_CLASS {
+	TokenUser = 1,
+	TokenGroups,
+	TokenPrivileges,
+	TokenOwner,
+	TokenPrimaryGroup,
+	TokenDefaultDacl,
+	TokenSource,
+	TokenType,
+	TokenImpersonationLevel,
+	TokenStatistics,
+	TokenRestrictedSids,
+	TokenSessionId,
+	TokenGroupsAndPrivileges,
+	TokenSessionReference,
+	TokenSandBoxInert,
+	TokenAuditPolicy,
+	TokenOrigin,
+	TokenElevationType,
+	TokenLinkedToken,
+	TokenElevation,
+	TokenHasRestrictions,
+	TokenAccessInformation,
+	TokenVirtualizationAllowed,
+	TokenVirtualizationEnabled,
+	TokenIntegrityLevel,
+	TokenUIAccess,
+	TokenMandatoryPolicy,
+	TokenLogonSid,
+	TokenIsAppContainer,
+	TokenCapabilities,
+	TokenAppContainerSid,
+	TokenAppContainerNumber,
+	TokenUserClaimAttributes,
+	TokenDeviceClaimAttributes,
+	TokenRestrictedUserClaimAttributes,
+	TokenRestrictedDeviceClaimAttributes,
+	TokenDeviceGroups,
+	TokenRestrictedDeviceGroups,
+	TokenSecurityAttributes,
+	TokenIsRestricted,
+	TokenProcessTrustLevel,
+	TokenPrivateNameSpace,
+	TokenSingletonAttributes,
+	TokenBnoIsolation,
+	TokenChildProcessFlags,
+	TokenIsLessPrivilegedAppContainer,
+	TokenIsSandboxed,
+	TokenIsAppSilo,
+	TokenLoggingInformation,
+	TokenLearningMode,
+	MaxTokenInfoClass // MaxTokenInfoClass should always be the last enum
+} TOKEN_INFORMATION_CLASS, *PTOKEN_INFORMATION_CLASS;
+
 // clang-format on
 
 #define LHND  (LMEM_MOVEABLE | LMEM_ZEROINIT)
@@ -123,153 +184,110 @@ typedef struct _CONSOLE_SCREEN_BUFFER_INFO {
 
 __SPRT_BEGIN_DECL
 
-HLOCAL LocalAlloc(UINT uFlags, SIZE_T uBytes);
-HLOCAL LocalFree(HLOCAL hMem);
+__SPRT_WIN_IMPORT WINAPI HLOCAL LocalAlloc(UINT uFlags, SIZE_T uBytes);
 
-WINAPI LPVOID HeapAlloc(HANDLE hHeap, DWORD dwFlags, SIZE_T dwBytes);
+__SPRT_WIN_IMPORT WINAPI HLOCAL LocalFree(HLOCAL hMem);
 
-WINAPI LPVOID HeapReAlloc(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem, SIZE_T dwBytes);
+__SPRT_WIN_IMPORT WINAPI LPVOID HeapAlloc(HANDLE hHeap, DWORD dwFlags, SIZE_T dwBytes);
 
-WINAPI BOOL HeapFree(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem);
+__SPRT_WIN_IMPORT WINAPI LPVOID HeapReAlloc(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem,
+		SIZE_T dwBytes);
 
-WINAPI SIZE_T HeapSize(HANDLE hHeap, DWORD dwFlags, LPCVOID lpMem);
+__SPRT_WIN_IMPORT WINAPI BOOL HeapFree(HANDLE hHeap, DWORD dwFlags, LPVOID lpMem);
 
-WINAPI HANDLE HeapCreate(DWORD flOptions, SIZE_T dwInitialSize, SIZE_T dwMaximumSize);
+__SPRT_WIN_IMPORT WINAPI SIZE_T HeapSize(HANDLE hHeap, DWORD dwFlags, LPCVOID lpMem);
 
-WINAPI BOOL HeapDestroy(HANDLE hHeap);
+__SPRT_WIN_IMPORT WINAPI HANDLE HeapCreate(DWORD flOptions, SIZE_T dwInitialSize,
+		SIZE_T dwMaximumSize);
 
-WINAPI BOOL HeapValidate(HANDLE hHeap, DWORD dwFlags, LPCVOID lpMem);
+__SPRT_WIN_IMPORT WINAPI BOOL HeapDestroy(HANDLE hHeap);
 
-WINAPI SIZE_T HeapCompact(HANDLE hHeap, DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI BOOL HeapValidate(HANDLE hHeap, DWORD dwFlags, LPCVOID lpMem);
 
-WINAPI HANDLE GetProcessHeap(VOID);
+__SPRT_WIN_IMPORT WINAPI SIZE_T HeapCompact(HANDLE hHeap, DWORD dwFlags);
 
-WINAPI LPVOID VirtualAlloc(LPVOID lpAddress, SIZE_T dwSize, DWORD flAllocationType,
-		DWORD flProtect);
+__SPRT_WIN_IMPORT WINAPI HANDLE GetProcessHeap(VOID);
 
-WINAPI BOOL VirtualProtect(LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect,
+__SPRT_WIN_IMPORT WINAPI LPVOID VirtualAlloc(LPVOID lpAddress, SIZE_T dwSize,
+		DWORD flAllocationType, DWORD flProtect);
+
+__SPRT_WIN_IMPORT WINAPI BOOL VirtualProtect(LPVOID lpAddress, SIZE_T dwSize, DWORD flNewProtect,
 		PDWORD lpflOldProtect);
 
-WINAPI BOOL VirtualFree(LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType);
+__SPRT_WIN_IMPORT WINAPI BOOL VirtualFree(LPVOID lpAddress, SIZE_T dwSize, DWORD dwFreeType);
 
-WINAPI DWORD DiscardVirtualMemory(PVOID VirtualAddress, SIZE_T Size);
+__SPRT_WIN_IMPORT WINAPI DWORD DiscardVirtualMemory(PVOID VirtualAddress, SIZE_T Size);
 
-/* ---- Error Handling (errhandlingapi.h) ---- */
-/**
- * Retrieves the calling threads last-error code value.
- * The last-error code is maintained per thread.
- * @return Last-error code, or zero if no error occurred.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-getlasterror
- */
-WINAPI DWORD GetLastError(void);
+__SPRT_WIN_IMPORT WINAPI DWORD GetLastError(void);
 
-/**
- * Sets the last-error code for the calling thread.
- * @param dwErrCode The error code to set (0-4294967295).
- * @see https://docs.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-setlasterror
- */
-WINAPI VOID SetLastError(DWORD dwErrCode);
+__SPRT_WIN_IMPORT WINAPI VOID SetLastError(DWORD dwErrCode);
 
-/**
- * Closes an open object handle.
- * @param hObject Handle to the object to close.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle
- */
-WINAPI BOOL CloseHandle(HANDLE hObject);
+__SPRT_WIN_IMPORT WINAPI BOOL CloseHandle(HANDLE hObject);
 
-/**
- * Retrieves or sets the handle information for a thread object.
- * @param hObject Handle to the object.
- * @param lpdwFlags Pointer to the current flags.
- * @param dwFlags New flag values.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-gethandleinformation
- */
-WINAPI BOOL GetHandleInformation(HANDLE hObject, LPDWORD lpdwFlags);
+__SPRT_WIN_IMPORT WINAPI BOOL GetHandleInformation(HANDLE hObject, LPDWORD lpdwFlags);
 
-/**
- * Sets the handle information for a thread object.
- * @param hObject Handle to the object.
- * @param dwMask Mask specifying which flags to modify.
- * @param dwFlags New flag values.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-sethandleinformation
- */
-WINAPI BOOL SetHandleInformation(HANDLE hObject, DWORD dwMask, DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI BOOL SetHandleInformation(HANDLE hObject, DWORD dwMask, DWORD dwFlags);
 
-/**
- * Duplicates a handle to another process or creates a duplicate for the current process.
- * @param hSourceProcess Handle to the source process.
- * @param hSourceHandle Handle to duplicate.
- * @param hTargetProcess Handle to the target process.
- * @param lpDuplicateHandle Pointer to receive the duplicated handle.
- * @param dwDesiredAccess Desired access for the new handle.
- * @param bInheritHandle TRUE if inheritable.
- * @param dwOptions Duplication options.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-duplicatehandle
- */
-WINAPI BOOL DuplicateHandle(HANDLE hSourceProcess, HANDLE hSourceHandle, HANDLE hTargetProcess,
-		PHANDLE lpDuplicateHandle, DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwOptions);
+__SPRT_WIN_IMPORT WINAPI BOOL DuplicateHandle(HANDLE hSourceProcess, HANDLE hSourceHandle,
+		HANDLE hTargetProcess, PHANDLE lpDuplicateHandle, DWORD dwDesiredAccess,
+		BOOL bInheritHandle, DWORD dwOptions);
 
-/**
- * Locks a region of virtual memory in physical RAM, preventing the system from swapping it to disk.
- * @param lpAddress Base address of the memory region to lock.
- * @param dwSize Size of the memory region in bytes.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtuallock
- */
-WINAPI BOOL VirtualLock(LPVOID lpAddress, SIZE_T dwSize);
+__SPRT_WIN_IMPORT WINAPI BOOL VirtualLock(LPVOID lpAddress, SIZE_T dwSize);
 
-/**
- * Unlocks a region of virtual memory that was previously locked with VirtualLock.
- * @param lpAddress Base address of the memory region to unlock.
- * @param dwSize Size of the memory region in bytes.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualunlock
- */
-WINAPI BOOL VirtualUnlock(LPVOID lpAddress, SIZE_T dwSize);
+__SPRT_WIN_IMPORT WINAPI BOOL VirtualUnlock(LPVOID lpAddress, SIZE_T dwSize);
 
-WINAPI DWORD GetEnvironmentVariableA(LPCSTR lpName, LPSTR lpBuffer, DWORD nSize);
+__SPRT_WIN_IMPORT WINAPI DWORD GetEnvironmentVariableA(LPCSTR lpName, LPSTR lpBuffer, DWORD nSize);
 
-WINAPI BOOL SetEnvironmentVariableA(LPCSTR lpName, LPCSTR lpValue);
+__SPRT_WIN_IMPORT WINAPI BOOL SetEnvironmentVariableA(LPCSTR lpName, LPCSTR lpValue);
 
-WINAPI DWORD GetEnvironmentVariableW(LPCWSTR lpName, LPWSTR lpBuffer, DWORD nSize);
+__SPRT_WIN_IMPORT WINAPI DWORD GetEnvironmentVariableW(LPCWSTR lpName, LPWSTR lpBuffer,
+		DWORD nSize);
 
-WINAPI BOOL SetEnvironmentVariableW(LPCWSTR lpName, LPCWSTR lpValue);
+__SPRT_WIN_IMPORT WINAPI BOOL SetEnvironmentVariableW(LPCWSTR lpName, LPCWSTR lpValue);
 
-WINAPI VOID Sleep(DWORD dwMilliseconds);
+__SPRT_WIN_IMPORT WINAPI VOID Sleep(DWORD dwMilliseconds);
 
-WINAPI DWORD SleepEx(DWORD dwMilliseconds, BOOL bAlertable);
+__SPRT_WIN_IMPORT WINAPI DWORD SleepEx(DWORD dwMilliseconds, BOOL bAlertable);
 
-WINAPI BOOL WaitOnAddress(volatile VOID *Address, PVOID CompareAddress, SIZE_T AddressSize,
-		DWORD dwMilliseconds);
+__SPRT_WIN_IMPORT WINAPI BOOL WaitOnAddress(volatile VOID *Address, PVOID CompareAddress,
+		SIZE_T AddressSize, DWORD dwMilliseconds);
 
-WINAPI VOID WakeByAddressSingle(PVOID Address);
+__SPRT_WIN_IMPORT WINAPI VOID WakeByAddressSingle(PVOID Address);
 
-WINAPI VOID WakeByAddressAll(PVOID Address);
+__SPRT_WIN_IMPORT WINAPI VOID WakeByAddressAll(PVOID Address);
 
-WINAPI BOOL IsDebuggerPresent();
+__SPRT_WIN_IMPORT WINAPI BOOL IsDebuggerPresent();
 
-WINAPI HANDLE GetStdHandle(DWORD nStdHandle);
+__SPRT_WIN_IMPORT WINAPI HANDLE GetStdHandle(DWORD nStdHandle);
 
-WINAPI BOOL GetConsoleScreenBufferInfo(HANDLE hConsoleOutput,
+__SPRT_WIN_IMPORT WINAPI BOOL GetConsoleScreenBufferInfo(HANDLE hConsoleOutput,
 		PCONSOLE_SCREEN_BUFFER_INFO lpConsoleScreenBufferInfo);
 
-WINAPI BOOL SetConsoleCP(UINT wCodePageID);
+__SPRT_WIN_IMPORT WINAPI BOOL SetConsoleCP(UINT wCodePageID);
 
-WINAPI BOOL SetConsoleOutputCP(UINT wCodePageID);
+__SPRT_WIN_IMPORT WINAPI BOOL SetConsoleOutputCP(UINT wCodePageID);
 
-WINAPI BOOL GetConsoleMode(HANDLE hConsoleHandle, LPDWORD lpMode);
+__SPRT_WIN_IMPORT WINAPI BOOL GetConsoleMode(HANDLE hConsoleHandle, LPDWORD lpMode);
 
-WINAPI BOOL SetConsoleMode(HANDLE hConsoleHandle, DWORD dwMode);
+__SPRT_WIN_IMPORT WINAPI BOOL SetConsoleMode(HANDLE hConsoleHandle, DWORD dwMode);
 
-WINAPI DWORD GetCurrentProcessorNumber(VOID);
+__SPRT_WIN_IMPORT WINAPI DWORD GetCurrentProcessorNumber(VOID);
 
-WINAPI VOID OutputDebugStringA(LPCSTR lpOutputString);
+__SPRT_WIN_IMPORT WINAPI VOID OutputDebugStringA(LPCSTR lpOutputString);
 
-WINAPI VOID OutputDebugStringW(LPCWSTR lpOutputString);
+__SPRT_WIN_IMPORT WINAPI VOID OutputDebugStringW(LPCWSTR lpOutputString);
+
+SPRT_FORCEINLINE void CopyMemory(LPVOID Destination, const VOID *Source, SIZE_T Length) {
+	__sprt_memcpy(Destination, Source, Length);
+}
+
+SPRT_FORCEINLINE void FillMemory(LPVOID Destination, SIZE_T Length, BYTE Value) {
+	__sprt_memset(Destination, Value, Length);
+}
+
+SPRT_FORCEINLINE void ZeroMemory(LPVOID Destination, SIZE_T Length) {
+	__sprt_memset(Destination, 0, Length);
+}
 
 __SPRT_END_DECL
 

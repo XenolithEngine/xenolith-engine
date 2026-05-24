@@ -1,0 +1,5 @@
+LIBRARY shcore.dll
+EXPORTS
+	SetProcessDpiAwareness
+	GetProcessDpiAwareness
+	GetDpiForMonitor

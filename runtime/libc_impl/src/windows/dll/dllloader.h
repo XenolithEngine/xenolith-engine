@@ -51,6 +51,12 @@ THE SOFTWARE.
 
 #define PE_GET_OFFSET(module, offset) ((BYTE*)(module) + (offset))
 
+// loader\-\>[a-zA-Z0-9_]+\.call\<decltype\(\&([a-zA-Z0-9_]+)\)\>\(\n?[\t ]*loader\-\>([a-zA-Z0-9_]+)\.[a-zA-Z0-9_]+
+// DLL_LOAD_AND_CALL(loader, \1, \2
+
+#define DLL_LOAD_AND_CALL(Loader, DllName, Function, ...) \
+	Loader->DllName.call<decltype(&::Function)>(Loader->DllName.Function, __VA_ARGS__)
+
 // Loader can do error reporting by exit codes in [1-255]
 static constexpr int LOADER_ERROR_NO_KERNEL32 = 254;
 static constexpr int LOADER_ERROR_NO_GETPROCADDRESS = 253;

@@ -831,91 +831,94 @@ typedef struct tagTRACKMOUSEEVENT {
 
 __SPRT_BEGIN_DECL
 
-WINAPI HINSTANCE ShellExecuteA(HWND hwnd, LPCSTR lpOperation, LPCSTR lpFile, LPCSTR lpParameters,
-		LPCSTR lpDirectory, INT nShowCmd);
+__SPRT_WIN_IMPORT WINAPI HINSTANCE ShellExecuteA(HWND hwnd, LPCSTR lpOperation, LPCSTR lpFile,
+		LPCSTR lpParameters, LPCSTR lpDirectory, INT nShowCmd);
 
-WINAPI HINSTANCE ShellExecuteW(HWND hwnd, LPCWSTR lpOperation, LPCWSTR lpFile, LPCWSTR lpParameters,
-		LPCWSTR lpDirectory, INT nShowCmd);
+__SPRT_WIN_IMPORT WINAPI HINSTANCE ShellExecuteW(HWND hwnd, LPCWSTR lpOperation, LPCWSTR lpFile,
+		LPCWSTR lpParameters, LPCWSTR lpDirectory, INT nShowCmd);
 
-WINAPI HANDLE LoadImageW(HINSTANCE hInst, LPCWSTR name, UINT type, int cx, int cy, UINT fuLoad);
+__SPRT_WIN_IMPORT WINAPI HANDLE LoadImageW(HINSTANCE hInst, LPCWSTR name, UINT type, int cx, int cy,
+		UINT fuLoad);
 
-WINAPI HCURSOR LoadCursorW(HINSTANCE hInstance, LPCWSTR lpCursorName);
+__SPRT_WIN_IMPORT WINAPI HCURSOR LoadCursorW(HINSTANCE hInstance, LPCWSTR lpCursorName);
 
-WINAPI SHORT GetKeyState(int nVirtKey);
+__SPRT_WIN_IMPORT WINAPI SHORT GetKeyState(int nVirtKey);
 
-WINAPI LONG_PTR GetWindowLongPtrW(HWND hWnd, int nIndex);
+__SPRT_WIN_IMPORT WINAPI LONG_PTR GetWindowLongPtrW(HWND hWnd, int nIndex);
 
-WINAPI LONG_PTR SetWindowLongPtrW(HWND hWnd, int nIndex, LONG_PTR dwNewLong);
+__SPRT_WIN_IMPORT WINAPI LONG_PTR SetWindowLongPtrW(HWND hWnd, int nIndex, LONG_PTR dwNewLong);
 
-WINAPI HWND CreateWindowExW(DWORD dwExStyle, LPCWSTR lpClassName, LPCWSTR lpWindowName,
-		DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu,
-		HINSTANCE hInstance, LPVOID lpParam);
+__SPRT_WIN_IMPORT WINAPI HWND CreateWindowExW(DWORD dwExStyle, LPCWSTR lpClassName,
+		LPCWSTR lpWindowName, DWORD dwStyle, int X, int Y, int nWidth, int nHeight, HWND hWndParent,
+		HMENU hMenu, HINSTANCE hInstance, LPVOID lpParam);
 
-WINAPI BOOL ShowWindow(HWND hWnd, int nCmdShow);
+__SPRT_WIN_IMPORT WINAPI BOOL ShowWindow(HWND hWnd, int nCmdShow);
 
-WINAPI BOOL SetForegroundWindow(HWND hWnd);
+__SPRT_WIN_IMPORT WINAPI BOOL SetForegroundWindow(HWND hWnd);
 
-WINAPI HWND SetActiveWindow(HWND hWnd);
+__SPRT_WIN_IMPORT WINAPI HWND SetActiveWindow(HWND hWnd);
 
-WINAPI HWND SetFocus(HWND hWnd);
+__SPRT_WIN_IMPORT WINAPI HWND SetFocus(HWND hWnd);
 
-WINAPI BOOL EnableWindow(HWND hWnd, BOOL bEnable);
+__SPRT_WIN_IMPORT WINAPI BOOL EnableWindow(HWND hWnd, BOOL bEnable);
 
-WINAPI BOOL IsWindowEnabled(HWND hWnd);
+__SPRT_WIN_IMPORT WINAPI BOOL IsWindowEnabled(HWND hWnd);
 
-WINAPI BOOL GetWindowRect(HWND hWnd, LPRECT lpRect);
+__SPRT_WIN_IMPORT WINAPI BOOL GetWindowRect(HWND hWnd, LPRECT lpRect);
 
-WINAPI LONG SetWindowLongW(HWND hWnd, int nIndex, LONG dwNewLong);
+__SPRT_WIN_IMPORT WINAPI LONG SetWindowLongW(HWND hWnd, int nIndex, LONG dwNewLong);
 
-WINAPI BOOL AdjustWindowRect(LPRECT lpRect, DWORD dwStyle, BOOL bMenu);
+__SPRT_WIN_IMPORT WINAPI BOOL AdjustWindowRect(LPRECT lpRect, DWORD dwStyle, BOOL bMenu);
 
-WINAPI BOOL AdjustWindowRectEx(LPRECT lpRect, DWORD dwStyle, BOOL bMenu, DWORD dwExStyle);
+__SPRT_WIN_IMPORT WINAPI BOOL AdjustWindowRectEx(LPRECT lpRect, DWORD dwStyle, BOOL bMenu,
+		DWORD dwExStyle);
 
 LRESULT DefWindowProcW(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam);
 
-WINAPI BOOL SetWindowPos(HWND hWnd, HWND hWndInsertAfter, int X, int Y, int cx, int cy,
-		UINT uFlags);
+__SPRT_WIN_IMPORT WINAPI BOOL SetWindowPos(HWND hWnd, HWND hWndInsertAfter, int X, int Y, int cx,
+		int cy, UINT uFlags);
 
-WINAPI HANDLE MonitorFromWindow(HWND hwnd, DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI HANDLE MonitorFromWindow(HWND hwnd, DWORD dwFlags);
 
-WINAPI UINT GetDpiForWindow(HWND hwnd);
+__SPRT_WIN_IMPORT WINAPI UINT GetDpiForWindow(HWND hwnd);
 
-WINAPI BOOL FlashWindow(HWND hWnd, BOOL bInvert);
+__SPRT_WIN_IMPORT WINAPI BOOL FlashWindow(HWND hWnd, BOOL bInvert);
 
-WINAPI BOOL GetWindowPlacement(HWND hWnd, WINDOWPLACEMENT *lpwndpl);
+__SPRT_WIN_IMPORT WINAPI BOOL GetWindowPlacement(HWND hWnd, WINDOWPLACEMENT *lpwndpl);
 
-WINAPI BOOL SetWindowPlacement(HWND hWnd, const WINDOWPLACEMENT *lpwndpl);
+__SPRT_WIN_IMPORT WINAPI BOOL SetWindowPlacement(HWND hWnd, const WINDOWPLACEMENT *lpwndpl);
 
-WINAPI BOOL DestroyWindow(HWND hWnd);
+__SPRT_WIN_IMPORT WINAPI BOOL DestroyWindow(HWND hWnd);
 
-WINAPI HCURSOR SetCursor(HCURSOR hCursor);
+__SPRT_WIN_IMPORT WINAPI HCURSOR SetCursor(HCURSOR hCursor);
 
-WINAPI ATOM RegisterClassW(const WNDCLASSW *lpWndClass);
+__SPRT_WIN_IMPORT WINAPI ATOM RegisterClassW(const WNDCLASSW *lpWndClass);
 
-WINAPI BOOL UnregisterClassW(LPCWSTR lpClassName, HINSTANCE hInstance);
+__SPRT_WIN_IMPORT WINAPI BOOL UnregisterClassW(LPCWSTR lpClassName, HINSTANCE hInstance);
 
-WINAPI HMENU GetSystemMenu(HWND hWnd, BOOL bRevert);
+__SPRT_WIN_IMPORT WINAPI HMENU GetSystemMenu(HWND hWnd, BOOL bRevert);
 
-WINAPI BOOL SetMenuItemInfoW(HMENU hmenu, UINT item, BOOL fByPositon, LPCMENUITEMINFOW lpmii);
+__SPRT_WIN_IMPORT WINAPI BOOL SetMenuItemInfoW(HMENU hmenu, UINT item, BOOL fByPositon,
+		LPCMENUITEMINFOW lpmii);
 
-WINAPI BOOL SetMenuDefaultItem(HMENU hMenu, UINT uItem, UINT fByPos);
+__SPRT_WIN_IMPORT WINAPI BOOL SetMenuDefaultItem(HMENU hMenu, UINT uItem, UINT fByPos);
 
-WINAPI BOOL TrackPopupMenu(HMENU hMenu, UINT uFlags, int x, int y, int nReserved, HWND hWnd,
-		const RECT *prcRect);
+__SPRT_WIN_IMPORT WINAPI BOOL TrackPopupMenu(HMENU hMenu, UINT uFlags, int x, int y, int nReserved,
+		HWND hWnd, const RECT *prcRect);
 
-WINAPI HRESULT DwmExtendFrameIntoClientArea(HWND hWnd, const MARGINS *pMarInset);
+__SPRT_WIN_IMPORT WINAPI HRESULT DwmExtendFrameIntoClientArea(HWND hWnd, const MARGINS *pMarInset);
 
-WINAPI HWND GetCapture(VOID);
+__SPRT_WIN_IMPORT WINAPI HWND GetCapture(VOID);
 
-WINAPI HWND SetCapture(HWND hWnd);
+__SPRT_WIN_IMPORT WINAPI HWND SetCapture(HWND hWnd);
 
-WINAPI BOOL ReleaseCapture(VOID);
+__SPRT_WIN_IMPORT WINAPI BOOL ReleaseCapture(VOID);
 
-WINAPI BOOL TrackMouseEvent(LPTRACKMOUSEEVENT lpEventTrack);
+__SPRT_WIN_IMPORT WINAPI BOOL TrackMouseEvent(LPTRACKMOUSEEVENT lpEventTrack);
 
-WINAPI UINT MapVirtualKeyW(UINT uCode, UINT uMapType);
+__SPRT_WIN_IMPORT WINAPI UINT MapVirtualKeyW(UINT uCode, UINT uMapType);
 
-WINAPI int MessageBoxW(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType);
+__SPRT_WIN_IMPORT WINAPI int MessageBoxW(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType);
 
 #ifdef UNICODE
 #define MessageBox  MessageBoxW

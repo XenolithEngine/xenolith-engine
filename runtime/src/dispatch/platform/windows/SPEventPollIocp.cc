@@ -57,13 +57,13 @@ Status PollIocpHandle::rearm(IocpData *iocp, PollIocpSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
 		if (!source->event) {
-			source->event = ReportEventAsCompletion(iocp->_port, source->handle, 1,
+			source->event = __sprt_ReportEventAsCompletion(iocp->_port, source->handle, 1,
 					reinterpret_cast<uintptr_t>(this), nullptr);
 			if (!source->event) {
 				return sprt::status::lastErrorToStatus(GetLastError());
 			}
 		} else {
-			if (!RestartEventCompletion2(source->event, iocp->_port, source->handle, 1,
+			if (!__sprt_RestartEventCompletion2(source->event, iocp->_port, source->handle, 1,
 						reinterpret_cast<uintptr_t>(this), nullptr)) {
 				return sprt::status::lastErrorToStatus(GetLastError());
 			}
@@ -76,7 +76,7 @@ Status PollIocpHandle::disarm(IocpData *iocp, PollIocpSource *source) {
 	auto status = prepareDisarm();
 	if (status == Status::Ok) {
 		if (source->event) {
-			CancelEventCompletion(source->event, true);
+			__sprt_CancelEventCompletion(source->event, true);
 			source->event = nullptr;
 		}
 		++_timeline;

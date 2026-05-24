@@ -92,7 +92,7 @@ void TimerIocpSource::stop() {
 	active = false;
 
 	if (event) {
-		CancelEventCompletion(event, true);
+		__sprt_CancelEventCompletion(event, true);
 		event = nullptr;
 	}
 
@@ -114,7 +114,7 @@ void TimerIocpSource::cancel() {
 	active = false;
 
 	if (event) {
-		CancelEventCompletion(event, true);
+		__sprt_CancelEventCompletion(event, true);
 		event = nullptr;
 	}
 
@@ -162,14 +162,14 @@ Status TimerIocpHandle::rearm(IocpData *iocp, TimerIocpSource *source) {
 			source->reset();
 		}
 		if (!source->event) {
-			source->event = ReportEventAsCompletion(iocp->_port, source->handle, _timeline,
+			source->event = __sprt_ReportEventAsCompletion(iocp->_port, source->handle, _timeline,
 					reinterpret_cast<uintptr_t>(this), nullptr);
 			if (!source->event) {
 				return sprt::status::lastErrorToStatus(GetLastError());
 			}
 		} else {
-			if (!RestartEventCompletion2(source->event, iocp->_port, source->handle, _timeline,
-						reinterpret_cast<uintptr_t>(this), nullptr)) {
+			if (!__sprt_RestartEventCompletion2(source->event, iocp->_port, source->handle,
+						_timeline, reinterpret_cast<uintptr_t>(this), nullptr)) {
 				return sprt::status::lastErrorToStatus(GetLastError());
 			}
 		}

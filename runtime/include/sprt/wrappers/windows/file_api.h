@@ -436,349 +436,183 @@ typedef struct _WIN32_FIND_DATAW {
 
 __SPRT_BEGIN_DECL
 
-/* ---- File I/O (handleapi.h, fileapi.h) ---- */
-/**
- * Creates or opens a file or I/O device.
- * @param lpFileName Name of the file/device to create/open.
- * @param dwDesiredAccess Access mode (read/write).
- * @param dwShareMode Share mode.
- * @param lpSecurityAttributes Security attributes (NULL = default).
- * @param dwCreationDisposition Creation action.
- * @param dwFlagsAndAttributes File attributes and flags.
- * @param hTemplateFile Template file handle (usually NULL).
- * @return Handle to the file/device, or INVALID_HANDLE_VALUE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
- */
-WINAPI HANDLE CreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,
-		LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition,
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateFileW(LPCWSTR lpFileName, DWORD dwDesiredAccess,
+		DWORD dwShareMode, LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition,
 		DWORD dwFlagsAndAttributes, HANDLE hTemplateFile);
 
-WINAPI HANDLE CreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,
-		LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition,
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess,
+		DWORD dwShareMode, LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition,
 		DWORD dwFlagsAndAttributes, HANDLE hTemplateFile);
 
-/**
- * Reads data from a file.
- * @param hFile Handle to the file.
- * @param lpBuffer Buffer to receive the read data.
- * @param nNumberOfBytesToRead Number of bytes to read.
- * @param lpNumberOfBytesRead Pointer to receive actual bytes read.
- * @param lpOverlapped Optional overlapped structure for async I/O.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-readfile
- */
-WINAPI BOOL ReadFile(HANDLE hFile, LPVOID lpBuffer, DWORD nNumberOfBytesToRead,
+__SPRT_WIN_IMPORT WINAPI BOOL ReadFile(HANDLE hFile, LPVOID lpBuffer, DWORD nNumberOfBytesToRead,
 		LPDWORD lpNumberOfBytesRead, LPOVERLAPPED lpOverlapped);
 
-/**
- * Writes data to a file.
- * @param hFile Handle to the file.
- * @param lpBuffer Buffer containing data to write.
- * @param nNumberOfBytesToWrite Number of bytes to write.
- * @param lpNumberOfBytesWritten Pointer to receive actual bytes written.
- * @param lpOverlapped Optional overlapped structure for async I/O.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefile
- */
-WINAPI BOOL WriteFile(HANDLE hFile, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite,
+__SPRT_WIN_IMPORT WINAPI BOOL WriteFile(HANDLE hFile, LPCVOID lpBuffer, DWORD nNumberOfBytesToWrite,
 		LPDWORD lpNumberOfBytesWritten, LPOVERLAPPED lpOverlapped);
 
-/**
- * Sets the file pointer for a given file handle.
- * @param hFile Handle to the file.
- * @param liDistanceToMove Structure specifying distance to move.
- * @param lpNewFilePointer Pointer to receive new file position (may be NULL).
- * @param dwMoveMethod Method for moving the pointer.
- * @return New file position, or INVALID_SET_FILE_POINTER on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfilepointerex
- */
-WINAPI BOOL SetFilePointerEx(HANDLE hFile, LARGE_INTEGER liDistanceToMove,
+__SPRT_WIN_IMPORT WINAPI BOOL SetFilePointerEx(HANDLE hFile, LARGE_INTEGER liDistanceToMove,
 		PLARGE_INTEGER lpNewFilePointer, DWORD dwMoveMethod);
 
-/**
- * Sets the end-of-file for a file.
- * @param hFile Handle to the file.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setendoffile
- */
-WINAPI BOOL SetEndOfFile(HANDLE hFile);
+__SPRT_WIN_IMPORT WINAPI BOOL SetEndOfFile(HANDLE hFile);
 
-/**
- * Flushes the buffers for a specified file and also causes all file data to be written to the disk.
- * @param hFile Handle to an open file.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers
- */
-WINAPI BOOL FlushFileBuffers(HANDLE hFile);
+__SPRT_WIN_IMPORT WINAPI BOOL FlushFileBuffers(HANDLE hFile);
 
-/**
- * Retrieves the path of a file or directory given its handle.
- * @param hHandle Handle to an open file object.
- * @param lpFilePath Buffer for the output path string.
- * @param nSize Size of the buffer in characters.
- * @param dwFlags Flags controlling the output format.
- * @return Length of the string copied to the buffer, or zero on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
- */
-WINAPI DWORD GetFinalPathNameByHandleW(HANDLE hHandle, LPWSTR lpFilePath, DWORD nSize,
-		DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI DWORD GetFinalPathNameByHandleW(HANDLE hHandle, LPWSTR lpFilePath,
+		DWORD nSize, DWORD dwFlags);
 
-/**
- * Sets the attributes of a file or directory.
- * @param lpFileName Path to the file or directory.
- * @param dwFileAttributes New file attributes.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfileattributesw
- */
-WINAPI BOOL SetFileAttributesW(LPCWSTR lpFileName, DWORD dwFileAttributes);
+__SPRT_WIN_IMPORT WINAPI BOOL SetFileAttributesW(LPCWSTR lpFileName, DWORD dwFileAttributes);
 
-WINAPI BOOL SetFileAttributesA(LPCSTR lpFileName, DWORD dwFileAttributes);
+__SPRT_WIN_IMPORT WINAPI BOOL SetFileAttributesA(LPCSTR lpFileName, DWORD dwFileAttributes);
 
-/**
- * Sets file information for an open file or directory handle.
- * @param hFile Handle to the file or directory.
- * @param FileInformationClass Type of file information to set.
- * @param lpFileInformation Pointer to file information structure.
- * @param dwSize Size of the information in bytes.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfileinformationbyhandle
- */
-WINAPI BOOL SetFileInformationByHandle(HANDLE hFile, FILE_INFO_BY_HANDLE_CLASS FileInformationClass,
-		LPVOID lpFileInformation, DWORD dwBufferSize);
-
-/**
- * Creates a new directory.
- * @param lpPathName Path of the directory to create.
- * @param lpSecurityAttributes Security attributes (NULL = default).
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createdirectoryw
- */
-WINAPI BOOL CreateDirectoryW(LPCWSTR lpPathName, LPSECURITY_ATTRIBUTES lpSecurityAttributes);
-
-/**
- * Creates a temporary file and returns its name.
- * @param lpPathName Path for the temp file directory.
- * @param lpTemplateFile Template filename prefix (up to 3 chars).
- * @param uUnique Value appended to create unique filename.
- * @param lpTempFileName Buffer for the generated filename.
- * @return Length of the generated filename, or zero on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-gettempfilenamew
- */
-WINAPI DWORD GetTempFileNameW(LPCWSTR lpPathName, LPCWSTR lpTemplateFile, UINT uUnique,
-		LPWSTR lpTempFileName);
-
-WINAPI BOOL GetFileInformationByHandleEx(HANDLE hFile,
+__SPRT_WIN_IMPORT WINAPI BOOL SetFileInformationByHandle(HANDLE hFile,
 		FILE_INFO_BY_HANDLE_CLASS FileInformationClass, LPVOID lpFileInformation,
 		DWORD dwBufferSize);
 
-WINAPI DWORD GetLogicalDrives();
+__SPRT_WIN_IMPORT WINAPI BOOL CreateDirectoryW(LPCWSTR lpPathName,
+		LPSECURITY_ATTRIBUTES lpSecurityAttributes);
 
-/**
- * Determines whether a path is relative.
- * @param pszPath Pointer to null-terminated string containing the path to check.
- * @return TRUE if the path is relative, FALSE otherwise.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/shlwapi/nf-shlwapi-pathisrelativew
- */
-WINAPI BOOL PathIsRelativeW(LPCWSTR pszPath);
+__SPRT_WIN_IMPORT WINAPI DWORD GetTempFileNameW(LPCWSTR lpPathName, LPCWSTR lpTemplateFile,
+		UINT uUnique, LPWSTR lpTempFileName);
 
-/**
- * Retrieves the current directory for the current process.
- * @param nBufferLength Length of the buffer in characters.
- * @param lpBuffer Pointer to a buffer that receives the current directory path.
- * @return Length of the string copied to the buffer, or zero if the buffer length is less than or equal to zero.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getcurrentdirectoryw
- */
-WINAPI DWORD GetCurrentDirectoryW(DWORD nBufferLength, LPWSTR lpBuffer);
+__SPRT_WIN_IMPORT WINAPI BOOL GetFileInformationByHandleEx(HANDLE hFile,
+		FILE_INFO_BY_HANDLE_CLASS FileInformationClass, LPVOID lpFileInformation,
+		DWORD dwBufferSize);
 
-/**
- * Moves the file pointer of an open file.
- * @param hFile Handle to the file.
- * @param lDistanceToMove Number of bytes to move the file pointer.
- * @param lpDistanceToMoveHigh Pointer to the high-order word of the distance to move (can be NULL).
- * @param dwMoveMethod Method for moving the file pointer (FILE_BEGIN, FILE_CURRENT, or FILE_END).
- * @return Low-order portion of the new file-pointer position, or INVALID_SET_FILE_POINTER on error.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfilepointer
- */
-WINAPI DWORD SetFilePointer(HANDLE hFile, LONG lDistanceToMove, LONG *lpDistanceToMoveHigh,
-		DWORD dwMoveMethod);
+__SPRT_WIN_IMPORT WINAPI DWORD GetLogicalDrives();
 
-/**
- * Retrieves file information for the specified file handle.
- * @param hFile Handle to the file.
- * @param lpFileInformation Pointer to a BY_HANDLE_FILE_INFORMATION structure that receives file information.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileinformationbyhandle
- */
-WINAPI BOOL GetFileInformationByHandle(HANDLE hFile,
+__SPRT_WIN_IMPORT WINAPI BOOL PathIsRelativeW(LPCWSTR pszPath);
+
+__SPRT_WIN_IMPORT WINAPI DWORD GetCurrentDirectoryW(DWORD nBufferLength, LPWSTR lpBuffer);
+
+__SPRT_WIN_IMPORT WINAPI DWORD SetFilePointer(HANDLE hFile, LONG lDistanceToMove,
+		LONG *lpDistanceToMoveHigh, DWORD dwMoveMethod);
+
+__SPRT_WIN_IMPORT WINAPI BOOL GetFileInformationByHandle(HANDLE hFile,
 		LPBY_HANDLE_FILE_INFORMATION lpFileInformation);
 
-/**
- * Reopens an existing file with different access rights.
- * @param hOriginalFile Handle to the original file.
- * @param dwDesiredAccess Access mode for the new handle.
- * @param dwShareMode Share mode for the new handle.
- * @param dwFlagsAndAttributes File attributes and flags.
- * @return New file handle, or INVALID_HANDLE_VALUE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-reopenfile
- */
-WINAPI HANDLE ReOpenFile(HANDLE hOriginalFile, DWORD dwDesiredAccess, DWORD dwShareMode,
-		DWORD dwFlagsAndAttributes);
-/**
- * Creates a file mapping object for use with memory-mapped files.
- * @param lpFileAttributes Security attributes (NULL = default).
- * @param dwMaximumSizeHigh High-order 32 bits of maximum size.
- * @param dwMaximumSizeLow Low-order 32 bits of maximum size.
- * @param lpName Name of the file mapping object.
- * @param flProtect Protection for the mapping.
- * @param dwDesiredAccess Access mode for the mapping.
- * @return Handle to the file mapping object, or NULL on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-createfilemappingw
- */
-WINAPI HANDLE CreateFileMappingW(HANDLE hFile, LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
-		DWORD flProtect, DWORD dwMaximumSizeHigh, DWORD dwMaximumSizeLow, LPCWSTR lpName);
+__SPRT_WIN_IMPORT WINAPI HANDLE ReOpenFile(HANDLE hOriginalFile, DWORD dwDesiredAccess,
+		DWORD dwShareMode, DWORD dwFlagsAndAttributes);
 
-WINAPI HANDLE CreateFileMappingA(HANDLE hFile, LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
-		DWORD flProtect, DWORD dwMaximumSizeHigh, DWORD dwMaximumSizeLow, LPCSTR lpName);
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateFileMappingW(HANDLE hFile,
+		LPSECURITY_ATTRIBUTES lpFileMappingAttributes, DWORD flProtect, DWORD dwMaximumSizeHigh,
+		DWORD dwMaximumSizeLow, LPCWSTR lpName);
 
-/**
- * Creates a view of a file mapping object in the address space of the calling process.
- * @param hFileMappingObject Handle to the file mapping object.
- * @param dwDesiredAccess Access mode for the view.
- * @param dwFileOffsetHigh High-order 32 bits of offset.
- * @param dwFileOffsetLow Low-order 32 bits of offset.
- * @param dwNumberOfBytesToMap Number of bytes to map.
- * @return Pointer to the base address of the view, or NULL on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-mapviewoffile
- */
-WINAPI LPVOID MapViewOfFile(HANDLE hFileMappingObject, DWORD dwDesiredAccess,
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateFileMappingA(HANDLE hFile,
+		LPSECURITY_ATTRIBUTES lpFileMappingAttributes, DWORD flProtect, DWORD dwMaximumSizeHigh,
+		DWORD dwMaximumSizeLow, LPCSTR lpName);
+
+__SPRT_WIN_IMPORT WINAPI LPVOID MapViewOfFile(HANDLE hFileMappingObject, DWORD dwDesiredAccess,
 		DWORD dwFileOffsetHigh, DWORD dwFileOffsetLow, SIZE_T dwNumberOfBytesToMap);
 
-/**
- * Unmaps a mapped view of a file from the calling processs address space.
- * @param lpBaseAddress Base address of the view to unmap.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-unmapviewoffile
- */
-WINAPI BOOL UnmapViewOfFile(LPCVOID lpBaseAddress);
+__SPRT_WIN_IMPORT WINAPI BOOL UnmapViewOfFile(LPCVOID lpBaseAddress);
 
-/**
- * Flushes modified pages of a mapped view of a file to disk.
- * @param lpBaseAddress Base address of the view to flush.
- * @param dwNumberOfBytesToFlush Number of bytes to flush (0 = all).
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-flushviewoffile
- */
-WINAPI BOOL FlushViewOfFile(LPCVOID lpBaseAddress, SIZE_T dwNumberOfBytesToFlush);
+__SPRT_WIN_IMPORT WINAPI BOOL FlushViewOfFile(LPCVOID lpBaseAddress, SIZE_T dwNumberOfBytesToFlush);
 
-/**
- * Deletes an existing file.
- * @param lpFileName Name of the file to delete.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilew
- */
-WINAPI BOOL DeleteFileW(LPCWSTR lpFileName);
+__SPRT_WIN_IMPORT WINAPI BOOL DeleteFileW(LPCWSTR lpFileName);
 
-WINAPI BOOL DeleteFileA(LPCSTR lpFileName);
+__SPRT_WIN_IMPORT WINAPI BOOL DeleteFileA(LPCSTR lpFileName);
 
-/**
- * Removes an empty directory.
- * @param lpPathName Name of the directory to remove.
- * @return TRUE on success, FALSE on failure.
- * @see https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectoryw
- */
-WINAPI BOOL RemoveDirectoryW(LPCWSTR lpPathName);
+__SPRT_WIN_IMPORT WINAPI BOOL RemoveDirectoryW(LPCWSTR lpPathName);
 
-WINAPI DWORD GetFileAttributesW(LPCWSTR lpFileName);
+__SPRT_WIN_IMPORT WINAPI DWORD GetFileAttributesW(LPCWSTR lpFileName);
 
-WINAPI DWORD GetFileAttributesA(LPCSTR lpFileName);
+__SPRT_WIN_IMPORT WINAPI DWORD GetFileAttributesA(LPCSTR lpFileName);
 
-WINAPI BOOL GetFileAttributesExW(LPCWSTR lpFileName, GET_FILEEX_INFO_LEVELS fInfoLevelId,
-		LPVOID lpFileInformation);
+__SPRT_WIN_IMPORT WINAPI BOOL GetFileAttributesExW(LPCWSTR lpFileName,
+		GET_FILEEX_INFO_LEVELS fInfoLevelId, LPVOID lpFileInformation);
 
-WINAPI BOOL GetFileAttributesExA(LPCSTR lpFileName, GET_FILEEX_INFO_LEVELS fInfoLevelId,
-		LPVOID lpFileInformation);
+__SPRT_WIN_IMPORT WINAPI BOOL GetFileAttributesExA(LPCSTR lpFileName,
+		GET_FILEEX_INFO_LEVELS fInfoLevelId, LPVOID lpFileInformation);
 
-WINAPI BOOL MoveFileExW(LPCWSTR lpExistingFileName, LPCWSTR lpNewFileName, DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI BOOL MoveFileExW(LPCWSTR lpExistingFileName, LPCWSTR lpNewFileName,
+		DWORD dwFlags);
 
-WINAPI BOOL MoveFileExA(LPCSTR lpExistingFileName, LPCSTR lpNewFileName, DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI BOOL MoveFileExA(LPCSTR lpExistingFileName, LPCSTR lpNewFileName,
+		DWORD dwFlags);
 
-WINAPI BOOL SetCurrentDirectoryW(LPCWSTR lpPathName);
+__SPRT_WIN_IMPORT WINAPI BOOL SetCurrentDirectoryW(LPCWSTR lpPathName);
 
-WINAPI BOOL GetVolumeInformationW(LPCWSTR lpRootPathName, LPWSTR lpVolumeNameBuffer,
-		DWORD nVolumeNameSize, LPDWORD lpVolumeSerialNumber, LPDWORD lpMaximumComponentLength,
-		LPDWORD lpFileSystemFlags, LPWSTR lpFileSystemNameBuffer, DWORD nFileSystemNameSize);
+__SPRT_WIN_IMPORT WINAPI BOOL GetVolumeInformationW(LPCWSTR lpRootPathName,
+		LPWSTR lpVolumeNameBuffer, DWORD nVolumeNameSize, LPDWORD lpVolumeSerialNumber,
+		LPDWORD lpMaximumComponentLength, LPDWORD lpFileSystemFlags, LPWSTR lpFileSystemNameBuffer,
+		DWORD nFileSystemNameSize);
 
-WINAPI BOOL GetDiskFreeSpaceExW(LPCWSTR lpDirectoryName,
+__SPRT_WIN_IMPORT WINAPI BOOL GetDiskFreeSpaceExW(LPCWSTR lpDirectoryName,
 		PULARGE_INTEGER lpFreeBytesAvailableToCaller, PULARGE_INTEGER lpTotalNumberOfBytes,
 		PULARGE_INTEGER lpTotalNumberOfFreeBytes);
 
-WINAPI BOOL CreateHardLinkW(LPCWSTR lpFileName, LPCWSTR lpExistingFileName,
+__SPRT_WIN_IMPORT WINAPI BOOL CreateHardLinkW(LPCWSTR lpFileName, LPCWSTR lpExistingFileName,
 		LPSECURITY_ATTRIBUTES lpSecurityAttributes);
 
-WINAPI BOOLEAN CreateSymbolicLinkW(LPCWSTR lpSymlinkFileName, LPCWSTR lpTargetFileName,
-		DWORD dwFlags);
+__SPRT_WIN_IMPORT WINAPI BOOLEAN CreateSymbolicLinkW(LPCWSTR lpSymlinkFileName,
+		LPCWSTR lpTargetFileName, DWORD dwFlags);
 
-WINAPI BOOL CreatePipe(PHANDLE hReadPipe, PHANDLE hWritePipe,
+__SPRT_WIN_IMPORT WINAPI BOOL CreatePipe(PHANDLE hReadPipe, PHANDLE hWritePipe,
 		LPSECURITY_ATTRIBUTES lpPipeAttributes, DWORD nSize);
 
-WINAPI DWORD GetTempPathW(DWORD nBufferLength, LPWSTR lpBuffer);
+__SPRT_WIN_IMPORT WINAPI DWORD GetTempPathW(DWORD nBufferLength, LPWSTR lpBuffer);
 
-WINAPI DWORD GetTempPathA(DWORD nBufferLength, LPSTR lpBuffer);
+__SPRT_WIN_IMPORT WINAPI DWORD GetTempPathA(DWORD nBufferLength, LPSTR lpBuffer);
 
-WINAPI HRESULT PathAllocCanonicalize(PCWSTR pszPathIn, ULONG dwFlags, PWSTR *ppszPathOut);
+__SPRT_WIN_IMPORT WINAPI HRESULT PathAllocCanonicalize(PCWSTR pszPathIn, ULONG dwFlags,
+		PWSTR *ppszPathOut);
 
-WINAPI BOOL ReadFileScatter(HANDLE hFile, FILE_SEGMENT_ELEMENT aSegmentArray[],
+__SPRT_WIN_IMPORT WINAPI BOOL ReadFileScatter(HANDLE hFile, FILE_SEGMENT_ELEMENT aSegmentArray[],
 		DWORD nNumberOfBytesToRead, LPDWORD lpReserved, LPOVERLAPPED lpOverlapped);
 
-WINAPI BOOL WriteFileGather(HANDLE hFile, FILE_SEGMENT_ELEMENT aSegmentArray[],
+__SPRT_WIN_IMPORT WINAPI BOOL WriteFileGather(HANDLE hFile, FILE_SEGMENT_ELEMENT aSegmentArray[],
 		DWORD nNumberOfBytesToWrite, LPDWORD lpReserved, LPOVERLAPPED lpOverlapped);
 
-WINAPI DWORD GetFileSize(HANDLE hFile, LPDWORD lpFileSizeHigh);
+__SPRT_WIN_IMPORT WINAPI DWORD GetFileSize(HANDLE hFile, LPDWORD lpFileSizeHigh);
 
-WINAPI BOOL GetFileSizeEx(HANDLE hFile, PLARGE_INTEGER lpFileSize);
+__SPRT_WIN_IMPORT WINAPI BOOL GetFileSizeEx(HANDLE hFile, PLARGE_INTEGER lpFileSize);
 
-WINAPI DWORD GetFileType(HANDLE hFile);
+__SPRT_WIN_IMPORT WINAPI DWORD GetFileType(HANDLE hFile);
 
-WINAPI BOOL AreFileApisANSI(VOID);
+__SPRT_WIN_IMPORT WINAPI BOOL AreFileApisANSI(VOID);
 
-WINAPI BOOL GetDiskFreeSpaceA(LPCSTR lpRootPathName, LPDWORD lpSectorsPerCluster,
+__SPRT_WIN_IMPORT WINAPI BOOL GetDiskFreeSpaceA(LPCSTR lpRootPathName, LPDWORD lpSectorsPerCluster,
 		LPDWORD lpBytesPerSector, LPDWORD lpNumberOfFreeClusters, LPDWORD lpTotalNumberOfClusters);
 
-WINAPI BOOL GetDiskFreeSpaceW(LPCWSTR lpRootPathName, LPDWORD lpSectorsPerCluster,
+__SPRT_WIN_IMPORT WINAPI BOOL GetDiskFreeSpaceW(LPCWSTR lpRootPathName, LPDWORD lpSectorsPerCluster,
 		LPDWORD lpBytesPerSector, LPDWORD lpNumberOfFreeClusters, LPDWORD lpTotalNumberOfClusters);
 
-WINAPI DWORD GetFullPathNameW(LPCWSTR lpFileName, DWORD nBufferLength, LPWSTR lpBuffer,
-		LPWSTR *lpFilePart);
+__SPRT_WIN_IMPORT WINAPI DWORD GetFullPathNameW(LPCWSTR lpFileName, DWORD nBufferLength,
+		LPWSTR lpBuffer, LPWSTR *lpFilePart);
 
-WINAPI DWORD GetFullPathNameA(LPCSTR lpFileName, DWORD nBufferLength, LPSTR lpBuffer,
-		LPSTR *lpFilePart);
+__SPRT_WIN_IMPORT WINAPI DWORD GetFullPathNameA(LPCSTR lpFileName, DWORD nBufferLength,
+		LPSTR lpBuffer, LPSTR *lpFilePart);
 
-WINAPI BOOL LockFile(HANDLE hFile, DWORD dwFileOffsetLow, DWORD dwFileOffsetHigh,
+__SPRT_WIN_IMPORT WINAPI BOOL LockFile(HANDLE hFile, DWORD dwFileOffsetLow, DWORD dwFileOffsetHigh,
 		DWORD nNumberOfBytesToLockLow, DWORD nNumberOfBytesToLockHigh);
 
-WINAPI BOOL LockFileEx(HANDLE hFile, DWORD dwFlags, DWORD dwReserved, DWORD nNumberOfBytesToLockLow,
-		DWORD nNumberOfBytesToLockHigh, LPOVERLAPPED lpOverlapped);
+__SPRT_WIN_IMPORT WINAPI BOOL LockFileEx(HANDLE hFile, DWORD dwFlags, DWORD dwReserved,
+		DWORD nNumberOfBytesToLockLow, DWORD nNumberOfBytesToLockHigh, LPOVERLAPPED lpOverlapped);
 
-WINAPI BOOL UnlockFile(HANDLE hFile, DWORD dwFileOffsetLow, DWORD dwFileOffsetHigh,
-		DWORD nNumberOfBytesToUnlockLow, DWORD nNumberOfBytesToUnlockHigh);
+__SPRT_WIN_IMPORT WINAPI BOOL UnlockFile(HANDLE hFile, DWORD dwFileOffsetLow,
+		DWORD dwFileOffsetHigh, DWORD nNumberOfBytesToUnlockLow, DWORD nNumberOfBytesToUnlockHigh);
 
-WINAPI BOOL UnlockFileEx(HANDLE hFile, DWORD dwReserved, DWORD nNumberOfBytesToUnlockLow,
-		DWORD nNumberOfBytesToUnlockHigh, LPOVERLAPPED lpOverlapped);
+__SPRT_WIN_IMPORT WINAPI BOOL UnlockFileEx(HANDLE hFile, DWORD dwReserved,
+		DWORD nNumberOfBytesToUnlockLow, DWORD nNumberOfBytesToUnlockHigh,
+		LPOVERLAPPED lpOverlapped);
 
-WINAPI HANDLE FindFirstFileW(LPCWSTR lpFileName, LPWIN32_FIND_DATAW lpFindFileData);
+__SPRT_WIN_IMPORT WINAPI HANDLE FindFirstFileW(LPCWSTR lpFileName,
+		LPWIN32_FIND_DATAW lpFindFileData);
 
-WINAPI HANDLE FindFirstFileA(LPCSTR lpFileName, LPWIN32_FIND_DATAW lpFindFileData);
+__SPRT_WIN_IMPORT WINAPI HANDLE FindFirstFileA(LPCSTR lpFileName,
+		LPWIN32_FIND_DATAW lpFindFileData);
 
-WINAPI BOOL FindNextFileW(HANDLE hFindFile, LPWIN32_FIND_DATAW lpFindFileData);
+__SPRT_WIN_IMPORT WINAPI BOOL FindNextFileW(HANDLE hFindFile, LPWIN32_FIND_DATAW lpFindFileData);
 
-WINAPI BOOL FindNextFileA(HANDLE hFindFile, LPWIN32_FIND_DATAA lpFindFileData);
+__SPRT_WIN_IMPORT WINAPI BOOL FindNextFileA(HANDLE hFindFile, LPWIN32_FIND_DATAA lpFindFileData);
 
-WINAPI BOOL FindClose(HANDLE hFindFile);
+__SPRT_WIN_IMPORT WINAPI BOOL FindClose(HANDLE hFindFile);
 
-WINAPI LONG CompareFileTime(const FILETIME *lpFileTime1, const FILETIME *lpFileTime2);
+__SPRT_WIN_IMPORT WINAPI LONG CompareFileTime(const FILETIME *lpFileTime1,
+		const FILETIME *lpFileTime2);
 
-WINAPI BOOL GetFileTime(HANDLE hFile, LPFILETIME lpCreationTime, LPFILETIME lpLastAccessTime,
-		LPFILETIME lpLastWriteTime);
+__SPRT_WIN_IMPORT WINAPI BOOL GetFileTime(HANDLE hFile, LPFILETIME lpCreationTime,
+		LPFILETIME lpLastAccessTime, LPFILETIME lpLastWriteTime);
 
 #ifdef UNICODE
 #define CreateFileMapping  CreateFileMappingW

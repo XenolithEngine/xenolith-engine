@@ -15,11 +15,11 @@ __SPRT_C_FUNC void perror(const char *msg) __SPRT_NOEXCEPT {
 	int old_mode = f->mode;
 
 	if (msg && *msg) {
-		fwrite(msg, strlen(msg), 1, f);
+		fwrite(msg, sprt::strlen(msg), 1, f);
 		fputc(':', f);
 		fputc(' ', f);
 	}
-	fwrite(errstr, strlen(errstr), 1, f);
+	fwrite(errstr, sprt::strlen(errstr), 1, f);
 	fputc('\n', f);
 
 	f->mode = old_mode;

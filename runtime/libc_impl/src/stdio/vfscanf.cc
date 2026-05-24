@@ -207,7 +207,7 @@ __SPRT_C_FUNC int vfscanf(FILE *__restrict f, const char *__restrict fmt,
 		case 'c':
 		case '[':
 			if (t == 'c' || t == 's') {
-				memset(scanset, -1, sizeof scanset);
+				sprt::memset(scanset, -1, sizeof scanset);
 				scanset[0] = 0;
 				if (t == 's') {
 					scanset[1 + '\t'] = 0;
@@ -223,7 +223,7 @@ __SPRT_C_FUNC int vfscanf(FILE *__restrict f, const char *__restrict fmt,
 				} else {
 					invert = 0;
 				}
-				memset(scanset, invert, sizeof scanset);
+				sprt::memset(scanset, invert, sizeof scanset);
 				scanset[0] = 0;
 				if (*p == '-') {
 					p++, scanset[1 + '-'] = 1 - invert;
@@ -391,7 +391,7 @@ static size_t string_read(FILE *f, unsigned char *buf, size_t len) {
 	if (k < len) {
 		len = k;
 	}
-	memcpy(buf, src, len);
+	sprt::memcpy(buf, src, len);
 	f->rpos = (unsigned char *)(src + len);
 	f->rend = (unsigned char *)(src + k);
 	f->cookie = src + k;

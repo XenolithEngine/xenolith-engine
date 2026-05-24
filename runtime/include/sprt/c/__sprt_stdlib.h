@@ -138,12 +138,7 @@ SPRT_API void *__SPRT_ID(local_alloc)(__SPRT_ID(size_t) size) __SPRT_NOEXCEPT;
 SPRT_API void __SPRT_ID(local_free)(void *value, __SPRT_ID(size_t) size) __SPRT_NOEXCEPT;
 
 SPRT_API __SPRT_NORETURN void __SPRT_ID(abort_impl)(void);
-
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_abort)
-inline __SPRT_NORETURN void __SPRT_ID(abort)(void) { __builtin_abort(); }
-#else
 #define __sprt_abort __SPRT_ID(abort_impl)
-#endif
 
 
 SPRT_API int __SPRT_ID(atexit_impl)(void (*)(void));
@@ -187,30 +182,15 @@ SPRT_API void __SPRT_ID(qsort_r)(void *, __SPRT_ID(size_t), __SPRT_ID(size_t),
 		int (*)(const void *, const void *, void *), void *);
 
 SPRT_API int __SPRT_ID(abs_impl)(int);
-
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_abs)
-inline int __SPRT_ID(abs)(int v) { return __builtin_abs(v); }
-#else
 #define __sprt_abs __SPRT_ID(abs_impl)
-#endif
 
 
 SPRT_API long __SPRT_ID(labs_impl)(long);
-
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_labs)
-inline long __SPRT_ID(labs)(long v) { return __builtin_labs(v); }
-#else
 #define __sprt_labs __SPRT_ID(labs_impl)
-#endif
 
 
 SPRT_API long long __SPRT_ID(llabs_impl)(long long);
-
-#if __SPRT_CONFIG_BUILTIN_INLINES && __SPRT_HAS_BUILTIN(__builtin_llabs)
-inline long long __SPRT_ID(llabs)(long long v) { return __builtin_llabs(v); }
-#else
 #define __sprt_llabs __SPRT_ID(llabs_impl)
-#endif
 
 
 typedef struct {

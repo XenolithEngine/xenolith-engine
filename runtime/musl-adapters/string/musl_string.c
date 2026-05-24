@@ -8,6 +8,9 @@
 #include "../../musl-libc/src/string/strnlen.c"
 #include "../../musl-libc/src/string/strncpy.c"
 #include "../../musl-libc/src/string/strstr.c"
+#include "../../musl-libc/src/string/strchr.c"
+#include "../../musl-libc/src/string/strcmp.c"
+#include "../../musl-libc/src/string/strncmp.c"
 #endif
 
 #pragma clang diagnostic ignored "-Wunused-label"
@@ -35,8 +38,6 @@
 #include "../../musl-libc/src/string/strcasecmp.c"
 #include "../../musl-libc/src/string/strcasestr.c"
 #include "../../musl-libc/src/string/strcat.c"
-#include "../../musl-libc/src/string/strchr.c"
-#include "../../musl-libc/src/string/strcmp.c"
 #include "../../musl-libc/src/string/strcspn.c"
 #include "../../musl-libc/src/string/strdup.c"
 #include "../../musl-libc/src/string/strerror_r.c"
@@ -44,7 +45,6 @@
 #include "../../musl-libc/src/string/strlcpy.c"
 #include "../../musl-libc/src/string/strncasecmp.c"
 #include "../../musl-libc/src/string/strncat.c"
-#include "../../musl-libc/src/string/strncmp.c"
 #include "../../musl-libc/src/string/strndup.c"
 #include "../../musl-libc/src/string/strpbrk.c"
 #include "../../musl-libc/src/string/strrchr.c"
