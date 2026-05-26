@@ -18,8 +18,6 @@
 #define SIZE_L   2
 #define SIZE_ll  3
 
-__SPRT_C_FUNC FILE *const stdin;
-
 static void store_int(void *dest, int size, unsigned long long i) {
 	if (!dest) {
 		return;

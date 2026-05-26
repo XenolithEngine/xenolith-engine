@@ -64,6 +64,27 @@ static inline auto performWithNativePath(const char *path, const Callback &cb,
 }
 
 template <typename Result, typename Callback>
+static inline auto performWithNativePath(const wchar_t *path, const Callback &cb,
+		const Result &error) {
+	static_assert(is_invocable_v<Callback, const wchar_t *>);
+
+	auto pathlen = path ? __constexpr_strlen(path) : 0;
+	auto isNative = __sprt_wfpath_is_native(path, pathlen);
+	if (!path || isNative) {
+		return cb(path);
+	} else {
+		auto buflen = sprt::max((__SPRT_ID(size_t))8, pathlen + 1);
+		auto buf = __sprt_typed_malloca(wchar_t, buflen);
+		if (__sprt_wfpath_to_native(path, pathlen, buf, buflen) > 0) {
+			return cb(buf);
+		}
+		__sprt_freea(buf);
+	}
+	*__sprt___errno_location() = EINVAL;
+	return error;
+}
+
+template <typename Result, typename Callback>
 static inline auto performWithPosixePath(const char *path, const Callback &cb,
 		const Result &error) {
 	static_assert(is_invocable_v<Callback, const char *>);
@@ -75,6 +96,26 @@ static inline auto performWithPosixePath(const char *path, const Callback &cb,
 	} else {
 		auto buf = __sprt_typed_malloca(char, pathlen + 1);
 		if (__sprt_fpath_to_posix(path, pathlen, buf, pathlen + 1) > 0) {
+			return cb(buf);
+		}
+		__sprt_freea(buf);
+	}
+	*__sprt___errno_location() = EINVAL;
+	return error;
+}
+
+template <typename Result, typename Callback>
+static inline auto performWithPosixePath(const wchar_t *path, const Callback &cb,
+		const Result &error) {
+	static_assert(is_invocable_v<Callback, const wchar_t *>);
+
+	auto pathlen = path ? __constexpr_strlen(path) : 0;
+	auto isPosix = __sprt_wfpath_is_posix(path, pathlen);
+	if (!path || isPosix) {
+		return cb(path);
+	} else {
+		auto buf = __sprt_typed_malloca(wchar_t, pathlen + 1);
+		if (__sprt_wfpath_to_posix(path, pathlen, buf, pathlen + 1) > 0) {
 			return cb(buf);
 		}
 		__sprt_freea(buf);

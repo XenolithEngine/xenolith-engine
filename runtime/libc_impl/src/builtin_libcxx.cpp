@@ -63,8 +63,6 @@ void operator delete[](void *ptr, size_t sz, std::align_val_t al) noexcept {
 	return free_aligned_sized(ptr, sprt::to_underlying(al), sz);
 }
 
-__SPRT_C_FUNC FILE *stderr;
-
 // MS C++ ABI function
 __SPRT_C_FUNC void _purecall(void) {
 // Platform-specific debug break

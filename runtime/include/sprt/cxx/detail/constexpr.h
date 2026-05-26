@@ -148,6 +148,46 @@ inline constexpr size_t __constexpr_strlen(const char32_t *str) {
 	return static_cast<size_t>(end - str);
 }
 
+inline constexpr size_t __constexpr_strnlen(const char *str, size_t c) {
+	if (str == nullptr) {
+		return 0;
+	}
+	const char *end = str;
+	while (c-- > 0 && *end != u'\0') { ++end; }
+	return static_cast<size_t>(end - str);
+}
+
+inline constexpr size_t __constexpr_strnlen(const char16_t *str, size_t c) {
+	if (str == nullptr) {
+		return 0;
+	}
+	const char16_t *end = str;
+	while (c-- > 0 && *end != u'\0') { ++end; }
+	return static_cast<size_t>(end - str);
+}
+
+inline constexpr size_t __constexpr_strnlen(const wchar_t *str, size_t c) {
+	if (is_constant_evaluated()) {
+		if (str == nullptr) {
+			return 0;
+		}
+		const wchar_t *end = str;
+		while (c-- > 0 && *end != u'\0') { ++end; }
+		return static_cast<size_t>(end - str);
+	} else {
+		return __sprt_wcslen(str);
+	}
+}
+
+inline constexpr size_t __constexpr_strnlen(const char32_t *str, size_t c) {
+	if (str == nullptr) {
+		return 0;
+	}
+	const char32_t *end = str;
+	while (c-- > 0 && *end != u'\0') { ++end; }
+	return static_cast<size_t>(end - str);
+}
+
 template <typename CharType>
 constexpr inline bool __constexpr_chareq(CharType c1, CharType c2) {
 	return c1 == c2;

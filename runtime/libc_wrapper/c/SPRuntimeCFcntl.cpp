@@ -345,31 +345,4 @@ __SPRT_C_FUNC int __SPRT_ID(sync_file_range)(int __fd, __SPRT_ID(off_t) __offset
 #endif
 }
 
-__SPRT_C_FUNC int _wopen(const wchar_t *name, int __flags, ...) __SPRT_NOEXCEPT {
-	__SPRT_ID(mode_t) __mode = 0;
-
-	if ((__flags & __SPRT_O_CREAT)
-#ifdef __SPRT_O_TMPFILE
-			|| (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE
-#endif
-	) {
-		__sprt_va_list ap;
-		__sprt_va_start(ap, __flags);
-		__mode = __sprt_va_arg(ap, mode_t);
-		__sprt_va_end(ap);
-	}
-	int ret = 0;
-
-	if constexpr (sizeof(wchar_t) == 2) {
-		unicode::toUtf8([&](StringView path) {
-			ret = open(path.data(), __flags, __mode); //
-		}, (const char16_t *)name);
-	} else {
-		unicode::toUtf8([&](StringView path) {
-			ret = open(path.data(), __flags, __mode); //
-		}, (const char32_t *)name);
-	}
-	return ret;
-}
-
 } // namespace sprt

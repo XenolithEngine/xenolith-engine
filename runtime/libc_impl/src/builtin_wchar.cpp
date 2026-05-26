@@ -27,6 +27,11 @@ THE SOFTWARE.
 #include "wchar.h"
 #include "locale.h"
 #include "stdlib.h"
+#include "stdio.h"
+
+#if SPRT_WINDOWS
+#include "windows/wchar.cc"
+#endif
 
 namespace sprt {
 
@@ -156,5 +161,85 @@ __SPRT_C_FUNC int wctob(wint_t c) __SPRT_NOEXCEPT {
 	}
 	return __SPRT_EOF;
 }
+
+
+__SPRT_C_FUNC int wcscpy_s(wchar_t *dest, size_t dest_size, const wchar_t *src) {
+	if (!dest || !src || dest_size == 0 || dest_size > __SPRT_RSIZE_MAX) {
+		__sprt_errno = EINVAL;
+		return EINVAL;
+	}
+
+	auto len = sprt::strlen(src);
+	if (dest_size < len + 1) {
+		__sprt_errno = ERANGE;
+		return ERANGE;
+	}
+
+	wcscpy(dest, src);
+	dest[len] = 0;
+	return 0;
+}
+
+__SPRT_C_FUNC int wcsncpy_s(wchar_t *dest, size_t numberOfElements, const wchar_t *src,
+		size_t count) {
+	if (!dest || !src || numberOfElements == 0 || numberOfElements > __SPRT_RSIZE_MAX) {
+		__sprt_errno = EINVAL;
+		return EINVAL;
+	}
+
+	auto len = wcsnlen(src, count);
+	if (count == ((size_t)-1)) { // _TRUNCATE
+		len = sprt::min(len, numberOfElements - 1);
+		wcsncpy(dest, src, len);
+		dest[len] = 0;
+		return 0;
+	} else if (numberOfElements < len + 1) {
+		dest[0] = 0;
+		__sprt_errno = ERANGE;
+		return ERANGE;
+	}
+
+	wcsncpy(dest, src, len);
+	dest[len] = 0;
+	return 0;
+}
+
+__SPRT_C_FUNC int wcstombs_s(size_t *pReturnValue, char *mbstr, size_t sizeInBytes,
+		const wchar_t *wcstr, size_t count) {
+	if (!mbstr && sizeInBytes > 0) {
+		__sprt_errno = EINVAL;
+		return EINVAL;
+	}
+	if (!wcstr) {
+		__sprt_errno = EINVAL;
+		return EINVAL;
+	}
+
+	auto ssize = wcslen(wcstr);
+
+	if (count != ((size_t)-1)) { // _TRUNCATE
+		auto maxDSize = wcstombs(nullptr, wcstr, 0);
+		if (maxDSize == (size_t)-1 || maxDSize == (size_t)-2) {
+			return __sprt_errno;
+		}
+
+		if (sizeInBytes < maxDSize + 1) {
+			__sprt_errno = ERANGE;
+			return ERANGE;
+		}
+	}
+
+	mbstate_t state{0, 0};
+	auto ret = wcsnrtombs(mbstr, &wcstr, ssize, sizeInBytes - 1, &state);
+	if (ret >= 0) {
+		mbstr[ret] = 0;
+		if (pReturnValue) {
+			*pReturnValue = ret;
+		}
+		return 0;
+	}
+	return __sprt_errno;
+}
+
 
 } // namespace sprt

@@ -37,19 +37,21 @@ THE SOFTWARE.
 
 namespace sprt {
 
-static int __is_exact_windows_native(StringView source) {
+template <typename Char>
+static int __is_exact_windows_native(StringViewBase<Char> source) {
 	// Any path, that starts with \ is windows-native
-	if (source.starts_with('\\')) {
+	if (source.starts_with(Char('\\'))) {
 		return 1;
 	}
 
 	// C:Directory, C:\Directory, C:/Directory is Windows native
-	if (source.size() > 1 && source.is<StringView::LatinUppercase>() && source.at(1) == ':') {
+	if (source.size() > 1 && source.template is<typename StringViewBase<Char>::LatinUppercase>()
+			&& source.at(1) == Char(':')) {
 		return 1;
 	}
 
 	// Any path with \ in it is windows native
-	source.readUntil<StringView::Chars<'\\'>>();
+	source.template readUntil<typename StringViewBase<Char>::template Chars<'\\'>>();
 	if (source.is('\\')) {
 		return 1;
 	}
@@ -67,7 +69,7 @@ __SPRT_C_FUNC int __SPRT_ID(fpath_is_native)(const char *path, __SPRT_ID(size_t)
 	StringView source(path, pathSize);
 	source.readUntil<StringView::Chars<'/'>>();
 	if (source.is('/')) {
-		// Actually, we can pass paths with / to WinAPI, but we can not elsewhere detect other special convertion cases
+		// Actually, we can pass paths with / to WinAPI, but we can not detect other special convertion cases with it
 		return 0;
 	}
 	return 1;
@@ -82,40 +84,78 @@ __SPRT_C_FUNC int __SPRT_ID(fpath_is_posix)(const char *path, __SPRT_ID(size_t) 
 	return 1;
 }
 
-__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_posix)(const char *path,
-		__SPRT_ID(size_t) pathSize, char *buf, __SPRT_ID(size_t) bufSize) {
+__SPRT_C_FUNC int __SPRT_ID(
+		wfpath_is_native)(const __SPRT_ID(wchar_t) * path, __SPRT_ID(size_t) pathSize) {
+	if (__is_exact_windows_native(StringViewBase<char16_t>((char16_t *)path, pathSize))) {
+		return 1;
+	}
+
+	// Path without / also windows-native (no need to convert it), but also POSIX
+
+	StringViewBase<char16_t> source((const char16_t *)path, pathSize);
+	source.readUntil<StringViewBase<char16_t>::Chars<'/'>>();
+	if (source.is('/')) {
+		// Actually, we can pass paths with / to WinAPI, but we can not detect other special convertion cases with it
+		return 0;
+	}
+	return 1;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(
+		wfpath_is_posix)(const __SPRT_ID(wchar_t) * path, __SPRT_ID(size_t) pathSize) {
+	if (__is_exact_windows_native(StringViewBase<char16_t>((char16_t *)path, pathSize))) {
+		return 0;
+	}
+
+	// All that is not exact windows is POSIX
+	return 1;
+}
+
+template <typename Char>
+size_t fpath_to_posix(const Char *path, size_t pathSize, Char *buf, size_t bufSize) {
 	if (bufSize < pathSize) {
 		return 0;
 	}
 
 	auto target = buf;
-	StringView source(path, pathSize);
-	if (source.starts_with("\\\\?\\")) {
-		// Windows 10 version 1803 is required for the runtime, we can support long paths without
-		// DOS device prefix, just skip it
-		source += __constexpr_strlen("\\\\?\\");
+	StringViewBase<Char> source(path, pathSize);
+	// Windows 10 version 1803 is required for the runtime, we can support long paths without
+	// DOS device prefix, just skip it
+	if constexpr (sizeof(Char) == 2) {
+		if (source.starts_with(u"\\\\?\\")) {
+			source += __constexpr_strlen(u"\\\\?\\");
+		}
+	} else {
+		if (source.starts_with("\\\\?\\")) {
+			source += __constexpr_strlen("\\\\?\\");
+		}
 	}
-	if (source.size() > 2 && source.is<StringView::Latin>() && source.at(1) == ':'
-			&& source.at(2) == '\\') {
+
+	auto sep = Char('/');
+	if (source.size() > 2 && source.template is<typename StringViewBase<Char>::Latin>()
+			&& source.at(1) == Char(':') && source.at(2) == Char('\\')) {
 		auto driveLetter = tolower_c(source.at(0));
 		source += 2;
-		target = strappend<char, false>(target, &bufSize, "/", 1);
-		target = strappend<char, false>(target, &bufSize, &driveLetter, 1);
-	} else if (source.size() > 1 && source.is<StringView::Latin>() && source.at(1) == ':') {
+		target = strappend<Char, false>(target, &bufSize, &sep, 1);
+		target = strappend<Char, false>(target, &bufSize, &driveLetter, 1);
+	} else if (source.size() > 1 && source.template is<typename StringViewBase<Char>::Latin>()
+			&& source.at(1) == Char(':')) {
 		auto driveLetter = tolower_c(source.at(0));
 		source += 2;
-		target = strappend<char, false>(target, &bufSize, "/", 1);
-		target = strappend<char, false>(target, &bufSize, &driveLetter, 1);
+		target = strappend<Char, false>(target, &bufSize, &sep, 1);
+		target = strappend<Char, false>(target, &bufSize, &driveLetter, 1);
 	}
 
 	while (!source.empty()) {
 		if (source.is('\\')) {
-			source.skipChars<StringView::Chars<'\\'>>();
-			target = strappend<char, false>(target, &bufSize, "/", 1);
+			auto c = Char('/');
+			source.template skipChars<typename StringViewBase<Char>::template Chars<'\\'>>();
+			target = strappend<Char, false>(target, &bufSize, &c, 1);
 		}
-		auto component = source.readUntil<StringView::Chars<'\\'>>();
+		auto component =
+				source.template readUntil<typename StringViewBase<Char>::template Chars<'\\'>>();
 		if (!component.empty()) {
-			target = strappend<char, false>(target, &bufSize, component.data(), component.size());
+			target = strappend<Char, false>(target, &bufSize, component.data(), component.size());
 		}
 	}
 	if (bufSize > 0) {
@@ -124,51 +164,83 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_posix)(const char *path,
 	return target - buf;
 }
 
-__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_native)(const char *path,
-		__SPRT_ID(size_t) pathSize, char *buf, __SPRT_ID(size_t) bufSize) {
+template <typename Char>
+size_t fpath_to_native(const Char *path, size_t pathSize, Char *buf, size_t bufSize) {
 	if (bufSize < pathSize) {
 		return 0;
 	}
 
 	auto target = buf;
-	StringView source(path, pathSize);
-	if (source == "/") {
-		target = strappend<char>(target, &bufSize, "C:", 2);
-		return target - buf;
+	StringViewBase<Char> source(path, pathSize);
+	if constexpr (sizeof(Char) == 2) {
+		if (source == u"/") {
+			target = strappend<Char>(target, &bufSize, u"C:", 2);
+			return target - buf;
+		}
+	} else {
+		if (source == "/") {
+			target = strappend<Char>(target, &bufSize, "C:", 2);
+			return target - buf;
+		}
 	}
 
-	if (source.starts_with('/')) {
+	if (source.starts_with(Char('/'))) {
 		++source;
-		auto sub = source.readUntil<StringView::Chars<'/'>>();
-		if (sub.size() == 1 && sub.is<StringView::Latin>()) {
+		auto sub = source.template readUntil<typename StringViewBase<Char>::template Chars<'/'>>();
+		if (sub.size() == 1 && sub.template is<typename StringViewBase<Char>::Latin>()) {
 			auto driveLetter = toupper_c(sub.at(0));
-			target = strappend<char, false>(target, &bufSize, &driveLetter, 1);
-			target = strappend<char, false>(target, &bufSize, ":", 1);
+			auto c = Char(':');
+			target = strappend<Char, false>(target, &bufSize, &driveLetter, 1);
+			target = strappend<Char, false>(target, &bufSize, &c, 1);
 			// C: - path to current dir on drive C,
 			// but C:\ - path to the drive's root, so, add \ to the end of string
 			if (source.empty()) {
-				target = strappend<char, false>(target, &bufSize, "\\", 1);
+				c = Char('\\');
+				target = strappend<Char, false>(target, &bufSize, &c, 1);
 			}
 		} else {
-			target = strappend<char, false>(target, &bufSize, "\\", 1);
-			target = strappend<char, false>(target, &bufSize, sub.data(), sub.size());
+			auto c = Char('\\');
+			target = strappend<Char, false>(target, &bufSize, &c, 1);
+			target = strappend<Char, false>(target, &bufSize, sub.data(), sub.size());
 		}
 	}
 
 	while (!source.empty()) {
-		if (source.is('/')) {
-			target = strappend<char, false>(target, &bufSize, "\\", 1);
-			source.skipChars<StringView::Chars<'/'>>();
+		if (source.is(Char('/'))) {
+			auto c = Char('\\');
+			target = strappend<Char, false>(target, &bufSize, &c, 1);
+			source.template skipChars<typename StringViewBase<Char>::template Chars<'/'>>();
 		}
-		auto component = source.readUntil<StringView::Chars<'/'>>();
+		auto component =
+				source.template readUntil<typename StringViewBase<Char>::template Chars<'/'>>();
 		if (!component.empty()) {
-			target = strappend<char, false>(target, &bufSize, component.data(), component.size());
+			target = strappend<Char, false>(target, &bufSize, component.data(), component.size());
 		}
 	}
 	if (bufSize > 0) {
 		target[0] = 0;
 	}
 	return target - buf;
+}
+
+__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_posix)(const char *path,
+		__SPRT_ID(size_t) pathSize, char *buf, __SPRT_ID(size_t) bufSize) {
+	return fpath_to_posix(path, pathSize, buf, bufSize);
+}
+
+__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(fpath_to_native)(const char *path,
+		__SPRT_ID(size_t) pathSize, char *buf, __SPRT_ID(size_t) bufSize) {
+	return fpath_to_native(path, pathSize, buf, bufSize);
+}
+
+__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wfpath_to_posix)(const __SPRT_ID(wchar_t) * path,
+		__SPRT_ID(size_t) pathSize, __SPRT_ID(wchar_t) * buf, __SPRT_ID(size_t) bufSize) {
+	return fpath_to_posix((const char16_t *)path, pathSize, (char16_t *)buf, bufSize);
+}
+
+__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wfpath_to_native)(const __SPRT_ID(wchar_t) * path,
+		__SPRT_ID(size_t) pathSize, __SPRT_ID(wchar_t) * buf, __SPRT_ID(size_t) bufSize) {
+	return fpath_to_native((const char16_t *)path, pathSize, (char16_t *)buf, bufSize);
 }
 
 __SPRT_C_FUNC int remove(const char *path) __SPRT_NOEXCEPT {

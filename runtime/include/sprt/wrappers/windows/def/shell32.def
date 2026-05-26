@@ -1,4 +1,4 @@
-LIBRARY setupapi.dll
+LIBRARY shell32.dll
 EXPORTS
 	SHGetKnownFolderPath
 	ShellExecuteA

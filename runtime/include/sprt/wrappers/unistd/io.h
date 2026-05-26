@@ -21,6 +21,7 @@ struct _stat {
 
 #define _stati64 _stat
 #define _fstati64 _fstat
+#define _wstati64 _wstat
 
 #ifndef _O_BINARY
 #define _O_BINARY 0
@@ -39,12 +40,14 @@ struct _stat {
 #define _S_IFMT __SPRT_S_IFMT
 #define _S_IFDIR __SPRT_S_IFDIR
 
+#ifdef _WIN32
 #ifndef _MAX_PATH
 #define _MAX_PATH   260 // max. length of full pathname
 #define _MAX_DRIVE  3   // max. length of drive component
 #define _MAX_DIR    256 // max. length of path component
 #define _MAX_FNAME  256 // max. length of file name component
 #define _MAX_EXT    256 // max. length of extension component
+#endif
 #endif
 
 #ifndef _SH_DENYRW
@@ -74,23 +77,37 @@ typedef __SPRT_ID(wchar_t) wchar_t;
 __SPRT_BEGIN_DECL
 
 SPRT_API int _wsopen_s(int *pfh, const wchar_t *filename, int oflag, int shflag,
-		int pmode) __SPRT_NOEXCEPT;
+		...) __SPRT_NOEXCEPT;
+SPRT_API int _wsopen(const wchar_t *, int, int, ...) __SPRT_NOEXCEPT;
 SPRT_API int _wopen(const wchar_t *, int, ...) __SPRT_NOEXCEPT;
+
+SPRT_API int _sopen_s(int *pfh, const char *filename, int oflag, int shflag, ...) __SPRT_NOEXCEPT;
+SPRT_API int _sopen(const char *, int, int, ...) __SPRT_NOEXCEPT;
+
 
 SPRT_API char *_fullpath(char *absPath, const char *relPath, size_t maxLength) __SPRT_NOEXCEPT;
 
 SPRT_API wchar_t *_wfullpath(wchar_t *absPath, const wchar_t *relPath,
 		size_t maxLength) __SPRT_NOEXCEPT;
 
+
 SPRT_API __SPRT_ID(FILE) * _wfopen(const wchar_t *, const wchar_t *) __SPRT_NOEXCEPT;
+
+
+SPRT_API __SPRT_ID(FILE) * _fsopen(const char *filename, const char *mode, int sh) __SPRT_NOEXCEPT;
 
 SPRT_API __SPRT_ID(FILE)
 		* _wfsopen(const wchar_t *filename, const wchar_t *mode, int shflag) __SPRT_NOEXCEPT;
 
+
+SPRT_API int freopen_s(__SPRT_ID(FILE) * *stream, const char *fileName, const char *mode,
+		__SPRT_ID(FILE) * oldStream) __SPRT_NOEXCEPT;
+
 SPRT_API int _wfreopen_s(__SPRT_ID(FILE) * *stream, const wchar_t *fileName, const wchar_t *mode,
 		__SPRT_ID(FILE) * oldStream) __SPRT_NOEXCEPT;
 
-SPRT_API int _wstati64(const wchar_t *path, struct _stati64 *buffer);
+
+SPRT_API int _wstat(const wchar_t *path, struct _stati64 *buffer) __SPRT_NOEXCEPT;
 
 SPRT_API int setmode(int, int) __SPRT_NOEXCEPT;
 SPRT_API int _setmode(int, int) __SPRT_NOEXCEPT;
@@ -108,21 +125,6 @@ int _fseeki64(__SPRT_ID(FILE) * file, __SPRT_ID(off_t) pos, int when) SPRT_UMBRE
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_fseek(file, pos, when);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-int _sopen_s(int *handle, const char *path, int flags, int, int mode) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	if (!handle) {
-		return EINVAL;
-	}
-	*handle = __sprt_open(path, flags, mode);
-	if (*handle < 0) {
-		return __sprt_errno;
-	}
-	return 0;
 }
 #endif
 

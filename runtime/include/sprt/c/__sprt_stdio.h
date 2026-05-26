@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_va_list.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_ssize_t.h>
+#include <sprt/c/bits/__sprt_wchar_t.h>
 #include <sprt/c/cross/__sprt_file_ptr.h>
 #include <sprt/c/cross/__sprt_locale.h>
 #include <sprt/c/cross/__sprt_stdio.h>
@@ -44,12 +45,26 @@ SPRT_API __SPRT_ID(size_t) __SPRT_ID(fpath_to_posix)(const char *, __SPRT_ID(siz
 SPRT_API __SPRT_ID(size_t) __SPRT_ID(fpath_to_native)(const char *, __SPRT_ID(size_t) pathSize,
 		char *buf, __SPRT_ID(size_t) bufSize);
 
+SPRT_API __SPRT_ID(size_t) __SPRT_ID(wfpath_to_posix)(const __SPRT_ID(wchar_t) *,
+		__SPRT_ID(size_t) pathSize, __SPRT_ID(wchar_t) * buf, __SPRT_ID(size_t) bufSize);
+
+SPRT_API __SPRT_ID(size_t) __SPRT_ID(wfpath_to_native)(const __SPRT_ID(wchar_t) *,
+		__SPRT_ID(size_t) pathSize, __SPRT_ID(wchar_t) * buf, __SPRT_ID(size_t) bufSize);
+
 #if SPRT_WINDOWS
 SPRT_API int __SPRT_ID(fpath_is_native)(const char *path, __SPRT_ID(size_t) len);
 SPRT_API int __SPRT_ID(fpath_is_posix)(const char *path, __SPRT_ID(size_t) len);
+SPRT_API int __SPRT_ID(wfpath_is_native)(const __SPRT_ID(wchar_t) * path, __SPRT_ID(size_t) len);
+SPRT_API int __SPRT_ID(wfpath_is_posix)(const __SPRT_ID(wchar_t) * path, __SPRT_ID(size_t) len);
 #else
 inline int __SPRT_ID(fpath_is_native)(const char *path, __SPRT_ID(size_t) len) { return 1; }
 inline int __SPRT_ID(fpath_is_posix)(const char *path, __SPRT_ID(size_t) len) { return 1; }
+inline int __SPRT_ID(wfpath_is_native)(const __SPRT_ID(wchar_t) * path, __SPRT_ID(size_t) len) {
+	return 1;
+}
+inline int __SPRT_ID(wfpath_is_posix)(const __SPRT_ID(wchar_t) * path, __SPRT_ID(size_t) len) {
+	return 1;
+}
 #endif
 
 SPRT_API __SPRT_ID(FILE) * __SPRT_ID(stdin_impl)();

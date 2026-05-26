@@ -248,6 +248,9 @@ size_t getUtf8Length(const StringViewBase<char32_t> &str) {
 
 Status toUtf32(char32_t *ibuf, size_t bufSize, const StringView &utf8_str, size_t *ret) {
 	auto buf = ibuf;
+	if (!buf) {
+		return Status::ErrorInvalidArguemnt;
+	}
 	uint8_t offset = 0;
 	auto ptr = utf8_str.data();
 	auto end = ptr + utf8_str.size();
@@ -267,6 +270,9 @@ Status toUtf32(char32_t *ibuf, size_t bufSize, const StringView &utf8_str, size_
 }
 Status toUtf32(char32_t *ibuf, size_t bufSize, const WideStringView &utf16_str, size_t *ret) {
 	auto buf = ibuf;
+	if (!buf) {
+		return Status::ErrorInvalidArguemnt;
+	}
 	uint8_t offset = 0;
 	auto ptr = utf16_str.data();
 	auto end = ptr + utf16_str.size();
@@ -316,6 +322,9 @@ Status toUtf32(const callback<void(StringViewBase<char32_t>)> &cb, const WideStr
 
 Status toUtf16(char16_t *ibuf, size_t bufSize, const StringView &utf8_str, size_t *ret) {
 	auto buf = ibuf;
+	if (!buf) {
+		return Status::ErrorInvalidArguemnt;
+	}
 	uint8_t offset = 0;
 	auto ptr = utf8_str.data();
 	auto end = ptr + utf8_str.size();
@@ -338,6 +347,9 @@ Status toUtf16(char16_t *ibuf, size_t bufSize, const StringView &utf8_str, size_
 SPRT_API Status toUtf16(char16_t *ibuf, size_t bufSize, const StringViewBase<char32_t> &str,
 		size_t *ret) {
 	auto buf = ibuf;
+	if (!buf) {
+		return Status::ErrorInvalidArguemnt;
+	}
 	auto ptr = str.data();
 	auto end = ptr + str.size();
 	while (ptr < end) {
@@ -361,6 +373,9 @@ Status toUtf16(char16_t *ibuf, size_t bufSize, char32_t ch, size_t *ret) {
 	}
 
 	auto buf = ibuf;
+	if (!buf) {
+		return Status::ErrorInvalidArguemnt;
+	}
 	buf += utf16EncodeBuf(buf, bufSize, ch);
 	if (ret) {
 		*ret = buf - ibuf;
@@ -370,6 +385,9 @@ Status toUtf16(char16_t *ibuf, size_t bufSize, char32_t ch, size_t *ret) {
 
 Status toUtf16Html(char16_t *ibuf, size_t bufSize, const StringView &utf8_str, size_t *ret) {
 	auto buf = ibuf;
+	if (!buf) {
+		return Status::ErrorInvalidArguemnt;
+	}
 	uint8_t offset = 0;
 	auto ptr = utf8_str.data();
 	auto end = ptr + utf8_str.size();
@@ -436,6 +454,9 @@ Status toUtf16Html(const callback<void(WideStringView)> &cb, const StringView &d
 
 Status toUtf8(char *ibuf, size_t bufSize, const WideStringView &str, size_t *ret) {
 	auto buf = ibuf;
+	if (!buf) {
+		return Status::ErrorInvalidArguemnt;
+	}
 	uint8_t offset;
 	auto ptr = str.data();
 	auto end = ptr + str.size();
@@ -457,6 +478,9 @@ Status toUtf8(char *ibuf, size_t bufSize, const WideStringView &str, size_t *ret
 
 Status toUtf8(char *ibuf, size_t bufSize, const StringViewBase<char32_t> &str, size_t *ret) {
 	auto buf = ibuf;
+	if (!buf) {
+		return Status::ErrorInvalidArguemnt;
+	}
 	auto ptr = str.data();
 	auto end = ptr + str.size();
 	while (ptr < end) {
@@ -479,6 +503,9 @@ Status toUtf8(char *ibuf, size_t bufSize, char16_t ch, size_t *ret) {
 		return Status::ErrorBufferOverflow;
 	}
 	auto buf = ibuf;
+	if (!buf) {
+		return Status::ErrorInvalidArguemnt;
+	}
 	buf += utf8EncodeBuf(buf, bufSize, ch);
 	if (ret) {
 		*ret = buf - ibuf;
@@ -491,6 +518,9 @@ Status toUtf8(char *ibuf, size_t bufSize, char32_t ch, size_t *ret) {
 		return Status::ErrorBufferOverflow;
 	}
 	auto buf = ibuf;
+	if (!buf) {
+		return Status::ErrorInvalidArguemnt;
+	}
 	buf += utf8EncodeBuf(buf, bufSize, ch);
 	if (ret) {
 		*ret = buf - ibuf;

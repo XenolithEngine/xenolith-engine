@@ -43,6 +43,7 @@ class SPRT_API type_info {
 public:
 	virtual ~type_info();
 
+	// Note that it is a mangled name in SPRT
 	const char *name() const noexcept;
 
 	bool before(const type_info &__arg) const noexcept { return __compare(__arg) < 0; }

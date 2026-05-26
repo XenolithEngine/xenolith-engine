@@ -730,11 +730,11 @@ size_t mbsnrtowcs(wchar_t *__SPRT_RESTRICT ptr, const char **__SPRT_RESTRICT ret
 #endif
 
 SPRT_UMBRELLA_FUNC
-size_t wcsnrtombs(char *__SPRT_RESTRICT ptr, const wchar_t **__SPRT_RESTRICT ret, size_t a,
-		size_t b, mbstate_t *__SPRT_RESTRICT value) SPRT_UMBRELLA_END
+size_t wcsnrtombs(char *__SPRT_RESTRICT dst, const wchar_t **__SPRT_RESTRICT src, size_t ssize,
+		size_t dsize, mbstate_t *__SPRT_RESTRICT value) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
-	return __sprt_wcsnrtombs(ptr, ret, a, b, value);
+	return __sprt_wcsnrtombs(dst, src, ssize, dsize, value);
 }
 #endif
 

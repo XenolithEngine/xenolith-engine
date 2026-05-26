@@ -1202,5 +1202,96 @@ char *getcwd(char *buf, size_t bufSize) __SPRT_NOEXCEPT {
 	}
 	return buf;
 }
+
+wchar_t *_wfullpath(wchar_t *absPath, const wchar_t *relPath, size_t maxLength) __SPRT_NOEXCEPT {
+	if (!relPath) {
+		__sprt_errno = EINVAL;
+		return nullptr;
+	}
+
+	wchar_t *allocBuf = nullptr;
+	wchar_t *ret = nullptr;
+	if (!absPath) {
+		maxLength = GetFullPathNameW(relPath, 0, nullptr, &ret);
+		if (maxLength != 0) {
+			allocBuf = absPath = (wchar_t *)__sprt_malloc(maxLength * sizeof(wchar_t));
+		} else {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		}
+	}
+
+	if (!absPath) {
+		return nullptr;
+	}
+
+	auto retLen = GetFullPathNameW(relPath, maxLength, absPath, &ret);
+	if (retLen > maxLength) {
+		__sprt_errno = EOVERFLOW;
+		if (allocBuf) {
+			__sprt_free(allocBuf);
+		}
+		return nullptr;
+	}
+
+	if (retLen == 0) {
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		if (allocBuf) {
+			__sprt_free(allocBuf);
+		}
+		return nullptr;
+	}
+
+	return absPath;
 }
+
+char *_fullpath(char *absPath, const char *relPath, size_t maxLength) __SPRT_NOEXCEPT {
+	if (!relPath) {
+		__sprt_errno = EINVAL;
+		return nullptr;
+	}
+
+	unicode::toUtf16([&](WideStringView wRelPath) {
+		wchar_t *ret = nullptr;
+		auto wLength = GetFullPathNameW((wchar_t *)wRelPath.data(), 0, nullptr, &ret);
+		if (wLength == 0) {
+			absPath = nullptr;
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return;
+		}
+
+		auto wBuf = __sprt_typed_malloca(wchar_t, wLength);
+		wLength = GetFullPathNameW((wchar_t *)wRelPath.data(), wLength, wBuf, &ret);
+		if (wLength == 0) {
+			absPath = nullptr;
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return;
+		}
+
+		auto required = unicode::getUtf8Length(WideStringView((char16_t *)wBuf, wLength));
+
+		char *mallocBuf = nullptr;
+		if (!absPath) {
+			mallocBuf = absPath = (char *)__sprt_malloc(required);
+			maxLength = required;
+		} else if (required > maxLength) {
+			absPath = nullptr;
+			__sprt_errno = EOVERFLOW;
+			return;
+		}
+
+		size_t written = 0;
+		auto st = unicode::toUtf8(absPath, maxLength, WideStringView((char16_t *)wBuf, wLength),
+				&written);
+		if (st != Status::Ok) {
+			if (mallocBuf) {
+				__sprt_free(mallocBuf);
+			}
+			__sprt_errno = status::toErrno(st);
+			return;
+		}
+	}, relPath);
+	return absPath;
+}
+}
+
 } // namespace sprt

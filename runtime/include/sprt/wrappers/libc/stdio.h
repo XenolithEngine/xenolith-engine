@@ -52,13 +52,19 @@
 #define freopen64 freopen
 #endif
 
+typedef __SPRT_ID(FILE) FILE;
+
 #if __STDC_HOSTED__ == 1
 #define stdin  __SPRT_ID(stdin_impl)()
 #define stdout  __SPRT_ID(stdout_impl)()
 #define stderr  __SPRT_ID(stderr_impl)()
+#else
+__SPRT_BEGIN_DECL
+extern FILE *const stdin;
+extern FILE *const stdout;
+extern FILE *const stderr;
+__SPRT_END_DECL
 #endif
-
-typedef __SPRT_ID(FILE) FILE;
 
 #endif
 

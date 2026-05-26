@@ -69,7 +69,7 @@ int __scandir(__SPRT_ID(DIR) * d, struct __SPRT_DIRENT_NAME ***__name_list,
 		if (!names[cnt]) {
 			break;
 		}
-		memcpy(names[cnt++], de, de->d_reclen);
+		sprt::memcpy(names[cnt++], de, de->d_reclen);
 	}
 
 	if (__sprt_errno) {

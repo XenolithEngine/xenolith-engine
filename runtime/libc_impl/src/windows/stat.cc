@@ -25,6 +25,7 @@ THE SOFTWARE.
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/log.h>
 
+#include <io.h>
 #include "specific.h" // IWYU pragma: keep
 #include "sys/stat.h" // IWYU pragma: keep
 
@@ -138,13 +139,11 @@ int hutimens(HANDLE hFile, const struct __SPRT_TIMESPEC_NAME *times) {
 
 namespace sprt {
 
-static int __wstat(const char *__SPRT_RESTRICT path,
+static int __wstat(const wchar_t *__SPRT_RESTRICT wpath,
 		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat, bool reparsePoint) {
-	auto wpath = __MALLOCA_WSTRING(path);
 	HANDLE h = CreateFileW(wpath, GENERIC_READ,
 			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
 			FILE_FLAG_BACKUP_SEMANTICS | (reparsePoint ? FILE_FLAG_OPEN_REPARSE_POINT : 0), NULL);
-	__sprt_freea(wpath);
 	if (h == INVALID_HANDLE_VALUE) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
@@ -155,10 +154,24 @@ static int __wstat(const char *__SPRT_RESTRICT path,
 	return ret;
 }
 
+static int __wstat(const char *__SPRT_RESTRICT path,
+		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat, bool reparsePoint) {
+	auto wpath = __MALLOCA_WSTRING(path);
+	auto ret = __wstat(wpath, __stat, reparsePoint);
+	__sprt_freea(wpath);
+	return ret;
+}
+
 __SPRT_C_FUNC int stat(const char *__SPRT_RESTRICT path,
 		struct __SPRT_STAT_NAME *__SPRT_RESTRICT __stat) __SPRT_NOEXCEPT {
 	return platform::performWithNativePath(path, [&](const char *target) {
 		return __wstat(target, __stat, false); //
+	}, -1);
+}
+
+__SPRT_C_FUNC int _wstat(const wchar_t *path, struct _stati64 *__stat) __SPRT_NOEXCEPT {
+	return platform::performWithNativePath(path, [&](const wchar_t *target) {
+		return __wstat(target, (struct __SPRT_STAT_NAME *)__stat, false); //
 	}, -1);
 }
 

@@ -21,6 +21,12 @@
 #define __SPRT_O_TMPFILE 020200000 // not implemented
 #define __SPRT_O_NDELAY __SPRT_O_NONBLOCK
 
+// Windows specific
+#define __SPRT_O_SH_DENYNO 0
+#define __SPRT_O_SH_DENYRD 0100000000
+#define __SPRT_O_SH_DENYWR 0200000000
+#define __SPRT_O_SH_DENYRW 0300000000
+
 #define __SPRT_O_ACCMODE 03
 #define __SPRT_O_RDONLY  00
 #define __SPRT_O_WRONLY  01

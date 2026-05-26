@@ -881,8 +881,6 @@ __SPRT_C_FUNC int vasprintf(char **s, const char *fmt, va_list ap) __SPRT_NOEXCE
 	return vsnprintf(*s, l + 1U, fmt, ap);
 }
 
-__SPRT_C_FUNC FILE *const stdout;
-
 __SPRT_C_FUNC int vprintf(const char *__restrict fmt, va_list ap) __SPRT_NOEXCEPT {
 	return vfprintf(stdout, fmt, ap);
 }

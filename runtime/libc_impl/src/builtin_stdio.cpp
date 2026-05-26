@@ -30,6 +30,7 @@ THE SOFTWARE.
 #include "string.h"
 #include "stdlib.h"
 #include "stdio.h"
+#include "wchar.h"
 
 int __fmodeflags(const char *mode) {
 	int flags;
@@ -53,6 +54,33 @@ int __fmodeflags(const char *mode) {
 		flags |= __SPRT_O_TRUNC;
 	}
 	if (*mode == 'a') {
+		flags |= __SPRT_O_APPEND;
+	}
+	return flags;
+}
+
+int __wfmodeflags(const wchar_t *mode) {
+	int flags;
+	if (wcschr(mode, L'+')) {
+		flags = __SPRT_O_RDWR;
+	} else if (*mode == L'r') {
+		flags = __SPRT_O_RDONLY;
+	} else {
+		flags = __SPRT_O_WRONLY;
+	}
+	if (wcschr(mode, L'x')) {
+		flags |= __SPRT_O_EXCL;
+	}
+	if (wcschr(mode, L'e')) {
+		flags |= __SPRT_O_CLOEXEC;
+	}
+	if (*mode != L'r') {
+		flags |= __SPRT_O_CREAT;
+	}
+	if (*mode == L'w') {
+		flags |= __SPRT_O_TRUNC;
+	}
+	if (*mode == L'a') {
 		flags |= __SPRT_O_APPEND;
 	}
 	return flags;

@@ -37,16 +37,16 @@ SPRT_FORCEINLINE constexpr size_t strlen(const char32_t *s) { return __constexpr
 SPRT_FORCEINLINE constexpr size_t strlen(const wchar_t *s) { return __constexpr_strlen(s); }
 
 SPRT_FORCEINLINE constexpr size_t strnlen(const char *s, size_t size) {
-	return __constexpr_strlen(s);
+	return __constexpr_strnlen(s, size);
 }
 SPRT_FORCEINLINE constexpr size_t strnlen(const char16_t *s, size_t size) {
-	return __constexpr_strlen(s);
+	return __constexpr_strnlen(s, size);
 }
 SPRT_FORCEINLINE constexpr size_t strnlen(const char32_t *s, size_t size) {
-	return __constexpr_strlen(s);
+	return __constexpr_strnlen(s, size);
 }
 SPRT_FORCEINLINE constexpr size_t strnlen(const wchar_t *s, size_t size) {
-	return __constexpr_strlen(s);
+	return __constexpr_strnlen(s, size);
 }
 
 SPRT_FORCEINLINE const char *strstr(const char *s1, const char *s2) {

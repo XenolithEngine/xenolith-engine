@@ -26,6 +26,7 @@ THE SOFTWARE.
 #include "fcntl.h"
 #include "unistd.h"
 #include "string.h"
+#include "io.h"
 
 #include "specific.h"
 
@@ -33,7 +34,7 @@ static int __fmodeflags(const char *mode);
 
 namespace sprt {
 
-static FILE *__fopen(const char *__restrict filename, const char *__restrict mode) {
+static FILE *__fopen(const char *__restrict filename, const char *__restrict mode, int shMode) {
 	FILE *f;
 	int fd;
 	int flags;
@@ -46,6 +47,13 @@ static FILE *__fopen(const char *__restrict filename, const char *__restrict mod
 
 	/* Compute the flags to pass to open() */
 	flags = __fmodeflags(mode);
+
+	switch (shMode) {
+	case _SH_DENYRW: flags |= __SPRT_O_SH_DENYRW; break;
+	case _SH_DENYWR: flags |= __SPRT_O_SH_DENYWR; break;
+	case _SH_DENYRD: flags |= __SPRT_O_SH_DENYRD; break;
+	case _SH_DENYNO: flags |= __SPRT_O_SH_DENYNO; break;
+	}
 
 	fd = ::open64(filename, flags, 0666);
 	if (fd < 0) {
@@ -64,29 +72,39 @@ static FILE *__fopen(const char *__restrict filename, const char *__restrict mod
 	return 0;
 }
 
-/*static FILE *__freopen(const char *__restrict filename, const char *__restrict mode,
-		FILE *__restrict f) {
-	return nullptr;
-}*/
-
-__SPRT_C_FUNC FILE *fopen(const char *__restrict filename,
-		const char *__restrict mode) __SPRT_NOEXCEPT {
+__SPRT_C_FUNC FILE *_fsopen(const char *__restrict filename, const char *__restrict mode,
+		int sh) __SPRT_NOEXCEPT {
 	FILE *ret = nullptr;
 	platform::performWithNativePath(filename, [&](const char *nativePath) SPRT_LAMBDAINLINE {
-		ret = __fopen(nativePath, mode);
+		ret = __fopen(nativePath, mode, sh);
 		return 0;
 	}, 0);
 	return ret;
 }
 
-/*__SPRT_C_FUNC FILE *freopen(const char *__SPRT_RESTRICT path, const char *__SPRT_RESTRICT mode,
-		FILE *__SPRT_RESTRICT file) {
+__SPRT_C_FUNC FILE *fopen(const char *__restrict filename,
+		const char *__restrict mode) __SPRT_NOEXCEPT {
 	FILE *ret = nullptr;
-	platform::performWithNativePath(path, [&](const char *nativePath) SPRT_LAMBDAINLINE {
-		ret = __freopen(nativePath, mode, file);
+	platform::performWithNativePath(filename, [&](const char *nativePath) SPRT_LAMBDAINLINE {
+		ret = __fopen(nativePath, mode, _SH_DENYNO);
 		return 0;
 	}, 0);
 	return ret;
-}*/
+}
+
+__SPRT_C_FUNC int freopen_s(__SPRT_ID(FILE) * *stream, const char *fileName, const char *mode,
+		__SPRT_ID(FILE) * oldStream) __SPRT_NOEXCEPT {
+	if (!stream || !fileName || !mode || oldStream) {
+		__sprt_errno = EINVAL;
+		return EINVAL;
+	}
+
+	auto file = freopen(fileName, mode, oldStream);
+	if (file) {
+		*stream = file;
+		return 0;
+	}
+	return __sprt_errno;
+}
 
 } // namespace sprt

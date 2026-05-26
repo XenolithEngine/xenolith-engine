@@ -63,4 +63,5 @@ THE SOFTWARE.
 #include "windows/terminate.cc"
 #include "windows/memory.cc"
 #include "windows/except.cc"
+#include "windows/specific.cc"
 #endif
