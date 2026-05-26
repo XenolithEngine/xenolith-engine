@@ -292,7 +292,9 @@ public:
 	static float getStringWidth(font::FontController *, const DescriptionStyle &,
 			const WideStringView &, bool localized = false);
 
+	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 	virtual ~LabelBase();
+	__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 	virtual bool isLabelDirty() const;
 	virtual StyleVec compileStyle() const;

@@ -39,7 +39,7 @@ MODULE_STAPPLER_NETWORK_GENERAL_LDFLAGS += -framework SystemConfiguration -frame
 endif
 
 ifdef WIN32
-MODULE_STAPPLER_NETWORK_GENERAL_LDFLAGS += -lnormaliz -loldnames -lbcrypt
+MODULE_STAPPLER_NETWORK_GENERAL_LDFLAGS +=
 endif
 
 #spec

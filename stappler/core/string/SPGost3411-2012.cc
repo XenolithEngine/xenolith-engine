@@ -32,6 +32,7 @@
 #pragma clang diagnostic ignored "-Wunused-but-set-variable"
 #endif
 
+#define SIMDE_MATH_NO_LIBM
 #define std sprt
 #include "simde/x86/sse2.h"
 #undef std

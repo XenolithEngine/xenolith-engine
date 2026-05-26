@@ -29,12 +29,14 @@ THE SOFTWARE.
 namespace sprt {
 
 void performDispatchTests() {
-	sprt::cout << "\n== runtime Ref/Rc tests ==\n";
+	sprt::cout << "\n== runtime dispatch tests ==\n";
 
 	auto looper = dispatch::Looper::acquire();
 	if (!looper) {
 		return;
 	}
+
+	sprt::cout << "Typename: " << typeid(looper) << "\n";
 
 	auto c = platform::clock(platform::ClockType::Realtime);
 
@@ -67,7 +69,7 @@ void performDispatchTests() {
 			dispatch::Looper::acquire()->wakeup(dispatch::WakeupFlags::Graceful);
 		}
 	}),
-		.interval = dispatch::TimeInterval::milliseconds(250),
+		.interval = dispatch::TimeInterval::milliseconds(500),
 		.count = 100,
 	});
 
@@ -80,7 +82,7 @@ void performDispatchTests() {
 		if (value >= 10) {
 			sprt::cout << "Timer2: resetting;\n";
 			self->reset(dispatch::TimerInfo{
-				.interval = dispatch::TimeInterval::milliseconds(500),
+				.interval = dispatch::TimeInterval::milliseconds(1'000),
 				.count = 5,
 			});
 			return;
@@ -91,7 +93,8 @@ void performDispatchTests() {
 			dispatch::Looper::acquire()->wakeup(dispatch::WakeupFlags::Graceful);
 		}
 	}),
-		.interval = dispatch::TimeInterval::milliseconds(150),
+		.timeout = dispatch::TimeInterval::milliseconds(3'000),
+		.interval = dispatch::TimeInterval::milliseconds(250),
 		.count = 50,
 	});
 
@@ -133,71 +136,6 @@ void performDispatchTests() {
 
 	thread.join();
 	thread2.join();
-
-	/*struct AppData {
-		uint32_t timerTicks = 0;
-		Rc<event::TimerHandle> timer1;
-		Rc<event::TimerHandle> timer2;
-		Rc<event::QueueRef> queue;
-		Rc<event::ThreadHandle> thread;
-	};
-
-	AppData data;
-
-	//data.queue = Rc<event::QueueRef>::create(event::QueueInfo(), event::QueueFlags::Protected);
-*/
-	/*data.timer2 = data.queue->scheduleTimer(event::TimerInfo{
-			.completion = event::TimerInfo::Completion::create<AppData>(&data,
-					[] (AppData *data, event::TimerHandle *self, uint32_t value, event::Status status) {
-				if (!event::isSuccessful(status)) {
-					log::debug("App", "Error: ", status);
-				} else {
-					log::debug("App", "Timer2: ", value);
-				}
-			}),
-			.timeout = TimeInterval::seconds(5),
-			.count = uint32_t(10),
-		});*/
-
-
-	/*data.dir = data.queue->openDir(event::OpenDirInfo{
-			.completion = event::OpenDirInfo::Completion::create<AppData>(&data,
-					[] (AppData *data, event::DirHandle *self, uint32_t value, event::Status err) {
-				log::debug("App", "OpenDir: ", self->getPath(), ": ", err);
-				self->scan([] (event::FileType type, StringView name) {
-					log::debug("App", "scan: (", type, ") ", name);
-				});
-			}),
-			.file = event::FileOpInfo{
-				.path = StringView("/home/sbkarr")
-			}
-		});
-
-		data.dir2 = data.queue->openDir(event::OpenDirInfo{
-			.completion = event::OpenDirInfo::Completion::create<AppData>(&data,
-					[] (AppData *data, event::DirHandle *self, uint32_t value, event::Status err) {
-				log::debug("App", "OpenDir2: ", self->getPath(), ": ", err);
-				self->scan([] (event::FileType type, StringView name) {
-					log::debug("App", "scan2: (", type, ") ", name);
-				});
-			}),
-			.file = event::FileOpInfo{
-				.root = data.dir,
-				.path = StringView("videos")
-			}
-		});
-
-		data.stat = data.queue->stat(event::StatOpInfo{
-			.completion = event::StatOpInfo::Completion::create<AppData>(&data,
-					[] (AppData *data, event::StatHandle *self, uint32_t value, event::Status err) {
-				log::debug("App", "Stat: ", self->getPath(), ": ", self->getStat());
-			}),
-			.file = event::FileOpInfo{
-				.path = StringView("/home/sbkarr/image1076.png")
-			}
-		});*/
-
-	//data.thread = data.queue->addThreadHandle();
 }
 
 } // namespace sprt

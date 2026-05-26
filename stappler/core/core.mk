@@ -64,7 +64,6 @@ ifdef WIN32
 ifdef TOOLCHAIN_INCLUDEDIR
 MODULE_STAPPLER_CORE_INCLUDES_OBJS += $(addprefix --isystem ,$(TOOLCHAIN_INCLUDEDIR))
 endif
-#MODULE_STAPPLER_CORE_LIBS += -ladvapi32 -lshlwapi -lshell32 -lole32 -luserenv
 endif
 
 # spec

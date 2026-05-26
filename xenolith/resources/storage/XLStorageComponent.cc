@@ -40,10 +40,8 @@ void Component::handleStorageTransaction(db::Transaction &) { }
 
 void Component::handleHeartbeat(const Server &) { }
 
-__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 SP_COVERAGE_TRIVIAL
 ComponentLoader::~ComponentLoader() { }
-__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 SP_COVERAGE_TRIVIAL
 ComponentContainer::~ComponentContainer() { }

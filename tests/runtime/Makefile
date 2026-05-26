@@ -31,7 +31,7 @@ LOCAL_PRIVATE_INCLUDE_PCH :=
 LOCAL_MODULES_PATHS =
 
 LOCAL_MODULES ?= \
-	runtime_libc \
+	runtime_libc_wrapper \
 	runtime
 
 LOCAL_ROOT = $(abspath $(dir $(LOCAL_MAKEFILE)))

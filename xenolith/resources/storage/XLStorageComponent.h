@@ -49,7 +49,7 @@ protected:
 	db::String _name;
 };
 
-class SP_PUBLIC ComponentLoader {
+class SP_PUBLIC ComponentLoader : public sprt::AllocBase {
 public:
 	virtual ~ComponentLoader();
 

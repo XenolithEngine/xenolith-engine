@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include <sprt/runtime/dispatch/thread_info.h>
+
 namespace sprt {
 
 struct ThreadArg {
@@ -14,6 +16,8 @@ static void *threadFunc(void *arg) {
 	pthread_t self = pthread_self();
 
 	//usleep(100);
+
+	sprt::dispatch::thread_info::set("TestThread");
 
 	printf("pthread: thread %d (tid=%p) started\n", ta->id, (void *)self);
 	return reinterpret_cast<void *>(static_cast<intptr_t>(ta->id * 10));

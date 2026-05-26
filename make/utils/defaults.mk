@@ -227,8 +227,8 @@ endif
 
 ifdef STAPPLER_TARGET_FILE
 
-$(call print_verbose,(defaults.mk) Use user-provided host file: $(STAPPLER_HOST_FILE))
-include $(STAPPLER_HOST_FILE)
+$(call print_verbose,(defaults.mk) Use user-provided host file: $(STAPPLER_TARGET_FILE))
+include $(STAPPLER_TARGET_FILE)
 
 else
 

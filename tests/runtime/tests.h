@@ -34,6 +34,8 @@ void performPthreadRwlockTest();
 void performPthreadBarrierTest();
 void performPthreadSpinlockTest();
 
+void performLibcTimeTest();
+
 void performMallocStringTests();
 
 void performMallocUnorderedMapTests();
@@ -47,6 +49,7 @@ void performSortTests();
 void performConstexprTest();
 void performSharedMutexStressTests();
 void performBitsetTests();
+void performRttiTests();
 
 void performRefTests();
 void performDispatchTests();

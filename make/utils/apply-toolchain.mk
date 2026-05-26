@@ -60,7 +60,7 @@ GLOBAL_LIB_LDFLAGS := $(OSTYPE_LIB_LDFLAGS)
 #
 
 ifdef HOST_AR
-GLOBAL_AR = $(HOST_AR)
+GLOBAL_AR = $(HOST_AR) rcs
 endif
 
 ifdef HOST_CC

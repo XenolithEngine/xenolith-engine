@@ -34,7 +34,9 @@ public:
 	static void defineFileScheme(Scheme &);
 	static void defineErrorScheme(Scheme &);
 
+	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 	virtual ~ApplicationInterface();
+	__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 	template <typename... Args>
 	void error(Args &&...args) const {

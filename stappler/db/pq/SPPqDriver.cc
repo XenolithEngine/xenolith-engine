@@ -709,9 +709,7 @@ ResultCursor::ResultCursor(const Driver *d, Driver::Result res) : driver(d), res
 	nrows = driver->getNTuples(result);
 }
 
-__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 ResultCursor::~ResultCursor() { clear(); }
-__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 bool ResultCursor::isBinaryFormat(size_t field) const {
 	return driver->isBinaryFormat(result, field) != 0;

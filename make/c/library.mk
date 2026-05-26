@@ -37,7 +37,7 @@ endif
 # $(4) - extra flags
 sp_build_.c_lib_rule_counted = \
 	$(eval \
-		$(call BUILD_c_rule,$(1),$(2),$(TOOLKIT_LIB_GCH) $(3),$(BUILD_LIB_CFLAGS) $(4))\
+		$(call BUILD_c_rule,$(1),$(2),$(TOOLKIT_LIB_GCH) $(3),$(4))\
 		$(call BUILD_LIB_template,$(2),$(LOCAL_LIBRARY),$(BUILD_LIB_WORDS))\
 	)\
 	$(eval $(call BUILD_add_target_lib,$(2)))
@@ -48,7 +48,7 @@ sp_build_.c_lib_rule_counted = \
 # $(4) - extra flags
 sp_build_.S_lib_rule_counted = \
 	$(eval \
-		$(call BUILD_S_rule,$(1),$(2),$(TOOLKIT_LIB_GCH) $(3),$(BUILD_LIB_CFLAGS) $(4))\
+		$(call BUILD_S_rule,$(1),$(2),$(TOOLKIT_LIB_GCH) $(3),$(4))\
 		$(call BUILD_LIB_template,$(2),$(LOCAL_LIBRARY),$(BUILD_LIB_WORDS))\
 	)\
 	$(eval $(call BUILD_add_target_lib,$(2)))
@@ -59,7 +59,7 @@ sp_build_.S_lib_rule_counted = \
 # $(4) - extra flags
 sp_build_.s_lib_rule_counted = \
 	$(eval \
-		$(call BUILD_S_rule,$(1),$(2),$(TOOLKIT_LIB_GCH) $(3),$(BUILD_LIB_CFLAGS) $(4))\
+		$(call BUILD_S_rule,$(1),$(2),$(TOOLKIT_LIB_GCH) $(3),$(4))\
 		$(call BUILD_LIB_template,$(2),$(LOCAL_LIBRARY),$(BUILD_LIB_WORDS))\
 	)\
 	$(eval $(call BUILD_add_target_lib,$(2)))
@@ -70,7 +70,7 @@ sp_build_.s_lib_rule_counted = \
 # $(4) - extra flags
 sp_build_.cpp_lib_rule_counted = \
 	$(eval \
-		$(call BUILD_cpp_rule,$(1),$(2),$(TOOLKIT_LIB_GCH) $(3),$(BUILD_LIB_CXXFLAGS) $(4))\
+		$(call BUILD_cpp_rule,$(1),$(2),$(TOOLKIT_LIB_GCH) $(3),$(4))\
 		$(call BUILD_LIB_template,$(2),$(LOCAL_LIBRARY),$(BUILD_LIB_WORDS))\
 	)\
 	$(eval $(call BUILD_add_target_lib,$(2)))
@@ -81,7 +81,7 @@ sp_build_.cpp_lib_rule_counted = \
 # $(4) - extra flags
 sp_build_.mm_lib_rule_counted = \
 	$(eval \
-		$(call BUILD_mm_rule,$(1),$(2),$(TOOLKIT_LIB_GCH) $(3),$(BUILD_LIB_CXXFLAGS) $(4))\
+		$(call BUILD_mm_rule,$(1),$(2),$(TOOLKIT_LIB_GCH) $(3),$(4))\
 		$(call BUILD_LIB_template,$(2),$(LOCAL_LIBRARY),$(BUILD_LIB_WORDS))\
 	)\
 	$(eval $(call BUILD_add_target_lib,$(2)))

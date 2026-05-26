@@ -286,11 +286,9 @@ public:
 	virtual void clear() = 0;
 };
 
-class SP_PUBLIC ResultCursor {
+class SP_PUBLIC ResultCursor : public sprt::AllocBase {
 public:
-	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 	virtual ~ResultCursor() = default;
-	__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 	virtual bool isBinaryFormat(size_t field) const = 0;
 

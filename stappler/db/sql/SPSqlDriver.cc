@@ -123,7 +123,7 @@ Driver::Driver(pool_t *p, ApplicationInterface *app) : _pool(p), _application(ap
 	if (!app) {
 		auto mem = pool::palloc(_pool, sizeof(ApplicationInterface));
 
-		_application = new (mem) ApplicationInterface;
+		_application = new (mem, sprt::nothrow) ApplicationInterface;
 	}
 }
 

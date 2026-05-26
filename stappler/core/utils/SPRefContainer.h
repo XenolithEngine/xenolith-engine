@@ -104,7 +104,7 @@ auto RefContainer<Item, Interface>::addItem(Item *item) -> Item * {
 	if (_nitems < ReserveItems) {
 		auto target = _container.data() + sizeof(Item *) * _nitems;
 		sprt::retain(item);
-		memcpy(target, &item, sizeof(Item *));
+		sprt::memcpy(target, &item, sizeof(Item *));
 		++_nitems;
 	} else if (_nitems > ReserveItems) {
 		auto target = (Vector<Item *> *)_container.data();
@@ -186,7 +186,7 @@ bool RefContainer<Item, Interface>::removeItemByTag(uint32_t tag) {
 				(*target)->invalidate();
 				sprt::release(*target, 0);
 				if (target + 1 != end) {
-					memmove(target, target + 1, (end - (target + 1)) * sizeof(Item *));
+					sprt::memmove(target, target + 1, (end - (target + 1)) * sizeof(Item *));
 				}
 				--_nitems;
 				return true;

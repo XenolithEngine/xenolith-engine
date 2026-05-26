@@ -31,7 +31,7 @@ Rc<core::Instance> createInstance(Rc<core::InstanceInfo> &&info) {
 		return nullptr;
 	}
 
-	auto handle = Dso(StringView("vulkan-1.dll"));
+	auto handle = sprt::Dso(StringView("vulkan-1.dll"));
 	if (!handle) {
 		log::source().error("Vk", "Fail to open vulkan-1.dll");
 		return nullptr;

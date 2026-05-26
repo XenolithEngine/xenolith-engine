@@ -27,8 +27,7 @@ OSTYPE_LIB_PREFIX :=
 
 OSTYPE_CONFIG_FLAGS := WIN32
 
-OSTYPE_CFLAGS := -Wall -D_MT -Wno-vla-cxx-extension -Wno-microsoft-include\
-	-D_CRT_STDIO_ISO_WIDE_SPECIFIERS=1 -fno-exceptions
+OSTYPE_CFLAGS := -Wall -D_MT -Wno-vla-cxx-extension -Wno-microsoft-include
 
 ifeq ($(RELEASE),1)
 OSTYPE_CFLAGS +=
@@ -39,11 +38,11 @@ OSTYPE_LDFLAGS := -g
 endif
 
 OSTYPE_GENERAL_CFLAGS := $(OSTYPE_CFLAGS)
-OSTYPE_LIB_CFLAGS := -fPIC -DPIC
+OSTYPE_LIB_CFLAGS :=
 OSTYPE_EXEC_CFLAGS :=
 
 OSTYPE_GENERAL_CXXFLAGS :=  $(OSTYPE_CFLAGS) -Wno-overloaded-virtual -frtti
-OSTYPE_LIB_CXXFLAGS := -fPIC -DPIC
+OSTYPE_LIB_CXXFLAGS :=
 OSTYPE_EXEC_CXXFLAGS :=
 
 OSTYPE_GENERAL_LDFLAGS := $(OSTYPE_LDFLAGS) -fuse-ld=lld -Xlinker -nodefaultlib

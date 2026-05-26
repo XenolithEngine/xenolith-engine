@@ -191,7 +191,7 @@ void CustomLogManager::remove(CustomLog::log_fn fn) {
 	for (int i = 0; i < count; i++) {
 		if (logFuncArr[i] == fn) {
 			if (i != count - 1) {
-				memmove(&logFuncArr[i], &logFuncArr[i + 1],
+				sprt::memmove(&logFuncArr[i], &logFuncArr[i + 1],
 						(count - i - 1) * sizeof(CustomLog::log_fn));
 			}
 			--logFuncCount;

@@ -24,6 +24,11 @@ THE SOFTWARE.
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <inttypes.h>
+#include <time.h>
+#include <wchar.h>
+
+#include <io.h>
 
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/platform.h>
@@ -32,6 +37,8 @@ THE SOFTWARE.
 #include <sprt/cxx/unordered_map>
 #include <sprt/cxx/memory>
 
+#include <sprt/cxx/cmath>
+
 #include "tests.h"
 
 static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
@@ -39,6 +46,7 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"libc_unistd", &sprt::performUnistdTest},
 	{"libc_dir", &sprt::performDirTest},
 	{"libc_link", &sprt::performLinkTest},
+	{"libc_time", &sprt::performLibcTimeTest},
 	{"libc_pthread", &sprt::performPthreadCreateTest},
 	{"libc_pthread_mutex", &sprt::performPthreadMutexTest},
 	{"libc_pthread_cond", &sprt::performPthreadCondTest},
@@ -58,6 +66,7 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"libcxx_constexpr", &sprt::performConstexprTest},
 	{"libcxx_shared_mutex", &sprt::performSharedMutexStressTests},
 	{"libcxx_bitset", &sprt::performBitsetTests},
+	{"libcxx_rtti", &sprt::performRttiTests},
 
 	{"runtime_ref", &sprt::performRefTests},
 	{"runtime_dispatch", &sprt::performDispatchTests},
@@ -69,7 +78,21 @@ int main(int argc, const char *argv[]) {
 	auto str =
 			"Проверяю работоспособность вывода в UTF-8, строка должна быть читаема из терминала\n";
 
-	fwrite(str, strlen(str), 1, stdout);
+	fwrite(str, ::strlen(str), 1, stdout);
+
+	auto wstr =
+			L"Проверяю работоспособность вывода в UTF-8, строка должна быть читаема из терминала\n";
+
+	fputws(wstr, stdout);
+
+	_wfopen(L"тестовая строка", L"rwa+");
+
+	auto path = _fullpath(nullptr, "..", 0);
+
+	srand(clock_gettime_nsec_np(CLOCK_REALTIME));
+	auto v = rand();
+
+	printf("%s %f %f\n", path, sin(1.0f / (v % 20)), cos(1.0f / (v % 20)));
 
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);

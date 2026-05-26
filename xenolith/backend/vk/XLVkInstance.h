@@ -31,6 +31,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::vk {
 
 class Device;
+class Allocator;
 
 struct SP_PUBLIC InstanceInfo {
 	core::InstanceFlags flags = core::InstanceFlags::None;

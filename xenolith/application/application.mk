@@ -44,7 +44,7 @@ MODULE_XENOLITH_APPLICATION_DEPENDS_ON += xenolith_application_main
 endif
 
 ifdef WIN32
-MODULE_XENOLITH_APPLICATION_LIBS += -lshell32 -lOleAut32 -lWinhttp -lShcore -lGdi32 -lDxva2 -lSetupAPI -lUxTheme -lWindowsApp -lDwmapi
+MODULE_XENOLITH_APPLICATION_LIBS +=
 ifdef RELEASE
 MODULE_XENOLITH_APPLICATION_EXEC_LDFLAGS += -Wl,/subsystem:windows -Wl,/ENTRY:mainCRTStartup
 endif
