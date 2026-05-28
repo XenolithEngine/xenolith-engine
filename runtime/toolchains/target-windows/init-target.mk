@@ -73,9 +73,9 @@ $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'TARGET_INCLUDE_DIR := $$(TARGET_SYSROOT)/usr/include' >> $@
 	@echo 'TARGET_LIB_DIR := $$(TARGET_SYSROOT)/usr/lib' >> $@
 	@echo 'TARGET_LIB_DIR_LIBC := $$(TARGET_SYSROOT)/lib' >> $@
-	@echo 'TARGET_GENERAL_CFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -D_WIN32_WINNT=0x0A00' >> $@
-	@echo 'TARGET_GENERAL_CXXFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -D_WIN32_WINNT=0x0A00 -fexceptions' >> $@
-	@echo 'TARGET_GENERAL_LDFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -D_WIN32_WINNT=0x0A00 -fexceptions' >> $@
+	@echo 'TARGET_GENERAL_CFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -D_WIN32_WINNT=0x0A00 -fexceptions -nostdinc' >> $@
+	@echo 'TARGET_GENERAL_CXXFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -D_WIN32_WINNT=0x0A00 -fexceptions -nostdinc' >> $@
+	@echo 'TARGET_GENERAL_LDFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -D_WIN32_WINNT=0x0A00 -fexceptions -nostdlib' >> $@
 	@echo 'TARGET_EXEC_CFLAGS :=' >> $@
 	@echo 'TARGET_EXEC_CXXFLAGS :=' >> $@
 	@echo 'TARGET_EXEC_LDFLAGS :=' >> $@

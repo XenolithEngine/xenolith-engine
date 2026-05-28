@@ -26,6 +26,7 @@ STAGE0_LIBXML2 := $(STAGE0_SYSROOT)/lib/libxml2s.lib
 STAGE0_CLANG_CC := $(STAGE0_SYSROOT)/bin/clang.exe
 STAGE0_CLANG_CXX := $(STAGE0_SYSROOT)/bin/clang++.exe
 STAGE0_MAKE_EXE := $(STAGE0_SYSROOT)/bin/make.exe
+STAGE0_GLSLANG := $(STAGE0_SYSROOT)/bin/glslang.exe
 
 WARN_FLAGS :=
 OPT_FLAGS :=
@@ -56,7 +57,7 @@ STAGE0_EXE_LDFLAGS := $(STAGE0_LIB_PATH) -fuse-ld=lld
 STAGE0_LIB_LDFLAGS := $(STAGE0_LIB_PATH) -fuse-ld=lld
 
 STAGE0_LIBC_CFLAGS := $(OPT_FLAGS) $(WARN_FLAGS) $(STAGE0_INCLUDE_PATH) -DLIBXML_STATIC
-STAGE0_LIBCXX_CFLAGS := $(OPT_FLAGS) $(WARN_FLAGS) $(STAGE0_INCLUDE_PATH) -DLIBXML_STATIC
+STAGE0_LIBC_CXXFLAGS := $(OPT_FLAGS) $(WARN_FLAGS) $(STAGE0_INCLUDE_PATH) -DLIBXML_STATIC
 
 STAGE0_LIBCXX_EXE_LDFLAGS := \
 	-L$(abspath $(STAGE0_SYSROOT)/lib) \
@@ -192,7 +193,6 @@ STAGE0_BUILD_CC := cmake \
 	-DCMAKE_LINKER_TYPE=LLD \
 	-DZLIB_LIBRARY=$(abspath $(STAGE0_ZLIB)) \
 	-DLIBXML2_LIBRARY=$(abspath $(STAGE0_LIBXML2)) \
-	-DLLVM_BUILD_LLVM_DYLIB_VIS=On \
 	-DLLVM_ENABLE_ZLIB=FORCE_ON \
 	-DLLVM_ENABLE_LIBXML2=FORCE_ON \
 	-DLLVM_ENABLE_PROJECTS="clang;lld;lldb" \
@@ -202,13 +202,10 @@ STAGE0_BUILD_CC := cmake \
 	-DLLVM_INSTALL_TOOLCHAIN_ONLY=On \
 	-DLLDB_INCLUDE_TESTS=Off \
 	-DLLVM_ENABLE_SPHINX=Off \
-	-DLLVM_BUILD_LLVM_DYLIB=ON \
-	-DLLVM_LINK_LLVM_DYLIB=ON \
 	-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 	-DLLVM_TARGET_TRIPLE=$(SP_ARCH_CLANG) \
 	-DLIBCXX_ENABLE_STATIC=Off \
 	-DLIBCXX_ENABLE_SHARED=On \
-	-DCLANG_LINK_CLANG_DYLIB=On \
 	-DCLANG_DEFAULT_CXX_STDLIB=libc++ \
 	-DCLANG_DEFAULT_RTLIB=compiler-rt \
 	-DCLANG_DEFAULT_LINKER=lld \
@@ -232,4 +229,96 @@ $(STAGE0_CLANG_CC): $(STAGE0_LIBCXX) $(STAGE0_HOSTCXX_TOOLCHAIN_CMAKE)
 	cmake --install build/llvm_stage0
 	(Get-Item "$(STAGE0_CLANG_CC)").LastWriteTime = $$(Get-Date);
 
-stage0: $(STAGE0_ZLIB) $(STAGE0_LIBXML2) $(STAGE0_LIBCXX) $(STAGE0_CLANG_CC)
+#
+# Vulkan/SPIR-V
+#
+
+STAGE0_VULKAN_HEADERS_CONF := cmake \
+	-DCMAKE_TOOLCHAIN_FILE=$(abspath $(STAGE0_HOSTCXX_TOOLCHAIN_CMAKE)) \
+	-G "Ninja" -DCMAKE_MAKE_PROGRAM=$(PREBUILD_NINJA) \
+	-S $(VULKAN_HEADERS_DIR) -B build/stage0-vulkan-headers \
+	-DCMAKE_BUILD_TYPE=Release \
+	-DCMAKE_INSTALL_PREFIX=$(abspath $(STAGE0_SYSROOT))
+
+$(STAGE0_SYSROOT)/include/vulkan/vulkan.h: $(STAGE0_CLANG_CC)
+	@echo "Build Vulkan Headers $@"
+	$(call rule_rm, build/stage0-vulkan-headers)
+	$(STAGE0_VULKAN_HEADERS_CONF)
+	cmake --build build/stage0-vulkan-headers
+	cmake --install build/stage0-vulkan-headers
+	$(call rule_touch,$@)
+
+STAGE0_SPIRV_HEADERS_CONF := cmake \
+	-DCMAKE_TOOLCHAIN_FILE=$(abspath $(STAGE0_HOSTCXX_TOOLCHAIN_CMAKE)) \
+	-G "Ninja" -DCMAKE_MAKE_PROGRAM=$(PREBUILD_NINJA) \
+	-S $(SPIRV_HEADERS_DIR) -B build/stage0-spirv-headers \
+	-DCMAKE_BUILD_TYPE=Release \
+	-DCMAKE_INSTALL_PREFIX=$(abspath $(STAGE0_SYSROOT))
+
+$(STAGE0_SYSROOT)/include/spirv/unified1/spirv.h: $(STAGE0_CLANG_CC)
+	@echo "Build SPIR_V Headers $@"
+	$(call rule_rm, build/stage0-spirv-headers)
+	$(STAGE0_SPIRV_HEADERS_CONF)
+	cmake --build build/stage0-spirv-headers
+	cmake --install build/stage0-spirv-headers
+	$(call rule_touch,$@)
+
+STAGE0_SPIRV_CONF := cmake \
+	-DCMAKE_TOOLCHAIN_FILE=$(abspath $(STAGE0_HOSTCXX_TOOLCHAIN_CMAKE)) \
+	-G "Ninja" -DCMAKE_MAKE_PROGRAM=$(PREBUILD_NINJA) \
+	-S $(SPIRV_TOOLS_DIR) -B build/stage0-spirv-tools \
+	-DSPIRV-Headers_SOURCE_DIR=$(abspath $(STAGE0_SYSROOT)) \
+	-DCMAKE_BUILD_TYPE=Release \
+	-DCMAKE_INSTALL_PREFIX=$(abspath $(STAGE0_SYSROOT)) \
+	-DSPIRV_TOOLS_BUILD_STATIC=On \
+	-DSPIRV_TOOLS_LIBRARY_TYPE=STATIC \
+	-DCMAKE_C_FLAGS_INIT="-flto" \
+	-DCMAKE_CXX_FLAGS_INIT="-flto" \
+	-DCMAKE_C_FLAGS="-flto" \
+	-DCMAKE_CXX_FLAGS="-flto" \
+	-DCMAKE_EXE_LINKER_FLAGS="-flto" \
+	-DCMAKE_SHARED_LINKER_FLAGS="-flto"
+
+$(STAGE0_SYSROOT)/bin/spirv-opt.exe: $(STAGE0_SYSROOT)/include/spirv/unified1/spirv.h
+	@echo "Build SPIR-V tools $@"
+	$(call rule_rm,build/stage0-spirv-tools)
+	$(STAGE0_SPIRV_CONF)
+	cmake --build build/stage0-spirv-tools
+	cmake --install build/stage0-spirv-tools
+	$(call rule_touch,$@)
+
+STAGE0_GLSLANG_CONF := cmake \
+	-DCMAKE_TOOLCHAIN_FILE=$(abspath $(STAGE0_HOSTCXX_TOOLCHAIN_CMAKE)) \
+	-G "Ninja" -DCMAKE_MAKE_PROGRAM=$(PREBUILD_NINJA) \
+	-S $(GLSLANG_DIR) -B build/stage0-glslang \
+	-DSPIRV-Headers_SOURCE_DIR=$(abspath $(STAGE0_SYSROOT)) \
+	-DSPIRV-SPIRV-Tools-opt_ROOT=$(abspath $(STAGE0_SYSROOT)) \
+	-DSPIRV-SPIRV-Tools-opt_DIR=$(abspath $(STAGE0_SYSROOT)) \
+	-DCMAKE_BUILD_TYPE=Release \
+	-DCMAKE_INSTALL_PREFIX=$(abspath $(STAGE0_SYSROOT)) \
+	-DGLSLANG_TESTS=Off \
+	-DENABLE_HLSL=Off \
+	-DENABLE_OPT=On \
+	-DALLOW_EXTERNAL_SPIRV_TOOLS=On \
+	-DGLSLANG_ENABLE_INSTALL=On \
+	-DCMAKE_BUILD_TYPE=Release \
+	-DCMAKE_C_FLAGS_INIT="-flto" \
+	-DCMAKE_CXX_FLAGS_INIT="-flto" \
+	-DCMAKE_C_FLAGS="-flto" \
+	-DCMAKE_CXX_FLAGS="-flto" \
+	-DCMAKE_EXE_LINKER_FLAGS="-flto" \
+	-DCMAKE_SHARED_LINKER_FLAGS="-flto"
+
+$(STAGE0_SYSROOT)/bin/glslang.exe: $(STAGE0_SYSROOT)/bin/spirv-opt.exe $(STAGE0_SYSROOT)/include/vulkan/vulkan.h
+	@echo "Build glslang compiler $@"
+	$(call rule_rm,build/stage0-glslang)
+	$(STAGE0_GLSLANG_CONF)
+	cmake --build build/stage0-glslang
+	cmake --install build/stage0-glslang
+	$(call rule_touch,$@)
+
+stage0: $(STAGE0_ZLIB) $(STAGE0_LIBXML2) $(STAGE0_LIBCXX) $(STAGE0_CLANG_CC) \
+	$(STAGE0_SYSROOT)/include/vulkan/vulkan.h \
+	$(STAGE0_SYSROOT)/include/spirv/unified1/spirv.h \
+	$(STAGE0_SYSROOT)/bin/spirv-opt.exe \
+	$(STAGE0_SYSROOT)/bin/glslang.exe

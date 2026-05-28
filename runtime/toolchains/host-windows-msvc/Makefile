@@ -27,6 +27,7 @@ rule_rm = powershell 'if (Test-Path "$(1)") { Remove-Item -Recurse -Force -Error
 rule_cp = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force
 rule_cpr = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force -Recurse
 rule_echo = Add-Content  -Encoding UTF8 -Path "$(1)" -Value 
+rule_touch = (Get-Item "$(1)").LastWriteTime = $$(Get-Date);
 
 SP_NJOBS := -j16
 SP_ARCH := x86_64
@@ -60,8 +61,8 @@ $(MAKE_SRC_DIR): $(MAKE_SRC_TARBALL)
 $(MAKE_SRC_EXE): $(MAKE_SRC_DIR)
 	cd $(MAKE_SRC_DIR); cmd.exe /c 'start cmd.exe /c "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat" x86_amd64 && build_w32.bat --verbose --without-guile'
 
-LLVM_MAJOR := 21
-LLVM_V := $(LLVM_MAJOR).1.8
+SP_LLVM_VER := 21
+LLVM_V := $(SP_LLVM_VER).1.8
 LLVM_VER := ../src/llvm-project
 LLVM_DIR := $(LLVM_VER)
 
@@ -76,12 +77,14 @@ OUT_SYSROOT := ../$(SP_ARCH_CLANG)
 
 include stage0.mk
 
-$(OUT_SYSROOT): $(MAKE_SRC_EXE) $(STAGE0_CLANG_CC)
+$(OUT_SYSROOT): $(MAKE_SRC_EXE) $(STAGE0_CLANG_CC) $(STAGE0_GLSLANG)
 	$(call rule_rm,$(OUT_SYSROOT))
 	$(call rule_mkdir,$(OUT_SYSROOT))
-	$(call rule_cpr,$(STAGE0_SYSROOT)/lib,$(OUT_SYSROOT))
-	$(call rule_cpr,$(STAGE0_SYSROOT)/include,$(OUT_SYSROOT))
+	$(call rule_mkdir,$(OUT_SYSROOT)/lib)
+	$(call rule_cpr,$(STAGE0_SYSROOT)/lib/clang,$(OUT_SYSROOT)/lib)
 	$(call rule_mkdir,$(OUT_SYSROOT)/bin)
+	$(call rule_cp,$(STAGE0_SYSROOT)/bin/glslang.exe,$(OUT_SYSROOT)/bin)
+	$(call rule_cp,$(STAGE0_SYSROOT)/bin/spirv-link.exe,$(OUT_SYSROOT)/bin)
 	$(call rule_cp,$(STAGE0_SYSROOT)/bin/clang.exe,$(OUT_SYSROOT)/bin)
 	$(call rule_cp,$(STAGE0_SYSROOT)/bin/lld.exe,$(OUT_SYSROOT)/bin)
 	$(call rule_cp,$(STAGE0_SYSROOT)/bin/llvm-ar.exe,$(OUT_SYSROOT)/bin)
@@ -89,28 +92,12 @@ $(OUT_SYSROOT): $(MAKE_SRC_EXE) $(STAGE0_CLANG_CC)
 	$(call rule_cp,$(STAGE0_SYSROOT)/bin/llvm-rc.exe,$(OUT_SYSROOT)/bin)
 	$(call rule_cp,$(STAGE0_SYSROOT)/bin/lldb.exe,$(OUT_SYSROOT)/bin)
 	$(call rule_cp,$(STAGE0_SYSROOT)/bin/lldb-dap.exe,$(OUT_SYSROOT)/bin)
-	$(call rule_cp,$(STAGE0_SYSROOT)/bin/LLVM-C.dll,$(OUT_SYSROOT)/bin)
 	$(call rule_cp,$(STAGE0_SYSROOT)/bin/LTO.dll,$(OUT_SYSROOT)/bin)
-	$(call rule_cp,$(STAGE0_SYSROOT)/bin/libclang.dll,$(OUT_SYSROOT)/bin)
 	$(call rule_cp,$(STAGE0_SYSROOT)/bin/liblldb.dll,$(OUT_SYSROOT)/bin)
 	$(call rule_cp,$(MAKE_SRC_EXE),$(OUT_SYSROOT)/bin/make.exe)
-
-	$(call rule_rm,$(OUT_SYSROOT)/toolchain.mk)
-	$(call rule_echo,$(OUT_SYSROOT)/toolchain.mk) 'TOOLCHAIN_SYSROOT := $$(abspath $$(dir $$(lastword $$(MAKEFILE_LIST))))'
-	$(call rule_echo,$(OUT_SYSROOT)/toolchain.mk) 'TOOLCHAIN_TARGET := $(SP_ARCH_CLANG)'
-	$(call rule_echo,$(OUT_SYSROOT)/toolchain.mk) 'TOOLCHAIN_LIBDIR := $$(TOOLCHAIN_SYSROOT)/lib'
-	$(call rule_echo,$(OUT_SYSROOT)/toolchain.mk) 'TOOLCHAIN_INCLUDEDIR := $$(TOOLCHAIN_SYSROOT)/include'
-	$(call rule_echo,$(OUT_SYSROOT)/toolchain.mk) 'TOOLCHAIN_INCLUDEDIR_LIBCXX := $$(TOOLCHAIN_INCLUDEDIR)/c++/v1'
-	$(call rule_echo,$(OUT_SYSROOT)/toolchain.mk) 'TOOLCHAIN_CC := $$(TOOLCHAIN_SYSROOT)/bin/clang.exe'
-	$(call rule_echo,$(OUT_SYSROOT)/toolchain.mk) 'TOOLCHAIN_CXX := $$(TOOLCHAIN_SYSROOT)/bin/clang.exe'
-	$(call rule_echo,$(OUT_SYSROOT)/toolchain.mk) 'TOOLCHAIN_AR := $$(TOOLCHAIN_SYSROOT)/bin/llvm-ar.exe'
-	$(call rule_echo,$(OUT_SYSROOT)/toolchain.mk) 'TOOLCHAIN_GLSLANG := $$(TOOLCHAIN_SYSROOT)/bin/glslang.exe'
-	$(call rule_echo,$(OUT_SYSROOT)/toolchain.mk) 'TOOLCHAIN_SPIRV_LINK := $$(TOOLCHAIN_SYSROOT)/bin/spirv-link.exe'
-	$(call rule_echo,$(OUT_SYSROOT)/toolchain.mk) 'TOOLCHAIN_GENERAL_CFLAGS := -nostdinc -isystem $$(TOOLCHAIN_SYSROOT)/lib/clang/21/include'
-	$(call rule_echo,$(OUT_SYSROOT)/toolchain.mk) 'TOOLCHAIN_GENERAL_CXXFLAGS := -nostdinc -isystem $$(TOOLCHAIN_SYSROOT)/lib/clang/21/include'
-	$(call rule_echo,$(OUT_SYSROOT)/toolchain.mk) 'TOOLCHAIN_LIB_LDFLAGS := -L$$(TOOLCHAIN_LIBDIR) -llibc++'
-	$(call rule_echo,$(OUT_SYSROOT)/toolchain.mk) 'TOOLCHAIN_EXEC_LDFLAGS := -L$$(TOOLCHAIN_LIBDIR) -llibc++'
-	$(call rule_echo,$(OUT_SYSROOT)/toolchain.mk) '$$(info Available toolchain: $$(TOOLCHAIN_TARGET): $$(TOOLCHAIN_SYSROOT))'
+#	$(call rule_cp,$(STAGE0_SYSROOT)/bin/LLVM-C.dll,$(OUT_SYSROOT)/bin)
+#	$(call rule_cp,$(STAGE0_SYSROOT)/bin/libclang.dll,$(OUT_SYSROOT)/bin)
+#	$(call rule_cpr,$(STAGE0_SYSROOT)/include,$(OUT_SYSROOT))
 
 $(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))
 	Set-Content  -Encoding UTF8 -Path "$@" -Value 'HOST_ROOT := $$(patsubst %/,%,$$(dir $$(lastword $$(MAKEFILE_LIST))))' | Out-Null
@@ -134,7 +121,7 @@ download: $(MAKE_SRC_DIR) $(LLVM_DIR)
 
 make: $(MAKE_SRC_EXE)
 
-out: $(OUT_SYSROOT) $(OUT_SYSROOT)/host.mk
+out: stage0 $(OUT_SYSROOT) $(OUT_SYSROOT)/host.mk
 
 all: stage0
 
