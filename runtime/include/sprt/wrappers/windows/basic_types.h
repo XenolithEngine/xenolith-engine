@@ -47,6 +47,7 @@
 #endif
 #define CALLBACK  WINAPI
 
+#define NTAPI
 #define BASETYPES
 #define APIENTRY
 
@@ -156,6 +157,9 @@ typedef unsigned short VARTYPE;
 
 typedef WCHAR *BSTR;
 
+typedef ULONG_PTR KAFFINITY;
+typedef KAFFINITY *PKAFFINITY;
+
 typedef struct _PROC_THREAD_ATTRIBUTE_LIST *PPROC_THREAD_ATTRIBUTE_LIST,
 		*LPPROC_THREAD_ATTRIBUTE_LIST;
 
@@ -192,5 +196,7 @@ typedef CHAR TCHAR, *PTCHAR, *LPTCHAR;
 #define HIWORD(l)           ((WORD)((((DWORD_PTR)(l)) >> 16) & 0xffff))
 #define LOBYTE(w)           ((BYTE)(((DWORD_PTR)(w)) & 0xff))
 #define HIBYTE(w)           ((BYTE)((((DWORD_PTR)(w)) >> 8) & 0xff))
+
+#define DECLSPEC_ALIGN(x)   __declspec(align(x))
 
 #endif // SPRT_WRAPPERS_WINDOWS_BASIC_TYPES_H_

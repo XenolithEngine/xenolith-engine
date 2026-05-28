@@ -190,6 +190,20 @@ typedef struct _SHELLEXECUTEINFOW {
 	HANDLE hProcess; // out, valid when SEE_MASK_NOCLOSEPROCESS specified
 } SHELLEXECUTEINFOW, *LPSHELLEXECUTEINFOW;
 
+typedef struct _PROCESS_MEMORY_COUNTERS {
+	DWORD cb;
+	DWORD PageFaultCount;
+	SIZE_T PeakWorkingSetSize;
+	SIZE_T WorkingSetSize;
+	SIZE_T QuotaPeakPagedPoolUsage;
+	SIZE_T QuotaPagedPoolUsage;
+	SIZE_T QuotaPeakNonPagedPoolUsage;
+	SIZE_T QuotaNonPagedPoolUsage;
+	SIZE_T PagefileUsage;
+	SIZE_T PeakPagefileUsage;
+} PROCESS_MEMORY_COUNTERS;
+typedef PROCESS_MEMORY_COUNTERS *PPROCESS_MEMORY_COUNTERS;
+
 __SPRT_BEGIN_DECL
 
 __SPRT_WIN_IMPORT WINAPI HANDLE GetCurrentProcess(void);

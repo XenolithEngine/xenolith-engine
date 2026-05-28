@@ -189,6 +189,58 @@ typedef struct _IMAGE_TLS_DIRECTORY64 {
 	};
 } IMAGE_TLS_DIRECTORY64, *PIMAGE_TLS_DIRECTORY64;
 
+#define IMAGE_NUMBEROF_DIRECTORY_ENTRIES    16
+
+typedef struct _IMAGE_OPTIONAL_HEADER {
+	WORD Magic;
+	BYTE MajorLinkerVersion;
+	BYTE MinorLinkerVersion;
+	DWORD SizeOfCode;
+	DWORD SizeOfInitializedData;
+	DWORD SizeOfUninitializedData;
+	DWORD AddressOfEntryPoint;
+	DWORD BaseOfCode;
+	DWORD BaseOfData;
+	DWORD ImageBase;
+	DWORD SectionAlignment;
+	DWORD FileAlignment;
+	WORD MajorOperatingSystemVersion;
+	WORD MinorOperatingSystemVersion;
+	WORD MajorImageVersion;
+	WORD MinorImageVersion;
+	WORD MajorSubsystemVersion;
+	WORD MinorSubsystemVersion;
+	DWORD Win32VersionValue;
+	DWORD SizeOfImage;
+	DWORD SizeOfHeaders;
+	DWORD CheckSum;
+	WORD Subsystem;
+	WORD DllCharacteristics;
+	DWORD SizeOfStackReserve;
+	DWORD SizeOfStackCommit;
+	DWORD SizeOfHeapReserve;
+	DWORD SizeOfHeapCommit;
+	DWORD LoaderFlags;
+	DWORD NumberOfRvaAndSizes;
+	IMAGE_DATA_DIRECTORY DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES];
+} IMAGE_OPTIONAL_HEADER32, *PIMAGE_OPTIONAL_HEADER32;
+
+typedef struct _IMAGE_ROM_OPTIONAL_HEADER {
+	WORD Magic;
+	BYTE MajorLinkerVersion;
+	BYTE MinorLinkerVersion;
+	DWORD SizeOfCode;
+	DWORD SizeOfInitializedData;
+	DWORD SizeOfUninitializedData;
+	DWORD AddressOfEntryPoint;
+	DWORD BaseOfCode;
+	DWORD BaseOfData;
+	DWORD BaseOfBss;
+	DWORD GprMask;
+	DWORD CprMask[4];
+	DWORD GpValue;
+} IMAGE_ROM_OPTIONAL_HEADER, *PIMAGE_ROM_OPTIONAL_HEADER;
+
 typedef struct _IMAGE_OPTIONAL_HEADER64 {
 	WORD Magic;
 	BYTE MajorLinkerVersion;
@@ -222,6 +274,20 @@ typedef struct _IMAGE_OPTIONAL_HEADER64 {
 	IMAGE_DATA_DIRECTORY DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES];
 } IMAGE_OPTIONAL_HEADER64, *PIMAGE_OPTIONAL_HEADER64;
 
+#define IMAGE_NT_OPTIONAL_HDR32_MAGIC      0x10b
+#define IMAGE_NT_OPTIONAL_HDR64_MAGIC      0x20b
+#define IMAGE_ROM_OPTIONAL_HDR_MAGIC       0x107
+
+#ifdef _WIN64
+typedef IMAGE_OPTIONAL_HEADER64 IMAGE_OPTIONAL_HEADER;
+typedef PIMAGE_OPTIONAL_HEADER64 PIMAGE_OPTIONAL_HEADER;
+#define IMAGE_NT_OPTIONAL_HDR_MAGIC         IMAGE_NT_OPTIONAL_HDR64_MAGIC
+#else
+typedef IMAGE_OPTIONAL_HEADER32 IMAGE_OPTIONAL_HEADER;
+typedef PIMAGE_OPTIONAL_HEADER32 PIMAGE_OPTIONAL_HEADER;
+#define IMAGE_NT_OPTIONAL_HDR_MAGIC         IMAGE_NT_OPTIONAL_HDR32_MAGIC
+#endif
+
 typedef struct _IMAGE_FILE_HEADER {
 	WORD Machine;
 	WORD NumberOfSections;
@@ -237,6 +303,20 @@ typedef struct _IMAGE_NT_HEADERS64 {
 	IMAGE_FILE_HEADER FileHeader;
 	IMAGE_OPTIONAL_HEADER64 OptionalHeader;
 } IMAGE_NT_HEADERS64, *PIMAGE_NT_HEADERS64;
+
+typedef struct _IMAGE_NT_HEADERS {
+	DWORD Signature;
+	IMAGE_FILE_HEADER FileHeader;
+	IMAGE_OPTIONAL_HEADER32 OptionalHeader;
+} IMAGE_NT_HEADERS32, *PIMAGE_NT_HEADERS32;
+
+#ifdef _WIN64
+typedef IMAGE_NT_HEADERS64 IMAGE_NT_HEADERS;
+typedef PIMAGE_NT_HEADERS64 PIMAGE_NT_HEADERS;
+#else
+typedef IMAGE_NT_HEADERS32 IMAGE_NT_HEADERS;
+typedef PIMAGE_NT_HEADERS32 PIMAGE_NT_HEADERS;
+#endif
 
 typedef struct _LDR_DATA_TABLE_ENTRY {
 	struct _LIST_ENTRY InLoadOrderLinks; //0x0
@@ -293,6 +373,9 @@ __SPRT_WIN_IMPORT WINAPI FARPROC GetProcAddress(HMODULE hModule, LPCSTR lpProcNa
 
 __SPRT_WIN_IMPORT WINAPI HMODULE GetModuleHandleW(LPCWSTR lpModuleName);
 
+__SPRT_WIN_IMPORT WINAPI BOOL GetModuleHandleExA(DWORD dwFlags, LPCSTR lpModuleName,
+		HMODULE *phModule);
+
 __SPRT_WIN_IMPORT WINAPI BOOL GetModuleHandleExW(DWORD dwFlags, LPCWSTR lpModuleName,
 		PHMODULE phModule);
 
@@ -303,6 +386,8 @@ __SPRT_WIN_IMPORT WINAPI PVOID RtlPcToFileHeader(PVOID PcValue, PVOID *BaseOfIma
 #ifdef UNICODE
 #define GetModuleHandle GetModuleHandleW
 #define LoadLibrary LoadLibraryW
+#else
+#define GetModuleHandle GetModuleHandleA
 #endif
 
 __SPRT_END_DECL

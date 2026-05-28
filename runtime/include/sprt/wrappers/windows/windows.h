@@ -37,6 +37,7 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/security_api.h>
 
 #include <sprt/wrappers/windows/winver.h>
+#include <sprt/wrappers/windows/tchar.h>
 
 #include <sprt/wrappers/windows/__sprt_threads.h>
 

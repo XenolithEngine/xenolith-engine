@@ -156,6 +156,11 @@ HMODULE GetModuleHandleW(LPCWSTR lpModuleName) {
 	return DLL_LOAD_AND_CALL(loader, kernel32, GetModuleHandleW, lpModuleName);
 }
 
+BOOL GetModuleHandleExA(DWORD dwFlags, LPCSTR lpModuleName, HMODULE *phModule) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, kernel32, GetModuleHandleExA, dwFlags, lpModuleName, phModule);
+}
+
 BOOL GetModuleHandleExW(DWORD dwFlags, LPCWSTR lpModuleName, PHMODULE phModule) {
 	auto loader = sprt::DllLoader::get();
 	return DLL_LOAD_AND_CALL(loader, kernel32, GetModuleHandleExW, dwFlags, lpModuleName, phModule);

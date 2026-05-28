@@ -170,3 +170,4 @@ EXPORTS
 	FreeLibrary
 	GetProcAddress
 	ExitProcess
+	GetModuleHandleExA

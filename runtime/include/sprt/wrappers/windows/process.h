@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/complex_types.h>
 #include <sprt/wrappers/windows/constants.h>
-
+#include <sprt/wrappers/windows/process_api.h>
 #include <sprt/wrappers/windows/__sprt_threads.h>
 
 #endif // SPRT_WRAPPERS_WINDOWS_PROCESS_H_

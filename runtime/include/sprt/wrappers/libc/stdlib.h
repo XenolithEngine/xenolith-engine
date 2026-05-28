@@ -159,6 +159,8 @@ __SPRT_C_FUNC int getenv_s(size_t *ret, char *buf, __SPRT_ID(rsize_t) bufSize,
 
 __SPRT_C_FUNC size_t _msize(void *) __SPRT_NOEXCEPT;
 
+__SPRT_C_FUNC __SPRT_ID(wchar_t) * _wgetenv(const __SPRT_ID(wchar_t) * varname) __SPRT_NOEXCEPT;
+
 __SPRT_END_DECL
 
 #define _strtol_l strtol_l

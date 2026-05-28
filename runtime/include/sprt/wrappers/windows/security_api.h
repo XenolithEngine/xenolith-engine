@@ -88,6 +88,14 @@
 #define SE_GROUP_LOGON_ID                  (0xC0000000L)
 #define SE_GROUP_RESOURCE                  (0x20000000L)
 
+#define SE_PRIVILEGE_ENABLED_BY_DEFAULT (0x00000001L)
+#define SE_PRIVILEGE_ENABLED            (0x00000002L)
+#define SE_PRIVILEGE_REMOVED            (0X00000004L)
+#define SE_PRIVILEGE_USED_FOR_ACCESS    (0x80000000L)
+
+#define SE_PRIVILEGE_VALID_ATTRIBUTES \
+	(SE_PRIVILEGE_ENABLED_BY_DEFAULT | SE_PRIVILEGE_ENABLED | SE_PRIVILEGE_REMOVED  | SE_PRIVILEGE_USED_FOR_ACCESS)
+
 #define E_ACCESSDENIED                   HRESULT(0x80070005L)
 #define E_INVALIDARG                     HRESULT(0x80070057L)
 
@@ -232,6 +240,23 @@ typedef struct _TOKEN_APPCONTAINER_INFORMATION {
 	PSID TokenAppContainer;
 } TOKEN_APPCONTAINER_INFORMATION, *PTOKEN_APPCONTAINER_INFORMATION;
 
+typedef struct _LUID {
+	ULONG LowPart;
+	LONG HighPart;
+} LUID, *PLUID;
+
+typedef struct _LUID_AND_ATTRIBUTES {
+	LUID Luid;
+	DWORD Attributes;
+} LUID_AND_ATTRIBUTES, *PLUID_AND_ATTRIBUTES;
+typedef LUID_AND_ATTRIBUTES LUID_AND_ATTRIBUTES_ARRAY[ANYSIZE_ARRAY];
+typedef LUID_AND_ATTRIBUTES_ARRAY *PLUID_AND_ATTRIBUTES_ARRAY;
+
+typedef struct _TOKEN_PRIVILEGES {
+	DWORD PrivilegeCount;
+	LUID_AND_ATTRIBUTES Privileges[ANYSIZE_ARRAY];
+} TOKEN_PRIVILEGES, *PTOKEN_PRIVILEGES;
+
 __SPRT_BEGIN_DECL
 
 __SPRT_WIN_IMPORT WINAPI BOOL AllocateAndInitializeSid(
@@ -291,10 +316,23 @@ __SPRT_WIN_IMPORT WINAPI BOOL ReportEventW(HANDLE hEventLog, WORD wType, WORD wC
 		DWORD dwEventID, PSID lpUserSid, WORD wNumStrings, DWORD dwDataSize, LPCWSTR *lpStrings,
 		LPVOID lpRawData);
 
+__SPRT_WIN_IMPORT WINAPI BOOL LookupPrivilegeValueA(LPCSTR lpSystemName, LPCSTR lpName,
+		PLUID lpLuid);
+
+__SPRT_WIN_IMPORT WINAPI BOOL LookupPrivilegeValueW(LPCWSTR lpSystemName, LPCWSTR lpName,
+		PLUID lpLuid);
+
+__SPRT_WIN_IMPORT WINAPI BOOL AdjustTokenPrivileges(HANDLE TokenHandle, BOOL DisableAllPrivileges,
+		PTOKEN_PRIVILEGES NewState, DWORD BufferLength, PTOKEN_PRIVILEGES PreviousState,
+		PDWORD ReturnLength);
+
 #ifdef UNICODE
+#define LookupPrivilegeValue  LookupPrivilegeValueW
 #define ReportEvent  ReportEventW
 #define GetUserObjectInformation  GetUserObjectInformationW
 #define RegisterEventSource  RegisterEventSourceW
+#else
+#define LookupPrivilegeValue  LookupPrivilegeValueA
 #endif
 
 __SPRT_END_DECL

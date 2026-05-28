@@ -24,6 +24,7 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS_WINVER_H_
 
 #include <sprt/wrappers/windows/message_api.h>
+#include <sprt/wrappers/windows/winapifamily.h>
 
 // clang-format off
 

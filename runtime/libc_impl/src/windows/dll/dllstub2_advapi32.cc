@@ -199,4 +199,22 @@ WINAPI BOOL GetUserNameW(LPWSTR lpBuffer, LPDWORD lpnSize) {
 	auto loader = sprt::DllLoader::get();
 	return DLL_LOAD_AND_CALL(loader, advapi32, GetUserNameW, lpBuffer, lpnSize);
 }
+
+WINAPI BOOL LookupPrivilegeValueA(LPCSTR lpSystemName, LPCSTR lpName, PLUID lpLuid) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, advapi32, LookupPrivilegeValueA, lpSystemName, lpName, lpLuid);
+}
+
+WINAPI BOOL LookupPrivilegeValueW(LPCWSTR lpSystemName, LPCWSTR lpName, PLUID lpLuid) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, advapi32, LookupPrivilegeValueW, lpSystemName, lpName, lpLuid);
+}
+
+WINAPI BOOL AdjustTokenPrivileges(HANDLE TokenHandle, BOOL DisableAllPrivileges,
+		PTOKEN_PRIVILEGES NewState, DWORD BufferLength, PTOKEN_PRIVILEGES PreviousState,
+		PDWORD ReturnLength) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, advapi32, AdjustTokenPrivileges, TokenHandle,
+			DisableAllPrivileges, NewState, BufferLength, PreviousState, ReturnLength);
+}
 }

@@ -486,7 +486,7 @@ void destroy(allocator_t *alloc) {
 				oslog::
 						vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
 								"sprt::memory::allocator::destroy called on object, that was "
-								"initialized " "with sprtt::memory::allocator::iniatialize");
+								"initialized " "with sprt::memory::allocator::initialize");
 			}
 		} else {
 			apr::allocator::destroy((apr_allocator_t *)alloc);
@@ -509,7 +509,7 @@ void terminate(allocator_t *alloc) {
 	} else {
 		oslog::vprint(oslog::LogType::Error, __SPRT_LOCATION, "sprt::memory",
 				"sprt::memory::allocator::terminate called on object, that was not initialized "
-				"with " "sprtt::memory::allocator::iniatialize");
+				"with " "sprt::memory::allocator::initialize");
 	}
 }
 
@@ -634,7 +634,7 @@ pool_t *create(allocator_t *alloc) {
 	return pushPoolInfo((pool_t *)impl::Pool::create((impl::Allocator *)alloc));
 }
 
-// creates managed pool (managed by root, if parent in mullptr)
+// creates managed pool (managed by root, if parent in nullptr)
 pool_t *create(pool_t *pool) {
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {

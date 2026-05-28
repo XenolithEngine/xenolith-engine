@@ -285,4 +285,22 @@ typedef struct _SMALL_RECT {
 	SHORT Bottom;
 } SMALL_RECT, *PSMALL_RECT;
 
+typedef struct _GROUP_AFFINITY {
+	KAFFINITY Mask;
+	USHORT Group;
+	USHORT Reserved[3];
+} GROUP_AFFINITY, *PGROUP_AFFINITY;
+
+typedef struct _GROUP_AFFINITY32 {
+	ULONG Mask;
+	USHORT Group;
+	USHORT Reserved[3];
+} GROUP_AFFINITY32, *PGROUP_AFFINITY32;
+
+typedef struct _GROUP_AFFINITY64 {
+	unsigned __int64 Mask;
+	USHORT Group;
+	USHORT Reserved[3];
+} GROUP_AFFINITY64, *PGROUP_AFFINITY64;
+
 #endif // SPRT_WRAPPERS_WINDOWS_STRUCTURES_H_

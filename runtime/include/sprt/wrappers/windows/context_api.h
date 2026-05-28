@@ -517,9 +517,17 @@ __SPRT_WIN_IMPORT WINAPI NTSTATUS NtContinueEx(CONTEXT *context, void *args);
 __SPRT_WIN_IMPORT WINAPI VOID RaiseException(DWORD dwExceptionCode, DWORD dwExceptionFlags,
 		DWORD nNumberOfArguments, const ULONG_PTR *lpArguments);
 
+#if defined(_M_AMD64) && !defined(_M_ARM64EC)
+
 SPRT_FORCEINLINE PVOID GetCurrentFiber(VOID) {
-	return (PVOID)__readgsqword(FIELD_OFFSET(NT_TIB, FiberData));
+	return (PVOID)__readgsqword(__builtin_offsetof(NT_TIB, FiberData));
 }
+
+SPRT_FORCEINLINE struct _TEB *NtCurrentTeb(VOID) {
+	return (struct _TEB *)__readgsqword(__builtin_offsetof(NT_TIB, Self));
+}
+
+#endif
 
 SPRT_FORCEINLINE PVOID GetFiberData(VOID) { return *(PVOID *)GetCurrentFiber(); }
 

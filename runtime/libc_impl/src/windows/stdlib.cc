@@ -71,11 +71,40 @@ struct _EnvBlock {
 		return nullptr;
 	}
 
+	wchar_t *get(const wchar_t *name) {
+		auto bufSize = GetEnvironmentVariableW(name, nullptr, 0);
+		if (bufSize == 0) {
+			return nullptr;
+		}
+
+		auto it = _wenvs.find(name);
+		if (it == _wenvs.end()) {
+			it = _wenvs.emplace(name, __local_wstring()).first;
+		}
+
+		it->second.resize(bufSize - 1); // strip nullptr from size
+
+		if (GetEnvironmentVariableW(name, it->second.data(), it->second.size() + 1)
+				== it->second.size() + 1) {
+			return it->second.data();
+		}
+		return nullptr;
+	}
+
 	__local_unordered_map<__local_string, __local_string> _envs;
+	__local_unordered_map<__local_wstring, __local_wstring> _wenvs;
 };
 
 thread_local _EnvBlock tl_env;
 static _EnvBlock s_env;
+
+__SPRT_C_FUNC wchar_t *_wgetenv(const wchar_t *name) __SPRT_NOEXCEPT {
+	if (__libc::get()->mainThread == __sprt_gettid()) {
+		return s_env.get(name);
+	} else {
+		return tl_env.get(name);
+	}
+}
 
 __SPRT_C_FUNC char *getenv(const char *name) __SPRT_NOEXCEPT {
 	if (__libc::get()->mainThread == __sprt_gettid()) {

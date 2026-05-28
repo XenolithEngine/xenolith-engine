@@ -47,11 +47,14 @@ $(call define_module, runtime_core, MODULE_RUNTIME_CORE)
 MODULE_RUNTIME_JEMALLOC_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
 MODULE_RUNTIME_JEMALLOC_PRIVATE_STANDALONE := 1
 MODULE_RUNTIME_JEMALLOC_SRCS_OBJS := \
-	$(RUNTIME_MODULE_DIR)/libc_impl/jemalloc/jemalloc.scu.c
+	$(RUNTIME_MODULE_DIR)/libc_impl/mimalloc/mimalloc.scu.c
+#	$(RUNTIME_MODULE_DIR)/libc_impl/jemalloc/jemalloc.scu.c
 MODULE_RUNTIME_JEMALLOC_PRIVATE_INCLUDES := \
 	$(RUNTIME_MODULE_DIR)/include \
+	$(RUNTIME_MODULE_DIR)/include/sprt/wrappers/windows \
 	$(RUNTIME_MODULE_DIR)/include_libc \
-	$(RUNTIME_MODULE_DIR)/libc_impl/jemalloc/include
+	$(RUNTIME_MODULE_DIR)/libc_impl/mimalloc/include
+#	$(RUNTIME_MODULE_DIR)/libc_impl/jemalloc/include
 
 MODULE_RUNTIME_JEMALLOC_PRIVATE_COMMON_CFLAGS := \
 	-nostdinc \

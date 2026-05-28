@@ -78,5 +78,4 @@ __SPRT_C_FUNC SPRT_FORCEINLINE __int64 _InterlockedAdd64(__int64 volatile *targe
 #define AbnormalTermination         _abnormal_termination
 #define abnormal_termination        _abnormal_termination
 
-
 #endif // SPRT_WRAPPERS_WINDOWS___SPRT_INTRIN_H_

@@ -26,8 +26,6 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_wchar.h>
 
-#include <wchar.h>
-
 #if _UNICODE
 
 #define _T(Str) L ## Str

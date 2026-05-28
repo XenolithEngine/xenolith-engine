@@ -124,6 +124,7 @@ template <typename Key, typename Hash = sprt::hash<void>, typename Pred = sprt::
 using __local_unordered_set = __unordered_set<Key, Hash, Pred, detail::AllocatorLocal<Key>>;
 
 using __local_string = __basic_string<char, detail::AllocatorLocal<char>>;
+using __local_wstring = __basic_string<wchar_t, detail::AllocatorLocal<wchar_t>>;
 
 struct __libc {
 	static constexpr size_t FD_PAGES_COUNT = MAX_FDS / (1'024 * 16 / sizeof(__fd_slot));
