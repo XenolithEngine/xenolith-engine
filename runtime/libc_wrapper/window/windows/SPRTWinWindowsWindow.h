@@ -50,6 +50,8 @@ public:
 
 	virtual void handleFramePresented(const PresentationFrameInfo &) override;
 
+	virtual FrameConstraints exportConstraints(uint64_t &serial) const override;
+
 	virtual SurfaceInterfaceInfo getSurfaceInterfaceInfo() const override;
 
 	virtual SurfaceInfo getSurfaceOptions(SurfaceInfo &&info) const override;

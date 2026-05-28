@@ -60,8 +60,9 @@ __thread_pool::~__thread_pool() {
 
 	if (main.threadMemPool) {
 		memory::pool::destroy(main.threadMemPool);
+		memory::allocator::terminate(&main.threadAlloc);
+		main.threadMemPool = nullptr;
 	}
-	memory::allocator::terminate(&main.threadAlloc);
 
 	if (main.handle) {
 		native::__closeNativeHandle(main.handle);

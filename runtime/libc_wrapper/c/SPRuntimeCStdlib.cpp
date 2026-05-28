@@ -115,7 +115,7 @@ __SPRT_C_FUNC void *__SPRT_ID(aligned_alloc)(size_t align, size_t size) __SPRT_N
 }
 
 __SPRT_C_FUNC void __SPRT_ID(aligned_free)(void *memblock) {
-#if 0
+#if SPRT_WINDOWS
 	// Windows UCRT requires special handling, but we do not support in any more
 	::aligned_free(memblock);
 #else

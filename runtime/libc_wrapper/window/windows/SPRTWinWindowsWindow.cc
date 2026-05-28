@@ -150,6 +150,21 @@ void WindowsWindow::handleFramePresented(const PresentationFrameInfo &frame) {
 	_commitedExtent = Extent2(frame.constraints.extent.width, frame.constraints.extent.height);
 }
 
+FrameConstraints WindowsWindow::exportConstraints(uint64_t &serial) const {
+	FrameConstraints constraints = NativeWindow::exportConstraints(serial);
+
+	constraints.extent = Extent3(_currentState.extent.width, _currentState.extent.height, 1);
+	if (constraints.density == 0.0f) {
+		constraints.density = 1.0f;
+	}
+	if (_density != 0.0f) {
+		constraints.density *= _density;
+		constraints.surfaceDensity = _density;
+	}
+	constraints.frameInterval = 1'000'000'000ULL / _frameRate;
+	return constraints;
+}
+
 SurfaceInterfaceInfo WindowsWindow::getSurfaceInterfaceInfo() const {
 	SurfaceInterfaceInfo info;
 
@@ -167,22 +182,6 @@ SurfaceInterfaceInfo WindowsWindow::getSurfaceInterfaceInfo() const {
 }
 
 SurfaceInfo WindowsWindow::getSurfaceOptions(SurfaceInfo &&info) const { return sprt::move(info); }
-
-/*FrameConstraints WindowsWindow::exportConstraints() const {
-
-	auto ret = NativeWindow::exportConstraints();
-
-	ret.extent = Extent3(_currentState.extent.width, _currentState.extent.height, 1);
-	if (ret.density == 0.0f) {
-		ret.density = 1.0f;
-	}
-	if (_density != 0.0f) {
-		ret.density *= _density;
-		ret.surfaceDensity = _density;
-	}
-	ret.frameInterval = 1'000'000'000ULL / _frameRate;
-	return move(ret);
-}*/
 
 Extent2 WindowsWindow::getExtent() const { return _currentState.extent; }
 

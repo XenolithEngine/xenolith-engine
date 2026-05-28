@@ -62,6 +62,10 @@ FrameConstraints NativeWindow::exportConstraints(uint64_t &serial) const {
 	FrameConstraints c;
 	c.density = _info->density;
 
+	if (c.density == 0.0f) {
+		c.density = 1.0f;
+	}
+
 	auto e = getExtent();
 	if (e.width != 0 && e.height != 0) {
 		c.extent = Extent3(e.width, e.height, 1);
