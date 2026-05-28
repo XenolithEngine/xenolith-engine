@@ -72,8 +72,8 @@ public:
 
 		UnlockFn(mutex);
 		while (v == __atomic_load_n(&data->value, __ATOMIC_SEQ_CST)) {
-			if (timeout == 0) {
-				result = Status::Ok;
+			if (timeout && *timeout == 0) {
+				result = Status::Timeout;
 				break;
 			}
 
