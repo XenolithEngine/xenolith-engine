@@ -52,6 +52,7 @@ WINAPI NTSTATUS NtCancelWaitCompletionPacket(HANDLE WaitCompletionPacketHandle,
 }
 
 WINAPI BOOL NtCompletionPacketAvailable() {
+	return false;
 	auto loader = sprt::DllLoader::get();
 	if (!loader->ntdll.NtCreateWaitCompletionPacket.fn) {
 		if (!loader->ntdll.load(&loader->ntdll.NtCreateWaitCompletionPacket)) {

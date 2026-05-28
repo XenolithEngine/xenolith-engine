@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/dl_api.h>
 #include <sprt/wrappers/windows/thread_api.h>
 
+#include "sprt/c/__sprt_stdlib.h"
 #include "stdlib.h"
 #include "../../include/__impl_libc.h"
 #include "../../include/__impl_file.h"
@@ -66,7 +67,7 @@ static bool __addDtor(FunctionListNode **list, FunctionListNode *head, __funcptr
 		head->next = nullptr;
 		head->used = 0;
 	} else if ((*list)->used == FUNCTIONS_PER_NODE) {
-		auto nextNode = (FunctionListNode *)malloc(sizeof(FunctionListNode));
+		auto nextNode = (FunctionListNode *)__sprt_local_alloc(sizeof(FunctionListNode));
 		if (!nextNode) {
 			return false;
 		}
@@ -95,7 +96,7 @@ static bool __callDtors(FunctionListNode **listptr) {
 		plist = list;
 		list = list->next;
 		if (plist->next) {
-			free(plist);
+			__sprt_local_free(plist, 0);
 		}
 	}
 	return true;
@@ -147,10 +148,10 @@ __SPRT_C_FUNC void exit(int result) __SPRT_NOEXCEPT {
 
 	__sprt_libc_thread_exit(false);
 
+	__callDtors(&s_atexit_list);
+
 	__initterm(__c_preterm_start, __c_preterm_end, true);
 	__initterm(__c_term_start, __c_term_end, true);
-
-	__callDtors(&s_atexit_list);
 
 	__stdio_exit();
 

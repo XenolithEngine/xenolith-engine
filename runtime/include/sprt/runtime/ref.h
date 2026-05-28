@@ -57,7 +57,7 @@ inline void __delete(T *t) noexcept;
 template <typename T>
 inline uint64_t retain(T *t, uint64_t value = Max<uint64_t>) noexcept;
 
-template <typename T>
+template <typename T, typename Pointer = T *>
 inline void release(T *t, uint64_t value) noexcept;
 
 namespace memleak {
@@ -162,7 +162,7 @@ protected:
 	template <typename U>
 	friend uint64_t retain(U *, uint64_t) noexcept;
 
-	template <typename U>
+	template <typename U, typename V>
 	friend void release(U *, uint64_t) noexcept;
 
 #if SPRT_REF_DEBUG
@@ -261,7 +261,7 @@ protected:
 	template <typename U>
 	friend uint64_t retain(U *, uint64_t) noexcept;
 
-	template <typename U>
+	template <typename U, typename V>
 	friend void release(U *, uint64_t) noexcept;
 
 	static void __delete(SharedRef *t) noexcept {
@@ -878,11 +878,11 @@ inline void RcBase<_Base, _Pointer>::doRelease() {
 
 #if SPRT_REF_DEBUG
 	if (ptr) {
-		sprt::release(ptr, _id);
+		sprt::release<Ref, _Pointer>(ptr, _id);
 	}
 #else
 	if (ptr) {
-		sprt::release(ptr, 0);
+		sprt::release<Ref, _Pointer>(ptr, 0);
 	}
 #endif
 }
@@ -903,7 +903,7 @@ inline auto RcBase<_Base, _Pointer>::doSwap(Pointer _value) -> Pointer {
 		id = sprt::retain(value);
 	}
 	if (ptr) {
-		sprt::release(ptr, _id);
+		sprt::release<Ref, _Pointer>(ptr, _id);
 	}
 	_id = id;
 	return (Pointer)value;
@@ -912,7 +912,7 @@ inline auto RcBase<_Base, _Pointer>::doSwap(Pointer _value) -> Pointer {
 		sprt::retain(value);
 	}
 	if (ptr) {
-		sprt::release(ptr, 0);
+		sprt::release<Ref, _Pointer>(ptr, 0);
 	}
 	return (Pointer)value;
 #endif
@@ -1151,11 +1151,11 @@ inline uint64_t retain(T *t, uint64_t value) noexcept {
 	return t->retain(value);
 }
 
-template <typename T>
+template <typename T, typename Pointer>
 inline void release(T *t, uint64_t value) noexcept {
 	if (t->release(value)) {
-		if constexpr (__is_shared_ref<T>::value) {
-			T::__delete(t);
+		if constexpr (__is_shared_ref<sprt::remove_pointer_t<Pointer>>::value) {
+			sprt::remove_pointer_t<Pointer>::__delete(Pointer(t));
 		} else {
 			__delete(t);
 		}
