@@ -23,6 +23,23 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_STDARG_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_STDARG_H_
 
+/*
+	Dispatch header for <stdarg.h>:
+	- hosted SPRT build -> forwards to the system <stdarg.h> (#include_next)
+	- otherwise         -> SPRT's own definitions via sprt/wrappers/libc/stdarg.h
+
+	This header declares one type and the variadic-argument macros (no functions):
+
+	Type:
+	  va_list  - holds the state for walking a function's variable arguments
+
+	Macros:
+	  va_start(ap, last) - initialize ap; last is the final named parameter
+	  va_arg(ap, type)   - fetch the next argument as the given type
+	  va_copy(dst, src)  - duplicate an in-progress va_list
+	  va_end(ap)         - finish traversal and release ap
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <stdarg.h>

@@ -126,7 +126,7 @@ LRESULT WindowClass::_wndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam
 
 	if (shouldRetainPoll) {
 		if (win->getController()->isWithinPoll()) {
-			oslog::vpdebug(__SPRT_LOCATION, "WindowClass", "Recursive processing");
+			//oslog::vpdebug(__SPRT_LOCATION, "WindowClass", "Recursive processing");
 		}
 
 		win->getController()->retainPollDepth();
@@ -564,7 +564,7 @@ LRESULT WindowClass::wndProc(WindowsWindow *win, HWND hwnd, UINT uMsg, WPARAM wP
 	case WM_ENTERIDLE: return handleDefault(); break;
 
 	default:
-		XL_WIN32_LOG("Event: ", std::hex, uMsg);
+		XL_WIN32_LOG("Event: ", uMsg);
 		return handleDefault();
 		break;
 	}

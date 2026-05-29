@@ -21,6 +21,8 @@
  **/
 
 #include <sprt/wrappers/windows/windows.h>
+#include <sprt/wrappers/windows/winver.h>
+#include <sprt/runtime/thread/qonce.h>
 
 #include "dllloader.h"
 
@@ -52,7 +54,6 @@ WINAPI NTSTATUS NtCancelWaitCompletionPacket(HANDLE WaitCompletionPacketHandle,
 }
 
 WINAPI BOOL NtCompletionPacketAvailable() {
-	return false;
 	auto loader = sprt::DllLoader::get();
 	if (!loader->ntdll.NtCreateWaitCompletionPacket.fn) {
 		if (!loader->ntdll.load(&loader->ntdll.NtCreateWaitCompletionPacket)) {
@@ -145,5 +146,35 @@ WINAPI void *__sprt_ReportEventAsCompletion(void *hIOCP, void *hEvent,
 		}
 	}
 	return hPacket;
+}
+
+WINAPI WINAPI_PROVIDER GetWinApiProvider() {
+	static sprt::qonce s_WinAPIOnce;
+	static WINAPI_PROVIDER s_provider;
+
+	s_WinAPIOnce([] {
+		auto ntdll = GetModuleHandleW(L"ntdll.dll");
+		if (GetProcAddress(ntdll, "wine_get_version")) {
+			s_provider = WinApiProviderWine;
+			return;
+		}
+
+		OSVERSIONINFOW info;
+		memset(&info, 0, sizeof(info));
+		GetVersionExW(&info);
+
+		auto len = wcslen(info.szCSDVersion);
+		if (len < 120) {
+			auto str = &info.szCSDVersion[len + 1];
+			if (memcmp(str, L"ReactOS", 14) == 0) {
+				s_provider = WinApiProviderReactOS;
+				return;
+			}
+		}
+
+		s_provider = WinApiProviderMicrosoft;
+	});
+
+	return s_provider;
 }
 }

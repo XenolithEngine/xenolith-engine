@@ -42,7 +42,7 @@ struct SPRT_API TimerIocpSource {
 	bool start();
 	void stop();
 	void reset();
-	void cancel();
+	void cancel(Handle *);
 };
 
 class SPRT_API TimerIocpHandle : public TimerHandle {

@@ -23,6 +23,19 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_STDBOOL_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_STDBOOL_H_
 
+/*
+	Dispatch header for <stdbool.h>:
+	- hosted SPRT build -> forwards to the system <stdbool.h> (#include_next)
+	- otherwise         -> SPRT's own definitions via sprt/c/__sprt_stdbool.h
+
+	This header declares only macros (no types or functions), and only in C
+	(in C++ bool/true/false are built-in keywords, so nothing is defined):
+	  bool                          - expands to _Bool
+	  true                          - expands to 1
+	  false                         - expands to 0
+	  __bool_true_false_are_defined - expands to 1
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <stdbool.h>

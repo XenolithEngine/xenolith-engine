@@ -55,6 +55,11 @@ BOOL SetEnvironmentVariableW(LPCWSTR lpName, LPCWSTR lpValue) {
 	return DLL_LOAD_AND_CALL(loader, kernel32, SetEnvironmentVariableW, lpName, lpValue);
 }
 
+LPWCH GetEnvironmentStringsW() {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, kernel32, GetEnvironmentStringsW);
+}
+
 VOID Sleep(DWORD dwMilliseconds) {
 	auto loader = sprt::DllLoader::get();
 	DLL_LOAD_AND_CALL(loader, kernel32, Sleep, dwMilliseconds);
@@ -992,5 +997,39 @@ WINAPI BOOL VerifyVersionInfoW(LPOSVERSIONINFOEXW lpVersionInformation, DWORD dw
 	auto loader = sprt::DllLoader::get();
 	return DLL_LOAD_AND_CALL(loader, kernel32, VerifyVersionInfoW, lpVersionInformation, dwTypeMask,
 			dwlConditionMask);
+}
+
+WINAPI HANDLE CreateTimerQueue(VOID) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, kernel32, CreateTimerQueue);
+}
+
+WINAPI BOOL CreateTimerQueueTimer(PHANDLE phNewTimer, HANDLE TimerQueue,
+		WAITORTIMERCALLBACK Callback, PVOID Parameter, DWORD DueTime, DWORD Period, ULONG Flags) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, kernel32, CreateTimerQueueTimer, phNewTimer, TimerQueue,
+			Callback, Parameter, DueTime, Period, Flags);
+}
+
+WINAPI BOOL ChangeTimerQueueTimer(HANDLE TimerQueue, HANDLE Timer, ULONG DueTime, ULONG Period) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, kernel32, ChangeTimerQueueTimer, TimerQueue, Timer, DueTime,
+			Period);
+}
+
+BOOL WINAPI DeleteTimerQueueTimer(HANDLE TimerQueue, HANDLE Timer, HANDLE CompletionEvent) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, kernel32, DeleteTimerQueueTimer, TimerQueue, Timer,
+			CompletionEvent);
+}
+
+BOOL WINAPI DeleteTimerQueue(HANDLE TimerQueue) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, kernel32, DeleteTimerQueue, TimerQueue);
+}
+
+BOOL WINAPI DeleteTimerQueueEx(HANDLE TimerQueue, HANDLE CompletionEvent) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, kernel32, DeleteTimerQueueEx, TimerQueue, CompletionEvent);
 }
 }

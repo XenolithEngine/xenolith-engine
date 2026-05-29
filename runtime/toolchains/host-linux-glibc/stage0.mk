@@ -116,8 +116,8 @@ $(STAGE0_CMAKE_GCC_TOOLCHAIN): $(STAGE0_SYSROOT)/sysroot
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)" >> $@
-	@echo "set(CMAKE_EXE_LINKER_FLAGS_INIT -Wl,--dynamic-linker=$(realpath $(STAGE0_SYSROOT))/lib/ld-linux-$(SP_ARCH_LD).so.2)" >> $@
-	@echo "set(CMAKE_EXE_LINKER_FLAGS -Wl,--dynamic-linker=$(realpath $(STAGE0_SYSROOT))/lib/ld-linux-$(SP_ARCH_LD).so.2)" >> $@
+	@echo "set(CMAKE_EXE_LINKER_FLAGS_INIT \"-Wl,--dynamic-linker=$(realpath $(STAGE0_SYSROOT))/lib/ld-linux-$(SP_ARCH_LD).so.2 -lrt -lpthread\")" >> $@
+	@echo "set(CMAKE_EXE_LINKER_FLAGS \"-Wl,--dynamic-linker=$(realpath $(STAGE0_SYSROOT))/lib/ld-linux-$(SP_ARCH_LD).so.2 -lrt -lpthread\")" >> $@
 
 $(STAGE0_CMAKE_CLANG_TOOLCHAIN): $(STAGE0_SYSROOT)/sysroot
 	@echo "set(CMAKE_SYSTEM_NAME Linux)" > $@
@@ -130,8 +130,8 @@ $(STAGE0_CMAKE_CLANG_TOOLCHAIN): $(STAGE0_SYSROOT)/sysroot
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)" >> $@
-	@echo "set(CMAKE_EXE_LINKER_FLAGS_INIT -Wl,--dynamic-linker=$(realpath $(STAGE0_SYSROOT))/lib/ld-linux-$(SP_ARCH_LD).so.2)" >> $@
-	@echo "set(CMAKE_EXE_LINKER_FLAGS -Wl,--dynamic-linker=$(realpath $(STAGE0_SYSROOT))/lib/ld-linux-$(SP_ARCH_LD).so.2)" >> $@
+	@echo "set(CMAKE_EXE_LINKER_FLAGS_INIT \"-Wl,--dynamic-linker=$(realpath $(STAGE0_SYSROOT))/lib/ld-linux-$(SP_ARCH_LD).so.2 -lrt -lpthread\")" >> $@
+	@echo "set(CMAKE_EXE_LINKER_FLAGS \"-Wl,--dynamic-linker=$(realpath $(STAGE0_SYSROOT))/lib/ld-linux-$(SP_ARCH_LD).so.2 -lrt -lpthread\")" >> $@
 
 $(STAGE0_LIBCXX): $(LLVM_VER) $(STAGE0_CMAKE_GCC_TOOLCHAIN) $(STAGE0_ZLIB) $(STAGE0_GCC_CC)
 	@echo "Build STAGE0_LIBCXX $(STAGE0_LIBCXX)"
@@ -142,7 +142,7 @@ $(STAGE0_LIBCXX): $(LLVM_VER) $(STAGE0_CMAKE_GCC_TOOLCHAIN) $(STAGE0_ZLIB) $(STA
 		-DCXX_SUPPORTS_NOSTDLIBXX_FLAG=Off \
 		-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 		-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind;" \
-		-DLLVM_TARGETS_TO_BUILD=X86 \
+		-DLLVM_TARGETS_TO_BUILD=$(SP_ARCH_LLVM) \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DLIBCXXABI_USE_LLVM_UNWINDER=On \
 		-DCMAKE_INSTALL_PREFIX=$(realpath $(STAGE0_SYSROOT))
@@ -156,7 +156,7 @@ $(STAGE0_LIBCRT): $(LLVM_VER) $(STAGE0_LIBCXX)
 		-DCMAKE_TOOLCHAIN_FILE=$(realpath $(STAGE0_CMAKE_GCC_TOOLCHAIN)) \
 		-G Ninja -S $(LLVM_DIR)/runtimes -B build/libcxx_gcc_crt \
 		-DLLVM_ENABLE_RUNTIMES="compiler-rt;" \
-		-DLLVM_TARGETS_TO_BUILD=X86 \
+		-DLLVM_TARGETS_TO_BUILD=$(SP_ARCH_LLVM) \
 		-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCOMPILER_RT_BUILD_BUILTINS=On \
@@ -173,13 +173,14 @@ $(STAGE0_LIBCRT): $(LLVM_VER) $(STAGE0_LIBCXX)
 
 $(STAGE0_CLANG_CC): $(LLVM_VER) $(STAGE0_LIBCRT)
 	@echo "Build STAGE0_CLANG_CC $(STAGE0_CLANG_CC)"
-	rm -rf build_llvm_stage0
+	rm -rf build/llvm_stage0
 	cmake \
 		-DCMAKE_TOOLCHAIN_FILE=$(realpath $(STAGE0_CMAKE_GCC_TOOLCHAIN)) \
 		-G Ninja -S $(LLVM_DIR)/llvm -B build/llvm_stage0 \
 		-DDEFAULT_SYSROOT=$(realpath $(STAGE0_SYSROOT)) \
 		-DLLVM_ENABLE_PROJECTS="lld;clang" \
-		-DLLVM_TARGETS_TO_BUILD=X86 \
+		-DLLVM_ENABLE_RUNTIMES="compiler-rt" \
+		-DLLVM_TARGETS_TO_BUILD=$(SP_ARCH_LLVM) \
 		-DLLVM_INSTALL_TOOLCHAIN_ONLY=On \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCLANG_DEFAULT_CXX_STDLIB=libc++ \
@@ -187,6 +188,14 @@ $(STAGE0_CLANG_CC): $(LLVM_VER) $(STAGE0_LIBCRT)
 		-DCLANG_DEFAULT_LINKER=lld \
 		-DCLANG_DEFAULT_UNWINDLIB=libunwind \
 		-DLLVM_LOCAL_RPATH='$$ORIGIN/../usr/lib' \
+		-DCOMPILER_RT_BUILD_BUILTINS=On \
+		-DCOMPILER_RT_BUILD_GWP_ASAN=OFF \
+		-DCOMPILER_RT_BUILD_SANITIZERS=OFF \
+		-DCOMPILER_RT_BUILD_XRAY=OFF \
+		-DCOMPILER_RT_BUILD_MEMPROF=OFF \
+		-DCOMPILER_RT_BUILD_CTX_PROFILE=OFF \
+		-DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
+		-DCOMPILER_RT_SCUDO_STANDALONE_SYSROOT_PATH=$(realpath $(STAGE0_SYSROOT)) \
 		-DCMAKE_INSTALL_RPATH='$$ORIGIN/../usr/lib' \
 		-DCMAKE_BUILD_RPATH='$$ORIGIN/../usr/lib' \
 		-DCMAKE_INSTALL_PREFIX=$(STAGE0_SYSROOT)

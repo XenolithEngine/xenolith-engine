@@ -32,7 +32,7 @@ bool PollIocpSource::init(void *h, PollFlags f) {
 	return true;
 }
 
-void PollIocpSource::cancel() { handle = nullptr; }
+void PollIocpSource::cancel(Handle *) { handle = nullptr; }
 
 bool PollIocpHandle::init(HandleClass *cl, void *handle, PollFlags flags,
 		CompletionHandle<PollHandle> &&c) {

@@ -917,11 +917,9 @@ LRESULT MessageWindow::wndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 	case WM_SETTINGCHANGE: {
 		auto action = getUiAction(wParam);
 		if (!action.empty()) {
-			XL_WIN32_LOG("Event: WM_SETTINGCHANGE: ", action, " ",
-					string::toUtf8<Interface>((char16_t *)lParam));
+			XL_WIN32_LOG("Event: WM_SETTINGCHANGE: ", action);
 		} else {
-			XL_WIN32_LOG("Event: WM_SETTINGCHANGE: ", std::hex, wParam, " ",
-					string::toUtf8<Interface>((char16_t *)lParam));
+			XL_WIN32_LOG("Event: WM_SETTINGCHANGE: ", wParam);
 		}
 		win->handleSettingsChanged();
 		return handleDefault();
@@ -968,7 +966,7 @@ LRESULT MessageWindow::wndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 			return handleDefault();
 			break;
 		default:
-			XL_WIN32_LOG("Event: WM_POWERBROADCAST: ", std::hex, wParam);
+			XL_WIN32_LOG("Event: WM_POWERBROADCAST: ", wParam);
 			return handleDefault();
 			break;
 		}

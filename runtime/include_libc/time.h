@@ -23,6 +23,55 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_TIME_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_TIME_H_
 
+/*
+	Dispatch header for <time.h>:
+	- hosted SPRT build -> forwards to the system <time.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded).
+	struct tm and struct timespec come in via <sprt/c/__sprt_time.h>.
+	A function tagged [gate: X] is declared only when __SPRT_CONFIG_HAVE_X is set for
+	the target (or when __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS forces all of them).
+
+	Macros:
+	  CLOCKS_PER_SEC, TIME_UTC, TIMER_ABSTIME, and the POSIX clock ids
+	  CLOCK_REALTIME, CLOCK_MONOTONIC, CLOCK_PROCESS_CPUTIME_ID,
+	  CLOCK_THREAD_CPUTIME_ID, CLOCK_MONOTONIC_RAW, CLOCK_REALTIME_COARSE,
+	  CLOCK_MONOTONIC_COARSE, CLOCK_BOOTTIME, CLOCK_REALTIME_ALARM,
+	  CLOCK_BOOTTIME_ALARM, CLOCK_SGI_CYCLE, CLOCK_TAI
+
+	Types:
+	  size_t, time_t, clock_t, clockid_t, locale_t, pid_t
+
+	ISO C functions:
+	  clock        - processor time consumed by the program
+	  time         - current calendar time as time_t
+	  difftime     - difference between two times, in seconds
+	  mktime       - convert broken-down local time to time_t
+	  strftime     - format broken-down time into a string
+	  gmtime       - convert time_t to broken-down UTC time
+	  localtime    - convert time_t to broken-down local time
+	  asctime      - render broken-down time as a fixed-form string
+	  ctime        - render a time_t as a fixed-form string
+	  timespec_get - read the current time into a timespec
+
+	POSIX / extensions:
+	  gmtime_r/localtime_r   - reentrant gmtime/localtime
+	  asctime_r/ctime_r      - reentrant asctime/ctime
+	  strftime_l             - strftime using an explicit locale
+	  tzset                  - initialize timezone state from the environment
+	  nanosleep              - high-resolution sleep
+	  clock_getres           - query a clock's resolution
+	  clock_gettime          - read a clock's current value
+	  clock_settime          - set a clock's value  [gate: TIME_CLOCK_SETTIME]
+	  clock_nanosleep        - sleep measured against a specific clock
+	  clock_getcpuclockid    - obtain a process's CPU-time clock id
+	  clock_gettime_nsec_np  - read a clock as nanoseconds (Apple non-portable)
+
+	MSVC bounds-checked extensions:
+	  gmtime_s   - bounds-checked gmtime into a caller buffer
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <time.h>

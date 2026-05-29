@@ -28,7 +28,7 @@
 namespace sprt::dispatch {
 
 bool TimerIocpSource::init(const TimerInfo &info) {
-	cancel();
+	cancel(nullptr);
 
 	handle = CreateWaitableTimerExW(0, 0, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
 	if (!handle) {
@@ -110,7 +110,7 @@ void TimerIocpSource::reset() {
 	}
 }
 
-void TimerIocpSource::cancel() {
+void TimerIocpSource::cancel(Handle *) {
 	active = false;
 
 	if (event) {

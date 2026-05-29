@@ -23,6 +23,36 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_LOCALE_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_LOCALE_H_
 
+/*
+	Dispatch header for <locale.h>:
+	- hosted SPRT build -> forwards to the system <locale.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded):
+
+	Macros:
+	  category constants (for setlocale):
+	    LC_CTYPE, LC_NUMERIC, LC_TIME, LC_COLLATE, LC_MONETARY, LC_MESSAGES, LC_ALL
+	  category masks (for newlocale):
+	    LC_CTYPE_MASK, LC_NUMERIC_MASK, LC_TIME_MASK, LC_COLLATE_MASK,
+	    LC_MONETARY_MASK, LC_MESSAGES_MASK, LC_ALL_MASK
+	  LC_GLOBAL_LOCALE - special locale_t handle for the global locale
+
+	Types:
+	  lconv    - struct of numeric/monetary formatting conventions
+	  locale_t - opaque handle to a locale object
+
+	ISO C functions:
+	  setlocale  - set or query the global locale for a category
+	  localeconv - read the active numeric/monetary formatting conventions
+
+	POSIX extended-locale functions:
+	  newlocale  - create or modify a locale object from category masks
+	  duplocale  - duplicate a locale object
+	  freelocale - release a locale object
+	  uselocale  - set (or query) the calling thread's locale
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <locale.h>

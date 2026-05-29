@@ -78,7 +78,7 @@ Status IocpData::runPoll(TimeInterval ival, bool infinite) {
 			PostQueuedCompletionStatus(_port, 1, reinterpret_cast<uintptr_t>(it->second), nullptr);
 		} else {
 			oslog::vperror(__SPRT_LOCATION, "dispatch::Queue",
-					"Fail to dispatch timer event to handle");
+					"Fail to dispatch timer event to handle: ", intptr_t(h));
 		}
 	}
 
@@ -239,12 +239,14 @@ void IocpData::cancel() {
 }
 
 void IocpData::addWaitableObject(HANDLE obj, Handle *h) {
+	sprt::cout << "addWaitableObject " << obj << "\n";
 	if (emplace_ordered(_winHandles, obj)) {
 		_queueHandles.emplace(obj, h);
 	}
 }
 
 void IocpData::removeWaitableObject(HANDLE obj) {
+	sprt::cout << "removeWaitableObject " << obj << "\n";
 	if (erase_ordered(_winHandles, obj)) {
 		_queueHandles.erase(obj);
 	}
@@ -283,10 +285,15 @@ IocpData::IocpData(QueueRef *q, Queue::Data *data, const QueueInfo &info)
 	_winHandles.reserve(max(info.submitQueueSize, uint32_t(32)));
 	_winHandles.emplace_back(_port);
 
+	_timerQueue = CreateTimerQueue();
 	_data->_handle = _port;
 }
 
 IocpData::~IocpData() {
+	if (_timerQueue) {
+		DeleteTimerQueue(_timerQueue);
+		_timerQueue = nullptr;
+	}
 	if (_port) {
 		CloseHandle(_port);
 		_port = nullptr;

@@ -23,6 +23,24 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_STRINGS_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_STRINGS_H_
 
+/*
+	Dispatch header for the POSIX <strings.h>:
+	- hosted SPRT build -> forwards to the system <strings.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded):
+
+	Types:
+	  rsize_t     - bounds-checked size type
+	  locale_t    - opaque locale handle
+
+	Functions:
+	  strcasecmp    - case-insensitive string comparison
+	  strncasecmp   - case-insensitive comparison of at most n characters
+	  strcasecmp_l  - case-insensitive comparison using an explicit locale
+	  strncasecmp_l - bounded case-insensitive comparison using an explicit locale
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <strings.h>
@@ -35,7 +53,6 @@ typedef __SPRT_ID(rsize_t) rsize_t;
 typedef __SPRT_ID(locale_t) locale_t;
 
 __SPRT_BEGIN_DECL
-
 
 SPRT_UMBRELLA_FUNC
 int strcasecmp(const char *l, const char *r) SPRT_UMBRELLA_END

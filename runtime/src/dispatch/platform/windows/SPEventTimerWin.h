@@ -28,21 +28,23 @@
 
 namespace sprt::dispatch {
 
+class SPRT_API TimerWinHandle;
+
 struct SPRT_API TimerWinSource {
+	void *queue = nullptr;
 	void *handle = nullptr;
-	TimeInterval interval;
+	DWORD timeout;
+	DWORD interval;
 	uint32_t count = 0;
 	uint32_t value = 0;
-	uint32_t descriptor = 0;
-	bool subintervals = false;
 	bool active = false;
 
 	bool init(const TimerInfo &info);
 
-	bool start();
-	void stop();
-	void reset();
-	void cancel();
+	bool start(HANDLE queue, TimerWinHandle *iocp);
+	void stop(TimerWinHandle *h);
+	void reset(TimerWinHandle *h);
+	void cancel(Handle *h);
 };
 
 class SPRT_API TimerWinHandle : public TimerHandle {

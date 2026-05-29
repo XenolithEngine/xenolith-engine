@@ -24,6 +24,7 @@ SP_NJOBS ?= -j16
 SP_ARCH ?= x86_64
 SP_ARCH_LD ?= x86-64
 SP_ARCH_CLANG ?= $(SP_ARCH)-unknown-linux-gnu
+SP_ARCH_LLVM ?= X86
 SP_LLVM_VER := 21
 
 include glibc.mk

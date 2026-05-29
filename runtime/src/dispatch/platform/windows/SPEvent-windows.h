@@ -69,7 +69,7 @@ void setupIocpHandleClass(QueueHandleClassInfo *info, HandleClass *cl, bool susp
 	cl->cancelFn = [](HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize], Status st) {
 		auto source = reinterpret_cast<SourceType *>(data);
 
-		source->cancel();
+		source->cancel(handle);
 		source->~SourceType();
 
 		return HandleClass::cancel(cl, handle, data, st);

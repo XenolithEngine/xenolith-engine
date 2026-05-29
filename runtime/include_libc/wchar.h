@@ -23,6 +23,96 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_WCHAR_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_WCHAR_H_
 
+/*
+	Dispatch header for <wchar.h>:
+	- hosted SPRT build -> forwards to the system <wchar.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded).
+	A function tagged [gate: X] is declared only when __SPRT_CONFIG_HAVE_X is set for
+	the target (or when __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS forces all of them).
+	On Windows, when __SPRT_WIN_USE_IMPORT_STRING_LIB is set, the wide string functions
+	wcscpy, wcsncpy, wcslen, wcsstr and wcsnlen come from a DLL import and are not
+	redeclared here.
+
+	Macros:
+	  WEOF - wide end-of-file / error value
+
+	Types:
+	  wchar_t (in C), mbstate_t (when not provided directly), size_t, wint_t,
+	  wctype_t, FILE, locale_t
+
+	Wide-string handling:
+	  wcscpy/wcsncpy   - copy a wide string / at most n wide chars
+	  wcslen/wcsnlen   - wide-string length, optionally bounded
+	  wcscat/wcsncat   - append a wide string / at most n wide chars
+	  wcscmp/wcsncmp   - compare wide strings / at most n wide chars
+	  wcscoll/wcsxfrm  - locale-aware compare / transform-for-compare
+	  wcschr/wcsrchr   - find first / last occurrence of a wide char
+	  wcsspn/wcscspn   - length of the initial accepted / rejected run
+	  wcspbrk          - find the first wide char from a set
+	  wcsstr/wcswcs    - find a wide substring (wcswcs is the obsolete alias)
+	  wcstok           - split a wide string into tokens (caller-held state)
+
+	Wide-memory handling:
+	  wmemchr  - find a wide char in an array
+	  wmemcmp  - compare two wide-char arrays
+	  wmemcpy  - copy a wide-char array (non-overlapping)
+	  wmemmove - copy a wide-char array (possibly overlapping)
+	  wmemset  - fill a wide-char array
+
+	Multibyte <-> wide conversion:
+	  btowc/wctob   - single byte to / from a wide char
+	  mbsinit       - test whether an mbstate_t is in the initial state
+	  mbrtowc       - restartable multibyte char to wide char
+	  wcrtomb       - restartable wide char to multibyte char
+	  mbrlen        - restartable length of the next multibyte char
+	  mbsrtowcs     - restartable multibyte string to wide string
+	  wcsrtombs     - restartable wide string to multibyte string
+	  mbsnrtowcs    - mbsrtowcs bounded by input bytes and output count
+	  wcsnrtombs    - wcsrtombs bounded by input count and output bytes
+
+	Wide-string numeric parsing:
+	  wcstof/wcstod/wcstold     - parse to float / double / long double
+	  wcstol/wcstoul            - parse to long / unsigned long in a base
+	  wcstoll/wcstoull          - parse to long long / unsigned long long
+
+	Wide stream I/O:
+	  fwide                     - query or set a stream's orientation
+	  wprintf/fwprintf/swprintf - formatted wide output (stdout / stream / buffer)
+	  snwprintf/_snwprintf      - size-limited formatted wide output
+	  vwprintf/vfwprintf/vswprintf - va_list forms of the wide printf family
+	  wscanf/fwscanf/swscanf    - formatted wide input (stdin / stream / string)
+	  vwscanf/vfwscanf/vswscanf - va_list forms of the wide scanf family
+	  fgetwc/getwc              - read one wide char from a stream
+	  getwchar                  - read one wide char from stdin
+	  fputwc/putwc              - write one wide char to a stream
+	  putwchar                  - write one wide char to stdout
+	  fgetws                    - read a wide line into a buffer
+	  fputws                    - write a wide string to a stream
+	  ungetwc                   - push a wide char back onto a stream
+	  wcsftime                  - format broken-down time into a wide string
+	  open_wmemstream           - wide stream backed by a growing heap buffer
+	                              [gate: STDIO_OPEN_MEMSTREAM]
+	  fgetwc_unlocked/getwc_unlocked/getwchar_unlocked/fputwc_unlocked/
+	  putwc_unlocked/putwchar_unlocked/fgetws_unlocked/fputws_unlocked
+	                            - unlocked (non-thread-safe) wide stream I/O
+
+	POSIX / extensions:
+	  wcsdup/_wcsdup            - duplicate a wide string into a new allocation
+	  wcpcpy/wcpncpy            - copy a wide string, returning the end pointer
+	  wcscasecmp/wcsncasecmp    - case-insensitive wide comparison (bounded form too)
+	  wcscasecmp_l/wcsncasecmp_l/wcscoll_l/wcsxfrm_l/wcsftime_l
+	                            - explicit-locale variants
+	  wcwidth/wcswidth          - terminal column width of a wide char / string
+	  towlower/towupper         - wide-char case conversion
+
+	MSVC bounds-checked extensions:
+	  wcscpy_s   - bounds-checked wcscpy
+	  wcsncpy_s  - bounds-checked wcsncpy
+	  wcstombs_s - bounds-checked wcstombs
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <wchar.h>

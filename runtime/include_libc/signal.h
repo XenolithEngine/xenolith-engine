@@ -23,6 +23,49 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SIGNAL_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SIGNAL_H_
 
+/*
+	Dispatch header for <signal.h>:
+	- hosted SPRT build -> forwards to the system <signal.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded).
+	A function tagged [gate: X] is declared only when __SPRT_CONFIG_HAVE_X is set for
+	the target (or when __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS forces all of them).
+
+	Macros:
+	  Signal numbers (each defined only where the platform provides it):
+	    SIGHUP, SIGINT, SIGQUIT, SIGILL, SIGTRAP, SIGABRT, SIGIOT, SIGBUS, SIGFPE,
+	    SIGKILL, SIGSEGV, SIGUSR/SIGUSR1/SIGUSR2, SIGPIPE, SIGALRM, SIGTERM,
+	    SIGSTKFLT, SIGCHLD, SIGCONT, SIGSTOP, SIGTSTP, SIGTTIN, SIGTTOU, SIGURG,
+	    SIGXCPU, SIGXFSZ, SIGVTALRM, SIGPROF, SIGWINCH, SIGIO, SIGPOLL, SIGPWR,
+	    SIGSYS, SIGUNUSED
+	  sigprocmask modes: SIG_BLOCK, SIG_UNBLOCK, SIG_SETMASK
+	  _NSIG - one past the highest signal number
+
+	Types:
+	  sighandler - signal-handler function-pointer type
+	  sigset_t   - a set of signals
+
+	ISO C functions:
+	  signal - install a disposition (handler) for a signal
+	  raise  - send a signal to the calling process
+
+	POSIX signal-set functions:
+	  sigemptyset  - clear all signals from a set
+	  sigfillset   - add every signal to a set
+	  sigaddset    - add one signal to a set
+	  sigdelset    - remove one signal from a set
+	  sigismember  - test whether a signal is in a set
+	  sigisemptyset - test whether a set is empty (GNU)
+	  sigorset     - store the union of two sets (GNU)
+	  sigandset    - store the intersection of two sets (GNU)
+
+	POSIX signal-mask functions  [gate: SIGNAL_SIGPROCMASK]:
+	  sigprocmask  - examine and/or change the blocked-signal mask
+	  sigsuspend   - replace the mask and suspend until a signal arrives
+	  sigpending   - retrieve the set of pending blocked signals
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <signal.h>

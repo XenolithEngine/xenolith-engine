@@ -23,6 +23,39 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SCHED_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SCHED_H_
 
+/*
+	Dispatch header for the POSIX <sched.h>:
+	- hosted SPRT build -> forwards to the system <sched.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded).
+	struct sched_param comes in via <sprt/c/__sprt_sched.h>.
+
+	Types:
+	  pid_t      - process identifier
+	  timespec   - seconds/nanoseconds time value (for the RR interval)
+	  cpu_set_t  - bitset of CPUs for affinity operations
+	  cpuset_t   - BSD-style alias of cpu_set_t
+
+	Macros:
+	  CPU_SETSIZE - number of CPUs a fixed cpu_set_t can hold
+	  fixed-size set ops:  CPU_SET, CPU_CLR, CPU_ISSET, CPU_AND, CPU_OR, CPU_XOR,
+	                       CPU_COUNT, CPU_ZERO, CPU_EQUAL
+	  explicit-size ops:   CPU_SET_S, CPU_CLR_S, CPU_ISSET_S, CPU_AND_S, CPU_OR_S,
+	                       CPU_XOR_S, CPU_COUNT_S, CPU_ZERO_S, CPU_EQUAL_S
+	  dynamic allocation:  CPU_ALLOC_SIZE, CPU_ALLOC, CPU_FREE
+
+	Functions:
+	  sched_get_priority_max - highest priority allowed for a policy
+	  sched_get_priority_min - lowest priority allowed for a policy
+	  sched_getparam         - read a process's scheduling parameters
+	  sched_setparam         - set a process's scheduling parameters
+	  sched_getscheduler     - read a process's scheduling policy
+	  sched_setscheduler     - set a process's scheduling policy and parameters
+	  sched_rr_get_interval  - round-robin time quantum for a process
+	  sched_yield            - yield the processor to another runnable thread
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sched.h>

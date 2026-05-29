@@ -23,6 +23,34 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_INTTYPES_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_INTTYPES_H_
 
+/*
+	Dispatch header for <inttypes.h>:
+	- hosted SPRT build -> forwards to the system <inttypes.h> (#include_next)
+	- otherwise         -> SPRT's own definitions via sprt/wrappers/libc/inttypes.h,
+	                       which first includes the <stdint.h> wrapper
+
+	This header declares only macros; the fixed-width types and their limit/constant
+	macros come from <stdint.h>. It does NOT provide the imaxabs/imaxdiv/strtoimax/
+	strtoumax/wcstoimax/wcstoumax functions.
+
+	printf format-specifier macros (PRI...):
+	  conversion letters d/i (signed decimal), o (octal), u (unsigned decimal),
+	  x / X (hex lower/upper)
+	  e.g. PRId32, PRIu64, PRIxPTR, PRIoMAX
+
+	scanf format-specifier macros (SCN...):
+	  conversion letters d/i (signed decimal), o (octal), u (unsigned decimal),
+	  X (hex)
+	  e.g. SCNd32, SCNuFAST16, SCNiPTR
+
+	Each conversion is provided for these width suffixes:
+	  8 / 16 / 32 / 64           - exact-width types
+	  LEAST8..LEAST64            - minimum-width types
+	  FAST8..FAST64              - fastest-minimum-width types
+	  MAX                        - intmax_t / uintmax_t
+	  PTR                        - intptr_t / uintptr_t
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <inttypes.h>

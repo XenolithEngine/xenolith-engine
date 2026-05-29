@@ -23,6 +23,45 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_MATH_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_MATH_H_
 
+/*
+	Dispatch header for <math.h>:
+	- hosted SPRT build -> forwards to the system <math.h> (#include_next)
+	- otherwise         -> SPRT's own definitions via sprt/wrappers/libc/math.h
+
+	Each real function comes in three precisions: the bare name takes/returns double,
+	the f-suffixed name float, and the l-suffixed name long double (e.g. cos/cosf/cosl).
+	In C++ the functions instead live in namespace sprt::_cmath (pulled into the global
+	scope when hosted-and-not-SPRT-build, and into std:: under __SPRT_AS_STD) as
+	type-generic overloads plus arithmetic-promoting templates; the classification and
+	comparison entries below are real functions in C++ but macros in C.
+
+	Macros:
+	  NAN, INFINITY, HUGE_VAL, HUGE_VALF, HUGE_VALL
+	  FP_NAN, FP_INFINITE, FP_ZERO, FP_SUBNORMAL, FP_NORMAL  - fpclassify results
+	  FP_ILOGB0, FP_ILOGBNAN                                 - ilogb edge results
+	  M_E, M_LOG2E, M_LOG10E, M_LN2, M_LN10, M_PI, M_PI_2, M_PI_4, M_1_PI, M_2_PI,
+	  M_2_SQRTPI, M_SQRT2, M_SQRT1_2                         - common constants
+
+	Types:
+	  float_t, double_t - the most efficient types at least as wide as float/double
+
+	Trigonometric:        acos, asin, atan, atan2, cos, sin, tan
+	Hyperbolic:           acosh, asinh, atanh, cosh, sinh, tanh
+	Exponential / log:    exp, exp2, expm1, log, log10, log1p, log2, logb, ilogb,
+	                      frexp, ldexp, modf, scalbn, scalbln
+	Power / roots:        pow, sqrt, cbrt, hypot (2- and, in C++, 3-argument)
+	Error / gamma:        erf, erfc, lgamma, tgamma
+	Rounding / integer:   ceil, floor, trunc, round, lround, llround, rint, lrint,
+	                      llrint, nearbyint
+	Remainder / modulo:   fmod, remainder, remquo
+	Sign / next / fma:    fabs, copysign, nan, nextafter, nexttoward, fdim, fmax,
+	                      fmin, fma
+	Classification:       fpclassify, isfinite, isinf, isnan, isnormal, signbit
+	Comparison:           isgreater, isgreaterequal, isless, islessequal,
+	                      islessgreater, isunordered
+	C++-only additions:   abs overloads (integral and floating), lerp
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <math.h>

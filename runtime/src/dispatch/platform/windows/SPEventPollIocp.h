@@ -37,7 +37,7 @@ struct PollIocpSource {
 	PollFlags flags = PollFlags::None;
 
 	bool init(void *, PollFlags);
-	void cancel();
+	void cancel(Handle *);
 };
 
 class SPRT_API PollIocpHandle : public PollHandle {

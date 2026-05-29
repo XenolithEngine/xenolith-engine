@@ -29,6 +29,7 @@
 #include <sprt/runtime/log.h>
 #include <sprt/runtime/enum.h>
 
+#include <sprt/wrappers/windows/basic_api.h>
 #include <sprt/wrappers/windows/user_api.h>
 #include <sprt/wrappers/windows/monitor_api.h>
 #include <sprt/wrappers/windows/message_api.h>
@@ -185,7 +186,16 @@ SurfaceInfo WindowsWindow::getSurfaceOptions(SurfaceInfo &&info) const { return 
 
 Extent2 WindowsWindow::getExtent() const { return _currentState.extent; }
 
-PresentationOptions WindowsWindow::getPreferredOptions() const { return PresentationOptions(); }
+
+PresentationOptions WindowsWindow::getPreferredOptions() const {
+	PresentationOptions opts;
+
+	if (GetWinApiProvider() != WinApiProviderMicrosoft) {
+		opts.acquireImageWithoutFence = true;
+	}
+
+	return opts;
+}
 
 bool WindowsWindow::enableState(WindowState state) {
 	if (NativeWindow::enableState(state)) {
@@ -517,9 +527,9 @@ SPRT_UNUSED static void getWindowExStyleName(const callback<void(StringView)> &c
 }
 
 Status WindowsWindow::handleStyleChanging(StyleType type, STYLESTRUCT *style) {
-	XL_WIN32_LOG(sprt::source_location::current().function_name(),
+	/*XL_WIN32_LOG(sprt::source_location::current().function_name(),
 			type == StyleType::Style ? getWindowStyleName(style->styleNew)
-									 : getWindowExStyleName(style->styleNew));
+									 : getWindowExStyleName(style->styleNew));*/
 	return Status::Propagate;
 }
 

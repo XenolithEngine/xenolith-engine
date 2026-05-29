@@ -41,6 +41,7 @@ struct SPRT_API IocpData : public PlatformQueueData {
 	static constexpr DWORD CancelFlag = 1 << 30;
 
 	HANDLE _port = nullptr;
+	HANDLE _timerQueue = nullptr;
 	bool _hasCompletionPackage = true;
 
 	Queue::Vector<HANDLE> _winHandles;

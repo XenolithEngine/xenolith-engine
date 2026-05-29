@@ -268,7 +268,8 @@ $(SRC_ROOT)/simde: | prepare
 # https://github.com/llvm/llvm-project/releases # revised: 24 feb 2026
 $(SRC_ROOT)/llvm-project: | prepare
 	cd $(SRC_ROOT); git clone https://github.com/llvm/llvm-project.git --branch llvmorg-21.1.8  --depth 1  --recurse-submodules
-	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8/0001-replaced-__ulock-with-os_sync_wait_on_address.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-lldb-wine/*
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-noulock/*
 
 # https://download.gnome.org/sources/libxml2  # revised: 26 feb 2026
 $(SRC_ROOT)/libxml2: | prepare

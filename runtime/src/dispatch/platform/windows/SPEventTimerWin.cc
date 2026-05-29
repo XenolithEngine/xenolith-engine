@@ -28,88 +28,59 @@
 namespace sprt::dispatch {
 
 bool TimerWinSource::init(const TimerInfo &info) {
-	cancel();
-
-	handle = CreateWaitableTimerExW(0, 0, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
-	if (!handle) {
-		return false;
+	if (!info.timeout) {
+		timeout = sprt::max(info.interval.toMillis(), uint64_t(1));
+	} else {
+		timeout = sprt::max(info.timeout.toMillis(), uint64_t(1));
 	}
-
-	subintervals = false;
-	interval = info.interval;
+	interval = sprt::max(info.interval.toMillis(), uint64_t(1));
 	count = info.count;
 	value = 0;
-
-	int result = 1;
-	LARGE_INTEGER dueDate;
-	timeToFileTime(dueDate, info.timeout);
-
-	if (interval.toMicros() < 1'000) {
-		subintervals = true;
-	}
-
-	if (info.count == 1) {
-		// oneshot timer
-		result = SetWaitableTimerEx(handle, &dueDate, 0, 0, 0, 0, 0);
-	} else if (!subintervals) {
-		result = SetWaitableTimerEx(handle, &dueDate, interval.toMillis(), 0, 0, 0, 0);
-	} else {
-		result = SetWaitableTimerEx(handle, &dueDate, 0, 0, 0, 0, 0);
-	}
-	if (!result) {
-		oslog::vperror(__SPRT_LOCATION, "dispatch::Queue",
-				"Fail to create WaitableTimer: ", sprt::status::lastErrorToStatus(GetLastError()));
-	}
-
-	return result;
+	return true;
 }
 
-bool TimerWinSource::start() {
-	if (!handle) {
-		handle = CreateWaitableTimerExW(0, 0, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
-				TIMER_ALL_ACCESS);
-		active = false;
-	}
+bool TimerWinSource::start(HANDLE q, TimerWinHandle *h) {
+	queue = q;
 
 	int result = 1;
 	if (!active) {
-		LARGE_INTEGER dueDate;
-		timeToFileTime(dueDate, interval);
-		if (!subintervals) {
-			result = SetWaitableTimerEx(handle, &dueDate, interval.toMillis(), 0, 0, 0, 0);
-		} else {
-			result = SetWaitableTimerEx(handle, &dueDate, 0, 0, 0, 0, 0);
-		}
-		if (result) {
+		result = CreateTimerQueueTimer(&handle, queue, [](void *ptr, BOOLEAN) {
+			auto h = reinterpret_cast< const TimerWinHandle *>(ptr);
+			auto iocp = static_cast<IocpData *>(h->getClass()->info->data->_platformQueue);
+			PostQueuedCompletionStatus(iocp->_port, 1, reinterpret_cast<uintptr_t>(h), nullptr);
+		}, (void *)h, timeout, interval, WT_EXECUTEDEFAULT);
+
+		if (result && handle) {
+			sprt::retain(h, reinterpret_cast<uintptr_t>(this));
+			// next start after first will use interval instead of timeout
+			timeout = interval;
 			active = true;
 		}
 	}
 	return result;
 }
 
-void TimerWinSource::stop() {
-	active = false;
-
+void TimerWinSource::stop(TimerWinHandle *h) {
 	if (handle && active) {
-		CancelWaitableTimer(handle);
+		DeleteTimerQueueTimer(queue, handle, nullptr);
+		sprt::release(h, reinterpret_cast<uintptr_t>(this));
+		handle = nullptr;
 		active = false;
 	}
 }
 
-void TimerWinSource::reset() {
-	LARGE_INTEGER dueDate;
-	if (subintervals && handle) {
-		timeToFileTime(dueDate, interval);
-		SetWaitableTimer(handle, &dueDate, 0, 0, 0, 0);
+void TimerWinSource::reset(TimerWinHandle *h) {
+	if (handle) {
+		ChangeTimerQueueTimer(handle, queue, timeout, interval);
 	}
 }
 
-void TimerWinSource::cancel() {
+void TimerWinSource::cancel(Handle *h) {
 	active = false;
 
 	if (handle) {
-		CancelWaitableTimer(handle);
-		CloseHandle(handle);
+		DeleteTimerQueueTimer(queue, handle, nullptr);
+		sprt::release(h, reinterpret_cast<uintptr_t>(this));
 		handle = nullptr;
 	}
 }
@@ -149,6 +120,9 @@ bool TimerWinHandle::reset(TimerInfo &&info) {
 
 	auto source = reinterpret_cast<TimerWinSource *>(_data);
 	if (source->init(info)) {
+		if (source->active) {
+			source->reset(nullptr);
+		}
 		if (shouldResume) {
 			resume();
 		}
@@ -161,10 +135,10 @@ Status TimerWinHandle::rearm(IocpData *iocp, TimerWinSource *source) {
 	auto status = prepareRearm();
 	if (status == Status::Ok) {
 		if (!source->active) {
-			iocp->addWaitableObject(source->handle, this);
-			source->start();
+			//iocp->addWaitableObject(source->handle, this);
+			source->start(iocp->_timerQueue, this);
 		} else {
-			source->reset();
+			source->reset(this);
 		}
 	}
 	return status;
@@ -173,8 +147,8 @@ Status TimerWinHandle::rearm(IocpData *iocp, TimerWinSource *source) {
 Status TimerWinHandle::disarm(IocpData *iocp, TimerWinSource *source) {
 	auto status = prepareDisarm();
 	if (status == Status::Ok) {
-		source->stop();
-		iocp->removeWaitableObject(source->handle);
+		source->stop(this);
+		//iocp->removeWaitableObject(source->handle);
 		++_timeline;
 	} else if (status == Status::ErrorAlreadyPerformed) {
 		return Status::Ok;
@@ -196,8 +170,7 @@ void TimerWinHandle::notify(IocpData *iocp, TimerWinSource *source, const Notify
 	source->value = current;
 
 	if (count == TimerInfo::Infinite || current < count) {
-		_status = Status::Suspended;
-		rearm(iocp, source);
+		// do nothing - timer is auto-rearmed
 	} else {
 		cancel(Status::Done, source->value);
 	}

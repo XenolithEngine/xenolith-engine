@@ -25,6 +25,7 @@
 
 #include <sprt/runtime/window/types.h>
 #include <sprt/runtime/window/input.h>
+#include <sprt/runtime/log.h>
 
 #if SPRT_WINDOWS
 
@@ -32,7 +33,7 @@
 
 #ifndef XL_WIN32_LOG
 #if XL_WIN32_DEBUG
-#define XL_WIN32_LOG(...) log::source().debug("Win32", __VA_ARGS__)
+#define XL_WIN32_LOG(...) ::sprt::oslog::vpdebug(__SPRT_LOCATION, "Win32", __VA_ARGS__)
 #else
 #define XL_WIN32_LOG(...)
 #endif

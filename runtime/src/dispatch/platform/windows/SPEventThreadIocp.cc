@@ -33,7 +33,7 @@ bool ThreadIocpSource::init() {
 	return true;
 }
 
-void ThreadIocpSource::cancel() {
+void ThreadIocpSource::cancel(Handle *) {
 	currentThread = 0;
 	port = nullptr;
 }

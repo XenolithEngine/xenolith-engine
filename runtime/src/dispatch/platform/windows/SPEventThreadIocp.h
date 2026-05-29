@@ -35,7 +35,7 @@ struct SPRT_API ThreadIocpSource {
 	void *port = nullptr;
 
 	bool init();
-	void cancel();
+	void cancel(Handle *);
 };
 
 class SPRT_API ThreadIocpHandle : public ThreadHandle {

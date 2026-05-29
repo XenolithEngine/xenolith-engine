@@ -1060,16 +1060,23 @@ void _initSystemPaths(LookupData &data) {
 		}
 		manager->Release();
 	} else {
+		auto notMs = GetWinApiProvider() != WinApiProviderMicrosoft;
 		auto dirFlagsAppWide = KF_FLAG_DONT_UNEXPAND | KF_FLAG_NO_ALIAS
 				| KF_FLAG_RETURN_FILTER_REDIRECTION_TARGET | KF_FLAG_CREATE;
 		auto dirFlagsLocal = KF_FLAG_DONT_UNEXPAND | KF_FLAG_NO_ALIAS | KF_FLAG_CREATE;
+
+		// Wine will not support KF_FLAG_RETURN_FILTER_REDIRECTION_TARGET
+		if (notMs) {
+			dirFlagsAppWide = dirFlagsLocal;
+		}
+
 		wchar_t *commonDirPath = nullptr;
 		for (auto &it : s_defaultKnownFolders) {
 			hr = SHGetKnownFolderPath(*it.folder, dirFlagsAppWide, nullptr, &commonDirPath);
 			if (SUCCEEDED(hr)) {
 				processKnownDirPath(data, it, commonDirPath);
 				CoTaskMemFree(commonDirPath); // Free memory allocated by the function
-			} else {
+			} else if (!notMs) {
 				hr = SHGetKnownFolderPath(*it.folder, dirFlagsLocal, nullptr, &commonDirPath);
 				if (SUCCEEDED(hr)) {
 					processKnownDirPath(data, it, commonDirPath);

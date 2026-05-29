@@ -6,6 +6,7 @@ EXPORTS
 	SetEnvironmentVariableA
 	GetEnvironmentVariableW
 	SetEnvironmentVariableW
+	GetEnvironmentStringsW
 	Sleep
 	SleepEx
 	GetCurrentProcessorNumber
@@ -171,3 +172,9 @@ EXPORTS
 	GetProcAddress
 	ExitProcess
 	GetModuleHandleExA
+	CreateTimerQueue
+	CreateTimerQueueTimer
+	ChangeTimerQueueTimer
+	DeleteTimerQueueTimer
+	DeleteTimerQueue
+	DeleteTimerQueueEx

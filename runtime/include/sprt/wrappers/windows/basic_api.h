@@ -169,6 +169,12 @@ typedef enum _TOKEN_INFORMATION_CLASS {
 	MaxTokenInfoClass // MaxTokenInfoClass should always be the last enum
 } TOKEN_INFORMATION_CLASS, *PTOKEN_INFORMATION_CLASS;
 
+typedef enum _WINAPI_PROVIDER {
+	WinApiProviderMicrosoft,
+	WinApiProviderWine,
+	WinApiProviderReactOS,
+} WINAPI_PROVIDER;
+
 // clang-format on
 
 #define LHND  (LMEM_MOVEABLE | LMEM_ZEROINIT)
@@ -245,6 +251,8 @@ __SPRT_WIN_IMPORT WINAPI DWORD GetEnvironmentVariableW(LPCWSTR lpName, LPWSTR lp
 
 __SPRT_WIN_IMPORT WINAPI BOOL SetEnvironmentVariableW(LPCWSTR lpName, LPCWSTR lpValue);
 
+__SPRT_WIN_IMPORT WINAPI LPWCH GetEnvironmentStringsW();
+
 __SPRT_WIN_IMPORT WINAPI VOID Sleep(DWORD dwMilliseconds);
 
 __SPRT_WIN_IMPORT WINAPI DWORD SleepEx(DWORD dwMilliseconds, BOOL bAlertable);
@@ -276,6 +284,8 @@ __SPRT_WIN_IMPORT WINAPI DWORD GetCurrentProcessorNumber(VOID);
 __SPRT_WIN_IMPORT WINAPI VOID OutputDebugStringA(LPCSTR lpOutputString);
 
 __SPRT_WIN_IMPORT WINAPI VOID OutputDebugStringW(LPCWSTR lpOutputString);
+
+WINAPI WINAPI_PROVIDER GetWinApiProvider();
 
 SPRT_FORCEINLINE void CopyMemory(LPVOID Destination, const VOID *Source, SIZE_T Length) {
 	__sprt_memcpy(Destination, Source, Length);

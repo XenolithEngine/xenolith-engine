@@ -23,6 +23,43 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_WCTYPES_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_WCTYPES_H_
 
+/*
+	Dispatch header for <wctype.h>:
+	- hosted SPRT build -> forwards to the system <wctype.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded):
+
+	Types:
+	  wint_t    - integer type able to hold any wide char plus WEOF
+	  wctype_t  - opaque handle for a character class (from wctype)
+	  wctrans_t - opaque handle for a character mapping (from wctrans)
+	  locale_t  - opaque locale handle (for the _l variants)
+
+	Classification predicates (return non-zero on match):
+	  iswalnum  - alphanumeric        iswalpha  - alphabetic
+	  iswblank  - blank (space/tab)   iswcntrl  - control character
+	  iswdigit  - decimal digit       iswgraph  - printable, non-space
+	  iswlower  - lowercase           iswprint  - printable (incl. space)
+	  iswpunct  - punctuation         iswspace  - whitespace
+	  iswupper  - uppercase           iswxdigit - hexadecimal digit
+	  iswctype  - test against a wctype_t class obtained from wctype
+
+	Case / transformation:
+	  towlower  - convert a wide char to lowercase
+	  towupper  - convert a wide char to uppercase
+	  towctrans - apply a wctrans_t mapping obtained from wctrans
+
+	Class / mapping lookup by name:
+	  wctype    - look up a classification class (e.g. "alpha") by name
+	  wctrans   - look up a mapping (e.g. "tolower") by name
+
+	Locale-aware variants (each takes an explicit locale_t):
+	  iswalnum_l, iswalpha_l, iswblank_l, iswcntrl_l, iswdigit_l, iswgraph_l,
+	  iswlower_l, iswprint_l, iswpunct_l, iswspace_l, iswupper_l, iswxdigit_l,
+	  iswctype_l, towlower_l, towupper_l, towctrans_l, wctrans_l, wctype_l
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <wctype.h>

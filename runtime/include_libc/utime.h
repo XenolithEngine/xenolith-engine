@@ -23,6 +23,23 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_UTIME_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_UTIME_H_
 
+/*
+	Dispatch header for the POSIX <utime.h>:
+	- hosted SPRT build -> forwards to the system <utime.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded):
+
+	Types:
+	  struct utimbuf - holds the access/modification times to apply
+	                   (members: time_t actime, time_t modtime;
+	                    brought in via <sprt/c/__sprt_utime.h>)
+
+	Functions:
+	  utime - set a file's access and modification times from a struct utimbuf
+	          (a NULL buffer sets both times to the current time)
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <utime.h>

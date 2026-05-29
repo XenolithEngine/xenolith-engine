@@ -37,22 +37,22 @@ $(STAGE1_CMAKE_STAGE0_CLANG_TOOLCHAIN): $(STAGE1_SYSROOT)/sysroot
 	@echo "set(CMAKE_SYSROOT $(realpath $(STAGE1_SYSROOT)))" >> $@
 	@echo "set(CMAKE_C_FLAGS_INIT \"\")" >> $@
 	@echo "set(CMAKE_CXX_FLAGS_INIT \"\")" >> $@
-	@echo "set(CMAKE_C_COMPILER $(realpath $(STAGE0_SYSROOT))/bin/clang)" >> $@
-	@echo "set(CMAKE_CXX_COMPILER $(realpath $(STAGE0_SYSROOT))/bin/clang++)" >> $@
+	@echo "set(CMAKE_C_COMPILER $(abspath $(STAGE0_SYSROOT))/bin/clang)" >> $@
+	@echo "set(CMAKE_CXX_COMPILER $(abspath $(STAGE0_SYSROOT))/bin/clang++)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)" >> $@
-	@echo "set(CMAKE_EXE_LINKER_FLAGS_INIT -Wl,--dynamic-linker=$(realpath $(STAGE1_SYSROOT))/lib/ld-linux-$(SP_ARCH_LD).so.2)" >> $@
-	@echo "set(CMAKE_EXE_LINKER_FLAGS -Wl,--dynamic-linker=$(realpath $(STAGE1_SYSROOT))/lib/ld-linux-$(SP_ARCH_LD).so.2)" >> $@
+	@echo "set(CMAKE_EXE_LINKER_FLAGS_INIT -Wl,--dynamic-linker=$(abspath $(STAGE1_SYSROOT))/lib/ld-linux-$(SP_ARCH_LD).so.2)" >> $@
+	@echo "set(CMAKE_EXE_LINKER_FLAGS -Wl,--dynamic-linker=$(abspath $(STAGE1_SYSROOT))/lib/ld-linux-$(SP_ARCH_LD).so.2)" >> $@
 
 $(STAGE1_CMAKE_CLANG_TOOLCHAIN): $(STAGE1_SYSROOT)/sysroot
 	@echo "set(CMAKE_SYSTEM_NAME Linux)" > $@
-	@echo "set(CMAKE_SYSROOT $(realpath $(STAGE1_SYSROOT)))" >> $@
+	@echo "set(CMAKE_SYSROOT $(abspath $(STAGE1_SYSROOT)))" >> $@
 	@echo "set(CMAKE_C_FLAGS_INIT \"\")" >> $@
 	@echo "set(CMAKE_CXX_FLAGS_INIT \"\")" >> $@
-	@echo "set(CMAKE_C_COMPILER $(realpath $(STAGE1_SYSROOT))/bin/clang)" >> $@
-	@echo "set(CMAKE_CXX_COMPILER $(realpath $(STAGE1_SYSROOT))/bin/clang++)" >> $@
+	@echo "set(CMAKE_C_COMPILER $(abspath $(STAGE1_SYSROOT))/bin/clang)" >> $@
+	@echo "set(CMAKE_CXX_COMPILER $(abspath $(STAGE1_SYSROOT))/bin/clang++)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)" >> $@
@@ -61,13 +61,15 @@ $(STAGE1_CMAKE_CLANG_TOOLCHAIN): $(STAGE1_SYSROOT)/sysroot
 $(STAGE1_SYSROOT)/sysroot: $(LINUX_HEADERS_DIR)
 	mkdir -p $(STAGE1_SYSROOT)/etc
 	mkdir -p $(STAGE1_SYSROOT)/lib
-	cp -rL $(LINUX_HEADERS_DIR)/include $(STAGE1_SYSROOT)/include
+	cp -rL $(LINUX_HEADERS_DIR)/include/* $(STAGE1_SYSROOT)/include
 	touch $(STAGE1_SYSROOT)/sysroot
 
 $(STAGE1_MAKE): $(STAGE1_SYSROOT)/sysroot $(STAGE0_CLANG_CC) $(MAKE_SRC_DIR)
 	rm -rf build/stage1-make
 	mkdir -p build/stage1-make
-	cd build/stage1-make; $(abspath $(MAKE_SRC_DIR))/configure --prefix $(abspath $(STAGE1_SYSROOT)) CC=$(abspath $(STAGE0_CLANG_CC))
+	cd build/stage1-make; $(abspath $(MAKE_SRC_DIR))/configure \
+		--prefix $(abspath $(STAGE1_SYSROOT)) CC=$(abspath $(STAGE0_CLANG_CC)) \
+		--without-guile
 	make -C build/stage1-make $(SP_NJOBS)
 	make -C build/stage1-make install
 
@@ -87,18 +89,18 @@ $(STAGE1_ZLIB): $(ZLIB_DIR) $(STAGE0_CLANG_CC)
 	@echo "Build STAGE1_ZLIB: $(STAGE1_ZLIB)"
 	rm -rf build/stage1-zlib
 	mkdir -p build/stage1-zlib
-	cd build/stage1-zlib; CC=$(realpath $(STAGE0_CLANG_CC)) CFLAGS="-fPIC --sysroot $(realpath $(STAGE0_SYSROOT))" \
-		$(abspath $(ZLIB_DIR))/configure --prefix=$(realpath $(STAGE1_SYSROOT)) --static --const
+	cd build/stage1-zlib; CC=$(realpath $(STAGE0_CLANG_CC)) CFLAGS="-include errno.h -fPIC --sysroot $(realpath $(STAGE0_SYSROOT))" \
+		$(abspath $(ZLIB_DIR))/configure --prefix=$(abspath $(STAGE1_SYSROOT)) --static --const
 	cd build/stage1-zlib; make; make install
 
-$(STAGE1_LIBCXX): $(STAGE1_ZLIB) $(STAGE0_CLANG_CC) $(STAGE1_CMAKE_STAGE0_CLANG_TOOLCHAIN)
+$(STAGE1_LIBCXX): $(STAGE1_ZLIB) $(STAGE0_CLANG_CC) $(STAGE0_CMAKE_CLANG_TOOLCHAIN)
 	@echo "Build STAGE1_LIBCXX $(STAGE1_LIBCXX)"
 	rm -rf build/stage1-libcxx
 	cmake \
-		-DCMAKE_TOOLCHAIN_FILE=$(realpath $(STAGE0_CMAKE_CLANG_TOOLCHAIN)) \
+		-DCMAKE_TOOLCHAIN_FILE=$(abspath $(STAGE0_CMAKE_CLANG_TOOLCHAIN)) \
 		-G Ninja -S $(LLVM_DIR)/runtimes -B build/stage1-libcxx \
 		-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind;compiler-rt;" \
-		-DLLVM_TARGETS_TO_BUILD=X86 \
+		-DLLVM_TARGETS_TO_BUILD=$(SP_ARCH_LLVM) \
 		-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DLIBCXX_HAS_ATOMIC_LIB=Off \
@@ -113,7 +115,7 @@ $(STAGE1_LIBCXX): $(STAGE1_ZLIB) $(STAGE0_CLANG_CC) $(STAGE1_CMAKE_STAGE0_CLANG_
 		-DCOMPILER_RT_BUILD_MEMPROF=OFF \
 		-DCOMPILER_RT_BUILD_CTX_PROFILE=OFF \
 		-DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
-		-DCOMPILER_RT_SCUDO_STANDALONE_SYSROOT_PATH=$(realpath $(STAGE1_SYSROOT)) \
+		-DCOMPILER_RT_SCUDO_STANDALONE_SYSROOT_PATH=$(abspath $(STAGE1_SYSROOT)) \
 		-DCMAKE_C_FLAGS_INIT="-ffunction-sections -fdata-sections" \
 		-DCMAKE_CXX_FLAGS_INIT="-ffunction-sections -fdata-sections" \
 		-DCMAKE_C_FLAGS="-ffunction-sections -fdata-sections" \
@@ -135,7 +137,7 @@ $(STAGE1_CLANG_CC): $(STAGE1_LIBCXX) $(STAGE1_ZLIB) $(STAGE1_GLIBC) $(STAGE1_CMA
 		-G Ninja -S $(LLVM_DIR)/llvm -B build/stage1-llvm \
 		-DLLVM_ENABLE_PROJECTS="lld;clang" \
 		-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind;compiler-rt" \
-		-DLLVM_TARGETS_TO_BUILD=X86 \
+		-DLLVM_TARGETS_TO_BUILD=$(SP_ARCH_LLVM) \
 		-DLLVM_INSTALL_TOOLCHAIN_ONLY=On \
 		-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 		-DCMAKE_BUILD_TYPE=Release \
@@ -155,7 +157,7 @@ $(STAGE1_CLANG_CC): $(STAGE1_LIBCXX) $(STAGE1_ZLIB) $(STAGE1_GLIBC) $(STAGE1_CMA
 		-DCOMPILER_RT_BUILD_MEMPROF=OFF \
 		-DCOMPILER_RT_BUILD_CTX_PROFILE=OFF \
 		-DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
-		-DCOMPILER_RT_SCUDO_STANDALONE_SYSROOT_PATH=$(realpath $(STAGE1_SYSROOT)) \
+		-DCOMPILER_RT_SCUDO_STANDALONE_SYSROOT_PATH=$(abspath $(STAGE1_SYSROOT)) \
 		-DLLVM_LOCAL_RPATH='$$ORIGIN/../lib' \
 		-DCMAKE_INSTALL_RPATH='$$ORIGIN/../lib' \
 		-DCMAKE_BUILD_RPATH='$$ORIGIN/../lib' \
