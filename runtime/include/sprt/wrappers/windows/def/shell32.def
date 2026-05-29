@@ -1,0 +1,7 @@
+LIBRARY shell32.dll
+EXPORTS
+	SHGetKnownFolderPath
+	ShellExecuteA
+	ShellExecuteW
+	CommandLineToArgvW
+	ShellExecuteExW

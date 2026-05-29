@@ -1,0 +1,7 @@
+= Unistd wrappers
+
+In **Xenolith Runtime**, users always have access to headers like `unistd.h` and `io.h`, which mimics the Windows SDK.
+
+Both header versions must provide a unified interface, regardless of how they were included. This interface should cover cases where the headers are used as POSIX libc or Windows CRT.
+
+From a build perspective, **Xenolith Runtime** does not inherently provide different interfaces based on the target platform. However, our task is to ensure consistent builds for existing code.

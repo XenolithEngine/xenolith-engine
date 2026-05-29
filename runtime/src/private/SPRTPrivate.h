@@ -1,0 +1,101 @@
+/**
+ Copyright (c) 2025 Stappler Team <admin@stappler.org>
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
+
+#ifndef CORE_RUNTIME_PRIVATE_SPRTPRIVATE_H_
+#define CORE_RUNTIME_PRIVATE_SPRTPRIVATE_H_
+
+#include <sprt/runtime/mem/pool.h>
+#include <sprt/runtime/platform.h>
+#include <sprt/runtime/thread/qmutex.h>
+#include <sprt/runtime/filesystem/lookup.h>
+
+namespace sprt::platform {
+
+struct GlobalConfig {
+	static char localeBuf[6];
+
+	qmutex infoMutex;
+	StringView uniqueIdBuf;
+	StringView execPathBuf;
+	StringView homePathBuf;
+	StringView locale = StringView(localeBuf);
+
+	AppConfig config;
+
+	filesystem::LocationInfo current;
+
+	memory::pool_t *_pool = memory::pool::create(memory::self_contained_allocator);
+
+	~GlobalConfig() { memory::pool::destroy(_pool); }
+};
+
+SPRT_LOCAL bool initialize(AppConfig &&cfg, int &);
+SPRT_LOCAL void terminate();
+
+SPRT_LOCAL memory::pool_t *getConfigPool();
+
+} // namespace sprt::platform
+
+namespace sprt::backtrace {
+
+SPRT_LOCAL void initialize();
+SPRT_LOCAL void terminate();
+
+} // namespace sprt::backtrace
+
+namespace sprt::filesystem {
+
+SPRT_LOCAL void initialize();
+SPRT_LOCAL void terminate();
+
+} // namespace sprt::filesystem
+
+
+namespace sprt::unicode {
+
+SPRT_LOCAL bool idnToAscii(const callback<void(StringView)> &, StringView source);
+SPRT_LOCAL bool idnToUnicode(const callback<void(StringView)> &, StringView source);
+
+} // namespace sprt::unicode
+
+#if SPRT_WINDOWS
+#include <sprt/runtime/stringview.h>
+
+namespace sprt::platform {
+
+bool isAppContainer();
+
+void destroyAppContainer(StringView appConfigBundleName);
+
+bool initAppContainer(StringView appConfigBundleName, StringView appConfigName);
+
+bool runSelfInContainer(int &resultCode);
+
+bool getAppPath(const callback<void(StringView)> &);
+bool getHomePath(const callback<void(StringView)> &);
+bool getMachineId(const callback<void(StringView)> &);
+
+} // namespace sprt::platform
+
+#endif
+
+#endif // CORE_RUNTIME_PRIVATE_SPRTPRIVATE_H_

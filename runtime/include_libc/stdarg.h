@@ -1,0 +1,53 @@
+/**
+Copyright (c) 2025 Stappler Team <admin@stappler.org>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef CORE_RUNTIME_INCLUDE_LIBC_STDARG_H_
+#define CORE_RUNTIME_INCLUDE_LIBC_STDARG_H_
+
+/*
+	Dispatch header for <stdarg.h>:
+	- hosted SPRT build -> forwards to the system <stdarg.h> (#include_next)
+	- otherwise         -> SPRT's own definitions via sprt/wrappers/libc/stdarg.h
+
+	This header declares one type and the variadic-argument macros (no functions):
+
+	Type:
+	  va_list  - holds the state for walking a function's variable arguments
+
+	Macros:
+	  va_start(ap, last) - initialize ap; last is the final named parameter
+	  va_arg(ap, type)   - fetch the next argument as the given type
+	  va_copy(dst, src)  - duplicate an in-progress va_list
+	  va_end(ap)         - finish traversal and release ap
+*/
+
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
+
+#include_next <stdarg.h>
+
+#else
+
+#include <sprt/wrappers/libc/stdarg.h>
+
+#endif
+
+#endif // CORE_RUNTIME_INCLUDE_LIBC_STDARG_H_

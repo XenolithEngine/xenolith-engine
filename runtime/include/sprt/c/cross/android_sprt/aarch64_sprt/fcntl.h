@@ -1,0 +1,89 @@
+#define __SPRT_O_CREAT        0100
+#define __SPRT_O_EXCL         0200
+#define __SPRT_O_NOCTTY       0400
+#define __SPRT_O_TRUNC       01000
+#define __SPRT_O_APPEND      02000
+#define __SPRT_O_NONBLOCK    04000
+#define __SPRT_O_DSYNC      010000
+#define __SPRT_O_SYNC     04010000
+#define __SPRT_O_RSYNC    04010000
+#define __SPRT_O_DIRECTORY  040000
+#define __SPRT_O_NOFOLLOW  0100000
+#define __SPRT_O_CLOEXEC  02000000
+
+#define __SPRT_O_ASYNC      020000
+#define __SPRT_O_DIRECT    0200000
+#define __SPRT_O_LARGEFILE 0400000
+#define __SPRT_O_NOATIME  01000000
+#define __SPRT_O_PATH    010000000
+#define __SPRT_O_TMPFILE 020040000
+#define __SPRT_O_NDELAY __SPRT_O_NONBLOCK
+
+#define __SPRT_O_SEARCH   __SPRT_O_PATH
+#define __SPRT_O_EXEC     __SPRT_O_PATH
+
+#define __SPRT_O_ACCMODE 03
+#define __SPRT_O_RDONLY  00
+#define __SPRT_O_WRONLY  01
+#define __SPRT_O_RDWR    02
+
+#define __SPRT_F_DUPFD  0
+#define __SPRT_F_GETFD  1
+#define __SPRT_F_SETFD  2
+#define __SPRT_F_GETFL  3
+#define __SPRT_F_SETFL  4
+#define __SPRT_F_GETLK  5
+#define __SPRT_F_SETLK  6
+#define __SPRT_F_SETLKW 7
+#define __SPRT_F_SETOWN 8
+#define __SPRT_F_GETOWN 9
+#define __SPRT_F_SETSIG 10
+#define __SPRT_F_GETSIG 11
+
+#define __SPRT_F_SETOWN_EX 15
+#define __SPRT_F_GETOWN_EX 16
+
+#define __SPRT_F_GETOWNER_UIDS 17
+
+#define __SPRT_F_OFD_GETLK 36
+#define __SPRT_F_OFD_SETLK 37
+#define __SPRT_F_OFD_SETLKW 38
+
+// clang-format off
+#define __SPRT_F_DUPFD_CLOEXEC (1024 + 6)
+#define __SPRT_F_SETPIPE_SZ (1024 + 7)
+#define __SPRT_F_GETPIPE_SZ (1024 + 8)
+#define __SPRT_F_ADD_SEALS (1024 + 9)
+#define __SPRT_F_GET_SEALS (1024 + 10)
+// clang-format on
+
+#define __SPRT_F_SEAL_SEAL 0x0001
+#define __SPRT_F_SEAL_SHRINK 0x0002
+#define __SPRT_F_SEAL_GROW 0x0004
+#define __SPRT_F_SEAL_WRITE 0x0008
+#define __SPRT_F_SEAL_FUTURE_WRITE 0x0010
+
+#define __SPRT_F_RDLCK 0
+#define __SPRT_F_WRLCK 1
+#define __SPRT_F_UNLCK 2
+
+#define __SPRT_AT_FDCWD - 100
+#define __SPRT_AT_SYMLINK_NOFOLLOW 0x100
+#define __SPRT_AT_SYMLINK_FOLLOW 0x400
+#define __SPRT_AT_NO_AUTOMOUNT 0x800
+#define __SPRT_AT_EMPTY_PATH 0x1000
+#define __SPRT_AT_STATX_SYNC_TYPE 0x6000
+#define __SPRT_AT_STATX_SYNC_AS_STAT 0x0000
+#define __SPRT_AT_STATX_FORCE_SYNC 0x2000
+#define __SPRT_AT_STATX_DONT_SYNC 0x4000
+#define __SPRT_AT_RECURSIVE 0x8000
+#define __SPRT_AT_EACCESS 0x200
+#define __SPRT_AT_REMOVEDIR 0x200
+
+#define __SPRT_AT_RENAME_NOREPLACE 0x0001
+#define __SPRT_AT_RENAME_EXCHANGE 0x0002
+#define __SPRT_AT_RENAME_WHITEOUT 0x0004
+#define __SPRT_AT_HANDLE_FID 0x200
+#define __SPRT_AT_HANDLE_MNT_ID_UNIQUE 0x001
+
+#define __SPRT_FD_CLOEXEC 1
