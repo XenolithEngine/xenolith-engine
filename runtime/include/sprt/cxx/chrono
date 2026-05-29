@@ -1,0 +1,70 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_CHRONO_
+#define RUNTIME_INCLUDE_SPRT_CXX_CHRONO_
+
+#include <sprt/c/__sprt_time.h>
+#include <sprt/c/sys/__sprt_sprt.h>
+
+// lightweight chrono-like implementation
+
+namespace sprt {
+
+template <__sprt_sprt_timeout_t SecondsTick, __sprt_sprt_timeout_t NanosInTick = 1'000'000'000>
+struct ratio {
+	constexpr __sprt_sprt_timeout_t operator()(__sprt_sprt_timeout_t t) {
+		return t * SecondsTick * NanosInTick;
+	}
+};
+
+using nano = ratio<1, 1>;
+using micro = ratio<1, 1'000>;
+using milli = ratio<1, 1'000'000>;
+
+} // namespace sprt
+
+namespace sprt::chrono {
+
+template <typename Rep, typename Period = sprt::ratio<1>>
+struct duration {
+	operator __sprt_sprt_timeout_t() const {
+		return Period()(static_cast<__sprt_sprt_timeout_t>(value));
+	}
+
+	Rep value = 0;
+};
+
+using nanoseconds = duration<__sprt_sprt_timeout_t, sprt::nano>;
+using microseconds = duration<__sprt_sprt_timeout_t, sprt::micro>;
+using milliseconds = duration<__sprt_sprt_timeout_t, sprt::milli>;
+using seconds = duration<__sprt_sprt_timeout_t>;
+using minutes = duration<__sprt_sprt_timeout_t, sprt::ratio<60>>;
+using hours = duration<__sprt_sprt_timeout_t, sprt::ratio<3'600>>;
+using days = duration<__sprt_sprt_timeout_t, sprt::ratio<86'400>>;
+using weeks = duration<__sprt_sprt_timeout_t, sprt::ratio<604'800>>;
+using months = duration<__sprt_sprt_timeout_t, sprt::ratio<2'629'746>>;
+using years = duration<__sprt_sprt_timeout_t, sprt::ratio<31'556'952>>;
+
+} // namespace sprt::chrono
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_CHRONO_

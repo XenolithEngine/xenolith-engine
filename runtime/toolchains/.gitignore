@@ -1,0 +1,7 @@
+/targets/
+/hosts/
+/intermediate/
+/src/
+/native/
+/musl/
+/tmp/

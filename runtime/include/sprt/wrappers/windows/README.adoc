@@ -1,0 +1,13 @@
+= Windows API wrappers
+
+This is a functional analog of the Windows SDK headers, created for **Xenolith Runtime** tasks. It does not cover and is not intended to cover all capabilities of the Windows API — only the key ones necessary for **Xenolith Runtime** and toolchain dependencies.
+
+The main goal of these headers is to provide transparent cross-compilation for Windows on other platforms. Although these headers are available for all platforms, only on Windows all API's will be actually implemented for Windows.
+
+A number of functions, such as `CRITICAL_SECTION`, are implemented on top of the POSIX interface rather than the Windows interface. Thus, even on Windows, they will use the **pthreads** implementation from **Xenolith Runtime**, not platform functions. The **pthreads** implementation is nevertheless optimized for similar tasks.
+
+== Casemap
+
+Since Windows assumes case-insensitive paths, multiple variants of standard headers must be provided for cross-compilation on other platforms, where files differ in letter casing.
+
+For such cases, separate directories `windows/casemap<X>` should be created. Files with alternative naming variations should be placed inside them . These directories must then be added to the header search paths.

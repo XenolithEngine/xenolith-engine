@@ -1,0 +1,60 @@
+/**
+Copyright (c) 2025 Stappler Team <admin@stappler.org>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation flies (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef CORE_RUNTIME_INCLUDE_LIBC_STDBOOL_H_
+#define CORE_RUNTIME_INCLUDE_LIBC_STDBOOL_H_
+
+/*
+	Dispatch header for <stdbool.h>:
+	- hosted SPRT build -> forwards to the system <stdbool.h> (#include_next)
+	- otherwise         -> SPRT's own definitions via sprt/c/__sprt_stdbool.h
+
+	This header declares only macros (no types or functions), and only in C
+	(in C++ bool/true/false are built-in keywords, so nothing is defined):
+	  bool                          - expands to _Bool
+	  true                          - expands to 1
+	  false                         - expands to 0
+	  __bool_true_false_are_defined - expands to 1
+*/
+
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
+
+#include_next <stdbool.h>
+
+#else
+
+#include <sprt/c/__sprt_stdbool.h>
+
+
+#ifndef __cplusplus
+
+#define true __sprt_true
+#define false __sprt_false
+#define bool __sprt_bool
+
+#define __bool_true_false_are_defined 1
+
+#endif
+
+#endif
+
+#endif // CORE_RUNTIME_INCLUDE_LIBC_STDBOOL_H_

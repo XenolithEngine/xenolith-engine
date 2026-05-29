@@ -1,0 +1,67 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_TYPEINDEX_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_TYPEINDEX_H_
+
+#include <sprt/cxx/typeinfo>
+#include <sprt/cxx/compare>
+
+namespace sprt {
+
+class type_index {
+	const type_info *__t_;
+
+public:
+	type_index(const type_info &__y) noexcept : __t_(&__y) { }
+
+	bool operator==(const type_index &__y) const noexcept { return *__t_ == *__y.__t_; }
+
+	bool operator<(const type_index &__y) const noexcept { return __t_->before(*__y.__t_); }
+	bool operator<=(const type_index &__y) const noexcept { return !__y.__t_->before(*__t_); }
+	bool operator>(const type_index &__y) const noexcept { return __y.__t_->before(*__t_); }
+	bool operator>=(const type_index &__y) const noexcept { return !__t_->before(*__y.__t_); }
+	strong_ordering operator<=>(const type_index &__y) const noexcept {
+		if (*__t_ == *__y.__t_) {
+			return strong_ordering::equal;
+		}
+		if (__t_->before(*__y.__t_)) {
+			return strong_ordering::less;
+		}
+		return strong_ordering::greater;
+	}
+
+	size_t hash_code() const noexcept { return __t_->hash_code(); }
+	const char *name() const noexcept { return __t_->name(); }
+};
+
+template <class _Tp>
+struct hash;
+
+template <>
+struct hash<type_index> {
+	size_t operator()(type_index __index) const noexcept { return __index.hash_code(); }
+};
+
+} // namespace sprt
+
+#endif

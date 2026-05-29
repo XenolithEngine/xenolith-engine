@@ -1,0 +1,26 @@
+LIBRARY ntdll.dll
+EXPORTS
+	RtlCaptureContext
+	RtlRestoreContext
+	NtContinueEx
+	NtClose
+	_setjmp
+	_setjmpex
+	__C_specific_handler
+	memcmp
+	memcpy
+	memmove
+	memset
+	strcpy
+	strlen
+	strncpy
+	strnlen
+	strstr
+	strchr
+	strcmp
+	strncmp
+	wcscpy
+	wcslen
+	wcsncpy
+	wcsnlen
+	wcsstr

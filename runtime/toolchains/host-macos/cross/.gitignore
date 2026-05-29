@@ -1,0 +1,12 @@
+build
+/build/
+src
+*.tar.xz
+/sysroot-*
+/linux-*
+/gcc-*
+/glibc-*
+/llvm-*
+/make-*
+/zlib-*
+MacOSX*

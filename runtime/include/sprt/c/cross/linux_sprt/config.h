@@ -1,0 +1,23 @@
+#ifndef __SPRT_CONFIG_HAVE_EPOLL
+#define __SPRT_CONFIG_HAVE_EPOLL 1
+#endif
+
+#ifndef __SPRT_CONFIG_HAVE_EVENTFD
+#define __SPRT_CONFIG_HAVE_EVENTFD 1
+#endif
+
+#ifndef __SPRT_CONFIG_HAVE_SIGNALFD
+#define __SPRT_CONFIG_HAVE_SIGNALFD 1
+#endif
+
+#ifndef __SPRT_CONFIG_HAVE_TIMERFD
+#define __SPRT_CONFIG_HAVE_TIMERFD 1
+#endif
+
+#ifndef __SPRT_CONFIG_HAVE_URING
+#define __SPRT_CONFIG_HAVE_URING 1
+#endif
+
+#ifndef __SPRT_CONFIG_HAVE_FUTEX
+#define __SPRT_CONFIG_HAVE_FUTEX 1
+#endif

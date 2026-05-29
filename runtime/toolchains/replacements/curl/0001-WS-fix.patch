@@ -1,0 +1,27 @@
+From b977b0d47353b8f282f2c0fd9f2f2543bc8e8c8e Mon Sep 17 00:00:00 2001
+Message-ID: <b977b0d47353b8f282f2c0fd9f2f2543bc8e8c8e.1728349971.git.sbkarr@stappler.org>
+From: SBKarr <sbkarr@stappler.org>
+Date: Tue, 8 Oct 2024 09:12:33 +0800
+Subject: [PATCH] WS fix
+
+---
+ lib/curl_trc.h | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/lib/curl_trc.h b/lib/curl_trc.h
+index 5f675b453..1a1151e78 100644
+--- lib/curl_trc.h
++++ lib/curl_trc.h
+@@ -96,8 +96,7 @@ void Curl_failf(struct Curl_easy *data,
+ #endif /* !CURL_DISABLE_SMTP */
+ #if defined(USE_WEBSOCKETS) && !defined(CURL_DISABLE_HTTP)
+ #define CURL_TRC_WS(data, ...) \
+-  do { if(Curl_trc_ft_is_verbose(data, &Curl_trc_feat_ws)) \
+-         Curl_trc_ws(data, __VA_ARGS__); } while(0)
++  do { } while(0)
+ #endif /* USE_WEBSOCKETS && !CURL_DISABLE_HTTP */
+ 
+ #else /* CURL_HAVE_C99 */
+-- 
+2.43.0
+

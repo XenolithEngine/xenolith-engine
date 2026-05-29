@@ -1,0 +1,555 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_OPTIONAL_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_OPTIONAL_H_
+
+#include <sprt/cxx/compare>
+#include <sprt/cxx/initializer_list>
+#include <sprt/cxx/__type_traits/modifications.h>
+#include <sprt/cxx/__utility/in_place.h>
+#include <sprt/cxx/__memory/common.h>
+
+#include <sprt/cxx/detail/aligned_storage.h>
+
+namespace sprt {
+
+// class template optional
+template <typename T>
+class optional; // partially freestanding
+
+// no-value state indicator
+struct nullopt_t { };
+
+inline constexpr nullopt_t nullopt = nullopt_t();
+
+template <typename T>
+struct __is_optional : false_type { };
+
+template <typename T>
+struct __is_optional<sprt::optional<T>> : true_type { };
+
+template <typename T>
+inline constexpr bool __is_optional_v = __is_optional<T>::value;
+
+
+template <typename T>
+class optional {
+public:
+	using value_type = T;
+	using iterator = T *;
+	using const_iterator = T *;
+
+	// constructors
+	constexpr optional() noexcept : _empty() { }
+	constexpr optional(nullopt_t) noexcept : _empty(nullopt_t()) { }
+
+	constexpr optional(const optional &other) noexcept {
+		if (other._ptr) {
+			_ptr = construct_at(&_value, other._value);
+		}
+	}
+	constexpr optional(optional &&other) noexcept {
+		if (other._ptr) {
+			_ptr = construct_at(&_value, sprt::move_unsafe(other._value));
+
+			destroy_at(&other._value);
+			other._ptr = nullptr;
+		}
+	}
+
+	template <typename... Args>
+	requires (sprt::is_constructible_v<T, Args...>)
+	constexpr explicit optional(in_place_t, Args &&...args) noexcept {
+		_ptr = construct_at(&_value, sprt::forward<Args>(args)...);
+	}
+
+	template <typename U, typename... Args>
+	requires (sprt::is_constructible_v<T, std::initializer_list<U> &, Args...>)
+	constexpr explicit optional(in_place_t, initializer_list<U> il, Args &&...args) noexcept {
+		_ptr = construct_at(&_value, sprt::forward<Args>(args)...);
+	}
+
+	template <typename U = remove_cv_t<T>>
+	requires (sprt::is_constructible_v<T, U>
+			&& !sprt::is_same_v<sprt::remove_cvref<U>, sprt::in_place_t>
+			&& !sprt::is_same_v<sprt::remove_cvref<U>, sprt::optional<T>>
+			&& (!sprt::is_same_v<sprt::remove_cv_t<T>, bool> || !__is_optional_v<U>))
+	constexpr explicit optional(U &&arg) noexcept {
+		_ptr = construct_at(&_value, sprt::forward<U>(arg));
+	}
+
+	template <typename U>
+	requires (sprt::is_constructible_v<T, const U &>
+			&& (sprt::is_same_v<sprt::remove_cv_t<T>, bool>
+					|| (!sprt::is_constructible_v<T, sprt::optional<U> &>
+							&& !sprt::is_constructible_v<T, const sprt::optional<U> &>
+							&& !sprt::is_constructible_v<T, sprt::optional<U> &&>
+							&& !sprt::is_constructible_v<T, const sprt::optional<U> &&>
+							&& !sprt::is_convertible_v<sprt::optional<U> &, T>
+							&& !sprt::is_convertible_v<const sprt::optional<U> &, T>
+							&& !sprt::is_convertible_v<sprt::optional<U> &&, T>
+							&& !sprt::is_convertible_v<const sprt::optional<U> &&, T>)))
+	constexpr explicit(!sprt::is_convertible_v<const U &, T>)
+			optional(const optional<U> &opt) noexcept {
+		if (opt.has_value()) {
+			_ptr = construct_at(&_value, *opt);
+		}
+	}
+
+	template <typename U>
+	requires (sprt::is_constructible_v<T, U>
+			&& (sprt::is_same_v<sprt::remove_cv_t<T>, bool>
+					|| (!sprt::is_constructible_v<T, sprt::optional<U> &>
+							&& !sprt::is_constructible_v<T, const sprt::optional<U> &>
+							&& !sprt::is_constructible_v<T, sprt::optional<U> &&>
+							&& !sprt::is_constructible_v<T, const sprt::optional<U> &&>
+							&& !sprt::is_convertible_v<sprt::optional<U> &, T>
+							&& !sprt::is_convertible_v<const sprt::optional<U> &, T>
+							&& !sprt::is_convertible_v<sprt::optional<U> &&, T>
+							&& !sprt::is_convertible_v<const sprt::optional<U> &&, T>)))
+	constexpr explicit(!sprt::is_convertible_v<U, T>) optional(optional<U> &&opt) noexcept {
+		if (opt.has_value()) {
+			_ptr = construct_at(&_value, sprt::move_unsafe(*opt));
+		}
+	}
+
+	// destructor
+	constexpr ~optional() noexcept {
+		if (_ptr) {
+			sprt::destroy_at(_ptr);
+			_ptr = nullptr;
+		}
+	}
+
+	// assignment
+	constexpr optional &operator=(nullopt_t) noexcept {
+		if (_ptr) {
+			sprt::destroy_at(_ptr);
+			_ptr = nullptr;
+		}
+		return *this;
+	}
+
+	constexpr optional &operator=(const optional &opt) noexcept {
+		if (this == &opt) {
+			return *this;
+		}
+		if (_ptr) {
+			if (opt.has_value()) {
+				*_ptr = *opt;
+			} else {
+				*this = nullopt_t();
+			}
+		} else if (opt.has_value()) {
+			_ptr = construct_at(&_value, *opt);
+		}
+		return *this;
+	}
+
+	constexpr optional &operator=(optional &&opt) noexcept {
+		if (this == &opt) {
+			return *this;
+		}
+		if (_ptr) {
+			if (opt.has_value()) {
+				*_ptr = sprt::move_unsafe(*opt);
+				opt.reset();
+			} else {
+				*this = nullopt_t();
+			}
+		} else if (opt.has_value()) {
+			_ptr = construct_at(&_value, sprt::move_unsafe(*opt));
+			opt.reset();
+		}
+		return *this;
+	}
+
+	template <typename U>
+	requires (!sprt::is_constructible_v<T, sprt::optional<U> &>
+			&& !sprt::is_constructible_v<T, const sprt::optional<U> &>
+			&& !sprt::is_constructible_v<T, sprt::optional<U> &&>
+			&& !sprt::is_constructible_v<T, const sprt::optional<U> &&>
+			&& !sprt::is_convertible_v<sprt::optional<U> &, T>
+			&& !sprt::is_convertible_v<const sprt::optional<U> &, T>
+			&& !sprt::is_convertible_v<sprt::optional<U> &&, T>
+			&& !sprt::is_convertible_v<const sprt::optional<U> &&, T>
+			&& !sprt::is_assignable_v<T &, sprt::optional<U> &>
+			&& !sprt::is_assignable_v<T &, const sprt::optional<U> &>
+			&& !sprt::is_assignable_v<T &, sprt::optional<U> &&>
+			&& !sprt::is_assignable_v<T &, const sprt::optional<U> &&>
+			&& sprt::is_constructible_v<T, const U &> && sprt::is_assignable_v<T &, const U &>)
+	constexpr optional &operator=(const optional<U> &opt) noexcept {
+		if (this == &opt) {
+			return *this;
+		}
+		if (_ptr) {
+			if (opt.has_value()) {
+				*_ptr = *opt;
+			} else {
+				*this = nullopt_t();
+			}
+		} else if (opt.has_value()) {
+			_ptr = construct_at(&_value, *opt);
+		}
+		return *this;
+	}
+
+	template <typename U = remove_cv_t<T>>
+	requires (!sprt::is_constructible_v<T, sprt::optional<U> &>
+			&& !sprt::is_constructible_v<T, const sprt::optional<U> &>
+			&& !sprt::is_constructible_v<T, sprt::optional<U> &&>
+			&& !sprt::is_constructible_v<T, const sprt::optional<U> &&>
+			&& !sprt::is_convertible_v<sprt::optional<U> &, T>
+			&& !sprt::is_convertible_v<const sprt::optional<U> &, T>
+			&& !sprt::is_convertible_v<sprt::optional<U> &&, T>
+			&& !sprt::is_convertible_v<const sprt::optional<U> &&, T>
+			&& !sprt::is_assignable_v<T &, sprt::optional<U> &>
+			&& !sprt::is_assignable_v<T &, const sprt::optional<U> &>
+			&& !sprt::is_assignable_v<T &, sprt::optional<U> &&>
+			&& !sprt::is_assignable_v<T &, const sprt::optional<U> &&>
+			&& sprt::is_constructible_v<T, U> && sprt::is_assignable_v<T &, U>)
+	constexpr optional &operator=(optional<U> &&opt) noexcept {
+		if (this == &opt) {
+			return *this;
+		}
+		if (_ptr) {
+			if (opt.has_value()) {
+				*_ptr = sprt::move_unsafe(*opt);
+			} else {
+				*this = nullopt_t();
+			}
+		} else if (opt.has_value()) {
+			_ptr = construct_at(&_value, sprt::move_unsafe(*opt));
+		}
+		return *this;
+	}
+
+	template <typename U>
+	requires (!sprt::is_same_v<sprt::remove_cvref_t<U>, sprt::optional<T>>
+			&& sprt::is_constructible_v<T, U> && sprt::is_assignable_v<T &, U>)
+	constexpr optional &operator=(U &&arg) noexcept {
+		if (_ptr) {
+			*_ptr = sprt::forward<U>(arg);
+		} else {
+			_ptr = construct_at(&_value, sprt::forward<U>(arg));
+		}
+		return *this;
+	}
+
+	template <typename... Args>
+	constexpr T &emplace(Args &&...args) noexcept {
+		*this = nullopt_t();
+		_ptr = construct_at(&_value, sprt::forward<Args>(args)...);
+		return *_ptr;
+	}
+
+	template <typename U, typename... Args>
+	constexpr T &emplace(initializer_list<U> il, Args &&...args) noexcept {
+		*this = nullopt_t();
+		_ptr = construct_at(&_value, il, sprt::forward<Args>(args)...);
+		return *_ptr;
+	}
+
+	// swap
+	constexpr void swap(optional &other) noexcept {
+		if (has_value() && other.has_value()) {
+			sprt::swap(*_ptr, *other);
+		} else if (has_value()) {
+			other = sprt::move_unsafe(*_ptr);
+			*this = nullopt_t();
+		} else if (other.has_value()) {
+			*this = sprt::move_unsafe(*other);
+			other = nullopt_t();
+		}
+	}
+
+	// iterator support
+	constexpr iterator begin() noexcept {
+		if (_ptr) {
+			return _ptr;
+		}
+		return nullptr;
+	}
+	constexpr const_iterator begin() const noexcept {
+		if (_ptr) {
+			return _ptr;
+		}
+		return nullptr;
+	}
+	constexpr iterator end() noexcept {
+		if (_ptr) {
+			return _ptr + 1;
+		}
+		return nullptr;
+	}
+	constexpr const_iterator end() const noexcept {
+		if (_ptr) {
+			return _ptr + 1;
+		}
+		return nullptr;
+	}
+
+	// observers
+	constexpr const T *operator->() const noexcept { return _ptr; }
+	constexpr T *operator->() noexcept { return _ptr; }
+	constexpr const T &operator*() const & noexcept { return *_ptr; }
+	constexpr T &operator*() & noexcept { return *_ptr; }
+	constexpr T &&operator*() && noexcept { return *_ptr; }
+	constexpr const T &&operator*() const && noexcept { return _ptr; }
+	constexpr explicit operator bool() const noexcept { return _ptr != nullptr; }
+
+	constexpr bool has_value() const noexcept { return _ptr != nullptr; }
+	constexpr const T &value() const & { return *_ptr; }
+	constexpr T &value() & { return *_ptr; }
+	constexpr T &&value() && { return *_ptr; }
+	constexpr const T &&value() const && { return *_ptr; }
+
+	template <typename U = remove_cv_t<T>>
+	requires (sprt::is_copy_constructible_v<T> && sprt::is_convertible_v<U &&, T>)
+	constexpr T value_or(U &&u) const & {
+		return _ptr ? *_ptr : sprt::forward<U>(u);
+	}
+
+	template <typename U = remove_cv_t<T>>
+	requires (sprt::is_move_constructible_v<T> && sprt::is_convertible_v<U &&, T>)
+	constexpr T value_or(U &&u) && {
+		return _ptr ? *_ptr : sprt::forward<U>(u);
+	}
+
+	// modifiers
+	constexpr void reset() noexcept { *this = nullopt_t(); }
+
+protected:
+	// Disable the reference extension using this static assert.
+	static_assert(!is_same_v<remove_cvref_t<value_type>, in_place_t>,
+			"instantiation of optional with in_place_t is ill-formed");
+	static_assert(!is_same_v<remove_cvref_t<value_type>, nullopt_t>,
+			"instantiation of optional with nullopt_t is ill-formed");
+	static_assert(!is_reference_v<value_type>,
+			"instantiation of optional with a reference type is ill-formed");
+	static_assert(is_destructible_v<value_type>,
+			"instantiation of optional with a non-destructible type is ill-formed");
+	static_assert(!is_array_v<value_type>,
+			"instantiation of optional with an array type is ill-formed");
+
+	union {
+		nullopt_t _empty = {};
+		T _value;
+	};
+
+	T *_ptr = nullptr;
+};
+
+template <typename T>
+optional(T) -> optional<T>;
+
+// relational operators
+template <typename T, typename U>
+constexpr bool operator==(const optional<T> &l, const optional<U> &r) {
+	if (l.has_value() && r.has_value()) {
+		return l.value() == r.value();
+	} else {
+		return l.has_value() == r.has_value();
+	}
+}
+template <typename T, typename U>
+constexpr bool operator!=(const optional<T> &l, const optional<U> &r) {
+	if (l.has_value() && r.has_value()) {
+		return l.value() != r.value();
+	} else {
+		return l.has_value() != r.has_value();
+	}
+}
+template <typename T, typename U>
+constexpr bool operator<(const optional<T> &l, const optional<U> &r) {
+	if (l.has_value() && r.has_value()) {
+		return l.value() < r.value();
+	} else {
+		return l.has_value() < r.has_value();
+	}
+}
+template <typename T, typename U>
+constexpr bool operator>(const optional<T> &l, const optional<U> &r) {
+	if (l.has_value() && r.has_value()) {
+		return l.value() > r.value();
+	} else {
+		return l.has_value() > r.has_value();
+	}
+}
+template <typename T, typename U>
+constexpr bool operator<=(const optional<T> &l, const optional<U> &r) {
+	if (l.has_value() && r.has_value()) {
+		return l.value() <= r.value();
+	} else {
+		return l.has_value() <= r.has_value();
+	}
+}
+template <typename T, typename U>
+constexpr bool operator>=(const optional<T> &l, const optional<U> &r) {
+	if (l.has_value() && r.has_value()) {
+		return l.value() >= r.value();
+	} else {
+		return l.has_value() >= r.has_value();
+	}
+}
+
+template <typename T, typename U>
+constexpr auto operator<=>(const optional<T> &l, const optional<U> &r) {
+	if (l.has_value() && r.has_value()) {
+		return l.value() <=> r.value();
+	} else {
+		return l.has_value() <=> r.has_value();
+	}
+}
+
+// comparison with nullopt
+template <typename T>
+constexpr bool operator==(const optional<T> &l, nullopt_t) noexcept {
+	return !l.has_value();
+}
+template <typename T>
+constexpr strong_ordering operator<=>(const optional<T> &l, nullopt_t) noexcept {
+	return l.has_value() <=> false;
+}
+
+// comparison with T
+template <typename T, typename U>
+constexpr bool operator==(const optional<T> &l, const U &r) {
+	if (l.has_value()) {
+		return l.value() == r;
+	} else {
+		return l.has_value() == true;
+	}
+}
+template <typename T, typename U>
+constexpr bool operator==(const T &l, const optional<U> &r) {
+	if (r.has_value()) {
+		return l == r.value();
+	} else {
+		return true == r.has_value();
+	}
+}
+
+template <typename T, typename U>
+constexpr bool operator!=(const optional<T> &l, const U &r) {
+	if (l.has_value()) {
+		return l.value() != r;
+	} else {
+		return l.has_value() != true;
+	}
+}
+template <typename T, typename U>
+constexpr bool operator!=(const T &l, const optional<U> &r) {
+	if (r.has_value()) {
+		return l != r.value();
+	} else {
+		return true != r.has_value();
+	}
+}
+
+template <typename T, typename U>
+constexpr bool operator<(const optional<T> &l, const U &r) {
+	if (l.has_value()) {
+		return l.value() < r;
+	} else {
+		return l.has_value() < true;
+	}
+}
+template <typename T, typename U>
+constexpr bool operator<(const T &l, const optional<U> &r) {
+	if (r.has_value()) {
+		return l < r.value();
+	} else {
+		return true < r.has_value();
+	}
+}
+
+template <typename T, typename U>
+constexpr bool operator>(const optional<T> &l, const U &r) {
+	if (l.has_value()) {
+		return l.value() > r;
+	} else {
+		return l.has_value() > true;
+	}
+}
+template <typename T, typename U>
+constexpr bool operator>(const T &l, const optional<U> &r) {
+	if (r.has_value()) {
+		return l > r.value();
+	} else {
+		return true > r.has_value();
+	}
+}
+
+template <typename T, typename U>
+constexpr bool operator<=(const optional<T> &l, const U &r) {
+	if (l.has_value()) {
+		return l.value() <= r;
+	} else {
+		return l.has_value() <= true;
+	}
+}
+template <typename T, typename U>
+constexpr bool operator<=(const T &l, const optional<U> &r) {
+	if (r.has_value()) {
+		return l <= r.value();
+	} else {
+		return true <= r.has_value();
+	}
+}
+
+template <typename T, typename U>
+constexpr bool operator>=(const optional<T> &l, const U &r) {
+	if (l.has_value()) {
+		return l.value() >= r;
+	} else {
+		return l.has_value() >= true;
+	}
+}
+template <typename T, typename U>
+constexpr bool operator>=(const T &l, const optional<U> &r) {
+	if (r.has_value()) {
+		return l >= r.value();
+	} else {
+		return true >= r.has_value();
+	}
+}
+
+template <typename T>
+constexpr optional<decay_t<T>> make_optional(T &&t) {
+	return optional<decay_t<T>>(sprt::forward<T>(t));
+}
+
+template <typename T, typename... Args>
+constexpr optional<T> make_optional(Args &&...args) {
+	return optional<T>(sprt::forward<Args>(args)...);
+}
+
+template <typename T, typename U, typename... Args>
+constexpr optional<T> make_optional(initializer_list<U> il, Args &&...args) {
+	return optional<T>(il, sprt::forward<Args>(args)...);
+}
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_OPTIONAL_H_

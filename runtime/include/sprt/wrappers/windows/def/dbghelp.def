@@ -1,0 +1,10 @@
+LIBRARY dbghelp.dll
+EXPORTS
+	SymSetOptions
+	SymInitialize
+	SymGetOptions
+	SymCleanup
+	StackWalk64
+	SymGetSymFromAddr64
+	SymGetLineFromAddr64
+	UnDecorateSymbolName

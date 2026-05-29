@@ -1,0 +1,131 @@
+/**
+Copyright (c) 2025 Stappler Team <admin@stappler.org>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef CORE_RUNTIME_INCLUDE_C___SPRT_TIME_H_
+#define CORE_RUNTIME_INCLUDE_C___SPRT_TIME_H_
+
+#include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/bits/__sprt_null.h>
+#include <sprt/c/bits/__sprt_time_t.h>
+#include <sprt/c/bits/__sprt_size_t.h>
+#include <sprt/c/bits/__sprt_int32_t.h>
+#include <sprt/c/bits/__sprt_uint64_t.h>
+#include <sprt/c/cross/__sprt_locale.h>
+#include <sprt/c/cross/__sprt_sysid.h>
+
+// clang-format off
+#define __SPRT_CLOCKS_PER_SEC 1000000L
+#define __SPRT_TIME_UTC 1
+// clang-format on
+
+#define __SPRT_TIMER_ABSTIME 1
+
+__SPRT_BEGIN_DECL
+
+enum __SPRT_ID(tm_gmt_e) {
+	// We do not know if time is local or UTC, we do not know what tm_gmtoff means to us
+	__SPRT_ID(gmt_unset),
+	// Time is local, tm_gmtoff contains valid offset, tm itself contains local time
+	__SPRT_ID(gmt_local),
+	// Time is UTC, tm_gmtoff should be ignored, tm itself contains UTC time
+	__SPRT_ID(gmt_set),
+};
+
+struct __SPRT_TM_NAME {
+	__SPRT_ID(int32_t) tm_usec; /** microseconds past tm_sec */
+	__SPRT_ID(int32_t) tm_sec; /** (0-61) seconds past tm_min */
+	__SPRT_ID(int32_t) tm_min; /** (0-59) minutes past tm_hour */
+	__SPRT_ID(int32_t) tm_hour; /** (0-23) hours past midnight */
+	__SPRT_ID(int32_t) tm_mday; /** (1-31) day of the month */
+	__SPRT_ID(int32_t) tm_mon; /** (0-11) month of the year */
+	__SPRT_ID(int32_t) tm_year; /** year since 1900 */
+	__SPRT_ID(int32_t) tm_wday; /** (0-6) days since Sunday */
+	__SPRT_ID(int32_t) tm_yday; /** (0-365) days since January 1 */
+	__SPRT_ID(int32_t) tm_isdst; /** daylight saving time */
+	__SPRT_ID(int32_t) tm_gmtoff; /** seconds east of UTC */
+	const char *tm_zone;
+	enum __SPRT_ID(tm_gmt_e) tm_gmt_type; /** do we know if time is local or GMT?  */
+};
+
+SPRT_API __SPRT_ID(clock_t) __SPRT_ID(clock)(void);
+SPRT_API __SPRT_ID(time_t) __SPRT_ID(time)(__SPRT_ID(time_t) *);
+SPRT_API double __SPRT_ID(difftime)(__SPRT_ID(time_t), __SPRT_ID(time_t));
+SPRT_API __SPRT_ID(time_t) __SPRT_ID(mktime)(struct __SPRT_TM_NAME *);
+SPRT_API __SPRT_ID(size_t) __SPRT_ID(strftime)(char *__SPRT_RESTRICT, __SPRT_ID(size_t),
+		const char *__SPRT_RESTRICT, const struct __SPRT_TM_NAME *__SPRT_RESTRICT);
+SPRT_API struct __SPRT_TM_NAME *__SPRT_ID(gmtime)(const __SPRT_ID(time_t) *);
+SPRT_API struct __SPRT_TM_NAME *__SPRT_ID(localtime)(const __SPRT_ID(time_t) *);
+SPRT_API char *__SPRT_ID(asctime)(const struct __SPRT_TM_NAME *);
+SPRT_API char *__SPRT_ID(ctime)(const __SPRT_ID(time_t) *);
+SPRT_API int __SPRT_ID(timespec_get)(struct __SPRT_TIMESPEC_NAME *, int);
+
+SPRT_API struct __SPRT_TM_NAME *__SPRT_ID(
+		gmtime_r)(const __SPRT_ID(time_t) *, struct __SPRT_TM_NAME *);
+SPRT_API struct __SPRT_TM_NAME *__SPRT_ID(
+		localtime_r)(const __SPRT_ID(time_t) *, struct __SPRT_TM_NAME *);
+
+SPRT_API __SPRT_ID(size_t)
+		__SPRT_ID(strftime_l)(char *__SPRT_RESTRICT, __SPRT_ID(size_t), const char *__SPRT_RESTRICT,
+				const struct __SPRT_TM_NAME *__SPRT_RESTRICT, __SPRT_ID(locale_t));
+
+SPRT_API char *__SPRT_ID(
+		asctime_r)(const struct __SPRT_TM_NAME *__SPRT_RESTRICT, char *__SPRT_RESTRICT);
+SPRT_API char *__SPRT_ID(ctime_r)(const __SPRT_ID(time_t) *, char *);
+
+SPRT_API void __SPRT_ID(tzset)(void);
+
+SPRT_API int __SPRT_ID(
+		nanosleep)(const struct __SPRT_TIMESPEC_NAME *, struct __SPRT_TIMESPEC_NAME *);
+SPRT_API int __SPRT_ID(clock_getres)(__SPRT_ID(clockid_t), struct __SPRT_TIMESPEC_NAME *);
+SPRT_API int __SPRT_ID(clock_gettime)(__SPRT_ID(clockid_t), struct __SPRT_TIMESPEC_NAME *);
+
+#if __SPRT_CONFIG_HAVE_TIME_CLOCK_SETTIME || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+
+__SPRT_CONFIG_HAVE_TIME_CLOCK_SETTIME_NOTICE
+SPRT_API int __SPRT_ID(clock_settime)(__SPRT_ID(clockid_t), const struct __SPRT_TIMESPEC_NAME *);
+
+#endif
+
+SPRT_API int __SPRT_ID(clock_nanosleep)(__SPRT_ID(clockid_t), int,
+		const struct __SPRT_TIMESPEC_NAME *, struct __SPRT_TIMESPEC_NAME *);
+SPRT_API int __SPRT_ID(clock_getcpuclockid)(__SPRT_ID(pid_t), __SPRT_ID(clockid_t) *);
+
+SPRT_FORCEINLINE struct __SPRT_TIMESPEC_NAME __SPRT_ID(timespec_diff)(
+		const struct __SPRT_TIMESPEC_NAME *time1, const struct __SPRT_TIMESPEC_NAME *time0) {
+	struct __SPRT_TIMESPEC_NAME diff;
+	diff.tv_sec = time1->tv_sec - time0->tv_sec;
+	diff.tv_nsec = time1->tv_nsec - time0->tv_nsec;
+
+	// clang-format off
+	if (diff.tv_nsec < 0) {
+		diff.tv_nsec += 1000000000; // Add one second in nanoseconds
+		diff.tv_sec--; // Subtract one second from seconds
+	}
+	// clang-format on
+	return diff;
+}
+
+SPRT_API __SPRT_ID(uint64_t) __SPRT_ID(clock_gettime_nsec_np)(__SPRT_ID(clockid_t));
+
+__SPRT_END_DECL
+
+#endif // CORE_RUNTIME_INCLUDE_C___SPRT_TIME_H_

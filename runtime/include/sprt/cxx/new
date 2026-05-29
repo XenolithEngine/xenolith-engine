@@ -1,0 +1,499 @@
+/**
+Copyright (c) 2025 Stappler Team <admin@stappler.org>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_NEW_H_
+#define RUNTIME_INCLUDE_SPRT_RUNTIME_NEW_H_
+
+#include <sprt/c/__sprt_stdlib.h>
+#include <sprt/cxx/detail/ctypes.h>
+#include <sprt/cxx/__utility/common.h>
+
+namespace sprt {
+
+struct nothrow_t {
+	explicit nothrow_t() = default;
+};
+
+extern const nothrow_t nothrow;
+
+enum class align_val_t : sprt::size_t {
+};
+
+} // namespace sprt
+
+#if __SPRT_USE_STL
+
+#include <memory>
+
+#else
+
+namespace std {
+
+// Just to use with constexpr allocations
+template <typename _Tp>
+class allocator {
+public:
+	using size_type = sprt::size_t;
+	using difference_type = sprt::ptrdiff_t;
+	using value_type = _Tp;
+
+	constexpr allocator() noexcept { }
+
+	template <typename _Up>
+	constexpr allocator(const allocator<_Up> &) noexcept { }
+
+	[[nodiscard]]
+	constexpr _Tp *allocate(size_type __n) {
+		static_assert(sizeof(_Tp) >= 0, "cannot allocate memory for an incomplete type");
+		return static_cast<_Tp *>(::operator new(__n * sizeof(_Tp)));
+	}
+
+	constexpr void deallocate(_Tp *__p, size_type __n) noexcept { ::operator delete(__p); }
+};
+
+struct destroying_delete_t {
+	explicit destroying_delete_t() = default;
+};
+
+inline constexpr destroying_delete_t destroying_delete{};
+
+// support for a constexpr construct_at
+template <typename _Tp, typename... _Args,
+		typename = decltype(::new (sprt::declval<void *>(), sprt::nothrow)
+						_Tp(sprt::declval<_Args>()...))>
+constexpr _Tp *construct_at(_Tp *__location, _Args &&...__args) {
+	return ::new (static_cast<void *>(__location)) _Tp(sprt::forward<_Args>(__args)...);
+}
+
+} // namespace std
+
+#endif
+
+namespace sprt {
+
+using std::destroying_delete_t;
+using std::destroying_delete;
+
+} // namespace sprt
+
+namespace sprt::memory {
+
+class OpaquePool;
+
+struct OpaqueAllocator {
+	uint64_t __opaque[28];
+};
+
+using pool_t = OpaquePool;
+using allocator_t = OpaqueAllocator;
+
+template <typename T>
+constexpr T *allocate() {
+	if (__builtin_is_constant_evaluated()) {
+		return std::allocator<T>().allocate(1);
+	} else {
+		if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+			return reinterpret_cast<T *>(__sprt_malloc(sizeof(T)));
+		} else {
+			return reinterpret_cast<T *>(__sprt_aligned_alloc(alignof(T), sizeof(T)));
+		}
+	}
+}
+
+template <typename T>
+constexpr T *allocate(size_t n) {
+	if (__builtin_is_constant_evaluated()) {
+		return std::allocator<T>().allocate(n);
+	} else {
+		if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+			return reinterpret_cast<T *>(__sprt_malloc(sizeof(T) * n));
+		} else {
+			return reinterpret_cast<T *>(__sprt_aligned_alloc(alignof(T), sizeof(T) * n));
+		}
+	}
+}
+
+template <typename T>
+constexpr void deallocate(T *t) {
+	if (__builtin_is_constant_evaluated()) {
+		return std::allocator<T>().deallocate(t, 1);
+	} else {
+		if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+			__sprt_free(t);
+		} else {
+			__sprt_aligned_free(t);
+		}
+	}
+}
+
+template <typename T>
+constexpr void deallocate(T *t, size_t n, size_t nbytes = 0) {
+	if (__builtin_is_constant_evaluated()) {
+		return std::allocator<T>().deallocate(t, n);
+	} else {
+		if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+			if (nbytes > alignof(__sprt_max_align_t)) {
+				__sprt_free_sized(t, nbytes);
+			} else {
+				__sprt_free(t);
+			}
+		} else {
+			if (nbytes > alignof(__sprt_max_align_t)) {
+				__sprt_free_aligned_sized(t, alignof(T), nbytes);
+			} else {
+				__sprt_aligned_free(t);
+			}
+		}
+	}
+}
+
+template <typename T>
+constexpr T *local_allocate() {
+	static_assert(alignof(T) <= alignof(__sprt_max_align_t),
+			"Only default alignment supported by local_alloc");
+	return reinterpret_cast<T *>(__sprt_local_alloc(sizeof(T)));
+}
+
+template <typename T>
+constexpr T *local_allocate(size_t n) {
+	static_assert(alignof(T) <= alignof(__sprt_max_align_t),
+			"Only default alignment supported by local_alloc");
+	return reinterpret_cast<T *>(__sprt_local_alloc(sizeof(T) * n));
+}
+
+template <typename T>
+constexpr void local_deallocate(T *t) {
+	__sprt_local_free(t, sizeof(T));
+}
+
+template <typename T>
+constexpr void local_deallocate(T *t, size_t n, size_t nbytes = 0) {
+	if (nbytes > alignof(__sprt_max_align_t)) {
+		__sprt_local_free(t, nbytes);
+	} else {
+		__sprt_local_free(t, n * sizeof(T));
+	}
+}
+
+} // namespace sprt::memory
+
+#define __SPRT_PUSH_ALLOW_CXXABI_ALLOC \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"")
+
+#define __SPRT_POP_ALLOW_CXXABI_ALLOC \
+    _Pragma("clang diagnostic pop")
+
+#define __SPRT_DISALLOW_NEW \
+	[[deprecated("It's unsafe to use direct new within freestanding code, use, new (sprt::nothrow)")]]
+
+#define __SPRT_DISALLOW_DELETE \
+	[[deprecated("It's unsafe to use direct delete within freestanding code, use, sprt::__delete()")]]
+
+#if __SPRT_USE_STL == 0
+
+[[nodiscard]]
+__SPRT_DISALLOW_NEW void *operator new(sprt::size_t);
+
+[[nodiscard]]
+__SPRT_DISALLOW_NEW void *operator new[](sprt::size_t);
+
+__SPRT_DISALLOW_DELETE
+void operator delete(void *) noexcept;
+
+__SPRT_DISALLOW_DELETE
+void operator delete[](void *) noexcept;
+
+__SPRT_DISALLOW_DELETE
+void operator delete(void *, sprt::size_t) noexcept;
+
+__SPRT_DISALLOW_DELETE
+void operator delete[](void *, sprt::size_t) noexcept;
+
+[[nodiscard]]
+inline void *operator new(sprt::size_t, void *__p) noexcept {
+	return __p;
+}
+[[nodiscard]]
+inline void *operator new[](sprt::size_t, void *__p) noexcept {
+	return __p;
+}
+inline void operator delete(void *, void *) noexcept { }
+inline void operator delete[](void *, void *) noexcept { }
+#endif
+
+[[nodiscard]]
+inline void *operator new(sprt::size_t size, sprt::nothrow_t) noexcept {
+	if (size == 0) {
+		size = 1;
+	}
+	return __sprt_malloc(size);
+}
+
+[[nodiscard]]
+inline void *operator new[](sprt::size_t size, sprt::nothrow_t) noexcept {
+	if (size == 0) {
+		size = 1;
+	}
+	return __sprt_malloc(size);
+}
+
+[[nodiscard]]
+inline void *operator new(sprt::size_t size, sprt::align_val_t al, sprt::nothrow_t) noexcept {
+	if (size == 0) {
+		size = 1;
+	}
+	if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
+		return __sprt_malloc(size);
+	} else {
+		return __sprt_aligned_alloc(sprt::to_underlying(al), size);
+	}
+}
+
+[[nodiscard]]
+inline void *operator new[](sprt::size_t size, sprt::align_val_t al, sprt::nothrow_t) noexcept {
+	if (size == 0) {
+		size = 1;
+	}
+	if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
+		return __sprt_malloc(size);
+	} else {
+		return __sprt_aligned_alloc(sprt::to_underlying(al), size);
+	}
+}
+
+inline void operator delete(void *ptr, sprt::align_val_t al) noexcept {
+	if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(ptr);
+	} else {
+		__sprt_aligned_free(ptr);
+	}
+}
+inline void operator delete[](void *ptr, sprt::align_val_t al) noexcept {
+	if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(ptr);
+	} else {
+		__sprt_aligned_free(ptr);
+	}
+}
+
+inline void operator delete(void *ptr, sprt::align_val_t al, const sprt::nothrow_t &) noexcept {
+	if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(ptr);
+	} else {
+		__sprt_aligned_free(ptr);
+	}
+}
+inline void operator delete[](void *ptr, sprt::align_val_t al, const sprt::nothrow_t &) noexcept {
+	if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(ptr);
+	} else {
+		__sprt_aligned_free(ptr);
+	}
+}
+
+[[nodiscard]]
+inline constexpr void *operator new(sprt::size_t size, void *ptr, sprt::nothrow_t) noexcept {
+	return ptr;
+}
+
+[[nodiscard]]
+inline constexpr void *operator new[](sprt::size_t size, void *ptr, sprt::nothrow_t) noexcept {
+	return ptr;
+}
+
+namespace sprt {
+
+struct SPRT_API AllocPlacement {
+	static constexpr void *operator new(size_t size, void *ptr) noexcept { return ptr; }
+	static constexpr void *operator new[](size_t size, void *ptr) noexcept { return ptr; }
+
+	static constexpr void operator delete(void *, void *) noexcept { }
+	static constexpr void operator delete[](void *, void *) noexcept { }
+};
+
+struct SPRT_API AllocBase : public AllocPlacement {
+	static void *operator new(size_t size) { return __sprt_malloc(size); }
+	static void *operator new[](size_t size) { return __sprt_malloc(size); }
+
+	static void *operator new(size_t size, const sprt::nothrow_t &tag) noexcept {
+		return __sprt_malloc(size);
+	}
+
+	static void *operator new[](size_t size, const sprt::nothrow_t &tag) noexcept {
+		return __sprt_malloc(size);
+	}
+
+	static void *operator new(size_t size, sprt::align_val_t al,
+			const sprt::nothrow_t &tag) noexcept {
+		if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
+			return __sprt_malloc(size);
+		} else {
+			return __sprt_aligned_alloc(sprt::to_underlying(al), size);
+		}
+	}
+
+	static void *operator new[](size_t size, sprt::align_val_t al,
+			const sprt::nothrow_t &tag) noexcept {
+		if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
+			return __sprt_malloc(size);
+		} else {
+			return __sprt_aligned_alloc(sprt::to_underlying(al), size);
+		}
+	}
+
+	// Allocation from pool is forbidden for common classes
+	static void *operator new(size_t size, memory::pool_t *ptr) noexcept = delete;
+	static void *operator new[](size_t size, memory::pool_t *ptr) noexcept = delete;
+
+	static void operator delete(void *ptr) noexcept {
+		__sprt_free(ptr); //
+	}
+	static void operator delete[](void *ptr) noexcept {
+		__sprt_free(ptr); //
+	}
+
+	static void operator delete(void *ptr, sprt::align_val_t al) noexcept {
+		if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
+			__sprt_free(ptr);
+		} else {
+			__sprt_aligned_free(ptr);
+		}
+	}
+	static void operator delete[](void *ptr, sprt::align_val_t al) noexcept {
+		if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
+			__sprt_free(ptr);
+		} else {
+			__sprt_aligned_free(ptr);
+		}
+	}
+
+	static constexpr void *operator new(sprt::size_t size, void *ptr, sprt::nothrow_t) noexcept {
+		return ptr;
+	}
+
+	static constexpr void *operator new[](sprt::size_t size, void *ptr, sprt::nothrow_t) noexcept {
+		return ptr;
+	}
+
+	constexpr void operator delete(void *, void *) noexcept { }
+	constexpr void operator delete[](void *, void *) noexcept { }
+};
+
+namespace {
+template < typename... Args>
+struct Allocator_SelectFirst;
+template < typename A, typename... Args>
+struct Allocator_SelectFirst<A, Args...> {
+	using type = A;
+};
+} // namespace
+
+
+template <typename _Tp, typename... _Args>
+constexpr _Tp *__construct_at(_Tp *__location, _Args &&...__args) noexcept {
+	return ::new (static_cast<void *>(__location), sprt::nothrow)
+			_Tp(sprt::forward<_Args>(__args)...);
+}
+
+template <typename _Tp, typename... _Args,
+		typename = decltype(::new (sprt::declval<void *>(), sprt::nothrow)
+						_Tp(sprt::declval<_Args>()...))>
+constexpr _Tp *construct_at(_Tp *__location, _Args &&...__args) noexcept {
+	if (__builtin_is_constant_evaluated()) {
+		return std::construct_at(__location, sprt::forward<_Args>(__args)...);
+	} else {
+		return __construct_at(__location, sprt::forward<_Args>(__args)...);
+	}
+}
+
+template <typename _Tp>
+requires (!is_array_v<_Tp>)
+constexpr void destroy_at(_Tp *__loc) noexcept {
+	__loc->~_Tp();
+}
+
+template <typename _Tp>
+requires (is_array_v<_Tp>)
+constexpr void destroy_at(_Tp *__loc) noexcept {
+	for (auto &&__val : *__loc) { sprt::destroy_at(sprt::addressof(__val)); }
+}
+
+template <typename T>
+inline void __delete(T *t) noexcept {
+	sprt::destroy_at(t);
+	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(static_cast<void *>(t));
+	} else {
+		__sprt_aligned_free(static_cast<void *>(t));
+	}
+}
+
+template <typename T>
+requires (sprt::is_same_v<T, char> || sprt::is_same_v<T, unsigned char>)
+inline void __delete(const T *t) noexcept {
+	__delete(const_cast<T *>(t));
+}
+
+template <typename T>
+inline T *__new_n(size_t sz) {
+	return new (sprt::nothrow) T[sz];
+}
+
+template <typename T>
+inline void __delete_n(T *t, size_t __n) noexcept {
+	if constexpr (!sprt::is_trivially_destructible_v<T>) {
+		for (; __n > 0; (void)++t, --__n) { sprt::destroy_at(t); }
+	}
+
+	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(static_cast<void *>(t));
+	} else {
+		__sprt_aligned_free(static_cast<void *>(t));
+	}
+}
+
+template <typename T>
+requires (sprt::is_trivially_destructible_v<T>)
+inline void __delete_n(T *t) noexcept {
+	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+		__sprt_free(static_cast<void *>(t));
+	} else {
+		__sprt_aligned_free(static_cast<void *>(t));
+	}
+}
+
+template <typename T>
+requires (sprt::is_same_v<T, char> || sprt::is_same_v<T, unsigned char>)
+inline void __delete_n(const T *t, size_t __n) noexcept {
+	__delete_n(const_cast<T *>(t), __n);
+}
+
+template <typename T>
+requires (sprt::is_same_v<T, char> || sprt::is_same_v<T, unsigned char>)
+inline void __delete_n(const T *t) noexcept {
+	__delete_n(const_cast<T *>(t));
+}
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_RUNTIME_NEW_NOTHROW_H_

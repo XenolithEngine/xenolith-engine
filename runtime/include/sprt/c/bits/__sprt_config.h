@@ -1,0 +1,87 @@
+/**
+Copyright (c) 2025 Stappler Team <admin@stappler.org>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+// Global Stappler Runtime configuration
+
+/*
+	Global configuration options have default settings and can be overridden at compile time.
+	When compiled and used, the values ​​must match
+*/
+
+/*
+	Stappler runtime is designed to work in conjunction with a compiler in the toolchain,
+	therefore, if the compiler has preferences regarding limits, we use them first
+
+	If __SPRT_CONFIG_COMPILER_ASSISTED_INTS = 1, int types and limits will
+	be acquired from compiler's definition when possible
+*/
+#ifndef __SPRT_CONFIG_COMPILER_ASSISTED_INTS
+#define __SPRT_CONFIG_COMPILER_ASSISTED_INTS 1
+#endif
+
+/*
+	If a function is not available on the platform, we can either not define it in the API,
+	or when calling it, report unavailability via errno (ENOSYS)
+	If __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS = 0 - functions are not defined
+	If __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS = 1 - the option with errno is used
+*/
+#ifndef __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
+#define __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS 1
+#endif
+
+/*
+	Use STL headers for integration with standard library functions
+	(three-way comparison, iterator categories, etc.)
+
+	By default, SPRT does not require an STL to build; STL functions may be
+	required for ease of use in application code that already uses the STL.
+*/
+#ifndef __SPRT_USE_STL
+#define __SPRT_USE_STL 0
+#endif
+
+/*
+	Use source_location from the standard library
+	Define as 1 to use <source_location>, 0 or undefined to use internal implementation
+	WARNIING: internal implementation conflicts with <source_location> in std. Just not to use it
+	or define __SPRT_USE_LIBCXX_SOURCE_LOCATION 1 before including runtime.
+	It's safe to use std and internal implementations in different translation units for same executable
+*/
+#ifndef __SPRT_USE_LIBCXX_SOURCE_LOCATION
+#define __SPRT_USE_LIBCXX_SOURCE_LOCATION __SPRT_USE_STL
+#endif
+
+/*
+	If 1, use <iterator> include to specify iterator tags on sprt iterators.
+	You can define it before SPRT includes.
+*/
+#ifndef __SPRT_USE_STL_ITERATOR_TAGS
+#define __SPRT_USE_STL_ITERATOR_TAGS __SPRT_USE_STL
+#endif
+
+/*
+	If 1, use STL-based comparators for SPRT types.
+	You can define it before SPRT includes.
+*/
+#ifndef __SPRT_USE_STL_COMPARATORS
+#define __SPRT_USE_STL_COMPARATORS __SPRT_USE_STL
+#endif

@@ -1,0 +1,34 @@
+= libc wrappers
+
+This set of headers is intended to implement functions shared between libc and the C++ STL.
+
+The headers are meant to be included, for example, in `<stdlib.h>` and `<cstdlib>`. They must operate in such a way that:
+
+* including both versions of the headers simultaneously in a project does not result in errors
+* identical code is not duplicated between headers
+
+== libc definitions
+
+Type definitions and constants must be available from headers if the build is happening in an freestanding environment or this is an external build that does not affect the implementation of `libc`. (`__STDC_HOSTED__ == 0 || !defined(__SPRT_BUILD)`)
+
+== libc prototypes
+
+Headers should provide access to `libc` function prototypes if they are included in freestanding build mode (`__STDC_HOSTED__ == 0`).
+
+== С++ namespaced
+
+If headers are included in a C++ environment, the necessary umbrella functions in the `sprt` namespace are always provided.
+
+If the usage mode of **Xenolith Runtime** as C++ STL is defined (`__SPRT_AS_STD`), the functions are also provided in the `std` namespace.
+
+== С++ unnamespaced
+
+In C++ build mode, if the header is included not for building internal libc functions (`__SPRT_BUILD` is not defined), and the build is performed in a full environment (`__STDC_HOSTED__ == 1`), then functions from the `sprt` namespace are exported globally.
+
+If there is an overlap between functions from `sprt` and other umbrella functions, priority is given to functions from `sprt`.
+
+== libc umbrella
+
+The umbrella functions of libc are provided if the header is included not for building internal `libc` functions (`__SPRT_BUILD` is not defined), and the build runs in a full environment (`__STDC_HOSTED__ == 1`).
+
+If, under these conditions, the build operates in C++ mode, the functions defined in the `sprt` namespace, exported to the global namespace, override their equivalent `libc` umbrella functions.

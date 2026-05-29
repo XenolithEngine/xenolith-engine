@@ -1,0 +1,77 @@
+#ifndef CORE_RUNTIME_INCLUDE_SPRT_WRAPPERS_LIBC_LIMITS_H_
+#define CORE_RUNTIME_INCLUDE_SPRT_WRAPPERS_LIBC_LIMITS_H_
+
+#include <sprt/c/__sprt_limits.h>
+
+#include <sprt/wrappers/libc/inttypes.h>
+
+#if __STDC_HOSTED__ == 0 || !defined(__SPRT_BUILD)
+
+#define SIZEOF_OFF_T 8
+
+#define CHAR_MIN __SPRT_CHAR_MIN
+#define CHAR_MAX __SPRT_CHAR_MAX
+#define CHAR_BIT __SPRT_CHAR_BIT
+#define SCHAR_MIN __SPRT_SCHAR_MIN
+#define SCHAR_MAX __SPRT_SCHAR_MAX
+#define UCHAR_MAX __SPRT_UCHAR_MAX
+#define SHRT_MIN __SPRT_SHRT_MIN
+#define SHRT_MAX __SPRT_SHRT_MAX
+#define INT_MIN __SPRT_INT_MIN
+#define INT_MAX __SPRT_INT_MAX
+#define LONG_MIN __SPRT_LONG_MIN
+#define LONG_MAX __SPRT_LONG_MAX
+#define LLONG_MIN __SPRT_LLONG_MIN
+#define LLONG_MAX __SPRT_LLONG_MAX
+#define MB_LEN_MAX __SPRT_MB_LEN_MAX
+#define PIPE_BUF __SPRT_PIPE_BUF
+#define FILESIZEBITS __SPRT_FILESIZEBITS
+#define NAME_MAX __SPRT_NAME_MAX
+#define NGROUPS_MAX __SPRT_NGROUPS_MAX
+#define ARG_MAX __SPRT_ARG_MAX
+#define IOV_MAX __SPRT_IOV_MAX
+#define SYMLOOP_MAX __SPRT_SYMLOOP_MAX
+#define WORD_BIT __SPRT_WORD_BIT
+#define SSIZE_MAX __SPRT_SSIZE_MAX
+#define TZNAME_MAX __SPRT_TZNAME_MAX
+#define TTY_NAME_MAX __SPRT_TTY_NAME_MAX
+#define HOST_NAME_MAX __SPRT_HOST_NAME_MAX
+
+#define USHRT_MAX __SPRT_USHRT_MAX
+#define UINT_MAX __SPRT_UINT_MAX
+#define ULONG_MAX __SPRT_ULONG_MAX
+#define ULLONG_MAX __SPRT_ULLONG_MAX
+
+#if !defined(_MSC_VER) || !defined(__SPRT_MSC_COMPAT)
+#ifndef PATH_MAX
+#define PATH_MAX __SPRT_PATH_MAX
+#endif
+#endif
+
+#ifndef NL_ARGMAX
+#define NL_ARGMAX __SPRT_NL_ARGMAX
+#define NL_MSGMAX __SPRT_NL_MSGMAX
+#define NL_SETMAX __SPRT_NL_SETMAX
+#define NL_TEXTMAX __SPRT_NL_TEXTMAX
+#endif
+
+// Windows CRT specifics
+#define _I8_MIN		INT8_MIN
+#define _I8_MAX		INT8_MAX
+#define _UI8_MAX	UINT8_MAX
+
+#define _I16_MIN    INT16_MIN
+#define _I16_MAX	INT16_MAX
+#define _UI16_MAX	UINT16_MAX
+
+#define _I32_MIN	INT32_MIN
+#define _I32_MAX	INT32_MAX
+#define _UI32_MAX	UINT32_MAX
+
+#define _I64_MIN	INT64_MIN
+#define _I64_MAX	INT64_MAX
+#define _UI64_MAX	UINT64_MAX
+
+#endif
+
+#endif // CORE_RUNTIME_INCLUDE_SPRT_WRAPPERS_LIBC_LIMITS_H_

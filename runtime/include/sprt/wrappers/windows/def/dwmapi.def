@@ -1,0 +1,3 @@
+LIBRARY dwmapi.dll
+EXPORTS
+	DwmExtendFrameIntoClientArea

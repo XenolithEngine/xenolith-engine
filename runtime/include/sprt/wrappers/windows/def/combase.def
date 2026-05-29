@@ -1,0 +1,11 @@
+LIBRARY combase.dll
+EXPORTS
+	CoInitializeSecurity
+	CoCreateInstance
+	CoSetProxyBlanket
+	CoInitializeEx
+	CoUninitialize
+	CoTaskMemFree
+	StringFromCLSID
+	CLSIDFromString
+	IIDFromString

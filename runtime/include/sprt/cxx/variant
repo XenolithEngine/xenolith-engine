@@ -1,0 +1,691 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_VARIANT_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_VARIANT_H_
+
+#include <sprt/cxx/compare>
+#include <sprt/cxx/initializer_list>
+#include <sprt/cxx/__utility/in_place.h>
+#include <sprt/cxx/__algorithm/minmax.h>
+#include <sprt/cxx/__memory/common.h>
+#include <sprt/cxx/__utility/integer_sequence.h>
+#include <sprt/cxx/detail/aligned_storage.h>
+
+namespace sprt {
+
+template <typename... Types>
+class variant;
+
+// variant helper classes
+template <typename T>
+struct variant_size; // not defined
+
+template <typename T>
+struct variant_size<const T> : variant_size<T> { };
+
+template <typename... Types>
+struct variant_size<sprt::variant<Types...>>
+: sprt::integral_constant<sprt::size_t, sizeof...(Types)> { };
+
+template <typename T>
+constexpr size_t variant_size_v = variant_size<T>::value;
+
+
+template <size_t I, typename T>
+struct variant_alternative; // not defined
+
+template <size_t I, typename T>
+using variant_alternative_t = typename variant_alternative<I, T>::type;
+
+
+template <size_t _Ip, typename _Tp>
+struct variant_alternative<_Ip, const _Tp> : add_const<variant_alternative_t<_Ip, _Tp>> { };
+
+template <size_t _Ip, typename _Tp>
+struct variant_alternative<_Ip, volatile _Tp> : add_volatile<variant_alternative_t<_Ip, _Tp>> { };
+
+template <size_t _Ip, typename _Tp>
+struct variant_alternative<_Ip, const volatile _Tp> : add_cv<variant_alternative_t<_Ip, _Tp>> { };
+
+template <size_t _Ip, typename... _Types>
+struct variant_alternative<_Ip, variant<_Types...>> {
+	static_assert(_Ip < sizeof...(_Types), "Index out of bounds in std::variant_alternative<>");
+	using type = __type_pack_element<_Ip, _Types...>;
+};
+
+inline constexpr size_t variant_npos = Max<size_t>;
+
+// relational operators
+template <typename... Types>
+constexpr bool operator==(const variant<Types...> &, const variant<Types...> &);
+
+template <typename... Types>
+constexpr bool operator!=(const variant<Types...> &, const variant<Types...> &);
+
+template <typename... Types>
+constexpr bool operator<(const variant<Types...> &, const variant<Types...> &);
+
+template <typename... Types>
+constexpr bool operator>(const variant<Types...> &, const variant<Types...> &);
+
+template <typename... Types>
+constexpr bool operator<=(const variant<Types...> &, const variant<Types...> &);
+
+template <typename... Types>
+constexpr bool operator>=(const variant<Types...> &, const variant<Types...> &);
+
+// class monostate
+struct monostate { };
+
+constexpr bool operator==(monostate, monostate) noexcept { return true; }
+
+constexpr strong_ordering operator<=>(monostate, monostate) noexcept {
+	return strong_ordering::equal;
+}
+
+/*
+	SPRT have no exceptions support, we need some error-detection mechanics for variant;
+
+	variant_empty is a type, that passed to visit() when variant.valueless_by_exception()
+	is true (so, no value stored within sprt::variant)
+ */
+struct variant_empty { };
+
+constexpr bool operator==(variant_empty, variant_empty) noexcept { return true; }
+
+constexpr strong_ordering operator<=>(variant_empty, variant_empty) noexcept {
+	return strong_ordering::equal;
+}
+
+// hash support
+template <typename T>
+struct hash;
+
+template <typename... Types>
+struct hash<variant<Types...>>;
+
+template <>
+struct hash<monostate> {
+	constexpr size_t operator()(const monostate &i) const noexcept { return 0; }
+};
+
+
+namespace detail {
+
+template <typename... _Types>
+constexpr variant<_Types...> &__as_variant(variant<_Types...> &__vs) noexcept {
+	return __vs;
+}
+
+template <typename... _Types>
+constexpr const variant<_Types...> &__as_variant(const variant<_Types...> &__vs) noexcept {
+	return __vs;
+}
+
+template <typename... _Types>
+constexpr variant<_Types...> &&__as_variant(variant<_Types...> &&__vs) noexcept {
+	return sprt::move(__vs);
+}
+
+template <typename... _Types>
+constexpr const variant<_Types...> &&__as_variant(const variant<_Types...> &&__vs) noexcept {
+	return sprt::move(__vs);
+}
+
+/*
+__variant_index_of<T, Types...>:
+	returns type index that strongly match some type in list
+*/
+
+template <typename T>
+constexpr size_t __variant_index_of(size_t n = 0) {
+	return Max<size_t>;
+}
+
+template <typename T, typename V, typename... Args>
+constexpr size_t __variant_index_of(size_t n = 0) {
+	if constexpr (sprt::is_same_v<T, V>) {
+		return n;
+	}
+	return __variant_index_of<T, Args...>(n + 1);
+}
+
+/*
+__variant_convertable_index_of<T, Types...>:
+	returns type index for a type, that can be constructed without narrowing from T
+*/
+
+template <typename T>
+constexpr size_t __variant_convertable_index_of(size_t n = 0) {
+	return Max<size_t>;
+}
+
+template <typename T, typename V, typename... Args>
+constexpr size_t __variant_convertable_index_of(size_t n = 0) {
+	if constexpr (requires(T from) { V{sprt::forward<T>(from)}; }) {
+		return n;
+	}
+	return __variant_convertable_index_of<T, Args...>(n + 1);
+}
+
+template <typename... Args>
+struct __variant_union;
+
+template <typename Union, size_t Index>
+struct __variant_union_ptr {
+	static constexpr auto get_ptr(Union &u) noexcept {
+		return __variant_union_ptr<typename Union::next_type, Index - 1>::get_ptr(u.next);
+	}
+	static constexpr auto get_ptr(const Union &u) noexcept {
+		return __variant_union_ptr<typename Union::next_type, Index - 1>::get_ptr(u.next);
+	}
+
+	static constexpr auto &get_ref(Union &u) noexcept {
+		return __variant_union_ptr<typename Union::next_type, Index - 1>::get_ref(u.next);
+	}
+	static constexpr const auto &get_ref(const Union &u) noexcept {
+		return __variant_union_ptr<typename Union::next_type, Index - 1>::get_ref(u.next);
+	}
+};
+
+template <typename Union>
+struct __variant_union_ptr<Union, 0> {
+	static constexpr auto get_ptr(Union &u) noexcept { return sprt::addressof(u.value); }
+	static constexpr auto get_ptr(const Union &u) noexcept { return sprt::addressof(u.value); }
+
+	static constexpr auto &get_ref(Union &u) noexcept { return u.value; }
+	static constexpr const auto &get_ref(const Union &u) noexcept { return u.value; }
+};
+
+template <typename T>
+struct __variant_union<T> {
+	using next_type = variant_empty;
+	union {
+		next_type next;
+		T value;
+	};
+
+	__variant_union() : next() { }
+	~__variant_union() { }
+};
+
+/* Guard: if index out of bounds< return __variant_empty field */
+template <typename T>
+struct __variant_union_ptr<__variant_union<T>, 1> {
+	static constexpr auto get_ptr(__variant_union<T> &u) noexcept {
+		return sprt::addressof(u.next);
+	}
+	static constexpr auto get_ptr(const __variant_union<T> &u) noexcept {
+		return sprt::addressof(u.next);
+	}
+
+	static constexpr auto &get_ref(__variant_union<T> &u) noexcept { return u.next; }
+	static constexpr const auto &get_ref(const __variant_union<T> &u) noexcept { return u.next; }
+};
+
+template <typename T, typename... Args>
+struct __variant_union<T, Args...> {
+	using next_type = __variant_union<Args...>;
+	union {
+		next_type next;
+		T value;
+	};
+
+	__variant_union() : next() { }
+	~__variant_union() { }
+};
+
+template <typename... Types>
+struct __variant_wrapper {
+	using union_type = __variant_union<Types...>;
+
+	template <typename T>
+	static constexpr size_t index_of() {
+		return __variant_index_of<T, Types...>();
+	}
+
+	union_type _storage;
+
+	template <size_t Index>
+	constexpr auto ptr() noexcept {
+		return __variant_union_ptr<union_type, Index>::get_ptr(_storage);
+	}
+
+	template <size_t Index>
+	constexpr auto ptr() const noexcept {
+		return __variant_union_ptr<union_type, Index>::get_ptr(_storage);
+	}
+
+	template <size_t Index>
+	constexpr auto &ref() noexcept {
+		return __variant_union_ptr<union_type, Index>::get_ref(_storage);
+	}
+
+	template <size_t Index>
+	constexpr const auto &ref() const noexcept {
+		return __variant_union_ptr<union_type, Index>::get_ref(_storage);
+	}
+
+	template <size_t Index, typename... Args>
+	constexpr auto construct(Args &&...args) noexcept {
+		auto uninitPtr = ptr<Index>();
+		return sprt::construct_at(uninitPtr, sprt::forward<Args>(args)...);
+	}
+
+	template <size_t Index>
+	constexpr void destroy() noexcept {
+		sprt::destroy_at(ptr<Index>());
+	}
+};
+
+template <typename _Tp, size_t _Sz>
+struct DispatchArray {
+	_Tp __buf_[_Sz] = {};
+
+	constexpr const _Tp &operator[](size_t __n) const noexcept { return __buf_[__n]; }
+};
+
+template <size_t _Index>
+struct Dispatcher {
+	template <typename _Visitor, typename _Variant>
+	static constexpr decltype(auto) dispatch(_Visitor &&vis, _Variant &&var) {
+		return sprt::__invoke(sprt::forward<_Visitor>(vis),
+				// call __variant_wrapper::ref<_Index>()
+				var.__get_storage().template ref<_Index>());
+	}
+};
+
+template <typename... _DipatchFn>
+static constexpr auto makeDispatchArray(_DipatchFn &&...d) {
+	return DispatchArray<sprt::common_type_t<_DipatchFn...>, sizeof...(_DipatchFn)>{
+		sprt::forward<_DipatchFn>(d)...};
+}
+
+template <typename _Visitor, typename _Variant, size_t... _Idx>
+static constexpr auto makeDispatchSequence(sprt::index_sequence<_Idx...>) {
+	return makeDispatchArray(Dispatcher<_Idx>::template dispatch<_Visitor, _Variant>...);
+}
+
+template <typename _Visitor, typename _Variant>
+static constexpr decltype(auto) __visit_single(_Visitor &&__visitor, _Variant &&__vs) {
+	constexpr auto dispatchArray = makeDispatchSequence<_Visitor, _Variant>(
+			make_index_sequence<variant_size_v<sprt::remove_reference_t<_Variant>> + 1>());
+
+	// If index is out of bounds - return __variant_empty type
+	const auto idx = sprt::min(__vs.index(), variant_size_v<sprt::remove_reference_t<_Variant>>);
+
+	return dispatchArray[idx](sprt::forward<_Visitor>(__visitor), sprt::forward<_Variant>(__vs));
+}
+
+template <typename _Visitor>
+struct __value_visitor {
+	template <class... _Alts>
+	constexpr decltype(auto) operator()(_Alts &&...__alts) const {
+		static_assert(is_invocable_v<_Visitor, decltype((sprt::forward<_Alts>(__alts)))...>,
+				"`sprt::visit` requires the visitor to be exhaustive.");
+		return sprt::__invoke(sprt::forward<_Visitor>(__visitor), sprt::forward<_Alts>(__alts)...);
+	}
+	_Visitor &&__visitor;
+};
+
+template <typename _Rp, typename _Visitor>
+struct __value_visitor_return_type {
+	template <class... _Alts>
+	constexpr _Rp operator()(_Alts &&...__alts) const {
+		static_assert(is_invocable_v<_Visitor, decltype((sprt::forward<_Alts>(__alts).__value))...>,
+				"`sprt::visit` requires the visitor to be exhaustive.");
+		if constexpr (is_void_v<_Rp>) {
+			sprt::__invoke(sprt::forward<_Visitor>(__visitor),
+					sprt::forward<_Alts>(__alts).__value...);
+		} else {
+			return sprt::__invoke(sprt::forward<_Visitor>(__visitor),
+					sprt::forward<_Alts>(__alts).__value...);
+		}
+	}
+
+	_Visitor &&__visitor;
+};
+
+template <typename _Visitor, typename _Vs>
+static constexpr decltype(auto) __visit_value_single(_Visitor &&__visitor, _Vs &&__vs) {
+	return __visit_single(__value_visitor<_Visitor>(sprt::forward<_Visitor>(__visitor)),
+			sprt::forward<_Vs>(__vs));
+}
+
+template <typename _Rp, typename _Visitor, typename _Vs>
+static constexpr _Rp __visit_value_single(_Visitor &&__visitor, _Vs &&__vs) {
+	return __visit_single(
+			__value_visitor_return_type<_Rp, _Visitor>(sprt::forward<_Visitor>(__visitor)),
+			sprt::forward<_Vs>(__vs));
+}
+
+} // namespace detail
+
+
+// value access
+template <typename T, typename... Types>
+constexpr bool holds_alternative(const variant<Types...> &var) noexcept {
+	static_assert(detail::__variant_index_of<T, Types...>() != Max<size_t>,
+			"No such type in type list");
+	return !var.valueless_by_exception()
+			&& var.index() == detail::__variant_index_of<T, Types...>();
+}
+
+template <size_t I, typename... Types>
+constexpr add_pointer_t<variant_alternative_t<I, variant<Types...>>> get_if(
+		variant<Types...> *var) noexcept {
+	if (var->index() == I) {
+		return var->__get_storage().template ptr<I>();
+	}
+	return nullptr;
+}
+
+template <size_t I, typename... Types>
+constexpr add_pointer_t<const variant_alternative_t<I, variant<Types...>>> get_if(
+		const variant<Types...> *var) noexcept {
+	if (var->index() == I) {
+		return var->__get_storage().template ptr<I>();
+	}
+	return nullptr;
+}
+
+template <typename T, typename... Types>
+constexpr add_pointer_t<T> get_if(variant<Types...> *var) noexcept {
+	static_assert(detail::__variant_index_of<T, Types...>() != Max<size_t>,
+			"No such type in type list");
+	return get_if<detail::__variant_index_of<T, Types...>()>(var);
+}
+
+template <typename T, typename... Types>
+constexpr add_pointer_t<const T> get_if(const variant<Types...> *var) noexcept {
+	static_assert(detail::__variant_index_of<T, Types...>() != Max<size_t>,
+			"No such type in type list");
+	return get_if<detail::__variant_index_of<T, Types...>()>(var);
+}
+
+template <typename _Visitor, typename... _Vs,
+		typename = void_t<decltype(sprt::detail::__as_variant(sprt::declval<_Vs>()))...>>
+constexpr decltype(auto) visit(_Visitor &&__visitor, _Vs &&...__vs);
+
+template <typename _Rp, typename _Visitor, typename... _Vs,
+		typename = void_t<decltype(sprt::detail::__as_variant(sprt::declval<_Vs>()))...>>
+constexpr _Rp visit(_Visitor &&__visitor, _Vs &&...__vs);
+
+template <typename _Visitor, typename _Vs>
+constexpr decltype(auto) visit(_Visitor &&__visitor, _Vs &&__vs) {
+	return detail::__visit_value_single(sprt::forward<_Visitor>(__visitor),
+			sprt::forward<_Vs>(__vs));
+}
+
+template <typename _Rp, typename _Visitor, typename _Vs>
+constexpr _Rp visit(_Visitor &&__visitor, _Vs &&__vs) {
+	return detail::__visit_value_single<_Rp>(sprt::forward<_Visitor>(__visitor),
+			sprt::forward<_Vs>(__vs));
+}
+
+template <typename... Types>
+class variant {
+public:
+	// constructors
+	constexpr variant() noexcept {
+		_storage.template construct<0>();
+		_index = 0;
+	}
+
+	constexpr variant(const variant &other) noexcept {
+		if (!other.valueless_by_exception()) {
+			sprt::visit([&](auto &&arg) {
+				using T = sprt::decay_t<decltype(arg)>;
+				if constexpr (sprt::is_same_v< T, variant_empty>) {
+					_index = variant_npos;
+				} else {
+					constexpr size_t Index = detail::__variant_index_of<T, Types...>();
+
+					static_assert(Index != Max<size_t>);
+
+					if (_storage.template construct<Index>(
+								*sprt::get_if<Index>(sprt::addressof(other)))) {
+						_index = Index;
+					}
+				}
+			}, other);
+		} else {
+			_index = variant_npos;
+		}
+	}
+	constexpr variant(variant &&other) noexcept {
+		if (!other.valueless_by_exception()) {
+			sprt::visit([&](auto &&arg) {
+				using T = sprt::decay_t<decltype(arg)>;
+				if constexpr (sprt::is_same_v< T, variant_empty>) {
+					_index = variant_npos;
+				} else {
+					constexpr size_t Index = detail::__variant_index_of<T, Types...>();
+
+					static_assert(Index != Max<size_t>);
+
+					if (_storage.template construct<Index>(
+								sprt::move_unsafe(*sprt::get_if<Index>(sprt::addressof(other))))) {
+						_index = Index;
+						sprt::destroy_at(&arg);
+						other._index = variant_npos;
+					}
+				}
+			}, other);
+		} else {
+			_index = variant_npos;
+		}
+	}
+
+	template <typename T>
+	requires (detail::__variant_convertable_index_of<T, Types...>() != Max<size_t>)
+	constexpr variant(T &&t) noexcept {
+		if (_storage.template construct<detail::__variant_convertable_index_of<T, Types...>()>(
+					sprt::forward<T>(t))) {
+			_index = detail::__variant_convertable_index_of<T, Types...>();
+		}
+	}
+
+	template <typename T, typename... Args>
+	requires (detail::__variant_index_of<T, Types...>() != Max<size_t>)
+	constexpr explicit variant(in_place_type_t<T>, Args &&...args) noexcept {
+		if (_storage.template construct<detail::__variant_index_of<T, Types...>()>(
+					sprt::forward<Args>(args)...)) {
+			_index = detail::__variant_index_of<T, Types...>();
+		}
+	}
+
+	template <typename T, class U, typename... Args>
+	requires (detail::__variant_index_of<T, Types...>() != Max<size_t>)
+	constexpr explicit variant(in_place_type_t<T>, initializer_list<U> il,
+			Args &&...args) noexcept {
+		if (_storage.template construct<detail::__variant_index_of<T, Types...>()>(il,
+					sprt::forward<Args>(args)...)) {
+			_index = detail::__variant_index_of<T, Types...>();
+		}
+	}
+
+	template <size_t I, typename... Args>
+	constexpr explicit variant(in_place_index_t<I>, Args &&...args) noexcept {
+		if (_storage.template construct<I>(sprt::forward<Args>(args)...)) {
+			_index = I;
+		}
+	}
+
+	template <size_t I, class U, typename... Args>
+	constexpr explicit variant(in_place_index_t<I>, initializer_list<U> il,
+			Args &&...args) noexcept {
+		if (_storage.template construct<I>(sprt::forward<Args>(args)...)) {
+			_index = I;
+		}
+	}
+
+	// destructor
+	constexpr ~variant() noexcept {
+		sprt::visit([](auto &&arg) { sprt::destroy_at(&arg); }, *this);
+	}
+
+	// assignment
+	constexpr variant &operator=(const variant &other) {
+		if (*other == this || (other.valueless_by_exception() && valueless_by_exception())) {
+			return *this;
+		}
+
+		if (other.valueless_by_exception()) {
+			__clear();
+		} else {
+			sprt::visit([&](auto &&arg) {
+				using T = sprt::decay_t<decltype(arg)>;
+				if constexpr (sprt::is_same_v< T, variant_empty>) {
+					__clear();
+				} else {
+					constexpr size_t Index = detail::__variant_index_of<T, Types...>();
+
+					static_assert(Index != Max<size_t>);
+
+					if (Index == index()) {
+						*sprt::get_if<Index>(sprt::addressof(*this)) =
+								*sprt::get_if<Index>(sprt::addressof(other));
+					} else {
+						__clear();
+						if (_storage.template construct<Index>(
+									*sprt::get_if<Index>(sprt::addressof(other)))) {
+							_index = Index;
+						}
+					}
+				}
+			}, other);
+		}
+
+		return *this;
+	}
+
+	constexpr variant &operator=(variant &&other) noexcept {
+		if (*other == this || (other.valueless_by_exception() && valueless_by_exception())) {
+			return *this;
+		}
+
+		if (other.valueless_by_exception()) {
+			__clear();
+		} else {
+			sprt::visit([&](auto &&arg) {
+				using T = sprt::decay_t<decltype(arg)>;
+				if constexpr (sprt::is_same_v< T, variant_empty>) {
+					__clear();
+				} else {
+					constexpr size_t Index = detail::__variant_index_of<T, Types...>();
+
+					static_assert(Index != Max<size_t>);
+
+					if (Index == index()) {
+						*sprt::get_if<Index>(sprt::addressof(*this)) =
+								sprt::move_unsafe(*sprt::get_if<Index>(sprt::addressof(other)));
+					} else {
+						__clear();
+						if (_storage.template construct<Index>(sprt::move_unsafe(
+									*sprt::get_if<Index>(sprt::addressof(other))))) {
+							_index = Index;
+						}
+					}
+				}
+			}, other);
+		}
+
+		other.__clear();
+		return *this;
+	}
+
+	template <typename T>
+	requires (detail::__variant_convertable_index_of<T, Types...>() != Max<size_t>)
+	constexpr variant &operator=(T &&t) noexcept {
+		constexpr size_t Index = detail::__variant_convertable_index_of<T, Types...>();
+		if (index() == Index) {
+			*sprt::get_if<Index>(sprt::addressof(*this)) = sprt::forward<T>(t);
+		} else {
+			__clear();
+			if (_storage.template construct<Index>(sprt::forward<T>(t))) {
+				_index = Index;
+			}
+		}
+		return *this;
+	}
+
+	// modifiers
+	template <typename T, typename... Args>
+	requires (detail::__variant_index_of<T, Types...>() != Max<size_t>)
+	constexpr T &emplace(Args &&...args) {
+		return emplace< detail::__variant_index_of<T, Types...>()>(sprt::forward<Args>(args)...);
+	}
+
+	template <typename T, class U, typename... Args>
+	requires (detail::__variant_index_of<T, Types...>() != Max<size_t>)
+	constexpr T &emplace(initializer_list<U> il, Args &&...args) {
+		return emplace< detail::__variant_index_of<T, Types...>()>(il,
+				sprt::forward<Args>(args)...);
+	}
+
+	template <size_t I, typename... Args>
+	constexpr variant_alternative_t<I, variant<Types...>> &emplace(Args &&...args) {
+		static_assert(I < variant_size_v<variant>);
+		__clear();
+		if (auto ret = _storage.template construct<I>(sprt::forward<Args>(args)...)) {
+			_index = I;
+			return *ret;
+		}
+		return nullptr;
+	}
+
+	template <size_t I, class U, typename... Args>
+	constexpr variant_alternative_t<I, variant<Types...>> &emplace(initializer_list<U> il,
+			Args &&...args) {
+		static_assert(I < variant_size_v<variant>);
+		__clear();
+		if (auto ret = _storage.template construct<I>(il, sprt::forward<Args>(args)...)) {
+			_index = I;
+			return *ret;
+		}
+		return nullptr;
+	}
+
+	// value status
+	constexpr bool valueless_by_exception() const noexcept { return _index == Max<size_t>; }
+	constexpr size_t index() const noexcept { return _index; }
+
+	const auto &__get_storage() const { return _storage; }
+	auto &__get_storage() { return _storage; }
+
+protected:
+	void __clear() {
+		if (_index != variant_npos) {
+			sprt::visit([](auto &&arg) { sprt::destroy_at(&arg); }, *this);
+			_index = variant_npos;
+		}
+	}
+
+	detail::__variant_wrapper<Types...> _storage;
+	size_t _index = variant_npos;
+};
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_VARIANT_H_

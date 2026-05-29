@@ -1,0 +1,45 @@
+From 0eb17aa599a1a917756e8a105e2fc3f1dadaf81f Mon Sep 17 00:00:00 2001
+From: tmp64 <tmp32x2@gmail.com>
+Date: Tue, 5 Aug 2025 22:22:57 +0700
+Subject: [PATCH 3/3] [lldb] Fix Wine preloader name in POSIX-Wine-DYLD
+
+---
+ .../DynamicLoaderPOSIXWineDYLD.cpp                | 15 +++++++++++----
+ 1 file changed, 11 insertions(+), 4 deletions(-)
+
+diff --git a/lldb/source/Plugins/DynamicLoader/POSIX-Wine-DYLD/DynamicLoaderPOSIXWineDYLD.cpp b/lldb/source/Plugins/DynamicLoader/POSIX-Wine-DYLD/DynamicLoaderPOSIXWineDYLD.cpp
+index 1ad40b0793d0..daeaff9960bb 100644
+--- a/lldb/source/Plugins/DynamicLoader/POSIX-Wine-DYLD/DynamicLoaderPOSIXWineDYLD.cpp
++++ b/lldb/source/Plugins/DynamicLoader/POSIX-Wine-DYLD/DynamicLoaderPOSIXWineDYLD.cpp
+@@ -35,7 +35,11 @@ using namespace lldb_private;
+ LLDB_PLUGIN_DEFINE_ADV(DynamicLoaderPOSIXWineDYLD, DynamicLoaderPosixWineDYLD)
+ 
+ namespace {
+-const char *g_wine_preloader_filename = "wine64-preloader";
++constexpr const char *g_wine_preloader_filenames[] = {
++  "wine-preloader",
++  "wine64-preloader"
++};
++
+ const char *g_wine_preloader_load_symbol = "wld_start";
+ 
+ const char *g_ntdll_filename = "ntdll.so";
+@@ -155,9 +159,12 @@ void DynamicLoaderPOSIXWineDYLD::DidAttach() {
+     return;
+ 
+   ConstString name = executable->GetFileSpec().GetFilename();
+-  if (name == g_wine_preloader_filename) {
+-    LLDB_LOG(log, "Wine preloader detected.");
+-    LoadModulesFromMaps();
++  for (const char *preloader_name : g_wine_preloader_filenames) {
++    if (name == preloader_name) {
++      LLDB_LOG(log, "Wine preloader detected '{0}'.", name);
++      LoadModulesFromMaps();
++      break;
++    }
+   }
+ }
+ 
+-- 
+2.52.0
+
