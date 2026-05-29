@@ -311,7 +311,7 @@ void FrameQueue::onAttachmentSetupComplete(FrameAttachmentData *attachment) {
 		// do nothing for now
 	}
 	if (attachment->handle->isInput()) {
-		XL_FRAME_QUEUE_LOG("[Attachment:", attachment.handle->getName(), "] State: InputRequired");
+		XL_FRAME_QUEUE_LOG("[Attachment:", attachment->handle->getName(), "] State: InputRequired");
 		attachment->state = FrameAttachmentState::InputRequired;
 		if (auto data = _frame->getInputData(attachment->handle->getAttachment()->getData())) {
 			attachment->waitForResult = true;
@@ -361,7 +361,7 @@ void FrameQueue::onAttachmentSetupComplete(FrameAttachmentData *attachment) {
 }
 
 void FrameQueue::onAttachmentInput(FrameAttachmentData *attachment) {
-	XL_FRAME_QUEUE_LOG("[Attachment:", attachment.handle->getName(), "] State: Ready");
+	XL_FRAME_QUEUE_LOG("[Attachment:", attachment->handle->getName(), "] State: Ready");
 	attachment->state = FrameAttachmentState::Ready;
 }
 
@@ -373,7 +373,7 @@ void FrameQueue::onAttachmentAcquire(FrameAttachmentData *attachment) {
 		return;
 	}
 
-	XL_FRAME_QUEUE_LOG("[Attachment:", attachment.handle->getName(), "] State: ResourcesPending");
+	XL_FRAME_QUEUE_LOG("[Attachment:", attachment->handle->getName(), "] State: ResourcesPending");
 	attachment->state = FrameAttachmentState::ResourcesPending;
 	if (attachment->handle->getAttachment()->getData()->type == AttachmentType::Image) {
 		auto img = static_cast<ImageAttachment *>(attachment->handle->getAttachment().get());
@@ -448,7 +448,7 @@ void FrameQueue::onAttachmentRelease(FrameAttachmentData *attachment, FrameAttac
 			finalizeAttachment(attachment);
 		}
 	} else {
-		XL_FRAME_QUEUE_LOG("[Attachment:", attachment.handle->getName(),
+		XL_FRAME_QUEUE_LOG("[Attachment:", attachment->handle->getName(),
 				"] State: ResourcesReleased");
 		attachment->state = state;
 	}
@@ -608,7 +608,7 @@ void FrameQueue::onRenderPassReady(FramePassData *data) {
 			onAttachmentAcquire(it.second);
 			if (it.second->state != FrameAttachmentState::ResourcesAcquired) {
 				attachmentsAcquired = false;
-				XL_FRAME_QUEUE_LOG("[RenderPass:", data.handle->getName(),
+				XL_FRAME_QUEUE_LOG("[RenderPass:", data->handle->getName(),
 						"] waitForResource: ", it.second->handle->getName());
 				auto refId = sprt::retain(this);
 				waitForResource(it.second, [this, data, refId](bool success) {
@@ -966,7 +966,7 @@ void FrameQueue::tryReleaseFrame() {
 
 void FrameQueue::finalizeAttachment(FrameAttachmentData *attachment) {
 	attachment->handle->finalize(*this, _success);
-	XL_FRAME_QUEUE_LOG("[Attachment:", attachment.handle->getName(), "] State: Finalized [",
+	XL_FRAME_QUEUE_LOG("[Attachment:", attachment->handle->getName(), "] State: Finalized [",
 			_success, "]");
 	attachment->state = FrameAttachmentState::Finalized;
 	if (!_success && _frame && attachment->handle->isOutput()) {
