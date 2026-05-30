@@ -1,0 +1,26 @@
+# Linux target bundle build scripts
+
+Здесь хранятся сборочные скрипты для Linux.
+
+## glibc
+
+### Host stage
+
+Using cross compilation, the base execution environment for the target is assembled. Note that every target is cross-compilation target,
+
+1. Build GNU Make 4.3 with the build compiler; newer versions won't be able to build old glibc
+2. Build glibc 2.26 with the build compiler; This version is the last one that doesn't generate dependencies on libstdc++.
+3. Build GCC based on glibc 2.26;
+
+### Target stage
+
+1. Build target glibc + target gcc in one shot using GCC from host stage
+2. Build llvm libc++ and compiler-rt
+
+### Common stage
+
+Build all dependencies using glibc and libc++ from host stage
+
+## musl
+
+In development

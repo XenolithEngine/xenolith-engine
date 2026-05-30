@@ -42,4 +42,4 @@ SPRT_API __sprt_fenv_t *__sprt_arch_FE_DFL_ENV_fn();
 
 __SPRT_END_DECL
 
-#endif // CORE_RUNTIME_INCLUDE_C_BITS___SPRT_FENV_T_H_
+#endif // CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_FENV_T_H_

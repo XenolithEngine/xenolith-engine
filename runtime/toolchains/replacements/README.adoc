@@ -1,0 +1,22 @@
+# Custom patches and replacements
+
+Patches and replaceable files for dependencies are stored here. They are applied automatically when loading dependencies.
+
+## CURL
+
+* Russian root certificates are added to the certificate set. We stay out of politics and want our software to work legally throughout the entire world.
+
+## LLVM
+
+* Patch removing LLVM dependency on private APIs on MacOS
+* Patches adding debugging support on Wine.
+
+## OpenSSL
+
+* Configuration for cross-compilation on Windows using clang
+* Patch for e2k processor support
+
+## WAMR
+
+* Patch for cross-compilation support on Windows using clang
+* Patch for e2k processor support

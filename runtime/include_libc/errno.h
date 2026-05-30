@@ -23,6 +23,23 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_ERRNO_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_ERRNO_H_
 
+/*
+	Dispatch header for <errno.h>:
+	- hosted SPRT build -> forwards to the system <errno.h> (#include_next)
+	- otherwise         -> SPRT's own definitions via sprt/wrappers/libc/errno.h
+
+	This header declares only macros (no types or functions):
+
+	  errno - the modifiable lvalue holding the last error code; on the SPRT-own path
+	          it expands to a per-thread location (*__errno_location()), so it is
+	          thread-local rather than a plain global
+
+	  the E* error-code constants (~134 of them: the ISO C trio EDOM, ERANGE, EILSEQ
+	          plus the full POSIX/Linux set such as EACCES, EAGAIN, EBADF, EINVAL,
+	          ENOENT, ENOMEM, EINTR, EEXIST, ...). These come in transitively via
+	          <sprt/c/__sprt_errno.h> and <sprt/c/bits/__sprt_errno.h>.
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <errno.h>

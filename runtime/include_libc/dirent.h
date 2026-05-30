@@ -23,6 +23,38 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_DIRENT_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_DIRENT_H_
 
+/*
+	Dispatch header for the POSIX <dirent.h> (directory traversal):
+	- hosted SPRT build -> forwards to the system <dirent.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded).
+	struct dirent comes in via <sprt/c/__sprt_dirent.h>.
+
+	Macros:
+	  d_type values: DT_UNKNOWN, DT_FIFO, DT_CHR, DT_DIR, DT_BLK, DT_REG, DT_LNK,
+	                 DT_SOCK, DT_WHT
+	  LFS aliases:   dirent64->dirent, readdir64->readdir, alphasort64->alphasort,
+	                 scandir64->scandir, scandirat64->scandirat
+
+	Types:
+	  DIR     - opaque directory-stream handle
+	  ssize_t, off_t
+
+	Functions:
+	  opendir    - open a directory stream by path
+	  fdopendir  - open a directory stream from an existing descriptor
+	  readdir    - read the next entry from a directory stream
+	  closedir   - close a directory stream
+	  rewinddir  - reset a stream to its first entry
+	  seekdir    - set a stream's position (to a value from telldir)
+	  telldir    - report a stream's current position
+	  dirfd      - get the descriptor behind a directory stream
+	  scandir    - read a directory into an array, with a filter and comparator
+	  scandirat  - scandir relative to a directory descriptor
+	  alphasort  - comparator for scandir that orders entries alphabetically
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <dirent.h>

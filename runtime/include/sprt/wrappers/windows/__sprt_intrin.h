@@ -25,6 +25,8 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_def.h>
 
+#if defined(_WIN32)
+
 __SPRT_C_FUNC long _InterlockedOr(long volatile *_Value, long _Mask);
 __SPRT_C_FUNC long _InterlockedExchangeAdd(long volatile *_Addend, long _Value);
 __SPRT_C_FUNC void *_InterlockedExchangePointer(void *volatile *_Target, void *_Value);
@@ -77,5 +79,7 @@ __SPRT_C_FUNC SPRT_FORCEINLINE __int64 _InterlockedAdd64(__int64 volatile *targe
 #define exception_info()            ((struct _EXCEPTION_POINTERS *)_exception_info())
 #define AbnormalTermination         _abnormal_termination
 #define abnormal_termination        _abnormal_termination
+
+#endif
 
 #endif // SPRT_WRAPPERS_WINDOWS___SPRT_INTRIN_H_

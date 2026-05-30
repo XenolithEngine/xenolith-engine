@@ -91,7 +91,6 @@ $(TARGET_GLIBC): $(TARGET_AS) $(HOST_GCC_CC) $(TARGET_SYSROOT)/sysroot
 		--disable-build-nscd \
 		--disable-nscd \
 		--disable-mathvec \
-		--enable-kernel=$(LINUX_KERNEL_VER) \
 		--host=$(SP_ARCH_TARGET_CLANG) \
 		--target=$(SP_ARCH_TARGET_CLANG) \
 		CFLAGS="-Os -fPIC" \

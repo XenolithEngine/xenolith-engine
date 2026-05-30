@@ -20,8 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SELECT_H_
-#define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SELECT_H_
+#ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SOCKET_H_
+#define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SOCKET_H_
 
 #include <sprt/c/cross/__sprt_socket.h>
 #include <sprt/c/cross/__sprt_sysid.h>
@@ -29,4 +29,4 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_ssize_t.h>
 #include <sprt/c/bits/fdset.h>
 
-#endif
+#endif // CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SOCKET_H_

@@ -1,0 +1,121 @@
+# Stappler Toolchains repository
+
+The purpose of this repository is to provide universal complete toolchain for C/C++ development with Xenolith Runtime on MacOS, Windows and Linux.
+
+**Work in progress**: toolchains on early stages, errors a very possible. Use this repo only if you has experience in toolchain building.
+
+## What's included
+
+### General
+
+* C language library where possible
+* [clang](https://clang.llvm.org/) with llvm tooling
+
+### Vulkan essentials
+
+* [SPIR-V Headers](https://github.com/KhronosGroup/SPIRV-Headers)
+* [SPIR-V Tools](https://github.com/KhronosGroup/SPIRV-Tools)
+* [Vulkan Headers](https://github.com/KhronosGroup/Vulkan-Headers)
+* [glslang](https://github.com/KhronosGroup/glslang) shader compiler/validator
+
+### Xenolith dependencies
+
+* [zlib](https://www.zlib.net/)
+* [bzip2](https://sourceware.org/bzip2/downloads.html)
+* [xz](https://tukaani.org/xz/#_source_packages)
+* [zstd](https://github.com/facebook/zstd/releases/tag/v1.5.7)
+* [libjpeg-turbo](https://github.com/libjpeg-turbo/libjpeg-turbo/releases)
+* [libpng](http://www.libpng.org/pub/png/libpng.html)
+* [giflib](https://giflib.sourceforge.net/)
+* [WebP](https://github.com/webmproject/libwebp)
+* [TIFF](https://download.osgeo.org/libtiff/?C=M&O=D)
+* [FreeType](https://freetype.org/)
+* [harfbuzz](https://github.com/harfbuzz/harfbuzz/releases/)
+* [brotli](https://github.com/google/brotli/releases) compression library
+* [MbedTLS](https://github.com/Mbed-TLS/mbedtls) crypto library
+* [OpenSSL](https://openssl-library.org/source/index.html) crypto library
+* [openssl-gost-engine](https://github.com/gost-engine/engine) for GOST crypto support
+* [nghttp3](https://github.com/ngtcp2/nghttp3/releases)
+* [libcurl](https://curl.se/download.html) in MbedTLS and OpenSSL variants. Only OpenSSL variant supports HTTP/3
+* [sqlite3](https://www.sqlite.org/download.html)
+* [libuidna](https://github.com/SBKarr/libuidna) as IDN2 replacement
+* [libzip](https://libzip.org)
+* [iwasm](https://github.com/bytecodealliance/wasm-micro-runtime) WebAssembly runtime library
+
+### Linux essential headers (libraries not included)
+
+* DBus (libdbus-1)
+* XCB
+* XKB
+* Wayland-client
+
+### Russian CA certificates and GOST cyphers
+
+libcurl in this toolchains bundled with CA certificates, that contains russian national CA authorities.
+
+GOST cyphers can be loaded statically with stappler_crypto module.
+
+## Build steps
+
+### Download sources
+
+Download dependencies to build
+
+[source,sh]
+----
+# From runtime/toolchains
+make download
+----
+
+### Build host toolchain
+
+See README.md in host-* directory for concrete steps performed and prerequisites.
+
+[source,sh]
+----
+# From runtime/toolchains
+make host
+----
+
+
+### Build target sysroot
+
+[source,sh]
+----
+# From runtime/toolchains
+make target-<target-triple>
+----
+
+Supported targets:
+
+* target-x86_64-unknown-linux-gnu
+* target-aarch64-unknown-linux-gnu
+* target-riscv64-unknown-linux-gnu
+* target-unknown-ndk-linux-android - special target to use with Android NDK
+* target-aarch64-unknown-linux-android
+* target-armv7a-unknown-linux-androideabi
+* target-i686-unknown-linux-android
+* target-x86_64-unknown-linux-android
+* target-x86_64-apple-macosx
+* target-aarch64-apple-macosx
+* target-aarch64-apple-ios
+* target-x86_64-apple-ios-simulator
+* target-aarch64-apple-ios-simulator
+* target-x86_64-pc-windows-msvc
+* target-aarch64-pc-windows-msvc
+
+## Sources list policy
+
+The list of sources for source codes must be updated regularly. After the build of a new version is confirmed, the date of its update is placed next to the corresponding source in the format `revised: 22 feb 2026`.
+
+Official sources are used, however, for sources whose access is restricted based on download region, an alternative method should be used (for example, direct download from the repository).
+
+## Code style
+
+Most of the build scripts here can be used both in the GNU environment and in PowerShell on Windows. For this purpose, standard commands (cp, rm, and others) are implemented as functions `rule_*`, which ensures their uniform behavior.
+
+## License
+
+All build scripts and distribution itself licensed under MIT. No GPL restrictions implied on software, that uses this toolchains.
+
+DBus headers licensed under AFL-2.1 OR GPL-2.0.

@@ -112,4 +112,4 @@ SPRT_API char *__SPRT_ID(strtok_r)(char *, const char *, char **);
 
 __SPRT_END_DECL
 
-#endif // CORE_RUNTIME_INCLUDE_LIBC_STRING_H_
+#endif // CORE_RUNTIME_INCLUDE_C___SPRT_STRING_H_

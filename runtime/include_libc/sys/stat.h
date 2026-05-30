@@ -23,6 +23,48 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_STAT_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_STAT_H_
 
+/*
+	Dispatch header for the POSIX <sys/stat.h> (file status and mode bits):
+	- hosted SPRT build -> forwards to the system <sys/stat.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded).
+	A function tagged [gate: X] is declared only when __SPRT_CONFIG_HAVE_X is set for
+	the target (or when __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS forces all of them).
+	struct stat comes in via <sprt/c/sys/__sprt_stat.h>.
+
+	Macros:
+	  file-type bits:   S_IFMT, S_IFDIR, S_IFCHR, S_IFBLK, S_IFREG, S_IFIFO, S_IFLNK,
+	                    S_IFSOCK
+	  permission bits:  S_ISUID, S_ISGID, S_ISVTX, S_IRUSR/S_IWUSR/S_IXUSR/S_IRWXU,
+	                    S_IRGRP/S_IWGRP/S_IXGRP/S_IRWXG, S_IROTH/S_IWOTH/S_IXOTH/S_IRWXO
+	                    (omitted on Windows-protected builds)
+	  legacy aliases:   S_IREAD, S_IWRITE, S_IEXEC
+	  mode type-tests:  S_ISDIR, S_ISCHR, S_ISBLK, S_ISREG, S_ISFIFO, S_ISLNK, S_ISSOCK
+	  stat-buf tests:   S_TYPEISMQ, S_TYPEISSEM, S_TYPEISSHM, S_TYPEISTMO
+	  utimensat values: UTIME_NOW, UTIME_OMIT
+
+	Types:
+	  mode_t, dev_t
+
+	Status functions (always available):
+	  stat     - file status by path
+	  lstat    - file status by path without following a final symlink
+	  fstat    - file status by open descriptor
+	  fstatat  - file status relative to a directory descriptor
+
+	Mode / creation functions (always available):
+	  chmod/fchmod/fchmodat - change permission bits (by path / fd / dir-relative)
+	  umask                 - set the file-creation permission mask
+	  mkdir/mkdirat         - create a directory (by path / dir-relative)
+	  futimens              - set a file's times by descriptor (struct timespec[2])
+	  utimensat             - set a file's times relative to a directory descriptor
+
+	Gated creation functions:
+	  mkfifo/mkfifoat - create a FIFO (by path / dir-relative)  [gate: STAT_MKFIFO]
+	  mknod/mknodat   - create a special or regular file        [gate: STAT_MKNOD]
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sys/stat.h>

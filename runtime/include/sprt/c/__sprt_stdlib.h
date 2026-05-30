@@ -298,7 +298,7 @@ SPRT_FORCEINLINE void __sprt_alloca_freea(void *ptr) {
 
 // Bionic/BSD specific functions
 //
-// Expose them only for C++ to avoid C __SPRT_ID(wchar_t) definitiom
+// Expose them only for C++ to avoid C __SPRT_ID(wchar_t) definition
 
 #if __SPRT_CONFIG_HAVE_STDLIB_MB || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 

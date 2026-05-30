@@ -23,6 +23,22 @@
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_UIO_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_UIO_H_
 
+/*
+	Dispatch header for the POSIX <sys/uio.h> (scatter/gather I/O):
+	- hosted SPRT build -> forwards to the system <sys/uio.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded).
+	struct iovec (a base-pointer / length pair) comes in via <sprt/c/__sprt_unistd.h>.
+
+	Types:
+	  ssize_t
+
+	Functions:
+	  readv  - read into multiple buffers in one call (scatter input)
+	  writev - write from multiple buffers in one call (gather output)
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sys/uio.h>

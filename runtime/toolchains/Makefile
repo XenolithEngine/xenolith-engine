@@ -208,7 +208,7 @@ target-windows: \
 	target-apple \
 	target-macosx \
 	target-x86_64-apple-macosx \
-	target-aarch64-apple-macosx
+	target-aarch64-apple-macosx \
 	target-ios \
 	target-aarch64-apple-ios \
 	target-x86_64-apple-ios-simulator \

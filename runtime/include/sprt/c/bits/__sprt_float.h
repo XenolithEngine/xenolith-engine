@@ -138,4 +138,4 @@ typedef float __SPRT_ID(float_t);
 typedef double __SPRT_ID(double_t);
 #endif
 
-#endif // CORE_RUNTIME_INCLUDE_C_BITS___SPRT_FLOAT16_H_
+#endif // CORE_RUNTIME_INCLUDE_C_BITS___SPRT_FLOAT_H_

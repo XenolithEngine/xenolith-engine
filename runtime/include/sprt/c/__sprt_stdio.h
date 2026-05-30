@@ -264,7 +264,7 @@ SPRT_API __SPRT_ID(ssize_t) __SPRT_ID(getline)(char **__SPRT_RESTRICT,
 SPRT_API int __SPRT_ID(renameat)(int, const char *, int, const char *);
 SPRT_API char *__SPRT_ID(ctermid)(char *);
 
-// BSD-stype API
+// BSD-style API
 SPRT_API int __SPRT_ID(scanf_l)(__SPRT_ID(locale_t) loc, const char *__SPRT_RESTRICT format, ...);
 
 SPRT_API int __SPRT_ID(fscanf_l)(__SPRT_ID(FILE) * __SPRT_RESTRICT stream, __SPRT_ID(locale_t) loc,

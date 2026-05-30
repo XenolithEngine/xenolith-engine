@@ -199,7 +199,7 @@ $(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_
 
 	touch $@
 
-download: $(LINUX_HEADERS_DIR)
+download: $(LINUX_HEADERS_DIR) src/gmp src/mpfr src/mpc src/isl src/gettext
 
 out: $(OUT_SYSROOT)/sysroot
 

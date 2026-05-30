@@ -65,13 +65,13 @@ typedef __UINT64_TYPE__ __SPRT_ID(uint64_t);
 #ifdef __UINT64_C
 #define __SPRT_UINT64_C(C) __UINT64_C(C)
 #else
-#error "Compiler-assisted __UINT64_FMTx__ is not defined"
+#error "Compiler-assisted __UINT64_C is not defined"
 #endif
 
 #ifdef __UINT64_C_SUFFIX__
 #define __UINT64_C_SUFFIX __UINT64_C_SUFFIX__
 #else
-#error "Compiler-assisted __UINT64_FMTx__ is not defined"
+#error "Compiler-assisted __UINT64_C_SUFFIX__ is not defined"
 #endif
 
 #else // __UINT64_TYPE__

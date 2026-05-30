@@ -24,7 +24,7 @@ THE SOFTWARE.
 
 /*
 	Global configuration options have default settings and can be overridden at compile time.
-	When compiled and used, the values ​​must match
+	When compiled and used, the values must match
 */
 
 /*
@@ -62,7 +62,7 @@ THE SOFTWARE.
 /*
 	Use source_location from the standard library
 	Define as 1 to use <source_location>, 0 or undefined to use internal implementation
-	WARNIING: internal implementation conflicts with <source_location> in std. Just not to use it
+	WARNING: internal implementation conflicts with <source_location> in std. Just not to use it
 	or define __SPRT_USE_LIBCXX_SOURCE_LOCATION 1 before including runtime.
 	It's safe to use std and internal implementations in different translation units for same executable
 */

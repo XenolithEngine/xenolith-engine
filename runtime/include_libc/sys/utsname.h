@@ -23,6 +23,23 @@
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_UTNAME_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_UTNAME_H_
 
+/*
+	Dispatch header for the POSIX <sys/utsname.h> (system identification):
+	- hosted SPRT build -> forwards to the system <sys/utsname.h> if the platform has
+	                       one (guarded by __has_include, so it's a no-op where absent)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded):
+
+	Types:
+	  struct utsname - holds OS identification strings (sysname, nodename, release,
+	                   version, machine, and where supported domainname);
+	                   defined via <sprt/c/sys/__sprt_utsname.h>
+
+	Functions:
+	  uname - fill a struct utsname with the current system's identification
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #if __has_include(<sys/utsname.h>)

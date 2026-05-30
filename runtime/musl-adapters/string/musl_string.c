@@ -11,6 +11,18 @@
 #include "../../musl-libc/src/string/strchr.c"
 #include "../../musl-libc/src/string/strcmp.c"
 #include "../../musl-libc/src/string/strncmp.c"
+#include "../../musl-libc/src/string/strlen.c"
+#include "../../musl-libc/src/string/wcscasecmp_l.c"
+#include "../../musl-libc/src/string/wcsncasecmp_l.c"
+#include "../../musl-libc/src/string/wcscasecmp.c"
+#include "../../musl-libc/src/string/wcsncasecmp.c"
+#include "../../musl-libc/src/string/wcscmp.c"
+#include "../../musl-libc/src/string/wcsncmp.c"
+#include "../../musl-libc/src/string/wcsnlen.c"
+#include "../../musl-libc/src/string/wcscpy.c"
+#include "../../musl-libc/src/string/wcslen.c"
+#include "../../musl-libc/src/string/wcsncpy.c"
+#include "../../musl-libc/src/string/wcsstr.c"
 #endif
 
 #pragma clang diagnostic ignored "-Wunused-label"
@@ -42,7 +54,13 @@
 #include "../../musl-libc/src/string/strdup.c"
 #include "../../musl-libc/src/string/strerror_r.c"
 #include "../../musl-libc/src/string/strlcat.c"
+
 #include "../../musl-libc/src/string/strlcpy.c"
+#undef ALIGN
+#undef ONES
+#undef HIGHS
+#undef HASZERO
+
 #include "../../musl-libc/src/string/strncasecmp.c"
 #include "../../musl-libc/src/string/strncat.c"
 #include "../../musl-libc/src/string/strndup.c"
@@ -82,3 +100,30 @@ char *strerror(int e) {
 	s = (const char *)&errmsgstr + errmsgidx[e];
 	return (char *)s;
 }
+
+#include "../../musl-libc/src/string/stpcpy.c"
+#undef ALIGN
+#undef ONES
+#undef HIGHS
+#undef HASZERO
+
+#include "../../musl-libc/src/string/strchrnul.c"
+
+#include "../../musl-libc/src/string/swab.c"
+#include "../../musl-libc/src/string/wcpcpy.c"
+#include "../../musl-libc/src/string/wcpncpy.c"
+#include "../../musl-libc/src/string/wcscat.c"
+#include "../../musl-libc/src/string/wcschr.c"
+#include "../../musl-libc/src/string/wcscspn.c"
+#include "../../musl-libc/src/string/wcsdup.c"
+#include "../../musl-libc/src/string/wcsncat.c"
+#include "../../musl-libc/src/string/wcspbrk.c"
+#include "../../musl-libc/src/string/wcsrchr.c"
+#include "../../musl-libc/src/string/wcsspn.c"
+#include "../../musl-libc/src/string/wcstok.c"
+#include "../../musl-libc/src/string/wcswcs.c"
+#include "../../musl-libc/src/string/wmemchr.c"
+#include "../../musl-libc/src/string/wmemcmp.c"
+#include "../../musl-libc/src/string/wmemcpy.c"
+#include "../../musl-libc/src/string/wmemmove.c"
+#include "../../musl-libc/src/string/wmemset.c"
