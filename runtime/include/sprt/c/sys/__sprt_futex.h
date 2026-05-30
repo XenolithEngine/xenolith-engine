@@ -106,7 +106,7 @@ SPRT_API long __SPRT_ID(futex_wait_bitset)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) bitset);
 
 
-// FUTEX_WAIT_BITSET(2const): https://man7.org/linux/man-pages/man2/FUTEX_WAIT_BITSET.2const.html
+// FUTEX_WAKE_BITSET(2const): https://man7.org/linux/man-pages/man2/FUTEX_WAKE_BITSET.2const.html
 __SPRT_CONFIG_HAVE_FUTEX_NOTICE
 SPRT_API long __SPRT_ID(futex_wake_bitset)(volatile __SPRT_ID(uint32_t) * uaddr,
 		__SPRT_ID(uint32_t) flags, __SPRT_ID(uint32_t) val, __SPRT_ID(uint32_t) bitset);

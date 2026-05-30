@@ -52,13 +52,12 @@ $(HOST_GCC_MAKE): $(HOST_SYSROOT)/sysroot $(MAKE_SRC_DIR)
 	make -C build/host-make $(SP_NJOBS)
 	make -C build/host-make install
 
-$(HOST_GCC_GLIBC): $(HOST_GCC_MAKE) $(GLIBC_SRC_DIR)
+$(HOST_GCC_GLIBC): $(HOST_GCC_MAKE) $(GLIBC_MIN_SRC_DIR)
 	rm -rf build/host-glibc
 	mkdir -p build/host-glibc
-	cd build/host-glibc; $(abspath $(GLIBC_SRC_DIR))/configure \
+	cd build/host-glibc; $(abspath $(GLIBC_MIN_SRC_DIR))/configure \
 		--prefix $(abspath $(HOST_SYSROOT)) \
 		--with-headers=$(abspath $(HOST_SYSROOT))/include \
-		--enable-kernel=$(LINUX_KERNEL_VER) \
 		--disable-werror \
 		--without-selinux \
 		--disable-timezone-tools \
@@ -68,10 +67,19 @@ $(HOST_GCC_GLIBC): $(HOST_GCC_MAKE) $(GLIBC_SRC_DIR)
 		CXX=gcc
 	$(HOST_GCC_MAKE) -C build/host-glibc $(SP_NJOBS)
 	$(HOST_GCC_MAKE) -C build/host-glibc install
+	sed  -i 's#$(abspath $(HOST_SYSROOT))/lib/##g' $(HOST_SYSROOT)/lib/libc.so
+	sed  -i 's#$(abspath $(HOST_SYSROOT))/lib/##g' $(HOST_SYSROOT)/lib/libm.a
+	sed  -i 's#$(abspath $(HOST_SYSROOT))/lib/##g' $(HOST_SYSROOT)/lib/libm.so
+	sed  -i 's#$(abspath $(HOST_SYSROOT))/lib/##g' $(HOST_SYSROOT)/lib/libpthread.so
+	cp -rf replacements/$(notdir $(GLIBC_MIN_SRC_DIR))/include/* $(HOST_SYSROOT)/include
 
 #	cp -rf replacements/$(notdir $(GLIBC_MIN_SRC_DIR))/include/* $(HOST_SYSROOT)/include
 
-$(HOST_GCC_CC): $(HOST_GCC_MAKE)
+HOST_GCC_CC_CFLAGS := \
+	-I$(abspath $(GCC_SRC_DIR))/include \
+	-I$(abspath $(HOST_SYSROOT))/include
+
+$(HOST_GCC_CC): $(HOST_GCC_MAKE) $(HOST_GCC_GLIBC)
 	rm -rf build/host-gcc
 	mkdir -p build/host-gcc
 	ln -f -s ../gmp  $(abspath $(GCC_SRC_DIR))/gmp
@@ -84,9 +92,10 @@ $(HOST_GCC_CC): $(HOST_GCC_MAKE)
 		--libdir $(abspath $(HOST_SYSROOT))/lib \
 		--disable-multilib \
 		--disable-libsanitizer \
-		--disable-bootstrap \
-		--disable-werror \
 		--enable-languages=c,c++ \
+		--with-sysroot=$(abspath $(HOST_SYSROOT)) \
+		CFLAGS="$(HOST_GCC_CC_CFLAGS)" \
+		CXXFLAGS="$(HOST_GCC_CC_CFLAGS)" \
 		LDFLAGS=""
 	make -C build/host-gcc $(SP_NJOBS)
 	make -C build/host-gcc install

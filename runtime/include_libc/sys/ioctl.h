@@ -23,6 +23,26 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_IOCTL_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_IOCTL_H_
 
+/*
+	Dispatch header for the POSIX/BSD <sys/ioctl.h> (device control):
+	- hosted SPRT build -> forwards to the system <sys/ioctl.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded):
+
+	Macros (terminal window-size requests):
+	  TIOCGWINSZ - get the terminal window size into a struct winsize
+	  TIOCSWINSZ - set the terminal window size from a struct winsize
+
+	Types:
+	  intptr_t
+	  struct winsize - terminal dimensions (ws_row, ws_col; ws_xpixel/ws_ypixel unused)
+
+	Functions:
+	  ioctl - issue a device-dependent control request on a descriptor (variadic
+	          third argument carries the request-specific argument)
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sys/ioctl.h>

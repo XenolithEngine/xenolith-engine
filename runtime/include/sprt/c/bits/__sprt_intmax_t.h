@@ -63,7 +63,7 @@ typedef __INTMAX_TYPE__ __SPRT_ID(intmax_t);
 #ifdef __INTMAX_C_SUFFIX__
 #define __INTMAX_C_SUFFIX __INTMAX_C_SUFFIX__
 #else
-#error "Compiler-assisted __INTMAX_FMTx__ is not defined"
+#error "Compiler-assisted __INTMAX_C_SUFFIX__ is not defined"
 #endif
 
 #else // __INTMAX_TYPE__
@@ -81,7 +81,7 @@ typedef long long int __SPRT_ID(intmax_t);
 
 #elif defined(__LP64__)
 
-typedef unsigned long int __SPRT_ID(intmax_t);
+typedef long int __SPRT_ID(intmax_t);
 #define __SPRT_INTMAX_MAX __SPRT_LINT_MAX
 #define __SPRT_INTMAX_WIDTH __SPRT_LINT_WIDTH
 #define __SPRT_INTMAX_FMTd __SPRT_LINT_FMTd

@@ -69,6 +69,7 @@ struct _stat {
 #endif
 
 typedef __SPRT_ID(off_t) off_t;
+typedef __SPRT_ID(size_t) size_t;
 
 #ifndef __cplusplus
 typedef __SPRT_ID(wchar_t) wchar_t;

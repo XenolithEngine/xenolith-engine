@@ -30,7 +30,7 @@
 #define M_PI_2 __SPRT_M_PI_2
 #define M_PI_4 __SPRT_M_PI_4
 #define M_1_PI __SPRT_M_1_PI
-#define M_2_PI__SPRT_M_2_PI
+#define M_2_PI __SPRT_M_2_PI
 #define M_2_SQRTPI __SPRT_M_2_SQRTPI
 #define M_SQRT2 __SPRT_M_SQRT2
 #define M_SQRT1_2 __SPRT_M_SQRT1_2

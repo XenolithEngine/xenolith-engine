@@ -23,6 +23,25 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SETJMP_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SETJMP_H_
 
+/*
+	Dispatch header for <setjmp.h>:
+	- hosted SPRT build -> forwards to the system <setjmp.h> (#include_next)
+	- otherwise         -> SPRT's own definitions via sprt/c/__sprt_setjmp.h
+
+	On the SPRT-own path the standard names are macro aliases of the SPRT internals:
+
+	Type:
+	  jmp_buf - array type holding a saved calling environment
+
+	Macros / functions:
+	  setjmp(env)        - save the current environment into env; returns 0 on the
+	                       direct call and non-zero when reached via longjmp
+	  longjmp(env, val)  - restore an environment saved by setjmp, making that
+	                       setjmp return val (a 0 val is reported as 1)
+
+	Note: the sigsetjmp/siglongjmp (signal-mask-saving) variants are not provided here.
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <setjmp.h>

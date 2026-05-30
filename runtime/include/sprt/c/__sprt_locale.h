@@ -90,4 +90,4 @@ SPRT_API __SPRT_ID(locale_t) __SPRT_ID(uselocale)(__SPRT_ID(locale_t));
 
 __SPRT_END_DECL
 
-#endif // CORE_RUNTIME_INCLUDE_C___SPRT_LIMITS_H_
+#endif // CORE_RUNTIME_INCLUDE_C___SPRT_LOCALE_H_

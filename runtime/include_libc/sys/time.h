@@ -23,6 +23,35 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_TIME_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_TIME_H_
 
+/*
+	Dispatch header for the POSIX <sys/time.h> (time-of-day and interval timers):
+	- hosted SPRT build -> forwards to the system <sys/time.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded).
+	A function tagged [gate: X] is declared only when __SPRT_CONFIG_HAVE_X is set for
+	the target (or when __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS forces all of them).
+	struct timeval, struct timezone and struct itimerval come in via
+	<sprt/c/sys/__sprt_time.h>.
+
+	Time-of-day functions  [gate: TIME_TIMEOFDAY]:
+	  gettimeofday - read the current wall-clock time (and timezone)
+	  settimeofday - set the current wall-clock time
+
+	Interval-timer functions  [gate: TIME_TIMER]:
+	  getitimer - read an interval timer (real / virtual / profiling)
+	  setitimer - arm or disarm an interval timer
+
+	File-timestamp functions (always available):
+	  utimes    - set a file's access/modification times (struct timeval[2])
+	  futimes   - same, for an open descriptor
+	  futimesat - same, relative to a directory descriptor
+	  lutimes   - same as utimes but without following a final symlink
+
+	Clock-adjustment function  [gate: TIME_ADJTIME]:
+	  adjtime   - gradually slew the system clock toward a correction
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sys/time.h>

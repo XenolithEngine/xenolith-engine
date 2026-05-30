@@ -66,7 +66,7 @@ $(eval $(call download_tarbell_target,src/gettext,$(gettext_TARBALL),\
 # Используем LTS ядро 5.10
 
 LINUX_KERNEL_FAMILY := v5.x
-LINUX_KERNEL_VER := 5.10.251
+LINUX_KERNEL_VER := 5.10.257
 LINUX_KERNEL_TARBALL := linux-$(LINUX_KERNEL_VER).tar.xz
 LINUX_KERNEL_DIR := src/linux
 LINUX_KERNEL_URL := https://cdn.kernel.org/pub/linux/kernel/$(LINUX_KERNEL_FAMILY)/linux-$(LINUX_KERNEL_VER).tar.xz

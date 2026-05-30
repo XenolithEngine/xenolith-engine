@@ -298,7 +298,7 @@ typedef struct _GROUP_AFFINITY32 {
 } GROUP_AFFINITY32, *PGROUP_AFFINITY32;
 
 typedef struct _GROUP_AFFINITY64 {
-	unsigned __int64 Mask;
+	__uint64 Mask;
 	USHORT Group;
 	USHORT Reserved[3];
 } GROUP_AFFINITY64, *PGROUP_AFFINITY64;

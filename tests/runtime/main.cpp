@@ -85,14 +85,10 @@ int main(int argc, const char *argv[]) {
 
 	fputws(wstr, stdout);
 
-	_wfopen(L"тестовая строка", L"rwa+");
-
-	auto path = _fullpath(nullptr, "..", 0);
-
 	srand(clock_gettime_nsec_np(CLOCK_REALTIME));
 	auto v = rand();
 
-	printf("%s %f %f\n", path, sin(1.0f / (v % 20)), cos(1.0f / (v % 20)));
+	printf("%f %f\n", sin(1.0f / (v % 20)), cos(1.0f / (v % 20)));
 
 	int result = 0;
 	sprt::initialize(sprt::AppConfig(), result);

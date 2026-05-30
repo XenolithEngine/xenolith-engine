@@ -194,6 +194,7 @@ $(SRC_ROOT)/libzip: | prepare
 $(SRC_ROOT)/openssl: | prepare
 	$(call unpack_tar, https://github.com/openssl/openssl/releases/download/openssl-3.5.5/openssl-3.5.5.tar.gz, openssl)
 	$(call rule_cp,replacements/openssl/async_posix.c,$(SRC_ROOT)/openssl/crypto/async/arch/async_posix.c)
+	$(call rule_cp,replacements/openssl/49-xwin-clang.conf,$(SRC_ROOT)/openssl/Configurations)
 
 # https://github.com/gost-engine/engine # revised: 22 feb 2026
 $(SRC_ROOT)/openssl-gost-engine: | prepare
@@ -277,7 +278,7 @@ $(SRC_ROOT)/libxml2: | prepare
 
 # https://wayland.freedesktop.org/releases.html # revised: 06 mar 2026
 $(SRC_ROOT)/wayland: | prepare
-	$(call unpack_tar, https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.24.0/downloads/wayland-1.24.0.tar.xz, wayland)
+	$(call unpack_tar, https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.25.0/downloads/wayland-1.25.0.tar.xz, wayland)
 
 # https://wayland.freedesktop.org/releases.html # revised: 06 mar 2026
 $(SRC_ROOT)/wayland-protocols: | prepare

@@ -23,6 +23,25 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_RANDOM_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_RANDOM_H_
 
+/*
+	Dispatch header for <sys/random.h> (kernel random-number source):
+	- hosted SPRT build -> forwards to the system <sys/random.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded):
+
+	Macros (getrandom flags):
+	  GRND_NONBLOCK - fail with EAGAIN instead of blocking when the pool isn't ready
+	  GRND_RANDOM   - draw from the blocking (random) source rather than urandom
+	  GRND_INSECURE - return best-effort bytes without blocking, even if not yet seeded
+
+	Types:
+	  ssize_t, size_t
+
+	Functions:
+	  getrandom - fill a buffer with random bytes from the kernel CSPRNG
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sys/random.h>

@@ -23,6 +23,42 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_FENV_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_FENV_H_
 
+/*
+	Dispatch header for <fenv.h> (floating-point environment access):
+	- hosted SPRT build -> forwards to the system <fenv.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded):
+
+	Macros:
+	  rounding directions: FE_TONEAREST, FE_DOWNWARD, FE_UPWARD, FE_TOWARDZERO
+	  FE_ALL_EXCEPT - bitmask of all supported exceptions (the individual exception
+	                  flags such as FE_INVALID/FE_DIVBYZERO/... come via __sprt_fenv.h)
+	  FP_NAN, FP_INFINITE, FP_ZERO, FP_SUBNORMAL, FP_NORMAL - classification constants
+	                  (also exposed via <math.h>), defined here only if not already
+
+	Types:
+	  fexcept_t - holds the state of the exception flags
+	  fenv_t    - holds the entire floating-point environment
+
+	Exception-flag functions:
+	  feclearexcept    - clear the given exception flags
+	  fetestexcept     - return which of the given exceptions are currently raised
+	  feraiseexcept    - raise the given exceptions
+	  fegetexceptflag  - save the current state of the given exception flags
+	  fesetexceptflag  - restore previously saved exception-flag state
+
+	Rounding-mode functions:
+	  fegetround       - read the current rounding direction
+	  fesetround       - set the rounding direction
+
+	Environment functions:
+	  fegetenv         - save the whole floating-point environment
+	  fesetenv         - restore a saved environment
+	  feholdexcept     - save the environment and clear exceptions (non-stop mode)
+	  feupdateenv      - restore an environment, then re-raise pending exceptions
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <fenv.h>

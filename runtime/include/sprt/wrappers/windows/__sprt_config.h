@@ -96,6 +96,10 @@ __SPRT_WIN_STRING_IMPORT const __SPRT_ID(wchar_t)
 __SPRT_END_DECL
 #endif
 
+#else
+
+#define __SPRT_WIN_IMPORT
+
 #endif
 
 #endif // SPRT_WRAPPERS_WINDOWS___SPRT_CONFIG_H_

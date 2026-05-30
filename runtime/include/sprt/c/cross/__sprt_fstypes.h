@@ -90,4 +90,4 @@ typedef __SPRT_ID(int64_t) __SPRT_ID(blkcnt_t);
 #define __SPRT_UTIME_OMIT 0x3ffffffe
 // clang-format on
 
-#endif // CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_FSID_H_
+#endif // CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_FSTYPES_H_

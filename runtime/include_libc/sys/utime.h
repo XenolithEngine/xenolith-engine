@@ -23,6 +23,22 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_UTIME_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_UTIME_H_
 
+/*
+	MSVC-style <sys/utime.h> (file timestamp updates).
+	Unlike most libc shims this is self-contained: there is no __SPRT_BUILD dispatch.
+	It always pulls in the related headers
+	  <sys/time.h>, <unistd.h>, <utime.h>
+	and then adds the MSVC-named compatibility wrappers below. The POSIX utime() and
+	struct utimbuf themselves come from <utime.h> (see include_libc/utime.h).
+
+	Types:
+	  struct _utimbuf - MSVC-named timestamp pair (members: time_t actime, modtime)
+
+	Functions:
+	  _utime - MSVC-named variant of utime: set a file's access and modification
+	           times from a struct _utimbuf (a NULL buffer uses the current time)
+*/
+
 #include <sys/time.h>
 #include <unistd.h>
 #include <utime.h>

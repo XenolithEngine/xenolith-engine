@@ -23,6 +23,53 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_FCNTL_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_FCNTL_H_
 
+/*
+	Dispatch header for <fcntl.h>:
+	- hosted SPRT build -> forwards to the system <fcntl.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded).
+	A function tagged [gate: X] is declared only when __SPRT_CONFIG_HAVE_X is set for
+	the target (or when __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS forces all of them).
+	struct flock (used by the F_*LK commands) comes in via <sprt/c/__sprt_fcntl.h>.
+
+	Macros:
+	  SEEK_SET/SEEK_CUR/SEEK_END   - lseek whence values
+	  open() access/creation flags - O_ACCMODE, O_RDONLY, O_WRONLY, O_RDWR, O_CREAT,
+	    O_EXCL, O_NOCTTY, O_TRUNC, O_APPEND, O_NONBLOCK, O_DSYNC, O_SYNC, O_DIRECTORY,
+	    O_NOFOLLOW, O_CLOEXEC, O_ASYNC, O_NDELAY, plus the platform-optional O_SEARCH,
+	    O_EXEC, O_RSYNC, O_DIRECT, O_LARGEFILE, O_NOATIME, O_PATH, O_TMPFILE, O_BINARY
+	  fcntl() commands - F_DUPFD, F_DUPFD_CLOEXEC, F_GETFD/F_SETFD, F_GETFL/F_SETFL,
+	    F_GETOWN/F_SETOWN, F_GETOWN_EX/F_SETOWN_EX, F_GETOWNER_UIDS, F_GETLK/F_SETLK/
+	    F_SETLKW, the platform-optional F_OFD_GETLK/F_OFD_SETLK/F_OFD_SETLKW,
+	    F_GETSIG/F_SETSIG, F_GETPIPE_SZ/F_SETPIPE_SZ, F_ADD_SEALS/F_GET_SEALS
+	  file seals       - F_SEAL_SEAL, F_SEAL_SHRINK, F_SEAL_GROW, F_SEAL_WRITE,
+	                     F_SEAL_FUTURE_WRITE
+	  lock types       - F_RDLCK, F_WRLCK, F_UNLCK
+	  descriptor flag  - FD_CLOEXEC
+	  fadvise advice   - POSIX_FADV_NORMAL, POSIX_FADV_RANDOM, POSIX_FADV_SEQUENTIAL,
+	                     POSIX_FADV_WILLNEED, POSIX_FADV_DONTNEED, POSIX_FADV_NOREUSE
+	  LFS aliases      - open64->open, openat64->openat, creat64->creat
+
+	Types:
+	  size_t, ssize_t, off_t, mode_t, intptr_t
+
+	Always-available functions:
+	  fcntl   - perform a control operation on a descriptor
+	  open    - open or create a file
+	  openat  - open relative to a directory descriptor
+	  creat   - create/truncate a file (equivalent to open with O_CREAT|O_WRONLY|O_TRUNC)
+
+	Gated functions:
+	  splice          - move data between two descriptors via a pipe [gate: FCNTL_SPLICE]
+	  tee             - duplicate pipe contents without consuming [gate: FCNTL_TEE]
+	  fallocate       - allocate/manage file space (Linux) [gate: FCNTL_FALLOCATE]
+	  posix_fallocate - portably allocate file space  [gate: FCNTL_FALLOCATE]
+	  posix_fadvise   - advise the kernel on access patterns [gate: FCNTL_FADVICE]
+	  readahead       - prime the page cache for a file [gate: FCNTL_READAHEAD]
+	  sync_file_range - flush a byte range to storage [gate: FCNTL_SYNC_FILE_RANGE]
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <fcntl.h>
@@ -238,6 +285,7 @@ int openat(int __dir_fd, const char *path, int __flags, ...) SPRT_UMBRELLA_END
 }
 #endif
 
+
 #if __SPRT_CONFIG_HAVE_FCNTL_SPLICE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_UMBRELLA_FUNC
 ssize_t splice(int __in_fd, off_t *__in_offset, int __out_fd, off_t *__out_offset, size_t __length,
@@ -247,6 +295,8 @@ ssize_t splice(int __in_fd, off_t *__in_offset, int __out_fd, off_t *__out_offse
 	return __sprt_splice(__in_fd, __in_offset, __out_fd, __out_offset, __length, __flags);
 }
 #endif
+#endif // __SPRT_CONFIG_HAVE_FCNTL_SPLICE
+
 
 #if __SPRT_CONFIG_HAVE_FCNTL_TEE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_UMBRELLA_FUNC
@@ -256,7 +306,8 @@ ssize_t tee(int __in_fd, int __out_fd, size_t __length, unsigned int __flags) SP
 	return __sprt_tee(__in_fd, __out_fd, __length, __flags);
 }
 #endif
-#endif
+#endif // __SPRT_CONFIG_HAVE_FCNTL_TEE
+
 
 #if __SPRT_CONFIG_HAVE_FCNTL_FALLOCATE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_UMBRELLA_FUNC
@@ -266,7 +317,6 @@ int fallocate(int __fd, int __mode, off_t __offset, off_t __length) SPRT_UMBRELL
 	return __sprt_fallocate(__fd, __mode, __offset, __length);
 }
 #endif
-#endif
 
 SPRT_UMBRELLA_FUNC
 int posix_fallocate(int __fd, off_t __offset, off_t __length) SPRT_UMBRELLA_END
@@ -275,7 +325,8 @@ int posix_fallocate(int __fd, off_t __offset, off_t __length) SPRT_UMBRELLA_END
 	return __sprt_posix_fallocate(__fd, __offset, __length);
 }
 #endif
-#endif
+#endif // __SPRT_CONFIG_HAVE_FCNTL_FALLOCATE
+
 
 #if __SPRT_CONFIG_HAVE_FCNTL_FADVICE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_UMBRELLA_FUNC
@@ -285,7 +336,8 @@ int posix_fadvise(int __fd, off_t __offset, off_t __length, int __advice) SPRT_U
 	return __sprt_posix_fadvise(__fd, __offset, __length, __advice);
 }
 #endif
-#endif
+#endif // __SPRT_CONFIG_HAVE_FCNTL_FADVICE
+
 
 #if __SPRT_CONFIG_HAVE_FCNTL_READAHEAD || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_UMBRELLA_FUNC
@@ -295,7 +347,8 @@ ssize_t readahead(int __fd, off_t __offset, size_t __length) SPRT_UMBRELLA_END
 	return __sprt_readahead(__fd, __offset, __length);
 }
 #endif
-#endif
+#endif // __SPRT_CONFIG_HAVE_FCNTL_READAHEAD
+
 
 #if __SPRT_CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 SPRT_UMBRELLA_FUNC
@@ -306,7 +359,7 @@ int sync_file_range(int __fd, off_t __offset, off_t __length,
 	return __sprt_sync_file_range(__fd, __offset, __length, __flags);
 }
 #endif
-#endif
+#endif // __SPRT_CONFIG_HAVE_FCNTL_SYNC_FILE_RANGE
 
 __SPRT_END_DECL
 

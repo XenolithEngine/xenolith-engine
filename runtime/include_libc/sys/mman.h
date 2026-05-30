@@ -23,6 +23,56 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_SYS_MMAN_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_SYS_MMAN_H_
 
+/*
+	Dispatch header for the POSIX <sys/mman.h> (memory mapping):
+	- hosted SPRT build -> forwards to the system <sys/mman.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded).
+	A function tagged [gate: X] is declared only when __SPRT_CONFIG_HAVE_X is set for
+	the target (or when __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS forces all of them).
+
+	Macros:
+	  MAP_FAILED      - mmap failure sentinel return value
+	  MAP_* flags     - MAP_SHARED, MAP_PRIVATE, MAP_SHARED_VALIDATE, MAP_TYPE,
+	                    MAP_FIXED, MAP_ANON(YMOUS), MAP_NORESERVE, MAP_GROWSDOWN,
+	                    MAP_DENYWRITE, MAP_EXECUTABLE, MAP_LOCKED, MAP_POPULATE,
+	                    MAP_NONBLOCK, MAP_STACK, MAP_HUGETLB, MAP_SYNC,
+	                    MAP_FIXED_NOREPLACE, MAP_FILE
+	  MAP_HUGE_*      - MAP_HUGE_SHIFT/MAP_HUGE_MASK and the per-size selectors
+	                    MAP_HUGE_16KB .. MAP_HUGE_16GB
+	  PROT_*          - PROT_NONE, PROT_READ, PROT_WRITE, PROT_EXEC, PROT_GROWSDOWN,
+	                    PROT_GROWSUP (page-protection bits)
+	  MS_*            - MS_ASYNC, MS_INVALIDATE, MS_SYNC (msync flags)
+	  MCL_*           - MCL_CURRENT, MCL_FUTURE, MCL_ONFAULT (mlockall flags)
+	  POSIX_MADV_*    - portable madvise advice values
+	  MADV_*          - the full Linux madvise advice set
+	  MREMAP_*        - MREMAP_MAYMOVE, MREMAP_FIXED, MREMAP_DONTUNMAP
+	  MLOCK_ONFAULT   - mlock2 flag
+	  MFD_*           - MFD_CLOEXEC, MFD_ALLOW_SEALING, MFD_HUGETLB (memfd_create)
+	  mmap64 -> mmap  - LFS alias
+
+	Types:
+	  size_t, off_t
+
+	Always-available functions:
+	  mmap          - map files or anonymous memory into the address space
+	  munmap        - remove a mapping
+	  mprotect      - change the protection of a mapped range
+	  msync         - flush a mapping to its backing store
+	  madvise       - give the kernel advice about a range (Linux)
+	  posix_madvise - portable form of madvise
+	  mlock/munlock - lock/unlock pages into RAM
+	  mlock2        - lock pages with flags (e.g. MLOCK_ONFAULT)
+	  mincore       - report which pages of a range are resident
+
+	Gated functions:
+	  mlockall/munlockall - lock/unlock the whole address space [gate: MMAN_MLOCKALL]
+	  mremap              - resize/move a mapping (variadic for MREMAP_FIXED)
+	                        [gate: MMAN_MREMAP]
+	  memfd_create        - create an anonymous file in memory [gate: MMAN_MEMFD]
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <sys/mman.h>

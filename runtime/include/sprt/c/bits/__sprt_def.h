@@ -25,10 +25,10 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_config.h>
 
-/* External configuraion:
+/* External configuration:
 
 	__SPRT_AS_STD - define std namespace as sprt alias
-	__SPRT_WINDOWS - force tu use windows platform definition (for specific cross-compilation targets)
+	__SPRT_WINDOWS - force to use windows platform definition (for specific cross-compilation targets)
 */
 
 /*
@@ -315,7 +315,7 @@ THE SOFTWARE.
 #define SPRT_LOCAL __SPRT_HIDDEN
 #endif // SPRT_WINDOWS
 
-// If we build with integerated runtime
+// If we build with integrated runtime
 #else
 
 #if SPRT_WINDOWS

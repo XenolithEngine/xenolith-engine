@@ -74,7 +74,7 @@ __SPRT_CONFIG_HAVE_FCNTL_FALLOCATE_NOTICE
 SPRT_API int __SPRT_ID(
 		posix_fallocate)(int __fd, __SPRT_ID(off_t) __offset, __SPRT_ID(off_t) __length);
 
-#endif
+#endif // __SPRT_CONFIG_HAVE_FCNTL_FALLOCATE
 
 #if __SPRT_CONFIG_HAVE_FCNTL_FADVICE || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 

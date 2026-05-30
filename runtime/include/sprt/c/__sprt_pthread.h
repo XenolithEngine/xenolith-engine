@@ -24,14 +24,14 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C___SPRT_PTHREAD_H_
 
 /*
-	SPRT implements it's own cross-platform pthreads
+	SPRT implements its own cross-platform pthreads
 
 	It uses OS threads backend (which can also be pthreads), but implements
-	it's own syncronization primitives, based on sprt_qlock_t/sprt_rlock_t
-	(which is cross-plafform futexes).
+	its own synchronization primitives, based on sprt_qlock_t/sprt_rlock_t
+	(which is cross-platform futexes).
 
 	Also, pthread_cancel implemented with SPRT's setjmp extensions,
-	it's always performs full stack unwindoing (destructor-safe for C++/Rust code).
+	it always performs full stack unwinding (destructor-safe for C++/Rust code).
 
 	32-bit pid_t can be used on all platforms as unique thread identifiers,
 	you can use pthread_getid_np to obtain it for a thread.
@@ -40,15 +40,15 @@ THE SOFTWARE.
 	can be attached to SPRT with pthread_self call, but that thread will have only limited
 	capabilities and marked as detached (can not be joined with SPRT's functions).
 
-	C++ sprt::threads are also SPRT's pthreads, but C++ synchonization primitives are NOT.
+	C++ sprt::threads are also SPRT's pthreads, but C++ synchronization primitives are NOT.
 	C++ primitives implemented with the same sprt_qlock_t/sprt_rlock_t backends, but can
 	not be mixed with pthread primitives. C++ primitives are more lightweight, less
-	errorchecked then pthread ones, as you can use RAII to mitigate most of the errors.
+	errorchecked than pthread ones, as you can use RAII to mitigate most of the errors.
 
 	sprt_qlock_t/sprt_rlock_t has limited capabilities with the system clocks (only clock,
 	returned by	sprt_[q|r]lock_getclock(0) is available by default).
 
-	Most of the attributes can have runtime capabilities detection. You should do appropiate
+	Most of the attributes can have runtime capabilities detection. You should do appropriate
 	error handling to ensure that requested capabilities is available on user's system.
 
 	PTHREAD_PROCESS_SHARED primitives is supported when SPRT_LOCK_FLAG_SHARED is supported for
@@ -416,7 +416,7 @@ SPRT_API int __SPRT_ID(pthread_getattr_np)(__SPRT_ID(pthread_t), __SPRT_ID(pthre
 
 // Thread name is tied with OS, you should see this name in debugger;
 // If you assign name for another thread (not pthread_self()), the name will be
-// assigned only when the specified threadreaches some control point within SPRT
+// assigned only when the specified thread reaches some control point within SPRT
 SPRT_API int __SPRT_ID(pthread_setname_np)(__SPRT_ID(pthread_t), const char *);
 SPRT_API int __SPRT_ID(pthread_getname_np)(__SPRT_ID(pthread_t), char *, __SPRT_ID(size_t));
 
@@ -431,7 +431,7 @@ SPRT_API int __SPRT_ID(
 		pthread_timedjoin_np)(__SPRT_ID(pthread_t), void **, const struct __SPRT_TIMESPEC_NAME *);
 
 // Returns system thread identifier (like gettid()) for all platforms;
-// In SPRT, gettid uses this function as fast path, or retrive id from platform-specific function
+// In SPRT, gettid uses this function as fast path, or retrieve id from platform-specific function
 SPRT_API int __SPRT_ID(pthread_getid_np)(__SPRT_ID(pthread_t), __SPRT_ID(pid_t) *) __SPRT_NOEXCEPT;
 
 SPRT_API __SPRT_ID(pthread_t) __SPRT_ID(pthread_self_noattach_np)(void) __SPRT_NOEXCEPT;

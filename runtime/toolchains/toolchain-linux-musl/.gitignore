@@ -1,6 +1,0 @@
-build_*
-toolchain-*
-llvm-*
-musl-*
-musl/**
-zlib-*

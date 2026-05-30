@@ -23,6 +23,28 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_ENDIAN_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_ENDIAN_H_
 
+/*
+	BSD/glibc-style <endian.h> (byte-order constants and conversion macros).
+	Unlike the other libc shims this is self-contained: there is no __SPRT_BUILD
+	dispatch and no #include_next - it always provides the definitions below.
+	It requires the compiler's __BYTE_ORDER__ to be predefined (#error otherwise).
+
+	Constants:
+	  BIG_ENDIAN, LITTLE_ENDIAN, PDP_ENDIAN - the three byte orders
+	  BYTE_ORDER                            - this target's order (== __BYTE_ORDER__)
+
+	Conversion macros (no-op or byte-swap depending on BYTE_ORDER), for 16/32/64-bit:
+	  htobe16/htobe32/htobe64 - host order  -> big-endian
+	  be16toh/be32toh/be64toh - big-endian  -> host order
+	  htole16/htole32/htole64 - host order  -> little-endian
+	  le16toh/le32toh/le64toh - little-endian -> host order
+	  betoh16/betoh32/betoh64, letoh16/letoh32/letoh64
+	                          - BSD-style aliases of be*toh / le*toh
+
+	(The actual swapping is done by the internal inline helpers __bswap16/32/64,
+	 and __bswap128 when unsigned __int128 is available; these are not public API.)
+*/
+
 #include <sprt/c/bits/__sprt_uint16_t.h>
 #include <sprt/c/bits/__sprt_uint32_t.h>
 #include <sprt/c/bits/__sprt_uint64_t.h>

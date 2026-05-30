@@ -23,6 +23,33 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_LIBC_DLFCN_H_
 #define CORE_RUNTIME_INCLUDE_LIBC_DLFCN_H_
 
+/*
+	Dispatch header for the POSIX <dlfcn.h> (dynamic loading):
+	- hosted SPRT build -> forwards to the system <dlfcn.h> (#include_next)
+	- otherwise         -> SPRT's own declarations (defined inline below)
+
+	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded):
+
+	Macros:
+	  binding mode:      RTLD_LAZY (resolve symbols on first use),
+	                     RTLD_NOW (resolve all symbols at load)
+	  load behavior:     RTLD_NOLOAD (test/promote without loading),
+	                     RTLD_NODELETE (keep mapped after dlclose)
+	  symbol scope:      RTLD_GLOBAL (export to later loads), RTLD_LOCAL
+	  dlsym pseudo-handles: RTLD_NEXT, RTLD_DEFAULT
+	  dlinfo request:    RTLD_DI_LINKMAP
+
+	Types:
+	  Dl_info - struct filled in by dladdr (object/symbol name and base address)
+
+	Functions:
+	  dlopen  - load (or reference) a shared object, returning a handle
+	  dlclose - release a handle, unloading the object when its count drops to zero
+	  dlsym   - look up the address of a symbol in a handle
+	  dlerror - return (and clear) the most recent dl* error string
+	  dladdr  - resolve an address to its containing object and nearest symbol
+*/
+
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <dlfcn.h>
