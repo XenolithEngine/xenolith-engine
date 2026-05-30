@@ -36,7 +36,7 @@ THE SOFTWARE.
 #endif
 
 #if SPRT_ANDROID
-#include "../platform/android/getrandom.cc"
+#include "android/getrandom.cc"
 #endif
 
 namespace sprt {

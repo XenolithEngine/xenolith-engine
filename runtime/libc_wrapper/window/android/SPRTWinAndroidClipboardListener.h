@@ -20,52 +20,42 @@
  THE SOFTWARE.
  **/
 
-#ifndef CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDNETWORKCONNECTIVITY_H_
-#define CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDNETWORKCONNECTIVITY_H_
+#ifndef CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDCLIPBOARDLISTENER_H_
+#define CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDCLIPBOARDLISTENER_H_
 
-#include "private/window/android/SPRTWinAndroid.h" // IWYU pragma: keep
+#include "SPRTWinAndroid.h" // IWYU pragma: keep
 
 #if SPRT_ANDROID
 
-#include <sprt/runtime/window/notifications.h>
-
 namespace sprt::window {
 
-struct NetworkConnectivity : public Ref {
-	static constexpr StringView NetworkConnectivityClassName =
-			"org.stappler.runtime.NetworkConnectivity";
-	static constexpr StringView NetworkConnectivityClassPath =
-			"org/stappler/runtime/NetworkConnectivity";
+struct SPRT_API ClipboardListener : public Ref {
+	static constexpr StringView ClassName = "org.stappler.runtime.ClipboardListener";
+	static constexpr StringView ClassPath = "org/stappler/runtime/ClipboardListener";
 
 	struct NetworkConnectivityProxy : jni::ClassProxy {
 		jni::StaticMethod<"create",
-				jni::L<"org/stappler/runtime/NetworkConnectivity">(
-						jni::L<"android.content.Context">, jlong)>
+				jni::L<"org/stappler/runtime/ClipboardListener">(jni::L<"android.content.Context">,
+						jlong)>
 				create = this;
 		jni::Method<"finalize", void()> finalize = this;
 
 		using jni::ClassProxy ::ClassProxy;
-	} proxy = "org/stappler/runtime/NetworkConnectivity";
+	} proxy = "org/stappler/runtime/ClipboardListener";
 
 	jni::Global thiz = nullptr;
-	NetworkFlags flags = NetworkFlags::None;
-	Function<void(NetworkFlags)> callback;
+	Function<void()> callback;
 
 	void finalize();
 
-	void handleCreated(JNIEnv *, jobject, jobject);
-	void handleFinalized(JNIEnv *);
-	void handleAvailable(JNIEnv *, jobject, jobject);
-	void handleLost(JNIEnv *);
-	void handleCapabilitiesChanged(JNIEnv *, jobject);
-	void handleLinkPropertiesChanged(JNIEnv *, jobject);
+	void handleClipChanged(JNIEnv *);
 
-	virtual ~NetworkConnectivity();
-	NetworkConnectivity(const jni::Ref &context, Function<void(NetworkFlags)> && = nullptr);
+	virtual ~ClipboardListener();
+	ClipboardListener(const jni::Ref &context, Function<void()> && = nullptr);
 };
 
 } // namespace sprt::window
 
 #endif
 
-#endif // CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDNETWORKCONNECTIVITY_H_
+#endif // CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDCLIPBOARDLISTENER_H_

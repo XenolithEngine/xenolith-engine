@@ -20,11 +20,11 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/android/SPRTWinAndroidContextController.h"
-#include "private/window/android/SPRTWinAndroidNetworkConnectivity.h"
-#include "private/window/android/SPRTWinAndroidDisplayConfigManager.h"
-#include "private/window/android/SPRTWinAndroidActivity.h"
-#include "private/window/android/SPRTWinAndroidClipboardListener.h"
+#include "SPRTWinAndroidContextController.h"
+#include "SPRTWinAndroidNetworkConnectivity.h"
+#include "SPRTWinAndroidDisplayConfigManager.h"
+#include "SPRTWinAndroidActivity.h"
+#include "SPRTWinAndroidClipboardListener.h"
 
 #include <sprt/jni/jni.h>
 #include <sprt/jni/native_activity.h>
@@ -33,6 +33,9 @@
 #include <sprt/runtime/utils/verutils.h>
 #include <sprt/runtime/utils/urlview.h>
 #include <sprt/runtime/filesystem/filepath.h>
+
+#include <android/keycodes.h>
+#include <android/looper.h>
 
 namespace sprt::window {
 

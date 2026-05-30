@@ -20,42 +20,57 @@
  THE SOFTWARE.
  **/
 
-#ifndef CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDCLIPBOARDLISTENER_H_
-#define CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDCLIPBOARDLISTENER_H_
+#ifndef CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDINPUT_H_
+#define CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDINPUT_H_
 
-#include "private/window/android/SPRTWinAndroid.h" // IWYU pragma: keep
+#include "SPRTWinAndroid.h" // IWYU pragma: keep
 
 #if SPRT_ANDROID
 
+#include <sprt/runtime/utils/dso.h>
+
+#include <sprt/runtime/window/input.h>
+
+struct AInputQueue;
+struct AInputEvent;
+
 namespace sprt::window {
 
-struct SPRT_API ClipboardListener : public Ref {
-	static constexpr StringView ClassName = "org.stappler.runtime.ClipboardListener";
-	static constexpr StringView ClassPath = "org/stappler/runtime/ClipboardListener";
+class AndroidActivity;
 
-	struct NetworkConnectivityProxy : jni::ClassProxy {
-		jni::StaticMethod<"create",
-				jni::L<"org/stappler/runtime/ClipboardListener">(
-						jni::L<"android.content.Context">, jlong)>
-				create = this;
-		jni::Method<"finalize", void()> finalize = this;
+class InputQueue : public Ref {
+public:
+	static InputKeyCode KeyCodes[];
 
-		using jni::ClassProxy ::ClassProxy;
-	} proxy = "org/stappler/runtime/ClipboardListener";
+	virtual ~InputQueue();
 
-	jni::Global thiz = nullptr;
-	Function<void()> callback;
+	bool init(AndroidActivity *, AInputQueue *);
 
-	void finalize();
+	int handleInputEventQueue(int fd, int events);
+	int handleInputEvent(AInputEvent *event);
+	int handleKeyEvent(AInputEvent *event);
+	int handleMotionEvent(AInputEvent *event);
 
-	void handleClipChanged(JNIEnv *);
+	void setBackButtonHandlerEnabled(bool);
 
-	virtual ~ClipboardListener();
-	ClipboardListener(const jni::Ref &context, Function<void()> && = nullptr);
+	void handleBackInvoked();
+
+protected:
+	AndroidActivity *_activity = nullptr;
+	AInputQueue *_queue = nullptr;
+
+	InputModifier _activeModifiers = InputModifier::None;
+	Vec2 _hoverLocation = Vec2(NaN<float>, NaN<float>);
+
+	Dso _selfHandle;
+
+	int32_t (*_AMotionEvent_getActionButton)(const AInputEvent *) = nullptr;
+
+	bool _backButtonHandlerEnabled = false;
 };
 
 } // namespace sprt::window
 
 #endif
 
-#endif // CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDCLIPBOARDLISTENER_H_
+#endif // CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDINPUT_H_

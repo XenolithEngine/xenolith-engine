@@ -20,7 +20,7 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/android/SPRTWinAndroidNetworkConnectivity.h"
+#include "SPRTWinAndroidNetworkConnectivity.h"
 
 namespace sprt::window {
 

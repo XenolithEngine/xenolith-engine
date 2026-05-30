@@ -35,7 +35,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_dirent.h>
 #include <sprt/c/__sprt_limits.h>
 
-#include "private/SPRTDso.h"
+#include <sprt/runtime/utils/dso.h>
 
 #include <unicode/uchar.h>
 #include <unicode/urename.h>
@@ -43,7 +43,7 @@ THE SOFTWARE.
 
 #include <android/configuration.h>
 
-#include "private/SPRTPrivate.h"
+#include "../src/private/SPRTPrivate.h"
 
 namespace sprt::unicode {
 

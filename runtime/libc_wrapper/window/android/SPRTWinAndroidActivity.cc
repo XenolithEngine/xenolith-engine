@@ -20,10 +20,10 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/android/SPRTWinAndroidActivity.h"
-#include "private/window/android/SPRTWinAndroidWindow.h"
-#include "private/window/android/SPRTWinAndroidContextController.h"
-#include "private/window/android/SPRTWinAndroidInput.h"
+#include "SPRTWinAndroidActivity.h"
+#include "SPRTWinAndroidWindow.h"
+#include "SPRTWinAndroidContextController.h"
+#include "SPRTWinAndroidInput.h"
 
 #include <sprt/cxx/mutex>
 #include <sprt/runtime/window/types.h>
@@ -31,6 +31,9 @@
 
 #include <sprt/jni/jni.h>
 #include <sprt/jni/native_activity.h>
+
+#include <android/asset_manager.h>
+#include <android/native_window.h>
 
 namespace sprt::window {
 

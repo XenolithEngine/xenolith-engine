@@ -99,9 +99,16 @@ namespace sprt::memory {
 
 class OpaquePool;
 
+#if INTPTR_MAX == INT64_MAX
 struct OpaqueAllocator {
 	uint64_t __opaque[28];
 };
+#else
+struct OpaqueAllocator {
+	uint64_t __opaque[17];
+};
+#endif
+
 
 using pool_t = OpaquePool;
 using allocator_t = OpaqueAllocator;

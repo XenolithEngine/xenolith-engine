@@ -51,6 +51,9 @@ THE SOFTWARE.
 #include "common/locale.cc"
 #include "common/rand.cc"
 
+static_assert(sizeof(void *) == sizeof(__sprt_intptr_t));
+static_assert(sizeof(void *) == sizeof(__sprt_uintptr_t));
+
 #if SPRT_ANDROID
 namespace sprt::platform {
 

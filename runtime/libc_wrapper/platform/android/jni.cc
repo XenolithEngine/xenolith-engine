@@ -33,8 +33,8 @@
 #include <android/asset_manager.h>
 #include <sprt/jni/native_activity.h>
 
-#include "private/SPRTDso.h"
-#include "private/SPRTSpecific.h"
+#include <sprt/runtime/utils/dso.h>
+#include "../src/private/SPRTSpecific.h"
 
 #include <math.h>
 #include <nl_types.h>

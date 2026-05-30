@@ -173,7 +173,7 @@ $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'TARGET_LIB_DIR_LIBC := $$(TARGET_SYSROOT)/lib' >> $@
 	@echo 'TARGET_GENERAL_CFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang' >> $@
 	@echo 'TARGET_GENERAL_CXXFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang' >> $@
-	@echo 'TARGET_GENERAL_LDFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -lc++ -lc++abi' >> $@
+	@echo 'TARGET_GENERAL_LDFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -lc++abi -lm' >> $@
 	@echo 'TARGET_EXEC_CFLAGS :=' >> $@
 	@echo 'TARGET_EXEC_CXXFLAGS :=' >> $@
 	@echo 'TARGET_EXEC_LDFLAGS :=' >> $@

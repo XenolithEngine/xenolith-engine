@@ -326,7 +326,7 @@ $(STAGEOUT_SYSROOT)/bin/glslang: $(STAGEOUT_SYSROOT)/bin/spirv-opt $(STAGE2_SYSR
 		-DCMAKE_SHARED_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections -flto" \
 		-DCMAKE_INSTALL_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
 		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
-		-DBUILD_SHARED_LIBS=On
+		-DBUILD_SHARED_LIBS=Off
 	cmake --build build/stage2-glslang
 	cmake --install build/stage2-glslang
 	touch $@

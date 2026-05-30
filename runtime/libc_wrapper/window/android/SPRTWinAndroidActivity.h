@@ -23,7 +23,7 @@
 #ifndef CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDACTIVITY_H_
 #define CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDACTIVITY_H_
 
-#include "private/window/android/SPRTWinAndroid.h" // IWYU pragma: keep
+#include "SPRTWinAndroid.h" // IWYU pragma: keep
 
 #if SPRT_ANDROID
 

@@ -53,8 +53,6 @@
 
 #include <stdint.h>
 #include <sys/types.h>
-#include <android/keycodes.h>
-#include <android/looper.h>
 
 #include <sprt/jni/env.h>
 
@@ -67,6 +65,10 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+struct ALooper;
+
+typedef int (*ALooper_callbackFunc)(int fd, int events, void *data);
 
 /**
  * Key states (may be returned by queries about the current state of a

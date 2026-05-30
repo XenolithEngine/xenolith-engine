@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#define SPRT_BUILD 1
+#define __SPRT_BUILD 1
 
 #include <sprt/cxx/debugging>
 

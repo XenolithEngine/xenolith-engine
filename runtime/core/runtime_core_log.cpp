@@ -28,6 +28,8 @@
 
 #if SPRT_ANDROID
 #include <sprt/c/sys/__sprt_alog.h>
+#undef _GNU_SOURCE
+#include <string.h>
 #endif
 
 #if SPRT_LINUX

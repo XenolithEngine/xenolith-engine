@@ -20,8 +20,8 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/android/SPRTWinAndroidInput.h"
-#include "private/window/android/SPRTWinAndroidActivity.h"
+#include "SPRTWinAndroidInput.h"
+#include "SPRTWinAndroidActivity.h"
 
 #include <sprt/runtime/window/context.h>
 #include <sprt/jni/input.h>
