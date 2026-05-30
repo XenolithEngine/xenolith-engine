@@ -23,11 +23,11 @@
 #ifndef CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDWINDOW_H_
 #define CORE_RUNTIME_PRIVATE_WINDOW_ANDROID_SPRTWINANDROIDWINDOW_H_
 
-#include "private/window/android/SPRTWinAndroid.h" // IWYU pragma: keep
+#include "SPRTWinAndroid.h" // IWYU pragma: keep
 
 #if SPRT_ANDROID
 
-#include "private/SPRTDso.h"
+#include <sprt/runtime/utils/dso.h>
 
 #include <sprt/runtime/window/native_window.h>
 

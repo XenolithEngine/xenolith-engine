@@ -20,8 +20,8 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/android/SPRTWinAndroidDisplayConfigManager.h"
-#include "private/window/android/SPRTWinAndroidContextController.h"
+#include "SPRTWinAndroidDisplayConfigManager.h"
+#include "SPRTWinAndroidContextController.h"
 
 namespace sprt::window {
 

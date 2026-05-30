@@ -33,7 +33,7 @@ THE SOFTWARE.
 #include <sprt/runtime/enum.h>
 #include <sprt/jni/jni.h>
 
-#include "private/SPRTFilesystem.h"
+#include "../src/private/SPRTFilesystem.h"
 
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/sys/__sprt_mman.h>

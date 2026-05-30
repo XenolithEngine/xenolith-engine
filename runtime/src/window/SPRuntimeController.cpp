@@ -32,7 +32,7 @@
 #endif
 
 #if SPRT_ANDROID
-#include "private/window/android/SPRTWinAndroidContextController.h"
+#include "../libc_wrapper/window/android/SPRTWinAndroidContextController.h"
 #endif
 
 #if SPRT_WINDOWS

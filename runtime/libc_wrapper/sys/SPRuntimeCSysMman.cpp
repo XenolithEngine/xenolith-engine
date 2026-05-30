@@ -32,6 +32,10 @@ THE SOFTWARE.
 
 #include <sys/mman.h>
 
+#if SPRT_ANDROID
+#include "../src/private/SPRTSpecific.h"
+#endif
+
 namespace sprt {
 
 __SPRT_C_FUNC void *__SPRT_ID(mmap)(void *__addr, __SPRT_ID(size_t) __size, int __prot, int __flags,

@@ -27,18 +27,51 @@ THE SOFTWARE.
 
 namespace sprt {
 
+struct __qsort_s_wrapper {
+	void *ctx;
+	int (*comp)(void *, const void *, const void *);
+};
+
+#if SPRT_ANDROID
+thread_local __qsort_s_wrapper tl_qsort_s_wrapper;
+#endif
+
 __SPRT_C_FUNC int qsort_s(void *ptr, __SPRT_ID(rsize_t) count, __SPRT_ID(rsize_t) size,
 		int (*comp)(void *, const void *, const void *), void *context) __SPRT_NOEXCEPT {
-	struct wrapper {
-		void *ctx;
-		int (*comp)(void *, const void *, const void *);
-	} w = {context, comp};
+
+#if SPRT_ANDROID
+	tl_qsort_s_wrapper = {context, comp};
+	qsort(ptr, count, size, [](const void *l, const void *r) {
+		return tl_qsort_s_wrapper.comp(tl_qsort_s_wrapper.ctx, l, r);
+	});
+#else
+	__qsort_s_wrapper w = {context, comp};
 
 	qsort_r(ptr, count, size, [](const void *l, const void *r, void *ptr) {
-		auto w = (wrapper *)ptr;
+		auto w = (__qsort_s_wrapper *)ptr;
 		return w->comp(w->ctx, l, r);
 	}, &w);
+#endif
 	return 0;
 }
 
 } // namespace sprt
+
+#if SPRT_ANDROID
+
+struct __qsort_r_wrapper {
+	void *ctx;
+	int (*comp)(const void *, const void *, void *);
+};
+
+thread_local __qsort_r_wrapper tl_qsort_r_wrapper;
+
+__SPRT_C_FUNC void qsort_r(void *ptr, size_t count, size_t size,
+		int (*cmp)(const void *, const void *, void *), void *ctx) {
+	tl_qsort_r_wrapper = {ctx, cmp};
+	qsort(ptr, count, size, [](const void *l, const void *r) {
+		return tl_qsort_r_wrapper.comp(l, r, tl_qsort_r_wrapper.ctx);
+	});
+}
+
+#endif

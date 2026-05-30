@@ -36,9 +36,16 @@ THE SOFTWARE.
 #include <locale.h>
 #endif
 
+#if SPRT_ANDROID
+#include "../src/private/SPRTSpecific.h"
+#endif
+
 #if SPRT_MACOS
 #include <xlocale.h>
 #endif
+
+// For legacy functions implementation
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
 namespace sprt {
 

@@ -20,8 +20,8 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/android/SPRTWinAndroidContextController.h"
-#include "private/window/android/SPRTWinAndroidClipboardListener.h"
+#include "SPRTWinAndroidContextController.h"
+#include "SPRTWinAndroidClipboardListener.h"
 
 #include <sprt/cxx/mutex>
 #include <sprt/runtime/window/types.h>

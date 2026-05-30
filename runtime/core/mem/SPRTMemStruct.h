@@ -184,7 +184,7 @@ struct SPRT_LOCAL Allocator {
 	using AllocMutex = sprt::rmutex;
 
 	// used to detect stappler allocators vs. APR allocators
-	uintptr_t magic = static_cast<uintptr_t>(config::POOL_MAGIC);
+	uint64_t magic = static_cast<uintptr_t>(config::POOL_MAGIC);
 	uint32_t last = 0; // largest used index into free
 	uint32_t max = config::ALLOCATOR_MAX_FREE_UNLIMITED; // Total size (in BOUNDARY_SIZE multiples)
 	uint32_t current = 0; // current allocated size in BOUNDARY_SIZE
@@ -192,7 +192,7 @@ struct SPRT_LOCAL Allocator {
 
 	AllocMutex mutex;
 	array<MemNode *, config::MAX_INDEX> buf;
-	atomic<size_t> allocated;
+	atomic<uint64_t> allocated;
 	uint64_t padding = 0;
 
 	static size_t getAllocatorsCount();

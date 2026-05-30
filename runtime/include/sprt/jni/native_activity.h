@@ -31,18 +31,21 @@
 
 #include <sprt/jni/env.h>
 
-#include <android/asset_manager.h>
 #include <sprt/jni/input.h>
-#include <android/native_window.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+typedef struct ARect ARect;
+struct AAssetManager;
+struct ANativeWindow;
+
 /**
  * {@link ANativeActivityCallbacks}
  */
 struct ANativeActivityCallbacks;
+
 
 /**
  * This structure defines the native side of an android.app.NativeActivity.

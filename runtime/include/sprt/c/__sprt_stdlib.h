@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_uint32_t.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_null.h>
+#include <sprt/c/bits/__sprt_wchar_t.h>
 #include <sprt/c/cross/__sprt_locale.h>
 #include <sprt/c/cross/__sprt_mbstate.h>
 

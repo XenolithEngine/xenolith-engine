@@ -58,6 +58,10 @@ THE SOFTWARE.
 #pragma clang diagnostic ignored "-Wvla-cxx-extension"
 #endif
 
+#if SPRT_ANDROID
+#include "../src/private/SPRTSpecific.h"
+#endif
+
 static_assert(SEEK_SET == __SPRT_SEEK_SET);
 static_assert(SEEK_CUR == __SPRT_SEEK_CUR);
 static_assert(SEEK_END == __SPRT_SEEK_END);

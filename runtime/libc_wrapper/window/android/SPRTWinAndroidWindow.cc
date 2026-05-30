@@ -20,9 +20,9 @@
  THE SOFTWARE.
  **/
 
-#include "private/window/android/SPRTWinAndroidWindow.h"
-#include "private/window/android/SPRTWinAndroidActivity.h"
-#include "private/window/android/SPRTWinAndroidContextController.h"
+#include "SPRTWinAndroidWindow.h"
+#include "SPRTWinAndroidActivity.h"
+#include "SPRTWinAndroidContextController.h"
 
 #include <android/choreographer.h>
 #include <android/hardware_buffer.h>

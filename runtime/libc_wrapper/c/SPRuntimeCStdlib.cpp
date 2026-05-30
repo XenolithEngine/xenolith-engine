@@ -42,6 +42,10 @@ THE SOFTWARE.
 #include <unistd.h>
 #endif
 
+#if SPRT_ANDROID
+#include "../src/private/SPRTSpecific.h"
+#endif
+
 namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(atoi_impl)(const char *str) { return ::atoi(str); }

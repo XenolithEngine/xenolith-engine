@@ -20,19 +20,21 @@
  THE SOFTWARE.
  **/
 
+#define __SPRT_BUILD
+
 #include <sprt/runtime/config.h>
 #include <sprt/c/bits/__sprt_def.h>
 
 #if __SPRT_RUNTIME_CONFIG_HAVE_WINDOW && SPRT_ANDROID
 
-#include <private/window/android/SPRTWinAndroid.h>
+#include "SPRTWinAndroid.h"
 
 #include <android/hardware_buffer.h>
 #include <sprt/cxx/mutex>
 #include <sprt/jni/jni.h>
 #include <sprt/jni/native_activity.h>
 
-#include "private/SPRTDso.h"
+#include <sprt/runtime/utils/dso.h>
 
 namespace sprt::window {
 

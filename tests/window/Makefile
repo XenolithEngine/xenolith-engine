@@ -29,8 +29,14 @@ LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 # Директория для результатов сборки
 LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
 
+#ifneq (,$(findstring android,$(STAPPLER_TARGET)))
+#LOCAL_LIBRARY := testapp
+#LOCAL_BUILD_SHARED := 1
+#else
 # Название исполняемого файла
 LOCAL_EXECUTABLE := testapp
+#endif
+
 
 # Пути к наборам модулей
 LOCAL_MODULES_PATHS = \

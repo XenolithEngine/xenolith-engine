@@ -20,6 +20,8 @@
  THE SOFTWARE.
  **/
 
+#define __SPRT_BUILD
+
 #include <sprt/c/sys/__sprt_futex.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/cross/__sprt_syscall.h>
