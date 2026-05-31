@@ -29,7 +29,7 @@
 
 namespace sprt {
 
-class qmutex_base {
+class SPRT_API qmutex_base {
 public:
 	using value_type = __sprt_sprt_qlock_t;
 	using timeout_type = __sprt_sprt_timeout_t;
@@ -133,7 +133,7 @@ public:
 	overall performance. Use where mutual locks are not expected and the locks
 	themselves take minimal time.
 */
-class qmutex final : private qmutex_base {
+class SPRT_API qmutex final : private qmutex_base {
 public:
 	using native_handle_type = value_type;
 

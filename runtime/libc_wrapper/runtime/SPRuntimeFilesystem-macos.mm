@@ -32,7 +32,7 @@
 #include <sprt/cxx/vector>
 #include <sprt/runtime/enum.h>
 #include <sprt/c/__sprt_unistd.h>
-#include "private/SPRTFilesystem.h"
+#include "../src/private/SPRTFilesystem.h"
 
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(rsize_t) rsize_t;

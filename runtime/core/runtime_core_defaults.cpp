@@ -26,6 +26,7 @@ THE SOFTWARE.
 #include <sprt/cxx/detail/constexpr.h>
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_dlfcn.h>
+#include <sprt/c/__sprt_unistd.h>
 #include <sprt/runtime/log.h>
 
 #if SPRT_LINUX || SPRT_ANDROID
@@ -42,9 +43,16 @@ THE SOFTWARE.
 
 #elif SPRT_MACOS
 #include <sched.h>
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <dlfcn.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <pthread.h>
 #include "darwin/clock_gettime.cc"
+#include "darwin/libc.cc"
 
 #elif SPRT_WINDOWS
 #include "windows/clock_gettime.cc"
@@ -56,6 +64,9 @@ THE SOFTWARE.
 
 extern "C" {
 __SPRT_NORETURN void abort();
+
+SPRT_API void __sprt_assert_fail(const char *cond, const char *file, unsigned int line,
+		const char *fn, const char *text) __SPRT_NOEXCEPT;
 }
 
 namespace sprt {

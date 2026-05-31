@@ -136,12 +136,6 @@ __SPRT_C_FUNC void *__SPRT_ID(bsearch_impl)(const void *key, const void *base, s
 }
 #endif
 
-SPRT_API void __SPRT_ID(qsort_r)(void *array, __SPRT_ID(size_t) n, __SPRT_ID(size_t) size,
-		int (*cmp)(const void *, const void *, void *), void *ctx) {
-	::qsort_r(array, n, size, cmp, ctx);
-}
-
-
 __SPRT_C_FUNC int __SPRT_ID(abs_impl)(int v) { return ::abs(v); }
 
 __SPRT_C_FUNC long __SPRT_ID(labs_impl)(long v) { return ::labs(v); }

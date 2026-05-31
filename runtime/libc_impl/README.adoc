@@ -1,0 +1,33 @@
+# Freestanding libc implementation
+
+Some target systems do not have an acceptable libc implementation for running Xenolith Runtime. Specifically, these are Windows and WebAssembly.
+
+Currently, only the Windows variant has been implemented.
+
+## Windows
+
+The implementation uses string and mathematical functions from musl libc. Some assembly implementations have been rewritten to conform to calling conventions.
+
+Some wide character handling functions in musl libc are incompatible with Windows due to differences in wide character size. Such functions have been manually implemented.
+
+A number of basic string functions are imported from ntdll.dll for better system compatibility.
+
+File handling functions were inherited from musl libc but rewritten, since musl libc's synchronization primitives are not compatible with Windows.
+
+unistd, fcntl, dlfcn, stat, and time functions have been manually implemented.
+
+Application startup and shutdown functions have been manually implemented based on UCRT compliance.
+
+MS C++ ABI functions for RTTI have been implemented.
+
+mimalloc is used as the standard memory allocator.
+
+Localization function support is limited. It is assumed that strings passed at the libc level are encoded in Unicode, so locale is not required for character classification. Comparison functions are fully implemented. Localized time output functions are not implemented. In general, it is not expected that applications will use libc functions for localization purposes; they are implemented for compilation compatibility.
+
+POSIX signal functions are emulated at the application level.
+
+mmap/munmap functions are fully implemented, however, they are significantly less efficient than on POSIX systems due to architectural differences.
+
+dlfcn functions are fully implemented and use system DLL search rules.
+
+dirent functions are fully implemented based on `FileIdBothDirectoryInfo`, thus avoiding the standard errors found in implementations based on FindFile.

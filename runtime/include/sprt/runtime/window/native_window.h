@@ -37,7 +37,7 @@ namespace sprt::window {
 
 class ContextController;
 
-class NativeWindow : public Ref {
+class SPRT_API NativeWindow : public Ref {
 public:
 	using InputEventData = sprt::window::InputEventData;
 	using InputEventName = sprt::window::InputEventName;

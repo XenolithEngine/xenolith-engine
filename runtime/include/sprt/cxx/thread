@@ -35,7 +35,7 @@ namespace sprt {
 
 using timeout_t = __sprt_sprt_timeout_t;
 
-class thread {
+class SPRT_API thread {
 public:
 	// class thread::id
 	struct id;

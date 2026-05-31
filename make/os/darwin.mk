@@ -22,13 +22,9 @@ OSTYPE_IS_MACOS := 1
 
 OSTYPE_SDK_PATH := $(shell xcrun --sdk $(TARGET_SDK_NAME) --show-sdk-path 2> /dev/null)
 
-$(info OSTYPE_SDK_PATH $(OSTYPE_SDK_PATH))
-
 ifeq ($(OSTYPE_SDK_PATH),)
 OSTYPE_SDK_PATH := $(TARGET_SDK_FALLBACK)
 endif
-
-$(info OSTYPE_SDK_PATH $(OSTYPE_SDK_PATH))
 
 OSTYPE_EXEC_SUFFIX :=
 OSTYPE_DSO_SUFFIX := .dylib
@@ -48,8 +44,8 @@ OSTYPE_LIB_CXXFLAGS := -fPIC -DPIC
 OSTYPE_EXEC_CXXFLAGS :=
 
 OSTYPE_GENERAL_LDFLAGS := -Xlinker -all_load
-OSTYPE_EXEC_LDFLAGS := 
-OSTYPE_LIB_LDFLAGS := -rdynamic -Wl,--exclude-libs,ALL
+OSTYPE_EXEC_LDFLAGS := -Wl,-rpath,@executable_path/../Frameworks
+OSTYPE_LIB_LDFLAGS := -rdynamic
 
 ifdef BUILD_SHARED
 

@@ -324,7 +324,11 @@ THE SOFTWARE.
 #define SPRT_LOCAL
 #else
 #define SPRT_GLOBAL __SPRT_VISIBLE
+#ifdef SP_BUILD_SHARED_LIBRARY
+#define SPRT_API __SPRT_VISIBLE
+#else
 #define SPRT_API __SPRT_HIDDEN
+#endif
 #define SPRT_LOCAL __SPRT_HIDDEN
 #endif
 

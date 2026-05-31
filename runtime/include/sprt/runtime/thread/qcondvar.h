@@ -35,7 +35,7 @@ struct alignas(8) __qcondvar_data {
 	uint32_t padding = 0;
 };
 
-class qcondvar_base : public qmutex_base {
+class SPRT_API qcondvar_base : public qmutex_base {
 public:
 	template < int (*WaitFn)(value_type *, value_type, timeout_type, flags_type),
 			timeout_type (*ClockFn)(flags_type), uint64_t (*MutexId)(void *),

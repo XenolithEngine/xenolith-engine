@@ -25,46 +25,22 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdlib.h>
 #include <stdlib.h>
 
-namespace sprt {
-
 struct __qsort_s_wrapper {
 	void *ctx;
 	int (*comp)(void *, const void *, const void *);
 };
-
-#if SPRT_ANDROID
-thread_local __qsort_s_wrapper tl_qsort_s_wrapper;
-#endif
-
-__SPRT_C_FUNC int qsort_s(void *ptr, __SPRT_ID(rsize_t) count, __SPRT_ID(rsize_t) size,
-		int (*comp)(void *, const void *, const void *), void *context) __SPRT_NOEXCEPT {
-
-#if SPRT_ANDROID
-	tl_qsort_s_wrapper = {context, comp};
-	qsort(ptr, count, size, [](const void *l, const void *r) {
-		return tl_qsort_s_wrapper.comp(tl_qsort_s_wrapper.ctx, l, r);
-	});
-#else
-	__qsort_s_wrapper w = {context, comp};
-
-	qsort_r(ptr, count, size, [](const void *l, const void *r, void *ptr) {
-		auto w = (__qsort_s_wrapper *)ptr;
-		return w->comp(w->ctx, l, r);
-	}, &w);
-#endif
-	return 0;
-}
-
-} // namespace sprt
-
-#if SPRT_ANDROID
 
 struct __qsort_r_wrapper {
 	void *ctx;
 	int (*comp)(const void *, const void *, void *);
 };
 
+#if SPRT_ANDROID
+thread_local __qsort_s_wrapper tl_qsort_s_wrapper;
 thread_local __qsort_r_wrapper tl_qsort_r_wrapper;
+#endif
+
+#if SPRT_ANDROID
 
 __SPRT_C_FUNC void qsort_r(void *ptr, size_t count, size_t size,
 		int (*cmp)(const void *, const void *, void *), void *ctx) {
@@ -75,3 +51,43 @@ __SPRT_C_FUNC void qsort_r(void *ptr, size_t count, size_t size,
 }
 
 #endif
+
+namespace sprt {
+
+__SPRT_C_FUNC int qsort_s(void *ptr, __SPRT_ID(rsize_t) count, __SPRT_ID(rsize_t) size,
+		int (*comp)(void *, const void *, const void *), void *context) __SPRT_NOEXCEPT {
+
+#if SPRT_ANDROID
+	tl_qsort_s_wrapper = {context, comp};
+	qsort(ptr, count, size, [](const void *l, const void *r) {
+		return tl_qsort_s_wrapper.comp(tl_qsort_s_wrapper.ctx, l, r);
+	});
+#elif SPRT_MACOS
+	qsort_r(ptr, count, size, context, comp);
+#else
+	__qsort_s_wrapper w = {context, comp};
+	qsort_r(ptr, count, size, [](const void *l, const void *r, void *ptr) {
+		auto w = (__qsort_s_wrapper *)ptr;
+		return w->comp(w->ctx, l, r);
+	}, &w);
+#endif
+	return 0;
+}
+
+#if SPRT_MACOS
+SPRT_API void __SPRT_ID(qsort_r)(void *array, __SPRT_ID(size_t) n, __SPRT_ID(size_t) size,
+		int (*cmp)(const void *, const void *, void *), void *ctx) {
+	__qsort_r_wrapper w = {ctx, cmp};
+
+	qsort_r(array, n, size, &w, [](void *ptr, const void *l, const void *r) {
+		auto w = (__qsort_r_wrapper *)ptr;
+		return w->comp(l, r, w->ctx);
+	});
+#else
+SPRT_API void __SPRT_ID(qsort_r)(void *array, __SPRT_ID(size_t) n, __SPRT_ID(size_t) size,
+		int (*cmp)(const void *, const void *, void *), void *ctx) {
+	::qsort_r(array, n, size, cmp, ctx);
+#endif
+}
+
+} // namespace sprt

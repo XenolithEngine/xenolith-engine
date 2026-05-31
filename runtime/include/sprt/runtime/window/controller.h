@@ -76,7 +76,7 @@ struct ContextConfig {
 	Rc<gapi::LoopInfo> loop;
 };
 
-class ContextController : public Ref {
+class SPRT_API ContextController : public Ref {
 public:
 	static Rc<ContextController> create(NotNull<Context>, ContextConfig &&info,
 			NotNull<dispatch::Looper>);

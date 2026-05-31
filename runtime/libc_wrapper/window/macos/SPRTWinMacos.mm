@@ -33,7 +33,7 @@
 
 #pragma clang diagnostic pop
 
-#include "private/window/macos/SPRTWinMacos.h"
+#include "SPRTWinMacos.h"
 
 namespace sprt::window {
 

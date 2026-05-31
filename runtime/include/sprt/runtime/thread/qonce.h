@@ -27,7 +27,7 @@
 
 namespace sprt {
 
-class qonce final {
+class SPRT_API qonce final {
 public:
 	using value_type = __sprt_sprt_qlock_t;
 	using flags_type = __sprt_sprt_lock_flags_t;

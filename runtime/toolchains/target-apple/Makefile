@@ -81,38 +81,48 @@ ARCHS := \
 
 all: $(ARCHS)
 
+SP_ARCH_COMMON := \
+	SP_RUNTIME_ROOT=$(realpath $(MAKE_ROOT)/../..)
+
 SP_x86_64_MACOSX_INFO := \
+	$(SP_ARCH_COMMON) \
 	SP_SYSNAME=Darwin \
 	SP_OSVER=$(SP_MACOS_VER) \
 	SP_TARGET=x86_64-apple-macosx \
 	SP_ARCH=x86_64 \
+	SP_APPLE_ARCH=x86_64-macos \
 	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx
 
 SP_aarch64_MACOSX_INFO := \
+	$(SP_ARCH_COMMON) \
 	SP_SYSNAME=Darwin \
 	SP_OSVER=$(SP_MACOS_VER) \
 	SP_TARGET=aarch64-apple-macosx \
 	SP_ARCH=arm64 \
+	SP_APPLE_ARCH=arm64-macos \
 	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx
 
 SP_aarch64_IOS_INFO := \
+	$(SP_ARCH_COMMON) \
 	SP_SYSNAME=iOS \
-	SP_OSVER=$(SP_MACOS_VER) \
+	SP_OSVER=$(SP_IOS_VER) \
 	SP_TARGET=aarch64-apple-ios \
 	SP_ARCH=arm64 \
 	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios
 
 SP_x86_64_IOSSIM_INFO := \
+	$(SP_ARCH_COMMON) \
 	SP_SYSNAME=iOS \
-	SP_OSVER=$(SP_MACOS_VER) \
+	SP_OSVER=$(SP_IOS_VER) \
 	SP_TARGET=x86_64-apple-ios-simulator \
 	SP_ARCH=x86_64 \
 	SP_IOSSIM=1 \
 	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-ios-simulator
 
 SP_aarch64_IOSSIM_INFO := \
+	$(SP_ARCH_COMMON) \
 	SP_SYSNAME=iOS \
-	SP_OSVER=$(SP_MACOS_VER) \
+	SP_OSVER=$(SP_IOS_VER) \
 	SP_TARGET=aarch64-apple-ios-simulator \
 	SP_ARCH=arm64 \
 	SP_IOSSIM=1 \
@@ -133,6 +143,22 @@ aarch64-apple-macosx:
 	$(MAKE) -f $(INSTALL_TARGET_FILE) \
 		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx \
 		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-apple-macosx
+
+x86_64-apple-macosx+sprt:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx/usr/include $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx/usr/lib
+	$(MAKE) -f $(TARGET_FILE) $(SP_x86_64_MACOSX_INFO)
+	$(MAKE) -f $(THIS_FILE) $(SP_x86_64_MACOSX_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_x86_64_MACOSX_INFO) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-apple-macosx+sprt
+
+aarch64-apple-macosx+sprt:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx/usr/lib
+	$(MAKE) -f $(TARGET_FILE) $(SP_aarch64_MACOSX_INFO)
+	$(MAKE) -f $(THIS_FILE) $(SP_aarch64_MACOSX_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_aarch64_MACOSX_INFO) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-apple-macosx+sprt
 
 aarch64-apple-ios:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios/usr/lib

@@ -32,6 +32,11 @@
 #include <string.h>
 #endif
 
+#if SPRT_MACOS
+#undef _GNU_SOURCE
+#include <string.h>
+#endif
+
 #if SPRT_LINUX
 #include <sprt/c/sys/__sprt_stat.h>
 #undef _GNU_SOURCE

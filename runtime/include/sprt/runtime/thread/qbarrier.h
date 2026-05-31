@@ -29,7 +29,7 @@
 
 namespace sprt {
 
-class qbarrier_base {
+class SPRT_API qbarrier_base {
 public:
 	using value_type = __sprt_sprt_qlock_t;
 	using timeout_type = __sprt_sprt_timeout_t;

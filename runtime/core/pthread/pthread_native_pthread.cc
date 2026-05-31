@@ -39,7 +39,11 @@ __SPRT_C_FUNC int __cxa_thread_atexit(void (*cb)(void *), void *obj,
 
 namespace sprt::_thread::native {
 
-static uint64_t __getNativeThreadId() { return static_cast<uint64_t>(pthread_self()); }
+static uint64_t pthread_to_id(pthread_t pthread) {
+	return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pthread_self()));
+}
+
+static uint64_t __getNativeThreadId() { return pthread_to_id(pthread_self()); }
 
 static void __doDestroy(void *cb) {
 	auto dtor = reinterpret_cast<void (*)(void)>(cb);
@@ -89,8 +93,8 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 
 	auto ret = pthread_create(&pthread, &pattr, __runthead, thread);
 	if (ret == 0) {
-		__attachNativeThread(thread, reinterpret_cast<void *>(pthread),
-				static_cast<uint64_t>(pthread), globalLock);
+		__attachNativeThread(thread, reinterpret_cast<void *>(pthread), pthread_to_id(pthread),
+				globalLock);
 		globalLock.unlock();
 	}
 

@@ -38,9 +38,9 @@
 
 #include <sprt/runtime/log.h>
 
-#include "private/window/macos/SPRTWinMacosContextController.h"
-#include "private/window/macos/SPRTWinMacosDisplayConfigManager.h"
-#include "private/window/macos/SPRTWinMacosWindow.h"
+#include "SPRTWinMacosContextController.h"
+#include "SPRTWinMacosDisplayConfigManager.h"
+#include "SPRTWinMacosWindow.h"
 
 #if XL_MACOS_DEBUG
 #define XL_MACOS_LOG(...) NSSP::log::source().debug(__VA_ARGS__)

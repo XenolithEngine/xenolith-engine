@@ -1,5 +1,5 @@
 /**
-Copyright (c) 2026 Xenolith Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,20 +20,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_RANDOM_H_
-#define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_RANDOM_H_
+#define __SPRT_BUILD 1
 
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_ssize_t.h>
+#include <pthread.h>
 
-#define __SPRT_GRND_NONBLOCK	0x0001
-#define __SPRT_GRND_RANDOM	0x0002
-#define __SPRT_GRND_INSECURE	0x0004
+#include <sprt/c/bits/__sprt_uint64_t.h>
 
-__SPRT_BEGIN_DECL
+#include "../include/__plock.h"
 
-SPRT_API __SPRT_ID(ssize_t) __SPRT_ID(getrandom)(void *, __SPRT_ID(size_t), unsigned);
+__SPRT_C_FUNC __SPRT_ID(uint64_t) __libc_main_thread = static_cast<__SPRT_ID(uint64_t)>(
+		reinterpret_cast<__SPRT_ID(uintptr_t)>(pthread_self()));
 
-__SPRT_END_DECL
+namespace sprt {
 
-#endif
+static __plock_storage s_plockStorage;
+
+void __sprt_libc_thread_exit(bool externalThread) { }
+
+__plock_storage *__libc_get_plock_storage() { return &s_plockStorage; }
+
+} // namespace sprt

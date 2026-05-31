@@ -40,7 +40,7 @@
 #endif
 
 #if SPRT_MACOS
-#include "private/window/macos/SPRTWinMacosContextController.h"
+#include "../libc_wrapper/window/macos/SPRTWinMacosContextController.h"
 #endif
 
 namespace sprt::window {

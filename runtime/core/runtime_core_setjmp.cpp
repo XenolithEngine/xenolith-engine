@@ -54,7 +54,7 @@ __SPRT_ID(setjmp_fn) get_setjmp_fn();
 #endif
 
 __SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_NMACOS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
 	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(&setjmp);
 #elif SPRT_WINDOWS
 	return get_setjmp_fn();
@@ -73,7 +73,7 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_setjmp)(int arg, __SPRT_ID(jmp_buf) buf) {
 		uintptr_t result = 0;
 	} lookup;
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_NMACOS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
 	_Unwind_Backtrace([](struct _Unwind_Context *ctx, void *l) {
 		CFALookup *lookup = (CFALookup *)l;
 		if (--lookup->offset > 0) {
