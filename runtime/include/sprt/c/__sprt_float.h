@@ -34,7 +34,7 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
-int __SPRT_ID(__flt_rounds)(void);
+SPRT_API int __SPRT_ID(__flt_rounds)(void);
 
 __SPRT_END_DECL
 

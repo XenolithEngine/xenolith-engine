@@ -36,7 +36,10 @@ THE SOFTWARE.
 
 #ifdef NDEBUG
 
+#ifndef assert
 #define assert(Expr)		(__SPRT_ASSERT_UNUSED (0))
+#endif
+#define __sprt_assert(Expr)		(__SPRT_ASSERT_UNUSED (0))
 #define sprt_passert(Expr, Str)		(__SPRT_ASSERT_UNUSED (0))
 
 #else // NDEBUG

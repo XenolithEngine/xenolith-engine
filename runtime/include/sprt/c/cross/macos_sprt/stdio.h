@@ -1,0 +1,11 @@
+// clang-format off
+#define	__SPRT_BUFSIZ 1024
+#define	__SPRT_FOPEN_MAX 20
+#define	__SPRT_FILENAME_MAX 1024
+#define	__SPRT_L_tmpnam 1024
+#define	__SPRT_TMP_MAX 308915776
+
+#define __SPRT_IOFBF 0
+#define __SPRT_IOLBF 1
+#define __SPRT_IONBF 2
+// clang-format on

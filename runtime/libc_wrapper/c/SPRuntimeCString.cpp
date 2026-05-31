@@ -41,6 +41,11 @@ THE SOFTWARE.
 #include <string.h>
 #include <ctype.h>
 
+#if SPRT_MACOS
+// Missed in string.h public header, but not private
+__SPRT_C_FUNC __SPRT_ID(size_t) strnlen(const char *__SPRT_RESTRICT str, __SPRT_ID(size_t) n);
+#endif
+
 namespace sprt {
 
 #if __STDC_HOSTED__ == 1

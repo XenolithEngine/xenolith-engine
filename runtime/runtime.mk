@@ -37,6 +37,16 @@ MODULE_RUNTIME_CORE_PRIVATE_CFLAGS += $(addprefix -idirafter ,$(TARGET_INCLUDE_D
 MODULE_RUNTIME_CORE_PRIVATE_CXXFLAGS += $(addprefix -idirafter ,$(TARGET_INCLUDE_DIR_LIBC))
 endif
 
+
+ifeq ($(TARGET_SYSTEM),Darwin)
+# Change include ordering by duplicating HOST flags before SDK's flags
+MODULE_RUNTIME_CORE_PRIVATE_CFLAGS += $(HOST_GENERAL_CFLAGS) \
+	-idirafter $(OSTYPE_SDK_PATH)/usr/include -F$(OSTYPE_SDK_PATH)/System/Library/Frameworks
+MODULE_RUNTIME_CORE_PRIVATE_CXXFLAGS += $(HOST_GENERAL_CFLAGS) \
+	-idirafter $(OSTYPE_SDK_PATH)/usr/include -F$(OSTYPE_SDK_PATH)/System/Library/Frameworks
+endif
+
+
 $(call define_module, runtime_core, MODULE_RUNTIME_CORE)
 
 

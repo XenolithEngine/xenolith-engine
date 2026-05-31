@@ -29,7 +29,7 @@
 
 namespace sprt {
 
-struct __rmutex_data {
+struct SPRT_API __rmutex_data {
 #if SPRT_LINUX || SPRT_ANDROID
 	// Futex PI Values
 	using tid_type = uint32_t;
@@ -70,7 +70,7 @@ struct __rmutex_data {
 	uint32_t counter = 0;
 };
 
-class rmutex_base {
+class SPRT_API rmutex_base {
 public:
 	using value_type = __sprt_sprt_rlock_t;
 	using tid_type = __rmutex_data::tid_type;
@@ -313,7 +313,7 @@ public:
 	A slower mutex that supports recursive locking and priority
 	inheritance features. Use as a general purpose mutex.
 */
-class rmutex final : private rmutex_base {
+class SPRT_API rmutex final : private rmutex_base {
 public:
 	enum init_type {
 		enabled,

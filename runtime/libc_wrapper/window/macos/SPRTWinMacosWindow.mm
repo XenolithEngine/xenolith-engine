@@ -34,10 +34,10 @@
 
 #pragma clang diagnostic pop
 
-#include "private/window/macos/SPRTWinMacosContextController.h"
-#include "private/window/macos/SPRTWinMacosDisplayConfigManager.h"
-#include "private/window/macos/SPRTWinMacosWindow.h"
-#include "private/window/macos/SPRTWinMacosView.h"
+#include "SPRTWinMacosContextController.h"
+#include "SPRTWinMacosDisplayConfigManager.h"
+#include "SPRTWinMacosWindow.h"
+#include "SPRTWinMacosView.h"
 
 #if MODULE_XENOLITH_BACKEND_VK
 #include "XLVkSwapchain.h"

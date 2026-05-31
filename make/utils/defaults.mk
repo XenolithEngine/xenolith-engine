@@ -218,6 +218,8 @@ endif
 # Find target toolchain's half
 #
 
+STAPPLER_TARGET_DIR :=
+
 ifndef STAPPLER_TARGET
 $(call print_verbose,(defaults.mk) No user-provided target, use STAPPLER_HOST: $(STAPPLER_HOST))
 STAPPLER_TARGET := $(STAPPLER_HOST)
@@ -229,16 +231,18 @@ ifdef STAPPLER_TARGET_FILE
 
 $(call print_verbose,(defaults.mk) Use user-provided host file: $(STAPPLER_TARGET_FILE))
 include $(STAPPLER_TARGET_FILE)
-
+STAPPLER_TARGET_DIR := $(dir $(STAPPLER_TARGET_FILE))
 else
 
 $(call print_verbose,(defaults.mk) Try to find target file in GLOBAL_ROOT: $(GLOBAL_ROOT)/toolchains/targets/$(STAPPLER_TARGET)/target.mk)
 
 -include $(GLOBAL_ROOT)/toolchains/targets/$(STAPPLER_TARGET)/target.mk
+STAPPLER_TARGET_DIR := $(GLOBAL_ROOT)/toolchains/targets/$(STAPPLER_TARGET)/target.mk
 
 ifndef TARGET_SYSROOT
 $(call print_verbose,(defaults.mk) Failed! Try runtime root: $(GLOBAL_ROOT)/runtime/toolchains/targets/$(STAPPLER_TARGET)/target.mk)
 -include $(GLOBAL_ROOT)/runtime/toolchains/targets/$(STAPPLER_TARGET)/target.mk
+STAPPLER_TARGET_DIR := $(GLOBAL_ROOT)/runtime/toolchains/targets/$(STAPPLER_TARGET)
 endif
 
 endif

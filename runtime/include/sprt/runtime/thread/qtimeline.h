@@ -49,7 +49,7 @@ namespace sprt {
 	This is a low-level primitive used for higher-level constructs like prommise/future and
 	async/await options.
 */
-class qtimeline final {
+class SPRT_API qtimeline final {
 public:
 	using value_type = __sprt_sprt_qlock_t;
 	using timeout_type = __sprt_sprt_timeout_t;

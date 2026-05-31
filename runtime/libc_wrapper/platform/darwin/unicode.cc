@@ -31,12 +31,12 @@ THE SOFTWARE.
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/unicode.h>
 #include <sprt/runtime/utils/uuid.h>
+#include <sprt/runtime/utils/dso.h>
 #include <sprt/cxx/mutex>
 
 #include <unicode/uidna.h>
 
-#include "private/SPRTPrivate.h"
-#include "private/SPRTDso.h"
+#include "../src/private/SPRTPrivate.h"
 
 #include <CoreFoundation/CFString.h>
 #include <CoreFoundation/CFLocale.h>

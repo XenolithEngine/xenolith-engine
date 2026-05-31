@@ -7,5 +7,4 @@
 #define __SPRT_IOFBF 0
 #define __SPRT_IOLBF 1
 #define __SPRT_IONBF 2
-
 // clang-format on

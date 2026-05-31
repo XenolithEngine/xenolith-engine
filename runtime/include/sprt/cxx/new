@@ -33,7 +33,7 @@ struct nothrow_t {
 	explicit nothrow_t() = default;
 };
 
-extern const nothrow_t nothrow;
+SPRT_API extern const nothrow_t nothrow;
 
 enum class align_val_t : sprt::size_t {
 };

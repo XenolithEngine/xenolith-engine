@@ -38,9 +38,9 @@
 
 #include <sprt/runtime/utils/base16.h>
 
-#include "private/window/macos/SPRTWinMacosDisplayConfigManager.h"
-#include "private/window/macos/SPRTWinMacosContextController.h"
-#include "private/window/macos/SPRTWinMacosWindow.h"
+#include "SPRTWinMacosDisplayConfigManager.h"
+#include "SPRTWinMacosContextController.h"
+#include "SPRTWinMacosWindow.h"
 
 namespace sprt::window {
 

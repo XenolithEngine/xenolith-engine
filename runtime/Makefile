@@ -24,8 +24,14 @@ LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../make
 
 LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
+
+ifneq (,$(findstring apple,$(STAPPLER_TARGET)))
+LOCAL_BUILD_STATIC := 0
+LOCAL_BUILD_SHARED := 1
+else
 LOCAL_BUILD_STATIC := 1
 LOCAL_BUILD_SHARED := 0
+endif
 
 LOCAL_LIBRARY := sprt
 # LOCAL_EXECUTABLE := sprt
@@ -49,5 +55,21 @@ LOCAL_INCLUDES_OBJS :=
 LOCAL_MAIN := main.c
 
 LOCAL_OPTIMIZATION := -O3
+
+ifneq (,$(findstring apple,$(STAPPLER_TARGET)))
+LOCAL_LDFLAGS := \
+	-install_name @rpath/libsprt.dylib \
+	-reexport_framework CoreFoundation \
+	-reexport_framework Foundation \
+	-reexport_framework SystemConfiguration \
+	-reexport_framework Security \
+	-reexport_framework UniformTypeIdentifiers \
+	-reexport_framework AppKit \
+	-reexport_framework Network \
+	-reexport_framework IOKit \
+	-reexport_framework QuartzCore \
+	-reexport_framework Metal \
+	-reexport-lSystem -reexport-licucore -reexport-lobjc -reexport-liconv -reexport-lc++abi
+endif
 
 include $(STAPPLER_BUILD_ROOT)/universal.mk

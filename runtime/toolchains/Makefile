@@ -157,6 +157,12 @@ target-x86_64-apple-macosx:
 target-aarch64-apple-macosx:
 	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64-apple-macosx
 
+target-x86_64-apple-macosx+sprt:
+	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) x86_64-apple-macosx+sprt
+
+target-aarch64-apple-macosx+sprt:
+	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64-apple-macosx+sprt
+
 target-aarch64-apple-ios:
 	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64-apple-ios
 
@@ -209,6 +215,8 @@ target-windows: \
 	target-macosx \
 	target-x86_64-apple-macosx \
 	target-aarch64-apple-macosx \
+	target-x86_64-apple-macosx+sprt \
+	target-aarch64-apple-macosx+sprt \
 	target-ios \
 	target-aarch64-apple-ios \
 	target-x86_64-apple-ios-simulator \

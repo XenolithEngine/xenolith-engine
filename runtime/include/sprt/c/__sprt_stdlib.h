@@ -304,21 +304,22 @@ SPRT_FORCEINLINE void __sprt_alloca_freea(void *ptr) {
 #if __SPRT_CONFIG_HAVE_STDLIB_MB || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
 
 __SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
-__SPRT_ID(size_t)
-__SPRT_ID(mbstowcs)(__SPRT_ID(wchar_t) * __dst, const char *__src, __SPRT_ID(size_t) __n);
+SPRT_API __SPRT_ID(size_t)
+		__SPRT_ID(mbstowcs)(__SPRT_ID(wchar_t) * __dst, const char *__src, __SPRT_ID(size_t) __n);
 
 __SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
-int __SPRT_ID(mbtowc)(__SPRT_ID(wchar_t) * __wc_ptr, const char *__s, __SPRT_ID(size_t) __n);
+SPRT_API int __SPRT_ID(
+		mbtowc)(__SPRT_ID(wchar_t) * __wc_ptr, const char *__s, __SPRT_ID(size_t) __n);
 
 __SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
-int __SPRT_ID(wctomb)(char *__dst, __SPRT_ID(wchar_t) __wc);
+SPRT_API int __SPRT_ID(wctomb)(char *__dst, __SPRT_ID(wchar_t) __wc);
 
 __SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
-__SPRT_ID(size_t)
-__SPRT_ID(wcstombs)(char *__dst, const __SPRT_ID(wchar_t) * __src, __SPRT_ID(size_t) __n);
+SPRT_API __SPRT_ID(size_t)
+		__SPRT_ID(wcstombs)(char *__dst, const __SPRT_ID(wchar_t) * __src, __SPRT_ID(size_t) __n);
 
 __SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
-__SPRT_ID(size_t) __SPRT_ID(__ctype_get_mb_cur_max)(void);
+SPRT_API __SPRT_ID(size_t) __SPRT_ID(__ctype_get_mb_cur_max)(void);
 
 #endif
 

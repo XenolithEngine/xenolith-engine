@@ -112,7 +112,7 @@ struct SPRT_API TextCursor {
 
 constexpr const TextCursor TextCursor::InvalidCursor(Max<uint32_t>, 0);
 
-struct TextInputString : public Ref {
+struct SPRT_API TextInputString : public Ref {
 	virtual ~TextInputString() = default;
 
 	template <typename... Args>
@@ -128,7 +128,7 @@ struct TextInputString : public Ref {
 	WideString string;
 };
 
-struct TextInputState {
+struct SPRT_API TextInputState {
 	bool empty() const { return !string || string->string.empty(); }
 	size_t size() const { return string ? string->string.size() : 0; }
 
@@ -147,7 +147,7 @@ struct TextInputState {
 	TextInputRequest getRequest() const;
 };
 
-struct TextInputRequest {
+struct SPRT_API TextInputRequest {
 	bool empty() const { return !string || string->string.empty(); }
 	size_t size() const { return string ? string->string.size() : 0; }
 
@@ -159,13 +159,13 @@ struct TextInputRequest {
 	TextInputState getState() const;
 };
 
-struct TextInputInfo {
+struct SPRT_API TextInputInfo {
 	Function<bool(const TextInputRequest &)> update;
 	Function<void(const TextInputState &)> propagate;
 	Function<void()> cancel;
 };
 
-class TextInputProcessor : public Ref {
+class SPRT_API TextInputProcessor : public Ref {
 public:
 	virtual ~TextInputProcessor() = default;
 

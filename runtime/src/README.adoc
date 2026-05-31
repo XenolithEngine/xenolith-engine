@@ -1,0 +1,5 @@
+# Xenolith Runtime source code
+
+Here is located the main source code of Xenolith Runtime.
+
+The code located here does not have access to the system libc and is implemented on top of the umbrella functions of Xenolith Runtime.

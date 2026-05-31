@@ -42,8 +42,6 @@ $(call define_module, xenolith_backend_vk, MODULE_XENOLITH_BACKEND_VK)
 
 ifeq ($(TARGET_SYSTEM),Darwin)
 
-MODULE_XENOLITH_BACKEND_VK_GENERAL_LDFLAGS := -framework Metal
-
 BUILD_MOLTENVK_ICD_PATH := $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Resources/vulkan/icd.d/MoltenVK_icd.json
 BUILD_VULKAN_LOADER_PATH := $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Frameworks/libvulkan.dylib
 BUILD_VULKAN_MOLTENVK_PATH := $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Frameworks/libMoltenVK.dylib

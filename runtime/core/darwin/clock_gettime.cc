@@ -32,7 +32,7 @@ namespace sprt {
 
 static constexpr unsigned ThreadIdBit = 0x8000'0000;
 
-static int _clock_getres(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
+static int clock_getres(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
 	if (clk_id & ThreadIdBit) {
 		if (out) {
 			out->tv_nsec = 1'000;
@@ -50,7 +50,7 @@ static int _clock_getres(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
 	}
 }
 
-static int _clock_gettime(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
+static int clock_gettime(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
 	if (clk_id & ThreadIdBit) {
 		thread_inspect_t mach_thread = static_cast<thread_inspect_t>(clk_id & ~ThreadIdBit);
 

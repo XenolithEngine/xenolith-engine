@@ -27,7 +27,7 @@
 
 namespace sprt {
 
-class qrwlock_base {
+class SPRT_API qrwlock_base {
 public:
 	using value_type = __sprt_sprt_qlock_t;
 	using timeout_type = __sprt_sprt_timeout_t;

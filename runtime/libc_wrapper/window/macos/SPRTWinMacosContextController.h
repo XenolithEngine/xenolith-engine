@@ -23,7 +23,7 @@
 #ifndef CORE_RUNTIME_PRIVATE_WINDOW_WINDOWS_SPRTWINMACOSCONTEXTCONTROLLER_H_
 #define CORE_RUNTIME_PRIVATE_WINDOW_WINDOWS_SPRTWINMACOSCONTEXTCONTROLLER_H_
 
-#include "private/window/macos/SPRTWinMacos.h"
+#include "SPRTWinMacos.h"
 
 #include <sprt/runtime/window/controller.h>
 

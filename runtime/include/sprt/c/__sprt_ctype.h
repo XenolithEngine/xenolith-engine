@@ -85,7 +85,7 @@ SPRT_API int __SPRT_ID(isspace_impl)(int);
 #define __sprt_isspace __SPRT_ID(isspace_impl)
 
 
-int __SPRT_ID(isupper_impl)(int);
+SPRT_API int __SPRT_ID(isupper_impl)(int);
 #define __sprt_isupper __SPRT_ID(isupper_impl)
 
 

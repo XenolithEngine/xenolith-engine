@@ -33,8 +33,13 @@ THE SOFTWARE.
 
 #define ANYSIZE_ARRAY 1
 
+#ifndef FALSE
 #define FALSE ((BOOL)0)
+#endif
+
+#ifndef TRUE
 #define TRUE ((BOOL)1)
+#endif
 
 /* WCHAR and MAX_PATH - defined for standalone compilation */
 #ifndef MAX_PATH
