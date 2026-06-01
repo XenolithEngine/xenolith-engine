@@ -34,7 +34,6 @@ LOCAL_BUILD_SHARED := 0
 endif
 
 LOCAL_LIBRARY := sprt
-# LOCAL_EXECUTABLE := sprt
 
 LOCAL_PRIVATE_INCLUDE_PCH :=
 
@@ -55,6 +54,9 @@ LOCAL_INCLUDES_OBJS :=
 LOCAL_MAIN := main.c
 
 LOCAL_OPTIMIZATION := -O3
+
+# Used by runtime.mk
+SPRT_BUILD_RUNTIME := 1
 
 ifneq (,$(findstring apple,$(STAPPLER_TARGET)))
 LOCAL_LDFLAGS := \

@@ -1,0 +1,425 @@
+# Stappler Runtime preprocessor defines
+
+This document describes the significant C/C++ preprocessor macros exposed by the
+Stappler Runtime headers under `runtime/include/sprt`. It deliberately omits the
+C standard library API surface (the `sprt/c/*` libc wrappers and `sprt/cxx/*`
+libc++ wrappers), which mirror the headers in `runtime/include_libc` and are
+documented alongside their respective functions.
+
+The macros below fall into a few groups:
+
+* *Platform, architecture and toolchain detection* — set automatically from the
+  compiler environment.
+* *Symbol visibility / linkage* — control how runtime symbols are exported.
+* *Attribute and inlining helpers* — portable wrappers over compiler attributes.
+* *Configuration flags* — `#ifndef`-guarded defaults that may be overridden at
+  compile time. When overridden, the value *must* match across every translation
+  unit and against the prebuilt runtime.
+* *Code-generation helper macros* — function-like macros that emit boilerplate
+  (enum operators, color palettes, SIMD/GLSL abstractions).
+
+NOTE: A macro defined with the `#ifndef X / #define X / #endif` pattern is a
+user-overridable default. Define it *before* including any runtime header (or on
+the compiler command line) to change it.
+
+---
+
+## Platform and architecture detection
+
+Source: [__sprt_def.h](../../../runtime/include/sprt/c/bits/__sprt_def.h)
+
+The runtime detects the target platform and architecture from the compiler's
+predefined macros. It exposes both a stable numeric *id* and a *name* token, plus
+a single convenience macro per detected platform/arch.
+
+### Platform
+
+Exactly one of the following is defined to its platform id, based on the
+compiler environment (`__APPLE__`/`TARGET_OS_*`, `_WIN32`, `__ANDROID__`,
+`__linux__`). An unknown platform is a hard `#error`.
+
+[cols="1,1,2"]
+|===
+| Macro | Defined when | Notes
+
+| `SPRT_MACOS`          | macOS target                  | Also sets `SPRT_HAVE_DEDICATED_SIZE_T`
+| `SPRT_IOS`            | iOS target                    | Also sets `SPRT_HAVE_DEDICATED_SIZE_T`
+| `SPRT_DARWIN_UNKNOWN` | other Apple/Darwin target     |
+| `SPRT_WINDOWS`        | Windows target                | Forced by `__SPRT_WINDOWS` for cross builds
+| `SPRT_ANDROID`        | Android target                |
+| `SPRT_LINUX`          | Linux target                  |
+|===
+
+The internal `__SPRT_PLATFORM_ID` / `__SPRT_PLATFORM_NAME` macros resolve to the
+active platform's id/name (e.g. `__SPRT_PLATFORM_ID_LINUX` = `6`,
+`__SPRT_PLATFORM_NAME_LINUX` = `linux_sprt`). The full id table:
+macOS=1, iOS=2, Darwin/unknown=3, Windows=4, Android=5, Linux=6.
+
+### Architecture
+
+`__SPRT_ARCH_ID` / `__SPRT_ARCH_NAME` resolve to the detected architecture.
+Recognised ids: aarch64/arm64=1, arm=2, x86=3, x86_64/amd64=4, e2k=5,
+wasm64=6, wasm32=7, riscv64=8, riscv32=9, loongarch64=10, loongarch32=11.
+An unknown architecture is a hard `#error`.
+
+### Other environment macros
+
+[cols="1,2"]
+|===
+| Macro | Meaning
+
+| `DEBUG`
+| Auto-defined to `1` when neither `DEBUG` nor `NDEBUG` is set — i.e. debug is
+  the default build flavor.
+
+| `__SPRT_STDC_23__` / `__SPRT_STDC_17__` / `__SPRT_STDC_11__` / `__SPRT_STDC_NONE__`
+| Exactly one is defined, reflecting the active C standard (`__STDC_VERSION__`).
+
+| `SPRT_HAVE_DEDICATED_SIZE_T`
+| Set on Apple platforms where `size_t` is a distinct type from the fixed-width
+  integer aliases.
+|===
+
+---
+
+## Symbol visibility and linkage
+
+Source: [__sprt_def.h](../../../runtime/include/sprt/c/bits/__sprt_def.h)
+
+These macros annotate public runtime symbols. Their expansion depends on the
+*build mode* selector and the platform.
+
+### Build-mode selectors (input macros)
+
+[cols="1,2"]
+|===
+| Macro | Meaning
+
+| `SPRT_BUILD_RUNTIME`
+| Defined while *building* the runtime library itself (exports symbols).
+
+| `SPRT_SHARED_RUNTIME`
+| Defined when *consuming* the runtime as an external shared library (imports
+  symbols).
+|===
+
+If none of the above is set, the runtime is treated as integrated into the
+current build.
+
+### Resulting visibility macros
+
+[cols="1,2"]
+|===
+| Macro | Meaning
+
+| `SPRT_API`
+| Public API visibility. Expands to `dllexport`/`dllimport` on Windows or
+  `visibility("default")`/`visibility("hidden")` elsewhere depending on build
+  mode. Applied to every exported function and type.
+
+| `SPRT_GLOBAL`
+| Always-visible/exported symbol regardless of static-application settings.
+
+| `SPRT_LOCAL`
+| Hidden symbol (`visibility("hidden")`), translation-unit/library-local.
+|===
+
+The lower-level building blocks (`__SPRT_DLLEXPORT`, `__SPRT_DLLIMPORT`,
+`__SPRT_VISIBLE`, `__SPRT_HIDDEN`) wrap the platform-specific attribute syntax
+and are normally used only through the three macros above.
+
+---
+
+## Attribute, linkage and inlining helpers
+
+Source: [__sprt_def.h](../../../runtime/include/sprt/c/bits/__sprt_def.h),
+[init.h](../../../runtime/include/sprt/runtime/init.h)
+
+Portable wrappers over compiler attributes, with C and C++ variants and graceful
+fallbacks when an attribute is unavailable.
+
+[cols="1,2"]
+|===
+| Macro | Meaning
+
+| `SPRT_NOEXCEPT` / `__SPRT_NOEXCEPT`
+| `noexcept(true)` in C++, empty in C.
+
+| `__SPRT_NORETURN`
+| `[[noreturn]]` / `_Noreturn` / `__attribute__((noreturn))` depending on
+  language and standard version.
+
+| `__SPRT_RESTRICT`
+| `__restrict` (C++) or `restrict` (C).
+
+| `__SPRT_C_FUNC`, `__SPRT_BEGIN_DECL`, `__SPRT_END_DECL`
+| `extern "C"` markers in C++; empty in C. Used to give C linkage to declarations.
+
+| `__SPRT_ATTR(Attr)` / `__SPRT_ATTR_GNU(Attr)`
+| Emit a standard `[[Attr]]` / GNU `[[gnu::Attr]]` attribute (C++) or
+  `__attribute__((Attr))` (C).
+
+| `__SPRT_HAS_ATTR(Attr)` / `__SPRT_HAS_BUILTIN(x)`
+| Feature-test wrappers over `__has_attribute` / `__has_builtin` (yield `0` when
+  unsupported).
+
+| `__SPRT_FALLBACK_ATTR(...)`
+| Shorthand for `__attribute__((...))`.
+
+| `SPRT_ALIGNAS(N)`
+| Portable alignment specifier (`__declspec(align(N))` / `_Alignas(N)` /
+  `__attribute__((aligned(N)))`).
+
+| `SPRT_ALWAYSINLINE`
+| Force-inline a regular function (`always_inline`, or `__forceinline` fallback).
+
+| `SPRT_LAMBDAINLINE`
+| Force-inline a lambda (`always_inline`).
+
+| `SPRT_FORCEINLINE`
+| Inline function that should *not* appear in the ABI — combines `always_inline`
+  with `internal_linkage` when available.
+
+| `SPRT_INTERNAL`
+| Internal-linkage marker (`internal_linkage` attribute or `static` fallback).
+
+| `SPRT_NO_UNIQUE_ADDRESS`
+| `[[no_unique_address]]` (or the `[[msvc::no_unique_address]]` form on Windows).
+
+| `__SPRT_FUNCTION__`
+| Current function name for diagnostics — `__PRETTY_FUNCTION__` when available,
+  else `__func__`.
+
+| `__SPRT_ID(Def)`
+| Token-paste helper producing the `__sprt_<Def>` identifier.
+|===
+
+### `init.h` attribute aliases
+
+These are higher-level aliases used throughout the C++ runtime API:
+
+[cols="1,2"]
+|===
+| Macro | Expansion / purpose
+
+| `SPRT_UNUSED`           | `[[maybe_unused]]` — suppress unused-entity warnings.
+| `SPRT_INLINE`           | `[[gnu::always_inline]]` — request aggressive inlining.
+| `SPRT_INLINE_LAMBDA`    | `__attribute__((always_inline))` for lambdas.
+| `SPRT_NONNULL`          | `__attribute__((nonnull))` where supported, else empty.
+| `SPRT_COVERAGE_TRIVIAL` | `__attribute__((no_profile_instrument_function))` — exclude trivial functions from coverage instrumentation.
+|===
+
+### `SPRT_ASSUME(...)`
+
+Source: [notnull.h](../../../runtime/include/sprt/runtime/utils/notnull.h)
+
+Optimizer hint asserting that a condition holds. Resolves to the best available
+mechanism: C++23 `[[assume]]`, Clang `__builtin_assume`, MSVC `__assume`, GCC 13+
+`[[assume]]`, a `__builtin_unreachable()`-based fallback, or a no-op when nothing
+is available.
+
+---
+
+## Umbrella libc integration
+
+Source: [__sprt_def.h](../../../runtime/include/sprt/c/bits/__sprt_def.h)
+
+These control how the runtime presents libc functions ("umbrella" inline
+forwarders when a working libc is present, prototypes otherwise).
+
+[cols="1,2"]
+|===
+| Macro | Meaning
+
+| `SPRT_UMBRELLA_REQUIRED`
+| Overridable default `(__STDC_HOSTED__ == 1)`. When true, libc symbols are
+  exposed as force-inline forwarders; when false, plain prototypes are emitted.
+
+| `SPRT_UMBRELLA_FUNC` / `SPRT_UMBRELLA_END` / `SPRT_UMBRELLA_END_EXCEPT`
+| Function qualifier / trailing-specifier macros emitted around umbrella
+  declarations, switching between the inline and prototype forms.
+|===
+
+---
+
+## Global configuration flags
+
+Source: [__sprt_config.h](../../../runtime/include/sprt/c/bits/__sprt_config.h)
+
+Global, compile-time-overridable runtime options. All are `#ifndef`-guarded.
+When overridden, the value must be identical everywhere the runtime is used.
+
+[cols="2,1,3"]
+|===
+| Macro | Default | Meaning
+
+| `__SPRT_CONFIG_COMPILER_ASSISTED_INTS`
+| `1`
+| Acquire integer types and limits from the compiler's own definitions when
+  possible, rather than from hardcoded runtime values.
+
+| `__SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS`
+| `1`
+| When `1`, functions unavailable on the platform are still declared and report
+  unavailability at call time via `errno` (`ENOSYS`). When `0`, they are simply
+  not declared.
+
+| `__SPRT_USE_STL`
+| `0`
+| Pull in STL headers for tighter standard-library integration (three-way
+  comparison, iterator categories, comparators). Off by default — the runtime
+  does not require an STL to build.
+
+| `__SPRT_USE_LIBCXX_SOURCE_LOCATION`
+| `__SPRT_USE_STL`
+| Use `<source_location>` from the standard library instead of the internal
+  implementation. (The internal implementation conflicts with `std`'s, so pick
+  one per translation unit.)
+
+| `__SPRT_USE_STL_ITERATOR_TAGS`
+| `__SPRT_USE_STL`
+| Use `<iterator>` to tag SPRT iterators with standard iterator categories.
+
+| `__SPRT_USE_STL_COMPARATORS`
+| `__SPRT_USE_STL`
+| Use STL-based comparators for SPRT types.
+|===
+
+### External configuration inputs
+
+Documented in `__sprt_def.h` as caller-provided switches:
+
+[cols="1,2"]
+|===
+| Macro | Meaning
+
+| `__SPRT_AS_STD` (a.k.a. `__SPRT_USE_STL` interplay)
+| Define the `std` namespace as an alias of `sprt`.
+
+| `__SPRT_WINDOWS`
+| Force the Windows platform definition for specific cross-compilation targets.
+|===
+
+### Runtime feature flags
+
+Source: [config.h](../../../runtime/include/sprt/runtime/config.h)
+
+[cols="2,1,3"]
+|===
+| Macro | Default | Meaning
+
+| `__SPRT_RUNTIME_CONFIG_HAVE_WINDOW`
+| `1`
+| Enables the windowing / display subsystem (`sprt/runtime/window/*`).
+|===
+
+---
+
+## Debugging flags
+
+Subsystem-local debug switches, all defaulting to disabled (`0`).
+
+[cols="2,1,3"]
+|===
+| Macro | Source | Meaning
+
+| `SPRT_REF_DEBUG`
+| [ref.h](../../../runtime/include/sprt/runtime/ref.h)
+| Enables retain/release backtrace tracking for reference-counted objects.
+
+| `SPRT_REF_SAFE_INSTANIATION`
+| [ref.h](../../../runtime/include/sprt/runtime/ref.h)
+| Allows `Rc`/`Ref` instantiation with forward-declared types. Defaults to `1`
+  on Windows (CRT workaround), `0` elsewhere.
+
+| `SP_SIMD_DEBUG`
+| [simd_attr.h](../../../runtime/include/sprt/runtime/geom/simd_attr.h)
+| Disables SIMD optimization attributes to ease assembly inspection.
+
+| `SPRT_PRIORITY_QUEUE_RANGE_DEBUG`
+| [priority_queue.h](../../../runtime/include/sprt/runtime/dispatch/priority_queue.h)
+| Enables range validation/diagnostics in the dispatch priority queue.
+|===
+
+---
+
+## Geometry / SIMD backend selection
+
+Source: [simd_attr.h](../../../runtime/include/sprt/runtime/geom/simd_attr.h),
+[simd.h](../../../runtime/include/sprt/runtime/geom/simd.h),
+[simd_sse.h](../../../runtime/include/sprt/runtime/geom/simd_sse.h)
+
+Selects and tunes the SIMD implementation backing the geometry/math types.
+
+[cols="2,3"]
+|===
+| Macro | Meaning
+
+| `SP_GEOM_DEFAULT_SIMD_SSE` (1), `SP_GEOM_DEFAULT_SIMD_NEON` (2), `SP_GEOM_DEFAULT_SIMD_NEON64` (3)
+| Numeric ids for the available SIMD backends.
+
+| `SP_GEOM_DEFAULT_SIMD`
+| The backend selected for the target arch (`__SSE__` → SSE, `__aarch64__` →
+  NEON64, `__arm__` → NEON).
+
+| `SP_GEOM_DEFAULT_SIMD_NAMESPACE`
+| The C++ namespace (`sse` / `neon64` / `neon`) holding the chosen backend's
+  implementation.
+
+| `SP_ATTR_OPTIMIZE_FN` / `SP_ATTR_OPTIMIZE_INLINE_FN`
+| Function-level optimization/inlining attributes applied to SIMD routines
+  (no-ops under `SP_SIMD_DEBUG`, compiler-specific otherwise).
+
+| `SP_SIMD_SSE_LOAD_VEC4(vec)` / `SP_SIMD_SSE_STORE_VEC4(vec, value)`
+| Load/store a `Vec4` to/from an SSE register, using a direct cast when SSE is
+  available or a SIMDe compatibility call otherwise.
+
+| `SIMDE_MATH_NO_LIBM`
+| Set to `1` to tell the bundled SIMDe library not to depend on libm.
+
+| `std` (in `simd.h`)
+| Locally aliases `std` to `sprt` so the bundled SIMDe headers resolve against
+  the runtime instead of the host standard library.
+|===
+
+---
+
+## Code-generation helper macros
+
+These function-like macros emit boilerplate and are meant to be invoked in user
+and runtime code.
+
+### Enum operator generators
+
+Source: [enum.h](../../../runtime/include/sprt/runtime/enum.h)
+
+[cols="1,2"]
+|===
+| Macro | Purpose
+
+| `SPRT_DEFINE_ENUM_AS_MASK(Type)`
+| Turns an unsigned enum into a bit-flags type by defining `|`, `&`, `^`, `~`,
+  the compound-assignment forms, and boolean/equality helpers. (Used e.g. for
+  `oslog::LogFeatures::Features`.)
+
+| `SPRT_DEFINE_ENUM_AS_INCREMENTABLE(Type, First, Last)`
+| Defines `++`, `--`, `+`, `-`, `+=`, `-=` with cyclic wraparound between `First`
+  and `Last`, enabling iteration over the enum's range.
+|===
+
+### GLSL / C++ shared-source abstraction
+
+Source: [sprt_glsl.h](../../../runtime/include/sprt/runtime/geom/glsl/sprt_glsl.h)
+
+Lets the same source compile both as a GLSL shader and as C++.
+
+[cols="1,2"]
+|===
+| Macro | GLSL | C++
+
+| `SP_GLSL_IN(type)`    | `in type`    | `type`
+| `SP_GLSL_INOUT(type)` | `inout type` | `type &`
+| `SP_GLSL_OUT(type)`   | `out type`   | `type &`
+| `SP_GLSL_INLINE`      | _(empty)_    | `inline`
+| `color4`              | `vec4`       | `sprt::glsl::color4` (i.e. `geom::Color4F`)
+|===

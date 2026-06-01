@@ -40,6 +40,14 @@ RefAlloc::~RefAlloc() { }
 
 RefAlloc::RefAlloc() noexcept { }
 
+Ref::~Ref() {
+#if SPRT_REF_DEBUG
+	if (isRetainTrackerEnabled()) {
+		memleak::releaseRef(this);
+	}
+#endif
+}
+
 } // namespace sprt
 
 

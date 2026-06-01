@@ -39,7 +39,7 @@ enum class MacosFullscreenRequest {
 	ToggleFullscreen
 };
 
-class MacosWindow : public NativeWindow {
+class SPRT_API MacosWindow : public NativeWindow {
 public:
 	virtual ~MacosWindow();
 

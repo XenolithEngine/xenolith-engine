@@ -142,7 +142,7 @@ static int Context_runWithConfig(ContextConfig &&config, ContentInitializer &&in
 
 	auto ret = container->controller->run(container);
 
-#if DEBUG
+#if SPRT_REF_DEBUG
 	if (container->controller->getReferenceCount() > 1) {
 		auto c = container->controller.get();
 		container->controller = nullptr;
