@@ -211,3 +211,4 @@
         _realpath$DARWIN_EXTSN,
         ___assert_rtn,
         _clock,
+        ___sincosf_stret,

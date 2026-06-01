@@ -97,6 +97,7 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 	// It's safe to know that we will not use anything from stack before jmp_buf
 	buf->__result = ret;
 
+	[[maybe_unused]]
 	auto code = _Unwind_ForcedUnwind(&_thread::thread_t::self()->unwinder.excpt,
 			[](int version, _Unwind_Action actions, _Unwind_Exception_Class exceptionClass,
 					_Unwind_Exception *exceptionObject, struct _Unwind_Context *context,

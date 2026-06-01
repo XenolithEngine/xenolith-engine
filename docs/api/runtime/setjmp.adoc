@@ -1,0 +1,233 @@
+# setjmp / longjmp in the Stappler Runtime
+
+The runtime ships its own `setjmp`/`longjmp` that are *source-compatible* with the
+C standard library but **semantically stronger**: a `longjmp` performs a real
+stack unwind, so C++ destructors (and Rust/Go frame cleanups) of every frame
+between the `longjmp` site and the target `setjmp` frame are executed correctly.
+
+In standard C it is undefined behavior to `longjmp` across frames that own
+objects with non-trivial destructors — nothing runs them. The SPRT
+implementation makes that case well-defined: the intervening frames are unwound
+and their cleanups run before control returns to `setjmp`.
+
+This page documents how that is achieved and the constraints API users must
+respect. The relevant sources are:
+
+* Public dispatch header: [setjmp.h](../../../runtime/include_libc/setjmp.h)
+* SPRT declarations: [__sprt_setjmp.h](../../../runtime/include/sprt/c/__sprt_setjmp.h)
+* Core implementation (POSIX + entry points): [runtime_core_setjmp.cpp](../../../runtime/core/runtime_core_setjmp.cpp)
+* Windows SEH backend: [except.cc](../../../runtime/libc_impl/src/windows/except.cc)
+
+---
+
+## Public API
+
+When SPRT provides the libc (non-hosted, or umbrella build), `<setjmp.h>` maps
+the standard names onto the runtime implementation:
+
+```c
+#define jmp_buf __sprt_jmp_buf
+#define setjmp  __sprt_setjmp
+#define longjmp __sprt_longjmp
+```
+
+Semantics match the C contract:
+
+* `setjmp(env)` — saves the current environment into `env`; returns `0` on the
+  direct call and the non-zero value passed to `longjmp` when reached via a jump.
+* `longjmp(env, val)` — restores an environment saved by `setjmp`, making that
+  `setjmp` return `val` (a `0` value is reported as `1`), *and* unwinds the
+  intervening frames.
+
+NOTE: The signal-mask-saving variants `sigsetjmp` / `siglongjmp` are **not**
+provided.
+
+In a hosted SPRT build the header forwards to the system `<setjmp.h>` instead
+(`#include_next`), and you get the platform's stock, non-unwinding behavior.
+
+---
+
+## The extended `jmp_buf`
+
+Unwinding needs more state than a native `jmp_buf`, so SPRT wraps it. Do **not**
+assume `jmp_buf` is the OS structure or copy it around as if it were.
+
+```c
+typedef struct __sprt___ext_jmp_buf {
+    __sprt_native_jmp_buf __native; // OS-defined jmp_buf (registers/SP/IP)
+    __sprt_uintptr_t       __cfa;   // Canonical Frame Address of the setjmp caller
+    int                    __result; // longjmp value, preserved across the unwind
+} __sprt_jmp_buf[1];
+```
+
+* `__native` — the OS `jmp_buf`. `static_assert`s in the implementation verify
+  it is layout-compatible with the platform type (`jmp_buf` on POSIX,
+  `_JUMP_BUFFER` on Windows).
+* `__cfa` — the *Canonical Frame Address* of the frame that called `setjmp`. This
+  is the marker used to recognize the target frame while unwinding.
+* `__result` — stores the `longjmp` value, because by the time the unwinder
+  reaches the target frame the original stack argument is gone.
+
+---
+
+## How `setjmp` is captured
+
+`setjmp` must **not** introduce an extra stack frame — otherwise the saved
+environment would point at a frame that disappears the moment `setjmp` returns.
+SPRT therefore implements it as a macro that runs the native `setjmp` directly in
+the caller's context, then records the CFA:
+
+```c
+// POSIX
+#define __sprt_setjmp(Buf) \
+    __sprt_cfa_setjmp(__sprt_get_setjmp_fn()((Buf)[0].__native), Buf)
+
+// Windows (native setjmp takes a second frame-pointer argument)
+#define __sprt_setjmp(Buf) \
+    __sprt_cfa_setjmp(__sprt_get_setjmp_fn()((Buf)[0].__native, __SPRT_NULL), Buf)
+```
+
+Steps:
+
+1. `__sprt_get_setjmp_fn()` returns the native `setjmp` (the real `&setjmp` on
+   POSIX; on Windows the `_setjmpex` pulled from `ntdll`). Calling it through a
+   pointer, inline, avoids creating a wrapper frame.
+2. The native `setjmp` fills `Buf[0].__native` and returns its usual value.
+3. `__sprt_cfa_setjmp(result, Buf)` post-processes that result.
+
+### `__sprt_cfa_setjmp(arg, buf)`
+
+* If `arg != 0` the macro was re-entered via `longjmp` — it just returns `arg`
+  unchanged (no CFA work needed).
+* If `arg == 0` (the direct call), it walks the stack with `_Unwind_Backtrace`,
+  takes the CFA of the frame **directly above** `cfa_setjmp` (i.e. the function
+  that invoked `setjmp`), stores it into `buf->__cfa`, and returns `0`.
+
+That recorded CFA is what lets `longjmp` later identify exactly which frame to
+stop unwinding at.
+
+---
+
+## `longjmp` on POSIX (Linux / Android / macOS)
+
+Source: [runtime_core_setjmp.cpp](../../../runtime/core/runtime_core_setjmp.cpp)
+
+`__sprt_longjmp(buf, ret)`:
+
+1. Saves `ret` into `buf->__result` (safe, because nothing below `buf` on the
+   stack is touched again).
+2. Calls `_Unwind_ForcedUnwind`, using the calling thread's preallocated
+   `_Unwind_Exception` (`_thread::thread_t::self()->unwinder.excpt`). The forced
+   unwind drives each frame's personality routine, which runs that frame's
+   destructors/cleanups.
+3. The supplied *stop function* decides, frame by frame, whether unwinding has
+   reached the target:
+   * `_UA_END_OF_STACK` → the target frame was never found, meaning `buf` points
+     to a location not on the current thread's stack. This is fatal: it prints a
+     diagnostic and `abort()`s.
+   * `buf->__cfa == _Unwind_GetCFA(context)` → this is the `setjmp` frame. The
+     code calls the **native** `longjmp(buf->__native, buf->__result)` to restore
+     registers and resume execution right after `setjmp` (which now returns
+     `__result`).
+   * otherwise → returns `_URC_NO_REASON` to keep unwinding the next frame.
+4. If `_Unwind_ForcedUnwind` ever returns, that is a hard failure
+   (`sprt_passert` then `abort()`).
+
+Consequence: `longjmp` is strictly intra-thread. The target `setjmp` frame must
+still be live on the *same* thread's stack, or the process aborts.
+
+---
+
+## `longjmp` on Windows (SEH backend)
+
+Source: [except.cc](../../../runtime/libc_impl/src/windows/except.cc)
+
+Windows has no `_Unwind_ForcedUnwind`; SPRT instead rides Structured Exception
+Handling (SEH). Even though SPRT does not use C++ exceptions, it must drive SEH
+unwinding to run destructors on a `longjmp`. This requires building with
+`-fexceptions`; with exceptions disabled, no unwinding is possible.
+
+The core `__sprt_longjmp` simply forwards to SPRT's own `longjmp` wrapper
+(`buf->__native` reinterpreted as `_JUMP_BUFFER *`). That wrapper:
+
+1. Captures the current CPU context (`RtlCaptureContext`).
+2. Builds an `EXCEPTION_RECORD` with `ExceptionCode = STATUS_LONGJUMP` and
+   `ExceptionInformation[0]` pointing at the jump buffer.
+3. Calls `RtlUnwindEx`, targeting the saved `buf->Rsp` / `buf->Rip`. This walks
+   the call frames between here and the target, invoking each frame's language
+   handler so cleanups run, then resumes at the `setjmp` site.
+
+### `__CxxFrameHandler3`
+
+SPRT provides its own MSVC-compatible frame handler. It deliberately handles
+**only** `STATUS_LONGJUMP` — for any other exception code it returns
+`ExceptionContinueSearch` (SPRT does not support general C++ exceptions). When an
+unwind is in progress (`EXCEPTION_UNWINDING` / `EXCEPTION_EXIT_UNWIND`), it parses
+the MSVC `FuncInfo` table (VC8 format, magic `0x19930522`, as emitted by current
+Clang) and calls `do_unwind` to run the frame's cleanup actions.
+
+### `do_unwind`
+
+Walks the function's unwind state machine: it derives the starting state from the
+IP-to-state map (or the unwind-help slot), then descends from that state down to
+the target level (`-1`), invoking each non-null cleanup *action* handler
+(destructors) in order, and records the stopping level back into the frame's
+unwind-help slot for subsequent handlers.
+
+### VEH safety net and initialization
+
+* `__init_exceptions()` loads the required `ntdll` entry points
+  (`_setjmpex`, `longjmp`, `RtlCaptureContext`, `RtlRestoreContext`,
+  `RtlUnwindEx`, `RtlVirtualUnwind`) via the DLL loader — these must be
+  preloaded or startup fails — and registers a first-priority Vectored Exception
+  Handler.
+* `__libc_exception_handler` is a diagnostic catch-all for unhandled hardware
+  exceptions (access violation, illegal instruction, divide-by-zero, stack
+  overflow). It passes C++ exceptions and most codes through; it does not
+  implement exception handling.
+* `__cleanup_exceptions()` unregisters the VEH handler.
+
+`static_assert`s confirm `__sprt_native_jmp_buf` matches `_JUMP_BUFFER` in both
+size and alignment.
+
+---
+
+## Platform support matrix
+
+[cols="1,3"]
+|===
+| Target | Mechanism
+
+| Linux / Android | `_Unwind_ForcedUnwind` (libunwind / libgcc personality)
+| macOS           | `_Unwind_ForcedUnwind`
+| Windows         | SEH via `RtlUnwindEx` + custom `__CxxFrameHandler3`; requires `*-pc-windows-msvc` built with `-fexceptions`
+|===
+
+---
+
+## Requirements and caveats for API users
+
+* *The `setjmp` frame must stay alive.* The function that called `setjmp` must
+  still be on the stack when `longjmp` runs. This is the usual C requirement, but
+  here violating it is detected at unwind time and the process aborts rather than
+  corrupting state.
+* *Same thread only.* `longjmp` searches the current thread's stack for the
+  target CFA. Jumping into a buffer saved on another thread is invalid and
+  aborts (`_UA_END_OF_STACK`).
+* *Destructors run.* Unlike standard C, intervening C++ (and Rust/Go) frame
+  cleanups are executed during the jump. Code may rely on this; conversely, those
+  destructors *will* run, so they must be safe to run during an unwind.
+* *`jmp_buf` is larger than the OS type.* It carries CFA and result fields — never
+  truncate, `memcpy` into a native `jmp_buf`, or share it across translation units
+  built against a different runtime.
+* *Windows needs `-fexceptions`.* Without it, the SEH-based unwind cannot run and
+  extended `longjmp` is unavailable.
+* *No `sigsetjmp`/`siglongjmp`.* Signal-mask save/restore variants are not
+  provided.
+
+## Interaction with pthreads
+
+The same machinery backs SPRT's pthread implementation, which is why
+`pthread_exit` / `pthread_cancel` are safe for threads created via SPRT's
+`pthread_create` and via `sprt::thread` — thread teardown unwinds the stack and
+runs destructors through this path.

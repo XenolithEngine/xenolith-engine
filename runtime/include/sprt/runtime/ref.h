@@ -33,7 +33,7 @@
 
 // enable Ref debug mode to track retain/release sources
 #ifndef SPRT_REF_DEBUG
-#define SPRT_REF_DEBUG 1
+#define SPRT_REF_DEBUG 0
 #endif
 
 // WinCRT instantiates Rc's in place of definition, not actual usage
@@ -53,6 +53,12 @@ inline T *__new(Args &&...args) noexcept;
 
 template <typename T>
 inline void __delete(T *t) noexcept;
+
+
+// You can assign an unique number for retain/release sequence to track leaked references
+// In this case, release should be called with the same id, as returned from retain.
+// Retain argument can be used as designated id, or maxOf<uint64_t>() to allocate unique id
+// If SPRT_REF_DEBUG is not enabled - it's noop
 
 template <typename T>
 inline uint64_t retain(T *t, uint64_t value = Max<uint64_t>) noexcept;
@@ -136,26 +142,13 @@ protected:
 
 class SPRT_API Ref : public RefAlloc {
 public:
-	// You can assign an unique number for retain/release sequence to track leaked references
-	// In this case, release should be called with the same id, as returned from retain.
-	// Retain argument can be used as designated id, or maxOf<uint64_t>() to allocate unique id
-	// If SPRT_REF_DEBUG is not enabled - it's noop
+	virtual ~Ref();
 
 #if SPRT_REF_DEBUG
-	virtual ~Ref() {
-		if (isRetainTrackerEnabled()) {
-			memleak::releaseRef(this);
-		}
-	}
-
 	virtual void foreachBacktrace(
 			const callback<void(uint64_t, time_t, const __pool_list<StringView> &)> &cb) const {
 		memleak::foreachBacktrace(this, cb);
 	}
-
-#else
-	virtual ~Ref() = default;
-
 #endif
 
 protected:
@@ -196,7 +189,7 @@ protected:
 		if (decrementReferenceCount()) {
 			return true;
 		}
-		return false
+		return false;
 	}
 #endif
 

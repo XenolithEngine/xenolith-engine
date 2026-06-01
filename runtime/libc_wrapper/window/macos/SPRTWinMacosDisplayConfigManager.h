@@ -35,7 +35,7 @@ namespace sprt::window {
 
 class MacosContextController;
 
-class MacosDisplayConfigManager : public DisplayConfigManager {
+class SPRT_API MacosDisplayConfigManager : public DisplayConfigManager {
 public:
 	virtual ~MacosDisplayConfigManager() = default;
 

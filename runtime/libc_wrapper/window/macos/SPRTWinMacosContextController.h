@@ -29,7 +29,7 @@
 
 namespace sprt::window {
 
-class MacosContextController : public ContextController {
+class SPRT_API MacosContextController : public ContextController {
 public:
 	static void acquireDefaultConfig(ContextConfig &, NativeContextHandle *);
 

@@ -142,7 +142,7 @@ static void DefaultLog2(LogType type, StringView tag, const sprt::source_locatio
 				sprt::StringView(text.data(), text.size()));
 	}
 #else
-	sprt::log::print(type, sprt::StringView(prefix.data(), prefix.size()),
+	sprt::oslog::print(type, sprt::StringView(prefix.data(), prefix.size()),
 			sprt::StringView(tag.data(), tag.size()), sprt::StringView(text.data(), text.size()));
 #endif
 }

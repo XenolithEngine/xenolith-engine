@@ -288,7 +288,6 @@ THE SOFTWARE.
 
 #endif // SPRT_WINDOWS
 
-
 // Defined if we actually build runtime, not using it
 #if SPRT_BUILD_RUNTIME
 
@@ -311,12 +310,14 @@ THE SOFTWARE.
 #define SPRT_LOCAL
 #else // SPRT_WINDOWS
 #define SPRT_GLOBAL __SPRT_VISIBLE
-#define SPRT_API __SPRT_HIDDEN
+#define SPRT_API __SPRT_VISIBLE
 #define SPRT_LOCAL __SPRT_HIDDEN
 #endif // SPRT_WINDOWS
 
 // If we build with integrated runtime
 #else
+
+// SPRT_BUILD_RUNTIME or SPRT_SHARED_RUNTIME is not defined, assume static application
 
 #if SPRT_WINDOWS
 #define SPRT_GLOBAL
@@ -324,11 +325,7 @@ THE SOFTWARE.
 #define SPRT_LOCAL
 #else
 #define SPRT_GLOBAL __SPRT_VISIBLE
-#ifdef SP_BUILD_SHARED_LIBRARY
-#define SPRT_API __SPRT_VISIBLE
-#else
 #define SPRT_API __SPRT_HIDDEN
-#endif
 #define SPRT_LOCAL __SPRT_HIDDEN
 #endif
 

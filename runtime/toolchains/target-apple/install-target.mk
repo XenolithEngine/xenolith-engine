@@ -102,11 +102,11 @@ $(T_TARGET)/usr/lib/libsprt.tbd: $(T_TARGET)/usr/lib/libsprt.dylib
 	@echo 'exports:' >> $@
 	@echo '  - targets:         [ $(SP_APPLE_ARCH) ]' >> $@
 	@echo '    symbols:         [' >> $@
-	@$(T_INTERMEDIATE)/host/bin/llvm-nm  --extern-only -m $(T_TARGET)/usr/lib/libsprt.dylib | grep --invert-match weak | sed -E 's/.*\).*external ([_0-9a-zA-Z]+).*/        \1,/' >> $@
+	@$(T_INTERMEDIATE)/host/bin/llvm-nm  --extern-only -m $(T_TARGET)/usr/lib/libsprt.dylib | grep --invert-match weak | sed -E 's/.*\).*external ([\$$_0-9a-zA-Z]+).*/        \1,/' >> $@
 	@cat functions_$(SP_ARCH).txt >> $@
 	@echo '    ]' >> $@
 	@echo '    weak-symbols:    [' >> $@
-	@$(T_INTERMEDIATE)/host/bin/llvm-nm  --extern-only -m $(T_TARGET)/usr/lib/libsprt.dylib | grep weak | sed -E 's/.*weak.* (_[_0-9a-zA-Z]+).*/        \1,/' >> $@
+	@$(T_INTERMEDIATE)/host/bin/llvm-nm  --extern-only -m $(T_TARGET)/usr/lib/libsprt.dylib | grep weak | sed -E 's/.*weak.* (_[\$$_0-9a-zA-Z]+).*/        \1,/' >> $@
 	@echo '    ]' >> $@
 	@echo '...' >> $@
 
@@ -118,6 +118,8 @@ $(T_TARGET)/runtime.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'MODULE_RUNTIME_INCLUDES_OBJS := $$(TARGET_SYSROOT)/usr/include/darwin $$(TARGET_SYSROOT)/usr/include/sprt/runtime/geom/glsl' >> $@
 	@echo 'MODULE_RUNTIME_SHADERS_INCLUDE := $$(TARGET_SYSROOT)/usr/include/sprt/runtime/geom/glsl' >> $@
 	@echo 'MODULE_RUNTIME_GENERAL_LDFLAGS := -lsprt' >> $@
+	@echo 'MODULE_RUNTIME_GENERAL_CFLAGS := -DSPRT_SHARED_RUNTIME' >> $@
+	@echo 'MODULE_RUNTIME_GENERAL_CXXFLAGS := -DSPRT_SHARED_RUNTIME' >> $@
 	@echo 'RUNTIME_INSTALL_LIBRARY := $$(TARGET_SYSROOT)/usr/lib/libsprt.dylib' >> $@
 	@echo '$$(call define_module, runtime, MODULE_RUNTIME)' >> $@
 
