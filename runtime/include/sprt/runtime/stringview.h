@@ -184,8 +184,8 @@ public:
 	bool operator<(const size_t &val) const { return len < val; }
 	bool operator<=(const size_t &val) const { return len <= val; }
 
-	CharType front() const { return *ptr; }
-	CharType back() const { return ptr[len - 1]; }
+	CharType front() const { return len > 0 ? *ptr : CharType(0); }
+	CharType back() const { return len > 0 ? ptr[len - 1] : CharType(0); }
 
 	CharType at(const size_t &s) const { return s < len ? ptr[s] : 0; }
 	CharType operator[](const size_t &s) const { return s < len ? ptr[s] : 0; }
@@ -206,10 +206,16 @@ public:
 			cb(data(), size());
 		} else {
 			auto buf = __sprt_typed_malloca(CharType, size() + 1);
-			__sprt_memcpy(buf, data(), size() * sizeof(CharType));
-			buf[size()] = 0;
-			cb((const CharType *)buf, size());
-			__sprt_freea(buf);
+			if (buf) {
+				__sprt_memcpy(buf, data(), size() * sizeof(CharType));
+				buf[size()] = 0;
+				cb((const CharType *)buf, size());
+				__sprt_freea(buf);
+			} else {
+				// allocation failed: hand the callback a valid empty terminated buffer
+				const CharType empty[1] = {0};
+				cb(empty, 0);
+			}
 		}
 	}
 
@@ -263,6 +269,13 @@ public:
 	static void merge(const callback<void(StringViewBase<CharType>)> &, Args &&...args);
 
 	constexpr StringViewBase() = default;
+
+	// NOTE: the pointer-based constructors below are NUL-truncating. They scan for a
+	// terminating '\0' (via detail::length) and the resulting view length is the
+	// smaller of `len` and the distance to the first NUL. The single-argument form
+	// (len defaulted) performs an unbounded strlen and therefore requires a
+	// NUL-terminated string. To wrap a buffer that may contain embedded NULs (e.g.
+	// binary data) WITHOUT truncation, use set() instead — it assigns ptr/len verbatim.
 	constexpr StringViewBase(const CharType *ptr, size_t len = Max<size_t>);
 	constexpr StringViewBase(const CharType *ptr, size_t pos, size_t len);
 	constexpr StringViewBase(const Self &, size_t pos, size_t len);
@@ -293,7 +306,9 @@ public:
 		return sprt::StringViewBase<CharType>(this->data(), this->size());
 	}
 
-	// unsafe set, without length-check
+	// unsafe set, without length-check: assigns ptr/len verbatim (no NUL truncation,
+	// no strlen). Use this instead of the pointer constructors to wrap data that may
+	// contain embedded NULs.
 	Self &set(const CharType *p, size_t l);
 
 	bool is(const CharType &c) const;
@@ -479,6 +494,11 @@ public:
 	using Base64 = MatchCharGroup<CharGroupId::Base64>;
 
 	StringViewUtf8();
+
+	// NOTE: NUL-truncating, like StringViewBase. The pointer-based constructors scan
+	// for a terminating '\0' and the view length is min(len, distance-to-first-NUL);
+	// the single-argument form requires a NUL-terminated string. To wrap a buffer with
+	// embedded NULs without truncation, use set() instead.
 	StringViewUtf8(const char *ptr, size_t len = Max<size_t>);
 	StringViewUtf8(const char *ptr, size_t pos, size_t len);
 	StringViewUtf8(const StringViewUtf8 &, size_t len);
@@ -497,6 +517,8 @@ public:
 		return *this;
 	}
 
+	// unsafe set, without length-check: assigns ptr/len verbatim (no NUL truncation).
+	// Use this instead of the pointer constructors to wrap data with embedded NULs.
 	Self &set(const char *p, size_t l);
 
 	bool is(const char &c) const;
@@ -1166,8 +1188,9 @@ inline auto readNumber(const Char *ptr, size_t len, int base, uint8_t &offset) -
 	size_t i = 0;
 	for (; i < m; i++) {
 		auto c = ptr[i];
-		if (c < 127) {
-			buf[i] = c;
+		// treat as ASCII via unsigned compare: a signed `char` >= 0x80 must stop, not copy
+		if (make_unsigned_t<Char>(c) < 127) {
+			buf[i] = char(c);
 		} else {
 			break;
 		}
@@ -1575,7 +1598,8 @@ inline constexpr StringViewBase<_CharType>::StringViewBase(const CharType *ptr, 
 
 template <typename _CharType>
 inline constexpr StringViewBase<_CharType>::StringViewBase(const Self &ptr, size_t pos, size_t len)
-: BytesReader<_CharType>(ptr.data() + pos, min(len, ptr.size() - pos)) { }
+: BytesReader<_CharType>(ptr.data() + min(pos, ptr.size()),
+		min(len, ptr.size() > pos ? ptr.size() - pos : 0)) { }
 
 template <typename _CharType>
 inline constexpr StringViewBase<_CharType>::StringViewBase(const Self &ptr, size_t len)
@@ -1933,7 +1957,8 @@ inline StringViewUtf8::StringViewUtf8(const StringViewUtf8 &ptr, size_t len)
 : StringViewUtf8(ptr, 0, len) { }
 
 inline StringViewUtf8::StringViewUtf8(const StringViewUtf8 &ptr, size_t pos, size_t len)
-: BytesReader(ptr.data() + pos, min(len, ptr.size() - pos)) { }
+: BytesReader(ptr.data() + min(pos, ptr.size()),
+		min(len, ptr.size() > pos ? ptr.size() - pos : 0)) { }
 
 inline auto StringViewUtf8::set(const char *p, size_t l) -> Self & {
 	ptr = p;
@@ -2076,6 +2101,11 @@ inline void StringViewUtf8::foreach (const Callback &cb) const {
 		const uint8_t len = sprt::unicode::utf8_length_data[uint8_t(*p)];
 		uint32_t ret = *p++ & mask;
 		for (uint8_t c = 1; c < len; ++c) {
+			if (p >= e) {
+				// truncated sequence at end of view — do not read past the end
+				ret = 0;
+				break;
+			}
 			const auto ch = *p++;
 			if ((ch & 0xc0) != 0x80) {
 				ret = 0;
@@ -2094,7 +2124,9 @@ inline size_t StringViewUtf8::code_size() const {
 	const auto e = ptr + len;
 	while (p < e) {
 		++ret;
-		p += sprt::unicode::utf8_length_data[uint8_t(*p)];
+		auto step = sprt::unicode::utf8_length_data[uint8_t(*p)];
+		// step is 0 for a NUL lead byte: advance at least 1 (avoid a stall) and never past the end
+		p += sprt::min(size_t(step ? step : 1), size_t(e - p));
 	}
 	return ret;
 }
@@ -2330,7 +2362,8 @@ template <endian Endianess>
 template <endian OtherEndianess>
 inline constexpr BytesViewTemplate<Endianess>::BytesViewTemplate(
 		const BytesViewTemplate<OtherEndianess> ptr, size_t pos, size_t len)
-: BytesReader(ptr.data() + pos, min(len, ptr.size() - pos)) { }
+: BytesReader(ptr.data() + min(pos, ptr.size()),
+		min(len, ptr.size() > pos ? ptr.size() - pos : 0)) { }
 
 template <endian Endianess>
 auto BytesViewTemplate<Endianess>::set(const uint8_t *p, size_t l) -> Self & {
@@ -2630,7 +2663,8 @@ auto BytesViewTemplate<Endianess>::readBytes(size_t s) -> BytesViewTemplate<Targ
 template <endian Endianess>
 template <typename T>
 auto BytesViewTemplate<Endianess>::readSpan(size_t s) -> SpanView<T> {
-	if (len < s * sizeof(T)) {
+	// divide-form bound to avoid overflow of `s * sizeof(T)` for attacker-controlled `s`
+	if (s > len / sizeof(T)) {
 		s = len / sizeof(T);
 	}
 
