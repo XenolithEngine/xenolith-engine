@@ -1,0 +1,424 @@
+# Stappler Runtime Unicode functions
+
+This document describes the Unicode encoding/decoding, length-measurement,
+conversion, classification and case-folding API in the `sprt::unicode` namespace.
+
+The API is split across two headers:
+
+* Low-level, header-only codepoint primitives (`constexpr`, usable at compile time)
+  live in [unicode.h](../../../runtime/include/sprt/runtime/unicode.h).
+* High-level string conversions, length helpers, validation and case/compare
+  functions are declared in [stringview.h](../../../runtime/include/sprt/runtime/stringview.h)
+  and implemented in [runtime_core_unicode.cpp](../../../runtime/core/runtime_core_unicode.cpp).
+
+NOTE: All identifiers below are in namespace `sprt::unicode`.
+
+---
+
+## Encoding model
+
+The API works with three encodings, each tied to a character type:
+
+[cols="1,1,2"]
+|===
+| Encoding | Element type | View type
+
+| UTF-8  | `char`     | `StringView` (`StringViewBase<char>`)
+| UTF-16 | `char16_t` | `WideStringView` (`StringViewBase<char16_t>`)
+| UTF-32 | `char32_t` | `StringViewBase<char32_t>`
+|===
+
+A "codepoint" is a single `char32_t` scalar value.
+
+### Supported scalar range — standard and extended
+
+The UTF-8 primitives implement the original (RFC 2279) transformation, which is
+1..6 bytes wide and can carry any 31-bit value (U+0000 .. U+7FFFFFFF):
+
+[cols="2,1,2"]
+|===
+| Codepoint range | Bytes | Lead byte
+
+| U+000000 .. U+00007F     | 1 | `0xxxxxxx`
+| U+000080 .. U+0007FF     | 2 | `110xxxxx`
+| U+000800 .. U+00FFFF     | 3 | `1110xxxx`
+| U+010000 .. U+1FFFFF     | 4 | `11110xxx`
+| U+200000 .. U+3FFFFFF    | 5 | `111110xx`
+| U+4000000 .. U+7FFFFFFF  | 6 | `1111110x`
+|===
+
+Modern Unicode only assigns U+0000 .. U+10FFFF (1..4 bytes). The 5/6-byte range
+is available as a host **private extension** — see "Extending Unicode" below.
+
+WARNING: UTF-16 can only represent U+0000 .. U+10FFFF. Converting a codepoint
+above U+10FFFF to UTF-16 produces nothing (the codepoint is dropped). Surrogate
+code points (U+D800 .. U+DFFF) are not scalar values and are likewise rejected by
+the UTF-16 encoder.
+
+---
+
+## Conventions
+
+* *`Status` return.* Conversion functions return [Status](../../../runtime/include/sprt/runtime/status.h):
+  `Status::Ok` on success, `Status::ErrorBufferOverflow` if the destination is too
+  small, `Status::ErrorInvalidArguemnt` for a null destination, and
+  `Status::ErrorOutOfHostMemory` if a callback-form temporary allocation fails.
+* *`size_t *ret`.* Buffer-form converters optionally write the number of *elements
+  produced* to `*ret`. It is set only on `Status::Ok`.
+* *`uint8_t &offset`.* Decode primitives report, via `offset`, how many source
+  elements the decoded codepoint consumed. Advance the source pointer by `offset`.
+* *NUL handling.* Every length and conversion routine treats an embedded NUL
+  (`0x00` / `u'\0'`) as the end of input and stops there, even though the views
+  are length-delimited. Length and conversion always agree on this, so a buffer
+  sized from a `getUtf*Length` is always exactly large enough for the matching
+  `toUtf*`.
+* *Buffer safety.* Buffer-form converters never write past `bufSize`; they return
+  `Status::ErrorBufferOverflow` instead. The encode primitives
+  (`utf8EncodeBuf`/`utf16EncodeBuf`) are likewise internally bounded.
+
+---
+
+## Classification helpers
+
+```c
+constexpr bool isUtf8Surrogate(char c);          // a UTF-8 continuation byte (10xxxxxx)
+constexpr bool isUtf16Surrogate(char16_t c);     // U+D800 .. U+DFFF
+constexpr bool isUtf16HighSurrogate(char16_t c); // U+D800 .. U+DBFF
+constexpr bool isUtf16LowSurrogate(char16_t c);  // U+DC00 .. U+DFFF
+constexpr char32_t utf16CombineSurrogates(char16_t high, char16_t low); // → scalar (adds 0x10000)
+```
+
+NOTE: `isUtf8Surrogate` is a misnomer kept for compatibility — it tests for a UTF-8
+*continuation* byte, not a surrogate.
+
+---
+
+## Low-level codepoint primitives (`unicode.h`)
+
+These are `constexpr` and header-only, suitable for tight loops and compile-time use.
+
+### Decoding
+
+```c
+// Decode one codepoint at `ptr`; `len` is the number of available source elements.
+// Sets `offset` to the number consumed. Returns 0 on a truncated/invalid sequence.
+constexpr char32_t utf8Decode32(const char *ptr, size_t len, uint8_t &offset);
+constexpr char32_t utf8Decode32(const char *ptr, size_t len);            // offset discarded
+constexpr char32_t utf16Decode32(const char16_t *ptr, size_t len, uint8_t &offset);
+```
+
+* A lone/invalid lead byte, an unpaired surrogate, or a sequence truncated by `len`
+  decodes to `0` with a single-element `offset` (so callers always make progress).
+* `len == 0` returns `0` with `offset == 0`.
+
+### Encoded length
+
+```c
+constexpr uint8_t utf8EncodeLength(char16_t c);   // 1..3
+constexpr uint8_t utf8EncodeLength(char32_t c);   // 1..6
+constexpr uint8_t utf16EncodeLength(char32_t c);  // 1, 2, or 0 if not representable
+```
+
+`utf16EncodeLength` returns `0` for surrogate code points and for anything above
+U+10FFFF (i.e. it cannot be encoded in UTF-16).
+
+### Encoding to a callback
+
+```c
+template <typename PutCharFn> constexpr uint8_t utf8EncodeCb(const PutCharFn &cb, char16_t c);
+template <typename PutCharFn> constexpr uint8_t utf8EncodeCb(const PutCharFn &cb, char32_t c);
+template <typename PutCharFn> constexpr uint8_t utf16EncodeCb(const PutCharFn &cb, char32_t c);
+```
+
+`cb` is invoked once per produced element (`cb(char)` for UTF-8, `cb(char16_t)` for
+UTF-16). Returns the number of elements produced (0 if `c` is not representable).
+
+### Encoding to a buffer
+
+```c
+constexpr uint8_t utf8EncodeBuf(char *ptr, size_t bufSize, char16_t ch);
+constexpr uint8_t utf8EncodeBuf(char *ptr, size_t bufSize, char32_t ch);
+constexpr uint8_t utf16EncodeBuf(char16_t *ptr, size_t bufSize, char32_t ch);
+```
+
+Writes up to `bufSize` elements and returns the number actually written. If the
+buffer is too small it writes a truncated sequence and returns fewer than
+`...EncodeLength(ch)` — check the return value (or pre-check with `...EncodeLength`).
+
+---
+
+## Length measurement (`stringview.h`)
+
+Measure how many *destination elements* a string needs in another encoding —
+allocate that many (plus one for a terminator), then call the matching `toUtf*`.
+
+```c
+// number of codepoints
+size_t getUtf32Length(const StringView &);           // from UTF-8
+size_t getUtf32Length(const WideStringView &);        // from UTF-16
+
+// number of char16_t units
+inline size_t getUtf16Length(char32_t c);
+size_t getUtf16Length(const StringView &);            // from UTF-8
+size_t getUtf16Length(const StringViewBase<char32_t> &); // from UTF-32
+size_t getUtf16HtmlLength(const StringView &);        // UTF-8 with HTML entities
+
+// number of char (UTF-8) bytes
+inline size_t getUtf8Length(char32_t c);
+inline size_t getUtf8Length(char16_t c);
+size_t getUtf8Length(const WideStringView &);         // from UTF-16
+size_t getUtf8Length(const StringViewBase<char32_t> &); // from UTF-32
+size_t getUtf8HtmlLength(const StringView &);         // UTF-8 with HTML entities
+```
+
+These functions are exact for valid input and a safe upper bound for malformed
+input, so a buffer sized from them never overflows in the corresponding `toUtf*`.
+
+---
+
+## Validation
+
+```c
+bool isValidUtf8(StringView);
+```
+
+Returns `true` if the view (up to the first NUL or its end) is well-formed UTF-8:
+valid lead bytes and the correct number of `10xxxxxx` continuation bytes.
+
+---
+
+## Conversion (`stringview.h`)
+
+Each target encoding offers three forms.
+
+### Buffer form
+
+Writes into a caller-provided buffer; `*ret` (optional) receives the element count.
+
+```c
+Status toUtf32(char32_t *buf, size_t bufSize, const StringView &data,  size_t *ret = nullptr);
+Status toUtf32(char32_t *buf, size_t bufSize, const WideStringView &data, size_t *ret = nullptr);
+
+Status toUtf16(char16_t *buf, size_t bufSize, const StringView &data, size_t *ret = nullptr);
+Status toUtf16(char16_t *buf, size_t bufSize, const StringViewBase<char32_t> &data, size_t *ret = nullptr);
+Status toUtf16Html(char16_t *buf, size_t bufSize, const StringView &data, size_t *ret = nullptr);
+
+Status toUtf8(char *buf, size_t bufSize, const WideStringView &data, size_t *ret = nullptr);
+Status toUtf8(char *buf, size_t bufSize, const StringViewBase<char32_t> &data, size_t *ret = nullptr);
+```
+
+### Single-codepoint form
+
+```c
+Status toUtf16(char16_t *buf, size_t bufSize, char32_t ch, size_t *ret = nullptr);
+Status toUtf8 (char *buf,     size_t bufSize, char16_t ch, size_t *ret = nullptr);
+Status toUtf8 (char *buf,     size_t bufSize, char32_t ch, size_t *ret = nullptr);
+```
+
+### Callback form
+
+Allocates a temporary (via `__sprt_malloca` — stack for small inputs, heap for
+large), converts, NUL-terminates, and invokes `cb` with a view over the result.
+The view is valid only for the duration of the callback.
+
+```c
+Status toUtf32(const callback<void(StringViewBase<char32_t>)> &cb, const StringView &data);
+Status toUtf32(const callback<void(StringViewBase<char32_t>)> &cb, const WideStringView &data);
+
+Status toUtf16(const callback<void(WideStringView)> &cb, const StringView &data);
+Status toUtf16(const callback<void(WideStringView)> &cb, const StringViewBase<char32_t> &data);
+Status toUtf16Html(const callback<void(WideStringView)> &cb, const StringView &data);
+
+Status toUtf8(const callback<void(StringView)> &cb, const WideStringView &data);
+Status toUtf8(const callback<void(StringView)> &cb, const StringViewBase<char32_t> &data);
+```
+
+NOTE: `cb` is only invoked on `Status::Ok`. On error (e.g.
+`Status::ErrorOutOfHostMemory`) the callback is not called and the error is returned.
+
+---
+
+## HTML entities
+
+The `...Html` variants additionally decode HTML character references inline.
+
+```c
+// Decode one HTML entity (or one plain UTF-8 codepoint) at `utf8`.
+// `len` bounds the readable buffer; `offset` receives the consumed byte count.
+SPRT_API char32_t utf8HtmlDecode32(const char *utf8, size_t len, uint8_t &offset);
+```
+
+Recognized references:
+
+* Numeric decimal — `&#NNN;`
+* Numeric hexadecimal — `&#xHHH;` / `&#XHHH;`
+* Named — `&amp;` `&lt;` `&gt;` `&quot;` `&apos;` `&nbsp;` `&shy;`
+
+A reference must be terminated by `;` within 10 characters and must match a name in
+full. Anything that is not a valid reference is treated as a literal `&` followed by
+the rest of the text. `getUtf16HtmlLength` / `getUtf8HtmlLength` size the output for
+`toUtf16Html` / decoded UTF-8 respectively.
+
+---
+
+## Case folding and comparison (`stringview.h`)
+
+Single-codepoint mappings:
+
+```c
+char32_t toupper(char32_t);
+char32_t totitle(char32_t);
+char32_t tolower(char32_t);
+```
+
+Whole-string mappings (streamed through a callback, since case changes can alter
+length):
+
+```c
+bool toupper(const callback<void(StringView)> &, StringView);
+bool totitle(const callback<void(StringView)> &, StringView);
+bool tolower(const callback<void(StringView)> &, StringView);
+bool toupper(const callback<void(WideStringView)> &, WideStringView);
+bool totitle(const callback<void(WideStringView)> &, WideStringView);
+bool tolower(const callback<void(WideStringView)> &, WideStringView);
+```
+
+Comparison (Unicode-aware; `*result` receives a negative/zero/positive ordering):
+
+```c
+bool compare(StringView l, StringView r, int *result);          // codepoint order
+bool compare(WideStringView l, WideStringView r, int *result);
+bool caseCompare(StringView l, StringView r, int *result);      // case-insensitive
+bool caseCompare(WideStringView l, WideStringView r, int *result);
+```
+
+---
+
+## KOI8-R transliteration
+
+```c
+SPRT_API char toKoi8r(char16_t c);
+```
+
+Maps a single BMP codepoint to its KOI8-R byte: ASCII passes through, Cyrillic
+(including `Ё`/`ё`) and the box-drawing/math glyphs in the KOI8-R repertoire are
+translated, and anything unmapped returns a space (`' '`).
+
+---
+
+## Behavior, edge cases and guarantees
+
+* *Embedded NUL stops processing.* Both the `getUtf*Length` and `toUtf*` families
+  stop at the first `0x00`/`u'\0'`. They agree, so the sizing contract holds.
+* *Malformed input never overflows.* `getUtf*Length` is always ≥ what the matching
+  `toUtf*` writes, and buffer-form converters are `bufSize`-bounded. Truncated
+  sequences and unpaired surrogates decode to `0` and advance one element.
+* *Surrogates.* `utf16Decode32` only combines a high surrogate with a following low
+  surrogate; an unpaired surrogate yields `0` and consumes one unit. `utf16CombineSurrogates`
+  adds the `0x10000` base, so pairs decode to the correct U+10000..U+10FFFF range.
+* *Beyond UTF-16.* Codepoints above U+10FFFF cannot be encoded to UTF-16 and are
+  silently dropped by `toUtf16*`; keep extended text in UTF-8 or UTF-32.
+
+---
+
+## Extending Unicode (private codepoints)
+
+The UTF-8 path supports the full 31-bit range, so a host may use **private
+codepoints** anywhere in U+110000 .. U+7FFFFFFF (encoded as 5- or 6-byte UTF-8).
+
+* Store and transport them as UTF-8 or UTF-32 — both round-trip losslessly through
+  `toUtf8` / `toUtf32` / `utf8Decode32`.
+* They **cannot** pass through UTF-16 / `WideStringView`: `toUtf16*` drops them and
+  `utf16EncodeLength` returns 0.
+* 5/6-byte sequences are not valid modern (RFC 3629) UTF-8, so strict external
+  decoders will reject them — this scheme is for host-internal data only.
+* Values above U+7FFFFFFF are not representable; do not use them.
+
+See the detailed comment block above `utf8EncodeLength(char32_t)` in
+[unicode.h](../../../runtime/include/sprt/runtime/unicode.h) for the byte-layout table.
+
+---
+
+## Usage examples
+
+### Convert UTF-8 to UTF-16 (callback form)
+
+```cpp
+#include <sprt/runtime/stringview.h>
+
+using namespace sprt;
+
+unicode::toUtf16([](WideStringView u16) {
+    // u16 is valid only inside this callback
+    consume(u16);
+}, StringView("héllo"));
+```
+
+### Convert UTF-32 to a UTF-8 buffer (manual sizing)
+
+```cpp
+StringViewBase<char32_t> src = /* ... */;
+
+size_t need = unicode::getUtf8Length(src);   // bytes required
+auto buf = (char *)alloca(need + 1);
+
+size_t written = 0;
+if (unicode::toUtf8(buf, need + 1, src, &written) == Status::Ok) {
+    buf[written] = 0;
+    use(StringView(buf, written));
+}
+```
+
+### Decode codepoints one at a time
+
+```cpp
+StringView s = /* UTF-8 */;
+const char *p = s.data();
+const char *end = p + s.size();
+uint8_t off = 0;
+while (p < end && *p) {
+    char32_t cp = unicode::utf8Decode32(p, end - p, off);
+    handle(cp);
+    p += off;            // off is always >= 1 for non-empty input
+}
+```
+
+### Encode one codepoint to UTF-8
+
+```cpp
+char buf[6];
+uint8_t n = unicode::utf8EncodeBuf(buf, sizeof(buf), U'€'); // €  → n == 3
+```
+
+### Decode UTF-8 that contains HTML entities
+
+```cpp
+unicode::toUtf16Html([](WideStringView u16) {
+    render(u16);
+}, StringView("a &amp; b &#x1F600;"));   // → "a & b 😀"
+```
+
+### Validate before processing
+
+```cpp
+if (!unicode::isValidUtf8(input)) {
+    return Status::ErrorInvalidArguemnt;
+}
+```
+
+---
+
+## Caveats
+
+* *Callback views are transient.* The `StringView`/`WideStringView` passed to a
+  conversion callback points at a temporary buffer freed when the callback returns.
+  Copy it if you need to keep it.
+* *Size with the matching helper.* Always size buffers with the `getUtf*Length`
+  that pairs with the `toUtf*` you call (and add 1 for a terminator). Mixing a
+  plain length with an HTML conversion (or vice versa) can yield a spurious
+  `Status::ErrorBufferOverflow`.
+* *UTF-16 is lossy for extended codepoints.* Anything above U+10FFFF is dropped on
+  conversion to UTF-16; do not route private codepoints through `WideStringView`.
+* *`isUtf8Surrogate` naming.* It detects a UTF-8 continuation byte, not a surrogate.
+* *HTML entity set is intentionally small.* Only the references listed above are
+  recognized; unknown names are left as literal text.

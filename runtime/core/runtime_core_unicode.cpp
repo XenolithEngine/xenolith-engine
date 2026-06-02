@@ -25,26 +25,50 @@
 
 namespace sprt::unicode {
 
+// Decode a single HTML entity from its NAME part only: `ptr` points at the first
+// character after '&', and `len` is the exact name length (the surrounding '&' and
+// ';' are consumed by the caller). A named entity matches only when the whole name
+// is present (length and bytes), so "amp" matches but "am" or "ampX" do not.
 static char32_t Utf8DecodeHtml32(const char *ptr, uint32_t len) {
+	if (len == 0) {
+		return 0;
+	}
 	if (ptr[0] == '#') {
 		if (len > 1 && (ptr[1] == 'x' || ptr[1] == 'X')) {
 			return char32_t(__sprt_strtol(ptr + 2, nullptr, 16));
 		}
 		return char32_t(__sprt_strtol(ptr + 1, nullptr, 10));
-	} else if (__sprt_strncmp(ptr, "amp", len) == 0) {
-		return '&';
-	} else if (__sprt_strncmp(ptr, "nbsp", len) == 0) {
-		return 0xA0;
-	} else if (__sprt_strncmp(ptr, "quot", len) == 0) {
-		return '"';
-	} else if (__sprt_strncmp(ptr, "apos", len) == 0) {
-		return '\'';
-	} else if (__sprt_strncmp(ptr, "lt", len) == 0) {
-		return '<';
-	} else if (__sprt_strncmp(ptr, "gt", len) == 0) {
-		return '>';
-	} else if (__sprt_strncmp(ptr, "shy", len) == 0) {
-		return char32_t(0x00AD);
+	}
+
+	switch (len) {
+	case 2:
+		if (__sprt_strncmp(ptr, "lt", 2) == 0) {
+			return '<';
+		}
+		if (__sprt_strncmp(ptr, "gt", 2) == 0) {
+			return '>';
+		}
+		break;
+	case 3:
+		if (__sprt_strncmp(ptr, "amp", 3) == 0) {
+			return '&';
+		}
+		if (__sprt_strncmp(ptr, "shy", 3) == 0) {
+			return char32_t(0x00AD);
+		}
+		break;
+	case 4:
+		if (__sprt_strncmp(ptr, "nbsp", 4) == 0) {
+			return 0xA0;
+		}
+		if (__sprt_strncmp(ptr, "quot", 4) == 0) {
+			return '"';
+		}
+		if (__sprt_strncmp(ptr, "apos", 4) == 0) {
+			return '\'';
+		}
+		break;
+	default: break;
 	}
 	return 0;
 }
@@ -61,7 +85,8 @@ char32_t utf8HtmlDecode32(const char *utf8, size_t bufLen, uint8_t &offset) {
 
 		char32_t c = 0;
 		if (maxchars > 0 && utf8[len] == ';' && len > 2) {
-			c = Utf8DecodeHtml32(utf8 + 1, len - 2);
+			// name is [utf8+1, utf8+len): length len - 1 ('&' excluded, ';' is at utf8[len])
+			c = Utf8DecodeHtml32(utf8 + 1, len - 1);
 		}
 
 		if (c == 0) {
@@ -138,13 +163,13 @@ size_t getUtf32Length(const WideStringView &input) {
 	size_t counter = 0;
 	auto ptr = input.data();
 	const auto end = ptr + input.size();
+	uint8_t offset = 0;
+	// decode exactly as toUtf32() does, so the count matches the conversion even for
+	// malformed input (an unpaired surrogate advances 1 unit, not 2)
 	while (ptr < end && *ptr != 0) {
 		++counter;
-		if (isUtf16Surrogate(*ptr)) {
-			ptr += 2;
-		} else {
-			ptr += 1;
-		}
+		utf16Decode32(ptr, end - ptr, offset);
+		ptr += offset;
 	};
 	return counter;
 }
@@ -165,7 +190,7 @@ size_t getUtf16Length(const StringViewBase<char32_t> &str) {
 	auto source = str.data();
 	auto end = source + str.size();
 
-	while (source != end) { counter += utf16EncodeLength(*source++); }
+	while (source != end && *source != 0) { counter += utf16EncodeLength(*source++); }
 
 	return counter;
 }
@@ -177,14 +202,18 @@ size_t getUtf16HtmlLength(const StringView &input) {
 	while (ptr < end && *ptr != 0) {
 		if (ptr[0] == '&') {
 			uint8_t len = 0;
-			while (ptr[len] && ptr[len] != ';' && len < 10) { len++; }
+			while (ptr + len < end && ptr[len] && ptr[len] != ';' && len < 10) { len++; }
 
-			if (ptr[len] == ';' && len > 2) {
-				counter++;
-				ptr += len;
-			} else if (ptr[len] == 0) {
-				ptr += len;
+			char32_t c = 0;
+			if (ptr + len < end && ptr[len] == ';' && len > 2) {
+				c = Utf8DecodeHtml32(ptr + 1, len - 1);
+			}
+
+			if (c != 0) {
+				counter += utf16EncodeLength(c);
+				ptr += len + 1; // consume "&name;"
 			} else {
+				// not a valid entity: '&' is a literal character
 				counter += utf16_length_data[uint8_t(*ptr)];
 				ptr += utf8_length_data[uint8_t(*ptr)];
 			}
@@ -203,15 +232,18 @@ size_t getUtf8HtmlLength(const StringView &input) {
 	while (ptr < end && *ptr != 0) {
 		if (ptr[0] == '&') {
 			uint8_t len = 0;
-			while (ptr[len] && ptr[len] != ';' && len < 10) { len++; }
+			while (ptr + len < end && ptr[len] && ptr[len] != ';' && len < 10) { len++; }
 
-			if (ptr[len] == ';' && len > 2) {
-				auto c = Utf8DecodeHtml32(ptr + 1, len - 2);
+			char32_t c = 0;
+			if (ptr + len < end && ptr[len] == ';' && len > 2) {
+				c = Utf8DecodeHtml32(ptr + 1, len - 1);
+			}
+
+			if (c != 0) {
 				counter += utf8EncodeLength(c);
-				ptr += len;
-			} else if (ptr[len] == 0) {
-				ptr += len;
+				ptr += len + 1; // consume "&name;"
 			} else {
+				// not a valid entity: '&' is a literal character
 				counter += 1;
 				ptr += 1;
 			}
@@ -227,22 +259,21 @@ size_t getUtf8Length(const WideStringView &str) {
 	const char16_t *ptr = str.data();
 	const char16_t *end = ptr + str.size();
 	size_t ret = 0;
-	while (ptr < end) {
-		auto c = *ptr++;
-		if (c >= 0xD800 && c <= 0xDFFF) {
-			// surrogates is 4-byte
-			ret += 4;
-			++ptr;
-		} else {
-			ret += utf8EncodeLength(c);
-		}
+	uint8_t offset = 0;
+	// decode exactly as toUtf8() does, so the count matches the conversion even for
+	// malformed input (an unpaired surrogate advances 1 unit, not 2)
+	while (ptr < end && *ptr != 0) {
+		ret += utf8EncodeLength(utf16Decode32(ptr, end - ptr, offset));
+		ptr += offset;
 	}
 	return ret;
 }
 
 size_t getUtf8Length(const StringViewBase<char32_t> &str) {
 	size_t ret = 0;
-	for (auto &c : str) { ret += utf8EncodeLength(c); }
+	auto ptr = str.data();
+	auto end = ptr + str.size();
+	while (ptr < end && *ptr != 0) { ret += utf8EncodeLength(*ptr++); }
 	return ret;
 }
 
@@ -254,7 +285,8 @@ Status toUtf32(char32_t *ibuf, size_t bufSize, const StringView &utf8_str, size_
 	uint8_t offset = 0;
 	auto ptr = utf8_str.data();
 	auto end = ptr + utf8_str.size();
-	while (ptr < end) {
+	// stop at an embedded NUL, matching getUtf32Length()
+	while (ptr < end && *ptr != 0) {
 		if (bufSize < 1) {
 			return Status::ErrorBufferOverflow;
 		}
@@ -276,7 +308,8 @@ Status toUtf32(char32_t *ibuf, size_t bufSize, const WideStringView &utf16_str, 
 	uint8_t offset = 0;
 	auto ptr = utf16_str.data();
 	auto end = ptr + utf16_str.size();
-	while (ptr < end) {
+	// stop at an embedded NUL, matching getUtf32Length()
+	while (ptr < end && *ptr != 0) {
 		if (bufSize < 1) {
 			return Status::ErrorBufferOverflow;
 		}
@@ -294,6 +327,9 @@ Status toUtf32(char32_t *ibuf, size_t bufSize, const WideStringView &utf16_str, 
 Status toUtf32(const callback<void(StringViewBase<char32_t>)> &cb, const StringView &data) {
 	auto len = getUtf32Length(data);
 	auto buf = __sprt_typed_malloca(char32_t, len + 1);
+	if (!buf) {
+		return Status::ErrorOutOfHostMemory;
+	}
 
 	auto st = toUtf32(buf, len + 1, data, &len);
 	buf[len] = 0;
@@ -308,6 +344,9 @@ Status toUtf32(const callback<void(StringViewBase<char32_t>)> &cb, const StringV
 Status toUtf32(const callback<void(StringViewBase<char32_t>)> &cb, const WideStringView &data) {
 	auto len = getUtf32Length(data);
 	auto buf = __sprt_typed_malloca(char32_t, len + 1);
+	if (!buf) {
+		return Status::ErrorOutOfHostMemory;
+	}
 
 	auto st = toUtf32(buf, len + 1, data, &len);
 	buf[len] = 0;
@@ -328,7 +367,8 @@ Status toUtf16(char16_t *ibuf, size_t bufSize, const StringView &utf8_str, size_
 	uint8_t offset = 0;
 	auto ptr = utf8_str.data();
 	auto end = ptr + utf8_str.size();
-	while (ptr < end) {
+	// stop at an embedded NUL, matching getUtf16Length()
+	while (ptr < end && *ptr != 0) {
 		auto ch = utf8Decode32(ptr, end - ptr, offset);
 		if (bufSize < utf16EncodeLength(ch)) {
 			return Status::ErrorBufferOverflow;
@@ -352,7 +392,8 @@ SPRT_API Status toUtf16(char16_t *ibuf, size_t bufSize, const StringViewBase<cha
 	}
 	auto ptr = str.data();
 	auto end = ptr + str.size();
-	while (ptr < end) {
+	// stop at an embedded NUL, matching getUtf16Length()
+	while (ptr < end && *ptr != 0) {
 		auto ch = *ptr++;
 		if (bufSize < utf16EncodeLength(ch)) {
 			return Status::ErrorBufferOverflow;
@@ -391,7 +432,8 @@ Status toUtf16Html(char16_t *ibuf, size_t bufSize, const StringView &utf8_str, s
 	uint8_t offset = 0;
 	auto ptr = utf8_str.data();
 	auto end = ptr + utf8_str.size();
-	while (ptr < end) {
+	// stop at an embedded NUL, matching getUtf16HtmlLength()
+	while (ptr < end && *ptr != 0) {
 		auto ch = utf8HtmlDecode32(ptr, end - ptr, offset);
 		if (bufSize < utf16EncodeLength(ch)) {
 			return Status::ErrorBufferOverflow;
@@ -410,6 +452,9 @@ Status toUtf16Html(char16_t *ibuf, size_t bufSize, const StringView &utf8_str, s
 Status toUtf16(const callback<void(WideStringView)> &cb, const StringView &data) {
 	auto len = getUtf16Length(data);
 	auto buf = __sprt_typed_malloca(char16_t, len + 1);
+	if (!buf) {
+		return Status::ErrorOutOfHostMemory;
+	}
 
 	auto st = toUtf16(buf, len + 1, data, &len);
 	buf[len] = 0;
@@ -425,6 +470,9 @@ Status toUtf16(const callback<void(WideStringView)> &cb, const StringView &data)
 Status toUtf16(const callback<void(WideStringView)> &cb, const StringViewBase<char32_t> &data) {
 	auto len = getUtf16Length(data);
 	auto buf = __sprt_typed_malloca(char16_t, len + 1);
+	if (!buf) {
+		return Status::ErrorOutOfHostMemory;
+	}
 
 	auto st = toUtf16(buf, len + 1, data, &len);
 	buf[len] = 0;
@@ -440,6 +488,9 @@ Status toUtf16(const callback<void(WideStringView)> &cb, const StringViewBase<ch
 Status toUtf16Html(const callback<void(WideStringView)> &cb, const StringView &data) {
 	auto len = getUtf16HtmlLength(data);
 	auto buf = __sprt_typed_malloca(char16_t, len + 1);
+	if (!buf) {
+		return Status::ErrorOutOfHostMemory;
+	}
 
 	auto st = toUtf16Html(buf, len + 1, data, &len);
 	buf[len] = 0;
@@ -460,7 +511,8 @@ Status toUtf8(char *ibuf, size_t bufSize, const WideStringView &str, size_t *ret
 	uint8_t offset;
 	auto ptr = str.data();
 	auto end = ptr + str.size();
-	while (ptr < end) {
+	// stop at an embedded NUL, matching getUtf8Length()
+	while (ptr < end && *ptr != 0) {
 		auto ch = utf16Decode32(ptr, end - ptr, offset);
 		if (bufSize < utf8EncodeLength(ch)) {
 			return Status::ErrorBufferOverflow;
@@ -483,7 +535,8 @@ Status toUtf8(char *ibuf, size_t bufSize, const StringViewBase<char32_t> &str, s
 	}
 	auto ptr = str.data();
 	auto end = ptr + str.size();
-	while (ptr < end) {
+	// stop at an embedded NUL, matching getUtf8Length()
+	while (ptr < end && *ptr != 0) {
 		auto ch = *ptr++;
 		if (bufSize < utf8EncodeLength(ch)) {
 			return Status::ErrorBufferOverflow;
@@ -531,6 +584,9 @@ Status toUtf8(char *ibuf, size_t bufSize, char32_t ch, size_t *ret) {
 Status toUtf8(const callback<void(StringView)> &cb, const WideStringView &data) {
 	auto len = getUtf8Length(data);
 	auto buf = __sprt_typed_malloca(char, len + 1);
+	if (!buf) {
+		return Status::ErrorOutOfHostMemory;
+	}
 
 	auto st = toUtf8(buf, len + 1, data, &len);
 	buf[len] = 0;
@@ -546,6 +602,9 @@ Status toUtf8(const callback<void(StringView)> &cb, const WideStringView &data) 
 Status toUtf8(const callback<void(StringView)> &cb, const StringViewBase<char32_t> &data) {
 	auto len = getUtf8Length(data);
 	auto buf = __sprt_typed_malloca(char, len + 1);
+	if (!buf) {
+		return Status::ErrorOutOfHostMemory;
+	}
 
 	auto st = toUtf8(buf, len + 1, data, &len);
 	buf[len] = 0;
@@ -631,7 +690,9 @@ char toKoi8r(char16_t c) {
 	} else if (c >= u'а' && c <= u'я') {
 		return char(koi8r_small[c - u'а' + 32]);
 	} else if (c >= u'А' && c <= u'Я') {
-		return char(koi8r_small[(c - u'A') % 64]);
+		// Cyrillic capitals map to KOI8-R uppercase (table entries 0..31). The index
+		// base must be the Cyrillic 'А' (U+0410) — not the Latin 'A' (U+0041).
+		return char(koi8r_small[c - u'А']);
 	} else {
 		switch (c) {
 		case 0x2500: return char(0x80); break;

@@ -80,10 +80,15 @@ SPRT_INLINE constexpr inline bool isUtf16LowSurrogate(char16_t c) {
 }
 
 SPRT_INLINE constexpr inline char32_t utf16CombineSurrogates(char16_t ch1, char16_t ch2) {
-	return char32_t(0b0000'0011'1111'1111 & ch1) << 10 | char32_t(0b0000'0011'1111'1111 & ch2);
+	return (char32_t(0b0000'0011'1111'1111 & ch1) << 10 | char32_t(0b0000'0011'1111'1111 & ch2))
+			+ 0x1'0000;
 }
 
 constexpr inline char32_t utf8Decode32(const char *ptr, size_t len, uint8_t &offset) {
+	if (len == 0) {
+		offset = 0;
+		return 0;
+	}
 	uint8_t mask = sprt::unicode::utf8_length_mask[uint8_t(*ptr)];
 	offset = sprt::unicode::utf8_length_data[uint8_t(*ptr)];
 	if (offset > len) {
@@ -110,6 +115,47 @@ SPRT_INLINE constexpr inline uint8_t utf8EncodeLength(char16_t c) {
 	return (c < 0x80 ? 1 : (c < 0x800 ? 2 : 3));
 }
 
+// ---------------------------------------------------------------------------
+// Extending Unicode past U+10FFFF (private codepoints / "extended UTF-8")
+// ---------------------------------------------------------------------------
+//
+// The `char32_t` encode/decode primitives implement the original (RFC 2279)
+// UTF-8 transformation, which spans 1..6 bytes and can carry any 31-bit scalar
+// value, i.e. the full range U+0000 .. U+7FFFFFFF. Modern Unicode only assigns
+// U+0000 .. U+10FFFF (1..4 bytes); the range U+110000 .. U+7FFFFFFF is left
+// unassigned and is available to a host as a *private extension*.
+//
+// Byte length per codepoint (utf8EncodeLength / the utf8_length_data table):
+//
+//     U+000000 .. U+00007F   1 byte    0xxxxxxx
+//     U+000080 .. U+0007FF   2 bytes   110xxxxx ...
+//     U+000800 .. U+00FFFF   3 bytes   1110xxxx ...
+//     U+010000 .. U+1FFFFF   4 bytes   11110xxx ...        (Unicode ends at 0x10FFFF)
+//     U+200000 .. U+3FFFFFF  5 bytes   111110xx ...        \ private extension
+//     U+4000000 .. U+7FFFFFFF 6 bytes  1111110x ...        /
+//
+// How to use it:
+//   * Pick your private codepoints anywhere in U+110000 .. U+7FFFFFFF.
+//   * Store and transport them as UTF-8 (`char`/StringView) or UTF-32
+//     (`char32_t`/StringViewBase<char32_t>). Both forms round-trip losslessly:
+//       toUtf8(cb, StringViewBase<char32_t>{...})  // encode
+//       utf8Decode32(ptr, len, offset)             // decode one codepoint
+//   * The encoders are length-exact: getUtf8Length()/utf8EncodeLength() always
+//     agree with what utf8EncodeBuf()/utf8EncodeCb() writes, so a buffer sized
+//     from getUtf8Length() never overflows.
+//
+// Hard limits and caveats:
+//   * U+D800 .. U+DFFF are UTF-16 surrogate code points, not scalar values.
+//     They are rejected by the UTF-16 encoder (length 0, nothing emitted).
+//   * UTF-16 / WideString CANNOT represent anything above U+10FFFF. Encoding a
+//     private codepoint to UTF-16 emits nothing (utf16EncodeLength() == 0); the
+//     codepoint is silently dropped. Keep extended text in UTF-8 or UTF-32 and
+//     never route it through char16_t / WideStringView.
+//   * Values above U+7FFFFFFF do not fit extended UTF-8 (31 bits) and are not
+//     representable; do not use them.
+//   * 5/6-byte sequences are NOT valid modern (RFC 3629) UTF-8. Strict external
+//     decoders will reject them. This scheme is for host-internal data only.
+// ---------------------------------------------------------------------------
 SPRT_INLINE constexpr inline uint8_t utf8EncodeLength(char32_t c) {
 	if (c < 0x80) {
 		return 1;
@@ -117,10 +163,12 @@ SPRT_INLINE constexpr inline uint8_t utf8EncodeLength(char32_t c) {
 		return 2;
 	} else if (c < 0x1'0000) {
 		return 3;
-	} else if (c < 0x11'0000) {
+	} else if (c < 0x20'0000) {
 		return 4;
-	} else {
+	} else if (c < 0x400'0000) {
 		return 5;
+	} else {
+		return 6;
 	}
 }
 
@@ -157,19 +205,27 @@ SPRT_INLINE constexpr inline uint8_t utf8EncodeCb(const PutCharFn &cb, char32_t 
 		cb(0x80 | (c >> 6 & 0x3f));
 		cb(0x80 | (c & 0x3f));
 		return 3;
-	} else if (c < 0x11'0000) {
+	} else if (c < 0x20'0000) {
 		cb(0b1111'0000 | (c >> 18));
 		cb(0x80 | (c >> 12 & 0x3f));
 		cb(0x80 | (c >> 6 & 0x3f));
 		cb(0x80 | (c & 0x3f));
 		return 4;
-	} else {
+	} else if (c < 0x400'0000) {
 		cb(0b1111'1000 | (c >> 24));
 		cb(0x80 | (c >> 18 & 0x3f));
 		cb(0x80 | (c >> 12 & 0x3f));
 		cb(0x80 | (c >> 6 & 0x3f));
 		cb(0x80 | (c & 0x3f));
 		return 5;
+	} else {
+		cb(0b1111'1100 | (c >> 30));
+		cb(0x80 | (c >> 24 & 0x3f));
+		cb(0x80 | (c >> 18 & 0x3f));
+		cb(0x80 | (c >> 12 & 0x3f));
+		cb(0x80 | (c >> 6 & 0x3f));
+		cb(0x80 | (c & 0x3f));
+		return 6;
 	}
 }
 
@@ -197,11 +253,18 @@ SPRT_INLINE constexpr inline uint8_t utf8EncodeBuf(char *ptr, size_t bufSize, ch
 
 SPRT_INLINE constexpr inline char32_t utf16Decode32(const char16_t *ptr, size_t len,
 		uint8_t &offset) {
-	if ((*ptr & char16_t(0xD800)) != 0) {
-		offset = 2;
-		if (offset > len) {
+	if (len == 0) {
+		offset = 0;
+		return 0;
+	}
+	if (isUtf16HighSurrogate(*ptr)) {
+		// A surrogate pair needs a low surrogate in the next unit; anything else
+		// (truncated input or an unpaired high surrogate) consumes a single unit.
+		if (len < 2 || !isUtf16LowSurrogate(ptr[1])) {
+			offset = 1;
 			return 0;
 		}
+		offset = 2;
 		return utf16CombineSurrogates(ptr[0], ptr[1]);
 	} else {
 		offset = 1;
@@ -216,12 +279,15 @@ SPRT_INLINE constexpr inline uint8_t utf16EncodeLength(char32_t c) {
 	if (c < 0xD800) {
 		return 1;
 	} else if (c <= 0xDFFF) {
-		// do nothing, wrong encoding
+		// surrogate code points are not scalar values
 		return 0;
 	} else if (c < 0x1'0000) {
 		return 1;
-	} else {
+	} else if (c <= 0x10'FFFF) {
 		return 2;
+	} else {
+		// beyond U+10FFFF: not representable in UTF-16 (see extended-UTF-8 note above)
+		return 0;
 	}
 }
 
@@ -232,14 +298,18 @@ SPRT_INLINE constexpr inline uint8_t utf16EncodeCb(const PutCharFn &cb, char32_t
 		cb(char16_t(c));
 		return 1;
 	} else if (c <= 0xDFFF) {
-		return 0;
+		return 0; // surrogate code points are not scalar values
 	} else if (c < 0x1'0000) {
 		cb(char16_t(c));
 		return 1;
-	} else {
-		cb(char16_t(((0b1111'1111'1100'0000'0000 & c) >> 10) + 0xD800));
-		cb(char16_t(((0b0000'0000'0011'1111'1111 & c) >> 00) + 0xDC00));
+	} else if (c <= 0x10'FFFF) {
+		// split into a high/low surrogate pair over the 20-bit (c - 0x10000)
+		char32_t v = c - 0x1'0000;
+		cb(char16_t(0xD800 + (v >> 10)));
+		cb(char16_t(0xDC00 + (v & 0x3FF)));
 		return 2;
+	} else {
+		return 0; // beyond U+10FFFF: not representable in UTF-16
 	}
 }
 
