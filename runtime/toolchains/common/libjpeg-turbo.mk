@@ -28,6 +28,14 @@ CONFIGURE := \
 	$(CONFIGURE_CMAKE) -DENABLE_SHARED=FALSE -DWITH_TURBOJPEG=FALSE \
 	-DWITH_TESTS=Off -DWITH_CRT_DLL=1
 
+ifeq ($(SP_ARCH),riscv64)
+CONFIGURE += -DWITH_SIMD=Off
+endif
+
+ifeq ($(SP_ARCH),armv7a)
+CONFIGURE += -DWITH_SIMD=Off
+endif
+
 all:
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_mkdir,$(LIBNAME))

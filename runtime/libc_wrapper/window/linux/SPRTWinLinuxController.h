@@ -83,7 +83,9 @@ protected:
 	virtual void handleContextWillDestroy() override;
 	virtual void handleContextDidDestroy() override;
 
+#if SPRT_REF_DEBUG
 	virtual bool isRetainTrackerEnabled() const override { return true; }
+#endif
 
 	Rc<XcbLibrary> _xcb;
 	Rc<WaylandLibrary> _wayland;

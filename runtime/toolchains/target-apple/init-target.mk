@@ -53,7 +53,8 @@ endif # SP_IOSSIM
 SP_DEPFLAGS := -mios-version-min=$(SP_OSVER)
 endif
 
-TOOLCHAIN_CFLAGS :=  -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(SP_TARGET) -arch $(SP_ARCH)
+TOOLCHAIN_CFLAGS := -isysroot $(SP_SDK_ROOT)  -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(SP_TARGET) -arch $(SP_ARCH)
+TOOLCHAIN_LDFLAGS := -L$(SP_SDK_ROOT)/usr/lib -F$(SP_SDK_ROOT)/System/Library/Frameworks
 
 $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(THIS_FILE)
 	@echo Build $@
@@ -70,8 +71,8 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(THIS_FILE)
 	@echo 'set(CMAKE_CXX_FLAGS_INIT "$${SP_CXX_FLAGS} $(TOOLCHAIN_CFLAGS)" CACHE STRING "" FORCE)' >> $@
 	@echo 'set(CMAKE_OBJC_FLAGS_INIT "-ObjC $${SP_CXX_FLAGS} $(TOOLCHAIN_CFLAGS)" CACHE STRING "" FORCE)' >> $@
 	@echo 'set(CMAKE_OBJCXX_FLAGS_INIT "-ObjC++ $${SP_CXX_FLAGS} $(TOOLCHAIN_CFLAGS)" CACHE STRING "" FORCE)' >> $@
-	@echo 'set(CMAKE_EXE_LINKER_FLAGS_INIT "$${SP_EXE_LINKER_FLAGS} $(TOOLCHAIN_CFLAGS)" CACHE STRING "" FORCE)' >> $@
-	@echo 'set(CMAKE_SHARED_LINKER_FLAGS_INIT "$${SP_SHARED_LINKER_FLAGS} $(TOOLCHAIN_CFLAGS)" CACHE STRING "" FORCE)' >> $@
+	@echo 'set(CMAKE_EXE_LINKER_FLAGS_INIT "$${SP_EXE_LINKER_FLAGS} $(TOOLCHAIN_LDFLAGS)" CACHE STRING "" FORCE)' >> $@
+	@echo 'set(CMAKE_SHARED_LINKER_FLAGS_INIT "$${SP_SHARED_LINKER_FLAGS} $(TOOLCHAIN_LDFLAGS)" CACHE STRING "" FORCE)' >> $@
 	@echo 'set(CMAKE_C_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang")' >> $@
 	@echo 'set(CMAKE_CXX_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang")' >> $@
 	@echo 'set(CMAKE_OBJC_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang")' >> $@

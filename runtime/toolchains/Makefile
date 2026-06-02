@@ -60,7 +60,7 @@ TOOLCHAIN_INTERMEDIATE := $(abspath $(LIBS_MAKE_ROOT))/intermediate
 TOOLCHAIN_TARGETS := $(abspath $(LIBS_MAKE_ROOT))/targets
 
 prepare:
-	$(call rule_rm,$(TMP_DIR))
+#	$(call rule_rm,$(TMP_DIR))
 
 download: $(ALL_SRC)
 
@@ -198,7 +198,15 @@ target-windows: \
 	target-x86_64-pc-windows-msvc \
 	target-aarch64-pc-windows-msvc
 
+clean-targets:
+	rm -rf targets
+	rm -rf target-windows/intermediate
+	rm -rf target-linux/intermediate
+	rm -rf target-apple/intermediate
+	rm -rf target-android/intermediate
+
 .PHONY: all clean prepare compress host download \
+	clean-targets \
 	target-linux \
 	target-x86_64-unknown-linux-gnu \
 	target-aarch64-unknown-linux-gnu \

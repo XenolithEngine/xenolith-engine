@@ -56,6 +56,7 @@ THE SOFTWARE.
 #include "windows/dll/dllstub2_userenv.cc"
 #include "windows/dll/dllstub2_uxtheme.cc"
 #include "windows/dll/dllstub2_ws2_32.cc"
+#include "windows/dll/dllstub2_iphlpapi.cc"
 
 #endif
 

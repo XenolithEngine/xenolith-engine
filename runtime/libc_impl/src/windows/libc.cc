@@ -130,7 +130,8 @@ void __init_default_fds(__libc *libc) {
 
 } // namespace sprt
 
-HANDLE _get_osfhandle(int fd) {
+__SPRT_C_FUNC
+HANDLE _get_osfhandle(int fd) __SPRT_NOEXCEPT {
 	auto slot = sprt::__libc::get()->get_fd_slot(fd);
 	if (!slot) {
 		return nullptr;

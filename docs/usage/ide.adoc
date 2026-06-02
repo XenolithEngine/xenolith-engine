@@ -1,0 +1,236 @@
+# Editor / IDE integration
+
+The SDK is built with plain `make` (see [makefiles.adoc](makefiles.adoc)), so it
+works with any editor. The recommended setup is VSCode (or an OSS/compatible
+build such as VSCodium) driven by a handful of extensions and the repository's
+[.vscode/settings.json](../../.vscode/settings.json), which you can mirror for
+your own project.
+
+## Recommended extensions
+
+The list below reflects the extensions installed for this workspace. The first
+three are essential — they provide language intelligence, building, and
+debugging; the rest support the documentation and the bilingual sources.
+
+[cols="1,1,3"]
+|===
+| Extension | ID | Why it matters
+
+| **clangd** | `llvm-vs-code-extensions.vscode-clangd`
+| C/C++ language server (completion, diagnostics, go-to-definition, formatting).
+This is the project's IntelliSense engine — the C/C++ IntelliSense from
+`ms-vscode.cpptools` is intentionally **not** used. It reads the
+`compile_commands.json` the build emits, so it sees the exact flags, includes,
+and the toolchain's `clang`. Also the default `editor.defaultFormatter`
+(clang-format).
+
+| **Makefile Tools** | `ms-vscode.makefile-tools`
+| Runs the build from the editor. Reads `makefile.configurations` (named build
+setups) and `makefile.launchConfigurations` (where the built binaries live), so
+you can pick a target/build-type and build, run, or debug from the status bar.
+
+| **LLDB DAP** | `llvm-vs-code-extensions.lldb-dap`
+| Debug adapter for LLDB, using the `lldb-dap` binary shipped with the host
+toolchain (`lldb-dap.executable-path` in settings). Preferred debugger because
+it matches the clang/LLVM toolchain the code is compiled with.
+
+| CodeLLDB | `vadimcn.vscode-lldb`
+| Alternative, self-contained LLDB-based debugger. Useful when you do not have a
+toolchain `lldb-dap` on hand; otherwise the LLVM `lldb-dap` above is preferred.
+
+|===
+
+
+```sh
+code --install-extension llvm-vs-code-extensions.vscode-clangd
+code --install-extension ms-vscode.makefile-tools
+code --install-extension llvm-vs-code-extensions.lldb-dap
+```
+
+## Settings walk-through
+
+All of the following come from [.vscode/settings.json](../../.vscode/settings.json).
+
+### File associations and editing
+
+```json
+"files.associations": {
+    "Makefile": "makefile",
+    "*.mk": "makefile"
+},
+"editor.formatOnSave": true,
+"editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
+```
+
+Both the project `Makefile` and the `*.mk` fragments get makefile highlighting,
+and saving a C/C++ file reformats it with clang-format via clangd (the project's
+style lives in [.clang-format](../../.clang-format)).
+
+### IntelliSense (clangd)
+
+The build writes `compile_commands.json` to the repository root, so clangd is
+configured to read it from there and to use the toolchain's `clang`:
+
+```json
+"clangd.arguments": [
+    "--header-insertion=never",
+    "--compile-commands-dir=${workspaceFolder}",
+    "--query-driver=.../runtime/toolchains/hosts/x86_64-unknown-linux-gnu/bin/clang-21"
+]
+```
+
+Run a build at least once (any configuration) so `compile_commands.json` exists,
+then clangd resolves includes against the exact flags the build uses. Adjust
+`--query-driver` to your host toolchain path.
+
+### Build configurations (Makefile Tools)
+
+`makefile.configurations` defines named build setups; each entry maps to one
+`make` invocation. Register every (project × target × build-type) combination you
+switch between:
+
+```json
+"makefile.configurations": [
+    {
+        "name": "Window",
+        "makefilePath": "tests/window/Makefile",
+        "makeArgs": ["STAPPLER_TARGET=x86_64-unknown-linux-gnu", "verbose=1", "-j8"]
+    },
+    {
+        "name": "Window-win32",
+        "makefilePath": "tests/window/Makefile",
+        "makeArgs": ["STAPPLER_TARGET=x86_64-pc-windows-msvc", "-j8"]
+    }
+]
+```
+
+`makeArgs` are exactly the command-line switches documented in
+[makefiles.adoc](makefiles.adoc) (`STAPPLER_TARGET=…`, `RELEASE=1`, `-jN`,
+`verbose=1`). Pick the active configuration from the Makefile Tools status bar or
+command palette.
+
+### Launch / debug configurations
+
+`makefile.launchConfigurations` tells the extension where the produced binary
+lives so you can run and debug it. The `binaryPath`/`cwd` must point inside the
+build output directory (`$(LOCAL_OUTDIR)/$(STAPPLER_TARGET)/$(BUILD_TYPE)/<cc>/`):
+
+```json
+"makefile.launchConfigurations": [
+    {
+        "cwd": ".../tests/window/stappler-build/x86_64-unknown-linux-gnu/debug/cc",
+        "binaryPath": ".../tests/window/stappler-build/x86_64-unknown-linux-gnu/debug/cc/testapp",
+        "binaryArgs": []
+    }
+]
+```
+
+### Debugging
+
+The repo points the LLVM debug adapter at the toolchain's `lldb-dap` and allows
+breakpoints in any file:
+
+```json
+"lldb-dap.executable-path": ".../toolchains/hosts/x86_64-unknown-linux-gnu/bin/lldb-dap",
+"debug.allowBreakpointsEverywhere": true
+```
+
+Combined with a `makefile.launchConfigurations` entry, Makefile Tools can launch
+the selected binary under LLDB directly.
+
+## Creating `launch.json`
+
+`makefile.launchConfigurations` (above) only tells Makefile Tools *which binary*
+is the active launch target. To actually start a debugger — with breakpoints,
+stepping, pretty-printing — you add a `.vscode/launch.json` whose entries
+reference that target through Makefile Tools' command variables:
+
+* `${command:makefile.launchTargetPath}` — absolute path of the binary from the
+  active `makefile.launchConfigurations` entry.
+* `${command:makefile.getLaunchTargetArgsConcat}` — its `binaryArgs` as one
+  argument string.
+
+Because the program path is resolved from the makefile launch target, the *same*
+`launch.json` entry follows whichever project/target/build-type you have
+selected in the Makefile Tools status bar — you do not hard-code a path.
+
+The repository's [.vscode/launch.json](../../.vscode/launch.json) defines several
+ready-made configurations; the two you normally use are below.
+
+### LLDB (recommended)
+
+Matches the clang/LLVM toolchain the code is built with. Requires the
+**LLDB DAP** extension and the `lldb-dap.executable-path` setting from the
+*Debugging* section above.
+
+```json
+{
+    "name": "(lldb) Launch",
+    "type": "lldb-dap",
+    "request": "launch",
+    "program": "${command:makefile.launchTargetPath}",
+    "args": ["${command:makefile.getLaunchTargetArgsConcat}"],
+    "cwd": "${workspaceFolder}/tests/window",
+    "console": "integratedTerminal",
+}
+```
+
+Set `cwd` to the project the binary belongs to (it is where the app looks for
+relative resources).
+
+### GDB (`cppdbg`)
+
+An alternative using the C/C++ extension's `cppdbg` adapter, useful when you
+prefer GDB:
+
+```json
+{
+    "name": "(gdb) Launch",
+    "type": "cppdbg",
+    "request": "launch",
+    "program": "${command:makefile.launchTargetPath}",
+    "args": [],
+    "stopAtEntry": false,
+    "cwd": "${workspaceFolder}/tests/window",
+    "MIMode": "gdb",
+    "setupCommands": [
+        { "text": "-enable-pretty-printing", "ignoreFailures": true },
+        { "text": "-gdb-set disassembly-flavor intel", "ignoreFailures": true }
+    ]
+}
+```
+
+### Cross-target debugging (Windows binaries under Wine)
+
+For targets that do not run natively, the binary is launched on a remote LLDB
+platform (e.g. `lldb-server` running inside Wine) and the debugger connects over
+a socket. Here `program` points directly at the cross-built `.exe` rather than
+the makefile launch target:
+
+```json
+{
+    "name": "(lldb-dap-wine) Launch",
+    "type": "lldb-dap",
+    "request": "launch",
+    "initCommands": [
+        "platform select remote-linux",
+        "platform connect connect://localhost:8081"
+    ],
+    "program": "${workspaceFolder}/tests/window/stappler-build/x86_64-pc-windows-msvc/debug/cc/testapp.exe",
+    "args": ["libcxx_rtti"],
+    "cwd": "${workspaceFolder}/tests/builtin",
+    "console": "internalConsole",
+    "env": {
+        "LLDB_LAUNCH_INFERIORS_WITHOUT_CONSOLE": "true"
+    }
+}
+```
+
+### Using it
+
+1. Pick the build configuration in the Makefile Tools status bar and build it.
+2. Set the launch target (the status bar "Launch target" item, backed by
+   `makefile.launchConfigurations`).
+3. Open the Run and Debug panel, choose a `launch.json` configuration
+   (e.g. *(lldb) Launch*), and start debugging (`F5`). The command variables
+   resolve to the binary and args of the currently selected launch target.

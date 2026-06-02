@@ -45,14 +45,14 @@ $(HOST_SYSROOT)/sysroot: $(LINUX_HOST_HEADERS_DIR)
 	cd $(HOST_SYSROOT)$(abspath $(HOST_SYSROOT)); rm lib; ln -s $(abspath $(HOST_SYSROOT))/lib lib
 	touch $(HOST_SYSROOT)/sysroot
 
-$(HOST_GCC_MAKE): $(HOST_SYSROOT)/sysroot $(MAKE_SRC_DIR)
+$(HOST_GCC_MAKE): $(HOST_SYSROOT)/sysroot $(MAKE_SRC_DIR) | download
 	rm -rf build/host-make
 	mkdir -p build/host-make
 	cd build/host-make; $(abspath $(MAKE_SRC_DIR))/configure --prefix $(abspath $(HOST_SYSROOT))
 	make -C build/host-make $(SP_NJOBS)
 	make -C build/host-make install
 
-$(HOST_GCC_GLIBC): $(HOST_GCC_MAKE) $(GLIBC_MIN_SRC_DIR)
+$(HOST_GCC_GLIBC): $(HOST_GCC_MAKE) $(GLIBC_MIN_SRC_DIR) | download
 	rm -rf build/host-glibc
 	mkdir -p build/host-glibc
 	cd build/host-glibc; $(abspath $(GLIBC_MIN_SRC_DIR))/configure \
@@ -79,7 +79,7 @@ HOST_GCC_CC_CFLAGS := \
 	-I$(abspath $(GCC_SRC_DIR))/include \
 	-I$(abspath $(HOST_SYSROOT))/include
 
-$(HOST_GCC_CC): $(HOST_GCC_MAKE) $(HOST_GCC_GLIBC)
+$(HOST_GCC_CC): $(HOST_GCC_MAKE) $(HOST_GCC_GLIBC) | download
 	rm -rf build/host-gcc
 	mkdir -p build/host-gcc
 	ln -f -s ../gmp  $(abspath $(GCC_SRC_DIR))/gmp

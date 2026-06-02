@@ -1,0 +1,4 @@
+LIBRARY iphlpapi.dll
+EXPORTS
+	if_nametoindex
+	if_indextoname

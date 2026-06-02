@@ -23,6 +23,18 @@ struct _stat {
 #define _fstati64 _fstat
 #define _wstati64 _wstat
 
+#ifndef _O_WRONLY
+#define _O_WRONLY __SPRT_O_WRONLY
+#endif
+
+#ifndef _O_CREAT
+#define _O_CREAT __SPRT_O_CREAT
+#endif
+
+#ifndef _O_EXCL
+#define _O_EXCL __SPRT_O_EXCL
+#endif
+
 #ifndef _O_BINARY
 #define _O_BINARY 0
 #define O_BINARY _O_BINARY
@@ -76,6 +88,8 @@ typedef __SPRT_ID(wchar_t) wchar_t;
 #endif
 
 __SPRT_BEGIN_DECL
+
+SPRT_API void *_get_osfhandle(int) __SPRT_NOEXCEPT;
 
 SPRT_API int _wsopen_s(int *pfh, const wchar_t *filename, int oflag, int shflag,
 		...) __SPRT_NOEXCEPT;

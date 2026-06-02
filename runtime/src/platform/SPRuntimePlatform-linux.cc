@@ -31,8 +31,7 @@
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_stdio.h>
 #include <sprt/c/__sprt_locale.h>
-
-#include "private/SPRTDso.h"
+#include <sprt/runtime/utils/dso.h>
 
 #include <stdio.h>
 #include <stdlib.h>

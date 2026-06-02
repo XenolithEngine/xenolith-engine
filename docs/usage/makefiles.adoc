@@ -1,0 +1,334 @@
+# The Xenolith / Stappler Makefile build system
+
+This guide explains the `make`-based build system that lives in [make/](../../make/)
+and shows how to write a `Makefile` for a new project (an application or a
+library) and how to drive it. It is meant for users of the SDK — for the build
+architecture (host/target toolchains, cross-compilation, reproducible builds)
+see [build.adoc](../articles/ru/general/build.adoc).
+
+The system is plain GNU Make (4.1+ recommended; macOS ships an older `make`, use
+`gmake`). It needs no extra tooling: every project is a small `Makefile` that
+declares a few variables and then includes [make/universal.mk](../../make/universal.mk).
+
+## How it fits together
+
+A project `Makefile` never contains build rules. It sets `LOCAL_*` variables —
+what to build, which modules to pull in, where the sources live — and hands off
+to the engine:
+
+```
+your Makefile
+    └── include make/universal.mk         entry point, host/target dispatch
+            ├── make/host.mk              native (host) build rules
+            ├── make/android-ndk.mk       Android NDK build rules
+            └── make/general/compile.mk   the actual machinery:
+                    ├── utils/defaults.mk        defaults, host/target toolchain lookup
+                    ├── c/compiler.mk            C/C++ flags, build type
+                    ├── shaders/…                GLSL → SPIR-V
+                    ├── wasm/…                   WebAssembly components
+                    ├── utils/build-targets.mk   decides exe / shared / static
+                    ├── utils/resolve-modules.mk module graph resolution
+                    └── c/apply.mk               per-file compile rules
+```
+
+[make/universal.mk](../../make/universal.mk) is the only file you include. When
+invoked with no `STAPPLER_TARGET`/`STAPPLER_BUILD` it acts as a *front-end*: it
+re-invokes itself with sensible defaults and exposes convenience goals
+(`host`, `host-release`, `android`, …). When invoked with a target set it does
+the real work.
+
+[make/MODULES.md](../../make/MODULES.md) documents how the bundled modules
+(`stappler_core`, `xenolith_application`, `runtime`, …) are defined, in case you
+need to author your own.
+
+## Quick start: building an existing project
+
+From a project directory (one that has a `Makefile` including `universal.mk`):
+
+```sh
+make                  # native debug build (default goal: `host`)
+make host-release     # native optimized build
+make clean            # remove the native debug build
+make -j8              # parallel build
+```
+
+To build for another platform, pass a target triple
+(`<arch>-<vendor>-<os>[-<env>][+sprt]`):
+
+```sh
+make STAPPLER_TARGET=x86_64-pc-windows-msvc
+make STAPPLER_TARGET=aarch64-apple-macosx -j8
+make android                                 # all Android ABIs via the NDK
+```
+
+Useful command-line switches (set as `make VAR=1`):
+
+[cols="1,3"]
+|===
+| Variable | Effect
+
+| `RELEASE=1`        | Optimized build (`-O3 -DNDEBUG`) instead of the default debug build (`-g -DDEBUG`)
+| `COVERAGE=1`       | Coverage instrumentation (`-fprofile-arcs -ftest-coverage`)
+| `verbose=1`        | Print every command and the build-system trace instead of the short `[CC] file` lines
+| `STAPPLER_TARGET=` | Build for the given target triple instead of the auto-detected host
+| `-jN`              | Parallel build with N jobs
+|===
+
+The host triple is auto-detected from `uname` (e.g. `x86_64-unknown-linux-gnu`,
+`aarch64-apple-macosx`); see [make/utils/init-sh.mk](../../make/utils/init-sh.mk).
+
+### Front-end goals
+
+When you run `make` with no target, [make/universal.mk](../../make/universal.mk)
+exposes these phony goals (each just re-invokes the build with the right flags):
+
+[cols="1,3"]
+|===
+| Goal | Meaning
+
+| `host` (default) | `host-debug`
+| `host-debug` / `host-release` | native debug / release build
+| `host-debug-clean` / `host-release-clean` | clean the respective build
+| `host-coverage` / `host-report` | coverage build / generate the lcov HTML report
+| `host-install` | build and run the `install` step
+| `android` / `android-release` | build all Android ABIs (debug / release) through the NDK
+| `clean` / `install` | aliases for `host-debug-clean` / `host-install`
+|===
+
+## Anatomy of a project Makefile
+
+A minimal application `Makefile` looks like this (compare with
+[tests/window/Makefile](../../tests/window/Makefile) or
+[tests/stappler/Makefile](../../tests/stappler/Makefile)):
+
+```make
+# Rebuild everything if this makefile changes
+LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
+
+# Where the build system lives, relative to this makefile
+STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../../make
+
+# Output directory for build artifacts
+LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
+
+# We build an executable named "myapp"
+LOCAL_EXECUTABLE := myapp
+
+# Where to look for module definitions (the *-modules.mk catalogs)
+LOCAL_MODULES_PATHS = \
+	stappler/stappler-modules.mk \
+	xenolith/xenolith-modules.mk
+
+# Which modules this project consumes (dependencies are pulled in automatically)
+LOCAL_MODULES := \
+	runtime \
+	xenolith_application \
+	xenolith_renderer_simpleui \
+	xenolith_backend_vk
+
+# Project's own sources
+LOCAL_SRCS_DIRS  := src        # recursively compiled
+LOCAL_INCLUDES_OBJS := src     # added to the include path
+LOCAL_MAIN := main.cpp         # the translation unit holding main()
+
+# Optional: GLSL shaders to compile to SPIR-V
+LOCAL_SHADERS_DIR := shaders
+
+include $(STAPPLER_BUILD_ROOT)/universal.mk
+```
+
+### What gets built
+
+[make/utils/build-targets.mk](../../make/utils/build-targets.mk) decides the
+output kind from these variables:
+
+* `LOCAL_EXECUTABLE := name` — build an executable. On macOS it is wrapped in a
+  `name.app` bundle automatically.
+* `LOCAL_LIBRARY := name` — build a library. `LOCAL_BUILD_STATIC` / `LOCAL_BUILD_SHARED`
+  (both default to `1`) control whether a static archive, a shared object, or
+  both are produced.
+* `LOCAL_WASM_MODULE := name.wasm` — build a WebAssembly component.
+
+You can combine them; the front-end `all` goal builds whatever is requested.
+
+### Project variable reference
+
+These are the `LOCAL_*` variables a project makefile typically sets. They are
+resolved in [make/utils/defaults.mk](../../make/utils/defaults.mk) and consumed
+across [make/c/apply.mk](../../make/c/apply.mk) and friends.
+
+[cols="1,3"]
+|===
+| Variable | Meaning
+
+| `LOCAL_MAKEFILE` | Path to this makefile; used so a makefile change forces a rebuild. Set to `$(lastword $(MAKEFILE_LIST))`.
+| `STAPPLER_BUILD_ROOT` | Path to the `make/` directory. Defaulted relative to the makefile.
+| `LOCAL_OUTDIR` | Build output root (default `stappler-build`).
+| `LOCAL_ROOT` | Project source root (defaults to the makefile directory).
+| `LOCAL_EXECUTABLE` | Name of the executable to build.
+| `LOCAL_LIBRARY` | Name of the library to build.
+| `LOCAL_VERSION` | Library version (used in the versioned library name).
+| `LOCAL_BUILD_STATIC` / `LOCAL_BUILD_SHARED` | `1` to emit a static / shared library (default `1` each). `LOCAL_BUILD_SHARED` also accepts `2` (standalone shared) and `3` (standalone module, for live reload).
+| `LOCAL_MAIN` | Source file containing `main()`, compiled separately from the rest (so the same sources can be reused for tests / live reload).
+| `LOCAL_MODULES` | Space/`\`-separated list of modules to link in. Dependencies are resolved transitively.
+| `LOCAL_MODULES_OPTIONAL` | Modules to include only if their definition is found.
+| `LOCAL_MODULES_PATHS` | Catalog files (`*-modules.mk`) that define the available modules.
+| `LOCAL_SRCS_DIRS` | Directories scanned recursively for `.c/.cpp/.mm/...` sources to compile.
+| `LOCAL_SRCS_OBJS` | Individual extra source files to compile.
+| `LOCAL_INCLUDES_DIRS` | Directories scanned recursively for headers, added to the include path.
+| `LOCAL_INCLUDES_OBJS` | Individual directories added directly to the include path.
+| `LOCAL_SHADERS_DIR` | Directories with GLSL shaders to compile to SPIR-V.
+| `LOCAL_SHADERS_INCLUDE` | Include dirs for `#include` inside shaders.
+| `LOCAL_CFLAGS` / `LOCAL_CXXFLAGS` / `LOCAL_LDFLAGS` | Extra flags appended to the project's compile/link commands.
+| `LOCAL_LIBS` | Extra libraries to link (`-lfoo`, or `-l:libfoo.a` / `-l:foo.lib` for a static lib from the toolchain).
+| `LOCAL_PRIVATE_INCLUDE_PCH` | Precompiled-header file name(s) to consume (e.g. `SPCommon.h`).
+| `LOCAL_OPTIMIZATION` | Optimization level for release/coverage (default `-O3`).
+| `LOCAL_LOG_LEVEL` | `none` / `errors` / `all` or a number; overrides the default log level (debug=all, release=errors).
+| `LOCAL_EXEC_LIVE_RELOAD` | `1` to build the app as a reloadable shared module plus a thin launcher.
+| `LOCAL_INSTALL_DIR` | Where `install` copies the artifacts (default `$(LOCAL_OUTDIR)/$(STAPPLER_TARGET)`).
+|===
+
+### Application metadata (APPCONFIG_*)
+
+Executables get a generated config header from `APPCONFIG_*` variables
+(see [make/c/executable.mk](../../make/c/executable.mk) and
+[make/utils/defaults.mk](../../make/utils/defaults.mk)):
+
+[cols="1,3"]
+|===
+| Variable | Meaning
+
+| `APPCONFIG_APP_NAME` | Human-readable application name (default: `LOCAL_EXECUTABLE`).
+| `APPCONFIG_BUNDLE_NAME` | Reverse-DNS bundle identifier, e.g. `org.stappler.MyApp`.
+| `APPCONFIG_BUNDLE_PATH` | Search path for bundled resources (default `$EXEC_DIR:$CWD`).
+| `APPCONFIG_APP_PATH_COMMON` | Where to look for app files on platforms without a bundle. Linux: `>0` = use XDG dirs. Windows: `1` AppData, `2` AppContainer paths, `3` run inside an AppContainer.
+| `APPCONFIG_VERSION_API` / `_REV` / `_BUILD` / `_VARIANT` | Version components baked into the binary.
+| `APPCONFIG_STRINGS` / `APPCONFIG_VALUES` | Extra string / numeric defines for the config header.
+|===
+
+## Modules
+
+A *module* is a reusable unit of code (sources + headers + flags + dependencies)
+declared in a `*.mk` file via `$(call define_module, name, MODULE_PREFIX)`. The
+SDK ships large module catalogs:
+
+* [stappler/stappler-modules.mk](../../stappler/stappler-modules.mk) — `stappler_core`, `stappler_data`, `stappler_crypto`, `stappler_db`, …
+* [xenolith/xenolith-modules.mk](../../xenolith/xenolith-modules.mk) — `xenolith_application`, the renderers, backends, resources.
+* [runtime/runtime.mk](../../runtime/runtime.mk) — the `runtime` module (the Xenolith Runtime / libc layer).
+
+To use modules, point `LOCAL_MODULES_PATHS` at the catalog(s) and list the ones
+you need in `LOCAL_MODULES`. You only list direct dependencies — the resolver in
+[make/utils/resolve-modules.mk](../../make/utils/resolve-modules.mk) walks
+`_DEPENDS_ON` transitively and aborts with `Module not found: <name>` if a
+required module is missing. The final, ordered module set is printed at
+configure time as `Enabled modules: …`.
+
+When a module's headers and flags are added to the build, they become available
+to **all** sources of the project (and to other modules), except for the
+`_PRIVATE_*` variables which stay local to that module. See
+[make/MODULES.md](../../make/MODULES.md) for the full list of `MODULE_*`
+variables if you need to define your own module.
+
+## Build types and output layout
+
+The build type comes from the command line:
+
+* default → `debug` (`-g -funwind-tables -DDEBUG`)
+* `RELEASE=1` → `release` (`$(LOCAL_OPTIMIZATION) -DNDEBUG`)
+* `COVERAGE=1` → `coverage`
+
+Artifacts land under:
+
+```
+$(LOCAL_OUTDIR)/$(STAPPLER_TARGET)/$(BUILD_TYPE)/$(compiler-name)/
+```
+
+for example `stappler-build/x86_64-unknown-linux-gnu/debug/cc/myapp`. The
+`compile_commands.json` compilation database is written to the project root so
+editors and clangd can find it.
+
+## Cross-compilation and targets
+
+Every build is conceptually a cross-compile. The host half (the toolchain that
+runs on your machine) and the target half (what you compile *for*) are resolved
+independently in [make/utils/defaults.mk](../../make/utils/defaults.mk):
+
+* Host toolchain: `toolchains/hosts/<host>/host.mk`, then
+  `runtime/toolchains/hosts/<host>/host.mk`.
+* Target toolchain: `toolchains/targets/<target>/target.mk`, then
+  `runtime/toolchains/targets/<target>/target.mk`.
+
+Override either with `STAPPLER_HOST_FILE=` / `STAPPLER_TARGET_FILE=`. Select the
+target with `STAPPLER_TARGET=<triple>`. A `+sprt` suffix
+(e.g. `aarch64-apple-macosx+sprt`) selects the variant whose toolchain has the
+Xenolith Runtime integrated; otherwise the runtime in
+[runtime/runtime.mk](../../runtime/runtime.mk) is built and linked.
+
+## Android
+
+Android is a special target (`unknown-ndk-linux-android`) handled by
+[make/android-ndk.mk](../../make/android-ndk.mk), which drives `ndk-build`. A
+project enables it by setting:
+
+```make
+LOCAL_ANDROID_MK       := $(LOCAL_ROOT)/proj.android/app/Android.mk
+LOCAL_APPLICATION_MK   := $(LOCAL_ROOT)/proj.android/app/Application.mk
+LOCAL_ANDROID_TARGET   := application
+LOCAL_ANDROID_PLATFORM := android-24
+```
+
+Then `make android` (or `android-release`) builds every ABI. The
+`android-export` goal stages shaders, the generated config, and the app config
+source for the NDK project; projects can extend it (e.g. `tests/window` adds a
+`prepare-android` rule that rsyncs `resources/` into the APK assets).
+
+## Creating a new project — step by step
+
+1. **Create the project directory** next to the SDK (or anywhere, as long as you
+   can reach `make/`):
+
+   ```
+   myproject/
+     Makefile
+     main.cpp
+     src/...
+     shaders/...        (optional)
+   ```
+
+2. **Write `Makefile`.** Start from the template above. Set `STAPPLER_BUILD_ROOT`
+   to the relative path of `make/` (e.g. `../../make` if your project sits two
+   levels under the engine root, like the `tests/*` projects).
+
+3. **Pick your modules.** For a GUI app you typically want at least:
+
+   ```make
+   LOCAL_MODULES := \
+       runtime \
+       xenolith_application \
+       xenolith_renderer_basic2d \
+       xenolith_backend_vk
+   ```
+
+   For a non-graphical Stappler app, `runtime stappler_core` plus whatever you
+   need (`stappler_data`, `stappler_network`, …).
+
+4. **Declare your sources:** `LOCAL_SRCS_DIRS := src`, `LOCAL_MAIN := main.cpp`,
+   `LOCAL_INCLUDES_OBJS := src`.
+
+5. **Add metadata** (`APPCONFIG_APP_NAME`, `APPCONFIG_BUNDLE_NAME`) so the
+   produced binary identifies itself correctly.
+
+6. **Build:** `make -j8` for a native debug build; add `RELEASE=1` or a
+   `STAPPLER_TARGET=` once that works.
+
+If you hit a configuration problem, run with `verbose=1` — the build prints a
+detailed trace of toolchain discovery, the resolved module list, and every
+command.
+
+## Editor integration
+
+These makefiles are driven from VSCode (or a compatible editor) through the
+Makefile Tools and clangd extensions. The repository's
+[.vscode/settings.json](../../.vscode/settings.json) is a working example you can
+mirror for your own project. See [ide.adoc](ide.adoc) for the recommended
+extensions and the full editor setup.

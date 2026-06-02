@@ -18,6 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+SP_USE_STAPPLER_DISTRIB ?= 1
+
 LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 LOCAL_ROOT := $(dir $(THIS_FILE))
 
@@ -34,7 +36,12 @@ SP_LLVM_VER := 21
 MAKE_SRC_VER := 4.4.1
 MAKE_SRC_TARBALL := src/make-$(MAKE_SRC_VER).tar.lz
 MAKE_SRC_DIR := src/make-$(MAKE_SRC_VER)
+
+ifdef SP_USE_STAPPLER_DISTRIB
+MAKE_SRC_URL := ftp://stappler.dev/infrastructure/make-$(MAKE_SRC_VER)/make-$(MAKE_SRC_VER).tar.lz
+else
 MAKE_SRC_URL := https://ftp.gnu.org/gnu/make/make-$(MAKE_SRC_VER).tar.lz
+endif
 
 $(MAKE_SRC_TARBALL):
 	mkdir -p src
