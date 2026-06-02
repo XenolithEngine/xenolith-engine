@@ -265,8 +265,6 @@ struct SPRT_LOCAL Pool : public AllocPlacement {
 	Status userdata_get(void **data, const char *key, size_t);
 };
 
-using HashFunc = uint32_t (*)(const char *key, size_t *klen);
-
 struct SPRT_LOCAL HashEntry {
 	HashEntry *next;
 	uint32_t hash;
@@ -294,13 +292,11 @@ struct SPRT_LOCAL HashTable {
 	HashEntry **array;
 	HashIndex iterator; /* For apr_hash_first(NULL, ...) */
 	uint32_t count, max, seed;
-	HashFunc hash_func;
 	HashEntry *free; /* List of recycled entries */
 
 	static void init(HashTable *ht, Pool *pool);
 
 	static HashTable *make(Pool *pool);
-	static HashTable *make(Pool *pool, HashFunc);
 
 	HashIndex *first(Pool *p = nullptr);
 

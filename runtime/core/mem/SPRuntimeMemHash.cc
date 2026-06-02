@@ -44,18 +44,11 @@ void HashTable::init(HashTable *ht, Pool *pool) {
 	ht->seed = (unsigned int)((now >> 32) ^ now ^ (uintptr_t)pool ^ (uintptr_t)ht ^ (uintptr_t)&now)
 			- 1;
 	ht->array = alloc_array(ht, ht->max);
-	ht->hash_func = nullptr;
 }
 
 HashTable *HashTable::make(Pool *pool) {
 	HashTable *ht = (HashTable *)pool->palloc(sizeof(HashTable));
 	init(ht, pool);
-	return ht;
-}
-
-HashTable *HashTable::make(Pool *pool, HashFunc hash_func) {
-	HashTable *ht = make(pool);
-	ht->hash_func = hash_func;
 	return ht;
 }
 
@@ -126,11 +119,7 @@ static HashEntry **find_entry(HashTable *ht, const void *key, size_t klen, const
 	HashEntry **hep, *he;
 	unsigned int hash;
 
-	if (ht->hash_func) {
-		hash = ht->hash_func((const char *)key, &klen);
-	} else {
-		hash = s_hashfunc_default((const char *)key, &klen, ht->seed);
-	}
+	hash = s_hashfunc_default((const char *)key, &klen, ht->seed);
 
 	/* scan linked list */
 	for (hep = &ht->array[hash & ht->max], he = *hep; he; hep = &he->next, he = *hep) {
@@ -170,7 +159,6 @@ HashTable *HashTable::copy(Pool *pool) const {
 	ht->count = count;
 	ht->max = max;
 	ht->seed = seed;
-	ht->hash_func = hash_func;
 	ht->array = (HashEntry **)((char *)ht + sizeof(HashTable));
 
 	new_vals = (HashEntry *)((char *)(ht) + sizeof(HashTable) + sizeof(*ht->array) * (max + 1));
@@ -249,7 +237,6 @@ HashTable *HashTable::merge(Pool *p, const HashTable *overlay, merge_fn merger,
 	res = (HashTable *)p->palloc(sizeof(HashTable));
 	res->pool = p;
 	res->free = nullptr;
-	res->hash_func = this->hash_func;
 	res->count = this->count;
 	res->max = (overlay->max > this->max) ? overlay->max : this->max;
 	if (this->count + overlay->count > res->max) {
@@ -276,11 +263,9 @@ HashTable *HashTable::merge(Pool *p, const HashTable *overlay, merge_fn merger,
 
 	for (k = 0; k <= overlay->max; k++) {
 		for (iter = overlay->array[k]; iter; iter = iter->next) {
-			if (res->hash_func) {
-				hash = res->hash_func((const char *)iter->key, &iter->klen);
-			} else {
-				hash = s_hashfunc_default((const char *)iter->key, &iter->klen, res->seed);
-			}
+			// use a local length copy so the (const) overlay's entries are not mutated
+			size_t klen = iter->klen;
+			hash = s_hashfunc_default((const char *)iter->key, &klen, res->seed);
 			i = hash & res->max;
 			for (ent = res->array[i]; ent; ent = ent->next) {
 				if ((ent->klen == iter->klen)
