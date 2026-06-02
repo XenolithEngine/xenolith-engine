@@ -1,0 +1,225 @@
+# Stappler Runtime base16 / base64 utilities
+
+Binary-to-text codecs for hexadecimal (base16), standard base64, and URL-safe
+base64. Each codec offers a buffer form (you supply the output storage) and a
+callback form (a temporary is allocated, filled, and handed to your callback).
+
+Sources:
+
+* base64 / base64url: [base64.h](../../../runtime/include/sprt/runtime/utils/base64.h)
+* base16 (hex): [base16.h](../../../runtime/include/sprt/runtime/utils/base16.h)
+* Implementation: [runtime_core_base64.cpp](../../../runtime/core/runtime_core_base64.cpp)
+
+The three codecs live in separate namespaces:
+
+[cols="1,2,2"]
+|===
+| Namespace | Alphabet | Padding
+
+| `sprt::base16`    | `0-9 a-f` / `0-9 A-F` (hex) | n/a
+| `sprt::base64`    | `A-Z a-z 0-9 + /`           | `=`
+| `sprt::base64url` | `A-Z a-z 0-9 - _`           | none
+|===
+
+---
+
+## Common call patterns
+
+Every codec exposes the same two shapes.
+
+### Buffer form
+
+```c
+size_t encode(const uint8_t *in, size_t insize, char *out, size_t outsize, ...);
+size_t decode(const char *in, size_t insize, uint8_t *out, size_t outsize);
+```
+
+* Writes into `out` and returns the number of elements written.
+* Writes **at most** `outsize` elements — if `out` is too small the result is
+  truncated (never overflowed). Size `out` with the helpers below to avoid that.
+* Does **not** NUL-terminate `out` (the buffer form returns a length).
+
+### Callback form
+
+```c
+size_t encode(const uint8_t *in, size_t insize, const callback<void(const char *, size_t)> &, ...);
+size_t decode(const char *in, size_t insize, const callback<void(const uint8_t *, size_t)> &);
+```
+
+* Allocates a temporary (via `__sprt_malloca` — stack for small inputs, heap for
+  large), encodes/decodes into it, and invokes the callback with `(ptr, length)`.
+* The **encode** callback buffer is NUL-terminated (`ptr[length] == 0`); the decode
+  buffer is raw bytes.
+* The pointer passed to the callback is valid **only for the duration of the
+  callback** — copy it if you need to keep it.
+* Returns the produced length, or `0` if the temporary allocation failed (in which
+  case the callback is not invoked).
+
+### Sizing helpers
+
+```c
+constexpr size_t getEncodeSize(size_t inputLen);   // bytes needed to encode
+constexpr size_t getDecodeSize(size_t inputLen);   // bytes needed to decode
+```
+
+Use these to size a buffer-form output (add 1 if you want room for a NUL):
+
+[cols="1,2,2"]
+|===
+| Codec | getEncodeSize(n) | getDecodeSize(n)
+
+| base16 | `n * 2`                  | `n / 2`
+| base64 | `ceil(n/3) * 4` (exact, with padding) | `ceil(n/4) * 3` (upper bound)
+| base64url | shares base64's helper (an *upper bound*, since no padding is emitted) | shares base64's
+|===
+
+NOTE: `getDecodeSize` (and `base64url`'s `getEncodeSize`) are **upper bounds**, not
+exact: padding, whitespace, and the absence of `=` mean the real output can be
+smaller. Always use the codec's return value as the true length.
+
+NOTE: These helpers are `constexpr` and do not guard against `size_t` overflow —
+that can only happen for inputs far larger than any allocatable buffer (see the
+note in the headers). For all real inputs they are exact/upper-bound as described.
+
+---
+
+## `sprt::base64`
+
+Standard base64 (RFC 4648 §4): the `+/` alphabet with `=` padding.
+
+```c
+size_t encode(const uint8_t *in, size_t insize, char *out, size_t outsize);
+size_t encode(const uint8_t *in, size_t insize, const callback<void(const char *, size_t)> &);
+size_t decode(const char *in, size_t insize, uint8_t *out, size_t outsize);
+size_t decode(const char *in, size_t insize, const callback<void(const uint8_t *, size_t)> &);
+```
+
+* `encode` always emits `=` padding so the output length is a multiple of 4.
+* `decode` is **lenient**: any character outside the alphabet (whitespace,
+  newlines, stray punctuation, `=`) is silently skipped, and it accepts the
+  URL-safe characters `-`/`_` as well as `+`/`/`. It decodes whatever valid
+  4-character groups it can assemble.
+
+---
+
+## `sprt::base64url`
+
+URL- and filename-safe base64 (RFC 4648 §5): the `-_` alphabet, **no padding**.
+
+```c
+size_t encode(const uint8_t *in, size_t insize, char *out, size_t outsize);
+size_t encode(const uint8_t *in, size_t insize, const callback<void(const char *, size_t)> &);
+
+using sprt::base64::decode;          // base64url has no separate decoder
+using sprt::base64::getEncodeSize;   // shared (upper bound here — no padding emitted)
+using sprt::base64::getDecodeSize;
+```
+
+* `encode` omits padding, so the output is shorter than `getEncodeSize` for inputs
+  whose length is not a multiple of 3.
+* There is no dedicated `base64url::decode` — use `base64::decode`, whose lenient
+  table already accepts `-`/`_`. (It also accepts `+`/`/`, so it round-trips both
+  variants.)
+
+---
+
+## `sprt::base16` (hex)
+
+```c
+size_t encode(const uint8_t *in, size_t insize, char *out, size_t outsize, bool upper = true);
+size_t encode(const uint8_t *in, size_t insize, const callback<void(const char *, size_t)> &, bool upper = true);
+size_t decode(const char *in, size_t insize, uint8_t *out, size_t outsize);
+size_t decode(const char *in, size_t insize, const callback<void(const uint8_t *, size_t)> &);
+```
+
+* `upper` selects `A-F` (default) vs `a-f` for the encoded digits.
+* `decode` consumes hex **digit pairs**; a trailing unpaired digit on odd-length
+  input is ignored. Characters that are not hex digits map to nibble `0` (the
+  decoder is lenient and does not validate) — pre-validate the input if strictness
+  matters.
+
+### Single-value helpers
+
+```c
+const char *toHex(const uint8_t &byte, bool upper);   // 2-char string for one byte ("ff"/"FF")
+uint8_t     toChar(const char &hexDigit);             // one hex char → nibble (0..15; 0 if invalid)
+uint8_t     toChar(const char &hi, const char &lo);   // two hex chars → byte
+```
+
+`toHex` returns a pointer to a static 2-character string (e.g. `"a0"`), so it is
+zero-allocation and the result is always valid.
+
+---
+
+## Usage examples
+
+### Encode bytes to a base64 string (callback form)
+
+```cpp
+#include <sprt/runtime/utils/base64.h>
+using namespace sprt;
+
+base64::encode(data, dataLen, [](const char *str, size_t len) {
+    // str is NUL-terminated; valid only inside this callback
+    sendHeader(StringView(str, len));
+});
+```
+
+### Decode base64 into a caller buffer
+
+```cpp
+StringView b64 = "SGVsbG8=";
+uint8_t buf[base64::getDecodeSize(64)];           // generous upper bound
+size_t n = base64::decode(b64.data(), b64.size(), buf, sizeof(buf));
+use(buf, n);                                       // n == actual decoded length
+```
+
+### URL-safe base64 (no padding)
+
+```cpp
+base64url::encode(token, tokenLen, [](const char *s, size_t n) {
+    setCookie(StringView(s, n));                   // e.g. " a-b_c" style, no '='
+});
+// decode with the shared decoder:
+base64url::decode(s, n, [](const uint8_t *b, size_t len) { restore(b, len); });
+```
+
+### Hex encode/decode
+
+```cpp
+#include <sprt/runtime/utils/base16.h>
+
+base16::encode(hash, hashLen, [](const char *hex, size_t n) {
+    log(StringView(hex, n));                        // lowercase or uppercase per `upper`
+}, /*upper*/ false);
+
+uint8_t out[base16::getDecodeSize(hexLen)];
+size_t n = base16::decode(hexStr, hexLen, out, sizeof(out));
+```
+
+### One byte at a time
+
+```cpp
+const char *hi = base16::toHex(0xC3, true);        // "C3"
+uint8_t b = base16::toChar('C', '3');              // 0xC3
+```
+
+---
+
+## Behavior, safety and caveats
+
+* *No overflow of the output buffer.* The buffer-form `encode`/`decode` write at
+  most `outsize` elements and return the count actually written; pass a buffer
+  sized from `getEncodeSize`/`getDecodeSize` to get the full result.
+* *Callback buffers are transient.* The pointer handed to a callback points at a
+  temporary freed when the callback returns; copy out what you need.
+* *Allocation failure.* The callback forms return `0` (and skip the callback) if
+  the temporary cannot be allocated — check the return value for large inputs.
+* *Lenient decoders.* `base64::decode` skips non-alphabet bytes (so embedded
+  whitespace/newlines are fine) and accepts both `+/` and `-_`. `base16::decode`
+  maps non-hex characters to `0` and drops a trailing odd digit. Neither reports
+  malformed input — validate first if you require strict parsing.
+* *Not constant-time.* These codecs are not designed to be timing-safe; do not use
+  them to compare secrets. Use a dedicated constant-time comparison for that.
+* *`getDecodeSize` / `base64url` `getEncodeSize` are upper bounds.* Trust the
+  returned length, not the helper, for the exact output size.

@@ -37,6 +37,7 @@ $(T_TARGET)/usr/include: $(T_INTERMEDIATE)/usr/include | $(T_TARGET)
 	@mkdir -p $(dir $@)
 	rm -rf $@
 	cp -rf $< $@
+	cp -rf runtime/include/* $@
 	rm -rf $@/c++
 
 $(T_TARGET)/lib: $(T_INTERMEDIATE)/lib | $(T_TARGET)

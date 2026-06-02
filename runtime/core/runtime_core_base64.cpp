@@ -139,6 +139,9 @@ size_t encode(const uint8_t *in, size_t insize, char *out, size_t outsize) {
 size_t encode(const uint8_t *in, size_t insize, const callback<void(const char *, size_t)> &cb) {
 	auto outsize = getEncodeSize(insize) + 1;
 	auto d = __sprt_typed_malloca(char, outsize);
+	if (!d) {
+		return 0;
+	}
 
 	auto ret = encode(in, insize, d, outsize);
 
@@ -168,6 +171,9 @@ size_t decode(const char *in, size_t insize, uint8_t *out, size_t outsize) {
 size_t decode(const char *in, size_t insize, const callback<void(const uint8_t *, size_t)> &cb) {
 	auto outsize = getDecodeSize(insize) + 1;
 	auto d = __sprt_typed_malloca(uint8_t, outsize);
+	if (!d) {
+		return 0;
+	}
 
 	auto ret = decode(in, insize, d, outsize);
 
@@ -232,6 +238,9 @@ size_t encode(const uint8_t *in, size_t insize, char *out, size_t outsize) {
 size_t encode(const uint8_t *in, size_t insize, const callback<void(const char *, size_t)> &cb) {
 	auto outsize = getEncodeSize(insize) + 1;
 	auto d = __sprt_typed_malloca(char, outsize);
+	if (!d) {
+		return 0;
+	}
 
 	auto ret = encode(in, insize, d, outsize);
 
@@ -338,6 +347,9 @@ size_t encode(const uint8_t *in, size_t insize, const callback<void(const char *
 		bool upper) {
 	auto outsize = getEncodeSize(insize) + 1;
 	auto d = __sprt_typed_malloca(char, outsize);
+	if (!d) {
+		return 0;
+	}
 
 	auto ret = encode(in, insize, d, outsize, upper);
 
@@ -354,7 +366,9 @@ size_t decode(const char *in, size_t insize, uint8_t *out, size_t outsize) {
 	const auto length = insize;
 
 	size_t bytes = 0;
-	for (size_t i = 0; i < length; i += 2) {
+	// `i + 1 < length` consumes only complete pairs: avoids reading in[i + 1] past the
+	// end on odd-length input (a trailing unpaired hex digit is ignored)
+	for (size_t i = 0; i + 1 < length; i += 2) {
 		if (bytes + 1 <= outsize) {
 			out[bytes] = uint8_t((s_decTable[static_cast<uint8_t>(in[i])] << 4)
 					| s_decTable[static_cast<uint8_t>(in[i + 1])]);
@@ -369,6 +383,9 @@ size_t decode(const char *in, size_t insize, uint8_t *out, size_t outsize) {
 size_t decode(const char *in, size_t insize, const callback<void(const uint8_t *, size_t)> &cb) {
 	auto outsize = getDecodeSize(insize) + 1;
 	auto d = __sprt_typed_malloca(uint8_t, outsize);
+	if (!d) {
+		return 0;
+	}
 
 	auto ret = decode(in, insize, d, outsize);
 

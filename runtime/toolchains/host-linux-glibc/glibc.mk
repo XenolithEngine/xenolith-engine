@@ -18,6 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+SP_USE_STAPPLER_DISTRIB ?= 1
+
+
 SP_SRC_DIR ?= ../src
 
 # Нам нужно чем-то собрать начальную версию clang и glibc. Почему бы не GCC.
@@ -44,6 +47,80 @@ $(1): src/$(2)
 download: $(1)
 endef
 
+
+# Заголовки и glibc должны соотвествовать друг другу и быть минимально доступной версии
+# Используем LTS ядро 5.10
+
+LINUX_KERNEL_FAMILY := v5.x
+LINUX_KERNEL_VER := 5.10.258
+LINUX_KERNEL_TARBALL := linux-$(LINUX_KERNEL_VER).tar.xz
+LINUX_KERNEL_DIR := src/linux
+LINUX_KERNEL_URL := https://cdn.kernel.org/pub/linux/kernel/$(LINUX_KERNEL_FAMILY)/linux-$(LINUX_KERNEL_VER).tar.xz
+
+
+# Используем 2.26 для первоначального запуска, поскольку более поздние требуют libstdc++
+GLIBC_MIN_SRC_VER ?= 2.26
+GLIBC_MIN_SRC_TARBALL := glibc-$(GLIBC_MIN_SRC_VER).tar.xz
+GLIBC_MIN_SRC_DIR := src/glibc-$(GLIBC_MIN_SRC_VER)
+GLIBC_MIN_SRC_URL := https://ftp.gnu.org/gnu/glibc/glibc-$(GLIBC_MIN_SRC_VER).tar.xz
+
+
+# Используем 2.33 как ближайшую к целевой версии ядра
+GLIBC_SRC_VER ?= 2.33
+GLIBC_SRC_TARBALL := glibc-$(GLIBC_SRC_VER).tar.xz
+GLIBC_SRC_DIR := src/glibc-$(GLIBC_SRC_VER)
+GLIBC_SRC_URL := https://ftp.gnu.org/gnu/glibc/glibc-$(GLIBC_SRC_VER).tar.xz
+
+
+# https://ftp.gnu.org/gnu/make/make-4.3.tar.lz
+# Нам нужен make-4.3 чтобы собирать старые версии glibc
+# Более новые версии будут уходить в бесконечный цикл
+MAKE_SRC_VER := 4.3
+MAKE_SRC_TARBALL := make-$(MAKE_SRC_VER).tar.lz
+MAKE_SRC_DIR := src/make-$(MAKE_SRC_VER)
+MAKE_SRC_URL := https://ftp.gnu.org/gnu/make/make-$(MAKE_SRC_VER).tar.lz
+
+
+ifdef SP_USE_STAPPLER_DISTRIB
+
+gmp_TARBALL = gmp-6.2.1.tar.xz
+mpfr_TARBALL = mpfr-4.1.1.tar.xz
+mpc_TARBALL = mpc-1.2.1.tar.gz
+isl_TARBALL = isl-0.24.tar.xz
+gettext_TARBALL = gettext-0.22.5.tar.xz
+
+$(eval $(call download_tarbell_target,$(GCC_SRC_DIR),gcc-$(GCC_SRC_VER).tar.xz,\
+	ftp://stappler.dev/infrastructure/gcc-15.2.0/gcc-$(GCC_SRC_VER).tar.xz))
+
+$(eval $(call download_tarbell_target,src/gmp,$(gmp_TARBALL),\
+	ftp://stappler.dev/infrastructure/gcc-15.2.0/$(gmp_TARBALL)))
+
+$(eval $(call download_tarbell_target,src/mpfr,$(mpfr_TARBALL),\
+	ftp://stappler.dev/infrastructure/gcc-15.2.0//$(mpfr_TARBALL)))
+
+$(eval $(call download_tarbell_target,src/mpc,$(mpc_TARBALL),\
+	ftp://stappler.dev/infrastructure/gcc-15.2.0//$(mpc_TARBALL)))
+
+$(eval $(call download_tarbell_target,src/isl,$(isl_TARBALL),\
+	ftp://stappler.dev/infrastructure/gcc-15.2.0//$(isl_TARBALL)))
+
+$(eval $(call download_tarbell_target,src/gettext,$(gettext_TARBALL),\
+	ftp://stappler.dev/infrastructure/gcc-15.2.0//$(gettext_TARBALL)))
+
+$(eval $(call download_tarbell_target,$(GLIBC_MIN_SRC_DIR),$(GLIBC_MIN_SRC_TARBALL),\
+	ftp://stappler.dev/infrastructure/gcc-15.2.0/$(GLIBC_MIN_SRC_TARBALL)))
+
+$(eval $(call download_tarbell_target,$(MAKE_SRC_DIR),$(MAKE_SRC_TARBALL),\
+	ftp://stappler.dev/infrastructure/gcc-15.2.0/$(MAKE_SRC_TARBALL)))
+
+$(eval $(call download_tarbell_target,$(LINUX_KERNEL_DIR),$(LINUX_KERNEL_TARBALL),\
+	ftp://stappler.dev/infrastructure/linux-5.10/$(LINUX_KERNEL_TARBALL)))
+
+$(eval $(call download_tarbell_target,$(GLIBC_SRC_DIR),$(GLIBC_SRC_TARBALL),\
+	ftp://stappler.dev/infrastructure/linux-5.10/$(GLIBC_SRC_TARBALL)))
+
+else
+
 $(eval $(call download_tarbell_target,$(GCC_SRC_DIR),gcc-$(GCC_SRC_VER).tar.gz,$(GCC_SRC_URL)))
 
 $(eval $(call download_tarbell_target,src/gmp,$(gmp_TARBALL),\
@@ -61,47 +138,15 @@ $(eval $(call download_tarbell_target,src/isl,$(isl_TARBALL),\
 $(eval $(call download_tarbell_target,src/gettext,$(gettext_TARBALL),\
 	https://gcc.gnu.org/pub/gcc/infrastructure/$(gettext_TARBALL)))
 
-
-# Заголовки и glibc должны соотвествовать друг другу и быть минимально доступной версии
-# Используем LTS ядро 5.10
-
-LINUX_KERNEL_FAMILY := v5.x
-LINUX_KERNEL_VER := 5.10.257
-LINUX_KERNEL_TARBALL := linux-$(LINUX_KERNEL_VER).tar.xz
-LINUX_KERNEL_DIR := src/linux
-LINUX_KERNEL_URL := https://cdn.kernel.org/pub/linux/kernel/$(LINUX_KERNEL_FAMILY)/linux-$(LINUX_KERNEL_VER).tar.xz
-
 $(eval $(call download_tarbell_target,$(LINUX_KERNEL_DIR),$(LINUX_KERNEL_TARBALL),$(LINUX_KERNEL_URL)))
-
-
-# Используем 2.26 для первоначального запуска, поскольку более поздние требуют libstdc++
-GLIBC_MIN_SRC_VER ?= 2.26
-GLIBC_MIN_SRC_TARBALL := glibc-$(GLIBC_MIN_SRC_VER).tar.xz
-GLIBC_MIN_SRC_DIR := src/glibc-$(GLIBC_MIN_SRC_VER)
-GLIBC_MIN_SRC_URL := https://ftp.gnu.org/gnu/glibc/glibc-$(GLIBC_MIN_SRC_VER).tar.xz
 
 $(eval $(call download_tarbell_target,$(GLIBC_MIN_SRC_DIR),$(GLIBC_MIN_SRC_TARBALL),$(GLIBC_MIN_SRC_URL)))
 
-
-# Используем 2.33 как ближайшую к целевой версии ядра
-GLIBC_SRC_VER ?= 2.33
-GLIBC_SRC_TARBALL := glibc-$(GLIBC_SRC_VER).tar.xz
-GLIBC_SRC_DIR := src/glibc-$(GLIBC_SRC_VER)
-GLIBC_SRC_URL := https://ftp.gnu.org/gnu/glibc/glibc-$(GLIBC_SRC_VER).tar.xz
-
 $(eval $(call download_tarbell_target,$(GLIBC_SRC_DIR),$(GLIBC_SRC_TARBALL),$(GLIBC_SRC_URL)))
-
-
-# https://ftp.gnu.org/gnu/make/make-4.3.tar.lz
-# Нам нужен make-4.3 чтобы собирать старые версии glibc
-# Более новые версии будут уходить в бесконечный цикл
-MAKE_SRC_VER := 4.3
-MAKE_SRC_TARBALL := make-$(MAKE_SRC_VER).tar.lz
-MAKE_SRC_DIR := src/make-$(MAKE_SRC_VER)
-MAKE_SRC_URL := https://ftp.gnu.org/gnu/make/make-$(MAKE_SRC_VER).tar.lz
 
 $(eval $(call download_tarbell_target,$(MAKE_SRC_DIR),$(MAKE_SRC_TARBALL),$(MAKE_SRC_URL)))
 
+endif
 
 ZLIB_DIR := $(realpath $(SP_SRC_DIR)/zlib)
 

@@ -39,6 +39,11 @@ SPRT_FORCEINLINE VOID InitializeCriticalSection(
 	__sprt_pthread_mutex_init(lpCriticalSection, __SPRT_NULL);
 }
 
+SPRT_FORCEINLINE VOID InitializeCriticalSectionEx(LPCRITICAL_SECTION lpCriticalSection,
+		DWORD dwSpinCount, DWORD Flags) __SPRT_NOEXCEPT {
+	__sprt_pthread_mutex_init(lpCriticalSection, __SPRT_NULL);
+}
+
 SPRT_FORCEINLINE BOOL InitializeCriticalSectionAndSpinCount(LPCRITICAL_SECTION lpCriticalSection,
 		DWORD v) __SPRT_NOEXCEPT {
 	__sprt_pthread_mutex_init(lpCriticalSection, __SPRT_NULL);

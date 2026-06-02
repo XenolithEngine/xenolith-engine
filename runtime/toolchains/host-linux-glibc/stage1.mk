@@ -61,6 +61,7 @@ $(STAGE1_CMAKE_CLANG_TOOLCHAIN): $(STAGE1_SYSROOT)/sysroot
 $(STAGE1_SYSROOT)/sysroot: $(LINUX_HEADERS_DIR)
 	mkdir -p $(STAGE1_SYSROOT)/etc
 	mkdir -p $(STAGE1_SYSROOT)/lib
+	mkdir -p $(STAGE1_SYSROOT)/include
 	cp -rL $(LINUX_HEADERS_DIR)/include/* $(STAGE1_SYSROOT)/include
 	touch $(STAGE1_SYSROOT)/sysroot
 
