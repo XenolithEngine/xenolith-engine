@@ -252,6 +252,9 @@ static void free(apr_pool_t *p, void *ptr, size_t size) {
 static void *palloc(apr_pool_t *p, size_t size) { return pool::alloc(p, size); }
 
 static void *calloc(apr_pool_t *p, size_t count, size_t eltsize) {
+	if (eltsize != 0 && count > Max<size_t> / eltsize) {
+		return nullptr;
+	}
 	size_t s = count * eltsize;
 	auto ptr = pool::alloc(p, s);
 	if (ptr) {
@@ -874,16 +877,14 @@ Status userdata_get(void **data, const char *key, size_t klen, pool_t *pool) {
 	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
-			if (key[klen]) {
-				return Status(apr::pool::userdata_get(data, key, (apr_pool_t *)pool));
-			} else {
-				auto buf = __sprt_typed_malloca(char, klen + 1);
-				__builtin_memcpy(buf, key, klen);
-				buf[klen] = 0;
-				auto ret = Status(apr::pool::userdata_get(data, key, (apr_pool_t *)pool));
-				__sprt_freea(buf);
-				return ret;
-			}
+			// APR requires a NUL-terminated key; build a terminated copy
+			// (we cannot safely probe key[klen] without knowing the buffer length)
+			auto buf = __sprt_typed_malloca(char, klen + 1);
+			__builtin_memcpy(buf, key, klen);
+			buf[klen] = 0;
+			auto ret = Status(apr::pool::userdata_get(data, buf, (apr_pool_t *)pool));
+			__sprt_freea(buf);
+			return ret;
 		}
 	}
 	return ((impl::Pool *)pool)->userdata_get(data, key, klen);

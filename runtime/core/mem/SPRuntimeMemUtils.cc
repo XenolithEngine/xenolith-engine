@@ -194,17 +194,12 @@ void store(pool_t *pool, void *ptr, const StringView &key, __pool_function<void(
 		if (key.terminated()) {
 			pool::userdata_set(h, key.data(), sa_request_store_custom_cleanup, pool);
 		} else {
-#ifdef __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wvla-cxx-extension"
-#endif
-			char buf[key.size() + 1];
+			// userdata_set needs a NUL-terminated key; build a terminated copy
+			auto buf = __sprt_typed_malloca(char, key.size() + 1);
 			__builtin_memcpy(buf, key.data(), key.size());
 			buf[key.size()] = 0;
-			pool::userdata_set(h, key.data(), sa_request_store_custom_cleanup, pool);
-#ifdef __clang__
-#pragma clang diagnostic pop
-#endif
+			pool::userdata_set(h, buf, sa_request_store_custom_cleanup, pool);
+			__sprt_freea(buf);
 		}
 	}
 }

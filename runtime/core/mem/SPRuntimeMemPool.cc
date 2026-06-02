@@ -222,9 +222,14 @@ void *Pool::palloc_self(size_t in_size) {
 }
 
 void *Pool::calloc(size_t count, size_t eltsize) {
+	if (eltsize != 0 && count > Max<size_t> / eltsize) {
+		return nullptr;
+	}
 	size_t s = count * eltsize;
 	auto ptr = alloc(s);
-	__builtin_memset(ptr, 0, s);
+	if (ptr) {
+		__builtin_memset(ptr, 0, s);
+	}
 	return ptr;
 }
 
@@ -233,7 +238,9 @@ void *Pool::pmemdup(const void *m, size_t n) {
 		return nullptr;
 	}
 	void *res = palloc(n);
-	__builtin_memcpy(res, m, n);
+	if (res) {
+		__builtin_memcpy(res, m, n);
+	}
 	return res;
 }
 
