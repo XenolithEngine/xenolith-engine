@@ -1,0 +1,117 @@
+# Linux platform architecture
+
+This document describes the Linux-specific architectural decisions in the
+Stappler / Xenolith engine — how the engine talks to the display server, the
+GPU, the filesystem, and the kernel on Linux, and the reasoning behind those
+choices. For the build-system view of targets and cross-compilation see
+[../articles/ru/general/build.adoc](../articles/ru/general/build.adoc).
+
+Linux is the reference platform: it is the default host triple
+(`x86_64-unknown-linux-gnu`, detected from `uname` in
+[../../make/utils/init-sh.mk](../../make/utils/init-sh.mk)) and the platform the
+toolchain is built on. Two libc variants are supported as targets — glibc
+(`-unknown-linux-gnu`) and musl (`-unknown-linux-musl`).
+
+## Dynamic loading of every system library
+
+The single most important Linux decision: **nothing OS-facing is linked at build
+time.** XCB, Wayland, Vulkan, D-Bus, and xkbcommon are all loaded at runtime
+through the engine's `Dso` (dynamic shared object) wrapper, with function
+pointers resolved by symbol name.
+
+* [../../runtime/libc_wrapper/window/linux/xcb/](../../runtime/libc_wrapper/window/linux/xcb/) — `XcbLibrary` opens `libxcb.so` via `Dso` and binds entry points through a `SPRT_LOAD_PROTO`-style macro.
+* [../../runtime/libc_wrapper/window/linux/wayland/](../../runtime/libc_wrapper/window/linux/wayland/) — `WaylandLibrary` does the same for `libwayland-client`.
+* [../../runtime/libc_wrapper/window/linux/SPRTWinLinuxXkbLibrary.h](../../runtime/libc_wrapper/window/linux/SPRTWinLinuxXkbLibrary.h) — keyboard handling via dlopen'd `libxkbcommon`.
+* [../../runtime/libc_wrapper/window/linux/dbus/](../../runtime/libc_wrapper/window/linux/dbus/) — a hand-written D-Bus client (no `dbus-glib`) for desktop integration (dark-mode / accent-color from the GNOME/KDE settings portal).
+
+Rationale: a single binary runs on a minimal headless server, an X11 desktop, or
+a Wayland desktop without requiring those libraries to be present. Missing a
+library degrades gracefully instead of failing to start.
+
+## Windowing: XCB and Wayland with runtime selection
+
+Both display backends are compiled in and coexist; exactly one is initialised
+per session. [../../runtime/libc_wrapper/window/linux/SPRTWinLinuxController.cc](../../runtime/libc_wrapper/window/linux/SPRTWinLinuxController.cc)
+(`LinuxContextController`, which holds `Rc<XcbLibrary>` and `Rc<WaylandLibrary>`)
+picks the backend from `SP_SESSION_TYPE` / `XDG_SESSION_TYPE`:
+
+* `wayland` → create a `WaylandDisplay`; if presentation is unsupported, fall
+  back to XCB (the XWayland path).
+* `x11` → create an `XcbConnection` directly.
+
+The display server's file descriptor is registered with the dispatch queue
+(`listenPollableHandle()`), so windowing events flow through the same event loop
+as everything else rather than a dedicated thread.
+
+## Vulkan surfaces
+
+[../../xenolith/backend/vk/platform/linux/XLVkPlatformLinux.cc](../../xenolith/backend/vk/platform/linux/XLVkPlatformLinux.cc)
+dynamically loads `libvulkan.so.1` and resolves `vkGetInstanceProcAddr`. Both
+`vkCreateXcbSurfaceKHR` and `vkCreateWaylandSurfaceKHR` are kept in the loaded
+function table ([../../xenolith/backend/vk/XLVkTable.h](../../xenolith/backend/vk/XLVkTable.h)).
+
+The window backend produces a backend-neutral descriptor — `SurfaceInterfaceInfo`
+with `SurfaceBackend::Xcb` (connection + window) or `SurfaceBackend::Wayland`
+(surface + display), defined in
+[../../runtime/include/sprt/runtime/window/surface_info.h](../../runtime/include/sprt/runtime/window/surface_info.h)
+— and the Vulkan backend selects the matching `vkCreate…SurfaceKHR` from it. The
+windowing code never references Vulkan types directly.
+
+## Filesystem and application paths (XDG)
+
+Linux follows the XDG Base Directory specification. The runtime resolves
+`XDG_DATA_HOME` (→ `~/.local/share`), `XDG_CONFIG_HOME` (→ `~/.config`),
+`XDG_STATE_HOME` (→ `~/.local/state`), `XDG_CACHE_HOME` (→ `~/.cache`), and
+`XDG_RUNTIME_DIR` (→ `/run/user/<uid>`) in the Linux filesystem layer under
+[../../runtime/src/](../../runtime/src/). This is gated by
+`APPCONFIG_APP_PATH_COMMON > 0` (see the makefile docs); with it set to `0` the
+app stays self-contained next to its executable.
+
+Platform identity comes from the kernel directly:
+[../../runtime/src/platform/SPRuntimePlatform-linux.cc](../../runtime/src/platform/SPRuntimePlatform-linux.cc)
+reads the machine id from `/etc/machine-id`, the executable path from
+`/proc/self/exe`, and the home directory from `$HOME`.
+
+## Runtime / libc
+
+The engine ships its own libc surface so glibc and musl targets present an
+identical ABI to the rest of the code:
+
+* [../../runtime/include/sprt/c/cross/linux_sprt/](../../runtime/include/sprt/c/cross/linux_sprt/) holds per-architecture (x86_64, aarch64) type and syscall definitions, independent of the underlying libc.
+* The build adds the engine's libc headers with `-idirafter $(RUNTIME_MODULE_DIR)/include_libc` ([../../runtime/runtime.mk](../../runtime/runtime.mk)), so they fill gaps *after* the system headers rather than overriding them.
+* Synchronisation is implemented on raw futex syscalls in [../../runtime/core/linux/sprt_lock.cc](../../runtime/core/linux/sprt_lock.cc), detecting newer kernel futex operations (e.g. `FUTEX_LOCK_PI2`) at runtime and falling back on older kernels — no dependency on the libc's pthread mutex implementation.
+* `libbacktrace` and `libc++abi` are linked statically ([../../runtime/runtime.mk](../../runtime/runtime.mk)).
+
+## Event loop / dispatch
+
+[../../runtime/src/dispatch/platform/linux/SPEvent-linux.h](../../runtime/src/dispatch/platform/linux/SPEvent-linux.h)
+defines a layered dispatch backend that prefers the most capable kernel facility
+available and falls back automatically:
+
+* **io_uring** (`URingData`) on recent kernels for asynchronous I/O,
+* **epoll** (`EPollData`) as the portable fallback,
+* `eventfd` / `timerfd` / `signalfd` for cross-thread wakeups, timers, and signal
+  delivery.
+
+(The Linux dispatch sources also contain an ALooper path, shared with the Android
+build, since Android is a Linux-kernel target — see [android.adoc](android.adoc).)
+
+## Build flags
+
+From [../../make/os/linux.mk](../../make/os/linux.mk):
+
+[cols="1,2"]
+|===
+| Flag | Reason
+
+| `-fvisibility=hidden`, `-fvisibility-inlines-hidden` | Symbols are private by default; only explicit exports are visible — smaller dynsym tables and no accidental ABI surface across shared libraries.
+| `-fno-exceptions` | C++ exceptions are disabled engine-wide on Linux; error handling is explicit.
+| `-frtti` | RTTI is kept on (the framework relies on it).
+| `-fPIC -DPIC` | Position-independent code for the shared-library build.
+| `-rdynamic -Wl,--exclude-libs,ALL` (lib) | Export the library's own dynamic symbols but strip symbols pulled in from static dependencies.
+| `-Wl,-z,defs` (shared-root build) | Fail the link on any undefined symbol instead of deferring to load time.
+| `-fsanitize=address` | Enabled by passing `ASAN=1`.
+|===
+
+Non-NDK Android reuses this same preset with the `ANDROID` config flag instead of
+`LINUX` (`TARGET_SYSTEM == Android`); see [android.adoc](android.adoc).

@@ -18,6 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+GIT_TAG ?= $(shell git describe --tags --abbrev=0)
+
 LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
 SP_NJOBS ?= -j16
@@ -157,7 +159,7 @@ $(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'HOST_LIB_CXXFLAGS :=' >> $@
 	@echo 'HOST_LIB_LDFLAGS :=' >> $@
 
-$(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
+$(OUT_SYSROOT)/release: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++abi.so.1.0 libc++abi.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++abi.so.1.0 libc++abi.so.1
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++.so.1.0 libc++.so
@@ -197,11 +199,12 @@ $(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_
 	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 c++
 	cd $(OUT_SYSROOT)/bin; ln -fs llvm-ar ar
 
+	echo "$(GIT_TAG)" > $@
 	touch $@
 
 download: $(LINUX_HEADERS_DIR) src/gmp src/mpfr src/mpc src/isl src/gettext
 
-out: $(OUT_SYSROOT)/sysroot
+out: $(OUT_SYSROOT)/release
 
 all: stage0 stage1 stage2
 

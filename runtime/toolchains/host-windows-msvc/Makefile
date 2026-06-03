@@ -22,6 +22,8 @@ LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
 SHELL = powershell.exe
 
+GIT_TAG ?= $(shell git describe --tags --abbrev=0)
+
 rule_mkdir = powershell New-Item -ItemType Directory -Force -Path "$(1)" | Out-Null
 rule_rm = powershell 'if (Test-Path "$(1)") { Remove-Item -Recurse -Force -ErrorAction Ignore -Path "$(1)" }'
 rule_cp = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force
@@ -77,7 +79,7 @@ OUT_SYSROOT := ../$(SP_ARCH_CLANG)
 
 include stage0.mk
 
-$(OUT_SYSROOT): $(MAKE_SRC_EXE) $(STAGE0_CLANG_CC) $(STAGE0_GLSLANG)
+$(OUT_SYSROOT)/release: $(MAKE_SRC_EXE) $(STAGE0_CLANG_CC) $(STAGE0_GLSLANG)
 	$(call rule_rm,$(OUT_SYSROOT))
 	$(call rule_mkdir,$(OUT_SYSROOT))
 	$(call rule_mkdir,$(OUT_SYSROOT)/lib)
@@ -98,6 +100,7 @@ $(OUT_SYSROOT): $(MAKE_SRC_EXE) $(STAGE0_CLANG_CC) $(STAGE0_GLSLANG)
 #	$(call rule_cp,$(STAGE0_SYSROOT)/bin/LLVM-C.dll,$(OUT_SYSROOT)/bin)
 #	$(call rule_cp,$(STAGE0_SYSROOT)/bin/libclang.dll,$(OUT_SYSROOT)/bin)
 #	$(call rule_cpr,$(STAGE0_SYSROOT)/include,$(OUT_SYSROOT))
+	Set-Content  -Encoding UTF8 -Path "$@" -Value '$(GIT_TAG)' | Out-Null
 
 $(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))
 	Set-Content  -Encoding UTF8 -Path "$@" -Value 'HOST_ROOT := $$(patsubst %/,%,$$(dir $$(lastword $$(MAKEFILE_LIST))))' | Out-Null
@@ -121,7 +124,7 @@ download: $(MAKE_SRC_DIR) $(LLVM_DIR)
 
 make: $(MAKE_SRC_EXE)
 
-out: stage0 $(OUT_SYSROOT) $(OUT_SYSROOT)/host.mk
+out: stage0 $(OUT_SYSROOT)/release $(OUT_SYSROOT)/host.mk
 
 all: stage0
 

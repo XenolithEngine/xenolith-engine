@@ -1,0 +1,216 @@
+# Windows platform architecture
+
+This document describes the Windows-specific architectural decisions in the
+Stappler / Xenolith engine. Windows is the most divergent target because the
+engine **does not use the Microsoft C runtime (MSVCRT/UCRT) at all** — it ships
+its own freestanding C runtime and binds to system DLLs lazily. That single
+decision shapes everything else here. See also the existing notes in
+[../articles/ru/windows/windows-support.adoc](../articles/ru/windows/windows-support.adoc).
+
+Windows targets use the triple `x86_64-pc-windows-msvc` and are cross-compiled
+from Linux with Clang + LLD; the produced `.exe` can be run and debugged under
+Wine (see [../usage/ide.adoc](../usage/ide.adoc) for the Wine LLDB launch
+config).
+
+## The custom C runtime (`runtime/libc_impl`)
+
+Instead of linking the Microsoft runtime, the engine provides its own under
+[../../runtime/libc_impl/](../../runtime/libc_impl/). The build is told to leave
+the platform runtime out entirely:
+
+* [../../make/os/windows.mk](../../make/os/windows.mk): `-fuse-ld=lld`,
+  `-Xlinker -nodefaultlib` — LLD links, no default libraries are pulled in.
+* [../../runtime/runtime.mk](../../runtime/runtime.mk) (Windows branch): the
+  runtime module depends on `runtime_libc_impl`, links `-limport`, and adds
+  `-nostdlib`.
+* The libc itself is compiled `-nostdinc -ffreestanding`
+  ([../../runtime/libc_impl/libc.mk](../../runtime/libc_impl/libc.mk),
+  [../../runtime/libc_impl/malloc.mk](../../runtime/libc_impl/malloc.mk)).
+
+[../../runtime/libc_impl/src/windows/](../../runtime/libc_impl/src/windows/)
+implements the C/POSIX surface (`startup.cc`, `libc.cc`, `dlfcn.cc`, `file.cc`,
+`mman.cc`, `stat.cc`, `locale.cc`, `specific.cc`, …) on top of Win32/NT APIs, and
+the allocator is **mimalloc**
+([../../runtime/libc_impl/mimalloc/](../../runtime/libc_impl/mimalloc/)) rather
+than the Windows heap.
+
+Why: it makes Windows a fully cross-compilable, reproducible target from Linux,
+gives the engine precise control over startup (TLS callbacks, static
+constructors, security context) and a consistent allocator across all platforms,
+and removes any dependency on which Visual C++ / UCRT redistributable is present
+on the machine.
+
+### musl-derived core, Win32-backed OS layer
+
+The custom libc is not written from scratch — `runtime_libc_impl` is *"based on
+musl-libc with platform-specific extensions"*
+([../../runtime/libc_impl/libc.mk](../../runtime/libc_impl/libc.mk)) and depends
+on `runtime_musl_libc`. The architecture-independent C library is reused verbatim
+from a vendored musl tree
+([../../runtime/musl-libc/](../../runtime/musl-libc/)) by selectively `#include`-ing
+its `.c` files from adapter translation units
+([../../runtime/musl-adapters/](../../runtime/musl-adapters/)). On Windows this
+splits three ways:
+
+* **From musl, on every platform** — `stdlib` (`qsort`, `atoi`, `strtol`,
+  `strtod`, …), the full `math` library, and the secondary string helpers
+  (`strdup`, `strlcpy`, `strtok_r`, `memmem`, `strverscmp`, …). These are
+  included unconditionally in the adapter units.
+* **Skipped on Windows** — the core mem/str family (`memcpy`, `memset`, `strlen`,
+  `strcmp`, …) is guarded by `#if !SPRT_WINDOWS` in
+  [../../runtime/musl-adapters/string/musl_string.c](../../runtime/musl-adapters/string/musl_string.c),
+  because on Windows those come from `ntdll` instead (see the import flags below).
+* **Hand-written Win32** — everything OS-facing (files, `mmap`, threads, locale,
+  `stat`, `dlfcn`, process startup) lives in
+  [../../runtime/libc_impl/src/windows/](../../runtime/libc_impl/src/windows/),
+  wrapping Win32/NT APIs. Per-arch/cross definitions are in
+  [../../runtime/include/sprt/c/cross/windows_sprt/](../../runtime/include/sprt/c/cross/windows_sprt/);
+  `FILETIME` ↔ `timespec` conversion, memory-protection flag mapping, and
+  effective uid/gid from the file-owner SID are in
+  [../../runtime/core/windows/](../../runtime/core/windows/).
+
+So musl provides the portable C standard library, Win32 provides the OS surface,
+and the few performance-critical mem/str primitives are taken from the system.
+
+### Binding to the system: `import.lib` and the import flags
+
+Windows code reaches the OS through two distinct, complementary mechanisms.
+
+**1. Link-time imports via `import.lib`.** The Win32/NT functions the engine
+calls are declared in thin re-export headers under
+[../../runtime/include/sprt/wrappers/windows/](../../runtime/include/sprt/wrappers/windows/),
+and the runtime links a single `-limport`
+([../../runtime/runtime.mk](../../runtime/runtime.mk)). `import.lib` is a genuine
+MSVC-style import library, assembled when the **Windows target toolchain** is
+built: one `.def` file per system DLL lives in
+[../../runtime/include/sprt/wrappers/windows/def/](../../runtime/include/sprt/wrappers/windows/def/)
+(`kernel32.def`, `ntdll.def`, `kernelbase.def`, `user32.def`, `advapi32.def`,
+`ws2_32.def`, `bcrypt.def`, `dbghelp.def`, … — 20 in total), each listing
+`LIBRARY <dll>` and its `EXPORTS`. The toolchain build turns each `.def` into a
+stub with `llvm-lib /def:…` and merges them into `usr/lib/import.lib`
+(`runtime/toolchains/target-windows/init-target.mk`). The PE loader then binds
+those imports to the real DLLs at load time — no Microsoft import libraries are
+involved.
+
+**2. Runtime dynamic loading.** For libraries opened explicitly (and for the
+`dlfcn` API), a separate lazy loader lives in
+[../../runtime/libc_impl/src/windows/dll/](../../runtime/libc_impl/src/windows/dll/)
+(`dllloader.h`, `dlltable.h`): symbols are resolved with the PE loader /
+`GetProcAddress` on first use and cached in a `DllTable`.
+
+#### `__SPRT_WIN_USE_IMPORT_LIB` / `__SPRT_WIN_USE_IMPORT_STRING_LIB`
+
+These two macros, defined (default `1`) in
+[../../runtime/include/sprt/wrappers/windows/__sprt_config.h](../../runtime/include/sprt/wrappers/windows/__sprt_config.h),
+control whether the corresponding declarations carry `__declspec(dllimport)`
+(`__SPRT_DLLIMPORT`, from
+[../../runtime/include/sprt/c/bits/__sprt_def.h](../../runtime/include/sprt/c/bits/__sprt_def.h)).
+They are `#ifndef`-guarded so a build (notably the runtime itself) can override
+them. Note this is independent of `SPRT_API`, which decorates the *runtime's own*
+exported symbols.
+
+* **`__SPRT_WIN_USE_IMPORT_LIB`** → `__SPRT_WIN_IMPORT`, applied to the Win32
+  *system-API* wrappers (`basic_api.h`, `security_api.h`, `iphlpapi.h`,
+  `winsock.h`, `dl_api.h`, `message_api.h`, `__WSAFDIsSet`, …). Marking them
+  `dllimport` lets the linker bind them through `import.lib` to the system DLL
+  exports.
+* **`__SPRT_WIN_USE_IMPORT_STRING_LIB`** → `__SPRT_WIN_STRING_IMPORT`, applied
+  specifically to the mem/str/wcs family (`memcpy`, `memmove`, `memset`,
+  `memcmp`, `strlen`, `strcpy`, `strncpy`, `strstr`, `strchr`, `strcmp`,
+  `strncmp`, `wcscpy`, `wcslen`, …) declared in `__sprt_config.h`. When `1`
+  (default) these are imported — `ntdll.def` exports them, so they resolve to
+  **`ntdll.dll`**'s optimized implementations. When `0`, the wrapper header
+  [../../runtime/include/sprt/wrappers/libc/string.h](../../runtime/include/sprt/wrappers/libc/string.h)
+  instead pulls in inline definitions from the `_cstring_dll` namespace, backed
+  by `__builtin_memcpy` / `__builtin_strlen` / etc.
+
+The mem/str set gets its own toggle because it is special: the compiler emits
+implicit references to `memcpy`/`memset`/`memmove`/`memcmp` even in freestanding
+mode, and these are hot paths. The separate flag lets you choose — bind them to
+`ntdll`, or inline them as compiler builtins — without disturbing the general
+Win32 import decoration. This is also why the core mem/str sources are compiled
+out of the musl adapter on Windows (above): their definitions come from `ntdll`,
+not from musl.
+
+## Windowing: Win32
+
+[../../runtime/libc_wrapper/window/windows/](../../runtime/libc_wrapper/window/windows/)
+wraps the Win32 windowing model:
+
+* `WindowsWindow` (`SPRTWinWindowsWindow.*`) wraps an `HWND`.
+* `WindowClass` (`SPRTWinWindowsWindowClass.*`) registers the `WNDCLASSW` and
+  owns the static `WNDPROC` that dispatches `WM_*` messages (size, move,
+  activate, key, mouse, paint, destroy) to the owning `WindowsWindow`.
+* `MessageWindow` (`SPRTWinWindowsMessageWindow.*`) is a hidden message-only
+  window for system notifications.
+* `WindowsDisplayConfigManager` queries monitors and applies display-mode / DPI
+  changes.
+
+## Vulkan surfaces
+
+[../../xenolith/backend/vk/platform/win32/XLVkPlatformWin32.cc](../../xenolith/backend/vk/platform/win32/XLVkPlatformWin32.cc)
+loads `vulkan-1.dll` dynamically through the engine's `Dso` loader and resolves
+`vkGetInstanceProcAddr`. Surfaces are created with the `VK_KHR_win32_surface`
+extension (`vkCreateWin32SurfaceKHR` in
+[../../xenolith/backend/vk/XLVkTable.h](../../xenolith/backend/vk/XLVkTable.h))
+from the window's `HINSTANCE` + `HWND`, delivered as a `SurfaceBackend::Win32`
+descriptor.
+
+## AppContainer sandboxing
+
+Windows ties resource paths and sandboxing to `APPCONFIG_APP_PATH_COMMON` (see
+the makefile docs). The behaviour is implemented in
+[../../runtime/libc_wrapper/platform/windows/platform.cc](../../runtime/libc_wrapper/platform/windows/platform.cc):
+
+[cols="1,3"]
+|===
+| `APPCONFIG_APP_PATH_COMMON` | Behaviour
+
+| `1` | Use the system AppData folder (`SHGetKnownFolderPath`, Roaming AppData).
+| `2` | Redirect application files to AppContainer-specific paths.
+| `3` | Run the process **inside** an AppContainer sandbox named after `APPCONFIG_BUNDLE_NAME`.
+|===
+
+For mode 3 the runtime creates an AppContainer profile (`CreateAppContainerProfile`),
+grants access to selected known folders by editing ACLs
+(`SetNamedSecurityInfoW`), and relaunches itself inside the container
+(`SECURITY_CAPABILITIES` + `InitializeProcThreadAttributeList` +
+`CreateProcessAsUserW`), tearing the profile down on exit.
+
+## Filesystem
+
+Memory-mapped file access uses the Win32 mapping APIs in
+[../../stappler/filesystem/platform/SPFilesystemMmap-win32.cc](../../stappler/filesystem/platform/SPFilesystemMmap-win32.cc)
+(`CreateFileW` + `CreateFileMapping` + `MapViewOfFile`, with read/write/exec and
+copy-on-write protection flags translated to `FILE_MAP_*` / `PAGE_*`). Paths are
+POSIX-style internally and converted to native Windows paths at the API boundary
+(`__sprt_fpath_to_native`); strings cross the boundary as UTF-16 ↔ UTF-8.
+
+## Event loop / dispatch
+
+[../../runtime/src/dispatch/platform/windows/](../../runtime/src/dispatch/platform/windows/)
+builds the dispatch queue on **I/O Completion Ports (IOCP)** — the idiomatic
+Windows async-I/O mechanism — with `SPEventThreadIocp`, `SPEventTimerIocp`, and
+`SPEventPollIocp` sources (`SPEvent-iocp.*`, `SPEvent-windows.*`), plus a
+message/`SetTimer`-based timer (`SPEventTimerWin.*`) for fine-grained timers. The
+same POSIX-style dispatch API is exposed to application code as on every other
+platform.
+
+## Build flags
+
+From [../../make/os/windows.mk](../../make/os/windows.mk):
+
+[cols="1,2"]
+|===
+| Flag | Reason
+
+| `-fuse-ld=lld` | Use LLVM LLD so the whole chain works cross-hosted from Linux.
+| `-Xlinker -nodefaultlib` / `-nostdlib` (runtime) | Do not link MSVCRT/UCRT; the engine's own libc is used.
+| `-g -gcodeview` (debug) | Emit CodeView debug info compatible with PDB/WinDbg/LLDB.
+| `-D_MT`, `-Wno-microsoft-include`, `-Wno-unused-command-line-argument` | MSVC-ABI compatibility quirks.
+| output naming | `.exe` / `.dll` / `.lib`, with **no** `lib` prefix (`OSTYPE_LIB_PREFIX :=`).
+| `-limport` (runtime) | Bind to the import shim that fronts the lazy system-DLL loader.
+|===
+
+`WIN32` and `WINDOWS` config flags are defined for conditional code in modules
+(`ifdef WIN32` / `TARGET_SYSTEM == Windows`).
