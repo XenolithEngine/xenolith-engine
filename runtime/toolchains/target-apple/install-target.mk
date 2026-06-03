@@ -18,6 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+GIT_TAG ?= $(shell git describe --tags --abbrev=0)
+
 T_INTERMEDIATE ?= $(abspath $(LIBS_MAKE_ROOT))/intermediate/x86_64-unknown-linux-gnu
 T_TARGET ?= $(abspath $(LIBS_MAKE_ROOT))/targets/x86_64-unknown-linux-gnu
 
@@ -127,7 +129,11 @@ all: $(T_TARGET)/usr/lib/libsprt.tbd $(T_TARGET)/runtime.mk
 
 endif
 
-all: $(ALL_TARGETS) $(T_TARGET)
+$(T_TARGET)/release: $(T_TARGET)
+	echo "$(GIT_TAG)" > $@
+	touch $@
+
+all: $(ALL_TARGETS) $(T_TARGET) $(T_TARGET)/release
 
 .PHONY: all
 .DEFAULT_GOAL := all

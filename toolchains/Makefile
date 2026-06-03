@@ -18,51 +18,143 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-GIT_TAG ?=v0-alpha3
-GIT_RELEASE_SOURCE := https://github.com/libstappler/stappler-toolchains/releases/download/$(GIT_TAG)
+GIT_TAG ?= sdk-v0alpha0
+
+include ../runtime/toolchains/common/utils/detect-platform.mk
+include ../runtime/toolchains/common/utils/init-shell.mk
+
+GIT_RELEASE_SOURCE := ftp://stappler.dev/releases/$(GIT_TAG)
 
 
-ANDROID_ARCHS := \
-	aarch64-linux-android \
-	armv7a-linux-androideabi \
-	i686-linux-android \
-	x86_64-linux-android
+ifeq ($(findstring Windows,$(OS)),Windows)
+SHELL = powershell.exe
+wget_rule = Invoke-WebRequest -Uri "$(1)" -OutFile "$2"
+else
+wget_rule = wget $1 -O $2
+endif
 
-ANDROID_TARGETS := \
-	armeabi-v7a \
-	arm64-v8a \
-	x86 \
-	x86_64
 
-LINUX_ARCHS := \
-	x86_64-unknown-linux-gnu
+hosts/%.tar.xz:
+	@$(call rule_mkdir,hosts)
+	$(call wget_rule,$(GIT_RELEASE_SOURCE)/hosts/$(notdir $@),$@)
 
-targets/android/armeabi-v7a: targets/armv7a-linux-androideabi
-	mkdir -p targets/android
-	cd targets/android; ln -s ../armv7a-linux-androideabi armeabi-v7a
-
-targets/android/arm64-v8a: targets/aarch64-linux-android
-	mkdir -p targets/android
-	cd targets/android; ln -s ../aarch64-linux-android arm64-v8a
-
-targets/android/x86: targets/i686-linux-android
-	mkdir -p targets/android
-	cd targets/android; ln -s ../i686-linux-android x86
-
-targets/android/x86_64: targets/x86_64-linux-android
-	mkdir -p targets/android
-	cd targets/android; ln -s ../x86_64-linux-android x86_64
+hosts/%: hosts/%.tar.xz
+	$(call rule_rm,$@)
+	cd hosts; tar -xf $(notdir $<)
 
 targets/%.tar.xz:
-	wget $(GIT_RELEASE_SOURCE)/$(notdir $@) -O $@
+	@$(call rule_mkdir,targets)
+	$(call wget_rule,$(GIT_RELEASE_SOURCE)/targets/$(notdir $@),$@)
 
 targets/%: targets/%.tar.xz
+	$(call rule_rm,$@)
 	cd targets; tar -xf $(notdir $<)
 
-linux: $(addprefix targets/,$(LINUX_ARCHS))
+host: hosts/$(HOST_ID)
 
-android: $(addprefix targets/,$(ANDROID_ARCHS)) $(addprefix targets/android/,$(ANDROID_TARGETS))
+target: targets/$(HOST_ID)
 
-all: linux android
+all: host target
 
-.PHONY: all android linux
+clean:
+	@$(call rule_rm,targets)
+	@$(call rule_rm,hosts)
+
+.PHONY: all host target clean
+
+
+#
+# Android targets
+#
+
+target-unknown-ndk-linux-android: targets/unknown-ndk-linux-android
+target-aarch64-unknown-linux-android: targets/aarch64-unknown-linux-android
+target-armv7a-unknown-linux-androideabi: targets/armv7a-unknown-linux-androideabi
+target-i686-unknown-linux-android: targets/i686-unknown-linux-android
+target-x86_64-unknown-linux-android: targets/x86_64-unknown-linux-android
+
+target-android-ndk: target-unknown-ndk-linux-android
+
+target-android: \
+	target-aarch64-unknown-linux-android \
+	target-armv7a-unknown-linux-androideabi \
+	target-i686-unknown-linux-android \
+	target-x86_64-unknown-linux-android
+
+
+#
+# Linux targets
+#
+
+target-x86_64-unknown-linux-gnu: targets/x86_64-unknown-linux-gnu
+target-aarch64-unknown-linux-gnu: targets/aarch64-unknown-linux-gnu
+target-riscv64-unknown-linux-gnu: targets/riscv64-unknown-linux-gnu
+
+target-linux: \
+	target-x86_64-unknown-linux-gnu \
+	target-aarch64-unknown-linux-gnu \
+	target-riscv64-unknown-linux-gnu \
+
+
+#
+# Apple targets
+#
+
+target-x86_64-apple-macosx: targets/x86_64-apple-macosx
+target-aarch64-apple-macosx: targets/aarch64-apple-macosx
+target-x86_64-apple-macosx+sprt: targets/x86_64-apple-macosx+sprt
+target-aarch64-apple-macosx+sprt: targets/aarch64-apple-macosx+sprt
+target-aarch64-apple-ios: targets/aarch64-apple-ios
+target-x86_64-apple-ios-simulator: targets/x86_64-apple-ios-simulator
+target-aarch64-apple-ios-simulator: targets/aarch64-apple-ios-simulator
+
+target-macosx: \
+	target-x86_64-apple-macosx \
+	target-aarch64-apple-macosx \
+	target-x86_64-apple-macosx+sprt \
+	target-aarch64-apple-macosx+sprt
+
+target-ios: \
+	target-aarch64-apple-ios \
+	target-x86_64-apple-ios-simulator \
+	target-aarch64-apple-ios-simulator
+
+target-apple: target-macosx # target-ios
+
+
+#
+# Windows targets
+#
+
+target-x86_64-pc-windows-msvc: targets/x86_64-pc-windows-msvc
+target-aarch64-pc-windows-msvc: targets/aarch64-pc-windows-msvc
+
+target-windows: \
+	target-x86_64-pc-windows-msvc \
+#	target-aarch64-pc-windows-msvc
+
+.PHONY:\
+	target-x86_64-unknown-linux-gnu \
+	target-aarch64-unknown-linux-gnu \
+	target-riscv64-unknown-linux-gnu \
+	target-android-ndk \
+	target-unknown-ndk-linux-android \
+	target-android \
+	target-aarch64-unknown-linux-android \
+	target-armv7a-unknown-linux-androideabi \
+	target-armv7a-unknown-linux-androideabi \
+	target-i686-unknown-linux-android \
+	target-x86_64-unknown-linux-android \
+	target-apple \
+	target-macosx \
+	target-x86_64-apple-macosx \
+	target-aarch64-apple-macosx \
+	target-x86_64-apple-macosx+sprt \
+	target-aarch64-apple-macosx+sprt \
+	target-ios \
+	target-aarch64-apple-ios \
+	target-x86_64-apple-ios-simulator \
+	target-aarch64-apple-ios-simulator \
+	target-windows \
+	target-x86_64-pc-windows-msvc \
+	target-aarch64-pc-windows-msvc

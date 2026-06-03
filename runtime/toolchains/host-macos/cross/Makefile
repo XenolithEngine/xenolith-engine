@@ -18,6 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+GIT_TAG ?= $(shell git describe --tags --abbrev=0)
+
 SP_USE_STAPPLER_DISTRIB ?= 1
 
 LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
@@ -358,7 +360,7 @@ $(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'HOST_LIB_CXXFLAGS :=' >> $@
 	@echo 'HOST_LIB_LDFLAGS :=' >> $@
 
-$(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
+$(OUT_SYSROOT)/release: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
 	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.21.1.8.dylib liblldb.dylib
 	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.dylib libLLVM-21.dylib
 
@@ -387,9 +389,10 @@ $(OUT_SYSROOT)/sysroot: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_
 	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 c++
 	cd $(OUT_SYSROOT)/bin; ln -fs llvm-ar ar
 
+	echo "$(GIT_TAG)" > $@
 	touch $@
 
-out: $(OUT_SYSROOT)/sysroot
+out: $(OUT_SYSROOT)/release
 
 all: host target
 

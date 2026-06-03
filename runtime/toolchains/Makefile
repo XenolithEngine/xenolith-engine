@@ -60,7 +60,7 @@ TOOLCHAIN_INTERMEDIATE := $(abspath $(LIBS_MAKE_ROOT))/intermediate
 TOOLCHAIN_TARGETS := $(abspath $(LIBS_MAKE_ROOT))/targets
 
 prepare:
-#	$(call rule_rm,$(TMP_DIR))
+	$(call rule_rm,$(TMP_DIR))
 
 download: $(ALL_SRC)
 
@@ -73,35 +73,12 @@ clean:
 
 xwin: $(SRC_ROOT)/xwin/splat
 
-
-$(TOOLCHAIN_INTERMEDIATE)/x86_64-pc-windows-msvc:
-	$(MKDIR) $(TOOLCHAIN_INTERMEDIATE)
-	$(MAKE) -C toolchain-windows OUT_SYSROOT=$(LIBS_MAKE_ROOT)/intermediate/x86_64-pc-windows-msvc out
-	$(MAKE) -C windows x86_64 OUT_SYSROOT=$(LIBS_MAKE_ROOT)/intermediate/x86_64-pc-windows-msvc
-
-$(TOOLCHAIN_TARGETS)/x86_64-pc-windows-msvc: $(TOOLCHAIN_INTERMEDIATE)/x86_64-pc-windows-msvc
-	$(MAKE) -f windows.mk T_INTERMEDIATE=$(TOOLCHAIN_INTERMEDIATE)/x86_64-pc-windows-msvc \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-pc-windows-msvc
-
-linux-glibc-x86_64: $(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu
-
-windows-x86_64: $(TOOLCHAIN_TARGETS)/x86_64-pc-windows-msvc
-
-android.tar.xz: $(TOOLCHAIN_TARGETS)/android
-	tar -cJf $@ $<
-
-x86_64-unknown-linux-gnu.tar.xz: $(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu
-	tar -cJf $@ -C $(TOOLCHAIN_TARGETS) x86_64-unknown-linux-gnu
-
-x86_64-pc-windows-msvc.tar.xz: $(TOOLCHAIN_TARGETS)/x86_64-pc-windows-msvc
-	tar -cJf $@ -C $(TOOLCHAIN_TARGETS) x86_64-pc-windows-msvc
-
 host:
 	$(MAKE) -C $(HOST_TOOLCHAIN) out OUT_SYSROOT=$(abspath hosts/$(HOST_ID))
 
 
 #
-# Android NDK targets
+# Android targets
 #
 
 target-unknown-ndk-linux-android:
@@ -205,7 +182,33 @@ clean-targets:
 	rm -rf target-apple/intermediate
 	rm -rf target-android/intermediate
 
+
+HOSTS_AVAILABLE = $(wildcard hosts/*/)
+TARGETS_AVAILABLE = $(wildcard targets/*/)
+
+hosts/%.tar.xz: hosts/%
+	cd hosts; tar cJf $*.tar.xz $*
+
+hosts/%.sig: hosts/%
+	cd hosts; gpg --detach-sign $*
+
+targets/%.tar.xz: targets/%
+	cd targets; tar cJf $*.tar.xz $*
+
+targets/%.sig: targets/%
+	cd targets; gpg --detach-sign $*
+
+hosts-export:\
+	$(addsuffix .tar.xz,$(patsubst %/,%,$(HOSTS_AVAILABLE))) \
+	$(addsuffix .tar.xz.sig,$(patsubst %/,%,$(HOSTS_AVAILABLE)))
+
+targets-export:\
+	$(addsuffix .tar.xz,$(patsubst %/,%,$(TARGETS_AVAILABLE))) \
+	$(addsuffix .tar.xz.sig,$(patsubst %/,%,$(TARGETS_AVAILABLE)))
+
 .PHONY: all clean prepare compress host download \
+	hosts-export \
+	targets-export \
 	clean-targets \
 	target-linux \
 	target-x86_64-unknown-linux-gnu \

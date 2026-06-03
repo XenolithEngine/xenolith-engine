@@ -1,0 +1,143 @@
+# Android platform architecture
+
+This document describes the Android-specific architectural decisions in the
+Stappler / Xenolith engine — the two Android build modes, the NDK/Gradle
+integration, the JNI bridge and `ANativeActivity` lifecycle, asset access through
+the APK, and the native event loop. For the build-system view see
+[../usage/makefiles.adoc](../usage/makefiles.adoc) and
+[../articles/ru/general/build.adoc](../articles/ru/general/build.adoc).
+
+## Two Android modes: `Android` vs `Android-NDK`
+
+The engine distinguishes two ways of targeting Android, resolved in
+[../../make/utils/apply-toolchain.mk](../../make/utils/apply-toolchain.mk):
+
+* **`Android`** (`TARGET_SYSTEM = Android`) — a plain cross-compile that reuses
+  the Linux OS preset with the `ANDROID` config flag instead of `LINUX`
+  ([../../make/os/linux.mk](../../make/os/linux.mk)), linking the engine's own
+  integrated runtime. This is the flexible "build on any Linux host" path.
+* **`Android-NDK`** (`TARGET_SYSTEM = Android-NDK`, triple
+  `unknown-ndk-linux-android`) — integrates with the official Android NDK
+  `ndk-build` and a Gradle project, via
+  [../../make/os/android-ndk.mk](../../make/os/android-ndk.mk) and
+  [../../make/android-ndk.mk](../../make/android-ndk.mk). This is the path used to
+  produce an installable APK.
+
+The runtime module branches on this too
+([../../runtime/runtime.mk](../../runtime/runtime.mk) has separate `Android` and
+`Android-NDK` sections).
+
+The **`Android`** mode builds a shared library that is consumed as part of an
+application, without involving the Android NDK.
+
+## NDK / Gradle integration
+
+In Android-NDK mode the engine pre-resolves its build graph and then **generates
+an `Android.mk`** that hands the work to `ndk-build`
+([../../make/os/android-ndk.mk](../../make/os/android-ndk.mk)):
+
+* It emits a `stappler_application_generic` module that gathers the engine's
+  static libraries as `LOCAL_WHOLE_STATIC_LIBRARIES`, exports `-llog -landroid`,
+  imports `android/cpufeatures`, and maps source files / include paths / prebuilt
+  archives into NDK form. `-DUSE_FILE32API` is set for large-file support.
+* The generated file expands per ABI: `armeabi-v7a` → `armv7a-linux-androideabi`,
+  `arm64-v8a` → `aarch64-linux-android`, `x86` → `i686-linux-android`,
+  `x86_64` → `x86_64-linux-android`.
+* `ndk-build` is invoked with `NDK_PROJECT_PATH=null` and explicit
+  `APP_BUILD_SCRIPT` / `NDK_APPLICATION_MK` / `APP_PLATFORM`
+  ([../../make/android-ndk.mk](../../make/android-ndk.mk)), so the engine's make
+  graph and NDK's are kept separate. The NDK location comes from
+  `ANDROID_NDK_ROOT` or `~/Android/Ndk`.
+
+A project enables this with `LOCAL_ANDROID_MK`, `LOCAL_APPLICATION_MK`,
+`LOCAL_ANDROID_TARGET`, and `LOCAL_ANDROID_PLATFORM` (default `android-24`) and
+the `android-export` goal; projects commonly add a `prepare-android` rule that
+`rsync`s `resources/` into the APK `assets` (see
+[../../tests/window/Makefile](../../tests/window/Makefile)). The Gradle project
+lives under `proj.android/` (e.g.
+[../../tests/window/proj.android/](../../tests/window/proj.android/)).
+
+The dedicated `android-export` goal lets you integrate a Xenolith project into
+the Gradle build system. To do so, arrange for `make` to run this goal before the
+NDK build, and add the `stappler_application_generic` module to the root
+`Android.mk`. This integration approach is fully compatible with both
+Gradle-based builds and Android Studio, with full NDK source-tooling support.
+
+## JNI bridge and application lifecycle
+
+A single `App` singleton bridges the Java and C++ worlds
+([../../runtime/libc_wrapper/platform/android/jni.cc](../../runtime/libc_wrapper/platform/android/jni.cc),
+[../../runtime/include/sprt/jni/jni.h](../../runtime/include/sprt/jni/jni.h)). It
+holds the `JavaVM`, the `AAssetManager`, the `AConfiguration`, and a proxy to the
+Java `org.stappler.runtime.Application`
+([../../runtime/android/](../../runtime/android/)). JNI references are managed
+with RAII `Local`/`Global` wrappers, and each native thread gets a `thread_local`
+context that attaches to / detaches from the `JavaVM` automatically.
+
+The window lifecycle is built on `ANativeActivity`
+([../../runtime/include/sprt/jni/native_activity.h](../../runtime/include/sprt/jni/native_activity.h)):
+`AndroidActivity` ([../../runtime/libc_wrapper/window/android/SPRTWinAndroidActivity.h](../../runtime/libc_wrapper/window/android/SPRTWinAndroidActivity.h))
+wraps `ANativeActivity` + `ANativeWindow` and handles the
+`onStart/Resume/Pause/Stop/Destroy` and native-window created/resized/redraw
+callbacks; `AndroidContextController`
+([../../runtime/libc_wrapper/window/android/SPRTWinAndroidContextController.h](../../runtime/libc_wrapper/window/android/SPRTWinAndroidContextController.h))
+implements the engine's `ContextController`, deriving window metrics from
+`ANativeWindow_getWidth/Height`, and routing input, clipboard (through a JNI
+content-provider proxy), IME insets and system-bar state. The C++ side registers
+an *activity loader* callback that the JNI entry point invokes once the framework
+is ready — lazy UI initialisation.
+
+## Vulkan surfaces
+
+[../../xenolith/backend/vk/platform/android/XLVkPlatformAndroid.cc](../../xenolith/backend/vk/platform/android/XLVkPlatformAndroid.cc)
+loads `libvulkan.so(.1)` dynamically through `Dso`. Surfaces are created with the
+`VK_KHR_android_surface` extension (`vkCreateAndroidSurfaceKHR` in
+[../../xenolith/backend/vk/XLVkTable.h](../../xenolith/backend/vk/XLVkTable.h))
+from the `ANativeWindow`, as a `SurfaceBackend::Android` descriptor. As on every
+platform, Vulkan is never linked at build time.
+
+## Filesystem and asset access (APK = ZIP)
+
+[../../runtime/libc_wrapper/platform/android/filesystem.cc](../../runtime/libc_wrapper/platform/android/filesystem.cc)
+exposes the standard storage locations — APK assets (read-only), `filesDir`,
+`cacheDir`, external files/cache — through the engine's filesystem interface,
+backed by `AAssetManager_open` / `AAssetManager_openDir` and
+`AAsset_getLength64`.
+
+Because an APK is a ZIP archive, `stappler_filesystem` gains a dependency on
+`stappler_zip` specifically on Android
+([../../make/MODULES.md](../../make/MODULES.md)): bundled assets are read on the
+fly out of the compressed APK rather than being extracted to disk first.
+
+## Runtime / libc and the event loop
+
+The engine extends bionic libc with its POSIX-like surface and per-API fallbacks:
+
+* Per-ABI cross definitions live in
+  [../../runtime/include/sprt/c/cross/android_sprt/](../../runtime/include/sprt/c/cross/android_sprt/)
+  (arm, aarch64, x86, x86_64) and capability flags (e.g. `HAVE_EPOLL`,
+  `HAVE_EVENTFD`, `HAVE_ALOOPER`, `HAVE_ALOG`; `HAVE_PTHREAD_AFFINITY` off) in
+  its `config.h`.
+* Functions missing on older API levels are resolved at runtime rather than
+  linked (e.g. `memfd_create`, `copy_file_range`, `pthread_setschedprio`,
+  `*64` file ops); secure random checks the device API level and uses the
+  `getrandom` syscall on API ≥ 28, falling back to `/dev/urandom`
+  ([../../runtime/core/android/getrandom.cc](../../runtime/core/android/getrandom.cc)).
+
+The dispatch queue is built on Android's native **`ALooper`**
+([../../runtime/src/dispatch/platform/android/SPEvent-alooper.h](../../runtime/src/dispatch/platform/android/SPEvent-alooper.h)):
+file descriptors are registered with `ALooper_addFd`, and `poll`/`wait`/`run`
+map to `ALooper_pollOnce` with timeout `0` / finite / `-1`; an `eventfd` provides
+cross-thread wakeups. Using ALooper means the engine's loop interleaves directly
+with the Android framework's message pump instead of running a separate thread.
+
+ALooper backs the main thread only; for worker threads the dispatch queue is
+implemented on top of standard Linux `epoll` (the shared Linux dispatch backend).
+
+## Build flags
+
+From [../../make/os/android-ndk.mk](../../make/os/android-ndk.mk):
+`-fvisibility=hidden` / `-fvisibility-inlines-hidden`, `-frtti`, `-fPIC -DPIC`,
+`-rdynamic -Wl,--exclude-libs,ALL`, the `ANDROID` config flag, exported
+`-llog -landroid`, and (via the runtime module) `-ldl -l:libbacktrace.a`. Default
+target API is `android-24`.

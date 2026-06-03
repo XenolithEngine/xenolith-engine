@@ -18,6 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+GIT_TAG ?= $(shell git describe --tags --abbrev=0)
+
 MAKE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 TOOLCHAIN_INTERMEDIATE ?= $(abspath $(LIBS_MAKE_ROOT))/intermediate
@@ -121,8 +123,14 @@ $(TOOLCHAIN_TARGETS)/unknown-ndk-linux-android/share/licenses: $(MAKE_DIR)../lic
 	rm -rf $@
 	cp -rf $< $@
 
+$(TOOLCHAIN_TARGETS)/unknown-ndk-linux-android/release:
+	mkdir -p $(dir $@)
+	echo "$(GIT_TAG)" > $@
+	touch $@
+
 all: $(ALL_ARCH_FILES) $(ALL_ARCH_LIBS) \
 	$(TOOLCHAIN_TARGETS)/unknown-ndk-linux-android/target.mk \
+	$(TOOLCHAIN_TARGETS)/unknown-ndk-linux-android/release \
 	$(TOOLCHAIN_TARGETS)/unknown-ndk-linux-android/share/licenses
 
 .PHONY: all
