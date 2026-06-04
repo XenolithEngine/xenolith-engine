@@ -27,6 +27,9 @@ THE SOFTWARE.
 namespace sprt::_thread {
 
 __SPRT_C_FUNC int __SPRT_ID(pthread_attr_init)(__SPRT_ID(pthread_attr_t) * attr) {
+	if (!attr) {
+		return EINVAL;
+	}
 	new (reinterpret_cast<attr_t *>(attr), sprt::nothrow) attr_t;
 	return 0;
 }
@@ -137,14 +140,15 @@ __SPRT_C_FUNC int __SPRT_ID(
 
 __SPRT_C_FUNC int __SPRT_ID(
 		pthread_attr_setstack)(__SPRT_ID(pthread_attr_t) * attr, void *ptr, __SPRT_ID(size_t) sz) {
-	if (!attr || !ptr || sz < __SPRT_PTHREAD_STACK_MIN
+	if (!attr || !ptr || sz >= Max<uint32_t> || sz < __SPRT_PTHREAD_STACK_MIN
 			|| !native::validate_attr_setstack(ptr, sz)) {
 		return EINVAL;
 	}
 
 	auto tattr = reinterpret_cast<attr_t *>(attr);
 	tattr->stack = ptr;
-	tattr->stackSize = sz;
+	tattr->stackSize = static_cast<uint32_t>(sz);
+	tattr->attr |= ThreadAttrFlags::StackPointerCustomized | ThreadAttrFlags::StackSizeCustomized;
 	return 0;
 }
 

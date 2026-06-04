@@ -45,7 +45,7 @@ int thread_t::getname(char *buf, size_t bufLen) {
 	unique_lock lock(mutex);
 
 	auto nameLen = strlen(threadName.data());
-	if (bufLen < nameLen) {
+	if (bufLen < nameLen + 1) {
 		return ERANGE;
 	}
 
@@ -165,8 +165,17 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_timedjoin_np)(__SPRT_ID(pthread_t) thread, v
 		return ETIMEDOUT;
 	}
 
-	return __pthread_join(reinterpret_cast<thread_t *>(thread), ret,
-			diffTv.tv_nsec + diffTv.tv_sec * 1'000'000'000, false);
+	// Convert the remaining absolute deadline to a nanosecond timeout. tv_sec is a
+	// 64-bit signed time_t, so a far-future deadline would overflow the multiply;
+	// saturate to an effectively-infinite wait instead of wrapping to a bogus value.
+	constexpr uint64_t nsPerSec = 1'000'000'000ull;
+	auto sec = static_cast<uint64_t>(diffTv.tv_sec);
+	auto nsec = static_cast<uint64_t>(diffTv.tv_nsec);
+	uint64_t timeout = (sec > (__SPRT_SPRT_TIMEOUT_INFINITE - nsec) / nsPerSec)
+			? __SPRT_SPRT_TIMEOUT_INFINITE
+			: sec * nsPerSec + nsec;
+
+	return __pthread_join(reinterpret_cast<thread_t *>(thread), ret, timeout, false);
 }
 
 __SPRT_C_FUNC int __SPRT_ID(

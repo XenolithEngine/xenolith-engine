@@ -94,13 +94,15 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_barrierattr_getpshared)(
 __SPRT_C_FUNC int __SPRT_ID(
 		pthread_barrier_init)(__SPRT_ID(pthread_barrier_t) * __SPRT_RESTRICT bar,
 		const __SPRT_ID(pthread_barrierattr_t) * __SPRT_RESTRICT attr, unsigned v) {
-	if (!bar || v == 0) {
+	// The count is stored in `nthreads` whose high bit is reserved for PassFlag,
+	// so a count above ValueMask would alias that flag and corrupt the barrier.
+	if (!bar || v == 0 || v > _thread::barrier_t::ValueMask) {
 		return EINVAL;
 	}
 
 	auto tbar = new (reinterpret_cast<_thread::barrier_t *>(bar), nothrow) barrier_t{{v}};
 	if (attr) {
-		tbar->flags = reinterpret_cast<const _thread::barrier_t *>(attr)->flags;
+		tbar->flags = reinterpret_cast<const _thread::barrierattr_t *>(attr)->flags;
 	}
 	return 0;
 }

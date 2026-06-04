@@ -107,24 +107,28 @@ struct __ThreadData {
 	thread *th = nullptr;
 };
 
-static void *__threadWrapper(void *ptr) {
-	auto d = reinterpret_cast<__ThreadData *>(ptr);
-
-	if (d->fn) {
-		d->fn();
-	}
-
-	__delete(d);
-	return nullptr;
-}
+static_assert(sizeof(__ThreadData) <= THREAD_STORAGE_BLOCK_SIZE);
 
 int thread::__makeThread(__malloc_function<void()> &&fn) {
-	auto d = new (sprt::nothrow) __ThreadData{
-		sprt::move(fn),
-		this,
-	};
+	_thread::thread_t *__t = nullptr;
 
-	return __sprt_pthread_create(&__native, nullptr, __threadWrapper, d);
+	// sprt::thread should not be affected by default pthread args
+	_thread::attr_t def;
+
+	auto ret = _thread::thread_t::create(&__t, &def, [](_thread::thread_base_t *t) -> void * {
+		auto d = reinterpret_cast<__ThreadData *>(t->storage);
+		if (d->fn) {
+			d->fn();
+		}
+		sprt::destroy_at(d);
+		return (void *)0;
+	}, nullptr, [&](uint8_t *buf, size_t baseSize) {
+		new (buf) __ThreadData{
+			sprt::move(fn),
+			this,
+		};
+	});
+	return ret;
 }
 
 } // namespace sprt

@@ -119,7 +119,9 @@ int rwlock_t::wrlock(timeout_t dtimeout) {
 	}
 
 	auto self = thread_t::self();
-	if (self->has_wrlock(this)) {
+	// Upgrading a held read lock to a write lock is a self-deadlock: the writer can
+	// never proceed while this thread's own read hold keeps the lock read-held.
+	if (self->has_wrlock(this) || self->has_rdlock(this)) {
 		return EDEADLK;
 	}
 
@@ -158,7 +160,8 @@ int rwlock_t::trywrlock() {
 	}
 
 	auto self = thread_t::self();
-	if (self->has_wrlock(this)) {
+	// Upgrading a held read lock to a write lock is a self-deadlock.
+	if (self->has_wrlock(this) || self->has_rdlock(this)) {
 		return EDEADLK;
 	}
 

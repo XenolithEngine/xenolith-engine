@@ -137,7 +137,7 @@ public:
 				}
 
 				if constexpr (ClockFn != nullptr) {
-					if (*timeout && timeout == 0) {
+					if (timeout && *timeout == 0) {
 						return Status::Timeout;
 					}
 				}

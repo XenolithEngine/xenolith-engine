@@ -41,13 +41,27 @@ static Status __cond_mutex_unlock(void *mutex) {
 	return status::errnoToStatus(reinterpret_cast<mutex_t *>(mutex)->unlock());
 }
 
+// Convert a (non-negative) timespec duration to a nanosecond timeout, saturating to
+// an effectively-infinite wait instead of overflowing the signed tv_sec multiply.
+static __sprt_sprt_timeout_t __cond_nano_timeout(const __SPRT_TIMESPEC_NAME &ts) {
+	if (ts.tv_sec < 0) {
+		return 0;
+	}
+	constexpr uint64_t nsPerSec = 1'000'000'000ull;
+	auto sec = static_cast<uint64_t>(ts.tv_sec);
+	auto nsec = static_cast<uint64_t>(ts.tv_nsec);
+	return (sec > (__SPRT_SPRT_TIMEOUT_INFINITE - nsec) / nsPerSec)
+			? __SPRT_SPRT_TIMEOUT_INFINITE
+			: sec * nsPerSec + nsec;
+}
+
 int cond_t::wait(mutex_t *mutex, __sprt_sprt_timeout_t timeout) {
 	__sprt_sprt_lock_flags_t condFlag = 0;
 	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::Shared)) {
 		condFlag = __SPRT_SPRT_LOCK_FLAG_SHARED;
 	}
 	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::ClockRealtime)) {
-		condFlag = __SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME;
+		condFlag |= __SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME;
 	}
 
 	Status ret = Status::Ok;
@@ -63,7 +77,7 @@ int cond_t::wait(mutex_t *mutex, __sprt_sprt_timeout_t timeout) {
 	case Status::Done: return 0; break;
 	case Status::Ok: return 0; break;
 	case Status::Timeout: return ETIMEDOUT; break;
-	default: status::toErrno(ret); break;
+	default: return status::toErrno(ret);
 	}
 	return 0;
 }
@@ -74,7 +88,7 @@ int cond_t::signal() {
 		condFlag = __SPRT_SPRT_LOCK_FLAG_SHARED;
 	}
 	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::ClockRealtime)) {
-		condFlag = __SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME;
+		condFlag |= __SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME;
 	}
 
 	auto ret = qcondvar_base::_signal<__sprt_sprt_qlock_wake_one>(&data, condFlag);
@@ -87,7 +101,7 @@ int cond_t::broadcast() {
 		condFlag = __SPRT_SPRT_LOCK_FLAG_SHARED;
 	}
 	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::ClockRealtime)) {
-		condFlag = __SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME;
+		condFlag |= __SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME;
 	}
 
 	auto ret = qcondvar_base::_signal<__sprt_sprt_qlock_wake_all>(&data, condFlag);
@@ -244,11 +258,11 @@ __SPRT_C_FUNC int __SPRT_ID(
 	}
 
 	__SPRT_TIMESPEC_NAME curTv;
-	if (hasFlag(CondAttrFlags(tcond->data.padding), CondAttrFlags::ClockRealtime)) {
-		__sprt_clock_gettime(__sprt_sprt_qlock_getclock(__SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME),
-				&curTv);
-	} else {
-		__sprt_clock_gettime(__sprt_sprt_qlock_getclock(0), &curTv);
+	auto clockId = hasFlag(CondAttrFlags(tcond->data.padding), CondAttrFlags::ClockRealtime)
+			? __sprt_sprt_qlock_getclock(__SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME)
+			: __sprt_sprt_qlock_getclock(0);
+	if (__sprt_clock_gettime(clockId, &curTv) != 0) {
+		return __sprt_errno;
 	}
 
 	auto diffTv = __sprt_timespec_diff(tv, &curTv);
@@ -257,9 +271,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 		return ETIMEDOUT;
 	}
 
-	__sprt_sprt_timeout_t nanoTimeout = diffTv.tv_sec * 1'000'000'000 + diffTv.tv_nsec;
-
-	return tcond->wait(mtx, nanoTimeout);
+	return tcond->wait(mtx, __cond_nano_timeout(diffTv));
 }
 
 __SPRT_C_FUNC int __SPRT_ID(
@@ -284,9 +296,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 		}
 	}
 
-	__sprt_sprt_timeout_t nanoTimeout = tv->tv_sec * 1'000'000'000 + tv->tv_nsec;
-
-	return tcond->wait(mtx, nanoTimeout);
+	return tcond->wait(mtx, __cond_nano_timeout(*tv));
 }
 
 SPRT_API int __SPRT_ID(pthread_cond_clockwait)(__SPRT_ID(pthread_cond_t) * __SPRT_RESTRICT cond,
@@ -320,9 +330,7 @@ SPRT_API int __SPRT_ID(pthread_cond_clockwait)(__SPRT_ID(pthread_cond_t) * __SPR
 		return ETIMEDOUT;
 	}
 
-	__sprt_sprt_timeout_t nanoTimeout = diffTv.tv_sec * 1'000'000'000 + diffTv.tv_nsec;
-
-	return tcond->wait(mtx, nanoTimeout);
+	return tcond->wait(mtx, __cond_nano_timeout(diffTv));
 }
 
 __SPRT_C_FUNC int __SPRT_ID(pthread_cond_broadcast)(__SPRT_ID(pthread_cond_t) * cond) {

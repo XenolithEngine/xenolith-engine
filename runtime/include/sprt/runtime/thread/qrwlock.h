@@ -148,6 +148,13 @@ public:
 					st = status::errnoToStatus(__sprt_errno);
 				}
 			}
+
+			// Read holders remain after this decrement (fs > 1): report to the
+			// caller that the lock is still held, so it can keep per-thread
+			// bookkeeping for recursive read locks (mirrors rmutex Propagate).
+			if ((expected & ReadLock) != 0 && fs > 1 && status::isSuccessful(st)) {
+				st = Status::Propagate;
+			}
 		}
 		return st;
 	}

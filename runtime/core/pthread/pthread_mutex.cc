@@ -30,6 +30,8 @@ static rmutex_base::value_type getThreadId() {
 	rmutex_base::value_type ret;
 	auto threadId = __sprt_gettid();
 	if constexpr (is_same_v<rmutex_base::tid_type, uint32_t>) {
+		// Note that on platforms with 32-bit thread ID native PI is also supported
+		// - we do not need to write prio into lock state
 		*rmutex_base::getNativeValue(ret) = threadId;
 	} else {
 		// write TID with original thread priority
@@ -41,18 +43,36 @@ static rmutex_base::value_type getThreadId() {
 }
 
 [[maybe_unused]]
-static thread_t *boostThreadPrio(mutex_t *mtx, uint32_t threadId, int32_t dprio) {
+static thread_t *boostThreadPrio(mutex_t *mtx, uint32_t tid, int32_t dprio) {
 	auto pool = __thread_pool::get();
 
 	unique_lock globalLock(pool->mutex);
 
-	auto it = pool->activeThreads.find(threadId);
-	if (it == pool->activeThreads.end()) {
+	// The owner field of the rmutex stores the kernel tid (__sprt_gettid), so resolve
+	// it through the tid-keyed map, not activeThreads (keyed by native id).
+	auto it = pool->activeThreadsByTid.find(tid);
+	if (it == pool->activeThreadsByTid.end()) {
 		return nullptr;
 	}
 
 	it->second->promoteMutex(mtx, dprio);
 	return it->second;
+}
+
+[[maybe_unused]]
+static void unboostThreadPrio(mutex_t *mtx, uint32_t threadId, int32_t boostPrio) {
+	auto pool = __thread_pool::get();
+
+	unique_lock globalLock(pool->mutex);
+
+	// Re-validate the owner under pool->mutex: it may have exited and been recycled
+	// while we waited, so look it up fresh by tid instead of caching its pointer.
+	auto it = pool->activeThreadsByTid.find(threadId);
+	if (it == pool->activeThreadsByTid.end()) {
+		return;
+	}
+
+	it->second->demoteMutex(mtx, boostPrio);
 }
 
 bool mutex_t::isValid(const mutexattr_t &) { return true; }
@@ -99,25 +119,38 @@ int mutex_t::lock(timeout_t timeout) {
 			if (nativePiRequired) {
 				__mutexFlags |= __SPRT_SPRT_LOCK_FLAG_PI;
 			}
+
+			// Platforms with 32-bit tid_type MUST support native PI
+			if constexpr (is_same_v<rmutex_base::tid_type, uint32_t>) {
+				if (!nativePiRequired) {
+					__sprt_abort();
+				}
+			}
 		}
 
 		auto threadId = getThreadId();
 
 		bool priorityProtocolEnabled = false;
-		thread_t *boostedThread = nullptr;
+		uint32_t boostedThreadId = 0;
+		int32_t boostedPrio = 0;
 
 		// Function to enable priority protocol
 		auto runPriorityProtection = [&](const rmutex_base::value_type &threadData) {
 			switch (protocol) {
 			case MutexAttrFlags::PrioInherit:
-				// if priority in threadData is lower then ours, boost that thrad to our priority
+				// if priority in threadData is lower then ours, boost that thread to our priority
 				priorityProtocolEnabled = true;
 				if constexpr (is_same_v<rmutex_base::tid_type, uint64_t>) {
 					auto dprio = self->dynamicPrio.load();
 					auto prio = (threadData.u64 >> 32 & 0xFFFF);
 					if (dprio > prio) {
-						boostedThread = boostThreadPrio(this,
-								uint32_t(threadData.u64 & 0xFFFF'FFFF), dprio);
+						// Remember the owner by id (not pointer): it may exit before we
+						// reach the failure/unboost path. Record only if the boost landed.
+						auto tid = uint32_t(threadData.u64 & 0xFFFF'FFFF);
+						if (boostThreadPrio(this, tid, dprio) != nullptr) {
+							boostedThreadId = tid;
+							boostedPrio = dprio;
+						}
 						priorityProtocolEnabled = true;
 					}
 				}
@@ -162,6 +195,7 @@ int mutex_t::lock(timeout_t timeout) {
 				st = Status::ErrorDeadLock;
 				break;
 			}
+			break;
 		case Status::Timeout:
 			// It's not an error in SPRT, but it's error in POSIX
 			st = Status::ErrorTimeout;
@@ -170,13 +204,12 @@ int mutex_t::lock(timeout_t timeout) {
 		}
 
 		if (st != Status::Ok) {
-			// If priority protocol was enabled, and we fail to lock mutex for some reason - we need to disable protocol
-			if (priorityProtocolEnabled && boostedThread) {
-				// For now, there is no graceful way to unboost thread due ABA problem
-				// (we can lose boost from another thread).
-				//
-				// So, thread will remain boosted even if high ptiority thread cancel it's lock request
-				//unboostThreadPrio(this, boostedThread);
+			// We failed to take the mutex (timeout/cancel), so drop the priority boost we
+			// applied to the owner. unboostThreadPrio re-validates the owner's liveness
+			// under pool->mutex, and demoteMutex only reverts our own boost (a higher boost
+			// from another waiter is preserved), so the ABA problem is handled.
+			if (priorityProtocolEnabled && boostedThreadId) {
+				unboostThreadPrio(this, boostedThreadId, boostedPrio);
 			}
 		} else
 			// Perform this only once mutex is locked first recursive time
@@ -340,6 +373,7 @@ int mutex_t::try_lock() {
 				st = Status::ErrorDeadLock;
 				break;
 			}
+			break;
 		case Status::Timeout:
 			// It's not an error in SPRT, but it's error in POSIX
 			st = Status::ErrorTimeout;
@@ -456,6 +490,7 @@ int mutex_t::consistent() {
 			return EINVAL;
 		}
 		attr.flags &= ~MutexAttrFlags::OwnerDied;
+		return 0;
 	}
 	return EINVAL;
 }
@@ -538,7 +573,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 		tattr->flags &= ~_thread::MutexAttrFlags::PrioMask;
 		tattr->flags |= _thread::MutexAttrFlags::PrioProtect;
 		break;
-	case __SPRT_PTHREAD_PRIO_NONE: tattr->flags &= _thread::MutexAttrFlags::PrioMask; break;
+	case __SPRT_PTHREAD_PRIO_NONE: tattr->flags &= ~_thread::MutexAttrFlags::PrioMask; break;
 	default: return EINVAL;
 	}
 
@@ -643,7 +678,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 		tattr->flags &= ~_thread::MutexAttrFlags::TypeNMask;
 		tattr->flags |= _thread::MutexAttrFlags::TypeRecursive;
 		break;
-	case __SPRT_PTHREAD_MUTEX_NORMAL: tattr->flags &= _thread::MutexAttrFlags::TypeNMask; break;
+	case __SPRT_PTHREAD_MUTEX_NORMAL: tattr->flags &= ~_thread::MutexAttrFlags::TypeNMask; break;
 	default: return EINVAL;
 	}
 
@@ -727,7 +762,13 @@ __SPRT_C_FUNC int __SPRT_ID(
 		return ETIMEDOUT;
 	}
 
-	__sprt_sprt_timeout_t nanoTimeout = diffTv.tv_sec * 1'000'000'000 + diffTv.tv_nsec;
+	// Saturate instead of overflowing the signed tv_sec multiply for far deadlines.
+	constexpr uint64_t nsPerSec = 1'000'000'000ull;
+	auto sec = static_cast<uint64_t>(diffTv.tv_sec);
+	auto nsec = static_cast<uint64_t>(diffTv.tv_nsec);
+	__sprt_sprt_timeout_t nanoTimeout = (sec > (__SPRT_SPRT_TIMEOUT_INFINITE - nsec) / nsPerSec)
+			? __SPRT_SPRT_TIMEOUT_INFINITE
+			: sec * nsPerSec + nsec;
 
 	auto mtx = reinterpret_cast<_thread::mutex_t *>(mutex);
 	return mtx->lock(nanoTimeout);

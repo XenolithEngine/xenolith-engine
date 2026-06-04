@@ -95,13 +95,20 @@ public:
 			}
 		}
 
-		result = LockFn(mutex);
-		if (result == Status::Ok) {
+		// The mutex must be re-acquired before returning, even on timeout.
+		auto lockStatus = LockFn(mutex);
+		if (lockStatus == Status::Ok) {
 			if (_atomic::fetchSub(&data->counter, 1U) == 1) {
 				__atomic_store_n(&data->mutexid, uint64_t(0), __ATOMIC_SEQ_CST);
 			}
 		}
-		return result;
+		// Preserve a timeout from the wait loop (it would otherwise be lost behind the
+		// relock status, making pthread_cond_timedwait report success on timeout).
+		// Only surface a relock failure when the wait itself succeeded.
+		if (result == Status::Timeout) {
+			return result;
+		}
+		return lockStatus;
 	}
 
 	template <int (*WakeFn)(value_type *, flags_type)>

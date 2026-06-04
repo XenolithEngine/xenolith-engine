@@ -184,6 +184,11 @@ struct __thread_pool {
 	// Thread locators are system-specific type with 64-bit width max
 	sprt::__malloc_unordered_map<uint64_t, thread_t *> activeThreads;
 
+	// Threads keyed by kernel thread id (__sprt_gettid). The priority-inheritance
+	// boost path resolves owners by the tid stored in the rmutex owner field, which
+	// is a different id space than the native id used by `activeThreads` above.
+	sprt::__malloc_unordered_map<uint32_t, thread_t *> activeThreadsByTid;
+
 	// thread_t *active = nullptr;
 	thread_t *free = nullptr;
 
@@ -228,7 +233,7 @@ SPRT_UNUSED static int __createThread(thread_t *thread, const attr_t *__SPRT_RES
 
 // Setup thread with actual native thread's attributes;
 // Also, this will replace temporary native handle with the permanent one
-SPRT_UNUSED static void __initNativeHandle(thread_t *thread);
+SPRT_UNUSED static bool __initNativeHandle(thread_t *thread);
 
 SPRT_UNUSED static void __closeNativeHandle(void *handle);
 
