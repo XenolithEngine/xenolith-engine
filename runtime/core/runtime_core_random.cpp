@@ -41,10 +41,26 @@ THE SOFTWARE.
 
 namespace sprt {
 
+// Thin pass-through to the platform getentropy(). getentropy() is all-or-nothing
+// (it fills the whole buffer or fails, and the platform caps __length at 256), so it
+// never returns a partial result and needs no retry loop here.
 __SPRT_C_FUNC int __SPRT_ID(getentropy)(void *__buffer, __SPRT_ID(size_t) __length) {
 	return getentropy(__buffer, __length);
 }
 
+// Thin pass-through to the platform CSPRNG; the raw return value is forwarded as-is.
+//
+// CALLER CONTRACT: this wrapper does NOT loop. On Linux/Android the underlying
+// getrandom(2) may return a SHORT count (fewer than __length bytes, e.g. for buffers
+// larger than 256 bytes or when interrupted by a signal -> -1/EINTR). A non-negative
+// return is the number of bytes actually written and MAY be less than __length, so a
+// caller that needs the buffer fully populated must loop until __length bytes have
+// been read, retrying on EINTR. (Looping is left to the caller deliberately: this is
+// the low-level ABI wrapper; higher-level helpers add the loop.)
+//
+// On macOS the call is all-or-nothing: SecRandomCopyBytes fills the entire buffer and
+// we return __length, or it fails and we return -1. There is no weak/predictable
+// fallback on any platform — a hard failure returns -1 (fails closed).
 __SPRT_C_FUNC __SPRT_ID(ssize_t)
 		__SPRT_ID(getrandom)(void *__buffer, __SPRT_ID(size_t) __length, unsigned __flags) {
 #if SPRT_MACOS

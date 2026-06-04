@@ -253,8 +253,8 @@ struct SPRT_LOCAL Pool : public AllocPlacement {
 	Pool *make_child();
 	Pool *make_child(Allocator *);
 
-	void cleanup_register(const void *, Cleanup::Callback cb, pool::cleanup_flags);
-	void pre_cleanup_register(const void *, Cleanup::Callback cb, pool::cleanup_flags);
+	Status cleanup_register(const void *, Cleanup::Callback cb, pool::cleanup_flags);
+	Status pre_cleanup_register(const void *, Cleanup::Callback cb, pool::cleanup_flags);
 
 	void cleanup_kill(void *, Cleanup::Callback cb);
 	void cleanup_run(void *, Cleanup::Callback cb);

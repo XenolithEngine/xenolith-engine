@@ -36,28 +36,39 @@ static bool __queryRegisterVersion(struct __SPRT_UTSNAME_NAME *buf) {
 	if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0,
 				KEY_READ, &hKey)
 			== ERROR_SUCCESS) {
-		auto wbuf = __sprt_typed_malloca(wchar_t, 256);
+		constexpr DWORD wbufCount = 256;
+		constexpr DWORD wbufBytes = wbufCount * sizeof(wchar_t);
+		auto wbuf = __sprt_typed_malloca(wchar_t, wbufCount);
 
 		DWORD type;
 		DWORD dataSize = 0;
 		LONG result = 0;
 
+		// Size-query first, then read ONLY if the value fits the allocation, passing the
+		// real buffer capacity (not the queried size) to RegGetValueW so it can never
+		// write past wbuf. `sz` returns the byte count actually written (incl. the NUL);
+		// WideStringView wants a char16 unit count, so divide by sizeof(wchar_t) and drop
+		// the terminator.
 		result = RegGetValueW(hKey, nullptr, L"ProductName", RRF_RT_REG_SZ, &type, nullptr,
 				&dataSize);
-		if (result == ERROR_SUCCESS) {
-			result = RegGetValueW(hKey, nullptr, L"ProductName", RRF_RT_REG_SZ, &type, wbuf,
-					&dataSize);
-
-			unicode::toUtf8(buf->release, 64, WideStringView((char16_t *)wbuf, dataSize));
+		if (result == ERROR_SUCCESS && dataSize <= wbufBytes) {
+			DWORD sz = wbufBytes;
+			result = RegGetValueW(hKey, nullptr, L"ProductName", RRF_RT_REG_SZ, &type, wbuf, &sz);
+			if (result == ERROR_SUCCESS && sz >= sizeof(wchar_t)) {
+				unicode::toUtf8(buf->release, 64,
+						WideStringView((char16_t *)wbuf, sz / sizeof(wchar_t) - 1));
+			}
 		}
 
 		result = RegGetValueW(hKey, nullptr, L"DisplayVersion", RRF_RT_REG_SZ, &type, nullptr,
 				&dataSize);
-		if (result == ERROR_SUCCESS) {
-			result = RegGetValueW(hKey, nullptr, L"DisplayVersion", RRF_RT_REG_SZ, &type, wbuf,
-					&dataSize);
-
-			unicode::toUtf8(buf->version, 64, WideStringView((char16_t *)wbuf, dataSize));
+		if (result == ERROR_SUCCESS && dataSize <= wbufBytes) {
+			DWORD sz = wbufBytes;
+			result = RegGetValueW(hKey, nullptr, L"DisplayVersion", RRF_RT_REG_SZ, &type, wbuf, &sz);
+			if (result == ERROR_SUCCESS && sz >= sizeof(wchar_t)) {
+				unicode::toUtf8(buf->version, 64,
+						WideStringView((char16_t *)wbuf, sz / sizeof(wchar_t) - 1));
+			}
 		}
 
 		__sprt_freea(wbuf);

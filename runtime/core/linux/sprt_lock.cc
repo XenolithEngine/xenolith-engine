@@ -55,20 +55,33 @@ static int sprt_qlock_wait(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_qlock
 	if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_SHARED))) {
 		_flags &= ~__SPRT_FUTEX_PRIVATE_FLAG;
 	}
-	if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME))) {
-		_flags &= ~__SPRT_FUTEX_CLOCK_REALTIME;
-	}
 	if (timeout == __SPRT_SPRT_TIMEOUT_INFINITE) {
+		// No deadline: plain FUTEX_WAIT (FUTEX_CLOCK_REALTIME is not valid for it).
 		result = ::syscall(__SPRT_SYSCALL_futex, value,
 				__SPRT_FUTEX_WAIT | (_flags & __SPRT_FUTEX_FLAG_MASK), expected, nullptr);
 	} else {
+		// FUTEX_WAIT_BITSET takes an ABSOLUTE deadline and, unlike plain FUTEX_WAIT,
+		// honors FUTEX_CLOCK_REALTIME. Convert the relative timeout to an absolute
+		// deadline on the matching clock (qlock_now follows qlock_getclock).
+		//
+		// NOTE: the futex(2) man page lists FUTEX_WAIT as accepting FUTEX_CLOCK_REALTIME
+		// "(since Linux 4.5)", but that is inaccurate for the raw syscall: the kernel's
+		// do_futex() gates the flag to {WAIT_BITSET, WAIT_REQUEUE_PI, LOCK_PI2} and
+		// returns -ENOSYS for the bare FUTEX_WAIT opcode. Verified on Linux 6.18:
+		// FUTEX_WAIT|FUTEX_CLOCK_REALTIME -> ENOSYS, while FUTEX_WAIT_BITSET honors it.
+		// So a CLOCK_REALTIME timed wait MUST use FUTEX_WAIT_BITSET.
+		int op = __SPRT_FUTEX_WAIT_BITSET;
+		if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME))) {
+			op |= __SPRT_FUTEX_CLOCK_REALTIME;
+		}
+		auto deadline = timeout + __sprt_sprt_qlock_now(flags);
 		struct timespec ts{
-			static_cast<decltype(sprt::declval<struct timespec>().tv_sec)>(timeout / 1'000'000),
-			static_cast<decltype(sprt::declval<struct timespec>().tv_nsec)>(timeout % 1'000'000),
+			static_cast<decltype(sprt::declval<struct timespec>().tv_sec)>(deadline / 1'000'000'000),
+			static_cast<decltype(sprt::declval<struct timespec>().tv_nsec)>(deadline % 1'000'000'000),
 		};
 
-		result = ::syscall(__SPRT_SYSCALL_futex, value,
-				__SPRT_FUTEX_WAIT | (_flags & __SPRT_FUTEX_FLAG_MASK), expected, &ts);
+		result = ::syscall(__SPRT_SYSCALL_futex, value, op | (_flags & __SPRT_FUTEX_FLAG_MASK),
+				expected, &ts, nullptr, __SPRT_FUTEX_BITSET_MATCH_ANY);
 	}
 	return result;
 }
@@ -136,7 +149,11 @@ static int sprt_rlock_wait(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_rlock
 	if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_SHARED))) {
 		_flags &= ~__SPRT_FUTEX_PRIVATE_FLAG;
 	}
-	if (above_5_14) {
+	// Carry FUTEX_CLOCK_REALTIME in the shared flags only for the PI path (LOCK_PI2,
+	// >=5.14). The non-PI timed path adds it directly to its FUTEX_WAIT_BITSET op, and
+	// the non-PI infinite path uses plain FUTEX_WAIT, which the kernel rejects the flag
+	// on with -ENOSYS — so it must NOT appear in the shared flags here.
+	if (above_5_14 && hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_PI))) {
 		if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME))) {
 			_flags |= __SPRT_FUTEX_CLOCK_REALTIME;
 		}
@@ -152,22 +169,35 @@ static int sprt_rlock_wait(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_rlock
 					__SPRT_FUTEX_WAIT | (_flags & __SPRT_FUTEX_FLAG_MASK), expected->u32_2,
 					nullptr);
 		}
-	} else {
-		timeout += __sprt_sprt_rlock_now(flags);
+	} else if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_PI))) {
+		// FUTEX_LOCK_PI/PI2 take an ABSOLUTE deadline; convert the relative timeout
+		// (against the clock selected by sprt_rlock_getclock/now).
+		auto deadline = timeout + __sprt_sprt_rlock_now(flags);
 		struct timespec ts{
-			static_cast<decltype(sprt::declval<struct timespec>().tv_sec)>(timeout / 1'000'000),
-			static_cast<decltype(sprt::declval<struct timespec>().tv_nsec)>(timeout % 1'000'000),
+			static_cast<decltype(sprt::declval<struct timespec>().tv_sec)>(deadline / 1'000'000'000),
+			static_cast<decltype(sprt::declval<struct timespec>().tv_nsec)>(deadline % 1'000'000'000),
 		};
 
-		if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_PI))) {
-			return ::syscall(__SPRT_SYSCALL_futex, &value->u32_2,
-					(above_5_14 ? __SPRT_FUTEX_LOCK_PI2 : __SPRT_FUTEX_LOCK_PI)
-							| (_flags & __SPRT_FUTEX_FLAG_MASK),
-					0, &ts);
-		} else {
-			return ::syscall(__SPRT_SYSCALL_futex, &value->u32_2,
-					__SPRT_FUTEX_WAIT | (_flags & __SPRT_FUTEX_FLAG_MASK), expected->u32_2, &ts);
+		return ::syscall(__SPRT_SYSCALL_futex, &value->u32_2,
+				(above_5_14 ? __SPRT_FUTEX_LOCK_PI2 : __SPRT_FUTEX_LOCK_PI)
+						| (_flags & __SPRT_FUTEX_FLAG_MASK),
+				0, &ts);
+	} else {
+		// non-PI timed wait: FUTEX_WAIT_BITSET takes an ABSOLUTE deadline and honors
+		// FUTEX_CLOCK_REALTIME (plain FUTEX_WAIT rejects that flag with ENOSYS).
+		int op = __SPRT_FUTEX_WAIT_BITSET;
+		if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME))) {
+			op |= __SPRT_FUTEX_CLOCK_REALTIME;
 		}
+		auto deadline = timeout + __sprt_sprt_rlock_now(flags);
+		struct timespec ts{
+			static_cast<decltype(sprt::declval<struct timespec>().tv_sec)>(deadline / 1'000'000'000),
+			static_cast<decltype(sprt::declval<struct timespec>().tv_nsec)>(deadline % 1'000'000'000),
+		};
+
+		return ::syscall(__SPRT_SYSCALL_futex, &value->u32_2,
+				op | (_flags & __SPRT_FUTEX_FLAG_MASK), expected->u32_2, &ts, nullptr,
+				__SPRT_FUTEX_BITSET_MATCH_ANY);
 	}
 }
 
@@ -215,7 +245,8 @@ static __SPRT_ID(clockid_t) sprt_qlock_getclock(__SPRT_ID(sprt_lock_flags_t) fla
 
 static __SPRT_ID(clockid_t) sprt_rlock_getclock(__SPRT_ID(sprt_lock_flags_t) flags) {
 	if (!hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_PI))) {
-		// same as qlock
+		// Non-PI uses FUTEX_WAIT_BITSET with an absolute deadline that honors the
+		// realtime flag, so report the matching clock for building that deadline.
 		if (hasFlag(flags, __SPRT_ID(sprt_lock_flags_t)(__SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME))) {
 			return __SPRT_CLOCK_REALTIME;
 		} else {

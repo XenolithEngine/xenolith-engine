@@ -263,8 +263,8 @@ enum cleanup_flags {
 	cleanup_flags_plain = 1,
 };
 
-SPRT_API void cleanup_register(pool_t *, void *, cleanup_fn, cleanup_flags = cleanup_flags_none);
-SPRT_API void pre_cleanup_register(pool_t *, void *, cleanup_fn,
+SPRT_API Status cleanup_register(pool_t *, void *, cleanup_fn, cleanup_flags = cleanup_flags_none);
+SPRT_API Status pre_cleanup_register(pool_t *, void *, cleanup_fn,
 		cleanup_flags = cleanup_flags_none);
 
 SPRT_API Status userdata_set(const void *data, const char *key, cleanup_fn, pool_t *);

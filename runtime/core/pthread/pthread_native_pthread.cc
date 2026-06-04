@@ -39,8 +39,29 @@ __SPRT_C_FUNC int __cxa_thread_atexit(void (*cb)(void *), void *obj,
 
 namespace sprt::_thread::native {
 
+template <typename _Tp>
+concept pointer = is_pointer_v<_Tp>;
+
+template <typename T>
+struct pthread_to_int { };
+
+template <pointer T>
+struct pthread_to_int<T> {
+	static uintptr_t to_int(T pthread) { return reinterpret_cast<uintptr_t>(pthread); }
+};
+
+template <unsigned_integer T>
+struct pthread_to_int<T> {
+	static uintptr_t to_int(T pthread) { return pthread; }
+};
+
+template <signed_integer T>
+struct pthread_to_int<T> {
+	static uintptr_t to_int(T pthread) { return static_cast<make_unsigned_t<T>>(pthread); }
+};
+
 static uint64_t pthread_to_id(pthread_t pthread) {
-	return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pthread));
+	return pthread_to_int<pthread_t>::to_int(pthread);
 }
 
 static uint64_t __getNativeThreadId() { return pthread_to_id(pthread_self()); }

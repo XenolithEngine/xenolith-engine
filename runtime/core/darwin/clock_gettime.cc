@@ -76,9 +76,11 @@ static int clock_gettime(unsigned clk_id, struct __SPRT_TIMESPEC_NAME *out) {
 			total_usec = total_usec % 1'000'000;
 		}
 
-		// 4. Fill timespec
-		out->tv_sec = total_sec;
-		out->tv_nsec = total_usec * 1'000;
+		// 4. Fill timespec (guard out like the other branches / clock_getres do)
+		if (out) {
+			out->tv_sec = total_sec;
+			out->tv_nsec = total_usec * 1'000;
+		}
 		return 0;
 	} else {
 		struct timespec rem;
