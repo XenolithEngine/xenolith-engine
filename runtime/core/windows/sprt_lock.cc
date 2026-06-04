@@ -76,16 +76,22 @@ static int sprt_qlock_wake_all(__SPRT_ID(sprt_qlock_t) * value,
 
 static int sprt_rlock_wait(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_rlock_t) * expected,
 		__SPRT_ID(sprt_timeout_t) timeout, __SPRT_ID(sprt_lock_flags_t) flags) {
+	// Return -1 on failure/timeout (mirrors sprt_qlock_wait): rmutex::_lock detects
+	// errors/timeouts via WaitFn(...) != 0, so returning 0 here would swallow them and
+	// spin. lastErrorToErrno maps ERROR_TIMEOUT/WAIT_TIMEOUT -> ETIMEDOUT.
+	int result = 0;
 	if (timeout == __SPRT_SPRT_TIMEOUT_INFINITE) {
 		if (!WaitOnAddress(&value->u64, &expected->u64, sizeof(uint64_t), INFINITE)) {
+			result = -1;
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		}
 	} else {
 		if (!WaitOnAddress(&value->u64, &expected->u64, sizeof(uint64_t), timeout / 1'000'000)) {
+			result = -1;
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		}
 	}
-	return 0;
+	return result;
 }
 
 static int sprt_rlock_supports(__SPRT_ID(sprt_lock_flags_t) flags) {

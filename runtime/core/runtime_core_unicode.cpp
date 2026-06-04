@@ -74,6 +74,10 @@ static char32_t Utf8DecodeHtml32(const char *ptr, uint32_t len) {
 }
 
 char32_t utf8HtmlDecode32(const char *utf8, size_t bufLen, uint8_t &offset) {
+	if (bufLen == 0) {
+		offset = 0;
+		return 0;
+	}
 	if (utf8[0] == '&') {
 		size_t maxchars = bufLen;
 
@@ -138,7 +142,9 @@ bool isValidUtf8(StringView r) {
 				--l;
 				++ptr;
 
-				if ((((const uint8_t *)ptr)[0] & 0b1100'0000) != 0b1000'0000) {
+				// Re-check the bound: a truncated multibyte sequence at the end of the
+				// view must not read its continuation byte(s) past `end`.
+				if (ptr >= end || (((const uint8_t *)ptr)[0] & 0b1100'0000) != 0b1000'0000) {
 					return false;
 				}
 			}

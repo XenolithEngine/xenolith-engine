@@ -48,7 +48,14 @@ void HashTable::init(HashTable *ht, Pool *pool) {
 
 HashTable *HashTable::make(Pool *pool) {
 	HashTable *ht = (HashTable *)pool->palloc(sizeof(HashTable));
+	if (!ht) {
+		return nullptr;
+	}
 	init(ht, pool);
+	if (!ht->array) {
+		// alloc_array() failed inside init(); the table would be unusable
+		return nullptr;
+	}
 	return ht;
 }
 
@@ -80,6 +87,9 @@ HashIndex *HashTable::first(Pool *p) {
 	HashIndex *hi;
 	if (p) {
 		hi = (HashIndex *)p->palloc(sizeof(*hi));
+		if (!hi) {
+			return nullptr;
+		}
 	} else {
 		hi = &iterator;
 	}
@@ -98,6 +108,10 @@ static void expand_array(HashTable *ht) {
 
 	new_max = ht->max * 2 + 1;
 	new_array = alloc_array(ht, new_max);
+	if (!new_array) {
+		// Expansion is only a collision-rate optimization; keep the existing array.
+		return;
+	}
 	for (hi = ht->first(nullptr); hi; hi = hi->next()) {
 		uint32_t i = hi->_self->hash & new_max;
 		hi->_self->next = new_array[i];
@@ -112,7 +126,15 @@ static uint32_t s_hashfunc_default(const char *char_key, size_t *klen, uint32_t 
 		*klen = __builtin_strlen(char_key);
 	}
 
-	return sprt::hash32(char_key, uint32_t(*klen), 0);
+	// hashSize takes a size_t length, so the full key length is hashed (hash32 would
+	// truncate *klen to 32 bits, mis-hashing keys >= 4 GiB). It also uses the native
+	// width per platform (xxh32 on 32-bit, xxh64 on 64-bit). Fold the result to the
+	// 32-bit bucket value: the bucket index is masked, so only the output width is
+	// reduced, never the input length.
+	//
+	// Use the per-table seed (hash-flooding resistance); a hard-coded 0 would make the
+	// randomized seed computed in init() inert and the bucket mapping predictable.
+	return uint32_t(sprt::hashSize(char_key, *klen, hash));
 }
 
 static HashEntry **find_entry(HashTable *ht, const void *key, size_t klen, const void *val) {
@@ -136,6 +158,11 @@ static HashEntry **find_entry(HashTable *ht, const void *key, size_t klen, const
 		ht->free = he->next;
 	} else {
 		he = (HashEntry *)ht->pool->palloc(sizeof(*he));
+		if (!he) {
+			// Allocation failed: cannot insert. *hep is still null, so get() reports
+			// not-found and set() leaves the table unchanged instead of crashing.
+			return hep;
+		}
 	}
 	he->next = nullptr;
 	he->hash = hash;
@@ -154,6 +181,9 @@ HashTable *HashTable::copy(Pool *pool) const {
 
 	ht = (HashTable *)pool->palloc(
 			sizeof(HashTable) + sizeof(*ht->array) * (max + 1) + sizeof(HashEntry) * count);
+	if (!ht) {
+		return nullptr;
+	}
 	ht->pool = pool;
 	ht->free = nullptr;
 	ht->count = count;
@@ -235,6 +265,9 @@ HashTable *HashTable::merge(Pool *p, const HashTable *overlay, merge_fn merger,
 	uint32_t i, j, k, hash;
 
 	res = (HashTable *)p->palloc(sizeof(HashTable));
+	if (!res) {
+		return nullptr;
+	}
 	res->pool = p;
 	res->free = nullptr;
 	res->count = this->count;
@@ -244,8 +277,14 @@ HashTable *HashTable::merge(Pool *p, const HashTable *overlay, merge_fn merger,
 	}
 	res->seed = this->seed;
 	res->array = alloc_array(res, res->max);
+	if (!res->array) {
+		return nullptr;
+	}
 	if (this->count + overlay->count) {
 		new_vals = (HashEntry *)p->palloc(sizeof(HashEntry) * (this->count + overlay->count));
+		if (!new_vals) {
+			return nullptr;
+		}
 	}
 	j = 0;
 	for (k = 0; k <= this->max; k++) {

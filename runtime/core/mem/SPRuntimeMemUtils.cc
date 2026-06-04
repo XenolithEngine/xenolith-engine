@@ -193,8 +193,10 @@ void store(pool_t *pool, void *ptr, const StringView &key, __pool_function<void(
 
 		if (key.terminated()) {
 			pool::userdata_set(h, key.data(), sa_request_store_custom_cleanup, pool);
-		} else {
-			// userdata_set needs a NUL-terminated key; build a terminated copy
+		} else if (key.size() != Max<size_t>) {
+			// userdata_set needs a NUL-terminated key; build a terminated copy. The size
+			// guard keeps key.size() + 1 from overflowing to 0 (not reachable for a real
+			// StringView, but it would under-size the malloca while memcpy copied size bytes).
 			auto buf = __sprt_typed_malloca(char, key.size() + 1);
 			__builtin_memcpy(buf, key.data(), key.size());
 			buf[key.size()] = 0;

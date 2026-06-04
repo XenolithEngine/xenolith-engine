@@ -342,9 +342,9 @@ __malloc_function(R (*)(ArgTypes...)) -> __malloc_function<R(ArgTypes...)>;
 
 namespace sprt::memory::pool {
 
-SPRT_API void cleanup_register(pool_t *p, __pool_function<void()> &&cb);
+SPRT_API Status cleanup_register(pool_t *p, __pool_function<void()> &&cb);
 
-SPRT_API void pre_cleanup_register(pool_t *p, __pool_function<void()> &&cb);
+SPRT_API Status pre_cleanup_register(pool_t *p, __pool_function<void()> &&cb);
 
 } // namespace sprt::memory::pool
 

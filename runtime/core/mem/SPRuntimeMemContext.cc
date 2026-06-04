@@ -183,17 +183,23 @@ static Status cleanup_register_fn(void *ptr) {
 	return Status::Ok;
 }
 
-void cleanup_register(pool_t *p, __pool_function<void()> &&cb) {
-	perform_conditional([&] {
+Status cleanup_register(pool_t *p, __pool_function<void()> &&cb) {
+	return perform_conditional([&] {
 		auto fn = new (p) __pool_function<void()>(move(cb));
-		pool::cleanup_register(p, fn, &cleanup_register_fn);
+		if (!fn) {
+			return Status::ErrorOutOfHostMemory;
+		}
+		return pool::cleanup_register(p, fn, &cleanup_register_fn);
 	}, p);
 }
 
-void pre_cleanup_register(pool_t *p, __pool_function<void()> &&cb) {
-	perform_conditional([&] {
+Status pre_cleanup_register(pool_t *p, __pool_function<void()> &&cb) {
+	return perform_conditional([&] {
 		auto fn = new (p) __pool_function<void()>(move(cb));
-		pool::pre_cleanup_register(p, fn, &cleanup_register_fn);
+		if (!fn) {
+			return Status::ErrorOutOfHostMemory;
+		}
+		return pool::pre_cleanup_register(p, fn, &cleanup_register_fn);
 	}, p);
 }
 

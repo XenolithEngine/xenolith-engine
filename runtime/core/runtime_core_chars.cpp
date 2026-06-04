@@ -101,9 +101,12 @@ bool inCharGroup(CharGroupId mask, char16_t c) {
 
 bool inCharGroupMask(CharGroupId mask, char16_t c) {
 	for (size_t i = 1; i < sizeof(CharGroupId) * 8; i++) {
-		CharGroupId val = CharGroupId(1 << i);
+		// uint32_t(1): a signed `1 << 31` would be undefined behavior. inCharGroup must
+		// be tested with the individual group `val`, not the full `mask` (which would
+		// match no single switch case and always return false).
+		CharGroupId val = CharGroupId(uint32_t(1) << i);
 		if ((mask & val) != CharGroupId::None) {
-			if (inCharGroup(mask, c)) {
+			if (inCharGroup(val, c)) {
 				return true;
 			}
 		}

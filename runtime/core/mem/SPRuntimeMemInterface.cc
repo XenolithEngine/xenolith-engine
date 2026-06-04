@@ -811,7 +811,7 @@ void cleanup_kill(pool_t *pool, void *ptr, cleanup_fn cb) {
 	((impl::Pool *)pool)->cleanup_kill(ptr, (impl::Cleanup::Callback)cb);
 }
 
-void cleanup_register(pool_t *pool, void *ptr, cleanup_fn cb, cleanup_flags flags) {
+Status cleanup_register(pool_t *pool, void *ptr, cleanup_fn cb, cleanup_flags flags) {
 	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
@@ -820,14 +820,16 @@ void cleanup_register(pool_t *pool, void *ptr, cleanup_fn cb, cleanup_flags flag
 						"APR pool has no cleanup_flags support and flags is not "
 						"cleanup_flags_none");
 			}
+			// apr_pool_cleanup_register returns void (it aborts on OOM via the pool's
+			// abort fn), so there is nothing to propagate here.
 			apr::pool::cleanup_register((apr_pool_t *)pool, ptr, (apr_status_t (*)(void *))cb);
-			return;
+			return Status::Ok;
 		}
 	}
-	((impl::Pool *)pool)->cleanup_register(ptr, (impl::Cleanup::Callback)cb, flags);
+	return ((impl::Pool *)pool)->cleanup_register(ptr, (impl::Cleanup::Callback)cb, flags);
 }
 
-void pre_cleanup_register(pool_t *pool, void *ptr, cleanup_fn cb, cleanup_flags flags) {
+Status pre_cleanup_register(pool_t *pool, void *ptr, cleanup_fn cb, cleanup_flags flags) {
 	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
@@ -837,10 +839,10 @@ void pre_cleanup_register(pool_t *pool, void *ptr, cleanup_fn cb, cleanup_flags 
 						"cleanup_flags_none");
 			}
 			apr::pool::pre_cleanup_register((apr_pool_t *)pool, ptr, (apr_status_t (*)(void *))cb);
-			return;
+			return Status::Ok;
 		}
 	}
-	((impl::Pool *)pool)->pre_cleanup_register(ptr, (impl::Cleanup::Callback)cb, flags);
+	return ((impl::Pool *)pool)->pre_cleanup_register(ptr, (impl::Cleanup::Callback)cb, flags);
 }
 
 Status userdata_set(const void *data, const char *key, cleanup_fn cb, pool_t *pool) {
@@ -877,6 +879,13 @@ Status userdata_get(void **data, const char *key, size_t klen, pool_t *pool) {
 	sprt_passert(pool, "Memory pool can not be NULL");
 	if constexpr (config::AprCompatible) {
 		if (!isStappler(pool)) {
+			// klen == Max<size_t> is the "key is already NUL-terminated" sentinel; pass
+			// it straight through (apr does its own strlen). This also guards the
+			// klen + 1 below from overflowing to 0 (which would under-size the malloca
+			// while memcpy still copied klen bytes).
+			if (klen == Max<size_t>) {
+				return Status(apr::pool::userdata_get(data, key, (apr_pool_t *)pool));
+			}
 			// APR requires a NUL-terminated key; build a terminated copy
 			// (we cannot safely probe key[klen] without knowing the buffer length)
 			auto buf = __sprt_typed_malloca(char, klen + 1);

@@ -252,7 +252,7 @@ static inline bool sp_time_exp_check_mon(time_exp_t &ds) {
 	if (ds.tm_mday <= 0 || ds.tm_mday > 31) {
 		return false;
 	}
-	if (ds.tm_mon >= 12) {
+	if (ds.tm_mon < 0 || ds.tm_mon >= 12) {
 		return false;
 	}
 	if ((ds.tm_mday == 31)
@@ -537,6 +537,12 @@ static const char *sp_day_anames[] = {"Sunday", "Monday", "Tuesday", "Wednesday"
 
 // Sun Sep 16 01:03:52 1973\n\0
 size_t time_exp_t::asctime(char *date_str, size_t bufSize) const {
+	// Guard the sp_*_snames lookups: tm_wday/tm_mon may be out of range (e.g. a
+	// time_exp_t built from read(), which never sets tm_wday). The unsigned compare
+	// also rejects negatives, matching __strftime_fmt_1's guards.
+	if (static_cast<unsigned>(tm_wday) > 6 || static_cast<unsigned>(tm_mon) > 11) {
+		return 0;
+	}
 	auto start = date_str;
 	const char *s;
 	int real_year;
@@ -583,6 +589,10 @@ size_t time_exp_t::asctime(char *date_str, size_t bufSize) const {
 }
 
 size_t time_exp_t::encodeRfc822(char *date_str, size_t bufSize) const {
+	// Guard the sp_*_snames lookups against out-of-range tm_wday/tm_mon (see asctime).
+	if (static_cast<unsigned>(tm_wday) > 6 || static_cast<unsigned>(tm_mon) > 11) {
+		return 0;
+	}
 	auto start = date_str;
 	const char *s;
 	int real_year;
@@ -647,6 +657,10 @@ size_t time_exp_t::encodeRfc822(char *date_str, size_t bufSize) const {
 }
 
 size_t time_exp_t::encodeCTime(char *date_str, size_t bufSize) const {
+	// Guard the sp_*_snames lookups against out-of-range tm_wday/tm_mon (see asctime).
+	if (static_cast<unsigned>(tm_wday) > 6 || static_cast<unsigned>(tm_mon) > 11) {
+		return 0;
+	}
 	auto start = date_str;
 	const char *s;
 	int real_year;

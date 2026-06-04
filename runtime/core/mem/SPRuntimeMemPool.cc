@@ -26,6 +26,7 @@ THE SOFTWARE.
 #include <sprt/runtime/mem/context.h>
 #include <sprt/runtime/log.h>
 #include <sprt/cxx/new>
+#include <sprt/cxx/mutex>
 #include <sprt/c/__sprt_assert.h>
 #include <sprt/c/__sprt_unistd.h>
 
@@ -68,6 +69,13 @@ static Allocator *s_global_allocator = nullptr;
 static Pool *s_global_pool = nullptr;
 static atomic<int> s_global_init = 0;
 static atomic<size_t> s_nPools = 0;
+
+// Serializes initialize()/terminate(): a concurrent initialize() must block until the
+// first caller has fully constructed s_global_pool (not just bumped the refcount), and
+// the refcount may cycle 0->1->0->1 (e.g. the dispatch looper), so a once-latch is not
+// enough. qmutex zero-initializes statically and is futex-based (no heap), so it is safe
+// to use before the pool exists.
+static qmutex s_global_init_mutex;
 
 static void Pool_performCleanup(Pool *pool) {
 	// Run default cleanups first...
@@ -373,7 +381,7 @@ Pool *Pool::make_child(Allocator *allocator) {
 	return pool;
 }
 
-void Pool::cleanup_register(const void *data, Cleanup::Callback cb, pool::cleanup_flags flags) {
+Status Pool::cleanup_register(const void *data, Cleanup::Callback cb, pool::cleanup_flags flags) {
 	Cleanup *c;
 
 	if (free_cleanups) {
@@ -382,6 +390,9 @@ void Pool::cleanup_register(const void *data, Cleanup::Callback cb, pool::cleanu
 		free_cleanups = c->next;
 	} else {
 		c = (Cleanup *)palloc(sizeof(Cleanup));
+		if (!c) {
+			return Status::ErrorOutOfHostMemory;
+		}
 	}
 
 	c->data = data;
@@ -389,9 +400,11 @@ void Pool::cleanup_register(const void *data, Cleanup::Callback cb, pool::cleanu
 	c->flags = flags;
 	c->next = cleanups;
 	cleanups = c;
+	return Status::Ok;
 }
 
-void Pool::pre_cleanup_register(const void *data, Cleanup::Callback cb, pool::cleanup_flags flags) {
+Status Pool::pre_cleanup_register(const void *data, Cleanup::Callback cb,
+		pool::cleanup_flags flags) {
 	Cleanup *c;
 
 	if (free_cleanups) {
@@ -400,12 +413,16 @@ void Pool::pre_cleanup_register(const void *data, Cleanup::Callback cb, pool::cl
 		free_cleanups = c->next;
 	} else {
 		c = (Cleanup *)palloc(sizeof(Cleanup));
+		if (!c) {
+			return Status::ErrorOutOfHostMemory;
+		}
 	}
 	c->data = data;
 	c->fn = cb;
 	c->flags = flags;
 	c->next = pre_cleanups;
 	pre_cleanups = c;
+	return Status::Ok;
 }
 
 void Pool::cleanup_kill(void *data, Cleanup::Callback cb) {
@@ -451,17 +468,23 @@ void Pool::cleanup_run(void *data, Cleanup::Callback cb) {
 Status Pool::userdata_set(const void *data, const char *key, Cleanup::Callback cleanup) {
 	if (user_data == nullptr) {
 		user_data = HashTable::make(this);
+		if (user_data == nullptr) {
+			return Status::ErrorOutOfHostMemory;
+		}
 	}
 
 	if (user_data->get(key, -1) == nullptr) {
 		char *new_key = pstrdup(key);
+		if (new_key == nullptr) {
+			return Status::ErrorOutOfHostMemory;
+		}
 		user_data->set(new_key, -1, data);
 	} else {
 		user_data->set(key, -1, data);
 	}
 
 	if (cleanup) {
-		cleanup_register(data, cleanup, pool::cleanup_flags::cleanup_flags_none);
+		return cleanup_register(data, cleanup, pool::cleanup_flags::cleanup_flags_none);
 	}
 	return Status::Ok;
 }
@@ -469,12 +492,15 @@ Status Pool::userdata_set(const void *data, const char *key, Cleanup::Callback c
 Status Pool::userdata_setn(const void *data, const char *key, Cleanup::Callback cleanup) {
 	if (user_data == nullptr) {
 		user_data = HashTable::make(this);
+		if (user_data == nullptr) {
+			return Status::ErrorOutOfHostMemory;
+		}
 	}
 
 	user_data->set(key, -1, data);
 
 	if (cleanup) {
-		cleanup_register(data, cleanup, pool::cleanup_flags::cleanup_flags_none);
+		return cleanup_register(data, cleanup, pool::cleanup_flags::cleanup_flags_none);
 	}
 	return Status::Ok;
 }
@@ -498,7 +524,10 @@ Status Pool::userdata_get(void **data, const char *key, size_t klen) {
 }
 
 void initialize() {
-	// We do not know, what thread calls this first!
+	// We do not know, what thread calls this first! Hold the lock across the whole
+	// construction so a concurrent initialize() blocks until s_global_pool is ready,
+	// rather than returning with the refcount bumped but the pool still null.
+	unique_lock<qmutex> lock(s_global_init_mutex);
 	if (s_global_init.fetch_add(1) == 0) {
 		if (!s_global_allocator) {
 			s_global_allocator =
@@ -510,6 +539,7 @@ void initialize() {
 }
 
 void terminate() {
+	unique_lock<qmutex> lock(s_global_init_mutex);
 	if (s_global_init.fetch_sub(1) == 1) {
 		if (s_global_pool) {
 			Pool::destroy(s_global_pool);
