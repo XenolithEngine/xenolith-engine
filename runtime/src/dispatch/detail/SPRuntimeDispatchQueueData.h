@@ -157,7 +157,7 @@ struct SPRT_API QueueData : public PerformEngine {
 struct SPRT_API PlatformQueueData;
 
 struct alignas(32) PlatformQueueData : public sprt::detail::AllocPool {
-	struct RunContext {
+	struct alignas(32) RunContext {
 		enum CallMode {
 			Poll,
 			Wait,

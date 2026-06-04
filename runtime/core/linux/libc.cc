@@ -36,7 +36,7 @@ namespace sprt {
 
 static __plock_storage s_plockStorage;
 
-void __sprt_libc_thread_exit(bool externalThread) { }
+void __sprt_libc_thread_exit(bool externalThread) { pthread_exit(0); }
 
 __plock_storage *__libc_get_plock_storage() { return &s_plockStorage; }
 

@@ -147,6 +147,10 @@ __SPRT_C_FUNC EXCEPTION_DISPOSITION __CxxFrameHandler3(PEXCEPTION_RECORD Excepti
 
 __SPRT_ID(setjmp_fn) get_setjmp_fn() { return reinterpret_cast<__SPRT_ID(setjmp_fn)>(s_setjmp); }
 
+__SPRT_ID(sigsetjmp_fn) get_sigsetjmp_fn() {
+	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(s_setjmp);
+}
+
 __SPRT_C_FUNC __attribute__((noreturn)) void longjmp(_JUMP_BUFFER *buf, int value) {
 	CONTEXT ctx;
 	ctx.ContextFlags = CONTEXT_FULL;

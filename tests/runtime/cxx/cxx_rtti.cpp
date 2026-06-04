@@ -70,6 +70,8 @@ public:
 	Base *getBase() { return static_cast<Base *>(this); }
 };
 
+#pragma clang diagnostic ignored "-Winaccessible-base"
+
 class MoreDerivedBase : private Base, public MoreDerived {
 public:
 	int moreDerivedValue;

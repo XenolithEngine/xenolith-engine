@@ -128,6 +128,9 @@ int thread::__makeThread(__malloc_function<void()> &&fn) {
 			this,
 		};
 	});
+	if (ret == 0) {
+		__native = __t;
+	}
 	return ret;
 }
 
