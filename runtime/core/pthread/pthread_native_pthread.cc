@@ -40,7 +40,7 @@ __SPRT_C_FUNC int __cxa_thread_atexit(void (*cb)(void *), void *obj,
 namespace sprt::_thread::native {
 
 static uint64_t pthread_to_id(pthread_t pthread) {
-	return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pthread_self()));
+	return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pthread));
 }
 
 static uint64_t __getNativeThreadId() { return pthread_to_id(pthread_self()); }
@@ -102,7 +102,7 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 	return ret;
 }
 
-static void __initNativeHandle(thread_t *thread) {
+static bool __initNativeHandle(thread_t *thread) {
 	size_t stackSize = 0;
 	void *stackptr = nullptr;
 
@@ -151,6 +151,7 @@ static void __initNativeHandle(thread_t *thread) {
 		}
 #endif
 	}
+	return true;
 }
 
 static void __closeNativeHandle(void *handle) { }

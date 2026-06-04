@@ -85,7 +85,9 @@ struct thread_t : thread_base_t {
 	static thread_t *self_noattach();
 
 	static int create(thread_t **__SPRT_RESTRICT outthread, const attr_t *__SPRT_RESTRICT attr,
-			void *(*cb)(void *), void *__SPRT_RESTRICT arg);
+			void *(*cb)(thread_base_t *), void *__SPRT_RESTRICT arg,
+			const Callback<void(uint8_t *st, size_t stSize)> & = nullptr);
+
 	static int detach(thread_t *thread);
 
 	__SPRT_NORETURN static void exit(void *exitCode);
@@ -119,23 +121,39 @@ struct thread_t : thread_base_t {
 	qmutex mutex;
 	qtimeline state;
 
+	// Dedicated lock for the priority-inheritance bookkeeping (threadRobustMutexes,
+	// basePrio, dynamicPrio). It MUST be a leaf: code holding prioMutex must not
+	// acquire pool->mutex or thread->mutex. Keeping PI off thread->mutex avoids an
+	// ABBA deadlock with thread finalization (which takes thread->mutex -> pool->mutex,
+	// while a priority boost takes pool->mutex -> prioMutex).
+	qmutex prioMutex;
+
 	thread_result_t result = 0;
 
 	// Note that SPRT's jmp_buf is safe for destructors
 	__sprt_jmp_buf jmpToRunthread;
 	__UnwindInfo unwinder;
 
+	// Base scheduling priority used by the PI recalculation, guarded by prioMutex.
+	// Mirrors attr.prio but is updated under prioMutex by setschedparam/setschedprio
+	// so the recalculation never needs to read thread->mutex-protected state.
+	int32_t basePrio = 0;
+
 	sprt::atomic<int32_t> dynamicPrio;
 
 	sprt::array<char, __SPRT_PTHREAD_NAMEMAXLEN + 1> threadName;
 
 	// should be called from thread itself to acquire actual attibutes it running with
-	void registerThread();
+	bool registerThread();
 
 	void addMutex(mutex_t *, int32_t mutexPrio);
 
 	// Priority inheritance protocol - some thread with higher priority wants this mutex
 	void promoteMutex(mutex_t *, int32_t mutexPrio);
+
+	// Priority inheritance protocol - a waiter that boosted us gave up its lock
+	// request, so revert the boost it applied (only if no higher boost replaced it).
+	void demoteMutex(mutex_t *, int32_t boostPrio);
 
 	void removeMutex(mutex_t *);
 

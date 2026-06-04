@@ -109,8 +109,6 @@ From [../../make/os/linux.mk](../../make/os/linux.mk):
 | `-frtti` | RTTI is kept on (the framework relies on it).
 | `-fPIC -DPIC` | Position-independent code for the shared-library build.
 | `-rdynamic -Wl,--exclude-libs,ALL` (lib) | Export the library's own dynamic symbols but strip symbols pulled in from static dependencies.
-| `-Wl,-z,defs` (shared-root build) | Fail the link on any undefined symbol instead of deferring to load time.
-| `-fsanitize=address` | Enabled by passing `ASAN=1`.
 |===
 
 Non-NDK Android reuses this same preset with the `ANDROID` config flag instead of

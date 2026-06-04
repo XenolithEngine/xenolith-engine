@@ -34,10 +34,18 @@ __SPRT_C_FUNC int __SPRT_ID(
 
 	auto pool = __thread_pool::get();
 
-	*key = pool->nkeys.fetch_add(1);
-
 	unique_lock lock(pool->mutex);
-	pool->keys.emplace(*key, __key_data{cb, 1});
+
+	// POSIX: report EAGAIN once the per-process key limit is reached.
+	if (pool->keys.size() >= __SPRT_PTHREAD_KEYS_MAX) {
+		return EAGAIN;
+	}
+
+	// Publish *key only after the table entry is committed, so a caller never sees
+	// a key index with no backing entry.
+	auto k = pool->nkeys.fetch_add(1);
+	pool->keys.emplace(k, __key_data{cb, 1});
+	*key = k;
 	return 0;
 }
 

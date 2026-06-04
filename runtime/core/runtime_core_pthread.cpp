@@ -59,13 +59,25 @@ static_assert(sizeof(sprt::_thread::spinlock_t) == sizeof(__sprt_pthread_spinloc
 static_assert(sizeof(sprt::_thread::barrier_t) == sizeof(__sprt_pthread_barrier_t));
 static_assert(sizeof(sprt::_thread::barrierattr_t) <= sizeof(__sprt_pthread_barrierattr_t));
 
+struct _pthread_create_wrapper {
+	void *(*cb)(void *);
+	void *arg;
+};
+
+static_assert(sizeof(_pthread_create_wrapper) <= THREAD_STORAGE_BLOCK_SIZE);
+
 __SPRT_C_FUNC int __SPRT_ID(pthread_create)(__SPRT_ID(pthread_t) * __SPRT_RESTRICT outthread,
 		const __SPRT_ID(pthread_attr_t) * __SPRT_RESTRICT attr, void *(*cb)(void *),
 		void *__SPRT_RESTRICT arg) {
 	_thread::thread_t *__t = nullptr;
 
-	auto ret = _thread::thread_t::create(&__t, reinterpret_cast< const _thread::attr_t *>(attr), cb,
-			arg);
+	auto ret = _thread::thread_t::create(&__t, reinterpret_cast< const _thread::attr_t *>(attr),
+			[](_thread::thread_base_t *t) -> void * {
+		auto w = reinterpret_cast<_pthread_create_wrapper *>(t->storage);
+		return (void *)(uintptr_t)w->cb(w->arg);
+	}, arg, [&](uint8_t *buf, size_t baseSize) {
+		new (buf) _pthread_create_wrapper{cb, arg}; //
+	});
 	if (ret == 0) {
 		*outthread = reinterpret_cast<__SPRT_ID(pthread_t)>(__t);
 		return ret;
@@ -163,10 +175,7 @@ struct _beginthreadexwrapper {
 	void *_ArgList;
 };
 
-static void *_beginthreadex_fn(void *arg) {
-	auto w = (_beginthreadexwrapper *)arg;
-	return (void *)(uintptr_t)w->_StartAddress(w->_ArgList);
-}
+static_assert(sizeof(_beginthreadexwrapper) <= THREAD_STORAGE_BLOCK_SIZE);
 
 #ifndef CREATE_SUSPENDED
 #define CREATE_SUSPENDED                  0x0000'0004
@@ -190,9 +199,13 @@ __SPRT_C_FUNC __SPRT_ID(uintptr_t)
 #endif
 	}
 
-	_beginthreadexwrapper w{_StartAddress, _ArgList};
-
-	auto ret = _thread::thread_t::create(&__t, &attr, _beginthreadex_fn, &w);
+	auto ret =
+			_thread::thread_t::create(&__t, &attr, [](sprt::_thread::thread_base_t *t) -> void * {
+		auto w = reinterpret_cast<_beginthreadexwrapper *>(t->storage);
+		return (void *)(uintptr_t)w->_StartAddress(w->_ArgList);
+	}, _ArgList, [&](uint8_t *buf, size_t bufSize) {
+		new (buf) _beginthreadexwrapper{_StartAddress, _ArgList}; //
+	});
 	if (ret == 0) {
 		if (_ThrdAddr) {
 			*_ThrdAddr = __t->threadId;
