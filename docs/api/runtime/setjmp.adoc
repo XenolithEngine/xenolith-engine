@@ -39,9 +39,6 @@ Semantics match the C contract:
   `setjmp` return `val` (a `0` value is reported as `1`), *and* unwinds the
   intervening frames.
 
-NOTE: The signal-mask-saving variants `sigsetjmp` / `siglongjmp` are **not**
-provided.
-
 In a hosted SPRT build the header forwards to the system `<setjmp.h>` instead
 (`#include_next`), and you get the platform's stock, non-unwinding behavior.
 
@@ -222,8 +219,6 @@ size and alignment.
   built against a different runtime.
 * *Windows needs `-fexceptions`.* Without it, the SEH-based unwind cannot run and
   extended `longjmp` is unavailable.
-* *No `sigsetjmp`/`siglongjmp`.* Signal-mask save/restore variants are not
-  provided.
 
 ## Interaction with pthreads
 

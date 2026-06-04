@@ -142,13 +142,13 @@ struct aligned_storage_kv_traits<Key, pair<Key, Value>> {
 	static inline Value &extract_value(const value_type &k) noexcept { return k.second; }
 
 	static inline Value &extract_value(const storage_type &storage) noexcept {
-		return extract_key(storage.ref());
+		return extract_value(storage.ref());
 	}
 
 	static inline Value &extract_value(value_type &k) noexcept { return k.second; }
 
 	static inline Value &extract_value(storage_type &storage) noexcept {
-		return extract_key(storage.ref());
+		return extract_value(storage.ref());
 	}
 
 	template <typename A, typename... Args>
@@ -192,13 +192,13 @@ struct aligned_storage_kv_traits<Key, pair<const Key, Value>> {
 	static inline const Value &extract_value(const value_type &k) noexcept { return k.second; }
 
 	static inline const Value &extract_value(const storage_type &storage) noexcept {
-		return extract_key(storage.ref());
+		return extract_value(storage.ref());
 	}
 
 	static inline Value &extract_value(value_type &k) noexcept { return k.second; }
 
 	static inline Value &extract_value(storage_type &storage) noexcept {
-		return extract_key(storage.ref());
+		return extract_value(storage.ref());
 	}
 
 	template <typename A, typename... Args>

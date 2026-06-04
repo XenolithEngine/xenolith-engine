@@ -52,6 +52,10 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
+#define sigjmp_buf __SPRT_ID(sigjmp_buf)
+#define sigsetjmp __SPRT_ID(sigsetjmp)
+#define siglongjmp __SPRT_ID(siglongjmp)
+
 #define jmp_buf __SPRT_ID(jmp_buf)
 #define setjmp __SPRT_ID(setjmp)
 #define longjmp __SPRT_ID(longjmp)

@@ -51,13 +51,20 @@ THE SOFTWARE.
 // Windows ABI setjmp have 2 arguments,
 #define __sprt_setjmp(Buf) __sprt_cfa_setjmp(__sprt_get_setjmp_fn()( ((Buf)[0].__native ), __SPRT_NULL), Buf)
 
+#define __sprt_sigsetjmp(Buf, SaveMask) __sprt_cfa_sigsetjmp(__sprt_get_sigsetjmp_fn()( ((Buf)[0].__native), __SPRT_NULL ), Buf, SaveMask)
+
 typedef int (*__SPRT_ID(setjmp_fn))(__SPRT_ID(native_jmp_buf), void *);
+typedef int (*__SPRT_ID(sigsetjmp_fn))(__SPRT_ID(native_jmp_buf), void *);
 
 #else
 
 #define __sprt_setjmp(Buf) __sprt_cfa_setjmp(__sprt_get_setjmp_fn()( ((Buf)[0].__native) ), Buf)
 
+#define __sprt_sigsetjmp(Buf, SaveMask) __sprt_cfa_sigsetjmp(__sprt_get_sigsetjmp_fn()( ((Buf)[0].__native), SaveMask ), Buf, SaveMask)
+
 typedef int (*__SPRT_ID(setjmp_fn))(__SPRT_ID(native_jmp_buf));
+
+typedef int (*__SPRT_ID(sigsetjmp_fn))(__SPRT_ID(native_sigjmp_buf), int);
 
 #endif
 
@@ -69,15 +76,24 @@ typedef struct __SPRT_ID(__ext_jmp_buf) {
 	int __result; // We need to store result value from longjmp during stack unwind
 } __SPRT_ID(jmp_buf)[1];
 
+typedef struct __SPRT_ID(__ext_sigjmp_buf) {
+	__SPRT_ID(native_sigjmp_buf) __native; // OS-defined jmp_buf
+	__SPRT_ID(uintptr_t) __cfa; // Canonical Frame Address for stack unwinder
+	int __result; // We need to store result value from longjmp during stack unwind
+} __SPRT_ID(sigjmp_buf)[1];
+
 // Performs longjmp
 SPRT_API __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf), int);
+SPRT_API __SPRT_NORETURN void __SPRT_ID(siglongjmp)(__SPRT_ID(sigjmp_buf), int);
 
 // Returns native setjmp function pointer
 SPRT_API __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)();
+SPRT_API __SPRT_ID(sigsetjmp_fn) __SPRT_ID(get_sigsetjmp_fn)();
 
 // Writes CFA vaule to jmpbuf for stack unwinding, if arg is 0, and returns 0
 // Returns arg immediately if it is not 0
 SPRT_API int __SPRT_ID(cfa_setjmp)(int arg, __SPRT_ID(jmp_buf));
+SPRT_API int __SPRT_ID(cfa_sigsetjmp)(int arg, __SPRT_ID(sigjmp_buf), int savemask);
 
 __SPRT_END_DECL
 

@@ -41,6 +41,7 @@ THE SOFTWARE.
 
 #ifndef SPRT_WINDOWS
 static_assert(sizeof(jmp_buf) == sizeof(__sprt_native_jmp_buf));
+static_assert(sizeof(sigjmp_buf) == sizeof(__sprt_native_sigjmp_buf));
 #endif
 
 #include <sprt/cxx/detail/ctypes.h>
@@ -51,6 +52,7 @@ namespace sprt {
 
 #if SPRT_WINDOWS
 __SPRT_ID(setjmp_fn) get_setjmp_fn();
+__SPRT_ID(sigsetjmp_fn) get_sigsetjmp_fn();
 #endif
 
 __SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
@@ -58,6 +60,18 @@ __SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
 	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(&setjmp);
 #elif SPRT_WINDOWS
 	return get_setjmp_fn();
+#else
+#error Not implemented
+#endif
+}
+
+__SPRT_C_FUNC __SPRT_ID(sigsetjmp_fn) __SPRT_ID(get_sigsetjmp_fn)() {
+#if SPRT_LINUX
+	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&__sigsetjmp);
+#elif SPRT_ANDROID || SPRT_MACOS
+	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&sigsetjmp);
+#elif SPRT_WINDOWS
+	return get_sigsetjmp_fn();
 #else
 #error Not implemented
 #endif
@@ -82,6 +96,41 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_setjmp)(int arg, __SPRT_ID(jmp_buf) buf) {
 		lookup->result = _Unwind_GetCFA(ctx);
 		return _URC_END_OF_STACK;
 	}, &lookup);
+#endif
+	buf->__cfa = lookup.result;
+
+	return 0;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(cfa_sigsetjmp)(int arg, __SPRT_ID(sigjmp_buf) buf, int savemask) {
+	if (arg != 0) {
+		return arg;
+	}
+
+	struct CFALookup {
+		int offset = 1; // lookup for an address for frame directly above us
+		uintptr_t result = 0;
+	} lookup;
+
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
+	_Unwind_Backtrace([](struct _Unwind_Context *ctx, void *l) {
+		CFALookup *lookup = (CFALookup *)l;
+		if (--lookup->offset > 0) {
+			return _URC_NO_REASON;
+		}
+		lookup->result = _Unwind_GetCFA(ctx);
+		return _URC_END_OF_STACK;
+	}, &lookup);
+#elif SPRT_WINDOWS
+	if (savemask) {
+		__sprt_sigset_t current;
+		__sprt_sigset_t empty;
+		__sprt_sigemptyset(&empty);
+		__sprt_sigprocmask(__SPRT_SIG_BLOCK, &empty, &current);
+		lookup.result = current.__bits[0];
+	} else {
+		lookup.result = Max<uintptr_t>;
+	}
 #endif
 	buf->__cfa = lookup.result;
 
@@ -122,6 +171,52 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 	abort();
 #elif SPRT_WINDOWS
 	// On windows, longjmp is already an SPRT wrapper (see libc_impl/src/windows/except.cc)
+	longjmp((_JUMP_BUFFER *)buf->__native, ret);
+#else
+#error Not implemented
+#endif
+}
+
+__SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(siglongjmp)(__SPRT_ID(sigjmp_buf) buf, int ret) {
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
+	using jmp_buf_t = decltype(buf);
+	// TODO: Maybe, add some additional info for unwinder?
+
+	// Preserve result on jmp_buf.
+	// It's safe to know that we will not use anything from stack before jmp_buf
+	buf->__result = ret;
+
+	[[maybe_unused]]
+	auto code = _Unwind_ForcedUnwind(&_thread::thread_t::self()->unwinder.excpt,
+			[](int version, _Unwind_Action actions, _Unwind_Exception_Class exceptionClass,
+					_Unwind_Exception *exceptionObject, struct _Unwind_Context *context,
+					void *stop_parameter) {
+		auto buf = reinterpret_cast<jmp_buf_t>(stop_parameter);
+		if (actions & _UA_END_OF_STACK) {
+			fprintf(stderr, "%s",
+					"End of stack is reached in siglongjmp; It means that sigjmp_buf pointing to "
+					"invalid " "location, that was not found on current thread's stack; aborting;");
+			abort();
+		} else if (buf->__cfa == _Unwind_GetCFA(context)) {
+#if SPRT_LINUX
+			siglongjmp(reinterpret_cast<struct __jmp_buf_tag *>(buf->__native), buf->__result);
+#else
+			siglongjmp(buf->__native, buf->__result);
+#endif
+		}
+		return _URC_NO_REASON;
+	},
+			buf);
+	sprt_passert(code, "__sprt_siglongjmp: _Unwind_ForcedUnwind failed");
+	abort();
+#elif SPRT_WINDOWS
+	// On windows, longjmp is already an SPRT wrapper (see libc_impl/src/windows/except.cc)
+	if (buf->__cfa != Max<uintptr_t>) {
+		__sprt_sigset_t restoreMask;
+		__sprt_sigemptyset(&restoreMask);
+		restoreMask.__bits[0] = buf->__cfa;
+		__sprt_sigprocmask(__SPRT_SIG_SETMASK, &restoreMask, nullptr);
+	}
 	longjmp((_JUMP_BUFFER *)buf->__native, ret);
 #else
 #error Not implemented

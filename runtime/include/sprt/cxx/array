@@ -23,6 +23,7 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_ARRAY_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_ARRAY_H_
 
+#include <sprt/c/__sprt_assert.h>
 #include <sprt/cxx/__algorithm/bounds.h>
 #include <sprt/cxx/detail/ctypes.h>
 
@@ -68,9 +69,15 @@ struct array {
 	constexpr reference operator[](size_type n) noexcept { return _elems[n]; }
 	constexpr const_reference operator[](size_type n) const noexcept { return _elems[n]; }
 
-	constexpr reference at(size_type n) { return _elems[n]; }
+	constexpr reference at(size_type n) {
+		sprt_passert(n < Size, "array::at: index out of range");
+		return _elems[n];
+	}
 
-	constexpr const_reference at(size_type n) const { return _elems[n]; }
+	constexpr const_reference at(size_type n) const {
+		sprt_passert(n < Size, "array::at: index out of range");
+		return _elems[n];
+	}
 
 	constexpr reference front() noexcept { return (*this)[0]; }
 	constexpr const_reference front() const noexcept { return (*this)[0]; }
@@ -81,7 +88,7 @@ struct array {
 	constexpr const value_type *data() const noexcept { return _elems; }
 
 	constexpr bool operator==(const array &other) const {
-		return sprt::equal(begin(), other.begin(), end());
+		return sprt::equal(begin(), end(), other.begin());
 	}
 };
 
