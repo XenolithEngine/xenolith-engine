@@ -72,7 +72,7 @@ template <typename T, size_t Size>
 struct Converter<T, ShouldSwap::DoSwap, Size> {
 	static inline T Swap(T value) {
 		T ret;
-		char *source = (char *)&source;
+		char *source = (char *)&value;
 		auto end = source + Size;
 
 		char *target = ((char *)&ret) + Size - 1;

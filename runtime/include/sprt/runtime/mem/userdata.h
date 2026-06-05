@@ -29,20 +29,23 @@ THE SOFTWARE.
 
 namespace sprt::memory::pool {
 
+// Layout of a stored userdata entry. SHARED between store() (which allocates it)
+// and get() (which reads it back) so the two cannot drift apart — both must use
+// this single definition rather than re-declaring the layout locally.
+struct StoreHandle : detail::AllocPool {
+	void *pointer;
+	__pool_function<void()> callback;
+};
+
 SPRT_API void store(pool_t *, void *ptr, const StringView &key,
 		__pool_function<void()> && = nullptr);
 
 template <typename T = void>
 inline T *get(pool_t *pool, const StringView &key) {
-	struct Handle : detail::AllocPool {
-		void *pointer;
-		__pool_function<void()> callback;
-	};
-
 	void *ptr = nullptr;
 	if (pool::userdata_get(&ptr, key.data(), key.size(), pool) == Status::Ok) {
 		if (ptr) {
-			return (T *)((Handle *)ptr)->pointer;
+			return (T *)((StoreHandle *)ptr)->pointer;
 		}
 	}
 	return nullptr;

@@ -331,6 +331,9 @@ struct io_traits<io_int<I>> {
 
 template <signed_integer I>
 struct io_traits<I> {
+	// Digits10<I> + 1 is the max magnitude digit count, + 1 for the sign; the
+	// buffer below is MAX_DIGITS + 1, so the worst case (e.g. INT64_MIN, 20 chars)
+	// always fits with a byte to spare. Holds for every width incl. 128-bit.
 	static constexpr size_t MAX_DIGITS = Digits10<I> + 2;
 
 	template <io_character CharType>

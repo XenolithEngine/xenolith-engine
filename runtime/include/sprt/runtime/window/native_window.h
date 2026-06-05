@@ -79,7 +79,7 @@ public:
 	void setFrameOrder(uint64_t v) { _frameOrder = v; }
 	uint64_t getFrameOrder() const { return _frameOrder; }
 
-	bool isTextInputEnabled() const { return _textInput->isRunning(); }
+	bool isTextInputEnabled() const { return _textInput && _textInput->isRunning(); }
 
 	const WindowInfo *getInfo() const { return _info; }
 

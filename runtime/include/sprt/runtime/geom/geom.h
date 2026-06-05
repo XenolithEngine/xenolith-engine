@@ -206,7 +206,7 @@ struct SPRT_API Extent2 {
 
 	constexpr Extent2 &operator=(const Size2 &size) {
 		width = size.width;
-		height = size.width;
+		height = size.height;
 		return *this;
 	}
 	constexpr Extent2 &operator=(const Vec2 &other) {
@@ -250,7 +250,7 @@ struct SPRT_API Extent3 {
 
 	constexpr Extent3 &operator=(const Size3 &size) {
 		width = size.width;
-		height = size.width;
+		height = size.height;
 		depth = size.depth;
 		return *this;
 	}
@@ -345,7 +345,7 @@ struct SPRT_API UVec3 {
 };
 
 struct SPRT_API IVec3 {
-	static constexpr size_t DIMENSIONS = 2;
+	static constexpr size_t DIMENSIONS = 3;
 
 	int32_t x;
 	int32_t y;

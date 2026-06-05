@@ -111,6 +111,12 @@ public:
 		return lockStatus;
 	}
 
+	// Contract (as for pthread_cond_signal/broadcast): the caller must hold the
+	// associated mutex while signalling. _wait registers `mutexid` and snapshots
+	// `previous` while still holding that mutex (it only unlocks at UnlockFn()
+	// below), so a signal issued under the same mutex always observes a waiter
+	// that has fully published its wait state - there is no lost-wakeup window.
+	// Calling _signal without the mutex held breaks that guarantee.
 	template <int (*WakeFn)(value_type *, flags_type)>
 	static Status _signal(__qcondvar_data *data, flags_type flags) {
 		uint64_t mid = __atomic_load_n(&data->mutexid, __ATOMIC_SEQ_CST);

@@ -84,6 +84,12 @@ SPRT_INLINE constexpr inline char32_t utf16CombineSurrogates(char16_t ch1, char1
 			+ 0x1'0000;
 }
 
+// Permissive decoder: this implements the original (RFC 2279) UTF-8 transform
+// used as a host-internal extended encoding (see the design note below). It does
+// NOT reject overlong forms, surrogate code points, or values above U+10FFFF -
+// that is intentional. Callers that ingest untrusted external text must validate
+// at the trust boundary (e.g. compare raw bytes, or reject 5/6-byte sequences)
+// rather than relying on this primitive to canonicalize.
 constexpr inline char32_t utf8Decode32(const char *ptr, size_t len, uint8_t &offset) {
 	if (len == 0) {
 		offset = 0;
@@ -97,7 +103,11 @@ constexpr inline char32_t utf8Decode32(const char *ptr, size_t len, uint8_t &off
 	char32_t ret = ptr[0] & mask;
 	for (uint8_t c = 1; c < offset; ++c) {
 		if ((ptr[c] & 0xc0) != 0x80) {
+			// Truncated/invalid sequence: report only the bytes actually consumed
+			// (the valid maximal subpart) so the caller resyncs at the offending
+			// byte instead of skipping past it.
 			ret = 0;
+			offset = c;
 			break;
 		}
 		ret <<= 6;

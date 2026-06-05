@@ -44,6 +44,12 @@ using NativeHandle = sprt::native_handle;
 using filesystem::OpenFlags;
 using filesystem::PollFlags;
 
+// Type-erased completion callback. The reinterpret_casts below cast between
+// function-pointer types that differ only in a pointer parameter's pointee
+// (T* vs void* userdata, and Result* across CompletionHandle<Other>). Calling
+// through a differently-typed function pointer is technically UB, but it is safe
+// on every supported ABI (all object pointers share representation and calling
+// convention), and it is the intentional erasure mechanism here.
 template <typename Result = Handle>
 struct SPRT_API CompletionHandle {
 	using Fn = void (*)(void *, Result *, uint32_t value, Status);

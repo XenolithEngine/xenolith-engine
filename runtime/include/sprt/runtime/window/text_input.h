@@ -97,6 +97,13 @@ struct SPRT_API TextCursor {
 	uint32_t start;
 	uint32_t length;
 
+	// Inclusive length between two positions, saturating at Max<uint32_t> so the
+	// `+ 1` cannot overflow to 0 (e.g. first=0, last=Max — the InvalidCursor span).
+	static constexpr uint32_t inclusiveLength(uint32_t a, uint32_t b) {
+		uint32_t d = (a > b) ? (a - b) : (b - a);
+		return d == Max<uint32_t> ? d : d + 1;
+	}
+
 	constexpr TextCursor() : start(Max<uint32_t>), length(0) { }
 	constexpr TextCursor(uint32_t pos) : start(pos), length(0) { }
 	constexpr TextCursor(uint32_t st, uint32_t len) : start(st), length(len) { }
@@ -105,7 +112,7 @@ struct SPRT_API TextCursor {
 	: start(pos.get()), length(len.get()) { }
 	constexpr TextCursor(TextCursorPosition first, TextCursorPosition last)
 	: start(sprt::min(first.get(), last.get()))
-	, length(((first > last) ? (first - last).get() : (last - first).get()) + 1) { }
+	, length(inclusiveLength(first.get(), last.get())) { }
 
 	constexpr bool operator==(const TextCursor &) const = default;
 };

@@ -100,7 +100,11 @@ protected:
 
 	bool reset();
 
-	// platform data block
+	// Platform data block: each backend placement-constructs its own POD
+	// "Source" struct here. Contract enforced at every construction site with
+	// `static_assert(sizeof(XxxSource) <= DataSize && is_standard_layout)`; such
+	// structs hold fds/pointers/callbacks, so alignof(void*) is sufficient. A
+	// backend needing stronger alignment must raise this alignment to match.
 	alignas(void *) uint8_t _data[DataSize];
 
 	HandleClass *_class = nullptr;

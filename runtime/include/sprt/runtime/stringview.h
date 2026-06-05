@@ -23,6 +23,8 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_STRINGVIEW_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_STRINGVIEW_H_
 
+#include <sprt/c/__sprt_assert.h>
+
 #include <sprt/runtime/math.h>
 #include <sprt/runtime/chargroup.h>
 #include <sprt/runtime/string.h>
@@ -194,6 +196,10 @@ public:
 	void clear() { len = 0; }
 	bool empty() const { return len == 0 || !ptr; }
 
+	// Precondition: the underlying buffer must have at least len+1 readable bytes
+	// (this reads ptr[len]). Holds for views over NUL-terminated sources (c_str,
+	// string literals); do NOT call this (or performWithTerminated) on a view
+	// set() over a non-terminated binary buffer.
 	bool terminated() const { return ptr && ptr[len] == 0; }
 
 	template <typename Callback>
@@ -892,12 +898,26 @@ public:
 		return true;
 	}
 
-	const Type &front() const { return *ptr; }
-	const Type &back() const { return ptr[len - 1]; }
+	// front/back/operator* require a non-empty span (like std::span); back() on an
+	// empty span would otherwise read ptr[size_t(-1)].
+	const Type &front() const {
+		sprt_passert(len > 0, "SpanView::front on empty span");
+		return *ptr;
+	}
+	const Type &back() const {
+		sprt_passert(len > 0, "SpanView::back on empty span");
+		return ptr[len - 1];
+	}
 
-	const Type &at(const size_t &s) const { return ptr[s]; }
+	const Type &at(const size_t &s) const {
+		sprt_passert(s < len, "SpanView::at index out of range");
+		return ptr[s];
+	}
 	const Type &operator[](const size_t &s) const { return ptr[s]; }
-	const Type &operator*() const { return *ptr; }
+	const Type &operator*() const {
+		sprt_passert(len > 0, "SpanView::operator* on empty span");
+		return *ptr;
+	}
 
 	void clear() { len = 0; }
 	bool empty() const { return len == 0 || !ptr; }
@@ -1771,8 +1791,13 @@ auto StringViewBase<_CharType>::readFloat() -> Result<float> {
 	tmp.skipChars<typename Self::template CharGroup<CharGroupId::WhiteSpace>>();
 	uint8_t offset = 0;
 	auto ret = detail::readNumber<float>(tmp.ptr, tmp.len, 0, offset);
-	this->ptr += offset;
-	this->len -= offset;
+	if (offset > 0) {
+		// offset is measured from tmp.ptr (after leading whitespace was skipped),
+		// so add the skipped whitespace to advance the original view correctly.
+		const auto consumed = size_t(tmp.ptr - this->ptr) + offset;
+		this->ptr += consumed;
+		this->len -= consumed;
+	}
 	return ret;
 }
 
@@ -1782,8 +1807,13 @@ auto StringViewBase<_CharType>::readDouble() -> Result<double> {
 	tmp.skipChars<typename Self::template CharGroup<CharGroupId::WhiteSpace>>();
 	uint8_t offset = 0;
 	auto ret = detail::readNumber<double>(tmp.ptr, tmp.len, 0, offset);
-	this->ptr += offset;
-	this->len -= offset;
+	if (offset > 0) {
+		// offset is measured from tmp.ptr (after leading whitespace was skipped),
+		// so add the skipped whitespace to advance the original view correctly.
+		const auto consumed = size_t(tmp.ptr - this->ptr) + offset;
+		this->ptr += consumed;
+		this->len -= consumed;
+	}
 	return ret;
 }
 
@@ -1793,8 +1823,13 @@ auto StringViewBase<_CharType>::readInteger(int base) -> Result<int64_t> {
 	tmp.skipChars<typename Self::template CharGroup<CharGroupId::WhiteSpace>>();
 	uint8_t offset = 0;
 	auto ret = detail::readNumber<int64_t>(tmp.ptr, tmp.len, base, offset);
-	this->ptr += offset;
-	this->len -= offset;
+	if (offset > 0) {
+		// offset is measured from tmp.ptr (after leading whitespace was skipped),
+		// so add the skipped whitespace to advance the original view correctly.
+		const auto consumed = size_t(tmp.ptr - this->ptr) + offset;
+		this->ptr += consumed;
+		this->len -= consumed;
+	}
 	return ret;
 }
 
@@ -2140,8 +2175,13 @@ inline Result<float> StringViewUtf8::readFloat() {
 	tmp.skipChars<CharGroup<CharGroupId::WhiteSpace>>();
 	uint8_t offset = 0;
 	auto ret = detail::readNumber<float>(tmp.ptr, tmp.len, 0, offset);
-	this->ptr += offset;
-	this->len -= offset;
+	if (offset > 0) {
+		// offset is measured from tmp.ptr (after leading whitespace was skipped),
+		// so add the skipped whitespace to advance the original view correctly.
+		const auto consumed = size_t(tmp.ptr - this->ptr) + offset;
+		this->ptr += consumed;
+		this->len -= consumed;
+	}
 	return ret;
 }
 inline Result<double> StringViewUtf8::readDouble() {
@@ -2149,8 +2189,13 @@ inline Result<double> StringViewUtf8::readDouble() {
 	tmp.skipChars<CharGroup<CharGroupId::WhiteSpace>>();
 	uint8_t offset = 0;
 	auto ret = detail::readNumber<double>(tmp.ptr, tmp.len, 0, offset);
-	this->ptr += offset;
-	this->len -= offset;
+	if (offset > 0) {
+		// offset is measured from tmp.ptr (after leading whitespace was skipped),
+		// so add the skipped whitespace to advance the original view correctly.
+		const auto consumed = size_t(tmp.ptr - this->ptr) + offset;
+		this->ptr += consumed;
+		this->len -= consumed;
+	}
 	return ret;
 }
 inline Result<int64_t> StringViewUtf8::readInteger(int base) {
@@ -2158,8 +2203,13 @@ inline Result<int64_t> StringViewUtf8::readInteger(int base) {
 	tmp.skipChars<CharGroup<CharGroupId::WhiteSpace>>();
 	uint8_t offset = 0;
 	auto ret = detail::readNumber<int64_t>(tmp.ptr, tmp.len, 0, offset);
-	this->ptr += offset;
-	this->len -= offset;
+	if (offset > 0) {
+		// offset is measured from tmp.ptr (after leading whitespace was skipped),
+		// so add the skipped whitespace to advance the original view correctly.
+		const auto consumed = size_t(tmp.ptr - this->ptr) + offset;
+		this->ptr += consumed;
+		this->len -= consumed;
+	}
 	return ret;
 }
 

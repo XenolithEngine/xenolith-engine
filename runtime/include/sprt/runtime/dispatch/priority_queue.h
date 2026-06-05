@@ -113,10 +113,13 @@ public:
 
 		auto n = _queue.first;
 		while (n) {
+			// capture next before freeNode(): it nulls n->next and may
+			// deallocate the block containing n (use-after-free otherwise)
+			auto next = n->next;
 			Value *val = (Value *)(n->storage.buffer);
 			val->~Value();
 			freeNode(n);
-			n = n->next;
+			n = next;
 		}
 	}
 
@@ -190,6 +193,11 @@ public:
 		setFreeLocking(mutex);
 	}
 
+	// Drains the queue. NOTE: clear() temporarily swaps out the lock-function
+	// pointers (which are plain, non-atomic members), exactly like the setLocking
+	// family. Reconfiguring the locking of a queue is a setup/teardown operation:
+	// it must NOT run concurrently with push()/pop() on the same queue. Install
+	// locks once before the queue is shared between threads.
 	void clear() {
 		auto tmpFreeLock = _free.lock;
 		auto tmpQueueLock = _queue.lock;

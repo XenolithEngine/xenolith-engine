@@ -47,6 +47,9 @@ SPRT_API size_t encode(const uint8_t *in, size_t insize, char *out, size_t outsi
 SPRT_API size_t encode(const uint8_t *in, size_t insize,
 		const callback<void(const char *, size_t)> &, bool upper = true);
 
+// Lenient decoder (by design): non-hex bytes map to 0 rather than being
+// rejected, and an odd-length input silently drops the trailing nibble. It never
+// signals an error. Callers needing strict validation must check the input first.
 SPRT_API size_t decode(const char *in, size_t insize, uint8_t *out, size_t outsize);
 
 SPRT_API size_t decode(const char *in, size_t insize,

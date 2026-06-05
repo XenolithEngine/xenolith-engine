@@ -156,14 +156,9 @@ void Cleanup::run(Cleanup **cref, bool plain) {
 
 namespace sprt::memory::pool {
 
-struct Pool_StoreHandle : detail::AllocPool {
-	void *pointer;
-	__pool_function<void()> callback;
-};
-
 static Status sa_request_store_custom_cleanup(void *ptr) {
 	if (ptr) {
-		auto ref = (Pool_StoreHandle *)ptr;
+		auto ref = (StoreHandle *)ptr;
 		if (ref->callback) {
 			memory::perform_conditional([&] { ref->callback(); }, ref->callback.get_allocator());
 		}
@@ -177,7 +172,7 @@ void store(pool_t *pool, void *ptr, const StringView &key, __pool_function<void(
 	void *ret = nullptr;
 	pool::userdata_get(&ret, key.data(), key.size(), pool);
 	if (ret) {
-		auto h = (Pool_StoreHandle *)ret;
+		auto h = (StoreHandle *)ret;
 		h->pointer = ptr;
 		if (cb) {
 			h->callback = sprt::move(cb);
@@ -185,7 +180,7 @@ void store(pool_t *pool, void *ptr, const StringView &key, __pool_function<void(
 			h->callback = nullptr;
 		}
 	} else {
-		auto h = new (pool) Pool_StoreHandle();
+		auto h = new (pool) StoreHandle();
 		h->pointer = ptr;
 		if (cb) {
 			h->callback = sprt::move(cb);

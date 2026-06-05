@@ -52,6 +52,9 @@ static constexpr uint64_t POWERS_OF_10[] = {
 	10'000'000'000'000'000,
 	100'000'000'000'000'000,
 	1'000'000'000'000'000'000,
+	// 10^19: covers the full digit count of a uint64 significand (up to 20
+	// digits), so POWERS_OF_10[intLen - 1] / [off] / [-exponent] stay in bounds.
+	10'000'000'000'000'000'000ull,
 };
 
 struct dtoa_options {
@@ -64,6 +67,10 @@ struct dtoa_options {
 	mode mode = fixed;
 };
 
+// Precondition: bufferSize >= dtoa_len(value, opts) (DOUBLE_MAX_DIGITS is a safe
+// upper bound). For performance there is no per-write bounds check; digits are
+// written backwards from buffer[bufferSize-1]. dtoa() and dtoa_len() below share
+// the same branch structure so their sizes always agree — keep them in lockstep.
 template <typename Char, floating_point T>
 constexpr inline size_t dtoa(Char *buffer, T value, size_t bufferSize,
 		dtoa_options opts = dtoa_options()) {
