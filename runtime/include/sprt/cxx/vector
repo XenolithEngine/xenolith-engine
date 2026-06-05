@@ -125,8 +125,14 @@ public:
 
 	allocator_type get_allocator() const noexcept { return _mem.get_allocator(); }
 
-	reference at(size_type pos) noexcept { return _mem.at(pos); }
-	const_reference at(size_type pos) const noexcept { return _mem.at(pos); }
+	reference at(size_type pos) noexcept {
+		sprt_passert(pos < _mem.size(), "vector::at: index out of range");
+		return _mem.at(pos);
+	}
+	const_reference at(size_type pos) const noexcept {
+		sprt_passert(pos < _mem.size(), "vector::at: index out of range");
+		return _mem.at(pos);
+	}
 
 	reference operator[](size_type pos) noexcept { return _mem.at(pos); }
 	const_reference operator[](size_type pos) const noexcept { return _mem.at(pos); }

@@ -144,6 +144,10 @@ public:
 	}
 
 	ReturnType operator()(ArgumentTypes... args) const {
+		// Precondition: not empty. std::function throws bad_function_call here;
+		// this runtime is -fno-exceptions, so calling an empty function is a
+		// programming error (debug-asserted; otherwise a null-callback call).
+		sprt_passert(mCallback != nullptr, "calling an empty sprt::function");
 		return mCallback()->invoke(mBuffer.data(), sprt::forward<ArgumentTypes>(args)...);
 	}
 
@@ -184,6 +188,65 @@ protected:
 
 	using traits_callback = functor_traits *(*)();
 
+	// --- Type erasure model -------------------------------------------------
+	//
+	// __function stores an arbitrary callable behind a uniform interface, the
+	// same way std::function does, but without RTTI or a real vtable. Two
+	// pieces do the erasure:
+	//
+	//   * mBuffer  - a fixed, max_align_t-aligned inline byte buffer of
+	//                OptBufferSize bytes (the "small object optimization" area).
+	//   * mCallback - a traits_callback, i.e. a pointer to makeFunctionTraits<F>.
+	//                 Calling it yields a per-type `functor_traits` table of
+	//                 four function pointers (invoke / destroy / copy / move).
+	//                 This table is our hand-rolled vtable; the concrete type F
+	//                 is captured only inside those lambdas, never stored.
+	//
+	// Storage strategy is picked at compile time by makeFunctionTraits /
+	// makeFreeFunction based on the callable's size (and alignment):
+	//
+	//   1. SMALL (sizeof(F) <= OptBufferSize): the callable object F is
+	//      constructed in-place directly INTO mBuffer. The buffer bytes *are*
+	//      the object, so `invoke` reinterprets the buffer address as `F*`.
+	//
+	//   2. LARGE (sizeof(F) > OptBufferSize): F cannot fit inline, so it is
+	//      heap-allocated through the allocator into a StorageType
+	//      (aligned_storage<F>), and only a POINTER to that storage is kept in
+	//      mBuffer. `invoke` reads the pointer back out of the buffer, then
+	//      dereferences it.
+	//
+	// --- The "store a pointer into the buffer" idiom ------------------------
+	//
+	// In the LARGE case the lines below use a form that looks like a C cast but
+	// is NOT one:
+	//
+	//     new (targetBuffer.data(), nothrow) (const StorageType *)(mem);
+	//
+	// This is the *parenthesized-type-id* placement-new grammar
+	// `new (placement-args) (type-id) (initializer)`:
+	//
+	//     placement-args : `targetBuffer.data(), nothrow`
+	//                      -> selects operator new(size_t, void*, nothrow_t),
+	//                         which allocates nothing and just returns the
+	//                         given buffer address.
+	//     type-id        : `const StorageType *`
+	//                      -> the object being constructed is a pointer.
+	//     initializer    : `(mem)`
+	//                      -> that pointer is value-initialized to `mem`.
+	//
+	// Net effect: it constructs a `const StorageType*` object (a trivial 8-byte
+	// value) at the start of the buffer holding `mem` -- i.e. it is exactly
+	//     *reinterpret_cast<const StorageType**>(buf) = mem;
+	// written as placement-construction of the pointer object. `nullptr` is
+	// stored the same way to mark a moved-from buffer as empty.
+	//
+	// The pointer is read back with
+	//     *static_cast<StorageType *const *>(arg)   (in invoke)
+	//     *reinterpret_cast<StorageType *const *>(buffer.data())  (destroy/copy/move)
+	// The const-qualification differs from the stored `const StorageType*`
+	// (pointer-to-const vs const-pointer), but the bit pattern is identical, so
+	// the pointer value round-trips unchanged.
+	// ------------------------------------------------------------------------
 	template <typename FunctionT>
 	static functor_traits *makeFunctionTraits() noexcept {
 		using BaseType = typename remove_cv<typename remove_reference<FunctionT>::type>::type;
@@ -213,9 +276,13 @@ protected:
 			},
 				.move = [](buffer_type &sourceBuffer, allocator_type &alloc,
 								buffer_type &targetBuffer) -> void * {
-				auto ret = new (targetBuffer.data(), nothrow) BaseType(
-						sprt::move_unsafe(*reinterpret_cast<BaseType *>(sourceBuffer.data())));
-				__sprt_memset(sourceBuffer.data(), 0, sourceBuffer.size());
+				auto src = reinterpret_cast<BaseType *>(sourceBuffer.data());
+				auto ret = new (targetBuffer.data(), nothrow) BaseType(sprt::move_unsafe(*src));
+				// Destroy the moved-from source. A memset would skip ~BaseType and
+				// leak whatever the moved-from object still owns (e.g. a captured
+				// Rc/handle); the owner nulls mCallback after move, so destroy()
+				// is otherwise never called on it.
+				sprt::destroy_at(src);
 				return ret;
 			},
 			};
@@ -252,11 +319,15 @@ protected:
 				auto mem = ialloc.allocate(1);
 				new (mem->ptr(), sprt::nothrow) BaseType(*node->ptr());
 
+				// store the heap-storage pointer into the target buffer
+				// (parenthesized-type-id placement-new; see the idiom note above)
 				return new (targetBuffer.data(), nothrow)(const StorageType *)(mem);
 			},
 				.move = [](buffer_type &sourceBuffer, allocator_type &alloc,
 								buffer_type &targetBuffer) -> void * {
 				auto node = *reinterpret_cast<StorageType **>(sourceBuffer.data());
+				// move = copy the storage pointer to the target buffer, then
+				// null the source buffer so its destroy() becomes a no-op
 				auto ret = new (targetBuffer.data(), nothrow)(const StorageType *)(node);
 				new (sourceBuffer.data(), nothrow)(const StorageType *)(nullptr);
 				return ret;
@@ -289,7 +360,9 @@ protected:
 				new (mem->ptr(), sprt::nothrow) BaseType(sprt::forward<FunctionT>(f));
 			}
 
-			// emplace storage to internal buffer with placement new
+			// emplace storage to internal buffer with placement new:
+			// constructs a `const StorageType*` holding `mem` in the buffer
+			// (parenthesized-type-id placement-new; see the idiom note above)
 			new (buf, sprt::nothrow)(const StorageType *)(mem);
 		}
 		return &makeFunctionTraits<FunctionT>;

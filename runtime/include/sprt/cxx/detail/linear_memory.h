@@ -117,7 +117,11 @@ public:
 	void assign(const self &other) { assign(other.data(), other.size()); }
 
 	void assign(const self &other, size_type pos, size_type len) {
-		assign(other.data() + pos, min(len, other.size() - pos));
+		if (pos < other.size()) { // guard other.size() - pos underflow / OOB data()+pos
+			assign(other.data() + pos, min(len, other.size() - pos));
+		} else {
+			assign(other.data(), size_type(0));
+		}
 	}
 
 	template <typename... Args>
@@ -230,7 +234,7 @@ public:
 		auto pos = it - _ptr;
 		auto size = sprt::distance(first, last);
 		_ptr = reserve(_used + size, true);
-		if (pos - _used > 0) {
+		if (size_t(pos) < _used) { // shift the trailing tail (pos/_used are unsigned)
 			__allocator_move(_allocator, _ptr + pos + size, _ptr + pos, _used - pos);
 		}
 		auto i = pos;
@@ -242,6 +246,9 @@ public:
 	void erase(size_type pos, size_type len) {
 		auto _ptr = data();
 		const auto _used = size();
+		if (pos >= _used) { // nothing to erase; avoids the _used - pos underflow
+			return;
+		}
 		len = min(len, _used - pos);
 		_allocator.destroy(_ptr + pos, len); // удаляем указанный блок
 		if (pos + len < _used) { // смещаем остаток
@@ -285,6 +292,9 @@ public:
 
 	void replace(size_type pos, size_type len, const_pointer ptr, size_type nlen) {
 		const auto _used = size();
+		if (pos > _used) { // clamp; avoids the _used - pos underflow
+			pos = _used;
+		}
 		len = min(len, _used - pos);
 		__allocator_copy(_allocator, prepare_replace(pos, len, nlen), ptr, nlen);
 
@@ -299,11 +309,14 @@ public:
 		replace(pos, len, other.data(), other.size());
 	}
 	void replace(size_type pos, size_type len, const self &other, size_type npos, size_type nlen) {
-		replace(pos, len, other.data() + npos, MIN(other.size() - npos, nlen));
+		replace(pos, len, other.data() + npos, min(other.size() - npos, nlen));
 	}
 
 	void replace(size_type pos, size_type len, size_type nlen, Type t) {
 		const auto _used = size();
+		if (pos > _used) { // clamp; avoids the _used - pos underflow
+			pos = _used;
+		}
 		len = min(len, _used - pos);
 		prepare_replace(pos, len, nlen);
 		auto _ptr = data();

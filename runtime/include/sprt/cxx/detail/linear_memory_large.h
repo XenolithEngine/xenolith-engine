@@ -157,10 +157,15 @@ public:
 	}
 
 	void grow_alloc(allocator &alloc, size_type newsize) {
-		size_t alloc_size = newsize + Extra;
+		size_t alloc_size;
+		if (__builtin_add_overflow(newsize, size_t(Extra), &alloc_size)) {
+			// capacity request overflows size_t: force the allocator to fail
+			// rather than wrap to a tiny, under-sized block.
+			alloc_size = Max<size_t>;
+		}
 
 		// use extra memory if provided by allocator
-		size_t allocated = alloc_size * sizeof(Type); // real memory block size returned
+		size_t allocated = 0; // real memory block size returned, set by __allocate
 		auto ptr = alloc.__allocate(alloc_size, allocated);
 
 		alloc_size = allocated / sizeof(Type);
@@ -171,7 +176,8 @@ public:
 
 		auto _allocated = capacity();
 		if (_ptr && _allocated > 0) {
-			alloc.deallocate(_ptr, _allocated);
+			// the block was allocated as (_allocated + Extra) elements
+			alloc.deallocate(_ptr, _allocated + Extra);
 		}
 
 		_ptr = ptr;

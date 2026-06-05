@@ -78,6 +78,9 @@ public:
 				_root.flag.index);
 		_root.flag.size -= nFreed;
 
+		// Invariant: every non-preallocated storage node freed here was counted
+		// in _root.flag.size (the free-list capacity), so the per-node decrement
+		// cannot underflow the bitfield.
 		while (_storage && !_storage->flag.prealloc) {
 			auto node = _storage;
 			_storage = _storage->getNextStorage();

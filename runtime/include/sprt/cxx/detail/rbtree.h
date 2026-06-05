@@ -1139,7 +1139,7 @@ protected:
 			uintptr_t preallocIdx = ++_header.flag.index;
 			block = allocator_helper::allocate_block([](auto node, size_t idx) SPRT_LAMBDAINLINE {
 				return false;
-			}, get_allocator(), preallocIdx, count, &tail);
+			}, get_allocator(), count, preallocIdx, &tail);
 		} else {
 			block = allocator_helper::allocate_batch([](auto node, size_t idx) SPRT_LAMBDAINLINE {
 				return false;

@@ -31,6 +31,9 @@ THE SOFTWARE.
 
 namespace sprt::detail {
 
+// Note: __constexpr_memmove takes an ELEMENT count, not a byte count (it
+// multiplies by sizeof(T) internally / iterates `count` elements). Passing the
+// element `count` here is correct and matches the non-trivial branches below.
 template <typename T, typename Allocator>
 constexpr inline void __allocator_copy(Allocator &allocator, T *dest, const T *source,
 		size_t count) noexcept {

@@ -229,7 +229,11 @@ public:
 				}
 				return small_mem::data(_storage);
 			} else if (s > 0) {
-				auto newmemsize = (grow ? max(s, _allocated * 2) : s);
+				// clamp the doubling so _allocated * 2 cannot wrap (max() still
+				// guarantees newmemsize >= s either way)
+				const auto doubled =
+						(_allocated > (Max<size_type> >> 1)) ? Max<size_type> : (_allocated * 2);
+				auto newmemsize = (grow ? max(s, doubled) : s);
 				if (is_small()) {
 					if (newmemsize > small_mem::max_capacity()) {
 						large_mem new_large;
@@ -374,6 +378,11 @@ private:
 	bool is_small() const { return (_storage[getStorageSize() - 1] & getSmallMask()) == 0; }
 	bool is_large() const { return (_storage[getStorageSize() - 1] & getSmallMask()) != 0; }
 
+	// By design: _storage is a raw byte buffer sized (getStorageSize()) to hold
+	// either the small SSO layout or a large_mem, distinguished by the small-mask
+	// bit in its last byte. In large mode it aliases a large_mem here. This is
+	// intentional type punning (the SSO discriminator bit is reserved by
+	// linear_memory_large::wrap_allocated so it never collides with capacity).
 	large_mem *get_large_mem() { return reinterpret_cast<large_mem *>(_storage.data()); }
 	const large_mem *get_large_mem() const {
 		return reinterpret_cast<const large_mem *>(_storage.data());

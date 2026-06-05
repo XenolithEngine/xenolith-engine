@@ -155,7 +155,7 @@ public:
 	__unordered_set &operator=(__unordered_set &&other) noexcept {
 		using traits = sprt::allocator_traits<allocator_type>;
 
-		if constexpr (traits::propagate_on_container_copy_assignment::value) {
+		if constexpr (traits::propagate_on_container_move_assignment::value) {
 			_container.set_allocator(other.get_allocator());
 		}
 
@@ -191,7 +191,7 @@ public:
 	template <typename... Args>
 	iterator emplace_hint(const_iterator position, Args &&...args) noexcept {
 		// there is no hinted variant for hash_memory backend
-		return _container.try_emplace(sprt::forward<Args>(args)...).second;
+		return iterator(_container.try_emplace(sprt::forward<Args>(args)...).first);
 	}
 	pair<iterator, bool> insert(const value_type &obj) noexcept {
 		return _container.template insert<value_type, iterator>(obj);
@@ -286,7 +286,7 @@ public:
 	}
 
 	template <__unordered_set_compatible_key<__unordered_set> K>
-	iterator equal_range(const K &k) {
+	pair<iterator, iterator> equal_range(const K &k) {
 		return _container.equal_range(k);
 	}
 

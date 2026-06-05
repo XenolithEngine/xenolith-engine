@@ -111,14 +111,16 @@ void insertion_sort(RandomIt first, RandomIt last, Compare comp) {
 
 	for (auto i = first + 1; i != last; ++i) {
 		auto key = sprt::move_unsafe(*i); // Copy or move depending on type cost
-		auto j = i - 1;
+		auto j = i;
 
-		// Move elements greater than key one position ahead
-		while (j >= first && comp(key, *j)) {
-			*(j + 1) = sprt::move_unsafe(*j);
+		// Move elements greater than key one position ahead. Comparing `j != first`
+		// (rather than the old `j - 1 >= first`) avoids forming the one-before-begin
+		// iterator `first - 1`, which is UB for pointers.
+		while (j != first && comp(key, *(j - 1))) {
+			*j = sprt::move_unsafe(*(j - 1));
 			--j;
 		}
-		*(j + 1) = sprt::move_unsafe(key);
+		*j = sprt::move_unsafe(key);
 	}
 }
 
@@ -147,7 +149,7 @@ RandomIt __get_median_pivot(RandomIt first, RandomIt middle, RandomIt last, Comp
  */
 template <typename RandomIt, typename Compare>
 RandomIt __partition(RandomIt first, RandomIt last, Compare comp) {
-	if (first >= last - 1) {
+	if (last - first <= 1) { // avoid forming last - 1 on an empty range
 		return first;
 	}
 
@@ -183,7 +185,7 @@ void quicksort_impl(RandomIt first, RandomIt last, size_t depth_limit, Compare c
 
 	// Base cases
 	// Base case: if the range has fewer than 2 elements, it is already sorted
-	if (first >= last - 1) {
+	if (last - first <= 1) { // avoid forming last - 1 on an empty range
 		return;
 	}
 
@@ -232,7 +234,8 @@ void sort(Iter first, Iter last, Compare comp) {
 	// Calculate max recursion depth: log2(N) * 2
 	size_t n = static_cast<size_t>(last - first);
 	size_t limit = 0;
-	while ((size_t(1) << limit) < n) { ++limit; }
+	// guard the shift: stop before limit reaches the width of size_t (1 << 64 is UB)
+	while (limit < sizeof(size_t) * 8 - 1 && (size_t(1) << limit) < n) { ++limit; }
 	limit *= 2;
 
 	detail::quicksort_impl(first, last, limit, comp);

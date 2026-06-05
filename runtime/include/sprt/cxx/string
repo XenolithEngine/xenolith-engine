@@ -191,8 +191,14 @@ public:
 	reference operator[](size_type pos) noexcept { return _mem.at(pos); }
 	const_reference operator[](size_type pos) const noexcept { return _mem.at(pos); }
 
-	reference at(size_type pos) noexcept { return _mem.at(pos); }
-	const_reference at(size_type pos) const noexcept { return _mem.at(pos); }
+	reference at(size_type pos) noexcept {
+		sprt_passert(pos < _mem.size(), "string::at: index out of range");
+		return _mem.at(pos);
+	}
+	const_reference at(size_type pos) const noexcept {
+		sprt_passert(pos < _mem.size(), "string::at: index out of range");
+		return _mem.at(pos);
+	}
 
 	charT &back() noexcept { return _mem.back(); }
 	const charT &back() const noexcept { return _mem.back(); }
@@ -400,6 +406,10 @@ public:
 	charT *data() noexcept { return _mem.data(); }
 
 	size_type copy(charT *s, size_type len, size_type pos = 0) const {
+		// guard the unsigned underflow of size() - pos (and the OOB data() + pos)
+		if (pos > _mem.size()) {
+			return 0;
+		}
 		len = min(len, _mem.size() - pos);
 		__sprt_memcpy(s, _mem.data() + pos, len * sizeof(charT));
 		return len;
@@ -482,12 +492,21 @@ public:
 	}
 
 	int compare(size_type pos, size_type len, const __basic_string &str) const {
+		if (pos > size()) {
+			pos = size();
+		}
 		size_type lhs_sz = min(size() - pos, len);
 		size_type rhs_sz = str.size();
 		return compare(data() + pos, lhs_sz, str.data(), rhs_sz);
 	}
 	int compare(size_type pos, size_type len, const __basic_string &str, size_type subpos,
 			size_type sublen = npos) const {
+		if (pos > size()) {
+			pos = size();
+		}
+		if (subpos > str.size()) {
+			subpos = str.size();
+		}
 		size_type lhs_sz = min(size() - pos, len);
 		size_type rhs_sz = min(str.size() - subpos, sublen);
 		return compare(data() + pos, lhs_sz, str.data() + subpos, rhs_sz);
@@ -499,12 +518,18 @@ public:
 		return compare(data(), lhs_sz, s, rhs_sz);
 	}
 	int compare(size_type pos, size_type len, const charT *s) const {
+		if (pos > size()) {
+			pos = size();
+		}
 		size_type lhs_sz = min(size() - pos, len);
 		size_type rhs_sz = __constexpr_strlen(s);
 		return compare(data() + pos, lhs_sz, s, rhs_sz);
 	}
 
 	int compare(size_type pos, size_type len, const charT *s, size_type n) const {
+		if (pos > size()) {
+			pos = size();
+		}
 		size_type lhs_sz = min(size() - pos, len);
 		size_type rhs_sz = n;
 		return compare(data() + pos, lhs_sz, s, rhs_sz);

@@ -207,7 +207,7 @@ inline __list<T, Allocator>::__list(const __list &other,
 template <typename T, typename Allocator>
 inline __list<T, Allocator>::__list(__list &&other,
 		const type_identity_t<allocator_type> &alloc) noexcept
-: _base(sprt::move_unsafe(other), alloc) { }
+: _base(sprt::move_unsafe(other._base), alloc) { }
 
 template <typename T, typename Allocator>
 inline __list<T, Allocator>::__list(initializer_list<T> init, const allocator_type &alloc) noexcept
@@ -286,9 +286,9 @@ inline void __list<T, Allocator>::assign(InputIt first, InputIt last) noexcept {
 template <typename T, typename Allocator>
 inline void __list<T, Allocator>::assign(initializer_list<T> init) noexcept {
 	auto preallocTmp = _base.memory_persistent();
-	_base.set_memory_persistent(true);
+	_base.memory_persistent(true);
 	_base.clear();
-	_base.set_memory_persistent(preallocTmp);
+	_base.memory_persistent(preallocTmp);
 
 	auto source = init.begin();
 	_base.expand_front(init.size(),
@@ -420,20 +420,33 @@ template <typename T, typename Allocator>
 template <typename InputIter, enable_if_t<__has_input_iterator_category<InputIter>::value, int>>
 __list<T, Allocator>::iterator __list<T, Allocator>::insert(const_iterator position,
 		InputIter first, InputIter last) noexcept {
+	// Keep `position` fixed and insert before it so elements stay in order, and
+	// return the first inserted element (or `position` if the range is empty).
+	// The previous loop reassigned `position` (reversing the range) and had no
+	// return statement at all (UB).
+	iterator ret(static_cast<node_type *>(
+			const_cast<base_type::basic_node_type *>(position.__target)));
+	bool first_inserted = false;
 	while (first != last) {
-		position = emplace(position, *first);
+		auto it = emplace(position, *first);
+		if (!first_inserted) {
+			ret = it;
+			first_inserted = true;
+		}
 		++first;
 	}
+	return ret;
 }
 
 template <typename T, typename Allocator>
 __list<T, Allocator>::iterator __list<T, Allocator>::insert(const_iterator position,
 		initializer_list<T> init) noexcept {
 	auto source = init.begin();
-	_base.expand(const_cast<base_type::basic_node_type *>(position.__target), init.size(),
+	return iterator(_base.expand(const_cast<base_type::basic_node_type *>(position.__target),
+			init.size(),
 			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
 		node->value.construct(allocator_type(nalloc), *source++); //
-	});
+	}));
 }
 
 template <typename T, typename Allocator>
