@@ -154,19 +154,36 @@ WINAPI WINAPI_PROVIDER GetWinApiProvider() {
 
 	s_WinAPIOnce([] {
 		auto ntdll = GetModuleHandleW(L"ntdll.dll");
-		if (GetProcAddress(ntdll, "wine_get_version")) {
+		if (ntdll && GetProcAddress(ntdll, "wine_get_version")) {
 			s_provider = WinApiProviderWine;
 			return;
 		}
 
 		OSVERSIONINFOW info;
 		memset(&info, 0, sizeof(info));
-		GetVersionExW(&info);
+		// GetVersionExW REQUIRES dwOSVersionInfoSize to equal sizeof(OSVERSIONINFOW)
+		// (or the EX variant); otherwise it returns FALSE and leaves szCSDVersion
+		// untouched — which would silently break the ReactOS check below.
+		info.dwOSVersionInfoSize = sizeof(info);
+		if (GetVersionExW(&info)) {
+			// ReactOS stores a second "ReactOS <version>" string in szCSDVersion,
+			// immediately after the Windows-compatible CSD string's NUL terminator.
+			// Genuine Windows leaves only the single CSD string.
+			constexpr size_t kCap = sizeof(info.szCSDVersion) / sizeof(info.szCSDVersion[0]);
+			static const wchar_t kSig[] = L"ReactOS";
+			constexpr size_t kSigLen = (sizeof(kSig) / sizeof(kSig[0])) - 1; // excludes NUL
 
-		auto len = wcslen(info.szCSDVersion);
-		if (len < 120) {
-			auto str = &info.szCSDVersion[len + 1];
-			if (memcmp(str, L"ReactOS", 14) == 0) {
+			// Bounded length of the first (CSD) string, so a non-terminated buffer
+			// cannot over-read.
+			size_t len = 0;
+			while (len < kCap && info.szCSDVersion[len] != 0) {
+				++len;
+			}
+
+			// The signature starts just past that NUL (index len+1) and the whole
+			// comparison must stay inside the fixed array.
+			if (len < kCap && len + 1 + kSigLen <= kCap
+					&& memcmp(&info.szCSDVersion[len + 1], kSig, kSigLen * sizeof(wchar_t)) == 0) {
 				s_provider = WinApiProviderReactOS;
 				return;
 			}

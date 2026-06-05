@@ -66,7 +66,7 @@ __SPRT_C_FUNC size_t strftime(char *__restrict s, size_t n, const char *__restri
 
 __SPRT_C_FUNC size_t wcsftime_l(wchar_t *__restrict ptr, size_t s, const wchar_t *__restrict fmt,
 		const struct tm *__restrict value, locale_t loc) __SPRT_NOEXCEPT {
-	if (!ptr || fmt || value) {
+	if (!ptr || !fmt || !value) {
 		errno = EINVAL;
 		return -1;
 	}
@@ -75,7 +75,11 @@ __SPRT_C_FUNC size_t wcsftime_l(wchar_t *__restrict ptr, size_t s, const wchar_t
 	sprt::unicode::toUtf8([&](sprt::StringView str) {
 		auto buf = __sprt_typed_malloca(char, s + 1);
 		auto len = strftime_l(buf, s, str.data(), value, loc);
-		sprt::unicode::toUtf16((char16_t *)ptr, s, sprt::StringView(buf, len), &ret);
+		// strftime_l returns (size_t)-1 on error; never use that as a length.
+		if (len != (size_t)-1) {
+			sprt::unicode::toUtf16((char16_t *)ptr, s, sprt::StringView(buf, len), &ret);
+		}
+		__sprt_freea(buf);
 	}, sprt::WideStringView((char16_t *)fmt));
 	return ret;
 }

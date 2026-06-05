@@ -50,8 +50,102 @@ THE SOFTWARE.
 
 namespace sprt {
 
+// Heap-backed value for the env cache. The map relocates nodes on rehash, so
+// the cached __local_string's SSO buffer could move and dangle a previously
+// returned pointer. This wrapper keeps the chars in a stable malloc'd buffer:
+// the wrapper may be moved by the map, but `data` stays valid for the var's
+// lifetime. Move-only so the heap buffer is never aliased / double-freed.
+struct __env_buf {
+	char *data = nullptr;
+	size_t cap = 0; // capacity in chars (incl. NUL)
+
+	__env_buf() = default;
+	__env_buf(__env_buf &&o) noexcept : data(o.data), cap(o.cap) {
+		o.data = nullptr;
+		o.cap = 0;
+	}
+	__env_buf &operator=(__env_buf &&o) noexcept {
+		if (this != &o) {
+			if (data) {
+				__sprt_free(data);
+			}
+			data = o.data;
+			cap = o.cap;
+			o.data = nullptr;
+			o.cap = 0;
+		}
+		return *this;
+	}
+	__env_buf(const __env_buf &) = delete;
+	__env_buf &operator=(const __env_buf &) = delete;
+	~__env_buf() {
+		if (data) {
+			__sprt_free(data);
+		}
+	}
+
+	// ensure room for `chars` characters + NUL; returns the (stable) buffer or nullptr
+	char *ensure(size_t chars) {
+		size_t need = chars + 1;
+		if (cap < need) {
+			auto p = (char *)__sprt_realloc(data, need);
+			if (!p) {
+				return nullptr;
+			}
+			data = p;
+			cap = need;
+		}
+		return data;
+	}
+};
+
+struct __env_wbuf {
+	wchar_t *data = nullptr;
+	size_t cap = 0; // capacity in chars (incl. NUL)
+
+	__env_wbuf() = default;
+	__env_wbuf(__env_wbuf &&o) noexcept : data(o.data), cap(o.cap) {
+		o.data = nullptr;
+		o.cap = 0;
+	}
+	__env_wbuf &operator=(__env_wbuf &&o) noexcept {
+		if (this != &o) {
+			if (data) {
+				__sprt_free(data);
+			}
+			data = o.data;
+			cap = o.cap;
+			o.data = nullptr;
+			o.cap = 0;
+		}
+		return *this;
+	}
+	__env_wbuf(const __env_wbuf &) = delete;
+	__env_wbuf &operator=(const __env_wbuf &) = delete;
+	~__env_wbuf() {
+		if (data) {
+			__sprt_free(data);
+		}
+	}
+
+	// ensure room for `chars` characters + NUL; returns the (stable) buffer or nullptr
+	wchar_t *ensure(size_t chars) {
+		size_t need = chars + 1;
+		if (cap < need) {
+			auto p = (wchar_t *)__sprt_realloc(data, need * sizeof(wchar_t));
+			if (!p) {
+				return nullptr;
+			}
+			data = p;
+			cap = need;
+		}
+		return data;
+	}
+};
+
 struct _EnvBlock {
 	char *get(const char *name) {
+		// bufSize includes the terminating NUL
 		auto bufSize = GetEnvironmentVariableA(name, nullptr, 0);
 		if (bufSize == 0) {
 			return nullptr;
@@ -59,19 +153,25 @@ struct _EnvBlock {
 
 		auto it = _envs.find(name);
 		if (it == _envs.end()) {
-			it = _envs.emplace(name, __local_string()).first;
+			it = _envs.try_emplace(name).first;
 		}
 
-		it->second.resize(bufSize - 1); // strip nullptr from size
+		char *buf = it->second.ensure(bufSize - 1); // bufSize chars incl. NUL
+		if (!buf) {
+			__sprt_errno = ENOMEM;
+			return nullptr;
+		}
 
-		if (GetEnvironmentVariableA(name, it->second.data(), it->second.size() + 1)
-				== it->second.size() + 1) {
-			return it->second.data();
+		// the second call returns chars written EXCLUDING the NUL; success iff it fit
+		auto written = GetEnvironmentVariableA(name, buf, bufSize);
+		if (written > 0 && written < bufSize) {
+			return buf;
 		}
 		return nullptr;
 	}
 
 	wchar_t *get(const wchar_t *name) {
+		// bufSize includes the terminating NUL
 		auto bufSize = GetEnvironmentVariableW(name, nullptr, 0);
 		if (bufSize == 0) {
 			return nullptr;
@@ -79,20 +179,25 @@ struct _EnvBlock {
 
 		auto it = _wenvs.find(name);
 		if (it == _wenvs.end()) {
-			it = _wenvs.emplace(name, __local_wstring()).first;
+			it = _wenvs.try_emplace(name).first;
 		}
 
-		it->second.resize(bufSize - 1); // strip nullptr from size
+		wchar_t *buf = it->second.ensure(bufSize - 1); // bufSize chars incl. NUL
+		if (!buf) {
+			__sprt_errno = ENOMEM;
+			return nullptr;
+		}
 
-		if (GetEnvironmentVariableW(name, it->second.data(), it->second.size() + 1)
-				== it->second.size() + 1) {
-			return it->second.data();
+		// the second call returns chars written EXCLUDING the NUL; success iff it fit
+		auto written = GetEnvironmentVariableW(name, buf, bufSize);
+		if (written > 0 && written < bufSize) {
+			return buf;
 		}
 		return nullptr;
 	}
 
-	__local_unordered_map<__local_string, __local_string> _envs;
-	__local_unordered_map<__local_wstring, __local_wstring> _wenvs;
+	__local_unordered_map<__local_string, __env_buf> _envs;
+	__local_unordered_map<__local_wstring, __env_wbuf> _wenvs;
 };
 
 thread_local _EnvBlock tl_env;
@@ -163,7 +268,7 @@ static bool __realpath_convert(StringView path, const Callback &cb) {
 			if (pathLen == 0) {
 				LocalFree(out);
 				__sprt_errno = platform::lastErrorToErrno(GetLastError());
-				return -1;
+				return false;
 			}
 
 			auto buf = __sprt_typed_malloca(wchar_t, pathLen + 1);
@@ -173,7 +278,7 @@ static bool __realpath_convert(StringView path, const Callback &cb) {
 				LocalFree(out);
 				__sprt_freea(buf);
 				__sprt_errno = platform::lastErrorToErrno(GetLastError());
-				return -1;
+				return false;
 			}
 
 			WideStringView wstr((char16_t *)buf, writtenLen);
@@ -212,13 +317,13 @@ static char *__realpath_write(StringView str, char *out) {
 		memcpy(ret, str.data(), str.size() + 1);
 		return ret;
 	} else {
+		// caller-provided buffer is PATH_MAX; fail instead of silently truncating
 		if (str.size() + 1 < __SPRT_PATH_MAX) {
 			memcpy(out, str.data(), str.size() + 1);
-		} else {
-			memcpy(out, str.data(), __SPRT_PATH_MAX - 1);
-			out[__SPRT_PATH_MAX - 1] = 0;
+			return out;
 		}
-		return out;
+		__sprt_errno = ENAMETOOLONG;
+		return nullptr;
 	}
 }
 

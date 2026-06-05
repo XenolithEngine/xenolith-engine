@@ -29,91 +29,91 @@
 extern "C" {
 __SPRT_C_FUNC int memcmp(const void *s1, const void *s2, size_t len) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::memcmp)>(loader->ntdll.memcmp.fn)(s1, s2, len);
+	return reinterpret_cast<decltype(&::memcmp)>(SPWIN_NTDLL_PRELOADED_FN(loader, memcmp))(s1, s2, len);
 }
 
 __SPRT_C_FUNC void *memcpy(void *__SPRT_RESTRICT dest, const void *__SPRT_RESTRICT source,
 		size_t size) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::memcpy)>(loader->ntdll.memcpy.fn)(dest, source, size);
+	return reinterpret_cast<decltype(&::memcpy)>(SPWIN_NTDLL_PRELOADED_FN(loader, memcpy))(dest, source, size);
 }
 
 __SPRT_C_FUNC void *memmove(void *dst, const void *src, size_t len) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::memmove)>(loader->ntdll.memmove.fn)(dst, src, len);
+	return reinterpret_cast<decltype(&::memmove)>(SPWIN_NTDLL_PRELOADED_FN(loader, memmove))(dst, src, len);
 }
 
 __SPRT_C_FUNC void *memset(void *dst, int c, size_t len) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::memset)>(loader->ntdll.memset.fn)(dst, c, len);
+	return reinterpret_cast<decltype(&::memset)>(SPWIN_NTDLL_PRELOADED_FN(loader, memset))(dst, c, len);
 }
 
 __SPRT_C_FUNC char *strcpy(char *__SPRT_RESTRICT dest,
 		const char *__SPRT_RESTRICT src) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::strcpy)>(loader->ntdll.strcpy.fn)(dest, src);
+	return reinterpret_cast<decltype(&::strcpy)>(SPWIN_NTDLL_PRELOADED_FN(loader, strcpy))(dest, src);
 }
 
 __SPRT_C_FUNC size_t strlen(const char *s) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::strlen)>(loader->ntdll.strlen.fn)(s);
+	return reinterpret_cast<decltype(&::strlen)>(SPWIN_NTDLL_PRELOADED_FN(loader, strlen))(s);
 }
 
 __SPRT_C_FUNC char *strncpy(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src,
 		size_t size) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::strncpy)>(loader->ntdll.strncpy.fn)(dest, src, size);
+	return reinterpret_cast<decltype(&::strncpy)>(SPWIN_NTDLL_PRELOADED_FN(loader, strncpy))(dest, src, size);
 }
 
 __SPRT_C_FUNC size_t strnlen(const char *s, size_t size) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::strnlen)>(loader->ntdll.strnlen.fn)(s, size);
+	return reinterpret_cast<decltype(&::strnlen)>(SPWIN_NTDLL_PRELOADED_FN(loader, strnlen))(s, size);
 }
 
 __SPRT_C_FUNC const char *strstr(const char *str, const char *nstr) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::strstr)>(loader->ntdll.strstr.fn)(str, nstr);
+	return reinterpret_cast<decltype(&::strstr)>(SPWIN_NTDLL_PRELOADED_FN(loader, strstr))(str, nstr);
 }
 
 __SPRT_C_FUNC char *strchr(const char *s, int c) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::strchr)>(loader->ntdll.strchr.fn)(s, c);
+	return reinterpret_cast<decltype(&::strchr)>(SPWIN_NTDLL_PRELOADED_FN(loader, strchr))(s, c);
 }
 
 __SPRT_C_FUNC int strcmp(const void *s1, const void *s2) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::strcmp)>(loader->ntdll.strcmp.fn)(s1, s2);
+	return reinterpret_cast<decltype(&::strcmp)>(SPWIN_NTDLL_PRELOADED_FN(loader, strcmp))(s1, s2);
 }
 
 __SPRT_C_FUNC int strncmp(const void *s1, const void *s2, size_t len) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::strncmp)>(loader->ntdll.strncmp.fn)(s1, s2, len);
+	return reinterpret_cast<decltype(&::strncmp)>(SPWIN_NTDLL_PRELOADED_FN(loader, strncmp))(s1, s2, len);
 }
 
 __SPRT_C_FUNC wchar_t *wcscpy(wchar_t *__SPRT_RESTRICT dest,
 		const wchar_t *__SPRT_RESTRICT src) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::wcscpy)>(loader->ntdll.wcscpy.fn)(dest, src);
+	return reinterpret_cast<decltype(&::wcscpy)>(SPWIN_NTDLL_PRELOADED_FN(loader, wcscpy))(dest, src);
 }
 
 __SPRT_C_FUNC size_t wcslen(const wchar_t *s) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::wcslen)>(loader->ntdll.wcslen.fn)(s);
+	return reinterpret_cast<decltype(&::wcslen)>(SPWIN_NTDLL_PRELOADED_FN(loader, wcslen))(s);
 }
 
 __SPRT_C_FUNC wchar_t *wcsncpy(wchar_t *__SPRT_RESTRICT dest, const wchar_t *__SPRT_RESTRICT src,
 		size_t size) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::wcsncpy)>(loader->ntdll.wcsncpy.fn)(dest, src, size);
+	return reinterpret_cast<decltype(&::wcsncpy)>(SPWIN_NTDLL_PRELOADED_FN(loader, wcsncpy))(dest, src, size);
 }
 
 __SPRT_C_FUNC size_t wcsnlen(const wchar_t *s, size_t size) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::wcsnlen)>(loader->ntdll.wcsnlen.fn)(s, size);
+	return reinterpret_cast<decltype(&::wcsnlen)>(SPWIN_NTDLL_PRELOADED_FN(loader, wcsnlen))(s, size);
 }
 
 __SPRT_C_FUNC const wchar_t *wcsstr(const wchar_t *str, const wchar_t *nstr) __SPRT_NOEXCEPT {
 	auto loader = sprt::DllLoader::get();
-	return reinterpret_cast<decltype(&::wcsstr)>(loader->ntdll.wcsstr.fn)(str, nstr);
+	return reinterpret_cast<decltype(&::wcsstr)>(SPWIN_NTDLL_PRELOADED_FN(loader, wcsstr))(str, nstr);
 }
 }

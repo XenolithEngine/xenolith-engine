@@ -127,12 +127,14 @@ static __dirstream *__wopendir(const char *path) {
 	}
 
 	if (!__isdir(h)) {
+		CloseHandle(h);
 		__sprt_errno = ENOTDIR;
 		return nullptr;
 	}
 
 	auto ds = new (__sprt_malloc(__dirstream::DefaultSize), nothrow) __dirstream;
 	if (!ds) {
+		CloseHandle(h);
 		__sprt_errno = ENOMEM;
 		return nullptr;
 	}
@@ -145,6 +147,11 @@ static __dirstream *__wopendir(const char *path) {
 }
 
 __SPRT_C_FUNC __dirstream *opendir(const char *path) __SPRT_NOEXCEPT {
+	if (!path) {
+		__sprt_errno = ENOENT;
+		return nullptr;
+	}
+
 	if (memcmp(path, "/", 2) == 0) { // note memcmp with nullterm here
 		return __wopenroot();
 	} else {
@@ -161,7 +168,7 @@ __SPRT_C_FUNC __dirstream *fdopendir(int __dir_fd) __SPRT_NOEXCEPT {
 	}
 
 	auto slot = __libc::get()->get_fd_slot(__dir_fd);
-	if (!slot || slot->handle || !hasFlag(slot->ops->mask, __fd_ops_mask::opendir)) {
+	if (!slot || !slot->handle || !hasFlag(slot->ops->mask, __fd_ops_mask::opendir)) {
 		__sprt_errno = EBADF;
 		return nullptr;
 	}
@@ -230,7 +237,8 @@ static struct __SPRT_DIRENT_NAME *__readdir64(__dirstream *__dir, off_t target) 
 							__dir->currentInfo->FileNameLength / sizeof(wchar_t)),
 					&len);
 			__dir->dent.d_name[len] = 0;
-			__dir->dent.d_reclen = sizeof(struct __SPRT_DIRENT_NAME) + len - 256;
+			// record length: header up to d_name + name bytes + NUL
+			__dir->dent.d_reclen = offsetof(struct __SPRT_DIRENT_NAME, d_name) + len + 1;
 
 			if (__dir->currentInfo->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
 				__dir->dent.d_type = __SPRT_DT_DIR;
@@ -346,12 +354,12 @@ __SPRT_C_FUNC int dirfd(__dirstream *__dir) __SPRT_NOEXCEPT {
 
 		int newFd = -1;
 		if (__dir->handle == __SPRT_DIR_ROOT_HANDLE) {
-			auto newFd = libc->create_fd(__dir->handle, &libc->fdDirOps, __SPRT_O_RDONLY, 0);
+			newFd = libc->create_fd(__dir->handle, &libc->fdDirOps, __SPRT_O_RDONLY, 0);
 			if (newFd < 0) {
 				return -1;
 			}
 		} else {
-			auto newFd = libc->create_fd(__dir->handle, &libc->fdFileOps, __SPRT_O_RDONLY, 0);
+			newFd = libc->create_fd(__dir->handle, &libc->fdFileOps, __SPRT_O_RDONLY, 0);
 			if (newFd < 0) {
 				return -1;
 			}

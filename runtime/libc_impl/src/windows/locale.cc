@@ -64,6 +64,20 @@ __locale_map *__get_default_locale() { return &s_localeMapCUtf8; }
 
 __freestanding_locale_struct *__get_default_locale_struct() { return &s_localeStructCUtf8; }
 
+// Copy a bounded, NUL-terminated narrow string into a fixed locale-name field.
+static void __copy_locale_name(char *dst, size_t dstCap, const char *src, size_t srcLen) {
+	size_t cnt = sprt::min(srcLen, dstCap - 1);
+	memcpy(dst, src, cnt);
+	dst[cnt] = 0;
+}
+
+// Copy a bounded, NUL-terminated wide string into a fixed locale-name field.
+static void __copy_locale_wname(wchar_t *dst, size_t dstCap, const wchar_t *src, size_t srcLen) {
+	size_t cnt = sprt::min(srcLen, dstCap - 1);
+	memcpy(dst, src, cnt * sizeof(wchar_t));
+	dst[cnt] = 0;
+}
+
 __locale_map *__get_locale(int cat, const char *localeName, size_t len) {
 	if (!localeName) {
 		return nullptr;
@@ -73,29 +87,45 @@ __locale_map *__get_locale(int cat, const char *localeName, size_t len) {
 		return &s_localeMapCUtf8;
 	}
 	if (localeName[0] == 0) {
-		wchar_t wname[LOCALE_NAME_MAX_LENGTH + 1];
-		char name[LOCALE_NAME_MAX_LENGTH + 1];
-		if (!GetUserDefaultLocaleName(wname, LOCALE_NAME_MAX_LENGTH)) {
+		wchar_t wname[LOCALE_NAME_MAX_LENGTH + 1] = {};
+		char name[LOCALE_NAME_MAX_LENGTH + 1] = {};
+		// Returns the char count INCLUDING the NUL terminator, or 0 on failure.
+		int wlen = GetUserDefaultLocaleName(wname, LOCALE_NAME_MAX_LENGTH + 1);
+		if (wlen <= 0) {
 			return nullptr;
 		}
+		size_t wnameLen = (size_t)(wlen - 1);
+
+		size_t nameLen = 0;
 		unicode::toUtf8([&](StringView str) {
-			memcpy(name, str.data(), sprt::min(str.size(), size_t(LOCALE_NAME_MAX_LENGTH)));
+			nameLen = sprt::min(str.size(), size_t(LOCALE_NAME_MAX_LENGTH));
+			memcpy(name, str.data(), nameLen);
+			name[nameLen] = 0;
 		}, WideStringView((char16_t *)wname));
 
-		return __libc::get()->get_cached_locale(name, strlen(name), [&]() {
+		return __libc::get()->get_cached_locale(name, nameLen, [&]() -> __locale_map * {
 			auto map = new (nothrow) __locale_map;
-			memcpy(map->name, name, strlen(name));
-			memcpy(map->wname, wname, strlen(wname) * sizeof(wchar_t));
+			if (!map) {
+				return nullptr;
+			}
+			__copy_locale_name(map->name, sizeof(map->name), name, nameLen);
+			__copy_locale_wname(map->wname, LOCALE_NAME_MAX_LENGTH + 1, wname, wnameLen);
 			return map;
 		});
 	} else {
 		__locale_map *m = nullptr;
+		size_t srcNameLen = strlen(localeName);
 		unicode::toUtf16([&](WideStringView str) {
 			if (IsValidLocaleName((wchar_t *)str.data())) {
-				m = __libc::get()->get_cached_locale(localeName, strlen(localeName), [&]() {
+				m = __libc::get()->get_cached_locale(localeName, srcNameLen,
+						[&]() -> __locale_map * {
 					auto map = new (nothrow) __locale_map;
-					memcpy(map->name, localeName, strlen(localeName));
-					memcpy(map->wname, str.data(), str.size() * sizeof(wchar_t));
+					if (!map) {
+						return nullptr;
+					}
+					__copy_locale_name(map->name, sizeof(map->name), localeName, srcNameLen);
+					__copy_locale_wname(map->wname, LOCALE_NAME_MAX_LENGTH + 1,
+							(const wchar_t *)str.data(), str.size());
 					return map;
 				});
 			}
@@ -209,7 +239,7 @@ static char *__allocateBuffer(const wchar_t *str, char **buf, size_t *bufSize) {
 		if (*bufSize >= len) {
 			ret = *buf;
 			memcpy(*buf, str.data(), len);
-			*bufSize += len;
+			*bufSize -= len;
 			*buf += len;
 		}
 	}, (char16_t *)str);
@@ -223,10 +253,13 @@ static char *__convertGrouping(const wchar_t *grouping, char **buf, size_t *bufS
 
 	// Convert grouping to ASCII format (e.g., "\x03\x02\x01\x00")
 	int len = (int)wcslen(grouping);
-	if (*bufSize >= len + 1) {
+	if (*bufSize >= size_t(len) + 1) {
 		char *result = *buf;
-		*bufSize += len;
-		*buf += len;
+		// `len` data bytes plus the NUL terminator are written below; consume
+		// and advance past all len+1 of them so the next allocation does not
+		// overlap this string (and so *bufSize cannot wrap past the buffer).
+		*bufSize -= size_t(len) + 1;
+		*buf += len + 1;
 
 		for (int i = 0; i < len; i++) { result[i] = (char)(grouping[i] - L'0'); }
 		result[len] = '\0';
@@ -425,7 +458,7 @@ int __wcscmp_l(const wchar_t *l, const wchar_t *r, const __locale_map *locMap) {
 		locName = locMap->wname;
 	}
 
-	auto res = CompareStringEx(locName, NORM_IGNOREWIDTH, l, strlen(l), r, strlen(r), nullptr,
+	auto res = CompareStringEx(locName, NORM_IGNOREWIDTH, l, wcslen(l), r, wcslen(r), nullptr,
 			nullptr, 0);
 	if (res != 0) {
 		return res - 2;
@@ -442,8 +475,8 @@ int __wcsncmp_l(const wchar_t *l, const wchar_t *r, size_t n, const __locale_map
 		locName = locMap->wname;
 	}
 
-	auto res = CompareStringEx(locName, NORM_IGNOREWIDTH, l, sprt::min(strlen(l), n), r,
-			sprt::min(strlen(r), n), nullptr, nullptr, 0);
+	auto res = CompareStringEx(locName, NORM_IGNOREWIDTH, l, sprt::min(wcslen(l), n), r,
+			sprt::min(wcslen(r), n), nullptr, nullptr, 0);
 	if (res != 0) {
 		return res - 2;
 	}
@@ -459,8 +492,8 @@ int __wcscasecmp_l(const wchar_t *l, const wchar_t *r, const __locale_map *locMa
 		locName = locMap->wname;
 	}
 
-	auto res = CompareStringEx(locName, NORM_IGNORECASE | NORM_IGNOREWIDTH, l, strlen(l), r,
-			strlen(r), nullptr, nullptr, 0);
+	auto res = CompareStringEx(locName, NORM_IGNORECASE | NORM_IGNOREWIDTH, l, wcslen(l), r,
+			wcslen(r), nullptr, nullptr, 0);
 	if (res != 0) {
 		return res - 2;
 	}
@@ -477,7 +510,7 @@ int __wcsncasecmp_l(const wchar_t *l, const wchar_t *r, size_t n, const __locale
 	}
 
 	auto res = CompareStringEx(locName, NORM_IGNORECASE | NORM_IGNOREWIDTH, l,
-			sprt::min(strlen(l), n), r, sprt::min(strlen(r), n), nullptr, nullptr, 0);
+			sprt::min(wcslen(l), n), r, sprt::min(wcslen(r), n), nullptr, nullptr, 0);
 	if (res != 0) {
 		return res - 2;
 	}
@@ -493,7 +526,7 @@ int __wcscoll_l(const wchar_t *l, const wchar_t *r, const __locale_map *locMap) 
 		locName = locMap->wname;
 	}
 
-	auto res = CompareStringEx(locName, 0, l, strlen(l), r, strlen(r), nullptr, nullptr, 0);
+	auto res = CompareStringEx(locName, 0, l, wcslen(l), r, wcslen(r), nullptr, nullptr, 0);
 	if (res != 0) {
 		return res - 2;
 	}
@@ -510,7 +543,7 @@ size_t __wcsxfrm_l(wchar_t *__restrict dest, const wchar_t *__restrict src, size
 	}
 
 	// Get source string length
-	auto src_len = strlen(src);
+	auto src_len = wcslen(src);
 
 	// Use default locale if none specified
 	const wchar_t *locName = nullptr;

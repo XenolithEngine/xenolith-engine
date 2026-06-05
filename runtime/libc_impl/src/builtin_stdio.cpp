@@ -143,7 +143,13 @@ ssize_t getdelim(char **__SPRT_RESTRICT __lineptr, size_t *__SPRT_RESTRICT __n, 
 			break;
 		}
 		if (nread >= (ssize_t)(*__n - 1)) {
-			size_t newn = *__n * 2;
+			size_t newn;
+			// guard against size_t overflow on the grow: *__n * 2 would wrap
+			// to a smaller-than-needed allocation and overflow the heap buffer
+			if (__builtin_mul_overflow(*__n, (size_t)2, &newn)) {
+				__sprt_errno = ENOMEM;
+				return -1;
+			}
 			char *newptr = (char *)realloc(*__lineptr, newn);
 			if (newptr == nullptr) {
 				//fseterr(stream);

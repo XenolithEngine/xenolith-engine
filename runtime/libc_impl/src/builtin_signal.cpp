@@ -79,12 +79,17 @@ static void __sprt_deliver_signal(int sig) {
 	// Get the handler for this signal.
 	void (*handler)(int) = __sprt_get_handler(sig);
 
+	// An ignored signal does nothing. Check this BEFORE raising in_handler_flag:
+	// returning early with the flag set would suppress every future signal on
+	// this thread (the guard at the top would always trip).
+	if (handler == __SPRT_SIG_IGN) {
+		return;
+	}
+
 	// Mark that we are inside a signal handler to prevent recursion.
 	tl_signal_state.in_handler_flag = 1;
 
-	if (handler == __SPRT_SIG_IGN) {
-		return;
-	} else if (handler == __SPRT_SIG_DFL) {
+	if (handler == __SPRT_SIG_DFL) {
 		__sprt_default_signal_handler(sig);
 	} else if (handler) {
 		sigaddset(&tl_signal_state.blocked, sig);
@@ -108,27 +113,31 @@ int sigfillset(sigset_t *set) __SPRT_NOEXCEPT {
 }
 
 int sigaddset(sigset_t *set, int s) __SPRT_NOEXCEPT {
-	if (s < __SPRT__NSIG) {
-		set->__bits[0] |= (1 << s);
+	if (!set || s < 0 || s >= __SPRT__NSIG) {
+		*__sprt___errno_location() = EINVAL;
+		return -1;
 	}
-	*__sprt___errno_location() = EINVAL;
-	return -1;
+	const unsigned bits = 8 * sizeof(set->__bits[0]);
+	set->__bits[s / bits] |= 1UL << (s % bits);
+	return 0;
 }
 
 int sigdelset(sigset_t *set, int s) __SPRT_NOEXCEPT {
-	if (s < __SPRT__NSIG) {
-		set->__bits[0] &= ~(1 << s);
-		return 0;
+	if (!set || s < 0 || s >= __SPRT__NSIG) {
+		*__sprt___errno_location() = EINVAL;
+		return -1;
 	}
-	*__sprt___errno_location() = EINVAL;
-	return -1;
+	const unsigned bits = 8 * sizeof(set->__bits[0]);
+	set->__bits[s / bits] &= ~(1UL << (s % bits));
+	return 0;
 }
 
 int sigismember(const sigset_t *set, int s) __SPRT_NOEXCEPT {
-	if (s < __SPRT__NSIG) {
-		return !!(set->__bits[0] & (1 << s));
+	if (!set || s < 0 || s >= __SPRT__NSIG) {
+		return 0;
 	}
-	return 0;
+	const unsigned bits = 8 * sizeof(set->__bits[0]);
+	return !!(set->__bits[s / bits] & (1UL << (s % bits)));
 }
 
 int sigprocmask(int mode, const __sprt_sigset_t *__SPRT_RESTRICT set,
@@ -173,6 +182,7 @@ int sigsuspend(const __sprt_sigset_t *set) __SPRT_NOEXCEPT {
 int sigpending(__sprt_sigset_t *set) __SPRT_NOEXCEPT {
 	if (!set) {
 		*__sprt___errno_location() = EFAULT;
+		return -1;
 	}
 
 	*set = tl_signal_state.pending;
@@ -229,7 +239,7 @@ _Noreturn void abort() __SPRT_NOEXCEPT {
 	// Mimic Linux behavior (see https://man7.org/linux/man-pages/man3/abort.3.html)
 
 	// unblock SIGABRT
-	sigset_t set;
+	sigset_t set = {}; // zero all words; sigaddset only sets the SIGABRT bit
 	sigaddset(&set, __SPRT_SIGABRT);
 
 	sigprocmask(__SPRT_SIG_UNBLOCK, &set, nullptr);

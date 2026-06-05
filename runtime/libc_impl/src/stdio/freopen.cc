@@ -57,6 +57,10 @@ __SPRT_C_FUNC FILE *freopen(const char *__restrict filename, const char *__restr
 fail2:
 	fclose(f2);
 fail:
+	/* Release the lock taken by FLOCK before fclose frees f; otherwise the
+	 * plock entry keyed on this FILE* outlives the object and aliases any
+	 * future FILE allocated at the same address. */
+	FUNLOCK(f);
 	fclose(f);
 	return NULL;
 }

@@ -59,9 +59,18 @@ static ssize_t __file_read(struct __fd_slot *fp, void *buf, size_t nbytes, off64
 		}
 	}
 
+	// ReadFile's count is a DWORD; a size_t request may exceed 4 GiB, so clamp
+	// each chunk to a DWORD-sized maximum to avoid silent truncation.
+	const DWORD CHUNK_MAX = 0xFFFF0000u; // page-aligned cap below 4 GiB
+	DWORD chunk = (nbytes > CHUNK_MAX) ? CHUNK_MAX : (DWORD)nbytes;
+
 	DWORD read;
-	if (!ReadFile(fp->handle, buf, (DWORD)nbytes, &read, NULL)) {
+	if (!ReadFile(fp->handle, buf, chunk, &read, NULL)) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		// pread must not change the file offset, even on error
+		if (offset) {
+			SetFilePointerEx(fp->handle, orig_pos, NULL, FILE_BEGIN);
+		}
 		return -1;
 	}
 
@@ -94,9 +103,18 @@ static ssize_t __file_write(struct __fd_slot *fp, const void *buf, size_t nbytes
 		}
 	}
 
+	// WriteFile's count is a DWORD; a size_t request may exceed 4 GiB, so clamp
+	// each chunk to a DWORD-sized maximum to avoid silent truncation.
+	const DWORD CHUNK_MAX = 0xFFFF0000u; // page-aligned cap below 4 GiB
+	DWORD chunk = (nbytes > CHUNK_MAX) ? CHUNK_MAX : (DWORD)nbytes;
+
 	DWORD written;
-	if (!WriteFile(fp->handle, buf, (DWORD)nbytes, &written, NULL)) {
+	if (!WriteFile(fp->handle, buf, chunk, &written, NULL)) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		// pwrite must not change the file offset, even on error
+		if (offset) {
+			SetFilePointerEx(fp->handle, orig_pos, NULL, FILE_BEGIN);
+		}
 		return -1;
 	}
 
@@ -134,23 +152,18 @@ static int __file_dup(__fd_slot *fp, int *target, uint32_t flags) {
 		}
 	}
 
+	// FD_CLOEXEC <=> a non-inheritable handle. Duplicate as non-inheritable
+	// (close-on-exec) by default — matching freshly-opened fds — and only as an
+	// inheritable handle when FD_CLOEXEC is explicitly cleared (dup3 without
+	// O_CLOEXEC).
+	BOOL inherit = (flags & __SPRT_FD_CLOEXEC) ? FALSE : TRUE;
+
 	HANDLE newHandle = nullptr;
 	BOOL result = DuplicateHandle(GetCurrentProcess(), fp->handle, GetCurrentProcess(), &newHandle,
-			0L, TRUE, DUPLICATE_SAME_ACCESS);
+			0L, inherit, DUPLICATE_SAME_ACCESS);
 	if (!result) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
-	}
-
-	if (flags & __SPRT_FD_CLOEXEC) {
-		DWORD flagsMask = HANDLE_FLAG_INHERIT;
-		DWORD flagsToSet = 0;
-
-		if (!SetHandleInformation(newHandle, flagsMask, flagsToSet)) {
-			CloseHandle(newHandle);
-			__sprt_errno = platform::lastErrorToErrno(GetLastError());
-			return -1;
-		}
 	}
 
 	auto libc = __libc::get();
@@ -166,12 +179,9 @@ static int __file_dup(__fd_slot *fp, int *target, uint32_t flags) {
 		unique_lock lock(libc->fdMutex);
 		libc->fdDispatch->bits.set(*target);
 		auto fdSlot = libc->get_fd_slot(*target);
-		if (fdSlot->handle) {
-			if (fdSlot->ops->fo_close) {
-				CloseHandle(newHandle);
-				__sprt_errno = EBADF;
-				return -1;
-			}
+		// dup2 semantics: if the target descriptor is already open, close it
+		// first (silently), then install the duplicate.
+		if (fdSlot->handle && fdSlot->ops && fdSlot->ops->fo_close) {
 			fdSlot->ops->fo_close(fdSlot);
 		}
 
@@ -219,13 +229,15 @@ static int __file_ioctl(__fd_slot *fp, int fd, int cmd, intptr_t arg, __fd_ctl_m
 
 	if (mode == __fd_ctl_mode::fnctl) {
 		switch (cmd) {
-		case __SPRT_F_DUPFD: return __file_dup(fp, nullptr, 0); break;
+		// fds are close-on-exec (non-inheritable) by default on this platform.
+		case __SPRT_F_DUPFD: return __file_dup(fp, nullptr, __SPRT_FD_CLOEXEC); break;
 		case __SPRT_F_DUPFD_CLOEXEC: return __file_dup(fp, nullptr, __SPRT_FD_CLOEXEC); break;
 		case __SPRT_F_GETFD: {
 			DWORD flags = 0;
 			if (GetHandleInformation(fp->handle, &flags)) {
 				int ret = 0;
-				if (flags & HANDLE_FLAG_INHERIT) {
+				// FD_CLOEXEC <=> the handle is NOT inheritable.
+				if (!(flags & HANDLE_FLAG_INHERIT)) {
 					ret |= __SPRT_FD_CLOEXEC;
 				}
 				return ret;
@@ -237,9 +249,11 @@ static int __file_ioctl(__fd_slot *fp, int fd, int cmd, intptr_t arg, __fd_ctl_m
 		}
 		case __SPRT_F_SETFD: {
 			DWORD flagsMask = HANDLE_FLAG_INHERIT;
-			DWORD flagsToSet = 0;
+			// FD_CLOEXEC <=> non-inheritable; its absence <=> inheritable. The
+			// caller clears FD_CLOEXEC here to obtain an inheritable handle.
+			DWORD flagsToSet = HANDLE_FLAG_INHERIT;
 			if (arg & __SPRT_FD_CLOEXEC) {
-				flagsToSet |= HANDLE_FLAG_INHERIT;
+				flagsToSet = 0;
 				arg &= ~(unsigned long)__SPRT_FD_CLOEXEC;
 			}
 			if (arg != 0) {
@@ -321,22 +335,32 @@ static ssize_t __file_readv(__fd_slot *fp, const struct iovec *iov, int iovcnt) 
 		return -1;
 	}
 
-	// Calculate total bytes across all segments
-	DWORD totalBytes = 0;
+	// ReadFile's count is a DWORD; an iov_len may exceed 4 GiB, so drain each
+	// segment in DWORD-sized chunks to avoid silent truncation.
+	const DWORD CHUNK_MAX = 0xFFFF0000u; // page-aligned cap below 4 GiB
+	ssize_t totalBytes = 0;
 	for (int i = 0; i < iovcnt; i++) {
-		DWORD readBytes = 0;
-		if (iov[i].iov_len > 0) {
-			BOOL result =
-					ReadFile(fp->handle, iov[i].iov_base, iov[i].iov_len, &readBytes, nullptr);
+		size_t remaining = iov[i].iov_len;
+		char *base = (char *)iov[i].iov_base;
+		while (remaining > 0) {
+			DWORD chunk = (remaining > CHUNK_MAX) ? CHUNK_MAX : (DWORD)remaining;
+			DWORD readBytes = 0;
+			BOOL result = ReadFile(fp->handle, base, chunk, &readBytes, nullptr);
 			totalBytes += readBytes;
 			if (!result) {
 				__sprt_errno = platform::lastErrorToErrno(GetLastError());
 				return -1;
 			}
+			remaining -= readBytes;
+			base += readBytes;
+			if (readBytes < chunk) {
+				// short read (EOF): stop reading further
+				return totalBytes;
+			}
 		}
 	}
 
-	return (ssize_t)totalBytes;
+	return totalBytes;
 }
 
 static ssize_t __file_writev(__fd_slot *fp, const struct iovec *iov, int iovcnt) {
@@ -353,21 +377,32 @@ static ssize_t __file_writev(__fd_slot *fp, const struct iovec *iov, int iovcnt)
 		return -1;
 	}
 
-	DWORD totalWritten = 0;
-	// Calculate total bytes across all segments
+	// WriteFile's count is a DWORD; an iov_len may exceed 4 GiB, so drain each
+	// segment in DWORD-sized chunks to avoid silent truncation.
+	const DWORD CHUNK_MAX = 0xFFFF0000u; // page-aligned cap below 4 GiB
+	ssize_t totalWritten = 0;
 	for (int i = 0; i < iovcnt; i++) {
-		DWORD written = 0;
-		if (iov[i].iov_len > 0) {
-			BOOL result = WriteFile(fp->handle, iov[i].iov_base, iov[i].iov_len, &written, nullptr);
+		size_t remaining = iov[i].iov_len;
+		const char *base = (const char *)iov[i].iov_base;
+		while (remaining > 0) {
+			DWORD chunk = (remaining > CHUNK_MAX) ? CHUNK_MAX : (DWORD)remaining;
+			DWORD written = 0;
+			BOOL result = WriteFile(fp->handle, base, chunk, &written, nullptr);
 			totalWritten += written;
 			if (!result) {
 				__sprt_errno = platform::lastErrorToErrno(GetLastError());
 				return -1;
 			}
+			remaining -= written;
+			base += written;
+			if (written < chunk) {
+				// short write: stop writing further
+				return totalWritten;
+			}
 		}
 	}
 
-	return (ssize_t)totalWritten;
+	return totalWritten;
 }
 
 static off_t __file_seek(__fd_slot *fp, off_t off, int whence) {
@@ -485,11 +520,10 @@ static void *__file_mmap(__fd_slot *fp, void *addr, size_t length, int prot, int
 
 	void *pMap = MapViewOfFile(hMap, dwDesiredAccess, liOffset.HighPart, liOffset.LowPart, length);
 
-	CloseHandle(hMap); // MapViewOfFile owns ref
+	CloseHandle(hMap); // already closed here; the view keeps its own ref
 
 	if (!pMap) {
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		CloseHandle(hMap);
 		return __SPRT_MAP_FAILED;
 	}
 

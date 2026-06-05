@@ -77,6 +77,7 @@ struct DllLoader {
 
 	decltype(&::GetProcAddress) __GetProcAddress = nullptr;
 	decltype(&::LoadLibraryW) __LoadLibraryW = nullptr;
+	decltype(&::LoadLibraryExW) __LoadLibraryExW = nullptr;
 	decltype(&::FreeLibrary) __FreeLibrary = nullptr;
 	decltype(&::ExitProcess) __ExitProcess = nullptr;
 

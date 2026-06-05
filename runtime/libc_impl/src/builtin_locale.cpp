@@ -115,7 +115,9 @@ locale_t uselocale(locale_t loc) __SPRT_NOEXCEPT {
 
 	if (src) {
 		if (_atomic::fetchSub(&src->refcount, uint32_t(1)) == 1) {
-			sprt::__delete_n(loc);
+			// The OLD locale (src) is the one whose refcount reached 0; free it,
+			// not the newly-installed `loc` that tl_locale now points to.
+			sprt::__delete_n(src);
 			src = nullptr;
 		}
 	}

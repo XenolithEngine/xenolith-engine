@@ -11,7 +11,8 @@
 #define __SPRT_O_RSYNC    04010000
 #define __SPRT_O_DIRECTORY 0200000
 #define __SPRT_O_NOFOLLOW  0400000 // uses REPARSE_POINT semantics
-#define __SPRT_O_CLOEXEC  02000000 // has no effect - windows fds are not inheritable
+#define __SPRT_O_CLOEXEC  02000000 // default: handles are non-inheritable (close-on-exec)
+#define __SPRT_O_INHERITABLE 040000000 // 0x800000, non-standard: request an inheritable handle (opposite of O_CLOEXEC)
 
 #define __SPRT_O_ASYNC      020000
 #define __SPRT_O_DIRECT     040000

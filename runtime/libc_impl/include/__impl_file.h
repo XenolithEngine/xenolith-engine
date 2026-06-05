@@ -74,8 +74,13 @@ struct __sprt_file_struct {
 	__sprt_pid_t __lock_pid;
 
 	int __lock() {
+		// Best-effort relaxed atomic load of the fast-path read: __lock_pid may be
+		// written concurrently by sprt_plock_lock from another thread. A relaxed load
+		// keeps this read well-defined and prevents the compiler from re-reading the
+		// field between the two comparisons (the write side is out of scope here).
+		__sprt_pid_t pid = __atomic_load_n(&__lock_pid, __ATOMIC_RELAXED);
 		// do not lock files, that specifically marked with -1 or files that already locked
-		if (__lock_pid < 0 || __lock_pid == __sprt_gettid()) {
+		if (pid < 0 || pid == __sprt_gettid()) {
 			return 1;
 		} else {
 			return sprt_plock_lock(this, 0, &__lock_pid);

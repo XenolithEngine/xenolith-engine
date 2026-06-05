@@ -162,7 +162,7 @@ static WideStringView allocateNativePath(int fd) {
 		}
 
 		auto slot = __libc::get()->get_fd_slot(fd);
-		if (!slot || slot->handle) {
+		if (!slot || !slot->handle) {
 			__sprt_errno = EBADF;
 			return WideStringView();
 		}

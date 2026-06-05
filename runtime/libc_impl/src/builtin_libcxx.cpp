@@ -40,11 +40,12 @@ void *operator new(size_t __blockLen) { return ::malloc(__blockLen); }
 void *operator new[](size_t __blockLen) { return ::malloc(__blockLen); }
 
 void *operator new(size_t __blockLen, std::align_val_t align) {
-	return ::aligned_alloc(__blockLen, sprt::to_underlying(align));
+	// aligned_alloc(alignment, size) — alignment first, size second.
+	return ::aligned_alloc(sprt::to_underlying(align), __blockLen);
 }
 
 void *operator new[](size_t __blockLen, std::align_val_t align) {
-	return ::aligned_alloc(__blockLen, sprt::to_underlying(align));
+	return ::aligned_alloc(sprt::to_underlying(align), __blockLen);
 }
 
 void operator delete(void *ptr) noexcept { return ::free(ptr); }
