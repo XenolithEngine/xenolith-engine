@@ -59,6 +59,12 @@ public:
 	using iterator = T *;
 	using const_iterator = T *;
 
+	// Note: the constructors / value_or below are unconditionally noexcept even
+	// though they construct a T. This is intentional for this -fno-exceptions
+	// runtime: T's constructors cannot throw, so there is no exceptional path to
+	// propagate (unlike std::optional, which is conditionally noexcept). It is
+	// not a missing exception-safety guarantee.
+
 	// constructors
 	constexpr optional() noexcept : _empty() { }
 	constexpr optional(nullopt_t) noexcept : _empty(nullopt_t()) { }
@@ -86,7 +92,7 @@ public:
 	template <typename U, typename... Args>
 	requires (sprt::is_constructible_v<T, std::initializer_list<U> &, Args...>)
 	constexpr explicit optional(in_place_t, initializer_list<U> il, Args &&...args) noexcept {
-		_ptr = construct_at(&_value, sprt::forward<Args>(args)...);
+		_ptr = construct_at(&_value, il, sprt::forward<Args>(args)...);
 	}
 
 	template <typename U = remove_cv_t<T>>
@@ -315,7 +321,7 @@ public:
 	constexpr const T &operator*() const & noexcept { return *_ptr; }
 	constexpr T &operator*() & noexcept { return *_ptr; }
 	constexpr T &&operator*() && noexcept { return *_ptr; }
-	constexpr const T &&operator*() const && noexcept { return _ptr; }
+	constexpr const T &&operator*() const && noexcept { return *_ptr; }
 	constexpr explicit operator bool() const noexcept { return _ptr != nullptr; }
 
 	constexpr bool has_value() const noexcept { return _ptr != nullptr; }

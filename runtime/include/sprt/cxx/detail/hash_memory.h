@@ -133,6 +133,11 @@ struct hash_node {
 
 	aligned_storage<Value> value;
 	HashType hash;
+	// `next` is a collision-chain offset taken modulo _capacity. It is two bits
+	// narrower than SizeType (it shares the word with is_first/active), so the
+	// table capacity must stay below 2^(bits(SizeType) - 2) or the stored offset
+	// truncates and corrupts the chain. With a 64-bit SizeType that bound is 2^62
+	// (unreachable); with a 32-bit SizeType it is ~2^30 buckets (tens of GB).
 	SizeType next	  : sizeof(SizeType) *__CHAR_BIT__ - 2 = 0;
 	SizeType is_first : 1 = 0;
 	SizeType active	  : 1 = 0;
@@ -439,7 +444,11 @@ public:
 	}
 
 	void copy_from(const hash_memory &other) noexcept {
-		if (_capacity > other._capacity && _capacity * 2 < other._capacity) {
+		// reuse our storage if it is big enough to hold other's elements but not
+		// excessively oversized. (The old condition `_capacity > other._capacity
+		// && _capacity * 2 < other._capacity` was self-contradictory, so this
+		// branch was dead and copy always reallocated.)
+		if (_capacity >= other._capacity && _capacity < other._capacity * 2) {
 			// reuse memory
 			clear_free();
 		} else {
@@ -633,6 +642,11 @@ public:
 
 	template <typename K>
 	size_type count(K &&k) const noexcept {
+		// lookup_bucket_chain does `hashValue % _capacity` and dereferences
+		// _storage: both are UB on an empty/zero-capacity table.
+		if (!_storage || _capacity == 0) {
+			return 0;
+		}
 		auto hashValue = _hasher(k);
 		auto chain = lookup_bucket_chain(const_cast<node_type *>(_storage), _capacity, hashValue);
 
@@ -663,6 +677,12 @@ public:
 	sprt::pair<const node_type *, const node_type *> equal_range_nodes(K &&k) const noexcept {
 		auto node = find_node(k);
 		auto endNode = _storage + _capacity;
+		// find_node returns null on a miss (or empty table); the isEqual lambda
+		// and the ++lastNode loop below would dereference it. Return an empty
+		// [end, end) range instead.
+		if (!node) {
+			return sprt::make_pair(endNode, endNode);
+		}
 		auto lastNode = node;
 
 		auto isEqual = [&](const node_type *n) {

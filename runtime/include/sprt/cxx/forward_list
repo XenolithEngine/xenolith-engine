@@ -196,7 +196,7 @@ constexpr inline __forward_list<T, Allocator>::__forward_list(const __forward_li
 
 template <typename T, typename Allocator>
 constexpr inline __forward_list<T, Allocator>::__forward_list(__forward_list &&other) noexcept
-: _base(sprt::move_unsafe(other), other.get_allocator()) { }
+: _base(sprt::move_unsafe(other._base), other.get_allocator()) { }
 
 template <typename T, typename Allocator>
 constexpr inline __forward_list<T, Allocator>::__forward_list(const __forward_list &other,
@@ -206,7 +206,7 @@ constexpr inline __forward_list<T, Allocator>::__forward_list(const __forward_li
 template <typename T, typename Allocator>
 constexpr inline __forward_list<T, Allocator>::__forward_list(__forward_list &&other,
 		const type_identity_t<allocator_type> &alloc) noexcept
-: _base(sprt::move_unsafe(other), alloc) { }
+: _base(sprt::move_unsafe(other._base), alloc) { }
 
 template <typename T, typename Allocator>
 constexpr inline __forward_list<T, Allocator>::__forward_list(initializer_list<T> init,
@@ -366,7 +366,9 @@ template <typename T, typename Allocator>
 constexpr __forward_list<T, Allocator>::iterator __forward_list<T, Allocator>::insert_after(
 		const_iterator pos, initializer_list<T> init) noexcept {
 	auto source = init.begin();
-	auto node = _base.expand_front(init.size(),
+	// insert after `pos` (the old code used expand_front, ignoring pos and
+	// always inserting at the head); mirrors the (pos, count, value) overload.
+	auto node = _base.expand(pos.__target, init.size(),
 			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
 		node->value.construct(allocator_type(nalloc), *source++); //
 	});
@@ -379,7 +381,7 @@ constexpr __forward_list<T, Allocator>::iterator __forward_list<T, Allocator>::e
 		const_iterator pos, Args &&...args) noexcept {
 	auto node = _base.allocate_node();
 	node->value.construct(get_allocator(), sprt::forward<Args>(args)...); //
-	_base.insert(const_cast<node_type **>(pos.__target), node);
+	_base.insert(const_cast<base_type::basic_node_type *>(pos.__target), node);
 	return iterator(node);
 }
 

@@ -97,7 +97,7 @@ public:
 	constexpr inline pointer address(reference r) const noexcept { return &r; }
 	constexpr inline const_pointer address(const_reference r) const noexcept { return &r; }
 
-	constexpr size_type max_size() const noexcept { return Max<size_type>; }
+	constexpr size_type max_size() const noexcept { return Max<size_type> / sizeof(T); }
 
 	template <typename... Args>
 	constexpr void construct(pointer p, Args &&...args) const noexcept;
@@ -135,12 +135,18 @@ constexpr inline auto AllocatorLocal<T>::__allocate(size_t &n) const noexcept ->
 
 template <typename T>
 constexpr inline auto AllocatorLocal<T>::__allocate(size_t n, size_t &bytes) const noexcept -> T * {
+	if (__builtin_mul_overflow(n, sizeof(T), &bytes)) {
+		// n * sizeof(T) overflows size_t: never under-allocate.
+		__sprt_perror("allocation size overflow");
+		sprt_passert(false, "allocation size overflow");
+		bytes = 0;
+		return nullptr;
+	}
 	T *ptr = sprt::memory::local_allocate<T>(n);
 	if (!ptr) {
 		__sprt_perror("allocation error");
 	}
 	sprt_passert(ptr, "allocation should always be successful");
-	bytes = n * sizeof(T);
 	return ptr;
 }
 

@@ -173,7 +173,13 @@ inline auto AllocatorPool<T>::operator=(AllocatorPool<B> &&a) noexcept -> Alloca
 
 template <typename T>
 inline auto AllocatorPool<T>::allocate(size_t n) const noexcept -> T * {
-	size_t size = sizeof(T) * n;
+	size_t size;
+	if (__builtin_mul_overflow(sizeof(T), n, &size)) {
+		// sizeof(T) * n overflows size_t: never under-allocate. Force the
+		// underlying allocator to fail (and abort in debug builds).
+		sprt_passert(false, "allocation size overflow");
+		size = Max<size_t>;
+	}
 	auto ptr = static_cast<T *>(memory::pool::alloc(pool, size, alignof(T)));
 
 	sprt_passert(ptr, "allocation should always be successful");
@@ -183,7 +189,13 @@ inline auto AllocatorPool<T>::allocate(size_t n) const noexcept -> T * {
 
 template <typename T>
 inline auto AllocatorPool<T>::__allocate(size_t &n) const noexcept -> T * {
-	size_t size = sizeof(T) * n;
+	size_t size;
+	if (__builtin_mul_overflow(sizeof(T), n, &size)) {
+		// sizeof(T) * n overflows size_t: never under-allocate. Force the
+		// underlying allocator to fail (and abort in debug builds).
+		sprt_passert(false, "allocation size overflow");
+		size = Max<size_t>;
+	}
 	auto ptr = static_cast<T *>(memory::pool::alloc(pool, size, alignof(T)));
 
 	sprt_passert(ptr, "allocation should always be successful");
@@ -194,7 +206,13 @@ inline auto AllocatorPool<T>::__allocate(size_t &n) const noexcept -> T * {
 
 template <typename T>
 inline auto AllocatorPool<T>::__allocate(size_t n, size_t &bytes) const noexcept -> T * {
-	size_t size = sizeof(T) * n;
+	size_t size;
+	if (__builtin_mul_overflow(sizeof(T), n, &size)) {
+		// sizeof(T) * n overflows size_t: never under-allocate. Force the
+		// underlying allocator to fail (and abort in debug builds).
+		sprt_passert(false, "allocation size overflow");
+		size = Max<size_t>;
+	}
 	auto ptr = static_cast<T *>(memory::pool::alloc(pool, size, alignof(T)));
 
 	sprt_passert(ptr, "allocation should always be successful");
@@ -237,7 +255,7 @@ inline auto AllocatorPool<T>::address(const_reference r) const noexcept -> const
 
 template <typename T>
 inline auto AllocatorPool<T>::max_size() const noexcept -> size_type {
-	return Max<size_type>;
+	return Max<size_type> / sizeof(T);
 }
 
 template <typename T>

@@ -487,6 +487,10 @@ public:
 					if (_storage.template construct<Index>(
 								sprt::move_unsafe(*sprt::get_if<Index>(sprt::addressof(other))))) {
 						_index = Index;
+						// `arg` aliases other's storage (we are visiting `other`).
+						// Destroying it here is safe because the lambda returns
+						// immediately afterwards and never touches `arg` again;
+						// other._index is cleared so its own destructor is a no-op.
 						sprt::destroy_at(&arg);
 						other._index = variant_npos;
 					}
@@ -547,7 +551,7 @@ public:
 
 	// assignment
 	constexpr variant &operator=(const variant &other) {
-		if (*other == this || (other.valueless_by_exception() && valueless_by_exception())) {
+		if (&other == this || (other.valueless_by_exception() && valueless_by_exception())) {
 			return *this;
 		}
 
@@ -581,7 +585,7 @@ public:
 	}
 
 	constexpr variant &operator=(variant &&other) noexcept {
-		if (*other == this || (other.valueless_by_exception() && valueless_by_exception())) {
+		if (&other == this || (other.valueless_by_exception() && valueless_by_exception())) {
 			return *this;
 		}
 
@@ -648,11 +652,12 @@ public:
 	constexpr variant_alternative_t<I, variant<Types...>> &emplace(Args &&...args) {
 		static_assert(I < variant_size_v<variant>);
 		__clear();
-		if (auto ret = _storage.template construct<I>(sprt::forward<Args>(args)...)) {
-			_index = I;
-			return *ret;
-		}
-		return nullptr;
+		// construct() forwards to construct_at(), which never returns null, so
+		// there is no failure path (the old `return nullptr` bound a reference
+		// to a null pointer = UB).
+		auto ret = _storage.template construct<I>(sprt::forward<Args>(args)...);
+		_index = I;
+		return *ret;
 	}
 
 	template <size_t I, class U, typename... Args>
@@ -660,11 +665,10 @@ public:
 			Args &&...args) {
 		static_assert(I < variant_size_v<variant>);
 		__clear();
-		if (auto ret = _storage.template construct<I>(il, sprt::forward<Args>(args)...)) {
-			_index = I;
-			return *ret;
-		}
-		return nullptr;
+		// construct() never returns null (see the non-init-list emplace above).
+		auto ret = _storage.template construct<I>(il, sprt::forward<Args>(args)...);
+		_index = I;
+		return *ret;
 	}
 
 	// value status

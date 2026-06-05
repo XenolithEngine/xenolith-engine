@@ -113,7 +113,11 @@ template <typename Type, typename _Comp,
 				int> = 0>
 constexpr bool __lexicographical_compare(Type *__first1, Type *__last1, Type *__first2,
 		Type *__last2, _Comp &) {
-	if constexpr (__is_trivially_lexicographically_comparable_v<Type, Type>) {
+	// Only byte-wise memcmp ordering that matches element-wise `<`: size-1
+	// unsigned types. Signed `char` (memcmp is unsigned) and multi-byte types
+	// (byte order != value order on little-endian) must use the element-wise
+	// path below, even though they are trivially memcmp-able for *equality*.
+	if constexpr (sizeof(Type) == 1 && is_unsigned_v<Type>) {
 		auto __res = sprt::__constexpr_memcmp(__first1, __first2,
 				sprt::min(__last1 - __first1, __last2 - __first2));
 		if (__res == 0) {

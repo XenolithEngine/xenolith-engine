@@ -28,6 +28,11 @@ THE SOFTWARE.
 
 namespace sprt {
 
+// Element-wise forward copy, matching std::copy's contract: the behaviour is
+// defined only when `d_first` is not within the range `(first, last]`. Copying
+// into an overlapping range that starts inside the source is the caller's
+// responsibility (use a backward copy / move there) -- this is by design, not a
+// missing overlap guard.
 template <typename InputIt, typename OutputIt>
 OutputIt copy(InputIt first, InputIt last, OutputIt d_first) {
 	for (; first != last; (void)++first, (void)++d_first) { *d_first = *first; }

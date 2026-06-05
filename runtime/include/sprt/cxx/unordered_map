@@ -165,7 +165,7 @@ public:
 	__unordered_map &operator=(__unordered_map &&other) noexcept {
 		using traits = sprt::allocator_traits<allocator_type>;
 
-		if constexpr (traits::propagate_on_container_copy_assignment::value) {
+		if constexpr (traits::propagate_on_container_move_assignment::value) {
 			_container.set_allocator(other.get_allocator());
 		}
 
@@ -203,7 +203,7 @@ public:
 	template <typename... Args>
 	iterator emplace_hint(const_iterator position, Args &&...args) {
 		// there is no hinted variant for hash_memory backend
-		return try_emplace(sprt::forward<Args>(args)...).second;
+		return try_emplace(sprt::forward<Args>(args)...).first;
 	}
 
 	pair<iterator, bool> insert(const value_type &obj) { return _container.insert(obj); }

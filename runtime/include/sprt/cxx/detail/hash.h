@@ -70,7 +70,7 @@ struct hash<double> {
 
 template <>
 struct hash<long double> {
-	size_t operator()(const double &value) const noexcept {
+	size_t operator()(const long double &value) const noexcept {
 		return sprt::hashSize((const char *)&value, sizeof(value));
 	}
 };
@@ -91,7 +91,12 @@ struct hash<const char *> {
 
 template <size_t N>
 struct hash<const char (&)[N]> {
-	size_t operator()(const char (&value)[N]) const noexcept { return sprt::hashSize(value, N); }
+	// hash up to the first NUL (like hash<const char *>) so a string literal and
+	// an equal const char* produce the same hash; hashing all N bytes would
+	// include the terminator and break transparent lookups.
+	size_t operator()(const char (&value)[N]) const noexcept {
+		return sprt::hashSize(value, __constexpr_strlen(value));
+	}
 };
 
 template <typename T>
@@ -124,10 +129,10 @@ namespace std {
 
 template <typename T>
 struct hash {
-	template <typename T>
-	constexpr size_t operator()(T &&value) const noexcept {
-		return sprt::hash<T>()(sprt::forward<T>(value));
-	}
+	// Key on the struct's T (the standard std::hash contract). The inner
+	// `template <typename T>` previously shadowed it and deduced T from the
+	// argument, so std::hash<Key>{}(lvalue) wrongly used sprt::hash<Key&>.
+	size_t operator()(const T &value) const noexcept { return sprt::hash<T>()(value); }
 };
 
 } // namespace std
