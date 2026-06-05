@@ -239,7 +239,7 @@ inline uint64_t npot(uint64_t n) {
 	if (n <= 1) {
 		return 1;
 	}
-	return uint64_t(1) << (32 - __builtin_clzg(n - 1));
+	return uint64_t(1) << (64 - __builtin_clzg(n - 1));
 }
 
 // Align on a power of 2 boundary

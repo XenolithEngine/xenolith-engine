@@ -100,10 +100,14 @@ public:
 
 	template <typename T, typename... Args>
 	static T *__pnew(memory::pool_t *pool, Args &&...args) {
-		// Use __construct_at with disabled checker to use with protected constructors
-		return sprt::__construct_at(
-				reinterpret_cast<T *>(sprt::memory::pool::palloc(pool, sizeof(T), alignof(T))),
-				sprt::forward<Args>(args)...);
+		// Use __construct_at with disabled checker to use with protected constructors.
+		// palloc can return null (e.g. an APR pool that cannot honor the alignment);
+		// construct-at-null would be UB, so bail out instead.
+		auto mem = reinterpret_cast<T *>(sprt::memory::pool::palloc(pool, sizeof(T), alignof(T)));
+		if (!mem) {
+			return nullptr;
+		}
+		return sprt::__construct_at(mem, sprt::forward<Args>(args)...);
 	}
 
 	// Disable default ABI operators
@@ -707,9 +711,11 @@ inline void RcBase<_Base, _Pointer>::set(const Pointer &value) {
 
 template <typename _Base, typename _Pointer>
 inline void RcBase<_Base, _Pointer>::swap(RcBase<Base, Pointer> &v) {
-	swap(_ptr, v._ptr);
+	// qualify: an unqualified swap() inside this member named `swap` suppresses
+	// ADL and resolves to the 1-arg member (ill-formed for these 2-arg calls).
+	sprt::swap(_ptr, v._ptr);
 #if SPRT_REF_DEBUG
-	swap(_id, v._id);
+	sprt::swap(_id, v._id);
 #endif
 }
 
@@ -1069,7 +1075,9 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(Args &&.
 		}
 	});
 	if (!ret) {
-		__delete(pRet);
+		// init failed: release pRet through the SharedRef-aware destructor
+		// (the free __delete() would skip pool + allocator teardown and leak).
+		[[maybe_unused]] Self deleter(pRet, true);
 	}
 	return ret;
 }
@@ -1086,7 +1094,9 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(memory::
 		}
 	});
 	if (!ret) {
-		__delete(pRet);
+		// init failed: release pRet through the SharedRef-aware destructor
+		// (the free __delete() would skip pool + allocator teardown and leak).
+		[[maybe_unused]] Self deleter(pRet, true);
 	}
 	return ret;
 }
@@ -1103,7 +1113,9 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(SharedRe
 		}
 	});
 	if (!ret) {
-		__delete(pRet);
+		// init failed: release pRet through the SharedRef-aware destructor
+		// (the free __delete() would skip pool + allocator teardown and leak).
+		[[maybe_unused]] Self deleter(pRet, true);
 	}
 	return ret;
 }

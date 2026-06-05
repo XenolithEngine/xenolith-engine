@@ -58,6 +58,16 @@ public:
 			int (*WakeFn)(value_type *, flags_type)>
 	static Status _wait(barrier_data *__data, flags_type flags) {
 		uint32_t expected = __data->nthreads & ValueMask;
+
+		// Degenerate/invalid barrier: a thread count of 0 would make the
+		// `ticket % expected` below a division by zero and `expected - 1`
+		// an unsigned underflow. There is nothing to synchronize, so return
+		// immediately. (A count of 1 is handled correctly by the normal path:
+		// the lone thread always draws the golden ticket.)
+		if (expected == 0) {
+			return Status::Ok;
+		}
+
 		uint32_t gen = _atomic::loadSeq(&__data->generations);
 		auto ticket = _atomic::fetchAdd(&__data->nIn, uint32_t(1));
 

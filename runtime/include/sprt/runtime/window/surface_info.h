@@ -117,7 +117,10 @@ struct SPRT_API FrameConstraints {
 
 	Padding getRotatedPadding() const {
 		Padding out = contentPadding;
-		switch (transform) {
+		// strip the PreRotated bit (as getScreenSize does); switching on the raw
+		// `transform` missed every rotation case when PreRotated was OR'd in, so
+		// padding was left unrotated while the screen size was rotated.
+		switch (getPureTransform(transform)) {
 		case SurfaceTransformFlags::Rotate90:
 			out.left = contentPadding.top;
 			out.top = contentPadding.right;
@@ -179,16 +182,16 @@ struct SPRT_API SwapchainConfig {
 };
 
 struct SPRT_API SurfaceInfo {
-	uint32_t minImageCount;
-	uint32_t maxImageCount;
+	uint32_t minImageCount = 0;
+	uint32_t maxImageCount = 0;
 	Extent2 currentExtent;
 	Extent2 minImageExtent;
 	Extent2 maxImageExtent;
-	uint32_t maxImageArrayLayers;
-	CompositeAlphaFlags supportedCompositeAlpha;
-	SurfaceTransformFlags supportedTransforms;
-	SurfaceTransformFlags currentTransform;
-	ImageUsage supportedUsageFlags;
+	uint32_t maxImageArrayLayers = 0;
+	CompositeAlphaFlags supportedCompositeAlpha = {};
+	SurfaceTransformFlags supportedTransforms = {};
+	SurfaceTransformFlags currentTransform = {};
+	ImageUsage supportedUsageFlags = {};
 	Vector<pair<ImageFormat, ColorSpace>> formats;
 	Vector<PresentMode> presentModes;
 

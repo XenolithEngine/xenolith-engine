@@ -277,6 +277,11 @@ SPRT_FORCEINLINE void *__sprt_alloca_wrapper(void *ptr) {
 // We allocate a block from the heap, mark it and return the user part
 SPRT_FORCEINLINE void *__sprt_alloca_malloc(__SPRT_ID(size_t) sz) {
 	void *ptr = __SPRT_ID(malloc_impl)(sz);
+	if (!ptr) {
+		// allocation failed: return NULL so the caller's null check works (writing
+		// the marker first would null-deref before the caller could see failure)
+		return ptr;
+	}
 	*((__SPRT_ID(uint32_t) *)ptr) = 1;
 	return (void *)((const char *)ptr + __SPRT_MALLOCA_OFFSET);
 }

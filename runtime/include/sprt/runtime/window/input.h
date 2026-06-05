@@ -110,6 +110,9 @@ enum class InputModifier : uint32_t {
 	// boolean value for switch event (background/focus)
 	ValueFalse = None,
 	ValueTrue = uint32_t(1) << uint32_t(31),
+	// Intentionally shares bit 31 with ValueTrue: the two are never used on the
+	// same event (ValueTrue on switch events, Unmanaged on input events), so the
+	// bit is reused. getValue() therefore also reports true for Unmanaged events.
 	Unmanaged = ValueTrue
 };
 
@@ -420,14 +423,21 @@ struct SPRT_API InputEventData {
 		return false;
 	}
 
-	bool hasInput() const { return InputEventInfo[toInt(event)].type == InputEventType::Input; }
+	// `event` comes from platform back-ends; bounds-check before indexing the
+	// fixed-size InputEventInfo table (an out-of-enum value would read OOB).
+	bool hasInput() const {
+		return toInt(event) < toInt(InputEventName::Max)
+				&& InputEventInfo[toInt(event)].type == InputEventType::Input;
+	}
 
 	bool isPointEvent() const {
-		return InputEventInfo[toInt(event)].dataType == InputEventDataType::Point;
+		return toInt(event) < toInt(InputEventName::Max)
+				&& InputEventInfo[toInt(event)].dataType == InputEventDataType::Point;
 	}
 
 	bool isKeyEvent() const {
-		return InputEventInfo[toInt(event)].dataType == InputEventDataType::Key;
+		return toInt(event) < toInt(InputEventName::Max)
+				&& InputEventInfo[toInt(event)].dataType == InputEventDataType::Key;
 	}
 
 	InputMouseButton getButton() const {

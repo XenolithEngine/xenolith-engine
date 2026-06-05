@@ -141,8 +141,19 @@ public:
 		if (val == 0) {
 			return;
 		}
-		if (_atomic::fetchAdd(&_data, val) & WAITERS_BIT) {
-			_atomic::fetchAnd(&_data, VALUE_MASK); // Drop WAITERS_BIT
+		// Add within the 31-bit value field via CAS so the carry can never reach
+		// WAITERS_BIT (a plain fetchAdd would corrupt the waiters flag once the
+		// value crosses VALUE_MASK). A signal always clears WAITERS_BIT; woken
+		// waiters re-arm it if they still need to block.
+		// NOTE: the value field is only 31 bits wide, so a timeline supports at
+		// most VALUE_MASK cumulative signal units before the counter wraps.
+		value_type old = _atomic::loadSeq(&_data);
+		value_type desired;
+		do {
+			desired = ((old & VALUE_MASK) + val) & VALUE_MASK;
+		} while (!__atomic_compare_exchange_n(&_data, &old, desired, true, __ATOMIC_SEQ_CST,
+				__ATOMIC_SEQ_CST));
+		if (old & WAITERS_BIT) {
 			__sprt_sprt_qlock_wake_all(&_data, f);
 		}
 	}

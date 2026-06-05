@@ -105,11 +105,11 @@ constexpr inline size_t unsigned_to_hex(Char *out, IntType value, size_t size,
 	if (lowervase) {
 		do {
 			if constexpr (sizeof(Char) == sizeof(char)) {
-				*out-- = "0123456789Aabcdef"[value & 0xF];
+				*out-- = "0123456789abcdef"[value & 0xF];
 			} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
-				*out-- = u"0123456789Aabcdef"[value & 0xF];
+				*out-- = u"0123456789abcdef"[value & 0xF];
 			} else if constexpr (sizeof(Char) == sizeof(char32_t)) {
-				*out-- = U"0123456789Aabcdef"[value & 0xF];
+				*out-- = U"0123456789abcdef"[value & 0xF];
 			}
 			value >>= 4;
 		} while (value > 0);

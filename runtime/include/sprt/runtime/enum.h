@@ -219,13 +219,17 @@ struct flags_iterator {
 
 	constexpr iterator &operator++() {
 		int maxBits = sizeof(E) * 8 - sprt::countl_zero(flags);
-		do { ++value; } while ((flags & (int_type(1) << value)) == 0 && value < maxBits);
+		// check the bound first: short-circuiting avoids evaluating
+		// `int_type(1) << value` when value == maxBits (shift-by-width UB)
+		do { ++value; } while (value < maxBits && (flags & (int_type(1) << value)) == 0);
 		return *this;
 	}
 	constexpr iterator operator++(int) {
 		int maxBits = sizeof(E) * 8 - sprt::countl_zero(flags);
 		auto tmp = *this;
-		do { ++value; } while ((flags & (int_type(1) << value)) == 0 && value < maxBits);
+		// check the bound first: short-circuiting avoids evaluating
+		// `int_type(1) << value` when value == maxBits (shift-by-width UB)
+		do { ++value; } while (value < maxBits && (flags & (int_type(1) << value)) == 0);
 		return tmp;
 	}
 
@@ -271,12 +275,14 @@ struct flags_iterator_static {
 	constexpr bool operator!=(const flags_iterator_end<E> &other) const { return value < MaxBits; }
 
 	constexpr iterator &operator++() {
-		do { ++value; } while ((Value & (int_type(1) << value)) == 0 && value < MaxBits);
+		// bound first to avoid the shift-by-width UB at value == MaxBits
+		do { ++value; } while (value < MaxBits && (Value & (int_type(1) << value)) == 0);
 		return *this;
 	}
 	constexpr iterator operator++(int) {
 		auto tmp = *this;
-		do { ++value; } while ((Value & (int_type(1) << value)) == 0 && value < MaxBits);
+		// bound first to avoid the shift-by-width UB at value == MaxBits
+		do { ++value; } while (value < MaxBits && (Value & (int_type(1) << value)) == 0);
 		return tmp;
 	}
 

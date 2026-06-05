@@ -36,7 +36,11 @@ public:
 	static int perform(value_type *value, const Callback &cb, flags_type f = 0) {
 		auto val = _atomic::fetchOr(value, qmutex_base::LOCK_BIT);
 		if (val == 0) {
-			// The First One
+			// The First One.
+			// Contract: cb() must return normally. If it never completes (the
+			// runtime is built -fno-exceptions, so this means abort/longjmp/hang)
+			// COMPLETE_BIT is never set and other threads block forever on it -
+			// the same one-shot-initialization guarantee std::call_once gives.
 			cb();
 
 			// set complete flag and check for a waiters

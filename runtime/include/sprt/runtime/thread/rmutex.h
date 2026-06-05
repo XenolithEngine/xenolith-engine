@@ -325,6 +325,12 @@ public:
 	rmutex(init_type t = enabled) {
 		switch (t) {
 		case enabled: break;
+		// "disabled" is encoded as the all-ones pattern across the whole 64-bit
+		// union. is_enabled() compares the full u64 against Max. Invariant: a live
+		// lock word (THREAD_ID_MASK | counter | flag bits, in the u32_2 native slot
+		// on Linux/Android) can never naturally reach all-ones, so it is never
+		// mistaken for "disabled". enable() must clear the full u64, not just the
+		// native slot, to restore this.
 		case disabled: _data.value.u64 = Max<uint64_t>; break;
 		}
 	}
