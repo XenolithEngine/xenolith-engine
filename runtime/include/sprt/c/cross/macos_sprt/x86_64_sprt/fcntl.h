@@ -20,6 +20,7 @@
 #define __SPRT_O_SYMLINK       0x00200000      /* allow open of a symlink */
 #define __SPRT_O_DSYNC                 0x400000
 #define __SPRT_O_CLOEXEC       0x01000000      /* implicitly set FD_CLOEXEC */
+#define __SPRT_O_INHERITABLE   0               /* non-standard, no-op on this platform */
 #define __SPRT_O_EXEC          0x40000000               /* open file for execute only */
 #define __SPRT_O_SEARCH        (__SPRT_O_EXEC | __SPRT_O_DIRECTORY)   /* open directory for search only */
 #define __SPRT_O_NDELAY __SPRT_O_NONBLOCK

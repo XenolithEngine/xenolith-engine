@@ -94,7 +94,9 @@ static void do_unwind(PVOID EstablisherFrame, PDISPATCHER_CONTEXT DispatcherCont
 		auto ipmap = reinterpret_cast<const IpToStateMapEntry *>(
 				(const uint8_t *)DispatcherContext->ImageBase + desc->rva_ipmap);
 
-		unsigned int i;
+		// Bound the scan by the (signed) entry count; a malformed/negative nips
+		// must not be promoted to a huge unsigned bound and read past the table.
+		int32_t i;
 		for (i = 0; i < desc->nips; i++) {
 			if (DispatcherContext->ImageBase + ipmap[i].ip > DispatcherContext->ControlPc) {
 				break;
@@ -111,7 +113,6 @@ static void do_unwind(PVOID EstablisherFrame, PDISPATCHER_CONTEXT DispatcherCont
 			auto handler = reinterpret_cast<void (*)()>(
 					(uint8_t *)DispatcherContext->ImageBase + unwind_table[initLevel].action);
 
-			printf("%llx\n", handler);
 			handler();
 		}
 		initLevel = unwind_table[initLevel].state;

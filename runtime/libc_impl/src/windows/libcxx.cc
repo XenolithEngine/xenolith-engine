@@ -87,12 +87,35 @@ struct RTTIClassHierarchyDescriptor {
 	int rvaBaseClassArray;
 };
 
-static auto getObjectLocator(void *obj) SPRT_NOEXCEPT {
-	return reinterpret_cast<const RTTICompleteObjectLocator *>((*(const vtable_fn **)obj)[-1]);
+static const RTTICompleteObjectLocator *getObjectLocator(void *obj) SPRT_NOEXCEPT {
+	// LCI-58: a valid polymorphic object always has a non-null vftable pointer and a
+	// non-null Complete Object Locator stored at vftable[-1]. Guarding against null here
+	// only rejects already-invalid (UB) objects and never a valid cast.
+	if (!obj) {
+		return nullptr;
+	}
+	const vtable_fn *vftable = *reinterpret_cast<const vtable_fn *const *>(obj);
+	if (!vftable) {
+		return nullptr;
+	}
+	return reinterpret_cast<const RTTICompleteObjectLocator *>(vftable[-1]);
 }
 
 static UINT_PTR getBaseOffset(const RTTICompleteObjectLocator *locator) SPRT_NOEXCEPT {
 	UINT_PTR base = 0;
+
+	// LCI-58: bail on a null locator instead of dereferencing it.
+	if (!locator) {
+		return 0;
+	}
+
+	// LCI-58: the COL signature is 0 for the 32-bit (non-image-relative) layout and 1 for the
+	// 64-bit image-relative layout. Any other value means this is not a valid COL, so refuse to
+	// trust its rvaSelf for base computation. Note: signature == 0 is a legitimate, intended path
+	// handled below (OS lookup), so we must not reject it.
+	if (locator->signature != 0 && locator->signature != 1) {
+		return 0;
+	}
 
 	// It's possible, that locator is empty, in this case we need general lookup from OS
 	if (!locator->signature) {
@@ -126,6 +149,13 @@ static auto getFromRVA(UINT_PTR base, intptr_t offset) {
 }
 
 static void *getRealObject(const RTTICompleteObjectLocator *loc, intptr_t obj) {
+	// LCI-58: a null locator means we could not resolve a valid vftable/COL; return the object
+	// pointer unchanged rather than dereferencing null. Callers re-validate the locator/base
+	// afterwards and fail the cast.
+	if (!loc) {
+		return reinterpret_cast<void *>(obj);
+	}
+
 	// Read class layout to find real object pointer and locator
 	return reinterpret_cast<void *>( //
 			obj - loc->classOffset // original vtable location
@@ -200,6 +230,13 @@ struct RTTIDynamicCastInfo {
 	template <bool HasMultipleInheritance, bool HasVirtualInheritance>
 	RTTIBaseClassDescriptor *doLocateTarget(intptr_t VfDelta) {
 		auto baseClasses = getFromRVA<RTTIBaseClassArray>(base, hierarchy->rvaBaseClassArray);
+
+		// LCI-58: the base-class array is indexed in the loop below; a valid hierarchy never
+		// resolves it to null. Bailing only rejects a corrupted layout. The loop itself is already
+		// clamped to hierarchy->numBaseClasses, so it cannot read past the declared count.
+		if (!baseClasses) {
+			return nullptr;
+		}
 
 		// If some source is not available within target's hierarchy - downcast is not possible;
 		// We preserve this during target's hierarchy traversal
@@ -356,6 +393,11 @@ __SPRT_C_FUNC const type_info *__RTtypeid(void *obj) {
 }
 
 __SPRT_C_FUNC PVOID __RTCastToVoid(PVOID inptr) SPRT_NOEXCEPT {
+	if (!inptr) {
+		return nullptr;
+	}
+	// LCI-58: getObjectLocator() now returns null for an invalid vftable/COL, and getRealObject()
+	// tolerates a null locator, so a corrupted object no longer triggers an OOB/null dereference.
 	return getRealObject(getObjectLocator(inptr), reinterpret_cast<intptr_t>(inptr));
 }
 
@@ -384,6 +426,12 @@ __SPRT_C_FUNC PVOID __RTDynamicCast(PVOID inptr, LONG VfDelta, PVOID SrcType, PV
 	info.hierarchy =
 			getFromRVA<RTTIClassHierarchyDescriptor>(info.base, info.locator->rvaClassDescriptor);
 	info.input = getFromRVA<TypeDescriptor>(info.base, info.locator->rvaTypeDescriptor);
+
+	// LCI-58: the class hierarchy descriptor is dereferenced throughout locateTarget(); a valid
+	// COL never resolves it to null, so bailing here only rejects a corrupted layout.
+	if (!info.hierarchy) {
+		return nullptr;
+	}
 
 	//printf("Input: %s\n", info.input->__decorated_name);
 

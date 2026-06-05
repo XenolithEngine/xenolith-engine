@@ -130,7 +130,8 @@ __SPRT_C_FUNC int dup(int __fd) __SPRT_NOEXCEPT {
 		return -1;
 	}
 
-	return fdSlot->ops->fo_dup(fdSlot, nullptr, 0);
+	// dup follows open(): the new fd is close-on-exec (non-inheritable).
+	return fdSlot->ops->fo_dup(fdSlot, nullptr, __SPRT_FD_CLOEXEC);
 }
 
 __SPRT_C_FUNC int dup2(int __fd, int __target) __SPRT_NOEXCEPT {
@@ -145,7 +146,8 @@ __SPRT_C_FUNC int dup2(int __fd, int __target) __SPRT_NOEXCEPT {
 		return __target;
 	}
 
-	return fdSlot->ops->fo_dup(fdSlot, &__target, 0);
+	// dup2 follows open(): the new fd is close-on-exec (non-inheritable).
+	return fdSlot->ops->fo_dup(fdSlot, &__target, __SPRT_FD_CLOEXEC);
 }
 
 __SPRT_C_FUNC int dup3(int __fd, int __target, int __flags) __SPRT_NOEXCEPT {
@@ -161,12 +163,16 @@ __SPRT_C_FUNC int dup3(int __fd, int __target, int __flags) __SPRT_NOEXCEPT {
 		return -1;
 	}
 
-	if ((__flags & ~__SPRT_FD_CLOEXEC) != 0) {
+	// dup3 takes O_CLOEXEC (Linux semantics); no other flag bit is valid.
+	if ((__flags & ~__SPRT_O_CLOEXEC) != 0) {
 		__sprt_errno = EINVAL;
 		return -1;
 	}
 
-	return fdSlot->ops->fo_dup(fdSlot, nullptr, __flags);
+	// Place the duplicate at __target (not a fresh fd), and translate the dup3
+	// O_CLOEXEC flag into the FD_CLOEXEC bit that fo_dup/__file_dup act on.
+	return fdSlot->ops->fo_dup(fdSlot, &__target,
+			(__flags & __SPRT_O_CLOEXEC) ? __SPRT_FD_CLOEXEC : 0);
 }
 
 __SPRT_C_FUNC off_t lseek(int __fd, off_t off, int whence) __SPRT_NOEXCEPT {

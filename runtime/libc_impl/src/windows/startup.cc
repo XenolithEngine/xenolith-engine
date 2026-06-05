@@ -266,37 +266,70 @@ __SPRT_C_FUNC int mainCRTStartup() {
 	// __try/__finally wrapper is required for windows CRT/Loader interoperability logic
 	__try {
 		auto wCommandLine = GetCommandLineW();
-		if (wCommandLine) {
-			int argc = 0;
-			auto wargv = CommandLineToArgvW(wCommandLine, &argc);
+		int argc = 0;
+		wchar_t **wargv = wCommandLine ? CommandLineToArgvW(wCommandLine, &argc) : nullptr;
 
-			size_t blockSize = argc * sizeof(char *);
-			for (size_t i = 0; i < argc; ++i) {
-				blockSize += wcstombs(nullptr, wargv[i], 0) + 2; //
+		char *buf = nullptr;
+		char **argvTarget = nullptr;
+		int outArgc = 0;
+
+		// The command line is attacker-controlled. wcstombs returns (size_t)-1
+		// for any argument containing a character not representable in the
+		// active multibyte locale; using that as a length under-allocates and
+		// then performs a wild out-of-bounds store. Validate every conversion
+		// and every Win32 return; on any failure fall back to an empty argv
+		// rather than corrupting memory before main() runs.
+		if (wargv && argc > 0) {
+			size_t blockSize = (size_t)argc * sizeof(char *);
+			bool ok = true;
+			for (int i = 0; i < argc; ++i) {
+				size_t len = wcstombs(nullptr, wargv[i], 0);
+				if (len == (size_t)-1) {
+					ok = false;
+					break;
+				}
+				blockSize += len + 2;
 			}
 
-			char *buf = (char *)malloc(blockSize);
-			char **argvTarget = (char **)buf;
-			auto stringsTarget = buf + argc * sizeof(char *);
-			size_t bufferSize = blockSize - argc * sizeof(char *);
-
-			for (size_t i = 0; i < argc; ++i) {
-				auto strlen = wcstombs(stringsTarget, wargv[i], bufferSize);
-				stringsTarget[strlen] = 0;
-
-				argvTarget[i] = stringsTarget;
-				stringsTarget += strlen + 1;
-				bufferSize -= strlen + 1;
+			if (ok) {
+				buf = (char *)malloc(blockSize);
 			}
 
-			LocalFree(wargv);
+			if (buf) {
+				argvTarget = (char **)buf;
+				char *stringsTarget = buf + (size_t)argc * sizeof(char *);
+				size_t bufferSize = blockSize - (size_t)argc * sizeof(char *);
 
-			ret = main(argc, (const char **)argvTarget);
+				for (int i = 0; i < argc; ++i) {
+					size_t len = wcstombs(stringsTarget, wargv[i], bufferSize);
+					if (len == (size_t)-1 || len >= bufferSize) {
+						ok = false;
+						break;
+					}
+					stringsTarget[len] = 0;
 
-			free(buf);
-		} else {
-			ret = main(0, nullptr);
+					argvTarget[i] = stringsTarget;
+					stringsTarget += len + 1;
+					bufferSize -= len + 1;
+				}
+
+				if (ok) {
+					outArgc = argc;
+				} else {
+					// Partial/failed conversion: do not hand main() a
+					// half-populated argv.
+					argvTarget = nullptr;
+				}
+			}
 		}
+
+		if (wargv) {
+			LocalFree(wargv);
+		}
+
+		ret = main(outArgc, (const char **)argvTarget);
+
+		free(buf); // free(nullptr) is a no-op
 	}
 	__finally {
 	}

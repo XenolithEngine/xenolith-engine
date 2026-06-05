@@ -29,7 +29,11 @@ THE SOFTWARE.
 
 namespace sprt {
 
-static constexpr size_t _MB_CUR_MAX = 6;
+// Largest number of bytes a single valid Unicode scalar value (<= U+10FFFF)
+// occupies in UTF-8. Must not exceed MB_LEN_MAX (4): callers size their
+// conversion buffers `MB_LEN_MAX`, and the C standard requires
+// MB_CUR_MAX <= MB_LEN_MAX.
+static constexpr size_t _MB_CUR_MAX = 4;
 
 static constexpr uint16_t STATE_NONE = 0;
 static constexpr uint16_t STATE_EXPECT_LOW_SURROGATE = 1;
@@ -106,10 +110,19 @@ static size_t __wcrtomb(char *__SPRT_RESTRICT __dst, size_t __dstSize, wchar_t _
 			return -1;
 		}
 	} else {
-		auto len = unicode::utf8EncodeLength(char32_t(__src));
+		char32_t c = char32_t(__src);
+		// The C multibyte functions accept only valid Unicode scalar values.
+		// The sprt::unicode backend also understands the obsolete 5/6-byte
+		// UTF-8 forms (code points above U+10FFFF), but those are not valid
+		// characters here — reject them rather than emit > MB_CUR_MAX bytes.
+		if (c > 0x10FFFF || (c >= 0xD800 && c <= 0xDFFF)) {
+			errno = EILSEQ;
+			return -1;
+		}
+		auto len = unicode::utf8EncodeLength(c);
 		if (__dst) {
 			if (__dstSize >= len) {
-				return unicode::utf8EncodeBuf(__dst, __dstSize, char32_t(__src));
+				return unicode::utf8EncodeBuf(__dst, __dstSize, c);
 			} else {
 				errno = EOVERFLOW;
 				return -1;
@@ -121,7 +134,11 @@ static size_t __wcrtomb(char *__SPRT_RESTRICT __dst, size_t __dstSize, wchar_t _
 
 __SPRT_C_FUNC size_t wcrtomb(char *__SPRT_RESTRICT __dst, wchar_t __src,
 		mbstate_t *__SPRT_RESTRICT state) __SPRT_NOEXCEPT {
-	auto ret = __wcrtomb(__dst, 6, __src, state);
+	// Callers provide a buffer of at most MB_CUR_MAX (== _MB_CUR_MAX) bytes.
+	// Promise exactly that so a code point requiring more (an invalid scalar
+	// value above U+10FFFF) is rejected with EOVERFLOW instead of overrunning
+	// the caller's MB_LEN_MAX-sized buffer.
+	auto ret = __wcrtomb(__dst, _MB_CUR_MAX, __src, state);
 	if (ret == -2) {
 		return 0;
 	}
@@ -206,6 +223,14 @@ static size_t __mbrtowc(wchar_t *__SPRT_RESTRICT __dst, size_t __dstLen,
 
 	auto &ptr = *__src;
 
+	// No bytes available to examine (e.g. mbrtowc(pwc, s, 0, st)). Report an
+	// incomplete sequence instead of reading `*ptr` and decrementing the
+	// (zero) source length, which would underflow to SIZE_MAX and walk the
+	// continuation loop off the end of the buffer.
+	if (*__srcLen == 0) {
+		return -2;
+	}
+
 	if (*ptr == 0) {
 		if (state->_State == STATE_NONE) {
 			return 0;
@@ -265,7 +290,11 @@ static size_t __mbrtowc(wchar_t *__SPRT_RESTRICT __dst, size_t __dstLen,
 
 __SPRT_C_FUNC size_t mbrtowc(wchar_t *__SPRT_RESTRICT __dst, const char *__SPRT_RESTRICT __src,
 		size_t __srcLen, mbstate_t *__SPRT_RESTRICT state) __SPRT_NOEXCEPT {
-	return __mbrtowc(__dst, 2, &__src, &__srcLen, state);
+	// The destination is a single `wchar_t`. Promise exactly one slot so that
+	// an astral code point (which decodes to a UTF-16 surrogate *pair* when
+	// `wchar_t` is 16-bit) is rejected with EOVERFLOW rather than writing two
+	// units past the caller's one-element buffer.
+	return __mbrtowc(__dst, 1, &__src, &__srcLen, state);
 }
 
 __SPRT_C_FUNC int mbtowc(__SPRT_ID(wchar_t) * __wc_ptr, const char *__s,

@@ -65,7 +65,10 @@ __SPRT_C_FUNC FILE *popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {
 	si.cb = sizeof(STARTUPINFOW);
 	si.dwFlags = STARTF_USESTDHANDLES;
 
-	//SetHandleInformation(libc->get_fd_handle(p[op]), HANDLE_FLAG_INHERIT, 0);
+	// Keep only the child's end of the pipe inheritable. The parent's end must
+	// not be inherited by the child, or the child holds it open and the pipe
+	// never reaches EOF (and the handle leaks into the child).
+	SetHandleInformation(libc->get_fd_handle(p[op]), HANDLE_FLAG_INHERIT, 0);
 
 	if (op == 0) {
 		si.hStdOutput = libc->get_fd_handle(p[1]);
@@ -77,7 +80,26 @@ __SPRT_C_FUNC FILE *popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {
 		si.hStdInput = libc->get_fd_handle(p[0]);
 	}
 
-	// Build command for cmd.exe ('cmd.exe /c )
+	// Resolve the interpreter to an absolute path so CreateProcessW does not
+	// search for a bare "cmd.exe" (whose search order includes the current
+	// directory — a binary-planting vector). Prefer %COMSPEC%, then
+	// <System32>\cmd.exe.
+	wchar_t comspecBuf[MAX_PATH];
+	const wchar_t *comspec = L"cmd.exe";
+	DWORD comspecLen = GetEnvironmentVariableW(L"COMSPEC", comspecBuf, MAX_PATH);
+	if (comspecLen > 0 && comspecLen < MAX_PATH) {
+		comspec = comspecBuf;
+	} else {
+		UINT sysLen = GetSystemDirectoryW(comspecBuf, MAX_PATH);
+		if (sysLen > 0 && sysLen < MAX_PATH - 9) {
+			wchar_t *q = comspecBuf + sysLen;
+			for (const wchar_t *suffix = L"\\cmd.exe"; *suffix;) { *q++ = *suffix++; }
+			*q = 0;
+			comspec = comspecBuf;
+		}
+	}
+
+	// Build command line ('cmd.exe /c <cmd>')
 	auto bufSize = strlen(cmd) + 12;
 	auto buf = __sprt_typed_malloca(wchar_t, strlen(cmd) + 12);
 
@@ -90,16 +112,23 @@ __SPRT_C_FUNC FILE *popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {
 	targetCmd[written] = 0;
 
 	// Create process
-	if (!CreateProcessW(NULL, buf, nullptr, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+	if (!CreateProcessW(comspec, buf, nullptr, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+		__sprt_freea(buf);
 		close(p[0]);
 		close(p[1]);
 		errno = platform::lastErrorToErrno(GetLastError());
 		return NULL;
 	}
 
+	__sprt_freea(buf);
+
+	// The thread handle is never needed.
+	CloseHandle(pi.hThread);
+
 	auto f = fdopen(p[op], mode);
 	if (!f) {
 		TerminateProcess(pi.hProcess, -1);
+		CloseHandle(pi.hProcess);
 		close(p[0]);
 		close(p[1]);
 		return NULL;
@@ -108,8 +137,6 @@ __SPRT_C_FUNC FILE *popen(const char *cmd, const char *mode) __SPRT_NOEXCEPT {
 	f->pipe_handle = pi.hProcess;
 
 	close(p[op == 0 ? 1 : 0]);
-
-	//ResumeThread(pi.hThread);
 
 	return f;
 }
@@ -120,9 +147,15 @@ __SPRT_C_FUNC int pclose(FILE *f) __SPRT_NOEXCEPT {
 
 	fclose(f);
 
-	while (WaitForSingleObject(pid, INFINITE) != WAIT_OBJECT_0);
+	// Wait for the child, but do not spin forever if the wait itself fails
+	// (e.g. an invalid handle would otherwise busy-loop).
+	DWORD wait;
+	do {
+		wait = WaitForSingleObject(pid, INFINITE);
+	} while (wait != WAIT_OBJECT_0 && wait != WAIT_FAILED);
 
 	GetExitCodeProcess(pid, &status);
+	CloseHandle(pid); // hProcess was kept past CreateProcess; release it now
 
 	return status;
 }

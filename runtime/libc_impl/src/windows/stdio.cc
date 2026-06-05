@@ -392,7 +392,7 @@ __SPRT_C_FUNC FILE *tmpfile(void) __SPRT_NOEXCEPT {
 	target = strappend(target, &bufLen, "tmpnam_XXXXXX", "tmpnam_XXXXXX"_len);
 
 	auto fd = mkstemp(target);
-	if (!fd) {
+	if (fd < 0) {
 		return nullptr;
 	}
 

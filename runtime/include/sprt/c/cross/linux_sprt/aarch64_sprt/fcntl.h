@@ -11,6 +11,7 @@
 #define __SPRT_O_DIRECTORY 0200000
 #define __SPRT_O_NOFOLLOW  0400000
 #define __SPRT_O_CLOEXEC  02000000
+#define __SPRT_O_INHERITABLE 0 // non-standard, no-op on this platform
 
 #define __SPRT_O_ASYNC      020000
 #define __SPRT_O_DIRECT     040000

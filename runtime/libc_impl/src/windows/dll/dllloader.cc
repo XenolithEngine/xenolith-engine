@@ -81,7 +81,8 @@ PPEB GetPEB(void) { return (PPEB)__readgsqword(0x60); }
 [[maybe_unused]]
 SAFELOADER HMODULE GetKernel32Module(void) {
 	wchar_t Kernel32Name[] = L"kernel32.dll";
-	int nameLen = __wcslen(Kernel32Name);
+	// Length of the suffix we match against, in wchar_t characters.
+	size_t suffixChars = __wcslen(Kernel32Name);
 
 	PPEB peb = GetPEB();
 	if (!peb || !peb->Ldr) {
@@ -92,9 +93,14 @@ SAFELOADER HMODULE GetKernel32Module(void) {
 	PLDR_DATA_TABLE_ENTRY module = (PLDR_DATA_TABLE_ENTRY)ldr->InLoadOrderModuleList.Flink;
 
 	while (module) {
-		if (module->FullDllName.Length >= nameLen
+		// UNICODE_STRING::Length is in BYTES, not characters. Require the name to
+		// hold at least suffixChars characters (suffixChars * sizeof(wchar_t)
+		// bytes) so the suffix start pointer computed below cannot underflow the
+		// buffer; only then is the __wcsicmp guaranteed to read in-bounds.
+		if (module->FullDllName.Buffer
+				&& module->FullDllName.Length >= suffixChars * sizeof(wchar_t)
 				&& __wcsicmp(module->FullDllName.Buffer
-								   + module->FullDllName.Length / sizeof(wchar_t) - nameLen,
+								   + module->FullDllName.Length / sizeof(wchar_t) - suffixChars,
 						   Kernel32Name)
 						== 0) {
 			return module->DllBase;
@@ -116,16 +122,44 @@ SAFELOADER int CompareStrings(const char *l, const char *r) {
 	return *(const BYTE *)l - *(const BYTE *)r;
 }
 
+// Bounds-check a [rva, rva + count * elemSize) span against the image size, so a
+// malformed export directory cannot make us read outside the mapped module.
+SAFELOADER bool RvaArrayInImage(DWORD rva, DWORD count, DWORD elemSize, DWORD imageSize) {
+	if (rva == 0 || rva > imageSize) {
+		return false;
+	}
+	// count * elemSize without overflow, then the span must fit after rva.
+	if (count != 0 && count > (0xffff'ffffu / elemSize)) {
+		return false;
+	}
+	DWORD bytes = count * elemSize;
+	if (bytes > imageSize - rva) {
+		return false;
+	}
+	return true;
+}
+
 SAFELOADER int FindExportNameIndex(HMODULE hModule, PIMAGE_EXPORT_DIRECTORY exportDir,
-		const char *functionName) {
+		DWORD imageSize, const char *functionName) {
 	// Get the name pointer table (array of RVAs to name strings)
+	DWORD numberOfNames = exportDir->NumberOfNames;
+	if (!RvaArrayInImage(exportDir->AddressOfNames, numberOfNames, sizeof(DWORD), imageSize)) {
+		return -1;
+	}
+
 	DWORD *nameTable = (DWORD *)PE_GET_OFFSET(hModule, exportDir->AddressOfNames);
 
 	// TODO - carefully rewrite this to binary search
-	for (int i = 0; i < exportDir->NumberOfNames; i++) {
-		const char *name = (const char *)PE_GET_OFFSET(hModule, nameTable[i]);
+	for (DWORD i = 0; i < numberOfNames; i++) {
+		// The name string must start inside the image (it is NUL-terminated within
+		// the mapped pages of a well-formed module).
+		DWORD nameRva = nameTable[i];
+		if (nameRva == 0 || nameRva >= imageSize) {
+			continue;
+		}
+		const char *name = (const char *)PE_GET_OFFSET(hModule, nameRva);
 		if (CompareStrings(name, functionName) == 0) {
-			return i;
+			return (int)i;
 		}
 	}
 
@@ -147,33 +181,68 @@ SAFELOADER __funcptr LookupFunctionInModule(HMODULE hModule, const char *functio
 		return 0;
 	}
 
+	// The loader's mapped image size; every RVA taken from the (potentially
+	// malformed) export directory is bounds-checked against this before use.
+	DWORD imageSize = peHeader->OptionalHeader.SizeOfImage;
+	if (imageSize == 0) {
+		return 0;
+	}
+
 	// 3. Get export directory from data directories
 	IMAGE_DATA_DIRECTORY *dataDirs =
 			&peHeader->OptionalHeader
 					 .DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]; // Index 0 = Export
 
-	if (dataDirs->VirtualAddress == 0 || dataDirs->Size == 0) {
+	DWORD dirRva = dataDirs->VirtualAddress;
+	DWORD dirSize = dataDirs->Size;
+	if (dirRva == 0 || dirSize == 0) {
 		return 0; // No export table
 	}
 
-	// 4. Parse export directory
-	PIMAGE_EXPORT_DIRECTORY exportDir =
-			(PIMAGE_EXPORT_DIRECTORY)PE_GET_OFFSET(hModule, dataDirs->VirtualAddress);
-
-	if (!exportDir || !exportDir->NumberOfNames) {
+	// The export directory itself must lie fully inside the mapped image.
+	if (dirRva > imageSize || dirSize < sizeof(IMAGE_EXPORT_DIRECTORY)
+			|| dirSize > imageSize - dirRva) {
 		return 0;
 	}
 
-	int nameIndex = FindExportNameIndex(hModule, exportDir, functionName);
+	// 4. Parse export directory
+	PIMAGE_EXPORT_DIRECTORY exportDir = (PIMAGE_EXPORT_DIRECTORY)PE_GET_OFFSET(hModule, dirRva);
+
+	if (!exportDir->NumberOfNames) {
+		return 0;
+	}
+
+	int nameIndex = FindExportNameIndex(hModule, exportDir, imageSize, functionName);
 	if (nameIndex == -1) {
 		return 0; // Function not found
 	}
 
+	// The name-ordinal table is parallel to the name table (NumberOfNames WORDs);
+	// validate it before indexing with nameIndex.
+	DWORD numberOfNames = exportDir->NumberOfNames;
+	DWORD numberOfFunctions = exportDir->NumberOfFunctions;
+	if (!RvaArrayInImage(exportDir->AddressOfNameOrdinals, numberOfNames, sizeof(WORD), imageSize)
+			|| !RvaArrayInImage(
+					exportDir->AddressOfFunctions, numberOfFunctions, sizeof(DWORD), imageSize)) {
+		return 0;
+	}
+
+	// nameIndex came from a loop bounded by numberOfNames, so it is in range here.
 	WORD *ordinalTable = (WORD *)PE_GET_OFFSET(hModule, exportDir->AddressOfNameOrdinals);
 	WORD ordinal = ordinalTable[nameIndex];
 
+	// The ordinal indexes the function-address table; reject out-of-range ordinals.
+	if (ordinal >= numberOfFunctions) {
+		return 0;
+	}
+
 	DWORD *funcTable = (DWORD *)PE_GET_OFFSET(hModule, exportDir->AddressOfFunctions);
 	DWORD funcRVA = funcTable[ordinal /*- exportDir->Base*/]; // Subtract base offset
+
+	// A zero RVA means "no such export"; a non-zero RVA must point inside the image.
+	if (funcRVA == 0 || funcRVA >= imageSize) {
+		return 0;
+	}
 
 	return (__funcptr)PE_GET_OFFSET(hModule, funcRVA);
 }
@@ -208,6 +277,9 @@ __declspec(safebuffers) int DllLoader::load() {
 	auto _LoadLibraryW = reinterpret_cast<decltype(&::LoadLibraryW)>(
 			_GetProcAddress(_rootKernel32, "LoadLibraryW"));
 
+	auto _LoadLibraryExW = reinterpret_cast<decltype(&::LoadLibraryExW)>(
+			_GetProcAddress(_rootKernel32, "LoadLibraryExW"));
+
 	auto _FreeLibrary = reinterpret_cast<decltype(&::FreeLibrary)>(
 			_GetProcAddress(_rootKernel32, "FreeLibrary"));
 
@@ -220,11 +292,13 @@ __declspec(safebuffers) int DllLoader::load() {
 
 	__GetProcAddress = _GetProcAddress;
 	__LoadLibraryW = _LoadLibraryW;
+	__LoadLibraryExW = _LoadLibraryExW;
 	__FreeLibrary = _FreeLibrary;
 	__ExitProcess = _ExitProcess;
 #else
 	__GetProcAddress = &GetProcAddress;
 	__LoadLibraryW = &LoadLibraryW;
+	__LoadLibraryExW = &LoadLibraryExW;
 	__FreeLibrary = &FreeLibrary;
 	__ExitProcess = &ExitProcess;
 #endif
@@ -237,7 +311,16 @@ __declspec(safebuffers) int DllLoader::load() {
 
 		auto lib = GetModuleHandleW(it->__name);
 		if (!lib) {
-			lib = __LoadLibraryW(it->__name);
+			// Restrict the search to %windows%\system32 so a bare DLL name
+			// cannot be resolved from the current directory / PATH (a
+			// DLL-planting vector). Every entry here is a genuine system DLL.
+			if (__LoadLibraryExW) {
+				lib = __LoadLibraryExW(it->__name, nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+			}
+			if (!lib) {
+				// Fallback if LoadLibraryExW / the search flag is unavailable.
+				lib = __LoadLibraryW(it->__name);
+			}
 			if (!lib) {
 				ret = LOADER_ERROR_NO_BASE_DLLS;
 				break;
@@ -309,6 +392,12 @@ bool DllTable::init(HANDLE h) {
 bool DllTable::load(DllTableRecord *rec) {
 	auto loader = reinterpret_cast<DllLoader *>(s_loaderBuffer);
 
+	// The store to rec->fn is intentionally unlocked. GetProcAddress(__handle,
+	// rec->name) is a pure function of (module, symbol), so two threads racing on
+	// the same record resolve and write the identical address: the write is
+	// idempotent. rec->fn is pointer-aligned, and an aligned pointer-width store is
+	// atomic on x86-64, so a concurrent reader observes either nullptr (and simply
+	// re-resolves) or the fully-formed pointer, never a torn value.
 	if (!rec->fn) {
 		rec->fn = loader->__GetProcAddress(__handle, rec->name);
 	}

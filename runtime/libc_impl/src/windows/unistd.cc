@@ -46,7 +46,15 @@ namespace sprt {
 
 extern "C" {
 unsigned int sleep(unsigned int __seconds) __SPRT_NOEXCEPT {
-	::Sleep(__seconds * 1'000);
+	// Sleep() takes milliseconds in a DWORD. `__seconds * 1000` overflows 32 bits
+	// for large values, and 0xFFFFFFFF (INFINITE) must not be passed for a finite
+	// sleep — drain the total in sub-4-GiB-ms chunks.
+	uint64_t ms = (uint64_t)__seconds * 1'000;
+	while (ms > 0xFFFF'FFFEull) {
+		::Sleep(0xFFFF'FFFEu);
+		ms -= 0xFFFF'FFFEull;
+	}
+	::Sleep((DWORD)ms);
 	return 0;
 }
 
@@ -73,7 +81,6 @@ int usleep(__SPRT_ID(time_t) us) __SPRT_NOEXCEPT {
 			if (now.QuadPart >= target.QuadPart) {
 				break;
 			}
-			target.QuadPart -= now.QuadPart;
 		}
 	}
 
@@ -128,6 +135,8 @@ int fchdir(int fdDir) __SPRT_NOEXCEPT {
 }
 
 int execve(const char *__path, char *const __argv[], char *const __envp[]) __SPRT_NOEXCEPT {
+	// No process-image replacement (exec semantics) on win32.
+	__sprt_errno = ENOSYS;
 	return -1;
 }
 
@@ -153,7 +162,7 @@ int fexecve(int __fd, char *const _argv[], char *const __envp[]) __SPRT_NOEXCEPT
 
 	auto writtenLen = GetFinalPathNameByHandleW(slot->handle, buf, pathLen + 1, 0);
 	if (writtenLen == 0) {
-		__sprt_free(buf);
+		__sprt_freea(buf);
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
@@ -275,9 +284,23 @@ long sysconf(int name) __SPRT_NOEXCEPT {
 	case __SPRT_SC_NPROCESSORS_CONF: {
 		SYSTEM_LOGICAL_PROCESSOR_INFORMATION *proc_info;
 		DWORD proc_info_size = 0;
-		GetLogicalProcessorInformation(NULL, &proc_info_size);
+		// First call is expected to fail with ERROR_INSUFFICIENT_BUFFER and
+		// report the required size.
+		if (GetLogicalProcessorInformation(NULL, &proc_info_size)
+				|| GetLastError() != ERROR_INSUFFICIENT_BUFFER || proc_info_size == 0) {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return -1;
+		}
 		proc_info = (SYSTEM_LOGICAL_PROCESSOR_INFORMATION *)__sprt_malloca(proc_info_size);
-		GetLogicalProcessorInformation(proc_info, &proc_info_size);
+		if (!proc_info) {
+			__sprt_errno = ENOMEM;
+			return -1;
+		}
+		if (!GetLogicalProcessorInformation(proc_info, &proc_info_size)) {
+			__sprt_freea(proc_info);
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return -1;
+		}
 
 		int cores = 0;
 		for (DWORD i = 0; i < proc_info_size / sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION); i++) {
@@ -353,6 +376,11 @@ __SPRT_ID(uid_t) getuid(void) __SPRT_NOEXCEPT {
 	DWORD size = 0;
 	GetTokenInformation(hToken, TokenUser, NULL, 0, &size);
 	PTOKEN_USER pUser = (PTOKEN_USER)__sprt_malloca(size);
+	if (!pUser) {
+		CloseHandle(hToken);
+		__sprt_errno = ENOMEM;
+		return __SPRT_ID(uid_t)(-1);
+	}
 	BOOL ok = GetTokenInformation(hToken, TokenUser, pUser, size, &size);
 	CloseHandle(hToken);
 
@@ -384,9 +412,16 @@ __SPRT_ID(gid_t) getgid(void) __SPRT_NOEXCEPT {
 	}
 
 	DWORD size = 0;
-	GetTokenInformation(hToken, TokenUser, NULL, 0, &size);
+	// Size must be queried for the SAME information class that is fetched
+	// below (TokenPrimaryGroup), not TokenUser.
+	GetTokenInformation(hToken, TokenPrimaryGroup, NULL, 0, &size);
 
 	PTOKEN_PRIMARY_GROUP pGroup = (PTOKEN_PRIMARY_GROUP)__sprt_malloca(size);
+	if (!pGroup) {
+		CloseHandle(hToken);
+		__sprt_errno = ENOMEM;
+		return __SPRT_ID(gid_t)(-1);
+	}
 
 	BOOL ok = GetTokenInformation(hToken, TokenPrimaryGroup, pGroup, size, &size);
 	CloseHandle(hToken);
@@ -426,6 +461,11 @@ int getgroups(int size, __SPRT_ID(gid_t) list[]) __SPRT_NOEXCEPT {
 	DWORD needed = 0;
 	GetTokenInformation(hToken, TokenGroups, NULL, 0, &needed);
 	PTOKEN_GROUPS pGroups = (PTOKEN_GROUPS)__sprt_malloca(needed);
+	if (!pGroups) {
+		CloseHandle(hToken);
+		__sprt_errno = ENOMEM;
+		return -1;
+	}
 
 	BOOL ok = GetTokenInformation(hToken, TokenGroups, pGroups, needed, &needed);
 	CloseHandle(hToken);
@@ -930,9 +970,27 @@ ssize_t copy_file_range(int fd_in, long long *off_in, int fd_out, long long *off
 		return -1;
 	}
 
+	// POSIX: if both descriptors refer to the same file and the requested
+	// ranges overlap, the result is EINVAL. Detectable when explicit offsets
+	// are supplied for the same descriptor.
+	if (fd_in == fd_out && off_in && off_out) {
+		long long s = *off_in, d = *off_out;
+		if (s < d + (long long)len && d < s + (long long)len) {
+			__sprt_errno = EINVAL;
+			return -1;
+		}
+	}
+
 	const DWORD BUF_SIZE = 1 << 16; // 64 KiB
-	char buffer[BUF_SIZE];
+	// Heap-allocated rather than on the stack: a 64 KiB stack frame can
+	// overflow threads created with a small stack.
+	char *buffer = (char *)__sprt_malloc(BUF_SIZE);
+	if (!buffer) {
+		__sprt_errno = ENOMEM;
+		return -1;
+	}
 	size_t total = 0;
+	ssize_t result;
 
 	while (total < len) {
 		DWORD chunk = (DWORD)((len - total) > BUF_SIZE ? BUF_SIZE : (len - total));
@@ -945,7 +1003,8 @@ ssize_t copy_file_range(int fd_in, long long *off_in, int fd_out, long long *off
 			pos.QuadPart = *off_in;
 			if (!SetFilePointerEx(slot_in->handle, pos, &newpos, FILE_BEGIN)) {
 				__sprt_errno = EIO;
-				return (ssize_t)(total ? total : -1);
+				result = (ssize_t)(total ? total : -1);
+				goto done;
 			}
 		}
 
@@ -956,7 +1015,8 @@ ssize_t copy_file_range(int fd_in, long long *off_in, int fd_out, long long *off
 				break; // EOF
 			}
 			__sprt_errno = EIO;
-			return (ssize_t)(total ? total : -1);
+			result = (ssize_t)(total ? total : -1);
+			goto done;
 		}
 		if (nread == 0) {
 			break; // EOF
@@ -971,14 +1031,16 @@ ssize_t copy_file_range(int fd_in, long long *off_in, int fd_out, long long *off
 			pos.QuadPart = *off_out;
 			if (!SetFilePointerEx(slot_out->handle, pos, &newpos, FILE_BEGIN)) {
 				__sprt_errno = EIO;
-				return (ssize_t)(total ? total : -1);
+				result = (ssize_t)(total ? total : -1);
+				goto done;
 			}
 		}
 
 		DWORD nwritten = 0;
 		if (!WriteFile(slot_out->handle, buffer, nread, &nwritten, NULL) || nwritten < nread) {
 			__sprt_errno = EIO;
-			return (ssize_t)(total ? total : -1);
+			result = (ssize_t)(total ? total : -1);
+			goto done;
 		}
 
 		if (off_out) {
@@ -991,7 +1053,10 @@ ssize_t copy_file_range(int fd_in, long long *off_in, int fd_out, long long *off
 		}
 	}
 
-	return (ssize_t)total;
+	result = (ssize_t)total;
+done:
+	__sprt_free(buffer);
+	return result;
 }
 
 int symlinkat(const char *__old_path, int __new_dir_fd, const char *__new_path) __SPRT_NOEXCEPT {
@@ -1165,13 +1230,13 @@ char *getcwd(char *buf, size_t bufSize) __SPRT_NOEXCEPT {
 	}
 
 	auto wbuf = __sprt_typed_malloca(wchar_t, requiredBufferLen + 1);
-	auto цbufferLen = GetCurrentDirectoryW(requiredBufferLen + 1, wbuf);
-	if (цbufferLen == 0) {
+	auto bufferLen = GetCurrentDirectoryW(requiredBufferLen + 1, wbuf);
+	if (bufferLen == 0) {
 		__sprt_errno = EACCES;
 		return nullptr;
 	}
 
-	auto requiredLen = unicode::getUtf8Length(WideStringView((char16_t *)wbuf, цbufferLen)) + 1;
+	auto requiredLen = unicode::getUtf8Length(WideStringView((char16_t *)wbuf, bufferLen)) + 1;
 
 	if (bufSize > 0 && bufSize < requiredLen) {
 		__sprt_errno = ERANGE;
@@ -1188,7 +1253,7 @@ char *getcwd(char *buf, size_t bufSize) __SPRT_NOEXCEPT {
 	}
 
 	size_t retLen = 0;
-	unicode::toUtf8(buf, bufSize, WideStringView((char16_t *)wbuf, цbufferLen), &retLen);
+	unicode::toUtf8(buf, bufSize, WideStringView((char16_t *)wbuf, bufferLen), &retLen);
 	if (retLen < bufSize) {
 		buf[retLen] = 0;
 	}
@@ -1271,9 +1336,15 @@ char *_fullpath(char *absPath, const char *relPath, size_t maxLength) __SPRT_NOE
 
 		char *mallocBuf = nullptr;
 		if (!absPath) {
-			mallocBuf = absPath = (char *)__sprt_malloc(required);
-			maxLength = required;
-		} else if (required > maxLength) {
+			// +1 for the NUL terminator (toUtf8 below does not write one).
+			mallocBuf = absPath = (char *)__sprt_malloc(required + 1);
+			if (!absPath) {
+				__sprt_errno = ENOMEM;
+				return;
+			}
+			maxLength = required + 1;
+		} else if (required + 1 > maxLength) {
+			// Caller buffer must hold the path AND the terminator.
 			absPath = nullptr;
 			__sprt_errno = EOVERFLOW;
 			return;
@@ -1286,9 +1357,11 @@ char *_fullpath(char *absPath, const char *relPath, size_t maxLength) __SPRT_NOE
 			if (mallocBuf) {
 				__sprt_free(mallocBuf);
 			}
+			absPath = nullptr;
 			__sprt_errno = status::toErrno(st);
 			return;
 		}
+		absPath[written] = 0;
 	}, relPath);
 	return absPath;
 }

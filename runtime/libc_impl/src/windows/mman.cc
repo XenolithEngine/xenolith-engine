@@ -101,8 +101,9 @@ __SPRT_C_FUNC int mlock(const void *addr, size_t len) __SPRT_NOEXCEPT {
 		DWORD err = GetLastError();
 		if (err == ERROR_WORKING_SET_QUOTA || err == ERROR_NOT_ENOUGH_MEMORY) {
 			__sprt_errno = ENOMEM;
+		} else {
+			__sprt_errno = EACCES;
 		}
-		__sprt_errno = EACCES;
 		return -1;
 	}
 
@@ -206,8 +207,11 @@ __SPRT_C_FUNC int mincore(void *addr, size_t length, unsigned char *vec) __SPRT_
 
 	for (DWORD_PTR i = 0; i < npages; i++) { WsInfo[i].VirtualAddress = StartPtr + i * page_size; }
 
+	// The buffer holds `npages` entries (one per page of [addr, addr+length)),
+	// not `page_size` entries. Telling the API a larger size lets it write past
+	// the allocation when npages < page_size.
 	BOOL bResult = QueryWorkingSetEx(GetCurrentProcess(), WsInfo,
-			(DWORD)page_size * sizeof(PSAPI_WORKING_SET_EX_INFORMATION));
+			(DWORD)(npages * sizeof(PSAPI_WORKING_SET_EX_INFORMATION)));
 
 	if (!bResult) {
 		__sprt_freea(WsInfo);

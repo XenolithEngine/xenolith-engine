@@ -42,12 +42,26 @@ static int __wopen(const wchar_t *wpath, int __flags, __SPRT_ID(mode_t) __mode) 
 		return -1;
 	}
 
+	// O_CLOEXEC (non-inheritable / close-on-exec) and the non-standard
+	// O_INHERITABLE (inheritable handle) are mutually exclusive.
+	if ((__flags & __SPRT_O_CLOEXEC) && (__flags & __SPRT_O_INHERITABLE)) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+
 	platform::OpenInfo info(__flags, __mode);
+
+	// Handles are non-inheritable (close-on-exec) by default; O_INHERITABLE
+	// requests an inheritable handle (the opposite of O_CLOEXEC).
+	SECURITY_ATTRIBUTES sa;
+	sa.nLength = sizeof(sa);
+	sa.lpSecurityDescriptor = nullptr;
+	sa.bInheritHandle = (__flags & __SPRT_O_INHERITABLE) ? TRUE : FALSE;
 
 	HANDLE h = CreateFileW(wpath, // file path
 			info.dwDesiredAccess, // ← maps to O_RDONLY/O_WRONLY/O_RDWR
 			info.dwShareMode, // ← no POSIX equivalent; Windows-specific
-			nullptr, // security descriptor
+			&sa, // inheritability per O_INHERITABLE (default: non-inheritable)
 			info.dwCreationDisposition, // ← maps to O_CREAT/O_EXCL/O_TRUNC
 			info.dwFlagsAndAttributes, // ← maps to mode + O_APPEND/O_SYNC/FILE_FLAG_*
 			nullptr);
@@ -58,7 +72,7 @@ static int __wopen(const wchar_t *wpath, int __flags, __SPRT_ID(mode_t) __mode) 
 
 	if ((__flags & __SPRT_O_PATH) == 0) {
 		// Handle O_TRUNC explicitly (avoids FILE_ATTRIBUTE_READONLY issues)
-		if ((__flags & __SPRT_O_SYNC) != 0 && info.dwCreationDisposition == OPEN_ALWAYS
+		if ((__flags & __SPRT_O_TRUNC) != 0 && info.dwCreationDisposition == OPEN_ALWAYS
 				&& GetLastError() == ERROR_ALREADY_EXISTS) {
 			SetFilePointer(h, 0, NULL, FILE_BEGIN);
 			SetEndOfFile(h);
@@ -67,19 +81,23 @@ static int __wopen(const wchar_t *wpath, int __flags, __SPRT_ID(mode_t) __mode) 
 
 	if ((__flags & __SPRT_O_DIRECTORY) != 0 || (__flags & __SPRT_O_NOFOLLOW) != 0) {
 		BY_HANDLE_FILE_INFORMATION info;
-		if (GetFileInformationByHandle(h, &info)) {
-			if ((__flags & __SPRT_O_DIRECTORY) != 0
-					&& (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
-				CloseHandle(h);
-				__sprt_errno = ENOTDIR;
-				return -1;
-			}
-			if ((__flags & __SPRT_O_NOFOLLOW) != 0
-					&& (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
-				CloseHandle(h);
-				__sprt_errno = ELOOP;
-				return -1;
-			}
+		if (!GetFileInformationByHandle(h, &info)) {
+			// Can't verify attributes: fail rather than bypass O_DIRECTORY/O_NOFOLLOW
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			CloseHandle(h);
+			return -1;
+		}
+		if ((__flags & __SPRT_O_DIRECTORY) != 0
+				&& (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
+			CloseHandle(h);
+			__sprt_errno = ENOTDIR;
+			return -1;
+		}
+		if ((__flags & __SPRT_O_NOFOLLOW) != 0
+				&& (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+			CloseHandle(h);
+			__sprt_errno = ELOOP;
+			return -1;
 		}
 	}
 
@@ -106,7 +124,7 @@ static int __open64(const char *path, int __flags, __SPRT_ID(mode_t) __mode) __S
 
 static int __openat64(int __dir_fd, const char *path, int __flags,
 		__SPRT_ID(mode_t) __mode) __SPRT_NOEXCEPT {
-	int ret = 0;
+	int ret = -1;
 	platform::openAtPath(__dir_fd, path, [&](const char *path, size_t pathLen) {
 		ret = __open(path, __flags, __mode); //
 	});
@@ -155,7 +173,7 @@ static int __shareModeToFlags(int __sh) {
 __SPRT_C_FUNC
 int _sopen_s(int *pfh, const char *__path, int __flags, int __sh, ...) __SPRT_NOEXCEPT {
 	if (!pfh || !__path) {
-		if (*pfh) {
+		if (pfh) {
 			*pfh = -1;
 		}
 		__sprt_errno = EINVAL;
@@ -199,7 +217,7 @@ int _sopen(const char *__path, int __flags, int __sh, ...) __SPRT_NOEXCEPT {
 __SPRT_C_FUNC
 int _wsopen_s(int *pfh, const wchar_t *__path, int __flags, int __sh, ...) __SPRT_NOEXCEPT {
 	if (!pfh || !__path) {
-		if (*pfh) {
+		if (pfh) {
 			*pfh = -1;
 		}
 		__sprt_errno = EINVAL;

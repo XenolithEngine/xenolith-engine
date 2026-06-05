@@ -32,43 +32,58 @@ THE SOFTWARE.
 namespace sprt {
 
 bool __mktmppath(char *__itpl, size_t suffixLen, const Callback<bool(const char *, size_t)> &cb) {
+	static constexpr int kMaxAttempts = 64;
+
 	if (!__itpl) {
 		errno = EINVAL;
 		return false;
 	}
 
-	// check if template is valid
+	// Template must hold the "XXXXXX" placeholder immediately before the
+	// suffix. Guard the length first: `size() - suffixLen - 6` underflows to a
+	// huge value for short templates.
 	StringView itpl(__itpl);
-	if (itpl.sub(itpl.size() - suffixLen - 6, 6) != StringView("XXXXXX")) {
-		__sprt_errno = EINVAL;
-		return -1;
+	if (itpl.size() < suffixLen + 6
+			|| itpl.sub(itpl.size() - suffixLen - 6, 6) != StringView("XXXXXX")) {
+		errno = EINVAL;
+		return false;
 	}
+
+	const size_t offset = itpl.size() - suffixLen - 6;
 
 	uint8_t randomBytes[6];
 	char b64Bytes[8];
-	int counter = 0;
 
-	errno = 0;
-
-	do {
-		// File/directory creation in callback may fail with critical errno;
-		// only fail with EEXIST is allowed to continue
-		if (errno != EEXIST) {
-			return -1;
+	for (int counter = 0; counter < kMaxAttempts; ++counter) {
+		// Generate random bytes for the replacement string. Without checking
+		// the result the buffer could stay uninitialized, yielding predictable
+		// (or stack-garbage) names.
+		if (__sprt_getrandom(randomBytes, sizeof(randomBytes), __SPRT_GRND_RANDOM)
+				!= (__sprt_ssize_t)sizeof(randomBytes)) {
+			errno = EIO;
+			return false;
 		}
 
-		// Generate random bytes for replacement string
-		__sprt_getrandom(randomBytes, 6, __SPRT_GRND_RANDOM);
+		// Use base64url to convert raw bytes into a filepath-safe string; the
+		// first 6 of the 8 emitted characters replace "XXXXXX".
+		base64url::encode(randomBytes, sizeof(randomBytes), b64Bytes, sizeof(b64Bytes));
+		memcpy(__itpl + offset, b64Bytes, 6);
 
-		// Use base64url to convert raw bytes into filepath string
-		base64url::encode(randomBytes, 6, b64Bytes, 8);
+		errno = 0;
+		if (cb(itpl.data(), itpl.size())) {
+			return true;
+		}
 
-		// Replace XXXXXX with new string
-		memcpy(__itpl + itpl.size() - suffixLen - 6, b64Bytes, 6);
+		// Only a name collision (EEXIST) is retryable; any other failure from
+		// the creation callback is fatal and is reported as-is.
+		if (errno != EEXIST) {
+			return false;
+		}
+	}
 
-	} while (!cb(itpl.data(), itpl.size()) && ++counter < 64);
-
-	return counter < 64;
+	// Exhausted all attempts without finding a free name.
+	errno = EEXIST;
+	return false;
 }
 
 __SPRT_C_FUNC int mkostemp(char *itpl, int _flags) __SPRT_NOEXCEPT {

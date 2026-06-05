@@ -43,21 +43,24 @@ int hstat(HANDLE h, struct __SPRT_STAT_NAME *__stat) {
 	FILE_STANDARD_INFO standardInfo;
 	BY_HANDLE_FILE_INFORMATION data;
 	if (!GetFileInformationByHandle(h, &data)) {
-		CloseHandle(h);
+		// The HANDLE is owned by the caller (__wstat / __file_stat); do not
+		// close it here, or it will be closed twice.
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
 
 	if (!GetFileInformationByHandleEx(h, FileStandardInfo, &standardInfo,
 				sizeof(FILE_STANDARD_INFO))) {
-		CloseHandle(h);
+		// The HANDLE is owned by the caller (__wstat / __file_stat); do not
+		// close it here, or it will be closed twice.
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
 
 	if (!GetFileInformationByHandleEx(h, FileStorageInfo, &storageInfo,
 				sizeof(FILE_STORAGE_INFO))) {
-		CloseHandle(h);
+		// The HANDLE is owned by the caller (__wstat / __file_stat); do not
+		// close it here, or it will be closed twice.
 		__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		return -1;
 	}
@@ -115,15 +118,16 @@ int hutimens(HANDLE hFile, const struct __SPRT_TIMESPEC_NAME *times) {
 	if (times == nullptr) {
 		fbi.LastWriteTime = fbi.LastAccessTime = __toFiletime(&now);
 	} else {
+		// times[0] = access time, times[1] = modification time (POSIX).
 		if (times[0].tv_nsec == __SPRT_UTIME_NOW) {
 			fbi.LastAccessTime = __toFiletime(&now);
 		} else if (times[0].tv_nsec != __SPRT_UTIME_OMIT) {
 			fbi.LastAccessTime = __toFiletime(&times[0]);
 		}
 
-		if (times[0].tv_nsec == __SPRT_UTIME_NOW) {
+		if (times[1].tv_nsec == __SPRT_UTIME_NOW) {
 			fbi.LastWriteTime = __toFiletime(&now);
-		} else if (times[0].tv_nsec != __SPRT_UTIME_OMIT) {
+		} else if (times[1].tv_nsec != __SPRT_UTIME_OMIT) {
 			fbi.LastWriteTime = __toFiletime(&times[1]);
 		}
 	}
@@ -277,6 +281,7 @@ __SPRT_C_FUNC int utimensat(int __fd, const char *__path, const __SPRT_TIMESPEC_
 			ret = -1;
 		} else {
 			ret = platform::hutimens(hFile, times);
+			CloseHandle(hFile);
 		}
 	});
 	return ret;
