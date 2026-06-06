@@ -51,10 +51,40 @@ static bool Handle_reset(HandleData<Interface> &data, Method method, StringView 
 	return true;
 }
 
+// CR/LF/NUL are the characters that allow header / SMTP-command injection
+static bool Net_hasControlChar(StringView s) {
+	for (size_t i = 0; i < s.size(); ++i) {
+		auto c = s[i];
+		if (c == '\r' || c == '\n' || c == '\0') {
+			return true;
+		}
+	}
+	return false;
+}
+
+template <typename Interface>
+static typename Interface::StringType Net_stripControlChars(StringView s) {
+	typename Interface::StringType ret;
+	ret.reserve(s.size());
+	for (size_t i = 0; i < s.size(); ++i) {
+		auto c = s[i];
+		if (c != '\r' && c != '\n' && c != '\0') {
+			ret.push_back(c);
+		}
+	}
+	return ret;
+}
+
 template <typename Interface>
 static void Handle_addHeader(HandleData<Interface> &data, StringView name, StringView value) {
 	name.trimChars<StringView::WhiteSpace>();
 	value.trimChars<StringView::WhiteSpace>();
+
+	// silently drop a header whose name or value carries CR/LF/NUL — it would let an
+	// attacker-influenced value inject additional request headers (CRLF injection)
+	if (Net_hasControlChar(name) || Net_hasControlChar(value)) {
+		return;
+	}
 
 	auto nameStr = string::tolower<Interface>(name);
 
@@ -76,10 +106,9 @@ static void Handle_addMailTo(HandleData<Interface> &data, StringView name) {
 	}
 
 	auto lb = sprt::lower_bound(data.send.recipients.begin(), data.send.recipients.end(), nameStr);
-	if (lb != data.send.recipients.end() && *lb != name) {
+	if (lb == data.send.recipients.end() || *lb != name) {
+		// keep the list sorted and unique; a duplicate is simply ignored
 		data.send.recipients.emplace(lb, sp::move(nameStr));
-	} else if (lb != data.send.recipients.end()) {
-		data.send.recipients.emplace_back(sp::move(nameStr));
 	}
 }
 
@@ -303,7 +332,10 @@ HANDLE_NAME(void, addHeader, StringView header, StringView value) {
 }
 HANDLE_NAME_CONST(const HeaderMap &, getRequestHeaders) { return send.headers; }
 
-HANDLE_NAME(void, setMailFrom, StringView from) { send.from = from.str<HANDLE_INTERFACE>(); }
+HANDLE_NAME(void, setMailFrom, StringView from) {
+	// strip CR/LF/NUL to prevent SMTP command injection via the envelope-from
+	send.from = Net_stripControlChars<HANDLE_INTERFACE>(from);
+}
 HANDLE_NAME(void, clearMailTo) { send.recipients.clear(); }
 HANDLE_NAME(void, addMailTo, StringView to) { Handle_addMailTo(*this, to); }
 HANDLE_NAME(void, setAuthority, StringView user, StringView passwd, AuthMethod method) {
@@ -412,7 +444,10 @@ HANDLE_NAME(void, addHeader, StringView header, StringView value) {
 }
 HANDLE_NAME_CONST(const HeaderMap &, getRequestHeaders) { return send.headers; }
 
-HANDLE_NAME(void, setMailFrom, StringView from) { send.from = from.str<HANDLE_INTERFACE>(); }
+HANDLE_NAME(void, setMailFrom, StringView from) {
+	// strip CR/LF/NUL to prevent SMTP command injection via the envelope-from
+	send.from = Net_stripControlChars<HANDLE_INTERFACE>(from);
+}
 HANDLE_NAME(void, clearMailTo) { send.recipients.clear(); }
 HANDLE_NAME(void, addMailTo, StringView to) { Handle_addMailTo(*this, to); }
 HANDLE_NAME(void, setAuthority, StringView user, StringView passwd, AuthMethod method) {

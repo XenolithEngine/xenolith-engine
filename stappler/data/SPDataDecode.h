@@ -118,6 +118,13 @@ auto read(const StringType &data, const StringView &key = StringView()) -> Value
 	}
 	uint8_t padding = 0;
 	auto ff = detectDataFormat((const uint8_t *)data.data(), data.size(), padding);
+	// guard the compressed formats: data.size() - 4 - padding would underflow (and
+	// produce a huge source length → OOB read) for a short/crafted input
+	if ((ff == DataFormat::LZ4_Short || ff == DataFormat::LZ4_Word
+				|| ff == DataFormat::Brotli_Short || ff == DataFormat::Brotli_Word)
+			&& data.size() < size_t(4) + padding) {
+		return ValueTemplate<Interface>();
+	}
 	switch (ff) {
 	case DataFormat::Cbor:
 		return cbor::read<Interface>(data);

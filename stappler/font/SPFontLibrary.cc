@@ -199,7 +199,7 @@ Rc<FontFaceObject> FontLibrary::openFontFace(StringView dataName,
 		_data.emplace(dataObject->getName(), dataObject);
 		auto face = newFontFace(dataObject->getView());
 		auto ret =
-				Rc<FontFaceObject>::create(faceName, it->second, _library, face, spec, getNextId());
+				Rc<FontFaceObject>::create(faceName, dataObject, _library, face, spec, getNextId());
 		if (ret) {
 			_faces.emplace(ret->getName(), ret);
 		} else {

@@ -52,8 +52,8 @@ public:
 	using FilterCallback = Function<bool(const Node *)>;
 
 	struct Slice {
-		uint16_t start = 0; // start position in node's canonical string
-		uint16_t size = 0; // length in node's canonical string
+		uint32_t start = 0; // start position in node's canonical string
+		uint32_t size = 0; // length in node's canonical string
 
 		bool operator==(const Slice &) const = default;
 	};
@@ -74,7 +74,7 @@ public:
 
 	struct ResultToken {
 		uint32_t word = 0; // node index
-		uint16_t match = 0; // node index
+		uint32_t match = 0; // node index
 		Slice slice; // slice from canonical
 
 		bool operator==(const ResultToken &) const = default;

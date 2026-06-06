@@ -91,7 +91,7 @@ void readNameQuoted(const Callback<void(StyleContainer::StringReader)> &out,
 		++s;
 	}
 
-	while (!s.is<Q>()) {
+	while (!s.empty() && !s.is<Q>()) {
 		auto tmp = s.readUntil<StyleContainer::Chars<Q, '\\'>>();
 		if (!tmp.empty()) {
 			out << tmp;
@@ -162,7 +162,19 @@ StyleContainer::StringReader readQuotedBlock(StyleContainer::StringReader &s) {
 
 template <char32_t Start, char32_t End>
 static bool readBracedBlock(const Callback<void(StyleContainer::StringReader)> &out,
-		StyleContainer::StringReader &s) {
+		StyleContainer::StringReader &s, uint32_t depth = 0) {
+	// bound recursion: deeply nested ()/[] in a selector would otherwise exhaust the
+	// native stack. Past the cap, consume the opening bracket and bail so the caller
+	// still makes progress (degraded parse, no crash).
+	static constexpr uint32_t MaxBraceDepth = 64;
+	if (depth >= MaxBraceDepth) {
+		if (s.is<Start>()) {
+			out << s.letter();
+			++s;
+		}
+		return false;
+	}
+
 	if (s.is<Start>()) {
 		out << s.letter();
 		++s;
@@ -186,9 +198,9 @@ static bool readBracedBlock(const Callback<void(StyleContainer::StringReader)> &
 		} else if (s.is('"')) {
 			out << readQuotedBlock<'"'>(s).str<StyleContainer::Interface>();
 		} else if (s.is('(')) {
-			readBracedBlock<'(', ')'>(out, s);
+			readBracedBlock<'(', ')'>(out, s, depth + 1);
 		} else if (s.is('[')) {
-			readBracedBlock<'[', ']'>(out, s);
+			readBracedBlock<'[', ']'>(out, s, depth + 1);
 		} else if (s.is<End>()) {
 			break;
 		} else if (Start == '[' && s.is('=')) {
@@ -564,7 +576,7 @@ FontFace StyleContainer::readFontFace(StyleBuffers &buffers, StringReader &s) {
 	FontFace ret;
 	StringReader name, value, data;
 
-	while (!s.is('}')) {
+	while (!s.empty() && !s.is('}')) {
 		readCssIdentifier<')'>(buffers.getNameStream(), s);
 		buffers.nameToLower();
 		name = buffers.name.get<StringReader>();

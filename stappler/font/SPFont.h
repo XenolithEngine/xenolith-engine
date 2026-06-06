@@ -46,7 +46,7 @@ struct SP_PUBLIC CharVector final {
 	void addString(const WideStringView &);
 	void addString(const CharVector &);
 
-	bool empty() const { return !chars.empty(); }
+	bool empty() const { return chars.empty(); }
 
 	mem_std::Vector<char32_t> chars;
 };

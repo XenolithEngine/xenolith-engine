@@ -375,6 +375,9 @@ static bool Function_wordlist(const Callback<void(StringView)> &out, void *, Var
 		auto tmp = str.readUntil<StringView::WhiteSpace>();
 		if (!tmp.empty()) {
 			++counter;
+			if (counter > eNum) {
+				return true;
+			}
 			if (counter >= sNum) {
 				if (first) {
 					first = false;
@@ -382,9 +385,6 @@ static bool Function_wordlist(const Callback<void(StringView)> &out, void *, Var
 					out << ' ';
 				}
 				out << tmp;
-			}
-			if (counter > eNum) {
-				return true;
 			}
 		}
 	}

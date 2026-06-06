@@ -134,7 +134,10 @@ File::~File() {
 size_t File::read(uint8_t *buf, size_t nbytes) {
 	if (is_open() && hasFlag(_flags, OpenFlags::Read)) {
 		Status st = Status::Ok;
-		size_t remains = _size - _location->interface->_tell(_file, &st);
+		auto pos = _location->interface->_tell(_file, &st);
+		// guard against the position exceeding the cached size (e.g. after a seek
+		// past _size) so the unsigned subtraction can't wrap to a huge `remains`
+		size_t remains = (size_t(pos) < _size) ? (_size - size_t(pos)) : 0;
 		if (nbytes > remains) {
 			nbytes = remains;
 		}
@@ -209,18 +212,18 @@ int File::xsputc(int c) {
 	if (write(&buf, 1) == 1) {
 		ret = buf;
 	}
-	++_size;
+	// note: write() already updates _size; do not double-count here
 	return ret;
 }
 
 ssize_t File::xsputn(const char *s, ssize_t n) {
 	ssize_t ret = -1;
-	if (is_open()) {
-		if (write((const uint8_t *)s, n) == n) {
+	if (is_open() && n > 0) {
+		if (write((const uint8_t *)s, n) == size_t(n)) {
 			ret = n;
 		}
 	}
-	_size += n;
+	// note: write() already updates _size; do not double-count here
 	return ret;
 }
 
@@ -235,7 +238,7 @@ ssize_t File::xsgetn(char *s, ssize_t n) {
 void File::close() {
 	if (is_open()) {
 		Status st = Status::Ok;
-		if (_flags != OpenFlags::DelOnClose && _filepath) {
+		if (hasFlag(_flags, OpenFlags::DelOnClose) && _filepath) {
 			_location->interface->_unlink(*_location, _filepath);
 		}
 		_location->interface->_close(_file, &st);

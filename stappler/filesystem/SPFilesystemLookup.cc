@@ -38,6 +38,7 @@ void enumeratePaths(FileCategory cat, StringView filename, FileFlags flags, Acce
 		if (!res) {
 			slog().warn("filesystem", "No runtime locations for category (", toInt(cat),
 					") defined");
+			return;
 		}
 
 		if (hasFlag(flags, FileFlags::MakeDir)) {
@@ -302,6 +303,7 @@ bool enumeratePrefixedPath(StringView ipath, FileFlags flags, Access a,
 		if (ipath.empty()) {
 			if (a == Access::None) {
 				enumeratePaths(cat, flags, cb);
+				return true;
 			} else {
 				return false;
 			}

@@ -119,6 +119,10 @@ struct SP_PUBLIC BlockKey256 {
 	uint16_t version = 0; // keygen version
 	BlockCipher cipher = BlockCipher::AES_CBC;
 	sprt::array<uint8_t, BlockKeySize256> data = {0};
+	// false unless key derivation genuinely succeeded. A signature/fingerprint-based
+	// key whose signing failed must NOT be silently replaced by a weaker public-data
+	// key — it is marked invalid instead, and encryptBlock/decryptBlock refuse it.
+	bool valid = false;
 
 	bool operator==(const BlockKey256 &) const = default;
 	bool operator!=(const BlockKey256 &) const = default;
@@ -238,13 +242,35 @@ SP_PUBLIC void listBackends(const Callback<void(Backend, StringView, BackendFlag
 
 SP_PUBLIC bool isPemKey(BytesView data);
 
-SP_PUBLIC bool encryptBlock(const BlockKey256 &, BytesView, const Callback<void(BytesView)> &);
+// `iv`: optional 16-byte initialization vector. When omitted (or shorter than 16
+// bytes) an all-zero IV is used, which is only safe if the key is unique per
+// message (as in the AesToken flow). For any key that may be reused across
+// messages, pass a fresh random IV per encryption and store it alongside the
+// ciphertext so the matching decryptBlock() call can supply the same IV.
+SP_PUBLIC bool encryptBlock(const BlockKey256 &, BytesView, const Callback<void(BytesView)> &,
+		BytesView iv = BytesView());
 SP_PUBLIC bool encryptBlock(Backend b, const BlockKey256 &, BytesView,
-		const Callback<void(BytesView)> &);
+		const Callback<void(BytesView)> &, BytesView iv = BytesView());
 
-SP_PUBLIC bool decryptBlock(const BlockKey256 &, BytesView, const Callback<void(BytesView)> &);
+SP_PUBLIC bool decryptBlock(const BlockKey256 &, BytesView, const Callback<void(BytesView)> &,
+		BytesView iv = BytesView());
 SP_PUBLIC bool decryptBlock(Backend b, const BlockKey256 &, BytesView,
-		const Callback<void(BytesView)> &);
+		const Callback<void(BytesView)> &, BytesView iv = BytesView());
+
+// Constant-time equality for secret-dependent byte ranges (MACs, tags, fingerprints).
+// Unlike memcmp / BytesView::operator==, this does not short-circuit on the first
+// differing byte, so it does not leak how many leading bytes matched (timing channel).
+// The length comparison is intentionally not constant-time (lengths are not secret).
+inline bool isEqualConstantTime(BytesView a, BytesView b) {
+	if (a.size() != b.size()) {
+		return false;
+	}
+	uint8_t diff = 0;
+	for (size_t i = 0; i < a.size(); ++i) {
+		diff = uint8_t(diff | (a.data()[i] ^ b.data()[i]));
+	}
+	return diff == 0;
+}
 
 SP_PUBLIC BlockKey256 makeBlockKey(Backend, BytesView pkey, BytesView hash,
 		BlockCipher = BlockCipher::AES_CBC, uint32_t version = 2);

@@ -235,6 +235,10 @@ FontSpecializationVector FontFaceData::getSpecialization(
 
 bool FontFaceObject::init(StringView name, const Rc<FontFaceData> &data, FT_Library lib,
 		FT_Face face, const FontSpecializationVector &spec, uint16_t id, uint16_t plane) {
+	if (!face) {
+		// newFontFace() returns null on malformed/corrupt font data
+		return false;
+	}
 	auto err = FT_Select_Charmap(face, FT_ENCODING_UNICODE);
 	if (err != FT_Err_Ok) {
 		return false;
@@ -704,6 +708,9 @@ Metrics FontFaceSet::getMetrics() const { return _metrics; }
 CharShape FontFaceSet::getChar(char32_t ch, uint16_t &face) const {
 	sprt::shared_lock lock(_mutex);
 	for (auto &it : _faces) {
+		if (!it) {
+			continue;
+		}
 		auto l = it->getChar(ch);
 		if (l.charID != 0) {
 			face = it->getId();

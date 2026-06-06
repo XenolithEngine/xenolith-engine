@@ -652,11 +652,11 @@ Var ContextFn::performBinaryOp(Var &l, Var &r, Expression::Op op) {
 					[](double l, double r) { return l * r; });
 			break;
 		case Expression::DivAssignment:
-			return numberAssignment([](int64_t l, int64_t r) { return l / r; },
+			return numberAssignment([](int64_t l, int64_t r) { return r != 0 ? l / r : int64_t(0); },
 					[](double l, double r) { return l / r; });
 			break;
 		case Expression::RemAssignment:
-			return intAssignment([](int64_t l, int64_t r) { return l % r; });
+			return intAssignment([](int64_t l, int64_t r) { return r != 0 ? l % r : int64_t(0); });
 			break;
 		case Expression::LShiftAssignment:
 			return intAssignment([](int64_t l, int64_t r) { return l << r; });
@@ -684,11 +684,11 @@ Var ContextFn::performBinaryOp(Var &l, Var &r, Expression::Op op) {
 					[](double l, double r) { return l * r; });
 			break;
 		case Expression::Div:
-			return numOp(lV, rV, [](int64_t l, int64_t r) { return l / r; },
+			return numOp(lV, rV, [](int64_t l, int64_t r) { return r != 0 ? l / r : int64_t(0); },
 					[](double l, double r) { return l / r; });
 			break;
 		case Expression::Rem:
-			return intOp(lV, rV, [](int64_t l, int64_t r) { return l % r; });
+			return intOp(lV, rV, [](int64_t l, int64_t r) { return r != 0 ? l % r : int64_t(0); });
 			break;
 
 		case Expression::Sum:
@@ -967,7 +967,8 @@ static void Context_printAttrVar(const StringView &name, const Var &var,
 	} else if (val.isDictionary() && name == "style") {
 		out << " " << name << "=\"";
 		for (auto &it : val.asDict()) {
-			out << it.first << ":";
+			ContextFn_printEscapedString(it.first, out, escapeOutput);
+			out << ":";
 			ContextFn_printEscapedString(it.second.asString(), out, escapeOutput);
 			out << ";";
 		}
@@ -984,7 +985,13 @@ static void Context_printAttrVar(const StringView &name, const Var &var,
 static void Context_printAttrList(const Var &var, const Context::OutStream &out) {
 	auto &val = var.readValue();
 	for (auto &it : val.asDict()) {
-		out << " " << it.first << "=\"" << it.second.asString() << "\"";
+		// escape key and value so an attacker-controlled &attributes() entry can't
+		// break out of the quoted attribute and inject markup (XSS)
+		out << " ";
+		ContextFn_printEscapedString(it.first, out, true);
+		out << "=\"";
+		ContextFn_printEscapedString(it.second.asString(), out, true);
+		out << "\"";
 	}
 }
 

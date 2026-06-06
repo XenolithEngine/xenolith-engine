@@ -109,7 +109,9 @@ size_t encode(char *buf, size_t bsize, const CoderSource &source) {
 
 namespace STAPPLER_VERSIONIZED stappler::base16 {
 
-size_t encodeSize(size_t length) { return length * 2; }
+size_t encodeSize(size_t length) {
+	return length > maxOf<size_t>() / 2 ? maxOf<size_t>() : length * 2;
+}
 size_t decodeSize(size_t length) { return length / 2; }
 
 const char *charToHex(const char &c, bool upper) {

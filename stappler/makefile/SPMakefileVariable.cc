@@ -340,16 +340,17 @@ bool VariableEngine::call(Output out, StringView name, SpanView<StmtValue *> arg
 		return false;
 	}
 
-	StringView expandedArgs[args.size()];
-
-	for (uint32_t i = 0; i < args.size(); ++i) { new (&expandedArgs[i]) StringView(); }
+	// pool-backed (was a stack VLA sized by the argument count; a crafted makefile
+	// with a huge argument list could overflow the stack before the maxArgs check)
+	Vector<StringView> expandedArgs;
+	expandedArgs.resize(args.size());
 
 	CallContext ctx{_callContext};
 	ctx.functionName = name;
 	ctx.err = &err;
 	ctx.args = args;
 	ctx.fn = &it->second;
-	ctx.expandedArgs = expandedArgs;
+	ctx.expandedArgs = expandedArgs.data();
 	ctx.pool = memory::pool::create(_pool);
 
 	auto ret = mem_pool::perform([&] {
@@ -499,10 +500,12 @@ bool VariableEngine::call(const Callback<void(StringView)> &out, StringView fn, 
 		StmtValue *args, ErrorReporter &err) {
 	uint32_t nargs = VariableEngine_parseArguments(type, args, nullptr);
 
-	StmtValue *argsBuf[nargs];
-	VariableEngine_parseArguments(type, args, argsBuf);
+	// pool-backed (was a stack VLA sized by the parsed argument count)
+	Vector<StmtValue *> argsBuf;
+	argsBuf.resize(nargs);
+	VariableEngine_parseArguments(type, args, argsBuf.data());
 
-	return call(out, fn, SpanView(argsBuf, nargs), err);
+	return call(out, fn, SpanView(argsBuf.data(), nargs), err);
 }
 
 bool VariableEngine::checkRecursion(StringView name, Stmt *stmt, ErrorReporter &err) {

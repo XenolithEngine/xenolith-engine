@@ -150,7 +150,9 @@ Tesselator::Cursor Tesselator::beginContour(bool clockwise) {
 }
 
 bool Tesselator::pushVertex(Cursor &cursor, const Vec2 &vertex) {
-	if (!vertex.isValid()) {
+	// reject NaN (isValid) and also non-finite (Inf) coordinates: Inf would turn
+	// into NaN inside the edge-angle math and corrupt the ordered-set comparators
+	if (!vertex.isValid() || !sprt::isfinite(vertex.x) || !sprt::isfinite(vertex.y)) {
 		return false;
 	}
 
@@ -521,34 +523,39 @@ bool Tesselator::write(TessResult &res) {
 	for (auto &it : _data->_faceEdges) {
 		if (it && it->_mark != mark && isWindingInside(_data->_winding, it->_realWinding)) {
 			uint32_t vertex = 0;
+			bool valid = true;
 
 			it->foreachOnFace([&, this](HalfEdge &edge) {
 				if (vertex < 3) {
-#if DEBUG
-					if (_data->_vertexes.size() >= edge.vertex) {
+					// bounds- and null-check the vertex in every build; on a stale
+					// index drop this triangle (graceful degradation) instead of
+					// reading out of bounds. DEBUG additionally aborts to surface the
+					// tessellator bug during development.
+					if (edge.vertex < _data->_vertexes.size()) {
 						const auto v = _data->_vertexes[edge.vertex];
 						if (v) {
-							const auto qidx = v->_exportIdx;
-							triangle[vertex] = qidx + _data->_vertexOffset;
+							triangle[vertex] = v->_exportIdx + _data->_vertexOffset;
 						} else {
+#if DEBUG
 							sprt::cout << "Invalid vertex: " << edge.vertex << "\n";
 							::abort();
+#endif
+							valid = false;
 						}
 					} else {
+#if DEBUG
 						sprt::cout << "Invalid vertex index: " << edge.vertex << " of "
 								   << _data->_vertexes.size() << "\n";
 						::abort();
-					}
-#else
-					triangle[vertex] =
-							_data->_vertexes[edge.vertex]->_exportIdx + _data->_vertexOffset;
 #endif
+						valid = false;
+					}
 				}
 				edge._mark = mark;
 				++vertex;
 			});
 
-			if (vertex == 3) {
+			if (vertex == 3 && valid) {
 				res.pushTriangle(res.target, triangle);
 			}
 		}

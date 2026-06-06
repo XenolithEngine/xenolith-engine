@@ -352,6 +352,15 @@ static inline auto doDecompressLZ4(BytesView data, bool sh) -> ValueTemplate<Int
 	size_t size = sh ? data.readUnsigned16() : data.readUnsigned32();
 
 	ValueTemplate<Interface> ret;
+	// reject decompression bombs: the declared output may not exceed 16x the
+	// compressed payload, with an 8 MiB floor for small inputs
+	size_t maxOutput = data.size() * 16;
+	if (maxOutput < (size_t(8) << 20)) {
+		maxOutput = size_t(8) << 20;
+	}
+	if (size > maxOutput) {
+		return ret;
+	}
 	if (size <= sizeof(tl_compressBuffer)) {
 		if (sprt::lz4_decompressData(data.data(), data.size(), tl_compressBuffer, size)) {
 			ret = data::read<Interface>(BytesView(tl_compressBuffer, size));
@@ -389,6 +398,15 @@ static inline auto doDecompressBrotli(BytesView data, bool sh) -> ValueTemplate<
 	size_t size = sh ? data.readUnsigned16() : data.readUnsigned32();
 
 	ValueTemplate<Interface> ret;
+	// reject decompression bombs: the declared output may not exceed 16x the
+	// compressed payload, with an 8 MiB floor for small inputs
+	size_t maxOutput = data.size() * 16;
+	if (maxOutput < (size_t(8) << 20)) {
+		maxOutput = size_t(8) << 20;
+	}
+	if (size > maxOutput) {
+		return ret;
+	}
 	if (size <= sizeof(tl_compressBuffer)) {
 		if (doDecompressBrotliFrame(data.data(), data.size(), tl_compressBuffer, size)) {
 			ret = data::read<Interface>(BytesView(tl_compressBuffer, size));

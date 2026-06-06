@@ -28,7 +28,10 @@ class Resampler : public memory::AllocPool {
 public:
 	using Real = float; // float or double
 
-	static constexpr uint32_t MaxDimensions = 16'384;
+	// use the shared decoder dimension cap (SPBitmapFormat.h) as the single source
+	// of truth; pixel indices below are stored as unsigned short, so the cap must
+	// stay within that range
+	static_assert(MaxImageDimension <= 65535, "MaxImageDimension must fit in unsigned short");
 
 	struct Contrib {
 		Real weight;
@@ -110,7 +113,7 @@ private:
 
 	// The maximum number of scanlines that can be buffered at one time.
 	enum {
-		MAX_SCAN_BUF_SIZE = MaxDimensions
+		MAX_SCAN_BUF_SIZE = MaxImageDimension
 	};
 
 	struct Scan_Buf {
@@ -1273,17 +1276,17 @@ auto BitmapTemplate<memory::PoolInterface>::resample(ResampleFilter f, uint32_t 
 		return ret;
 	}
 
-	if ((min(width, height) <= 1) || (max(height, height) > Resampler::MaxDimensions)) {
+	if ((min(width, height) <= 1) || (max(height, height) > MaxImageDimension)) {
 		log::format(sprt::oslog::Error, "Bitmap", SP_LOCATION,
 				"Invalid resample width/height (%u x %u), max dimension is %u", width, height,
-				Resampler::MaxDimensions);
+				MaxImageDimension);
 		return ret;
 	}
 
-	if ((max(_width, _height) > Resampler::MaxDimensions)) {
+	if ((max(_width, _height) > MaxImageDimension)) {
 		log::format(sprt::oslog::Error, "Bitmap", SP_LOCATION,
 				"Bitmap is too large (%u x %u), max dimension is %u", width, height,
-				Resampler::MaxDimensions);
+				MaxImageDimension);
 		return ret;
 	}
 
@@ -1318,17 +1321,17 @@ auto BitmapTemplate<memory::StandartInterface>::resample(ResampleFilter f, uint3
 		return ret;
 	}
 
-	if ((min(width, height) <= 1) || (max(height, height) > Resampler::MaxDimensions)) {
+	if ((min(width, height) <= 1) || (max(height, height) > MaxImageDimension)) {
 		log::format(sprt::oslog::Error, "Bitmap", SP_LOCATION,
 				"Invalid resample width/height (%u x %u), max dimension is %u", width, height,
-				Resampler::MaxDimensions);
+				MaxImageDimension);
 		return ret;
 	}
 
-	if ((max(_width, _height) > Resampler::MaxDimensions)) {
+	if ((max(_width, _height) > MaxImageDimension)) {
 		log::format(sprt::oslog::Error, "Bitmap", SP_LOCATION,
 				"Bitmap is too large (%u x %u), max dimension is %u", width, height,
-				Resampler::MaxDimensions);
+				MaxImageDimension);
 		return ret;
 	}
 

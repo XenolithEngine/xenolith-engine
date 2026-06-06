@@ -308,8 +308,12 @@ struct DirHandle {
 		auto nativePath = native::posixToNative<memory::StandartInterface>(path);
 		ftw = &h;
 		size_t len = 0;
-		unicode::toUtf16((char16_t *)&ftw->pathBuffer[0], FtwHandle::PathBufferSize, nativePath,
-				&len);
+		auto st = unicode::toUtf16((char16_t *)&ftw->pathBuffer[0], FtwHandle::PathBufferSize,
+				nativePath, &len);
+		// need room for the trailing "\\*\0" (3 wchar_t) after the converted path
+		if (st != Status::Ok || len + 3 > FtwHandle::PathBufferSize) {
+			return; // leaves hFind == INVALID_HANDLE_VALUE
+		}
 		ftw->pathBuffer[len] = L'\\';
 		ftw->pathBuffer[len + 1] = L'*';
 		ftw->pathBuffer[len + 2] = 0;
@@ -323,6 +327,10 @@ struct DirHandle {
 		ftw = &h;
 
 		size_t len = (d.currentName.data() + d.currentName.size()) - d.wpath.data();
+		// need room for the trailing "\\*\0" (3 wchar_t) after the subdir path
+		if (len + 3 > FtwHandle::PathBufferSize) {
+			return; // leaves hFind == INVALID_HANDLE_VALUE
+		}
 		wpath = WideStringView((char16_t *)&ftw->pathBuffer[0], len);
 		ftw->pathBuffer[len] = L'\\';
 		ftw->pathBuffer[len + 1] = L'*';
@@ -342,6 +350,13 @@ struct DirHandle {
 		if (hFind != INVALID_HANDLE_VALUE) {
 			auto len = wcslen(ffd.cFileName);
 			auto targetLen = wpath.size();
+			// writes occupy indices [targetLen .. targetLen+1+len]; bail if the
+			// combined "<dir>\<name>\0" would not fit the fixed path buffer
+			if (targetLen + len + 2 > FtwHandle::PathBufferSize) {
+				currentName = WideStringView();
+				currentType = FileType::Unknown;
+				return;
+			}
 			ftw->pathBuffer[targetLen] = L'\\';
 			memcpy(&ftw->pathBuffer[targetLen + 1], ffd.cFileName, len * sizeof(wchar_t));
 			ftw->pathBuffer[targetLen + 1 + len] = 0;

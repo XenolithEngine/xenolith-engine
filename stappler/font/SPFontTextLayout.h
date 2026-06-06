@@ -127,13 +127,12 @@ struct SP_PUBLIC TextLayoutData : public Interface::AllocBaseType {
 
 	void reserve(size_t nchars, size_t nranges = 0);
 
-	RangeLineIterator begin() const { return RangeLineIterator{&*ranges.begin(), &*lines.begin()}; }
+	RangeLineIterator begin() const { return RangeLineIterator{ranges.data(), lines.data()}; }
 
 	RangeLineIterator end() const {
-		// Pass-the-ed pointer acquisition
-		// Ugly trick, but all others is forbidden in msvc debug mode
-		return RangeLineIterator{&ranges.at(ranges.size() - 1) + 1,
-			&lines.at(lines.size() - 1) + 1};
+		// use data()+size() so an empty layout yields begin()==end() instead of
+		// dereferencing begin()/at(size()-1) on empty containers
+		return RangeLineIterator{ranges.data() + ranges.size(), lines.data() + lines.size()};
 	}
 
 	void clear() {
@@ -150,7 +149,9 @@ struct SP_PUBLIC TextLayoutData : public Interface::AllocBaseType {
 	void str(const Callback<void(char32_t)> &, uint32_t, uint32_t,
 			size_t maxWords = maxOf<size_t>(), bool ellipsis = true, bool filterAlign = true) const;
 
-	float getTextIndent(float density) const { return chars.front().pos / density; }
+	float getTextIndent(float density) const {
+		return chars.empty() ? 0.0f : chars.front().pos / density;
+	}
 
 	// on error maxOf<uint32_t> returned
 	Pair<uint32_t, CharSelectMode> getChar(int32_t x, int32_t y,

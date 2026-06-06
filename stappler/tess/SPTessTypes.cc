@@ -429,7 +429,10 @@ void ObjectAllocator::removeEdgeFromVec(sprt::__pool_vector<HalfEdge *> &vec, Ha
 	}
 }
 
-VertexPriorityQueue::Heap::Heap(memory::pool_t *p, uint32_t s) : max(s), pool(p) {
+VertexPriorityQueue::Heap::Heap(memory::pool_t *p, uint32_t s) : max(s == 0 ? 1 : s), pool(p) {
+	// reserve at least index 1 (the sentinel written below); s==0 (empty vertex
+	// set) would otherwise allocate a single slot yet write nodes[1]/handles[1].
+	// Keeping max >= 1 also lets the `max <<= 1` growth in insert() actually grow.
 	nodes = (Node *)memory::pool::palloc(pool, (max + 1) * sizeof(Node));
 	handles = (Elem *)memory::pool::palloc(pool, (max + 1) * sizeof(Elem));
 

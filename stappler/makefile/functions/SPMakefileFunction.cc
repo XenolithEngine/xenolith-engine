@@ -93,6 +93,9 @@ static bool Function_let(const Callback<void(StringView)> &out, void *, Variable
 	return true;
 }
 
+// Runs an arbitrary command via popen(), matching GNU make's $(shell ...). This is
+// intentional and only safe under the module's trusted-makefile model (see the note
+// on the Makefile class in SPMakefile.h); never evaluate untrusted makefile text.
 static bool Function_shell(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
 	String cmd;

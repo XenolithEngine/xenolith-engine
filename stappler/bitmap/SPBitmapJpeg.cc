@@ -185,7 +185,10 @@ struct JpegReadStruct {
 		jpeg_start_decompress(&cinfo);
 
 
-		auto dataLen = outputData.height * outputData.stride;
+		uint32_t dataLen = 0;
+		if (!checkImageDataSize(outputData, dataLen)) {
+			return false;
+		}
 		outputData.resize(outputData.target, dataLen);
 
 		JSAMPROW row_pointer[1] = {0};

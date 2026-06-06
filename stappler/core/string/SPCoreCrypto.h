@@ -92,6 +92,8 @@ struct SP_PUBLIC Sha1 {
 	using _Ctx = sprt::sha1::Ctx;
 
 	constexpr static uint32_t Length = 20;
+	// HMAC compression-block size (RFC 2104), not derived from the digest length
+	constexpr static uint32_t BlockSize = 64;
 	using Buf = sprt::array<uint8_t, Length>;
 
 	static Buf make(const CoderSource &, const StringView &salt = StringView());
@@ -124,6 +126,8 @@ struct SP_PUBLIC Sha512 {
 	using _Ctx = sprt::sha512::Ctx;
 
 	constexpr static uint32_t Length = 64;
+	// HMAC compression-block size (RFC 2104), not derived from the digest length
+	constexpr static uint32_t BlockSize = 128;
 	using Buf = sprt::array<uint8_t, Length>;
 
 	static Buf make(const CoderSource &, const StringView &salt = StringView());
@@ -156,6 +160,8 @@ struct SP_PUBLIC Sha256 {
 	using _Ctx = sprt::sha256::Ctx;
 
 	constexpr static uint32_t Length = 32;
+	// HMAC compression-block size (RFC 2104), not derived from the digest length
+	constexpr static uint32_t BlockSize = 64;
 	using Buf = sprt::array<uint8_t, Length>;
 
 	static Buf make(const CoderSource &, const StringView &salt = StringView());
@@ -201,6 +207,8 @@ struct SP_PUBLIC Gost3411_512 {
 	using _Ctx = Gost3411_Ctx;
 
 	constexpr static uint32_t Length = 64;
+	// HMAC compression-block size (RFC 2104), not derived from the digest length
+	constexpr static uint32_t BlockSize = 64;
 	using Buf = sprt::array<uint8_t, Length>;
 
 	template <typename... Args>
@@ -231,6 +239,8 @@ struct SP_PUBLIC Gost3411_256 {
 	using _Ctx = Gost3411_Ctx;
 
 	constexpr static uint32_t Length = 32;
+	// HMAC compression-block size (RFC 2104), not derived from the digest length
+	constexpr static uint32_t BlockSize = 64;
 	using Buf = sprt::array<uint8_t, Length>;
 
 	template <typename... Args>
@@ -316,15 +326,17 @@ inline size_t CoderSource::read(uint8_t *buf, size_t nbytes) {
 
 inline size_t CoderSource::seek(int64_t offset, io::Seek s) {
 	switch (s) {
-	case io::Seek::Current:
-		if (offset + _offset > _data.size()) {
-			_offset = _data.size();
-		} else if (offset + int64_t(_offset) < 0) {
+	case io::Seek::Current: {
+		int64_t np = int64_t(_offset) + offset;
+		if (np < 0) {
 			_offset = 0;
+		} else if (size_t(np) > _data.size()) {
+			_offset = _data.size();
 		} else {
-			_offset += offset;
+			_offset = size_t(np);
 		}
 		break;
+	}
 	case io::Seek::End:
 		if (offset > 0) {
 			_offset = _data.size();

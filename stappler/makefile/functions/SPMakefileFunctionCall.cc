@@ -90,7 +90,11 @@ static bool Function_call(const Callback<void(StringView)> &out, void *, Variabl
 							nargs, " arguments, but ", args.size() - 1, " provided"));
 				}
 			}
-			engine.resolve(out, v->stmt, *callContext->err);
+			// Guard against self-/mutually-recursive $(call) (the substitute() path
+			// already does this; the call path must too, else the stack exhausts).
+			if (!engine.checkRecursion(name, v->stmt, *callContext->err)) {
+				engine.resolve(out, v->stmt, *callContext->err);
+			}
 			break;
 		}
 		case Variable::Type::Function:

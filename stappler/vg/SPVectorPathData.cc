@@ -1062,10 +1062,19 @@ bool PathWriter::addPath(BytesView data) {
 
 	auto ncommands = data::cbor::_readInt(reader);
 	auto npoints = data::cbor::_readInt(reader);
-	commands.reserve(ncommands);
-	uvPoints.reserve(ncommands);
-	points.reserve(npoints);
-	for (; ncommands != 0; --ncommands) {
+	if (ncommands < 0 || npoints < 0) {
+		log::source().error("vg::PathWriter", "Invalid command/point count in binary path");
+		return false;
+	}
+	// each command/point consumes at least one input byte, so the remaining input
+	// length is a safe upper bound — avoids a huge allocation and a runaway loop
+	// from a forged count
+	size_t reserveCommands = (ncommands < int64_t(reader.size())) ? size_t(ncommands) : reader.size();
+	size_t reservePoints = (npoints < int64_t(reader.size())) ? size_t(npoints) : reader.size();
+	commands.reserve(reserveCommands);
+	uvPoints.reserve(reserveCommands);
+	points.reserve(reservePoints);
+	for (; ncommands != 0 && !reader.empty(); --ncommands) {
 		auto cmd = data::cbor::_readInt(reader);
 
 		if (version == 2) {

@@ -94,7 +94,9 @@ bool TemplateRender::renderControlToken(Token *tok, Template::ChunkType type, bo
 				return false;
 			}
 		}
-		pushChunk(_current->chunks.back());
+		if (!pushChunk(_current->chunks.back())) {
+			return false;
+		}
 		auto ret = renderTokenTree(tok->child);
 		popChunk();
 		return ret;
@@ -146,9 +148,10 @@ bool TemplateRender::renderToken(Token *tok) {
 		case Token::LineCode:
 			if (tok->child->child) {
 				if (auto chunk = runCode(tok->child->child)) {
-					pushChunk(chunk);
-					renderTokenTree(tok->child->next);
-					popChunk();
+					if (pushChunk(chunk)) {
+						renderTokenTree(tok->child->next);
+						popChunk();
+					}
 				}
 			}
 			break;
@@ -194,7 +197,9 @@ bool TemplateRender::renderToken(Token *tok) {
 			auto var = tok->child->data;
 			_current->chunks.emplace_back(new (sprt::nothrow) Template::Chunk{{},
 				Template::ControlEach, String(var.data(), var.size()), tok->expression});
-			pushChunk(_current->chunks.back());
+			if (!pushChunk(_current->chunks.back())) {
+				return false;
+			}
 			auto ret = renderTokenTree(tok->child);
 			popChunk();
 			return ret;
@@ -207,7 +212,9 @@ bool TemplateRender::renderToken(Token *tok) {
 			str << tok->child->data << " " << tok->child->next->data;
 			_current->chunks.emplace_back(new (sprt::nothrow) Template::Chunk{{},
 				Template::ControlEachPair, str.str(), tok->expression});
-			pushChunk(_current->chunks.back());
+			if (!pushChunk(_current->chunks.back())) {
+				return false;
+			}
 			auto ret = renderTokenTree(tok->child);
 			popChunk();
 			return ret;
