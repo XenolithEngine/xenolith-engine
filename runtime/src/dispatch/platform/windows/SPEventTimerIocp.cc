@@ -89,17 +89,15 @@ bool TimerIocpSource::start() {
 }
 
 void TimerIocpSource::stop() {
-	active = false;
-
 	if (event) {
 		__sprt_CancelEventCompletion(event, true);
 		event = nullptr;
 	}
 
-	if (handle && active) {
+	if (handle) {
 		CancelWaitableTimer(handle);
-		active = false;
 	}
+	active = false;
 }
 
 void TimerIocpSource::reset() {

@@ -1432,12 +1432,12 @@ static bool readHashColor(const StringView &origStr, Color4B &color) {
 		color.r = base16::toChar(str[0], str[1]);
 		color.g = base16::toChar(str[2], str[3]);
 		color.b = base16::toChar(str[4], str[5]);
-		color.a = base16::toChar(str[4], str[5]);
+		color.a = base16::toChar(str[6], str[7]);
 	} else if (str.size() == 4) {
 		color.r = base16::toChar(str[0], str[0]);
 		color.g = base16::toChar(str[1], str[1]);
 		color.b = base16::toChar(str[2], str[2]);
-		color.a = base16::toChar(str[2], str[2]);
+		color.a = base16::toChar(str[3], str[3]);
 	} else {
 		return false;
 	}
@@ -1862,8 +1862,8 @@ __malloc_string Color::name() const {
 __malloc_string Color3B::name() const {
 	auto ret = table::getName(*this);
 	if (ret.empty()) {
-		ret = StreamTraits<char>::toString<__malloc_string>("rgb(", uint32_t(r >> 16 & 0xFF), ", ",
-				uint32_t(g >> 8 & 0xFF), ", ", uint32_t(b & 0xFF), ")");
+		ret = StreamTraits<char>::toString<__malloc_string>("rgb(", uint32_t(r), ", ",
+				uint32_t(g), ", ", uint32_t(b), ")");
 	}
 	return ret.str<__malloc_string>();
 }

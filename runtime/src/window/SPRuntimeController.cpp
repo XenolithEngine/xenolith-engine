@@ -88,6 +88,9 @@ int ContextController::run(NotNull<ContextContainer> с) { return _resultCode; }
 
 void ContextController::retainPollDepth() { ++_pollDepth; }
 void ContextController::releasePollDepth() {
+	if (_pollDepth == 0) {
+		return;
+	}
 	if (_pollDepth-- == 1) {
 		notifyPendingWindows();
 	}

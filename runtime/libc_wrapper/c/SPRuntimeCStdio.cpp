@@ -340,9 +340,11 @@ __SPRT_C_FUNC char *__SPRT_ID(ctermid)(char *s) {
 	*__sprt___errno_location() = ENOSYS;
 	return nullptr;
 #elif SPRT_WINDOWS
-	if (s) {
-		*s = '\0';
+	if (!s) {
+		static char buf[1] = {'\0'};
+		s = buf;
 	}
+	*s = '\0';
 	return s;
 #else
 	return ::ctermid(s);

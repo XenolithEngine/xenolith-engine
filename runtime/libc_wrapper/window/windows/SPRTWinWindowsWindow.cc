@@ -740,7 +740,7 @@ Status WindowsWindow::handleMouseEvent(IVec2 pos, InputMouseButton btn, InputEve
 		}
 		break;
 	case InputEventName::End:
-		if (_pointerButtonCapture-- == 1) {
+		if (_pointerButtonCapture > 0 && --_pointerButtonCapture == 0) {
 			::ReleaseCapture();
 		}
 		break;

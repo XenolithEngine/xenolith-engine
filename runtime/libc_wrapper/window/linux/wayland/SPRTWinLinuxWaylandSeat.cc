@@ -201,9 +201,9 @@ static struct wl_keyboard_listener s_WaylandKeyboardListener{// keymap
 		if (seat->root->ownsSurface(surface)) {
 			if (auto view = (WaylandWindow *)wl_surface_get_user_data(surface)) {
 				Vector<uint32_t> keysVec;
-				for (uint32_t *it = (uint32_t *)keys->data;
-						(const char *)it < ((const char *)keys->data + keys->size); ++it) {
-					keysVec.emplace_back(*it);
+				for (size_t off = 0; off + sizeof(uint32_t) <= keys->size;
+						off += sizeof(uint32_t)) {
+					keysVec.emplace_back(*(uint32_t *)((const char *)keys->data + off));
 				}
 
 				seat->keyboardViews.emplace(view);

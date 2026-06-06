@@ -438,8 +438,8 @@ void WaylandWindow::handleToplevelConfigure(xdg_toplevel *xdg_toplevel, int32_t 
 				| WindowState::Focused | WindowState::Minimized | WindowState::TilingMask;
 		WindowState state = WindowState::None;
 
-		for (uint32_t *it = (uint32_t *)states->data;
-				(const char *)it < ((const char *)states->data + states->size); ++it) {
+		for (size_t off = 0; off + sizeof(uint32_t) <= states->size; off += sizeof(uint32_t)) {
+			uint32_t *it = (uint32_t *)((const char *)states->data + off);
 			switch (*it) {
 			case XDG_TOPLEVEL_STATE_MAXIMIZED: state |= WindowState::Maximized; break;
 			case XDG_TOPLEVEL_STATE_FULLSCREEN: state |= WindowState::Fullscreen; break;
@@ -619,8 +619,8 @@ void WaylandWindow::handleToplevelCapabilities(xdg_toplevel *xdg_toplevel, wl_ar
 	WindowState capState =
 			WindowState::AllowedClose | WindowState::AllowedMove | WindowState::AllowedResize;
 
-	for (uint32_t *it = (uint32_t *)capabilities->data;
-			(const char *)it < ((const char *)capabilities->data + capabilities->size); ++it) {
+	for (size_t off = 0; off + sizeof(uint32_t) <= capabilities->size; off += sizeof(uint32_t)) {
+		uint32_t *it = (uint32_t *)((const char *)capabilities->data + off);
 		switch (*it) {
 		case XDG_TOPLEVEL_WM_CAPABILITIES_WINDOW_MENU:
 			capState |= WindowState::AllowedWindowMenu;

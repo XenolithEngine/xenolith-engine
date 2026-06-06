@@ -38,6 +38,38 @@ THE SOFTWARE.
 
 namespace sprt {
 
+// The wrappers below forward the runtime __SPRT_PROT_*/__SPRT_MAP_*/__SPRT_MS_*/
+// __SPRT_MADV_* values straight to the native mman(2) calls, so the runtime
+// constants must equal the host's. Assert the portable set the wrappers rely on
+// (same pattern as the kevent/darwin wrappers); a future drift fails the build.
+// The POSIX core below is identical on Linux/macOS/Android.
+static_assert(PROT_NONE == __SPRT_PROT_NONE);
+static_assert(PROT_READ == __SPRT_PROT_READ);
+static_assert(PROT_WRITE == __SPRT_PROT_WRITE);
+static_assert(PROT_EXEC == __SPRT_PROT_EXEC);
+
+static_assert(MAP_SHARED == __SPRT_MAP_SHARED);
+static_assert(MAP_PRIVATE == __SPRT_MAP_PRIVATE);
+static_assert(MAP_FIXED == __SPRT_MAP_FIXED);
+
+static_assert(MS_ASYNC == __SPRT_MS_ASYNC);
+static_assert(MS_INVALIDATE == __SPRT_MS_INVALIDATE);
+
+static_assert(MADV_NORMAL == __SPRT_MADV_NORMAL);
+static_assert(MADV_RANDOM == __SPRT_MADV_RANDOM);
+static_assert(MADV_SEQUENTIAL == __SPRT_MADV_SEQUENTIAL);
+static_assert(MADV_WILLNEED == __SPRT_MADV_WILLNEED);
+static_assert(MADV_DONTNEED == __SPRT_MADV_DONTNEED);
+
+static_assert(MCL_CURRENT == __SPRT_MCL_CURRENT);
+static_assert(MCL_FUTURE == __SPRT_MCL_FUTURE);
+
+static_assert(MAP_ANON == __SPRT_MAP_ANON);
+static_assert(MAP_ANONYMOUS == __SPRT_MAP_ANONYMOUS);
+static_assert(MAP_NORESERVE == __SPRT_MAP_NORESERVE);
+static_assert(MS_SYNC == __SPRT_MS_SYNC);
+static_assert(MADV_FREE == __SPRT_MADV_FREE);
+
 __SPRT_C_FUNC void *__SPRT_ID(mmap)(void *__addr, __SPRT_ID(size_t) __size, int __prot, int __flags,
 		int __fd, __SPRT_ID(off_t) __offset) {
 #if SPRT_MACOS

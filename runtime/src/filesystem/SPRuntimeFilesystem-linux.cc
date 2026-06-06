@@ -148,7 +148,7 @@ void _initSystemPaths(LookupData &data) {
 	auto ldPathEnv = ::getenv("LD_LIBRARY_PATH");
 	if (ldPathEnv) {
 		auto &res = data._resourceLocations[toInt(LocationCategory::Library)];
-		StringView(pathEnv).split<StringView::Chars<':'>>([&](StringView value) {
+		StringView(ldPathEnv).split<StringView::Chars<':'>>([&](StringView value) {
 			res.paths.emplace_back(LocationInfo{
 				value.pdup(data._pool),
 				LookupFlags::Shared,

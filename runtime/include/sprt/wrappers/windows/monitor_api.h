@@ -347,6 +347,8 @@ __SPRT_WIN_IMPORT WINAPI BOOL SetupDiGetDeviceInterfaceDetailW(HDEVINFO DeviceIn
 		PSP_DEVICE_INTERFACE_DETAIL_DATA_W DeviceInterfaceDetailData,
 		DWORD DeviceInterfaceDetailDataSize, PDWORD RequiredSize, PSP_DEVINFO_DATA DeviceInfoData);
 
+__SPRT_WIN_IMPORT WINAPI BOOL SetupDiDestroyDeviceInfoList(HDEVINFO DeviceInfoSet);
+
 __SPRT_END_DECL
 
 #endif // SPRT_WRAPPERS_WINDOWS_MONITOR_API_H_

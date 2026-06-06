@@ -769,24 +769,27 @@ bool runSelfInContainer(int &resultCode) {
 	SID_AND_ATTRIBUTES capsAttrs[capsCount];
 	SID_IDENTIFIER_AUTHORITY authority = SECURITY_APP_PACKAGE_AUTHORITY;
 
-	int i = 0;
+	// Only count successfully-allocated capability SIDs: a failed
+	// AllocateAndInitializeSid leaves capsAttrs[].Sid uninitialized, so it must not
+	// be handed to UpdateProcThreadAttribute or FreeSid.
+	int capsAllocated = 0;
 	for (auto &it : s_defaultAppContainerCaps) {
 		if (!AllocateAndInitializeSid(&authority, SECURITY_BUILTIN_CAPABILITY_RID_COUNT,
-					SECURITY_CAPABILITY_BASE_RID, it, 0, 0, 0, 0, 0, 0, &capsAttrs[i].Sid)) {
+					SECURITY_CAPABILITY_BASE_RID, it, 0, 0, 0, 0, 0, 0,
+					&capsAttrs[capsAllocated].Sid)) {
 			oslog::vpwarn(__SPRT_LOCATION, "rt-libc", "Fail to allocate capability SID");
+			continue;
 		}
-		capsAttrs[i].Attributes = SE_GROUP_ENABLED;
-		++i;
+		capsAttrs[capsAllocated].Attributes = SE_GROUP_ENABLED;
+		++capsAllocated;
 	}
 
 	// Run self in container
 	SECURITY_CAPABILITIES sc;
 	sc.AppContainerSid = s_staticInit.containerId;
-	sc.Capabilities = nullptr;
-	sc.CapabilityCount = 0;
+	sc.Capabilities = capsAllocated ? capsAttrs : nullptr;
+	sc.CapabilityCount = capsAllocated;
 	sc.Reserved = 0;
-	sc.Capabilities = capsAttrs;
-	sc.CapabilityCount = capsCount;
 
 	STARTUPINFOEXW si;
 	sprt::memset(&si, 0, sizeof(STARTUPINFOEXW));
@@ -833,8 +836,14 @@ bool runSelfInContainer(int &resultCode) {
 	}
 
 	DeleteProcThreadAttributeList(si.lpAttributeList);
-	for (auto &it : capsAttrs) { FreeSid(it.Sid); }
+	for (int j = 0; j < capsAllocated; ++j) { FreeSid(capsAttrs[j].Sid); }
 
+	// The launcher (parent) ran the app as a child in the container above and is
+	// done; return false so the caller exits with resultCode (the child's exit
+	// code) rather than also running the app itself. Always false by design:
+	// per the initialize()/sprt::initialize() contract, false == "do not run as
+	// the app", which is correct for the launcher whether the child ran or
+	// CreateProcessW failed.
 	return false;
 }
 
@@ -893,7 +902,17 @@ bool getMachineId(const callback<void(StringView)> &cb) {
 	result = RegGetValueW(hKey, nullptr, L"MachineGuid", RRF_RT_REG_SZ, &type, wbuf, &dataSize);
 
 	if (result == ERROR_SUCCESS) {
-		unicode::toUtf8(cb, WideStringView((char16_t *)wbuf, dataSize));
+		// RRF_RT_REG_SZ guarantees a NUL-terminated REG_SZ value; dataSize is the
+		// byte count including the terminating NUL, so drop it from the view length
+		size_t len = dataSize / sizeof(wchar_t);
+		if (len > 0) {
+			--len;
+		}
+		unicode::toUtf8(cb, WideStringView((char16_t *)wbuf, len));
+
+		RegCloseKey(hKey);
+		__sprt_freea(wbuf);
+		return true;
 	}
 
 	RegCloseKey(hKey);

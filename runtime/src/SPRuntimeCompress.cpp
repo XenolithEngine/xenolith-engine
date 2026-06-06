@@ -29,6 +29,12 @@ namespace sprt {
 
 thread_local uint8_t tl_lz4HCEncodeState[sprt::max(sizeof(LZ4_streamHC_t), sizeof(LZ4_stream_t))];
 
+// LZ4's public API takes the source/destination sizes as `int`. An untrusted
+// size_t that exceeds INT_MAX wraps to a negative `int`, which LZ4 does not
+// validate (it computes `iend = ip + srcSize`, so `iend < ip` defeats every
+// bounds check). Reject anything that would not survive the narrowing cast.
+static constexpr size_t LZ4_MAX_SIZE = 0x7FFFFFFF; // INT_MAX
+
 uint8_t *lz4_getEncodeState() { return tl_lz4HCEncodeState; }
 
 size_t lz4_getCompressBounds(size_t size) {
@@ -39,6 +45,9 @@ size_t lz4_getCompressBounds(size_t size) {
 }
 
 size_t lz4_compressData(const uint8_t *src, size_t srcSize, uint8_t *dest, size_t destSize) {
+	if (srcSize >= LZ4_MAX_INPUT_SIZE || destSize > LZ4_MAX_SIZE) {
+		return 0;
+	}
 	auto ret = LZ4_compress_fast_extState(tl_lz4HCEncodeState, (const char *)src, (char *)dest,
 			int(srcSize), int(destSize), 65'537);
 	if (ret > 0) {
@@ -48,6 +57,9 @@ size_t lz4_compressData(const uint8_t *src, size_t srcSize, uint8_t *dest, size_
 }
 
 size_t lz4hc_compressData(const uint8_t *src, size_t srcSize, uint8_t *dest, size_t destSize) {
+	if (srcSize >= LZ4_MAX_INPUT_SIZE || destSize > LZ4_MAX_SIZE) {
+		return 0;
+	}
 	auto ret = LZ4_compress_HC_extStateHC(tl_lz4HCEncodeState, (const char *)src, (char *)dest,
 			int(srcSize), int(destSize), LZ4HC_CLEVEL_MAX);
 	if (ret > 0) {
@@ -57,6 +69,9 @@ size_t lz4hc_compressData(const uint8_t *src, size_t srcSize, uint8_t *dest, siz
 }
 
 size_t lz4_decompressData(const uint8_t *src, size_t srcSize, uint8_t *dest, size_t destSize) {
+	if (srcSize > LZ4_MAX_SIZE || destSize > LZ4_MAX_SIZE) {
+		return 0;
+	}
 	auto ret = LZ4_decompress_safe((const char *)src, (char *)dest, int(srcSize), int(destSize));
 	if (ret > 0) {
 		return size_t(ret);

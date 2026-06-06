@@ -1724,6 +1724,12 @@ static bool punycode_decode(const char *const pEncoded, const size_t enc_len,
 		n = n + i / (written_out + 1);
 		i %= (written_out + 1);
 
+		// RFC 3492: reject decoded code points outside the Unicode range and
+		// surrogate halves before they are written into the output.
+		if (n > 0x10FFFF || (n >= 0xD800 && n <= 0xDFFF)) {
+			return 0;
+		}
+
 		if (written_out >= max_out) {
 			return 0;
 		}
@@ -1745,9 +1751,21 @@ bool puny_encode(const callback<void(StringView)> &cb, StringView source, bool m
 	auto uCodeSize = utfSource.code_size();
 
 	auto buf = __sprt_typed_malloca(char32_t, uCodeSize + 1);
+	if (!buf) {
+		return false;
+	}
 	auto target = buf;
 
-	utfSource.foreach ([&](char32_t ch) { *(target++) = ch; });
+	// code_size() advances by the full UTF-8 lead-byte window, while foreach()
+	// resyncs at the first invalid continuation byte and can therefore emit MORE
+	// codepoints than code_size() counted on malformed input. Bound the write
+	// cursor to the allocated size so adversarial UTF-8 cannot overflow the buffer.
+	const auto bufEnd = buf + uCodeSize;
+	utfSource.foreach ([&](char32_t ch) {
+		if (target < bufEnd) {
+			*(target++) = ch;
+		}
+	});
 
 	bool result = false;
 	size_t retSize = 0;

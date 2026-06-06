@@ -99,11 +99,7 @@ Status IocpData::runPoll(TimeInterval ival, bool infinite) {
 	_processedEvents = 0;
 	_receivedEvents = nevents;
 
-	if (nevents >= 0) {
-		return Status::Ok;
-	} else {
-		return sprt::status::lastErrorToStatus(GetLastError());
-	}
+	return Status::Ok;
 }
 
 uint32_t IocpData::processEvents(RunContext *ctx) {
@@ -151,7 +147,7 @@ uint32_t IocpData::poll() {
 	pushContext(&ctx, RunContext::Poll);
 
 	auto status = runPoll(TimeInterval());
-	if (toInt(status) > 0) {
+	if (status == Status::Ok) {
 		result = processEvents(&ctx);
 	}
 
@@ -239,14 +235,12 @@ void IocpData::cancel() {
 }
 
 void IocpData::addWaitableObject(HANDLE obj, Handle *h) {
-	sprt::cout << "addWaitableObject " << obj << "\n";
 	if (emplace_ordered(_winHandles, obj)) {
 		_queueHandles.emplace(obj, h);
 	}
 }
 
 void IocpData::removeWaitableObject(HANDLE obj) {
-	sprt::cout << "removeWaitableObject " << obj << "\n";
 	if (erase_ordered(_winHandles, obj)) {
 		_queueHandles.erase(obj);
 	}

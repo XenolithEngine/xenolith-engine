@@ -488,7 +488,12 @@ Status AndroidContextController::writeToClipboard(Rc<ClipboardData> &&data) {
 		app->ClipData.addItem(clipData, item);
 	}
 
-	_clipboardData = sprt::move(data);
+	{
+		// Publish the new data under s_dataMutex (read by the provider getters
+		// on the binder thread).
+		sprt::unique_lock lock(s_dataMutex);
+		_clipboardData = sprt::move(data);
+	}
 	app->ClipboardManager.setPrimaryClip(app->ClipboardManager.service.ref(env), clipData);
 
 	return Status::Ok;
@@ -496,10 +501,20 @@ Status AndroidContextController::writeToClipboard(Rc<ClipboardData> &&data) {
 
 String AndroidContextController::getClipboardTypeForUri(StringView uri) {
 	UrlView u(uri);
+	// _clipboardAuthority is assigned once during init (before the content
+	// provider is registered), so reading it from the binder thread is safe.
 	if (u.scheme == "content" && u.host == _clipboardAuthority) {
 		auto idx = filepath::lastComponent(u.path).readInteger(10).get(0);
-		if (_clipboardData && _clipboardData->types.size() > idx) {
-			return _clipboardData->types.at(idx);
+		// Invoked on a ContentProvider binder thread: take an Rc copy of the
+		// clipboard data under s_dataMutex so it cannot be freed by a concurrent
+		// clearClipboard()/writeToClipboard() on the engine thread.
+		Rc<ClipboardData> clip;
+		{
+			sprt::unique_lock lock(s_dataMutex);
+			clip = _clipboardData;
+		}
+		if (clip && clip->types.size() > idx) {
+			return clip->types.at(idx);
 		}
 	}
 	return String();
@@ -510,10 +525,16 @@ String AndroidContextController::getClipboardPathForUri(StringView uri) {
 	if (u.scheme == "content" && u.host == _clipboardAuthority) {
 		auto serial = filepath::lastComponent(filepath::root(u.path)).readInteger(10).get(0);
 		auto idx = filepath::lastComponent(u.path).readInteger(10).get(0);
-		if (_clipboardData && _clipboardData->types.size() > idx
-				&& _clipboardData->initial == serial) {
+		// Binder-thread access: hold an Rc copy taken under s_dataMutex so the
+		// data outlives a concurrent clear/reassign on the engine thread.
+		Rc<ClipboardData> clip;
+		{
+			sprt::unique_lock lock(s_dataMutex);
+			clip = _clipboardData;
+		}
+		if (clip && clip->types.size() > idx && clip->initial == serial) {
 			String targetPath;
-			auto path = toString("clipboard_content/", _clipboardData->initial);
+			auto path = toString("clipboard_content/", clip->initial);
 			auto cat = filesystem::getLookupInfo(filesystem::LocationCategory::AppCache);
 			if (cat) {
 				filesystem::enumeratePaths(*cat, path,
@@ -527,7 +548,9 @@ String AndroidContextController::getClipboardPathForUri(StringView uri) {
 						loc.interface->_mkdir(loc, fullPath,
 								filesystem::LocationInterface::DirMode);
 
-						auto data = _clipboardData->encodeCallback(_clipboardData->types.at(idx));
+						// encodeCallback is thread-safe by contract, so it is safe to
+						// invoke here off the engine thread with s_dataMutex released.
+						auto data = clip->encodeCallback(clip->types.at(idx));
 						loc.interface->_write_oneshot(loc, targetPath, data.data(), data.size(),
 								filesystem::LocationInterface::FileMode, true);
 					}
@@ -597,10 +620,18 @@ void AndroidContextController::handleClipboardUpdate() {
 }
 
 void AndroidContextController::clearClipboard() {
-	if (_clipboardData) {
+	// Detach the shared data under s_dataMutex (so the binder-thread provider
+	// getters never observe a half-cleared pointer), then run the engine-thread
+	// filesystem cleanup on the local Rc.
+	Rc<ClipboardData> clip;
+	{
+		sprt::unique_lock lock(s_dataMutex);
+		clip = sprt::move(_clipboardData);
+	}
+	if (clip) {
 		auto cat = filesystem::getLookupInfo(filesystem::LocationCategory::AppCache);
 		if (cat) {
-			auto path = toString("clipboard_content/", _clipboardData->initial);
+			auto path = toString("clipboard_content/", clip->initial);
 			filesystem::enumeratePaths(*cat, path,
 					filesystem::LookupFlags::Writable | filesystem::LookupFlags::MakeDir,
 					filesystem::Access::None,
@@ -614,7 +645,6 @@ void AndroidContextController::clearClipboard() {
 		}
 	}
 	_clipboardClip = nullptr;
-	_clipboardData = nullptr;
 }
 
 } // namespace sprt::window

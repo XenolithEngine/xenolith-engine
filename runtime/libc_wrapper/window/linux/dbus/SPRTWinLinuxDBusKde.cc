@@ -437,12 +437,16 @@ void KdeDisplayConfigManager::readDisplayConfig(NotNull<DBusMessage> reply,
 			_dbus->getSessionBus()->callMethod(KSCREEN_BUS_NAME, KSCREEN_BACKEND_PATH,
 					KSCREEN_BACKEND_INTERFACE, "getEdid", [&](WriteIterator &iter) {
 				iter.add(int32_t(it.physical.xid));
-			}, [this, info, idx](NotNull<Connection>, DBusMessage *reply) {
-				ReadIterator iter(_dbus->getLibrary(), reply);
+			}, [guard = Rc<KdeDisplayConfigManager>(this), info, idx](NotNull<Connection>,
+					DBusMessage *reply) {
+				if (!guard->_dbus) {
+					return;
+				}
+				ReadIterator iter(guard->_dbus->getLibrary(), reply);
 				auto edid = EdidInfo::parse(iter.getBytes());
 				auto &mon = info->outputs[idx].physical;
 
-				_edidCache.emplace(toString(mon.xid.xid, ":", mon.id.name), edid);
+				guard->_edidCache.emplace(toString(mon.xid.xid, ":", mon.id.name), edid);
 				info->outputs[idx].physical.id.edid = edid;
 				if (--info->requestsInQueue == 0) {
 					auto d = info->exportConfig();
@@ -450,7 +454,7 @@ void KdeDisplayConfigManager::readDisplayConfig(NotNull<DBusMessage> reply,
 						info->callback(d);
 						info->callback = nullptr;
 					}
-					handleConfigChanged(d);
+					guard->handleConfigChanged(d);
 				}
 			});
 			++info->requestsInQueue;

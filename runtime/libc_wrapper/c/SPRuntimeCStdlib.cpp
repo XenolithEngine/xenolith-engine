@@ -161,7 +161,7 @@ __SPRT_C_FUNC __SPRT_ID(lldiv_t) __SPRT_ID(lldiv_impl)(long long a, long long b)
 
 __SPRT_C_FUNC int __SPRT_ID(
 		posix_memalign)(void **ptr, __SPRT_ID(size_t) size, __SPRT_ID(size_t) align) {
-	return posix_memalign(ptr, size, align);
+	return posix_memalign(ptr, align, size);
 }
 __SPRT_C_FUNC int __SPRT_ID(mkstemp)(char *tpl) { return mkstemp(tpl); }
 __SPRT_C_FUNC int __SPRT_ID(mkostemp)(char *tpl, int n) { return mkostemp(tpl, n); }

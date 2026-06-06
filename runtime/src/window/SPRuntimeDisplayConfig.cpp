@@ -402,8 +402,14 @@ Rc<DisplayConfig> DisplayConfigManager::extractCurrentConfig(
 }
 
 void DisplayConfigManager::adjustDisplay(NotNull<DisplayConfig> config) const {
-	auto getLogicalMonitorSize = [&](const LogicalDisplay &mon) {
+	auto getLogicalMonitorSize = [&](const LogicalDisplay &mon) -> Extent2 {
+		if (mon.monitors.empty()) {
+			return {};
+		}
 		auto hMon = config->getMonitor(mon.monitors.front());
+		if (!hMon) {
+			return {};
+		}
 		auto mode = hMon->getCurrent();
 		Extent2 size{mode.mode.width, mode.mode.height};
 

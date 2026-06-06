@@ -286,7 +286,7 @@ Status XcbSupportWindow::writeToClipboard(Rc<ClipboardData> &&data) {
 	auto cookie = _xcb->xcb_get_selection_owner(_connection->getConnection(),
 			_connection->getAtom(XcbAtomIndex::CLIPBOARD));
 	auto reply = _connection->perform(_xcb->xcb_get_selection_owner_reply, cookie);
-	if (reply->owner != _window) {
+	if (!reply || reply->owner != _window) {
 		_data = nullptr;
 		_typeAtoms.clear();
 	}
@@ -311,6 +311,9 @@ void XcbSupportWindow::continueClipboardProcessing() {
 
 void XcbSupportWindow::finalizeClipboardWaiters(BytesView data, xcb_atom_t type) {
 	auto wIt = _waiters.find(type);
+	if (wIt == _waiters.end()) {
+		return;
+	}
 	auto typeName = _connection->getAtomName(type);
 	if (typeName == "STRING" || typeName == "UTF8_STRING" || typeName == "TEXT") {
 		typeName = StringView("text/plain");
@@ -404,12 +407,13 @@ void XcbSupportWindow::handleSelectionNotify(xcb_selection_notify_event_t *event
 						_incr = true;
 						_incrType = event->target;
 						_incrBuffer.clear();
+						_incrSize = 0;
 						return;
 					} else {
 						finalizeClipboardWaiters(
 								BytesView((const uint8_t *)_xcb->xcb_get_property_value(reply),
 										_xcb->xcb_get_property_value_length(reply)),
-								_incrType);
+								event->target);
 					}
 				} else {
 					_waiters.erase(wIt);
@@ -450,8 +454,16 @@ void XcbSupportWindow::handlePropertyNotify(xcb_property_notify_event_t *ev) {
 			auto len = _xcb->xcb_get_property_value_length(reply);
 
 			if (len > 0) {
-				auto data = (const uint8_t *)_xcb->xcb_get_property_value(reply);
-				_incrBuffer.emplace_back(BytesView(data, len).bytes<Bytes>());
+				_incrSize += size_t(len);
+				if (_incrSize > MaxClipboardTransferSize) {
+					// oversized/hostile INCR source — abort the transfer
+					finalizeClipboardWaiters(BytesView(), _incrType);
+					_incrBuffer.clear();
+					_incr = false;
+				} else {
+					auto data = (const uint8_t *)_xcb->xcb_get_property_value(reply);
+					_incrBuffer.emplace_back(BytesView(data, len).bytes<Bytes>());
+				}
 			} else {
 				Bytes data;
 				size_t size = 0;
@@ -635,7 +647,7 @@ void XcbSupportWindow::handleSelectionRequest(xcb_selection_request_event_t *eve
 			xcb_atom_t *requests = (xcb_atom_t *)_xcb->xcb_get_property_value(reply);
 			auto count = uint32_t(_xcb->xcb_get_property_value_length(reply)) / sizeof(xcb_atom_t);
 
-			for (uint32_t i = 0; i < count; i += 2) {
+			for (uint32_t i = 0; i + 1 < count; i += 2) {
 				auto it = sprt::find(_typeAtoms.begin(), _typeAtoms.end(), requests[i]);
 				if (it == _typeAtoms.end()) {
 					requests[i + 1] = XCB_ATOM_NONE;
@@ -785,6 +797,10 @@ void XcbSupportWindow::updateKeysymMapping() {
 		// from https://stackoverflow.com/questions/18689863/obtain-keyboard-layout-and-keysyms-with-xcb
 		auto keyboard_mapping =
 				_connection->perform(_xcb->xcb_get_keyboard_mapping_reply, mappingCookie);
+
+		if (!keyboard_mapping || keyboard_mapping->keysyms_per_keycode == 0) {
+			return;
+		}
 
 		int nkeycodes = keyboard_mapping->length / keyboard_mapping->keysyms_per_keycode;
 

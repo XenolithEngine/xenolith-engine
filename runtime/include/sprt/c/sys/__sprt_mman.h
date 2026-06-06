@@ -24,6 +24,7 @@ THE SOFTWARE.
 #define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_MMAN_H_
 
 #include <sprt/c/cross/__sprt_config.h>
+#include <sprt/c/cross/__sprt_mman.h>
 #include <sprt/c/bits/__sprt_ssize_t.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 
@@ -35,9 +36,6 @@ THE SOFTWARE.
 #define __SPRT_MAP_SHARED_VALIDATE 0x03
 #define __SPRT_MAP_TYPE       0x0f
 #define __SPRT_MAP_FIXED      0x10
-#define __SPRT_MAP_ANON       0x20
-#define __SPRT_MAP_ANONYMOUS  __SPRT_MAP_ANON
-#define __SPRT_MAP_NORESERVE  0x4000
 #define __SPRT_MAP_GROWSDOWN  0x0100
 #define __SPRT_MAP_DENYWRITE  0x0800
 #define __SPRT_MAP_EXECUTABLE 0x1000
@@ -73,9 +71,7 @@ THE SOFTWARE.
 #define __SPRT_PROT_GROWSDOWN 0x01000000
 #define __SPRT_PROT_GROWSUP   0x02000000
 
-#define __SPRT_MS_ASYNC       1
 #define __SPRT_MS_INVALIDATE  2
-#define __SPRT_MS_SYNC        4
 
 #define __SPRT_MCL_CURRENT    1
 #define __SPRT_MCL_FUTURE     2
@@ -92,7 +88,6 @@ THE SOFTWARE.
 #define __SPRT_MADV_SEQUENTIAL  2
 #define __SPRT_MADV_WILLNEED    3
 #define __SPRT_MADV_DONTNEED    4
-#define __SPRT_MADV_FREE        8
 #define __SPRT_MADV_REMOVE      9
 #define __SPRT_MADV_DONTFORK    10
 #define __SPRT_MADV_DOFORK      11

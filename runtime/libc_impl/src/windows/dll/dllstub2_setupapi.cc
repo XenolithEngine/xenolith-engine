@@ -57,4 +57,9 @@ WINAPI BOOL SetupDiGetDeviceInterfaceDetailW(HDEVINFO DeviceInfoSet,
 			DeviceInterfaceData, DeviceInterfaceDetailData, DeviceInterfaceDetailDataSize,
 			RequiredSize, DeviceInfoData);
 }
+
+WINAPI BOOL SetupDiDestroyDeviceInfoList(HDEVINFO DeviceInfoSet) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, setupapi, SetupDiDestroyDeviceInfoList, DeviceInfoSet);
+}
 }

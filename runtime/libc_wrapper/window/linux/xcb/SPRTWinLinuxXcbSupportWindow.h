@@ -183,6 +183,7 @@ protected:
 
 	Map<xcb_atom_t, Vector<Rc<ClipboardRequest>>> _waiters;
 	Vector<Bytes> _incrBuffer;
+	size_t _incrSize = 0; // running total, capped at MaxClipboardTransferSize
 	xcb_atom_t _incrType = 0;
 	bool _incr = false;
 

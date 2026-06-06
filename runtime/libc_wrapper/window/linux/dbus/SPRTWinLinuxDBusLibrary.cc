@@ -798,6 +798,10 @@ BytesView ReadIterator::getBytes() const {
 
 	lib->dbus_message_iter_get_fixed_array(&sub, &bytes, &size);
 
+	if (size < 0) {
+		return BytesView();
+	}
+
 	return BytesView(bytes, size_t(size));
 }
 
@@ -858,6 +862,10 @@ bool ReadIterator::foreachDictEntry(
 	while (val) {
 		auto sub = val.recurse();
 		auto v = sub.getValue();
+		if (v.type != Type::String && v.type != Type::Path && v.type != Type::Signature) {
+			val.next();
+			continue;
+		}
 		StringView key = StringView(v.value.str);
 		sub.next();
 
@@ -1478,6 +1486,10 @@ bool MessagePropertyParser::onArray(size_t size, Type type, NotNull<DBusMessageI
 			uint32_t *ptr = nullptr;
 			int size = 0;
 			lib->dbus_message_iter_get_fixed_array(entry, &ptr, &size);
+
+			if (size < 0) {
+				size = 0;
+			}
 
 			u32ArrayTarget->resize(size);
 			memcpy(u32ArrayTarget->data(), ptr, sizeof(uint32_t) * size);

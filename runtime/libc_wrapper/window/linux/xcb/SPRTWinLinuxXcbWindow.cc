@@ -559,7 +559,7 @@ void XcbWindow::handlePropertyNotify(xcb_property_notify_event_t *ev) {
 		auto cookie = _xcb->xcb_get_property_unchecked(_connection->getConnection(), 0,
 				_xinfo.window, ev->atom, XCB_ATOM_CARDINAL, 0, 32);
 		auto reply = _connection->perform(_xcb->xcb_get_property_reply, cookie);
-		if (reply) {
+		if (reply && _xcb->xcb_get_property_value_length(reply) >= int(sizeof(int32_t))) {
 			XL_X11_LOG("XcbWindow: handlePropertyNotify _NET_WM_DESKTOP: %d %ld",
 					*((int32_t *)_xcb->xcb_get_property_value(reply)),
 					_xcb->xcb_get_property_value_length(reply) / sizeof(int32_t));
@@ -568,7 +568,7 @@ void XcbWindow::handlePropertyNotify(xcb_property_notify_event_t *ev) {
 		auto cookie = _xcb->xcb_get_property_unchecked(_connection->getConnection(), 0,
 				_xinfo.window, ev->atom, XCB_ATOM_CARDINAL, 0, 32);
 		auto reply = _connection->perform(_xcb->xcb_get_property_reply, cookie);
-		if (reply) {
+		if (reply && _xcb->xcb_get_property_value_length(reply) >= int(sizeof(uint32_t) * 4)) {
 			SPRT_UNUSED auto values = (uint32_t *)_xcb->xcb_get_property_value(reply);
 
 			XL_X11_LOG("XcbWindow: handlePropertyNotify: %s %d %d %d %d",

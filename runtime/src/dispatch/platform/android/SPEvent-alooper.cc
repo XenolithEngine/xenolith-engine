@@ -91,7 +91,10 @@ uint32_t ALooperData::poll() {
 	pushContext(&ctx, RunContext::Poll);
 
 	auto ret = __sprt_ALooper_pollOnce(0, nullptr, nullptr, nullptr);
-	while (ret == __SPRT_ALOOPER_POLL_CALLBACK) { ++result; }
+	while (ret == __SPRT_ALOOPER_POLL_CALLBACK) {
+		++result;
+		ret = __sprt_ALooper_pollOnce(0, nullptr, nullptr, nullptr);
+	}
 
 	popContext(&ctx);
 

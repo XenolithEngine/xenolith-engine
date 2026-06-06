@@ -200,8 +200,14 @@ void WaylandDataInputTransfer::schedule(NotNull<dispatch::Looper> looper) {
 				size_t emptySpace = buffer.capacity();
 				auto ptr = buffer.prepare(emptySpace);
 
-				auto bytesRead = ::read(pipefd[0], ptr, emptySpace);
+				bytesRead = ::read(pipefd[0], ptr, emptySpace);
 				if (bytesRead > 0) {
+					receivedSize += size_t(bytesRead);
+					if (receivedSize > MaxClipboardTransferSize) {
+						// oversized/hostile selection source — abort the transfer
+						cancel();
+						return Status::Done;
+					}
 					buffer.save(ptr, bytesRead);
 					chunks.emplace_back(Bytes(buffer.data(), buffer.data() + buffer.size()));
 				}

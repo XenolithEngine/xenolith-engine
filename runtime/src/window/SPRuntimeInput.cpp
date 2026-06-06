@@ -516,6 +516,21 @@ StringView getInputKeyCodeName(InputKeyCode code) {
 	case InputKeyCode::PRINT_SCREEN: return StringView("PRINT_SCREEN"); break;
 	case InputKeyCode::PAUSE: return StringView("PAUSE"); break;
 	case InputKeyCode::DELETE: return StringView("DELETE"); break;
+
+	case InputKeyCode::STYLUS_BUTTON_PRIMARY: return StringView("STYLUS_BUTTON_PRIMARY"); break;
+	case InputKeyCode::STYLUS_BUTTON_SECONDARY: return StringView("STYLUS_BUTTON_SECONDARY"); break;
+	case InputKeyCode::STYLUS_BUTTON_TERTIARY: return StringView("STYLUS_BUTTON_TERTIARY"); break;
+	case InputKeyCode::STYLUS_BUTTON_TAIL: return StringView("STYLUS_BUTTON_TAIL"); break;
+	case InputKeyCode::MACRO_1: return StringView("MACRO_1"); break;
+	case InputKeyCode::MACRO_2: return StringView("MACRO_2"); break;
+	case InputKeyCode::MACRO_3: return StringView("MACRO_3"); break;
+	case InputKeyCode::MACRO_4: return StringView("MACRO_4"); break;
+	case InputKeyCode::EMOJI_PICKER: return StringView("EMOJI_PICKER"); break;
+	case InputKeyCode::SCREENSHOT: return StringView("SCREENSHOT"); break;
+	case InputKeyCode::KEYBOARD_BACKLIGHT_DOWN: return StringView("KEYBOARD_BACKLIGHT_DOWN"); break;
+	case InputKeyCode::KEYBOARD_BACKLIGHT_UP: return StringView("KEYBOARD_BACKLIGHT_UP"); break;
+	case InputKeyCode::KEYBOARD_BACKLIGHT_TOGGLE: return StringView("KEYBOARD_BACKLIGHT_TOGGLE"); break;
+
 	default: break;
 	}
 	return StringView();

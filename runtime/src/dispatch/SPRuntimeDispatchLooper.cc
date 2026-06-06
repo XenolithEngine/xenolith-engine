@@ -260,7 +260,7 @@ Status Looper::wakeup(WakeupFlags flags) {
 	return _data->queue->wakeup(flags);
 }
 
-uint16_t Looper::getWorkersCount() const { return _data->threadPool->getInfo().threadCount; }
+uint16_t Looper::getWorkersCount() const { return _data->threadPoolInfo.threadCount; }
 
 memory::pool_t *Looper::getThreadMemPool() const { return _data->threadMemPool; }
 

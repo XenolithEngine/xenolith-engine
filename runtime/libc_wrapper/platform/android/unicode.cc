@@ -349,9 +349,8 @@ bool compare(StringView l, StringView r, int *result) {
 		bool ret = false;
 		unicode::toUtf16([&](WideStringView lStr) {
 			unicode::toUtf16([&](WideStringView rStr) {
-				int status = -1;
 				*result = u_strCompare(lStr.data(), lStr.size(), rStr.data(), rStr.size(), 1);
-				ret = status == U_ZERO_ERROR;
+				ret = true;
 			}, r);
 		}, l);
 		if (ret) {
@@ -367,6 +366,7 @@ bool compare(StringView l, StringView r, int *result) {
 bool compare(WideStringView l, WideStringView r, int *result) {
 	if (u_strCompare) {
 		*result = u_strCompare(l.data(), l.size(), r.data(), r.size(), 1);
+		return true;
 	}
 	if (auto app = jni::Env::getApp()) {
 		return icujava::compare(app, l, r, false, result);
@@ -379,7 +379,7 @@ bool caseCompare(StringView l, StringView r, int *result) {
 		bool ret = false;
 		unicode::toUtf16([&](WideStringView lStr) {
 			unicode::toUtf16([&](WideStringView rStr) {
-				int status;
+				int status = U_ZERO_ERROR;
 				*result = u_strCaseCompare(lStr.data(), lStr.size(), rStr.data(), rStr.size(),
 						U_COMPARE_CODE_POINT_ORDER, &status);
 				ret = status == U_ZERO_ERROR;
@@ -498,8 +498,12 @@ extern "C" SPRT_GLOBAL int idn2_lookup_u8(const uint8_t *src, uint8_t **lookupna
 		::__sprt_memcpy(buf, out.data(), out.size());
 		buf[out.size()] = 0;
 
-		*lookupname = (uint8_t *)buf;
-		return IDN2_JNI;
+		if (lookupname) {
+			*lookupname = (uint8_t *)buf;
+		} else {
+			__sprt_free(buf);
+		}
+		return IDN2_OK;
 	} else {
 		return IDN2_CONV_TOASCII;
 	}
@@ -538,8 +542,12 @@ extern "C" SPRT_GLOBAL int idn2_lookup_ul(const char *src, char **lookupname, in
 		::__sprt_memcpy(buf, out.data(), out.size());
 		buf[out.size()] = 0;
 
-		*lookupname = buf;
-		return IDN2_JNI;
+		if (lookupname) {
+			*lookupname = buf;
+		} else {
+			__sprt_free(buf);
+		}
+		return IDN2_OK;
 	} else {
 		return IDN2_CONV_TOASCII;
 	}
@@ -578,8 +586,12 @@ extern "C" SPRT_GLOBAL int idn2_to_unicode_8z8z(const char *src, char **lookupna
 		::__sprt_memcpy(buf, out.data(), out.size());
 		buf[out.size()] = 0;
 
-		*lookupname = buf;
-		return IDN2_JNI;
+		if (lookupname) {
+			*lookupname = buf;
+		} else {
+			__sprt_free(buf);
+		}
+		return IDN2_OK;
 	} else {
 		return IDN2_CONV_TOUNICODE;
 	}

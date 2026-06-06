@@ -311,13 +311,14 @@ LRESULT WindowClass::wndProc(WindowsWindow *win, HWND hwnd, UINT uMsg, WPARAM wP
 			PeekMessageW(&next, hwnd, 0, 0, PM_REMOVE);
 			TranslateMessage(&next);
 			if (next.wParam >= 0xd800 && next.wParam <= 0xdbff) {
-				auto highSurrogate = (WCHAR)wParam;
+				auto highSurrogate = (WCHAR)c;
 				// remove without processing
 				hasNext = PeekMessageW(&next, hwnd, 0, 0, PM_NOREMOVE);
 				if (hasNext && (next.message == WM_CHAR || next.message == WM_SYSCHAR)) {
 					PeekMessageW(&next, hwnd, 0, 0, PM_REMOVE);
 					TranslateMessage(&next);
 					if (next.wParam >= 0xdc00 && next.wParam <= 0xdfff) {
+						c = 0;
 						c += (highSurrogate - 0xd800) << 10;
 						c += (WCHAR)next.wParam - 0xdc00;
 						c += 0x1'0000;

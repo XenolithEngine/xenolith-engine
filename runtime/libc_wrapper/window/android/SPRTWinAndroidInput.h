@@ -42,6 +42,12 @@ class InputQueue : public Ref {
 public:
 	static InputKeyCode KeyCodes[];
 
+	// Bounds-checked translation of an Android AKEYCODE into an engine keycode.
+	// AKeyEvent_getKeyCode() can return values beyond the KeyCodes[] table
+	// (newer platform keycodes, vendor/HID devices), so callers must not index
+	// KeyCodes[] directly.
+	static InputKeyCode getKeyCode(int32_t keyCode);
+
 	virtual ~InputQueue();
 
 	bool init(AndroidActivity *, AInputQueue *);

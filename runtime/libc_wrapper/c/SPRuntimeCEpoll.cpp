@@ -23,6 +23,7 @@
 #define __SPRT_BUILD 1
 
 #include <sprt/c/__sprt_errno.h>
+#include <sprt/c/__sprt_limits.h>
 #include <sprt/c/sys/__sprt_epoll.h>
 #include <sprt/c/cross/__sprt_signal.h>
 #include <sprt/c/cross/__sprt_syscall.h>
@@ -67,12 +68,15 @@ __SPRT_C_FUNC int __SPRT_ID(epoll_pwait2)(int efd, struct __SPRT_EPOLL_EVENT_NAM
 			sig, __SPRT__NSIG / 8);
 	if (ret == -1 && *__sprt___errno_location() == ENOSYS) {
 		// if there is no epoll_pwait2 - call epoll_pwait as fallback
-		unsigned millis = tv->tv_sec * 1'000 + tv->tv_nsec / 1'000'000;
-		if (millis == 0) {
-			millis = 1; // at least 1 millisecond to wait
+		long long millis64 =
+				(long long)tv->tv_sec * 1'000 + (long long)tv->tv_nsec / 1'000'000;
+		if (millis64 < 1) {
+			millis64 = 1; // at least 1 millisecond to wait
+		} else if (millis64 > __SPRT_INT_MAX) {
+			millis64 = __SPRT_INT_MAX; // clamp to epoll_pwait's int timeout
 		}
 
-		return ::epoll_pwait(efd, (struct epoll_event *)ev, maxevents, millis,
+		return ::epoll_pwait(efd, (struct epoll_event *)ev, maxevents, (int)millis64,
 				(const sigset_t *)sig);
 	}
 	return ret;

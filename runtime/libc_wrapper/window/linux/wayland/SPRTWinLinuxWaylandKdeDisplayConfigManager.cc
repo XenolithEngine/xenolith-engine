@@ -100,9 +100,11 @@ static kde_output_device_v2_listener s_kdeOutputListener{
 .done = [](void *data, struct kde_output_device_v2 *kde_output_device_v2) {
 	auto dev = reinterpret_cast<KdeOutputDevice *>(data);
 
-	for (auto it = dev->modes.begin(); it != dev->modes.end(); ++it) {
+	for (auto it = dev->modes.begin(); it != dev->modes.end();) {
 		if ((*it)->next.removed) {
-			dev->modes.erase(it);
+			it = dev->modes.erase(it);
+		} else {
+			++it;
 		}
 	}
 

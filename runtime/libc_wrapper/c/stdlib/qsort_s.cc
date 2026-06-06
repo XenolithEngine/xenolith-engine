@@ -23,6 +23,7 @@ THE SOFTWARE.
 #define __SPRT_BUILD 1
 
 #include <sprt/c/__sprt_stdlib.h>
+#include <sprt/c/__sprt_errno.h>
 #include <stdlib.h>
 
 struct __qsort_s_wrapper {
@@ -44,10 +45,14 @@ thread_local __qsort_r_wrapper tl_qsort_r_wrapper;
 
 __SPRT_C_FUNC void qsort_r(void *ptr, size_t count, size_t size,
 		int (*cmp)(const void *, const void *, void *), void *ctx) {
+	// save/restore the thread-local context so a comparator that recursively
+	// calls qsort_r composes correctly (the outer sort keeps its context).
+	auto saved = tl_qsort_r_wrapper;
 	tl_qsort_r_wrapper = {ctx, cmp};
 	qsort(ptr, count, size, [](const void *l, const void *r) {
 		return tl_qsort_r_wrapper.comp(l, r, tl_qsort_r_wrapper.ctx);
 	});
+	tl_qsort_r_wrapper = saved;
 }
 
 #endif
@@ -56,12 +61,20 @@ namespace sprt {
 
 __SPRT_C_FUNC int qsort_s(void *ptr, __SPRT_ID(rsize_t) count, __SPRT_ID(rsize_t) size,
 		int (*comp)(void *, const void *, const void *), void *context) __SPRT_NOEXCEPT {
+	// C11 Annex K runtime constraints. rsize_t == size_t here, so the
+	// count/size > RSIZE_MAX checks are vacuous and omitted.
+	if (count != 0 && (ptr == nullptr || comp == nullptr)) {
+		return EINVAL;
+	}
 
 #if SPRT_ANDROID
+	// save/restore so a comparator that recursively sorts composes correctly
+	auto saved = tl_qsort_s_wrapper;
 	tl_qsort_s_wrapper = {context, comp};
 	qsort(ptr, count, size, [](const void *l, const void *r) {
 		return tl_qsort_s_wrapper.comp(tl_qsort_s_wrapper.ctx, l, r);
 	});
+	tl_qsort_s_wrapper = saved;
 #elif SPRT_MACOS
 	qsort_r(ptr, count, size, context, comp);
 #else

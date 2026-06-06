@@ -267,6 +267,23 @@ enum class InputKeyCode : uint16_t {
 	PAUSE = 126, // "PAUS"
 	DELETE = 127, // "DELE"; ASCII-compatible
 
+	/* Extended keys without an XKB equivalent, surfaced from platform input
+	   (e.g. Android stylus/macro/system keys). Numbered contiguously after the
+	   XKB-derived range; `Max` stays the sentinel/array-size. */
+	STYLUS_BUTTON_PRIMARY = 128,
+	STYLUS_BUTTON_SECONDARY = 129,
+	STYLUS_BUTTON_TERTIARY = 130,
+	STYLUS_BUTTON_TAIL = 131,
+	MACRO_1 = 132,
+	MACRO_2 = 133,
+	MACRO_3 = 134,
+	MACRO_4 = 135,
+	EMOJI_PICKER = 136,
+	SCREENSHOT = 137,
+	KEYBOARD_BACKLIGHT_DOWN = 138,
+	KEYBOARD_BACKLIGHT_UP = 139,
+	KEYBOARD_BACKLIGHT_TOGGLE = 140,
+
 	Max
 };
 

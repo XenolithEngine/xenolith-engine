@@ -474,6 +474,7 @@ void XcbDisplayConfigManager::updateDisplayConfig(Function<void(DisplayConfig *)
 		while (nparams > 0) {
 			crtc->filterParams.emplace_back(*params);
 			++params;
+			--nparams;
 		}
 	};
 

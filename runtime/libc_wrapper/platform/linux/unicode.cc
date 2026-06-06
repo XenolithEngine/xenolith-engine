@@ -399,9 +399,10 @@ struct i18n {
 
 		status = U_ZERO_ERROR;
 
-		auto targetBuf = __sprt_typed_malloca(char16_t, len + 1);
-		len = icuFn(targetBuf, len + 1, data.data(), data.size(), nullptr, &status);
-		if (len <= int32_t(len)) {
+		auto capacity = len + 1;
+		auto targetBuf = __sprt_typed_malloca(char16_t, capacity);
+		len = icuFn(targetBuf, capacity, data.data(), data.size(), nullptr, &status);
+		if (status == U_ZERO_ERROR && len >= 0 && len <= capacity) {
 			cb(WideStringView(targetBuf, len));
 			ret = true;
 		}
@@ -412,18 +413,15 @@ struct i18n {
 	bool applyUnistringFunction(const callback<void(StringView)> &cb, StringView data,
 			unistring_iface::u8_case_fn ustrFn) {
 		bool ret = false;
-		size_t targetSize = data.size();
+		size_t targetSize = data.size() + 1;
 		auto targetBuf = __sprt_typed_malloca(char, data.size() + 1);
 
 		auto buf = ustrFn((const uint8_t *)data.data(), data.size(), unistring.uc_locale_language(),
 				nullptr, (uint8_t *)targetBuf, &targetSize);
-		if (targetSize > data.size() + 1) {
-			cb(StringView((const char *)buf, targetSize));
+		cb(StringView((const char *)buf, targetSize));
+		ret = true;
+		if (buf != (uint8_t *)targetBuf) {
 			::__sprt_free(buf);
-			ret = true;
-		} else {
-			cb(StringView((const char *)buf, targetSize));
-			ret = true;
 		}
 		__sprt_freea(targetBuf);
 		return ret;
@@ -432,18 +430,15 @@ struct i18n {
 	bool applyUnistringFunction(const callback<void(WideStringView)> &cb, WideStringView data,
 			unistring_iface::u16_case_fn ustrFn) {
 		bool ret = false;
-		size_t targetSize = data.size();
+		size_t targetSize = data.size() + 1;
 		auto targetBuf = __sprt_typed_malloca(char16_t, data.size() + 1);
 
 		auto buf = ustrFn((const uint16_t *)data.data(), data.size(),
 				unistring.uc_locale_language(), nullptr, (uint16_t *)targetBuf, &targetSize);
-		if (targetSize > data.size() + 1) {
-			cb(WideStringView((const char16_t *)buf, targetSize));
+		cb(WideStringView((const char16_t *)buf, targetSize));
+		ret = true;
+		if (buf != (uint16_t *)targetBuf) {
 			::__sprt_free(buf);
-			ret = true;
-		} else {
-			cb(WideStringView((const char16_t *)buf, targetSize));
-			ret = true;
 		}
 		__sprt_freea(targetBuf);
 		return ret;
@@ -521,12 +516,13 @@ struct i18n {
 				return false;
 			}
 
-			auto targetBuf = __sprt_typed_malloca(char16_t, len + 1);
+			auto capacity = len + 1;
+			auto targetBuf = __sprt_typed_malloca(char16_t, capacity);
 			status = U_ZERO_ERROR;
 
-			len = icu.u_strToTitle_fn(targetBuf, len + 1, data.data(), data.size(), nullptr,
+			len = icu.u_strToTitle_fn(targetBuf, capacity, data.data(), data.size(), nullptr,
 					nullptr, &status);
-			if (len <= int32_t(data.size())) {
+			if (status == U_ZERO_ERROR && len >= 0 && len <= capacity) {
 				cb(WideStringView(targetBuf, len));
 				ret = true;
 			}

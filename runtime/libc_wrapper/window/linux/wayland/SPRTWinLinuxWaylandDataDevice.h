@@ -92,6 +92,7 @@ struct SPRT_API WaylandDataInputTransfer : public Ref {
 	StackBuffer<256_KiB> buffer;
 	Rc<dispatch::Handle> handle;
 	Vector<Bytes> chunks;
+	size_t receivedSize = 0; // running total, capped at MaxClipboardTransferSize
 };
 
 struct SPRT_API WaylandDataOutputTransfer : public Ref {

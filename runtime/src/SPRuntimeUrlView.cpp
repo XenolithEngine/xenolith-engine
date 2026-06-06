@@ -52,7 +52,7 @@ bool UrlView::validateScheme(const StringView &r) {
 }
 
 bool UrlView::validateHost(const StringView &r) {
-	StringView str;
+	StringView str(r);
 	return validateHost(str);
 }
 

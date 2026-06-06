@@ -133,7 +133,7 @@ __SPRT_C_FUNC struct __SPRT_TM_NAME *__SPRT_ID(gmtime)(const __SPRT_ID(time_t) *
 }
 
 __SPRT_C_FUNC struct __SPRT_TM_NAME *__SPRT_ID(localtime)(const __SPRT_ID(time_t) * t) {
-	__SPRT_ID(localtime_r)(t, &s_gmtime_val);
+	__SPRT_ID(localtime_r)(t, &s_localtime_val);
 	return &s_localtime_val;
 }
 
@@ -173,7 +173,7 @@ __SPRT_C_FUNC struct __SPRT_TM_NAME *__SPRT_ID(
 #if __STDC_HOSTED__ == 0
 	return ::gmtime_r(t, _tm);
 #else
-	auto native = internal::getNativeTm(_tm);
+	struct tm native{};
 #if SPRT_ANDROID && !defined(__LP64__)
 	::time64_t nativeT = *t;
 	auto ret = ::gmtime64_r(&nativeT, &native);
@@ -207,7 +207,7 @@ __SPRT_C_FUNC struct __SPRT_TM_NAME *__SPRT_ID(
 #if __STDC_HOSTED__ == 0
 	return ::localtime_r(t, _tm);
 #else
-	auto native = internal::getNativeTm(_tm);
+	struct tm native{};
 #if SPRT_ANDROID && !defined(__LP64__)
 	::time64_t nativeT = *t;
 	auto ret = ::localtime64_r(&nativeT, &native);
@@ -298,6 +298,7 @@ __SPRT_C_FUNC int __SPRT_ID(clock_nanosleep)(__SPRT_ID(clockid_t) clock, int v,
 		if (__sprt_nanosleep(ts, out) != 0) {
 			return *__sprt___errno_location();
 		}
+		return 0;
 	}
 	return EINVAL;
 #else

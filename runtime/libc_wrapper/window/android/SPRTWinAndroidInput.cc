@@ -486,20 +486,44 @@ InputKeyCode InputQueue::KeyCodes[] = {
 	InputKeyCode::Unknown, // AKEYCODE_THUMBS_UP
 	InputKeyCode::Unknown, // AKEYCODE_THUMBS_DOWN
 	InputKeyCode::Unknown, // AKEYCODE_PROFILE_SWITCH
-	InputKeyCode::Unknown,
-	InputKeyCode::Unknown,
-	InputKeyCode::Unknown,
-	InputKeyCode::Unknown,
-	InputKeyCode::Unknown,
-	InputKeyCode::Unknown,
-	InputKeyCode::Unknown,
-	InputKeyCode::Unknown,
-	InputKeyCode::Unknown,
-	InputKeyCode::Unknown,
-	InputKeyCode::Unknown,
-	InputKeyCode::Unknown,
-	InputKeyCode::Unknown,
+	InputKeyCode::Unknown, // AKEYCODE_VIDEO_APP_1
+	InputKeyCode::Unknown, // AKEYCODE_VIDEO_APP_2
+	InputKeyCode::Unknown, // AKEYCODE_VIDEO_APP_3
+	InputKeyCode::Unknown, // AKEYCODE_VIDEO_APP_4
+	InputKeyCode::Unknown, // AKEYCODE_VIDEO_APP_5
+	InputKeyCode::Unknown, // AKEYCODE_VIDEO_APP_6
+	InputKeyCode::Unknown, // AKEYCODE_VIDEO_APP_7
+	InputKeyCode::Unknown, // AKEYCODE_VIDEO_APP_8
+	InputKeyCode::Unknown, // AKEYCODE_FEATURED_APP_1
+	InputKeyCode::Unknown, // AKEYCODE_FEATURED_APP_2
+	InputKeyCode::Unknown, // AKEYCODE_FEATURED_APP_3
+	InputKeyCode::Unknown, // AKEYCODE_FEATURED_APP_4
+	InputKeyCode::Unknown, // AKEYCODE_DEMO_APP_1
+	InputKeyCode::Unknown, // AKEYCODE_DEMO_APP_2
+	InputKeyCode::Unknown, // AKEYCODE_DEMO_APP_3
+	InputKeyCode::Unknown, // AKEYCODE_DEMO_APP_4
+	InputKeyCode::KEYBOARD_BACKLIGHT_DOWN, // AKEYCODE_KEYBOARD_BACKLIGHT_DOWN
+	InputKeyCode::KEYBOARD_BACKLIGHT_UP, // AKEYCODE_KEYBOARD_BACKLIGHT_UP
+	InputKeyCode::KEYBOARD_BACKLIGHT_TOGGLE, // AKEYCODE_KEYBOARD_BACKLIGHT_TOGGLE
+	InputKeyCode::STYLUS_BUTTON_PRIMARY, // AKEYCODE_STYLUS_BUTTON_PRIMARY
+	InputKeyCode::STYLUS_BUTTON_SECONDARY, // AKEYCODE_STYLUS_BUTTON_SECONDARY
+	InputKeyCode::STYLUS_BUTTON_TERTIARY, // AKEYCODE_STYLUS_BUTTON_TERTIARY
+	InputKeyCode::STYLUS_BUTTON_TAIL, // AKEYCODE_STYLUS_BUTTON_TAIL
+	InputKeyCode::Unknown, // AKEYCODE_RECENT_APPS
+	InputKeyCode::MACRO_1, // AKEYCODE_MACRO_1
+	InputKeyCode::MACRO_2, // AKEYCODE_MACRO_2
+	InputKeyCode::MACRO_3, // AKEYCODE_MACRO_3
+	InputKeyCode::MACRO_4, // AKEYCODE_MACRO_4
+	InputKeyCode::EMOJI_PICKER, // AKEYCODE_EMOJI_PICKER
+	InputKeyCode::SCREENSHOT, // AKEYCODE_SCREENSHOT
 };
+
+InputKeyCode InputQueue::getKeyCode(int32_t keyCode) {
+	if (keyCode >= 0 && size_t(keyCode) < sizeof(KeyCodes) / sizeof(KeyCodes[0])) {
+		return KeyCodes[keyCode];
+	}
+	return InputKeyCode::Unknown;
+}
 
 static InputModifier InputQueue_getInputModifiers(int32_t modsFlags) {
 	InputModifier mods = InputModifier::None;
@@ -654,7 +678,7 @@ int InputQueue::handleKeyEvent(AInputEvent *event) {
 				_hoverLocation.y,
 			}},
 		});
-		ev.key.keycode = KeyCodes[keyCode];
+		ev.key.keycode = getKeyCode(keyCode);
 		ev.key.compose = InputKeyComposeState::Nothing;
 		ev.key.keysym = keyCode;
 		ev.key.keychar = 0;
@@ -671,7 +695,7 @@ int InputQueue::handleKeyEvent(AInputEvent *event) {
 				_hoverLocation.y,
 			}},
 		});
-		ev.key.keycode = KeyCodes[keyCode];
+		ev.key.keycode = getKeyCode(keyCode);
 		ev.key.compose = InputKeyComposeState::Nothing;
 		ev.key.keysym = keyCode;
 		ev.key.keychar = 0;
@@ -688,7 +712,7 @@ int InputQueue::handleKeyEvent(AInputEvent *event) {
 				_hoverLocation.y,
 			}},
 		});
-		ev.key.keycode = KeyCodes[keyCode];
+		ev.key.keycode = getKeyCode(keyCode);
 		ev.key.compose = InputKeyComposeState::Nothing;
 		ev.key.keysym = keyCode;
 		ev.key.keychar = 0;
@@ -936,7 +960,7 @@ void InputQueue::handleBackInvoked() {
 				_hoverLocation.y,
 			}},
 		});
-		ev.key.keycode = KeyCodes[keyCode];
+		ev.key.keycode = getKeyCode(keyCode);
 		ev.key.compose = InputKeyComposeState::Nothing;
 		ev.key.keysym = keyCode;
 		ev.key.keychar = 0;
@@ -953,7 +977,7 @@ void InputQueue::handleBackInvoked() {
 				_hoverLocation.y,
 			}},
 		});
-		ev.key.keycode = KeyCodes[keyCode];
+		ev.key.keycode = getKeyCode(keyCode);
 		ev.key.compose = InputKeyComposeState::Nothing;
 		ev.key.keysym = keyCode;
 		ev.key.keychar = 0;

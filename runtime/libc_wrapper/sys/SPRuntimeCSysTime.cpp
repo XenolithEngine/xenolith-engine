@@ -37,6 +37,9 @@ THE SOFTWARE.
 #include <unistd.h>
 #endif
 
+// declares sprt::platform::_futimes / _futimesat / _lutimes (dlsym'd on Android)
+#include "../src/private/SPRTSpecific.h"
+
 namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(gettimeofday)(struct __SPRT_TIMEVAL_NAME *__SPRT_RESTRICT __tv,
@@ -139,7 +142,7 @@ __SPRT_C_FUNC int __SPRT_ID(setitimer)(int __w,
 }
 
 __SPRT_C_FUNC int __SPRT_ID(utimes)(const char *path, const __SPRT_TIMEVAL_NAME ts[2]) {
-#if __STDC_HOSTED == 0
+#if __STDC_HOSTED__ == 0
 	if (ts) {
 		struct __SPRT_TIMESPEC_NAME nts[2];
 		__SPRT_TIMEVAL_TO_TIMESPEC(&ts[0], &nts[0]);
@@ -155,15 +158,12 @@ __SPRT_C_FUNC int __SPRT_ID(utimes)(const char *path, const __SPRT_TIMEVAL_NAME 
 	nativeTs[1].tv_sec = ts[1].tv_sec;
 	nativeTs[1].tv_usec = ts[1].tv_usec;
 
-	return internal::performWithNativePath(path, [&](const char *target) {
-		// call with native path
-		return ::utimes(target, nativeTs);
-	}, -1);
+	return ::utimes(path, nativeTs);
 #endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(futimes)(int fd, const __SPRT_TIMEVAL_NAME ts[2]) {
-#if __STDC_HOSTED == 0
+#if __STDC_HOSTED__ == 0
 	if (ts) {
 		struct __SPRT_TIMESPEC_NAME nts[2];
 		__SPRT_TIMEVAL_TO_TIMESPEC(&ts[0], &nts[0]);
@@ -194,7 +194,7 @@ __SPRT_C_FUNC int __SPRT_ID(futimes)(int fd, const __SPRT_TIMEVAL_NAME ts[2]) {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(futimesat)(int fd, const char *path, const __SPRT_TIMEVAL_NAME ts[2]) {
-#if __STDC_HOSTED == 0
+#if __STDC_HOSTED__ == 0
 	if (ts) {
 		struct __SPRT_TIMESPEC_NAME nts[2];
 		__SPRT_TIMEVAL_TO_TIMESPEC(&ts[0], &nts[0]);
@@ -256,7 +256,7 @@ __SPRT_C_FUNC int __SPRT_ID(futimesat)(int fd, const char *path, const __SPRT_TI
 }
 
 __SPRT_C_FUNC int __SPRT_ID(lutimes)(const char *path, const __SPRT_TIMEVAL_NAME ts[2]) {
-#if __STDC_HOSTED == 0
+#if __STDC_HOSTED__ == 0
 	if (ts) {
 		struct __SPRT_TIMESPEC_NAME nts[2];
 		__SPRT_TIMEVAL_TO_TIMESPEC(&ts[0], &nts[0]);
