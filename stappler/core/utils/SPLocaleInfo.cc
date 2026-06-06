@@ -809,9 +809,19 @@ static uint32_t getSymbolicIndex(StringView str, uint32_t cap) {
 }
 
 StringView findString(SpanView<StringView> data, StringView key) {
+	if (data.empty()) {
+		return StringView();
+	}
+	// open-addressed table: probe at most data.size() slots with wraparound and
+	// return empty on a miss, instead of scanning past the end on an unknown key
 	auto idx = getSymbolicIndex(key, data.size() - 1);
-	while (!data[idx].starts_with(key)) { ++idx; }
-	return data[idx];
+	for (size_t i = 0; i < data.size(); ++i) {
+		auto &str = data[(idx + i) % data.size()];
+		if (str.starts_with(key)) {
+			return str;
+		}
+	}
+	return StringView();
 }
 
 LanguageInfo LanguageInfo::get(StringView key) {
@@ -845,7 +855,7 @@ CountryInfo CountryInfo::get(StringView key) {
 	string::apply_tolower_c(buf);
 
 	CountryInfo ret;
-	auto str = findString(s_countriesArray, StringView(buf.data(), key.size()));
+	auto str = findString(s_countriesArray, StringView(buf.data(), sprt::min(size_t(3), key.size())));
 	if (!str.empty()) {
 		str.skipUntil<StringView::Chars<':'>>();
 		++str;

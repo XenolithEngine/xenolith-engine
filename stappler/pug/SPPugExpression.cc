@@ -165,10 +165,13 @@ static bool Expression_isConst(const Expression &expr, Expression::Op op) {
 
 bool Expression::isConst() const { return Expression_isConst(*this, NoOp); }
 
+// bound mutual recursion: deeply nested ()/[]/{} in an expression would otherwise
+// exhaust the native stack
+static constexpr uint32_t MaxExpressionDepth = 128;
 static bool Lexer_readExpression(Expression **node, StringView &r, const Expression::Options &opts,
-		bool isRoot);
+		bool isRoot, uint32_t depth = 0);
 static bool Lexer_Expression_readOperand(Expression **node, StringView &r, Expression::Op op,
-		const Expression::Options &opts);
+		const Expression::Options &opts, uint32_t depth = 0);
 static bool Lexer_Expression_readOperandValue(Expression *current, StringView &r, Expression::Op op,
 		const Expression::Options &opts);
 
@@ -380,7 +383,7 @@ static bool Lexer_Expression_skipWhitespace(StringView &r, const Expression::Opt
 		return !r.empty();
 	} else {
 		r.skipChars<StringView::Chars<' ', '\t'>>();
-		if (r.is('\n' || r.is('\r'))) {
+		if (r.is('\n') || r.is('\r')) {
 			return false;
 		}
 		r.skipChars<StringView::Chars<' ', '\t'>>();
@@ -389,7 +392,10 @@ static bool Lexer_Expression_skipWhitespace(StringView &r, const Expression::Opt
 }
 
 static bool Lexer_Expression_readOperand(Expression **node, StringView &r, Expression::Op op,
-		const Expression::Options &opts) {
+		const Expression::Options &opts, uint32_t depth) {
+	if (depth > MaxExpressionDepth) {
+		return false;
+	}
 	if (!Lexer_Expression_skipWhitespace(r, opts, false)) {
 		return false;
 	}
@@ -433,7 +439,7 @@ static bool Lexer_Expression_readOperand(Expression **node, StringView &r, Expre
 
 	// read as expression
 	if (r.is('(') || r.is('[') || r.is('{')) {
-		if (Lexer_readExpression(node, r, opts, false)) {
+		if (Lexer_readExpression(node, r, opts, false, depth + 1)) {
 			return true;
 		}
 		return false;
@@ -444,7 +450,10 @@ static bool Lexer_Expression_readOperand(Expression **node, StringView &r, Expre
 }
 
 static bool Lexer_readExpression(Expression **node, StringView &r, const Expression::Options &opts,
-		bool isRoot) {
+		bool isRoot, uint32_t depth) {
+	if (depth > MaxExpressionDepth) {
+		return false;
+	}
 	Expression::Op targetOp = Expression::NoOp;
 	Expression::Block block = Expression::Block::Parentesis;
 	char brace = 0;
@@ -493,7 +502,7 @@ static bool Lexer_readExpression(Expression **node, StringView &r, const Express
 	}
 
 	// read first operand
-	if (!Lexer_Expression_readOperand(node, r, targetOp, opts)) {
+	if (!Lexer_Expression_readOperand(node, r, targetOp, opts, depth + 1)) {
 		return false;
 	}
 	if (!Lexer_Expression_skipWhitespace(r, opts, isRoot)) {
@@ -514,11 +523,11 @@ static bool Lexer_readExpression(Expression **node, StringView &r, const Express
 
 		current = Lexer_Expression_insertOp(node, op);
 		if (op == Expression::Conditional) {
-			if (!Lexer_readExpression(&current->right, r, opts, false)) {
+			if (!Lexer_readExpression(&current->right, r, opts, false, depth + 1)) {
 				return false;
 			}
 			current = Lexer_Expression_insertOp(node, Expression::ConditionalSwitch);
-			if (!Lexer_Expression_readOperand(&current->right, r, current->op, opts)) {
+			if (!Lexer_Expression_readOperand(&current->right, r, current->op, opts, depth + 1)) {
 				return false;
 			}
 			if (!Lexer_Expression_skipWhitespace(r, opts, isRoot)) {
@@ -526,7 +535,7 @@ static bool Lexer_readExpression(Expression **node, StringView &r, const Express
 			}
 		} else if (op == Expression::Call || op == Expression::Subscript
 				|| op == Expression::Construct) {
-			if (!Lexer_readExpression(&current->right, r, opts, false)) {
+			if (!Lexer_readExpression(&current->right, r, opts, false, depth + 1)) {
 				return false;
 			}
 			if (!Lexer_Expression_skipWhitespace(r, opts, false)) {
@@ -535,7 +544,7 @@ static bool Lexer_readExpression(Expression **node, StringView &r, const Express
 		} else if (op == Expression::SuffixIncr || op == Expression::SuffixDecr) {
 			// pass thru
 		} else {
-			if (!Lexer_Expression_readOperand(&current->right, r, current->op, opts)) {
+			if (!Lexer_Expression_readOperand(&current->right, r, current->op, opts, depth + 1)) {
 				return false;
 			}
 			if (!Lexer_Expression_skipWhitespace(r, opts, isRoot)) {

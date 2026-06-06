@@ -72,7 +72,15 @@ bool Lexer::parseToken(const OutStream &OutStream, Token &tok) {
 
 	Token *currentTok = &tok;
 
-	sprt::array<Token *, 32> stack;
+	// pool-backed, grows with indentation depth (a fixed array would overflow on a
+	// template indented past its size)
+	Vector<Token *> stack;
+	auto stackSet = [&](uint32_t idx, Token *t) {
+		if (idx >= stack.size()) {
+			stack.resize(idx + 1, nullptr);
+		}
+		stack[idx] = t;
+	};
 
 	while (!r.empty()) {
 		StringView tmp(r);
@@ -96,7 +104,7 @@ bool Lexer::parseToken(const OutStream &OutStream, Token &tok) {
 				// do nothing
 			} else if (indent == indentLevel + 1) {
 				if (currentTok->tail) {
-					stack[indentLevel] = currentTok;
+					stackSet(indentLevel, currentTok);
 					currentTok = currentTok->tail;
 					indentLevel = indent;
 				} else {
@@ -113,7 +121,7 @@ bool Lexer::parseToken(const OutStream &OutStream, Token &tok) {
 				if (followTag) {
 					currentTok->tail->addChild(line);
 					currentTok = line;
-					stack[indentLevel] = currentTok;
+					stackSet(indentLevel, currentTok);
 				} else {
 					currentTok->addChild(line);
 				}

@@ -79,7 +79,7 @@ static GifFileType *bitmap_DGifOpen(void *userPtr, InputFunc readFunc, int *erro
 
 struct GifReadStruct {
 	~GifReadStruct() {
-		if (!file) {
+		if (file) {
 			bitmap_DGifCloseFile(file, &error);
 			file = nullptr;
 		}
@@ -189,7 +189,10 @@ struct GifReadStruct {
 					outputData.width);
 		}
 
-		auto dataLen = outputData.stride * outputData.height;
+		uint32_t dataLen = 0;
+		if (!checkImageDataSize(outputData, dataLen)) {
+			return false;
+		}
 		outputData.resize(outputData.target, dataLen);
 
 		auto input = file->SavedImages->RasterBits;
@@ -199,7 +202,9 @@ struct GifReadStruct {
 			for (size_t i = 0; i < outputData.height; ++i) {
 				auto loc = location;
 				for (size_t j = 0; j < outputData.width; ++j) {
-					auto &c = colors->Colors[input[i * outputData.width + j]];
+					auto idx = input[i * outputData.width + j];
+					if (idx >= colors->ColorCount) { idx = 0; }
+					auto &c = colors->Colors[idx];
 					*loc++ = c.Red;
 					*loc++ = c.Green;
 					*loc++ = c.Blue;
@@ -210,7 +215,9 @@ struct GifReadStruct {
 			for (size_t i = 0; i < outputData.height; ++i) {
 				auto loc = location;
 				for (size_t j = 0; j < outputData.width; ++j) {
-					auto &c = colors->Colors[input[i * outputData.width + j]];
+					auto idx = input[i * outputData.width + j];
+					if (idx >= colors->ColorCount) { idx = 0; }
+					auto &c = colors->Colors[idx];
 					*loc++ = c.Red;
 				}
 				location += outputData.stride;
@@ -220,6 +227,7 @@ struct GifReadStruct {
 				auto loc = location;
 				for (size_t j = 0; j < outputData.width; ++j) {
 					auto idx = input[i * outputData.width + j];
+					if (idx >= colors->ColorCount) { idx = 0; }
 					*loc++ = colors->Colors[idx].Red;
 					if (idx == transparent) {
 						*loc++ = 0;
@@ -234,6 +242,7 @@ struct GifReadStruct {
 				auto loc = location;
 				for (size_t j = 0; j < outputData.width; ++j) {
 					auto idx = input[i * outputData.width + j];
+					if (idx >= colors->ColorCount) { idx = 0; }
 					auto &c = colors->Colors[idx];
 					*loc++ = c.Red;
 					*loc++ = c.Green;

@@ -361,7 +361,7 @@ bool check(StringView name, const uint8_t *data, size_t dataLen) {
 template <>
 void convertLine<PixelFormat::RGB888, PixelFormat::RGBA8888>(const uint8_t *in, uint8_t *out,
 		uint32_t ins, uint32_t outs) {
-	for (size_t i = 0, l = ins - 2; i < l; i += 3) {
+	for (size_t i = 0; i + 2 < ins; i += 3) {
 		*out++ = in[i]; //R
 		*out++ = in[i + 1]; //G
 		*out++ = in[i + 2]; //B
@@ -382,7 +382,7 @@ void convertLine<PixelFormat::I8, PixelFormat::RGB888>(const uint8_t *in, uint8_
 template <>
 void convertLine<PixelFormat::IA88, PixelFormat::RGB888>(const uint8_t *in, uint8_t *out,
 		uint32_t ins, uint32_t outs) {
-	for (size_t i = 0, l = ins - 1; i < l; i += 2) {
+	for (size_t i = 0; i + 1 < ins; i += 2) {
 		*out++ = in[i]; //R
 		*out++ = in[i]; //G
 		*out++ = in[i]; //B
@@ -403,7 +403,7 @@ void convertLine<PixelFormat::I8, PixelFormat::RGBA8888>(const uint8_t *in, uint
 template <>
 void convertLine<PixelFormat::IA88, PixelFormat::RGBA8888>(const uint8_t *in, uint8_t *out,
 		uint32_t ins, uint32_t outs) {
-	for (size_t i = 0, l = ins - 1; i < l; i += 2) {
+	for (size_t i = 0; i + 1 < ins; i += 2) {
 		*out++ = in[i]; //R
 		*out++ = in[i]; //G
 		*out++ = in[i]; //B
@@ -431,7 +431,7 @@ void convertLine<PixelFormat::IA88, PixelFormat::A8>(const uint8_t *in, uint8_t 
 template <>
 void convertLine<PixelFormat::IA88, PixelFormat::I8>(const uint8_t *in, uint8_t *out, uint32_t ins,
 		uint32_t outs) {
-	for (size_t i = 0, l = ins - 1; i < l; i += 2) {
+	for (size_t i = 0; i + 1 < ins; i += 2) {
 		*out++ = in[i]; //R
 	}
 }
@@ -439,7 +439,7 @@ void convertLine<PixelFormat::IA88, PixelFormat::I8>(const uint8_t *in, uint8_t 
 template <>
 void convertLine<PixelFormat::RGBA8888, PixelFormat::RGB888>(const uint8_t *in, uint8_t *out,
 		uint32_t ins, uint32_t outs) {
-	for (size_t i = 0, l = ins - 3; i < l; i += 4) {
+	for (size_t i = 0; i + 3 < ins; i += 4) {
 		*out++ = in[i]; //R
 		*out++ = in[i + 1]; //G
 		*out++ = in[i + 2]; //B
@@ -449,7 +449,7 @@ void convertLine<PixelFormat::RGBA8888, PixelFormat::RGB888>(const uint8_t *in, 
 template <>
 void convertLine<PixelFormat::RGB888, PixelFormat::I8>(const uint8_t *in, uint8_t *out,
 		uint32_t ins, uint32_t outs) {
-	for (size_t i = 0, l = ins - 2; i < l; i += 3) {
+	for (size_t i = 0; i + 2 < ins; i += 3) {
 		*out++ = (in[i] * 299 + in[i + 1] * 587 + in[i + 2] * 114 + 500)
 				/ 1'000; //I =  (R*299 + G*587 + B*114 + 500) / 1000
 	}
@@ -458,7 +458,7 @@ void convertLine<PixelFormat::RGB888, PixelFormat::I8>(const uint8_t *in, uint8_
 template <>
 void convertLine<PixelFormat::RGBA8888, PixelFormat::I8>(const uint8_t *in, uint8_t *out,
 		uint32_t ins, uint32_t outs) {
-	for (size_t i = 0, l = ins - 3; i < l; i += 4) {
+	for (size_t i = 0; i + 3 < ins; i += 4) {
 		*out++ = (in[i] * 299 + in[i + 1] * 587 + in[i + 2] * 114 + 500)
 				/ 1'000; //I =  (R*299 + G*587 + B*114 + 500) / 1000
 	}
@@ -467,7 +467,7 @@ void convertLine<PixelFormat::RGBA8888, PixelFormat::I8>(const uint8_t *in, uint
 template <>
 void convertLine<PixelFormat::RGBA8888, PixelFormat::A8>(const uint8_t *in, uint8_t *out,
 		uint32_t ins, uint32_t outs) {
-	for (size_t i = 0, l = ins - 3; i < l; i += 4) {
+	for (size_t i = 0; i + 3 < ins; i += 4) {
 		*out++ = in[i + 3]; //A
 	}
 }
@@ -475,7 +475,7 @@ void convertLine<PixelFormat::RGBA8888, PixelFormat::A8>(const uint8_t *in, uint
 template <>
 void convertLine<PixelFormat::RGB888, PixelFormat::IA88>(const uint8_t *in, uint8_t *out,
 		uint32_t ins, uint32_t outs) {
-	for (size_t i = 0, l = ins - 2; i < l; i += 3) {
+	for (size_t i = 0; i + 2 < ins; i += 3) {
 		*out++ = (in[i] * 299 + in[i + 1] * 587 + in[i + 2] * 114 + 500)
 				/ 1'000; //I =  (R*299 + G*587 + B*114 + 500) / 1000
 		*out++ = 0xFF;
@@ -485,7 +485,7 @@ void convertLine<PixelFormat::RGB888, PixelFormat::IA88>(const uint8_t *in, uint
 template <>
 void convertLine<PixelFormat::RGBA8888, PixelFormat::IA88>(const uint8_t *in, uint8_t *out,
 		uint32_t ins, uint32_t outs) {
-	for (size_t i = 0, l = ins - 3; i < l; i += 4) {
+	for (size_t i = 0; i + 3 < ins; i += 4) {
 		*out++ = (in[i] * 299 + in[i + 1] * 587 + in[i + 2] * 114 + 500)
 				/ 1'000; //I =  (R*299 + G*587 + B*114 + 500) / 1000
 		*out++ = in[i + 3];

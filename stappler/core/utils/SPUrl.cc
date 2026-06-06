@@ -43,7 +43,7 @@ auto _parsePath(StringView str, Vector &ret) {
 			// skip this component
 		} else {
 			if (!path.empty()) {
-				ret.push_back(str);
+				ret.push_back(path);
 			}
 		}
 	} while (!s.empty() && s.is('/'));
@@ -71,7 +71,7 @@ template <>
 auto UrlView::parseArgs<memory::PoolInterface>(StringView str, size_t maxVarSize)
 		-> data::ValueTemplate<memory::PoolInterface> {
 	if (str.empty()) {
-		data::ValueTemplate<memory::PoolInterface>();
+		return data::ValueTemplate<memory::PoolInterface>();
 	}
 	StringView r(str);
 	if (r.front() == '?' || r.front() == '&' || r.front() == ';') {
@@ -84,15 +84,16 @@ auto UrlView::parseArgs<memory::PoolInterface>(StringView str, size_t maxVarSize
 	if (!fn) {
 		log::source().error("UrlView",
 				"Module MODULE_STAPPLER_DATA declared, but not available in runtime");
+		return data::ValueTemplate<memory::PoolInterface>();
 	}
-	return fn(str, maxVarSize);
+	return fn(r, maxVarSize);
 }
 
 template <>
 auto UrlView::parseArgs<memory::StandartInterface>(StringView str, size_t maxVarSize)
 		-> data::ValueTemplate<memory::StandartInterface> {
 	if (str.empty()) {
-		data::ValueTemplate<memory::StandartInterface>();
+		return data::ValueTemplate<memory::StandartInterface>();
 	}
 	StringView r(str);
 	if (r.front() == '?' || r.front() == '&' || r.front() == ';') {
@@ -105,8 +106,9 @@ auto UrlView::parseArgs<memory::StandartInterface>(StringView str, size_t maxVar
 	if (!fn) {
 		log::source().error("UrlView",
 				"Module MODULE_STAPPLER_DATA declared, but not available in runtime");
+		return data::ValueTemplate<memory::StandartInterface>();
 	}
-	return fn(str, maxVarSize);
+	return fn(r, maxVarSize);
 }
 
 #endif

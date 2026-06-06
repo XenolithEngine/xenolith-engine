@@ -50,7 +50,11 @@ static int32_t lasttime = 0;
 static int16_t firstseq = 0;
 static struct Globalidentifier gid = {};
 
-static const char *getCurrentUsername() { return getlogin(); };
+static const char *getCurrentUsername() {
+	// getlogin() returns null with no controlling terminal (CI/containers/daemons)
+	auto name = getlogin();
+	return name ? name : "stappler";
+};
 
 // convenience method for ROL
 static int16_t rotl16(int16_t value, unsigned int count) {
@@ -250,7 +254,17 @@ const CallbackStream &operator<<(const CallbackStream &cb, const StringValue &st
 	}
 
 	if (!tmp.empty()) {
-		cb << '"' << str.value << '"';
+		// escape embedded quotes/backslashes so a value can't break out of the
+		// quoted pbxproj string and inject project structure
+		cb << '"';
+		for (size_t i = 0; i < str.value.size(); ++i) {
+			auto c = str.value[i];
+			if (c == '\\' || c == '"') {
+				cb << '\\';
+			}
+			cb << c;
+		}
+		cb << '"';
 	} else {
 		cb << str.value;
 	}

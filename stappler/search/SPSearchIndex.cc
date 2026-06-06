@@ -49,7 +49,7 @@ void SearchIndex::add(const StringView &v, int64_t id, int64_t tag) {
 			}
 			auto s = canonical.size();
 			canonical.append(str.str<Interface>());
-			onToken(_tokens, str, idx, Slice{uint16_t(s), uint16_t(str.size())});
+			onToken(_tokens, str, idx, Slice{uint32_t(s), uint32_t(str.size())});
 		}
 	};
 
@@ -93,10 +93,10 @@ SearchIndex::Result SearchIndex::performSearch(const StringView &v, size_t minMa
 					if (ret_it == res.nodes.end() || ret_it->node != node) {
 						res.nodes.emplace(ret_it,
 								ResultNode{0.0f, node,
-									{ResultToken{wordIndex, uint16_t(str.size()), lb->slice}}});
+									{ResultToken{wordIndex, uint32_t(str.size()), lb->slice}}});
 					} else {
 						ret_it->matches.emplace_back(
-								ResultToken{wordIndex, uint16_t(str.size()), lb->slice});
+								ResultToken{wordIndex, uint32_t(str.size()), lb->slice});
 					}
 				}
 				++lb;
@@ -143,7 +143,7 @@ SearchIndex::Slice SearchIndex::convertToken(const Node &node, const ResultToken
 		auto start = ret.slice.start + node.alignment.diff_original(ret.slice.start);
 		auto end = ret.slice.start + ret.match;
 		end += node.alignment.diff_original(end, true);
-		return Slice{uint16_t(start), uint16_t(end - start)};
+		return Slice{uint32_t(start), uint32_t(end - start)};
 	}
 }
 

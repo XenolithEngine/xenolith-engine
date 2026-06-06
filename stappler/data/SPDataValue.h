@@ -31,6 +31,12 @@ THE SOFTWARE.
 
 namespace STAPPLER_VERSIONIZED stappler::data {
 
+// Maximum container nesting depth accepted by the CBOR/JSON/Serenity decoders.
+// The decoders are iterative, but the resulting Value tree is destroyed and
+// re-encoded recursively, so an unbounded depth would overflow the native stack
+// on teardown/encode. Shared so all decoders agree on the limit.
+static constexpr size_t MaxDecodeDepth = 256;
+
 template <typename Interface>
 class JsonBuffer;
 template <typename Interface>

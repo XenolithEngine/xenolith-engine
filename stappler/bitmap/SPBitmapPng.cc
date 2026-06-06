@@ -31,6 +31,7 @@ namespace STAPPLER_VERSIONIZED stappler::bitmap::png {
 
 struct ReadState {
 	const uint8_t *data = nullptr;
+	size_t size = 0;
 	size_t offset = 0;
 };
 
@@ -58,8 +59,17 @@ SPUNUSED static bool getPngImageSize(const io::Producer &file, StackBuffer<512> 
 
 static void readDynamicData(png_structp pngPtr, png_bytep data, png_size_t length) {
 	auto state = (ReadState *)png_get_io_ptr(pngPtr);
-	sprt::memcpy(data, state->data + state->offset, length);
-	state->offset += length;
+	// clamp to the available input so a truncated/crafted PNG whose chunk lengths
+	// exceed the buffer can't drive an out-of-bounds read; zero-fill any shortfall
+	size_t avail = (state->offset < state->size) ? (state->size - state->offset) : 0;
+	size_t n = (size_t(length) < avail) ? size_t(length) : avail;
+	if (n > 0) {
+		sprt::memcpy(data, state->data + state->offset, n);
+	}
+	if (size_t(length) > n) {
+		sprt::memset(data + n, 0, size_t(length) - n);
+	}
+	state->offset += n;
 }
 
 struct PngReadStruct {
@@ -94,6 +104,7 @@ struct PngReadStruct {
 		}
 
 		state.data = inputData;
+		state.size = size;
 		state.offset = 0;
 		png_set_read_fn(png_ptr, (png_voidp)&state, readDynamicData);
 
@@ -182,9 +193,12 @@ struct PngReadStruct {
 					(uint32_t)rowbytes);
 		}
 
-		png_bytep row_pointers[outputData.height];
+		uint32_t dataLen = 0;
+		if (!checkImageDataSize(outputData, dataLen)) {
+			return false;
+		}
 
-		auto dataLen = outputData.stride * outputData.height;
+		png_bytep row_pointers[outputData.height];
 
 		outputData.resize(outputData.target, dataLen);
 

@@ -248,7 +248,7 @@ static BackendCtx s_gnuTLSCtx = {
 },
 	.finalize = [](BackendCtx &) { gnutls_global_deinit(); },
 	.encryptBlock = [](const BlockKey256 &key, BytesView d,
-							const Callback<void(BytesView)> &cb) -> bool {
+							const Callback<void(BytesView)> &cb, BytesView ivBytes) -> bool {
 	auto cipherBlockSize = getBlockSize(key.cipher);
 	auto algo = getGnuTLSAlgo(key.cipher);
 
@@ -259,6 +259,9 @@ static BackendCtx s_gnuTLSCtx = {
 	uint8_t output[blockSize + sizeof(BlockCryptoHeader)];
 
 	uint8_t iv[16] = {0};
+	if (ivBytes.size() >= 16) {
+		memcpy(iv, ivBytes.data(), 16);
+	}
 	gnutls_datum_t ivData = {.data = static_cast<unsigned char *>(iv),
 		.size = static_cast<unsigned int>(16)};
 
@@ -276,13 +279,13 @@ static BackendCtx s_gnuTLSCtx = {
 	size_t outSize = blockSize - sizeof(BlockCryptoHeader);
 	fillCryptoBlockHeader(output, key, d);
 
-	if constexpr (SAFE_BLOCK_ENCODING) {
+	{
+		// always copy into the output buffer and zero-pad before encrypting; passing
+		// d.data() with align(dataSize,16) to gnutls_cipher_encrypt2 over-reads up to
+		// 15 bytes past d when it isn't block-aligned (CRYPTO-09)
 		memcpy(output + sizeof(BlockCryptoHeader), d.data(), d.size());
 		memset(output + sizeof(BlockCryptoHeader) + d.size(), 0, blockSize - d.size());
 		err = gnutls_cipher_encrypt(aes, output + sizeof(BlockCryptoHeader), outSize);
-	} else {
-		err = gnutls_cipher_encrypt2(aes, d.data(), math::align<size_t>(dataSize, cipherBlockSize),
-				output + sizeof(BlockCryptoHeader), outSize);
 	}
 
 	if (err != 0) {
@@ -297,17 +300,34 @@ static BackendCtx s_gnuTLSCtx = {
 	return true;
 },
 	.decryptBlock = [](const BlockKey256 &key, BytesView b,
-							const Callback<void(BytesView)> &cb) -> bool {
+							const Callback<void(BytesView)> &cb, BytesView ivBytes) -> bool {
+	if (b.size() < sizeof(BlockCryptoHeader)) {
+		return false;
+	}
 	auto info = getBlockInfo(b);
 	auto cipherBlockSize = getBlockSize(info.cipher);
 	auto algo = getGnuTLSAlgo(info.cipher);
 
-	auto blockSize = math::align<size_t>(info.dataSize, cipherBlockSize) + cipherBlockSize;
 	b.offset(sizeof(BlockCryptoHeader));
 
-	uint8_t output[blockSize];
+	// declared dataSize must match the real ciphertext (plaintext padded to the
+	// block size); otherwise the attacker controls the buffer size below
+	if (cipherBlockSize == 0 || b.size() != math::align<size_t>(info.dataSize, cipherBlockSize)) {
+		return false;
+	}
+
+	auto blockSize = math::align<size_t>(info.dataSize, cipherBlockSize) + cipherBlockSize;
+
+	// heap buffer (was a stack VLA sized by the attacker-controlled dataSize)
+	uint8_t *output = sprt::__new_n<uint8_t>(blockSize);
+	if (!output) {
+		return false;
+	}
 
 	uint8_t iv[16] = {0};
+	if (ivBytes.size() >= 16) {
+		memcpy(iv, ivBytes.data(), 16);
+	}
 	gnutls_datum_t ivData = {.data = static_cast<unsigned char *>(iv),
 		.size = static_cast<unsigned int>(16)};
 
@@ -319,6 +339,7 @@ static BackendCtx s_gnuTLSCtx = {
 	auto err = gnutls_cipher_init(&aes, algo, &keyData, &ivData);
 	if (err != 0) {
 		log::source().error("Crypto", "gnutls_cipher_init() = [", err, "] ", gnutls_strerror(err));
+		sprt::__delete_n(output);
 		return false;
 	}
 
@@ -327,11 +348,13 @@ static BackendCtx s_gnuTLSCtx = {
 		gnutls_cipher_deinit(aes);
 		log::source().error("Crypto", "gnutls_cipher_decrypt2() = [", err, "] ",
 				gnutls_strerror(err));
+		sprt::__delete_n(output);
 		return false;
 	}
 
 	gnutls_cipher_deinit(aes);
 	cb(BytesView(output, info.dataSize));
+	sprt::__delete_n(output);
 	return true;
 },
 	.hash256 = [](Sha256::Buf &buf, const Callback<void(const HashCoderCallback &upd)> &cb,

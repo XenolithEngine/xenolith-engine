@@ -153,7 +153,7 @@ static void drawCubicBezierRecursive(LineDrawer &drawer, float x0, float y0, flo
 	const bool significantPoint1 = d1 > sprt::Epsilon<float>;
 	const bool significantPoint2 = d2 > sprt::Epsilon<float>;
 
-	if (significantPoint1 && significantPoint1) {
+	if (significantPoint1 && significantPoint2) {
 		const float d_sq = ((d1 + d2) * (d1 + d2)) / (dx * dx + dy * dy);
 		if (d_sq <= drawer.distanceError) {
 			if (drawer.angularError < sprt::Epsilon<float>) {

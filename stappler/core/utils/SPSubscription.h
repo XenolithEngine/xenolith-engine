@@ -206,7 +206,7 @@ template <typename Interface>
 bool SubscriptionTemplate<Interface>::unsubscribe(Id id) {
 	if (_forwardedFlags) {
 		auto it = _forwardedFlags->find(id);
-		if (it == _forwardedFlags->end()) {
+		if (it != _forwardedFlags->end()) {
 			_forwardedFlags->erase(id);
 			_flags.erase(id);
 			return true;

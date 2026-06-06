@@ -258,7 +258,7 @@ void Document::onStyleAttribute(StyleList &style, StringView tag, StringView nam
 			return true;
 		}, [](StringView) { return StringIdNone; });
 	} else if (name == "width") {
-		if (value.back() == '%') {
+		if (!value.empty() && value.back() == '%') {
 			StringView(value).readFloat().unwrap([&](float v) {
 				style.set<ParameterName::CssWidth>(Metric(v / 100.0f, Metric::Percent));
 			});
@@ -267,7 +267,7 @@ void Document::onStyleAttribute(StyleList &style, StringView tag, StringView nam
 					[&](int64_t v) { style.set<ParameterName::CssWidth>(Metric(v, Metric::Px)); });
 		}
 	} else if (name == "height") {
-		if (value.back() == '%') {
+		if (!value.empty() && value.back() == '%') {
 			StringView(value).readFloat().unwrap([&](float v) {
 				style.set<ParameterName::CssWidth>(Metric(v / 100.0f, Metric::Percent));
 			});

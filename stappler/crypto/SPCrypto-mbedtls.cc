@@ -90,7 +90,7 @@ static BackendCtx s_mbedTLSCtx = {
 		log::source().verbose("Crypto", "MbedTLS backend loaded");
 	},
 	.finalize = [] (BackendCtx &) { },
-	.encryptBlock = [] (const BlockKey256 &key, BytesView d, const Callback<void(BytesView)> &cb) -> bool {
+	.encryptBlock = [] (const BlockKey256 &key, BytesView d, const Callback<void(BytesView)> &cb, BytesView ivData) -> bool {
 		auto cipherBlockSize = getBlockSize(key.cipher);
 
 		uint64_t dataSize = d.size();
@@ -101,10 +101,13 @@ static BackendCtx s_mbedTLSCtx = {
 
 		fillCryptoBlockHeader(output, key, d);
 
-		auto perform = [&key] (const uint8_t *source, size_t size, uint8_t *out) {
+		auto perform = [&key, ivData] (const uint8_t *source, size_t size, uint8_t *out) {
 			bool success = false;
 			mbedtls_aes_context aes;
 			unsigned char iv[16] = { 0 };
+			if (ivData.size() >= 16) {
+				memcpy(iv, ivData.data(), 16);
+			}
 
 			mbedtls_aes_init( &aes );
 			if (mbedtls_aes_setkey_enc( &aes, key.data.data(), 256 ) == 0) {
@@ -127,7 +130,11 @@ static BackendCtx s_mbedTLSCtx = {
 			return success;
 		};
 
-		if constexpr (SAFE_BLOCK_ENCODING) {
+		{
+			// always copy the plaintext into a zero-padded, block-aligned buffer
+			// before encrypting; reading blockSize-cipherBlockSize == align(d.size(),16)
+			// bytes straight from d over-reads up to 15 bytes when d isn't block-aligned
+			// (CRYPTO-09)
 			uint8_t tmp[blockSize];
 			memset(tmp, 0, blockSize);
 			memcpy(tmp, d.data(), d.size());
@@ -135,38 +142,52 @@ static BackendCtx s_mbedTLSCtx = {
 			if (!perform(tmp, blockSize - cipherBlockSize, output + sizeof(BlockCryptoHeader))) {
 				return false;
 			}
-		} else {
-			if (!perform(d.data(), blockSize - cipherBlockSize, output + sizeof(BlockCryptoHeader))) {
-				return false;
-			}
 		}
 
 		cb(BytesView(output, blockSize + sizeof(BlockCryptoHeader) - cipherBlockSize));
 		return true;
 	},
-	.decryptBlock = [] (const BlockKey256 &key, BytesView b, const Callback<void(BytesView)> &cb) -> bool {
+	.decryptBlock = [] (const BlockKey256 &key, BytesView b, const Callback<void(BytesView)> &cb, BytesView ivData) -> bool {
+		if (b.size() < sizeof(BlockCryptoHeader)) {
+			return false;
+		}
 		bool success = false;
 		auto info = getBlockInfo(b);
 		auto cipherBlockSize = getBlockSize(info.cipher);
 
-		auto blockSize = math::align<size_t>(info.dataSize, cipherBlockSize) + cipherBlockSize;
 		b.offset(sizeof(BlockCryptoHeader));
 
-		uint8_t output[blockSize];
+		// declared dataSize must match the real ciphertext (plaintext padded to the
+		// block size); otherwise the attacker controls the buffer size / read length
+		if (cipherBlockSize == 0 || b.size() != math::align<size_t>(info.dataSize, cipherBlockSize)) {
+			return false;
+		}
+
+		auto blockSize = math::align<size_t>(info.dataSize, cipherBlockSize) + cipherBlockSize;
+		// decrypt exactly the ciphertext length, not blockSize (which is 16 bytes
+		// larger and would read past the end of b)
+		auto decryptLen = b.size();
+
+		// heap buffer (was a stack VLA sized by the attacker-controlled dataSize)
+		uint8_t *output = sprt::__new_n<uint8_t>(blockSize);
+		if (!output) {
+			return false;
+		}
 
 		mbedtls_aes_context aes;
 		unsigned char iv[16] = { 0 };
+		if (ivData.size() >= 16) { memcpy(iv, ivData.data(), 16); }
 
 		mbedtls_aes_init( &aes );
 		if (mbedtls_aes_setkey_dec( &aes, key.data.data(), 256 ) == 0) {
 			switch (info.cipher) {
 			case BlockCipher::AES_CBC:
-				if (mbedtls_aes_crypt_cbc( &aes, MBEDTLS_AES_DECRYPT, blockSize, iv, b.data(), output ) == 0) {
+				if (mbedtls_aes_crypt_cbc( &aes, MBEDTLS_AES_DECRYPT, decryptLen, iv, b.data(), output ) == 0) {
 					success = true;
 				}
 				break;
 			case BlockCipher::AES_CFB8:
-				if (mbedtls_aes_crypt_cfb8( &aes, MBEDTLS_AES_DECRYPT, blockSize, iv, b.data(), output ) == 0) {
+				if (mbedtls_aes_crypt_cfb8( &aes, MBEDTLS_AES_DECRYPT, decryptLen, iv, b.data(), output ) == 0) {
 					success = true;
 				}
 				break;
@@ -178,6 +199,7 @@ static BackendCtx s_mbedTLSCtx = {
 		if (success) {
 			cb(BytesView(output, info.dataSize));
 		}
+		sprt::__delete_n(output);
 		return success;
 	},
 	.hash256 = [] (Sha256::Buf &buf, const Callback<void( const HashCoderCallback &upd )> &cb, HashFunction func) -> bool {
@@ -316,15 +338,14 @@ static BackendCtx s_mbedTLSCtx = {
 		if (!isPemKey(data) || data.data()[data.size() - 1] == 0) {
 			return loadKey(data);
 		} else {
-			if (data.data()[data.size()] == 0) {
-				return loadKey(BytesView(data.data(), data.size() + 1));
-			} else {
-				uint8_t buf[data.size() + 1];
-				memcpy(buf, data.data(), data.size());
-				buf[data.size()] = 0;
+			// PEM input that isn't already NUL-terminated: copy into a local
+			// terminated buffer instead of probing data.data()[data.size()], which
+			// reads (and then parses) one byte past the end of the buffer (CRYPTO-08)
+			uint8_t buf[data.size() + 1];
+			memcpy(buf, data.data(), data.size());
+			buf[data.size()] = 0;
 
-				return loadKey(BytesView(buf, data.size() + 1));
-			}
+			return loadKey(BytesView(buf, data.size() + 1));
 		}
 		return false;
 	},
@@ -541,15 +562,14 @@ static BackendCtx s_mbedTLSCtx = {
 		if (!isPemKey(data) || data.data()[data.size() - 1] == 0) {
 			return loadKey(data);
 		} else {
-			if (data.data()[data.size()] == 0) {
-				return loadKey(BytesView(data.data(), data.size() + 1));
-			} else {
-				uint8_t buf[data.size() + 1];
-				memcpy(buf, data.data(), data.size());
-				buf[data.size()] = 0;
+			// PEM input that isn't already NUL-terminated: copy into a local
+			// terminated buffer instead of probing data.data()[data.size()], which
+			// reads (and then parses) one byte past the end of the buffer (CRYPTO-08)
+			uint8_t buf[data.size() + 1];
+			memcpy(buf, data.data(), data.size());
+			buf[data.size()] = 0;
 
-				return loadKey(BytesView(buf, data.size() + 1));
-			}
+			return loadKey(BytesView(buf, data.size() + 1));
 		}
 		return false;
 	},
@@ -561,13 +581,11 @@ static BackendCtx s_mbedTLSCtx = {
 		r.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
 		auto dataBlock = r.readUntil<StringView::CharGroup<CharGroupId::WhiteSpace>>();
 		if (valid::validateBase64(dataBlock)) {
-			uint8_t bytes[base64::decodeSize(dataBlock.size())];
-			uint8_t *target = bytes;
-			base64::decode([&] (uint8_t c) {
-				*target++ = c;
-			}, dataBlock);
+			auto bytesSize = base64::decodeSize(dataBlock.size());
+			uint8_t bytes[bytesSize];
+			auto decoded = sprt::base64::decode(dataBlock.data(), dataBlock.size(), bytes, bytesSize);
 
-			BytesViewNetwork dataView(bytes, target - bytes);
+			BytesViewNetwork dataView(bytes, decoded);
 			auto len = dataView.readUnsigned32();
 			auto keyType = dataView.readString(len);
 
@@ -581,7 +599,10 @@ static BackendCtx s_mbedTLSCtx = {
 			auto mlen = dataView.readUnsigned32();
 			auto modulus = dataView.readBytes(mlen);
 
-			buf = writeRSAKey(buf, modulus, exp);
+			buf = writeRSAKey(buf, out + sizeof(out), modulus, exp);
+			if (!buf) {
+				return false; // RSA key too large for the output buffer
+			}
 
 			auto key = reinterpret_cast<mbedtls_pk_context *>(&ctx);
 			if (mbedtls_pk_parse_public_key(key, out, buf - out) != 0) {

@@ -541,8 +541,9 @@ static void _epubReadNcxNav(EpubData *data, StringView content, StringView fileP
 			case NavPoint:
 				if (tag.name.equals<StringCaseComparator>("navpoint")) {
 					contents.pop_back();
-					if (p.tagStack.at(p.tagStack.size() - 2)
-									.name.equals<StringCaseComparator>("navmap")) {
+					if (p.tagStack.size() >= 2
+							&& p.tagStack.at(p.tagStack.size() - 2)
+											.name.equals<StringCaseComparator>("navmap")) {
 						section = NavMap;
 					}
 				}
@@ -690,11 +691,13 @@ static void _epubReadXmlNav(EpubData *data, StringView content, StringView fileP
 						|| tag.name.equals<StringCaseComparator>("ol")
 						|| tag.name.equals<StringCaseComparator>("a")
 						|| tag.name.equals<StringCaseComparator>("span")) {
-					auto &last = p.tagStack.at(p.tagStack.size() - 2);
-					if (last.name.equals<StringCaseComparator>("nav")) {
-						section = Nav;
-					} else if (last.name.equals<StringCaseComparator>("li")) {
-						section = Li;
+					if (p.tagStack.size() >= 2) {
+						auto &last = p.tagStack.at(p.tagStack.size() - 2);
+						if (last.name.equals<StringCaseComparator>("nav")) {
+							section = Nav;
+						} else if (last.name.equals<StringCaseComparator>("li")) {
+							section = Li;
+						}
 					}
 				}
 				break;

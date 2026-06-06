@@ -375,8 +375,10 @@ bool Formatter::pushTab() {
 	CharShape charDef = _primaryFontSet->getChar(' ', faceId);
 
 	auto posX = lineX;
-	auto tabPos = (lineX + charDef.xAdvance) / (charDef.xAdvance * 4) + 1;
-	lineX = tabPos * charDef.xAdvance * 4;
+	if (charDef.xAdvance > 0) {
+		auto tabPos = (lineX + charDef.xAdvance) / (charDef.xAdvance * 4) + 1;
+		lineX = tabPos * charDef.xAdvance * 4;
+	}
 
 	charNum++;
 	_output.chars.emplace_back(
@@ -535,7 +537,7 @@ bool Formatter::pushLineBreak() {
 		return true;
 	}
 
-	if (firstInLine >= wordWrapPos - 1 && (maxLines != 0 && _output.lines.size() + 1 != maxLines)) {
+	if (firstInLine + 1 >= wordWrapPos && (maxLines != 0 && _output.lines.size() + 1 != maxLines)) {
 		return true;
 	}
 
@@ -930,6 +932,9 @@ bool Formatter::read(const FontParameters &f, const TextParameters &s, uint16_t 
 	_primaryFontSet = nullptr;
 
 	Rc<FontFaceSet> primaryLayout = fontCallback(f);
+	if (!primaryLayout) {
+		return false;
+	}
 	return readWithRange(RangeLayoutData{false, false, s.textDecoration, s.verticalAlign,
 							 uint32_t(_output.chars.size()), 0, Color4B(s.color, s.opacity),
 							 blockHeight, primaryLayout->getMetrics(), primaryLayout},

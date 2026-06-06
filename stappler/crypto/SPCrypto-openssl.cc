@@ -67,7 +67,8 @@ extern "C" {
 
 namespace STAPPLER_VERSIONIZED stappler::crypto {
 
-static uint8_t *writeRSAKey(uint8_t *buf, BytesViewNetwork mod, BytesViewNetwork exp);
+static uint8_t *writeRSAKey(uint8_t *buf, uint8_t *bufEnd, BytesViewNetwork mod,
+		BytesViewNetwork exp);
 static void fillCryptoBlockHeader(uint8_t *buf, const BlockKey256 &key, BytesView d);
 
 static const char *ossl_engine_gost_id = "stappler-gost-hook";
@@ -581,7 +582,7 @@ static BackendCtx s_openSSLCtx = {
 		}
 		OPENSSL_cleanup();
 	},
-	.encryptBlock = [] (const BlockKey256 &key, BytesView d, const Callback<void(BytesView)> &cb) -> bool {
+	.encryptBlock = [] (const BlockKey256 &key, BytesView d, const Callback<void(BytesView)> &cb, BytesView ivData) -> bool {
 		auto cipherBlockSize = getBlockSize(key.cipher);
 		auto cipher = getOpenSSLCipher(key.cipher);
 
@@ -594,6 +595,7 @@ static BackendCtx s_openSSLCtx = {
 		fillCryptoBlockHeader(output, key, d);
 
 		uint8_t iv[16] = { 0 };
+		if (ivData.size() >= 16) { memcpy(iv, ivData.data(), 16); }
 		EVP_CIPHER_CTX *en = nullptr;
 
 		auto finalize = [&] (bool value) {
@@ -612,6 +614,13 @@ static BackendCtx s_openSSLCtx = {
 		if (!EVP_EncryptInit_ex(en, cipher, NULL, key.data.data(), iv)) {
 			return finalize(false);
 		}
+
+		// the block scheme does its own zero-padding (and tracks the real length in
+		// the header), exactly like the mbedTLS/GnuTLS backends which use the raw
+		// block cipher. Disable EVP's PKCS#7 padding so the three backends agree and
+		// so EVP_DecryptFinal can be checked rather than producing a false-positive
+		// padding error (CRYPTO-11).
+		EVP_CIPHER_CTX_set_padding(en, 0);
 
 		auto perform = [] (EVP_CIPHER_CTX *en, const uint8_t *target, size_t targetSize, uint8_t *out) {
 			int outSize = 0;
@@ -655,17 +664,33 @@ static BackendCtx s_openSSLCtx = {
 		cb(BytesView(output, blockSize + sizeof(BlockCryptoHeader) - cipherBlockSize));
 		return finalize(true);
 	},
-	.decryptBlock = [] (const BlockKey256 &key, BytesView b, const Callback<void(BytesView)> &cb) -> bool {
+	.decryptBlock = [] (const BlockKey256 &key, BytesView b, const Callback<void(BytesView)> &cb, BytesView ivData) -> bool {
+		if (b.size() < sizeof(BlockCryptoHeader)) {
+			return false;
+		}
 		auto info = getBlockInfo(b);
 		auto cipherBlockSize = getBlockSize(info.cipher);
 		auto cipher = getOpenSSLCipher(info.cipher);
 
-		auto blockSize = math::align<size_t>(info.dataSize, cipherBlockSize) + cipherBlockSize;
 		b.offset(sizeof(BlockCryptoHeader));
 
-		uint8_t output[blockSize];
+		// the ciphertext is the plaintext padded up to the cipher block size; reject
+		// a header whose declared dataSize does not match the real ciphertext length,
+		// otherwise the attacker-controlled dataSize sizes the buffer below
+		if (cipherBlockSize == 0 || b.size() != math::align<size_t>(info.dataSize, cipherBlockSize)) {
+			return false;
+		}
+
+		auto blockSize = math::align<size_t>(info.dataSize, cipherBlockSize) + cipherBlockSize;
+
+		// heap buffer (was a stack VLA sized by the attacker-controlled dataSize)
+		uint8_t *output = sprt::__new_n<uint8_t>(blockSize);
+		if (!output) {
+			return false;
+		}
 
 		uint8_t iv[16] = { 0 };
+		if (ivData.size() >= 16) { memcpy(iv, ivData.data(), 16); }
 		EVP_CIPHER_CTX *de = nullptr;
 
 		auto finalize = [&] (bool value) {
@@ -673,6 +698,7 @@ static BackendCtx s_openSSLCtx = {
 				EVP_CIPHER_CTX_free(de);
 				de = nullptr;
 			}
+			sprt::__delete_n(output);
 			return value;
 		};
 
@@ -684,6 +710,9 @@ static BackendCtx s_openSSLCtx = {
 		if (!EVP_DecryptInit_ex(de, cipher, NULL, key.data.data(), iv)) {
 			return finalize(false);
 		}
+
+		// match the encrypt side: no PKCS#7 padding (the scheme zero-pads manually)
+		EVP_CIPHER_CTX_set_padding(de, 0);
 
 		auto target = b.data();
 		auto targetSize = b.size();
@@ -704,7 +733,11 @@ static BackendCtx s_openSSLCtx = {
 			}
 		}
 
-		EVP_DecryptFinal(de, out, &outSize); // gives false-positive error
+		// with padding disabled this no longer false-positives; a failure now means
+		// the ciphertext was malformed, so refuse rather than emit garbage
+		if (!EVP_DecryptFinal(de, out, &outSize)) {
+			return finalize(false);
+		}
 
 		cb(BytesView(output, info.dataSize));
 		return finalize(true);
@@ -1156,6 +1189,9 @@ static BackendCtx s_openSSLCtx = {
 			}
 
 			sigdata = static_cast<unsigned char *>(OPENSSL_malloc(sizeof(unsigned char) * siglen));
+			if (!sigdata) {
+				return cleanup(false);
+			}
 			if (1 == EVP_DigestSign(mdctx, sigdata, &siglen, data.data(), data.size())) {
 				cb(BytesView(sigdata, siglen));
 				return cleanup(true);
@@ -1442,7 +1478,10 @@ static BackendCtx s_openSSLCtx = {
 
 			uint8_t out[12_KiB];
 			uint8_t *buf = out;
-			buf = writeRSAKey(buf, modulus, exp);
+			buf = writeRSAKey(buf, out + sizeof(out), modulus, exp);
+			if (!buf) {
+				return false; // RSA key too large for the output buffer
+			}
 
 			sprt::__malloc_stringstream stream;
 			stream << "-----BEGIN RSA PUBLIC KEY-----\n";

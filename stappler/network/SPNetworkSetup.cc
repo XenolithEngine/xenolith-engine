@@ -100,7 +100,7 @@ static size_t _writeHeaders(char *data, size_t size, size_t nmemb, void *userptr
 			}
 		}
 
-		task->receive.headers.emplace_back(StringView(data, size).str<Interface>());
+		task->receive.headers.emplace_back(StringView(data, size * nmemb).str<Interface>());
 	}
 
 	return size * nmemb;
@@ -533,6 +533,10 @@ static bool _setupMethodGet(const HandleData<Interface> &iface, CURL *curl) {
 	bool check = true;
 	SetOpt(check, curl, CURLOPT_HTTPGET, 1);
 	SetOpt(check, curl, CURLOPT_FOLLOWLOCATION, 1);
+	// bound redirect chains and restrict them to http(s) so a malicious Location:
+	// header can't loop forever or bounce the request onto ftp:// (SSRF surface)
+	SetOpt(check, curl, CURLOPT_MAXREDIRS, 32);
+	SetOpt(check, curl, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
 
 	if (!check) {
 		slog().debug("CURL", "Fail to perform GET method setup");
@@ -546,6 +550,10 @@ static bool _setupMethodHead(const HandleData<Interface> &iface, CURL *curl) {
 	bool check = true;
 	SetOpt(check, curl, CURLOPT_HTTPGET, 1);
 	SetOpt(check, curl, CURLOPT_FOLLOWLOCATION, 1);
+	// bound redirect chains and restrict them to http(s) so a malicious Location:
+	// header can't loop forever or bounce the request onto ftp:// (SSRF surface)
+	SetOpt(check, curl, CURLOPT_MAXREDIRS, 32);
+	SetOpt(check, curl, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
 	SetOpt(check, curl, CURLOPT_NOBODY, 1);
 
 	if (!check) {
@@ -630,6 +638,10 @@ template <typename Interface>
 static bool _setupMethodDelete(const HandleData<Interface> &iface, CURL *curl) {
 	bool check = true;
 	SetOpt(check, curl, CURLOPT_FOLLOWLOCATION, 1);
+	// bound redirect chains and restrict them to http(s) so a malicious Location:
+	// header can't loop forever or bounce the request onto ftp:// (SSRF surface)
+	SetOpt(check, curl, CURLOPT_MAXREDIRS, 32);
+	SetOpt(check, curl, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
 	SetOpt(check, curl, CURLOPT_CUSTOMREQUEST, "DELETE");
 
 	if (!check) {
@@ -656,6 +668,30 @@ static bool _setupMethodSmpt(const HandleData<Interface> &iface, CURL *curl, FIL
 
 	SetOpt(check, curl, CURLOPT_USE_SSL, CURLUSESSL_ALL, true);
 	return check;
+}
+
+// mask any userinfo (user:password@) in a URL so credentials are not written to logs
+template <typename Interface>
+static typename Interface::StringType _redactUrlForLog(StringView url) {
+	auto scheme = url.find("://");
+	if (scheme == maxOf<size_t>()) {
+		return url.str<Interface>();
+	}
+	auto hostStart = scheme + 3;
+	auto at = url.find('@', hostStart);
+	if (at == maxOf<size_t>()) {
+		return url.str<Interface>();
+	}
+	// the '@' must be within the authority (before the first '/')
+	auto slash = url.find('/', hostStart);
+	if (slash != maxOf<size_t>() && slash < at) {
+		return url.str<Interface>();
+	}
+	typename Interface::StringType ret;
+	ret.append(url.data(), hostStart);
+	ret.append("***");
+	ret.append(url.data() + at, url.size() - at);
+	return ret;
 }
 
 template <typename Interface>
@@ -733,7 +769,8 @@ bool prepare(HandleData<Interface> &iface, Context<Interface> *ctx,
 
 	if (!check) {
 		if (!iface.process.silent) {
-			log::source().error("CURL", "Fail to setup: ", iface.send.url.data());
+			log::source().error("CURL", "Fail to setup: ",
+					_redactUrlForLog<Interface>(iface.send.url));
 		}
 		return false;
 	}
@@ -800,7 +837,7 @@ bool finalize(HandleData<Interface> &iface, Context<Interface> *ctx,
 				if (allowedRange == ctx->inputPos) {
 					iface.process.responseCode = 200;
 					if (!iface.process.silent) {
-						log::source().warn("CURL", iface.send.url,
+						log::source().warn("CURL", _redactUrlForLog<Interface>(iface.send.url),
 								": Get 0-range is not an error, fixed response code to 200");
 					}
 				}
@@ -817,7 +854,8 @@ bool finalize(HandleData<Interface> &iface, Context<Interface> *ctx,
 	} else {
 		if (!iface.process.silent) {
 			log::format(sprt::oslog::Error, "CURL", SP_LOCATION, "fail to perform %s: (%ld) %s",
-					iface.send.url.data(), iface.process.errorCode, ctx->error.data());
+					_redactUrlForLog<Interface>(iface.send.url).data(), iface.process.errorCode,
+					ctx->error.data());
 		}
 		iface.process.error = ctx->error.data();
 		if (iface.process.debug) {
@@ -870,6 +908,25 @@ static bool _perform(Context<Interface> &ctx, HandleData<Interface> &iface,
 	}
 
 	if (!prepare(iface, &ctx, onBeforePerform)) {
+		// prepare() may have opened input/output files and built header/recipient
+		// lists before failing; finalize() (which releases them) is skipped on this
+		// path, so free them here to avoid leaking fds / curl_slist memory
+		if (ctx.headers) {
+			curl_slist_free_all(ctx.headers);
+			ctx.headers = nullptr;
+		}
+		if (ctx.mailTo) {
+			curl_slist_free_all(ctx.mailTo);
+			ctx.mailTo = nullptr;
+		}
+		if (ctx.inputFile) {
+			fclose(ctx.inputFile);
+			ctx.inputFile = nullptr;
+		}
+		if (ctx.outputFile) {
+			fclose(ctx.outputFile);
+			ctx.outputFile = nullptr;
+		}
 		return false;
 	}
 

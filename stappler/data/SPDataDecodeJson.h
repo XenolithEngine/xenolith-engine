@@ -73,7 +73,16 @@ struct Decoder : public Interface::AllocBaseType {
 	inline void parseValue(ValueType &current);
 	void parseJson(ValueType &val);
 
+	// bound nesting depth (shared limit): the parser is iterative, but the resulting
+	// Value tree is destroyed and re-encoded recursively, so an unbounded depth would
+	// overflow the native stack on teardown/encode
+	static constexpr size_t MaxDepth = MaxDecodeDepth;
+
 	inline void push(BackType t, ValueType *v) {
+		if (stack.size() >= MaxDepth) {
+			stop = true;
+			return;
+		}
 		++r;
 		back = v;
 		stack.push_back(v);

@@ -373,18 +373,18 @@ bool validateBase64(const StringView &str) {
 
 size_t makeRandomBytes(uint8_t *buf, size_t count) {
 	size_t generated = 0;
+	// getrandom() can return -1 (EINTR, or EAGAIN with GRND_NONBLOCK when the pool
+	// isn't ready early in boot); treat any negative result as zero progress so the
+	// buffer pointer/length are never rewound past their bounds.
 	auto ret = ::getrandom(buf, count, GRND_RANDOM | GRND_NONBLOCK);
-	if (ret < ssize_t(count)) {
-		buf += ret;
-		count -= ret;
-		generated += ret;
-
-		ret = ::getrandom(buf, count, GRND_NONBLOCK | GRND_INSECURE);
-		if (ret >= 0) {
-			generated += ret;
+	if (ret > 0) {
+		generated = size_t(ret);
+	}
+	if (generated < count) {
+		ret = ::getrandom(buf + generated, count - generated, GRND_NONBLOCK | GRND_INSECURE);
+		if (ret > 0) {
+			generated += size_t(ret);
 		}
-	} else {
-		generated += ret;
 	}
 	return generated;
 }

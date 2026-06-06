@@ -138,11 +138,16 @@ bool CommandLinePatternParsingData::parseWhitespace() {
 			target.skipChars<StringView::WhiteSpace>();
 			if (target.empty()) {
 				++offset;
-				target = StringView(argv[offset - 1]);
-				if (offset > argv.size() && !args.empty()) {
-					log::source().error("CommandLine", "Not enough arguments for ", type,
-							pattern->pattern, pattern->args);
-					return false;
+				if (offset > argv.size()) {
+					// no argument available at argv[offset - 1]; check the bound
+					// before indexing to avoid an out-of-bounds SpanView read
+					if (!args.empty()) {
+						log::source().error("CommandLine", "Not enough arguments for ", type,
+								pattern->pattern, pattern->args);
+						return false;
+					}
+				} else {
+					target = StringView(argv[offset - 1]);
 				}
 			}
 		} else {

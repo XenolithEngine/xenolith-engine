@@ -727,7 +727,7 @@ bool LayoutEngine::Data::processInlineNode(LayoutBlock &l, LayoutBlock::NodeInfo
 										 fontMetrics.height / density))
 			* density);
 
-	uint16_t firstCharId = 0, lastCharId = 0;
+	uint32_t firstCharId = 0, lastCharId = 0;
 
 	auto textStyle = node.style->compileTextLayout(engine);
 

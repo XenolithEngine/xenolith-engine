@@ -129,7 +129,7 @@ static Pair<uint32_t, CharSelectMode> TextLayoutData_getChar(const TextLayoutDat
 			}
 		}
 
-		if (f.chars.back().charID == char32_t(0x0A) && pLine == &f.lines.back()
+		if (!f.chars.empty() && f.chars.back().charID == char32_t(0x0A) && pLine == &f.lines.back()
 				&& (mode == CharSelectMode::Best || mode == CharSelectMode::Suffix)) {
 			int32_t dst = maxOf<int32_t>();
 			switch (mode) {
@@ -203,7 +203,7 @@ static Pair<uint32_t, CharSelectMode> TextLayoutData_getChar(const TextLayoutDat
 		}
 	}
 
-	if ((mode == CharSelectMode::Best || mode == CharSelectMode::Suffix)
+	if ((mode == CharSelectMode::Best || mode == CharSelectMode::Suffix) && !f.chars.empty()
 			&& pLine == &(f.lines.back())) {
 		auto c = f.chars.back();
 		int32_t dst = abs(x - (c.pos + c.advance));

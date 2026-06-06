@@ -54,14 +54,44 @@ struct SP_PUBLIC JsonWebToken {
 		GS512
 	};
 
+	// Algorithm family of a JWT "alg". validate() takes this so the caller can pin
+	// the kind of key the token must be verified with, defeating algorithm-confusion
+	// attacks (e.g. an attacker forging an HS256 token so that an RSA *public* key —
+	// which the attacker also knows — is fed to validate() as the HMAC secret).
+	enum class SigAlgClass {
+		Any, // accept the token's own alg — INSECURE if the same key bytes could be
+			 // used as both an HMAC secret and an asymmetric key; kept for compat
+		HMAC, // require HS256/HS512 — `key` is a shared symmetric secret
+		Asymmetric, // require RS*/ES*/GS* — `key` is an asymmetric public key
+	};
+
+	static SigAlgClass getAlgClass(SigAlg a) {
+		switch (a) {
+		case HS256:
+		case HS512: return SigAlgClass::HMAC;
+		case RS256:
+		case RS512:
+		case ES256:
+		case ES512:
+		case GS256:
+		case GS512: return SigAlgClass::Asymmetric;
+		default: return SigAlgClass::Any; // None
+		}
+	}
+
 	static SigAlg getAlg(StringView);
 	static StringView getAlgName(const SigAlg &);
 
 	static JsonWebToken make(StringView iss, StringView aud, TimeInterval maxage = TimeInterval(),
 			StringView sub = StringView());
 
-	bool validate(StringView key) const;
-	bool validate(BytesView key) const;
+	// Verify the token signature. `expected` pins the algorithm family the token
+	// must use: pass SigAlgClass::Asymmetric when `key` is a public key, or
+	// SigAlgClass::HMAC when `key` is a shared secret. The default (Any) keeps the
+	// legacy behaviour of trusting the token's own "alg" and is vulnerable to
+	// algorithm confusion — only use it when the key can be of exactly one kind.
+	bool validate(StringView key, SigAlgClass expected = SigAlgClass::Any) const;
+	bool validate(BytesView key, SigAlgClass expected = SigAlgClass::Any) const;
 	bool validate(const crypto::PublicKey &key) const;
 
 	bool validatePayload(StringView issuer, StringView aud) const;
@@ -245,27 +275,36 @@ void JsonWebToken<Interface>::setMaxAge(TimeInterval maxage) {
 }
 
 template <typename Interface>
-bool JsonWebToken<Interface>::validate(StringView key) const {
-	return validate(BytesView((const uint8_t *)key.data(), key.size() + 1));
+bool JsonWebToken<Interface>::validate(StringView key, SigAlgClass expected) const {
+	return validate(BytesView((const uint8_t *)key.data(), key.size() + 1), expected);
 }
 
 template <typename Interface>
-bool JsonWebToken<Interface>::validate(BytesView key) const {
+bool JsonWebToken<Interface>::validate(BytesView key, SigAlgClass expected) const {
 	if (key.empty()) {
+		return false;
+	}
+
+	// algorithm-confusion guard: if the caller pinned a class, the token's "alg"
+	// must belong to it (otherwise public-key bytes could be accepted as an HMAC
+	// secret, or vice versa)
+	if (expected != SigAlgClass::Any && getAlgClass(alg) != expected) {
 		return false;
 	}
 
 	switch (alg) {
 	case HS256: {
 		auto keySig = string::Sha256::hmac(message, key);
-		if (sig.size() == keySig.size() && memcmp(sig.data(), keySig.data(), sig.size()) == 0) {
+		if (crypto::isEqualConstantTime(BytesView(sig.data(), sig.size()),
+					BytesView(keySig.data(), keySig.size()))) {
 			return true;
 		}
 		break;
 	}
 	case HS512: {
 		auto keySig = string::Sha512::hmac(message, key);
-		if (sig.size() == keySig.size() && memcmp(sig.data(), keySig.data(), sig.size()) == 0) {
+		if (crypto::isEqualConstantTime(BytesView(sig.data(), sig.size()),
+					BytesView(keySig.data(), keySig.size()))) {
 			return true;
 		}
 		break;
@@ -447,7 +486,8 @@ AesToken<Interface> AesToken<Interface>::parse(StringView token, const Fingerpri
 		Time tf = Time::microseconds(input.payload.getInteger("tf"));
 		auto fp = getFingerprint(fpb, tf, keys.secret);
 
-		if (BytesView(fp.data(), fp.size()) == BytesView(input.payload.getBytes("fp"))) {
+		if (crypto::isEqualConstantTime(BytesView(fp.data(), fp.size()),
+					BytesView(input.payload.getBytes("fp")))) {
 			auto v = crypto::getBlockInfo(input.payload.getBytes("p"));
 			crypto::BlockKey256 aesKey;
 			if (keys.priv) {
@@ -473,7 +513,8 @@ AesToken<Interface> AesToken<Interface>::parse(const Value &payload, const Finge
 	Time tf = Time::microseconds(payload.getInteger("tf"));
 	auto fp = getFingerprint(fpb, tf, keys.secret);
 
-	if (BytesView(fp.data(), fp.size()) == BytesView(payload.getBytes("fp"))) {
+	if (crypto::isEqualConstantTime(BytesView(fp.data(), fp.size()),
+				BytesView(payload.getBytes("fp")))) {
 		auto v = crypto::getBlockInfo(payload.getBytes("p"));
 
 		crypto::BlockKey256 aesKey;

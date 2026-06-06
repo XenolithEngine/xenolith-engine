@@ -29,6 +29,16 @@
 
 namespace STAPPLER_VERSIONIZED stappler::makefile {
 
+// Trust model: this module is a GNU-make-compatible build-system component and is
+// designed to evaluate ONLY trusted makefiles (the project's own build scripts),
+// exactly like GNU make itself. It deliberately implements full make semantics,
+// including `$(shell ...)` (which runs an arbitrary command via popen) and the
+// filesystem functions `$(wildcard)`/`$(realpath)`/`$(abspath)` and `include`.
+//
+// Consequently it is NOT a sandbox and MUST NOT be pointed at attacker-supplied
+// makefile text: doing so is equivalent to executing that input. If untrusted
+// makefiles ever need to be processed, run this in an OS-level sandbox or add an
+// opt-in capability flag that disables `shell`/`include`/filesystem functions.
 class Makefile : public memory::PoolObject {
 public:
 	using PathCallback = Callback<void(StringView)>;
@@ -93,10 +103,10 @@ protected:
 	Vector<Target *> _currentTargets;
 	Map<StringView, Target *> _targets;
 
-	void *_logCallbackRef;
+	void *_logCallbackRef = nullptr;
 	LogCallback _logCallback = nullptr;
 
-	void *_includeCallbackRef;
+	void *_includeCallbackRef = nullptr;
 	IncludeCallback _includeCallback = nullptr;
 
 	VariableEngine _engine;

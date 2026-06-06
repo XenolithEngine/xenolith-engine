@@ -132,7 +132,7 @@ template <typename Interface>
 SP_PUBLIC inline auto currentDir(StringView ipath, bool relative) ->
 		typename Interface::StringType {
 	if (filepath::isAboveRoot(ipath)) {
-		typename Interface::StringType();
+		return typename Interface::StringType();
 	}
 
 	if (!ipath.empty() && !relative && filepath::isAbsolute(ipath)) {

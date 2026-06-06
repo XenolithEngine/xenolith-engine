@@ -173,6 +173,7 @@ void SharedModuleManager::enumerateModules(void *userdata,
 	if (!cb) {
 		return;
 	}
+	sprt::unique_lock lock(_mutex);
 	for (auto &it : _modules) { cb(userdata, it.first.data()); }
 }
 
@@ -182,6 +183,7 @@ bool SharedModuleManager::enumerateSymbols(const char *module, uint32_t version,
 		return false;
 	}
 
+	sprt::unique_lock lock(_mutex);
 	auto mod = openModule(module, version);
 	if (!mod) {
 		return false;

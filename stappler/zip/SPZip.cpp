@@ -490,8 +490,20 @@ static bool _readFile(zip_t *handle, uint64_t index, const Callback<void(BytesVi
 	}
 
 	zip_stat_t stat;
-	if (zip_stat_index(handle, index, ZIP_STAT_SIZE | ZIP_STAT_MTIME | ZIP_STAT_NAME, &stat) != 0
+	if (zip_stat_index(handle, index,
+				ZIP_STAT_SIZE | ZIP_STAT_COMP_SIZE | ZIP_STAT_MTIME | ZIP_STAT_NAME, &stat)
+					!= 0
 			|| stat.size == 0) {
+		return false;
+	}
+
+	// reject zip bombs: the uncompressed entry size may not exceed 16x the
+	// compressed size, with an 8 MiB floor for small entries
+	uint64_t maxOutput = stat.comp_size * 16;
+	if (maxOutput < (uint64_t(8) << 20)) {
+		maxOutput = uint64_t(8) << 20;
+	}
+	if (stat.size > maxOutput) {
 		return false;
 	}
 

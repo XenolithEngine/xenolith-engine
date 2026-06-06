@@ -125,7 +125,7 @@ Status rename_fn(StringView source, StringView dest) {
 		});
 	});
 
-	if (ret) {
+	if (ret == 0) {
 		return Status::Ok;
 	}
 	return sprt::status::errnoToStatus(errno);

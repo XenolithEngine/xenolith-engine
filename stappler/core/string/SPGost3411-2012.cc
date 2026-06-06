@@ -1996,10 +1996,10 @@ Gost3411_512::Buf Gost3411_512::make(const CoderSource &source, const StringView
 
 Gost3411_512::Buf Gost3411_512::hmac(const CoderSource &data, const CoderSource &key) {
 	Buf ret;
-	sprt::array<uint8_t, Length * 2> keyData = {0};
+	sprt::array<uint8_t, BlockSize> keyData = {0};
 
 	Gost3411_512 hashCtx;
-	if (key.size() > Length * 2) {
+	if (key.size() > BlockSize) {
 		hashCtx.update(key).final(keyData.data());
 	} else {
 		sprt::memcpy(keyData.data(), key.data(), key.size());
@@ -2049,10 +2049,10 @@ Gost3411_256::Buf Gost3411_256::make(const CoderSource &source, const StringView
 
 Gost3411_256::Buf Gost3411_256::hmac(const CoderSource &data, const CoderSource &key) {
 	Buf ret;
-	sprt::array<uint8_t, Length * 2> keyData = {0};
+	sprt::array<uint8_t, BlockSize> keyData = {0};
 
 	Gost3411_256 hashCtx;
-	if (key.size() > Length * 2) {
+	if (key.size() > BlockSize) {
 		hashCtx.update(key).final(keyData.data());
 	} else {
 		sprt::memcpy(keyData.data(), key.data(), key.size());

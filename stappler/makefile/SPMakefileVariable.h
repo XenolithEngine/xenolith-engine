@@ -149,6 +149,8 @@ public:
 
 	void substitute(Output, StringView, ErrorReporter &err);
 
+	bool checkRecursion(StringView, Stmt *, ErrorReporter &err);
+
 	const CallContext *getCallContext() const { return _callContext; }
 
 	memory::pool_t *getPool() const { return _pool; }
@@ -168,8 +170,6 @@ public:
 protected:
 	bool call(const Callback<void(StringView)> &out, StringView fn, StmtType type, StmtValue *args,
 			ErrorReporter &err);
-
-	bool checkRecursion(StringView, Stmt *, ErrorReporter &err);
 
 	memory::pool_t *_pool = nullptr;
 	Block *_currentBlock = nullptr;
