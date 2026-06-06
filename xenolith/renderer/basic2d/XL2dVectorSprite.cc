@@ -303,8 +303,15 @@ void VectorSprite::pushCommands(FrameInfo &frame, NodeVisitFlags flags) {
 			auto reqMemSize = sizeof(InstanceVertexData) * targetData.size();
 
 			// pool memory is 16-bytes aligned, no problems with Mat4
-			auto tmpData = new (memory::pool::palloc(frame.pool->getPool(), reqMemSize))
-					InstanceVertexData[targetData.size()];
+			// Note: use per-element placement-new instead of array placement-new -
+			// InstanceVertexData is non-trivially-destructible, so array placement-new
+			// would reserve/write an array cookie before element 0 (Itanium ABI),
+			// overflowing the exactly-sized allocation above.
+			auto tmpData = reinterpret_cast<InstanceVertexData *>(
+					memory::pool::palloc(frame.pool->getPool(), reqMemSize));
+			for (size_t i = 0; i < targetData.size(); ++i) {
+				new (tmpData + i) InstanceVertexData();
+			}
 			auto target = tmpData;
 			if (_normalized) {
 				auto transform = frame.modelTransformStack.back() * _imageTargetTransform;

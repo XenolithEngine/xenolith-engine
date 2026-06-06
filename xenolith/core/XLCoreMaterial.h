@@ -89,7 +89,9 @@ public:
 
 protected:
 	void removeMaterial(Material *oldMaterial);
-	void emplaceMaterialImages(Material *oldMaterial, Material *newMaterial,
+	// Returns false if an image view could not be created (callback returned null); the caller
+	// must then abandon the material instead of installing it.
+	bool emplaceMaterialImages(Material *oldMaterial, Material *newMaterial,
 			const Callback<Rc<ImageView>(const MaterialImage &)> &);
 
 	uint32_t _imagesInSet = 16;

@@ -195,11 +195,16 @@ ParticlePersistentData::EmitterData ParticlePersistentData::spawnEmitter(DeviceM
 				sizeof(ParticleEmissionPoints) + s->emissionPoints.size() * sizeof(Vec2)));
 	}
 
-	Buffer *buffers[] = {emitterBuffer.get(), particlesBuffer.get(), emissionData.get()};
-
-	alloc->emplaceObjects(AllocationUsage::DeviceLocal, SpanView<Image *>(), makeSpanView(buffers));
-
-	s->data.emissionData = UVec2::convertFromPacked(emissionData->getDeviceAddress());
+	if (emissionData) {
+		Buffer *buffers[] = {emitterBuffer.get(), particlesBuffer.get(), emissionData.get()};
+		alloc->emplaceObjects(AllocationUsage::DeviceLocal, SpanView<Image *>(),
+				makeSpanView(buffers));
+		s->data.emissionData = UVec2::convertFromPacked(emissionData->getDeviceAddress());
+	} else {
+		Buffer *buffers[] = {emitterBuffer.get(), particlesBuffer.get()};
+		alloc->emplaceObjects(AllocationUsage::DeviceLocal, SpanView<Image *>(),
+				makeSpanView(buffers));
+	}
 
 	addStaging(emitterBuffer, emitterBuffer->getSize(), 0,
 			[&](uint8_t *ptr, VkDeviceSize size) { ::__sprt_memcpy(ptr, &s->data, size); });
@@ -214,12 +219,14 @@ ParticlePersistentData::EmitterData ParticlePersistentData::spawnEmitter(DeviceM
 		});
 	}
 
-	addStaging(emissionData, emissionData->getSize(), 0, [&](uint8_t *ptr, VkDeviceSize size) {
-		auto points = reinterpret_cast<ParticleEmissionPoints *>(ptr);
-		points->count = static_cast<uint32_t>(s->emissionPoints.size());
-		ptr += sizeof(ParticleEmissionPoints);
-		sprt::memcpy(ptr, s->emissionPoints.data(), s->emissionPoints.size() * sizeof(Vec2));
-	});
+	if (emissionData) {
+		addStaging(emissionData, emissionData->getSize(), 0, [&](uint8_t *ptr, VkDeviceSize size) {
+			auto points = reinterpret_cast<ParticleEmissionPoints *>(ptr);
+			points->count = static_cast<uint32_t>(s->emissionPoints.size());
+			ptr += sizeof(ParticleEmissionPoints);
+			sprt::memcpy(ptr, s->emissionPoints.data(), s->emissionPoints.size() * sizeof(Vec2));
+		});
+	}
 
 	return EmitterData{
 		id,
@@ -440,6 +447,9 @@ void ParticlePass::recordCommandBuffer(const core::SubpassData &subpass, core::F
 		auto lifetime = d.lifetime.init + d.lifetime.rnd;
 		auto framesInGen =
 				uint32_t(TimeInterval::floatSeconds(lifetime).toMicros() / d.frameInterval);
+
+		// avoid division-by-zero / infinite loops when lifetime rounds down to 0 frames
+		framesInGen = sprt::max(1u, framesInGen);
 
 		auto dt = ctx->clock - e.second.clock;
 		auto v = float(dt) / d.frameInterval;

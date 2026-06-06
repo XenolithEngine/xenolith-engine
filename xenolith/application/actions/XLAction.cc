@@ -140,7 +140,7 @@ void ActionInterval::startWithTarget(Node *target) {
 }
 
 void ActionInterval::setDuration(float duration) {
-	_duration = sprt::max(_duration, sprt::Epsilon<float>);
+	_duration = sprt::max(duration, sprt::Epsilon<float>);
 }
 
 bool Speed::init(Rc<ActionInterval> &&action, float speed) {
@@ -289,6 +289,12 @@ void Sequence::startWithTarget(Node *target) {
 		it.threshold = it.action->getDuration() / _duration;
 		threshold += it.threshold;
 		it.maxThreshold = threshold;
+	}
+
+	if (_actions.empty()) {
+		_prevTime = 0.0f;
+		_currentIdx = 0;
+		return;
 	}
 
 	// start first action if it's not instant

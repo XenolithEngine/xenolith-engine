@@ -241,7 +241,12 @@ ColorHCT ColorScheme::hct(ColorRole name, float alpha) const {
 		case ColorRole::Max: break;
 		}
 		break;
-	case ThemeType::Custom: return ColorHCT(colors[toInt(name)], alpha); break;
+	case ThemeType::Custom:
+		if (name >= ColorRole::Undefined) {
+			return ColorHCT();
+		}
+		return ColorHCT(colors[toInt(name)], alpha);
+		break;
 	}
 	return ColorHCT();
 }
@@ -318,7 +323,12 @@ ColorHCT::Values ColorScheme::values(ColorRole name, float alpha) const {
 		case ColorRole::Max: break;
 		}
 		break;
-	case ThemeType::Custom: return ColorHCT(colors[toInt(name)], alpha).data; break;
+	case ThemeType::Custom:
+		if (name >= ColorRole::Undefined) {
+			return ColorHCT::Values{0.0f, 50.0f, 0.0f, alpha};
+		}
+		return ColorHCT(colors[toInt(name)], alpha).data;
+		break;
 	}
 	return ColorHCT::Values{0.0f, 50.0f, 0.0f, alpha};
 }

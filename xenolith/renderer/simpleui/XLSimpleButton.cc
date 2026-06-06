@@ -66,7 +66,11 @@ bool Button::init(Function<void()> &&cb) {
 
 void Button::setEnabled(bool value) {
 	if (isEnabled() != value) {
-		_state |= InputNodeState::Enabled;
+		if (value) {
+			_state |= InputNodeState::Enabled;
+		} else {
+			_state &= ~InputNodeState::Enabled;
+		}
 		updateState();
 	}
 }

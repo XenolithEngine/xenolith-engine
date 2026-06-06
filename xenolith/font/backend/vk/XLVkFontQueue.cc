@@ -474,7 +474,13 @@ void FontAttachmentHandle::pushCopyTexture(uint32_t reqIdx, const font::CharText
 				texData.height, " vs. ", texData.bitmapWidth, ";", texData.bitmapRows, "\n");
 	}
 
-	auto size = uint32_t(texData.bitmapRows * sprt::abs(texData.pitch));
+	auto size64 = uint64_t(texData.bitmapRows) * uint64_t(sprt::abs(texData.pitch));
+	if (size64 > CopyBlockSize) {
+		log::error("FontAttachmentHandle",
+				"Texture block exceeds CopyBlockSize: ", size64, " > ", CopyBlockSize);
+		return;
+	}
+	auto size = uint32_t(size64);
 	auto offset = _frontBuffer->reserveBlock(size, _optimalTextureAlignment);
 	if (offset == maxOf<uint64_t>() || offset + size > CopyBlockSize) {
 		log::error("FontAttachmentHandle",

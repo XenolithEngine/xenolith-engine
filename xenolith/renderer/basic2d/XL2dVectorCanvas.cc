@@ -671,6 +671,13 @@ VectorCanvasCache::VectorCanvasCache() {
 			auto &vertexes = it.getBytes("vertexes");
 			auto &indexes = it.getBytes("indexes");
 
+			// reject malformed cache entries whose byte length is not a whole
+			// number of elements (would otherwise read past the buffer)
+			if ((vertexes.size() % sizeof(Vertex)) != 0
+					|| (indexes.size() % sizeof(uint32_t)) != 0) {
+				continue;
+			}
+
 			data.data = Rc<VertexData>::alloc();
 			data.data->data.assign(reinterpret_cast<Vertex *>(vertexes.data()),
 					reinterpret_cast<Vertex *>(vertexes.data() + vertexes.size()));

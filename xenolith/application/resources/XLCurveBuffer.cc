@@ -101,6 +101,9 @@ bool CurveBuffer::init(uint32_t npoints, const Callback<Vec4(float)> &cb) {
 }
 
 bool CurveBuffer::init(uint32_t npoints, SpanView<GradientStep> steps) {
+	if (steps.size() < 2) {
+		return false;
+	}
 	_id = s_curveBufferId.fetch_add(1);
 	_type = CurveBufferType::Vec4;
 	_data.resize(npoints * 4);
@@ -339,8 +342,8 @@ uint32_t CurveBuffer::getElementSize() const {
 const float *CurveBuffer::getData() const { return _data.data(); }
 
 Bitmap CurveBuffer::renderComponent(const RenderInfo &info, uint8_t component) {
-	if (info.zero.x > info.size.width || info.zero.y > info.size.height
-			|| info.one.x > info.size.width || info.one.y > info.size.height
+	if (info.zero.x >= info.size.width || info.zero.y >= info.size.height
+			|| info.one.x >= info.size.width || info.one.y >= info.size.height
 			|| info.zero.x > info.one.x || info.zero.y > info.one.y) {
 		log::source().error("CurveBuffer", "Invalid RenderInfo format");
 		return Bitmap();

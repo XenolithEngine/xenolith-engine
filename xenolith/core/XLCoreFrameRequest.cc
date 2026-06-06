@@ -156,7 +156,7 @@ void FrameRequest::setOutput(const AttachmentData *a, CompleteCallback &&cb, Rc<
 }
 
 void FrameRequest::setOutput(const Attachment *a, CompleteCallback &&cb, Rc<Ref> &&ref) {
-	setOutput(a->getData(), sp::move(cb));
+	setOutput(a->getData(), sp::move(cb), sp::move(ref));
 }
 
 void FrameRequest::setRenderTarget(const AttachmentData *a, Rc<ImageStorage> &&img) {

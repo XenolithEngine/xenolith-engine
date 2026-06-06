@@ -194,7 +194,7 @@ void View::setSource(CommonSource *source) {
 void View::setProgressColor(const Color &color) { _progress->setBarColor(color); }
 
 void View::onLink(StringView ref, StringView target, WideStringView text, Vec2 vec) {
-	if (ref.front() == '#') {
+	if (!ref.empty() && ref.front() == '#') {
 		if (target == "_self") {
 			onPositionRef(StringView(ref.data() + 1, ref.size() - 1), false);
 		} else if (target == "table") {
@@ -233,7 +233,7 @@ void View::onId(StringView ref, StringView target, WideStringView text, Vec2 vec
 	string::split(ref, ",", [&ids](const StringView &r) { ids.push_back(r.str<Interface>()); });
 
 	for (auto &it : ids) {
-		if (it.front() == '#') {
+		if (!it.empty() && it.front() == '#') {
 			it = it.substr(1);
 		}
 	}

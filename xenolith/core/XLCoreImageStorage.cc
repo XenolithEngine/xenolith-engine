@@ -129,6 +129,7 @@ void ImageStorage::invalidate() {
 void ImageStorage::waitReady(Function<void(bool)> &&cb) {
 	if (_invalid || isStatic()) {
 		cb(false);
+		return;
 	}
 	if (!_ready) {
 		_waitReady.emplace_back(sp::move(cb));
