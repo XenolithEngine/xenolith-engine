@@ -471,6 +471,13 @@ void DataScroll::onSliceItems(ItemMap &&val, Time time, Request type) {
 
 	_items = sp::move(val);
 
+	if (_items.empty()) {
+		_currentSliceStart = DataSource::Id(0);
+		_currentSliceLen = 0;
+		updateItems();
+		return;
+	}
+
 	_currentSliceStart = DataSource::Id(_items.begin()->first);
 	_currentSliceLen = size_t(_items.rbegin()->first.get()) + 1 - size_t(_currentSliceStart.get());
 

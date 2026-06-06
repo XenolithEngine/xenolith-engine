@@ -980,6 +980,23 @@ bool RenderPass::initGraphicsPass(Device &dev, QueuePassData &data) {
 		}
 	}
 
+	// Compute the exact number of attachment references that will be pushed below.
+	// Stored pointers into _attachmentReferences (subpass.pInputAttachments etc.) would
+	// dangle if a push triggered reallocation, so the reserve must be exact (or larger).
+	attachmentReferences = 0;
+	for (auto &it : data.subpasses) {
+		attachmentReferences += it->inputImages.size();
+		attachmentReferences += it->outputImages.size();
+		if (!it->resolveImages.empty()) {
+			attachmentReferences += (it->resolveImages.size() < it->outputImages.size())
+					? it->outputImages.size()
+					: it->resolveImages.size();
+		}
+		if (it->depthStencil) {
+			attachmentReferences += 1;
+		}
+	}
+
 	_attachmentReferences.reserve(attachmentReferences);
 
 	for (auto &it : data.subpasses) {

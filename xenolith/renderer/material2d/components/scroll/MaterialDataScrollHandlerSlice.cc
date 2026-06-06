@@ -52,6 +52,9 @@ DataScroll::ItemMap DataScrollHandlerSlice::run(Request t, DataMap &&data) {
 	if (t == DataScroll::Request::Front) {
 		for (auto it = data.rbegin(); it != data.rend(); it++) {
 			auto item = onItem(sp::move(it->second), origin);
+			if (!item) {
+				continue;
+			}
 
 			item->setPosition((_layout == DataScroll::Layout::Vertical)
 							? Vec2(origin.x, origin.y - item->getContentSize().height)
@@ -68,6 +71,9 @@ DataScroll::ItemMap DataScrollHandlerSlice::run(Request t, DataMap &&data) {
 	} else {
 		for (auto &it : data) {
 			auto item = onItem(sp::move(it.second), origin);
+			if (!item) {
+				continue;
+			}
 
 			if (_layout == DataScroll::Layout::Vertical) {
 				origin.y += item->getContentSize().height;

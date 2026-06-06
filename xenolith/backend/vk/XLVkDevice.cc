@@ -63,8 +63,8 @@ public:
 
 		_transferBuffer = _mempool->spawn(AllocationUsage::HostTransitionDestination,
 				BufferInfo(core::ForceBufferUsage(core::BufferUsage::TransferDst),
-						size_t(extent.width * extent.height * extent.depth
-								* core::getFormatBlockSize(info.format)),
+						size_t(extent.width) * extent.height * extent.depth
+								* core::getFormatBlockSize(info.format),
 						_image->getInfo().type));
 		return true;
 	}

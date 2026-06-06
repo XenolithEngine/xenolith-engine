@@ -96,7 +96,9 @@ void TemporaryResource::setLoaded(bool val) {
 	} else {
 		_loaded = false;
 		_requested = false;
-		_resource->clear();
+		if (_resource) {
+			_resource->clear();
+		}
 		onLoaded(this, _loaded);
 	}
 	_atime = sp::platform::clock(ClockType::Monotonic);
@@ -145,7 +147,9 @@ void TemporaryResource::handleEnter(ResourceOwner *owner, ResourceObject *res) {
 
 void TemporaryResource::handleExit(ResourceOwner *, ResourceObject *) {
 	_atime = sp::platform::clock(ClockType::Monotonic);
-	--_users;
+	if (_users) {
+		--_users;
+	}
 }
 
 bool TemporaryResource::clear() {

@@ -73,12 +73,14 @@ struct DataSource::SliceRequest : public Ref {
 	bool onSliceData(Slice *ptr, Map<Id, Value> &val) {
 		ptr->recieved = true;
 
-		auto front = val.begin()->first;
-		for (auto &it : val) {
-			if (it.first != Self) {
-				data.emplace(it.first + Id(ptr->offset) - front, sp::move(it.second));
-			} else {
-				data.emplace(Id(ptr->offset), sp::move(it.second));
+		if (!val.empty()) {
+			auto front = val.begin()->first;
+			for (auto &it : val) {
+				if (it.first != Self) {
+					data.emplace(it.first + Id(ptr->offset) - front, sp::move(it.second));
+				} else {
+					data.emplace(Id(ptr->offset), sp::move(it.second));
+				}
 			}
 		}
 

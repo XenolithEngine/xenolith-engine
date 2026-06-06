@@ -201,10 +201,11 @@ T *ComponentContainer::setComponent(Args &&...args) {
 template <typename T>
 const T *ComponentContainer::updateComponent(const Callback<bool(NotNull<T>)> &cb) {
 	auto it = _components.find(T::Id);
-	if (it != _components.end()) {
-		if (cb((*it).template get<T>())) {
-			_componentsDirty = true;
-		}
+	if (it == _components.end()) {
+		return nullptr;
+	}
+	if (cb((*it).template get<T>())) {
+		_componentsDirty = true;
 	}
 	return (*it).template get<T>();
 }

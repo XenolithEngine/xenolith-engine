@@ -229,6 +229,7 @@ void MeshCompilerAttachmentHandle::submitInput(FrameQueue &q, Rc<core::Attachmen
 	auto d = data.cast<core::MeshInputData>();
 	if (!d || q.isFinalized()) {
 		cb(false);
+		return;
 	}
 
 	q.getFrame()->waitForDependencies(data->waitDependencies,
@@ -416,8 +417,8 @@ Vector<const core::CommandBuffer *> MeshCompilerPassHandle::doPrepareCommands(Fr
 			auto vertexBufferSize = writeBufferCopy(buf, it.index->getVertexBufferData(),
 					vertexBuffer, targetVertexOffset, it.vertexOffset, prevVertexBuffer);
 			if (vertexBufferSize > 0) {
-				it.vertexOffset = targetIndexOffset;
-				targetIndexOffset += vertexBufferSize;
+				it.vertexOffset = targetVertexOffset;
+				targetVertexOffset += vertexBufferSize;
 			} else {
 				it.vertexOffset = maxOf<VkDeviceSize>();
 			}

@@ -117,7 +117,10 @@ Vector<Rc<Material>> MaterialSet::updateMaterials(SpanView<Rc<Material>> materia
 
 		auto mIt = _materials.find(material->getId());
 		if (mIt != _materials.end()) {
-			emplaceMaterialImages(mIt->second, material.get(), cb);
+			if (!emplaceMaterialImages(mIt->second, material.get(), cb)) {
+				// image view creation failed; keep the previous material untouched
+				continue;
+			}
 			mIt->second = move(material);
 			ret.emplace_back(mIt->second.get());
 			for (auto &it : mIt->second->getImages()) {
@@ -127,7 +130,11 @@ Vector<Rc<Material>> MaterialSet::updateMaterials(SpanView<Rc<Material>> materia
 			}
 		} else {
 			auto it = _materials.emplace(material->getId(), move(material)).first;
-			emplaceMaterialImages(nullptr, it->second.get(), cb);
+			if (!emplaceMaterialImages(nullptr, it->second.get(), cb)) {
+				// image view creation failed; drop the just-inserted, uncompiled material
+				_materials.erase(it);
+				continue;
+			}
 			ret.emplace_back(it->second.get());
 		}
 	}
@@ -182,7 +189,10 @@ Vector<Rc<Material>> MaterialSet::updateMaterials(SpanView<Rc<Material>> materia
 					}
 				}
 
-				emplaceMaterialImages(mIt->second, mat.get(), cb);
+				if (!emplaceMaterialImages(mIt->second, mat.get(), cb)) {
+					// image view creation failed; keep the previous material untouched
+					continue;
+				}
 				mIt->second = sp::move(mat);
 				ret.emplace_back(mIt->second.get());
 				for (auto &it : mIt->second->getImages()) {
@@ -242,8 +252,11 @@ void MaterialSet::removeMaterial(Material *oldMaterial) {
 	}
 }
 
-void MaterialSet::emplaceMaterialImages(Material *oldMaterial, Material *newMaterial,
+bool MaterialSet::emplaceMaterialImages(Material *oldMaterial, Material *newMaterial,
 		const Callback<Rc<ImageView>(const MaterialImage &)> &cb) {
+	// set to true if `cb` ever returns a null ImageView; the material is then abandoned
+	bool imageViewFailed = false;
+
 	Vector<MaterialImage> *oldImages = nullptr;
 	uint32_t targetSet = maxOf<uint32_t>();
 	if (oldMaterial) {
@@ -309,7 +322,16 @@ void MaterialSet::emplaceMaterialImages(Material *oldMaterial, Material *newMate
 				set.imageSlots[loc].refCount += it.second.size();
 			} else {
 				// fill slot with new ImageView
-				set.imageSlots[loc].image = cb(*it.first);
+				auto view = cb(*it.first);
+				if (!view) {
+					// view creation failed (e.g. GPU resource exhaustion); abandon this
+					// material instead of dereferencing a null ImageView
+					log::source().error("core::MaterialSet",
+							"Failed to create ImageView for material image; skipping material");
+					imageViewFailed = true;
+					return;
+				}
+				set.imageSlots[loc].image = move(view);
 				set.imageSlots[loc].image->setLocation(setIdx, loc);
 				set.imageSlots[loc].refCount = uint32_t(it.second.size());
 				set.usedImageSlots = sprt::max(set.usedImageSlots, loc + 1);
@@ -390,7 +412,8 @@ void MaterialSet::emplaceMaterialImages(Material *oldMaterial, Material *newMate
 
 	if (targetSet != maxOf<uint32_t>()) {
 		if (tryToEmplaceSet(targetSet, _layouts[targetSet])) {
-			return;
+			// committed to this set, but a view may have failed to create mid-emplace
+			return !imageViewFailed;
 		}
 	}
 
@@ -402,7 +425,7 @@ void MaterialSet::emplaceMaterialImages(Material *oldMaterial, Material *newMate
 		}
 
 		if (tryToEmplaceSet(setIndex, set)) {
-			return;
+			return !imageViewFailed;
 		}
 
 		// or continue to search for appropriate set
@@ -415,6 +438,7 @@ void MaterialSet::emplaceMaterialImages(Material *oldMaterial, Material *newMate
 
 	Vector<uint32_t> imageLocations;
 	emplaceMaterial(uint32_t(_layouts.size() - 1), nIt, imageLocations);
+	return !imageViewFailed;
 }
 
 bool MaterialImage::canAlias(const MaterialImage &other) const {

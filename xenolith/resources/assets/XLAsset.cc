@@ -247,6 +247,17 @@ const AssetVersionData *Asset::getReadableVersion() const {
 	return nullptr;
 }
 
+// Build a filesystem-safe version-path component from the (untrusted, server-supplied) ETag.
+// The raw etag may contain '/', '\\' or ".." which would let a malicious or compromised asset
+// server escape the cache directory (path traversal -> arbitrary file write). Hex-encoding the
+// trimmed tag yields a [0-9a-f]* component with no path separators. Must be used identically by
+// both parseVersions (which scans existing cache files) and startNewDownload (which creates them),
+// or a downloaded file would never be matched on the next scan.
+static auto Asset_encodeVersionTag(StringView etag) {
+	etag.trimChars<StringView::Chars<'"', '\'', ' ', '-'>>();
+	return base16::encode<Interface>(etag);
+}
+
 void Asset::parseVersions(const db::Value &downloads) {
 	sprt::unique_lock ctx(_mutex);
 
@@ -273,9 +284,8 @@ void Asset::parseVersions(const db::Value &downloads) {
 			}
 		}
 
-		auto tag = StringView(data.etag);
-		tag.trimChars<StringView::Chars<'"', '\'', ' ', '-'>>();
-		auto versionPath = toString(_path, "/", data.ctime.toMicros(), "-", tag);
+		auto versionPath = toString(_path, "/", data.ctime.toMicros(), "-",
+				Asset_encodeVersionTag(data.etag));
 		auto iit = paths.find(versionPath);
 		if (iit != paths.end()) {
 			_library->eraseVersion(data.id);
@@ -374,9 +384,8 @@ bool Asset::startNewDownload(Time ctime, StringView etag) {
 			}
 
 			if (!data->inputFile) {
-				auto tag = StringView(data->data.etag);
-				tag.trimChars<StringView::Chars<'"', '\'', ' ', '-'>>();
-				data->data.path = toString(_path, "/", data->data.ctime.toMicros(), "-", tag);
+				data->data.path = toString(_path, "/", data->data.ctime.toMicros(), "-",
+						Asset_encodeVersionTag(data->data.etag));
 				data->inputFile = filesystem::File::open(FileInfo(data->data.path),
 						filesystem::OpenFlags::Write);
 				if (!data->inputFile) {

@@ -451,7 +451,10 @@ void Node::removeChildByTag(uint64_t tag, bool cleanup) {
 }
 
 void Node::removeAllChildren(bool cleanup) {
-	for (const auto &child : _children) {
+	auto childs = sp::move(_children);
+	_children.clear();
+
+	for (const auto &child : childs) {
 		if (_running) {
 			child->handleExit();
 		}
@@ -462,8 +465,6 @@ void Node::removeAllChildren(bool cleanup) {
 		// set parent nil at the end
 		child->setParent(nullptr);
 	}
-
-	_children.clear();
 }
 
 void Node::reorderChild(Node *child, ZOrder localZOrder) {
@@ -863,7 +864,8 @@ void Node::cleanup() {
 		this->unscheduleUpdate();
 	}
 
-	for (auto &child : _children) { child->cleanup(); }
+	auto childs = _children;
+	for (auto &child : childs) { child->cleanup(); }
 
 	this->removeAllSystems();
 }

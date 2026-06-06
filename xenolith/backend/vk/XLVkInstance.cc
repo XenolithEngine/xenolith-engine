@@ -773,7 +773,8 @@ void Instance::getDeviceInfo(DeviceInfo &ret, VkPhysicalDevice device) const {
 			}
 		}
 		if (transferFamily == computeFamily || transferFamily == graphicsFamily) {
-			if (queueInfo[computeFamily].count >= queueInfo[graphicsFamily].count) {
+			if (graphicsFamily == maxOf<uint32_t>()
+					|| queueInfo[computeFamily].count >= queueInfo[graphicsFamily].count) {
 				transferFamily = computeFamily;
 			} else {
 				transferFamily = graphicsFamily;
@@ -782,7 +783,7 @@ void Instance::getDeviceInfo(DeviceInfo &ret, VkPhysicalDevice device) const {
 	}
 
 	// try to map present with graphics
-	if (presentFamily != graphicsFamily) {
+	if (graphicsFamily != maxOf<uint32_t>() && presentFamily != graphicsFamily) {
 		if ((queueInfo[graphicsFamily].flags & core::QueueFlags::Present)
 				!= core::QueueFlags::None) {
 			presentFamily = graphicsFamily;

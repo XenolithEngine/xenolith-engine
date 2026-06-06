@@ -124,9 +124,20 @@ struct SP_PUBLIC ColorScheme {
 	void set(ThemeType, const Color4F &, bool isContent);
 	void set(ThemeType, const ColorHCT &, bool isContent);
 
-	Color4F get(ColorRole name) const { return colors[toInt(name)]; }
+	Color4F get(ColorRole name) const {
+		if (name >= ColorRole::Undefined) {
+			return Color4F();
+		}
+		return colors[toInt(name)];
+	}
 
-	Color4F on(ColorRole name) const { return colors[toInt(getColorRoleOn(name, type))]; }
+	Color4F on(ColorRole name) const {
+		auto onName = getColorRoleOn(name, type);
+		if (onName >= ColorRole::Undefined) {
+			return Color4F();
+		}
+		return colors[toInt(onName)];
+	}
 
 	ColorHCT hct(ColorRole name, float alpha = 1.0f) const;
 

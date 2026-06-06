@@ -301,7 +301,7 @@ void FrameHandle::invalidate() {
 			for (auto &it : _queues) {
 				for (auto &iit : it->getAttachments()) {
 					if (iit.second->handle->isOutput()) {
-						attachments.emplace(iit.first, (FrameAttachmentData *)&iit.second);
+						attachments.emplace(iit.first, iit.second.get());
 					}
 				}
 				it->invalidate();
@@ -435,7 +435,7 @@ void FrameHandle::onComplete() {
 		for (auto &it : _queues) {
 			for (auto &iit : it->getAttachments()) {
 				if (iit.second->handle->isOutput()) {
-					attachments.emplace(iit.first, (FrameAttachmentData *)&iit.second);
+					attachments.emplace(iit.first, iit.second.get());
 				}
 			}
 		}

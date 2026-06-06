@@ -137,6 +137,7 @@ void FontComponent::handleStart(Context *a) {
 
 	if (!_queue) {
 		log::source().error("FontComponent", "Fail to create FontQueue for GAPI");
+		return;
 	}
 
 	if (_queue->isCompiled()) {

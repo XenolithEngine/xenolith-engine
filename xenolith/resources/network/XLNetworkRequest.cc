@@ -150,7 +150,11 @@ void Request::handleHeader(StringView key, StringView value) {
 	if (!_ignoreResponseData) {
 		if (key == "content-length") {
 			auto length = value.readInteger(10).get(0);
-			_data.resize(size_t(length));
+			// ignore negative/garbage lengths, and clamp the speculative allocation to the
+			// configured cap so a hostile Content-Length cannot force an unbounded resize
+			if (length > 0) {
+				_data.resize(sprt::min(size_t(length), _maxResponseSize));
+			}
 		}
 	}
 	if (_targetHeaderCallback) {
@@ -159,6 +163,12 @@ void Request::handleHeader(StringView key, StringView value) {
 }
 
 size_t Request::handleReceive(char *buf, size_t nbytes) {
+	if (nbytes > maxOf<size_t>() - _nbytes) {
+		return 0; // integer overflow: refuse to grow buffer past size_t range
+	}
+	if (_nbytes + nbytes > _maxResponseSize) {
+		return 0; // response exceeds the configured maximum: abort the transfer
+	}
 	if (_data.size() < (nbytes + _nbytes)) {
 		_data.resize(nbytes + _nbytes);
 	}

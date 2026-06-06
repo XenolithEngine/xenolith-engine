@@ -456,8 +456,9 @@ Rc<Node> TabBar::onItem(MenuSourceButton *btn, bool wrapped) {
 void TabBar::onTabButton(Button *b, MenuSourceButton *btn) {
 	auto &items = _source->getSubscription()->getItems();
 	for (auto &it : items) {
-		auto b = dynamic_cast<MenuSourceButton *>(it.get());
-		b->setSelected(false);
+		if (auto b = dynamic_cast<MenuSourceButton *>(it.get())) {
+			b->setSelected(false);
+		}
 	}
 	btn->setSelected(true);
 	size_t idx = 0;
@@ -573,6 +574,9 @@ void TabBar::setSelectedIndex(size_t nidx) {
 size_t TabBar::getSelectedIndex() const { return _selectedIndex; }
 
 void TabBar::setProgress(float prog) {
+	if (_selectedIndex == maxOf<size_t>() || _selectedIndex >= _positions.size()) {
+		return;
+	}
 	if (_layer->getActionByTag("TabBarAction"_tag) == nullptr) {
 		if (prog > 0.0f) {
 			if (_selectedIndex + 1 < _positions.size()) {

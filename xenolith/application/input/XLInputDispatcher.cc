@@ -233,14 +233,22 @@ void InputDispatcher::handleInputEvent(const InputEventData &event) {
 		handlers.addListenersFromStorage(_events);
 		handlers.handle(false);
 
-		for (auto &it : _activeEvents) {
-			if ((it.second.event.data.input.modifiers & InputModifier::Unmanaged)
+		Vector<uint32_t> ids;
+		ids.reserve(_activeEvents.size());
+		for (auto &it : _activeEvents) { ids.emplace_back(it.first); }
+
+		for (auto id : ids) {
+			auto it = _activeEvents.find(id);
+			if (it == _activeEvents.end()) {
+				continue;
+			}
+			if ((it->second.event.data.input.modifiers & InputModifier::Unmanaged)
 					== InputModifier::None) {
-				it.second.event.data.input.x = event.input.x;
-				it.second.event.data.input.y = event.input.y;
-				it.second.event.data.event = InputEventName::Move;
-				it.second.event.data.input.modifiers = event.input.modifiers;
-				handleInputEvent(it.second.event.data);
+				it->second.event.data.input.x = event.input.x;
+				it->second.event.data.input.y = event.input.y;
+				it->second.event.data.event = InputEventName::Move;
+				it->second.event.data.input.modifiers = event.input.modifiers;
+				handleInputEvent(it->second.event.data);
 			}
 		}
 		break;

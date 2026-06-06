@@ -263,6 +263,7 @@ void MaterialCompilationAttachmentHandle::submitInput(FrameQueue &q,
 	auto d = data.cast<core::MaterialInputData>();
 	if (!d || q.isFinalized()) {
 		cb(false);
+		return;
 	}
 
 	q.getFrame()->waitForDependencies(data->waitDependencies,

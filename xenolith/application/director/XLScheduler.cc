@@ -71,6 +71,7 @@ void Scheduler::update(const UpdateTime &time) {
 	for (auto &it : _tmp) {
 		_list.emplace(it.target, it.priority, sp::move(it.callback), it.paused);
 	}
+	_tmp.clear();
 }
 
 bool Scheduler::isPaused(void *ptr) const {

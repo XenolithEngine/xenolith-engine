@@ -90,6 +90,11 @@ core::AttachmentData *PresentationFrame::setupOutputAttachment() {
 core::FrameHandle *PresentationFrame::submitFrame() {
 	_frameHandle = _engine->submitNextFrame(Rc<core::FrameRequest>(_frameRequest));
 
+	if (!_frameHandle) {
+		invalidate();
+		return nullptr;
+	}
+
 	if (_target) {
 		_target->setFrameIndex(_frameHandle->getOrder());
 	}
@@ -102,6 +107,11 @@ core::FrameHandle *PresentationFrame::submitFrame() {
 
 bool PresentationFrame::assignSwapchainImage(Swapchain::SwapchainAcquiredImage *acquiredImage) {
 	auto sw = getSwapchainImage();
+	if (!sw) {
+		log::source().error("core::PresentationFrame",
+				"assignSwapchainImage called on a frame without a swapchain image target");
+		return false;
+	}
 
 	if (acquiredImage->swapchain != _swapchain) {
 		log::source().error("core::PresentationFrame",

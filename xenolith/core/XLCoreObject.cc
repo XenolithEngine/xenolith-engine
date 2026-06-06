@@ -102,7 +102,9 @@ bool DataAtlas::init(Type t, uint32_t count, uint32_t objectSize, Extent2 imageS
 
 void DataAtlas::compile() {
 	auto bufferObjectSize = sizeof(uint32_t) * 2 + _objectSize;
-	auto bufferObjectCount = math::npot(uint32_t(_intNames.size()));
+	// over-allocate by one to guarantee at least one empty slot, so linear-probe
+	// lookups for absent keys always terminate at a sentinel (npot(n)==n for powers of two)
+	auto bufferObjectCount = math::npot(uint32_t(_intNames.size()) + 1);
 
 	Bytes dataStorage;
 	dataStorage.resize(bufferObjectCount * bufferObjectSize, uint8_t(0xFFU));

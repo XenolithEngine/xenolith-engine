@@ -84,7 +84,11 @@ void NavigationDrawer::setMenuSource(MenuSource *source) {
 
 void NavigationDrawer::setStyle(const SurfaceStyle &style) { _navigation->setStyle(style); }
 
-void NavigationDrawer::setStatusBarColor(const Color &color) { _statusBarLayer->setColor(color); }
+void NavigationDrawer::setStatusBarColor(const Color &color) {
+	if (_statusBarLayer) {
+		_statusBarLayer->setColor(color);
+	}
+}
 
 void NavigationDrawer::onNodeEnabled(bool value) {
 	Sidebar::onNodeEnabled(value);
