@@ -452,7 +452,7 @@ bool FieldText::transformValue(const Scheme &scheme, const Value &obj, Value &va
 
 				val.setBytes(stappler::base16::decode<Interface>(
 						StringView(str.data() + 4, str.size() - 4)));
-			} else if (str.size() > 7 && str.starts_with<StringCaseComparator>("base64:") == 0) {
+			} else if (str.size() > 7 && str.starts_with<StringCaseComparator>("base64:")) {
 				auto len = stappler::base64::decodeSize(str.size() - 7);
 				if (len < minLength || len > maxLength) {
 					return false;

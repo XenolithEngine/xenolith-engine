@@ -56,8 +56,10 @@ size_t SqliteQueryInterface::push(String &&val) {
 
 size_t SqliteQueryInterface::push(const StringView &val) {
 	auto &it = params.emplace_back(BindingData());
-	it.data.assign_strong((uint8_t *)val.data(), val.size() + 1);
-	it.data.data()[val.size()] = 0;
+	// copy exactly val.size() bytes (a StringView is not guaranteed to own the byte
+	// past its end), then append a NUL terminator to preserve the size()-1 length convention
+	it.data.assign_strong((uint8_t *)val.data(), val.size());
+	it.data.push_back(0);
 	it.idx = uint32_t(params.size());
 	it.type = Type::Text;
 	return it.idx;

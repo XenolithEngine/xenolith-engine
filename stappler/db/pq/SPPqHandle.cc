@@ -110,7 +110,7 @@ SPUNUSED static String pg_numeric_to_string(BytesViewNetwork r) {
 		str.push_back('0');
 	} else {
 		for (d = 0; d <= weight; d++) {
-			dig = (d < ndigits) ? digits[d] : 0;
+			dig = (d >= 0 && size_t(d) < digits.size()) ? digits[d] : 0;
 
 			bool putit = (d > 0);
 			d1 = dig / 1'000;
@@ -138,7 +138,7 @@ SPUNUSED static String pg_numeric_to_string(BytesViewNetwork r) {
 	if (dscale > 0) {
 		str.push_back('.');
 		for (i = 0; i < dscale; d++, i += DEC_DIGITS) {
-			dig = (d >= 0 && d < ndigits) ? digits[d] : 0;
+			dig = (d >= 0 && size_t(d) < digits.size()) ? digits[d] : 0;
 
 			d1 = dig / 1'000;
 			dig -= d1 * 1'000;

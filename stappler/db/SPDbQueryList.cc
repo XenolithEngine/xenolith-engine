@@ -548,7 +548,7 @@ void QueryList::decodeSelect(const Scheme &scheme, Query &q, const Value &val) {
 							|| d.first == Comparation::IsNull) {
 						auto &val = iit.getValue(2);
 						if (d.second && iit.size() >= 4) {
-							auto &val2 = iit.getValue(4);
+							auto &val2 = iit.getValue(3);
 							q.select(field, d.first, Value(val), val2);
 						} else {
 							q.select(field, d.first, Value(val), Value());
@@ -568,6 +568,18 @@ void QueryList::decodeSelect(const Scheme &scheme, Query &q, const Value &val) {
 			for (auto &iit : val.asArray()) { cb(iit); }
 		}
 	}
+}
+
+// DB-QLIST-002: clamp an untrusted limit/offset to [0, MaxQueryLimit]. A negative value would
+// otherwise wrap to a near-SIZE_MAX size_t (huge offset = DoS); large positives are capped.
+static size_t QueryList_clampLimit(int64_t v) {
+	if (v < 0) {
+		return 0;
+	}
+	if (v > QueryList::MaxQueryLimit) {
+		return size_t(QueryList::MaxQueryLimit);
+	}
+	return size_t(v);
 }
 
 void QueryList::decodeOrder(const Scheme &scheme, Query &q, const String &str, const Value &val) {
@@ -596,10 +608,10 @@ void QueryList::decodeOrder(const Scheme &scheme, Query &q, const String &str, c
 		}
 
 		if (size > target) {
-			limit = val.getInteger(target);
+			limit = QueryList_clampLimit(val.getInteger(target));
 			++target;
 			if (size > target) {
-				offset = val.getInteger(target);
+				offset = QueryList_clampLimit(val.getInteger(target));
 				++target;
 			}
 		}
@@ -816,11 +828,11 @@ bool QueryList::apply(const Value &val) {
 			decodeOrder(scheme, q, it.first, it.second);
 		} else if (it.first == "limit") {
 			if (it.second.isInteger()) {
-				q.limit(it.second.asInteger());
+				q.limit(QueryList_clampLimit(it.second.asInteger()));
 			}
 		} else if (it.first == "offset") {
 			if (it.second.isInteger()) {
-				q.offset(it.second.asInteger());
+				q.offset(QueryList_clampLimit(it.second.asInteger()));
 			}
 		} else if (it.first == "fields") {
 			Vector<Query::Field> dec;

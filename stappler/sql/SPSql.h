@@ -77,6 +77,36 @@ enum class Operator {
 SP_PUBLIC Pair<StringView, bool> encodeComparation(Comparation);
 SP_PUBLIC Pair<Comparation, bool> decodeComparation(StringView);
 
+// Hardening (DB-SQL-IDENT-001): emit an SQL identifier wrapped in double-quotes, doubling any
+// embedded double-quote so a stray/hostile '"' in a name cannot terminate the quoted identifier
+// and inject SQL. This is a no-op for normal identifiers (which contain no '"'), so it never
+// changes any currently-valid generated SQL; it only neutralizes the pathological case.
+template <typename Stream, typename Str>
+static inline void Query_writeQuotedId(Stream &stream, const Str &id) {
+	StringView idv(id);
+	auto d = idv.data();
+	auto sz = idv.size();
+	bool hasQuote = false;
+	for (size_t i = 0; i < sz; ++i) {
+		if (d[i] == '"') {
+			hasQuote = true;
+			break;
+		}
+	}
+	stream << '"';
+	if (!hasQuote) {
+		stream << idv;
+	} else {
+		for (size_t i = 0; i < sz; ++i) {
+			if (d[i] == '"') {
+				stream << '"';
+			}
+			stream << d[i];
+		}
+	}
+	stream << '"';
+}
+
 template <typename T>
 struct PatternComparator {
 	using Type = typename sprt::remove_reference<T>::type;
@@ -100,10 +130,15 @@ struct SP_PUBLIC SimpleBinder : public Interface::AllocBaseType {
 	}
 	void writeBind(const Callback<void(StringView)> &stream,
 			const PatternComparator<data::ValueTemplate<Interface>> &val) {
+		// DB-SQL-002: LIKE wildcard is '%', not '&' (Suffix = "%value", WordPart = "%value%").
+		// TODO (design review): SimpleBinder inlines the pattern value into SQL unescaped — this
+		// is an injection hazard if SimpleBinder is ever used with untrusted input. It is
+		// currently dead code (db::Binder is the live binder and parameterizes values); before
+		// putting SimpleBinder into use, route the value through parameterized binding / escaping.
 		switch (val.cmp) {
 		case Comparation::Prefix: stream << val.value->asString() << "%"; break;
-		case Comparation::Suffix: stream << "&" << val.value->asString(); break;
-		case Comparation::WordPart: stream << "&" << val.value->asString() << "%"; break;
+		case Comparation::Suffix: stream << "%" << val.value->asString(); break;
+		case Comparation::WordPart: stream << "%" << val.value->asString() << "%"; break;
 		default: break;
 		}
 	}
@@ -660,10 +695,11 @@ void Query<Binder, Interface>::writeBind(const Field &f, bool withAlias) {
 	if (f.name == "*") {
 		stream << "*";
 	} else {
-		stream << "\"" << f.name << "\"";
+		Query_writeQuotedId(stream, f.name);
 	}
 	if (withAlias && !f.alias.empty()) {
-		stream << " AS \"" << f.alias << "\"";
+		stream << " AS ";
+		Query_writeQuotedId(stream, f.alias);
 	}
 }
 
@@ -673,7 +709,8 @@ void Query<Binder, Interface>::writeBind(const StringView &func, const Field &f)
 	writeBind(f, false);
 	stream << ")";
 	if (!f.alias.empty()) {
-		stream << " AS \"" << f.alias << "\"";
+		stream << " AS ";
+		Query_writeQuotedId(stream, f.alias);
 	}
 }
 
