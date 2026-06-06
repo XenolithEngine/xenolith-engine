@@ -272,6 +272,7 @@ static LocationInterface s_defaultInterface = {
 		if (st) {
 			*st = sprt::status::errnoToStatus(__sprt_errno);
 		}
+		return 0;
 	}
 	if (st) {
 		*st = Status::Ok;
@@ -285,6 +286,7 @@ static LocationInterface s_defaultInterface = {
 		if (st) {
 			*st = sprt::status::errnoToStatus(__sprt_errno);
 		}
+		return 0;
 	}
 	if (st) {
 		*st = Status::Ok;
@@ -298,6 +300,7 @@ static LocationInterface s_defaultInterface = {
 		if (st) {
 			*st = sprt::status::errnoToStatus(__sprt_errno);
 		}
+		return 0;
 	}
 	if (st) {
 		*st = Status::Ok;
@@ -311,6 +314,7 @@ static LocationInterface s_defaultInterface = {
 		if (st) {
 			*st = sprt::status::errnoToStatus(__sprt_errno);
 		}
+		return 0;
 	}
 	if (st) {
 		*st = Status::Ok;
@@ -479,13 +483,13 @@ static LocationInterface s_defaultInterface = {
 
 		int mProt = 0;
 		if ((prot & __SPRT_S_IROTH) != 0) {
-			mProt = __SPRT_PROT_READ;
+			mProt |= __SPRT_PROT_READ;
 		}
 		if ((prot & __SPRT_S_IWOTH) != 0) {
-			mProt = __SPRT_PROT_WRITE;
+			mProt |= __SPRT_PROT_WRITE;
 		}
 		if ((prot & __SPRT_S_IXOTH) != 0) {
-			mProt = __SPRT_PROT_EXEC;
+			mProt |= __SPRT_PROT_EXEC;
 		}
 
 		int mFlags = 0;
@@ -530,6 +534,7 @@ static LocationInterface s_defaultInterface = {
 		if (::__sprt_msync(region, size_t(s->length), __SPRT_MS_SYNC) != 0) {
 			return sprt::status::errnoToStatus(__sprt_errno);
 		}
+		return Status::Ok;
 	}
 	return Status::ErrorInvalidArguemnt;
 },

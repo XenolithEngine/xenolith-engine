@@ -56,17 +56,29 @@ static StringView filepath_lastComponent(StringView path) {
 
 static size_t print(char *buf, size_t bufLen, uintptr_t pc, StringView filename, int lineno,
 		StringView function) {
+	// __sprt_snprintf returns the would-be length on truncation (and may be negative on
+	// error); clamp into [0, bufLen] so bufLen never underflows.
+	static auto clampWritten = [](int w, size_t bufLen) -> size_t {
+		if (w < 0) {
+			return 0;
+		}
+		return sprt::min(size_t(w), bufLen);
+	};
+
 	char *target = buf;
-	auto w = __sprt_snprintf(target, bufLen, "[%p]", (void *)pc);
+	auto w = clampWritten(__sprt_snprintf(target, bufLen, "[%p]", (void *)pc), bufLen);
 	bufLen -= w;
 	target += w;
 
 	if (!filename.empty()) {
 		auto name = filepath_lastComponent(filename);
 		if (lineno >= 0) {
-			w = __sprt_snprintf(target, bufLen, " %.*s:%d", int(name.size()), name.data(), lineno);
+			w = clampWritten(__sprt_snprintf(target, bufLen, " %.*s:%d", int(name.size()),
+								 name.data(), lineno),
+					bufLen);
 		} else {
-			w = __sprt_snprintf(target, bufLen, " %.*s", int(name.size()), name.data());
+			w = clampWritten(
+					__sprt_snprintf(target, bufLen, " %.*s", int(name.size()), name.data()), bufLen);
 		}
 		bufLen -= w;
 		target += w;
@@ -76,12 +88,14 @@ static size_t print(char *buf, size_t bufLen, uintptr_t pc, StringView filename,
 		int status = 0;
 		auto ptr = abi::__cxa_demangle(function.data(), nullptr, nullptr, &status);
 		if (ptr) {
-			w = __sprt_snprintf(target, bufLen, " - %s", ptr);
+			w = clampWritten(__sprt_snprintf(target, bufLen, " - %s", ptr), bufLen);
 			bufLen -= w;
 			target += w;
 			__sprt_free(ptr);
 		} else {
-			w = __sprt_snprintf(target, bufLen, " - %.*s", int(function.size()), function.data());
+			w = clampWritten(__sprt_snprintf(target, bufLen, " - %.*s", int(function.size()),
+								 function.data()),
+					bufLen);
 			bufLen -= w;
 			target += w;
 		}

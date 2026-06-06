@@ -56,7 +56,9 @@ bool isAboveRoot(StringView path) {
 			}
 			--components;
 		} else if ((str == "." && str.size() == 1) || str.size() == 0) {
-			return false;
+			// a "." or empty segment contributes no depth; skip it rather than
+			// returning early, otherwise a later ".." that escapes root is missed
+			// (e.g. "a/./../../etc" would wrongly be reported as not-above-root)
 		} else {
 			++components;
 		}

@@ -20,55 +20,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#define __SPRT_BUILD 1
+#ifndef CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_MMAN_H_
+#define CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_MMAN_H_
 
-#include <sprt/c/__sprt_stdlib.h>
-#include <sprt/c/__sprt_errno.h>
-#include <sprt/cxx/detail/constexpr.h>
+#include <sprt/c/bits/__sprt_def.h>
 
-#include <stdlib.h>
+// clang-format off
+#include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/mman.h)
+// clang-format on
 
-#if SPRT_WINDOWS
-
-#include <sprt/cxx/unordered_map>
-#include <sprt/cxx/string>
-#include <sprt/wrappers/windows/basic_api.h>
-
-namespace sprt::platform {
-
-int lastErrorToErrno(unsigned long);
-
-}
-
-#endif
-
-namespace sprt {
-
-__SPRT_C_FUNC int __SPRT_ID(setenv)(const char *n, const char *v, int r) { return setenv(n, v, r); }
-
-__SPRT_C_FUNC int __SPRT_ID(unsetenv)(const char *n) { return unsetenv(n); }
-
-__SPRT_C_FUNC char *__SPRT_ID(getenv_impl)(const char *name) { return getenv(name); }
-
-__SPRT_C_FUNC int getenv_s(size_t *ret, char *buf, rsize_t bufSize,
-		char const *name) __SPRT_NOEXCEPT {
-	if (!ret || (!buf && bufSize > 0) || !name) {
-		return EINVAL;
-	}
-	auto env = getenv(name);
-	if (!env) {
-		*ret = 0;
-		return 0;
-	}
-	auto len = strlen(env);
-	*ret = len + 1;
-	if (buf && bufSize < len + 1) {
-		return ERANGE;
-	}
-	if (buf && bufSize >= len + 1) {
-		memcpy(buf, env, len + 1);
-	}
-	return 0;
-}
-
-} // namespace sprt
+#endif // CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_MMAN_H_

@@ -324,6 +324,10 @@ static void WindowsDisplayConfigManager_enumMonitorDeviceInterface(WinDisplayCon
 			NULL, // machine name, local machine
 			NULL); // reserved
 
+	if (hDevInfo == INVALID_HANDLE_VALUE) {
+		return;
+	}
+
 	SP_DEVICE_INTERFACE_DATA ifData = {.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA)};
 
 	SP_DEVINFO_DATA devInfoData;
@@ -336,8 +340,17 @@ static void WindowsDisplayConfigManager_enumMonitorDeviceInterface(WinDisplayCon
 
 		SetupDiGetDeviceInterfaceDetailW(hDevInfo, &ifData, nullptr, 0, &requiredSize, nullptr);
 
+		if (requiredSize == 0) {
+			++i;
+			continue;
+		}
+
 		auto data = (SP_DEVICE_INTERFACE_DETAIL_DATA_W *)HeapAlloc(GetProcessHeap(),
 				HEAP_ZERO_MEMORY, requiredSize);
+		if (!data) {
+			++i;
+			continue;
+		}
 		data->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
 
 		if (SetupDiGetDeviceInterfaceDetailW(hDevInfo, &ifData, data, requiredSize, nullptr,
@@ -358,6 +371,8 @@ static void WindowsDisplayConfigManager_enumMonitorDeviceInterface(WinDisplayCon
 		HeapFree(GetProcessHeap(), 0, data);
 		++i;
 	}
+
+	SetupDiDestroyDeviceInfoList(hDevInfo);
 }
 
 void WindowsDisplayConfigManager::updateDisplayConfig(Function<void(DisplayConfig *)> &&cb) {

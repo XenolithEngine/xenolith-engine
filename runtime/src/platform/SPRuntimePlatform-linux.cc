@@ -51,6 +51,9 @@ StringView getOsLocale() {
 	if (!locale) {
 		locale = ::getenv("LANG");
 	}
+	if (!locale) {
+		return StringView();
+	}
 	return StringView(locale, ::__sprt_strlen(locale));
 }
 
@@ -63,7 +66,7 @@ StringView getUniqueDeviceId() {
 		if (stat("/etc/machine-id", &st) == 0) {
 			auto buf = __sprt_malloca(st.st_size + 1);
 			auto fd = open("/etc/machine-id", 0);
-			if (fd > 0) {
+			if (fd >= 0) {
 				auto v = ::read(fd, buf, st.st_size);
 				if (v == st.st_size) {
 					auto id = StringView((const char *)buf, v);
@@ -71,6 +74,7 @@ StringView getUniqueDeviceId() {
 					unique_lock lock(s_globalConfig.infoMutex);
 					s_globalConfig.uniqueIdBuf = id.pdup(s_globalConfig._pool);
 				}
+				::close(fd);
 			}
 			__sprt_freea(buf);
 		}

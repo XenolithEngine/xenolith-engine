@@ -191,7 +191,7 @@ static void readGnomeDisplayResources(ReadIterator &iter, DisplayConfig *info) {
 
 static void sanitizaDisplayConfig(DisplayConfig *info) {
 	for (auto &it : info->logical) {
-		if (it.rect.width == 9 || it.rect.height == 0) {
+		if (it.rect.width == 0 || it.rect.height == 0) {
 			for (auto &mId : it.monitors) {
 				if (auto m = info->getMonitor(mId)) {
 					auto &cMode = m->getCurrent();

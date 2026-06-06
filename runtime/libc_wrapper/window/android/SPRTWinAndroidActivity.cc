@@ -177,6 +177,9 @@ bool AndroidActivity::run() {
 }
 
 void AndroidActivity::notifyWindowInputEvents(Vector<InputEventData> &&vec) {
+	if (!_window) {
+		return;
+	}
 	for (auto &it : vec) {
 		if (it.hasLocation()) {
 			it.input.y = ANativeWindow_getHeight(_window->getWindow()) - it.input.y;
@@ -361,7 +364,7 @@ void AndroidActivity::handleNativeWindowDestroyed(ANativeWindow *window) {
 		XL_ANDROID_LOG("AndroidActivity::handleNativeWindowDestroyed ", (void *)_activity, " ",
 				(void *)window);
 
-		if (_window->getWindow() == window) {
+		if (_window && _window->getWindow() == window) {
 			_controller->notifyWindowClosed(_window,
 					WindowCloseOptions::CloseInPlace | WindowCloseOptions::IgnoreExitGuard);
 			_window = nullptr;
@@ -373,7 +376,7 @@ void AndroidActivity::handleNativeWindowRedrawNeeded(ANativeWindow *window) {
 	performTemporary(getContext(), [&] {
 		XL_ANDROID_LOG("AndroidActivity::handleNativeWindowRedrawNeeded ", (void *)_activity, " ",
 				(void *)window);
-		if (_window->getWindow() == window) {
+		if (_window && _window->getWindow() == window) {
 			_window->getAppWindow()->waitUntilFrame();
 		}
 	});
@@ -385,7 +388,7 @@ void AndroidActivity::handleNativeWindowResized(ANativeWindow *window) {
 				(void *)window, " ", ANativeWindow_getWidth(window), " ",
 				ANativeWindow_getHeight(window));
 
-		if (_window->getWindow() == window) {
+		if (_window && _window->getWindow() == window) {
 			_window->updateWindow(true);
 		}
 	});

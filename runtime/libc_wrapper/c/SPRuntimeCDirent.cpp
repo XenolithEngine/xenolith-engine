@@ -129,7 +129,7 @@ __SPRT_C_FUNC int __SPRT_ID(scandirat)(int __dir_fd, const char *path,
 
 	char buffer[PATH_MAX] = {0};
 	if (__dir_fd == AT_FDCWD) {
-		if (getcwd(buffer, PATH_MAX) != 0) {
+		if (getcwd(buffer, PATH_MAX) == nullptr) {
 			*__sprt___errno_location() = EBADF;
 			return -1;
 		}
@@ -141,21 +141,26 @@ __SPRT_C_FUNC int __SPRT_ID(scandirat)(int __dir_fd, const char *path,
 	}
 
 	auto len = __sprt_strlen(buffer);
+	auto pathLen = __sprt_strlen(path);
+
+	// strappend() floors its remaining-size counter at 1 on overflow, so the old
+	// `remains > 0` check never detected truncation. Verify explicitly that
+	// cwd + '/' + path + NUL fits in PATH_MAX before building the path.
+	if (len + 1 + pathLen + 1 > PATH_MAX) {
+		*__sprt___errno_location() = ENAMETOOLONG;
+		return -1;
+	}
+
 	auto target = &buffer[len];
 	auto remains = PATH_MAX - len;
 
 	target = strappend(target, &remains, "/", 1);
-	target = strappend(target, &remains, path, __sprt_strlen(path));
+	target = strappend(target, &remains, path, pathLen);
 
-	if (remains > 0) {
-		return ::scandir(buffer, (struct dirent ***)__name_list,
-				reinterpret_cast<int (*)(const struct dirent *)>(__filter),
-				reinterpret_cast<int (*)(const struct dirent **, const struct dirent **)>(
-						__comparator));
-	}
-
-	*__sprt___errno_location() = EFAULT;
-	return -1;
+	return ::scandir(buffer, (struct dirent ***)__name_list,
+			reinterpret_cast<int (*)(const struct dirent *)>(__filter),
+			reinterpret_cast<int (*)(const struct dirent **, const struct dirent **)>(
+					__comparator));
 #else
 	return ::scandirat64(__dir_fd, path, (struct dirent64 ***)__name_list,
 			reinterpret_cast<int (*)(const struct dirent64 *)>(__filter),

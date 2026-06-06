@@ -154,7 +154,7 @@ XcbConnection::XcbConnection(NotNull<XcbLibrary> xcb, NotNull<XkbLibrary> xkb, S
 		++i;
 	}
 
-	xcb_get_property_cookie_t netSupportedCookie;
+	xcb_get_property_cookie_t netSupportedCookie{};
 	if (auto a = getAtom(XcbAtomIndex::_NET_SUPPORTED)) {
 		netSupportedCookie = _xcb->xcb_get_property(_connection, 0, _screen->root, a,
 				XCB_GET_PROPERTY_TYPE_ANY, 0, Max<uint32_t> / 4);

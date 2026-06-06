@@ -135,7 +135,7 @@ uint32_t KQueueData::poll() {
 	pushContext(&ctx, RunContext::Poll);
 
 	auto status = runPoll(TimeInterval());
-	if (toInt(status) > 0) {
+	if (status == Status::Ok) {
 		result = processEvents(&ctx);
 	}
 
@@ -165,12 +165,15 @@ Status KQueueData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval 
 	ctx.runWakeupFlags = wakeupFlags;
 
 	struct kevent events[1];
-	if (ival && ival != TimeInterval::Infinite) {
+	// A self-wakeup timer is registered only for a finite, non-zero interval.
+	const bool hasTimer = (ival && ival != TimeInterval::Infinite);
+	if (hasTimer) {
+		// udata must be `this` (the KQueueData sentinel processEvents() checks to
+		// recognise the self-timer); the RunContext* is carried in `ident`.
 		EV_SET(&events[0], reinterpret_cast<intptr_t>(&ctx), EVFILT_TIMER, EV_ADD | EV_ONESHOT,
-				NOTE_USECONDS, ival.toMicros(), reinterpret_cast<void *>(toInt(wakeupFlags)));
+				NOTE_USECONDS, ival.toMicros(), this);
+		update(sprt::makeSpanView(events, 1));
 	}
-
-	update(sprt::makeSpanView(events, ival ? 2 : 1));
 
 	pushContext(&ctx, RunContext::Run);
 
@@ -185,7 +188,7 @@ Status KQueueData::run(TimeInterval ival, WakeupFlags wakeupFlags, TimeInterval 
 		}
 	}
 
-	if (ival) {
+	if (hasTimer) {
 		events[0].flags = EV_DELETE;
 		update(sprt::makeSpanView(events, 1));
 	}
@@ -238,7 +241,7 @@ KQueueData::KQueueData(QueueRef *q, Queue::Data *data, const QueueInfo &info, Sp
 
 	EV_SET(&ev.emplace_back(), reinterpret_cast<uintptr_t>(this), EVFILT_USER, EV_ADD | EV_CLEAR,
 			NOTE_FFNOP, 0, this);
-	for (auto &it : sigs) { EV_SET(&ev.emplace_back(), it, EV_ADD, EVFILT_SIGNAL, 0, 0, this); }
+	for (auto &it : sigs) { EV_SET(&ev.emplace_back(), it, EVFILT_SIGNAL, EV_ADD, 0, 0, this); }
 
 	update(ev);
 

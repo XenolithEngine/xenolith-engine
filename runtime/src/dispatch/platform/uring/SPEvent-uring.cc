@@ -50,13 +50,6 @@ static void atomicStoreRelease(unsigned *ptr, unsigned value) {
 	__atomic_store_n(ptr, value, __ATOMIC_RELEASE);
 }
 
-// Ignore -1 error in debug mode - it indicated debugger interrupt
-#if DEBUG
-static constexpr int DEBUG_ERROR_THRESHOLD = -1;
-#else
-static constexpr int DEBUG_ERROR_THRESHOLD = 0;
-#endif
-
 bool URingData::checkSupport() {
 	struct __SPRT_UTSNAME_NAME buffer;
 
@@ -210,9 +203,10 @@ URingData::SqeBlock URingData::getNextSqe(uint32_t count) {
 	if (!sqe) {
 		int ret = submitSqe(flushSqe(), 0, true);
 		if (ret < 0) {
+			// submitSqe()/io_uring_enter() return -1/errno (libc convention).
 			oslog::vperror(__SPRT_LOCATION, "dispatch::URingData",
-					"getNextSqe(): io_uring_enter failed: ", ret);
-			return SqeBlock{nullptr, 0, 0, Status(getErrnoStatus(ret))};
+					"getNextSqe(): io_uring_enter failed: ", __sprt_errno);
+			return SqeBlock{nullptr, 0, 0, sprt::status::errnoToStatus(__sprt_errno)};
 		}
 		sqe = tryGetNextSqe(count);
 		if (!sqe) {
@@ -252,7 +246,7 @@ Status URingData::pushSqe(sprt::initializer_list<uint8_t> ops,
 			ptr->flags = 0;
 			cb(ptr, n);
 
-			if (linked && n < sqe.count) {
+			if (linked && n + 1 < sqe.count) {
 				ptr->flags |= IOSQE_IO_LINK;
 			}
 
@@ -607,12 +601,18 @@ uint32_t URingData::wait(TimeInterval ival) {
 
 			events += doPoll();
 
-			if (err < DEBUG_ERROR_THRESHOLD) {
-				oslog::vperror(__SPRT_LOCATION, "dispatch::URingData", "io_uring_enter: ", -err);
-				break;
-			} else if (err >= 0) {
+			if (err >= 0) {
 				break;
 			}
+
+			// io_uring_enter() returns -1/errno (libc convention). Retry on EINTR
+			// (signal/debugger); otherwise report and stop waiting.
+			auto status = sprt::status::errnoToStatus(__sprt_errno);
+			if (status == Status::ErrorInterrupted) {
+				continue;
+			}
+			oslog::vperror(__SPRT_LOCATION, "dispatch::URingData", "io_uring_enter: ", __sprt_errno);
+			break;
 		}
 	}
 
@@ -646,9 +646,15 @@ Status URingData::run(TimeInterval ival, WakeupFlags flags, TimeInterval wakeupT
 	while (ctx.state == RunContext::Running || ctx.state == RunContext::Stopping) {
 		int err = enter(0, 1, IORING_ENTER_GETEVENTS, nullptr);
 		doPoll();
-		if (err < DEBUG_ERROR_THRESHOLD) {
-			oslog::vperror(__SPRT_LOCATION, "dispatch::URingData", "io_uring_enter: ", -err);
-			ctx.wakeupStatus = getErrnoStatus(err);
+		if (err < 0) {
+			// io_uring_enter() returns -1/errno (libc convention). EINTR is routine
+			// (signals, debugger) — retry rather than tearing down the event loop.
+			auto status = sprt::status::errnoToStatus(__sprt_errno);
+			if (status == Status::ErrorInterrupted) {
+				continue;
+			}
+			oslog::vperror(__SPRT_LOCATION, "dispatch::URingData", "io_uring_enter: ", __sprt_errno);
+			ctx.wakeupStatus = status;
 			break;
 		}
 	}
@@ -770,6 +776,18 @@ URingData::URingData(QueueRef *q, Queue::Data *data, const QueueInfo &info, Span
 	int ringFd = -1;
 
 	auto cleanup = [&]() {
+		if (sq.sqes && sq.sqes != MAP_FAILED) {
+			::munmap(sq.sqes, _params.sq_entries * sizeof(io_uring_sqe));
+			sq.sqes = nullptr;
+		}
+		if (cq.ring && cq.ring != MAP_FAILED && cq.ring != sq.ring) {
+			::munmap(cq.ring, cq.ringSize);
+			cq.ring = nullptr;
+		}
+		if (sq.ring && sq.ring != MAP_FAILED) {
+			::munmap(sq.ring, sq.ringSize);
+			sq.ring = nullptr;
+		}
 		if (ringFd >= 0) {
 			::close(ringFd);
 		}
@@ -1029,6 +1047,19 @@ URingData::URingData(QueueRef *q, Queue::Data *data, const QueueInfo &info, Span
 URingData::~URingData() {
 	_signalFd = nullptr;
 	_eventFd = nullptr;
+
+	if (sq.sqes && sq.sqes != MAP_FAILED) {
+		::munmap(sq.sqes, _params.sq_entries * sizeof(io_uring_sqe));
+		sq.sqes = nullptr;
+	}
+	if (cq.ring && cq.ring != MAP_FAILED && cq.ring != sq.ring) {
+		::munmap(cq.ring, cq.ringSize);
+		cq.ring = nullptr;
+	}
+	if (sq.ring && sq.ring != MAP_FAILED) {
+		::munmap(sq.ring, sq.ringSize);
+		sq.ring = nullptr;
+	}
 
 	if (_ringFd >= 0) {
 		::close(_ringFd);

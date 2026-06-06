@@ -4,3 +4,4 @@ EXPORTS
 	SetupDiGetClassDevsExW
 	SetupDiEnumDeviceInterfaces
 	SetupDiGetDeviceInterfaceDetailW
+	SetupDiDestroyDeviceInfoList

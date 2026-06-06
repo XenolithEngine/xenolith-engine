@@ -60,6 +60,11 @@ static bool validateFunctionList(T first, T last) {
 
 namespace sprt::window {
 
+// Upper bound on the total size accepted for a single clipboard/selection
+// transfer from an external source (Wayland data offer, X11 INCR), to bound
+// memory on paste from a hostile or buggy source.
+static constexpr size_t MaxClipboardTransferSize = 64 << 22; // 256 MiB
+
 SPRT_API SpanView<StringView> getCursorNames(WindowCursor);
 
 SPRT_API InputKeyCode getKeysymCode(uint32_t sym);

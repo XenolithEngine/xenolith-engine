@@ -186,6 +186,20 @@ struct alignas(32) PlatformQueueData : public sprt::detail::AllocPool {
 		_linux_timespec wakeupTimespec;
 
 		HashSet<Handle *> _awaitingHandles;
+
+		// Context-local snapshot of one poll batch, used by fd-based backends. A
+		// handler dispatched through notify() can re-enter the loop (a nested run()
+		// with its own RunContext) and reuse the queue's shared event buffer, so
+		// each invocation must iterate its own copy here. Each handle is pinned
+		// (retain id) up front while still valid, so an earlier event's callback
+		// freeing a later batch entry's handle cannot cause a use-after-free. The
+		// buffer is reused across a context's run-loop iterations.
+		struct EventSlot {
+			Handle *handle = nullptr;
+			uint32_t flags = 0;
+			uint64_t refId = 0;
+		};
+		Vector<EventSlot> eventBatch;
 	};
 
 	using StopContextCallback = void (*)(RunContext *);

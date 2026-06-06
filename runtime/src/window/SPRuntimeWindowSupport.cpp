@@ -89,6 +89,12 @@ EdidInfo EdidInfo::parse(BytesView data) {
 	// std::cout << base16::encode<Interface>(data) << "\n";
 
 	EdidInfo ret;
+
+	// standard EDID base block is 128 bytes; parse reads fixed offsets up to byte ~126
+	if (data.size() < 128) {
+		return ret;
+	}
+
 	auto x = data.data();
 
 	ret.vendorId = getManufacturerName(x + 0x08);
@@ -109,7 +115,13 @@ EdidInfo EdidInfo::parse(BytesView data) {
 	return ret;
 }
 
-StringView EdidInfo::getVendorName(StringView data) { return pnp_name(data.data()); }
+StringView EdidInfo::getVendorName(StringView data) {
+	// pnp_name does a 3-byte memcmp on the key
+	if (data.size() < 3) {
+		return StringView();
+	}
+	return pnp_name(data.data());
+}
 
 const ModeInfo ModeInfo::Preferred{Max<uint16_t>, Max<uint16_t>, 0};
 const ModeInfo ModeInfo::Current{Max<uint16_t>, Max<uint16_t>, Max<uint16_t>};
