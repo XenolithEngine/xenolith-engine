@@ -63,7 +63,8 @@ static void sp_ts_update_xFunc(sqlite3_context *ctx, int nargs, sqlite3_value **
 		}
 	}
 
-	if (!wordsWritten) {
+	// DB-SQLITE-005: only decode the blob when it is actually present
+	if (!wordsWritten && !blob.empty()) {
 		auto block = data::read<Interface>(blob).getValue(1);
 		if (block.getInteger(0) == 1) {
 			auto &d = data::read<Interface>(blob).getValue(1);
@@ -91,7 +92,14 @@ static void sp_ts_rank_xFunc(sqlite3_context *ctx, int nargs, sqlite3_value **ar
 		return;
 	}
 
-	auto blob = BytesView((const uint8_t *)sym->_value_blob(args[0]), sym->_value_bytes(args[0]));
+	// DB-SQLITE-005: guard against a NULL/empty blob arg before handing it to rankQuery
+	auto blobData = sym->_value_blob(args[0]);
+	auto blobLen = sym->_value_bytes(args[0]);
+	if (!blobData || blobLen <= 0) {
+		sym->_result_double(ctx, 0.0f);
+		return;
+	}
+	auto blob = BytesView((const uint8_t *)blobData, blobLen);
 	auto query = StringView((const char *)sym->_value_text(args[1]), sym->_value_bytes(args[1]));
 	auto norm = sym->_value_int(args[2]);
 
@@ -114,7 +122,14 @@ static void sp_ts_query_valid_xFunc(sqlite3_context *ctx, int nargs, sqlite3_val
 		return;
 	}
 
-	auto blob = BytesView((const uint8_t *)sym->_value_blob(args[0]), sym->_value_bytes(args[0]));
+	// DB-SQLITE-005: guard against a NULL/empty blob arg before handing it to isMatch
+	auto blobData = sym->_value_blob(args[0]);
+	auto blobLen = sym->_value_bytes(args[0]);
+	if (!blobData || blobLen <= 0) {
+		sym->_result_int(ctx, 0);
+		return;
+	}
+	auto blob = BytesView((const uint8_t *)blobData, blobLen);
 	auto query = StringView((const char *)sym->_value_text(args[1]), sym->_value_bytes(args[1]));
 
 	auto it = storageData->find(query);

@@ -267,6 +267,21 @@ struct SP_PUBLIC Gost3411_256 {
 	_Ctx ctx;
 };
 
+// Constant-time equality for secret-dependent byte ranges (MACs, tags, fingerprints, password
+// hashes). Unlike memcmp / BytesView::operator==, this does not short-circuit on the first
+// differing byte, so it does not leak how many leading bytes matched (timing channel).
+// The length comparison is intentionally not constant-time (lengths are not secret).
+inline bool isEqualConstantTime(BytesView a, BytesView b) {
+	if (a.size() != b.size()) {
+		return false;
+	}
+	uint8_t diff = 0;
+	for (size_t i = 0; i < a.size(); ++i) {
+		diff = uint8_t(diff | (a.data()[i] ^ b.data()[i]));
+	}
+	return diff == 0;
+}
+
 } // namespace stappler::crypto
 
 

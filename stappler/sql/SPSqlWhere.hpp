@@ -43,11 +43,9 @@ template <typename Interface>
 static inline auto Query_writeFieldName(typename Interface::StringStreamType &stream,
 		const StringView &cmp, bool plain) -> typename Interface::StringStreamType & {
 	if (!plain) {
-		stream << '"';
-	}
-	stream << cmp;
-	if (!plain) {
-		stream << '"';
+		Query_writeQuotedId(stream, cmp);
+	} else {
+		stream << cmp;
 	}
 	return stream;
 }
@@ -58,7 +56,8 @@ static inline void Query_writeComparationStr(Query<Binder, Interface> &q,
 		const typename Query<Binder, Interface>::Field &f, const StringView &cmp, Value1 &&v1) {
 	stream << "(";
 	if (!f.source.empty()) {
-		stream << "\"" << f.source << "\".";
+		Query_writeQuotedId(stream, f.source);
+		stream << ".";
 	}
 	Query_writeFieldName<Interface>(stream, f.name, f.plain) << cmp;
 	q.writeBind(sprt::forward<Value1>(v1));
@@ -71,7 +70,8 @@ static inline void Query_writeComparationStrArray(Query<Binder, Interface> &q,
 		const typename Query<Binder, Interface>::Field &f, const StringView &cmp, Value1 &&v1) {
 	stream << "(";
 	if (!f.source.empty()) {
-		stream << "\"" << f.source << "\".";
+		Query_writeQuotedId(stream, f.source);
+		stream << ".";
 	}
 	Query_writeFieldName<Interface>(stream, f.name, f.plain) << cmp;
 	q.writeBindArray(sprt::forward<Value1>(v1));
@@ -353,7 +353,9 @@ auto Query<Binder, Interface>::SetClause<Clause>::set(const StringView &f, Value
 	} else {
 		this->query->stream << ",";
 	}
-	this->query->stream << " \"" << f << "\"=";
+	this->query->stream << " ";
+	Query_writeQuotedId(this->query->stream, f);
+	this->query->stream << "=";
 	this->query->writeBind(sprt::forward<Value>(v));
 	return (Clause &)*this;
 }
@@ -368,7 +370,9 @@ auto Query<Binder, Interface>::SetClause<Clause>::set(const StringView &t, const
 	} else {
 		this->query->stream << ",";
 	}
-	this->query->stream << " " << t << ".\"" << f << "\"=";
+	this->query->stream << " " << t << ".";
+	Query_writeQuotedId(this->query->stream, f);
+	this->query->stream << "=";
 	this->query->writeBind(sprt::forward<Value>(v));
 	return (Clause &)*this;
 }
@@ -381,7 +385,9 @@ auto Query<Binder, Interface>::SetClause<Clause>::def(const StringView &f) -> Cl
 	} else {
 		this->query->stream << ",";
 	}
-	this->query->stream << " \"" << f << "\"=DEFAULT";
+	this->query->stream << " ";
+	Query_writeQuotedId(this->query->stream, f);
+	this->query->stream << "=DEFAULT";
 	return (Clause &)*this;
 }
 

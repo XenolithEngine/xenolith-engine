@@ -60,26 +60,74 @@ inline DataFormat detectDataFormat(const uint8_t *ptr, size_t size, uint8_t &pad
 		return DataFormat::CborBase64;
 	} else if (size > 3 && ptr[0] == 'L' && ptr[1] == 'Z' && ptr[2] == '4') {
 		switch (ptr[3]) {
-		case 'S': padding = 0; return DataFormat::LZ4_Short; break;
-		case 'T': padding = 1; return DataFormat::LZ4_Short; break;
-		case 'U': padding = 2; return DataFormat::LZ4_Short; break;
-		case 'V': padding = 3; return DataFormat::LZ4_Short; break;
-		case 'W': padding = 0; return DataFormat::LZ4_Word; break;
-		case 'X': padding = 1; return DataFormat::LZ4_Word; break;
-		case 'Y': padding = 2; return DataFormat::LZ4_Word; break;
-		case 'Z': padding = 3; return DataFormat::LZ4_Word; break;
+		case 'S':
+			padding = 0;
+			return DataFormat::LZ4_Short;
+			break;
+		case 'T':
+			padding = 1;
+			return DataFormat::LZ4_Short;
+			break;
+		case 'U':
+			padding = 2;
+			return DataFormat::LZ4_Short;
+			break;
+		case 'V':
+			padding = 3;
+			return DataFormat::LZ4_Short;
+			break;
+		case 'W':
+			padding = 0;
+			return DataFormat::LZ4_Word;
+			break;
+		case 'X':
+			padding = 1;
+			return DataFormat::LZ4_Word;
+			break;
+		case 'Y':
+			padding = 2;
+			return DataFormat::LZ4_Word;
+			break;
+		case 'Z':
+			padding = 3;
+			return DataFormat::LZ4_Word;
+			break;
 		}
 #ifdef MODULE_STAPPLER_BROTLI_LIB
 	} else if (size > 3 && ptr[0] == 'S' && ptr[1] == 'B' && ptr[2] == 'r') {
 		switch (ptr[3]) {
-		case 'S': padding = 0; return DataFormat::Brotli_Short; break;
-		case 'T': padding = 1; return DataFormat::Brotli_Short; break;
-		case 'U': padding = 2; return DataFormat::Brotli_Short; break;
-		case 'V': padding = 3; return DataFormat::Brotli_Short; break;
-		case 'W': padding = 0; return DataFormat::Brotli_Word; break;
-		case 'X': padding = 1; return DataFormat::Brotli_Word; break;
-		case 'Y': padding = 2; return DataFormat::Brotli_Word; break;
-		case 'Z': padding = 3; return DataFormat::Brotli_Word; break;
+		case 'S':
+			padding = 0;
+			return DataFormat::Brotli_Short;
+			break;
+		case 'T':
+			padding = 1;
+			return DataFormat::Brotli_Short;
+			break;
+		case 'U':
+			padding = 2;
+			return DataFormat::Brotli_Short;
+			break;
+		case 'V':
+			padding = 3;
+			return DataFormat::Brotli_Short;
+			break;
+		case 'W':
+			padding = 0;
+			return DataFormat::Brotli_Word;
+			break;
+		case 'X':
+			padding = 1;
+			return DataFormat::Brotli_Word;
+			break;
+		case 'Y':
+			padding = 2;
+			return DataFormat::Brotli_Word;
+			break;
+		case 'Z':
+			padding = 3;
+			return DataFormat::Brotli_Word;
+			break;
 		}
 #endif
 	} else if (ptr[0] == '(') {
@@ -90,7 +138,8 @@ inline DataFormat detectDataFormat(const uint8_t *ptr, size_t size, uint8_t &pad
 	return DataFormat::Unknown;
 }
 
-SP_PUBLIC size_t decompress(const uint8_t *srcData, size_t srcSize, uint8_t *dstData, size_t dstSize);
+SP_PUBLIC size_t decompress(const uint8_t *srcData, size_t srcSize, uint8_t *dstData,
+		size_t dstSize);
 
 SP_PUBLIC size_t getDecompressedSize(const uint8_t *, size_t);
 
@@ -103,7 +152,8 @@ SP_PUBLIC auto decompressBrotli(const uint8_t *, size_t, bool sh) -> ValueTempla
 template <typename Interface>
 auto decompress(const uint8_t *d, size_t size) -> typename Interface::BytesType {
 	if (auto s = decompress(d, size, nullptr, 0)) {
-		typename Interface::BytesType res; res.resize(s);
+		typename Interface::BytesType res;
+		res.resize(s);
 		if (decompress(d, size, res.data(), res.size()) == s) {
 			return res;
 		}
@@ -112,7 +162,8 @@ auto decompress(const uint8_t *d, size_t size) -> typename Interface::BytesType 
 }
 
 template <typename Interface, typename StringType>
-auto read(const StringType &data, const StringView &key = StringView()) -> ValueTemplate<Interface> {
+auto read(const StringType &data, const StringView &key = StringView())
+		-> ValueTemplate<Interface> {
 	if (data.size() == 0) {
 		return ValueTemplate<Interface>();
 	}
@@ -121,14 +172,15 @@ auto read(const StringType &data, const StringView &key = StringView()) -> Value
 	// guard the compressed formats: data.size() - 4 - padding would underflow (and
 	// produce a huge source length → OOB read) for a short/crafted input
 	if ((ff == DataFormat::LZ4_Short || ff == DataFormat::LZ4_Word
-				|| ff == DataFormat::Brotli_Short || ff == DataFormat::Brotli_Word)
+#ifdef MODULE_STAPPLER_BROTLI_LIB
+				|| ff == DataFormat::Brotli_Short || ff == DataFormat::Brotli_Word
+#endif
+				)
 			&& data.size() < size_t(4) + padding) {
 		return ValueTemplate<Interface>();
 	}
 	switch (ff) {
-	case DataFormat::Cbor:
-		return cbor::read<Interface>(data);
-		break;
+	case DataFormat::Cbor: return cbor::read<Interface>(data); break;
 	case DataFormat::Json:
 		return json::read<Interface>(StringView((char *)data.data(), data.size()));
 		break;
@@ -139,31 +191,35 @@ auto read(const StringType &data, const StringView &key = StringView()) -> Value
 		return read<Interface>(base64::decode<Interface>(CoderSource(data)), key);
 		break;
 	case DataFormat::LZ4_Short:
-		return decompressLZ4<Interface>((const uint8_t *)data.data() + 4, data.size() - 4 - padding, true);
+		return decompressLZ4<Interface>((const uint8_t *)data.data() + 4, data.size() - 4 - padding,
+				true);
 		break;
 	case DataFormat::LZ4_Word:
-		return decompressLZ4<Interface>((const uint8_t *)data.data() + 4, data.size() - 4 - padding, false);
+		return decompressLZ4<Interface>((const uint8_t *)data.data() + 4, data.size() - 4 - padding,
+				false);
 		break;
 #ifdef MODULE_STAPPLER_BROTLI_LIB
 	case DataFormat::Brotli_Short:
-		return decompressBrotli<Interface>((const uint8_t *)data.data() + 4, data.size() - 4 - padding, true);
+		return decompressBrotli<Interface>((const uint8_t *)data.data() + 4,
+				data.size() - 4 - padding, true);
 		break;
 	case DataFormat::Brotli_Word:
-		return decompressBrotli<Interface>((const uint8_t *)data.data() + 4, data.size() - 4 - padding, false);
+		return decompressBrotli<Interface>((const uint8_t *)data.data() + 4,
+				data.size() - 4 - padding, false);
 		break;
 #endif
-	default:
-		break;
+	default: break;
 	}
 	return ValueTemplate<Interface>();
 }
 
 #ifdef MODULE_STAPPLER_FILESYSTEM
 template <typename Interface>
-auto readFile(const FileInfo &filename, const StringView &key = StringView()) -> ValueTemplate<Interface> {
+auto readFile(const FileInfo &filename, const StringView &key = StringView())
+		-> ValueTemplate<Interface> {
 	return read<Interface>(filesystem::readIntoMemory<Interface>(filename));
 }
 #endif
-}
+} // namespace stappler::data
 
 #endif /* STAPPLER_DATA_SPDATADECODE_H_ */

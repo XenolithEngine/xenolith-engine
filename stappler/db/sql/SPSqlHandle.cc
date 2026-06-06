@@ -130,6 +130,9 @@ db::User *SqlHandle::authorizeUser(const db::Auth &auth, const StringView &iname
 		size_t count = 0;
 		Value ud;
 		selectQuery(query, [&, this](Result &res) {
+			if (res.empty()) {
+				return false;
+			}
 			count = res.current().toInteger(0);
 
 			if (count >= size_t(config::AUTH_MAX_LOGIN_ATTEMPT)) {
@@ -255,7 +258,9 @@ void SqlHandle::makeSessionsCleanup() {
 			} else {
 				query << ",";
 			}
-			query << it.at(0);
+			// DB-HANDLE-003: coerce to integer rather than echoing the raw textual column value
+			// into the IN (...) list, so this can never become a string-concatenation hole.
+			query << it.toInteger(0);
 		}
 		query << ");";
 		performSimpleSelect(query.weak(), [&, this](Result &res) {

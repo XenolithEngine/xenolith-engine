@@ -373,15 +373,16 @@ bool validateBase64(const StringView &str) {
 
 size_t makeRandomBytes(uint8_t *buf, size_t count) {
 	size_t generated = 0;
-	// getrandom() can return -1 (EINTR, or EAGAIN with GRND_NONBLOCK when the pool
-	// isn't ready early in boot); treat any negative result as zero progress so the
-	// buffer pointer/length are never rewound past their bounds.
-	auto ret = ::getrandom(buf, count, GRND_RANDOM | GRND_NONBLOCK);
-	if (ret > 0) {
-		generated = size_t(ret);
-	}
-	if (generated < count) {
-		ret = ::getrandom(buf + generated, count - generated, GRND_NONBLOCK | GRND_INSECURE);
+	// getrandom() can return a short count, or -1 (EINTR, or EAGAIN with GRND_NONBLOCK when the
+	// pool isn't seeded early in boot). Treat any negative result as zero progress so the buffer
+	// pointer/length are never rewound past their bounds, and spin a bounded number of times to
+	// fill the request — this absorbs short reads and transient EINTR/EAGAIN without busy-looping
+	// forever. The loop is bounded so a persistently-unavailable RNG cannot hang the caller;
+	// DB-AUTH-003: callers MUST check the returned count and fail (rather than proceed with weak
+	// or zero entropy) when it is short. Uses GRND_NONBLOCK (urandom CSPRNG) and never falls back
+	// to GRND_INSECURE, so the bytes are always cryptographic-quality or the call comes up short.
+	for (int attempt = 0; generated < count && attempt < 64; ++attempt) {
+		auto ret = ::getrandom(buf + generated, count - generated, GRND_NONBLOCK);
 		if (ret > 0) {
 			generated += size_t(ret);
 		}
@@ -406,12 +407,16 @@ auto makeRandomBytes<memory::StandartInterface>(size_t count)
 	return ret;
 }
 
-static void makePassword_buf(uint8_t *passwdKey, const StringView &str, const StringView &key) {
+static bool makePassword_buf(uint8_t *passwdKey, const StringView &str, const StringView &key) {
 	string::Sha512::Buf source = string::Sha512::make(str, Config_getInternalPasswordKey());
 
 	passwdKey[0] = 0;
 	passwdKey[1] = 1; // version code
-	makeRandomBytes(passwdKey + 2, 14);
+	// DB-AUTH-003: require the full 14-byte random salt; never proceed with a short/zero salt
+	// (a weak salt would undermine the per-record uniqueness the storage format relies on).
+	if (makeRandomBytes(passwdKey + 2, 14) != 14) {
+		return false;
+	}
 
 	string::Sha512 hash_ctx;
 	hash_ctx.update(passwdKey, 16);
@@ -420,6 +425,7 @@ static void makePassword_buf(uint8_t *passwdKey, const StringView &str, const St
 	}
 	hash_ctx.update(source);
 	hash_ctx.final(passwdKey + 16);
+	return true;
 }
 
 template <>
@@ -431,7 +437,9 @@ auto makePassword<memory::PoolInterface>(const StringView &str, const StringView
 
 	memory::PoolInterface::BytesType passwdKey;
 	passwdKey.resize(16 + string::Sha512::Length);
-	makePassword_buf(passwdKey.data(), str, key);
+	if (!makePassword_buf(passwdKey.data(), str, key)) {
+		return memory::PoolInterface::BytesType();
+	}
 	return passwdKey;
 }
 
@@ -444,7 +452,9 @@ auto makePassword<memory::StandartInterface>(const StringView &str, const String
 
 	memory::StandartInterface::BytesType passwdKey;
 	passwdKey.resize(16 + string::Sha512::Length);
-	makePassword_buf(passwdKey.data(), str, key);
+	if (!makePassword_buf(passwdKey.data(), str, key)) {
+		return memory::StandartInterface::BytesType();
+	}
 	return passwdKey;
 }
 
@@ -470,11 +480,10 @@ bool validatePassord(const StringView &str, const BytesView &passwd, const Strin
 	hash_ctx.update(source);
 	hash_ctx.final(controlKey + 16);
 
-	if (sprt::memcmp(passwd.data() + 16, controlKey + 16, string::Sha512::Length) == 0) {
-		return true;
-	} else {
-		return false;
-	}
+	// DB-AUTH-001: constant-time comparison of the stored vs computed hash, so verification time
+	// does not leak how many leading bytes matched (timing side channel).
+	return crypto::isEqualConstantTime(BytesView(passwd.data() + 16, string::Sha512::Length),
+			BytesView(controlKey + 16, string::Sha512::Length));
 }
 
 #define PSWD_NUMBERS "12345679"

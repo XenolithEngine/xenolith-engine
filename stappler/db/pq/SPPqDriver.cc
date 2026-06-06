@@ -410,8 +410,8 @@ Driver::Handle Driver::connect(const Map<StringView, StringView> &params) const 
 					|| it.first == "target_session_attrs") {
 				keywords.emplace_back(it.first.data());
 				values.emplace_back(it.second.data());
-			} else if (it.first != "driver" && it.first == "nmin" && it.first == "nkeep"
-					&& it.first == "nmax" && it.first == "exptime" && it.first == "persistent") {
+			} else if (it.first != "driver" && it.first != "nmin" && it.first != "nkeep"
+					&& it.first != "nmax" && it.first != "exptime" && it.first != "persistent") {
 				log::source().error("pq::Driver", "unknown connection parameter: ", it.first, "=",
 						it.second);
 			}
@@ -773,9 +773,11 @@ BytesView ResultCursor::toBytes(size_t field) const {
 		auto val = driver->getValue(result, currentRow, field);
 		auto len = driver->getLength(result, currentRow, field);
 		if (len > 2 && sprt::memcmp(val, "\\x", 2) == 0) {
-			auto d = new (sprt::nothrow) Bytes(
-					stappler::base16::decode<Interface>(stappler::CoderSource(val + 2, len - 2)));
-			return BytesView(*d);
+			// DB-PQ-002: decode into a temporary and pdup the bytes into the active pool, so the
+			// buffer is pool-scoped (reclaimed on pool clear) rather than a leaked heap container.
+			return BytesView(stappler::base16::decode<Interface>(
+					stappler::CoderSource(val + 2, len - 2)))
+					.pdup();
 		}
 		return BytesView((uint8_t *)val, len);
 	}

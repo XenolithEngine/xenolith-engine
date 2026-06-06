@@ -104,6 +104,10 @@ public:
 	static constexpr int64_t MinSoftLimit = 1;
 	static constexpr int64_t MaxSoftLimit = 500;
 
+	// DB-QLIST-002: upper bound for client-supplied limit/offset, to cap result-set size and the
+	// number of rows a huge offset can force the DB to skip (DoS guard).
+	static constexpr int64_t MaxQueryLimit = 100'000;
+
 	enum Flags : uint32_t {
 		None,
 		SimpleGet = 1 << 0,

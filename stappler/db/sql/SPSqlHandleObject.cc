@@ -279,8 +279,8 @@ Value SqlHandle::create(Worker &worker, const Vector<InputField> &inputFields,
 			} else {
 				ret.addValue(perform(it));
 			}
-			return ret;
 		}
+		return ret;
 	} else {
 		if (!multiCreate) {
 			return perform(inputRows.front());
@@ -327,7 +327,12 @@ Value SqlHandle::create(Worker &worker, const Vector<InputField> &inputFields,
 			selectQuery(query, [&](Result &res) {
 				size_t i = 0;
 				for (auto it : res) {
-					ret.getValue(i).setInteger(it.toInteger(0), "__oid");
+					// DB-HANDLE-002: guard against the result returning more rows than `ret` has
+					// entries — getValue(i) out of range yields the shared Null singleton, and
+					// setInteger() would then mutate that process-wide global.
+					if (i < ret.size()) {
+						ret.getValue(i).setInteger(it.toInteger(0), "__oid");
+					}
 					++i;
 				}
 
@@ -608,11 +613,8 @@ Vector<int64_t> SqlHandle::performQueryListForIds(const QueryList &list, size_t 
 		query.finalize();
 
 		selectQuery(query, [&](Result &res) {
-			for (auto it : res) {
-				ret.push_back(it.toInteger(0));
-				return true;
-			}
-			return false;
+			for (auto it : res) { ret.push_back(it.toInteger(0)); }
+			return !ret.empty();
 		});
 	}, &queryStorage);
 

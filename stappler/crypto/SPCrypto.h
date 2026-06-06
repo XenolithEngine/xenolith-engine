@@ -257,20 +257,8 @@ SP_PUBLIC bool decryptBlock(const BlockKey256 &, BytesView, const Callback<void(
 SP_PUBLIC bool decryptBlock(Backend b, const BlockKey256 &, BytesView,
 		const Callback<void(BytesView)> &, BytesView iv = BytesView());
 
-// Constant-time equality for secret-dependent byte ranges (MACs, tags, fingerprints).
-// Unlike memcmp / BytesView::operator==, this does not short-circuit on the first
-// differing byte, so it does not leak how many leading bytes matched (timing channel).
-// The length comparison is intentionally not constant-time (lengths are not secret).
-inline bool isEqualConstantTime(BytesView a, BytesView b) {
-	if (a.size() != b.size()) {
-		return false;
-	}
-	uint8_t diff = 0;
-	for (size_t i = 0; i < a.size(); ++i) {
-		diff = uint8_t(diff | (a.data()[i] ^ b.data()[i]));
-	}
-	return diff == 0;
-}
+// crypto::isEqualConstantTime is defined in core (SPCoreCrypto.h, included above) so that
+// lower-level code (e.g. password validation in core/utils) can share the same primitive.
 
 SP_PUBLIC BlockKey256 makeBlockKey(Backend, BytesView pkey, BytesView hash,
 		BlockCipher = BlockCipher::AES_CBC, uint32_t version = 2);

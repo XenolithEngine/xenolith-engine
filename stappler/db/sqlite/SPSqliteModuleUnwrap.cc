@@ -128,10 +128,16 @@ static sqlite3_module s_UnwrapModule = {
 					   sqlite3_value **argv) -> int {
 	auto sym = DriverSym::getCurrent();
 	UnwrapCursor *p = (UnwrapCursor *)cur;
-	p->origValue = p->currentValue =
-			BytesView((const uint8_t *)sym->_value_blob(argv[0]), sym->_value_bytes(argv[0]));
-	p->value = data::read<Interface>(p->origValue);
+	// DB-SQLITE-005: guard against a NULL/empty blob arg before decoding
+	auto blobData = sym->_value_blob(argv[0]);
+	auto blobLen = sym->_value_bytes(argv[0]);
+	p->origValue = p->currentValue = BytesView((const uint8_t *)blobData, blobLen);
 	p->current = 0;
+	if (!blobData || blobLen <= 0) {
+		p->value = Value();
+		return SQLITE_OK;
+	}
+	p->value = data::read<Interface>(p->origValue);
 	if (p->value.isArray() || p->value.empty()) {
 		return SQLITE_OK;
 	}

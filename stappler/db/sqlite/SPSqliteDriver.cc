@@ -305,14 +305,18 @@ static Driver::Handle Driver_setupDriver(const Driver *d, DriverSym *_handle, po
 			sqlite3_stmt *gstmt = nullptr;
 			auto err =
 					_handle->prepare(db, getStmt.data(), int(getStmt.size()), 0, &gstmt, nullptr);
-			err = _handle->step(gstmt);
+			if (err == SQLITE_OK) {
+				err = _handle->step(gstmt);
+			}
 			if (err == SQLITE_DONE) {
 				StringView createStmt(
 						"INSERT OR IGNORE INTO \"__objects\" (\"__oid\") VALUES (0);");
 				sqlite3_stmt *cstmt = nullptr;
 				err = _handle->prepare(db, createStmt.data(), int(createStmt.size()), 0, &cstmt,
 						nullptr);
-				err = _handle->step(cstmt);
+				if (err == SQLITE_OK) {
+					err = _handle->step(cstmt);
+				}
 				_handle->finalize(cstmt);
 			}
 			_handle->finalize(gstmt);
@@ -409,8 +413,8 @@ Driver::Handle Driver::connect(const Map<StringView, StringView> &params) const 
 						|| it.second == "memory" || it.second == "wal" || it.second == "off") {
 					journal = it.second;
 				}
-			} else if (it.first != "driver" && it.first == "nmin" && it.first == "nkeep"
-					&& it.first == "nmax" && it.first == "exptime" && it.first == "persistent") {
+			} else if (it.first != "driver" && it.first != "nmin" && it.first != "nkeep"
+					&& it.first != "nmax" && it.first != "exptime" && it.first != "persistent") {
 				log::source().error("sqlite::Driver", "unknown connection parameter: ", it.first,
 						"=", it.second);
 			}

@@ -115,7 +115,9 @@ auto Query<Binder, Interface>::InsertValues::onConflict(const StringView &field)
 	}
 
 	this->state = State::None;
-	this->query->stream << "ON CONFLICT(\"" << field << "\")";
+	this->query->stream << "ON CONFLICT(";
+	Query_writeQuotedId(this->query->stream, field);
+	this->query->stream << ")";
 	return InsertConflict(this->query);
 }
 
@@ -179,7 +181,10 @@ auto Query<Binder, Interface>::InsertUpdateValues::excluded(StringView f) -> Ins
 	} else {
 		this->query->stream << ",";
 	}
-	this->query->stream << " \"" << f << "\"=EXCLUDED.\"" << f << "\"";
+	this->query->stream << " ";
+	Query_writeQuotedId(this->query->stream, f);
+	this->query->stream << "=EXCLUDED.";
+	Query_writeQuotedId(this->query->stream, f);
 	return *this;
 }
 
@@ -191,7 +196,10 @@ auto Query<Binder, Interface>::InsertUpdateValues::excluded(StringView f, String
 	} else {
 		this->query->stream << ",";
 	}
-	this->query->stream << " \"" << f << "\"=EXCLUDED.\"" << v << "\"";
+	this->query->stream << " ";
+	Query_writeQuotedId(this->query->stream, f);
+	this->query->stream << "=EXCLUDED.";
+	Query_writeQuotedId(this->query->stream, v);
 	return *this;
 }
 
@@ -257,7 +265,8 @@ auto Query<Binder, Interface>::Returning::count(const StringView &alias) -> Retu
 	} else {
 		this->query->stream << ",";
 	}
-	this->query->stream << " COUNT(*) AS \"" << alias << "\"";
+	this->query->stream << " COUNT(*) AS ";
+	Query_writeQuotedId(this->query->stream, alias);
 	return *this;
 }
 
