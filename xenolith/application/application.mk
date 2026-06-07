@@ -37,7 +37,7 @@ MODULE_XENOLITH_APPLICATION_INCLUDES_OBJS := \
 	$(XENOLITH_MODULE_DIR)/application/resources \
 	$(XENOLITH_MODULE_DIR)/application/nodes
 
-MODULE_XENOLITH_APPLICATION_DEPENDS_ON := xenolith_core xenolith_font stappler_data
+MODULE_XENOLITH_APPLICATION_DEPENDS_ON := xenolith_core xenolith_font xenolith_remote stappler_data
 
 ifndef LOCAL_MAIN
 MODULE_XENOLITH_APPLICATION_DEPENDS_ON += xenolith_application_main

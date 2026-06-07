@@ -283,4 +283,13 @@ void CommandList::addCommand(Command *cmd) {
 
 FrameContextHandle2d::~FrameContextHandle2d() { particleEmitters.clear(); }
 
+bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &) const {
+	// TODO(remote stage): wire format for the 2D command batch -- POD parts (lights, decorations,
+	// particle render info) followed by the CommandList / VertexData geometry (the bulk bytes).
+	// Stage 2 leaves this stubbed; remote frames are not transmitted yet.
+	return false;
+}
+
+bool FrameContextHandle2d::deserialize(BytesView) { return false; }
+
 } // namespace stappler::xenolith::basic2d

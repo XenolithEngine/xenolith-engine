@@ -26,6 +26,7 @@
 #include "XLResourceCache.h"
 #include "XLAppThread.h"
 #include "XLInput.h" // IWYU pragma: keep
+#include "XLCoreRenderSession.h"
 #include "SPMovingAverage.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
@@ -37,7 +38,7 @@ class TextInputManager;
 class ActionManager;
 class DirectorWindow;
 
-class SP_PUBLIC Director : public Ref {
+class SP_PUBLIC Director : public Ref, public core::RenderClientChannel {
 public:
 	using FrameRequest = core::FrameRequest;
 
@@ -51,7 +52,22 @@ public:
 
 	void runScene(Rc<Scene> &&);
 
-	bool acquireFrame(FrameRequest *);
+	// Local-only: a (server) scene uses these to launch listening for remote clients and to mark
+	// this director's window connectable. Forwarded to the owning AppThread (the connection owner);
+	// meaningful only for a local/server director.
+	void setListenAddress(StringView);
+	void startListening();
+	void stopListening();
+	void setRemoteConnectable(bool);
+
+	// core::RenderClientChannel (server -> client). The server's PresentationEngine pulls a
+	// command batch via acquireFrame(); other entries deliver platform events / contract changes.
+	virtual bool acquireFrame(NotNull<core::FrameRequestProxy>) override;
+	virtual void handleRenderQueueAttached(const Rc<core::Queue> &) override;
+	virtual void handleConstraintsChanged(const core::FrameConstraints &) override;
+	virtual void handleInputEvents(Vector<core::InputEventData> &&) override;
+	virtual void handleTextInput(const core::TextInputState &) override;
+	virtual void handleFramePresented(uint64_t frameOrder) override;
 
 	void update(uint64_t t);
 
@@ -61,8 +77,16 @@ public:
 	void end();
 
 	AppThread *getApplication() const { return _application; }
-	core::Loop *getGlLoop() const;
 	AppWindow *getWindow() const { return _window; }
+
+	// Server-side endpoint of the render-session boundary; client-side code (e.g. FrameContext)
+	// issues render-graph / resource / material compilation through it.
+	core::RenderServerChannel *getRenderServer() const { return _server; }
+
+	// REMAINING client->server coupling: the 2D renderer still reaches the gapi loop directly to
+	// schedule frame-input attachment on the render-loop thread. To be folded into the render
+	// session (as part of command-batch submission) in a later stage.
+	core::Loop *getGlLoop() const;
 
 	Scheduler *getScheduler() const { return _scheduler; }
 	ActionManager *getActionManager() const { return _actionManager; }
@@ -100,8 +124,19 @@ protected:
 	bool hasActiveInteractions();
 
 	Rc<AppThread> _application;
+	// NOTE: _window is retained for window lifecycle (getWindow/setWindow) and getWindowState();
+	// all per-frame / control traffic now goes through _server. Reducing this to the channel only
+	// (so the client holds no AppWindow) is a later step once window-state is delivered via the
+	// channel.
 	Rc<AppWindow> _window;
-	Rc<core::PresentationEngine> _engine;
+
+	// Server-side endpoint of the render-session boundary (client -> server calls).
+	// In local mode this points at the AppWindow; later it may be a network proxy.
+	core::RenderServerChannel *_server = nullptr;
+
+	// Render queues the server has announced as available (via handleRenderQueueAttached), keyed
+	// by name. The client selects one per frame through the FrameRequestProxy.
+	Map<StringView, Rc<core::Queue>> _availableQueues;
 
 	core::FrameConstraints _constraints;
 

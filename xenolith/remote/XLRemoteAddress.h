@@ -1,6 +1,5 @@
 /**
- Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
- Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Stappler Team <admin@stappler.org>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -21,28 +20,33 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h" // IWYU pragma: keep
+#ifndef XENOLITH_REMOTE_XLREMOTEADDRESS_H_
+#define XENOLITH_REMOTE_XLREMOTEADDRESS_H_
 
-#include "XLEvent.cc"
-#include "XLWindowInfo.cc"
-#include "XLContextInfo.cc"
-#include "XLContext.cc"
-#include "XLAppThread.cc"
-#include "XLAppWindow.cc"
-#include "XLAppConnection.cc"
-#include "XLRemoteRenderClient.cc"
-#include "XLLiveReload.cc"
+#include "XLCommon.h"
 
-namespace STAPPLER_VERSIONIZED stappler::xenolith {
+namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
-static SharedSymbol s_appSymbols[] = {
-	SharedSymbol(Context::SymbolContextRunName,
-			static_cast<Context::SymbolRunCmdSignature>(Context::run)),
-	SharedSymbol(Context::SymbolContextRunName,
-			static_cast<Context::SymbolRunNativeSignature>(Context::run)),
+// A listen/connect endpoint for the remote render session: either a network host:port or a
+// Unix-domain socket path. Parsed from a string:
+//   "unix:/run/xenolith.sock"  -> unix-domain
+//   "127.0.0.1:4480" / ":4480" -> network (empty host == all interfaces)
+struct SP_PUBLIC Address {
+	bool unixDomain = false;
+	String host; // network host; empty == all interfaces
+	String path; // unix-domain socket path
+	uint16_t port = 0;
+
+	static Address parse(StringView);
+
+	bool isUnix() const { return unixDomain; }
+	bool empty() const { return !unixDomain && port == 0 && host.empty(); }
+
+	String description() const;
+
+	auto operator<=>(const Address &) const = default;
 };
 
-SP_USED static SharedModule s_appCommonModule(buildconfig::MODULE_XENOLITH_APPLICATION_NAME,
-		s_appSymbols, sizeof(s_appSymbols) / sizeof(SharedSymbol));
+} // namespace stappler::xenolith::remote
 
-} // namespace stappler::xenolith
+#endif /* XENOLITH_REMOTE_XLREMOTEADDRESS_H_ */

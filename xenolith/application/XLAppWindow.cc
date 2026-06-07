@@ -69,6 +69,8 @@ void AppWindow::runWithQueue(const Rc<core::Queue> &queue) {
 void AppWindow::run() {
 	auto c = _presentationEngine->getFrameConstraints();
 	_application->performOnAppThread([this, c]() mutable {
+		// _client is set by Director::init (during makeDirector below), before the initial scene
+		// runs, so queue announcements reach the client.
 		_director = _application->handleAppWindowCreated(this, c);
 	}, this);
 }
@@ -99,6 +101,7 @@ void AppWindow::end() {
 	}
 
 	_application->performOnAppThread([this, engine = move(engine)]() mutable {
+		_client = nullptr; // the Director (client endpoint) is being destroyed below
 		_application->handleAppWindowDestroyed(this, sp::move(_director));
 		_context->performOnThread([this, engine = move(engine)]() mutable {
 			if (_syncClose) {
@@ -168,7 +171,22 @@ void AppWindow::handleInputEvents(Vector<InputEventData> &&events) {
 	}
 
 	_application->performOnAppThread([this, events = sp::move(events)]() mutable {
-		for (auto &event : events) { propagateInputEvent(event); }
+		if (!_client) {
+			return;
+		}
+		// Window-state bookkeeping owned by AppWindow (state mirror + app-side event),
+		// then dispatch the whole batch to the client endpoint of the render session.
+		for (auto &event : events) {
+			if (event.event == InputEventName::WindowState) {
+				_state = event.window.state;
+				onWindowState(this,
+						Value({
+							pair("state", Value(toInt(event.window.state))),
+							pair("changes", Value(toInt(event.window.changes))),
+						}));
+			}
+		}
+		_client->handleInputEvents(sp::move(events));
 		setReadyForNextFrame();
 	}, this, true);
 }
@@ -178,8 +196,11 @@ void AppWindow::handleTextInput(const TextInputState &state) {
 		return;
 	}
 
-	_application->performOnAppThread([this, state = state]() mutable { propagateTextInput(state); },
-			this, true);
+	_application->performOnAppThread([this, state = state]() mutable {
+		if (_client) {
+			_client->handleTextInput(state);
+		}
+	}, this, true);
 	setReadyForNextFrame();
 }
 
@@ -249,7 +270,8 @@ void AppWindow::acquireFrameData(NotNull<core::PresentationFrame> frame,
 	_application->performOnAppThread(
 			[this, frame = Rc<core::PresentationFrame>(frame), cb = sp::move(cb),
 					req = Rc<core::FrameRequest>(frame->getRequest())]() mutable {
-		if (_director->acquireFrame(req)) {
+		auto proxy = Rc<core::LocalFrameRequestProxy>::create(req, this);
+		if (_client && proxy && _client->acquireFrame(proxy)) {
 			_context->performOnThread(
 					[frame = move(frame), cb = sp::move(cb)]() mutable { cb(frame); }, this);
 		}
@@ -444,6 +466,62 @@ uint64_t AppWindow::getPresentationFrameInterval() const {
 	return _presentationEngine ? _presentationEngine->getTargetFrameInterval() : 0;
 }
 
+// --- core::RenderServerChannel (client -> server) ---
+
+void AppWindow::compileRenderQueue(const Rc<core::Queue> &queue, Function<void(bool)> &&cb) {
+	static_cast<core::Loop *>(_context->getGlLoop())->compileQueue(queue, sp::move(cb));
+}
+
+void AppWindow::compileResource(Rc<core::Resource> &&res, Function<void(bool)> &&cb, bool preload) {
+	static_cast<core::Loop *>(_context->getGlLoop())
+			->compileResource(sp::move(res), sp::move(cb), preload);
+}
+
+void AppWindow::compileMaterials(Rc<core::MaterialInputData> &&req,
+		const Vector<Rc<core::DependencyEvent>> &deps) {
+	static_cast<core::Loop *>(_context->getGlLoop())->compileMaterials(sp::move(req), deps);
+}
+
+void AppWindow::compileImage(const Rc<core::DynamicImage> &img, Function<void(bool)> &&cb) {
+	static_cast<core::Loop *>(_context->getGlLoop())->compileImage(img, sp::move(cb));
+}
+
+void AppWindow::attachRenderQueue(const Rc<core::Queue> &queue) {
+	// Register the render graph so the client can select it by name per frame, and announce its
+	// availability to the client endpoint. (Called on the app thread in local mode, same thread
+	// the proxy's selectQueue resolves on.)
+	if (queue) {
+		_renderQueues.insert_or_assign(queue->getName(), queue);
+		if (_client) {
+			_client->handleRenderQueueAttached(queue);
+		}
+	}
+
+	_context->performOnThread([this, queue] {
+		runWithQueue(queue);
+		setReadyForNextFrame();
+	}, this, false);
+}
+
+void AppWindow::setPreferredFrameInterval(uint64_t value) { setPresentationFrameInterval(value); }
+
+core::FrameTimingInfo AppWindow::getFrameTiming() const {
+	core::FrameTimingInfo info;
+	if (_presentationEngine) {
+		info.lastFrameInterval = _presentationEngine->getLastFrameInterval();
+		info.avgFrameInterval = _presentationEngine->getAvgFrameInterval();
+		info.lastFrameTime = _presentationEngine->getLastFrameTime();
+		info.lastFenceFrameTime = _presentationEngine->getLastFenceFrameTime();
+		info.lastTimestampFrameTime = _presentationEngine->getLastTimestampFrameTime();
+	}
+	return info;
+}
+
+Rc<core::Queue> AppWindow::getRenderQueue(StringView name) const {
+	auto it = _renderQueues.find(name);
+	return it != _renderQueues.end() ? it->second : nullptr;
+}
+
 WindowState AppWindow::getUpdatableStateFlags() const {
 	auto caps = getCapabilities();
 	WindowState flags = WindowState::None;
@@ -605,32 +683,6 @@ void AppWindow::handleBackButton() {
 	if (_window) {
 		_context->performOnThread([this]() { _window->handleBackButton(); }, this);
 	}
-}
-
-void AppWindow::propagateInputEvent(core::InputEventData &event) {
-	if (event.isPointEvent()) {
-		event.point.density =
-				_presentationEngine ? _presentationEngine->getFrameConstraints().density : 1.0f;
-	}
-
-	switch (event.event) {
-	case InputEventName::WindowState:
-		_state = event.window.state;
-		;
-		onWindowState(this,
-				Value({
-					pair("state", Value(toInt(event.window.state))),
-					pair("changes", Value(toInt(event.window.changes))),
-				}));
-		break;
-	default: break;
-	}
-
-	_director->getInputDispatcher()->handleInputEvent(event);
-}
-
-void AppWindow::propagateTextInput(TextInputState &state) {
-	_director->getTextInputManager()->handleInputUpdate(state);
 }
 
 void AppWindow::handleContextStateUpdate(WindowState state) {

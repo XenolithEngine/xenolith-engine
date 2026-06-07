@@ -28,6 +28,7 @@
 #include "XLCoreQueue.h"
 #include "XLCoreMaterial.h"
 #include "XLCoreFrameRequest.h"
+#include "XLCoreFrameRequestProxy.h"
 #include "XLNodeInfo.h"
 #include "XLSystem.h"
 
@@ -157,7 +158,7 @@ public:
 struct SP_PUBLIC FrameInfo {
 	Rc<sprt::PoolRef> pool;
 
-	Rc<core::FrameRequest> request;
+	Rc<core::FrameRequestProxy> request;
 	Rc<Director> director;
 	Rc<Scene> scene;
 	Rc<InputListenerStorage> input;

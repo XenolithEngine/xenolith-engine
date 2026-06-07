@@ -247,7 +247,7 @@ void FrameContext::submitMaterials(const FrameInfo &info) {
 
 			for (auto &it : req->materialsToRemove) { emplace_ordered(_revokedIds, it); }
 
-			info.director->getGlLoop()->compileMaterials(move(req), events);
+			info.director->getRenderServer()->compileMaterials(move(req), events);
 		}
 
 		_pendingMaterialsToAdd.clear();

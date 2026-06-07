@@ -24,6 +24,7 @@
 
 #include "XLFontComponent.cc"
 #include "XLFontController.cc"
+#include "XLFontGapi.cc"
 #include "XLFontLocale.cc"
 #include "XLFontLabelBase.cc"
 #include "XLFontDeferredRequest.cc"
