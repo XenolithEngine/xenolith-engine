@@ -26,6 +26,9 @@
 #include "SPSharedModule.h"
 #include "XLEvent.h"
 #include "XLAppWindow.h"
+#include "XLAppConnection.h"
+#include "XLRemoteListener.h"
+#include "XLRemoteRenderClient.h"
 #include "XLDirector.h"
 #include "XLScene.h"
 
@@ -327,6 +330,108 @@ void AppThread::handleAppWindowDestroyed(NotNull<AppWindow> w, Rc<Director> &&d)
 	_windows.erase(w.get());
 }
 
+Connection *AppThread::openConnection(core::RenderClientChannel *remote) {
+	// Negotiation (single window for now): the window the scene marked connectable, else the only one.
+	AppWindow *window = _connectableWindow;
+	if (!window && !_windows.empty()) {
+		window = *_windows.begin();
+	}
+	if (!window) {
+		log::source().error("AppThread", "openConnection: no connectable window");
+		return nullptr;
+	}
+	if (!_connection) {
+		_connection = Rc<Connection>::create(this);
+	}
+	if (_connection && _connection->attach(window, remote)) {
+		return _connection;
+	}
+	return nullptr;
+}
+
+void AppThread::closeConnection() {
+	if (_connection) {
+		_connection->detach();
+		_connection = nullptr;
+	}
+	_remoteClient = nullptr;
+}
+
+bool AppThread::setListenAddress(StringView addr) {
+	auto newAddr = remote::Address::parse(addr);
+	if (newAddr != _listenAddress) {
+		if (_listener && _listener->isOpen()) {
+			log::error("AppThread", "Fail to assign listen address when listener already active");
+			return false;
+		}
+		_listenAddress = newAddr;
+	}
+	return true;
+}
+
+void AppThread::setConnectableWindow(AppWindow *w) { _connectableWindow = w; }
+
+void AppThread::startListening() {
+	if (_listener && _listener->isOpen()) {
+		return;
+	}
+	if (_listenAddress.empty()) {
+		log::source().error("AppThread", "startListening: no listen address set");
+		return;
+	}
+	_listener = Rc<remote::Listener>::alloc();
+	if (!_listener || !_listener->open(_listenAddress)) {
+		_listener = nullptr;
+		return;
+	}
+
+	// Drive accept on this looper: readiness on the listener socket gives a prompt wakeup; QUIC's
+	// internal timers are pumped from performAppUpdate() (same appUpdateInterval cadence as the main
+	// update timer), so no separate listen timer is needed.
+	_listenPoll =
+			_appLooper->listenPollableHandle(_listener->getPollFd(), sprt::dispatch::PollFlags::In,
+					[this](sprt::dispatch::NativeHandle, sprt::dispatch::PollFlags) -> Status {
+		pumpListener();
+		return Status::Ok;
+	}, this);
+	pumpListener();
+}
+
+void AppThread::stopListening() {
+	if (_listenPoll) {
+		_listenPoll->cancel();
+		_listenPoll = nullptr;
+	}
+	if (_remoteClient) {
+		closeConnection();
+	}
+	if (_listener) {
+		_listener->close();
+		_listener = nullptr;
+	}
+}
+
+void AppThread::pumpListener() {
+	if (!_listener) {
+		return;
+	}
+	_listener->handleEvents([this](Rc<remote::ServerConnection> &&conn) {
+		handleRemoteConnection(sp::move(conn));
+	});
+}
+
+void AppThread::handleRemoteConnection(Rc<remote::ServerConnection> &&conn) {
+	if (_remoteClient) {
+		log::source().warn("AppThread",
+				"remote client already connected; rejecting new connection (single connection)");
+		return;
+	}
+	_remoteClient = Rc<RemoteRenderClient>::create(sp::move(conn));
+	if (_remoteClient) {
+		openConnection(_remoteClient.get());
+	}
+}
+
 void AppThread::openUrl(StringView str) {
 	_context->performOnThread([str = str.str<Interface>(), ctx = _context] { ctx->openUrl(str); },
 			_context);
@@ -338,6 +443,10 @@ void AppThread::performAppUpdate(const UpdateTime &time, bool wakeup) {
 
 	auto listeners = _listeners;
 	for (auto &it : listeners) { it.second(time, wakeup); }
+
+	// Service the remote listener's QUIC timers on the regular app-update cadence (no-op unless a
+	// scene started listening). Socket readiness is handled promptly via _listenPoll.
+	pumpListener();
 }
 
 void AppThread::performUpdate(bool wakeup) {

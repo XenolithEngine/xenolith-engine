@@ -1,6 +1,5 @@
 /**
- Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
- Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Stappler Team <admin@stappler.org>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -21,28 +20,20 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h" // IWYU pragma: keep
+#include "XLCoreRenderSession.h"
 
-#include "XLEvent.cc"
-#include "XLWindowInfo.cc"
-#include "XLContextInfo.cc"
-#include "XLContext.cc"
-#include "XLAppThread.cc"
-#include "XLAppWindow.cc"
-#include "XLAppConnection.cc"
-#include "XLRemoteRenderClient.cc"
-#include "XLLiveReload.cc"
+namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
-namespace STAPPLER_VERSIONIZED stappler::xenolith {
+// Out-of-line virtual destructors: each is the vtable key function (anchoring the vtable and
+// typeinfo in this single TU). They are defaulted, so the deleting destructor variant calls
+// operator delete -- safe in this freestanding build with exceptions disabled, so the warning is
+// suppressed here.
+__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
-static SharedSymbol s_appSymbols[] = {
-	SharedSymbol(Context::SymbolContextRunName,
-			static_cast<Context::SymbolRunCmdSignature>(Context::run)),
-	SharedSymbol(Context::SymbolContextRunName,
-			static_cast<Context::SymbolRunNativeSignature>(Context::run)),
-};
+RenderClientChannel::~RenderClientChannel() = default;
 
-SP_USED static SharedModule s_appCommonModule(buildconfig::MODULE_XENOLITH_APPLICATION_NAME,
-		s_appSymbols, sizeof(s_appSymbols) / sizeof(SharedSymbol));
+RenderServerChannel::~RenderServerChannel() = default;
 
-} // namespace stappler::xenolith
+__SPRT_POP_ALLOW_CXXABI_ALLOC
+
+} // namespace stappler::xenolith::core

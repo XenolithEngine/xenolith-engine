@@ -135,6 +135,12 @@ struct SP_PUBLIC FrameContextHandle2d : public FrameContextHandle {
 	Rc<CommandList> commands;
 
 	mem_pool::Map<uint64_t, ParticleSystemRenderInfo> particleEmitters;
+
+	// Remote render-session wire format for the 2D command batch (see XLCoreFrameRequestProxy.h).
+	// STUB this stage: the POD parts (lights/decorations) are easy, but CommandList/VertexData
+	// geometry is the hard part and is deferred.
+	virtual bool serialize(const Callback<void(BytesView)> &) const override;
+	virtual bool deserialize(BytesView) override;
 };
 
 } // namespace stappler::xenolith::basic2d

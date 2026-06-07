@@ -27,6 +27,8 @@
 #include "XLEvent.h"
 #include "XLCoreTextInput.h"
 #include "XLCorePresentationEngine.h"
+#include "XLCoreRenderSession.h"
+#include "XLCoreFrameRequestProxy.h"
 
 #include <sprt/runtime/window/interface.h>
 
@@ -38,7 +40,10 @@ enum class AppWindowConfigFlags {
 	None = 0,
 };
 
-class SP_PUBLIC AppWindow : public sprt::window::AppWindow, core::PresentationWindow {
+class SP_PUBLIC AppWindow : public sprt::window::AppWindow,
+						   core::PresentationWindow,
+						   public core::RenderServerChannel,
+						   public core::RenderQueueRegistry {
 public:
 	using InputEventData = core::InputEventData;
 	using InputEventName = core::InputEventName;
@@ -84,6 +89,11 @@ public:
 
 	Director *getDirector() const { return _director; }
 
+	// Client-side endpoint of the render session (server -> client calls). Set by Director::init
+	// at director-creation time so it is valid before the initial scene runs (and its queue is
+	// announced). Cleared on teardown.
+	void setRenderClient(core::RenderClientChannel *c) { _client = c; }
+
 	// It's not safe to ask PresentationEngine about current config, use this instead
 	const core::SwapchainConfig &getAppSwapchainConfig() const { return _appSwapchainConfig; }
 
@@ -125,13 +135,31 @@ public:
 	// WindowState::CloseRequest: if this flag IS set in _state: discards close request and re-enables ExitGuard if it is retained
 	bool disableState(WindowState); // from app thread
 
-	void acquireTextInput(TextInputRequest &&);
-	void releaseTextInput();
+	void acquireTextInput(TextInputRequest &&) override;
+	void releaseTextInput() override;
 
 	void updateLayers(sprt::window::Vector<WindowLayer> &&); // from app thread
 
 	// Acquire data describing current monitor configuration
-	void acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&, Ref * = nullptr);
+	void acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&, Ref * = nullptr) override;
+
+	// core::RenderServerChannel (client -> server) additions.
+	// (setReadyForNextFrame / acquireScreenInfo / acquireTextInput / releaseTextInput / close are
+	//  satisfied by the existing methods.)
+	virtual void compileRenderQueue(const Rc<core::Queue> &,
+			Function<void(bool)> && = nullptr) override;
+	virtual void compileResource(Rc<core::Resource> &&, Function<void(bool)> && = nullptr,
+			bool preload = false) override;
+	virtual void compileMaterials(Rc<core::MaterialInputData> &&,
+			const Vector<Rc<core::DependencyEvent>> & = Vector<Rc<core::DependencyEvent>>()) override;
+	virtual void compileImage(const Rc<core::DynamicImage> &,
+			Function<void(bool)> && = nullptr) override;
+	virtual void attachRenderQueue(const Rc<core::Queue> &) override;
+	virtual void setPreferredFrameInterval(uint64_t intervalUs) override;
+	virtual core::FrameTimingInfo getFrameTiming() const override;
+
+	// core::RenderQueueRegistry: resolve an announced render-queue name to its compiled Queue.
+	virtual Rc<core::Queue> getRenderQueue(StringView name) const override;
 
 	// Try to enter or exit fullscreen mode with specific mode
 	// Use FullscreenInfo::Current to use current monitor and mode for fullscreen
@@ -199,18 +227,32 @@ protected:
 
 	virtual void setFrameOrder(uint64_t) override;
 
-	virtual void propagateInputEvent(InputEventData &); // from app thread
-	virtual void propagateTextInput(TextInputState &); // from app thread
-
 	virtual void handleContextStateUpdate(WindowState state);
 	virtual void synchronizeClose();
 
 	String _windowId; // should be constant
 	Rc<Context> _context;
+
+	// OPEN DESIGN QUESTION (render-session split): AppWindow is the server-side endpoint, yet it
+	// holds the client's AppThread and performs the app-thread hop itself (see handleInputEvents /
+	// handleTextInput / acquireFrameData). For a true client/server split that hop belongs on the
+	// client side of the RenderClientChannel, and the server-side AppWindow should not depend on
+	// AppThread at all. Revisit whether AppWindow should own/know an AppThread once the remote
+	// channel exists; left as-is for now.
 	Rc<AppThread> _application;
 	Rc<Director> _director;
 	NativeWindow *_window = nullptr;
 	Rc<core::PresentationEngine> _presentationEngine;
+
+	// Client-side endpoint of the render-session boundary (server -> client calls).
+	// In local mode this points at the Director; later it may be a network proxy.
+	core::RenderClientChannel *_client = nullptr;
+
+	// Registry of compiled render graphs the server has, keyed by queue name. Populated in
+	// compileRenderQueue and announced to the client; resolves the client's per-frame
+	// selectQueue(name). Written + read on the app thread in local mode (no locking needed).
+	// Keys are the queues' own getName() views, kept alive by the held Rc<Queue>.
+	Map<StringView, Rc<core::Queue>> _renderQueues;
 
 	core::WindowState _state = core::WindowState::None; // for app thread
 	core::WindowState _contextState = core::WindowState::None; // for context thread

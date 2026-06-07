@@ -1,6 +1,5 @@
 /**
- Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
- Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Stappler Team <admin@stappler.org>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -21,28 +20,31 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h" // IWYU pragma: keep
-
-#include "XLEvent.cc"
-#include "XLWindowInfo.cc"
-#include "XLContextInfo.cc"
-#include "XLContext.cc"
-#include "XLAppThread.cc"
-#include "XLAppWindow.cc"
-#include "XLAppConnection.cc"
-#include "XLRemoteRenderClient.cc"
-#include "XLLiveReload.cc"
+#include "XLRemoteRenderClient.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-static SharedSymbol s_appSymbols[] = {
-	SharedSymbol(Context::SymbolContextRunName,
-			static_cast<Context::SymbolRunCmdSignature>(Context::run)),
-	SharedSymbol(Context::SymbolContextRunName,
-			static_cast<Context::SymbolRunNativeSignature>(Context::run)),
-};
+__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
-SP_USED static SharedModule s_appCommonModule(buildconfig::MODULE_XENOLITH_APPLICATION_NAME,
-		s_appSymbols, sizeof(s_appSymbols) / sizeof(SharedSymbol));
+RemoteRenderClient::~RemoteRenderClient() = default;
+
+__SPRT_POP_ALLOW_CXXABI_ALLOC
+
+bool RemoteRenderClient::init(Rc<remote::ServerConnection> &&conn) {
+	_connection = sp::move(conn);
+	return _connection != nullptr;
+}
+
+bool RemoteRenderClient::acquireFrame(NotNull<core::FrameRequestProxy>) {
+	// STUB (stage 5): the over-the-wire render protocol is not implemented yet, so the remote
+	// client produces no frame. The window stays idle while attached until the protocol stage.
+	return false;
+}
+
+void RemoteRenderClient::handleRenderQueueAttached(const Rc<core::Queue> &) { }
+void RemoteRenderClient::handleConstraintsChanged(const core::FrameConstraints &) { }
+void RemoteRenderClient::handleInputEvents(Vector<core::InputEventData> &&) { }
+void RemoteRenderClient::handleTextInput(const core::TextInputState &) { }
+void RemoteRenderClient::handleFramePresented(uint64_t) { }
 
 } // namespace stappler::xenolith

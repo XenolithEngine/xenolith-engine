@@ -271,6 +271,10 @@ Rc<FontController> FontComponent::acquireController(sprt::dispatch::Looper *loop
 	return builder->controller;
 }
 
+void FontComponent::compileImage(const Rc<core::DynamicImage> &image, Function<void(bool)> &&cb) {
+	static_cast<core::Loop *>(_context->getGlLoop())->compileImage(image, sp::move(cb));
+}
+
 void FontComponent::updateImage(sprt::dispatch::Looper *looper, const Rc<core::DynamicImage> &image,
 		Vector<font::FontUpdateRequest> &&data, Rc<core::DependencyEvent> &&dep,
 		Function<void(bool)> &&complete) {

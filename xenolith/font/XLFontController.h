@@ -32,6 +32,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 
 class FontComponent;
+class FontGapi;
 
 struct SP_PUBLIC FontUpdateRequest {
 	Rc<FontFaceObject> object;
@@ -172,6 +173,10 @@ protected:
 	Rc<Texture> _texture;
 	Rc<core::DynamicImage> _image;
 	Rc<FontComponent> _component;
+
+	// gAPI endpoint for the GPU touchpoints (atlas compile + glyph raster). Local mode: the
+	// FontComponent (kept alive by _component). Client mode: a FontGapiProxy -> server.
+	FontGapi *_gapi = nullptr;
 
 	Map<String, String> _aliases;
 	Vector<StringView> _familiesNames;

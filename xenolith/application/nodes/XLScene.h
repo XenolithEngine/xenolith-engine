@@ -29,6 +29,7 @@
 #include "XLCoreAttachment.h"
 #include "XLCoreMaterial.h"
 #include "XLCoreFrameRequest.h"
+#include "XLCoreFrameRequestProxy.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -46,7 +47,7 @@ public:
 
 	virtual bool init(Queue::Builder &&, const core::FrameConstraints &);
 
-	virtual void renderRequest(const Rc<FrameRequest> &, sprt::PoolRef *pool);
+	virtual void renderRequest(const Rc<core::FrameRequestProxy> &, sprt::PoolRef *pool);
 	virtual void render(FrameInfo &info);
 
 	virtual void handleEnter(Scene *) override;

@@ -39,7 +39,7 @@ BUILD_LIBS := \
 endif # ANDROID
 
 # Список полных путей к прекомпилируемым заголовкам
-TOOLKIT_PRECOMPILED_HEADERS := $(call sp_toolkit_resolve_prefix_files,$(TOOLKIT_PRECOMPILED_HEADERS))
+TOOLKIT_PRECOMPILED_HEADERS := $(sort $(call sp_toolkit_resolve_prefix_files,$(TOOLKIT_PRECOMPILED_HEADERS)))
 
 # Список полных путей к копиям прекомпилируемых заголовков в директории сборки
 # Копирование необходимо, чтобы обеспечить приоритет включения предкомпилируемых заголовков

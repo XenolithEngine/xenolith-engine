@@ -83,6 +83,15 @@ struct SP_PUBLIC AttachmentInputData : public Ref {
 	virtual ~AttachmentInputData() = default;
 
 	Vector<Rc<DependencyEvent>> waitDependencies;
+
+	// Serialization seam for the remote render session (see XLCoreFrameRequestProxy.h). Polymorphic
+	// so each concrete input owns its wire format (e.g. basic2d FrameContextHandle2d serializes its
+	// command list / vertex buffers).
+	//
+	// Stage 2: STUB. The real wire format is a later stage; the defaults mean "no wire format yet"
+	// (serialize writes nothing and reports false; deserialize fails).
+	virtual bool serialize(const Callback<void(BytesView)> &) const { return false; }
+	virtual bool deserialize(BytesView) { return false; }
 };
 
 class SP_PUBLIC Attachment : public NamedRef {

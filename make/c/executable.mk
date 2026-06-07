@@ -38,8 +38,8 @@ ifeq ($(filter stappler_core,$(GLOBAL_MODULES)),stappler_core)
 
 $(call print_verbose,(c/executable.mk) Prepare appconfig)
 
-BUILD_APP_CONFIG := $(BUILD_EXEC_OUTDIR)/include/stappler-appconfig.h
-BUILD_APP_CONFIG_SOURCE := $(BUILD_EXEC_OUTDIR)/objs/stappler-appconfig.cpp
+BUILD_APP_CONFIG := $(abspath $(BUILD_EXEC_OUTDIR)/include/stappler-appconfig.h)
+BUILD_APP_CONFIG_SOURCE := $(abspath $(BUILD_EXEC_OUTDIR)/objs/stappler-appconfig.cpp)
 
 BUILD_APP_CONFIG_VALUES := \
 	APPCONFIG_VERSION_VARIANT=$(APPCONFIG_VERSION_VARIANT) \

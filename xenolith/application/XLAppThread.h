@@ -32,12 +32,24 @@
 #include "XLApplicationExtension.h"
 #include "XLEventListener.h"
 #include "XLLiveReload.h"
+#include "XLRemoteAddress.h"
 
 #include <sprt/runtime/dispatch/handle.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
+namespace core {
+class RenderClientChannel;
+}
+
+namespace remote {
+class Listener;
+class ServerConnection;
+} // namespace remote
+
 class Director;
+class Connection;
+class RemoteRenderClient;
 
 class SP_PUBLIC AppThread : public sprt::dispatch::Thread {
 public:
@@ -134,9 +146,29 @@ public:
 			const core::FrameConstraints &c);
 	virtual void handleAppWindowDestroyed(NotNull<AppWindow>, Rc<Director> &&);
 
+	// Connection manager (server-side, client-driven). A connecting client is attached -- by
+	// negotiation -- to an existing AppWindow, taking over its rendering; on close the window
+	// reverts to its local (fallback) Director. Dormant until the transport/server bootstrap calls
+	// these (this stage). Single connection / single window for now.
+	virtual Connection *openConnection(core::RenderClientChannel *remote);
+	virtual void closeConnection();
+	Connection *getConnection() const { return _connection; }
+
+	// Server-side listener (scene-launched via the local-only Director API). On accept it builds a
+	// RemoteRenderClient and openConnection()s it to the connectable window. Dormant until a scene
+	// calls startListening; runs on this AppThread's looper (listenPollableHandle + a pump timer).
+	bool setListenAddress(StringView);
+	void setConnectableWindow(AppWindow *);
+	void startListening();
+	void stopListening();
+
 	virtual void openUrl(StringView);
 
 protected:
+	// Pump the listener's QUIC events (poll-readable or timer) and accept new connections.
+	void pumpListener();
+	void handleRemoteConnection(Rc<remote::ServerConnection> &&);
+
 	virtual void performAppUpdate(const UpdateTime &, bool wakeup);
 	virtual void performUpdate(bool wakeup);
 
@@ -175,6 +207,16 @@ protected:
 
 	Set<AppWindow *> _windows;
 	HashMap<String, Rc<Director>> _preservedDirectors;
+
+	// Single server->client connection owned by this AppThread (server-side connection owner).
+	Rc<Connection> _connection;
+
+	// Server-side listener state (dormant unless a scene calls startListening).
+	remote::Address _listenAddress;
+	Rc<remote::Listener> _listener;
+	Rc<sprt::dispatch::PollHandle> _listenPoll;
+	AppWindow *_connectableWindow = nullptr;
+	Rc<RemoteRenderClient> _remoteClient;
 
 	Rc<EventDelegate> _liveReloadListener;
 };

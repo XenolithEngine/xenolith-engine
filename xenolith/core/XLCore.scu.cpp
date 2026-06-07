@@ -41,6 +41,8 @@
 
 #include "XLCorePresentationFrame.cc"
 #include "XLCorePresentationEngine.cc"
+#include "XLCoreRenderSession.cc"
+#include "XLCoreFrameRequestProxy.cc"
 
 #include "SPMetastring.h"
 

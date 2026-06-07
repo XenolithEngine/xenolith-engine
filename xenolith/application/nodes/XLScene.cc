@@ -58,7 +58,7 @@ bool Scene::init(Queue::Builder &&builder, const core::FrameConstraints &constra
 	return true;
 }
 
-void Scene::renderRequest(const Rc<FrameRequest> &req, sprt::PoolRef *pool) {
+void Scene::renderRequest(const Rc<core::FrameRequestProxy> &req, sprt::PoolRef *pool) {
 	if (!_director) {
 		return;
 	}

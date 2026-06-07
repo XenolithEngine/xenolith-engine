@@ -30,7 +30,6 @@
 #include "XLActionManager.h"
 #include "XLCoreLoop.h"
 #include "XLCoreFrameRequest.h"
-#include "XLCorePresentationEngine.h"
 #include "XLContext.h"
 #include "XLAppWindow.h"
 
@@ -44,7 +43,11 @@ bool Director::init(NotNull<AppThread> app, const core::FrameConstraints &constr
 		NotNull<AppWindow> window) {
 	_application = app;
 	_window = window;
-	_engine = window->getPresentationEngine();
+	// Wire both ends of the render-session boundary at director-creation time (local mode: the
+	// AppWindow is both). Registering the client here ensures the server can announce queues before
+	// the initial scene runs.
+	_server = window.get();
+	window->setRenderClient(this);
 	_allocator = Rc<sprt::AllocRef>::alloc();
 	_pool = Rc<sprt::PoolRef>::alloc(_allocator);
 	_pool->perform([&, this] {
@@ -71,20 +74,15 @@ ResourceCache *Director::getResourceCache() const {
 	return _application->getExtension<ResourceCache>();
 }
 
-bool Director::acquireFrame(FrameRequest *req) {
-	if (!req) {
-		return false;
-	}
-
+bool Director::acquireFrame(NotNull<core::FrameRequestProxy> req) {
 	if (_nextScene && !_scene) {
-		// handle scene transition
-		if (!req->getQueue() || req->getQueue() == _nextScene->getQueue()) {
-			_scene = _nextScene;
-			_nextScene = nullptr;
-			_scene->setFrameConstraints(_constraints);
-			updateGeneralTransform();
-			_scene->handlePresented(this);
-		}
+		// Handle scene transition. The request carries no queue yet (the client selects it below),
+		// so the next scene can always be adopted here.
+		_scene = _nextScene;
+		_nextScene = nullptr;
+		_scene->setFrameConstraints(_constraints);
+		updateGeneralTransform();
+		_scene->handlePresented(this);
 	}
 
 	if (!_scene) {
@@ -98,18 +96,12 @@ bool Director::acquireFrame(FrameRequest *req) {
 
 	update(t);
 
-	if (req->getQueue() && _scene->getQueue() != req->getQueue()) {
-		log::source().error("xenolith::Director",
-				"Scene render queue is not the same, as in FrameRequest, can't render with it");
-		return false;
-	}
-
-	if (_scene) {
-		req->setQueue(_scene->getQueue());
-	}
+	// Pick this frame's render graph by name; the server resolves it against its registry of
+	// compiled queues (selectQueue logs if the name is unknown).
+	req->selectQueue(_scene->getQueue()->getName());
 
 	// break current stack frame, perform on next one
-	_application->performOnAppThread([this, req = Rc<core::FrameRequest>(req)] {
+	_application->performOnAppThread([this, req = Rc<core::FrameRequestProxy>(req.get())] {
 		if (!_scene || !req) {
 			return;
 		}
@@ -120,8 +112,8 @@ bool Director::acquireFrame(FrameRequest *req) {
 			_scene->renderRequest(req, pool);
 
 			if (hasActiveInteractions()) {
-				if (_window) {
-					_window->setReadyForNextFrame();
+				if (_server) {
+					_server->setReadyForNextFrame();
 				}
 			}
 		});
@@ -130,6 +122,34 @@ bool Director::acquireFrame(FrameRequest *req) {
 	_avgFrameTime.addValue(sp::platform::clock(ClockType::Monotonic) - t);
 	_avgFrameTimeValue = _avgFrameTime.getAverage();
 	return true;
+}
+
+void Director::handleRenderQueueAttached(const Rc<core::Queue> &queue) {
+	// The server announced an available render graph; record it so the client can select it by
+	// name per frame (FrameRequestProxy::selectQueue).
+	if (queue) {
+		_availableQueues.insert_or_assign(queue->getName(), queue);
+	}
+}
+
+void Director::handleConstraintsChanged(const core::FrameConstraints &c) { setFrameConstraints(c); }
+
+void Director::handleInputEvents(Vector<core::InputEventData> &&events) {
+	for (auto &event : events) {
+		if (event.isPointEvent()) {
+			event.point.density = _constraints.density;
+		}
+		_inputDispatcher->handleInputEvent(event);
+	}
+}
+
+void Director::handleTextInput(const core::TextInputState &state) {
+	auto copy = state;
+	_textInput->handleInputUpdate(copy);
+}
+
+void Director::handleFramePresented(uint64_t frameOrder) {
+	// Reserved for client-side pacing/stats; no-op in stage 1.
 }
 
 void Director::update(uint64_t t) {
@@ -173,16 +193,15 @@ void Director::setWindow(AppWindow *w) {
 		_textInput->cancel();
 		if (w) {
 			_window = w;
-			_engine = w->getPresentationEngine();
+			_server = w;
 			_inputDispatcher->resetWindowState(_window->getWindowState(), true);
 
 			if (_scene && _scene->getQueue()->isCompiled()) {
-				_window->getContext()->performOnThread(
-						[w, q = _scene->getQueue()] { w->runWithQueue(q); }, w, false);
+				_server->attachRenderQueue(_scene->getQueue());
 			}
 		} else {
 			_window = nullptr;
-			_engine = nullptr;
+			_server = nullptr;
 			_inputDispatcher->resetWindowState(WindowState::None, false);
 		}
 	}
@@ -248,7 +267,7 @@ void Director::setFrameConstraints(const core::FrameConstraints &c) {
 }
 
 void Director::runScene(Rc<Scene> &&scene) {
-	if (!scene || !_window) {
+	if (!scene || !_server) {
 		return;
 	}
 
@@ -259,16 +278,13 @@ void Director::runScene(Rc<Scene> &&scene) {
 
 	_nextScene = scene;
 
-	// compile render queue
-	getGlLoop()->compileQueue(queue,
-			[this, scene = move(scene), linkId, w = Rc<AppWindow>(_window)](bool success) mutable {
-		// now we on the main/view thread, call runWithQueue directly
-		if (success) {
-			auto &q = scene->getQueue();
-			_window->getContext()->performOnThread([w, q] {
-				w->runWithQueue(q);
-				w->setReadyForNextFrame();
-			}, w, false);
+	// Compile the render graph on the server, then make it the active graph (attachRenderQueue
+	// performs the server-side context-thread hop + runWithQueue + setReadyForNextFrame).
+	// `this` is kept alive across the async callback by linkId; the server endpoint stays valid
+	// because the Director retains the AppWindow via _window.
+	_server->compileRenderQueue(queue, [this, scene = move(scene), linkId](bool success) mutable {
+		if (success && _server) {
+			_server->attachRenderQueue(scene->getQueue());
 		}
 		sprt::release(this, linkId);
 	});
@@ -279,21 +295,38 @@ void Director::pushDrawStat(const DrawStat &stat) {
 }
 
 float Director::getFps() const {
-	return _engine ? 1.0f / (_engine->getLastFrameInterval() / 1000000.0f) : 1.0f;
+	auto t = _server ? _server->getFrameTiming() : core::FrameTimingInfo();
+	return t.lastFrameInterval ? 1.0f / (t.lastFrameInterval / 1000000.0f) : 1.0f;
 }
 
 float Director::getAvgFps() const {
-	return _engine ? 1.0f / (_engine->getAvgFrameInterval() / 1000000.0f) : 1.0f;
+	auto t = _server ? _server->getFrameTiming() : core::FrameTimingInfo();
+	return t.avgFrameInterval ? 1.0f / (t.avgFrameInterval / 1000000.0f) : 1.0f;
 }
 
-float Director::getSpf() const { return _engine ? _engine->getLastFrameTime() / 1000.0f : 1.0f; }
+float Director::getSpf() const {
+	auto t = _server ? _server->getFrameTiming() : core::FrameTimingInfo();
+	return t.lastFrameTime ? t.lastFrameTime / 1000.0f : 1.0f;
+}
 
 float Director::getFenceFrameTime() const {
-	return _engine ? _engine->getLastFenceFrameTime() / 1000.0f : 1.0f;
+	auto t = _server ? _server->getFrameTiming() : core::FrameTimingInfo();
+	return t.lastFenceFrameTime ? t.lastFenceFrameTime / 1000.0f : 1.0f;
 }
 
 float Director::getTimestampFrameTime() const {
-	return _engine ? _engine->getLastTimestampFrameTime() / 1000.0f : 1.0f;
+	auto t = _server ? _server->getFrameTiming() : core::FrameTimingInfo();
+	return t.lastTimestampFrameTime ? t.lastTimestampFrameTime / 1000.0f : 1.0f;
+}
+
+void Director::setListenAddress(StringView addr) { _application->setListenAddress(addr); }
+
+void Director::startListening() { _application->startListening(); }
+
+void Director::stopListening() { _application->stopListening(); }
+
+void Director::setRemoteConnectable(bool value) {
+	_application->setConnectableWindow(value ? _window.get() : nullptr);
 }
 
 void Director::autorelease(Ref *ref) { _autorelease.emplace_back(ref); }

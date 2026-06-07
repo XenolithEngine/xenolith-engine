@@ -316,6 +316,9 @@ FontController::~FontController() { invalidate(nullptr); }
 
 bool FontController::init(FontComponent *comp, StringView name) {
 	_component = comp;
+	// Local gAPI endpoint: the FontComponent (direct to the gl Loop / VkFontQueue). A client-side
+	// controller would instead point _gapi at a FontGapiProxy.
+	_gapi = comp;
 	_name = name.str<Interface>();
 	return true;
 }
@@ -329,8 +332,8 @@ void FontController::extend(AppThread *app, const Callback<bool(FontController::
 
 void FontController::initialize(AppThread *app) {
 	_image = FontComponent::makeInitialImage(_name);
-	static_cast<core::Loop *>(app->getContext()->getGlLoop())
-			->compileImage(_image, [app = Rc<AppThread>(app)](bool success) { });
+	// gAPI endpoint: compile the atlas image (local -> gl Loop; client -> proxy).
+	_gapi->compileImage(_image, [app = Rc<AppThread>(app)](bool success) { });
 	_texture = Rc<Texture>::create(_image);
 }
 
@@ -557,7 +560,7 @@ void FontController::update(AppThread *app, const UpdateTime &clock, bool) {
 			}
 		}
 		if (!objects.empty()) {
-			_component->updateImage(app->getLooper(), _image, sp::move(objects), move(_dependency),
+			_gapi->updateImage(app->getLooper(), _image, sp::move(objects), move(_dependency),
 					[app = Rc<AppThread>(app)](bool) {
 				// perform views update
 				app->wakeup();
