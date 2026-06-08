@@ -54,10 +54,14 @@ Thread::Id Thread::getCurrentThreadId() { return sprt::this_thread::get_id(); }
 
 Thread::~Thread() {
 	if (getCurrentThreadId() == _thisThreadId) {
-		_thisThread.detach();
+		if (_thisThread.native_handle()) {
+			_thisThread.detach();
+		}
 	} else if ((_flags & ThreadFlags::Joinable) != ThreadFlags::None) {
 		_continueExecution.clear();
-		_thisThread.join();
+		if (_thisThread.native_handle()) {
+			_thisThread.join();
+		}
 	}
 }
 
@@ -81,6 +85,15 @@ bool Thread::run(ThreadFlags flags) {
 	return true;
 }
 
+void Thread::wrap() {
+	_flags = ThreadFlags::None;
+	_type = &(typeid(*this));
+	_continueExecution.test_and_set();
+	_parentThread = getCurrentThread();
+
+	Thread::workerThread(this);
+}
+
 void Thread::stop() { _continueExecution.clear(); }
 
 void Thread::waitRunning() {
@@ -96,9 +109,13 @@ void Thread::waitRunning() {
 	_runningVar.wait(lock, [&] { return _running.load(); });
 }
 
-void Thread::waitStopped() {
+bool Thread::waitStopped() {
+	if (!_thisThread.native_handle()) {
+		return false;
+	}
 	_thisThread.join();
 	_flags &= ~ThreadFlags::Joinable;
+	return true;
 }
 
 void Thread::threadInit() {

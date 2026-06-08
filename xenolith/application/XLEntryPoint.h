@@ -50,7 +50,7 @@ SP_USED static STAPPLER_VERSIONIZED_NAMESPACE::SharedExtension __macro_appCommon
 #define DEFINE_PRIMARY_SCENE_CLASS(SceneClass) \
 	static STAPPLER_VERSIONIZED_NAMESPACE::Rc<STAPPLER_VERSIONIZED_NAMESPACE::xenolith::Scene> __macro_makeScene(\
 		STAPPLER_VERSIONIZED_NAMESPACE::NotNull<STAPPLER_VERSIONIZED_NAMESPACE::xenolith::AppThread> app, \
-		STAPPLER_VERSIONIZED_NAMESPACE::NotNull<STAPPLER_VERSIONIZED_NAMESPACE::xenolith::AppWindow> window, \
+		STAPPLER_VERSIONIZED_NAMESPACE::NotNull<STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::RenderServerChannel> window, \
 		const STAPPLER_VERSIONIZED_NAMESPACE::xenolith::core::FrameConstraints &constraints) { \
 	return STAPPLER_VERSIONIZED_NAMESPACE::Rc<SceneClass>::create(app, window, constraints); \
 } \

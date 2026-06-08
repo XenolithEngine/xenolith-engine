@@ -58,10 +58,14 @@ public:
 	virtual ~Thread();
 
 	virtual bool run(ThreadFlags = ThreadFlags::Joinable);
+
+	// make this Thread points to calling thread
+	virtual void wrap();
+
 	virtual void stop();
 
 	virtual void waitRunning();
-	virtual void waitStopped();
+	virtual bool waitStopped();
 
 	virtual void threadInit();
 	virtual void threadDispose();

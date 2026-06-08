@@ -208,7 +208,7 @@ void GeneralLayout::rebuildMenu() {
 
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
 		return Rc<ButtonWithLabel>::create("Capture screenshot", [this] {
-			_director->getWindow()->captureScreenshot(
+			_director->getRenderServer()->captureScreenshot(
 					[this](const core::ImageInfoData &image, BytesView data) {
 				struct BitmapContainer : public Ref {
 					Bitmap bmp;
@@ -244,19 +244,19 @@ void GeneralLayout::rebuildMenu() {
 	}, 32.0f, ZOrder(0), "ExitGuardButton");
 
 	if (_director) {
-		auto w = _director->getWindow();
+		auto w = _director->getRenderServer();
 		if (hasFlag(w->getCapabilities(), WindowCapabilities::Fullscreen)) {
 			if (hasFlag(w->getWindowState(), WindowState::Fullscreen)) {
 				_menu->getController()->addItem([this](const ScrollController::Item &) -> Rc<Node> {
 					return Rc<ButtonWithLabel>::create("Exit fullscreen", [this] {
-						_director->getWindow()->setFullscreen(FullscreenInfo(FullscreenInfo::None),
-								[](Status) { });
+						_director->getRenderServer()->setFullscreen(
+								FullscreenInfo(FullscreenInfo::None), [](Status) { });
 					});
 				}, 64.0f, ZOrder(0));
 			} else {
 				_menu->getController()->addItem([this](const ScrollController::Item &) -> Rc<Node> {
 					return Rc<ButtonWithLabel>::create("Fullscreen on current", [this] {
-						_director->getWindow()->setFullscreen(
+						_director->getRenderServer()->setFullscreen(
 								FullscreenInfo(FullscreenInfo::Current), [](Status s) {
 							if (s != Status::Ok) {
 								log::error("GeneralLayout", "Fail to set fullscreen: ", s);
@@ -289,7 +289,7 @@ void GeneralLayout::rebuildMenu() {
 			_menu->getController()->addItem([this](const ScrollController::Item &) -> Rc<Node> {
 				return Rc<ButtonWithLabel>::create("Toggle status bar", [this] {
 					if (_director) {
-						auto w = _director->getWindow();
+						auto w = _director->getRenderServer();
 						auto state = w->getWindowState();
 						if (hasFlag(state, WindowState::DecorationStatusBarVisible)) {
 							w->disableState(WindowState::DecorationStatusBarVisible);
@@ -305,7 +305,7 @@ void GeneralLayout::rebuildMenu() {
 			_menu->getController()->addItem([this](const ScrollController::Item &) -> Rc<Node> {
 				return Rc<ButtonWithLabel>::create("Toggle navigation bar", [this] {
 					if (_director) {
-						auto w = _director->getWindow();
+						auto w = _director->getRenderServer();
 						auto state = w->getWindowState();
 						if (hasFlag(state, WindowState::DecorationNavigationVisible)) {
 							w->disableState(WindowState::DecorationNavigationVisible);
@@ -322,7 +322,7 @@ void GeneralLayout::rebuildMenu() {
 		// Cоздаём простую конпку
 		// Её позиционирование и размер контроллер прокрутки настроит сам
 		return Rc<ButtonWithLabel>::create("Close", [this] {
-			auto w = _director->getWindow();
+			auto w = _director->getRenderServer();
 			w->close(true);
 		});
 	}, 32.0f);
@@ -356,7 +356,7 @@ void GeneralLayout::updateScreenInfo() {
 	log::debug("GeneralLayout", "updateScreenInfo");
 	using namespace simpleui;
 	if (_director) {
-		_director->getWindow()->acquireScreenInfo([this](NotNull<ScreenInfo> screenInfo) {
+		_director->getRenderServer()->acquireScreenInfo([this](NotNull<ScreenInfo> screenInfo) {
 			_screenInfo = screenInfo;
 			if (_running) {
 				rebuildMenu();

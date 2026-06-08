@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Stappler Team <admin@stappler.org>
+ Copyright (c) 2025 Stappler Team <admin@stappler.org>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -20,45 +20,61 @@
  THE SOFTWARE.
  **/
 
-#include "XLAppConnection.h"
-#include "XLAppWindow.h"
-#include "director/XLDirector.h"
+#include "XLClientContext.h"
+#include "XLClientAppThread.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
-// Out-of-line virtual destructor anchors the vtable (stage-1 vtable lesson) and lets the Rc<>
-// members destruct against complete types here.
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
-Connection::~Connection() = default;
+ClientContext::~ClientContext() { }
 
 __SPRT_POP_ALLOW_CXXABI_ALLOC
 
-bool Connection::init(NotNull<AppThread> app) {
-	_app = app;
-	return true;
+bool ClientContext::init() {
+	_info = Rc<ContextInfo>::alloc();
+	return _info != nullptr;
 }
 
-bool Connection::attach(NotNull<AppWindow> window, core::RenderClientChannel *remote) {
-	if (!remote) {
-		return false;
+void ClientContext::run() {
+	if (!_appThread) {
+		_appThread = Rc<ClientAppThread>::create(this);
 	}
-	_window = window;
-	_client = remote;
-	// Drive the existing window from the remote client; its local Director stays alive as fallback.
-	window->setRenderClient(remote);
-	window->setReadyForNextFrame();
-	return true;
+	if (_appThread) {
+		_appThread->run();
+	}
 }
 
-void Connection::detach() {
-	if (_window) {
-		// Revert the window to its local fallback Director (the default scene resumes).
-		_window->setRenderClient(_window->getDirector());
-		_window->setReadyForNextFrame();
-		_window = nullptr;
+void ClientContext::stop() {
+	if (_appThread) {
+		_appThread->stop();
+		_appThread->waitStopped();
+		_appThread = nullptr;
 	}
-	_client = nullptr;
+}
+
+void ClientContext::handleAppThreadCreated(NotNull<ClientAppThread>) {
+	log::source().info("ClientContext", "handleAppThreadCreated");
+}
+
+void ClientContext::handleAppThreadDestroyed(NotNull<ClientAppThread>) {
+	log::source().info("ClientContext", "handleAppThreadDestroyed");
+}
+
+void ClientContext::handleAppThreadUpdate(NotNull<ClientAppThread>, const UpdateTime &) { }
+
+void ClientContext::handleWindowDisconnected(NotNull<ClientAppThread> thread,
+		NotNull<RemoteWindow> w) {
+	if (_onWindowDisconnected) {
+		_onWindowDisconnected(w);
+	}
+}
+
+void ClientContext::handleWindowConnected(NotNull<ClientAppThread> thread,
+		NotNull<RemoteWindow> w) {
+	if (_onWindowConnected) {
+		_onWindowConnected(w);
+	}
 }
 
 } // namespace stappler::xenolith

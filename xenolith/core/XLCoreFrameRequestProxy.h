@@ -39,22 +39,12 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 // (by name), never inject an arbitrary one. Outputs / render targets are the server's surface.
 //
 
-// Resolves a render-queue name to the server's compiled Queue. Implemented by the server endpoint
-// (AppWindow keeps the name -> Rc<Queue> registry of its compiled render graphs). The local proxy
-// uses it to resolve selectQueue(); the remote server resolves a serialized name the same way.
-class SP_PUBLIC RenderQueueRegistry {
-public:
-	virtual ~RenderQueueRegistry();
-
-	virtual Rc<Queue> getRenderQueue(StringView name) const = 0;
-};
-
 class SP_PUBLIC FrameRequestProxy : public Ref {
 public:
 	virtual ~FrameRequestProxy();
 
 	// Pick, for this frame, one of the render queues the server has announced (by name).
-	virtual void selectQueue(StringView name) = 0;
+	virtual void selectQueue(NotNull<core::Queue>) = 0;
 
 	// Per-frame input the client owns (the command batch is the primary payload).
 	virtual bool addInput(const AttachmentData *, Rc<AttachmentInputData> &&) = 0;
@@ -73,12 +63,12 @@ class SP_PUBLIC LocalFrameRequestProxy final : public FrameRequestProxy {
 public:
 	virtual ~LocalFrameRequestProxy();
 
-	bool init(NotNull<FrameRequest>, NotNull<RenderQueueRegistry>);
+	bool init(NotNull<FrameRequest>);
 
 	// The underlying server request (local-only; not part of the portable surface).
 	FrameRequest *getRequest() const { return _request; }
 
-	virtual void selectQueue(StringView name) override;
+	virtual void selectQueue(NotNull<core::Queue>) override;
 	virtual bool addInput(const AttachmentData *, Rc<AttachmentInputData> &&) override;
 	virtual void addSignalDependency(Rc<DependencyEvent> &&) override;
 	virtual void addSignalDependencies(Vector<Rc<DependencyEvent>> &&) override;
@@ -88,7 +78,6 @@ public:
 
 protected:
 	Rc<FrameRequest> _request;
-	RenderQueueRegistry *_registry = nullptr;
 };
 
 // Networked proxy: accumulates the per-frame batch on the client, then serializes it for the
@@ -105,7 +94,7 @@ public:
 	// Remote receives the frame constraints from the server's per-frame announcement.
 	bool init(const FrameConstraints &);
 
-	virtual void selectQueue(StringView name) override;
+	virtual void selectQueue(NotNull<core::Queue>) override;
 	virtual bool addInput(const AttachmentData *, Rc<AttachmentInputData> &&) override;
 	virtual void addSignalDependency(Rc<DependencyEvent> &&) override;
 	virtual void addSignalDependencies(Vector<Rc<DependencyEvent>> &&) override;

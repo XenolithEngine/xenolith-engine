@@ -98,7 +98,7 @@ void Scene::render(FrameInfo &info) {
 	visitGeometry(info, NodeVisitFlags::None);
 	visitDraw(info, NodeVisitFlags::None);
 
-	eventDispatcher->commitStorage(_director->getWindow(), move(info.input));
+	eventDispatcher->commitStorage(_director->getRenderServer(), move(info.input));
 }
 
 void Scene::handleEnter(Scene *scene) { Node::handleEnter(scene); }
@@ -201,8 +201,6 @@ void Scene::setClipContent(bool value) {
 }
 
 bool Scene::isClipContent() const { return _content ? _content->isScissorEnabled() : false; }
-
-void Scene::setLiveReloadAllowed(bool value) { _liveReloadAllowed = value; }
 
 auto Scene::makeQueue(Queue::Builder &&builder) -> Rc<Queue> {
 	builder.setBeginCallback([this](FrameRequest &frame) { handleFrameStarted(frame); });

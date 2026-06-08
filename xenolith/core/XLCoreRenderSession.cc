@@ -36,4 +36,6 @@ RenderServerChannel::~RenderServerChannel() = default;
 
 __SPRT_POP_ALLOW_CXXABI_ALLOC
 
+void RenderServerChannel::setRenderClient(core::RenderClientChannel *c) { _client = c; }
+
 } // namespace stappler::xenolith::core

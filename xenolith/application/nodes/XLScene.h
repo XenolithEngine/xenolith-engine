@@ -78,9 +78,6 @@ public:
 	virtual void setClipContent(bool);
 	virtual bool isClipContent() const;
 
-	virtual void setLiveReloadAllowed(bool);
-	virtual bool isLiveReloadAllowed() const { return _liveReloadAllowed; }
-
 protected:
 	using Node::init;
 	using Node::addChild; // запрет добавлять ноды напрямую на сцену
@@ -100,7 +97,6 @@ protected:
 	Rc<Queue> _queue;
 
 	core::FrameConstraints _constraints;
-	bool _liveReloadAllowed = false;
 };
 
 } // namespace stappler::xenolith

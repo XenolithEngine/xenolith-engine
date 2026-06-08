@@ -76,51 +76,51 @@ constexpr inline size_t dtoa(Char *buffer, T value, size_t bufferSize,
 		dtoa_options opts = dtoa_options()) {
 	if (isnan(value)) {
 		if constexpr (sizeof(Char) == sizeof(char)) {
-			__constexpr_memcpy(buffer, "NaN", 3);
+			__constexpr_memcpy(buffer + bufferSize - 3, "NaN", 3);
 			return 3;
 		} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
-			__constexpr_memcpy(buffer, u"NaN", 3);
+			__constexpr_memcpy(buffer + bufferSize - 3, u"NaN", 3);
 			return 3;
 		} else {
 			return 0;
 		}
 	} else if (value == Infinity<T>) {
 		if constexpr (sizeof(Char) == sizeof(char)) {
-			__constexpr_memcpy(buffer, "inf", 3);
+			__constexpr_memcpy(buffer + bufferSize - 3, "inf", 3);
 			return 3;
 		} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
-			__constexpr_memcpy(buffer, u"inf", 3);
+			__constexpr_memcpy(buffer + bufferSize - 3, u"inf", 3);
 			return 3;
 		} else {
 			return 0;
 		}
 	} else if (value == -Infinity<T>) {
 		if constexpr (sizeof(Char) == sizeof(char)) {
-			__constexpr_memcpy(buffer, "-inf", 4);
+			__constexpr_memcpy(buffer + bufferSize - 4, "-inf", 4);
 			return 4;
 		} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
-			__constexpr_memcpy(buffer, u"-inf", 4);
+			__constexpr_memcpy(buffer + bufferSize - 4, u"-inf", 4);
 			return 4;
 		} else {
 			return 0;
 		}
 	} else if (value == T(0.0)) {
 		if constexpr (sizeof(Char) == sizeof(char)) {
-			__constexpr_memcpy(buffer, "0.0", 3);
+			__constexpr_memcpy(buffer + bufferSize - 3, "0.0", 3);
 			return 3;
 		} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
-			__constexpr_memcpy(buffer, u"0.0", 3);
+			__constexpr_memcpy(buffer + bufferSize - 3, u"0.0", 3);
 			return 3;
 		} else {
 			return 0;
 		}
 	} else if (value == -T(0.0)) {
 		if constexpr (sizeof(Char) == sizeof(char)) {
-			__constexpr_memcpy(buffer, "-0.0", 3);
-			return 3;
+			__constexpr_memcpy(buffer + bufferSize - 4, "-0.0", 3);
+			return 4;
 		} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
-			__constexpr_memcpy(buffer, u"-0.0", 3);
-			return 3;
+			__constexpr_memcpy(buffer + bufferSize - 4, u"-0.0", 3);
+			return 4;
 		} else {
 			return 0;
 		}

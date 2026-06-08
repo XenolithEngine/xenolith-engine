@@ -34,7 +34,7 @@ namespace sprt::window {
 
 class SPRT_API AppWindow : public Ref {
 public:
-	virtual ~AppWindow() = default;
+	virtual ~AppWindow();
 
 	virtual void run() = 0;
 	virtual void close(bool force) = 0;

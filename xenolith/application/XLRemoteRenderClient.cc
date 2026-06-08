@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -21,6 +21,7 @@
  **/
 
 #include "XLRemoteRenderClient.h"
+#include "XLRemoteSerialize.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -33,6 +34,45 @@ __SPRT_POP_ALLOW_CXXABI_ALLOC
 bool RemoteRenderClient::init(Rc<remote::ServerConnection> &&conn) {
 	_connection = sp::move(conn);
 	return _connection != nullptr;
+}
+
+bool RemoteRenderClient::isClosed() { return !_connection || _connection->isClosed(); }
+
+void RemoteRenderClient::closeConnection() {
+	if (_connection) {
+		_connection->close(); // graceful QUIC shutdown (bounded); then drop it
+		_connection = nullptr;
+	}
+}
+
+void RemoteRenderClient::announce(NotNull<remote::ObjectRegistry> registry) {
+	Value data;
+	{
+		auto &queues = data.emplace("queues");
+		for (auto &it : registry->getQueues()) {
+			auto &v = queues.emplace();
+			v.addInteger(it.second);
+			v.addString(it.first->getName());
+		}
+	}
+	{
+		auto &windows = data.emplace("windows");
+		for (auto &it : registry->getWindows()) {
+			auto &v = windows.emplace();
+			v.addInteger(it.second);
+			v.addString(it.first->getId());
+			v.addInteger(toInt(it.first->getWindowState()));
+			v.addInteger(toInt(it.first->getCapabilities()));
+			v.addValue(remote::serializeFrameConstraints(it.first->getConstraints()));
+			v.addValue(remote::serializeSwapchainConfig(it.first->getAppSwapchainConfig()));
+			if (auto info = it.first->getInfo()) {
+				v.addValue(remote::serializeWindowInfo(*info));
+			}
+		}
+	}
+
+	_connection->sendCborMessage(remote::Domain::Global,
+			toInt(remote::GlobalCode::SharedObjectsAnnounce), data);
 }
 
 bool RemoteRenderClient::acquireFrame(NotNull<core::FrameRequestProxy>) {

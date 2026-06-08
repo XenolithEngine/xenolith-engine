@@ -118,6 +118,61 @@ public:
 	virtual void acquireTextInput(TextInputRequest &&) = 0;
 	virtual void releaseTextInput() = 0;
 	virtual void close(bool graceful = true) = 0;
+
+	virtual void handleBackButton() = 0;
+
+	virtual const sprt::window::WindowInfo *getInfo() const = 0;
+
+	virtual bool enableState(WindowState) = 0;
+	virtual bool disableState(WindowState) = 0;
+
+	virtual bool setFullscreen(FullscreenInfo &&, Function<void(Status)> &&, Ref * = nullptr) = 0;
+
+	// Try to set preferred framerate for OS WM.
+	// WindowCapabilities::PreferredFrameRate should be available
+	virtual bool setPreferredFrameRate(float, Function<void(Status)> && = nullptr) = 0;
+
+	// Capture current window contents as an image buffer
+	// (makes screenshot of the window's content without OS decorations)
+	//
+	// This call actually performs frame rendering into offscreen buffer
+	// (via PresentationEngine::scheduleSwapchainImage with PresentationFrame::OffscreenTarget),
+	// that then will be returned as info + data
+	virtual void captureScreenshot(
+			Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) = 0;
+
+	// pos - Location, on which window menu should be opened in presentation (Scene) coords;
+	// Use Vec2::INVALID to open window menu in current pointer location;
+	// WindowState::AlloedWindowMenu should be enabled
+	virtual bool openWindowMenu(Vec2 pos) = 0;
+
+	virtual void handleInputEvents(Vector<InputEventData> &&events) = 0;
+
+	virtual void updateLayers(sprt::window::Vector<sprt::window::WindowLayer> &&) = 0;
+
+	// Client-side endpoint of the render session (server -> client calls). Set by Director::init
+	// at director-creation time so it is valid before the initial scene runs (and its queue is
+	// announced). Cleared on teardown.
+	virtual void setRenderClient(core::RenderClientChannel *c);
+
+	core::WindowState getWindowState() const { return _state; }
+
+	sprt::window::WindowCapabilities getCapabilities() const { return _capabilities; }
+
+	StringView getId() const { return _windowId; }
+
+	// It's not safe to ask PresentationEngine about current config, use this instead
+	const core::SwapchainConfig &getAppSwapchainConfig() const { return _appSwapchainConfig; }
+
+	const core::FrameConstraints &getConstraints() const { return _appFrameConstraints; }
+
+protected:
+	RenderClientChannel *_client = nullptr;
+	core::WindowState _state = core::WindowState::None;
+	core::FrameConstraints _appFrameConstraints; // read-only mirrior
+	core::SwapchainConfig _appSwapchainConfig; // read-only mirrior
+	sprt::window::WindowCapabilities _capabilities = sprt::window::WindowCapabilities::None;
+	String _windowId; // should be constant
 };
 
 } // namespace stappler::xenolith::core

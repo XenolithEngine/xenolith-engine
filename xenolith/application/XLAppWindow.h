@@ -1,5 +1,6 @@
 /**
  Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -41,9 +42,8 @@ enum class AppWindowConfigFlags {
 };
 
 class SP_PUBLIC AppWindow : public sprt::window::AppWindow,
-						   core::PresentationWindow,
-						   public core::RenderServerChannel,
-						   public core::RenderQueueRegistry {
+							core::PresentationWindow,
+							public core::RenderServerChannel {
 public:
 	using InputEventData = core::InputEventData;
 	using InputEventName = core::InputEventName;
@@ -67,35 +67,21 @@ public:
 
 	virtual void close(bool graceful = true) override;
 
-	virtual void handleInputEvents(Vector<InputEventData> &&);
+	virtual void handleInputEvents(Vector<InputEventData> &&) override;
 	virtual void handleTextInput(const TextInputState &);
 
 	Context *getContext() const { return _context; }
 	AppThread *getApplication() const { return _application; }
 
-	core::WindowState getWindowState() const { return _state; } // from any thread
-
 	// Note that WindowInfo describes window state in main thread,
 	// you should not use it in app thread, except for constant fields (like flags)
 	//
 	// To access WindowState in app thread, use getWindowState
-	const WindowInfo *getInfo() const;
-
-	StringView getId() const { return _windowId; }
-
-	WindowCapabilities getCapabilities() const { return _capabilities; }
+	virtual const WindowInfo *getInfo() const override;
 
 	core::PresentationEngine *getPresentationEngine() const { return _presentationEngine; }
 
 	Director *getDirector() const { return _director; }
-
-	// Client-side endpoint of the render session (server -> client calls). Set by Director::init
-	// at director-creation time so it is valid before the initial scene runs (and its queue is
-	// announced). Cleared on teardown.
-	void setRenderClient(core::RenderClientChannel *c) { _client = c; }
-
-	// It's not safe to ask PresentationEngine about current config, use this instead
-	const core::SwapchainConfig &getAppSwapchainConfig() const { return _appSwapchainConfig; }
 
 	// Run constraints update process
 	void updateConstraints(core::UpdateConstraintsFlags); // from any thread
@@ -126,22 +112,23 @@ public:
 	// WindowState::Fullscreen: acts like setFullscreen(FullscreenInfo::Current)
 	// WindowState::CloseRequest: if this flag is NOT set in _state:  calls AppWindow::close() (so, ExitGuard can be triggered)
 	// WindowState::CloseRequest: if this flag IS set in _state: forceы window to be closed by WM
-	bool enableState(WindowState); // from app thread
+	virtual bool enableState(WindowState) override; // from app thread
 
 	// try to change WindowState by removing flag
 	// Only one flag can be removed per call
 	//
 	// WindowState::Fullscreen: acts like setFullscreen(FullscreenInfo::None)
 	// WindowState::CloseRequest: if this flag IS set in _state: discards close request and re-enables ExitGuard if it is retained
-	bool disableState(WindowState); // from app thread
+	virtual bool disableState(WindowState) override; // from app thread
 
-	void acquireTextInput(TextInputRequest &&) override;
-	void releaseTextInput() override;
+	virtual void acquireTextInput(TextInputRequest &&) override;
+	virtual void releaseTextInput() override;
 
-	void updateLayers(sprt::window::Vector<WindowLayer> &&); // from app thread
+	virtual void updateLayers(sprt::window::Vector<WindowLayer> &&) override; // from app thread
 
 	// Acquire data describing current monitor configuration
-	void acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&, Ref * = nullptr) override;
+	virtual void acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&,
+			Ref * = nullptr) override;
 
 	// core::RenderServerChannel (client -> server) additions.
 	// (setReadyForNextFrame / acquireScreenInfo / acquireTextInput / releaseTextInput / close are
@@ -151,15 +138,13 @@ public:
 	virtual void compileResource(Rc<core::Resource> &&, Function<void(bool)> && = nullptr,
 			bool preload = false) override;
 	virtual void compileMaterials(Rc<core::MaterialInputData> &&,
-			const Vector<Rc<core::DependencyEvent>> & = Vector<Rc<core::DependencyEvent>>()) override;
+			const Vector<Rc<core::DependencyEvent>> & =
+					Vector<Rc<core::DependencyEvent>>()) override;
 	virtual void compileImage(const Rc<core::DynamicImage> &,
 			Function<void(bool)> && = nullptr) override;
 	virtual void attachRenderQueue(const Rc<core::Queue> &) override;
 	virtual void setPreferredFrameInterval(uint64_t intervalUs) override;
 	virtual core::FrameTimingInfo getFrameTiming() const override;
-
-	// core::RenderQueueRegistry: resolve an announced render-queue name to its compiled Queue.
-	virtual Rc<core::Queue> getRenderQueue(StringView name) const override;
 
 	// Try to enter or exit fullscreen mode with specific mode
 	// Use FullscreenInfo::Current to use current monitor and mode for fullscreen
@@ -175,11 +160,12 @@ public:
 	// Without WindowCapabilities::FullscreenSeamlessModeSwitch, to set new display mode
 	// for already-fullscreened window, engine will exit fullscreen mode, then re-enter
 	// it with the new mode
-	bool setFullscreen(FullscreenInfo &&, Function<void(Status)> &&, Ref * = nullptr);
+	virtual bool setFullscreen(FullscreenInfo &&, Function<void(Status)> &&,
+			Ref * = nullptr) override;
 
 	// Try to set preferred framerate for OS WM.
 	// WindowCapabilities::PreferredFrameRate should be available
-	bool setPreferredFrameRate(float, Function<void(Status)> && = nullptr);
+	virtual bool setPreferredFrameRate(float, Function<void(Status)> && = nullptr) override;
 
 	// Capture current window contents as an image buffer
 	// (makes screenshot of the window's content without OS decorations)
@@ -187,12 +173,13 @@ public:
 	// This call actually performs frame rendering into offscreen buffer
 	// (via PresentationEngine::scheduleSwapchainImage with PresentationFrame::OffscreenTarget),
 	// that then will be returned as info + data
-	void captureScreenshot(Function<void(const core::ImageInfoData &info, BytesView view)> &&cb);
+	virtual void captureScreenshot(
+			Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) override;
 
 	// pos - Location, on which window menu should be opened in presentation (Scene) coords;
 	// Use Vec2::INVALID to open window menu in current pointer location;
 	// WindowState::AlloedWindowMenu should be enabled
-	bool openWindowMenu(Vec2 pos);
+	virtual bool openWindowMenu(Vec2 pos) override;
 
 	// Simulate back button press/gesture from app's thread (on Android)
 	// It shouldn't be used on modern Android devices (above API 32), instead,
@@ -204,7 +191,7 @@ public:
 	// Note, that on API 33+ it should be enabled in manifest with
 	//  android:enableOnBackInvokedCallback="true"
 	// in <application> or <activity>
-	void handleBackButton();
+	virtual void handleBackButton() override;
 
 protected:
 	virtual core::ImageInfo getSwapchainImageInfo(const core::SwapchainConfig &cfg) const override;
@@ -230,39 +217,17 @@ protected:
 	virtual void handleContextStateUpdate(WindowState state);
 	virtual void synchronizeClose();
 
-	String _windowId; // should be constant
 	Rc<Context> _context;
 
-	// OPEN DESIGN QUESTION (render-session split): AppWindow is the server-side endpoint, yet it
-	// holds the client's AppThread and performs the app-thread hop itself (see handleInputEvents /
-	// handleTextInput / acquireFrameData). For a true client/server split that hop belongs on the
-	// client side of the RenderClientChannel, and the server-side AppWindow should not depend on
-	// AppThread at all. Revisit whether AppWindow should own/know an AppThread once the remote
-	// channel exists; left as-is for now.
 	Rc<AppThread> _application;
 	Rc<Director> _director;
 	NativeWindow *_window = nullptr;
 	Rc<core::PresentationEngine> _presentationEngine;
 
-	// Client-side endpoint of the render-session boundary (server -> client calls).
-	// In local mode this points at the Director; later it may be a network proxy.
-	core::RenderClientChannel *_client = nullptr;
-
-	// Registry of compiled render graphs the server has, keyed by queue name. Populated in
-	// compileRenderQueue and announced to the client; resolves the client's per-frame
-	// selectQueue(name). Written + read on the app thread in local mode (no locking needed).
-	// Keys are the queues' own getName() views, kept alive by the held Rc<Queue>.
-	Map<StringView, Rc<core::Queue>> _renderQueues;
-
-	core::WindowState _state = core::WindowState::None; // for app thread
 	core::WindowState _contextState = core::WindowState::None; // for context thread
 
 	bool _inCloseRequest = false;
 	bool _syncClose = false;
-
-	core::SwapchainConfig _appSwapchainConfig;
-
-	WindowCapabilities _capabilities = WindowCapabilities::None;
 };
 
 } // namespace stappler::xenolith

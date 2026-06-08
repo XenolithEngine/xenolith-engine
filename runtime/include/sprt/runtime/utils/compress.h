@@ -40,6 +40,15 @@ SPRT_API size_t lz4hc_compressData(const uint8_t *src, size_t srcSize, uint8_t *
 SPRT_API size_t lz4_decompressData(const uint8_t *src, size_t srcSize, uint8_t *dest,
 		size_t destSize);
 
+// Dictionary variants: compress/decompress a single independent block against a shared dictionary
+// (LZ4 streaming dict API). A dictSize of 0 (or null dict) behaves as plain LZ4, so the same calls
+// serve the no-dictionary case. The dictionary buffer must stay valid for the duration of the call.
+SPRT_API size_t lz4_compressDataDict(const uint8_t *src, size_t srcSize, uint8_t *dest,
+		size_t destSize, const uint8_t *dict, size_t dictSize);
+
+SPRT_API size_t lz4_decompressDataDict(const uint8_t *src, size_t srcSize, uint8_t *dest,
+		size_t destSize, const uint8_t *dict, size_t dictSize);
+
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_UTILS_COMPRESS_H_

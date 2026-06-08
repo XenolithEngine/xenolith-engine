@@ -24,6 +24,7 @@
 #define XENOLITH_APPLICATION_INPUT_XLINPUTDISPATCHER_H_
 
 #include "XLContextInfo.h"
+#include "XLCoreRenderSession.h"
 #include "XLFocusGroup.h"
 #include "XLInputListener.h"
 #include "XLTextInputManager.h"
@@ -77,7 +78,7 @@ public:
 	void update(const UpdateTime &time);
 
 	Rc<InputListenerStorage> acquireNewStorage();
-	void commitStorage(AppWindow *, Rc<InputListenerStorage> &&);
+	void commitStorage(core::RenderServerChannel *, Rc<InputListenerStorage> &&);
 
 	void handleInputEvent(const InputEventData &);
 

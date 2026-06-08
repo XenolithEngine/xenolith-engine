@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -25,22 +25,28 @@
 
 #include "XLCoreRenderSession.h"
 #include "XLRemoteListener.h" // remote::ServerConnection
+#include "XLRemoteObject.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 // Server-side proxy for a connected remote client: implements core::RenderClientChannel by
 // (eventually) serializing the calls over the QUIC connection to the real client, and is bound to
 // an AppWindow via AppThread::openConnection.
-//
-// STAGE 5: STUB. It holds the accepted connection but the over-the-wire render protocol is not
-// implemented yet -- acquireFrame produces nothing and the deliver* calls are no-ops. (While
-// attached, the window will be idle until the wire protocol stage; detaching reverts to the local
-// fallback Director.)
 class SP_PUBLIC RemoteRenderClient : public Ref, public core::RenderClientChannel {
 public:
 	virtual ~RemoteRenderClient();
 
 	bool init(Rc<remote::ServerConnection> &&);
+
+	// True once the underlying QUIC connection has begun terminating (client disconnected).
+	bool isClosed();
+
+	void closeConnection();
+
+	// The accepted connection (for the host AppThread to drive the async message dispatch loop).
+	remote::ServerConnection *getConnection() const { return _connection; }
+
+	void announce(NotNull<remote::ObjectRegistry>);
 
 	virtual bool acquireFrame(NotNull<core::FrameRequestProxy>) override;
 	virtual void handleRenderQueueAttached(const Rc<core::Queue> &) override;

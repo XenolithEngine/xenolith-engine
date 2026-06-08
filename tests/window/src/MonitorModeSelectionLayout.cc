@@ -76,7 +76,7 @@ bool MonitorModeSelectionLayout::init(NotNull<ScreenInfo> info, uint32_t index) 
 			}
 			controller->addItem([this, name, mode](const ScrollController::Item &) -> Rc<Node> {
 				return Rc<ButtonWithLabel>::create(name, [this, mode] {
-					_director->getWindow()->setFullscreen(
+					_director->getRenderServer()->setFullscreen(
 							FullscreenInfo{_screenInfo->monitors[_monitorIndex], mode,
 								FullscreenFlags::Exclusive},
 							[this](Status s) {

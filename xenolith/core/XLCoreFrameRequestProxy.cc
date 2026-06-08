@@ -27,8 +27,6 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 // Out-of-line virtual destructors anchor the vtables in this single TU (stage-1 vtable lesson).
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
-RenderQueueRegistry::~RenderQueueRegistry() = default;
-
 FrameRequestProxy::~FrameRequestProxy() = default;
 
 LocalFrameRequestProxy::~LocalFrameRequestProxy() = default;
@@ -37,20 +35,12 @@ RemoteFrameRequestProxy::~RemoteFrameRequestProxy() = default;
 
 __SPRT_POP_ALLOW_CXXABI_ALLOC
 
-bool LocalFrameRequestProxy::init(NotNull<FrameRequest> req, NotNull<RenderQueueRegistry> registry) {
+bool LocalFrameRequestProxy::init(NotNull<FrameRequest> req) {
 	_request = req;
-	_registry = registry;
 	return true;
 }
 
-void LocalFrameRequestProxy::selectQueue(StringView name) {
-	if (auto q = _registry->getRenderQueue(name)) {
-		_request->setQueue(q);
-	} else {
-		log::source().error("LocalFrameRequestProxy", "selectQueue: no announced queue named '",
-				name, "'");
-	}
-}
+void LocalFrameRequestProxy::selectQueue(NotNull<core::Queue> q) { _request->setQueue(q); }
 
 bool LocalFrameRequestProxy::addInput(const AttachmentData *a, Rc<AttachmentInputData> &&data) {
 	return _request->addInput(a, sp::move(data));
@@ -64,7 +54,8 @@ void LocalFrameRequestProxy::addSignalDependencies(Vector<Rc<DependencyEvent>> &
 	_request->addSignalDependencies(sp::move(deps));
 }
 
-void LocalFrameRequestProxy::addImageSpecialization(const ImageAttachment *a, ImageInfoData &&info) {
+void LocalFrameRequestProxy::addImageSpecialization(const ImageAttachment *a,
+		ImageInfoData &&info) {
 	_request->addImageSpecialization(a, sp::move(info));
 }
 
@@ -83,8 +74,9 @@ bool RemoteFrameRequestProxy::init(const FrameConstraints &c) {
 	return true;
 }
 
-void RemoteFrameRequestProxy::selectQueue(StringView name) {
-	_selectedQueue = name.str<Interface>();
+void RemoteFrameRequestProxy::selectQueue(NotNull<core::Queue>) {
+	abort(); // TODO
+	//_selectedQueue = name.str<Interface>();
 }
 
 bool RemoteFrameRequestProxy::addInput(const AttachmentData *a, Rc<AttachmentInputData> &&data) {
@@ -104,7 +96,9 @@ void RemoteFrameRequestProxy::addImageSpecialization(const ImageAttachment *, Im
 	// TODO(remote stage): accumulate image specialization for serialization.
 }
 
-const FrameConstraints &RemoteFrameRequestProxy::getFrameConstraints() const { return _constraints; }
+const FrameConstraints &RemoteFrameRequestProxy::getFrameConstraints() const {
+	return _constraints;
+}
 
 void RemoteFrameRequestProxy::commit() {
 	// STUB (stage 2): the real implementation serializes _selectedQueue + _constraints + signal

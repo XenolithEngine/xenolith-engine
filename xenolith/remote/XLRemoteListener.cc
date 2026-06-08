@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -21,6 +21,8 @@
  **/
 
 #include "XLRemoteListener.h"
+#include "XLRemoteProtocol.h"
+#include "SPPlatform.h"
 
 #include <openssl/ssl.h>
 #include <openssl/quic.h>
@@ -141,8 +143,129 @@ __SPRT_POP_ALLOW_CXXABI_ALLOC
 
 bool ServerConnection::init(void *ssl) {
 	_ssl = ssl;
+	if (_ssl) {
+		// Non-blocking: the host looper drives the synchronous handshake (deadline-bounded) and then
+		// the SSL_read_ex drain in poll(); a blocking read would stall the app thread.
+		SSL_set_blocking_mode((SSL *)_ssl, 0);
+	}
 	return _ssl != nullptr;
 }
+
+bool ServerConnection::isClosed() {
+	if (!_ssl) {
+		return true;
+	}
+	auto ssl = (SSL *)_ssl;
+	SSL_handle_events(ssl);
+
+	SSL_CONN_CLOSE_INFO info;
+	return SSL_get_conn_close_info(ssl, &info, sizeof(info)) != 0;
+}
+
+ErrorCode ServerConnection::handshake(BytesView expectedKey, BytesView serverDict) {
+	if (!_ssl) {
+		return ErrorCode::BadProtocol;
+	}
+	uint64_t deadline = sp::platform::clock(ClockType::Monotonic) + 500'000; // 500ms
+	auto ret = serverHandshake(_ssl, expectedKey, serverDict, _dict, deadline);
+	if (ret == ErrorCode::Ok) {
+		// begin new serial session
+		_serial = 1;
+	}
+	return ret;
+}
+
+ErrorCode ServerConnection::ping() { return sendPing(_ssl, Role::Server, _serial++); }
+
+ErrorCode ServerConnection::pong(uint32_t serial) { return sendPong(_ssl, Role::Server, serial); }
+
+ErrorCode ServerConnection::sendCborMessage(Domain d, uint8_t message, const Value &val) {
+	Bytes bytes = data::write<Interface>(val, data::EncodeFormat::Cbor);
+	return sendMessage(d, message, bytes);
+}
+
+ErrorCode ServerConnection::sendMessage(Domain d, uint8_t message, BytesView payload) {
+	if (sendFrame(_ssl, sp::platform::clock(ClockType::Monotonic) + 500'000, _dict,
+				MessageType::Server, d, message, _serial++, payload)) {
+		return ErrorCode::Ok;
+	}
+	return ErrorCode::NetworkBackend;
+};
+
+void ServerConnection::poll(const Callback<bool(const MessageHeader &, BytesView)> &dispatchCb) {
+	if (!_ssl) {
+		return;
+	}
+	auto ssl = (SSL *)_ssl;
+	// Pump incoming datagrams, then drain the QUIC stream (non-blocking: read until WANT_READ) into the
+	// reassembler. The reader holds any partial frame across pumps, so a message that spans datagrams
+	// is handled correctly; complete frames are then dispatched (deferred ones stay queued).
+	SSL_handle_events(ssl);
+	uint8_t buf[4'096];
+	BytesView dict(_dict.data(), _dict.size());
+	for (;;) {
+		size_t n = 0;
+		if (SSL_read_ex(ssl, buf, sizeof(buf), &n) != 1 || n == 0) {
+			break; // WANT_READ (drained) or closed/error
+		}
+
+		BytesViewNetwork nw(buf, n);
+
+		// Read full messages immediately
+		while (readMessagePayload(nw, _dict, [&](const MessageHeader &h, BytesView data) {
+			if (!dispatchCb(h, data)) {
+				_reader.addMessage(h, data);
+			}
+		})) { }
+
+		if (!_reader.append(BytesView(nw), dict)) {
+			log::source().error("remote::Connector",
+					"framing violation; dropping connection buffer");
+			_reader.clear();
+			break;
+		}
+	}
+	// Retry any deferred messages (also covers a tick that read no new data).
+	_reader.dispatch(dispatchCb);
+}
+
+void ServerConnection::close() {
+	if (!_ssl || _shutdown) {
+		return;
+	}
+	auto ssl = (SSL *)_ssl;
+	// Drive the QUIC shutdown to completion so the CONNECTION_CLOSE is actually transmitted before the
+	// SSL is freed -- a single SSL_shutdown only queues it. Bounded (1s) so we never hang on an
+	// unresponsive peer.
+	uint64_t deadline = sp::platform::clock(ClockType::Monotonic) + 1'000'000;
+	for (;;) {
+		int ret = SSL_shutdown(ssl);
+		if (ret != 0) {
+			break; // 1 == fully shut down, <0 == error: either way we're done
+		}
+		SSL_handle_events(ssl); // flush the close datagram / pump the drain
+		if (sp::platform::clock(ClockType::Monotonic) >= deadline) {
+			break;
+		}
+		sp::platform::sleep(2'000); // 2ms
+	}
+	_shutdown = true;
+}
+
+/*bool ServerConnection::sendData(BytesView payload) {
+	if (!_ssl) {
+		return false;
+	}
+	return writeDataFrame(_ssl, BytesView(_dict.data(), _dict.size()), payload);
+}
+
+bool ServerConnection::recvData(Bytes &out, uint64_t timeoutUs) {
+	if (!_ssl) {
+		return false;
+	}
+	uint64_t deadline = sp::platform::clock(ClockType::Monotonic) + timeoutUs;
+	return readDataFrame(_ssl, BytesView(_dict.data(), _dict.size()), out, deadline);
+}*/
 
 // --- Listener ---
 
@@ -269,7 +392,7 @@ uint64_t Listener::getEventTimeout() const {
 		if (infinite) {
 			return maxOf<uint64_t>();
 		}
-		return uint64_t(tv.tv_sec) * 1000000ull + uint64_t(tv.tv_usec);
+		return uint64_t(tv.tv_sec) * 1'000'000ull + uint64_t(tv.tv_usec);
 	}
 	return maxOf<uint64_t>();
 }
