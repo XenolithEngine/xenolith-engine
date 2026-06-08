@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -20,34 +20,32 @@
  THE SOFTWARE.
  **/
 
-#ifndef XENOLITH_APPLICATION_XLLIVERELOAD_H_
-#define XENOLITH_APPLICATION_XLLIVERELOAD_H_
+#include "XLCommon.h"
+#include "XLClientContext.h"
+#include "XLRemoteProtocol.h" // remote::getDevBearerKey
+#include "SPCoreCrypto.h" // crypto::Sha512
 
-#include "XLComponent.h"
+using namespace sp;
+using namespace sp::xenolith;
 
-namespace STAPPLER_VERSIONIZED stappler::xenolith {
+int main(int argc, const char *argv[]) {
+	perform_main(argc, argv, [&] {
+		auto ctx = Rc<ClientContext>::create();
 
-struct SP_PUBLIC LiveReloadLibrary : public Ref {
-	String path;
-	Time mtime;
-	sprt::Dso library;
+		// Server endpoint: first CLI arg "host:port", default 127.0.0.1:4480.
+		//ctx->setServerAddress(argc > 1 ? StringView(argv[1]) : StringView("127.0.0.1:4480"));
+		ctx->setServerAddress(StringView("127.0.0.1:4480"));
 
-	// we need toi release library only after all references are dead
-	sprt::dispatch::Looper *releaseLooper = nullptr;
+		// Bearer key: shared dev key by default; an optional 2nd arg overrides it (Sha512(arg)) to
+		// exercise the auth-failure path.
+		//if (argc > 2) {
+		//	auto h = crypto::Sha512::perform(StringView(argv[2]));
+		//	ctx->setBearerKey(BytesView(h.data(), h.size()));
+		//} else {
+		ctx->setBearerKey(remote::getDevBearerKey());
+		//}
 
-	virtual ~LiveReloadLibrary();
-
-	bool init(StringView, Time, uint32_t version, sprt::dispatch::Looper *);
-
-	uint32_t getVersion() const { return library.getVersion(); }
-};
-
-struct SP_PUBLIC LiveReloadComponent {
-	static const ComponentId Id;
-
-	Rc<LiveReloadLibrary> library;
-};
-
-} // namespace stappler::xenolith
-
-#endif // XENOLITH_APPLICATION_XLLIVERELOAD_H_
+		ctx->run();
+		return 0;
+	});
+}

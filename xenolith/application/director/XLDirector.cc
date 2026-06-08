@@ -40,9 +40,11 @@ Director::Director() { sprt::memset(&_drawStat, 0, sizeof(DrawStat)); }
 Director::~Director() { log::source().info("Director", "~Director"); }
 
 bool Director::init(NotNull<AppThread> app, const core::FrameConstraints &constraints,
-		NotNull<AppWindow> window) {
+		NotNull<core::RenderServerChannel> window) {
 	_application = app;
-	_window = window;
+	if (auto winref = dynamic_cast<Ref *>(window.get())) {
+		_window = winref;
+	}
 	// Wire both ends of the render-session boundary at director-creation time (local mode: the
 	// AppWindow is both). Registering the client here ensures the server can announce queues before
 	// the initial scene runs.
@@ -53,7 +55,7 @@ bool Director::init(NotNull<AppThread> app, const core::FrameConstraints &constr
 	_pool->perform([&, this] {
 		_scheduler = Rc<Scheduler>::create();
 		_actionManager = Rc<ActionManager>::create();
-		_inputDispatcher = Rc<InputDispatcher>::create(_pool, _window->getWindowState());
+		_inputDispatcher = Rc<InputDispatcher>::create(_pool, _server->getWindowState());
 		_textInput = Rc<TextInputManager>::create(this);
 	});
 	_startTime = sp::platform::clock(ClockType::Monotonic);
@@ -98,7 +100,7 @@ bool Director::acquireFrame(NotNull<core::FrameRequestProxy> req) {
 
 	// Pick this frame's render graph by name; the server resolves it against its registry of
 	// compiled queues (selectQueue logs if the name is unknown).
-	req->selectQueue(_scene->getQueue()->getName());
+	req->selectQueue(_scene->getQueue());
 
 	// break current stack frame, perform on next one
 	_application->performOnAppThread([this, req = Rc<core::FrameRequestProxy>(req.get())] {
@@ -188,13 +190,15 @@ void Director::update(uint64_t t) {
 	_autorelease.clear();
 }
 
-void Director::setWindow(AppWindow *w) {
-	if (w != _window) {
+void Director::setServer(core::RenderServerChannel *s) {
+	if (s != _server) {
 		_textInput->cancel();
-		if (w) {
-			_window = w;
-			_server = w;
-			_inputDispatcher->resetWindowState(_window->getWindowState(), true);
+		if (s) {
+			if (auto winref = dynamic_cast<Ref *>(s)) {
+				_window = winref;
+			}
+			_server = s;
+			_inputDispatcher->resetWindowState(_server->getWindowState(), true);
 
 			if (_scene && _scene->getQueue()->isCompiled()) {
 				_server->attachRenderQueue(_scene->getQueue());
@@ -246,14 +250,12 @@ void Director::end() {
 
 	_nextScene = nullptr;
 
-	setWindow(nullptr);
+	setServer(nullptr);
 
 	_autorelease.clear();
 }
 
-core::Loop *Director::getGlLoop() const {
-	return static_cast<core::Loop *>(_application->getContext()->getGlLoop());
-}
+core::Loop *Director::getGlLoop() const { return _application->getGlLoop(); }
 
 void Director::setFrameConstraints(const core::FrameConstraints &c) {
 	if (_constraints != c) {
@@ -319,14 +321,21 @@ float Director::getTimestampFrameTime() const {
 	return t.lastTimestampFrameTime ? t.lastTimestampFrameTime / 1000.0f : 1.0f;
 }
 
-void Director::setListenAddress(StringView addr) { _application->setListenAddress(addr); }
+bool Director::setListenAddress(StringView addr) { return _application->setListenAddress(addr); }
 
-void Director::startListening() { _application->startListening(); }
+bool Director::shareWindow() {
+	if (auto w = dynamic_cast<AppWindow *>(_server)) {
+		return _application->shareWindow(w);
+	}
+	return false;
+}
 
-void Director::stopListening() { _application->stopListening(); }
+bool Director::shareQueue(NotNull<core::Queue> queue) { return _application->shareQueue(queue); }
 
-void Director::setRemoteConnectable(bool value) {
-	_application->setConnectableWindow(value ? _window.get() : nullptr);
+bool Director::setBearerKey(BytesView key) { return _application->setBearerKey(key); }
+
+bool Director::setCompressionDictionary(BytesView d) {
+	return _application->setCompressionDictionary(d);
 }
 
 void Director::autorelease(Ref *ref) { _autorelease.emplace_back(ref); }

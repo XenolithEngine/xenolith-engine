@@ -28,6 +28,14 @@
 #include "XLCoreQueueData.h"
 #include "XLCoreInfo.h"
 
+namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
+
+// Deserializes a client-side queue mirror; needs to set Queue::_data directly (it bypasses
+// Queue::init, which assumes real QueuePass back-wiring). See xenolith/remote/XLRemoteSerialize.h.
+class QueueCodec;
+
+} // namespace stappler::xenolith::remote
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 /* RenderQueue/RenderGraph implementation notes:
@@ -119,6 +127,8 @@ public:
 	void describe(const Callback<void(StringView)> &);
 
 protected:
+	friend class remote::QueueCodec;
+
 	QueueData *_data = nullptr;
 };
 

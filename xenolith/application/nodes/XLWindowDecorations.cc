@@ -78,7 +78,7 @@ bool WindowDecorations::init() {
 }
 
 bool WindowDecorations::shouldBePresentedOnScene(Scene *scene) const {
-	auto window = scene->getDirector()->getWindow();
+	auto window = scene->getDirector()->getRenderServer();
 	if (hasFlag(window->getInfo()->flags, WindowCreationFlags::UserSpaceDecorations)
 			&& !hasFlag(window->getWindowState(), core::WindowState::Fullscreen)) {
 		return true;
@@ -89,9 +89,9 @@ bool WindowDecorations::shouldBePresentedOnScene(Scene *scene) const {
 void WindowDecorations::handleEnter(Scene *scene) {
 	Node::handleEnter(scene);
 
-	_capabilities = _director->getWindow()->getInfo()->capabilities;
+	_capabilities = _director->getRenderServer()->getInfo()->capabilities;
 
-	updateWindowState(_director->getWindow()->getWindowState());
+	updateWindowState(_director->getRenderServer()->getWindowState());
 }
 
 void WindowDecorations::handleContentSizeDirty() {
@@ -147,9 +147,9 @@ void WindowDecorations::handleLayout(Node *parent) {
 	setAnchorPoint(Anchor::Middle);
 	setLocalZOrder(ZOrder::max() - ZOrder(1));
 
-	auto newState = parent->getDirector()->getWindow()->getWindowState();
+	auto newState = parent->getDirector()->getRenderServer()->getWindowState();
 	if (newState != _currentState) {
-		updateWindowState(parent->getDirector()->getWindow()->getWindowState());
+		updateWindowState(parent->getDirector()->getRenderServer()->getWindowState());
 	}
 	updateWindowTheme(parent->getDirector()->getApplication()->getThemeInfo());
 }

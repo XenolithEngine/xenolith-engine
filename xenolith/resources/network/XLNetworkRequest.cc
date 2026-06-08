@@ -44,7 +44,7 @@ bool Handle::init(StringView url, const FileInfo &fileName) {
 bool Handle::init(Method method, StringView url) { return NetworkHandle::init(method, url); }
 
 bool Handle::prepare(Context *ctx) {
-	auto appInfo = _controller->getApplication()->getContext()->getInfo();
+	auto appInfo = _controller->getApplication()->getContextInfo();
 
 	if (_mtime > 0) {
 		auto httpTime = Time::microseconds(_mtime).toHttp<typename Interface::StringType>();

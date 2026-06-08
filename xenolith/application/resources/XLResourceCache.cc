@@ -35,9 +35,7 @@ bool ResourceCache::init(AppThread *a) {
 	return true;
 }
 
-void ResourceCache::initialize(AppThread *a) {
-	_loop = static_cast<core::Loop *>(a->getContext()->getGlLoop());
-}
+void ResourceCache::initialize(AppThread *a) { _loop = a->getGlLoop(); }
 
 void ResourceCache::invalidate(AppThread *a) {
 	for (auto &it : _temporaries) { it.second->invalidate(); }

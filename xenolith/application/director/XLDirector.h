@@ -46,7 +46,8 @@ public:
 
 	Director();
 
-	bool init(NotNull<AppThread>, const core::FrameConstraints &, NotNull<AppWindow>);
+	bool init(NotNull<AppThread>, const core::FrameConstraints &,
+			NotNull<core::RenderServerChannel>);
 
 	void setFrameConstraints(const core::FrameConstraints &);
 
@@ -55,10 +56,15 @@ public:
 	// Local-only: a (server) scene uses these to launch listening for remote clients and to mark
 	// this director's window connectable. Forwarded to the owning AppThread (the connection owner);
 	// meaningful only for a local/server director.
-	void setListenAddress(StringView);
-	void startListening();
-	void stopListening();
-	void setRemoteConnectable(bool);
+	bool setListenAddress(StringView);
+
+	// Remote auth/compression config (server-side). The bearer key a connecting client must present
+	// and the server's LZ4 dictionary (priority over the client's suggestion).
+	bool setBearerKey(BytesView);
+	bool setCompressionDictionary(BytesView);
+
+	bool shareWindow();
+	bool shareQueue(NotNull<core::Queue>);
 
 	// core::RenderClientChannel (server -> client). The server's PresentationEngine pulls a
 	// command batch via acquireFrame(); other entries deliver platform events / contract changes.
@@ -72,12 +78,11 @@ public:
 	void update(uint64_t t);
 
 	// Can be nullptr to disconnect director from window
-	void setWindow(AppWindow *);
+	void setServer(core::RenderServerChannel *);
 
 	void end();
 
 	AppThread *getApplication() const { return _application; }
-	AppWindow *getWindow() const { return _window; }
 
 	// Server-side endpoint of the render-session boundary; client-side code (e.g. FrameContext)
 	// issues render-graph / resource / material compilation through it.
@@ -124,11 +129,8 @@ protected:
 	bool hasActiveInteractions();
 
 	Rc<AppThread> _application;
-	// NOTE: _window is retained for window lifecycle (getWindow/setWindow) and getWindowState();
-	// all per-frame / control traffic now goes through _server. Reducing this to the channel only
-	// (so the client holds no AppWindow) is a later step once window-state is delivered via the
-	// channel.
-	Rc<AppWindow> _window;
+
+	Rc<Ref> _window;
 
 	// Server-side endpoint of the render-session boundary (client -> server calls).
 	// In local mode this points at the AppWindow; later it may be a network proxy.

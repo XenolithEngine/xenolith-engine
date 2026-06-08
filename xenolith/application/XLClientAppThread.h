@@ -1,0 +1,118 @@
+/**
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
+ **/
+
+#ifndef XENOLITH_APPLICATION_XLCLIENTAPPTHREAD_H_
+#define XENOLITH_APPLICATION_XLCLIENTAPPTHREAD_H_
+
+#include "XLAppThread.h"
+#include "XLRemoteConnector.h"
+#include "XLCoreRenderSession.h"
+#include "XLRemoteObject.h"
+#include "XLRemoteWindow.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith {
+
+class ClientContext;
+
+// Client-side application thread: runs the scene graph and produces draw data for a remote server.
+// It owns a standalone ClientContext (not a Context) and has no native windows. Platform services
+// (clipboard / screen-info / URL) and the GL loop are remote-only; until the wire protocol exists
+// they are stubbed.
+class SP_PUBLIC ClientAppThread : public AppThread {
+public:
+	struct AppQueueInfo {
+		uint64_t id;
+		String name;
+	};
+
+	virtual ~ClientAppThread();
+
+	virtual bool init(NotNull<ClientContext>);
+
+	virtual void run() override;
+
+	// Single-shot connect flow: dial the server, (locate each other), gracefully close, then return
+	// false so the thread loop ends and the client process exits.
+	virtual bool worker() override;
+
+	ClientContext *getClientContext() const { return _clientContext; }
+
+	// AppThread platform-services interface (TODO: route to the remote server).
+	virtual void readFromClipboard(Function<void(Status, BytesView, StringView)> &&dataCallback,
+			Function<StringView(SpanView<StringView>)> &&selectCallback,
+			Ref *ref = nullptr) override;
+	virtual void probeClipboard(Function<void(Status, SpanView<StringView>)> &&cb,
+			Ref *ref = nullptr) override;
+	virtual void writeToClipboard(BytesView data, StringView contentType = StringView("text/plain"),
+			Ref *ref = nullptr, StringView label = StringView()) override;
+	virtual void writeToClipboard(
+			sprt::window::Function<sprt::window::Bytes(StringView)> &&dataCallback,
+			SpanView<StringView> types, Ref *ref = nullptr,
+			StringView label = StringView()) override;
+	virtual void acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&,
+			Ref * = nullptr) override;
+	virtual void openUrl(StringView) override;
+
+	virtual const ContextInfo *getContextInfo() const override;
+
+protected:
+	virtual void handleThreadInitialized() override;
+	virtual void handleThreadDisposed() override;
+	virtual void handleThreadUpdated(const UpdateTime &) override;
+
+	virtual void handleWindowDisconnected(NotNull<RemoteWindow>);
+	virtual void handleWindowConnected(NotNull<RemoteWindow>);
+
+	virtual void loadExtensions() override;
+
+	virtual void performAppUpdate(const UpdateTime &time, bool wakeup) override;
+
+	void pumpConnection();
+
+	// Parse a received message and route it by (domain, code). Returns true if the message was
+	// consumed, false to defer it for a later poll (xcb-style out-of-order handling). Only the Global
+	// ping/pong control messages are handled for now.
+	bool dispatchMessage(const remote::MessageHeader &, BytesView payload);
+
+	virtual Rc<Director> makeDirector(NotNull<RemoteWindow>, const core::FrameConstraints &);
+	virtual Rc<Scene> makeScene(NotNull<RemoteWindow>, const core::FrameConstraints &);
+
+	void handleAnnounce(const Value &);
+
+	ClientContext *_clientContext = nullptr;
+
+	Rc<sprt::dispatch::PollHandle> _listenPoll;
+	Rc<remote::ClientConnection> _connection;
+
+	Rc<remote::ObjectFactory> _sharedObjects;
+
+	// Keepalive (monotonic us): the server pings us periodically; if no ping arrives within the
+	// timeout the server is presumed gone and the client disconnects. Reset on connect and each ping.
+	uint64_t _lastPingTime = 0;
+
+	Map<uint64_t, Rc<RemoteWindow>> _windows;
+	Map<uint64_t, AppQueueInfo> _queues;
+};
+
+} // namespace stappler::xenolith
+
+#endif /* XENOLITH_APPLICATION_XLCLIENTAPPTHREAD_H_ */

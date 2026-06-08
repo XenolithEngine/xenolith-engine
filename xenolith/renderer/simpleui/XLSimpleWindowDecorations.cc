@@ -182,7 +182,7 @@ void WindowDecorationsButton::handleTap() {
 		return;
 	}
 
-	auto w = _director->getWindow();
+	auto w = _director->getRenderServer();
 	if (!w) {
 		return;
 	}

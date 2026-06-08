@@ -1,5 +1,6 @@
 /**
  Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -270,7 +271,7 @@ void AppWindow::acquireFrameData(NotNull<core::PresentationFrame> frame,
 	_application->performOnAppThread(
 			[this, frame = Rc<core::PresentationFrame>(frame), cb = sp::move(cb),
 					req = Rc<core::FrameRequest>(frame->getRequest())]() mutable {
-		auto proxy = Rc<core::LocalFrameRequestProxy>::create(req, this);
+		auto proxy = Rc<core::LocalFrameRequestProxy>::create(req);
 		if (_client && proxy && _client->acquireFrame(proxy)) {
 			_context->performOnThread(
 					[frame = move(frame), cb = sp::move(cb)]() mutable { cb(frame); }, this);
@@ -298,8 +299,8 @@ void AppWindow::handleSwapchainUpdated(const core::FrameConstraints &c) {
 }
 
 Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
-	auto info = _window->getSurfaceInterfaceInfo();
 #if MODULE_XENOLITH_BACKEND_VK
+	auto info = _window->getSurfaceInterfaceInfo();
 	if (cinstance->getApi() != core::InstanceApi::Vulkan) {
 		return nullptr;
 	}
@@ -406,7 +407,11 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 }
 
 core::FrameConstraints AppWindow::exportConstraints(uint64_t &serial) const {
-	return _window->exportConstraints(serial);
+	auto c = _window->exportConstraints(serial);
+	_application->performOnAppThread([this, c] {
+		const_cast<sprt::window::FrameConstraints &>(_appFrameConstraints) = c;
+	}, const_cast<AppWindow *>(this));
+	return c;
 }
 
 void AppWindow::setFrameOrder(uint64_t frameOrder) {
@@ -487,16 +492,6 @@ void AppWindow::compileImage(const Rc<core::DynamicImage> &img, Function<void(bo
 }
 
 void AppWindow::attachRenderQueue(const Rc<core::Queue> &queue) {
-	// Register the render graph so the client can select it by name per frame, and announce its
-	// availability to the client endpoint. (Called on the app thread in local mode, same thread
-	// the proxy's selectQueue resolves on.)
-	if (queue) {
-		_renderQueues.insert_or_assign(queue->getName(), queue);
-		if (_client) {
-			_client->handleRenderQueueAttached(queue);
-		}
-	}
-
 	_context->performOnThread([this, queue] {
 		runWithQueue(queue);
 		setReadyForNextFrame();
@@ -515,11 +510,6 @@ core::FrameTimingInfo AppWindow::getFrameTiming() const {
 		info.lastTimestampFrameTime = _presentationEngine->getLastTimestampFrameTime();
 	}
 	return info;
-}
-
-Rc<core::Queue> AppWindow::getRenderQueue(StringView name) const {
-	auto it = _renderQueues.find(name);
-	return it != _renderQueues.end() ? it->second : nullptr;
 }
 
 WindowState AppWindow::getUpdatableStateFlags() const {
@@ -660,6 +650,14 @@ bool AppWindow::setFullscreen(FullscreenInfo &&info, Function<void(Status)> &&cb
 				}, this);
 			}, this);
 		}
+	}, this);
+	return true;
+}
+
+bool AppWindow::setPreferredFrameRate(float value, Function<void(Status)> &&cb) {
+	_context->performOnThread([this, cb = sp::move(cb), value]() mutable {
+		auto st = _window->setPreferredFrameRate(value);
+		_application->performOnAppThread([st, cb = sp::move(cb)]() mutable { cb(st); }, this);
 	}, this);
 	return true;
 }

@@ -45,7 +45,7 @@ bool SceneContent::init() {
 			if (!handleBackButton()) {
 				// propagate back button to Window
 				if (_director) {
-					if (auto w = _director->getWindow()) {
+					if (auto w = _director->getRenderServer()) {
 						w->handleBackButton();
 					}
 				}
@@ -71,11 +71,11 @@ void SceneContent::handleEnter(Scene *scene) {
 	Node::handleEnter(scene);
 
 	if (_closeGuard && !_closeGuardRetained) {
-		_director->getWindow()->enableState(WindowState::CloseGuard);
+		_director->getRenderServer()->enableState(WindowState::CloseGuard);
 		_closeGuardRetained = true;
 	}
 
-	if (hasFlag(_director->getWindow()->getInfo()->flags,
+	if (hasFlag(_director->getRenderServer()->getInfo()->flags,
 				WindowCreationFlags::UserSpaceDecorations)) {
 		if (!_userDecorations && _windowDecorationsConstructor) {
 			_userDecorations = addChild(_windowDecorationsConstructor(this));
@@ -93,7 +93,7 @@ void SceneContent::handleEnter(Scene *scene) {
 
 void SceneContent::handleExit() {
 	if (_closeGuard && _closeGuardRetained) {
-		_director->getWindow()->disableState(WindowState::CloseGuard);
+		_director->getRenderServer()->disableState(WindowState::CloseGuard);
 		_closeGuardRetained = false;
 	}
 
@@ -139,10 +139,10 @@ void SceneContent::setCloseGuardEnabled(bool value) {
 		_closeGuard = value;
 		if (_running) {
 			if (_closeGuard && !_closeGuardRetained) {
-				_director->getWindow()->enableState(WindowState::CloseGuard);
+				_director->getRenderServer()->enableState(WindowState::CloseGuard);
 				_closeGuardRetained = true;
 			} else if (!_closeGuard && _closeGuardRetained) {
-				_director->getWindow()->disableState(WindowState::CloseGuard);
+				_director->getRenderServer()->disableState(WindowState::CloseGuard);
 				_closeGuardRetained = false;
 			}
 		}
@@ -179,7 +179,7 @@ void SceneContent::setWindowDecorationsContructor(WindowDecorationsCallback &&cb
 	_windowDecorationsConstructor = sp::move(cb);
 
 	if (_running
-			&& hasFlag(_director->getWindow()->getInfo()->flags,
+			&& hasFlag(_director->getRenderServer()->getInfo()->flags,
 					WindowCreationFlags::UserSpaceDecorations)) {
 		if (_windowDecorationsConstructor) {
 			if (_userDecorations) {

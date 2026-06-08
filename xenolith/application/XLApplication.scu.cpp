@@ -1,6 +1,7 @@
 /**
  Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
  Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -28,10 +29,12 @@
 #include "XLContextInfo.cc"
 #include "XLContext.cc"
 #include "XLAppThread.cc"
+#include "XLServerAppThread.cc"
+#include "XLClientAppThread.cc"
+#include "XLClientContext.cc"
 #include "XLAppWindow.cc"
-#include "XLAppConnection.cc"
 #include "XLRemoteRenderClient.cc"
-#include "XLLiveReload.cc"
+#include "XLRemoteWindow.cc"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 

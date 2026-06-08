@@ -153,7 +153,8 @@ Rc<InputListenerStorage> InputDispatcher::acquireNewStorage() {
 	return req;
 }
 
-void InputDispatcher::commitStorage(AppWindow *window, Rc<InputListenerStorage> &&storage) {
+void InputDispatcher::commitStorage(core::RenderServerChannel *window,
+		Rc<InputListenerStorage> &&storage) {
 	_tmpEvents = move(_events);
 	_events = move(storage);
 	if (_tmpEvents) {

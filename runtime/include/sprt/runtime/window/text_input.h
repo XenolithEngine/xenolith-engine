@@ -174,7 +174,7 @@ struct SPRT_API TextInputInfo {
 
 class SPRT_API TextInputProcessor : public Ref {
 public:
-	virtual ~TextInputProcessor() = default;
+	virtual ~TextInputProcessor();
 
 	bool init(TextInputInfo &&);
 

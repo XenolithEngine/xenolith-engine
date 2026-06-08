@@ -30,7 +30,10 @@
 #include "XLInputListener.h"
 #include "XLSceneContent.h"
 #include "XLAppWindow.h"
+
+#if MODULE_XENOLITH_BACKEND_VK
 #include "backend/vk/XL2dVkShadowPass.h"
+#endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
@@ -95,7 +98,7 @@ void Scene2d::FpsDisplay::update(const UpdateTime &) {
 		auto tm = _director->getDirectorFrameTime();
 		auto vertex = stat.vertexInputTime / float(1'000);
 
-		auto &cfg = _director->getWindow()->getAppSwapchainConfig();
+		auto &cfg = _director->getRenderServer()->getAppSwapchainConfig();
 
 		String configData;
 		switch (cfg.presentMode) {
@@ -171,12 +174,12 @@ void Scene2d::FpsDisplay::show() {
 	}
 }
 
-bool Scene2d::init(NotNull<AppThread> app, NotNull<AppWindow> window,
+bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 		const core::FrameConstraints &constraints) {
 	return init(app, window, [](Queue::Builder &) { }, constraints);
 }
 
-bool Scene2d::init(NotNull<AppThread> app, NotNull<AppWindow> window,
+bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 		const Callback<void(Queue::Builder &)> &cb, const core::FrameConstraints &constraints) {
 	core::Queue::Builder builder("Loader");
 
@@ -190,7 +193,7 @@ bool Scene2d::init(NotNull<AppThread> app, NotNull<AppWindow> window,
 #if MODULE_XENOLITH_BACKEND_VK
 
 	basic2d::vk::ShadowPass::RenderQueueInfo info{
-		static_cast<core::Loop *>(app->getContext()->getGlLoop()),
+		app->getGlLoop(),
 		queueInfo.extent,
 		basic2d::vk::ShadowPass::Flags::None,
 		queueInfo.backgroundColor,
@@ -293,7 +296,7 @@ void Scene2d::initialize() {
 
 				sprt::window::Vector<InputEventData> events{_data1, _data2};
 
-				_scene->getDirector()->getWindow()->handleInputEvents(sp::move(events));
+				_scene->getDirector()->getRenderServer()->handleInputEvents(sp::move(events));
 			}
 			return false;
 		}
@@ -311,7 +314,7 @@ void Scene2d::initialize() {
 
 		sprt::window::Vector<InputEventData> events{_data1, _data2};
 
-		_scene->getDirector()->getWindow()->handleInputEvents(sp::move(events));
+		_scene->getDirector()->getRenderServer()->handleInputEvents(sp::move(events));
 
 		return true;
 	}, InputTouchInfo(makeButtonMask({InputMouseButton::MouseRight})));

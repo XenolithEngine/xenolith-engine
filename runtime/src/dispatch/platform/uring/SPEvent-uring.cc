@@ -611,7 +611,8 @@ uint32_t URingData::wait(TimeInterval ival) {
 			if (status == Status::ErrorInterrupted) {
 				continue;
 			}
-			oslog::vperror(__SPRT_LOCATION, "dispatch::URingData", "io_uring_enter: ", __sprt_errno);
+			oslog::vperror(__SPRT_LOCATION, "dispatch::URingData",
+					"io_uring_enter: ", __sprt_errno);
 			break;
 		}
 	}
@@ -650,10 +651,11 @@ Status URingData::run(TimeInterval ival, WakeupFlags flags, TimeInterval wakeupT
 			// io_uring_enter() returns -1/errno (libc convention). EINTR is routine
 			// (signals, debugger) — retry rather than tearing down the event loop.
 			auto status = sprt::status::errnoToStatus(__sprt_errno);
-			if (status == Status::ErrorInterrupted) {
+			if (status == Status::ErrorInterrupted || status == Status::ErrorAgain) {
 				continue;
 			}
-			oslog::vperror(__SPRT_LOCATION, "dispatch::URingData", "io_uring_enter: ", __sprt_errno);
+			oslog::vperror(__SPRT_LOCATION, "dispatch::URingData", "io_uring_enter: ", __sprt_errno,
+					" ", status);
 			ctx.wakeupStatus = status;
 			break;
 		}

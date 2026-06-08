@@ -32,10 +32,15 @@
 
 #include "ExampleScene.h"
 #include "GeneralLayout.h"
+#include "XLRemoteProtocol.h"
 
 #include "SPBitmap.h"
 
 #include "MonitorModeSelectionLayout.cc"
+
+#if MODULE_XENOLITH_BACKEND_VK
+#include "backend/vk/XL2dVkShadowPass.h"
+#endif
 
 #include <sys/random.h>
 #include <stdlib.h> // getenv / atof for the screenshot workflow
@@ -43,7 +48,7 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
-bool ExampleScene::init(NotNull<AppThread> app, NotNull<AppWindow> window,
+bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 		const core::FrameConstraints &constraints) {
 	// Используем примитивы из пакета simpleui
 	// Это также подключает и примитивы из basic2d, поверх которого реализован simpleui
@@ -77,13 +82,10 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<AppWindow> window,
 
 	setFpsVisible(true);
 
-	_liveReloadAllowed = true;
-
 	uint8_t buf[256] = {0};
 	if (getrandom(buf, 256, 0) == 256) {
-		sprt::base16::encode(buf, 256, [] (const char *buf, size_t size) {
-			slog().info("Random", StringView(buf, size));
-		});
+		sprt::base16::encode(buf, 256,
+				[](const char *buf, size_t size) { slog().info("Random", StringView(buf, size)); });
 	}
 
 
@@ -99,8 +101,44 @@ void ExampleScene::handleEnter(Scene *scene) { Scene2d::handleEnter(scene); }
 void ExampleScene::handlePresented(Director *dir) {
 	Scene2d::handlePresented(dir);
 
-	// Отображает итоговую архитектуру очереди отрисовки для сцены
-	//_queue->describe([](StringView str) { std::cout << str; });
+	// Remote client needs a separate queue
+	core::Queue::Builder builder("RemoteClientQueue");
+
+	QueueInfo queueInfo{
+		Extent2(_constraints.extent.width, _constraints.extent.height),
+		Color4F::WHITE,
+	};
+
+	buildQueueResources(queueInfo, builder);
+
+#if MODULE_XENOLITH_BACKEND_VK
+	basic2d::vk::ShadowPass::RenderQueueInfo info{
+		dir->getApplication()->getGlLoop(),
+		queueInfo.extent,
+		basic2d::vk::ShadowPass::Flags::None,
+		queueInfo.backgroundColor,
+	};
+
+	basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
+#endif
+
+	_remoteQueue = Rc<core::Queue>::create(sp::move(builder));
+	if (_remoteQueue) {
+		dir->getRenderServer()->compileRenderQueue(_remoteQueue,
+				[guard = Rc<ExampleScene>(this)](bool success) {
+			if (success && guard->isRunning()) {
+				auto dir = guard->getDirector();
+				// Dev/demo: launch the remote render-session listener on a fixed address and allow this
+				// window to be taken over by a connecting client (X11-style split, transport bring-up).
+				// The bearer key a client must present is the shared dev key; no server dictionary is set, so a
+				// client's suggested dictionary will be used.
+				dir->setBearerKey(remote::getDevBearerKey());
+				dir->setListenAddress("127.0.0.1:4480");
+				dir->shareWindow();
+				dir->shareQueue(guard->_remoteQueue);
+			}
+		});
+	}
 
 	// Безголовый сценарий снятия скриншота, управляемый переменными окружения,
 	// чтобы графический вывод можно было проверить из скрипта (сборка -> запуск

@@ -42,6 +42,8 @@ TextInputState TextInputRequest::getState() const {
 	return newData;
 }
 
+TextInputProcessor::~TextInputProcessor() { }
+
 bool TextInputProcessor::init(TextInputInfo &&info) {
 	_info = move(info);
 	return true;
@@ -529,7 +531,9 @@ StringView getInputKeyCodeName(InputKeyCode code) {
 	case InputKeyCode::SCREENSHOT: return StringView("SCREENSHOT"); break;
 	case InputKeyCode::KEYBOARD_BACKLIGHT_DOWN: return StringView("KEYBOARD_BACKLIGHT_DOWN"); break;
 	case InputKeyCode::KEYBOARD_BACKLIGHT_UP: return StringView("KEYBOARD_BACKLIGHT_UP"); break;
-	case InputKeyCode::KEYBOARD_BACKLIGHT_TOGGLE: return StringView("KEYBOARD_BACKLIGHT_TOGGLE"); break;
+	case InputKeyCode::KEYBOARD_BACKLIGHT_TOGGLE:
+		return StringView("KEYBOARD_BACKLIGHT_TOGGLE");
+		break;
 
 	default: break;
 	}

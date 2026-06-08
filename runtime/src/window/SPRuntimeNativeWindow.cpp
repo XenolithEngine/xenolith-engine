@@ -21,11 +21,14 @@
  **/
 
 #include <sprt/runtime/window/native_window.h>
+#include <sprt/runtime/window/interface.h>
 #include <sprt/runtime/window/display_config.h>
 #include <sprt/runtime/window/controller.h>
 #include <sprt/runtime/log.h>
 
 namespace sprt::window {
+
+AppWindow::~AppWindow() { }
 
 NativeWindow::~NativeWindow() {
 	if (_controller && _allocated) {

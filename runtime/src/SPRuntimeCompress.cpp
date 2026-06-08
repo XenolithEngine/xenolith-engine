@@ -79,5 +79,42 @@ size_t lz4_decompressData(const uint8_t *src, size_t srcSize, uint8_t *dest, siz
 	return 0;
 }
 
+// Dedicated, properly-aligned thread-local stream for dictionary compression (LZ4_initStream needs
+// alignment, unlike the extState API used above).
+thread_local LZ4_stream_t tl_lz4DictStream;
+
+size_t lz4_compressDataDict(const uint8_t *src, size_t srcSize, uint8_t *dest, size_t destSize,
+		const uint8_t *dict, size_t dictSize) {
+	if (srcSize >= LZ4_MAX_INPUT_SIZE || destSize > LZ4_MAX_SIZE || dictSize > LZ4_MAX_SIZE) {
+		return 0;
+	}
+	LZ4_stream_t *stream = LZ4_initStream(&tl_lz4DictStream, sizeof(tl_lz4DictStream));
+	if (!stream) {
+		return 0;
+	}
+	if (dict && dictSize > 0) {
+		LZ4_loadDict(stream, (const char *)dict, int(dictSize));
+	}
+	auto ret = LZ4_compress_fast_continue(stream, (const char *)src, (char *)dest, int(srcSize),
+			int(destSize), 1);
+	if (ret > 0) {
+		return size_t(ret);
+	}
+	return 0;
+}
+
+size_t lz4_decompressDataDict(const uint8_t *src, size_t srcSize, uint8_t *dest, size_t destSize,
+		const uint8_t *dict, size_t dictSize) {
+	if (srcSize > LZ4_MAX_SIZE || destSize > LZ4_MAX_SIZE || dictSize > LZ4_MAX_SIZE) {
+		return 0;
+	}
+	auto ret = LZ4_decompress_safe_usingDict((const char *)src, (char *)dest, int(srcSize),
+			int(destSize), (const char *)dict, int(dictSize));
+	if (ret > 0) {
+		return size_t(ret);
+	}
+	return 0;
+}
+
 
 } // namespace sprt

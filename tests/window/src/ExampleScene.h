@@ -34,7 +34,7 @@ public:
 	virtual ~ExampleScene() = default;
 
 	// переопределяем создание сцены
-	virtual bool init(NotNull<AppThread> app, NotNull<AppWindow>,
+	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel>,
 			const core::FrameConstraints &constraints) override;
 
 	// переопределяем размещение объектов на сцене при изменении размера
@@ -48,6 +48,8 @@ protected:
 	virtual void handlePresented(Director *) override;
 
 	virtual void buildQueueResources(QueueInfo &, core::Queue::Builder &) override;
+
+	Rc<Queue> _remoteQueue;
 };
 
 } // namespace stappler::xenolith::app

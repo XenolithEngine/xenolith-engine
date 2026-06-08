@@ -58,6 +58,7 @@ struct SP_PUBLIC MaterialImage {
 	bool canAlias(const MaterialImage &) const;
 };
 
+// Immutable acting material set
 class SP_PUBLIC MaterialSet final : public Ref {
 public:
 	using ImageSlot = MaterialImageSlot;

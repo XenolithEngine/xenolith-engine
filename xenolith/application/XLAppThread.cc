@@ -1,6 +1,7 @@
 /**
  Copyright (c) 2023-2025 Stappler LLC <admin@stappler.dev>
  Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -22,23 +23,9 @@
  **/
 
 #include "XLAppThread.h"
-#include "XLContext.h"
-#include "SPSharedModule.h"
 #include "XLEvent.h"
-#include "XLAppWindow.h"
-#include "XLAppConnection.h"
-#include "XLRemoteListener.h"
-#include "XLRemoteRenderClient.h"
-#include "XLDirector.h"
-#include "XLScene.h"
 
 #include <sprt/runtime/dispatch/handle.h>
-
-#if MODULE_XENOLITH_FONT
-
-#include "XLFontComponent.h"
-
-#endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -47,11 +34,6 @@ XL_DECLARE_EVENT_CLASS(AppThread, onThemeInfo)
 
 AppThread::~AppThread() { }
 
-bool AppThread::init(NotNull<Context> ctx) {
-	_context = ctx;
-	return true;
-}
-
 void AppThread::run() { Thread::run(); }
 
 void AppThread::threadInit() {
@@ -59,7 +41,7 @@ void AppThread::threadInit() {
 
 	_appLooper = sprt::dispatch::Looper::acquire(sprt::dispatch::LooperInfo{
 		.name = StringView("Application"),
-		.workersCount = _context->getInfo()->appThreadsCount,
+		.workersCount = getContextInfo()->appThreadsCount,
 
 		// Disable ALooper for internal queue, it can not be stopped gracefully
 		.engineMask = sprt::dispatch::QueueEngine::Any & ~sprt::dispatch::QueueEngine::ALooper});
@@ -67,14 +49,16 @@ void AppThread::threadInit() {
 	_timer = _appLooper->scheduleTimer(sprt::dispatch::TimerInfo{
 		.completion = sprt::dispatch::TimerInfo::Completion::create<AppThread>(this,
 				[](AppThread *data, sprt::dispatch::TimerHandle *self, uint32_t value,
-						Status status) { data->performUpdate(false); }),
-		.interval = _context->getInfo()->appUpdateInterval,
+						Status status) {
+		data->performUpdate(false); //
+	}),
+		.interval = getContextInfo()->appUpdateInterval,
 		.count = sprt::dispatch::TimerInfo::Infinite,
 	});
 
 	loadExtensions();
 
-	_context->handleAppThreadCreated(this);
+	handleThreadInitialized();
 
 	initializeExtensions();
 
@@ -85,27 +69,11 @@ void AppThread::threadInit() {
 
 	performUpdate(true);
 
-	if (_context->isLiveReloadEnabled()) {
-		_liveReloadListener = Rc<EventDelegate>::create(this, Context::onLiveReload,
-				[](sprt::dispatch::Bus &, const sprt::dispatch::BusEvent &ev,
-						sprt::dispatch::BusDelegate &d) {
-			auto &xev = static_cast<const Event &>(ev);
-			auto thread = static_cast<AppThread *>(d.getOwner());
-			thread->performLiveReload(static_cast<LiveReloadLibrary *>(xev.getObjectValue()));
-		});
-		_liveReloadListener->enable(_appLooper);
-	}
-
 	Thread::threadInit();
 }
 
 void AppThread::threadDispose() {
-	if (_liveReloadListener) {
-		_liveReloadListener->disable();
-		_liveReloadListener = nullptr;
-	}
-
-	_context->handleAppThreadDestroyed(this);
+	handleThreadDisposed();
 
 	_timer->cancel();
 	_timer = nullptr;
@@ -133,8 +101,13 @@ void AppThread::stop() {
 			sprt::dispatch::WakeupFlags::Graceful | sprt::dispatch::WakeupFlags::SuspendThreads);
 }
 
-void AppThread::wakeup() {
-	performOnAppThread([this] { performUpdate(true); }, this, true);
+void AppThread::wakeup(Function<void()> &&fn) {
+	performOnAppThread([this, fn = sp::move(fn)] {
+		if (fn) {
+			fn();
+		}
+		performUpdate(true);
+	}, this, true);
 }
 
 void AppThread::handleNetworkStateChanged(NetworkFlags flags) {
@@ -156,6 +129,8 @@ void AppThread::handleThemeInfoChanged(const ThemeInfo &theme) {
 		}
 	}, this);
 }
+
+void AppThread::handleMatrialsUpdated(NotNull<core::MaterialSet> set) { }
 
 void AppThread::performOnAppThread(Function<void()> &&func, Ref *target, bool onNextFrame,
 		StringView tag) {
@@ -190,94 +165,6 @@ void AppThread::perform(Rc<Task> &&task, bool performFirst) const {
 	_appLooper->performAsync(sp::move(task), performFirst);
 }
 
-void AppThread::readFromClipboard(Function<void(Status, BytesView, StringView)> &&cb,
-		Function<StringView(SpanView<StringView>)> &&tcb, Ref *ref) {
-	_context->performOnThread(
-			[this, cb = sp::move(cb), tcb = sp::move(tcb), ref = Rc<Ref>(ref)]() mutable {
-		_context->readFromClipboard(
-				[this, cb = sp::move(cb), ref = sp::move(ref)](Status st, BytesView data,
-						StringView type) mutable {
-			performOnAppThread(
-					[st, data = data.bytes<Interface>(), type = type.str<Interface>(),
-							cb = sp::move(cb), ref = move(ref)]() mutable {
-				cb(st, data, type);
-				ref = nullptr;
-			},
-					this);
-		},
-				sp::move(tcb), this);
-	}, this);
-}
-
-void AppThread::probeClipboard(Function<void(Status, SpanView<StringView>)> &&cb, Ref *ref) {
-	_context->performOnThread([this, cb = sp::move(cb), ref = Rc<Ref>(ref)]() mutable {
-		auto st = _context->probeClipboard(
-				[this, cb = sp::move(cb), ref = sp::move(ref)](Status st,
-						SpanView<StringView> types) mutable {
-			Vector<String> typesData;
-			typesData.reserve(types.size());
-			for (auto it : types) { typesData.emplace_back(it.str<Interface>()); }
-			performOnAppThread(
-					[st, types = sp::move(typesData), cb = sp::move(cb),
-							ref = move(ref)]() mutable {
-				Vector<StringView> typesData;
-				typesData.reserve(types.size());
-				for (auto &it : types) { typesData.emplace_back(it); }
-				cb(st, typesData);
-				ref = nullptr;
-			},
-					this);
-		},
-				this);
-		if (st != Status::Ok) {
-			performOnAppThread([st, cb = sp::move(cb), ref = move(ref)]() mutable {
-				cb(st, SpanView<StringView>());
-				ref = nullptr;
-			}, this);
-		}
-	}, this);
-}
-
-void AppThread::writeToClipboard(BytesView data, StringView contentType, Ref *ref,
-		StringView label) {
-	_context->performOnThread(
-			[this, data = data.bytes<sprt::window::Bytes>(), type = contentType.str<Interface>(),
-					ref = Rc<Ref>(ref), label = label.str<Interface>()]() mutable {
-		_context->writeToClipboard(
-				[data = sp::move(data), t = type](StringView type) -> sprt::window::Bytes {
-			if (t == type) {
-				return data;
-			}
-			return sprt::window::Bytes();
-		}, makeSpanView(&type, 1), ref, label);
-	},
-			this);
-}
-
-void AppThread::writeToClipboard(sprt::window::Function<sprt::window::Bytes(StringView)> &&cb,
-		SpanView<StringView> types, Ref *ref, StringView label) {
-	Vector<String> vtypes;
-	vtypes.reserve(types.size());
-	for (auto &it : types) { vtypes.emplace_back(it.str<Interface>()); }
-	_context->performOnThread(
-			[this, cb = sp::move(cb), vtypes = sp::move(vtypes), ref = Rc<Ref>(ref),
-					label = label.str<Interface>()]() mutable {
-		_context->writeToClipboard(sp::move(cb), vtypes, ref, label);
-	},
-			this);
-}
-
-void AppThread::acquireScreenInfo(Function<void(NotNull<ScreenInfo>)> &&cb, Ref *ref) {
-	_context->performOnThread([this, cb = sp::move(cb), ref = Rc<Ref>(ref)]() mutable {
-		auto info = _context->getScreenInfo();
-		performOnAppThread([cb = sp::move(cb), ref = move(ref), info = move(info)]() mutable {
-			cb(info);
-			ref = nullptr;
-			info = nullptr;
-		}, this);
-	}, this);
-}
-
 bool AppThread::addListener(NotNull<Ref> ref, Function<void(const UpdateTime &, bool)> &&cb) {
 	auto it = _listeners.find(ref);
 	if (it == _listeners.end()) {
@@ -296,157 +183,36 @@ bool AppThread::removeListener(NotNull<Ref> ref) {
 	return false;
 }
 
-Rc<Director> AppThread::handleAppWindowCreated(NotNull<AppWindow> w,
-		const core::FrameConstraints &c) {
-	log::source().info("AppThread", "handleAppWindowCreated");
+// Context-bridge hooks: base defaults are no-ops; the server/client subclasses route them to their
+// own context.
+void AppThread::handleThreadInitialized() { }
+void AppThread::handleThreadDisposed() { }
+void AppThread::handleThreadUpdated(const UpdateTime &) { }
 
-	addListener(w, [w](const UpdateTime &, bool wakeup) {
-		if (wakeup) {
-			w->setReadyForNextFrame();
-
-			// force display link to update views
-			w->update(core::PresentationUpdateFlags::DisplayLink);
-		}
-	});
-
-	auto dir = makeDirector(w, c);
-	if (dir) {
-		_windows.emplace(w.get());
-	}
-	return dir;
-}
-
-void AppThread::handleAppWindowDestroyed(NotNull<AppWindow> w, Rc<Director> &&d) {
-	log::source().info("AppThread", "handleAppWindowDestroyed");
-	if (d) {
-		if (shouldPreserveDirector(w, d)) {
-			d->setWindow(nullptr);
-			preserveDirector(w, sp::move(d));
-		} else {
-			d->end();
-		}
-	}
-	removeListener(w);
-	_windows.erase(w.get());
-}
-
-Connection *AppThread::openConnection(core::RenderClientChannel *remote) {
-	// Negotiation (single window for now): the window the scene marked connectable, else the only one.
-	AppWindow *window = _connectableWindow;
-	if (!window && !_windows.empty()) {
-		window = *_windows.begin();
-	}
-	if (!window) {
-		log::source().error("AppThread", "openConnection: no connectable window");
-		return nullptr;
-	}
-	if (!_connection) {
-		_connection = Rc<Connection>::create(this);
-	}
-	if (_connection && _connection->attach(window, remote)) {
-		return _connection;
-	}
+// Window lifecycle seams: no-ops on a context-free / client thread (no native windows).
+Rc<Director> AppThread::handleAppWindowCreated(NotNull<AppWindow>, const core::FrameConstraints &) {
 	return nullptr;
 }
 
-void AppThread::closeConnection() {
-	if (_connection) {
-		_connection->detach();
-		_connection = nullptr;
-	}
-	_remoteClient = nullptr;
-}
+void AppThread::handleAppWindowDestroyed(NotNull<AppWindow>, Rc<Director> &&) { }
 
-bool AppThread::setListenAddress(StringView addr) {
-	auto newAddr = remote::Address::parse(addr);
-	if (newAddr != _listenAddress) {
-		if (_listener && _listener->isOpen()) {
-			log::error("AppThread", "Fail to assign listen address when listener already active");
-			return false;
-		}
-		_listenAddress = newAddr;
-	}
-	return true;
-}
-
-void AppThread::setConnectableWindow(AppWindow *w) { _connectableWindow = w; }
-
-void AppThread::startListening() {
-	if (_listener && _listener->isOpen()) {
-		return;
-	}
-	if (_listenAddress.empty()) {
-		log::source().error("AppThread", "startListening: no listen address set");
-		return;
-	}
-	_listener = Rc<remote::Listener>::alloc();
-	if (!_listener || !_listener->open(_listenAddress)) {
-		_listener = nullptr;
-		return;
-	}
-
-	// Drive accept on this looper: readiness on the listener socket gives a prompt wakeup; QUIC's
-	// internal timers are pumped from performAppUpdate() (same appUpdateInterval cadence as the main
-	// update timer), so no separate listen timer is needed.
-	_listenPoll =
-			_appLooper->listenPollableHandle(_listener->getPollFd(), sprt::dispatch::PollFlags::In,
-					[this](sprt::dispatch::NativeHandle, sprt::dispatch::PollFlags) -> Status {
-		pumpListener();
-		return Status::Ok;
-	}, this);
-	pumpListener();
-}
-
-void AppThread::stopListening() {
-	if (_listenPoll) {
-		_listenPoll->cancel();
-		_listenPoll = nullptr;
-	}
-	if (_remoteClient) {
-		closeConnection();
-	}
-	if (_listener) {
-		_listener->close();
-		_listener = nullptr;
-	}
-}
-
-void AppThread::pumpListener() {
-	if (!_listener) {
-		return;
-	}
-	_listener->handleEvents([this](Rc<remote::ServerConnection> &&conn) {
-		handleRemoteConnection(sp::move(conn));
-	});
-}
-
-void AppThread::handleRemoteConnection(Rc<remote::ServerConnection> &&conn) {
-	if (_remoteClient) {
-		log::source().warn("AppThread",
-				"remote client already connected; rejecting new connection (single connection)");
-		return;
-	}
-	_remoteClient = Rc<RemoteRenderClient>::create(sp::move(conn));
-	if (_remoteClient) {
-		openConnection(_remoteClient.get());
-	}
-}
-
-void AppThread::openUrl(StringView str) {
-	_context->performOnThread([str = str.str<Interface>(), ctx = _context] { ctx->openUrl(str); },
-			_context);
-}
+// Listener seams: no-ops on a context-free / client thread (no server listener).
+bool AppThread::isServerThread() const { return false; }
+bool AppThread::isListening() const { return false; }
+bool AppThread::setListenAddress(StringView) { return false; }
+bool AppThread::shareWindow(AppWindow *) { return false; }
+bool AppThread::shareQueue(core::Queue *) { return false; }
+bool AppThread::startListening() { return false; }
+bool AppThread::stopListening() { return false; }
+bool AppThread::setBearerKey(BytesView) { return false; }
+bool AppThread::setCompressionDictionary(BytesView) { return false; }
 
 void AppThread::performAppUpdate(const UpdateTime &time, bool wakeup) {
-	_context->handleAppThreadUpdate(this, time);
+	handleThreadUpdated(time);
 	for (auto &it : _extensions) { it.second->update(this, time, wakeup); }
 
 	auto listeners = _listeners;
 	for (auto &it : listeners) { it.second(time, wakeup); }
-
-	// Service the remote listener's QUIC timers on the regular app-update cadence (no-op unless a
-	// scene started listening). Socket readiness is handled promptly via _listenPoll.
-	pumpListener();
 }
 
 void AppThread::performUpdate(bool wakeup) {
@@ -462,25 +228,7 @@ void AppThread::performUpdate(bool wakeup) {
 	_lastUpdate = _clock;
 }
 
-void AppThread::loadExtensions() {
-	_resourceCache = addExtension(Rc<ResourceCache>::create(this));
-
-#if MODULE_XENOLITH_FONT
-	auto createFontController = SharedModule::acquireTypedSymbol<
-			decltype(&font::FontComponent::createDefaultController)>(
-			buildconfig::MODULE_XENOLITH_FONT_NAME, "FontComponent::createDefaultController");
-
-	if (createFontController) {
-		auto comp = _context->getComponent<font::FontComponent>();
-		if (comp) {
-			if (auto controller =
-							createFontController(comp, _appLooper, "ApplicationFontController")) {
-				addExtension(move(controller));
-			}
-		}
-	}
-#endif
-}
+void AppThread::loadExtensions() { _resourceCache = addExtension(Rc<ResourceCache>::create(this)); }
 
 void AppThread::initializeExtensions() {
 	for (auto &it : _extensions) { it.second->initialize(this); }
@@ -489,93 +237,6 @@ void AppThread::initializeExtensions() {
 
 void AppThread::finalizeExtensions() {
 	for (auto &it : _extensions) { it.second->invalidate(this); }
-}
-
-bool AppThread::shouldPreserveDirector(NotNull<AppWindow> w, NotNull<Director>) {
-	return hasFlag(w->getCapabilities(), WindowCapabilities::PreserveDirector);
-}
-
-void AppThread::preserveDirector(NotNull<AppWindow> w, Rc<Director> &&d) {
-	_preservedDirectors.emplace(w->getId().str<Interface>(), sp::move(d));
-}
-
-bool AppThread::hasPreservedDirector(NotNull<AppWindow> w) {
-	auto it = _preservedDirectors.find(w->getId().str<Interface>());
-	if (it != _preservedDirectors.end()) {
-		return true;
-	}
-	return false;
-}
-
-Rc<Director> AppThread::acquirePreservedDirector(NotNull<AppWindow> w) {
-	auto it = _preservedDirectors.find(w->getId().str<Interface>());
-	if (it != _preservedDirectors.end()) {
-		auto d = sp::move(it->second);
-		_preservedDirectors.erase(it);
-		return d;
-	}
-	return nullptr;
-}
-
-Rc<Director> AppThread::makeDirector(NotNull<AppWindow> w, const core::FrameConstraints &c) {
-	if (hasPreservedDirector(w)) {
-		auto d = acquirePreservedDirector(w);
-		if (d) {
-			d->setWindow(w);
-			return d;
-		}
-	}
-
-	Rc<Scene> scene = makeScene(w, c);
-	if (!scene) {
-		return nullptr;
-	}
-
-	auto director = Rc<Director>::create(this, c, w);
-	director->runScene(move(scene));
-	return director;
-}
-
-Rc<Scene> AppThread::makeScene(NotNull<AppWindow> w, const core::FrameConstraints &c) {
-	Rc<Scene> scene;
-	auto makeSceneSymbol = SharedModule::acquireTypedSymbol<Context::SymbolMakeSceneSignature>(
-			buildconfig::MODULE_APPCOMMON_NAME, Context::SymbolMakeSceneName);
-	if (makeSceneSymbol) {
-		scene = makeSceneSymbol(this, w, c);
-	}
-	if (!scene) {
-		log::source().error("AppThread", "Fail to create scene for the window '", w->getId(), "'");
-		return nullptr;
-	}
-	return scene;
-}
-
-void AppThread::performLiveReload(NotNull<LiveReloadLibrary> lib) {
-	auto makeSceneSymbol = SharedModule::acquireTypedSymbol<Context::SymbolMakeSceneSignature>(
-			buildconfig::MODULE_APPCOMMON_NAME, lib->getVersion(), Context::SymbolMakeSceneName);
-	if (makeSceneSymbol) {
-		for (auto &it : _windows) {
-			auto dir = it->getDirector();
-
-			if (dir) {
-				auto scene = dir->getScene();
-				if (scene && scene->isLiveReloadAllowed()) {
-					auto nextScene = makeSceneSymbol(this, it, scene->getFrameConstraints());
-
-					nextScene->setOrUpdateComponent<LiveReloadComponent>(
-							[&](NotNull<LiveReloadComponent> comp) {
-						comp->library = lib;
-						return true;
-					});
-
-					dir->runScene(sp::move(nextScene));
-				} else if (!scene->isLiveReloadAllowed()) {
-					slog().debug("AppThread",
-							"performLiveReload: live reload is disabled for scene");
-				}
-			}
-		}
-	}
 }
 
 } // namespace stappler::xenolith

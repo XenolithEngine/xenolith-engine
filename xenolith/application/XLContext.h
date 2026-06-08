@@ -23,10 +23,10 @@
 #ifndef XENOLITH_APPLICATION_XLCONTEXT_H_
 #define XENOLITH_APPLICATION_XLCONTEXT_H_
 
+#include "XLCoreRenderSession.h"
 #include "XLEvent.h"
 #include "XLContextInfo.h"
 #include "XLCoreTextInput.h"
-#include "XLLiveReload.h"
 #include "SPSharedModule.h" // IWYU pragma: keep
 
 #include <sprt/runtime/window/native_window.h>
@@ -87,10 +87,6 @@ struct SP_PUBLIC ContentInitializer {
 	memory::pool_t *pool = nullptr;
 	memory::pool_t *tmpPool = nullptr;
 
-	String liveReloadPath;
-	String liveReloadCachePath;
-	Rc<LiveReloadLibrary> liveReloadLibrary;
-
 	bool init = false;
 
 	ContentInitializer();
@@ -114,7 +110,6 @@ public:
 	static EventHeader onNetworkStateChanged;
 	static EventHeader onThemeChanged;
 	static EventHeader onSystemNotification;
-	static EventHeader onLiveReload;
 
 	static EventHeader onMessageToken;
 	static EventHeader onRemoteNotification;
@@ -137,8 +132,8 @@ public:
 	using SymbolMakeAppThreadSignature = Rc<AppThread> (*)(NotNull<Context>);
 	static constexpr auto SymbolMakeAppThreadName = "makeAppThread";
 
-	using SymbolMakeSceneSignature = Rc<Scene> (*)(NotNull<AppThread>, NotNull<AppWindow>,
-			const core::FrameConstraints &);
+	using SymbolMakeSceneSignature = Rc<Scene> (*)(NotNull<AppThread>,
+			NotNull<core::RenderServerChannel>, const core::FrameConstraints &);
 	static constexpr auto SymbolMakeSceneName = "makeScene";
 
 	using SymbolMakeConfigSignature = void (*)(ContextConfig &);
@@ -162,8 +157,6 @@ public:
 	virtual sprt::window::gapi::Loop *getGlLoop() const override { return _loop; }
 
 	BytesView getMessageToken() const { return _messageToken; }
-
-	bool isLiveReloadEnabled() const { return _initializer.liveReloadLibrary; }
 
 	virtual void performOnThread(Function<void()> &&func, Ref *target = nullptr,
 			bool immediate = false, StringView tag = SP_FUNC) const;
@@ -255,9 +248,6 @@ protected:
 
 	virtual void initializeComponent(NotNull<ContextComponent>);
 
-	virtual void updateLiveReload();
-	virtual void performLiveReload(const filesystem::Stat &);
-
 	ContentInitializer _initializer;
 
 	sprt::dispatch::Looper *_looper = nullptr;
@@ -271,12 +261,6 @@ protected:
 	Rc<AppThread> _application;
 
 	HashMap<sprt::type_index, Rc<ContextComponent>> _components;
-
-	Rc<sprt::dispatch::TimerHandle> _liveReloadWatchdog;
-
-	// preserve last unloaded version until all async actions finished
-	Rc<LiveReloadLibrary> _unloadedLiveReloadLibrary;
-	Rc<LiveReloadLibrary> _actualLiveReloadLibrary;
 };
 
 template <typename T>

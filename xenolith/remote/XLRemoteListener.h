@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -24,6 +24,7 @@
 #define XENOLITH_REMOTE_XLREMOTELISTENER_H_
 
 #include "XLRemoteAddress.h"
+#include "XLRemoteProtocol.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
@@ -38,8 +39,38 @@ public:
 
 	void *getSsl() const { return _ssl; }
 
+	// Pump this connection's QUIC events and report whether it has begun terminating (peer sent
+	// CONNECTION_CLOSE, local close, or idle timeout). Used by the server to free the slot for a
+	// new client after the current one disconnects.
+	bool isClosed();
+
+	// Run the server side of the X11-like setup handshake: validate the client's bearer key against
+	// `expectedKey`, negotiate the dictionary (server `serverDict` has priority, else the client's
+	// suggestion, else none), and reply with the window info. Stores the negotiated dictionary for
+	// subsequent sendData/recvData. `outStatus` reports the outcome; returns true iff authenticated.
+	ErrorCode handshake(BytesView expectedKey, BytesView serverDict);
+
+	ErrorCode ping();
+	ErrorCode pong(uint32_t serial);
+
+	ErrorCode sendCborMessage(Domain, uint8_t message, const Value &);
+	ErrorCode sendMessage(Domain, uint8_t message, BytesView);
+
+	// Non-blocking: drain the QUIC stream into the reassembler and dispatch complete messages. `cb`
+	// returns true to consume a message, false to defer it (kept and retried on a later poll, so
+	// replies/events can be handled out of order by serial). Driven by the host AppThread's pump.
+	void poll(const Callback<bool(const MessageHeader &, BytesView)> &cb);
+
+	// Gracefully shut the QUIC connection down (drives SSL_shutdown to completion so CONNECTION_CLOSE
+	// is actually transmitted; bounded so an unresponsive peer can't hang us). Idempotent.
+	void close();
+
 protected:
 	void *_ssl = nullptr;
+	Bytes _dict; // negotiated LZ4 dictionary (empty == none)
+	uint32_t _serial = 1; // handshake is always serial = 0
+	bool _shutdown = false;
+	MessageReader _reader; // receive-side stream reassembler + deferred-message queue
 };
 
 // Non-blocking QUIC listener. It owns no thread: the host (AppThread) registers getPollFd() with

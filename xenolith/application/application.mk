@@ -39,10 +39,6 @@ MODULE_XENOLITH_APPLICATION_INCLUDES_OBJS := \
 
 MODULE_XENOLITH_APPLICATION_DEPENDS_ON := xenolith_core xenolith_font xenolith_remote stappler_data
 
-ifndef LOCAL_MAIN
-MODULE_XENOLITH_APPLICATION_DEPENDS_ON += xenolith_application_main
-endif
-
 ifdef WIN32
 MODULE_XENOLITH_APPLICATION_LIBS +=
 ifdef RELEASE

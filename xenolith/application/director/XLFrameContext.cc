@@ -241,8 +241,13 @@ void FrameContext::submitMaterials(const FrameInfo &info) {
 			req->attachment = _materialAttachment;
 			req->materialsToAddOrUpdate = sp::move(_pendingMaterialsToAdd);
 			req->materialsToRemove = sp::move(_pendingMaterialsToRemove);
-			req->callback = [app = Rc<AppThread>(info.director->getApplication())] {
-				app->wakeup();
+			req->callback =
+					[app = Rc<AppThread>(info.director->getApplication()),
+							a = Rc<core::MaterialAttachment>(
+									const_cast<core::MaterialAttachment *>(_materialAttachment))] {
+				app->wakeup([app, set = a->getMaterials()] {
+					app->handleMatrialsUpdated(set); //
+				});
 			};
 
 			for (auto &it : req->materialsToRemove) { emplace_ordered(_revokedIds, it); }

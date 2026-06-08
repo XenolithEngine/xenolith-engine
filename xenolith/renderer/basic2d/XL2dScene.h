@@ -24,6 +24,7 @@
 #ifndef XENOLITH_RENDERER_BASIC2D_XL2DSCENE_H_
 #define XENOLITH_RENDERER_BASIC2D_XL2DSCENE_H_
 
+#include "XLCoreRenderSession.h"
 #include "XLScene.h"
 #include "XLInput.h"
 
@@ -43,11 +44,11 @@ public:
 	virtual ~Scene2d() = default;
 
 	// create with default render queue
-	virtual bool init(NotNull<AppThread> app, NotNull<AppWindow>,
+	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel>,
 			const core::FrameConstraints &constraints);
 
 	// create with default render queue, resources can be added via callback
-	virtual bool init(NotNull<AppThread> app, NotNull<AppWindow>,
+	virtual bool init(NotNull<AppThread> app, NotNull<core::RenderServerChannel>,
 			const Callback<void(Queue::Builder &)> &, const core::FrameConstraints &);
 
 	virtual bool init(Queue::Builder &&, const core::FrameConstraints &) override;
