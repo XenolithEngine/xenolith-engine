@@ -38,6 +38,7 @@
 #include "MonitorModeSelectionLayout.cc"
 
 #include <sys/random.h>
+#include <stdlib.h> // getenv / atof for the screenshot workflow
 #include <sprt/runtime/utils/base16.h>
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
@@ -100,6 +101,32 @@ void ExampleScene::handlePresented(Director *dir) {
 
 	// Отображает итоговую архитектуру очереди отрисовки для сцены
 	//_queue->describe([](StringView str) { std::cout << str; });
+
+	// Безголовый сценарий снятия скриншота, управляемый переменными окружения,
+	// чтобы графический вывод можно было проверить из скрипта (сборка -> запуск
+	// -> чтение PNG):
+	//   XL_SCREENSHOT_FILE  - путь к итоговому PNG (включает сценарий)
+	//   XL_SCREENSHOT_DELAY - задержка в секундах перед снимком (по умолчанию 1.0)
+	if (const char *file = ::getenv("XL_SCREENSHOT_FILE")) {
+		float delay = 1.0f;
+		if (const char *d = ::getenv("XL_SCREENSHOT_DELAY")) {
+			delay = float(::atof(d));
+		}
+
+		// Ждём заданное время через DelayTime, затем снимаем кадр и выходим
+		runAction(Rc<Sequence>::create(Rc<DelayTime>::create(delay),
+				[this, path = String(file)] {
+			_director->getWindow()->captureScreenshot(
+					[this, path](const core::ImageInfoData &image, BytesView data) {
+				if (core::saveImage(FileInfo(path), image, data)) {
+					log::info("ExampleScene", "Screenshot saved: ", path);
+				} else {
+					log::error("ExampleScene", "Failed to save screenshot: ", path);
+				}
+				_director->getWindow()->close(true);
+			});
+		}));
+	}
 }
 
 void ExampleScene::buildQueueResources(QueueInfo &, core::Queue::Builder &builder) {

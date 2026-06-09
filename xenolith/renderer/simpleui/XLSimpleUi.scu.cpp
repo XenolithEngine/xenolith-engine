@@ -25,3 +25,4 @@
 #include "XLSimpleButton.cc"
 #include "XLSimpleWindowDecorations.cc"
 #include "XLSimpleCloseGuardWidget.cc"
+#include "XLSimpleFlexLayout.cc"

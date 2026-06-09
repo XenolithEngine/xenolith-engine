@@ -151,7 +151,9 @@ target-aarch64-apple-ios-simulator:
 
 target-macosx: \
 	target-x86_64-apple-macosx \
-	target-aarch64-apple-macosx
+	target-aarch64-apple-macosx \
+	target-x86_64-apple-macosx+sprt \
+	target-aarch64-apple-macosx+sprt
 
 target-ios: \
 	target-aarch64-apple-ios \
