@@ -31,6 +31,7 @@
 #include "XLAppWindow.h"
 #include "XL2dSceneContent.h"
 #include "MonitorModeSelectionLayout.h"
+#include "FlexboxLayout.h"
 #include "XlCoreMonitorInfo.h"
 #include "XLEventListener.h"
 
@@ -126,6 +127,13 @@ void GeneralLayout::rebuildMenu() {
 			log::debug("ExampleScene", "Hello world");
 			++_helloWorldCounter;
 			rebuildMenu();
+		});
+	}, 32.0f);
+
+	// Демонстрация раскладки flexbox, реализованной поверх системы компонентов
+	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
+		return Rc<ButtonWithLabel>::create("Flexbox layout", [this] {
+			getSceneContent()->pushLayout(Rc<FlexboxLayout>::create());
 		});
 	}, 32.0f);
 
