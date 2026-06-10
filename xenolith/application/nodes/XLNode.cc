@@ -868,6 +868,7 @@ void Node::cleanup() {
 	for (auto &child : childs) { child->cleanup(); }
 
 	this->removeAllSystems();
+	this->removeAllComponents();
 }
 
 Rect Node::getBoundingBox() const {

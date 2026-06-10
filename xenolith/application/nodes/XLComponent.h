@@ -55,8 +55,8 @@ struct Component {
 
 	static uint32_t GetNextId();
 
-	uint32_t id			 : 31; // unique component class id
-	mutable uint32_t soo : 1; // 1 if dynamic storage is used
+	uint32_t id				  : 31; // unique component class id
+	mutable uint32_t isStatic : 1; // 1 if dynamic storage is used
 
 	union {
 		mutable struct {
@@ -89,7 +89,7 @@ struct Component {
 		if (id != T::Id.value) {
 			return nullptr;
 		}
-		if (soo) {
+		if (isStatic) {
 			return reinterpret_cast<T *>(staticStorage.bytes);
 		} else {
 			return reinterpret_cast<T *>(dynamicStorage.data);
@@ -105,24 +105,63 @@ struct Component {
 			return nullptr;
 		}
 
-		clear();
+		if (destructor) {
+			clear();
+		}
 
-		if constexpr (sizeof(T) > STATIC_SIZE) {
-			soo = 0;
-			destructor = [](void *ptr) { sprt::__delete(reinterpret_cast<T *>(ptr)); };
+		if constexpr (sizeof(T) > STATIC_SIZE
+				|| !sprt::is_trivial_v<T> || !sprt::is_standard_layout_v<T>) {
+			isStatic = 0;
+			destructor = [](void *ptr) {
+				sprt::__delete(reinterpret_cast<T *>(ptr)); //
+			};
 			dynamicStorage.size = sizeof(T);
 			auto d = new (sprt::nothrow) T(sprt::forward<Args>(args)...);
 			dynamicStorage.data = d;
 			return d;
 		} else {
-			soo = 1;
-			destructor = [](void *ptr) { reinterpret_cast<T *>(ptr)->~T(); };
+			isStatic = 1;
+			destructor = [](void *ptr) {
+				reinterpret_cast<T *>(ptr)->~T(); //
+			};
 			return new (staticStorage.bytes) T(sprt::forward<Args>(args)...);
 		}
 	}
 
-	Component(const ComponentId &v) : id(v.value), soo(0) { }
+	Component(const ComponentId &v) : id(v.value), isStatic(0) { }
 	~Component() { clear(); }
+
+	Component(const Component &) = delete;
+	Component &operator=(const Component &) = delete;
+
+	Component(Component &&other) {
+		id = other.id;
+		isStatic = other.isStatic;
+		if (isStatic) {
+			memcpy(staticStorage.bytes, other.staticStorage.bytes, STATIC_SIZE);
+		} else {
+			dynamicStorage.size = other.dynamicStorage.size;
+			dynamicStorage.data = other.dynamicStorage.data;
+		}
+
+		destructor = other.destructor;
+		other.destructor = nullptr;
+	}
+
+	Component &operator=(Component &&other) {
+		id = other.id;
+		isStatic = other.isStatic;
+		if (isStatic) {
+			memcpy(staticStorage.bytes, other.staticStorage.bytes, STATIC_SIZE);
+		} else {
+			dynamicStorage.size = other.dynamicStorage.size;
+			dynamicStorage.data = other.dynamicStorage.data;
+		}
+
+		destructor = other.destructor;
+		other.destructor = nullptr;
+		return *this;
+	}
 };
 
 struct ComponentEqual {

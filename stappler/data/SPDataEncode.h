@@ -27,9 +27,9 @@ THE SOFTWARE.
 #include "SPDataEncodeCbor.h"
 #include "SPDataEncodeJson.h"
 #include "SPDataEncodeSerenity.h"
-#include "SPFilepath.h"
 
 #ifdef MODULE_STAPPLER_FILESYSTEM
+#include "SPFilepath.h"
 #include "SPFilesystem.h"
 #endif
 

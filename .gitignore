@@ -9,5 +9,8 @@ xcuserdata
 **/.cache
 **/.clangd
 **/.vscode
+
 toolchains/hosts
 toolchains/targets
+
+/.build_number
