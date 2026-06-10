@@ -152,16 +152,15 @@ void ExampleScene::handlePresented(Director *dir) {
 		}
 
 		// Ждём заданное время через DelayTime, затем снимаем кадр и выходим
-		runAction(Rc<Sequence>::create(Rc<DelayTime>::create(delay),
-				[this, path = String(file)] {
-			_director->getWindow()->captureScreenshot(
+		runAction(Rc<Sequence>::create(Rc<DelayTime>::create(delay), [this, path = String(file)] {
+			_director->getRenderServer()->captureScreenshot(
 					[this, path](const core::ImageInfoData &image, BytesView data) {
 				if (core::saveImage(FileInfo(path), image, data)) {
 					log::info("ExampleScene", "Screenshot saved: ", path);
 				} else {
 					log::error("ExampleScene", "Failed to save screenshot: ", path);
 				}
-				_director->getWindow()->close(true);
+				_director->getRenderServer()->close(true);
 			});
 		}));
 	}
