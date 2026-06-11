@@ -246,6 +246,24 @@ Documentation is located in the `docs/` directory:
 * `docs/usage/` — the build system and working in an IDE
 * `docs/api/runtime/` — runtime API reference
 
+## Contact and signing key
+
+Maintainer: Roman Katuntsev <sbkarr@stappler.org>
+
+Releases and commits are signed with the following OpenPGP key:
+
+```
+Roman Katuntsev (Xenolith Project key) <sbkarr@stappler.org>
+Key ID:      rsa4096/50243B02EB5F7F73
+Fingerprint: D35F B371 7A2D CA13 E572  2EB8 5024 3B02 EB5F 7F73
+```
+
+Import it from a keyserver to verify signatures:
+
+```sh
+gpg --recv-keys D35FB3717A2DCA13E5722EB850243B02EB5F7F73
+```
+
 ## License
 
 See the [LICENSE](LICENSE) file.
