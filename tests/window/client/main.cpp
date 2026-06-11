@@ -45,6 +45,8 @@ int main(int argc, const char *argv[]) {
 		ctx->setBearerKey(remote::getDevBearerKey());
 		//}
 
+		ctx->setWindowConnectedCallback([](NotNull<RemoteWindow>) { return true; });
+
 		ctx->run();
 		return 0;
 	});

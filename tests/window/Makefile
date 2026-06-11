@@ -62,6 +62,9 @@ LOCAL_ANDROID_PLATFORM := android-24 # android platform version
 # Подключения системы сборки
 include $(STAPPLER_BUILD_ROOT)/universal.mk
 
+all:
+	$(MAKE) -C $(LOCAL_ROOT)/client STAPPLER_TARGET=$(STAPPLER_TARGET)
+
 prepare-android:
 	@mkdir -p $(LOCAL_ROOT)/proj.android/app/assets
 	rsync -ar $(LOCAL_ROOT)/resources $(LOCAL_ROOT)/proj.android/app/assets

@@ -24,6 +24,7 @@
 
 #include "XLContext.h"
 #include "XL2dSceneContent.h"
+#include "XLRemoteWindow.h"
 #include "XLSimpleButton.h"
 #include "XLDirector.h"
 #include "XLAppWindow.h"
@@ -68,7 +69,18 @@ void ClientScene::handleContentSizeDirty() { Scene2d::handleContentSizeDirty(); 
 
 void ClientScene::handleEnter(Scene *scene) { Scene2d::handleEnter(scene); }
 
-// Регистрируем ExampleScene как основной класс сцены для приложения
+StringView ClientScene::selectServerQueue(NotNull<AppThread> app,
+		NotNull<core::RenderServerChannel> window) {
+	auto rw = static_cast<RemoteWindow *>(window.get());
+	for (auto &it : rw->getQueues()) {
+		if (it.name == "RemoteClientQueue") {
+			return it.name;
+		}
+	}
+	return StringView();
+}
+
+// Регистрируем ClientScene как основной класс сцены для приложения
 // Под капотом:
 // - Создаётся функция, сопоставляющая окно приложения и сцену
 // - Эта функция регистрируется через механизм ShaderModule в качестве функции выбора сцены

@@ -133,6 +133,39 @@ bool TextureSetLayout::init(uint64_t id, uint32_t imageCount, uint32_t samplersC
 
 // --- ObjectRegistry (server) ---
 
+ObjectRegistry::~ObjectRegistry() { }
+
+void ObjectRegistry::shareWindow(core::RenderServerChannel *obj, SpanView<core::Queue *> q) {
+	auto exportQueues = [&](SharedWindowInfo &info) {
+		Vector<uint64_t> queues;
+		for (auto &it : q) {
+			if (auto id = getId(it)) {
+				queues.emplace_back(id);
+			}
+		}
+
+		info.queues = queues;
+	};
+
+	if (!obj) {
+		return;
+	}
+	auto it = _windowByPtr.find(obj);
+	if (it != _windowByPtr.end()) {
+		auto vIt = _windowById.find(it->second);
+		if (vIt == _windowById.end()) {
+			return;
+		}
+		exportQueues(vIt->second);
+		return;
+	}
+	auto id = allocateId();
+	_windowByPtr.emplace(obj, id);
+
+	auto vIt = _windowById.emplace(id, SharedWindowInfo{obj}).first;
+	exportQueues(vIt->second);
+}
+
 uint64_t ObjectRegistry::getId(core::RenderServerChannel *obj) {
 	if (!obj) {
 		return 0;
@@ -211,7 +244,7 @@ core::Queue *ObjectRegistry::resolveQueue(uint64_t id) const {
 
 core::RenderServerChannel *ObjectRegistry::resolveWindow(uint64_t id) const {
 	auto it = _windowById.find(id);
-	return (it != _windowById.end()) ? it->second : nullptr;
+	return (it != _windowById.end()) ? it->second.window : nullptr;
 }
 
 void ObjectRegistry::clear() {
@@ -236,17 +269,17 @@ core::Queue *ObjectFactory::resolveQueue(uint64_t id) const {
 	return (it != _queueById.end()) ? it->second.get() : nullptr;
 }
 
-core::Queue *ObjectFactory::makeQueue(uint64_t id, BytesView data) {
+core::Queue *ObjectFactory::makeQueue(uint64_t id, core::Queue &queue, BytesView data) {
 	if (id == 0) {
 		return nullptr;
 	}
 	if (auto c = resolveQueue(id)) {
 		return static_cast<core::Queue *>(c);
 	}
-	auto q = QueueCodec::decodeQueue(data, *this);
+	auto q = QueueCodec::decodeQueue(queue, data, *this);
 	if (q) {
-		_queueById.emplace(id, q);
-		return q;
+		_queueById.emplace(id, &queue);
+		return &queue;
 	}
 	return nullptr;
 }

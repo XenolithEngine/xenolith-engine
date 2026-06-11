@@ -22,12 +22,13 @@
 
 #include "XLRemoteWindow.h"
 #include "XLRemoteSerialize.h"
+#include "XLClientAppThread.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 RemoteWindow::~RemoteWindow() { }
 
-bool RemoteWindow::init(const Value &val) {
+bool RemoteWindow::init(NotNull<ClientAppThread> thread, const Value &val) {
 	_id = val.getInteger(0);
 	_windowId = val.getString(1);
 	_state = static_cast<core::WindowState>(val.getInteger(2));
@@ -35,20 +36,81 @@ bool RemoteWindow::init(const Value &val) {
 	_appFrameConstraints = remote::deserializeFrameConstraints(val.getValue(4));
 	_appSwapchainConfig = remote::deserializeSwapchainConfig(val.getValue(5));
 
-	if (val.hasValue(6)) {
+	for (auto &qIt : val.getValue(6).asArray()) {
+		if (qIt.isArray() && qIt.size() == 2) {
+			_queues.emplace_back(RemoteQueueInfo{
+				static_cast<uint64_t>(qIt.getInteger(0)),
+				qIt.getString(1),
+			});
+		}
+	}
+
+	if (val.hasValue(7)) {
 		_info = remote::deserializeWindowInfo(val.getValue(6));
 	}
 
+	if (_queues.empty()) {
+		slog().warn("RemoteWindow", "No shared queues for a window, it's unusable as shared");
+		return false;
+	}
+
+	_thread = thread;
 	return true;
 }
 
-void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &, Function<void(bool)> &&) { }
+void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &q, Function<void(bool)> &&cb) {
+	auto n = q->getName();
+	uint64_t id = 0;
+	for (auto &it : _queues) {
+		if (it.name == n) {
+			id = it.id;
+			break;
+		}
+	}
+	if (id == 0) {
+		slog().error("RemoteWindow", "No queue named '", n, "' found for a shared window");
+		cb(false);
+		return;
+	}
+
+	// now, we should send server a note that queue is requested
+
+	auto c = _thread->getConnection();
+	if (!c) {
+		slog().error("RemoteWindow", "Not connected");
+		cb(false);
+		return;
+	}
+
+	if (!_thread->sendMessageWithReply(remote::Domain::Window,
+				toInt(remote::WindowCode::CompileQueue), Value(id),
+				[this, cb = sp::move(cb), q, id](const remote::MessageHeader &h,
+						BytesView payload) {
+		if (remote::isError(h)) {
+			slog().error("RemoteWindow", "compileRenderQueue: network failure: ", int(h.code));
+			cb(false);
+			return;
+		}
+
+		auto sq = _thread->getSharedObjects()->makeQueue(id, *q, payload);
+		if (sq == q) {
+			cb(true);
+		} else {
+			cb(false);
+		}
+	})) {
+		cb(false);
+	}
+}
+
 void RemoteWindow::compileResource(Rc<core::Resource> &&, Function<void(bool)> &&, bool preload) { }
 void RemoteWindow::compileMaterials(Rc<core::MaterialInputData> &&,
 		const Vector<Rc<core::DependencyEvent>> &) { }
 void RemoteWindow::compileImage(const Rc<core::DynamicImage> &, Function<void(bool)> &&) { }
 
-void RemoteWindow::attachRenderQueue(const Rc<core::Queue> &) { }
+void RemoteWindow::attachRenderQueue(const Rc<core::Queue> &) {
+	// Here we should tell window to use this client queue for drawing
+}
 
 void RemoteWindow::setReadyForNextFrame() { }
 void RemoteWindow::setPreferredFrameInterval(uint64_t intervalUs) { }

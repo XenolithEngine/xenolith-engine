@@ -48,13 +48,19 @@ public:
 	// `expectedKey`, negotiate the dictionary (server `serverDict` has priority, else the client's
 	// suggestion, else none), and reply with the window info. Stores the negotiated dictionary for
 	// subsequent sendData/recvData. `outStatus` reports the outcome; returns true iff authenticated.
-	ErrorCode handshake(BytesView expectedKey, BytesView serverDict);
+	GlobalError handshake(BytesView expectedKey, BytesView serverDict);
 
-	ErrorCode ping();
-	ErrorCode pong(uint32_t serial);
+	GlobalError ping();
+	GlobalError pong(uint32_t serial);
 
-	ErrorCode sendCborMessage(Domain, uint8_t message, const Value &);
-	ErrorCode sendMessage(Domain, uint8_t message, BytesView);
+	GlobalError sendCborMessage(Domain, uint8_t message, const Value &,
+			uint32_t *outSerial = nullptr);
+	GlobalError sendMessage(Domain, uint8_t message, BytesView, uint32_t *outSerial = nullptr);
+
+	GlobalError sendCborReply(uint32_t serial, Domain, uint8_t message, const Value &);
+	GlobalError sendReply(uint32_t serial, Domain, uint8_t message, BytesView);
+
+	GlobalError sendError(Domain, uint8_t code, uint32_t failedMessageSerial);
 
 	// Non-blocking: drain the QUIC stream into the reassembler and dispatch complete messages. `cb`
 	// returns true to consume a message, false to defer it (kept and retried on a later poll, so

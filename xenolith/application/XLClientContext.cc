@@ -63,6 +63,14 @@ void ClientContext::handleAppThreadDestroyed(NotNull<ClientAppThread>) {
 
 void ClientContext::handleAppThreadUpdate(NotNull<ClientAppThread>, const UpdateTime &) { }
 
+bool ClientContext::handleWindowConnected(NotNull<ClientAppThread> thread,
+		NotNull<RemoteWindow> w) {
+	if (_onWindowConnected) {
+		return _onWindowConnected(w);
+	}
+	return false;
+}
+
 void ClientContext::handleWindowDisconnected(NotNull<ClientAppThread> thread,
 		NotNull<RemoteWindow> w) {
 	if (_onWindowDisconnected) {
@@ -70,11 +78,12 @@ void ClientContext::handleWindowDisconnected(NotNull<ClientAppThread> thread,
 	}
 }
 
-void ClientContext::handleWindowConnected(NotNull<ClientAppThread> thread,
-		NotNull<RemoteWindow> w) {
-	if (_onWindowConnected) {
-		_onWindowConnected(w);
-	}
+void ClientContext::setWindowConnectedCallback(Function<bool(NotNull<RemoteWindow>)> &&cb) {
+	_onWindowConnected = sp::move(cb);
+}
+
+void ClientContext::setWindowDisconnectedCallback(Function<void(NotNull<RemoteWindow>)> &&cb) {
+	_onWindowDisconnected = sp::move(cb);
 }
 
 } // namespace stappler::xenolith

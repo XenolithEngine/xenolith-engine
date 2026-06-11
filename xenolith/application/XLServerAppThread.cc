@@ -32,6 +32,7 @@
 #include "XLDirector.h"
 #include "XLScene.h"
 #include "XLCorePresentationEngine.h"
+#include "XLRemoteSerialize.h"
 
 #include <sprt/runtime/dispatch/handle.h>
 
@@ -226,7 +227,7 @@ bool ServerAppThread::setListenAddress(StringView addr) {
 	return true;
 }
 
-bool ServerAppThread::shareWindow(AppWindow *w) {
+bool ServerAppThread::shareWindow(AppWindow *w, SpanView<core::Queue *> q) {
 	if (!isListening()) {
 		if (_listenAddress.empty() || _expectedKey.empty()) {
 			log::error("ServerAppThread",
@@ -240,25 +241,7 @@ bool ServerAppThread::shareWindow(AppWindow *w) {
 		}
 	}
 
-	(void)_sharedObjects->getId(w);
-	return true;
-}
-
-bool ServerAppThread::shareQueue(core::Queue *queue) {
-	if (!isListening()) {
-		if (_listenAddress.empty() || _expectedKey.empty()) {
-			log::error("ServerAppThread",
-					"Listen address and credentials should be set before sharing anything");
-			return false;
-		}
-
-		if (!startListening()) {
-			log::error("ServerAppThread", "Fail to start listener for shareQueue");
-			return false;
-		}
-	}
-
-	(void)_sharedObjects->getId(queue);
+	_sharedObjects->shareWindow(w, q);
 	return true;
 }
 
@@ -392,12 +375,12 @@ void ServerAppThread::pumpListener() {
 	}
 }
 
-bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView) {
+bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView payload) {
+	auto conn = _remoteClient ? _remoteClient->getConnection() : nullptr;
 	if (remote::Domain(h.domain) == remote::Domain::Global) {
 		switch (remote::GlobalCode(h.code)) {
 		case remote::GlobalCode::Ping: {
 			log::source().info("AppThread", "received ping (serial ", h.serial, "); replying pong");
-			auto conn = _remoteClient ? _remoteClient->getConnection() : nullptr;
 			if (conn) {
 				conn->pong(h.serial);
 			}
@@ -408,12 +391,51 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView)
 			_lastPongTime = sp::platform::clock(ClockType::Monotonic);
 			return true;
 		default:
+			if (conn) {
+				conn->sendError(remote::Domain::Global, toInt(remote::GlobalError::NotImplemented),
+						h.serial);
+			}
 			log::source().warn("AppThread", "unhandled global message (code ", uint32_t(h.code),
 					")");
 			return true; // consume unknown control messages (don't defer indefinitely)
 		}
+	} else if (remote::Domain(h.domain) == remote::Domain::Window) {
+		switch (remote::WindowCode(h.code)) {
+		case remote::WindowCode::CompileQueue: {
+			auto val = data::read<Interface>(payload);
+			auto q = _sharedObjects->resolveQueue(val.getInteger());
+			if (!q) {
+				conn->sendError(remote::Domain::Window,
+						toInt(remote::WindowError::InvalidObjecthandle), h.serial);
+				return true;
+			}
+
+			auto data = remote::QueueCodec::encodeQueue(*q, *_sharedObjects);
+			if (data.empty()) {
+				conn->sendError(remote::Domain::Window,
+						toInt(remote::WindowError::SerializationFailed), h.serial);
+				return true;
+			}
+
+			conn->sendReply(h.serial, remote::Domain(h.domain), h.code, data);
+			return true;
+		};
+		default:
+			if (conn) {
+				conn->sendError(remote::Domain::Window, toInt(remote::GlobalError::NotImplemented),
+						h.serial);
+			}
+			log::source().warn("AppThread", "unhandled window message (code ", uint32_t(h.code),
+					")");
+			return true; // consume unknown control messages (don't defer indefinitely)
+		}
+	} else {
+		if (conn) {
+			conn->sendError(remote::Domain(h.domain), toInt(remote::GlobalError::NotImplemented),
+					h.serial);
+		}
+		log::source().warn("AppThread", "unhandled message domain (", uint32_t(h.domain), ")");
 	}
-	log::source().warn("AppThread", "unhandled message domain (", uint32_t(h.domain), ")");
 	return true;
 }
 
@@ -432,7 +454,7 @@ void ServerAppThread::completePendingHandshake() {
 	_pendingConnection = nullptr;
 
 	auto status = conn->handshake(_expectedKey, _dictionary);
-	if (status != remote::ErrorCode::Ok) {
+	if (status != remote::GlobalError::Ok) {
 		log::source().error("AppThread", "client handshake failed (status ",
 				uint32_t(toInt(status)), "); dropping connection");
 		return; // conn dropped, slot stays free

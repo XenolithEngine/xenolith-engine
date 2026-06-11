@@ -149,6 +149,7 @@ struct Component {
 	}
 
 	Component &operator=(Component &&other) {
+		clear();
 		id = other.id;
 		isStatic = other.isStatic;
 		if (isStatic) {

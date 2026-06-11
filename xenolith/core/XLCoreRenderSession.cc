@@ -36,6 +36,13 @@ RenderServerChannel::~RenderServerChannel() = default;
 
 __SPRT_POP_ALLOW_CXXABI_ALLOC
 
-void RenderServerChannel::setRenderClient(core::RenderClientChannel *c) { _client = c; }
+void RenderServerChannel::setRenderClient(core::RenderClientChannel *c) {
+	_clientRef = nullptr;
+	_client = c;
+
+	if (auto ref = dynamic_cast<Ref *>(c)) {
+		_clientRef = ref;
+	}
+}
 
 } // namespace stappler::xenolith::core

@@ -167,6 +167,7 @@ public:
 	const core::FrameConstraints &getConstraints() const { return _appFrameConstraints; }
 
 protected:
+	Rc<Ref> _clientRef = nullptr;
 	RenderClientChannel *_client = nullptr;
 	core::WindowState _state = core::WindowState::None;
 	core::FrameConstraints _appFrameConstraints; // read-only mirrior

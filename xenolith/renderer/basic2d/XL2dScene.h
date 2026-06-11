@@ -72,6 +72,9 @@ protected:
 	void updateInputEventData(InputEventData &data, const InputEventData &source, Vec2 pos,
 			uint32_t id);
 
+	virtual StringView selectServerQueue(NotNull<AppThread> app,
+			NotNull<core::RenderServerChannel> window);
+
 	InputEventData _data1 = InputEventData{maxOf<uint32_t>() - 1};
 	InputEventData _data2 = InputEventData{maxOf<uint32_t>() - 2};
 	InputListener *_listener = nullptr;

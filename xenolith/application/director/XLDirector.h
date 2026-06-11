@@ -63,8 +63,7 @@ public:
 	bool setBearerKey(BytesView);
 	bool setCompressionDictionary(BytesView);
 
-	bool shareWindow();
-	bool shareQueue(NotNull<core::Queue>);
+	bool shareWindow(SpanView<core::Queue *>);
 
 	// core::RenderClientChannel (server -> client). The server's PresentationEngine pulls a
 	// command batch via acquireFrame(); other entries deliver platform events / contract changes.

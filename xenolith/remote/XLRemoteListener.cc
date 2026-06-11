@@ -162,35 +162,64 @@ bool ServerConnection::isClosed() {
 	return SSL_get_conn_close_info(ssl, &info, sizeof(info)) != 0;
 }
 
-ErrorCode ServerConnection::handshake(BytesView expectedKey, BytesView serverDict) {
+GlobalError ServerConnection::handshake(BytesView expectedKey, BytesView serverDict) {
 	if (!_ssl) {
-		return ErrorCode::BadProtocol;
+		return GlobalError::BadProtocol;
 	}
 	uint64_t deadline = sp::platform::clock(ClockType::Monotonic) + 500'000; // 500ms
 	auto ret = serverHandshake(_ssl, expectedKey, serverDict, _dict, deadline);
-	if (ret == ErrorCode::Ok) {
+	if (ret == GlobalError::Ok) {
 		// begin new serial session
 		_serial = 1;
 	}
 	return ret;
 }
 
-ErrorCode ServerConnection::ping() { return sendPing(_ssl, Role::Server, _serial++); }
+GlobalError ServerConnection::ping() { return sendPing(_ssl, Role::Server, _serial++); }
 
-ErrorCode ServerConnection::pong(uint32_t serial) { return sendPong(_ssl, Role::Server, serial); }
+GlobalError ServerConnection::pong(uint32_t serial) { return sendPong(_ssl, Role::Server, serial); }
 
-ErrorCode ServerConnection::sendCborMessage(Domain d, uint8_t message, const Value &val) {
+GlobalError ServerConnection::sendCborMessage(Domain d, uint8_t message, const Value &val,
+		uint32_t *outSerial) {
 	Bytes bytes = data::write<Interface>(val, data::EncodeFormat::Cbor);
-	return sendMessage(d, message, bytes);
+	return sendMessage(d, message, bytes, outSerial);
 }
 
-ErrorCode ServerConnection::sendMessage(Domain d, uint8_t message, BytesView payload) {
+GlobalError ServerConnection::sendMessage(Domain d, uint8_t message, BytesView payload,
+		uint32_t *outSerial) {
+	auto serial = _serial++;
 	if (sendFrame(_ssl, sp::platform::clock(ClockType::Monotonic) + 500'000, _dict,
-				MessageType::Server, d, message, _serial++, payload)) {
-		return ErrorCode::Ok;
+				MessageType::Server, d, message, serial, payload)) {
+		if (outSerial) {
+			*outSerial = serial;
+		}
+		return GlobalError::Ok;
 	}
-	return ErrorCode::NetworkBackend;
-};
+	return GlobalError::NetworkBackend;
+}
+
+GlobalError ServerConnection::sendCborReply(uint32_t serial, Domain d, uint8_t message,
+		const Value &val) {
+	Bytes bytes = data::write<Interface>(val, data::EncodeFormat::Cbor);
+	return sendReply(serial, d, message, bytes);
+}
+
+GlobalError ServerConnection::sendReply(uint32_t serial, Domain d, uint8_t message,
+		BytesView payload) {
+	if (sendFrame(_ssl, sp::platform::clock(ClockType::Monotonic) + 500'000, _dict,
+				MessageType::ServerReply, d, message, serial, payload)) {
+		return GlobalError::Ok;
+	}
+	return GlobalError::NetworkBackend;
+}
+
+GlobalError ServerConnection::sendError(Domain d, uint8_t code, uint32_t failedMessageSerial) {
+	if (sendFrame(_ssl, sp::platform::clock(ClockType::Monotonic) + 500'000, _dict,
+				MessageType::ServerError, d, toInt(code), failedMessageSerial, BytesView())) {
+		return GlobalError::Ok;
+	}
+	return GlobalError::NetworkBackend;
+}
 
 void ServerConnection::poll(const Callback<bool(const MessageHeader &, BytesView)> &dispatchCb) {
 	if (!_ssl) {

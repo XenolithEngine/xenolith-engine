@@ -104,7 +104,14 @@ public:
 // id back to the real object). id 0 == null.
 class SP_PUBLIC ObjectRegistry : public Ref {
 public:
-	virtual ~ObjectRegistry() = default;
+	struct SharedWindowInfo {
+		core::RenderServerChannel *window = nullptr;
+		Vector<uint64_t> queues;
+	};
+
+	virtual ~ObjectRegistry();
+
+	void shareWindow(core::RenderServerChannel *, SpanView<core::Queue *>);
 
 	uint64_t getId(core::RenderServerChannel *); // assign-if-absent
 	uint64_t getId(core::Queue *); // assign-if-absent
@@ -124,8 +131,7 @@ public:
 
 	uint64_t allocateId() { return _next++; }
 
-	const Map<core::Queue *, uint64_t> &getQueues() const { return _queueByPtr; }
-	const Map<core::RenderServerChannel *, uint64_t> &getWindows() const { return _windowByPtr; }
+	const Map<uint64_t, SharedWindowInfo> &getWindows() const { return _windowById; }
 
 protected:
 	uint64_t _next = 1;
@@ -136,7 +142,7 @@ protected:
 	Map<uint64_t, Rc<core::Queue>> _queueById;
 
 	Map<core::RenderServerChannel *, uint64_t> _windowByPtr;
-	Map<uint64_t, core::RenderServerChannel *> _windowById;
+	Map<uint64_t, SharedWindowInfo> _windowById;
 };
 
 // Client-side factory: mints a thin handle for a server object id (info comes from the wire) and
@@ -146,7 +152,7 @@ class SP_PUBLIC ObjectFactory : public Ref {
 public:
 	virtual ~ObjectFactory() = default;
 
-	core::Queue *makeQueue(uint64_t id, BytesView);
+	core::Queue *makeQueue(uint64_t id, core::Queue &, BytesView);
 
 	core::ImageObject *makeImage(uint64_t id, const core::ImageInfoData &);
 	core::BufferObject *makeBuffer(uint64_t id, const core::BufferInfo &);

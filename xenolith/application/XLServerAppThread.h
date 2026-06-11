@@ -85,10 +85,7 @@ public:
 	virtual bool setCompressionDictionary(BytesView) override;
 
 	// Starts listening (to make shared registry available) and share window
-	virtual bool shareWindow(AppWindow *) override;
-
-	// Starts listening (to make shared registry available) and share queue
-	virtual bool shareQueue(core::Queue *) override;
+	virtual bool shareWindow(AppWindow *, SpanView<core::Queue *>) override;
 
 protected:
 	// Also clears shared objects if not empty

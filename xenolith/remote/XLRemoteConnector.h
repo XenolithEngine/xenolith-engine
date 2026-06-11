@@ -47,10 +47,19 @@ public:
 	// Run the X11-like setup handshake: authenticate with `key`, offer `suggestedDict`, and receive
 	// the server's reply (window info + negotiated dictionary) into `out`. On success the negotiated
 	// dictionary is stored for subsequent sendData/recvData. Returns true iff out.status == Ok.
-	ErrorCode handshake(BytesView key, BytesView suggestedDict);
+	GlobalError handshake(BytesView key, BytesView suggestedDict);
 
-	ErrorCode ping();
-	ErrorCode pong(uint32_t serial);
+	GlobalError ping();
+	GlobalError pong(uint32_t serial);
+
+	GlobalError sendCborMessage(Domain, uint8_t message, const Value &,
+			uint32_t *outSerial = nullptr);
+	GlobalError sendMessage(Domain, uint8_t message, BytesView, uint32_t *outSerial = nullptr);
+
+	GlobalError sendCborReply(uint32_t serial, Domain, uint8_t message, const Value &);
+	GlobalError sendReply(uint32_t serial, Domain, uint8_t message, BytesView);
+
+	GlobalError sendError(Domain, GlobalError code, uint32_t failedMessageSerial);
 
 	// Non-blocking: drain the QUIC stream into the reassembler and dispatch complete messages. `cb`
 	// returns true to consume a message, false to defer it (kept and retried on a later poll, so

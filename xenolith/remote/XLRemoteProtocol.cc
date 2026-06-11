@@ -319,6 +319,17 @@ SP_PUBLIC bool sendFrame(void *ssl, uint64_t deadline, BytesView dict, MessageTy
 		uint8_t msg, uint32_t serial, BytesView payload) {
 	auto s = (SSL *)ssl;
 
+	if (payload.empty()) {
+		MessageHeader mh;
+		mh.msgtype = toInt(t);
+		mh.msgflags = 0;
+		mh.domain = toInt(d);
+		mh.code = msg;
+		mh.serial = sprt::byteorder::HostToNetwork(serial);
+		mh.size = 0;
+		return streamWriteAll(s, (const uint8_t *)&mh, sizeof(MessageHeader), deadline);
+	}
+
 	uint32_t frameSize = 0;
 	bool usingDict = true;
 
@@ -527,7 +538,7 @@ static uint8_t *writeMessageHeader(uint8_t *buf, MessageType type, MessageFlags 
 	return buf;
 }
 
-ErrorCode clientHandshake(void *ssl, BytesView key, BytesView dict, uint64_t deadline,
+GlobalError clientHandshake(void *ssl, BytesView key, BytesView dict, uint64_t deadline,
 		const Callback<void(const ServerHello &out)> &cb) {
 	uint32_t clientHelloSize = sizeof(uint32_t) * 3 + key.size() + dict.size();
 
@@ -548,56 +559,56 @@ ErrorCode clientHandshake(void *ssl, BytesView key, BytesView dict, uint64_t dea
 	}
 
 	if (!streamWriteAll((SSL *)ssl, d, clientHelloSize + sizeof(MessageHeader), deadline)) {
-		return ErrorCode::NetworkBackend;
+		return GlobalError::NetworkBackend;
 	}
 
 	__sprt_freea(d);
 
-	ErrorCode result = ErrorCode::NetworkBackend;
+	GlobalError result = GlobalError::NetworkBackend;
 
 	if (!readFrame(ssl, deadline, BytesView(), [&](const MessageHeader &h, BytesView d) {
 		ServerHello sh;
 		if (!decodeServerHello(d, sh)) {
-			result = ErrorCode::NetworkBackend;
+			result = GlobalError::NetworkBackend;
 			return;
 		}
 
-		if (sh.status != toInt(ErrorCode::Ok)) {
-			result = ErrorCode(sh.status);
+		if (sh.status != toInt(GlobalError::Ok)) {
+			result = GlobalError(sh.status);
 			return;
 		}
 
 		cb(sh);
-		result = ErrorCode::Ok;
+		result = GlobalError::Ok;
 	})) {
-		return ErrorCode::NetworkBackend;
+		return GlobalError::NetworkBackend;
 	}
 	return result;
 }
 
-static ErrorCode negotiateHello(const ClientHello &ch, BytesView expectedKey) {
-	ErrorCode status;
+static GlobalError negotiateHello(const ClientHello &ch, BytesView expectedKey) {
+	GlobalError status;
 	if (ch.version != kProtocolVersion) {
-		status = ErrorCode::BadProtocol;
+		status = GlobalError::BadProtocol;
 	} else if (ch.authMode != toInt(AuthMode::BearerKey)) {
-		status = ErrorCode::UnsupportedAuth;
+		status = GlobalError::UnsupportedAuth;
 	} else if (expectedKey.empty()
 			|| !crypto::isEqualConstantTime(BytesView(ch.authData.data(), ch.authData.size()),
 					expectedKey)) {
 		auto exp = base16::encode<Interface>(expectedKey);
 		auto data = base16::encode<Interface>(ch.authData);
-		status = ErrorCode::AuthFailed;
+		status = GlobalError::AuthFailed;
 	} else {
-		status = ErrorCode::Ok;
+		status = GlobalError::Ok;
 	}
 	return status;
 }
 
-ErrorCode serverHandshake(void *ssl, BytesView expectedKey, BytesView serverDict,
+GlobalError serverHandshake(void *ssl, BytesView expectedKey, BytesView serverDict,
 		Bytes &negotiatedDict, uint64_t deadline) {
 	negotiatedDict.clear();
 
-	ErrorCode outStatus = ErrorCode::BadProtocol;
+	GlobalError outStatus = GlobalError::BadProtocol;
 	DictSource dictSource = DictSource::None;
 
 	// || !decodeClientHello(payload, ch)
@@ -619,7 +630,7 @@ ErrorCode serverHandshake(void *ssl, BytesView expectedKey, BytesView serverDict
 
 		outStatus = negotiateHello(ch, expectedKey);
 
-		if (outStatus == ErrorCode::Ok) {
+		if (outStatus == GlobalError::Ok) {
 			if (serverDict.empty() && !ch.suggestedDict.empty()) {
 				dictSource = DictSource::Client;
 				negotiatedDict = ch.suggestedDict.bytes<Interface>();
@@ -628,12 +639,12 @@ ErrorCode serverHandshake(void *ssl, BytesView expectedKey, BytesView serverDict
 			}
 		}
 	})) {
-		outStatus = ErrorCode::BadProtocol;
+		outStatus = GlobalError::BadProtocol;
 	}
 
 	// write short error message
 	size_t serverHello = sizeof(uint32_t) * 2;
-	if (outStatus == ErrorCode::Ok && dictSource == DictSource::Server) {
+	if (outStatus == GlobalError::Ok && dictSource == DictSource::Server) {
 		serverHello += sizeof(uint16_t) + serverDict.size();
 	}
 
@@ -647,7 +658,7 @@ ErrorCode serverHandshake(void *ssl, BytesView expectedKey, BytesView serverDict
 	buf = writeValue8(buf, toInt(outStatus));
 	buf = writeValue8(buf, toInt(dictSource));
 
-	if (outStatus == ErrorCode::Ok && dictSource == DictSource::Server) {
+	if (outStatus == GlobalError::Ok && dictSource == DictSource::Server) {
 		buf = writeValue16(buf, uint16_t(serverDict.size()));
 		buf = writeData(buf, serverDict);
 	}
@@ -657,30 +668,30 @@ ErrorCode serverHandshake(void *ssl, BytesView expectedKey, BytesView serverDict
 	return outStatus;
 }
 
-SP_PUBLIC ErrorCode sendPing(void *ssl, Role role, uint32_t serial) {
+SP_PUBLIC GlobalError sendPing(void *ssl, Role role, uint32_t serial) {
 	MessageHeader buf = {0};
 
-	writeMessageHeader((uint8_t *)&buf, MessageType(role), MessageFlags::None, Domain::Global,
-			toInt(GlobalCode::Ping), serial, 0);
+	writeMessageHeader((uint8_t *)&buf, MessageTypeRequest(role), MessageFlags::None,
+			Domain::Global, toInt(GlobalCode::Ping), serial, 0);
 
 	if (streamWriteAll((SSL *)ssl, (uint8_t *)&buf, sizeof(MessageHeader),
 				sp::platform::clock(ClockType::Monotonic) + 500'000)) {
-		return ErrorCode::Ok;
+		return GlobalError::Ok;
 	}
-	return ErrorCode::NetworkBackend;
+	return GlobalError::NetworkBackend;
 }
 
-SP_PUBLIC ErrorCode sendPong(void *ssl, Role role, uint32_t serial) {
+SP_PUBLIC GlobalError sendPong(void *ssl, Role role, uint32_t serial) {
 	MessageHeader buf = {0};
 
-	writeMessageHeader((uint8_t *)&buf, MessageType(role), MessageFlags::None, Domain::Global,
+	writeMessageHeader((uint8_t *)&buf, MessageTypeReply(role), MessageFlags::None, Domain::Global,
 			toInt(GlobalCode::Pong), serial, 0);
 
 	if (streamWriteAll((SSL *)ssl, (uint8_t *)&buf, sizeof(MessageHeader),
 				sp::platform::clock(ClockType::Monotonic) + 500'000)) {
-		return ErrorCode::Ok;
+		return GlobalError::Ok;
 	}
-	return ErrorCode::NetworkBackend;
+	return GlobalError::NetworkBackend;
 }
 
 } // namespace stappler::xenolith::remote
