@@ -323,14 +323,12 @@ float Director::getTimestampFrameTime() const {
 
 bool Director::setListenAddress(StringView addr) { return _application->setListenAddress(addr); }
 
-bool Director::shareWindow() {
+bool Director::shareWindow(SpanView<core::Queue *> q) {
 	if (auto w = dynamic_cast<AppWindow *>(_server)) {
-		return _application->shareWindow(w);
+		return _application->shareWindow(w, q);
 	}
 	return false;
 }
-
-bool Director::shareQueue(NotNull<core::Queue> queue) { return _application->shareQueue(queue); }
 
 bool Director::setBearerKey(BytesView key) { return _application->setBearerKey(key); }
 

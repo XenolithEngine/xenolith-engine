@@ -200,8 +200,9 @@ void AppThread::handleAppWindowDestroyed(NotNull<AppWindow>, Rc<Director> &&) { 
 bool AppThread::isServerThread() const { return false; }
 bool AppThread::isListening() const { return false; }
 bool AppThread::setListenAddress(StringView) { return false; }
-bool AppThread::shareWindow(AppWindow *) { return false; }
-bool AppThread::shareQueue(core::Queue *) { return false; }
+
+bool AppThread::shareWindow(AppWindow *, SpanView<core::Queue *>) { return false; }
+
 bool AppThread::startListening() { return false; }
 bool AppThread::stopListening() { return false; }
 bool AppThread::setBearerKey(BytesView) { return false; }

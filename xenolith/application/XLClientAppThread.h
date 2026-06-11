@@ -56,6 +56,10 @@ public:
 
 	ClientContext *getClientContext() const { return _clientContext; }
 
+	remote::ClientConnection *getConnection() const { return _connection; }
+
+	remote::ObjectFactory *getSharedObjects() const { return _sharedObjects; }
+
 	// AppThread platform-services interface (TODO: route to the remote server).
 	virtual void readFromClipboard(Function<void(Status, BytesView, StringView)> &&dataCallback,
 			Function<StringView(SpanView<StringView>)> &&selectCallback,
@@ -74,13 +78,17 @@ public:
 
 	virtual const ContextInfo *getContextInfo() const override;
 
+	bool sendMessageWithReply(remote::Domain, uint8_t message, const Value &,
+			Function<void(const remote::MessageHeader &, BytesView payload)> &&);
+
 protected:
 	virtual void handleThreadInitialized() override;
 	virtual void handleThreadDisposed() override;
 	virtual void handleThreadUpdated(const UpdateTime &) override;
 
+	// return true to use this window for output
+	virtual bool handleWindowConnected(NotNull<RemoteWindow>);
 	virtual void handleWindowDisconnected(NotNull<RemoteWindow>);
-	virtual void handleWindowConnected(NotNull<RemoteWindow>);
 
 	virtual void loadExtensions() override;
 
@@ -111,6 +119,8 @@ protected:
 
 	Map<uint64_t, Rc<RemoteWindow>> _windows;
 	Map<uint64_t, AppQueueInfo> _queues;
+
+	HashMap<uint32_t, Function<void(const remote::MessageHeader &, BytesView payload)>> _requests;
 };
 
 } // namespace stappler::xenolith

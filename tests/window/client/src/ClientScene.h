@@ -43,7 +43,10 @@ public:
 	virtual void handleEnter(Scene *) override;
 
 protected:
-	using Scene::init;
+	using Scene2d::init;
+
+	virtual StringView selectServerQueue(NotNull<AppThread> app,
+			NotNull<core::RenderServerChannel> window) override;
 };
 
 } // namespace stappler::xenolith::client

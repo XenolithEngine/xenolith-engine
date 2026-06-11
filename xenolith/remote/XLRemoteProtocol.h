@@ -49,8 +49,11 @@ enum class AuthMode : uint8_t {
 	BearerKey = 1,
 };
 
+// Domain defines a subsets of messages and errors;
+// Note that NetworkBackend (255, local-only) and NotImplemented (254) is common for any domain
 enum class Domain : uint8_t {
 	Global = 0,
+	Window = 1,
 	Error = 255,
 };
 
@@ -62,12 +65,25 @@ enum class GlobalCode {
 	SharedObjectsAnnounce = 4,
 };
 
-enum class ErrorCode : uint8_t {
+enum class GlobalError : uint8_t {
 	Ok = 0,
-	NetworkBackend = 1, // not protocol-related, check backend error reporting
 	BadProtocol = 2, // magic/version mismatch or malformed
 	UnsupportedAuth = 3, // unknown auth mode
 	AuthFailed = 4, // bearer key mismatch / no server key configured
+	NotImplemented = 254,
+	NetworkBackend = 255, // not protocol-related, check backend error reporting
+};
+
+enum class WindowCode {
+	CompileQueue = 0,
+};
+
+enum class WindowError : uint8_t {
+	Ok = 0,
+	InvalidObjecthandle = 1,
+	SerializationFailed = 2,
+	NotImplemented = 254,
+	NetworkBackend = 255, // not protocol-related, check backend error reporting
 };
 
 // Which side's compression dictionary won negotiation. Server has priority; if it has none the
@@ -86,7 +102,23 @@ enum class MessageType : uint8_t {
 	Generic = toInt(Role::Generic),
 	Server = toInt(Role::Server),
 	Client = toInt(Role::Client),
+	ServerReply = 4, // Server replies for a client request, serial is a number of that request
+	ClientReply = 5, // Client replies for a server request, serial is a number of that request
+	ServerError = 6, // Server replies with a error, serial is a number of request, code is error
+	ClientError = 7, // Client replies with a error, serial is a number of request, code is error
 };
+
+static inline constexpr MessageType MessageTypeRequest(Role role) {
+	return MessageType(toInt(role));
+}
+
+static inline constexpr MessageType MessageTypeReply(Role role) {
+	return MessageType(toInt(role) + 2);
+}
+
+static inline constexpr MessageType MessageTypeError(Role role) {
+	return MessageType(toInt(role) + 4);
+}
 
 enum class MessageFlags : uint8_t {
 	None = 0,
@@ -103,10 +135,17 @@ struct MessageHeader {
 	uint32_t size;
 };
 
-struct Error {
-	uint16_t code;
-	uint32_t serial;
-};
+static inline constexpr bool isReply(const MessageHeader &h) {
+	return h.msgtype > 3 && h.msgtype <= 5;
+}
+
+static inline constexpr bool isReplyOrError(const MessageHeader &h) {
+	return h.msgtype > 3 && h.msgtype <= 7;
+}
+
+static inline constexpr bool isError(const MessageHeader &h) {
+	return h.msgtype > 5 && h.msgtype <= 7;
+}
 
 // Client Hello
 // 0 - 3	kProtocolMagic
@@ -198,21 +237,21 @@ protected:
 // Client side: send ClientHello (bearer key + suggested dict), read ServerHello into `out`, and fill
 // `negotiatedDict` with the dictionary to use for subsequent data frames. Returns true iff
 // out.status == Ok.
-SP_PUBLIC ErrorCode clientHandshake(void *ssl, BytesView bearerKey, BytesView dict,
+SP_PUBLIC GlobalError clientHandshake(void *ssl, BytesView bearerKey, BytesView dict,
 		uint64_t deadlineUs, const Callback<void(const ServerHello &out)> &);
 
 // Server side: read ClientHello, validate (magic/version/mode + constant-time key compare against
 // `expectedKey`), negotiate the dictionary (server priority, else client suggestion, else none),
 // and reply with ServerHello (window info on success). Fills `outStatus` and `negotiatedDict`.
 // Returns true iff authenticated.
-SP_PUBLIC ErrorCode serverHandshake(void *ssl, BytesView expectedKey, BytesView serverDict,
+SP_PUBLIC GlobalError serverHandshake(void *ssl, BytesView expectedKey, BytesView serverDict,
 		Bytes &negotiatedDict, uint64_t deadlineUs);
 
 // Ping request
-SP_PUBLIC ErrorCode sendPing(void *ssl, Role, uint32_t serial);
+SP_PUBLIC GlobalError sendPing(void *ssl, Role, uint32_t serial);
 
 // Ping response
-SP_PUBLIC ErrorCode sendPong(void *ssl, Role, uint32_t serial);
+SP_PUBLIC GlobalError sendPong(void *ssl, Role, uint32_t serial);
 
 } // namespace stappler::xenolith::remote
 

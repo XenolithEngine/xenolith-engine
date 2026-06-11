@@ -67,10 +67,10 @@ public:
 	virtual void handleAppThreadDestroyed(NotNull<ClientAppThread>);
 	virtual void handleAppThreadUpdate(NotNull<ClientAppThread>, const UpdateTime &);
 
+	virtual bool handleWindowConnected(NotNull<ClientAppThread>, NotNull<RemoteWindow>);
 	virtual void handleWindowDisconnected(NotNull<ClientAppThread>, NotNull<RemoteWindow>);
-	virtual void handleWindowConnected(NotNull<ClientAppThread>, NotNull<RemoteWindow>);
 
-	void setWindowConnectedCallback(Function<void(NotNull<RemoteWindow>)> &&);
+	void setWindowConnectedCallback(Function<bool(NotNull<RemoteWindow>)> &&);
 	void setWindowDisconnectedCallback(Function<void(NotNull<RemoteWindow>)> &&);
 
 protected:
@@ -80,7 +80,7 @@ protected:
 	Bytes _bearerKey;
 	Bytes _suggestedDict;
 
-	Function<void(NotNull<RemoteWindow>)> _onWindowConnected;
+	Function<bool(NotNull<RemoteWindow>)> _onWindowConnected;
 	Function<void(NotNull<RemoteWindow>)> _onWindowDisconnected;
 };
 

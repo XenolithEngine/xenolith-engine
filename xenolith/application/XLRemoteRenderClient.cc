@@ -47,27 +47,28 @@ void RemoteRenderClient::closeConnection() {
 
 void RemoteRenderClient::announce(NotNull<remote::ObjectRegistry> registry) {
 	Value data;
-	{
-		auto &queues = data.emplace("queues");
-		for (auto &it : registry->getQueues()) {
-			auto &v = queues.emplace();
-			v.addInteger(it.second);
-			v.addString(it.first->getName());
-		}
-	}
-	{
-		auto &windows = data.emplace("windows");
-		for (auto &it : registry->getWindows()) {
-			auto &v = windows.emplace();
-			v.addInteger(it.second);
-			v.addString(it.first->getId());
-			v.addInteger(toInt(it.first->getWindowState()));
-			v.addInteger(toInt(it.first->getCapabilities()));
-			v.addValue(remote::serializeFrameConstraints(it.first->getConstraints()));
-			v.addValue(remote::serializeSwapchainConfig(it.first->getAppSwapchainConfig()));
-			if (auto info = it.first->getInfo()) {
-				v.addValue(remote::serializeWindowInfo(*info));
+	auto &windows = data.emplace("windows");
+	for (auto &it : registry->getWindows()) {
+		auto &v = windows.emplace();
+		v.addInteger(it.first);
+		v.addString(it.second.window->getId());
+		v.addInteger(toInt(it.second.window->getWindowState()));
+		v.addInteger(toInt(it.second.window->getCapabilities()));
+		v.addValue(remote::serializeFrameConstraints(it.second.window->getConstraints()));
+		v.addValue(remote::serializeSwapchainConfig(it.second.window->getAppSwapchainConfig()));
+
+		Value &queues = v.emplace();
+		for (auto &qIt : it.second.queues) {
+			auto q = registry->resolveQueue(qIt);
+			if (q) {
+				auto &v = queues.emplace();
+				v.addInteger(qIt);
+				v.addString(q->getName());
 			}
+		}
+
+		if (auto info = it.second.window->getInfo()) {
+			v.addValue(remote::serializeWindowInfo(*info));
 		}
 	}
 

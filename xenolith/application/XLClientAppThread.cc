@@ -42,6 +42,7 @@ __SPRT_POP_ALLOW_CXXABI_ALLOC
 
 bool ClientAppThread::init(NotNull<ClientContext> ctx) {
 	_clientContext = ctx;
+	_requests.reserve(16);
 	return true;
 }
 
@@ -66,7 +67,7 @@ bool ClientAppThread::worker() {
 		// Connected: run the X11-like setup handshake (auth + window info + dictionary negotiation).
 		auto code = conn->handshake(_clientContext->getBearerKey(),
 				_clientContext->getSuggestedDictionary());
-		if (code != remote::ErrorCode::Ok) {
+		if (code != remote::GlobalError::Ok) {
 			log::source().error("ClientAppThread", "handshake failed (status ",
 					uint32_t(toInt(code)), ")");
 			conn->close();
@@ -90,6 +91,8 @@ bool ClientAppThread::worker() {
 
 		// Start the keepalive clock: the server pings us ~1/s; if it goes silent we disconnect + exit.
 		_lastPingTime = sp::platform::clock(ClockType::Monotonic);
+
+		_sharedObjects = Rc<remote::ObjectFactory>::create();
 	}
 
 	// Run the looper (update timer + connection poll handle) until the thread stops. The connection
@@ -99,6 +102,20 @@ bool ClientAppThread::worker() {
 
 const ContextInfo *ClientAppThread::getContextInfo() const { return _clientContext->getInfo(); }
 
+bool ClientAppThread::sendMessageWithReply(remote::Domain d, uint8_t message, const Value &val,
+		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb) {
+	if (!_connection || !_connection->isOpen()) {
+		return false;
+	}
+
+	uint32_t serial = 0;
+	if (_connection->sendCborMessage(d, message, val, &serial) == remote::GlobalError::Ok) {
+		_requests.emplace(serial, sp::move(cb));
+		return true;
+	}
+	return false;
+}
+
 void ClientAppThread::handleThreadInitialized() { _clientContext->handleAppThreadCreated(this); }
 
 void ClientAppThread::handleThreadDisposed() { _clientContext->handleAppThreadDestroyed(this); }
@@ -107,12 +124,12 @@ void ClientAppThread::handleThreadUpdated(const UpdateTime &time) {
 	_clientContext->handleAppThreadUpdate(this, time);
 }
 
-void ClientAppThread::handleWindowDisconnected(NotNull<RemoteWindow> w) {
-	_clientContext->handleWindowDisconnected(this, w);
+bool ClientAppThread::handleWindowConnected(NotNull<RemoteWindow> w) {
+	return _clientContext->handleWindowConnected(this, w);
 }
 
-void ClientAppThread::handleWindowConnected(NotNull<RemoteWindow> w) {
-	_clientContext->handleWindowConnected(this, w);
+void ClientAppThread::handleWindowDisconnected(NotNull<RemoteWindow> w) {
+	_clientContext->handleWindowDisconnected(this, w);
 }
 
 void ClientAppThread::loadExtensions() {
@@ -192,6 +209,15 @@ void ClientAppThread::performAppUpdate(const UpdateTime &time, bool wakeup) {
 }
 
 bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView payload) {
+	if (remote::isReplyOrError(h)) {
+		auto reqIt = _requests.find(h.serial);
+		if (reqIt != _requests.end()) {
+			reqIt->second(h, payload);
+			_requests.erase(reqIt);
+			return true;
+		}
+	}
+
 	if (remote::Domain(h.domain) == remote::Domain::Global) {
 		switch (remote::GlobalCode(h.code)) {
 		case remote::GlobalCode::Ping:
@@ -270,7 +296,7 @@ void ClientAppThread::handleAnnounce(const Value &data) {
 	{
 		for (auto &it : windows) {
 			if (_windows.find(it.first) == _windows.end()) {
-				if (auto w = Rc<RemoteWindow>::create(it.second)) {
+				if (auto w = Rc<RemoteWindow>::create(this, it.second)) {
 					_windows.emplace(it.first, w);
 					connectedWindows.emplace_back(w);
 				}
@@ -311,7 +337,9 @@ void ClientAppThread::handleAnnounce(const Value &data) {
 		for (auto &it : connectedWindows) {
 			auto wIt = _windows.find(it->getServerId());
 			if (wIt != _windows.end()) {
-				handleWindowConnected(wIt->second);
+				if (handleWindowConnected(wIt->second)) {
+					makeDirector(wIt->second, wIt->second->getConstraints());
+				}
 			}
 		}
 	}, this, true);

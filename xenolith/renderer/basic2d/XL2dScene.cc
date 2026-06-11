@@ -181,37 +181,53 @@ bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> wi
 
 bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> window,
 		const Callback<void(Queue::Builder &)> &cb, const core::FrameConstraints &constraints) {
-	core::Queue::Builder builder("Loader");
+	// direct gAPI initialization
+	if (app->isServerThread()) {
+		core::Queue::Builder builder("Loader");
 
-	QueueInfo queueInfo{
-		Extent2(constraints.extent.width, constraints.extent.height),
-		Color4F::WHITE,
-	};
+		QueueInfo queueInfo{
+			Extent2(constraints.extent.width, constraints.extent.height),
+			Color4F::WHITE,
+		};
 
-	buildQueueResources(queueInfo, builder);
+		buildQueueResources(queueInfo, builder);
 
 #if MODULE_XENOLITH_BACKEND_VK
+		basic2d::vk::ShadowPass::RenderQueueInfo info{
+			app->getGlLoop(),
+			queueInfo.extent,
+			basic2d::vk::ShadowPass::Flags::None,
+			queueInfo.backgroundColor,
+		};
 
-	basic2d::vk::ShadowPass::RenderQueueInfo info{
-		app->getGlLoop(),
-		queueInfo.extent,
-		basic2d::vk::ShadowPass::Flags::None,
-		queueInfo.backgroundColor,
-	};
+		basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
 
-	basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
+		cb(builder);
 
-	cb(builder);
+		if (!init(move(builder), constraints)) {
+			return false;
+		}
 
-	if (!init(move(builder), constraints)) {
-		return false;
-	}
-
-	return true;
+		return true;
 #else
-	log::source().error("Scene2d", "No available GAPI found");
-	return false;
+		log::source().error("Scene2d", "No available GAPI found");
+		return false;
 #endif
+	} else {
+		// client mode - we should select a scene, instead of creating it
+		auto serverQueue = selectServerQueue(app, window);
+		if (serverQueue.empty()) {
+			log::source().error("Scene2d", "Fail to select remote queue");
+			return false;
+		}
+
+		core::Queue::Builder builder(serverQueue);
+
+		if (!init(move(builder), constraints)) {
+			return false;
+		}
+		return true;
+	}
 }
 
 bool Scene2d::init(Queue::Builder &&builder, const core::FrameConstraints &constraints) {
@@ -416,6 +432,11 @@ void Scene2d::updateInputEventData(InputEventData &data, const InputEventData &s
 	data.input.y = pos.y;
 	data.input.button = InputMouseButton::Touch;
 	data.input.modifiers |= InputModifier::Unmanaged;
+}
+
+StringView Scene2d::selectServerQueue(NotNull<AppThread> app,
+		NotNull<core::RenderServerChannel> window) {
+	return StringView();
 }
 
 } // namespace stappler::xenolith::basic2d

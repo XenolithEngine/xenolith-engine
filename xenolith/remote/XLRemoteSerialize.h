@@ -58,7 +58,7 @@ public:
 
 	// Decode a queue blob into a client-side mirror; gAPI objects become thin handles from `factory`.
 	// Returns nullptr on malformed input.
-	static Rc<core::Queue> decodeQueue(BytesView, ObjectFactory &factory);
+	static bool decodeQueue(core::Queue &, BytesView, ObjectFactory &factory);
 
 	// Resource-only (also used internally by the queue codec).
 	static Bytes encodeResource(const core::Resource &, ObjectRegistry &registry);

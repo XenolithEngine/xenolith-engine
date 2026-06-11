@@ -27,11 +27,18 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
+class ClientAppThread;
+
 class SP_PUBLIC RemoteWindow : public Ref, public core::RenderServerChannel {
 public:
+	struct RemoteQueueInfo {
+		uint64_t id;
+		String name;
+	};
+
 	virtual ~RemoteWindow();
 
-	virtual bool init(const Value &);
+	virtual bool init(NotNull<ClientAppThread>, const Value &);
 
 	virtual void compileRenderQueue(const Rc<core::Queue> &,
 			Function<void(bool)> && = nullptr) override;
@@ -78,9 +85,13 @@ public:
 
 	uint64_t getServerId() const { return _id; }
 
+	SpanView<RemoteQueueInfo> getQueues() const { return _queues; }
+
 protected:
 	uint64_t _id = 0;
 	Rc<sprt::window::WindowInfo> _info;
+	Vector<RemoteQueueInfo> _queues;
+	Rc<ClientAppThread> _thread; // creates cyclic reference until windows is closed/detached
 };
 
 } // namespace stappler::xenolith

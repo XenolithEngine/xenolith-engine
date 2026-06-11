@@ -134,8 +134,10 @@ void ExampleScene::handlePresented(Director *dir) {
 				// client's suggested dictionary will be used.
 				dir->setBearerKey(remote::getDevBearerKey());
 				dir->setListenAddress("127.0.0.1:4480");
-				dir->shareWindow();
-				dir->shareQueue(guard->_remoteQueue);
+
+				Vector<core::Queue *> queues{guard->_remoteQueue.get()};
+
+				dir->shareWindow(queues);
 			}
 		});
 	}

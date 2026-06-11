@@ -165,8 +165,7 @@ public:
 	virtual bool isListening() const;
 	virtual bool setListenAddress(StringView);
 
-	virtual bool shareWindow(AppWindow *);
-	virtual bool shareQueue(core::Queue *);
+	virtual bool shareWindow(AppWindow *, SpanView<core::Queue *>);
 
 	// Remote auth/compression config (server-side; set by the local-only Director API). The bearer
 	// key a connecting client must present (empty ⇒ reject all) and the server's LZ4 dictionary
