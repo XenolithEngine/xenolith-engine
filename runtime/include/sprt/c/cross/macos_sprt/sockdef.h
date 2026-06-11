@@ -126,4 +126,11 @@
 #define SHUT_RD         0               /* shut down the reading side */
 #define SHUT_WR         1               /* shut down the writing side */
 #define SHUT_RDWR       2               /* shut down both sides */
+
+#define SOCK_STREAM     1               /* stream socket */
+#define SOCK_DGRAM      2               /* datagram socket */
+#define SOCK_RAW        3               /* raw-protocol interface */
+#define SOCK_RDM        4               /* reliably-delivered message */
+#define SOCK_SEQPACKET  5               /* sequenced packet stream */
+
 // clang-format on

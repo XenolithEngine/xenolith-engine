@@ -7,4 +7,6 @@ struct __SPRT_SOCKADDR_NAME {
 	char sa_data[14]; /* [XSI] addr value */
 };
 
+typedef __SPRT_ID(uint32_t) __SPRT_ID(in_addr_t);
+
 typedef int SOCKET;
