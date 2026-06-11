@@ -64,7 +64,7 @@ ifndef SP_ARCH
 
 ARCHS := x86_64
 
-LIB_SRC_DIR := $(realpath $(MAKE_ROOT)../src)
+LIB_SRC_DIR := $(abspath $(MAKE_ROOT)../src)
 
 SP_ARCH_COMMON := \
 	LIB_SRC_DIR=$(LIB_SRC_DIR) \
@@ -95,12 +95,12 @@ SP_ARCH_aarch64_INFO_BASE := \
 	SP_ARCH_TARGET_CLANG=aarch64-pc-windows-msvc
 
 SP_ARCH_aarch64_INFO := \
-	$(SP_ARCH_arm64_INFO_BASE) \
+	$(SP_ARCH_aarch64_INFO_BASE) \
 	SP_TARGET=aarch64-pc-windows-msvc \
 	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-pc-windows-msvc
 
 SP_ARCH_aarch64_INSTALL := \
-	$(SP_ARCH_arm64_INFO_BASE) \
+	$(SP_ARCH_aarch64_INFO_BASE) \
 	T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-pc-windows-msvc \
 	T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-pc-windows-msvc
 
@@ -133,7 +133,7 @@ SP_CXX := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/c++)
 SP_AR := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/ar)
 SP_RC := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/llvm-rc)
 
-LIB_SRC_DIR := $(realpath $(MAKE_ROOT)../src)
+LIB_SRC_DIR := $(abspath $(MAKE_ROOT)../src)
 
 FORWARD_VARS := \
 	WINDOWS=1 \
