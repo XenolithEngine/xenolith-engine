@@ -27,10 +27,22 @@ LOCAL_ROOT := $(dir $(THIS_FILE))
 
 include $(LOCAL_ROOT)../../common/utils/detect-platform.mk
 
-SP_NJOBS := -j16
+
+ifdef SP_X86_64
+
+SP_ARCH := x86_64
+SP_ARCH_LD := x86_64
+SP_ARCH_APPLE := x86_64
+
+else
+
 SP_ARCH := aarch64
 SP_ARCH_LD := aarch64
 SP_ARCH_APPLE := arm64
+
+endif
+
+SP_NJOBS := -j16
 SP_ARCH_CLANG ?= $(SP_ARCH)-apple-macosx
 
 SP_LLVM_VER := 21
@@ -78,11 +90,17 @@ CODESIGN ?= $(realpath ~/.cargo/bin/rcodesign)
 export LIBTOOL=$(abspath $(HOST_LLVM_LIBTOOL))
 export LIPO=$(abspath $(HOST_LLVM_LIPO))
 
-TARGET_SYSROOT := sysroot-target
-TARGET_TOOLCHAIN_FILE := sysroot-target/toolchain.cmake
+TARGET_SYSROOT := sysroot-target/$(SP_ARCH)
+TARGET_TOOLCHAIN_FILE := sysroot-target/$(SP_ARCH)/toolchain.cmake
 
 TARGET_CLANG_CC := $(TARGET_SYSROOT)/bin/clang
 TARGET_CLANG_CXX := $(TARGET_SYSROOT)/bin/clang++
+
+ifdef SP_X86_64
+TARGET_CLANG_CFLAGS := -mavx512f -mavx512vl
+else
+TARGET_CLANG_CFLAGS :=
+endif
 
 $(TARGET_SYSROOT)/sysroot:
 	mkdir -p $(dir $@)
@@ -97,11 +115,14 @@ $(TARGET_TOOLCHAIN_FILE): $(TARGET_SYSROOT)/sysroot # $(LOCAL_MAKEFILE)
 	@echo "set(CMAKE_SYSROOT \"$(abspath $(TARGET_SYSROOT))\")" >> $@
 	@echo "set(CMAKE_C_COMPILER_TARGET \"$(SP_ARCH_CLANG)\")" >> $@
 	@echo "set(CMAKE_CXX_COMPILER_TARGET \"$(SP_ARCH_CLANG)\")" >> $@
-	@echo "set(CMAKE_C_FLAGS_INIT \"\")" >> $@
-	@echo "set(CMAKE_CXX_FLAGS_INIT \"\")" >> $@
+	@echo "set(CMAKE_ASM_COMPILER_TARGET \"$(SP_ARCH_CLANG)\")" >> $@
+	@echo "set(CMAKE_C_FLAGS_INIT \"$(TARGET_CLANG_CFLAGS)\")" >> $@
+	@echo "set(CMAKE_CXX_FLAGS_INIT \"$(TARGET_CLANG_CFLAGS)\")" >> $@
+	@echo "set(CMAKE_ASM_FLAGS_INIT \"$(TARGET_CLANG_CFLAGS)\")" >> $@
 	@echo "set(CMAKE_LINKER_TYPE LLD)" >> $@
 	@echo "set(CMAKE_C_COMPILER \"$(abspath $(HOST_CC))\")" >> $@
 	@echo "set(CMAKE_CXX_COMPILER \"$(abspath $(HOST_CXX))\")" >> $@
+	@echo "set(CMAKE_ASM_COMPILER \"$(abspath $(HOST_CXX))\")" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)" >> $@
 	@echo "set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)" >> $@

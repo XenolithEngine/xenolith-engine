@@ -35,6 +35,7 @@ endif
 
 define BUILD_SHADERS_compile_single_rule
 $(2) : $(1) $$(LOCAL_MAKEFILE)
+	@$$(call rule_mkdir,$$(dir $$@))
 	$$(call sp_compile_glsl_header,$(2),$(1),$(LOCAL_SHADERS_RULES))
 endef
 
