@@ -54,7 +54,7 @@
 	CGPoint _currentPointerLocation;
 	NSSPWIN::InputModifier _currentModifiers;
 	NSSPWIN::InputKeyCode _keycodes[256];
-	uint16_t _scancodes[128];
+	uint16_t _scancodes[NSSP::toInt(NSSPWIN::InputKeyCode::Max)];
 	NSSPWIN::MacosWindow *_engineWindow;
 	NSSPWIN::WindowLayerFlags _buttonGripFlags;
 	sprt::bitset<64> _buttons;

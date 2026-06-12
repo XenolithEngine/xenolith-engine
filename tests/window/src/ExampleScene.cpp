@@ -122,6 +122,8 @@ void ExampleScene::handlePresented(Director *dir) {
 	basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
 #endif
 
+// Window sharing is Linux-only for now
+#if SPRT_LINUX
 	_remoteQueue = Rc<core::Queue>::create(sp::move(builder));
 	if (_remoteQueue) {
 		dir->getRenderServer()->compileRenderQueue(_remoteQueue,
@@ -141,6 +143,7 @@ void ExampleScene::handlePresented(Director *dir) {
 			}
 		});
 	}
+#endif
 
 	// Безголовый сценарий снятия скриншота, управляемый переменными окружения,
 	// чтобы графический вывод можно было проверить из скрипта (сборка -> запуск
