@@ -45,7 +45,8 @@ all: android-export $(BUILD_COMPILATION_DATABASE) $(BUILD_SHADERS_EMBEDDED) $(TO
 	$(NDK)/ndk-build $(BUILD_ANDROID_ARGS) $(LOCAL_ANDROID_TARGET) --no-print-directory
 
 clean_local:
-	$(GLOBAL_RM) -r $(BUILD_С_OUTDIR) $(BUILD_SHADERS_OUTDIR)
+	$(call rule_rm,$(BUILD_С_OUTDIR))
+	$(call rule_rm,$(BUILD_SHADERS_OUTDIR))
 
 clean: clean_local
 .PHONY: clean_local clean .prebuild_local all static

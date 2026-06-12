@@ -186,7 +186,7 @@ define make_rule_include =
 BUILD_INCLUDE_FILES += $(2)
 $(2): $(1)
 	@$(GLOBAL_MKDIR) $(dir $(2))
-	$(GLOBAL_CP) $(1) $(2)
+	$(call rule_cp,$(1),$(2))
 endef # make_rule_include
 
 
@@ -242,7 +242,7 @@ define make_rule_makefile =
 BUILD_TARGET_MAKEFILES += $(BUILD_С_OUTDIR)/share/$(LOCAL_VERSIONIZED_LIBRARY)/$(1)
 $(BUILD_С_OUTDIR)/share/$(LOCAL_VERSIONIZED_LIBRARY)/$(1): $(BUILD_ROOT)/$(1)
 	@$(GLOBAL_MKDIR) $(dir $(BUILD_С_OUTDIR)/share/$(LOCAL_VERSIONIZED_LIBRARY)/$(1))
-	$(GLOBAL_CP) $(BUILD_ROOT)/$(1) $(BUILD_С_OUTDIR)/share/$(LOCAL_VERSIONIZED_LIBRARY)/$(1)
+	$(call rule_cp,$(BUILD_ROOT)/$(1) $(BUILD_С_OUTDIR)/share/$(LOCAL_VERSIONIZED_LIBRARY)/$(1))
 endef # make_rule_makefile
 
 
@@ -456,6 +456,9 @@ uninstall:
 	rm -rf $(BUILD_INSTALL_SHARED_DIRS) $(INSTALL_SHAREDIR)/libstappler
 
 clean:
-	$(GLOBAL_RM) -r $(BUILD_С_OUTDIR) $(BUILD_SHADERS_OUTDIR) $(BUILD_WIT_OUTDIR) $(BUILD_WASM_OUTDIR)
+	$(call rule_rm,$(BUILD_С_OUTDIR))
+	$(call rule_rm,$(BUILD_SHADERS_OUTDIR))
+	$(call rule_rm,$(BUILD_WIT_OUTDIR))
+	$(call rule_rm,$(BUILD_WASM_OUTDIR))
 
 .PHONY: info all clean install uninstall

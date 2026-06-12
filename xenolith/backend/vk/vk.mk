@@ -52,7 +52,7 @@ $(BUILD_MOLTENVK_ICD_PATH): $(BUILD_VULKAN_MOLTENVK_PATH)
 
 $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Frameworks/%.dylib: $(TARGET_LIB_DIR)/%.dylib
 	@$(call rule_mkdir,$(dir $@))
-	$(GLOBAL_CP) $< $@
+	$(call rule_cp,$<,$@)
 
 $(BUILD_EXECUTABLE): \
 	$(BUILD_VULKAN_LOADER_PATH) \

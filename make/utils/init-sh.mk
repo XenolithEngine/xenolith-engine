@@ -29,8 +29,6 @@ SH := 1
 
 GLOBAL_SHELL := sh
 
-GLOBAL_RM ?= rm -f
-GLOBAL_CP ?= cp -f
 GLOBAL_MAKE ?= $(MAKE)
 GLOBAL_MKDIR ?= mkdir -p
 GLOBAL_AR ?= ar rcs
@@ -38,6 +36,8 @@ GLOBAL_ECHO ?= echo
 
 shell_mkdir = $(shell $(GLOBAL_MKDIR) $(1))
 
+rule_rm = rm -rf $(1)
+rule_cp = cp -f $(1) $(2)
 rule_mkdir = $(GLOBAL_MKDIR) $(1)
 
 shell_override_file = \
