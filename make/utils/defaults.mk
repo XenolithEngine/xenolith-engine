@@ -237,7 +237,7 @@ else
 $(call print_verbose,(defaults.mk) Try to find target file in GLOBAL_ROOT: $(GLOBAL_ROOT)/toolchains/targets/$(STAPPLER_TARGET)/target.mk)
 
 -include $(GLOBAL_ROOT)/toolchains/targets/$(STAPPLER_TARGET)/target.mk
-STAPPLER_TARGET_DIR := $(GLOBAL_ROOT)/toolchains/targets/$(STAPPLER_TARGET)/target.mk
+STAPPLER_TARGET_DIR := $(GLOBAL_ROOT)/toolchains/targets/$(STAPPLER_TARGET)
 
 ifndef TARGET_SYSROOT
 $(call print_verbose,(defaults.mk) Failed! Try runtime root: $(GLOBAL_ROOT)/runtime/toolchains/targets/$(STAPPLER_TARGET)/target.mk)
