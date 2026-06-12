@@ -67,4 +67,4 @@ sp_wasm_include_list = $(call sp_make_general_include_list,$(1),$(2),$(3))
 sp_wasm_object_list = \
 	$(addprefix $(1),$(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(realpath $(2)))))
 
-sp_copy_wit = $(GLOBAL_QUIET_WIT) $(call rule_mkdir,$(BUILD_WIT_OUTDIR)/wit); $(GLOBAL_CP) $(1) $(BUILD_WIT_OUTDIR)/wit/$(notdir $(1))
+sp_copy_wit = $(GLOBAL_QUIET_WIT) $(call rule_mkdir,$(BUILD_WIT_OUTDIR)/wit); $(call rule_cp,$(1),$(BUILD_WIT_OUTDIR)/wit/$(notdir $(1)))

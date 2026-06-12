@@ -57,7 +57,7 @@ sp_compile_cpp = $(GLOBAL_QUIET_CPP) \
 sp_compile_mm = $(GLOBAL_QUIET_CPP) \
 	$(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_MM_FILE),$(1) -fobjc-arc,$<,$@)
 
-sp_copy_header = $(GLOBAL_CP) $< $@
+sp_copy_header = $(call rule_cp,$<,$@)
 
 sp_toolkit_source_list_c = $(call sp_make_general_source_list,$(1),$(2),$(GLOBAL_ROOT),\
 	$(SP_SOURCE_FILES_PATTERN) $(if $(BUILD_OBJC),*.mm),\
