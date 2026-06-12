@@ -190,7 +190,9 @@ Rc<Director> ServerAppThread::handleAppWindowCreated(NotNull<AppWindow> w,
 void ServerAppThread::handleAppWindowDestroyed(NotNull<AppWindow> w, Rc<Director> &&d) {
 	log::source().info("AppThread", "handleAppWindowDestroyed");
 
-	_sharedObjects->drop(w);
+	if (_sharedObjects) {
+		_sharedObjects->drop(w);
+	}
 
 	if (d) {
 		if (shouldPreserveDirector(w, d)) {
