@@ -149,7 +149,7 @@ public:
 	explicit Vec2(const Size2 &);
 	explicit Vec2(const Extent2 &);
 
-	constexpr bool isValid() const { return !sprt::isnan(x) && !sprt::isnan(y); }
+	constexpr bool isValid() const { return !__builtin_isnan(x) && !__builtin_isnan(y); }
 
 	constexpr void add(const float &v) {
 		x += v;
