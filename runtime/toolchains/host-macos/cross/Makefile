@@ -97,7 +97,7 @@ TARGET_CLANG_CC := $(TARGET_SYSROOT)/bin/clang
 TARGET_CLANG_CXX := $(TARGET_SYSROOT)/bin/clang++
 
 ifdef SP_X86_64
-TARGET_CLANG_CFLAGS := -mavx512f -mavx512vl
+TARGET_CLANG_CFLAGS := -march=x86-64
 else
 TARGET_CLANG_CFLAGS :=
 endif
