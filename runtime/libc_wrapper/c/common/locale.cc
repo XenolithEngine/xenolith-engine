@@ -27,6 +27,10 @@ THE SOFTWARE.
 
 #include <locale.h>
 
+#if SPRT_MACOS
+#include <xlocale.h>
+#endif
+
 namespace sprt {
 
 __SPRT_C_FUNC char *__SPRT_ID(setlocale)(int cat, const char *locale) {

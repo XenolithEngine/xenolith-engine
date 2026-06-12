@@ -499,6 +499,7 @@ constexpr SPRT_FORCEINLINE sprt::detail::promote_t<_A1, _A2, _A3> lerp(_A1 __a, 
 	return sprt::_cmath::__lerp((__result_type)__a, (__result_type)__b, (__result_type)__t);
 }
 
+#ifndef fpclassify
 SPRT_FORCEINLINE auto fpclassify(float x) {
 	return __builtin_fpclassify(_FP_NAN, _FP_INFINITE, _FP_NORMAL, _FP_SUBNORMAL, _FP_ZERO, x);
 }
@@ -510,58 +511,81 @@ SPRT_FORCEINLINE auto fpclassify(double x) {
 SPRT_FORCEINLINE auto fpclassify(long double x) {
 	return __builtin_fpclassify(_FP_NAN, _FP_INFINITE, _FP_NORMAL, _FP_SUBNORMAL, _FP_ZERO, x);
 }
+#endif
 
+#ifndef isfinite
 SPRT_FORCEINLINE bool isfinite(float x) { return __builtin_isfinite(x); }
 SPRT_FORCEINLINE bool isfinite(double x) { return __builtin_isfinite(x); }
 SPRT_FORCEINLINE bool isfinite(long double x) { return __builtin_isfinite(x); }
+#endif
 
+#ifndef isinf
 SPRT_FORCEINLINE bool isinf(float x) { return __builtin_isinf(x); }
 SPRT_FORCEINLINE bool isinf(double x) { return __builtin_isinf(x); }
 SPRT_FORCEINLINE bool isinf(long double x) { return __builtin_isinf(x); }
+#endif
 
+#ifndef isnan
 SPRT_FORCEINLINE bool isnan(float x) { return __builtin_isnan(x); }
 SPRT_FORCEINLINE bool isnan(double x) { return __builtin_isnan(x); }
 SPRT_FORCEINLINE bool isnan(long double x) { return __builtin_isnan(x); }
+#endif
 
+#ifndef isnormal
 SPRT_FORCEINLINE bool isnormal(float x) { return __builtin_isnormal(x); }
 SPRT_FORCEINLINE bool isnormal(double x) { return __builtin_isnormal(x); }
 SPRT_FORCEINLINE bool isnormal(long double x) { return __builtin_isnormal(x); }
+#endif
 
+#ifndef signbit
 SPRT_FORCEINLINE bool signbit(float x) { return __builtin_signbit(x); }
 SPRT_FORCEINLINE bool signbit(double x) { return __builtin_signbit(x); }
 SPRT_FORCEINLINE bool signbit(long double x) { return __builtin_signbit(x); }
+#endif
 
+#ifndef isgreater
 SPRT_FORCEINLINE bool isgreater(float x, float y) { return __builtin_isgreater(x, y); }
 SPRT_FORCEINLINE bool isgreater(double x, double y) { return __builtin_isgreater(x, y); }
 SPRT_FORCEINLINE bool isgreater(long double x, long double y) { return __builtin_isgreater(x, y); }
+#endif
 
+#ifndef isgreaterequal
 SPRT_FORCEINLINE bool isgreaterequal(float x, float y) { return __builtin_isgreaterequal(x, y); }
 SPRT_FORCEINLINE bool isgreaterequal(double x, double y) { return __builtin_isgreaterequal(x, y); }
 SPRT_FORCEINLINE bool isgreaterequal(long double x, long double y) {
 	return __builtin_isgreaterequal(x, y);
 }
+#endif
 
+#ifndef isless
 SPRT_FORCEINLINE bool isless(float x, float y) { return __builtin_isless(x, y); }
 SPRT_FORCEINLINE bool isless(double x, double y) { return __builtin_isless(x, y); }
 SPRT_FORCEINLINE bool isless(long double x, long double y) { return __builtin_isless(x, y); }
+#endif
 
+#ifndef islessequal
 SPRT_FORCEINLINE bool islessequal(float x, float y) { return __builtin_islessequal(x, y); }
 SPRT_FORCEINLINE bool islessequal(double x, double y) { return __builtin_islessequal(x, y); }
 SPRT_FORCEINLINE bool islessequal(long double x, long double y) {
 	return __builtin_islessequal(x, y);
 }
+#endif
 
+#ifndef islessgreater
 SPRT_FORCEINLINE bool islessgreater(float x, float y) { return __builtin_islessgreater(x, y); }
 SPRT_FORCEINLINE bool islessgreater(double x, double y) { return __builtin_islessgreater(x, y); }
 SPRT_FORCEINLINE bool islessgreater(long double x, long double y) {
 	return __builtin_islessgreater(x, y);
 }
+#endif
 
+#ifndef isunordered
 SPRT_FORCEINLINE bool isunordered(float x, float y) { return __builtin_isunordered(x, y); }
 SPRT_FORCEINLINE bool isunordered(double x, double y) { return __builtin_isunordered(x, y); }
 SPRT_FORCEINLINE bool isunordered(long double x, long double y) {
 	return __builtin_isunordered(x, y);
 }
+#endif
 
 // From libc++, comments preserved
 //

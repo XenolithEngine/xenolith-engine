@@ -238,12 +238,12 @@ inline constexpr auto _notEqual(const T &l, const T &r) {
 
 template <typename T>
 inline constexpr auto _isinf(const T &t) {
-	return bitop(t, [](float v) { return sprt::isinf(v); });
+	return bitop(t, [](float v) { return __builtin_isinf(v); });
 }
 
 template <typename T>
 inline constexpr auto _isnan(const T &t) {
-	return bitop(t, [](float v) { return sprt::isnan(v); });
+	return bitop(t, [](float v) { return __builtin_isnan(v); });
 }
 
 } // namespace sprt::geom

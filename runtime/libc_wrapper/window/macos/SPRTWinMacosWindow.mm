@@ -43,6 +43,20 @@
 #include "XLVkSwapchain.h"
 #endif
 
+// `zoomInCursor` / `zoomOutCursor` were introduced in the macOS 15.0 SDK. When
+// building against an older SDK they are undeclared, so forward-declare them to
+// keep the call sites typed; availability is still verified at runtime through
+// `-[NSObject respondsToSelector:]` before the methods are invoked. On the 15.0+
+// SDK the real declarations are used and this category is skipped.
+#if __MAC_OS_X_VERSION_MAX_ALLOWED < 150'000
+@interface NSCursor (SPRTLegacyCursors)
++ (NSCursor *)zoomInCursor;
++ (NSCursor *)zoomOutCursor;
++ (NSCursor *)columnResizeCursor;
++ (NSCursor *)rowResizeCursor;
+@end
+#endif
+
 #if XL_MACOS_DEBUG
 #define XL_MACOS_LOG(...) NSSP::log::source().debug(__VA_ARGS__)
 #else
@@ -419,14 +433,16 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 
 		case NSSPWIN::WindowCursor::AllScroll: break;
 		case NSSPWIN::WindowCursor::ZoomIn:
-			//if (@available(macos 15.0, *)) {
-			targetCursor = [NSCursor zoomInCursor];
-			//}
+			// +[NSCursor zoomInCursor] is only available on macOS 15.0+; probe
+			// for it at runtime so older systems fall back to the default cursor.
+			if ([NSCursor respondsToSelector:@selector(zoomInCursor)]) {
+				targetCursor = [NSCursor zoomInCursor];
+			}
 			break;
 		case NSSPWIN::WindowCursor::ZoomOut:
-			//if (@available(macos 15.0, *)) {
-			targetCursor = [NSCursor zoomOutCursor];
-			//}
+			if ([NSCursor respondsToSelector:@selector(zoomOutCursor)]) {
+				targetCursor = [NSCursor zoomOutCursor];
+			}
 			break;
 		case NSSPWIN::WindowCursor::DndAsk: break;
 
@@ -451,14 +467,14 @@ void MacosWindow::setCursor(WindowCursor cursor) {
 		case NSSPWIN::WindowCursor::ResizeTopRightBottomLeft: break;
 		case NSSPWIN::WindowCursor::ResizeTopLeftBottomRight: break;
 		case NSSPWIN::WindowCursor::ResizeCol:
-			//if (@available(macos 15.0, *)) {
-			targetCursor = [NSCursor columnResizeCursor];
-			//}
+			if ([NSCursor respondsToSelector:@selector(columnResizeCursor)]) {
+				targetCursor = [NSCursor columnResizeCursor];
+			}
 			break;
 		case NSSPWIN::WindowCursor::ResizeRow:
-			//if (@available(macos 15.0, *)) {
-			targetCursor = [NSCursor rowResizeCursor];
-			//}
+			if ([NSCursor respondsToSelector:@selector(rowResizeCursor)]) {
+				targetCursor = [NSCursor rowResizeCursor];
+			}
 			break;
 		case NSSPWIN::WindowCursor::ResizeAll: break;
 		default: break;
