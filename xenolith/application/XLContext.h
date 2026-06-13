@@ -42,7 +42,7 @@ class NativeWindow;
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class Context;
-class AppThread;
+class ServerAppThread;
 class AppWindow;
 class Director;
 class Scene;
@@ -243,7 +243,7 @@ protected:
 	virtual Rc<sprt::window::gapi::Loop> makeLoop(NotNull<sprt::window::gapi::Instance>,
 			NotNull<sprt::window::gapi::LoopInfo>) override;
 
-	virtual Rc<AppThread> makeAppThread();
+	virtual Rc<ServerAppThread> makeAppThread();
 	virtual Rc<AppWindow> makeAppWindow(NotNull<NativeWindow>);
 
 	virtual void initializeComponent(NotNull<ContextComponent>);
@@ -258,7 +258,7 @@ protected:
 
 	Rc<core::Loop> _loop;
 
-	Rc<AppThread> _application;
+	Rc<ServerAppThread> _application;
 
 	HashMap<sprt::type_index, Rc<ContextComponent>> _components;
 };

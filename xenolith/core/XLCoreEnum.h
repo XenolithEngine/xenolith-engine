@@ -58,6 +58,7 @@ enum class FrameAttachmentState {
 enum class AttachmentType {
 	Image,
 	Buffer,
+	Material, // Special type for attachments with material list
 	Generic
 };
 

@@ -23,6 +23,7 @@
 #include "XLRemoteWindow.h"
 #include "XLRemoteSerialize.h"
 #include "XLClientAppThread.h"
+#include "XLCoreFrameRequestProxy.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -101,6 +102,63 @@ void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &q, Function<void(bo
 	})) {
 		cb(false);
 	}
+}
+
+void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &c,
+		Function<void(uint64_t queueId)> &&reply) {
+	// `_client` is this window's local Director (set via RenderServerChannel::setRenderClient).
+	if (!_client) {
+		reply(0);
+		return;
+	}
+
+	// Stream each per-attachment input the moment the scene submits it, then a commit. These run on
+	// the client app thread (Director::performOnRenderThread resolves there), so the connection is
+	// touched on its owning thread.
+	auto thread = _thread;
+	auto proxy = Rc<core::RemoteFrameRequestProxy>::create(c, frameId,
+			[thread, frameId](SpanView<const core::AttachmentData *> atts, BytesView bytes) {
+		if (auto conn = thread->getConnection()) {
+			// [frameId, keys[], bytes] -- one serialized input addressed to multiple attachments.
+			Value msg;
+			msg.addInteger(int64_t(frameId));
+			auto &keys = msg.emplace();
+			for (auto a : atts) { keys.addString(a->key); }
+			msg.addBytes(bytes);
+			conn->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::FrameInput), msg);
+		}
+	},
+			[thread, frameId]() {
+		if (auto conn = thread->getConnection()) {
+			Value msg;
+			msg.addInteger(int64_t(frameId));
+			conn->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::FrameCommit), msg);
+		}
+	});
+	if (!proxy) {
+		reply(0);
+		return;
+	}
+
+	// Director::acquireFrame sets selectQueue() synchronously and fires this callback before its async
+	// render/commit, so the selected queue is already populated here. Per-frame input is deferred.
+	_client->acquireFrame(0, proxy, [this, proxy, reply = sp::move(reply)](bool ok) mutable {
+		if (!ok) {
+			reply(0);
+			return;
+		}
+
+		// Map the selected queue name back to the server's shared queue id.
+		auto name = proxy->getSelectedQueue();
+		uint64_t id = 0;
+		for (auto &q : _queues) {
+			if (q.name == name) {
+				id = q.id;
+				break;
+			}
+		}
+		reply(id);
+	});
 }
 
 void RemoteWindow::compileResource(Rc<core::Resource> &&, Function<void(bool)> &&, bool preload) { }

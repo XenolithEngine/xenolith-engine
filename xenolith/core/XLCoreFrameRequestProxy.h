@@ -48,6 +48,12 @@ public:
 
 	// Per-frame input the client owns (the command batch is the primary payload).
 	virtual bool addInput(const AttachmentData *, Rc<AttachmentInputData> &&) = 0;
+
+	// Submit one shared input to several attachments at once (dedup): local mode forwards the same
+	// object to each; remote mode serializes it once and ships a single multi-key message. All listed
+	// attachments must accept the same input type.
+	virtual bool addInput(SpanView<const AttachmentData *>, Rc<AttachmentInputData> &&) = 0;
+
 	virtual void addSignalDependency(Rc<DependencyEvent> &&) = 0;
 	virtual void addSignalDependencies(Vector<Rc<DependencyEvent>> &&) = 0;
 	virtual void addImageSpecialization(const ImageAttachment *, ImageInfoData &&) = 0;
@@ -70,6 +76,7 @@ public:
 
 	virtual void selectQueue(NotNull<core::Queue>) override;
 	virtual bool addInput(const AttachmentData *, Rc<AttachmentInputData> &&) override;
+	virtual bool addInput(SpanView<const AttachmentData *>, Rc<AttachmentInputData> &&) override;
 	virtual void addSignalDependency(Rc<DependencyEvent> &&) override;
 	virtual void addSignalDependencies(Vector<Rc<DependencyEvent>> &&) override;
 	virtual void addImageSpecialization(const ImageAttachment *, ImageInfoData &&) override;
@@ -91,16 +98,25 @@ class SP_PUBLIC RemoteFrameRequestProxy final : public FrameRequestProxy {
 public:
 	virtual ~RemoteFrameRequestProxy();
 
-	// Remote receives the frame constraints from the server's per-frame announcement.
-	bool init(const FrameConstraints &);
+	// Remote receives the frame constraints + the server-assigned frame id, plus transport hooks the
+	// app layer injects (the proxy stays transport-agnostic): `sendInput` ships one already-serialized
+	// per-attachment input immediately; `sendCommit` signals all inputs for this frame were sent.
+	bool init(const FrameConstraints &, uint64_t frameId,
+			Function<void(SpanView<const AttachmentData *>, BytesView)> &&sendInput,
+			Function<void()> &&sendCommit);
 
 	virtual void selectQueue(NotNull<core::Queue>) override;
 	virtual bool addInput(const AttachmentData *, Rc<AttachmentInputData> &&) override;
+	virtual bool addInput(SpanView<const AttachmentData *>, Rc<AttachmentInputData> &&) override;
 	virtual void addSignalDependency(Rc<DependencyEvent> &&) override;
 	virtual void addSignalDependencies(Vector<Rc<DependencyEvent>> &&) override;
 	virtual void addImageSpecialization(const ImageAttachment *, ImageInfoData &&) override;
 	virtual const FrameConstraints &getFrameConstraints() const override;
 	virtual void commit() override;
+
+	// The render-queue name the client selected for this frame (empty until selectQueue()). The
+	// transport maps it back to the server's queue id.
+	StringView getSelectedQueue() const { return _selectedQueue; }
 
 protected:
 	FrameConstraints _constraints;
@@ -108,10 +124,12 @@ protected:
 	// The selected render-queue name (resolved against the server registry on the far side).
 	String _selectedQueue;
 
-	// Accumulated batch that would be serialized. NOTE: attachments are kept by pointer here only
-	// as a placeholder; the real wire format must key them by a stable id/name, since pointers do
-	// not survive a process boundary.
-	Vector<Pair<const AttachmentData *, Rc<AttachmentInputData>>> _inputs;
+	uint64_t _frameId = 0;
+	Function<void(SpanView<const AttachmentData *>, BytesView)> _sendInput;
+	Function<void()> _sendCommit;
+
+	// Frame-level signal dependencies are accumulated but not yet shipped (cross-process dependency
+	// wait/signal coordination is a later stage).
 	Vector<Rc<DependencyEvent>> _signalDependencies;
 };
 

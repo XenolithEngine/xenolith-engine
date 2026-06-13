@@ -124,25 +124,7 @@ void ExampleScene::handlePresented(Director *dir) {
 
 // Window sharing is Linux-only for now
 #if SPRT_LINUX
-	_remoteQueue = Rc<core::Queue>::create(sp::move(builder));
-	if (_remoteQueue) {
-		dir->getRenderServer()->compileRenderQueue(_remoteQueue,
-				[guard = Rc<ExampleScene>(this)](bool success) {
-			if (success && guard->isRunning()) {
-				auto dir = guard->getDirector();
-				// Dev/demo: launch the remote render-session listener on a fixed address and allow this
-				// window to be taken over by a connecting client (X11-style split, transport bring-up).
-				// The bearer key a client must present is the shared dev key; no server dictionary is set, so a
-				// client's suggested dictionary will be used.
-				dir->setBearerKey(remote::getDevBearerKey());
-				dir->setListenAddress("127.0.0.1:4480");
-
-				Vector<core::Queue *> queues{guard->_remoteQueue.get()};
-
-				dir->shareWindow(queues);
-			}
-		});
-	}
+	dir->shareQueue(sp::move(builder), "127.0.0.1:4480", remote::getDevBearerKey());
 #endif
 
 	// Безголовый сценарий снятия скриншота, управляемый переменными окружения,

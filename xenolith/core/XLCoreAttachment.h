@@ -36,7 +36,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 Поставщик DependencyEvent создаёт или изменяет данные на стороне GPU, а
 потребитель ожидает готовности этих данных.
 
-Поставщик создаёт DependencyEvent для совего набора очередей рендеринга
+Поставщик создаёт DependencyEvent для своего набора очередей рендеринга
 и отправляет его с помощью FrameRequest::addSignalDependency при запуске 
 работы. Также, можно связывать событие с обновлением материала, меша или
 динамического изображения.
@@ -55,6 +55,10 @@ public:
 	using QueueSet = mem_std::Set<Rc<Queue>>;
 
 	static uint32_t GetNextId();
+
+	// Set the high-bit mask added to every subsequently-generated id (0 = server/local, 0x80000000 =
+	// remote client). Call once at app init before any DependencyEvent is created.
+	static void SetIdGenerationMask(uint32_t mask);
 
 	virtual ~DependencyEvent();
 
@@ -122,6 +126,11 @@ public:
 	void acquireInput(FrameQueue &, AttachmentHandle &, Function<void(bool)> &&);
 
 	bool validateInput(const AttachmentInputData *) const;
+
+	// Mint an empty input-data object of the concrete type this attachment consumes, so a remote
+	// server can deserialize a wire blob into it (see AttachmentInputData::deserialize). Default null:
+	// only input attachments that participate in the remote render session override this.
+	virtual Rc<AttachmentInputData> makeInputData() const { return nullptr; }
 
 	virtual bool isCompatible(const ImageInfo &) const { return false; }
 

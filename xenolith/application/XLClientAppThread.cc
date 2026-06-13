@@ -28,8 +28,13 @@
 #include "XLContext.h"
 #include "SPSharedModule.h"
 #include "XLDirector.h"
+#include "XLCoreAttachment.h" // core::DependencyEvent id mask
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
+
+// Top bit of the DependencyEvent id space reserved for the remote client so its ids never collide
+// with server/local-minted ones (which use the low half).
+static constexpr uint32_t kClientDependencyEventMask = 0x80000000u;
 
 // Keepalive: disconnect if the server has not pinged us within this window (it pings ~1/s).
 static constexpr uint64_t kKeepalivePingTimeoutUs = 5'000'000; // 5s
@@ -42,7 +47,8 @@ __SPRT_POP_ALLOW_CXXABI_ALLOC
 
 bool ClientAppThread::init(NotNull<ClientContext> ctx) {
 	_clientContext = ctx;
-	_requests.reserve(16);
+	// This process is the remote client: mint DependencyEvent ids in the high half of the id space.
+	core::DependencyEvent::SetIdGenerationMask(kClientDependencyEventMask);
 	return true;
 }
 
@@ -110,7 +116,7 @@ bool ClientAppThread::sendMessageWithReply(remote::Domain d, uint8_t message, co
 
 	uint32_t serial = 0;
 	if (_connection->sendCborMessage(d, message, val, &serial) == remote::GlobalError::Ok) {
-		_requests.emplace(serial, sp::move(cb));
+		waitForReply(serial, sp::move(cb));
 		return true;
 	}
 	return false;
@@ -209,13 +215,8 @@ void ClientAppThread::performAppUpdate(const UpdateTime &time, bool wakeup) {
 }
 
 bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView payload) {
-	if (remote::isReplyOrError(h)) {
-		auto reqIt = _requests.find(h.serial);
-		if (reqIt != _requests.end()) {
-			reqIt->second(h, payload);
-			_requests.erase(reqIt);
-			return true;
-		}
+	if (AppThread::dispatchMessage(h, payload)) {
+		return true;
 	}
 
 	if (remote::Domain(h.domain) == remote::Domain::Global) {
@@ -236,6 +237,48 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			return true;
 		default:
 			log::source().warn("ClientAppThread", "unhandled global message (code ",
+					uint32_t(h.code), ")");
+			return true; // consume unknown control messages (don't defer indefinitely)
+		}
+	} else if (remote::Domain(h.domain) == remote::Domain::Window) {
+		switch (remote::WindowCode(h.code)) {
+		case remote::WindowCode::UpdateMaterials:
+			// server -> client push: apply the new MaterialSet to the mirror queue named in the blob
+			if (!remote::QueueCodec::decodeMaterials(payload, *_sharedObjects)) {
+				log::source().warn("ClientAppThread", "failed to apply materials update");
+			}
+			return true;
+		case remote::WindowCode::AcquireFrame: {
+			// server -> client: drive the window's scene graph to select a render queue; reply with
+			// that queue's server id (per-frame attachment input is a later stage).
+			auto val = data::read<Interface>(payload);
+			auto frameId = uint64_t(val.getInteger(0));
+			auto windowId = uint64_t(val.getInteger(1));
+			auto constraints = remote::deserializeFrameConstraints(val.getValue(2));
+
+			auto sendReply = [this, serial = h.serial, frameId](uint64_t queueId) {
+				if (!_connection) {
+					return;
+				}
+				Value reply;
+				reply.addInteger(int64_t(frameId));
+				reply.addInteger(int64_t(queueId));
+				_connection->sendCborReply(serial, remote::Domain::Window,
+						toInt(remote::WindowCode::AcquireFrame), reply);
+			};
+
+			auto wIt = _windows.find(windowId);
+			if (wIt == _windows.end()) {
+				log::source().warn("ClientAppThread", "AcquireFrame for unknown window ", windowId);
+				sendReply(0);
+				return true;
+			}
+
+			wIt->second->acquireFrame(frameId, constraints, sp::move(sendReply));
+			return true;
+		}
+		default:
+			log::source().warn("ClientAppThread", "unhandled window message (code ",
 					uint32_t(h.code), ")");
 			return true; // consume unknown control messages (don't defer indefinitely)
 		}

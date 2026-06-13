@@ -76,7 +76,69 @@ ResourceCache *Director::getResourceCache() const {
 	return _application->getExtension<ResourceCache>();
 }
 
-bool Director::acquireFrame(NotNull<core::FrameRequestProxy> req) {
+Rc<core::Queue> Director::shareQueue(core::Queue::Builder &&builder, StringView addr, BytesView key,
+		BytesView dict) {
+	struct ShareInfo : public Ref {
+		String addr;
+		Bytes key;
+		Bytes dict;
+		Rc<Director> director;
+		Rc<AppThread> application;
+		Rc<AppWindow> window;
+		Rc<core::Queue> queue;
+		HashMap<const core::MaterialAttachment *, Rc<core::MaterialSet>> materials;
+	};
+
+	if (!_application || !_application->isServerThread()) {
+		return nullptr;
+	}
+
+	auto info = Rc<ShareInfo>::alloc();
+
+	info->addr = addr.str<Interface>();
+	info->key = key.bytes<Interface>();
+	info->dict = dict.bytes<Interface>();
+	info->director = this;
+	info->application = _application;
+
+	// We are on server, so, it's safe to cast _server to actual window
+	info->window = static_cast<AppWindow *>(info->director->getRenderServer());
+	info->queue = Rc<core::Queue>::create(sp::move(builder));
+
+	if (info->queue) {
+		_server->compileRenderQueue(info->queue, [info](bool success) {
+			// Note: we on main thread here
+
+			if (success) {
+				// build a list of initial materials
+				for (auto &it : info->queue->getAttachments()) {
+					if (it->type == core::AttachmentType::Material) {
+						auto mAttachemnt =
+								static_cast<core::MaterialAttachment *>(it->attachment.get());
+						info->materials.emplace(mAttachemnt, mAttachemnt->getMaterials());
+					}
+				}
+
+				info->application->performOnAppThread([info] {
+					// Dev/demo: launch the remote render-session listener on a fixed address and allow this
+					// window to be taken over by a connecting client (X11-style split, transport bring-up).
+					// The bearer key a client must present is the shared dev key; no server dictionary is set, so a
+					// client's suggested dictionary will be used.
+					Vector<core::Queue *> queues{info->queue.get()};
+
+					info->application->setBearerKey(info->key);
+					info->application->setListenAddress("127.0.0.1:4480");
+					info->application->shareWindow(info->window, queues, info->materials);
+				});
+			}
+		});
+	}
+
+	return info->queue;
+}
+
+void Director::acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> req,
+		Function<void(bool)> &&cb) {
 	if (_nextScene && !_scene) {
 		// Handle scene transition. The request carries no queue yet (the client selects it below),
 		// so the next scene can always be adopted here.
@@ -89,7 +151,7 @@ bool Director::acquireFrame(NotNull<core::FrameRequestProxy> req) {
 
 	if (!_scene) {
 		log::source().error("xenolith::Director", "No scene defined for a FrameRequest");
-		return false;
+		cb(false);
 	}
 
 	auto t = sp::platform::clock(ClockType::Monotonic);
@@ -113,6 +175,11 @@ bool Director::acquireFrame(NotNull<core::FrameRequestProxy> req) {
 		pool->perform([&, this] {
 			_scene->renderRequest(req, pool);
 
+			// apply new frame
+			req->commit();
+
+			// if there is active interactions (user input or animations)
+			// - inform the server, that we want next frame immediately
 			if (hasActiveInteractions()) {
 				if (_server) {
 					_server->setReadyForNextFrame();
@@ -123,7 +190,7 @@ bool Director::acquireFrame(NotNull<core::FrameRequestProxy> req) {
 
 	_avgFrameTime.addValue(sp::platform::clock(ClockType::Monotonic) - t);
 	_avgFrameTimeValue = _avgFrameTime.getAverage();
-	return true;
+	cb(true);
 }
 
 void Director::handleRenderQueueAttached(const Rc<core::Queue> &queue) {
@@ -257,6 +324,15 @@ void Director::end() {
 
 core::Loop *Director::getGlLoop() const { return _application->getGlLoop(); }
 
+void Director::performOnRenderThread(Function<void()> &&cb, Ref *ref) {
+	if (auto loop = _application->getGlLoop()) {
+		loop->performOnThread(sp::move(cb), ref);
+	} else {
+		// No gapi loop (remote client): the app thread owns the connection that ships frame input.
+		_application->performOnAppThread(sp::move(cb), ref);
+	}
+}
+
 void Director::setFrameConstraints(const core::FrameConstraints &c) {
 	if (_constraints != c) {
 		_constraints = c;
@@ -319,21 +395,6 @@ float Director::getFenceFrameTime() const {
 float Director::getTimestampFrameTime() const {
 	auto t = _server ? _server->getFrameTiming() : core::FrameTimingInfo();
 	return t.lastTimestampFrameTime ? t.lastTimestampFrameTime / 1000.0f : 1.0f;
-}
-
-bool Director::setListenAddress(StringView addr) { return _application->setListenAddress(addr); }
-
-bool Director::shareWindow(SpanView<core::Queue *> q) {
-	if (auto w = dynamic_cast<AppWindow *>(_server)) {
-		return _application->shareWindow(w, q);
-	}
-	return false;
-}
-
-bool Director::setBearerKey(BytesView key) { return _application->setBearerKey(key); }
-
-bool Director::setCompressionDictionary(BytesView d) {
-	return _application->setCompressionDictionary(d);
 }
 
 void Director::autorelease(Ref *ref) { _autorelease.emplace_back(ref); }

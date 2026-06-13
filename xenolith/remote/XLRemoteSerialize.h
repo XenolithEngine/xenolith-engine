@@ -54,11 +54,22 @@ class SP_PUBLIC QueueCodec {
 public:
 	// Encode a compiled queue (with its internal + linked resources) to a CBOR blob; gAPI objects get
 	// ids assigned in `registry`.
-	static Bytes encodeQueue(const core::Queue &, ObjectRegistry &registry);
+	static Bytes encodeQueue(const core::Queue &,
+			const HashMap<const core::MaterialAttachment *, Rc<core::MaterialSet>> &,
+			ObjectRegistry &registry);
 
 	// Decode a queue blob into a client-side mirror; gAPI objects become thin handles from `factory`.
 	// Returns nullptr on malformed input.
 	static bool decodeQueue(core::Queue &, BytesView, ObjectFactory &factory);
+
+	// A single MaterialSet update for an already-shared queue (server -> client push). The blob
+	// carries the queue id; the owner attachment and material pipelines are referenced by key so the
+	// client resolves them against its existing queue mirror. gAPI objects get ids in `registry`.
+	static Bytes encodeMaterials(uint64_t queueId, core::MaterialSet &, ObjectRegistry &registry);
+
+	// Apply a material update to the mirror identified by the embedded queue id; replaces the owner
+	// MaterialAttachment's MaterialSet. Returns false on malformed input or an unknown queue/owner.
+	static bool decodeMaterials(BytesView, ObjectFactory &factory);
 
 	// Resource-only (also used internally by the queue codec).
 	static Bytes encodeResource(const core::Resource &, ObjectRegistry &registry);

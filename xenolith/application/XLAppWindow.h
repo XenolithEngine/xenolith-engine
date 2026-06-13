@@ -36,6 +36,7 @@
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 class Director;
+class ServerAppThread;
 
 enum class AppWindowConfigFlags {
 	None = 0,
@@ -56,7 +57,7 @@ public:
 
 	virtual ~AppWindow();
 
-	virtual bool init(NotNull<Context>, NotNull<AppThread>, NotNull<NativeWindow>);
+	virtual bool init(NotNull<Context>, NotNull<ServerAppThread>, NotNull<NativeWindow>);
 
 	virtual void runWithQueue(const Rc<core::Queue> &); // from view thread
 
@@ -71,7 +72,7 @@ public:
 	virtual void handleTextInput(const TextInputState &);
 
 	Context *getContext() const { return _context; }
-	AppThread *getApplication() const { return _application; }
+	ServerAppThread *getApplication() const { return _application; }
 
 	// Note that WindowInfo describes window state in main thread,
 	// you should not use it in app thread, except for constant fields (like flags)
@@ -219,7 +220,7 @@ protected:
 
 	Rc<Context> _context;
 
-	Rc<AppThread> _application;
+	Rc<ServerAppThread> _application;
 	Rc<Director> _director;
 	NativeWindow *_window = nullptr;
 	Rc<core::PresentationEngine> _presentationEngine;

@@ -91,12 +91,14 @@ void FrameContext2d::submitHandle(FrameInfo &frame, FrameContextHandle *handle) 
 		handle->waitDependencies.emplace_back(_materialDependency);
 	}
 
-	frame.director->getGlLoop()->performOnThread(
+	frame.director->performOnRenderThread(
 			[this, req = frame.request, q = _queue, dir = frame.director,
 					h = Rc<FrameContextHandle2d>(h)]() mutable {
-		req->addInput(_vertexAttachmentData, Rc<FrameContextHandle2d>(h));
-		req->addInput(_lightAttachmentData, Rc<FrameContextHandle2d>(h));
-		req->addInput(_particleEmitterAttachmentData, Rc<FrameContextHandle2d>(h));
+		// One shared handle feeds all three attachments: dedup so the (potentially large) batch is
+		// serialized + shipped only once on the remote path.
+		const core::AttachmentData *atts[] = {_vertexAttachmentData, _lightAttachmentData,
+			_particleEmitterAttachmentData};
+		req->addInput(makeSpanView(atts, 3), Rc<FrameContextHandle2d>(h));
 	},
 			this);
 

@@ -28,10 +28,17 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
+// Shared id space across processes: the low 31 bits are a monotonic counter; the top bit is a
+// per-side mask (0 for server/local, 0x80000000 for the remote client, set once at app init) so
+// client- and server-minted ids never collide on the wire.
+static sprt::atomic<uint32_t> s_eventId = 1;
+static uint32_t s_eventIdMask = 0;
+
 uint32_t DependencyEvent::GetNextId() {
-	static sprt::atomic<uint32_t> s_eventId = 1;
-	return s_eventId.fetch_add(1);
+	return (s_eventId.fetch_add(1) & 0x7FFFFFFFu) | s_eventIdMask;
 }
+
+void DependencyEvent::SetIdGenerationMask(uint32_t mask) { s_eventIdMask = mask; }
 
 DependencyEvent::~DependencyEvent() { }
 

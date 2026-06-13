@@ -31,6 +31,7 @@
 #include "XlCoreMonitorInfo.h"
 #include "director/XLDirector.h"
 #include "input/XLInputDispatcher.h"
+#include "XLServerAppThread.h"
 
 #if MODULE_XENOLITH_BACKEND_VK
 #include "XLVkInstance.h"
@@ -43,7 +44,7 @@ XL_DECLARE_EVENT_CLASS(AppWindow, onWindowState);
 
 AppWindow::~AppWindow() { log::source().info("AppWindow", "~AppWindow"); }
 
-bool AppWindow::init(NotNull<Context> ctx, NotNull<AppThread> app, NotNull<NativeWindow> w) {
+bool AppWindow::init(NotNull<Context> ctx, NotNull<ServerAppThread> app, NotNull<NativeWindow> w) {
 	_context = ctx;
 	_application = app;
 	_window = w;
@@ -272,9 +273,21 @@ void AppWindow::acquireFrameData(NotNull<core::PresentationFrame> frame,
 			[this, frame = Rc<core::PresentationFrame>(frame), cb = sp::move(cb),
 					req = Rc<core::FrameRequest>(frame->getRequest())]() mutable {
 		auto proxy = Rc<core::LocalFrameRequestProxy>::create(req);
-		if (_client && proxy && _client->acquireFrame(proxy)) {
-			_context->performOnThread(
-					[frame = move(frame), cb = sp::move(cb)]() mutable { cb(frame); }, this);
+		if (_client && proxy) {
+			uint64_t windowId = 0;
+
+			auto objs = _application->getSharedObjects();
+			if (objs) {
+				windowId = objs->get(this);
+			}
+
+			_client->acquireFrame(windowId, proxy,
+					[guard = Rc<AppWindow>(this), frame, cb = sp::move(cb)](bool success) mutable {
+				guard->_context->performOnThread(
+						[frame = move(frame), cb = sp::move(cb)]() mutable {
+					cb(frame); //
+				}, guard);
+			});
 		}
 	},
 			this);

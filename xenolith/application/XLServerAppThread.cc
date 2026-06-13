@@ -74,6 +74,16 @@ void ServerAppThread::handleThreadUpdated(const UpdateTime &time) {
 	_context->handleAppThreadUpdate(this, time);
 }
 
+void ServerAppThread::handleMatrialsUpdated(NotNull<core::MaterialSet> set) {
+	AppThread::handleMatrialsUpdated(set);
+
+	if (_remoteClient && !_remoteClient->isClosed()) {
+		if (auto v = _sharedObjects->attachMaterials(set)) {
+			_remoteClient->handleMaterialsUpdated(v, set, _sharedObjects);
+		}
+	}
+}
+
 void ServerAppThread::readFromClipboard(Function<void(Status, BytesView, StringView)> &&cb,
 		Function<StringView(SpanView<StringView>)> &&tcb, Ref *ref) {
 	_context->performOnThread(
@@ -229,7 +239,8 @@ bool ServerAppThread::setListenAddress(StringView addr) {
 	return true;
 }
 
-bool ServerAppThread::shareWindow(AppWindow *w, SpanView<core::Queue *> q) {
+bool ServerAppThread::shareWindow(AppWindow *w, SpanView<core::Queue *> q,
+		const HashMap<const core::MaterialAttachment *, Rc<core::MaterialSet>> &materials) {
 	if (!isListening()) {
 		if (_listenAddress.empty() || _expectedKey.empty()) {
 			log::error("ServerAppThread",
@@ -243,7 +254,7 @@ bool ServerAppThread::shareWindow(AppWindow *w, SpanView<core::Queue *> q) {
 		}
 	}
 
-	_sharedObjects->shareWindow(w, q);
+	_sharedObjects->shareWindow(w, q, materials);
 	return true;
 }
 
@@ -264,6 +275,21 @@ bool ServerAppThread::setCompressionDictionary(BytesView d) {
 	}
 	_dictionary = d.bytes<Interface>();
 	return true;
+}
+
+bool ServerAppThread::sendMessageWithReply(remote::Domain d, uint8_t message, const Value &val,
+		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb) {
+	if (!_remoteClient || _remoteClient->isClosed()) {
+		return false;
+	}
+
+	uint32_t serial = 0;
+	if (_remoteClient->getConnection()->sendCborMessage(d, message, val, &serial)
+			== remote::GlobalError::Ok) {
+		waitForReply(serial, sp::move(cb));
+		return true;
+	}
+	return false;
 }
 
 bool ServerAppThread::startListening() {
@@ -339,6 +365,7 @@ void ServerAppThread::pumpListener() {
 	// so a new client can connect after the previous one went away.
 	if (_remoteClient && _remoteClient->isClosed()) {
 		log::source().info("AppThread", "remote client disconnected; window reverts to fallback");
+		takeoverSharedWindows(nullptr); // hand the windows back to their local Directors
 		_remoteClient->closeConnection();
 		_remoteClient = nullptr; // free the single-connection slot for a new client
 	}
@@ -366,6 +393,7 @@ void ServerAppThread::pumpListener() {
 		if (now - _lastPongTime >= kKeepalivePongTimeoutUs) {
 			log::source().info("AppThread",
 					"client keepalive timeout (no pong for 5s); terminating connection");
+			takeoverSharedWindows(nullptr); // hand the windows back to their local Directors
 			_remoteClient->closeConnection();
 			_remoteClient = nullptr;
 		} else if (now - _lastPingTime >= kKeepalivePingIntervalUs) {
@@ -378,6 +406,10 @@ void ServerAppThread::pumpListener() {
 }
 
 bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView payload) {
+	if (AppThread::dispatchMessage(h, payload)) {
+		return true;
+	}
+
 	auto conn = _remoteClient ? _remoteClient->getConnection() : nullptr;
 	if (remote::Domain(h.domain) == remote::Domain::Global) {
 		switch (remote::GlobalCode(h.code)) {
@@ -412,7 +444,7 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 				return true;
 			}
 
-			auto data = remote::QueueCodec::encodeQueue(*q, *_sharedObjects);
+			auto data = remote::QueueCodec::encodeQueue(*q->queue, q->materials, *_sharedObjects);
 			if (data.empty()) {
 				conn->sendError(remote::Domain::Window,
 						toInt(remote::WindowError::SerializationFailed), h.serial);
@@ -420,6 +452,25 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			}
 
 			conn->sendReply(h.serial, remote::Domain(h.domain), h.code, data);
+			return true;
+		};
+		case remote::WindowCode::FrameInput: {
+			// client -> server: one streamed input addressed to one or more attachments [frameId,
+			// keys[], bytes]
+			if (_remoteClient) {
+				auto val = data::read<Interface>(payload);
+				Vector<StringView> keys;
+				for (auto &k : val.getValue(1).asArray()) { keys.emplace_back(k.getString()); }
+				_remoteClient->handleFrameInput(uint64_t(val.getInteger(0)), keys, val.getBytes(2));
+			}
+			return true;
+		};
+		case remote::WindowCode::FrameCommit: {
+			// client -> server: all inputs for a frame were submitted
+			if (_remoteClient) {
+				auto val = data::read<Interface>(payload);
+				_remoteClient->handleFrameCommit(uint64_t(val.getInteger(0)));
+			}
 			return true;
 		};
 		default:
@@ -464,11 +515,30 @@ void ServerAppThread::completePendingHandshake() {
 
 	log::source().info("AppThread", "client authenticated");
 
-	_remoteClient = Rc<RemoteRenderClient>::create(sp::move(conn));
+	_remoteClient = Rc<RemoteRenderClient>::create(this, sp::move(conn));
 	if (_remoteClient) {
 		_remoteClient->announce(_sharedObjects);
+		// The connected client now drives the shared windows' frames (server's PresentationEngine
+		// pulls through RemoteRenderClient::acquireFrame instead of the local Director).
+		takeoverSharedWindows(_remoteClient);
 		// Start the keepalive clock fresh so the timeout is measured from connection establishment.
 		_lastPingTime = _lastPongTime = sp::platform::clock(ClockType::Monotonic);
+	}
+}
+
+void ServerAppThread::takeoverSharedWindows(core::RenderClientChannel *client) {
+	if (!_sharedObjects) {
+		return;
+	}
+	for (auto &it : _sharedObjects->getWindows()) {
+		auto w = static_cast<AppWindow *>(it.second.window);
+		if (!w) {
+			continue;
+		}
+		// On revert (client == nullptr) restore the window's own local Director.
+		w->setRenderClient(
+				client ? client : static_cast<core::RenderClientChannel *>(w->getDirector()));
+		w->setReadyForNextFrame();
 	}
 }
 

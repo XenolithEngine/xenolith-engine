@@ -39,6 +39,11 @@ public:
 
 	virtual bool init(AttachmentBuilder &) override;
 
+	// Remote render session: the per-frame input this attachment consumes is a FrameContextHandle2d.
+	virtual Rc<core::AttachmentInputData> makeInputData() const override {
+		return Rc<FrameContextHandle2d>::alloc();
+	}
+
 protected:
 	using GenericAttachment::init;
 

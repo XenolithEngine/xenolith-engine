@@ -99,7 +99,7 @@ protected:
 	// Parse a received message and route it by (domain, code). Returns true if the message was
 	// consumed, false to defer it for a later poll (xcb-style out-of-order handling). Only the Global
 	// ping/pong control messages are handled for now.
-	bool dispatchMessage(const remote::MessageHeader &, BytesView payload);
+	virtual bool dispatchMessage(const remote::MessageHeader &, BytesView payload) override;
 
 	virtual Rc<Director> makeDirector(NotNull<RemoteWindow>, const core::FrameConstraints &);
 	virtual Rc<Scene> makeScene(NotNull<RemoteWindow>, const core::FrameConstraints &);
@@ -119,8 +119,6 @@ protected:
 
 	Map<uint64_t, Rc<RemoteWindow>> _windows;
 	Map<uint64_t, AppQueueInfo> _queues;
-
-	HashMap<uint32_t, Function<void(const remote::MessageHeader &, BytesView payload)>> _requests;
 };
 
 } // namespace stappler::xenolith

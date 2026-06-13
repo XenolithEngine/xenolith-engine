@@ -37,6 +37,8 @@ AppThread::~AppThread() { }
 void AppThread::run() { Thread::run(); }
 
 void AppThread::threadInit() {
+	_requests.reserve(16);
+
 	_thisThreadId = getCurrentThreadId();
 
 	_appLooper = sprt::dispatch::Looper::acquire(sprt::dispatch::LooperInfo{
@@ -201,12 +203,20 @@ bool AppThread::isServerThread() const { return false; }
 bool AppThread::isListening() const { return false; }
 bool AppThread::setListenAddress(StringView) { return false; }
 
-bool AppThread::shareWindow(AppWindow *, SpanView<core::Queue *>) { return false; }
+bool AppThread::shareWindow(AppWindow *, SpanView<core::Queue *>,
+		const HashMap<const core::MaterialAttachment *, Rc<core::MaterialSet>> &) {
+	return false;
+}
 
 bool AppThread::startListening() { return false; }
 bool AppThread::stopListening() { return false; }
 bool AppThread::setBearerKey(BytesView) { return false; }
 bool AppThread::setCompressionDictionary(BytesView) { return false; }
+
+void AppThread::waitForReply(uint32_t serial,
+		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb) {
+	_requests.insert_or_assign(serial, sp::move(cb));
+}
 
 void AppThread::performAppUpdate(const UpdateTime &time, bool wakeup) {
 	handleThreadUpdated(time);
@@ -238,6 +248,18 @@ void AppThread::initializeExtensions() {
 
 void AppThread::finalizeExtensions() {
 	for (auto &it : _extensions) { it.second->invalidate(this); }
+}
+
+bool AppThread::dispatchMessage(const remote::MessageHeader &h, BytesView payload) {
+	if (remote::isReplyOrError(h)) {
+		auto reqIt = _requests.find(h.serial);
+		if (reqIt != _requests.end()) {
+			reqIt->second(h, payload);
+			_requests.erase(reqIt);
+			return true;
+		}
+	}
+	return false;
 }
 
 } // namespace stappler::xenolith

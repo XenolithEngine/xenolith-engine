@@ -76,12 +76,17 @@ enum class GlobalError : uint8_t {
 
 enum class WindowCode {
 	CompileQueue = 0,
+	UpdateMaterials = 1, // server -> client push: a shared queue's MaterialSet changed
+	AcquireFrame = 2, // server -> client request: produce a frame; reply selects a render queue
+	FrameInput = 3, // client -> server: one serialized per-attachment input for a frame
+	FrameCommit = 4, // client -> server: all inputs for a frame have been submitted
 };
 
 enum class WindowError : uint8_t {
 	Ok = 0,
 	InvalidObjecthandle = 1,
 	SerializationFailed = 2,
+	FrameRejected = 3, // client could not produce/select a frame for an AcquireFrame request
 	NotImplemented = 254,
 	NetworkBackend = 255, // not protocol-related, check backend error reporting
 };

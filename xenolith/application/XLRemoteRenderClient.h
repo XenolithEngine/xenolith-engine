@@ -29,6 +29,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
+class ServerAppThread;
+
 // Server-side proxy for a connected remote client: implements core::RenderClientChannel by
 // (eventually) serializing the calls over the QUIC connection to the real client, and is bound to
 // an AppWindow via AppThread::openConnection.
@@ -36,7 +38,9 @@ class SP_PUBLIC RemoteRenderClient : public Ref, public core::RenderClientChanne
 public:
 	virtual ~RemoteRenderClient();
 
-	bool init(Rc<remote::ServerConnection> &&);
+	// `host` is the owning thread (raw back-ref: the host owns this client, so an Rc would cycle); it
+	// provides the request/reply transport (sendMessageWithReply) and the shared-object registry.
+	bool init(NotNull<ServerAppThread> host, Rc<remote::ServerConnection> &&);
 
 	// True once the underlying QUIC connection has begun terminating (client disconnected).
 	bool isClosed();
@@ -48,15 +52,36 @@ public:
 
 	void announce(NotNull<remote::ObjectRegistry>);
 
-	virtual bool acquireFrame(NotNull<core::FrameRequestProxy>) override;
+	virtual void acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy> proxy,
+			Function<void(bool)> &&) override;
+
 	virtual void handleRenderQueueAttached(const Rc<core::Queue> &) override;
 	virtual void handleConstraintsChanged(const core::FrameConstraints &) override;
 	virtual void handleInputEvents(Vector<core::InputEventData> &&) override;
 	virtual void handleTextInput(const core::TextInputState &) override;
 	virtual void handleFramePresented(uint64_t frameOrder) override;
 
+	// Push a MaterialSet update for an already-shared queue to the client. `registry` mints (and keeps
+	// alive) ids for any newly-referenced gAPI objects.
+	void handleMaterialsUpdated(uint64_t queue, NotNull<core::MaterialSet>,
+			NotNull<remote::ObjectRegistry>);
+
+	// One streamed input addressed to one or more attachments of an in-flight frame: reconstruct it
+	// once (the first attachment mints the type, then deserialize) and feed it to each attachment of
+	// the armed FrameRequest on the gapi loop thread.
+	void handleFrameInput(uint64_t frameId, SpanView<StringView> attachmentKeys, BytesView bytes);
+
+	// All inputs for a frame were submitted; stop routing further input for it.
+	void handleFrameCommit(uint64_t frameId);
+
 protected:
+	ServerAppThread *_host = nullptr;
 	Rc<remote::ServerConnection> _connection;
+	uint64_t _nextFrameId = 1; // monotonic wire token correlating an AcquireFrame request/reply
+
+	// In-flight frames the client is still streaming input for, keyed by the wire frame id. Each
+	// proxy wraps the armed server FrameRequest; touched only on the app (dispatch) thread.
+	Map<uint64_t, Rc<core::LocalFrameRequestProxy>> _pendingFrames;
 };
 
 } // namespace stappler::xenolith
