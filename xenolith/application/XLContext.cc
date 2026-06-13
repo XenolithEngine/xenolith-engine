@@ -742,17 +742,18 @@ Rc<sprt::window::gapi::Loop> Context::makeLoop(NotNull<sprt::window::gapi::Insta
 	return nullptr;
 }
 
-Rc<AppThread> Context::makeAppThread() {
+Rc<ServerAppThread> Context::makeAppThread() {
 	auto makeAppThreadSymbol =
 			SharedModule::acquireTypedSymbol<Context::SymbolMakeAppThreadSignature>(
 					buildconfig::MODULE_APPCOMMON_NAME, Context::SymbolMakeAppThreadName);
 	if (makeAppThreadSymbol) {
 		auto thread = makeAppThreadSymbol(this);
-		if (thread) {
-			return thread;
+		if (auto serverThread = dynamic_cast<ServerAppThread *>(thread.get())) {
+			return serverThread;
 		} else {
 			slog().error("Context",
-					"Fail to create thread with function provided, fallback to default AppThread");
+						"Fail to create thread with function provided, fallback to default "
+						"AppThread");
 		}
 	}
 

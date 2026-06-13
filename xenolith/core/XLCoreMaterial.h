@@ -30,6 +30,14 @@
 #include "XLCoreAttachment.h"
 #include "XLCoreDynamicImage.h"
 
+namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
+
+// Remote queue codec; grants access to the private material state below so the client can rebuild an
+// immutable MaterialSet mirror directly from the wire (see XLRemoteSerialize.cc).
+class QueueCodec;
+
+} // namespace stappler::xenolith::remote
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 class Material;
@@ -61,6 +69,8 @@ struct SP_PUBLIC MaterialImage {
 // Immutable acting material set
 class SP_PUBLIC MaterialSet final : public Ref {
 public:
+	friend class ::stappler::xenolith::remote::QueueCodec;
+
 	using ImageSlot = MaterialImageSlot;
 
 	virtual ~MaterialSet() = default;
@@ -141,6 +151,7 @@ public:
 protected:
 	friend class MaterialSet;
 	friend class MaterialAttachment;
+	friend class ::stappler::xenolith::remote::QueueCodec;
 
 	void setLayoutIndex(uint32_t);
 	void setBuffer(Rc<BufferObject> &&);
@@ -157,8 +168,10 @@ protected:
 };
 
 // this attachment should provide material data buffer for rendering
-class SP_PUBLIC MaterialAttachment : public GenericAttachment {
+class SP_PUBLIC MaterialAttachment : public Attachment {
 public:
+	friend class ::stappler::xenolith::remote::QueueCodec;
+
 	virtual ~MaterialAttachment();
 
 	virtual bool init(AttachmentBuilder &builder, const TextureSetLayoutData *);
@@ -191,7 +204,7 @@ public:
 	Queue *getCompiler() const;
 
 protected:
-	using GenericAttachment::init;
+	using Attachment::init;
 
 	void setMaterialBuffer(NotNull<Material>, Rc<BufferObject> &&) const;
 

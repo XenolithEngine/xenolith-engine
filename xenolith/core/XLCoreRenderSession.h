@@ -70,9 +70,13 @@ public:
 
 	// The server's PresentationEngine pulls the command batch for a frame: the client builds the
 	// scene graph into `proxy` (local = direct on the server's FrameRequest; remote = serialized).
-	// Returns true if a batch was produced and the frame may proceed. Maps onto
-	// Director::acquireFrame().
-	virtual bool acquireFrame(NotNull<FrameRequestProxy> proxy) = 0;
+	// Callback called with true if frame processing was started and input will be produced in future;
+	// false if client rejects the request
+	//
+	// In wire protocol, client should respond with queue selection.
+	// windowId = 0 - self-request, local-only.
+	virtual void acquireFrame(uint64_t windowId, NotNull<FrameRequestProxy> proxy,
+			Function<void(bool)> &&) = 0;
 
 	// The server announces the active render graph the client must target (the shared contract).
 	// Maps onto the runWithQueue handshake.

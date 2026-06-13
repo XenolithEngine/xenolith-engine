@@ -82,9 +82,14 @@ class SP_PUBLIC ParticleEmitterAttachment : public BufferAttachment {
 public:
 	virtual ~ParticleEmitterAttachment() = default;
 
-	virtual bool init(AttachmentBuilder &builder);
+	virtual bool init(AttachmentBuilder &builder) override;
 
 	ParticlePersistentData *getData() const { return _data; }
+
+	// Remote render session: the per-frame input this attachment consumes is a FrameContextHandle2d.
+	virtual Rc<core::AttachmentInputData> makeInputData() const override {
+		return Rc<FrameContextHandle2d>::alloc();
+	}
 
 protected:
 	void handleInput(FrameQueue &, ParticleEmitterAttachmentHandle &, core::AttachmentInputData *,

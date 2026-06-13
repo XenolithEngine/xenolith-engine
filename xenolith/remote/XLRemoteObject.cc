@@ -135,12 +135,19 @@ bool TextureSetLayout::init(uint64_t id, uint32_t imageCount, uint32_t samplersC
 
 ObjectRegistry::~ObjectRegistry() { }
 
-void ObjectRegistry::shareWindow(core::RenderServerChannel *obj, SpanView<core::Queue *> q) {
+void ObjectRegistry::shareWindow(core::RenderServerChannel *obj, SpanView<core::Queue *> q,
+		const HashMap<const core::MaterialAttachment *, Rc<core::MaterialSet>> &materials) {
 	auto exportQueues = [&](SharedWindowInfo &info) {
 		Vector<uint64_t> queues;
 		for (auto &it : q) {
-			if (auto id = getId(it)) {
+			if (auto id = share(it)) {
 				queues.emplace_back(id);
+
+				for (auto &mIt : materials) {
+					if (mIt.first->getData()->queue->queue == it) {
+						attachMaterials(mIt.second);
+					}
+				}
 			}
 		}
 
@@ -166,7 +173,7 @@ void ObjectRegistry::shareWindow(core::RenderServerChannel *obj, SpanView<core::
 	exportQueues(vIt->second);
 }
 
-uint64_t ObjectRegistry::getId(core::RenderServerChannel *obj) {
+uint64_t ObjectRegistry::share(core::RenderServerChannel *obj) {
 	if (!obj) {
 		return 0;
 	}
@@ -180,7 +187,7 @@ uint64_t ObjectRegistry::getId(core::RenderServerChannel *obj) {
 	return id;
 }
 
-uint64_t ObjectRegistry::getId(core::Queue *obj) {
+uint64_t ObjectRegistry::share(core::Queue *obj) {
 	if (!obj) {
 		return 0;
 	}
@@ -190,11 +197,11 @@ uint64_t ObjectRegistry::getId(core::Queue *obj) {
 	}
 	auto id = allocateId();
 	_queueByPtr.emplace(obj, id);
-	_queueById.emplace(id, Rc<core::Queue>(obj));
+	_queueById.emplace(id, SharedQueueInfo{Rc<core::Queue>(obj)});
 	return id;
 }
 
-uint64_t ObjectRegistry::getId(core::Object *obj) {
+uint64_t ObjectRegistry::share(core::Object *obj) {
 	if (!obj) {
 		return 0;
 	}
@@ -206,6 +213,59 @@ uint64_t ObjectRegistry::getId(core::Object *obj) {
 	_objectByPtr.emplace(obj, id);
 	_objectById.emplace(id, Rc<core::Object>(obj));
 	return id;
+}
+
+uint64_t ObjectRegistry::attachMaterials(NotNull<core::MaterialSet> set) {
+	auto v = get(set->getOwner()->getData()->queue->queue);
+	if (v == 0) {
+		return 0;
+	}
+
+	auto vIt = _queueById.find(v);
+	if (vIt == _queueById.end()) {
+		return 0;
+	}
+
+	auto aIt = vIt->second.materials.find(set->getOwner());
+	if (aIt != vIt->second.materials.end()) {
+		aIt->second = set;
+	} else {
+		vIt->second.materials.emplace(set->getOwner(), set.get());
+	}
+	return v;
+}
+
+uint64_t ObjectRegistry::get(core::RenderServerChannel *obj) const {
+	if (!obj) {
+		return 0;
+	}
+	auto it = _windowByPtr.find(obj);
+	if (it != _windowByPtr.end()) {
+		return it->second;
+	}
+	return 0;
+}
+
+uint64_t ObjectRegistry::get(core::Queue *obj) const {
+	if (!obj) {
+		return 0;
+	}
+	auto it = _queueByPtr.find(obj);
+	if (it != _queueByPtr.end()) {
+		return it->second;
+	}
+	return 0;
+}
+
+uint64_t ObjectRegistry::get(core::Object *obj) const {
+	if (!obj) {
+		return 0;
+	}
+	auto it = _objectByPtr.find(obj);
+	if (it != _objectByPtr.end()) {
+		return it->second;
+	}
+	return 0;
 }
 
 void ObjectRegistry::drop(core::RenderServerChannel *window) {
@@ -237,9 +297,9 @@ core::Object *ObjectRegistry::resolveObject(uint64_t id) const {
 	return (it != _objectById.end()) ? it->second : nullptr;
 }
 
-core::Queue *ObjectRegistry::resolveQueue(uint64_t id) const {
+const ObjectRegistry::SharedQueueInfo *ObjectRegistry::resolveQueue(uint64_t id) const {
 	auto it = _queueById.find(id);
-	return (it != _queueById.end()) ? it->second : nullptr;
+	return (it != _queueById.end()) ? &it->second : nullptr;
 }
 
 core::RenderServerChannel *ObjectRegistry::resolveWindow(uint64_t id) const {

@@ -55,6 +55,8 @@ public:
 
 	Context *getContext() const { return _context; }
 
+	remote::ObjectRegistry *getSharedObjects() const { return _sharedObjects; }
+
 	// AppThread platform-services interface (delegates to the OS via the Context).
 	virtual void readFromClipboard(Function<void(Status, BytesView, StringView)> &&dataCallback,
 			Function<StringView(SpanView<StringView>)> &&selectCallback,
@@ -85,7 +87,11 @@ public:
 	virtual bool setCompressionDictionary(BytesView) override;
 
 	// Starts listening (to make shared registry available) and share window
-	virtual bool shareWindow(AppWindow *, SpanView<core::Queue *>) override;
+	virtual bool shareWindow(AppWindow *, SpanView<core::Queue *>,
+			const HashMap<const core::MaterialAttachment *, Rc<core::MaterialSet>> & = {}) override;
+
+	bool sendMessageWithReply(remote::Domain, uint8_t message, const Value &,
+			Function<void(const remote::MessageHeader &, BytesView payload)> &&);
 
 protected:
 	// Also clears shared objects if not empty
@@ -98,6 +104,8 @@ protected:
 	virtual void handleThreadDisposed() override;
 	virtual void handleThreadUpdated(const UpdateTime &) override;
 
+	virtual void handleMatrialsUpdated(NotNull<core::MaterialSet>) override;
+
 	virtual void performAppUpdate(const UpdateTime &, bool wakeup) override;
 
 	virtual void loadExtensions() override;
@@ -106,10 +114,14 @@ protected:
 	void pumpListener();
 	void handleRemoteConnection(Rc<remote::ServerConnection> &&);
 
+	// Swap every shared window's render client: `client` (the connected remote client) takes over on
+	// connect; pass nullptr to revert each window to its own local Director on disconnect.
+	void takeoverSharedWindows(core::RenderClientChannel *client);
+
 	// Parse a received message and route it by (domain, code). Returns true if the message was
 	// consumed, false to defer it for a later poll (xcb-style out-of-order handling). Only the Global
 	// ping/pong control messages are handled for now.
-	bool dispatchMessage(const remote::MessageHeader &, BytesView payload);
+	virtual bool dispatchMessage(const remote::MessageHeader &, BytesView payload) override;
 
 	// Drive the (bounded, synchronous) setup handshake for a freshly accepted connection: validate
 	// auth, negotiate the dictionary, reply with the window info, and on success attach the client.

@@ -40,6 +40,11 @@ public:
 
 	const AttachmentData *getMaterials() const { return _materials; }
 
+	// Remote render session: the per-frame input this attachment consumes is a FrameContextHandle2d.
+	virtual Rc<core::AttachmentInputData> makeInputData() const override {
+		return Rc<FrameContextHandle2d>::alloc();
+	}
+
 protected:
 	using GenericAttachment::init;
 

@@ -23,6 +23,7 @@
 #include "XLRemoteSerialize.h"
 #include "XLCoreQueuePass.h" // core::QueuePass stub for the mirror
 #include "XLCoreAttachment.h" // complete core::Attachment (AttachmentData holds Rc<Attachment>)
+#include "XLCoreMaterial.h" // complete core::MaterialSet/Material/MaterialAttachment for the codec
 
 #include "SPData.h"
 
@@ -117,6 +118,33 @@ static core::SamplerInfo valueToSampler(const DataValue &v) {
 	return s;
 }
 
+static DataValue imageViewInfoToValue(const core::ImageViewInfo &i) {
+	// [format, type, r, g, b, a, baseLayer, layerCount]
+	DataValue v(DataValue::Type::ARRAY);
+	v.addInteger(ei(i.format));
+	v.addInteger(ei(i.type));
+	v.addInteger(ei(i.r));
+	v.addInteger(ei(i.g));
+	v.addInteger(ei(i.b));
+	v.addInteger(ei(i.a));
+	v.addInteger(int64_t(i.baseArrayLayer.get()));
+	v.addInteger(int64_t(i.layerCount.get()));
+	return v;
+}
+
+static core::ImageViewInfo valueToImageViewInfo(const DataValue &v) {
+	core::ImageViewInfo i;
+	i.format = core::ImageFormat(at(v, 0).getInteger());
+	i.type = core::ImageViewType(at(v, 1).getInteger());
+	i.r = core::ComponentMapping(at(v, 2).getInteger());
+	i.g = core::ComponentMapping(at(v, 3).getInteger());
+	i.b = core::ComponentMapping(at(v, 4).getInteger());
+	i.a = core::ComponentMapping(at(v, 5).getInteger());
+	i.baseArrayLayer = core::BaseArrayLayer(uint32_t(at(v, 6).getInteger()));
+	i.layerCount = core::ArrayLayers(uint32_t(at(v, 7).getInteger()));
+	return i;
+}
+
 // --- Resource codec --------------------------------------------------------
 
 static DataValue encodeResourceValue(const core::Resource &res, ObjectRegistry &reg) {
@@ -138,7 +166,7 @@ static DataValue encodeResourceValue(const core::Resource &res, ObjectRegistry &
 		// Raw buffer data is not required by client -> null placeholder
 		// b.addValue(bytesValue(bd->data));
 		b.addValue(DataValue());
-		b.addInteger(int64_t(reg.getId(bd->buffer.get())));
+		b.addInteger(int64_t(reg.share(bd->buffer.get())));
 		buffers.addValue(sp::move(b));
 	}
 	root.addValue(sp::move(buffers));
@@ -167,7 +195,7 @@ static DataValue encodeResourceValue(const core::Resource &res, ObjectRegistry &
 		// Raw image data is not required by client -> null placeholder
 		// im.addValue(bytesValue(id->data));
 		im.addValue(DataValue());
-		im.addInteger(int64_t(reg.getId(id->image.get())));
+		im.addInteger(int64_t(reg.share(id->image.get())));
 
 		DataValue views(DataValue::Type::ARRAY);
 		for (auto vd : id->views) {
@@ -181,7 +209,7 @@ static DataValue encodeResourceValue(const core::Resource &res, ObjectRegistry &
 			vv.addInteger(ei(vd->a));
 			vv.addInteger(int64_t(vd->baseArrayLayer.get()));
 			vv.addInteger(int64_t(vd->layerCount.get()));
-			vv.addInteger(int64_t(reg.getId(vd->view.get())));
+			vv.addInteger(int64_t(reg.share(vd->view.get())));
 			views.addValue(sp::move(vv));
 		}
 		im.addValue(sp::move(views));
@@ -629,7 +657,7 @@ struct QueueEncoder {
 		// v.addValue(bytesValue(BytesView(reinterpret_cast<const uint8_t *>(p->data.data()),
 		//		p->data.size() * sizeof(uint32_t))));
 		v.addValue(DataValue());
-		v.addInteger(int64_t(reg.getId(p->program.get())));
+		v.addInteger(int64_t(reg.share(p->program.get())));
 		return v;
 	}
 
@@ -645,7 +673,7 @@ struct QueueEncoder {
 		DataValue shaders(DataValue::Type::ARRAY);
 		for (auto &s : p->shaders) { shaders.addInteger(programs.ref(s.data)); }
 		v.addValue(sp::move(shaders));
-		v.addInteger(int64_t(reg.getId(p->pipeline.get())));
+		v.addInteger(int64_t(reg.share(p->pipeline.get())));
 		return v;
 	}
 
@@ -656,7 +684,7 @@ struct QueueEncoder {
 		v.addInteger(subpasses.ref(p->subpass));
 		v.addInteger(pipelineLayouts.ref(p->layout));
 		v.addInteger(programs.ref(p->shader.data));
-		v.addInteger(int64_t(reg.getId(p->pipeline.get())));
+		v.addInteger(int64_t(reg.share(p->pipeline.get())));
 		uint32_t lx = 0, ly = 0, lz = 0;
 		if (p->pipeline) {
 			lx = p->pipeline->getLocalX();
@@ -680,7 +708,7 @@ struct QueueEncoder {
 		DataValue samplers(DataValue::Type::ARRAY);
 		for (auto &s : t->samplers) { samplers.addValue(samplerToValue(s)); }
 		v.addValue(sp::move(samplers));
-		v.addInteger(int64_t(reg.getId(t->layout.get())));
+		v.addInteger(int64_t(reg.share(t->layout.get())));
 		return v;
 	}
 
@@ -818,7 +846,7 @@ struct QueueEncoder {
 			deps.addValue(sp::move(dv));
 		}
 		v.addValue(sp::move(deps));
-		v.addInteger(int64_t(reg.getId(p->impl.get())));
+		v.addInteger(int64_t(reg.share(p->impl.get())));
 		v.addInteger(int64_t(p->impl ? p->impl->getIndex() : 0));
 		return v;
 	}
@@ -833,7 +861,85 @@ struct QueueEncoder {
 
 } // namespace
 
-Bytes QueueCodec::encodeQueue(const core::Queue &queue, ObjectRegistry &registry) {
+// --- Material codec --------------------------------------------------------
+//
+// Encoded from the `materials` argument only (the live MaterialSet snapshots the server chose to
+// share), never re-derived from the queue graph. Each material set references its owning attachment
+// and its target texture-set layout by node-table index; gAPI objects (image/view/buffer) become
+// server ids via the registry, resolved back to thin handles on decode. NOT mirrored: the per-image
+// `dynamic` instance, the material atlas/owned-data and opaque user `_data`, and the per-layout
+// gAPI TextureSet (the client mirror has no texture-set handle).
+
+static DataValue encodeMaterialImage(const core::MaterialImage &mi, ObjectRegistry &reg) {
+	// [imageId, viewId, sampler, set, descriptor, info]
+	DataValue v(DataValue::Type::ARRAY);
+	v.addInteger(int64_t(reg.share(mi.image ? mi.image->image.get() : nullptr)));
+	v.addInteger(int64_t(reg.share(mi.view.get())));
+	v.addInteger(int64_t(mi.sampler));
+	v.addInteger(int64_t(mi.set));
+	v.addInteger(int64_t(mi.descriptor));
+	v.addValue(imageViewInfoToValue(mi.info));
+	return v;
+}
+
+static DataValue encodeMaterial(const core::Material *m, ObjectRegistry &reg) {
+	// [id, layoutIndex, pipelineKey, bufferId, images[]]
+	// Pipelines are referenced by key (not node index) so the same material encoding works both
+	// embedded in a queue blob and standalone in a material update against an existing mirror.
+	DataValue v(DataValue::Type::ARRAY);
+	v.addInteger(int64_t(m->getId()));
+	v.addInteger(int64_t(m->getLayoutIndex()));
+	v.addString(m->getPipeline() ? StringView(m->getPipeline()->key) : StringView());
+	v.addInteger(int64_t(reg.share(m->getBuffer())));
+	DataValue images(DataValue::Type::ARRAY);
+	for (auto &mi : m->getImages()) { images.addValue(encodeMaterialImage(mi, reg)); }
+	v.addValue(sp::move(images));
+	return v;
+}
+
+static DataValue encodeMaterialLayout(const core::MaterialLayout &l, ObjectRegistry &reg) {
+	// [usedImageSlots, slots[]]; slot = [viewId, refCount]
+	DataValue v(DataValue::Type::ARRAY);
+	v.addInteger(int64_t(l.usedImageSlots));
+	DataValue slots(DataValue::Type::ARRAY);
+	for (auto &s : l.imageSlots) {
+		DataValue sv(DataValue::Type::ARRAY);
+		sv.addInteger(int64_t(reg.share(s.image.get())));
+		sv.addInteger(int64_t(s.refCount));
+		slots.addValue(sp::move(sv));
+	}
+	v.addValue(sp::move(slots));
+	return v;
+}
+
+static DataValue encodeMaterialSet(const core::MaterialAttachment *att, core::MaterialSet *set,
+		const QueueEncoder &enc, ObjectRegistry &reg) {
+	// [owner, targetLayout, imagesInSet, generation, materials[], layouts[], updated[]]
+	DataValue v(DataValue::Type::ARRAY);
+	v.addInteger(enc.attachments.ref(att->getData()));
+	v.addInteger(enc.textureSets.ref(att->getTargetLayout()));
+	v.addInteger(int64_t(set->getImagesInSet()));
+	v.addInteger(int64_t(set->getGeneration()));
+
+	DataValue mats(DataValue::Type::ARRAY);
+	for (auto &it : set->getMaterials()) { mats.addValue(encodeMaterial(it.second.get(), reg)); }
+	v.addValue(sp::move(mats));
+
+	DataValue layouts(DataValue::Type::ARRAY);
+	for (auto &l : set->getLayouts()) { layouts.addValue(encodeMaterialLayout(l, reg)); }
+	v.addValue(sp::move(layouts));
+
+	DataValue updated(DataValue::Type::ARRAY);
+	set->foreachUpdated([&](core::MaterialId id, NotNull<core::Material>) {
+		updated.addInteger(int64_t(id));
+	}, false);
+	v.addValue(sp::move(updated));
+	return v;
+}
+
+Bytes QueueCodec::encodeQueue(const core::Queue &queue,
+		const HashMap<const core::MaterialAttachment *, Rc<core::MaterialSet>> &materials,
+		ObjectRegistry &registry) {
 	QueueEncoder enc(registry);
 
 	// reach into the queue via the public getters (encode is read-only)
@@ -926,6 +1032,15 @@ Bytes QueueCodec::encodeQueue(const core::Queue &queue, ObjectRegistry &registry
 		}
 	}
 
+	// materials (from the argument only; one entry per shared MaterialSet)
+	DataValue materialsArr(DataValue::Type::ARRAY);
+	for (auto &it : materials) {
+		if (it.second) {
+			materialsArr.addValue(encodeMaterialSet(it.first, it.second.get(), enc, registry));
+		}
+	}
+	root.setValue(sp::move(materialsArr), "materials");
+
 	return data::write(root, data::EncodeFormat::Cbor);
 }
 
@@ -951,6 +1066,38 @@ static void derefArray(const DataValue &node, size_t idx, const Vector<T *> &tbl
 	}
 }
 
+// --- shared material rebuild (gAPI objects resolve by id; all fields below are public) ---
+
+static MaterialImage decodeMaterialImage(const DataValue &in, ObjectFactory &factory) {
+	// [imageId, viewId, sampler, set, descriptor, info]; the underlying ImageData stays null on the
+	// mirror (see the encode comment), the view is a thin id-handle
+	MaterialImage mi;
+	mi.image = nullptr;
+	mi.sampler = uint16_t(at(in, 2).getInteger());
+	mi.set = uint32_t(at(in, 3).getInteger());
+	mi.descriptor = uint32_t(at(in, 4).getInteger());
+	mi.info = valueToImageViewInfo(at(in, 5));
+	auto imgObj = static_cast<ImageObject *>(factory.resolveObject(uint64_t(at(in, 0).getInteger())));
+	mi.view = factory.makeImageView(uint64_t(at(in, 1).getInteger()), Rc<ImageObject>(imgObj),
+			mi.info);
+	return mi;
+}
+
+static MaterialLayout decodeMaterialLayout(const DataValue &ln, ObjectFactory &factory) {
+	// [usedImageSlots, slots[]]; slot = [viewId, refCount]; slot views resolve from the factory
+	// cache populated while decoding this set's material images. The gAPI TextureSet stays null.
+	MaterialLayout lay;
+	lay.usedImageSlots = uint32_t(at(ln, 0).getInteger());
+	for (auto &sn : at(ln, 1).getArray()) {
+		MaterialImageSlot slot;
+		slot.image = Rc<ImageView>(
+				static_cast<ImageView *>(factory.resolveObject(uint64_t(at(sn, 0).getInteger()))));
+		slot.refCount = uint32_t(at(sn, 1).getInteger());
+		lay.imageSlots.emplace_back(sp::move(slot));
+	}
+	return lay;
+}
+
 } // namespace
 
 bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory &factory) {
@@ -961,6 +1108,12 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 
 	auto data = queue._data;
 	auto pool = data->pool;
+
+	// Hoisted out of the perform block so the material pass (after resources) can resolve owner
+	// attachments and target texture-set layouts by node-table index (material pipelines resolve by
+	// key against the queue itself).
+	Vector<TextureSetLayoutData *> textureSets;
+	Vector<AttachmentData *> attachments;
 
 	memory::perform([&] {
 		data->key = StringView(root.getString("name")).pdup(pool);
@@ -977,8 +1130,6 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 		Vector<ProgramData *> programs;
 		Vector<GraphicPipelineData *> graphicPipelines;
 		Vector<ComputePipelineData *> computePipelines;
-		Vector<TextureSetLayoutData *> textureSets;
-		Vector<AttachmentData *> attachments;
 		Vector<AttachmentPassData *> attachmentPasses;
 		Vector<AttachmentSubpassData *> attachmentSubpasses;
 		Vector<SubpassData *> subpasses;
@@ -1283,11 +1434,166 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 		}
 	}
 
-	// 5) wrap in a Queue (friend access to adopt the prebuilt data; bypasses Queue::init)
+	// 5) materials (rebuilt after resources so the factory's image/view cache is populated; each
+	// shared MaterialSet is installed onto a mirror MaterialAttachment placed in its owner
+	// AttachmentData::attachment, mirroring the server-side getAttachments()->getMaterials() path and
+	// released by QueueData::clear() on teardown). gAPI objects resolve back through the factory by
+	// id; the per-image ImageData, dynamic instances, atlas, owned data and gAPI TextureSets stay
+	// null on the mirror (see the encode comment).
+	for (auto &m : root.getValue("materials").getArray()) {
+		auto attData = deref(attachments, at(m, 0).getInteger(-1));
+		if (!attData) {
+			continue;
+		}
+		auto layout = deref(textureSets, at(m, 1).getInteger(-1));
+
+		auto att = Rc<core::MaterialAttachment>::alloc();
+		att->_data = attData;
+		att->_targetLayout = layout;
+
+		auto set = Rc<core::MaterialSet>::create(uint32_t(at(m, 2).getInteger()), att.get());
+		set->_generation = uint64_t(at(m, 3).getInteger());
+
+		// highest server-assigned id in this set; the client owns the queue and allocates new
+		// material ids itself, so the mirror's counter must resume just past the shared range
+		core::MaterialId maxId = 0;
+
+		// materials first: makeImageView caches id -> view so the layout slots below resolve them
+		for (auto &mn : at(m, 4).getArray()) {
+			auto id = core::MaterialId(at(mn, 0).getInteger());
+			if (id != core::Material::MaterialIdInitial && id > maxId) {
+				maxId = id;
+			}
+			auto layoutIndex = uint32_t(at(mn, 1).getInteger());
+			auto pipeline = queue.getGraphicPipeline(at(mn, 2).getString());
+			auto bufferId = uint64_t(at(mn, 3).getInteger());
+
+			Vector<core::MaterialImage> images;
+			for (auto &in : at(mn, 4).getArray()) {
+				images.emplace_back(decodeMaterialImage(in, factory));
+			}
+
+			auto mat = Rc<core::Material>::create(id, pipeline, sp::move(images), Rc<Ref>());
+			mat->_layoutIndex = layoutIndex;
+			if (auto buf = factory.resolveObject(bufferId)) {
+				mat->_buffer = Rc<core::BufferObject>(static_cast<core::BufferObject *>(buf));
+			}
+			set->_materials.emplace(mat->getId(), sp::move(mat));
+		}
+
+		for (auto &ln : at(m, 5).getArray()) {
+			set->getLayouts().emplace_back(decodeMaterialLayout(ln, factory));
+		}
+
+		for (auto &un : at(m, 6).getArray()) {
+			set->_updatedMaterials.emplace_back(core::MaterialId(un.getInteger()));
+		}
+
+		// resume allocation a number next after the max shared MaterialId
+		att->_attachmentMaterialId = maxId + 1;
+
+		att->setMaterials(set);
+		attData->attachment = att;
+	}
+
+	// 6) wrap in a Queue (friend access to adopt the prebuilt data; bypasses Queue::init)
 	if (data->resource) {
 		data->resource->setOwner(&queue);
 	}
 
+	return true;
+}
+
+// --- Material update codec (server -> client push for an already-shared queue) ---------------
+
+Bytes QueueCodec::encodeMaterials(uint64_t queueId, core::MaterialSet &set,
+		ObjectRegistry &registry) {
+	auto owner = set.getOwner();
+	if (!owner || !owner->getData()) {
+		return Bytes();
+	}
+
+	DataValue root(DataValue::Type::DICTIONARY);
+	root.setInteger(int64_t(kCodecVersion), "v");
+	root.setInteger(int64_t(queueId), "queue");
+	root.setString(owner->getData()->key, "owner");
+	root.setInteger(int64_t(set.getImagesInSet()), "imagesInSet");
+	root.setInteger(int64_t(set.getGeneration()), "generation");
+
+	DataValue mats(DataValue::Type::ARRAY);
+	for (auto &it : set.getMaterials()) { mats.addValue(encodeMaterial(it.second.get(), registry)); }
+	root.setValue(sp::move(mats), "materials");
+
+	DataValue layouts(DataValue::Type::ARRAY);
+	for (auto &l : set.getLayouts()) { layouts.addValue(encodeMaterialLayout(l, registry)); }
+	root.setValue(sp::move(layouts), "layouts");
+
+	DataValue updated(DataValue::Type::ARRAY);
+	set.foreachUpdated([&](core::MaterialId id, NotNull<core::Material>) {
+		updated.addInteger(int64_t(id));
+	}, false);
+	root.setValue(sp::move(updated), "updated");
+
+	return data::write(root, data::EncodeFormat::Cbor);
+}
+
+bool QueueCodec::decodeMaterials(BytesView bytes, ObjectFactory &factory) {
+	auto root = data::read<memory::StandartInterface>(bytes);
+	if (!root.isDictionary() || root.getInteger("v") != int64_t(kCodecVersion)) {
+		return false;
+	}
+
+	auto queue = factory.resolveQueue(uint64_t(root.getInteger("queue")));
+	if (!queue) {
+		return false;
+	}
+
+	// resolve the existing mirror MaterialAttachment by key and replace its MaterialSet in place
+	auto attData = queue->getAttachment(root.getString("owner"));
+	if (!attData || attData->type != core::AttachmentType::Material || !attData->attachment) {
+		return false;
+	}
+	auto att = static_cast<core::MaterialAttachment *>(attData->attachment.get());
+
+	auto set = Rc<core::MaterialSet>::create(uint32_t(root.getInteger("imagesInSet")), att);
+	set->_generation = uint64_t(root.getInteger("generation"));
+
+	core::MaterialId maxId = 0;
+	// materials first: makeImageView caches id -> view so the layout slots below resolve them
+	for (auto &mn : root.getValue("materials").getArray()) {
+		auto id = core::MaterialId(at(mn, 0).getInteger());
+		if (id != core::Material::MaterialIdInitial && id > maxId) {
+			maxId = id;
+		}
+		auto layoutIndex = uint32_t(at(mn, 1).getInteger());
+		auto pipeline = queue->getGraphicPipeline(at(mn, 2).getString());
+		auto bufferId = uint64_t(at(mn, 3).getInteger());
+
+		Vector<core::MaterialImage> images;
+		for (auto &in : at(mn, 4).getArray()) {
+			images.emplace_back(decodeMaterialImage(in, factory));
+		}
+
+		auto mat = Rc<core::Material>::create(id, pipeline, sp::move(images), Rc<Ref>());
+		mat->_layoutIndex = layoutIndex;
+		if (auto buf = factory.resolveObject(bufferId)) {
+			mat->_buffer = Rc<core::BufferObject>(static_cast<core::BufferObject *>(buf));
+		}
+		set->_materials.emplace(mat->getId(), sp::move(mat));
+	}
+
+	for (auto &ln : root.getValue("layouts").getArray()) {
+		set->getLayouts().emplace_back(decodeMaterialLayout(ln, factory));
+	}
+
+	for (auto &un : root.getValue("updated").getArray()) {
+		set->_updatedMaterials.emplace_back(core::MaterialId(un.getInteger()));
+	}
+
+	// resume allocation a number next after the max shared MaterialId
+	att->_attachmentMaterialId = maxId + 1;
+
+	att->setMaterials(set);
 	return true;
 }
 

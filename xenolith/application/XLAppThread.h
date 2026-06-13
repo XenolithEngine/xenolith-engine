@@ -27,6 +27,7 @@
 
 #include "XLContextInfo.h"
 #include "XLEvent.h"
+#include "XLRemoteProtocol.h"
 #include "XLResourceCache.h"
 #include "XLScene.h"
 #include "XLTemporaryResource.h" // IWYU pragma: keep
@@ -165,13 +166,17 @@ public:
 	virtual bool isListening() const;
 	virtual bool setListenAddress(StringView);
 
-	virtual bool shareWindow(AppWindow *, SpanView<core::Queue *>);
+	virtual bool shareWindow(AppWindow *, SpanView<core::Queue *>,
+			const HashMap<const core::MaterialAttachment *, Rc<core::MaterialSet>> & = {});
 
 	// Remote auth/compression config (server-side; set by the local-only Director API). The bearer
 	// key a connecting client must present (empty ⇒ reject all) and the server's LZ4 dictionary
 	// (priority over the client's suggestion). No-ops on the base / client.
 	virtual bool setBearerKey(BytesView);
 	virtual bool setCompressionDictionary(BytesView);
+
+	virtual void waitForReply(uint32_t,
+			Function<void(const remote::MessageHeader &, BytesView payload)> &&);
 
 protected:
 	virtual bool startListening();
@@ -190,6 +195,8 @@ protected:
 	virtual void initializeExtensions();
 	virtual void finalizeExtensions();
 
+	virtual bool dispatchMessage(const remote::MessageHeader &, BytesView payload);
+
 	sprt::dispatch::Looper *_appLooper = nullptr;
 	Rc<sprt::dispatch::TimerHandle> _timer;
 	UpdateTime _time;
@@ -206,6 +213,9 @@ protected:
 
 	HashMap<sprt::type_index, Rc<ApplicationExtension>> _extensions;
 	Map<Rc<Ref>, Function<void(const UpdateTime &, bool)>> _listeners;
+
+	// Functions, that waiting for a response from remote side
+	HashMap<uint32_t, Function<void(const remote::MessageHeader &, BytesView payload)>> _requests;
 };
 
 template <typename T>

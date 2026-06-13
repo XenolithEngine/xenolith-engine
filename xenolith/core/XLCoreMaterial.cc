@@ -557,7 +557,8 @@ MaterialAttachment::~MaterialAttachment() {
 }
 
 bool MaterialAttachment::init(AttachmentBuilder &builder, const TextureSetLayoutData *layout) {
-	if (!GenericAttachment::init(builder)) {
+	builder.setType(AttachmentType::Material);
+	if (!Attachment::init(builder)) {
 		return false;
 	}
 

@@ -104,6 +104,11 @@ public:
 // id back to the real object). id 0 == null.
 class SP_PUBLIC ObjectRegistry : public Ref {
 public:
+	struct SharedQueueInfo {
+		Rc<core::Queue> queue;
+		HashMap<const core::MaterialAttachment *, Rc<core::MaterialSet>> materials;
+	};
+
 	struct SharedWindowInfo {
 		core::RenderServerChannel *window = nullptr;
 		Vector<uint64_t> queues;
@@ -111,19 +116,26 @@ public:
 
 	virtual ~ObjectRegistry();
 
-	void shareWindow(core::RenderServerChannel *, SpanView<core::Queue *>);
+	void shareWindow(core::RenderServerChannel *, SpanView<core::Queue *>,
+			const HashMap<const core::MaterialAttachment *, Rc<core::MaterialSet>> &materials);
 
-	uint64_t getId(core::RenderServerChannel *); // assign-if-absent
-	uint64_t getId(core::Queue *); // assign-if-absent
-	uint64_t getId(core::Object *); // assign-if-absent
-	uint64_t getId(const Rc<core::Object> &o) { return getId(o.get()); }
+	uint64_t share(core::RenderServerChannel *);
+	uint64_t share(core::Queue *);
+	uint64_t share(core::Object *);
+	uint64_t share(const Rc<core::Object> &o) { return share(o.get()); }
+
+	uint64_t attachMaterials(NotNull<core::MaterialSet>);
+
+	uint64_t get(core::RenderServerChannel *) const;
+	uint64_t get(core::Queue *) const;
+	uint64_t get(core::Object *) const;
 
 	void drop(core::RenderServerChannel *);
 	void drop(core::Queue *);
 	void drop(core::Object *);
 
 	core::Object *resolveObject(uint64_t) const;
-	core::Queue *resolveQueue(uint64_t) const;
+	const SharedQueueInfo *resolveQueue(uint64_t) const;
 	core::RenderServerChannel *resolveWindow(uint64_t) const;
 
 	size_t size() const { return _objectById.size(); }
@@ -139,7 +151,7 @@ protected:
 	Map<uint64_t, Rc<core::Object>> _objectById;
 
 	Map<core::Queue *, uint64_t> _queueByPtr;
-	Map<uint64_t, Rc<core::Queue>> _queueById;
+	Map<uint64_t, SharedQueueInfo> _queueById;
 
 	Map<core::RenderServerChannel *, uint64_t> _windowByPtr;
 	Map<uint64_t, SharedWindowInfo> _windowById;
