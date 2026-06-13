@@ -283,13 +283,276 @@ void CommandList::addCommand(Command *cmd) {
 
 FrameContextHandle2d::~FrameContextHandle2d() { particleEmitters.clear(); }
 
-bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &) const {
-	// TODO(remote stage): wire format for the 2D command batch -- POD parts (lights, decorations,
-	// particle render info) followed by the CommandList / VertexData geometry (the bulk bytes).
-	// Stage 2 leaves this stubbed; remote frames are not transmitted yet.
-	return false;
+// --- remote render-session wire format -------------------------------------------------------
+//
+// Compact host-order binary blob (same-build ABI: POD vertex/instance structs are memcpy'd). Layout:
+//   clock, lights(POD), decorations(POD),
+//   stateCount, [enabled, viewport, scissor]*,            (DrawStateValues.data Rc extension dropped)
+//   cmdCount, [material, state, level, depth, zPath[], array[]]*
+// where array = [fill, stroke, sdf, instances(TransformData)[], vertices(Vertex)[], indexes(u32)[]].
+// Only immediate vertex commands are emitted: Deferred commands are resolved client-side and folded
+// into immediate vertices; particle/group commands are skipped.
+
+namespace {
+
+struct BinWriter {
+	Bytes buf;
+	void raw(const void *p, size_t n) {
+		if (!n) {
+			return;
+		}
+		auto o = buf.size();
+		buf.resize(o + n);
+		memcpy(buf.data() + o, p, n);
+	}
+	template <typename T>
+	void pod(const T &v) {
+		raw(&v, sizeof(T));
+	}
+	void u32(uint32_t v) { raw(&v, sizeof(v)); }
+	template <typename T>
+	void podArray(const T *p, uint32_t n) {
+		u32(n);
+		raw(p, sizeof(T) * size_t(n));
+	}
+};
+
+struct BinReader {
+	BytesView v;
+	size_t off = 0;
+	bool ok = true;
+	const uint8_t *take(size_t n) {
+		if (!ok || off + n > v.size()) {
+			ok = false;
+			return nullptr;
+		}
+		auto p = v.data() + off;
+		off += n;
+		return p;
+	}
+	template <typename T>
+	T pod() {
+		T t {};
+		if (auto p = take(sizeof(T))) {
+			memcpy(&t, p, sizeof(T));
+		}
+		return t;
+	}
+	uint32_t u32() { return pod<uint32_t>(); }
+	template <typename T>
+	Vector<T> podArray() {
+		auto n = u32();
+		Vector<T> out;
+		if (!ok || n == 0) {
+			return out;
+		}
+		if (auto p = take(sizeof(T) * size_t(n))) {
+			out.resize(n);
+			memcpy(out.data(), p, sizeof(T) * size_t(n));
+		}
+		return out;
+	}
+};
+
+// Apply a resolved Deferred command's view/model transform to one instance (mirrors
+// VertexMaterialDynamicData::applyNormalized in the vk vertex pass) so the wire carries final
+// pixel-space transforms.
+static TransformData transformInstance(const TransformData &src, const Mat4 &view, const Mat4 &model,
+		bool normalized) {
+	TransformData inst = src;
+	if (normalized) {
+		auto modelTransform = model * src.transform;
+		Mat4 newMV;
+		newMV.m[12] = sprt::floor(modelTransform.m[12]);
+		newMV.m[13] = sprt::floor(modelTransform.m[13]);
+		newMV.m[14] = sprt::floor(modelTransform.m[14]);
+		inst.transform = view * newMV;
+	} else {
+		inst.transform = view * model * src.transform;
+	}
+	return inst;
 }
 
-bool FrameContextHandle2d::deserialize(BytesView) { return false; }
+// Emit one immediate vertex command. For a resolved Deferred command pass its view/model transforms;
+// for an immediate VertexArray pass nullptr (instances are written as-is).
+static void writeVertexCommand(BinWriter &w, const CmdInfo &info,
+		SpanView<InstanceVertexData> arrays, const Mat4 *view, const Mat4 *model, bool normalized) {
+	w.u32(info.material);
+	w.u32(uint32_t(info.state));
+	w.u32(uint32_t(info.renderingLevel));
+	w.pod(info.depthValue);
+	w.podArray(info.zPath.data(), uint32_t(info.zPath.size()));
+	w.u32(uint32_t(arrays.size()));
+	for (auto &iv : arrays) {
+		w.u32(iv.fillIndexes);
+		w.u32(iv.strokeIndexes);
+		w.u32(iv.sdfIndexes);
+		if (view) {
+			Vector<TransformData> transformed;
+			if (iv.instances.empty()) {
+				TransformData inst;
+				inst.transform = Mat4::IDENTITY;
+				transformed.emplace_back(transformInstance(inst, *view, *model, normalized));
+			} else {
+				transformed.reserve(iv.instances.size());
+				for (auto &src : iv.instances) {
+					transformed.emplace_back(transformInstance(src, *view, *model, normalized));
+				}
+			}
+			w.podArray(transformed.data(), uint32_t(transformed.size()));
+		} else {
+			w.podArray(iv.instances.data(), uint32_t(iv.instances.size()));
+		}
+		if (iv.data) {
+			w.podArray(iv.data->data.data(), uint32_t(iv.data->data.size()));
+			w.podArray(iv.data->indexes.data(), uint32_t(iv.data->indexes.size()));
+		} else {
+			w.u32(0);
+			w.u32(0);
+		}
+	}
+}
+
+} // namespace
+
+bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &cb) const {
+	BinWriter w;
+	w.pod(clock);
+	w.pod(lights);
+	w.pod(decorations);
+
+	// states: only the POD fields cross the wire (the Rc<Ref> extension is server-local)
+	w.u32(uint32_t(states.size()));
+	for (auto &s : states) {
+		w.pod(s.enabled);
+		w.pod(s.viewport);
+		w.pod(s.scissor);
+	}
+
+	// commands: build into a side buffer first (Deferred resolves may add entries), then prefix count
+	BinWriter cmds;
+	uint32_t cmdCount = 0;
+	uint32_t skippedParticles = 0;
+	if (commands) {
+		for (auto cmd = commands->getFirst(); cmd; cmd = cmd->next) {
+			switch (cmd->type) {
+			case CommandType::VertexArray: {
+				auto d = reinterpret_cast<const CmdVertexArray *>(cmd->data);
+				writeVertexCommand(cmds, *d, d->vertexes, nullptr, nullptr, false);
+				++cmdCount;
+				break;
+			}
+			case CommandType::Deferred: {
+				auto d = reinterpret_cast<const CmdDeferred *>(cmd->data);
+				if (d->deferred) {
+					d->deferred->acquireResult(
+							[&](SpanView<InstanceVertexData> v, DeferredVertexResult::Flags) {
+						writeVertexCommand(cmds, *d, v, &d->viewTransform, &d->modelTransform,
+								d->normalized);
+						++cmdCount;
+					});
+				}
+				break;
+			}
+			case CommandType::ParticleEmitter: ++skippedParticles; break;
+			case CommandType::CommandGroup: break;
+			}
+		}
+	}
+	if (skippedParticles) {
+		log::source().verbose("FrameContextHandle2d", "serialize: skipped ", skippedParticles,
+				" particle command(s) (not transferred this stage)");
+	}
+	w.u32(cmdCount);
+	w.raw(cmds.buf.data(), cmds.buf.size());
+
+	cb(BytesView(w.buf.data(), w.buf.size()));
+	return true;
+}
+
+bool FrameContextHandle2d::deserialize(BytesView bytes) {
+	BinReader r;
+	r.v = bytes;
+
+	clock = r.pod<uint64_t>();
+	lights = r.pod<ShadowLightInput>();
+	decorations = r.pod<WindowDecorationsInput>();
+
+	auto stateCount = r.u32();
+	states.clear();
+	states.reserve(stateCount);
+	for (uint32_t i = 0; i < stateCount && r.ok; ++i) {
+		DrawStateValues s;
+		s.enabled = r.pod<core::DynamicState>();
+		s.viewport = r.pod<URect>();
+		s.scissor = r.pod<URect>();
+		states.emplace_back(s);
+	}
+
+	auto cmdCount = r.u32();
+	if (cmdCount > 0 && r.ok) {
+		commands = Rc<CommandList>::create(Rc<sprt::PoolRef>::alloc());
+		for (uint32_t i = 0; i < cmdCount && r.ok; ++i) {
+			auto material = r.u32();
+			auto state = r.u32();
+			auto level = r.u32();
+			auto depth = r.pod<float>();
+			auto zPath = r.podArray<ZOrder>();
+			auto arrayCount = r.u32();
+
+			struct ParsedArray {
+				uint32_t fill = 0, stroke = 0, sdf = 0;
+				Vector<TransformData> instances;
+				Vector<Vertex> vertices;
+				Vector<uint32_t> indexes;
+			};
+			Vector<ParsedArray> parsed;
+			parsed.reserve(arrayCount);
+			for (uint32_t a = 0; a < arrayCount && r.ok; ++a) {
+				ParsedArray pa;
+				pa.fill = r.u32();
+				pa.stroke = r.u32();
+				pa.sdf = r.u32();
+				pa.instances = r.podArray<TransformData>();
+				pa.vertices = r.podArray<Vertex>();
+				pa.indexes = r.podArray<uint32_t>();
+				parsed.emplace_back(sp::move(pa));
+			}
+			if (!r.ok) {
+				break;
+			}
+
+			CmdInfo info;
+			info.material = material;
+			info.state = StateId(state);
+			info.renderingLevel = RenderingLevel(level);
+			info.depthValue = depth;
+			info.zPath = makeSpanView(zPath);
+
+			commands->pushVertexArray([&](memory::pool_t *p) -> SpanView<InstanceVertexData> {
+				if (parsed.empty()) {
+					return SpanView<InstanceVertexData>();
+				}
+				auto arr = reinterpret_cast<InstanceVertexData *>(
+						memory::pool::palloc(p, sizeof(InstanceVertexData) * parsed.size()));
+				for (size_t a = 0; a < parsed.size(); ++a) {
+					auto iv = new (&arr[a]) InstanceVertexData();
+					iv->fillIndexes = parsed[a].fill;
+					iv->strokeIndexes = parsed[a].stroke;
+					iv->sdfIndexes = parsed[a].sdf;
+					iv->instances = makeSpanView(parsed[a].instances.data(),
+							parsed[a].instances.size()).pdup(p);
+					auto vd = Rc<VertexData>::alloc();
+					vd->data = sp::move(parsed[a].vertices);
+					vd->indexes = sp::move(parsed[a].indexes);
+					iv->data = move(vd);
+				}
+				return makeSpanView(arr, parsed.size());
+			}, sp::move(info));
+		}
+	}
+
+	return r.ok;
+}
 
 } // namespace stappler::xenolith::basic2d

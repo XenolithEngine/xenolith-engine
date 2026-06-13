@@ -46,6 +46,16 @@ bool LocalFrameRequestProxy::addInput(const AttachmentData *a, Rc<AttachmentInpu
 	return _request->addInput(a, sp::move(data));
 }
 
+bool LocalFrameRequestProxy::addInput(SpanView<const AttachmentData *> atts,
+		Rc<AttachmentInputData> &&data) {
+	// Forward the same input object to each attachment (dedup is free locally).
+	bool ret = true;
+	for (auto a : atts) {
+		ret = _request->addInput(a, Rc<AttachmentInputData>(data)) && ret;
+	}
+	return ret;
+}
+
 void LocalFrameRequestProxy::addSignalDependency(Rc<DependencyEvent> &&dep) {
 	_request->addSignalDependency(sp::move(dep));
 }
@@ -69,18 +79,39 @@ void LocalFrameRequestProxy::commit() {
 
 // --- RemoteFrameRequestProxy (skeleton; serialization is a stub this stage) ---
 
-bool RemoteFrameRequestProxy::init(const FrameConstraints &c) {
+bool RemoteFrameRequestProxy::init(const FrameConstraints &c, uint64_t frameId,
+		Function<void(SpanView<const AttachmentData *>, BytesView)> &&sendInput,
+		Function<void()> &&sendCommit) {
 	_constraints = c;
+	_frameId = frameId;
+	_sendInput = sp::move(sendInput);
+	_sendCommit = sp::move(sendCommit);
 	return true;
 }
 
-void RemoteFrameRequestProxy::selectQueue(NotNull<core::Queue>) {
-	abort(); // TODO
-	//_selectedQueue = name.str<Interface>();
+void RemoteFrameRequestProxy::selectQueue(NotNull<core::Queue> q) {
+	// The client may only pick one of the server-announced queues; store its name (the server
+	// resolves it back against its registry). The mirror queue's name equals the server's.
+	_selectedQueue = q->getName().str<Interface>();
 }
 
 bool RemoteFrameRequestProxy::addInput(const AttachmentData *a, Rc<AttachmentInputData> &&data) {
-	_inputs.emplace_back(a, sp::move(data));
+	return addInput(makeSpanView(&a, 1), sp::move(data));
+}
+
+bool RemoteFrameRequestProxy::addInput(SpanView<const AttachmentData *> atts,
+		Rc<AttachmentInputData> &&data) {
+	// Stream the input the moment it is submitted: serialize it once (the concrete input owns its wire
+	// format) and hand the bytes to the transport addressed to every target attachment.
+	if (atts.empty() || !data || !_sendInput) {
+		return false;
+	}
+	Bytes bytes;
+	if (!data->serialize(
+				[&](BytesView v) { bytes.insert(bytes.end(), v.data(), v.data() + v.size()); })) {
+		return false;
+	}
+	_sendInput(atts, bytes);
 	return true;
 }
 
@@ -101,12 +132,11 @@ const FrameConstraints &RemoteFrameRequestProxy::getFrameConstraints() const {
 }
 
 void RemoteFrameRequestProxy::commit() {
-	// STUB (stage 2): the real implementation serializes _selectedQueue + _constraints + signal
-	// deps + each accumulated input (via AttachmentInputData::serialize) into a CBOR buffer and
-	// hands it to the transport; the server then reconstructs a FrameRequest. No transport exists
-	// yet, so this is intentionally a no-op.
-	log::source().warn("RemoteFrameRequestProxy",
-			"commit(): remote frame serialization is not implemented yet (stage-2 stub)");
+	// Inputs were already streamed as they arrived; commit only signals "all inputs sent" so the
+	// server can stop expecting more for this frame.
+	if (_sendCommit) {
+		_sendCommit();
+	}
 }
 
 } // namespace stappler::xenolith::core

@@ -23,6 +23,7 @@
 #ifndef XENOLITH_APPLICATION_DIRECTOR_XLDIRECTOR_H_
 #define XENOLITH_APPLICATION_DIRECTOR_XLDIRECTOR_H_
 
+#include "XLRemoteAddress.h"
 #include "XLResourceCache.h"
 #include "XLAppThread.h"
 #include "XLInput.h" // IWYU pragma: keep
@@ -53,21 +54,15 @@ public:
 
 	void runScene(Rc<Scene> &&);
 
-	// Local-only: a (server) scene uses these to launch listening for remote clients and to mark
-	// this director's window connectable. Forwarded to the owning AppThread (the connection owner);
-	// meaningful only for a local/server director.
-	bool setListenAddress(StringView);
-
-	// Remote auth/compression config (server-side). The bearer key a connecting client must present
-	// and the server's LZ4 dictionary (priority over the client's suggestion).
-	bool setBearerKey(BytesView);
-	bool setCompressionDictionary(BytesView);
-
-	bool shareWindow(SpanView<core::Queue *>);
+	// For server, compile and share Director's windo with a new queue;
+	// For client - returns null;
+	Rc<core::Queue> shareQueue(core::Queue::Builder &&, StringView addr, BytesView key,
+			BytesView dict = BytesView());
 
 	// core::RenderClientChannel (server -> client). The server's PresentationEngine pulls a
 	// command batch via acquireFrame(); other entries deliver platform events / contract changes.
-	virtual bool acquireFrame(NotNull<core::FrameRequestProxy>) override;
+	virtual void acquireFrame(uint64_t windowId, NotNull<core::FrameRequestProxy>,
+			Function<void(bool)> &&) override;
 	virtual void handleRenderQueueAttached(const Rc<core::Queue> &) override;
 	virtual void handleConstraintsChanged(const core::FrameConstraints &) override;
 	virtual void handleInputEvents(Vector<core::InputEventData> &&) override;
@@ -91,6 +86,11 @@ public:
 	// schedule frame-input attachment on the render-loop thread. To be folded into the render
 	// session (as part of command-batch submission) in a later stage.
 	core::Loop *getGlLoop() const;
+
+	// Run `cb` on the thread that consumes per-frame input: the gapi loop thread on a server/local
+	// director, or the (GL-loop-less) client app thread on a remote client. Used by frame-input
+	// submission so it resolves correctly on both sides.
+	void performOnRenderThread(Function<void()> &&cb, Ref *ref = nullptr);
 
 	Scheduler *getScheduler() const { return _scheduler; }
 	ActionManager *getActionManager() const { return _actionManager; }

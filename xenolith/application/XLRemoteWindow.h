@@ -87,6 +87,12 @@ public:
 
 	SpanView<RemoteQueueInfo> getQueues() const { return _queues; }
 
+	// Drive the local Director for a server frame request: the scene graph selects one of the shared
+	// queues; `reply` is invoked with that queue's server id (0 if none could be selected). Per-frame
+	// attachment input is NOT serialized at this stage.
+	void acquireFrame(uint64_t frameId, const core::FrameConstraints &,
+			Function<void(uint64_t queueId)> &&reply);
+
 protected:
 	uint64_t _id = 0;
 	Rc<sprt::window::WindowInfo> _info;
