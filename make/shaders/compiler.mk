@@ -20,18 +20,12 @@
 
 BUILD_SHADERS_OUTDIR := $(BUILD_OUTDIR)/$(notdir $(GLSLC))
 
-sp_compile_glsl = $(GLOBAL_QUIET_GLSLC) $(GLSLC) \
+sp_compile_glsl = $(VERBOSE_GUARD) $(GLSLC) \
 	$(BUILD_SHADERS_FLAGS) $(3) -V --target-env vulkan1.1 --target-env vulkan1.0 -o $(1) $(2) -e $(notdir $(basename $(1))) --sep main 
 
-sp_compile_glsl_header = $(GLOBAL_QUIET_GLSLC) $(GLSLC) \
+sp_compile_glsl_header = $(VERBOSE_GUARD) $(GLSLC) \
 	$(BUILD_SHADERS_FLAGS) $(3) -V --target-env vulkan1.1 --target-env vulkan1.0 \
 	--vn $(subst .,_,$(notdir $(basename $(1)))) -o $(1) $(2) -e $(notdir $(basename $(1))) --sep main 
-
-sp_link_spirv = $(GLOBAL_QUIET_SPIRV_LINK) $(SPIRV_LINK) --target-env vulkan1.0 \
-	-o $@ $(addprefix $(BUILD_SHADERS_OUTDIR)/compiled,$(wildcard $(subst $(BUILD_SHADERS_OUTDIR)/linked,,$@)/*))
-
-sp_embed_spirv = $(GLOBAL_QUIET_SPIRV_EMBED) \
-	cd $(dir $<); xxd -i $(notdir $<) $(abspath $@).tmp; echo '///@ SP_EXCLUDE' | cat - $(abspath $@).tmp > $(abspath $@); rm $(abspath $@).tmp
 
 # $(1) - dirs where to find shaders
 sp_toolkit_shaders_files = $(realpath $(foreach dir,$(1),$(wildcard $(dir)/*.*)))
