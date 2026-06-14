@@ -101,6 +101,12 @@ public:
 	void setSceneId(uint64_t val) { _sceneId = val; }
 	uint64_t getSceneId() const { return _sceneId; }
 
+	// Absolute monotonic-clock deadline (microseconds) by which this frame must complete; 0 = none.
+	// The PresentationEngine cancels the frame if it is still pending at the deadline (e.g. an input
+	// or dependency that never arrives). It seeds a default if the caller leaves it unset.
+	void setDeadline(uint64_t val) { _deadline = val; }
+	uint64_t getDeadline() const { return _deadline; }
+
 	const Vector<Rc<DependencyEvent>> &getSignalDependencies() const { return _signalDependencies; }
 
 	FrameRequest() = default;
@@ -127,6 +133,7 @@ protected:
 	// try to map per-frame GPU memory persistently
 	bool _persistentMappings = true;
 	uint64_t _sceneId = 0;
+	uint64_t _deadline = 0; // absolute monotonic-clock deadline (us); 0 = none
 
 	Map<const ImageAttachment *, ImageInfoData> _imageSpecialization;
 	Map<const AttachmentData *, Rc<FrameOutputBinding>> _output;
