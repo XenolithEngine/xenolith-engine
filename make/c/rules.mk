@@ -42,22 +42,17 @@ sp_compile_command = $(1) $(2) $(call sp_compile_dep, $(5), $(3)) -c -o $(5) $(4
 
 sp_compile_command_asm = $(1) $(2) $(3) -c -o $(5) $(4)
 
-sp_compile_gch = $(GLOBAL_QUIET_CPP) \
-	$(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_GCH_FILE),$(1),$<,$@)
+sp_compile_gch = $(VERBOSE_GUARD) $(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_GCH_FILE),$(1),$<,$@)
 
-sp_compile_S = $(GLOBAL_QUIET_CC) \
-	$(call sp_compile_command_asm,$(GLOBAL_CC),,$(1),$<,$@)
+sp_compile_S = $(VERBOSE_GUARD) $(call sp_compile_command_asm,$(GLOBAL_CC),,$(1),$<,$@)
 
-sp_compile_c = $(GLOBAL_QUIET_CC) \
-	$(call sp_compile_command,$(GLOBAL_CC),$(OSTYPE_C_FILE),$(1),$<,$@)
+sp_compile_c = $(VERBOSE_GUARD) $(call sp_compile_command,$(GLOBAL_CC),$(OSTYPE_C_FILE),$(1),$<,$@)
 
-sp_compile_cpp = $(GLOBAL_QUIET_CPP) \
-	$(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_CPP_FILE),$(1),$<,$@)
+sp_compile_cpp = $(VERBOSE_GUARD) $(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_CPP_FILE),$(1),$<,$@)
 
-sp_compile_mm = $(GLOBAL_QUIET_CPP) \
-	$(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_MM_FILE),$(1) -fobjc-arc,$<,$@)
+sp_compile_mm = $(VERBOSE_GUARD) $(call sp_compile_command,$(GLOBAL_CXX),$(OSTYPE_MM_FILE),$(1) -fobjc-arc,$<,$@)
 
-sp_copy_header = $(call rule_cp,$<,$@)
+sp_copy_header = $(VERBOSE_GUARD) $(call rule_cp,$<,$@)
 
 sp_toolkit_source_list_c = $(call sp_make_general_source_list,$(1),$(2),$(GLOBAL_ROOT),\
 	$(SP_SOURCE_FILES_PATTERN) $(if $(BUILD_OBJC),*.mm),\
@@ -178,6 +173,7 @@ define BUILD_gch_rule
 $(abspath $(1)): $(patsubst %.h$(OSTYPE_GCH_SUFFIX),%.h,$(1)) \
 		$$(LOCAL_MAKEFILE) $$($TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) $(3)
 	@$$(call rule_mkdir,$$(dir $$@))
+	$$(GLOBAL_QUIET_CPP)
 	$$(call sp_compile_gch,$(2))
 endef
 
@@ -197,6 +193,7 @@ $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 $(2): $(1) $(3) $$(LOCAL_MAKEFILE) \
 		$$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) | $(2).json $$(BUILD_COMPILATION_DATABASE)
 	@$$(call rule_mkdir,$$(dir $$@))
+	$$(GLOBAL_QUIET_CC)
 	$$(call sp_compile_c,$(4))
 endef
 
@@ -208,6 +205,7 @@ define BUILD_S_rule
 $(2): \
 		$(1) $(3)
 	@$$(call rule_mkdir,$$(dir $$@))
+	$$(GLOBAL_QUIET_CC)
 	$$(call sp_compile_S,$(4))
 endef
 
@@ -227,6 +225,7 @@ $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 $(2): $(1) $(3) $$(LOCAL_MAKEFILE) \
 		$$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) | $(2).json $$(BUILD_COMPILATION_DATABASE)
 	@$$(call rule_mkdir,$$(dir $$@))
+	$$(GLOBAL_QUIET_CPP)
 	$$(call sp_compile_cpp,$(4))
 endef
 
@@ -246,6 +245,7 @@ $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 $(2): $(1) $(3) $$(LOCAL_MAKEFILE) \
 		$$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) | $(2).json $$(BUILD_COMPILATION_DATABASE)
 	@$$(call rule_mkdir,$$(dir $$@))
+	$$(GLOBAL_QUIET_CPP)
 	$$(call sp_compile_mm,$(4))
 endef
 

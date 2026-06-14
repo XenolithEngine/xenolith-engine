@@ -26,34 +26,24 @@ sp_counter_text =
 endif
 
 ifdef verbose
-GLOBAL_QUIET_CC =
-GLOBAL_QUIET_CPP =
-GLOBAL_QUIET_LINK =
-GLOBAL_QUIET_LINK_SHARED =
-GLOBAL_QUIET_LINK_STATIC =
-GLOBAL_QUIET_GLSLC =
-GLOBAL_QUIET_SPIRV_LINK =
-GLOBAL_QUIET_SPIRV_EMBED =
-GLOBAL_QUIET_WIT =
-GLOBAL_QUIET_WIT_BINDGEN =
-GLOBAL_QUIET_WASM_CC =
-GLOBAL_QUIET_WASM_CXX =
-GLOBAL_QUIET_WASM_LINK =
+verbose_log =
+VERBOSE_GUARD := 
 else
-GLOBAL_QUIET_CC = @ echo "$(call sp_counter_text) [$(notdir $(GLOBAL_CC))] $(notdir $@)" ;
-GLOBAL_QUIET_CPP = @ echo "$(call sp_counter_text) [$(notdir $(GLOBAL_CXX))] $(notdir $@)" ;
-GLOBAL_QUIET_LINK = @ echo [Link] $@ ;
-GLOBAL_QUIET_LINK_SHARED = @ echo [DSO Link] $$(notdir $$@) ;
-GLOBAL_QUIET_LINK_STATIC = @ echo [Static Link] $$(notdir $$@) ;
-GLOBAL_QUIET_GLSLC = @ echo [$(notdir $(GLSLC))] $(notdir $(abspath $(dir $(1))))/$(notdir $(1)) ;
-GLOBAL_QUIET_SPIRV_LINK = @ echo [$(notdir $(SPIRV_LINK))] $(notdir $@) ;
-GLOBAL_QUIET_SPIRV_EMBED = @ echo [embed] $(notdir $@) ;
-GLOBAL_QUIET_WIT = @ echo [wit] $(notdir $@) ;
-GLOBAL_QUIET_WIT_BINDGEN = @ echo [$(notdir $(WIT_BINDGEN))] ;
-GLOBAL_QUIET_WASM_CC = @ echo [wasm:$(notdir $(WASI_SDK_CC))] $(notdir $@) ;
-GLOBAL_QUIET_WASM_CXX = @ echo [wasm:$(notdir $(WASI_SDK_CXX))] $(notdir $@) ;
-GLOBAL_QUIET_WASM_LINK = @ echo [wasm:Link] $@ ;
+verbose_log = @ $(GLOBAL_ECHO) $1
+VERBOSE_GUARD := @
 endif
+
+GLOBAL_QUIET_CC = $(call verbose_log,"$(call sp_counter_text) [$(notdir $(GLOBAL_CC))] $(notdir $@)")
+GLOBAL_QUIET_CPP = $(call verbose_log,"$(call sp_counter_text) [$(notdir $(GLOBAL_CXX))] $(notdir $@)")
+GLOBAL_QUIET_LINK = $(call verbose_log,"[Link] $@")
+GLOBAL_QUIET_LINK_SHARED = $(call verbose_log,"[DSO Link] $$(notdir $$@)")
+GLOBAL_QUIET_LINK_STATIC = $(call verbose_log,"[Static Link] $$(notdir $$@)")
+GLOBAL_QUIET_GLSLC = $(call verbose_log,"[$(notdir $(GLSLC))] $(notdir $(abspath $(dir $(1))))/$(notdir $(1))")
+GLOBAL_QUIET_WIT = $(call verbose_log,"[wit] $(notdir $@)")
+GLOBAL_QUIET_WIT_BINDGEN = $(call verbose_log,"[$(notdir $(WIT_BINDGEN))]")
+GLOBAL_QUIET_WASM_CC = $(call verbose_log,"[wasm:$(notdir $(WASI_SDK_CC))] $(notdir $@)")
+GLOBAL_QUIET_WASM_CXX = $(call verbose_log,"[wasm:$(notdir $(WASI_SDK_CXX))] $(notdir $@)")
+GLOBAL_QUIET_WASM_LINK = $(call verbose_log,"[wasm:Link] $@")
 
 # Progress counter
 BUILD_CURRENT_COUNTER ?= 1

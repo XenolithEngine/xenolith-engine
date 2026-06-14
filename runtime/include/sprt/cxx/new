@@ -210,12 +210,17 @@ constexpr void local_deallocate(T *t, size_t n, size_t nbytes = 0) {
 #define __SPRT_POP_ALLOW_CXXABI_ALLOC \
     _Pragma("clang diagnostic pop")
 
+// On windows - we in control of default operators, and can make them compatible
+#if SPRT_WINDOWS
+#define __SPRT_DISALLOW_NEW
+#define __SPRT_DISALLOW_DELETE
+#else
 #define __SPRT_DISALLOW_NEW \
 	[[deprecated("It's unsafe to use direct new within freestanding code, use, new (sprt::nothrow)")]]
 
 #define __SPRT_DISALLOW_DELETE \
 	[[deprecated("It's unsafe to use direct delete within freestanding code, use, sprt::__delete()")]]
-
+#endif
 #if __SPRT_USE_STL == 0
 
 [[nodiscard]]
