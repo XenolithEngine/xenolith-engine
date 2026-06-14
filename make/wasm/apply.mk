@@ -40,6 +40,7 @@ BUILD_WASM_CXXFLAGS := $(BUILD_WASM_CXXFLAGS_INIT) $(GLOBAL_WASM_CXXFLAGS) $(LOC
 
 define BUILD_WITS_copy_rule
 $(BUILD_WIT_OUTDIR)/wit/$(notdir $(1)) : $(1)
+	$$(GLOBAL_QUIET_WIT)
 	$$(call sp_copy_wit,$(1))
 endef
 
@@ -56,7 +57,8 @@ $(BUILD_WIT_OUTDIR)/wit/package.wit : $(BUILD_WITS_OBJS)
 	@printf '}\n' >> $@
 
 $(BUILD_WIT_OUTDIR)/c/stappler.c : $(BUILD_WITS)
-	$(GLOBAL_QUIET_WIT_BINDGEN) $(WIT_BINDGEN) c $(BUILD_WIT_OUTDIR)/wit --out-dir $(BUILD_WIT_OUTDIR)/c
+	$(GLOBAL_QUIET_WIT_BINDGEN)
+	$(VERBOSE_GUARD) $(WIT_BINDGEN) c $(BUILD_WIT_OUTDIR)/wit --out-dir $(BUILD_WIT_OUTDIR)/c
 
 $(foreach WIT,$(TOOLKIT_WITS_SRCS) $(BUILD_WITS_SRCS),$(eval $(call BUILD_WITS_copy_rule,$(WIT))))
 
@@ -65,12 +67,14 @@ $(foreach WIT,$(TOOLKIT_WITS_SRCS) $(BUILD_WITS_SRCS),$(eval $(call BUILD_WITS_c
 define TOOLKIT_wasm_c_rule
 $(addprefix $(2),$(patsubst %.c,%.o,$(realpath $(1)))): \
 		$(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(BUILD_WIT_OUTDIR)/c/stappler.c
+	$$(GLOBAL_QUIET_WASM_CC)
 	$$(call sp_compile_wasm_c,$(3))
 endef
 
 define TOOLKIT_wasm_cpp_rule
 $(addprefix $(2),$(patsubst %.cpp,%.o,$(realpath $(1)))): \
 		$(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(BUILD_WIT_OUTDIR)/c/stappler.c
+	$$(GLOBAL_QUIET_WASM_CXX)
 	$$(call sp_compile_wasm_cpp,$(3))
 endef
 
@@ -93,6 +97,7 @@ $(BUILD_WIT_OUTDIR)/c/stappler.o : $(BUILD_WIT_OUTDIR)/c/stappler.c
 
 ifdef LOCAL_WASM_MODULE
 $(BUILD_WASM_MODULE): $(BUILD_WASM_OBJS) $(BUILD_WIT_OUTDIR)/c/stappler.o
-	$(GLOBAL_QUIET_WASM_LINK) $(WASI_LINK_TOOL) $(BUILD_WASM_CFLAGS_DEFAULT) $(BUILD_WIT_OUTDIR)/c/stappler.o  $(BUILD_WIT_OUTDIR)/c/stappler_component_type.o \
+	$(GLOBAL_QUIET_WASM_LINK)
+	$(VERBOSE_GUARD) $(WASI_LINK_TOOL) $(BUILD_WASM_CFLAGS_DEFAULT) $(BUILD_WIT_OUTDIR)/c/stappler.o  $(BUILD_WIT_OUTDIR)/c/stappler_component_type.o \
 		$(BUILD_WASM_OBJS) $(BUILD_WASM_LDFLAGS) -o $(BUILD_WASM_MODULE)
 endif
