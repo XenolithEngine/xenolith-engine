@@ -169,6 +169,11 @@ protected:
 
 	void resetFrames();
 
+	// Start / stop a per-frame deadline timer that cancels the frame if it is still pending when the
+	// deadline (FrameRequest::getDeadline(), or a seeded default) passes.
+	void scheduleFrameDeadline(NotNull<PresentationFrame>);
+	void cancelFrameDeadline(NotNull<PresentationFrame>);
+
 	void scheduleImage(NotNull<PresentationFrame>);
 
 	Status acquireScheduledImage();
@@ -256,6 +261,9 @@ protected:
 
 	// Handles, waiting for their present windows
 	Set<Rc<sprt::dispatch::Handle>> _scheduledPresentHandles;
+
+	// Per-frame deadline timers (cancel a frame stuck waiting for input/dependencies)
+	Map<PresentationFrame *, Rc<sprt::dispatch::Handle>> _frameDeadlines;
 
 	// Async request for a swapchain images
 	Set<Swapchain::SwapchainAcquiredImage *> _requestedSwapchainImage;

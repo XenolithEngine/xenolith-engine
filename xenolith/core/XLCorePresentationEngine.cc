@@ -154,6 +154,9 @@ bool PresentationEngine::scheduleSwapchainImage(Rc<PresentationFrame> &&frame) {
 				_frameOrder = nextFrame->getOrder() + 1;
 
 				_window->setFrameOrder(nextFrame->getOrder());
+
+				// arm the deadline now that the frame is processing (and its queue is armed)
+				scheduleFrameDeadline(frame);
 			}
 		} else {
 			log::source().error("core::PresentationEngine",
@@ -509,6 +512,8 @@ bool PresentationEngine::handleFrameStarted(NotNull<PresentationFrame> frame) {
 void PresentationEngine::handleFrameInvalidated(NotNull<PresentationFrame> frame) {
 	XL_COREPRESENT_LOG(frame->getFrameOrder(), ": handleFrameInvalidated");
 
+	cancelFrameDeadline(frame);
+
 	auto it = _framesAwaitingImages.begin();
 	while (it != _framesAwaitingImages.end()) {
 		if (*it == frame) {
@@ -536,6 +541,7 @@ void PresentationEngine::handleFrameInvalidated(NotNull<PresentationFrame> frame
 
 void PresentationEngine::handleFrameReady(NotNull<PresentationFrame> frame) {
 	XL_COREPRESENT_LOG(frame->getFrameOrder(), ": handleFrameReady");
+	cancelFrameDeadline(frame);
 	if (_options.earlyPresent) {
 		present(frame, frame->getSwapchainImage());
 	} else if (_options.preStartFrame) {
@@ -551,6 +557,8 @@ void PresentationEngine::handleFrameReady(NotNull<PresentationFrame> frame) {
 
 void PresentationEngine::handleFramePresented(NotNull<PresentationFrame> frame) {
 	XL_COREPRESENT_LOG(frame->getFrameOrder(), ": handleFramePresented");
+
+	cancelFrameDeadline(frame);
 
 	if (!frame->hasFlag(PresentationFrame::DoNotPresent)) {
 		_window->handleFramePresented(frame);
@@ -571,6 +579,7 @@ void PresentationEngine::handleFramePresented(NotNull<PresentationFrame> frame) 
 
 void PresentationEngine::handleFrameComplete(NotNull<PresentationFrame> frame) {
 	XL_COREPRESENT_LOG(frame->getFrameOrder(), ": handleFrameCancel");
+	cancelFrameDeadline(frame);
 	if (frame->hasFlag(PresentationFrame::DoNotPresent)) {
 		_detachedFrames.erase(frame);
 		return;
@@ -609,6 +618,43 @@ void PresentationEngine::handleFrameComplete(NotNull<PresentationFrame> frame) {
 				acquireScheduledImage();
 			}
 		}
+	}
+}
+
+void PresentationEngine::scheduleFrameDeadline(NotNull<PresentationFrame> frame) {
+	auto req = frame->getRequest();
+	if (!req) {
+		return;
+	}
+
+	auto deadline = req->getDeadline();
+	if (deadline == 0) {
+		return; // no deadline by default
+	}
+	auto now = sp::platform::clock(ClockType::Monotonic);
+	auto timeout = (deadline > now) ? (deadline - now) : 0;
+
+	auto handle = _loop->getLooper()->schedule(TimeInterval::microseconds(timeout),
+			[this, frame = Rc<PresentationFrame>(frame)](sprt::dispatch::Handle *, bool success) {
+		// erase before invalidate so the resulting handleFrameInvalidated finds nothing to cancel
+		_frameDeadlines.erase(frame.get());
+		if (success) {
+			log::source().warn("core::PresentationEngine", "Frame ", frame->getFrameOrder(),
+					" deadline reached; cancelling (stuck waiting for input/dependencies)");
+			frame->invalidate();
+		}
+	}, this);
+
+	_frameDeadlines.emplace(frame.get(), sp::move(handle));
+}
+
+void PresentationEngine::cancelFrameDeadline(NotNull<PresentationFrame> frame) {
+	auto it = _frameDeadlines.find(frame.get());
+	if (it != _frameDeadlines.end()) {
+		// erase first, then cancel: cancel() may re-enter the schedule callback synchronously
+		auto handle = sp::move(it->second);
+		_frameDeadlines.erase(it);
+		handle->cancel();
 	}
 }
 
