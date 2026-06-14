@@ -281,8 +281,10 @@ $(SRC_ROOT)/simde: | prepare
 # https://github.com/llvm/llvm-project/releases # revised: 2 jun 2026
 $(SRC_ROOT)/llvm-project: | prepare
 	cd $(SRC_ROOT); git clone https://github.com/llvm/llvm-project.git --branch llvmorg-21.1.8  --depth 1  --recurse-submodules
-	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-lldb-wine/*
-	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-noulock/*
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-lldb-wine/0001-Fix-incorrect-L1-inferior-memory-cache-flushing.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-lldb-wine/0002-lldb-Add-DYLD-plugin-for-debugging-Wine.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-lldb-wine/0003-lldb-Fix-Wine-preloader-name-in-POSIX-Wine-DYLD.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-noulock/0001-replaced-__ulock-with-os_sync_wait_on_address.patch
 
 # https://download.gnome.org/sources/libxml2  # revised: 2 jun 2026
 $(SRC_ROOT)/libxml2: | prepare
