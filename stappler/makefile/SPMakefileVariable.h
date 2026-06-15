@@ -164,6 +164,13 @@ public:
 
 	bool clear(StringView, Origin o);
 
+	// Unconditional set/erase that bypass the Origin overridability check. Used to restore an
+	// exact prior Variable after a temporary scope (e.g. target-specific variables), where the
+	// saved value may have a lower Origin than what was written and so could not be put back via
+	// the precedence-checked set()/clear().
+	void forceSet(StringView, const Variable &);
+	void forceErase(StringView);
+
 	void addSubstitutionCallback(Origin, VariableCallback::Fn, void *);
 	void addSubstitutionCallback(VariableCallback *);
 
@@ -196,6 +203,10 @@ public:
 
 	void pushBlock(Block *);
 	void popBlock();
+
+	// Append a makefile name to MAKEFILE_LIST (kept as a real, immediately-resolved variable so it
+	// is valid during AND after parsing, e.g. in exported recipes). Call as each file begins parsing.
+	void appendMakefileList(StringView name);
 
 	Block *getCurrentBlock() const { return _currentBlock; }
 

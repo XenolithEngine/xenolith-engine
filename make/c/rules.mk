@@ -154,9 +154,11 @@ sp_cdb_process_arg = \
 		$(if $(filter /%,$(1)),$(call sp_cdb_convert_cmd,$(1)),$(1))\
 	)
 
+comma := ,
+
 sp_cdb_split_arguments_cmd = \
 	"$(call sp_cdb_which_cmd,$(1))"\
-	$(foreach arg,$(2),,"$(foreach a,$(call sp_cdb_process_arg,$(arg)),$(a))")
+	$(foreach arg,$(2),$(comma)"$(foreach a,$(call sp_cdb_process_arg,$(arg)),$(a))")
 
 
 define BUILD_cdb_json_file

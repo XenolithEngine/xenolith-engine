@@ -483,8 +483,8 @@ bool write(const FileInfo &ipath, const unsigned char *data, size_t len, bool _o
 	bool success = false;
 	enumerateWritablePaths(ipath, _override ? Access::None : Access::Empty,
 			[&](const LocationInfo &info, StringView str) {
-		success = info.interface->_write_oneshot(info, str, data, len, _override,
-						  getModeFromProtFlags(ProtFlags::Default))
+		success = info.interface->_write_oneshot(info, str, data, len,
+						  getModeFromProtFlags(ProtFlags::WriteDefault), _override)
 				== Status::Ok;
 		return false;
 	});

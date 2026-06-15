@@ -32,12 +32,15 @@ LOCAL_MODULES_PATHS = stappler/stappler-modules.mk
 
 LOCAL_MODULES ?= \
 	stappler_makefile \
-	stappler_filesystem
+	stappler_filesystem \
+	runtime
 
 LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 
 LOCAL_SRCS_DIRS :=
-LOCAL_SRCS_OBJS :=
+LOCAL_SRCS_OBJS := \
+	Inspector.cpp \
+	Executor.cpp
 
 LOCAL_INCLUDES_DIRS :=
 LOCAL_INCLUDES_OBJS :=
