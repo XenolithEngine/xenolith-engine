@@ -83,7 +83,7 @@ struct Target : AllocBase {
 
 	bool hasRecipe() const { return rulesList != nullptr; }
 
-	bool isFile = true;
+	bool hasStat = false;
 
 	// classification (set when the target is created / declared)
 	bool isPhony = false; // listed as a prerequisite of .PHONY
@@ -103,7 +103,6 @@ struct Target : AllocBase {
 	Mark mark = Mark::White;
 
 	// filesystem state cache, filled lazily during a resolution pass
-	bool statValid = false;
 	bool fileExists = false;
 	uint64_t mtimeMicros = 0; // modification time in microseconds (filesystem::Stat::mtime)
 

@@ -327,17 +327,20 @@ BuildNode *Makefile::makeShallowNode(Target *t) {
 // === filesystem state / out-of-date ======================================================
 
 void Makefile::statTarget(Target *t) {
-	t->statValid = true;
-	t->fileExists = false;
-	t->mtimeMicros = 0;
 	if (t->isPhony) {
 		return;
 	}
-	auto path = _engine.getAbsolutePath(t->name);
-	filesystem::Stat st;
-	if (!path.empty() && filesystem::stat(FileInfo{path}, st)) {
-		t->fileExists = true;
-		t->mtimeMicros = st.mtime.toMicros();
+	if (!t->hasStat) {
+		t->fileExists = false;
+		t->mtimeMicros = 0;
+
+		auto path = _engine.getAbsolutePath(t->name);
+		filesystem::Stat st;
+		if (!path.empty() && filesystem::stat(FileInfo{path}, st)) {
+			t->fileExists = true;
+			t->mtimeMicros = st.mtime.toMicros();
+		}
+		t->hasStat = true;
 	}
 }
 
