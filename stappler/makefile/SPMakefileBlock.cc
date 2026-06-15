@@ -29,12 +29,24 @@ bool Block::canEnableNext() const {
 		return false;
 	}
 
-	auto tmp = prev;
-	while (tmp) {
-		if (tmp->enabled) {
-			return false;
+	{
+		auto tmp = outer;
+		while (tmp) {
+			if (!tmp->enabled) {
+				return false;
+			}
+			tmp = tmp->outer;
 		}
-		tmp = tmp->prev;
+	}
+
+	{
+		auto tmp = prev;
+		while (tmp) {
+			if (tmp->enabled) {
+				return false;
+			}
+			tmp = tmp->prev;
+		}
 	}
 
 	return true;

@@ -55,6 +55,11 @@ public:
 	void setIncludeCallback(IncludeCallback, void * = nullptr);
 	void setRootPath(StringView);
 
+	// Which diagnostic warnings the engine emits (see EngineFlags). Defaults to
+	// EngineFlags::Default; pass EngineFlags::WarnAll to enable every warning.
+	void setFlags(EngineFlags);
+	EngineFlags getFlags() const;
+
 	bool include(StringView name, StringView data, bool copyData = true, ErrorReporter * = nullptr);
 	bool include(const FileInfo &, ErrorReporter * = nullptr, bool optional = false);
 	bool includeFileByPath(StringView, ErrorReporter * = nullptr, bool optional = false);
@@ -72,6 +77,13 @@ public:
 
 	const Variable *getVariable(StringView) const;
 
+	// Enumerate every defined variable (name + raw Variable). Use getVariableValue() to
+	// obtain the expanded value of a recursive variable.
+	void foreachVariable(const Callback<void(StringView, const Variable &)> &) const;
+
+	// Expand a variable's value to text (recursive variables are evaluated, like `$(NAME)`).
+	void getVariableValue(StringView name, const Callback<void(StringView)> &, ErrorReporter &);
+
 	// content parsed as an included makefile
 	// use $(print wordlist...) to output data
 	bool eval(const Callback<void(StringView)> &, StringView name, StringView content);
@@ -80,6 +92,57 @@ public:
 	bool addTargetPrerequisite(SpanView<Target *>, StringView decl, ErrorReporter &);
 
 	bool undefineVariable(StringView, Origin, ErrorReporter &);
+
+	// === Dependency-graph introspection (pure: no recipe is executed) ===
+
+	// Look up a target by name; nullptr if it was never mentioned.
+	Target *getTarget(StringView) const;
+
+	// The default goal: the first explicitly declared, non-special, non-pattern target.
+	Target *getDefaultGoal() const { return _defaultGoal; }
+
+	// All explicitly declared targets (excludes '.'-special and '%'-pattern rules).
+	Vector<Target *> getTargets() const;
+	void foreachTarget(const Callback<void(Target *)> &) const;
+
+	// Immediate prerequisites of a target, resolving a matching pattern rule when the
+	// target has no explicit recipe. Each prerequisite name is passed to the callback.
+	void getPrerequisites(Target *, const Callback<void(StringView)> &);
+	void getOrderOnly(Target *, const Callback<void(StringView)> &);
+
+	// Transitive closure of (normal, and optionally order-only) prerequisites,
+	// deduplicated; order is unspecified.
+	Vector<Target *> getTransitivePrerequisites(Target *, bool includeOrderOnly = true);
+
+	// Resolve a goal into a topologically ordered build plan: dependencies precede
+	// dependents, so the goal node is the last element. Each BuildNode is linked to its
+	// prerequisite nodes. Returns an empty vector on a dependency cycle or unknown goal
+	// (reported through the ErrorReporter).
+	Vector<BuildNode *> buildPlan(Target *goal, ErrorReporter &);
+	Vector<BuildNode *> buildPlan(StringView goalName, ErrorReporter &);
+
+	// True if `make` would (re)build this target: phony, missing, or older than a
+	// prerequisite. Fills the target's filesystem-state cache.
+	bool isOutOfDate(Target *, ErrorReporter &);
+
+	// === Recipe export (pure): fully expanded recipe text, no execution ===
+
+	// Emit every recipe line of the target with variables, automatic variables and the
+	// pattern stem substituted. Recipe-line prefixes (@, -, +) are stripped.
+	void exportRecipe(Target *, const Callback<void(StringView)> &, ErrorReporter &);
+
+	// Per-line variant exposing the decoded recipe-line prefixes.
+	using RecipeLineCallback =
+			Callback<void(StringView line, bool silent, bool ignoreErr, bool always)>;
+	void exportRecipeLines(Target *, const RecipeLineCallback &, ErrorReporter &);
+
+	// === Execution (side-effecting): runs recipes via the shell ===
+
+	void setBuildOptions(const BuildOptions &o) { _buildOptions = o; }
+	const BuildOptions &getBuildOptions() const { return _buildOptions; }
+
+	BuildResult execute(Target *goal, ErrorReporter &);
+	BuildResult execute(StringView goalName, ErrorReporter &);
 
 protected:
 	bool processMakefileContent(StringView str, ErrorReporter &);
@@ -98,10 +161,52 @@ protected:
 
 	bool processIncludeLine(StringView &str, ErrorReporter &, bool optional);
 
+	// Looks up or lazily creates a target node (used for prerequisite names that have no
+	// rule of their own); classifies it as special/pattern on creation. Unlike addTarget
+	// it does not affect default-goal selection.
+	Target *getOrCreateTarget(StringView name);
+
+	// Applies special-target semantics (.PHONY/.PRECIOUS/.SUFFIXES/...) to the already
+	// parsed prerequisites of a special target.
+	void applySpecialTarget(Target *, ErrorReporter &);
+
+	// If `t` has no explicit recipe, finds the best-matching pattern rule, records the
+	// stem/source/recipe on `t`, and appends the stem-substituted prerequisite names.
+	// Returns true if a pattern rule was matched.
+	bool resolveImplicit(Target *t, Vector<StringView> &prereqs, Vector<StringView> &orderOnly);
+
+	// Internal build-plan builder (DFS with memoization + cycle detection).
+	BuildNode *buildPlanNode(Target *, ErrorReporter &, Map<Target *, BuildNode *> &memo,
+			Vector<BuildNode *> &order, bool &cycle);
+
+	// Builds a single (non-recursive) node with its immediate prerequisites linked, for
+	// recipe export / per-target automatic-variable computation.
+	BuildNode *makeShallowNode(Target *);
+
+	// True if a planned node needs rebuilding (phony, missing, or older than a prereq).
+	bool nodeOutOfDate(BuildNode *) const;
+
+	// Runs a node's recipe lines via the shell; honors @/-/+ prefixes and BuildOptions.
+	bool runRecipe(BuildNode *, ErrorReporter &);
+
+	// Computes and injects this target's automatic variables into the engine; the matching
+	// clearAutoVars() removes them. `outdated` lists prerequisites newer than the target.
+	void setAutoVars(BuildNode *, ErrorReporter &);
+	void clearAutoVars();
+
+	// Stat the target's file (cached on the Target) for out-of-date comparisons.
+	void statTarget(Target *);
+
 	uint32_t _errors = 0;
 
 	Vector<Target *> _currentTargets;
 	Map<StringView, Target *> _targets;
+
+	Vector<Target *> _patternRules; // targets whose name contains '%'
+	Target *_defaultGoal = nullptr; // first declared non-special, non-pattern target
+	Target *_dotDefault = nullptr; // recipe from a .DEFAULT rule, if any
+	Vector<StringView> _suffixes; // .SUFFIXES list (stored; suffix rules not yet applied)
+	BuildOptions _buildOptions;
 
 	void *_logCallbackRef = nullptr;
 	LogCallback _logCallback = nullptr;

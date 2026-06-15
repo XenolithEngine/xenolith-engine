@@ -203,6 +203,7 @@ public:
 	}
 
 	uint8_t *data() { return _buffer.data(); }
+	const uint8_t *data() const { return _buffer.data(); }
 
 	uint8_t *prepare(size_t &size) {
 		clear();

@@ -1,5 +1,6 @@
 /**
  Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -33,9 +34,35 @@ class VariableEngine;
 
 struct Variable;
 
+// One bit per diagnostic warning the engine can emit, so a consumer can enable or suppress
+// each independently. A warning is reported only when its bit is set in the engine flags.
 enum class EngineFlags : uint32_t {
-	None,
-	Pedantic = 1 << 0,
+	None = 0,
+
+	WarnSubstEmpty = 1 << 0, // $(subst) called with an empty 'from'
+	WarnPatsubstEmpty = 1 << 1, // $(patsubst) with an empty pattern
+	WarnFilterEmpty = 1 << 2, // $(filter)/$(filter-out) with empty patterns
+	WarnSortEmpty = 1 << 3, // $(sort) called with an empty argument
+	WarnCallStaticVariable = 1 << 4, // $(call) of a simple (:=) variable
+	WarnCallArgumentCount = 1 << 5, // $(call) arg count differs from the function's $(N) refs
+	WarnCallUndefined = 1 << 6, // $(call) of an undefined variable
+	WarnSubstituteFunction = 1 << 7, // substituting a function-typed variable into a string
+	WarnAppendUndefined = 1 << 8, // '+=' to an undefined variable
+	WarnUndefineUndefined = 1 << 9, // 'undefine' of an undefined variable
+	WarnUndefineOrigin = 1 << 10, // 'undefine' blocked by the variable's origin
+	WarnPatsubstEmptyText = 1 << 11, // $(patsubst) called with empty text
+
+	// every warning
+	WarnAll = WarnSubstEmpty | WarnPatsubstEmpty | WarnFilterEmpty | WarnSortEmpty
+			| WarnCallStaticVariable | WarnCallArgumentCount | WarnCallUndefined
+			| WarnSubstituteFunction | WarnAppendUndefined | WarnUndefineUndefined
+			| WarnUndefineOrigin | WarnPatsubstEmptyText,
+
+	// the stricter ("pedantic") warnings — off by default
+	WarnPedantic = WarnFilterEmpty | WarnSortEmpty | WarnCallArgumentCount | WarnPatsubstEmptyText,
+
+	// default set: everything except the pedantic ones (preserves prior behavior)
+	Default = WarnAll & ~WarnPedantic,
 };
 
 SP_DEFINE_ENUM_AS_MASK(EngineFlags)
@@ -124,6 +151,9 @@ public:
 
 	const Variable *getIfDefined(StringView) const;
 
+	// Enumerate every defined variable (name + raw Variable), in name order.
+	void foreachVariable(const Callback<void(StringView, const Variable &)> &) const;
+
 	// If var is not defined, try to resolve in with SubstitutionCallback
 	const Variable *get(StringView);
 
@@ -136,6 +166,15 @@ public:
 
 	void addSubstitutionCallback(Origin, VariableCallback::Fn, void *);
 	void addSubstitutionCallback(VariableCallback *);
+
+	// Wires $(eval ...) back to the owning Makefile's parser without making the engine
+	// depend on Makefile (mirrors the include/substitution-callback indirection).
+	using EvalFn = bool (*)(void *, StringView name, StringView content);
+	void setEvalCallback(EvalFn, void *);
+
+	// Parse `content` as makefile text via the registered eval callback. Returns false
+	// (and reports) when no callback is set.
+	bool evalText(StringView content, ErrorReporter &, const FileLocation *stmtLoc = nullptr);
 
 	void setRootPath(StringView);
 
@@ -164,8 +203,14 @@ public:
 	const Callback<void(StringView)> *getCustomOutput() const { return _customOutput; }
 
 	EngineFlags getFlags() const { return _flags; }
+	void setFlags(EngineFlags f) { _flags = f; }
+
+	// True if the given warning bit is enabled in the current flags.
+	bool warnEnabled(EngineFlags f) const { return hasFlag(_flags, f); }
 
 	StringView getAbsolutePath(StringView) const;
+
+	const BufferTemplate<Interface> *getCurrentBuffer() const { return _currentBuffer; }
 
 protected:
 	bool call(const Callback<void(StringView)> &out, StringView fn, StmtType type, StmtValue *args,
@@ -173,7 +218,7 @@ protected:
 
 	memory::pool_t *_pool = nullptr;
 	Block *_currentBlock = nullptr;
-	EngineFlags _flags = EngineFlags::None;
+	EngineFlags _flags = EngineFlags::Default;
 
 	CallContext _rootContext;
 	CallContext *_callContext = nullptr;
@@ -183,6 +228,11 @@ protected:
 
 	StringView _rootPath;
 	const Callback<void(StringView)> *_customOutput;
+
+	EvalFn _evalFn = nullptr;
+	void *_evalUserdata = nullptr;
+
+	BufferTemplate<Interface> *_currentBuffer = nullptr;
 };
 
 } // namespace stappler::makefile

@@ -1,6 +1,7 @@
 /**
  Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
  Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -165,7 +166,10 @@ static StringView readContextIdentifier(StringView &str, ReadContext ctx) {
 				StringView::Chars<'#', ',', ')', ':', '=', '?', '+', '$', '\\'>>();
 		break;
 	case ReadContext::Expansion:
-		return str.readUntil<StringView::WhiteSpace, StringView::Chars<'#', ',', ')', '$', '\\'>>();
+		// '(' is a stop char so that literal parentheses inside $(...) can be balanced
+		// against ')' instead of letting an inner ')' terminate the expansion early
+		return str.readUntil<StringView::WhiteSpace,
+				StringView::Chars<'#', ',', '(', ')', '$', '\\'>>();
 		break;
 	case ReadContext::LineEnd:
 	case ReadContext::TrailingRecipe:
@@ -175,7 +179,8 @@ static StringView readContextIdentifier(StringView &str, ReadContext ctx) {
 		return str.readUntil<StringView::WhiteSpace, StringView::Chars<'$', '\\'>>();
 		break;
 	case ReadContext::MultilineExpansion:
-		return str.readUntil<StringView::WhiteSpace, StringView::Chars<',', ')', '$', '\\'>>();
+		return str.readUntil<StringView::WhiteSpace,
+				StringView::Chars<',', '(', ')', '$', '\\'>>();
 		break;
 	case ReadContext::ConditionalQuoted:
 		return str.readUntil<StringView::WhiteSpace, StringView::Chars<'#', '$', '\\', '\''>>();
@@ -192,9 +197,10 @@ static StringView readContextIdentifier(StringView &str, ReadContext ctx) {
 	return StringView();
 }
 
-Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err) {
+Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err, uint32_t &nestedDepth) {
 	Stmt *stmt = nullptr;
 
+	auto beginning = getBeginChar(ctx);
 	auto ending = getEndChar(ctx);
 
 	auto makeStmt = [&]() -> Stmt * {
@@ -217,7 +223,32 @@ Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err) {
 
 	while (!str.empty() && !str.is<StringView::WhiteSpace>()) {
 		err.setPos(str);
+
+		uint32_t inPrefix = 0;
+		if (beginning == '(') {
+			while (str.is(beginning)) {
+				++inPrefix;
+				++str;
+			}
+		}
+
 		StringView sig = readContextIdentifier(str, ctx);
+
+		if (inPrefix > 0) {
+			sig = StringView(sig.data() - inPrefix, sig.size() + inPrefix);
+			nestedDepth += inPrefix;
+		}
+
+		uint32_t inSuffix = 0;
+		while (nestedDepth > 0 && str.is(ending)) {
+			++str;
+			++inSuffix;
+			--nestedDepth;
+		}
+
+		if (inSuffix > 0) {
+			sig = StringView(sig.data(), sig.size() + inSuffix);
+		}
 
 		if (str.is<StringView::WhiteSpace>()) {
 			makeStmt()->add(sig);
@@ -271,6 +302,12 @@ Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err) {
 					++str;
 				}
 			}
+		} else if (beginning == '(' && str.is(beginning)) {
+			// a literal '(' inside $(...): keep it in the word and bump the nesting depth so
+			// its matching ')' is treated as balanced text rather than ending the expansion
+			makeStmt()->add(StringView(sig.data(), sig.size() + 1));
+			++nestedDepth;
+			++str;
 		} else if (ending && str.is(ending)) {
 			makeStmt()->add(sig);
 			break;
@@ -301,7 +338,11 @@ Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err) {
 		} else if (!str.empty()) {
 			makeStmt()->add(StringView(sig.data(), sig.size() + 1));
 			++str;
-			break;
+			if (beginning != '(') {
+				break;
+			}
+			// inside $(...): keep reading the text that follows a balanced "(...)" (the
+			// char consumed above was exposed after the closing ')' of a nested group)
 		} else {
 			makeStmt()->add(sig);
 			if (ending) {
@@ -386,7 +427,14 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 		isMultiline = true;
 	}
 
-	if (isMultiline) {
+	if (ctx == ReadContext::Multiline) {
+		// preserve the whole leading whitespace run (newlines + indentation) verbatim so
+		// `define` values round-trip exactly (recipe tabs survive for $(eval))
+		auto ws = skipWhitespace(str);
+		if (!ws.empty()) {
+			addStringWord(ws);
+		}
+	} else if (isMultiline) {
 		auto nl = countNewlines(skipWhitespace(str));
 		for (uint32_t i = 0; i < nl; ++i) { addStringWord("\n"); }
 	} else {
@@ -405,8 +453,12 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 		}
 	}
 
+	auto guard = str;
+	StringView whiteSpace;
+	uint32_t nestedDepth = 0;
 	while (!str.empty() && (ending == 0 || !str.is(ending))) {
-		auto wordStmt = readWord(str, ctx, err);
+		auto first = str.front();
+		auto wordStmt = readWord(str, ctx, err, nestedDepth);
 		if (!wordStmt) {
 			if (ending == 0) {
 				break;
@@ -415,15 +467,42 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 			return nullptr;
 		}
 
+		// The whitespace between a function name and its first argument is the call
+		// separator, which GNU make strips entirely (`$(firstword \<nl>\t$(X))` -> first
+		// word of X, not the empty string). That transition is the very first word being
+		// added to an Expansion (only the name is present so far), so skip the preserve
+		// logic there; everywhere else a \t\n run between two $stmt is kept.
+		bool nameToFirstArg = (type == StmtType::Expansion && stmt && stmt->value == stmt->tail);
+		if (!whiteSpace.empty() && first == '$' && !nameToFirstArg) {
+			// special case: whitespace token between two $stmt, preserve it if it has \t\n
+			auto tmp = whiteSpace;
+			tmp.skipUntil<StringView::Chars<'\t', '\n'>>();
+			if (!tmp.empty()) {
+				// a '\' in the run is a backslash-newline line continuation, which GNU make
+				// collapses to a single space; only a literal tab/newline is kept verbatim
+				if (whiteSpace.find('\\') != maxOf<size_t>()) {
+					addStringWord(" ");
+				} else {
+					addStringWord(whiteSpace);
+				}
+			}
+		}
+
 		if (nextArgument) {
 			addStmtArgument(wordStmt);
 		} else {
 			addStmtWord(wordStmt);
 		}
 
-		StringView whiteSpace = skipWhitespace(str);
+		whiteSpace = skipWhitespace(str);
 
-		if (isMultiline) {
+		if (ctx == ReadContext::Multiline) {
+			// store the whitespace run verbatim (the verbatim resolve path emits it as-is)
+			if (!whiteSpace.empty()) {
+				addStringWord(whiteSpace);
+			}
+			whiteSpace = StringView(); // consumed above
+		} else if (isMultiline) {
 			auto nl = countNewlines(whiteSpace);
 			for (uint32_t i = 0; i < nl; ++i) { addStringWord("\n"); }
 			if (nl > 0) {
@@ -452,6 +531,11 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 			++str;
 			skipWhitespace(str);
 			nextArgument = true;
+			// a ',' immediately before ')' (or end) is a trailing empty argument, e.g.
+			// $(patsubst a,b,) — emit it so the function still receives all its arguments
+			if (str.empty() || (ending && str.is(ending))) {
+				addStmtArgument(new (sprt::nothrow) Stmt(err));
+			}
 		} else if (ctx == ReadContext::LineStart && str.is<PlainStopChars>()) {
 			auto op = Stmt::getOperator(str, true);
 			if (!op.empty()) {
@@ -462,8 +546,18 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 				break;
 			}
 		} else if (ending && str.is(ending)) {
-			if ((ctx == ReadContext::Expansion || ctx == ReadContext::MultilineExpansion) && stmt
-					&& stmt->type == StmtType::ArgumentList) {
+			if (nestedDepth > 0) {
+				// drop nested ")" as string
+				uint32_t counter = 0;
+				auto d = str.data();
+				while (nestedDepth > 0 && str.is(ending)) {
+					--nestedDepth;
+					++counter;
+					++str;
+				}
+				addStringWord(StringView(d, counter));
+			} else if ((ctx == ReadContext::Expansion || ctx == ReadContext::MultilineExpansion)
+					&& stmt && stmt->type == StmtType::ArgumentList) {
 				if (!whiteSpace.empty()) {
 					addStringWord(" ");
 				}
@@ -471,11 +565,22 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 		} else {
 			nextArgument = false;
 		}
+		if (str.data() == guard.data()) {
+			slog().error("makefile::Stmt", "No forward progress on exception parsing, exiting");
+			++str;
+			break;
+		}
+		guard = str;
 	}
 
-	StringView whiteSpace = skipWhitespace(str);
+	whiteSpace = skipWhitespace(str);
 
-	if (isMultiline) {
+	if (ctx == ReadContext::Multiline) {
+		if (!whiteSpace.empty()) {
+			addStringWord(whiteSpace);
+		}
+		whiteSpace = StringView(); // consumed above
+	} else if (isMultiline) {
 		auto nl = countNewlines(whiteSpace);
 		for (uint32_t i = 0; i < nl; ++i) { addStringWord("\n"); }
 	}
@@ -488,6 +593,10 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 			}
 		}
 		++str;
+	}
+
+	if (stmt && ctx == ReadContext::Multiline) {
+		stmt->multiline = true;
 	}
 
 	return stmt;

@@ -78,23 +78,31 @@ static bool Function_call(const Callback<void(StringView)> &out, void *, Variabl
 		callContext->userName = name;
 		switch (v->type) {
 		case Variable::Type::String:
-			callContext->err->reportWarning(toString("Call with a static simple variable: '", name,
-					"': consider replace :=/::= with ="));
-			out << v->str;
+			if (!v->str.empty()) {
+				// call for empty string is explicitly allowed and do nothing
+				// but call for a non-empty string is highly possibly design error
+				if (engine.warnEnabled(EngineFlags::WarnCallStaticVariable)) {
+					callContext->err->reportWarning(
+							toString("Call with a static simple variable: '", name,
+									"': consider replace :=/::= with ="));
+				}
+				out << v->str;
+			}
 			break;
 		case Variable::Type::Stmt: {
 			auto nargs = Function_callGetSourceArgsCount(v->stmt);
-			if (hasFlag(engine.getFlags(), EngineFlags::Pedantic)) {
-				if (args.size() < nargs + 1) {
-					callContext->err->reportWarning(toString("User function '", name, "' uses ",
-							nargs, " arguments, but ", args.size() - 1, " provided"));
-				}
+			if (engine.warnEnabled(EngineFlags::WarnCallArgumentCount) && args.size() < nargs + 1) {
+				callContext->err->reportWarning(toString("User function '", name, "' uses ", nargs,
+						" arguments, but ", args.size() - 1, " provided"));
 			}
-			// Guard against self-/mutually-recursive $(call) (the substitute() path
-			// already does this; the call path must too, else the stack exhausts).
-			if (!engine.checkRecursion(name, v->stmt, *callContext->err)) {
+
+			// Make is recursive by it's nature, recursive function call is allowed,
+			// we can not normally detect where the tail is
+			/*if (!engine.checkRecursion(name, v->stmt, *callContext->err)) {
 				engine.resolve(out, v->stmt, *callContext->err);
-			}
+			}*/
+
+			engine.resolve(out, v->stmt, *callContext->err);
 			break;
 		}
 		case Variable::Type::Function:
@@ -109,8 +117,10 @@ static bool Function_call(const Callback<void(StringView)> &out, void *, Variabl
 			break;
 		}
 	} else {
-		callContext->err->reportWarning(
-				toString("Failed to call user function: '", name, "': variable is not defined"));
+		if (engine.warnEnabled(EngineFlags::WarnCallUndefined)) {
+			callContext->err->reportWarning(toString("Failed to call user function: '", name,
+					"': variable is not defined"));
+		}
 		return true;
 	}
 	return true;
