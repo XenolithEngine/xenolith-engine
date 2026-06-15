@@ -47,7 +47,15 @@ static bool Function_foreach(const Callback<void(StringView)> &out, void *, Vari
 		if (first) {
 			first = false;
 		} else {
-			out << ' ';
+			auto b = engine.getCurrentBuffer();
+			if (b && !b->empty()) {
+				char last = *reinterpret_cast<const char *>(b->data() + b->size() - 1);
+				if (!isspace(last)) {
+					out << ' ';
+				}
+			} else {
+				out << ' ';
+			}
 		}
 
 		it->second = str;
@@ -107,29 +115,39 @@ static bool Function_shell(const Callback<void(StringView)> &out, void *, Variab
 		}
 	}, args[0], ' ', *engine.getCallContext()->err);
 
-	FILE *fp;
-	char buf[1_KiB];
-
-	//sprt::cout << "CMD: " << cmd.data() << "\n";
-
-	fp = popen(cmd.data(), "r");
+	FILE *fp = popen(cmd.data(), "r");
 	if (fp == NULL) {
 		engine.getCallContext()->err->reportError(toString("Failed to run command: '", cmd, '\''));
 		return false;
-	} else {
-		bool start = false;
-		while (auto str = fgets(buf, sizeof(buf), fp)) {
-			if (!start) {
-				start = true;
-			} else {
-				out << "\n";
-			}
-			StringView outStr(str);
-			outStr.trimChars<StringView::WhiteSpace>();
+	}
 
-			out << outStr;
+	// Read the whole output verbatim. fgets/fread chunk boundaries are NOT line boundaries:
+	// a logical line longer than the buffer would otherwise be split and emitted with a
+	// spurious separator in the middle (the previous fgets loop did exactly that).
+	String result;
+	char buf[4_KiB];
+	while (size_t n = fread(buf, 1, sizeof(buf), fp)) { result.append(buf, n); }
+	pclose(fp);
+
+	// GNU make's $(shell): strip every trailing newline, then convert each remaining
+	// (internal) newline -- and CR/LF pair -- into a single space. Leading and internal
+	// non-newline whitespace is preserved verbatim.
+	StringView sv(result.data(), result.size());
+	while (sv.ends_with("\n") || sv.ends_with("\r")) {
+		sv = sv.sub(0, sv.size() - 1);
+	}
+	while (!sv.empty()) {
+		auto seg = sv.readUntil<StringView::Chars<'\n'>>();
+		if (sv.is('\n')) {
+			if (seg.ends_with("\r")) {
+				seg = seg.sub(0, seg.size() - 1);
+			}
+			out << seg;
+			out << " ";
+			++sv;
+		} else {
+			out << seg;
 		}
-		pclose(fp);
 	}
 
 	return true;
@@ -209,13 +227,54 @@ static bool Function_info(const Callback<void(StringView)> &out, void *, Variabl
 			out << s;
 		}, it, 0, *engine.getCallContext()->err);
 	}
-	engine.getCallContext()->err->reportInfo(str.weak(), nullptr, nullptr, false);
+
+	auto result = str.weak();
+	engine.getCallContext()->err->reportInfo(result, nullptr, nullptr, false);
 	return true;
+}
+
+static const FileLocation *Function_getCallSite(VariableEngine &engine, Stmt *stmt,
+		ErrorReporter &err) {
+	if (stmt->type == StmtType::WordList && stmt->value->isStmt
+			&& stmt->value->stmt->type == StmtType::Word) {
+		auto firstWord = stmt->value->stmt;
+		if (firstWord->value->isStmt && firstWord->value->stmt->type == StmtType::ArgumentList
+				&& firstWord->value->stmt->value->isStmt) {
+			auto argumentList = firstWord->value->stmt->value;
+
+			auto name = engine.resolve(argumentList->stmt->value, 0, err);
+			if (name == "call" && argumentList->next) {
+				auto value = engine.resolve(argumentList->next, 0, err);
+				if (!value.empty()) {
+					if (auto v = engine.get(value)) {
+						if (v->type == Variable::Type::Stmt) {
+							return &v->stmt->loc;
+						}
+					}
+				}
+			}
+		}
+	}
+	return nullptr;
 }
 
 static bool Function_eval(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
-	return true;
+	// Expand the argument, then parse the result as makefile text. Whitespace chaining
+	// (' ') keeps multi-token expansions separated, matching how $(shell) joins them.
+	auto text = engine.resolve(args[0], ' ', *engine.getCallContext()->err);
+
+	const FileLocation *loc = nullptr;
+	for (auto &it : args) {
+		if (it->isStmt) {
+			loc = Function_getCallSite(engine, it->stmt, *engine.getCallContext()->err); //
+			if (loc) {
+				break;
+			}
+		}
+	}
+
+	return engine.evalText(text, *engine.getCallContext()->err, loc);
 }
 
 static bool Function_print(const Callback<void(StringView)> &out, void *, VariableEngine &engine,

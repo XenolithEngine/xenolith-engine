@@ -188,7 +188,6 @@ BUILD_ALL_FLAGS_DIFF := \
 	$(filter-out $(BUILD_ALL_FLAGS_CACHED), $(BUILD_ALL_FLAGS))
 
 # Игнорируем секцию для stappler-build
-ifndef SPBUILDTOOL
 ifneq ($(strip $(BUILD_ALL_FLAGS_CACHED)),$(strip $(BUILD_ALL_FLAGS)))
 
 $(call print_verbose,(c/apply.mk) Build flags changed: $(BUILD_ALL_FLAGS_DIFF))
@@ -202,7 +201,6 @@ $(TOOLKIT_CACHED_FLAGS):
 	@$(call rule_mkdir,$(BUILD_С_OUTDIR))
 	@echo '$(BUILD_ALL_FLAGS)' > $(TOOLKIT_CACHED_FLAGS)
 
-endif
 endif
 
 $(call print_verbose,(c/apply.mk) Build precompiled headers list)

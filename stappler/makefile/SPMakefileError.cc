@@ -38,9 +38,14 @@ LineOffset FileLocation::makeLineOffset() {
 		}
 	}
 
-	off.pos = pos - startString;
-	off.selected = StringView(line, startString, maxOf<size_t>())
-						   .readUntil<StringView::Chars<'\n', '\r'>>();
+	if (pos >= startString) {
+		off.pos = pos - startString;
+		off.selected = StringView(line, startString, maxOf<size_t>())
+							   .readUntil<StringView::Chars<'\n', '\r'>>();
+	} else {
+		off.pos = 0;
+		off.selected = StringView();
+	}
 	return off;
 }
 
@@ -76,7 +81,11 @@ ErrorReporter::ErrorReporter(const FileLocation &loc, ErrorReporter *err) {
 }
 
 void ErrorReporter::setPos(const StringView &str) {
-	pos = static_cast<uint32_t>(str.data() - line.data());
+	if (str.data() >= line.data() && str.data() < line.data() + line.size()) {
+		pos = static_cast<uint32_t>(str.data() - line.data());
+	} else {
+		pos = 0;
+	}
 }
 
 void ErrorReporter::reportError(StringView str, Stmt *stmt, Block *block, bool showSource) {
@@ -126,12 +135,21 @@ void ErrorReporter::report(log::LogType type, StringView str, Stmt *stmt, Block 
 			log::text(type, "Makefile", out.weak());
 		}
 	} else {
-		auto err = toString(filename, ":", l, ": ", str, "\n", l, ": ", off.selected, "\n> ",
-				outTmp, "^");
-		if (callback) {
-			callback(ref, type, err);
+		if (type > log::LogType::Info) {
+			auto err = toString(filename, ":", l, ": ", str, "\n", l, ": ", off.selected, "\n> ",
+					outTmp, "^");
+			if (callback) {
+				callback(ref, type, err);
+			} else {
+				log::text(type, "Makefile", err);
+			}
 		} else {
-			log::text(type, "Makefile", err);
+			auto err = toString(filename, ":", l, ": ", str);
+			if (callback) {
+				callback(ref, type, err);
+			} else {
+				log::text(type, "Makefile", err);
+			}
 		}
 	}
 
@@ -153,6 +171,9 @@ void ErrorReporter::report(log::LogType type, StringView str, Stmt *stmt, Block 
 				log::text(type, "Makefile", err);
 			}
 			tmp = tmp->outer;
+			if (tmp == outer) {
+				break;
+			}
 		}
 	}
 }

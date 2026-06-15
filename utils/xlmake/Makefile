@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Xenolith Team <admin@senolith.studio>
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -18,29 +18,34 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-#
-# mimalloc for builtin libc
-#
+# force to rebuild if this makefile changed
+LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
-MODULE_RUNTIME_MALLOC_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
-MODULE_RUNTIME_MALLOC_PRIVATE_STANDALONE := 1
-MODULE_RUNTIME_MALLOC_SRCS_OBJS := \
-	$(RUNTIME_MODULE_DIR)/libc_impl/mimalloc/mimalloc.scu.c
-MODULE_RUNTIME_MALLOC_PRIVATE_INCLUDES := \
-	$(RUNTIME_MODULE_DIR)/include \
-	$(RUNTIME_MODULE_DIR)/include/sprt/wrappers/windows \
-	$(RUNTIME_MODULE_DIR)/include_libc \
-	$(RUNTIME_MODULE_DIR)/libc_impl/mimalloc/include
+STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../../make
 
-MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS := \
-	$(MODULE_RUNTIME_COMMON_CFLAGS) \
-	-nostdinc \
-	-ffreestanding \
-	-fbuiltin \
-	 -funwind-tables -fasynchronous-unwind-tables \
-	-DMALLOC_NO_PRIVATE_NAMESPACE
+LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
+LOCAL_EXECUTABLE := xlmake
 
-MODULE_RUNTIME_MALLOC_PRIVATE_CFLAGS := $(MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS)
-MODULE_RUNTIME_MALLOC_PRIVATE_CXXFLAGS := $(MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS)
+LOCAL_PRIVATE_INCLUDE_PCH := SPCommon.h
 
-$(call define_module, runtime_malloc, MODULE_RUNTIME_MALLOC)
+LOCAL_MODULES_PATHS = stappler/stappler-modules.mk
+
+LOCAL_MODULES ?= \
+	stappler_makefile \
+	stappler_filesystem
+
+LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
+
+LOCAL_SRCS_DIRS :=
+LOCAL_SRCS_OBJS :=
+
+LOCAL_INCLUDES_DIRS :=
+LOCAL_INCLUDES_OBJS :=
+
+LOCAL_MAIN := main.cpp
+
+APPCONFIG_APP_NAME := xlmake
+APPCONFIG_BUNDLE_NAME := org.stappler.xlmake
+APPCONFIG_APP_PATH_COMMON := 3
+
+include $(STAPPLER_BUILD_ROOT)/universal.mk

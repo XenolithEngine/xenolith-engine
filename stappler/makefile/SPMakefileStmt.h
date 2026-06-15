@@ -1,5 +1,6 @@
 /**
  Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -114,11 +115,14 @@ struct SP_PUBLIC Stmt : AllocBase {
 
 	static StringView readLine(StringView &, ErrorReporter &err);
 
-	static Stmt *readWord(StringView &str, ReadContext, ErrorReporter &err);
+	static Stmt *readWord(StringView &str, ReadContext, ErrorReporter &err, uint32_t &nestedDepth);
 
 	static Stmt *readScoped(StringView &str, StmtType type, ReadContext, ErrorReporter &err);
 
 	StmtType type = StmtType::Word;
+	// set on a WordList parsed from a `define`/Multiline value: its whitespace (newlines
+	// and indentation) is stored verbatim as tokens, so resolve() must emit it as-is
+	bool multiline = false;
 	StmtValue *value = nullptr;
 	StmtValue *tail = nullptr;
 	FileLocation loc;

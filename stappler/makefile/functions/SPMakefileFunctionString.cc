@@ -22,51 +22,10 @@
 
 #include "SPCore.h"
 #include "SPFilepath.h"
+#include "SPMakefileRule.h"
 #include "SPMakefileVariable.h"
 
 namespace STAPPLER_VERSIONIZED stappler::makefile {
-
-struct PatternInfo {
-	StringView start;
-	StringView end;
-	bool isPattern = true;
-};
-
-static PatternInfo Makefile_getPatternComponents(StringView str) {
-	str.trimChars<StringView::WhiteSpace>();
-
-	auto r = str.readUntil<StringView::Chars<'\\', '%'>>();
-	if (str.is('%') || str.empty() || (str.is('\\') && str.size() == 1)) {
-		// simple case - no escapes
-		return PatternInfo{r, str.sub(1), str.is('%')};
-	}
-
-	BufferTemplate<Interface> buf;
-	if (!r.empty()) {
-		buf.put(r.data(), r.size());
-	}
-
-	do {
-		if (str.is('\\')) {
-			if (str.size() > 1) {
-				buf.putc(str.at(1));
-				str += 2;
-			} else {
-				buf.putc('\\');
-			}
-		}
-		r = str.readUntil<StringView::Chars<'\\', '%'>>();
-		if (!r.empty()) {
-			buf.put(r.data(), r.size());
-		}
-	} while (!str.is('%') && !str.empty());
-
-	if (str.is('%') && str.size() > 1) {
-		return PatternInfo{buf.get().pdup(), str.sub(1), true};
-	} else {
-		return PatternInfo{buf.get().pdup(), StringView(), false};
-	}
-}
 
 static bool Function_subst(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
@@ -75,7 +34,9 @@ static bool Function_subst(const Callback<void(StringView)> &out, void *, Variab
 	auto text = engine.resolve(args[2], 0, *engine.getCallContext()->err);
 
 	if (from.empty()) {
-		engine.getCallContext()->err->reportWarning(toString("'from' component of subst is empty"));
+		if (engine.warnEnabled(EngineFlags::WarnSubstEmpty)) {
+			engine.getCallContext()->err->reportWarning("'from' component of subst is empty");
+		}
 		out << text;
 		return true;
 	}
@@ -98,44 +59,65 @@ static bool Function_subst(const Callback<void(StringView)> &out, void *, Variab
 
 static bool Function_patsubst(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
-	auto pattern = engine.resolve(args[0], 0, *engine.getCallContext()->err);
-	auto replacement = engine.resolve(args[1], 0, *engine.getCallContext()->err);
-	auto text = engine.resolve(args[2], 0, *engine.getCallContext()->err);
+	auto err = engine.getCallContext()->err;
+	auto pattern = engine.resolve(args[0], 0, *err);
+	auto replacement = engine.resolve(args[1], 0, *err);
+	auto text = engine.resolve(args[2], 0, *err);
 
-	if (pattern.empty() || replacement.empty()) {
-		engine.getCallContext()->err->reportWarning(
-				toString("'pattern' or 'replacement' components of patsubst is empty"));
-		out << text.pdup(engine.getPool());
+	if (text.empty()) {
+		if (engine.warnEnabled(EngineFlags::WarnPatsubstEmptyText)) {
+			err->reportWarning("patsubst called with empty text");
+		}
 		return true;
 	}
 
-	auto patternPair = Makefile_getPatternComponents(pattern);
-	auto replacementPair = Makefile_getPatternComponents(replacement);
+	if (pattern.empty()) {
+		// GNU make: an empty pattern matches nothing, so the text is returned unchanged
+		if (engine.warnEnabled(EngineFlags::WarnPatsubstEmpty)) {
+			err->reportWarning("'pattern' component of patsubst is empty");
+		}
+		out << text;
+		return true;
+	}
+
+	auto patternPair = getPatternComponents(pattern);
+
+	// A '%' in the replacement is special only when the pattern itself has a '%'; for a
+	// literal pattern the replacement (including any '%') is used verbatim.
+	PatternInfo replacementPair = patternPair.isPattern
+			? getPatternComponents(replacement)
+			: PatternInfo{replacement, StringView(), false};
 
 	bool first = true;
 	text.split<StringView::WhiteSpace>([&](StringView word) {
+		StringView stem;
+		bool matched = matchPattern(patternPair, word, stem);
+
+		// pieces of the produced word: prefix + stem + suffix (stem/suffix only for a
+		// '%'-replacement); a non-matching word is emitted unchanged
+		StringView prefix, mid, suffix;
+		if (matched) {
+			prefix = replacementPair.start;
+			if (replacementPair.isPattern) {
+				mid = stem;
+				suffix = replacementPair.end;
+			}
+		} else {
+			prefix = word;
+		}
+
+		// GNU make drops empty results of a '%'-pattern (so they leave no separator),
+		// but keeps empty results of a literal pattern.
+		if (prefix.empty() && mid.empty() && suffix.empty() && patternPair.isPattern) {
+			return;
+		}
+
 		if (first) {
 			first = false;
 		} else {
 			out << ' ';
 		}
-
-		if (patternPair.isPattern) {
-			bool start = patternPair.start.empty() || word.starts_with(patternPair.start);
-			bool end = patternPair.end.empty() || word.ends_with(patternPair.end);
-			if (start && end && word.size() > patternPair.start.size() + patternPair.end.size()) {
-				out << replacementPair.start
-					<< word.sub(patternPair.start.size(),
-							   word.size() - patternPair.start.size() - patternPair.end.size())
-					<< replacementPair.end;
-			} else {
-				out << word;
-			}
-		} else if (word == patternPair.start) {
-			out << replacementPair.start << replacementPair.end;
-		} else {
-			out << word;
-		}
+		out << prefix << mid << suffix;
 	});
 	return true;
 }
@@ -178,16 +160,15 @@ static bool Function_filter(const Callback<void(StringView)> &out, void *, Varia
 
 	auto text = engine.resolve(args[1], 0, *engine.getCallContext()->err);
 	if (patterns.empty()) {
-		if (hasFlag(engine.getFlags(), EngineFlags::Pedantic)) {
-			engine.getCallContext()->err->reportWarning(
-					toString("'patterns' component of filter is empty"));
+		if (engine.warnEnabled(EngineFlags::WarnFilterEmpty)) {
+			engine.getCallContext()->err->reportWarning("'patterns' component of filter is empty");
 		}
 		return true;
 	}
 
 	Vector<PatternInfo> patternPairs;
 	patterns.split<StringView::WhiteSpace>([&](StringView pattern) {
-		patternPairs.emplace_back(Makefile_getPatternComponents(pattern));
+		patternPairs.emplace_back(getPatternComponents(pattern));
 	});
 
 	bool first = true;
@@ -229,9 +210,8 @@ static bool Function_filter_out(const Callback<void(StringView)> &out, void *,
 
 	auto text = engine.resolve(args[1], 0, *engine.getCallContext()->err);
 	if (patterns.empty()) {
-		if (hasFlag(engine.getFlags(), EngineFlags::Pedantic)) {
-			engine.getCallContext()->err->reportWarning(
-					toString("'patterns' component of filter is empty"));
+		if (engine.warnEnabled(EngineFlags::WarnFilterEmpty)) {
+			engine.getCallContext()->err->reportWarning("'patterns' component of filter is empty");
 		}
 		out << text;
 		return true;
@@ -239,7 +219,7 @@ static bool Function_filter_out(const Callback<void(StringView)> &out, void *,
 
 	Vector<PatternInfo> patternPairs;
 	patterns.split<StringView::WhiteSpace>([&](StringView pattern) {
-		patternPairs.emplace_back(Makefile_getPatternComponents(pattern));
+		patternPairs.emplace_back(getPatternComponents(pattern));
 	});
 
 	bool first = true;
@@ -316,10 +296,8 @@ static bool Function_sort(const Callback<void(StringView)> &out, void *, Variabl
 	SortNode *node = nullptr;
 
 	auto text = engine.resolve(args[0], 0, *engine.getCallContext()->err);
-	if (hasFlag(engine.getFlags(), EngineFlags::Pedantic)) {
-		if (text.empty()) {
-			engine.getCallContext()->err->reportWarning("'sort' called with empty argument");
-		}
+	if (text.empty() && engine.warnEnabled(EngineFlags::WarnSortEmpty)) {
+		engine.getCallContext()->err->reportWarning("'sort' called with empty argument");
 	}
 	text.split<StringView::WhiteSpace>([&](StringView word) {
 		if (!node) {
@@ -345,8 +323,32 @@ static bool Function_sort(const Callback<void(StringView)> &out, void *, Variabl
 
 static bool Function_word(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
-	engine.getCallContext()->err->reportError("Function not implemented");
-	return false; // not implemented
+	auto nStr = engine.resolve(args[0], 0, *engine.getCallContext()->err);
+	nStr.trimChars<StringView::WhiteSpace>();
+
+	auto text = engine.resolve(args[1], 0, *engine.getCallContext()->err);
+
+	uint32_t n = uint32_t(nStr.readInteger(10).get(0));
+	if (n == 0) {
+		engine.getCallContext()->err->reportError("First argument of 'word' must be >= 1");
+		return false;
+	}
+
+	uint32_t counter = 0;
+	StringView str(text);
+	while (!str.empty()) {
+		str.skipChars<StringView::WhiteSpace>();
+		auto w = str.readUntil<StringView::WhiteSpace>();
+		if (!w.empty()) {
+			if (++counter == n) {
+				out << w;
+				return true;
+			}
+		}
+	}
+
+	// index past the end of the list yields the empty string (GNU make semantics)
+	return true;
 }
 
 static bool Function_wordlist(const Callback<void(StringView)> &out, void *, VariableEngine &engine,

@@ -1203,7 +1203,7 @@ constexpr size_t length(const uint8_t *__p, size_t max) {
 template <typename T, typename Char>
 inline auto readNumber(const Char *ptr, size_t len, int base, uint8_t &offset) -> Result<T> {
 	// prevent to read out of bounds, copy symbols to stack buffer
-	char buf[32] = {0}; // int64_t/scientific double character length max
+	char buf[32]; // int64_t/scientific double character length max
 	size_t m = min(size_t(31), len);
 	size_t i = 0;
 	for (; i < m; i++) {
@@ -1215,6 +1215,7 @@ inline auto readNumber(const Char *ptr, size_t len, int base, uint8_t &offset) -
 			break;
 		}
 	}
+	buf[i] = 0;
 
 	// read number from internal buffer
 	char *ret = nullptr;
@@ -1619,7 +1620,7 @@ inline constexpr StringViewBase<_CharType>::StringViewBase(const CharType *ptr, 
 template <typename _CharType>
 inline constexpr StringViewBase<_CharType>::StringViewBase(const Self &ptr, size_t pos, size_t len)
 : BytesReader<_CharType>(ptr.data() + min(pos, ptr.size()),
-		min(len, ptr.size() > pos ? ptr.size() - pos : 0)) { }
+		  min(len, ptr.size() > pos ? ptr.size() - pos : 0)) { }
 
 template <typename _CharType>
 inline constexpr StringViewBase<_CharType>::StringViewBase(const Self &ptr, size_t len)
@@ -1993,7 +1994,7 @@ inline StringViewUtf8::StringViewUtf8(const StringViewUtf8 &ptr, size_t len)
 
 inline StringViewUtf8::StringViewUtf8(const StringViewUtf8 &ptr, size_t pos, size_t len)
 : BytesReader(ptr.data() + min(pos, ptr.size()),
-		min(len, ptr.size() > pos ? ptr.size() - pos : 0)) { }
+		  min(len, ptr.size() > pos ? ptr.size() - pos : 0)) { }
 
 inline auto StringViewUtf8::set(const char *p, size_t l) -> Self & {
 	ptr = p;
@@ -2413,7 +2414,7 @@ template <endian OtherEndianess>
 inline constexpr BytesViewTemplate<Endianess>::BytesViewTemplate(
 		const BytesViewTemplate<OtherEndianess> ptr, size_t pos, size_t len)
 : BytesReader(ptr.data() + min(pos, ptr.size()),
-		min(len, ptr.size() > pos ? ptr.size() - pos : 0)) { }
+		  min(len, ptr.size() > pos ? ptr.size() - pos : 0)) { }
 
 template <endian Endianess>
 auto BytesViewTemplate<Endianess>::set(const uint8_t *p, size_t l) -> Self & {

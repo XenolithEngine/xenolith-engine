@@ -25,6 +25,8 @@ THE SOFTWARE.
 #include "SPMemInterface.h"
 
 #include "SPFilesystem.h"
+#include "SPFilepath.h"
+#include "SPMakefile.h"
 //#include "SPThread.h"
 
 //#include "SPData.h"
@@ -200,21 +202,236 @@ static void performUnicodeTests() {
 	std::cout << (test3 < test1) << " " << (test3 > test1) << '\n';
 }*/
 
+// Exercises the makefile module's executor / introspection / recipe-export API end to end.
+// Returns the number of failed checks (0 == success).
+static int performMakefileTests() {
+	using namespace stappler::makefile;
+	using namespace stappler::mem_pool;
+
+	int failures = 0;
+	auto pool = memory::pool::create((memory::pool_t *)nullptr);
+
+	memory::perform([&] {
+		auto logcb = [](void *, log::LogType, StringView msg) {
+			sprt::cout << "    [makefile] " << msg << "\n";
+		};
+
+		auto check = [&](bool cond, StringView name) {
+			sprt::cout << (cond ? "[ OK ] " : "[FAIL] ") << name << "\n";
+			if (!cond) {
+				++failures;
+			}
+		};
+		auto checkEq = [&](StringView got, StringView expect, StringView name) {
+			bool ok = (got == expect);
+			sprt::cout << (ok ? "[ OK ] " : "[FAIL] ") << name;
+			if (!ok) {
+				sprt::cout << "  (got \"" << got << "\", expected \"" << expect << "\")";
+			}
+			sprt::cout << "\n";
+			if (!ok) {
+				++failures;
+			}
+		};
+
+		// --- fixture A: variables, functions, $(eval), pattern rules, automatic vars ---
+		static constexpr StringView kFixture =
+				"CC := cc\n"
+				"CFLAGS := -O2\n"
+				"OBJS := foo.o bar.o\n"
+				"\n"
+				"all: app\n"
+				"\n"
+				"app: $(OBJS)\n"
+				"\t$(CC) $(CFLAGS) -o $@ $^\n"
+				"\n"
+				"%.o: %.c\n"
+				"\t$(CC) $(CFLAGS) -c -o $@ $<\n"
+				"\n"
+				"obj/%.o: src/%.c\n"
+				"\t@echo build $* : $@ from $< [$(@D)/$(<F)]\n"
+				"\n"
+				".PHONY: all clean\n"
+				"clean:\n"
+				"\trm -f $(OBJS) app\n"
+				"\n"
+				"extra: obj/foo.o\n"
+				"\n"
+				"W := $(word 2,alpha beta gamma)\n"
+				"J := $(join a b c,1 2)\n"
+				"P := $(patsubst %.c,%.o,x.c y.c z.c)\n"
+				"D := $(dir src/foo.c)\n"
+				"\n"
+				"$(eval EV := 42)\n"
+				"\n"
+				"define RULE\n"
+				"hello:\n"
+				"\techo hi\n"
+				"endef\n"
+				"$(eval $(RULE))\n";
+
+		auto mk = Rc<MakefileRef>::create(SharedRefMode::Allocator);
+		mk->setLogCallback(logcb);
+
+		ErrorReporter err(nullptr);
+		err.callback = logcb;
+		err.filename = StringView("<test>");
+
+		check(mk->include("test.mk", kFixture, true, &err), "fixture A parses");
+
+		auto varStr = [&](StringView name) -> StringView {
+			auto v = mk->getVariable(name);
+			return (v && v->type == Variable::Type::String) ? v->str : StringView();
+		};
+
+		// stubbed expansion functions + refactored pattern matcher
+		checkEq(varStr("W"), "beta", "$(word 2,...)");
+		checkEq(varStr("J"), "a1 b2 c", "$(join a b c,1 2)");
+		checkEq(varStr("P"), "x.o y.o z.o", "$(patsubst %.c,%.o,...) [refactor guard]");
+		checkEq(varStr("D"), "src/", "$(dir ...) [refactor guard]");
+
+		// $(eval) wiring: a variable assigned at runtime must take effect
+		checkEq(varStr("EV"), "42", "$(eval VAR := value)");
+
+		auto exportOne = [&](Target *t) -> String {
+			String acc;
+			mk->exportRecipe(t, [&](StringView line) {
+				if (!acc.empty()) {
+					acc.append("\n");
+				}
+				acc.append(line.data(), line.size());
+			}, err);
+			return acc;
+		};
+
+		// $(eval) of a multi-line `define` block must produce a real rule with its recipe
+		// (recipe indentation must survive expansion)
+		auto hello = mk->getTarget("hello");
+		check(hello != nullptr, "$(eval $(define-block)) defined target 'hello'");
+		if (hello) {
+			auto r = exportOne(hello);
+			checkEq(StringView(r.data(), r.size()), "echo hi",
+					"$(eval $(define-block)) preserved the recipe");
+		}
+
+		// default goal
+		auto goal = mk->getDefaultGoal();
+		check(goal && goal->name == "all", "default goal is 'all'");
+
+		// build plan: topological order, deps before dependents
+		auto plan = mk->buildPlan(goal, err);
+		check(!plan.empty(), "buildPlan(all) is non-empty");
+
+		auto indexOf = [&](const Vector<BuildNode *> &p, StringView name) -> int {
+			for (uint32_t i = 0; i < p.size(); ++i) {
+				if (p[i]->name == name) {
+					return int(i);
+				}
+			}
+			return -1;
+		};
+		auto nodeOf = [&](const Vector<BuildNode *> &p, StringView name) -> BuildNode * {
+			auto i = indexOf(p, name);
+			return i >= 0 ? p[uint32_t(i)] : nullptr;
+		};
+
+		if (!plan.empty()) {
+			check(plan.back()->name == "all", "plan goal is last (topological order)");
+			auto iFooC = indexOf(plan, "foo.c");
+			auto iFooO = indexOf(plan, "foo.o");
+			auto iApp = indexOf(plan, "app");
+			check(iFooC >= 0 && iFooO >= 0 && iFooC < iFooO, "foo.c precedes foo.o");
+			check(iFooO >= 0 && iApp >= 0 && iFooO < iApp, "foo.o precedes app");
+
+			if (auto n = nodeOf(plan, "app")) {
+				auto r = exportOne(n->target);
+				checkEq(StringView(r.data(), r.size()), "cc -O2 -o app foo.o bar.o",
+						"app recipe ($@ $^)");
+			}
+			if (auto n = nodeOf(plan, "foo.o")) {
+				auto r = exportOne(n->target);
+				checkEq(StringView(r.data(), r.size()), "cc -O2 -c -o foo.o foo.c",
+						"pattern recipe %.o:%.c ($@ $<)");
+			}
+		}
+
+		// pattern rule with directories: shortest-stem selection + $* + $(@D)/$(<F)
+		auto extraPlan = mk->buildPlan(mk->getTarget("extra"), err);
+		if (auto n = nodeOf(extraPlan, "obj/foo.o")) {
+			auto r = exportOne(n->target);
+			checkEq(StringView(r.data(), r.size()),
+					"echo build foo : obj/foo.o from src/foo.c [obj/foo.c]",
+					"obj/%.o pattern: stem $*, $(@D), $(<F)");
+		} else {
+			check(false, "buildPlan(extra) resolved obj/foo.o via obj/%.o");
+		}
+
+		// out-of-date: phony targets are always rebuilt
+		check(mk->isOutOfDate(goal, err), "phony target reports out of date");
+
+		// --- fixture B: actual recipe execution via the shell ---
+		static constexpr StringView kExec =
+				".PHONY: all a b\n"
+				"all: a b\n"
+				"a:\n"
+				"\t@echo running-a\n"
+				"b: a\n"
+				"\t@echo running-b\n";
+
+		auto mkB = Rc<MakefileRef>::create(SharedRefMode::Allocator);
+		mkB->setLogCallback(logcb);
+		ErrorReporter errB(nullptr);
+		errB.callback = logcb;
+		errB.filename = StringView("<exec>");
+		check(mkB->include("exec.mk", kExec, true, &errB), "fixture B parses");
+		auto res = mkB->execute(mkB->getTarget("all"), errB);
+		check(res == BuildResult::Built, "execute(all) ran phony recipes");
+
+		// --- fixture C: real-file out-of-date check against filesystem ground truth ---
+		bool wroteP = filesystem::write(FileInfo("mk_prereq", LocationCategory::AppCache),
+				(const uint8_t *)"p", 1);
+		auto prereqAbs = filesystem::findPath<memory::StandartInterface>(
+				FileInfo("mk_prereq", LocationCategory::AppCache));
+		if (wroteP && !prereqAbs.empty()) {
+			auto rootDir = filepath::root(StringView(prereqAbs));
+			auto mkC = Rc<MakefileRef>::create(SharedRefMode::Allocator);
+			mkC->setLogCallback(logcb);
+			mkC->setRootPath(rootDir);
+			ErrorReporter errC(nullptr);
+			errC.callback = logcb;
+			errC.filename = StringView("<ood>");
+			mkC->include("ood.mk", "mk_target: mk_prereq\n\t@echo build\n", true, &errC);
+
+			filesystem::remove(FileInfo("mk_target", LocationCategory::AppCache));
+			auto tgt = mkC->getTarget("mk_target");
+			check(tgt && mkC->isOutOfDate(tgt, errC), "missing target file is out of date");
+
+			filesystem::write(FileInfo("mk_target", LocationCategory::AppCache),
+					(const uint8_t *)"t", 1);
+			filesystem::Stat sp, st;
+			bool gp = filesystem::stat(FileInfo("mk_prereq", LocationCategory::AppCache), sp);
+			bool gt = filesystem::stat(FileInfo("mk_target", LocationCategory::AppCache), st);
+			if (tgt && gp && gt) {
+				bool expect = sp.mtime.toMicros() > st.mtime.toMicros();
+				check(mkC->isOutOfDate(tgt, errC) == expect,
+						"mtime comparison matches filesystem ground truth");
+			}
+
+			filesystem::remove(FileInfo("mk_prereq", LocationCategory::AppCache));
+			filesystem::remove(FileInfo("mk_target", LocationCategory::AppCache));
+		}
+	}, pool);
+
+	memory::pool::destroy(pool);
+
+	sprt::cout << "\nmakefile tests: failures=" << failures << "\n";
+	return failures;
+}
+
 int main(int argc, const char *argv[]) {
 	return perform_main(argc, argv, []() {
-		//printCaseTables();
-		//runDataCoverter();
-
-		/*performThreadTests();
-		performIdnTests();
-		performDynAllocTests();
-		performPathTests();
-		performTimeTests();
-		performUnicodeTests();*/
-
-		sprt::backtrace::getBacktrace(0,
-				[](uintptr_t, StringView str) { sprt::cout << str << "\n"; });
-
-		return 0;
+		// Legacy manual tests are kept commented above for reference (performThreadTests,
+		// performPathTests, performTimeTests, ...).
+		return performMakefileTests();
 	});
 }
