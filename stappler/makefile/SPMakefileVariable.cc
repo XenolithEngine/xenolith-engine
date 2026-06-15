@@ -1,5 +1,6 @@
 /**
  Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -115,6 +116,10 @@ const Variable *VariableEngine::getIfDefined(StringView str) const {
 	return nullptr;
 }
 
+void VariableEngine::foreachVariable(const Callback<void(StringView, const Variable &)> &cb) const {
+	for (auto &it : _variables) { cb(it.first, it.second); }
+}
+
 const Variable *VariableEngine::get(StringView str) {
 	auto it = _variables.find(str);
 	if (it != _variables.end()) {
@@ -189,6 +194,25 @@ void VariableEngine::addSubstitutionCallback(VariableCallback *cb) {
 	});
 }
 
+void VariableEngine::setEvalCallback(EvalFn fn, void *udata) {
+	_evalFn = fn;
+	_evalUserdata = udata;
+}
+
+bool VariableEngine::evalText(StringView content, ErrorReporter &err, const FileLocation *stmtLoc) {
+	if (!_evalFn) {
+		err.reportError("$(eval ...) is not supported: no eval callback registered");
+		return false;
+	}
+
+	StringView blockName("eval");
+	if (stmtLoc) {
+		auto str = mem_pool::toString("eval(", stmtLoc->filename, ":", stmtLoc->lineno, ")");
+		blockName = StringView(str).pdup();
+	}
+	return _evalFn(_evalUserdata, blockName, content);
+}
+
 void VariableEngine::setRootPath(StringView str) {
 	if (filepath::isAbsolute(str)) {
 		_rootPath = str.pdup(_pool);
@@ -222,9 +246,16 @@ StringView VariableEngine::resolve(Stmt *stmt, ErrorReporter &err, memory::pool_
 		return stmt->value->str;
 	}
 
-	BufferTemplate<Interface> b(256);
+	auto tmp = _currentBuffer;
 
-	resolve([&](StringView out) { b.put(out.data(), out.size()); }, stmt, err);
+	BufferTemplate<Interface> b(256);
+	_currentBuffer = &b;
+
+	resolve([&](StringView out) {
+		b.put(out.data(), out.size()); //
+	}, stmt, err);
+
+	_currentBuffer = tmp;
 
 	return StringView(b.get()).pdup(pool);
 }
@@ -276,6 +307,23 @@ void VariableEngine::resolve(Output out, Stmt *stmt, ErrorReporter &_err) {
 		} while (val);
 		break;
 	case StmtType::WordList:
+		if (stmt->multiline) {
+			// A multiline (`define`) WordList stores its whitespace — newlines and recipe
+			// indentation — as explicit tokens. Emit everything verbatim, with no synthetic
+			// word separators, so the value round-trips exactly (e.g. for $(eval)). Nested
+			// $(...) expansions still resolve normally.
+			do {
+				if (val->isStmt) {
+					if (val->stmt) {
+						resolve(out, val->stmt, _err);
+					}
+				} else {
+					out << val->str;
+				}
+				val = val->next;
+			} while (val);
+			break;
+		}
 		do {
 			if (val != stmt->value) {
 				if (!spaceValue && (val->isStmt || !isWhitespaceStarted(val->str))) {
@@ -312,7 +360,11 @@ void VariableEngine::resolve(Output out, Stmt *stmt, ErrorReporter &_err) {
 		if (val->next) {
 			ErrorReporter err(stmt->loc, &_err);
 
-			Stmt valueRoot(stmt->loc, StmtType::WordList, val->next, val->next);
+			// The single argument spans every value after the name (val->next .. stmt->tail).
+			// Use the real tail, not val->next: otherwise the single-word optimization in
+			// resolve(Stmt*) sees value==tail and, when val->next is a plain string, returns
+			// just that token and drops the rest of the argument.
+			Stmt valueRoot(stmt->loc, StmtType::WordList, val->next, stmt->tail);
 			StmtValue fakeValue(&valueRoot);
 
 			Stmt fakeRoot(stmt->loc, StmtType::ArgumentList, &fakeValue, &fakeValue);
@@ -400,7 +452,47 @@ void VariableEngine::substitute(const Callback<void(StringView)> &out, StringVie
 	} else if (var == "MAKEFILE_LIST") {
 		VariableEngine_MAKEFILE_LIST(out, _currentBlock);
 		return;
-	} else if (_callContext) {
+	}
+
+	// Directory/file modifiers of an automatic variable: $(@D) $(@F) $(<D) $(<F) and so on.
+	// The base autos (@ < ^ + ? * |) are injected as plain variables of Origin::Automatic
+	// while a recipe is expanded; only intercept the two-character form when the base is
+	// actually one of them so a real variable is never shadowed.
+	if (var.size() == 2 && (var[1] == 'D' || var[1] == 'F')) {
+		switch (var[0]) {
+		case '@':
+		case '<':
+		case '^':
+		case '+':
+		case '?':
+		case '*':
+		case '|':
+			if (auto v = getIfDefined(StringView(var.data(), 1))) {
+				if (v->origin == Origin::Automatic && v->type == Variable::Type::String) {
+					bool wantDir = (var[1] == 'D');
+					bool first = true;
+					v->str.split<StringView::WhiteSpace>([&](StringView tok) {
+						if (first) {
+							first = false;
+						} else {
+							out << ' ';
+						}
+						if (wantDir) {
+							auto d = filepath::root(tok);
+							out << (d.empty() ? StringView(".") : d);
+						} else {
+							out << filepath::lastComponent(tok);
+						}
+					});
+					return;
+				}
+			}
+			break;
+		default: break;
+		}
+	}
+
+	if (_callContext) {
 		// try indexed args
 		StringView tmp(var);
 		auto val = tmp.readInteger(10);
@@ -447,7 +539,9 @@ void VariableEngine::substitute(const Callback<void(StringView)> &out, StringVie
 			}
 			break;
 		default:
-			err.reportWarning(toString("Fail to substitute function ", var, " into string"));
+			if (warnEnabled(EngineFlags::WarnSubstituteFunction)) {
+				err.reportWarning(toString("Fail to substitute function ", var, " into string"));
+			}
 			break;
 		}
 	}
@@ -480,7 +574,9 @@ static uint32_t VariableEngine_parseArguments(StmtType t, StmtValue *args, StmtV
 
 StringView VariableEngine::getAbsolutePath(StringView str) const {
 	if (filepath::isAbsolute(str)) {
-		return StringView(filepath::reconstructPath<Interface>(str)).pdup(_pool);
+		auto ret = StringView(filepath::reconstructPath<Interface>(str)).pdup(_pool);
+		ret.backwardSkipChars<StringView::Chars<'/'>>();
+		return ret;
 	} else {
 		if (!_rootPath.empty()) {
 			return StringView(filepath::reconstructPath<Interface>(
@@ -522,6 +618,8 @@ void VariableEngine::pushBlock(Block *block) {
 	_currentBlock = block;
 }
 
-void VariableEngine::popBlock() { _currentBlock = _currentBlock->outer; }
+void VariableEngine::popBlock() {
+	_currentBlock = _currentBlock->outer; //
+}
 
 } // namespace stappler::makefile

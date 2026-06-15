@@ -48,10 +48,17 @@ print_verbose =
 endif
 
 
+ifdef XLMAKE_VERSION
+MAKE_4_1 := 1 # xlmake is 4.1-compatible
+$(info XLMAKE_VERSION $(XLMAKE_VERSION))
+else
+
 ifeq (4.1,$(firstword $(sort $(MAKE_VERSION) 4.1)))
 MAKE_4_1 := 1
 else
 $(info COMPATIBILITY MODE: Some functions may not work. Minimal required make version: 4.1)
+endif
+
 endif
 
 

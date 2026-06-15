@@ -1,6 +1,7 @@
 /**
  Copyright (c) 2025 Stappler LLC <admin@stappler.dev>
  Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -35,6 +36,7 @@
 #include "SPMakefileRule.cc"
 #include "SPMakefileStmt.cc"
 #include "SPMakefileVariable.cc"
+#include "SPMakefileExecutor.cc"
 
 #include "xcode/SPPBXObject.cc"
 #include "xcode/SPPBXBuildPhase.cc"
@@ -47,6 +49,9 @@ namespace STAPPLER_VERSIONIZED stappler::makefile {
 
 bool Makefile::init() {
 	_engine.init(_pool);
+	_engine.setEvalCallback([](void *self, StringView name, StringView content) {
+		return reinterpret_cast<Makefile *>(self)->include(name, content, true);
+	}, this);
 	return true;
 }
 
@@ -61,6 +66,10 @@ void Makefile::setIncludeCallback(IncludeCallback cb, void *ref) {
 }
 
 void Makefile::setRootPath(StringView str) { _engine.setRootPath(str); }
+
+void Makefile::setFlags(EngineFlags f) { _engine.setFlags(f); }
+
+EngineFlags Makefile::getFlags() const { return _engine.getFlags(); }
 
 bool Makefile::include(StringView name, StringView data, bool copyData, ErrorReporter *e) {
 	return perform([&] {
@@ -214,7 +223,9 @@ const Variable *Makefile::appendToVariable(StringView identifier, Origin varOrig
 
 	auto v = _engine.get(identifier);
 	if (!v) {
-		err.reportWarning(toString("Variable '", identifier, "' is not defined for '+='"));
+		if (_engine.warnEnabled(EngineFlags::WarnAppendUndefined)) {
+			err.reportWarning(toString("Variable '", identifier, "' is not defined for '+='"));
+		}
 		return _engine.set(identifier, varOrigin, stmt);
 	} else {
 		if (v->type == Variable::Type::String) {
@@ -241,6 +252,18 @@ const Variable *Makefile::appendToVariable(StringView identifier, Origin varOrig
 
 const Variable *Makefile::getVariable(StringView str) const { return _engine.getIfDefined(str); }
 
+void Makefile::foreachVariable(const Callback<void(StringView, const Variable &)> &cb) const {
+	_engine.foreachVariable(cb);
+}
+
+void Makefile::getVariableValue(StringView name, const Callback<void(StringView)> &out,
+		ErrorReporter &err) {
+	perform([&] {
+		_engine.substitute(out, name, err);
+		return true;
+	});
+}
+
 bool Makefile::eval(const Callback<void(StringView)> &out, StringView name, StringView content) {
 	_engine.setCustomOutput(&out);
 	auto ret = include(name, content);
@@ -248,12 +271,29 @@ bool Makefile::eval(const Callback<void(StringView)> &out, StringView name, Stri
 	return ret;
 }
 
-Target *Makefile::addTarget(StringView name) {
+Target *Makefile::getOrCreateTarget(StringView name) {
 	auto it = _targets.find(name);
-	if (it == _targets.end()) {
-		it = _targets.emplace(name, new (_pool) Target(name)).first;
+	if (it != _targets.end()) {
+		return it->second;
 	}
-	return it->second;
+
+	auto t = new (_pool) Target(name.pdup(_pool));
+	t->isSpecial = name.starts_with('.');
+	t->isPattern = name.find('%') != maxOf<size_t>();
+	_targets.emplace(t->name, t);
+	if (t->isPattern) {
+		_patternRules.emplace_back(t);
+	}
+	return t;
+}
+
+Target *Makefile::addTarget(StringView name) {
+	auto t = getOrCreateTarget(name);
+	// the default goal is the first explicitly declared non-special, non-pattern target
+	if (!_defaultGoal && !t->isSpecial && !t->isPattern) {
+		_defaultGoal = t;
+	}
+	return t;
 }
 
 bool Makefile::addTargetPrerequisite(SpanView<Target *> targets, StringView decl,
@@ -313,12 +353,17 @@ bool Makefile::undefineVariable(StringView identifier, Origin varOrigin, ErrorRe
 
 	auto v = _engine.get(identifier);
 	if (!v) {
-		err.reportWarning(toString("Variable '", identifier, "' was not defines"));
+		if (_engine.warnEnabled(EngineFlags::WarnUndefineUndefined)) {
+			err.reportWarning(toString("Variable '", identifier, "' was not defines"));
+		}
 		return true;
 	} else {
 		if (!v->isOverridableBy(varOrigin)) {
-			err.reportWarning(toString("Variable '", identifier, "' can not be undefined from '",
-					varOrigin, "' (suggest `override undefine`)"));
+			if (_engine.warnEnabled(EngineFlags::WarnUndefineOrigin)) {
+				err.reportWarning(
+						toString("Variable '", identifier, "' can not be undefined from '",
+								varOrigin, "' (suggest `override undefine`)"));
+			}
 			return false;
 		} else {
 			return _engine.clear(identifier, varOrigin);
@@ -337,17 +382,19 @@ bool Makefile::processMakefileContent(StringView str, ErrorReporter &err) {
 		} else if (line.is('\t') && !_currentTargets.empty()) {
 			++line;
 
-			auto stmt =
-					Stmt::readScoped(line, StmtType::WordList, ReadContext::TrailingRecipe, err);
-			if (!stmt) {
-				err.setPos(line);
-				err.reportError("Invalid recipe format");
-				return false;
-			}
+			if (!line.empty()) {
+				auto stmt = Stmt::readScoped(line, StmtType::WordList, ReadContext::TrailingRecipe,
+						err);
+				if (!stmt) {
+					err.setPos(line);
+					err.reportError("Invalid recipe format");
+					return false;
+				}
 
-			for (auto &it : _currentTargets) {
-				if (it) {
-					it->addRule(stmt);
+				for (auto &it : _currentTargets) {
+					if (it) {
+						it->addRule(stmt);
+					}
 				}
 			}
 		} else {
@@ -829,6 +876,13 @@ bool Makefile::processSimpleLine(StringView &str, Origin varOrigin, ErrorReporte
 			if (!str.empty()) {
 				if (!addTargetPrerequisite(targets, str, err)) {
 					return false;
+				}
+			}
+			// translate special targets (.PHONY, .PRECIOUS, ...) into semantics applied
+			// to their prerequisites
+			for (auto &t : targets) {
+				if (t && t->isSpecial) {
+					applySpecialTarget(t, err);
 				}
 			}
 		}
