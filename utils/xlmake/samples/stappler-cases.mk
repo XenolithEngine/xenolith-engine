@@ -1,5 +1,22 @@
 # Trouble cases from stappler make build system
 
+$(info $(firstword $(subst =, ,APPCONFIG_VERSION_VARIANT=1)))
+
+BUILD_APP_CONFIG_VALUES := \
+	APPCONFIG_VERSION_VARIANT=1 \
+	APPCONFIG_VERSION_API=2 \
+	APPCONFIG_VERSION_REV=2 \
+	APPCONFIG_VERSION_BUILD=4 \
+	APPCONFIG_EXEC_LIVE_RELOAD=5
+
+define BUILD_write_config_value
+@echo "constexpr int $(2) = $(3);" >> $(1)$(newline)$(tab)
+endef
+
+$(info \
+$(foreach var,$(BUILD_APP_CONFIG_VALUES),$(call BUILD_write_config_value,test,$(firstword $(subst =, ,$(var))),$(lastword $(subst =, ,$(var)))))\
+)
+
 $(info lastword(MAKEFILE_LIST) $(realpath \
 	$(lastword $(MAKEFILE_LIST))))
 

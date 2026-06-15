@@ -420,6 +420,105 @@ static int performMakefileTests() {
 			filesystem::remove(FileInfo("mk_prereq", LocationCategory::AppCache));
 			filesystem::remove(FileInfo("mk_target", LocationCategory::AppCache));
 		}
+
+		// --- fixture D: target-specific variables (own-recipe scope) ---
+		{
+			static constexpr StringView kTargetVars =
+					"CFLAGS := -O2\n"
+					"prog : CFLAGS = -g\n"
+					"prog : foo.o\n"
+					"\tcc $(CFLAGS) -o $@ $^\n"
+					"other : foo.o\n"
+					"\tcc $(CFLAGS) -o $@ $^\n"
+					"appnd : CFLAGS += -Wall\n"
+					"appnd : ; echo $(CFLAGS)\n"
+					"all : prog other\n";
+
+			auto mkD = Rc<MakefileRef>::create(SharedRefMode::Allocator);
+			mkD->setLogCallback(logcb);
+			ErrorReporter errD(nullptr);
+			errD.callback = logcb;
+			errD.filename = StringView("<tvars>");
+			check(mkD->include("tvars.mk", kTargetVars, true, &errD), "fixture D parses");
+
+			auto exportD = [&](StringView name) -> String {
+				String acc;
+				if (auto t = mkD->getTarget(name)) {
+					mkD->exportRecipe(t, [&](StringView line) {
+						if (!acc.empty()) {
+							acc.append("\n");
+						}
+						acc.append(line.data(), line.size());
+					}, errD);
+				}
+				return acc;
+			};
+
+			auto rprog = exportD("prog");
+			checkEq(StringView(rprog.data(), rprog.size()), "cc -g -o prog foo.o",
+					"target-specific: prog recipe uses CFLAGS=-g");
+			auto rother = exportD("other");
+			checkEq(StringView(rother.data(), rother.size()), "cc -O2 -o other foo.o",
+					"target-specific: other recipe uses global CFLAGS=-O2 (no leak)");
+			auto rappnd = exportD("appnd");
+			checkEq(StringView(rappnd.data(), rappnd.size()), "echo -O2 -Wall",
+					"target-specific: appnd recipe uses CFLAGS += -Wall over global");
+
+			// global CFLAGS must be untouched after the exports (exact restore)
+			auto gcf = mkD->getVariable("CFLAGS");
+			checkEq((gcf && gcf->type == Variable::Type::String) ? gcf->str : StringView(), "-O2",
+					"target-specific: global CFLAGS restored to -O2 after exports");
+
+			// storage introspection
+			check(mkD->getTarget("prog") && mkD->getTarget("prog")->variables() != nullptr,
+					"target-specific: prog->variables() has an entry");
+			check(mkD->getTarget("all") && mkD->getTarget("all")->variables() == nullptr,
+					"target-specific: pure-prereq target 'all' has no target vars");
+
+			// external-executor API: resolve a variable as a given target sees it
+			auto valInScope = [&](StringView target, StringView var) -> String {
+				String acc;
+				if (auto t = mkD->getTarget(target)) {
+					mkD->getVariableValue(t, var,
+							[&](StringView s) { acc.append(s.data(), s.size()); }, errD);
+				}
+				return acc;
+			};
+			auto vp = valInScope("prog", "CFLAGS");
+			checkEq(StringView(vp.data(), vp.size()), "-g",
+					"external: getVariableValue(prog, CFLAGS) == -g");
+			auto vo = valInScope("other", "CFLAGS");
+			checkEq(StringView(vo.data(), vo.size()), "-O2",
+					"external: getVariableValue(other, CFLAGS) == -O2");
+
+			// global query still -O2 after scoped queries (scope unwound)
+			String gv;
+			mkD->getVariableValue(StringView("CFLAGS"),
+					[&](StringView s) { gv.append(s.data(), s.size()); }, errD);
+			checkEq(StringView(gv.data(), gv.size()), "-O2",
+					"external: global CFLAGS still -O2 after scoped queries");
+
+			// withTargetScope: expand inside a target's scope
+			String ws;
+			mkD->withTargetScope(mkD->getTarget("prog"), [&]() {
+				mkD->getVariableValue(StringView("CFLAGS"),
+						[&](StringView s) { ws.append(s.data(), s.size()); }, errD);
+			}, errD);
+			checkEq(StringView(ws.data(), ws.size()), "-g",
+					"external: withTargetScope(prog) sees CFLAGS=-g");
+
+			// foreachTargetVariable introspection
+			int tvCount = 0;
+			String tvName, tvOp;
+			mkD->foreachTargetVariable(mkD->getTarget("prog"),
+					[&](StringView n, StringView op, const Variable &) {
+				++tvCount;
+				tvName.append(n.data(), n.size());
+				tvOp.append(op.data(), op.size());
+			});
+			check(tvCount == 1 && tvName == "CFLAGS" && tvOp == "=",
+					"external: foreachTargetVariable(prog) -> CFLAGS '='");
+		}
 	}, pool);
 
 	memory::pool::destroy(pool);

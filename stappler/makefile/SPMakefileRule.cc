@@ -108,4 +108,16 @@ void Target::addRule(Stmt *stmt) {
 	}
 }
 
+void Target::addVariable(StringView name, StringView op, Stmt *value, bool isPrivate) {
+	// `op` is one of a fixed set of static literals, so it needs no pdup; `name` is dup'd like
+	// prerequisite/target names; `value` is already pool-allocated by Stmt::readScoped.
+	auto v = new (sprt::nothrow) TargetVariable(name.pdup(), op, value, isPrivate);
+	if (!variablesTail) {
+		variablesTail = variablesList = v;
+	} else {
+		variablesTail->next = v;
+		variablesTail = variablesTail->next;
+	}
+}
+
 } // namespace stappler::makefile

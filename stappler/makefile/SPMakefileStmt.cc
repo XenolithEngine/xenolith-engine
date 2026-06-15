@@ -172,15 +172,19 @@ static StringView readContextIdentifier(StringView &str, ReadContext ctx) {
 				StringView::Chars<'#', ',', '(', ')', '$', '\\'>>();
 		break;
 	case ReadContext::LineEnd:
-	case ReadContext::TrailingRecipe:
 		return str.readUntil<StringView::WhiteSpace, StringView::Chars<'#', '$', '\\'>>();
+		break;
+	case ReadContext::TrailingRecipe:
+		// A recipe line is expanded and passed verbatim to the shell; '#' is NOT a make comment
+		// here (the shell handles it), so it stays literal — including inside quotes, where make has
+		// no cross-token quote state to recognize it otherwise.
+		return str.readUntil<StringView::WhiteSpace, StringView::Chars<'$', '\\'>>();
 		break;
 	case ReadContext::Multiline:
 		return str.readUntil<StringView::WhiteSpace, StringView::Chars<'$', '\\'>>();
 		break;
 	case ReadContext::MultilineExpansion:
-		return str.readUntil<StringView::WhiteSpace,
-				StringView::Chars<',', '(', ')', '$', '\\'>>();
+		return str.readUntil<StringView::WhiteSpace, StringView::Chars<',', '(', ')', '$', '\\'>>();
 		break;
 	case ReadContext::ConditionalQuoted:
 		return str.readUntil<StringView::WhiteSpace, StringView::Chars<'#', '$', '\\', '\''>>();
@@ -510,7 +514,8 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 			}
 		}
 
-		if (!isMultiline && str.is('#')) {
+		if (!isMultiline && ctx != ReadContext::TrailingRecipe && str.is('#')) {
+			// (in a recipe '#' is literal, not a make comment — see readContextIdentifier)
 			if (ending) {
 				err.setPos(str);
 				err.reportError(toString("Unexpected line ending, '", ending, "' expected"));
@@ -529,13 +534,17 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 				addStringWord(" ");
 			}
 			++str;
-			skipWhitespace(str);
-			nextArgument = true;
+			whiteSpace = skipWhitespace(str);
 			// a ',' immediately before ')' (or end) is a trailing empty argument, e.g.
 			// $(patsubst a,b,) — emit it so the function still receives all its arguments
 			if (str.empty() || (ending && str.is(ending))) {
-				addStmtArgument(new (sprt::nothrow) Stmt(err));
+				addStmtArgument(new (sprt::nothrow) Stmt(err, whiteSpace));
+			} else if (str.is(',') && !whiteSpace.empty()) {
+				addStmtArgument(new (sprt::nothrow) Stmt(err, whiteSpace));
+			} else {
+				nextArgument = true;
 			}
+			whiteSpace = StringView();
 		} else if (ctx == ReadContext::LineStart && str.is<PlainStopChars>()) {
 			auto op = Stmt::getOperator(str, true);
 			if (!op.empty()) {

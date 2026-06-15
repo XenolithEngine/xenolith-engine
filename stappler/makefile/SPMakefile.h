@@ -84,6 +84,12 @@ public:
 	// Expand a variable's value to text (recursive variables are evaluated, like `$(NAME)`).
 	void getVariableValue(StringView name, const Callback<void(StringView)> &, ErrorReporter &);
 
+	// Expand a variable as a specific target sees it: the target's target-specific variables
+	// (and its automatic variables) are in scope for the expansion. For external executors that
+	// resolve variables/commands per target rather than consuming baked recipe lines.
+	void getVariableValue(Target *, StringView name, const Callback<void(StringView)> &,
+			ErrorReporter &);
+
 	// content parsed as an included makefile
 	// use $(print wordlist...) to output data
 	bool eval(const Callback<void(StringView)> &, StringView name, StringView content);
@@ -136,6 +142,21 @@ public:
 			Callback<void(StringView line, bool silent, bool ignoreErr, bool always)>;
 	void exportRecipeLines(Target *, const RecipeLineCallback &, ErrorReporter &);
 
+	// === Target scope (for external executors that drive their own build) ===
+
+	// Enumerate a target's own target-specific variable assignments — name, operator token
+	// ("=", ":=", "+=", ...), and the raw Variable — in source order. Introspection only.
+	void foreachTargetVariable(Target *,
+			const Callback<void(StringView, StringView, const Variable &)> &) const;
+
+	// Run `fn` with `t`'s recipe context active: automatic variables ($@, $<, ...) and the
+	// target's target-specific variables are pushed into the engine for the duration, then
+	// restored. Inside `fn`, an external executor may expand any variable/expression as `t`
+	// sees it. Do NOT call exportRecipe()/exportRecipeLines() from within `fn` (they self-
+	// bracket the automatic variables and would tear down this scope). Returns false on a setup
+	// error.
+	bool withTargetScope(Target *, const Callback<void()> &fn, ErrorReporter &);
+
 	// === Execution (side-effecting): runs recipes via the shell ===
 
 	void setBuildOptions(const BuildOptions &o) { _buildOptions = o; }
@@ -158,6 +179,12 @@ protected:
 	bool processEndefLine(StringView &str, ErrorReporter &);
 	bool processUndefineLine(StringView &str, Origin varOrigin, ErrorReporter &);
 	bool processSimpleLine(StringView &str, Origin varOrigin, ErrorReporter &);
+
+	// In a rule line `targets : <decl>`, detect and consume a target-specific variable
+	// assignment (`VAR = value`, also :=, ::=, :::=, +=, ?=, and a leading `private`). Returns
+	// true if it was an assignment (stored on each target via Target::addVariable); false to
+	// fall through to ordinary prerequisite parsing.
+	bool tryParseTargetVariable(SpanView<Target *>, StringView &decl, ErrorReporter &);
 
 	bool processIncludeLine(StringView &str, ErrorReporter &, bool optional);
 
@@ -194,8 +221,24 @@ protected:
 	void setAutoVars(BuildNode *, ErrorReporter &);
 	void clearAutoVars();
 
-	// Stat the target's file (cached on the Target) for out-of-date comparisons.
-	void statTarget(Target *);
+	// One saved global-variable snapshot, taken when a target's target-specific variables are
+	// pushed into scope and restored exactly when they are popped.
+	struct TargetVarSave {
+		StringView name;
+		bool existed = false;
+		Variable saved;
+		TargetVarSave(StringView n) : name(n), saved(Origin::Undefined, StringView()) { }
+	};
+
+	// Apply / restore a target's target-specific variables around recipe expansion (own-recipe
+	// scope). push snapshots the affected globals and applies in source order; pop restores them
+	// in reverse. The saved-state vector is a caller-local so nested/concurrent scopes are safe.
+	void pushTargetVars(Target *, Vector<TargetVarSave> &, ErrorReporter &);
+	void popTargetVars(Vector<TargetVarSave> &);
+
+	// Stat the target's file (cached on the Target) for out-of-date comparisons. Pass
+	// force = true to refresh a cached result, e.g. after the file may have changed on disk.
+	void statTarget(Target *, bool force = false);
 
 	uint32_t _errors = 0;
 

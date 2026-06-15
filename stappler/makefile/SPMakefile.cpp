@@ -86,6 +86,9 @@ bool Makefile::include(StringView name, StringView data, bool copyData, ErrorRep
 		rootBlock->content = name.pdup(_pool);
 
 		_engine.pushBlock(rootBlock);
+		// Record this file in MAKEFILE_LIST before parsing it (matches GNU make), so $(MAKEFILE_LIST)
+		// resolves immediately and remains valid for later recipe / recursive-variable expansion.
+		_engine.appendMakefileList(rootBlock->content);
 
 		auto ret = processMakefileContent(copyData ? data.pdup(_pool) : data, err);
 
@@ -262,6 +265,30 @@ void Makefile::getVariableValue(StringView name, const Callback<void(StringView)
 		_engine.substitute(out, name, err);
 		return true;
 	});
+}
+
+void Makefile::getVariableValue(Target *t, StringView name, const Callback<void(StringView)> &out,
+		ErrorReporter &err) {
+	if (!t) {
+		getVariableValue(name, out, err);
+		return;
+	}
+	// Resolve the variable with the target's own context active (automatic + target-specific
+	// variables), so an external executor reads the value exactly as this target would.
+	withTargetScope(t, [&]() { _engine.substitute(out, name, err); }, err);
+}
+
+void Makefile::foreachTargetVariable(Target *t,
+		const Callback<void(StringView, StringView, const Variable &)> &cb) const {
+	if (!t) {
+		return;
+	}
+	for (auto v = t->variablesList; v; v = v->next) {
+		// Surface the raw assignment for introspection; `op` conveys the flavor. The value is
+		// wrapped as a recursive (Stmt) Variable, or an empty simple one when absent.
+		Variable var = v->value ? Variable(Origin::File, v->value) : Variable(Origin::File, StringView());
+		cb(v->name, v->op, var);
+	}
 }
 
 bool Makefile::eval(const Callback<void(StringView)> &out, StringView name, StringView content) {
@@ -801,6 +828,79 @@ bool Makefile::processUndefineLine(StringView &str, Origin varOrigin, ErrorRepor
 	return undefineVariable(identifier, varOrigin, err);
 }
 
+bool Makefile::tryParseTargetVariable(SpanView<Target *> targets, StringView &decl,
+		ErrorReporter &err) {
+	// `decl` is the text after `targets :`. Detect `[private] VAR <op> value`; if it is not an
+	// assignment, leave `decl` untouched and return false so the caller parses prerequisites.
+	StringView rest = decl;
+	Stmt::skipWhitespace(rest);
+
+	bool isPrivate = false;
+	if (rest.starts_with("private") && Stmt::isWhitespace(rest.sub("private"_len, 2))) {
+		isPrivate = true;
+		rest += "private"_len;
+		Stmt::skipWhitespace(rest);
+	}
+
+	// Read the variable name with the same LHS reader a normal assignment uses (stops before any
+	// operator char and expands a computed `$(NAME)`).
+	auto nameStmt = Stmt::readScoped(rest, StmtType::WordList, ReadContext::LineStart, err);
+	if (!nameStmt) {
+		return false;
+	}
+	auto name = _engine.resolve(nameStmt, err);
+	if (name.empty()) {
+		return false;
+	}
+
+	// A target-specific variable name is a single token. The LineStart reader stops at the first
+	// assignment operator, so for a rule with an inline recipe (`target: ; echo a=b`) it runs past
+	// the ';' and reads `; echo a` as the "name" — whitespace or a ';' here means this is a rule, not
+	// an assignment, and its recipe's '=' must not be taken as an operator. Fall through to let
+	// addTargetPrerequisite() split the prerequisites and the ';' recipe correctly.
+	if (name.find(' ') != maxOf<size_t>() || name.find('\t') != maxOf<size_t>()
+			|| name.find(';') != maxOf<size_t>()) {
+		return false;
+	}
+
+	Stmt::skipWhitespace(rest);
+
+	// allowRule = false: a bare ':' or a plain prerequisite word yields no operator, so this is
+	// not a target-specific assignment.
+	auto op = Stmt::getOperator(rest, false);
+	StringView opLit;
+	if (op == "=") {
+		opLit = StringView("=");
+	} else if (op == ":=") {
+		opLit = StringView(":=");
+	} else if (op == "::=") {
+		opLit = StringView("::=");
+	} else if (op == ":::=") {
+		opLit = StringView(":::=");
+	} else if (op == "+=") {
+		opLit = StringView("+=");
+	} else if (op == "?=") {
+		opLit = StringView("?=");
+	} else {
+		return false;
+	}
+
+	rest += op.size();
+	Stmt::skipWhitespace(rest);
+
+	// The value runs to end of line; null when empty (`VAR =`), handled at apply time.
+	auto valueStmt = Stmt::readScoped(rest, StmtType::WordList, ReadContext::LineEnd, err);
+
+	for (auto &t : targets) {
+		if (t) {
+			t->addVariable(name, opLit, valueStmt, isPrivate);
+		}
+	}
+
+	decl = rest;
+	return true;
+}
+
 bool Makefile::processSimpleLine(StringView &str, Origin varOrigin, ErrorReporter &err) {
 	if (!_engine.getCurrentBlock()->enabled) {
 		return true;
@@ -873,7 +973,8 @@ bool Makefile::processSimpleLine(StringView &str, Origin varOrigin, ErrorReporte
 		if (targets.empty()) {
 			targets.emplace_back(nullptr);
 		} else {
-			if (!str.empty()) {
+			// `targets : VAR = value` is a target-specific variable; otherwise prerequisites.
+			if (!str.empty() && !tryParseTargetVariable(targets, str, err)) {
 				if (!addTargetPrerequisite(targets, str, err)) {
 					return false;
 				}

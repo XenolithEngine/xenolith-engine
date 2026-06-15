@@ -1,0 +1,253 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#include "Inspector.h"
+
+namespace xlmake {
+
+static void printVariable(Makefile *mk, StringView name, const Variable &v, ErrorReporter &err) {
+	sprt::cout << name << " [" << getOriginName(v.origin) << ", ";
+	switch (v.type) {
+	case Variable::Type::String: sprt::cout << "simple] = " << v.str << "\n"; break;
+	case Variable::Type::Function: sprt::cout << "function] = <function>\n"; break;
+	case Variable::Type::Stmt:
+		sprt::cout << "recursive] = ";
+		mk->getVariableValue(name, [&](StringView s) { sprt::cout << s; }, err);
+		sprt::cout << "\n";
+		break;
+	}
+}
+
+int runInspect(Makefile *mk, const InspectConfig &cfg, const Vector<String> &makefilePaths,
+		ErrorReporter &err) {
+	bool anyAction = cfg.printVars || !cfg.vars.empty() || cfg.recipe || cfg.prereqs;
+
+	// --- variables ---
+	if (cfg.printVars) {
+		// snapshot names first: expanding a recursive value may define new variables
+		Vector<StringView> names;
+		mk->foreachVariable([&](StringView name, const Variable &) { names.emplace_back(name); });
+		for (auto name : names) {
+			if (auto v = mk->getVariable(name)) {
+				printVariable(mk, name, *v, err);
+			}
+		}
+	}
+
+	for (auto name : cfg.vars) {
+		auto v = mk->getVariable(name);
+		if (!v) {
+			sprt::cout << name << " = <undefined>\n";
+			continue;
+		}
+		sprt::cout << name << " = ";
+		mk->getVariableValue(name, [&](StringView s) { sprt::cout << s; }, err);
+		sprt::cout << "\n";
+	}
+
+	// --- target-based actions ---
+	if (cfg.recipe || cfg.prereqs) {
+		// populate prerequisite / pattern-derived targets so they are queryable by name
+		if (auto g = mk->getDefaultGoal()) {
+			mk->buildPlan(g, err);
+		}
+
+		Vector<Target *> targets;
+		if (cfg.targets.empty()) {
+			if (auto g = mk->getDefaultGoal()) {
+				targets.emplace_back(g);
+			} else {
+				sprt::cerr << "xlmake: no target given and no default goal\n";
+			}
+		} else {
+			for (auto tn : cfg.targets) {
+				if (auto t = mk->getTarget(tn)) {
+					targets.emplace_back(t);
+				} else {
+					sprt::cerr << "xlmake: unknown target: " << tn << "\n";
+				}
+			}
+		}
+
+		if (cfg.recipe) {
+			for (auto t : targets) {
+				if (cfg.outOfDate && !mk->isOutOfDate(t, err)) {
+					continue;
+				}
+				sprt::cout << t->name << ":\n";
+				mk->exportRecipe(t, [&](StringView line) { sprt::cout << "\t" << line << "\n"; },
+						err);
+			}
+		}
+
+		if (cfg.prereqs && cfg.recursive) {
+			// Transitive closure in dependency-graph order. buildPlan() returns the
+			// targets topologically sorted (dependencies precede dependents) with the
+			// goal itself last; we drop the goal and keep its prerequisites, which
+			// already include order-only deps as graph edges.
+			for (auto t : targets) {
+				auto plan = mk->buildPlan(t, err);
+
+				// With -q, restrict to what would actually be rebuilt. This is
+				// transitive: a node rebuilds if it is out of date itself OR any normal
+				// prerequisite rebuilds (so a fresh object forces its archive/link to
+				// rebuild too). Order-only edges never propagate a rebuild. The plan is
+				// in post-order, so every node's prerequisites are decided before it.
+				//
+				// By default a phony target counts as out of date (its isOutOfDate
+				// state, consistent with the non-recursive --prerequisites -q view).
+				// With --phony-prereqs (-P) a phony target is instead judged by its
+				// prerequisites: a phony grouping target (all/install/...) whose
+				// dependencies are all fresh is NOT reported, and it does not force a
+				// fresh parent to rebuild either -- its own out-of-dateness then ignores
+				// phony prerequisites in the timestamp check, so their effect arrives only
+				// through the cascade (p->outOfDate).
+				//
+				// Order-only prerequisites are excluded from the out-of-date set: they
+				// only constrain ordering and never trigger a rebuild, so we report just
+				// the closure reachable through normal edges. `reachable` collects that
+				// closure from the goal (its absence is only consulted when -q is set).
+				Set<BuildNode *> reachable;
+				if (cfg.outOfDate) {
+					for (auto node : plan) {
+						auto planTarget = node->target;
+						bool rebuild;
+						if (!cfg.phonyPrereqs) {
+							// default: phony counts as out of date (make semantics)
+							rebuild = mk->isOutOfDate(planTarget, err);
+						} else if (planTarget->isPhony) {
+							rebuild = false; // decided solely by the cascade below
+						} else {
+							// isOutOfDate() is documented to fill the target's
+							// filesystem-state cache; read it back to compare timestamps
+							// while skipping phony (file-less) prerequisites.
+							mk->isOutOfDate(planTarget, err);
+							rebuild = !planTarget->fileExists;
+							if (!rebuild) {
+								for (auto p : node->prerequisites) {
+									auto pt = p->target;
+									if (!pt->isPhony
+											&& (!pt->fileExists
+													|| pt->mtimeMicros > planTarget->mtimeMicros)) {
+										rebuild = true;
+										break;
+									}
+								}
+							}
+						}
+						if (!rebuild) {
+							for (auto p : node->prerequisites) {
+								if (p->outOfDate) {
+									rebuild = true;
+									break;
+								}
+							}
+						}
+						node->outOfDate = rebuild;
+					}
+
+					Vector<BuildNode *> stack;
+					for (auto node : plan) {
+						if (node->target == t) {
+							for (auto p : node->prerequisites) {
+								if (reachable.emplace(p).second) {
+									stack.emplace_back(p);
+								}
+							}
+							break;
+						}
+					}
+					while (!stack.empty()) {
+						auto cur = stack.back();
+						stack.pop_back();
+						for (auto p : cur->prerequisites) {
+							if (reachable.emplace(p).second) {
+								stack.emplace_back(p);
+							}
+						}
+					}
+				}
+
+				sprt::cout << t->name << ":";
+				for (auto node : plan) {
+					if (node->target == t) {
+						continue; // the goal node itself
+					}
+					if (cfg.outOfDate
+							&& (!node->outOfDate || reachable.find(node) == reachable.end())) {
+						continue;
+					}
+					sprt::cout << " " << node->name;
+				}
+				sprt::cout << "\n";
+			}
+		} else if (cfg.prereqs) {
+			for (auto t : targets) {
+				sprt::cout << t->name << ":";
+				mk->getPrerequisites(t, [&](StringView name) {
+					if (cfg.outOfDate) {
+						auto pt = mk->getTarget(name);
+						if (pt && !mk->isOutOfDate(pt, err)) {
+							return;
+						}
+					}
+					sprt::cout << " " << name;
+				});
+				sprt::cout << "\n";
+
+				bool hasOrderOnly = false;
+				mk->getOrderOnly(t, [&](StringView name) {
+					if (!hasOrderOnly) {
+						sprt::cout << "    | order-only:";
+						hasOrderOnly = true;
+					}
+					sprt::cout << " " << name;
+				});
+				if (hasOrderOnly) {
+					sprt::cout << "\n";
+				}
+			}
+		}
+	}
+
+	// --- overview (no explicit action) ---
+	if (!anyAction) {
+		sprt::cout << "makefile:";
+		for (auto &p : makefilePaths) { sprt::cout << " " << p; }
+		sprt::cout << "\n";
+		if (auto g = mk->getDefaultGoal()) {
+			sprt::cout << "default goal: " << g->name << "\n";
+		}
+		sprt::cout << "targets:\n";
+		for (auto t : mk->getTargets()) {
+			sprt::cout << "  " << t->name;
+			if (t->isPhony) {
+				sprt::cout << " (phony)";
+			}
+			sprt::cout << "\n";
+		}
+	}
+
+	return 0;
+}
+
+} // namespace xlmake

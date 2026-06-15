@@ -25,6 +25,9 @@ THE SOFTWARE.
 #include "SPFilepath.h"
 #include "SPMakefile.h"
 
+#include "Inspector.h"
+#include "Executor.h"
+
 using namespace sp;
 
 static constexpr StringView XLMAKE_VERSION = "1.0";
@@ -36,6 +39,14 @@ using namespace sp::mem_pool;
 
 using PInterface = memory::PoolInterface;
 
+// xlmake operates in one mode, chosen by the FIRST command-line flag; every later flag applies to
+// that mode. -i/--inspect (pure introspection) or -b/--build (run recipes).
+enum class Mode {
+	Help,
+	Inspect,
+	Build,
+};
+
 // A GNU-make-style command-line variable assignment, e.g. CC=gcc, CFLAGS:=-O2, X+=y.
 struct Assignment {
 	StringView name;
@@ -44,51 +55,67 @@ struct Assignment {
 };
 
 struct Config {
+	Mode mode = Mode::Help;
+
+	// shared (both modes)
 	Vector<StringView> files; // -f / --file (repeatable)
-	Vector<StringView> vars; // -V / --var (repeatable)
-	Vector<StringView> targets; // positional goals
-	Vector<Assignment> assignments; // positional VAR=VALUE command-line assignments
 	StringView dir; // -C / --directory
+	bool pedantic = false; // -W / --pedantic
+	Vector<Assignment> assignments; // positional VAR=VALUE command-line assignments
+	Vector<StringView> targets; // positional goals
+
+	// inspect mode
+	Vector<StringView> vars; // -V / --var (repeatable)
 	bool printVars = false; // -p / --print-vars
 	bool recipe = false; // --recipe
 	bool prereqs = false; // --prerequisites
-	bool recursive = false; // -r / --recursive (transitive closure for --prerequisites)
+	bool recursive = false; // -r / --recursive
 	bool outOfDate = false; // -q / --out-of-date
-	bool phonyPrereqs = false; // -P / --phony-prereqs (judge phony by prerequisites, -r -q)
-	bool pedantic = false; // -W / --pedantic (enable every engine warning)
-	bool help = false; // -h / --help
+	bool phonyPrereqs = false; // -P / --phony-prereqs
+
+	// build mode
+	uint32_t jobs = 0; // -j N (0 => hardware_concurrency, JobsUnlimited => bare -j)
+	bool keepGoing = false; // -k / --keep-going
+	bool dryRun = false; // -n / --dry-run
+	bool silent = false; // -s / --silent
 };
 
 static void printUsage() {
-	sprt::cout << "xlmake - inspect a GNU-make-style makefile\n"
+	sprt::cout << "xlmake - inspect or build a GNU-make-style makefile\n"
 				  "\n"
-				  "Usage: xlmake [options] [target ...]\n"
+				  "Usage: xlmake <mode> [options] [VAR=VALUE ...] [target ...]\n"
 				  "\n"
-				  "Makefile selection (GNU make compatible):\n"
+				  "The first argument selects the mode; later flags apply to it:\n"
+				  "  -i, --inspect          inspect the makefile (print variables/recipes/prereqs)\n"
+				  "  -b, --build            build the requested targets (run recipes in parallel)\n"
+				  "  -h, --help             show this help\n"
+				  "\n"
+				  "Shared options (both modes):\n"
 				  "  -f, --file FILE        read FILE as a makefile (repeatable)\n"
 				  "  -C, --directory DIR    root directory (default: current directory;\n"
 				  "                         searches GNUmakefile, makefile, Makefile)\n"
-				  "\n"
-				  "Variable assignment (GNU make compatible):\n"
+				  "  -W, --pedantic         report every engine warning (not just the default set)\n"
 				  "  VAR=VALUE              set VAR, overriding the makefile (also :=, +=, ?=)\n"
 				  "\n"
-				  "Inspection (combinable; act on the given targets, else the default goal):\n"
+				  "Inspect options (-i; combinable; act on the given targets, else the default "
+				  "goal):\n"
 				  "  -p, --print-vars       print every variable: name [origin, flavor] = value\n"
 				  "  -V, --var NAME         print one variable's expanded value (repeatable)\n"
 				  "      --recipe           print the expanded recipe of each target\n"
 				  "      --prerequisites    print the prerequisite list of each target\n"
-				  "  -r, --recursive        with --prerequisites, print the transitive closure\n"
-				  "                         (all dependencies, normal and order-only) in\n"
+				  "  -r, --recursive        with --prerequisites, print the transitive closure in\n"
 				  "                         dependency-graph order; with -q, the out-of-date set\n"
-				  "                         (cascades along normal edges; order-only excluded)\n"
 				  "  -q, --out-of-date      restrict --recipe/--prerequisites to out-of-date items\n"
 				  "  -P, --phony-prereqs    with -r -q, judge a phony target by its prerequisites\n"
-				  "                         instead of treating it as always out of date, so a\n"
-				  "                         phony target with only fresh dependencies is omitted\n"
-				  "  -W, --pedantic         report every engine warning (not just the default set)\n"
-				  "  -h, --help             show this help\n"
 				  "\n"
-				  "With no action, prints an overview (makefile, default goal, targets).\n";
+				  "Build options (-b):\n"
+				  "  -j, --jobs [N]         run up to N recipes concurrently (default: all cores;\n"
+				  "                         -j1 serializes; bare -j is unlimited)\n"
+				  "  -k, --keep-going       keep building independent targets after a failure\n"
+				  "  -n, --dry-run          print recipe commands without running them\n"
+				  "  -s, --silent           do not echo recipe command lines\n"
+				  "\n"
+				  "With -i and no action, prints an overview (makefile, default goal, targets).\n";
 }
 
 static void xlmakeLog(void *, log::LogType type, StringView msg) {
@@ -130,9 +157,48 @@ static bool parseAssignment(StringView arg, Assignment &out) {
 	return true;
 }
 
-// Parse argv into cfg. Returns false on a malformed option.
+// Parse a non-negative decimal integer; false if `s` is empty or has a non-digit.
+static bool parseUint(StringView s, uint32_t &out) {
+	if (s.empty()) {
+		return false;
+	}
+	uint32_t v = 0;
+	for (size_t k = 0; k < s.size(); ++k) {
+		char c = s[k];
+		if (c < '0' || c > '9') {
+			return false;
+		}
+		v = v * 10 + uint32_t(c - '0');
+	}
+	out = v;
+	return true;
+}
+
+// Parse argv into cfg. The first token selects the mode. Returns false on a malformed option.
 static bool parseArgs(int argc, const char *argv[], Config &cfg) {
-	int i = 1;
+	if (argc < 2) {
+		cfg.mode = Mode::Help;
+		return true;
+	}
+
+	StringView first(argv[1]);
+	if (first == "-h" || first == "--help") {
+		cfg.mode = Mode::Help;
+		return true;
+	} else if (first == "-i" || first == "--inspect") {
+		cfg.mode = Mode::Inspect;
+	} else if (first == "-b" || first == "--build") {
+		cfg.mode = Mode::Build;
+	} else {
+		sprt::cerr << "xlmake: first argument must select a mode: -i/--inspect, -b/--build "
+					  "(or -h/--help)\n";
+		return false;
+	}
+
+	const bool isBuild = (cfg.mode == Mode::Build);
+	const bool isInspect = (cfg.mode == Mode::Inspect);
+
+	int i = 2;
 	auto takeValue = [&](StringView inlineVal) -> StringView {
 		if (!inlineVal.empty()) {
 			return inlineVal;
@@ -143,9 +209,37 @@ static bool parseArgs(int argc, const char *argv[], Config &cfg) {
 		}
 		return StringView();
 	};
+	// -j with an optional argument: an attached/next numeric value sets the cap, otherwise bare -j
+	// means unlimited.
+	auto takeJobs = [&](StringView attached) -> bool {
+		if (!attached.empty()) {
+			uint32_t n;
+			if (!parseUint(attached, n)) {
+				sprt::cerr << "xlmake: invalid -j value: " << attached << "\n";
+				return false;
+			}
+			cfg.jobs = n ? n : 1;
+			return true;
+		}
+		if (i + 1 < argc) {
+			StringView nx(argv[i + 1]);
+			uint32_t n;
+			if (parseUint(nx, n)) {
+				++i;
+				cfg.jobs = n ? n : 1;
+				return true;
+			}
+		}
+		cfg.jobs = xlmake::JobsUnlimited;
+		return true;
+	};
 
 	for (; i < argc; ++i) {
 		StringView arg(argv[i]);
+		if (arg == "-h" || arg == "--help") {
+			cfg.mode = Mode::Help;
+			return true;
+		}
 		if (arg.starts_with("--")) {
 			auto body = arg.sub(2);
 			if (body.empty()) {
@@ -159,28 +253,38 @@ static bool parseArgs(int argc, const char *argv[], Config &cfg) {
 				val = body.sub(eq + 1);
 				hasVal = true;
 			}
+
+			// shared
 			if (name == "file" || name == "makefile") {
 				cfg.files.emplace_back(hasVal ? val : takeValue(StringView()));
 			} else if (name == "directory") {
 				cfg.dir = hasVal ? val : takeValue(StringView());
-			} else if (name == "var" || name == "variable") {
-				cfg.vars.emplace_back(hasVal ? val : takeValue(StringView()));
-			} else if (name == "print-vars" || name == "print") {
-				cfg.printVars = true;
-			} else if (name == "recipe" || name == "recipes") {
-				cfg.recipe = true;
-			} else if (name == "prerequisites" || name == "prereqs") {
-				cfg.prereqs = true;
-			} else if (name == "recursive") {
-				cfg.recursive = true;
-			} else if (name == "out-of-date") {
-				cfg.outOfDate = true;
-			} else if (name == "phony-prereqs" || name == "phony-prerequisites") {
-				cfg.phonyPrereqs = true;
 			} else if (name == "pedantic" || name == "warn-all") {
 				cfg.pedantic = true;
-			} else if (name == "help") {
-				cfg.help = true;
+			} else if (isInspect && (name == "var" || name == "variable")) {
+				cfg.vars.emplace_back(hasVal ? val : takeValue(StringView()));
+			} else if (isInspect && (name == "print-vars" || name == "print")) {
+				cfg.printVars = true;
+			} else if (isInspect && (name == "recipe" || name == "recipes")) {
+				cfg.recipe = true;
+			} else if (isInspect && (name == "prerequisites" || name == "prereqs")) {
+				cfg.prereqs = true;
+			} else if (isInspect && name == "recursive") {
+				cfg.recursive = true;
+			} else if (isInspect && name == "out-of-date") {
+				cfg.outOfDate = true;
+			} else if (isInspect && (name == "phony-prereqs" || name == "phony-prerequisites")) {
+				cfg.phonyPrereqs = true;
+			} else if (isBuild && name == "jobs") {
+				if (!takeJobs(hasVal ? val : StringView())) {
+					return false;
+				}
+			} else if (isBuild && name == "keep-going") {
+				cfg.keepGoing = true;
+			} else if (isBuild && (name == "dry-run" || name == "just-print")) {
+				cfg.dryRun = true;
+			} else if (isBuild && (name == "silent" || name == "quiet")) {
+				cfg.silent = true;
 			} else {
 				sprt::cerr << "xlmake: unknown option --" << name << "\n";
 				return false;
@@ -190,27 +294,45 @@ static bool parseArgs(int argc, const char *argv[], Config &cfg) {
 			while (!rest.empty()) {
 				char c = rest[0];
 				rest = rest.sub(1);
-				switch (c) {
-				case 'f':
+				bool ok = true;
+				// shared short options first
+				if (c == 'f') {
 					cfg.files.emplace_back(takeValue(rest));
 					rest = StringView();
-					break;
-				case 'C':
+				} else if (c == 'C') {
 					cfg.dir = takeValue(rest);
 					rest = StringView();
-					break;
-				case 'V':
-					cfg.vars.emplace_back(takeValue(rest));
-					rest = StringView();
-					break;
-				case 'p': cfg.printVars = true; break;
-				case 'q': cfg.outOfDate = true; break;
-				case 'r': cfg.recursive = true; break;
-				case 'P': cfg.phonyPrereqs = true; break;
-				case 'W': cfg.pedantic = true; break;
-				case 'h': cfg.help = true; break;
-				default:
-					sprt::cerr << "xlmake: unknown option -" << StringView(&c, 1) << "\n";
+				} else if (c == 'W') {
+					cfg.pedantic = true;
+				} else if (isInspect) {
+					switch (c) {
+					case 'V':
+						cfg.vars.emplace_back(takeValue(rest));
+						rest = StringView();
+						break;
+					case 'p': cfg.printVars = true; break;
+					case 'q': cfg.outOfDate = true; break;
+					case 'r': cfg.recursive = true; break;
+					case 'P': cfg.phonyPrereqs = true; break;
+					default: ok = false; break;
+					}
+				} else { // build
+					switch (c) {
+					case 'j':
+						if (!takeJobs(rest)) {
+							return false;
+						}
+						rest = StringView();
+						break;
+					case 'k': cfg.keepGoing = true; break;
+					case 'n': cfg.dryRun = true; break;
+					case 's': cfg.silent = true; break;
+					default: ok = false; break;
+					}
+				}
+				if (!ok) {
+					sprt::cerr << "xlmake: unknown option -" << StringView(&c, 1)
+							   << (isBuild ? " for -b/build mode\n" : " for -i/inspect mode\n");
 					return false;
 				}
 			}
@@ -233,26 +355,13 @@ static String resolvePath(StringView root, StringView file) {
 	return filepath::reconstructPath<PInterface>(filepath::merge<PInterface>(root, file));
 }
 
-static void printVariable(Makefile *mk, StringView name, const Variable &v, ErrorReporter &err) {
-	sprt::cout << name << " [" << getOriginName(v.origin) << ", ";
-	switch (v.type) {
-	case Variable::Type::String: sprt::cout << "simple] = " << v.str << "\n"; break;
-	case Variable::Type::Function: sprt::cout << "function] = <function>\n"; break;
-	case Variable::Type::Stmt:
-		sprt::cout << "recursive] = ";
-		mk->getVariableValue(name, [&](StringView s) { sprt::cout << s; }, err);
-		sprt::cout << "\n";
-		break;
-	}
-}
-
 static int runXlmake(int argc, const char *argv[]) {
 	Config cfg;
 	if (!parseArgs(argc, argv, cfg)) {
 		printUsage();
 		return 1;
 	}
-	if (cfg.help) {
+	if (cfg.mode == Mode::Help) {
 		printUsage();
 		return 0;
 	}
@@ -345,214 +454,25 @@ static int runXlmake(int argc, const char *argv[]) {
 			mk->include(FileInfo{StringView(p)}, &err);
 		}
 
-		bool anyAction = cfg.printVars || !cfg.vars.empty() || cfg.recipe || cfg.prereqs;
-
-		// --- variables ---
-		if (cfg.printVars) {
-			// snapshot names first: expanding a recursive value may define new variables
-			Vector<StringView> names;
-			mk->foreachVariable(
-					[&](StringView name, const Variable &) { names.emplace_back(name); });
-			for (auto name : names) {
-				if (auto v = mk->getVariable(name)) {
-					printVariable(mk, name, *v, err);
-				}
-			}
-		}
-
-		for (auto name : cfg.vars) {
-			auto v = mk->getVariable(name);
-			if (!v) {
-				sprt::cout << name << " = <undefined>\n";
-				continue;
-			}
-			sprt::cout << name << " = ";
-			mk->getVariableValue(name, [&](StringView s) { sprt::cout << s; }, err);
-			sprt::cout << "\n";
-		}
-
-		// --- target-based actions ---
-		if (cfg.recipe || cfg.prereqs) {
-			// populate prerequisite / pattern-derived targets so they are queryable by name
-			if (auto g = mk->getDefaultGoal()) {
-				mk->buildPlan(g, err);
-			}
-
-			Vector<Target *> targets;
-			if (cfg.targets.empty()) {
-				if (auto g = mk->getDefaultGoal()) {
-					targets.emplace_back(g);
-				} else {
-					sprt::cerr << "xlmake: no target given and no default goal\n";
-				}
-			} else {
-				for (auto tn : cfg.targets) {
-					if (auto t = mk->getTarget(tn)) {
-						targets.emplace_back(t);
-					} else {
-						sprt::cerr << "xlmake: unknown target: " << tn << "\n";
-					}
-				}
-			}
-
-			if (cfg.recipe) {
-				for (auto t : targets) {
-					if (cfg.outOfDate && !mk->isOutOfDate(t, err)) {
-						continue;
-					}
-					sprt::cout << t->name << ":\n";
-					mk->exportRecipe(t,
-							[&](StringView line) { sprt::cout << "\t" << line << "\n"; }, err);
-				}
-			}
-
-			if (cfg.prereqs && cfg.recursive) {
-				// Transitive closure in dependency-graph order. buildPlan() returns the
-				// targets topologically sorted (dependencies precede dependents) with the
-				// goal itself last; we drop the goal and keep its prerequisites, which
-				// already include order-only deps as graph edges.
-				for (auto t : targets) {
-					auto plan = mk->buildPlan(t, err);
-
-					// With -q, restrict to what would actually be rebuilt. This is
-					// transitive: a node rebuilds if it is out of date itself OR any normal
-					// prerequisite rebuilds (so a fresh object forces its archive/link to
-					// rebuild too). Order-only edges never propagate a rebuild. The plan is
-					// in post-order, so every node's prerequisites are decided before it.
-					//
-					// By default a phony target counts as out of date (its isOutOfDate
-					// state, consistent with the non-recursive --prerequisites -q view).
-					// With --phony-prereqs (-P) a phony target is instead judged by its
-					// prerequisites: a phony grouping target (all/install/...) whose
-					// dependencies are all fresh is NOT reported, and it does not force a
-					// fresh parent to rebuild either -- its own out-of-dateness then ignores
-					// phony prerequisites in the timestamp check, so their effect arrives only
-					// through the cascade (p->outOfDate).
-					//
-					// Order-only prerequisites are excluded from the out-of-date set: they
-					// only constrain ordering and never trigger a rebuild, so we report just
-					// the closure reachable through normal edges. `reachable` collects that
-					// closure from the goal (its absence is only consulted when -q is set).
-					Set<BuildNode *> reachable;
-					if (cfg.outOfDate) {
-						for (auto node : plan) {
-							auto planTarget = node->target;
-							bool rebuild;
-							if (!cfg.phonyPrereqs) {
-								// default: phony counts as out of date (make semantics)
-								rebuild = mk->isOutOfDate(planTarget, err);
-							} else if (planTarget->isPhony) {
-								rebuild = false; // decided solely by the cascade below
-							} else {
-								// isOutOfDate() is documented to fill the target's
-								// filesystem-state cache; read it back to compare timestamps
-								// while skipping phony (file-less) prerequisites.
-								mk->isOutOfDate(planTarget, err);
-								rebuild = !planTarget->fileExists;
-								if (!rebuild) {
-									for (auto p : node->prerequisites) {
-										auto pt = p->target;
-										if (!pt->isPhony
-												&& (!pt->fileExists
-														|| pt->mtimeMicros
-																> planTarget->mtimeMicros)) {
-											rebuild = true;
-											break;
-										}
-									}
-								}
-							}
-							if (!rebuild) {
-								for (auto p : node->prerequisites) {
-									if (p->outOfDate) {
-										rebuild = true;
-										break;
-									}
-								}
-							}
-							node->outOfDate = rebuild;
-						}
-
-						Vector<BuildNode *> stack;
-						for (auto node : plan) {
-							if (node->target == t) {
-								for (auto p : node->prerequisites) {
-									if (reachable.emplace(p).second) {
-										stack.emplace_back(p);
-									}
-								}
-								break;
-							}
-						}
-						while (!stack.empty()) {
-							auto cur = stack.back();
-							stack.pop_back();
-							for (auto p : cur->prerequisites) {
-								if (reachable.emplace(p).second) {
-									stack.emplace_back(p);
-								}
-							}
-						}
-					}
-
-					sprt::cout << t->name << ":";
-					for (auto node : plan) {
-						if (node->target == t) {
-							continue; // the goal node itself
-						}
-						if (cfg.outOfDate
-								&& (!node->outOfDate || reachable.find(node) == reachable.end())) {
-							continue;
-						}
-						sprt::cout << " " << node->name;
-					}
-					sprt::cout << "\n";
-				}
-			} else if (cfg.prereqs) {
-				for (auto t : targets) {
-					sprt::cout << t->name << ":";
-					mk->getPrerequisites(t, [&](StringView name) {
-						if (cfg.outOfDate) {
-							auto pt = mk->getTarget(name);
-							if (pt && !mk->isOutOfDate(pt, err)) {
-								return;
-							}
-						}
-						sprt::cout << " " << name;
-					});
-					sprt::cout << "\n";
-
-					bool hasOrderOnly = false;
-					mk->getOrderOnly(t, [&](StringView name) {
-						if (!hasOrderOnly) {
-							sprt::cout << "    | order-only:";
-							hasOrderOnly = true;
-						}
-						sprt::cout << " " << name;
-					});
-					if (hasOrderOnly) {
-						sprt::cout << "\n";
-					}
-				}
-			}
-		}
-
-		// --- overview (no explicit action) ---
-		if (!anyAction) {
-			sprt::cout << "makefile:";
-			for (auto &p : makefilePaths) { sprt::cout << " " << p; }
-			sprt::cout << "\n";
-			if (auto g = mk->getDefaultGoal()) {
-				sprt::cout << "default goal: " << g->name << "\n";
-			}
-			sprt::cout << "targets:\n";
-			for (auto t : mk->getTargets()) {
-				sprt::cout << "  " << t->name;
-				if (t->isPhony) {
-					sprt::cout << " (phony)";
-				}
-				sprt::cout << "\n";
-			}
+		if (cfg.mode == Mode::Inspect) {
+			xlmake::InspectConfig ic;
+			ic.vars = cfg.vars;
+			ic.targets = cfg.targets;
+			ic.printVars = cfg.printVars;
+			ic.recipe = cfg.recipe;
+			ic.prereqs = cfg.prereqs;
+			ic.recursive = cfg.recursive;
+			ic.outOfDate = cfg.outOfDate;
+			ic.phonyPrereqs = cfg.phonyPrereqs;
+			result = xlmake::runInspect(mk, ic, makefilePaths, err);
+		} else {
+			xlmake::BuildConfig bc;
+			bc.targets = cfg.targets;
+			bc.jobs = cfg.jobs;
+			bc.keepGoing = cfg.keepGoing;
+			bc.dryRun = cfg.dryRun;
+			bc.silent = cfg.silent;
+			result = xlmake::runBuild(mk, bc, err);
 		}
 	}, pool);
 
