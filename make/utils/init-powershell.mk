@@ -24,6 +24,7 @@ $(call print_verbose,(init-powershell.mk) Init with powershell)
 
 UNAME := Windows
 SHELL = powershell.exe
+.SHELLFLAGS := -NoProfile -Command
 
 POWERSHELL := 1
 
