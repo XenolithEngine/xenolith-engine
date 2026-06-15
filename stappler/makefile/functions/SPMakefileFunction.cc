@@ -133,9 +133,7 @@ static bool Function_shell(const Callback<void(StringView)> &out, void *, Variab
 	// (internal) newline -- and CR/LF pair -- into a single space. Leading and internal
 	// non-newline whitespace is preserved verbatim.
 	StringView sv(result.data(), result.size());
-	while (sv.ends_with("\n") || sv.ends_with("\r")) {
-		sv = sv.sub(0, sv.size() - 1);
-	}
+	while (sv.ends_with("\n") || sv.ends_with("\r")) { sv = sv.sub(0, sv.size() - 1); }
 	while (!sv.empty()) {
 		auto seg = sv.readUntil<StringView::Chars<'\n'>>();
 		if (sv.is('\n')) {
