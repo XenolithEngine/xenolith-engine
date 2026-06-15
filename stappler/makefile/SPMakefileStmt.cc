@@ -460,6 +460,12 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 	auto guard = str;
 	StringView whiteSpace;
 	uint32_t nestedDepth = 0;
+	// Within a function argument, literal whitespace is preserved verbatim, but a '\'-newline
+	// line continuation collapses to a single space (GNU make). Apply this to the whitespace
+	// emitted around commas and before ')'.
+	auto wsToken = [](StringView ws) -> StringView {
+		return (ws.find('\\') != maxOf<size_t>()) ? StringView(" ") : ws;
+	};
 	while (!str.empty() && (ending == 0 || !str.is(ending))) {
 		auto first = str.front();
 		auto wordStmt = readWord(str, ctx, err, nestedDepth);
@@ -529,22 +535,39 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 			break;
 		} else if ((ctx == ReadContext::Expansion || ctx == ReadContext::MultilineExpansion)
 				&& str.is(',')) {
-			// preserve whitespace before ','
+			// GNU make keeps whitespace within a function argument verbatim. Keep the current
+			// argument's trailing whitespace (the name/first-arg separator is dropped by the split)...
 			if (!whiteSpace.empty()) {
-				addStringWord(" ");
-			}
-			++str;
-			whiteSpace = skipWhitespace(str);
-			// a ',' immediately before ')' (or end) is a trailing empty argument, e.g.
-			// $(patsubst a,b,) — emit it so the function still receives all its arguments
-			if (str.empty() || (ending && str.is(ending))) {
-				addStmtArgument(new (sprt::nothrow) Stmt(err, whiteSpace));
-			} else if (str.is(',') && !whiteSpace.empty()) {
-				addStmtArgument(new (sprt::nothrow) Stmt(err, whiteSpace));
-			} else {
-				nextArgument = true;
+				addStringWord(wsToken(whiteSpace));
 			}
 			whiteSpace = StringView();
+			// ...then consume this comma (and any consecutive ones) and open the next argument(s),
+			// folding the whitespace after each comma into the argument it introduces. Handling the
+			// run of commas here (rather than letting the main loop re-enter on a ',') avoids the
+			// empty word readWord() would produce at a ',', which would corrupt argument boundaries.
+			for (;;) {
+				++str;
+				auto leadWs = skipWhitespace(str);
+				if (str.empty() || (ending && str.is(ending))) {
+					// trailing argument, e.g. $(patsubst a,b,) or $(call f,a, ): the run after the comma
+					addStmtArgument(new (sprt::nothrow) Stmt(err, wsToken(leadWs)));
+					break;
+				} else if (str.is(',')) {
+					// a whitespace-only (or empty) argument between two commas, e.g. $(call f,a, ,b)
+					addStmtArgument(new (sprt::nothrow) Stmt(err, wsToken(leadWs)));
+				} else if (leadWs.empty()) {
+					nextArgument = true; // a real word starts the next argument
+					break;
+				} else {
+					// Open the next argument and add its leading whitespace as a STRING token, so resolve
+					// keeps it without inserting a synthetic separator before the first word (a whitespace
+					// token wrapped as a Stmt would not set the "ends in space" flag resolve relies on).
+					addStmtArgument(new (sprt::nothrow) Stmt(err, StringView()));
+					addStringWord(wsToken(leadWs));
+					nextArgument = false;
+					break;
+				}
+			}
 		} else if (ctx == ReadContext::LineStart && str.is<PlainStopChars>()) {
 			auto op = Stmt::getOperator(str, true);
 			if (!op.empty()) {
@@ -568,7 +591,7 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 			} else if ((ctx == ReadContext::Expansion || ctx == ReadContext::MultilineExpansion)
 					&& stmt && stmt->type == StmtType::ArgumentList) {
 				if (!whiteSpace.empty()) {
-					addStringWord(" ");
+					addStringWord(wsToken(whiteSpace));
 				}
 			}
 		} else {
@@ -598,7 +621,7 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 		if ((ctx == ReadContext::Expansion || ctx == ReadContext::MultilineExpansion) && stmt
 				&& stmt->type == StmtType::ArgumentList) {
 			if (!whiteSpace.empty()) {
-				addStringWord(" ");
+				addStringWord(wsToken(whiteSpace));
 			}
 		}
 		++str;

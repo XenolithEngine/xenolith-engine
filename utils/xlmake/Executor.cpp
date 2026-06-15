@@ -43,6 +43,9 @@ THE SOFTWARE.
 // library provides waitpid(); declare the little we use directly (prototype + status-decode macros).
 extern "C" pid_t waitpid(pid_t __pid, int *__stat_loc, int __options);
 
+#ifndef WNOHANG
+#define WNOHANG 1
+#endif
 #ifndef WIFEXITED
 #define WIFEXITED(status) (((status) & 0x7f) == 0)
 #endif
@@ -120,7 +123,7 @@ private:
 	void spawn(Job *job);
 	sprt::Status onPoll(Job *job);
 	void drain(Job *job);
-	void reap(Job *job);
+	void reapRunning();
 	void onCommandDone(Job *job, int code);
 	void finishNode(NodeState *st, bool success, bool rebuilt);
 	void flush(Job *job);
@@ -135,7 +138,7 @@ private:
 	Map<BuildNode *, NodeState *> _map;
 	Vector<NodeState *> _ready; // FIFO worklist (index-headed) of dispatchable nodes, in plan order
 	size_t _readyHead = 0;
-	uint32_t _inFlight = 0; // jobs currently running a child
+	Vector<Job *> _running; // jobs with a live child process (drained via poll, reaped via waitpid)
 	bool _failed = false;
 	bool _builtAny = false;
 };
@@ -144,7 +147,7 @@ void Builder::resetState() {
 	_map.clear();
 	_ready.clear();
 	_readyHead = 0;
-	_inFlight = 0;
+	_running.clear();
 	_failed = false;
 	_builtAny = false;
 }
@@ -253,7 +256,6 @@ void Builder::dispatchNode(NodeState *st) {
 		return;
 	}
 
-	++_inFlight;
 	spawn(job);
 }
 
@@ -269,8 +271,6 @@ void Builder::spawn(Job *job) {
 		onCommandDone(job, 0); // print only; pretend success
 		return;
 	}
-
-	sprt::cout << "Exec: " << cmd.text << "\n";
 
 	int fds[2];
 	if (::pipe(fds) != 0) {
@@ -307,14 +307,21 @@ void Builder::spawn(Job *job) {
 	job->pid = pid;
 	job->readFd = fds[0];
 	job->eof = false;
+	// The pollable handle keeps the pipe promptly drained (so a chatty recipe never blocks on a
+	// full pipe); it is NOT relied on for completion. Completion is detected by waitpid() in
+	// reapRunning(), which the loop runs on every wakeup — robust even if a poll edge is missed.
 	job->poll = _looper->listenPollableHandle(dispatch::NativeHandle(fds[0]),
-			dispatch::PollFlags::In | dispatch::PollFlags::HungUp | dispatch::PollFlags::CloseFd,
+			dispatch::PollFlags::In | dispatch::PollFlags::HungUp,
 			[this, job](dispatch::NativeHandle, dispatch::PollFlags) -> sprt::Status {
 		return onPoll(job);
 	});
+	_running.emplace_back(job);
 }
 
 void Builder::drain(Job *job) {
+	if (job->readFd < 0) {
+		return;
+	}
 	char buf[4_KiB];
 	for (;;) {
 		ssize_t n = ::read(job->readFd, buf, sizeof(buf));
@@ -323,14 +330,14 @@ void Builder::drain(Job *job) {
 			continue;
 		}
 		if (n == 0) {
-			job->eof = true; // all write ends closed: the child is done
+			job->eof = true; // all write ends closed: the child finished writing
 			return;
 		}
 		if (errno == EINTR) {
 			continue;
 		}
 		if (errno == EAGAIN || errno == EWOULDBLOCK) {
-			return; // no more data right now; wait for the next event
+			return; // no more data right now; wait for the next event / sweep
 		}
 		job->eof = true; // unexpected read error: treat as finished
 		return;
@@ -339,28 +346,53 @@ void Builder::drain(Job *job) {
 
 sprt::Status Builder::onPoll(Job *job) {
 	drain(job);
-	if (job->eof) {
-		reap(job);
-		// Non-Ok return tells the loop to cancel this handle; PollFlags::CloseFd closes the fd.
-		return sprt::Status::Done;
-	}
-	return sprt::Status::Ok;
+	// Stop polling once the pipe hits EOF (child finished writing); reapRunning() will waitpid()
+	// the child and run completion. A non-Ok return cancels this handle.
+	return job->eof ? sprt::Status::Done : sprt::Status::Ok;
 }
 
-void Builder::reap(Job *job) {
-	int status = 0;
-	::waitpid(job->pid, &status, 0); // the pipe closed, so the child has (essentially) exited
-	job->readFd = -1; // closed by the loop via PollFlags::CloseFd
-
-	int code;
-	if (WIFEXITED(status)) {
-		code = WEXITSTATUS(status);
-	} else if (WIFSIGNALED(status)) {
-		code = 128 + WTERMSIG(status);
-	} else {
-		code = -1;
+// Reap every running child that has exited (non-blocking), flushing its output first, then run its
+// completion. Driven from the main loop on every wakeup, so completion never depends on a poll
+// event being delivered for the pipe's EOF.
+void Builder::reapRunning() {
+	if (_running.empty()) {
+		return;
 	}
-	onCommandDone(job, code);
+	Vector<Job *> finished;
+	Vector<int> codes;
+	Vector<Job *> still;
+	for (auto job : _running) {
+		drain(job); // pull buffered output (keeps the pipe from filling)
+		int status = 0;
+		pid_t r = ::waitpid(job->pid, &status, WNOHANG);
+		if (r == job->pid) {
+			drain(job); // final flush of anything written just before exit
+			if (job->readFd >= 0) {
+				::close(job->readFd);
+				job->readFd = -1;
+			}
+			if (job->poll) {
+				job->poll->cancel();
+				job->poll = nullptr;
+			}
+			int code;
+			if (WIFEXITED(status)) {
+				code = WEXITSTATUS(status);
+			} else if (WIFSIGNALED(status)) {
+				code = 128 + WTERMSIG(status);
+			} else {
+				code = -1;
+			}
+			finished.emplace_back(job);
+			codes.emplace_back(code);
+		} else {
+			still.emplace_back(job);
+		}
+	}
+	// Replace the running set before invoking completions: onCommandDone() may spawn the next
+	// recipe line, which pushes a fresh job onto _running.
+	_running = sp::move(still);
+	for (size_t i = 0; i < finished.size(); ++i) { onCommandDone(finished[i], codes[i]); }
 }
 
 void Builder::onCommandDone(Job *job, int code) {
@@ -370,19 +402,17 @@ void Builder::onCommandDone(Job *job, int code) {
 	if (!ok) {
 		job->output.append(toString("xlmake: *** [", job->st->node->name, "] error ", code, "\n"));
 		flush(job);
-		--_inFlight;
 		finishNode(job->st, false, false);
 		return;
 	}
 
 	++job->index;
 	if (job->index < job->commands.size()) {
-		spawn(job); // next line of the same recipe (still one in-flight job)
+		spawn(job); // next line of the same recipe (re-enters _running)
 		return;
 	}
 
 	flush(job);
-	--_inFlight;
 	_builtAny = true;
 	finishNode(job->st, true, true);
 }
@@ -404,18 +434,35 @@ BuildResult Builder::buildGoal(Target *goal) {
 	}
 	seed(plan);
 
+	// A periodic timer wakes the loop even when no child produces output, so reapRunning() runs
+	// regularly. Using a real timer event (rather than a wait() timeout) avoids the io_uring
+	// backend logging every timed wait as an error. The callback is a no-op: the wake is enough.
+	dispatch::TimerInfo ti;
+	ti.completion = dispatch::TimerInfo::Completion::create<Builder>(this,
+			[](Builder *, dispatch::TimerHandle *, uint32_t, sprt::Status) { });
+	ti.timeout = dispatch::TimeInterval::milliseconds(20);
+	ti.interval = dispatch::TimeInterval::milliseconds(20);
+	ti.count = dispatch::TimerInfo::Infinite;
+	auto timer = _looper->scheduleTimer(sp::move(ti));
+
 	for (;;) {
-		while (_inFlight < _jobLimit && _readyHead < _ready.size()
+		while (_running.size() < _jobLimit && _readyHead < _ready.size()
 				&& !(_failed && !_cfg.keepGoing)) {
 			dispatchNode(_ready[_readyHead++]);
 		}
-		if (_inFlight == 0) {
+		if (_running.empty()) {
 			break; // nothing in flight and nothing left to dispatch
 		}
+		// Wake on child output (prompt pipe draining) or the periodic timer, then reap exited
+		// children. The timer guarantees forward progress even if a pollable-fd EOF event is missed.
 		_looper->wait(dispatch::TimeInterval::Infinite);
+		reapRunning();
 	}
 
-	// Let the loop finalize any pending handle cancels (closing child pipe fds) before we return.
+	if (timer) {
+		timer->cancel();
+	}
+	// Let the loop finalize any pending handle cancels before we return.
 	while (_looper->poll() > 0) { }
 
 	if (_failed) {
