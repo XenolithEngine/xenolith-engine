@@ -407,6 +407,8 @@ static bool Function_words(const Callback<void(StringView)> &out, void *, Variab
 static bool Function_firstword(const Callback<void(StringView)> &out, void *,
 		VariableEngine &engine, SpanView<StmtValue *> args) {
 	auto content = engine.resolve(args[0], 0, *engine.getCallContext()->err);
+	// skip leading whitespace so a value like " 118" yields its first word, not the empty string
+	content.trimChars<StringView::WhiteSpace>();
 	out << content.readUntil<StringView::WhiteSpace>();
 	return true;
 }
@@ -414,6 +416,8 @@ static bool Function_firstword(const Callback<void(StringView)> &out, void *,
 static bool Function_lastword(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
 	auto content = engine.resolve(args[0], 0, *engine.getCallContext()->err);
+	// trim trailing whitespace so a value like "118 " yields its last word, not the empty string
+	content.trimChars<StringView::WhiteSpace>();
 	out << content.backwardReadUntil<StringView::WhiteSpace>();
 	return true;
 }
