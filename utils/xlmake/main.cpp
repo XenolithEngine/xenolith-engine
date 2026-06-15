@@ -52,7 +52,9 @@ struct Config {
 	bool printVars = false; // -p / --print-vars
 	bool recipe = false; // --recipe
 	bool prereqs = false; // --prerequisites
+	bool recursive = false; // -r / --recursive (transitive closure for --prerequisites)
 	bool outOfDate = false; // -q / --out-of-date
+	bool phonyPrereqs = false; // -P / --phony-prereqs (judge phony by prerequisites, -r -q)
 	bool pedantic = false; // -W / --pedantic (enable every engine warning)
 	bool help = false; // -h / --help
 };
@@ -75,7 +77,14 @@ static void printUsage() {
 				  "  -V, --var NAME         print one variable's expanded value (repeatable)\n"
 				  "      --recipe           print the expanded recipe of each target\n"
 				  "      --prerequisites    print the prerequisite list of each target\n"
+				  "  -r, --recursive        with --prerequisites, print the transitive closure\n"
+				  "                         (all dependencies, normal and order-only) in\n"
+				  "                         dependency-graph order; with -q, the out-of-date set\n"
+				  "                         (cascades along normal edges; order-only excluded)\n"
 				  "  -q, --out-of-date      restrict --recipe/--prerequisites to out-of-date items\n"
+				  "  -P, --phony-prereqs    with -r -q, judge a phony target by its prerequisites\n"
+				  "                         instead of treating it as always out of date, so a\n"
+				  "                         phony target with only fresh dependencies is omitted\n"
 				  "  -W, --pedantic         report every engine warning (not just the default set)\n"
 				  "  -h, --help             show this help\n"
 				  "\n"
@@ -101,9 +110,7 @@ static bool parseAssignment(StringView arg, Assignment &out) {
 	size_t opStart = eq;
 	char prev = arg[eq - 1];
 	if (prev == ':') {
-		while (opStart > 0 && arg[opStart - 1] == ':') {
-			--opStart;
-		}
+		while (opStart > 0 && arg[opStart - 1] == ':') { --opStart; }
 	} else if (prev == '?' || prev == '+') {
 		opStart = eq - 1;
 	}
@@ -164,8 +171,12 @@ static bool parseArgs(int argc, const char *argv[], Config &cfg) {
 				cfg.recipe = true;
 			} else if (name == "prerequisites" || name == "prereqs") {
 				cfg.prereqs = true;
+			} else if (name == "recursive") {
+				cfg.recursive = true;
 			} else if (name == "out-of-date") {
 				cfg.outOfDate = true;
+			} else if (name == "phony-prereqs" || name == "phony-prerequisites") {
+				cfg.phonyPrereqs = true;
 			} else if (name == "pedantic" || name == "warn-all") {
 				cfg.pedantic = true;
 			} else if (name == "help") {
@@ -194,6 +205,8 @@ static bool parseArgs(int argc, const char *argv[], Config &cfg) {
 					break;
 				case 'p': cfg.printVars = true; break;
 				case 'q': cfg.outOfDate = true; break;
+				case 'r': cfg.recursive = true; break;
+				case 'P': cfg.phonyPrereqs = true; break;
 				case 'W': cfg.pedantic = true; break;
 				case 'h': cfg.help = true; break;
 				default:
@@ -393,7 +406,109 @@ static int runXlmake(int argc, const char *argv[]) {
 				}
 			}
 
-			if (cfg.prereqs) {
+			if (cfg.prereqs && cfg.recursive) {
+				// Transitive closure in dependency-graph order. buildPlan() returns the
+				// targets topologically sorted (dependencies precede dependents) with the
+				// goal itself last; we drop the goal and keep its prerequisites, which
+				// already include order-only deps as graph edges.
+				for (auto t : targets) {
+					auto plan = mk->buildPlan(t, err);
+
+					// With -q, restrict to what would actually be rebuilt. This is
+					// transitive: a node rebuilds if it is out of date itself OR any normal
+					// prerequisite rebuilds (so a fresh object forces its archive/link to
+					// rebuild too). Order-only edges never propagate a rebuild. The plan is
+					// in post-order, so every node's prerequisites are decided before it.
+					//
+					// By default a phony target counts as out of date (its isOutOfDate
+					// state, consistent with the non-recursive --prerequisites -q view).
+					// With --phony-prereqs (-P) a phony target is instead judged by its
+					// prerequisites: a phony grouping target (all/install/...) whose
+					// dependencies are all fresh is NOT reported, and it does not force a
+					// fresh parent to rebuild either -- its own out-of-dateness then ignores
+					// phony prerequisites in the timestamp check, so their effect arrives only
+					// through the cascade (p->outOfDate).
+					//
+					// Order-only prerequisites are excluded from the out-of-date set: they
+					// only constrain ordering and never trigger a rebuild, so we report just
+					// the closure reachable through normal edges. `reachable` collects that
+					// closure from the goal (its absence is only consulted when -q is set).
+					Set<BuildNode *> reachable;
+					if (cfg.outOfDate) {
+						for (auto node : plan) {
+							auto planTarget = node->target;
+							bool rebuild;
+							if (!cfg.phonyPrereqs) {
+								// default: phony counts as out of date (make semantics)
+								rebuild = mk->isOutOfDate(planTarget, err);
+							} else if (planTarget->isPhony) {
+								rebuild = false; // decided solely by the cascade below
+							} else {
+								// isOutOfDate() is documented to fill the target's
+								// filesystem-state cache; read it back to compare timestamps
+								// while skipping phony (file-less) prerequisites.
+								mk->isOutOfDate(planTarget, err);
+								rebuild = !planTarget->fileExists;
+								if (!rebuild) {
+									for (auto p : node->prerequisites) {
+										auto pt = p->target;
+										if (!pt->isPhony
+												&& (!pt->fileExists
+														|| pt->mtimeMicros
+																> planTarget->mtimeMicros)) {
+											rebuild = true;
+											break;
+										}
+									}
+								}
+							}
+							if (!rebuild) {
+								for (auto p : node->prerequisites) {
+									if (p->outOfDate) {
+										rebuild = true;
+										break;
+									}
+								}
+							}
+							node->outOfDate = rebuild;
+						}
+
+						Vector<BuildNode *> stack;
+						for (auto node : plan) {
+							if (node->target == t) {
+								for (auto p : node->prerequisites) {
+									if (reachable.emplace(p).second) {
+										stack.emplace_back(p);
+									}
+								}
+								break;
+							}
+						}
+						while (!stack.empty()) {
+							auto cur = stack.back();
+							stack.pop_back();
+							for (auto p : cur->prerequisites) {
+								if (reachable.emplace(p).second) {
+									stack.emplace_back(p);
+								}
+							}
+						}
+					}
+
+					sprt::cout << t->name << ":";
+					for (auto node : plan) {
+						if (node->target == t) {
+							continue; // the goal node itself
+						}
+						if (cfg.outOfDate
+								&& (!node->outOfDate || reachable.find(node) == reachable.end())) {
+							continue;
+						}
+						sprt::cout << " " << node->name;
+					}
+					sprt::cout << "\n";
+				}
+			} else if (cfg.prereqs) {
 				for (auto t : targets) {
 					sprt::cout << t->name << ":";
 					mk->getPrerequisites(t, [&](StringView name) {
