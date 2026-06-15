@@ -326,11 +326,11 @@ BuildNode *Makefile::makeShallowNode(Target *t) {
 
 // === filesystem state / out-of-date ======================================================
 
-void Makefile::statTarget(Target *t) {
+void Makefile::statTarget(Target *t, bool force) {
 	if (t->isPhony) {
 		return;
 	}
-	if (!t->hasStat) {
+	if (force || !t->hasStat) {
 		t->fileExists = false;
 		t->mtimeMicros = 0;
 
@@ -349,7 +349,10 @@ bool Makefile::isOutOfDate(Target *t, ErrorReporter &err) {
 		if (t->isPhony) {
 			return true;
 		}
-		statTarget(t);
+		// force a fresh stat: isOutOfDate is a public query that must reflect the current
+		// state of the filesystem, even if the target/prereqs were stat'd (and cached) by an
+		// earlier query before the files changed on disk.
+		statTarget(t, true);
 		if (!t->fileExists) {
 			return true;
 		}
@@ -363,7 +366,7 @@ bool Makefile::isOutOfDate(Target *t, ErrorReporter &err) {
 				stale = true;
 				return;
 			}
-			statTarget(pt);
+			statTarget(pt, true);
 			if (!pt->fileExists || pt->mtimeMicros > t->mtimeMicros) {
 				stale = true;
 			}
@@ -469,12 +472,101 @@ void Makefile::clearAutoVars() {
 	_engine.clear("|", Origin::Automatic);
 }
 
+void Makefile::pushTargetVars(Target *t, Vector<TargetVarSave> &saved, ErrorReporter &err) {
+	for (auto v = t->variablesList; v; v = v->next) {
+		// Snapshot the current global value for an exact restore on pop.
+		TargetVarSave s(v->name);
+		if (auto cur = _engine.getIfDefined(v->name)) {
+			s.existed = true;
+			s.saved = *cur;
+		}
+		saved.emplace_back(s);
+
+		// Apply at Origin::File: set() honours overridability, so a command-line / override
+		// global is left intact (command-line beats target-specific, matching GNU); the
+		// snapshot/restore stays correct whether or not the apply took effect.
+		if (v->op == "=") {
+			if (v->value) {
+				_engine.set(v->name, Origin::File, v->value);
+			} else {
+				_engine.set(v->name, Origin::File, StringView());
+			}
+		} else if (v->op == ":=" || v->op == "::=" || v->op == ":::=") {
+			_engine.set(v->name, Origin::File,
+					v->value ? _engine.resolve(v->value, err).pdup(_pool) : StringView());
+		} else if (v->op == "?=") {
+			if (!s.existed) {
+				if (v->value) {
+					_engine.set(v->name, Origin::File, v->value);
+				} else {
+					_engine.set(v->name, Origin::File, StringView());
+				}
+			}
+		} else if (v->op == "+=") {
+			// Own-recipe scope: combine eagerly into a simple value. This does NOT mutate the
+			// snapshot's Stmt, so restore is exact (the trade-off is that a target-specific '+='
+			// loses laziness — acceptable, the recipe expands it immediately anyway).
+			StringStream combined;
+			bool hasOld = false;
+			if (s.existed) {
+				StringView oldVal;
+				if (s.saved.type == Variable::Type::String) {
+					oldVal = s.saved.str;
+				} else if (s.saved.type == Variable::Type::Stmt && s.saved.stmt) {
+					oldVal = _engine.resolve(s.saved.stmt, err);
+				}
+				if (!oldVal.empty()) {
+					combined << oldVal;
+					hasOld = true;
+				}
+			}
+			StringView newVal = v->value ? _engine.resolve(v->value, err) : StringView();
+			if (hasOld && !newVal.empty()) {
+				combined << " ";
+			}
+			combined << newVal;
+			_engine.set(v->name, Origin::File, StringView(combined.weak()).pdup(_pool));
+		}
+	}
+}
+
+void Makefile::popTargetVars(Vector<TargetVarSave> &saved) {
+	// Restore in reverse so repeated assignments to the same name unwind to the original global.
+	for (size_t i = saved.size(); i > 0; --i) {
+		auto &s = saved[i - 1];
+		if (s.existed) {
+			_engine.forceSet(s.name, s.saved);
+		} else {
+			_engine.forceErase(s.name);
+		}
+	}
+	saved.clear();
+}
+
+bool Makefile::withTargetScope(Target *t, const Callback<void()> &fn, ErrorReporter &err) {
+	if (!t) {
+		return false;
+	}
+	return perform([&] {
+		auto node = makeShallowNode(t);
+		setAutoVars(node, err);
+		Vector<TargetVarSave> saved;
+		pushTargetVars(node->target, saved, err);
+		fn();
+		popTargetVars(saved);
+		clearAutoVars();
+		return true;
+	});
+}
+
 // === recipe export (no execution) ========================================================
 
 void Makefile::exportRecipeLines(Target *t, const RecipeLineCallback &cb, ErrorReporter &err) {
 	perform([&] {
 		auto node = makeShallowNode(t);
 		setAutoVars(node, err);
+		Vector<TargetVarSave> saved;
+		pushTargetVars(node->target, saved, err); // after setAutoVars: a target var may use $@
 		for (auto r = node->rules; r; r = r->next) {
 			auto expanded = _engine.resolve(r->rule, err);
 			StringView line(expanded);
@@ -482,6 +574,7 @@ void Makefile::exportRecipeLines(Target *t, const RecipeLineCallback &cb, ErrorR
 			Executor_decodeRecipePrefix(line, silent, ignoreErr, always);
 			cb(line, silent, ignoreErr, always);
 		}
+		popTargetVars(saved);
 		clearAutoVars();
 		return true;
 	});
@@ -589,12 +682,15 @@ BuildResult Makefile::execute(Target *goal, ErrorReporter &err) {
 			}
 
 			setAutoVars(node, err);
+			Vector<TargetVarSave> saved;
+			pushTargetVars(node->target, saved, err); // after setAutoVars: target var may use $@
 			bool ok = runRecipe(node, err);
+			popTargetVars(saved);
 			clearAutoVars();
 
 			if (ok) {
 				builtAny = true;
-				statTarget(node->target); // refresh for dependents
+				statTarget(node->target, true); // force refresh: the recipe just wrote the file
 				node->exists = node->target->fileExists;
 				node->mtimeMicros = node->target->mtimeMicros;
 			} else {

@@ -28,6 +28,7 @@
 #include "functions/SPMakefileFunctionFileName.cc"
 #include "functions/SPMakefileFunctionString.cc"
 #include "functions/SPMakefileFunctionConditional.cc"
+#include "functions/SPMakefileFunctionExtension.cc"
 
 namespace STAPPLER_VERSIONIZED stappler::makefile {
 
@@ -77,6 +78,11 @@ static sprt::__malloc_unordered_map< StringView, Function > s_functions{
 	makeFn("if", 2, 3, Function_if),
 	makeFn("or", 1, maxOf<uint32_t>(), Function_or),
 	makeFn("and", 1, maxOf<uint32_t>(), Function_and),
+
+	// extended (non-GNU) file I/O
+	makeFn("xl_cat", 1, 1, Function_xl_cat),
+	makeFn("xl_write", 2, 2, Function_xl_write),
+	makeFn("xl_append", 2, 2, Function_xl_append),
 };
 
 StringView getOriginName(Origin o) {
@@ -182,6 +188,22 @@ bool VariableEngine::clear(StringView name, Origin o) {
 		}
 	}
 	return false;
+}
+
+void VariableEngine::forceSet(StringView name, const Variable &v) {
+	auto it = _variables.find(name);
+	if (it != _variables.end()) {
+		it->second = v;
+	} else {
+		_variables.emplace(name.pdup(_pool), v);
+	}
+}
+
+void VariableEngine::forceErase(StringView name) {
+	auto it = _variables.find(name);
+	if (it != _variables.end()) {
+		_variables.erase(it);
+	}
 }
 
 void VariableEngine::addSubstitutionCallback(Origin o, VariableCallback::Fn fn, void *udata) {
@@ -428,31 +450,16 @@ bool VariableEngine::call(Output out, StringView name, SpanView<StmtValue *> arg
 	return ret;
 }
 
-static bool VariableEngine_MAKEFILE_LIST(const Callback<void(StringView)> &out, Block *block) {
-	bool ret = false;
-	if (block->outer) {
-		ret = VariableEngine_MAKEFILE_LIST(out, block->outer);
-	}
-	if (block->type == Keyword::None) {
-		if (ret) {
-			out(" ");
-		}
-		out(block->content);
-		return true;
-	}
-	return ret;
-}
-
 void VariableEngine::substitute(const Callback<void(StringView)> &out, StringView var,
 		ErrorReporter &err) {
 	var.trimChars<StringView::WhiteSpace>();
 	if (var == "$") {
 		out << "$";
 		return;
-	} else if (var == "MAKEFILE_LIST") {
-		VariableEngine_MAKEFILE_LIST(out, _currentBlock);
-		return;
 	}
+	// MAKEFILE_LIST is not handled here: it is maintained as a real, immediately-resolved variable
+	// (appendMakefileList(), called as each makefile is parsed), so it expands like any other
+	// variable — crucially also after parsing, when there is no block stack (e.g. recipe export).
 
 	// Directory/file modifiers of an automatic variable: $(@D) $(@F) $(<D) $(<F) and so on.
 	// The base autos (@ < ^ + ? * |) are injected as plain variables of Origin::Automatic
@@ -611,6 +618,21 @@ bool VariableEngine::checkRecursion(StringView name, Stmt *stmt, ErrorReporter &
 	} else {
 		return false;
 	}
+}
+
+void VariableEngine::appendMakefileList(StringView name) {
+	// Accumulate makefile names into MAKEFILE_LIST as each file begins parsing (GNU make
+	// semantics). Keeping it a real simple variable means $(MAKEFILE_LIST) — and idioms like
+	// $(lastword $(MAKEFILE_LIST)) — resolve immediately and stay valid once parsing is over and
+	// the block stack is gone (recipe / recursive-variable expansion), instead of crashing.
+	StringView value;
+	auto cur = getIfDefined("MAKEFILE_LIST");
+	if (cur && cur->type == Variable::Type::String && !cur->str.empty()) {
+		value = StringView(mem_pool::toString(cur->str, " ", name)).pdup(_pool);
+	} else {
+		value = name.pdup(_pool);
+	}
+	forceSet("MAKEFILE_LIST", Variable(Origin::File, value));
 }
 
 void VariableEngine::pushBlock(Block *block) {

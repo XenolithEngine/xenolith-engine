@@ -59,6 +59,22 @@ struct Rule : AllocBase {
 	Rule(Stmt *s) : rule(s) { }
 };
 
+// A target-specific variable assignment, e.g. `prog : CFLAGS = -g`. The value is kept as a
+// parsed Stmt so a recursive `=` stays lazy. Entries accumulate in source order across multiple
+// `target : VAR=...` lines for the same target. Scope is the target's OWN recipe only (no
+// inheritance to prerequisites), so `isPrivate` — which in GNU make only suppresses that
+// inheritance — is parsed and stored but currently has no behavioral effect.
+struct TargetVariable : AllocBase {
+	StringView name;
+	StringView op; // assignment operator token: "=", ":=", "::=", ":::=", "+=", "?="
+	Stmt *value = nullptr; // parsed value (may be null for an empty `VAR =`)
+	bool isPrivate = false;
+	TargetVariable *next = nullptr;
+
+	TargetVariable(StringView n, StringView o, Stmt *v, bool priv)
+	: name(n), op(o), value(v), isPrivate(priv) { }
+};
+
 struct Target : AllocBase {
 	// transient color used by the dependency-graph DFS (cycle detection / topo order)
 	enum class Mark : uint8_t {
@@ -74,14 +90,18 @@ struct Target : AllocBase {
 	Prerequisite *orderOnlyTail = nullptr;
 	Rule *rulesList = nullptr;
 	Rule *rulesTail = nullptr;
+	TargetVariable *variablesList = nullptr;
+	TargetVariable *variablesTail = nullptr;
 
 	Target(StringView s) : name(s) { }
 
 	void addPrerequisite(StringView);
 	void addOrderOnly(StringView);
 	void addRule(Stmt *);
+	void addVariable(StringView name, StringView op, Stmt *value, bool isPrivate);
 
 	bool hasRecipe() const { return rulesList != nullptr; }
+	const TargetVariable *variables() const { return variablesList; }
 
 	bool hasStat = false;
 

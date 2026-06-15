@@ -40,6 +40,10 @@ THE SOFTWARE.
 #define __SPRT_F_TLOCK 2	/* Test and lock a region for exclusive use.  */
 #define __SPRT_F_TEST  3	/* Test a region for other processes locks.  */
 
+#define __SPRT_STDIN_FILENO  0	/* Standard input.  */
+#define __SPRT_STDOUT_FILENO 1	/* Standard output.  */
+#define __SPRT_STDERR_FILENO 2	/* Standard error output.  */
+
 __SPRT_BEGIN_DECL
 
 SPRT_API int __SPRT_ID(access)(const char *__name, int __type) __SPRT_NOEXCEPT;
