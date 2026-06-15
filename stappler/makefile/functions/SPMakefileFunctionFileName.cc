@@ -211,47 +211,74 @@ static bool Function_join(const Callback<void(StringView)> &out, void *, Variabl
 	return true;
 }
 
+// Shell-style glob match for a single path component: '*' matches any run (including empty),
+// '?' matches one character, everything else (including '.') is literal. Iterative with
+// backtracking on '*', so patterns like `*.*` or `xl_*_shadow.*` work — not just a single '*'.
+static bool Function_wildcard_match(StringView pat, StringView str) {
+	size_t p = 0, s = 0;
+	size_t starP = maxOf<size_t>(), starS = 0;
+	while (s < str.size()) {
+		if (p < pat.size() && (pat[p] == '?' || pat[p] == str[s])) {
+			++p;
+			++s;
+		} else if (p < pat.size() && pat[p] == '*') {
+			starP = p++;
+			starS = s;
+		} else if (starP != maxOf<size_t>()) {
+			p = starP + 1;
+			s = ++starS;
+		} else {
+			return false;
+		}
+	}
+	while (p < pat.size() && pat[p] == '*') { ++p; }
+	return p == pat.size();
+}
+
 static bool Function_wildcard(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
 	auto patterns = engine.resolve(args[0], 0, *engine.getCallContext()->err);
 	bool first = true;
 	patterns.split<StringView::WhiteSpace>([&](StringView pattern) {
-		//sprt::cout << "Pattern: " << pattern << "\n";
+		// A trailing '/' restricts the match to directories (e.g. `dir/*/`).
+		bool wantDir = pattern.ends_with("/");
+		StringView pat = wantDir ? pattern.sub(0, pattern.size() - 1) : pattern;
 
-		StringView path = pattern.readUntil<StringView::Chars<'*'>>();
-		StringView pathSuffix;
-		if (pattern.is('*')) {
-			++pattern;
-			pathSuffix = pattern;
+		// Split into the directory prefix (up to and including the last '/') and the filename
+		// glob applied to each entry. The glob is the last path component; a glob inside the
+		// directory part (e.g. `a/*/b`) is not expanded, matching the build's usage.
+		size_t sl = pat.size();
+		while (sl > 0 && pat[sl - 1] != '/') { --sl; }
+		StringView dirPart = pat.sub(0, sl);
+		StringView glob = pat.sub(sl);
+
+		auto targetPath = engine.getAbsolutePath(dirPart.empty() ? StringView(".") : dirPart);
+		if (targetPath.empty()) {
+			return;
 		}
-
-		auto targetPath = engine.getAbsolutePath(path);
 
 		filesystem::ftw(FileInfo{targetPath}, [&](const FileInfo &info, FileType type) {
 			if (info.path != targetPath) {
-				if (pathSuffix == "/" && type == FileType::Dir) {
-					if (first) {
-						first = false;
-					} else {
-						out << ' ';
-					}
-					out << info.path << "/";
-					//sprt::cout << info.path << "/" << "\n";
-				} else if (info.path.ends_with(pathSuffix)) {
+				if (wantDir && type != FileType::Dir) {
+					return true;
+				}
+				if (Function_wildcard_match(glob, filepath::lastComponent(info.path))) {
 					if (first) {
 						first = false;
 					} else {
 						out << ' ';
 					}
 					out << info.path;
-					//sprt::cout << info.path << "\n";
+					if (wantDir) {
+						out << "/";
+					}
 				}
 			}
 			return true;
 		}, 1);
 	});
 
-	return true; // not implemented
+	return true;
 }
 
 static bool Function_realpath(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
