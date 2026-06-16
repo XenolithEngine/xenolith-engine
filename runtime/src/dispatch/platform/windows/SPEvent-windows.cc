@@ -28,6 +28,7 @@
 #include "SPEventThreadIocp.h"
 #include "SPEventTimerWin.h"
 #include "SPEventPollIocp.h"
+#include "SPEventProcessIocp.h"
 #include "platform/windows/SPEvent-iocp.h"
 
 namespace sprt::dispatch {
@@ -37,6 +38,8 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupIocpHandleClass<TimerIocpHandle, TimerIocpSource>(&_info, &_iocpTimerClass, true);
 		setupIocpHandleClass<ThreadIocpHandle, ThreadIocpSource>(&_info, &_iocpThreadClass, true);
 		setupIocpHandleClass<PollIocpHandle, PollIocpSource>(&_info, &_iocpPollClass, true);
+		setupIocpHandleClass<ReadIocpHandle, ReadIocpSource>(&_info, &_iocpReadClass, true);
+		setupIocpHandleClass<ProcessIocpHandle, ProcessIocpSource>(&_info, &_iocpProcessClass, true);
 		setupIocpHandleClass<TimerWinHandle, TimerWinSource>(&_info, &_winTimerClass, true);
 
 		auto iocp = new (memory::pool::acquire()) IocpData(_info.queue, this, info);
@@ -75,6 +78,13 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				auto data = static_cast<Queue::Data *>(d);
 				return Rc<PollIocpHandle>::create(&data->_iocpPollClass, handle.handle, flags,
 						sprt::move(cb));
+			};
+
+			_spawnProcess = [](QueueData *d, void *ptr, ProcessInfo &&info,
+									Ref *ref) -> Rc<ProcessHandle> {
+				auto data = static_cast<Queue::Data *>(d);
+				return spawnProcessIocp(d, &data->_iocpProcessClass, &data->_iocpReadClass,
+						sprt::move(info), ref);
 			};
 
 			_platformQueue = iocp;

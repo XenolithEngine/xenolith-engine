@@ -23,41 +23,17 @@ THE SOFTWARE.
 // xlmake build executor: a single-threaded, non-blocking build reactor.
 //
 // The main thread does ALL makefile work (build plan, recipe resolution, stat, printing); the only
-// parallel units are child processes. Each recipe command runs as a `/bin/sh -c` child whose merged
-// stdout/stderr is a non-blocking pipe registered with the dispatch event loop as a pollable handle.
-// The loop wakes when a child writes or its pipe reaches EOF (the child exited); the main thread then
-// drains the pipe, reaps the child, and advances the schedule. Inter-process parallelism (up to the
-// -j limit) is achieved by having several such children in flight at once, all multiplexed by one
-// event loop. No worker threads, no ThreadPool, no blocking popen.
+// parallel units are child processes. Each recipe command is launched through the dispatch reactor's
+// process API (dispatch::Looper::spawnProcess), which runs it as a `/bin/sh -c` child with merged
+// stdout/stderr, streams the output to a reader callback, and fires an exit completion (with the
+// exit code) when the child terminates. Inter-process parallelism (up to the -j limit) is achieved
+// by having several such children in flight at once, all multiplexed by one event loop. No worker
+// threads, no ThreadPool, no blocking popen, and no hand-rolled fork/waitpid/poll machinery.
 
 #include "Executor.h"
 
 #include <sprt/runtime/dispatch/looper.h>
 #include <sprt/runtime/dispatch/handle.h>
-
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-
-// The sprt freestanding libc does not expose <sys/wait.h> on its include path, but the underlying C
-// library provides waitpid(); declare the little we use directly (prototype + status-decode macros).
-extern "C" pid_t waitpid(pid_t __pid, int *__stat_loc, int __options);
-
-#ifndef WNOHANG
-#define WNOHANG 1
-#endif
-#ifndef WIFEXITED
-#define WIFEXITED(status) (((status) & 0x7f) == 0)
-#endif
-#ifndef WEXITSTATUS
-#define WEXITSTATUS(status) (((status) & 0xff00) >> 8)
-#endif
-#ifndef WIFSIGNALED
-#define WIFSIGNALED(status) (((signed char)(((status) & 0x7f) + 1) >> 1) > 0)
-#endif
-#ifndef WTERMSIG
-#define WTERMSIG(status) ((status) & 0x7f)
-#endif
 
 namespace xlmake {
 
@@ -65,9 +41,21 @@ namespace dispatch = sprt::dispatch;
 
 namespace {
 
+// Heap-backed (malloc, not memory-pool) storage for live job state. A pool-backed string/vector
+// binds to whichever pool was active when it was constructed (AllocatorPool captures
+// pool::acquire()) and keeps allocating from it for its whole life. Job::output is grown from the
+// process reader callback and the recipe outlives the transient pools the reactor cycles per
+// notify, so a pool binding makes the buffer hostage to a pool that can be reset under it (a
+// random, timing-dependent corruption). Malloc-backed storage is pool-independent and stays valid
+// for the entire recipe; Job is therefore allocated with new/delete rather than from a pool.
+using JobString = sprt::__malloc_string;
+
+template <typename Type>
+using JobVector = sprt::__malloc_vector<Type>;
+
 // A single fully-resolved recipe command line, with its decoded prefixes.
 struct Command {
-	String text;
+	JobString text;
 	bool silent = false;
 	bool ignoreErr = false;
 	bool always = false;
@@ -93,16 +81,15 @@ struct NodeState : AllocBase {
 };
 
 // One running recipe: a job owns at most one live child at a time and walks its command list
-// sequentially (a recipe's lines are serial; parallelism is across nodes).
-struct Job : AllocBase {
+// sequentially (a recipe's lines are serial; parallelism is across nodes). The child is launched
+// through dispatch::Looper::spawnProcess; `proc` holds the live process handle. Allocated with
+// new/delete (not from a pool): its storage must not depend on a memory pool — see JobString above.
+struct Job {
 	NodeState *st = nullptr;
-	Vector<Command> commands;
+	JobVector<Command> commands;
 	size_t index = 0; // current command line
-	pid_t pid = -1;
-	int readFd = -1; // child's merged stdout/stderr pipe, non-blocking
-	Rc<dispatch::PollHandle> poll;
-	String output; // buffered echo + captured bytes, flushed atomically when the target finishes
-	bool eof = false;
+	Rc<dispatch::ProcessHandle> proc; // live child for the current command line
+	JobString output; // buffered echo + captured bytes, flushed atomically when the target finishes
 };
 
 class Builder {
@@ -119,11 +106,9 @@ public:
 private:
 	void resetState();
 	void seed(const Vector<BuildNode *> &plan);
+	void pump();
 	void dispatchNode(NodeState *st);
 	void spawn(Job *job);
-	sprt::Status onPoll(Job *job);
-	void drain(Job *job);
-	void reapRunning();
 	void onCommandDone(Job *job, int code);
 	void finishNode(NodeState *st, bool success, bool rebuilt);
 	void flush(Job *job);
@@ -132,24 +117,45 @@ private:
 	const BuildConfig &_cfg;
 	dispatch::Looper *_looper = nullptr;
 	ErrorReporter &_err;
-	memory::pool_t *_pool = nullptr; // build pool; NodeState/Job are allocated from it
+	memory::pool_t *_pool =
+			nullptr; // build pool; NodeState is allocated from it (Job is new/delete)
 	uint32_t _jobLimit = 1;
 
 	Map<BuildNode *, NodeState *> _map;
 	Vector<NodeState *> _ready; // FIFO worklist (index-headed) of dispatchable nodes, in plan order
 	size_t _readyHead = 0;
-	Vector<Job *> _running; // jobs with a live child process (drained via poll, reaped via waitpid)
+	uint32_t _inFlight = 0; // jobs with a live child (one slot each); completion is event-driven
 	bool _failed = false;
 	bool _builtAny = false;
+	bool _inRun = false; // true while blocked in Looper::run(): completions may wakeup() to return
+	bool _pumping = false; // guards pump() against re-entry from synchronous completions
 };
 
 void Builder::resetState() {
 	_map.clear();
 	_ready.clear();
 	_readyHead = 0;
-	_running.clear();
+	_inFlight = 0;
 	_failed = false;
 	_builtAny = false;
+	_inRun = false;
+	_pumping = false;
+}
+
+// Dispatch ready nodes until the job slots are full or the worklist drains. Synchronous
+// completions (up-to-date / no-recipe / dry-run nodes) re-enter finishNode -> the worklist
+// grows mid-loop, and this loop drains those too. The _pumping guard makes a re-entrant call
+// (a synchronous onCommandDone reaching pump() again) a no-op so the outer loop keeps draining
+// iteratively instead of recursing.
+void Builder::pump() {
+	if (_pumping) {
+		return;
+	}
+	_pumping = true;
+	while (_inFlight < _jobLimit && _readyHead < _ready.size() && !(_failed && !_cfg.keepGoing)) {
+		dispatchNode(_ready[_readyHead++]);
+	}
+	_pumping = false;
 }
 
 void Builder::seed(const Vector<BuildNode *> &plan) {
@@ -236,7 +242,7 @@ void Builder::dispatchNode(NodeState *st) {
 		return;
 	}
 
-	auto job = new (_pool) Job();
+	auto job = new (sprt::nothrow) Job();
 	job->st = st;
 	_mk->exportRecipeLines(bn->target,
 			[&](StringView line, bool silent, bool ignoreErr, bool always) {
@@ -244,7 +250,7 @@ void Builder::dispatchNode(NodeState *st) {
 			return;
 		}
 		Command c;
-		c.text = line.str<memory::PoolInterface>();
+		c.text.assign(line.data(), line.size());
 		c.silent = silent;
 		c.ignoreErr = ignoreErr;
 		c.always = always;
@@ -253,9 +259,13 @@ void Builder::dispatchNode(NodeState *st) {
 
 	if (job->commands.empty()) {
 		finishNode(st, true, false);
+		sprt::__delete(job);
 		return;
 	}
 
+	// This node now occupies a job slot until its recipe finishes (success or failure).
+	// In dry-run mode spawn() completes synchronously, so the slot is released before we return.
+	++_inFlight;
 	spawn(job);
 }
 
@@ -272,127 +282,19 @@ void Builder::spawn(Job *job) {
 		return;
 	}
 
-	int fds[2];
-	if (::pipe(fds) != 0) {
-		sprt::cerr << "xlmake: pipe() failed\n";
-		onCommandDone(job, -1);
-		return;
-	}
-
-	// Parent keeps the read end (non-blocking, close-on-exec). The write end is close-on-exec so the
-	// extra parent/child copies vanish at exec; only the child's dup'd stdout/stderr remain, so the
-	// pipe reaches EOF exactly when the command (and any process group it keeps in the foreground)
-	// closes them.
-	::fcntl(fds[0], F_SETFD, FD_CLOEXEC);
-	::fcntl(fds[0], F_SETFL, ::fcntl(fds[0], F_GETFL) | O_NONBLOCK);
-	::fcntl(fds[1], F_SETFD, FD_CLOEXEC);
-
-	pid_t pid = ::fork();
-	if (pid < 0) {
-		::close(fds[0]);
-		::close(fds[1]);
-		sprt::cerr << "xlmake: fork() failed\n";
-		onCommandDone(job, -1);
-		return;
-	}
-	if (pid == 0) {
-		// child: merge stdout+stderr onto the pipe and exec the shell (async-signal-safe path only)
-		::dup2(fds[1], STDOUT_FILENO);
-		::dup2(fds[1], STDERR_FILENO);
-		::execl("/bin/sh", "sh", "-c", cmd.text.data(), (char *)nullptr);
-		::_exit(127);
-	}
-
-	::close(fds[1]);
-	job->pid = pid;
-	job->readFd = fds[0];
-	job->eof = false;
-	// The pollable handle keeps the pipe promptly drained (so a chatty recipe never blocks on a
-	// full pipe); it is NOT relied on for completion. Completion is detected by waitpid() in
-	// reapRunning(), which the loop runs on every wakeup — robust even if a poll edge is missed.
-	job->poll = _looper->listenPollableHandle(dispatch::NativeHandle(fds[0]),
-			dispatch::PollFlags::In | dispatch::PollFlags::HungUp,
-			[this, job](dispatch::NativeHandle, dispatch::PollFlags) -> sprt::Status {
-		return onPoll(job);
+	// Launch the command through the dispatch reactor's process API. Output streams into the job's
+	// buffer (flushed atomically when the target finishes); the exit completion drives onCommandDone.
+	// The main thread never touches fds, fork or waitpid — the reactor owns all of that.
+	job->proc = _looper->spawnProcess(cmd.text, [job](StringView bytes) {
+		job->output.append(bytes.data(), bytes.size());
+	}, [this, job](int code, sprt::Status st) {
+		onCommandDone(job, isSuccessful(st) ? code : -1);
 	});
-	_running.emplace_back(job);
-}
 
-void Builder::drain(Job *job) {
-	if (job->readFd < 0) {
-		return;
+	if (!job->proc) {
+		sprt::cerr << "xlmake: failed to spawn command: " << cmd.text << "\n";
+		onCommandDone(job, -1);
 	}
-	char buf[4_KiB];
-	for (;;) {
-		ssize_t n = ::read(job->readFd, buf, sizeof(buf));
-		if (n > 0) {
-			job->output.append(buf, size_t(n));
-			continue;
-		}
-		if (n == 0) {
-			job->eof = true; // all write ends closed: the child finished writing
-			return;
-		}
-		if (errno == EINTR) {
-			continue;
-		}
-		if (errno == EAGAIN || errno == EWOULDBLOCK) {
-			return; // no more data right now; wait for the next event / sweep
-		}
-		job->eof = true; // unexpected read error: treat as finished
-		return;
-	}
-}
-
-sprt::Status Builder::onPoll(Job *job) {
-	drain(job);
-	// Stop polling once the pipe hits EOF (child finished writing); reapRunning() will waitpid()
-	// the child and run completion. A non-Ok return cancels this handle.
-	return job->eof ? sprt::Status::Done : sprt::Status::Ok;
-}
-
-// Reap every running child that has exited (non-blocking), flushing its output first, then run its
-// completion. Driven from the main loop on every wakeup, so completion never depends on a poll
-// event being delivered for the pipe's EOF.
-void Builder::reapRunning() {
-	if (_running.empty()) {
-		return;
-	}
-	Vector<Job *> finished;
-	Vector<int> codes;
-	Vector<Job *> still;
-	for (auto job : _running) {
-		drain(job); // pull buffered output (keeps the pipe from filling)
-		int status = 0;
-		pid_t r = ::waitpid(job->pid, &status, WNOHANG);
-		if (r == job->pid) {
-			drain(job); // final flush of anything written just before exit
-			if (job->readFd >= 0) {
-				::close(job->readFd);
-				job->readFd = -1;
-			}
-			if (job->poll) {
-				job->poll->cancel();
-				job->poll = nullptr;
-			}
-			int code;
-			if (WIFEXITED(status)) {
-				code = WEXITSTATUS(status);
-			} else if (WIFSIGNALED(status)) {
-				code = 128 + WTERMSIG(status);
-			} else {
-				code = -1;
-			}
-			finished.emplace_back(job);
-			codes.emplace_back(code);
-		} else {
-			still.emplace_back(job);
-		}
-	}
-	// Replace the running set before invoking completions: onCommandDone() may spawn the next
-	// recipe line, which pushes a fresh job onto _running.
-	_running = sp::move(still);
-	for (size_t i = 0; i < finished.size(); ++i) { onCommandDone(finished[i], codes[i]); }
 }
 
 void Builder::onCommandDone(Job *job, int code) {
@@ -400,21 +302,34 @@ void Builder::onCommandDone(Job *job, int code) {
 	bool ok = (code == 0) || cmd.ignoreErr;
 
 	if (!ok) {
-		job->output.append(toString("xlmake: *** [", job->st->node->name, "] error ", code, "\n"));
+		auto msg = toString("xlmake: *** [", job->st->node->name, "] error ", code, "\n");
+		job->output.append(msg.data(), msg.size());
 		flush(job);
+		--_inFlight; // recipe failed: free the slot
 		finishNode(job->st, false, false);
+		sprt::__delete(job);
+		pump(); // dispatch nodes unblocked by this completion; wake run() if the build is done
+		if (_inRun && _inFlight == 0) {
+			_looper->wakeup(dispatch::WakeupFlags::Graceful);
+		}
 		return;
 	}
 
 	++job->index;
 	if (job->index < job->commands.size()) {
-		spawn(job); // next line of the same recipe (re-enters _running)
+		spawn(job); // next line of the same recipe (keeps the same slot)
 		return;
 	}
 
 	flush(job);
+	--_inFlight; // recipe finished: free the slot
 	_builtAny = true;
 	finishNode(job->st, true, true);
+	sprt::__delete(job);
+	pump(); // dispatch nodes unblocked by this completion; wake run() if the build is done
+	if (_inRun && _inFlight == 0) {
+		_looper->wakeup(dispatch::WakeupFlags::Graceful);
+	}
 }
 
 void Builder::flush(Job *job) {
@@ -434,35 +349,20 @@ BuildResult Builder::buildGoal(Target *goal) {
 	}
 	seed(plan);
 
-	// A periodic timer wakes the loop even when no child produces output, so reapRunning() runs
-	// regularly. Using a real timer event (rather than a wait() timeout) avoids the io_uring
-	// backend logging every timed wait as an error. The callback is a no-op: the wake is enough.
-	dispatch::TimerInfo ti;
-	ti.completion = dispatch::TimerInfo::Completion::create<Builder>(this,
-			[](Builder *, dispatch::TimerHandle *, uint32_t, sprt::Status) { });
-	ti.timeout = dispatch::TimeInterval::milliseconds(20);
-	ti.interval = dispatch::TimeInterval::milliseconds(20);
-	ti.count = dispatch::TimerInfo::Infinite;
-	auto timer = _looper->scheduleTimer(sp::move(ti));
-
-	for (;;) {
-		while (_running.size() < _jobLimit && _readyHead < _ready.size()
-				&& !(_failed && !_cfg.keepGoing)) {
-			dispatchNode(_ready[_readyHead++]);
-		}
-		if (_running.empty()) {
-			break; // nothing in flight and nothing left to dispatch
-		}
-		// Wake on child output (prompt pipe draining) or the periodic timer, then reap exited
-		// children. The timer guarantees forward progress even if a pollable-fd EOF event is missed.
-		_looper->wait(dispatch::TimeInterval::Infinite);
-		reapRunning();
+	// Event-driven build. Dispatch the initially-ready nodes, then run the reactor loop. Each
+	// child's exit fires its spawnProcess completion -> onCommandDone advances the recipe, frees
+	// the job slot and pump()s any freshly-unblocked nodes; when the last job finishes it wakes
+	// run() so it returns. Up-to-date / no-recipe / dry-run nodes complete synchronously inside
+	// pump(), so a build with no real recipes drains entirely here and never enters run(). The
+	// while-loop re-enters run() defensively should it ever return with work still in flight.
+	pump();
+	while (_inFlight > 0) {
+		_inRun = true;
+		_looper->run(dispatch::TimeInterval::Infinite);
+		_inRun = false;
 	}
 
-	if (timer) {
-		timer->cancel();
-	}
-	// Let the loop finalize any pending handle cancels before we return.
+	// Let the loop finalize any pending handle cancels (process + reader sub-handles) before return.
 	while (_looper->poll() > 0) { }
 
 	if (_failed) {

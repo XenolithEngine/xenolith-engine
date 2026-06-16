@@ -37,6 +37,8 @@ struct KQueueData;
 struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _kqueueThreadClass;
 	HandleClass _kqueueTimerClass;
+	HandleClass _kqueuePollFdClass;
+	HandleClass _kqueueProcessClass;
 
 	HandleClass _runloopThreadClass;
 	HandleClass _runloopTimerClass;

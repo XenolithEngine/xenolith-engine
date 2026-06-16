@@ -327,6 +327,13 @@ Rc<PollHandle> QueueData::listenHandle(NativeHandle handle, PollFlags flags,
 	return nullptr;
 }
 
+Rc<ProcessHandle> QueueData::spawnProcess(ProcessInfo &&info, Ref *ref) {
+	if (_spawnProcess) {
+		return _spawnProcess(this, _platformQueue, move(info), ref);
+	}
+	return nullptr;
+}
+
 Rc<ThreadHandle> QueueData::addThreadHandle() {
 	if (_thread) {
 		return _thread(this, _platformQueue);

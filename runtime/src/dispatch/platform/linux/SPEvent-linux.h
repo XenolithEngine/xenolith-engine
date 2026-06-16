@@ -40,12 +40,14 @@ struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _uringSignalFdClass;
 	HandleClass _uringEventFdClass;
 	HandleClass _uringPollFdClass;
+	HandleClass _uringProcessFdClass;
 
 	HandleClass _epollThreadClass;
 	HandleClass _epollTimerFdClass;
 	HandleClass _epollSignalFdClass;
 	HandleClass _epollEventFdClass;
 	HandleClass _epollPollFdClass;
+	HandleClass _epollProcessFdClass;
 
 	HandleClass _alooperThreadClass;
 	HandleClass _alooperTimerFdClass;

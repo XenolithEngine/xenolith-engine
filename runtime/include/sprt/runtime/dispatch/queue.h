@@ -125,6 +125,16 @@ public:
 	Rc<PollHandle> listenPollableHandle(NativeHandle, PollFlags,
 			dispatch::Function<Status(NativeHandle, PollFlags)> &&, Ref * = nullptr);
 
+	// Spawn a child process running `command` via the system shell. The returned
+	// handle represents the process; its completion fires once on exit with the
+	// exit code in `value`. ProcessInfo::reader receives merged stdout/stderr.
+	Rc<ProcessHandle> spawnProcess(ProcessInfo &&, Ref * = nullptr);
+
+	// Convenience form: `reader` receives output chunks; `onExit` receives the
+	// exit code and final Status. Uses the Handle userdata slot for private data.
+	Rc<ProcessHandle> spawnProcess(StringView command, dispatch::Function<void(StringView)> &&reader,
+			dispatch::Function<void(int exitCode, Status)> &&onExit, Ref * = nullptr);
+
 	Rc<ThreadHandle> addThreadHandle();
 
 	// run custom handle

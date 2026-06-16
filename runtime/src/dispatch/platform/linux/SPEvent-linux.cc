@@ -28,6 +28,7 @@
 #include "../fd/SPEventFd.h"
 #include "../fd/SPEventTimerFd.h"
 #include "../fd/SPEventPollFd.h"
+#include "../fd/SPEventProcessFd.h"
 #include "../epoll/SPEvent-epoll.h"
 #include "../epoll/SPEventThreadHandle-epoll.h"
 #include "../uring/SPEventThreadHandle-uring.h"
@@ -102,6 +103,8 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupUringHandleClass<SignalFdURingHandle, SignalFdSource>(&_info, &_uringSignalFdClass,
 				true);
 		setupUringHandleClass<PollFdURingHandle, PollFdSource>(&_info, &_uringPollFdClass, true);
+		setupUringHandleClass<ProcessFdURingHandle, ProcessFdSource>(&_info, &_uringProcessFdClass,
+				true);
 
 		auto uring = new (memory::pool::acquire())
 				URingData(_info.queue, this, info, SignalsToIntercept);
@@ -145,6 +148,12 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 						sprt::move(cb));
 			};
 
+			_spawnProcess = [](QueueData *d, void *ptr, ProcessInfo &&info,
+									Ref *ref) -> Rc<ProcessHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return spawnProcessFd(d, &data->_uringProcessFdClass, true, sprt::move(info), ref);
+			};
+
 			_platformQueue = uring;
 			uring->runInternalHandles();
 			_engine = QueueEngine::URing;
@@ -162,6 +171,8 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupEpollHandleClass<SignalFdEPollHandle, SignalFdSource>(&_info, &_epollSignalFdClass,
 				true);
 		setupEpollHandleClass<PollFdEPollHandle, PollFdSource>(&_info, &_epollPollFdClass, true);
+		setupEpollHandleClass<ProcessFdEPollHandle, ProcessFdSource>(&_info, &_epollProcessFdClass,
+				true);
 
 		auto epoll = new (memory::pool::acquire())
 				EPollData(_info.queue, this, info, SignalsToIntercept);
@@ -194,6 +205,12 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				auto data = reinterpret_cast<Queue::Data *>(d);
 				return Rc<PollFdEPollHandle>::create(&data->_epollPollFdClass, handle.fd, flags,
 						sprt::move(cb));
+			};
+
+			_spawnProcess = [](QueueData *d, void *ptr, ProcessInfo &&info,
+									Ref *ref) -> Rc<ProcessHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return spawnProcessFd(d, &data->_epollProcessFdClass, false, sprt::move(info), ref);
 			};
 
 			_platformQueue = epoll;

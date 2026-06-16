@@ -61,10 +61,27 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return Rc<KQueueThreadHandle>::create(&data->_kqueueThreadClass);
 			};
 
+			_listenHandle = [](QueueData *d, void *ptr, NativeHandle handle, PollFlags flags,
+									CompletionHandle<PollHandle> &&cb) -> Rc<PollHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return Rc<ReadKQueueHandle>::create(&data->_kqueuePollFdClass, handle.fd, flags,
+						sprt::move(cb));
+			};
+
+			_spawnProcess = [](QueueData *d, void *ptr, ProcessInfo &&info,
+									Ref *ref) -> Rc<ProcessHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return spawnProcessKQueue(d, &data->_kqueueProcessClass, sprt::move(info), ref);
+			};
+
 			setupKQueueHandleClass<KQueueTimerHandle, KQueueTimerSource>(&_info, &_kqueueTimerClass,
 					true);
 			setupKQueueHandleClass<KQueueThreadHandle, KQueueThreadSource>(&_info,
 					&_kqueueThreadClass, true);
+			setupKQueueHandleClass<ReadKQueueHandle, ReadKQueueSource>(&_info, &_kqueuePollFdClass,
+					true);
+			setupKQueueHandleClass<ProcessKQueueHandle, ProcessKQueueSource>(&_info,
+					&_kqueueProcessClass, true);
 
 			_platformQueue = queue;
 			_engine = QueueEngine::KQueue;

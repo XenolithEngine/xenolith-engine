@@ -40,6 +40,8 @@
 #include "platform/fd/SPEventSignalFd.cc"
 #include "platform/fd/SPEventTimerFd.cc"
 #include "platform/fd/SPEventPollFd.cc"
+#include "platform/fd/SPEventProcess.cc"
+#include "platform/fd/SPEventProcessFd.cc"
 #endif
 
 #if SPRT_WINDOWS
@@ -49,9 +51,11 @@
 #include "platform/windows/SPEventTimerWin.cc"
 #include "platform/windows/SPEventThreadIocp.cc"
 #include "platform/windows/SPEventPollIocp.cc"
+#include "platform/windows/SPEventProcessIocp.cc"
 #endif
 
 #if SPRT_MACOS
+#include "platform/fd/SPEventProcess.cc"
 #include "platform/darwin/SPEvent-darwin.cc"
 #include "platform/darwin/SPEvent-kqueue.cc"
 #include "platform/darwin/SPEvent-runloop.cc"

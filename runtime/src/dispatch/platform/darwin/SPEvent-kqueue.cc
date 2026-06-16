@@ -26,6 +26,10 @@
 #include <unistd.h>
 #include <sprt/runtime/log.h>
 
+// macOS provides waitpid() in libSystem, but the runtime's freestanding include path does not expose
+// <sys/wait.h>; declare the prototype directly (the exit code is decoded via decodeWaitStatus()).
+extern "C" int waitpid(int __pid, int *__status, int __options);
+
 namespace sprt::dispatch {
 
 static constexpr uint32_t KQUEUE_CANCEL_FLAG = 0x0080'0000;
@@ -440,6 +444,174 @@ Status KQueueThreadHandle::perform(dispatch::Function<void()> &&func, Ref *targe
 	q->update(ev);
 
 	return Status::Ok;
+}
+
+bool ReadKQueueSource::init(int f, PollFlags fl) {
+	fd = f;
+	flags = fl;
+	return true;
+}
+
+void ReadKQueueSource::cancel() {
+	if (hasFlag(flags, PollFlags::CloseFd) && fd >= 0) {
+		::close(fd);
+		fd = -1;
+	}
+}
+
+bool ReadKQueueHandle::init(HandleClass *cl, int fd, PollFlags flags,
+		CompletionHandle<PollHandle> &&c) {
+	static_assert(sizeof(ReadKQueueSource) <= DataSize
+			&& sprt::is_standard_layout<ReadKQueueSource>::value);
+	if (!Handle::init(cl, move(c))) {
+		return false;
+	}
+	auto source = new (_data) ReadKQueueSource();
+	return source->init(fd, flags);
+}
+
+Status ReadKQueueHandle::rearm(KQueueData *queue, ReadKQueueSource *source) {
+	auto status = prepareRearm();
+	if (status == Status::Ok) {
+		struct kevent ev;
+		EV_SET(&ev, source->fd, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, this);
+		status = queue->update(ev);
+	}
+	return status;
+}
+
+Status ReadKQueueHandle::disarm(KQueueData *queue, ReadKQueueSource *source) {
+	auto status = prepareDisarm();
+	if (status == Status::Ok) {
+		struct kevent ev;
+		EV_SET(&ev, source->fd, EVFILT_READ, EV_DELETE, 0, 0, this);
+		status = queue->update(ev);
+		++_timeline;
+	} else if (status == Status::ErrorAlreadyPerformed) {
+		return Status::Ok;
+	}
+	return status;
+}
+
+void ReadKQueueHandle::notify(KQueueData *queue, ReadKQueueSource *source, const NotifyData &data) {
+	if (_status != Status::Ok) {
+		return;
+	}
+	PollFlags pollFlags = PollFlags::In; // EVFILT_READ fired: data (or EOF) available
+	if (data.queueFlags & EV_EOF) {
+		pollFlags |= PollFlags::HungUp;
+	}
+	if (data.queueFlags & EV_ERROR) {
+		pollFlags |= PollFlags::Err;
+	}
+	sendCompletion(toInt(pollFlags), Status::Ok);
+}
+
+NativeHandle ReadKQueueHandle::getNativeHandle() const {
+	return reinterpret_cast<const ReadKQueueSource *>(_data)->fd;
+}
+
+bool ReadKQueueHandle::reset(PollFlags flags) {
+	reinterpret_cast<ReadKQueueSource *>(_data)->flags = flags;
+	return Handle::reset();
+}
+
+bool ProcessKQueueSource::init(int p) {
+	pid = p;
+	return true;
+}
+
+void ProcessKQueueSource::cancel() { }
+
+bool ProcessKQueueHandle::init(HandleClass *cl, int pid, CompletionHandle<ProcessHandle> &&c) {
+	static_assert(sizeof(ProcessKQueueSource) <= DataSize
+			&& sprt::is_standard_layout<ProcessKQueueSource>::value);
+	if (!Handle::init(cl, move(c))) {
+		return false;
+	}
+	auto source = new (_data) ProcessKQueueSource();
+	return source->init(pid);
+}
+
+Status ProcessKQueueHandle::rearm(KQueueData *queue, ProcessKQueueSource *source) {
+	auto status = prepareRearm();
+	if (status == Status::Ok) {
+		struct kevent ev;
+		EV_SET(&ev, source->pid, EVFILT_PROC, EV_ADD | EV_ONESHOT, NOTE_EXIT | NOTE_EXITSTATUS, 0,
+				this);
+		status = queue->update(ev);
+	}
+	return status;
+}
+
+Status ProcessKQueueHandle::disarm(KQueueData *queue, ProcessKQueueSource *source) {
+	auto status = prepareDisarm();
+	if (status == Status::Ok) {
+		struct kevent ev;
+		EV_SET(&ev, source->pid, EVFILT_PROC, EV_DELETE, 0, 0, this);
+		status = queue->update(ev);
+		++_timeline;
+	} else if (status == Status::ErrorAlreadyPerformed) {
+		return Status::Ok;
+	}
+	return status;
+}
+
+void ProcessKQueueHandle::notify(KQueueData *queue, ProcessKQueueSource *source,
+		const NotifyData &data) {
+	if (_status != Status::Ok) {
+		return;
+	}
+
+	// the child exited (NOTE_EXIT). data.result carries the wait-status when NOTE_EXITSTATUS is set,
+	// but the zombie must still be reaped; use the reap status for the exit code.
+	int status = 0;
+	::waitpid(source->pid, &status, 0);
+	_exitCode = decodeWaitStatus(status);
+
+	auto state = static_cast<ProcessState *>(getUserdata());
+	if (state) {
+		drainProcessPipe(state->readFd, state); // flush any final output first
+		state->readFd = -1;
+		if (state->readerHandle) {
+			state->readerHandle->cancel();
+		}
+	}
+
+	// EVFILT_PROC was registered EV_ONESHOT and is already consumed, so skip the disarm.
+	_status = Status::Suspended;
+	cancel(Status::Done, uint32_t(_exitCode));
+}
+
+NativeHandle ProcessKQueueHandle::getNativeHandle() const {
+	return reinterpret_cast<const ProcessKQueueSource *>(_data)->pid;
+}
+
+Rc<ProcessHandle> spawnProcessKQueue(QueueData *data, HandleClass *processClass, ProcessInfo &&info,
+		Ref *ref) {
+	int pid = -1;
+	int readFd = -1;
+	if (!posixSpawnPipe(info.command, &pid, &readFd)) {
+		return nullptr;
+	}
+
+	auto state = Rc<ProcessState>::alloc();
+	state->reader = sprt::move(info.reader);
+	state->userRef = ref;
+	state->readFd = readFd;
+
+	auto proc = Rc<ProcessKQueueHandle>::create(processClass, pid, sprt::move(info.completion));
+	if (!proc) {
+		::close(readFd);
+		int status = 0;
+		::waitpid(pid, &status, 0);
+		return nullptr;
+	}
+
+	// the process handle owns ProcessState (userdata); ProcessState owns the reader sub-handle.
+	proc->setUserdata(state);
+	state->readerHandle = createProcessReader(data, readFd, state.get());
+	return proc;
 }
 
 } // namespace sprt::dispatch

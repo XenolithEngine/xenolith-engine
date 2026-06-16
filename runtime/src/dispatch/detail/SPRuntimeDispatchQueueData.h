@@ -86,6 +86,7 @@ struct SPRT_API QueueData : public PerformEngine {
 	using ThreadCallback = Rc<ThreadHandle> (*)(QueueData *, void *);
 	using ListenHandleCallback = Rc<PollHandle> (*)(QueueData *, void *, NativeHandle, PollFlags,
 			CompletionHandle<PollHandle> &&);
+	using SpawnProcessCallback = Rc<ProcessHandle> (*)(QueueData *, void *, ProcessInfo &&, Ref *);
 
 	QueueHandleClassInfo _info;
 	QueueFlags _flags = QueueFlags::None;
@@ -108,6 +109,7 @@ struct SPRT_API QueueData : public PerformEngine {
 	TimerCallback _timer = nullptr;
 	ThreadCallback _thread = nullptr;
 	ListenHandleCallback _listenHandle = nullptr;
+	SpawnProcessCallback _spawnProcess = nullptr;
 
 	Thread::Id _threadId;
 
@@ -147,6 +149,7 @@ struct SPRT_API QueueData : public PerformEngine {
 
 	Rc<TimerHandle> scheduleTimer(TimerInfo &&);
 	Rc<PollHandle> listenHandle(NativeHandle, PollFlags, CompletionHandle<PollHandle> &&);
+	Rc<ProcessHandle> spawnProcess(ProcessInfo &&, Ref *);
 	Rc<ThreadHandle> addThreadHandle();
 
 	~QueueData();

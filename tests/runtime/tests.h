@@ -53,6 +53,7 @@ void performRttiTests();
 
 void performRefTests();
 void performDispatchTests();
+void performProcessTests();
 void performUnicodeTests();
 void performDtoaTests();
 

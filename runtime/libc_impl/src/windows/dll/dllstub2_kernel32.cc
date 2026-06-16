@@ -1023,6 +1023,26 @@ BOOL WINAPI DeleteTimerQueueTimer(HANDLE TimerQueue, HANDLE Timer, HANDLE Comple
 			CompletionEvent);
 }
 
+WINAPI HANDLE CreateNamedPipeW(LPCWSTR lpName, DWORD dwOpenMode, DWORD dwPipeMode,
+		DWORD nMaxInstances, DWORD nOutBufferSize, DWORD nInBufferSize, DWORD nDefaultTimeOut,
+		LPSECURITY_ATTRIBUTES lpSecurityAttributes) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, kernel32, CreateNamedPipeW, lpName, dwOpenMode, dwPipeMode,
+			nMaxInstances, nOutBufferSize, nInBufferSize, nDefaultTimeOut, lpSecurityAttributes);
+}
+
+WINAPI BOOL RegisterWaitForSingleObject(PHANDLE phNewWaitObject, HANDLE hObject,
+		WAITORTIMERCALLBACK Callback, PVOID Context, ULONG dwMilliseconds, ULONG dwFlags) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, kernel32, RegisterWaitForSingleObject, phNewWaitObject, hObject,
+			Callback, Context, dwMilliseconds, dwFlags);
+}
+
+WINAPI BOOL UnregisterWaitEx(HANDLE WaitHandle, HANDLE CompletionEvent) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, kernel32, UnregisterWaitEx, WaitHandle, CompletionEvent);
+}
+
 BOOL WINAPI DeleteTimerQueue(HANDLE TimerQueue) {
 	auto loader = sprt::DllLoader::get();
 	return DLL_LOAD_AND_CALL(loader, kernel32, DeleteTimerQueue, TimerQueue);

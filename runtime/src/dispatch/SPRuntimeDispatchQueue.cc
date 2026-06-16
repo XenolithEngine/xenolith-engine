@@ -125,6 +125,43 @@ Rc<PollHandle> Queue::listenPollableHandle(NativeHandle handle, PollFlags flags,
 	return h;
 }
 
+Rc<ProcessHandle> Queue::spawnProcess(ProcessInfo &&info, Ref *ref) {
+	auto h = _data->spawnProcess(move(info), ref);
+	if (h) {
+		_data->runHandle(h);
+	}
+	return h;
+}
+
+Rc<ProcessHandle> Queue::spawnProcess(StringView command,
+		dispatch::Function<void(StringView)> &&reader,
+		dispatch::Function<void(int exitCode, Status)> &&onExit, Ref *ref) {
+	struct ProcessCbData : public Ref {
+		dispatch::Function<void(StringView)> reader;
+		dispatch::Function<void(int, Status)> onExit;
+		Rc<Ref> ref;
+	};
+
+	auto data = Rc<ProcessCbData>::alloc();
+	data->reader = sprt::move(reader);
+	data->onExit = sprt::move(onExit);
+	data->ref = ref;
+
+	ProcessInfo info;
+	info.command = command;
+	if (data->reader) {
+		info.reader = [data](StringView bytes) { data->reader(bytes); };
+	}
+	info.completion = ProcessInfo::Completion::create<ProcessCbData>(data,
+			[](ProcessCbData *data, ProcessHandle *handle, uint32_t value, Status st) {
+		if (data->onExit) {
+			data->onExit(int(value), st);
+		}
+	});
+
+	return spawnProcess(move(info), data);
+}
+
 Rc<ThreadHandle> Queue::addThreadHandle() {
 	auto h = _data->addThreadHandle();
 	_data->runHandle(h);
