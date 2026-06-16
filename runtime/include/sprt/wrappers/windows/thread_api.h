@@ -307,6 +307,14 @@ __SPRT_WIN_IMPORT BOOL WINAPI DeleteTimerQueue(HANDLE TimerQueue);
 
 __SPRT_WIN_IMPORT BOOL WINAPI DeleteTimerQueueEx(HANDLE TimerQueue, HANDLE CompletionEvent);
 
+// Legacy thread-pool wait: invokes Callback (on a pool thread) when hObject is signalled. Used as
+// the fallback for waiting on a process/event when the NtAssociateWaitCompletionPacket family is
+// unavailable (e.g. Wine); see dispatch's process backend.
+__SPRT_WIN_IMPORT WINAPI BOOL RegisterWaitForSingleObject(PHANDLE phNewWaitObject, HANDLE hObject,
+		WAITORTIMERCALLBACK Callback, PVOID Context, ULONG dwMilliseconds, ULONG dwFlags);
+
+__SPRT_WIN_IMPORT WINAPI BOOL UnregisterWaitEx(HANDLE WaitHandle, HANDLE CompletionEvent);
+
 
 #ifdef UNICODE
 #define CreateSemaphore  CreateSemaphoreW

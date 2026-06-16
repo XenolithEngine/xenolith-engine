@@ -593,20 +593,33 @@ uint32_t URingData::wait(TimeInterval ival) {
 
 	auto events = doPoll();
 	if (events == 0 && ival) {
-		while (true) {
-			_linux_timespec ts;
+		// Infinite waits block with no timeout (nullptr) — matching run(). A finite
+		// interval arms a relative timeout; setNanoTimespec(Infinite) would instead
+		// clamp to ~Max<uint32_t> microseconds (~71 min), making an "infinite" wait
+		// wake spuriously. Computed once; the timeout is re-applied on each retry.
+		_linux_timespec ts;
+		bool hasTimeout = (ival != TimeInterval::Infinite);
+		if (hasTimeout) {
 			setNanoTimespec(ts, ival);
-
-			int err = enter(0, 1, IORING_ENTER_GETEVENTS, ival ? &ts : nullptr);
+		}
+		while (true) {
+			int err = enter(0, 1, IORING_ENTER_GETEVENTS, hasTimeout ? &ts : nullptr);
 
 			events += doPoll();
 
-			if (err >= 0) {
+			// io_uring_enter() can be interrupted by a signal *after* the kernel has
+			// already posted completions to the CQ ring, returning -1/EINTR even though
+			// doPoll() just delivered events. Returning on events > 0 regardless of err
+			// hands those completions back to the caller (the looper contract is "wait
+			// returns on any event"); retrying enter() here instead would block again on
+			// an empty ring and never return, while the caller's queued work — unblocked
+			// by the very completion we just delivered — is never dispatched (a hang).
+			if (err >= 0 || events > 0) {
 				break;
 			}
 
-			// io_uring_enter() returns -1/errno (libc convention). Retry on EINTR
-			// (signal/debugger); otherwise report and stop waiting.
+			// enter() failed and nothing was reaped: retry on EINTR (signal/debugger),
+			// otherwise report and stop waiting.
 			auto status = sprt::status::errnoToStatus(__sprt_errno);
 			if (status == Status::ErrorInterrupted) {
 				continue;
@@ -654,7 +667,7 @@ Status URingData::run(TimeInterval ival, WakeupFlags flags, TimeInterval wakeupT
 			if (status == Status::ErrorInterrupted || status == Status::ErrorAgain) {
 				continue;
 			}
-			oslog::vperror(__SPRT_LOCATION, "dispatch::URingData", "io_uring_enter: ", __sprt_errno,
+			oslog::vpwarn(__SPRT_LOCATION, "dispatch::URingData", "io_uring_enter: ", __sprt_errno,
 					" ", status);
 			ctx.wakeupStatus = status;
 			break;

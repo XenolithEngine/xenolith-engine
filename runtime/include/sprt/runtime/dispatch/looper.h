@@ -71,6 +71,16 @@ public:
 	Rc<PollHandle> listenPollableHandle(NativeHandle, PollFlags,
 			Function<Status(NativeHandle, PollFlags)> &&, Ref * = nullptr);
 
+	// Spawn a child process running `command` via the system shell. The returned
+	// handle represents the process; its completion fires once on exit with the
+	// exit code in `value`. ProcessInfo::reader receives merged stdout/stderr.
+	Rc<ProcessHandle> spawnProcess(ProcessInfo &&, Ref * = nullptr);
+
+	// Convenience form: `reader` receives output chunks; `onExit` receives the
+	// exit code and final Status.
+	Rc<ProcessHandle> spawnProcess(StringView command, Function<void(StringView)> &&reader,
+			Function<void(int exitCode, Status)> &&onExit, Ref * = nullptr);
+
 	// Perform task on this thread (only Complete callback will be executed)
 	// If current thread is looper thread - performs in place
 	Status performOnThread(Rc<Task> &&task, bool immediate = false);

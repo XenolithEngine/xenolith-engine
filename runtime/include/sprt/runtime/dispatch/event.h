@@ -36,6 +36,7 @@ class Handle;
 class TimerHandle;
 class ThreadHandle;
 class PollHandle;
+class ProcessHandle;
 
 struct BufferChain;
 
@@ -106,6 +107,23 @@ struct SPRT_API TimerInfo {
 	// Note: that resetable timer CAN be less performant then regular as a timer,
 	// but 'reset' for this timer can save some syscalls and kernel resources
 	bool resetable = false;
+};
+
+// Parameters for Looper/Queue::spawnProcess.
+//
+// The command is launched through the system shell (/bin/sh -c on POSIX,
+// cmd.exe /c on Windows); stdout and stderr are merged onto a single pipe.
+// `reader` is invoked on the looper thread with each chunk of output as it
+// arrives (it may be called many times, or never). The returned ProcessHandle's
+// completion fires once when the process exits, with `value` carrying the exit
+// code (128 + signal number if the process was killed by a signal).
+struct SPRT_API ProcessInfo {
+	using ReaderCallback = Function<void(StringView)>;
+	using Completion = CompletionHandle<ProcessHandle>;
+
+	StringView command;
+	ReaderCallback reader;
+	Completion completion;
 };
 
 } // namespace sprt::dispatch

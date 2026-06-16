@@ -550,6 +550,19 @@ __SPRT_WIN_IMPORT WINAPI BOOLEAN CreateSymbolicLinkW(LPCWSTR lpSymlinkFileName,
 __SPRT_WIN_IMPORT WINAPI BOOL CreatePipe(PHANDLE hReadPipe, PHANDLE hWritePipe,
 		LPSECURITY_ATTRIBUTES lpPipeAttributes, DWORD nSize);
 
+// Named-pipe open/mode flags (anonymous CreatePipe handles cannot do overlapped I/O, so an
+// overlapped reader must build its pipe from CreateNamedPipe + CreateFile).
+#define PIPE_ACCESS_INBOUND   0x00000001
+#define PIPE_ACCESS_OUTBOUND  0x00000002
+#define PIPE_ACCESS_DUPLEX    0x00000003
+#define PIPE_TYPE_BYTE        0x00000000
+#define PIPE_READMODE_BYTE    0x00000000
+#define PIPE_WAIT             0x00000000
+
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateNamedPipeW(LPCWSTR lpName, DWORD dwOpenMode, DWORD dwPipeMode,
+		DWORD nMaxInstances, DWORD nOutBufferSize, DWORD nInBufferSize, DWORD nDefaultTimeOut,
+		LPSECURITY_ATTRIBUTES lpSecurityAttributes);
+
 __SPRT_WIN_IMPORT WINAPI DWORD GetTempPathW(DWORD nBufferLength, LPWSTR lpBuffer);
 
 __SPRT_WIN_IMPORT WINAPI DWORD GetTempPathA(DWORD nBufferLength, LPSTR lpBuffer);
