@@ -50,7 +50,8 @@ endif
 
 ifdef XLMAKE_VERSION
 MAKE_4_1 := 1 # xlmake is 4.1-compatible
-$(info XLMAKE_VERSION $(XLMAKE_VERSION))
+$(info Using xlmake (4.1-compatible): $(XLMAKE_VERSION))
+
 else
 
 ifeq (4.1,$(firstword $(sort $(MAKE_VERSION) 4.1)))
