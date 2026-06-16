@@ -31,6 +31,7 @@ THE SOFTWARE.
 // threads, no ThreadPool, no blocking popen, and no hand-rolled fork/waitpid/poll machinery.
 
 #include "Executor.h"
+#include "Inspector.h"
 
 #include <sprt/runtime/dispatch/looper.h>
 #include <sprt/runtime/dispatch/handle.h>
@@ -90,6 +91,9 @@ struct Job {
 	size_t index = 0; // current command line
 	Rc<dispatch::ProcessHandle> proc; // live child for the current command line
 	JobString output; // buffered echo + captured bytes, flushed atomically when the target finishes
+	JobString name; // display name for the progress counter (.TARGET_NAME, else the target name)
+	bool hadOutput = false; // the recipe wrote to stdout/stderr (decides non-verbose suppression)
+	bool failed = false; // a command failed: always show the block regardless of verbosity
 };
 
 class Builder {
@@ -99,6 +103,19 @@ public:
 		_pool = memory::pool::acquire();
 		uint32_t hw = uint32_t(sprt::thread::hardware_concurrency());
 		_jobLimit = _cfg.jobs ? _cfg.jobs : (hw ? hw : uint32_t(1));
+		// Ninja-style progress counter: on for real builds, off for the data-extraction / quiet
+		// modes (dry-run output is parsed by the VSCode extension; -s asked for silence; -p is a
+		// pure dump). -q never reaches the Builder (runBuild returns earlier).
+		_counter = !_cfg.dryRun && !_cfg.silent && !_cfg.printDatabase;
+		// Honour the makefile's `verbose` flag (GNU `ifdef verbose`: true when defined to a
+		// non-empty value). When off, a target that ran cleanly with no output of its own collapses
+		// to just its counter line — its recipe echo and (empty) output are suppressed.
+		_mk->getVariableValue(StringView("verbose"),
+				[&](StringView v) {
+			if (!v.empty()) {
+				_verbose = true;
+			}
+		}, _err);
 	}
 
 	BuildResult buildGoal(Target *goal);
@@ -112,6 +129,7 @@ private:
 	void onCommandDone(Job *job, int code);
 	void finishNode(NodeState *st, bool success, bool rebuilt);
 	void flush(Job *job);
+	JobString displayName(BuildNode *bn); // .TARGET_NAME (target scope) or the target's own name
 
 	Makefile *_mk = nullptr;
 	const BuildConfig &_cfg;
@@ -129,6 +147,11 @@ private:
 	bool _builtAny = false;
 	bool _inRun = false; // true while blocked in Looper::run(): completions may wakeup() to return
 	bool _pumping = false; // guards pump() against re-entry from synchronous completions
+
+	bool _counter = false; // emit the ninja-style [N/M] progress counter (off for dry-run/-s/-p)
+	bool _verbose = false; // makefile `verbose` flag: when off, quiet targets show only the counter
+	uint32_t _total = 0; // M: recipe-running nodes for the current goal (computed before dispatch)
+	uint32_t _done = 0; // N: recipes completed so far (incremented at flush, in completion order)
 };
 
 void Builder::resetState() {
@@ -140,6 +163,8 @@ void Builder::resetState() {
 	_builtAny = false;
 	_inRun = false;
 	_pumping = false;
+	_total = 0;
+	_done = 0;
 }
 
 // Dispatch ready nodes until the job slots are full or the worklist drains. Synchronous
@@ -223,9 +248,10 @@ void Builder::dispatchNode(NodeState *st) {
 	}
 
 	// isOutOfDate() force-stats the target and its direct prerequisites, which also refreshes the
-	// cache that recipe resolution (setAutoVars/$?) reads a moment later.
+	// cache that recipe resolution (setAutoVars/$?) reads a moment later — so call it even under
+	// --always-make, which only overrides the resulting build decision.
 	bool stale = _mk->isOutOfDate(bn->target, _err);
-	bool build = st->needsBuild || stale;
+	bool build = _cfg.alwaysMake || st->needsBuild || stale;
 	if (!build) {
 		finishNode(st, true, false); // up to date
 		return;
@@ -244,6 +270,9 @@ void Builder::dispatchNode(NodeState *st) {
 
 	auto job = new (sprt::nothrow) Job();
 	job->st = st;
+	if (_counter) {
+		job->name = displayName(bn);
+	}
 	_mk->exportRecipeLines(bn->target,
 			[&](StringView line, bool silent, bool ignoreErr, bool always) {
 		if (line.empty()) {
@@ -258,6 +287,10 @@ void Builder::dispatchNode(NodeState *st) {
 	}, _err);
 
 	if (job->commands.empty()) {
+		// A rule-bearing node whose recipe expanded to nothing still counts toward the plan
+		// (it was tallied in _total via bn->rules): flush() emits its progress line (no body)
+		// and advances _done so the counter stays in lockstep with _total.
+		flush(job);
 		finishNode(st, true, false);
 		sprt::__delete(job);
 		return;
@@ -287,6 +320,9 @@ void Builder::spawn(Job *job) {
 	// The main thread never touches fds, fork or waitpid — the reactor owns all of that.
 	job->proc = _looper->spawnProcess(cmd.text, [job](StringView bytes) {
 		job->output.append(bytes.data(), bytes.size());
+		if (!bytes.empty()) {
+			job->hadOutput = true;
+		}
 	}, [this, job](int code, sprt::Status st) {
 		onCommandDone(job, isSuccessful(st) ? code : -1);
 	});
@@ -304,6 +340,7 @@ void Builder::onCommandDone(Job *job, int code) {
 	if (!ok) {
 		auto msg = toString("xlmake: *** [", job->st->node->name, "] error ", code, "\n");
 		job->output.append(msg.data(), msg.size());
+		job->failed = true; // a failed recipe is always shown, even in non-verbose mode
 		flush(job);
 		--_inFlight; // recipe failed: free the slot
 		finishNode(job->st, false, false);
@@ -334,10 +371,40 @@ void Builder::onCommandDone(Job *job, int code) {
 
 void Builder::flush(Job *job) {
 	// Single-threaded: this is the only writer, so a target's whole block lands contiguously.
-	if (!job->output.empty()) {
-		sprt::cout << job->output;
-		job->output.clear();
+	// The ninja-style counter heads the block: a plain line, no carriage-return rewriting. _done
+	// advances in completion order (flush is called once per built node), so the numbers are
+	// monotonic and reach _total exactly.
+	if (_counter) {
+		++_done;
+		sprt::cout << "[" << _done << "/" << _total << "] " << job->name << "\n";
 	}
+	// Non-verbose default: a target that ran cleanly with no output of its own collapses to just
+	// the counter line above — its recipe echo ("rules") and (empty) output are suppressed. The
+	// full block is still shown when verbose, in dry-run (listing the commands is the whole point),
+	// when the recipe printed something, or when a command failed.
+	bool show = _verbose || _cfg.dryRun || job->hadOutput || job->failed;
+	if (show && !job->output.empty()) {
+		sprt::cout << job->output;
+	}
+	job->output.clear();
+}
+
+// The progress-line label: the target's `.TARGET_NAME` (resolved in the target's own scope, so a
+// per-target assignment is honoured) when set to a non-blank value, otherwise the target's own
+// name as written in the makefile.
+JobString Builder::displayName(BuildNode *bn) {
+	JobString raw;
+	_mk->getVariableValue(bn->target, StringView(".TARGET_NAME"),
+			[&](StringView v) { raw.append(v.data(), v.size()); }, _err);
+	StringView val(raw.data(), raw.size());
+	val.trimChars<StringView::WhiteSpace>();
+	JobString out;
+	if (val.empty()) {
+		out.assign(bn->name.data(), bn->name.size());
+	} else {
+		out.assign(val.data(), val.size());
+	}
+	return out;
 }
 
 BuildResult Builder::buildGoal(Target *goal) {
@@ -348,6 +415,30 @@ BuildResult Builder::buildGoal(Target *goal) {
 		return BuildResult::Cycle;
 	}
 	seed(plan);
+
+	// Progress total (M): how many nodes will actually run a recipe. Mirror the exact gate the
+	// dispatch loop uses below (--always-make, or out of date, or a normal prerequisite rebuilds)
+	// AND require a recipe (bn->rules) — identical to runBuild's --question pre-pass — so _done
+	// reaches _total precisely. isOutOfDate force-re-stats at dispatch, so this extra stat pass
+	// does not skew the real build decision.
+	if (_counter) {
+		Set<BuildNode *> rebuilt;
+		for (auto bn : plan) {
+			bool needs = _cfg.alwaysMake || _mk->isOutOfDate(bn->target, _err);
+			if (!needs) {
+				for (auto p : bn->prerequisites) {
+					if (rebuilt.find(p) != rebuilt.end()) {
+						needs = true;
+						break;
+					}
+				}
+			}
+			if (needs && bn->rules) {
+				++_total;
+				rebuilt.emplace(bn);
+			}
+		}
+	}
 
 	// Event-driven build. Dispatch the initially-ready nodes, then run the reactor loop. Each
 	// child's exit fires its spawnProcess completion -> onCommandDone advances the recipe, frees
@@ -374,11 +465,24 @@ BuildResult Builder::buildGoal(Target *goal) {
 } // namespace
 
 int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
-	auto looper = dispatch::Looper::acquire(
-			dispatch::LooperInfo{.name = StringView("xlmake"), .workersCount = 0});
-	if (!looper) {
-		sprt::cerr << "xlmake: failed to initialize the event loop\n";
-		return 2;
+	// --print-directory: GNU make brackets the whole build with these lines; tooling uses them to
+	// anchor relative paths in the dry-run output.
+	if (cfg.printDirectory) {
+		sprt::cout << "xlmake: Entering directory '" << cfg.rootDir << "'\n";
+	}
+	auto finish = [&](int rc) {
+		if (cfg.printDirectory) {
+			sprt::cout << "xlmake: Leaving directory '" << cfg.rootDir << "'\n";
+		}
+		return rc;
+	};
+
+	// --print-data-base: GNU make dumps the database after reading the makefiles, regardless of the
+	// goal — emit it here so the extension gets it even for an unknown goal. Emit it BEFORE the
+	// materialize-buildPlan below: that step instantiates pattern-derived nodes (foo.o, src/foo.c,
+	// ...) which GNU marks `# Not a target:`; dumping first keeps getTargets() to declared targets.
+	if (cfg.printDatabase) {
+		printDatabase(mk, err);
 	}
 
 	// Materialize pattern-derived targets so explicit goals are queryable by name.
@@ -391,18 +495,60 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 		if (auto g = mk->getDefaultGoal()) {
 			goals.emplace_back(g);
 		} else {
-			sprt::cerr << "xlmake: no target given and no default goal\n";
-			return 2;
+			// No default goal. For a pure query (-p/-q) this is not a hard error.
+			if (!cfg.printDatabase && !cfg.question) {
+				sprt::cerr << "xlmake: *** No targets.  Stop.\n";
+			}
+			return finish((cfg.printDatabase && !cfg.question) ? 0 : 2);
 		}
 	} else {
 		for (auto tn : cfg.targets) {
 			if (auto t = mk->getTarget(tn)) {
 				goals.emplace_back(t);
 			} else {
-				sprt::cerr << "xlmake: unknown target: " << tn << "\n";
-				return 2;
+				sprt::cerr << "xlmake: *** No rule to make target '" << tn << "'.  Stop.\n";
+				return finish(2);
 			}
 		}
+	}
+
+	// --question: report whether `make` would run any recipe (GNU semantics: exit 0 if nothing
+	// needs doing, 1 otherwise) and run nothing. Mirror the executor's per-node decision over the
+	// build plan (deps first): a recipe runs for a node iff it HAS a recipe AND (--always-make, or
+	// it is out of date, or a normal prerequisite would be rebuilt). The recipe gate is what makes a
+	// phony aggregator like `all: app` with an up-to-date `app` report "nothing to do". No event
+	// loop needed — this is pure filesystem stat.
+	if (cfg.question) {
+		bool wouldRun = cfg.alwaysMake;
+		Set<BuildNode *> rebuilt;
+		for (auto goal : goals) {
+			if (wouldRun) {
+				break;
+			}
+			for (auto bn : mk->buildPlan(goal, err)) {
+				bool needs = mk->isOutOfDate(bn->target, err);
+				if (!needs) {
+					for (auto p : bn->prerequisites) {
+						if (rebuilt.find(p) != rebuilt.end()) {
+							needs = true;
+							break;
+						}
+					}
+				}
+				if (needs && bn->rules) {
+					wouldRun = true;
+					rebuilt.emplace(bn);
+				}
+			}
+		}
+		return finish(wouldRun ? 1 : 0);
+	}
+
+	auto looper = dispatch::Looper::acquire(
+			dispatch::LooperInfo{.name = StringView("xlmake"), .workersCount = 0});
+	if (!looper) {
+		sprt::cerr << "xlmake: failed to initialize the event loop\n";
+		return finish(2);
 	}
 
 	Builder builder(mk, cfg, looper, err);
@@ -412,7 +558,9 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 		switch (res) {
 		case BuildResult::Built: break;
 		case BuildResult::UpToDate:
-			sprt::cout << "xlmake: '" << goal->name << "' is up to date\n";
+			if (!cfg.dryRun) {
+				sprt::cout << "xlmake: '" << goal->name << "' is up to date\n";
+			}
 			break;
 		case BuildResult::Failed: rc = 2; break;
 		case BuildResult::Cycle:
@@ -425,7 +573,7 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 			break;
 		}
 	}
-	return rc;
+	return finish(rc);
 }
 
 } // namespace xlmake

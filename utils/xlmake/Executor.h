@@ -35,13 +35,20 @@ using namespace sp::mem_pool;
 // `jobs` sentinel for a bare `-j` (no number): no concurrency cap.
 static constexpr uint32_t JobsUnlimited = maxOf<uint32_t>();
 
-// Options for the build/execution mode (`xlmake -b ...`).
+// Options for the build/execution mode (the default mode; also `xlmake -b ...`).
 struct BuildConfig {
 	Vector<StringView> targets; // positional goals (default goal when empty)
 	uint32_t jobs = 0; // -j N concurrent children; 0 => hardware_concurrency, JobsUnlimited => -j
 	bool keepGoing = false; // -k / --keep-going
 	bool dryRun = false; // -n / --dry-run
 	bool silent = false; // -s / --silent
+
+	// GNU make-compatible data-extraction flags (used by the VSCode Makefile Tools extension)
+	bool printDatabase = false; // -p / --print-data-base: dump the makefile database (GNU -p)
+	bool question = false; // -q / --question: run nothing; exit 1 if any target is out of date
+	bool alwaysMake = false; // -B / --always-make: treat every target as out of date
+	bool printDirectory = false; // -w / --print-directory: emit Entering/Leaving directory lines
+	StringView rootDir; // absolute working directory (after -C), for the -w directory lines
 };
 
 // Build the requested goals from an already-loaded makefile, running recipes as child processes

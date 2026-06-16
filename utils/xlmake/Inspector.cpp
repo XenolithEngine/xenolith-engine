@@ -37,6 +37,50 @@ static void printVariable(Makefile *mk, StringView name, const Variable &v, Erro
 	}
 }
 
+void printDatabase(Makefile *mk, ErrorReporter &err) {
+	// Banner — cosmetic, not parsed; emitted so anything sniffing for a GNU-make header is satisfied.
+	sprt::cout << "# xlmake\n"
+				  "\n" //
+				  "# Make data base, printed by xlmake, GNU Make compatible format\n" //
+				  "\n"; //
+
+	// --- Variables ---
+	sprt::cout << "# Variables\n\n";
+	// Stappler makefile engine not saves initial text of variables, as GNU make
+	// We can not provide a variable list in GNU database format
+	sprt::cout << "\n";
+
+	// --- Files (targets) ---
+	// Emit ONLY explicitly-declared, non-special, non-pattern targets (exactly what getTargets()
+	// returns). Prerequisite-only names stay absent, so the extension's extractor — which scans the
+	// `# Files`..`# Finished Make data base` window for `name:` lines — sees precisely the declared
+	// target set, with no need to reproduce GNU's `# Not a target:` blocks.
+	sprt::cout << "# Files\n\n";
+	for (auto t : mk->getTargets()) {
+		if (t->isSpecial || t->isPattern) {
+			continue;
+		}
+		sprt::cout << t->name << ":";
+		mk->getPrerequisites(t, [&](StringView name) { sprt::cout << " " << name; });
+		bool firstOrderOnly = true;
+		mk->getOrderOnly(t, [&](StringView name) {
+			if (firstOrderOnly) {
+				sprt::cout << " |";
+				firstOrderOnly = false;
+			}
+			sprt::cout << " " << name;
+		});
+		sprt::cout << "\n";
+		if (t->isPhony) {
+			// exact text the extension scans for (one '#', two spaces)
+			sprt::cout << "#  Phony target (prerequisite of .PHONY).\n";
+		}
+		sprt::cout << "\n";
+	}
+
+	sprt::cout << "# Finished Make data base\n";
+}
+
 int runInspect(Makefile *mk, const InspectConfig &cfg, const Vector<String> &makefilePaths,
 		ErrorReporter &err) {
 	bool anyAction = cfg.printVars || !cfg.vars.empty() || cfg.recipe || cfg.prereqs;
