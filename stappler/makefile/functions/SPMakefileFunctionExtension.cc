@@ -125,4 +125,21 @@ static bool Function_xl_append(const Callback<void(StringView)> &, void *, Varia
 	return true; // expands to nothing, like $(file >>...)
 }
 
+static bool Function_xl_mkdir(const Callback<void(StringView)> &, void *, VariableEngine &engine,
+		SpanView<StmtValue *> args) {
+	auto err = engine.getCallContext()->err;
+
+	auto name = engine.resolve(args[0], 0, *err);
+	name.trimChars<StringView::WhiteSpace>();
+	auto path = engine.getAbsolutePath(name);
+	if (path.empty()) {
+		return true; // missing file -> empty result, matching $(file <name) / $(wildcard)
+	}
+
+	filesystem::mkdir_recursive(FileInfo{path});
+
+	return true; // expands to nothing
+}
+
+
 } // namespace stappler::makefile

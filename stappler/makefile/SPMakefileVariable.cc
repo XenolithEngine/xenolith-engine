@@ -83,6 +83,7 @@ static sprt::__malloc_unordered_map< StringView, Function > s_functions{
 	makeFn("xl_cat", 1, 1, Function_xl_cat),
 	makeFn("xl_write", 2, 2, Function_xl_write),
 	makeFn("xl_append", 2, 2, Function_xl_append),
+	makeFn("xl_mkdir", 1, 1, Function_xl_mkdir),
 };
 
 StringView getOriginName(Origin o) {
@@ -109,7 +110,9 @@ bool VariableEngine::init(memory::pool_t *pool) {
 	_callContext = &_rootContext;
 
 	set(".STAPPLER_BUILD", Origin::Override, "1");
-	set("MAKE_VERSION", Origin::Override, "0.0");
+	// Report a GNU-compatible version (the engine targets GNU make 4.4 semantics) with origin
+	// "default", so a makefile may still override it — matching GNU, where MAKE_VERSION is a default.
+	set("MAKE_VERSION", Origin::Default, "4.4.1");
 
 	return true;
 }

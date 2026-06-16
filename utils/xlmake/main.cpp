@@ -27,6 +27,8 @@ THE SOFTWARE.
 
 #include "Inspector.h"
 #include "Executor.h"
+#include <sys/utsname.h>
+#include <dlfcn.h>
 
 using namespace sp;
 
@@ -78,16 +80,21 @@ struct Config {
 	bool keepGoing = false; // -k / --keep-going
 	bool dryRun = false; // -n / --dry-run
 	bool silent = false; // -s / --silent
+	// build mode: GNU make-compatible data-extraction flags (used by the VSCode Makefile Tools ext)
+	bool printDatabase = false; // -p / --print-data-base
+	bool question = false; // -q / --question
+	bool alwaysMake = false; // -B / --always-make
+	bool printDirectory = false; // -w / --print-directory
 };
 
 static void printUsage() {
 	sprt::cout << "xlmake - inspect or build a GNU-make-style makefile\n"
 				  "\n"
-				  "Usage: xlmake <mode> [options] [VAR=VALUE ...] [target ...]\n"
+				  "Usage: xlmake [options] [VAR=VALUE ...] [target ...]\n"
 				  "\n"
-				  "The first argument selects the mode; later flags apply to it:\n"
+				  "Build is the default mode (like make). A leading mode flag selects another:\n"
+				  "  -b, --build            build the requested targets (default; run in parallel)\n"
 				  "  -i, --inspect          inspect the makefile (print variables/recipes/prereqs)\n"
-				  "  -b, --build            build the requested targets (run recipes in parallel)\n"
 				  "  -h, --help             show this help\n"
 				  "\n"
 				  "Shared options (both modes):\n"
@@ -108,12 +115,19 @@ static void printUsage() {
 				  "  -q, --out-of-date      restrict --recipe/--prerequisites to out-of-date items\n"
 				  "  -P, --phony-prereqs    with -r -q, judge a phony target by its prerequisites\n"
 				  "\n"
-				  "Build options (-b):\n"
+				  "Build options (default mode):\n"
 				  "  -j, --jobs [N]         run up to N recipes concurrently (default: all cores;\n"
 				  "                         -j1 serializes; bare -j is unlimited)\n"
 				  "  -k, --keep-going       keep building independent targets after a failure\n"
 				  "  -n, --dry-run          print recipe commands without running them\n"
 				  "  -s, --silent           do not echo recipe command lines\n"
+				  "  -B, --always-make      consider every target out of date (force a rebuild)\n"
+				  "\n"
+				  "make-compatibility options (default mode; for tooling such as VSCode):\n"
+				  "  -p, --print-data-base  dump the makefile database (variables, targets) and exit\n"
+				  "  -q, --question         run no recipe; exit 1 if any target is out of date\n"
+				  "  -w, --print-directory  print 'Entering/Leaving directory' around the build\n"
+				  "      --no-builtin-rules, --no-builtin-variables   accepted, no effect (-r, -R)\n"
 				  "\n"
 				  "With -i and no action, prints an overview (makefile, default goal, targets).\n";
 }
@@ -176,29 +190,31 @@ static bool parseUint(StringView s, uint32_t &out) {
 
 // Parse argv into cfg. The first token selects the mode. Returns false on a malformed option.
 static bool parseArgs(int argc, const char *argv[], Config &cfg) {
-	if (argc < 2) {
-		cfg.mode = Mode::Help;
-		return true;
-	}
-
-	StringView first(argv[1]);
-	if (first == "-h" || first == "--help") {
-		cfg.mode = Mode::Help;
-		return true;
-	} else if (first == "-i" || first == "--inspect") {
-		cfg.mode = Mode::Inspect;
-	} else if (first == "-b" || first == "--build") {
-		cfg.mode = Mode::Build;
+	// Build is the default mode (like make); an explicit -i/-b (or -h) as the FIRST argument
+	// selects another mode. Otherwise argv[1] is a normal option/assignment/target.
+	int i = 1;
+	if (argc >= 2) {
+		StringView first(argv[1]);
+		if (first == "-h" || first == "--help") {
+			cfg.mode = Mode::Help;
+			return true;
+		} else if (first == "-i" || first == "--inspect") {
+			cfg.mode = Mode::Inspect;
+			i = 2;
+		} else if (first == "-b" || first == "--build") {
+			cfg.mode = Mode::Build;
+			i = 2;
+		} else {
+			cfg.mode = Mode::Build; // default: behave like make
+		}
 	} else {
-		sprt::cerr << "xlmake: first argument must select a mode: -i/--inspect, -b/--build "
-					  "(or -h/--help)\n";
-		return false;
+		cfg.mode = Mode::Build; // bare `xlmake`: build the default goal
+		return true;
 	}
 
 	const bool isBuild = (cfg.mode == Mode::Build);
 	const bool isInspect = (cfg.mode == Mode::Inspect);
 
-	int i = 2;
 	auto takeValue = [&](StringView inlineVal) -> StringView {
 		if (!inlineVal.empty()) {
 			return inlineVal;
@@ -281,10 +297,22 @@ static bool parseArgs(int argc, const char *argv[], Config &cfg) {
 				}
 			} else if (isBuild && name == "keep-going") {
 				cfg.keepGoing = true;
-			} else if (isBuild && (name == "dry-run" || name == "just-print")) {
+			} else if (isBuild && (name == "dry-run" || name == "just-print" || name == "recon")) {
 				cfg.dryRun = true;
 			} else if (isBuild && (name == "silent" || name == "quiet")) {
 				cfg.silent = true;
+			} else if (isBuild && (name == "print-data-base" || name == "print-database")) {
+				cfg.printDatabase = true;
+			} else if (isBuild && name == "question") {
+				cfg.question = true;
+			} else if (isBuild && name == "always-make") {
+				cfg.alwaysMake = true;
+			} else if (isBuild && name == "print-directory") {
+				cfg.printDirectory = true;
+			} else if (isBuild && name == "no-print-directory") {
+				cfg.printDirectory = false;
+			} else if (isBuild && (name == "no-builtin-rules" || name == "no-builtin-variables")) {
+				// accepted no-op: xlmake has no builtin rule/variable database
 			} else {
 				sprt::cerr << "xlmake: unknown option --" << name << "\n";
 				return false;
@@ -327,6 +355,12 @@ static bool parseArgs(int argc, const char *argv[], Config &cfg) {
 					case 'k': cfg.keepGoing = true; break;
 					case 'n': cfg.dryRun = true; break;
 					case 's': cfg.silent = true; break;
+					case 'p': cfg.printDatabase = true; break;
+					case 'q': cfg.question = true; break;
+					case 'B': cfg.alwaysMake = true; break;
+					case 'w': cfg.printDirectory = true; break;
+					case 'r': break; // --no-builtin-rules: accepted no-op
+					case 'R': break; // --no-builtin-variables: accepted no-op
 					default: ok = false; break;
 					}
 				}
@@ -346,6 +380,99 @@ static bool parseArgs(int argc, const char *argv[], Config &cfg) {
 		}
 	}
 	return true;
+}
+
+// Define GNU make's standard predefined variables (origin "default", so makefile and command-line
+// assignments still override them, matching GNU). Covers the toolchain program names, the
+// compile/link recipe templates, the recipe/shell specials, and the per-invocation variables
+// (MAKE/MAKE_COMMAND for recursion, CURDIR, MAKECMDGOALS). `makeCommand` is argv[0] so `$(MAKE)`
+// re-invokes this xlmake; `rootDir` is the absolute working directory (after -C).
+static void setupStandardVariables(Makefile *mk, StringView rootDir, StringView makeCommand,
+		const Vector<StringView> &goals, ErrorReporter &err) {
+	using O = makefile::Origin;
+	auto simple = [&](StringView n, StringView v) {
+		mk->assignSimpleVariable(n, O::Default, v, err); //
+	};
+
+	auto rec = [&](StringView n, StringView v) {
+		mk->assignRecursiveVariable(n, O::Default, v, err); //
+	};
+
+	// Program names
+	simple("AR", "ar");
+	simple("AS", "as");
+	simple("CC", "cc");
+	simple("CXX", "g++");
+	simple("CO", "co");
+	simple("FC", "f77");
+	simple("GET", "get");
+	simple("LD", "ld");
+	simple("LEX", "lex");
+	simple("LINT", "lint");
+	simple("M2C", "m2c");
+	simple("OBJC", "cc");
+	simple("PC", "pc");
+	simple("RM", "rm -f");
+	simple("YACC", "yacc");
+	simple("MAKEINFO", "makeinfo");
+	simple("TEX", "tex");
+	simple("TEXI2DVI", "texi2dvi");
+	simple("TANGLE", "tangle");
+	simple("WEAVE", "weave");
+	simple("CTANGLE", "ctangle");
+	simple("CWEAVE", "cweave");
+	rec("CPP", "$(CC) -E");
+	rec("F77", "$(FC)");
+	rec("F77FLAGS", "$(FFLAGS)");
+
+	// Default flags
+	simple("ARFLAGS", "-rv");
+	simple("COFLAGS", "");
+
+	// Compile / link recipe templates (recursive: they track CC/CFLAGS/... when expanded)
+	rec("COMPILE.c", "$(CC) $(CFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -c");
+	rec("COMPILE.cc", "$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -c");
+	rec("COMPILE.cpp", "$(COMPILE.cc)");
+	rec("COMPILE.C", "$(COMPILE.cc)");
+	rec("COMPILE.S", "$(CC) $(ASFLAGS) $(CPPFLAGS) $(TARGET_MACH) -c");
+	rec("COMPILE.s", "$(AS) $(ASFLAGS) $(TARGET_MACH)");
+	rec("LINK.c", "$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $(TARGET_ARCH)");
+	rec("LINK.cc", "$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) $(TARGET_ARCH)");
+	rec("LINK.cpp", "$(LINK.cc)");
+	rec("LINK.C", "$(LINK.cc)");
+	rec("LINK.o", "$(CC) $(LDFLAGS) $(TARGET_ARCH)");
+	rec("LINK.S", "$(CC) $(ASFLAGS) $(CPPFLAGS) $(LDFLAGS) $(TARGET_MACH)");
+	rec("LINK.s", "$(CC) $(ASFLAGS) $(LDFLAGS) $(TARGET_MACH)");
+	rec("OUTPUT_OPTION", "-o $@");
+
+	// Shell / recipe specials (xlmake runs recipes via /bin/sh -c)
+	simple("SHELL", "/bin/sh");
+	simple(".SHELLFLAGS", "-c");
+	simple(".RECIPEPREFIX", "");
+
+	// Suffix list and library search patterns
+	simple("SUFFIXES",
+			".out .a .ln .o .c .cc .C .cpp .p .f .F .m .r .y .l .ym .yl .s .S .mod .sym .def .h "
+			".info .dvi .tex .texinfo .texi .txinfo .w .ch .web .sh .elc .el");
+	rec(".LIBPATTERNS", "lib%.so lib%.a");
+
+	// Recursive-make plumbing: $(MAKE) re-invokes this xlmake (argv[0]).
+	simple("MAKEFILES", "");
+	simple("GNUMAKEFLAGS", "");
+	simple("MAKEFLAGS", "");
+	simple("MAKE_COMMAND", makeCommand);
+	rec("MAKE", "$(MAKE_COMMAND)");
+
+	// Per-invocation
+	simple("CURDIR", rootDir);
+	String goalList;
+	for (auto &g : goals) {
+		if (!goalList.empty()) {
+			goalList.append(" ");
+		}
+		goalList.append(g.data(), g.size());
+	}
+	simple("MAKECMDGOALS", goalList);
 }
 
 static String resolvePath(StringView root, StringView file) {
@@ -410,7 +537,23 @@ static int runXlmake(int argc, const char *argv[]) {
 
 		auto mk = Rc<MakefileRef>::create(SharedRefMode::Allocator);
 
-		mk->assignSimpleVariable("XLMAKE_VERSION", makefile::Origin::Default, XLMAKE_VERSION);
+		mk->assignSimpleVariable("XLMAKE_VERSION", Origin::Default, XLMAKE_VERSION);
+
+		utsname unamebuf;
+		uname(&unamebuf);
+
+		mk->assignSimpleVariable("XL_UNAME_SYSNAME", Origin::Default, unamebuf.sysname);
+		mk->assignSimpleVariable("XL_UNAME_NODENAME", Origin::Default, unamebuf.nodename);
+		mk->assignSimpleVariable("XL_UNAME_RELEASE", Origin::Default, unamebuf.release);
+		mk->assignSimpleVariable("XL_UNAME_VERSION", Origin::Default, unamebuf.version);
+		mk->assignSimpleVariable("XL_UNAME_MACHINE", Origin::Default, unamebuf.machine);
+		mk->assignSimpleVariable("XL_UNAME_DOMAINNAME", Origin::Default, unamebuf.domainname);
+
+		auto gnu_get_libc_version =
+				(const char *(*)())::dlsym(RTLD_DEFAULT, "gnu_get_libc_version");
+		if (gnu_get_libc_version != nullptr) {
+			mk->assignSimpleVariable("XL_GLIBC_VERSION", Origin::Default, gnu_get_libc_version());
+		}
 
 		mk->setLogCallback(xlmakeLog);
 		if (cfg.pedantic) {
@@ -431,6 +574,11 @@ static int runXlmake(int argc, const char *argv[]) {
 		ErrorReporter err(nullptr);
 		err.callback = xlmakeLog;
 		err.filename = StringView("xlmake");
+
+		// GNU make's standard predefined variables (origin "default"): toolchain names, recipe
+		// templates, $(MAKE)/$(CURDIR)/$(MAKECMDGOALS), etc. Set before the command-line
+		// assignments and the makefile read so both can override them, matching GNU.
+		setupStandardVariables(mk, rootView, StringView(argv[0]), cfg.targets, err);
 
 		// Apply command-line variable assignments before reading the makefile, with
 		// Origin::CommandLine so a plain makefile assignment cannot override them (an
@@ -472,6 +620,11 @@ static int runXlmake(int argc, const char *argv[]) {
 			bc.keepGoing = cfg.keepGoing;
 			bc.dryRun = cfg.dryRun;
 			bc.silent = cfg.silent;
+			bc.printDatabase = cfg.printDatabase;
+			bc.question = cfg.question;
+			bc.alwaysMake = cfg.alwaysMake;
+			bc.printDirectory = cfg.printDirectory;
+			bc.rootDir = rootView;
 			result = xlmake::runBuild(mk, bc, err);
 		}
 	}, pool);

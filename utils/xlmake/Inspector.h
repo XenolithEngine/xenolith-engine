@@ -50,6 +50,13 @@ struct InspectConfig {
 int runInspect(Makefile *mk, const InspectConfig &cfg, const Vector<String> &makefilePaths,
 		ErrorReporter &err);
 
+// Emit a GNU `make --print-data-base`-compatible dump of the loaded makefile: a `# Variables`
+// section and a `# Files` target list (with `#  Phony target (prerequisite of .PHONY).`
+// annotations), framed by a final `# Finished Make data base` line. All markers are fixed English
+// byte-strings (GNU make localizes them, which would break parsers). This is the subset the VSCode
+// Makefile Tools extension parses to enumerate targets.
+void printDatabase(Makefile *mk, ErrorReporter &err);
+
 } // namespace xlmake
 
 #endif /* UTILS_XLMAKE_INSPECTOR_H_ */
