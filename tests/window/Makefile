@@ -63,7 +63,7 @@ LOCAL_ANDROID_PLATFORM := android-24 # android platform version
 include $(STAPPLER_BUILD_ROOT)/universal.mk
 
 all:
-	$(MAKE) -C $(LOCAL_ROOT)/client STAPPLER_TARGET=$(STAPPLER_TARGET)
+	$(MAKE) -C $(LOCAL_ROOT)/client STAPPLER_TARGET=$(STAPPLER_TARGET) all
 
 prepare-android:
 	@mkdir -p $(LOCAL_ROOT)/proj.android/app/assets

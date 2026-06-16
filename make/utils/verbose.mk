@@ -25,13 +25,21 @@ else
 sp_counter_text = 
 endif
 
+ifdef XLMAKE_VERSION
+verbose_log =
+target_log =
+VERBOSE_GUARD := 
+else
 ifdef verbose
 verbose_log =
+target_log = @ $(GLOBAL_ECHO) $1
 VERBOSE_GUARD := 
 else
 verbose_log = @ $(GLOBAL_ECHO) $1
+target_log = @ $(GLOBAL_ECHO) $1
 VERBOSE_GUARD := @
 endif
+endif # XLMAKE_VERSION
 
 GLOBAL_QUIET_CC = $(call verbose_log,"$(call sp_counter_text) [$(notdir $(GLOBAL_CC))] $(notdir $@)")
 GLOBAL_QUIET_CPP = $(call verbose_log,"$(call sp_counter_text) [$(notdir $(GLOBAL_CXX))] $(notdir $@)")
@@ -57,6 +65,7 @@ $(eval BUILD_LIB_COUNTER=$(BUILD_LIB_COUNTER) 1)
 $(1):BUILD_CURRENT_COUNTER:=$(words $(BUILD_LIB_COUNTER))
 $(1):BUILD_FILES_COUNTER := $(3)
 $(1):BUILD_TARGET := $(2)
+$(1):.TARGET_NAME := [$(2)] $(notdir $(1))
 endef
 
 define BUILD_EXEC_template =
@@ -64,4 +73,5 @@ $(eval BUILD_EXEC_COUNTER=$(BUILD_EXEC_COUNTER) 1)
 $(1):BUILD_CURRENT_COUNTER:=$(words $(BUILD_EXEC_COUNTER))
 $(1):BUILD_FILES_COUNTER := $(3)
 $(1):BUILD_TARGET := $(2)
+$(1):.TARGET_NAME := [$(2)] $(notdir $(1))
 endef

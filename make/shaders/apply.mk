@@ -38,6 +38,7 @@ $(2) : $(1) $$(LOCAL_MAKEFILE)
 	@$$(call rule_mkdir,$$(dir $$@))
 	$$(GLOBAL_QUIET_GLSLC)
 	$$(call sp_compile_glsl_header,$(2),$(1),$(LOCAL_SHADERS_RULES))
+$(2):.TARGET_NAME := [$(notdir $(GLSLC))] $(notdir $(1))
 endef
 
 $(foreach FILE,$(BUILD_SHADERS_SRCS_FILES) $(TOOLKIT_SHADERS_SRCS_FILES),\

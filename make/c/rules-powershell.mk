@@ -45,6 +45,7 @@ $(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) $(BUILD_AP
 		", s_appconfigSharedSymbols, sizeof(s_appconfigSharedSymbols) / sizeof(SharedSymbol));`n`n}`n"\
 		| Add-Content -NoNewline -Encoding utf8 $(1)
 	@$(ECHO) "[Gen] $(1)"
+$(1):.TARGET_NAME := [codegen] $(notdir $(1))
 endef
 
 # $(1) - target path
@@ -83,6 +84,7 @@ $(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 	$(foreach var,$(5),$(call BUILD_write_config_string,$(1),$(firstword $(subst =, ,$(var))),$(lastword $(subst =, ,$(var)))))
 	@"}`n", "#endif // __cplusplus`n", "#endif // STAPPLER_CONFIG_$(2)_H_`n" | Add-Content -NoNewline -Encoding utf8 $(1)
 	@$(ECHO) "[Gen] $(1)"
+$(1):.TARGET_NAME := [codegen] $(notdir $(1))
 endef
 
 # $(1) - target path
@@ -94,5 +96,6 @@ $(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) $(2)
 		Set-Content  -Encoding utf8 $(1) "[";\
 		Get-Content $(addsuffix *.json,$(sort $(dir $(2)))) | Add-Content  -Encoding utf8 $(1); \
 		Add-Content  -Encoding utf8 $(1) "]";
-	@echo "[Compilation database] $(1)"
+	$(call target_log,"[Compilation database] $(1)")
+$(1):.TARGET_NAME := [Compilation database]
 endef

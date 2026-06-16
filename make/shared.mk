@@ -187,6 +187,7 @@ BUILD_INCLUDE_FILES += $(2)
 $(2): $(1)
 	@$(GLOBAL_MKDIR) $(dir $(2))
 	$(call rule_cp,$(1),$(2))
+$(2):.TARGET_NAME := [codegen] $(notdir $(2))
 endef # make_rule_include
 
 

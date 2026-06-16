@@ -24,7 +24,7 @@ sp_compile_glsl = $(VERBOSE_GUARD) $(GLSLC) \
 	$(BUILD_SHADERS_FLAGS) $(3) -V --target-env vulkan1.1 --target-env vulkan1.0 -o $(1) $(2) -e $(notdir $(basename $(1))) --sep main 
 
 sp_compile_glsl_header = $(VERBOSE_GUARD) $(GLSLC) \
-	$(BUILD_SHADERS_FLAGS) $(3) -V --target-env vulkan1.1 --target-env vulkan1.0 \
+	$(BUILD_SHADERS_FLAGS) --quiet $(3) -V --target-env vulkan1.1 --target-env vulkan1.0 \
 	--vn $(subst .,_,$(notdir $(basename $(1)))) -o $(1) $(2) -e $(notdir $(basename $(1))) --sep main 
 
 # $(1) - dirs where to find shaders
