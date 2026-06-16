@@ -29,6 +29,9 @@ THE SOFTWARE.
 #include "Executor.h"
 #include <sys/utsname.h>
 #include <dlfcn.h>
+#include <stdlib.h> // getenv / setenv for MAKELEVEL recursion plumbing
+#include <unistd.h> // chdir into the working directory (-C), so recursive $(MAKE) -C resolves right
+#include <stdio.h> // setvbuf: line-buffer stdout so a sub-make's output streams to its parent live
 
 using namespace sp;
 
@@ -85,7 +88,10 @@ struct Config {
 	bool question = false; // -q / --question
 	bool alwaysMake = false; // -B / --always-make
 	bool printDirectory = false; // -w / --print-directory
+	bool noPrintDirectory = false; // --no-print-directory (overrides -w and sub-make auto-enable)
 };
+
+static uint32_t s_makeLevel = 0;
 
 static void printUsage() {
 	sprt::cout << "xlmake - inspect or build a GNU-make-style makefile\n"
@@ -133,10 +139,11 @@ static void printUsage() {
 }
 
 static void xlmakeLog(void *, log::LogType type, StringView msg) {
+	String label = s_makeLevel > 0 ? toString("xlmake[", s_makeLevel, "]") : toString("xlmake");
 	StringView tag = (type == log::LogType::Error) ? StringView("error")
 			: (type == log::LogType::Warn)		   ? StringView("warning")
 												   : StringView("info");
-	sprt::cerr << "xlmake: " << tag << ": " << msg << "\n";
+	sprt::cerr << label << ": " << tag << ": " << msg << "\n";
 }
 
 // Recognize a GNU-make-style command-line assignment "NAME<op>VALUE" (op: =, :=, ::=,
@@ -310,7 +317,7 @@ static bool parseArgs(int argc, const char *argv[], Config &cfg) {
 			} else if (isBuild && name == "print-directory") {
 				cfg.printDirectory = true;
 			} else if (isBuild && name == "no-print-directory") {
-				cfg.printDirectory = false;
+				cfg.noPrintDirectory = true;
 			} else if (isBuild && (name == "no-builtin-rules" || name == "no-builtin-variables")) {
 				// accepted no-op: xlmake has no builtin rule/variable database
 			} else {
@@ -482,7 +489,41 @@ static String resolvePath(StringView root, StringView file) {
 	return filepath::reconstructPath<PInterface>(filepath::merge<PInterface>(root, file));
 }
 
+// Format a small unsigned into `buf` (needs >= 12 bytes) and return a null-terminated view into it
+// — usable both as a StringView (size) and as a C string (setenv needs the trailing NUL).
+static StringView formatUint(uint32_t v, char *buf, size_t cap) {
+	size_t i = cap;
+	buf[--i] = '\0';
+	if (v == 0) {
+		buf[--i] = '0';
+	} else {
+		while (v && i) {
+			buf[--i] = char('0' + (v % 10));
+			v /= 10;
+		}
+	}
+	return StringView(buf + i);
+}
+
+// Current recursion depth, read from the environment like GNU make's MAKELEVEL (absent => 0; a
+// non-numeric value is treated as 0, matching make's tolerant parse).
+static uint32_t readMakeLevel() {
+	const char *env = ::getenv("MAKELEVEL");
+	if (!env) {
+		return 0;
+	}
+	uint32_t v = 0;
+	for (const char *p = env; *p >= '0' && *p <= '9'; ++p) { v = v * 10 + uint32_t(*p - '0'); }
+	return v;
+}
+
 static int runXlmake(int argc, const char *argv[]) {
+	// Line-buffer stdout. A sub-make's stdout is a pipe to its parent, where libc would otherwise
+	// fully buffer it and only flush at exit — defeating the parent's live, per-line streaming of
+	// recursive output. Line buffering flushes each completed line immediately (a no-op change for a
+	// terminal, which is already line-buffered).
+	::setvbuf(stdout, nullptr, _IOLBF, BUFSIZ);
+
 	Config cfg;
 	if (!parseArgs(argc, argv, cfg)) {
 		printUsage();
@@ -505,6 +546,15 @@ static int runXlmake(int argc, const char *argv[]) {
 			return;
 		}
 		StringView rootView(rootDir);
+
+		// Match GNU make's -C: actually change into the working directory, so recipes (and any
+		// nested `$(MAKE) -C ...` they invoke) run there and resolve relative paths correctly.
+		// Without -C, rootDir is the launch directory and this is a no-op.
+		if (::chdir(rootDir.data()) != 0) {
+			sprt::cerr << "xlmake: cannot change directory to: " << rootView << "\n";
+			result = 1;
+			return;
+		}
 
 		// resolve the makefile(s) to read
 		Vector<String> makefilePaths;
@@ -538,6 +588,22 @@ static int runXlmake(int argc, const char *argv[]) {
 		auto mk = Rc<MakefileRef>::create(SharedRefMode::Allocator);
 
 		mk->assignSimpleVariable("XLMAKE_VERSION", Origin::Default, XLMAKE_VERSION);
+
+		// Recursive-make depth (GNU MAKELEVEL). Read our level from the environment, expose it to
+		// the makefile (origin "environment", so a makefile assignment can still override it), and
+		// export level+1 to every recipe child via the process environment — so any `$(MAKE)` the
+		// recipes invoke starts one level deeper, exactly like GNU make. (Children are exec'd with
+		// our environ, so setenv() is the propagation channel.)
+		uint32_t makeLevel = readMakeLevel();
+
+		s_makeLevel = makeLevel;
+
+		char curLevelBuf[12];
+		char nextLevelBuf[12];
+		mk->assignSimpleVariable("MAKELEVEL", Origin::Environment,
+				formatUint(makeLevel, curLevelBuf, sizeof(curLevelBuf)));
+		::setenv("MAKELEVEL", formatUint(makeLevel + 1, nextLevelBuf, sizeof(nextLevelBuf)).data(),
+				1);
 
 		utsname unamebuf;
 		uname(&unamebuf);
@@ -623,7 +689,10 @@ static int runXlmake(int argc, const char *argv[]) {
 			bc.printDatabase = cfg.printDatabase;
 			bc.question = cfg.question;
 			bc.alwaysMake = cfg.alwaysMake;
-			bc.printDirectory = cfg.printDirectory;
+			bc.makeLevel = makeLevel;
+			// GNU make prints Entering/Leaving directory for a sub-make (MAKELEVEL > 0) or when -w
+			// is given, unless --no-print-directory was passed.
+			bc.printDirectory = !cfg.noPrintDirectory && (cfg.printDirectory || makeLevel > 0);
 			bc.rootDir = rootView;
 			result = xlmake::runBuild(mk, bc, err);
 		}

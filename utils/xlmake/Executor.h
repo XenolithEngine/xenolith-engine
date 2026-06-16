@@ -47,8 +47,9 @@ struct BuildConfig {
 	bool printDatabase = false; // -p / --print-data-base: dump the makefile database (GNU -p)
 	bool question = false; // -q / --question: run nothing; exit 1 if any target is out of date
 	bool alwaysMake = false; // -B / --always-make: treat every target as out of date
-	bool printDirectory = false; // -w / --print-directory: emit Entering/Leaving directory lines
-	StringView rootDir; // absolute working directory (after -C), for the -w directory lines
+	bool printDirectory = false; // emit Entering/Leaving directory lines (effective: -w, or sub-make)
+	uint32_t makeLevel = 0; // recursion depth (GNU MAKELEVEL); shown as xlmake[N] in those lines
+	StringView rootDir; // absolute working directory (after -C), for the directory lines
 };
 
 // Build the requested goals from an already-loaded makefile, running recipes as child processes

@@ -60,6 +60,7 @@ struct Command {
 	bool silent = false;
 	bool ignoreErr = false;
 	bool always = false;
+	bool recursive = false; // a recursive $(MAKE) invocation: stream its output live, don't buffer
 };
 
 struct NodeState;
@@ -94,6 +95,7 @@ struct Job {
 	JobString name; // display name for the progress counter (.TARGET_NAME, else the target name)
 	bool hadOutput = false; // the recipe wrote to stdout/stderr (decides non-verbose suppression)
 	bool failed = false; // a command failed: always show the block regardless of verbosity
+	bool headerDone = false; // streaming started: counter + buffered prefix already written live
 };
 
 class Builder {
@@ -110,12 +112,23 @@ public:
 		// Honour the makefile's `verbose` flag (GNU `ifdef verbose`: true when defined to a
 		// non-empty value). When off, a target that ran cleanly with no output of its own collapses
 		// to just its counter line — its recipe echo and (empty) output are suppressed.
-		_mk->getVariableValue(StringView("verbose"),
-				[&](StringView v) {
+		_mk->getVariableValue(StringView("verbose"), [&](StringView v) {
 			if (!v.empty()) {
 				_verbose = true;
 			}
 		}, _err);
+
+		// $(MAKE) expands to argv[0]; a recipe line whose first token is this binary is a recursive
+		// sub-make whose output we stream live rather than buffer.
+		_mk->getVariableValue(StringView("MAKE"),
+				[&](StringView v) { _makeCommand.append(v.data(), v.size()); }, _err);
+		StringView mc(_makeCommand.data(), _makeCommand.size());
+		mc.trimChars<StringView::WhiteSpace>();
+		if (mc.size() != _makeCommand.size()) {
+			JobString trimmed;
+			trimmed.assign(mc.data(), mc.size());
+			_makeCommand = sp::move(trimmed);
+		}
 	}
 
 	BuildResult buildGoal(Target *goal);
@@ -129,7 +142,10 @@ private:
 	void onCommandDone(Job *job, int code);
 	void finishNode(NodeState *st, bool success, bool rebuilt);
 	void flush(Job *job);
+	void emitCounter(Job *job); // print one "[depth][N/M] name" progress line, advancing _done
+	void beginStream(Job *job); // start live streaming: emit counter + buffered prefix once
 	JobString displayName(BuildNode *bn); // .TARGET_NAME (target scope) or the target's own name
+	bool isRecursiveCommand(StringView text) const; // expanded recipe line invokes $(MAKE) directly
 
 	Makefile *_mk = nullptr;
 	const BuildConfig &_cfg;
@@ -150,6 +166,8 @@ private:
 
 	bool _counter = false; // emit the ninja-style [N/M] progress counter (off for dry-run/-s/-p)
 	bool _verbose = false; // makefile `verbose` flag: when off, quiet targets show only the counter
+	JobString
+			_makeCommand; // expanded $(MAKE) (== argv[0]); a recipe starting with it is a sub-make
 	uint32_t _total = 0; // M: recipe-running nodes for the current goal (computed before dispatch)
 	uint32_t _done = 0; // N: recipes completed so far (incremented at flush, in completion order)
 };
@@ -283,6 +301,7 @@ void Builder::dispatchNode(NodeState *st) {
 		c.silent = silent;
 		c.ignoreErr = ignoreErr;
 		c.always = always;
+		c.recursive = isRecursiveCommand(line);
 		job->commands.emplace_back(sp::move(c));
 	}, _err);
 
@@ -315,13 +334,32 @@ void Builder::spawn(Job *job) {
 		return;
 	}
 
+	// A recursive $(MAKE) emits a whole sub-build's worth of output over its lifetime. Holding it in
+	// the job buffer until this node completes (the default) hides the sub-build's live progress, so
+	// stream it instead: emit this node's header (counter + the command echo) up front, then write
+	// each complete line as it arrives. Writing only whole lines keeps the stream from tearing
+	// against other concurrent nodes' atomic flushes; the trailing partial line is flushed on exit.
+	bool streaming = cmd.recursive;
+	if (streaming) {
+		beginStream(job);
+	}
+
 	// Launch the command through the dispatch reactor's process API. Output streams into the job's
 	// buffer (flushed atomically when the target finishes); the exit completion drives onCommandDone.
 	// The main thread never touches fds, fork or waitpid — the reactor owns all of that.
-	job->proc = _looper->spawnProcess(cmd.text, [job](StringView bytes) {
+	job->proc = _looper->spawnProcess(cmd.text, [job, streaming](StringView bytes) {
+		if (bytes.empty()) {
+			return;
+		}
+		job->hadOutput = true;
 		job->output.append(bytes.data(), bytes.size());
-		if (!bytes.empty()) {
-			job->hadOutput = true;
+		if (streaming) {
+			// Flush every complete line now; keep only the trailing partial line buffered.
+			size_t nl = job->output.rfind('\n');
+			if (nl != JobString::npos) {
+				sprt::cout << StringView(job->output.data(), nl + 1);
+				job->output.erase(0, nl + 1);
+			}
 		}
 	}, [this, job](int code, sprt::Status st) {
 		onCommandDone(job, isSuccessful(st) ? code : -1);
@@ -374,9 +412,18 @@ void Builder::flush(Job *job) {
 	// The ninja-style counter heads the block: a plain line, no carriage-return rewriting. _done
 	// advances in completion order (flush is called once per built node), so the numbers are
 	// monotonic and reach _total exactly.
+	if (job->headerDone) {
+		// A recursive sub-make already streamed its counter and every complete line; flush only the
+		// trailing partial line (plus anything buffered by later, non-recursive commands of the
+		// recipe). No counter here — it was emitted at stream start.
+		if (!job->output.empty()) {
+			sprt::cout << job->output;
+			job->output.clear();
+		}
+		return;
+	}
 	if (_counter) {
-		++_done;
-		sprt::cout << "[" << _done << "/" << _total << "] " << job->name << "\n";
+		emitCounter(job);
 	}
 	// Non-verbose default: a target that ran cleanly with no output of its own collapses to just
 	// the counter line above — its recipe echo ("rules") and (empty) output are suppressed. The
@@ -387,6 +434,53 @@ void Builder::flush(Job *job) {
 		sprt::cout << job->output;
 	}
 	job->output.clear();
+}
+
+// One progress line. For a recursive invocation (sub-make), the recursion depth tags the counter
+// — the same [N] depth the Entering/Leaving directory lines use (xlmake[N]:) — so the interleaved
+// counters of different levels stay distinguishable.
+void Builder::emitCounter(Job *job) {
+	++_done;
+	if (_cfg.makeLevel > 0) {
+		sprt::cout << "[" << _cfg.makeLevel << "][" << _done << "/" << _total << "] " << job->name
+				   << "\n";
+	} else {
+		sprt::cout << "[" << _done << "/" << _total << "] " << job->name << "\n";
+	}
+}
+
+// Begin live streaming for a job: emit its counter (once) and write out the buffered prefix (the
+// command echo and anything captured before streaming began), so they head the live output.
+void Builder::beginStream(Job *job) {
+	if (!job->headerDone) {
+		job->headerDone = true;
+		if (_counter) {
+			emitCounter(job);
+		}
+	}
+	if (!job->output.empty()) {
+		sprt::cout << job->output;
+		job->output.clear();
+	}
+}
+
+// True if an expanded recipe line invokes $(MAKE) as its leading command — i.e. its first token is
+// the make binary (== argv[0]). This catches the dominant `$(MAKE) ...` / `+$(MAKE) ...` forms (the
+// `+` is already stripped); a $(MAKE) buried in a compound command stays buffered, which is safe.
+bool Builder::isRecursiveCommand(StringView text) const {
+	if (_makeCommand.empty()) {
+		return false;
+	}
+	while (!text.empty() && (text[0] == ' ' || text[0] == '\t')) { text = text.sub(1); }
+	StringView mc(_makeCommand.data(), _makeCommand.size());
+	if (text.size() < mc.size() || StringView(text.data(), mc.size()) != mc) {
+		return false;
+	}
+	if (text.size() == mc.size()) {
+		return true;
+	}
+	char after = text[mc.size()];
+	return after == ' ' || after == '\t';
 }
 
 // The progress-line label: the target's `.TARGET_NAME` (resolved in the target's own scope, so a
@@ -466,13 +560,16 @@ BuildResult Builder::buildGoal(Target *goal) {
 
 int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 	// --print-directory: GNU make brackets the whole build with these lines; tooling uses them to
-	// anchor relative paths in the dry-run output.
+	// anchor relative paths in the dry-run output. A sub-make (MAKELEVEL > 0) tags the program name
+	// with its depth — `xlmake[1]:` — exactly like GNU make's `make[1]:`; the top level is plain
+	// `xlmake:`.
+	auto label = cfg.makeLevel > 0 ? toString("xlmake[", cfg.makeLevel, "]") : toString("xlmake");
 	if (cfg.printDirectory) {
-		sprt::cout << "xlmake: Entering directory '" << cfg.rootDir << "'\n";
+		sprt::cout << label << ": Entering directory '" << cfg.rootDir << "'\n";
 	}
 	auto finish = [&](int rc) {
 		if (cfg.printDirectory) {
-			sprt::cout << "xlmake: Leaving directory '" << cfg.rootDir << "'\n";
+			sprt::cout << label << ": Leaving directory '" << cfg.rootDir << "'\n";
 		}
 		return rc;
 	};
@@ -559,7 +656,13 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 		case BuildResult::Built: break;
 		case BuildResult::UpToDate:
 			if (!cfg.dryRun) {
-				sprt::cout << "xlmake: '" << goal->name << "' is up to date\n";
+				if (cfg.makeLevel > 0) {
+					sprt::cout << "xlmake[" << cfg.makeLevel << "]: " << goal->name
+							   << "' is up to date\n";
+				} else {
+
+					sprt::cout << "xlmake: " << goal->name << "' is up to date\n";
+				}
 			}
 			break;
 		case BuildResult::Failed: rc = 2; break;

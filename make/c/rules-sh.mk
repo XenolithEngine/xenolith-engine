@@ -50,6 +50,7 @@ $(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) $(BUILD_AP
 	@echo "" >> $(1)
 	@echo "}" >> $(1)
 	@echo "" >> $(1)
+$(1):.TARGET_NAME := [codegen] $(notdir $(1))
 endef
 
 # $(1) - target path
@@ -95,6 +96,7 @@ $(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 	@echo "" >> $(1)
 	@echo "#endif // __cplusplus" >> $(1)
 	@echo "#endif // STAPPLER_CONFIG_$(2)_H_" >> $(1)
+$(1):.TARGET_NAME := [codegen] $(notdir $(1))
 endef
 
 
@@ -110,5 +112,6 @@ $(1): $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS) $(2)
 	@echo "[" > $(1)
 	$(foreach file,$(2),$(call BUILD_write_cdb_entry,$(1),$(file)))
 	@echo "]" >> $(1)
-	@echo "[Compilation database] $(1)"
+	$(call target_log,"[Compilation database] $(1)")
+$(1):.TARGET_NAME := [Compilation database]
 endef
