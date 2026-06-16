@@ -139,6 +139,31 @@ public:
 	virtual bool reset(TimerInfo &&) = 0;
 };
 
+// Handle representing a spawned child process (see Looper::spawnProcess).
+// The handle's completion fires once, when the process exits, with the exit
+// code in the completion `value`. getNativeHandle() returns the OS exit-wait
+// primitive (pidfd on Linux, process HANDLE on Windows, -1 where the pid is
+// carried internally). A separate internal reader sub-handle delivers the
+// process output to the ProcessInfo::reader callback.
+class SPRT_API ProcessHandle : public PollHandle {
+public:
+	virtual ~ProcessHandle() = default;
+
+	// Exit code of the finished process, valid once the handle completes
+	// (getStatus() == Status::Done). 128 + signal number if the process was
+	// terminated by a signal; -1 while still running or if unknown.
+	int getExitCode() const { return _exitCode; }
+
+	// true while the process is still running (handle has not completed)
+	bool isRunning() const { return getStatus() == Status::Ok; }
+
+	// Process handles are not re-armable
+	virtual bool reset(PollFlags) override { return false; }
+
+protected:
+	int _exitCode = -1;
+};
+
 class SPRT_API ThreadHandle : public Handle, public PerformInterface {
 public:
 	virtual ~ThreadHandle();

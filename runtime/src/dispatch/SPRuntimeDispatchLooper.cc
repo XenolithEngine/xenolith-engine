@@ -193,6 +193,15 @@ Rc<PollHandle> Looper::listenPollableHandle(NativeHandle fd, PollFlags flags,
 	return _data->queue->listenPollableHandle(fd, flags, sprt::move(cb), ref);
 }
 
+Rc<ProcessHandle> Looper::spawnProcess(ProcessInfo &&info, Ref *ref) {
+	return _data->queue->spawnProcess(move(info), ref);
+}
+
+Rc<ProcessHandle> Looper::spawnProcess(StringView command, Function<void(StringView)> &&reader,
+		Function<void(int exitCode, Status)> &&onExit, Ref *ref) {
+	return _data->queue->spawnProcess(command, sprt::move(reader), sprt::move(onExit), ref);
+}
+
 Status Looper::performOnThread(Rc<Task> &&task, bool immediate) {
 	bool isOnThread = isOnThisThread();
 	if (immediate && isOnThread) {

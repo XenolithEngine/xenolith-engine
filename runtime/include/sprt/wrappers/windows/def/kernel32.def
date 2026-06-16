@@ -178,3 +178,6 @@ EXPORTS
 	DeleteTimerQueueTimer
 	DeleteTimerQueue
 	DeleteTimerQueueEx
+	RegisterWaitForSingleObject
+	UnregisterWaitEx
+	CreateNamedPipeW
