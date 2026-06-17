@@ -605,6 +605,36 @@ static int runXlmake(int argc, const char *argv[]) {
 		::setenv("MAKELEVEL", formatUint(makeLevel + 1, nextLevelBuf, sizeof(nextLevelBuf)).data(),
 				1);
 
+		// Diagnostic colour. clang/gcc emit ANSI colour only when their stdout/stderr is a TTY, but
+		// every recipe's output is captured through a pipe (so a target's block stays contiguous) —
+		// the compiler therefore sees a pipe and goes monochrome. Decide once whether the build should
+		// force colour and let the makefiles act on it: $(XLMAKE_COLOR) gates -fdiagnostics-color=always
+		// (understood by both gcc and clang). At the top level the choice follows xlmake's OWN stdout;
+		// a sub-make inherits the parent's decision from the environment — its stdout is the pipe back
+		// to the parent, where isatty() would wrongly answer "no". Expose it to this makefile (origin
+		// "environment", so a makefile or command line may still override) and re-export it so any
+		// recursive $(MAKE) inherits the same choice. CLICOLOR_FORCE is exported alongside as a courtesy
+		// to the many CLICOLOR-aware tools (ls, grep, cmake, ...) a recipe may invoke; the compiler
+		// ignores it, which is exactly why $(XLMAKE_COLOR) drives the compiler flag instead.
+		bool color;
+		if (const char *colorEnv = ::getenv("XLMAKE_COLOR")) {
+			color = (colorEnv[0] == '1');
+		} else {
+			color = ::isatty(STDOUT_FILENO) != 0
+					|| sprt::hasFlag(sprt::oslog::LogFeatures::acquire().features,
+							sprt::oslog::LogFeatures::AnsiCompatible);
+		}
+		mk->assignSimpleVariable("XLMAKE_COLOR", Origin::Environment,
+				color ? StringView("1") : StringView("0"));
+		::setenv("XLMAKE_COLOR", color ? "1" : "0", 1);
+		if (color) {
+			::setenv("CLICOLOR_FORCE", "1", 1);
+		}
+
+		if (auto h = ::getenv("HOME")) {
+			mk->assignSimpleVariable("HOME", Origin::Environment, StringView(h));
+		}
+
 		utsname unamebuf;
 		uname(&unamebuf);
 
