@@ -11,6 +11,11 @@ typedef __SPRT_ID(uint32_t) __SPRT_ID(wctype_t);
 typedef unsigned long __SPRT_ID(wctype_t);
 #endif
 
+// Darwin's wctrans_t is a plain int (glibc uses const int *); the wctype.h
+// bridge forwards SPRT handles to the platform libc, so the ABI must match.
+typedef int __SPRT_ID(wctrans_t);
+#define __SPRT_WCTRANS_T_DEFINED 1
+
 typedef union {
 	char __mbstate8[128];
 	long long _mbstateL; /* for alignment */

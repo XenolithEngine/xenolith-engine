@@ -66,6 +66,7 @@ MODULE_RUNTIME_DEPENDS_ON := runtime_libc_wrapper runtime_core
 
 MODULE_RUNTIME_PRIVATE_CFLAGS := $(MODULE_RUNTIME_COMMON_CFLAGS) -nostdinc++ -Wno-unused-command-line-argument
 MODULE_RUNTIME_PRIVATE_CXXFLAGS := $(MODULE_RUNTIME_COMMON_CFLAGS) -nostdinc++ -Wno-unused-command-line-argument
+MODULE_RUNTIME_GENERAL_LDFLAGS :=
 
 ifeq ($(TARGET_SYSTEM),Linux)
 MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc

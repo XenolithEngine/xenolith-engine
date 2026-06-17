@@ -28,7 +28,14 @@ THE SOFTWARE.
 #include <sprt/c/cross/__sprt_mbstate.h>
 #include <sprt/c/cross/__sprt_locale.h>
 
-typedef __SPRT_ID(wchar_t) __SPRT_ID(wctrans_t);
+// Default (glibc / libc_impl) representation: const __int32_t *. wctrans()
+// returns an opaque pointer-based handle that towctrans() interprets. Sharing the
+// platform ABI lets a hosted build forward straight to the platform libc; a
+// platform whose libc uses a different wctrans_t (e.g. macOS, where it is a plain
+// int) overrides this in its cross/<platform>/mbstate.h.
+#ifndef __SPRT_WCTRANS_T_DEFINED
+typedef const int *__SPRT_ID(wctrans_t);
+#endif
 
 __SPRT_BEGIN_DECL
 

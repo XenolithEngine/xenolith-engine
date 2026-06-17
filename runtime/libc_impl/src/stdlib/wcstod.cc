@@ -3,6 +3,7 @@
 #include <wchar.h>
 #include <wctype.h>
 #include "../../include/__impl_file.h"
+#include "../../include/__impl_libc.h"
 
 /* This read function heavily cheats. It knows:
  *  (1) len will always be 1
@@ -38,7 +39,9 @@ static long double wcstox(const wchar_t *s, wchar_t **p, int prec) {
 	while (iswspace(*t)) { t++; }
 	f.cookie = (void *)t;
 	shlim(&f, 0);
-	long double y = __floatscan(&f, prec, 1);
+	// Honour the current locale's decimal point (non-ASCII radixes are mapped to
+	// '@' by the reader above, so only an ASCII radix reaches the scanner).
+	long double y = __floatscan(&f, prec, 1, sprt::__get_effective_numeric_radix());
 	if (p) {
 		size_t cnt = shcnt(&f);
 		*p = cnt ? t + cnt : (wchar_t *)s;

@@ -44,6 +44,9 @@ android-export: $(BUILD_SHADERS_EMBEDDED) $(TOOLKIT_SHADERS_EMBEDDED) \
 all: android-export $(BUILD_COMPILATION_DATABASE) $(BUILD_SHADERS_EMBEDDED) $(TOOLKIT_SHADERS_EMBEDDED)
 	$(NDK)/ndk-build $(BUILD_ANDROID_ARGS) $(LOCAL_ANDROID_TARGET) --no-print-directory
 
+# Use line-buffer for xlmake
+all:.TARGET_BUFFER := line
+
 clean_local:
 	$(call rule_rm,$(BUILD_С_OUTDIR))
 	$(call rule_rm,$(BUILD_SHADERS_OUTDIR))

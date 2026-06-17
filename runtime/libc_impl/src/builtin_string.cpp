@@ -23,6 +23,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_def.h>
 #include "ctype.h"
 #include "string.h"
+#include "locale.h"
 
 #if SPRT_WINDOWS
 #include "windows/string.cc"
@@ -41,6 +42,13 @@ __SPRT_C_FUNC int toupper(int c) __SPRT_NOEXCEPT {
 	}
 	return c;
 }
+
+// Locale-aware case mapping is not meaningful for a single byte of a UTF-8
+// stream, so the _l variants ignore the locale and defer to the plain ASCII
+// mapping above — matching the rest of the ctype _l family (isalpha_l, etc.).
+__SPRT_C_FUNC int tolower_l(int c, locale_t) __SPRT_NOEXCEPT { return tolower(c); }
+
+__SPRT_C_FUNC int toupper_l(int c, locale_t) __SPRT_NOEXCEPT { return toupper(c); }
 
 __SPRT_C_FUNC int __SPRT_ID(strcmp_impl)(const char *l, const char *r) {
 	return sprt::strcmp(l, r);

@@ -41,6 +41,17 @@ THE SOFTWARE.
 #include <string.h>
 #include <ctype.h>
 
+#if __STDC_HOSTED__ == 1
+// POSIX places strcasecmp/strncasecmp in <strings.h>, not <string.h> (notably
+// Darwin, which does not surface them from <string.h>).
+#include <strings.h>
+#endif
+
+#if SPRT_MACOS
+// Darwin declares the locale-aware strcasecmp_l/strncasecmp_l in <xlocale.h>.
+#include <xlocale.h>
+#endif
+
 #if SPRT_MACOS
 // Missed in string.h public header, but not private
 __SPRT_C_FUNC __SPRT_ID(size_t) strnlen(const char *__SPRT_RESTRICT str, __SPRT_ID(size_t) n);
@@ -98,6 +109,8 @@ __SPRT_C_FUNC char *__SPRT_ID(
 	return ::strncat(dest, src, size);
 }
 
+#if __STDC_HOSTED__ == 1
+
 __SPRT_C_FUNC int __SPRT_ID(strcoll_impl)(const char *str, const char *loc) {
 	return ::strcoll(str, loc);
 }
@@ -106,6 +119,26 @@ __SPRT_C_FUNC size_t __SPRT_ID(
 		strxfrm_impl)(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src, size_t size) {
 	return ::strxfrm(dest, src, size);
 }
+
+#else
+
+// Freestanding: the public strcoll()/strxfrm() inlines redirect right back into
+// these _impl shims (via __sprt_strcoll/__sprt_strxfrm), so calling ::strcoll /
+// ::strxfrm here would recurse infinitely. Route to the libc_impl entry points
+// by their internal names instead.
+extern "C" int __strcoll(const char *, const char *);
+extern "C" size_t __strxfrm(char *__SPRT_RESTRICT, const char *__SPRT_RESTRICT, size_t);
+
+__SPRT_C_FUNC int __SPRT_ID(strcoll_impl)(const char *str, const char *loc) {
+	return __strcoll(str, loc);
+}
+
+__SPRT_C_FUNC size_t __SPRT_ID(
+		strxfrm_impl)(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src, size_t size) {
+	return __strxfrm(dest, src, size);
+}
+
+#endif
 
 
 __SPRT_C_FUNC const char *__SPRT_ID(strchr_impl)(const char *str, int c) {
@@ -140,6 +173,20 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(strlen_impl)(const char *__SPRT_RESTRI
 __SPRT_C_FUNC __SPRT_ID(size_t)
 		__SPRT_ID(strnlen_impl)(const char *__SPRT_RESTRICT str, __SPRT_ID(size_t) n) {
 	return ::strnlen(str, n);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(strcasecmp)(const char *l, const char *r) { return ::strcasecmp(l, r); }
+__SPRT_C_FUNC int __SPRT_ID(strncasecmp)(const char *l, const char *r, __SPRT_ID(rsize_t) n) {
+	return ::strncasecmp(l, r, n);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(strcasecmp_l)(const char *l, const char *r, __SPRT_ID(locale_t) loc) {
+	return ::strcasecmp_l(l, r, loc);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(strncasecmp_l)(const char *l, const char *r, __SPRT_ID(rsize_t) n,
+		__SPRT_ID(locale_t) loc) {
+	return ::strncasecmp_l(l, r, n, loc);
 }
 
 __SPRT_C_FUNC char *__SPRT_ID(strtok_r)(char *s, const char *sep, char **p) {

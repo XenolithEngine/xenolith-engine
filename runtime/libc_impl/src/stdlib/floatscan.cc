@@ -57,7 +57,7 @@ static long long scanexp(FILE *f, int pok) {
 }
 
 
-static long double decfloat(FILE *f, int c, int bits, int emin, int sign, int pok) {
+static long double decfloat(FILE *f, int c, int bits, int emin, int sign, int pok, int radix) {
 	uint32_t x[KMAX];
 	static const uint32_t th[] = {LD_B1B_MAX};
 	int i, j, k, a, z;
@@ -79,14 +79,14 @@ static long double decfloat(FILE *f, int c, int bits, int emin, int sign, int po
 
 	/* Don't let leading zeros consume buffer space */
 	for (; c == '0'; c = shgetc(f)) { gotdig = 1; }
-	if (c == '.') {
+	if (c == radix) {
 		gotrad = 1;
 		for (c = shgetc(f); c == '0'; c = shgetc(f)) { gotdig = 1, lrp--; }
 	}
 
 	x[0] = 0;
-	for (; c - '0' < 10U || c == '.'; c = shgetc(f)) {
-		if (c == '.') {
+	for (; c - '0' < 10U || c == radix; c = shgetc(f)) {
+		if (c == radix) {
 			if (gotrad) {
 				break;
 			}
@@ -345,7 +345,7 @@ static long double decfloat(FILE *f, int c, int bits, int emin, int sign, int po
 	return scalbnl(y, e2);
 }
 
-static long double hexfloat(FILE *f, int bits, int emin, int sign, int pok) {
+static long double hexfloat(FILE *f, int bits, int emin, int sign, int pok, int radix) {
 	uint32_t x = 0;
 	long double y = 0;
 	long double scale = 1;
@@ -362,15 +362,15 @@ static long double hexfloat(FILE *f, int bits, int emin, int sign, int pok) {
 	/* Skip leading zeros */
 	for (; c == '0'; c = shgetc(f)) { gotdig = 1; }
 
-	if (c == '.') {
+	if (c == radix) {
 		gotrad = 1;
 		c = shgetc(f);
 		/* Count zeros after the radix point before significand */
 		for (rp = 0; c == '0'; c = shgetc(f), rp--) { gotdig = 1; }
 	}
 
-	for (; c - '0' < 10U || (c | 32) - 'a' < 6U || c == '.'; c = shgetc(f)) {
-		if (c == '.') {
+	for (; c - '0' < 10U || (c | 32) - 'a' < 6U || c == radix; c = shgetc(f)) {
+		if (c == radix) {
 			if (gotrad) {
 				break;
 			}
@@ -474,7 +474,7 @@ static long double hexfloat(FILE *f, int bits, int emin, int sign, int pok) {
 	return scalbnl(y, e2);
 }
 
-long double __floatscan(FILE *f, int prec, int pok) {
+long double __floatscan(FILE *f, int prec, int pok, int radix) {
 	int sign = 1;
 	size_t i;
 	int bits;
@@ -560,11 +560,11 @@ long double __floatscan(FILE *f, int prec, int pok) {
 	if (c == '0') {
 		c = shgetc(f);
 		if ((c | 32) == 'x') {
-			return hexfloat(f, bits, emin, sign, pok);
+			return hexfloat(f, bits, emin, sign, pok, radix);
 		}
 		shunget(f);
 		c = '0';
 	}
 
-	return decfloat(f, c, bits, emin, sign, pok);
+	return decfloat(f, c, bits, emin, sign, pok, radix);
 }

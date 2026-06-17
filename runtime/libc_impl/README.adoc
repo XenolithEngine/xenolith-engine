@@ -32,19 +32,9 @@ dlfcn functions are fully implemented and use system DLL search rules.
 
 dirent functions are fully implemented based on `FileIdBothDirectoryInfo`, thus avoiding the standard errors found in implementations based on FindFile.
 
-### File descriptor inheritance and close-on-exec
+### Detailed topics
 
-A Windows kernel `HANDLE` is *not* inheritable by default. Unlike POSIX — where a freshly opened descriptor is inherited across `exec` unless `O_CLOEXEC` is requested — descriptors here are therefore **close-on-exec by default**. The mapping is the literal POSIX one:
+The behaviour of individual subsystems that diverges from POSIX, or that needs more than a one-line note, is documented in `docs/`:
 
-* `FD_CLOEXEC` set means the underlying `HANDLE` is **non-inheritable** (`HANDLE_FLAG_INHERIT` clear).
-* `FD_CLOEXEC` clear means the `HANDLE` is **inheritable** (it is passed to a child process created with `bInheritHandles = TRUE`).
-
-Consequences:
-
-* `open()` keeps the Windows default, so an opened descriptor is close-on-exec (`FD_CLOEXEC` set). To hand a descriptor to a child process the application must explicitly clear `FD_CLOEXEC` with `fcntl(fd, F_SETFD, 0)`, or open it with the non-standard `O_INHERITABLE` flag.
-* `O_INHERITABLE` is a non-standard `open()` flag that requests an inheritable handle directly at open time — the opposite of `O_CLOEXEC`. Passing both `O_CLOEXEC` and `O_INHERITABLE` fails with `EINVAL`. It is surfaced on every platform for source portability, but is defined as `0` (no-op) everywhere except Windows.
-* `fcntl` `F_GETFD` / `F_SETFD` report and set `FD_CLOEXEC` according to the rule above (set = non-inheritable, clear = inheritable).
-* `dup()` and `dup2()` follow `open()`: the new descriptor is close-on-exec (non-inheritable).
-* `dup3()` honours its `flags` explicitly — with `O_CLOEXEC` the new descriptor stays close-on-exec; without it, `FD_CLOEXEC` is removed and the new descriptor is inheritable.
-
-This is an intentional divergence from POSIX, where descriptors (and the results of `dup`/`dup2`) default to inheritable-across-exec.
+* link:docs/windows-fd-inheritance.adoc[File descriptor inheritance and close-on-exec] — why descriptors are close-on-exec by default, the `FD_CLOEXEC` ↔ `HANDLE_FLAG_INHERIT` mapping, and how `open`/`dup`/`dup2`/`dup3` behave.
+* link:docs/windows-fcntl.adoc[`fcntl` on Windows] — the dispatch path, supported and unsupported commands, and advisory record locking (`F_GETLK`/`F_SETLK`/`F_SETLKW`) mapped onto `LockFileEx`/`UnlockFileEx`.
