@@ -36,6 +36,14 @@ namespace sprt {
 struct __locale_map {
 	wchar_t wname[LOCALE_NAME_MAX_LENGTH + 1];
 	char name[LOCALE_NAME_MAX_LENGTH + 1];
+	// LC_NUMERIC radix ("decimal point"), resolved once at locale creation so the
+	// hot number parsers (strtod/scanf) need no per-call WinAPI query.
+	char radix;
+	// LC_NUMERIC digit grouping for the printf '%'' flag, likewise resolved once.
+	// `thousands_sep` is the single-byte separator and `grouping` the uniform
+	// group size; both 0 when the locale offers no usable grouping.
+	char thousands_sep;
+	unsigned char grouping;
 };
 
 static_assert(sprt::is_trivially_constructible_v<__locale_map>);
@@ -46,6 +54,9 @@ static __freestanding_locale_struct s_localeStructCUtf8;
 void __init_locale() {
 	memcpy(s_localeMapCUtf8.name, "C.UTF8", 7);
 	memcpy(s_localeMapCUtf8.wname, L"C.UTF8", 7 * sizeof(wchar_t));
+	s_localeMapCUtf8.radix = '.'; // C/POSIX radix
+	s_localeMapCUtf8.thousands_sep = 0; // C/POSIX: no digit grouping
+	s_localeMapCUtf8.grouping = 0;
 
 	s_localeStructCUtf8 = __freestanding_locale_struct{
 		__locale_struct{
@@ -76,6 +87,56 @@ static void __copy_locale_wname(wchar_t *dst, size_t dstCap, const wchar_t *src,
 	size_t cnt = sprt::min(srcLen, dstCap - 1);
 	memcpy(dst, src, cnt * sizeof(wchar_t));
 	dst[cnt] = 0;
+}
+
+// Resolve a locale's LC_NUMERIC radix by name. Only a single-character ASCII
+// radix (e.g. '.' or ',') can be honoured by the byte-oriented number parsers;
+// anything else (a multi-byte separator) falls back to the C radix.
+static char __query_numeric_radix(const wchar_t *wname) {
+	wchar_t buf[8] = {};
+	if (GetLocaleInfoEx(wname, LOCALE_SDECIMAL, buf, 8) > 0) {
+		if (buf[0] != 0 && buf[1] == 0 && buf[0] < 128) {
+			return (char)buf[0];
+		}
+	}
+	return '.';
+}
+
+// Resolve a locale's LC_NUMERIC digit grouping for the printf '%'' flag. Only a
+// single-character ASCII separator can be emitted by the byte-oriented
+// formatter; a multi-byte separator (or none) disables grouping. The group size
+// is taken from LOCALE_SGROUPING, whose value is a ';'-separated list of group
+// sizes (e.g. "3;0"); we honour the primary group, which covers every common
+// locale (uniform groups of 3) and the bulk of the rest.
+static void __query_numeric_grouping(const wchar_t *wname, char *sepOut, unsigned char *grpOut) {
+	*sepOut = 0;
+	*grpOut = 0;
+
+	wchar_t sep[8] = {};
+	if (GetLocaleInfoEx(wname, LOCALE_STHOUSAND, sep, 8) <= 0) {
+		return;
+	}
+	if (sep[0] == 0 || sep[1] != 0 || sep[0] >= 128) {
+		return; // empty or multi-byte separator: grouping cannot be emitted
+	}
+
+	wchar_t grp[16] = {};
+	if (GetLocaleInfoEx(wname, LOCALE_SGROUPING, grp, 16) <= 0) {
+		return;
+	}
+	int g = 0;
+	for (const wchar_t *p = grp; *p >= L'0' && *p <= L'9'; ++p) {
+		g = g * 10 + (*p - L'0');
+		if (g >= 100) {
+			return; // implausible group size
+		}
+	}
+	if (g <= 0) {
+		return; // "0" / empty grouping: no grouping
+	}
+
+	*sepOut = (char)sep[0];
+	*grpOut = (unsigned char)g;
 }
 
 __locale_map *__get_locale(int cat, const char *localeName, size_t len) {
@@ -110,6 +171,8 @@ __locale_map *__get_locale(int cat, const char *localeName, size_t len) {
 			}
 			__copy_locale_name(map->name, sizeof(map->name), name, nameLen);
 			__copy_locale_wname(map->wname, LOCALE_NAME_MAX_LENGTH + 1, wname, wnameLen);
+			map->radix = __query_numeric_radix(map->wname);
+			__query_numeric_grouping(map->wname, &map->thousands_sep, &map->grouping);
 			return map;
 		});
 	} else {
@@ -126,6 +189,8 @@ __locale_map *__get_locale(int cat, const char *localeName, size_t len) {
 					__copy_locale_name(map->name, sizeof(map->name), localeName, srcNameLen);
 					__copy_locale_wname(map->wname, LOCALE_NAME_MAX_LENGTH + 1,
 							(const wchar_t *)str.data(), str.size());
+					map->radix = __query_numeric_radix(map->wname);
+					__query_numeric_grouping(map->wname, &map->thousands_sep, &map->grouping);
 					return map;
 				});
 			}
@@ -600,6 +665,76 @@ size_t __wcsxfrm_l(wchar_t *__restrict dest, const wchar_t *__restrict src, size
 
 	// Return length excluding null terminator
 	return (size_t)(dest_len - 1);
+}
+
+// Narrow strxfrm: produce a byte sort key from a UTF-8 source such that two keys
+// compared with strcmp() order the same way strcoll() would. The source is
+// converted to UTF-16 and run through LCMapStringEx(LCMAP_SORTKEY); the Windows
+// sort key is a NUL-terminated byte string designed for byte comparison, so it
+// is written directly into the narrow destination buffer.
+size_t __strxfrm_l(char *__restrict dest, const char *__restrict src, size_t destSize,
+		const __locale_map *locMap) {
+	if (src == NULL) {
+		if (dest != NULL && destSize > 0) {
+			dest[0] = '\0';
+		}
+		return 0;
+	}
+
+	const wchar_t *locName = locMap ? locMap->wname : LOCALE_NAME_USER_DEFAULT;
+
+	size_t ret = 0;
+	bool ok = true;
+	unicode::toUtf16([&](WideStringView w) {
+		const wchar_t *wsrc = (const wchar_t *)w.data();
+		int wlen = (int)w.size();
+
+		// LCMAP_SORTKEY measures and writes BYTES; the returned length includes
+		// the trailing NUL terminator.
+		int required = LCMapStringEx(locName, LCMAP_SORTKEY, wsrc, wlen, nullptr, 0, nullptr,
+				nullptr, 0);
+		if (required <= 0) {
+			ok = false;
+			return;
+		}
+		ret = (size_t)(required - 1);
+
+		// Only emit when the whole key (including terminator) fits; otherwise
+		// leave dest unspecified and just report the required length, as POSIX
+		// allows.
+		if ((size_t)required <= destSize) {
+			int written = LCMapStringEx(locName, LCMAP_SORTKEY, wsrc, wlen, (wchar_t *)dest,
+					required, nullptr, nullptr, 0);
+			if (written <= 0) {
+				ok = false;
+				return;
+			}
+			dest[written - 1] = '\0';
+		}
+	}, StringView(src));
+
+	if (!ok) {
+		if (dest != NULL && destSize > 0) {
+			dest[0] = '\0';
+		}
+		return 0;
+	}
+	return ret;
+}
+
+char __get_numeric_radix(const __locale_map *locMap) {
+	// Cached at locale creation (see __query_numeric_radix); a null map is the
+	// C/POSIX radix.
+	return locMap ? locMap->radix : '.';
+}
+
+__numeric_fmt __get_numeric_fmt(const __locale_map *locMap) {
+	// All fields cached at locale creation; a null map is the C/POSIX locale
+	// (radix '.', no grouping).
+	if (!locMap) {
+		return __numeric_fmt{'.', 0, 0};
+	}
+	return __numeric_fmt{locMap->radix, locMap->thousands_sep, locMap->grouping};
 }
 
 } // namespace sprt

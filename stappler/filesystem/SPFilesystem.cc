@@ -182,28 +182,61 @@ bool remove(const FileInfo &info, bool recursive) {
 		return false; // we can not remove anything from bundle
 	}
 
-	bool found = false;
-	enumerateWritablePaths(info, Access::Exists, [&](const LocationInfo &info, StringView str) {
-		struct stat st;
-		if (info.interface->_stat(info, str, &st) == Status::Ok) {
-			if (S_ISDIR(st.st_mode)) {
-				if (!recursive) {
-					slog().error("filesystem",
-							"Fail to remove directory in non recursive mode: ", str);
-					found = false;
-					return false;
-				}
-
-				info.interface->_ftw(info, str, [&](StringView isource, FileType type) {
-					sprt::filepath::merge([&](StringView path) {
-						info.interface->_remove(info, path);
-					}, str, isource);
-					return true; //
-				}, -1, false);
-			} else {
-				found = info.interface->_remove(info, str) == Status::Ok;
+	// Recursively remove a directory's contents and then the directory itself. _ftw walks entries
+	// depth-first (dirFirst == false), so a directory is always empty by the time its own callback
+	// fires; the root is reported last (empty relative path -> merge yields `root`) and removed too.
+	// Returns true only when the walk completed and every removal reported success.
+	auto removeTree = [](const LocationInfo &loc, StringView root) -> bool {
+		bool ok = true;
+		auto st = loc.interface->_ftw(loc, root, [&](StringView isource, FileType type) {
+			if (isource.empty()) {
+				// The root directory itself (reported last because dirFirst == false). Remove it
+				// explicitly after the walk instead of via merge(root, "") — an empty trailing
+				// component yields a path some platforms (Windows) reject in remove().
+				return true;
 			}
-		};
+			sprt::filepath::merge([&](StringView path) {
+				if (loc.interface->_remove(loc, path) != Status::Ok) {
+					ok = false;
+				}
+			}, root, isource);
+			return true;
+		}, -1, false);
+		if (st != Status::Ok) {
+			return false;
+		}
+		// Contents are gone (depth-first walk); remove the now-empty root directory.
+		if (loc.interface->_remove(loc, root) != Status::Ok) {
+			ok = false;
+		}
+		return ok;
+	};
+
+	bool found = false;
+	enumerateWritablePaths(info, Access::Exists, [&](const LocationInfo &loc, StringView str) {
+		// Classify with stat when available, but do NOT require it: on some platforms (notably
+		// Windows/wine) stat-by-CreateFile can fail for an entry that plainly exists, and a removal
+		// must not silently no-op because of that. _remove maps to the platform remove(), which
+		// deletes a regular file or an empty directory directly.
+		struct stat st;
+		bool haveStat = (loc.interface->_stat(loc, str, &st) == Status::Ok);
+
+		if (haveStat && S_ISDIR(st.st_mode)) {
+			if (!recursive) {
+				slog().error("filesystem",
+						"Fail to remove directory in non recursive mode: ", str);
+				return false;
+			}
+			found = removeTree(loc, str);
+		} else {
+			// A regular file, or stat was unavailable: try a direct removal first.
+			if (loc.interface->_remove(loc, str) == Status::Ok) {
+				found = true;
+			} else if (recursive) {
+				// Direct removal failed and we could not stat it: it may be a non-empty directory.
+				found = removeTree(loc, str);
+			}
+		}
 		return false;
 	});
 	return found;

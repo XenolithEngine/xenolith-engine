@@ -24,9 +24,11 @@ THE SOFTWARE.
 #define _CRT_SECURE_NO_WARNINGS 1
 
 #include <sprt/c/__sprt_wchar.h>
+#include <sprt/c/__sprt_wctype.h>
 #include <sprt/c/__sprt_stdarg.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/runtime/log.h>
+#include <sprt/runtime/wctype.h>
 
 #include <wchar.h>
 #include <wctype.h>
@@ -40,7 +42,14 @@ namespace sprt::platform {
 extern size_t (*_wcsftime_l)(wchar_t *__buf, size_t __n, const wchar_t *__fmt,
 		const struct tm *__tm, locale_t __l);
 
-}
+// Bionic added wctrans/towctrans (and the _l variants) only in API 26; these are
+// resolved at runtime (jni.cc), null on older devices -> runtime_core fallback.
+extern wctrans_t (*_wctrans)(const char *__name);
+extern wint_t (*_towctrans)(wint_t __wc, wctrans_t __transform);
+extern wctrans_t (*_wctrans_l)(const char *__name, locale_t __l);
+extern wint_t (*_towctrans_l)(wint_t __wc, wctrans_t __transform, locale_t __l);
+
+} // namespace sprt::platform
 #endif
 
 #if SPRT_MACOS
@@ -51,6 +60,18 @@ static_assert(sizeof(mbstate_t) == sizeof(__SPRT_MBSTATE_NAME));
 static_assert(sizeof(wctype_t) == sizeof(__sprt_wctype_t));
 static_assert(sizeof(wint_t) == sizeof(__sprt_wint_t));
 static_assert(WEOF == __SPRT_WEOF);
+
+namespace sprt {
+
+// Look up a standard mapping by name; "toupper"/"tolower" yield a sentinel
+// handle, anything else null (with EINVAL).
+__SPRT_ID(wctrans_t) __wctrans_fallback(const char *name) __SPRT_NOEXCEPT;
+
+// Apply a handle from __wctrans_fallback; a null/unknown handle returns wc.
+__SPRT_ID(wint_t)
+__towctrans_fallback(__SPRT_ID(wint_t) wc, __SPRT_ID(wctrans_t) desc) __SPRT_NOEXCEPT;
+
+} // namespace sprt
 
 namespace sprt {
 
@@ -549,5 +570,124 @@ __SPRT_C_FUNC int __SPRT_ID(wcswidth)(const __SPRT_ID(wchar_t) * ptr, __SPRT_ID(
 
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(towlower)(__SPRT_ID(wint_t) wc) { return ::towlower(wc); }
 __SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(towupper)(__SPRT_ID(wint_t) wc) { return ::towupper(wc); }
+
+__SPRT_C_FUNC int __SPRT_ID(iswalnum)(__SPRT_ID(wint_t) wc) { return ::iswalnum(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswalpha)(__SPRT_ID(wint_t) wc) { return ::iswalpha(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswblank)(__SPRT_ID(wint_t) wc) { return ::iswblank(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswcntrl)(__SPRT_ID(wint_t) wc) { return ::iswcntrl(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswdigit)(__SPRT_ID(wint_t) wc) { return ::iswdigit(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswgraph)(__SPRT_ID(wint_t) wc) { return ::iswgraph(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswlower)(__SPRT_ID(wint_t) wc) { return ::iswlower(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswprint)(__SPRT_ID(wint_t) wc) { return ::iswprint(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswpunct)(__SPRT_ID(wint_t) wc) { return ::iswpunct(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswspace)(__SPRT_ID(wint_t) wc) { return ::iswspace(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswupper)(__SPRT_ID(wint_t) wc) { return ::iswupper(wc); }
+__SPRT_C_FUNC int __SPRT_ID(iswxdigit)(__SPRT_ID(wint_t) wc) { return ::iswxdigit(wc); }
+
+__SPRT_C_FUNC int __SPRT_ID(iswctype)(__SPRT_ID(wint_t) wc, __SPRT_ID(wctype_t) t) {
+	return ::iswctype(wc, t);
+}
+__SPRT_C_FUNC __SPRT_ID(wctype_t) __SPRT_ID(wctype)(const char *name) { return ::wctype(name); }
+
+__SPRT_C_FUNC int __SPRT_ID(iswalnum_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+	return ::iswalnum_l(wc, loc);
+}
+__SPRT_C_FUNC int __SPRT_ID(iswalpha_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+	return ::iswalpha_l(wc, loc);
+}
+__SPRT_C_FUNC int __SPRT_ID(iswblank_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+	return ::iswblank_l(wc, loc);
+}
+__SPRT_C_FUNC int __SPRT_ID(iswcntrl_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+	return ::iswcntrl_l(wc, loc);
+}
+__SPRT_C_FUNC int __SPRT_ID(iswdigit_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+	return ::iswdigit_l(wc, loc);
+}
+__SPRT_C_FUNC int __SPRT_ID(iswgraph_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+	return ::iswgraph_l(wc, loc);
+}
+__SPRT_C_FUNC int __SPRT_ID(iswlower_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+	return ::iswlower_l(wc, loc);
+}
+__SPRT_C_FUNC int __SPRT_ID(iswprint_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+	return ::iswprint_l(wc, loc);
+}
+__SPRT_C_FUNC int __SPRT_ID(iswpunct_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+	return ::iswpunct_l(wc, loc);
+}
+__SPRT_C_FUNC int __SPRT_ID(iswspace_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+	return ::iswspace_l(wc, loc);
+}
+__SPRT_C_FUNC int __SPRT_ID(iswupper_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+	return ::iswupper_l(wc, loc);
+}
+__SPRT_C_FUNC int __SPRT_ID(iswxdigit_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+	return ::iswxdigit_l(wc, loc);
+}
+__SPRT_C_FUNC int __SPRT_ID(
+		iswctype_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(wctype_t) t, __SPRT_ID(locale_t) loc) {
+	return ::iswctype_l(wc, t, loc);
+}
+__SPRT_C_FUNC __SPRT_ID(wint_t)
+		__SPRT_ID(towlower_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+	return ::towlower_l(wc, loc);
+}
+__SPRT_C_FUNC __SPRT_ID(wint_t)
+		__SPRT_ID(towupper_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(locale_t) loc) {
+	return ::towupper_l(wc, loc);
+}
+__SPRT_C_FUNC __SPRT_ID(wctype_t) __SPRT_ID(wctype_l)(const char *name, __SPRT_ID(locale_t) loc) {
+	return ::wctype_l(name, loc);
+}
+
+// wctrans/towctrans (and their _l variants) share the pointer-based wctrans_t
+// ABI, so on most targets they forward straight to the platform libc (hosted) or
+// libc_impl (freestanding). Android is special: Bionic added these only in API
+// 26, so they are resolved at runtime (jni.cc) and, when the device is older,
+// fall back to the shared runtime_core impl (the same one libc_impl uses). Bionic
+// types wctrans_t as `const void *` whereas the SPRT ABI uses `const int *`, so
+// the platform forwards cast between the two.
+__SPRT_C_FUNC __SPRT_ID(wctrans_t) __SPRT_ID(wctrans)(const char *name) {
+#if SPRT_ANDROID
+	if (platform::_wctrans) {
+		return (__SPRT_ID(wctrans_t))platform::_wctrans(name);
+	}
+	return __wctrans_fallback(name);
+#else
+	return ::wctrans(name);
+#endif
+}
+__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(towctrans)(__SPRT_ID(wint_t) wc, __SPRT_ID(wctrans_t) t) {
+#if SPRT_ANDROID
+	if (platform::_towctrans) {
+		return platform::_towctrans(wc, (wctrans_t)t);
+	}
+	return __towctrans_fallback(wc, t);
+#else
+	return ::towctrans(wc, t);
+#endif
+}
+__SPRT_C_FUNC __SPRT_ID(wctrans_t) __SPRT_ID(wctrans_l)(const char *name, __SPRT_ID(locale_t) loc) {
+#if SPRT_ANDROID
+	if (platform::_wctrans_l) {
+		return (__SPRT_ID(wctrans_t))platform::_wctrans_l(name, loc);
+	}
+	return __wctrans_fallback(name);
+#else
+	return ::wctrans_l(name, loc);
+#endif
+}
+__SPRT_C_FUNC __SPRT_ID(wint_t) __SPRT_ID(
+		towctrans_l)(__SPRT_ID(wint_t) wc, __SPRT_ID(wctrans_t) t, __SPRT_ID(locale_t) loc) {
+#if SPRT_ANDROID
+	if (platform::_towctrans_l) {
+		return platform::_towctrans_l(wc, (wctrans_t)t, loc);
+	}
+	return __towctrans_fallback(wc, t);
+#else
+	return ::towctrans_l(wc, t, loc);
+#endif
+}
 
 } // namespace sprt

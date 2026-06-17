@@ -185,7 +185,8 @@ static int __file_dup(__fd_slot *fp, int *target, uint32_t flags) {
 			fdSlot->ops->fo_close(fdSlot);
 		}
 
-		*fdSlot = __fd_slot{newHandle, &libc->fdFileOps, fp->flags, fp->mode};
+		*fdSlot = __fd_slot{.handle = newHandle, .ops = &libc->fdFileOps, .flags = fp->flags,
+			.mode = fp->mode};
 		return *target;
 	}
 }
@@ -219,6 +220,150 @@ static HANDLE __file_reopen(HANDLE h, int __flags, __SPRT_ID(mode_t) __mode) {
 	CloseHandle(h);
 
 	return newH;
+}
+
+// POSIX advisory-lock descriptor. Layout matches the `struct flock` used by the
+// public <fcntl.h> and by lockf() in unistd.cc — keep the two in sync.
+struct flock {
+	short int l_type; // F_RDLCK, F_WRLCK or F_UNLCK
+	short int l_whence; // SEEK_SET, SEEK_CUR or SEEK_END for l_start
+	off_t l_start; // start offset of the locked region
+	off_t l_len; // length of the region; 0 means "to end of file"
+	__SPRT_ID(pid_t) l_pid; // F_GETLK: pid holding the conflicting lock
+};
+
+// Translate the POSIX byte range described by a struct flock (l_whence, l_start,
+// l_len) into the absolute [offset, length) pair that LockFileEx/UnlockFileEx
+// operate on. A zero l_len means "until the end of the file" in POSIX; Windows
+// has no such sentinel, so we lock the maximal range that still begins at
+// offset — the same conversion is applied on unlock, so the ranges match.
+static bool __file_lock_range(HANDLE h, const struct flock *fl, ULARGE_INTEGER *offset,
+		ULARGE_INTEGER *length) {
+	int64_t start = fl->l_start;
+	switch (fl->l_whence) {
+	case __SPRT_SEEK_SET: break;
+	case __SPRT_SEEK_CUR: {
+		LARGE_INTEGER cur;
+		LARGE_INTEGER zero = {.QuadPart = 0};
+		if (!SetFilePointerEx(h, zero, &cur, FILE_CURRENT)) {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return false;
+		}
+		start += cur.QuadPart;
+		break;
+	}
+	case __SPRT_SEEK_END: {
+		LARGE_INTEGER sz;
+		if (!GetFileSizeEx(h, &sz)) {
+			__sprt_errno = platform::lastErrorToErrno(GetLastError());
+			return false;
+		}
+		start += sz.QuadPart;
+		break;
+	}
+	default: __sprt_errno = EINVAL; return false;
+	}
+
+	int64_t len = fl->l_len;
+	if (len < 0) {
+		// A negative length describes the bytes preceding l_start.
+		start += len;
+		len = -len;
+	}
+	if (start < 0) {
+		__sprt_errno = EINVAL;
+		return false;
+	}
+
+	offset->QuadPart = (uint64_t)start;
+	length->QuadPart = (len == 0) ? (0xFFFFFFFFFFFFFFFFull - (uint64_t)start) : (uint64_t)len;
+	return true;
+}
+
+// fcntl advisory record locking (F_GETLK/F_SETLK/F_SETLKW), mapped onto the
+// Windows LockFileEx/UnlockFileEx byte-range lock API. Note that Windows
+// byte-range locks are *mandatory* and tied to the file HANDLE, which differs
+// from POSIX advisory, per-process semantics — see the platform README.
+static int __file_lock(__fd_slot *fp, int cmd, struct flock *fl) {
+	if (!fl) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	if (fl->l_type != __SPRT_F_RDLCK && fl->l_type != __SPRT_F_WRLCK
+			&& fl->l_type != __SPRT_F_UNLCK) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+
+	ULARGE_INTEGER offset, length;
+	if (!__file_lock_range(fp->handle, fl, &offset, &length)) {
+		return -1;
+	}
+
+	OVERLAPPED ov = {};
+	ov.Offset = offset.LowPart;
+	ov.OffsetHigh = offset.HighPart;
+
+	if (cmd == __SPRT_F_GETLK) {
+		// No Windows API reveals the holder of a conflicting lock, so probe the
+		// region with a non-blocking lock: success means it is currently free.
+		if (fl->l_type == __SPRT_F_UNLCK) {
+			return 0;
+		}
+		DWORD probe = LOCKFILE_FAIL_IMMEDIATELY;
+		if (fl->l_type == __SPRT_F_WRLCK) {
+			probe |= LOCKFILE_EXCLUSIVE_LOCK;
+		}
+		if (LockFileEx(fp->handle, probe, 0, length.LowPart, length.HighPart, &ov)) {
+			UnlockFileEx(fp->handle, 0, length.LowPart, length.HighPart, &ov);
+			fl->l_type = __SPRT_F_UNLCK; // region is free
+			return 0;
+		}
+		DWORD err = GetLastError();
+		if (err == ERROR_LOCK_VIOLATION || err == ERROR_IO_PENDING) {
+			// A conflicting lock exists, but Windows cannot report its exact
+			// type or owning process. Report a write lock held by an unknown
+			// pid, which is the conservative answer for any caller.
+			fl->l_type = __SPRT_F_WRLCK;
+			fl->l_pid = (__SPRT_ID(pid_t))-1;
+			return 0;
+		}
+		__sprt_errno = platform::lastErrorToErrno(err);
+		return -1;
+	}
+
+	// F_SETLK (non-blocking) and F_SETLKW (blocking)
+	if (fl->l_type == __SPRT_F_UNLCK) {
+		if (UnlockFileEx(fp->handle, 0, length.LowPart, length.HighPart, &ov)) {
+			return 0;
+		}
+		DWORD err = GetLastError();
+		if (err == ERROR_NOT_LOCKED) {
+			return 0; // releasing an unlocked region is a no-op in POSIX
+		}
+		__sprt_errno = platform::lastErrorToErrno(err);
+		return -1;
+	}
+
+	DWORD flags = 0;
+	if (fl->l_type == __SPRT_F_WRLCK) {
+		flags |= LOCKFILE_EXCLUSIVE_LOCK;
+	}
+	if (cmd == __SPRT_F_SETLK) {
+		flags |= LOCKFILE_FAIL_IMMEDIATELY;
+	}
+
+	if (LockFileEx(fp->handle, flags, 0, length.LowPart, length.HighPart, &ov)) {
+		return 0;
+	}
+	DWORD err = GetLastError();
+	if (cmd == __SPRT_F_SETLK && (err == ERROR_LOCK_VIOLATION || err == ERROR_IO_PENDING)) {
+		// POSIX requires EACCES or EAGAIN when a conflicting lock is held.
+		__sprt_errno = EAGAIN;
+		return -1;
+	}
+	__sprt_errno = platform::lastErrorToErrno(err);
+	return -1;
 }
 
 static int __file_ioctl(__fd_slot *fp, int fd, int cmd, intptr_t arg, __fd_ctl_mode mode) {
@@ -282,6 +427,24 @@ static int __file_ioctl(__fd_slot *fp, int fd, int cmd, intptr_t arg, __fd_ctl_m
 			fp->flags = arg;
 			return 0;
 		}
+
+		// Advisory record locking via LockFileEx/UnlockFileEx.
+		case __SPRT_F_GETLK:
+		case __SPRT_F_SETLK:
+		case __SPRT_F_SETLKW: return __file_lock(fp, cmd, reinterpret_cast<struct flock *>(arg));
+
+		// Signal-driven I/O (SIGIO/SIGURG ownership and per-fd signals) has no
+		// Windows equivalent. Report "not implemented" rather than a bogus
+		// success or a misleading EINVAL.
+		case __SPRT_F_GETOWN:
+		case __SPRT_F_SETOWN:
+		case __SPRT_F_GETOWN_EX:
+		case __SPRT_F_SETOWN_EX:
+		case __SPRT_F_GETSIG:
+		case __SPRT_F_SETSIG:
+		case __SPRT_F_GETOWNER_UIDS:
+			__sprt_errno = ENOSYS;
+			return -1;
 		}
 	} else if (mode == __fd_ctl_mode::ioctl) {
 		switch (cmd) {

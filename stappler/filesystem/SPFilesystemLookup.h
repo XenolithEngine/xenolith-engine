@@ -147,6 +147,14 @@ SP_PUBLIC inline auto findWritablePath(const FileInfo &info, Access a = Access::
 	return findPath<Interface>(info.category, info.path, info.flags | LookupFlags::Writable, a);
 }
 
+// Normalize an externally-supplied path to the posix form the filesystem layer uses internally.
+// On POSIX hosts the input is returned unchanged. On Windows a native path (drive letters,
+// backslashes, the \\?\ long-path prefix) is rewritten to posix via fpath_to_posix; `storage` then
+// backs the converted bytes, so the returned view stays valid while both `path` and `storage` live.
+// This is the single point where the public filesystem API accepts Windows paths — every operation
+// resolves through enumeratePaths()/detectResourceCategory()/currentDir(), which call it on entry.
+SP_PUBLIC StringView toPosixPath(StringView path, memory::StandartInterface::StringType &storage);
+
 using sprt::filesystem::enumeratePaths;
 
 SP_PUBLIC void enumeratePaths(LocationCategory, StringView path, LookupFlags, Access,

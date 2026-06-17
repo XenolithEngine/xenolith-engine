@@ -33,13 +33,9 @@ __SPRT_BEGIN_DECL
 typedef int __SPRT_ID(nl_item);
 typedef void *__SPRT_ID(nl_catd);
 
-#if __SPRT_CONFIG_HAVE_NLTYPES_CAT || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-
-__SPRT_CONFIG_HAVE_NLTYPES_CAT_NOTICE
-SPRT_API __SPRT_ID(nl_catd) __SPRT_ID(catopen)(const char *, int);
-SPRT_API char *__SPRT_ID(catgets)(__SPRT_ID(nl_catd), int, int, const char *);
-SPRT_API int __SPRT_ID(catclose)(__SPRT_ID(nl_catd));
-#endif
+SPRT_API __SPRT_ID(nl_catd) __SPRT_ID(catopen)(const char *, int) __SPRT_NOEXCEPT;
+SPRT_API char *__SPRT_ID(catgets)(__SPRT_ID(nl_catd), int, int, const char *) __SPRT_NOEXCEPT;
+SPRT_API int __SPRT_ID(catclose)(__SPRT_ID(nl_catd)) __SPRT_NOEXCEPT;
 
 __SPRT_END_DECL
 

@@ -14,8 +14,8 @@
 
 namespace sprt {
 
-
 inline namespace _cstring_dll {
+
 SPRT_FORCEINLINE int memcmp(const void *s1, const void *s2, size_t n) {
 	return __builtin_memcmp(s1, s2, n);
 }

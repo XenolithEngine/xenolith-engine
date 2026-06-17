@@ -21,6 +21,9 @@ THE SOFTWARE.
 **/
 
 #include <sprt/c/__sprt_locale.h>
+#include <sprt/c/__sprt_wctype.h>
+
+#include <sprt/runtime/wctype.h>
 
 #include "../include/__impl_libc.h"
 
@@ -32,6 +35,18 @@ THE SOFTWARE.
 #if SPRT_WINDOWS
 #include "windows/wchar.cc"
 #endif
+
+namespace sprt {
+
+// Look up a standard mapping by name; "toupper"/"tolower" yield a sentinel
+// handle, anything else null (with EINVAL).
+__SPRT_ID(wctrans_t) __wctrans_fallback(const char *name) __SPRT_NOEXCEPT;
+
+// Apply a handle from __wctrans_fallback; a null/unknown handle returns wc.
+__SPRT_ID(wint_t)
+__towctrans_fallback(__SPRT_ID(wint_t) wc, __SPRT_ID(wctrans_t) desc) __SPRT_NOEXCEPT;
+
+} // namespace sprt
 
 namespace sprt {
 
@@ -85,6 +100,27 @@ __sprt_wint_t towupper(__sprt_wint_t ch) __SPRT_NOEXCEPT {
 		return __towupper(ch);
 	}
 	return __towupper_l(ch, map);
+}
+
+// glibc-style wide-char transformations. wctrans() returns a pointer-based
+// handle (a __sprt_wctrans_t == const int *) that towctrans() interprets by
+// address identity; only the standard "toupper"/"tolower" mappings are supported
+// (no locale-defined ones). The implementation is the shared runtime_core
+// fallback (sprt::__wctrans_fallback / __towctrans_fallback), so libc_impl and
+// the Android wrapper bridge produce identical handles.
+__sprt_wctrans_t wctrans(const char *name) __SPRT_NOEXCEPT { return __wctrans_fallback(name); }
+
+__sprt_wint_t towctrans(__sprt_wint_t wc, __sprt_wctrans_t desc) __SPRT_NOEXCEPT {
+	return __towctrans_fallback(wc, desc);
+}
+
+__sprt_wctrans_t wctrans_l(const char *name, __sprt_locale_t) __SPRT_NOEXCEPT {
+	return __wctrans_fallback(name);
+}
+
+__sprt_wint_t towctrans_l(__sprt_wint_t wc, __sprt_wctrans_t desc,
+		__sprt_locale_t) __SPRT_NOEXCEPT {
+	return __towctrans_fallback(wc, desc);
 }
 
 int wcscmp(const wchar_t *l, const wchar_t *r) __SPRT_NOEXCEPT {

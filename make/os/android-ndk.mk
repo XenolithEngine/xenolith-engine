@@ -129,9 +129,9 @@ $(ANDROID_EXPORT_PATH)/Android.mk.tmp:
 android-export: $(ANDROID_EXPORT_PATH)/Android.mk.tmp
 	@if cmp -s "$(ANDROID_EXPORT_PATH)/Android.mk.tmp" "$(ANDROID_EXPORT_PATH)/Android.mk" ; then\
 		echo "$(ANDROID_EXPORT_PATH)/Android.mk is up to date"; \
-		$(GLOBAL_RM) $(ANDROID_EXPORT_PATH)/Android.mk.tmp; \
+		rm $(ANDROID_EXPORT_PATH)/Android.mk.tmp; \
 	else \
-		$(GLOBAL_RM) $(ANDROID_EXPORT_PATH)/Android.mk; \
+		rm $(ANDROID_EXPORT_PATH)/Android.mk; \
 		mv $(ANDROID_EXPORT_PATH)/Android.mk.tmp $(ANDROID_EXPORT_PATH)/Android.mk; \
 		touch $(ANDROID_EXPORT_PATH)/Android.mk; \
 		echo "$(ANDROID_EXPORT_PATH)/Android.mk was updated"; \

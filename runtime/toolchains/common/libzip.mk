@@ -24,6 +24,9 @@ VARIANT ?= mbedtls
 
 LIBNAME = libzip
 
+SP_USER_CFLAGS := -DLZMA_API_STATIC
+SP_USER_CXXFLAGS := -DLZMA_API_STATIC
+
 include ../common/configure.mk
 
 CONFIGURE := \

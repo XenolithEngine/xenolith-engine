@@ -39,6 +39,7 @@
 #include <math.h>
 #include <nl_types.h>
 #include <wchar.h>
+#include <wctype.h>
 #include <fcntl.h>
 
 extern "C" AAssetManager *AAssetManager_fromJava(JNIEnv *env, jobject assetManager);
@@ -69,6 +70,13 @@ char *(*_ctermid)(char *__buf) = nullptr;
 
 size_t (*_wcsftime_l)(wchar_t *__buf, size_t __n, const wchar_t *__fmt, const struct tm *__tm,
 		locale_t __l) = nullptr;
+
+// wctrans/towctrans (and their _l variants) were added to Bionic only in API 26;
+// resolved at runtime so older devices fall back to the runtime_core impl.
+wctrans_t (*_wctrans)(const char *__name) = nullptr;
+wint_t (*_towctrans)(wint_t __wc, wctrans_t __transform) = nullptr;
+wctrans_t (*_wctrans_l)(const char *__name, locale_t __l) = nullptr;
+wint_t (*_towctrans_l)(wint_t __wc, wctrans_t __transform, locale_t __l) = nullptr;
 
 void *(*_aligned_alloc)(size_t __alignment, size_t __size) = nullptr;
 
@@ -719,6 +727,11 @@ void Env::loadJava(JavaVM *vm) {
 						"pthread_setschedprio");
 		platform::_ctermid = platform::s_self.sym<decltype(platform::_ctermid)>("ctermid");
 		platform::_wcsftime_l = platform::s_self.sym<decltype(platform::_wcsftime_l)>("wcsftime_l");
+		platform::_wctrans = platform::s_self.sym<decltype(platform::_wctrans)>("wctrans");
+		platform::_towctrans = platform::s_self.sym<decltype(platform::_towctrans)>("towctrans");
+		platform::_wctrans_l = platform::s_self.sym<decltype(platform::_wctrans_l)>("wctrans_l");
+		platform::_towctrans_l =
+				platform::s_self.sym<decltype(platform::_towctrans_l)>("towctrans_l");
 		platform::_aligned_alloc =
 				platform::s_self.sym<decltype(platform::_aligned_alloc)>("aligned_alloc");
 

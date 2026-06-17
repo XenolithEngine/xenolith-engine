@@ -46,7 +46,7 @@ MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:libz.a
 endif
 
 ifdef WIN32
-MODULE_STAPPLER_ZIP_LIBS += -l:libzip.a -lz -lbcrypt
+MODULE_STAPPLER_ZIP_LIBS += -l:libzip.a -lz -llzma
 endif
 
 #spec

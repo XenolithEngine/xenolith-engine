@@ -1,6 +1,8 @@
 #include "../../include/__impl_file.h"
+#include "../../include/__impl_libc.h"
 #include <errno.h>
 #include <ctype.h>
+#include <locale.h>
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
@@ -145,6 +147,26 @@ static void pad(FILE *f, char c, int w, int l, int fl) {
 	out(f, pad, l);
 }
 
+// Number of thousands separators inserted when `ndig` digits are split into
+// uniform groups of `g` counted from the right (0 if grouping is inactive).
+static int group_count(int ndig, int g) {
+	return (g > 0 && ndig > 0) ? (ndig - 1) / g : 0;
+}
+
+// Emit the digit run [a, z), inserting `sep` between uniform groups of `g`
+// digits counted from the right. Backs the '%'' grouping flag; like glibc, only
+// the significant digits are grouped -- any precision/width zero padding is
+// emitted ungrouped by the caller.
+static void out_grouped(FILE *f, const char *a, const char *z, int g, char sep) {
+	int total = (int)(z - a);
+	for (int rem = total; a < z; a++, rem--) {
+		if (rem != total && rem % g == 0) {
+			out(f, &sep, 1);
+		}
+		out(f, a, 1);
+	}
+}
+
 static const char xdigits[17] = {"0123456789ABCDEF"};
 
 static char *fmt_x(uintmax_t x, char *s, int lower) {
@@ -174,7 +196,8 @@ static char *fmt_u(uintmax_t x, char *s) {
 typedef char compiler_defines_long_double_incorrectly[9 - (int)sizeof(long double)];
 #endif
 
-static int fmt_fp(FILE *f, long double y, int w, int p, int fl, int t, int ps) {
+static int fmt_fp(FILE *f, long double y, int w, int p, int fl, int t, int ps,
+		sprt::__numeric_fmt nf) {
 	int max_mant_dig = (ps == BIGLPRE) ? LDBL_MANT_DIG : DBL_MANT_DIG;
 	int max_exp = (ps == BIGLPRE) ? LDBL_MAX_EXP : DBL_MAX_EXP;
 	/* One slot for 29 bits left of radix point, a slot for every 29-21=8
@@ -188,6 +211,12 @@ static int fmt_fp(FILE *f, long double y, int w, int p, int fl, int t, int ps) {
 	char buf[9 + LDBL_MANT_DIG / 4], *s;
 	const char *prefix = "-0X+0X 0X-0x+0x 0x";
 	int pl;
+	// Locale decimal point ("radix") and digit-grouping, resolved once by the
+	// caller. `fgsep` is the group size for the '%'' flag (0 when inactive), and
+	// is honoured only for the decimal 'f'/'F' integer part below.
+	const char radixc = nf.radix;
+	const int fgsep = ((fl & GROUPED) && nf.grouping && nf.thousands_sep) ? nf.grouping : 0;
+	const char fgsep_ch = nf.thousands_sep;
 	char ebuf0[3 * sizeof(int)], *ebuf = &ebuf0[3 * sizeof(int)], *estr;
 
 	pl = 1;
@@ -250,7 +279,7 @@ static int fmt_fp(FILE *f, long double y, int w, int p, int fl, int t, int ps) {
 			*s++ = xdigits[x] | (t & 32);
 			y = 16 * (y - x);
 			if (s - buf == 1 && (y || p > 0 || (fl & ALT_FORM))) {
-				*s++ = '.';
+				*s++ = radixc;
 			}
 		} while (y);
 
@@ -416,6 +445,13 @@ static int fmt_fp(FILE *f, long double y, int w, int p, int fl, int t, int ps) {
 		if (e > 0) {
 			l += e;
 		}
+		if (fgsep) {
+			int gc = group_count((e > 0) ? e + 1 : 1, fgsep);
+			if (gc > INT_MAX - l) {
+				return -1;
+			}
+			l += gc;
+		}
 	} else {
 		estr = fmt_u(e < 0 ? -e : e, ebuf);
 		while (ebuf - estr < 2) { *--estr = '0'; }
@@ -438,6 +474,10 @@ static int fmt_fp(FILE *f, long double y, int w, int p, int fl, int t, int ps) {
 		if (a > r) {
 			a = r;
 		}
+		// `rem` tracks integer digits still to emit (incl. current), so a group
+		// separator is inserted whenever rem is a positive multiple of fgsep --
+		// the count carries across the 9-digit chunk boundaries.
+		int rem = (e > 0) ? e + 1 : 1;
 		for (d = a; d <= r; d++) {
 			char *s = fmt_u(*d, buf + 9);
 			if (d != a) {
@@ -445,10 +485,19 @@ static int fmt_fp(FILE *f, long double y, int w, int p, int fl, int t, int ps) {
 			} else if (s == buf + 9) {
 				*--s = '0';
 			}
-			out(f, s, buf + 9 - s);
+			if (fgsep) {
+				for (; s < buf + 9; s++, rem--) {
+					if (rem != ((e > 0) ? e + 1 : 1) && rem % fgsep == 0) {
+						out(f, &fgsep_ch, 1);
+					}
+					out(f, s, 1);
+				}
+			} else {
+				out(f, s, buf + 9 - s);
+			}
 		}
 		if (p || (fl & ALT_FORM)) {
-			out(f, ".", 1);
+			out(f, &radixc, 1);
 		}
 		for (; d < z && p > 0; d++, p -= 9) {
 			char *s = fmt_u(*d, buf + 9);
@@ -470,7 +519,7 @@ static int fmt_fp(FILE *f, long double y, int w, int p, int fl, int t, int ps) {
 			} else {
 				out(f, s++, 1);
 				if (p > 0 || (fl & ALT_FORM)) {
-					out(f, ".", 1);
+					out(f, &radixc, 1);
 				}
 			}
 			out(f, s, sprt::min(int(buf + 9 - s), p));
@@ -497,7 +546,8 @@ static int getint(char **s) {
 	return i;
 }
 
-static int printf_core(FILE *f, const char *fmt, va_list *ap, union arg *nl_arg, int *nl_type) {
+static int printf_core(FILE *f, const char *fmt, va_list *ap, union arg *nl_arg, int *nl_type,
+		sprt::__numeric_fmt nf) {
 	char *a, *z, *s = (char *)fmt;
 	unsigned l10n = 0, fl;
 	int w, p, xp;
@@ -769,7 +819,7 @@ narrow_c:
 			if (xp && p < 0) {
 				goto overflow;
 			}
-			l = fmt_fp(f, arg.f, w, p, fl, t, ps);
+			l = fmt_fp(f, arg.f, w, p, fl, t, ps, nf);
 			if (l < 0) {
 				goto overflow;
 			}
@@ -782,19 +832,40 @@ narrow_c:
 		if (p > INT_MAX - pl) {
 			goto overflow;
 		}
-		if (w < pl + p) {
-			w = pl + p;
+		// '%'' digit grouping applies only to decimal integer conversions; `gsep`
+		// is the group size (0 when inactive) and `pg` the integer field width
+		// once the inserted separators are accounted for.
+		int gsep = ((fl & GROUPED) && nf.grouping && nf.thousands_sep
+						   && (t == 'd' || t == 'i' || t == 'u'))
+				? nf.grouping
+				: 0;
+		// Only the significant digits (z - a) are grouped; precision/width zero
+		// padding is emitted ungrouped, matching glibc.
+		int gcnt = group_count(int(z - a), gsep);
+		if (gcnt > INT_MAX - p) {
+			goto overflow;
+		}
+		int pg = p + gcnt;
+		if (pg > INT_MAX - pl) {
+			goto overflow;
+		}
+		if (w < pl + pg) {
+			w = pl + pg;
 		}
 		if (w > INT_MAX - cnt) {
 			goto overflow;
 		}
 
-		pad(f, ' ', w, pl + p, fl);
+		pad(f, ' ', w, pl + pg, fl);
 		out(f, prefix, pl);
-		pad(f, '0', w, pl + p, fl ^ ZERO_PAD);
+		pad(f, '0', w, pl + pg, fl ^ ZERO_PAD);
 		pad(f, '0', p, z - a, 0);
-		out(f, a, z - a);
-		pad(f, ' ', w, pl + p, fl ^ LEFT_ADJ);
+		if (gsep) {
+			out_grouped(f, a, z, gsep, nf.thousands_sep);
+		} else {
+			out(f, a, z - a);
+		}
+		pad(f, ' ', w, pl + pg, fl ^ LEFT_ADJ);
 
 		l = w;
 	}
@@ -821,8 +892,8 @@ overflow:
 	return -1;
 }
 
-__SPRT_C_FUNC int vfprintf(FILE *__restrict f, const char *__restrict fmt,
-		va_list ap) __SPRT_NOEXCEPT {
+// printf core parameterised by the decimal-point radix (resolved once per call).
+static int __vfprintf_l(FILE *__restrict f, const char *__restrict fmt, va_list ap, sprt::__numeric_fmt nf) {
 	va_list ap2;
 	int nl_type[NL_ARGMAX + 1] = {0};
 	union arg nl_arg[NL_ARGMAX + 1];
@@ -832,7 +903,7 @@ __SPRT_C_FUNC int vfprintf(FILE *__restrict f, const char *__restrict fmt,
 
 	/* the copy allows passing va_list* even if va_list is an array */
 	va_copy(ap2, ap);
-	if (printf_core(0, fmt, &ap2, nl_arg, nl_type) < 0) {
+	if (printf_core(0, fmt, &ap2, nl_arg, nl_type, nf) < 0) {
 		va_end(ap2);
 		return -1;
 	}
@@ -849,7 +920,7 @@ __SPRT_C_FUNC int vfprintf(FILE *__restrict f, const char *__restrict fmt,
 	if (!f->wend && __towrite(f)) {
 		ret = -1;
 	} else {
-		ret = printf_core(f, fmt, &ap2, nl_arg, nl_type);
+		ret = printf_core(f, fmt, &ap2, nl_arg, nl_type, nf);
 	}
 	if (saved_buf) {
 		f->write(f, 0, 0);
@@ -869,16 +940,29 @@ __SPRT_C_FUNC int vfprintf(FILE *__restrict f, const char *__restrict fmt,
 	return ret;
 }
 
-__SPRT_C_FUNC int vasprintf(char **s, const char *fmt, va_list ap) __SPRT_NOEXCEPT {
+__SPRT_C_FUNC int vfprintf(FILE *__restrict f, const char *__restrict fmt,
+		va_list ap) __SPRT_NOEXCEPT {
+	return __vfprintf_l(f, fmt, ap, sprt::__get_effective_numeric_fmt());
+}
+
+// Buffer-targeting core, parameterised by radix; defined below (after sn_write).
+static int __vsnprintf_l(char *__restrict s, size_t n, const char *__restrict fmt, va_list ap,
+		sprt::__numeric_fmt nf);
+
+static int __vasprintf_l(char **s, const char *fmt, va_list ap, sprt::__numeric_fmt nf) {
 	va_list ap2;
 	va_copy(ap2, ap);
-	int l = vsnprintf(0, 0, fmt, ap2);
+	int l = __vsnprintf_l(0, 0, fmt, ap2, nf);
 	va_end(ap2);
 
 	if (l < 0 || !(*s = (char *)malloc(l + 1U))) {
 		return -1;
 	}
-	return vsnprintf(*s, l + 1U, fmt, ap);
+	return __vsnprintf_l(*s, l + 1U, fmt, ap, nf);
+}
+
+__SPRT_C_FUNC int vasprintf(char **s, const char *fmt, va_list ap) __SPRT_NOEXCEPT {
+	return __vasprintf_l(s, fmt, ap, sprt::__get_effective_numeric_fmt());
 }
 
 __SPRT_C_FUNC int vprintf(const char *__restrict fmt, va_list ap) __SPRT_NOEXCEPT {
@@ -915,8 +999,8 @@ static size_t sn_write(FILE *f, const unsigned char *s, size_t l) {
 	return l;
 }
 
-__SPRT_C_FUNC int vsnprintf(char *__restrict s, size_t n, const char *__restrict fmt,
-		va_list ap) __SPRT_NOEXCEPT {
+static int __vsnprintf_l(char *__restrict s, size_t n, const char *__restrict fmt, va_list ap,
+		sprt::__numeric_fmt nf) {
 	unsigned char buf[1];
 	char dummy[1];
 	vsnprintf_cookie c = {.s = n ? s : dummy, .n = n ? n - 1 : 0};
@@ -929,7 +1013,41 @@ __SPRT_C_FUNC int vsnprintf(char *__restrict s, size_t n, const char *__restrict
 	};
 
 	*c.s = 0;
-	return vfprintf(&f, fmt, ap);
+	return __vfprintf_l(&f, fmt, ap, nf);
+}
+
+__SPRT_C_FUNC int vsnprintf(char *__restrict s, size_t n, const char *__restrict fmt,
+		va_list ap) __SPRT_NOEXCEPT {
+	return __vsnprintf_l(s, n, fmt, ap, sprt::__get_effective_numeric_fmt());
+}
+
+// --- Locale-aware (_l) variants: resolve the explicit locale's radix and feed
+// the same cores. ---
+
+__SPRT_C_FUNC int vsnprintf_l(char *__restrict s, size_t n, locale_t loc,
+		const char *__restrict fmt, va_list ap) __SPRT_NOEXCEPT {
+	return __vsnprintf_l(s, n, fmt, ap, __get_locale_numeric_fmt(loc));
+}
+
+__SPRT_C_FUNC int snprintf_l(char *__restrict s, size_t n, locale_t loc,
+		const char *__restrict fmt, ...) __SPRT_NOEXCEPT {
+	va_list ap;
+	va_start(ap, fmt);
+	int ret = __vsnprintf_l(s, n, fmt, ap, __get_locale_numeric_fmt(loc));
+	va_end(ap);
+	return ret;
+}
+
+__SPRT_C_FUNC int vasprintf_l(char **s, locale_t loc, const char *fmt, va_list ap) __SPRT_NOEXCEPT {
+	return __vasprintf_l(s, fmt, ap, __get_locale_numeric_fmt(loc));
+}
+
+__SPRT_C_FUNC int asprintf_l(char **s, locale_t loc, const char *fmt, ...) __SPRT_NOEXCEPT {
+	va_list ap;
+	va_start(ap, fmt);
+	int ret = __vasprintf_l(s, fmt, ap, __get_locale_numeric_fmt(loc));
+	va_end(ap);
+	return ret;
 }
 
 __SPRT_C_FUNC int printf(const char *__restrict fmt, ...) __SPRT_NOEXCEPT {

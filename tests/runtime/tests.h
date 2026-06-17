@@ -26,6 +26,8 @@ void performUnameTest();
 void performUnistdTest();
 void performDirTest();
 void performLinkTest();
+void performFcntlTest();
+void performLocaleTest();
 
 void performPthreadCreateTest();
 void performPthreadMutexTest();

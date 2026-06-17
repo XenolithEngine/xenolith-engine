@@ -90,8 +90,18 @@ int usleep(__SPRT_ID(time_t) us) __SPRT_NOEXCEPT {
 int chdir(const char *path) __SPRT_NOEXCEPT {
 	return platform::performWithNativePath(path, [&](const char *target) {
 		// call with native path
-		::chdir(target);
-		return 0;
+		auto wpath = __MALLOCA_WSTRING(target);
+
+		auto ret = SetCurrentDirectoryW(wpath);
+
+		__sprt_freea(wpath);
+
+		if (ret) {
+			return 0;
+		}
+
+		__sprt_errno = platform::lastErrorToErrno(GetLastError());
+		return -1;
 	}, -1);
 }
 

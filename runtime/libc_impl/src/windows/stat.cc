@@ -57,12 +57,12 @@ int hstat(HANDLE h, struct __SPRT_STAT_NAME *__stat) {
 		return -1;
 	}
 
+	// FileStorageInfo only feeds the advisory st_blksize/st_blocks fields and is not implemented on
+	// every backend (notably wine), so its absence must NOT fail stat(): fall back to a 512-byte
+	// sector. (Compare GetSecurityInfo below, which is likewise tolerated when unavailable.)
 	if (!GetFileInformationByHandleEx(h, FileStorageInfo, &storageInfo,
 				sizeof(FILE_STORAGE_INFO))) {
-		// The HANDLE is owned by the caller (__wstat / __file_stat); do not
-		// close it here, or it will be closed twice.
-		__sprt_errno = platform::lastErrorToErrno(GetLastError());
-		return -1;
+		storageInfo.LogicalBytesPerSector = 512;
 	}
 
 	if (GetSecurityInfo(h, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION,

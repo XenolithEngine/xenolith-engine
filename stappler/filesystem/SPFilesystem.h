@@ -131,6 +131,9 @@ SP_PUBLIC StringView detectMimeType(StringView path);
 template <typename Interface>
 SP_PUBLIC inline auto currentDir(StringView ipath, bool relative) ->
 		typename Interface::StringType {
+	memory::StandartInterface::StringType posixStorage;
+	ipath = toPosixPath(ipath, posixStorage);
+
 	if (filepath::isAboveRoot(ipath)) {
 		return typename Interface::StringType();
 	}
