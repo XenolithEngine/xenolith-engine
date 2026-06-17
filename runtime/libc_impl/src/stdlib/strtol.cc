@@ -67,3 +67,15 @@ __SPRT_C_FUNC long strtol_l(const char *__restrict s, char **__restrict p, int b
 		locale_t) __SPRT_NOEXCEPT {
 	return strtol(s, p, base);
 }
+
+// Integer conversions are not affected by the locale (no radix or grouping is
+// consumed), so the _l variants are exact passthroughs to the plain functions.
+__SPRT_C_FUNC intmax_t strtoimax_l(const char *__restrict s, char **__restrict p, int base,
+		locale_t) __SPRT_NOEXCEPT {
+	return strtoimax(s, p, base);
+}
+
+__SPRT_C_FUNC uintmax_t strtoumax_l(const char *__restrict s, char **__restrict p, int base,
+		locale_t) __SPRT_NOEXCEPT {
+	return strtoumax(s, p, base);
+}

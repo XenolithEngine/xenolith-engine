@@ -1,0 +1,69 @@
+# `fcntl` on Windows
+
+`fcntl(int fd, int cmd, ...)` is a thin generic dispatcher (`src/builtin_fcntl.cpp`): it reads the single variadic argument and forwards it, together with the command, to the `fo_ioctl` operation of the descriptor's file-operations table. The real per-descriptor behaviour for regular file descriptors lives in `__file_ioctl` (`src/windows/libc_file_ops.cc`); the same entry point also serves `ioctl()`, distinguished by an `__fd_ctl_mode` selector. Directory descriptors have no `fcntl` behaviour and return `EBADF`.
+
+The argument is forwarded at *pointer width* (`intptr_t`). This matters on Windows, which is an LLP64 platform: `long` is only 32 bits there, so the pointer-taking commands (`F_GETLK`/`F_SETLK`/`F_SETLKW`) would silently truncate their `struct flock *` if the value were carried as `long`/`unsigned long`. The cross-platform `fcntl` shim in `runtime/core/runtime_core_defaults.cpp` is written accordingly.
+
+## Supported commands
+
+[cols="1,3"]
+|===
+| Command | Behaviour
+
+| `F_DUPFD`, `F_DUPFD_CLOEXEC`
+| Duplicate the descriptor via `DuplicateHandle`. As everywhere on this platform the duplicate is **close-on-exec / non-inheritable** (see link:windows-fd-inheritance.adoc[File descriptor inheritance]), so both forms behave identically here — this is the deliberate platform convention, not an oversight.
+
+| `F_GETFD`, `F_SETFD`
+| Get/set `FD_CLOEXEC`, mapped to `HANDLE_FLAG_INHERIT` via `GetHandleInformation`/`SetHandleInformation` (set = non-inheritable, clear = inheritable). `F_SETFD` rejects any bit other than `FD_CLOEXEC` with `EINVAL`.
+
+| `F_GETFL`
+| Return the access mode and status flags recorded for the descriptor at open time.
+
+| `F_SETFL`
+| Re-open the underlying object with `ReOpenFile` to apply the new flags, then swap the handle in place. Only flags expressible to `ReOpenFile` take effect; `O_TMPFILE`/`O_NONBLOCK` are rejected with `ENOSYS`, `O_PATH`/`O_DIRECTORY` with `EINVAL`.
+
+| `F_GETLK`, `F_SETLK`, `F_SETLKW`
+| Advisory record locking, mapped onto `LockFileEx`/`UnlockFileEx` — see below.
+|===
+
+## Record locking (`F_GETLK` / `F_SETLK` / `F_SETLKW`)
+
+The three locking commands operate on a `struct flock` and are implemented with the Windows byte-range lock API (`LockFileEx`, `UnlockFileEx`). The POSIX byte range is translated to the absolute `[offset, length)` pair those calls expect:
+
+* `l_whence` is resolved to an absolute start: `SEEK_SET` as-is, `SEEK_CUR` relative to the current file pointer (`SetFilePointerEx`), `SEEK_END` relative to the file size (`GetFileSizeEx`).
+* A negative `l_len` is normalised to the range that precedes `l_start` (`[l_start+l_len, l_start)`), as POSIX permits.
+* `l_len == 0` means "lock to the end of the file" in POSIX. Windows has no such sentinel, so the maximal range that still begins at the computed offset is locked. The identical conversion is used on unlock, so the locked and unlocked ranges always match.
+
+Command mapping:
+
+* `F_SETLK` — non-blocking: `LockFileEx` with `LOCKFILE_FAIL_IMMEDIATELY`. `F_WRLCK` adds `LOCKFILE_EXCLUSIVE_LOCK`; `F_RDLCK` is a shared lock. On a conflict the call returns `-1` with `errno = EAGAIN`.
+* `F_SETLKW` — blocking: the same as `F_SETLK` without `LOCKFILE_FAIL_IMMEDIATELY`, so the call waits until the range becomes available.
+* `F_UNLCK` (with either `F_SETLK`/`F_SETLKW`) — `UnlockFileEx`. Unlocking a region that is not locked is treated as success (`ERROR_NOT_LOCKED` is swallowed), matching POSIX.
+* `F_GETLK` — there is no Windows API to enumerate the holder of a conflicting lock, so the region is *probed* with a non-blocking lock. If the probe succeeds the lock is immediately released and `l_type` is set to `F_UNLCK` (region free). If the probe fails with a lock violation, `l_type` is set to `F_WRLCK` and `l_pid` to `-1` (a conflicting lock exists, type and owner unknown).
+
+An invalid `l_type` (not one of `F_RDLCK`/`F_WRLCK`/`F_UNLCK`), a null argument, or a range that resolves to a negative start fails with `EINVAL`.
+
+[IMPORTANT]
+====
+Windows byte-range locks differ from POSIX advisory locks in ways the emulation cannot fully hide:
+
+* They are **mandatory**, enforced by the kernel, not advisory. A `read`/`write` that overlaps another process's lock fails on Windows where POSIX would succeed.
+* They are tied to the **file `HANDLE`**, not to the (process, inode) pair. Consequently a process cannot test or override a lock it holds on the *same* descriptor — re-locking an already-locked range via the same handle fails. POSIX, by contrast, treats a process's own locks as always grantable and `F_GETLK` reports them as `F_UNLCK`.
+* Locks are **not coalesced or split**. POSIX automatically merges adjacent/overlapping locks and splits a region on partial unlock; Windows requires that each unlock exactly match the offset and length of a prior lock. Lock and unlock requests must therefore be paired with identical ranges.
+* There is **no lock ownership query**. `F_GETLK` can only report *that* a conflict exists, never *which* process or *which* lock type holds it (`l_pid` is reported as `-1`).
+
+For cooperating processes that lock and unlock matching ranges (the common `lockf()`/`flock`-style usage), the behaviour matches POSIX expectations. `lockf()` is built on these commands and works accordingly.
+====
+
+## Unsupported commands
+
+Signal-driven I/O has no Windows equivalent. The following commands are recognised but deliberately fail with `errno = ENOSYS` rather than returning a misleading success or `EINVAL`: `F_GETOWN`, `F_SETOWN`, `F_GETOWN_EX`, `F_SETOWN_EX`, `F_GETSIG`, `F_SETSIG`, `F_GETOWNER_UIDS`. Any other (unknown) command fails with `EINVAL`.
+
+## Tests
+
+The behaviour described here is covered by the `libc_fcntl` case in `tests/runtime` (`tests/runtime/c/libc.cpp`, `performFcntlTest`). Build and run it with the Windows cross-target under Wine:
+
+----
+make -C tests/runtime STAPPLER_TARGET=x86_64-pc-windows-msvc -j8
+WINEDEBUG=-all wine tests/runtime/stappler-build/x86_64-pc-windows-msvc/debug/cc/runtimetest.exe libc_fcntl
+----

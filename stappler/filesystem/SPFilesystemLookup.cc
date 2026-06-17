@@ -24,11 +24,33 @@
 #include "SPFilesystem.h"
 #include "SPString.h"
 #include <sprt/runtime/stream.h>
+#include <stdio.h> // __sprt_fpath_is_native / __sprt_fpath_to_posix + SPRT_WINDOWS
 
 namespace STAPPLER_VERSIONIZED stappler::filesystem {
 
+StringView toPosixPath(StringView path, memory::StandartInterface::StringType &storage) {
+#if SPRT_WINDOWS
+	// Accept a Windows-native path from the caller but operate in posix internally: detect it and
+	// rewrite it (C:\dir -> /c/dir, '\\' -> '/', strip the \\?\ prefix). fpath_to_posix is
+	// idempotent on posix input. On POSIX builds fpath_is_native is a constant 1 and fpath_to_posix
+	// is not even built, so this whole block is compiled out and the input passes through.
+	if (!path.empty() && __sprt_fpath_is_native(path.data(), path.size())) {
+		storage.resize(path.size() + 4); // output is never longer than the input + a leading '/'
+		auto n = __sprt_fpath_to_posix(path.data(), path.size(), storage.data(), storage.size());
+		if (n > 0) {
+			storage.resize(n);
+			return StringView(storage.data(), storage.size());
+		}
+	}
+#endif
+	return path;
+}
+
 void enumeratePaths(FileCategory cat, StringView filename, FileFlags flags, Access a,
 		const Callback<bool(const LocationInfo &, StringView)> &cb) {
+	memory::StandartInterface::StringType posixStorage;
+	filename = toPosixPath(filename, posixStorage);
+
 	if (filepath::isAboveRoot(filename)) {
 		return;
 	}
@@ -64,6 +86,9 @@ void enumeratePaths(FileCategory cat, StringView filename, FileFlags flags, Acce
 
 FileCategory detectResourceCategory(StringView ipath,
 		const Callback<void(const ReverseLookupInfo &)> &cb, Access access) {
+	memory::StandartInterface::StringType posixStorage;
+	ipath = toPosixPath(ipath, posixStorage);
+
 	if (filepath::isAboveRoot(ipath)) {
 		return FileCategory::Custom;
 	}
@@ -206,6 +231,9 @@ FileCategory detectResourceCategory(StringView ipath,
 
 FileCategory detectResourceCategory(FileCategory category, StringView ipath, FileFlags flags,
 		const Callback<void(const ReverseLookupInfo &)> &cb, Access access) {
+	memory::StandartInterface::StringType posixStorage;
+	ipath = toPosixPath(ipath, posixStorage);
+
 	if (category == FileCategory::Custom) {
 		return detectResourceCategory(ipath, cb, access);
 	}

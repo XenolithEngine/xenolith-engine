@@ -62,8 +62,6 @@ __SPRT_BEGIN_DECL
 typedef __SPRT_ID(nl_item) nl_item;
 typedef __SPRT_ID(nl_catd) nl_catd;
 
-#if __SPRT_CONFIG_HAVE_NLTYPES_CAT || __SPRT_CONFIG_DEFINE_UNAVAILABLE_FUNCTIONS
-
 SPRT_UMBRELLA_FUNC
 nl_catd catopen(const char *path, int v) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -86,8 +84,6 @@ int catclose(nl_catd cat) SPRT_UMBRELLA_END
 {
 	return __sprt_catclose(cat);
 }
-#endif
-
 #endif
 
 __SPRT_END_DECL

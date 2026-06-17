@@ -104,7 +104,7 @@ __libc::~__libc() {
 struct __locale_map *__libc::get_cached_locale(const char *name, size_t len,
 		const Callback<struct __locale_map *()> &cb) {
 	auto nameView = StringView(name, len);
-	unique_lock lock(defaultLocaleMutex);
+	unique_lock lock(localeCacheMutex);
 	auto it = localeCache.find(nameView);
 	if (it != localeCache.end()) {
 		return it->second;
@@ -139,11 +139,14 @@ int __libc::create_fd(void *handle, const __fd_ops *ops, uint32_t flags, uint32_
 	}
 
 	auto pageNumber = fd / FDS_PER_PAGE;
+	// Use designated initializers: __fd_slot has a `padding` field between `ops`
+	// and `flags`, so a positional list would land `flags` in `padding` and
+	// `mode` in `flags`, leaving `mode` zeroed (and F_GETFL returning the mode).
 	fdPages[pageNumber]->fds[fd % FDS_PER_PAGE] = __fd_slot{
-		handle,
-		ops,
-		flags,
-		mode,
+		.handle = handle,
+		.ops = ops,
+		.flags = flags,
+		.mode = mode,
 	};
 	return fd;
 }

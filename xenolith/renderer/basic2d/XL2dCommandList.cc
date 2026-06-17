@@ -332,7 +332,7 @@ struct BinReader {
 	}
 	template <typename T>
 	T pod() {
-		T t {};
+		T t{};
 		if (auto p = take(sizeof(T))) {
 			memcpy(&t, p, sizeof(T));
 		}
@@ -348,7 +348,7 @@ struct BinReader {
 		}
 		if (auto p = take(sizeof(T) * size_t(n))) {
 			out.resize(n);
-			memcpy(out.data(), p, sizeof(T) * size_t(n));
+			sprt::memcpy(out.data(), p, sizeof(T) * size_t(n));
 		}
 		return out;
 	}
@@ -357,8 +357,8 @@ struct BinReader {
 // Apply a resolved Deferred command's view/model transform to one instance (mirrors
 // VertexMaterialDynamicData::applyNormalized in the vk vertex pass) so the wire carries final
 // pixel-space transforms.
-static TransformData transformInstance(const TransformData &src, const Mat4 &view, const Mat4 &model,
-		bool normalized) {
+static TransformData transformInstance(const TransformData &src, const Mat4 &view,
+		const Mat4 &model, bool normalized) {
 	TransformData inst = src;
 	if (normalized) {
 		auto modelTransform = model * src.transform;
@@ -540,8 +540,9 @@ bool FrameContextHandle2d::deserialize(BytesView bytes) {
 					iv->fillIndexes = parsed[a].fill;
 					iv->strokeIndexes = parsed[a].stroke;
 					iv->sdfIndexes = parsed[a].sdf;
-					iv->instances = makeSpanView(parsed[a].instances.data(),
-							parsed[a].instances.size()).pdup(p);
+					iv->instances =
+							makeSpanView(parsed[a].instances.data(), parsed[a].instances.size())
+									.pdup(p);
 					auto vd = Rc<VertexData>::alloc();
 					vd->data = sp::move(parsed[a].vertices);
 					vd->indexes = sp::move(parsed[a].indexes);

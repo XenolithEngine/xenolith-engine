@@ -27,6 +27,8 @@ THE SOFTWARE.
 #include "wctype.h"
 #include "../include/__impl_libc.h"
 
+#include <sprt/c/__sprt_nl_types.h>
+
 #if SPRT_WINDOWS
 #include "windows/locale.cc"
 #endif
@@ -46,6 +48,14 @@ const __locale_map *__get_effective_locale_map(int c) {
 		unique_lock lock(libc->defaultLocaleMutex);
 		return libc->defaultLocale.cat[c];
 	}
+}
+
+char __get_effective_numeric_radix() {
+	return __get_numeric_radix(__get_effective_locale_map(__SPRT_LC_NUMERIC));
+}
+
+__numeric_fmt __get_effective_numeric_fmt() {
+	return __get_numeric_fmt(__get_effective_locale_map(__SPRT_LC_NUMERIC));
 }
 
 extern "C" {
@@ -214,13 +224,95 @@ size_t wcsxfrm_l(wchar_t *__restrict dest, const wchar_t *__restrict src, __sprt
 
 __SPRT_C_FUNC size_t strxfrm_l(char *__restrict dest, const char *__restrict src, size_t n,
 		locale_t loc) __SPRT_NOEXCEPT {
-	size_t l = sprt::strlen(src);
-	if (n > l) {
-		sprt::strcpy(dest, src);
+	// Mirrors wcsxfrm_l: an absent/global locale resolves to the user-default
+	// collation, otherwise the explicit locale's LC_COLLATE category is used.
+	if (loc == nullptr || loc == __SPRT_LC_GLOBAL_LOCALE) {
+		return sprt::__strxfrm_l(dest, src, n, nullptr);
 	}
-	return l;
+	return sprt::__strxfrm_l(dest, src, n, loc->data.cat[__SPRT_LC_COLLATE]);
+}
+
+// Real implementation lives under the internal name __strxfrm. The freestanding
+// libc umbrella routes the public strxfrm() through __sprt_strxfrm_impl, which
+// must reach the implementation by this distinct name to avoid recursing back
+// into itself; the public strxfrm() symbol below simply forwards here.
+//
+// Mirrors strcoll/wcsxfrm: in the C/POSIX locale the transform is the identity
+// (strcmp then matches strcoll); otherwise produce a Windows sort key so that
+// strcmp() of two keys agrees with strcoll().
+__SPRT_C_FUNC size_t __strxfrm(char *dest, const char *src, size_t n) __SPRT_NOEXCEPT {
+	auto map = sprt::__get_effective_locale_map(__SPRT_LC_COLLATE);
+	if (map == sprt::__get_default_locale()) {
+		size_t l = sprt::strlen(src);
+		if (n > l) {
+			sprt::strcpy(dest, src);
+		}
+		return l;
+	}
+	return sprt::__strxfrm_l(dest, src, n, map);
 }
 
 __SPRT_C_FUNC size_t strxfrm(char *dest, const char *src, size_t n) __SPRT_NOEXCEPT {
-	return strxfrm_l(dest, src, n, nullptr);
+	return __strxfrm(dest, src, n);
+}
+
+char __get_locale_numeric_radix(__freestanding_locale_struct *loc) {
+	if (loc == nullptr || loc == __SPRT_LC_GLOBAL_LOCALE) {
+		return sprt::__get_effective_numeric_radix();
+	}
+	return sprt::__get_numeric_radix(loc->data.cat[__SPRT_LC_NUMERIC]);
+}
+
+sprt::__numeric_fmt __get_locale_numeric_fmt(__freestanding_locale_struct *loc) {
+	if (loc == nullptr || loc == __SPRT_LC_GLOBAL_LOCALE) {
+		return sprt::__get_effective_numeric_fmt();
+	}
+	return sprt::__get_numeric_fmt(loc->data.cat[__SPRT_LC_NUMERIC]);
+}
+
+
+// Message-catalog entry points for the freestanding libc. There is no external
+// catalog backend on these targets, so the SPRT-API symbols the <nl_types.h>
+// umbrella routes through delegate to the shared honest empty-catalog fallback
+// in runtime_core (sprt::__cat*_empty). On a hosted build the wrapper provides
+// these symbols instead (forwarding to the platform libc, or to the same core
+// fallback on Android when the platform offers no catopen).
+
+// Address-only sentinel identifying the fallback's empty catalog handle.
+static char s_emptyCatalog;
+
+__SPRT_C_FUNC __SPRT_ID(nl_catd) catopen(const char *name, int flag) __SPRT_NOEXCEPT {
+	(void)name;
+	(void)flag;
+	return (__SPRT_ID(nl_catd)) & s_emptyCatalog;
+}
+
+__SPRT_C_FUNC char *catgets(__SPRT_ID(nl_catd) catd, int set_id, int msg_id,
+		const char *msg) __SPRT_NOEXCEPT {
+	(void)catd;
+	(void)set_id;
+	(void)msg_id;
+	// No catalog backend: honestly return the caller's default message.
+	return (char *)msg;
+}
+
+__SPRT_C_FUNC int catclose(__SPRT_ID(nl_catd) catd) __SPRT_NOEXCEPT {
+	if (catd == (__SPRT_ID(nl_catd)) & s_emptyCatalog) {
+		return 0;
+	}
+	__sprt_errno = EBADF;
+	return -1;
+}
+
+__SPRT_C_FUNC __SPRT_ID(nl_catd) __SPRT_ID(catopen)(const char *name, int flag) __SPRT_NOEXCEPT {
+	return catopen(name, flag);
+}
+
+__SPRT_C_FUNC char *__SPRT_ID(
+		catgets)(__SPRT_ID(nl_catd) catd, int set_id, int msg_id, const char *msg) __SPRT_NOEXCEPT {
+	return catgets(catd, set_id, msg_id, msg);
+}
+
+__SPRT_C_FUNC int __SPRT_ID(catclose)(__SPRT_ID(nl_catd) catd) __SPRT_NOEXCEPT {
+	return catclose(catd);
 }

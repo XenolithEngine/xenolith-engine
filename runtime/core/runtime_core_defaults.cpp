@@ -98,10 +98,13 @@ __SPRT_C_FUNC void __SPRT_ID(perror_impl)(const char *err) { return ::perror(err
 __SPRT_C_FUNC int __SPRT_ID(fflush_impl)(__SPRT_ID(FILE) * file) { return ::fflush(file); }
 
 __SPRT_C_FUNC int __SPRT_ID(fcntl)(int __fd, int __cmd, ...) {
-	unsigned long arg;
+	// The argument must be forwarded at pointer width: commands such as
+	// F_GETLK/F_SETLK take a `struct flock *`, and on LLP64 (Windows) an
+	// `unsigned long` is only 32 bits and would truncate the pointer.
+	intptr_t arg;
 	__builtin_va_list ap;
 	__builtin_va_start(ap, __cmd);
-	arg = __builtin_va_arg(ap, unsigned long);
+	arg = __builtin_va_arg(ap, intptr_t);
 	__builtin_va_end(ap);
 
 	return fcntl(__fd, __cmd, arg);
@@ -349,6 +352,61 @@ __SPRT_C_FUNC int __SPRT_ID(sigandset)(__SPRT_ID(sigset_t) * set, const __SPRT_I
 __SPRT_C_FUNC int __SPRT_ID(sigemptyset)(__SPRT_ID(sigset_t) * set) {
 	for (auto &it : set->__bits) { it = 0; }
 	return 0;
+}
+
+} // namespace sprt
+
+
+#include <sprt/c/__sprt_errno.h>
+#include <sprt/runtime/wctype.h>
+
+// The case mapping is delegated to the platform's plain towupper()/towlower(),
+// which resolve to libc_impl on freestanding targets and to the system libc on
+// hosted ones -- both long predate any wctrans support (on Android, Bionic has
+// had them since API 1, unlike the API-26 wctrans). They are declared directly
+// (the libc umbrella <wctype.h> is not on runtime_core's include path on every
+// target); extern "C" + the SPRT wint_t keeps the declaration ABI-compatible.
+extern "C" {
+__SPRT_ID(wint_t) towupper(__SPRT_ID(wint_t));
+__SPRT_ID(wint_t) towlower(__SPRT_ID(wint_t));
+}
+
+// Shared glibc-style wctrans/towctrans fallback (see sprt/runtime/wctype.h).
+// Used both by the freestanding libc_impl <wctype.h> entry points and the
+// Android wrapper bridge when the platform exposes no wctrans/towctrans.
+
+namespace sprt {
+
+// Opaque non-zero handles: only their identity matters, never any pointee. Cast
+// from small integers so this works whether __sprt_wctrans_t is a pointer (glibc
+// / libc_impl ABI) or a plain int (macOS ABI override); real platform handles
+// are valid addresses, so they never collide with 1/2.
+#define SPRT_WCTRANS_UPPER ((__SPRT_ID(wctrans_t))1)
+#define SPRT_WCTRANS_LOWER ((__SPRT_ID(wctrans_t))2)
+
+__SPRT_ID(wctrans_t) __wctrans_fallback(const char *name) __SPRT_NOEXCEPT {
+	if (name) {
+		if (__builtin_strcmp(name, "toupper") == 0) {
+			return SPRT_WCTRANS_UPPER;
+		}
+		if (__builtin_strcmp(name, "tolower") == 0) {
+			return SPRT_WCTRANS_LOWER;
+		}
+	}
+	__sprt_errno = EINVAL;
+	return (__SPRT_ID(wctrans_t))0;
+}
+
+__SPRT_ID(wint_t)
+__towctrans_fallback(__SPRT_ID(wint_t) wc, __SPRT_ID(wctrans_t) desc) __SPRT_NOEXCEPT {
+	if (desc == SPRT_WCTRANS_UPPER) {
+		return ::towupper(wc);
+	}
+	if (desc == SPRT_WCTRANS_LOWER) {
+		return ::towlower(wc);
+	}
+	// A null or unrecognised mapping is the identity (towctrans(wc, 0) == wc).
+	return wc;
 }
 
 } // namespace sprt

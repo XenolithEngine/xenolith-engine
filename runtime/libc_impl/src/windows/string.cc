@@ -27,7 +27,11 @@ THE SOFTWARE.
 #include "../../include/__impl_libc.h"
 
 extern "C" {
-int strcoll(const char *l, const char *r) __SPRT_NOEXCEPT {
+// Real implementation lives under the internal name __strcoll. The freestanding
+// libc umbrella routes the public strcoll() through __sprt_strcoll_impl, which
+// must reach the implementation by this distinct name to avoid recursing back
+// into itself; the public strcoll() symbol below simply forwards here.
+int __strcoll(const char *l, const char *r) __SPRT_NOEXCEPT {
 	if (!l || !r) {
 		return 0;
 	}
@@ -44,4 +48,6 @@ int strcoll(const char *l, const char *r) __SPRT_NOEXCEPT {
 
 	return ret;
 }
+
+int strcoll(const char *l, const char *r) __SPRT_NOEXCEPT { return __strcoll(l, r); }
 }

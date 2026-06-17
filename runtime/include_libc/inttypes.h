@@ -29,9 +29,10 @@ THE SOFTWARE.
 	- otherwise         -> SPRT's own definitions via sprt/wrappers/libc/inttypes.h,
 	                       which first includes the <stdint.h> wrapper
 
-	This header declares only macros; the fixed-width types and their limit/constant
-	macros come from <stdint.h>. It does NOT provide the imaxabs/imaxdiv/strtoimax/
-	strtoumax/wcstoimax/wcstoumax functions.
+	The fixed-width types and their limit/constant macros come from <stdint.h>.
+	strtoimax/strtoumax/wcstoimax/wcstoumax (plus the SPRT _l variants strtoimax_l/
+	strtoumax_l) are provided on the SPRT-own path, expressed through the existing
+	strtoll/strtoull/wcstoll/wcstoull family. imaxabs/imaxdiv are not provided.
 
 	printf format-specifier macros (PRI...):
 	  conversion letters d/i (signed decimal), o (octal), u (unsigned decimal),
