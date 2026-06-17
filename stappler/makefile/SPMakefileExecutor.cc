@@ -69,6 +69,34 @@ static void Executor_decodeRecipePrefix(StringView &line, bool &silent, bool &ig
 	}
 }
 
+// Split an already-expanded recipe rule into its individual command lines. A single recipe line in
+// the makefile can expand (through a variable reference or a canned `define`) into several physical
+// lines; GNU make then runs each as its own command, with its own @/-/+ prefix. Iterate those lines,
+// decode each line's prefix, skip blank (or prefix-only) lines exactly as GNU make does, and hand
+// each command to `cb`; `cb` returns false to stop early (a failed command aborts the rest of the
+// recipe). The common case — an expansion with no embedded newline — yields exactly one line, so
+// behaviour there is unchanged.
+static void Executor_forEachRecipeLine(StringView expanded,
+		const Callback<bool(StringView line, bool silent, bool ignoreErr, bool always)> &cb) {
+	StringView str(expanded);
+	while (!str.empty()) {
+		StringView line = str.readUntil<StringView::Chars<'\n', '\r'>>();
+		if (str.is("\r\n")) {
+			str += 2;
+		} else if (!str.empty()) {
+			++str;
+		}
+		bool silent = false, ignoreErr = false, always = false;
+		Executor_decodeRecipePrefix(line, silent, ignoreErr, always);
+		if (line.empty()) {
+			continue; // blank or prefix-only line within a canned recipe: GNU make skips it
+		}
+		if (!cb(line, silent, ignoreErr, always)) {
+			return;
+		}
+	}
+}
+
 // === target lookup / classification ======================================================
 
 void Makefile::applySpecialTarget(Target *t, ErrorReporter &err) {
@@ -569,10 +597,11 @@ void Makefile::exportRecipeLines(Target *t, const RecipeLineCallback &cb, ErrorR
 		pushTargetVars(node->target, saved, err); // after setAutoVars: a target var may use $@
 		for (auto r = node->rules; r; r = r->next) {
 			auto expanded = _engine.resolve(r->rule, err);
-			StringView line(expanded);
-			bool silent = false, ignoreErr = false, always = false;
-			Executor_decodeRecipePrefix(line, silent, ignoreErr, always);
-			cb(line, silent, ignoreErr, always);
+			Executor_forEachRecipeLine(expanded,
+					[&](StringView line, bool silent, bool ignoreErr, bool always) {
+				cb(line, silent, ignoreErr, always);
+				return true;
+			});
 		}
 		popTargetVars(saved);
 		clearAutoVars();
@@ -587,56 +616,58 @@ void Makefile::exportRecipe(Target *t, const Callback<void(StringView)> &out, Er
 // === execution ===========================================================================
 
 bool Makefile::runRecipe(BuildNode *node, ErrorReporter &err) {
-	for (auto r = node->rules; r; r = r->next) {
+	bool ok = true;
+	for (auto r = node->rules; r && ok; r = r->next) {
 		auto expanded = _engine.resolve(r->rule, err);
-		StringView line(expanded);
-		bool silent = false, ignoreErr = false, always = false;
-		Executor_decodeRecipePrefix(line, silent, ignoreErr, always);
-		if (line.empty()) {
-			continue;
-		}
-
-		bool echo = !silent && !_buildOptions.silent;
-		auto custom = _engine.getCustomOutput();
-		if (echo) {
-			if (custom) {
-				(*custom) << line << "\n";
-			} else {
-				fprintf(stdout, "%.*s\n", int(line.size()), line.data());
+		// A rule may expand to several command lines (variable / canned `define`); run each in its
+		// own shell, with its own prefix, and stop the whole recipe on the first failure.
+		Executor_forEachRecipeLine(expanded,
+				[&](StringView line, bool silent, bool ignoreErr, bool always) -> bool {
+			bool echo = !silent && !_buildOptions.silent;
+			auto custom = _engine.getCustomOutput();
+			if (echo) {
+				if (custom) {
+					(*custom) << line << "\n";
+				} else {
+					fprintf(stdout, "%.*s\n", int(line.size()), line.data());
+				}
 			}
-		}
 
-		if (_buildOptions.dryRun && !always) {
-			continue;
-		}
+			if (_buildOptions.dryRun && !always) {
+				return true;
+			}
 
-		String cmd = line.str<Interface>();
-		FILE *fp = popen(cmd.data(), "r");
-		if (!fp) {
-			err.reportError(toString("Failed to run recipe: '", cmd, '\''));
-			if (!ignoreErr) {
+			String cmd = line.str<Interface>();
+			FILE *fp = popen(cmd.data(), "r");
+			if (!fp) {
+				err.reportError(toString("Failed to run recipe: '", cmd, '\''));
+				if (!ignoreErr) {
+					ok = false;
+					return false;
+				}
+				return true;
+			}
+
+			char buf[1_KiB];
+			while (fgets(buf, sizeof(buf), fp)) {
+				if (custom) {
+					(*custom) << StringView(buf);
+				} else {
+					fputs(buf, stdout);
+				}
+			}
+
+			int status = pclose(fp);
+			if (status != 0 && !ignoreErr) {
+				err.reportError(toString("Recipe for target '", node->target->name,
+						"' failed with status ", status));
+				ok = false;
 				return false;
 			}
-			continue;
-		}
-
-		char buf[1_KiB];
-		while (fgets(buf, sizeof(buf), fp)) {
-			if (custom) {
-				(*custom) << StringView(buf);
-			} else {
-				fputs(buf, stdout);
-			}
-		}
-
-		int status = pclose(fp);
-		if (status != 0 && !ignoreErr) {
-			err.reportError(toString("Recipe for target '", node->target->name,
-					"' failed with status ", status));
-			return false;
-		}
+			return true;
+		});
 	}
-	return true;
+	return ok;
 }
 
 BuildResult Makefile::execute(Target *goal, ErrorReporter &err) {
