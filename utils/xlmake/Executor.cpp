@@ -96,6 +96,7 @@ struct Job {
 	bool hadOutput = false; // the recipe wrote to stdout/stderr (decides non-verbose suppression)
 	bool failed = false; // a command failed: always show the block regardless of verbosity
 	bool headerDone = false; // streaming started: counter + buffered prefix already written live
+	bool lineBuffered = false; // .TARGET_BUFFER=line: stream output live, like a recursive sub-make
 };
 
 class Builder {
@@ -145,6 +146,7 @@ private:
 	void emitCounter(Job *job); // print one "[depth][N/M] name" progress line, advancing _done
 	void beginStream(Job *job); // start live streaming: emit counter + buffered prefix once
 	JobString displayName(BuildNode *bn); // .TARGET_NAME (target scope) or the target's own name
+	bool isLineBuffered(BuildNode *bn); // .TARGET_BUFFER=line (target scope): stream output live
 	bool isRecursiveCommand(StringView text) const; // expanded recipe line invokes $(MAKE) directly
 
 	Makefile *_mk = nullptr;
@@ -291,6 +293,7 @@ void Builder::dispatchNode(NodeState *st) {
 	if (_counter) {
 		job->name = displayName(bn);
 	}
+	job->lineBuffered = isLineBuffered(bn);
 	_mk->exportRecipeLines(bn->target,
 			[&](StringView line, bool silent, bool ignoreErr, bool always) {
 		if (line.empty()) {
@@ -334,12 +337,14 @@ void Builder::spawn(Job *job) {
 		return;
 	}
 
-	// A recursive $(MAKE) emits a whole sub-build's worth of output over its lifetime. Holding it in
-	// the job buffer until this node completes (the default) hides the sub-build's live progress, so
-	// stream it instead: emit this node's header (counter + the command echo) up front, then write
+	// Stream the output live (instead of buffering it until the node completes) when either the
+	// command is a recursive $(MAKE) — which emits a whole sub-build's worth of output over its
+	// lifetime, whose live progress the buffer would hide — or the target opted in with
+	// `.TARGET_BUFFER=line` (a long-running recipe whose incremental output should appear as it is
+	// produced). Streaming emits this node's header (counter + command echo) up front, then writes
 	// each complete line as it arrives. Writing only whole lines keeps the stream from tearing
 	// against other concurrent nodes' atomic flushes; the trailing partial line is flushed on exit.
-	bool streaming = cmd.recursive;
+	bool streaming = cmd.recursive || job->lineBuffered;
 	if (streaming) {
 		beginStream(job);
 	}
@@ -499,6 +504,20 @@ JobString Builder::displayName(BuildNode *bn) {
 		out.assign(val.data(), val.size());
 	}
 	return out;
+}
+
+// A target can force live, line-buffered streaming of its recipe output — the same treatment a
+// recursive $(MAKE) gets — by setting the target-specific `.TARGET_BUFFER` to `line` (resolved in the
+// target's own scope, so a per-target assignment is honoured). Useful for a long-running recipe whose
+// incremental progress should appear as produced rather than in one atomic block at completion. Any
+// other value (or unset) keeps the default full buffering.
+bool Builder::isLineBuffered(BuildNode *bn) {
+	JobString raw;
+	_mk->getVariableValue(bn->target, StringView(".TARGET_BUFFER"),
+			[&](StringView v) { raw.append(v.data(), v.size()); }, _err);
+	StringView val(raw.data(), raw.size());
+	val.trimChars<StringView::WhiteSpace>();
+	return val == "line";
 }
 
 BuildResult Builder::buildGoal(Target *goal) {
