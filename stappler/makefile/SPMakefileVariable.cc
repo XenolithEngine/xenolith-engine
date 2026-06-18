@@ -583,6 +583,13 @@ static uint32_t VariableEngine_parseArguments(StmtType t, StmtValue *args, StmtV
 }
 
 StringView VariableEngine::getAbsolutePath(StringView str) const {
+	// A path may arrive in the platform-native form — on Windows that includes the `C:/dir` form the
+	// path functions emit (and `C:\dir`, `c:/dir`). Normalize it to the internal posix form (`/c/dir`)
+	// so the posix-based logic below recognizes a drive-rooted path as absolute instead of mistaking
+	// it for a relative path and merging it onto the root. toPosixPath is a no-op on POSIX builds.
+	memory::StandartInterface::StringType posixStorage;
+	str = filesystem::toPosixPath(str, posixStorage);
+
 	if (filepath::isAbsolute(str)) {
 		auto ret = StringView(filepath::reconstructPath<Interface>(str)).pdup(_pool);
 		ret.backwardSkipChars<StringView::Chars<'/'>>();

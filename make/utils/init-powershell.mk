@@ -30,7 +30,6 @@ POWERSHELL := 1
 
 GLOBAL_SHELL := powershell
 
-GLOBAL_MAKE ?= $(MAKE)
 GLOBAL_MKDIR ?= powershell New-Item -ItemType Directory -Force -Path
 GLOBAL_AR ?= ar rcs
 GLOBAL_ECHO ?= Write-Host
@@ -40,6 +39,9 @@ shell_mkdir = $(call print_verbose,Powershell (mkdir): $(shell New-Item -Path "$
 rule_rm = powershell 'if (Test-Path "$(1)") { Remove-Item -Recurse -Force -ErrorAction Ignore -Path "$(1)" }'
 rule_cp = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force
 rule_mkdir = powershell New-Item -ItemType Directory -Force -Path $(1) | Out-Null
+
+WRITE_START = echo
+WRITE_END = > $$@
 
 shell_override_file = \
 	$(call print_verbose,Powershell (override): $(shell Set-Content "$(strip $(1))" '$(strip $(2))') )

@@ -101,7 +101,14 @@ bool Makefile::include(StringView name, StringView data, bool copyData, ErrorRep
 	});
 }
 
-bool Makefile::include(const FileInfo &info, ErrorReporter *err, bool optional) {
+bool Makefile::include(const FileInfo &iinfo, ErrorReporter *err, bool optional) {
+	// Normalize a platform-native include path to the internal posix form before lookup — on Windows
+	// an include may be written (or produced by $(abspath)) as `C:/dir/file.mk`, which the posix-based
+	// lookup would otherwise treat as relative. toPosixPath is a no-op on POSIX builds.
+	memory::StandartInterface::StringType posixStorage;
+	FileInfo info = iinfo;
+	info.path = filesystem::toPosixPath(info.path, posixStorage);
+
 	auto path = filesystem::findPath<Interface>(info, filesystem::Access::Read);
 	if (path.empty()) {
 		log::source().error("Makefile", "Fail to open ", info);
@@ -286,7 +293,8 @@ void Makefile::foreachTargetVariable(Target *t,
 	for (auto v = t->variablesList; v; v = v->next) {
 		// Surface the raw assignment for introspection; `op` conveys the flavor. The value is
 		// wrapped as a recursive (Stmt) Variable, or an empty simple one when absent.
-		Variable var = v->value ? Variable(Origin::File, v->value) : Variable(Origin::File, StringView());
+		Variable var =
+				v->value ? Variable(Origin::File, v->value) : Variable(Origin::File, StringView());
 		cb(v->name, v->op, var);
 	}
 }
@@ -399,6 +407,12 @@ bool Makefile::undefineVariable(StringView identifier, Origin varOrigin, ErrorRe
 }
 
 bool Makefile::processMakefileContent(StringView str, ErrorReporter &err) {
+	uint8_t bom[] = {0xEF, 0xBB, 0xBF};
+
+	if (BytesView(str).starts_with(BytesView(bom, 3))) {
+		str += 3;
+	}
+
 	while (!str.empty()) {
 		err.lineno += err.lineSize;
 		err.lineSize = 1;

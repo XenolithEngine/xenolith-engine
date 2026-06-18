@@ -50,7 +50,7 @@ endif
 
 ifdef XLMAKE_VERSION
 MAKE_4_1 := 1 # xlmake is 4.1-compatible
-$(info Using xlmake (4.1-compatible): $(XLMAKE_VERSION))
+$(info Using xlmake (4.1-compatible): $(XLMAKE_VERSION) on $(XL_UNAME_SYSNAME) $(XL_UNAME_MACHINE))
 
 else
 
@@ -170,13 +170,15 @@ APPCONFIG_VERSION_API ?= 0
 APPCONFIG_VERSION_REV ?= 0
 APPCONFIG_VERSION_BUILD ?= 0
 
-
+ifdef XLMAKE_VERSION
+include $(BUILD_ROOT)/utils/init-xlmake.mk
+else
 ifeq ($(findstring Windows,$(OS)),Windows)
 include $(BUILD_ROOT)/utils/init-powershell.mk
 else # Windows
 include $(BUILD_ROOT)/utils/init-sh.mk
 endif # Windows
-
+endif
 
 ifdef SHARED_PREFIX
 GLOBAL_ROOT := $(SHARED_PREFIX)
@@ -261,7 +263,7 @@ endif
 
 
 LOCAL_INSTALL_DIR ?= $(LOCAL_OUTDIR)/$(STAPPLER_TARGET)
-BUILD_OUTDIR := $(LOCAL_OUTDIR)/$(STAPPLER_TARGET)/$(BUILD_TYPE)
+BUILD_OUTDIR := $(abspath $(LOCAL_OUTDIR)/$(STAPPLER_TARGET)/$(BUILD_TYPE))
 
 $(call print_verbose,(defaults.mk) STAPPLER_TARGET: $(STAPPLER_TARGET))
 $(call print_verbose,(defaults.mk) BUILD_OUTDIR: $(BUILD_OUTDIR))

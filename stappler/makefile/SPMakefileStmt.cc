@@ -161,10 +161,28 @@ StringView Stmt::readLine(StringView &str, ErrorReporter &err) {
 
 static StringView readContextIdentifier(StringView &str, ReadContext ctx) {
 	switch (ctx) {
-	case ReadContext::LineStart:
-		return str.readUntil<StringView::WhiteSpace,
+	case ReadContext::LineStart: {
+		auto begin = str.data();
+		str.readUntil<StringView::WhiteSpace,
 				StringView::Chars<'#', ',', ')', ':', '=', '?', '+', '$', '\\'>>();
-		break;
+#if SPRT_WINDOWS
+		// A Windows drive letter ("C:/dir/file") puts a ':' right after a single leading letter; that
+		// ':' is part of the path, not the rule separator. Consume it and keep reading so the whole
+		// drive-rooted target stays one identifier and only the real trailing ':' splits the rule
+		// Forward-slash form only — the path functions emit
+		// it, and a backslash would collide with make's line-continuation escape.
+		if (str.data() - begin == 1 && str.is(':')) {
+			char drive = *begin;
+			if (((drive >= 'a' && drive <= 'z') || (drive >= 'A' && drive <= 'Z'))
+					&& str.sub(1).is('/')) {
+				++str; // consume the drive ':'
+				str.readUntil<StringView::WhiteSpace,
+						StringView::Chars<'#', ',', ')', ':', '=', '?', '+', '$', '\\'>>();
+			}
+		}
+#endif
+		return StringView(begin, str.data() - begin);
+	}
 	case ReadContext::Expansion:
 		// '(' is a stop char so that literal parentheses inside $(...) can be balanced
 		// against ')' instead of letting an inner ')' terminate the expansion early
@@ -261,8 +279,9 @@ Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err, uint3
 			if (!sig.ends_with('\\')) {
 				makeStmt()->add(sig);
 				if (ending) {
+					slog().error("readWord1", sig);
 					err.setPos(str);
-					err.reportError("Unexpected line ending, ')' expected");
+					err.reportError("readWord: Unexpected line ending, ')' expected");
 				}
 				break;
 			} else {
@@ -350,8 +369,9 @@ Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err, uint3
 		} else {
 			makeStmt()->add(sig);
 			if (ending) {
+				slog().error("readWord2", sig);
 				err.setPos(str);
-				err.reportError("Unexpected line ending, ')' expected");
+				err.reportError("readWord: Unexpected line ending, ')' expected");
 			}
 		}
 	}
@@ -524,7 +544,8 @@ Stmt *Stmt::readScoped(StringView &str, StmtType type, ReadContext ctx, ErrorRep
 			// (in a recipe '#' is literal, not a make comment — see readContextIdentifier)
 			if (ending) {
 				err.setPos(str);
-				err.reportError(toString("Unexpected line ending, '", ending, "' expected"));
+				err.reportError(
+						toString("readScoped: Unexpected line ending, '", ending, "' expected"));
 			}
 			break;
 		} else if (ctx == ReadContext::PrerequisiteList && str.is('|')) {
