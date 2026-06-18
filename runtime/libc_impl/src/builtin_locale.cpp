@@ -271,48 +271,26 @@ sprt::__numeric_fmt __get_locale_numeric_fmt(__freestanding_locale_struct *loc) 
 }
 
 
-// Message-catalog entry points for the freestanding libc. There is no external
-// catalog backend on these targets, so the SPRT-API symbols the <nl_types.h>
-// umbrella routes through delegate to the shared honest empty-catalog fallback
-// in runtime_core (sprt::__cat*_empty). On a hosted build the wrapper provides
-// these symbols instead (forwarding to the platform libc, or to the same core
-// fallback on Android when the platform offers no catopen).
-
-// Address-only sentinel identifying the fallback's empty catalog handle.
-static char s_emptyCatalog;
+// libc_impl is the libc on freestanding targets, so it defines the strong plain
+// catopen/catgets/catclose. There is no catalog backend here, so they are just
+// the honest empty-catalog fallback from runtime_core (the wrapper's weak
+// nl_langinfo/catopen references resolve to these on Windows). The __sprt_* SPRT-
+// API symbols live in the libc_wrapper, which is built for every target.
+namespace sprt {
+__SPRT_ID(nl_catd) __catopen_empty(const char *, int);
+char *__catgets_empty(__SPRT_ID(nl_catd), int, int, const char *);
+int __catclose_empty(__SPRT_ID(nl_catd));
+} // namespace sprt
 
 __SPRT_C_FUNC __SPRT_ID(nl_catd) catopen(const char *name, int flag) __SPRT_NOEXCEPT {
-	(void)name;
-	(void)flag;
-	return (__SPRT_ID(nl_catd)) & s_emptyCatalog;
+	return sprt::__catopen_empty(name, flag);
 }
 
 __SPRT_C_FUNC char *catgets(__SPRT_ID(nl_catd) catd, int set_id, int msg_id,
 		const char *msg) __SPRT_NOEXCEPT {
-	(void)catd;
-	(void)set_id;
-	(void)msg_id;
-	// No catalog backend: honestly return the caller's default message.
-	return (char *)msg;
+	return sprt::__catgets_empty(catd, set_id, msg_id, msg);
 }
 
 __SPRT_C_FUNC int catclose(__SPRT_ID(nl_catd) catd) __SPRT_NOEXCEPT {
-	if (catd == (__SPRT_ID(nl_catd)) & s_emptyCatalog) {
-		return 0;
-	}
-	__sprt_errno = EBADF;
-	return -1;
-}
-
-__SPRT_C_FUNC __SPRT_ID(nl_catd) __SPRT_ID(catopen)(const char *name, int flag) __SPRT_NOEXCEPT {
-	return catopen(name, flag);
-}
-
-__SPRT_C_FUNC char *__SPRT_ID(
-		catgets)(__SPRT_ID(nl_catd) catd, int set_id, int msg_id, const char *msg) __SPRT_NOEXCEPT {
-	return catgets(catd, set_id, msg_id, msg);
-}
-
-__SPRT_C_FUNC int __SPRT_ID(catclose)(__SPRT_ID(nl_catd) catd) __SPRT_NOEXCEPT {
-	return catclose(catd);
+	return sprt::__catclose_empty(catd);
 }

@@ -470,6 +470,13 @@ static void setupStandardVariables(Makefile *mk, StringView rootDir, StringView 
 	simple("MAKE_COMMAND", makeCommand);
 	rec("MAKE", "$(MAKE_COMMAND)");
 
+	// In-process file-write directives (no child process): a recipe line `$(WRITE) <path> <text>`
+	// truncates/creates the file and writes <text>; `$(APPEND) <path> <text>` appends. These expand
+	// to a sentinel marker the executor recognizes (Builder::parseWriteCommand) and performs via
+	// Looper::writeFile. Origin::Default so a makefile may still override them, exactly like $(MAKE).
+	simple("WRITE", xlmake::WriteDirectiveMarker);
+	simple("APPEND", xlmake::AppendDirectiveMarker);
+
 	// Per-invocation
 	simple("CURDIR", rootDir);
 	String goalList;

@@ -35,6 +35,15 @@ using namespace sp::mem_pool;
 // `jobs` sentinel for a bare `-j` (no number): no concurrency cap.
 static constexpr uint32_t JobsUnlimited = maxOf<uint32_t>();
 
+// Internal markers that the predefined $(WRITE) / $(APPEND) variables expand to. A leading \x01
+// (SOH) can never begin a real shell command, so a recipe line whose first token is one of these is
+// unambiguously an in-process file-write directive: the executor performs it via Looper::writeFile
+// (no child process) instead of spawning a shell. Defined once here and referenced by both the
+// producer (setupStandardVariables in main.cpp, which assigns them to $(WRITE)/$(APPEND)) and the
+// detector (Builder::parseWriteCommand in Executor.cpp), so the two can never drift apart.
+static constexpr StringView WriteDirectiveMarker("\x01xlmake-write");
+static constexpr StringView AppendDirectiveMarker("\x01xlmake-append");
+
 // Options for the build/execution mode (the default mode; also `xlmake -b ...`).
 struct BuildConfig {
 	Vector<StringView> targets; // positional goals (default goal when empty)

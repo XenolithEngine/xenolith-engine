@@ -37,6 +37,7 @@ class TimerHandle;
 class ThreadHandle;
 class PollHandle;
 class ProcessHandle;
+class FileHandle;
 
 struct BufferChain;
 
@@ -123,6 +124,42 @@ struct SPRT_API ProcessInfo {
 
 	StringView command;
 	ReaderCallback reader;
+	Completion completion;
+};
+
+// Parameters for Looper/Queue::readFile.
+//
+// Streams the contents of a file to `reader` in chunks, each invoked on the
+// looper thread, and fires `completion` once when the whole file has been read
+// (value = total bytes) or on error. The file is identified by exactly one of:
+// `path` (opened and owned by the handle; closed when it finishes) or `fd` (a
+// caller-owned descriptor that is never closed). An empty file produces no
+// reader call and a successful completion with value 0.
+struct SPRT_API FileReadInfo {
+	using ReaderCallback = Function<void(BytesView)>;
+	using Completion = CompletionHandle<FileHandle>;
+
+	StringView path;
+	NativeHandle fd = NativeHandle(-1);
+	OpenFlags flags = OpenFlags::Read;
+	ReaderCallback reader;
+	Completion completion;
+};
+
+// Parameters for Looper/Queue::writeFile.
+//
+// Writes `data` to a file, honoring OpenFlags::Append and
+// OpenFlags::CreateExclusive, then fires `completion` once when all bytes have
+// been written (value = total bytes) or on error. The file is identified as in
+// FileReadInfo. `data` is referenced, not copied: it must stay valid until the
+// completion fires.
+struct SPRT_API FileWriteInfo {
+	using Completion = CompletionHandle<FileHandle>;
+
+	StringView path;
+	NativeHandle fd = NativeHandle(-1);
+	OpenFlags flags = OpenFlags::Write | OpenFlags::Create | OpenFlags::Truncate;
+	BytesView data;
 	Completion completion;
 };
 

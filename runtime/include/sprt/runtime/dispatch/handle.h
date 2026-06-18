@@ -164,6 +164,32 @@ protected:
 	int _exitCode = -1;
 };
 
+// Handle representing an asynchronous file-operation channel (see
+// Looper::readFile / Looper::writeFile). A single FileHandle owns (when opened
+// from a path) or borrows (when adopting a caller's fd) one file descriptor and
+// runs a queue of read/write operations strictly sequentially. Each operation
+// reports completion through its own callback; reader callbacks and completions
+// fire on the looper thread. The handle stays alive while it has queued or
+// in-flight operations and finalizes (closing an owned fd) once its queue drains.
+class SPRT_API FileHandle : public Handle {
+public:
+	virtual ~FileHandle() = default;
+
+	// The fd the handle operates on; -1 once an owned fd has been closed.
+	virtual NativeHandle getNativeHandle() const = 0;
+
+	// true while at least one operation is queued or in flight
+	bool isBusy() const;
+
+	// Append a new operation to this handle's serial queue; it runs after all
+	// currently queued/in-flight operations on the same open file. `reader`
+	// receives read chunks; `onDone` receives the final Status. Returns
+	// Status::Ok when queued; on a handle that has already terminated, fires
+	// `onDone` with ErrorCancelled and returns that status.
+	Status appendRead(Function<void(BytesView)> &&reader, Function<void(Status)> &&onDone);
+	Status appendWrite(BytesView data, Function<void(Status)> &&onDone);
+};
+
 class SPRT_API ThreadHandle : public Handle, public PerformInterface {
 public:
 	virtual ~ThreadHandle();

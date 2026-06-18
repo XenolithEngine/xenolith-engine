@@ -23,8 +23,16 @@ THE SOFTWARE.
 #include <sprt/runtime/utils/time.h>
 #include <sprt/runtime/platform.h>
 #include <sprt/c/__sprt_time.h>
+#include <sprt/c/__sprt_langinfo.h>
 
 extern "C" double round(double) __SPRT_NOEXCEPT;
+
+// strftime pulls localized day/month names and date/time patterns from
+// __sprt_nl_langinfo() (declared in <sprt/c/__sprt_langinfo.h>). That SPRT-API
+// entry, defined in the libc_wrapper, deterministically resolves to the real
+// platform nl_langinfo when present and to runtime_core's C/POSIX fallback table
+// otherwise -- so the formatter needs no fallback table of its own. Items use the
+// __SPRT_* ids.
 
 namespace sprt::time {
 
@@ -524,16 +532,16 @@ bool time_exp_t::read(StringView r) {
 	return true;
 }
 
+//static const char *sp_month_Bnames[] = {"January", "February", "March", "April", "May", "June",
+//	"July", "August", "September", "October", "November", "December"};
+
+//static const char *sp_day_anames[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday",
+//	"Friday", "Saturday"};
+
 static const char sp_month_snames[12][4] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
 	"Sep", "Oct", "Nov", "Dec"};
 
-static const char *sp_month_Bnames[] = {"January", "February", "March", "April", "May", "June",
-	"July", "August", "September", "October", "November", "December"};
-
 static const char sp_day_snames[7][4] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-
-static const char *sp_day_anames[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday",
-	"Friday", "Saturday"};
 
 // Sun Sep 16 01:03:52 1973\n\0
 size_t time_exp_t::asctime(char *date_str, size_t bufSize) const {
@@ -919,28 +927,28 @@ static const char *__strftime_fmt_1(char (*s)[100], size_t *l, int f, const time
 		if (tm->tm_wday > 6U) {
 			goto string;
 		}
-		item = sp_day_snames[tm->tm_wday];
+		item = __sprt_nl_langinfo(__SPRT_ABDAY_1 + tm->tm_wday);
 		goto nl_strcat;
 	case 'A':
 		if (tm->tm_wday > 6U) {
 			goto string;
 		}
-		item = sp_day_anames[tm->tm_wday];
+		item = __sprt_nl_langinfo(__SPRT_DAY_1 + tm->tm_wday);
 		goto nl_strcat;
 	case 'h':
 	case 'b':
 		if (tm->tm_mon > 11U) {
 			goto string;
 		}
-		item = sp_month_snames[tm->tm_mon];
+		item = __sprt_nl_langinfo(__SPRT_ABMON_1 + tm->tm_mon);
 		goto nl_strcat;
 	case 'B':
 		if (tm->tm_mon > 11U) {
 			goto string;
 		}
-		item = sp_month_Bnames[tm->tm_mon];
+		item = __sprt_nl_langinfo(__SPRT_MON_1 + tm->tm_mon);
 		goto nl_strcat;
-	case 'c': fmt = "%a %b %e %H:%M:%S %Y"; goto recu_strftime;
+	case 'c': fmt = __sprt_nl_langinfo(__SPRT_D_T_FMT); goto recu_strftime;
 	case 'C': val = (1'900LL + tm->tm_year) / 100; goto number;
 	case 'e': def_pad = '_';
 	case 'd': val = tm->tm_mday; goto number;
@@ -976,8 +984,11 @@ static const char *__strftime_fmt_1(char (*s)[100], size_t *l, int f, const time
 	case 'm': val = tm->tm_mon + 1; goto number;
 	case 'M': val = tm->tm_min; goto number;
 	case 'n': *l = 1; return "\n";
-	case 'p': item = tm->tm_hour >= 12 ? "PM" : "AM"; goto nl_strcat;
-	case 'r': fmt = "%I:%M:%S %p"; goto recu_strftime;
+	case 'p':
+		item = tm->tm_hour >= 12 ? __sprt_nl_langinfo(__SPRT_PM_STR)
+								 : __sprt_nl_langinfo(__SPRT_AM_STR);
+		goto nl_strcat;
+	case 'r': fmt = __sprt_nl_langinfo(__SPRT_T_FMT_AMPM); goto recu_strftime;
 	case 'R': fmt = "%H:%M"; goto recu_strftime;
 	case 's':
 		val = __tm_to_secs(tm) - tm->tm_gmtoff;
@@ -997,8 +1008,8 @@ static const char *__strftime_fmt_1(char (*s)[100], size_t *l, int f, const time
 		val = tm->tm_wday;
 		width = 1;
 		goto number;
-	case 'x': fmt = "%m/%d/%y"; goto recu_strftime;
-	case 'X': fmt = "%H:%M:%S"; goto recu_strftime;
+	case 'x': fmt = __sprt_nl_langinfo(__SPRT_D_FMT); goto recu_strftime;
+	case 'X': fmt = __sprt_nl_langinfo(__SPRT_T_FMT); goto recu_strftime;
 	case 'y':
 		val = (tm->tm_year + 1'900LL) % 100;
 		if (val < 0) {

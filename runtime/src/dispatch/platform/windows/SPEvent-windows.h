@@ -40,6 +40,8 @@ struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _iocpReadClass;
 	HandleClass _iocpProcessClass;
 	HandleClass _winTimerClass;
+	HandleClass _iocpFileClass; // overlapped-capable fds (IOCP native)
+	HandleClass _iocpFileInlineClass; // synchronous fds (inline chunked)
 
 	Data(QueueRef *q, const QueueInfo &info);
 };

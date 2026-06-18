@@ -34,6 +34,8 @@ THE SOFTWARE.
 #include <wctype.h>
 #include <locale.h>
 #include <nl_types.h>
+#include <langinfo.h>
+#include <time.h>
 #include <stdint.h>
 #include <inttypes.h>
 
@@ -501,6 +503,84 @@ void performLocaleTest() {
 		printf("  SKIP: no single-byte grouping locale available to test %%'\n");
 	}
 	setlocale(LC_NUMERIC, "C");
+
+	// --- strftime LC_TIME (Phase: localized names/formats via token provider) ---
+	// In the C locale the provider yields no tokens, so the runtime_core formatter
+	// uses its built-in English defaults. Sun 2026-01-04, 09:04:05.
+	setlocale(LC_TIME, "C");
+	struct tm tmv = {};
+	tmv.tm_year = 126;
+	tmv.tm_mon = 0;
+	tmv.tm_mday = 4;
+	tmv.tm_hour = 9;
+	tmv.tm_min = 4;
+	tmv.tm_sec = 5;
+	tmv.tm_wday = 0;
+	tmv.tm_yday = 3;
+	char tbuf[64];
+	strftime(tbuf, sizeof(tbuf), "%A %B %a %b %p", &tmv);
+	check(strcmp(tbuf, "Sunday January Sun Jan AM") == 0, "strftime C-locale names (English)");
+
+	// A localized LC_TIME (if the platform offers one) must change the weekday /
+	// month names; build the expectation from the platform itself and skip when no
+	// such locale is available here (e.g. wine ships no locale name data).
+	const char *timeLocales[] = {"de-DE", "de_DE.UTF-8", "de_DE", "ru-RU", "ru_RU.UTF-8"};
+	bool timeTested = false;
+	for (auto nm : timeLocales) {
+		if (!setlocale(LC_TIME, nm)) {
+			continue;
+		}
+		char loc[32], c[32];
+		strftime(loc, sizeof(loc), "%A", &tmv);
+		setlocale(LC_TIME, "C");
+		strftime(c, sizeof(c), "%A", &tmv);
+		if (loc[0] && strcmp(loc, c) != 0) {
+			check(true, "strftime honours a localized LC_TIME weekday");
+			timeTested = true;
+		}
+		setlocale(LC_TIME, "C");
+		if (timeTested) {
+			break;
+		}
+	}
+	if (!timeTested) {
+		printf("  SKIP: no localized LC_TIME locale available to test strftime\n");
+	}
+	setlocale(LC_TIME, "C");
+
+	// --- nl_langinfo: C-locale items (stable across glibc / libc_impl) ---
+	setlocale(LC_ALL, "C");
+	check(strcmp(nl_langinfo(ABDAY_1), "Sun") == 0, "nl_langinfo ABDAY_1 -> Sun");
+	check(strcmp(nl_langinfo(DAY_1), "Sunday") == 0, "nl_langinfo DAY_1 -> Sunday");
+	check(strcmp(nl_langinfo(ABMON_1), "Jan") == 0, "nl_langinfo ABMON_1 -> Jan");
+	check(strcmp(nl_langinfo(MON_12), "December") == 0, "nl_langinfo MON_12 -> December");
+	check(strcmp(nl_langinfo(AM_STR), "AM") == 0, "nl_langinfo AM_STR -> AM");
+	check(strcmp(nl_langinfo(PM_STR), "PM") == 0, "nl_langinfo PM_STR -> PM");
+	check(strcmp(nl_langinfo(D_FMT), "%m/%d/%y") == 0, "nl_langinfo D_FMT");
+	check(strcmp(nl_langinfo(T_FMT), "%H:%M:%S") == 0, "nl_langinfo T_FMT");
+	check(strcmp(nl_langinfo(RADIXCHAR), ".") == 0, "nl_langinfo RADIXCHAR -> .");
+
+	// A localized LC_TIME (if available) must change the weekday name; skip when
+	// the platform offers no such locale here (wine ships no locale name data).
+	bool nlTested = false;
+	for (auto nm : timeLocales) {
+		if (!setlocale(LC_TIME, nm)) {
+			continue;
+		}
+		const char *loc = nl_langinfo(DAY_1);
+		if (loc && loc[0] && strcmp(loc, "Sunday") != 0) {
+			check(true, "nl_langinfo honours a localized LC_TIME weekday");
+			nlTested = true;
+		}
+		setlocale(LC_TIME, "C");
+		if (nlTested) {
+			break;
+		}
+	}
+	if (!nlTested) {
+		printf("  SKIP: no localized LC_TIME locale available to test nl_langinfo\n");
+	}
+	setlocale(LC_ALL, "C");
 
 	printf("performLocaleTest: %s (%d failures)\n", failures == 0 ? "ALL PASS" : "FAILED", failures);
 }

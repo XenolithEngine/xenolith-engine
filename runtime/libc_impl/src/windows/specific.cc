@@ -102,6 +102,15 @@ OpenInfo::OpenInfo(int __flags, int __mode) {
 			dwFlagsAndAttributes |= FILE_FLAG_WRITE_THROUGH;
 		}
 
+		// Non-standard O_OVERLAPPED: open the HANDLE for overlapped (async) I/O so
+		// the dispatch layer can drive it via IOCP. fcntl(F_GETFL) reports the flag
+		// back (it lives in __fd_slot.flags), which is how the strategy is chosen.
+		// Note: such a HANDLE has no system file pointer, so plain synchronous
+		// read()/write() are not supported on it (it is intended for async use).
+		if ((__flags & __SPRT_O_OVERLAPPED) != 0) {
+			dwFlagsAndAttributes |= FILE_FLAG_OVERLAPPED;
+		}
+
 		// Don't follow symlinks when atomically creating files
 		if ((__flags & (__SPRT_O_CREAT | __SPRT_O_EXCL)) == (__SPRT_O_CREAT | __SPRT_O_EXCL)) {
 			dwFlagsAndAttributes |= FILE_FLAG_OPEN_REPARSE_POINT;

@@ -28,7 +28,6 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdarg.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/runtime/log.h>
-#include <sprt/runtime/wctype.h>
 
 #include <wchar.h>
 #include <wctype.h>

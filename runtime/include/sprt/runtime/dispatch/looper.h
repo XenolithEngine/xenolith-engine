@@ -81,6 +81,21 @@ public:
 	Rc<ProcessHandle> spawnProcess(StringView command, Function<void(StringView)> &&reader,
 			Function<void(int exitCode, Status)> &&onExit, Ref * = nullptr);
 
+	// Asynchronous file I/O on this loop (non-blocking, no worker threads).
+	// readFile streams the file's bytes to the reader (each chunk on this thread)
+	// and fires the completion once when done; writeFile writes the given bytes
+	// honoring OpenFlags::Append and OpenFlags::CreateExclusive. The returned
+	// FileHandle can be reused to append further sequential operations via
+	// FileHandle::appendRead / appendWrite.
+	Rc<FileHandle> readFile(FileReadInfo &&, Ref * = nullptr);
+	Rc<FileHandle> writeFile(FileWriteInfo &&, Ref * = nullptr);
+
+	// Convenience forms (path + plain callbacks).
+	Rc<FileHandle> readFile(StringView path, Function<void(BytesView)> &&reader,
+			Function<void(Status)> &&onDone, Ref * = nullptr);
+	Rc<FileHandle> writeFile(StringView path, BytesView data, OpenFlags,
+			Function<void(Status)> &&onDone, Ref * = nullptr);
+
 	// Perform task on this thread (only Complete callback will be executed)
 	// If current thread is looper thread - performs in place
 	Status performOnThread(Rc<Task> &&task, bool immediate = false);

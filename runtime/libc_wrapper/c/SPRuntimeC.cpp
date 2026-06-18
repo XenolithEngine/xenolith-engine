@@ -31,7 +31,11 @@ THE SOFTWARE.
 
 #include <sprt/runtime/math.h>
 #include <sprt/runtime/log.h>
-#include <sprt/runtime/nl_types.h>
+
+// The <nl_types.h> dispatch header gives the plain catopen/catgets/catclose and
+// nl_catd on every target (the platform's on hosted, the umbrella's -- backed by
+// libc_impl -- on freestanding), which the message-catalog bridge below needs.
+#include <nl_types.h>
 
 #if __STDC_HOSTED__ == 1
 
@@ -41,7 +45,6 @@ THE SOFTWARE.
 #include <stdio.h>
 #include <float.h>
 #include <utime.h>
-#include <nl_types.h>
 
 #endif
 
@@ -50,93 +53,57 @@ THE SOFTWARE.
 #include "common/signal.cc"
 #include "common/abort.cc"
 #include "common/locale.cc"
+#include "common/langinfo.cc"
 #include "common/rand.cc"
 
 static_assert(sizeof(void *) == sizeof(__sprt_intptr_t));
 static_assert(sizeof(void *) == sizeof(__sprt_uintptr_t));
 
 #if SPRT_ANDROID
-namespace sprt::platform {
-
-extern nl_catd (*_catopen)(const char *__name, int __flag);
-extern char *(*_catgets)(nl_catd __catalog, int __set_number, int __msg_number, const char *__msg);
-extern int (*_catclose)(nl_catd __catalog);
-
-} // namespace sprt::platform
-
-
-// Address-only sentinel identifying the fallback's empty catalog handle.
-static char s_emptyCatalog;
-
-static __SPRT_ID(nl_catd) __catopen_empty(const char *name, int flag) __SPRT_NOEXCEPT {
-	(void)name;
-	(void)flag;
-	return (__SPRT_ID(nl_catd)) & s_emptyCatalog;
-}
-
-static char *__catgets_empty(__SPRT_ID(nl_catd) catd, int set_id, int msg_id,
-		const char *msg) __SPRT_NOEXCEPT {
-	(void)catd;
-	(void)set_id;
-	(void)msg_id;
-	// No catalog backend: honestly return the caller's default message.
-	return (char *)msg;
-}
-
-static int __catclose_empty(__SPRT_ID(nl_catd) catd) __SPRT_NOEXCEPT {
-	if (catd == (__SPRT_ID(nl_catd)) & s_emptyCatalog) {
-		return 0;
-	}
-	__sprt_errno = EBADF;
-	return -1;
-}
-
+// Bionic gained catopen()/catgets()/catclose() only at API 26, so the NDK headers
+// leave the plain symbols undeclared at a lower minSdk. Declare them as weak
+// references: the address is the real Bionic symbol on API >= 26 devices and null
+// on older ones. (On glibc/macOS the system <nl_types.h> declares them strong, and
+// on Windows the umbrella declares them with libc_impl providing the definition --
+// there the null-check below is simply always taken.)
+extern "C" __attribute__((weak)) nl_catd catopen(const char *, int);
+extern "C" __attribute__((weak)) char *catgets(nl_catd, int, int, const char *);
+extern "C" __attribute__((weak)) int catclose(nl_catd);
 #endif
 
 namespace sprt {
 
-// Hosted/Android builds bridge the message-catalog API to the platform libc (or
-// Android platform pointers). Freestanding libc_impl targets get the honest
-// empty-catalog fallback from libc_impl/src/builtin_nltypes.cpp instead, so the
-// definitions here are hosted-only to avoid a duplicate symbol.
-#if __STDC_HOSTED__ == 1
+// runtime_core's honest empty-catalog fallback.
+__SPRT_ID(nl_catd) __catopen_empty(const char *, int);
+char *__catgets_empty(__SPRT_ID(nl_catd), int, int, const char *);
+int __catclose_empty(__SPRT_ID(nl_catd));
+
+// The SPRT-API message-catalog symbols apps reach through the <nl_types.h>
+// umbrella. Deterministic: use the real platform catalog functions when present,
+// else the empty-catalog fallback.
 __SPRT_C_FUNC __SPRT_ID(nl_catd) __SPRT_ID(catopen)(const char *path, int v) __SPRT_NOEXCEPT {
-#if SPRT_ANDROID
-	if (platform::_catopen) {
-		return platform::_catopen(path, v);
+	auto *fn = catopen;
+	if (fn) {
+		return (__SPRT_ID(nl_catd))fn(path, v);
 	}
 	return __catopen_empty(path, v);
-#else
-	return ::catopen(path, v);
-#endif
 }
 
 __SPRT_C_FUNC char *__SPRT_ID(
 		catgets)(__SPRT_ID(nl_catd) cat, int a, int b, const char *str) __SPRT_NOEXCEPT {
-#if SPRT_ANDROID
-	if (platform::_catgets) {
-		return platform::_catgets(cat, a, b, str);
+	auto *fn = catgets;
+	if (fn) {
+		return fn((nl_catd)cat, a, b, str);
 	}
 	return __catgets_empty(cat, a, b, str);
-#elif SPRT_MACOS
-	return ::catgets(nl_catd(cat), a, b, str);
-#else
-	return ::catgets(cat, a, b, str);
-#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(catclose)(__SPRT_ID(nl_catd) cat) __SPRT_NOEXCEPT {
-#if SPRT_ANDROID
-	if (platform::_catclose) {
-		return platform::_catclose(cat);
+	auto *fn = catclose;
+	if (fn) {
+		return fn((nl_catd)cat);
 	}
 	return __catclose_empty(cat);
-#elif SPRT_MACOS
-	return ::catclose(nl_catd(cat));
-#else
-	return ::catclose(cat);
-#endif
 }
-#endif // __STDC_HOSTED__ == 1
 
 } // namespace sprt

@@ -41,6 +41,7 @@ struct _linux_itimerspec {
 namespace sprt::dispatch {
 
 struct PlatformQueueData;
+struct FileState;
 
 // PerformEngine can be used for resumable nested 'perform' variants
 // Action, that performed within engine, can safely call Queue::run, that also can cause 'perform'
@@ -87,6 +88,9 @@ struct SPRT_API QueueData : public PerformEngine {
 	using ListenHandleCallback = Rc<PollHandle> (*)(QueueData *, void *, NativeHandle, PollFlags,
 			CompletionHandle<PollHandle> &&);
 	using SpawnProcessCallback = Rc<ProcessHandle> (*)(QueueData *, void *, ProcessInfo &&, Ref *);
+	// Per-backend factory: turns a prepared FileState into the right FileHandle
+	// (io_uring native, IOCP/overlapped native, or the portable inline handle).
+	using MakeFileHandleCallback = Rc<FileHandle> (*)(QueueData *, void *, Rc<FileState> &&);
 
 	QueueHandleClassInfo _info;
 	QueueFlags _flags = QueueFlags::None;
@@ -110,6 +114,7 @@ struct SPRT_API QueueData : public PerformEngine {
 	ThreadCallback _thread = nullptr;
 	ListenHandleCallback _listenHandle = nullptr;
 	SpawnProcessCallback _spawnProcess = nullptr;
+	MakeFileHandleCallback _makeFileHandle = nullptr;
 
 	Thread::Id _threadId;
 
@@ -150,6 +155,8 @@ struct SPRT_API QueueData : public PerformEngine {
 	Rc<TimerHandle> scheduleTimer(TimerInfo &&);
 	Rc<PollHandle> listenHandle(NativeHandle, PollFlags, CompletionHandle<PollHandle> &&);
 	Rc<ProcessHandle> spawnProcess(ProcessInfo &&, Ref *);
+	Rc<FileHandle> readFile(FileReadInfo &&, Ref *);
+	Rc<FileHandle> writeFile(FileWriteInfo &&, Ref *);
 	Rc<ThreadHandle> addThreadHandle();
 
 	~QueueData();

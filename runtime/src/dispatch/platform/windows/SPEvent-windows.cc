@@ -29,7 +29,11 @@
 #include "SPEventTimerWin.h"
 #include "SPEventPollIocp.h"
 #include "SPEventProcessIocp.h"
+#include "SPEventFileIocp.h"
+#include "../fd/SPEventFile.h"
 #include "platform/windows/SPEvent-iocp.h"
+
+#include <sprt/c/__sprt_fcntl.h>
 
 namespace sprt::dispatch {
 
@@ -41,6 +45,8 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupIocpHandleClass<ReadIocpHandle, ReadIocpSource>(&_info, &_iocpReadClass, true);
 		setupIocpHandleClass<ProcessIocpHandle, ProcessIocpSource>(&_info, &_iocpProcessClass, true);
 		setupIocpHandleClass<TimerWinHandle, TimerWinSource>(&_info, &_winTimerClass, true);
+		setupIocpHandleClass<FileIocpHandle, FileIocpSource>(&_info, &_iocpFileClass, true);
+		setupInlineFileHandleClass(&_info, &_iocpFileInlineClass);
 
 		auto iocp = new (memory::pool::acquire()) IocpData(_info.queue, this, info);
 		if (iocp->_port) {
@@ -85,6 +91,19 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				auto data = static_cast<Queue::Data *>(d);
 				return spawnProcessIocp(d, &data->_iocpProcessClass, &data->_iocpReadClass,
 						sprt::move(info), ref);
+			};
+
+			// Overlapped-capable fds (path opens add O_OVERLAPPED) use the IOCP
+			// native handle; synchronous fds fall back to the inline handle. The
+			// strategy is selected by querying the fd's flags via fcntl(F_GETFL).
+			_makeFileHandle = [](QueueData *d, void *ptr,
+									Rc<FileState> &&state) -> Rc<FileHandle> {
+				auto data = static_cast<Queue::Data *>(d);
+				int fl = ::__sprt_fcntl(state->fd, __SPRT_F_GETFL);
+				if (fl >= 0 && (fl & __SPRT_O_OVERLAPPED)) {
+					return makeFileIocpHandle(d, &data->_iocpFileClass, sprt::move(state));
+				}
+				return makeFileInlineHandle(d, &data->_iocpFileInlineClass, sprt::move(state));
 			};
 
 			_platformQueue = iocp;

@@ -42,6 +42,7 @@
 #include "platform/fd/SPEventPollFd.cc"
 #include "platform/fd/SPEventProcess.cc"
 #include "platform/fd/SPEventProcessFd.cc"
+#include "platform/fd/SPEventFileFd.cc"
 #endif
 
 #if SPRT_WINDOWS
@@ -52,6 +53,7 @@
 #include "platform/windows/SPEventThreadIocp.cc"
 #include "platform/windows/SPEventPollIocp.cc"
 #include "platform/windows/SPEventProcessIocp.cc"
+#include "platform/windows/SPEventFileIocp.cc"
 #endif
 
 #if SPRT_MACOS
@@ -60,6 +62,12 @@
 #include "platform/darwin/SPEvent-kqueue.cc"
 #include "platform/darwin/SPEvent-runloop.cc"
 #endif
+
+// Platform-neutral async file I/O (shared op-state machine + inline handle +
+// QueueData::readFile/writeFile). The io_uring-native handle lives in
+// SPEventFileFd.cc (Linux/Android only); the inline handle here serves every
+// other backend.
+#include "platform/fd/SPEventFile.cc"
 
 #include "detail/SPRuntimeDispatchHandleClass.cc"
 #include "detail/SPRuntimeDispatchQueueData.cc"

@@ -135,6 +135,22 @@ public:
 	Rc<ProcessHandle> spawnProcess(StringView command, dispatch::Function<void(StringView)> &&reader,
 			dispatch::Function<void(int exitCode, Status)> &&onExit, Ref * = nullptr);
 
+	// Asynchronous file read: streams the file contents to FileReadInfo::reader
+	// (each chunk on the looper thread) and fires the completion once when the
+	// whole file is read (value = total bytes) or on error.
+	Rc<FileHandle> readFile(FileReadInfo &&, Ref * = nullptr);
+
+	// Asynchronous file write: writes FileWriteInfo::data (honoring Append /
+	// CreateExclusive) and fires the completion when all bytes are written.
+	Rc<FileHandle> writeFile(FileWriteInfo &&, Ref * = nullptr);
+
+	// Convenience forms (path + plain callbacks). Chain further operations onto
+	// the returned handle with FileHandle::appendRead / appendWrite.
+	Rc<FileHandle> readFile(StringView path, dispatch::Function<void(BytesView)> &&reader,
+			dispatch::Function<void(Status)> &&onDone, Ref * = nullptr);
+	Rc<FileHandle> writeFile(StringView path, BytesView data, OpenFlags,
+			dispatch::Function<void(Status)> &&onDone, Ref * = nullptr);
+
 	Rc<ThreadHandle> addThreadHandle();
 
 	// run custom handle

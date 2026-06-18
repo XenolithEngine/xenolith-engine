@@ -29,6 +29,8 @@
 #include "../fd/SPEventTimerFd.h"
 #include "../fd/SPEventPollFd.h"
 #include "../fd/SPEventProcessFd.h"
+#include "../fd/SPEventFile.h"
+#include "../fd/SPEventFileFd.h"
 #include "../epoll/SPEvent-epoll.h"
 #include "../epoll/SPEventThreadHandle-epoll.h"
 #include "../uring/SPEventThreadHandle-uring.h"
@@ -57,6 +59,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				&_alooperSignalFdClass, true);
 		setupALooperHandleClass<PollFdALooperHandle, PollFdSource>(&_info, &_alooperPollFdClass,
 				true);
+		setupInlineFileHandleClass(&_info, &_alooperFileClass);
 
 		auto alooper = new (memory::pool::acquire())
 				ALooperData(_info.queue, this, info, SignalsToIntercept);
@@ -85,6 +88,12 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return Rc<ThreadEPollHandle>::create(&data->_alooperThreadClass);
 			};
 
+			_makeFileHandle = [](QueueData *d, void *ptr,
+									Rc<FileState> &&state) -> Rc<FileHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeFileInlineHandle(d, &data->_alooperFileClass, sprt::move(state));
+			};
+
 			_platformQueue = alooper;
 			alooper->runInternalHandles();
 			_engine = QueueEngine::ALooper;
@@ -105,6 +114,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupUringHandleClass<PollFdURingHandle, PollFdSource>(&_info, &_uringPollFdClass, true);
 		setupUringHandleClass<ProcessFdURingHandle, ProcessFdSource>(&_info, &_uringProcessFdClass,
 				true);
+		setupUringHandleClass<FileURingHandle, FileSource>(&_info, &_uringFileClass, true);
 
 		auto uring = new (memory::pool::acquire())
 				URingData(_info.queue, this, info, SignalsToIntercept);
@@ -154,6 +164,12 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return spawnProcessFd(d, &data->_uringProcessFdClass, true, sprt::move(info), ref);
 			};
 
+			_makeFileHandle = [](QueueData *d, void *ptr,
+									Rc<FileState> &&state) -> Rc<FileHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeFileUringHandle(d, &data->_uringFileClass, sprt::move(state));
+			};
+
 			_platformQueue = uring;
 			uring->runInternalHandles();
 			_engine = QueueEngine::URing;
@@ -173,6 +189,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupEpollHandleClass<PollFdEPollHandle, PollFdSource>(&_info, &_epollPollFdClass, true);
 		setupEpollHandleClass<ProcessFdEPollHandle, ProcessFdSource>(&_info, &_epollProcessFdClass,
 				true);
+		setupInlineFileHandleClass(&_info, &_epollFileClass);
 
 		auto epoll = new (memory::pool::acquire())
 				EPollData(_info.queue, this, info, SignalsToIntercept);
@@ -211,6 +228,12 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 									Ref *ref) -> Rc<ProcessHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
 				return spawnProcessFd(d, &data->_epollProcessFdClass, false, sprt::move(info), ref);
+			};
+
+			_makeFileHandle = [](QueueData *d, void *ptr,
+									Rc<FileState> &&state) -> Rc<FileHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeFileInlineHandle(d, &data->_epollFileClass, sprt::move(state));
 			};
 
 			_platformQueue = epoll;
