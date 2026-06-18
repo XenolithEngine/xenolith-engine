@@ -202,6 +202,24 @@ Rc<ProcessHandle> Looper::spawnProcess(StringView command, Function<void(StringV
 	return _data->queue->spawnProcess(command, sprt::move(reader), sprt::move(onExit), ref);
 }
 
+Rc<FileHandle> Looper::readFile(FileReadInfo &&info, Ref *ref) {
+	return _data->queue->readFile(move(info), ref);
+}
+
+Rc<FileHandle> Looper::writeFile(FileWriteInfo &&info, Ref *ref) {
+	return _data->queue->writeFile(move(info), ref);
+}
+
+Rc<FileHandle> Looper::readFile(StringView path, Function<void(BytesView)> &&reader,
+		Function<void(Status)> &&onDone, Ref *ref) {
+	return _data->queue->readFile(path, sprt::move(reader), sprt::move(onDone), ref);
+}
+
+Rc<FileHandle> Looper::writeFile(StringView path, BytesView data, OpenFlags flags,
+		Function<void(Status)> &&onDone, Ref *ref) {
+	return _data->queue->writeFile(path, data, flags, sprt::move(onDone), ref);
+}
+
 Status Looper::performOnThread(Rc<Task> &&task, bool immediate) {
 	bool isOnThread = isOnThisThread();
 	if (immediate && isOnThread) {

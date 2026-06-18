@@ -56,7 +56,16 @@ using JobVector = sprt::__malloc_vector<Type>;
 
 // A single fully-resolved recipe command line, with its decoded prefixes.
 struct Command {
+	// How the executor runs this line. Process spawns a `/bin/sh -c` child (the default); Write and
+	// Append are in-process file writes performed via Looper::writeFile (no child) — see
+	// Builder::parseWriteCommand. For the write kinds, `writePath`/`writeData` are pre-parsed and
+	// `text` keeps the raw (sentinel-prefixed) line only for diagnostics.
+	enum class Kind { Process, Write, Append };
+
 	JobString text;
+	Kind kind = Kind::Process;
+	JobString writePath; // Write/Append: destination path
+	JobString writeData; // Write/Append: content bytes (quotes stripped, trailing newline ensured)
 	bool silent = false;
 	bool ignoreErr = false;
 	bool always = false;
@@ -91,12 +100,21 @@ struct Job {
 	JobVector<Command> commands;
 	size_t index = 0; // current command line
 	Rc<dispatch::ProcessHandle> proc; // live child for the current command line
+	Rc<dispatch::FileHandle> file; // live in-process file write for the current command line
 	JobString output; // buffered echo + captured bytes, flushed atomically when the target finishes
 	JobString name; // display name for the progress counter (.TARGET_NAME, else the target name)
 	bool hadOutput = false; // the recipe wrote to stdout/stderr (decides non-verbose suppression)
 	bool failed = false; // a command failed: always show the block regardless of verbosity
 	bool headerDone = false; // streaming started: counter + buffered prefix already written live
 	bool lineBuffered = false; // .TARGET_BUFFER=line: stream output live, like a recursive sub-make
+
+	// Guard for a write command: Looper::writeFile may complete synchronously (an open error fires
+	// its completion before the call returns, unlike spawnProcess). While `inSyncWindow` is set the
+	// completion only records the result here instead of re-entering onCommandDone — which would
+	// delete this Job mid-call. spawn() then settles it after the call returns.
+	bool inSyncWindow = false;
+	bool cmdSettled = false;
+	int cmdSyncCode = 0;
 };
 
 class Builder {
@@ -130,6 +148,14 @@ public:
 			trimmed.assign(mc.data(), mc.size());
 			_makeCommand = sp::move(trimmed);
 		}
+
+		// $(WRITE)/$(APPEND) expand to a sentinel marker; a recipe line whose leading token is one of
+		// these is an in-process file write (no child process). Load the expanded values so
+		// parseWriteCommand can recognize them, exactly like _makeCommand recognizes $(MAKE).
+		_mk->getVariableValue(StringView("WRITE"),
+				[&](StringView v) { _writeMarker.append(v.data(), v.size()); }, _err);
+		_mk->getVariableValue(StringView("APPEND"),
+				[&](StringView v) { _appendMarker.append(v.data(), v.size()); }, _err);
 	}
 
 	BuildResult buildGoal(Target *goal);
@@ -148,6 +174,10 @@ private:
 	JobString displayName(BuildNode *bn); // .TARGET_NAME (target scope) or the target's own name
 	bool isLineBuffered(BuildNode *bn); // .TARGET_BUFFER=line (target scope): stream output live
 	bool isRecursiveCommand(StringView text) const; // expanded recipe line invokes $(MAKE) directly
+	// If `line` is an in-process file-write directive (leading token == the expanded $(WRITE)/$(APPEND)
+	// marker), fill c.kind/writePath/writeData and return true; otherwise return false. A true return
+	// with an empty writePath means the directive was malformed (no path) — spawn() reports it.
+	bool parseWriteCommand(StringView line, Command &c) const;
 
 	Makefile *_mk = nullptr;
 	const BuildConfig &_cfg;
@@ -170,6 +200,8 @@ private:
 	bool _verbose = false; // makefile `verbose` flag: when off, quiet targets show only the counter
 	JobString
 			_makeCommand; // expanded $(MAKE) (== argv[0]); a recipe starting with it is a sub-make
+	JobString _writeMarker; // expanded $(WRITE); a recipe starting with it is an in-process write
+	JobString _appendMarker; // expanded $(APPEND); a recipe starting with it is an in-process append
 	uint32_t _total = 0; // M: recipe-running nodes for the current goal (computed before dispatch)
 	uint32_t _done = 0; // N: recipes completed so far (incremented at flush, in completion order)
 };
@@ -304,7 +336,10 @@ void Builder::dispatchNode(NodeState *st) {
 		c.silent = silent;
 		c.ignoreErr = ignoreErr;
 		c.always = always;
-		c.recursive = isRecursiveCommand(line);
+		// An in-process file write ($(WRITE)/$(APPEND)) is never a recursive sub-make.
+		if (!parseWriteCommand(line, c)) {
+			c.recursive = isRecursiveCommand(line);
+		}
 		job->commands.emplace_back(sp::move(c));
 	}, _err);
 
@@ -328,7 +363,16 @@ void Builder::spawn(Job *job) {
 	auto &cmd = job->commands[job->index];
 
 	if (!cmd.silent && !_cfg.silent) {
-		job->output.append(cmd.text.data(), cmd.text.size());
+		if (cmd.kind == Command::Kind::Process) {
+			job->output.append(cmd.text.data(), cmd.text.size());
+		} else {
+			// A write directive carries a control-char sentinel in cmd.text; echo a clean form.
+			StringView verb = (cmd.kind == Command::Kind::Write) ? StringView("WRITE")
+																  : StringView("APPEND");
+			job->output.append(verb.data(), verb.size());
+			job->output.append(" ");
+			job->output.append(cmd.writePath.data(), cmd.writePath.size());
+		}
 		job->output.append("\n");
 	}
 
@@ -336,6 +380,58 @@ void Builder::spawn(Job *job) {
 		onCommandDone(job, 0); // print only; pretend success
 		return;
 	}
+
+	// In-process file write ($(WRITE)/$(APPEND)): performed via the reactor's async file API — no
+	// child process, no fork. onCommandDone reused unchanged (advances the recipe, frees the slot).
+	if (cmd.kind != Command::Kind::Process) {
+		job->proc = nullptr; // this line uses a file handle, not a child
+
+		if (cmd.writePath.empty()) {
+			job->output.append("xlmake: *** malformed $(WRITE)/$(APPEND) directive (no path)\n");
+			job->failed = true;
+			onCommandDone(job, -1);
+			return;
+		}
+
+		auto flags = (cmd.kind == Command::Kind::Write)
+				? (dispatch::OpenFlags::Write | dispatch::OpenFlags::Create
+						  | dispatch::OpenFlags::Truncate)
+				: (dispatch::OpenFlags::Write | dispatch::OpenFlags::Create
+						  | dispatch::OpenFlags::Append);
+
+		StringView path(cmd.writePath.data(), cmd.writePath.size());
+		BytesView data(reinterpret_cast<const uint8_t *>(cmd.writeData.data()),
+				cmd.writeData.size());
+
+		// writeFile may fire its completion synchronously on an open error (then return null), unlike
+		// spawnProcess. While inSyncWindow the completion only records the result instead of
+		// re-entering onCommandDone (which would delete `job` mid-call); we settle it after the call.
+		job->inSyncWindow = true;
+		job->cmdSettled = false;
+		auto h = _looper->writeFile(path, data, flags, [this, job](sprt::Status st) {
+			int code = isSuccessful(st) ? 0 : -1;
+			if (job->inSyncWindow) {
+				job->cmdSettled = true;
+				job->cmdSyncCode = code;
+			} else {
+				onCommandDone(job, code);
+			}
+		});
+		job->inSyncWindow = false;
+
+		if (job->cmdSettled) {
+			onCommandDone(job, job->cmdSyncCode); // synchronous completion (e.g. open error)
+			return;
+		}
+		if (!h) {
+			sprt::cerr << "xlmake: failed to write file: " << path << "\n";
+			onCommandDone(job, -1);
+			return;
+		}
+		job->file = h; // keep the handle alive until the async completion fires
+		return;
+	}
+	job->file = nullptr; // this line uses a child process, not a file handle
 
 	// Stream the output live (instead of buffering it until the node completes) when either the
 	// command is a recursive $(MAKE) — which emits a whole sub-build's worth of output over its
@@ -486,6 +582,77 @@ bool Builder::isRecursiveCommand(StringView text) const {
 	}
 	char after = text[mc.size()];
 	return after == ' ' || after == '\t';
+}
+
+// Recognize and parse an in-process file-write directive. The expanded recipe line carries the
+// sentinel that $(WRITE)/$(APPEND) expand to as its leading token; everything after the marker is
+// `<path> <content...>`. Echo-faithful content handling: one matching layer of surrounding quotes is
+// stripped and a trailing newline is ensured (added only if absent), so `$(WRITE) $@ "text"` writes
+// exactly `text\n`. Returns false for an ordinary command line (left to spawnProcess).
+bool Builder::parseWriteCommand(StringView line, Command &c) const {
+	StringView s = line;
+	while (!s.empty() && (s[0] == ' ' || s[0] == '\t')) { s = s.sub(1); }
+
+	// A marker must be a standalone leading token (followed by whitespace or end of line). Its \x01
+	// prefix makes a false match against a real command impossible.
+	auto matchMarker = [&](const JobString &m) -> bool {
+		if (m.empty()) {
+			return false;
+		}
+		StringView mv(m.data(), m.size());
+		if (s.size() < mv.size() || StringView(s.data(), mv.size()) != mv) {
+			return false;
+		}
+		if (s.size() == mv.size()) {
+			return true;
+		}
+		char after = s[mv.size()];
+		return after == ' ' || after == '\t';
+	};
+
+	const JobString *marker = nullptr;
+	if (matchMarker(_writeMarker)) {
+		c.kind = Command::Kind::Write;
+		marker = &_writeMarker;
+	} else if (matchMarker(_appendMarker)) {
+		c.kind = Command::Kind::Append;
+		marker = &_appendMarker;
+	} else {
+		return false;
+	}
+
+	s = s.sub(marker->size());
+
+	// Path: the first whitespace-delimited token after the marker.
+	while (!s.empty() && (s[0] == ' ' || s[0] == '\t')) { s = s.sub(1); }
+	size_t i = 0;
+	while (i < s.size() && s[i] != ' ' && s[i] != '\t') { ++i; }
+	StringView path = s.sub(0, i);
+	c.writePath.assign(path.data(), path.size());
+	if (path.empty()) {
+		return true; // marker but no path: malformed — spawn() reports it
+	}
+
+	// Content: the rest of the line (separator skipped, trailing whitespace trimmed).
+	s = s.sub(i);
+	StringView content = s;
+	content.trimChars<StringView::WhiteSpace>();
+
+	// Strip one matching layer of surrounding quotes (so quoting can also preserve inner whitespace).
+	if (content.size() >= 2) {
+		char q = content[0];
+		if ((q == '"' || q == '\'') && content[content.size() - 1] == q) {
+			content = content.sub(1, content.size() - 2);
+		}
+	}
+
+	c.writeData.assign(content.data(), content.size());
+	// Ensure a trailing newline, matching `echo`/GNU make's $(file ...). Empty content thus writes a
+	// single "\n"; content that already ends in a newline is left unchanged.
+	if (c.writeData.empty() || c.writeData[c.writeData.size() - 1] != '\n') {
+		c.writeData.append("\n", 1);
+	}
+	return true;
 }
 
 // The progress-line label: the target's `.TARGET_NAME` (resolved in the target's own scope, so a

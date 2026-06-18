@@ -358,7 +358,7 @@ __SPRT_C_FUNC int __SPRT_ID(sigemptyset)(__SPRT_ID(sigset_t) * set) {
 
 
 #include <sprt/c/__sprt_errno.h>
-#include <sprt/runtime/wctype.h>
+#include <sprt/c/__sprt_wctype.h>
 
 // The case mapping is delegated to the platform's plain towupper()/towlower(),
 // which resolve to libc_impl on freestanding targets and to the system libc on
@@ -407,6 +407,89 @@ __towctrans_fallback(__SPRT_ID(wint_t) wc, __SPRT_ID(wctrans_t) desc) __SPRT_NOE
 	}
 	// A null or unrecognised mapping is the identity (towctrans(wc, 0) == wc).
 	return wc;
+}
+
+} // namespace sprt
+
+
+#include <sprt/c/__sprt_langinfo.h>
+#include <sprt/c/__sprt_nl_types.h>
+#include <sprt/c/__sprt_errno.h>
+
+// Internal-named (strong) fallback implementations for the message-catalog
+// (<nl_types.h>) and langinfo (<langinfo.h>) entry points. They carry the honest
+// C/POSIX behaviour in ONE place; the libc layers build the public symbols on top
+// of them: libc_impl uses them to implement its strong plain catopen/nl_langinfo,
+// and the libc_wrapper falls back to them via a weak-reference null-check when the
+// platform offers no real symbol (Android < 26). Strong + internal-named so there
+// is never a clash with a platform definition of the plain C name.
+
+namespace sprt {
+
+// C/POSIX default langinfo strings: the answer in the C locale and the universal
+// fallback. Reused by libc_impl's WinAPI nl_langinfo (C-locale branch) and the
+// wrapper's nl_langinfo fallback -- one table, no per-module copies.
+char *__nl_langinfo_default(__SPRT_ID(nl_item) item) {
+	static const char *const abday[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+	static const char *const day[7] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday",
+		"Friday", "Saturday"};
+	static const char *const abmon[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
+		"Sep", "Oct", "Nov", "Dec"};
+	static const char *const mon[12] = {"January", "February", "March", "April", "May", "June",
+		"July", "August", "September", "October", "November", "December"};
+
+	const char *r;
+	if (item >= __SPRT_ABDAY_1 && item < __SPRT_ABDAY_1 + 7) {
+		r = abday[item - __SPRT_ABDAY_1];
+	} else if (item >= __SPRT_DAY_1 && item < __SPRT_DAY_1 + 7) {
+		r = day[item - __SPRT_DAY_1];
+	} else if (item >= __SPRT_ABMON_1 && item < __SPRT_ABMON_1 + 12) {
+		r = abmon[item - __SPRT_ABMON_1];
+	} else if (item >= __SPRT_MON_1 && item < __SPRT_MON_1 + 12) {
+		r = mon[item - __SPRT_MON_1];
+	} else {
+		switch (item) {
+		case __SPRT_AM_STR: r = "AM"; break;
+		case __SPRT_PM_STR: r = "PM"; break;
+		case __SPRT_D_T_FMT: r = "%a %b %e %H:%M:%S %Y"; break;
+		case __SPRT_D_FMT: r = "%m/%d/%y"; break;
+		case __SPRT_T_FMT: r = "%H:%M:%S"; break;
+		case __SPRT_T_FMT_AMPM: r = "%I:%M:%S %p"; break;
+		case __SPRT_CODESET: r = "UTF-8"; break; // the runtime is UTF-8 throughout
+		case __SPRT_RADIXCHAR: r = "."; break;
+		case __SPRT_THOUSEP: r = ""; break;
+		case __SPRT_YESEXPR: r = "^[yY]"; break;
+		case __SPRT_NOEXPR: r = "^[nN]"; break;
+		default: r = ""; break; // CRNCYSTR and anything else
+		}
+	}
+	return (char *)r;
+}
+
+// Honest empty message catalog: no catalog backend, so catopen "succeeds" with a
+// sentinel handle, catgets returns the caller's default message, and catclose
+// accepts that handle. Address-only sentinel -- only its identity matters.
+static char s_emptyCatalog;
+
+__SPRT_ID(nl_catd) __catopen_empty(const char *name, int flag) {
+	(void)name;
+	(void)flag;
+	return (__SPRT_ID(nl_catd)) & s_emptyCatalog;
+}
+
+char *__catgets_empty(__SPRT_ID(nl_catd) catd, int set_id, int msg_id, const char *msg) {
+	(void)catd;
+	(void)set_id;
+	(void)msg_id;
+	return (char *)msg;
+}
+
+int __catclose_empty(__SPRT_ID(nl_catd) catd) {
+	if (catd == (__SPRT_ID(nl_catd)) & s_emptyCatalog) {
+		return 0;
+	}
+	__sprt_errno = EBADF;
+	return -1;
 }
 
 } // namespace sprt
