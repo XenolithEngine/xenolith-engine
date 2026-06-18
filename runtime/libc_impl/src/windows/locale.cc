@@ -25,6 +25,7 @@ THE SOFTWARE.
 #include "../../include/__impl_libc.h"
 
 #include <sprt/runtime/stringview.h>
+#include <sprt/c/__sprt_langinfo.h>
 #include <sprt/wrappers/windows/windows.h>
 #include <sprt/cxx/mutex>
 #include <sprt/cxx/type_traits>
@@ -736,5 +737,226 @@ __numeric_fmt __get_numeric_fmt(const __locale_map *locMap) {
 	}
 	return __numeric_fmt{locMap->radix, locMap->thousands_sep, locMap->grouping};
 }
+
+// --- LC_TIME token provider for the runtime_core strftime ---
+
+// Translate a Windows date/time "picture" (e.g. L"dd.MM.yyyy" or L"HH:mm:ss")
+// into a strftime() pattern ("%d.%m.%Y" / "%H:%M:%S"). Recognises the standard
+// field letters and single-quoted literal runs; unknown ASCII characters pass
+// through verbatim (with '%' escaped). Returns the number of bytes written.
+static size_t __win_picture_to_strftime(const wchar_t *pic, char *out, size_t outCap) {
+	size_t o = 0;
+	auto puts = [&](const char *str) {
+		while (*str && o + 1 < outCap) {
+			out[o++] = *str++;
+		}
+	};
+	auto putlit = [&](char c) {
+		if (c == '%') {
+			if (o + 2 < outCap) {
+				out[o++] = '%';
+				out[o++] = '%';
+			}
+		} else if (o + 1 < outCap) {
+			out[o++] = c;
+		}
+	};
+	const wchar_t *p = pic;
+	while (*p) {
+		wchar_t c = *p;
+		if (c == L'\'') { // quoted literal run
+			++p;
+			while (*p) {
+				if (*p == L'\'') {
+					if (p[1] == L'\'') {
+						putlit('\'');
+						p += 2;
+						continue;
+					}
+					++p;
+					break;
+				}
+				if (*p < 128) {
+					putlit((char)*p);
+				}
+				++p;
+			}
+			continue;
+		}
+		if (c == L'd' || c == L'M' || c == L'y' || c == L'H' || c == L'h' || c == L'm' || c == L's'
+				|| c == L't' || c == L'g') {
+			int cnt = 0;
+			while (p[cnt] == c) {
+				++cnt;
+			}
+			switch (c) {
+			case L'd': puts(cnt >= 4 ? "%A" : cnt == 3 ? "%a" : cnt == 2 ? "%d" : "%-d"); break;
+			case L'M': puts(cnt >= 4 ? "%B" : cnt == 3 ? "%b" : cnt == 2 ? "%m" : "%-m"); break;
+			case L'y': puts(cnt >= 4 ? "%Y" : "%y"); break;
+			case L'H': puts(cnt >= 2 ? "%H" : "%-H"); break;
+			case L'h': puts(cnt >= 2 ? "%I" : "%-I"); break;
+			case L'm': puts(cnt >= 2 ? "%M" : "%-M"); break;
+			case L's': puts(cnt >= 2 ? "%S" : "%-S"); break;
+			case L't': puts("%p"); break; // AM/PM designator
+			case L'g': break; // era - not representable, drop
+			}
+			p += cnt;
+			continue;
+		}
+		if (c < 128) {
+			putlit((char)c);
+		}
+		++p;
+	}
+	out[o < outCap ? o : outCap - 1] = 0;
+	return o;
+}
+
+// Copy a WinAPI-queried wide string for `lctype` into a thread-local UTF-8 buffer.
+static const char *__time_name_token(const wchar_t *wname, LCTYPE lctype, char *buf, size_t cap) {
+	wchar_t wbuf[128] = {};
+	if (GetLocaleInfoEx(wname, lctype, wbuf, 128) <= 0) {
+		return nullptr;
+	}
+	const char *ret = nullptr;
+	unicode::toUtf8([&](StringView str) {
+		size_t len = sprt::min(str.size(), cap - 1);
+		memcpy(buf, str.data(), len);
+		buf[len] = 0;
+		ret = buf;
+	}, WideStringView((char16_t *)wbuf));
+	return ret;
+}
+
+// nl_langinfo string for a non-C locale `map`, via WinAPI; nullptr when the item
+// has no WinAPI source (the caller then uses the C/POSIX default). Keyed on the
+// SPRT nl_item ids (see <sprt/c/cross/windows_sprt/langinfo.h>).
+static const char *__win_langinfo(const __locale_map *map, int item) {
+	const wchar_t *wname = map->wname;
+
+	// Names/AM-PM/numeric share one buffer (each is consumed before the next
+	// query); format patterns use a separate buffer so a pattern survives while
+	// the names inside it are resolved during the recursive strftime.
+	static thread_local char tl_name[128];
+	static thread_local char tl_fmt[192];
+
+	if (item >= __SPRT_ABDAY_1 && item < __SPRT_ABDAY_1 + 7) {
+		int w = (item - __SPRT_ABDAY_1 + 6) % 7; // POSIX Sun..Sat -> Win Mon..Sun
+		return __time_name_token(wname, LOCALE_SABBREVDAYNAME1 + w, tl_name, sizeof(tl_name));
+	}
+	if (item >= __SPRT_DAY_1 && item < __SPRT_DAY_1 + 7) {
+		int w = (item - __SPRT_DAY_1 + 6) % 7;
+		return __time_name_token(wname, LOCALE_SDAYNAME1 + w, tl_name, sizeof(tl_name));
+	}
+	if (item >= __SPRT_ABMON_1 && item < __SPRT_ABMON_1 + 12) {
+		int m = item - __SPRT_ABMON_1;
+		return __time_name_token(wname, LOCALE_SABBREVMONTHNAME1 + m, tl_name, sizeof(tl_name));
+	}
+	if (item >= __SPRT_MON_1 && item < __SPRT_MON_1 + 12) {
+		int m = item - __SPRT_MON_1;
+		return __time_name_token(wname, LOCALE_SMONTHNAME1 + m, tl_name, sizeof(tl_name));
+	}
+	if (item == __SPRT_AM_STR) {
+		return __time_name_token(wname, LOCALE_S1159, tl_name, sizeof(tl_name));
+	}
+	if (item == __SPRT_PM_STR) {
+		return __time_name_token(wname, LOCALE_S2359, tl_name, sizeof(tl_name));
+	}
+	if (item == __SPRT_CRNCYSTR) {
+		return __time_name_token(wname, LOCALE_SCURRENCY, tl_name, sizeof(tl_name));
+	}
+	if (item == __SPRT_RADIXCHAR) {
+		tl_name[0] = map->radix ? map->radix : '.';
+		tl_name[1] = 0;
+		return tl_name;
+	}
+	if (item == __SPRT_THOUSEP) {
+		tl_name[0] = map->thousands_sep; // 0 -> "" (multi-byte / none)
+		tl_name[1] = 0;
+		return tl_name;
+	}
+
+	wchar_t pic[128] = {};
+	if (item == __SPRT_D_FMT) {
+		if (GetLocaleInfoEx(wname, LOCALE_SSHORTDATE, pic, 128) <= 0) {
+			return nullptr;
+		}
+		__win_picture_to_strftime(pic, tl_fmt, sizeof(tl_fmt));
+		return tl_fmt;
+	}
+	if (item == __SPRT_T_FMT) {
+		if (GetLocaleInfoEx(wname, LOCALE_STIMEFORMAT, pic, 128) <= 0) {
+			return nullptr;
+		}
+		__win_picture_to_strftime(pic, tl_fmt, sizeof(tl_fmt));
+		return tl_fmt;
+	}
+	if (item == __SPRT_D_T_FMT) {
+		// Compose %c as "<long date> <time>".
+		if (GetLocaleInfoEx(wname, LOCALE_SLONGDATE, pic, 128) <= 0) {
+			return nullptr;
+		}
+		size_t k = __win_picture_to_strftime(pic, tl_fmt, sizeof(tl_fmt));
+		if (k + 1 < sizeof(tl_fmt)) {
+			tl_fmt[k++] = ' ';
+		}
+		if (GetLocaleInfoEx(wname, LOCALE_STIMEFORMAT, pic, 128) > 0) {
+			__win_picture_to_strftime(pic, tl_fmt + k, sizeof(tl_fmt) - k);
+		} else {
+			tl_fmt[k] = 0;
+		}
+		return tl_fmt;
+	}
+
+	// CODESET, T_FMT_AMPM, YESEXPR, NOEXPR: no WinAPI source -> C/POSIX default.
+	return nullptr;
+}
+
+// The C/POSIX langinfo defaults live in runtime_core's weak nl_langinfo fallback
+// (runtime_core_locale.cpp); reuse that single table for the C-locale / no-WinAPI-
+// data branch instead of duplicating it here.
+char *__nl_langinfo_default(__sprt_nl_item item);
+
+// The LC_* category that owns an item, so nl_langinfo can resolve the right map.
+static int __langinfo_category(int item) {
+	if (item == __SPRT_CODESET) {
+		return __SPRT_LC_CTYPE;
+	}
+	if (item == __SPRT_RADIXCHAR || item == __SPRT_THOUSEP) {
+		return __SPRT_LC_NUMERIC;
+	}
+	if (item == __SPRT_CRNCYSTR) {
+		return __SPRT_LC_MONETARY;
+	}
+	if (item == __SPRT_YESEXPR || item == __SPRT_NOEXPR) {
+		return __SPRT_LC_MESSAGES;
+	}
+	return __SPRT_LC_TIME; // all the day/month/format items
+}
+
+static char *__nl_langinfo_map(const __locale_map *map, int item) {
+	if (map && map != __get_default_locale()) {
+		if (const char *w = __win_langinfo(map, item)) {
+			return (char *)w;
+		}
+	}
+	return __nl_langinfo_default(item);
+}
+
+extern "C" {
+
+char *nl_langinfo_l(__sprt_nl_item item, __sprt_locale_t loc) __SPRT_NOEXCEPT {
+	int cat = __langinfo_category(item);
+	const __locale_map *map = (loc == nullptr || loc == __SPRT_LC_GLOBAL_LOCALE)
+			? __get_effective_locale_map(cat)
+			: loc->data.cat[cat];
+	return __nl_langinfo_map(map, item);
+}
+
+char *nl_langinfo(__sprt_nl_item item) __SPRT_NOEXCEPT {
+	return __nl_langinfo_map(__get_effective_locale_map(__langinfo_category(item)), item);
+}
+
+} // extern "C"
 
 } // namespace sprt

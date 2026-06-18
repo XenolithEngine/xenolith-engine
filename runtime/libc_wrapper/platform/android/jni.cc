@@ -38,6 +38,7 @@
 
 #include <math.h>
 #include <nl_types.h>
+#include <langinfo.h>
 #include <wchar.h>
 #include <wctype.h>
 #include <fcntl.h>
@@ -58,11 +59,6 @@ int (*_sync_file_range)(int __fd, off64_t __offset, off64_t __length,
 		unsigned int __flags) = nullptr;
 int (*_mlock2)(const void *__addr, size_t __size, int __flags) = nullptr;
 int (*_memfd_create)(const char *__name, unsigned __flags) = nullptr;
-
-nl_catd (*_catopen)(const char *__name, int __flag) = nullptr;
-char *(*_catgets)(nl_catd __catalog, int __set_number, int __msg_number,
-		const char *__msg) = nullptr;
-int (*_catclose)(nl_catd __catalog) = nullptr;
 
 int (*_pthread_setschedprio)(pthread_t __pthread, int __priority) = nullptr;
 
@@ -719,9 +715,6 @@ void Env::loadJava(JavaVM *vm) {
 		platform::_mlock2 = platform::s_self.sym<decltype(platform::_mlock2)>("mlock2");
 		platform::_memfd_create =
 				platform::s_self.sym<decltype(platform::_memfd_create)>("memfd_create");
-		platform::_catopen = platform::s_self.sym<decltype(platform::_catopen)>("catopen");
-		platform::_catgets = platform::s_self.sym<decltype(platform::_catgets)>("catgets");
-		platform::_catclose = platform::s_self.sym<decltype(platform::_catclose)>("catclose");
 		platform::_pthread_setschedprio =
 				platform::s_self.sym<decltype(platform::_pthread_setschedprio)>(
 						"pthread_setschedprio");

@@ -1,5 +1,7 @@
 # xlmake
 
+It's like Ninja, but it's **make**.
+
 `xlmake` is a GNU-make-compatible makefile engine and build driver built on the Stappler
 `stappler_makefile` library and the `runtime` dispatch reactor. It reads GNU-make-style
 makefiles, and can either **inspect** them (print variables, recipes, prerequisites, a
@@ -53,7 +55,7 @@ The **first** command-line token selects the mode; every later flag applies to t
 | `-h`, `--help` | Help | usage text |
 
 Like `make`, a bare `xlmake` builds the default goal of the makefile in the current directory
-(searching `GNUmakefile`, `makefile`, `Makefile` in that order).
+(searching `GNUmakefile`, `makefile`, `Makefile` in that order). It's rule for the implicit default goal is different from GNU make, so, better define it with `.DEFAULT`
 
 ---
 
@@ -165,6 +167,8 @@ xlmake aims for GNU make 4.x source compatibility for the common feature set:
 ---
 
 ## Differences from GNU make
+
+**xlmake** designed for speed, many heavy GNU make features id omitted.
 
 These are the behaviors to be aware of when porting a makefile:
 

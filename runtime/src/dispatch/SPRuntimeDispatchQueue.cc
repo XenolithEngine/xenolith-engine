@@ -162,6 +162,75 @@ Rc<ProcessHandle> Queue::spawnProcess(StringView command,
 	return spawnProcess(move(info), data);
 }
 
+Rc<FileHandle> Queue::readFile(FileReadInfo &&info, Ref *ref) {
+	auto h = _data->readFile(move(info), ref);
+	if (h) {
+		_data->runHandle(h);
+	}
+	return h;
+}
+
+Rc<FileHandle> Queue::writeFile(FileWriteInfo &&info, Ref *ref) {
+	auto h = _data->writeFile(move(info), ref);
+	if (h) {
+		_data->runHandle(h);
+	}
+	return h;
+}
+
+Rc<FileHandle> Queue::readFile(StringView path, dispatch::Function<void(BytesView)> &&reader,
+		dispatch::Function<void(Status)> &&onDone, Ref *ref) {
+	struct FileCbData : public Ref {
+		dispatch::Function<void(BytesView)> reader;
+		dispatch::Function<void(Status)> onDone;
+		Rc<Ref> ref;
+	};
+
+	auto data = Rc<FileCbData>::alloc();
+	data->reader = sprt::move(reader);
+	data->onDone = sprt::move(onDone);
+	data->ref = ref;
+
+	FileReadInfo info;
+	info.path = path;
+	if (data->reader) {
+		info.reader = [data](BytesView bytes) { data->reader(bytes); };
+	}
+	info.completion = FileReadInfo::Completion::create<FileCbData>(data,
+			[](FileCbData *data, FileHandle *handle, uint32_t value, Status st) {
+		if (data->onDone) {
+			data->onDone(st);
+		}
+	});
+
+	return readFile(move(info), data);
+}
+
+Rc<FileHandle> Queue::writeFile(StringView path, BytesView wdata, OpenFlags flags,
+		dispatch::Function<void(Status)> &&onDone, Ref *ref) {
+	struct FileCbData : public Ref {
+		dispatch::Function<void(Status)> onDone;
+		Rc<Ref> ref;
+	};
+
+	auto data = Rc<FileCbData>::alloc();
+	data->onDone = sprt::move(onDone);
+	data->ref = ref;
+
+	FileWriteInfo info;
+	info.path = path;
+	info.data = wdata;
+	info.flags = flags;
+	info.completion = FileWriteInfo::Completion::create<FileCbData>(data,
+			[](FileCbData *data, FileHandle *handle, uint32_t value, Status st) {
+		if (data->onDone) {
+			data->onDone(st);
+		}
+	});
+
+	return writeFile(move(info), data);
+}
+
 Rc<ThreadHandle> Queue::addThreadHandle() {
 	auto h = _data->addThreadHandle();
 	_data->runHandle(h);

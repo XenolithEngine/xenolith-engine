@@ -23,6 +23,7 @@
 #include "SPEvent-darwin.h"
 #include "SPEvent-kqueue.h"
 #include "SPEvent-runloop.h"
+#include "../fd/SPEventFile.h"
 
 #include <signal.h>
 
@@ -74,6 +75,14 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return spawnProcessKQueue(d, &data->_kqueueProcessClass, sprt::move(info), ref);
 			};
 
+			// kqueue cannot poll regular files, so file I/O uses the portable
+			// inline (timer-driven) strategy.
+			_makeFileHandle = [](QueueData *d, void *ptr,
+									Rc<FileState> &&state) -> Rc<FileHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeFileInlineHandle(d, &data->_kqueueFileClass, sprt::move(state));
+			};
+
 			setupKQueueHandleClass<KQueueTimerHandle, KQueueTimerSource>(&_info, &_kqueueTimerClass,
 					true);
 			setupKQueueHandleClass<KQueueThreadHandle, KQueueThreadSource>(&_info,
@@ -82,6 +91,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 					true);
 			setupKQueueHandleClass<ProcessKQueueHandle, ProcessKQueueSource>(&_info,
 					&_kqueueProcessClass, true);
+			setupInlineFileHandleClass(&_info, &_kqueueFileClass);
 
 			_platformQueue = queue;
 			_engine = QueueEngine::KQueue;
@@ -120,10 +130,17 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return Rc<RunLoopThreadHandle>::create(&data->_runloopThreadClass);
 			};
 
+			_makeFileHandle = [](QueueData *d, void *ptr,
+									Rc<FileState> &&state) -> Rc<FileHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeFileInlineHandle(d, &data->_runloopFileClass, sprt::move(state));
+			};
+
 			setupRunLoopHandleClass<RunLoopTimerHandle, RunLoopTimerSource>(&_info,
 					&_runloopTimerClass, true);
 			setupRunLoopHandleClass<RunLoopThreadHandle, RunLoopThreadSource>(&_info,
 					&_runloopThreadClass, true);
+			setupInlineFileHandleClass(&_info, &_runloopFileClass);
 
 			_platformQueue = runloop;
 			_engine = QueueEngine::RunLoop;

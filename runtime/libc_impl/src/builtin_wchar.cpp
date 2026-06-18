@@ -23,8 +23,6 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_locale.h>
 #include <sprt/c/__sprt_wctype.h>
 
-#include <sprt/runtime/wctype.h>
-
 #include "../include/__impl_libc.h"
 
 #include "wchar.h"

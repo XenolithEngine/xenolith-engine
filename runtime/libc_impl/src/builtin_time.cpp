@@ -30,6 +30,7 @@ THE SOFTWARE.
 #include <ctype.h>
 #include <limits.h>
 #include <sys/time.h>
+#include <locale.h>
 
 static const char __utc[] = "UTC";
 
@@ -56,7 +57,17 @@ __SPRT_C_FUNC size_t strftime_l(char *__restrict s, size_t n, const char *__rest
 		return -1;
 	}
 	sprt::time::time_exp_t exp(*tm);
-	return exp.strftime(s, n, f);
+	// The runtime_core formatter pulls localized tokens for the *current effective*
+	// locale, so honour an explicit locale by installing it on this thread for the
+	// duration of the call, then restoring the previous thread locale (or the
+	// global locale when none was set).
+	if (loc == nullptr || loc == LC_GLOBAL_LOCALE) {
+		return exp.strftime(s, n, f);
+	}
+	locale_t prev = uselocale(loc);
+	size_t ret = exp.strftime(s, n, f);
+	uselocale(prev ? prev : LC_GLOBAL_LOCALE);
+	return ret;
 }
 
 __SPRT_C_FUNC size_t strftime(char *__restrict s, size_t n, const char *__restrict f,
