@@ -32,6 +32,7 @@ THE SOFTWARE.
 
 #include "Executor.h"
 #include "Inspector.h"
+#include "SPFilesystem.h" // in-process $(MKDIR)/$(REMOVE)/$(CP) directives (mkdir/remove/copy)
 
 #include <sprt/runtime/dispatch/looper.h>
 #include <sprt/runtime/dispatch/handle.h>
@@ -56,16 +57,27 @@ using JobVector = sprt::__malloc_vector<Type>;
 
 // A single fully-resolved recipe command line, with its decoded prefixes.
 struct Command {
-	// How the executor runs this line. Process spawns a `/bin/sh -c` child (the default); Write and
-	// Append are in-process file writes performed via Looper::writeFile (no child) — see
-	// Builder::parseWriteCommand. For the write kinds, `writePath`/`writeData` are pre-parsed and
-	// `text` keeps the raw (sentinel-prefixed) line only for diagnostics.
-	enum class Kind { Process, Write, Append };
+	// How the executor runs this line. Process spawns a `/bin/sh -c` child (the default). Write/Append
+	// are in-process file writes performed via Looper::writeFile (async, no child). Mkdir/Remove/Copy/
+	// Echo are immediate (synchronous) in-process actions performed via the sp::filesystem API / stdout
+	// (no child) — see Builder::runImmediate. All non-Process kinds are recognized by a sentinel marker
+	// at the head of the expanded line (Builder::parseDirective); `text` keeps the raw line only for
+	// diagnostics. The immediate kinds (>= Mkdir) keep their raw argument string in `args`.
+	enum class Kind {
+		Process,
+		Write,
+		Append,
+		Mkdir,
+		Remove,
+		Copy,
+		Echo
+	};
 
 	JobString text;
 	Kind kind = Kind::Process;
 	JobString writePath; // Write/Append: destination path
 	JobString writeData; // Write/Append: content bytes (quotes stripped, trailing newline ensured)
+	JobString args; // Mkdir/Remove/Copy/Echo: raw argument string after the marker (trimmed)
 	bool silent = false;
 	bool ignoreErr = false;
 	bool always = false;
@@ -156,6 +168,14 @@ public:
 				[&](StringView v) { _writeMarker.append(v.data(), v.size()); }, _err);
 		_mk->getVariableValue(StringView("APPEND"),
 				[&](StringView v) { _appendMarker.append(v.data(), v.size()); }, _err);
+		_mk->getVariableValue(StringView("MKDIR"),
+				[&](StringView v) { _mkdirMarker.append(v.data(), v.size()); }, _err);
+		_mk->getVariableValue(StringView("REMOVE"),
+				[&](StringView v) { _removeMarker.append(v.data(), v.size()); }, _err);
+		_mk->getVariableValue(StringView("CP"),
+				[&](StringView v) { _copyMarker.append(v.data(), v.size()); }, _err);
+		_mk->getVariableValue(StringView("ECHO"),
+				[&](StringView v) { _echoMarker.append(v.data(), v.size()); }, _err);
 	}
 
 	BuildResult buildGoal(Target *goal);
@@ -174,10 +194,13 @@ private:
 	JobString displayName(BuildNode *bn); // .TARGET_NAME (target scope) or the target's own name
 	bool isLineBuffered(BuildNode *bn); // .TARGET_BUFFER=line (target scope): stream output live
 	bool isRecursiveCommand(StringView text) const; // expanded recipe line invokes $(MAKE) directly
-	// If `line` is an in-process file-write directive (leading token == the expanded $(WRITE)/$(APPEND)
-	// marker), fill c.kind/writePath/writeData and return true; otherwise return false. A true return
-	// with an empty writePath means the directive was malformed (no path) — spawn() reports it.
-	bool parseWriteCommand(StringView line, Command &c) const;
+	// If `line` is an in-process directive (leading token == the expanded $(WRITE)/$(APPEND)/$(MKDIR)/
+	// $(REMOVE)/$(CP)/$(ECHO) marker), fill c.kind and the relevant fields and return true; otherwise
+	// return false. For Write/Append a true return with empty writePath means malformed (no path).
+	bool parseDirective(StringView line, Command &c) const;
+	// Perform an immediate (synchronous) directive — Mkdir/Remove/Copy/Echo — buffering any output or
+	// diagnostics into job->output. Returns 0 on success, -1 on failure.
+	int runImmediate(Job *job, const Command &cmd);
 
 	Makefile *_mk = nullptr;
 	const BuildConfig &_cfg;
@@ -201,7 +224,12 @@ private:
 	JobString
 			_makeCommand; // expanded $(MAKE) (== argv[0]); a recipe starting with it is a sub-make
 	JobString _writeMarker; // expanded $(WRITE); a recipe starting with it is an in-process write
-	JobString _appendMarker; // expanded $(APPEND); a recipe starting with it is an in-process append
+	JobString
+			_appendMarker; // expanded $(APPEND); a recipe starting with it is an in-process append
+	JobString _mkdirMarker; // expanded $(MKDIR); leading token => in-process mkdir -p
+	JobString _removeMarker; // expanded $(REMOVE); leading token => in-process rm -rf
+	JobString _copyMarker; // expanded $(CP); leading token => in-process cp -f
+	JobString _echoMarker; // expanded $(ECHO); leading token => in-process console output
 	uint32_t _total = 0; // M: recipe-running nodes for the current goal (computed before dispatch)
 	uint32_t _done = 0; // N: recipes completed so far (incremented at flush, in completion order)
 };
@@ -336,8 +364,8 @@ void Builder::dispatchNode(NodeState *st) {
 		c.silent = silent;
 		c.ignoreErr = ignoreErr;
 		c.always = always;
-		// An in-process file write ($(WRITE)/$(APPEND)) is never a recursive sub-make.
-		if (!parseWriteCommand(line, c)) {
+		// An in-process directive ($(WRITE)/$(APPEND)/$(MKDIR)/...) is never a recursive sub-make.
+		if (!parseDirective(line, c)) {
 			c.recursive = isRecursiveCommand(line);
 		}
 		job->commands.emplace_back(sp::move(c));
@@ -363,21 +391,64 @@ void Builder::spawn(Job *job) {
 	auto &cmd = job->commands[job->index];
 
 	if (!cmd.silent && !_cfg.silent) {
-		if (cmd.kind == Command::Kind::Process) {
+		// A directive carries a control-char sentinel in cmd.text; echo a clean reconstruction. $(ECHO)
+		// echoes nothing here — its content is emitted by the action itself (so @$(ECHO) still prints).
+		switch (cmd.kind) {
+		case Command::Kind::Process:
 			job->output.append(cmd.text.data(), cmd.text.size());
-		} else {
-			// A write directive carries a control-char sentinel in cmd.text; echo a clean form.
-			StringView verb = (cmd.kind == Command::Kind::Write) ? StringView("WRITE")
-																  : StringView("APPEND");
+			job->output.append("\n");
+			break;
+		case Command::Kind::Echo: break;
+		default: {
+			StringView verb;
+			StringView payload;
+			switch (cmd.kind) {
+			case Command::Kind::Write:
+				verb = "WRITE";
+				payload = StringView(cmd.writePath.data(), cmd.writePath.size());
+				break;
+			case Command::Kind::Append:
+				verb = "APPEND";
+				payload = StringView(cmd.writePath.data(), cmd.writePath.size());
+				break;
+			case Command::Kind::Mkdir:
+				verb = "MKDIR";
+				payload = StringView(cmd.args.data(), cmd.args.size());
+				break;
+			case Command::Kind::Remove:
+				verb = "REMOVE";
+				payload = StringView(cmd.args.data(), cmd.args.size());
+				break;
+			case Command::Kind::Copy:
+				verb = "CP";
+				payload = StringView(cmd.args.data(), cmd.args.size());
+				break;
+			default: break;
+			}
 			job->output.append(verb.data(), verb.size());
-			job->output.append(" ");
-			job->output.append(cmd.writePath.data(), cmd.writePath.size());
+			if (!payload.empty()) {
+				job->output.append(" ");
+				job->output.append(payload.data(), payload.size());
+			}
+			job->output.append("\n");
+			break;
 		}
-		job->output.append("\n");
+		}
 	}
 
 	if (_cfg.dryRun && !cmd.always) {
 		onCommandDone(job, 0); // print only; pretend success
+		return;
+	}
+
+	// Immediate in-process directives ($(MKDIR)/$(REMOVE)/$(CP)/$(ECHO)): synchronous, no handle. They
+	// settle inline exactly like the dry-run short-circuit above (an established safe pattern — the
+	// completion may re-enter spawn() for the next recipe line or delete the job).
+	if (cmd.kind >= Command::Kind::Mkdir) {
+		job->proc = nullptr;
+		job->file = nullptr;
+		int code = runImmediate(job, cmd);
+		onCommandDone(job, code);
 		return;
 	}
 
@@ -584,12 +655,13 @@ bool Builder::isRecursiveCommand(StringView text) const {
 	return after == ' ' || after == '\t';
 }
 
-// Recognize and parse an in-process file-write directive. The expanded recipe line carries the
-// sentinel that $(WRITE)/$(APPEND) expand to as its leading token; everything after the marker is
-// `<path> <content...>`. Echo-faithful content handling: one matching layer of surrounding quotes is
-// stripped and a trailing newline is ensured (added only if absent), so `$(WRITE) $@ "text"` writes
-// exactly `text\n`. Returns false for an ordinary command line (left to spawnProcess).
-bool Builder::parseWriteCommand(StringView line, Command &c) const {
+// Recognize and parse an in-process directive. The expanded recipe line carries the sentinel that
+// $(WRITE)/$(APPEND)/$(MKDIR)/$(REMOVE)/$(CP)/$(ECHO) expand to as its leading token. For Write/Append
+// the remainder is `<path> <content...>` with echo-faithful content (one surrounding quote layer
+// stripped, trailing newline ensured), so `$(WRITE) $@ "text"` writes exactly `text\n`. For the
+// immediate kinds the trimmed remainder is kept verbatim in c.args (parsed in runImmediate). Returns
+// false for an ordinary command line (left to spawnProcess).
+bool Builder::parseDirective(StringView line, Command &c) const {
 	StringView s = line;
 	while (!s.empty() && (s[0] == ' ' || s[0] == '\t')) { s = s.sub(1); }
 
@@ -617,14 +689,35 @@ bool Builder::parseWriteCommand(StringView line, Command &c) const {
 	} else if (matchMarker(_appendMarker)) {
 		c.kind = Command::Kind::Append;
 		marker = &_appendMarker;
+	} else if (matchMarker(_mkdirMarker)) {
+		c.kind = Command::Kind::Mkdir;
+		marker = &_mkdirMarker;
+	} else if (matchMarker(_removeMarker)) {
+		c.kind = Command::Kind::Remove;
+		marker = &_removeMarker;
+	} else if (matchMarker(_copyMarker)) {
+		c.kind = Command::Kind::Copy;
+		marker = &_copyMarker;
+	} else if (matchMarker(_echoMarker)) {
+		c.kind = Command::Kind::Echo;
+		marker = &_echoMarker;
 	} else {
 		return false;
 	}
 
 	s = s.sub(marker->size());
-
-	// Path: the first whitespace-delimited token after the marker.
 	while (!s.empty() && (s[0] == ' ' || s[0] == '\t')) { s = s.sub(1); }
+
+	// Immediate kinds: keep the trimmed remainder verbatim; runImmediate tokenizes/handles it.
+	if (c.kind == Command::Kind::Mkdir || c.kind == Command::Kind::Remove
+			|| c.kind == Command::Kind::Copy || c.kind == Command::Kind::Echo) {
+		StringView rest = s;
+		rest.trimChars<StringView::WhiteSpace>();
+		c.args.assign(rest.data(), rest.size());
+		return true;
+	}
+
+	// Write/Append: `<path> <content...>` — path is the first whitespace-delimited token.
 	size_t i = 0;
 	while (i < s.size() && s[i] != ' ' && s[i] != '\t') { ++i; }
 	StringView path = s.sub(0, i);
@@ -653,6 +746,116 @@ bool Builder::parseWriteCommand(StringView line, Command &c) const {
 		c.writeData.append("\n", 1);
 	}
 	return true;
+}
+
+// Tokenize a whitespace-separated argument string into views (no quote handling — paths in recipes
+// are rarely quoted, and variable expansion has already happened). Views point into `args`.
+static void tokenizeArgs(StringView args, JobVector<StringView> &out) {
+	StringView s = args;
+	while (!s.empty()) {
+		while (!s.empty() && (s[0] == ' ' || s[0] == '\t')) { s = s.sub(1); }
+		if (s.empty()) {
+			break;
+		}
+		size_t i = 0;
+		while (i < s.size() && s[i] != ' ' && s[i] != '\t') { ++i; }
+		out.emplace_back(s.sub(0, i));
+		s = s.sub(i);
+	}
+}
+
+// Perform an immediate (synchronous) directive in-process. Output / diagnostics go to job->output;
+// returns 0 on success, -1 on failure. Paths resolve against the CWD (the build root after chdir).
+int Builder::runImmediate(Job *job, const Command &cmd) {
+	StringView args(cmd.args.data(), cmd.args.size());
+
+	auto fail = [&](StringView msg) -> int {
+		job->output.append(msg.data(), msg.size());
+		job->output.append("\n");
+		job->failed = true;
+		return -1;
+	};
+
+	switch (cmd.kind) {
+	case Command::Kind::Mkdir: {
+		JobVector<StringView> paths;
+		tokenizeArgs(args, paths);
+		if (paths.empty()) {
+			return fail("xlmake: *** malformed $(MKDIR) directive (no path)");
+		}
+		for (auto &p : paths) {
+			p.backwardSkipChars<StringView::Chars<'/'>>();
+			FileInfo fi(p);
+			// mkdir -p: an already-existing directory is success; mkdir_recursive returns false on an
+			// existing path, so accept that case explicitly (but reject an existing non-directory).
+			if (filesystem::exists(fi)) {
+				filesystem::Stat st;
+				if (!filesystem::stat(fi, st) || st.type != FileType::Dir) {
+					return fail(toString("xlmake: *** $(MKDIR) ", p,
+							": exists and is not a directory"));
+				}
+				continue;
+			}
+			if (!filesystem::mkdir_recursive(fi)) {
+				return fail(toString("xlmake: *** $(MKDIR) ", p, ": failed"));
+			}
+		}
+		return 0;
+	}
+	case Command::Kind::Remove: {
+		JobVector<StringView> paths;
+		tokenizeArgs(args, paths);
+		if (paths.empty()) {
+			return fail("xlmake: *** malformed $(REMOVE) directive (no path)");
+		}
+		for (auto &p : paths) {
+			FileInfo fi(p);
+			// rm -rf: a missing path is success; otherwise remove recursively.
+			if (filesystem::exists(fi) && !filesystem::remove(fi, true)) {
+				return fail(toString("xlmake: *** $(REMOVE) ", p, ": failed"));
+			}
+		}
+		return 0;
+	}
+	case Command::Kind::Copy: {
+		JobVector<StringView> toks;
+		tokenizeArgs(args, toks);
+		if (toks.size() != 2) {
+			return fail("xlmake: *** malformed $(CP) directive (expected: $(CP) <src> <dst>)");
+		}
+		FileInfo dst(toks[1]);
+		// cp -f: filesystem::copy refuses an existing *file* destination, so remove it first to force
+		// the overwrite. A directory destination is left intact — copy places <src> inside it (and
+		// overwrites the inner file itself), matching `cp src dir/`.
+		if (filesystem::exists(dst)) {
+			filesystem::Stat st;
+			if (!filesystem::stat(dst, st) || st.type != FileType::Dir) {
+				filesystem::remove(dst, false);
+			}
+		}
+		if (!filesystem::copy(FileInfo(toks[0]), dst)) {
+			return fail(toString("xlmake: *** $(CP) ", toks[0], " -> ", toks[1], ": failed"));
+		}
+		return 0;
+	}
+	case Command::Kind::Echo: {
+		// Console output: echo-faithful content (one surrounding quote layer stripped, trailing
+		// newline). The text IS the action's output, so it shows even in non-verbose mode.
+		StringView text = args;
+		if (text.size() >= 2) {
+			char q = text[0];
+			if ((q == '"' || q == '\'') && text[text.size() - 1] == q) {
+				text = text.sub(1, text.size() - 2);
+			}
+		}
+		job->output.append(text.data(), text.size());
+		job->output.append("\n");
+		job->hadOutput = true;
+		return 0;
+	}
+	default: break;
+	}
+	return fail("xlmake: *** internal error: unhandled immediate directive");
 }
 
 // The progress-line label: the target's `.TARGET_NAME` (resolved in the target's own scope, so a
@@ -740,6 +943,26 @@ BuildResult Builder::buildGoal(Target *goal) {
 		return BuildResult::Failed;
 	}
 	return _builtAny ? BuildResult::Built : BuildResult::UpToDate;
+}
+
+// Render an elapsed wall-clock duration (in microseconds) as a compact human-readable string:
+// "742ms", "12.3s", "1m 05s", or "1h 02m 03s".
+static String formatBuildTime(uint64_t micros) {
+	uint64_t ms = micros / 1000;
+	if (ms < 1000) {
+		return toString(ms, "ms");
+	}
+	uint64_t totalSec = ms / 1000;
+	if (totalSec < 60) {
+		return toString(totalSec, ".", (ms % 1000) / 100, "s"); // seconds, one decimal place
+	}
+	uint64_t h = totalSec / 3600;
+	uint64_t m = (totalSec % 3600) / 60;
+	uint64_t s = totalSec % 60;
+	if (h > 0) {
+		return toString(h, "h ", (m < 10 ? "0" : ""), m, "m ", (s < 10 ? "0" : ""), s, "s");
+	}
+	return toString(m, "m ", (s < 10 ? "0" : ""), s, "s");
 }
 
 } // namespace
@@ -836,6 +1059,7 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 
 	Builder builder(mk, cfg, looper, err);
 	int rc = 0;
+	auto buildStartMicros = Time::now().toMicros();
 	for (auto goal : goals) {
 		auto res = builder.buildGoal(goal);
 		switch (res) {
@@ -860,6 +1084,19 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 		}
 		if (rc != 0 && !cfg.keepGoing) {
 			break;
+		}
+	}
+
+	// Human-readable wall-clock build time, shown under the same conditions as the progress counter
+	// (a real build: not dry-run, not silent, not a database dump; -q/-p return earlier). Tagged with
+	// the recursion depth like the counter, so each sub-make reports its own time and the top level
+	// reports the total.
+	if (!cfg.dryRun && !cfg.silent && !cfg.printDatabase) {
+		auto elapsed = Time::now().toMicros() - buildStartMicros;
+		if (cfg.makeLevel > 0) {
+			sprt::cout << "[" << cfg.makeLevel << "] Build time: " << formatBuildTime(elapsed) << "\n";
+		} else {
+			sprt::cout << "Build time: " << formatBuildTime(elapsed) << "\n";
 		}
 	}
 	return finish(rc);

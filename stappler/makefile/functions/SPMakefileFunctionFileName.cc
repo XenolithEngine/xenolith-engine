@@ -235,6 +235,45 @@ static bool Function_wildcard_match(StringView pat, StringView str) {
 	return p == pat.size();
 }
 
+// Emit a resolved filesystem path in the form GNU make uses on each platform. On POSIX the path is
+// emitted verbatim. On Windows, GNU make reports resolved paths as Windows paths but with '/' as the
+// separator (e.g. `C:/dir/file`); our filesystem layer yields the internal posix form (`/c/dir`), so
+// rewrite the drive prefix (`/c` -> `C:`) and flip any backslashes to forward slashes. This is the
+// emit choke-point for the filesystem-resolving functions ($(wildcard)/$(realpath)/$(abspath)); the
+// text-slicing functions ($(dir)/$(notdir)/...) intentionally pass their input through unchanged,
+// exactly as GNU make does.
+static void emitResolvedPath(const Callback<void(StringView)> &out, StringView path) {
+#if SPRT_WINDOWS
+	auto isDriveLetter = [](char c) {
+		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+	};
+	auto upper = [](char c) { return (c >= 'a' && c <= 'z') ? char(c - 'a' + 'A') : c; };
+
+	auto s = path.str<Interface>(); // mutable, same-length rewrite (kept alive across the emit)
+	if (!s.empty()) {
+		char *d = s.data();
+		size_t n = s.size();
+		// internal posix drive form `/c[/...]` -> `C:[/...]` (same length: "/c" -> "C:")
+		if (n >= 2 && d[0] == '/' && isDriveLetter(d[1]) && (n == 2 || d[2] == '/')) {
+			d[0] = upper(d[1]);
+			d[1] = ':';
+		}
+		for (size_t i = 0; i < n; ++i) {
+			if (d[i] == '\\') {
+				d[i] = '/';
+			}
+		}
+		// uppercase a native drive letter (e.g. from a path that was already `c:/...`)
+		if (n >= 2 && isDriveLetter(d[0]) && d[1] == ':') {
+			d[0] = upper(d[0]);
+		}
+	}
+	out << StringView(s);
+#else
+	out << path;
+#endif
+}
+
 static bool Function_wildcard(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
 	auto patterns = engine.resolve(args[0], 0, *engine.getCallContext()->err);
@@ -268,7 +307,7 @@ static bool Function_wildcard(const Callback<void(StringView)> &out, void *, Var
 					} else {
 						out << ' ';
 					}
-					out << info.path;
+					emitResolvedPath(out, info.path);
 					if (wantDir) {
 						out << "/";
 					}
@@ -302,7 +341,7 @@ static bool Function_realpath(const Callback<void(StringView)> &out, void *, Var
 				} else {
 					out << ' ';
 				}
-				out << StringView(buf);
+				emitResolvedPath(out, StringView(buf));
 			}
 		});
 	}
@@ -323,7 +362,7 @@ static bool Function_abspath(const Callback<void(StringView)> &out, void *, Vari
 				} else {
 					out << ' ';
 				}
-				out << path;
+				emitResolvedPath(out, path);
 			}
 		});
 	}

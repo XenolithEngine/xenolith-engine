@@ -41,6 +41,10 @@ struct SPRT_API ProcessState : public Ref {
 	Rc<Ref> userRef; // user-provided ref / convenience-callback holder
 	Rc<PollHandle> readerHandle; // the pipe reader sub-handle
 	int readFd = -1; // pipe read end; -1 once closed (POSIX backends)
+	// (Windows IOCP) pool-allocated UTF-16 path of a temporary argument response file created when the
+	// command was too long for the OS command-line limit; DeleteFileW'd on completion. null otherwise
+	// (and always null on POSIX backends).
+	void *tempRespFile = nullptr;
 };
 
 // Non-blocking drain of the read pipe into state->reader. Returns true once EOF

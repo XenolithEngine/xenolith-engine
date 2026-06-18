@@ -44,8 +44,10 @@ static int __is_exact_windows_native(StringViewBase<Char> source) {
 		return 1;
 	}
 
-	// C:Directory, C:\Directory, C:/Directory is Windows native
-	if (source.size() > 1 && source.template is<typename StringViewBase<Char>::LatinUppercase>()
+	// A drive-rooted path is Windows-native regardless of separator or drive-letter case:
+	// `C:Directory`, `C:\Directory`, `C:/Directory`, and the lower-case `c:/Directory` (the form the
+	// makefile / GNU-make path functions emit). fpath_to_posix already converts any of these.
+	if (source.size() > 1 && source.template is<typename StringViewBase<Char>::Latin>()
 			&& source.at(1) == Char(':')) {
 		return 1;
 	}
