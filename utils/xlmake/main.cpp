@@ -477,6 +477,16 @@ static void setupStandardVariables(Makefile *mk, StringView rootDir, StringView 
 	simple("WRITE", xlmake::WriteDirectiveMarker);
 	simple("APPEND", xlmake::AppendDirectiveMarker);
 
+	// Immediate in-process directives (no child process): `$(MKDIR) <path...>` (mkdir -p),
+	// `$(REMOVE) <path...>` (rm -rf), `$(CP) <src> <dst>` (cp -f), `$(ECHO) <text>` (print a line).
+	// Like $(WRITE)/$(MAKE) these expand to a sentinel the executor recognizes (Builder::runImmediate).
+	// Origin::Default so a makefile may override them. $(RM) is intentionally left as the standard
+	// `rm -f` (spawns a process); $(REMOVE) is the in-process recursive remove.
+	simple("MKDIR", xlmake::MkdirDirectiveMarker);
+	simple("REMOVE", xlmake::RemoveDirectiveMarker);
+	simple("CP", xlmake::CopyDirectiveMarker);
+	simple("ECHO", xlmake::EchoDirectiveMarker);
+
 	// Per-invocation
 	simple("CURDIR", rootDir);
 	String goalList;
@@ -490,6 +500,12 @@ static void setupStandardVariables(Makefile *mk, StringView rootDir, StringView 
 }
 
 static String resolvePath(StringView root, StringView file) {
+	// Normalize a platform-native path to the internal posix form first — on Windows an include path
+	// may be written (or produced by $(abspath)) as `C:/dir/file`, which the posix-based isAbsolute
+	// would otherwise treat as relative and merge onto the root. No-op on POSIX builds.
+	memory::StandartInterface::StringType posixStorage;
+	file = filesystem::toPosixPath(file, posixStorage);
+
 	if (filepath::isAbsolute(file)) {
 		return filepath::reconstructPath<PInterface>(file);
 	}
@@ -645,11 +661,19 @@ static int runXlmake(int argc, const char *argv[]) {
 		utsname unamebuf;
 		uname(&unamebuf);
 
+		mk->assignSimpleVariable("OS", Origin::Default, unamebuf.sysname);
 		mk->assignSimpleVariable("XL_UNAME_SYSNAME", Origin::Default, unamebuf.sysname);
 		mk->assignSimpleVariable("XL_UNAME_NODENAME", Origin::Default, unamebuf.nodename);
 		mk->assignSimpleVariable("XL_UNAME_RELEASE", Origin::Default, unamebuf.release);
 		mk->assignSimpleVariable("XL_UNAME_VERSION", Origin::Default, unamebuf.version);
-		mk->assignSimpleVariable("XL_UNAME_MACHINE", Origin::Default, unamebuf.machine);
+
+		if (StringView(unamebuf.machine) == "arm64") {
+			// rewrite as Xenolith standart name - aarch64
+			mk->assignSimpleVariable("XL_UNAME_MACHINE", Origin::Default, "aarch64");
+		} else {
+			mk->assignSimpleVariable("XL_UNAME_MACHINE", Origin::Default, unamebuf.machine);
+		}
+
 		mk->assignSimpleVariable("XL_UNAME_DOMAINNAME", Origin::Default, unamebuf.domainname);
 
 		auto gnu_get_libc_version =

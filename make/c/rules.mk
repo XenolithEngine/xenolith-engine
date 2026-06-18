@@ -155,10 +155,12 @@ sp_cdb_split_arguments_cmd = \
 	"$(call sp_cdb_which_cmd,$(1))"\
 	$(foreach arg,$(2),$(comma)"$(foreach a,$(call sp_cdb_process_arg,$(arg)),$(a))")
 
+build_cdb_entry = \
+	{"directory":"$(strip $(call sp_cdb_convert_cmd,$(BUILD_WORKDIR)))"$(comma)\
+	"file":"$(strip $(call sp_cdb_convert_cmd,$(1)))"$(comma)\
+	"output":"$(strip $(call sp_cdb_convert_cmd,$(2)))"$(comma)\
+	"arguments":[$(call sp_cdb_split_arguments_cmd,$(5),$(call sp_compile_command,,$(OSTYPE_CPP_FILE),$(4),$(1),$(2)))]}$(comma)
 
-define BUILD_cdb_json_file
-
-endef
 
 # $(1) - source path
 # $(2) - target path
@@ -188,10 +190,7 @@ endef
 define BUILD_c_rule
 $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 	@$(call rule_mkdir,$$(dir $$@))
-	@echo '{"directory":"$$(strip $$(call sp_cdb_convert_cmd,$$(BUILD_WORKDIR)))",\
-"file":"$$(strip $$(call sp_cdb_convert_cmd,$(1)))",\
-"output":"$$(strip $$(call sp_cdb_convert_cmd,$(2)))",\
-"arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CC),$$(call sp_compile_command,,$$(OSTYPE_C_FILE),$(4),$(1),$(2)))]},' > $$@
+	@$(WRITE_START) '$$(call build_cdb_entry,$(1),$(2),$(3),$(4),$$(GLOBAL_CXX))' $(WRITE_END) 
 	$(call target_log,"[Compilation database entry]: $(notdir $(1))")
 $(2).json:.TARGET_NAME := [Compilation database entry] $(notdir $(1))
 
@@ -222,10 +221,7 @@ endef
 define BUILD_cpp_rule
 $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 	@$(call rule_mkdir,$$(dir $$@))
-	@echo '{"directory":"$$(strip $$(call sp_cdb_convert_cmd,$$(BUILD_WORKDIR)))",\
-"file":"$$(strip $$(call sp_cdb_convert_cmd,$(1)))",\
-"output":"$$(strip $$(call sp_cdb_convert_cmd,$(2)))",\
-"arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CXX),$$(call sp_compile_command,,$$(OSTYPE_CPP_FILE),$(4),$(1),$(2)))]},' > $$@
+	@$(WRITE_START) '$$(call build_cdb_entry,$(1),$(2),$(3),$(4),$$(GLOBAL_CXX))' $(WRITE_END) 
 	$(call target_log,"[Compilation database entry]: $(notdir $(1))")
 $(2).json:.TARGET_NAME := [Compilation database entry] $(notdir $(1))
 
@@ -243,10 +239,7 @@ endef
 define BUILD_mm_rule
 $(2).json: $(1) $$(LOCAL_MAKEFILE) $$(TOOLKIT_MODULES) $$(TOOLKIT_CACHED_FLAGS)
 	@$(call rule_mkdir,$$(dir $$@))
-	@echo '{"directory":"$$(strip $$(call sp_cdb_convert_cmd,$$(BUILD_WORKDIR)))",\
-"file":"$$(strip $$(call sp_cdb_convert_cmd,$(1)))",\
-"output":"$$(strip $$(call sp_cdb_convert_cmd,$(2)))",\
-"arguments":[$$(call sp_cdb_split_arguments_cmd,$$(GLOBAL_CXX),$$(call sp_compile_command,,$$(OSTYPE_MM_FILE),$(4),$(1),$(2)))]},' > $$@
+	@$(WRITE_START) '$$(call build_cdb_entry,$(1),$(2),$(3),$(4),$$(GLOBAL_CXX))' $(WRITE_END) 
 	$(call target_log,"[Compilation database entry]: $(notdir $(1))")
 $(2).json:.TARGET_NAME := [Compilation database entry] $(notdir $(1))
 

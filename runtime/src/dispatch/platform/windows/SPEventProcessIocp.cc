@@ -27,6 +27,7 @@
 #include <sprt/wrappers/windows/windows.h>
 #include <sprt/wrappers/windows/process_api.h>
 #include <sprt/wrappers/windows/basic_api.h>
+#include <sprt/wrappers/windows/file_api.h> // GetTempPathW/CreateFileW/WriteFile/DeleteFileW for response files
 
 namespace sprt::dispatch {
 
@@ -126,11 +127,21 @@ void ReadIocpHandle::notify(IocpData *iocp, ReadIocpSource *source, const Notify
 			}
 			// queue the next read; a closed pipe ends the stream (no further completion)
 			if (issueRead(source) != Status::Ok) {
+				// EOF after this chunk: capture the process back-ref before cancel() destructs source,
+				// then tell the process the output is fully drained so it can complete.
+				auto proc = source->io ? source->io->proc : nullptr;
 				cancel();
+				if (proc) {
+					proc->onReaderDrained();
+				}
 			}
 		} else {
 			// zero bytes transferred: EOF
+			auto proc = source->io ? source->io->proc : nullptr;
 			cancel();
+			if (proc) {
+				proc->onReaderDrained();
+			}
 		}
 	}
 
@@ -258,16 +269,130 @@ void ProcessIocpHandle::notify(IocpData *iocp, ProcessIocpSource *source, const 
 	DWORD code = 0;
 	GetExitCodeProcess(source->hProcess, &code);
 	_exitCode = int(code);
+	_childExited = true;
 
+	// Do NOT tear the reader down yet: the child's final output (notably error text written just
+	// before it exited) may still be buffered in the pipe or in an in-flight overlapped read.
+	// Cancelling the reader here would race — and usually beat — that last completion, dropping the
+	// text. Instead let the reader flush the pipe to EOF (the child closed its write end on exit, so
+	// the parent-held end EOFs promptly); the reader then calls onReaderDrained() to complete us.
+	// This mirrors the POSIX backends' drain-before-exit (drainProcessPipe). If there is no reader, or
+	// it already reached EOF, complete now.
 	auto state = static_cast<ProcessState *>(getUserdata());
-	if (state && state->readerHandle) {
-		// stop the reader (closes hRead, cancelling any pending overlapped read)
-		state->readerHandle->cancel();
+	if (!state || !state->readerHandle || _readerDrained) {
+		finishProcess();
 	}
+}
 
+void ProcessIocpHandle::onReaderDrained() {
+	_readerDrained = true;
+	if (_childExited && _status == Status::Ok) {
+		finishProcess();
+	}
+}
+
+void ProcessIocpHandle::finishProcess() {
+	// drop the temporary argument response file (if any): the child has exited, so it is done reading
+	if (auto state = static_cast<ProcessState *>(getUserdata())) {
+		if (state->tempRespFile) {
+			DeleteFileW(reinterpret_cast<LPCWSTR>(state->tempRespFile));
+			state->tempRespFile = nullptr;
+		}
+	}
 	// the wait completion is already consumed; skip the disarm and complete
 	_status = Status::Suspended;
 	cancel(Status::Done, uint32_t(_exitCode));
+}
+
+// ---- command-line construction ----------------------------------------------
+//
+// cmd.exe caps its command tail at 8191 chars; CreateProcessW allows 32767. So a shell-free command
+// runs DIRECTLY (no cmd.exe wrapper) for the larger ceiling and to skip the shell process; when even
+// that is exceeded, its arguments spill to a response file (`program @file`, which linkers/compilers
+// read — effectively unlimited). Commands that use the shell keep going through `cmd.exe /c`. A
+// shell-free command that still fails to launch (a cmd built-in, a .bat, not an .exe) is retried via
+// cmd.exe by the caller. NOTE: a command that BOTH needs the shell AND exceeds 8191 still truncates
+// (a .bat has the same per-line limit) — rare for builds, left as-is.
+
+static constexpr size_t kDirectCmdMax = 32000; // margin under CreateProcessW's 32767 limit
+
+// True if the command relies on cmd.exe — an unquoted redirection / pipe / conditional / escape or
+// %-expansion. Quote-aware so a quoted path (e.g. "C:/Program Files (x86)/cl.exe") is not flagged.
+static bool commandNeedsShell(StringView cmd) {
+	bool inQuote = false;
+	for (size_t i = 0; i < cmd.size(); ++i) {
+		char c = cmd[i];
+		if (c == '"') {
+			inQuote = !inQuote;
+		} else if (!inQuote) {
+			switch (c) {
+			case '|':
+			case '<':
+			case '>':
+			case '&':
+			case '^':
+			case '%': return true;
+			default: break;
+			}
+		}
+	}
+	return false;
+}
+
+// Split the leading program token (quote-aware) from the remaining argument string.
+static StringView firstToken(StringView cmd, StringView &rest) {
+	StringView s = cmd;
+	while (!s.empty() && (s[0] == ' ' || s[0] == '\t')) { s = s.sub(1); }
+	size_t i = 0;
+	bool inQuote = false;
+	while (i < s.size()) {
+		char c = s[i];
+		if (c == '"') {
+			inQuote = !inQuote;
+		} else if (!inQuote && (c == ' ' || c == '\t')) {
+			break;
+		}
+		++i;
+	}
+	StringView program = s.sub(0, i);
+	StringView r = s.sub(i);
+	while (!r.empty() && (r[0] == ' ' || r[0] == '\t')) { r = r.sub(1); }
+	rest = r;
+	return program;
+}
+
+// Write `args` to a uniquely-named temp file; return its UTF-16 path (pool-allocated, null-
+// terminated) for use as `program @<path>` and later DeleteFileW. nullptr on failure.
+static wchar_t *createResponseFile(QueueData *data, StringView args) {
+	wchar_t dir[MAX_PATH + 1];
+	DWORD n = GetTempPathW(MAX_PATH + 1, reinterpret_cast<LPWSTR>(dir));
+	if (n == 0 || n > MAX_PATH) {
+		return nullptr;
+	}
+	static sprt::atomic<uint32_t> s_respCounter(0);
+	auto id = ++s_respCounter;
+	String nameUtf8 = toString("xlmake.", uint32_t(GetCurrentProcessId()), ".", uint32_t(id), ".rsp");
+
+	WideString wpath;
+	wpath.append(reinterpret_cast<char16_t *>(dir), n); // GetTempPathW result ends with a backslash
+	unicode::toUtf16([&](WideStringView w) { wpath.append(w.data(), w.size()); }, nameUtf8);
+	wpath.push_back(char16_t(0));
+
+	HANDLE h = CreateFileW(reinterpret_cast<LPCWSTR>(wpath.data()), GENERIC_WRITE, FILE_SHARE_READ,
+			nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+	if (h == INVALID_HANDLE_VALUE) {
+		return nullptr;
+	}
+	if (!args.empty()) {
+		DWORD written = 0;
+		WriteFile(h, args.data(), DWORD(args.size()), &written, nullptr);
+	}
+	CloseHandle(h);
+
+	auto bytes = wpath.size() * sizeof(char16_t);
+	auto path = reinterpret_cast<wchar_t *>(sprt::memory::pool::palloc(data->_pool, bytes));
+	sprt::memcpy(path, wpath.data(), bytes);
+	return path; // includes the trailing null pushed above
 }
 
 Rc<ProcessHandle> spawnProcessIocp(QueueData *data, HandleClass *processClass,
@@ -304,11 +429,56 @@ Rc<ProcessHandle> spawnProcessIocp(QueueData *data, HandleClass *processClass,
 		return nullptr;
 	}
 
-	// "cmd.exe /c <command>" as a mutable, null-terminated UTF-16 string
+	// Build the child command line (mutable, null-terminated UTF-16). See the notes above
+	// commandNeedsShell(): shell-free commands run directly (larger ceiling, no cmd.exe); over the
+	// direct limit their arguments spill to a response file; shell commands use cmd.exe /c.
+	wchar_t *respPath = nullptr; // pool-allocated path of a response file, if one was created
+	bool viaShell = commandNeedsShell(info.command);
+
 	WideString wcmd;
-	String full = toString("cmd.exe /c ", info.command);
-	unicode::toUtf16([&](WideStringView w) { wcmd.append(w.data(), w.size()); }, full);
-	wcmd.push_back(char16_t(0));
+	auto appendUtf8 = [&](StringView s) {
+		unicode::toUtf16([&](WideStringView w) { wcmd.append(w.data(), w.size()); }, s);
+	};
+	auto buildShellCmd = [&]() {
+		wcmd.clear();
+		appendUtf8(toString("cmd.exe /c ", info.command));
+		wcmd.push_back(char16_t(0));
+	};
+
+	if (viaShell) {
+		buildShellCmd();
+	} else if (info.command.size() <= kDirectCmdMax) {
+		appendUtf8(info.command); // CreateProcessW resolves the program from the first token
+		wcmd.push_back(char16_t(0));
+	} else {
+		// too long for any command line: pass the arguments through a response file (program @file)
+		StringView args;
+		StringView program = firstToken(info.command, args);
+		respPath = createResponseFile(data, args);
+		if (respPath) {
+			appendUtf8(program);
+			wcmd.push_back(char16_t(' '));
+			wcmd.push_back(char16_t('@'));
+			bool quote = false;
+			for (auto *p = respPath; *p; ++p) {
+				if (*p == L' ') {
+					quote = true;
+					break;
+				}
+			}
+			if (quote) {
+				wcmd.push_back(char16_t('"'));
+			}
+			for (auto *p = respPath; *p; ++p) { wcmd.push_back(char16_t(*p)); }
+			if (quote) {
+				wcmd.push_back(char16_t('"'));
+			}
+			wcmd.push_back(char16_t(0));
+		} else {
+			appendUtf8(info.command); // could not spill: best-effort direct (OS may truncate)
+			wcmd.push_back(char16_t(0));
+		}
+	}
 
 	STARTUPINFOW si;
 	sprt::memset(&si, 0, sizeof(si));
@@ -323,8 +493,23 @@ Rc<ProcessHandle> spawnProcessIocp(QueueData *data, HandleClass *processClass,
 
 	BOOL ok = CreateProcessW(nullptr, reinterpret_cast<LPWSTR>(wcmd.data()), nullptr, nullptr, TRUE,
 			CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+	if (!ok && !viaShell) {
+		// the program could not be launched directly (a cmd built-in, a .bat, not an .exe, or not on
+		// PATH): retry once through the shell. cmd gets the full command, so a response file (if any)
+		// is irrelevant — drop it.
+		if (respPath) {
+			DeleteFileW(reinterpret_cast<LPCWSTR>(respPath));
+			respPath = nullptr;
+		}
+		buildShellCmd();
+		ok = CreateProcessW(nullptr, reinterpret_cast<LPWSTR>(wcmd.data()), nullptr, nullptr, TRUE,
+				CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+	}
 	CloseHandle(hWrite); // parent never writes
 	if (!ok) {
+		if (respPath) {
+			DeleteFileW(reinterpret_cast<LPCWSTR>(respPath));
+		}
 		CloseHandle(hRead);
 		return nullptr;
 	}
@@ -333,6 +518,7 @@ Rc<ProcessHandle> spawnProcessIocp(QueueData *data, HandleClass *processClass,
 	auto state = Rc<ProcessState>::alloc();
 	state->reader = sprt::move(info.reader);
 	state->userRef = ref;
+	state->tempRespFile = respPath; // deleted in finishProcess() once the child has exited
 
 	// overlapped reader: its OVERLAPPED + buffer live in the queue pool (too large for the 40-byte
 	// Source). Allocate via palloc() + placement-new — `new (pool_t*)` would select standard
@@ -352,10 +538,15 @@ Rc<ProcessHandle> spawnProcessIocp(QueueData *data, HandleClass *processClass,
 		if (reader) {
 			reader->cancel();
 		}
+		if (respPath) {
+			DeleteFileW(reinterpret_cast<LPCWSTR>(respPath)); // finishProcess() will never run
+		}
 		CloseHandle(pi.hProcess);
 		return nullptr;
 	}
 	proc->setUserdata(state);
+	// Let the reader complete the process once it drains the pipe to EOF (see ProcessIocpHandle::notify).
+	io->proc = static_cast<ProcessIocpHandle *>(proc.get());
 	return proc;
 }
 

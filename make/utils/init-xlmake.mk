@@ -22,56 +22,57 @@ $(call print_verbose,(init-sh.mk) Init with sh)
 
 " := "
 
-ifdef XLMAKE_VERSION
 UNAME = $(XL_UNAME_SYSNAME)
-else
-# Проверяем хостовую систему, у Darwin нет опции -o для uname
-UNAME := $(shell uname)
-endif
 
-SH := 1
+GLOBAL_SHELL := xlmake
 
-GLOBAL_SHELL := sh
-
-GLOBAL_MKDIR ?= mkdir -p
 GLOBAL_AR ?= ar rcs
-GLOBAL_ECHO ?= echo
+GLOBAL_ECHO ?= $(ECHO)
 
-rule_rm = rm -rf $(1)
-rule_cp = cp -f $(1) $(2)
-rule_mkdir = $(GLOBAL_MKDIR) $(1)
+WRITE_START = $(WRITE) $$@
+WRITE_END =
 
-WRITE_START = echo
-WRITE_END = > $$@
+rule_rm = $(REMOVE) $(1)
+rule_cp = $(CP) $(1) $(2)
+rule_mkdir = $(MKDIR) $(1)
+rule_write = $(WRITE) $(2) $(1)
 
-shell_arith = $(shell echo $$($(1)) )
+shell_arith = 
 
-shell_mkdir = $(shell $(GLOBAL_MKDIR) $(1))
-shell_override_file = $(shell echo '$(2)' > $(1))
-shell_append_file = $(shell echo '$(2)' >> $(1))
-shell_cat = $(shell cat $(1) 2> /dev/null)
+shell_mkdir = $(xl_mkdir $(1))
+shell_override_file = $(xl_write $(1),$(2))
+shell_append_file = $(xl_append $(1),$(2))
+shell_cat = $(xl_cat $(1))
 
-STAPPLER_HOST_ARCH ?= $(shell uname -m)
+STAPPLER_HOST_ARCH ?= $(XL_UNAME_MACHINE)
 
-ifeq ($(STAPPLER_HOST_ARCH),arm64)
-STAPPLER_HOST_ARCH := aarch64
+ifeq ($(STAPPLER_HOST_ARCH),aarch64)
+ANDROID_DISTRIB_ARCH := arm64
+else
+ANDROID_DISTRIB_ARCH := $(STAPPLER_HOST_ARCH)
 endif
 
 ifeq ($(UNAME),Darwin)
 
-ANDROID_HOST := darwin-$(STAPPLER_HOST_ARCH)
+ANDROID_HOST := darwin-$(ANDROID_DISTRIB_ARCH)
 
 STAPPLER_HOST := $(STAPPLER_HOST_ARCH)-apple-macosx
 
 else ifeq ($(UNAME),Linux)
 
-ANDROID_HOST := linux-$(STAPPLER_HOST_ARCH)
+ANDROID_HOST := linux-$(ANDROID_DISTRIB_ARCH)
 
-ifeq ($(shell ldd /bin/ls 2>&1 | grep -q 'musl'),)
+ifdef XL_GLIBC_VERSION # exact glibc
 STAPPLER_HOST := $(STAPPLER_HOST_ARCH)-unknown-linux-gnu
-else
+else # assume musl
 STAPPLER_HOST := $(STAPPLER_HOST_ARCH)-unknown-linux-musl
-endif # MUSL
+endif
+
+else ifeq ($(UNAME),Windows)
+
+ANDROID_HOST := windows-$(ANDROID_DISTRIB_ARCH)
+
+STAPPLER_HOST := $(STAPPLER_HOST_ARCH)-pc-windows-msvc
 
 else
 

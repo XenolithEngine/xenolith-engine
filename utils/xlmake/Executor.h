@@ -44,6 +44,14 @@ static constexpr uint32_t JobsUnlimited = maxOf<uint32_t>();
 static constexpr StringView WriteDirectiveMarker("\x01xlmake-write");
 static constexpr StringView AppendDirectiveMarker("\x01xlmake-append");
 
+// Markers for the immediate (synchronous, no child process) directives, performed in-process via the
+// sp::filesystem API: $(MKDIR) (mkdir -p), $(REMOVE) (rm -rf), $(CP) (cp -f), $(ECHO) (print a line).
+// Same \x01-sentinel scheme as WRITE/APPEND above.
+static constexpr StringView MkdirDirectiveMarker("\x01xlmake-mkdir");
+static constexpr StringView RemoveDirectiveMarker("\x01xlmake-remove");
+static constexpr StringView CopyDirectiveMarker("\x01xlmake-copy");
+static constexpr StringView EchoDirectiveMarker("\x01xlmake-echo");
+
 // Options for the build/execution mode (the default mode; also `xlmake -b ...`).
 struct BuildConfig {
 	Vector<StringView> targets; // positional goals (default goal when empty)

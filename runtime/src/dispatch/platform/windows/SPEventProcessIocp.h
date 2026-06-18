@@ -28,11 +28,17 @@
 
 namespace sprt::dispatch {
 
+class ProcessIocpHandle;
+
 // Heap-allocated read state for the overlapped pipe reader: a stable OVERLAPPED
 // plus its read buffer (kept off the 40-byte Source).
 struct ReadIocpState {
 	OVERLAPPED ov;
 	char buf[8192];
+	// Back-reference to the process-exit handle so the reader can complete it once the pipe drains to
+	// EOF. Raw (the process handle owns ProcessState which owns this reader; no cycle). Pool-allocated
+	// alongside this struct, outliving both handles.
+	ProcessIocpHandle *proc = nullptr;
 };
 
 // Overlapped-read reader sub-handle: issues ReadFile on the child's stdout/stderr
@@ -99,7 +105,19 @@ public:
 
 	void notify(IocpData *, ProcessIocpSource *, const NotifyData &);
 
+	// Called by the pipe reader once it has drained the child's output to EOF. Completes the process
+	// if the child has already exited (otherwise the exit notify completes it).
+	void onReaderDrained();
+
 	virtual NativeHandle getNativeHandle() const override;
+
+protected:
+	// Complete the process (exit code already captured). The reader has finished (or never existed),
+	// so there is nothing left to drain.
+	void finishProcess();
+
+	bool _childExited = false; // the process HANDLE was signalled (exit code captured)
+	bool _readerDrained = false; // the output pipe reached EOF (all output delivered)
 };
 
 // Full spawn for the IOCP backend: CreatePipe + CreateProcessW + overlapped reader
