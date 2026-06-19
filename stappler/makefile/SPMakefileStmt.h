@@ -31,6 +31,16 @@ namespace STAPPLER_VERSIONIZED stappler::makefile {
 struct Stmt;
 struct StmtValue;
 
+// Reserved byte standing in for a space *inside a path* while the path flows through the make engine,
+// which uses whitespace as its universal word separator (30+ `split<WhiteSpace>` sites). Because the
+// byte is not whitespace, an encoded path stays a single word everywhere; because it is a same-length
+// 1:1 substitution, textual operations (`%` patterns, $(dir)/$(notdir)/$(patsubst)) keep working. It
+// is decoded back to a real space only at OS boundaries (filesystem access, recipe spawn, display).
+// 0x1F (US) is distinct from the 0x01-prefixed in-process directive markers in xlmake's Executor.h.
+// The lexer converts an authored "\ " to this byte; encode/decodePathSpaces (SPMakefileVariable.h)
+// convert at the engine boundaries.
+constexpr char PathSpacePlaceholder = '\x1F';
+
 enum class Keyword {
 	None,
 	Include,

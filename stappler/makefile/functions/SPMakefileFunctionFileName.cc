@@ -261,6 +261,10 @@ static void emitResolvedPath(const Callback<void(StringView)> &out, StringView p
 		for (size_t i = 0; i < n; ++i) {
 			if (d[i] == '\\') {
 				d[i] = '/';
+			} else if (d[i] == ' ') {
+				// A space discovered on disk must survive the engine's whitespace word-splitting:
+				// encode it to PathSpacePlaceholder (same-length, in-place). Decoded at OS boundaries.
+				d[i] = PathSpacePlaceholder;
 			}
 		}
 		// uppercase a native drive letter (e.g. from a path that was already `c:/...`)
@@ -270,7 +274,9 @@ static void emitResolvedPath(const Callback<void(StringView)> &out, StringView p
 	}
 	out << StringView(s);
 #else
-	out << path;
+	// Encode any space discovered on disk to PathSpacePlaceholder so the path stays one make word.
+	memory::StandartInterface::StringType spaceStorage;
+	out << encodePathSpaces(path, spaceStorage);
 #endif
 }
 

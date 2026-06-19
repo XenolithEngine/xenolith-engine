@@ -141,5 +141,24 @@ static bool Function_xl_mkdir(const Callback<void(StringView)> &, void *, Variab
 	return true; // expands to nothing
 }
 
+// $(xl_make_path <text>) -- force-encode every space inside <text> as the engine's path-space
+// placeholder, so a path that contains spaces survives the engine's whitespace word-splitting as a
+// single word (and is decoded back to a real space at the shell/filesystem/display boundary). Use it
+// to make a space-containing path produced outside the lexer's "\ " escaping safe to handle, e.g. a
+// path from $(shell), an environment variable, or a literal:
+//   SRC := $(xl_make_path $(MY_DIR_WITH_SPACES)/main.c)
+// This is a pure text transform (no filesystem access, no absolute-path resolution); wrap it in
+// $(abspath ...) etc. if needed. Surrounding whitespace is trimmed; only interior spaces are encoded.
+// Idempotent: an already-encoded path (no remaining real spaces) passes through unchanged.
+static bool Function_xl_make_path(const Callback<void(StringView)> &out, void *,
+		VariableEngine &engine, SpanView<StmtValue *> args) {
+	auto name = engine.resolve(args[0], 0, *engine.getCallContext()->err);
+	name.trimChars<StringView::WhiteSpace>();
+
+	memory::StandartInterface::StringType storage;
+	out << encodePathSpaces(name, storage);
+	return true;
+}
+
 
 } // namespace stappler::makefile
