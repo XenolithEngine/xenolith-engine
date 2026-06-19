@@ -191,7 +191,9 @@ static bool Function_error(const Callback<void(StringView)> &out, void *, Variab
 			out << s;
 		}, it, 0, *engine.getCallContext()->err);
 	}
-	engine.getCallContext()->err->reportError(str.weak(), nullptr, nullptr, false);
+	// The message may carry path-space placeholders (e.g. from $(CURDIR)/$(wildcard)); show real spaces.
+	memory::StandartInterface::StringType ds;
+	engine.getCallContext()->err->reportError(decodePathSpaces(str.weak(), ds), nullptr, nullptr, false);
 	return true;
 }
 
@@ -208,7 +210,9 @@ static bool Function_warning(const Callback<void(StringView)> &out, void *, Vari
 			out << s;
 		}, it, 0, *engine.getCallContext()->err);
 	}
-	engine.getCallContext()->err->reportWarning(str.weak(), nullptr, nullptr, false);
+	memory::StandartInterface::StringType ds;
+	engine.getCallContext()->err->reportWarning(decodePathSpaces(str.weak(), ds), nullptr, nullptr,
+			false);
 	return true;
 }
 
@@ -226,7 +230,8 @@ static bool Function_info(const Callback<void(StringView)> &out, void *, Variabl
 		}, it, 0, *engine.getCallContext()->err);
 	}
 
-	auto result = str.weak();
+	memory::StandartInterface::StringType ds;
+	auto result = decodePathSpaces(str.weak(), ds);
 	engine.getCallContext()->err->reportInfo(result, nullptr, nullptr, false);
 	return true;
 }

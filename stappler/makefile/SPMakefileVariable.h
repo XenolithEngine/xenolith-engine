@@ -34,6 +34,17 @@ class VariableEngine;
 
 struct Variable;
 
+// PathSpacePlaceholder (declared in SPMakefileStmt.h) is the make-visible stand-in for a space inside
+// a path. These convert between it and a real space at the engine's OS boundaries.
+// Encode: each real space (0x20) -> PathSpacePlaceholder. Returns the input unchanged (no allocation)
+// when it contains no space; otherwise writes the encoded copy into `storage` and returns a view of
+// it. `storage` is a caller-owned scratch buffer (mirrors the toPosixPath idiom in getAbsolutePath),
+// so the helper is usable without an active memory pool.
+SP_PUBLIC StringView encodePathSpaces(StringView, memory::StandartInterface::StringType &storage);
+
+// Decode: each PathSpacePlaceholder -> real space (0x20). Inverse of encodePathSpaces.
+SP_PUBLIC StringView decodePathSpaces(StringView, memory::StandartInterface::StringType &storage);
+
 // One bit per diagnostic warning the engine can emit, so a consumer can enable or suppress
 // each independently. A warning is reported only when its bit is set in the engine flags.
 enum class EngineFlags : uint32_t {

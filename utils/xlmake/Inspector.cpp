@@ -24,14 +24,26 @@ THE SOFTWARE.
 
 namespace xlmake {
 
+// Write `s` to stdout with path-space placeholders decoded back to real spaces, so an inspect/-p dump
+// of a space-containing value or path never shows the internal 0x1F byte. (Variable *names* are
+// identifiers and never carry a placeholder, so they are printed directly.)
+static void emitDecoded(StringView s) {
+	memory::StandartInterface::StringType storage;
+	sprt::cout << makefile::decodePathSpaces(s, storage);
+}
+
 static void printVariable(Makefile *mk, StringView name, const Variable &v, ErrorReporter &err) {
 	sprt::cout << name << " [" << getOriginName(v.origin) << ", ";
 	switch (v.type) {
-	case Variable::Type::String: sprt::cout << "simple] = " << v.str << "\n"; break;
+	case Variable::Type::String:
+		sprt::cout << "simple] = ";
+		emitDecoded(v.str);
+		sprt::cout << "\n";
+		break;
 	case Variable::Type::Function: sprt::cout << "function] = <function>\n"; break;
 	case Variable::Type::Stmt:
 		sprt::cout << "recursive] = ";
-		mk->getVariableValue(name, [&](StringView s) { sprt::cout << s; }, err);
+		mk->getVariableValue(name, [&](StringView s) { emitDecoded(s); }, err);
 		sprt::cout << "\n";
 		break;
 	}
@@ -60,15 +72,20 @@ void printDatabase(Makefile *mk, ErrorReporter &err) {
 		if (t->isSpecial || t->isPattern) {
 			continue;
 		}
-		sprt::cout << t->name << ":";
-		mk->getPrerequisites(t, [&](StringView name) { sprt::cout << " " << name; });
+		emitDecoded(t->name);
+		sprt::cout << ":";
+		mk->getPrerequisites(t, [&](StringView name) {
+			sprt::cout << " ";
+			emitDecoded(name);
+		});
 		bool firstOrderOnly = true;
 		mk->getOrderOnly(t, [&](StringView name) {
 			if (firstOrderOnly) {
 				sprt::cout << " |";
 				firstOrderOnly = false;
 			}
-			sprt::cout << " " << name;
+			sprt::cout << " ";
+			emitDecoded(name);
 		});
 		sprt::cout << "\n";
 		if (t->isPhony) {
@@ -104,7 +121,7 @@ int runInspect(Makefile *mk, const InspectConfig &cfg, const Vector<String> &mak
 			continue;
 		}
 		sprt::cout << name << " = ";
-		mk->getVariableValue(name, [&](StringView s) { sprt::cout << s; }, err);
+		mk->getVariableValue(name, [&](StringView s) { emitDecoded(s); }, err);
 		sprt::cout << "\n";
 	}
 
@@ -127,7 +144,9 @@ int runInspect(Makefile *mk, const InspectConfig &cfg, const Vector<String> &mak
 				if (auto t = mk->getTarget(tn)) {
 					targets.emplace_back(t);
 				} else {
-					sprt::cerr << "xlmake: unknown target: " << tn << "\n";
+					memory::StandartInterface::StringType ns;
+					sprt::cerr << "xlmake: unknown target: "
+							   << makefile::decodePathSpaces(tn, ns) << "\n";
 				}
 			}
 		}
@@ -137,9 +156,13 @@ int runInspect(Makefile *mk, const InspectConfig &cfg, const Vector<String> &mak
 				if (cfg.outOfDate && !mk->isOutOfDate(t, err)) {
 					continue;
 				}
-				sprt::cout << t->name << ":\n";
-				mk->exportRecipe(t, [&](StringView line) { sprt::cout << "\t" << line << "\n"; },
-						err);
+				emitDecoded(t->name);
+				sprt::cout << ":\n";
+				mk->exportRecipe(t, [&](StringView line) {
+					sprt::cout << "\t";
+					emitDecoded(line);
+					sprt::cout << "\n";
+				}, err);
 			}
 		}
 
@@ -231,7 +254,8 @@ int runInspect(Makefile *mk, const InspectConfig &cfg, const Vector<String> &mak
 					}
 				}
 
-				sprt::cout << t->name << ":";
+				emitDecoded(t->name);
+				sprt::cout << ":";
 				for (auto node : plan) {
 					if (node->target == t) {
 						continue; // the goal node itself
@@ -240,13 +264,15 @@ int runInspect(Makefile *mk, const InspectConfig &cfg, const Vector<String> &mak
 							&& (!node->outOfDate || reachable.find(node) == reachable.end())) {
 						continue;
 					}
-					sprt::cout << " " << node->name;
+					sprt::cout << " ";
+					emitDecoded(node->name);
 				}
 				sprt::cout << "\n";
 			}
 		} else if (cfg.prereqs) {
 			for (auto t : targets) {
-				sprt::cout << t->name << ":";
+				emitDecoded(t->name);
+				sprt::cout << ":";
 				mk->getPrerequisites(t, [&](StringView name) {
 					if (cfg.outOfDate) {
 						auto pt = mk->getTarget(name);
@@ -254,7 +280,8 @@ int runInspect(Makefile *mk, const InspectConfig &cfg, const Vector<String> &mak
 							return;
 						}
 					}
-					sprt::cout << " " << name;
+					sprt::cout << " ";
+					emitDecoded(name);
 				});
 				sprt::cout << "\n";
 
@@ -264,7 +291,8 @@ int runInspect(Makefile *mk, const InspectConfig &cfg, const Vector<String> &mak
 						sprt::cout << "    | order-only:";
 						hasOrderOnly = true;
 					}
-					sprt::cout << " " << name;
+					sprt::cout << " ";
+					emitDecoded(name);
 				});
 				if (hasOrderOnly) {
 					sprt::cout << "\n";
@@ -276,14 +304,20 @@ int runInspect(Makefile *mk, const InspectConfig &cfg, const Vector<String> &mak
 	// --- overview (no explicit action) ---
 	if (!anyAction) {
 		sprt::cout << "makefile:";
-		for (auto &p : makefilePaths) { sprt::cout << " " << p; }
+		for (auto &p : makefilePaths) {
+			sprt::cout << " ";
+			emitDecoded(StringView(p.data(), p.size()));
+		}
 		sprt::cout << "\n";
 		if (auto g = mk->getDefaultGoal()) {
-			sprt::cout << "default goal: " << g->name << "\n";
+			sprt::cout << "default goal: ";
+			emitDecoded(g->name);
+			sprt::cout << "\n";
 		}
 		sprt::cout << "targets:\n";
 		for (auto t : mk->getTargets()) {
-			sprt::cout << "  " << t->name;
+			sprt::cout << "  ";
+			emitDecoded(t->name);
 			if (t->isPhony) {
 				sprt::cout << " (phony)";
 			}

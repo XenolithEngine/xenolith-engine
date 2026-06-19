@@ -340,7 +340,10 @@ void Builder::dispatchNode(NodeState *st) {
 	if (!bn->rules) {
 		// nothing to run: ok if the file exists or the target is phony, otherwise no rule to make it
 		if (!bn->phony && !bn->target->fileExists) {
-			sprt::cerr << "xlmake: *** No rule to make target '" << bn->name << "'\n";
+			memory::StandartInterface::StringType ns;
+			sprt::cerr << "xlmake: *** No rule to make target '"
+					   << makefile::decodePathSpaces(StringView(bn->name.data(), bn->name.size()), ns)
+					   << "'\n";
 			finishNode(st, false, false);
 			return;
 		}
@@ -387,6 +390,56 @@ void Builder::dispatchNode(NodeState *st) {
 	spawn(job);
 }
 
+// Decode a fully-expanded recipe line for the shell. A path-internal space survived the engine's
+// whitespace word-splitting as PathSpacePlaceholder; turn it back into a space the shell keeps inside
+// one argument. The scan is quote-aware: a placeholder that is ALREADY inside author quotes (a recipe
+// that wrote "$<") just becomes a plain space — the quotes already protect it, and escaping it there
+// would be wrong (POSIX sh keeps a backslash literal inside double quotes). A placeholder OUTSIDE
+// quotes is escaped so an unquoted recipe still works: POSIX emits "\ " (backslash-space, literal even
+// unquoted); Windows has no per-space escape, so it emits a quoted space (My" "Src), which the command
+// line parser concatenates with the adjacent text into one argument. With `noEscape` the placeholder
+// is always decoded to a plain space (GNU-make-style literal expansion; the recipe author quotes).
+// Returns the input unchanged (no allocation) when there is no placeholder.
+static StringView decodeRecipeForShell(StringView in, JobString &storage, bool noEscape) {
+	if (in.find(makefile::PathSpacePlaceholder) == maxOf<size_t>()) {
+		return in;
+	}
+	storage.clear();
+	bool inSingle = false; // POSIX single-quote state (cmd.exe does not honor ' as a quote)
+	bool inDouble = false;
+	for (size_t i = 0; i < in.size(); ++i) {
+		char c = in[i];
+		if (c == makefile::PathSpacePlaceholder) {
+			if (noEscape || inSingle || inDouble) {
+				storage.push_back(' '); // author quotes (or opted out) — emit a literal space
+			} else {
+#if SPRT_WINDOWS
+				storage.push_back('"');
+				storage.push_back(' ');
+				storage.push_back('"');
+#else
+				storage.push_back('\\');
+				storage.push_back(' ');
+#endif
+			}
+			continue;
+		}
+#if !SPRT_WINDOWS
+		if (c == '\'' && !inDouble) {
+			inSingle = !inSingle;
+		} else if (c == '"' && !inSingle) {
+			inDouble = !inDouble;
+		}
+#else
+		if (c == '"') {
+			inDouble = !inDouble;
+		}
+#endif
+		storage.push_back(c);
+	}
+	return StringView(storage.data(), storage.size());
+}
+
 void Builder::spawn(Job *job) {
 	auto &cmd = job->commands[job->index];
 
@@ -394,10 +447,16 @@ void Builder::spawn(Job *job) {
 		// A directive carries a control-char sentinel in cmd.text; echo a clean reconstruction. $(ECHO)
 		// echoes nothing here — its content is emitted by the action itself (so @$(ECHO) still prints).
 		switch (cmd.kind) {
-		case Command::Kind::Process:
-			job->output.append(cmd.text.data(), cmd.text.size());
+		case Command::Kind::Process: {
+			// Echo exactly what will run: decode path spaces to the shell form (so the printed line is
+			// copy-pasteable and matches execution).
+			JobString echoStorage;
+			auto echoCmd = decodeRecipeForShell(StringView(cmd.text.data(), cmd.text.size()),
+					echoStorage, _cfg.noSpaceEscape);
+			job->output.append(echoCmd.data(), echoCmd.size());
 			job->output.append("\n");
 			break;
+		}
 		case Command::Kind::Echo: break;
 		default: {
 			StringView verb;
@@ -425,6 +484,9 @@ void Builder::spawn(Job *job) {
 				break;
 			default: break;
 			}
+			// Show real spaces in the echoed operand (the path is make-visible / placeholder-encoded).
+			memory::StandartInterface::StringType payloadStorage;
+			payload = makefile::decodePathSpaces(payload, payloadStorage);
 			job->output.append(verb.data(), verb.size());
 			if (!payload.empty()) {
 				job->output.append(" ");
@@ -470,9 +532,15 @@ void Builder::spawn(Job *job) {
 				: (dispatch::OpenFlags::Write | dispatch::OpenFlags::Create
 						  | dispatch::OpenFlags::Append);
 
-		StringView path(cmd.writePath.data(), cmd.writePath.size());
-		BytesView data(reinterpret_cast<const uint8_t *>(cmd.writeData.data()),
-				cmd.writeData.size());
+		// Decode the destination path to a real filesystem path; decode the content too, in case an
+		// expanded path with a placeholder leaked into it (the file must hold real spaces, not 0x1F).
+		memory::StandartInterface::StringType pathStorage;
+		StringView path = makefile::decodePathSpaces(
+				StringView(cmd.writePath.data(), cmd.writePath.size()), pathStorage);
+		memory::StandartInterface::StringType dataStorage;
+		StringView dataView = makefile::decodePathSpaces(
+				StringView(cmd.writeData.data(), cmd.writeData.size()), dataStorage);
+		BytesView data(reinterpret_cast<const uint8_t *>(dataView.data()), dataView.size());
 
 		// writeFile may fire its completion synchronously on an open error (then return null), unlike
 		// spawnProcess. While inSyncWindow the completion only records the result instead of
@@ -519,7 +587,12 @@ void Builder::spawn(Job *job) {
 	// Launch the command through the dispatch reactor's process API. Output streams into the job's
 	// buffer (flushed atomically when the target finishes); the exit completion drives onCommandDone.
 	// The main thread never touches fds, fork or waitpid — the reactor owns all of that.
-	job->proc = _looper->spawnProcess(cmd.text, [job, streaming](StringView bytes) {
+	// Decode path spaces to the shell form just before handing the command to the child (see
+	// decodeRecipeForShell). shellStorage must outlive the spawnProcess call (used synchronously).
+	JobString shellStorage;
+	StringView shellCmd = decodeRecipeForShell(StringView(cmd.text.data(), cmd.text.size()),
+			shellStorage, _cfg.noSpaceEscape);
+	job->proc = _looper->spawnProcess(shellCmd, [job, streaming](StringView bytes) {
 		if (bytes.empty()) {
 			return;
 		}
@@ -538,7 +611,7 @@ void Builder::spawn(Job *job) {
 	});
 
 	if (!job->proc) {
-		sprt::cerr << "xlmake: failed to spawn command: " << cmd.text << "\n";
+		sprt::cerr << "xlmake: failed to spawn command: " << shellCmd << "\n";
 		onCommandDone(job, -1);
 	}
 }
@@ -548,7 +621,11 @@ void Builder::onCommandDone(Job *job, int code) {
 	bool ok = (code == 0) || cmd.ignoreErr;
 
 	if (!ok) {
-		auto msg = toString("xlmake: *** [", job->st->node->name, "] error ", code, "\n");
+		memory::StandartInterface::StringType ns;
+		auto msg = toString("xlmake: *** [",
+				makefile::decodePathSpaces(
+						StringView(job->st->node->name.data(), job->st->node->name.size()), ns),
+				"] error ", code, "\n");
 		job->output.append(msg.data(), msg.size());
 		job->failed = true; // a failed recipe is always shown, even in non-verbose mode
 		flush(job);
@@ -661,6 +738,36 @@ bool Builder::isRecursiveCommand(StringView text) const {
 // stripped, trailing newline ensured), so `$(WRITE) $@ "text"` writes exactly `text\n`. For the
 // immediate kinds the trimmed remainder is kept verbatim in c.args (parsed in runImmediate). Returns
 // false for an ordinary command line (left to spawnProcess).
+// Within an in-process directive's path operand, an authored "\ " (or "\<tab>") is an escaped literal
+// space. A directive is written inside a recipe line, which the lexer passes through verbatim (the
+// backslash survives), so unlike a normal makefile word it was never converted — do it here, to
+// PathSpacePlaceholder, so tokenizeArgs keeps the operand whole and runImmediate decodes it back to a
+// space. A backslash not before a space/tab is kept literal. Returns the input unchanged (no
+// allocation) when there is nothing to escape. (Placeholders already present from expanded variables
+// pass through untouched.)
+static StringView escapeOperandSpaces(StringView in, JobString &storage) {
+	bool needs = false;
+	for (size_t i = 0; i + 1 < in.size(); ++i) {
+		if (in[i] == '\\' && (in[i + 1] == ' ' || in[i + 1] == '\t')) {
+			needs = true;
+			break;
+		}
+	}
+	if (!needs) {
+		return in;
+	}
+	storage.clear();
+	for (size_t i = 0; i < in.size(); ++i) {
+		if (in[i] == '\\' && i + 1 < in.size() && (in[i + 1] == ' ' || in[i + 1] == '\t')) {
+			storage.push_back(makefile::PathSpacePlaceholder);
+			++i; // also consume the escaped space/tab
+		} else {
+			storage.push_back(in[i]);
+		}
+	}
+	return StringView(storage.data(), storage.size());
+}
+
 bool Builder::parseDirective(StringView line, Command &c) const {
 	StringView s = line;
 	while (!s.empty() && (s[0] == ' ' || s[0] == '\t')) { s = s.sub(1); }
@@ -708,19 +815,39 @@ bool Builder::parseDirective(StringView line, Command &c) const {
 	s = s.sub(marker->size());
 	while (!s.empty() && (s[0] == ' ' || s[0] == '\t')) { s = s.sub(1); }
 
-	// Immediate kinds: keep the trimmed remainder verbatim; runImmediate tokenizes/handles it.
+	// Immediate kinds: keep the trimmed remainder; runImmediate tokenizes/handles it. For the path
+	// directives, escape authored "\ " so a space-bearing operand survives tokenizeArgs as one token;
+	// $(ECHO) prints arbitrary text, so its remainder is kept verbatim.
 	if (c.kind == Command::Kind::Mkdir || c.kind == Command::Kind::Remove
 			|| c.kind == Command::Kind::Copy || c.kind == Command::Kind::Echo) {
 		StringView rest = s;
 		rest.trimChars<StringView::WhiteSpace>();
-		c.args.assign(rest.data(), rest.size());
+		if (c.kind == Command::Kind::Echo) {
+			c.args.assign(rest.data(), rest.size());
+		} else {
+			JobString buf;
+			StringView esc = escapeOperandSpaces(rest, buf);
+			c.args.assign(esc.data(), esc.size());
+		}
 		return true;
 	}
 
-	// Write/Append: `<path> <content...>` — path is the first whitespace-delimited token.
+	// Write/Append: `<path> <content...>` — path is the first whitespace-delimited token, where an
+	// authored "\ " does NOT split (so the path may contain spaces); the backslash-escape is then
+	// converted to PathSpacePlaceholder (decoded to a real space when the file is opened).
 	size_t i = 0;
-	while (i < s.size() && s[i] != ' ' && s[i] != '\t') { ++i; }
-	StringView path = s.sub(0, i);
+	while (i < s.size()) {
+		if (s[i] == '\\' && i + 1 < s.size() && (s[i + 1] == ' ' || s[i + 1] == '\t')) {
+			i += 2;
+			continue;
+		}
+		if (s[i] == ' ' || s[i] == '\t') {
+			break;
+		}
+		++i;
+	}
+	JobString pathBuf;
+	StringView path = escapeOperandSpaces(s.sub(0, i), pathBuf);
 	c.writePath.assign(path.data(), path.size());
 	if (path.empty()) {
 		return true; // marker but no path: malformed — spawn() reports it
@@ -785,19 +912,23 @@ int Builder::runImmediate(Job *job, const Command &cmd) {
 		}
 		for (auto &p : paths) {
 			p.backwardSkipChars<StringView::Chars<'/'>>();
-			FileInfo fi(p);
+			// The operand is make-visible (a space inside the path is PathSpacePlaceholder); decode it
+			// to a real filesystem path. tokenizeArgs already split on the real separator spaces.
+			memory::StandartInterface::StringType ps;
+			StringView dp = makefile::decodePathSpaces(p, ps);
+			FileInfo fi(dp);
 			// mkdir -p: an already-existing directory is success; mkdir_recursive returns false on an
 			// existing path, so accept that case explicitly (but reject an existing non-directory).
 			if (filesystem::exists(fi)) {
 				filesystem::Stat st;
 				if (!filesystem::stat(fi, st) || st.type != FileType::Dir) {
-					return fail(toString("xlmake: *** $(MKDIR) ", p,
+					return fail(toString("xlmake: *** $(MKDIR) ", dp,
 							": exists and is not a directory"));
 				}
 				continue;
 			}
 			if (!filesystem::mkdir_recursive(fi)) {
-				return fail(toString("xlmake: *** $(MKDIR) ", p, ": failed"));
+				return fail(toString("xlmake: *** $(MKDIR) ", dp, ": failed"));
 			}
 		}
 		return 0;
@@ -809,10 +940,12 @@ int Builder::runImmediate(Job *job, const Command &cmd) {
 			return fail("xlmake: *** malformed $(REMOVE) directive (no path)");
 		}
 		for (auto &p : paths) {
-			FileInfo fi(p);
+			memory::StandartInterface::StringType ps;
+			StringView dp = makefile::decodePathSpaces(p, ps);
+			FileInfo fi(dp);
 			// rm -rf: a missing path is success; otherwise remove recursively.
 			if (filesystem::exists(fi) && !filesystem::remove(fi, true)) {
-				return fail(toString("xlmake: *** $(REMOVE) ", p, ": failed"));
+				return fail(toString("xlmake: *** $(REMOVE) ", dp, ": failed"));
 			}
 		}
 		return 0;
@@ -823,7 +956,11 @@ int Builder::runImmediate(Job *job, const Command &cmd) {
 		if (toks.size() != 2) {
 			return fail("xlmake: *** malformed $(CP) directive (expected: $(CP) <src> <dst>)");
 		}
-		FileInfo dst(toks[1]);
+		memory::StandartInterface::StringType ss;
+		memory::StandartInterface::StringType ds;
+		StringView srcPath = makefile::decodePathSpaces(toks[0], ss);
+		StringView dstPath = makefile::decodePathSpaces(toks[1], ds);
+		FileInfo dst(dstPath);
 		// cp -f: filesystem::copy refuses an existing *file* destination, so remove it first to force
 		// the overwrite. A directory destination is left intact — copy places <src> inside it (and
 		// overwrites the inner file itself), matching `cp src dir/`.
@@ -833,8 +970,8 @@ int Builder::runImmediate(Job *job, const Command &cmd) {
 				filesystem::remove(dst, false);
 			}
 		}
-		if (!filesystem::copy(FileInfo(toks[0]), dst)) {
-			return fail(toString("xlmake: *** $(CP) ", toks[0], " -> ", toks[1], ": failed"));
+		if (!filesystem::copy(FileInfo(srcPath), dst)) {
+			return fail(toString("xlmake: *** $(CP) ", srcPath, " -> ", dstPath, ": failed"));
 		}
 		return 0;
 	}
@@ -848,6 +985,9 @@ int Builder::runImmediate(Job *job, const Command &cmd) {
 				text = text.sub(1, text.size() - 2);
 			}
 		}
+		// Decode any path-space placeholder so an echoed path shows real spaces (and no 0x1F leaks).
+		memory::StandartInterface::StringType ts;
+		text = makefile::decodePathSpaces(text, ts);
 		job->output.append(text.data(), text.size());
 		job->output.append("\n");
 		job->hadOutput = true;
@@ -867,12 +1007,13 @@ JobString Builder::displayName(BuildNode *bn) {
 			[&](StringView v) { raw.append(v.data(), v.size()); }, _err);
 	StringView val(raw.data(), raw.size());
 	val.trimChars<StringView::WhiteSpace>();
+	// The name is make-visible (a space inside a path target is PathSpacePlaceholder); show real spaces
+	// on the progress line.
+	StringView src = val.empty() ? StringView(bn->name.data(), bn->name.size()) : val;
+	memory::StandartInterface::StringType storage;
+	src = makefile::decodePathSpaces(src, storage);
 	JobString out;
-	if (val.empty()) {
-		out.assign(bn->name.data(), bn->name.size());
-	} else {
-		out.assign(val.data(), val.size());
-	}
+	out.assign(src.data(), src.size());
 	return out;
 }
 
@@ -1012,7 +1153,9 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 			if (auto t = mk->getTarget(tn)) {
 				goals.emplace_back(t);
 			} else {
-				sprt::cerr << "xlmake: *** No rule to make target '" << tn << "'.  Stop.\n";
+				memory::StandartInterface::StringType ns;
+				sprt::cerr << "xlmake: *** No rule to make target '"
+						   << makefile::decodePathSpaces(tn, ns) << "'.  Stop.\n";
 				return finish(2);
 			}
 		}
@@ -1066,20 +1209,27 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 		case BuildResult::Built: break;
 		case BuildResult::UpToDate:
 			if (!cfg.dryRun) {
+				memory::StandartInterface::StringType gs;
+				auto gname = makefile::decodePathSpaces(
+						StringView(goal->name.data(), goal->name.size()), gs);
 				if (cfg.makeLevel > 0) {
-					sprt::cout << "xlmake[" << cfg.makeLevel << "]: " << goal->name
+					sprt::cout << "xlmake[" << cfg.makeLevel << "]: " << gname
 							   << "' is up to date\n";
 				} else {
-
-					sprt::cout << "xlmake: " << goal->name << "' is up to date\n";
+					sprt::cout << "xlmake: " << gname << "' is up to date\n";
 				}
 			}
 			break;
 		case BuildResult::Failed: rc = 2; break;
-		case BuildResult::Cycle:
-			sprt::cerr << "xlmake: dependency cycle involving '" << goal->name << "'\n";
+		case BuildResult::Cycle: {
+			memory::StandartInterface::StringType gs;
+			sprt::cerr << "xlmake: dependency cycle involving '"
+					   << makefile::decodePathSpaces(StringView(goal->name.data(), goal->name.size()),
+							  gs)
+					   << "'\n";
 			rc = 2;
 			break;
+		}
 		case BuildResult::NoRule: rc = 2; break;
 		}
 		if (rc != 0 && !cfg.keepGoing) {
