@@ -53,8 +53,8 @@ void ReadIocpSource::cancel(Handle *) {
 
 bool ReadIocpHandle::init(HandleClass *cl, void *hRead, ReadIocpState *io, ProcessState *state,
 		CompletionHandle<PollHandle> &&c) {
-	static_assert(sizeof(ReadIocpSource) <= DataSize
-			&& sprt::is_standard_layout<ReadIocpSource>::value);
+	static_assert(
+			sizeof(ReadIocpSource) <= DataSize && sprt::is_standard_layout<ReadIocpSource>::value);
 	if (!Handle::init(cl, move(c))) {
 		return false;
 	}
@@ -112,6 +112,114 @@ Status ReadIocpHandle::disarm(IocpData *iocp, ReadIocpSource *source) {
 	return status;
 }
 
+// ---- output transcoding (legacy code page -> UTF-8) -------------------------
+//
+// The project's own tools (and any console program honouring the UTF-8 console code page the runtime
+// installs) emit UTF-8, but a legacy tool writing to the redirected pipe uses the OEM console code
+// page, which would be mangled on a UTF-8 sink. So each chunk is classified: valid UTF-8 passes through
+// untouched (only a multibyte char split across the read boundary is held back and prepended to the
+// next chunk); a chunk that is NOT valid UTF-8 is decoded from the OEM code page to UTF-8.
+
+// Scan `s` as UTF-8. Sets `completeLen` to the length of the leading run of complete, valid codepoints.
+// Returns true when the remaining bytes are empty or a valid INCOMPLETE prefix of one more codepoint
+// (the stream may still be UTF-8, just split mid-character across this read); false on a genuine decode
+// error (a byte that cannot legally appear) -- i.e. the chunk is not UTF-8.
+static bool scanUtf8Prefix(StringView s, size_t &completeLen) {
+	size_t i = 0;
+	while (i < s.size()) {
+		unsigned char c = static_cast<unsigned char>(s[i]);
+		size_t need;
+		if (c < 0x80) {
+			++i;
+			continue;
+		} else if ((c & 0xE0) == 0xC0) {
+			need = 2;
+		} else if ((c & 0xF0) == 0xE0) {
+			need = 3;
+		} else if ((c & 0xF8) == 0xF0) {
+			need = 4;
+		} else {
+			completeLen = i; // lone continuation byte or 0xF8+: not valid UTF-8
+			return false;
+		}
+		size_t avail = s.size() - i;
+		size_t have = need < avail ? need : avail;
+		for (size_t k = 1; k < have; ++k) {
+			if ((static_cast<unsigned char>(s[i + k]) & 0xC0) != 0x80) {
+				completeLen = i; // bad continuation byte: not valid UTF-8
+				return false;
+			}
+		}
+		if (avail < need) {
+			completeLen = i; // valid but incomplete trailing sequence: carry it to the next chunk
+			return true;
+		}
+		i += need;
+	}
+	completeLen = i;
+	return true;
+}
+
+// Decode `mb` (bytes in code page `cp`) to UTF-8 and forward it to `reader`, via a UTF-16 bridge. For
+// single-byte / DBCS code pages the wide form is never longer than the input in code units, so a
+// chunk-sized stack buffer always fits; unicode::toUtf8 then streams the UTF-8 straight to the reader.
+// On any conversion failure the original bytes are forwarded unchanged (best effort).
+static void transcodeAndEmit(const ProcessInfo::ReaderCallback &reader, StringView mb, UINT cp) {
+	if (mb.empty()) {
+		return;
+	}
+	char16_t wbuf[sizeof(ReadIocpState::buf) + sizeof(ReadIocpState::encPending)];
+	// LPCCH is `char *` (non-const) in this runtime's headers; MultiByteToWideChar only reads it.
+	int wlen = MultiByteToWideChar(cp, 0, const_cast<char *>(mb.data()), int(mb.size()),
+			reinterpret_cast<LPWSTR>(wbuf), int(sizeof(wbuf) / sizeof(wbuf[0])));
+	if (wlen <= 0) {
+		reader(mb); // could not convert: forward raw
+		return;
+	}
+	unicode::toUtf8([&](StringView s) { reader(s); }, WideStringView(wbuf, size_t(wlen)));
+}
+
+// Forward one chunk of merged child output to the reader, transcoded to UTF-8 (see the section note).
+static void emitChildOutput(ReadIocpState *io, ProcessState *state, StringView chunk) {
+	if (!state || !state->reader) {
+		return;
+	}
+	// Prepend any incomplete-UTF-8 tail carried over from the previous chunk.
+	char joinBuf[sizeof(ReadIocpState::buf) + sizeof(ReadIocpState::encPending)];
+	StringView data = chunk;
+	if (io && io->encPendingLen) {
+		sprt::memcpy(joinBuf, io->encPending, io->encPendingLen);
+		sprt::memcpy(joinBuf + io->encPendingLen, chunk.data(), chunk.size());
+		data = StringView(joinBuf, size_t(io->encPendingLen) + chunk.size());
+		io->encPendingLen = 0;
+	}
+	size_t completeLen = 0;
+	if (scanUtf8Prefix(data, completeLen)) {
+		if (completeLen) {
+			state->reader(StringView(data.data(), completeLen));
+		}
+		size_t tail = data.size() - completeLen;
+		if (tail && io) {
+			sprt::memcpy(io->encPending, data.data() + completeLen, tail);
+			io->encPendingLen = static_cast<uint8_t>(tail);
+		}
+		return;
+	}
+	transcodeAndEmit(state->reader, data, CP_OEMCP);
+}
+
+// At EOF, bytes still held in encPending were an incomplete UTF-8 tail that never completed (the child
+// ended mid-sequence, or the stream was never UTF-8). Emit them decoded from the OEM page so they are
+// not lost.
+static void flushChildPending(ReadIocpState *io, ProcessState *state) {
+	if (io && io->encPendingLen && state && state->reader) {
+		transcodeAndEmit(state->reader,
+				StringView(reinterpret_cast<const char *>(io->encPending), io->encPendingLen),
+				CP_OEMCP);
+		io->encPendingLen = 0;
+	}
+}
+
 void ReadIocpHandle::notify(IocpData *iocp, ReadIocpSource *source, const NotifyData &data) {
 	// This completion corresponds to the outstanding read; capture its lifetime reference and drop
 	// it at the very end (which may free the handle). Read the members before any cancel(), since
@@ -122,13 +230,13 @@ void ReadIocpHandle::notify(IocpData *iocp, ReadIocpSource *source, const Notify
 
 	if (_status == Status::Ok) {
 		if (data.result > 0) {
-			if (source->state && source->state->reader) {
-				source->state->reader(StringView(source->io->buf, size_t(data.result)));
-			}
+			emitChildOutput(source->io, source->state,
+					StringView(source->io->buf, size_t(data.result)));
 			// queue the next read; a closed pipe ends the stream (no further completion)
 			if (issueRead(source) != Status::Ok) {
-				// EOF after this chunk: capture the process back-ref before cancel() destructs source,
-				// then tell the process the output is fully drained so it can complete.
+				// EOF after this chunk: flush any carried-over transcoder bytes, then capture the
+				// process back-ref before cancel() destructs source and tell it the output is drained.
+				flushChildPending(source->io, source->state);
 				auto proc = source->io ? source->io->proc : nullptr;
 				cancel();
 				if (proc) {
@@ -137,6 +245,7 @@ void ReadIocpHandle::notify(IocpData *iocp, ReadIocpSource *source, const Notify
 			}
 		} else {
 			// zero bytes transferred: EOF
+			flushChildPending(source->io, source->state);
 			auto proc = source->io ? source->io->proc : nullptr;
 			cancel();
 			if (proc) {
@@ -314,7 +423,7 @@ void ProcessIocpHandle::finishProcess() {
 // cmd.exe by the caller. NOTE: a command that BOTH needs the shell AND exceeds 8191 still truncates
 // (a .bat has the same per-line limit) — rare for builds, left as-is.
 
-static constexpr size_t kDirectCmdMax = 32000; // margin under CreateProcessW's 32767 limit
+static constexpr size_t kDirectCmdMax = 32'000; // margin under CreateProcessW's 32767 limit
 
 // True if the command relies on cmd.exe — an unquoted redirection / pipe / conditional / escape or
 // %-expansion. Quote-aware so a quoted path (e.g. "C:/Program Files (x86)/cl.exe") is not flagged.
@@ -361,6 +470,38 @@ static StringView firstToken(StringView cmd, StringView &rest) {
 	return program;
 }
 
+// Emit the program token (first token of a shell-free command) into `wcmd`, quoted the way
+// CreateProcessW requires. CreateProcessW resolves the executable from the first token and does NOT
+// honour a space escaped as `My" "Program` *inside* that token — the whole program path must be one
+// quoted token. So recover the raw path by dropping the inner escape quotes (a '"' is illegal in a
+// Windows path, so this is lossless and also normalises an already author-quoted program) and re-quote
+// it as a unit when it contains a space. The argument tail keeps its per-space `" "` escaping, which
+// CreateProcessW's argv parser fuses into one argument correctly — only the program token needs this.
+static void appendProgramToken(WideString &wcmd, StringView program) {
+	String raw;
+	bool hasSpace = false;
+	for (size_t i = 0; i < program.size(); ++i) {
+		char c = program[i];
+		if (c == '"') {
+			continue; // escaping/author quote: dropped to recover the raw path
+		}
+		if (c == ' ') {
+			hasSpace = true;
+		}
+		raw.push_back(c);
+	}
+	auto put = [&](StringView s) {
+		unicode::toUtf16([&](WideStringView w) { wcmd.append(w.data(), w.size()); }, s);
+	};
+	if (hasSpace) {
+		wcmd.push_back(char16_t('"'));
+		put(StringView(raw.data(), raw.size()));
+		wcmd.push_back(char16_t('"'));
+	} else {
+		put(StringView(raw.data(), raw.size()));
+	}
+}
+
 // Write `args` to a uniquely-named temp file; return its UTF-16 path (pool-allocated, null-
 // terminated) for use as `program @<path>` and later DeleteFileW. nullptr on failure.
 static wchar_t *createResponseFile(QueueData *data, StringView args) {
@@ -371,7 +512,8 @@ static wchar_t *createResponseFile(QueueData *data, StringView args) {
 	}
 	static sprt::atomic<uint32_t> s_respCounter(0);
 	auto id = ++s_respCounter;
-	String nameUtf8 = toString("xlmake.", uint32_t(GetCurrentProcessId()), ".", uint32_t(id), ".rsp");
+	String nameUtf8 =
+			toString("xlmake.", uint32_t(GetCurrentProcessId()), ".", uint32_t(id), ".rsp");
 
 	WideString wpath;
 	wpath.append(reinterpret_cast<char16_t *>(dir), n); // GetTempPathW result ends with a backslash
@@ -410,7 +552,7 @@ Rc<ProcessHandle> spawnProcessIocp(QueueData *data, HandleClass *processClass,
 
 	HANDLE hRead = CreateNamedPipeW(reinterpret_cast<LPCWSTR>(wname.data()),
 			PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
-			PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, 4096, 4096, 0, nullptr);
+			PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, 4'096, 4'096, 0, nullptr);
 	if (hRead == INVALID_HANDLE_VALUE) {
 		return nullptr;
 	}
@@ -448,7 +590,15 @@ Rc<ProcessHandle> spawnProcessIocp(QueueData *data, HandleClass *processClass,
 	if (viaShell) {
 		buildShellCmd();
 	} else if (info.command.size() <= kDirectCmdMax) {
-		appendUtf8(info.command); // CreateProcessW resolves the program from the first token
+		// CreateProcessW resolves the program from the first token: emit it whole-quoted (see
+		// appendProgramToken), then append the arguments verbatim (their `" "` escaping is fine there).
+		StringView args;
+		StringView program = firstToken(info.command, args);
+		appendProgramToken(wcmd, program);
+		if (!args.empty()) {
+			wcmd.push_back(char16_t(' '));
+			appendUtf8(args);
+		}
 		wcmd.push_back(char16_t(0));
 	} else {
 		// too long for any command line: pass the arguments through a response file (program @file)
@@ -456,7 +606,7 @@ Rc<ProcessHandle> spawnProcessIocp(QueueData *data, HandleClass *processClass,
 		StringView program = firstToken(info.command, args);
 		respPath = createResponseFile(data, args);
 		if (respPath) {
-			appendUtf8(program);
+			appendProgramToken(wcmd, program);
 			wcmd.push_back(char16_t(' '));
 			wcmd.push_back(char16_t('@'));
 			bool quote = false;
@@ -475,7 +625,12 @@ Rc<ProcessHandle> spawnProcessIocp(QueueData *data, HandleClass *processClass,
 			}
 			wcmd.push_back(char16_t(0));
 		} else {
-			appendUtf8(info.command); // could not spill: best-effort direct (OS may truncate)
+			// could not spill: best-effort direct (OS may truncate) — still quote the program token
+			appendProgramToken(wcmd, program);
+			if (!args.empty()) {
+				wcmd.push_back(char16_t(' '));
+				appendUtf8(args);
+			}
 			wcmd.push_back(char16_t(0));
 		}
 	}

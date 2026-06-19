@@ -56,7 +56,10 @@ The **first** command-line token selects the mode; every later flag applies to t
 | `-h`, `--help` | Help | usage text |
 
 Like `make`, a bare `xlmake` builds the default goal of the makefile in the current directory
-(searching `GNUmakefile`, `makefile`, `Makefile` in that order). It's rule for the implicit default goal is different from GNU make, so, better define it with `.DEFAULT`
+(searching `GNUmakefile`, `makefile`, `Makefile` in that order). The default goal follows GNU's
+`.DEFAULT_GOAL` variable: it is mirrored from the first explicitly declared ordinary (non-`.`-special,
+non-`%`-pattern) target and can be overridden by assigning `.DEFAULT_GOAL` a target name (or cleared to
+`.DEFAULT_GOAL :=` for no default goal). Reading `$(.DEFAULT_GOAL)` yields the current default goal.
 
 ---
 
@@ -165,6 +168,8 @@ xlmake aims for GNU make 4.x source compatibility for the common feature set:
 - **The standard predefined variables:** `CC`, `CXX`, `AR`, `RM`, the `COMPILE.*`/`LINK.*` recipe
   templates, `MAKE`, `MAKE_COMMAND`, `CURDIR`, `MAKECMDGOALS`, `SHELL`, `.SHELLFLAGS`, `SUFFIXES`,
   `.LIBPATTERNS`, … (origin *default*, so makefile/command-line assignments override them).
+- **`.DEFAULT_GOAL`:** the default-goal variable — auto-set to the first ordinary target, readable as
+  `$(.DEFAULT_GOAL)`, and overridable (assign a target name, or clear it for no default goal).
 - **Compatibility flags** used by tooling: `-p`, `-q`, `-B`, `-w`, `-n`, `-s`, `-k`, `-j`,
   `-C`, `-f`, command-line `VAR=VALUE`.
 
@@ -281,6 +286,7 @@ touch the filesystem at expansion time and are only safe under the trusted-makef
 | `$(xl_append <file>,<text>)` | append `<text>` to `<file>` (created if needed); expands to nothing |
 | `$(xl_mkdir <dir>)` | `mkdir -p <dir>`; expands to nothing |
 | `$(xl_make_path <text>)` | force-encode every space in `<text>` as a path placeholder, so a space-containing path stays one word — see [Paths with spaces](#paths-with-spaces) |
+| `$(xl_make_plain <text>)` | inverse of `xl_make_path`: decode path placeholders back to real spaces, yielding plain text — see [Paths with spaces](#paths-with-spaces) |
 
 ---
 
@@ -318,6 +324,11 @@ wrapped in quotes (`"$<"`) becomes a plain space and is never double-escaped. Pa
 [`--no-space-escape`](#build-mode-default) to disable escaping entirely: the placeholder then decodes
 to a plain space and you quote recipe paths yourself, exactly like GNU make.
 
+**`$(shell …)`.** A space-containing path used inside `$(shell …)` is escaped for the shell with the
+same quote-aware rule as recipes — so `$(shell cat $(SRCDIR)/my file.c)` works unquoted, and
+`$(shell cat "$(SRCDIR)/my file.c")` works quoted (the placeholder inside quotes becomes a plain
+space). No `xl_make_path`/`xl_make_plain` dance is needed just to pass a discovered path to a command.
+
 **Recursive make.** `$(MAKE)` works even when xlmake's own path contains a space
 (`/opt/My Tools/xlmake`) — the program path reaches the recipe shell as a single argument.
 
@@ -336,6 +347,10 @@ a plain literal. It is a pure text transform (no filesystem access) and idempote
 ```makefile
 GEN := $(xl_make_path $(shell printf '%s' "$(HOME)/My Tools/gen"))
 ```
+
+**Decoding a path.** `$(xl_make_plain <text>)` is the inverse: it turns the placeholders back into real
+spaces, giving plain text (which re-splits into words if expanded unquoted). Use it when a value must
+be handed to something that expects literal spaces in make text — e.g. embedding a path in a message.
 
 **Command-line variables.** A value passed on the command line is taken verbatim (like GNU make), so
 a space in it is *not* treated as a path. Prefix the assignment with **`P:`** to encode it:
@@ -365,7 +380,7 @@ origin flavor eval shell file
 error warning info
 ```
 
-**xlmake extension functions:** `xl_cat` `xl_write` `xl_append` `xl_mkdir` `xl_make_path` — see
+**xlmake extension functions:** `xl_cat` `xl_write` `xl_append` `xl_mkdir` `xl_make_path` `xl_make_plain` — see
 [Extension functions](#extension-functions).
 
 **In-process recipe directives:** `$(WRITE)` `$(APPEND)` `$(MKDIR)` `$(REMOVE)` `$(CP)` `$(ECHO)` —

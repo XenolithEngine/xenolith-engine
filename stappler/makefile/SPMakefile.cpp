@@ -327,8 +327,31 @@ Target *Makefile::addTarget(StringView name) {
 	// the default goal is the first explicitly declared non-special, non-pattern target
 	if (!_defaultGoal && !t->isSpecial && !t->isPattern) {
 		_defaultGoal = t;
+		// GNU's `.DEFAULT_GOAL`: mirror the first ordinary target into the variable so $(.DEFAULT_GOAL)
+		// reads it and getDefaultGoal() can resolve it -- unless the user already set it (before any
+		// target), in which case their value stands.
+		if (!getVariable(StringView(".DEFAULT_GOAL"))) {
+			assignSimpleVariable(StringView(".DEFAULT_GOAL"), Origin::File, t->name);
+		}
 	}
 	return t;
+}
+
+Target *Makefile::getDefaultGoal() {
+	// `.DEFAULT_GOAL` (GNU) names the default goal and is the source of truth: addTarget() mirrors the
+	// first ordinary target into it, and the user may override it at any point. Resolve it now and look
+	// up the named target. A present-but-empty value means "no default goal"; only when the variable was
+	// never set do we fall back to the cached first target.
+	if (getVariable(StringView(".DEFAULT_GOAL"))) {
+		memory::StandartInterface::StringType buf;
+		ErrorReporter err(nullptr);
+		getVariableValue(StringView(".DEFAULT_GOAL"),
+				[&](StringView v) { buf.append(v.data(), v.size()); }, err);
+		StringView name(buf.data(), buf.size());
+		name.trimChars<StringView::WhiteSpace>();
+		return name.empty() ? nullptr : getTarget(name);
+	}
+	return _defaultGoal;
 }
 
 bool Makefile::addTargetPrerequisite(SpanView<Target *> targets, StringView decl,
