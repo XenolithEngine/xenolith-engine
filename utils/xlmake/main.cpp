@@ -89,6 +89,7 @@ struct Config {
 	bool alwaysMake = false; // -B / --always-make
 	bool printDirectory = false; // -w / --print-directory
 	bool noPrintDirectory = false; // --no-print-directory (overrides -w and sub-make auto-enable)
+	bool noSpaceEscape = false; // --no-space-escape: decode recipe path spaces literally (no shell escaping)
 };
 
 static uint32_t s_makeLevel = 0;
@@ -109,6 +110,8 @@ static void printUsage() {
 				  "                         searches GNUmakefile, makefile, Makefile)\n"
 				  "  -W, --pedantic         report every engine warning (not just the default set)\n"
 				  "  VAR=VALUE              set VAR, overriding the makefile (also :=, +=, ?=)\n"
+			  "  P:VAR=VALUE            as above, but encode spaces in VALUE as a path (so a\n"
+			  "                         space-containing path stays one word, like \"\\ \" in a makefile)\n"
 				  "\n"
 				  "Inspect options (-i; combinable; act on the given targets, else the default "
 				  "goal):\n"
@@ -128,6 +131,8 @@ static void printUsage() {
 				  "  -n, --dry-run          print recipe commands without running them\n"
 				  "  -s, --silent           do not echo recipe command lines\n"
 				  "  -B, --always-make      consider every target out of date (force a rebuild)\n"
+				  "      --no-space-escape  do not shell-escape spaces in recipe paths (the recipe\n"
+				  "                         author quotes them, as in GNU make)\n"
 				  "\n"
 				  "make-compatibility options (default mode; for tooling such as VSCode):\n"
 				  "  -p, --print-data-base  dump the makefile database (variables, targets) and exit\n"
@@ -320,6 +325,8 @@ static bool parseArgs(int argc, const char *argv[], Config &cfg) {
 				cfg.noPrintDirectory = true;
 			} else if (isBuild && (name == "no-builtin-rules" || name == "no-builtin-variables")) {
 				// accepted no-op: xlmake has no builtin rule/variable database
+			} else if (isBuild && name == "no-space-escape") {
+				cfg.noSpaceEscape = true;
 			} else {
 				sprt::cerr << "xlmake: unknown option --" << name << "\n";
 				return false;
@@ -463,11 +470,14 @@ static void setupStandardVariables(Makefile *mk, StringView rootDir, StringView 
 			".info .dvi .tex .texinfo .texi .txinfo .w .ch .web .sh .elc .el");
 	rec(".LIBPATTERNS", "lib%.so lib%.a");
 
-	// Recursive-make plumbing: $(MAKE) re-invokes this xlmake (argv[0]).
+	// Recursive-make plumbing: $(MAKE) re-invokes this xlmake (argv[0]). The path to xlmake may itself
+	// contain a space (e.g. "/opt/My Tools/xlmake"); encode it so $(MAKE) stays one word and the recipe
+	// shell receives the whole program path as a single argument.
 	simple("MAKEFILES", "");
 	simple("GNUMAKEFLAGS", "");
 	simple("MAKEFLAGS", "");
-	simple("MAKE_COMMAND", makeCommand);
+	memory::StandartInterface::StringType makeCmdStorage;
+	simple("MAKE_COMMAND", makefile::encodePathSpaces(makeCommand, makeCmdStorage).pdup());
 	rec("MAKE", "$(MAKE_COMMAND)");
 
 	// In-process file-write directives (no child process): a recipe line `$(WRITE) <path> <text>`
@@ -487,8 +497,12 @@ static void setupStandardVariables(Makefile *mk, StringView rootDir, StringView 
 	simple("CP", xlmake::CopyDirectiveMarker);
 	simple("ECHO", xlmake::EchoDirectiveMarker);
 
-	// Per-invocation
-	simple("CURDIR", rootDir);
+	// Per-invocation. CURDIR is make-visible and routinely joined into paths ($(CURDIR)/build/x.o), so
+	// a space in the working directory must be encoded to PathSpacePlaceholder or the join would split
+	// into two words. The goals were already encoded by the caller (so they match encoded target
+	// names), so MAKECMDGOALS is space-joined from the encoded forms directly.
+	memory::StandartInterface::StringType curdirStorage;
+	simple("CURDIR", makefile::encodePathSpaces(rootDir, curdirStorage).pdup());
 	String goalList;
 	for (auto &g : goals) {
 		if (!goalList.empty()) {
@@ -500,6 +514,12 @@ static void setupStandardVariables(Makefile *mk, StringView rootDir, StringView 
 }
 
 static String resolvePath(StringView root, StringView file) {
+	// An include path written with an escaped space ("foo\ bar.mk") arrives make-visible, i.e. with
+	// PathSpacePlaceholder in place of the space; decode it back to a real space before any filesystem
+	// access. No-op when there is no placeholder.
+	memory::StandartInterface::StringType spaceStorage;
+	file = makefile::decodePathSpaces(file, spaceStorage);
+
 	// Normalize a platform-native path to the internal posix form first — on Windows an include path
 	// may be written (or produced by $(abspath)) as `C:/dir/file`, which the posix-based isAbsolute
 	// would otherwise treat as relative and merge onto the root. No-op on POSIX builds.
@@ -702,25 +722,49 @@ static int runXlmake(int argc, const char *argv[]) {
 		err.callback = xlmakeLog;
 		err.filename = StringView("xlmake");
 
+		// Command-line goals arrive from argv with real spaces, but the engine matches them against
+		// target names that are make-visible (spaces encoded as PathSpacePlaceholder). Encode each goal
+		// so a goal like `obj/My File.o` can match its encoded target; the encoded list also feeds
+		// MAKECMDGOALS. pdup keeps the copies alive for the whole build (pool destroyed after runBuild).
+		Vector<StringView> goals;
+		goals.reserve(cfg.targets.size());
+		for (auto &g : cfg.targets) {
+			memory::StandartInterface::StringType tmp;
+			goals.emplace_back(makefile::encodePathSpaces(g, tmp).pdup());
+		}
+
 		// GNU make's standard predefined variables (origin "default"): toolchain names, recipe
 		// templates, $(MAKE)/$(CURDIR)/$(MAKECMDGOALS), etc. Set before the command-line
 		// assignments and the makefile read so both can override them, matching GNU.
-		setupStandardVariables(mk, rootView, StringView(argv[0]), cfg.targets, err);
+		setupStandardVariables(mk, rootView, StringView(argv[0]), goals, err);
 
 		// Apply command-line variable assignments before reading the makefile, with
 		// Origin::CommandLine so a plain makefile assignment cannot override them (an
 		// `override` directive still can), matching GNU make.
 		for (auto &a : cfg.assignments) {
+			// A "P:" marker on the name opts this command-line assignment into path-space encoding:
+			// strip the marker and encode spaces in the value (so a path like "/My App/x" becomes one
+			// make word), then assign under the real name. This lets a parent build pass a
+			// space-containing path on the command line, where — unlike inside a makefile — the lexer's
+			// "\ " escaping does not apply. (':' is not valid in an ordinary make variable name, so the
+			// marker cannot collide with a real name.)
+			StringView name = a.name;
+			StringView value = a.value;
+			if (name.size() > 2 && name.starts_with("P:")) {
+				name = name.sub(2);
+				memory::StandartInterface::StringType encStorage;
+				value = makefile::encodePathSpaces(a.value, encStorage).pdup();
+			}
 			if (a.op == ":=" || a.op == "::=" || a.op == ":::=") {
-				mk->assignSimpleVariable(a.name, Origin::CommandLine, a.value, err);
+				mk->assignSimpleVariable(name, Origin::CommandLine, value, err);
 			} else if (a.op == "+=") {
-				mk->appendToVariable(a.name, Origin::CommandLine, a.value, err);
+				mk->appendToVariable(name, Origin::CommandLine, value, err);
 			} else if (a.op == "?=") {
-				if (!mk->getVariable(a.name)) {
-					mk->assignRecursiveVariable(a.name, Origin::CommandLine, a.value, err);
+				if (!mk->getVariable(name)) {
+					mk->assignRecursiveVariable(name, Origin::CommandLine, value, err);
 				}
 			} else { // "="
-				mk->assignRecursiveVariable(a.name, Origin::CommandLine, a.value, err);
+				mk->assignRecursiveVariable(name, Origin::CommandLine, value, err);
 			}
 		}
 
@@ -732,7 +776,7 @@ static int runXlmake(int argc, const char *argv[]) {
 		if (cfg.mode == Mode::Inspect) {
 			xlmake::InspectConfig ic;
 			ic.vars = cfg.vars;
-			ic.targets = cfg.targets;
+			ic.targets = goals;
 			ic.printVars = cfg.printVars;
 			ic.recipe = cfg.recipe;
 			ic.prereqs = cfg.prereqs;
@@ -742,7 +786,7 @@ static int runXlmake(int argc, const char *argv[]) {
 			result = xlmake::runInspect(mk, ic, makefilePaths, err);
 		} else {
 			xlmake::BuildConfig bc;
-			bc.targets = cfg.targets;
+			bc.targets = goals;
 			bc.jobs = cfg.jobs;
 			bc.keepGoing = cfg.keepGoing;
 			bc.dryRun = cfg.dryRun;
@@ -755,6 +799,7 @@ static int runXlmake(int argc, const char *argv[]) {
 			// is given, unless --no-print-directory was passed.
 			bc.printDirectory = !cfg.noPrintDirectory && (cfg.printDirectory || makeLevel > 0);
 			bc.rootDir = rootView;
+			bc.noSpaceEscape = cfg.noSpaceEscape;
 			result = xlmake::runBuild(mk, bc, err);
 		}
 	}, pool);

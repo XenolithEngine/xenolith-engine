@@ -347,7 +347,18 @@ Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err, uint3
 			makeStmt()->add(sig);
 			break;
 		} else if (str.is('\\')) {
-			if (isWhitespace(str)) {
+			if (ctx != ReadContext::TrailingRecipe && ctx != ReadContext::Multiline
+					&& (str.sub(1, 1).is(' ') || str.sub(1, 1).is('\t'))) {
+				// In filename/word contexts, "\ " (or "\<tab>") is an escaped literal space: emit the
+				// path-space placeholder so the engine's whitespace word-splitting keeps the path as a
+				// single word. NOT in recipe/define bodies, which are passed verbatim to the shell (a
+				// user's literal "\ " must survive there); spaces in a recipe's paths arrive only via
+				// expanded variables and are handled at the spawn boundary.
+				static constexpr char placeholder = PathSpacePlaceholder;
+				makeStmt()->add(sig);
+				makeStmt()->add(StringView(&placeholder, 1));
+				str += 2;
+			} else if (isWhitespace(str)) {
 				makeStmt()->add(sig);
 				break;
 			} else {

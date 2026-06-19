@@ -67,6 +67,13 @@ struct BuildConfig {
 	bool printDirectory = false; // emit Entering/Leaving directory lines (effective: -w, or sub-make)
 	uint32_t makeLevel = 0; // recursion depth (GNU MAKELEVEL); shown as xlmake[N] in those lines
 	StringView rootDir; // absolute working directory (after -C), for the directory lines
+
+	// --no-space-escape: do NOT shell-escape a space inside a recipe path. By default xlmake turns a
+	// path-internal space (the engine's PathSpacePlaceholder, e.g. from $< under a "My Src" tree) into
+	// a form the shell keeps in one argument (POSIX `\ `, Windows `" "`), so an unquoted recipe Just
+	// Works. With this flag the placeholder is decoded to a plain space and the recipe author is fully
+	// responsible for quoting, matching GNU make's literal expansion.
+	bool noSpaceEscape = false;
 };
 
 // Build the requested goals from an already-loaded makefile, running recipes as child processes

@@ -23,6 +23,7 @@ can use it unmodified.
 - [Similarities with GNU make](#similarities-with-gnu-make)
 - [Differences from GNU make](#differences-from-gnu-make)
 - [xlmake-specific extensions](#xlmake-specific-extensions)
+- [Paths with spaces](#paths-with-spaces)
 - [Supported make language](#supported-make-language)
 - [Tooling compatibility](#tooling-compatibility)
 - [Examples](#examples)
@@ -69,6 +70,7 @@ Like `make`, a bare `xlmake` builds the default goal of the makefile in the curr
 | `-C`, `--directory DIR` | change into `DIR` first (like GNU `-C`); affects relative paths and recursive `$(MAKE) -C` |
 | `-W`, `--pedantic` | report every engine warning, not just the default set |
 | `VAR=VALUE` | set a variable from the command line (also `:=`, `::=`, `:::=`, `+=`, `?=`); beats makefile assignments, as in GNU make |
+| `P:VAR=VALUE` | as above, but encode spaces in `VALUE` as a path so a space-containing path stays one word; the `P:` marker is stripped, the variable is `VAR` — see [Paths with spaces](#paths-with-spaces) |
 | *positional* | target goals (default goal when none given) |
 
 ### Build mode (default)
@@ -84,6 +86,7 @@ Like `make`, a bare `xlmake` builds the default goal of the makefile in the curr
 | `-q`, `--question` | run nothing; exit 1 if any target is out of date |
 | `-w`, `--print-directory` | print `Entering/Leaving directory` around the build |
 | `--no-print-directory` | suppress those lines (overrides `-w` and the sub-make auto-enable) |
+| `--no-space-escape` | do not shell-escape spaces in recipe paths; you quote them yourself, as in GNU make — see [Paths with spaces](#paths-with-spaces) |
 | `-r`, `--no-builtin-rules` / `-R`, `--no-builtin-variables` | accepted, no effect (xlmake ships no built-in implicit-rule database) |
 
 ### Inspect mode (`-i`)
@@ -152,7 +155,8 @@ xlmake aims for GNU make 4.x source compatibility for the common feature set:
   (`?=`); `override`; `define`/`endef` multi-line variables; variable *origins* and *flavors*.
 - **Rules:** explicit rules, multiple targets, pattern rules (`%`), order-only prerequisites
   (`|`), automatic variables (`$@`, `$<`, `$^`, `$?`, `$*`, …), and **target-specific variables**
-  (`target: VAR = value`).
+  (`target: VAR = value`). Targets and prerequisites may contain `\ `-escaped spaces (see
+  [Paths with spaces](#paths-with-spaces)).
 - **Recipes:** `@` (silent), `-` (ignore errors), `+` (run even under `-n`) line prefixes; one
   shell (`/bin/sh -c`) per line; a recipe line that **expands to multiple lines** (via a variable
   or a canned `define`) runs each as its own command with its own prefix.
@@ -236,6 +240,115 @@ is a pipe/redirect (e.g. under tooling), colour is left off so logs stay clean.
   `XL_UNAME_MACHINE`, `XL_UNAME_DOMAINNAME` — from `uname(2)`.
 - `XL_GLIBC_VERSION` — host glibc version, when detectable.
 
+### In-process recipe directives
+
+These predefined variables (origin *default*, so a makefile can still override them) expand to a
+marker the executor performs **in-process** — no shell, no child process, no `fork`/`exec`. They are
+cheaper than spawning `mkdir`/`cp`/`echo`, and behave identically on every platform, **including
+Windows**, where there is no POSIX shell.
+
+| Directive | Acts like | Notes |
+|---|---|---|
+| `$(MKDIR) <dir>…` | `mkdir -p` | one or more directories; an existing directory is success |
+| `$(REMOVE) <path>…` | `rm -rf` | recursive; a missing path is success. (`$(RM)` is left as the GNU default `rm -f`, which *does* spawn a process) |
+| `$(CP) <src> <dst>` | `cp -f` | overwrites an existing file destination; a directory destination receives `<src>` inside it |
+| `$(WRITE) <file> <text>` | `echo text > file` | truncate/create; one surrounding quote layer is stripped and a trailing newline ensured |
+| `$(APPEND) <file> <text>` | `echo text >> file` | append; same quoting/newline rule |
+| `$(ECHO) <text>` | `echo` | print one line to xlmake's output (shown even in non-verbose mode) |
+
+```makefile
+$(OUTDIR):
+	$(MKDIR) $(OUTDIR)
+
+build/config.h: ; $(WRITE) $@ "#define VERSION \"$(VERSION)\""
+
+clean:
+	$(REMOVE) $(OUTDIR)
+```
+
+Their path operands accept spaces (write an authored space as `\ `) — see
+[Paths with spaces](#paths-with-spaces).
+
+### Extension functions
+
+Direct file I/O and path helpers, modeled on GNU make's `$(file …)`. Like `$(shell)`, the I/O ones
+touch the filesystem at expansion time and are only safe under the trusted-makefile model.
+
+| Function | Result |
+|---|---|
+| `$(xl_cat <file>)` | the file's contents, with a single trailing newline removed (empty if missing) |
+| `$(xl_write <file>,<text>)` | create/overwrite `<file>` with `<text>`; expands to nothing |
+| `$(xl_append <file>,<text>)` | append `<text>` to `<file>` (created if needed); expands to nothing |
+| `$(xl_mkdir <dir>)` | `mkdir -p <dir>`; expands to nothing |
+| `$(xl_make_path <text>)` | force-encode every space in `<text>` as a path placeholder, so a space-containing path stays one word — see [Paths with spaces](#paths-with-spaces) |
+
+---
+
+## Paths with spaces
+
+GNU make uses whitespace as its universal word separator, so a path that contains a space is
+normally torn into separate words and the build breaks. xlmake handles space-containing paths
+**transparently**: internally a space *inside a path* is held as a reserved placeholder byte (not
+whitespace), so the path stays a single word through every list, function and pattern; it is turned
+back into a real space only at the edges — when a recipe is launched, when a file is touched, and
+when a path is printed. Nothing special is needed for the common case of a build tree under a
+directory with a space (`/home/me/My Project`, `C:/Users/John Doe/…`).
+
+**Authored paths.** Write `\ ` (backslash-space) for a literal space in a target, prerequisite,
+variable value or function argument, exactly as in GNU make:
+
+```makefile
+SRCDIR := My\ Sources
+build/my\ widget.o: $(SRCDIR)/my\ widget.c
+	$(CC) -c $< -o $@
+```
+
+Inside a **recipe body** a `\ ` is left untouched and passed to the shell verbatim (matching GNU
+make) — only the path-bearing parts of a rule treat `\ ` as an escaped space.
+
+**Discovered paths.** Spaces in paths produced by `$(wildcard)`, `$(realpath)`, `$(abspath)` and in
+the `$(CURDIR)`, `$(MAKEFILE_LIST)`, `$(MAKE_COMMAND)`/`$(MAKE)` variables are preserved
+automatically, so `$(lastword $(MAKEFILE_LIST))`, `$(dir …)`, `$(notdir …)`, `$(patsubst …)` etc.
+each operate on the whole path.
+
+**Recipes.** When a recipe runs, a path's space is escaped for the shell so even an *unquoted* recipe
+works: POSIX emits `\ ` (backslash-space); Windows emits a quoted space (`My" "Src`, which the
+command-line parser fuses into one argument). The escaping is **quote-aware** — a path you already
+wrapped in quotes (`"$<"`) becomes a plain space and is never double-escaped. Pass
+[`--no-space-escape`](#build-mode-default) to disable escaping entirely: the placeholder then decodes
+to a plain space and you quote recipe paths yourself, exactly like GNU make.
+
+**Recursive make.** `$(MAKE)` works even when xlmake's own path contains a space
+(`/opt/My Tools/xlmake`) — the program path reaches the recipe shell as a single argument.
+
+**In-process directives.** `$(MKDIR)`, `$(REMOVE)`, `$(CP)` and the `$(WRITE)`/`$(APPEND)` file path
+take space-containing operands with no quoting needed (xlmake parses their operands itself); write an
+authored space as `\ `:
+
+```makefile
+$(CP) $(SRCDIR)/my\ file.c build/my\ file.c
+```
+
+**Force-encoding a path.** `$(xl_make_path <text>)` encodes every space in its argument, to make a
+path that arrived **without** `\ ` escaping safe — e.g. from `$(shell …)`, an environment variable or
+a plain literal. It is a pure text transform (no filesystem access) and idempotent:
+
+```makefile
+GEN := $(xl_make_path $(shell printf '%s' "$(HOME)/My Tools/gen"))
+```
+
+**Command-line variables.** A value passed on the command line is taken verbatim (like GNU make), so
+a space in it is *not* treated as a path. Prefix the assignment with **`P:`** to encode it:
+
+```sh
+xlmake 'P:STAPPLER_BUILD_ROOT=/home/My App/make' all
+# STAPPLER_BUILD_ROOT (marker stripped) keeps the space as part of the path
+```
+
+**Limits.** A recipe that pipes or redirects a space path through the shell (`> "$@"`, `cmd | …`)
+still needs your own quoting; ordinary compile/link/copy lines and the in-process directives do not.
+The reserved placeholder byte (`0x1F`) is assumed not to occur in real paths.
+
 ---
 
 ## Supported make language
@@ -251,6 +364,12 @@ if or and foreach call let
 origin flavor eval shell file
 error warning info
 ```
+
+**xlmake extension functions:** `xl_cat` `xl_write` `xl_append` `xl_mkdir` `xl_make_path` — see
+[Extension functions](#extension-functions).
+
+**In-process recipe directives:** `$(WRITE)` `$(APPEND)` `$(MKDIR)` `$(REMOVE)` `$(CP)` `$(ECHO)` —
+see [In-process recipe directives](#in-process-recipe-directives).
 
 **Directives:** `ifdef` `ifndef` `ifeq` `ifneq` `else` `endif` `define` `endef`
 `include` `-include` `sinclude` `override` `undefine`.

@@ -84,6 +84,7 @@ static sprt::__malloc_unordered_map< StringView, Function > s_functions{
 	makeFn("xl_write", 2, 2, Function_xl_write),
 	makeFn("xl_append", 2, 2, Function_xl_append),
 	makeFn("xl_mkdir", 1, 1, Function_xl_mkdir),
+	makeFn("xl_make_path", 1, 1, Function_xl_make_path),
 };
 
 StringView getOriginName(Origin o) {
@@ -582,7 +583,40 @@ static uint32_t VariableEngine_parseArguments(StmtType t, StmtValue *args, StmtV
 	return count;
 }
 
+StringView encodePathSpaces(StringView in, memory::StandartInterface::StringType &storage) {
+	if (in.find(' ') == maxOf<size_t>()) {
+		return in;
+	}
+	storage.assign(in.data(), in.size());
+	for (auto &c : storage) {
+		if (c == ' ') {
+			c = PathSpacePlaceholder;
+		}
+	}
+	return StringView(storage.data(), storage.size());
+}
+
+StringView decodePathSpaces(StringView in, memory::StandartInterface::StringType &storage) {
+	if (in.find(PathSpacePlaceholder) == maxOf<size_t>()) {
+		return in;
+	}
+	storage.assign(in.data(), in.size());
+	for (auto &c : storage) {
+		if (c == PathSpacePlaceholder) {
+			c = ' ';
+		}
+	}
+	return StringView(storage.data(), storage.size());
+}
+
 StringView VariableEngine::getAbsolutePath(StringView str) const {
+	// A path arrives in the make-visible form, where any space inside it is PathSpacePlaceholder.
+	// Decode it back to a real space first: everything below (toPosixPath/merge/reconstruct/findPath)
+	// and every consumer of the result (stat, ::realpath, file open) needs the real filesystem path.
+	// $(realpath)/$(abspath) re-encode their result via emitResolvedPath.
+	memory::StandartInterface::StringType spaceStorage;
+	str = decodePathSpaces(str, spaceStorage);
+
 	// A path may arrive in the platform-native form — on Windows that includes the `C:/dir` form the
 	// path functions emit (and `C:\dir`, `c:/dir`). Normalize it to the internal posix form (`/c/dir`)
 	// so the posix-based logic below recognizes a drive-rooted path as absolute instead of mistaking
@@ -635,6 +669,11 @@ void VariableEngine::appendMakefileList(StringView name) {
 	// semantics). Keeping it a real simple variable means $(MAKEFILE_LIST) — and idioms like
 	// $(lastword $(MAKEFILE_LIST)) — resolve immediately and stay valid once parsing is over and
 	// the block stack is gone (recipe / recursive-variable expansion), instead of crashing.
+	// A makefile path may contain a space (e.g. ".../runtime 2/Makefile"); encode it so the list stays
+	// one word per file and $(lastword)/$(dir $(lastword …)) keep resolving the whole path.
+	memory::StandartInterface::StringType spaceStorage;
+	name = encodePathSpaces(name, spaceStorage);
+
 	StringView value;
 	auto cur = getIfDefined("MAKEFILE_LIST");
 	if (cur && cur->type == Variable::Type::String && !cur->str.empty()) {
