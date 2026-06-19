@@ -390,55 +390,9 @@ void Builder::dispatchNode(NodeState *st) {
 	spawn(job);
 }
 
-// Decode a fully-expanded recipe line for the shell. A path-internal space survived the engine's
-// whitespace word-splitting as PathSpacePlaceholder; turn it back into a space the shell keeps inside
-// one argument. The scan is quote-aware: a placeholder that is ALREADY inside author quotes (a recipe
-// that wrote "$<") just becomes a plain space — the quotes already protect it, and escaping it there
-// would be wrong (POSIX sh keeps a backslash literal inside double quotes). A placeholder OUTSIDE
-// quotes is escaped so an unquoted recipe still works: POSIX emits "\ " (backslash-space, literal even
-// unquoted); Windows has no per-space escape, so it emits a quoted space (My" "Src), which the command
-// line parser concatenates with the adjacent text into one argument. With `noEscape` the placeholder
-// is always decoded to a plain space (GNU-make-style literal expansion; the recipe author quotes).
-// Returns the input unchanged (no allocation) when there is no placeholder.
-static StringView decodeRecipeForShell(StringView in, JobString &storage, bool noEscape) {
-	if (in.find(makefile::PathSpacePlaceholder) == maxOf<size_t>()) {
-		return in;
-	}
-	storage.clear();
-	bool inSingle = false; // POSIX single-quote state (cmd.exe does not honor ' as a quote)
-	bool inDouble = false;
-	for (size_t i = 0; i < in.size(); ++i) {
-		char c = in[i];
-		if (c == makefile::PathSpacePlaceholder) {
-			if (noEscape || inSingle || inDouble) {
-				storage.push_back(' '); // author quotes (or opted out) — emit a literal space
-			} else {
-#if SPRT_WINDOWS
-				storage.push_back('"');
-				storage.push_back(' ');
-				storage.push_back('"');
-#else
-				storage.push_back('\\');
-				storage.push_back(' ');
-#endif
-			}
-			continue;
-		}
-#if !SPRT_WINDOWS
-		if (c == '\'' && !inDouble) {
-			inSingle = !inSingle;
-		} else if (c == '"' && !inSingle) {
-			inDouble = !inDouble;
-		}
-#else
-		if (c == '"') {
-			inDouble = !inDouble;
-		}
-#endif
-		storage.push_back(c);
-	}
-	return StringView(storage.data(), storage.size());
-}
+// The recipe-line -> shell path-space decode (quote-aware escaping of PathSpacePlaceholder) now lives
+// in the engine as makefile::decodePathSpacesForShell, shared with $(shell). `_cfg.noSpaceEscape`
+// selects GNU-make-style literal expansion (no escaping; the recipe author quotes).
 
 void Builder::spawn(Job *job) {
 	auto &cmd = job->commands[job->index];
@@ -450,10 +404,9 @@ void Builder::spawn(Job *job) {
 		case Command::Kind::Process: {
 			// Echo exactly what will run: decode path spaces to the shell form (so the printed line is
 			// copy-pasteable and matches execution).
-			JobString echoStorage;
-			auto echoCmd = decodeRecipeForShell(StringView(cmd.text.data(), cmd.text.size()),
-					echoStorage, _cfg.noSpaceEscape);
-			job->output.append(echoCmd.data(), echoCmd.size());
+			makefile::decodePathSpacesForShell([&](StringView s) {
+				job->output.append(s.data(), s.size());
+			}, StringView(cmd.text.data(), cmd.text.size()), _cfg.noSpaceEscape);
 			job->output.append("\n");
 			break;
 		}
@@ -588,11 +541,12 @@ void Builder::spawn(Job *job) {
 	// buffer (flushed atomically when the target finishes); the exit completion drives onCommandDone.
 	// The main thread never touches fds, fork or waitpid — the reactor owns all of that.
 	// Decode path spaces to the shell form just before handing the command to the child (see
-	// decodeRecipeForShell). shellStorage must outlive the spawnProcess call (used synchronously).
-	JobString shellStorage;
-	StringView shellCmd = decodeRecipeForShell(StringView(cmd.text.data(), cmd.text.size()),
-			shellStorage, _cfg.noSpaceEscape);
-	job->proc = _looper->spawnProcess(shellCmd, [job, streaming](StringView bytes) {
+	// makefile::decodePathSpacesForShell). shellCmd must outlive the spawnProcess call (synchronous).
+	JobString shellCmd;
+	makefile::decodePathSpacesForShell([&](StringView s) { shellCmd.append(s.data(), s.size()); },
+			StringView(cmd.text.data(), cmd.text.size()), _cfg.noSpaceEscape);
+	job->proc = _looper->spawnProcess(StringView(shellCmd.data(), shellCmd.size()),
+			[job, streaming](StringView bytes) {
 		if (bytes.empty()) {
 			return;
 		}

@@ -39,6 +39,11 @@ struct ReadIocpState {
 	// EOF. Raw (the process handle owns ProcessState which owns this reader; no cycle). Pool-allocated
 	// alongside this struct, outliving both handles.
 	ProcessIocpHandle *proc = nullptr;
+	// Output transcoder carry-over (see emitChildOutput): the trailing bytes of a UTF-8 sequence that
+	// was split across a read boundary, held to be prepended to the next chunk so the split character
+	// is not misjudged as invalid. At most 3 bytes (a 4-byte lead missing its last continuation).
+	unsigned char encPending[4] = {};
+	uint8_t encPendingLen = 0;
 };
 
 // Overlapped-read reader sub-handle: issues ReadFile on the child's stdout/stderr

@@ -106,14 +106,23 @@ static bool Function_let(const Callback<void(StringView)> &out, void *, Variable
 // on the Makefile class in SPMakefile.h); never evaluate untrusted makefile text.
 static bool Function_shell(const Callback<void(StringView)> &out, void *, VariableEngine &engine,
 		SpanView<StmtValue *> args) {
-	String cmd;
+	String rawCmd;
 	engine.resolve([&](StringView s) {
 		if (s == "\n" || s == "\r" || s == "\r\n") {
-			cmd.push_back(' ');
+			rawCmd.push_back(' ');
 		} else {
-			cmd += s.str<Interface>();
+			rawCmd += s.str<Interface>();
 		}
 	}, args[0], ' ', *engine.getCallContext()->err);
+
+	// Decode path-space placeholders to the shell form before running the command, with the same
+	// quote-aware rule recipe lines use: a placeholder already inside author quotes becomes a plain
+	// space, one outside quotes is escaped so an unquoted path with spaces stays a single argument.
+	// Without this, a path produced by $(wildcard)/$(realpath)/$(xl_make_path) would reach the shell
+	// carrying the internal placeholder byte and fail to resolve.
+	String cmd; // assembled (and null-terminated) for popen
+	decodePathSpacesForShell([&](StringView s) { cmd.append(s.data(), s.size()); },
+			StringView(rawCmd.data(), rawCmd.size()));
 
 	FILE *fp = popen(cmd.data(), "r");
 	if (fp == NULL) {

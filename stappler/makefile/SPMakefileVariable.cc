@@ -85,6 +85,7 @@ static sprt::__malloc_unordered_map< StringView, Function > s_functions{
 	makeFn("xl_append", 2, 2, Function_xl_append),
 	makeFn("xl_mkdir", 1, 1, Function_xl_mkdir),
 	makeFn("xl_make_path", 1, 1, Function_xl_make_path),
+	makeFn("xl_make_plain", 1, 1, Function_xl_make_plain),
 };
 
 StringView getOriginName(Origin o) {
@@ -607,6 +608,49 @@ StringView decodePathSpaces(StringView in, memory::StandartInterface::StringType
 		}
 	}
 	return StringView(storage.data(), storage.size());
+}
+
+void decodePathSpacesForShell(const Callback<void(StringView)> &out, StringView in, bool noEscape) {
+	if (in.find(PathSpacePlaceholder) == maxOf<size_t>()) {
+		out(in); // no placeholder: hand over the whole input in one chunk
+		return;
+	}
+	bool inSingle = false; // POSIX single-quote state (cmd.exe does not honor ' as a quote)
+	bool inDouble = false;
+	size_t run = 0; // start of the current verbatim span (flushed whole before each replacement)
+	for (size_t i = 0; i < in.size(); ++i) {
+		char c = in[i];
+		if (c == PathSpacePlaceholder) {
+			if (i > run) {
+				out(in.sub(run, i - run));
+			}
+			if (noEscape || inSingle || inDouble) {
+				out(StringView(" ")); // author quotes (or opted out) -- a literal space
+			} else {
+#if SPRT_WINDOWS
+				out(StringView("\" \""));
+#else
+				out(StringView("\\ "));
+#endif
+			}
+			run = i + 1;
+			continue;
+		}
+#if !SPRT_WINDOWS
+		if (c == '\'' && !inDouble) {
+			inSingle = !inSingle;
+		} else if (c == '"' && !inSingle) {
+			inDouble = !inDouble;
+		}
+#else
+		if (c == '"') {
+			inDouble = !inDouble;
+		}
+#endif
+	}
+	if (run < in.size()) {
+		out(in.sub(run, in.size() - run)); // trailing verbatim span
+	}
 }
 
 StringView VariableEngine::getAbsolutePath(StringView str) const {

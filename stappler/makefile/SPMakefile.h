@@ -104,8 +104,12 @@ public:
 	// Look up a target by name; nullptr if it was never mentioned.
 	Target *getTarget(StringView) const;
 
-	// The default goal: the first explicitly declared, non-special, non-pattern target.
-	Target *getDefaultGoal() const { return _defaultGoal; }
+	// The default goal, per GNU's `.DEFAULT_GOAL` variable. That variable is the source of truth: it is
+	// mirrored from the first explicitly declared non-special, non-pattern target as the makefile is
+	// read, and the user may override it by assigning `.DEFAULT_GOAL` (so a bare `make`/build honours
+	// it). Resolves the variable on each call; returns nullptr when it is empty or names an unknown
+	// target. Not const: resolving the variable expands it.
+	Target *getDefaultGoal();
 
 	// All explicitly declared targets (excludes '.'-special and '%'-pattern rules).
 	Vector<Target *> getTargets() const;
