@@ -160,5 +160,20 @@ static bool Function_xl_make_path(const Callback<void(StringView)> &out, void *,
 	return true;
 }
 
+// $(xl_make_plain <text>) -- inverse of $(xl_make_path): decode every path-space placeholder back to a
+// real space, yielding the plain, space-containing text. Use it when a value carrying an encoded path
+// (from $(wildcard)/$(realpath)/$(abspath)/$(xl_make_path) or an authored "\ ") must be handed to
+// something that expects literal spaces inside make text -- e.g. embedding the path in a message, or
+// composing a string for a context that does its own quoting. This is a pure text transform; the result
+// is a normal space-separated string and will word-split again if re-expanded unquoted.
+static bool Function_xl_make_plain(const Callback<void(StringView)> &out, void *,
+		VariableEngine &engine, SpanView<StmtValue *> args) {
+	auto name = engine.resolve(args[0], 0, *engine.getCallContext()->err);
+
+	memory::StandartInterface::StringType storage;
+	out << decodePathSpaces(name, storage);
+	return true;
+}
+
 
 } // namespace stappler::makefile

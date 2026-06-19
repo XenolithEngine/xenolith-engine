@@ -45,6 +45,20 @@ SP_PUBLIC StringView encodePathSpaces(StringView, memory::StandartInterface::Str
 // Decode: each PathSpacePlaceholder -> real space (0x20). Inverse of encodePathSpaces.
 SP_PUBLIC StringView decodePathSpaces(StringView, memory::StandartInterface::StringType &storage);
 
+// Decode a command line for the shell, streaming the result to `out` in chunks: each verbatim span is
+// emitted whole and only the placeholder replacements are separate pieces (so the caller appends into
+// whatever buffer it likes -- no storage is owned here). Each PathSpacePlaceholder becomes a space the
+// shell keeps inside one argument. The scan is quote-aware -- a placeholder ALREADY inside author quotes
+// ("..." or '...') becomes a plain space (the quotes already group it, and escaping there would be
+// wrong), while a placeholder OUTSIDE quotes is escaped so an unquoted path with spaces still survives
+// word splitting (POSIX emits "\ "; Windows, lacking a per-space escape, emits a quoted space the
+// command-line parser fuses into the adjacent word). With `noEscape` every placeholder decodes to a
+// plain space (GNU-make-style literal expansion -- the caller is expected to quote). When the input has
+// no placeholder it is handed to `out` unchanged in a single call. This is the recipe / $(shell) -> OS
+// boundary.
+SP_PUBLIC void decodePathSpacesForShell(const Callback<void(StringView)> &out, StringView,
+		bool noEscape = false);
+
 // One bit per diagnostic warning the engine can emit, so a consumer can enable or suppress
 // each independently. A warning is reported only when its bit is set in the engine flags.
 enum class EngineFlags : uint32_t {

@@ -24,12 +24,26 @@ THE SOFTWARE.
 
 namespace xlmake {
 
-// Write `s` to stdout with path-space placeholders decoded back to real spaces, so an inspect/-p dump
-// of a space-containing value or path never shows the internal 0x1F byte. (Variable *names* are
-// identifiers and never carry a placeholder, so they are printed directly.)
+// Write `s` to stdout with path-space placeholders rendered GNU-make style: each internal 0x1F (a
+// space *inside* a path, kept as a placeholder so the path stays a single word) is emitted as "\ " (a
+// backslash-escaped space), exactly as GNU make prints a space-containing path in -p / target /
+// prerequisite listings. Only placeholders are escaped — ordinary separator spaces in a value are
+// never placeholders, so they pass through untouched — and the result is valid, round-trippable
+// makefile syntax that the VSCode Makefile Tools extension parses like GNU's output. (Variable *names*
+// are identifiers and never carry a placeholder.)
 static void emitDecoded(StringView s) {
-	memory::StandartInterface::StringType storage;
-	sprt::cout << makefile::decodePathSpaces(s, storage);
+	if (s.find(makefile::PathSpacePlaceholder) == maxOf<size_t>()) {
+		sprt::cout << s; // common case: no placeholder, emit verbatim
+		return;
+	}
+	size_t start = 0;
+	for (size_t i = 0; i < s.size(); ++i) {
+		if (s[i] == makefile::PathSpacePlaceholder) {
+			sprt::cout << StringView(s.data() + start, i - start) << "\\ ";
+			start = i + 1;
+		}
+	}
+	sprt::cout << StringView(s.data() + start, s.size() - start);
 }
 
 static void printVariable(Makefile *mk, StringView name, const Variable &v, ErrorReporter &err) {

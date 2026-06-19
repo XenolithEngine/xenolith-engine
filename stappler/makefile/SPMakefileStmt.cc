@@ -168,13 +168,14 @@ static StringView readContextIdentifier(StringView &str, ReadContext ctx) {
 #if SPRT_WINDOWS
 		// A Windows drive letter ("C:/dir/file") puts a ':' right after a single leading letter; that
 		// ':' is part of the path, not the rule separator. Consume it and keep reading so the whole
-		// drive-rooted target stays one identifier and only the real trailing ':' splits the rule
-		// Forward-slash form only — the path functions emit
-		// it, and a backslash would collide with make's line-continuation escape.
+		// drive-rooted target stays one identifier and only the real trailing ':' splits the rule.
+		// Both slash forms are accepted: the engine's own path functions emit "C:/...", while a
+		// dependency file written by clang/gcc on Windows uses the native "C:\..." (its backslashes are
+		// path separators, normalised to '/' by the '\' handling in the word loop below).
 		if (str.data() - begin == 1 && str.is(':')) {
 			char drive = *begin;
 			if (((drive >= 'a' && drive <= 'z') || (drive >= 'A' && drive <= 'Z'))
-					&& str.sub(1).is('/')) {
+					&& (str.sub(1).is('/') || str.sub(1).is('\\'))) {
 				++str; // consume the drive ':'
 				str.readUntil<StringView::WhiteSpace,
 						StringView::Chars<'#', ',', ')', ':', '=', '?', '+', '$', '\\'>>();
@@ -362,8 +363,26 @@ Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err, uint3
 				makeStmt()->add(sig);
 				break;
 			} else {
-				makeStmt()->add(StringView(sig.data(), sig.size() + 1));
-				++str;
+				bool windowsSep = false;
+#if SPRT_WINDOWS
+				// clang/gcc on Windows write dependency files with '\' as the PATH SEPARATOR
+				// (e.g. `C:\dir\foo.o: C:\dir\foo.c`). In make syntax '\' is the escape char, but here
+				// it is a separator — and an escaped space "\ " was already handled above — so any
+				// remaining '\' in a target or prerequisite path is a separator: normalise it to the
+				// engine's native '/'. Restricted to rule path contexts so a '\' kept verbatim in a
+				// variable value or recipe (shell text) is untouched.
+				windowsSep = (ctx == ReadContext::LineStart || ctx == ReadContext::PrerequisiteList
+						|| ctx == ReadContext::OrderOnlyList);
+#endif
+				if (windowsSep) {
+					static constexpr char slash = '/';
+					makeStmt()->add(sig);
+					makeStmt()->add(StringView(&slash, 1));
+					++str;
+				} else {
+					makeStmt()->add(StringView(sig.data(), sig.size() + 1));
+					++str;
+				}
 			}
 		} else if (ctx == ReadContext::LineStart && str.is<PlainStopChars>()
 				&& !Stmt::getOperator(str, true).empty()) {
