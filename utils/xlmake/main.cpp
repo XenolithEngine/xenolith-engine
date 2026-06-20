@@ -89,7 +89,8 @@ struct Config {
 	bool alwaysMake = false; // -B / --always-make
 	bool printDirectory = false; // -w / --print-directory
 	bool noPrintDirectory = false; // --no-print-directory (overrides -w and sub-make auto-enable)
-	bool noSpaceEscape = false; // --no-space-escape: decode recipe path spaces literally (no shell escaping)
+	bool noSpaceEscape =
+			false; // --no-space-escape: decode recipe path spaces literally (no shell escaping)
 };
 
 static uint32_t s_makeLevel = 0;
@@ -567,20 +568,22 @@ static int runXlmake(int argc, const char *argv[]) {
 	// terminal, which is already line-buffered).
 	::setvbuf(stdout, nullptr, _IOLBF, BUFSIZ);
 
-	Config cfg;
-	if (!parseArgs(argc, argv, cfg)) {
-		printUsage();
-		return 1;
-	}
-	if (cfg.mode == Mode::Help) {
-		printUsage();
-		return 0;
-	}
-
 	int result = 0;
 	auto pool = memory::pool::create((memory::pool_t *)nullptr);
 
 	memory::perform([&] {
+		Config cfg;
+		if (!parseArgs(argc, argv, cfg)) {
+			printUsage();
+			result = 1;
+			return;
+		}
+		if (cfg.mode == Mode::Help) {
+			printUsage();
+			result = 0;
+			return;
+		}
+
 		auto rootDir = filesystem::currentDir<PInterface>(cfg.dir);
 		if (rootDir.empty()) {
 			sprt::cerr << "xlmake: cannot resolve directory: "
