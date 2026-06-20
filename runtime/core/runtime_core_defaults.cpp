@@ -497,11 +497,46 @@ int __catclose_empty(__SPRT_ID(nl_catd) catd) {
 
 #ifndef SPRT_WINDOWS
 #include <sys/utsname.h>
+#include <sprt/c/sys/__sprt_utsname.h>
 
 namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(uname)(struct __SPRT_UTSNAME_NAME *buf) {
-	return ::uname((struct utsname *)buf);
+	sprt::memset(buf, 0, sizeof(struct __SPRT_UTSNAME_NAME));
+
+	struct utsname _native;
+	sprt::memset(&_native, 0, sizeof(struct utsname));
+	auto ret = ::uname(&_native);
+	if (ret == 0) {
+		if (_native.sysname[0]) {
+			sprt::memcpy(buf->sysname, _native.sysname,
+					sprt::strnlen(_native.sysname, __SPRT_SYS_NAMELEN - 1));
+		}
+		if (_native.nodename[0]) {
+			sprt::memcpy(buf->nodename, _native.nodename,
+					sprt::strnlen(_native.nodename, __SPRT_SYS_NAMELEN - 1));
+		}
+		if (_native.release[0]) {
+			sprt::memcpy(buf->release, _native.release,
+					sprt::strnlen(_native.release, __SPRT_SYS_NAMELEN - 1));
+		}
+		if (_native.version[0]) {
+			sprt::memcpy(buf->version, _native.version,
+					sprt::strnlen(_native.version, __SPRT_SYS_NAMELEN - 1));
+		}
+		if (_native.machine[0]) {
+			sprt::memcpy(buf->machine, _native.machine,
+					sprt::strnlen(_native.machine, __SPRT_SYS_NAMELEN - 1));
+		}
+#ifndef SPRT_MACOS
+		if (_native.domainname[0]) {
+			sprt::memcpy(buf->domainname, _native.domainname,
+					sprt::strnlen(_native.domainname, __SPRT_SYS_NAMELEN - 1));
+		}
+#endif
+		return 0;
+	}
+	return ret;
 }
 
 } // namespace sprt
