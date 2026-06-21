@@ -192,7 +192,13 @@ SAFELOADER UINT_PTR __gencookie() {
 	if (cookie == 0) {
 		// Failed to use ProcessPrng, fallback to processor counter,
 		// No other available entropy source at this moment;
-		cookie = (__rdtsc() ^ 0x7A2D'9F1B'4E63'C082ll) & 0x0000'ffff'ffff'ffffll;
+#if defined(_M_ARM64) || defined(__aarch64__)
+		unsigned long long counter;
+		__asm__ volatile("mrs %0, cntvct_el0" : "=r"(counter));
+#else
+		unsigned long long counter = __rdtsc();
+#endif
+		cookie = (counter ^ 0x7A2D'9F1B'4E63'C082ll) & 0x0000'ffff'ffff'ffffll;
 	}
 
 	if (cookie == DEFAULT_SECURITY_COOKIE) {

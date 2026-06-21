@@ -360,7 +360,7 @@ endif
 
 # https://github.com/Jake-Shadle/xwin/releases
 $(SRC_ROOT)/xwin: | prepare
-	$(call unpack_tar, https://github.com/Jake-Shadle/xwin/releases/download/0.6.7/xwin-0.6.7-x86_64-unknown-linux-musl.tar.gz, xwin)
+	$(call unpack_tar, https://github.com/Jake-Shadle/xwin/releases/download/0.9.0/xwin-0.9.0-x86_64-unknown-linux-musl.tar.gz, xwin)
 	touch $(SRC_ROOT)/xwin
 
 $(SRC_ROOT)/xwin/splat: $(SRC_ROOT)/xwin

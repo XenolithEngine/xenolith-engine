@@ -35,7 +35,7 @@ include $(BUILD_ROOT)/distrib/macos.mk
 endif # OSTYPE_IS_MACOS
 
 ifdef RUNTIME_INSTALL_LIBRARY
-
+ifeq ($(LOCAL_MACOS_BUNDLE),1)
 $(BUILD_С_OUTDIR)/$(LOCAL_EXECUTABLE).app/Contents/Frameworks/$(notdir $(RUNTIME_INSTALL_LIBRARY)) : \
 	$(RUNTIME_INSTALL_LIBRARY)
 	@mkdir -p $(BUILD_С_OUTDIR)/$(LOCAL_EXECUTABLE).app/Contents/Frameworks
@@ -43,6 +43,7 @@ $(BUILD_С_OUTDIR)/$(LOCAL_EXECUTABLE).app/Contents/Frameworks/$(notdir $(RUNTIM
 
 $(BUILD_EXECUTABLE): $(BUILD_С_OUTDIR)/$(LOCAL_EXECUTABLE).app/Contents/Frameworks/$(notdir $(RUNTIME_INSTALL_LIBRARY))
 endif
+endif # RUNTIME_INSTALL_LIBRARY
 
 $(BUILD_EXECUTABLE) : $(BUILD_COMPILATION_DATABASE) $(BUILD_EXEC_OBJS) $(BUILD_WASM_OUTPUT)
 	@$(call rule_mkdir,$(dir $@))

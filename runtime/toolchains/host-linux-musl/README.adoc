@@ -1,0 +1,116 @@
+# Linux musl host toolchain build directory
+
+Здесь собирается host-тулчейн (clang/lld + libc++ + llvm-инструменты + glslang/
+spirv-tools) для работы *непосредственно на Linux с musl* (Alpine и подобные).
+
+В отличие от glibc-хоста, не требуется собирать GCC и «двойную» libc: musl
+самодостаточна и собирается любым современным компилятором, а на musl-Linux уже
+есть системный clang, которым выполняется бутстрап. Поэтому здесь две стадии
+вместо трёх.
+
+== Источник musl
+
+Используется *запиненная* по коммиту musl из репозитория — git-сабмодуль
+`runtime/musl-libc` (версия 1.2.6, commit `5122f9f3...`). Сборка ведётся
+out-of-tree (через `$(MUSL_SRC_DIR)/configure`), исходники сабмодуля не
+модифицируются. Перед сборкой убедитесь, что сабмодуль выкачан:
+
+[source,sh]
+----
+git submodule update --init runtime/musl-libc
+----
+
+== Prerequisites
+
+Сборка выполняется на Linux/musl. Требуются:
+
+* системный *clang* и *lld* (бутстрап-компилятор; см. `BOOTSTRAP_CC`/`BOOTSTRAP_CXX`)
+* *build-base* (gcc/g++/musl-dev/binutils) — системный clang использует gcc-crt и
+  libstdc++ при сборке бутстрап-бинаря clang
+* *cmake* и *ninja* (samurai)
+* *GNU make*, *git*
+* *python3* (нужен compiler-rt), *rsync* (нужен `make headers_install` ядра)
+* *linux-headers* (kernel headers для сборки host-инструментов LLVM)
+
+На Alpine:
+
+[source,sh]
+----
+apk add build-base clang lld cmake samurai make git python3 rsync linux-headers
+----
+
+NOTE: Собрано и проверено на Alpine 3.24.1 (musl 1.2.6, clang 22) внутри
+bubblewrap-песочницы: stage0/stage1/out проходят, поставляемый тулчейн
+компилирует и запускает C++ (STL+исключения) и проходит конвейер
+glslang → spirv-link → spirv-val.
+
+== Stage 0 (бутстрап)
+
+Системным clang собираются:
+
+. запиненная musl -> `sysroot-stage0` (наш C-рантайм и sysroot);
+. рантаймы LLVM (compiler-rt, libunwind, libc++abi, libc++) под musl;
+. clang + lld.
+
+Полученный clang скомпилирован системным компилятором, но настроен на наш
+musl-sysroot (`DEFAULT_SYSROOT`, default rtlib=compiler-rt, stdlib=libc++,
+linker=lld, unwindlib=libunwind) и пригоден для сборки самодостаточного stage1.
+
+== Stage 1 (финал, self-hosted)
+
+Компилятором stage0 собирается финальный набор в `sysroot-out`:
+
+. musl (заново, stage0-clang);
+. shared-рантаймы (поставляются и используются для линковки финального clang);
+. финальный clang/lld + `libLLVM.so` с мульти-таргетным backend-ом
+  (`X86;ARM;AArch64;RISCV;WebAssembly`) — чтобы хост-компилятор мог
+  кросс-компилировать движок под все цели;
+. glslang + spirv-tools (нужны движку: `HOST_GLSLANG` / `HOST_SPIRV_LINK`).
+
+Итоговые бинарники слинкованы с нашим libc++ (rpath `$ORIGIN/../lib`), а
+`PT_INTERP` указывает на стандартный `/lib/ld-musl-<arch>.so.1`, поэтому тулчейн
+работает на любом musl-Linux.
+
+== Сборка
+
+[source,sh]
+----
+# из runtime/toolchains
+make download              # один раз: тянет llvm/zlib/glslang/... в ../src
+git submodule update --init ../musl-libc
+
+# автоопределение хоста (на musl-Linux выберется host-linux-musl)
+make host
+
+# либо напрямую:
+make -C host-linux-musl out OUT_SYSROOT=$(pwd)/hosts/x86_64-unknown-linux-musl
+----
+
+Результат раскладывается в `hosts/<arch>-unknown-linux-musl/` (bin/, lib/,
+include/, lib/clang/<ver>, share/licenses, host.mk).
+
+== Отличия от glibc-хоста (musl-специфика)
+
+* `LIBCXX_HAS_MUSL_LIBC=On` во всех сборках рантаймов — ключевой флаг;
+* триплет `*-unknown-linux-musl`, загрузчик `ld-musl-<arch>.so.1`
+  (явный `--dynamic-linker` не переопределяется — используется системный);
+* libunwind обязателен (musl не несёт `libgcc_eh`);
+* нет сборки GCC, GNU Make 4.3 и второй версии libc;
+* `compiler-rt` вместо libgcc, `COMPILER_RT_DEFAULT_TARGET_ONLY=On` кладёт
+  builtins в resource-dir.
+
+== Что пока НЕ собирается (TODO для следующих итераций)
+
+Сознательно опущено ради простой первой версии «host для musl»:
+
+* *lldb* (тяжелее всего на musl);
+* *zlib*/*libxml2* для clang (отключены `LLVM_ENABLE_ZLIB/LIBXML2=Off`);
+* *LTO* финального clang;
+* host-овый *make* в составе тулчейна;
+* *ENABLE_OPT* в glslang выключен (развязка от spirv-tools); оптимизация SPIR-V
+  доступна отдельным `spirv-opt`.
+
+Движок (`host.mk`: cc/c++/ar/glslang/spirv-link) от этого не страдает.
+
+Kernel headers (пиннинг linux 5.10.258, `headers_install`) уже устанавливаются в
+sysroot — их требует libc++ (`linux/futex.h`) и host-инструменты LLVM.
