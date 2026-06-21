@@ -86,6 +86,49 @@ struct SPRT_API RunLoopData : public PlatformQueueData {
 	~RunLoopData();
 };
 
+// Timer-driven child-process handle. The RunLoop backend has no pollable-fd or
+// process-exit primitive (CFFileDescriptor/CFSocket/EVFILT_PROC are unavailable
+// here), so — exactly like the inline file handle — a repeating reactor timer
+// drives the work: each fire drains the merged stdout/stderr pipe into the user
+// reader and waitpid(WNOHANG)s the child. The handle completes once, with the
+// exit code in the completion value, when the child is reaped. The shared
+// ProcessState (reader / read fd) is held as the handle's userdata.
+class SPRT_API RunLoopProcessHandle : public ProcessHandle {
+public:
+	virtual ~RunLoopProcessHandle() = default;
+
+	bool init(HandleClass *, int pid, CompletionHandle<ProcessHandle> &&);
+
+	// schedule the driver timer (called from runFn)
+	void start();
+
+	// one drain + reap step (driver-timer fire)
+	void poll();
+
+	// teardown: stop the driver timer and close the pipe (cancelFn)
+	void terminate();
+
+	virtual NativeHandle getNativeHandle() const override;
+
+protected:
+	// defer the completion out of the driver-timer callback and fire it
+	void finish();
+
+	int _pid = -1;
+	bool _finishing = false; // exit detected (or teardown begun): stop polling
+	bool _reaped = false; // child reaped via the exit path; terminate() must not kill a recycled pid
+	Rc<Handle> _driver; // repeating poll timer
+};
+
+// HandleClass setup for RunLoopProcessHandle. Custom (no reactor rearm/notify):
+// runFn starts the driver timer, cancelFn tears it down; suspend/resume are plain
+// bookkeeping (the driver timer is itself suspended/resumed by the queue).
+void setupRunLoopProcessHandleClass(QueueHandleClassInfo *info, HandleClass *cl);
+
+// Full spawn for the RunLoop backend: posix child + timer-driven reader/reaper.
+Rc<ProcessHandle> spawnProcessRunLoop(QueueData *data, HandleClass *processClass, ProcessInfo &&info,
+		Ref *ref);
+
 struct SPRT_API RunLoopThreadSource {
 	bool init();
 	void cancel();

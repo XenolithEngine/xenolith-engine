@@ -20,15 +20,26 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef CORE_RUNTIME_INCLUDE_C_BITS___SPRT_ERRNO_H_
-#define CORE_RUNTIME_INCLUDE_C_BITS___SPRT_ERRNO_H_
+#ifndef CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_ERRNO_H_
+#define CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_ERRNO_H_
 
-// errno numbering is platform-specific (Linux/Android, macOS/Darwin, and Windows each differ),
-// so the lists live per-platform in cross/<platform>/errno.h and are selected here. Each list
-// defines the internal __SPRT_Exxx values — consumed by the runtime and verified against the
-// system <errno.h> by the static_asserts in libc_wrapper/c/common/errno.cc — plus the public
-// bare Exxx names, the latter guarded by #ifndef EPERM so a hosted build's system <errno.h>
-// takes precedence.
-#include <sprt/c/cross/__sprt_errno.h>
+#include <sprt/c/bits/__sprt_def.h>
 
+// Select the per-platform errno list. errno numbering is OS-specific (not arch-specific), so
+// only one platform-level header is pulled. Unlike cross/__sprt_signal.h this does NOT use the
+// SPRT_CROSS_CONFIG_NAME() stringizing helper: that macro-expands its argument, and once a
+// system <errno.h> is in scope `errno` is itself a macro (e.g. (*__error()) on macOS), which
+// would corrupt the `.../errno.h` path. A literal #include <...> is never macro-expanded.
+#if SPRT_MACOS
+#include <sprt/c/cross/macos_sprt/errno.h>
+#elif SPRT_ANDROID
+#include <sprt/c/cross/android_sprt/errno.h>
+#elif SPRT_LINUX
+#include <sprt/c/cross/linux_sprt/errno.h>
+#elif SPRT_WINDOWS
+#include <sprt/c/cross/windows_sprt/errno.h>
+#else
+#include <sprt/c/cross/linux_sprt/errno.h>
 #endif
+
+#endif // CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_ERRNO_H_

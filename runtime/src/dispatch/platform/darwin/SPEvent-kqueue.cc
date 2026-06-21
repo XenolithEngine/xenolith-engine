@@ -78,26 +78,49 @@ Status KQueueData::runPoll(TimeInterval ival) {
 }
 
 uint32_t KQueueData::processEvents(RunContext *ctx) {
-	uint32_t count = 0;
+	// Snapshot this batch into a private buffer and clear the shared counters BEFORE
+	// dispatching anything. A handler reached through notify() can re-enter the loop (a
+	// nested run()/wait()/poll() — e.g. a recipe whose completion synchronously drives
+	// more work, as a recursive $(MAKE) does), and that nested runPoll() calls kevent()
+	// straight back into the shared _events buffer. Iterating _events directly here
+	// would then dispatch overwritten/stale kevents to the wrong handles and fds —
+	// closing a since-reused descriptor and killing an unrelated child with SIGPIPE.
+	//
+	// The snapshot is a stack local (not a KQueueData member) so each — possibly
+	// nested — invocation iterates its own copy. Every handle-bearing event is pinned
+	// (retain) up front while all udata pointers are still valid, so an earlier
+	// callback dropping the queue's last reference to a later event's handle cannot turn
+	// it into a use-after-free. Mirrors EPollData::processEvents.
+	struct Slot {
+		struct kevent ev;
+		uint64_t refId;
+	};
+	Queue::Vector<Slot> batch;
+	batch.reserve(_receivedEvents - _processedEvents);
+	for (uint32_t i = _processedEvents; i < _receivedEvents; ++i) {
+		auto &ev = _events.at(i);
+		uint64_t refId = (ev.udata && ev.udata != this)
+				? sprt::retain(reinterpret_cast<Handle *>(ev.udata))
+				: uint64_t(0);
+		batch.emplace_back(Slot{ev, refId});
+	}
+	_receivedEvents = _processedEvents = 0;
 
+	// the handle is kept alive by its snapshot pin (released after dispatch below)
 	auto processHandleEvent = [&](const struct kevent &ev) {
 		if (ev.udata && ev.udata != this) {
-			auto h = (Handle *)ev.udata;
-			auto refId = sprt::retain(h);
-
 			NotifyData data;
 			data.result = ev.data;
 			data.queueFlags = ev.flags;
 			data.userFlags = 0;
 
-			_data->notify(h, data);
-
-			sprt::release(h, refId);
+			_data->notify(reinterpret_cast<Handle *>(ev.udata), data);
 		}
 	};
 
-	while (_processedEvents < _receivedEvents) {
-		auto &ev = _events.at(_processedEvents++);
+	uint32_t count = 0;
+	for (auto &slot : batch) {
+		auto &ev = slot.ev;
 		switch (ev.filter) {
 		case EVFILT_TIMER:
 			if (ev.udata == this) {
@@ -124,9 +147,11 @@ uint32_t KQueueData::processEvents(RunContext *ctx) {
 		default: processHandleEvent(ev); break;
 		}
 
+		if (slot.refId) {
+			sprt::release(reinterpret_cast<Handle *>(ev.udata), slot.refId);
+		}
 		++count;
 	}
-	_receivedEvents = _processedEvents = 0;
 	return count;
 }
 
@@ -521,7 +546,15 @@ bool ProcessKQueueSource::init(int p) {
 	return true;
 }
 
-void ProcessKQueueSource::cancel() { }
+void ProcessKQueueSource::cancel() {
+	// If the handle is cancelled while the child is still running (the exit path never
+	// ran), terminate and reap it so it neither outlives its handle nor leaks a zombie.
+	// `exited` guards against signalling an already-reaped (recycled) pid.
+	if (!exited && pid > 0) {
+		killProcessChild(pid);
+		exited = true;
+	}
+}
 
 bool ProcessKQueueHandle::init(HandleClass *cl, int pid, CompletionHandle<ProcessHandle> &&c) {
 	static_assert(sizeof(ProcessKQueueSource) <= DataSize
@@ -568,6 +601,7 @@ void ProcessKQueueHandle::notify(KQueueData *queue, ProcessKQueueSource *source,
 	int status = 0;
 	::waitpid(source->pid, &status, 0);
 	_exitCode = decodeWaitStatus(status);
+	source->exited = true; // reaped here: cancel() must not kill a recycled pid
 
 	auto state = static_cast<ProcessState *>(getUserdata());
 	if (state) {
