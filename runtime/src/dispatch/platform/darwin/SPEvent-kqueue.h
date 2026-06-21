@@ -141,6 +141,7 @@ public:
 // EVFILT_PROC process-exit handle: fires NOTE_EXIT when the child terminates.
 struct SPRT_API ProcessKQueueSource {
 	int pid = -1;
+	bool exited = false; // child reaped via the exit path; cancel() must not kill a recycled pid
 
 	bool init(int);
 	void cancel();

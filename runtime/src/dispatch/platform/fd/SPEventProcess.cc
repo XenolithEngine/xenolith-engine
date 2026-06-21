@@ -25,10 +25,47 @@
 
 #include <sprt/c/__sprt_errno.h>
 
+#include <signal.h> // SIGKILL
 #include <unistd.h>
 #include <fcntl.h>
 
+#if SPRT_MACOS
+// macOS provides these in libSystem, but the freestanding include path exposes neither
+// <sys/wait.h> nor a kill() prototype; declare them directly.
+extern "C" int kill(int __pid, int __sig);
+extern "C" int waitpid(int __pid, int *__status, int __options);
+#else
+// Linux/Android: reach the kernel directly (the freestanding libc offers no kill()/wait4()),
+// mirroring how SPEventProcessFd.cc issues pidfd_open()/wait4().
+#include <sprt/c/cross/__sprt_syscall.h>
+__SPRT_C_FUNC long int syscall(long int __sysno, ...);
+#endif
+
 namespace sprt::dispatch {
+
+void killProcessChild(int pid) {
+	if (pid <= 0) {
+		return;
+	}
+	// SIGKILL is uncatchable, so the child dies at once; the blocking reap that follows
+	// returns immediately and clears the zombie. The caller guarantees the child has not
+	// already been reaped (see the header), so this never signals a recycled pid.
+	//
+	// TODO: this kills only the direct child (the `/bin/sh -c` pid). A shell that forks
+	// grandchildren leaves them orphaned (reparented to init) and still running. To kill
+	// the whole tree we would put the child in its own process group (setpgid() in
+	// posixSpawnPipe) and signal the group here via kill(-pgid, SIGKILL) / killpg(); the
+	// Windows analogue (SPEventProcessIocp.cc) would assign the child to a Job Object and
+	// terminate that instead of a single TerminateProcess.
+	int status = 0;
+#if SPRT_MACOS
+	::kill(pid, SIGKILL);
+	::waitpid(pid, &status, 0);
+#else
+	syscall(__SPRT_SYSCALL_kill, pid, SIGKILL);
+	syscall(__SPRT_SYSCALL_wait4, pid, &status, 0, nullptr);
+#endif
+}
 
 bool drainProcessPipe(int fd, ProcessState *state) {
 	if (fd < 0) {

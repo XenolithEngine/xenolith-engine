@@ -59,6 +59,16 @@ int decodeWaitStatus(int status);
 // close-on-exec) read end of the pipe.
 bool posixSpawnPipe(StringView command, int *outPid, int *outReadFd);
 
+// Forcibly terminate a child (SIGKILL) and reap its zombie. Every backend calls this
+// from its cancel path when a process handle is cancelled while the child is still
+// running, so the child neither outlives its handle nor leaks as a zombie. The signal
+// and reap primitives are platform-correct (libSystem on macOS, raw syscalls on Linux).
+//
+// The caller MUST guarantee the child has not already been reaped (each backend tracks
+// this with an `exited` flag set on the normal-exit reap); otherwise the pid may have
+// been recycled and an unrelated process would be signalled.
+void killProcessChild(int pid);
+
 // Create + run the reader sub-handle over `readFd`, reusing the backend's
 // pollable-fd path (QueueData::listenHandle). Output is forwarded to state->reader.
 Rc<PollHandle> createProcessReader(QueueData *data, int readFd, ProcessState *state);

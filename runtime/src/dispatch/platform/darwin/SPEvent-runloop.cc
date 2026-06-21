@@ -22,8 +22,18 @@
 
 #include "SPEvent-runloop.h"
 #include "SPEvent-darwin.h"
+#include "../fd/SPEventProcess.h"
+
+#include <unistd.h>
+
+// macOS provides waitpid() in libSystem, but the runtime's freestanding include path does not expose
+// <sys/wait.h>; declare the prototype directly (the exit code is decoded via decodeWaitStatus()). The
+// option value 1 is WNOHANG (stable across the BSD/macOS ABI) — poll the child without blocking.
+extern "C" int waitpid(int __pid, int *__status, int __options);
 
 namespace sprt::dispatch {
+
+static constexpr int RunLoopWaitNoHang = 1; // WNOHANG
 
 static void RunLoopData_terminate(_CFRunLoopTimerRef timer, void *ptr) {
 	auto ctx = reinterpret_cast<RunLoopData::RunContext *>(ptr);
@@ -374,6 +384,167 @@ Status RunLoopThreadHandle::perform(dispatch::Function<void()> &&func, Ref *targ
 	NotifyData n{1, 0, 0};
 	q->trigger(this, n);
 	return Status::Ok;
+}
+
+bool RunLoopProcessHandle::init(HandleClass *cl, int pid, CompletionHandle<ProcessHandle> &&c) {
+	if (!Handle::init(cl, move(c))) {
+		return false;
+	}
+	_pid = pid;
+	return true;
+}
+
+void RunLoopProcessHandle::start() {
+	auto qdata = _class->info->data;
+
+	// A small repeating reactor timer drives both reading and reaping. 1ms keeps the
+	// output near-live while costing only a non-blocking read + waitpid() per fire
+	// (cheap no-ops while the child has nothing to say). The driver is a separate,
+	// reactor-suspendable handle: a graceful wakeup suspends it alongside this one.
+	TimerInfo tinfo;
+	tinfo.timeout = TimeInterval::milliseconds(1);
+	tinfo.interval = TimeInterval::milliseconds(1);
+	tinfo.count = TimerInfo::Infinite;
+	tinfo.completion = TimerInfo::Completion::create<RunLoopProcessHandle>(this,
+			[](RunLoopProcessHandle *self, TimerHandle *, uint32_t, Status status) {
+		if (status == Status::Ok) {
+			self->poll();
+		}
+	});
+
+	auto timer = qdata->scheduleTimer(sprt::move(tinfo));
+	if (!timer) {
+		// the RunLoop backend always provides a timer factory, so this is effectively
+		// unreachable; finish defensively rather than poll a child that can never be reaped
+		_exitCode = -1;
+		finish();
+		return;
+	}
+	_driver = timer;
+	qdata->runHandle(timer.get());
+}
+
+void RunLoopProcessHandle::poll() {
+	if (_finishing) {
+		return;
+	}
+
+	auto state = static_cast<ProcessState *>(getUserdata());
+
+	// drain whatever the child has produced so far (non-blocking; loops to EAGAIN/EOF)
+	if (state && state->readFd >= 0) {
+		drainProcessPipe(state->readFd, state);
+	}
+
+	// has the child terminated? WNOHANG reaps the zombie when it has, returns 0 while
+	// it still runs, and -1 (ECHILD) if it is already gone
+	int status = 0;
+	auto r = ::waitpid(_pid, &status, RunLoopWaitNoHang);
+	if (r == 0) {
+		return; // still running; poll again on the next fire
+	}
+	_reaped = true; // reaped here: terminate() must not kill a recycled pid
+	_exitCode = (r > 0) ? decodeWaitStatus(status) : -1;
+
+	// flush any bytes buffered in the pipe at exit, then stop reading
+	if (state && state->readFd >= 0) {
+		drainProcessPipe(state->readFd, state);
+		::close(state->readFd);
+		state->readFd = -1;
+	}
+
+	finish();
+}
+
+void RunLoopProcessHandle::finish() {
+	if (_finishing) {
+		return;
+	}
+	_finishing = true;
+
+	// Defer the completion out of the driver-timer callback: cancel(Done) stops the
+	// driver, which must not happen on the timer's own notify stack. perform() runs
+	// the cancel in this cycle's runAllTasks, after the callback unwinds; the captured
+	// Rc keeps this handle alive until then. Mirrors FileState::finalizeChannel.
+	auto qdata = _class->info->data;
+	Rc<ProcessHandle> self(this);
+	auto code = uint32_t(_exitCode);
+	if (qdata->perform([self, code]() { self->cancel(Status::Done, code); }, this) != Status::Ok) {
+		// not inside a notify cycle: complete directly
+		cancel(Status::Done, code);
+	}
+}
+
+void RunLoopProcessHandle::terminate() {
+	_finishing = true;
+	if (_driver) {
+		_driver->cancel();
+		_driver = nullptr;
+	}
+	auto state = static_cast<ProcessState *>(getUserdata());
+	if (state && state->readFd >= 0) {
+		::close(state->readFd);
+		state->readFd = -1;
+	}
+	// If the handle is cancelled while the child is still running (poll() never reaped
+	// it), terminate and reap it so it neither outlives its handle nor leaks a zombie.
+	// `_reaped` guards against signalling an already-reaped (recycled) pid.
+	if (!_reaped && _pid > 0) {
+		killProcessChild(_pid);
+		_reaped = true;
+	}
+}
+
+NativeHandle RunLoopProcessHandle::getNativeHandle() const { return _pid; }
+
+void setupRunLoopProcessHandleClass(QueueHandleClassInfo *info, HandleClass *cl) {
+	cl->info = info;
+	cl->createFn = HandleClass::create;
+	cl->destroyFn = HandleClass::destroy;
+
+	cl->runFn = [](HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize]) {
+		static_cast<RunLoopProcessHandle *>(handle)->start();
+		return HandleClass::run(cl, handle, data);
+	};
+
+	// Plain bookkeeping (like the inline file handle): the driver timer is itself a
+	// suspendable handle, so a graceful wakeup suspends it directly; marking this
+	// handle resumable is what keeps it alive in the queue's _suspendableHandles set
+	// until it completes. Teardown happens in cancelFn, not here.
+	cl->suspendFn = HandleClass::suspend;
+	cl->resumeFn = HandleClass::resume;
+
+	cl->cancelFn = [](HandleClass *cl, Handle *handle, uint8_t data[Handle::DataSize], Status st) {
+		static_cast<RunLoopProcessHandle *>(handle)->terminate();
+		return HandleClass::cancel(cl, handle, data, st);
+	};
+}
+
+Rc<ProcessHandle> spawnProcessRunLoop(QueueData *data, HandleClass *processClass, ProcessInfo &&info,
+		Ref *ref) {
+	int pid = -1;
+	int readFd = -1;
+	if (!posixSpawnPipe(info.command, &pid, &readFd)) {
+		return nullptr;
+	}
+
+	auto state = Rc<ProcessState>::alloc();
+	state->reader = sprt::move(info.reader);
+	state->userRef = ref;
+	state->readFd = readFd;
+
+	auto proc = Rc<RunLoopProcessHandle>::create(processClass, pid, sprt::move(info.completion));
+	if (!proc) {
+		::close(readFd);
+		int status = 0;
+		::waitpid(pid, &status, 0);
+		return nullptr;
+	}
+
+	// the process handle owns ProcessState (userdata); the timer-driven reader/reaper
+	// is created when the handle is run (runFn -> start())
+	proc->setUserdata(state);
+	return proc;
 }
 
 } // namespace sprt::dispatch

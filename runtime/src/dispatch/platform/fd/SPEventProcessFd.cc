@@ -67,6 +67,13 @@ void ProcessFdSource::cancel() {
 		::close(pidfd);
 		pidfd = -1;
 	}
+	// If the handle is being cancelled while the child is still running (i.e. the exit
+	// path never ran), terminate and reap it so it neither outlives its handle nor leaks
+	// a zombie. `exited` guards against signalling an already-reaped (recycled) pid.
+	if (!exited && pid > 0) {
+		killProcessChild(pid);
+		exited = true;
+	}
 }
 
 bool ProcessFdHandle::init(HandleClass *cl, int pidfd, int pid,
@@ -129,6 +136,7 @@ void ProcessFdURingHandle::notify(URingData *uring, ProcessFdSource *source,
 	int status = 0;
 	__sprt_wait4(source->pid, &status, 0, nullptr);
 	_exitCode = decodeWaitStatus(status);
+	source->exited = true; // reaped here: cancel()/teardown must not kill a recycled pid
 
 	auto state = static_cast<ProcessState *>(getUserdata());
 	if (state) {
@@ -175,6 +183,7 @@ void ProcessFdEPollHandle::notify(EPollData *epoll, ProcessFdSource *source,
 	int status = 0;
 	__sprt_wait4(source->pid, &status, 0, nullptr);
 	_exitCode = decodeWaitStatus(status);
+	source->exited = true; // reaped here: cancel()/teardown must not kill a recycled pid
 
 	auto state = static_cast<ProcessState *>(getUserdata());
 	if (state) {
