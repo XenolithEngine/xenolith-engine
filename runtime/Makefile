@@ -41,6 +41,7 @@ LOCAL_MODULES_PATHS =
 
 LOCAL_MODULES ?= \
 	runtime_libc_wrapper \
+	runtime_window \
 	runtime
 
 LOCAL_ROOT = $(abspath $(dir $(LOCAL_MAKEFILE)))
