@@ -28,19 +28,19 @@
 #if __SPRT_RUNTIME_CONFIG_HAVE_WINDOW
 
 #if SPRT_LINUX
-#include "../libc_wrapper/window/linux/SPRTWinLinuxController.h"
+#include "../linux/SPRTWinLinuxController.h"
 #endif
 
 #if SPRT_ANDROID
-#include "../libc_wrapper/window/android/SPRTWinAndroidContextController.h"
+#include "../android/SPRTWinAndroidContextController.h"
 #endif
 
 #if SPRT_WINDOWS
-#include "../libc_wrapper/window/windows/SPRTWinWindowsContextController.h"
+#include "../windows/SPRTWinWindowsContextController.h"
 #endif
 
 #if SPRT_MACOS
-#include "../libc_wrapper/window/macos/SPRTWinMacosContextController.h"
+#include "../macos/SPRTWinMacosContextController.h"
 #endif
 
 namespace sprt::window {
