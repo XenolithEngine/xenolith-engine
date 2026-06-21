@@ -83,4 +83,22 @@
 #define ETXTBSY         139
 #define EWOULDBLOCK     140
 
+#define ENOMEDIUM		256
+#define ELNRNG			257
+
+// clang-format off
+#define __SPRT_WSABASEERR              10000
+// clang-format on
+
+#define ESOCKTNOSUPPORT      (__SPRT_WSABASEERR+44)
+#define EPFNOSUPPORT         (__SPRT_WSABASEERR+46)
+#define ESHUTDOWN            (__SPRT_WSABASEERR+58)
+#define ETOOMANYREFS         (__SPRT_WSABASEERR+59)
+#define EHOSTDOWN            (__SPRT_WSABASEERR+64)
+#define EPROCLIM             (__SPRT_WSABASEERR+67)
+#define EUSERS               (__SPRT_WSABASEERR+68)
+#define EDQUOT               (__SPRT_WSABASEERR+69)
+#define ESTALE               (__SPRT_WSABASEERR+70)
+#define EREMOTE              (__SPRT_WSABASEERR+71)
+
 #endif // CORE_RUNTIME_INCLUDE_C_CROSS_WINDOWS_SPRT_ERRNO_H_
