@@ -43,6 +43,7 @@ struct SPRT_API Queue::Data : public QueueData {
 
 	HandleClass _runloopThreadClass;
 	HandleClass _runloopTimerClass;
+	HandleClass _runloopProcessClass;
 	HandleClass _runloopFileClass;
 
 	Data(QueueRef *q, const QueueInfo &info);

@@ -35,6 +35,7 @@ struct ProcessFdSource {
 	int pid = -1;
 	epoll_event event;
 	PollFlags flags;
+	bool exited = false; // child reaped via the exit path; cancel() must not kill a recycled pid
 
 	bool init(int pidfd, int pid);
 	void cancel();

@@ -281,6 +281,7 @@ bool ProcessIocpSource::init(void *h, int p) {
 	event = nullptr;
 	wait = nullptr;
 	port = nullptr;
+	exited = false;
 	return true;
 }
 
@@ -296,6 +297,14 @@ void ProcessIocpSource::cancel(Handle *) {
 		wait = nullptr;
 	}
 	if (hProcess) {
+		// If the handle is cancelled while the child is still running (the exit notify
+		// never ran), terminate it so it does not outlive its handle — the Windows
+		// analogue of the POSIX backends' SIGKILL+reap. `exited` guards against firing on
+		// an already-exited child. Windows has no zombies, so closing the HANDLE is the
+		// only reclamation needed once it is dead.
+		if (!exited) {
+			TerminateProcess(hProcess, 1);
+		}
 		CloseHandle(hProcess);
 		hProcess = nullptr;
 	}
@@ -379,6 +388,7 @@ void ProcessIocpHandle::notify(IocpData *iocp, ProcessIocpSource *source, const 
 	GetExitCodeProcess(source->hProcess, &code);
 	_exitCode = int(code);
 	_childExited = true;
+	source->exited = true; // exited on its own: cancel() must not TerminateProcess
 
 	// Do NOT tear the reader down yet: the child's final output (notably error text written just
 	// before it exited) may still be buffered in the pipe or in an in-flight overlapped read.

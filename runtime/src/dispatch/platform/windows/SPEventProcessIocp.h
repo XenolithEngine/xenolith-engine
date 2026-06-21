@@ -94,6 +94,7 @@ struct ProcessIocpSource {
 	void *wait = nullptr; // fallback: RegisterWaitForSingleObject wait handle
 	void *port = nullptr; // fallback: the IOCP port (for the thread-pool callback)
 	int pid = 0;
+	bool exited = false; // child exited via the notify path; cancel() then skips TerminateProcess
 
 	bool init(void *hProcess, int pid);
 	void cancel(Handle *);

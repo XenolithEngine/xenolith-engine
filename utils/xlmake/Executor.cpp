@@ -342,7 +342,8 @@ void Builder::dispatchNode(NodeState *st) {
 		if (!bn->phony && !bn->target->fileExists) {
 			memory::StandartInterface::StringType ns;
 			sprt::cerr << "xlmake: *** No rule to make target '"
-					   << makefile::decodePathSpaces(StringView(bn->name.data(), bn->name.size()), ns)
+					   << makefile::decodePathSpaces(StringView(bn->name.data(), bn->name.size()),
+								  ns)
 					   << "'\n";
 			finishNode(st, false, false);
 			return;
@@ -1043,16 +1044,16 @@ BuildResult Builder::buildGoal(Target *goal) {
 // Render an elapsed wall-clock duration (in microseconds) as a compact human-readable string:
 // "742ms", "12.3s", "1m 05s", or "1h 02m 03s".
 static String formatBuildTime(uint64_t micros) {
-	uint64_t ms = micros / 1000;
-	if (ms < 1000) {
+	uint64_t ms = micros / 1'000;
+	if (ms < 1'000) {
 		return toString(ms, "ms");
 	}
-	uint64_t totalSec = ms / 1000;
+	uint64_t totalSec = ms / 1'000;
 	if (totalSec < 60) {
-		return toString(totalSec, ".", (ms % 1000) / 100, "s"); // seconds, one decimal place
+		return toString(totalSec, ".", (ms % 1'000) / 100, "s"); // seconds, one decimal place
 	}
-	uint64_t h = totalSec / 3600;
-	uint64_t m = (totalSec % 3600) / 60;
+	uint64_t h = totalSec / 3'600;
+	uint64_t m = (totalSec % 3'600) / 60;
 	uint64_t s = totalSec % 60;
 	if (h > 0) {
 		return toString(h, "h ", (m < 10 ? "0" : ""), m, "m ", (s < 10 ? "0" : ""), s, "s");
@@ -1147,8 +1148,15 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 		return finish(wouldRun ? 1 : 0);
 	}
 
-	auto looper = dispatch::Looper::acquire(
-			dispatch::LooperInfo{.name = StringView("xlmake"), .workersCount = 0});
+	dispatch::QueueEngine engine = dispatch::QueueEngine::Any;
+	engine &= ~dispatch::QueueEngine::ALooper; // disable ALooper - no spawnProcess support
+	engine &= ~dispatch::QueueEngine::RunLoop; // disable CFRunLoop - spawnProcess is emulated on it
+
+	auto looper = dispatch::Looper::acquire(dispatch::LooperInfo{
+		.name = StringView("xlmake"),
+		.workersCount = 0,
+		.engineMask = engine,
+	});
 	if (!looper) {
 		sprt::cerr << "xlmake: failed to initialize the event loop\n";
 		return finish(2);
@@ -1178,8 +1186,8 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 		case BuildResult::Cycle: {
 			memory::StandartInterface::StringType gs;
 			sprt::cerr << "xlmake: dependency cycle involving '"
-					   << makefile::decodePathSpaces(StringView(goal->name.data(), goal->name.size()),
-							  gs)
+					   << makefile::decodePathSpaces(
+								  StringView(goal->name.data(), goal->name.size()), gs)
 					   << "'\n";
 			rc = 2;
 			break;
@@ -1198,7 +1206,8 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 	if (!cfg.dryRun && !cfg.silent && !cfg.printDatabase) {
 		auto elapsed = Time::now().toMicros() - buildStartMicros;
 		if (cfg.makeLevel > 0) {
-			sprt::cout << "[" << cfg.makeLevel << "] Build time: " << formatBuildTime(elapsed) << "\n";
+			sprt::cout << "[" << cfg.makeLevel << "] Build time: " << formatBuildTime(elapsed)
+					   << "\n";
 		} else {
 			sprt::cout << "Build time: " << formatBuildTime(elapsed) << "\n";
 		}
