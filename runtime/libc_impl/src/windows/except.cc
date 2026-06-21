@@ -166,8 +166,14 @@ __SPRT_C_FUNC __attribute__((noreturn)) void longjmp(_JUMP_BUFFER *buf, int valu
 	exceptionRecord.NumberParameters = 1;
 	exceptionRecord.ExceptionInformation[0] = (ULONG_PTR)buf;
 
+#if defined(_M_ARM64) || defined(__aarch64__)
+	// AArch64 _JUMP_BUFFER: Sp is the target frame, Lr the resume address
+	s_RtlUnwindEx((VOID *)buf->Sp, (VOID *)buf->Lr, &exceptionRecord, (void *)(intptr_t)value,
+			&ctx, &historyTable);
+#else
 	s_RtlUnwindEx((VOID *)buf->Rsp, (VOID *)buf->Rip, &exceptionRecord, (void *)(intptr_t)value,
 			&ctx, &historyTable);
+#endif
 
 	__builtin_unreachable();
 }

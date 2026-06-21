@@ -1,7 +1,7 @@
 #include "include/defs.h"
 
-#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_X86_64
-
+#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_X86_64 || __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
+// fenv primitives are provided by the platform layer (libc_impl asm/<sys>/<arch>/fenv.s)
 #else
 #include "../musl-libc/src/fenv/fenv.c"
 #endif

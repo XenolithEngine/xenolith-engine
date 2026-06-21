@@ -1,0 +1,63 @@
+# Code style: compilation units (`.cpp`) and subunits (`.cc`)
+
+The project uses the file extension to mark a source file's role in the build:
+
+* **`.cpp` (and `.c`) — single compilation units (SCU).** These are the
+  translation units the build actually compiles. The build collects them by
+  glob: [make/c/rules.mk](../../make/c/rules.mk) sets
+  `SP_SOURCE_FILES_PATTERN := *.cpp *.c *.S *.s`. There is no `*.cc` in that
+  pattern anywhere in [make/](../../make/).
+* **`.cc` — subunits.** A `.cc` file is never compiled on its own. It is
+  `#include`d by exactly one `.cpp` SCU and becomes part of that SCU's
+  translation unit (a "unity"/SCU build). Because `.cc` is not in the source
+  glob, dropping a new `.cc` next to its siblings does *not* add it to the
+  build — it only takes effect once some `.cpp` includes it.
+
+## Why
+
+Grouping many small implementation files into a few SCUs keeps translation-unit
+count (and therefore build time and cross-TU duplication) down, while still
+letting the implementation be split across readable, single-purpose files. The
+`.cpp` aggregator decides *which* subunits and *in what configuration* they are
+built.
+
+## Example
+
+`runtime/libc_impl/src/builtin_startup.cpp` is an SCU that assembles the Windows
+process-startup layer from subunits:
+
+[source,cpp]
+----
+#include "windows/dll/dllloader.cc"
+#include "windows/dll/dllstub_nt_extras.cc"
+
+#if !__SPRT_WIN_USE_IMPORT_STRING_LIB
+#include "windows/dll/dllstub_gen_strings.cc"   // DLL-wrapper string fns
+#endif
+
+#if !__SPRT_WIN_USE_IMPORT_LIB
+#include "windows/dll/dllstub2_kernel32.cc"
+// ... one subunit per imported system DLL ...
+#endif
+
+#include "windows/startup.cc"
+#include "windows/except.cc"
+----
+
+Likewise `builtin_time.cpp` includes `windows/time.cc`, and `builtin_dlfcn.cpp`
+includes `windows/dlfcn.cc`.
+
+## Practical rules
+
+* A subunit shares the **translation-unit scope** of its parent SCU. Do not
+  redefine in a `.cc` something the parent `.cpp` already provides. For example
+  `windows/time.cc` uses the file-static `__utc` that `builtin_time.cpp`
+  defines; adding a second `static const char __utc[]` inside `time.cc` would be
+  a redefinition in the real build.
+* The set of subunits an SCU pulls in can be **configuration-dependent**
+  (`#if`-guarded, as with `__SPRT_WIN_USE_IMPORT_STRING_LIB` /
+  `__SPRT_WIN_USE_IMPORT_LIB` above). Read the parent SCU to know what is
+  actually compiled for a given target.
+* When verifying that code compiles, **compile the `.cpp` SCU, not the `.cc`
+  subunit.** Compiling a `.cc` standalone produces false-positive errors for
+  symbols and macros its parent SCU supplies.

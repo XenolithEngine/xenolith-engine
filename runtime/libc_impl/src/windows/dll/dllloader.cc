@@ -34,7 +34,11 @@ namespace sprt {
 	Loader
 */
 
+#if defined(_M_ARM64) || defined(__aarch64__)
+extern "C" unsigned __int64 __readx18qword(unsigned long);
+#else
 extern "C" unsigned __int64 __readgsqword(unsigned long);
+#endif
 
 // clang-format off
 static BYTE s_TolowerTable[] = {
@@ -76,7 +80,12 @@ SAFELOADER size_t __wcslen(const wchar_t *s) {
 	return s - a;
 }
 
+#if defined(_M_ARM64) || defined(__aarch64__)
+// On Windows ARM64 the TEB is held in x18; PEB sits at TEB+0x60 (as on x64)
+PPEB GetPEB(void) { return (PPEB)__readx18qword(0x60); }
+#else
 PPEB GetPEB(void) { return (PPEB)__readgsqword(0x60); }
+#endif
 
 [[maybe_unused]]
 SAFELOADER HMODULE GetKernel32Module(void) {

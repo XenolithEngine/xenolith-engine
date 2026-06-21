@@ -89,6 +89,8 @@ LOCAL_EXEC_LIVE_RELOAD ?= 0
 LOCAL_ROOT := $(subst \,/,$(LOCAL_ROOT))
 LOCAL_OUTDIR := $(subst \,/,$(LOCAL_OUTDIR))
 
+LOCAL_MACOS_BUNDLE ?= 1
+
 ifneq ($(filter %/,$(LOCAL_ROOT)),)
 LOCAL_ROOT := $(patsubst %/,%,$(LOCAL_ROOT))
 endif

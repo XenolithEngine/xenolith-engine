@@ -27,6 +27,7 @@ THE SOFTWARE.
 
 #if defined(_WIN32)
 
+// Interlocked / exception intrinsics available on every Windows architecture
 __SPRT_C_FUNC long _InterlockedOr(long volatile *_Value, long _Mask);
 __SPRT_C_FUNC long _InterlockedExchangeAdd(long volatile *_Addend, long _Value);
 __SPRT_C_FUNC void *_InterlockedExchangePointer(void *volatile *_Target, void *_Value);
@@ -36,17 +37,9 @@ __SPRT_C_FUNC long _InterlockedExchange(long volatile *_Target, long _Value);
 __SPRT_C_FUNC __int64 _InterlockedExchange64(__int64 volatile *_Target, __int64 _Value);
 __SPRT_C_FUNC __int64 _InterlockedOr64(__int64 volatile *_Value, __int64 _Mask);
 __SPRT_C_FUNC __int64 _InterlockedAnd64(__int64 volatile *, __int64);
-__SPRT_C_FUNC void __faststorefence(void);
-__SPRT_C_FUNC unsigned __int64 __readgsqword(unsigned long);
-__SPRT_C_FUNC unsigned short __readgsword(unsigned long);
 __SPRT_C_FUNC unsigned long _exception_code(void);
 __SPRT_C_FUNC void *_exception_info(void);
 __SPRT_C_FUNC int _abnormal_termination(void);
-__SPRT_C_FUNC void _mm_pause(void);
-
-__SPRT_C_FUNC SPRT_FORCEINLINE __int64 _InterlockedAdd64(__int64 volatile *target, __int64 value) {
-	return __atomic_fetch_add(target, value, __ATOMIC_ACQ_REL);
-}
 
 #pragma intrinsic(_InterlockedOr)
 #pragma intrinsic(_InterlockedExchangeAdd)
@@ -56,13 +49,36 @@ __SPRT_C_FUNC SPRT_FORCEINLINE __int64 _InterlockedAdd64(__int64 volatile *targe
 #pragma intrinsic(_InterlockedExchange64)
 #pragma intrinsic(_InterlockedOr64)
 #pragma intrinsic(_InterlockedAnd64)
-#pragma intrinsic(__faststorefence)
-#pragma intrinsic(__readgsqword)
-#pragma intrinsic(__readgsword)
 #pragma intrinsic(_exception_code)
 #pragma intrinsic(_exception_info)
 #pragma intrinsic(_abnormal_termination)
+
+#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
+
+// On ARM64 _InterlockedAdd64 is a true compiler intrinsic; the TEB lives in x18.
+__SPRT_C_FUNC __int64 _InterlockedAdd64(__int64 volatile *, __int64);
+__SPRT_C_FUNC unsigned __int64 __readx18qword(unsigned long);
+__SPRT_C_FUNC void __yield(void);
+#pragma intrinsic(_InterlockedAdd64)
+
+#else
+
+// x86_64 has no single-instruction atomic add-and-fetch; emulate it.
+__SPRT_C_FUNC void __faststorefence(void);
+__SPRT_C_FUNC unsigned __int64 __readgsqword(unsigned long);
+__SPRT_C_FUNC unsigned short __readgsword(unsigned long);
+__SPRT_C_FUNC void _mm_pause(void);
+
+__SPRT_C_FUNC SPRT_FORCEINLINE __int64 _InterlockedAdd64(__int64 volatile *target, __int64 value) {
+	return __atomic_fetch_add(target, value, __ATOMIC_ACQ_REL);
+}
+
+#pragma intrinsic(__faststorefence)
+#pragma intrinsic(__readgsqword)
+#pragma intrinsic(__readgsword)
 #pragma intrinsic(_mm_pause)
+
+#endif
 
 #define InterlockedOr _InterlockedOr
 #define InterlockedExchange64 _InterlockedExchange64

@@ -341,18 +341,35 @@ typedef struct _IMAGE_RUNTIME_FUNCTION_ENTRY {
 
 #elif __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
 
+// clang-format off
+#define CONTEXT_ARM64           0x00400000L
+#define CONTEXT_CONTROL         (CONTEXT_ARM64 | 0x00000001L)
+#define CONTEXT_INTEGER         (CONTEXT_ARM64 | 0x00000002L)
+#define CONTEXT_FLOATING_POINT  (CONTEXT_ARM64 | 0x00000004L)
+#define CONTEXT_DEBUG_REGISTERS (CONTEXT_ARM64 | 0x00000008L)
+
+#define CONTEXT_FULL (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT)
+
+#define CONTEXT_ALL  (CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT | CONTEXT_DEBUG_REGISTERS)
+// clang-format on
+
 #define _JBLEN  24
 #define _JBTYPE __uint64
 
-#define ARM_MAX_BREAKPOINTS     8
-#define ARM_MAX_WATCHPOINTS     1
+#define ARM64_MAX_BREAKPOINTS   8
+#define ARM64_MAX_WATCHPOINTS   2
 
-typedef struct _NEON128 {
-	ULONGLONG Low;
-	LONGLONG High;
+typedef union _NEON128 {
+	struct {
+		ULONGLONG Low;
+		LONGLONG High;
+	};
+	double D[2];
+	float S[4];
 } NEON128, *PNEON128;
 
-typedef struct SPRT_ALIGNAS(8) _CONTEXT {
+// AArch64 CONTEXT (ARM64_NT_CONTEXT) -- see splat sdk/include/um/winnt.h
+typedef struct SPRT_ALIGNAS(16) _CONTEXT {
 
 	//
 	// Control flags.
@@ -364,51 +381,62 @@ typedef struct SPRT_ALIGNAS(8) _CONTEXT {
 	// Integer registers
 	//
 
-	DWORD R0;
-	DWORD R1;
-	DWORD R2;
-	DWORD R3;
-	DWORD R4;
-	DWORD R5;
-	DWORD R6;
-	DWORD R7;
-	DWORD R8;
-	DWORD R9;
-	DWORD R10;
-	DWORD R11;
-	DWORD R12;
-
-	//
-	// Control Registers
-	//
-
-	DWORD Sp;
-	DWORD Lr;
-	DWORD Pc;
-	DWORD Cpsr;
+	DWORD Cpsr; // NZVF + DAIF + CurrentEL + SPSel
+	union {
+		struct {
+			DWORD64 X0;
+			DWORD64 X1;
+			DWORD64 X2;
+			DWORD64 X3;
+			DWORD64 X4;
+			DWORD64 X5;
+			DWORD64 X6;
+			DWORD64 X7;
+			DWORD64 X8;
+			DWORD64 X9;
+			DWORD64 X10;
+			DWORD64 X11;
+			DWORD64 X12;
+			DWORD64 X13;
+			DWORD64 X14;
+			DWORD64 X15;
+			DWORD64 X16;
+			DWORD64 X17;
+			DWORD64 X18;
+			DWORD64 X19;
+			DWORD64 X20;
+			DWORD64 X21;
+			DWORD64 X22;
+			DWORD64 X23;
+			DWORD64 X24;
+			DWORD64 X25;
+			DWORD64 X26;
+			DWORD64 X27;
+			DWORD64 X28;
+			DWORD64 Fp; // x29 frame pointer
+			DWORD64 Lr; // x30 link register
+		};
+		DWORD64 X[31];
+	} DUMMYUNIONNAME;
+	DWORD64 Sp;
+	DWORD64 Pc;
 
 	//
 	// Floating Point/NEON Registers
 	//
 
-	DWORD Fpscr;
-	DWORD Padding;
-	union {
-		NEON128 Q[16];
-		ULONGLONG D[32];
-		DWORD S[32];
-	} DUMMYUNIONNAME;
+	NEON128 V[32];
+	DWORD Fpcr;
+	DWORD Fpsr;
 
 	//
 	// Debug registers
 	//
 
-	DWORD Bvr[ARM_MAX_BREAKPOINTS];
-	DWORD Bcr[ARM_MAX_BREAKPOINTS];
-	DWORD Wvr[ARM_MAX_WATCHPOINTS];
-	DWORD Wcr[ARM_MAX_WATCHPOINTS];
-
-	DWORD Padding2[2];
+	DWORD Bcr[ARM64_MAX_BREAKPOINTS];
+	DWORD64 Bvr[ARM64_MAX_BREAKPOINTS];
+	DWORD Wcr[ARM64_MAX_WATCHPOINTS];
+	DWORD64 Wvr[ARM64_MAX_WATCHPOINTS];
 
 } CONTEXT, *PCONTEXT;
 
@@ -427,6 +455,44 @@ typedef struct _IMAGE_RUNTIME_FUNCTION_ENTRY {
 		};
 	};
 } IMAGE_RUNTIME_FUNCTION_ENTRY, *PIMAGE_RUNTIME_FUNCTION_ENTRY;
+
+typedef struct _DISPATCHER_CONTEXT {
+	ULONG_PTR ControlPc;
+	ULONG_PTR ImageBase;
+	PRUNTIME_FUNCTION FunctionEntry;
+	ULONG_PTR EstablisherFrame;
+	ULONG_PTR TargetPc;
+	PCONTEXT ContextRecord;
+	PEXCEPTION_ROUTINE LanguageHandler;
+	PVOID HandlerData;
+	struct _UNWIND_HISTORY_TABLE *HistoryTable;
+	DWORD ScopeIndex;
+	BYTE ControlPcIsUnwound;
+	BYTE *NonVolatileRegisters;
+} DISPATCHER_CONTEXT, *PDISPATCHER_CONTEXT;
+
+// AArch64 _JUMP_BUFFER -- see splat crt/include/setjmp.h (192 bytes, 8-aligned)
+struct _JUMP_BUFFER {
+	__uint64 Frame;
+	__uint64 Reserved;
+	__uint64 X19; // x19 -- x28: callee saved registers
+	__uint64 X20;
+	__uint64 X21;
+	__uint64 X22;
+	__uint64 X23;
+	__uint64 X24;
+	__uint64 X25;
+	__uint64 X26;
+	__uint64 X27;
+	__uint64 X28;
+	__uint64 Fp; // x29 frame pointer
+	__uint64 Lr; // x30 link register
+	__uint64 Sp; // x31 stack pointer
+	unsigned int Fpcr; // fp control register
+	unsigned int Fpsr; // fp status register
+
+	double D[8]; // D8-D15 FP regs
+};
 
 #else
 
@@ -525,6 +591,17 @@ SPRT_FORCEINLINE PVOID GetCurrentFiber(VOID) {
 
 SPRT_FORCEINLINE struct _TEB *NtCurrentTeb(VOID) {
 	return (struct _TEB *)__readgsqword(__builtin_offsetof(NT_TIB, Self));
+}
+
+#elif defined(_M_ARM64)
+
+// On Windows ARM64 the TEB is held in x18; the NT_TIB layout matches x64.
+SPRT_FORCEINLINE PVOID GetCurrentFiber(VOID) {
+	return (PVOID)__readx18qword(__builtin_offsetof(NT_TIB, FiberData));
+}
+
+SPRT_FORCEINLINE struct _TEB *NtCurrentTeb(VOID) {
+	return (struct _TEB *)__readx18qword(__builtin_offsetof(NT_TIB, Self));
 }
 
 #endif
