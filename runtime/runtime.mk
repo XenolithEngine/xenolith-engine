@@ -40,6 +40,7 @@ include $(RUNTIME_MODULE_DIR)/musl-adapters/musl_libc.mk
 include $(RUNTIME_MODULE_DIR)/libc_impl/malloc.mk
 include $(RUNTIME_MODULE_DIR)/libc_impl/libc.mk
 include $(RUNTIME_MODULE_DIR)/libc_wrapper/libc-wrapper.mk
+include $(RUNTIME_MODULE_DIR)/window/window.mk
 
 
 MODULE_RUNTIME_DEFINED_IN := $(TOOLKIT_MODULE_PATH)

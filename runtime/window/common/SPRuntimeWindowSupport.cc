@@ -27,8 +27,6 @@
 #include <sprt/runtime/window/interface.h>
 #include <sprt/runtime/log.h>
 
-#include "window/SPRuntimeWindowPnpId.cc"
-
 namespace sprt::window {
 
 static String getManufacturerName(const unsigned char *x) {
