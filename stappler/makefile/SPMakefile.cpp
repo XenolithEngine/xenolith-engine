@@ -262,6 +262,56 @@ const Variable *Makefile::appendToVariable(StringView identifier, Origin varOrig
 
 const Variable *Makefile::getVariable(StringView str) const { return _engine.getIfDefined(str); }
 
+void Makefile::addSubstitutionCallback(Origin o, VariableCallback::Fn fn, void *udata) {
+	_engine.addSubstitutionCallback(o, fn, udata);
+}
+
+void Makefile::setExportVariable(StringView name, bool exported) {
+	_engine.setExportFlag(name, exported);
+}
+
+void Makefile::setExportAll(bool v) { _engine.setExportAll(v); }
+
+// A name acceptable as an environment-variable identifier: [A-Za-z_][A-Za-z0-9_]*. Under export-all
+// this filters out the engine's dotted specials (.DEFAULT_GOAL, COMPILE.c, .LIBPATTERNS, ...) that
+// could never be sane environment names, matching GNU make's export-all behavior.
+static bool Makefile_isEnvName(StringView n) {
+	if (n.empty()) {
+		return false;
+	}
+	char c0 = n[0];
+	if (!((c0 >= 'A' && c0 <= 'Z') || (c0 >= 'a' && c0 <= 'z') || c0 == '_')) {
+		return false;
+	}
+	for (char c : n) {
+		if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+					|| c == '_')) {
+			return false;
+		}
+	}
+	return true;
+}
+
+void Makefile::foreachExportedVariable(const Callback<void(StringView)> &cb) const {
+	_engine.foreachVariable([&](StringView name, const Variable &v) {
+		int flag = _engine.getExportFlag(name);
+		bool exported;
+		if (flag >= 0) {
+			exported = (flag == 1); // an explicit export/unexport beats the global toggle
+		} else if (_engine.isExportAll()) {
+			// export-all covers user-set variables only: not the built-in defaults (origin Default,
+			// e.g. CC/COMPILE.c) and not the transient automatic variables ($@, $<, ...).
+			exported = (v.origin != Origin::Default && v.origin != Origin::Automatic
+					&& v.origin != Origin::Undefined);
+		} else {
+			exported = false;
+		}
+		if (exported && Makefile_isEnvName(name)) {
+			cb(name);
+		}
+	});
+}
+
 void Makefile::foreachVariable(const Callback<void(StringView, const Variable &)> &cb) const {
 	_engine.foreachVariable(cb);
 }
@@ -495,14 +545,41 @@ bool Makefile::processMakefileLine(StringView str, ErrorReporter &err) {
 	}
 
 	Origin varOrigin = Origin::File;
+	ExportMode exportMode = ExportMode::None;
 
-	if (firstWord == "override") {
-		varOrigin = Origin::Override;
+	// Strip a leading line modifier and advance to the next word. `str` becomes the remainder after
+	// the modifier (what processSimpleLine re-parses), mirroring the original `override` handling.
+	auto rereadFirstWord = [&]() {
 		Stmt::skipWhitespace(tmp);
 		str = tmp;
 		firstWord = tmp.readUntil<StringView::WhiteSpace>();
 		if (tmp.is<StringView::Chars<'\r', '\n'>>() && firstWord.is<'\\'>()) {
 			firstWord = firstWord.sub(0, firstWord.size() - 1);
+		}
+	};
+
+	if (firstWord == "override") {
+		varOrigin = Origin::Override;
+		rereadFirstWord();
+	}
+
+	// `export`/`unexport` (GNU make): `export NAME...`, `export NAME = value`, or the bare form that
+	// toggles export-all. May follow or precede `override` (`override export NAME = v` works both ways).
+	if (firstWord == "export" || firstWord == "unexport") {
+		exportMode = (firstWord == "export") ? ExportMode::Export : ExportMode::Unexport;
+		rereadFirstWord();
+		if (firstWord == "override") {
+			varOrigin = Origin::Override;
+			rereadFirstWord();
+		}
+		StringView rest = str;
+		Stmt::skipWhitespace(rest);
+		if (rest.empty() || rest.is('#')) {
+			// bare `export` / `unexport` (optionally with a trailing comment): toggle export-all
+			if (_engine.getCurrentBlock()->enabled) {
+				_engine.setExportAll(exportMode == ExportMode::Export);
+			}
+			return true;
 		}
 	}
 
@@ -528,7 +605,7 @@ bool Makefile::processMakefileLine(StringView str, ErrorReporter &err) {
 	case Keyword::Else: return processElseLine(tmp, err); break;
 	case Keyword::Endif: return processEndifLine(tmp, err); break;
 	case Keyword::Undefine: return processUndefineLine(tmp, varOrigin, err); break;
-	case Keyword::None: return processSimpleLine(str, varOrigin, err); break;
+	case Keyword::None: return processSimpleLine(str, varOrigin, exportMode, err); break;
 	}
 	return false;
 }
@@ -938,7 +1015,8 @@ bool Makefile::tryParseTargetVariable(SpanView<Target *> targets, StringView &de
 	return true;
 }
 
-bool Makefile::processSimpleLine(StringView &str, Origin varOrigin, ErrorReporter &err) {
+bool Makefile::processSimpleLine(StringView &str, Origin varOrigin, ExportMode exportMode,
+		ErrorReporter &err) {
 	if (!_engine.getCurrentBlock()->enabled) {
 		return true;
 	}
@@ -1027,10 +1105,25 @@ bool Makefile::processSimpleLine(StringView &str, Origin varOrigin, ErrorReporte
 
 		_currentTargets = move(targets);
 
-	} else if (!str.empty()) {
+	} else if (!str.empty() && !str.is('#')) {
+		// A leftover that is only an inline comment is fine (readScoped stops at '#'); this matters for
+		// the no-operator forms such as `export NAME  # note`, whose tail after the name is the comment.
 		err.setPos(str);
 		err.reportError("Invalid char sequence");
 		return err.nerrors == 0;
+	}
+
+	// Apply a leading `export`/`unexport`: a bare name list (`export A B C`, op empty) marks each
+	// name; an assignment (`export VAR = value`) marks the single variable. A rule line (op ":") is
+	// never a variable, so it is left untouched.
+	if (exportMode != ExportMode::None && op != ":") {
+		bool exported = (exportMode == ExportMode::Export);
+		if (op.empty()) {
+			identifier.split<StringView::WhiteSpace>(
+					[&](StringView n) { _engine.setExportFlag(n, exported); });
+		} else if (!identifier.empty()) {
+			_engine.setExportFlag(identifier, exported);
+		}
 	}
 
 	return err.nerrors == 0;

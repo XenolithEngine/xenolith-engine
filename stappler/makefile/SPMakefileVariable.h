@@ -199,6 +199,16 @@ public:
 	void addSubstitutionCallback(Origin, VariableCallback::Fn, void *);
 	void addSubstitutionCallback(VariableCallback *);
 
+	// GNU make `export`/`unexport` state. A per-name flag (set by `export NAME`/`unexport NAME`)
+	// takes precedence over the global export-all toggle (the bare `export`/`unexport`). The engine
+	// only records the intent; the consumer turns it into the child-process environment (see
+	// Makefile::foreachExportedVariable).
+	void setExportFlag(StringView, bool exported);
+	void setExportAll(bool v) { _exportAll = v; }
+	bool isExportAll() const { return _exportAll; }
+	// 1 = explicitly exported, 0 = explicitly unexported, -1 = no explicit flag for this name.
+	int getExportFlag(StringView) const;
+
 	// Wires $(eval ...) back to the owning Makefile's parser without making the engine
 	// depend on Makefile (mirrors the include/substitution-callback indirection).
 	using EvalFn = bool (*)(void *, StringView name, StringView content);
@@ -260,6 +270,10 @@ protected:
 	CallContext *_callContext = nullptr;
 	Map<StringView, Variable> _variables;
 	Vector<VariableCallback *> _varCallbacks;
+
+	// `export`/`unexport` bookkeeping (see setExportFlag/setExportAll). Names are pool-copied.
+	Map<StringView, bool> _exportFlags;
+	bool _exportAll = false;
 	Vector<Stmt *> _subStack;
 
 	StringView _rootPath;

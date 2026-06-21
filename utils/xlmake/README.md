@@ -22,6 +22,7 @@ can use it unmodified.
 - [How it works](#how-it-works)
 - [Similarities with GNU make](#similarities-with-gnu-make)
 - [Differences from GNU make](#differences-from-gnu-make)
+- [Environment variables](#environment-variables)
 - [xlmake-specific extensions](#xlmake-specific-extensions)
 - [Paths with spaces](#paths-with-spaces)
 - [Supported make language](#supported-make-language)
@@ -155,7 +156,8 @@ It is off in `--dry-run`, `--silent`, and `--print-data-base`. See [`.TARGET_NAM
 xlmake aims for GNU make 4.x source compatibility for the common feature set:
 
 - **Variables:** recursive (`=`), simple (`:=`, `::=`, `:::=`), append (`+=`), conditional
-  (`?=`); `override`; `define`/`endef` multi-line variables; variable *origins* and *flavors*.
+  (`?=`); `override`; `export`/`unexport` (per-variable and the bare export-all form);
+  `define`/`endef` multi-line variables; variable *origins* and *flavors*.
 - **Rules:** explicit rules, multiple targets, pattern rules (`%`), order-only prerequisites
   (`|`), automatic variables (`$@`, `$<`, `$^`, `$?`, `$*`, …), and **target-specific variables**
   (`target: VAR = value`). Targets and prerequisites may contain `\ `-escaped spaces (see
@@ -181,10 +183,16 @@ xlmake aims for GNU make 4.x source compatibility for the common feature set:
 
 These are the behaviors to be aware of when porting a makefile:
 
-- **The environment is not bulk-imported.** GNU make turns every environment variable into a make
-  variable; xlmake injects only a curated set — `MAKELEVEL`, `HOME`, the GNU standard defaults
-  (`CC`, `CXX`, `MAKE`, …), and xlmake's own `XL_*`/`XLMAKE_*` variables. An arbitrary
-  `FOO=bar xlmake` does **not** make `$(FOO)` visible.
+- **The environment is loaded lazily, not bulk-imported.** GNU make turns every environment variable
+  into a make variable up front; xlmake instead resolves an environment variable **on demand** — the
+  first time `$(FOO)` (or `$(origin FOO)`, or `ifdef FOO`) needs a value that nothing else defines, it
+  is read from the environment, given origin *environment*, and cached. So `FOO=bar xlmake` **does**
+  make `$(FOO)` visible, exactly as in GNU make, but the table is never pre-filled with the whole
+  environment. One precedence nuance: xlmake's **built-in defaults are not overridden by the
+  environment** (a fallback is consulted only for a name nothing else defines, and the defaults *are*
+  definitions). So `CC=clang xlmake` leaves `$(CC)` as the default `cc`; assign `CC` in the makefile
+  or on the command line (`xlmake CC=clang`) to change it. See
+  [Environment variables](#environment-variables).
 - **Target-specific variables are own-recipe scope only.** A `target: VAR = value` assignment
   applies while expanding *that target's* recipe; it does **not** propagate down to the
   prerequisites' recipes the way GNU make's do.
@@ -200,6 +208,65 @@ These are the behaviors to be aware of when porting a makefile:
 - **Diagnostic markers in `--print-data-base` are fixed English byte-strings** (GNU localizes
   them); this is deliberate, so parsers stay stable across locales.
 - **One mode per invocation**, selected by the first token (no mixing inspect and build actions).
+
+---
+
+## Environment variables
+
+xlmake bridges the process environment and the make variable table in both directions, the GNU make
+way, with one efficiency twist: nothing is bulk-copied.
+
+### Reading: lazy import
+
+An environment variable is pulled in **on first reference**. The first time an undefined name is
+needed — `$(FOO)`, `$(origin FOO)`, `$(flavor FOO)`, `ifdef FOO`, `$(FOO:.c=.o)`, … — xlmake reads it
+from the environment, exposes it with origin *environment*, and caches it for the rest of the run:
+
+```sh
+DEBUG=1 xlmake            # $(DEBUG) is "1", $(origin DEBUG) is "environment"
+```
+
+Precedence follows GNU make's order, **except that the environment does not override xlmake's built-in
+defaults**: the environment is consulted only for a name that nothing else defines. So a makefile
+assignment, a command-line assignment, and a built-in default (`CC`, `CXX`, the `COMPILE.*`/`LINK.*`
+templates, …) all win over the environment. To change a defaulted variable, assign it in the makefile
+or on the command line (`xlmake CC=clang`), not via the environment. A name with no built-in default
+(your own `$(STAPPLER_BUILD_ROOT)`, `$(DEBUG)`, …) is taken straight from the environment.
+
+An environment value is used **verbatim**, so an embedded space is an ordinary word separator. When an
+environment variable holds a path that may contain spaces, wrap it with
+[`$(xl_make_path …)`](#extension-functions) at the point of use:
+
+```makefile
+ROOT := $(xl_make_path $(STAPPLER_BUILD_ROOT))   # keep "/home/My App/make" one word
+```
+
+### Writing: `export` / `unexport`
+
+`export` marks a variable to be placed in the environment of every recipe child process — and of any
+recursive `$(MAKE)` — so the change propagates down the whole build tree (a child inherits xlmake's
+environment, so an exported variable a sub-make reads back simply arrives as origin *environment*).
+Exported values are visible to `$(shell …)` too. All the GNU forms are supported:
+
+```makefile
+export PATH                       # export an already-defined variable
+export CFLAGS := -O2 -g           # define and export in one line (also =, +=, ?=)
+export VERBOSE QUIET              # export several names at once
+unexport SECRET                   # keep a variable out of the child environment
+
+export                            # export-all: export every user-set variable from here on
+unexport                          # turn export-all back off
+```
+
+A per-variable `export`/`unexport` always beats the bare export-all toggle. Under export-all only
+*user-set* variables are exported — the built-in defaults and the automatic variables (`$@`, `$<`, …)
+are excluded — and only names that are valid environment identifiers (`[A-Za-z_][A-Za-z0-9_]*`), so the
+engine's dotted specials (`.DEFAULT_GOAL`, `COMPILE.c`, …) never leak. A variable that came from the
+environment is already there, so it propagates to children without an explicit `export`. The exported
+value is the variable's fully expanded text, computed once after the makefiles are read.
+
+> **Limitation:** `export define NAME … endef` exports nothing — the multi-line variable is still
+> defined, but not marked for export; use a separate `export NAME` line.
 
 ---
 
@@ -387,7 +454,7 @@ error warning info
 see [In-process recipe directives](#in-process-recipe-directives).
 
 **Directives:** `ifdef` `ifndef` `ifeq` `ifneq` `else` `endif` `define` `endef`
-`include` `-include` `sinclude` `override` `undefine`.
+`include` `-include` `sinclude` `override` `undefine` `export` `unexport`.
 
 **Special targets acted on:** `.PHONY` `.PRECIOUS` `.SECONDARY` `.INTERMEDIATE` `.SUFFIXES`
 `.DEFAULT`.

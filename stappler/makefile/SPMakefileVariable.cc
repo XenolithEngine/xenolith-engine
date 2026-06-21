@@ -221,6 +221,23 @@ void VariableEngine::addSubstitutionCallback(VariableCallback *cb) {
 	});
 }
 
+void VariableEngine::setExportFlag(StringView name, bool exported) {
+	auto it = _exportFlags.find(name);
+	if (it != _exportFlags.end()) {
+		it->second = exported;
+	} else {
+		_exportFlags.emplace(name.pdup(_pool), exported);
+	}
+}
+
+int VariableEngine::getExportFlag(StringView name) const {
+	auto it = _exportFlags.find(name);
+	if (it != _exportFlags.end()) {
+		return it->second ? 1 : 0;
+	}
+	return -1;
+}
+
 void VariableEngine::setEvalCallback(EvalFn fn, void *udata) {
 	_evalFn = fn;
 	_evalUserdata = udata;

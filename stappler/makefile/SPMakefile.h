@@ -29,6 +29,14 @@
 
 namespace STAPPLER_VERSIONIZED stappler::makefile {
 
+// A leading `export`/`unexport` modifier on an assignment or directive line (GNU make). None when
+// the line carries no such modifier.
+enum class ExportMode {
+	None,
+	Export,
+	Unexport,
+};
+
 // Trust model: this module is a GNU-make-compatible build-system component and is
 // designed to evaluate ONLY trusted makefiles (the project's own build scripts),
 // exactly like GNU make itself. It deliberately implements full make semantics,
@@ -76,6 +84,23 @@ public:
 			bool multiline = false);
 
 	const Variable *getVariable(StringView) const;
+
+	// Register a substitution source consulted by `$(NAME)` (and origin/flavor/ifdef) when NAME is
+	// not otherwise defined: a hit is resolved lazily on first use and cached as a variable of the
+	// given Origin. The intended use is on-demand loading of environment variables (Origin
+	// ::Environment) without bulk-importing the whole environment. Sources are tried highest-Origin
+	// first; a defined variable (including a built-in default) always wins over them.
+	void addSubstitutionCallback(Origin, VariableCallback::Fn, void *);
+
+	// GNU make `export`/`unexport`. setExportVariable marks one name for (or against) export; the
+	// bare-directive form sets the global export-all toggle. foreachExportedVariable enumerates every
+	// defined variable that should be placed into the environment of recipe child processes — an
+	// explicitly exported name, or (under export-all) any user-origin variable whose name is a valid
+	// environment-variable identifier. The value is not resolved here: the caller expands it with
+	// getVariableValue() and pushes it to the OS environment.
+	void setExportVariable(StringView, bool exported);
+	void setExportAll(bool);
+	void foreachExportedVariable(const Callback<void(StringView)> &) const;
 
 	// Enumerate every defined variable (name + raw Variable). Use getVariableValue() to
 	// obtain the expanded value of a recursive variable.
@@ -182,7 +207,7 @@ protected:
 	bool processDefineContentLine(StringView &str, Block *, ErrorReporter &);
 	bool processEndefLine(StringView &str, ErrorReporter &);
 	bool processUndefineLine(StringView &str, Origin varOrigin, ErrorReporter &);
-	bool processSimpleLine(StringView &str, Origin varOrigin, ErrorReporter &);
+	bool processSimpleLine(StringView &str, Origin varOrigin, ExportMode, ErrorReporter &);
 
 	// In a rule line `targets : <decl>`, detect and consume a target-specific variable
 	// assignment (`VAR = value`, also :=, ::=, :::=, +=, ?=, and a leading `private`). Returns
