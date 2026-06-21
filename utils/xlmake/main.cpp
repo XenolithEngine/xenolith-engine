@@ -635,6 +635,26 @@ static int runXlmake(int argc, const char *argv[]) {
 
 		mk->assignSimpleVariable("XLMAKE_VERSION", Origin::Default, XLMAKE_VERSION);
 
+		// Lazy environment loading. Any variable not defined by the makefile, the command line, or a
+		// built-in default resolves on first use from the process environment (origin "environment",
+		// cached afterwards), so `$(FOO)`, `$(origin FOO)` and `ifdef FOO` see environment variables —
+		// like GNU make, but on demand, so the whole environment is never bulk-imported into the table.
+		// A makefile/command-line assignment or a built-in default still wins (this is consulted only
+		// for an otherwise-undefined name). Registered before the makefile is read so it is in effect
+		// during parsing (e.g. for `$(shell ...)` and conditionals).
+		mk->addSubstitutionCallback(Origin::Environment,
+				[](void *, const Callback<void(StringView)> &out, StringView name) -> bool {
+			// getenv needs a NUL-terminated key; a make variable name is not guaranteed to be one.
+			memory::StandartInterface::StringType key(name.data(), name.size());
+			if (const char *value = ::getenv(key.data())) {
+				// Verbatim, like the curated HOME injection: a space stays a word separator (use
+				// $(xl_make_path ...) in the makefile when an environment value is a path with spaces).
+				out(StringView(value));
+				return true;
+			}
+			return false;
+		}, nullptr);
+
 		// Recursive-make depth (GNU MAKELEVEL). Read our level from the environment, expose it to
 		// the makefile (origin "environment", so a makefile assignment can still override it), and
 		// export level+1 to every recipe child via the process environment — so any `$(MAKE)` the
@@ -774,6 +794,27 @@ static int runXlmake(int argc, const char *argv[]) {
 		for (auto &p : makefilePaths) {
 			// non-fatal: report and keep going so partial inspection still works
 			mk->include(FileInfo{StringView(p)}, &err);
+		}
+
+		// GNU make `export`: push every exported variable into the process environment so recipe
+		// children — and any recursive $(MAKE) — inherit it, and so it is visible to $(shell ...).
+		// Children inherit our environ, so setenv() is the propagation channel (the same mechanism
+		// MAKELEVEL/XLMAKE_COLOR use); a variable that came from the environment is already there, so
+		// it propagates without re-exporting. Snapshot the names first: resolving a value may lazily
+		// load environment variables and so mutate the variable table mid-iteration. The value is the
+		// expanded text with path-space placeholders decoded back to real spaces (the OS environment
+		// holds plain strings).
+		Vector<StringView> exportNames;
+		mk->foreachExportedVariable([&](StringView name) { exportNames.emplace_back(name); });
+		for (auto name : exportNames) {
+			memory::StandartInterface::StringType key(name.data(), name.size());
+			memory::StandartInterface::StringType valBuf;
+			mk->getVariableValue(name, [&](StringView s) { valBuf.append(s.data(), s.size()); }, err);
+			memory::StandartInterface::StringType decoded;
+			auto decodedView =
+					makefile::decodePathSpaces(StringView(valBuf.data(), valBuf.size()), decoded);
+			memory::StandartInterface::StringType value(decodedView.data(), decodedView.size());
+			::setenv(key.data(), value.data(), 1);
 		}
 
 		if (cfg.mode == Mode::Inspect) {
