@@ -91,6 +91,7 @@ typedef unsigned int UINT, *PUINT;
 typedef unsigned long ULONG, *PULONG;
 typedef __uint64 ULONGLONG, *PULONGLONG;
 typedef __uint64 ULONG64, *PULONG64;
+typedef __uint64 UINT64, *PUINT64;
 typedef __uint64 ULONG_PTR, *PULONG_PTR, UINT_PTR, *PUINT_PTR;
 
 typedef signed short SHORT, *PSHORT;
@@ -98,6 +99,7 @@ typedef signed int INT, *PINT;
 typedef signed long LONG, *PLONG, *LPLONG;
 typedef __sint64 LONGLONG, *PLONGLONG;
 typedef __sint64 LONG64, *PLONG64, QWORD, *PQWORD;
+typedef __sint64 INT64, *PINT64;
 typedef __sint64 LONG_PTR, *PLONG_PTR, INT_PTR, *PINT_PTR;
 
 typedef float FLOAT, *PFLOAT;

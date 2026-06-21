@@ -242,7 +242,11 @@ __SPRT_WIN_IMPORT WINAPI BOOL TerminateProcess(HANDLE hProcess, UINT uExitCode);
 
 __SPRT_WIN_IMPORT WINAPI BOOL ShellExecuteExW(SHELLEXECUTEINFOW *pExecInfo);
 
+#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
+SPRT_FORCEINLINE VOID YieldProcessor() { __yield(); }
+#else
 SPRT_FORCEINLINE VOID YieldProcessor() { _mm_pause(); }
+#endif
 
 __SPRT_END_DECL
 
