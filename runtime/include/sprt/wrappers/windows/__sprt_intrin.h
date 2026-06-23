@@ -56,9 +56,174 @@ __SPRT_C_FUNC int _abnormal_termination(void);
 #if __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
 
 // On ARM64 _InterlockedAdd64 is a true compiler intrinsic; the TEB lives in x18.
-__SPRT_C_FUNC __int64 _InterlockedAdd64(__int64 volatile *, __int64);
-__SPRT_C_FUNC unsigned __int64 __readx18qword(unsigned long);
-__SPRT_C_FUNC void __yield(void);
+
+__SPRT_BEGIN_DECL
+
+__int64 _InterlockedAdd64(__int64 volatile *, __int64);
+unsigned __int64 __readx18qword(unsigned long);
+void __yield(void);
+
+void __dmb(unsigned int _Type);
+void __dsb(unsigned int _Type);
+void __isb(unsigned int _Type);
+void __sb(void);
+
+void __ld64b(const void *_addr, unsigned __int64 _value[8]);
+void __st64b(void *_addr, unsigned __int64 _value[8]);
+unsigned __int64 __st64bv(void *_addr, unsigned __int64 _value[8]);
+unsigned __int64 __st64bv0(void *_addr, unsigned __int64 _value[8]);
+
+// clang/gcc with a *-pc-windows-msvc target do NOT provide the LDAR/STLR
+// load-acquire / store-release intrinsics as builtins (only __dmb, __yield,
+// __iso_volatile_* and the _Interlocked* family are backed) -- a bare prototype
+// would tail-call an undefined __ldar64 symbol. mimalloc's MSVC atomic path
+// (mimalloc/atomic.h) needs __ldar64/__stlr64, so emit the instruction directly;
+// the "memory" clobber gives the acquire (LDAR) / release (STLR) ordering the
+// intrinsic guarantees. NB: the neighbouring __ldxr/__ldaxr/__stxr/__stlxr,
+// __ldapr, __load_acquire and __ldtr prototypes are unbacked too, but no current
+// consumer needs them, so they are left as-is.
+#if defined(__clang__) || defined(__GNUC__)
+#define __SPRT_DEF_LDAR(_W, _T, _SFX, _REG) \
+	SPRT_FORCEINLINE _T __ldar##_W(const volatile _T *_Target) { \
+		_T _Value; \
+		__asm__ __volatile__("ldar" _SFX " " _REG "0, [%1]" : "=r"(_Value) : "r"(_Target) \
+				: "memory"); \
+		return _Value; \
+	}
+__SPRT_DEF_LDAR(8, unsigned __int8, "b", "%w")
+__SPRT_DEF_LDAR(16, unsigned __int16, "h", "%w")
+__SPRT_DEF_LDAR(32, unsigned __int32, "", "%w")
+__SPRT_DEF_LDAR(64, unsigned __int64, "", "%x")
+#undef __SPRT_DEF_LDAR
+#else
+unsigned __int8 __ldar8(const volatile unsigned __int8 *_Target);
+unsigned __int16 __ldar16(const volatile unsigned __int16 *_Target);
+unsigned __int32 __ldar32(const volatile unsigned __int32 *_Target);
+unsigned __int64 __ldar64(const volatile unsigned __int64 *_Target);
+#endif
+
+unsigned __int8 __ldapr8(const volatile unsigned __int8 *_Target);
+unsigned __int16 __ldapr16(const volatile unsigned __int16 *_Target);
+unsigned __int32 __ldapr32(const volatile unsigned __int32 *_Target);
+unsigned __int64 __ldapr64(const volatile unsigned __int64 *_Target);
+
+unsigned __int8 __load_acquire8(const volatile unsigned __int8 *_Target);
+unsigned __int16 __load_acquire16(const volatile unsigned __int16 *_Target);
+unsigned __int32 __load_acquire32(const volatile unsigned __int32 *_Target);
+unsigned __int64 __load_acquire64(const volatile unsigned __int64 *_Target);
+
+unsigned __int8 __ldxr8(const volatile unsigned __int8 *_Target);
+unsigned __int16 __ldxr16(const volatile unsigned __int16 *_Target);
+unsigned __int32 __ldxr32(const volatile unsigned __int32 *_Target);
+unsigned __int64 __ldxr64(const volatile unsigned __int64 *_Target);
+unsigned __int8 __ldaxr8(const volatile unsigned __int8 *_Target);
+unsigned __int16 __ldaxr16(const volatile unsigned __int16 *_Target);
+unsigned __int32 __ldaxr32(const volatile unsigned __int32 *_Target);
+unsigned __int64 __ldaxr64(const volatile unsigned __int64 *_Target);
+
+unsigned __int8 __stxr8(volatile unsigned __int8 *_Target, unsigned __int8 _Value);
+unsigned __int8 __stxr16(volatile unsigned __int16 *_Target, unsigned __int16 _Value);
+unsigned __int8 __stxr32(volatile unsigned __int32 *_Target, unsigned __int32 _Value);
+unsigned __int8 __stxr64(volatile unsigned __int64 *_Target, unsigned __int64 _Value);
+unsigned __int8 __stlxr8(volatile unsigned __int8 *_Target, unsigned __int8 _Value);
+unsigned __int8 __stlxr16(volatile unsigned __int16 *_Target, unsigned __int16 _Value);
+unsigned __int8 __stlxr32(volatile unsigned __int32 *_Target, unsigned __int32 _Value);
+unsigned __int8 __stlxr64(volatile unsigned __int64 *_Target, unsigned __int64 _Value);
+
+void __clrex(unsigned __int8 crm);
+
+// Store-release register (STLR) -- see the __ldar note above; not a clang/gcc builtin.
+#if defined(__clang__) || defined(__GNUC__)
+#define __SPRT_DEF_STLR(_W, _T, _SFX, _REG) \
+	SPRT_FORCEINLINE void __stlr##_W(volatile _T *_Target, _T _Value) { \
+		__asm__ __volatile__("stlr" _SFX " " _REG "1, [%0]" : : "r"(_Target), "r"(_Value) \
+				: "memory"); \
+	}
+__SPRT_DEF_STLR(8, unsigned __int8, "b", "%w")
+__SPRT_DEF_STLR(16, unsigned __int16, "h", "%w")
+__SPRT_DEF_STLR(32, unsigned __int32, "", "%w")
+__SPRT_DEF_STLR(64, unsigned __int64, "", "%x")
+#undef __SPRT_DEF_STLR
+#else
+void __stlr8(volatile unsigned __int8 *_Target, unsigned __int8 _Value);
+void __stlr16(volatile unsigned __int16 *_Target, unsigned __int16 _Value);
+void __stlr32(volatile unsigned __int32 *_Target, unsigned __int32 _Value);
+void __stlr64(volatile unsigned __int64 *_Target, unsigned __int64 _Value);
+#endif
+
+// load/store unprivileged
+unsigned __int8 __ldtr8(const volatile unsigned __int8 *_Target);
+unsigned __int16 __ldtr16(const volatile unsigned __int16 *_Target);
+unsigned __int32 __ldtr32(const volatile unsigned __int32 *_Target);
+unsigned __int64 __ldtr64(const volatile unsigned __int64 *_Target);
+
+signed __int8 __ldtrs8(const volatile __int8 *_Target);
+signed __int16 __ldtrs16(const volatile __int16 *_Target);
+signed __int32 __ldtrs32(const volatile __int32 *_Target);
+
+void __sttr8(volatile unsigned __int8 *_Target, unsigned __int8 _Value);
+void __sttr16(volatile unsigned __int16 *_Target, unsigned __int16 _Value);
+void __sttr32(volatile unsigned __int32 *_Target, unsigned __int32 _Value);
+void __sttr64(volatile unsigned __int64 *_Target, unsigned __int64 _Value);
+
+unsigned __int8 __swp8(unsigned __int8 volatile *_Target, unsigned __int8 _Value);
+unsigned __int16 __swp16(unsigned __int16 volatile *_Target, unsigned __int16 _Value);
+unsigned __int32 __swp32(unsigned __int32 volatile *_Target, unsigned __int32 _Value);
+unsigned __int64 __swp64(unsigned __int64 volatile *_Target, unsigned __int64 _Value);
+unsigned __int8 __swpa8(unsigned __int8 volatile *_Target, unsigned __int8 _Value);
+unsigned __int16 __swpa16(unsigned __int16 volatile *_Target, unsigned __int16 _Value);
+unsigned __int32 __swpa32(unsigned __int32 volatile *_Target, unsigned __int32 _Value);
+unsigned __int64 __swpa64(unsigned __int64 volatile *_Target, unsigned __int64 _Value);
+unsigned __int8 __swpl8(unsigned __int8 volatile *_Target, unsigned __int8 _Value);
+unsigned __int16 __swpl16(unsigned __int16 volatile *_Target, unsigned __int16 _Value);
+unsigned __int32 __swpl32(unsigned __int32 volatile *_Target, unsigned __int32 _Value);
+unsigned __int64 __swpl64(unsigned __int64 volatile *_Target, unsigned __int64 _Value);
+unsigned __int8 __swpal8(unsigned __int8 volatile *_Target, unsigned __int8 _Value);
+unsigned __int16 __swpal16(unsigned __int16 volatile *_Target, unsigned __int16 _Value);
+unsigned __int32 __swpal32(unsigned __int32 volatile *_Target, unsigned __int32 _Value);
+unsigned __int64 __swpal64(unsigned __int64 volatile *_Target, unsigned __int64 _Value);
+
+unsigned __int8 __cas8(unsigned __int8 volatile *_Target, unsigned __int8 _Comp,
+		unsigned __int8 _Value);
+unsigned __int16 __cas16(unsigned __int16 volatile *_Target, unsigned __int16 _Comp,
+		unsigned __int16 _Value);
+unsigned __int32 __cas32(unsigned __int32 volatile *_Target, unsigned __int32 _Comp,
+		unsigned __int32 _Value);
+unsigned __int64 __cas64(unsigned __int64 volatile *_Target, unsigned __int64 _Comp,
+		unsigned __int64 _Value);
+unsigned __int8 __casa8(unsigned __int8 volatile *_Target, unsigned __int8 _Comp,
+		unsigned __int8 _Value);
+unsigned __int16 __casa16(unsigned __int16 volatile *_Target, unsigned __int16 _Comp,
+		unsigned __int16 _Value);
+unsigned __int32 __casa32(unsigned __int32 volatile *_Target, unsigned __int32 _Comp,
+		unsigned __int32 _Value);
+unsigned __int64 __casa64(unsigned __int64 volatile *_Target, unsigned __int64 _Comp,
+		unsigned __int64 _Value);
+unsigned __int8 __casl8(unsigned __int8 volatile *_Target, unsigned __int8 _Comp,
+		unsigned __int8 _Value);
+unsigned __int16 __casl16(unsigned __int16 volatile *_Target, unsigned __int16 _Comp,
+		unsigned __int16 _Value);
+unsigned __int32 __casl32(unsigned __int32 volatile *_Target, unsigned __int32 _Comp,
+		unsigned __int32 _Value);
+unsigned __int64 __casl64(unsigned __int64 volatile *_Target, unsigned __int64 _Comp,
+		unsigned __int64 _Value);
+unsigned __int8 __casal8(unsigned __int8 volatile *_Target, unsigned __int8 _Comp,
+		unsigned __int8 _Value);
+unsigned __int16 __casal16(unsigned __int16 volatile *_Target, unsigned __int16 _Comp,
+		unsigned __int16 _Value);
+unsigned __int32 __casal32(unsigned __int32 volatile *_Target, unsigned __int32 _Comp,
+		unsigned __int32 _Value);
+unsigned __int64 __casal64(unsigned __int64 volatile *_Target, unsigned __int64 _Comp,
+		unsigned __int64 _Value);
+
+void *__xpaci(void *_Pointer);
+
+unsigned __int32 __rbit(unsigned __int32 _Value);
+unsigned long __rbitl(unsigned long _Value);
+unsigned __int64 __rbitll(unsigned __int64 _Value);
+
+__SPRT_END_DECL
+
 #pragma intrinsic(_InterlockedAdd64)
 
 #else

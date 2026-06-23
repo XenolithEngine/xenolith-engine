@@ -67,7 +67,13 @@ __SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
 
 __SPRT_C_FUNC __SPRT_ID(sigsetjmp_fn) __SPRT_ID(get_sigsetjmp_fn)() {
 #if SPRT_LINUX
+#ifdef __GLIBC__
+	// glibc exposes `sigsetjmp` only as a macro forwarding to `__sigsetjmp`
 	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&__sigsetjmp);
+#else
+	// musl declares `sigsetjmp` as a real function and has no `__sigsetjmp`
+	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&sigsetjmp);
+#endif
 #elif SPRT_ANDROID || SPRT_MACOS
 	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&sigsetjmp);
 #elif SPRT_WINDOWS

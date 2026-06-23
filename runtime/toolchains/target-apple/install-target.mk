@@ -40,13 +40,19 @@ ALL_STATIC_LIBS := \
 	$(wildcard $(T_INTERMEDIATE)/usr/lib/*.o)
 ALL_INSTALL_STATIC_LIBS := $(patsubst $(T_INTERMEDIATE)/%,$(T_TARGET)/%,$(ALL_STATIC_LIBS))
 
+# The Vulkan validation layer is a flat .dylib on macOS but a .framework bundle
+# on iOS. install-target.mk is platform-agnostic (no SP_SYSNAME), so detect
+# whichever artifact the target build actually produced.
+VVL_DYLIB := $(wildcard $(T_INTERMEDIATE)/usr/lib/libVkLayer_khronos_validation.dylib)
+VVL_FRAMEWORK := $(wildcard $(T_INTERMEDIATE)/usr/lib/VkLayer_khronos_validation.framework)
+
 ALL_SHARED_LIBS := $(addprefix $(T_INTERMEDIATE)/usr/lib/,\
 	libvulkan.dylib \
 	libMoltenVK.dylib \
-	libVkLayer_khronos_validation.dylib \
-)
+) $(VVL_DYLIB)
 
 ALL_INSTALL_SHARED_LIBS := $(patsubst $(T_INTERMEDIATE)/%,$(T_TARGET)/%,$(ALL_SHARED_LIBS))
+ALL_INSTALL_FRAMEWORKS := $(patsubst $(T_INTERMEDIATE)/%,$(T_TARGET)/%,$(VVL_FRAMEWORK))
 
 $(T_TARGET):
 	mkdir -p $(T_TARGET)/share $(T_TARGET)/usr/lib
@@ -63,6 +69,13 @@ $(T_TARGET)/lib: $(T_INTERMEDIATE)/lib | $(T_TARGET)
 	rm -rf $@/clang/include
 	touch $@
 
+# Framework bundles are directories — copy them recursively. This more specific
+# pattern (shorter stem) wins over the generic file-copy rule below.
+$(T_TARGET)/usr/lib/%.framework: $(T_INTERMEDIATE)/usr/lib/%.framework | $(T_TARGET)
+	@mkdir -p $(dir $@)
+	rm -rf $@
+	cp -rf $< $@
+
 $(T_TARGET)/%: $(T_INTERMEDIATE)/% | $(T_TARGET)
 	@mkdir -p $(dir $@)
 	cp -f $< $@
@@ -78,7 +91,7 @@ $(T_TARGET)/share/vulkan: | $(T_TARGET)
 	cp -rf $(T_INTERMEDIATE)/usr/share/vulkan $(T_TARGET)/share
 	rm -rf $@/registry
 
-ALL_TARGETS := $(ALL_INSTALL_STATIC_LIBS) $(ALL_INSTALL_SHARED_LIBS) \
+ALL_TARGETS := $(ALL_INSTALL_STATIC_LIBS) $(ALL_INSTALL_SHARED_LIBS) $(ALL_INSTALL_FRAMEWORKS) \
 	$(T_TARGET)/lib $(T_TARGET)/usr/include $(T_TARGET)/share/licenses $(T_TARGET)/share/vulkan \
 	$(T_TARGET)/target.mk
 

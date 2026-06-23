@@ -24,14 +24,31 @@ LIBNAME = moltenvk
 
 include ../common/configure.mk
 
-MOLTENVK_LDFLAGS := \
-	$(SP_LDFLAGS) \
+# On iOS there is no AppKit (it is replaced by UIKit); every other framework is
+# shared with macOS. The frameworks are injected purely through the linker flags
+# below — the -D*_LIBRARY="" cache entries in CONFIGURE only suppress MoltenVK's
+# find_library(... REQUIRED) calls.
+ifeq ($(SP_SYSNAME),iOS)
+MOLTENVK_FRAMEWORKS := \
+	-framework Foundation \
+	-framework Metal \
+	-framework UIKit \
+	-framework IOKit \
+	-framework IOSurface \
+	-framework QuartzCore
+else
+MOLTENVK_FRAMEWORKS := \
 	-framework Foundation \
 	-framework Metal \
 	-framework AppKit \
 	-framework IOKit \
 	-framework IOSurface \
-	-framework QuartzCore \
+	-framework QuartzCore
+endif
+
+MOLTENVK_LDFLAGS := \
+	$(SP_LDFLAGS) \
+	$(MOLTENVK_FRAMEWORKS) \
 	-Wl,-undefined,dynamic_lookup
 
 CONFIGURE := \

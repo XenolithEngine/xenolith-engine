@@ -188,7 +188,13 @@ typedef CHAR TCHAR, *PTCHAR, *LPTCHAR;
 
 #if !defined(_M_ARM64EC)
 
+#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
+// ARM64 has no __faststorefence (an x86-64 intrinsic); the full-system data memory
+// barrier is __dmb(_ARM64_BARRIER_SY), matching MSVC's <winnt.h> MemoryBarrier().
+#define MemoryBarrier() __dmb(0xF)
+#else
 #define MemoryBarrier __faststorefence
+#endif
 
 #endif
 

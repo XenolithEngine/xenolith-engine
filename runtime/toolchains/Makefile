@@ -52,6 +52,9 @@ rule_rm = rm -rf $(1)
 rule_cp = cp -f $(1) $(2)
 endif
 
+# Define 0 to disable automatic host building
+HOST_REQUIRED ?= 1
+
 include src.mk
 
 ALL_SRC := $(addprefix $(SRC_ROOT)/,$(LIBS)) replacements/curl/cacert.pem
@@ -73,9 +76,42 @@ clean:
 
 xwin: $(SRC_ROOT)/xwin/splat
 
+ifeq ($(HOST_REQUIRED),1)
 host:
 	$(MAKE) -C $(HOST_TOOLCHAIN) out OUT_SYSROOT=$(abspath hosts/$(HOST_ID))
+else
+host:
+endif
 
+host-cross-x86_64-unknown-linux-gnu: target-x86_64-unknown-linux-gnu
+	$(MAKE) -C host-linux-glibc/cross out OUT_SYSROOT=$(abspath hosts/x86_64-unknown-linux-gnu) SP_ARCH_HOST=x86_64
+
+host-cross-aarch64-unknown-linux-gnu: target-aarch64-unknown-linux-gnu
+	$(MAKE) -C host-linux-glibc/cross out OUT_SYSROOT=$(abspath hosts/aarch64-unknown-linux-gnu) SP_ARCH_HOST=aarch64
+
+host-cross-riscv64-unknown-linux-gnu: target-riscv64-unknown-linux-gnu
+	$(MAKE) -C host-linux-glibc/cross out OUT_SYSROOT=$(abspath hosts/riscv64-unknown-linux-gnu) SP_ARCH_HOST=riscv64
+
+host-cross-x86_64-unknown-linux-musl: target-x86_64-unknown-linux-musl
+	$(MAKE) -C host-linux-musl/cross out OUT_SYSROOT=$(abspath hosts/x86_64-unknown-linux-musl) SP_ARCH_HOST=x86_64
+
+host-cross-aarch64-unknown-linux-musl: target-aarch64-unknown-linux-musl
+	$(MAKE) -C host-linux-musl/cross out OUT_SYSROOT=$(abspath hosts/aarch64-unknown-linux-musl) SP_ARCH_HOST=aarch64
+
+host-cross-riscv64-unknown-linux-musl: target-riscv64-unknown-linux-musl
+	$(MAKE) -C host-linux-musl/cross out OUT_SYSROOT=$(abspath hosts/riscv64-unknown-linux-musl) SP_ARCH_HOST=riscv64
+
+host-cross-x86_64-pc-windows-msvc: target-x86_64-pc-windows-msvc
+	$(MAKE) -C host-windows-msvc/cross out OUT_SYSROOT=$(abspath hosts/x86_64-pc-windows-msvc) SP_ARCH_HOST=x86_64
+
+host-cross-aarch64-pc-windows-msvc: target-aarch64-pc-windows-msvc
+	$(MAKE) -C host-windows-msvc/cross out OUT_SYSROOT=$(abspath hosts/aarch64-pc-windows-msvc) SP_ARCH_HOST=aarch64
+
+host-cross-x86_64-apple-macosx: target-x86_64-apple-macosx
+	$(MAKE) -C host-macos/cross out OUT_SYSROOT=$(abspath hosts/x86_64-apple-macosx) SP_ARCH_HOST=x86_64
+
+host-cross-aarch64-apple-macosx: target-aarch64-apple-macosx
+	$(MAKE) -C host-macos/cross out OUT_SYSROOT=$(abspath hosts/aarch64-apple-macosx) SP_ARCH_HOST=aarch64
 
 #
 # Android targets
@@ -106,22 +142,36 @@ target-android: \
 
 
 #
-# Linux targets
+# Linux targets (glibc + musl, роутинг по полному триплету как у target-apple)
 #
 
 target-x86_64-unknown-linux-gnu: host
-	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) x86_64
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) x86_64-unknown-linux-gnu
 
 target-aarch64-unknown-linux-gnu: host
-	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64-unknown-linux-gnu
 
 target-riscv64-unknown-linux-gnu: host
-	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) riscv64
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) riscv64-unknown-linux-gnu
+
+target-x86_64-unknown-linux-musl: host
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) x86_64-unknown-linux-musl
+
+target-aarch64-unknown-linux-musl: host
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64-unknown-linux-musl
+
+target-riscv64-unknown-linux-musl: host
+	$(MAKE) -C target-linux TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) riscv64-unknown-linux-musl
 
 target-linux: \
 	target-x86_64-unknown-linux-gnu \
 	target-aarch64-unknown-linux-gnu \
 	target-riscv64-unknown-linux-gnu \
+
+target-linux-musl: \
+	target-x86_64-unknown-linux-musl \
+	target-aarch64-unknown-linux-musl \
+	target-riscv64-unknown-linux-musl \
 
 
 #
@@ -216,6 +266,10 @@ targets-export:\
 	target-x86_64-unknown-linux-gnu \
 	target-aarch64-unknown-linux-gnu \
 	target-riscv64-unknown-linux-gnu \
+	target-linux-musl \
+	target-x86_64-unknown-linux-musl \
+	target-aarch64-unknown-linux-musl \
+	target-riscv64-unknown-linux-musl \
 	target-android-ndk \
 	target-unknown-ndk-linux-android \
 	target-android \
@@ -236,6 +290,16 @@ targets-export:\
 	target-aarch64-apple-ios-simulator \
 	target-windows \
 	target-x86_64-pc-windows-msvc \
-	target-aarch64-pc-windows-msvc
+	target-aarch64-pc-windows-msvc \
+	host-cross-x86_64-unknown-linux-gnu \
+	host-cross-aarch64-unknown-linux-gnu \
+	host-cross-riscv64-unknown-linux-gnu \
+	host-cross-x86_64-unknown-linux-musl \
+	host-cross-aarch64-unknown-linux-musl \
+	host-cross-riscv64-unknown-linux-musl \
+	host-cross-x86_64-pc-windows-msvc \
+	host-cross-aarch64-pc-windows-msvc \
+	host-cross-x86_64-apple-macosx \
+	host-cross-aarch64-apple-macosx
 
 .DEFAULT_GOAL := host

@@ -75,6 +75,31 @@ VULKAN_HEADERS_DIR := $(realpath $(SP_SRC_DIR)/vulkan-headers)
 SPIRV_HEADERS_DIR  := $(realpath $(SP_SRC_DIR)/spirv-headers)
 GLSLANG_DIR        := $(realpath $(SP_SRC_DIR)/glslang)
 SPIRV_TOOLS_DIR    := $(realpath $(SP_SRC_DIR)/spirv-tools)
+ZLIB_DIR           := $(realpath $(SP_SRC_DIR)/zlib)
+LIBXML2_DIR        := $(realpath $(SP_SRC_DIR)/libxml2)
+
+# LTO финального clang: Full (по умолчанию), Thin или пусто (выключено).
+# По умолчанию Full — финальный тулчейн оптимизируется по максимуму. При
+# включённом LTO stage1 автоматически сериализует LTO-линковки и отключает LTO
+# для нативной под-сборки tablegen (см. STAGEOUT_LTO_FLAGS в stage1.mk).
+# Отключить: make ... SP_LLVM_LTO= ; полегче: SP_LLVM_LTO=Thin.
+# На хостах с малой RAM можно ограничить параллелизм: CMAKE_BUILD_PARALLEL_LEVEL=N.
+SP_LLVM_LTO ?= Full
+
+# GNU make для поставки в составе тулчейна (host-овый make).
+MAKE_SRC_VER ?= 4.4.1
+MAKE_SRC_TARBALL := make-$(MAKE_SRC_VER).tar.gz
+MAKE_SRC_URL := https://ftp.gnu.org/gnu/make/$(MAKE_SRC_TARBALL)
+MAKE_SRC_DIR := $(abspath src/make-$(MAKE_SRC_VER))
+
+src/$(MAKE_SRC_TARBALL):
+	mkdir -p src
+	wget -O $@ $(MAKE_SRC_URL)
+
+$(MAKE_SRC_DIR)/configure: src/$(MAKE_SRC_TARBALL)
+	rm -rf $(MAKE_SRC_DIR)
+	cd src; tar xf $(MAKE_SRC_TARBALL)
+	touch $@
 
 # Linux kernel headers (запиненные). Нужны как minimum libc++ (linux/futex.h
 # в atomic-wait) и ряду libc-зависимых частей. Версия — как у glibc-хоста

@@ -64,6 +64,8 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(lastword $(MAKEFILE_LIST))
 	mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/lib/clang
 	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/21/include include
 
+TOOLCHAIN_TARGET_FLAGS := -D_WIN32_WINNT=0x0A00 -fexceptions -fms-compatibility-version=19.40
+
 $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'Build $@'
 	@echo 'TARGET_SYSROOT := $$(patsubst %/,%,$$(dir $$(lastword $$(MAKEFILE_LIST))))' > $@
@@ -73,9 +75,9 @@ $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'TARGET_INCLUDE_DIR := $$(TARGET_SYSROOT)/usr/include' >> $@
 	@echo 'TARGET_LIB_DIR := $$(TARGET_SYSROOT)/usr/lib' >> $@
 	@echo 'TARGET_LIB_DIR_LIBC := $$(TARGET_SYSROOT)/lib' >> $@
-	@echo 'TARGET_GENERAL_CFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -D_WIN32_WINNT=0x0A00 -fexceptions -nostdinc' >> $@
-	@echo 'TARGET_GENERAL_CXXFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -D_WIN32_WINNT=0x0A00 -fexceptions -nostdinc' >> $@
-	@echo 'TARGET_GENERAL_LDFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang -D_WIN32_WINNT=0x0A00 -fexceptions -nostdlib' >> $@
+	@echo 'TARGET_GENERAL_CFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang $(TOOLCHAIN_TARGET_FLAGS) -nostdinc' >> $@
+	@echo 'TARGET_GENERAL_CXXFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang $(TOOLCHAIN_TARGET_FLAGS) -nostdinc' >> $@
+	@echo 'TARGET_GENERAL_LDFLAGS := -resource-dir $$(TARGET_SYSROOT)/lib/clang $(TOOLCHAIN_TARGET_FLAGS) -nostdlib' >> $@
 	@echo 'TARGET_EXEC_CFLAGS :=' >> $@
 	@echo 'TARGET_EXEC_CXXFLAGS :=' >> $@
 	@echo 'TARGET_EXEC_LDFLAGS :=' >> $@
@@ -90,7 +92,9 @@ SIMDE_CONFIGURE := \
 	-DCMAKE_INSTALL_PREFIX="${TOOLCHAIN_OUTPUT_DIR}" \
 	-DCMAKE_INSTALL_LIBDIR="${TOOLCHAIN_OUTPUT_DIR}/usr/lib" \
 	-DCMAKE_INSTALL_INCLUDEDIR="${TOOLCHAIN_OUTPUT_DIR}/usr/include" \
-	-DPKG_CONFIG_PATH="$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/pkgconfig"
+	-DPKG_CONFIG_PATH="$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/pkgconfig" \
+	-DCMAKE_C_COMPILER_WORKS=1 \
+	-DCMAKE_CXX_COMPILER_WORKS=1
 
 $(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h: ../common/simde.mk
 	$(call rule_rm,simde)
@@ -113,14 +117,18 @@ $(TOOLCHAIN_OUTPUT_DIR)/usr/lib/sprt.lib: $(RUNTIME_IMPORT_LIBS) \
 		$(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h \
 		$(TOOLCHAIN_OUTPUT_DIR)/target.mk
 	$(call rule_rm,$@)
+	$(call rule_rm,$(abspath build/xlmake))
 	$(MAKE) -j8 -C $(SP_RUNTIME_ROOT) \
 		STAPPLER_HOST_FILE=$(TOOLCHAIN_OUTPUT_DIR)/host/host.mk \
 		STAPPLER_TARGET_FILE=$(TOOLCHAIN_OUTPUT_DIR)/target.mk \
-		STAPPLER_TARGET=$(SP_ARCH_TARGET_CLANG) RELEASE=1
+		STAPPLER_TARGET=$(SP_ARCH_TARGET_CLANG) \
+		LOCAL_OUTDIR=$(abspath build/xlmake) \
+		RELEASE=1
 	$(TOOLCHAIN_OUTPUT_DIR)/host/bin/llvm-lib /out:$@ \
 			$(RUNTIME_IMPORT_LIBS) \
-			$(SP_RUNTIME_ROOT)/stappler-build/$(SP_ARCH_TARGET_CLANG)/release/cc/sprt.lib \
+			$(abspath build/xlmake)/$(SP_ARCH_TARGET_CLANG)/release/cc/sprt.lib \
 			/machine:$(SP_ARCH_WIN)
+	$(call rule_rm,$(abspath build/xlmake))
 
 $(TOOLCHAIN_OUTPUT_DIR)/usr/lib/import.lib: $(RUNTIME_IMPORT_LIBS)
 	$(call rule_rm,$@)

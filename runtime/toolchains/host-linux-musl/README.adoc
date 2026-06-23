@@ -62,14 +62,22 @@ linker=lld, unwindlib=libunwind) и пригоден для сборки сам�
 
 . musl (заново, stage0-clang);
 . shared-рантаймы (поставляются и используются для линковки финального clang);
-. финальный clang/lld + `libLLVM.so` с мульти-таргетным backend-ом
+. zlib и libxml2 (build-time зависимости clang/lldb, линкуются статически);
+. финальный clang/lld/**lldb** + `libLLVM.so` с мульти-таргетным backend-ом
   (`X86;ARM;AArch64;RISCV;WebAssembly`) — чтобы хост-компилятор мог
   кросс-компилировать движок под все цели;
-. glslang + spirv-tools (нужны движку: `HOST_GLSLANG` / `HOST_SPIRV_LINK`).
+. spirv-tools и glslang (с `ENABLE_OPT`, нужны движку:
+  `HOST_GLSLANG` / `HOST_SPIRV_LINK`);
+. GNU make (host-овый `make` в составе тулчейна).
 
 Итоговые бинарники слинкованы с нашим libc++ (rpath `$ORIGIN/../lib`), а
 `PT_INTERP` указывает на стандартный `/lib/ld-musl-<arch>.so.1`, поэтому тулчейн
 работает на любом musl-Linux.
+
+zlib/libxml2 ставятся в отдельный чистый префикс (`build/stageout-extra-install`),
+а spirv-tools — в свой (`build/stageout-spirv-install`); их include подключается
+через `-isystem`. Это важно: добавление `-I<sysroot>/include` (с C-заголовками
+musl) ломает порядок `#include_next` в libc++ при сборке C++-кода.
 
 == Сборка
 
@@ -86,6 +94,33 @@ make host
 make -C host-linux-musl out OUT_SYSROOT=$(pwd)/hosts/x86_64-unknown-linux-musl
 ----
 
+== Cross-сборка (упрощённая, из любого Linux)
+
+Подкаталог `cross/` собирает тот же musl-host, но *без двухстадийного
+self-host бутстрапа* — по аналогии с `host-macos/cross` и
+`host-windows-msvc/cross`. Используется уже собранный мульти-таргетный тулчейн
+билд-машины (`hosts/<HOST_ID>`): его clang кросс-компилирует musl, рантаймы и
+финальный clang/lld/lldb напрямую (`--target=<triple>-musl`). Один проход
+вместо двух; собирать можно с любого Linux (glibc или musl), не только с musl.
+
+[source,sh]
+----
+# из runtime/toolchains; сначала нужен host билд-машины (make host)
+make host-cross-x86_64-unknown-linux-musl
+make host-cross-aarch64-unknown-linux-musl
+make host-cross-riscv64-unknown-linux-musl
+----
+
+Те же опции (`SP_LLVM_LTO`, по умолчанию здесь *выключен* для скорости),
+shared-libc++ и раскладка, что и у нативной сборки. Курица/яйцо рантаймов (нет
+готового libc++ для compiler-check) решается как в `target-linux/musl`
+(`CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY`) + форс
+`LIBCXXABI_HAS_CXA_THREAD_ATEXIT_IMPL=OFF` (иначе shared libc++.so падает на
+отсутствующем в musl символе). Проверено: на glibc-машине собран
+x86_64-unknown-linux-musl host; бинарники запускаются на musl (Alpine),
+компилируют+запускают C++, мульти-таргетны и кросс-компилируют под aarch64
+(проверка через qemu).
+
 Результат раскладывается в `hosts/<arch>-unknown-linux-musl/` (bin/, lib/,
 include/, lib/clang/<ver>, share/licenses, host.mk).
 
@@ -99,18 +134,20 @@ include/, lib/clang/<ver>, share/licenses, host.mk).
 * `compiler-rt` вместо libgcc, `COMPILER_RT_DEFAULT_TARGET_ONLY=On` кладёт
   builtins в resource-dir.
 
-== Что пока НЕ собирается (TODO для следующих итераций)
+== Опции
 
-Сознательно опущено ради простой первой версии «host для musl»:
+* *LTO* финального clang — настраивается `SP_LLVM_LTO`, *по умолчанию `Full`*
+  (финальный тулчейн оптимизируется по максимуму). Облегчить: `SP_LLVM_LTO=Thin`;
+  выключить: `SP_LLVM_LTO=` (например `make host SP_LLVM_LTO=`).
+  При включённом LTO stage1 автоматически:
+  - сериализует тяжёлые LTO-линковки (`LLVM_PARALLEL_LINK_JOBS=1`);
+  - отключает LTO для нативной под-сборки tablegen
+    (`CROSS_TOOLCHAIN_FLAGS_NATIVE`) — без этого lld падал при линковке нативных
+    инструментов.
+  *Full LTO проверен* на Alpine (musl 1.2.6): собирается и работает, пик памяти
+  при `-O3 -DNDEBUG` умеренный (~18 ГБ). LTO применяется только к финальному
+  clang (bootstrap stage0 — без LTO). На хостах с малой RAM можно ограничить
+  параллелизм компиляции: `CMAKE_BUILD_PARALLEL_LEVEL=N make host`.
 
-* *lldb* (тяжелее всего на musl);
-* *zlib*/*libxml2* для clang (отключены `LLVM_ENABLE_ZLIB/LIBXML2=Off`);
-* *LTO* финального clang;
-* host-овый *make* в составе тулчейна;
-* *ENABLE_OPT* в glslang выключен (развязка от spirv-tools); оптимизация SPIR-V
-  доступна отдельным `spirv-opt`.
-
-Движок (`host.mk`: cc/c++/ar/glslang/spirv-link) от этого не страдает.
-
-Kernel headers (пиннинг linux 5.10.258, `headers_install`) уже устанавливаются в
+Kernel headers (пиннинг linux 5.10.258, `headers_install`) устанавливаются в
 sysroot — их требует libc++ (`linux/futex.h`) и host-инструменты LLVM.
