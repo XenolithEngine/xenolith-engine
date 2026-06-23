@@ -21,6 +21,9 @@ THE SOFTWARE.
 **/
 
 #define __SPRT_BUILD 1
+// musl only exposes the *64 file API when _LARGEFILE64_SOURCE is set (its plain
+// symbols are already 64-bit); on glibc this is already implied by _GNU_SOURCE.
+#define _LARGEFILE64_SOURCE 1
 
 #include <sprt/c/sys/__sprt_stat.h>
 #include <sprt/c/__sprt_errno.h>

@@ -23,7 +23,7 @@ LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
 STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../make
 
-LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
+LOCAL_OUTDIR ?= $(dir $(LOCAL_MAKEFILE))stappler-build
 
 ifneq (,$(findstring apple,$(STAPPLER_TARGET)))
 LOCAL_BUILD_STATIC := 0

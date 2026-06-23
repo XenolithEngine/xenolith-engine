@@ -192,6 +192,67 @@ static void termState(State &state) {
 
 static void performBacktrace(State &state, size_t offset,
 		const callback<void(uintptr_t, StringView)> &cb) {
+	// All dbghelp Sym* calls are single-threaded, so serialize the whole walk.
+	unique_lock lock(state.mutex);
+
+	DWORD dwDisplacement;
+	StackFrameSym stackSym;
+
+	// Resolve an instruction pointer to symbol/line and hand it to the callback.
+	// dbghelp symbolization is architecture-independent (only StackWalk64 is not),
+	// so this step is shared by every walk strategy below.
+	auto emit = [&](uintptr_t pc) {
+		BOOL hasSym = state.SymGetSymFromAddr64(state.hProcess, pc, nullptr, &stackSym.sym);
+		BOOL hasLine =
+				state.SymGetLineFromAddr64(state.hProcess, pc, &dwDisplacement, &stackSym.line);
+
+		auto size = backtrace::detail::print(stackSym.targetNameBuffer, 1_KiB, pc,
+				hasLine ? stackSym.line.FileName : nullptr, hasLine ? stackSym.line.LineNumber : 0,
+				hasSym ? stackSym.sym.Name : nullptr);
+		cb(pc, StringView(stackSym.targetNameBuffer, size));
+	};
+
+#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
+	// dbghelp's StackWalk64 only accepts IMAGE_FILE_MACHINE_{I386,IA64,AMD64} as its
+	// MachineType -- there is no ARM64 value, so it cannot walk an AArch64 stack. Instead
+	// drive the table-based virtual unwinder directly (the same machinery the OS uses for
+	// SEH), reading the .pdata unwind records the MSVC ABI emits for every function.
+	CONTEXT context;
+	RtlCaptureContext(&context);
+
+	for (DWORD64 prevSp = 0; context.Pc != 0;) {
+		if (offset > 0) {
+			--offset;
+		} else {
+			emit(context.Pc);
+		}
+
+		DWORD64 imageBase = 0;
+		auto fn = RtlLookupFunctionEntry(context.Pc, &imageBase, nullptr);
+		if (!fn) {
+			// No unwind record means a leaf function: on AArch64 the return address is
+			// still live in the link register (x30) rather than spilled to the stack.
+			if (context.Lr == 0 || context.Lr == context.Pc) {
+				break;
+			}
+			context.Pc = context.Lr;
+			context.Lr = 0;
+			continue;
+		}
+
+		PVOID handlerData = nullptr;
+		DWORD64 establisherFrame = 0;
+		RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, context.Pc, fn, &context, &handlerData,
+				&establisherFrame, nullptr);
+
+		// Guard against corrupt unwind data: Sp must climb toward the stack base on every
+		// frame, otherwise a bad record could spin the loop forever.
+		if (context.Sp <= prevSp) {
+			break;
+		}
+		prevSp = context.Sp;
+	}
+#else
 	auto hThread = GetCurrentThread();
 
 	DWORD machine = 0;
@@ -214,30 +275,14 @@ static void performBacktrace(State &state, size_t offset,
 #pragma error("unsupported architecture")
 #endif
 
-	unique_lock lock(state.mutex);
-
-	DWORD dwDisplacement;
-	StackFrameSym stackSym;
-
 	while (state.StackWalk64(machine, state.hProcess, hThread, &frame, &context, 0, 0, 0, 0)) {
 		if (offset > 0) {
 			--offset;
 			continue;
 		}
-
-		BOOL hasSym = FALSE;
-		BOOL hasLine = FALSE;
-
-		hasSym = state.SymGetSymFromAddr64(state.hProcess, frame.AddrPC.Offset, nullptr,
-				&stackSym.sym);
-		hasLine = state.SymGetLineFromAddr64(state.hProcess, frame.AddrPC.Offset, &dwDisplacement,
-				&stackSym.line);
-
-		auto size = backtrace::detail::print(stackSym.targetNameBuffer, 1_KiB, frame.AddrPC.Offset,
-				hasLine ? stackSym.line.FileName : nullptr, hasLine ? stackSym.line.LineNumber : 0,
-				hasSym ? stackSym.sym.Name : nullptr);
-		cb(frame.AddrPC.Offset, StringView(stackSym.targetNameBuffer, size));
+		emit(frame.AddrPC.Offset);
 	}
+#endif
 }
 
 } // namespace sprt::backtrace::detail

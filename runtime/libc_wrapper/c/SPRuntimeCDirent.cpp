@@ -22,6 +22,12 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 
+// Use the explicit 64-bit (*64) dirent API. On glibc this is already implied by
+// the C++ driver's _GNU_SOURCE; musl only exposes the *64 aliases when
+// _LARGEFILE64_SOURCE is set (its plain symbols are already 64-bit). No effect
+// on macOS/Windows.
+#define _LARGEFILE64_SOURCE 1
+
 #include <sprt/c/__sprt_dirent.h>
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_stdio.h>
@@ -37,6 +43,19 @@ THE SOFTWARE.
 #endif
 
 #include <dirent.h>
+
+// musl provides neither scandirat() nor scandirat64(), so it needs a dedicated
+// fallback below. Detect it now that <dirent.h> has pulled in <features.h>
+// (Android uses bionic and is SPRT_ANDROID, not SPRT_LINUX, so it keeps using
+// scandirat64()).
+#if SPRT_LINUX && !defined(__GLIBC__)
+#define __SPRT_DIRENT_MUSL 1
+#include <limits.h>
+#include <unistd.h>
+#include <fcntl.h>
+#else
+#define __SPRT_DIRENT_MUSL 0
+#endif
 
 static_assert(sizeof(struct dirent) == sizeof(struct __SPRT_DIRENT_NAME));
 
@@ -161,6 +180,38 @@ __SPRT_C_FUNC int __SPRT_ID(scandirat)(int __dir_fd, const char *path,
 			reinterpret_cast<int (*)(const struct dirent *)>(__filter),
 			reinterpret_cast<int (*)(const struct dirent **, const struct dirent **)>(
 					__comparator));
+#elif __SPRT_DIRENT_MUSL
+	// musl provides neither scandirat() nor scandirat64(); resolve the directory
+	// descriptor to a path through /proc and reuse our (already 64-bit) scandir().
+	if (path[0] == '/') {
+		return __SPRT_ID(scandir)(path, __name_list, __filter, __comparator);
+	}
+
+	char dir[PATH_MAX] = {0};
+	if (__dir_fd == AT_FDCWD) {
+		if (getcwd(dir, PATH_MAX) == nullptr) {
+			*__sprt___errno_location() = EBADF;
+			return -1;
+		}
+	} else {
+		char link[sizeof("/proc/self/fd/") + 24] = {0};
+		__sprt_snprintf(link, sizeof(link), "/proc/self/fd/%d", __dir_fd);
+		auto n = ::readlink(link, dir, PATH_MAX - 1);
+		if (n <= 0) {
+			*__sprt___errno_location() = EBADF;
+			return -1;
+		}
+		dir[n] = 0;
+	}
+
+	char buffer[PATH_MAX] = {0};
+	auto written = __sprt_snprintf(buffer, PATH_MAX, "%s/%s", dir, path);
+	if (written < 0 || written >= PATH_MAX) {
+		*__sprt___errno_location() = ENAMETOOLONG;
+		return -1;
+	}
+
+	return __SPRT_ID(scandir)(buffer, __name_list, __filter, __comparator);
 #else
 	return ::scandirat64(__dir_fd, path, (struct dirent64 ***)__name_list,
 			reinterpret_cast<int (*)(const struct dirent64 *)>(__filter),

@@ -52,6 +52,7 @@ __SPRT_C_FUNC int feupdateenv(const fenv_t *);
 #else
 
 #include <fenv.h>
+#include <float.h>
 
 static_assert(FE_INEXACT == __SPRT_FE_INEXACT);
 static_assert(FE_UNDERFLOW == __SPRT_FE_UNDERFLOW);
@@ -59,7 +60,11 @@ static_assert(FE_OVERFLOW == __SPRT_FE_OVERFLOW);
 static_assert(FE_DIVBYZERO == __SPRT_FE_DIVBYZERO);
 static_assert(FE_INVALID == __SPRT_FE_INVALID);
 
+#ifdef __FE_DENORM
+static_assert(FE_ALL_EXCEPT == (__SPRT_FE_ALL_EXCEPT | __SPRT_FE_DENORM));
+#else
 static_assert(FE_ALL_EXCEPT == __SPRT_FE_ALL_EXCEPT);
+#endif
 static_assert(FE_TONEAREST == __SPRT_FE_TONEAREST);
 static_assert(FE_UPWARD == __SPRT_FE_UPWARD);
 static_assert(FE_DOWNWARD == __SPRT_FE_DOWNWARD);

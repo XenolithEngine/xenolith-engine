@@ -104,6 +104,53 @@ Supported targets:
 * target-x86_64-pc-windows-msvc
 * target-aarch64-pc-windows-msvc
 
+The Apple targets (`*-apple-macosx`, `*-apple-ios`, `*-apple-ios-simulator`) need
+the matching Apple SDKs. On a macOS host they are located automatically through
+`xcrun`. When cross-building from a non-Darwin host they must be provided under
+`src/` as `MacOSX.sdk`, `iPhoneOS.sdk` and `iPhoneSimulator.sdk` (these are not
+fetched by `make download` — they are extracted from Xcode / the Command Line
+Tools and are subject to the Apple SDK license). The deployment targets are
+`SP_MACOS_VER` / `SP_IOS_VER` in `target-apple/Makefile`. There are three iOS
+sysroots: `target-aarch64-apple-ios` (device) plus the
+`target-{x86_64,aarch64}-apple-ios-simulator` simulators; `make target-ios`
+builds all three. On iOS the Vulkan validation layer is shipped as
+`VkLayer_khronos_validation.framework` (upstream forces a framework there)
+instead of a flat `.dylib`.
+
+### Build cross host toolchains
+
+Besides the native host toolchain (`make host`, built with a multi-stage
+bootstrap for the build machine), additional host toolchains for *other*
+platforms (or a simplified rebuild for the same one) can be produced by
+*cross-compiling* them with the already-built native host's clang.
+
+The overall build order is:
+
+1. Build **one** native host toolchain for the build machine — `make host`.
+   This is the only toolchain produced by a full bootstrap.
+2. Build the **targets** — `make target-<triple>`. Each target sysroot already
+   contains a complete libc of the required version (glibc/musl), libc++ and
+   compiler-rt.
+3. Build the **cross host toolchains** *from the targets* (where necessary) —
+   `make host-cross-<triple>`. The cross host build reuses the native host's
+   clang as the cross-compiler and, where the libc cannot be produced by clang
+   alone (glibc needs GCC), the pre-built libc sysroot of the corresponding
+   target. Therefore each `host-cross-*` recipe depends on the matching
+   `target-*` in this Makefile.
+
+[source,sh]
+----
+# From runtime/toolchains, after `make host` and the relevant `make target-...`
+make host-cross-x86_64-unknown-linux-gnu     # reuses target-x86_64-unknown-linux-gnu glibc
+make host-cross-x86_64-unknown-linux-musl     # musl libc is built inline (no target needed)
+make host-cross-x86_64-pc-windows-msvc        # reuses the Windows SDK (xwin)
+make host-cross-x86_64-apple-macosx           # reuses the macOS SDK
+----
+
+Supported cross hosts: `host-cross-{x86_64,aarch64,riscv64}-unknown-linux-{gnu,musl}`,
+`host-cross-{x86_64,aarch64}-pc-windows-msvc`, `host-cross-{x86_64,aarch64}-apple-macosx`.
+See the `cross/` subdirectory and `README.adoc` of each `host-*` directory.
+
 ## Sources list policy
 
 The list of sources for source codes must be updated regularly. After the build of a new version is confirmed, the date of its update is placed next to the corresponding source in the format `revised: 22 feb 2026`.

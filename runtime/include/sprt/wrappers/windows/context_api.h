@@ -417,7 +417,7 @@ typedef struct SPRT_ALIGNAS(16) _CONTEXT {
 			DWORD64 Lr; // x30 link register
 		};
 		DWORD64 X[31];
-	} DUMMYUNIONNAME;
+	}; // anonymous (ARM64_NT_CONTEXT's DUMMYUNIONNAME) -- exposes Lr/Fp/X[] as Context.<reg>
 	DWORD64 Sp;
 	DWORD64 Pc;
 

@@ -22,42 +22,43 @@ GIT_TAG ?= $(shell git describe --tags --abbrev=0)
 
 SP_USE_STAPPLER_DISTRIB ?= 1
 
-LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
-LOCAL_ROOT := $(dir $(THIS_FILE))
+unexport LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
+unexport LOCAL_ROOT := $(dir $(THIS_FILE))
 
 include $(LOCAL_ROOT)../../common/utils/detect-platform.mk
 include $(LOCAL_ROOT)../../common/utils/init-shell.mk
 
-SP_ARCH := x86_64
-SP_ARCH_LD := x86_64
-SP_ARCH_WINDOWS := x86_64
+unexport SP_ARCH_HOST ?= x86_64
 
+unexport SP_ARCH_WINDOWS := $(SP_ARCH_HOST)
 
-SP_NJOBS := -j16
-SP_ARCH_CLANG ?= $(SP_ARCH)-pc-windows-msvc
+unexport SP_NJOBS := -j16
+override SP_ARCH_CLANG := $(SP_ARCH_HOST)-pc-windows-msvc
 
-SP_LLVM_VER := 21
+unexport SP_LLVM_VER := 21
 
-LLVM_DIR := $(realpath $(LOCAL_ROOT)../../src/llvm-project)
-SDK_DIR ?= $(realpath $(LOCAL_ROOT)../../src/xwin/splat/sdk)
-CRT_DIR ?= $(realpath $(LOCAL_ROOT)../../src/xwin/splat/crt)
+unexport LLVM_DIR := $(realpath $(LOCAL_ROOT)../../src/llvm-project)
+unexport SDK_DIR ?= $(realpath $(LOCAL_ROOT)../../src/xwin/splat/sdk)
+unexport CRT_DIR ?= $(realpath $(LOCAL_ROOT)../../src/xwin/splat/crt)
 
-VULKAN_HEADERS_DIR := $(realpath ../../src/vulkan-headers)
-SPIRV_HEADERS_DIR := $(realpath ../../src/spirv-headers)
-GLSLANG_DIR := $(realpath ../../src/glslang)
-SPIRV_TOOLS_DIR := $(realpath ../../src/spirv-tools)
-LIBXML2_DIR := $(realpath ../../src/libxml2)
-ZLIB_DIR := $(realpath ../../src/zlib)
+unexport VULKAN_HEADERS_DIR := $(realpath ../../src/vulkan-headers)
+unexport SPIRV_HEADERS_DIR := $(realpath ../../src/spirv-headers)
+unexport GLSLANG_DIR := $(realpath ../../src/glslang)
+unexport SPIRV_TOOLS_DIR := $(realpath ../../src/spirv-tools)
+unexport LIBXML2_DIR := $(realpath ../../src/libxml2)
+unexport ZLIB_DIR := $(realpath ../../src/zlib)
 
-HOST_ROOT := $(realpath $(LOCAL_ROOT)../../hosts/$(HOST_ID))
+unexport HOST_ROOT := $(realpath $(LOCAL_ROOT)../../hosts/$(HOST_ID))
 
 $(info HOST_ROOT $(HOST_ROOT))
 
-OUT_SYSROOT := ../../hosts/$(SP_ARCH_CLANG)
+unexport OUT_SYSROOT := ../../hosts/$(SP_ARCH_CLANG)
+unexport ROOT_DIR := $(abspath ../..)
+unexport TARGET_SYSROOT := $(ROOT_DIR)/targets/$(SP_ARCH_CLANG)
 
 include stage0.mk
 
-$(OUT_SYSROOT)/release: $(MAKE_SRC_EXE) $(STAGE0_CLANG_CC) $(STAGE0_GLSLANG)
+$(OUT_SYSROOT)/release: $(STAGE0_CLANG_CC) $(STAGE0_GLSLANG)
 	$(call rule_rm,$(OUT_SYSROOT))
 	$(call rule_mkdir,$(OUT_SYSROOT))
 	$(call rule_mkdir,$(OUT_SYSROOT)/lib)
@@ -106,11 +107,24 @@ $(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'HOST_LIB_CXXFLAGS :=' >> $@
 	@echo 'HOST_LIB_LDFLAGS :=' >> $@
 
+$(TARGET_SYSROOT)/target.mk: $(OUT_SYSROOT)/host.mk $(OUT_SYSROOT)/release
+	@echo "Build $(TARGET_SYSROOT)/target.mk: $(OUT_SYSROOT)/host.mk $(OUT_SYSROOT)/release"
+	$(MAKE) -C $(ROOT_DIR) target-$(SP_ARCH_CLANG) HOST_REQUIRED=0
+
+$(OUT_SYSROOT)/bin/xlmake.exe: $(TARGET_SYSROOT)/target.mk $(OUT_SYSROOT)/host.mk
+	$(MAKE) $(SP_NJOBS) -C $(ROOT_DIR)/../../utils/xlmake install \
+		STAPPLER_HOST_FILE=$(HOST_ROOT)/host.mk \
+		STAPPLER_TARGET_FILE=$(TARGET_SYSROOT)/target.mk \
+		STAPPLER_TARGET=$(SP_ARCH_CLANG) \
+		LOCAL_INSTALL_DIR=$(abspath $(OUT_SYSROOT)/bin) \
+		LOCAL_OUTDIR=$(abspath build/xlmake) \
+		RELEASE=1
+
 download: $(MAKE_SRC_DIR) $(LLVM_DIR)
 
 make: $(MAKE_SRC_EXE)
 
-out: stage0 $(OUT_SYSROOT)/release $(OUT_SYSROOT)/host.mk
+out: stage0 $(OUT_SYSROOT)/release $(OUT_SYSROOT)/host.mk $(OUT_SYSROOT)/bin/xlmake.exe
 
 all: stage0
 

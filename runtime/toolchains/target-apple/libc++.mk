@@ -48,12 +48,19 @@ CONFIGURE := \
 	-DDARWIN_osx_ARCHS=$(SP_ARCH) \
 	-DDARWIN_osx_BUILTIN_ARCHS=$(SP_ARCH) \
 
+# compiler-rt installs its Apple runtimes into lib/$(COMPILER_RT_OS_DIR), where
+# COMPILER_RT_OS_DIR is the lowercased CMAKE_SYSTEM_NAME (darwin for macOS,
+# ios for iOS). clang, however, always looks for them in the fixed `darwin`
+# resource subdir (the platform is encoded in the filename: osx/ios/iossim), so
+# we move whatever was produced into lib/clang/lib/darwin below.
 ifeq ($(SP_SYSNAME),Darwin)
 CONFIGURE += -DCOMPILER_RT_ENABLE_IOS=Off
+SP_RT_OS_DIR := darwin
 endif # Darwin
 
 ifeq ($(SP_SYSNAME),iOS)
 CONFIGURE += -DCOMPILER_RT_ENABLE_IOS=On
+SP_RT_OS_DIR := ios
 endif # iOS
 
 all:
@@ -64,7 +71,7 @@ all:
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_rm,$(SP_INSTALL_PREFIX)/lib/clang/lib)
 	$(call rule_mkdir,$(SP_INSTALL_PREFIX)/lib/clang/lib)
-	$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/darwin,$(SP_INSTALL_PREFIX)/lib/clang/lib)
-	$(call rule_rm,$(SP_INSTALL_PREFIX)/lib/darwin)
+	$(call rule_mv,$(SP_INSTALL_PREFIX)/lib/$(SP_RT_OS_DIR),$(SP_INSTALL_PREFIX)/lib/clang/lib/darwin)
+	$(call rule_rm,$(SP_INSTALL_PREFIX)/lib/$(SP_RT_OS_DIR))
 
 .PHONY: all

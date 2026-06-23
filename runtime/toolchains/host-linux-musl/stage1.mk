@@ -23,19 +23,43 @@
 # Компилятором stage0 собираем полностью самодостаточный набор в sysroot-out:
 #   1. musl (заново, stage0-clang)
 #   2. shared-рантаймы (libc++/libc++abi/libunwind/compiler-rt) — поставляются
-#   3. финальный clang/lld (+ libLLVM.so) с мульти-таргетным backend-ом
-#   4. glslang + spirv-tools
+#   3. zlib + libxml2 (build-time зависимости clang/lldb)
+#   4. финальный clang/lld/lldb (+ libLLVM.so) с мульти-таргетным backend-ом,
+#      по умолчанию с Full LTO (SP_LLVM_LTO)
+#   5. spirv-tools + glslang (ENABLE_OPT) + GNU make
 #
 # Итоговые бинарники слинкованы с нашим libc++ (rpath $ORIGIN/../lib), а PT_INTERP
 # указывает на стандартный /lib/ld-musl-$(SP_ARCH).so.1 — поэтому тулчейн работает
-# на любом musl-Linux. lldb/zlib/libxml2/LTO в первой версии не собираются.
+# на любом musl-Linux.
 
 STAGEOUT_SYSROOT := sysroot-out
 STAGEOUT_MUSL := $(STAGEOUT_SYSROOT)/lib/libc.a
 STAGEOUT_LIBCXX := $(STAGEOUT_SYSROOT)/lib/libc++.so.1.0
+# zlib/libxml2 — build-time зависимости clang/lldb (линкуются статически, в
+# поставку не идут). Ставятся в ОТДЕЛЬНЫЙ префикс с чистыми include (только их
+# заголовки): иначе -I<sysroot>/include с C-заголовками musl ломает libc++.
+STAGEOUT_EXTRA_PREFIX := $(abspath build/stageout-extra-install)
+STAGEOUT_ZLIB := $(STAGEOUT_EXTRA_PREFIX)/lib/libz.a
+STAGEOUT_LIBXML2 := $(STAGEOUT_EXTRA_PREFIX)/lib/libxml2.a
+STAGEOUT_MAKE := $(STAGEOUT_SYSROOT)/bin/make
 STAGEOUT_CLANG_CC := $(STAGEOUT_SYSROOT)/bin/clang
 STAGEOUT_CLANG_CXX := $(STAGEOUT_SYSROOT)/bin/clang++
 STAGEOUT_TOOLCHAIN := $(STAGEOUT_SYSROOT)/clang.cmake
+
+# LTO-флаги для финального clang (см. SP_LLVM_LTO в musl.mk).
+# При включённом LTO:
+#  - LLVM_PARALLEL_LINK_JOBS=1 — сериализуем тяжёлые LTO-линковки (libLLVM.so и
+#    liblldb.so), чтобы не упереться в RAM;
+#  - LTO отключается для нативной под-сборки tablegen (LLVM считает сборку
+#    кросс-сборкой из-за CMAKE_SYSTEM_NAME и собирает нативные инструменты
+#    отдельно) — иначе наблюдался краш lld.
+ifeq ($(SP_LLVM_LTO),)
+STAGEOUT_LTO_FLAGS := -DLLVM_PARALLEL_LINK_JOBS=2
+else
+STAGEOUT_LTO_FLAGS := -DLLVM_ENABLE_LTO=$(SP_LLVM_LTO) \
+	-DLLVM_PARALLEL_LINK_JOBS=1 \
+	-DCROSS_TOOLCHAIN_FLAGS_NATIVE=-DLLVM_ENABLE_LTO=OFF
+endif
 
 #
 # 1. musl в финальный sysroot, собранная stage0-clang
@@ -115,25 +139,75 @@ $(STAGEOUT_LIBCXX): $(STAGEOUT_TOOLCHAIN)
 	cmake --install build/stageout-runtimes
 
 #
-# 3. финальный clang/lld + libLLVM.so. Мульти-таргетный backend, чтобы
+# 2a. zlib и libxml2 (нужны clang/lldb: сжатые debug-секции, разбор XML).
+#     Собираются stage0-clang против полного sysroot-stage0, ставятся в sysroot-out.
+#
+$(STAGEOUT_ZLIB): $(STAGEOUT_TOOLCHAIN)
+	@echo "Build STAGEOUT zlib: $(STAGEOUT_ZLIB)"
+	rm -rf build/stageout-zlib
+	cmake -G Ninja -S $(ZLIB_DIR) -B build/stageout-zlib \
+		-DCMAKE_TOOLCHAIN_FILE=$(abspath $(STAGEOUT_TOOLCHAIN)) \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DZLIB_BUILD_EXAMPLES=Off \
+		-DZLIB_BUILD_SHARED=Off \
+		-DZLIB_BUILD_STATIC=On \
+		-DCMAKE_C_FLAGS_INIT="-fPIC -ffunction-sections -fdata-sections" \
+		-DCMAKE_INSTALL_PREFIX=$(STAGEOUT_EXTRA_PREFIX)
+	cmake --build build/stageout-zlib
+	cmake --install build/stageout-zlib
+
+$(STAGEOUT_LIBXML2): $(STAGEOUT_ZLIB)
+	@echo "Build STAGEOUT libxml2: $(STAGEOUT_LIBXML2)"
+	rm -rf build/stageout-libxml2
+	cmake -G Ninja -S $(LIBXML2_DIR) -B build/stageout-libxml2 \
+		-DCMAKE_TOOLCHAIN_FILE=$(abspath $(STAGEOUT_TOOLCHAIN)) \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DBUILD_SHARED_LIBS=Off \
+		-DLIBXML2_WITH_DEBUG=Off \
+		-DLIBXML2_WITH_PROGRAMS=Off \
+		-DLIBXML2_WITH_TESTS=Off \
+		-DLIBXML2_WITH_PYTHON=Off \
+		-DLIBXML2_WITH_ICONV=Off \
+		-DLIBXML2_WITH_LZMA=Off \
+		-DLIBXML2_WITH_ZLIB=Off \
+		-DLIBXML2_WITH_TLS=On \
+		-DCMAKE_C_FLAGS_INIT="-fPIC -ffunction-sections -fdata-sections" \
+		-DCMAKE_INSTALL_PREFIX=$(STAGEOUT_EXTRA_PREFIX)
+	cmake --build build/stageout-libxml2
+	cmake --install build/stageout-libxml2
+
+#
+# 3. финальный clang/lld/lldb + libLLVM.so. Мульти-таргетный backend, чтобы
 #    хост-компилятор мог кросс-компилировать движок под все цели.
 #
-$(STAGEOUT_CLANG_CC): $(STAGEOUT_LIBCXX)
+$(STAGEOUT_CLANG_CC): $(STAGEOUT_LIBCXX) $(STAGEOUT_ZLIB) $(STAGEOUT_LIBXML2)
 	@echo "Build STAGEOUT clang: $(STAGEOUT_CLANG_CC)"
 	rm -rf build/stageout-llvm
 	cmake -G Ninja -S $(LLVM_DIR)/llvm -B build/stageout-llvm \
 		-DCMAKE_TOOLCHAIN_FILE=$(abspath $(STAGEOUT_TOOLCHAIN)) \
 		-DCMAKE_BUILD_TYPE=Release \
-		-DLLVM_ENABLE_PROJECTS="clang;lld" \
+		-DLLVM_ENABLE_PROJECTS="clang;lld;lldb" \
 		-DLLVM_ENABLE_RUNTIMES="compiler-rt;libunwind;libcxxabi;libcxx" \
 		-DLLVM_TARGETS_TO_BUILD="X86;ARM;AArch64;RISCV;WebAssembly" \
 		-DLLVM_DEFAULT_TARGET_TRIPLE=$(SP_ARCH_CLANG) \
 		-DLLVM_INSTALL_TOOLCHAIN_ONLY=On \
 		-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
-		-DLLVM_ENABLE_ZLIB=Off \
-		-DLLVM_ENABLE_LIBXML2=Off \
+		-DLLVM_ENABLE_ZLIB=FORCE_ON \
+		-DZLIB_LIBRARY=$(STAGEOUT_ZLIB) \
+		-DZLIB_INCLUDE_DIR=$(STAGEOUT_EXTRA_PREFIX)/include \
+		-DLLVM_ENABLE_LIBXML2=FORCE_ON \
+		-DLIBXML2_LIBRARY=$(STAGEOUT_LIBXML2) \
+		-DLIBXML2_INCLUDE_DIR=$(STAGEOUT_EXTRA_PREFIX)/include/libxml2 \
 		-DLLVM_INCLUDE_BENCHMARKS=Off \
 		-DLLVM_BUILD_BENCHMARKS=Off \
+		$(STAGEOUT_LTO_FLAGS) \
+		-DLLDB_ENABLE_PYTHON=Off \
+		-DLLDB_ENABLE_LIBEDIT=Off \
+		-DLLDB_ENABLE_CURSES=Off \
+		-DLLDB_ENABLE_LZMA=Off \
+		-DLLDB_ENABLE_LIBXML2=On \
+		-DLLDB_INCLUDE_TESTS=Off \
+		-DLLDB_NO_INSTALL_DEFAULT_RPATH=On \
 		-DLLVM_ENABLE_PIC=On \
 		-DCMAKE_POSITION_INDEPENDENT_CODE=On \
 		-DLLVM_BUILD_LLVM_DYLIB=On \
@@ -173,8 +247,8 @@ $(STAGEOUT_CLANG_CC): $(STAGEOUT_LIBCXX)
 		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
 		-DCMAKE_EXE_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections" \
 		-DCMAKE_SHARED_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections" \
-		-DCMAKE_C_FLAGS_INIT="-ffunction-sections -fdata-sections" \
-		-DCMAKE_CXX_FLAGS_INIT="-ffunction-sections -fdata-sections" \
+		-DCMAKE_C_FLAGS_INIT="-isystem $(STAGEOUT_EXTRA_PREFIX)/include -ffunction-sections -fdata-sections" \
+		-DCMAKE_CXX_FLAGS_INIT="-isystem $(STAGEOUT_EXTRA_PREFIX)/include -ffunction-sections -fdata-sections" \
 		-DCMAKE_INSTALL_PREFIX=$(abspath $(STAGEOUT_SYSROOT))
 	cmake --build build/stageout-llvm
 	cmake --install build/stageout-llvm
@@ -184,29 +258,37 @@ $(STAGEOUT_CLANG_CC): $(STAGEOUT_LIBCXX)
 # 4. SPIR-V tools и glslang (нужны движку: HOST_SPIRV_LINK / HOST_GLSLANG).
 #    SPIRV-Headers берём НАПРЯМУЮ из исходников, а не из sysroot: иначе spirv-tools
 #    добавляет -I<sysroot>/include, и C-заголовки musl попадают в путь поиска
-#    раньше заголовков libc++ — ломается #include_next в libc++ (<cstdio> и т.п.)
-#    и всплывает -Wundef на __STDC_VERSION__. ENABLE_OPT в glslang выключен в первой
-#    версии (развязка от spirv-tools); движок использует spirv-opt отдельно.
+#    раньше заголовков libc++ — ломается #include_next в libc++ (<cstdio> и т.п.).
+#    По той же причине spirv-tools СТАВИТСЯ в отдельный чистый префикс
+#    (SPIRV_PREFIX, только spirv-заголовки) — оттуда glslang находит SPIRV-Tools-opt
+#    для ENABLE_OPT без загрязнения include libc-заголовками; бинарники
+#    дополнительно копируются в sysroot-out/bin для движка и поставки.
 #
+SPIRV_PREFIX := $(abspath build/stageout-spirv-install)
+SPIRV_BINS := spirv-as spirv-cfg spirv-diff spirv-dis spirv-link spirv-lint \
+	spirv-objdump spirv-opt spirv-reduce spirv-val
+
 $(STAGEOUT_SYSROOT)/bin/spirv-opt: $(STAGEOUT_CLANG_CC)
 	@echo "Build SPIR-V tools"
-	rm -rf build/stageout-spirv-tools
+	rm -rf build/stageout-spirv-tools $(SPIRV_PREFIX)
 	cmake -G Ninja -S $(SPIRV_TOOLS_DIR) -B build/stageout-spirv-tools \
 		-DCMAKE_TOOLCHAIN_FILE=$(abspath $(STAGEOUT_TOOLCHAIN)) \
 		-DSPIRV_TOOLS_BUILD_STATIC=On \
 		-DSPIRV_WERROR=Off \
 		-DSPIRV-Headers_SOURCE_DIR=$(SPIRV_HEADERS_DIR) \
 		-DCMAKE_BUILD_TYPE=Release \
-		-DCMAKE_C_FLAGS_INIT="-ffunction-sections -fdata-sections" \
-		-DCMAKE_CXX_FLAGS_INIT="-ffunction-sections -fdata-sections" \
+		-DCMAKE_C_FLAGS_INIT="-fPIC -ffunction-sections -fdata-sections" \
+		-DCMAKE_CXX_FLAGS_INIT="-fPIC -ffunction-sections -fdata-sections" \
 		-DCMAKE_EXE_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections" \
 		-DCMAKE_SHARED_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections" \
 		-DCMAKE_INSTALL_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
 		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
 		-DBUILD_SHARED_LIBS=Off \
-		-DCMAKE_INSTALL_PREFIX=$(abspath $(STAGEOUT_SYSROOT))
+		-DCMAKE_INSTALL_PREFIX=$(SPIRV_PREFIX)
 	cmake --build build/stageout-spirv-tools
 	cmake --install build/stageout-spirv-tools
+	mkdir -p $(STAGEOUT_SYSROOT)/bin
+	cd $(SPIRV_PREFIX)/bin; cp -f $(SPIRV_BINS) $(abspath $(STAGEOUT_SYSROOT))/bin/
 	touch $@
 
 $(STAGEOUT_SYSROOT)/bin/glslang: $(STAGEOUT_SYSROOT)/bin/spirv-opt
@@ -216,7 +298,11 @@ $(STAGEOUT_SYSROOT)/bin/glslang: $(STAGEOUT_SYSROOT)/bin/spirv-opt
 		-DCMAKE_TOOLCHAIN_FILE=$(abspath $(STAGEOUT_TOOLCHAIN)) \
 		-DGLSLANG_TESTS=Off \
 		-DENABLE_HLSL=Off \
-		-DENABLE_OPT=Off \
+		-DENABLE_OPT=On \
+		-DALLOW_EXTERNAL_SPIRV_TOOLS=On \
+		-DCMAKE_FIND_ROOT_PATH=$(SPIRV_PREFIX) \
+		-DSPIRV-Tools_DIR=$(SPIRV_PREFIX)/lib/cmake/SPIRV-Tools \
+		-DSPIRV-Tools-opt_DIR=$(SPIRV_PREFIX)/lib/cmake/SPIRV-Tools-opt \
 		-DGLSLANG_ENABLE_INSTALL=On \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_C_FLAGS_INIT="-ffunction-sections -fdata-sections" \
@@ -231,7 +317,23 @@ $(STAGEOUT_SYSROOT)/bin/glslang: $(STAGEOUT_SYSROOT)/bin/spirv-opt
 	cmake --install build/stageout-glslang
 	touch $@
 
-stage1: $(STAGEOUT_MUSL) $(STAGEOUT_LIBCXX) $(STAGEOUT_CLANG_CC) \
+#
+# 5. host-овый GNU make в составе тулчейна.
+#
+$(STAGEOUT_MAKE): $(STAGEOUT_CLANG_CC) $(MAKE_SRC_DIR)/configure
+	@echo "Build STAGEOUT make: $(STAGEOUT_MAKE)"
+	rm -rf build/stageout-make
+	mkdir -p build/stageout-make
+	cd build/stageout-make; $(MAKE_SRC_DIR)/configure \
+		--prefix=$(abspath $(STAGEOUT_SYSROOT)) \
+		--without-guile \
+		CC=$(abspath $(STAGE0_CLANG_CC)) \
+		CFLAGS="--sysroot $(abspath $(STAGE0_SYSROOT)) -O2"
+	$(MAKE) -C build/stageout-make $(SP_NJOBS)
+	$(MAKE) -C build/stageout-make install
+
+stage1: $(STAGEOUT_MUSL) $(STAGEOUT_LIBCXX) $(STAGEOUT_ZLIB) $(STAGEOUT_LIBXML2) \
+	$(STAGEOUT_CLANG_CC) $(STAGEOUT_MAKE) \
 	$(STAGEOUT_SYSROOT)/bin/spirv-opt $(STAGEOUT_SYSROOT)/bin/glslang
 
 .PHONY: stage1

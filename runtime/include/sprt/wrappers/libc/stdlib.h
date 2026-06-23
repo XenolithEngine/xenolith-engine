@@ -147,9 +147,20 @@ __SPRT_END_DECL
 
 __SPRT_BEGIN_DECL
 
+
+// MSVC CRT byte-swap intrinsics. Gated to Windows because _byteswap_ulong operates
+// on a 32-bit unsigned long, which only holds under the LLP64 model (every Windows
+// arch); on LP64 unsigned long is 64-bit and the signature would not match MSVC.
+// The implementation lives in libc_wrapper/c/stdlib/byteswap.cc. (The previous
+// `__SPRT_ARCH_ID == __SPRT_ARCH_NAME_X86_64` guard compared a number to the token
+// x86_64_sprt, so it was false on every arch -- breaking aarch64-windows.)
+#if SPRT_WINDOWS
+
 __SPRT_C_FUNC unsigned short _byteswap_ushort(unsigned short _Number) __SPRT_NOEXCEPT;
 __SPRT_C_FUNC unsigned long _byteswap_ulong(unsigned long _Number) __SPRT_NOEXCEPT;
 __SPRT_C_FUNC __SPRT_ID(uint64_t) _byteswap_uint64(__SPRT_ID(uint64_t) _Number) __SPRT_NOEXCEPT;
+
+#endif
 
 __SPRT_C_FUNC int qsort_s(void *a, size_t b, size_t c,
 		int (*cmp)(void *, const void *, const void *), void *ctx) __SPRT_NOEXCEPT;

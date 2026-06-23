@@ -23,4 +23,24 @@ Build all dependencies using glibc and libc++ from host stage
 
 ## musl
 
-In development
+Цели `*-unknown-linux-musl` собираются той же машинерией, что и glibc: libc и
+кросс-тулчейн готовит подкаталог `musl/` (аналог `glibc/`), а сборка сторонних
+библиотек (ветка `SP_ARCH`) и упаковка (`install-target.mk`) — общие,
+libc-агностичные. Роутинг — по полному триплету (как у target-apple):
+`make target-x86_64-unknown-linux-musl` и т.п.
+
+Подкаталог `musl/` кардинально проще `glibc/`: host-clang из `hosts/<id>`
+мульти-таргетный, поэтому musl и рантаймы кросс-компилируются напрямую
+(`host-clang --target=<triple> --sysroot=…`) — без binutils и кросс-GCC. Он
+строит: пинённую musl (сабмодуль `runtime/musl-libc`, out-of-tree),
+kernel headers (linux 5.10.258), compiler-rt (resource-dir), рантаймы LLVM
+(libc++/libc++abi/libunwind в `usr/lib`, заголовки в `usr/include/c++/v1`) и
+`toolchain.cmake`/`target.mk`/`target.ini` + симлинк `host`.
+
+Доп. host-инструменты для сборки сторонних библиотек (на Alpine):
+`apk add perl meson pkgconf wayland-dev`.
+
+Статус: полный набор для `x86_64-unknown-linux-musl` собран и проверен на Alpine
+(все сторонние библиотеки + кросс-программы линкуют target-либы и запускаются
+нативно). aarch64/riscv64 собираются тем же кодом; рантайм-проверка — под
+эмулятором.

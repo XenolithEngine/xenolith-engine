@@ -87,48 +87,41 @@ INCLUDES := \
 
 ifndef SP_ARCH
 
-ARCHS := e2k x86_64
+# Цели задаются полным триплетом (роутинг как у target-apple). libc выбирается
+# по суффиксу: -unknown-linux-gnu -> glibc/, -unknown-linux-musl -> musl/.
+# Сборка сторонних библиотек (ветка SP_ARCH ниже) libc-агностична и общая.
+GNU_ARCHS := x86_64 aarch64 riscv64
+MUSL_ARCHS := x86_64 aarch64 riscv64
 
-all: $(ARCHS)
+# По умолчанию — e2k + x86_64 (glibc), как раньше.
+all: e2k x86_64-unknown-linux-gnu
 
 clean:
 
-x86_64:
-	$(MAKE) -C glibc out SP_ARCH_TARGET=x86_64 \
-		OUT_HOST=$(abspath $(MAKE_ROOT)../hosts/$(HOST_ID)) \
-		OUT_SYSROOT=$(OUT_SYSROOT)/x86_64-unknown-linux-gnu
-	$(MAKE) -f $(THIS_FILE) SP_ARCH=x86_64 SP_TARGET=x86_64-unknown-linux-gnu \
-		OUT_SYSROOT=$(OUT_SYSROOT)/x86_64-unknown-linux-gnu
-	$(MAKE) -f $(INSTALL_TARGET_FILE) \
-		T_INTERMEDIATE=$(OUT_SYSROOT)/x86_64-unknown-linux-gnu \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-unknown-linux-gnu
+# $(1)=арка, $(2)=суффикс libc (gnu|musl), $(3)=подкаталог libc (glibc|musl).
+define linux_target =
+$(1)-unknown-linux-$(2):
+	$$(MAKE) -C $(3) out SP_ARCH_TARGET=$(1) \
+		OUT_HOST=$$(abspath $$(MAKE_ROOT)../hosts/$$(HOST_ID)) \
+		OUT_SYSROOT=$$(OUT_SYSROOT)/$(1)-unknown-linux-$(2)
+	$$(MAKE) -f $$(THIS_FILE) SP_ARCH=$(1) SP_TARGET=$(1)-unknown-linux-$(2) \
+		OUT_SYSROOT=$$(OUT_SYSROOT)/$(1)-unknown-linux-$(2)
+	$$(MAKE) -f $$(INSTALL_TARGET_FILE) \
+		T_INTERMEDIATE=$$(OUT_SYSROOT)/$(1)-unknown-linux-$(2) \
+		T_TARGET=$$(TOOLCHAIN_TARGETS)/$(1)-unknown-linux-$(2)
+endef
 
-aarch64:
-	$(MAKE) -C glibc out SP_ARCH_TARGET=aarch64 \
-		OUT_HOST=$(abspath $(MAKE_ROOT)../hosts/$(HOST_ID)) \
-		OUT_SYSROOT=$(OUT_SYSROOT)/aarch64-unknown-linux-gnu
-	$(MAKE) -f $(THIS_FILE) SP_ARCH=aarch64 SP_TARGET=aarch64-unknown-linux-gnu \
-		OUT_SYSROOT=$(OUT_SYSROOT)/aarch64-unknown-linux-gnu
-	$(MAKE) -f $(INSTALL_TARGET_FILE) \
-		T_INTERMEDIATE=$(OUT_SYSROOT)/aarch64-unknown-linux-gnu \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-unknown-linux-gnu
-
-riscv64:
-	$(MAKE) -C glibc out SP_ARCH_TARGET=riscv64 \
-		OUT_HOST=$(abspath $(MAKE_ROOT)../hosts/$(HOST_ID)) \
-		OUT_SYSROOT=$(OUT_SYSROOT)/riscv64-unknown-linux-gnu
-	$(MAKE) -f $(THIS_FILE) SP_ARCH=riscv64 SP_TARGET=riscv64-unknown-linux-gnu \
-		OUT_SYSROOT=$(OUT_SYSROOT)/riscv64-unknown-linux-gnu
-	$(MAKE) -f $(INSTALL_TARGET_FILE) \
-		T_INTERMEDIATE=$(OUT_SYSROOT)/riscv64-unknown-linux-gnu \
-		T_TARGET=$(TOOLCHAIN_TARGETS)/riscv64-unknown-linux-gnu
+$(foreach a,$(GNU_ARCHS),$(eval $(call linux_target,$(a),gnu,glibc)))
+$(foreach a,$(MUSL_ARCHS),$(eval $(call linux_target,$(a),musl,musl)))
 
 e2k:
 	@mkdir -p $(abspath ../e2k-unknown-linux) $(abspath ../e2k-unknown-linux/include) $(abspath ../e2k-unknown-linux/lib) $(abspath ../e2k-unknown-linux/bin)
 	$(MAKE) -f $(THIS_FILE) SP_ARCH=e2k SP_TARGET=e2k-unknown-linux \
 		OUT_SYSROOT=$(OUT_SYSROOT)/e2k-unknown-linux SP_TOOLCHAIN_PREFIX=$(LCC_TOOLCHAIN_PATH)/fs
 
-.PHONY: all x86_64 aarch64 riscv64 e2k
+.PHONY: all clean e2k \
+	$(addsuffix -unknown-linux-gnu,$(GNU_ARCHS)) \
+	$(addsuffix -unknown-linux-musl,$(MUSL_ARCHS))
 
 else # SP_ARCH
 
@@ -166,7 +159,11 @@ ifdef SP_IS_NATIVE
 FORWARD_VARS += SP_NATIVE=1
 endif
 
+# compiler-rt asan: для glibc собирается через compiler_rt.mk. Для musl libc++ и
+# compiler-rt уже даёт подкаталог musl/ (asan под musl в первой версии не строим).
+ifeq (,$(findstring musl,$(SP_TARGET)))
 INTERNAL_LIBS += clang/lib/linux/libclang_rt.asan-$(SP_ARCH).a
+endif
 
 ARCH_LIBS = \
 	$(addprefix $(SP_INSTALL_PREFIX)/lib/,$(INTERNAL_LIBS)) \

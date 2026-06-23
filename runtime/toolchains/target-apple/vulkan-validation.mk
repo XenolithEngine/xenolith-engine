@@ -41,10 +41,17 @@ endif # iOS
 
 endif # DARWIN
 
+# The CXX "compiler" is the clang C-driver, so C++ link lines do not pull in
+# libc++ automatically. On macOS the layer is a MODULE (-bundle) and gets -lc++
+# through CMAKE_MODULE_LINKER_FLAGS; on iOS it is a SHARED framework, so the
+# module flags do not apply. CMAKE_CXX_STANDARD_LIBRARIES is appended to every
+# C++ link (exe/shared/module) and resolves libc++ for the framework without
+# clobbering the sysroot -L/-F search paths seeded by the toolchain file.
 CONFIGURE := \
 	$(CONFIGURE_CMAKE) \
 	-DUPDATE_DEPS=OFF \
-	-DCMAKE_MODULE_LINKER_FLAGS="$(TARGET_LDFLAGS)"
+	-DCMAKE_MODULE_LINKER_FLAGS="$(TARGET_LDFLAGS)" \
+	-DCMAKE_CXX_STANDARD_LIBRARIES="-lc++"
 
 all:
 	$(call rule_rm,$(LIBNAME))

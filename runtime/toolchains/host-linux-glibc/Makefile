@@ -23,11 +23,11 @@ GIT_TAG ?= $(shell git describe --tags --abbrev=0)
 LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
 SP_NJOBS ?= -j16
-SP_ARCH ?= x86_64
-SP_ARCH_LD ?= x86-64
-SP_ARCH_CLANG ?= $(SP_ARCH)-unknown-linux-gnu
-SP_ARCH_LLVM ?= X86
-SP_LLVM_VER := 21
+unexport SP_ARCH ?= x86_64
+unexport SP_ARCH_LD ?= x86-64
+unexport SP_ARCH_CLANG ?= $(SP_ARCH)-unknown-linux-gnu
+unexport SP_ARCH_LLVM ?= X86
+unexport SP_LLVM_VER := 21
 
 include glibc.mk
 
@@ -49,7 +49,10 @@ include stage0.mk
 include stage1.mk
 include stage2.mk
 
-OUT_SYSROOT ?= ../hosts/$(SP_ARCH_CLANG)
+unexport OUT_SYSROOT ?= ../hosts/$(SP_ARCH_CLANG)
+
+unexport ROOT_DIR := $(abspath ..)
+unexport TARGET_SYSROOT := $(ROOT_DIR)/targets/$(SP_ARCH_CLANG)
 
 OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
 	clang-21 \
@@ -159,6 +162,19 @@ $(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'HOST_LIB_CXXFLAGS :=' >> $@
 	@echo 'HOST_LIB_LDFLAGS :=' >> $@
 
+$(TARGET_SYSROOT)/target.mk:
+	$(MAKE) -C $(ROOT_DIR) target-$(SP_ARCH_CLANG) HOST_REQUIRED=0
+
+$(OUT_SYSROOT)/bin/xlmake: $(TARGET_SYSROOT)/target.mk $(OUT_SYSROOT)/host.mk
+	rm -rf build/xlmake
+	$(MAKE) $(SP_NJOBS) -C $(ROOT_DIR)/../../utils/xlmake install \
+		STAPPLER_HOST_FILE=$(OUT_SYSROOT)/host.mk \
+		STAPPLER_TARGET_FILE=$(TARGET_SYSROOT)/target.mk \
+		STAPPLER_TARGET=$(SP_ARCH_CLANG) \
+		LOCAL_INSTALL_DIR=$(abspath $(OUT_SYSROOT)/bin) \
+		LOCAL_OUTDIR=$(abspath build/xlmake) \
+		RELEASE=1
+
 $(OUT_SYSROOT)/release: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++abi.so.1.0 libc++abi.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++abi.so.1.0 libc++abi.so.1
@@ -204,7 +220,7 @@ $(OUT_SYSROOT)/release: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_
 
 download: $(LINUX_HEADERS_DIR) src/gmp src/mpfr src/mpc src/isl src/gettext
 
-out: $(OUT_SYSROOT)/release
+out: $(OUT_SYSROOT)/release $(OUT_SYSROOT)/bin/xlmake
 
 all: stage0 stage1 stage2
 
