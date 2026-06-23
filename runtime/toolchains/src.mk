@@ -122,17 +122,24 @@ $(SRC_ROOT)/libpng: | prepare
 	cd $(SRC_ROOT); git clone  --recurse-submodules  --branch v1.6.58 https://github.com/pnggroup/libpng.git --depth 1 libpng
 
 #  Move to Void Linux source archives; sourceforge distribution can block downloads from Russia
-# https://sources.voidlinux.org # revised: 2 jun 2026
+# https://sources.voidlinux.org # revised: 23 jun 2026
+# Security: 5.2.2 is the latest release; backport CVE-2026-26740 + CVE-2026-23868
+#  (no upstream release carries the fixes yet)
 $(SRC_ROOT)/giflib: | prepare
 	$(call unpack_tar, https://sources.voidlinux.org/giflib-5.2.2/giflib-5.2.2.tar.gz, giflib)
+	cd $(SRC_ROOT)/giflib; git apply -p1 ../../replacements/giflib/0001-CVE-2026-26740-egif_lib-GCE-bounds-check.patch
+	cd $(SRC_ROOT)/giflib; git apply -p1 ../../replacements/giflib/0002-CVE-2026-23868-gifalloc-avoid-double-free.patch
 
 # https://storage.googleapis.com/downloads.webmproject.org/releases/webp/index.html # revised: 2 jun 2026
 $(SRC_ROOT)/libwebp: | prepare
 	$(call unpack_tar, https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-1.6.0.tar.gz, libwebp)
 
-# https://download.osgeo.org/libtiff/?C=M&O=D # revised: 2 jun 2026
+# https://download.osgeo.org/libtiff/?C=M&O=D # revised: 23 jun 2026
+# Security: 4.7.1 is the latest release; backport CVE-2026-4775 (no upstream release with the fix yet).
+#  CVE-2025-61143 / CVE-2025-61144 affect only the tiffcrop/tiffdither tools (built with tiff-tools=OFF) - N/A.
 $(SRC_ROOT)/tiff: | prepare
 	$(call unpack_tar, https://download.osgeo.org/libtiff/tiff-4.7.1.tar.xz, tiff)
+	cd $(SRC_ROOT)/tiff; git apply -p1 ../../replacements/tiff/0001-CVE-2026-4775-tif_getimage-signed-int-overflow.patch
 
 # https://github.com/google/brotli/releases # revised: 2 jun 2026
 # TODO: Move to git release
@@ -157,29 +164,29 @@ $(SRC_ROOT)/curl: | prepare
 $(SRC_ROOT)/freetype: | prepare
 	$(call unpack_tar, https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.xz, freetype)
 
-# https://github.com/harfbuzz/harfbuzz/releases/ # revised: 2 jun 2026
+# https://github.com/harfbuzz/harfbuzz/releases/ # revised: 23 jun 2026
 # TODO: Move to git release
 $(SRC_ROOT)/harfbuzz: | prepare
-	$(call unpack_tar, https://github.com/harfbuzz/harfbuzz/releases/download/14.2.0/harfbuzz-14.2.0.tar.xz, harfbuzz)
+	$(call unpack_tar, https://github.com/harfbuzz/harfbuzz/releases/download/14.2.1/harfbuzz-14.2.1.tar.xz, harfbuzz)
 
 
-# https://www.sqlite.org/download.html # revised: 2 jun 2026
+# https://www.sqlite.org/download.html # revised: 23 jun 2026
 # Weak supply chain validation: only sha3 provided
-SQLITE_URL := https://www.sqlite.org/2026/sqlite-amalgamation-3530100.zip
+SQLITE_URL := https://www.sqlite.org/2026/sqlite-amalgamation-3530200.zip
 ifeq ($(findstring Windows,$(OS)),Windows)
 $(SRC_ROOT)/sqlite: | prepare
 	@$(MKDIR) $(SRC_ROOT); $(MKDIR) $(TMP_DIR)
 	cd $(TMP_DIR); Invoke-WebRequest -Uri "$(SQLITE_URL)" -OutFile "sqlite-amalgamation.zip";
 	cd $(TMP_DIR); Expand-Archive -Path sqlite-amalgamation.zip -DestinationPath .
 	$(RM) $(TMP_DIR)/sqlite-amalgamation.zip
-	powershell Move-Item -Path $(TMP_DIR)/sqlite-amalgamation-3530100  -Destination $(SRC_ROOT)/sqlite
+	powershell Move-Item -Path $(TMP_DIR)/sqlite-amalgamation-3530200  -Destination $(SRC_ROOT)/sqlite
 else
 $(SRC_ROOT)/sqlite: | prepare
 	@$(MKDIR) $(SRC_ROOT); $(MKDIR) $(TMP_DIR)
 	cd $(TMP_DIR); $(WGET) $(SQLITE_URL) -O sqlite-amalgamation.zip
 	cd $(TMP_DIR); unzip sqlite-amalgamation.zip -d .
 	rm $(TMP_DIR)/sqlite-amalgamation.zip
-	mv -f $(TMP_DIR)/sqlite-amalgamation-3530100 $(SRC_ROOT)/sqlite
+	mv -f $(TMP_DIR)/sqlite-amalgamation-3530200 $(SRC_ROOT)/sqlite
 endif
 
 
@@ -196,9 +203,9 @@ $(SRC_ROOT)/libzip: | prepare
 	$(call unpack_tar, https://libzip.org/download/libzip-1.11.4.tar.xz, libzip)
 
 # Use 3.5 LTS until new LTS
-# https://openssl-library.org/source/index.html # revised: 2 jun 2026
+# https://openssl-library.org/source/index.html # revised: 23 jun 2026
 $(SRC_ROOT)/openssl: | prepare
-	$(call unpack_tar, https://github.com/openssl/openssl/releases/download/openssl-3.5.6/openssl-3.5.6.tar.gz, openssl)
+	$(call unpack_tar, https://github.com/openssl/openssl/releases/download/openssl-3.5.7/openssl-3.5.7.tar.gz, openssl)
 	$(call rule_cp,replacements/openssl/async_posix.c,$(SRC_ROOT)/openssl/crypto/async/arch/async_posix.c)
 	$(call rule_cp,replacements/openssl/49-xwin-clang.conf,$(SRC_ROOT)/openssl/Configurations)
 
@@ -250,23 +257,23 @@ $(SRC_ROOT)/moltenvk: | prepare
 $(SRC_ROOT)/icu4c: | prepare
 	$(call unpack_tar, https://github.com/unicode-org/icu/releases/download/release-78.3/icu4c-78.3-sources.tgz, icu4c)
 
-# https://github.com/libffi/libffi/releases # revised: 2 jun 2026
+# https://github.com/libffi/libffi/releases # revised: 23 jun 2026
 # TODO: move to git releases
 $(SRC_ROOT)/ffi: | prepare
-	$(call unpack_tar, https://github.com/libffi/libffi/releases/download/v3.5.2/libffi-3.5.2.tar.gz, ffi)
+	$(call unpack_tar, https://github.com/libffi/libffi/releases/download/v3.6.0/libffi-3.6.0.tar.gz, ffi)
 
 # https://github.com/libexpat/libexpat/releases # revised: 2 jun 2026
 $(SRC_ROOT)/expat: | prepare
 	$(call unpack_tar, https://github.com/libexpat/libexpat/releases/download/R_2_8_1/expat-2.8.1.tar.xz, expat)
 
 # Use upstream - releases bound with GCC
-#  Pin: 96664e69b1ecdb76e824be1d9e8f475b76dd08cf
-# https://github.com/ianlancetaylor/libbacktrace.git # revised: 2 jun 2026
+#  Pin: 549b81b43b46c0f361680561a626bf0e7b79dcbd
+# https://github.com/ianlancetaylor/libbacktrace.git # revised: 23 jun 2026
 $(SRC_ROOT)/libbacktrace: | prepare
 	@$(MKDIR) $(SRC_ROOT)
 	$(call rule_rm,$(SRC_ROOT)/libbacktrace)
 	cd $(SRC_ROOT); git clone https://github.com/ianlancetaylor/libbacktrace.git $(SRC_ROOT)/libbacktrace
-	cd $(SRC_ROOT)/libbacktrace; git checkout 96664e69b1ecdb76e824be1d9e8f475b76dd08cf
+	cd $(SRC_ROOT)/libbacktrace; git checkout 549b81b43b46c0f361680561a626bf0e7b79dcbd
 
 # Use upstream - releases are too old
 #  Pin: f3e8262173b7089db9a9d57a9ecef8dd07ad9c97
@@ -294,9 +301,9 @@ $(SRC_ROOT)/libxml2: | prepare
 $(SRC_ROOT)/wayland: | prepare
 	$(call unpack_tar, https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.25.0/downloads/wayland-1.25.0.tar.xz, wayland)
 
-# https://wayland.freedesktop.org/releases.html # revised: 2 jun 2026
+# https://wayland.freedesktop.org/releases.html # revised: 23 jun 2026
 $(SRC_ROOT)/wayland-protocols: | prepare
-	$(call unpack_tar, https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/1.47/downloads/wayland-protocols-1.47.tar.xz, wayland-protocols)
+	$(call unpack_tar, https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/1.49/downloads/wayland-protocols-1.49.tar.xz, wayland-protocols)
 
 # https://github.com/KDE/plasma-wayland-protocols # revised: 2 jun 2026
 $(SRC_ROOT)/plasma-wayland-protocols: | prepare
