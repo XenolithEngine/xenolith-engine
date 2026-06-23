@@ -23,7 +23,7 @@ LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
 STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../../make
 
-LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
+LOCAL_OUTDIR ?= $(dir $(LOCAL_MAKEFILE))stappler-build
 LOCAL_EXECUTABLE := xlmake
 
 LOCAL_PRIVATE_INCLUDE_PCH := SPCommon.h

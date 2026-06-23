@@ -21,6 +21,21 @@ THE SOFTWARE.
 **/
 
 #define __SPRT_BUILD 1
+// musl only exposes the *64 file API when _LARGEFILE64_SOURCE is set (its plain
+// symbols are already 64-bit); on glibc this is already implied by _GNU_SOURCE.
+#define _LARGEFILE64_SOURCE 1
+
+// musl lacks some BSD/glibc-only unistd entry points; mark them unavailable so
+// the wrappers below take their ENOSYS path instead of referencing a missing
+// symbol. The config headers honor these via #ifndef. Detect musl as Linux that
+// is neither Android (bionic, configured separately) nor glibc (__GLIBC__ comes
+// from <features.h>).
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <features.h>
+#ifndef __GLIBC__
+#define __SPRT_CONFIG_HAVE_UNISTD_SETLOGIN 0
+#endif
+#endif
 
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_unistd.h>

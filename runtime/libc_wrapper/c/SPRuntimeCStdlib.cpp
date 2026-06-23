@@ -46,6 +46,15 @@ THE SOFTWARE.
 #include "../src/private/SPRTSpecific.h"
 #endif
 
+// musl provides the float strto*_l variants but not the integer ones; integer
+// conversion is locale-independent, so fall back to the plain functions there
+// (Android is bionic and SPRT_ANDROID, not SPRT_LINUX, and keeps the _l calls).
+#if SPRT_LINUX && !defined(__GLIBC__)
+#define __SPRT_NO_STRTO_INT_L 1
+#else
+#define __SPRT_NO_STRTO_INT_L 0
+#endif
+
 namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(atoi_impl)(const char *str) { return ::atoi(str); }
@@ -174,19 +183,39 @@ __SPRT_C_FUNC char *__SPRT_ID(
 
 __SPRT_C_FUNC long __SPRT_ID(strtol_l)(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT endp,
 		int base, __SPRT_ID(locale_t) loc) {
+#if __SPRT_NO_STRTO_INT_L
+	(void)loc;
+	return ::strtol(str, endp, base);
+#else
 	return ::strtol_l(str, endp, base, loc);
+#endif
 }
 __SPRT_C_FUNC long long __SPRT_ID(strtoll_l)(const char *__SPRT_RESTRICT str,
 		char **__SPRT_RESTRICT endp, int base, __SPRT_ID(locale_t) loc) {
+#if __SPRT_NO_STRTO_INT_L
+	(void)loc;
+	return ::strtoll(str, endp, base);
+#else
 	return ::strtoll_l(str, endp, base, loc);
+#endif
 }
 __SPRT_C_FUNC unsigned long __SPRT_ID(strtoul_l)(const char *__SPRT_RESTRICT str,
 		char **__SPRT_RESTRICT endp, int base, __SPRT_ID(locale_t) loc) {
+#if __SPRT_NO_STRTO_INT_L
+	(void)loc;
+	return ::strtoul(str, endp, base);
+#else
 	return ::strtoul_l(str, endp, base, loc);
+#endif
 }
 __SPRT_C_FUNC unsigned long long __SPRT_ID(strtoull_l)(const char *__SPRT_RESTRICT str,
 		char **__SPRT_RESTRICT endp, int base, __SPRT_ID(locale_t) loc) {
+#if __SPRT_NO_STRTO_INT_L
+	(void)loc;
+	return ::strtoull(str, endp, base);
+#else
 	return ::strtoull_l(str, endp, base, loc);
+#endif
 }
 __SPRT_C_FUNC float __SPRT_ID(strtof_l)(const char *__SPRT_RESTRICT str,
 		char **__SPRT_RESTRICT endp, __SPRT_ID(locale_t) loc) {

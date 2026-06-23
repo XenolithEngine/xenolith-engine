@@ -4,6 +4,33 @@ Toolchain for Linux with glibc being built here.
 
 The principle of choosing Linux and glibc versions: the smallest supported LTS version of the Linux kernel with the highest build number is selected, and then the glibc version corresponding to this kernel version is selected.
 
+## Cross build (simplified)
+
+The `cross/` subdirectory builds the same glibc host toolchain WITHOUT the
+3-stage GCC/glibc bootstrap, analogous to `host-linux-musl/cross`,
+`host-macos/cross` and `host-windows-msvc/cross`. It is driven from the root
+Makefile as `make host-cross-<triple>-unknown-linux-gnu`, which depends on the
+matching `target-<triple>-unknown-linux-gnu` (cross hosts are built FROM
+targets; see the toolchains-level README).
+
+Unlike musl (whose libc clang can build on the fly), glibc cannot be built
+without GCC, so the cross build *reuses the already-built glibc sysroot of the
+corresponding target* (`target-linux/glibc/sysroot-target-<triple>`: pinned
+glibc + compiler-rt + headers). On top of it, the build machine's clang
+(`hosts/<HOST_ID>`) cross-compiles fresh shared runtimes (libc++/libc++abi/
+libunwind) and the final clang/lld/lldb. Because the target sysroot ships a
+*static, non-PIC* libc++, the cross build assembles a clean sysroot (target
+glibc, no static libc++) and links the shipped clang against its own shared,
+PIC libc++ — so `libLLVM.so` links cleanly and the result links against the
+*pinned* glibc (verified: required `GLIBC_` symbols stay at the pinned version,
+not the build machine's newer glibc), keeping the toolchain portable.
+
+[source,sh]
+----
+# From runtime/toolchains, after `make host` and `make target-<triple>-unknown-linux-gnu`
+make host-cross-x86_64-unknown-linux-gnu
+----
+
 General building principle:
 
 ## Prerequisites

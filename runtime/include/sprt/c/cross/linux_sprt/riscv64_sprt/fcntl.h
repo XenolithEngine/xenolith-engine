@@ -8,17 +8,17 @@
 #define __SPRT_O_DSYNC      010000
 #define __SPRT_O_SYNC     04010000
 #define __SPRT_O_RSYNC    04010000
-#define __SPRT_O_DIRECTORY  040000
-#define __SPRT_O_NOFOLLOW  0100000
+#define __SPRT_O_DIRECTORY 0200000
+#define __SPRT_O_NOFOLLOW  0400000
 #define __SPRT_O_CLOEXEC  02000000
 #define __SPRT_O_INHERITABLE 0 // non-standard, no-op on this platform
 
 #define __SPRT_O_ASYNC      020000
-#define __SPRT_O_DIRECT    0200000
+#define __SPRT_O_DIRECT     040000
 #define __SPRT_O_LARGEFILE 0
 #define __SPRT_O_NOATIME  01000000
 #define __SPRT_O_PATH    010000000
-#define __SPRT_O_TMPFILE 020040000
+#define __SPRT_O_TMPFILE 020200000
 #define __SPRT_O_NDELAY __SPRT_O_NONBLOCK
 
 #define __SPRT_O_SEARCH   __SPRT_O_PATH

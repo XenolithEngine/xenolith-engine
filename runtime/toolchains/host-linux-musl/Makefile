@@ -29,6 +29,10 @@ OUT_SYSROOT ?= ../hosts/$(SP_ARCH)-unknown-linux-musl
 OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
 	clang-21 \
 	lld \
+	lldb \
+	lldb-argdumper \
+	lldb-server \
+	make \
 	llvm-ar \
 	llvm-cov \
 	llvm-cxxfilt \
@@ -60,13 +64,15 @@ OUT_LIBS := $(addprefix $(OUT_SYSROOT)/lib/,\
 	libunwind.so.1.0 \
 	libLTO.so.21.1 \
 	libLLVM.so.21.1 \
-	libRemarks.so.21.1)
+	libRemarks.so.21.1 \
+	liblldb.so.21.1.8)
 
 OUT_INCLUDES := $(addprefix $(OUT_SYSROOT)/include/,\
 	clang \
 	clang-c \
 	llvm \
-	llvm-c)
+	llvm-c \
+	lldb)
 
 $(OUT_SYSROOT)/lib/%: $(STAGEOUT_SYSROOT)/lib/% $(STAGEOUT_CLANG_CC) $(STAGEOUT_LIBCXX) $(STAGEOUT_SYSROOT)/bin/glslang
 	@mkdir -p $(OUT_SYSROOT)/lib
@@ -126,6 +132,8 @@ $(OUT_SYSROOT)/release: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_
 	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.so.21.1 libLLVM.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libLTO.so.21.1 libLTO.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libRemarks.so.21.1 libRemarks.so
+	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.21.1.8 liblldb.so.21.1
+	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.so.21.1.8 liblldb.so
 
 	cd $(OUT_SYSROOT)/bin; ln -fs clang-21 clang
 	cd $(OUT_SYSROOT)/bin; ln -fs clang clang++

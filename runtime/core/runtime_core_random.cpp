@@ -29,6 +29,7 @@ THE SOFTWARE.
 #else
 #include <stdlib.h>
 #include <sys/random.h>
+#include <unistd.h>
 #endif
 
 #if SPRT_MACOS

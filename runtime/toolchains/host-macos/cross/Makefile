@@ -27,23 +27,20 @@ LOCAL_ROOT := $(dir $(THIS_FILE))
 
 include $(LOCAL_ROOT)../../common/utils/detect-platform.mk
 
+SP_ARCH_HOST ?= x86_64
 
-ifdef SP_X86_64
-
-SP_ARCH := x86_64
-SP_ARCH_LD := x86_64
-SP_ARCH_APPLE := x86_64
-
-else
-
-SP_ARCH := aarch64
-SP_ARCH_LD := aarch64
+ifeq ($(SP_ARCH_HOST),aarch64)
 SP_ARCH_APPLE := arm64
-
+else
+SP_ARCH_APPLE := x86_64
 endif
 
+
 SP_NJOBS := -j16
-SP_ARCH_CLANG ?= $(SP_ARCH)-apple-macosx
+SP_ARCH_CLANG ?= $(SP_ARCH_HOST)-apple-macosx
+
+unexport ROOT_DIR := $(abspath ../..)
+unexport OUT_TARGET_SYSROOT := $(ROOT_DIR)/targets/$(SP_ARCH_CLANG)
 
 SP_LLVM_VER := 21
 
@@ -90,13 +87,13 @@ CODESIGN ?= $(realpath ~/.cargo/bin/rcodesign)
 export LIBTOOL=$(abspath $(HOST_LLVM_LIBTOOL))
 export LIPO=$(abspath $(HOST_LLVM_LIPO))
 
-TARGET_SYSROOT := sysroot-target/$(SP_ARCH)
-TARGET_TOOLCHAIN_FILE := sysroot-target/$(SP_ARCH)/toolchain.cmake
+TARGET_SYSROOT := sysroot-target/$(SP_ARCH_HOST)
+TARGET_TOOLCHAIN_FILE := sysroot-target/$(SP_ARCH_HOST)/toolchain.cmake
 
 TARGET_CLANG_CC := $(TARGET_SYSROOT)/bin/clang
 TARGET_CLANG_CXX := $(TARGET_SYSROOT)/bin/clang++
 
-ifdef SP_X86_64
+ifeq ($(SP_ARCH_HOST),x86_64)
 TARGET_CLANG_CFLAGS := -march=x86-64
 else
 TARGET_CLANG_CFLAGS :=
@@ -381,7 +378,8 @@ $(OUT_SYSROOT)/host.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'HOST_LIB_CXXFLAGS :=' >> $@
 	@echo 'HOST_LIB_LDFLAGS :=' >> $@
 
-$(OUT_SYSROOT)/release: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
+$(OUT_SYSROOT)/release: $(TARGET_CLANG_CC) \
+		$(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
 	cd $(OUT_SYSROOT)/lib; ln -fs liblldb.21.1.8.dylib liblldb.dylib
 	cd $(OUT_SYSROOT)/lib; ln -fs libLLVM.dylib libLLVM-21.dylib
 
@@ -413,7 +411,20 @@ $(OUT_SYSROOT)/release: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_
 	echo "$(GIT_TAG)" > $@
 	touch $@
 
-out: $(OUT_SYSROOT)/release
+$(OUT_TARGET_SYSROOT)/target.mk:
+	$(MAKE) -C $(ROOT_DIR) target-$(SP_ARCH_CLANG) HOST_REQUIRED=0
+
+$(OUT_SYSROOT)/bin/xlmake: $(OUT_TARGET_SYSROOT)/target.mk $(OUT_SYSROOT)/host.mk
+	rm -rf build/xlmake
+	$(MAKE) $(SP_NJOBS) -C $(ROOT_DIR)/../../utils/xlmake install \
+		STAPPLER_HOST_FILE=$(HOST_ROOT)/host.mk \
+		STAPPLER_TARGET_FILE=$(OUT_TARGET_SYSROOT)/target.mk \
+		STAPPLER_TARGET=$(SP_ARCH_CLANG) \
+		LOCAL_INSTALL_DIR=$(abspath $(OUT_SYSROOT)/bin) \
+		LOCAL_OUTDIR=$(abspath build/xlmake) \
+		RELEASE=1
+
+out: $(OUT_SYSROOT)/release $(OUT_SYSROOT)/bin/xlmake
 
 all: host target
 

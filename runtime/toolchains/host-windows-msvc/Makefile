@@ -32,9 +32,8 @@ rule_echo = Add-Content  -Encoding UTF8 -Path "$(1)" -Value
 rule_touch = (Get-Item "$(1)").LastWriteTime = $$(Get-Date);
 
 SP_NJOBS := -j16
-SP_ARCH := x86_64
-SP_ARCH_LD := x86-64
-SP_ARCH_CLANG ?= $(SP_ARCH)-pc-windows-msvc
+SP_ARCH_HOST := x86_64
+SP_ARCH_CLANG ?= $(SP_ARCH_HOST)-pc-windows-msvc
 SP_ARCH_LINUX := x86
 
 # https://ftp.gnu.org/gnu/make/make-4.4.1.tar.lz

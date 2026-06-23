@@ -1,1 +1,5 @@
 /intermediate/
+/targets/
+/musl/src/
+/musl/build/
+/musl/*-unknown-linux-musl/

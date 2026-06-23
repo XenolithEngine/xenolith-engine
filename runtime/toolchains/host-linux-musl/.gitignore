@@ -1,4 +1,6 @@
 /build/
 /sysroot-*
+/out-test
+/out-*
 src
 *.tar.xz

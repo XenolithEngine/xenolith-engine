@@ -45,12 +45,13 @@ ifdef SP_IOSSIM
 SP_SDK_NAME := iphonesimulator
 SP_SDK_ROOT := $(SP_IOSSIM_SDK)
 SP_SDK_FALLBACK := iPhoneSimulator.sdk
+SP_DEPFLAGS := -mios-simulator-version-min=$(SP_OSVER)
 else # SP_IOSSIM
 SP_SDK_NAME := iphoneos
 SP_SDK_ROOT := $(SP_IOS_SDK)
 SP_SDK_FALLBACK := iPhoneOS.sdk
-endif # SP_IOSSIM
 SP_DEPFLAGS := -mios-version-min=$(SP_OSVER)
+endif # SP_IOSSIM
 endif
 
 TOOLCHAIN_CFLAGS := -isysroot $(SP_SDK_ROOT)  -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(SP_TARGET) -arch $(SP_ARCH)
@@ -62,6 +63,7 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(THIS_FILE)
 	@echo 'set(CMAKE_SYSROOT "$${CMAKE_CURRENT_LIST_DIR}")' >> $@
 	@echo 'set(CMAKE_OSX_DEPLOYMENT_TARGET "$(SP_OSVER)")' >> $@
 	@echo 'set(CMAKE_OSX_ARCHITECTURES "$(SP_ARCH)")' >> $@
+	@echo 'set(CMAKE_MACOSX_BUNDLE OFF)' >> $@
 	@echo 'set(CMAKE_C_COMPILER_TARGET "$(SP_TARGET)")' >> $@
 	@echo 'set(CMAKE_CXX_COMPILER_TARGET "$(SP_TARGET)")' >> $@
 	@echo 'set(CMAKE_OBJC_COMPILER_TARGET "$(SP_TARGET)")' >> $@

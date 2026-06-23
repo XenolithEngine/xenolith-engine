@@ -364,5 +364,5 @@ $(SRC_ROOT)/xwin: | prepare
 	touch $(SRC_ROOT)/xwin
 
 $(SRC_ROOT)/xwin/splat: $(SRC_ROOT)/xwin
-	cd $(SRC_ROOT)/xwin; ./xwin --accept-license splat
+	cd $(SRC_ROOT)/xwin; ./xwin --accept-license  --arch aarch64 --arch x86_64 splat
 	cd $(SRC_ROOT)/xwin; ln -s .xwin-cache/splat splat

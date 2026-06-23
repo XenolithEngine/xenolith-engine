@@ -48,6 +48,20 @@ CONFIGURE := \
 	-DLIBUNWIND_INSTALL_LIBRARY_DIR=usr/lib \
 	-DCMAKE_BUILD_TYPE=Release
 
+# musl-specific libc++ configuration.
+ifneq (,$(findstring musl,$(SP_TARGET)))
+# Build libc++ in musl mode: its locale backend otherwise pulls glibc-only
+# entry points (strtoll_l/strtoull_l) and the glibc rune table, which musl
+# lacks. Defines _LIBCPP_HAS_MUSL_LIBC and switches those code paths.
+CONFIGURE += -DLIBCXX_HAS_MUSL_LIBC=ON
+# musl provides no __cxa_thread_atexit_impl(): the libcxxabi check_library_exists()
+# probe mis-detects it (it links the build host's libc), so force it off. libc++abi
+# then declares the symbol weak and falls back to a pthread-key implementation
+# instead of emitting a hard reference to a symbol musl's libc.a does not contain.
+# glibc keeps auto-detection (it has the function and uses it directly).
+CONFIGURE += -DLIBCXXABI_HAS_CXA_THREAD_ATEXIT_IMPL=OFF
+endif
+
 ifeq ($(SP_ARCH),riscv64)
 RISCV := 1
 endif

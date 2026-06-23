@@ -22,6 +22,9 @@ THE SOFTWARE.
 
 #define __SPRT_BUILD 1
 #define _FILE_OFFSET_BITS 64
+// musl only exposes the *64 file API when _LARGEFILE64_SOURCE is set (its plain
+// symbols are already 64-bit); on glibc this is already implied by _GNU_SOURCE.
+#define _LARGEFILE64_SOURCE 1
 
 #include <sprt/c/__sprt_fcntl.h>
 #include <sprt/c/__sprt_string.h>
@@ -38,11 +41,26 @@ THE SOFTWARE.
 
 #include <fcntl.h>
 
+// musl diverges from the glibc/bionic ABI for a couple of O_* constants checked
+// below (Android is bionic and SPRT_ANDROID, not SPRT_LINUX, so it keeps the
+// strict checks). <fcntl.h> has already pulled in <features.h> here.
+#if SPRT_LINUX && !defined(__GLIBC__)
+#define __SPRT_FCNTL_MUSL 1
+#else
+#define __SPRT_FCNTL_MUSL 0
+#endif
+
 static_assert(SEEK_SET == __SPRT_SEEK_SET);
 static_assert(SEEK_CUR == __SPRT_SEEK_CUR);
 static_assert(SEEK_END == __SPRT_SEEK_END);
 
+#if __SPRT_FCNTL_MUSL
+// musl widens O_ACCMODE to (03 | O_SEARCH); the SPRT ABI keeps the classic 03
+// access-mode mask and the wrapper never masks native flags with O_ACCMODE.
+static_assert((O_ACCMODE & 03) == __SPRT_O_ACCMODE);
+#else
 static_assert(O_ACCMODE == __SPRT_O_ACCMODE);
+#endif
 static_assert(O_RDONLY == __SPRT_O_RDONLY);
 static_assert(O_WRONLY == __SPRT_O_WRONLY);
 static_assert(O_RDWR == __SPRT_O_RDWR);
@@ -79,7 +97,13 @@ static_assert(O_DIRECT == __SPRT_O_DIRECT);
 #endif
 
 #ifdef __SPRT_O_LARGEFILE
+#if __SPRT_FCNTL_MUSL
+// musl defines O_LARGEFILE (0100000) even on 64-bit archs and ORs it into
+// open() itself, so the SPRT ABI deliberately keeps __SPRT_O_LARGEFILE == 0.
+static_assert(__SPRT_O_LARGEFILE == 0);
+#else
 static_assert(O_LARGEFILE == __SPRT_O_LARGEFILE);
+#endif
 #endif
 
 #ifdef __SPRT_O_NOATIME

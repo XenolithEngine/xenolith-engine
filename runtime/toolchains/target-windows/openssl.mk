@@ -24,7 +24,14 @@ LIBNAME = openssl
 
 include ../common/configure.mk
 
+# Pick the OpenSSL Configure target by arch (both defined in
+# replacements/openssl/49-xwin-clang.conf). Without this, aarch64 fell back to the
+# hardcoded x64 target and produced x86_64 crypto.lib/ssl.lib.
+ifeq ($(SP_ARCH),aarch64)
+OPENSSL_TARGET := mingw-xwin-clang-arm64
+else
 OPENSSL_TARGET := mingw-xwin-clang-x64
+endif
 
 export CMAKECONFIGDIR=$(SP_INSTALL_PREFIX)/usr/lib/cmake
 export PKGCONFIGDIR=$(SP_INSTALL_PREFIX)/usr/lib/pkgconfig

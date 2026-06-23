@@ -34,6 +34,16 @@ MKDIR = mkdir -p
 SP_MACOS_VER := 14.4
 SP_IOS_VER := 17.4
 
+# The Vulkan validation layer is a loadable MODULE (.dylib) on macOS, but on iOS
+# upstream forces it to a SHARED .framework bundle. Track the produced artifact
+# (a real file usable as a make marker) per platform; SP_SYSNAME is only set in
+# the per-arch (else) branch, which is the only place this list is consumed.
+ifeq ($(SP_SYSNAME),iOS)
+SP_VVL_LIB := VkLayer_khronos_validation.framework/VkLayer_khronos_validation
+else
+SP_VVL_LIB := libVkLayer_khronos_validation.dylib
+endif
+
 INCLUDES := \
 	simde/simde-arch.h \
 	spirv/unified1/spirv.h \
@@ -68,7 +78,7 @@ LIBS := \
 	libvulkan.dylib \
 	libMoltenVK.dylib \
 	libVulkanLayerSettings.a \
-	libVkLayer_khronos_validation.dylib
+	$(SP_VVL_LIB)
 
 ifndef SP_ARCH
 
@@ -314,7 +324,7 @@ $(SP_INSTALL_PREFIX)/usr/lib/libVulkanLayerSettings.a: $(MAKE_ROOT)vulkan-utilit
 		$(SP_INSTALL_PREFIX)/usr/include/spirv/unified1/spirv.h
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/lib/libVkLayer_khronos_validation.dylib: $(MAKE_ROOT)vulkan-validation.mk $(SP_INSTALL_PREFIX)/usr/lib/libVulkanLayerSettings.a \
+$(SP_INSTALL_PREFIX)/usr/lib/$(SP_VVL_LIB): $(MAKE_ROOT)vulkan-validation.mk $(SP_INSTALL_PREFIX)/usr/lib/libVulkanLayerSettings.a \
 		$(SP_INSTALL_PREFIX)/usr/include/spirv-tools/libspirv.hpp
 	$(MAKE) -f $< $(FORWARD_VARS)
 

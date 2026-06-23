@@ -29,6 +29,7 @@
 #pragma clang diagnostic ignored "-Wunused-variable"
 
 #if __SPRT_ARCH_ID == __SPRT_ARCH_ID_X86_64
+#elif __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
 #else
 #include "../../musl-libc/src/string/memcpy.c"
 #include "../../musl-libc/src/string/memmove.c"
