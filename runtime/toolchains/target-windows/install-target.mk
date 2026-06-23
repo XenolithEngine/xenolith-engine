@@ -32,10 +32,11 @@ $(T_TARGET)/usr/include: $(T_INTERMEDIATE)/usr/include | $(T_TARGET)
 	rm -rf $@
 	cp -rf $< $@
 
-# We need compiler builtins from precompiled host files, we can not compile it with target
-$(T_TARGET)/lib/clang/lib/windows/clang_rt.builtins-$(SP_ARCH).lib:  | $(T_TARGET)
+# compiler-rt (builtins/profile/orc) is cross-built inside the target (compiler_rt.mk);
+# install the built libs from the intermediate sysroot instead of copying from host.
+$(T_TARGET)/lib/clang/lib/windows/clang_rt.builtins-$(SP_ARCH).lib: $(T_INTERMEDIATE)/lib/clang/lib/windows/clang_rt.builtins-$(SP_ARCH).lib | $(T_TARGET)
 	@mkdir -p $(dir $@)
-	cp -af ../hosts/$(SP_ARCH_TARGET_CLANG)/lib/clang/21/lib/windows/*.lib $(dir $@)
+	cp -af $(T_INTERMEDIATE)/lib/clang/lib/windows/*.lib $(dir $@)
 
 $(T_TARGET)/%: $(T_INTERMEDIATE)/% | $(T_TARGET)
 	@mkdir -p $(dir $@)

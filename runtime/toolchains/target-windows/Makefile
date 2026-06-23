@@ -159,7 +159,8 @@ ARCH_INCLUDES  = $(addprefix $(SP_INSTALL_PREFIX)/usr/include/,$(INCLUDES))
 
 ARCH_BINS  = $(addprefix $(SP_INSTALL_PREFIX)/bin/,$(BINS))
 
-all: $(ARCH_LIBS) $(ARCH_INCLUDES) $(ARCH_BINS) $(SP_INSTALL_PREFIX)/share/licenses
+all: $(ARCH_LIBS) $(ARCH_INCLUDES) $(ARCH_BINS) $(SP_INSTALL_PREFIX)/share/licenses \
+	$(SP_INSTALL_PREFIX)/lib/clang/lib/windows/clang_rt.builtins-$(SP_ARCH).lib
 
 $(SP_INSTALL_PREFIX)/usr/lib/z.lib:  ../common/zlib.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
@@ -236,6 +237,11 @@ $(SP_INSTALL_PREFIX)/usr/include/simde/simde-arch.h: ../common/simde.mk
 $(SP_INSTALL_PREFIX)/share/licenses:
 	$(call rule_rm,$(SP_INSTALL_PREFIX)/share/licenses)
 	$(call rule_cpr,../licenses,$(SP_INSTALL_PREFIX)/share/licenses)
+
+# compiler-rt (builtins, profile, orc) is cross-built inside the target with the
+# current host clang against the MSVC SDK/CRT, instead of being copied from host.
+$(SP_INSTALL_PREFIX)/lib/clang/lib/windows/clang_rt.builtins-$(SP_ARCH).lib: $(MAKE_ROOT)compiler_rt.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
 
 .PHONY: all
 

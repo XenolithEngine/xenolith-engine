@@ -37,11 +37,11 @@ See `docs/articles/ru/general/project.adoc` for details.
 
 | Platform | Architectures | Notes |
 |----------|---------------|-------|
-| Linux | x86_64, arm64 | glibc and musl |
-| Android | all ABIs | no Google Services; builds with and without the NDK |
-| Windows | x86_64 | custom libc, no UCRT or Windows SDK |
+| Linux | x86_64, arm64, riscv64 | glibc and musl |
+| Android | all ABIs (arm64, armv7, x86, x86_64) | no Google Services; builds with and without the NDK |
+| Windows | x86_64, arm64 | custom libc, no UCRT or Windows SDK |
 | macOS | x86_64, arm64 | including builds with Xenolith Runtime (`+sprt`) |
-| iOS | — | in development |
+| iOS | arm64 (+ simulator) | in development — toolchain sysroot only, no Xenolith Runtime or `+sprt` |
 
 ## Xenolith Runtime
 
@@ -148,6 +148,36 @@ by default; the entry point is `make/universal.mk`.
 The self-contained **toolchains** (`runtime/toolchains/`) are built with a custom LLVM and ship all
 tools and dependencies, which is what makes it possible to build the project without platform SDKs.
 
+### Toolchain architectures
+
+The toolchains build both LLVM/Clang **host** toolchains (the compiler that runs on a machine,
+`runtime/toolchains/hosts/`) and **target** sysroots (what the SDK is compiled for,
+`runtime/toolchains/targets/`).
+
+**Host toolchains:**
+
+| OS / libc | Architectures |
+|-----------|---------------|
+| Linux, glibc | x86_64, aarch64, riscv64 (`*-unknown-linux-gnu`) |
+| Linux, musl | x86_64, aarch64, riscv64 (`*-unknown-linux-musl`) |
+| Windows, MSVC ABI | x86_64, aarch64 (`*-pc-windows-msvc`) |
+| macOS | x86_64, aarch64 (`*-apple-macosx`) |
+
+**Target sysroots:**
+
+| Platform | Architectures |
+|----------|---------------|
+| Linux, glibc | x86_64, aarch64, riscv64 (`*-unknown-linux-gnu`) |
+| Linux, musl | x86_64, aarch64, riscv64 (`*-unknown-linux-musl`) |
+| Android | arm64-v8a, armeabi-v7a, x86, x86_64; with and without the NDK (`unknown-ndk-linux-android`) |
+| Windows, MSVC ABI | x86_64, aarch64 (`*-pc-windows-msvc`) |
+| macOS | x86_64, aarch64, with and without Xenolith Runtime (`*-apple-macosx`, `*-apple-macosx+sprt`) |
+| iOS / iOS Simulator | aarch64 (device), x86_64 + aarch64 (simulator) |
+
+> **iOS** currently builds the target sysroot only: Xenolith Runtime does not support iOS yet, and
+> there is no `+sprt` build variant for it (unlike macOS, which builds both the hosted and the
+> `+sprt` variants).
+
 ## Dependencies
 
 ### Build
@@ -164,8 +194,8 @@ PostgreSQL (12+) or SQLite (bundled).
 ### Key third-party components
 
 Pinned versions are built as part of the toolchains:
-OpenSSL 3.5.5 LTS (+ GOST), mbedTLS 3.6.5 LTS, Vulkan SDK 1.4.328.1, WAMR 2.4.4, ICU4C 78.2,
-FreeType 2.14.1, HarfBuzz 12.3.2, SQLite 3.53.1, curl 8.18.0 (nghttp3 1.15.0), as well as zlib,
+OpenSSL 3.5.7 LTS (+ GOST), mbedTLS 3.6.6 LTS, Vulkan SDK 1.4.350.0, WAMR 2.4.4, ICU4C 78.3,
+FreeType 2.14.3, HarfBuzz 14.2.1, SQLite 3.53.2, curl 8.20.0 (nghttp3 1.16.0), as well as zlib,
 zstd, brotli, libwebp, libjpeg-turbo, Wayland, and others.
 
 ## Building and running

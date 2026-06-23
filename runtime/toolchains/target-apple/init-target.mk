@@ -114,7 +114,11 @@ $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'TARGET_LIB_LDFLAGS :=' >> $@
 	@echo 'TARGET_OSVER := $(SP_OSVER)' >> $@
 	@echo 'TARGET_SDK_NAME := $(SP_SDK_NAME)' >> $@
-	@echo 'TARGET_SDK_FALLBACK := $$(realpath $$(TARGET_SYSROOT)/../../src/$(SP_SDK_FALLBACK))' >> $@
+	@# The fallback SDK is not shipped inside the target sysroot; it always lives in
+	@# <repo>/runtime/toolchains/src. Anchor to GLOBAL_ROOT (the repo root, set by the
+	@# build system before this file is included) so it resolves regardless of where the
+	@# target.mk itself is loaded from. Covers both toolchains layouts.
+	@echo 'TARGET_SDK_FALLBACK := $$(firstword $$(wildcard $$(GLOBAL_ROOT)/runtime/toolchains/src/$(SP_SDK_FALLBACK) $$(GLOBAL_ROOT)/toolchains/src/$(SP_SDK_FALLBACK)))' >> $@
 
 CSU_DIR := $(dir $(THIS_FILE))csu
 
