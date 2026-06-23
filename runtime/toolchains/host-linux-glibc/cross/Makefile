@@ -85,8 +85,9 @@ ifeq ($(LLVM_DIR),)
 $(error LLVM not found, run 'make download' in runtime/toolchains)
 endif
 
-# LTO финального clang: по умолчанию ВЫКЛЮЧЕНО (упрощённая/быстрая сборка).
-SP_LLVM_LTO ?=
+# LTO финального clang: по умолчанию Full (как у остальных хостов, кроме windows aarch64).
+# Отключить: SP_LLVM_LTO= ; полегче: SP_LLVM_LTO=Thin.
+SP_LLVM_LTO ?= Full
 ifeq ($(SP_LLVM_LTO),)
 LTO_FLAGS := -DLLVM_PARALLEL_LINK_JOBS=2
 else
