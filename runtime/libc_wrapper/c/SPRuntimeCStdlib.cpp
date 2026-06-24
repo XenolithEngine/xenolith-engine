@@ -241,6 +241,15 @@ __SPRT_C_FUNC __SPRT_ID(size_t)
 #endif
 }
 
+__SPRT_C_FUNC int __SPRT_ID(mblen)(const char *__s, __SPRT_ID(size_t) __n) {
+#if __SPRT_CONFIG_HAVE_STDLIB_MB
+	return ::mblen(__s, __n);
+#else
+	__sprt_errno = ENOSYS;
+	return -1;
+#endif
+}
+
 __SPRT_C_FUNC int __SPRT_ID(mbtowc)(wchar_t *__wc_ptr, const char *__s, __SPRT_ID(size_t) __n) {
 #if __SPRT_CONFIG_HAVE_STDLIB_MB
 	return ::mbtowc(__wc_ptr, __s, __n);

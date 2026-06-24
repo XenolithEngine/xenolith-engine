@@ -44,6 +44,13 @@ static ssize_t __file_read(struct __fd_slot *fp, void *buf, size_t nbytes, off64
 		return -1;
 	}
 
+	// A write-only descriptor is not valid for reading: POSIX (and glibc) report
+	// EBADF, not the ERROR_ACCESS_DENIED (EACCES) that ReadFile would surface.
+	if ((fp->flags & __SPRT_O_ACCMODE) == __SPRT_O_WRONLY) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
 	LARGE_INTEGER orig_pos;
 	if (offset) {
 		if (!SetFilePointerEx(fp->handle, LARGE_INTEGER{{0, 0}}, &orig_pos, FILE_CURRENT)) {
@@ -84,6 +91,15 @@ static ssize_t __file_read(struct __fd_slot *fp, void *buf, size_t nbytes, off64
 static ssize_t __file_write(struct __fd_slot *fp, const void *buf, size_t nbytes, off64_t *offset,
 		uint32_t flags) {
 	if (!fp->handle) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+
+	// A descriptor opened read-only is not valid for writing. POSIX (and glibc)
+	// report EBADF for this, whereas WriteFile on a read-only HANDLE would instead
+	// surface ERROR_ACCESS_DENIED (EACCES); detect it up front so the errno
+	// matches the host.
+	if ((fp->flags & __SPRT_O_ACCMODE) == __SPRT_O_RDONLY) {
 		__sprt_errno = EBADF;
 		return -1;
 	}

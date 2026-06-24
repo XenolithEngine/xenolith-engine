@@ -246,6 +246,24 @@ wcstoumax(const __SPRT_ID(wchar_t) * __s, __SPRT_ID(wchar_t) * *__p, int __base)
 }
 #endif
 
+// imaxabs/imaxdiv are pure arithmetic (intmax_t == long long here), so they are
+// provided as inline definitions on every target rather than out-of-line symbols.
+typedef struct {
+	__SPRT_ID(intmax_t) quot;
+	__SPRT_ID(intmax_t) rem;
+} imaxdiv_t;
+
+SPRT_FORCEINLINE __SPRT_ID(intmax_t) imaxabs(__SPRT_ID(intmax_t) __j) {
+	return __j < 0 ? -__j : __j;
+}
+
+SPRT_FORCEINLINE imaxdiv_t imaxdiv(__SPRT_ID(intmax_t) __numer, __SPRT_ID(intmax_t) __denom) {
+	imaxdiv_t __r;
+	__r.quot = __numer / __denom;
+	__r.rem = __numer % __denom;
+	return __r;
+}
+
 __SPRT_END_DECL
 
 #endif

@@ -135,7 +135,9 @@ static long double decfloat(FILE *f, int c, int bits, int emin, int sign, int po
 		shunget(f);
 	}
 	if (!gotdig) {
-		errno = EINVAL;
+		// No conversion performed. Match glibc (the reference Linux libc), which
+		// leaves errno untouched on a no-conversion strtod/strtof, rather than
+		// musl, which reports EINVAL here.
 		shlim(f, 0);
 		return 0;
 	}

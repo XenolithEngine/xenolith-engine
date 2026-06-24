@@ -83,6 +83,28 @@ THE SOFTWARE.
 #define FE_ALL_EXCEPT __SPRT_FE_ALL_EXCEPT
 #endif
 
+// Individual floating-point exception flags. Each is defined only where the
+// target actually supports it (soft-float targets may omit some).
+#if defined(__SPRT_FE_DIVBYZERO) && !defined(FE_DIVBYZERO)
+#define FE_DIVBYZERO __SPRT_FE_DIVBYZERO
+#endif
+#if defined(__SPRT_FE_INEXACT) && !defined(FE_INEXACT)
+#define FE_INEXACT __SPRT_FE_INEXACT
+#endif
+#if defined(__SPRT_FE_INVALID) && !defined(FE_INVALID)
+#define FE_INVALID __SPRT_FE_INVALID
+#endif
+#if defined(__SPRT_FE_OVERFLOW) && !defined(FE_OVERFLOW)
+#define FE_OVERFLOW __SPRT_FE_OVERFLOW
+#endif
+#if defined(__SPRT_FE_UNDERFLOW) && !defined(FE_UNDERFLOW)
+#define FE_UNDERFLOW __SPRT_FE_UNDERFLOW
+#endif
+
+#ifndef FE_DFL_ENV
+#define FE_DFL_ENV __SPRT_FE_DFL_ENV
+#endif
+
 
 __SPRT_BEGIN_DECL
 

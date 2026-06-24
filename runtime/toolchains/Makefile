@@ -76,9 +76,12 @@ clean:
 
 xwin: $(SRC_ROOT)/xwin/splat
 
-ifeq ($(HOST_REQUIRED),1)
-host:
+$(abspath hosts/$(HOST_ID))/release:
+	echo $(abspath hosts/$(HOST_ID))/release
 	$(MAKE) -C $(HOST_TOOLCHAIN) out OUT_SYSROOT=$(abspath hosts/$(HOST_ID))
+
+ifeq ($(HOST_REQUIRED),1)
+host: $(abspath hosts/$(HOST_ID))/release
 else
 host:
 endif

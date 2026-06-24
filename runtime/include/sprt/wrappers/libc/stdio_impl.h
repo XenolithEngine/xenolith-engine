@@ -97,6 +97,22 @@ void rewind(FILE *file) SPRT_FUNC_END
 #endif
 
 SPRT_FUNC_BEGIN
+int fgetpos(FILE *__SPRT_RESTRICT file, fpos_t *__SPRT_RESTRICT pos) SPRT_FUNC_END
+#if SPRT_FUNC_BODY
+{
+	return __sprt_fgetpos(file, pos);
+}
+#endif
+
+SPRT_FUNC_BEGIN
+int fsetpos(FILE *__SPRT_RESTRICT file, const fpos_t *__SPRT_RESTRICT pos) SPRT_FUNC_END
+#if SPRT_FUNC_BODY
+{
+	return __sprt_fsetpos(file, pos);
+}
+#endif
+
+SPRT_FUNC_BEGIN
 size_t fread(void *__SPRT_RESTRICT buf, size_t n, size_t count,
 		FILE *__SPRT_RESTRICT file) SPRT_FUNC_END
 #if SPRT_FUNC_BODY

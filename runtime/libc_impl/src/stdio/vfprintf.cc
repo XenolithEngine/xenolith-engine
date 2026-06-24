@@ -721,7 +721,18 @@ static int printf_core(FILE *f, const char *fmt, va_list *ap, union arg *nl_arg,
 			}
 			continue;
 		case 'p':
-			p = sprt::max(p, int(2 * sizeof(void *)));
+			// glibc-compatible pointer formatting: a null pointer prints as
+			// "(nil)", a non-null pointer as 0x followed by the minimal lowercase
+			// hex digits. musl zero-pads to the pointer width (2*sizeof(void*))
+			// and prints a bare zero run for null; the reference Linux libc does
+			// neither, so match glibc here.
+			if (!arg.i) {
+				a = (char *)"(nil)";
+				z = a + 5;
+				p = 5;
+				fl &= ~ZERO_PAD;
+				break;
+			}
 			t = 'x';
 			fl |= ALT_FORM;
 		case 'x':

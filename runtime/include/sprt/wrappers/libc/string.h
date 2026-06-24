@@ -358,13 +358,21 @@ errno_t strerror_s(char *buf, rsize_t bufsz, errno_t errnum) SPRT_UMBRELLA_END
 }
 #endif
 
+// The case-insensitive comparators are also exposed through <strings.h>; guard
+// each so the two headers can be co-included without duplicating the inline
+// definition (see the matching __SPRT_DEFINED_* guards in <strings.h>).
+#ifndef __SPRT_DEFINED_strcasecmp
+#define __SPRT_DEFINED_strcasecmp
 SPRT_UMBRELLA_FUNC int strcasecmp(const char *s1, const char *s2) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_strcasecmp(s1, s2);
 }
 #endif
+#endif // __SPRT_DEFINED_strcasecmp
 
+#ifndef __SPRT_DEFINED_strncasecmp
+#define __SPRT_DEFINED_strncasecmp
 SPRT_UMBRELLA_FUNC int strncasecmp(const char *s1, const char *s2,
 		__SPRT_ID(rsize_t) size) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -372,7 +380,10 @@ SPRT_UMBRELLA_FUNC int strncasecmp(const char *s1, const char *s2,
 	return __sprt_strncasecmp(s1, s2, size);
 }
 #endif
+#endif // __SPRT_DEFINED_strncasecmp
 
+#ifndef __SPRT_DEFINED_strcasecmp_l
+#define __SPRT_DEFINED_strcasecmp_l
 SPRT_UMBRELLA_FUNC int strcasecmp_l(const char *s1, const char *s2,
 		__SPRT_ID(locale_t) l) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -380,7 +391,10 @@ SPRT_UMBRELLA_FUNC int strcasecmp_l(const char *s1, const char *s2,
 	return __sprt_strcasecmp_l(s1, s2, l);
 }
 #endif
+#endif // __SPRT_DEFINED_strcasecmp_l
 
+#ifndef __SPRT_DEFINED_strncasecmp_l
+#define __SPRT_DEFINED_strncasecmp_l
 SPRT_UMBRELLA_FUNC int strncasecmp_l(const char *s1, const char *s2, __SPRT_ID(rsize_t) size,
 		__SPRT_ID(locale_t) l) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -388,6 +402,7 @@ SPRT_UMBRELLA_FUNC int strncasecmp_l(const char *s1, const char *s2, __SPRT_ID(r
 	return __sprt_strncasecmp_l(s1, s2, size, l);
 }
 #endif
+#endif // __SPRT_DEFINED_strncasecmp_l
 
 __SPRT_END_DECL
 #endif

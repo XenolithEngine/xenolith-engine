@@ -96,6 +96,19 @@ __SPRT_C_FUNC __SPRT_ID(off_t) __SPRT_ID(ftell_impl)(__SPRT_ID(FILE) * file) {
 
 __SPRT_C_FUNC void __SPRT_ID(rewind_impl)(__SPRT_ID(FILE) * file) { return ::rewind(file); }
 
+__SPRT_C_FUNC int __SPRT_ID(fgetpos_impl)(__SPRT_ID(FILE) * file, __SPRT_ID(fpos_t) * pos) {
+	auto off = ::ftello(file);
+	if (off < 0) {
+		return -1;
+	}
+	pos->__pos = off;
+	return 0;
+}
+
+__SPRT_C_FUNC int __SPRT_ID(fsetpos_impl)(__SPRT_ID(FILE) * file, const __SPRT_ID(fpos_t) * pos) {
+	return ::fseeko(file, (__SPRT_ID(off_t))pos->__pos, SEEK_SET);
+}
+
 __SPRT_C_FUNC int __SPRT_ID(fgetc_impl)(__SPRT_ID(FILE) * file) { return ::fgetc(file); }
 
 __SPRT_C_FUNC int __SPRT_ID(getc_impl)(__SPRT_ID(FILE) * file) { return ::getc(file); }

@@ -294,12 +294,30 @@ __SPRT_C_FUNC size_t mbrtowc(wchar_t *__SPRT_RESTRICT __dst, const char *__SPRT_
 	// an astral code point (which decodes to a UTF-16 surrogate *pair* when
 	// `wchar_t` is 16-bit) is rejected with EOVERFLOW rather than writing two
 	// units past the caller's one-element buffer.
-	return __mbrtowc(__dst, 1, &__src, &__srcLen, state);
+	//
+	// __mbrtowc reports the number of wchar_t units produced (what mbsnrtowcs
+	// consumes); mbrtowc must instead report the number of *bytes* consumed from
+	// the source, so derive it from how far __mbrtowc advanced __srcLen. The
+	// status returns (0 == NUL, (size_t)-1 == EILSEQ/EOVERFLOW, (size_t)-2 ==
+	// incomplete) pass straight through.
+	const size_t before = __srcLen;
+	const size_t r = __mbrtowc(__dst, 1, &__src, &__srcLen, state);
+	if (r == size_t(0) || r == size_t(-1) || r == size_t(-2)) {
+		return r;
+	}
+	return before - __srcLen;
 }
 
 __SPRT_C_FUNC int mbtowc(__SPRT_ID(wchar_t) * __wc_ptr, const char *__s,
 		size_t __n) __SPRT_NOEXCEPT {
 	return mbrtowc(__wc_ptr, __s, __n, &tl_mbtowc_state);
+}
+
+// mblen is mbtowc without storing the wide character (the result is the byte
+// length of the next multibyte sequence). A NULL `__s` queries whether the
+// encoding is state-dependent — it is not (UTF-8), so that returns 0.
+__SPRT_C_FUNC int mblen(const char *__s, size_t __n) __SPRT_NOEXCEPT {
+	return mbtowc(nullptr, __s, __n);
 }
 
 __SPRT_C_FUNC size_t mbsnrtowcs(wchar_t *__SPRT_RESTRICT __dst, const char **__SPRT_RESTRICT __src,
@@ -389,6 +407,148 @@ __SPRT_C_FUNC int wcswidth(const wchar_t *wcs, size_t n) __SPRT_NOEXCEPT {
 		}
 	}
 	return ret;
+}
+
+// ---- <uchar.h> char16_t/char32_t conversions ----
+// Sentinel stored in mbstate_t::_State by mbrtoc16 to mean "a high surrogate was
+// already returned; _Char holds the low surrogate to return on the next call".
+// Must not collide with the {1,2,3} continuation-byte counts used during a
+// partial UTF-8 sequence.
+static constexpr unsigned STATE_C16_PENDING_LOW = 0x10000u;
+
+thread_local mbstate_t tl_uchar_state = {STATE_NONE, 0};
+
+// Decode one code point from a UTF-8 stream, resuming a partial sequence from
+// *st. Returns bytes consumed (>0), 0 for NUL, (size_t)-1 EILSEQ, (size_t)-2
+// incomplete; writes the code point to *cp on success.
+static size_t __mbrtocp(char32_t *cp, const char *s, size_t n, mbstate_t *st) {
+	uint32_t ch;
+	unsigned remaining;
+	size_t consumed = 0;
+
+	if (st->_State >= 1 && st->_State <= 3) {
+		ch = st->_Char;
+		remaining = st->_State;
+	} else {
+		if (n == 0) {
+			return (size_t)-2;
+		}
+		unsigned char b = (unsigned char)s[0];
+		if (b < 0x80) {
+			*cp = b;
+			st->_State = STATE_NONE;
+			st->_Char = 0;
+			return b == 0 ? 0 : 1;
+		}
+		uint8_t len = unicode::utf8_length_data[b];
+		if (len < 2 || len > 4) { // lone continuation byte or invalid lead
+			errno = EILSEQ;
+			return (size_t)-1;
+		}
+		ch = (uint32_t)(b & (0x7Fu >> len));
+		remaining = (unsigned)(len - 1);
+		consumed = 1;
+	}
+
+	while (remaining > 0) {
+		if (consumed >= n) {
+			st->_Char = ch;
+			st->_State = remaining;
+			return (size_t)-2;
+		}
+		unsigned char b = (unsigned char)s[consumed];
+		if ((b & 0xC0u) != 0x80u) {
+			errno = EILSEQ;
+			return (size_t)-1;
+		}
+		ch = (ch << 6) | (uint32_t)(b & 0x3Fu);
+		--remaining;
+		++consumed;
+	}
+
+	st->_State = STATE_NONE;
+	st->_Char = 0;
+	*cp = (char32_t)ch;
+	return consumed;
+}
+
+__SPRT_C_FUNC size_t mbrtoc32(char32_t *__pc32, const char *__s, size_t __n,
+		mbstate_t *__ps) __SPRT_NOEXCEPT {
+	if (!__ps) {
+		__ps = &tl_uchar_state;
+	}
+	if (!__s) {
+		char32_t tmp = 0;
+		return mbrtoc32(&tmp, "", 1, __ps);
+	}
+	char32_t cp = 0;
+	size_t r = __mbrtocp(&cp, __s, __n, __ps);
+	if (r == (size_t)-1 || r == (size_t)-2) {
+		return r;
+	}
+	if (__pc32) {
+		*__pc32 = cp;
+	}
+	return r;
+}
+
+__SPRT_C_FUNC size_t mbrtoc16(char16_t *__pc16, const char *__s, size_t __n,
+		mbstate_t *__ps) __SPRT_NOEXCEPT {
+	if (!__ps) {
+		__ps = &tl_uchar_state;
+	}
+	if (__ps->_State == STATE_C16_PENDING_LOW) {
+		if (__pc16) {
+			*__pc16 = (char16_t)__ps->_Char;
+		}
+		__ps->_State = STATE_NONE;
+		__ps->_Char = 0;
+		return (size_t)-3;
+	}
+	if (!__s) {
+		char16_t tmp = 0;
+		return mbrtoc16(&tmp, "", 1, __ps);
+	}
+	char32_t cp = 0;
+	size_t r = __mbrtocp(&cp, __s, __n, __ps);
+	if (r == (size_t)-1 || r == (size_t)-2) {
+		return r;
+	}
+	if (cp <= 0xFFFF) {
+		if (__pc16) {
+			*__pc16 = (char16_t)cp;
+		}
+		return r;
+	}
+	// Astral: report the high surrogate now and stash the low surrogate.
+	cp -= 0x10000u;
+	if (__pc16) {
+		*__pc16 = (char16_t)(0xD800u + (cp >> 10));
+	}
+	__ps->_Char = 0xDC00u + (cp & 0x3FFu);
+	__ps->_State = STATE_C16_PENDING_LOW;
+	return r;
+}
+
+__SPRT_C_FUNC size_t c32rtomb(char *__s, char32_t __c32, mbstate_t *__ps) __SPRT_NOEXCEPT {
+	(void)__ps;
+	if (!__s) {
+		return 1;
+	}
+	if (__c32 > 0x10FFFFu || (__c32 >= 0xD800u && __c32 <= 0xDFFFu)) {
+		errno = EILSEQ;
+		return (size_t)-1;
+	}
+	return unicode::utf8EncodeBuf(__s, _MB_CUR_MAX, __c32);
+}
+
+__SPRT_C_FUNC size_t c16rtomb(char *__s, char16_t __c16, mbstate_t *__ps) __SPRT_NOEXCEPT {
+	if (!__ps) {
+		__ps = &tl_uchar_state;
+	}
+	// wchar_t is 16-bit (UTF-16) on this target and wcrtomb already combines
+	// surrogate pairs across calls using the same mbstate convention.
+	return wcrtomb(__s, (wchar_t)__c16, __ps);
 }
 
 } // namespace sprt

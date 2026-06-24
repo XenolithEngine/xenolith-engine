@@ -60,6 +60,11 @@ THE SOFTWARE.
 #else
 
 #include <sprt/c/__sprt_locale.h>
+#include <sprt/c/bits/__sprt_null.h>
+
+#ifndef NULL
+#define NULL __SPRT_NULL
+#endif
 
 #define LC_CTYPE __SPRT_LC_CTYPE
 #define LC_NUMERIC __SPRT_LC_NUMERIC

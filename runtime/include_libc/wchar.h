@@ -122,6 +122,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_wchar.h>
 #include <sprt/c/__sprt_wctype.h>
 #include <sprt/c/__sprt_stdarg.h>
+#include <sprt/c/bits/__sprt_null.h>
 
 #include <sprt/wrappers/windows/__sprt_config.h>
 
@@ -132,6 +133,17 @@ typedef __SPRT_ID(wchar_t) wchar_t;
 __SPRT_BEGIN_DECL
 
 #define WEOF __SPRT_WEOF
+
+// ISO C requires <wchar.h> to define WCHAR_MIN/WCHAR_MAX and NULL.
+#ifndef WCHAR_MAX
+#define WCHAR_MAX __SPRT_WCHAR_MAX
+#endif
+#ifndef WCHAR_MIN
+#define WCHAR_MIN __SPRT_WCHAR_MIN
+#endif
+#ifndef NULL
+#define NULL __SPRT_NULL
+#endif
 
 #if !__SPRT_MBSTATE_DIRECT
 typedef __SPRT_MBSTATE_NAME mbstate_t;
@@ -480,7 +492,7 @@ int wprintf(const wchar_t *__SPRT_RESTRICT fmt, ...) SPRT_UMBRELLA_END
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vwprintf(fmt, list);
+	int ret = __sprt_vwprintf(fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -495,7 +507,7 @@ int fwprintf(__SPRT_ID(FILE) * __SPRT_RESTRICT f, const wchar_t *__SPRT_RESTRICT
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vfwprintf(f, fmt, list);
+	int ret = __sprt_vfwprintf(f, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -510,7 +522,7 @@ int swprintf(wchar_t *__SPRT_RESTRICT buf, __SPRT_ID(size_t) size,
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vswprintf(buf, size, fmt, list);
+	int ret = __sprt_vswprintf(buf, size, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -525,7 +537,7 @@ int snwprintf(wchar_t *__SPRT_RESTRICT buf, __SPRT_ID(size_t) size,
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vswprintf(buf, size, fmt, list);
+	int ret = __sprt_vswprintf(buf, size, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -540,7 +552,7 @@ int _snwprintf(wchar_t *__SPRT_RESTRICT buf, __SPRT_ID(size_t) size,
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vswprintf(buf, size, fmt, list);
+	int ret = __sprt_vswprintf(buf, size, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -580,7 +592,7 @@ int wscanf(const wchar_t *__SPRT_RESTRICT fmt, ...) SPRT_UMBRELLA_END
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vwscanf(fmt, list);
+	int ret = __sprt_vwscanf(fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -595,7 +607,7 @@ int fwscanf(__SPRT_ID(FILE) * __SPRT_RESTRICT f, const wchar_t *__SPRT_RESTRICT 
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vfwscanf(f, fmt, list);
+	int ret = __sprt_vfwscanf(f, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -610,7 +622,7 @@ int swscanf(const wchar_t *__SPRT_RESTRICT buf, const wchar_t *__SPRT_RESTRICT f
 	__sprt_va_list list;
 	__sprt_va_start(list, fmt);
 
-	auto ret = __sprt_vswscanf(buf, fmt, list);
+	int ret = __sprt_vswscanf(buf, fmt, list);
 
 	__sprt_va_end(list);
 	return ret;
@@ -927,6 +939,10 @@ int wcswidth(const wchar_t *ptr, size_t value) SPRT_UMBRELLA_END
 }
 #endif
 
+// Also exposed through <wctype.h>; guard so co-inclusion does not duplicate the
+// inline definition (see __SPRT_DEFINED_towlower in <wctype.h>).
+#ifndef __SPRT_DEFINED_towlower
+#define __SPRT_DEFINED_towlower
 SPRT_UMBRELLA_FUNC
 wint_t towlower(wint_t c) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -934,7 +950,10 @@ wint_t towlower(wint_t c) SPRT_UMBRELLA_END
 	return __sprt_towlower(c);
 }
 #endif
+#endif // __SPRT_DEFINED_towlower
 
+#ifndef __SPRT_DEFINED_towupper
+#define __SPRT_DEFINED_towupper
 SPRT_UMBRELLA_FUNC
 wint_t towupper(wint_t c) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -942,6 +961,7 @@ wint_t towupper(wint_t c) SPRT_UMBRELLA_END
 	return __sprt_towupper(c);
 }
 #endif
+#endif // __SPRT_DEFINED_towupper
 
 SPRT_API int wcscpy_s(wchar_t *dest, size_t dest_size, const wchar_t *src);
 

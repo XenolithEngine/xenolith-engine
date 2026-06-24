@@ -461,6 +461,16 @@ SPRT_FORCEINLINE auto fmin(double x, double y) { return __builtin_fmin(x, y); }
 SPRT_FORCEINLINE auto fmin(long double x, long double y) { return __builtin_fminl(x, y); }
 SPRT_FORCEINLINE auto fminl(long double x, long double y) { return __builtin_fminl(x, y); }
 
+SPRT_FORCEINLINE auto fma(float x, float y, float z) { return __builtin_fmaf(x, y, z); }
+SPRT_FORCEINLINE auto fmaf(float x, float y, float z) { return __builtin_fmaf(x, y, z); }
+SPRT_FORCEINLINE auto fma(double x, double y, double z) { return __builtin_fma(x, y, z); }
+SPRT_FORCEINLINE auto fma(long double x, long double y, long double z) {
+	return __builtin_fmal(x, y, z);
+}
+SPRT_FORCEINLINE auto fmal(long double x, long double y, long double z) {
+	return __builtin_fmal(x, y, z);
+}
+
 template <typename Type>
 constexpr SPRT_FORCEINLINE Type __lerp(Type a, Type b, Type t) noexcept {
 	if ((a <= 0 && b >= 0) || (a >= 0 && b <= 0)) {

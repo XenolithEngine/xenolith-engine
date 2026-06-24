@@ -125,8 +125,14 @@ MODULE_RUNTIME_INCLUDES_OBJS += $(TARGET_INCLUDE_DIR) \
 	$(RUNTIME_MODULE_DIR)/include_libc
 
 MODULE_RUNTIME_LIBS += -limport
+# The runtime links freestanding (-nostdlib), so clang does not auto-link the
+# compiler-rt builtins. Link it explicitly for the out-of-line builtins the
+# runtime does not provide itself — notably the C99 _Complex __mulXc3/__divXc3
+# helpers (clang-cl makes CMake drop them from the archive; compiler_rt.mk
+# rebuilds them). It is a static archive, so members are pulled only on demand.
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/lib/clang/lib/windows/clang_rt.builtins-$(TARGET_ARCH).lib
 MODULE_RUNTIME_GENERAL_CFLAGS +=
-MODULE_RUNTIME_GENERAL_CXXFLAGS += 
+MODULE_RUNTIME_GENERAL_CXXFLAGS +=
 MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
 endif
 

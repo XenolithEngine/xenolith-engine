@@ -225,6 +225,19 @@ THE SOFTWARE.
 
 #define _NSIG __SPRT__NSIG
 
+// ISO C signal-disposition macros and the sig_atomic_t type.
+#ifndef SIG_DFL
+#define SIG_DFL __SPRT_SIG_DFL
+#endif
+#ifndef SIG_IGN
+#define SIG_IGN __SPRT_SIG_IGN
+#endif
+#ifndef SIG_ERR
+#define SIG_ERR __SPRT_SIG_ERR
+#endif
+
+typedef __SPRT_ID(sig_atomic_t) sig_atomic_t;
+
 typedef __SPRT_ID(sighandler) sighandler;
 
 typedef __SPRT_ID(sigset_t) sigset_t;
