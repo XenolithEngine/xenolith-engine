@@ -108,6 +108,26 @@ SPRT_API __SPRT_ID(size_t) __SPRT_ID(
 SPRT_API __SPRT_ID(size_t) __SPRT_ID(mbrlen)(const char *__SPRT_RESTRICT, __SPRT_ID(size_t),
 		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT);
 
+// <uchar.h> conversions. char16_t/char32_t are keywords in C++ and their
+// underlying integer types (__CHAR16_TYPE__/__CHAR32_TYPE__) in C; alias both so
+// the declarations and the C++ implementation agree on the parameter types.
+#ifdef __cplusplus
+typedef char16_t __SPRT_ID(char16_t);
+typedef char32_t __SPRT_ID(char32_t);
+#else
+typedef __CHAR16_TYPE__ __SPRT_ID(char16_t);
+typedef __CHAR32_TYPE__ __SPRT_ID(char32_t);
+#endif
+
+SPRT_API __SPRT_ID(size_t) __SPRT_ID(mbrtoc16)(__SPRT_ID(char16_t) * __SPRT_RESTRICT,
+		const char *__SPRT_RESTRICT, __SPRT_ID(size_t), __SPRT_MBSTATE_NAME *__SPRT_RESTRICT);
+SPRT_API __SPRT_ID(size_t) __SPRT_ID(c16rtomb)(char *__SPRT_RESTRICT, __SPRT_ID(char16_t),
+		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT);
+SPRT_API __SPRT_ID(size_t) __SPRT_ID(mbrtoc32)(__SPRT_ID(char32_t) * __SPRT_RESTRICT,
+		const char *__SPRT_RESTRICT, __SPRT_ID(size_t), __SPRT_MBSTATE_NAME *__SPRT_RESTRICT);
+SPRT_API __SPRT_ID(size_t) __SPRT_ID(c32rtomb)(char *__SPRT_RESTRICT, __SPRT_ID(char32_t),
+		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT);
+
 SPRT_API __SPRT_ID(size_t) __SPRT_ID(mbsrtowcs)(__SPRT_ID(wchar_t) * __SPRT_RESTRICT,
 		const char **__SPRT_RESTRICT, __SPRT_ID(size_t), __SPRT_MBSTATE_NAME *__SPRT_RESTRICT);
 SPRT_API __SPRT_ID(size_t)

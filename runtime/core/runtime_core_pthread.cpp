@@ -36,6 +36,9 @@ THE SOFTWARE.
 #include "pthread/pthread_spin.cc"
 #include "pthread/pthread_np.cc"
 
+// C11 <threads.h> built on the pthread layer above
+#include "pthread/c11threads.cc"
+
 // It's simplier to make Windows API available everywhere
 #include <sprt/wrappers/windows/__sprt_threads.h>
 

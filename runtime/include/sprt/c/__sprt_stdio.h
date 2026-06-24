@@ -113,6 +113,18 @@ SPRT_API __SPRT_ID(off_t) __SPRT_ID(ftell_impl)(__SPRT_ID(FILE) *);
 SPRT_API void __SPRT_ID(rewind_impl)(__SPRT_ID(FILE) *);
 #define __sprt_rewind __SPRT_ID(rewind_impl)
 
+// fpos_t holds an absolute byte offset; fgetpos/fsetpos round-trip it through
+// ftello/fseeko in the impl/wrapper, so its layout is private to the runtime.
+typedef struct {
+	__SPRT_ID(off_t) __pos;
+} __SPRT_ID(fpos_t);
+
+SPRT_API int __SPRT_ID(fgetpos_impl)(__SPRT_ID(FILE) *, __SPRT_ID(fpos_t) *);
+#define __sprt_fgetpos __SPRT_ID(fgetpos_impl)
+
+SPRT_API int __SPRT_ID(fsetpos_impl)(__SPRT_ID(FILE) *, const __SPRT_ID(fpos_t) *);
+#define __sprt_fsetpos __SPRT_ID(fsetpos_impl)
+
 
 SPRT_API __SPRT_ID(size_t) __SPRT_ID(fread_impl)(void *__SPRT_RESTRICT, __SPRT_ID(size_t),
 		__SPRT_ID(size_t), __SPRT_ID(FILE) * __SPRT_RESTRICT);

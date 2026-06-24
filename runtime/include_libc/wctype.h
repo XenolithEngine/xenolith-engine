@@ -73,6 +73,12 @@ typedef __SPRT_ID(wctype_t) wctype_t;
 typedef __SPRT_ID(wctrans_t) wctrans_t;
 typedef __SPRT_ID(locale_t) locale_t;
 
+// ISO C requires <wctype.h> to define WEOF (the __SPRT_WEOF backing arrives via
+// <sprt/c/cross/__sprt_mbstate.h>, included by <sprt/c/__sprt_wctype.h>).
+#ifndef WEOF
+#define WEOF __SPRT_WEOF
+#endif
+
 __SPRT_BEGIN_DECL
 
 SPRT_UMBRELLA_FUNC
@@ -187,6 +193,10 @@ wint_t towctrans(wint_t ch, wctrans_t t) SPRT_UMBRELLA_END
 }
 #endif
 
+// towlower/towupper are also exposed through <wchar.h>; guard so the two
+// headers can be co-included without duplicating the inline definition.
+#ifndef __SPRT_DEFINED_towlower
+#define __SPRT_DEFINED_towlower
 SPRT_UMBRELLA_FUNC
 wint_t towlower(wint_t ch) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -194,7 +204,10 @@ wint_t towlower(wint_t ch) SPRT_UMBRELLA_END
 	return __sprt_towlower(ch);
 }
 #endif
+#endif // __SPRT_DEFINED_towlower
 
+#ifndef __SPRT_DEFINED_towupper
+#define __SPRT_DEFINED_towupper
 SPRT_UMBRELLA_FUNC
 wint_t towupper(wint_t ch) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -202,6 +215,7 @@ wint_t towupper(wint_t ch) SPRT_UMBRELLA_END
 	return __sprt_towupper(ch);
 }
 #endif
+#endif // __SPRT_DEFINED_towupper
 
 SPRT_UMBRELLA_FUNC
 wctrans_t wctrans(const char *str) SPRT_UMBRELLA_END

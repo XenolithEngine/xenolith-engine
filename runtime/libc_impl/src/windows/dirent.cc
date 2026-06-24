@@ -290,7 +290,12 @@ __SPRT_C_FUNC int rewinddir(__dirstream *__dir) __SPRT_NOEXCEPT {
 		return -1;
 	}
 
-	if (__dir->handle && __dir->handle != __SPRT_DIR_ROOT_HANDLE && !__dir->currentInfo) {
+	// Restart the underlying enumeration unconditionally. Guarding this on
+	// `!currentInfo` (only restart once the listing was exhausted) left a rewind
+	// issued mid-enumeration — e.g. the backward path of seekdir() — with d_off
+	// reset to 0 but `currentInfo` still pointing at a stale entry, so subsequent
+	// readdir()s returned the wrong entries.
+	if (__dir->handle && __dir->handle != __SPRT_DIR_ROOT_HANDLE) {
 		if (GetFileInformationByHandleEx(__dir->handle, FileIdBothDirectoryRestartInfo,
 					__dir->extraSpace, __dir->extraSpaceSize)) {
 			__dir->currentInfo = (FILE_ID_BOTH_DIR_INFO *)__dir->extraSpace;

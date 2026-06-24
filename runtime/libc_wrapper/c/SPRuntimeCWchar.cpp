@@ -31,6 +31,7 @@ THE SOFTWARE.
 
 #include <wchar.h>
 #include <wctype.h>
+#include <uchar.h>
 #include <time.h>
 
 #include "time/time_internals.h"
@@ -208,6 +209,26 @@ __SPRT_C_FUNC __SPRT_ID(size_t)
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcrtomb)(char *__SPRT_RESTRICT a, __SPRT_ID(wchar_t) c,
 		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT state) {
 	return ::wcrtomb(a, c, (::mbstate_t *)state);
+}
+
+__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(mbrtoc16)(__SPRT_ID(char16_t) * __SPRT_RESTRICT a,
+		const char *__SPRT_RESTRICT b, __SPRT_ID(size_t) s, __SPRT_MBSTATE_NAME *__SPRT_RESTRICT st) {
+	return ::mbrtoc16(a, b, s, (::mbstate_t *)st);
+}
+
+__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(c16rtomb)(char *__SPRT_RESTRICT a, __SPRT_ID(char16_t) c,
+		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT st) {
+	return ::c16rtomb(a, c, (::mbstate_t *)st);
+}
+
+__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(mbrtoc32)(__SPRT_ID(char32_t) * __SPRT_RESTRICT a,
+		const char *__SPRT_RESTRICT b, __SPRT_ID(size_t) s, __SPRT_MBSTATE_NAME *__SPRT_RESTRICT st) {
+	return ::mbrtoc32(a, b, s, (::mbstate_t *)st);
+}
+
+__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(c32rtomb)(char *__SPRT_RESTRICT a, __SPRT_ID(char32_t) c,
+		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT st) {
+	return ::c32rtomb(a, c, (::mbstate_t *)st);
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(mbrlen)(const char *__SPRT_RESTRICT a,

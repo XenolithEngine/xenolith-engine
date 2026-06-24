@@ -189,6 +189,40 @@ __SPRT_C_FUNC int __SPRT_ID(strncasecmp_l)(const char *l, const char *r, __SPRT_
 	return ::strncasecmp_l(l, r, n, loc);
 }
 
+#if __STDC_HOSTED__ == 1
+
+__SPRT_C_FUNC char *__SPRT_ID(strtok_impl)(char *__SPRT_RESTRICT s, const char *__SPRT_RESTRICT sep) {
+	return ::strtok(s, sep);
+}
+
+#else
+
+// Freestanding: the public strtok() inline redirects right back into this shim
+// (via __sprt_strtok) — unlike strchr/strspn/... there is no __builtin_strtok to
+// route through, so calling ::strtok here would recurse infinitely. Implement
+// musl's strtok directly in terms of strspn/strcspn (which do resolve to real
+// symbols via compiler builtins). State is held here, the single forwarding
+// target for every public strtok() call.
+__SPRT_C_FUNC char *__SPRT_ID(strtok_impl)(char *__SPRT_RESTRICT s, const char *__SPRT_RESTRICT sep) {
+	static char *p;
+	if (!s && !(s = p)) {
+		return nullptr;
+	}
+	s += ::strspn(s, sep);
+	if (!*s) {
+		return p = nullptr;
+	}
+	p = s + ::strcspn(s, sep);
+	if (*p) {
+		*p++ = 0;
+	} else {
+		p = nullptr;
+	}
+	return s;
+}
+
+#endif
+
 __SPRT_C_FUNC char *__SPRT_ID(strtok_r)(char *s, const char *sep, char **p) {
 	return ::strtok_r(s, sep, p);
 }

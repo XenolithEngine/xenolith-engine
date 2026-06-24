@@ -70,6 +70,17 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/libc/math.h>
 
+// ISO C error-handling macros (the __SPRT_* backings come in via the wrapper).
+#ifndef MATH_ERRNO
+#define MATH_ERRNO __SPRT_MATH_ERRNO
+#endif
+#ifndef MATH_ERREXCEPT
+#define MATH_ERREXCEPT __SPRT_MATH_ERREXCEPT
+#endif
+#ifndef math_errhandling
+#define math_errhandling __SPRT_math_errhandling
+#endif
+
 #endif
 
 #endif // CORE_RUNTIME_INCLUDE_LIBC_MATH_H_

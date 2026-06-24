@@ -457,6 +457,14 @@ long double strtold_l(const char *__SPRT_RESTRICT str, char **__SPRT_RESTRICT en
 #endif
 
 SPRT_FUNC_BEGIN
+int mblen(const char *__s, size_t __n) SPRT_FUNC_END
+#if SPRT_FUNC_BODY
+{
+	return __SPRT_ID(mblen)(__s, __n);
+}
+#endif
+
+SPRT_FUNC_BEGIN
 size_t mbstowcs(wchar_t *__dst, const char *__src, size_t __n) SPRT_FUNC_END
 #if SPRT_FUNC_BODY
 {

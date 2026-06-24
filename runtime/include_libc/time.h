@@ -79,6 +79,11 @@ THE SOFTWARE.
 #else
 
 #include <sprt/c/__sprt_time.h>
+#include <sprt/c/bits/__sprt_null.h>
+
+#ifndef NULL
+#define NULL __SPRT_NULL
+#endif
 
 #define CLOCKS_PER_SEC __SPRT_CLOCKS_PER_SEC
 #define TIME_UTC __SPRT_TIME_UTC

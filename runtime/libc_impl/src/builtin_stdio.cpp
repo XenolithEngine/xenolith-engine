@@ -113,6 +113,21 @@ int __wfmodeflags(const wchar_t *mode) {
 #include "stdio/flockfile.cc"
 #include "stdio/fseek.cc"
 
+// ISO C fgetpos/fsetpos. fpos_t carries an absolute byte offset, round-tripped
+// through ftello/fseeko (mbstate is not preserved — UTF-8 streams are stateless).
+__SPRT_C_FUNC int fgetpos(FILE *f, fpos_t *pos) __SPRT_NOEXCEPT {
+	off_t off = ftello(f);
+	if (off < 0) {
+		return -1;
+	}
+	pos->__pos = off;
+	return 0;
+}
+
+__SPRT_C_FUNC int fsetpos(FILE *f, const fpos_t *pos) __SPRT_NOEXCEPT {
+	return fseeko(f, (off_t)pos->__pos, SEEK_SET);
+}
+
 namespace sprt {
 extern "C" {
 ssize_t getdelim(char **__SPRT_RESTRICT __lineptr, size_t *__SPRT_RESTRICT __n, int __delim,

@@ -313,6 +313,9 @@ SPRT_API __SPRT_ID(size_t)
 		__SPRT_ID(mbstowcs)(__SPRT_ID(wchar_t) * __dst, const char *__src, __SPRT_ID(size_t) __n);
 
 __SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
+SPRT_API int __SPRT_ID(mblen)(const char *__s, __SPRT_ID(size_t) __n);
+
+__SPRT_CONFIG_HAVE_STDLIB_MB_NOTICE
 SPRT_API int __SPRT_ID(
 		mbtowc)(__SPRT_ID(wchar_t) * __wc_ptr, const char *__s, __SPRT_ID(size_t) __n);
 

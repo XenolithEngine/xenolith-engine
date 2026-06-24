@@ -573,7 +573,11 @@ size_t time_exp_t::asctime(char *date_str, size_t bufSize) const {
 	push(*s++);
 	push(*s++);
 	push(' ');
-	push(tm_mday / 10 + '0');
+	// ANSI C asctime()/ctime() format the day of month as "%3d": space-padded,
+	// so a single-digit day prints with a leading space (" 1"), not a zero
+	// ("01"). The HTTP asctime-date production (RFC 7231) and the parser above
+	// (which tests r[8] == ' ') expect the same.
+	push(tm_mday >= 10 ? char(tm_mday / 10 + '0') : ' ');
 	push(tm_mday % 10 + '0');
 	push(' ');
 	push(tm_hour / 10 + '0');
@@ -694,7 +698,11 @@ size_t time_exp_t::encodeCTime(char *date_str, size_t bufSize) const {
 	push(*s++);
 	push(*s++);
 	push(' ');
-	push(tm_mday / 10 + '0');
+	// ANSI C asctime()/ctime() format the day of month as "%3d": space-padded,
+	// so a single-digit day prints with a leading space (" 1"), not a zero
+	// ("01"). The HTTP asctime-date production (RFC 7231) and the parser above
+	// (which tests r[8] == ' ') expect the same.
+	push(tm_mday >= 10 ? char(tm_mday / 10 + '0') : ' ');
 	push(tm_mday % 10 + '0');
 	push(' ');
 	push(tm_hour / 10 + '0');
@@ -988,6 +996,19 @@ static const char *__strftime_fmt_1(char (*s)[100], size_t *l, int f, const time
 		item = tm->tm_hour >= 12 ? __sprt_nl_langinfo(__SPRT_PM_STR)
 								 : __sprt_nl_langinfo(__SPRT_AM_STR);
 		goto nl_strcat;
+	case 'P': {
+		// GNU extension: like %p but lowercase ("am"/"pm" in the C locale). glibc
+		// supports it; plain musl does not, so it is added here for parity.
+		const char *ampm = tm->tm_hour >= 12 ? __sprt_nl_langinfo(__SPRT_PM_STR)
+											 : __sprt_nl_langinfo(__SPRT_AM_STR);
+		size_t i = 0;
+		for (; ampm[i] && i + 1 < sizeof *s; ++i) {
+			char c = ampm[i];
+			(*s)[i] = (c >= 'A' && c <= 'Z') ? char(c - 'A' + 'a') : c;
+		}
+		*l = i;
+		return *s;
+	}
 	case 'r': fmt = __sprt_nl_langinfo(__SPRT_T_FMT_AMPM); goto recu_strftime;
 	case 'R': fmt = "%H:%M"; goto recu_strftime;
 	case 's':
