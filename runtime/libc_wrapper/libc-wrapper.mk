@@ -50,13 +50,13 @@ MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CXXFLAGS += $(addprefix -idirafter ,$(TARGET
 endif # TARGET_INCLUDE_DIR_LIBC
 
 
-ifeq ($(TARGET_SYSTEM),Darwin)
+ifneq ($(filter Darwin iOS,$(TARGET_SYSTEM)),)
 # Change include ordering by duplicating HOST flags before SDK's flags
 MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += $(HOST_GENERAL_CFLAGS) \
 	-idirafter $(OSTYPE_SDK_PATH)/usr/include -F$(OSTYPE_SDK_PATH)/System/Library/Frameworks
 MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CXXFLAGS += $(HOST_GENERAL_CFLAGS) \
 	-idirafter $(OSTYPE_SDK_PATH)/usr/include -F$(OSTYPE_SDK_PATH)/System/Library/Frameworks
-endif # ($(TARGET_SYSTEM),Darwin)
+endif # ($(TARGET_SYSTEM),Darwin/iOS)
 
 
 ifeq ($(TARGET_SYSTEM),Windows)

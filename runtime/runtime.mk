@@ -93,7 +93,9 @@ MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a
 endif
 
 
-ifeq ($(TARGET_SYSTEM),Darwin)
+# Shared Darwin family (macOS + iOS): same libSystem/Foundation/Metal stack.
+# Differs only in the UI framework (AppKit on macOS, UIKit on iOS), handled below.
+ifneq ($(filter Darwin iOS,$(TARGET_SYSTEM)),)
 MODULE_RUNTIME_GENERAL_CFLAGS += \
 	-idirafter $(RUNTIME_MODULE_DIR)/include_libc \
 	-idirafter $(RUNTIME_MODULE_DIR)/include_libc/darwin
@@ -107,13 +109,20 @@ MODULE_RUNTIME_GENERAL_LDFLAGS += -L$(TARGET_LIB_DIR) \
 	-framework SystemConfiguration \
 	-framework Security \
 	-framework UniformTypeIdentifiers \
-	-framework AppKit \
 	-framework Network \
 	-framework IOKit \
 	-framework QuartzCore \
 	-framework Metal \
 	-L$(OSTYPE_SDK_PATH)/usr/lib -lSystem -licucore -lobjc -liconv -lc++abi
 MODULE_RUNTIME_LIBS += -l:libbacktrace.a
+endif
+
+ifeq ($(TARGET_SYSTEM),Darwin)
+MODULE_RUNTIME_GENERAL_LDFLAGS += -framework AppKit
+endif
+
+ifeq ($(TARGET_SYSTEM),iOS)
+MODULE_RUNTIME_GENERAL_LDFLAGS += -framework UIKit
 endif
 
 

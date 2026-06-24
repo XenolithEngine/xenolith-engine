@@ -23,7 +23,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_langinfo.h>
 
 #include <langinfo.h>
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include <xlocale.h>
 #endif
 

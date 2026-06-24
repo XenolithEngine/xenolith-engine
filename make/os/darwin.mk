@@ -56,3 +56,10 @@ endif # BUILD_SHARED
 OSTYPE_LIBS_REALPATH := 1
 BUILD_OBJC := 1
 DARWIN := 1
+
+# darwin.mk is shared by macOS and iOS (see make/utils/apply-toolchain.mk). iOS app
+# bundles use a flat layout (executable + Info.plist + Frameworks at the .app root)
+# instead of the macOS .app/Contents/{MacOS,Frameworks} layout; this flag selects it.
+ifeq ($(TARGET_SYSTEM),iOS)
+OSTYPE_IS_IOS := 1
+endif

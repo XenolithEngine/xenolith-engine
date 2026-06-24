@@ -39,13 +39,51 @@ all: $(BUILD_EXECUTABLE_DSYM_GOAL)
 endif # ($(RELEASE),1)
 
 
+ifdef OSTYPE_IS_IOS
+# iOS .app bundles are flat: Info.plist sits at the bundle root, beside the executable.
+BUILD_INFO_PLIST := $(abspath $(dir $(BUILD_EXECUTABLE))Info.plist)
+ifeq ($(TARGET_SDK_NAME),iphonesimulator)
+BUILD_INFO_PLIST_PLATFORM := iPhoneSimulator
+else
+BUILD_INFO_PLIST_PLATFORM := iPhoneOS
+endif
+else
 BUILD_INFO_PLIST := $(abspath $(dir $(BUILD_EXECUTABLE))../Info.plist)
+endif
 
 ifeq ($(LOCAL_MACOS_BUNDLE),1)
 all: $(BUILD_INFO_PLIST)
 endif
 
-ifeq ($(GLOBAL_SHELL),powershell)
+ifdef OSTYPE_IS_IOS
+# iOS needs an iOS-flavoured plist (MinimumOSVersion / CFBundleSupportedPlatforms /
+# UIDeviceFamily) rather than the macOS LSMinimumSystemVersion / NSHighResolutionCapable.
+$(BUILD_INFO_PLIST): $(BUILD_EXECUTABLE)
+	@$(call rule_mkdir,$(dir $(BUILD_INFO_PLIST)))
+	@echo '<?xml version="1.0" encoding="UTF-8"?>' > $@
+	@echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> $@
+	@echo '<plist version="1.0">' >> $@
+	@echo '<dict>' >> $@
+	@echo '	<key>CFBundleExecutable</key>' >> $@
+	@echo '	<string>$(LOCAL_EXECUTABLE)</string>' >> $@
+	@echo '	<key>CFBundleIdentifier</key>' >> $@
+	@echo '	<string>$(APPCONFIG_BUNDLE_NAME)</string>' >> $@
+	@echo '	<key>CFBundlePackageType</key>' >> $@
+	@echo '	<string>APPL</string>' >> $@
+	@echo '	<key>MinimumOSVersion</key>' >> $@
+	@echo '	<string>$(TARGET_OSVER)</string>' >> $@
+	@echo '	<key>CFBundleSupportedPlatforms</key>' >> $@
+	@echo '	<array>' >> $@
+	@echo '		<string>$(BUILD_INFO_PLIST_PLATFORM)</string>' >> $@
+	@echo '	</array>' >> $@
+	@echo '	<key>UIDeviceFamily</key>' >> $@
+	@echo '	<array>' >> $@
+	@echo '		<integer>1</integer>' >> $@
+	@echo '		<integer>2</integer>' >> $@
+	@echo '	</array>' >> $@
+	@echo '</dict>' >> $@
+	@echo '</plist>' >> $@
+else ifeq ($(GLOBAL_SHELL),powershell)
 $(BUILD_INFO_PLIST): $(BUILD_EXECUTABLE)
 	@$(call rule_mkdir,$(dir $(BUILD_INFO_PLIST)))
 	@"<?xml version=$"1.0$" encoding=$"UTF-8$"?>`n", \

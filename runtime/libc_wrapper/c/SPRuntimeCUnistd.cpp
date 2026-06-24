@@ -54,8 +54,11 @@ THE SOFTWARE.
 #define _LARGEFILE64_SOURCE 1
 #endif
 
-#if SPRT_MACOS
+#if SPRT_APPLE
+#if !SPRT_IOS
+// iOS ships no <sys/random.h>; CSPRNG access on iOS goes through Security.framework.
 #include <sys/random.h>
+#endif
 #include <pthread.h>
 #endif
 
@@ -810,7 +813,7 @@ __SPRT_C_FUNC int __SPRT_ID(access)(const char *path, int __type) __SPRT_NOEXCEP
 }
 
 __SPRT_C_FUNC int __SPRT_ID(eaccess)(const char *path, int __type) __SPRT_NOEXCEPT {
-#if SPRT_ANDROID || SPRT_MACOS
+#if SPRT_ANDROID || SPRT_APPLE
 	return ::faccessat(-1, path, __type, __SPRT_AT_EACCESS);
 #else
 	return eaccess(path, __type);
@@ -819,7 +822,7 @@ __SPRT_C_FUNC int __SPRT_ID(eaccess)(const char *path, int __type) __SPRT_NOEXCE
 
 __SPRT_C_FUNC __SPRT_ID(off_t)
 		__SPRT_ID(lseek)(int __fd, __SPRT_ID(off_t) __offset, int __whence) __SPRT_NOEXCEPT {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return ::lseek(__fd, __offset, __whence);
 #else
 	return ::lseek64(__fd, __offset, __whence);
@@ -840,7 +843,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 		pread)(int __fd, void *__buf, __SPRT_ID(size_t) __count, __SPRT_ID(off_t) __offset) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return pread(__fd, __buf, __count, __offset);
 #else
 	return pread64(__fd, __buf, __count, __offset);
@@ -849,7 +852,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 
 __SPRT_C_FUNC __SPRT_ID(ssize_t) __SPRT_ID(
 		pwrite)(int __fd, const void *__buf, __SPRT_ID(size_t) __count, __SPRT_ID(off_t) __offset) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return pwrite(__fd, __buf, __count, __offset);
 #else
 	return pwrite64(__fd, __buf, __count, __offset);
@@ -960,7 +963,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 			" not available for this platform (__SPRT_CONFIG_HAVE_UNISTD_EXEC)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
-#elif SPRT_MACOS
+#elif SPRT_APPLE
 	return ::execve(__file, _argv, __envp);
 #else
 	return ::execvpe(__file, _argv, __envp);
@@ -1155,7 +1158,7 @@ __SPRT_C_FUNC int __SPRT_ID(setegid)(__SPRT_ID(gid_t) __gid) __SPRT_NOEXCEPT {
 
 __SPRT_C_FUNC int __SPRT_ID(getresuid)(__SPRT_ID(uid_t) * __ruid, __SPRT_ID(uid_t) * __euid,
 		__SPRT_ID(uid_t) * __suid) __SPRT_NOEXCEPT {
-#if SPRT_WINDOWS || SPRT_MACOS
+#if SPRT_WINDOWS || SPRT_APPLE
 	auto id = getuid();
 	if (__ruid) {
 		*__ruid = id;
@@ -1173,7 +1176,7 @@ __SPRT_C_FUNC int __SPRT_ID(getresuid)(__SPRT_ID(uid_t) * __ruid, __SPRT_ID(uid_
 }
 __SPRT_C_FUNC int __SPRT_ID(getresgid)(__SPRT_ID(gid_t) * __rgid, __SPRT_ID(gid_t) * __egid,
 		__SPRT_ID(gid_t) * __sgid) __SPRT_NOEXCEPT {
-#if SPRT_WINDOWS || SPRT_MACOS
+#if SPRT_WINDOWS || SPRT_APPLE
 	auto id = getgid();
 	if (__rgid) {
 		*__rgid = id;
@@ -1192,7 +1195,7 @@ __SPRT_C_FUNC int __SPRT_ID(getresgid)(__SPRT_ID(gid_t) * __rgid, __SPRT_ID(gid_
 __SPRT_C_FUNC int __SPRT_ID(setresuid)(__SPRT_ID(uid_t) __ruid, __SPRT_ID(uid_t) __euid,
 		__SPRT_ID(uid_t) __suid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return ::setreuid(__ruid, __euid);
 #else
 	return ::setresuid(__ruid, __euid, __suid);
@@ -1207,7 +1210,7 @@ __SPRT_C_FUNC int __SPRT_ID(setresuid)(__SPRT_ID(uid_t) __ruid, __SPRT_ID(uid_t)
 __SPRT_C_FUNC int __SPRT_ID(setresgid)(__SPRT_ID(gid_t) __rgid, __SPRT_ID(gid_t) __egid,
 		__SPRT_ID(gid_t) __sgid) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_SETUIDGID
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return ::setregid(__rgid, __egid);
 #else
 	return ::setresgid(__rgid, __egid, __sgid);
@@ -1364,7 +1367,7 @@ __SPRT_C_FUNC int __SPRT_ID(getdtablesize)(void) __SPRT_NOEXCEPT {
 }
 
 __SPRT_C_FUNC int __SPRT_ID(truncate)(const char *__file, __SPRT_ID(off_t) length) __SPRT_NOEXCEPT {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return truncate(__file, length);
 #else
 	return truncate64(__file, length);
@@ -1372,7 +1375,7 @@ __SPRT_C_FUNC int __SPRT_ID(truncate)(const char *__file, __SPRT_ID(off_t) lengt
 }
 
 __SPRT_C_FUNC int __SPRT_ID(ftruncate)(int __fd, __SPRT_ID(off_t) length) __SPRT_NOEXCEPT {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return ftruncate(__fd, length);
 #else
 	return ftruncate64(__fd, length);
@@ -1383,7 +1386,7 @@ __SPRT_C_FUNC int __SPRT_ID(brk)(void *__addr) __SPRT_NOEXCEPT {
 #if __SPRT_CONFIG_HAVE_UNISTD_BRK
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#if SPRT_MACOS
+#if SPRT_APPLE
 	::brk(__addr);
 	return 0;
 #else
@@ -1413,7 +1416,7 @@ __SPRT_C_FUNC void *__SPRT_ID(sbrk)(__SPRT_ID(intptr_t) __delta) __SPRT_NOEXCEPT
 }
 
 __SPRT_C_FUNC int __SPRT_ID(lockf)(int __fd, int __cmd, __SPRT_ID(off_t) len) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return lockf(__fd, __cmd, len);
 #else
 	return lockf64(__fd, __cmd, len);
@@ -1444,7 +1447,7 @@ __SPRT_C_FUNC __SPRT_ID(ssize_t)
 }
 
 __SPRT_C_FUNC int __SPRT_ID(fdatasync)(int __fildes) {
-#if SPRT_WINDOWS || SPRT_MACOS
+#if SPRT_WINDOWS || SPRT_APPLE
 	return fsync(__fildes);
 #else
 	return ::fdatasync(__fildes);
@@ -1492,7 +1495,7 @@ __SPRT_C_FUNC int __SPRT_ID(unlinkat)(int __dirfd, const char *__path, int __fla
 }
 
 __SPRT_C_FUNC long __SPRT_ID(gethostid)(void) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return gethostid();
 #else
 	auto dev = platform::getUniqueDeviceId();
@@ -1508,7 +1511,7 @@ __SPRT_C_FUNC long __SPRT_ID(gethostid)(void) {
 __SPRT_C_FUNC int __SPRT_ID(pipe)(int fds[2]) { return pipe(fds); }
 
 __SPRT_C_FUNC int __SPRT_ID(pipe2)(int fds[2], int flags) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	static auto setnonblock = [](int fd) {
 		int flags = fcntl(fd, F_GETFL, 0);
 		if (flags == -1) {

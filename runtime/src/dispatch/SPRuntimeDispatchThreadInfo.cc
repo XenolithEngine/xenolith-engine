@@ -24,7 +24,7 @@
 
 #include <pthread.h>
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 
 typedef struct objc_object *id;
 typedef struct objc_class *Class;

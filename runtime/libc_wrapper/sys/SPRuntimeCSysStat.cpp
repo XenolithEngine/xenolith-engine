@@ -62,7 +62,7 @@ static void convertStatFromNative(const struct stat64 *native, struct __SPRT_STA
 	rt->st_size = native->st_size;
 	rt->st_blksize = native->st_blksize;
 	rt->st_blocks = native->st_blocks;
-#if SPRT_MACOS
+#if SPRT_APPLE
 	rt->st_atim.tv_nsec = native->st_atimespec.tv_nsec;
 	rt->st_atim.tv_sec = native->st_atimespec.tv_sec;
 	rt->st_mtim.tv_nsec = native->st_mtimespec.tv_nsec;

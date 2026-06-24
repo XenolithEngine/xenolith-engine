@@ -67,12 +67,17 @@ LOCAL_LDFLAGS := \
 	-reexport_framework SystemConfiguration \
 	-reexport_framework Security \
 	-reexport_framework UniformTypeIdentifiers \
-	-reexport_framework AppKit \
 	-reexport_framework Network \
 	-reexport_framework IOKit \
 	-reexport_framework QuartzCore \
 	-reexport_framework Metal \
 	-reexport-lSystem -reexport-licucore -reexport-lobjc -reexport-liconv -reexport-lc++abi
+# AppKit is macOS-only; iOS uses UIKit instead.
+ifneq (,$(findstring apple-ios,$(STAPPLER_TARGET)))
+LOCAL_LDFLAGS += -reexport_framework UIKit
+else
+LOCAL_LDFLAGS += -reexport_framework AppKit
+endif
 endif
 
 include $(STAPPLER_BUILD_ROOT)/universal.mk

@@ -43,7 +43,7 @@ THE SOFTWARE.
 #include "../src/private/SPRTSpecific.h"
 #endif
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include <xlocale.h>
 #endif
 
@@ -55,7 +55,7 @@ namespace sprt {
 __SPRT_C_FUNC __SPRT_ID(FILE)
 		* __SPRT_ID(
 				fopen_impl)(const char *__SPRT_RESTRICT path, const char *__SPRT_RESTRICT mode) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return ::fopen(path, mode);
 #else
 	return ::fopen64(path, mode);
@@ -65,7 +65,7 @@ __SPRT_C_FUNC __SPRT_ID(FILE)
 __SPRT_C_FUNC __SPRT_ID(FILE)
 		* __SPRT_ID(freopen_impl)(const char *__SPRT_RESTRICT path,
 				const char *__SPRT_RESTRICT mode, __SPRT_ID(FILE) * __SPRT_RESTRICT file) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return ::freopen(path, mode, file);
 #else
 	return ::freopen64(path, mode, file);

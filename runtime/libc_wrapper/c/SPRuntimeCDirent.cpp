@@ -36,7 +36,7 @@ THE SOFTWARE.
 
 #include <sprt/runtime/log.h>
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include <sys/syslimits.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -70,7 +70,7 @@ __SPRT_C_FUNC __SPRT_ID(DIR) * __SPRT_ID(fdopendir)(int __dir_fd) {
 }
 
 __SPRT_C_FUNC struct __SPRT_DIRENT_NAME *__SPRT_ID(readdir)(__SPRT_ID(DIR) * __dir) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return (struct __SPRT_DIRENT_NAME *)readdir((DIR *)__dir);
 #else
 	return (struct __SPRT_DIRENT_NAME *)readdir64(__dir);
@@ -103,7 +103,7 @@ __SPRT_C_FUNC int __SPRT_ID(dirfd)(__SPRT_ID(DIR) * __dir) { return dirfd((DIR *
 
 __SPRT_C_FUNC int __SPRT_ID(alphasort)(const struct __SPRT_DIRENT_NAME **__lhs,
 		const struct __SPRT_DIRENT_NAME **__rhs) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return ::alphasort((const struct dirent **)__lhs, (const struct dirent **)__rhs);
 #else
 	return ::alphasort64((const struct dirent64 **)__lhs, (const struct dirent64 **)__rhs);
@@ -119,7 +119,7 @@ __SPRT_C_FUNC int __SPRT_ID(scandir)(const char *path, struct __SPRT_DIRENT_NAME
 		int (*__filter)(const struct __SPRT_DIRENT_NAME *),
 		int (*__comparator)(const struct __SPRT_DIRENT_NAME **,
 				const struct __SPRT_DIRENT_NAME **)) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return ::scandir(path, (struct dirent ***)__name_list,
 			reinterpret_cast<int (*)(const struct dirent *)>(__filter),
 			reinterpret_cast<int (*)(const struct dirent **, const struct dirent **)>(
@@ -138,7 +138,7 @@ __SPRT_C_FUNC int __SPRT_ID(scandirat)(int __dir_fd, const char *path,
 		int (*__filter)(const struct __SPRT_DIRENT_NAME *),
 		int (*__comparator)(const struct __SPRT_DIRENT_NAME **,
 				const struct __SPRT_DIRENT_NAME **)) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	if (path[0] == '/') {
 		return ::scandir(path, (struct dirent ***)__name_list,
 				reinterpret_cast<int (*)(const struct dirent *)>(__filter),

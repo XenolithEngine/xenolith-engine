@@ -36,7 +36,7 @@ THE SOFTWARE.
 #include "../platform/android/jni.cc"
 #endif
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include "../platform/darwin/unicode.cc"
 #endif
 

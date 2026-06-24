@@ -24,7 +24,7 @@
 
 #include <sprt/runtime/platform.h>
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 
 #include <sprt/runtime/stringview.h>
 #include <sprt/runtime/stream.h>

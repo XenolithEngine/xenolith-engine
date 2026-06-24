@@ -29,7 +29,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 // macOS provides these in libSystem, but the freestanding include path exposes neither
 // <sys/wait.h> nor a kill() prototype; declare them directly.
 extern "C" int kill(int __pid, int __sig);
@@ -58,7 +58,7 @@ void killProcessChild(int pid) {
 	// Windows analogue (SPEventProcessIocp.cc) would assign the child to a Job Object and
 	// terminate that instead of a single TerminateProcess.
 	int status = 0;
-#if SPRT_MACOS
+#if SPRT_APPLE
 	::kill(pid, SIGKILL);
 	::waitpid(pid, &status, 0);
 #else

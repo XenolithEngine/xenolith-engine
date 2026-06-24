@@ -22,6 +22,14 @@
 
 #define __SPRT_BUILD 1
 
+// These sources pull in AppKit / CoreGraphics / IOKit, which only exist on macOS.
+// Guard the whole unit on SPRT_MACOS so it compiles to nothing on iOS (the window
+// module is built for all Apple targets). __sprt_def.h is included first so that
+// SPRT_MACOS is defined before the guard is evaluated.
+#include <sprt/c/bits/__sprt_def.h>
+
+#if SPRT_MACOS
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #pragma clang diagnostic ignored "-Wdeprecated-enum-enum-conversion"
@@ -386,3 +394,5 @@ void MacosDisplayConfigManager::applyDisplayConfig(NotNull<DisplayConfig> config
 }
 
 } // namespace sprt::window
+
+#endif // SPRT_MACOS

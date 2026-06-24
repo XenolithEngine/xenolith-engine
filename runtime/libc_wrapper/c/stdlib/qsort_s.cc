@@ -75,7 +75,7 @@ __SPRT_C_FUNC int qsort_s(void *ptr, __SPRT_ID(rsize_t) count, __SPRT_ID(rsize_t
 		return tl_qsort_s_wrapper.comp(tl_qsort_s_wrapper.ctx, l, r);
 	});
 	tl_qsort_s_wrapper = saved;
-#elif SPRT_MACOS
+#elif SPRT_APPLE
 	qsort_r(ptr, count, size, context, comp);
 #else
 	__qsort_s_wrapper w = {context, comp};
@@ -87,7 +87,7 @@ __SPRT_C_FUNC int qsort_s(void *ptr, __SPRT_ID(rsize_t) count, __SPRT_ID(rsize_t
 	return 0;
 }
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 SPRT_API void __SPRT_ID(qsort_r)(void *array, __SPRT_ID(size_t) n, __SPRT_ID(size_t) size,
 		int (*cmp)(const void *, const void *, void *), void *ctx) {
 	__qsort_r_wrapper w = {ctx, cmp};

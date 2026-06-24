@@ -24,7 +24,7 @@ THE SOFTWARE.
 
 #include <sprt/runtime/platform.h>
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 
 #include <sprt/runtime/platform.h>
 #include <sprt/runtime/callback.h>
