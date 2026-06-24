@@ -41,7 +41,7 @@ THE SOFTWARE.
 #include "linux/clock_gettime.cc"
 #include "linux/libc.cc"
 
-#elif SPRT_MACOS
+#elif SPRT_APPLE
 #include <sched.h>
 #include <math.h>
 #include <stdio.h>
@@ -208,7 +208,7 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
 			return tid;
 		}
 	}
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return pthread_mach_thread_np(pthread_self());
 #elif SPRT_WINDOWS
 	return GetCurrentThreadId();
@@ -528,7 +528,7 @@ __SPRT_C_FUNC int __SPRT_ID(uname)(struct __SPRT_UTSNAME_NAME *buf) {
 			sprt::memcpy(buf->machine, _native.machine,
 					sprt::strnlen(_native.machine, __SPRT_SYS_NAMELEN - 1));
 		}
-#ifndef SPRT_MACOS
+#ifndef SPRT_APPLE
 		if (_native.domainname[0]) {
 			sprt::memcpy(buf->domainname, _native.domainname,
 					sprt::strnlen(_native.domainname, __SPRT_SYS_NAMELEN - 1));

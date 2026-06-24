@@ -28,14 +28,14 @@ THE SOFTWARE.
 
 #include <stdlib.h>
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include <sprt/cxx/__mutex/unique_lock.h>
 #include <sprt/runtime/thread/qmutex.h>
 
 #include <dlfcn.h>
 #endif
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 
 namespace sprt::libc {
 
@@ -110,7 +110,7 @@ static __SPRT_NORETURN void quick_exit(int ret) {
 
 } // namespace sprt::libc
 
-#endif // SPRT_MACOS
+#endif // SPRT_APPLE
 
 namespace sprt {
 
@@ -121,7 +121,7 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(exit_impl)(int ret) { ::exit(ret); 
 __SPRT_C_FUNC void __SPRT_ID(_Exit_impl)(int ret) { ::_Exit(ret); }
 
 __SPRT_C_FUNC int __SPRT_ID(at_quick_exit_impl)(void (*cb)(void)) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return sprt::libc::at_quick_exit(cb);
 #else
 	return ::at_quick_exit(cb);
@@ -129,7 +129,7 @@ __SPRT_C_FUNC int __SPRT_ID(at_quick_exit_impl)(void (*cb)(void)) {
 }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(quick_exit_impl)(int ret) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	sprt::libc::quick_exit(ret);
 #else
 	::quick_exit(ret);

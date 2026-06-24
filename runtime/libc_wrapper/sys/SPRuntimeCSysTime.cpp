@@ -31,7 +31,7 @@ THE SOFTWARE.
 
 #include <sys/time.h>
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include <sys/syslimits.h>
 #include <sys/fcntl.h>
 #include <unistd.h>
@@ -218,7 +218,7 @@ __SPRT_C_FUNC int __SPRT_ID(futimesat)(int fd, const char *path, const __SPRT_TI
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
-#elif SPRT_MACOS
+#elif SPRT_APPLE
 	if (path[0] == '/') {
 		return utimes(path, nativeTs);
 	}

@@ -36,12 +36,18 @@ endif # OSTYPE_IS_MACOS
 
 ifdef RUNTIME_INSTALL_LIBRARY
 ifeq ($(LOCAL_MACOS_BUNDLE),1)
-$(BUILD_С_OUTDIR)/$(LOCAL_EXECUTABLE).app/Contents/Frameworks/$(notdir $(RUNTIME_INSTALL_LIBRARY)) : \
+# iOS bundles are flat (.app/Frameworks); macOS nests under .app/Contents/Frameworks.
+ifdef OSTYPE_IS_IOS
+LOCAL_BUNDLE_FRAMEWORKS_DIR := $(BUILD_С_OUTDIR)/$(LOCAL_EXECUTABLE).app/Frameworks
+else
+LOCAL_BUNDLE_FRAMEWORKS_DIR := $(BUILD_С_OUTDIR)/$(LOCAL_EXECUTABLE).app/Contents/Frameworks
+endif
+$(LOCAL_BUNDLE_FRAMEWORKS_DIR)/$(notdir $(RUNTIME_INSTALL_LIBRARY)) : \
 	$(RUNTIME_INSTALL_LIBRARY)
-	@mkdir -p $(BUILD_С_OUTDIR)/$(LOCAL_EXECUTABLE).app/Contents/Frameworks
+	@mkdir -p $(LOCAL_BUNDLE_FRAMEWORKS_DIR)
 	cp $< $@
 
-$(BUILD_EXECUTABLE): $(BUILD_С_OUTDIR)/$(LOCAL_EXECUTABLE).app/Contents/Frameworks/$(notdir $(RUNTIME_INSTALL_LIBRARY))
+$(BUILD_EXECUTABLE): $(LOCAL_BUNDLE_FRAMEWORKS_DIR)/$(notdir $(RUNTIME_INSTALL_LIBRARY))
 endif
 endif # RUNTIME_INSTALL_LIBRARY
 

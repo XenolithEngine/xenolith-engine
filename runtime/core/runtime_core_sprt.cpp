@@ -50,7 +50,7 @@ THE SOFTWARE.
 
 #if SPRT_LINUX || SPRT_ANDROID
 #include "linux/sprt_lock.cc"
-#elif SPRT_MACOS
+#elif SPRT_APPLE
 #include "darwin/sprt_lock.cc"
 #elif SPRT_WINDOWS
 #include "windows/sprt_lock.cc"

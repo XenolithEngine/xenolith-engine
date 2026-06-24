@@ -24,10 +24,13 @@ THE SOFTWARE.
 
 #include <sprt/cxx/debugging>
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include <sys/types.h>
 #include <sys/sysctl.h>
+#if !SPRT_IOS
+// iOS ships no <sys/user.h>; struct kinfo_proc comes from <sys/sysctl.h> there.
 #include <sys/user.h>
+#endif
 #include <unistd.h>
 #elif SPRT_LINUX || SPRT_ANDROID
 #include <stdio.h>
@@ -62,7 +65,7 @@ bool is_debugger_present() noexcept {
 		return true;
 	}
 	return false;
-#elif SPRT_MACOS
+#elif SPRT_APPLE
 	int mib[4];
 	struct kinfo_proc info;
 	size_t size;

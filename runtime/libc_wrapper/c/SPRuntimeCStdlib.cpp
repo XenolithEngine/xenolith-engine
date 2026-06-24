@@ -37,7 +37,7 @@ THE SOFTWARE.
 #include "stdlib/byteswap.cc"
 #include "stdlib/qsort_s.cc"
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include <xlocale.h>
 #include <unistd.h>
 #endif
@@ -136,7 +136,17 @@ __SPRT_C_FUNC void __SPRT_ID(aligned_free)(void *memblock) {
 #endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(system_impl)(const char *cmd) { return ::system(cmd); }
+__SPRT_C_FUNC int __SPRT_ID(system_impl)(const char *cmd) {
+#if SPRT_IOS
+	// system() is marked unavailable on iOS (no shell / process spawning); report
+	// it as unsupported rather than failing to compile.
+	(void)cmd;
+	__sprt_errno = ENOSYS;
+	return -1;
+#else
+	return ::system(cmd);
+#endif
+}
 
 #if __STDC_HOSTED__ == 1
 __SPRT_C_FUNC void *__SPRT_ID(bsearch_impl)(const void *key, const void *base, size_t nmemb,

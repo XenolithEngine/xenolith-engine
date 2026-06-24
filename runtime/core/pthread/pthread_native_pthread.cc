@@ -28,14 +28,21 @@ THE SOFTWARE.
 
 #include <pthread.h>
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include <mach/port.h>
 #endif
 
 extern "C" __attribute((weak)) void *__dso_handle;
 
+#if SPRT_IOS
+// iOS does not export __cxa_thread_atexit (only macOS' libSystem does). Register
+// thread-local destructors through the underlying Darwin primitive _tlv_atexit -
+// which __cxa_thread_atexit itself forwards to - available on both macOS and iOS.
+__SPRT_C_FUNC void _tlv_atexit(void (*cb)(void *), void *obj) __SPRT_NOEXCEPT;
+#else
 __SPRT_C_FUNC int __cxa_thread_atexit(void (*cb)(void *), void *obj,
 		void *dso_symbol) __SPRT_NOEXCEPT;
+#endif
 
 namespace sprt::_thread::native {
 
@@ -72,7 +79,11 @@ static void __doDestroy(void *cb) {
 }
 
 static void __registerForDestruction(void (*cb)(void)) {
+#if SPRT_IOS
+	_tlv_atexit(__doDestroy, (void *)cb);
+#else
 	__cxa_thread_atexit(__doDestroy, (void *)cb, __dso_handle);
+#endif
 }
 
 static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
@@ -129,7 +140,7 @@ static bool __initNativeHandle(thread_t *thread) {
 
 	thread->handle = reinterpret_cast<void *>(pthread_self());
 
-#if !SPRT_MACOS
+#if !SPRT_APPLE
 	pthread_attr_t attr;
 	pthread_getattr_np(reinterpret_cast<pthread_t>(thread->handle),
 			&attr); // Get current thread's actual attributes
@@ -271,7 +282,7 @@ int thread_t::getcpuclockid(__sprt_clockid_t *clock) const {
 		return EINVAL;
 	}
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 	auto portId = pthread_mach_thread_np(pthread_self());
 	if (portId == MACH_PORT_DEAD) {
 		return ESRCH;
@@ -291,7 +302,7 @@ int thread_t::getcpuclockid(__sprt_clockid_t *clock) const {
 }
 
 int thread_t::getaffinity(__SPRT_ID(size_t) n, __SPRT_ID(cpu_set_t) * set) {
-#if SPRT_ANDROID || SPRT_MACOS
+#if SPRT_ANDROID || SPRT_APPLE
 	return ENOSYS;
 #else
 	return pthread_getaffinity_np(reinterpret_cast<pthread_t>(handle), n,
@@ -300,7 +311,7 @@ int thread_t::getaffinity(__SPRT_ID(size_t) n, __SPRT_ID(cpu_set_t) * set) {
 }
 
 int thread_t::setaffinity(__SPRT_ID(size_t) n, const __SPRT_ID(cpu_set_t) * set) {
-#if SPRT_ANDROID || SPRT_MACOS
+#if SPRT_ANDROID || SPRT_APPLE
 	return ENOSYS;
 #else
 	return pthread_setaffinity_np(reinterpret_cast<pthread_t>(handle), n,
@@ -309,7 +320,7 @@ int thread_t::setaffinity(__SPRT_ID(size_t) n, const __SPRT_ID(cpu_set_t) * set)
 }
 
 int thread_t::setname_native(const char *name) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return pthread_setname_np(name);
 #else
 	return pthread_setname_np(reinterpret_cast<pthread_t>(handle), name);

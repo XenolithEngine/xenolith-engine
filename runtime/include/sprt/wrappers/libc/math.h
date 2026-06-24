@@ -96,7 +96,7 @@ static constexpr auto _FP_ILOGBNAN = __SPRT_FP_ILOGBNAN;
 static constexpr auto _MATH_ERRNO = __SPRT_MATH_ERRNO;
 static constexpr auto _MATH_ERREXCEPT = __SPRT_MATH_ERREXCEPT;
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 // _math_errhandling is a function in Mac SDK
 #define _math_errhandling __SPRT_math_errhandling
 #else

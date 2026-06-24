@@ -28,11 +28,15 @@ THE SOFTWARE.
 #include "windows/getrandom.cc"
 #else
 #include <stdlib.h>
-#include <sys/random.h>
 #include <unistd.h>
+#if !SPRT_IOS
+// iOS ships no <sys/random.h> and does not declare getentropy(); it uses
+// SecRandomCopyBytes from Security.framework instead (see below).
+#include <sys/random.h>
+#endif
 #endif
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include <Security/SecRandom.h>
 #endif
 
@@ -46,7 +50,13 @@ namespace sprt {
 // (it fills the whole buffer or fails, and the platform caps __length at 256), so it
 // never returns a partial result and needs no retry loop here.
 __SPRT_C_FUNC int __SPRT_ID(getentropy)(void *__buffer, __SPRT_ID(size_t) __length) {
+#if SPRT_IOS
+	// iOS does not expose getentropy(); SecRandomCopyBytes is all-or-nothing too,
+	// matching getentropy()'s 0-on-success / -1-on-failure contract.
+	return (SecRandomCopyBytes(kSecRandomDefault, __length, __buffer) == 0) ? 0 : -1;
+#else
 	return getentropy(__buffer, __length);
+#endif
 }
 
 // Thin pass-through to the platform CSPRNG; the raw return value is forwarded as-is.
@@ -64,7 +74,7 @@ __SPRT_C_FUNC int __SPRT_ID(getentropy)(void *__buffer, __SPRT_ID(size_t) __leng
 // fallback on any platform — a hard failure returns -1 (fails closed).
 __SPRT_C_FUNC __SPRT_ID(ssize_t)
 		__SPRT_ID(getrandom)(void *__buffer, __SPRT_ID(size_t) __length, unsigned __flags) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	auto ret = SecRandomCopyBytes(kSecRandomDefault, __length, __buffer);
 	if (ret == 0) {
 		return __length;

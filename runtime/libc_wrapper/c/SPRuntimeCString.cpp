@@ -47,12 +47,12 @@ THE SOFTWARE.
 #include <strings.h>
 #endif
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 // Darwin declares the locale-aware strcasecmp_l/strncasecmp_l in <xlocale.h>.
 #include <xlocale.h>
 #endif
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 // Missed in string.h public header, but not private
 __SPRT_C_FUNC __SPRT_ID(size_t) strnlen(const char *__SPRT_RESTRICT str, __SPRT_ID(size_t) n);
 #endif

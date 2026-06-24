@@ -209,7 +209,7 @@ __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 	__SPRT_ID(mode_t) __mode = 0;
 
 	if ((__flags & __SPRT_O_CREAT)
-#if !defined(SPRT_MACOS)
+#if !defined(SPRT_APPLE)
 			|| (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE
 #endif
 	) {
@@ -221,7 +221,7 @@ __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 
 #if SPRT_ANDROID
 	return platform::_open64(path, __flags, __mode);
-#elif SPRT_MACOS
+#elif SPRT_APPLE
 	return open(path, __flags, __mode);
 #else
 	return open64(path, __flags, __mode);
@@ -231,7 +231,7 @@ __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 __SPRT_C_FUNC int __SPRT_ID(creat)(const char *path, __SPRT_ID(mode_t) __mode) {
 #if SPRT_ANDROID
 	return platform::_creat64(path, __mode);
-#elif SPRT_MACOS
+#elif SPRT_APPLE
 	return creat(path, __mode);
 #else
 	return creat64(path, __mode);
@@ -242,7 +242,7 @@ __SPRT_C_FUNC int __SPRT_ID(openat)(int __dir_fd, const char *path, int __flags,
 	__SPRT_ID(mode_t) __mode = 0;
 
 	if ((__flags & __SPRT_O_CREAT)
-#if !defined(SPRT_MACOS)
+#if !defined(SPRT_APPLE)
 			|| (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE
 #endif
 	) {
@@ -255,7 +255,7 @@ __SPRT_C_FUNC int __SPRT_ID(openat)(int __dir_fd, const char *path, int __flags,
 
 #if SPRT_ANDROID
 	return platform::_openat64(__dir_fd, path, __flags, __mode);
-#elif SPRT_MACOS
+#elif SPRT_APPLE
 	return openat(__dir_fd, path, __flags, __mode);
 #else
 	return openat64(__dir_fd, path, __flags, __mode);

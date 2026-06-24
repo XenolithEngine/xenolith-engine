@@ -28,7 +28,7 @@ THE SOFTWARE.
 #include <stddef.h>
 #include <locale.h>
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include <xlocale.h>
 #endif
 

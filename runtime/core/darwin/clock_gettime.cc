@@ -98,6 +98,13 @@ static int _clock_settime(unsigned clk_id, const struct __SPRT_TIMESPEC_NAME *ts
 		__sprt_errno = EINVAL;
 		return -1;
 	} else {
+#if SPRT_IOS
+		// iOS marks clock_settime() unavailable - a sandboxed app cannot set the
+		// system clock. Fail closed with EPERM, as the platform would.
+		(void)ts;
+		__sprt_errno = EPERM;
+		return -1;
+#else
 		struct timespec native;
 		if (ts) {
 			native.tv_nsec = ts->tv_nsec;
@@ -105,6 +112,7 @@ static int _clock_settime(unsigned clk_id, const struct __SPRT_TIMESPEC_NAME *ts
 		}
 
 		return ::clock_settime(clockid_t(clk_id), ts ? &native : nullptr);
+#endif
 	}
 }
 

@@ -32,7 +32,7 @@ THE SOFTWARE.
 #include <time64.h>
 #endif
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include <xlocale.h>
 #include <unistd.h>
 #endif
@@ -45,7 +45,7 @@ THE SOFTWARE.
 
 #include "time/time_internals.h"
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #define CLOCK_MONOTONIC_COARSE CLOCK_MONOTONIC_RAW_APPROX
 #define CLOCK_BOOTTIME CLOCK_UPTIME_RAW
 #endif
@@ -293,7 +293,7 @@ __SPRT_C_FUNC int __SPRT_ID(clock_nanosleep)(__SPRT_ID(clockid_t) clock, int v,
 		const __SPRT_TIMESPEC_NAME *ts, __SPRT_TIMESPEC_NAME *out) {
 #if SPRT_WINDOWS
 	return clock_nanosleep(clock, v, ts, out);
-#elif SPRT_MACOS
+#elif SPRT_APPLE
 	if (clock == CLOCK_REALTIME && v == 0) {
 		if (__sprt_nanosleep(ts, out) != 0) {
 			return *__sprt___errno_location();
@@ -320,7 +320,7 @@ __SPRT_C_FUNC int __SPRT_ID(clock_nanosleep)(__SPRT_ID(clockid_t) clock, int v,
 
 __SPRT_C_FUNC int __SPRT_ID(
 		clock_getcpuclockid)(__SPRT_ID(pid_t) pid, __SPRT_ID(clockid_t) * clock) {
-#if SPRT_WINDOWS || SPRT_MACOS
+#if SPRT_WINDOWS || SPRT_APPLE
 	if (pid != __sprt_getpid()) {
 		return ENOSYS;
 	}

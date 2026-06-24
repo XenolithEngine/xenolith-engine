@@ -30,7 +30,9 @@ THE SOFTWARE.
 // SPRT_CROSS_CONFIG_NAME() stringizing helper: that macro-expands its argument, and once a
 // system <errno.h> is in scope `errno` is itself a macro (e.g. (*__error()) on macOS), which
 // would corrupt the `.../errno.h` path. A literal #include <...> is never macro-expanded.
-#if SPRT_MACOS
+#if SPRT_IOS
+#include <sprt/c/cross/ios_sprt/errno.h>
+#elif SPRT_MACOS
 #include <sprt/c/cross/macos_sprt/errno.h>
 #elif SPRT_ANDROID
 #include <sprt/c/cross/android_sprt/errno.h>

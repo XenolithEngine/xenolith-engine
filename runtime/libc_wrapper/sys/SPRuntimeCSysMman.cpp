@@ -75,7 +75,7 @@ static_assert(MADV_FREE == __SPRT_MADV_FREE);
 
 __SPRT_C_FUNC void *__SPRT_ID(mmap)(void *__addr, __SPRT_ID(size_t) __size, int __prot, int __flags,
 		int __fd, __SPRT_ID(off_t) __offset) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return mmap(__addr, __size, __prot, __flags, __fd, __offset);
 #else
 	return mmap64(__addr, __size, __prot, __flags, __fd, __offset);
@@ -156,7 +156,7 @@ __SPRT_C_FUNC int __SPRT_ID(mlock2)(const void *__addr, __SPRT_ID(size_t) __size
 			" not available for this platform (Android: API not available)");
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
-#elif SPRT_MACOS
+#elif SPRT_APPLE
 	if (__flags == 0) {
 		return mlock(__addr, __size);
 	}
@@ -172,7 +172,7 @@ __SPRT_C_FUNC int __SPRT_ID(madvise)(void *__addr, __SPRT_ID(size_t) __size, int
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mincore)(void *__addr, __SPRT_ID(size_t) __size, unsigned char *__vec) {
-#if SPRT_MACOS
+#if SPRT_APPLE
 	return mincore(__addr, __size, (char *)__vec);
 #else
 	return mincore(__addr, __size, __vec);

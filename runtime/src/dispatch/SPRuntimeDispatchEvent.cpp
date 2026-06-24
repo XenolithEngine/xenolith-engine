@@ -56,7 +56,7 @@
 #include "platform/windows/SPEventFileIocp.cc"
 #endif
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #include "platform/fd/SPEventProcess.cc"
 #include "platform/darwin/SPEvent-darwin.cc"
 #include "platform/darwin/SPEvent-kqueue.cc"

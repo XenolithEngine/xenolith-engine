@@ -56,7 +56,7 @@ __SPRT_ID(sigsetjmp_fn) get_sigsetjmp_fn();
 #endif
 
 __SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
 	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(&setjmp);
 #elif SPRT_WINDOWS
 	return get_setjmp_fn();
@@ -74,7 +74,7 @@ __SPRT_C_FUNC __SPRT_ID(sigsetjmp_fn) __SPRT_ID(get_sigsetjmp_fn)() {
 	// musl declares `sigsetjmp` as a real function and has no `__sigsetjmp`
 	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&sigsetjmp);
 #endif
-#elif SPRT_ANDROID || SPRT_MACOS
+#elif SPRT_ANDROID || SPRT_APPLE
 	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&sigsetjmp);
 #elif SPRT_WINDOWS
 	return get_sigsetjmp_fn();
@@ -93,7 +93,7 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_setjmp)(int arg, __SPRT_ID(jmp_buf) buf) {
 		uintptr_t result = 0;
 	} lookup;
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
 	_Unwind_Backtrace([](struct _Unwind_Context *ctx, void *l) {
 		CFALookup *lookup = (CFALookup *)l;
 		if (--lookup->offset > 0) {
@@ -118,7 +118,7 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_sigsetjmp)(int arg, __SPRT_ID(sigjmp_buf) buf, i
 		uintptr_t result = 0;
 	} lookup;
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
 	_Unwind_Backtrace([](struct _Unwind_Context *ctx, void *l) {
 		CFALookup *lookup = (CFALookup *)l;
 		if (--lookup->offset > 0) {
@@ -144,7 +144,7 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_sigsetjmp)(int arg, __SPRT_ID(sigjmp_buf) buf, i
 }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, int ret) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
 	using jmp_buf_t = decltype(buf);
 	// TODO: Maybe, add some additional info for unwinder?
 
@@ -184,7 +184,7 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 }
 
 __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(siglongjmp)(__SPRT_ID(sigjmp_buf) buf, int ret) {
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
 	using jmp_buf_t = decltype(buf);
 	// TODO: Maybe, add some additional info for unwinder?
 

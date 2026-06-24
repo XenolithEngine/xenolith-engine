@@ -63,24 +63,34 @@ THE SOFTWARE.
 	SPRT_ANDROID
 	SPRT_LINUX
 
-	for platform detection
+	for platform detection.
+
+	Additionally defines SPRT_APPLE on any Apple/Darwin platform (macOS, iOS,
+	darwin-unknown) - use it for libSystem/XNU behavior that is shared across the
+	whole family, and SPRT_MACOS / SPRT_IOS only for genuinely OS-specific code.
 */
 #ifdef __APPLE__
-#if TARGET_OS_MAC
-#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_MACOS
-#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_MACOS
-#define SPRT_MACOS __SPRT_PLATFORM_ID_MACOS
-#define SPRT_HAVE_DEDICATED_SIZE_T 1
-#elif TARGET_OS_IPHONE
+// NB: clang predefines every TARGET_OS_* macro for Apple targets (even without
+// <TargetConditionals.h> in scope). TARGET_OS_MAC is 1 on EVERY Apple OS - it
+// means "is a Darwin/Apple platform", not "is macOS" - so iOS/tvOS/watchOS
+// (TARGET_OS_IPHONE) MUST be tested before the desktop macOS (TARGET_OS_OSX)
+// branch, otherwise an iOS target is misdetected as macOS.
+#if TARGET_OS_IPHONE
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_IOS
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_IOS
 #define SPRT_IOS __SPRT_PLATFORM_ID_IOS
+#define SPRT_HAVE_DEDICATED_SIZE_T 1
+#elif TARGET_OS_OSX || TARGET_OS_MAC
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_MACOS
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_MACOS
+#define SPRT_MACOS __SPRT_PLATFORM_ID_MACOS
 #define SPRT_HAVE_DEDICATED_SIZE_T 1
 #else
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_DARWIN_UNKNOWN
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_DARWIN_UNKNOWN
 #define SPRT_DARWIN_UNKNOWN __SPRT_PLATFORM_ID_DARWIN_UNKNOWN
 #endif
+#define SPRT_APPLE __SPRT_PLATFORM_ID
 #elif defined(_WIN32) || defined(_WIN64) || defined(__SPRT_WINDOWS)
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_WINDOWS
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_WINDOWS

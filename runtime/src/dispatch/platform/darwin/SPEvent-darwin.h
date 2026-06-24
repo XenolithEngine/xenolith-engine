@@ -27,7 +27,7 @@
 #include "../../detail/SPRuntimeDispatchHandleClass.h"
 #include "../../detail/SPRuntimeDispatchQueueData.h"
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 
 namespace sprt::dispatch {
 

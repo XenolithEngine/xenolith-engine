@@ -25,7 +25,7 @@
 
 #include "private/SPRTPrivate.h"
 
-#if SPRT_LINUX || SPRT_ANDROID || SPRT_MACOS || SPRT_WINDOWS
+#if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE || SPRT_WINDOWS
 #include "SPRuntimePlatform-posix.cc"
 #endif
 

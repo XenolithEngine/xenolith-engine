@@ -32,7 +32,7 @@
 #include <string.h>
 #endif
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 #undef _GNU_SOURCE
 #include <string.h>
 #endif
@@ -335,7 +335,7 @@ static void checkLogFeaturesSupport(LogFeaturesInit &result) {
 }
 #endif
 
-#if SPRT_MACOS
+#if SPRT_APPLE
 
 static void checkLogFeaturesSupport(LogFeaturesInit &ret) {
 	ret.features = LogFeatures::AnsiCompatible | LogFeatures::Colors | LogFeatures::Bold
