@@ -2,7 +2,15 @@
 
 The purpose of this repository is to provide universal complete toolchain for C/C++ development with Xenolith Runtime on MacOS, Windows and Linux.
 
-**Work in progress**: toolchains on early stages, errors a very possible. Use this repo only if you has experience in toolchain building.
+**Work in progress**: toolchains on beta stage now. It works, compiles and mostly tested.
+
+## Hardware requirements
+
+At least 32G RAM and 100G disk space required for full build (all hosts + all targets).
+
+Most heavy host toolchains is windows, if it compiles - all other will not OOM too.
+
+Release toolchains assembled on x86_64 linux, other platform were not testes for full builds.
 
 ## What's included
 
@@ -91,6 +99,9 @@ Supported targets:
 * target-x86_64-unknown-linux-gnu
 * target-aarch64-unknown-linux-gnu
 * target-riscv64-unknown-linux-gnu
+* target-x86_64-unknown-linux-musl
+* target-aarch64-unknown-linux-musl
+* target-riscv64-unknown-linux-musl
 * target-unknown-ndk-linux-android - special target to use with Android NDK
 * target-aarch64-unknown-linux-android
 * target-armv7a-unknown-linux-androideabi
