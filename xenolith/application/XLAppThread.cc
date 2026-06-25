@@ -48,6 +48,11 @@ void AppThread::threadInit() {
 		// Disable ALooper for internal queue, it can not be stopped gracefully
 		.engineMask = sprt::dispatch::QueueEngine::Any & ~sprt::dispatch::QueueEngine::ALooper});
 
+	// Steady app-event heartbeat: an infinite Looper timer at appUpdateInterval (default 1s, an app-event
+	// cadence -- NOT the screen/frame interval). It drives performAppUpdate regardless of frame
+	// production, which in the remote subclasses pumps the connection and runs the ~1s keepalive
+	// (ping/pong) even while the window is idle. See ServerAppThread::pumpListener /
+	// ClientAppThread::pumpConnection.
 	_timer = _appLooper->scheduleTimer(sprt::dispatch::TimerInfo{
 		.completion = sprt::dispatch::TimerInfo::Completion::create<AppThread>(this,
 				[](AppThread *data, sprt::dispatch::TimerHandle *self, uint32_t value,
@@ -214,8 +219,55 @@ bool AppThread::setBearerKey(BytesView) { return false; }
 bool AppThread::setCompressionDictionary(BytesView) { return false; }
 
 void AppThread::waitForReply(uint32_t serial,
-		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb) {
-	_requests.insert_or_assign(serial, sp::move(cb));
+		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb, uint64_t timeoutUs) {
+	uint64_t deadline = timeoutUs ? sp::platform::clock(ClockType::Monotonic) + timeoutUs : 0;
+	_requests.insert_or_assign(serial, PendingReply{sp::move(cb), deadline});
+}
+
+bool AppThread::failTimedOutRequests() {
+	if (_requests.empty()) {
+		return false;
+	}
+
+	auto now = sp::platform::clock(ClockType::Monotonic);
+
+	// Collect the expired serials first: invoking a waiter's callback may register new requests (or
+	// erase this one), so we must not iterate _requests while calling back into it.
+	Vector<uint32_t> expired;
+	for (auto &it : _requests) {
+		if (it.second.deadline != 0 && now >= it.second.deadline) {
+			expired.emplace_back(it.first);
+		}
+	}
+	if (expired.empty()) {
+		return false;
+	}
+
+	// Synthesize a local protocol-error reply: the peer that owed us this reply is the opposite role, so
+	// tag the error as coming from it. code == NetworkBackend marks a local/transport-level failure.
+	auto errType = isServerThread() ? remote::MessageType::ClientError
+									: remote::MessageType::ServerError;
+	for (auto serial : expired) {
+		auto it = _requests.find(serial);
+		if (it == _requests.end()) {
+			continue;
+		}
+		auto cb = sp::move(it->second.cb);
+		_requests.erase(it);
+
+		log::source().warn("AppThread", "request ", serial,
+				" timed out without a reply; failing with local protocol error");
+
+		if (cb) {
+			remote::MessageHeader h{};
+			h.msgtype = toInt(errType);
+			h.domain = toInt(remote::Domain::Error);
+			h.code = toInt(remote::GlobalError::NetworkBackend);
+			h.serial = serial;
+			cb(h, BytesView());
+		}
+	}
+	return true;
 }
 
 void AppThread::performAppUpdate(const UpdateTime &time, bool wakeup) {
@@ -254,8 +306,11 @@ bool AppThread::dispatchMessage(const remote::MessageHeader &h, BytesView payloa
 	if (remote::isReplyOrError(h)) {
 		auto reqIt = _requests.find(h.serial);
 		if (reqIt != _requests.end()) {
-			reqIt->second(h, payload);
+			auto cb = sp::move(reqIt->second.cb);
 			_requests.erase(reqIt);
+			if (cb) {
+				cb(h, payload);
+			}
 			return true;
 		}
 	}

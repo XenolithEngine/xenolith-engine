@@ -159,6 +159,11 @@ public:
 
 	void invalidateImage();
 
+	// Relinquish the acquired image WITHOUT returning it to the swapchain. Used when the acquired image
+	// is handed back to the engine's reuse pool (a frame discarded before rendering): clearing _image
+	// makes the destructor's invalidateImage a no-op, so the pooled image is accounted for exactly once.
+	void detachImage();
+
 protected:
 	using core::ImageStorage::init;
 

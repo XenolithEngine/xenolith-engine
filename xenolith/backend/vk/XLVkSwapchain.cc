@@ -448,7 +448,12 @@ void SwapchainHandle::invalidateImage(uint32_t idx, bool release) {
 	if (it != _acquiredIndexes.end()) {
 		_acquiredIndexes.erase(it);
 		auto dev = static_cast<Device *>(_object.device);
-		if (release && dev->getInfo().features.deviceSwapchainMaintenance1.swapchainMaintenance1
+		// Never release images back to a swapchain that has been invalidated (e.g. a frame discarded
+			// *because* its swapchain was invalidated): the handle is on its way out and
+			// vkReleaseSwapchainImagesEXT on it is illegal. The --_acquiredImages bookkeeping below still
+			// runs; the images are reclaimed when the swapchain itself is destroyed.
+			if (release && !_invalid
+				&& dev->getInfo().features.deviceSwapchainMaintenance1.swapchainMaintenance1
 				&& dev->getTable()->vkReleaseSwapchainImagesEXT) {
 			VkReleaseSwapchainImagesInfoEXT info;
 			info.sType = VK_STRUCTURE_TYPE_RELEASE_SWAPCHAIN_IMAGES_INFO_EXT;

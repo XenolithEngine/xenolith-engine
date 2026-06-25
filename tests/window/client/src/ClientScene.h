@@ -25,6 +25,7 @@
 
 #include "XL2dScene.h"
 #include "XL2dScrollView.h"
+#include "XL2dLayer.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::client {
 
@@ -44,6 +45,14 @@ public:
 
 protected:
 	using Scene2d::init;
+
+	// Простой закрашенный квадрат — минимальный тест клиентского рендеринга без шрифтов
+	basic2d::Layer *_square = nullptr;
+
+	// Запускаем бесконечную анимацию квадрата ровно один раз (проверка работы runAction в
+	// клиентском контексте: пока действие активно, клиент шлёт серверу setReadyForNextFrame)
+	bool _animStarted = false;
+	uint64_t _animTick = 0;
 
 	virtual StringView selectServerQueue(NotNull<AppThread> app,
 			NotNull<core::RenderServerChannel> window) override;

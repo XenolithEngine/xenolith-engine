@@ -56,18 +56,49 @@ bool ClientScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel
 	// но модуль material2d настраивает себе свет сам
 	content->setDefaultLights();
 
+	// Простой закрашенный квадрат (узел Layer на базе SolidImage). Шрифты пока недоступны,
+	// поэтому рисуем только сплошной прямоугольник — минимальная проверка клиентского рендеринга.
+	_square = content->addChild(Rc<basic2d::Layer>::create(Color4F(0.2f, 0.6f, 1.0f, 1.0f)));
+	_square->setContentSize(Size2(256.0f, 256.0f));
+	_square->setAnchorPoint(Anchor::Middle);
+
 	// Применяем содержимое сцены
 	setContent(content);
 
-	setFpsVisible(true);
+	// Счётчик FPS рисует текст (шрифты), что пока приводит к падению — отключаем его.
+	setFpsVisible(false);
 
 	return true;
 }
 
 // Геометрия сцены изменилась, обнвляем содержимое соотвественно
-void ClientScene::handleContentSizeDirty() { Scene2d::handleContentSizeDirty(); }
+void ClientScene::handleContentSizeDirty() {
+	Scene2d::handleContentSizeDirty();
 
-void ClientScene::handleEnter(Scene *scene) { Scene2d::handleEnter(scene); }
+	// Центрируем квадрат при каждом изменении размера сцены
+	if (_square) {
+		_square->setPosition(_contentSize / 2.0f);
+	}
+}
+
+void ClientScene::handleEnter(Scene *scene) {
+	Scene2d::handleEnter(scene);
+
+	// Проверяем, что система действий (runAction) работает в контексте удалённого клиента.
+	// Квадрат бесконечно пульсирует масштабом. Пока действие активно,
+	// Director::hasActiveInteractions() == true, поэтому после каждого кадра клиент посылает
+	// серверу setReadyForNextFrame, а сервер обеспечивает непрерывную выдачу кадров.
+	// CallFunc в конце каждого цикла логирует счётчик — так в логе клиента видно, что действие
+	// реально продвигается во времени (то есть кадры действительно поступают).
+	if (_square && !_animStarted) {
+		_animStarted = true;
+		_square->runAction(Rc<RepeatForever>::create(Rc<Sequence>::create(
+				Rc<ScaleTo>::create(0.6f, 1.5f), Rc<ScaleTo>::create(0.6f, 1.0f), [this] {
+			++_animTick;
+			log::source().info("ClientScene", "animation tick ", _animTick);
+		})));
+	}
+}
 
 StringView ClientScene::selectServerQueue(NotNull<AppThread> app,
 		NotNull<core::RenderServerChannel> window) {

@@ -144,6 +144,11 @@ public:
 
 	void enableExclusiveFullscreen();
 
+	// Return an acquired-but-unused swapchain image to the reuse pool (a frame was discarded before
+	// rendering started, see PresentationFrame::invalidate). The next frame picks it up via scheduleImage
+	// instead of acquiring a fresh one, and it is accounted for (presented/released) exactly once.
+	void reclaimAcquiredImage(Rc<Swapchain::SwapchainAcquiredImage> &&);
+
 	virtual bool handleFrameStarted(NotNull<PresentationFrame>);
 	virtual void handleFrameInvalidated(NotNull<PresentationFrame>);
 	virtual void handleFrameReady(NotNull<PresentationFrame>);
@@ -151,6 +156,16 @@ public:
 	virtual void handleFrameComplete(NotNull<PresentationFrame>);
 
 	virtual void handleSwapchainUpdated(const FrameConstraints &);
+
+	// Force-invalidate every in-flight frame tagged PresentationFrame::Remote (data produced by a remote
+	// render client). Called when the client connection is reset, so a frame stuck waiting on a dead
+	// client cannot wedge the pipeline and the window can revert to its local Director.
+	void invalidateRemoteFrames();
+
+	// Kick presentation back into motion after the window's render client changed (remote takeover or
+	// revert to the local Director): clear a possibly-stale display-link barrier and schedule one fresh
+	// frame. Runs only on a client change, so normal frame pacing is untouched.
+	void resetForRenderClientChange();
 
 	virtual void captureScreenshot(Function<void(const ImageInfoData &info, BytesView view)> &&cb);
 
@@ -264,6 +279,12 @@ protected:
 
 	// Per-frame deadline timers (cancel a frame stuck waiting for input/dependencies)
 	Map<PresentationFrame *, Rc<sprt::dispatch::Handle>> _frameDeadlines;
+
+	// In-flight frames tagged Remote (served by a remote render client). Tracked from scheduling -- even
+	// while still awaiting the client's reply, before they enter _activeFrames -- so they can be killed
+	// on a connection reset (invalidateRemoteFrames). The value Rc keeps an awaiting frame alive after
+	// the connection (its only other owner) drops. Erased at every terminal frame transition.
+	Map<PresentationFrame *, Rc<PresentationFrame>> _remoteFrames;
 
 	// Async request for a swapchain images
 	Set<Swapchain::SwapchainAcquiredImage *> _requestedSwapchainImage;

@@ -24,6 +24,7 @@
 #define XENOLITH_APPLICATION_DIRECTOR_XLFRAMECONTEXT_H_
 
 #include "XLCoreQueueData.h"
+#include "XLCoreRenderSession.h"
 #include "XLResourceOwner.h"
 #include "XLCoreQueue.h"
 #include "XLCoreMaterial.h"
@@ -114,7 +115,7 @@ struct SP_PUBLIC FrameContextHandle : public core::AttachmentInputData {
 	virtual ~FrameContextHandle() = default;
 
 	uint64_t clock;
-	Rc<Director> director; // allow to access director from rendering pipeline (to send stats)
+	Rc<core::RenderClientChannel> client; // (to send stats)
 	FrameContext *context = nullptr;
 
 	Vector<sprt::pair<StateId, FrameStateOwnerInterface *>> stateStack;

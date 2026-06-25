@@ -31,6 +31,8 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
+class RenderClientChannel;
+
 /** DependencyEvent используется для синхронизации данных на стороне GPU
 
 Поставщик DependencyEvent создаёт или изменяет данные на стороне GPU, а
@@ -130,7 +132,9 @@ public:
 	// Mint an empty input-data object of the concrete type this attachment consumes, so a remote
 	// server can deserialize a wire blob into it (see AttachmentInputData::deserialize). Default null:
 	// only input attachments that participate in the remote render session override this.
-	virtual Rc<AttachmentInputData> makeInputData() const { return nullptr; }
+	virtual Rc<AttachmentInputData> makeInputData(NotNull<RenderClientChannel>) const {
+		return nullptr;
+	}
 
 	virtual bool isCompatible(const ImageInfo &) const { return false; }
 

@@ -175,8 +175,11 @@ public:
 	virtual bool setBearerKey(BytesView);
 	virtual bool setCompressionDictionary(BytesView);
 
+	// Register a reply waiter for `serial`. `timeoutUs` is this request's own reply deadline (relative,
+	// microseconds): if no reply arrives within it, failTimedOutRequests() completes the waiter with a
+	// local protocol error and the connection is reset. 0 == no deadline (wait indefinitely).
 	virtual void waitForReply(uint32_t,
-			Function<void(const remote::MessageHeader &, BytesView payload)> &&);
+			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs);
 
 protected:
 	virtual bool startListening();
@@ -197,6 +200,13 @@ protected:
 
 	virtual bool dispatchMessage(const remote::MessageHeader &, BytesView payload);
 
+	// Watchdog over outstanding request/reply waiters, driven on the same 1s Looper cadence as the
+	// keepalive (see ServerAppThread::pumpListener / ClientAppThread::pumpConnection). Any request whose
+	// reply deadline has passed is completed with a synthesized local protocol-error header (so the
+	// waiter unwinds) and dropped. Returns true if at least one request timed out -- the caller should
+	// then reset the connection (a peer that ignores our requests is treated as gone).
+	bool failTimedOutRequests();
+
 	sprt::dispatch::Looper *_appLooper = nullptr;
 	Rc<sprt::dispatch::TimerHandle> _timer;
 	UpdateTime _time;
@@ -214,8 +224,15 @@ protected:
 	HashMap<sprt::type_index, Rc<ApplicationExtension>> _extensions;
 	Map<Rc<Ref>, Function<void(const UpdateTime &, bool)>> _listeners;
 
-	// Functions, that waiting for a response from remote side
-	HashMap<uint32_t, Function<void(const remote::MessageHeader &, BytesView payload)>> _requests;
+	// One outstanding request awaiting a reply: its completion callback plus its own absolute reply
+	// deadline (monotonic-clock us; 0 == no deadline). Watched by failTimedOutRequests().
+	struct PendingReply {
+		Function<void(const remote::MessageHeader &, BytesView payload)> cb;
+		uint64_t deadline = 0;
+	};
+
+	// Requests waiting for a response from the remote side, keyed by message serial.
+	HashMap<uint32_t, PendingReply> _requests;
 };
 
 template <typename T>

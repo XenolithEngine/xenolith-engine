@@ -78,8 +78,9 @@ public:
 
 	virtual const ContextInfo *getContextInfo() const override;
 
+	// `timeoutUs` is this request's reply deadline (relative us; 0 == none) -- see waitForReply.
 	bool sendMessageWithReply(remote::Domain, uint8_t message, const Value &,
-			Function<void(const remote::MessageHeader &, BytesView payload)> &&);
+			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs);
 
 protected:
 	virtual void handleThreadInitialized() override;

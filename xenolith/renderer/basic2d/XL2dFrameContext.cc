@@ -74,7 +74,7 @@ void FrameContext2d::onExit() { FrameContext::onExit(); }
 Rc<FrameContextHandle> FrameContext2d::makeHandle(FrameInfo &frame) {
 	auto h = Rc<FrameContextHandle2d>::alloc();
 	h->clock = frame.director->getUpdateTime().app;
-	h->director = frame.director;
+	h->client = frame.director;
 	h->context = this;
 	h->commands = Rc<CommandList>::create(frame.pool);
 	return h;

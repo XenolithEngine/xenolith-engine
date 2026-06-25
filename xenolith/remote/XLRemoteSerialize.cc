@@ -45,6 +45,16 @@ static DataValue bytesValue(BytesView v) { return DataValue(Bytes(v.data(), v.da
 // indexed access into a flat-array node; bounds-checked, returns Null when out of range
 static const DataValue &at(const DataValue &n, size_t i) { return n.getValue(i); }
 
+// read a node-table reference index stored as a plain integer element. IMPORTANT: never use the
+// single-argument DataValue::getInteger(def) here -- for a single integer argument the keyed
+// getInteger(key, def) template overload is a better match and would treat the argument as an array
+// index (returning the default) instead of returning the element's value. Read via the no-arg form
+// and fall back to -1 (the "null ref" sentinel deref() expects) only when the element is absent.
+static int64_t refAt(const DataValue &n, size_t i) {
+	auto &v = at(n, i);
+	return v.isInteger() ? v.getInteger() : -1;
+}
+
 static BytesView bytesAt(const DataValue &n, size_t i) {
 	auto &v = at(n, i);
 	if (v.isBytes()) {
@@ -267,6 +277,8 @@ static Rc<core::Resource> decodeResourceValue(const DataValue &root, ObjectFacto
 		if (imd) {
 			auto mutImd = const_cast<core::ImageData *>(imd);
 			mutImd->image = factory.makeImage(id, iiData);
+			// Let material images resolve their owning ImageData back from the gAPI object id.
+			factory.registerImageData(id, imd);
 
 			for (auto &vv : at(im, 18).getArray()) {
 				core::ImageViewInfo vi;
@@ -914,7 +926,7 @@ static DataValue encodeMaterialLayout(const core::MaterialLayout &l, ObjectRegis
 
 static DataValue encodeMaterialSet(const core::MaterialAttachment *att, core::MaterialSet *set,
 		const QueueEncoder &enc, ObjectRegistry &reg) {
-	// [owner, targetLayout, imagesInSet, generation, materials[], layouts[], updated[]]
+	// [owner, targetLayout, imagesInSet, generation, materials[], layouts[], updated[], predefined[]]
 	DataValue v(DataValue::Type::ARRAY);
 	v.addInteger(enc.attachments.ref(att->getData()));
 	v.addInteger(enc.textureSets.ref(att->getTargetLayout()));
@@ -934,6 +946,14 @@ static DataValue encodeMaterialSet(const core::MaterialAttachment *att, core::Ma
 		updated.addInteger(int64_t(id));
 	}, false);
 	v.addValue(sp::move(updated));
+
+	// The attachment's predefined materials (e.g. SolidImage/EmptyImage) are referenced by id; they
+	// also live in `materials[]` above. The mirror needs the predefined LIST (not just the set) so
+	// FrameContext::readMaterials can register them for lookup -- otherwise sprites that resolve a
+	// predefined texture (SolidImage) find no material and render nothing.
+	DataValue predefined(DataValue::Type::ARRAY);
+	for (auto &m : att->getPredefinedMaterials()) { predefined.addInteger(int64_t(m->getId())); }
+	v.addValue(sp::move(predefined));
 	return v;
 }
 
@@ -1069,15 +1089,18 @@ static void derefArray(const DataValue &node, size_t idx, const Vector<T *> &tbl
 // --- shared material rebuild (gAPI objects resolve by id; all fields below are public) ---
 
 static MaterialImage decodeMaterialImage(const DataValue &in, ObjectFactory &factory) {
-	// [imageId, viewId, sampler, set, descriptor, info]; the underlying ImageData stays null on the
-	// mirror (see the encode comment), the view is a thin id-handle
+	// [imageId, viewId, sampler, set, descriptor, info]; the view is a thin id-handle. The owning
+	// ImageData is resolved from the resource decode (registered by gAPI object id) so material info
+	// (`it.image->image->getIndex()`) works for predefined materials -- it stays null only if the
+	// referenced image is not part of any decoded resource.
+	auto imageId = uint64_t(at(in, 0).getInteger());
 	MaterialImage mi;
-	mi.image = nullptr;
+	mi.image = factory.resolveImageData(imageId);
 	mi.sampler = uint16_t(at(in, 2).getInteger());
 	mi.set = uint32_t(at(in, 3).getInteger());
 	mi.descriptor = uint32_t(at(in, 4).getInteger());
 	mi.info = valueToImageViewInfo(at(in, 5));
-	auto imgObj = static_cast<ImageObject *>(factory.resolveObject(uint64_t(at(in, 0).getInteger())));
+	auto imgObj = static_cast<ImageObject *>(factory.resolveObject(imageId));
 	mi.view = factory.makeImageView(uint64_t(at(in, 1).getInteger()), Rc<ImageObject>(imgObj),
 			mi.info);
 	return mi;
@@ -1199,8 +1222,8 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 				memcpy(&mi, mat.data(), sizeof(PipelineMaterialInfo));
 				p->material = mi;
 			}
-			p->subpass = deref(subpasses, at(n, 3).getInteger(-1));
-			p->layout = deref(pipelineLayouts, at(n, 4).getInteger(-1));
+			p->subpass = deref(subpasses, refAt(n, 3));
+			p->layout = deref(pipelineLayouts, refAt(n, 4));
 			for (auto &sv : at(n, 5).getArray()) {
 				if (auto prog = deref(programs, sv.getInteger())) {
 					p->shaders.emplace_back(SpecializationInfo(prog));
@@ -1214,9 +1237,9 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 			auto &n = cpArr[i];
 			auto p = computePipelines[i];
 			p->key = keyOf(n);
-			p->subpass = deref(subpasses, at(n, 1).getInteger(-1));
-			p->layout = deref(pipelineLayouts, at(n, 2).getInteger(-1));
-			if (auto prog = deref(programs, at(n, 3).getInteger(-1))) {
+			p->subpass = deref(subpasses, refAt(n, 1));
+			p->layout = deref(pipelineLayouts, refAt(n, 2));
+			if (auto prog = deref(programs, refAt(n, 3))) {
 				p->shader = SpecializationInfo(prog);
 			}
 			p->pipeline = factory.makeComputePipeline(uint64_t(at(n, 4).getInteger()),
@@ -1254,8 +1277,8 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 			auto &n = apArr[i];
 			auto a = attachmentPasses[i];
 			a->key = keyOf(n);
-			a->attachment = deref(attachments, at(n, 1).getInteger(-1));
-			a->pass = deref(passes, at(n, 2).getInteger(-1));
+			a->attachment = deref(attachments, refAt(n, 1));
+			a->pass = deref(passes, refAt(n, 2));
 			a->index = uint32_t(at(n, 3).getInteger());
 			a->ops = core::AttachmentOps(at(n, 4).getInteger());
 			a->initialLayout = core::AttachmentLayout(at(n, 5).getInteger());
@@ -1278,8 +1301,8 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 			auto &n = asArr[i];
 			auto a = attachmentSubpasses[i];
 			a->key = keyOf(n);
-			a->pass = deref(attachmentPasses, at(n, 1).getInteger(-1));
-			a->subpass = deref(subpasses, at(n, 2).getInteger(-1));
+			a->pass = deref(attachmentPasses, refAt(n, 1));
+			a->subpass = deref(subpasses, refAt(n, 2));
 			a->layout = core::AttachmentLayout(at(n, 3).getInteger());
 			a->usage = core::AttachmentUsage(at(n, 4).getInteger());
 			a->ops = core::AttachmentOps(at(n, 5).getInteger());
@@ -1293,7 +1316,7 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 			auto &n = spArr[i];
 			auto s = subpasses[i];
 			s->key = keyOf(n);
-			s->pass = deref(passes, at(n, 1).getInteger(-1));
+			s->pass = deref(passes, refAt(n, 1));
 			s->index = uint32_t(at(n, 2).getInteger());
 			for (auto &e : at(n, 3).getArray()) {
 				if (auto p = deref(graphicPipelines, e.getInteger())) {
@@ -1311,7 +1334,7 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 					[](auto &out, auto p) { out.emplace_back(p); });
 			derefArray(n, 7, attachmentSubpasses, s->resolveImages,
 					[](auto &out, auto p) { out.emplace_back(p); });
-			s->depthStencil = deref(attachmentSubpasses, at(n, 8).getInteger(-1));
+			s->depthStencil = deref(attachmentSubpasses, refAt(n, 8));
 			for (auto &e : at(n, 9).getArray()) {
 				s->preserve.emplace_back(uint32_t(e.getInteger()));
 			}
@@ -1322,9 +1345,9 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 			auto &n = plArr[i];
 			auto l = pipelineLayouts[i];
 			l->key = keyOf(n);
-			l->pass = deref(passes, at(n, 1).getInteger(-1));
+			l->pass = deref(passes, refAt(n, 1));
 			l->index = uint32_t(at(n, 2).getInteger());
-			l->textureSetLayout = deref(textureSets, at(n, 3).getInteger(-1));
+			l->textureSetLayout = deref(textureSets, refAt(n, 3));
 			derefArray(n, 4, descriptorSets, l->sets,
 					[](auto &out, auto p) { out.emplace_back(p); });
 			derefArray(n, 5, graphicPipelines, l->graphicPipelines,
@@ -1338,7 +1361,7 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 			auto &n = dsArr[i];
 			auto s = descriptorSets[i];
 			s->key = keyOf(n);
-			s->layout = deref(pipelineLayouts, at(n, 1).getInteger(-1));
+			s->layout = deref(pipelineLayouts, refAt(n, 1));
 			s->index = uint32_t(at(n, 2).getInteger());
 			derefArray(n, 3, descriptors, s->descriptors,
 					[](auto &out, auto p) { out.emplace_back(p); });
@@ -1349,8 +1372,8 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 			auto &n = dArr[i];
 			auto d = descriptors[i];
 			d->key = keyOf(n);
-			d->set = deref(descriptorSets, at(n, 1).getInteger(-1));
-			d->attachment = deref(attachmentPasses, at(n, 2).getInteger(-1));
+			d->set = deref(descriptorSets, refAt(n, 1));
+			d->attachment = deref(attachmentPasses, refAt(n, 2));
 			d->type = core::DescriptorType(at(n, 3).getInteger());
 			d->stages = core::ProgramStage(at(n, 4).getInteger());
 			d->layout = core::AttachmentLayout(at(n, 5).getInteger());
@@ -1441,11 +1464,11 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 	// id; the per-image ImageData, dynamic instances, atlas, owned data and gAPI TextureSets stay
 	// null on the mirror (see the encode comment).
 	for (auto &m : root.getValue("materials").getArray()) {
-		auto attData = deref(attachments, at(m, 0).getInteger(-1));
+		auto attData = deref(attachments, refAt(m, 0));
 		if (!attData) {
 			continue;
 		}
-		auto layout = deref(textureSets, at(m, 1).getInteger(-1));
+		auto layout = deref(textureSets, refAt(m, 1));
 
 		auto att = Rc<core::MaterialAttachment>::alloc();
 		att->_data = attData;
@@ -1493,6 +1516,18 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 		att->_attachmentMaterialId = maxId + 1;
 
 		att->setMaterials(set);
+
+		// Re-bind the predefined materials by id to the SAME Material objects now in the set (do not
+		// call addPredefinedMaterials -- it would re-allocate their ids). FrameContext::readMaterials
+		// registers exactly this list for material lookup, so a missing list means predefined textures
+		// like SolidImage resolve to no material.
+		for (auto &pid : at(m, 7).getArray()) {
+			auto mIt = set->getMaterials().find(core::MaterialId(pid.getInteger()));
+			if (mIt != set->getMaterials().end()) {
+				att->_predefinedMaterials.emplace_back(mIt->second);
+			}
+		}
+
 		attData->attachment = att;
 	}
 

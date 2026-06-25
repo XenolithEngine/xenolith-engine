@@ -182,4 +182,19 @@ void SwapchainImage::invalidateImage() {
 	_state = State::Presented;
 }
 
+void SwapchainImage::detachImage() {
+	// Hand the acquired image off to the engine's reuse pool: relinquish our references WITHOUT
+	// releasing the image to the swapchain (otherwise it would be returned twice -- once here and once
+	// when the pooled image is finally presented). The acquire (wait) semaphore travels with the pooled
+	// SwapchainAcquiredImage; only return the unused signal semaphore reserved in setImage.
+	if (_signalSem && _swapchain) {
+		_swapchain->releaseSemaphore(sp::move(_signalSem));
+	}
+	_swapchain = nullptr;
+	_image = nullptr;
+	_waitSem = nullptr;
+	_signalSem = nullptr;
+	_state = State::Presented;
+}
+
 } // namespace stappler::xenolith::core

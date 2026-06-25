@@ -40,17 +40,33 @@ endef
 $(call define_module, xenolith_backend_vk, MODULE_XENOLITH_BACKEND_VK)
 
 
-ifeq ($(TARGET_SYSTEM),Darwin)
+# Bundle the Vulkan loader + MoltenVK driver and its ICD manifest into the .app on
+# Apple platforms. macOS uses the nested .app/Contents/{Frameworks,Resources} layout;
+# iOS uses the flat .app/{Frameworks,vulkan} layout. The ICD manifest's library_path
+# is relative to the manifest itself, so it differs between the two layouts.
+ifneq ($(filter Darwin iOS,$(TARGET_SYSTEM)),)
 
-BUILD_MOLTENVK_ICD_PATH := $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Resources/vulkan/icd.d/MoltenVK_icd.json
-BUILD_VULKAN_LOADER_PATH := $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Frameworks/libvulkan.dylib
-BUILD_VULKAN_MOLTENVK_PATH := $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Frameworks/libMoltenVK.dylib
+ifeq ($(TARGET_SYSTEM),iOS)
+# Flat iOS bundle: resources live at the .app root.
+BUILD_BUNDLE_RESOURCES := $(abspath $(dir $(BUILD_EXECUTABLE)))
+BUILD_BUNDLE_FRAMEWORKS := $(abspath $(dir $(BUILD_EXECUTABLE)))/Frameworks
+BUILD_MOLTENVK_ICD_RELPATH := ../../Frameworks/libMoltenVK.dylib
+else
+# Nested macOS bundle: resources live under .app/Contents.
+BUILD_BUNDLE_RESOURCES := $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Resources
+BUILD_BUNDLE_FRAMEWORKS := $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Frameworks
+BUILD_MOLTENVK_ICD_RELPATH := ../../../Frameworks/libMoltenVK.dylib
+endif
+
+BUILD_MOLTENVK_ICD_PATH := $(BUILD_BUNDLE_RESOURCES)/vulkan/icd.d/MoltenVK_icd.json
+BUILD_VULKAN_LOADER_PATH := $(BUILD_BUNDLE_FRAMEWORKS)/libvulkan.dylib
+BUILD_VULKAN_MOLTENVK_PATH := $(BUILD_BUNDLE_FRAMEWORKS)/libMoltenVK.dylib
 
 $(BUILD_MOLTENVK_ICD_PATH): $(BUILD_VULKAN_MOLTENVK_PATH)
 	@$(call rule_mkdir,$(dir $@))
-	@echo '{"file_format_version":"1.0.0","ICD":{"library_path":"../../../Frameworks/libMoltenVK.dylib","api_version":"1.4.0","is_portability_driver":true}}' > $@
+	@echo '{"file_format_version":"1.0.0","ICD":{"library_path":"$(BUILD_MOLTENVK_ICD_RELPATH)","api_version":"1.4.0","is_portability_driver":true}}' > $@
 
-$(abspath $(dir $(BUILD_EXECUTABLE))/..)/Frameworks/%.dylib: $(TARGET_LIB_DIR)/%.dylib
+$(BUILD_BUNDLE_FRAMEWORKS)/%.dylib: $(TARGET_LIB_DIR)/%.dylib
 	@$(call rule_mkdir,$(dir $@))
 	$(call rule_cp,$<,$@)
 

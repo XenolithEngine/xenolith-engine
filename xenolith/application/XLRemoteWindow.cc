@@ -27,6 +27,12 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
+// Per-request reply deadlines (relative us). CompileQueue makes the server compile a render graph
+// (shaders, pipelines) so it is generous; AttachQueue is a trivial readiness ack so it is short. If a
+// reply does not arrive in time the request watchdog fails the waiter and the client disconnects.
+static constexpr uint64_t kCompileQueueReplyTimeoutUs = 15'000'000; // 15s
+static constexpr uint64_t kAttachQueueReplyTimeoutUs = 5'000'000; // 5s
+
 RemoteWindow::~RemoteWindow() { }
 
 bool RemoteWindow::init(NotNull<ClientAppThread> thread, const Value &val) {
@@ -83,6 +89,8 @@ void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &q, Function<void(bo
 		return;
 	}
 
+	slog().debug("RemoteWindow", "compileRenderQueue: request");
+
 	if (!_thread->sendMessageWithReply(remote::Domain::Window,
 				toInt(remote::WindowCode::CompileQueue), Value(id),
 				[this, cb = sp::move(cb), q, id](const remote::MessageHeader &h,
@@ -93,13 +101,15 @@ void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &q, Function<void(bo
 			return;
 		}
 
+		slog().debug("RemoteWindow", "compileRenderQueue: reply");
+
 		auto sq = _thread->getSharedObjects()->makeQueue(id, *q, payload);
 		if (sq == q) {
 			cb(true);
 		} else {
 			cb(false);
 		}
-	})) {
+	}, kCompileQueueReplyTimeoutUs)) {
 		cb(false);
 	}
 }
@@ -108,6 +118,7 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 		Function<void(uint64_t queueId)> &&reply) {
 	// `_client` is this window's local Director (set via RenderServerChannel::setRenderClient).
 	if (!_client) {
+		slog().error("RemoteWindow", "acquireFrame: no client");
 		reply(0);
 		return;
 	}
@@ -125,17 +136,19 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 			auto &keys = msg.emplace();
 			for (auto a : atts) { keys.addString(a->key); }
 			msg.addBytes(bytes);
-			conn->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::FrameInput), msg);
+			conn->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::FrameInput),
+					msg);
 		}
-	},
-			[thread, frameId]() {
+	}, [thread, frameId]() {
 		if (auto conn = thread->getConnection()) {
 			Value msg;
 			msg.addInteger(int64_t(frameId));
-			conn->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::FrameCommit), msg);
+			conn->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::FrameCommit),
+					msg);
 		}
 	});
 	if (!proxy) {
+		slog().error("RemoteWindow", "acquireFrame: fail to create frame proxy");
 		reply(0);
 		return;
 	}
@@ -144,6 +157,7 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 	// render/commit, so the selected queue is already populated here. Per-frame input is deferred.
 	_client->acquireFrame(0, proxy, [this, proxy, reply = sp::move(reply)](bool ok) mutable {
 		if (!ok) {
+			slog().error("RemoteWindow", "acquireFrame: fail to acquire director's frame");
 			reply(0);
 			return;
 		}
@@ -157,6 +171,7 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 				break;
 			}
 		}
+		slog().debug("RemoteWindow", "acquireFrame: queue: ", id);
 		reply(id);
 	});
 }
@@ -167,10 +182,40 @@ void RemoteWindow::compileMaterials(Rc<core::MaterialInputData> &&,
 void RemoteWindow::compileImage(const Rc<core::DynamicImage> &, Function<void(bool)> &&) { }
 
 void RemoteWindow::attachRenderQueue(const Rc<core::Queue> &) {
-	// Here we should tell window to use this client queue for drawing
+	// The Director just made the (already compiled) shared queue its active render graph -- the client is
+	// now ready to serve frames for this window. Notify the server with an AttachQueue sync: only on this
+	// message does it route the window's frames to us, so AcquireFrame requests can't arrive before we
+	// are ready. The server replies with an empty atomic acknowledgement.
+	auto c = _thread->getConnection();
+	if (!c) {
+		slog().error("RemoteWindow", "attachRenderQueue: not connected");
+		return;
+	}
+
+	slog().debug("RemoteWindow", "attachRenderQueue: signal ready");
+
+	if (!_thread->sendMessageWithReply(remote::Domain::Window,
+				toInt(remote::WindowCode::AttachQueue), Value(_id),
+				[](const remote::MessageHeader &h, BytesView) {
+		if (remote::isError(h)) {
+			slog().error("RemoteWindow", "attachRenderQueue: server rejected (code ", int(h.code), ")");
+			return;
+		}
+		slog().debug("RemoteWindow", "attachRenderQueue: server switched to client");
+	}, kAttachQueueReplyTimeoutUs)) {
+		slog().error("RemoteWindow", "attachRenderQueue: failed to send ready signal");
+	}
 }
 
-void RemoteWindow::setReadyForNextFrame() { }
+void RemoteWindow::setReadyForNextFrame() {
+	// The client's Director has active actions/input (see Director::hasActiveInteractions) and wants
+	// another frame. Forward the request so the server's PresentationEngine schedules the next frame and
+	// keeps continuous progress going; fire-and-forget (no reply), same cadence as per-frame input.
+	if (auto conn = _thread->getConnection()) {
+		conn->sendCborMessage(remote::Domain::Window,
+				toInt(remote::WindowCode::ReadyForNextFrame), Value(_id));
+	}
+}
 void RemoteWindow::setPreferredFrameInterval(uint64_t intervalUs) { }
 core::FrameTimingInfo RemoteWindow::getFrameTiming() const { return core::FrameTimingInfo(); }
 
