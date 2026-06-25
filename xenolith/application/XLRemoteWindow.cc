@@ -238,7 +238,49 @@ bool RemoteWindow::setFullscreen(core::FullscreenInfo &&, Function<void(Status)>
 bool RemoteWindow::setPreferredFrameRate(float, Function<void(Status)> &&) { return false; }
 
 void RemoteWindow::captureScreenshot(
-		Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) { }
+		Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) {
+	// The client is headless and cannot render locally. Forward the request to the server, which owns
+	// the real window/GPU; the captured pixels return asynchronously as a Domain::Data Screenshot
+	// transfer (see ClientAppThread::loadExtensions -> deliverScreenshot), matched back to `cb` by the
+	// RequestScreenshot serial echoed in the transfer's announce reason. Fire-and-forget (no reply).
+	auto conn = _thread ? _thread->getConnection() : nullptr;
+	if (!conn) {
+		slog().error("RemoteWindow", "captureScreenshot: not connected");
+		if (cb) {
+			cb(core::ImageInfoData(), BytesView());
+		}
+		return;
+	}
+
+	uint32_t serial = 0;
+	if (conn->sendCborMessage(remote::Domain::Window,
+				toInt(remote::WindowCode::RequestScreenshot), Value(_id), &serial)
+			!= remote::GlobalError::Ok) {
+		slog().error("RemoteWindow", "captureScreenshot: failed to send request");
+		if (cb) {
+			cb(core::ImageInfoData(), BytesView());
+		}
+		return;
+	}
+
+	_pendingScreenshots.emplace(serial, sp::move(cb));
+	slog().debug("RemoteWindow", "captureScreenshot: requested (serial ", serial, ")");
+}
+
+bool RemoteWindow::deliverScreenshot(uint32_t serial, const core::ImageInfoData &info,
+		BytesView pixels) {
+	auto it = _pendingScreenshots.find(serial);
+	if (it == _pendingScreenshots.end()) {
+		return false;
+	}
+	auto cb = sp::move(it->second);
+	_pendingScreenshots.erase(it);
+	slog().debug("RemoteWindow", "deliverScreenshot: ", pixels.size(), " bytes for serial ", serial);
+	if (cb) {
+		cb(info, pixels);
+	}
+	return true;
+}
 
 bool RemoteWindow::openWindowMenu(Vec2 pos) { return false; }
 

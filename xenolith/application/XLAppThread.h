@@ -43,6 +43,7 @@ class Loop;
 
 class Director;
 class AppWindow;
+class BlockTransferManager;
 
 // Base application thread: pure thread/extension/update machinery. It holds NO reference to a
 // Context (the full Context* lives only on the server subclass). The few context-derived services
@@ -182,6 +183,9 @@ public:
 			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs);
 
 protected:
+	// The block-transfer manager drives the remoteSend* facade below.
+	friend class BlockTransferManager;
+
 	virtual bool startListening();
 	virtual bool stopListening();
 
@@ -206,6 +210,20 @@ protected:
 	// waiter unwinds) and dropped. Returns true if at least one request timed out -- the caller should
 	// then reset the connection (a peer that ignores our requests is treated as gone).
 	bool failTimedOutRequests();
+
+	// Connection send facade used by the block-transfer manager (so it can emit messages without
+	// knowing the connection type). The base has no connection, so these default to false;
+	// ServerAppThread / ClientAppThread override them to route through their active connection (server:
+	// _remoteClient->getConnection(); client: _connection). remoteSendCborWithReply forwards to the
+	// subclass sendMessageWithReply, which registers the reply waiter via waitForReply.
+	virtual bool remoteSendCbor(remote::Domain, uint8_t code, const Value &,
+			uint32_t *outSerial = nullptr);
+	virtual bool remoteSendRaw(remote::Domain, uint8_t code, BytesView,
+			uint32_t *outSerial = nullptr);
+	virtual bool remoteSendCborReply(uint32_t serial, remote::Domain, uint8_t code, const Value &);
+	virtual bool remoteSendError(remote::Domain, uint8_t code, uint32_t serial);
+	virtual bool remoteSendCborWithReply(remote::Domain, uint8_t code, const Value &,
+			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs);
 
 	sprt::dispatch::Looper *_appLooper = nullptr;
 	Rc<sprt::dispatch::TimerHandle> _timer;
@@ -233,6 +251,10 @@ protected:
 
 	// Requests waiting for a response from the remote side, keyed by message serial.
 	HashMap<uint32_t, PendingReply> _requests;
+
+	// Bidirectional large-binary block transfer (remote::Domain::Data). Constructed in threadInit; a
+	// base member so a transfer can be initiated in either direction (server->client or client->server).
+	Rc<BlockTransferManager> _blockTransfer;
 };
 
 template <typename T>

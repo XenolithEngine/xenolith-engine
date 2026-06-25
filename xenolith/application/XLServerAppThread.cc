@@ -33,6 +33,7 @@
 #include "XLScene.h"
 #include "XLCorePresentationEngine.h"
 #include "XLRemoteSerialize.h"
+#include "XLRemoteBlockTransfer.h"
 
 #include <sprt/runtime/dispatch/handle.h>
 
@@ -292,6 +293,45 @@ bool ServerAppThread::sendMessageWithReply(remote::Domain d, uint8_t message, co
 	return false;
 }
 
+bool ServerAppThread::remoteSendCbor(remote::Domain d, uint8_t code, const Value &v,
+		uint32_t *outSerial) {
+	if (!_remoteClient || _remoteClient->isClosed()) {
+		return false;
+	}
+	return _remoteClient->getConnection()->sendCborMessage(d, code, v, outSerial)
+			== remote::GlobalError::Ok;
+}
+
+bool ServerAppThread::remoteSendRaw(remote::Domain d, uint8_t code, BytesView b,
+		uint32_t *outSerial) {
+	if (!_remoteClient || _remoteClient->isClosed()) {
+		return false;
+	}
+	return _remoteClient->getConnection()->sendMessage(d, code, b, outSerial)
+			== remote::GlobalError::Ok;
+}
+
+bool ServerAppThread::remoteSendCborReply(uint32_t serial, remote::Domain d, uint8_t code,
+		const Value &v) {
+	if (!_remoteClient || _remoteClient->isClosed()) {
+		return false;
+	}
+	return _remoteClient->getConnection()->sendCborReply(serial, d, code, v)
+			== remote::GlobalError::Ok;
+}
+
+bool ServerAppThread::remoteSendError(remote::Domain d, uint8_t code, uint32_t serial) {
+	if (!_remoteClient || _remoteClient->isClosed()) {
+		return false;
+	}
+	return _remoteClient->getConnection()->sendError(d, code, serial) == remote::GlobalError::Ok;
+}
+
+bool ServerAppThread::remoteSendCborWithReply(remote::Domain d, uint8_t code, const Value &v,
+		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb, uint64_t timeoutUs) {
+	return sendMessageWithReply(d, code, v, sp::move(cb), timeoutUs);
+}
+
 bool ServerAppThread::startListening() {
 	if (_listener && _listener->isOpen()) {
 		log::error("AppThread", "startListening: already listening");
@@ -424,6 +464,9 @@ void ServerAppThread::resetRemoteClient() {
 	// invalidated), then close the connection and free the single-connection slot for a new client.
 	takeoverSharedWindows(nullptr);
 	_requests.clear();
+	if (_blockTransfer) {
+		_blockTransfer->reset();
+	}
 	if (_remoteClient) {
 		_remoteClient->closeConnection();
 		_remoteClient = nullptr;
@@ -524,6 +567,62 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			}
 			return true;
 		};
+		case remote::WindowCode::RequestScreenshot: {
+			// client -> server: capture the named window's current contents (which, while the client is
+			// attached, is the client's own remote-rendered output) and hand them back over Domain::Data
+			// as a Screenshot transfer. The announce `reason` points back at this request so the client
+			// can match the asynchronously-arriving pixels to its captureScreenshot() call. No reply here.
+			if (_sharedObjects) {
+				auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
+				auto reqSerial = h.serial;
+				if (auto w = static_cast<AppWindow *>(_sharedObjects->resolveWindow(windowId))) {
+					w->captureScreenshot([this, reqSerial, windowId](const core::ImageInfoData &info,
+							BytesView pixels) {
+						// On the GL loop thread: the pixels view is transient, so copy it (and the image
+						// info), then hop to the app thread -- the connection / block-transfer must be
+						// touched there -- and offer the blob.
+						auto pixelsCopy = pixels.bytes<Interface>();
+						auto infoCopy = info;
+						performOnAppThread([this, reqSerial, windowId, infoCopy,
+								pixelsCopy = sp::move(pixelsCopy)]() mutable {
+							if (!_blockTransfer) {
+								return;
+							}
+							Value meta;
+							meta.setInteger(int64_t(toInt(infoCopy.format)), "fmt");
+							meta.setInteger(int64_t(infoCopy.extent.width), "w");
+							meta.setInteger(int64_t(infoCopy.extent.height), "h");
+							meta.setInteger(int64_t(infoCopy.extent.depth), "d");
+
+							Value reason;
+							reason.setInteger(int64_t(toInt(remote::Domain::Window)), "domain");
+							reason.setInteger(int64_t(toInt(remote::WindowCode::RequestScreenshot)),
+									"code");
+							reason.setInteger(int64_t(toInt(remote::MessageType::Client)), "mtype");
+							reason.setInteger(int64_t(reqSerial), "serial");
+
+							auto id = _blockTransfer->startTransfer(remote::DataType::Screenshot,
+									BytesView(pixelsCopy.data(), pixelsCopy.size()), sp::move(meta),
+									sp::move(reason), [this](uint64_t tid, bool ok) {
+								log::source().info("AppThread", "screenshot transfer ",
+										ok ? "completed" : "failed");
+								// One-shot push: once the client has it (or it failed) we will never
+								// reference it again, so release it to free the client's retained copy.
+								if (ok && _blockTransfer) {
+									_blockTransfer->release(tid);
+								}
+							});
+							log::source().info("AppThread", "captured window ", windowId,
+									" -> screenshot transfer ", id);
+						}, this);
+					});
+				} else {
+					log::source().warn("AppThread", "RequestScreenshot for unknown shared window ",
+							windowId);
+				}
+			}
+			return true;
+		};
 		default:
 			if (conn) {
 				conn->sendError(remote::Domain::Window, toInt(remote::GlobalError::NotImplemented),
@@ -533,6 +632,8 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 					")");
 			return true; // consume unknown control messages (don't defer indefinitely)
 		}
+	} else if (remote::Domain(h.domain) == remote::Domain::Data) {
+		return _blockTransfer ? _blockTransfer->dispatch(h, payload) : true;
 	} else {
 		if (conn) {
 			conn->sendError(remote::Domain(h.domain), toInt(remote::GlobalError::NotImplemented),

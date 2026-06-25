@@ -24,6 +24,7 @@
 
 #include "XLAppThread.h"
 #include "XLEvent.h"
+#include "XLRemoteBlockTransfer.h"
 
 #include <sprt/runtime/dispatch/handle.h>
 
@@ -38,6 +39,9 @@ void AppThread::run() { Thread::run(); }
 
 void AppThread::threadInit() {
 	_requests.reserve(16);
+
+	// Bidirectional block-transfer manager (Domain::Data); both subclasses share it.
+	_blockTransfer = Rc<BlockTransferManager>::create(this);
 
 	_thisThreadId = getCurrentThreadId();
 
@@ -217,6 +221,19 @@ bool AppThread::startListening() { return false; }
 bool AppThread::stopListening() { return false; }
 bool AppThread::setBearerKey(BytesView) { return false; }
 bool AppThread::setCompressionDictionary(BytesView) { return false; }
+
+// Connection send facade: no connection on the base, so everything fails. Overridden by the server /
+// client subclasses to route through their active connection.
+bool AppThread::remoteSendCbor(remote::Domain, uint8_t, const Value &, uint32_t *) { return false; }
+bool AppThread::remoteSendRaw(remote::Domain, uint8_t, BytesView, uint32_t *) { return false; }
+bool AppThread::remoteSendCborReply(uint32_t, remote::Domain, uint8_t, const Value &) {
+	return false;
+}
+bool AppThread::remoteSendError(remote::Domain, uint8_t, uint32_t) { return false; }
+bool AppThread::remoteSendCborWithReply(remote::Domain, uint8_t, const Value &,
+		Function<void(const remote::MessageHeader &, BytesView)> &&, uint64_t) {
+	return false;
+}
 
 void AppThread::waitForReply(uint32_t serial,
 		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb, uint64_t timeoutUs) {
