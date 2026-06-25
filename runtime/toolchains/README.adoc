@@ -1,4 +1,4 @@
-# Stappler Toolchains repository
+# Xenolith Toolchains repository
 
 The purpose of this repository is to provide universal complete toolchain for C/C++ development with Xenolith Runtime on MacOS, Windows and Linux.
 
@@ -10,7 +10,9 @@ At least 32G RAM and 100G disk space required for full build (all hosts + all ta
 
 Most heavy host toolchains is windows, if it compiles - all other will not OOM too.
 
-Release toolchains assembled on x86_64 linux, other platform were not testes for full builds.
+Release toolchains assembled on x86_64 linux, other platform were not tested for full builds.
+
+Note: Apple hardware is required due licensing limitations to build apple hosts and targets.
 
 ## What's included
 

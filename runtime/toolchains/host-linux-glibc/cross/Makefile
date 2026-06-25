@@ -66,7 +66,7 @@ HOST_CXX := $(HOST_ROOT)/bin/clang++
 
 # Готовый glibc-sysroot из соответствующего таргета (build targets first).
 # Корневой Makefile тулчейнов делает host-cross-* зависимым от target-*.
-BASE_SYSROOT := $(realpath $(LOCAL_ROOT)../../target-linux/glibc/sysroot-target-$(SP_ARCH_CLANG))
+BASE_SYSROOT := $(realpath $(LOCAL_ROOT)../../targets/$(SP_ARCH_CLANG))
 ifeq ($(BASE_SYSROOT),)
 $(error glibc target sysroot not found at \
     target-linux/glibc/sysroot-target-$(SP_ARCH_CLANG) - \
@@ -116,47 +116,36 @@ $(MAKE_SRC_DIR)/configure: src/$(MAKE_SRC_TARBALL)
 # glibc/compiler-rt/заголовки берутся из BASE_SYSROOT (read-only).
 #
 STAGING := $(abspath sysroot/$(SP_ARCH_CLANG))
-STAGING_STAMP := $(STAGING)/.assembled
-RUNTIMES_TEMP := $(abspath build/runtimes-install)
-RESOURCE_DIR := $(abspath resource/$(SP_ARCH_CLANG))
-EXTRA_PREFIX := $(abspath build/extra-install)
-SPIRV_PREFIX := $(abspath build/spirv-install)
 
 HOST_AR := $(HOST_ROOT)/bin/llvm-ar
 HOST_RANLIB := $(HOST_ROOT)/bin/llvm-ranlib
-
-#
-# 1. resource-dir: builtin-заголовки clang билд-машины + compiler-rt builtins
-#    целевой арки из BASE (для кросс-арки clang билд-машины их не содержит).
-#
-RESOURCE_STAMP := $(RESOURCE_DIR)/lib/linux/libclang_rt.builtins-$(SP_ARCH_HOST).a
-
-$(RESOURCE_STAMP):
-	@echo "Assemble resource-dir for $(SP_ARCH_CLANG)"
-	mkdir -p $(RESOURCE_DIR)/lib
-	ln -sfn $(HOST_ROOT)/lib/clang/$(SP_LLVM_VER)/include $(RESOURCE_DIR)/include
-	rm -rf $(RESOURCE_DIR)/lib/linux
-	cp -rf $(BASE_SYSROOT)/lib/linux $(RESOURCE_DIR)/lib/linux
 
 #
 # Toolchain-файл для сборки РАНТАЙМОВ: clang билд-машины + --target + sysroot
 # целевой glibc (BASE). BASE содержит статическую libc++.a -> обычный
 # compiler-check проходит. Рантаймы ставятся во временный префикс.
 #
-RT_CMAKE := $(abspath build/rt.cmake)
+RT_CMAKE := $(abspath $(STAGING)/rt.cmake)
+RESOURCE_DIR := $(STAGING)/lib/clang
+RESOURCE_IDIR := $(HOST_ROOT)/lib/clang/$(SP_LLVM_VER)/include
 
-$(RT_CMAKE): $(RESOURCE_STAMP)
-	@mkdir -p build
+$(RT_CMAKE):
+	rm -rf $(STAGING)
+	mkdir -p $(STAGING) $(STAGING)/include $(STAGING)/lib
+	cp -r $(BASE_SYSROOT)/include_libc/* $(STAGING)/include
+	cp -r $(BASE_SYSROOT)/lib/* $(STAGING)/lib
+	cp -r $(BASE_SYSROOT)/usr/lib/libunwind.a $(STAGING)/lib
+
 	@echo 'set(CMAKE_SYSTEM_NAME Linux)' > $@
 	@echo 'set(CMAKE_SYSTEM_PROCESSOR $(SP_ARCH_HOST))' >> $@
-	@echo 'set(CMAKE_SYSROOT $(BASE_SYSROOT))' >> $@
+	@echo 'set(CMAKE_SYSROOT $(STAGING))' >> $@
 	@echo 'set(CMAKE_C_COMPILER $(HOST_CC))' >> $@
 	@echo 'set(CMAKE_CXX_COMPILER $(HOST_CXX))' >> $@
 	@echo 'set(CMAKE_C_COMPILER_TARGET $(SP_ARCH_CLANG))' >> $@
 	@echo 'set(CMAKE_CXX_COMPILER_TARGET $(SP_ARCH_CLANG))' >> $@
 	@echo 'set(CMAKE_ASM_COMPILER_TARGET $(SP_ARCH_CLANG))' >> $@
-	@echo 'set(CMAKE_C_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -fPIC -ffunction-sections -fdata-sections")' >> $@
-	@echo 'set(CMAKE_CXX_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -fPIC -ffunction-sections -fdata-sections")' >> $@
+	@echo 'set(CMAKE_C_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -idirafter $(RESOURCE_IDIR) -fPIC -ffunction-sections -fdata-sections")' >> $@
+	@echo 'set(CMAKE_CXX_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -idirafter $(RESOURCE_IDIR) -fPIC -ffunction-sections -fdata-sections")' >> $@
 	@echo 'set(CMAKE_ASM_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -fPIC")' >> $@
 	@echo 'set(CMAKE_EXE_LINKER_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -lpthread -ldl")' >> $@
 	@echo 'set(CMAKE_SHARED_LINKER_FLAGS_INIT "-resource-dir $(RESOURCE_DIR)")' >> $@
@@ -169,7 +158,7 @@ $(RT_CMAKE): $(RESOURCE_STAMP)
 # 2. shared-рантаймы (libc++/libc++abi/libunwind) -> временный префикс. Только
 #    shared (STATIC=Off) и PIC: пойдут в libLLVM.so, а статика из BASE — не PIC.
 #
-RUNTIMES := $(RUNTIMES_TEMP)/lib/libc++.so.1.0
+RUNTIMES := $(STAGING)/lib/libc++.so.1.0
 
 $(RUNTIMES): $(RT_CMAKE)
 	@echo "Build shared runtimes (libc++/libc++abi/libunwind) for $(SP_ARCH_CLANG)"
@@ -177,7 +166,9 @@ $(RUNTIMES): $(RT_CMAKE)
 	cmake -G Ninja -S $(LLVM_DIR)/runtimes -B build/runtimes \
 		-DCMAKE_TOOLCHAIN_FILE=$(RT_CMAKE) \
 		-DCMAKE_BUILD_TYPE=Release \
-		-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
+		-DCMAKE_C_COMPILER_WORKS=1 \
+		-DCMAKE_CXX_COMPILER_WORKS=1 \
+		-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind;compiler-rt;" \
 		-DLLVM_TARGETS_TO_BUILD=$(SP_ARCH_LLVM) \
 		-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 		-DLLVM_DEFAULT_TARGET_TRIPLE=$(SP_ARCH_CLANG) \
@@ -193,78 +184,39 @@ $(RUNTIMES): $(RT_CMAKE)
 		-DLIBUNWIND_USE_COMPILER_RT=On \
 		-DLIBUNWIND_ENABLE_STATIC=Off \
 		-DLIBUNWIND_ENABLE_SHARED=On \
+		-DCOMPILER_RT_BUILD_BUILTINS=On \
+		-DCOMPILER_RT_BUILD_GWP_ASAN=OFF \
+		-DCOMPILER_RT_BUILD_SANITIZERS=OFF \
+		-DCOMPILER_RT_BUILD_XRAY=OFF \
+		-DCOMPILER_RT_BUILD_MEMPROF=OFF \
+		-DCOMPILER_RT_BUILD_CTX_PROFILE=OFF \
+		-DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
+		-DCOMPILER_RT_USE_LLVM_UNWINDER=ON \
+		-DCOMPILER_RT_USE_BUILTINS_LIBRARY=ON \
 		-DCMAKE_INSTALL_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
 		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
-		-DCMAKE_INSTALL_PREFIX=$(RUNTIMES_TEMP)
+		-DCMAKE_INSTALL_PREFIX=$(STAGING)
 	cmake --build build/runtimes
 	cmake --install build/runtimes
-
-#
-# 2a. Чистый sysroot STAGING: glibc из BASE (lib/lib64) БЕЗ статической libc++,
-#     плюс наша shared libc++ (.so). include -> симлинк на BASE (read-only, libc++
-#     заголовки оттуда; в STAGING ничего не пишем). Так clang --sysroot=STAGING
-#     не находит не-PIC статическую libc++ из BASE.
-#
-$(STAGING_STAMP): $(RUNTIMES)
-	@echo "Assemble clean sysroot (target glibc + shared libc++, no static libc++)"
-	rm -rf $(STAGING)
-	mkdir -p $(STAGING)
-	cp -a $(BASE_SYSROOT)/include $(STAGING)/include
-	cp -a $(BASE_SYSROOT)/lib $(STAGING)/lib
-	if [ -d $(BASE_SYSROOT)/lib64 ]; then cp -a $(BASE_SYSROOT)/lib64 $(STAGING)/lib64; fi
-	rm -f $(STAGING)/lib/libc++*.a $(STAGING)/lib/libc++abi*.a $(STAGING)/lib/libunwind*.a
-	rm -f $(STAGING)/lib64/libc++*.a $(STAGING)/lib64/libc++abi*.a $(STAGING)/lib64/libunwind*.a 2>/dev/null || true
-	cp -P $(RUNTIMES_TEMP)/lib/libc++.so* $(RUNTIMES_TEMP)/lib/libc++abi.so* $(RUNTIMES_TEMP)/lib/libunwind.so* $(STAGING)/lib/
-	if [ -d $(STAGING)/lib64 ]; then cp -P $(RUNTIMES_TEMP)/lib/libc++.so* $(RUNTIMES_TEMP)/lib/libc++abi.so* $(RUNTIMES_TEMP)/lib/libunwind.so* $(STAGING)/lib64/; fi
-	# clang ищет libc++ в <sysroot>/usr/include/c++/v1 и линкует из <sysroot>/usr/lib
-	mkdir -p $(STAGING)/usr
-	ln -sfn ../include $(STAGING)/usr/include
-	ln -sfn ../lib $(STAGING)/usr/lib
-	touch $@
-
-#
-# Toolchain-файл для сборки clang/зависимостей: sysroot = ЧИСТЫЙ STAGING.
-# resource-dir + -isystem <extra> (zlib.h для lldb CTF) + -fPIC — в toolchain-файл
-# (он перебивает per-build -DCMAKE_*_FLAGS_INIT).
-#
-BUILD_CMAKE := $(STAGING)/cross.cmake
-
-$(BUILD_CMAKE): $(STAGING_STAMP)
-	@echo 'set(CMAKE_SYSTEM_NAME Linux)' > $@
-	@echo 'set(CMAKE_SYSTEM_PROCESSOR $(SP_ARCH_HOST))' >> $@
-	@echo 'set(CMAKE_SYSROOT $(STAGING))' >> $@
-	@echo 'set(CMAKE_C_COMPILER $(HOST_CC))' >> $@
-	@echo 'set(CMAKE_CXX_COMPILER $(HOST_CXX))' >> $@
-	@echo 'set(CMAKE_C_COMPILER_TARGET $(SP_ARCH_CLANG))' >> $@
-	@echo 'set(CMAKE_CXX_COMPILER_TARGET $(SP_ARCH_CLANG))' >> $@
-	@echo 'set(CMAKE_ASM_COMPILER_TARGET $(SP_ARCH_CLANG))' >> $@
-	@echo 'set(CMAKE_C_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -isystem $(EXTRA_PREFIX)/include -fPIC -ffunction-sections -fdata-sections")' >> $@
-	@echo 'set(CMAKE_CXX_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -isystem $(EXTRA_PREFIX)/include -fPIC -ffunction-sections -fdata-sections")' >> $@
-	@echo 'set(CMAKE_ASM_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -fPIC")' >> $@
-	@echo 'set(CMAKE_EXE_LINKER_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -lpthread -ldl")' >> $@
-	@echo 'set(CMAKE_SHARED_LINKER_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -lpthread -ldl")' >> $@
-	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)' >> $@
-	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)' >> $@
-	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)' >> $@
-	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)' >> $@
+	rm $(STAGING)/lib/libunwind.a
 
 #
 # 3. zlib + libxml2 (нужны clang/lldb).
 #
-ZLIB := $(EXTRA_PREFIX)/lib/libz.a
-LIBXML2 := $(EXTRA_PREFIX)/lib/libxml2.a
+ZLIB := $(STAGING)/lib/libz.a
+LIBXML2 := $(STAGING)/lib/libxml2.a
 
-$(ZLIB): $(BUILD_CMAKE)
+$(ZLIB): $(RUNTIMES)
 	@echo "Build zlib"
 	rm -rf build/zlib
 	cmake -G Ninja -S $(ZLIB_DIR) -B build/zlib \
-		-DCMAKE_TOOLCHAIN_FILE=$(BUILD_CMAKE) \
+		-DCMAKE_TOOLCHAIN_FILE=$(RT_CMAKE) \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DZLIB_BUILD_EXAMPLES=Off \
 		-DZLIB_BUILD_SHARED=Off \
 		-DZLIB_BUILD_STATIC=On \
 		-DCMAKE_POSITION_INDEPENDENT_CODE=On \
-		-DCMAKE_INSTALL_PREFIX=$(EXTRA_PREFIX)
+		-DCMAKE_INSTALL_PREFIX=$(STAGING)
 	cmake --build build/zlib
 	cmake --install build/zlib
 
@@ -272,7 +224,7 @@ $(LIBXML2): $(ZLIB)
 	@echo "Build libxml2"
 	rm -rf build/libxml2
 	cmake -G Ninja -S $(LIBXML2_DIR) -B build/libxml2 \
-		-DCMAKE_TOOLCHAIN_FILE=$(BUILD_CMAKE) \
+		-DCMAKE_TOOLCHAIN_FILE=$(RT_CMAKE) \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DBUILD_SHARED_LIBS=Off \
 		-DLIBXML2_WITH_DEBUG=Off \
@@ -284,7 +236,7 @@ $(LIBXML2): $(ZLIB)
 		-DLIBXML2_WITH_ZLIB=Off \
 		-DLIBXML2_WITH_TLS=On \
 		-DCMAKE_POSITION_INDEPENDENT_CODE=On \
-		-DCMAKE_INSTALL_PREFIX=$(EXTRA_PREFIX)
+		-DCMAKE_INSTALL_PREFIX=$(STAGING)
 	cmake --build build/libxml2
 	cmake --install build/libxml2
 
@@ -293,7 +245,33 @@ $(LIBXML2): $(ZLIB)
 #
 CLANG := $(STAGING)/bin/clang
 
-$(CLANG): $(LIBXML2)
+#
+# Toolchain-файл для сборки clang/зависимостей: sysroot = ЧИСТЫЙ STAGING.
+# resource-dir + -isystem <extra> (zlib.h для lldb CTF) + -fPIC — в toolchain-файл
+# (он перебивает per-build -DCMAKE_*_FLAGS_INIT).
+#
+BUILD_CMAKE := $(STAGING)/cross.cmake
+
+$(BUILD_CMAKE):
+	@echo 'set(CMAKE_SYSTEM_NAME Linux)' > $@
+	@echo 'set(CMAKE_SYSTEM_PROCESSOR $(SP_ARCH_HOST))' >> $@
+	@echo 'set(CMAKE_SYSROOT $(STAGING))' >> $@
+	@echo 'set(CMAKE_C_COMPILER $(HOST_CC))' >> $@
+	@echo 'set(CMAKE_CXX_COMPILER $(HOST_CXX))' >> $@
+	@echo 'set(CMAKE_C_COMPILER_TARGET $(SP_ARCH_CLANG))' >> $@
+	@echo 'set(CMAKE_CXX_COMPILER_TARGET $(SP_ARCH_CLANG))' >> $@
+	@echo 'set(CMAKE_ASM_COMPILER_TARGET $(SP_ARCH_CLANG))' >> $@
+	@echo 'set(CMAKE_C_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -idirafter $(RESOURCE_IDIR) -fPIC -ffunction-sections -fdata-sections")' >> $@
+	@echo 'set(CMAKE_CXX_FLAGS_INIT "-resource-dir $(RESOURCE_DIR)  -isystem $(STAGING)/include/c++/v1 -idirafter $(RESOURCE_IDIR) -fPIC -ffunction-sections -fdata-sections")' >> $@
+	@echo 'set(CMAKE_ASM_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -fPIC")' >> $@
+	@echo 'set(CMAKE_EXE_LINKER_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -lpthread -ldl")' >> $@
+	@echo 'set(CMAKE_SHARED_LINKER_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -lpthread -ldl")' >> $@
+	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)' >> $@
+	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)' >> $@
+	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)' >> $@
+	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)' >> $@
+
+$(CLANG): $(LIBXML2) $(BUILD_CMAKE)
 	@echo "Build clang/lld/lldb ($(SP_ARCH_CLANG))"
 	rm -rf build/llvm
 	cmake -G Ninja -S $(LLVM_DIR)/llvm -B build/llvm \
@@ -306,10 +284,10 @@ $(CLANG): $(LIBXML2)
 		-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 		-DLLVM_ENABLE_ZLIB=FORCE_ON \
 		-DZLIB_LIBRARY=$(ZLIB) \
-		-DZLIB_INCLUDE_DIR=$(EXTRA_PREFIX)/include \
+		-DZLIB_INCLUDE_DIR=$(STAGING)/include \
 		-DLLVM_ENABLE_LIBXML2=FORCE_ON \
 		-DLIBXML2_LIBRARY=$(LIBXML2) \
-		-DLIBXML2_INCLUDE_DIR=$(EXTRA_PREFIX)/include/libxml2 \
+		-DLIBXML2_INCLUDE_DIR=$(STAGING)/include/libxml2 \
 		-DLLVM_INCLUDE_BENCHMARKS=Off \
 		-DLLVM_BUILD_BENCHMARKS=Off \
 		$(LTO_FLAGS) \
@@ -318,6 +296,7 @@ $(CLANG): $(LIBXML2)
 		-DLLDB_ENABLE_CURSES=Off \
 		-DLLDB_ENABLE_LZMA=Off \
 		-DLLDB_ENABLE_LIBXML2=On \
+		-DLLVM_ENABLE_LIBCXX=On \
 		-DLLDB_INCLUDE_TESTS=Off \
 		-DLLDB_NO_INSTALL_DEFAULT_RPATH=On \
 		-DLLVM_ENABLE_PIC=On \
@@ -340,10 +319,6 @@ $(CLANG): $(LIBXML2)
 		-DCMAKE_INSTALL_PREFIX=$(STAGING)
 	cmake --build build/llvm
 	cmake --install build/llvm
-	# builtins целевой арки в resource-dir поставляемого clang (BASE их не кладёт
-	# в lib/clang/<ver>), чтобы host-clang мог линковать compiler-rt.
-	mkdir -p $(STAGING)/lib/clang/$(SP_LLVM_VER)/lib
-	cp -rf $(BASE_SYSROOT)/lib/linux $(STAGING)/lib/clang/$(SP_LLVM_VER)/lib/linux
 	touch $(CLANG)
 
 #
@@ -366,11 +341,9 @@ $(STAGING)/bin/spirv-opt: $(CLANG)
 		-DCMAKE_INSTALL_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
 		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
 		-DBUILD_SHARED_LIBS=Off \
-		-DCMAKE_INSTALL_PREFIX=$(SPIRV_PREFIX)
+		-DCMAKE_INSTALL_PREFIX=$(STAGING)
 	cmake --build build/spirv-tools
 	cmake --install build/spirv-tools
-	mkdir -p $(STAGING)/bin
-	cd $(SPIRV_PREFIX)/bin; cp -f $(SPIRV_BINS) $(STAGING)/bin/
 	touch $@
 
 $(STAGING)/bin/glslang: $(STAGING)/bin/spirv-opt
@@ -382,9 +355,6 @@ $(STAGING)/bin/glslang: $(STAGING)/bin/spirv-opt
 		-DENABLE_HLSL=Off \
 		-DENABLE_OPT=On \
 		-DALLOW_EXTERNAL_SPIRV_TOOLS=On \
-		-DCMAKE_FIND_ROOT_PATH=$(SPIRV_PREFIX) \
-		-DSPIRV-Tools_DIR=$(SPIRV_PREFIX)/lib/cmake/SPIRV-Tools \
-		-DSPIRV-Tools-opt_DIR=$(SPIRV_PREFIX)/lib/cmake/SPIRV-Tools-opt \
 		-DGLSLANG_ENABLE_INSTALL=On \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_EXE_LINKER_FLAGS="-resource-dir $(RESOURCE_DIR) -lc++ -lc++abi -lpthread -ldl -Wl,--gc-sections" \
@@ -417,9 +387,11 @@ $(STAGING)/bin/make: $(CLANG) $(MAKE_SRC_DIR)/configure
 	cd build/make; $(MAKE_SRC_DIR)/configure \
 		--prefix=$(STAGING) --without-guile \
 		$(MAKE_HOST_FLAGS) \
-		CC="$(HOST_CC) --target=$(SP_ARCH_CLANG) -resource-dir $(RESOURCE_DIR) --sysroot=$(BASE_SYSROOT)" \
+		CC="$(HOST_CC)" \
+		CPP="$(HOST_CC) -E" \
 		AR="$(HOST_AR)" RANLIB="$(HOST_RANLIB)" \
-		CPPFLAGS="--sysroot=$(BASE_SYSROOT)" \
+		CPPFLAGS="--sysroot=$(STAGING) --target=$(SP_ARCH_CLANG) -isystem $(RESOURCE_IDIR) -resource-dir $(RESOURCE_DIR)" \
+		LDFLAGS="--sysroot=$(STAGING) --target=$(SP_ARCH_CLANG) -resource-dir $(RESOURCE_DIR)" \
 		CFLAGS="-O2"
 	$(MAKE) -C build/make $(SP_NJOBS)
 	$(MAKE) -C build/make install
@@ -487,6 +459,7 @@ $(OUT_SYSROOT)/lib/clang: $(ALL_BUILT)
 	@mkdir -p $(OUT_SYSROOT)/lib
 	@rm -rf $@
 	cp -rf $(STAGING)/lib/clang $@
+	rm -rf $@/lib $@/include $@/$(SP_LLVM_VER)/lib 
 
 $(OUT_SYSROOT)/lib/%: $(ALL_BUILT)
 	@mkdir -p $(OUT_SYSROOT)/lib
@@ -531,15 +504,6 @@ $(OUT_SYSROOT)/host.mk: $(THIS_FILE)
 	@echo 'HOST_LIB_LDFLAGS :=' >> $@
 
 $(OUT_SYSROOT)/release: $(OUT_LIBS) $(OUT_TOOLS) $(OUT_SYSROOT)/lib/clang $(OUT_SYSROOT)/share/licenses $(OUT_SYSROOT)/host.mk
-	@# Арки без нативных атомиков (aarch64 и т.п.): libLLVM.so/libc++ NEED
-	@# libatomic.so.1. Она лежит в gcc-multilib таргета — бандлим её в тулчейн
-	@# (как libc++), чтобы он был самодостаточен. На x86_64 не требуется -> skip.
-	@if $(HOST_ROOT)/bin/llvm-readelf -d $(OUT_SYSROOT)/lib/libc++.so.1.0 2>/dev/null | grep -q libatomic; then \
-		a=`find $(BASE_SYSROOT) -name 'libatomic.so.1.*' 2>/dev/null | head -1`; \
-		if [ -n "$$a" ]; then echo "Bundle libatomic: $$a"; \
-			$(STRIP) "$$a" -o $(OUT_SYSROOT)/lib/`basename "$$a"`; \
-			cd $(OUT_SYSROOT)/lib; ln -fs `basename "$$a"` libatomic.so.1; ln -fs `basename "$$a"` libatomic.so; fi; \
-	fi
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++abi.so.1.0 libc++abi.so
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++abi.so.1.0 libc++abi.so.1
 	cd $(OUT_SYSROOT)/lib; ln -fs libc++.so.1.0 libc++.so
