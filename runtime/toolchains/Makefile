@@ -113,7 +113,7 @@ host-cross-x86_64-apple-macosx: target-x86_64-apple-macosx
 host-cross-aarch64-apple-macosx: target-aarch64-apple-macosx
 	$(MAKE) -C host-macos/cross out OUT_SYSROOT=$(abspath hosts/aarch64-apple-macosx) SP_ARCH_HOST=aarch64
 
-host-cross-all: \
+host-cross-all: $(filter-out host-cross-$(HOST_ID),\
 	host-cross-x86_64-unknown-linux-gnu \
 	host-cross-aarch64-unknown-linux-gnu \
 	host-cross-riscv64-unknown-linux-gnu \
@@ -123,7 +123,8 @@ host-cross-all: \
 	host-cross-x86_64-pc-windows-msvc \
 	host-cross-aarch64-pc-windows-msvc \
 	host-cross-x86_64-apple-macosx \
-	host-cross-aarch64-apple-macosx
+	host-cross-aarch64-apple-macosx) \
+
 
 #
 # Android targets
@@ -323,3 +324,4 @@ targets-export:\
 	host-cross-all
 
 .DEFAULT_GOAL := host
+
