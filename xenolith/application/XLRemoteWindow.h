@@ -77,6 +77,11 @@ public:
 	virtual void captureScreenshot(
 			Function<void(const core::ImageInfoData &info, BytesView view)> &&cb) override;
 
+	// Deliver a screenshot that returned over Domain::Data: invoke the captureScreenshot() callback
+	// registered for `serial` (the RequestScreenshot serial echoed in the transfer's announce reason).
+	// Returns true iff a matching pending capture was found and fulfilled.
+	bool deliverScreenshot(uint32_t serial, const core::ImageInfoData &info, BytesView pixels);
+
 	virtual bool openWindowMenu(Vec2 pos) override;
 
 	virtual void handleInputEvents(Vector<core::InputEventData> &&events) override;
@@ -98,6 +103,9 @@ protected:
 	Rc<sprt::window::WindowInfo> _info;
 	Vector<RemoteQueueInfo> _queues;
 	Rc<ClientAppThread> _thread; // creates cyclic reference until windows is closed/detached
+
+	// captureScreenshot() callbacks awaiting their pixels, keyed by the RequestScreenshot serial.
+	Map<uint32_t, Function<void(const core::ImageInfoData &, BytesView)>> _pendingScreenshots;
 };
 
 } // namespace stappler::xenolith

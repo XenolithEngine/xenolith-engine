@@ -54,6 +54,7 @@ enum class AuthMode : uint8_t {
 enum class Domain : uint8_t {
 	Global = 0,
 	Window = 1,
+	Data = 2, // large binary block transfer (announce + chunked packets); see DataCode below
 	Error = 255,
 };
 
@@ -87,6 +88,10 @@ enum class WindowCode {
 	ReadyForNextFrame = 6, // client -> server notification [windowId]: the client's scene has active
 						   // actions/input and wants another frame; the server schedules the next
 						   // frame on the window's PresentationEngine. Fire-and-forget (no reply).
+	RequestScreenshot = 7, // client -> server notification [windowId]: capture the window's current
+						   // contents and hand them back over Domain::Data (a Screenshot transfer whose
+						   // announce `reason` points back at this message). Fire-and-forget (no reply);
+						   // the captured pixels arrive asynchronously as a block transfer.
 };
 
 enum class WindowError : uint8_t {
@@ -97,6 +102,53 @@ enum class WindowError : uint8_t {
 	NotImplemented = 254,
 	NetworkBackend = 255, // not protocol-related, check backend error reporting
 };
+
+// Domain::Data: move a large opaque binary blob in either direction and reference it later by id.
+//
+// Lifecycle (the "sender" is whoever offers the data; works client->server AND server->client):
+//   Announce  (REQUEST, CBOR header) -- sender offers a blob: id, type, total size, packet count,
+//             packet size and a per-packet hash. The receiver agrees by replying without error (a
+//             mirror reply == accept) or declines with an error reply.
+//   Packet    (notification, RAW BINARY -- not CBOR) -- one chunk: [u64 id][u32 index][chunk bytes];
+//             the transport LZ4 in sendFrame supplies the compression. Streamed back-to-back.
+//   Complete  (notification) -- receiver: all packets arrived and every per-packet hash matched.
+//   Release   (notification) -- sender: it will no longer reference the blob; the receiver may drop it.
+//   Unavailable(notification) -- receiver: it can no longer hold the blob (eviction, even after a
+//             Release race); the sender must stop referencing that id.
+enum class DataCode : uint8_t {
+	Announce = 0,
+	Packet = 1,
+	Complete = 2,
+	Release = 3,
+	Unavailable = 4,
+};
+
+enum class DataError : uint8_t {
+	Ok = 0,
+	Declined = 1, // receiver refuses the offer (policy / capacity); the Announce error-reply code
+	TooLarge = 2, // total size or packet size exceeds the agreed limits
+	BadHeader = 3, // malformed/inconsistent Announce header
+	HashMismatch = 4, // a received packet failed its announced hash
+	UnknownTransfer = 5, // a Packet/Complete/Release/Unavailable referenced an unknown id
+	NotImplemented = 254,
+	NetworkBackend = 255, // not protocol-related, check backend error reporting
+};
+
+// What a transferred blob carries; lets the receiver's accept policy and consumer route it. The
+// announce also carries an opaque `meta` (type-specific, e.g. image w/h/format) and a `reason`
+// (which message/type triggered the transfer), so the two id spaces stay decoupled from semantics.
+enum class DataType : uint16_t {
+	Generic = 0,
+	Screenshot = 1, // raw window pixels; meta = {fmt, w, h, d}; receiver saves via core::saveImage
+};
+
+// Default chunk size. Must stay <= kMaxFrameSize and small enough that one packet is a modest frame:
+// the receiver validates the announced packet size against this, which (since every packet's
+// decompressed size is then bounded) is the real safeguard against a decompression bomb on this
+// domain -- the transport keeps only absolute (non-ratio) frame caps, so a strongly-compressed
+// screenshot packet is never rejected for its ratio.
+constexpr uint32_t kRecommendedPacketSize = 32u * 1024; // 32 KiB
+constexpr uint32_t kMaxBlockTransferSize = 256u * 1024 * 1024; // whole-blob policy ceiling
 
 // Which side's compression dictionary won negotiation. Server has priority; if it has none the
 // client's suggestion (if any) is used; otherwise no dictionary.

@@ -95,6 +95,18 @@ public:
 			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs);
 
 protected:
+	// Block-transfer send facade: route through the connected remote client's connection.
+	virtual bool remoteSendCbor(remote::Domain, uint8_t code, const Value &,
+			uint32_t *outSerial) override;
+	virtual bool remoteSendRaw(remote::Domain, uint8_t code, BytesView,
+			uint32_t *outSerial) override;
+	virtual bool remoteSendCborReply(uint32_t serial, remote::Domain, uint8_t code,
+			const Value &) override;
+	virtual bool remoteSendError(remote::Domain, uint8_t code, uint32_t serial) override;
+	virtual bool remoteSendCborWithReply(remote::Domain, uint8_t code, const Value &,
+			Function<void(const remote::MessageHeader &, BytesView payload)> &&,
+			uint64_t timeoutUs) override;
+
 	// Also clears shared objects if not empty
 	virtual bool startListening() override;
 

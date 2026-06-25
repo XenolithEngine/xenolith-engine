@@ -29,6 +29,8 @@
 #include "SPSharedModule.h"
 #include "XLDirector.h"
 #include "XLCoreAttachment.h" // core::DependencyEvent id mask
+#include "XLCoreInfo.h" // core::ImageInfoData / ImageFormat / Extent3
+#include "XLRemoteBlockTransfer.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -122,6 +124,43 @@ bool ClientAppThread::sendMessageWithReply(remote::Domain d, uint8_t message, co
 	return false;
 }
 
+bool ClientAppThread::remoteSendCbor(remote::Domain d, uint8_t code, const Value &v,
+		uint32_t *outSerial) {
+	if (!_connection || !_connection->isOpen()) {
+		return false;
+	}
+	return _connection->sendCborMessage(d, code, v, outSerial) == remote::GlobalError::Ok;
+}
+
+bool ClientAppThread::remoteSendRaw(remote::Domain d, uint8_t code, BytesView b,
+		uint32_t *outSerial) {
+	if (!_connection || !_connection->isOpen()) {
+		return false;
+	}
+	return _connection->sendMessage(d, code, b, outSerial) == remote::GlobalError::Ok;
+}
+
+bool ClientAppThread::remoteSendCborReply(uint32_t serial, remote::Domain d, uint8_t code,
+		const Value &v) {
+	if (!_connection || !_connection->isOpen()) {
+		return false;
+	}
+	return _connection->sendCborReply(serial, d, code, v) == remote::GlobalError::Ok;
+}
+
+bool ClientAppThread::remoteSendError(remote::Domain d, uint8_t code, uint32_t serial) {
+	if (!_connection || !_connection->isOpen()) {
+		return false;
+	}
+	// ClientConnection::sendError takes a typed GlobalError code (unlike the server's uint8_t).
+	return _connection->sendError(d, remote::GlobalError(code), serial) == remote::GlobalError::Ok;
+}
+
+bool ClientAppThread::remoteSendCborWithReply(remote::Domain d, uint8_t code, const Value &v,
+		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb, uint64_t timeoutUs) {
+	return sendMessageWithReply(d, code, v, sp::move(cb), timeoutUs);
+}
+
 void ClientAppThread::handleThreadInitialized() { _clientContext->handleAppThreadCreated(this); }
 
 void ClientAppThread::handleThreadDisposed() { _clientContext->handleAppThreadDestroyed(this); }
@@ -140,6 +179,34 @@ void ClientAppThread::handleWindowDisconnected(NotNull<RemoteWindow> w) {
 
 void ClientAppThread::loadExtensions() {
 	AppThread::loadExtensions();
+
+	// Accept incoming Screenshot block transfers (the server's response to our RequestScreenshot) and
+	// route the assembled raw pixels to the RemoteWindow whose captureScreenshot() call triggered them,
+	// matched by the announce reason's serial.
+	if (_blockTransfer) {
+		_blockTransfer->acceptPolicy = [](BlockTransferManager::DataType t, uint64_t, const Value &,
+											   const Value &) {
+			return t == remote::DataType::Screenshot;
+		};
+		_blockTransfer->onReceived = [this](uint64_t id, BlockTransferManager::DataType t,
+											   const Value &meta, const Value &reason, BytesView data) {
+			if (t != remote::DataType::Screenshot) {
+				return;
+			}
+			core::ImageInfoData info;
+			info.format = core::ImageFormat(meta.getInteger("fmt"));
+			info.extent = Extent3(uint32_t(meta.getInteger("w")), uint32_t(meta.getInteger("h")),
+					uint32_t(meta.getInteger("d")));
+			auto serial = uint32_t(reason.getInteger("serial"));
+			for (auto &it : _windows) {
+				if (it.second->deliverScreenshot(serial, info, data)) {
+					return;
+				}
+			}
+			log::source().warn("ClientAppThread", "screenshot transfer ", id,
+					" had no matching captureScreenshot() waiter (serial ", serial, ")");
+		};
+	}
 
 	// TODO(remote transport): construct the client-side FontController whose gAPI endpoints point at
 	// proxy functions over the render-session channel, plus any other context-level extensions.
@@ -184,6 +251,9 @@ void ClientAppThread::pumpConnection() {
 	}
 
 	if (disconnect && _connection) {
+		if (_blockTransfer) {
+			_blockTransfer->reset();
+		}
 		if (_listenPoll) {
 			_listenPoll->cancel();
 			_listenPoll = nullptr;
@@ -303,6 +373,8 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 					uint32_t(h.code), ")");
 			return true; // consume unknown control messages (don't defer indefinitely)
 		}
+	} else if (remote::Domain(h.domain) == remote::Domain::Data) {
+		return _blockTransfer ? _blockTransfer->dispatch(h, payload) : true;
 	}
 	log::source().warn("ClientAppThread", "unhandled message domain (", uint32_t(h.domain), ")");
 	return true;

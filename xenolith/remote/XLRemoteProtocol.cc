@@ -331,7 +331,7 @@ SP_PUBLIC bool sendFrame(void *ssl, uint64_t deadline, BytesView dict, MessageTy
 	}
 
 	uint32_t frameSize = 0;
-	bool usingDict = true;
+	bool usingDict = false;
 
 	uint32_t bound = sprt::lz4_getCompressBounds(payload.size());
 	if (bound == 0) {
@@ -347,8 +347,15 @@ SP_PUBLIC bool sendFrame(void *ssl, uint64_t deadline, BytesView dict, MessageTy
 	mh->code = msg;
 	mh->serial = sprt::byteorder::HostToNetwork(serial);
 
+	// Domain::Data carries large opaque binary blocks (e.g. screenshot pixels). The LZ4 *dictionary*
+	// round-trip (LZ4_compress_fast_continue + LZ4_decompress_safe_usingDict) does not survive these
+	// big blocks -- decompression returns the wrong length and the frame is dropped -- so compress them
+	// with plain (dictionary-less) LZ4, which decodes reliably at any size/ratio. The dictionary is
+	// tuned for the small CBOR control messages and gives raw pixel data nothing anyway.
+	bool useDict = !dict.empty() && d != Domain::Data;
+
 	uint32_t clen = 0;
-	if (!dict.empty()) {
+	if (useDict) {
 		clen = sprt::lz4_compressDataDict(payload.data(), payload.size(),
 				frameData + sizeof(MessageHeader) + 4, bound, dict.data(), dict.size());
 		if (clen > 0) {
@@ -359,6 +366,7 @@ SP_PUBLIC bool sendFrame(void *ssl, uint64_t deadline, BytesView dict, MessageTy
 	if (clen == 0) {
 		clen = sprt::lz4_compressData(payload.data(), payload.size(),
 				frameData + sizeof(MessageHeader) + 4, bound);
+		usingDict = false;
 	}
 
 	if (clen + 4 < payload.size()) {
@@ -368,8 +376,11 @@ SP_PUBLIC bool sendFrame(void *ssl, uint64_t deadline, BytesView dict, MessageTy
 		}
 		mh->size = sprt::byteorder::HostToNetwork(clen + 4);
 
-		// write uncompressed size
-		*(uint32_t *)(frameData + sizeof(MessageHeader)) = uint32_t(payload.size());
+		// write uncompressed size (network byte order, to match the BytesViewNetwork reader in
+		// decodeMessagePayload / readMessagePayloadWithHeader -- otherwise a compressed frame's rawSize
+		// is byte-swapped on the peer and rejected as oversized)
+		*(uint32_t *)(frameData + sizeof(MessageHeader)) =
+				sprt::byteorder::HostToNetwork(uint32_t(payload.size()));
 
 		frameSize = sizeof(MessageHeader) + 4 + clen;
 	} else {

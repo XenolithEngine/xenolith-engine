@@ -31,6 +31,8 @@
 #include "XLSimpleCloseGuardWidget.h"
 #include "XLEntryPoint.h"
 
+#include <stdlib.h> // getenv for the screenshot output path
+
 #include "ClientScene.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::client {
@@ -98,6 +100,50 @@ void ClientScene::handleEnter(Scene *scene) {
 			log::source().info("ClientScene", "animation tick ", _animTick);
 		})));
 	}
+
+	// Через 2 секунды после входа (сервер уже рисует наши кадры) запрашиваем у него скриншот окна —
+	// то есть нашего удалённого вывода — и сохраняем полученные пиксели в PNG. Запрос уходит через
+	// RemoteWindow::captureScreenshot (WindowCode::RequestScreenshot), а пиксели возвращаются обратно
+	// крупным блоком по Domain::Data. Делаем это ровно один раз.
+	if (!_screenshotRequested) {
+		_screenshotRequested = true;
+		runAction(Rc<Sequence>::create(Rc<DelayTime>::create(2.0f), [this] {
+			requestRemoteScreenshot();
+		}));
+	}
+}
+
+void ClientScene::requestRemoteScreenshot() {
+	if (!_director) {
+		return;
+	}
+	auto server = _director->getRenderServer();
+	if (!server) {
+		return;
+	}
+
+	// Путь к итоговому PNG: переменная окружения XL_REMOTE_SCREENSHOT_FILE или значение по умолчанию.
+	String path("remote-screenshot.png");
+	if (const char *file = ::getenv("XL_REMOTE_SCREENSHOT_FILE")) {
+		path = file;
+	}
+
+	log::source().info("ClientScene", "requesting remote screenshot -> ", path);
+
+	// captureScreenshot на RemoteWindow уходит на сервер; колбэк вызовется, когда блок с пикселями
+	// будет полностью получен обратно (см. ClientAppThread::loadExtensions -> deliverScreenshot).
+	server->captureScreenshot([path](const core::ImageInfoData &info, BytesView data) {
+		if (data.empty()) {
+			log::source().error("ClientScene", "remote screenshot failed (no data)");
+			return;
+		}
+		if (core::saveImage(FileInfo(path), info, data)) {
+			log::source().info("ClientScene", "remote screenshot saved: ", path, " (", data.size(),
+					" bytes, ", info.extent.width, "x", info.extent.height, ")");
+		} else {
+			log::source().error("ClientScene", "failed to save remote screenshot: ", path);
+		}
+	});
 }
 
 StringView ClientScene::selectServerQueue(NotNull<AppThread> app,
