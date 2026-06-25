@@ -109,30 +109,13 @@ $(MAKE_SRC_DIR)/configure: src/$(MAKE_SRC_TARBALL)
 	cd src; tar xf $(MAKE_SRC_TARBALL)
 	touch $@
 
-# Linux kernel headers (пинённые, как у host/glibc — наименьшая поддерживаемая LTS).
-LINUX_KERNEL_VER ?= 5.10.258
-LINUX_KERNEL_TARBALL := linux-$(LINUX_KERNEL_VER).tar.xz
-LINUX_KERNEL_URL := https://cdn.kernel.org/pub/linux/kernel/v5.x/$(LINUX_KERNEL_TARBALL)
-LINUX_KERNEL_SRC := src/linux-$(LINUX_KERNEL_VER)
-LINUX_HEADERS_DIR := $(abspath src/linux-headers-$(SP_ARCH_HOST))
-LINUX_HEADERS := $(LINUX_HEADERS_DIR)/include/linux/futex.h
-
-src/$(LINUX_KERNEL_TARBALL):
-	mkdir -p src
-	wget -O $@ $(LINUX_KERNEL_URL)
-
-$(LINUX_HEADERS): src/$(LINUX_KERNEL_TARBALL)
-	rm -rf $(LINUX_KERNEL_SRC) $(LINUX_HEADERS_DIR)
-	cd src; tar xf $(LINUX_KERNEL_TARBALL)
-	$(MAKE) -C $(LINUX_KERNEL_SRC) headers_install ARCH=$(SP_ARCH_KERNEL) INSTALL_HDR_PATH=$(LINUX_HEADERS_DIR)
-	$(MAKE) -C $(LINUX_KERNEL_SRC) clean
-
 #
 # Самодостаточный sysroot собираемого тулчейна. Содержит musl, compiler-rt,
 # рантаймы (libc++/libc++abi/libunwind), а затем финальный clang/lld/lldb.
 #
 SYSROOT := $(abspath sysroot/$(SP_ARCH_CLANG))
-RESOURCE_DIR := $(SYSROOT)/lib/clang/$(SP_LLVM_VER)
+RESOURCE_DIR := $(SYSROOT)/lib/clang
+RESOURCE_IDIR := $(HOST_ROOT)/lib/clang/$(SP_LLVM_VER)/include
 
 # Кросс-компилятор: clang билд-машины + --target + resource-dir собираемого sysroot.
 CROSS_CC := $(HOST_CC) --target=$(SP_ARCH_CLANG) -resource-dir $(RESOURCE_DIR)
@@ -143,36 +126,6 @@ CROSS_CXX := $(HOST_CXX) --target=$(SP_ARCH_CLANG) -resource-dir $(RESOURCE_DIR)
 HOST_AR := $(HOST_ROOT)/bin/llvm-ar
 HOST_RANLIB := $(HOST_ROOT)/bin/llvm-ranlib
 
-# zlib/libxml2 — build-time зависимости clang/lldb (линкуются статически, в
-# поставку не идут). В отдельный чистый префикс: -I<sysroot>/include с
-# C-заголовками musl ломает #include_next в libc++.
-EXTRA_PREFIX := $(abspath build/extra-install)
-SPIRV_PREFIX := $(abspath build/spirv-install)
-
-#
-# 1. musl-заголовки + kernel headers -> SYSROOT/include. usr -> симлинки на
-#    include/lib, чтобы libc++ (include/c++/v1) находился как usr/include/c++/v1.
-#
-MUSL_HEADERS_STAMP := $(SYSROOT)/include/stdlib.h
-
-$(MUSL_HEADERS_STAMP): $(LINUX_HEADERS)
-	@echo "Install musl + kernel headers -> $(SYSROOT)/include"
-	mkdir -p $(SYSROOT)
-	rm -rf build/musl-headers
-	mkdir -p build/musl-headers
-	cd build/musl-headers; $(MUSL_SRC_DIR)/configure \
-		--prefix=$(SYSROOT) --syslibdir=$(SYSROOT)/lib \
-		--host=$(SP_ARCH_CLANG) CC="$(HOST_CC) --target=$(SP_ARCH_CLANG)"
-	$(MAKE) -C build/musl-headers install-headers
-	cp -rn $(LINUX_HEADERS_DIR)/include/* $(SYSROOT)/include/
-	mkdir -p $(SYSROOT)/usr
-	cd $(SYSROOT)/usr; ln -sfn ../include include; ln -sfn ../lib lib
-	# resource-dir: заголовки clang (stddef.h/emmintrin.h) сразу доступны
-	# последующим сборкам (compiler-rt/musl/рантаймы). Финальный clang заменит
-	# симлинк на свой реальный include при install.
-	mkdir -p $(RESOURCE_DIR)
-	ln -sfn $(HOST_ROOT)/lib/clang/$(SP_LLVM_VER)/include $(RESOURCE_DIR)/include
-
 #
 # 2. compiler-rt builtins -> resource-dir. Чтобы пройти compiler-check без
 #    готового libc++, используем STATIC_LIBRARY try-compile (как target-linux/musl).
@@ -182,7 +135,15 @@ $(MUSL_HEADERS_STAMP): $(LINUX_HEADERS)
 CHECK_CMAKE := $(SYSROOT)/check.cmake
 BUILTINS := $(RESOURCE_DIR)/lib/linux/libclang_rt.builtins-$(SP_ARCH_HOST).a
 
-$(CHECK_CMAKE): $(MUSL_HEADERS_STAMP)
+BASE_SYSROOT := $(realpath $(LOCAL_ROOT)../../targets/$(SP_ARCH_CLANG))
+
+$(CHECK_CMAKE):
+	rm -rf $(SYSROOT)
+	mkdir -p $(SYSROOT) $(SYSROOT)/include $(SYSROOT)/lib
+	cp -r $(BASE_SYSROOT)/include_libc/* $(SYSROOT)/include
+	cp -r $(BASE_SYSROOT)/lib/* $(SYSROOT)/lib
+	cp -r $(BASE_SYSROOT)/usr/lib/libunwind.a $(SYSROOT)/lib
+
 	@echo 'set(CMAKE_SYSTEM_NAME Linux)' > $@
 	@echo 'set(CMAKE_SYSTEM_PROCESSOR $(SP_ARCH_HOST))' >> $@
 	@echo 'set(CMAKE_SYSROOT $(SYSROOT))' >> $@
@@ -191,8 +152,8 @@ $(CHECK_CMAKE): $(MUSL_HEADERS_STAMP)
 	@echo 'set(CMAKE_C_COMPILER_TARGET $(SP_ARCH_CLANG))' >> $@
 	@echo 'set(CMAKE_CXX_COMPILER_TARGET $(SP_ARCH_CLANG))' >> $@
 	@echo 'set(CMAKE_ASM_COMPILER_TARGET $(SP_ARCH_CLANG))' >> $@
-	@echo 'set(CMAKE_C_FLAGS_INIT "-resource-dir $(RESOURCE_DIR)")' >> $@
-	@echo 'set(CMAKE_CXX_FLAGS_INIT "-resource-dir $(RESOURCE_DIR)")' >> $@
+	@echo 'set(CMAKE_C_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -isystem $(RESOURCE_IDIR)")' >> $@
+	@echo 'set(CMAKE_CXX_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -isystem $(RESOURCE_IDIR)")' >> $@
 	@echo 'set(CMAKE_ASM_FLAGS_INIT "-resource-dir $(RESOURCE_DIR)")' >> $@
 	@echo 'set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)' >> $@
 	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)' >> $@
@@ -200,63 +161,19 @@ $(CHECK_CMAKE): $(MUSL_HEADERS_STAMP)
 	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)' >> $@
 	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)' >> $@
 
-$(BUILTINS): $(CHECK_CMAKE)
-	@echo "Build compiler-rt builtins ($(SP_ARCH_CLANG))"
-	rm -rf build/compiler-rt build/compiler-rt-install
-	cmake -G Ninja -S $(LLVM_DIR)/runtimes -B build/compiler-rt \
-		-DCMAKE_TOOLCHAIN_FILE=$(CHECK_CMAKE) \
-		-DCMAKE_BUILD_TYPE=Release \
-		-DLLVM_ENABLE_RUNTIMES="compiler-rt" \
-		-DLLVM_TARGETS_TO_BUILD=$(SP_ARCH_LLVM) \
-		-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
-		-DLLVM_DEFAULT_TARGET_TRIPLE=$(SP_ARCH_CLANG) \
-		-DCOMPILER_RT_BUILD_BUILTINS=On \
-		-DCOMPILER_RT_BUILD_CRT=On \
-		-DCOMPILER_RT_BUILD_GWP_ASAN=OFF \
-		-DCOMPILER_RT_BUILD_SANITIZERS=OFF \
-		-DCOMPILER_RT_BUILD_XRAY=OFF \
-		-DCOMPILER_RT_BUILD_MEMPROF=OFF \
-		-DCOMPILER_RT_BUILD_CTX_PROFILE=OFF \
-		-DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
-		-DCOMPILER_RT_BUILD_ORC=OFF \
-		-DCOMPILER_RT_DEFAULT_TARGET_ONLY=On \
-		-DCMAKE_INSTALL_PREFIX=$(abspath build/compiler-rt-install)
-	cmake --build build/compiler-rt
-	cmake --install build/compiler-rt
-	mkdir -p $(RESOURCE_DIR)/lib
-	rm -rf $(RESOURCE_DIR)/lib/linux
-	cp -rf build/compiler-rt-install/lib/linux $(RESOURCE_DIR)/lib/linux
-
-#
-# 3. musl libc (full) -> SYSROOT/lib (libc.a/.so, crt*.o, ld-musl-*.so.1).
-#
-MUSL := $(SYSROOT)/lib/libc.a
-
-$(MUSL): $(BUILTINS)
-	@echo "Build musl ($(SP_ARCH_CLANG))"
-	rm -rf build/musl
-	mkdir -p build/musl
-	cd build/musl; $(MUSL_SRC_DIR)/configure \
-		--prefix=$(SYSROOT) --syslibdir=$(SYSROOT)/lib \
-		--host=$(SP_ARCH_CLANG) \
-		CC="$(CROSS_CC)" AR="$(HOST_AR)" RANLIB="$(HOST_RANLIB)" \
-		LIBCC="$(BUILTINS)"
-	$(MAKE) -C build/musl $(SP_NJOBS)
-	$(MAKE) -C build/musl install
-
 #
 # 4. shared-рантаймы (libc++/libc++abi/libunwind) -> SYSROOT/lib. compiler-check
 #    проходит на STATIC_LIBRARY (libc++ ещё нет); compiler-rt уже собран.
 #
 RUNTIMES := $(SYSROOT)/lib/libc++.so.1.0
 
-$(RUNTIMES): $(MUSL)
+$(RUNTIMES): $(CHECK_CMAKE)
 	@echo "Build runtimes (libc++/libc++abi/libunwind) for $(SP_ARCH_CLANG)"
 	rm -rf build/runtimes
 	cmake -G Ninja -S $(LLVM_DIR)/runtimes -B build/runtimes \
 		-DCMAKE_TOOLCHAIN_FILE=$(CHECK_CMAKE) \
 		-DCMAKE_BUILD_TYPE=Release \
-		-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
+		-DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind;compiler-rt" \
 		-DLLVM_TARGETS_TO_BUILD=$(SP_ARCH_LLVM) \
 		-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 		-DLLVM_DEFAULT_TARGET_TRIPLE=$(SP_ARCH_CLANG) \
@@ -272,6 +189,16 @@ $(RUNTIMES): $(MUSL)
 		-DLIBUNWIND_USE_COMPILER_RT=On \
 		-DLIBUNWIND_ENABLE_SHARED=On \
 		-DLIBCXXABI_HAS_CXA_THREAD_ATEXIT_IMPL=OFF \
+		-DCOMPILER_RT_BUILD_BUILTINS=On \
+		-DCOMPILER_RT_BUILD_CRT=On \
+		-DCOMPILER_RT_BUILD_GWP_ASAN=OFF \
+		-DCOMPILER_RT_BUILD_SANITIZERS=OFF \
+		-DCOMPILER_RT_BUILD_XRAY=OFF \
+		-DCOMPILER_RT_BUILD_MEMPROF=OFF \
+		-DCOMPILER_RT_BUILD_CTX_PROFILE=OFF \
+		-DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
+		-DCOMPILER_RT_BUILD_ORC=OFF \
+		-DCOMPILER_RT_DEFAULT_TARGET_ONLY=On \
 		-DCMAKE_C_FLAGS_INIT="-ffunction-sections -fdata-sections" \
 		-DCMAKE_CXX_FLAGS_INIT="-ffunction-sections -fdata-sections" \
 		-DCMAKE_INSTALL_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
@@ -279,6 +206,7 @@ $(RUNTIMES): $(MUSL)
 		-DCMAKE_INSTALL_PREFIX=$(SYSROOT)
 	cmake --build build/runtimes
 	cmake --install build/runtimes
+	rm $(SYSROOT)/lib/libunwind.a
 
 #
 # Полноценный toolchain-файл (sysroot уже с libc++ — compiler-check линкует).
@@ -294,8 +222,8 @@ $(BUILD_CMAKE): $(RUNTIMES)
 	@echo 'set(CMAKE_C_COMPILER_TARGET $(SP_ARCH_CLANG))' >> $@
 	@echo 'set(CMAKE_CXX_COMPILER_TARGET $(SP_ARCH_CLANG))' >> $@
 	@echo 'set(CMAKE_ASM_COMPILER_TARGET $(SP_ARCH_CLANG))' >> $@
-	@echo 'set(CMAKE_C_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -isystem $(EXTRA_PREFIX)/include -fPIC -ffunction-sections -fdata-sections")' >> $@
-	@echo 'set(CMAKE_CXX_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -isystem $(EXTRA_PREFIX)/include -fPIC -ffunction-sections -fdata-sections")' >> $@
+	@echo 'set(CMAKE_C_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -idirafter $(RESOURCE_IDIR) -fPIC -ffunction-sections -fdata-sections")' >> $@
+	@echo 'set(CMAKE_CXX_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -idirafter $(RESOURCE_IDIR) -isystem $(SYSROOT)/include/c++/v1 -fPIC -ffunction-sections -fdata-sections")' >> $@
 	@echo 'set(CMAKE_ASM_FLAGS_INIT "-resource-dir $(RESOURCE_DIR) -fPIC")' >> $@
 	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)' >> $@
 	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)' >> $@
@@ -305,8 +233,8 @@ $(BUILD_CMAKE): $(RUNTIMES)
 #
 # 4a. zlib + libxml2 (нужны clang/lldb).
 #
-ZLIB := $(EXTRA_PREFIX)/lib/libz.a
-LIBXML2 := $(EXTRA_PREFIX)/lib/libxml2.a
+ZLIB := $(SYSROOT)/lib/libz.a
+LIBXML2 := $(SYSROOT)/lib/libxml2.a
 
 $(ZLIB): $(BUILD_CMAKE)
 	@echo "Build zlib"
@@ -319,7 +247,7 @@ $(ZLIB): $(BUILD_CMAKE)
 		-DZLIB_BUILD_STATIC=On \
 		-DCMAKE_POSITION_INDEPENDENT_CODE=On \
 		-DCMAKE_C_FLAGS_INIT="-fPIC -ffunction-sections -fdata-sections" \
-		-DCMAKE_INSTALL_PREFIX=$(EXTRA_PREFIX)
+		-DCMAKE_INSTALL_PREFIX=$(SYSROOT)
 	cmake --build build/zlib
 	cmake --install build/zlib
 
@@ -340,7 +268,7 @@ $(LIBXML2): $(ZLIB)
 		-DLIBXML2_WITH_TLS=On \
 		-DCMAKE_POSITION_INDEPENDENT_CODE=On \
 		-DCMAKE_C_FLAGS_INIT="-fPIC -ffunction-sections -fdata-sections" \
-		-DCMAKE_INSTALL_PREFIX=$(EXTRA_PREFIX)
+		-DCMAKE_INSTALL_PREFIX=$(SYSROOT)
 	cmake --build build/libxml2
 	cmake --install build/libxml2
 
@@ -362,10 +290,8 @@ $(CLANG): $(LIBXML2)
 		-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 		-DLLVM_ENABLE_ZLIB=FORCE_ON \
 		-DZLIB_LIBRARY=$(ZLIB) \
-		-DZLIB_INCLUDE_DIR=$(EXTRA_PREFIX)/include \
 		-DLLVM_ENABLE_LIBXML2=FORCE_ON \
 		-DLIBXML2_LIBRARY=$(LIBXML2) \
-		-DLIBXML2_INCLUDE_DIR=$(EXTRA_PREFIX)/include/libxml2 \
 		-DLLVM_INCLUDE_BENCHMARKS=Off \
 		-DLLVM_BUILD_BENCHMARKS=Off \
 		$(LTO_FLAGS) \
@@ -374,6 +300,7 @@ $(CLANG): $(LIBXML2)
 		-DLLDB_ENABLE_CURSES=Off \
 		-DLLDB_ENABLE_LZMA=Off \
 		-DLLDB_ENABLE_LIBXML2=On \
+		-DLLVM_ENABLE_LIBCXX=On \
 		-DLLDB_INCLUDE_TESTS=Off \
 		-DLLDB_NO_INSTALL_DEFAULT_RPATH=On \
 		-DLLVM_ENABLE_PIC=On \
@@ -393,8 +320,8 @@ $(CLANG): $(LIBXML2)
 		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
 		-DCMAKE_EXE_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections" \
 		-DCMAKE_SHARED_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections" \
-		-DCMAKE_C_FLAGS_INIT="-resource-dir $(RESOURCE_DIR) -isystem $(EXTRA_PREFIX)/include -ffunction-sections -fdata-sections" \
-		-DCMAKE_CXX_FLAGS_INIT="-resource-dir $(RESOURCE_DIR) -isystem $(EXTRA_PREFIX)/include -ffunction-sections -fdata-sections" \
+		-DCMAKE_C_FLAGS_INIT="-resource-dir $(RESOURCE_DIR) -ffunction-sections -fdata-sections" \
+		-DCMAKE_CXX_FLAGS_INIT="-resource-dir $(RESOURCE_DIR) -ffunction-sections -fdata-sections" \
 		-DCMAKE_INSTALL_PREFIX=$(SYSROOT)
 	cmake --build build/llvm
 	cmake --install build/llvm
@@ -414,6 +341,10 @@ $(SYSROOT)/bin/spirv-opt: $(CLANG)
 		-DSPIRV_TOOLS_BUILD_STATIC=On \
 		-DSPIRV_WERROR=Off \
 		-DSPIRV-Headers_SOURCE_DIR=$(SPIRV_HEADERS_DIR) \
+		-DZLIB_INCLUDE=$(SYSROOT)\include \
+		-DZLIB_LIBRARY=$(ZLIB) \
+		-DLIBXML2_INCLUDE=$(SYSROOT)\include \
+		-DLIBXML2_LIBRARY=$(LIBXML2) \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_C_FLAGS_INIT="-fPIC -ffunction-sections -fdata-sections" \
 		-DCMAKE_CXX_FLAGS_INIT="-fPIC -ffunction-sections -fdata-sections" \
@@ -422,11 +353,9 @@ $(SYSROOT)/bin/spirv-opt: $(CLANG)
 		-DCMAKE_INSTALL_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
 		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
 		-DBUILD_SHARED_LIBS=Off \
-		-DCMAKE_INSTALL_PREFIX=$(SPIRV_PREFIX)
+		-DCMAKE_INSTALL_PREFIX=$(SYSROOT)
 	cmake --build build/spirv-tools
 	cmake --install build/spirv-tools
-	mkdir -p $(SYSROOT)/bin
-	cd $(SPIRV_PREFIX)/bin; cp -f $(SPIRV_BINS) $(SYSROOT)/bin/
 	touch $@
 
 $(SYSROOT)/bin/glslang: $(SYSROOT)/bin/spirv-opt
@@ -438,9 +367,8 @@ $(SYSROOT)/bin/glslang: $(SYSROOT)/bin/spirv-opt
 		-DENABLE_HLSL=Off \
 		-DENABLE_OPT=On \
 		-DALLOW_EXTERNAL_SPIRV_TOOLS=On \
-		-DCMAKE_FIND_ROOT_PATH=$(SPIRV_PREFIX) \
-		-DSPIRV-Tools_DIR=$(SPIRV_PREFIX)/lib/cmake/SPIRV-Tools \
-		-DSPIRV-Tools-opt_DIR=$(SPIRV_PREFIX)/lib/cmake/SPIRV-Tools-opt \
+		-DSPIRV-Tools_DIR=$(SYSROOT)/lib/cmake/SPIRV-Tools \
+		-DSPIRV-Tools-opt_DIR=$(SYSROOT)/lib/cmake/SPIRV-Tools-opt \
 		-DGLSLANG_ENABLE_INSTALL=On \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_C_FLAGS_INIT="-ffunction-sections -fdata-sections" \
@@ -536,6 +464,7 @@ $(OUT_SYSROOT)/lib/clang: $(SYSROOT)/lib/clang $(ALL_BUILT)
 	@mkdir -p $(OUT_SYSROOT)/lib
 	@rm -rf $@
 	cp -rf $< $@
+	rm -rf $@/lib $@/include $@/$(SP_LLVM_VER)/lib 
 
 $(OUT_SYSROOT)/bin/%: $(SYSROOT)/bin/% $(ALL_BUILT)
 	@mkdir -p $(OUT_SYSROOT)/bin
