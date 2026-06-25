@@ -34,7 +34,7 @@ class ServerAppThread;
 // Server-side proxy for a connected remote client: implements core::RenderClientChannel by
 // (eventually) serializing the calls over the QUIC connection to the real client, and is bound to
 // an AppWindow via AppThread::openConnection.
-class SP_PUBLIC RemoteRenderClient : public Ref, public core::RenderClientChannel {
+class SP_PUBLIC RemoteRenderClient : public core::RenderClientChannel {
 public:
 	virtual ~RemoteRenderClient();
 
@@ -60,6 +60,12 @@ public:
 	virtual void handleInputEvents(Vector<core::InputEventData> &&) override;
 	virtual void handleTextInput(const core::TextInputState &) override;
 	virtual void handleFramePresented(uint64_t frameOrder) override;
+
+	virtual void pushDrawStat(const core::DrawStat &) override;
+
+	// This client serves frames over the QUIC connection: its frames are tagged remote so the server's
+	// PresentationEngine can force-invalidate them if the connection is reset.
+	virtual bool isRemote() const override { return true; }
 
 	// Push a MaterialSet update for an already-shared queue to the client. `registry` mints (and keeps
 	// alive) ids for any newly-referenced gAPI objects.

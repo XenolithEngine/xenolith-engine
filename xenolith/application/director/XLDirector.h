@@ -39,7 +39,7 @@ class TextInputManager;
 class ActionManager;
 class DirectorWindow;
 
-class SP_PUBLIC Director : public Ref, public core::RenderClientChannel {
+class SP_PUBLIC Director : public core::RenderClientChannel {
 public:
 	using FrameRequest = core::FrameRequest;
 
@@ -104,7 +104,7 @@ public:
 
 	const core::FrameConstraints &getFrameConstraints() const { return _constraints; }
 
-	void pushDrawStat(const DrawStat &);
+	virtual void pushDrawStat(const DrawStat &) override;
 
 	const UpdateTime &getUpdateTime() const { return _time; }
 	const DrawStat &getDrawStat() const { return _drawStat; }

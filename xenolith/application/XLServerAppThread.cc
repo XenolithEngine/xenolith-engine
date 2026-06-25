@@ -278,7 +278,7 @@ bool ServerAppThread::setCompressionDictionary(BytesView d) {
 }
 
 bool ServerAppThread::sendMessageWithReply(remote::Domain d, uint8_t message, const Value &val,
-		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb) {
+		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb, uint64_t timeoutUs) {
 	if (!_remoteClient || _remoteClient->isClosed()) {
 		return false;
 	}
@@ -286,7 +286,7 @@ bool ServerAppThread::sendMessageWithReply(remote::Domain d, uint8_t message, co
 	uint32_t serial = 0;
 	if (_remoteClient->getConnection()->sendCborMessage(d, message, val, &serial)
 			== remote::GlobalError::Ok) {
-		waitForReply(serial, sp::move(cb));
+		waitForReply(serial, sp::move(cb), timeoutUs);
 		return true;
 	}
 	return false;
@@ -365,9 +365,7 @@ void ServerAppThread::pumpListener() {
 	// so a new client can connect after the previous one went away.
 	if (_remoteClient && _remoteClient->isClosed()) {
 		log::source().info("AppThread", "remote client disconnected; window reverts to fallback");
-		takeoverSharedWindows(nullptr); // hand the windows back to their local Directors
-		_remoteClient->closeConnection();
-		_remoteClient = nullptr; // free the single-connection slot for a new client
+		resetRemoteClient();
 	}
 
 	// Run the setup handshake for a freshly accepted connection (bounded, synchronous).
@@ -385,23 +383,50 @@ void ServerAppThread::pumpListener() {
 		}
 	}
 
+	// Request watchdog (same Looper cadence as keepalive below): if the client left one of our requests
+	// unanswered past that request's own reply deadline -- e.g. it received AcquireFrame but never
+	// replied -- the waiters were just failed with a local protocol error, so drop the connection.
+	if (_remoteClient && !_remoteClient->isClosed()) {
+		if (failTimedOutRequests()) {
+			log::source().info("AppThread",
+					"request reply timeout; terminating unresponsive client connection");
+			resetRemoteClient();
+		}
+	}
+
 	// Keepalive: a pong resets _lastPongTime (see dispatchMessage). If the client has not answered for
 	// kKeepalivePongTimeoutUs, terminate it (drops the connection, freeing the slot for a new client);
 	// otherwise send a ping at most every kKeepalivePingIntervalUs.
+	//
+	// The cadence is driven by AppThread's internal Looper timer (scheduleTimer, interval =
+	// ContextInfo::appUpdateInterval, default 1s, count = Infinite -> performAppUpdate -> pumpListener),
+	// NOT by frame/presentation timing. So keepalive keeps ticking at ~1s even when the window is idle
+	// and producing no frames (the display-link/PresentationEngine cadence is a separate path). Socket
+	// readiness also calls pumpListener, but only the timer guarantees progress while idle.
 	if (_remoteClient && !_remoteClient->isClosed()) {
 		auto now = sp::platform::clock(ClockType::Monotonic);
 		if (now - _lastPongTime >= kKeepalivePongTimeoutUs) {
 			log::source().info("AppThread",
 					"client keepalive timeout (no pong for 5s); terminating connection");
-			takeoverSharedWindows(nullptr); // hand the windows back to their local Directors
-			_remoteClient->closeConnection();
-			_remoteClient = nullptr;
+			resetRemoteClient();
 		} else if (now - _lastPingTime >= kKeepalivePingIntervalUs) {
 			if (auto conn = _remoteClient->getConnection()) {
 				conn->ping();
 			}
 			_lastPingTime = now;
 		}
+	}
+}
+
+void ServerAppThread::resetRemoteClient() {
+	// Revert every shared window to its local Director (this also kills the windows' in-flight remote
+	// frames), drop any still-outstanding reply waiters for the dead connection (their frames were just
+	// invalidated), then close the connection and free the single-connection slot for a new client.
+	takeoverSharedWindows(nullptr);
+	_requests.clear();
+	if (_remoteClient) {
+		_remoteClient->closeConnection();
+		_remoteClient = nullptr;
 	}
 }
 
@@ -473,6 +498,32 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			}
 			return true;
 		};
+		case remote::WindowCode::AttachQueue: {
+			// client -> server: the client compiled the shared queue and attached it to its Director, so
+			// it is now ready to serve frames. Hand the named window's frame production over to the
+			// remote client (its PresentationEngine starts pulling through RemoteRenderClient::acquireFrame
+			// instead of the local Director) and acknowledge with an empty atomic reply.
+			if (_remoteClient) {
+				auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
+				takeoverSharedWindow(windowId, _remoteClient);
+			}
+			if (conn) {
+				conn->sendReply(h.serial, remote::Domain(h.domain), h.code, BytesView());
+			}
+			return true;
+		};
+		case remote::WindowCode::ReadyForNextFrame: {
+			// client -> server: the client's scene has active actions/input and wants the next frame
+			// produced. Schedule it on the window's PresentationEngine so animation keeps progressing.
+			// Notification only: no reply.
+			if (_sharedObjects) {
+				auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
+				if (auto w = static_cast<AppWindow *>(_sharedObjects->resolveWindow(windowId))) {
+					w->setReadyForNextFrame();
+				}
+			}
+			return true;
+		};
 		default:
 			if (conn) {
 				conn->sendError(remote::Domain::Window, toInt(remote::GlobalError::NotImplemented),
@@ -518,9 +569,10 @@ void ServerAppThread::completePendingHandshake() {
 	_remoteClient = Rc<RemoteRenderClient>::create(this, sp::move(conn));
 	if (_remoteClient) {
 		_remoteClient->announce(_sharedObjects);
-		// The connected client now drives the shared windows' frames (server's PresentationEngine
-		// pulls through RemoteRenderClient::acquireFrame instead of the local Director).
-		takeoverSharedWindows(_remoteClient);
+		// Do NOT take the windows over yet: the client must first compile each shared queue and attach
+		// it to its Director. The per-window handover happens when the client sends WindowCode::AttachQueue
+		// (handled in dispatchMessage); until then the server keeps rendering through the local Directors,
+		// so AcquireFrame requests never reach a client that isn't ready to serve them.
 		// Start the keepalive clock fresh so the timeout is measured from connection establishment.
 		_lastPingTime = _lastPongTime = sp::platform::clock(ClockType::Monotonic);
 	}
@@ -535,11 +587,33 @@ void ServerAppThread::takeoverSharedWindows(core::RenderClientChannel *client) {
 		if (!w) {
 			continue;
 		}
+		if (!client) {
+			// Reverting to the local Director: kill any in-flight frames the (now-gone) remote client was
+			// producing so a frame stuck on it cannot wedge presentation before the local scene resumes.
+			w->invalidateRemoteFrames();
+		}
 		// On revert (client == nullptr) restore the window's own local Director.
 		w->setRenderClient(
 				client ? client : static_cast<core::RenderClientChannel *>(w->getDirector()));
-		w->setReadyForNextFrame();
+		// Restart presentation for the new client (clears a stale display-link barrier + pumps a frame).
+		w->resetForRenderClientChange();
 	}
+}
+
+void ServerAppThread::takeoverSharedWindow(uint64_t windowId, core::RenderClientChannel *client) {
+	if (!_sharedObjects) {
+		return;
+	}
+	auto w = static_cast<AppWindow *>(_sharedObjects->resolveWindow(windowId));
+	if (!w) {
+		log::source().warn("AppThread", "AttachQueue for unknown shared window ", windowId);
+		return;
+	}
+	// On revert (client == nullptr) restore the window's own local Director.
+	w->setRenderClient(
+			client ? client : static_cast<core::RenderClientChannel *>(w->getDirector()));
+	// Restart presentation for the new client (clears a stale display-link barrier + pumps a frame).
+	w->resetForRenderClientChange();
 }
 
 void ServerAppThread::performAppUpdate(const UpdateTime &time, bool wakeup) {

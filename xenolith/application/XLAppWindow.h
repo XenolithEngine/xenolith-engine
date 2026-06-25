@@ -89,6 +89,15 @@ public:
 
 	void setReadyForNextFrame() override; // from any thread
 
+	// Force-invalidate all in-flight frames served by a remote render client (PresentationFrame::Remote).
+	// Called when the remote connection is reset so a frame stuck on a dead client cannot wedge the
+	// pipeline before the window reverts to its local Director. From any thread.
+	void invalidateRemoteFrames();
+
+	// Restart presentation after the window's render client changed (remote takeover or revert). Clears a
+	// possibly-stale display-link barrier and pumps one fresh frame. From any thread.
+	void resetForRenderClientChange();
+
 	// Block current thread until next frame
 	virtual bool waitUntilFrame() override;
 

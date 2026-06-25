@@ -109,14 +109,14 @@ bool ClientAppThread::worker() {
 const ContextInfo *ClientAppThread::getContextInfo() const { return _clientContext->getInfo(); }
 
 bool ClientAppThread::sendMessageWithReply(remote::Domain d, uint8_t message, const Value &val,
-		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb) {
+		Function<void(const remote::MessageHeader &, BytesView payload)> &&cb, uint64_t timeoutUs) {
 	if (!_connection || !_connection->isOpen()) {
 		return false;
 	}
 
 	uint32_t serial = 0;
 	if (_connection->sendCborMessage(d, message, val, &serial) == remote::GlobalError::Ok) {
-		waitForReply(serial, sp::move(cb));
+		waitForReply(serial, sp::move(cb), timeoutUs);
 		return true;
 	}
 	return false;
@@ -155,14 +155,35 @@ void ClientAppThread::pumpConnection() {
 		return dispatchMessage(h, payload);
 	});
 
+	bool disconnect = false;
+
+	// Request watchdog (same cadence as keepalive): if the server left one of our requests unanswered
+	// past that request's own reply deadline, the waiter was just failed with a local protocol error --
+	// treat the server as gone and end the client.
+	if (_connection && failTimedOutRequests()) {
+		log::source().info("ClientAppThread",
+				"request reply timeout; disconnecting from unresponsive server");
+		disconnect = true;
+	}
+
 	// Keepalive: the server pings us ~1/s (resetting _lastPingTime). If it has gone silent past the
 	// timeout, the server is gone -- disconnect and end the client (stop() unwinds the looper, worker()
 	// returns, and the client process exits).
-	if (_connection
+	//
+	// Both checks are driven by AppThread's internal Looper timer (scheduleTimer, interval =
+	// ContextInfo::appUpdateInterval, default 1s, count = Infinite -> performAppUpdate -> pumpConnection),
+	// NOT by frame timing -- the client has no gapi loop / presentation cadence at all. So the timeouts
+	// are evaluated at a steady ~1s regardless of whether the scene is animating or idle. Socket readiness
+	// also calls pumpConnection, but only the timer guarantees this runs while no datagrams arrive.
+	if (!disconnect && _connection
 			&& sp::platform::clock(ClockType::Monotonic) - _lastPingTime
 					>= kKeepalivePingTimeoutUs) {
 		log::source().info("ClientAppThread",
 				"server keepalive timeout (no ping for 5s); disconnecting");
+		disconnect = true;
+	}
+
+	if (disconnect && _connection) {
 		if (_listenPoll) {
 			_listenPoll->cancel();
 			_listenPoll = nullptr;

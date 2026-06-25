@@ -61,8 +61,27 @@ struct FrameTimingInfo {
 	uint64_t lastTimestampFrameTime = 0;
 };
 
+struct SP_PUBLIC DrawStat {
+	uint32_t vertexes;
+	uint32_t triangles;
+	uint32_t zPaths;
+	uint32_t drawCalls;
+
+	uint32_t cachedImages;
+	uint32_t cachedFramebuffers;
+	uint32_t cachedImageViews;
+	uint32_t materials;
+
+	uint32_t solidCmds;
+	uint32_t surfaceCmds;
+	uint32_t transparentCmds;
+	uint32_t shadowsCmds;
+
+	uint32_t vertexInputTime;
+};
+
 // Implemented by the CLIENT (Director/scene). The SERVER calls into it.
-class SP_PUBLIC RenderClientChannel {
+class SP_PUBLIC RenderClientChannel : public Ref {
 public:
 	// Out-of-line in the .cc: anchors the vtable (key function) and suppresses the
 	// freestanding-delete warning there via __SPRT_*_ALLOW_CXXABI_ALLOC.
@@ -93,6 +112,14 @@ public:
 
 	// Frame-lifecycle feedback for client-side pacing/stats (a frame finished presenting).
 	virtual void handleFramePresented(uint64_t frameOrder) = 0;
+
+	virtual void pushDrawStat(const DrawStat &) = 0;
+
+	// True for a client that serves frames over the wire (remote transport). The server tags such a
+	// client's frames PresentationFrame::Remote so they can be force-invalidated if the connection drops
+	// (a non-responding remote client must not wedge the window's presentation). Local clients return
+	// false (the default).
+	virtual bool isRemote() const { return false; }
 };
 
 // Implemented by the SERVER (PresentationEngine/window/loop). The CLIENT calls into it.

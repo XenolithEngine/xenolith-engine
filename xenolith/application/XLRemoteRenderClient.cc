@@ -32,6 +32,11 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
+// A client must answer an AcquireFrame request within this budget. It is short by design: a frame the
+// presentation engine is already waiting on must not stall, and a client that misses it is treated as
+// gone (the request watchdog fails the waiter and the server drops the connection).
+static constexpr uint64_t kAcquireFrameReplyTimeoutUs = 2'000'000; // 2s
+
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
 
 RemoteRenderClient::~RemoteRenderClient() = default;
@@ -115,7 +120,8 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 
 	auto sent = _host->sendMessageWithReply(remote::Domain::Window,
 			toInt(remote::WindowCode::AcquireFrame), req,
-			[this, pending, frameId, localProxy](const remote::MessageHeader &h, BytesView payload) {
+			[this, pending, frameId, localProxy](const remote::MessageHeader &h,
+					BytesView payload) {
 		if (remote::isError(h)) {
 			log::source().warn("RemoteRenderClient", "AcquireFrame ", frameId, " rejected (code ",
 					uint32_t(h.code), ")");
@@ -140,7 +146,7 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 		localProxy->selectQueue(sq->queue);
 		_pendingFrames.emplace(frameId, localProxy);
 		pending->cb(true);
-	});
+	}, kAcquireFrameReplyTimeoutUs);
 
 	if (!sent) {
 		pending->cb(false);
@@ -174,7 +180,7 @@ void RemoteRenderClient::handleFrameInput(uint64_t frameId, SpanView<StringView>
 			continue;
 		}
 		if (!input) {
-			input = attData->attachment->makeInputData();
+			input = attData->attachment->makeInputData(this);
 		}
 		atts.emplace_back(attData);
 	}
@@ -200,6 +206,7 @@ void RemoteRenderClient::handleConstraintsChanged(const core::FrameConstraints &
 void RemoteRenderClient::handleInputEvents(Vector<core::InputEventData> &&) { }
 void RemoteRenderClient::handleTextInput(const core::TextInputState &) { }
 void RemoteRenderClient::handleFramePresented(uint64_t) { }
+void RemoteRenderClient::pushDrawStat(const core::DrawStat &) { }
 
 void RemoteRenderClient::handleMaterialsUpdated(uint64_t queue, NotNull<core::MaterialSet> set,
 		NotNull<remote::ObjectRegistry> registry) {

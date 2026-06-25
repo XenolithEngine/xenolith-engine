@@ -181,12 +181,26 @@ public:
 	core::Object *resolveObject(uint64_t) const;
 	core::Queue *resolveQueue(uint64_t id) const;
 
+	// Map a gAPI image object id back to the resource ImageData that wraps it. Material images on the
+	// mirror reference an image by the object id; FrameContext::getMaterialInfo needs the ImageData
+	// (`it.image->image->getIndex()`), so the resource decode registers id -> ImageData here.
+	void registerImageData(uint64_t id, const core::ImageData *d) {
+		if (id && d) {
+			_imageDataById.emplace(id, d);
+		}
+	}
+	const core::ImageData *resolveImageData(uint64_t id) const {
+		auto it = _imageDataById.find(id);
+		return (it != _imageDataById.end()) ? it->second : nullptr;
+	}
+
 	size_t size() const { return _objectById.size(); }
 	void clear();
 
 protected:
 	Map<uint64_t, Rc<core::Object>> _objectById;
 	Map<uint64_t, Rc<core::Queue>> _queueById;
+	Map<uint64_t, const core::ImageData *> _imageDataById;
 };
 
 } // namespace stappler::xenolith::remote

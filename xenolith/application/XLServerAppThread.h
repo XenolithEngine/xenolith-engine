@@ -90,8 +90,9 @@ public:
 	virtual bool shareWindow(AppWindow *, SpanView<core::Queue *>,
 			const HashMap<const core::MaterialAttachment *, Rc<core::MaterialSet>> & = {}) override;
 
+	// `timeoutUs` is this request's reply deadline (relative us; 0 == none) -- see waitForReply.
 	bool sendMessageWithReply(remote::Domain, uint8_t message, const Value &,
-			Function<void(const remote::MessageHeader &, BytesView payload)> &&);
+			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs);
 
 protected:
 	// Also clears shared objects if not empty
@@ -117,6 +118,16 @@ protected:
 	// Swap every shared window's render client: `client` (the connected remote client) takes over on
 	// connect; pass nullptr to revert each window to its own local Director on disconnect.
 	void takeoverSharedWindows(core::RenderClientChannel *client);
+
+	// Swap a single shared window's render client (resolved by its server-assigned id). Driven by the
+	// client's WindowCode::AttachQueue once it is ready to render that window; pass nullptr to revert
+	// just that window to its own local Director.
+	void takeoverSharedWindow(uint64_t windowId, core::RenderClientChannel *client);
+
+	// Tear down the current remote client: revert all shared windows to their local Directors (killing
+	// in-flight remote frames), drop outstanding reply waiters, close the connection and free the slot.
+	// Shared by the disconnect, request-timeout and keepalive-timeout paths.
+	void resetRemoteClient();
 
 	// Parse a received message and route it by (domain, code). Returns true if the message was
 	// consumed, false to defer it for a later poll (xcb-style out-of-order handling). Only the Global

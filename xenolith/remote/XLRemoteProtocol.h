@@ -80,6 +80,13 @@ enum class WindowCode {
 	AcquireFrame = 2, // server -> client request: produce a frame; reply selects a render queue
 	FrameInput = 3, // client -> server: one serialized per-attachment input for a frame
 	FrameCommit = 4, // client -> server: all inputs for a frame have been submitted
+	AttachQueue = 5, // client -> server request [windowId]: the client compiled the shared queue and
+					 // attached it to its Director; only on this sync does the server route the
+					 // window's frames to the client (so AcquireFrame can't arrive before the client
+					 // is ready). Reply is an empty, atomic acknowledgement.
+	ReadyForNextFrame = 6, // client -> server notification [windowId]: the client's scene has active
+						   // actions/input and wants another frame; the server schedules the next
+						   // frame on the window's PresentationEngine. Fire-and-forget (no reply).
 };
 
 enum class WindowError : uint8_t {
@@ -113,17 +120,29 @@ enum class MessageType : uint8_t {
 	ClientError = 7, // Client replies with a error, serial is a number of request, code is error
 };
 
+// Map a Role onto the matching MessageType for a request / reply / error. The offsets follow the
+// MessageType layout above: Server=1/Client=2, ServerReply=4/ClientReply=5, ServerError=6/ClientError=7
+// -- i.e. reply is role+3 and error is role+5 (there is a reserved gap at value 3). Getting these wrong
+// mistypes messages so the peer's isReply()/isError() routing misclassifies them.
 static inline constexpr MessageType MessageTypeRequest(Role role) {
 	return MessageType(toInt(role));
 }
 
 static inline constexpr MessageType MessageTypeReply(Role role) {
-	return MessageType(toInt(role) + 2);
+	return MessageType(toInt(role) + 3);
 }
 
 static inline constexpr MessageType MessageTypeError(Role role) {
-	return MessageType(toInt(role) + 4);
+	return MessageType(toInt(role) + 5);
 }
+
+static_assert(MessageTypeRequest(Role::Server) == MessageType::Server
+		&& MessageTypeRequest(Role::Client) == MessageType::Client
+		&& MessageTypeReply(Role::Server) == MessageType::ServerReply
+		&& MessageTypeReply(Role::Client) == MessageType::ClientReply
+		&& MessageTypeError(Role::Server) == MessageType::ServerError
+		&& MessageTypeError(Role::Client) == MessageType::ClientError,
+		"MessageType role mapping is out of sync with the MessageType enum");
 
 enum class MessageFlags : uint8_t {
 	None = 0,

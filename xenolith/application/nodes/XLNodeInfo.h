@@ -24,6 +24,7 @@
 #define XENOLITH_APPLICATION_NODES_XLNODEINFO_H_
 
 #include "XLContextInfo.h"
+#include "XLCoreRenderSession.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -127,24 +128,8 @@ struct SP_PUBLIC DrawStateValues {
 	}
 };
 
-struct SP_PUBLIC DrawStat {
-	uint32_t vertexes;
-	uint32_t triangles;
-	uint32_t zPaths;
-	uint32_t drawCalls;
+using core::DrawStat;
 
-	uint32_t cachedImages;
-	uint32_t cachedFramebuffers;
-	uint32_t cachedImageViews;
-	uint32_t materials;
-
-	uint32_t solidCmds;
-	uint32_t surfaceCmds;
-	uint32_t transparentCmds;
-	uint32_t shadowsCmds;
-
-	uint32_t vertexInputTime;
-};
 } // namespace stappler::xenolith
 
 #endif /* XENOLITH_APPLICATION_XLNODEINFO_H_ */

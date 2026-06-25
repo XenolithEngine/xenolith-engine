@@ -269,6 +269,14 @@ core::SwapchainConfig AppWindow::selectConfig(const core::SurfaceInfo &cfg, bool
 
 void AppWindow::acquireFrameData(NotNull<core::PresentationFrame> frame,
 		Function<void(NotNull<core::PresentationFrame>)> &&cb) {
+	// Tag the frame remote up front, on the presentation thread, so the engine tracks it for
+	// connection-reset cleanup even while it is only awaiting the client's reply below. The render
+	// client is only swapped via ServerAppThread::takeoverShared* (app thread), so this pointer read is
+	// benign.
+	if (_client && _client->isRemote()) {
+		frame->markRemote();
+	}
+
 	_application->performOnAppThread(
 			[this, frame = Rc<core::PresentationFrame>(frame), cb = sp::move(cb),
 					req = Rc<core::FrameRequest>(frame->getRequest())]() mutable {
@@ -447,6 +455,22 @@ void AppWindow::setReadyForNextFrame() {
 			_presentationEngine->setReadyForNextFrame();
 		}
 	}, this, true);
+}
+
+void AppWindow::invalidateRemoteFrames() {
+	_context->performOnThread([this] {
+		if (_presentationEngine) {
+			_presentationEngine->invalidateRemoteFrames();
+		}
+	}, this);
+}
+
+void AppWindow::resetForRenderClientChange() {
+	_context->performOnThread([this] {
+		if (_presentationEngine) {
+			_presentationEngine->resetForRenderClientChange();
+		}
+	}, this);
 }
 
 bool AppWindow::waitUntilFrame() {

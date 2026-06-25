@@ -123,6 +123,12 @@ bool PresentationEngine::scheduleSwapchainImage(Rc<PresentationFrame> &&frame) {
 							frame->getRequest()->getQueue()->getName(),
 							"': no usable output attachments found");
 				}
+				// Full frame invalidation (not just engine bookkeeping): this returns the swapchain image
+				// the frame already acquired -- to the reuse pool when no queue was ever assigned (the
+				// usual case when a remote client never answered AcquireFrame), or to the swapchain when
+				// rendering had started. Calling handleFrameInvalidated() directly here would skip that and
+				// strand the acquired image.
+				frame->invalidate();
 				return;
 			}
 
@@ -164,6 +170,14 @@ bool PresentationEngine::scheduleSwapchainImage(Rc<PresentationFrame> &&frame) {
 			frame->invalidate();
 		}
 	});
+
+	// Track a remote-served frame from the moment it is scheduled. The window marks it Remote (above, in
+	// acquireFrameData) when it is handed to a remote client; tracking it here -- before it enters
+	// _activeFrames via submitFrame -- means a connection reset can still force-invalidate a frame that
+	// is merely awaiting the client's AcquireFrame reply (the exact state a non-responding client wedges).
+	if (frame->hasFlag(PresentationFrame::Remote)) {
+		_remoteFrames.emplace(frame.get(), frame);
+	}
 
 	if (frame->getSwapchainImage()) {
 		scheduleImage(frame);
@@ -275,6 +289,12 @@ void PresentationEngine::end() {
 		releaseList.emplace_back(it);
 		it->invalidate();
 	}
+
+	// Remote frames still awaiting a client reply are not in _activeFrames/_totalFrames yet; invalidate
+	// them too (idempotent for any already handled above).
+	auto remoteFrames = sprt::move(_remoteFrames);
+	_remoteFrames.clear();
+	for (auto &it : remoteFrames) { it.second->invalidate(); }
 
 	releaseList.clear();
 
@@ -513,6 +533,7 @@ void PresentationEngine::handleFrameInvalidated(NotNull<PresentationFrame> frame
 	XL_COREPRESENT_LOG(frame->getFrameOrder(), ": handleFrameInvalidated");
 
 	cancelFrameDeadline(frame);
+	_remoteFrames.erase(frame.get());
 
 	auto it = _framesAwaitingImages.begin();
 	while (it != _framesAwaitingImages.end()) {
@@ -530,6 +551,16 @@ void PresentationEngine::handleFrameInvalidated(NotNull<PresentationFrame> frame
 
 	_activeFrames.erase(frame);
 	_totalFrames.erase(frame);
+
+	// A scheduled frame raises the display-link barrier (_waitForDisplayLink, see scheduleNextImage),
+	// which is normally lowered when a frame presents. A frame that is invalidated never presents, so if
+	// it was the last in-flight frame nothing remains to lower the barrier -- and in barrier mode the
+	// display-link signal is itself driven by presentation, so it would stay raised forever, wedging all
+	// further scheduling. Release it only in that no-frame-left case (so continuous, normally-presenting
+	// frames keep their display-link pacing untouched).
+	if (_activeFrames.empty()) {
+		_waitForDisplayLink = false;
+	}
 
 	if (_swapchain->isDeprecated() && _swapchain->getAcquiredImagesCount() == 0) {
 		// perform on next stack frame
@@ -559,6 +590,7 @@ void PresentationEngine::handleFramePresented(NotNull<PresentationFrame> frame) 
 	XL_COREPRESENT_LOG(frame->getFrameOrder(), ": handleFramePresented");
 
 	cancelFrameDeadline(frame);
+	_remoteFrames.erase(frame.get());
 
 	if (!frame->hasFlag(PresentationFrame::DoNotPresent)) {
 		_window->handleFramePresented(frame);
@@ -580,6 +612,7 @@ void PresentationEngine::handleFramePresented(NotNull<PresentationFrame> frame) 
 void PresentationEngine::handleFrameComplete(NotNull<PresentationFrame> frame) {
 	XL_COREPRESENT_LOG(frame->getFrameOrder(), ": handleFrameCancel");
 	cancelFrameDeadline(frame);
+	_remoteFrames.erase(frame.get());
 	if (frame->hasFlag(PresentationFrame::DoNotPresent)) {
 		_detachedFrames.erase(frame);
 		return;
@@ -660,6 +693,34 @@ void PresentationEngine::cancelFrameDeadline(NotNull<PresentationFrame> frame) {
 
 void PresentationEngine::handleSwapchainUpdated(const FrameConstraints &c) {
 	_window->handleSwapchainUpdated(c);
+}
+
+void PresentationEngine::invalidateRemoteFrames() {
+	if (_remoteFrames.empty()) {
+		return;
+	}
+	// Snapshot + clear first: frame->invalidate() re-enters handleFrameInvalidated, which mutates
+	// _remoteFrames. The held Rc keeps each frame alive across its own invalidation even if the dropped
+	// connection was its only other owner.
+	auto frames = sprt::move(_remoteFrames);
+	_remoteFrames.clear();
+	log::source().warn("core::PresentationEngine", "Killing ", frames.size(),
+			" remote frame(s) after client reset");
+	for (auto &it : frames) { it.second->invalidate(); }
+}
+
+void PresentationEngine::resetForRenderClientChange() {
+	// The window's render client just changed (a remote client took over, or the window reverted to its
+	// local Director after a reset). A frame that was dropped rather than presented may have left the
+	// display-link barrier raised; in barrier mode the display-link signal is driven by presentation, so
+	// once frames stop it can never fire again to clear it -- wedging all further scheduling. Clear it
+	// and pump one fresh frame to restart the present -> display-link cycle for the new client. This runs
+	// only on a client change, so it does not affect normal frame pacing.
+	_waitForDisplayLink = false;
+	_readyForNextFrame = true;
+	if (canScheduleNextFrame()) {
+		scheduleNextImage();
+	}
 }
 
 void PresentationEngine::captureScreenshot(
@@ -833,6 +894,14 @@ void PresentationEngine::handleSwapchainImageReady(Rc<Swapchain::SwapchainAcquir
 	if (!_framesAwaitingImages.empty()) {
 		// run next image query if someone waits for it
 		acquireScheduledImage();
+	}
+}
+
+void PresentationEngine::reclaimAcquiredImage(Rc<Swapchain::SwapchainAcquiredImage> &&image) {
+	// Only re-pool an image that still belongs to the current swapchain; one from a superseded swapchain
+	// is dropped (that swapchain's teardown reclaims it).
+	if (image && _swapchain && image->swapchain == _swapchain) {
+		_acquiredSwapchainImages.emplace_back(sp::move(image));
 	}
 }
 

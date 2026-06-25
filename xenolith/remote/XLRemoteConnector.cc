@@ -282,13 +282,23 @@ void ClientConnection::poll(const Callback<bool(const MessageHeader &, BytesView
 
 		BytesViewNetwork nw(buf, n);
 
-		// Read full messages immediately
-		while (readMessagePayload(nw, _dict, [&](const MessageHeader &h, BytesView data) {
-			if (!dispatchCb(h, data)) {
-				_reader.addMessage(h, data);
-			}
-		})) { }
+		// Fast path: only when the reassembler is fully idle -- no buffered partial AND nothing queued.
+		// Then this chunk begins on a frame boundary and can be parsed (and dispatched inline) straight
+		// out of it, no copy into _buffer. Requiring an empty buffer avoids desync: with a buffered
+		// partial the fresh bytes are that frame's continuation, and parsing them as a new header would
+		// scramble the stream. Requiring an empty pending queue preserves order: queued frames dispatch
+		// at end-of-poll, so fast-path-dispatching newer frames ahead of them would reorder the stream
+		// (e.g. a FrameInput after its FrameCommit). When either holds, fall through to append().
+		if (!_reader.hasPartialMessage() && !_reader.hasPending()) {
+			while (readMessagePayload(nw, _dict, [&](const MessageHeader &h, BytesView data) {
+				if (!dispatchCb(h, data)) {
+					_reader.addMessage(h, data);
+				}
+			})) { }
+		}
 
+		// Buffer the remainder: a trailing partial frame, or the whole chunk when a partial was already
+		// buffered. The reassembler completes it on a later read.
 		if (!nw.empty()) {
 			if (!_reader.append(BytesView(nw), dict)) {
 				log::source().error("remote::Connector",

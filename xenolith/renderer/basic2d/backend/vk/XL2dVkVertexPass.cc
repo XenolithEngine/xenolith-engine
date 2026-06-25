@@ -1044,7 +1044,9 @@ void VertexMaterialVertexProcessor::finalize(DynamicData *data) {
 	_drawStat.transparentCmds = transparentCmds;
 	_drawStat.shadowsCmds = shadowsCmds;
 	_drawStat.vertexInputTime = uint32_t(t - _time);
-	_input->director->pushDrawStat(_drawStat);
+	if (_input->client) {
+		_input->client->pushDrawStat(_drawStat);
+	}
 
 	_attachment->loadData(sp::move(_input), sp::move(_indexes), sp::move(_vertexes),
 			sp::move(_transforms), sp::move(materialSpans), sp::move(shadowSolidSpans),
