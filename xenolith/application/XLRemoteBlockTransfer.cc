@@ -99,8 +99,7 @@ uint64_t BlockTransferManager::startTransfer(DataType type, BytesView data, Valu
 	};
 
 	if (!_owner->remoteSendCborWithReply(remote::Domain::Data, toInt(remote::DataCode::Announce),
-				announce,
-				[this, id](const remote::MessageHeader &h, BytesView) {
+				announce, [this, id](const remote::MessageHeader &h, BytesView) {
 		auto it = _outgoing.find(id);
 		if (it == _outgoing.end()) {
 			return; // released / reset while the announce was in flight
@@ -170,8 +169,8 @@ void BlockTransferManager::pumpOutgoing(uint64_t id) {
 		auto self = Rc<BlockTransferManager>(this);
 		_owner->performOnAppThread([self, id] { self->pumpOutgoing(id); }, _owner, true);
 	} else {
-		log::source().info("BlockTransfer", "streamed all ", t.packetCount, " packet(s) for transfer ",
-				t.id);
+		log::source().info("BlockTransfer", "streamed all ", t.packetCount,
+				" packet(s) for transfer ", t.id);
 	}
 }
 
@@ -282,10 +281,10 @@ bool BlockTransferManager::handlePacket(const remote::MessageHeader &, BytesView
 		return true;
 	}
 	size_t off = size_t(index) * t.packetSize;
-	size_t expected = sprt::min(size_t(t.packetSize), t.size - off);
+	size_t expected = sprt::min(size_t(t.packetSize), size_t(t.size - off));
 	if (chunk.size() != expected) {
-		log::source().warn("BlockTransfer", "packet ", index, " size ", chunk.size(), " != ",
-				expected, " for transfer ", id, "; aborting");
+		log::source().warn("BlockTransfer", "packet ", index, " size ", chunk.size(),
+				" != ", expected, " for transfer ", id, "; aborting");
 		markUnavailable(id);
 		return true;
 	}
