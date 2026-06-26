@@ -134,7 +134,9 @@ struct Looper::Data : public detail::AllocPool {
 Looper *Looper::acquire(LooperInfo &&info) {
 	return acquire(move(info),
 			QueueInfo{
-				.flags = QueueFlags::SubmitImmediate | QueueFlags::ThreadNative,
+				// SubmitImmediate activates SQPOLL for I/O heavy work, impractical for GUI and defaults
+				// .flags = QueueFlags::SubmitImmediate | QueueFlags::ThreadNative,
+				.flags = QueueFlags::ThreadNative,
 				.engineMask = info.engineMask,
 				.osIdleInterval = TimeInterval::milliseconds(100),
 			});
