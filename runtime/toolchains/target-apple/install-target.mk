@@ -137,6 +137,7 @@ $(T_TARGET)/runtime.mk: $(lastword $(MAKEFILE_LIST))
 	@echo 'MODULE_RUNTIME_GENERAL_CXXFLAGS := -DSPRT_SHARED_RUNTIME' >> $@
 	@echo 'RUNTIME_INSTALL_LIBRARY := $$(TARGET_SYSROOT)/usr/lib/libsprt.dylib' >> $@
 	@echo '$$(call define_module, runtime, MODULE_RUNTIME)' >> $@
+	@echo '$$(call define_module, runtime_window, MODULE_RUNTIME_WINDOW)' >> $@
 
 all: $(T_TARGET)/usr/lib/libsprt.tbd $(T_TARGET)/runtime.mk
 
