@@ -22,8 +22,11 @@
 
 #include "XLRemoteWindow.h"
 #include "XLRemoteSerialize.h"
+#include "XLRemoteProtocol.h"
 #include "XLClientAppThread.h"
 #include "XLCoreFrameRequestProxy.h"
+#include "XLCoreMaterial.h" // forward runtime material compiles to the server
+#include "XLCoreAttachment.h" // DependencyEvent ids
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
@@ -130,6 +133,12 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 	auto proxy = Rc<core::RemoteFrameRequestProxy>::create(c, frameId,
 			[thread, frameId](SpanView<const core::AttachmentData *> atts, BytesView bytes) {
 		if (auto conn = thread->getConnection()) {
+			// Flush this frame's pending glyph requests BEFORE its FrameInput, so the server registers the
+			// gating dependency (via GlyphRequest) before it reconciles the frame against it -- otherwise
+			// the reconcile finds nothing and the glyphs are not actually gated. The font dependency baked
+			// into the serialized `bytes` matches the one the flush submits.
+			thread->flushPendingFontGlyphs();
+
 			// [frameId, keys[], bytes] -- one serialized input addressed to multiple attachments.
 			Value msg;
 			msg.addInteger(int64_t(frameId));
@@ -177,8 +186,48 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 }
 
 void RemoteWindow::compileResource(Rc<core::Resource> &&, Function<void(bool)> &&, bool preload) { }
-void RemoteWindow::compileMaterials(Rc<core::MaterialInputData> &&,
-		const Vector<Rc<core::DependencyEvent>> &) { }
+
+void RemoteWindow::compileMaterials(Rc<core::MaterialInputData> &&req,
+		const Vector<Rc<core::DependencyEvent>> &deps) {
+	// The headless client cannot compile a runtime material (no GPU). Forward the request to the server,
+	// which resolves the image refs (the atlas image id -> its DynamicImage), compiles into the window's
+	// MaterialSet under the client-assigned ids, signals the gating deps, and pushes the set back.
+	auto conn = _thread->getConnection();
+	if (!conn || !req) {
+		return;
+	}
+
+	slog().info("RemoteWindow", "compileMaterials: forwarding ",
+			req->materialsToAddOrUpdate.size(), " material(s), ", deps.size(), " dep(s)");
+
+	Value msg;
+	msg.setInteger(int64_t(_id), "window");
+
+	Value depv;
+	for (auto &d : deps) {
+		if (d) {
+			depv.addInteger(int64_t(d->getId()));
+		}
+	}
+	msg.setValue(sp::move(depv), "deps");
+
+	Value mats;
+	for (auto &m : req->materialsToAddOrUpdate) {
+		Value mv;
+		mv.setInteger(int64_t(m->getId()), "id");
+		mv.setString(m->getPipeline() ? StringView(m->getPipeline()->key) : StringView(), "pl");
+		Value imgs;
+		for (auto &mi : m->getImages()) { imgs.addValue(remote::serializeMaterialImage(mi)); }
+		mv.setValue(sp::move(imgs), "imgs");
+		mats.addValue(sp::move(mv));
+	}
+	msg.setValue(sp::move(mats), "mats");
+
+	// dynamicMaterialsToUpdate / materialsToRemove are not forwarded yet (the font add-path is enough for
+	// remote text; atlas growth is tracked server-side via the dynamic material).
+	conn->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::CompileMaterials), msg);
+}
+
 void RemoteWindow::compileImage(const Rc<core::DynamicImage> &, Function<void(bool)> &&) { }
 
 void RemoteWindow::attachRenderQueue(const Rc<core::Queue> &) {
@@ -284,8 +333,56 @@ bool RemoteWindow::deliverScreenshot(uint32_t serial, const core::ImageInfoData 
 
 bool RemoteWindow::openWindowMenu(Vec2 pos) { return false; }
 
-void RemoteWindow::handleInputEvents(Vector<core::InputEventData> &&events) { }
+void RemoteWindow::handleInputEvents(Vector<core::InputEventData> &&events) {
+	// Server-forwarded platform input (WindowCode::InputEvents): replay it into the local Director's
+	// render endpoint (_client), exactly as a real window would feed its own scene. Runs on the app
+	// thread (the connection dispatch loop), where the scene graph lives. Window-state events also
+	// update the mirrored state so getWindowState() stays consistent.
+	for (auto &event : events) {
+		if (event.event == core::InputEventName::WindowState) {
+			_state = event.window.state;
+		}
+	}
+	if (_client) {
+		_client->handleInputEvents(sp::move(events));
+	}
+}
 
-void RemoteWindow::updateLayers(sprt::window::Vector<sprt::window::WindowLayer> &&) { }
+void RemoteWindow::updateLayers(sprt::window::Vector<sprt::window::WindowLayer> &&layers) {
+	// The client's scene graph (InputDispatcher) computes the window's interaction layers (hit/cursor/
+	// drag regions), but the server owns the real OS window. Forward them as a raw blob
+	// [u64 windowId (network order)][WindowLayer[] native layout]; the server applies them to its native
+	// window. WindowLayer is trivially copyable, so the array ships verbatim (one build/ABI).
+	static_assert(__is_trivially_copyable(sprt::window::WindowLayer),
+			"WindowLayer must be trivially copyable to ship as a raw blob");
+	auto conn = _thread ? _thread->getConnection() : nullptr;
+	if (!conn) {
+		return;
+	}
+
+	const size_t payloadBytes = layers.size() * sizeof(sprt::window::WindowLayer);
+	const uint8_t *payloadPtr = reinterpret_cast<const uint8_t *>(layers.data());
+
+	// Dedup: the dispatcher recomputes the layer set every input commit; skip an unchanged set so the
+	// server is not flooded with identical updates each frame.
+	if (_lastLayersBlob.size() == payloadBytes
+			&& (payloadBytes == 0
+					|| sprt::memcmp(_lastLayersBlob.data(), payloadPtr, payloadBytes) == 0)) {
+		return;
+	}
+	_lastLayersBlob.assign(payloadPtr, payloadPtr + payloadBytes);
+
+	Bytes blob;
+	blob.resize(sizeof(uint64_t) + payloadBytes);
+	uint64_t widN = sprt::byteorder::HostToNetwork(_id);
+	__sprt_memcpy(blob.data(), &widN, sizeof(uint64_t));
+	if (payloadBytes) {
+		__sprt_memcpy(blob.data() + sizeof(uint64_t), payloadPtr, payloadBytes);
+	}
+
+	slog().info("RemoteWindow", "updateLayers: forwarding ", layers.size(), " layer(s)");
+	conn->sendMessage(remote::Domain::Window, toInt(remote::WindowCode::UpdateLayers),
+			BytesView(blob.data(), blob.size()));
+}
 
 } // namespace stappler::xenolith

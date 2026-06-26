@@ -594,6 +594,12 @@ void Label::updateVertexes(FrameInfo &frame) {
 }
 
 void Label::onFontSourceUpdated() {
+	// (Re)bind the atlas texture. In the local case this is the same DynamicImage already set at
+	// handleEnter (harmless); it matters when the controller loads *after* the label entered (the remote
+	// client), where handleEnter took the onLoaded path and the texture was never set otherwise.
+	if (_source) {
+		setTexture(Rc<Texture>(_source->getTexture()));
+	}
 	setLabelDirty();
 	_vertexesDirty = true;
 }

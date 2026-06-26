@@ -25,6 +25,8 @@
 #include "SPFontLibrary.h"
 #include "SPLog.h"
 
+#include <sprt/runtime/hash.h>
+
 #include "ft2build.h" // IWYU pragma: keep
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
@@ -227,6 +229,14 @@ void FontFaceData::inspectVariableFont(FontLayoutParameters params, FT_Library l
 }
 
 BytesView FontFaceData::getView() const { return _view; }
+
+uint64_t FontFaceData::getContentHash() const {
+	auto v = getView();
+	if (v.empty()) {
+		return 0;
+	}
+	return sprt::xxh64::hash(reinterpret_cast<const char *>(v.data()), v.size(), 0);
+}
 
 FontSpecializationVector FontFaceData::getSpecialization(
 		const FontSpecializationVector &vec) const {

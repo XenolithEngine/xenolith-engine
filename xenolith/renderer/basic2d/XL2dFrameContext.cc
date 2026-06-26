@@ -91,6 +91,12 @@ void FrameContext2d::submitHandle(FrameInfo &frame, FrameContextHandle *handle) 
 		handle->waitDependencies.emplace_back(_materialDependency);
 	}
 
+	// Submit materials (which forwards CompileMaterials on the remote path) BEFORE the frame input, so the
+	// server registers the material gating dependency before it reconciles the frame against it -- the
+	// frame's waitDependencies already captured _materialDependency above. Order is immaterial locally
+	// (the dependency is shared by pointer); it matters only for the remote message ordering.
+	FrameContext::submitHandle(frame, handle);
+
 	frame.director->performOnRenderThread(
 			[this, req = frame.request, q = _queue, dir = frame.director,
 					h = Rc<FrameContextHandle2d>(h)]() mutable {
@@ -101,8 +107,6 @@ void FrameContext2d::submitHandle(FrameInfo &frame, FrameContextHandle *handle) 
 		req->addInput(makeSpanView(atts, 3), Rc<FrameContextHandle2d>(h));
 	},
 			this);
-
-	FrameContext::submitHandle(frame, handle);
 }
 
 bool FrameContext2d::initWithQueue(core::Queue *queue) {

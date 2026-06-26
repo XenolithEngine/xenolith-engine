@@ -215,6 +215,29 @@ uint64_t ObjectRegistry::share(core::Object *obj) {
 	return id;
 }
 
+void ObjectRegistry::pinObject(core::Object *obj, uint64_t id) {
+	if (!obj || !id) {
+		return;
+	}
+	// Detach whatever object currently holds `id`.
+	auto idIt = _objectById.find(id);
+	if (idIt != _objectById.end()) {
+		if (idIt->second.get() == obj) {
+			return; // already pinned to this object
+		}
+		_objectByPtr.erase(idIt->second.get());
+	}
+	// Detach any other id this object previously held.
+	auto ptrIt = _objectByPtr.find(obj);
+	if (ptrIt != _objectByPtr.end()) {
+		_objectById.erase(ptrIt->second);
+		_objectByPtr.erase(ptrIt);
+	}
+	_objectByPtr.emplace(obj, id);
+	_objectById.erase(id);
+	_objectById.emplace(id, Rc<core::Object>(obj));
+}
+
 uint64_t ObjectRegistry::attachMaterials(NotNull<core::MaterialSet> set) {
 	auto v = get(set->getOwner()->getData()->queue->queue);
 	if (v == 0) {

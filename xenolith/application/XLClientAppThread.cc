@@ -32,6 +32,11 @@
 #include "XLCoreInfo.h" // core::ImageInfoData / ImageFormat / Extent3
 #include "XLRemoteBlockTransfer.h"
 
+#if MODULE_XENOLITH_FONT
+// Downstream module: reached only by SharedModule symbol + the font::FontController extension type.
+#include "XLFontControllerRemote.h"
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 // Top bit of the DependencyEvent id space reserved for the remote client so its ids never collide
@@ -208,8 +213,19 @@ void ClientAppThread::loadExtensions() {
 		};
 	}
 
-	// TODO(remote transport): construct the client-side FontController whose gAPI endpoints point at
-	// proxy functions over the render-session channel, plus any other context-level extensions.
+#if MODULE_XENOLITH_FONT
+	// Construct the headless client-side FontController (positioning + source announce + glyph requests
+	// over remote::Domain::Font). Reached via SharedModule symbol because xenolith_font is downstream of
+	// this module; registered under font::FontController so Labels' getExtension<FontController>() find it.
+	auto createRemoteController = SharedModule::acquireTypedSymbol<
+			decltype(&font::FontControllerRemote::createRemoteController)>(
+			buildconfig::MODULE_XENOLITH_FONT_NAME, "FontControllerRemote::createRemoteController");
+	if (createRemoteController) {
+		if (auto controller = createRemoteController(this)) {
+			addExtension(move(controller));
+		}
+	}
+#endif
 }
 
 void ClientAppThread::pumpConnection() {
@@ -368,6 +384,39 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			wIt->second->acquireFrame(frameId, constraints, sp::move(sendReply));
 			return true;
 		}
+		case remote::WindowCode::InputEvents: {
+			// server -> client: a raw blob [u64 windowId (network order)][InputEventData[] native layout].
+			// Reconstruct the batch and replay it into the named window (its local Director -> scene).
+			if (payload.size() < sizeof(uint64_t)) {
+				return true;
+			}
+			uint64_t widN = 0;
+			memcpy(&widN, payload.data(), sizeof(uint64_t));
+			auto windowId = sprt::byteorder::NetworkToHost(widN);
+
+			auto rest = payload.sub(sizeof(uint64_t));
+			if (rest.size() % sizeof(core::InputEventData) != 0) {
+				log::source().warn("ClientAppThread", "InputEvents: misaligned blob (", rest.size(),
+						" bytes)");
+				return true;
+			}
+			auto count = rest.size() / sizeof(core::InputEventData);
+			Vector<core::InputEventData> events;
+			events.resize(count);
+			if (count) {
+				memcpy(events.data(), rest.data(), rest.size());
+			}
+
+			auto wIt = _windows.find(windowId);
+			if (wIt == _windows.end()) {
+				log::source().warn("ClientAppThread", "InputEvents for unknown window ", windowId);
+				return true;
+			}
+			log::source().info("ClientAppThread", "InputEvents: ", count, " event(s) for window ",
+					windowId);
+			wIt->second->handleInputEvents(sp::move(events));
+			return true;
+		}
 		default:
 			log::source().warn("ClientAppThread", "unhandled window message (code ",
 					uint32_t(h.code), ")");
@@ -375,9 +424,26 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 		}
 	} else if (remote::Domain(h.domain) == remote::Domain::Data) {
 		return _blockTransfer ? _blockTransfer->dispatch(h, payload) : true;
+	} else if (remote::Domain(h.domain) == remote::Domain::Font) {
+#if MODULE_XENOLITH_FONT
+		// Route to the client FontController (the SourcesReady reply is handled by the serial waiter, not
+		// here; this path is for server->client notifications like AtlasReady).
+		if (auto fc = getExtension<font::FontController>()) {
+			return fc->dispatchFontMessage(h.code, h.serial, payload);
+		}
+#endif
+		return true;
 	}
 	log::source().warn("ClientAppThread", "unhandled message domain (", uint32_t(h.domain), ")");
 	return true;
+}
+
+void ClientAppThread::flushPendingFontGlyphs() {
+#if MODULE_XENOLITH_FONT
+	if (auto fc = getExtension<font::FontController>()) {
+		fc->flushPendingGlyphs(this);
+	}
+#endif
 }
 
 Rc<Director> ClientAppThread::makeDirector(NotNull<RemoteWindow> w,

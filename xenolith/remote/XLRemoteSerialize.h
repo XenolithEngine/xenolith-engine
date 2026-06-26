@@ -26,6 +26,7 @@
 #include "XLRemoteObject.h"
 #include "XLCoreQueue.h"
 #include "XLCoreResource.h"
+#include "XLCoreMaterial.h" // core::MaterialImage for the CompileMaterials codec
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
@@ -84,6 +85,16 @@ SP_PUBLIC Rc<sprt::window::WindowInfo> deserializeWindowInfo(const Value &);
 
 SP_PUBLIC Value serializeSwapchainConfig(const core::SwapchainConfig &);
 SP_PUBLIC core::SwapchainConfig deserializeSwapchainConfig(const Value &);
+
+// CompileMaterials wire codec for a single core::MaterialImage (the headless client forwards a runtime
+// material it cannot GPU-compile; see WindowCode::CompileMaterials). The image is referenced by its
+// stable wire index -- the server owns the GPU objects and resolves the real image itself -- so only the
+// descriptor binding (sampler/set/descriptor) and the view info travel. `image`/`dynamic`/`view` are
+// left for the server to fill after it resolves the image by id.
+SP_PUBLIC Value serializeMaterialImage(const core::MaterialImage &);
+// Decode the wire fields into the returned MaterialImage; `outImageId` receives the image's wire index
+// for the caller to resolve to a real image.
+SP_PUBLIC core::MaterialImage deserializeMaterialImage(const Value &, uint64_t &outImageId);
 
 } // namespace stappler::xenolith::remote
 

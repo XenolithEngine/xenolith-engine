@@ -1,6 +1,7 @@
 /**
  Copyright (c) 2023-2025 Stappler LLC <admin@stappler.dev>
  Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -22,6 +23,7 @@
  **/
 
 #include "XLFontComponent.h"
+#include "XLFontControllerLocal.h"
 #include "XLCoreLoop.h"
 #include "XLCoreQueue.h"
 #include "XLCoreImageStorage.h"
@@ -234,7 +236,7 @@ Rc<FontController> FontComponent::acquireController(sprt::dispatch::Looper *loop
 	builder->looper = looper;
 	builder->ext = this;
 	if (!hasController) {
-		builder->controller = Rc<FontController>::create(this, builder->builder.getName());
+		builder->controller = Rc<FontControllerLocal>::create(this, builder->builder.getName());
 	}
 
 	builder->pendingData = builder->builder.getDataQueries().size();

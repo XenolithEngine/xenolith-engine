@@ -124,6 +124,12 @@ public:
 	uint64_t share(core::Object *);
 	uint64_t share(const Rc<core::Object> &o) { return share(o.get()); }
 
+	// Re-point a stable id to a new gAPI object. Used for a DynamicImage atlas whose backing ImageObject
+	// is replaced on every update (new pointer, same forced index): pinning keeps a constant wire id
+	// across instances so a dynamic material's encoded image identity does not change. Drops any previous
+	// object bound to `id` and any previous id bound to `obj`.
+	void pinObject(core::Object *obj, uint64_t id);
+
 	uint64_t attachMaterials(NotNull<core::MaterialSet>);
 
 	uint64_t get(core::RenderServerChannel *) const;

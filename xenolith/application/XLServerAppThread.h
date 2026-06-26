@@ -43,6 +43,7 @@ struct MessageHeader;
 
 class Context;
 class RemoteRenderClient;
+class RemoteFontServer;
 
 // Server (and local/single-process) application thread: owns the Context, the native windows and
 // their Directors, and the remote-connection listener. This is the thread the default factory
@@ -56,6 +57,10 @@ public:
 	Context *getContext() const { return _context; }
 
 	remote::ObjectRegistry *getSharedObjects() const { return _sharedObjects; }
+
+	// The server-side font endpoint (remote::Domain::Font). Persists across client reconnects; used by
+	// RemoteRenderClient to reconcile a frame's font dependency ids. Null if xenolith_font is absent.
+	RemoteFontServer *getFontServer() const { return _fontServer.get(); }
 
 	// AppThread platform-services interface (delegates to the OS via the Context).
 	virtual void readFromClipboard(Function<void(Status, BytesView, StringView)> &&dataCallback,
@@ -169,6 +174,10 @@ protected:
 	Rc<remote::Listener> _listener;
 	Rc<sprt::dispatch::PollHandle> _listenPoll;
 	Rc<RemoteRenderClient> _remoteClient;
+
+	// Server font endpoint (Domain::Font). Created once in loadExtensions, persists across reconnects
+	// (only its per-connection dependency registry is reset on disconnect).
+	Rc<RemoteFontServer> _fontServer;
 
 	// Remote auth + compression config.
 	Bytes _expectedKey; // bearer key a client must present (empty ⇒ reject all)

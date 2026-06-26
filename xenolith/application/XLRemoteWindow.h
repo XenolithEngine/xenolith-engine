@@ -106,6 +106,10 @@ protected:
 
 	// captureScreenshot() callbacks awaiting their pixels, keyed by the RequestScreenshot serial.
 	Map<uint32_t, Function<void(const core::ImageInfoData &, BytesView)>> _pendingScreenshots;
+
+	// Last forwarded WindowLayer payload (the raw WindowLayer[] bytes, no window-id prefix), so identical
+	// per-frame layer sets are not re-sent (updateLayers is driven every input commit).
+	Bytes _lastLayersBlob;
 };
 
 } // namespace stappler::xenolith

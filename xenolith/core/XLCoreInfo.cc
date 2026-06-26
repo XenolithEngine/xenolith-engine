@@ -905,6 +905,23 @@ String getQueueFlagsDesc(QueueFlags flags) {
 	return stream.str();
 }
 
+// getImagePixelFormat() collapses formats to a channel-count category (RGBA/RGB/...), discarding the
+// component order, so a B-first (BGRA) buffer is otherwise written as RGBA with red and blue swapped.
+// These are the non-packed 8-bit B-first formats -- the common Vulkan swapchain surface formats. The
+// PACK32 A8B8G8R8 family is excluded on purpose: it is already R,G,B,A in little-endian memory.
+static bool isBgra8Format(core::ImageFormat fmt) {
+	switch (fmt) {
+	case core::ImageFormat::B8G8R8A8_UNORM:
+	case core::ImageFormat::B8G8R8A8_SNORM:
+	case core::ImageFormat::B8G8R8A8_USCALED:
+	case core::ImageFormat::B8G8R8A8_SSCALED:
+	case core::ImageFormat::B8G8R8A8_UINT:
+	case core::ImageFormat::B8G8R8A8_SINT:
+	case core::ImageFormat::B8G8R8A8_SRGB: return true;
+	default: return false;
+	}
+}
+
 Bitmap getBitmap(const ImageInfoData &info, BytesView bytes) {
 	if (!bytes.empty()) {
 		auto fmt = core::getImagePixelFormat(info.format);
@@ -923,7 +940,18 @@ Bitmap getBitmap(const ImageInfoData &info, BytesView bytes) {
 				* info.extent.height * info.extent.depth * info.arrayLayers.get();
 
 		if (pixelFormat != bitmap::PixelFormat::Auto && requiredSize == bytes.size()) {
-			return Bitmap(bytes.data(), info.extent.width, info.extent.height, pixelFormat);
+			Bitmap bmp(bytes.data(), info.extent.width, info.extent.height, pixelFormat);
+			// Reorder B-first source bytes to RGBA in place (the bitmap owns a mutable copy).
+			if (pixelFormat == bitmap::PixelFormat::RGBA8888 && isBgra8Format(info.format)) {
+				auto data = bmp.dataPtr();
+				auto count = bmp.data().size() / 4;
+				for (size_t i = 0; i < count; ++i) {
+					auto b = data[i * 4 + 0];
+					data[i * 4 + 0] = data[i * 4 + 2];
+					data[i * 4 + 2] = b;
+				}
+			}
+			return bmp;
 		}
 	}
 	return Bitmap();

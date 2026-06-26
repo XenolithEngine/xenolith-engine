@@ -212,7 +212,7 @@ Rc<FontFaceObject> FontLibrary::openFontFace(StringView dataName,
 }
 
 Rc<FontFaceObject> FontLibrary::openFontFace(const Rc<FontFaceData> &dataObject,
-		const FontSpecializationVector &spec) {
+		const FontSpecializationVector &spec, uint16_t forcedId) {
 	String faceName =
 			mem_std::toString(dataObject->getName(), spec.getSpecializationArgs<Interface>());
 
@@ -220,16 +220,35 @@ Rc<FontFaceObject> FontLibrary::openFontFace(const Rc<FontFaceData> &dataObject,
 	do {
 		auto it = _faces.find(faceName);
 		if (it != _faces.end()) {
+			// Already opened for this (data, spec); reuse it (its id is the previously-forced one).
 			return it->second;
 		}
 	} while (0);
 
+	bool isNewId = false;
+	if (forcedId == sprt::Max<uint16_t>) {
+		forcedId = getNextId();
+		isNewId = true;
+	}
+
+	// Adopt the caller's id instead of minting one; mark it used so any getNextId() on this library
+	// would not hand it out.
+	if (forcedId != sprt::Max<uint16_t> && forcedId < _fontIds.size()) {
+		_fontIds.set(forcedId);
+	}
+
 	auto face = newFontFace(dataObject->getView());
-	auto ret = Rc<FontFaceObject>::create(faceName, dataObject, _library, face, spec, getNextId());
+	// Create the face with the forced id (NOT a freshly-minted one): the client baked CharIds with this
+	// id, so the server's atlas must key glyphs under the same id or getObjectByName() misses and the
+	// text renders blank.
+	auto ret = Rc<FontFaceObject>::create(faceName, dataObject, _library, face, spec, forcedId);
 	if (ret) {
 		_faces.emplace(ret->getName(), ret);
 	} else {
 		doneFontFace(face);
+		if (isNewId) {
+			releaseId(forcedId);
+		}
 	}
 	return ret;
 }

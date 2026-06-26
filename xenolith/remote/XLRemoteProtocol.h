@@ -55,6 +55,7 @@ enum class Domain : uint8_t {
 	Global = 0,
 	Window = 1,
 	Data = 2, // large binary block transfer (announce + chunked packets); see DataCode below
+	Font = 3, // font source sync + glyph rasterization requests; see FontCode below
 	Error = 255,
 };
 
@@ -81,17 +82,41 @@ enum class WindowCode {
 	AcquireFrame = 2, // server -> client request: produce a frame; reply selects a render queue
 	FrameInput = 3, // client -> server: one serialized per-attachment input for a frame
 	FrameCommit = 4, // client -> server: all inputs for a frame have been submitted
-	AttachQueue = 5, // client -> server request [windowId]: the client compiled the shared queue and
-					 // attached it to its Director; only on this sync does the server route the
-					 // window's frames to the client (so AcquireFrame can't arrive before the client
-					 // is ready). Reply is an empty, atomic acknowledgement.
-	ReadyForNextFrame = 6, // client -> server notification [windowId]: the client's scene has active
-						   // actions/input and wants another frame; the server schedules the next
-						   // frame on the window's PresentationEngine. Fire-and-forget (no reply).
+	AttachQueue =
+			5, // client -> server request [windowId]: the client compiled the shared queue and
+	// attached it to its Director; only on this sync does the server route the
+	// window's frames to the client (so AcquireFrame can't arrive before the client
+	// is ready). Reply is an empty, atomic acknowledgement.
+	ReadyForNextFrame =
+			6, // client -> server notification [windowId]: the client's scene has active
+	// actions/input and wants another frame; the server schedules the next
+	// frame on the window's PresentationEngine. Fire-and-forget (no reply).
 	RequestScreenshot = 7, // client -> server notification [windowId]: capture the window's current
-						   // contents and hand them back over Domain::Data (a Screenshot transfer whose
-						   // announce `reason` points back at this message). Fire-and-forget (no reply);
-						   // the captured pixels arrive asynchronously as a block transfer.
+	// contents and hand them back over Domain::Data (a Screenshot transfer whose
+	// announce `reason` points back at this message). Fire-and-forget (no reply);
+	// the captured pixels arrive asynchronously as a block transfer.
+	CompileMaterials =
+			8, // client -> server notification: compile a runtime material (e.g. a font atlas
+	// material) the headless client cannot compile itself. Carries the window id, the
+	// client-assigned MaterialIds + pipelines + image refs, and the gating dependency
+	// ids; the server resolves the images (the atlas image id -> its DynamicImage),
+	// compiles into the window's MaterialSet, signals the deps, and pushes the set
+	// back via UpdateMaterials. Fire-and-forget (the push + gating carry the result).
+	InputEvents =
+			9, // server -> client notification: platform input + window-state events for a window.
+	// RAW BINARY (not CBOR): [u64 windowId (network order)][InputEventData[] native layout].
+	// The server owns the OS window, so input originates there; it ships the same
+	// core::InputEventData batch the local Director would receive. InputEventData is
+	// trivially copyable, so the batch travels as an opaque blob (client/server share one
+	// build/ABI). Fire-and-forget; the client replays the batch into its Director's scene.
+	UpdateLayers =
+			10, // client -> server notification: the window's interaction layers (hit/cursor/drag
+	// regions) for the OS window. RAW BINARY (not CBOR): [u64 windowId (network order)]
+	// [WindowLayer[] native layout]. The reverse of InputEvents: the client's scene graph
+	// computes the layers (InputDispatcher) but the server owns the real window, so the
+	// client forwards them and the server applies them to the native window (cursor,
+	// hit-testing, server-side decorations). WindowLayer is trivially copyable -> opaque
+	// blob. Fire-and-forget; the client only sends on change.
 };
 
 enum class WindowError : uint8_t {
@@ -140,6 +165,7 @@ enum class DataError : uint8_t {
 enum class DataType : uint16_t {
 	Generic = 0,
 	Screenshot = 1, // raw window pixels; meta = {fmt, w, h, d}; receiver saves via core::saveImage
+	Font = 2, // a large font-file blob; meta = {contentHash}; the receiver pins it in its font store
 };
 
 // Default chunk size. Must stay <= kMaxFrameSize and small enough that one packet is a modest frame:
@@ -147,8 +173,41 @@ enum class DataType : uint16_t {
 // decompressed size is then bounded) is the real safeguard against a decompression bomb on this
 // domain -- the transport keeps only absolute (non-ratio) frame caps, so a strongly-compressed
 // screenshot packet is never rejected for its ratio.
-constexpr uint32_t kRecommendedPacketSize = 32u * 1024; // 32 KiB
-constexpr uint32_t kMaxBlockTransferSize = 256u * 1024 * 1024; // whole-blob policy ceiling
+constexpr uint32_t kRecommendedPacketSize = 64u * 1'024; // 64 KiB
+constexpr uint32_t kMaxBlockTransferSize = 512u * 1'024 * 1'024; // whole-blob policy ceiling
+
+// Domain::Font: split the font system between a headless client (glyph positioning) and the GPU
+// server (rasterization + atlas). The client owns its own FontLibrary for metrics and mints FaceIds
+// locally; the server adopts those ids and rasterizes into a per-connection atlas. Font *data* is
+// content-addressed (a hash of the file bytes) and stored persistently on the server, so a font the
+// server already holds is never re-sent.
+//
+//   SourcesAnnounce (REQUEST, CBOR) -- client lists families/aliases/sources, each source tagged with
+//             its contentHash. Reply SourcesReady names the hashes the server is still missing (plus
+//             the atlas image's server object id); an error reply means the announce was rejected.
+//   FontInline (notification, CBOR {contentHash, bytes}) -- a small missing font shipped inline; large
+//             ones come over Domain::Data (DataType::Font, meta={contentHash}).
+//   GlyphRequest (notification, RAW BINARY) -- [u32 depId][faces...] asks the server to rasterize a set
+//             of (contentHash, spec, faceId) glyphs; depId gates the frame that uses them.
+//   AtlasReady (notification, CBOR {depId, ok}) -- the server finished the atlas update for depId.
+//   CompileImage (REQUEST) -- reserved; the client never GPU-compiles, so the server just acks.
+enum class FontCode : uint8_t {
+	SourcesAnnounce = 0,
+	SourcesReady = 1,
+	FontInline = 2,
+	GlyphRequest = 3,
+	AtlasReady = 4,
+	CompileImage = 5,
+};
+
+enum class FontError : uint8_t {
+	Ok = 0,
+	SourcesNotReady = 1, // a GlyphRequest arrived before the source handshake completed
+	UnknownFont = 2, // a request referenced a contentHash the server does not hold
+	UnknownFace = 3, // a request referenced an unknown (contentHash, spec) face
+	NotImplemented = 254,
+	NetworkBackend = 255, // not protocol-related, check backend error reporting
+};
 
 // Which side's compression dictionary won negotiation. Server has priority; if it has none the
 // client's suggestion (if any) is used; otherwise no dictionary.
@@ -189,11 +248,11 @@ static inline constexpr MessageType MessageTypeError(Role role) {
 }
 
 static_assert(MessageTypeRequest(Role::Server) == MessageType::Server
-		&& MessageTypeRequest(Role::Client) == MessageType::Client
-		&& MessageTypeReply(Role::Server) == MessageType::ServerReply
-		&& MessageTypeReply(Role::Client) == MessageType::ClientReply
-		&& MessageTypeError(Role::Server) == MessageType::ServerError
-		&& MessageTypeError(Role::Client) == MessageType::ClientError,
+				&& MessageTypeRequest(Role::Client) == MessageType::Client
+				&& MessageTypeReply(Role::Server) == MessageType::ServerReply
+				&& MessageTypeReply(Role::Client) == MessageType::ClientReply
+				&& MessageTypeError(Role::Server) == MessageType::ServerError
+				&& MessageTypeError(Role::Client) == MessageType::ClientError,
 		"MessageType role mapping is out of sync with the MessageType enum");
 
 enum class MessageFlags : uint8_t {

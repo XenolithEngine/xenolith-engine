@@ -76,12 +76,19 @@ public:
 
 	void addQueue(Rc<Queue> &&);
 
+	// Register a callback fired exactly once, when the event becomes fully signalled (its last queue is
+	// signalled). It runs on the signalling thread (typically the GPU loop), so the callback must hop
+	// threads itself for any non-thread-safe work. Used by the remote server to drop a client-mirrored
+	// gating dependency from its registry once it has fired (otherwise the registry grows unbounded).
+	void setSignalCallback(Function<void()> &&);
+
 protected:
 	uint32_t _id = GetNextId();
 	uint64_t _clock = sp::platform::clock(ClockType::Monotonic);
 	QueueSet _queues;
 	StringView _tag;
 	bool _success = true;
+	Function<void()> _signalCallback;
 };
 
 // dummy class for attachment input
@@ -97,7 +104,7 @@ struct SP_PUBLIC AttachmentInputData : public Ref {
 	// Stage 2: STUB. The real wire format is a later stage; the defaults mean "no wire format yet"
 	// (serialize writes nothing and reports false; deserialize fails).
 	virtual bool serialize(const Callback<void(BytesView)> &) const { return false; }
-	virtual bool deserialize(BytesView) { return false; }
+	virtual bool deserialize(BytesView, Vector<uint32_t> *remoteDeps = nullptr) { return false; }
 };
 
 class SP_PUBLIC Attachment : public NamedRef {

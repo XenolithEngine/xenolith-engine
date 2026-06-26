@@ -45,6 +45,14 @@ class Director;
 class AppWindow;
 class BlockTransferManager;
 
+// Font remote endpoints (defined in xenolith_font, downstream): the client-side controller and the
+// server-side endpoint both emit Domain::Font messages through this thread's remoteSend* facade, like
+// BlockTransferManager. Forward-declared here only to befriend them.
+namespace font {
+class FontControllerRemote;
+class RemoteFontServerEndpoint;
+} // namespace font
+
 // Base application thread: pure thread/extension/update machinery. It holds NO reference to a
 // Context (the full Context* lives only on the server subclass). The few context-derived services
 // the base needs are reached through the protected virtual hooks below; window management, the
@@ -183,8 +191,10 @@ public:
 			Function<void(const remote::MessageHeader &, BytesView payload)> &&, uint64_t timeoutUs);
 
 protected:
-	// The block-transfer manager drives the remoteSend* facade below.
+	// The block-transfer manager and the font remote endpoints drive the remoteSend* facade below.
 	friend class BlockTransferManager;
+	friend class font::FontControllerRemote;
+	friend class font::RemoteFontServerEndpoint;
 
 	virtual bool startListening();
 	virtual bool stopListening();
@@ -262,7 +272,10 @@ auto AppThread::addExtension(Rc<T> &&t) -> T * {
 	auto it = _extensions.find(sprt::type_index(typeid(T)));
 	if (it == _extensions.end()) {
 		auto ref = t.get();
-		it = _extensions.emplace(sprt::type_index(typeid(*t.get())), move(t)).first;
+		// Key on the declared type T (not the dynamic type) so getExtension<T>() resolves the same
+		// slot -- this lets a concrete leaf (e.g. FontControllerLocal) be registered and retrieved
+		// under its abstract base (font::FontController).
+		it = _extensions.emplace(sprt::type_index(typeid(T)), move(t)).first;
 		if (_extensionsInitialized) {
 			ref->initialize(this);
 		}

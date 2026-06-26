@@ -34,12 +34,14 @@
 #include "XLCorePresentationEngine.h"
 #include "XLRemoteSerialize.h"
 #include "XLRemoteBlockTransfer.h"
+#include "XLRemoteFontServer.h"
 
 #include <sprt/runtime/dispatch/handle.h>
 
 #if MODULE_XENOLITH_FONT
 
 #include "XLFontComponent.h"
+#include "XLRemoteFontServerEndpoint.h"
 
 #endif
 
@@ -79,6 +81,11 @@ void ServerAppThread::handleMatrialsUpdated(NotNull<core::MaterialSet> set) {
 	AppThread::handleMatrialsUpdated(set);
 
 	if (_remoteClient && !_remoteClient->isClosed()) {
+		// Keep the font atlas image's wire id constant across its (per-update-replaced) ImageObjects, so a
+		// dynamic font material's encoded image identity stays stable for the client's mirror.
+		if (_fontServer) {
+			_fontServer->pinAtlasImage();
+		}
 		if (auto v = _sharedObjects->attachMaterials(set)) {
 			_remoteClient->handleMaterialsUpdated(v, set, _sharedObjects);
 		}
@@ -467,6 +474,10 @@ void ServerAppThread::resetRemoteClient() {
 	if (_blockTransfer) {
 		_blockTransfer->reset();
 	}
+	if (_fontServer) {
+		// Drop per-connection gating state; the persistent font store + network atlas survive.
+		_fontServer->reset();
+	}
 	if (_remoteClient) {
 		_remoteClient->closeConnection();
 		_remoteClient = nullptr;
@@ -538,6 +549,13 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			if (_remoteClient) {
 				auto val = data::read<Interface>(payload);
 				_remoteClient->handleFrameCommit(uint64_t(val.getInteger(0)));
+			}
+			return true;
+		};
+		case remote::WindowCode::CompileMaterials: {
+			// client -> server: compile a runtime (font atlas) material the headless client can't compile.
+			if (_remoteClient) {
+				_remoteClient->handleCompileMaterials(payload);
 			}
 			return true;
 		};
@@ -623,6 +641,45 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			}
 			return true;
 		};
+		case remote::WindowCode::UpdateLayers: {
+			// client -> server: the window's interaction layers (hit/cursor/drag regions) computed by the
+			// client's scene graph. Raw blob [u64 windowId (network order)][WindowLayer[] native layout];
+			// reconstruct and apply to the real window so the OS does cursor/hit-testing/decorations.
+			if (!_sharedObjects || payload.size() < sizeof(uint64_t)) {
+				return true;
+			}
+			uint64_t widN = 0;
+			__sprt_memcpy(&widN, payload.data(), sizeof(uint64_t));
+			auto windowId = sprt::byteorder::NetworkToHost(widN);
+
+			auto rest = payload.sub(sizeof(uint64_t));
+			if (rest.size() % sizeof(sprt::window::WindowLayer) != 0) {
+				log::source().warn("AppThread", "UpdateLayers: misaligned blob (", rest.size(),
+						" bytes)");
+				return true;
+			}
+			auto count = rest.size() / sizeof(sprt::window::WindowLayer);
+			sprt::window::Vector<sprt::window::WindowLayer> layers;
+			for (size_t i = 0; i < count; ++i) {
+				sprt::window::WindowLayer layer;
+				__sprt_memcpy(&layer, rest.data() + i * sizeof(sprt::window::WindowLayer),
+						sizeof(sprt::window::WindowLayer));
+				log::source().info("AppThread", "UpdateLayers: layer[", i, "] rect{",
+						layer.rect.origin.x, ",", layer.rect.origin.y, " ", layer.rect.size.width, "x",
+						layer.rect.size.height, "} cursor=", uint32_t(toInt(layer.cursor)),
+						" flags=", uint32_t(toInt(layer.flags)));
+				layers.emplace_back(layer);
+			}
+
+			if (auto w = static_cast<AppWindow *>(_sharedObjects->resolveWindow(windowId))) {
+				log::source().info("AppThread", "UpdateLayers: applying ", count, " layer(s) to window ",
+						windowId);
+				w->updateLayers(sp::move(layers));
+			} else {
+				log::source().warn("AppThread", "UpdateLayers for unknown shared window ", windowId);
+			}
+			return true;
+		};
 		default:
 			if (conn) {
 				conn->sendError(remote::Domain::Window, toInt(remote::GlobalError::NotImplemented),
@@ -634,6 +691,14 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 		}
 	} else if (remote::Domain(h.domain) == remote::Domain::Data) {
 		return _blockTransfer ? _blockTransfer->dispatch(h, payload) : true;
+	} else if (remote::Domain(h.domain) == remote::Domain::Font) {
+		if (_fontServer) {
+			return _fontServer->dispatch(h.code, h.serial, payload);
+		}
+		if (conn) {
+			conn->sendError(remote::Domain::Font, toInt(remote::FontError::NotImplemented), h.serial);
+		}
+		return true;
 	} else {
 		if (conn) {
 			conn->sendError(remote::Domain(h.domain), toInt(remote::GlobalError::NotImplemented),
@@ -730,17 +795,27 @@ void ServerAppThread::loadExtensions() {
 	AppThread::loadExtensions();
 
 #if MODULE_XENOLITH_FONT
-	auto createFontController = SharedModule::acquireTypedSymbol<
-			decltype(&font::FontComponent::createDefaultController)>(
-			buildconfig::MODULE_XENOLITH_FONT_NAME, "FontComponent::createDefaultController");
-
-	if (createFontController) {
-		auto comp = _context->getComponent<font::FontComponent>();
-		if (comp) {
+	if (auto comp = _context->getComponent<font::FontComponent>()) {
+		// Local-scene controller: drives the server's own windows/Directors (registered extension).
+		auto createFontController = SharedModule::acquireTypedSymbol<
+				decltype(&font::FontComponent::createDefaultController)>(
+				buildconfig::MODULE_XENOLITH_FONT_NAME, "FontComponent::createDefaultController");
+		if (createFontController) {
 			if (auto controller =
 							createFontController(comp, _appLooper, "ApplicationFontController")) {
 				addExtension(move(controller));
 			}
+		}
+
+		// Network-serving font endpoint (remote::Domain::Font): a *separate* controller with its own
+		// FontLibrary + atlas, so the FaceIds a client forces never collide with the local-scene
+		// controller's. Owned here (not a registered extension); persists across client reconnects.
+		auto createServerFontEndpoint = SharedModule::acquireTypedSymbol<
+				decltype(&font::RemoteFontServerEndpoint::createServerFontEndpoint)>(
+				buildconfig::MODULE_XENOLITH_FONT_NAME,
+				"RemoteFontServerEndpoint::createServerFontEndpoint");
+		if (createServerFontEndpoint) {
+			_fontServer = createServerFontEndpoint(this, comp);
 		}
 	}
 #endif
