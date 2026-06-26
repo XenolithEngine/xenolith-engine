@@ -338,8 +338,10 @@ void Builder::dispatchNode(NodeState *st) {
 	}
 
 	if (!bn->rules) {
-		// nothing to run: ok if the file exists or the target is phony, otherwise no rule to make it
-		if (!bn->phony && !bn->target->fileExists) {
+		// nothing to run: ok if the file exists, the target is phony, or it was explicitly declared
+		// as a (recipe-less) rule target (`all: a b` just makes its prerequisites); otherwise it was
+		// only named as a prerequisite and there is no rule to make it
+		if (!bn->phony && !bn->target->fileExists && !bn->target->declared) {
 			memory::StandartInterface::StringType ns;
 			sprt::cerr << "xlmake: *** No rule to make target '"
 					   << makefile::decodePathSpaces(StringView(bn->name.data(), bn->name.size()),

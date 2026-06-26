@@ -374,6 +374,10 @@ Target *Makefile::getOrCreateTarget(StringView name) {
 
 Target *Makefile::addTarget(StringView name) {
 	auto t = getOrCreateTarget(name);
+	// This call is reached only from a rule's left-hand side, so the target now has an explicit
+	// rule entry — even if no recipe follows. Mark it so a recipe-less aggregator (`all: a b`) is
+	// not mistaken for an unmakeable prerequisite.
+	t->declared = true;
 	// the default goal is the first explicitly declared non-special, non-pattern target
 	if (!_defaultGoal && !t->isSpecial && !t->isPattern) {
 		_defaultGoal = t;

@@ -113,6 +113,13 @@ struct Target : AllocBase {
 	bool isSpecial = false; // name starts with '.' (.PHONY, .DEFAULT, ...)
 	bool isPattern = false; // name contains an (unescaped) '%'
 
+	// True once this target has appeared as the left-hand side of a rule (`target:` or
+	// `target: prereqs`), even with no recipe. Distinguishes an explicitly declared — possibly
+	// recipe-less — aggregator (which `make` builds without complaint, just making its
+	// prerequisites) from a name only ever referenced as a prerequisite, which is a genuine
+	// "No rule to make target" when it has no recipe and no file.
+	bool declared = false;
+
 	// implicit-rule instance data: set on a target whose recipe/prerequisites were
 	// synthesized from a matching pattern rule
 	StringView stem;
