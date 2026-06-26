@@ -31,8 +31,11 @@ THE SOFTWARE.
 
 #include <wchar.h>
 #include <wctype.h>
-#include <uchar.h>
 #include <time.h>
+
+#ifndef SPRT_APPLE
+#include <uchar.h>
+#endif
 
 #include "time/time_internals.h"
 
@@ -54,6 +57,11 @@ extern wint_t (*_towctrans_l)(wint_t __wc, wctrans_t __transform, locale_t __l);
 
 #if SPRT_APPLE
 #include <xlocale.h>
+// Apple's SDK ships no <uchar.h> conversion functions, so implement them below
+// on top of the runtime's UTF-8 <-> UTF-16/UTF-32 primitives; these pull in the
+// scalar-value helpers and the host errno numbers (EILSEQ) they report with.
+#include <errno.h>
+#include <sprt/runtime/unicode.h>
 #endif
 
 static_assert(sizeof(mbstate_t) == sizeof(__SPRT_MBSTATE_NAME));
@@ -211,24 +219,229 @@ __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(wcrtomb)(char *__SPRT_RESTRICT a, __SP
 	return ::wcrtomb(a, c, (::mbstate_t *)state);
 }
 
-__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(mbrtoc16)(__SPRT_ID(char16_t) * __SPRT_RESTRICT a,
-		const char *__SPRT_RESTRICT b, __SPRT_ID(size_t) s, __SPRT_MBSTATE_NAME *__SPRT_RESTRICT st) {
+#if SPRT_APPLE
+// ---- <uchar.h> conversions for Apple ----
+// macOS/iOS libc provides no mbrtoc16/c16rtomb/mbrtoc32/c32rtomb, so they are
+// implemented here on top of the runtime's UTF-8 <-> UTF-16/UTF-32 primitives.
+// The runtime treats the multibyte encoding as UTF-8 unconditionally, so the
+// logic mirrors the freestanding implementation in runtime/libc_impl
+// (builtin_multibyte.cpp), which the tests/libc suite already checks against the
+// host glibc for behavioural identity.
+namespace {
+
+// Largest number of bytes a valid Unicode scalar value (<= U+10FFFF) occupies in
+// UTF-8; equals MB_CUR_MAX for the UTF-8 encoding the runtime assumes.
+constexpr size_t kUcharMaxUtf8 = 4;
+
+// Values stored in UcharState::state. 0 is the initial state; 1..3 count the
+// UTF-8 continuation bytes still owed for a partial scalar (with `ch` holding the
+// bits decoded so far). The two sentinels carry surrogate state across calls and
+// are chosen not to collide with the {1,2,3} continuation counts.
+constexpr uint32_t kUcharStateNone = 0;
+// mbrtoc16 emitted a high surrogate; `ch` holds the low surrogate owed to the
+// next call (returned with the (size_t)-3 status, consuming no input).
+constexpr uint32_t kUcharStatePendingLow = 0x1'0000u;
+// c16rtomb saw a high surrogate; `ch` holds it while we await the matching low
+// surrogate to assemble the astral scalar value.
+constexpr uint32_t kUcharStateHighSurrogate = 0x2'0000u;
+
+// Conversion state laid over the platform mbstate_t storage. Apple never writes
+// this object itself (it has no <uchar.h>), so we fully own the representation.
+struct UcharState {
+	uint32_t state;
+	uint32_t ch;
+};
+static_assert(sizeof(UcharState) <= sizeof(__SPRT_MBSTATE_NAME));
+
+thread_local __SPRT_MBSTATE_NAME tl_uchar_state = {};
+
+static UcharState *ucharState(__SPRT_MBSTATE_NAME *st) {
+	return reinterpret_cast<UcharState *>(st ? st : &tl_uchar_state);
+}
+
+// Decode one code point from a UTF-8 stream, resuming a partial sequence from
+// *st. Returns bytes consumed (>0), 0 for NUL, (size_t)-1 EILSEQ, (size_t)-2
+// incomplete; writes the scalar value to *cp on success.
+static size_t __mbrtocp(char32_t *cp, const char *s, size_t n, UcharState *st) {
+	uint32_t ch;
+	unsigned remaining;
+	size_t consumed = 0;
+
+	if (st->state >= 1 && st->state <= 3) {
+		ch = st->ch;
+		remaining = st->state;
+	} else {
+		if (n == 0) {
+			return (size_t)-2;
+		}
+		unsigned char b = (unsigned char)s[0];
+		if (b < 0x80) {
+			*cp = b;
+			st->state = kUcharStateNone;
+			st->ch = 0;
+			return b == 0 ? 0 : 1;
+		}
+		uint8_t len = unicode::utf8_length_data[b];
+		if (len < 2 || len > 4) { // lone continuation byte or invalid lead
+			__sprt_errno = EILSEQ;
+			return (size_t)-1;
+		}
+		ch = (uint32_t)(b & (0x7Fu >> len));
+		remaining = (unsigned)(len - 1);
+		consumed = 1;
+	}
+
+	while (remaining > 0) {
+		if (consumed >= n) {
+			st->ch = ch;
+			st->state = remaining;
+			return (size_t)-2;
+		}
+		unsigned char b = (unsigned char)s[consumed];
+		if ((b & 0xC0u) != 0x80u) {
+			__sprt_errno = EILSEQ;
+			return (size_t)-1;
+		}
+		ch = (ch << 6) | (uint32_t)(b & 0x3Fu);
+		--remaining;
+		++consumed;
+	}
+
+	st->state = kUcharStateNone;
+	st->ch = 0;
+	*cp = (char32_t)ch;
+	return consumed;
+}
+
+} // namespace
+#endif
+
+__SPRT_C_FUNC __SPRT_ID(size_t)
+		__SPRT_ID(mbrtoc16)(__SPRT_ID(char16_t) * __SPRT_RESTRICT a, const char *__SPRT_RESTRICT b,
+				__SPRT_ID(size_t) s, __SPRT_MBSTATE_NAME *__SPRT_RESTRICT st) {
+#if SPRT_APPLE
+	auto state = ucharState(st);
+	// A surrogate pair is reported across two calls: the pending low surrogate is
+	// returned now (no bytes consumed) with the (size_t)-3 status.
+	if (state->state == kUcharStatePendingLow) {
+		if (a) {
+			*a = (__SPRT_ID(char16_t))state->ch;
+		}
+		state->state = kUcharStateNone;
+		state->ch = 0;
+		return (size_t)-3;
+	}
+	// A null source resets to the initial conversion state (decode an embedded
+	// NUL): completes with 0, or reports EILSEQ if a partial sequence was pending.
+	const char *src = b ? b : "";
+	size_t srcLen = b ? s : 1;
+	char32_t cp = 0;
+	size_t r = __mbrtocp(&cp, src, srcLen, state);
+	if (r == (size_t)-1 || r == (size_t)-2) {
+		return r;
+	}
+	if (cp <= 0xFFFF) {
+		if (a) {
+			*a = (__SPRT_ID(char16_t))cp;
+		}
+		return r;
+	}
+	// Astral: report the high surrogate now and stash the low surrogate.
+	cp -= 0x1'0000u;
+	if (a) {
+		*a = (__SPRT_ID(char16_t))(0xD800u + (cp >> 10));
+	}
+	state->ch = 0xDC00u + (cp & 0x3FFu);
+	state->state = kUcharStatePendingLow;
+	return r;
+#else
 	return ::mbrtoc16(a, b, s, (::mbstate_t *)st);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(c16rtomb)(char *__SPRT_RESTRICT a, __SPRT_ID(char16_t) c,
 		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT st) {
+#if SPRT_APPLE
+	auto state = ucharState(st);
+	// A null destination behaves as c16rtomb(buf, u'\0', st) with an internal buf.
+	char scratch[kUcharMaxUtf8];
+	char *dst = a ? a : scratch;
+	__SPRT_ID(char16_t) unit = a ? c : u'\0';
+
+	if (state->state == kUcharStateHighSurrogate) {
+		if (unicode::isUtf16LowSurrogate(unit)) {
+			char32_t cp = unicode::utf16CombineSurrogates((char16_t)state->ch, unit);
+			state->state = kUcharStateNone;
+			state->ch = 0;
+			return unicode::utf8EncodeBuf(dst, kUcharMaxUtf8, cp);
+		}
+		// A high surrogate not followed by a low surrogate is an error.
+		state->state = kUcharStateNone;
+		state->ch = 0;
+		__sprt_errno = EILSEQ;
+		return (size_t)-1;
+	}
+
+	if (unit == 0) {
+		dst[0] = 0;
+		return 1;
+	}
+	if (unicode::isUtf16HighSurrogate(unit)) {
+		// Hold the high surrogate; nothing is emitted until its low surrogate.
+		state->ch = unit;
+		state->state = kUcharStateHighSurrogate;
+		return 0;
+	}
+	if (unicode::isUtf16LowSurrogate(unit)) {
+		__sprt_errno = EILSEQ;
+		return (size_t)-1;
+	}
+	return unicode::utf8EncodeBuf(dst, kUcharMaxUtf8, (char32_t)unit);
+#else
 	return ::c16rtomb(a, c, (::mbstate_t *)st);
+#endif
 }
 
-__SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(mbrtoc32)(__SPRT_ID(char32_t) * __SPRT_RESTRICT a,
-		const char *__SPRT_RESTRICT b, __SPRT_ID(size_t) s, __SPRT_MBSTATE_NAME *__SPRT_RESTRICT st) {
+__SPRT_C_FUNC __SPRT_ID(size_t)
+		__SPRT_ID(mbrtoc32)(__SPRT_ID(char32_t) * __SPRT_RESTRICT a, const char *__SPRT_RESTRICT b,
+				__SPRT_ID(size_t) s, __SPRT_MBSTATE_NAME *__SPRT_RESTRICT st) {
+#if SPRT_APPLE
+	auto state = ucharState(st);
+	// A null source resets to the initial conversion state (decode an embedded
+	// NUL): completes with 0, or reports EILSEQ if a partial sequence was pending.
+	const char *src = b ? b : "";
+	size_t srcLen = b ? s : 1;
+	char32_t cp = 0;
+	size_t r = __mbrtocp(&cp, src, srcLen, state);
+	if (r == (size_t)-1 || r == (size_t)-2) {
+		return r;
+	}
+	if (a) {
+		*a = cp;
+	}
+	return r;
+#else
 	return ::mbrtoc32(a, b, s, (::mbstate_t *)st);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(c32rtomb)(char *__SPRT_RESTRICT a, __SPRT_ID(char32_t) c,
 		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT st) {
+#if SPRT_APPLE
+	(void)st;
+	if (!a) {
+		return 1;
+	}
+	// Only valid Unicode scalar values encode; reject surrogates and out-of-range
+	// code points instead of emitting the runtime's extended (5/6-byte) UTF-8.
+	if (c > 0x10'FFFFu || (c >= 0xD800u && c <= 0xDFFFu)) {
+		__sprt_errno = EILSEQ;
+		return (size_t)-1;
+	}
+	return unicode::utf8EncodeBuf(a, kUcharMaxUtf8, c);
+#else
 	return ::c32rtomb(a, c, (::mbstate_t *)st);
+#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(mbrlen)(const char *__SPRT_RESTRICT a,

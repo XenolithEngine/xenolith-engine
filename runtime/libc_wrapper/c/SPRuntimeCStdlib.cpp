@@ -243,57 +243,37 @@ __SPRT_C_FUNC long double __SPRT_ID(strtold_l)(const char *__SPRT_RESTRICT str,
 
 __SPRT_C_FUNC __SPRT_ID(size_t)
 		__SPRT_ID(mbstowcs)(wchar_t *__dst, const char *__src, __SPRT_ID(size_t) __n) {
-#if __SPRT_CONFIG_HAVE_STDLIB_MB
 	return ::mbstowcs(__dst, __src, __n);
-#else
-	__sprt_errno = ENOSYS;
-	return 0;
-#endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mblen)(const char *__s, __SPRT_ID(size_t) __n) {
-#if __SPRT_CONFIG_HAVE_STDLIB_MB
-	return ::mblen(__s, __n);
+#if SPRT_ANDROID
+	// Bionic only added mblen at API 26, but the runtime targets 24. mblen is
+	// defined as mbtowc(NULL, ...) against a private state, and since the encoding
+	// is stateless UTF-8 there is nothing to carry; mirror that (as libc_impl does)
+	// through Bionic's mbtowc, which is available.
+	return ::mbtowc(nullptr, __s, __n);
 #else
-	__sprt_errno = ENOSYS;
-	return -1;
+	return ::mblen(__s, __n);
 #endif
 }
 
 __SPRT_C_FUNC int __SPRT_ID(mbtowc)(wchar_t *__wc_ptr, const char *__s, __SPRT_ID(size_t) __n) {
-#if __SPRT_CONFIG_HAVE_STDLIB_MB
 	return ::mbtowc(__wc_ptr, __s, __n);
-#else
-	__sprt_errno = ENOSYS;
-	return -1;
-#endif
 }
 
-__SPRT_C_FUNC int __SPRT_ID(wctomb)(char *__dst, wchar_t __wc) {
-#if __SPRT_CONFIG_HAVE_STDLIB_MB
-	return ::wctomb(__dst, __wc);
-#else
-	__sprt_errno = ENOSYS;
-	return -1;
-#endif
-}
+__SPRT_C_FUNC int __SPRT_ID(wctomb)(char *__dst, wchar_t __wc) { return ::wctomb(__dst, __wc); }
 
 __SPRT_C_FUNC __SPRT_ID(size_t)
 		__SPRT_ID(wcstombs)(char *__dst, const wchar_t *__src, __SPRT_ID(size_t) __n) {
-#if __SPRT_CONFIG_HAVE_STDLIB_MB
 	return ::wcstombs(__dst, __src, __n);
-#else
-	__sprt_errno = ENOSYS;
-	return 0;
-#endif
 }
 
 __SPRT_C_FUNC __SPRT_ID(size_t) __SPRT_ID(__ctype_get_mb_cur_max)(void) {
-#if __SPRT_CONFIG_HAVE_STDLIB_MB
-	return ::__ctype_get_mb_cur_max();
+#if SPRT_APPLE
+	return ___mb_cur_max();
 #else
-	__sprt_errno = ENOSYS;
-	return 0;
+	return ::__ctype_get_mb_cur_max();
 #endif
 }
 
