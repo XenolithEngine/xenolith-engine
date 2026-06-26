@@ -140,7 +140,7 @@ struct SP_PUBLIC FrameContextHandle2d : public FrameContextHandle {
 	// STUB this stage: the POD parts (lights/decorations) are easy, but CommandList/VertexData
 	// geometry is the hard part and is deferred.
 	virtual bool serialize(const Callback<void(BytesView)> &) const override;
-	virtual bool deserialize(BytesView) override;
+	virtual bool deserialize(BytesView, Vector<uint32_t> *remoteDeps = nullptr) override;
 };
 
 } // namespace stappler::xenolith::basic2d

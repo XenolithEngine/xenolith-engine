@@ -26,6 +26,7 @@
 #include "XL2dScene.h"
 #include "XL2dScrollView.h"
 #include "XL2dLayer.h"
+#include "XL2dLabel.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::client {
 
@@ -48,6 +49,9 @@ protected:
 
 	// Простой закрашенный квадрат — минимальный тест клиентского рендеринга без шрифтов
 	basic2d::Layer *_square = nullptr;
+
+	// Текстовая метка — проверка удалённого рендеринга шрифтов (материал шрифта компилируется на сервере)
+	basic2d::Label *_label = nullptr;
 
 	// Запускаем бесконечную анимацию квадрата ровно один раз (проверка работы runAction в
 	// клиентском контексте: пока действие активно, клиент шлёт серверу setReadyForNextFrame)

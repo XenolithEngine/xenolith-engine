@@ -88,7 +88,8 @@ public:
 
 	Rc<FontFaceObject> openFontFace(StringView, const FontSpecializationVector &,
 			const Callback<FontData()> &);
-	Rc<FontFaceObject> openFontFace(const Rc<FontFaceData> &, const FontSpecializationVector &);
+	Rc<FontFaceObject> openFontFace(const Rc<FontFaceData> &, const FontSpecializationVector &,
+			uint16_t forcedId = sprt::Max<uint16_t>);
 
 	void invalidate();
 

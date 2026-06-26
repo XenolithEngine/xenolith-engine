@@ -31,7 +31,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::remote {
 
 using DataValue = data::ValueTemplate<memory::StandartInterface>;
 
-static constexpr uint32_t kCodecVersion = 2;
+static constexpr uint32_t kCodecVersion = 3;
 
 // --- small helpers ---------------------------------------------------------
 
@@ -506,6 +506,32 @@ core::SwapchainConfig deserializeSwapchainConfig(const Value &v) {
 	return c;
 }
 
+// --- CompileMaterials MaterialImage codec ----------------------------------
+//
+// Distinct from the MaterialSet codec's encodeMaterialImage above: there the image is a server-minted
+// registry id (server -> client). Here the client forwards a runtime material to the server, so the
+// image is keyed by its stable wire index and the server resolves the real image (font atlas / static
+// resource) itself; only the descriptor binding + view info are carried.
+
+Value serializeMaterialImage(const core::MaterialImage &mi) {
+	Value v;
+	v.setInteger(int64_t(mi.image && mi.image->image ? mi.image->image->getIndex() : 0), "i");
+	v.setInteger(int64_t(mi.sampler), "s");
+	v.setInteger(int64_t(mi.set), "set");
+	v.setInteger(int64_t(mi.descriptor), "d");
+	v.setValue(imageViewInfoToValue(mi.info), "vi");
+	return v;
+}
+
+core::MaterialImage deserializeMaterialImage(const Value &v, uint64_t &outImageId) {
+	outImageId = uint64_t(v.getInteger("i"));
+	core::MaterialImage mi;
+	mi.sampler = uint16_t(v.getInteger("s"));
+	mi.set = uint32_t(v.getInteger("set"));
+	mi.descriptor = uint32_t(v.getInteger("d"));
+	mi.info = valueToImageViewInfo(v.getValue("vi"));
+	return mi;
+}
 
 // --- Queue codec: node tables ----------------------------------------------
 
@@ -546,6 +572,7 @@ struct QueueEncoder {
 	NodeTable<ProgramData> programs;
 	NodeTable<GraphicPipelineData> graphicPipelines;
 	NodeTable<ComputePipelineData> computePipelines;
+	NodeTable<PipelineFamilyData> pipelineFamilies;
 	NodeTable<TextureSetLayoutData> textureSets;
 	NodeTable<AttachmentData> attachments;
 	NodeTable<AttachmentPassData> attachmentPasses;
@@ -581,6 +608,14 @@ struct QueueEncoder {
 		}
 	}
 
+	void collectPipelineFamily(const PipelineFamilyData *f) {
+		// The family's pipelines and its owning layout are collected through the layout itself; the
+		// family node only needs an entry in the table so layouts/pipelines can reference it.
+		if (f) {
+			pipelineFamilies.add(f);
+		}
+	}
+
 	void collectPipelineLayout(const PipelineLayoutData *l) {
 		if (pipelineLayouts.add(l)) {
 			collectPass(l->pass);
@@ -588,6 +623,8 @@ struct QueueEncoder {
 			for (auto s : l->sets) { collectDescriptorSet(s); }
 			for (auto p : l->graphicPipelines) { collectGraphicPipeline(p); }
 			for (auto p : l->computePipelines) { collectComputePipeline(p); }
+			collectPipelineFamily(l->defaultFamily);
+			for (auto f : l->families) { collectPipelineFamily(f); }
 		}
 	}
 
@@ -674,7 +711,7 @@ struct QueueEncoder {
 	}
 
 	DataValue emitGraphicPipeline(const GraphicPipelineData *p) {
-		// [key, dynamicState, material, subpass, layout, shaders[], id]
+		// [key, dynamicState, material, subpass, layout, shaders[], id, family]
 		DataValue v(DataValue::Type::ARRAY);
 		v.addString(p->key);
 		v.addInteger(ei(p->dynamicState));
@@ -686,11 +723,12 @@ struct QueueEncoder {
 		for (auto &s : p->shaders) { shaders.addInteger(programs.ref(s.data)); }
 		v.addValue(sp::move(shaders));
 		v.addInteger(int64_t(reg.share(p->pipeline.get())));
+		v.addInteger(pipelineFamilies.ref(static_cast<const PipelineFamilyData *>(p->family)));
 		return v;
 	}
 
 	DataValue emitComputePipeline(const ComputePipelineData *p) {
-		// [key, subpass, layout, shader, id, lx, ly, lz]
+		// [key, subpass, layout, shader, id, lx, ly, lz, family]
 		DataValue v(DataValue::Type::ARRAY);
 		v.addString(p->key);
 		v.addInteger(subpasses.ref(p->subpass));
@@ -706,11 +744,23 @@ struct QueueEncoder {
 		v.addInteger(int64_t(lx));
 		v.addInteger(int64_t(ly));
 		v.addInteger(int64_t(lz));
+		v.addInteger(pipelineFamilies.ref(static_cast<const PipelineFamilyData *>(p->family)));
+		return v;
+	}
+
+	DataValue emitPipelineFamily(const PipelineFamilyData *f) {
+		// [key, layout, graphicPipelines[], computePipelines[]]
+		DataValue v(DataValue::Type::ARRAY);
+		v.addString(f->key);
+		v.addInteger(pipelineLayouts.ref(f->layout));
+		v.addValue(refArray(graphicPipelines, f->graphicPipelines));
+		v.addValue(refArray(computePipelines, f->computePipelines));
 		return v;
 	}
 
 	DataValue emitTextureSetLayout(const TextureSetLayoutData *t) {
-		// [key, imageCount, imageCountIndexed, bufferCount, bufferCountIndexed, samplers[], id]
+		// [key, imageCount, imageCountIndexed, bufferCount, bufferCountIndexed, samplers[], id,
+		//  bindingLayouts[]]
 		DataValue v(DataValue::Type::ARRAY);
 		v.addString(t->key);
 		v.addInteger(int64_t(t->imageCount));
@@ -721,6 +771,7 @@ struct QueueEncoder {
 		for (auto &s : t->samplers) { samplers.addValue(samplerToValue(s)); }
 		v.addValue(sp::move(samplers));
 		v.addInteger(int64_t(reg.share(t->layout.get())));
+		v.addValue(refArray(pipelineLayouts, t->bindingLayouts));
 		return v;
 	}
 
@@ -794,7 +845,8 @@ struct QueueEncoder {
 	}
 
 	DataValue emitPipelineLayout(const PipelineLayoutData *l) {
-		// [key, pass, index, textureSetLayout, sets[], graphicPipelines[], computePipelines[]]
+		// [key, pass, index, textureSetLayout, sets[], graphicPipelines[], computePipelines[],
+		//  defaultFamily, families[]]
 		DataValue v(DataValue::Type::ARRAY);
 		v.addString(l->key);
 		v.addInteger(passes.ref(l->pass));
@@ -803,6 +855,8 @@ struct QueueEncoder {
 		v.addValue(refArray(descriptorSets, l->sets));
 		v.addValue(refArray(graphicPipelines, l->graphicPipelines));
 		v.addValue(refArray(computePipelines, l->computePipelines));
+		v.addInteger(pipelineFamilies.ref(l->defaultFamily));
+		v.addValue(refArray(pipelineFamilies, l->families));
 		return v;
 	}
 
@@ -986,6 +1040,9 @@ Bytes QueueCodec::encodeQueue(const core::Queue &queue,
 	root.setValue(QueueEncoder::emitTable(enc.computePipelines,
 						  [&](const ComputePipelineData *p) { return enc.emitComputePipeline(p); }),
 			"computePipelines");
+	root.setValue(QueueEncoder::emitTable(enc.pipelineFamilies,
+						  [&](const PipelineFamilyData *f) { return enc.emitPipelineFamily(f); }),
+			"pipelineFamilies");
 	root.setValue(
 			QueueEncoder::emitTable(enc.textureSets,
 					[&](const TextureSetLayoutData *t) { return enc.emitTextureSetLayout(t); }),
@@ -1153,6 +1210,7 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 		Vector<ProgramData *> programs;
 		Vector<GraphicPipelineData *> graphicPipelines;
 		Vector<ComputePipelineData *> computePipelines;
+		Vector<PipelineFamilyData *> pipelineFamilies;
 		Vector<AttachmentPassData *> attachmentPasses;
 		Vector<AttachmentSubpassData *> attachmentSubpasses;
 		Vector<SubpassData *> subpasses;
@@ -1166,6 +1224,8 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 				[&] { return new (pool) GraphicPipelineData(); });
 		alloc("computePipelines", computePipelines,
 				[&] { return new (pool) ComputePipelineData(); });
+		alloc("pipelineFamilies", pipelineFamilies,
+				[&] { return new (pool) PipelineFamilyData(); });
 		alloc("textureSets", textureSets, [&] { return new (pool) TextureSetLayoutData(); });
 		alloc("attachments", attachments, [&] { return new (pool) AttachmentData(); });
 		alloc("attachmentPasses", attachmentPasses,
@@ -1208,6 +1268,8 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 			for (auto &sv : at(n, 5).getArray()) { t->samplers.emplace_back(valueToSampler(sv)); }
 			t->layout = factory.makeTextureSetLayout(uint64_t(at(n, 6).getInteger()), t->imageCount,
 					uint32_t(t->samplers.size()));
+			derefArray(n, 7, pipelineLayouts, t->bindingLayouts,
+					[](auto &out, auto p) { out.emplace_back(p); });
 		}
 
 		auto &gpArr = root.getValue("graphicPipelines").getArray();
@@ -1230,6 +1292,7 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 				}
 			}
 			p->pipeline = factory.makeGraphicPipeline(uint64_t(at(n, 6).getInteger()));
+			p->family = deref(pipelineFamilies, refAt(n, 7));
 		}
 
 		auto &cpArr = root.getValue("computePipelines").getArray();
@@ -1245,6 +1308,7 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 			p->pipeline = factory.makeComputePipeline(uint64_t(at(n, 4).getInteger()),
 					uint32_t(at(n, 5).getInteger()), uint32_t(at(n, 6).getInteger()),
 					uint32_t(at(n, 7).getInteger()));
+			p->family = deref(pipelineFamilies, refAt(n, 8));
 		}
 
 		auto &apArr = root.getValue("attachmentPasses").getArray();
@@ -1353,6 +1417,23 @@ bool QueueCodec::decodeQueue(core::Queue &queue, BytesView bytes, ObjectFactory 
 			derefArray(n, 5, graphicPipelines, l->graphicPipelines,
 					[](auto &out, auto p) { out.emplace_back(p); });
 			derefArray(n, 6, computePipelines, l->computePipelines,
+					[](auto &out, auto p) { out.emplace_back(p); });
+			l->defaultFamily = deref(pipelineFamilies, refAt(n, 7));
+			derefArray(n, 8, pipelineFamilies, l->families,
+					[](auto &out, auto p) { out.emplace_back(p); });
+		}
+
+		// pipeline families (graphicPipelines/computePipelines/layout are all references into the
+		// tables allocated above; readMaterials walks layout->families->graphicPipelines)
+		auto &pfArr = root.getValue("pipelineFamilies").getArray();
+		for (size_t i = 0; i < pipelineFamilies.size(); ++i) {
+			auto &n = pfArr[i];
+			auto f = pipelineFamilies[i];
+			f->key = keyOf(n);
+			f->layout = deref(pipelineLayouts, refAt(n, 1));
+			derefArray(n, 2, graphicPipelines, f->graphicPipelines,
+					[](auto &out, auto p) { out.emplace_back(p); });
+			derefArray(n, 3, computePipelines, f->computePipelines,
 					[](auto &out, auto p) { out.emplace_back(p); });
 		}
 

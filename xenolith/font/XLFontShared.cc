@@ -1,5 +1,6 @@
 /**
  Copyright (c) 2024 Stappler LLC <admin@stappler.dev>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -22,6 +23,8 @@
 
 #include "XLFontComponent.h"
 #include "XLFontController.h"
+#include "XLFontControllerRemote.h"
+#include "XLRemoteFontServerEndpoint.h"
 #include "XLFontLocale.h"
 #include "SPSharedModule.h"
 
@@ -30,6 +33,10 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
 static SharedSymbol s_xenolithFontSymbols[] = {
 	SharedSymbol{"FontComponent::createFontComponent", FontComponent::createFontComponent},
 	SharedSymbol{"FontComponent::createDefaultController", FontComponent::createDefaultController},
+	SharedSymbol{"FontControllerRemote::createRemoteController",
+		FontControllerRemote::createRemoteController},
+	SharedSymbol{"RemoteFontServerEndpoint::createServerFontEndpoint",
+		RemoteFontServerEndpoint::createServerFontEndpoint},
 	SharedSymbol{"locale::setLocale", locale::setLocale},
 	SharedSymbol{"locale::getLocaleInfo", locale::getLocaleInfo},
 };

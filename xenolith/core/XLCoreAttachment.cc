@@ -56,7 +56,17 @@ bool DependencyEvent::signal(Queue *q, bool success) {
 	if (it != _queues.end()) {
 		_queues.erase(it);
 	}
-	return _queues.empty();
+
+	const bool signaled = _queues.empty();
+	if (signaled && _signalCallback) {
+		// Fire once on full signal. Move the callback out first so it cannot re-fire on a later signal()
+		// and so a callback that releases the last external reference to this event cannot re-enter here.
+		// The loop holds an Rc across signal(), so `this` stays valid for the return below.
+		auto cb = sp::move(_signalCallback);
+		_signalCallback = nullptr;
+		cb();
+	}
+	return signaled;
 }
 
 bool DependencyEvent::isSignaled() const { return _queues.empty(); }
@@ -64,6 +74,8 @@ bool DependencyEvent::isSignaled() const { return _queues.empty(); }
 bool DependencyEvent::isSuccessful() const { return _success; }
 
 void DependencyEvent::addQueue(Rc<Queue> &&q) { _queues.emplace(move(q)); }
+
+void DependencyEvent::setSignalCallback(Function<void()> &&cb) { _signalCallback = sp::move(cb); }
 
 bool Attachment::init(AttachmentBuilder &builder) {
 	_data = builder.getAttachmentData();

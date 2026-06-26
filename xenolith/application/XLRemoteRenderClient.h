@@ -80,14 +80,33 @@ public:
 	// All inputs for a frame were submitted; stop routing further input for it.
 	void handleFrameCommit(uint64_t frameId);
 
+	// A client-forwarded runtime material compile (WindowCode::CompileMaterials): resolve image refs (the
+	// atlas image id -> the font server's DynamicImage), reconstruct the materials, compile into the
+	// window's MaterialSet under the client-assigned ids, and register the gating deps so a frame using a
+	// not-yet-compiled material waits.
+	void handleCompileMaterials(BytesView payload);
+
 protected:
+	// Map a client-minted dependency id to the server-local event that gates the frame (material compile,
+	// or a font atlas update via the font server). Used by handleFrameInput.
+	Rc<core::DependencyEvent> reconcileDependency(uint32_t depId);
+
 	ServerAppThread *_host = nullptr;
 	Rc<remote::ServerConnection> _connection;
 	uint64_t _nextFrameId = 1; // monotonic wire token correlating an AcquireFrame request/reply
 
+	// The window this client most recently produced a frame for; the wire id used to route forwarded
+	// input back to the client's matching RemoteWindow. Captured in acquireFrame (frames flow before any
+	// input). TODO(multi-window): one client may serve several windows; carry the id per input batch.
+	uint64_t _windowId = 0;
+
 	// In-flight frames the client is still streaming input for, keyed by the wire frame id. Each
 	// proxy wraps the armed server FrameRequest; touched only on the app (dispatch) thread.
 	Map<uint64_t, Rc<core::LocalFrameRequestProxy>> _pendingFrames;
+
+	// Client-minted material dependency ids -> the server-local events the forwarded compile signals, so a
+	// frame using a not-yet-compiled material waits. Reconciled in handleFrameInput.
+	Map<uint32_t, Rc<core::DependencyEvent>> _materialDeps;
 };
 
 } // namespace stappler::xenolith

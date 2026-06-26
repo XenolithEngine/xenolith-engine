@@ -1,5 +1,6 @@
 /**
  Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -24,6 +25,9 @@
 
 #include "XLFontComponent.cc"
 #include "XLFontController.cc"
+#include "XLFontControllerLocal.cc"
+#include "XLFontControllerRemote.cc"
+#include "XLRemoteFontServerEndpoint.cc"
 #include "XLFontGapi.cc"
 #include "XLFontLocale.cc"
 #include "XLFontLabelBase.cc"

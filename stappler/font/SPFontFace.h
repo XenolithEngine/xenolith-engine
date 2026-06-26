@@ -51,6 +51,10 @@ public:
 	StringView getName() const { return _name; }
 	BytesView getView() const;
 
+	// Stable content identity of the font bytes (xxh64 over getView()), used to dedupe a font across a
+	// network so a side that already holds it is never re-sent. Returns 0 for an unloaded source.
+	uint64_t getContentHash() const;
+
 	const FontVariations &getVariations() const { return _variations; }
 
 	FontSpecializationVector getSpecialization(const FontSpecializationVector &) const;

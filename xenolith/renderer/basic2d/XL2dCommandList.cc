@@ -466,11 +466,24 @@ bool FrameContextHandle2d::serialize(const Callback<void(BytesView)> &cb) const 
 	w.u32(cmdCount);
 	w.raw(cmds.buf.data(), cmds.buf.size());
 
+	// Remote font dependencies: ship the client-minted (high-bit masked) dependency ids so the server can
+	// gate this frame on its own atlas-update events. The DependencyEvents themselves never cross the wire.
+	BinWriter deps;
+	uint32_t depCount = 0;
+	for (auto &d : waitDependencies) {
+		if (d && (d->getId() & 0x8000'0000u)) {
+			deps.u32(d->getId());
+			++depCount;
+		}
+	}
+	w.u32(depCount);
+	w.raw(deps.buf.data(), deps.buf.size());
+
 	cb(BytesView(w.buf.data(), w.buf.size()));
 	return true;
 }
 
-bool FrameContextHandle2d::deserialize(BytesView bytes) {
+bool FrameContextHandle2d::deserialize(BytesView bytes, Vector<uint32_t> *remoteDeps) {
 	BinReader r;
 	r.v = bytes;
 
@@ -550,6 +563,21 @@ bool FrameContextHandle2d::deserialize(BytesView bytes) {
 				}
 				return makeSpanView(arr, parsed.size());
 			}, sp::move(info));
+		}
+	}
+
+	// Remote font dependency ids (reconciled to real, frame-gating events on the server by
+	// RemoteRenderClient::handleFrameInput). Output into the caller-provided vector wired via
+	// makeInputData; if absent (local path), the ids are still consumed from the stream but discarded.
+	auto depCount = r.u32();
+	if (remoteDeps) {
+		remoteDeps->clear();
+		remoteDeps->reserve(depCount);
+	}
+	for (uint32_t i = 0; i < depCount && r.ok; ++i) {
+		auto id = r.u32();
+		if (remoteDeps) {
+			remoteDeps->emplace_back(id);
 		}
 	}
 

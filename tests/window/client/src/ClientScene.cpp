@@ -28,6 +28,7 @@
 #include "XLSimpleButton.h"
 #include "XLDirector.h"
 #include "XLAppWindow.h"
+#include "XLInputListener.h" // DEBUG: verify forwarded input reaches the scene
 #include "XLSimpleCloseGuardWidget.h"
 #include "XLEntryPoint.h"
 
@@ -64,11 +65,48 @@ bool ClientScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel
 	_square->setContentSize(Size2(256.0f, 256.0f));
 	_square->setAnchorPoint(Anchor::Middle);
 
+	// Текстовая метка — рендеринг шрифта на удалённом клиенте. Материал атласа шрифта компилируется на
+	// сервере (RemoteWindow::compileMaterials -> WindowCode::CompileMaterials), глифы растеризуются там же.
+	_label = content->addChild(Rc<basic2d::Label>::create("REMOTE"));
+	_label->setFontSize(96);
+	_label->setAnchorPoint(Anchor::Middle);
+	_label->setColor(Color4F::BLACK);
+	// The headless client has no deferred-vertex work queue (the default path errors with "BusDelegate not
+	// attached"); generate the label quads in the foreground instead.
+	_label->setDeferred(false);
+
 	// Применяем содержимое сцены
 	setContent(content);
 
-	// Счётчик FPS рисует текст (шрифты), что пока приводит к падению — отключаем его.
-	setFpsVisible(false);
+	// Remote runtime font materials are now forwarded to the server for compilation; enable text.
+	setFpsVisible(true);
+
+	// DEBUG: verify server-forwarded input (WindowCode::InputEvents) actually reaches the scene graph.
+	// The server's XL_REMOTE_INPUT_SIM emitter sweeps a cursor and clicks; these recognizers log when
+	// the replayed events surface as gestures in the client scene.
+	auto listener = content->addSystem(Rc<InputListener>::create());
+	listener->addMoveRecognizer([](const GestureData &data) -> bool {
+		auto loc = data.input->currentLocation;
+		log::source().info("ClientScene", "[input] move -> x=", loc.x, " y=", loc.y);
+		return true;
+	});
+	listener->addTapRecognizer([](const GestureTap &tap) -> bool {
+		auto loc = tap.location();
+		log::source().info("ClientScene", "[input] TAP -> x=", loc.x, " y=", loc.y, " count=",
+				tap.count);
+		return true;
+	});
+
+	// DEBUG (reverse direction): a static region that requests a custom OS cursor. The scene graph
+	// computes this as a WindowLayer; the headless client forwards it to the server (WindowCode::
+	// UpdateLayers), which applies it to the real OS window. A fixed 200x120 region at (50, 600) so the
+	// forwarded layer's rect + cursor can be verified in the server log.
+	auto cursorRegion = content->addChild(Rc<basic2d::Layer>::create(Color4F(1.0f, 1.0f, 0.0f, 0.35f)));
+	cursorRegion->setContentSize(Size2(200.0f, 120.0f));
+	cursorRegion->setAnchorPoint(Anchor::BottomLeft);
+	cursorRegion->setPosition(Vec2(50.0f, 600.0f));
+	auto cursorListener = cursorRegion->addSystem(Rc<InputListener>::create());
+	cursorListener->setCursor(WindowCursor::Pointer);
 
 	return true;
 }
@@ -80,6 +118,9 @@ void ClientScene::handleContentSizeDirty() {
 	// Центрируем квадрат при каждом изменении размера сцены
 	if (_square) {
 		_square->setPosition(_contentSize / 2.0f);
+	}
+	if (_label) {
+		_label->setPosition(_contentSize / 2.0f);
 	}
 }
 

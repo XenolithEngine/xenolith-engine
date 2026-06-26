@@ -1,6 +1,7 @@
 /**
  Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
  Copyright (c) 2025 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -118,18 +119,21 @@ public:
 		Data *_data;
 	};
 
-	virtual ~FontController();
+	virtual ~FontController() = default;
 
-	bool init(FontComponent *, StringView name);
-
+	// Re-apply an extend() Builder against this controller. The base assembles the Builder; the leaf
+	// (applyBuilder) routes it to its source loader (local: FontComponent::acquireController).
 	void extend(AppThread *app, const Callback<bool(FontController::Builder &)> &);
 
-	virtual void initialize(AppThread *) override;
-	virtual void invalidate(AppThread *) override;
+	// GPU touchpoints implemented by the concrete leaf: local (FontComponentLocal -> gl Loop) or remote
+	// (FontControllerRemote -> server). The base owns only positioning + source state and never touches
+	// the GPU directly.
+	virtual void initialize(AppThread *) override = 0;
+	virtual void invalidate(AppThread *) override = 0;
 
 	bool isLoaded() const { return _loaded; }
-	const Rc<core::DynamicImage> &getImage() const { return _image; }
-	const Rc<Texture> &getTexture() const { return _texture; }
+	virtual const Rc<core::DynamicImage> &getImage() const = 0;
+	virtual const Rc<Texture> &getTexture() const = 0;
 
 	Rc<FontFaceSet> getLayout(FontParameters f);
 	Rc<FontFaceSet> getLayoutForString(const FontParameters &f, const CharVector &);
@@ -141,6 +145,19 @@ public:
 
 	virtual void update(AppThread *, const UpdateTime &clock, bool) override;
 
+	// Submit any pending (dirty) glyphs to the gAPI endpoint now, gated by the current dependency. Called
+	// from update() on the app-update cadence; the remote client also calls it from its frame-production
+	// path (before the FrameInput is sent) so the server registers the gating dependency before the frame
+	// references it -- otherwise the frame's reconcile finds nothing and the glyphs are not actually gated.
+	virtual void flushPendingGlyphs(AppThread *);
+
+	// Route a remote::Domain::Font notification addressed at this controller (server->client AtlasReady,
+	// etc.). The base consumes-and-ignores; FontControllerRemote overrides to drive the client protocol.
+	// Generic primitive signature so the base needs no remote:: types.
+	virtual bool dispatchFontMessage(uint8_t code, uint32_t serial, BytesView payload) {
+		return true;
+	}
+
 protected:
 	friend class FontComponent;
 
@@ -150,7 +167,6 @@ protected:
 	// replaces previous alias
 	bool addAlias(StringView newAlias, StringView familyName);
 
-	void setImage(Rc<core::DynamicImage> &&);
 	void setLoaded(bool);
 
 	void sendFontUpdatedEvent();
@@ -165,18 +181,25 @@ protected:
 
 	void initDependency();
 
+	// Leaf hooks. submitGlyphs hands a batch of glyph-raster requests (+ the gating dependency) to the
+	// leaf's gAPI endpoint (local: FontComponent -> gl Loop / VkFontQueue; remote: proxy -> server).
+	// makeDependency builds the DependencyEvent that gates the atlas update covering those glyphs
+	// (local: signalled by the FontQueue; remote: reconciled + signalled on the server). applyBuilder
+	// routes an extend() Builder to the leaf's source loader.
+	virtual void submitGlyphs(AppThread *, Vector<FontUpdateRequest> &&,
+			Rc<core::DependencyEvent> &&) = 0;
+	virtual Rc<core::DependencyEvent> makeDependency() = 0;
+	virtual void applyBuilder(AppThread *app, Builder &&) = 0;
+
 	bool _loaded = false;
 	String _name;
 	sprt::atomic<uint64_t> _clock;
 	TimeInterval _unusedInterval = 100_msec;
 	String _defaultFontFamily = "default";
-	Rc<Texture> _texture;
-	Rc<core::DynamicImage> _image;
-	Rc<FontComponent> _component;
 
-	// gAPI endpoint for the GPU touchpoints (atlas compile + glyph raster). Local mode: the
-	// FontComponent (kept alive by _component). Client mode: a FontGapiProxy -> server.
-	FontGapi *_gapi = nullptr;
+	// FreeType library used to open faces for metrics/layout. Provided by the leaf (local: the
+	// FontComponent's shared library; remote: the controller's own headless library).
+	FontLibrary *_library = nullptr;
 
 	Map<String, String> _aliases;
 	Vector<StringView> _familiesNames;

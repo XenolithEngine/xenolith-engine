@@ -1,5 +1,6 @@
 /**
  Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -23,9 +24,7 @@
 #include "XLFontController.h"
 
 #include "XLAppThread.h"
-#include "XLTemporaryResource.h"
-#include "XLTexture.h"
-#include "XLFontComponent.h"
+#include "XLCoreAttachment.h"
 #include "SPFilesystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::font {
@@ -312,36 +311,10 @@ void FontController::Builder::addSources(FamilyQuery *query, Vector<const FontSo
 	query->addInFront = front;
 }
 
-FontController::~FontController() { invalidate(nullptr); }
-
-bool FontController::init(FontComponent *comp, StringView name) {
-	_component = comp;
-	// Local gAPI endpoint: the FontComponent (direct to the gl Loop / VkFontQueue). A client-side
-	// controller would instead point _gapi at a FontGapiProxy.
-	_gapi = comp;
-	_name = name.str<Interface>();
-	return true;
-}
-
 void FontController::extend(AppThread *app, const Callback<bool(FontController::Builder &)> &cb) {
 	Builder builder(this);
 	if (cb(builder)) {
-		_component->acquireController(app->getLooper(), move(builder));
-	}
-}
-
-void FontController::initialize(AppThread *app) {
-	_image = FontComponent::makeInitialImage(_name);
-	// gAPI endpoint: compile the atlas image (local -> gl Loop; client -> proxy).
-	_gapi->compileImage(_image, [app = Rc<AppThread>(app)](bool success) { });
-	_texture = Rc<Texture>::create(_image);
-}
-
-void FontController::invalidate(AppThread *) {
-	if (_image) {
-		// image need to be finalized to remove cycled refs
-		_image->finalize();
-		_image = nullptr;
+		applyBuilder(app, move(builder));
 	}
 }
 
@@ -477,7 +450,7 @@ Rc<FontFaceSet> FontController::getLayout(FontParameters style) {
 
 	// create layout
 	ret = Rc<FontFaceSet>::create(sp::move(cfgName), style.fontFamily, sp::move(spec),
-			sp::move(data), _component->getLibrary());
+			sp::move(data), _library);
 	_layouts.emplace(ret->getName(), ret);
 	ret->touch(_clock, style.persistent);
 
@@ -531,6 +504,10 @@ StringView FontController::getFamilyName(uint32_t idx) const {
 void FontController::update(AppThread *app, const UpdateTime &clock, bool) {
 	_clock = clock.global;
 	removeUnusedLayouts();
+	flushPendingGlyphs(app);
+}
+
+void FontController::flushPendingGlyphs(AppThread *app) {
 	if (_dirty && _loaded) {
 		Vector<FontUpdateRequest> objects;
 		sprt::shared_lock lock(_layoutSharedMutex);
@@ -560,20 +537,13 @@ void FontController::update(AppThread *app, const UpdateTime &clock, bool) {
 			}
 		}
 		if (!objects.empty()) {
-			_gapi->updateImage(app->getLooper(), _image, sp::move(objects), move(_dependency),
-					[app = Rc<AppThread>(app)](bool) {
-				// perform views update
-				app->wakeup();
-			});
+			// Hand the batch (+ gating dependency) to the leaf's gAPI endpoint (local: FontComponent ->
+			// gl Loop; remote: proxy -> server). The dependency gates the frame that uses these glyphs.
+			submitGlyphs(app, sp::move(objects), move(_dependency));
 			_dependency = nullptr;
 		}
 		_dirty = false;
 	}
-}
-
-void FontController::setImage(Rc<core::DynamicImage> &&image) {
-	_image = sp::move(image);
-	_texture = Rc<Texture>::create(_image);
 }
 
 void FontController::setLoaded(bool value) {
@@ -726,8 +696,7 @@ void FontController::removeUnusedLayouts() {
 
 void FontController::initDependency() {
 	if (!_dependency) {
-		_dependency = Rc<core::DependencyEvent>::alloc(
-				core::DependencyEvent::QueueSet{_component->getQueue()}, "FontController");
+		_dependency = makeDependency();
 	}
 	_dirty = true;
 }
