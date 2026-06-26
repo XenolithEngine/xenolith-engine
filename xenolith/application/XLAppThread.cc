@@ -46,7 +46,7 @@ void AppThread::threadInit() {
 	_thisThreadId = getCurrentThreadId();
 
 	_appLooper = sprt::dispatch::Looper::acquire(sprt::dispatch::LooperInfo{
-		.name = StringView("Application"),
+		.name = StringView("App"),
 		.workersCount = getContextInfo()->appThreadsCount,
 
 		// Disable ALooper for internal queue, it can not be stopped gracefully
@@ -262,8 +262,8 @@ bool AppThread::failTimedOutRequests() {
 
 	// Synthesize a local protocol-error reply: the peer that owed us this reply is the opposite role, so
 	// tag the error as coming from it. code == NetworkBackend marks a local/transport-level failure.
-	auto errType = isServerThread() ? remote::MessageType::ClientError
-									: remote::MessageType::ServerError;
+	auto errType =
+			isServerThread() ? remote::MessageType::ClientError : remote::MessageType::ServerError;
 	for (auto serial : expired) {
 		auto it = _requests.find(serial);
 		if (it == _requests.end()) {

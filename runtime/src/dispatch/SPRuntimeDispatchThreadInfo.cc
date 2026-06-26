@@ -21,6 +21,7 @@
  **/
 
 #include "SPRuntimeDispatch.h"
+#include <sprt/runtime/stream.h>
 
 #include <pthread.h>
 
@@ -127,9 +128,18 @@ const thread_info *thread_info::get() {
 }
 
 void thread_info::set(StringView n, uint32_t w, bool m) {
-	n.pdup(tl_threadInfo.threadPool).performWithTerminated([](const char *tname, size_t) {
-		pthread_setname_np(pthread_self(), tname); //
+	auto bufSize = n.size() + 32;
+	auto str = __sprt_typed_malloca(char, bufSize);
+
+	sprt::StreamTraits<char>::toStringBuf(str, bufSize, tl_threadInfo.tid, ":", n);
+
+	n = StringView(str).pdup(tl_threadInfo.threadPool);
+
+	n.performWithTerminated([](const char *n, size_t) {
+		pthread_setname_np(pthread_self(), n); //
 	});
+
+	__sprt_freea(str);
 
 	tl_threadInfo.workerId = w;
 	tl_threadInfo.name = n;

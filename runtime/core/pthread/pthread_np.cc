@@ -36,7 +36,12 @@ int thread_t::setname(const char *name) {
 	unique_lock lock(mutex);
 	memcpy(threadName.data(), name, nameLen + 1);
 
-	setname_native(name);
+#if SPRT_LINUX
+	// Linux limits thread name to 16 byte  -truncate
+	threadName[15] = 0;
+#endif
+
+	setname_native(threadName.data());
 
 	return 0;
 }
