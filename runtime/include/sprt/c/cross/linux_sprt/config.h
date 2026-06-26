@@ -21,10 +21,3 @@
 #ifndef __SPRT_CONFIG_HAVE_FUTEX
 #define __SPRT_CONFIG_HAVE_FUTEX 1
 #endif
-
-// glibc provides the non-restartable <stdlib.h> multibyte family
-// (mbstowcs/mbtowc/wctomb/wcstombs/__ctype_get_mb_cur_max), so forward to it
-// instead of stubbing those to ENOSYS as the default does.
-#ifndef __SPRT_CONFIG_HAVE_STDLIB_MB
-#define __SPRT_CONFIG_HAVE_STDLIB_MB 1
-#endif

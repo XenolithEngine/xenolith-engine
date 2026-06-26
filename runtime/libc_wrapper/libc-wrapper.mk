@@ -59,6 +59,15 @@ MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CXXFLAGS += $(HOST_GENERAL_CFLAGS) \
 endif # ($(TARGET_SYSTEM),Darwin/iOS)
 
 
+ifeq ($(TARGET_SYSTEM),Android)
+# SPRuntimeCComplex.cpp borrows a few musl complex sources for the <complex.h>
+# entries Bionic only ships at API 26 (we target 24). Those sources resolve
+# #include "complex_impl.h" against the shim kept here.
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_INCLUDES += \
+	$(RUNTIME_MODULE_DIR)/libc_wrapper/c/complex
+endif # ($(TARGET_SYSTEM),Android)
+
+
 ifeq ($(TARGET_SYSTEM),Windows)
 MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_COMMON_FLAGS := \
 	-ffreestanding \

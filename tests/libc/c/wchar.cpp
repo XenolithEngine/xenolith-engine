@@ -113,9 +113,8 @@ void performWcharStringTest() {
 	printf("btowc(EOF)==WEOF:%d\n", btowc(EOF) == WEOF);
 
 	// wide ctype
-	printf("iswalpha(A)=%d iswdigit(5)=%d iswspace(sp)=%d iswupper(A)=%d\n",
-			iswalpha(L'A') ? 1 : 0, iswdigit(L'5') ? 1 : 0, iswspace(L' ') ? 1 : 0,
-			iswupper(L'A') ? 1 : 0);
+	printf("iswalpha(A)=%d iswdigit(5)=%d iswspace(sp)=%d iswupper(A)=%d\n", iswalpha(L'A') ? 1 : 0,
+			iswdigit(L'5') ? 1 : 0, iswspace(L' ') ? 1 : 0, iswupper(L'A') ? 1 : 0);
 	printf("towlower(A)=%x towupper(a)=%x\n", (unsigned)(unsigned long)towlower(L'A'),
 			(unsigned)(unsigned long)towupper(L'a'));
 }
@@ -124,8 +123,8 @@ void performWcstolTest() {
 	// wcstol returns `long` (32-bit on Windows / 64-bit on Linux): exact checks
 	// use in-range inputs, overflow is checked via the clamp-to-LONG_MAX/ERANGE
 	// contract, and the 64-bit range via wcstoll/wcstoull (64-bit everywhere).
-	static const wchar_t *cases[] = {L"0", L"  42", L"-42", L"0x1A", L"2147483647",
-		L"-2147483648", L"xyz", L"  -17abc", L"010"};
+	static const wchar_t *cases[] = {L"0", L"  42", L"-42", L"0x1A", L"2147483647", L"-2147483648",
+		L"xyz", L"  -17abc", L"010"};
 	for (auto c : cases) {
 		wchar_t *end = nullptr;
 		long v = wcstol(c, &end, 0);
@@ -211,7 +210,8 @@ void performMultibyteTest() {
 	while (left > 0) {
 		wchar_t wc = 0;
 		size_t r = mbrtowc(&wc, p, left, &st);
-		printf("mbrtowc[%d] consumed=%lld wc=%x\n", idx++, (long long)r, (unsigned)(unsigned long)wc);
+		printf("mbrtowc[%d] consumed=%lld wc=%x\n", idx++, (long long)r,
+				(unsigned)(unsigned long)wc);
 		if (r == 0 || r == (size_t)-1 || r == (size_t)-2) {
 			break;
 		}
@@ -269,7 +269,9 @@ void performMultibyteTest() {
 		char tmp[8];
 		size_t r = wcrtomb(tmp, wbuf[i], &st);
 		printf("wcrtomb[%zu] len=%lld bytes:", i, (long long)r);
-		for (size_t j = 0; j < r && r != (size_t)-1; ++j) { printf(" %02x", (unsigned char)tmp[j]); }
+		for (size_t j = 0; j < r && r != (size_t)-1; ++j) {
+			printf(" %02x", (unsigned char)tmp[j]);
+		}
 		printf("\n");
 	}
 

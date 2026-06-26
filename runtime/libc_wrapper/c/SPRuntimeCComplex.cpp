@@ -34,6 +34,82 @@ THE SOFTWARE.
 // translation unit serves the freestanding target, where ::cabs/::cexp/... resolve
 // (through the umbrella's bare prototypes) to the musl-provided public symbols.
 
+#if SPRT_ANDROID
+// Bionic only gained these <complex.h> entries at API 26 (the clog/cpow families
+// and every long double variant), but the runtime targets API 24, so they are
+// absent from the platform libm and ::clog/::cpow/::cacosl/... do not even exist.
+// Supply them from musl — the very sources runtime/libc_impl already uses — pulled
+// in right here so they are defined inside this libc_wrapper TU. Each is renamed to
+// __sprt_musl_* below; that rename deliberately stays in effect for the rest of the
+// file, so the matching *_impl forwarders pick up the musl version instead of the
+// missing ::name. The borrowed code's only outside calls are to API<=23
+// complex/real-math functions (cabs, cexp, ctan, creall, logl, csqrtl, ...), which
+// are left unrenamed and resolve to Bionic's libm at link time.
+extern "C" {
+#define clog __sprt_musl_clog
+#define clogf __sprt_musl_clogf
+#define clogl __sprt_musl_clogl
+#define cpow __sprt_musl_cpow
+#define cpowf __sprt_musl_cpowf
+#define cpowl __sprt_musl_cpowl
+#define cexpl __sprt_musl_cexpl
+#define cacosl __sprt_musl_cacosl
+#define cacoshl __sprt_musl_cacoshl
+#define casinl __sprt_musl_casinl
+#define casinhl __sprt_musl_casinhl
+#define catanl __sprt_musl_catanl
+#define catanhl __sprt_musl_catanhl
+#define ccosl __sprt_musl_ccosl
+#define ccoshl __sprt_musl_ccoshl
+#define csinl __sprt_musl_csinl
+#define csinhl __sprt_musl_csinhl
+#define ctanl __sprt_musl_ctanl
+#define ctanhl __sprt_musl_ctanhl
+
+// Forward declarations (renamed by the macros above) so the borrowed sources can
+// call one another regardless of include order — C++ has no implicit declaration.
+double complex clog(double complex);
+float complex clogf(float complex);
+long double complex clogl(long double complex);
+double complex cpow(double complex, double complex);
+float complex cpowf(float complex, float complex);
+long double complex cpowl(long double complex, long double complex);
+long double complex cexpl(long double complex);
+long double complex cacosl(long double complex);
+long double complex cacoshl(long double complex);
+long double complex casinl(long double complex);
+long double complex casinhl(long double complex);
+long double complex catanl(long double complex);
+long double complex catanhl(long double complex);
+long double complex ccosl(long double complex);
+long double complex ccoshl(long double complex);
+long double complex csinl(long double complex);
+long double complex csinhl(long double complex);
+long double complex ctanl(long double complex);
+long double complex ctanhl(long double complex);
+
+#include "../../musl-libc/src/complex/clog.c"
+#include "../../musl-libc/src/complex/clogf.c"
+#include "../../musl-libc/src/complex/cpow.c"
+#include "../../musl-libc/src/complex/cpowf.c"
+#include "../../musl-libc/src/complex/cexpl.c"
+#include "../../musl-libc/src/complex/clogl.c"
+#include "../../musl-libc/src/complex/cpowl.c"
+#include "../../musl-libc/src/complex/cacosl.c"
+#include "../../musl-libc/src/complex/cacoshl.c"
+#include "../../musl-libc/src/complex/casinl.c"
+#include "../../musl-libc/src/complex/casinhl.c"
+#include "../../musl-libc/src/complex/catanl.c"
+#include "../../musl-libc/src/complex/catanhl.c"
+#include "../../musl-libc/src/complex/ccosl.c"
+#include "../../musl-libc/src/complex/ccoshl.c"
+#include "../../musl-libc/src/complex/csinl.c"
+#include "../../musl-libc/src/complex/csinhl.c"
+#include "../../musl-libc/src/complex/ctanl.c"
+#include "../../musl-libc/src/complex/ctanhl.c"
+} // extern "C"
+#endif // SPRT_ANDROID
+
 namespace sprt {
 
 __SPRT_C_FUNC double __SPRT_ID(cabs_impl)(double _Complex __z) { return ::cabs(__z); }

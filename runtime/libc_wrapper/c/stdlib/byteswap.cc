@@ -28,13 +28,13 @@ THE SOFTWARE.
 
 namespace sprt {
 
-__SPRT_C_FUNC unsigned short _byteswap_ushort(unsigned short _Number) __SPRT_NOEXCEPT {
+__SPRT_C_FUNC unsigned short _byteswap_ushort(unsigned short _Number) {
 	return sprt::byteswap(_Number);
 }
-__SPRT_C_FUNC unsigned long _byteswap_ulong(unsigned long _Number) __SPRT_NOEXCEPT {
+__SPRT_C_FUNC unsigned long _byteswap_ulong(unsigned long _Number) {
 	return sprt::byteswap(_Number);
 }
-__SPRT_C_FUNC __SPRT_ID(uint64_t) _byteswap_uint64(__SPRT_ID(uint64_t) _Number) __SPRT_NOEXCEPT {
+__SPRT_C_FUNC __SPRT_ID(uint64_t) _byteswap_uint64(__SPRT_ID(uint64_t) _Number) {
 	return sprt::byteswap(_Number);
 }
 
