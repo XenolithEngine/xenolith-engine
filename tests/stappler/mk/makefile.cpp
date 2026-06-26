@@ -183,6 +183,46 @@ void performMakefileTests() {
 		// out-of-date: phony targets are always rebuilt
 		check(mk->isOutOfDate(goal, err), "phony target reports out of date");
 
+		// --- special characters in target/variable names ---
+		// A name may contain '+', '?', ',', '(' and ')' literally (GNU make accepts "libc++",
+		// "a?b", "a,b", ...). The line-start tokenizer must keep such a name as ONE word and must
+		// still recognize the real "+="/"?=" operators when they actually appear.
+		{
+			static constexpr StringView kChars =
+					"all: foo+bar libc++ a?b a,b a(b)c\n"
+					"foo+bar:\n"
+					"\t@true\n"
+					"libc++:\n"
+					"\t@true\n"
+					"a?b:\n"
+					"\t@true\n"
+					"a,b:\n"
+					"\t@true\n"
+					"a(b)c:\n"
+					"\t@true\n"
+					"VAR+ := plus\n"
+					"VAR+ += more\n";
+
+			auto mk2 = Rc<MakefileRef>::create(SharedRefMode::Allocator);
+			mk2->setLogCallback(logcb);
+			ErrorReporter err2(nullptr);
+			err2.callback = logcb;
+			err2.filename = StringView("<chars>");
+			check(mk2->include("chars.mk", kChars, true, &err2), "special-char fixture parses");
+
+			check(mk2->getTarget("foo+bar") != nullptr, "target 'foo+bar' kept '+' (single target)");
+			check(mk2->getTarget("libc++") != nullptr, "target 'libc++' kept trailing '++'");
+			check(mk2->getTarget("a?b") != nullptr, "target 'a?b' kept '?'");
+			check(mk2->getTarget("a,b") != nullptr, "target 'a,b' kept ','");
+			check(mk2->getTarget("a(b)c") != nullptr, "target 'a(b)c' kept '()'");
+			// the split-bug symptom: "foo+bar" must NOT have become "foo+" + "bar"
+			check(mk2->getTarget("bar") == nullptr, "'foo+bar' did not split into 'foo+' + 'bar'");
+
+			auto vplus = mk2->getVariable("VAR+");
+			check(vplus && vplus->type == Variable::Type::String && vplus->str == "plus more",
+					"variable name 'VAR+' parsed and '+=' still appends");
+		}
+
 		// --- fixture B: actual recipe execution via the shell ---
 		static constexpr StringView kExec =
 				".PHONY: all a b\n"
@@ -200,6 +240,39 @@ void performMakefileTests() {
 		check(mkB->include("exec.mk", kExec, true, &errB), "fixture B parses");
 		auto res = mkB->execute(mkB->getTarget("all"), errB);
 		check(res == BuildResult::Built, "execute(all) ran phony recipes");
+
+		// --- recipe-less aggregator (NOT phony): builds its prerequisites without a spurious
+		// "No rule to make target", but a prerequisite that was never declared and has no file is
+		// still a genuine error. ---
+		{
+			static constexpr StringView kAgg = "all: a b\n"
+											   "a:\n"
+											   "\t@echo agg-a\n"
+											   "b:\n"
+											   "\t@echo agg-b\n";
+			auto mkA = Rc<MakefileRef>::create(SharedRefMode::Allocator);
+			mkA->setLogCallback(logcb);
+			ErrorReporter errA(nullptr);
+			errA.callback = logcb;
+			errA.filename = StringView("<agg>");
+			check(mkA->include("agg.mk", kAgg, true, &errA), "recipe-less aggregator parses");
+			auto aggRes = mkA->execute(mkA->getTarget("all"), errA);
+			check(aggRes == BuildResult::Built && errA.nerrors == 0,
+					"recipe-less aggregator 'all: a b' builds prereqs without 'No rule' error");
+
+			static constexpr StringView kMissing = "goal: nope\n"
+												   "\t@echo never\n";
+			auto mkM = Rc<MakefileRef>::create(SharedRefMode::Allocator);
+			mkM->setLogCallback(logcb);
+			ErrorReporter errM(nullptr);
+			errM.callback = logcb;
+			errM.filename = StringView("<missing>");
+			check(mkM->include("missing.mk", kMissing, true, &errM), "missing-prereq fixture parses");
+			// (the executor logs "No rule to make target 'nope'" below — that diagnostic is expected)
+			auto missRes = mkM->execute(mkM->getTarget("goal"), errM);
+			check(missRes == BuildResult::Failed,
+					"undeclared prerequisite with no file is still 'No rule to make target'");
+		}
 
 		// --- fixture C: real-file out-of-date check against filesystem ground truth ---
 		bool wroteP = filesystem::write(FileInfo("mk_prereq", LocationCategory::AppCache),

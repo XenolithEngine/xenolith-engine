@@ -163,8 +163,13 @@ static StringView readContextIdentifier(StringView &str, ReadContext ctx) {
 	switch (ctx) {
 	case ReadContext::LineStart: {
 		auto begin = str.data();
+		// A target or variable name ends at whitespace, '#', a '$' expansion, a '\' escape, or an
+		// assignment/rule operator char ('=' ':' '?' '+'). ',' and ')' are NOT delimiters here —
+		// they are ordinary characters in a name (GNU make accepts "a,b" and "a)b" as targets), and
+		// '(' is likewise never a stop char. '?'/'+' only delimit when they actually form "?="/"+=";
+		// an isolated '+'/'?' (as in "libc++" or "a?b") is folded back into the word by readWord.
 		str.readUntil<StringView::WhiteSpace,
-				StringView::Chars<'#', ',', ')', ':', '=', '?', '+', '$', '\\'>>();
+				StringView::Chars<'#', ':', '=', '?', '+', '$', '\\'>>();
 #if SPRT_WINDOWS
 		// A Windows drive letter ("C:/dir/file") puts a ':' right after a single leading letter; that
 		// ':' is part of the path, not the rule separator. Consume it and keep reading so the whole
@@ -178,7 +183,7 @@ static StringView readContextIdentifier(StringView &str, ReadContext ctx) {
 					&& (str.sub(1).is('/') || str.sub(1).is('\\'))) {
 				++str; // consume the drive ':'
 				str.readUntil<StringView::WhiteSpace,
-						StringView::Chars<'#', ',', ')', ':', '=', '?', '+', '$', '\\'>>();
+						StringView::Chars<'#', ':', '=', '?', '+', '$', '\\'>>();
 			}
 		}
 #endif
@@ -391,11 +396,15 @@ Stmt *Stmt::readWord(StringView &str, ReadContext ctx, ErrorReporter &err, uint3
 		} else if (!str.empty()) {
 			makeStmt()->add(StringView(sig.data(), sig.size() + 1));
 			++str;
-			if (beginning != '(') {
+			if (beginning != '(' && ctx != ReadContext::LineStart) {
 				break;
 			}
-			// inside $(...): keep reading the text that follows a balanced "(...)" (the
-			// char consumed above was exposed after the closing ')' of a nested group)
+			// Two cases keep reading rather than ending the word on the char consumed above:
+			// - inside $(...): that char followed a balanced "(...)" group, so the text after the
+			//   closing ')' belongs to the same word;
+			// - at LineStart: the char is a stop char that did NOT form an assignment/rule operator
+			//   (a literal '+' or '?' in a target/variable name, e.g. "libc++" or "a?b"), so it is
+			//   part of the name — keep reading so the whole name stays one word (matching GNU make).
 		} else {
 			makeStmt()->add(sig);
 			if (ending) {

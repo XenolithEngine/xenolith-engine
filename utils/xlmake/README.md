@@ -490,6 +490,8 @@ showing the `xlmake` command(s) to try and the GNU `make` equivalent:
 | `patsubst.mk` / `functions.mk` / `filepath.mk` | text/function/path expansion |
 | `eval.mk` / `cmdline.mk` / `include-main.mk` | `eval`, command-line assignments, `include` |
 | `warnings.mk` / `stappler-cases.mk` | engine warnings and Stappler-specific patterns |
+| `special-chars.mk` | `+`/`?`/`,`/`(`/`)` literal in target and variable names (e.g. `libc++`) |
+| `aggregator.mk` | recipe-less aggregator targets (`all: a b` with no recipe) |
 
 For example:
 
@@ -497,6 +499,8 @@ For example:
 xlmake -f samples/build-parallel.mk -j4 all      # parallel build
 xlmake -i -f samples/target-vars.mk --recipe prog  # inspect an expanded recipe
 xlmake -i -f samples/depgraph.mk --prerequisites -r all   # transitive prereqs
+xlmake -f samples/special-chars.mk all           # '+'/'?'/',' literal in target names
+xlmake -f samples/aggregator.mk world            # recipe-less aggregator targets
 ```
 
 ---
