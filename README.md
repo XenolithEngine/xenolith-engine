@@ -144,9 +144,29 @@ by default; the entry point is `make/universal.mk`.
   `x86_64-unknown-linux-gnu`).
 * Support for compiling GLSL → SPIR-V shaders (glslang/spirv-link) and building WebAssembly
   (WASI SDK + wit-bindgen, the WAMR runtime).
+* Builds run under GNU Make 4.1+ or the bundled, drop-in **`xlmake`** driver (see below).
 
-The self-contained **toolchains** (`runtime/toolchains/`) are built with a custom LLVM and ship all
-tools and dependencies, which is what makes it possible to build the project without platform SDKs.
+### Self-contained toolchains
+
+The self-contained **toolchains** (`runtime/toolchains/`) are what make all of this possible. Built
+around a custom LLVM, they ship every tool and library a build needs, so the build machine requires
+nothing beyond the toolchain itself — no system compiler, no system libraries and no platform SDK. A
+toolchain is delivered as two kinds of package that together cover the whole build:
+
+* **Host** — the compiler that *runs* on the build machine: clang 21 / LLVM with the full tool suite
+  (`clang`, `clang++`, `clang-cl`, the `lld` linkers, `lldb`, `llvm-ar` / `llvm-objcopy` /
+  `llvm-nm`, …), the shader tools (`glslang`, `spirv-link`), GNU Make, and the **`xlmake`** build
+  driver.
+* **Target** — the sysroot you *build for*: libc (glibc / musl / a custom UCRT-free Windows libc /
+  the Android bridge), libc++, compiler-rt, the system headers, and prebuilt versions of every
+  third-party dependency (OpenSSL + GOST, curl, FreeType, HarfBuzz, ICU, SQLite, the Vulkan stack,
+  image and compression libraries, …).
+
+Because both halves are self-contained, Windows builds work without UCRT or the Windows SDK, Android
+without the NDK, and macOS without the macOS SDK — removing the related technical and licensing
+restrictions. The only exceptions are the Apple targets, which require the Apple SDK for licensing
+reasons, and the `unknown-ndk-linux-android` bridge sysroot, which deliberately compiles through an
+externally installed Android NDK.
 
 ### Toolchain architectures
 
@@ -178,11 +198,31 @@ The toolchains build both LLVM/Clang **host** toolchains (the compiler that runs
 > there is no `+sprt` build variant for it (unlike macOS, which builds both the hosted and the
 > `+sprt` variants).
 
+### `xlmake` — bundled build driver
+
+Every host toolchain ships **`xlmake`** (`xlmake.exe` on Windows) in `bin/` — a GNU-make-compatible
+makefile engine and build driver, *"like Ninja, but it's make."* It reads the same
+GNU-make-style makefiles and runs recipes as child processes multiplexed through a single-threaded,
+non-blocking build reactor, so the project (and any project using this build system) can be built
+without an external `make` installed.
+
+* **Drop-in for GNU Make.** It is 4.1-compatible and supports the usual flags (`-f`, `-C`, `-j[N]`,
+  `-k`, `-n`, `-s`, `-B`, `-w`, …); GNU-make-oriented tooling such as the VSCode *Makefile Tools*
+  extension works against it unmodified. It exposes `XLMAKE_VERSION` so makefiles can detect the
+  engine.
+* **Two modes.** *build* (default — resolve the dependency graph and run recipes) and *inspect*
+  (`-i` / `--inspect` — print variables, recipes and prerequisites without running anything).
+
+```sh
+cd tests/window
+xlmake -j8         # same makefiles as `make`, built by the bundled driver
+```
+
 ## Dependencies
 
 ### Build
 
-* GNU Make 4.1+
+* GNU Make 4.1+ (or the bundled `xlmake` build driver)
 * LLVM/Clang 21.1.8 (shipped by the SDK toolchains)
 * For Vulkan: Vulkan SDK headers and tools (glslang, spirv-tools)
 * For WebAssembly: WASI SDK and wit-bindgen
