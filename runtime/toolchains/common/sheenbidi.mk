@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2025 Stappler LLC <admin@stappler.dev>
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -18,47 +18,27 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-# force to rebuild if this makefile changed
-LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
+.DEFAULT_GOAL := all
 
-STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../../make
+LIBNAME = sheenbidi
 
-LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
-LOCAL_EXECUTABLE := stapplertest
+include ../common/configure.mk
 
-LOCAL_PRIVATE_INCLUDE_PCH := SPCommon.h
+# Pure-C Unicode Bidirectional Algorithm implementation (Apache-2.0).
+# Unity build = single translation unit; generator and tests are build-time-only
+# C++ tooling and are disabled, so only the C library is produced.
+CONFIGURE := \
+	$(CONFIGURE_CMAKE) \
+	-DSB_CONFIG_UNITY=On \
+	-DBUILD_GENERATOR=Off \
+	-DBUILD_TESTING=Off
 
-LOCAL_MODULES_PATHS = stappler/stappler-modules.mk
+all:
+	$(call rule_rm,$(LIBNAME))
+	$(call rule_mkdir,$(LIBNAME))
+	cd $(LIBNAME); cmake -G "Ninja" $(LIB_SRC_DIR)/$(LIBNAME) $(CONFIGURE);
+	cd $(LIBNAME); cmake --build . --parallel
+	cd $(LIBNAME); cmake --install .
+	$(call rule_rm,$(LIBNAME))
 
-LOCAL_MODULES ?= \
-	runtime \
-	stappler_core \
-	stappler_filesystem \
-	stappler_data \
-	stappler_bitmap \
-	stappler_crypto \
-	stappler_db \
-	stappler_document \
-	stappler_font \
-	stappler_vg \
-	stappler_pug \
-	stappler_makefile \
-	stappler_layout \
-	stappler_network
-
-
-LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
-
-LOCAL_SRCS_DIRS := mk filesystem font
-LOCAL_SRCS_OBJS :=
-
-LOCAL_INCLUDES_DIRS :=
-LOCAL_INCLUDES_OBJS :=
-
-LOCAL_MAIN := main.cpp
-
-APPCONFIG_APP_NAME := RuntimeTest
-APPCONFIG_BUNDLE_NAME := org.stappler.RuntimeTest
-APPCONFIG_APP_PATH_COMMON := 3
-
-include $(STAPPLER_BUILD_ROOT)/universal.mk
+.PHONY: all

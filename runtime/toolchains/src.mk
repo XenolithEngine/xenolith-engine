@@ -35,6 +35,7 @@ LIBS = \
 	curl \
 	freetype \
 	harfbuzz \
+	sheenbidi \
 	sqlite \
 	libuidna \
 	mbedtls \
@@ -168,6 +169,14 @@ $(SRC_ROOT)/freetype: | prepare
 # TODO: Move to git release
 $(SRC_ROOT)/harfbuzz: | prepare
 	$(call unpack_tar, https://github.com/harfbuzz/harfbuzz/releases/download/14.2.1/harfbuzz-14.2.1.tar.xz, harfbuzz)
+
+# https://github.com/Tehreer/SheenBidi # revised: 25 jun 2026
+# Pinned to release tag v3.0.0 (Unicode 17.0); Apache-2.0, used bundled as the
+# Unicode Bidirectional Algorithm resolver.
+$(SRC_ROOT)/sheenbidi: | prepare
+	@$(MKDIR) $(SRC_ROOT)
+	$(call rule_rm,$(SRC_ROOT)/sheenbidi)
+	cd $(SRC_ROOT); git clone --branch v3.0.0 --depth 1 https://github.com/Tehreer/SheenBidi.git sheenbidi
 
 
 # https://www.sqlite.org/download.html # revised: 23 jun 2026

@@ -51,6 +51,7 @@ public:
 	bool empty() const { return empty_fn(target); }
 	T &at(size_t pos) const { return at_fn(target, pos); }
 	T &emplace_back(T &&v) const { return emplace_back_fn(target, move(v)); }
+	void insert(size_t pos, T &&v) const { insert_fn(target, pos, move(v)); }
 
 	T *begin() const { return begin_fn(target); }
 	T *end() const { return end_fn(target); }
@@ -74,6 +75,7 @@ public:
 	bool (*empty_fn)(void *) = nullptr;
 	T &(*at_fn)(void *, size_t) = nullptr;
 	T &(*emplace_back_fn)(void *, T &&) = nullptr;
+	void (*insert_fn)(void *, size_t, T &&) = nullptr;
 	T *(*begin_fn)(void *) = nullptr;
 	T *(*end_fn)(void *) = nullptr;
 	void (*clear_fn)(void *) = nullptr;
@@ -284,6 +286,10 @@ VectorAdapter<T>::VectorAdapter(memory::StandartInterface::VectorType<T> &vec) n
 , emplace_back_fn([](void *target, T &&v) -> T & {
 	return ((mem_std::Vector<T> *)target)->emplace_back(move(v));
 })
+, insert_fn([](void *target, size_t pos, T &&v) {
+	auto v_ = (mem_std::Vector<T> *)target;
+	v_->insert(v_->begin() + pos, move(v));
+})
 , begin_fn([](void *target) -> T * { return &*((mem_std::Vector<T> *)target)->begin(); })
 , end_fn([](void *target) -> T * { return &*((mem_std::Vector<T> *)target)->end(); })
 , clear_fn([](void *target) { ((mem_std::Vector<T> *)target)->clear(); })
@@ -300,6 +306,10 @@ VectorAdapter<T>::VectorAdapter(memory::PoolInterface::VectorType<T> &vec) noexc
 , at_fn([](void *target, size_t pos) -> T & { return ((mem_pool::Vector<T> *)target)->at(pos); })
 , emplace_back_fn([](void *target, T &&v) -> T & {
 	return ((mem_pool::Vector<T> *)target)->emplace_back(move(v));
+})
+, insert_fn([](void *target, size_t pos, T &&v) {
+	auto v_ = (mem_pool::Vector<T> *)target;
+	v_->insert(v_->begin() + pos, move(v));
 })
 , begin_fn([](void *target) -> T * { return &*((mem_pool::Vector<T> *)target)->begin(); })
 , end_fn([](void *target) -> T * { return &*((mem_pool::Vector<T> *)target)->end(); })

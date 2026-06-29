@@ -63,6 +63,7 @@ LIBS := \
 	libtiff.a \
 	libfreetype.a \
 	libharfbuzz.a \
+	libSheenBidi.a \
 	libsqlite3.a \
 	libnghttp3.a \
 	libssl.a \
@@ -321,6 +322,9 @@ $(SP_INSTALL_PREFIX)/usr/lib/libfreetype.a: ../common/freetype.mk $(SP_INSTALL_P
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/libharfbuzz.a:../common/harfbuzz.mk $(SP_INSTALL_PREFIX)/usr/lib/libfreetype.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libSheenBidi.a: ../common/sheenbidi.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/libsqlite3.a: ../common/sqlite.mk

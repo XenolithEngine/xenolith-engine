@@ -28,48 +28,71 @@ inline static bool isSpaceOrLineBreak(char32_t c) {
 	return c == char32_t(0x0A) || sprt::chars::isspace(c);
 }
 
+// Emit selection rectangles for the logical range [lo, hi] (inclusive) intersected with one line.
+// Each maximal run of visually adjacent characters becomes one rectangle, so a logical range split
+// across bidi runs yields several rects (UAX #9 selection). Glyph-continuation carriers (#7) and
+// zero-width controls are skipped. Padding is applied per emitted rect.
 template <typename Interface>
-static Rect getLabelLineStartRect(const TextLayoutData<Interface> &f, uint16_t lineId,
-		float density, uint32_t c) {
-	Rect rect;
-	const LineLayoutData &line = f.lines.at(lineId);
-	if (line.count > 0) {
-		const CharLayoutData &firstChar = f.chars.at(sprt::max(line.start, c));
-		const CharLayoutData &lastChar = f.chars.at(line.start + line.count - 1);
-		rect.origin = Vec2((firstChar.pos) / density, (line.pos) / density - line.height / density);
-		rect.size = Size2((lastChar.pos + lastChar.advance - firstChar.pos) / density,
-				line.height / density);
+static void emitLineSelectionRects(const TextLayoutData<Interface> &f, const LineLayoutData &line,
+		uint32_t lo, uint32_t hi, float density, const Vec2 &origin, const Padding &p,
+		const Callback<void(Rect)> &cb) {
+	if (line.count == 0) {
+		return;
+	}
+	const uint32_t s = sprt::max(lo, line.start);
+	const uint32_t e = sprt::min(hi, uint32_t(line.start + line.count - 1));
+	if (e < s) {
+		return;
 	}
 
-	return rect;
-}
+	const int32_t tol = 2; // bridge sub-pixel gaps between adjacent glyphs of one visual run
 
-template <typename Interface>
-static Rect getLabelLineEndRect(const TextLayoutData<Interface> &f, uint16_t lineId, float density,
-		uint32_t c) {
-	Rect rect;
-	const LineLayoutData &line = f.lines.at(lineId);
-	if (line.count > 0) {
-		const CharLayoutData &firstChar = f.chars.at(line.start);
-		const CharLayoutData &lastChar = f.chars.at(sprt::min(line.start + line.count - 1, c));
-		rect.origin = Vec2((firstChar.pos) / density, (line.pos) / density - line.height / density);
-		rect.size = Size2((lastChar.pos + lastChar.advance - firstChar.pos) / density,
-				line.height / density);
+	// Build the selection quads on the existing per-line rectangle mechanism: take the vertical bounds
+	// from getLineRect and only narrow the rect horizontally to the visual run(s) the range covers.
+	const Rect lineRect = f.getLineRect(line, density, origin);
+	const float top = lineRect.origin.y - p.top;
+	const float height = lineRect.size.height + p.top + p.bottom;
+
+	bool have = false;
+	uint8_t runLevel = 0;
+	int32_t curLo = 0, curHi = 0;
+	auto flush = [&]() {
+		if (!have) {
+			return;
+		}
+		Rect rect;
+		rect.origin = Vec2(curLo / density + origin.x - p.left, top);
+		rect.size = Size2((curHi - curLo) / density + p.left + p.right, height);
+		if (!rect.equals(Rect::ZERO)) {
+			cb(rect);
+		}
+		have = false;
+	};
+
+	for (uint32_t i = s; i <= e; ++i) {
+		const CharLayoutData &c = f.chars[i];
+		if ((c.flags & CharLayoutData::FlagGlyphContinuation)
+				|| c.charID == CharLayoutData::InvalidChar) {
+			continue; // glyph-carrier / zero-width control: not a selectable cell
+		}
+		const int32_t a = c.pos;
+		const int32_t b = c.pos + c.advance;
+		// Start a new rectangle when the writing direction (embedding level) changes -- so a selection
+		// spanning a direction boundary yields two rects even when the runs are visually adjacent --
+		// or when there is a visual gap (a logical range split across non-adjacent visual runs).
+		const bool sameRun = have && c.bidiLevel == runLevel && a <= curHi + tol && b + tol >= curLo;
+		if (sameRun) {
+			curLo = sprt::min(curLo, a);
+			curHi = sprt::max(curHi, b);
+		} else {
+			flush();
+			runLevel = c.bidiLevel;
+			curLo = a;
+			curHi = b;
+			have = true;
+		}
 	}
-	return rect;
-}
-
-template <typename Interface>
-static Rect getCharsRect(const TextLayoutData<Interface> &f, uint32_t lineId, uint32_t firstCharId,
-		uint32_t lastCharId, float density) {
-	Rect rect;
-	const LineLayoutData &line = f.lines.at(lineId);
-	const CharLayoutData &firstChar = f.chars.at(firstCharId);
-	const CharLayoutData &lastChar = f.chars.at(lastCharId);
-	rect.origin = Vec2((firstChar.pos) / density, (line.pos) / density - line.height / density);
-	rect.size = Size2((lastChar.pos + lastChar.advance - firstChar.pos) / density,
-			line.height / density);
-	return rect;
+	flush();
 }
 
 template <typename Interface>
@@ -81,7 +104,8 @@ static void TextLayoutData_str(const TextLayoutData<Interface> &f,
 			size_t end = it.start() + it.count() - 1;
 			for (size_t i = it.start(); i <= end; ++i) {
 				const auto &spec = f.chars[i];
-				if (spec.charID != char32_t(0xAD) && spec.charID != CharLayoutData::InvalidChar) {
+				if (spec.charID != char32_t(0xAD) && spec.charID != CharLayoutData::InvalidChar
+						&& !(spec.flags & CharLayoutData::FlagGlyphContinuation)) {
 					cb(spec.charID);
 				}
 			}
@@ -99,7 +123,8 @@ static void TextLayoutData_str(const TextLayoutData<Interface> &f,
 			size_t end = it.start() + it.count() - 1;
 			for (size_t i = it.start(); i <= end; ++i) {
 				const auto &spec = f.chars[i];
-				if (spec.charID != char32_t(0xAD) && spec.charID != CharLayoutData::InvalidChar) {
+				if (spec.charID != char32_t(0xAD) && spec.charID != CharLayoutData::InvalidChar
+						&& !(spec.flags & CharLayoutData::FlagGlyphContinuation)) {
 					cb(spec.charID);
 				}
 			}
@@ -158,7 +183,8 @@ static Pair<uint32_t, CharSelectMode> TextLayoutData_getChar(const TextLayoutDat
 	uint32_t charNumber = pLine->start;
 	for (uint32_t i = pLine->start; i < pLine->start + pLine->count; ++i) {
 		auto &c = f.chars[i];
-		if (c.charID != char32_t(0xAD) && !isSpaceOrLineBreak(c.charID)) {
+		if (c.charID != char32_t(0xAD) && !isSpaceOrLineBreak(c.charID)
+				&& !(c.flags & CharLayoutData::FlagGlyphContinuation)) {
 			int32_t dst = maxOf<int32_t>();
 			CharSelectMode dstMode = mode;
 			switch (mode) {
@@ -283,12 +309,32 @@ Rect TextLayoutData_getLineRect(const TextLayoutData<Interface> &f, const LineLa
 		float density, const Vec2 &origin) {
 	Rect rect;
 	if (line.count > 0) {
-		const CharLayoutData &firstChar = f.chars.at(line.start);
-		const CharLayoutData &lastChar = f.chars.at(line.start + line.count - 1);
-		rect.origin = Vec2((firstChar.pos) / density + origin.x,
+		// Visual horizontal extent: min(pos) .. max(pos + advance) over the line's glyphs. A
+		// bidi-reordered line is visually contiguous, but its logical first/last char are not the
+		// left/right edges, so the span has to be scanned. Glyph continuations (#7) and zero-width
+		// controls are skipped.
+		bool have = false;
+		int32_t lo = 0, hi = 0;
+		for (uint32_t i = line.start; i < line.start + line.count; ++i) {
+			const CharLayoutData &c = f.chars.at(i);
+			if ((c.flags & CharLayoutData::FlagGlyphContinuation)
+					|| c.charID == CharLayoutData::InvalidChar) {
+				continue;
+			}
+			const int32_t a = c.pos;
+			const int32_t b = c.pos + c.advance;
+			if (!have) {
+				lo = a;
+				hi = b;
+				have = true;
+			} else {
+				lo = sprt::min(lo, a);
+				hi = sprt::max(hi, b);
+			}
+		}
+		rect.origin = Vec2(lo / density + origin.x,
 				(line.pos) / density - line.height / density + origin.y);
-		rect.size = Size2((lastChar.pos + lastChar.advance - firstChar.pos) / density,
-				line.height / density);
+		rect.size = Size2((hi - lo) / density, line.height / density);
 	}
 	return rect;
 }
@@ -297,53 +343,21 @@ template <typename Interface>
 void TextLayoutData_getLabelRects(const TextLayoutData<Interface> &f,
 		const Callback<void(Rect)> &cb, uint32_t firstCharId, uint32_t lastCharId, float density,
 		const Vec2 &origin, const Padding &p) {
-	auto firstLine = TextLayoutData_getLineNumber(f, firstCharId);
-	auto lastLine = TextLayoutData_getLineNumber(f, lastCharId);
-
-	if (firstLine == lastLine) {
-		auto rect = getCharsRect(f, firstLine, firstCharId, lastCharId, density);
-		rect.origin.x += origin.x - p.left;
-		rect.origin.y += origin.y - p.top;
-		rect.size.width += p.left + p.right;
-		rect.size.height += p.bottom + p.top;
-		if (!rect.equals(Rect::ZERO)) {
-			cb(rect);
+	if (f.lines.empty() || f.chars.empty() || lastCharId < firstCharId) {
+		return;
+	}
+	// Walk every line the selection touches; each line emits one rectangle per visual run, so a
+	// bidi-mixed line highlights correctly (a logical range that crosses RTL<->LTR becomes several
+	// rects). For a plain LTR line this still yields a single rectangle as before.
+	for (const LineLayoutData &line : f.lines) {
+		if (line.count == 0) {
+			continue;
 		}
-	} else {
-		auto first = getLabelLineStartRect(f, firstLine, density, firstCharId);
-		if (!first.equals(Rect::ZERO)) {
-			first.origin.x += origin.x;
-			first.origin.y += origin.y;
-			if (first.origin.x - p.left < 0.0f) {
-				first.size.width += (first.origin.x);
-				first.origin.x = 0.0f;
-			} else {
-				first.origin.x -= p.left;
-				first.size.width += p.left;
-			}
-			first.origin.y -= p.top;
-			first.size.height += p.bottom + p.top;
-			cb(first);
+		const uint32_t lineEnd = line.start + line.count - 1;
+		if (lineEnd < firstCharId || line.start > lastCharId) {
+			continue;
 		}
-
-		for (auto i = firstLine + 1; i < lastLine; i++) {
-			auto rect = f.getLineRect(i, density);
-			rect.origin.x += origin.x;
-			rect.origin.y += origin.y - p.top;
-			rect.size.height += p.bottom + p.top;
-			if (!rect.equals(Rect::ZERO)) {
-				cb(rect);
-			}
-		}
-
-		auto last = getLabelLineEndRect(f, lastLine, density, lastCharId);
-		if (!last.equals(Rect::ZERO)) {
-			last.origin.x += origin.x;
-			last.origin.y += origin.y - p.top;
-			last.size.width += p.right;
-			last.size.height += p.bottom + p.top;
-			cb(last);
-		}
+		emitLineSelectionRects(f, line, firstCharId, lastCharId, density, origin, p, cb);
 	}
 }
 

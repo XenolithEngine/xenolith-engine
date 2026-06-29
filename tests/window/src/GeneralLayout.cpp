@@ -32,6 +32,7 @@
 #include "XL2dSceneContent.h"
 #include "MonitorModeSelectionLayout.h"
 #include "FlexboxLayout.h"
+#include "ShapingLayout.h"
 #include "XlCoreMonitorInfo.h"
 #include "XLEventListener.h"
 
@@ -134,6 +135,13 @@ void GeneralLayout::rebuildMenu() {
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
 		return Rc<ButtonWithLabel>::create("Flexbox layout", [this] {
 			getSceneContent()->pushLayout(Rc<FlexboxLayout>::create());
+		});
+	}, 32.0f);
+
+	// HarfBuzz shaping / bidi visual test bed
+	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
+		return Rc<ButtonWithLabel>::create("Shaping test", [this] {
+			getSceneContent()->pushLayout(Rc<ShapingLayout>::create());
 		});
 	}, 32.0f);
 

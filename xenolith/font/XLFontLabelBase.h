@@ -346,6 +346,23 @@ public:
 	void setAlignment(TextAlign alignment);
 	TextAlign getAlignment() const;
 
+	// base text direction (CSS `direction`) plus opt-in Unicode Bidirectional Algorithm (UAX #9) and
+	// HarfBuzz shaping during layout
+	void setTextDirection(TextDirection);
+	TextDirection getTextDirection() const;
+	void setBidiEnabled(bool);
+	bool isBidiEnabled() const;
+	void setShapingEnabled(bool);
+	bool isShapingEnabled() const;
+	void setBidiMode(BidiMode); // CSS `unicode-bidi`: Embed / Isolate / Override / Plaintext
+	BidiMode getBidiMode() const;
+	void setLetterSpacing(float); // CSS letter-spacing, in unscaled px
+	float getLetterSpacing() const;
+	void setWordSpacing(float); // CSS word-spacing, in unscaled px
+	float getWordSpacing() const;
+	void setLigaturesEnabled(bool); // font-variant-ligatures (false drops common ligatures)
+	bool isLigaturesEnabled() const;
+
 	// line width for line wrapping
 	void setWidth(float width);
 	float getWidth() const;
@@ -432,6 +449,13 @@ protected:
 	float _labelDensity = 1.0f;
 
 	TextAlign _alignment = TextAlign::Left;
+	TextDirection _direction = TextDirection::LeftToRight;
+	bool _bidiEnabled = false;
+	bool _shapingEnabled = false;
+	BidiMode _bidiMode = BidiMode::Normal;
+	float _letterSpacing = 0.0f;
+	float _wordSpacing = 0.0f;
+	bool _enableLigatures = true;
 
 	bool _localeEnabled = false;
 	bool _labelDirty = true;
