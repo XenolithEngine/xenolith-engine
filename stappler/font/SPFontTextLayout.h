@@ -47,19 +47,35 @@ enum class CharSelectMode {
 
 struct SP_PUBLIC CharLayoutData final {
 	static constexpr char32_t InvalidChar = char32_t(0xFFFF'FFFF);
+	// Virtual code point carried by an extra glyph of a 1->N shaping decomposition (one source code
+	// point expands into several glyphs). Such an entry is a glyph carrier only -- not a logical
+	// character -- so selection/measurement skip it while rendering still draws it.
+	static constexpr char32_t ContinuationChar = char32_t(0xFFFF'FFFE);
 
-	char32_t charID = 0;
+	// `flags` bits (multiplicity, stored in the byte formerly reserved as trailing padding)
+	static constexpr uint8_t FlagGlyphContinuation = 1 << 0; // this entry is a ContinuationChar glyph
+	static constexpr uint8_t FlagHasContinuation = 1 << 1; // this source char is followed by continuations
+
+	char32_t charID = 0; // source Unicode code point (layout decisions, fallback, selection)
 	int16_t pos = 0;
 	uint16_t advance = 0;
 	uint16_t face = 0;
-	uint16_t padding = 0;
+	uint16_t gid = 0; // glyph index to render (from HarfBuzz shaping); 0 until shaping runs
+	int16_t yOffset = 0; // vertical glyph offset from HarfBuzz shaping (mark positioning); 0 normally
+	uint8_t bidiLevel = 0; // UAX #9 embedding level (odd = RTL); 0 until bidi resolution runs
+	uint8_t flags = 0; // multiplicity flags for 1->N glyph decomposition (see Flag* above)
 };
+
+static_assert(sizeof(CharLayoutData) == 16,
+		"CharLayoutData must stay 16 bytes (32-bit aligned); shrink padding when adding fields");
+static_assert(alignof(CharLayoutData) == 4, "CharLayoutData must be 4-byte (32-bit) aligned");
 
 struct SP_PUBLIC LineLayoutData final {
 	uint32_t start = 0;
 	uint32_t count = 0;
 	uint16_t pos = 0;
 	uint16_t height = 0;
+	TextDirection direction = TextDirection::LeftToRight; // resolved base direction (CSS `direction`)
 };
 
 struct SP_PUBLIC RangeLayoutData final {

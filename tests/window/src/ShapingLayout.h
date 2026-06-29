@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2024 Stappler LLC <admin@stappler.dev>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -20,15 +20,30 @@
  THE SOFTWARE.
  **/
 
-#include "SPCommon.h"
+#ifndef EXAMPLES_VK_GUI_SRC_SHAPINGLAYOUT_H_
+#define EXAMPLES_VK_GUI_SRC_SHAPINGLAYOUT_H_
 
-#include "SPFont.cc"
-#include "SPFontEmplace.cc"
-#include "SPFontStyle.cc"
-#include "SPFontFace.cc"
-#include "SPFontTextLayout.cc"
-#include "SPFontLibrary.cc"
-#include "SPFontHyphenMap.cc"
-#include "SPFontFormatter.cc"
-#include "SPFontBidi.cc"
-#include "SPFontShape.cc"
+#include "XL2dSceneLayout.h"
+#include "XL2dLayer.h"
+#include "XL2dLabel.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
+
+// Visual test bed for HarfBuzz shaping (stages 3-4): rows of text rendered with shaping/bidi off vs
+// on, so the shaped glyphs (kerning, ligatures, Arabic joining, RTL order) can be eyeballed from a
+// screenshot. Reachable from the GeneralLayout menu, or directly via the XL_SHAPING_TEST env var.
+class ShapingLayout : public basic2d::SceneLayout2d {
+public:
+	virtual ~ShapingLayout() = default;
+
+	virtual bool init() override;
+	virtual void handleContentSizeDirty() override;
+
+protected:
+	basic2d::Layer *_background = nullptr;
+	Vector<basic2d::Label *> _rows;
+};
+
+} // namespace stappler::xenolith::app
+
+#endif // EXAMPLES_VK_GUI_SRC_SHAPINGLAYOUT_H_
