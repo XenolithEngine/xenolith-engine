@@ -62,6 +62,8 @@ namespace STAPPLER_VERSIONIZED stappler {
 // main.cpp's test list.
 void performMakefileTests();
 void performFilesystemTests();
+void performBidiTests();
+void performShapeTests();
 
 } // namespace stappler
 

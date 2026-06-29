@@ -101,13 +101,29 @@ struct SP_PUBLIC CharId final {
 struct SP_PUBLIC CharShape16 final {
 	char16_t charID = 0;
 	uint16_t xAdvance = 0;
+	uint16_t glyphIndex = 0; // FreeType glyph index for charID (the glyph to rasterize/render)
 };
 
 struct SP_PUBLIC CharShape final {
 	char32_t charID = 0;
 	uint16_t xAdvance = 0;
+	uint16_t glyphIndex = 0; // FreeType glyph index for charID (the glyph to rasterize/render)
 
 	operator char32_t() const { return charID; }
+};
+
+// One shaped glyph proposed by HarfBuzz. `glyphId` is the glyph index to RENDER (after shaping it is
+// no longer a Unicode code point); `cluster` maps it back to the source code point it belongs to; the
+// advance/offset fields are the POSITIONING metrics, in pixels (matching CharShape::xAdvance). A run
+// of code points may shape to a different number of glyphs (ligatures collapse, decompositions
+// expand), so shaped glyphs are not 1:1 with input code points.
+struct SP_PUBLIC ShapedGlyph final {
+	uint32_t glyphId = 0;
+	uint32_t cluster = 0;
+	int16_t xAdvance = 0;
+	int16_t yAdvance = 0;
+	int16_t xOffset = 0;
+	int16_t yOffset = 0;
 };
 
 struct SP_PUBLIC CharTexture final {

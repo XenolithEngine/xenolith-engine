@@ -1124,6 +1124,8 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			case TextAlign::Left: stream << "left"; break;
 			case TextAlign::Right: stream << "right"; break;
 			case TextAlign::Justify: stream << "justify"; break;
+			case TextAlign::Start: stream << "start"; break;
+			case TextAlign::End: stream << "end"; break;
 			};
 			break; // enum
 		case ParameterName::CssWhiteSpace:
