@@ -71,6 +71,25 @@ enum class TextAlign : EnumSize {
 	Center,
 	Right,
 	Justify,
+	Start, // CSS `start`: Left on ltr lines, Right on rtl lines
+	End, // CSS `end`: Right on ltr lines, Left on rtl lines
+};
+
+// CSS `direction`: base/embedding direction for the Unicode Bidirectional Algorithm (UAX #9).
+enum class TextDirection : EnumSize {
+	Neutral, // auto: resolve the base level from the first strong character (P2-P3, `dir=auto`)
+	LeftToRight, // `direction: ltr`
+	RightToLeft, // `direction: rtl`
+};
+
+// CSS `unicode-bidi`: how an inline box participates in the bidirectional algorithm.
+enum class BidiMode : EnumSize {
+	Normal, // `normal`: does not open a new embedding level
+	Embed, // `embed`: opens an embedding for the box's `direction` (legacy)
+	Isolate, // `isolate`: opens a direction-isolated embedding (recommended for injected runs)
+	IsolateOverride, // `isolate-override`: isolate + force order regardless of character types
+	BidiOverride, // `bidi-override`: force order within the current embedding
+	Plaintext, // `plaintext`: resolve the base level from content per paragraph (like `dir=auto`)
 };
 
 enum class WhiteSpace : EnumSize {
@@ -218,6 +237,16 @@ struct SP_PUBLIC TextParameters {
 	VerticalAlign verticalAlign = VerticalAlign::Baseline;
 	sprt::geom::Color3B color = sprt::geom::Color3B::BLACK;
 	uint8_t opacity = 222;
+
+	// CSS bidi/RTL properties. `direction` sets the base/embedding direction; `bidi` (unicode-bidi)
+	// controls how this run participates in the Unicode Bidirectional Algorithm.
+	TextDirection direction = TextDirection::LeftToRight;
+	BidiMode bidi = BidiMode::Normal;
+
+	// CSS spacing/feature controls (applied during layout, after shaping)
+	int16_t letterSpacing = 0; // letter-spacing: extra px added after each grapheme
+	int16_t wordSpacing = 0; // word-spacing: extra px added after each space
+	bool enableLigatures = true; // font-variant-ligatures: drop liga/clig/dlig when false
 
 	inline bool operator==(const TextParameters &other) const = default;
 	inline bool operator!=(const TextParameters &other) const = default;

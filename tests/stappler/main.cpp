@@ -33,6 +33,8 @@ using namespace stappler;
 static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"makefile", &stappler::performMakefileTests},
 	{"filesystem", &stappler::performFilesystemTests},
+	{"bidi", &stappler::performBidiTests},
+	{"shape", &stappler::performShapeTests},
 };
 
 int main(int argc, const char *argv[]) {

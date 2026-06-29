@@ -346,28 +346,24 @@ bool FontFaceObject::acquireTexture(char32_t theChar,
 	return acquireTextureUnsafe(theChar, cb);
 }
 
-bool FontFaceObject::acquireTextureUnsafe(char32_t theChar,
+// `glyphIndex` is a FreeType glyph index (the glyph HarfBuzz/the layout selected for rendering), not
+// a code point -- the codepoint->glyph mapping already happened during layout (FontFaceObject::getChar
+// or HarfBuzz shaping). Rasterize the glyph directly and key the resulting texture by its glyph index.
+bool FontFaceObject::acquireTextureUnsafe(char32_t glyphIndex,
 		const Callback<void(const CharTexture &)> &cb) {
-	auto plane = ((theChar >> 16) & 0xFFFF);
-	if (plane != _plane) {
+	if (!glyphIndex) {
 		return false;
 	}
 
-	int glyph_index = FT_Get_Char_Index(_face, theChar);
-	if (!glyph_index) {
-		return false;
-	}
-
-	auto err = FT_Load_Glyph(_face, glyph_index, FT_LOAD_DEFAULT | FT_LOAD_RENDER);
+	auto err = FT_Load_Glyph(_face, FT_UInt(glyphIndex), FT_LOAD_DEFAULT | FT_LOAD_RENDER);
 	if (err != FT_Err_Ok) {
 		return false;
 	}
 
-	//log::format("Texture", "%s: %d '%s'", data.layout->getName().c_str(), theChar.charID, string::toUtf8(theChar.charID).c_str());
-
 	if (_face->glyph->bitmap.buffer != nullptr) {
 		if (_face->glyph->bitmap.pixel_mode == FT_PIXEL_MODE_GRAY) {
-			cb(CharTexture{theChar, static_cast<int16_t>(_face->glyph->metrics.horiBearingX >> 6),
+			cb(CharTexture{glyphIndex,
+				static_cast<int16_t>(_face->glyph->metrics.horiBearingX >> 6),
 				static_cast<int16_t>(-(_face->glyph->metrics.horiBearingY >> 6)),
 				static_cast<uint16_t>(_face->glyph->metrics.width >> 6),
 				static_cast<uint16_t>(_face->glyph->metrics.height >> 6),
@@ -379,10 +375,8 @@ bool FontFaceObject::acquireTextureUnsafe(char32_t theChar,
 			return true;
 		}
 	} else {
-		if (!sprt::chars::isspace(theChar) && theChar != char16_t(0x0A)) {
-			log::format(sprt::oslog::Warn, "Font", SP_LOCATION, "error: no bitmap for (%d) '%s'",
-					theChar, string::toUtf8<Interface>(theChar).data());
-		}
+		log::format(sprt::oslog::Warn, "Font", SP_LOCATION, "error: no bitmap for glyph %u",
+				uint32_t(glyphIndex));
 	}
 	return false;
 }
@@ -464,6 +458,14 @@ size_t FontFaceObject::getRequiredCharsCount() const {
 	return _required.size();
 }
 
+uint16_t FontFaceObject::getGlyphIndex(char32_t theChar) {
+	if (!_face) {
+		return 0;
+	}
+	sprt::unique_lock lock(_faceMutex);
+	return uint16_t(FT_Get_Char_Index(_face, theChar));
+}
+
 CharShape FontFaceObject::getChar(char32_t c) const {
 	auto plane = ((c >> 16) & 0xFFFF);
 	if (plane != _plane) {
@@ -474,7 +476,7 @@ CharShape FontFaceObject::getChar(char32_t c) const {
 	sprt::shared_lock lock(_charsMutex);
 	auto l = _chars.get(ch);
 	if (l && l->charID == ch) {
-		return CharShape{char32_t(l->charID) | (char32_t(_plane) << 16), l->xAdvance};
+		return CharShape{char32_t(l->charID) | (char32_t(_plane) << 16), l->xAdvance, l->glyphIndex};
 	}
 	return CharShape{0};
 }
@@ -547,6 +549,7 @@ bool FontFaceObject::addChar(char16_t theChar, bool &updated) {
 			CharShape16{
 				char16_t(theChar),
 				static_cast<uint16_t>(advance >> 16),
+				static_cast<uint16_t>(cIdx),
 			});
 
 	if (!sprt::chars::isspace(theChar)) {
@@ -752,7 +755,7 @@ bool FontFaceSet::addTextureChars(SpanView<CharLayoutData> chars) const {
 
 		for (auto &f : _faces) {
 			if (f && f->getId() == it.face) {
-				if (f->addRequiredChar(it.charID)) {
+				if (f->addRequiredChar(it.gid)) {
 					++_texturesCount;
 					ret = true;
 					break;

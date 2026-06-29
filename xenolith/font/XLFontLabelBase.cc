@@ -338,6 +338,69 @@ void LabelBase::setAlignment(TextAlign alignment) {
 
 TextAlign LabelBase::getAlignment() const { return _alignment; }
 
+void LabelBase::setTextDirection(TextDirection dir) {
+	if (_direction != dir) {
+		_direction = dir;
+		setLabelDirty();
+	}
+}
+
+TextDirection LabelBase::getTextDirection() const { return _direction; }
+
+void LabelBase::setBidiEnabled(bool value) {
+	if (_bidiEnabled != value) {
+		_bidiEnabled = value;
+		setLabelDirty();
+	}
+}
+
+bool LabelBase::isBidiEnabled() const { return _bidiEnabled; }
+
+void LabelBase::setShapingEnabled(bool value) {
+	if (_shapingEnabled != value) {
+		_shapingEnabled = value;
+		setLabelDirty();
+	}
+}
+
+bool LabelBase::isShapingEnabled() const { return _shapingEnabled; }
+
+void LabelBase::setBidiMode(BidiMode value) {
+	if (_bidiMode != value) {
+		_bidiMode = value;
+		setLabelDirty();
+	}
+}
+
+BidiMode LabelBase::getBidiMode() const { return _bidiMode; }
+
+void LabelBase::setLetterSpacing(float value) {
+	if (_letterSpacing != value) {
+		_letterSpacing = value;
+		setLabelDirty();
+	}
+}
+
+float LabelBase::getLetterSpacing() const { return _letterSpacing; }
+
+void LabelBase::setWordSpacing(float value) {
+	if (_wordSpacing != value) {
+		_wordSpacing = value;
+		setLabelDirty();
+	}
+}
+
+float LabelBase::getWordSpacing() const { return _wordSpacing; }
+
+void LabelBase::setLigaturesEnabled(bool value) {
+	if (_enableLigatures != value) {
+		_enableLigatures = value;
+		setLabelDirty();
+	}
+}
+
+bool LabelBase::isLigaturesEnabled() const { return _enableLigatures; }
+
 void LabelBase::setWidth(float width) {
 	if (_width != width) {
 		_width = width;
@@ -662,6 +725,9 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 		}, format->getData());
 		formatter.setWidth(static_cast<uint16_t>(roundf(_width * density)));
 		formatter.setTextAlignment(_alignment);
+		formatter.setTextDirection(_direction);
+		formatter.setBidiEnabled(_bidiEnabled);
+		formatter.setShapingEnabled(_shapingEnabled);
 		formatter.setMaxWidth(static_cast<uint16_t>(roundf(_maxWidth * density)));
 		formatter.setMaxLines(_maxLines);
 		formatter.setOpticalAlignment(_opticalAlignment);
@@ -685,6 +751,22 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 			specializeStyle(params, density);
 			if (adjustValue > 0) {
 				params.font.fontSize -= FontSize(adjustValue);
+			}
+			// CSS `unicode-bidi` for the label's text (#6): inject the span's bidi mode + direction so
+			// the formatter brackets it with the matching Unicode controls.
+			if (_bidiMode != BidiMode::Normal) {
+				params.text.bidi = _bidiMode;
+				params.text.direction = _direction;
+			}
+			// CSS letter/word-spacing + font-variant-ligatures (#9)
+			if (_letterSpacing != 0.0f) {
+				params.text.letterSpacing = int16_t(roundf(_letterSpacing * density));
+			}
+			if (_wordSpacing != 0.0f) {
+				params.text.wordSpacing = int16_t(roundf(_wordSpacing * density));
+			}
+			if (!_enableLigatures) {
+				params.text.enableLigatures = false;
 			}
 
 			auto start = _string16.c_str() + it.start;

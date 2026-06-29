@@ -32,6 +32,7 @@
 
 #include "ExampleScene.h"
 #include "GeneralLayout.h"
+#include "ShapingLayout.h"
 #include "XLRemoteProtocol.h"
 
 #include "SPBitmap.h"
@@ -69,8 +70,12 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	// но модуль material2d настраивает себе свет сам
 	content->setDefaultLights();
 
-	// Запускаем основной слой интерфейса
-	content->pushLayout(Rc<GeneralLayout>::create());
+	// Запускаем основной слой интерфейса (или шейпинг-тест, если задан XL_SHAPING_TEST)
+	if (::getenv("XL_SHAPING_TEST")) {
+		content->pushLayout(Rc<ShapingLayout>::create());
+	} else {
+		content->pushLayout(Rc<GeneralLayout>::create());
+	}
 
 	// Устанавливаем стандартный виджет для подтверждения выхода
 	content->setCloseGuardWidgetContructor([](NotNull<SceneContent>) -> Rc<CloseGuardWidget> {

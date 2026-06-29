@@ -98,19 +98,24 @@ static void Label_pushColorMap(const font::RangeLayoutData &range, Vector<ColorM
 }
 
 static void Label_writeTextureQuad(float height, const font::Metrics &m,
-		const font::CharLayoutData &c, const font::CharShape &l, const font::RangeLayoutData &range,
+		const font::CharLayoutData &c, uint16_t glyphId, const font::RangeLayoutData &range,
 		const font::LineLayoutData &line, VertexArray::Quad &quad, float layer) {
+	// c.yOffset is the HarfBuzz vertical glyph offset (mark positioning), y-up like the font, so it
+	// is added to the glyph baseline y.
 	switch (range.align) {
 	case font::VerticalAlign::Sub:
-		quad.drawChar(m, l, c.pos, height - float(int16_t(line.pos) - int16_t(m.descender * 2 / 3)),
+		quad.drawChar(m, glyphId, c.pos,
+				height - float(int16_t(line.pos) - int16_t(m.descender * 2 / 3)) + c.yOffset,
 				range.color, range.decoration, c.face, layer);
 		break;
 	case font::VerticalAlign::Super:
-		quad.drawChar(m, l, c.pos, height - float(int16_t(line.pos) - int16_t(m.ascender * 2 / 3)),
+		quad.drawChar(m, glyphId, c.pos,
+				height - float(int16_t(line.pos) - int16_t(m.ascender * 2 / 3)) + c.yOffset,
 				range.color, range.decoration, c.face, layer);
 		break;
 	default:
-		quad.drawChar(m, l, c.pos, height - line.pos, range.color, range.decoration, c.face, layer);
+		quad.drawChar(m, glyphId, c.pos, height - line.pos + c.yOffset, range.color,
+				range.decoration, c.face, layer);
 		break;
 	}
 }
@@ -144,33 +149,30 @@ static void Label_writeQuads(VertexArray &vertexes, const font::TextLayoutData<I
 
 		for (auto charIdx = start; charIdx < end; ++charIdx) {
 			const font::CharLayoutData &c = format->chars[charIdx];
-			if (!sprt::chars::isspace(c.charID) && c.charID != char16_t(0x0A)
+			// `c.gid` is the glyph index to render (from FontFaceObject::getChar during layout, or
+			// HarfBuzz shaping). 0 means "no glyph" -- skip it like whitespace/control characters.
+			if (c.gid != 0 && !sprt::chars::isspace(c.charID) && c.charID != char16_t(0x0A)
 					&& c.charID != char16_t(0x00AD)
 					&& c.charID != font::CharLayoutData::InvalidChar) {
-
-				uint16_t face = 0;
-				auto ch = targetRange->layout->getChar(c.charID, face);
-
-				if (ch.charID == c.charID) {
-					auto quad = vertexes.addQuad();
-					Label_pushColorMap(*it.range, colorMap);
-					Label_writeTextureQuad(format->height, metrics, c, ch, *it.range, *it.line,
-							quad, layer);
-				}
+				auto quad = vertexes.addQuad();
+				Label_pushColorMap(*it.range, colorMap);
+				Label_writeTextureQuad(format->height, metrics, c, c.gid, *it.range, *it.line, quad,
+						layer);
 			}
 		}
 
 		if (it.line->start + it.line->count == end) {
 			const font::CharLayoutData &c = format->chars[end - 1];
 			if (c.charID == char16_t(0x00AD)) {
+				// render a real hyphen glyph in place of the soft-hyphen at a line break
 				uint16_t face = 0;
-				auto ch = targetRange->layout->getChar('-', face);
+				auto dash = targetRange->layout->getChar('-', face);
 
-				if (ch.charID == '-') {
+				if (dash.charID == '-' && dash.glyphIndex != 0) {
 					auto quad = vertexes.addQuad();
 					Label_pushColorMap(*it.range, colorMap);
-					Label_writeTextureQuad(format->height, metrics, c, ch, *it.range, *it.line,
-							quad, layer);
+					Label_writeTextureQuad(format->height, metrics, c, dash.glyphIndex, *it.range,
+							*it.line, quad, layer);
 				}
 			}
 			end -= 1;
@@ -621,7 +623,10 @@ Vec2 Label::getCursorPosition(uint32_t charIndex, bool front) const {
 			auto &c = d->chars[charIndex];
 			auto line = _format->getLine(charIndex);
 			if (line) {
-				return Vec2((front ? c.pos : c.pos + c.advance) / _labelDensity,
+				// The caret edge follows the glyph direction: `front` (the insertion point before the
+				// char) is the LEFT edge for an LTR glyph but the RIGHT edge for an RTL glyph.
+				const bool leftEdge = (front != bool(c.bidiLevel & 1));
+				return Vec2((leftEdge ? c.pos : c.pos + c.advance) / _labelDensity,
 						_contentSize.height - line->pos / _labelDensity);
 			}
 		} else if (charIndex >= d->chars.size() && charIndex != 0) {
@@ -630,7 +635,9 @@ Vec2 Label::getCursorPosition(uint32_t charIndex, bool front) const {
 			if (c.charID == char16_t(0x0A)) {
 				return getCursorOrigin();
 			} else {
-				return Vec2((c.pos + c.advance) / _labelDensity,
+				// past-the-end caret = the trailing (back) edge of the last glyph, RTL-aware
+				const bool leftEdge = bool(c.bidiLevel & 1);
+				return Vec2((leftEdge ? c.pos : c.pos + c.advance) / _labelDensity,
 						_contentSize.height - l.pos / _labelDensity);
 			}
 		}
@@ -643,6 +650,7 @@ Vec2 Label::getCursorOrigin() const {
 	switch (_alignment) {
 	case TextAlign::Left:
 	case TextAlign::Justify:
+	case TextAlign::Start: // CSS `start`: left for the default (ltr) direction
 		return Vec2(0.0f / _labelDensity,
 				_contentSize.height - _format->getHeight() / _labelDensity);
 		break;
@@ -651,6 +659,7 @@ Vec2 Label::getCursorOrigin() const {
 				_contentSize.height - _format->getHeight() / _labelDensity);
 		break;
 	case TextAlign::Right:
+	case TextAlign::End: // CSS `end`: right for the default (ltr) direction
 		return Vec2(_contentSize.width / _labelDensity,
 				_contentSize.height - _format->getHeight() / _labelDensity);
 		break;

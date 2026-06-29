@@ -70,7 +70,7 @@ protected:
 
 class SP_PUBLIC FontFaceObject : public Ref, public InterfaceObject<memory::StandartInterface> {
 public:
-	virtual ~FontFaceObject() = default;
+	virtual ~FontFaceObject();
 
 	bool init(StringView, const Rc<FontFaceData> &, FT_Library, FT_Face,
 			const FontSpecializationVector &, uint16_t, uint16_t plane = 0);
@@ -88,6 +88,16 @@ public:
 
 	bool acquireTexture(char32_t, const Callback<void(const CharTexture &)> &);
 	bool acquireTextureUnsafe(char32_t, const Callback<void(const CharTexture &)> &);
+
+	// Shape a run of code points with HarfBuzz over this face. Appends the glyphs HarfBuzz proposes
+	// (the RENDERING set) together with their advances/offsets (the POSITIONING set) to `out`. Locks
+	// the face (FT_Face carries mutable glyph state and is not thread-safe).
+	bool shape(const char32_t *text, size_t length, TextDirection direction, Vector<ShapedGlyph> &out,
+			bool enableLigatures = true);
+
+	// FreeType glyph index for a code point (FT_Get_Char_Index), or 0 if the face has no glyph for it.
+	// Used to substitute mirrored glyphs on the non-shaped bidi path (UAX #9 L4).
+	uint16_t getGlyphIndex(char32_t);
 
 	// returns true if updated
 	bool addChars(const Vector<char32_t> &chars, bool expand, Vector<char32_t> *failed);
@@ -112,6 +122,7 @@ protected:
 	uint16_t _id = 0;
 	uint16_t _plane = 0;
 	FT_Face _face = nullptr;
+	void *_hbFont = nullptr; // cached hb_font_t for this face (lazily created by shape())
 	FontSpecializationVector _spec;
 	Metrics _metrics;
 	Interface::VectorType<char32_t> _required;
