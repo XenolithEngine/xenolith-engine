@@ -115,10 +115,11 @@ use). Replace `tests/window` with your project. Success = `exit 0`.
 | **Android (all ABIs)** | `unknown-ndk-linux-android` | `make -C tests/window STAPPLER_TARGET=unknown-ndk-linux-android` | on an Android device/emulator | **no `-j`**, clear `MAKEFLAGS`; full APK via Gradle; see §3.3 |
 | **macOS x86_64 / arm64** | `aarch64-apple-macosx` *(or `x86_64-…`, `…+sprt`)* | `make -C tests/window STAPPLER_TARGET=aarch64-apple-macosx -j8` | on macOS | compile/build verification when no Mac is available |
 
-Additional target triples build the same way (compile-verification); running them
+Additional target triples build the same way (full cross-compile); running them
 requires the matching OS/emulator: `aarch64-unknown-linux-gnu`,
 `riscv64-unknown-linux-gnu`, `x86_64-unknown-linux-musl`,
-`aarch64-pc-windows-msvc` (compile-only, see §3.2).
+`aarch64-pc-windows-msvc` (now a full target with its own sysroot — see §3.2;
+no emulator on an x86_64 Linux host, so build-verify only there).
 
 ---
 
@@ -139,8 +140,10 @@ requires the matching OS/emulator: `aarch64-unknown-linux-gnu`,
   ```
 - A Linux binary runs on a Linux system with the matching libc (glibc for this
   triple; for `…-linux-musl` you need a musl system).
-- **CLI test apps** (`tests/runtime`, `tests/builtin`, `tests/stappler`) run and
-  self-check directly — the primary way to verify on Linux.
+- **CLI test apps** (`tests/runtime`, `tests/stappler`) run and self-check
+  directly — the primary way to verify on Linux. `tests/libc` also runs on the
+  host, but verifies by **diffing host vs Windows output** (see §5), not by a
+  `0 failures` self-check.
 - **Graphical apps** (`tests/window` → `testapp`) **build** without a display but
   to actually open a window need a display server (XCB/Wayland) and a Vulkan ICD.
   `…/testapp --help` works without a GUI; a full run needs a graphical session.
@@ -161,11 +164,22 @@ requires the matching OS/emulator: `aarch64-unknown-linux-gnu`,
   ```
   A clean CLI run is `exit 0` + `N checks, 0 failures`.
 - **This is the only way to exercise `runtime/libc_impl`** — those sources are
-  skipped entirely by the Linux host build (§6). On Windows `wchar_t` is 16-bit
-  (`== char16_t`), so surrogate-pair code paths only get exercised on this target.
-- **arm64 Windows** (`aarch64-pc-windows-msvc`) has **no sysroot or emulator** —
-  do **not** use the Wine flow. Verify *compile-only* with host clang, compiling
-  the `.cpp` SCUs (not `.cc`):
+  skipped entirely by the Linux host build (§6). The dedicated harness for it is
+  `tests/libc` (§5), which builds the same sources for the host and for this
+  Windows target and **diffs the two outputs** for behavioural identity. On
+  Windows `wchar_t` is 16-bit (`== char16_t`), so surrogate-pair code paths only
+  get exercised on this target.
+- **arm64 Windows** (`aarch64-pc-windows-msvc`) is now a **full target with its
+  own sysroot** (and a supported host) — build it through the standard make flow
+  exactly like x86_64:
+  ```sh
+  make -C <proj> STAPPLER_TARGET=aarch64-pc-windows-msvc -j8
+  ```
+  There is still **no emulator** to *run* arm64-Windows binaries on an x86_64
+  Linux host (the Wine flow does not apply to execution), so from Linux this is
+  build/compile verification only. For a quick header/SCU check **without** a full
+  build, you can still compile-only with host clang — compile the `.cpp` SCUs (not
+  `.cc`):
   ```sh
   clang --target=aarch64-pc-windows-msvc -std=c++20 -ffreestanding -nostdinc -fexceptions \
     -D__SPRT_WIN_USE_IMPORT_LIB=0 -D_WIN32_WINNT=0x0A00 \
@@ -346,16 +360,19 @@ what you need.
 | Project | Artifact | Modules / what it exercises | Kind |
 |---|---|---|---|
 | `tests/runtime` | `runtimetest` | `runtime_libc_wrapper` + `runtime` — the Xenolith Runtime (libc/STL/pthread) | CLI, self-checking |
-| `tests/builtin` | `builtintest` | `runtime_libc_impl` directly — the freestanding libc | CLI, self-checking |
+| `tests/libc` | `libctest` | the internal libc implementation — `runtime/libc_impl` **and** the `runtime_libc_wrapper` wrappers (including the substitute/replacement functions the wrappers supply when a function is missing on the platform). Built for the host **and** `x86_64-pc-windows-msvc`; `compare.sh` diffs the two for behavioural identity | CLI, host-vs-Windows diff |
 | `tests/stappler` | `stapplertest` | the `stappler_*` app modules (core/data/bitmap/crypto/db/document/font/vg/pug/makefile/layout/network) — **fast smoke build** | CLI |
 | `tests/window` | `testapp` | full xenolith GUI stack (`xenolith_application` + `simpleui` + `backend_vk` + `resources_assets`); transitively compiles the stappler modules | GUI |
 
 **Which to use:**
 - Changed a `stappler/` module → build `tests/window` (preferred — full stack) or
   `tests/stappler` (faster smoke). Both via `make/universal.mk`.
-- Changed the runtime (`runtime`/`runtime_core`/wrapper) → `tests/runtime`.
-- Changed `runtime/libc_impl` → `tests/builtin` **or** `tests/runtime`, and you
-  **must cross-build for Windows + run under Wine** (§3.2, §6).
+- Changed the runtime (`runtime`/`runtime_core`/wrapper) → `tests/runtime`; for
+  the libc wrappers themselves also run `tests/libc`.
+- Changed `runtime/libc_impl` (or the libc wrappers) → `tests/libc` (its
+  `compare.sh` cross-builds for Windows and diffs against the host) **or**
+  `tests/runtime`; either way the Windows cross-build is what actually compiles
+  `libc_impl` (§3.2, §6).
 
 A clean CLI verify (native):
 ```sh
@@ -373,10 +390,10 @@ even compiles, build its target. Match the change to the verification:
 
 | You changed… | Verify with |
 |---|---|
-| `runtime/libc_impl/*` (freestanding Windows libc, `windows/*`, `builtin_*` SCUs) | **win32 cross-build + Wine** (§3.2). Linux build links `runtime_libc_wrapper` instead and touches none of it. |
-| Android-only code (`libc_wrapper/window/android/*`, dispatch `*-alooper*`, JNI/unicode) | **Android NDK target** (§3.3): `STAPPLER_TARGET=unknown-ndk-linux-android` |
-| macOS-only code (`window/macos/*.mm`, darwin dispatch/clock/lock) | **macOS cross-compile** (§3.4): `STAPPLER_TARGET=x86_64-apple-macosx` (compile-verify when no Mac is available) |
-| arm64 Windows shared headers | **host clang `--target=aarch64-pc-windows-msvc`** compile-only (§3.2) |
+| `runtime/libc_impl/*` (freestanding Windows libc, `windows/*`, `builtin_*` SCUs) or the `runtime_libc_wrapper` substitute functions | **`tests/libc` + win32 cross-build + Wine** (§3.2, §5). Linux build links `runtime_libc_wrapper` instead and touches none of `libc_impl`. |
+| Android-only code (`runtime/window/android/*`, dispatch `*-alooper*`, JNI/unicode) | **Android NDK target** (§3.3): `STAPPLER_TARGET=unknown-ndk-linux-android` |
+| macOS-only code (`runtime/window/macos/*.mm`, darwin dispatch/clock/lock) | **macOS cross-compile** (§3.4): `STAPPLER_TARGET=x86_64-apple-macosx` (compile-verify when no Mac is available) |
+| arm64 Windows code / shared headers | **full cross-build** (§3.2): `STAPPLER_TARGET=aarch64-pc-windows-msvc` (build-verify only — no emulator on Linux). For a quick header/SCU check, host clang `--target=aarch64-pc-windows-msvc` compile-only. |
 | Linux/glibc, the runtime umbrella, stappler/xenolith app code | native build + run the relevant CLI test (§5) |
 
 If a rebuild reports "nothing to do" after you edited a file that *should* be in
@@ -388,12 +405,23 @@ scope, you are probably either (a) on a target that excludes that file, or
 ## 7. Toolchains & tools
 
 - **GNU Make 4.1+** is required. macOS ships an older `make` — use `gmake` there.
-- The SDK ships its **own clang/LLD/lldb toolchain**: the build picks the host
-  half automatically per host triple under `runtime/toolchains/hosts/<host>/` and
-  the target half per target under `runtime/toolchains/targets/<target>/`. No
-  platform SDK is needed (Windows without UCRT/Windows SDK; macOS without the
-  macOS SDK when using a `+sprt` target). Override selection with
-  `STAPPLER_HOST_FILE=` / `STAPPLER_TARGET_FILE=` if required.
+- The SDK ships its **own clang/LLD/lldb toolchain**, selected automatically per
+  host triple (the host half) and per target triple (the target half). The build
+  resolves each half by searching **two locations in order** (see
+  `make/utils/defaults.mk`):
+  1. `<root>/toolchains/hosts/<host>/host.mk` and
+     `<root>/toolchains/targets/<target>/target.mk` — **externally installed
+     toolchains from the binary releases** (checked first).
+  2. if not found there, `<root>/runtime/toolchains/hosts/<host>/host.mk` and
+     `<root>/runtime/toolchains/targets/<target>/target.mk` — **toolchains built
+     from source on this machine** (the in-repo `runtime/toolchains` build).
+
+  A release install therefore takes precedence over a local source build of the
+  same triple; remove/rename the `toolchains/...` copy to force the source build.
+  No platform SDK is needed (Windows without UCRT/Windows SDK; macOS without the
+  macOS SDK when using a `+sprt` target). Override the whole search with
+  `STAPPLER_HOST_FILE=` / `STAPPLER_TARGET_FILE=` (an explicit file wins over both
+  locations).
 - **`xlmake`** (`utils/xlmake/`) is the project's GNU-make-compatible build driver
   (also a drop-in for the VSCode Makefile Tools extension); the `make` invocations
   in this document work with either.
