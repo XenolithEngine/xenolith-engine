@@ -67,7 +67,15 @@ struct Looper::Data : public detail::AllocPool {
 		sprt::memory::pool::initialize();
 		sprt::unique_lock lock(l->_mutex);
 
-		d->queue->poll();
+		// cleanup() is not guaranteed to run only once: it is invoked both directly
+		// from ~Looper and from the threadMemPool cleanup that ~Looper kills, and a
+		// late thread teardown (e.g. the file-epoll worker exiting via TLS
+		// destructors after the queue was already released) can re-enter here with
+		// queue already nulled (see the guarded use below). Guard the drain the same
+		// way; otherwise this is a null deref -> SIGSEGV.
+		if (d->queue) {
+			d->queue->poll();
+		}
 
 		auto tmp = sprt::move(d->buses);
 		d->buses.clear();
