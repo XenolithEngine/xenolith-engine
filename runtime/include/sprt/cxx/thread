@@ -32,6 +32,7 @@ THE SOFTWARE.
 #include <sprt/c/sys/__sprt_sprt.h>
 
 namespace sprt {
+inline namespace __cxx_thread {
 
 using timeout_t = __sprt_sprt_timeout_t;
 
@@ -97,7 +98,10 @@ constexpr inline auto operator<=>(thread::id x, thread::id y) noexcept {
 	return x.__native <=> y.__native;
 }
 
-// hash support
+} // inline namespace __cxx_thread
+
+// hash<thread::id> specializes sprt::hash, so it must be declared at sprt scope
+// (not inside the inline namespace, which would create a second, ambiguous hash).
 template <class T>
 struct hash;
 
@@ -108,6 +112,8 @@ struct hash<thread::id> {
 	}
 };
 
+inline namespace __cxx_thread {
+
 // namespace this_thread
 namespace this_thread {
 thread::id get_id() noexcept;
@@ -117,6 +123,7 @@ void yield() noexcept;
 void sleep_for(const timeout_t &rel_time);
 } // namespace this_thread
 
+} // inline namespace __cxx_thread
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_THREAD_H_

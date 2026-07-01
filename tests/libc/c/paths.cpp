@@ -33,9 +33,29 @@ THE SOFTWARE.
 #include <fcntl.h>
 #include <sys/stat.h>
 
-// __sprt_fpath_to_native / _to_posix are the runtime's path-format converters;
-// on Windows they translate POSIX <-> "C:\\" native, on Linux they copy verbatim.
+// __sprt_fpath_to_native / _to_posix are the runtime's path-format converters; on
+// Windows they translate POSIX <-> "C:\\" native, on Linux they copy verbatim. When
+// the sprt runtime is not on the include path (the standalone system-compiler build)
+// we substitute the Linux identity behaviour so this path-acceptance test still
+// builds — it then simply verifies POSIX path acceptance through the system libc.
+#if __has_include(<sprt/c/__sprt_stdio.h>)
 #include <sprt/c/__sprt_stdio.h>
+#else
+static size_t __sprt_fpath_to_native(const char *path, size_t pathSize, char *buf, size_t bufSize) {
+	if (pathSize >= bufSize) {
+		return 0;
+	}
+	memcpy(buf, path, pathSize);
+	return pathSize;
+}
+static size_t __sprt_fpath_to_posix(const char *path, size_t pathSize, char *buf, size_t bufSize) {
+	if (pathSize >= bufSize) {
+		return 0;
+	}
+	memcpy(buf, path, pathSize);
+	return pathSize;
+}
+#endif
 
 #include "test_util.h"
 

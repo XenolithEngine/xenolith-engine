@@ -29,6 +29,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__iterator/iterator_ops.h>
 
 namespace sprt {
+inline namespace __cxx_algorithm {
 
 template <typename _Integral, enable_if_t<is_integral<_Integral>::value, int> = 0>
 constexpr _Integral __half_positive(_Integral __value) {
@@ -185,6 +186,7 @@ constexpr bool equal(InputIt1 first1, InputIt1 last1, InputIt2 first2) {
 	return equal(first1, last1, first2, BinaryPred());
 }
 
+} // inline namespace __cxx_algorithm
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___ALGORITHM_BOUNDS_H_

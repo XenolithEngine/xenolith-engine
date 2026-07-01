@@ -39,7 +39,11 @@ using __pointer = __detected_or_t<_Tp *, __pointer_member, remove_reference_t<_A
 template <typename _Alloc, template <typename> typename _Alias, typename _Ptr, typename _Tp,
 		typename = void>
 struct __rebind_or_alias_pointer {
-	using type = typename pointer_traits<_Ptr>::template rebind<_Tp>::other;
+	// pointer_traits<Ptr>::rebind<T> is itself the rebound pointer type (an alias
+	// template); the `::other` member belongs to the *allocator* rebind protocol,
+	// not pointer_traits, so naming it here makes allocator_traits<allocator<T>>
+	// fail to instantiate (rebind<T> is e.g. `const int *`, which has no members).
+	using type = typename pointer_traits<_Ptr>::template rebind<_Tp>;
 };
 
 template <typename _Ptr, typename _Alloc, typename _Tp, template <typename> typename _Alias>

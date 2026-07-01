@@ -26,7 +26,6 @@ THE SOFTWARE.
 /*
 	Dispatch header for <malloc.h> (a non-standard, allocator-focused header):
 	- hosted SPRT build      -> forwards to the system <malloc.h> (#include_next)
-	- __SPRT_AS_STD in C++    -> includes <cstdlib>
 	- otherwise               -> includes <stdlib.h>
 
 	This header defines no functions of its own; the allocation family (malloc,
@@ -36,10 +35,8 @@ THE SOFTWARE.
 	Macros:
 	  _aligned_malloc(Size, Align) - allocate Size bytes aligned to Align;
 	                                 maps to aligned_alloc(Align, Size)
-	                                 (sprt::aligned_alloc under __SPRT_AS_STD)
 	  _aligned_free(Ptr)           - free a block from _aligned_malloc;
-	                                 maps to aligned_free (sprt::aligned_free
-	                                 under __SPRT_AS_STD)
+	                                 maps to aligned_free
 
 	Note: these macros are not defined on the hosted SPRT build path, which uses the
 	platform's own <malloc.h>.
@@ -48,13 +45,6 @@ THE SOFTWARE.
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <malloc.h>
-
-#elif defined(__SPRT_AS_STD) && defined(__cplusplus)
-
-#include <cstdlib>
-
-#define _aligned_malloc(Size, Align) sprt::aligned_alloc(Align, Size)
-#define _aligned_free(Ptr) sprt::aligned_free(Ptr)
 
 #else
 

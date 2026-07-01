@@ -109,12 +109,6 @@ inline namespace _cstdio {
 #if __STDC_HOSTED__ == 1 && !defined(__SPRT_BUILD)
 using namespace sprt::_cstdio;
 #endif
-
-#ifdef __SPRT_AS_STD
-namespace std {
-using namespace sprt::_cstdio;
-}
-#endif
 #endif // __cplusplus
 
 

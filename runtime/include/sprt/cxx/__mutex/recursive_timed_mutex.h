@@ -26,6 +26,7 @@
 #include <sprt/runtime/thread/rmutex.h>
 
 namespace sprt {
+inline namespace __cxx_mutex {
 
 class recursive_timed_mutex {
 public:
@@ -52,6 +53,7 @@ protected:
 	native_handle_type _mutex;
 };
 
+} // inline namespace __cxx_mutex
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___MUTEX_RECURSIVE_TIMED_MUTEX_H_

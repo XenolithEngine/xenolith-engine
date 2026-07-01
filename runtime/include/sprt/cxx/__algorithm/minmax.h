@@ -26,6 +26,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__functional/compare.h>
 
 namespace sprt {
+inline namespace __cxx_algorithm {
 
 /*
 	min
@@ -74,6 +75,7 @@ constexpr const T &__vmin(const T &first, const Args &...args) {
 	return *result;
 }
 
+} // inline namespace __cxx_algorithm
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___ALGORITHM_MINMAX_H_

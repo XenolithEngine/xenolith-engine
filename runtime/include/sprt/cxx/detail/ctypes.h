@@ -168,10 +168,10 @@ template <>
 constexpr inline long double Min<long double> = -__SPRT_LDBL_MAX;
 
 template <>
-constexpr inline double Min<double> = -__SPRT_LDBL_MAX;
+constexpr inline double Min<double> = -__SPRT_DBL_MAX;
 
 template <>
-constexpr inline const float Min<float> = -__SPRT_LDBL_MAX;
+constexpr inline const float Min<float> = -__SPRT_FLT_MAX;
 
 template <signed_integer T>
 static constexpr inline const T Min<T> = T(T(1) << Digits<T>);

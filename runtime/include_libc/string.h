@@ -27,8 +27,8 @@ THE SOFTWARE.
 	Dispatch header for <string.h>:
 	- hosted SPRT build -> forwards to the system <string.h> (#include_next)
 	- otherwise         -> SPRT's own declarations via sprt/wrappers/libc/string.h
-	                       (which in C++ routes into sprt::_cstring_dll + sprt::_cstring,
-	                       and into std:: under __SPRT_AS_STD)
+	                       (which in C++ routes into sprt::_cstring_dll + sprt::_cstring;
+	                       the std:: spelling is via the include_libc/stl wrappers)
 
 	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded).
 	NULL comes in via <stddef.h>; no other public macros or types are defined here.

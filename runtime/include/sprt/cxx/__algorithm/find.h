@@ -29,6 +29,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__functional/compare.h>
 
 namespace sprt {
+inline namespace __cxx_algorithm {
 
 template <typename InputIt1, typename InputIt2>
 constexpr auto mismatch(InputIt1 first1, InputIt1 last1, InputIt2 first2, InputIt2 last2) {
@@ -175,6 +176,7 @@ inline constexpr _ForwardIterator1 find_end(_ForwardIterator1 __first1, _Forward
 }
 
 
+} // inline namespace __cxx_algorithm
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___ALGORITHM_FIND_H_

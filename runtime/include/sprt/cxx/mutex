@@ -33,6 +33,7 @@ THE SOFTWARE.
 #include <sprt/runtime/thread/rmutex.h>
 
 namespace sprt {
+inline namespace __cxx_mutex {
 
 // Just use qmutex as common std::mutex
 using mutex = qmutex;
@@ -48,6 +49,7 @@ void call_once(sprt::once_flag &flag, Callable &&f, Args &&...args) {
 	});
 }
 
+} // inline namespace __cxx_mutex
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_MUTEX_H_

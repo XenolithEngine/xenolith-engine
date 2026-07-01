@@ -1,0 +1,249 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+// Standard <utility>, backed by sprt. <sprt/cxx/utility> does not pull in the
+// in_place tags, so we add <sprt/cxx/__utility/in_place.h> to expose them (the
+// standard places in_place_t/in_place in <utility>).
+
+#ifndef RUNTIME_INCLUDE_LIBC_STL_UTILITY_H_
+#define RUNTIME_INCLUDE_LIBC_STL_UTILITY_H_
+
+// Always pull the full std implementations when used through the STL layer.
+#include <__sprt_stl_config.h>
+
+#include <sprt/cxx/utility>
+#include <sprt/cxx/__utility/in_place.h>
+
+#include <__tuple/protocol.h>
+
+// For the [utility.intcmp] helpers below: integer traits and per-type Min/Max.
+#include <sprt/cxx/type_traits>
+#include <sprt/cxx/detail/ctypes.h>
+
+namespace std {
+
+// SPECIAL: sprt::move is SFINAE-disabled for pointer types (a refcount-safety
+// guard), so a plain `using sprt::move;` would not give a conforming std::move.
+// Define the unrestricted standard std::move here. (A direct declaration like this
+// shadows the pointer-restricted sprt::move that any `using namespace sprt;` in
+// other stl headers would otherwise inject, so std::move stays unrestricted.)
+template <typename _Tp>
+[[nodiscard]]
+constexpr typename sprt::remove_reference<_Tp>::type &&move(_Tp &&__value) noexcept {
+	return static_cast<typename sprt::remove_reference<_Tp>::type &&>(__value);
+}
+
+using sprt::forward;
+using sprt::move_if_noexcept;
+using sprt::swap;
+using sprt::exchange;
+using sprt::as_const;
+using sprt::declval;
+using sprt::to_underlying;
+
+using sprt::pair;
+using sprt::make_pair;
+
+using sprt::integer_sequence;
+using sprt::index_sequence;
+using sprt::make_integer_sequence;
+using sprt::make_index_sequence;
+
+using sprt::in_place_t;
+using sprt::in_place;
+using sprt::in_place_type_t;
+using sprt::in_place_type;
+using sprt::in_place_index_t;
+using sprt::in_place_index;
+
+using sprt::piecewise_construct_t;
+using sprt::piecewise_construct;
+
+// [utility.intcmp] integer comparison functions (C++20). Pure library, no sprt
+// backing and no exceptions, so they are implemented directly in the wrapper.
+// Each is Mandated to operate on standard (signed/unsigned) integer types only.
+template <typename _Tp>
+inline constexpr bool __is_standard_integer = sprt::is_same_v<_Tp, signed char>
+		|| sprt::is_same_v<_Tp, short> || sprt::is_same_v<_Tp, int> || sprt::is_same_v<_Tp, long>
+		|| sprt::is_same_v<_Tp, long long> || sprt::is_same_v<_Tp, unsigned char>
+		|| sprt::is_same_v<_Tp, unsigned short> || sprt::is_same_v<_Tp, unsigned int>
+		|| sprt::is_same_v<_Tp, unsigned long> || sprt::is_same_v<_Tp, unsigned long long>;
+
+template <typename _Tp, typename _Up>
+constexpr bool cmp_equal(_Tp __t, _Up __u) noexcept {
+	static_assert(__is_standard_integer<_Tp> && __is_standard_integer<_Up>,
+			"cmp_equal requires standard integer types");
+	if constexpr (sprt::is_signed_v<_Tp> == sprt::is_signed_v<_Up>) {
+		return __t == __u;
+	} else if constexpr (sprt::is_signed_v<_Tp>) {
+		return __t >= 0 && sprt::make_unsigned_t<_Tp>(__t) == __u;
+	} else {
+		return __u >= 0 && sprt::make_unsigned_t<_Up>(__u) == __t;
+	}
+}
+
+template <typename _Tp, typename _Up>
+constexpr bool cmp_not_equal(_Tp __t, _Up __u) noexcept {
+	return !std::cmp_equal(__t, __u);
+}
+
+template <typename _Tp, typename _Up>
+constexpr bool cmp_less(_Tp __t, _Up __u) noexcept {
+	static_assert(__is_standard_integer<_Tp> && __is_standard_integer<_Up>,
+			"cmp_less requires standard integer types");
+	if constexpr (sprt::is_signed_v<_Tp> == sprt::is_signed_v<_Up>) {
+		return __t < __u;
+	} else if constexpr (sprt::is_signed_v<_Tp>) {
+		return __t < 0 || sprt::make_unsigned_t<_Tp>(__t) < __u;
+	} else {
+		return __u >= 0 && __t < sprt::make_unsigned_t<_Up>(__u);
+	}
+}
+
+template <typename _Tp, typename _Up>
+constexpr bool cmp_greater(_Tp __t, _Up __u) noexcept {
+	return std::cmp_less(__u, __t);
+}
+
+template <typename _Tp, typename _Up>
+constexpr bool cmp_less_equal(_Tp __t, _Up __u) noexcept {
+	return !std::cmp_less(__u, __t);
+}
+
+template <typename _Tp, typename _Up>
+constexpr bool cmp_greater_equal(_Tp __t, _Up __u) noexcept {
+	return !std::cmp_less(__t, __u);
+}
+
+template <typename _Rp, typename _Tp>
+constexpr bool in_range(_Tp __t) noexcept {
+	static_assert(__is_standard_integer<_Rp> && __is_standard_integer<_Tp>,
+			"in_range requires standard integer types");
+	return std::cmp_greater_equal(__t, sprt::Min<_Rp>) && std::cmp_less_equal(__t, sprt::Max<_Rp>);
+}
+
+} // namespace std
+
+// The get<> accessors for std::pair (== sprt::pair) must live in namespace sprt so
+// that structured bindings find them by ADL on the sprt::pair type. tuple_size /
+// tuple_element stay in std (they are named qualified), and `using sprt::get` below
+// re-exposes the pair accessors as std::get. None of this touches sprt's sources.
+namespace sprt {
+
+template <sprt::size_t _Ip, typename _T1, typename _T2>
+constexpr sprt::conditional_t<_Ip == 0, _T1, _T2> &get(sprt::pair<_T1, _T2> &__p) noexcept {
+	static_assert(_Ip < 2, "pair index out of range");
+	if constexpr (_Ip == 0) {
+		return __p.first;
+	} else {
+		return __p.second;
+	}
+}
+template <sprt::size_t _Ip, typename _T1, typename _T2>
+constexpr const sprt::conditional_t<_Ip == 0, _T1, _T2> &get(
+		const sprt::pair<_T1, _T2> &__p) noexcept {
+	static_assert(_Ip < 2, "pair index out of range");
+	if constexpr (_Ip == 0) {
+		return __p.first;
+	} else {
+		return __p.second;
+	}
+}
+template <sprt::size_t _Ip, typename _T1, typename _T2>
+constexpr sprt::conditional_t<_Ip == 0, _T1, _T2> &&get(sprt::pair<_T1, _T2> &&__p) noexcept {
+	static_assert(_Ip < 2, "pair index out of range");
+	if constexpr (_Ip == 0) {
+		return static_cast<_T1 &&>(__p.first);
+	} else {
+		return static_cast<_T2 &&>(__p.second);
+	}
+}
+template <sprt::size_t _Ip, typename _T1, typename _T2>
+constexpr const sprt::conditional_t<_Ip == 0, _T1, _T2> &&get(
+		const sprt::pair<_T1, _T2> &&__p) noexcept {
+	static_assert(_Ip < 2, "pair index out of range");
+	if constexpr (_Ip == 0) {
+		return static_cast<const _T1 &&>(__p.first);
+	} else {
+		return static_cast<const _T2 &&>(__p.second);
+	}
+}
+
+template <typename _Tp, typename _T1, typename _T2>
+constexpr _Tp &get(sprt::pair<_T1, _T2> &__p) noexcept {
+	static_assert(!sprt::is_same_v<_T1, _T2>, "get<T>(pair) requires distinct element types");
+	if constexpr (sprt::is_same_v<_Tp, _T1>) {
+		return __p.first;
+	} else {
+		return __p.second;
+	}
+}
+template <typename _Tp, typename _T1, typename _T2>
+constexpr const _Tp &get(const sprt::pair<_T1, _T2> &__p) noexcept {
+	static_assert(!sprt::is_same_v<_T1, _T2>, "get<T>(pair) requires distinct element types");
+	if constexpr (sprt::is_same_v<_Tp, _T1>) {
+		return __p.first;
+	} else {
+		return __p.second;
+	}
+}
+template <typename _Tp, typename _T1, typename _T2>
+constexpr _Tp &&get(sprt::pair<_T1, _T2> &&__p) noexcept {
+	static_assert(!sprt::is_same_v<_T1, _T2>, "get<T>(pair) requires distinct element types");
+	if constexpr (sprt::is_same_v<_Tp, _T1>) {
+		return static_cast<_T1 &&>(__p.first);
+	} else {
+		return static_cast<_T2 &&>(__p.second);
+	}
+}
+template <typename _Tp, typename _T1, typename _T2>
+constexpr const _Tp &&get(const sprt::pair<_T1, _T2> &&__p) noexcept {
+	static_assert(!sprt::is_same_v<_T1, _T2>, "get<T>(pair) requires distinct element types");
+	if constexpr (sprt::is_same_v<_Tp, _T1>) {
+		return static_cast<const _T1 &&>(__p.first);
+	} else {
+		return static_cast<const _T2 &&>(__p.second);
+	}
+}
+
+} // namespace sprt
+
+namespace std {
+
+// Tuple protocol for std::pair (== sprt::pair). sprt provides none of these.
+template <typename _T1, typename _T2>
+struct tuple_size<sprt::pair<_T1, _T2>> : sprt::integral_constant<sprt::size_t, 2> { };
+
+template <typename _T1, typename _T2>
+struct tuple_element<0, sprt::pair<_T1, _T2>> {
+	using type = _T1;
+};
+template <typename _T1, typename _T2>
+struct tuple_element<1, sprt::pair<_T1, _T2>> {
+	using type = _T2;
+};
+
+using sprt::get; // expose the pair accessors as std::get<>(pair)
+
+} // namespace std
+
+#endif // RUNTIME_INCLUDE_LIBC_STL_UTILITY_H_
