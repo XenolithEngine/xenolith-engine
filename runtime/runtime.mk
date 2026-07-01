@@ -71,6 +71,7 @@ MODULE_RUNTIME_GENERAL_LDFLAGS :=
 
 ifeq ($(TARGET_SYSTEM),Linux)
 MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc/stl
 MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_LIBS += -l:libbacktrace.a -l:libc++abi.a -lm
 endif
@@ -78,6 +79,7 @@ endif
 
 ifeq ($(TARGET_SYSTEM),Android)
 MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc/stl
 MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a -landroid -llog
 endif
@@ -87,6 +89,7 @@ ifeq ($(TARGET_SYSTEM),Android-NDK)
 MODULE_RUNTIME_GENERAL_CFLAGS += -nostdinc++
 MODULE_RUNTIME_GENERAL_CXXFLAGS += -nostdinc++
 MODULE_RUNTIME_INCLUDES_OBJS += \
+	$(RUNTIME_MODULE_DIR)/include_libc/stl \
 	$(RUNTIME_MODULE_DIR)/include_libc \
 	$(RUNTIME_MODULE_DIR)/src
 MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a
@@ -100,6 +103,7 @@ MODULE_RUNTIME_GENERAL_CFLAGS += \
 	-idirafter $(RUNTIME_MODULE_DIR)/include_libc \
 	-idirafter $(RUNTIME_MODULE_DIR)/include_libc/darwin
 MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-idirafter $(RUNTIME_MODULE_DIR)/include_libc/stl \
 	-idirafter $(RUNTIME_MODULE_DIR)/include_libc \
 	-idirafter $(RUNTIME_MODULE_DIR)/include_libc/darwin
 MODULE_RUNTIME_GENERAL_LDFLAGS += -L$(TARGET_LIB_DIR) \
@@ -131,7 +135,8 @@ MODULE_RUNTIME_DEPENDS_ON += runtime_libc_impl
 MODULE_RUNTIME_PRIVATE_INCLUDES += $(TARGET_INCLUDE_DIR)
 MODULE_RUNTIME_INCLUDES_OBJS += $(TARGET_INCLUDE_DIR) \
 	$(RUNTIME_MODULE_DIR)/include/sprt/wrappers/windows \
-	$(RUNTIME_MODULE_DIR)/include_libc
+	$(RUNTIME_MODULE_DIR)/include_libc \
+	$(RUNTIME_MODULE_DIR)/include_libc/stl
 
 MODULE_RUNTIME_LIBS += -limport
 # The runtime links freestanding (-nostdlib), so clang does not auto-link the

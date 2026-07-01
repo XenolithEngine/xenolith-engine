@@ -29,8 +29,23 @@
 #include <sprt/cxx/__type_traits/queries.h>
 #include <sprt/cxx/__type_traits/unwrap_ref.h>
 #include <sprt/cxx/__utility/common.h>
+#include <sprt/cxx/__utility/integer_sequence.h>
+#include <sprt/cxx/compare>
 
 namespace sprt {
+
+// Forward declaration only. pair's piecewise_construct constructors (below) are DEFINED
+// in <sprt/cxx/tuple>, where the full tuple type and sprt::get are available — exactly
+// as the standard defines pair's piecewise ctor in <tuple>.
+template <typename... _UTp>
+class tuple;
+
+// [pairs.pair] piecewise construction tag (replaces the old sprt-only
+// pair_emplace_construct_t extension).
+struct piecewise_construct_t {
+	explicit piecewise_construct_t() = default;
+};
+inline constexpr piecewise_construct_t piecewise_construct {};
 
 template <typename Type, typename = void>
 struct __is_replaceable : is_trivially_copyable<Type> { };
@@ -66,8 +81,6 @@ struct check_pair_construction {
 	}
 };
 
-struct pair_emplace_construct_t { };
-
 template <typename _T1, typename _T2>
 struct pair {
 	using first_type = _T1;
@@ -88,13 +101,24 @@ struct pair {
 	pair &operator=(pair &&) = default;
 	pair &operator=(const pair &) = default;
 
-	template <typename First, typename... Args>
-	explicit constexpr pair(pair_emplace_construct_t, First &&first, Args &&...args) noexcept
-	: first(sprt::forward<First>(first)), second(sprt::forward<Args>(args)...) {
-		static_assert(is_constructible_v<_T1, First>);
-		static_assert(is_constructible_v<_T2, Args...>);
-	}
+	// [pairs.pair] default constructor: participates only when both elements are
+	// default-constructible; explicit unless both are implicitly default-constructible.
+	template <typename _U1 = _T1, typename _U2 = _T2,
+			enable_if_t<check_pair_construction<_U1, _U2>::enable_default(), int> = 0>
+	constexpr explicit(!check_pair_construction<_T1, _T2>::enable_implicit_default())
+			pair() noexcept : first(), second() { }
 
+	// [pairs.pair] piecewise construction. Declared here, DEFINED in <sprt/cxx/tuple>.
+	template <typename... _Args1, typename... _Args2>
+	constexpr pair(piecewise_construct_t, tuple<_Args1...> __first_args,
+			tuple<_Args2...> __second_args);
+
+private:
+	template <typename... _Args1, sprt::size_t... _I1, typename... _Args2, sprt::size_t... _I2>
+	constexpr pair(piecewise_construct_t, tuple<_Args1...> &__t1, tuple<_Args2...> &__t2,
+			index_sequence<_I1...>, index_sequence<_I2...>);
+
+public:
 	template <typename _CheckArgsDep = check_pair_construction<_T1, _T2>,
 			enable_if_t< _CheckArgsDep::template is_pair_constructible<_T1 const &, _T2 const &>(),
 					int> = 0>
@@ -182,6 +206,25 @@ inline constexpr bool operator>=(const pair<_T1, _T2> &__x, const pair<_U1, _U2>
 template <typename _T1, typename _T2, typename _U1, typename _U2>
 inline constexpr bool operator<=(const pair<_T1, _T2> &__x, const pair<_U1, _U2> &__y) noexcept {
 	return !(__y < __x);
+}
+
+// C++20 [pairs.spec]: three-way comparison. The legacy relational operators above
+// stay (a non-rewritten operator< is always preferred over the rewritten <=>
+// candidate, so there is no ambiguity); this adds the missing `pair <=> pair`.
+template <typename _T1, typename _T2, typename _U1, typename _U2>
+constexpr std::common_comparison_category_t<__synth_three_way_result_t<_T1, _U1>,
+		__synth_three_way_result_t<_T2, _U2>>
+operator<=>(const pair<_T1, _T2> &__x, const pair<_U1, _U2> &__y) {
+	if (auto __c = sprt::__synth_three_way(__x.first, __y.first); __c != 0) {
+		return __c;
+	}
+	return sprt::__synth_three_way(__x.second, __y.second);
+}
+
+// [pairs.spec] non-member swap.
+template <typename _T1, typename _T2>
+constexpr void swap(pair<_T1, _T2> &__x, pair<_T1, _T2> &__y) noexcept(noexcept(__x.swap(__y))) {
+	__x.swap(__y);
 }
 
 template <typename _T1, typename _T2>

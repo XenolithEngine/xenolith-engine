@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/cxx/mutex>
 
 namespace sprt {
+inline namespace __cxx_condition_variable {
 
 enum class cv_status {
 	no_timeout,
@@ -168,6 +169,7 @@ protected:
 	mutex _mtx;
 };
 
+} // inline namespace __cxx_condition_variable
 } // namespace sprt
 
 #endif

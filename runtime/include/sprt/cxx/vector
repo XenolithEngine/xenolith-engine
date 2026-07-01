@@ -68,7 +68,9 @@ public:
 		_mem.fill(count);
 	}
 
-	template < typename InputIt >
+	// SFINAE-excludes integral InputIt so __vector(n, value) (LWG 438) is not hijacked by
+	// this range overload when both arguments have the same integral type (e.g. (3, 7)).
+	template < typename InputIt, typename = enable_if_t<!is_integral_v<InputIt>> >
 	__vector(InputIt first, InputIt last, const allocator_type &alloc = allocator_type()) noexcept
 	: _mem(alloc) {
 		auto size = sprt::distance(first, last);
@@ -106,7 +108,7 @@ public:
 
 	void assign(size_type count, const Type &value) { _mem.fill(count, value); }
 
-	template < typename InputIt >
+	template < typename InputIt, typename = enable_if_t<!is_integral_v<InputIt>> >
 	void assign(InputIt first,
 			InputIt last) { // @TODO: self-assign protection and modern assignment
 		_mem.clear();
@@ -191,7 +193,7 @@ public:
 		return _mem.insert(pos, count, value);
 	}
 
-	template < typename InputIt >
+	template < typename InputIt, typename = enable_if_t<!is_integral_v<InputIt>> >
 	iterator insert(const_iterator pos, InputIt first, InputIt last) {
 		return _mem.insert(pos, first, last);
 	}

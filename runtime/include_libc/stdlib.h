@@ -26,7 +26,6 @@ THE SOFTWARE.
 /*
 	Dispatch header for <stdlib.h>:
 	- hosted SPRT build      -> forwards to the system <stdlib.h> (#include_next)
-	- __SPRT_AS_STD in C++   -> pulls <cstdlib>
 	- otherwise              -> SPRT's own declarations via sprt/wrappers/libc/stdlib.h
 
 	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded):
@@ -106,18 +105,14 @@ THE SOFTWARE.
 	  _msize           - report the usable size of a heap allocation
 	  _wgetenv         - wide-character getenv
 
-	In hosted C++ the ISO functions live in sprt::_cstdlib (and std:: under
-	__SPRT_AS_STD); in freestanding / non-SPRT-build mode they are plain C
+	In hosted C++ the ISO functions live in sprt::_cstdlib (and in std:: via the
+	include_libc/stl wrappers); in freestanding / non-SPRT-build mode they are plain C
 	declarations. CRT extensions and the locale-alias macros are always declared.
 */
 
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
 
 #include_next <stdlib.h>
-
-#elif defined(__SPRT_AS_STD) && defined(__cplusplus)
-
-#include <cstdlib>
 
 #else
 

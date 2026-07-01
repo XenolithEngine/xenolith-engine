@@ -96,6 +96,58 @@ void performTimeTest();
 // inttypes.h
 void performInttypesTest();
 
+// <sprt/cxx/optional> (C++ standard conformance)
+void performOptionalTest();
+
+// <sprt/cxx/variant> (C++ standard conformance)
+void performVariantTest();
+
+// <sprt/cxx/any> (C++ standard conformance)
+void performAnyTest();
+
+// C headers + STL counterparts coexistence (string.h/cstring, ...) + unambiguous
+// global calls + no infinite recursion
+void performCoexistTest();
+
+// <limits> std::numeric_limits (sprt-backed STL header vs system reference)
+void performLimitsTest();
+
+// <tuple> std::tuple + tuple protocol for pair/array (sprt-backed STL vs system)
+void performTupleTest();
+
+// <chrono> duration / time_point / clocks / <=> (sprt-backed STL vs system)
+void performChronoTest();
+
+// <string> std::char_traits (sprt-backed STL vs system)
+void performCharTraitsTest();
+
+// <functional> std::hash enabled/disabled split (sprt-backed STL vs system)
+void performHashTest();
+
+// <functional> std::function (sprt::__malloc_function) incl. edge cases
+void performFunctionTest();
+
+// sprt::call_once / std::call_once (qonce mutable-lambda fix)
+void performCallOnceTest();
+
+// <vector> std::vector (sprt::__vector via the full sprt-allocator std::allocator) vs system
+void performVectorTest();
+
+// <string> std::string / std::basic_string incl. a custom Traits parameter vs system
+void performStringTest();
+
+// <utility> std::pair: default ctor, piecewise_construct, <=>, swap, tuple protocol
+void performPairTest();
+
+// <string_view> std::string_view + std::string interop (starts_with/ends_with/contains)
+void performStringViewTest();
+
+// <string> std::to_string / to_wstring / stoi-family / operator""s
+void performStringConvTest();
+
+// <memory> unique_ptr / shared_ptr / weak_ptr / make_* / uninitialized_* / align
+void performStdMemoryTest();
+
 } // namespace sprt::test
 
 #endif // TESTS_LIBC_TESTS_H

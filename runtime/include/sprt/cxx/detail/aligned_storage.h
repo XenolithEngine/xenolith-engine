@@ -26,6 +26,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__utility/pair.h>
 #include <sprt/cxx/__utility/common.h>
 #include <sprt/cxx/detail/ctypes.h>
+#include <sprt/cxx/tuple> // pair's piecewise_construct ctor + forward_as_tuple
 
 namespace sprt::detail {
 
@@ -154,15 +155,16 @@ struct aligned_storage_kv_traits<Key, pair<Key, Value>> {
 	template <typename A, typename... Args>
 	static inline void construct(const A &alloc, storage_type &storage, const Key &k,
 			Args &&...args) noexcept {
-		storage.construct(alloc, pair_emplace_construct_t(), sprt::forward<Key>(k),
-				sprt::forward<Args>(args)...);
+		storage.construct(alloc, sprt::piecewise_construct, sprt::forward_as_tuple(k),
+				sprt::forward_as_tuple(sprt::forward<Args>(args)...));
 	}
 
 	template <typename A, typename... Args>
 	static inline void construct(const A &alloc, storage_type &storage, Key &&k,
 			Args &&...args) noexcept {
-		storage.construct(alloc, pair_emplace_construct_t(), sprt::move_unsafe(k),
-				sprt::forward<Args>(args)...);
+		storage.construct(alloc, sprt::piecewise_construct,
+				sprt::forward_as_tuple(sprt::move_unsafe(k)),
+				sprt::forward_as_tuple(sprt::forward<Args>(args)...));
 	}
 
 	template <typename A>
@@ -204,14 +206,16 @@ struct aligned_storage_kv_traits<Key, pair<const Key, Value>> {
 	template <typename A, typename... Args>
 	static inline void construct(const A &alloc, storage_type &storage, const Key &k,
 			Args &&...args) noexcept {
-		storage.construct(alloc, pair_emplace_construct_t(), k, sprt::forward<Args>(args)...);
+		storage.construct(alloc, sprt::piecewise_construct, sprt::forward_as_tuple(k),
+				sprt::forward_as_tuple(sprt::forward<Args>(args)...));
 	}
 
 	template <typename A, typename... Args>
 	static inline void construct(const A &alloc, storage_type &storage, Key &&k,
 			Args &&...args) noexcept {
-		storage.construct(alloc, pair_emplace_construct_t(), sprt::move_unsafe(k),
-				sprt::forward<Args>(args)...);
+		storage.construct(alloc, sprt::piecewise_construct,
+				sprt::forward_as_tuple(sprt::move_unsafe(k)),
+				sprt::forward_as_tuple(sprt::forward<Args>(args)...));
 	}
 
 	template <typename A>

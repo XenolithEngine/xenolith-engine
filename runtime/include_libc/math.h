@@ -31,7 +31,7 @@ THE SOFTWARE.
 	Each real function comes in three precisions: the bare name takes/returns double,
 	the f-suffixed name float, and the l-suffixed name long double (e.g. cos/cosf/cosl).
 	In C++ the functions instead live in namespace sprt::_cmath (pulled into the global
-	scope when hosted-and-not-SPRT-build, and into std:: under __SPRT_AS_STD) as
+	scope when hosted-and-not-SPRT-build, and into std:: via the include_libc/stl wrappers) as
 	type-generic overloads plus arithmetic-promoting templates; the classification and
 	comparison entries below are real functions in C++ but macros in C.
 
