@@ -27,7 +27,6 @@ THE SOFTWARE.
 
 /* External configuration:
 
-	__SPRT_AS_STD - define std namespace as sprt alias
 	__SPRT_WINDOWS - force to use windows platform definition (for specific cross-compilation targets)
 */
 
@@ -297,6 +296,22 @@ THE SOFTWARE.
 #define __SPRT_HIDDEN __SPRT_ATTR_GNU(visibility("hidden"))
 
 #endif // SPRT_WINDOWS
+
+/*
+	Empty-base optimization opt-in. The Microsoft ABI needs __declspec(empty_bases)
+	for multiple empty base classes to occupy zero space; the Itanium ABI does it
+	automatically. Used by types that mix in empty bases (e.g. sprt::optional, which
+	derives from a storage base plus empty SFINAE mixins) so their size stays compact
+	and identical across targets. Expands to nothing where it does not apply.
+*/
+#if SPRT_WINDOWS && defined(__has_declspec_attribute)
+#if __has_declspec_attribute(empty_bases)
+#define __SPRT_EMPTY_BASES __declspec(empty_bases)
+#endif
+#endif
+#ifndef __SPRT_EMPTY_BASES
+#define __SPRT_EMPTY_BASES
+#endif
 
 // Defined if we actually build runtime, not using it
 #if SPRT_BUILD_RUNTIME

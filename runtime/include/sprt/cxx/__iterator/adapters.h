@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__iterator/iterator_tags.h>
 
 namespace sprt {
+inline namespace __cxx_iterator {
 
 template <class _Container>
 class back_insert_iterator {
@@ -93,6 +94,7 @@ inline constexpr front_insert_iterator<_Container> front_inserter(_Container &__
 	return front_insert_iterator<_Container>(__x);
 }
 
+} // inline namespace __cxx_iterator
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_DETAIL_BACK_INSERT_H_

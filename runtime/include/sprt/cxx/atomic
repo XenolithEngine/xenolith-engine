@@ -28,6 +28,7 @@
 #include <sprt/runtime/enum.h>
 
 namespace sprt {
+inline namespace __cxx_atomic {
 
 enum class memory_order : int {
 	relaxed = __ATOMIC_RELAXED,
@@ -362,6 +363,7 @@ static inline bool compareSwap(volatile Value *ptr, Value *expected, Value desir
 
 } // namespace _atomic
 
+} // inline namespace __cxx_atomic
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_ATOMIC_H_

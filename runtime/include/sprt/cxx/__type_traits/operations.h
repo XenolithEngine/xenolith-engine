@@ -27,6 +27,7 @@
 #include <sprt/cxx/__type_traits/queries.h>
 
 namespace sprt {
+inline namespace __cxx_type_traits {
 
 /*
 Args-constructable
@@ -259,6 +260,7 @@ struct __is_implicitly_default_constructible<Type,
 		decltype(sprt::__test_implicit_default_constructible<Type const &>({})), false_type>
 : false_type { };
 
+} // inline namespace __cxx_type_traits
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_OPERATIONS_H_

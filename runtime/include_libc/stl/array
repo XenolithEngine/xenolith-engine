@@ -1,0 +1,108 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+// Standard <array>, backed by sprt::array (an allocator-free, conforming
+// aggregate). Relational operators and swap are found by ADL on sprt::array. The
+// tuple protocol (tuple_size / tuple_element / get) and to_array are implemented
+// here over sprt::array's public storage so structured bindings work for arrays.
+
+#ifndef RUNTIME_INCLUDE_LIBC_STL_ARRAY_H_
+#define RUNTIME_INCLUDE_LIBC_STL_ARRAY_H_
+
+// Always pull the full std implementations when used through the STL layer.
+#include <__sprt_stl_config.h>
+
+#include <sprt/cxx/array>
+
+#include <__tuple/protocol.h>
+#include <sprt/cxx/type_traits>
+// to_array below uses sprt::index_sequence / make_index_sequence; pull their
+// backing header so <array> is independently includable (does not rely on a
+// prior <utility>/<tuple> include in the same TU).
+#include <sprt/cxx/__utility/integer_sequence.h>
+
+namespace std {
+using sprt::array;
+} // namespace std
+
+// get<I>(array) lives in namespace sprt so structured bindings find it via ADL on
+// the sprt::array type; `using sprt::get` below also exposes it as std::get.
+namespace sprt {
+
+template <sprt::size_t _Ip, typename _Tp, sprt::size_t _Np>
+constexpr _Tp &get(sprt::array<_Tp, _Np> &__a) noexcept {
+	static_assert(_Ip < _Np, "array index is out of range");
+	return __a[_Ip];
+}
+template <sprt::size_t _Ip, typename _Tp, sprt::size_t _Np>
+constexpr const _Tp &get(const sprt::array<_Tp, _Np> &__a) noexcept {
+	static_assert(_Ip < _Np, "array index is out of range");
+	return __a[_Ip];
+}
+template <sprt::size_t _Ip, typename _Tp, sprt::size_t _Np>
+constexpr _Tp &&get(sprt::array<_Tp, _Np> &&__a) noexcept {
+	static_assert(_Ip < _Np, "array index is out of range");
+	return static_cast<_Tp &&>(__a[_Ip]);
+}
+template <sprt::size_t _Ip, typename _Tp, sprt::size_t _Np>
+constexpr const _Tp &&get(const sprt::array<_Tp, _Np> &&__a) noexcept {
+	static_assert(_Ip < _Np, "array index is out of range");
+	return static_cast<const _Tp &&>(__a[_Ip]);
+}
+
+} // namespace sprt
+
+namespace std {
+
+template <typename _Tp, sprt::size_t _Np>
+struct tuple_size<sprt::array<_Tp, _Np>> : sprt::integral_constant<sprt::size_t, _Np> { };
+
+template <sprt::size_t _Ip, typename _Tp, sprt::size_t _Np>
+struct tuple_element<_Ip, sprt::array<_Tp, _Np>> {
+	static_assert(_Ip < _Np, "array index is out of range");
+	using type = _Tp;
+};
+
+using sprt::get; // expose std::get<>(array)
+
+template <typename _Tp, sprt::size_t _Np, sprt::size_t... _Ip>
+constexpr sprt::array<sprt::remove_cv_t<_Tp>, _Np> __to_array_lvalue(
+		_Tp (&__a)[_Np], sprt::index_sequence<_Ip...>) {
+	return {{__a[_Ip]...}};
+}
+template <typename _Tp, sprt::size_t _Np, sprt::size_t... _Ip>
+constexpr sprt::array<sprt::remove_cv_t<_Tp>, _Np> __to_array_rvalue(
+		_Tp (&&__a)[_Np], sprt::index_sequence<_Ip...>) {
+	return {{sprt::move_unsafe(__a[_Ip])...}};
+}
+
+template <typename _Tp, sprt::size_t _Np>
+constexpr sprt::array<sprt::remove_cv_t<_Tp>, _Np> to_array(_Tp (&__a)[_Np]) {
+	return std::__to_array_lvalue(__a, sprt::make_index_sequence<_Np> {});
+}
+template <typename _Tp, sprt::size_t _Np>
+constexpr sprt::array<sprt::remove_cv_t<_Tp>, _Np> to_array(_Tp (&&__a)[_Np]) {
+	return std::__to_array_rvalue(sprt::move_unsafe(__a), sprt::make_index_sequence<_Np> {});
+}
+} // namespace std
+
+#endif // RUNTIME_INCLUDE_LIBC_STL_ARRAY_H_

@@ -26,6 +26,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_assert.h>
 #include <sprt/cxx/__algorithm/bounds.h>
 #include <sprt/cxx/detail/ctypes.h>
+#include <sprt/cxx/compare>
 
 namespace sprt {
 
@@ -91,6 +92,20 @@ struct array {
 		return sprt::equal(begin(), end(), other.begin());
 	}
 };
+
+// C++20 [array.syn]: lexicographical three-way comparison (== is the member above,
+// which also yields the rewritten !=). Uses the shared synth-three-way so element
+// types that have only operator< still order (as a synthesized weak_ordering).
+template <typename _Tp, size_t _Np>
+constexpr __synth_three_way_result_t<_Tp> operator<=>(const array<_Tp, _Np> &__x,
+		const array<_Tp, _Np> &__y) {
+	for (size_t __i = 0; __i < _Np; ++__i) {
+		if (auto __c = sprt::__synth_three_way(__x[__i], __y[__i]); __c != 0) {
+			return __c;
+		}
+	}
+	return static_cast<__synth_three_way_result_t<_Tp>>(strong_ordering::equal);
+}
 
 } // namespace sprt
 

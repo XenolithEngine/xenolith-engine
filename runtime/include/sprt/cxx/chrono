@@ -25,34 +25,272 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_time.h>
 #include <sprt/c/sys/__sprt_sprt.h>
+#include <sprt/cxx/type_traits>
+#include <sprt/cxx/compare>
 
-// lightweight chrono-like implementation
+// A standard-conforming subset of <chrono>/<ratio>: sprt::ratio (compile-time
+// rational in seconds, like std::ratio) and sprt::chrono::duration with the full
+// member/non-member interface (count, conversions, duration_cast, common_type,
+// arithmetic, comparisons incl. <=>, floor/ceil/round/abs). It also provides
+// time_point, time_point_cast, and the system_clock / steady_clock /
+// high_resolution_clock clocks (now() over __sprt_clock_gettime_nsec_np). The
+// duration keeps an implicit conversion to __sprt_sprt_timeout_t (nanoseconds) so it
+// plugs into the freestanding wait/sleep APIs. Calendar types are not provided.
+
+namespace sprt {
+inline namespace __cxx_chrono {
+
+using __ratio_intmax = long long;
+
+constexpr __ratio_intmax __ratio_gcd(__ratio_intmax __a, __ratio_intmax __b) {
+	return __b == 0 ? (__a < 0 ? -__a : __a) : __ratio_gcd(__b, __a % __b);
+}
+
+template <__ratio_intmax Num, __ratio_intmax Den = 1>
+struct ratio {
+	static_assert(Den != 0, "ratio denominator cannot be zero");
+
+private:
+	static constexpr __ratio_intmax __na = Num < 0 ? -Num : Num;
+	static constexpr __ratio_intmax __da = Den < 0 ? -Den : Den;
+	static constexpr __ratio_intmax __sign = ((Num < 0) == (Den < 0)) ? 1 : -1;
+	static constexpr __ratio_intmax __g = __ratio_gcd(__na, __da);
+
+public:
+	static constexpr __ratio_intmax num = __sign * (__na / __g);
+	static constexpr __ratio_intmax den = __da / __g;
+	using type = ratio<num, den>;
+};
+
+template <typename _R1, typename _R2>
+using ratio_multiply = typename ratio<_R1::num * _R2::num, _R1::den * _R2::den>::type;
+
+template <typename _R1, typename _R2>
+using ratio_divide = typename ratio<_R1::num * _R2::den, _R1::den * _R2::num>::type;
+
+using nano = ratio<1, 1'000'000'000>;
+using micro = ratio<1, 1'000'000>;
+using milli = ratio<1, 1'000>;
+using centi = ratio<1, 100>;
+using deci = ratio<1, 10>;
+using deca = ratio<10, 1>;
+using hecto = ratio<100, 1>;
+using kilo = ratio<1'000, 1>;
+using mega = ratio<1'000'000, 1>;
+
+} // inline namespace __cxx_chrono
+} // namespace sprt
+
+namespace sprt::chrono {
+
+template <typename Rep, typename Period>
+struct duration;
+
+template <typename ToDuration, typename Rep, typename Period>
+constexpr ToDuration duration_cast(const duration<Rep, Period> &__d);
+
+} // namespace sprt::chrono
 
 namespace sprt {
 
-template <__sprt_sprt_timeout_t SecondsTick, __sprt_sprt_timeout_t NanosInTick = 1'000'000'000>
-struct ratio {
-	constexpr __sprt_sprt_timeout_t operator()(__sprt_sprt_timeout_t t) {
-		return t * SecondsTick * NanosInTick;
-	}
-};
+// common_type of two durations: rep is the common rep, period is gcd(periods).
+template <typename _R1, typename _P1, typename _R2, typename _P2>
+struct common_type<chrono::duration<_R1, _P1>, chrono::duration<_R2, _P2>> {
+private:
+	static constexpr __ratio_intmax __gn = __ratio_gcd(_P1::num, _P2::num);
+	static constexpr __ratio_intmax __gd = __ratio_gcd(_P1::den, _P2::den);
 
-using nano = ratio<1, 1>;
-using micro = ratio<1, 1'000>;
-using milli = ratio<1, 1'000'000>;
+public:
+	using type =
+			chrono::duration<common_type_t<_R1, _R2>, typename ratio<__gn, (_P1::den / __gd) * _P2::den>::type>;
+};
 
 } // namespace sprt
 
 namespace sprt::chrono {
 
+template <typename Rep>
+struct treat_as_floating_point : sprt::is_floating_point<Rep> { };
+
+template <typename Rep>
+inline constexpr bool treat_as_floating_point_v = treat_as_floating_point<Rep>::value;
+
+// numeric bounds without <limits>: enough for duration_values.
+template <typename Rep>
+struct __duration_limits {
+	static constexpr Rep zero() noexcept { return Rep(0); }
+	static constexpr Rep max() noexcept {
+		if constexpr (sprt::is_floating_point_v<Rep>) {
+			return static_cast<Rep>(__builtin_huge_val());
+		} else if constexpr (sprt::is_signed_v<Rep>) {
+			using _U = sprt::make_unsigned_t<Rep>;
+			return static_cast<Rep>(static_cast<_U>(~_U(0)) >> 1);
+		} else {
+			return static_cast<Rep>(~sprt::make_unsigned_t<Rep>(0));
+		}
+	}
+	static constexpr Rep min() noexcept {
+		if constexpr (sprt::is_floating_point_v<Rep>) {
+			return static_cast<Rep>(-__builtin_huge_val());
+		} else if constexpr (sprt::is_signed_v<Rep>) {
+			return static_cast<Rep>(-max() - Rep(1));
+		} else {
+			return Rep(0);
+		}
+	}
+};
+
 template <typename Rep, typename Period = sprt::ratio<1>>
 struct duration {
-	operator __sprt_sprt_timeout_t() const {
-		return Period()(static_cast<__sprt_sprt_timeout_t>(value));
+	using rep = Rep;
+	using period = typename Period::type;
+
+	// Kept public for the timeout integration; count() is the standard accessor.
+	rep value = rep(0);
+
+	constexpr duration() = default;
+	constexpr duration(const duration &) = default;
+	duration &operator=(const duration &) = default;
+
+	template <typename Rep2,
+			sprt::enable_if_t<sprt::is_convertible_v<const Rep2 &, rep>
+							&& (treat_as_floating_point_v<rep> || !treat_as_floating_point_v<Rep2>),
+					int> = 0>
+	constexpr explicit duration(const Rep2 &__r) : value(static_cast<rep>(__r)) { }
+
+	template <typename Rep2, typename Period2,
+			sprt::enable_if_t<treat_as_floating_point_v<rep>
+							|| (ratio_divide<Period2, period>::den == 1 && !treat_as_floating_point_v<Rep2>),
+					int> = 0>
+	constexpr duration(const duration<Rep2, Period2> &__d)
+	: value(chrono::duration_cast<duration>(__d).count()) { }
+
+	[[nodiscard]]
+	constexpr rep count() const { return value; }
+
+	// sprt integration: a duration converts implicitly to a nanosecond timeout.
+	constexpr operator __sprt_sprt_timeout_t() const {
+		return static_cast<__sprt_sprt_timeout_t>(value) * period::num * 1'000'000'000 / period::den;
 	}
 
-	Rep value = 0;
+	constexpr sprt::common_type_t<duration> operator+() const {
+		return sprt::common_type_t<duration>(*this);
+	}
+	constexpr sprt::common_type_t<duration> operator-() const {
+		return sprt::common_type_t<duration>(-value);
+	}
+
+	constexpr duration &operator++() {
+		++value;
+		return *this;
+	}
+	constexpr duration operator++(int) { return duration(value++); }
+	constexpr duration &operator--() {
+		--value;
+		return *this;
+	}
+	constexpr duration operator--(int) { return duration(value--); }
+
+	constexpr duration &operator+=(const duration &__d) {
+		value += __d.count();
+		return *this;
+	}
+	constexpr duration &operator-=(const duration &__d) {
+		value -= __d.count();
+		return *this;
+	}
+	constexpr duration &operator*=(const rep &__r) {
+		value *= __r;
+		return *this;
+	}
+	constexpr duration &operator/=(const rep &__r) {
+		value /= __r;
+		return *this;
+	}
+	constexpr duration &operator%=(const rep &__r) {
+		value %= __r;
+		return *this;
+	}
+	constexpr duration &operator%=(const duration &__d) {
+		value %= __d.count();
+		return *this;
+	}
+
+	static constexpr duration zero() noexcept { return duration(__duration_limits<rep>::zero()); }
+	static constexpr duration min() noexcept { return duration(__duration_limits<rep>::min()); }
+	static constexpr duration max() noexcept { return duration(__duration_limits<rep>::max()); }
 };
+
+template <typename ToDuration, typename Rep, typename Period>
+constexpr ToDuration duration_cast(const duration<Rep, Period> &__d) {
+	using __cf = ratio_divide<Period, typename ToDuration::period>;
+	using __cr = sprt::common_type_t<typename ToDuration::rep, Rep, __ratio_intmax>;
+	return ToDuration(static_cast<typename ToDuration::rep>(
+			static_cast<__cr>(__d.count()) * static_cast<__cr>(__cf::num)
+			/ static_cast<__cr>(__cf::den)));
+}
+
+// ---- non-member arithmetic (result is the common duration type) ----
+template <typename _R1, typename _P1, typename _R2, typename _P2>
+constexpr sprt::common_type_t<duration<_R1, _P1>, duration<_R2, _P2>> operator+(
+		const duration<_R1, _P1> &__lhs, const duration<_R2, _P2> &__rhs) {
+	using _Cd = sprt::common_type_t<duration<_R1, _P1>, duration<_R2, _P2>>;
+	return _Cd(_Cd(__lhs).count() + _Cd(__rhs).count());
+}
+
+template <typename _R1, typename _P1, typename _R2, typename _P2>
+constexpr sprt::common_type_t<duration<_R1, _P1>, duration<_R2, _P2>> operator-(
+		const duration<_R1, _P1> &__lhs, const duration<_R2, _P2> &__rhs) {
+	using _Cd = sprt::common_type_t<duration<_R1, _P1>, duration<_R2, _P2>>;
+	return _Cd(_Cd(__lhs).count() - _Cd(__rhs).count());
+}
+
+template <typename _R1, typename _P1, typename _R2>
+constexpr duration<sprt::common_type_t<_R1, _R2>, _P1> operator*(
+		const duration<_R1, _P1> &__d, const _R2 &__s) {
+	using _Cd = duration<sprt::common_type_t<_R1, _R2>, _P1>;
+	return _Cd(_Cd(__d).count() * static_cast<sprt::common_type_t<_R1, _R2>>(__s));
+}
+
+template <typename _R1, typename _P1, typename _R2>
+constexpr duration<sprt::common_type_t<_R1, _R2>, _P1> operator/(
+		const duration<_R1, _P1> &__d, const _R2 &__s) {
+	using _Cd = duration<sprt::common_type_t<_R1, _R2>, _P1>;
+	return _Cd(_Cd(__d).count() / static_cast<sprt::common_type_t<_R1, _R2>>(__s));
+}
+
+// ---- non-member comparisons (via the common duration type) ----
+template <typename _R1, typename _P1, typename _R2, typename _P2>
+constexpr bool operator==(const duration<_R1, _P1> &__lhs, const duration<_R2, _P2> &__rhs) {
+	using _Cd = sprt::common_type_t<duration<_R1, _P1>, duration<_R2, _P2>>;
+	return _Cd(__lhs).count() == _Cd(__rhs).count();
+}
+
+template <typename _R1, typename _P1, typename _R2, typename _P2>
+constexpr bool operator!=(const duration<_R1, _P1> &__lhs, const duration<_R2, _P2> &__rhs) {
+	return !(__lhs == __rhs);
+}
+
+template <typename _R1, typename _P1, typename _R2, typename _P2>
+constexpr bool operator<(const duration<_R1, _P1> &__lhs, const duration<_R2, _P2> &__rhs) {
+	using _Cd = sprt::common_type_t<duration<_R1, _P1>, duration<_R2, _P2>>;
+	return _Cd(__lhs).count() < _Cd(__rhs).count();
+}
+
+template <typename _R1, typename _P1, typename _R2, typename _P2>
+constexpr bool operator>(const duration<_R1, _P1> &__lhs, const duration<_R2, _P2> &__rhs) {
+	return __rhs < __lhs;
+}
+
+template <typename _R1, typename _P1, typename _R2, typename _P2>
+constexpr bool operator<=(const duration<_R1, _P1> &__lhs, const duration<_R2, _P2> &__rhs) {
+	return !(__rhs < __lhs);
+}
+
+template <typename _R1, typename _P1, typename _R2, typename _P2>
+constexpr bool operator>=(const duration<_R1, _P1> &__lhs, const duration<_R2, _P2> &__rhs) {
+	return !(__lhs < __rhs);
+}
 
 using nanoseconds = duration<__sprt_sprt_timeout_t, sprt::nano>;
 using microseconds = duration<__sprt_sprt_timeout_t, sprt::micro>;
@@ -64,6 +302,161 @@ using days = duration<__sprt_sprt_timeout_t, sprt::ratio<86'400>>;
 using weeks = duration<__sprt_sprt_timeout_t, sprt::ratio<604'800>>;
 using months = duration<__sprt_sprt_timeout_t, sprt::ratio<2'629'746>>;
 using years = duration<__sprt_sprt_timeout_t, sprt::ratio<31'556'952>>;
+
+// ---- duration three-way comparison (C++20) ----
+template <typename _R1, typename _P1, typename _R2, typename _P2>
+constexpr auto operator<=>(const duration<_R1, _P1> &__lhs, const duration<_R2, _P2> &__rhs) {
+	using _Cd = sprt::common_type_t<duration<_R1, _P1>, duration<_R2, _P2>>;
+	return _Cd(__lhs).count() <=> _Cd(__rhs).count();
+}
+
+// ---- duration helper algorithms: floor / ceil / round / abs ----
+template <typename _To, typename _Rep, typename _Period>
+constexpr _To floor(const duration<_Rep, _Period> &__d) {
+	_To __t = duration_cast<_To>(__d);
+	if (__t > __d) {
+		return _To(static_cast<typename _To::rep>(__t.count() - static_cast<typename _To::rep>(1)));
+	}
+	return __t;
+}
+template <typename _To, typename _Rep, typename _Period>
+constexpr _To ceil(const duration<_Rep, _Period> &__d) {
+	_To __t = duration_cast<_To>(__d);
+	if (__t < __d) {
+		return _To(static_cast<typename _To::rep>(__t.count() + static_cast<typename _To::rep>(1)));
+	}
+	return __t;
+}
+template <typename _To, typename _Rep, typename _Period>
+constexpr _To round(const duration<_Rep, _Period> &__d) {
+	_To __lo = sprt::chrono::floor<_To>(__d);
+	_To __hi = _To(static_cast<typename _To::rep>(__lo.count() + static_cast<typename _To::rep>(1)));
+	auto __lodiff = __d - __lo;
+	auto __hidiff = __hi - __d;
+	if (__lodiff < __hidiff) {
+		return __lo;
+	}
+	if (__hidiff < __lodiff) {
+		return __hi;
+	}
+	return (__lo.count() & static_cast<typename _To::rep>(1)) ? __hi : __lo; // ties to even
+}
+template <typename _Rep, typename _Period>
+constexpr duration<_Rep, _Period> abs(duration<_Rep, _Period> __d) {
+	return __d < duration<_Rep, _Period>::zero() ? -__d : __d;
+}
+
+// ---- time_point ----
+template <typename _Clock, typename _Dur = typename _Clock::duration>
+class time_point {
+public:
+	using clock = _Clock;
+	using duration = _Dur;
+	using rep = typename _Dur::rep;
+	using period = typename _Dur::period;
+
+private:
+	duration __d {duration::zero()};
+
+public:
+	constexpr time_point() = default;
+	constexpr explicit time_point(const duration &__dur) : __d(__dur) { }
+
+	template <typename _Dur2, sprt::enable_if_t<sprt::is_convertible_v<_Dur2, duration>, int> = 0>
+	constexpr time_point(const time_point<_Clock, _Dur2> &__t) : __d(__t.time_since_epoch()) { }
+
+	constexpr duration time_since_epoch() const { return __d; }
+
+	constexpr time_point &operator+=(const duration &__dur) {
+		__d += __dur;
+		return *this;
+	}
+	constexpr time_point &operator-=(const duration &__dur) {
+		__d -= __dur;
+		return *this;
+	}
+
+	static constexpr time_point min() noexcept { return time_point(duration::min()); }
+	static constexpr time_point max() noexcept { return time_point(duration::max()); }
+};
+
+template <typename _ToDur, typename _Clock, typename _Dur>
+constexpr time_point<_Clock, _ToDur> time_point_cast(const time_point<_Clock, _Dur> &__t) {
+	return time_point<_Clock, _ToDur>(duration_cast<_ToDur>(__t.time_since_epoch()));
+}
+
+// ---- time_point arithmetic ----
+template <typename _Clock, typename _Dur, typename _R2, typename _P2>
+constexpr time_point<_Clock, sprt::common_type_t<_Dur, duration<_R2, _P2>>> operator+(
+		const time_point<_Clock, _Dur> &__t, const duration<_R2, _P2> &__d) {
+	using _Ct = time_point<_Clock, sprt::common_type_t<_Dur, duration<_R2, _P2>>>;
+	return _Ct(__t.time_since_epoch() + __d);
+}
+template <typename _R1, typename _P1, typename _Clock, typename _Dur>
+constexpr time_point<_Clock, sprt::common_type_t<duration<_R1, _P1>, _Dur>> operator+(
+		const duration<_R1, _P1> &__d, const time_point<_Clock, _Dur> &__t) {
+	return __t + __d;
+}
+template <typename _Clock, typename _Dur, typename _R2, typename _P2>
+constexpr time_point<_Clock, sprt::common_type_t<_Dur, duration<_R2, _P2>>> operator-(
+		const time_point<_Clock, _Dur> &__t, const duration<_R2, _P2> &__d) {
+	using _Ct = time_point<_Clock, sprt::common_type_t<_Dur, duration<_R2, _P2>>>;
+	return _Ct(__t.time_since_epoch() - __d);
+}
+template <typename _Clock, typename _Dur1, typename _Dur2>
+constexpr sprt::common_type_t<_Dur1, _Dur2> operator-(
+		const time_point<_Clock, _Dur1> &__lhs, const time_point<_Clock, _Dur2> &__rhs) {
+	return __lhs.time_since_epoch() - __rhs.time_since_epoch();
+}
+
+// ---- time_point comparisons (== plus <=>; the rest are rewritten from these) ----
+template <typename _Clock, typename _Dur1, typename _Dur2>
+constexpr bool operator==(
+		const time_point<_Clock, _Dur1> &__lhs, const time_point<_Clock, _Dur2> &__rhs) {
+	return __lhs.time_since_epoch() == __rhs.time_since_epoch();
+}
+template <typename _Clock, typename _Dur1, typename _Dur2>
+constexpr auto operator<=>(
+		const time_point<_Clock, _Dur1> &__lhs, const time_point<_Clock, _Dur2> &__rhs) {
+	return __lhs.time_since_epoch() <=> __rhs.time_since_epoch();
+}
+
+// ---- clocks (now() reads sprt's cross-platform nanosecond clock) ----
+struct system_clock {
+	using duration = chrono::nanoseconds;
+	using rep = duration::rep;
+	using period = duration::period;
+	using time_point = chrono::time_point<system_clock>;
+	static constexpr bool is_steady = false;
+
+	static time_point now() noexcept {
+		return time_point(
+				duration(static_cast<rep>(__SPRT_ID(clock_gettime_nsec_np)(__SPRT_CLOCK_REALTIME))));
+	}
+
+	static __SPRT_ID(time_t) to_time_t(const time_point &__t) noexcept {
+		return static_cast<__SPRT_ID(time_t)>(
+				duration_cast<chrono::seconds>(__t.time_since_epoch()).count());
+	}
+	static time_point from_time_t(__SPRT_ID(time_t) __t) noexcept {
+		return time_point(duration_cast<duration>(chrono::seconds(static_cast<chrono::seconds::rep>(__t))));
+	}
+};
+
+struct steady_clock {
+	using duration = chrono::nanoseconds;
+	using rep = duration::rep;
+	using period = duration::period;
+	using time_point = chrono::time_point<steady_clock>;
+	static constexpr bool is_steady = true;
+
+	static time_point now() noexcept {
+		return time_point(
+				duration(static_cast<rep>(__SPRT_ID(clock_gettime_nsec_np)(__SPRT_CLOCK_MONOTONIC))));
+	}
+};
+
+using high_resolution_clock = steady_clock;
 
 } // namespace sprt::chrono
 

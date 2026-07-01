@@ -31,7 +31,7 @@ THE SOFTWARE.
 	This header declares only functions/macros (no public types). In C++ the
 	classification predicates and tolower_c/toupper_c are constexpr overloads in
 	namespace sprt::_cctype (pulled into the global scope when hosted-and-not-SPRT-
-	build, and into std:: under __SPRT_AS_STD). Note: the runtime's primary locale is
+	build, and into std:: via the include_libc/stl wrappers). Note: the runtime's primary locale is
 	UTF-8, so classifying 8-bit characters needs no locale; the _l functions consult an
 	explicit locale only if the underlying libc supports others.
 

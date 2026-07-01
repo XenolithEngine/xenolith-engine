@@ -29,6 +29,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__memory/pointer_traits.h>
 
 namespace sprt {
+inline namespace __cxx_iterator {
 
 
 template <typename Iter>
@@ -254,6 +255,7 @@ private:
 	}
 };
 
+} // inline namespace __cxx_iterator
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___ITERATOR_ITERATOR_OPS_H_

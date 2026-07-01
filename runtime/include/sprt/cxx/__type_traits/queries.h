@@ -27,6 +27,7 @@
 #include <sprt/cxx/__type_traits/constants.h>
 
 namespace sprt {
+inline namespace __cxx_type_traits {
 
 template <typename TypeA, typename TypeB>
 struct is_same {
@@ -213,6 +214,7 @@ struct has_unique_object_representations
 template <typename T>
 inline constexpr bool has_unique_object_representations_v = __has_unique_object_representations(T);
 
+} // inline namespace __cxx_type_traits
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_QUERIES_H_

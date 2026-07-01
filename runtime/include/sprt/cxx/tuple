@@ -1,0 +1,472 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+// sprt::tuple — the freestanding tuple, implemented over sprt building blocks (type
+// traits, move/forward/swap, index_sequence, unwrap_ref_decay, __invoke). The stl
+// <tuple> re-exports it as std::tuple. The tuple protocol primaries (tuple_size /
+// tuple_element) live in namespace std (customization point, see __tuple/protocol.h);
+// the per-tuple specializations below are therefore in namespace std, and get<>/the
+// factories/comparisons are in namespace sprt (found by ADL on sprt::tuple). It also
+// carries the out-of-line definitions of sprt::pair's piecewise_construct constructor
+// (declared in <sprt/cxx/__utility/pair.h>; the standard likewise defines pair's
+// piecewise ctor in <tuple>). NOTE: element storage does not use empty-base
+// optimisation (a QoI nicety); generic move paths use sprt::move_unsafe because
+// sprt::move is SFINAE-disabled for pointers.
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_TUPLE_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_TUPLE_H_
+
+#include <sprt/cxx/__tuple/protocol.h>
+#include <sprt/cxx/type_traits>
+#include <sprt/cxx/compare>
+#include <sprt/cxx/utility>
+#include <sprt/cxx/__utility/pair.h>
+#include <sprt/cxx/__utility/integer_sequence.h>
+#include <sprt/cxx/__type_traits/unwrap_ref.h>
+#include <sprt/cxx/__functional/invoke.h>
+
+namespace sprt {
+
+// The tuple protocol primaries live in namespace std; bring them in so the unqualified
+// tuple_size_v / tuple_element_t / common_comparison_category_t below resolve. The
+// ordering types come from <sprt/cxx/compare>'s sprt re-export.
+using std::common_comparison_category_t;
+using std::tuple_element;
+using std::tuple_element_t;
+using std::tuple_size;
+using std::tuple_size_v;
+
+template <bool _Pred>
+using __tuple_enable_t = sprt::enable_if_t<_Pred, int>;
+
+template <typename... _Up>
+struct __tuple_first_type {
+	using type = void;
+};
+template <typename _U0, typename... _Ur>
+struct __tuple_first_type<_U0, _Ur...> {
+	using type = _U0;
+};
+template <typename... _Up>
+using __tuple_first_t = typename __tuple_first_type<_Up...>::type;
+
+// ----------------------------------------------------------- leaf storage
+template <sprt::size_t _Ip, typename _Tp>
+struct __tuple_leaf {
+	_Tp __value_;
+
+	constexpr __tuple_leaf() : __value_() { }
+
+	template <typename _Up,
+			__tuple_enable_t<!sprt::is_same_v<sprt::decay_t<_Up>, __tuple_leaf>
+					&& sprt::is_constructible_v<_Tp, _Up>> = 0>
+	constexpr explicit __tuple_leaf(_Up &&__u) : __value_(sprt::forward<_Up>(__u)) { }
+
+	constexpr __tuple_leaf(const __tuple_leaf &) = default;
+	constexpr __tuple_leaf(__tuple_leaf &&) = default;
+	constexpr __tuple_leaf &operator=(const __tuple_leaf &) = default;
+	constexpr __tuple_leaf &operator=(__tuple_leaf &&) = default;
+
+	constexpr _Tp &__get() noexcept { return __value_; }
+	constexpr const _Tp &__get() const noexcept { return __value_; }
+};
+
+template <sprt::size_t _Ip, typename _Tp>
+constexpr __tuple_leaf<_Ip, _Tp> &__tuple_get_leaf(__tuple_leaf<_Ip, _Tp> &__l) noexcept {
+	return __l;
+}
+template <sprt::size_t _Ip, typename _Tp>
+constexpr const __tuple_leaf<_Ip, _Tp> &__tuple_get_leaf(
+		const __tuple_leaf<_Ip, _Tp> &__l) noexcept {
+	return __l;
+}
+
+// ----------------------------------------------------------- impl (leaves)
+template <typename _Indices, typename... _Tp>
+struct __tuple_impl;
+
+template <sprt::size_t... _Ip, typename... _Tp>
+struct __tuple_impl<sprt::index_sequence<_Ip...>, _Tp...> : __tuple_leaf<_Ip, _Tp>... {
+	constexpr __tuple_impl() = default;
+
+	template <typename... _Up>
+	constexpr explicit __tuple_impl(_Up &&...__u)
+	: __tuple_leaf<_Ip, _Tp>(sprt::forward<_Up>(__u))... { }
+
+	constexpr __tuple_impl(const __tuple_impl &) = default;
+	constexpr __tuple_impl(__tuple_impl &&) = default;
+	constexpr __tuple_impl &operator=(const __tuple_impl &) = default;
+	constexpr __tuple_impl &operator=(__tuple_impl &&) = default;
+
+	constexpr void __swap(__tuple_impl &__o) {
+		(sprt::swap(__tuple_get_leaf<_Ip>(*this).__get(), __tuple_get_leaf<_Ip>(__o).__get()), ...);
+	}
+};
+
+// ----------------------------------------------------------- tuple
+template <typename... _Tp>
+class tuple;
+
+} // namespace sprt
+
+// Protocol specializations for sprt::tuple must live in namespace std (the namespace of
+// the tuple_size / tuple_element primaries).
+namespace std {
+
+template <typename... _Tp>
+struct tuple_size<sprt::tuple<_Tp...>> : sprt::integral_constant<sprt::size_t, sizeof...(_Tp)> { };
+
+template <sprt::size_t _Ip, typename... _Tp>
+struct tuple_element<_Ip, sprt::tuple<_Tp...>> {
+	using type = __type_pack_element<_Ip, _Tp...>;
+};
+
+} // namespace std
+
+namespace sprt {
+
+template <sprt::size_t _Ip, typename... _Tp>
+constexpr tuple_element_t<_Ip, tuple<_Tp...>> &get(tuple<_Tp...> &__t) noexcept;
+template <sprt::size_t _Ip, typename... _Tp>
+constexpr const tuple_element_t<_Ip, tuple<_Tp...>> &get(const tuple<_Tp...> &__t) noexcept;
+template <sprt::size_t _Ip, typename... _Tp>
+constexpr tuple_element_t<_Ip, tuple<_Tp...>> &&get(tuple<_Tp...> &&__t) noexcept;
+template <sprt::size_t _Ip, typename... _Tp>
+constexpr const tuple_element_t<_Ip, tuple<_Tp...>> &&get(const tuple<_Tp...> &&__t) noexcept;
+
+// enable tuple(pair) only for 2-element tuples, without touching element 1 otherwise.
+template <typename _Tuple, typename _U1, typename _U2, bool = (tuple_size_v<_Tuple> == 2)>
+inline constexpr bool __tuple_from_pair_v = false;
+template <typename... _Tp, typename _U1, typename _U2>
+inline constexpr bool __tuple_from_pair_v<tuple<_Tp...>, _U1, _U2, true> =
+		sprt::is_constructible_v<__type_pack_element<0, _Tp...>, _U1>
+		&& sprt::is_constructible_v<__type_pack_element<1, _Tp...>, _U2>;
+
+struct __tuple_cvt_tag { };
+
+template <typename... _Tp>
+class tuple {
+	using _Impl = __tuple_impl<sprt::make_index_sequence<sizeof...(_Tp)>, _Tp...>;
+	_Impl __impl_;
+
+	template <sprt::size_t... _Ip, typename _Other>
+	constexpr tuple(__tuple_cvt_tag, sprt::index_sequence<_Ip...>, _Other &&__o)
+	: __impl_(sprt::get<_Ip>(sprt::forward<_Other>(__o))...) { }
+
+	template <sprt::size_t... _Ip, typename _Other>
+	constexpr void __assign(sprt::index_sequence<_Ip...>, _Other &&__o) {
+		((sprt::get<_Ip>(*this) = sprt::get<_Ip>(sprt::forward<_Other>(__o))), ...);
+	}
+
+public:
+	constexpr tuple() = default;
+
+	// _Dep makes the enable_if depend on this ctor's own template parameter, so a
+	// non-copy-constructible _Tp (e.g. a reference element from forward_as_tuple)
+	// SFINAEs this overload out instead of hard-erroring during overload resolution.
+	template <bool _Dep = true,
+			__tuple_enable_t<_Dep && (sizeof...(_Tp) >= 1)
+					&& (sprt::is_constructible_v<_Tp, const _Tp &> && ...)> = 0>
+	constexpr tuple(const _Tp &...__t) : __impl_(__t...) { }
+
+	template <typename... _Up,
+			__tuple_enable_t<(sizeof...(_Up) == sizeof...(_Tp)) && (sizeof...(_Tp) >= 1)
+					&& (sizeof...(_Tp) != 1
+							|| !sprt::is_same_v<sprt::decay_t<__tuple_first_t<_Up...>>, tuple>)
+					&& (sprt::is_constructible_v<_Tp, _Up> && ...)> = 0>
+	constexpr explicit((!sprt::is_convertible_v<_Up, _Tp> || ...))
+			tuple(_Up &&...__u) : __impl_(sprt::forward<_Up>(__u)...) { }
+
+	constexpr tuple(const tuple &) = default;
+	constexpr tuple(tuple &&) = default;
+
+	template <typename... _Up,
+			__tuple_enable_t<(sizeof...(_Up) == sizeof...(_Tp))
+					&& (sprt::is_constructible_v<_Tp, const _Up &> && ...)> = 0>
+	constexpr explicit((!sprt::is_convertible_v<const _Up &, _Tp> || ...))
+			tuple(const tuple<_Up...> &__o)
+	: tuple(__tuple_cvt_tag {}, sprt::make_index_sequence<sizeof...(_Tp)> {}, __o) { }
+
+	template <typename... _Up,
+			__tuple_enable_t<(sizeof...(_Up) == sizeof...(_Tp))
+					&& (sprt::is_constructible_v<_Tp, _Up> && ...)> = 0>
+	constexpr explicit((!sprt::is_convertible_v<_Up, _Tp> || ...))
+			tuple(tuple<_Up...> &&__o)
+	: tuple(__tuple_cvt_tag {}, sprt::make_index_sequence<sizeof...(_Tp)> {},
+			sprt::move_unsafe(__o)) { }
+
+	template <typename _U1, typename _U2,
+			__tuple_enable_t<__tuple_from_pair_v<tuple, const _U1 &, const _U2 &>> = 0>
+	constexpr tuple(const sprt::pair<_U1, _U2> &__p) : __impl_(__p.first, __p.second) { }
+
+	template <typename _U1, typename _U2,
+			__tuple_enable_t<__tuple_from_pair_v<tuple, _U1, _U2>> = 0>
+	constexpr tuple(sprt::pair<_U1, _U2> &&__p)
+	: __impl_(sprt::move_unsafe(__p.first), sprt::move_unsafe(__p.second)) { }
+
+	constexpr tuple &operator=(const tuple &) = default;
+	constexpr tuple &operator=(tuple &&) = default;
+
+	template <typename... _Up,
+			__tuple_enable_t<(sizeof...(_Up) == sizeof...(_Tp))
+					&& (sprt::is_assignable_v<_Tp &, const _Up &> && ...)> = 0>
+	constexpr tuple &operator=(const tuple<_Up...> &__o) {
+		__assign(sprt::make_index_sequence<sizeof...(_Tp)> {}, __o);
+		return *this;
+	}
+
+	template <typename... _Up,
+			__tuple_enable_t<(sizeof...(_Up) == sizeof...(_Tp))
+					&& (sprt::is_assignable_v<_Tp &, _Up> && ...)> = 0>
+	constexpr tuple &operator=(tuple<_Up...> &&__o) {
+		__assign(sprt::make_index_sequence<sizeof...(_Tp)> {}, sprt::move_unsafe(__o));
+		return *this;
+	}
+
+	constexpr void swap(tuple &__o) { __impl_.__swap(__o.__impl_); }
+
+	// internal access for the get<> free functions
+	constexpr _Impl &__get_impl() noexcept { return __impl_; }
+	constexpr const _Impl &__get_impl() const noexcept { return __impl_; }
+};
+
+template <>
+class tuple<> {
+public:
+	constexpr tuple() = default;
+	constexpr void swap(tuple &) noexcept { }
+};
+
+template <typename... _Tp>
+tuple(_Tp...) -> tuple<_Tp...>;
+template <typename _T1, typename _T2>
+tuple(sprt::pair<_T1, _T2>) -> tuple<_T1, _T2>;
+
+// ----------------------------------------------------------- get<I>
+template <sprt::size_t _Ip, typename... _Tp>
+constexpr tuple_element_t<_Ip, tuple<_Tp...>> &get(tuple<_Tp...> &__t) noexcept {
+	return __tuple_get_leaf<_Ip>(__t.__get_impl()).__get();
+}
+template <sprt::size_t _Ip, typename... _Tp>
+constexpr const tuple_element_t<_Ip, tuple<_Tp...>> &get(const tuple<_Tp...> &__t) noexcept {
+	return __tuple_get_leaf<_Ip>(__t.__get_impl()).__get();
+}
+template <sprt::size_t _Ip, typename... _Tp>
+constexpr tuple_element_t<_Ip, tuple<_Tp...>> &&get(tuple<_Tp...> &&__t) noexcept {
+	using _Te = tuple_element_t<_Ip, tuple<_Tp...>>;
+	return static_cast<_Te &&>(__tuple_get_leaf<_Ip>(__t.__get_impl()).__get());
+}
+template <sprt::size_t _Ip, typename... _Tp>
+constexpr const tuple_element_t<_Ip, tuple<_Tp...>> &&get(const tuple<_Tp...> &&__t) noexcept {
+	using _Te = tuple_element_t<_Ip, tuple<_Tp...>>;
+	return static_cast<const _Te &&>(__tuple_get_leaf<_Ip>(__t.__get_impl()).__get());
+}
+
+// ----------------------------------------------------------- get<T>
+template <typename _Tp, sprt::size_t _Idx, typename... _Types>
+struct __tuple_find_type;
+template <typename _Tp, sprt::size_t _Idx, typename _Head, typename... _Tail>
+struct __tuple_find_type<_Tp, _Idx, _Head, _Tail...> {
+	static constexpr sprt::size_t value =
+			sprt::is_same_v<_Tp, _Head> ? _Idx : __tuple_find_type<_Tp, _Idx + 1, _Tail...>::value;
+};
+template <typename _Tp, sprt::size_t _Idx>
+struct __tuple_find_type<_Tp, _Idx> {
+	static constexpr sprt::size_t value = _Idx; // not found: out of range -> ill-formed get
+};
+
+// [tuple.elem]: get<T>(tuple) is ill-formed unless T occurs exactly once.
+template <typename _Tp, typename... _Types>
+inline constexpr sprt::size_t __tuple_count_type_v =
+		(static_cast<sprt::size_t>(0) + ... + (sprt::is_same_v<_Tp, _Types> ? 1 : 0));
+
+#define __SPRT_TUPLE_GET_T_UNIQUE(_Tp, _Types) \
+	static_assert(__tuple_count_type_v<_Tp, _Types...> == 1, \
+			"get<T>(tuple) requires T to occur exactly once in the tuple")
+
+template <typename _Tp, typename... _Types>
+constexpr _Tp &get(tuple<_Types...> &__t) noexcept {
+	__SPRT_TUPLE_GET_T_UNIQUE(_Tp, _Types);
+	return sprt::get<__tuple_find_type<_Tp, 0, _Types...>::value>(__t);
+}
+template <typename _Tp, typename... _Types>
+constexpr const _Tp &get(const tuple<_Types...> &__t) noexcept {
+	__SPRT_TUPLE_GET_T_UNIQUE(_Tp, _Types);
+	return sprt::get<__tuple_find_type<_Tp, 0, _Types...>::value>(__t);
+}
+template <typename _Tp, typename... _Types>
+constexpr _Tp &&get(tuple<_Types...> &&__t) noexcept {
+	__SPRT_TUPLE_GET_T_UNIQUE(_Tp, _Types);
+	return sprt::get<__tuple_find_type<_Tp, 0, _Types...>::value>(sprt::move_unsafe(__t));
+}
+template <typename _Tp, typename... _Types>
+constexpr const _Tp &&get(const tuple<_Types...> &&__t) noexcept {
+	__SPRT_TUPLE_GET_T_UNIQUE(_Tp, _Types);
+	return sprt::get<__tuple_find_type<_Tp, 0, _Types...>::value>(sprt::move_unsafe(__t));
+}
+
+#undef __SPRT_TUPLE_GET_T_UNIQUE
+
+// ----------------------------------------------------------- factories
+template <typename... _Tp>
+constexpr tuple<sprt::unwrap_ref_decay_t<_Tp>...> make_tuple(_Tp &&...__t) {
+	return tuple<sprt::unwrap_ref_decay_t<_Tp>...>(sprt::forward<_Tp>(__t)...);
+}
+
+template <typename... _Tp>
+constexpr tuple<_Tp &&...> forward_as_tuple(_Tp &&...__t) noexcept {
+	return tuple<_Tp &&...>(sprt::forward<_Tp>(__t)...);
+}
+
+template <typename... _Tp>
+constexpr tuple<_Tp &...> tie(_Tp &...__t) noexcept {
+	return tuple<_Tp &...>(__t...);
+}
+
+struct __ignore_t {
+	template <typename _Tp>
+	constexpr const __ignore_t &operator=(_Tp &&) const noexcept {
+		return *this;
+	}
+};
+inline constexpr __ignore_t ignore;
+
+// ----------------------------------------------------------- tuple_cat
+template <typename _T1, typename _T2, sprt::size_t... _I1, sprt::size_t... _I2>
+constexpr auto __tuple_cat2_impl(_T1 &&__t1, _T2 &&__t2, sprt::index_sequence<_I1...>,
+		sprt::index_sequence<_I2...>) {
+	return tuple<tuple_element_t<_I1, sprt::remove_reference_t<_T1>>...,
+			tuple_element_t<_I2, sprt::remove_reference_t<_T2>>...>(
+			sprt::get<_I1>(sprt::forward<_T1>(__t1))..., sprt::get<_I2>(sprt::forward<_T2>(__t2))...);
+}
+
+template <typename _T1, typename _T2>
+constexpr auto __tuple_cat2(_T1 &&__t1, _T2 &&__t2) {
+	return __tuple_cat2_impl(sprt::forward<_T1>(__t1), sprt::forward<_T2>(__t2),
+			sprt::make_index_sequence<tuple_size_v<sprt::remove_reference_t<_T1>>> {},
+			sprt::make_index_sequence<tuple_size_v<sprt::remove_reference_t<_T2>>> {});
+}
+
+constexpr tuple<> tuple_cat() { return {}; }
+
+template <typename _T1>
+constexpr auto tuple_cat(_T1 &&__t1) {
+	return __tuple_cat2(tuple<> {}, sprt::forward<_T1>(__t1));
+}
+
+template <typename _T1, typename _T2, typename... _Rest>
+constexpr auto tuple_cat(_T1 &&__t1, _T2 &&__t2, _Rest &&...__r) {
+	return sprt::tuple_cat(__tuple_cat2(sprt::forward<_T1>(__t1), sprt::forward<_T2>(__t2)),
+			sprt::forward<_Rest>(__r)...);
+}
+
+// ----------------------------------------------------------- apply / make_from_tuple
+template <typename _Fn, typename _Tuple, sprt::size_t... _Ip>
+constexpr decltype(auto) __apply_impl(_Fn &&__f, _Tuple &&__t, sprt::index_sequence<_Ip...>) {
+	return sprt::__invoke(sprt::forward<_Fn>(__f), sprt::get<_Ip>(sprt::forward<_Tuple>(__t))...);
+}
+
+template <typename _Fn, typename _Tuple>
+constexpr decltype(auto) apply(_Fn &&__f, _Tuple &&__t) {
+	return sprt::__apply_impl(sprt::forward<_Fn>(__f), sprt::forward<_Tuple>(__t),
+			sprt::make_index_sequence<tuple_size_v<sprt::remove_reference_t<_Tuple>>> {});
+}
+
+template <typename _Tp, typename _Tuple, sprt::size_t... _Ip>
+constexpr _Tp __make_from_tuple_impl(_Tuple &&__t, sprt::index_sequence<_Ip...>) {
+	return _Tp(sprt::get<_Ip>(sprt::forward<_Tuple>(__t))...);
+}
+
+template <typename _Tp, typename _Tuple>
+constexpr _Tp make_from_tuple(_Tuple &&__t) {
+	return sprt::__make_from_tuple_impl<_Tp>(sprt::forward<_Tuple>(__t),
+			sprt::make_index_sequence<tuple_size_v<sprt::remove_reference_t<_Tuple>>> {});
+}
+
+// ----------------------------------------------------------- swap / compare
+template <typename... _Tp>
+constexpr void swap(tuple<_Tp...> &__a, tuple<_Tp...> &__b) {
+	__a.swap(__b);
+}
+
+template <typename... _Tp, typename... _Up, sprt::size_t... _Ip>
+constexpr bool __tuple_eq(const tuple<_Tp...> &__a, const tuple<_Up...> &__b,
+		sprt::index_sequence<_Ip...>) {
+	return ((sprt::get<_Ip>(__a) == sprt::get<_Ip>(__b)) && ...);
+}
+
+template <typename... _Tp, typename... _Up>
+constexpr bool operator==(const tuple<_Tp...> &__a, const tuple<_Up...> &__b) {
+	static_assert(sizeof...(_Tp) == sizeof...(_Up), "tuples must be the same size to compare");
+	return sprt::__tuple_eq(__a, __b, sprt::make_index_sequence<sizeof...(_Tp)> {});
+}
+
+template <typename... _Tp, typename... _Up>
+constexpr bool operator!=(const tuple<_Tp...> &__a, const tuple<_Up...> &__b) {
+	return !(__a == __b);
+}
+
+// synth-three-way and its result type are the shared sprt::__synth_three_way /
+// sprt::__synth_three_way_result_t from <sprt/cxx/compare>.
+template <typename _Cat, typename _TT, typename _UT>
+constexpr _Cat __tuple_cmp(const _TT &, const _UT &, sprt::index_sequence<>) {
+	return _Cat::equivalent;
+}
+template <typename _Cat, typename _TT, typename _UT, sprt::size_t _I0, sprt::size_t... _In>
+constexpr _Cat __tuple_cmp(const _TT &__a, const _UT &__b, sprt::index_sequence<_I0, _In...>) {
+	_Cat __c = sprt::__synth_three_way(sprt::get<_I0>(__a), sprt::get<_I0>(__b));
+	if (__c != 0) {
+		return __c;
+	}
+	return sprt::__tuple_cmp<_Cat>(__a, __b, sprt::index_sequence<_In...> {});
+}
+
+template <typename... _Tp, typename... _Up>
+constexpr common_comparison_category_t<sprt::__synth_three_way_result_t<_Tp, _Up>...> operator<=>(
+		const tuple<_Tp...> &__a, const tuple<_Up...> &__b) {
+	static_assert(sizeof...(_Tp) == sizeof...(_Up), "tuples must be the same size to compare");
+	using _Cat = common_comparison_category_t<sprt::__synth_three_way_result_t<_Tp, _Up>...>;
+	return sprt::__tuple_cmp<_Cat>(__a, __b, sprt::make_index_sequence<sizeof...(_Tp)> {});
+}
+
+// ------------------------------------------- pair piecewise_construct constructor
+// Definitions for the constructors declared in <sprt/cxx/__utility/pair.h>. Placed here
+// (not in pair.h) because unpacking the argument tuples needs the full tuple type +
+// sprt::get, exactly as the standard defines pair's piecewise ctor in <tuple>.
+template <typename _T1, typename _T2>
+template <typename... _Args1, sprt::size_t... _I1, typename... _Args2, sprt::size_t... _I2>
+constexpr pair<_T1, _T2>::pair(piecewise_construct_t, tuple<_Args1...> &__t1,
+		tuple<_Args2...> &__t2, index_sequence<_I1...>, index_sequence<_I2...>)
+: first(sprt::get<_I1>(sprt::move_unsafe(__t1))...)
+, second(sprt::get<_I2>(sprt::move_unsafe(__t2))...) { }
+
+template <typename _T1, typename _T2>
+template <typename... _Args1, typename... _Args2>
+constexpr pair<_T1, _T2>::pair(piecewise_construct_t, tuple<_Args1...> __first_args,
+		tuple<_Args2...> __second_args)
+: pair(piecewise_construct, __first_args, __second_args,
+		sprt::make_index_sequence<sizeof...(_Args1)> {},
+		sprt::make_index_sequence<sizeof...(_Args2)> {}) { }
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_TUPLE_H_

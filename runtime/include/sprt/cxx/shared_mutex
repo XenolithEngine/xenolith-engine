@@ -28,6 +28,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__mutex/lock_guard.h>
 
 namespace sprt {
+inline namespace __cxx_shared_mutex {
 
 class shared_mutex {
 public:
@@ -173,6 +174,7 @@ inline void swap(shared_lock<_Mutex> &__x, shared_lock<_Mutex> &__y) noexcept {
 	__x.swap(__y);
 }
 
+} // inline namespace __cxx_shared_mutex
 } // namespace sprt
 
 #endif
