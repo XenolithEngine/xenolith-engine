@@ -127,7 +127,7 @@ Rc<core::Queue> Director::shareQueue(core::Queue::Builder &&builder, StringView 
 					Vector<core::Queue *> queues{info->queue.get()};
 
 					info->application->setBearerKey(info->key);
-					info->application->setListenAddress("127.0.0.1:4480");
+					info->application->setListenAddress(info->addr);
 					info->application->shareWindow(info->window, queues, info->materials);
 				});
 			}

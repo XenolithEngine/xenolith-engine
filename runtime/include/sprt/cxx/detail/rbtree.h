@@ -517,7 +517,7 @@ public:
 
 	template < typename K >
 	size_t count_unique(const K &x) const noexcept {
-		return findNode(x) ? 1 : 0;
+		return find_impl(x) ? 1 : 0;
 	}
 
 	void reserve(size_t c) noexcept {

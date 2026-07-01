@@ -174,8 +174,10 @@ void SwapchainImage::setPresented() {
 }
 
 void SwapchainImage::invalidateImage() {
-	if (_image && _swapchain) {
-		_swapchain->invalidateImage(this, false);
+	if (_swapchain) {
+		if (_image) {
+			_swapchain->invalidateImage(this, false);
+		}
 	}
 	_swapchain = nullptr;
 	_image = nullptr;

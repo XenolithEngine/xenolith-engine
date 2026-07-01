@@ -32,18 +32,18 @@ int main(int argc, const char *argv[]) {
 	perform_main(argc, argv, [&] {
 		auto ctx = Rc<ClientContext>::create();
 
-		// Server endpoint: first CLI arg "host:port", default 127.0.0.1:4480.
-		//ctx->setServerAddress(argc > 1 ? StringView(argv[1]) : StringView("127.0.0.1:4480"));
-		ctx->setServerAddress(StringView("127.0.0.1:4480"));
+		// Server endpoint: first CLI arg "host:port" (the live-reload server passes it here when it
+		// launches us), default 127.0.0.1:4480.
+		ctx->setServerAddress(argc > 1 ? StringView(argv[1]) : StringView("127.0.0.1:4480"));
 
-		// Bearer key: shared dev key by default; an optional 2nd arg overrides it (Sha512(arg)) to
-		// exercise the auth-failure path.
-		//if (argc > 2) {
-		//	auto h = crypto::Sha512::perform(StringView(argv[2]));
-		//	ctx->setBearerKey(BytesView(h.data(), h.size()));
-		//} else {
-		ctx->setBearerKey(remote::getDevBearerKey());
-		//}
+		// Bearer key: derived from a per-session token the live-reload server passes as the 2nd CLI arg
+		// (key = Sha512(token)); the shared dev key is the fallback when launched manually with no token.
+		if (argc > 2) {
+			auto h = crypto::Sha512::perform(StringView(argv[2]));
+			ctx->setBearerKey(BytesView(h.data(), h.size()));
+		} else {
+			ctx->setBearerKey(remote::getDevBearerKey());
+		}
 
 		ctx->setWindowConnectedCallback([](NotNull<RemoteWindow>) { return true; });
 

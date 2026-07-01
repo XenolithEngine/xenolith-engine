@@ -236,6 +236,42 @@ Vector<Target *> Makefile::getTransitivePrerequisites(Target *t, bool includeOrd
 	});
 }
 
+void Makefile::getSourceInputs(Target *goal, const Callback<void(StringView)> &cb,
+		ErrorReporter &err) {
+	perform([&] {
+		if (!goal) {
+			err.reportError("getSourceInputs: no goal target");
+			return false;
+		}
+		// Walk the goal's transitive normal prerequisites (order-only prereqs are output
+		// directories, not inputs). A closure leaf with no recipe is a source input — a real
+		// source file or a header pulled in via a `-include`d depfile; anything with a recipe
+		// (objects, the linked binary) is a build output and is skipped, so the resulting set
+		// does not shift when a build refreshes those outputs.
+		auto all = getTransitivePrerequisites(goal, /*includeOrderOnly*/ false);
+		for (auto t : all) {
+			if (t->isPhony || t->effectiveRules() != nullptr) {
+				continue;
+			}
+			auto path = _engine.getAbsolutePath(t->name);
+			if (!path.empty()) {
+				cb(path);
+			}
+		}
+		return true;
+	});
+}
+
+void Makefile::getSourceInputs(StringView goalName, const Callback<void(StringView)> &cb,
+		ErrorReporter &err) {
+	auto t = getTarget(goalName);
+	if (!t) {
+		err.reportError(toString("getSourceInputs: unknown goal '", goalName, "'"));
+		return;
+	}
+	getSourceInputs(t, cb, err);
+}
+
 // === build plan (topological order + cycle detection) ====================================
 
 BuildNode *Makefile::buildPlanNode(Target *t, ErrorReporter &err, Map<Target *, BuildNode *> &memo,

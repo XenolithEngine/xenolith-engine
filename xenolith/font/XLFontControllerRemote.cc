@@ -243,8 +243,8 @@ void FontControllerRemote::submitGlyphs(AppThread *app, Vector<FontUpdateRequest
 	req.setInteger(int64_t(dep ? dep->getId() : 0), "dep");
 	req.setValue(sp::move(faces), "faces");
 
-	log::source().info("FontControllerRemote", "submitGlyphs: ", objects.size(), " face(s), dep ",
-			dep ? dep->getId() : 0);
+	//log::source().info("FontControllerRemote", "submitGlyphs: ", objects.size(), " face(s), dep ",
+	//		dep ? dep->getId() : 0);
 	_owner->remoteSendCbor(remote::Domain::Font, toInt(remote::FontCode::GlyphRequest), req);
 }
 

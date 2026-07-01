@@ -39,8 +39,7 @@ LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 
 LOCAL_SRCS_DIRS :=
 LOCAL_SRCS_OBJS := \
-	Inspector.cpp \
-	Executor.cpp
+	Inspector.cpp
 
 LOCAL_INCLUDES_DIRS :=
 LOCAL_INCLUDES_OBJS :=

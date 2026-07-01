@@ -331,6 +331,28 @@ $(STAGEOUT_SYSROOT)/bin/glslang: $(STAGEOUT_SYSROOT)/bin/spirv-opt $(STAGE2_SYSR
 	cmake --install build/stage2-glslang
 	touch $@
 
+$(STAGEOUT_SYSROOT)/bin/mold: $(STAGE2_CLANG_CC)
+	rm -rf build/stage2-mold
+	@echo Build mold $@
+	cmake \
+		-DCMAKE_TOOLCHAIN_FILE=$(abspath $(STAGE2_CMAKE_STAGE1_CLANG_TOOLCHAIN)) \
+		-G Ninja -S src/mold -B build/stage2-mold \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=$(abspath $(STAGEOUT_SYSROOT)) \
+		-DCMAKE_C_FLAGS_INIT="-ffunction-sections -fdata-sections -flto -mwaitpkg" \
+		-DCMAKE_CXX_FLAGS_INIT="-ffunction-sections -fdata-sections -flto -mwaitpkg" \
+		-DCMAKE_C_FLAGS="-ffunction-sections -fdata-sections -flto -mwaitpkg" \
+		-DCMAKE_CXX_FLAGS="-ffunction-sections -fdata-sections -flto -mwaitpkg" \
+		-DCMAKE_EXE_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections -flto" \
+		-DCMAKE_SHARED_LINKER_FLAGS="-lc++ -lc++abi -Wl,--gc-sections -flto" \
+		-DCMAKE_INSTALL_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
+		-DCMAKE_BUILD_RPATH='$$ORIGIN:$$ORIGIN/../lib' \
+		-DBUILD_SHARED_LIBS=Off
+	cmake --build build/stage2-mold
+	cmake --install build/stage2-mold
+	touch $@
+
+
 $(STAGEOUT_MAKE): $(STAGE1_SYSROOT)/sysroot $(STAGE0_CLANG_CC) $(MAKE_SRC_DIR)
 	rm -rf build/stage1-make
 	mkdir -p build/stage1-make
@@ -344,6 +366,7 @@ $(STAGEOUT_MAKE): $(STAGE1_SYSROOT)/sysroot $(STAGE0_CLANG_CC) $(MAKE_SRC_DIR)
 
 stage2: $(STAGE2_GLIBC) $(STAGE2_CMAKE_STAGE1_CLANG_TOOLCHAIN) $(STAGE2_ZLIB) \
 	$(STAGE2_LIBCXX) $(STAGE2_CLANG_CC) $(STAGEOUT_LIBCXX) \
+	$(STAGEOUT_SYSROOT)/bin/mold \
 	$(STAGE2_SYSROOT)/include/vulkan/vulkan.h $(STAGE2_SYSROOT)/include/spirv/unified1/spirv.h \
 	$(STAGEOUT_SYSROOT)/bin/spirv-opt $(STAGEOUT_SYSROOT)/bin/glslang \
 	$(STAGEOUT_MAKE)

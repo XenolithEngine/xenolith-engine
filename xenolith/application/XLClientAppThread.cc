@@ -41,7 +41,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 // Top bit of the DependencyEvent id space reserved for the remote client so its ids never collide
 // with server/local-minted ones (which use the low half).
-static constexpr uint32_t kClientDependencyEventMask = 0x80000000u;
+static constexpr uint32_t kClientDependencyEventMask = 0x8000'0000u;
 
 // Keepalive: disconnect if the server has not pinged us within this window (it pings ~1/s).
 static constexpr uint64_t kKeepalivePingTimeoutUs = 5'000'000; // 5s
@@ -194,7 +194,8 @@ void ClientAppThread::loadExtensions() {
 			return t == remote::DataType::Screenshot;
 		};
 		_blockTransfer->onReceived = [this](uint64_t id, BlockTransferManager::DataType t,
-											   const Value &meta, const Value &reason, BytesView data) {
+											 const Value &meta, const Value &reason,
+											 BytesView data) {
 			if (t != remote::DataType::Screenshot) {
 				return;
 			}
@@ -329,15 +330,15 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 	if (remote::Domain(h.domain) == remote::Domain::Global) {
 		switch (remote::GlobalCode(h.code)) {
 		case remote::GlobalCode::Ping:
-			log::source().info("ClientAppThread", "received ping (serial ", h.serial,
-					"); replying pong");
+			//log::source().info("ClientAppThread", "received ping (serial ", h.serial,
+			//		"); replying pong");
 			_lastPingTime = sp::platform::clock(ClockType::Monotonic);
 			if (_connection) {
 				_connection->pong(h.serial);
 			}
 			return true;
 		case remote::GlobalCode::Pong:
-			log::source().info("ClientAppThread", "received pong (serial ", h.serial, ")");
+			//log::source().info("ClientAppThread", "received pong (serial ", h.serial, ")");
 			return true;
 		case remote::GlobalCode::SharedObjectsAnnounce:
 			handleAnnounce(data::read<Interface>(payload));
@@ -412,8 +413,8 @@ bool ClientAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 				log::source().warn("ClientAppThread", "InputEvents for unknown window ", windowId);
 				return true;
 			}
-			log::source().info("ClientAppThread", "InputEvents: ", count, " event(s) for window ",
-					windowId);
+			//log::source().info("ClientAppThread", "InputEvents: ", count, " event(s) for window ",
+			//		windowId);
 			wIt->second->handleInputEvents(sp::move(events));
 			return true;
 		}

@@ -30,14 +30,13 @@ THE SOFTWARE.
 // by having several such children in flight at once, all multiplexed by one event loop. No worker
 // threads, no ThreadPool, no blocking popen, and no hand-rolled fork/waitpid/poll machinery.
 
-#include "Executor.h"
-#include "Inspector.h"
+#include "SPMakefileBuilder.h"
 #include "SPFilesystem.h" // in-process $(MKDIR)/$(REMOVE)/$(CP) directives (mkdir/remove/copy)
 
 #include <sprt/runtime/dispatch/looper.h>
 #include <sprt/runtime/dispatch/handle.h>
 
-namespace xlmake {
+namespace STAPPLER_VERSIONIZED stappler::makefile {
 
 namespace dispatch = sprt::dispatch;
 
@@ -115,6 +114,7 @@ struct Job {
 	Rc<dispatch::FileHandle> file; // live in-process file write for the current command line
 	JobString output; // buffered echo + captured bytes, flushed atomically when the target finishes
 	JobString name; // display name for the progress counter (.TARGET_NAME, else the target name)
+	uint64_t startMicros = 0; // recipe wall-clock start; per-target elapsed is shown on the counter line
 	bool hadOutput = false; // the recipe wrote to stdout/stderr (decides non-verbose suppression)
 	bool failed = false; // a command failed: always show the block regardless of verbosity
 	bool headerDone = false; // streaming started: counter + buffered prefix already written live
@@ -128,6 +128,10 @@ struct Job {
 	bool cmdSettled = false;
 	int cmdSyncCode = 0;
 };
+
+// Render an elapsed wall-clock duration (microseconds) as a compact string ("742ms", "12.3s", ...);
+// defined below, forward-declared here so the per-target counter line can borrow the same format.
+static String formatBuildTime(uint64_t micros);
 
 class Builder {
 public:
@@ -189,7 +193,7 @@ private:
 	void onCommandDone(Job *job, int code);
 	void finishNode(NodeState *st, bool success, bool rebuilt);
 	void flush(Job *job);
-	void emitCounter(Job *job); // print one "[depth][N/M] name" progress line, advancing _done
+	void emitCounter(Job *job, bool showTime); // print one "[depth][N/M] name (time)" line, advancing _done
 	void beginStream(Job *job); // start live streaming: emit counter + buffered prefix once
 	JobString displayName(BuildNode *bn); // .TARGET_NAME (target scope) or the target's own name
 	bool isLineBuffered(BuildNode *bn); // .TARGET_BUFFER=line (target scope): stream output live
@@ -201,6 +205,23 @@ private:
 	// Perform an immediate (synchronous) directive — Mkdir/Remove/Copy/Echo — buffering any output or
 	// diagnostics into job->output. Returns 0 on success, -1 on failure.
 	int runImmediate(Job *job, const Command &cmd);
+
+	// All build output goes through these: to _cfg.output (a log sink an embedder can capture) when set,
+	// otherwise to the process streams — so an app can redirect the whole build log with one callback.
+	void emit(StringView s) const {
+		if (_cfg.output) {
+			(*_cfg.output)(s);
+		} else {
+			sprt::cout << s;
+		}
+	}
+	void emitErr(StringView s) const {
+		if (_cfg.output) {
+			(*_cfg.output)(s);
+		} else {
+			sprt::cerr << s;
+		}
+	}
 
 	Makefile *_mk = nullptr;
 	const BuildConfig &_cfg;
@@ -343,10 +364,8 @@ void Builder::dispatchNode(NodeState *st) {
 		// only named as a prerequisite and there is no rule to make it
 		if (!bn->phony && !bn->target->fileExists && !bn->target->declared) {
 			memory::StandartInterface::StringType ns;
-			sprt::cerr << "xlmake: *** No rule to make target '"
-					   << makefile::decodePathSpaces(StringView(bn->name.data(), bn->name.size()),
-								  ns)
-					   << "'\n";
+			emitErr(toString("xlmake: *** No rule to make target '",
+					decodePathSpaces(StringView(bn->name.data(), bn->name.size()), ns), "'\n"));
 			finishNode(st, false, false);
 			return;
 		}
@@ -358,6 +377,9 @@ void Builder::dispatchNode(NodeState *st) {
 	job->st = st;
 	if (_counter) {
 		job->name = displayName(bn);
+		// Stamp the start here (job creation == dispatch) so the counter can report how long this
+		// one target took. Covers the empty-recipe path below too, which flushes without spawning.
+		job->startMicros = Time::now().toMicros();
 	}
 	job->lineBuffered = isLineBuffered(bn);
 	_mk->exportRecipeLines(bn->target,
@@ -394,7 +416,7 @@ void Builder::dispatchNode(NodeState *st) {
 }
 
 // The recipe-line -> shell path-space decode (quote-aware escaping of PathSpacePlaceholder) now lives
-// in the engine as makefile::decodePathSpacesForShell, shared with $(shell). `_cfg.noSpaceEscape`
+// in the engine as decodePathSpacesForShell, shared with $(shell). `_cfg.noSpaceEscape`
 // selects GNU-make-style literal expansion (no escaping; the recipe author quotes).
 
 void Builder::spawn(Job *job) {
@@ -407,7 +429,7 @@ void Builder::spawn(Job *job) {
 		case Command::Kind::Process: {
 			// Echo exactly what will run: decode path spaces to the shell form (so the printed line is
 			// copy-pasteable and matches execution).
-			makefile::decodePathSpacesForShell([&](StringView s) {
+			decodePathSpacesForShell([&](StringView s) {
 				job->output.append(s.data(), s.size());
 			}, StringView(cmd.text.data(), cmd.text.size()), _cfg.noSpaceEscape);
 			job->output.append("\n");
@@ -442,7 +464,7 @@ void Builder::spawn(Job *job) {
 			}
 			// Show real spaces in the echoed operand (the path is make-visible / placeholder-encoded).
 			memory::StandartInterface::StringType payloadStorage;
-			payload = makefile::decodePathSpaces(payload, payloadStorage);
+			payload = decodePathSpaces(payload, payloadStorage);
 			job->output.append(verb.data(), verb.size());
 			if (!payload.empty()) {
 				job->output.append(" ");
@@ -491,10 +513,10 @@ void Builder::spawn(Job *job) {
 		// Decode the destination path to a real filesystem path; decode the content too, in case an
 		// expanded path with a placeholder leaked into it (the file must hold real spaces, not 0x1F).
 		memory::StandartInterface::StringType pathStorage;
-		StringView path = makefile::decodePathSpaces(
+		StringView path = decodePathSpaces(
 				StringView(cmd.writePath.data(), cmd.writePath.size()), pathStorage);
 		memory::StandartInterface::StringType dataStorage;
-		StringView dataView = makefile::decodePathSpaces(
+		StringView dataView = decodePathSpaces(
 				StringView(cmd.writeData.data(), cmd.writeData.size()), dataStorage);
 		BytesView data(reinterpret_cast<const uint8_t *>(dataView.data()), dataView.size());
 
@@ -519,7 +541,7 @@ void Builder::spawn(Job *job) {
 			return;
 		}
 		if (!h) {
-			sprt::cerr << "xlmake: failed to write file: " << path << "\n";
+			emitErr(toString("xlmake: failed to write file: ", path, "\n"));
 			onCommandDone(job, -1);
 			return;
 		}
@@ -544,12 +566,12 @@ void Builder::spawn(Job *job) {
 	// buffer (flushed atomically when the target finishes); the exit completion drives onCommandDone.
 	// The main thread never touches fds, fork or waitpid — the reactor owns all of that.
 	// Decode path spaces to the shell form just before handing the command to the child (see
-	// makefile::decodePathSpacesForShell). shellCmd must outlive the spawnProcess call (synchronous).
+	// decodePathSpacesForShell). shellCmd must outlive the spawnProcess call (synchronous).
 	JobString shellCmd;
-	makefile::decodePathSpacesForShell([&](StringView s) { shellCmd.append(s.data(), s.size()); },
+	decodePathSpacesForShell([&](StringView s) { shellCmd.append(s.data(), s.size()); },
 			StringView(cmd.text.data(), cmd.text.size()), _cfg.noSpaceEscape);
 	job->proc = _looper->spawnProcess(StringView(shellCmd.data(), shellCmd.size()),
-			[job, streaming](StringView bytes) {
+			[this, job, streaming](StringView bytes) {
 		if (bytes.empty()) {
 			return;
 		}
@@ -559,7 +581,7 @@ void Builder::spawn(Job *job) {
 			// Flush every complete line now; keep only the trailing partial line buffered.
 			size_t nl = job->output.rfind('\n');
 			if (nl != JobString::npos) {
-				sprt::cout << StringView(job->output.data(), nl + 1);
+				emit(StringView(job->output.data(), nl + 1));
 				job->output.erase(0, nl + 1);
 			}
 		}
@@ -568,7 +590,7 @@ void Builder::spawn(Job *job) {
 	});
 
 	if (!job->proc) {
-		sprt::cerr << "xlmake: failed to spawn command: " << shellCmd << "\n";
+		emitErr(toString("xlmake: failed to spawn command: ", shellCmd, "\n"));
 		onCommandDone(job, -1);
 	}
 }
@@ -580,7 +602,7 @@ void Builder::onCommandDone(Job *job, int code) {
 	if (!ok) {
 		memory::StandartInterface::StringType ns;
 		auto msg = toString("xlmake: *** [",
-				makefile::decodePathSpaces(
+				decodePathSpaces(
 						StringView(job->st->node->name.data(), job->st->node->name.size()), ns),
 				"] error ", code, "\n");
 		job->output.append(msg.data(), msg.size());
@@ -623,13 +645,13 @@ void Builder::flush(Job *job) {
 		// trailing partial line (plus anything buffered by later, non-recursive commands of the
 		// recipe). No counter here — it was emitted at stream start.
 		if (!job->output.empty()) {
-			sprt::cout << job->output;
+			emit(StringView(job->output.data(), job->output.size()));
 			job->output.clear();
 		}
 		return;
 	}
 	if (_counter) {
-		emitCounter(job);
+		emitCounter(job, true); // block complete: report this target's recipe time
 	}
 	// Non-verbose default: a target that ran cleanly with no output of its own collapses to just
 	// the counter line above — its recipe echo ("rules") and (empty) output are suppressed. The
@@ -637,21 +659,29 @@ void Builder::flush(Job *job) {
 	// when the recipe printed something, or when a command failed.
 	bool show = _verbose || _cfg.dryRun || job->hadOutput || job->failed;
 	if (show && !job->output.empty()) {
-		sprt::cout << job->output;
+		emit(StringView(job->output.data(), job->output.size()));
 	}
 	job->output.clear();
 }
 
 // One progress line. For a recursive invocation (sub-make), the recursion depth tags the counter
 // — the same [N] depth the Entering/Leaving directory lines use (xlmake[N]:) — so the interleaved
-// counters of different levels stay distinguishable.
-void Builder::emitCounter(Job *job) {
+// counters of different levels stay distinguishable. `showTime` appends this target's wall-clock
+// recipe time, e.g. `[3/9] app (742ms)`: true when the counter heads a completed block (buffered
+// recipe, flush), false when it heads a still-running one (streamed recipe, beginStream) where the
+// elapsed time is not yet known.
+void Builder::emitCounter(Job *job, bool showTime) {
 	++_done;
+	String timing;
+	if (showTime && job->startMicros != 0) {
+		timing = toString(" (", formatBuildTime(Time::now().toMicros() - job->startMicros), ")");
+	}
 	if (_cfg.makeLevel > 0) {
-		sprt::cout << "[" << _cfg.makeLevel << "][" << _done << "/" << _total << "] " << job->name
-				   << "\n";
+		emit(toString("[", _cfg.makeLevel, "][", _done, "/", _total, "] ",
+				StringView(job->name.data(), job->name.size()), timing, "\n"));
 	} else {
-		sprt::cout << "[" << _done << "/" << _total << "] " << job->name << "\n";
+		emit(toString("[", _done, "/", _total, "] ",
+				StringView(job->name.data(), job->name.size()), timing, "\n"));
 	}
 }
 
@@ -661,11 +691,14 @@ void Builder::beginStream(Job *job) {
 	if (!job->headerDone) {
 		job->headerDone = true;
 		if (_counter) {
-			emitCounter(job);
+			// Counter heads a still-running stream (recursive sub-make / .TARGET_BUFFER=line): the
+			// recipe time is not known yet, so omit it here. A recursive sub-make prints its own
+			// "[N] Build time:" when it finishes.
+			emitCounter(job, false);
 		}
 	}
 	if (!job->output.empty()) {
-		sprt::cout << job->output;
+		emit(StringView(job->output.data(), job->output.size()));
 		job->output.clear();
 	}
 }
@@ -716,7 +749,7 @@ static StringView escapeOperandSpaces(StringView in, JobString &storage) {
 	storage.clear();
 	for (size_t i = 0; i < in.size(); ++i) {
 		if (in[i] == '\\' && i + 1 < in.size() && (in[i + 1] == ' ' || in[i + 1] == '\t')) {
-			storage.push_back(makefile::PathSpacePlaceholder);
+			storage.push_back(PathSpacePlaceholder);
 			++i; // also consume the escaped space/tab
 		} else {
 			storage.push_back(in[i]);
@@ -872,7 +905,7 @@ int Builder::runImmediate(Job *job, const Command &cmd) {
 			// The operand is make-visible (a space inside the path is PathSpacePlaceholder); decode it
 			// to a real filesystem path. tokenizeArgs already split on the real separator spaces.
 			memory::StandartInterface::StringType ps;
-			StringView dp = makefile::decodePathSpaces(p, ps);
+			StringView dp = decodePathSpaces(p, ps);
 			FileInfo fi(dp);
 			// mkdir -p: an already-existing directory is success; mkdir_recursive returns false on an
 			// existing path, so accept that case explicitly (but reject an existing non-directory).
@@ -898,7 +931,7 @@ int Builder::runImmediate(Job *job, const Command &cmd) {
 		}
 		for (auto &p : paths) {
 			memory::StandartInterface::StringType ps;
-			StringView dp = makefile::decodePathSpaces(p, ps);
+			StringView dp = decodePathSpaces(p, ps);
 			FileInfo fi(dp);
 			// rm -rf: a missing path is success; otherwise remove recursively.
 			if (filesystem::exists(fi) && !filesystem::remove(fi, true)) {
@@ -915,8 +948,8 @@ int Builder::runImmediate(Job *job, const Command &cmd) {
 		}
 		memory::StandartInterface::StringType ss;
 		memory::StandartInterface::StringType ds;
-		StringView srcPath = makefile::decodePathSpaces(toks[0], ss);
-		StringView dstPath = makefile::decodePathSpaces(toks[1], ds);
+		StringView srcPath = decodePathSpaces(toks[0], ss);
+		StringView dstPath = decodePathSpaces(toks[1], ds);
 		FileInfo dst(dstPath);
 		// cp -f: filesystem::copy refuses an existing *file* destination, so remove it first to force
 		// the overwrite. A directory destination is left intact — copy places <src> inside it (and
@@ -944,7 +977,7 @@ int Builder::runImmediate(Job *job, const Command &cmd) {
 		}
 		// Decode any path-space placeholder so an echoed path shows real spaces (and no 0x1F leaks).
 		memory::StandartInterface::StringType ts;
-		text = makefile::decodePathSpaces(text, ts);
+		text = decodePathSpaces(text, ts);
 		job->output.append(text.data(), text.size());
 		job->output.append("\n");
 		job->hadOutput = true;
@@ -968,7 +1001,7 @@ JobString Builder::displayName(BuildNode *bn) {
 	// on the progress line.
 	StringView src = val.empty() ? StringView(bn->name.data(), bn->name.size()) : val;
 	memory::StandartInterface::StringType storage;
-	src = makefile::decodePathSpaces(src, storage);
+	src = decodePathSpaces(src, storage);
 	JobString out;
 	out.assign(src.data(), src.size());
 	return out;
@@ -1070,13 +1103,30 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 	// anchor relative paths in the dry-run output. A sub-make (MAKELEVEL > 0) tags the program name
 	// with its depth — `xlmake[1]:` — exactly like GNU make's `make[1]:`; the top level is plain
 	// `xlmake:`.
+	// All build output flows through the optional sink (a log an embedder can capture), else the
+	// process streams — see BuildConfig::output.
+	auto emit = [&](StringView s) {
+		if (cfg.output) {
+			(*cfg.output)(s);
+		} else {
+			sprt::cout << s;
+		}
+	};
+	auto emitErr = [&](StringView s) {
+		if (cfg.output) {
+			(*cfg.output)(s);
+		} else {
+			sprt::cerr << s;
+		}
+	};
+
 	auto label = cfg.makeLevel > 0 ? toString("xlmake[", cfg.makeLevel, "]") : toString("xlmake");
 	if (cfg.printDirectory) {
-		sprt::cout << label << ": Entering directory '" << cfg.rootDir << "'\n";
+		emit(toString(label, ": Entering directory '", cfg.rootDir, "'\n"));
 	}
 	auto finish = [&](int rc) {
 		if (cfg.printDirectory) {
-			sprt::cout << label << ": Leaving directory '" << cfg.rootDir << "'\n";
+			emit(toString(label, ": Leaving directory '", cfg.rootDir, "'\n"));
 		}
 		return rc;
 	};
@@ -1085,8 +1135,8 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 	// goal — emit it here so the extension gets it even for an unknown goal. Emit it BEFORE the
 	// materialize-buildPlan below: that step instantiates pattern-derived nodes (foo.o, src/foo.c,
 	// ...) which GNU marks `# Not a target:`; dumping first keeps getTargets() to declared targets.
-	if (cfg.printDatabase) {
-		printDatabase(mk, err);
+	if (cfg.printDatabase && cfg.printDatabaseHook) {
+		(*cfg.printDatabaseHook)();
 	}
 
 	// Materialize pattern-derived targets so explicit goals are queryable by name.
@@ -1101,7 +1151,7 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 		} else {
 			// No default goal. For a pure query (-p/-q) this is not a hard error.
 			if (!cfg.printDatabase && !cfg.question) {
-				sprt::cerr << "xlmake: *** No targets.  Stop.\n";
+				emitErr(StringView("xlmake: *** No targets.  Stop.\n"));
 			}
 			return finish((cfg.printDatabase && !cfg.question) ? 0 : 2);
 		}
@@ -1111,8 +1161,8 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 				goals.emplace_back(t);
 			} else {
 				memory::StandartInterface::StringType ns;
-				sprt::cerr << "xlmake: *** No rule to make target '"
-						   << makefile::decodePathSpaces(tn, ns) << "'.  Stop.\n";
+				emitErr(toString("xlmake: *** No rule to make target '", decodePathSpaces(tn, ns),
+						"'.  Stop.\n"));
 				return finish(2);
 			}
 		}
@@ -1160,7 +1210,7 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 		.engineMask = engine,
 	});
 	if (!looper) {
-		sprt::cerr << "xlmake: failed to initialize the event loop\n";
+		emitErr(StringView("xlmake: failed to initialize the event loop\n"));
 		return finish(2);
 	}
 
@@ -1174,23 +1224,20 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 		case BuildResult::UpToDate:
 			if (!cfg.dryRun) {
 				memory::StandartInterface::StringType gs;
-				auto gname = makefile::decodePathSpaces(
+				auto gname = decodePathSpaces(
 						StringView(goal->name.data(), goal->name.size()), gs);
 				if (cfg.makeLevel > 0) {
-					sprt::cout << "xlmake[" << cfg.makeLevel << "]: " << gname
-							   << "' is up to date\n";
+					emit(toString("xlmake[", cfg.makeLevel, "]: ", gname, "' is up to date\n"));
 				} else {
-					sprt::cout << "xlmake: " << gname << "' is up to date\n";
+					emit(toString("xlmake: ", gname, "' is up to date\n"));
 				}
 			}
 			break;
 		case BuildResult::Failed: rc = 2; break;
 		case BuildResult::Cycle: {
 			memory::StandartInterface::StringType gs;
-			sprt::cerr << "xlmake: dependency cycle involving '"
-					   << makefile::decodePathSpaces(
-								  StringView(goal->name.data(), goal->name.size()), gs)
-					   << "'\n";
+			emitErr(toString("xlmake: dependency cycle involving '",
+					decodePathSpaces(StringView(goal->name.data(), goal->name.size()), gs), "'\n"));
 			rc = 2;
 			break;
 		}
@@ -1208,13 +1255,12 @@ int runBuild(Makefile *mk, const BuildConfig &cfg, ErrorReporter &err) {
 	if (!cfg.dryRun && !cfg.silent && !cfg.printDatabase) {
 		auto elapsed = Time::now().toMicros() - buildStartMicros;
 		if (cfg.makeLevel > 0) {
-			sprt::cout << "[" << cfg.makeLevel << "] Build time: " << formatBuildTime(elapsed)
-					   << "\n";
+			emit(toString("[", cfg.makeLevel, "] Build time: ", formatBuildTime(elapsed), "\n"));
 		} else {
-			sprt::cout << "Build time: " << formatBuildTime(elapsed) << "\n";
+			emit(toString("Build time: ", formatBuildTime(elapsed), "\n"));
 		}
 	}
 	return finish(rc);
 }
 
-} // namespace xlmake
+} // namespace stappler::makefile

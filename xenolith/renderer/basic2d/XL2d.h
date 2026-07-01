@@ -57,7 +57,7 @@ using glsl::Rect2DIndex;
 using glsl::RoundedRect2DIndex;
 using glsl::Polygon2DIndex;
 
-using font::Autofit;
+using stappler::font::Autofit;
 using core::SamplerIndex;
 
 using glsl::ParticleIndirectCommand;

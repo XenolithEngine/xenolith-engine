@@ -86,14 +86,14 @@ bool ClientScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel
 	// the replayed events surface as gestures in the client scene.
 	auto listener = content->addSystem(Rc<InputListener>::create());
 	listener->addMoveRecognizer([](const GestureData &data) -> bool {
-		auto loc = data.input->currentLocation;
-		log::source().info("ClientScene", "[input] move -> x=", loc.x, " y=", loc.y);
+		//auto loc = data.input->currentLocation;
+		//log::source().info("ClientScene", "[input] move -> x=", loc.x, " y=", loc.y);
 		return true;
 	});
 	listener->addTapRecognizer([](const GestureTap &tap) -> bool {
-		auto loc = tap.location();
-		log::source().info("ClientScene", "[input] TAP -> x=", loc.x, " y=", loc.y, " count=",
-				tap.count);
+		//auto loc = tap.location();
+		//log::source().info("ClientScene", "[input] TAP -> x=", loc.x, " y=", loc.y,
+		//		" count=", tap.count);
 		return true;
 	});
 
@@ -101,10 +101,11 @@ bool ClientScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel
 	// computes this as a WindowLayer; the headless client forwards it to the server (WindowCode::
 	// UpdateLayers), which applies it to the real OS window. A fixed 200x120 region at (50, 600) so the
 	// forwarded layer's rect + cursor can be verified in the server log.
-	auto cursorRegion = content->addChild(Rc<basic2d::Layer>::create(Color4F(1.0f, 1.0f, 0.0f, 0.35f)));
-	cursorRegion->setContentSize(Size2(200.0f, 120.0f));
+	auto cursorRegion =
+			content->addChild(Rc<basic2d::Layer>::create(Color4F(1.0f, 1.0f, 0.0f, 0.35f)));
+	cursorRegion->setContentSize(Size2(100.0f, 120.0f));
 	cursorRegion->setAnchorPoint(Anchor::BottomLeft);
-	cursorRegion->setPosition(Vec2(50.0f, 600.0f));
+	cursorRegion->setPosition(Vec2(120.0f, 600.0f));
 	auto cursorListener = cursorRegion->addSystem(Rc<InputListener>::create());
 	cursorListener->setCursor(WindowCursor::Pointer);
 
@@ -138,19 +139,8 @@ void ClientScene::handleEnter(Scene *scene) {
 		_square->runAction(Rc<RepeatForever>::create(Rc<Sequence>::create(
 				Rc<ScaleTo>::create(0.6f, 1.5f), Rc<ScaleTo>::create(0.6f, 1.0f), [this] {
 			++_animTick;
-			log::source().info("ClientScene", "animation tick ", _animTick);
+			//log::source().info("ClientScene", "animation tick ", _animTick);
 		})));
-	}
-
-	// Через 2 секунды после входа (сервер уже рисует наши кадры) запрашиваем у него скриншот окна —
-	// то есть нашего удалённого вывода — и сохраняем полученные пиксели в PNG. Запрос уходит через
-	// RemoteWindow::captureScreenshot (WindowCode::RequestScreenshot), а пиксели возвращаются обратно
-	// крупным блоком по Domain::Data. Делаем это ровно один раз.
-	if (!_screenshotRequested) {
-		_screenshotRequested = true;
-		runAction(Rc<Sequence>::create(Rc<DelayTime>::create(2.0f), [this] {
-			requestRemoteScreenshot();
-		}));
 	}
 }
 

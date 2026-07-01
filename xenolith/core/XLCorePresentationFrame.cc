@@ -161,7 +161,15 @@ void PresentationFrame::invalidate() {
 			// image is untouched, so detach it from this frame (without releasing it) and hand it back to
 			// the engine's reuse pool for the next frame.
 			sw->detachImage();
-			_engine->reclaimAcquiredImage(sp::move(_acquiredImage));
+			if (_swapchain) {
+				if (!_swapchain->isDeprecated()) {
+					_engine->reclaimAcquiredImage(sp::move(_acquiredImage));
+				} else {
+					_swapchain->invalidateImage(_acquiredImage->imageIndex, true);
+				}
+			} else {
+				sw->invalidateImage();
+			}
 		} else {
 			// Rendering had started (or the swapchain is gone): return the image directly to the swapchain.
 			sw->invalidateImage();
@@ -189,7 +197,8 @@ void PresentationFrame::invalidate() {
 
 	_swapchain = nullptr;
 	_target = nullptr;
-	_acquiredImage = nullptr; // dropped here for the direct-return path; already moved out for pool reuse
+	_acquiredImage =
+			nullptr; // dropped here for the direct-return path; already moved out for pool reuse
 	_frameRequest = nullptr;
 
 	sprt::release(this, refId);

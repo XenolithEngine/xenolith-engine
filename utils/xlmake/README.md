@@ -141,9 +141,12 @@ the target finishes, so a target's block stays contiguous even under `-j`. Two c
 any target that opts in with [`.TARGET_BUFFER=line`](#target-buffer). Streaming writes only whole
 lines, so concurrent targets never tear each other's output.
 
-**Progress counter.** Real builds print a ninja-style `[N/M] name` line per built target (`M` is
-computed up front with the same staleness gate the dispatcher uses, so `N` reaches `M` exactly).
-It is off in `--dry-run`, `--silent`, and `--print-data-base`. See [`.TARGET_NAME`](#target-name).
+**Progress counter.** Real builds print a ninja-style `[N/M] name (time)` line per built target
+(`M` is computed up front with the same staleness gate the dispatcher uses, so `N` reaches `M`
+exactly). `time` is that target's own wall-clock recipe time (`742ms`, `12.3s`, `1m 05s`); it is
+omitted for a live-streamed target (recursive `$(MAKE)`, or [`.TARGET_BUFFER=line`](#target-buffer)),
+whose counter is printed before the recipe finishes. The whole counter is off in `--dry-run`,
+`--silent`, and `--print-data-base`. See [`.TARGET_NAME`](#target-name).
 
 **Recursive make.** `$(MAKE)` expands to xlmake's own path. Sub-makes track depth via `MAKELEVEL`
 (exported one level deeper to each child), print `xlmake[N]: Entering/Leaving directory` like
