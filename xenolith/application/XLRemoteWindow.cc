@@ -112,7 +112,8 @@ void RemoteWindow::compileRenderQueue(const Rc<core::Queue> &q, Function<void(bo
 		} else {
 			cb(false);
 		}
-	}, kCompileQueueReplyTimeoutUs)) {
+	},
+				kCompileQueueReplyTimeoutUs)) {
 		cb(false);
 	}
 }
@@ -180,7 +181,7 @@ void RemoteWindow::acquireFrame(uint64_t frameId, const core::FrameConstraints &
 				break;
 			}
 		}
-		slog().debug("RemoteWindow", "acquireFrame: queue: ", id);
+		// slog().debug("RemoteWindow", "acquireFrame: queue: ", id);
 		reply(id);
 	});
 }
@@ -197,8 +198,8 @@ void RemoteWindow::compileMaterials(Rc<core::MaterialInputData> &&req,
 		return;
 	}
 
-	slog().info("RemoteWindow", "compileMaterials: forwarding ",
-			req->materialsToAddOrUpdate.size(), " material(s), ", deps.size(), " dep(s)");
+	slog().info("RemoteWindow", "compileMaterials: forwarding ", req->materialsToAddOrUpdate.size(),
+			" material(s), ", deps.size(), " dep(s)");
 
 	Value msg;
 	msg.setInteger(int64_t(_id), "window");
@@ -247,7 +248,8 @@ void RemoteWindow::attachRenderQueue(const Rc<core::Queue> &) {
 				toInt(remote::WindowCode::AttachQueue), Value(_id),
 				[](const remote::MessageHeader &h, BytesView) {
 		if (remote::isError(h)) {
-			slog().error("RemoteWindow", "attachRenderQueue: server rejected (code ", int(h.code), ")");
+			slog().error("RemoteWindow", "attachRenderQueue: server rejected (code ", int(h.code),
+					")");
 			return;
 		}
 		slog().debug("RemoteWindow", "attachRenderQueue: server switched to client");
@@ -261,8 +263,8 @@ void RemoteWindow::setReadyForNextFrame() {
 	// another frame. Forward the request so the server's PresentationEngine schedules the next frame and
 	// keeps continuous progress going; fire-and-forget (no reply), same cadence as per-frame input.
 	if (auto conn = _thread->getConnection()) {
-		conn->sendCborMessage(remote::Domain::Window,
-				toInt(remote::WindowCode::ReadyForNextFrame), Value(_id));
+		conn->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::ReadyForNextFrame),
+				Value(_id));
 	}
 }
 void RemoteWindow::setPreferredFrameInterval(uint64_t intervalUs) { }
@@ -302,8 +304,8 @@ void RemoteWindow::captureScreenshot(
 	}
 
 	uint32_t serial = 0;
-	if (conn->sendCborMessage(remote::Domain::Window,
-				toInt(remote::WindowCode::RequestScreenshot), Value(_id), &serial)
+	if (conn->sendCborMessage(remote::Domain::Window, toInt(remote::WindowCode::RequestScreenshot),
+				Value(_id), &serial)
 			!= remote::GlobalError::Ok) {
 		slog().error("RemoteWindow", "captureScreenshot: failed to send request");
 		if (cb) {
@@ -324,7 +326,8 @@ bool RemoteWindow::deliverScreenshot(uint32_t serial, const core::ImageInfoData 
 	}
 	auto cb = sp::move(it->second);
 	_pendingScreenshots.erase(it);
-	slog().debug("RemoteWindow", "deliverScreenshot: ", pixels.size(), " bytes for serial ", serial);
+	slog().debug("RemoteWindow", "deliverScreenshot: ", pixels.size(), " bytes for serial ",
+			serial);
 	if (cb) {
 		cb(info, pixels);
 	}

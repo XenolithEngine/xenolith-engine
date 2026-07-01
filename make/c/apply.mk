@@ -41,6 +41,16 @@ endif # ANDROID
 # Список полных путей к прекомпилируемым заголовкам
 TOOLKIT_PRECOMPILED_HEADERS := $(sort $(call sp_toolkit_resolve_prefix_files,$(TOOLKIT_PRECOMPILED_HEADERS)))
 
+# Предкомпилированные заголовки уровня приложения (по аналогии с MODULE_*_PRECOMPILED_HEADERS).
+# Задаются в Makefile приложения через LOCAL_PRECOMPILED_HEADERS; относительные пути
+# разрешаются относительно каталога приложения (LOCAL_ROOT). Позволяют приложению держать
+# собственный PCH — например, при отладке через live reload считать заголовки движка
+# стабильными и запечь их в PCH. Потребление — через LOCAL_PRIVATE_INCLUDE_PCH.
+# Вливаются в общий список PCH, поэтому GCH для них строятся и для lib, и для exec,
+# а зависимости и счётчики прогресса подхватываются существующими правилами.
+LOCAL_PRECOMPILED_HEADERS := $(sort $(call sp_local_resolve_prefix_files,$(LOCAL_PRECOMPILED_HEADERS)))
+TOOLKIT_PRECOMPILED_HEADERS := $(sort $(TOOLKIT_PRECOMPILED_HEADERS) $(LOCAL_PRECOMPILED_HEADERS))
+
 # Список полных путей к копиям прекомпилируемых заголовков в директории сборки
 # Копирование необходимо, чтобы обеспечить приоритет включения предкомпилируемых заголовков
 TOOLKIT_LIB_H_GCH := $(call sp_toolkit_prefix_files_list,$(BUILD_С_OUTDIR)/lib_objs,$(TOOLKIT_PRECOMPILED_HEADERS))
@@ -166,13 +176,14 @@ BUILD_CONFIG_VALUES := $(GLOBAL_CONFIG_VALUES) $(TOOLKIT_CONFIG_VALUES)
 BUILD_CONFIG_STRINGS := $(GLOBAL_CONFIG_STRINGS) $(TOOLKIT_CONFIG_STRINGS)
 
 BUILD_ALL_FLAGS := \
+	$(filter-out -fdiagnostics-color=always,\
 	$(BUILD_EXEC_CFLAGS) \
 	$(BUILD_EXEC_CXXFLAGS) \
 	$(BUILD_LIB_CFLAGS) \
 	$(BUILD_LIB_CXXFLAGS) \
 	$(BUILD_CONFIG_FLAGS) \
 	$(BUILD_CONFIG_VALUES) \
-	$(BUILD_CONFIG_STRINGS)
+	$(BUILD_CONFIG_STRINGS))
 
 # Сравниваем итоговые флаги с кешированными
 ifndef BUILD_ARCH

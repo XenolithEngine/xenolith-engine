@@ -37,6 +37,10 @@
 #include "SPMakefileStmt.cc"
 #include "SPMakefileVariable.cc"
 #include "SPMakefileExecutor.cc"
+#include "SPMakefileBuiltins.cc"
+#include "SPMakefileProject.cc"
+#include "SPMakefileObserver.cc"
+#include "SPMakefileBuilder.cc"
 
 #include "xcode/SPPBXObject.cc"
 #include "xcode/SPPBXBuildPhase.cc"
@@ -52,6 +56,7 @@ bool Makefile::init() {
 	_engine.setEvalCallback([](void *self, StringView name, StringView content) {
 		return reinterpret_cast<Makefile *>(self)->include(name, content, true);
 	}, this);
+	setupBuiltinVariables();
 	return true;
 }
 
@@ -111,7 +116,9 @@ bool Makefile::include(const FileInfo &iinfo, ErrorReporter *err, bool optional)
 
 	auto path = filesystem::findPath<Interface>(info, filesystem::Access::Read);
 	if (path.empty()) {
-		log::source().error("Makefile", "Fail to open ", info);
+		if (!optional) {
+			log::source().error("Makefile", "Fail to open ", info);
+		}
 		return false;
 	}
 	auto f = filesystem::openForReading(FileInfo{path});

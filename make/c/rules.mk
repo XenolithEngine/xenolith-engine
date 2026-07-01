@@ -69,6 +69,13 @@ sp_toolkit_resolve_prefix_files = \
 	$(realpath $(addprefix $(GLOBAL_ROOT)/,$(call sp_list_relpaths,$(1)))) \
 	$(realpath $(call sp_list_abspaths,$(1)))
 
+# Аналог sp_toolkit_resolve_prefix_files для файлов уровня приложения:
+# относительные пути разрешаются относительно каталога приложения (LOCAL_ROOT),
+# а не корня фреймворка (GLOBAL_ROOT)
+sp_local_resolve_prefix_files = \
+	$(realpath $(addprefix $(LOCAL_ROOT)/,$(call sp_list_relpaths,$(1)))) \
+	$(realpath $(call sp_list_abspaths,$(1)))
+
 sp_toolkit_prefix_files_list = \
 	$(abspath $(addprefix $(1)/include/,$(notdir $(2))))
 

@@ -33,6 +33,7 @@
 #include "ExampleScene.h"
 #include "GeneralLayout.h"
 #include "ShapingLayout.h"
+#include "LiveReloadAppThread.h" // live-reload session addr+key, when active
 #include "XLRemoteProtocol.h"
 
 #include "SPBitmap.h"
@@ -87,13 +88,6 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 
 	setFpsVisible(true);
 
-	uint8_t buf[256] = {0};
-	if (getrandom(buf, 256, 0) == 256) {
-		sprt::base16::encode(buf, 256,
-				[](const char *buf, size_t size) { slog().info("Random", StringView(buf, size)); });
-	}
-
-
 	return true;
 }
 
@@ -129,7 +123,18 @@ void ExampleScene::handlePresented(Director *dir) {
 
 // Window sharing is Linux-only for now
 #if SPRT_LINUX
-	dir->shareQueue(sp::move(builder), "127.0.0.1:4480", remote::getDevBearerKey());
+	// When live reload is active, listen on the session's negotiated address + bearer key (the same
+	// pair the server hands each launched client). Otherwise fall back to the shared dev key on a
+	// fixed port, for a manually launched client.
+	StringView shareAddr("127.0.0.1:4480");
+	BytesView shareKey = remote::getDevBearerKey();
+	if (auto lr = dynamic_cast<LiveReloadAppThread *>(dir->getApplication())) {
+		if (!lr->getServerAddress().empty()) {
+			shareAddr = lr->getServerAddress();
+			shareKey = lr->getBearerKey();
+		}
+	}
+	dir->shareQueue(sp::move(builder), shareAddr, shareKey);
 #endif
 
 	// Безголовый сценарий снятия скриншота, управляемый переменными окружения,

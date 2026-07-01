@@ -58,9 +58,6 @@ protected:
 	bool _animStarted = false;
 	uint64_t _animTick = 0;
 
-	// Один раз, через пару секунд после входа, запрашиваем у сервера скриншот через механизм блочной
-	// передачи (Domain::Data) и сохраняем результат в PNG — сквозная проверка передачи данных.
-	bool _screenshotRequested = false;
 	void requestRemoteScreenshot();
 
 	virtual StringView selectServerQueue(NotNull<AppThread> app,

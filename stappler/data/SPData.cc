@@ -22,6 +22,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+// This TU holds the explicit instantiation of the two concrete Value specializations
+// (see bottom of file) and explicit specializations of several of their members, so it
+// must not pull in the extern-template declarations from SPDataValue.h.
+#define SP_DATA_VALUE_EXPLICIT_INSTANTIATION 1
+
 #include "SPData.h"
 #include "SPMemInterface.h"
 #include "SPString.h"
@@ -621,4 +626,36 @@ auto ValueTemplate<memory::PoolInterface>::getDictionaryNull() -> DictionaryType
 	return const_cast<DictionaryType &>(DictionaryNull);
 }
 
+// Explicit instantiation of the two concrete Value specializations. Together with the
+// matching `extern template` declarations in SPDataValue.h this keeps every other
+// translation unit from re-instantiating ValueTemplate and its members.
+// Must follow all member specializations above.
+template class ValueTemplate<memory::PoolInterface>;
+template class ValueTemplate<memory::StandartInterface>;
+
 } // namespace stappler::data
+
+// Value's Array/Dictionary storage containers (Vector<Value> / Map<String, Value>).
+// Instantiated here so no other TU re-instantiates them; see SPDataValue.h for the
+// matching extern-template declarations. Must be in the containers' own namespace.
+namespace sprt {
+
+#define SP_DATA_VALUE_POOL ::stappler::data::ValueTemplate<::stappler::memory::PoolInterface>
+#define SP_DATA_VALUE_STD ::stappler::data::ValueTemplate<::stappler::memory::StandartInterface>
+
+template class __vector<SP_DATA_VALUE_POOL,
+		SP_DATA_VALUE_POOL::InterfaceType::Allocator<SP_DATA_VALUE_POOL>>;
+template class __vector<SP_DATA_VALUE_STD,
+		SP_DATA_VALUE_STD::InterfaceType::Allocator<SP_DATA_VALUE_STD>>;
+
+template class __map<SP_DATA_VALUE_POOL::InterfaceType::StringType, SP_DATA_VALUE_POOL,
+		less<void>, SP_DATA_VALUE_POOL::InterfaceType::Allocator<
+				pair<const SP_DATA_VALUE_POOL::InterfaceType::StringType, SP_DATA_VALUE_POOL>>>;
+template class __map<SP_DATA_VALUE_STD::InterfaceType::StringType, SP_DATA_VALUE_STD,
+		less<void>, SP_DATA_VALUE_STD::InterfaceType::Allocator<
+				pair<const SP_DATA_VALUE_STD::InterfaceType::StringType, SP_DATA_VALUE_STD>>>;
+
+#undef SP_DATA_VALUE_POOL
+#undef SP_DATA_VALUE_STD
+
+} // namespace sprt

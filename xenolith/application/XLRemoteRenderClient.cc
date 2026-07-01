@@ -151,8 +151,8 @@ void RemoteRenderClient::acquireFrame(uint64_t windowId, NotNull<core::FrameRequ
 
 		// Arm the request with the client's selected queue and keep it routable for streamed input
 		// (FrameInput messages) until the matching FrameCommit.
-		log::source().info("RemoteRenderClient", "AcquireFrame ", frameId, " -> queue '",
-				sq->queue->getName(), "' (id ", queueId, ")");
+		//log::source().info("RemoteRenderClient", "AcquireFrame ", frameId, " -> queue '",
+		//		sq->queue->getName(), "' (id ", queueId, ")");
 		localProxy->selectQueue(sq->queue);
 		_pendingFrames.emplace(frameId, localProxy);
 		pending->cb(true);
@@ -377,8 +377,8 @@ void RemoteRenderClient::handleCompileMaterials(BytesView payload) {
 		events.emplace_back(sp::move(ev));
 	}
 
-	log::source().info("RemoteRenderClient", "CompileMaterials: compiling ",
-			input->materialsToAddOrUpdate.size(), " material(s) for window ", windowId);
+	//log::source().info("RemoteRenderClient", "CompileMaterials: compiling ",
+	//		input->materialsToAddOrUpdate.size(), " material(s) for window ", windowId);
 	window->compileMaterials(sp::move(input), events);
 }
 

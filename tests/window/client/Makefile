@@ -29,6 +29,13 @@ LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
 # Директория для результатов сборки
 LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
 
+# Прикладной PCH: при отладке через live reload заголовки движка стабильны,
+# поэтому предкомпилируем их на уровне приложения (см. src/ClientPch.h).
+LOCAL_PRECOMPILED_HEADERS := src/ClientPch.h
+LOCAL_PRIVATE_INCLUDE_PCH := ClientPch.h
+
+LOCAL_PRIVATE_CXXFLAGS :=
+
 LOCAL_EXECUTABLE := clientapp
 
 # Пути к наборам модулей

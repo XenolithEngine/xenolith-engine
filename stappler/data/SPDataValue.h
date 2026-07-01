@@ -261,7 +261,7 @@ public:
 	bool operator==(const StringView &v) const {
 		return isString() ? sprt::detail::compare_c(*strVal, v) == 0 : false;
 	}
-	bool operator==(const BytesView &v) const { return isBytes() ? (*bytesVal) == v : false; }
+	bool operator==(const BytesView &v) const { return isBytes() ? BytesView(*bytesVal) == v : false; }
 	bool operator==(const ArrayType &v) const { return isArray() ? compare(*arrayVal, v) : false; }
 	bool operator==(const DictionaryType &v) const {
 		return isDictionary() ? compare(*dictVal, v) : false;
@@ -1414,6 +1414,45 @@ auto ValueTemplate<Interface>::getType(Key &&key) const -> Type {
 	}
 }
 
+// The two concrete Value specializations are explicitly instantiated in SPData.cc.
+// Suppress re-instantiation in every other translation unit that includes this header.
+// SPData.cc defines SP_DATA_VALUE_EXPLICIT_INSTANTIATION so it does NOT see these
+// declarations: it holds explicit specializations of several Value members, which
+// would be ill-formed if they followed an explicit instantiation of the class.
+#ifndef SP_DATA_VALUE_EXPLICIT_INSTANTIATION
+extern template class ValueTemplate<memory::PoolInterface>;
+extern template class ValueTemplate<memory::StandartInterface>;
+#endif
+
 } // namespace stappler::data
+
+// Value's storage containers — Value::ArrayType == Vector<Value> and
+// Value::DictionaryType == Map<String, Value> — are the biggest remaining per-TU
+// instantiation cost after Value itself. They are explicitly instantiated in SPData.cc
+// alongside Value; suppress re-instantiation everywhere else. Explicit instantiation
+// declarations for sprt::__vector / sprt::__map must live in their own namespace (sprt).
+#ifndef SP_DATA_VALUE_EXPLICIT_INSTANTIATION
+namespace sprt {
+
+#define SP_DATA_VALUE_POOL ::stappler::data::ValueTemplate<::stappler::memory::PoolInterface>
+#define SP_DATA_VALUE_STD ::stappler::data::ValueTemplate<::stappler::memory::StandartInterface>
+
+extern template class __vector<SP_DATA_VALUE_POOL,
+		SP_DATA_VALUE_POOL::InterfaceType::Allocator<SP_DATA_VALUE_POOL>>;
+extern template class __vector<SP_DATA_VALUE_STD,
+		SP_DATA_VALUE_STD::InterfaceType::Allocator<SP_DATA_VALUE_STD>>;
+
+extern template class __map<SP_DATA_VALUE_POOL::InterfaceType::StringType, SP_DATA_VALUE_POOL,
+		less<void>, SP_DATA_VALUE_POOL::InterfaceType::Allocator<
+				pair<const SP_DATA_VALUE_POOL::InterfaceType::StringType, SP_DATA_VALUE_POOL>>>;
+extern template class __map<SP_DATA_VALUE_STD::InterfaceType::StringType, SP_DATA_VALUE_STD,
+		less<void>, SP_DATA_VALUE_STD::InterfaceType::Allocator<
+				pair<const SP_DATA_VALUE_STD::InterfaceType::StringType, SP_DATA_VALUE_STD>>>;
+
+#undef SP_DATA_VALUE_POOL
+#undef SP_DATA_VALUE_STD
+
+} // namespace sprt
+#endif
 
 #endif /* STAPPLER_DATA_SPDATAVALUE_H_ */

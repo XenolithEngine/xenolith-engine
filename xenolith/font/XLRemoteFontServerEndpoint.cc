@@ -141,8 +141,8 @@ void RemoteFontServerEndpoint::handleGlyphRequest(BytesView payload) {
 	}
 	auto v = data::read<Interface>(payload);
 	auto depId = uint32_t(v.getInteger("dep"));
-	log::source().info("RemoteFontServerEndpoint", "GlyphRequest: dep ", depId, ", ",
-			v.getValue("faces").size(), " face(s)");
+	//log::source().info("RemoteFontServerEndpoint", "GlyphRequest: dep ", depId, ", ",
+	//		v.getValue("faces").size(), " face(s)");
 
 	Vector<FontUpdateRequest> requests;
 	for (auto &f : v.getValue("faces").asArray()) {

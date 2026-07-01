@@ -160,6 +160,14 @@ public:
 	// prerequisite. Fills the target's filesystem-state cache.
 	bool isOutOfDate(Target *, ErrorReporter &);
 
+	// Absolute paths of every source-input file in the goal's transitive closure: the closure's
+	// leaves that have NO recipe (real sources plus depfile-tracked headers), excluding phony nodes
+	// and any target that has a recipe (i.e. build outputs). Pure: no recipe is executed. Intended
+	// for change-observation over a goal (e.g. `all`) — see makefile::Watcher.
+	void getSourceInputs(Target *goal, const Callback<void(StringView absPath)> &, ErrorReporter &);
+	void getSourceInputs(StringView goalName, const Callback<void(StringView absPath)> &,
+			ErrorReporter &);
+
 	// === Recipe export (pure): fully expanded recipe text, no execution ===
 
 	// Emit every recipe line of the target with variables, automatic variables and the
@@ -268,6 +276,14 @@ protected:
 	// Stat the target's file (cached on the Target) for out-of-date comparisons. Pass
 	// force = true to refresh a cached result, e.g. after the file may have changed on disk.
 	void statTarget(Target *, bool force = false);
+
+	// Define the engine's built-in variables (Origin::Default, so a makefile or the command line may
+	// still override them): the xlmake identity — XLMAKE_VERSION, the $(WRITE)/$(APPEND)/$(MKDIR)/
+	// $(REMOVE)/$(CP)/$(ECHO) in-process directive markers, and host-detection variables (OS,
+	// XL_UNAME_*, XL_GLIBC_VERSION). Called once from init(). This is what makes the Stappler build
+	// system take its engine-native `init-xlmake.mk` path for every consumer of the engine (see
+	// SPMakefileBuiltins.cc).
+	void setupBuiltinVariables();
 
 	uint32_t _errors = 0;
 

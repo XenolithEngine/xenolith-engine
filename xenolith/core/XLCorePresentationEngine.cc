@@ -562,9 +562,12 @@ void PresentationEngine::handleFrameInvalidated(NotNull<PresentationFrame> frame
 		_waitForDisplayLink = false;
 	}
 
-	if (_swapchain->isDeprecated() && _swapchain->getAcquiredImagesCount() == 0) {
-		// perform on next stack frame
-		scheduleSwapchainRecreation();
+	if (_swapchain->isDeprecated()) {
+		auto acquiredImageCount = _swapchain->getAcquiredImagesCount();
+		if (acquiredImageCount == 0) {
+			// perform on next stack frame
+			scheduleSwapchainRecreation();
+		}
 	} else {
 		acquireScheduledImage();
 	}

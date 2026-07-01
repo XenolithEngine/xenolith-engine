@@ -20,6 +20,9 @@
  THE SOFTWARE.
  **/
 
+#ifndef XENOLITH_RENDERER_SIMPLEUI_XLSIMPLECLOSEGUARDWIDGET_H_
+#define XENOLITH_RENDERER_SIMPLEUI_XLSIMPLECLOSEGUARDWIDGET_H_
+
 #include "XLSimpleButton.h"
 #include "XLCloseGuardWidget.h"
 
@@ -44,3 +47,5 @@ protected:
 };
 
 } // namespace stappler::xenolith::simpleui
+
+#endif

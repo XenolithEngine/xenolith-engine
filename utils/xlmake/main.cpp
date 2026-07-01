@@ -24,18 +24,21 @@ THE SOFTWARE.
 #include "SPFilesystem.h"
 #include "SPFilepath.h"
 #include "SPMakefile.h"
+#include "SPMakefileProject.h" // reusable makefile::setupStandardVariables / loadProject
+#include "SPMakefileObserver.h" // reusable poll-driven makefile::SourceObserver
 
 #include "Inspector.h"
 #include "Executor.h"
-#include <sys/utsname.h>
-#include <dlfcn.h>
 #include <stdlib.h> // getenv / setenv for MAKELEVEL recursion plumbing
 #include <unistd.h> // chdir into the working directory (-C), so recursive $(MAKE) -C resolves right
 #include <stdio.h> // setvbuf: line-buffer stdout so a sub-make's output streams to its parent live
+#include <signal.h> // --watch: catch SIGINT/SIGTERM to stop the observer cleanly
+#include <time.h> // --watch: nanosleep for the main-thread wait loop
 
 using namespace sp;
 
-static constexpr StringView XLMAKE_VERSION = "1.0";
+// The engine owns the version string (makefile::XlmakeVersion) and defines the XLMAKE_VERSION make
+// variable automatically in Makefile::init().
 
 namespace {
 
@@ -45,11 +48,13 @@ using namespace sp::mem_pool;
 using PInterface = memory::PoolInterface;
 
 // xlmake operates in one mode, chosen by the FIRST command-line flag; every later flag applies to
-// that mode. -i/--inspect (pure introspection) or -b/--build (run recipes).
+// that mode. -i/--inspect (pure introspection), -b/--build (run recipes) or --watch (observe a
+// project for changes without building).
 enum class Mode {
 	Help,
 	Inspect,
 	Build,
+	Watch,
 };
 
 // A GNU-make-style command-line variable assignment, e.g. CC=gcc, CFLAGS:=-O2, X+=y.
@@ -68,6 +73,9 @@ struct Config {
 	bool pedantic = false; // -W / --pedantic
 	Vector<Assignment> assignments; // positional VAR=VALUE command-line assignments
 	Vector<StringView> targets; // positional goals
+
+	// watch mode
+	uint32_t watchIntervalMs = 500; // --interval N: poll period in milliseconds
 
 	// inspect mode
 	Vector<StringView> vars; // -V / --var (repeatable)
@@ -103,6 +111,8 @@ static void printUsage() {
 				  "Build is the default mode (like make). A leading mode flag selects another:\n"
 				  "  -b, --build            build the requested targets (default; run in parallel)\n"
 				  "  -i, --inspect          inspect the makefile (print variables/recipes/prereqs)\n"
+				  "      --watch            watch a project for source changes and print a change\n"
+				  "                         fingerprint (does not build)\n"
 				  "  -h, --help             show this help\n"
 				  "\n"
 				  "Shared options (both modes):\n"
@@ -140,6 +150,9 @@ static void printUsage() {
 				  "  -q, --question         run no recipe; exit 1 if any target is out of date\n"
 				  "  -w, --print-directory  print 'Entering/Leaving directory' around the build\n"
 				  "      --no-builtin-rules, --no-builtin-variables   accepted, no effect (-r, -R)\n"
+				  "\n"
+				  "Watch options (--watch; the positional argument is the project directory):\n"
+				  "      --interval N       poll for changes every N milliseconds (default 500)\n"
 				  "\n"
 				  "With -i and no action, prints an overview (makefile, default goal, targets).\n";
 }
@@ -217,6 +230,9 @@ static bool parseArgs(int argc, const char *argv[], Config &cfg) {
 		} else if (first == "-b" || first == "--build") {
 			cfg.mode = Mode::Build;
 			i = 2;
+		} else if (first == "--watch") {
+			cfg.mode = Mode::Watch;
+			i = 2;
 		} else {
 			cfg.mode = Mode::Build; // default: behave like make
 		}
@@ -227,6 +243,7 @@ static bool parseArgs(int argc, const char *argv[], Config &cfg) {
 
 	const bool isBuild = (cfg.mode == Mode::Build);
 	const bool isInspect = (cfg.mode == Mode::Inspect);
+	const bool isWatch = (cfg.mode == Mode::Watch);
 
 	auto takeValue = [&](StringView inlineVal) -> StringView {
 		if (!inlineVal.empty()) {
@@ -290,6 +307,14 @@ static bool parseArgs(int argc, const char *argv[], Config &cfg) {
 				cfg.dir = hasVal ? val : takeValue(StringView());
 			} else if (name == "pedantic" || name == "warn-all") {
 				cfg.pedantic = true;
+			} else if (isWatch && name == "interval") {
+				auto v = hasVal ? val : takeValue(StringView());
+				uint32_t n;
+				if (!parseUint(v, n)) {
+					sprt::cerr << "xlmake: invalid --interval value: " << v << "\n";
+					return false;
+				}
+				cfg.watchIntervalMs = n ? n : 1;
 			} else if (isInspect && (name == "var" || name == "variable")) {
 				cfg.vars.emplace_back(hasVal ? val : takeValue(StringView()));
 			} else if (isInspect && (name == "print-vars" || name == "print")) {
@@ -389,6 +414,8 @@ static bool parseArgs(int argc, const char *argv[], Config &cfg) {
 			Assignment a;
 			if (parseAssignment(arg, a)) {
 				cfg.assignments.emplace_back(a);
+			} else if (isWatch && cfg.dir.empty()) {
+				cfg.dir = arg; // watch mode: the first positional is the project directory
 			} else {
 				cfg.targets.emplace_back(arg);
 			}
@@ -398,112 +425,26 @@ static bool parseArgs(int argc, const char *argv[], Config &cfg) {
 }
 
 // Define GNU make's standard predefined variables (origin "default", so makefile and command-line
-// assignments still override them, matching GNU). Covers the toolchain program names, the
-// compile/link recipe templates, the recipe/shell specials, and the per-invocation variables
-// (MAKE/MAKE_COMMAND for recursion, CURDIR, MAKECMDGOALS). `makeCommand` is argv[0] so `$(MAKE)`
-// re-invokes this xlmake; `rootDir` is the absolute working directory (after -C).
+// assignments still override them, matching GNU). The runner-agnostic set (program names, compile/
+// link templates, shell/suffix specials, MAKE/CURDIR) now lives in the engine as the reusable
+// makefile::setupStandardVariables; here we only layer on xlmake's per-invocation bits: MAKE_COMMAND
+// (argv[0], so `$(MAKE)` re-invokes this xlmake) and MAKECMDGOALS. The xlmake identity (XLMAKE_VERSION,
+// host vars, the $(WRITE)/$(MKDIR)/... markers) is defined by the engine in Makefile::init().
 static void setupStandardVariables(Makefile *mk, StringView rootDir, StringView makeCommand,
 		const Vector<StringView> &goals, ErrorReporter &err) {
+	makefile::setupStandardVariables(mk, rootDir, err);
+
 	using O = makefile::Origin;
-	auto simple = [&](StringView n, StringView v) {
-		mk->assignSimpleVariable(n, O::Default, v, err); //
-	};
 
-	auto rec = [&](StringView n, StringView v) {
-		mk->assignRecursiveVariable(n, O::Default, v, err); //
-	};
-
-	// Program names
-	simple("AR", "ar");
-	simple("AS", "as");
-	simple("CC", "cc");
-	simple("CXX", "g++");
-	simple("CO", "co");
-	simple("FC", "f77");
-	simple("GET", "get");
-	simple("LD", "ld");
-	simple("LEX", "lex");
-	simple("LINT", "lint");
-	simple("M2C", "m2c");
-	simple("OBJC", "cc");
-	simple("PC", "pc");
-	simple("RM", "rm -f");
-	simple("YACC", "yacc");
-	simple("MAKEINFO", "makeinfo");
-	simple("TEX", "tex");
-	simple("TEXI2DVI", "texi2dvi");
-	simple("TANGLE", "tangle");
-	simple("WEAVE", "weave");
-	simple("CTANGLE", "ctangle");
-	simple("CWEAVE", "cweave");
-	rec("CPP", "$(CC) -E");
-	rec("F77", "$(FC)");
-	rec("F77FLAGS", "$(FFLAGS)");
-
-	// Default flags
-	simple("ARFLAGS", "-rv");
-	simple("COFLAGS", "");
-
-	// Compile / link recipe templates (recursive: they track CC/CFLAGS/... when expanded)
-	rec("COMPILE.c", "$(CC) $(CFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -c");
-	rec("COMPILE.cc", "$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(TARGET_ARCH) -c");
-	rec("COMPILE.cpp", "$(COMPILE.cc)");
-	rec("COMPILE.C", "$(COMPILE.cc)");
-	rec("COMPILE.S", "$(CC) $(ASFLAGS) $(CPPFLAGS) $(TARGET_MACH) -c");
-	rec("COMPILE.s", "$(AS) $(ASFLAGS) $(TARGET_MACH)");
-	rec("LINK.c", "$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) $(TARGET_ARCH)");
-	rec("LINK.cc", "$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) $(TARGET_ARCH)");
-	rec("LINK.cpp", "$(LINK.cc)");
-	rec("LINK.C", "$(LINK.cc)");
-	rec("LINK.o", "$(CC) $(LDFLAGS) $(TARGET_ARCH)");
-	rec("LINK.S", "$(CC) $(ASFLAGS) $(CPPFLAGS) $(LDFLAGS) $(TARGET_MACH)");
-	rec("LINK.s", "$(CC) $(ASFLAGS) $(LDFLAGS) $(TARGET_MACH)");
-	rec("OUTPUT_OPTION", "-o $@");
-
-	// Shell / recipe specials (xlmake runs recipes via /bin/sh -c)
-	simple("SHELL", "/bin/sh");
-	simple(".SHELLFLAGS", "-c");
-	simple(".RECIPEPREFIX", "");
-
-	// Suffix list and library search patterns
-	simple("SUFFIXES",
-			".out .a .ln .o .c .cc .C .cpp .p .f .F .m .r .y .l .ym .yl .s .S .mod .sym .def .h "
-			".info .dvi .tex .texinfo .texi .txinfo .w .ch .web .sh .elc .el");
-	rec(".LIBPATTERNS", "lib%.so lib%.a");
-
-	// Recursive-make plumbing: $(MAKE) re-invokes this xlmake (argv[0]). The path to xlmake may itself
-	// contain a space (e.g. "/opt/My Tools/xlmake"); encode it so $(MAKE) stays one word and the recipe
-	// shell receives the whole program path as a single argument.
-	simple("MAKEFILES", "");
-	simple("GNUMAKEFLAGS", "");
-	simple("MAKEFLAGS", "");
+	// $(MAKE) re-invokes this xlmake (argv[0]). The path may itself contain a space (e.g.
+	// "/opt/My Tools/xlmake"); encode it so $(MAKE) stays one word and the recipe shell receives the
+	// whole program path as a single argument.
 	memory::StandartInterface::StringType makeCmdStorage;
-	simple("MAKE_COMMAND", makefile::encodePathSpaces(makeCommand, makeCmdStorage).pdup());
-	rec("MAKE", "$(MAKE_COMMAND)");
+	mk->assignSimpleVariable("MAKE_COMMAND", O::Default,
+			makefile::encodePathSpaces(makeCommand, makeCmdStorage).pdup(), err);
 
-	// In-process file-write directives (no child process): a recipe line `$(WRITE) <path> <text>`
-	// truncates/creates the file and writes <text>; `$(APPEND) <path> <text>` appends. These expand
-	// to a sentinel marker the executor recognizes (Builder::parseWriteCommand) and performs via
-	// Looper::writeFile. Origin::Default so a makefile may still override them, exactly like $(MAKE).
-	simple("WRITE", xlmake::WriteDirectiveMarker);
-	simple("APPEND", xlmake::AppendDirectiveMarker);
-
-	// Immediate in-process directives (no child process): `$(MKDIR) <path...>` (mkdir -p),
-	// `$(REMOVE) <path...>` (rm -rf), `$(CP) <src> <dst>` (cp -f), `$(ECHO) <text>` (print a line).
-	// Like $(WRITE)/$(MAKE) these expand to a sentinel the executor recognizes (Builder::runImmediate).
-	// Origin::Default so a makefile may override them. $(RM) is intentionally left as the standard
-	// `rm -f` (spawns a process); $(REMOVE) is the in-process recursive remove.
-	simple("MKDIR", xlmake::MkdirDirectiveMarker);
-	simple("REMOVE", xlmake::RemoveDirectiveMarker);
-	simple("CP", xlmake::CopyDirectiveMarker);
-	simple("ECHO", xlmake::EchoDirectiveMarker);
-
-	// Per-invocation. CURDIR is make-visible and routinely joined into paths ($(CURDIR)/build/x.o), so
-	// a space in the working directory must be encoded to PathSpacePlaceholder or the join would split
-	// into two words. The goals were already encoded by the caller (so they match encoded target
-	// names), so MAKECMDGOALS is space-joined from the encoded forms directly.
-	memory::StandartInterface::StringType curdirStorage;
-	simple("CURDIR", makefile::encodePathSpaces(rootDir, curdirStorage).pdup());
+	// The goals were already encoded by the caller (so they match encoded target names), so
+	// MAKECMDGOALS is space-joined from the encoded forms directly.
 	String goalList;
 	for (auto &g : goals) {
 		if (!goalList.empty()) {
@@ -511,7 +452,7 @@ static void setupStandardVariables(Makefile *mk, StringView rootDir, StringView 
 		}
 		goalList.append(g.data(), g.size());
 	}
-	simple("MAKECMDGOALS", goalList);
+	mk->assignSimpleVariable("MAKECMDGOALS", O::Default, goalList, err);
 }
 
 static String resolvePath(StringView root, StringView file) {
@@ -559,6 +500,63 @@ static uint32_t readMakeLevel() {
 	uint32_t v = 0;
 	for (const char *p = env; *p >= '0' && *p <= '9'; ++p) { v = v * 10 + uint32_t(*p - '0'); }
 	return v;
+}
+
+// --watch: a flag raised by SIGINT/SIGTERM so the main thread's wait loop can exit and stop the
+// observer cleanly. sig_atomic_t is the async-signal-safe flag type.
+static volatile sig_atomic_t s_watchInterrupted = 0;
+static void xlmakeWatchSignal(int) { s_watchInterrupted = 1; }
+
+// Observe a project for source changes: collect the source inputs of `goalName` (the sources and
+// depfile-tracked headers feeding the goal, plus the makefiles themselves), arm a poll-driven
+// makefile::SourceObserver, and report each new fingerprint until interrupted (Ctrl-C). xlmake owns
+// the loop here (the observer has no thread of its own). The observer never rebuilds — it only
+// reports that a change happened.
+static int runWatch(Makefile *mk, StringView goalName, const Vector<String> &makefilePaths,
+		uint32_t intervalMs, ErrorReporter &err) {
+	Target *goal = mk->getTarget(goalName);
+	if (!goal && goalName == "all") {
+		goal = mk->getDefaultGoal(); // tolerate projects whose default goal is not literally `all`
+	}
+	if (!goal) {
+		sprt::cerr << "xlmake: watch: unknown goal '" << goalName << "'\n";
+		return 1;
+	}
+
+	// The files whose mtimes define the project's state: the goal's source inputs, plus the
+	// makefiles themselves (so editing a Makefile also registers as a change).
+	Vector<StringView> paths;
+	mk->getSourceInputs(goal, [&](StringView p) { paths.emplace_back(p); }, err);
+	for (auto &m : makefilePaths) { paths.emplace_back(StringView(m)); }
+
+	auto observer = Rc<makefile::SourceObserver>::create(SpanView<StringView>(paths));
+	if (!observer) {
+		sprt::cerr << "xlmake: watch: failed to start observer\n";
+		return 1;
+	}
+
+	sprt::cout << toString("xlmake: watching ", observer->getWatchedCount(), " files of '", goalName,
+			"' (interval ", intervalMs, "ms); fingerprint=", observer->getFingerprint(),
+			"; Ctrl-C to stop\n");
+
+	s_watchInterrupted = 0;
+	::signal(SIGINT, xlmakeWatchSignal);
+	::signal(SIGTERM, xlmakeWatchSignal);
+
+	// Consumer-owned loop: poll on the requested interval and report changes. A signal interrupts the
+	// sleep, so Ctrl-C is handled promptly.
+	while (s_watchInterrupted == 0) {
+		struct timespec ts { time_t(intervalMs / 1000), long((intervalMs % 1000) * 1000 * 1000) };
+		::nanosleep(&ts, nullptr);
+		if (s_watchInterrupted != 0) {
+			break;
+		}
+		if (observer->check()) {
+			sprt::cout << toString("xlmake: change: fingerprint=", observer->getFingerprint(), "\n");
+		}
+	}
+	sprt::cout << "xlmake: watch stopped\n";
+	return 0;
 }
 
 static int runXlmake(int argc, const char *argv[]) {
@@ -633,7 +631,10 @@ static int runXlmake(int argc, const char *argv[]) {
 
 		auto mk = Rc<MakefileRef>::create(SharedRefMode::Allocator);
 
-		mk->assignSimpleVariable("XLMAKE_VERSION", Origin::Default, XLMAKE_VERSION);
+		// XLMAKE_VERSION, the OS/XL_UNAME_*/XL_GLIBC_VERSION host variables and the
+		// $(WRITE)/$(MKDIR)/... directive markers are the engine's "xlmake identity"; every Makefile
+		// now defines them automatically in init() (Makefile::setupBuiltinVariables), so the Stappler
+		// build takes its init-xlmake.mk path for every consumer, not just this tool.
 
 		// Lazy environment loading. Any variable not defined by the makefile, the command line, or a
 		// built-in default resolves on first use from the process environment (origin "environment",
@@ -701,29 +702,8 @@ static int runXlmake(int argc, const char *argv[]) {
 			mk->assignSimpleVariable("HOME", Origin::Environment, StringView(h));
 		}
 
-		utsname unamebuf;
-		uname(&unamebuf);
-
-		mk->assignSimpleVariable("OS", Origin::Default, unamebuf.sysname);
-		mk->assignSimpleVariable("XL_UNAME_SYSNAME", Origin::Default, unamebuf.sysname);
-		mk->assignSimpleVariable("XL_UNAME_NODENAME", Origin::Default, unamebuf.nodename);
-		mk->assignSimpleVariable("XL_UNAME_RELEASE", Origin::Default, unamebuf.release);
-		mk->assignSimpleVariable("XL_UNAME_VERSION", Origin::Default, unamebuf.version);
-
-		if (StringView(unamebuf.machine) == "arm64") {
-			// rewrite as Xenolith standart name - aarch64
-			mk->assignSimpleVariable("XL_UNAME_MACHINE", Origin::Default, "aarch64");
-		} else {
-			mk->assignSimpleVariable("XL_UNAME_MACHINE", Origin::Default, unamebuf.machine);
-		}
-
-		mk->assignSimpleVariable("XL_UNAME_DOMAINNAME", Origin::Default, unamebuf.domainname);
-
-		auto gnu_get_libc_version =
-				(const char *(*)())::dlsym(RTLD_DEFAULT, "gnu_get_libc_version");
-		if (gnu_get_libc_version != nullptr) {
-			mk->assignSimpleVariable("XL_GLIBC_VERSION", Origin::Default, gnu_get_libc_version());
-		}
+		// OS, XL_UNAME_* and XL_GLIBC_VERSION are now set by the engine (Makefile::init ->
+		// setupBuiltinVariables) via portable host detection.
 
 		mk->setLogCallback(xlmakeLog);
 		if (cfg.pedantic) {
@@ -754,6 +734,29 @@ static int runXlmake(int argc, const char *argv[]) {
 		for (auto &g : cfg.targets) {
 			memory::StandartInterface::StringType tmp;
 			goals.emplace_back(makefile::encodePathSpaces(g, tmp).pdup());
+		}
+
+		// --watch reads the project's real compile graph statically. In a Stappler project that graph
+		// lives behind universal.mk's dispatch: with neither STAPPLER_TARGET nor STAPPLER_BUILD set,
+		// `all` is only a launcher that re-invokes `$(MAKE) STAPPLER_BUILD=1 all`, and the source-level
+		// rules (host.mk) are not included. Set STAPPLER_BUILD=1 (unless the user already did) so the
+		// full object/source graph is present; STAPPLER_TARGET is left to default to the host — the
+		// current platform's target — exactly as a plain `make` host build does.
+		if (cfg.mode == Mode::Watch) {
+			bool hasBuild = false;
+			for (auto &a : cfg.assignments) {
+				if (a.name == "STAPPLER_BUILD") {
+					hasBuild = true;
+					break;
+				}
+			}
+			if (!hasBuild) {
+				Assignment a;
+				a.name = StringView("STAPPLER_BUILD");
+				a.op = StringView("=");
+				a.value = StringView("1");
+				cfg.assignments.emplace_back(a);
+			}
 		}
 
 		// GNU make's standard predefined variables (origin "default"): toolchain names, recipe
@@ -817,7 +820,10 @@ static int runXlmake(int argc, const char *argv[]) {
 			::setenv(key.data(), value.data(), 1);
 		}
 
-		if (cfg.mode == Mode::Inspect) {
+		if (cfg.mode == Mode::Watch) {
+			StringView goalName = goals.empty() ? StringView("all") : goals.front();
+			result = runWatch(mk, goalName, makefilePaths, cfg.watchIntervalMs, err);
+		} else if (cfg.mode == Mode::Inspect) {
 			xlmake::InspectConfig ic;
 			ic.vars = cfg.vars;
 			ic.targets = goals;
@@ -844,6 +850,11 @@ static int runXlmake(int argc, const char *argv[]) {
 			bc.printDirectory = !cfg.noPrintDirectory && (cfg.printDirectory || makeLevel > 0);
 			bc.rootDir = rootView;
 			bc.noSpaceEscape = cfg.noSpaceEscape;
+			// The GNU `-p` database dump is an xlmake CLI/inspection concern; the engine executor only
+			// invokes this hook (when bc.printDatabase is set), keeping stappler_makefile free of the
+			// Inspector.
+			Callback<void()> printDatabaseHook([&]() { xlmake::printDatabase(mk, err); });
+			bc.printDatabaseHook = &printDatabaseHook;
 			result = xlmake::runBuild(mk, bc, err);
 		}
 	}, pool);

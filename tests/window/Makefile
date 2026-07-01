@@ -43,7 +43,8 @@ LOCAL_MODULES := \
 	xenolith_application_main \
 	xenolith_renderer_simpleui \
 	xenolith_backend_vk \
-	xenolith_resources_assets
+	xenolith_resources_assets \
+	stappler_makefile
 
 LOCAL_SRCS_DIRS :=  src
 LOCAL_SRCS_OBJS :=

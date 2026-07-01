@@ -493,14 +493,14 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 	if (remote::Domain(h.domain) == remote::Domain::Global) {
 		switch (remote::GlobalCode(h.code)) {
 		case remote::GlobalCode::Ping: {
-			log::source().info("AppThread", "received ping (serial ", h.serial, "); replying pong");
+			//log::source().info("AppThread", "received ping (serial ", h.serial, "); replying pong");
 			if (conn) {
 				conn->pong(h.serial);
 			}
 			return true;
 		}
 		case remote::GlobalCode::Pong:
-			log::source().info("AppThread", "received pong (serial ", h.serial, ")");
+			//log::source().info("AppThread", "received pong (serial ", h.serial, ")");
 			_lastPongTime = sp::platform::clock(ClockType::Monotonic);
 			return true;
 		default:
@@ -594,15 +594,17 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 				auto windowId = uint64_t(data::read<Interface>(payload).getInteger());
 				auto reqSerial = h.serial;
 				if (auto w = static_cast<AppWindow *>(_sharedObjects->resolveWindow(windowId))) {
-					w->captureScreenshot([this, reqSerial, windowId](const core::ImageInfoData &info,
-							BytesView pixels) {
+					w->captureScreenshot(
+							[this, reqSerial, windowId](const core::ImageInfoData &info,
+									BytesView pixels) {
 						// On the GL loop thread: the pixels view is transient, so copy it (and the image
 						// info), then hop to the app thread -- the connection / block-transfer must be
 						// touched there -- and offer the blob.
 						auto pixelsCopy = pixels.bytes<Interface>();
 						auto infoCopy = info;
-						performOnAppThread([this, reqSerial, windowId, infoCopy,
-								pixelsCopy = sp::move(pixelsCopy)]() mutable {
+						performOnAppThread(
+								[this, reqSerial, windowId, infoCopy,
+										pixelsCopy = sp::move(pixelsCopy)]() mutable {
 							if (!_blockTransfer) {
 								return;
 							}
@@ -632,7 +634,8 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 							});
 							log::source().info("AppThread", "captured window ", windowId,
 									" -> screenshot transfer ", id);
-						}, this);
+						},
+								this);
 					});
 				} else {
 					log::source().warn("AppThread", "RequestScreenshot for unknown shared window ",
@@ -665,18 +668,19 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 				__sprt_memcpy(&layer, rest.data() + i * sizeof(sprt::window::WindowLayer),
 						sizeof(sprt::window::WindowLayer));
 				log::source().info("AppThread", "UpdateLayers: layer[", i, "] rect{",
-						layer.rect.origin.x, ",", layer.rect.origin.y, " ", layer.rect.size.width, "x",
-						layer.rect.size.height, "} cursor=", uint32_t(toInt(layer.cursor)),
+						layer.rect.origin.x, ",", layer.rect.origin.y, " ", layer.rect.size.width,
+						"x", layer.rect.size.height, "} cursor=", uint32_t(toInt(layer.cursor)),
 						" flags=", uint32_t(toInt(layer.flags)));
 				layers.emplace_back(layer);
 			}
 
 			if (auto w = static_cast<AppWindow *>(_sharedObjects->resolveWindow(windowId))) {
-				log::source().info("AppThread", "UpdateLayers: applying ", count, " layer(s) to window ",
-						windowId);
+				log::source().info("AppThread", "UpdateLayers: applying ", count,
+						" layer(s) to window ", windowId);
 				w->updateLayers(sp::move(layers));
 			} else {
-				log::source().warn("AppThread", "UpdateLayers for unknown shared window ", windowId);
+				log::source().warn("AppThread", "UpdateLayers for unknown shared window ",
+						windowId);
 			}
 			return true;
 		};
@@ -696,7 +700,8 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 			return _fontServer->dispatch(h.code, h.serial, payload);
 		}
 		if (conn) {
-			conn->sendError(remote::Domain::Font, toInt(remote::FontError::NotImplemented), h.serial);
+			conn->sendError(remote::Domain::Font, toInt(remote::FontError::NotImplemented),
+					h.serial);
 		}
 		return true;
 	} else {

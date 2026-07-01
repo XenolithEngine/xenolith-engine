@@ -265,7 +265,18 @@ endif
 
 
 LOCAL_INSTALL_DIR ?= $(LOCAL_OUTDIR)/$(STAPPLER_TARGET)
-BUILD_OUTDIR := $(abspath $(LOCAL_OUTDIR)/$(STAPPLER_TARGET)/$(BUILD_TYPE))
+
+# Канонизируем корень каталога сборки так же, как GLOBAL_ROOT (через realpath).
+# Иначе -I на генерируемые каталоги внутри BUILD_OUTDIR (каталог шейдеров, копии
+# предкомпилированных заголовков) сохраняют написание пути, с которым вызвали make
+# (симлинк, bind-mount, путь с ".."), тогда как пути от GLOBAL_ROOT всегда каноничны.
+# Наборы -I расходятся, cached_flags.mk не совпадает — и запускается полная пересборка
+# при каждом обращении к тому же дереву через другое написание пути.
+# Листовой каталог сборки может ещё не существовать, поэтому берём realpath самого
+# глубокого существующего родителя и дописываем недостающий остаток.
+sp_realpath = $(if $(realpath $(1)),$(realpath $(1)),$(addsuffix /$(notdir $(1)),$(call sp_realpath,$(patsubst %/,%,$(dir $(1))))))
+
+BUILD_OUTDIR := $(abspath $(call sp_realpath,$(LOCAL_OUTDIR))/$(STAPPLER_TARGET)/$(BUILD_TYPE))
 
 $(call print_verbose,(defaults.mk) STAPPLER_TARGET: $(STAPPLER_TARGET))
 $(call print_verbose,(defaults.mk) BUILD_OUTDIR: $(BUILD_OUTDIR))

@@ -89,6 +89,8 @@ mpc_TARBALL = mpc-1.2.1.tar.gz
 isl_TARBALL = isl-0.24.tar.xz
 gettext_TARBALL = gettext-0.22.5.tar.xz
 
+mold_TARBALL = mold-v2.41.0.tar.gz
+
 $(eval $(call download_tarbell_target,$(GCC_SRC_DIR),gcc-$(GCC_SRC_VER).tar.xz,\
 	ftp://stappler.dev/infrastructure/gcc-15.2.0/gcc-$(GCC_SRC_VER).tar.xz))
 
@@ -147,6 +149,9 @@ $(eval $(call download_tarbell_target,$(GLIBC_SRC_DIR),$(GLIBC_SRC_TARBALL),$(GL
 $(eval $(call download_tarbell_target,$(MAKE_SRC_DIR),$(MAKE_SRC_TARBALL),$(MAKE_SRC_URL)))
 
 endif
+
+$(eval $(call download_tarbell_target,src/mold,$(mold_TARBALL),\
+	https://github.com/rui314/mold/archive/refs/tags/v2.41.0.tar.gz))
 
 ZLIB_DIR := $(realpath $(SP_SRC_DIR)/zlib)
 

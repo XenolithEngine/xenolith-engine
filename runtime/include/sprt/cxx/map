@@ -65,6 +65,8 @@ public:
 	using difference_type = ptrdiff_t;
 
 	class value_compare {
+		friend __map;
+
 	protected:
 		key_compare comp;
 		value_compare(key_compare c) : comp(c) { }
