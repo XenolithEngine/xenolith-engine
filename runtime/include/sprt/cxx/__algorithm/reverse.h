@@ -26,6 +26,7 @@ THE SOFTWARE.
 #include <sprt/cxx/iterator>
 
 namespace sprt {
+inline namespace __cxx_algorithm {
 
 template <typename _BidirectionalIterator>
 inline constexpr void __reverse_impl(_BidirectionalIterator __first, _BidirectionalIterator __last,
@@ -58,6 +59,7 @@ inline constexpr void reverse(_BidirectionalIterator __first, _BidirectionalIter
 	sprt::__reverse(sprt::move_unsafe(__first), sprt::move_unsafe(__last));
 }
 
+} // inline namespace __cxx_algorithm
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___ALGORITHM_REVERSE_H_

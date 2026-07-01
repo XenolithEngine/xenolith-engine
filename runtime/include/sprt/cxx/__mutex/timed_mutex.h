@@ -26,6 +26,7 @@
 #include <sprt/runtime/thread/qmutex.h>
 
 namespace sprt {
+inline namespace __cxx_mutex {
 
 class timed_mutex {
 public:
@@ -56,6 +57,7 @@ protected:
 	native_handle_type _mutex = 0;
 };
 
+} // inline namespace __cxx_mutex
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___MUTEX_TIMED_MUTEX_H_

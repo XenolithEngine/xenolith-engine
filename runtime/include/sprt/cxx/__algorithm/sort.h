@@ -34,11 +34,16 @@ THE SOFTWARE.
 */
 
 namespace sprt {
+inline namespace __cxx_algorithm {
 
 template <typename Iter>
 concept is_random_access = sprt::is_base_of_v< sprt::random_access_iterator_tag,
 		typename sprt::iterator_traits<Iter>::iterator_category >;
 
+} // inline namespace __cxx_algorithm
+
+// 'detail' is the shared sprt::detail namespace, so it must stay outside the
+// per-header inline namespace (otherwise it conflicts with sprt::detail elsewhere).
 namespace detail {
 
 template <typename RandomIt, typename Comparator>
@@ -211,6 +216,8 @@ void quicksort_impl(RandomIt first, RandomIt last, size_t depth_limit, Compare c
 
 } // namespace detail
 
+inline namespace __cxx_algorithm {
+
 /**
  * Main public interface: std::sort equivalent.
  * 
@@ -251,6 +258,7 @@ void sort(Iter first, Iter last) {
 	sort(first, last, sprt::less<void>{});
 }
 
+} // inline namespace __cxx_algorithm
 } // namespace sprt
 
 #endif

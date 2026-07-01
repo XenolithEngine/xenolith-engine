@@ -1,0 +1,491 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_ANY_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_ANY_H_
+
+// Standard-conforming <any>, ported from LLVM libc++'s <any>
+// (runtime/toolchains/src/llvm-project/libcxx/include/any) into namespace sprt
+// and adapted to this freestanding runtime:
+//
+//  * Same small-object-optimization design as libc++: a value that is nothrow
+//    move-constructible and fits in a 3-pointer buffer is stored inline; anything
+//    else is heap-allocated. Type-erased operations (destroy / copy / move / get /
+//    type) are dispatched through a per-type handler function pointer (__h_), the
+//    libc++ "manual vtable".
+//
+//  * The runtime is compiled -fno-exceptions, so every member is noexcept (an
+//    alternative's operations cannot throw, hence no exceptional path / no need
+//    for libc++'s allocate-then-rollback guard). The value forms of any_cast<T>()
+//    (which std::any_cast throws bad_any_cast from on a type mismatch) instead
+//    abort via __throw_bad_any_cast(); the pointer forms any_cast<T>(any*) keep
+//    their standard, non-throwing "return nullptr on mismatch" behaviour — that is
+//    the no-throw access surface (cf. optional::value_or / variant::get_if).
+//
+//  * RTTI is enabled on every target (-frtti), so type identity uses typeid /
+//    type_info exactly as libc++ does; the non-RTTI fallback id is retained for
+//    completeness but is never exercised here.
+
+#include <sprt/cxx/type_traits>
+#include <sprt/cxx/new>
+#include <sprt/cxx/initializer_list>
+#include <sprt/cxx/typeinfo>
+#include <sprt/cxx/__utility/common.h>
+#include <sprt/cxx/__utility/in_place.h>
+#include <sprt/cxx/__memory/common.h>
+
+namespace sprt {
+
+// [any.bad.any.cast]
+//
+// As with bad_optional_access / bad_variant_access, this runtime has no exception
+// hierarchy; bad_any_cast exists for API completeness and is never thrown.
+class bad_any_cast {
+public:
+	bad_any_cast() noexcept = default;
+	bad_any_cast(const bad_any_cast &) noexcept = default;
+	bad_any_cast &operator=(const bad_any_cast &) noexcept = default;
+	~bad_any_cast() = default;
+
+	const char *what() const noexcept { return "bad_any_cast"; }
+};
+
+[[noreturn]] inline void __throw_bad_any_cast() noexcept {
+	// -fno-exceptions: the would-be `throw bad_any_cast()` becomes a defined abort.
+	__builtin_abort();
+}
+
+// Forward declarations
+class any;
+
+template <typename _ValueType>
+add_pointer_t<add_const_t<_ValueType>> any_cast(const any *) noexcept;
+
+template <typename _ValueType>
+add_pointer_t<_ValueType> any_cast(any *) noexcept;
+
+namespace __any_imp {
+
+// Inline storage: 3 pointers, pointer-aligned.
+struct _Buffer {
+	alignas(void *) char __data[3 * sizeof(void *)];
+};
+
+template <typename _Tp>
+using _IsSmallObject = integral_constant<bool,
+		sizeof(_Tp) <= sizeof(_Buffer) && alignof(_Buffer) % alignof(_Tp) == 0
+				&& is_nothrow_move_constructible<_Tp>::value>;
+
+enum class _Action { _Destroy, _Copy, _Move, _Get, _TypeInfo };
+
+template <typename _Tp>
+struct _SmallHandler;
+template <typename _Tp>
+struct _LargeHandler;
+
+template <typename _Tp>
+struct __unique_typeinfo {
+	static constexpr int __id = 0;
+};
+
+template <typename _Tp>
+inline constexpr const void *__get_fallback_typeid() {
+	return &__unique_typeinfo<remove_cv_t<remove_reference_t<_Tp>>>::__id;
+}
+
+template <typename _Tp>
+inline bool __compare_typeid(const type_info *__id, const void *__fallback_id) {
+	if (__id && *__id == typeid(_Tp)) {
+		return true;
+	}
+	return !__id && __fallback_id == __any_imp::__get_fallback_typeid<_Tp>();
+}
+
+template <typename _Tp>
+using _Handler = conditional_t<_IsSmallObject<_Tp>::value, _SmallHandler<_Tp>, _LargeHandler<_Tp>>;
+
+} // namespace __any_imp
+
+class any {
+public:
+	// construct/destruct
+	constexpr any() noexcept : __h_(nullptr) { }
+
+	any(const any &__other) noexcept : __h_(nullptr) {
+		if (__other.__h_) {
+			__other.__call(_Action::_Copy, this);
+		}
+	}
+
+	any(any &&__other) noexcept : __h_(nullptr) {
+		if (__other.__h_) {
+			__other.__call(_Action::_Move, this);
+		}
+	}
+
+	template <typename _ValueType, typename _Tp = decay_t<_ValueType>,
+			typename = enable_if_t<!is_same<_Tp, any>::value
+					&& !is_inplace_type<_ValueType>::value && is_copy_constructible<_Tp>::value>>
+	any(_ValueType &&__value) noexcept;
+
+	template <typename _ValueType, typename... _Args, typename _Tp = decay_t<_ValueType>,
+			typename = enable_if_t<is_constructible<_Tp, _Args...>::value
+					&& is_copy_constructible<_Tp>::value>>
+	explicit any(in_place_type_t<_ValueType>, _Args &&...__args) noexcept;
+
+	template <typename _ValueType, typename _Up, typename... _Args, typename _Tp = decay_t<_ValueType>,
+			typename = enable_if_t<is_constructible<_Tp, initializer_list<_Up> &, _Args...>::value
+					&& is_copy_constructible<_Tp>::value>>
+	explicit any(in_place_type_t<_ValueType>, initializer_list<_Up>, _Args &&...__args) noexcept;
+
+	~any() noexcept { this->reset(); }
+
+	// assignments
+	any &operator=(const any &__rhs) noexcept {
+		any(__rhs).swap(*this);
+		return *this;
+	}
+
+	any &operator=(any &&__rhs) noexcept {
+		any(sprt::move(__rhs)).swap(*this);
+		return *this;
+	}
+
+	template <typename _ValueType, typename _Tp = decay_t<_ValueType>,
+			typename = enable_if_t<!is_same<_Tp, any>::value && is_copy_constructible<_Tp>::value>>
+	any &operator=(_ValueType &&__rhs) noexcept;
+
+	// modifiers
+	template <typename _ValueType, typename... _Args, typename _Tp = decay_t<_ValueType>,
+			typename = enable_if_t<is_constructible<_Tp, _Args...>::value
+					&& is_copy_constructible<_Tp>::value>>
+	_Tp &emplace(_Args &&...) noexcept;
+
+	template <typename _ValueType, typename _Up, typename... _Args, typename _Tp = decay_t<_ValueType>,
+			typename = enable_if_t<is_constructible<_Tp, initializer_list<_Up> &, _Args...>::value
+					&& is_copy_constructible<_Tp>::value>>
+	_Tp &emplace(initializer_list<_Up>, _Args &&...) noexcept;
+
+	void reset() noexcept {
+		if (__h_) {
+			this->__call(_Action::_Destroy);
+		}
+	}
+
+	void swap(any &__rhs) noexcept;
+
+	// observers
+	bool has_value() const noexcept { return __h_ != nullptr; }
+
+	const type_info &type() const noexcept {
+		if (__h_) {
+			return *static_cast<const type_info *>(this->__call(_Action::_TypeInfo));
+		} else {
+			return typeid(void);
+		}
+	}
+
+private:
+	using _Action = __any_imp::_Action;
+	using _HandleFuncPtr =
+			void *(*) (_Action, const any *, any *, const type_info *, const void *__fallback_info);
+
+	union _Storage {
+		constexpr _Storage() : __ptr(nullptr) { }
+		void *__ptr;
+		__any_imp::_Buffer __buf;
+	};
+
+	void *__call(_Action __a, any *__other = nullptr, const type_info *__info = nullptr,
+			const void *__fallback_info = nullptr) const {
+		return __h_(__a, this, __other, __info, __fallback_info);
+	}
+
+	void *__call(_Action __a, any *__other = nullptr, const type_info *__info = nullptr,
+			const void *__fallback_info = nullptr) {
+		return __h_(__a, this, __other, __info, __fallback_info);
+	}
+
+	template <typename>
+	friend struct __any_imp::_SmallHandler;
+	template <typename>
+	friend struct __any_imp::_LargeHandler;
+
+	template <typename _ValueType>
+	friend add_pointer_t<add_const_t<_ValueType>> any_cast(const any *) noexcept;
+
+	template <typename _ValueType>
+	friend add_pointer_t<_ValueType> any_cast(any *) noexcept;
+
+	_HandleFuncPtr __h_ = nullptr;
+	_Storage __s_;
+};
+
+namespace __any_imp {
+
+template <typename _Tp>
+struct _SmallHandler {
+	static void *__handle(_Action __act, const any *__this, any *__other, const type_info *__info,
+			const void *__fallback_info) {
+		switch (__act) {
+		case _Action::_Destroy: __destroy(const_cast<any &>(*__this)); return nullptr;
+		case _Action::_Copy: __copy(*__this, *__other); return nullptr;
+		case _Action::_Move: __move(const_cast<any &>(*__this), *__other); return nullptr;
+		case _Action::_Get: return __get(const_cast<any &>(*__this), __info, __fallback_info);
+		case _Action::_TypeInfo: return __type_info();
+		}
+		__builtin_unreachable();
+	}
+
+	template <typename... _Args>
+	static _Tp &__create(any &__dest, _Args &&...__args) {
+		_Tp *__ret = static_cast<_Tp *>(static_cast<void *>(&__dest.__s_.__buf));
+		sprt::construct_at(__ret, sprt::forward<_Args>(__args)...);
+		__dest.__h_ = &_SmallHandler::__handle;
+		return *__ret;
+	}
+
+private:
+	static void __destroy(any &__this) {
+		_Tp *__p = static_cast<_Tp *>(static_cast<void *>(&__this.__s_.__buf));
+		sprt::destroy_at(__p);
+		__this.__h_ = nullptr;
+	}
+
+	static void __copy(const any &__this, any &__dest) {
+		_SmallHandler::__create(__dest,
+				*static_cast<const _Tp *>(static_cast<const void *>(&__this.__s_.__buf)));
+	}
+
+	static void __move(any &__this, any &__dest) {
+		// move_unsafe: sprt::move is disabled for pointer types (refcount-error
+		// guard); the type-erased handler must move whatever _Tp is.
+		_SmallHandler::__create(__dest,
+				sprt::move_unsafe(*static_cast<_Tp *>(static_cast<void *>(&__this.__s_.__buf))));
+		__destroy(__this);
+	}
+
+	static void *__get(any &__this, const type_info *__info, const void *__fallback_id) {
+		if (__any_imp::__compare_typeid<_Tp>(__info, __fallback_id)) {
+			return static_cast<void *>(&__this.__s_.__buf);
+		}
+		return nullptr;
+	}
+
+	static void *__type_info() {
+		return const_cast<void *>(static_cast<const void *>(&typeid(_Tp)));
+	}
+};
+
+template <typename _Tp>
+struct _LargeHandler {
+	static void *__handle(_Action __act, const any *__this, any *__other, const type_info *__info,
+			const void *__fallback_info) {
+		switch (__act) {
+		case _Action::_Destroy: __destroy(const_cast<any &>(*__this)); return nullptr;
+		case _Action::_Copy: __copy(*__this, *__other); return nullptr;
+		case _Action::_Move: __move(const_cast<any &>(*__this), *__other); return nullptr;
+		case _Action::_Get: return __get(const_cast<any &>(*__this), __info, __fallback_info);
+		case _Action::_TypeInfo: return __type_info();
+		}
+		__builtin_unreachable();
+	}
+
+	template <typename... _Args>
+	static _Tp &__create(any &__dest, _Args &&...__args) {
+		// -fno-exceptions: construct_at cannot throw, so a plain allocate +
+		// construct needs no rollback guard (unlike libc++'s unique_ptr hold).
+		std::allocator<_Tp> __a;
+		_Tp *__ret = __a.allocate(1);
+		sprt::construct_at(__ret, sprt::forward<_Args>(__args)...);
+		__dest.__s_.__ptr = __ret;
+		__dest.__h_ = &_LargeHandler::__handle;
+		return *__ret;
+	}
+
+private:
+	static void __destroy(any &__this) {
+		std::allocator<_Tp> __a;
+		_Tp *__p = static_cast<_Tp *>(__this.__s_.__ptr);
+		sprt::destroy_at(__p);
+		__a.deallocate(__p, 1);
+		__this.__h_ = nullptr;
+	}
+
+	static void __copy(const any &__this, any &__dest) {
+		_LargeHandler::__create(__dest, *static_cast<const _Tp *>(__this.__s_.__ptr));
+	}
+
+	static void __move(any &__this, any &__dest) {
+		__dest.__s_.__ptr = __this.__s_.__ptr;
+		__dest.__h_ = &_LargeHandler::__handle;
+		__this.__h_ = nullptr;
+	}
+
+	static void *__get(any &__this, const type_info *__info, const void *__fallback_info) {
+		if (__any_imp::__compare_typeid<_Tp>(__info, __fallback_info)) {
+			return static_cast<void *>(__this.__s_.__ptr);
+		}
+		return nullptr;
+	}
+
+	static void *__type_info() {
+		return const_cast<void *>(static_cast<const void *>(&typeid(_Tp)));
+	}
+};
+
+} // namespace __any_imp
+
+template <typename _ValueType, typename _Tp, typename>
+any::any(_ValueType &&__v) noexcept : __h_(nullptr) {
+	__any_imp::_Handler<_Tp>::__create(*this, sprt::forward<_ValueType>(__v));
+}
+
+template <typename _ValueType, typename... _Args, typename _Tp, typename>
+any::any(in_place_type_t<_ValueType>, _Args &&...__args) noexcept {
+	__any_imp::_Handler<_Tp>::__create(*this, sprt::forward<_Args>(__args)...);
+}
+
+template <typename _ValueType, typename _Up, typename... _Args, typename _Tp, typename>
+any::any(in_place_type_t<_ValueType>, initializer_list<_Up> __il, _Args &&...__args) noexcept {
+	__any_imp::_Handler<_Tp>::__create(*this, __il, sprt::forward<_Args>(__args)...);
+}
+
+template <typename _ValueType, typename, typename>
+inline any &any::operator=(_ValueType &&__v) noexcept {
+	any(sprt::forward<_ValueType>(__v)).swap(*this);
+	return *this;
+}
+
+template <typename _ValueType, typename... _Args, typename _Tp, typename>
+inline _Tp &any::emplace(_Args &&...__args) noexcept {
+	reset();
+	return __any_imp::_Handler<_Tp>::__create(*this, sprt::forward<_Args>(__args)...);
+}
+
+template <typename _ValueType, typename _Up, typename... _Args, typename _Tp, typename>
+inline _Tp &any::emplace(initializer_list<_Up> __il, _Args &&...__args) noexcept {
+	reset();
+	return __any_imp::_Handler<_Tp>::__create(*this, __il, sprt::forward<_Args>(__args)...);
+}
+
+inline void any::swap(any &__rhs) noexcept {
+	if (this == &__rhs) {
+		return;
+	}
+	if (__h_ && __rhs.__h_) {
+		any __tmp;
+		__rhs.__call(_Action::_Move, &__tmp);
+		this->__call(_Action::_Move, &__rhs);
+		__tmp.__call(_Action::_Move, this);
+	} else if (__h_) {
+		this->__call(_Action::_Move, &__rhs);
+	} else if (__rhs.__h_) {
+		__rhs.__call(_Action::_Move, this);
+	}
+}
+
+// [any.nonmembers]
+
+inline void swap(any &__lhs, any &__rhs) noexcept { __lhs.swap(__rhs); }
+
+template <typename _Tp, typename... _Args>
+inline any make_any(_Args &&...__args) {
+	return any(in_place_type<_Tp>, sprt::forward<_Args>(__args)...);
+}
+
+template <typename _Tp, typename _Up, typename... _Args>
+inline any make_any(initializer_list<_Up> __il, _Args &&...__args) {
+	return any(in_place_type<_Tp>, __il, sprt::forward<_Args>(__args)...);
+}
+
+template <typename _ValueType>
+inline _ValueType any_cast(const any &__v) {
+	using _RawValueType = remove_cvref_t<_ValueType>;
+	static_assert(is_constructible<_ValueType, const _RawValueType &>::value,
+			"ValueType is required to be a const lvalue reference or a CopyConstructible type");
+	auto __tmp = sprt::any_cast<add_const_t<_RawValueType>>(&__v);
+	if (__tmp == nullptr) {
+		sprt::__throw_bad_any_cast();
+	}
+	return static_cast<_ValueType>(*__tmp);
+}
+
+template <typename _ValueType>
+inline _ValueType any_cast(any &__v) {
+	using _RawValueType = remove_cvref_t<_ValueType>;
+	static_assert(is_constructible<_ValueType, _RawValueType &>::value,
+			"ValueType is required to be an lvalue reference or a CopyConstructible type");
+	auto __tmp = sprt::any_cast<_RawValueType>(&__v);
+	if (__tmp == nullptr) {
+		sprt::__throw_bad_any_cast();
+	}
+	return static_cast<_ValueType>(*__tmp);
+}
+
+template <typename _ValueType>
+inline _ValueType any_cast(any &&__v) {
+	using _RawValueType = remove_cvref_t<_ValueType>;
+	static_assert(is_constructible<_ValueType, _RawValueType>::value,
+			"ValueType is required to be an rvalue reference or a CopyConstructible type");
+	auto __tmp = sprt::any_cast<_RawValueType>(&__v);
+	if (__tmp == nullptr) {
+		sprt::__throw_bad_any_cast();
+	}
+	// move_unsafe: _RawValueType may be a pointer, for which sprt::move is disabled.
+	return static_cast<_ValueType>(sprt::move_unsafe(*__tmp));
+}
+
+template <typename _ValueType>
+inline add_pointer_t<add_const_t<_ValueType>> any_cast(const any *__any) noexcept {
+	static_assert(!is_void_v<_ValueType>, "_ValueType may not be void.");
+	static_assert(!is_reference<_ValueType>::value, "_ValueType may not be a reference.");
+	return sprt::any_cast<_ValueType>(const_cast<any *>(__any));
+}
+
+template <typename _RetType>
+inline _RetType __pointer_or_func_cast(void *__p, false_type) noexcept {
+	return static_cast<_RetType>(__p);
+}
+
+template <typename _RetType>
+inline _RetType __pointer_or_func_cast(void *, true_type) noexcept {
+	return nullptr;
+}
+
+template <typename _ValueType>
+add_pointer_t<_ValueType> any_cast(any *__any) noexcept {
+	using __any_imp::_Action;
+	static_assert(!is_void_v<_ValueType>, "_ValueType may not be void.");
+	static_assert(!is_reference<_ValueType>::value, "_ValueType may not be a reference.");
+	using _ReturnType = add_pointer_t<_ValueType>;
+	if (__any && __any->__h_) {
+		void *__p = __any->__call(_Action::_Get, nullptr, &typeid(_ValueType),
+				__any_imp::__get_fallback_typeid<_ValueType>());
+		return sprt::__pointer_or_func_cast<_ReturnType>(__p, bool_constant<__is_function(_ValueType)> {});
+	}
+	return nullptr;
+}
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_ANY_H_

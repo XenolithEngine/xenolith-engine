@@ -1,0 +1,221 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+// Standard <string>, backed by sprt. std::allocator is a full sprt allocator policy
+// (see <new>), so sprt::__basic_string can be spelled with the standard std::allocator
+// and re-exported as std::basic_string. __basic_string carries the Traits template
+// parameter (defaulted to sprt::char_traits), so the standard 3-parameter
+// basic_string<charT, Traits, Allocator> maps directly; note the parameter order
+// differs (sprt orders the allocator before traits), which the alias remaps. Also
+// provides std::char_traits via __string/char_traits.h.
+
+#ifndef RUNTIME_INCLUDE_LIBC_STL_STRING_H_
+#define RUNTIME_INCLUDE_LIBC_STL_STRING_H_
+
+// Always pull the full std implementations when used through the STL layer.
+#include <__sprt_stl_config.h>
+
+#include <sprt/cxx/string>
+
+#include <__string/char_traits.h>
+
+// For the [string.conversions] numeric functions below: snprintf + the strtol family.
+#include <sprt/c/__sprt_assert.h>
+#include <sprt/cxx/cstdio>
+#include <sprt/cxx/cstdlib>
+
+namespace std {
+
+// std order is <charT, Traits, Allocator>; sprt::__basic_string order is
+// <CharType, Allocator, Traits>, so the allocator and traits are swapped here.
+template <class _CharT, class _Traits = char_traits<_CharT>, class _Alloc = allocator<_CharT>>
+using basic_string = sprt::__basic_string<_CharT, _Alloc, _Traits>;
+
+using string = basic_string<char>;
+using u16string = basic_string<char16_t>;
+using u32string = basic_string<char32_t>;
+using wstring = basic_string<wchar_t>;
+using u8string = basic_string<char8_t>;
+
+// -------------------------------------------------- [string.conversions]
+// to_string is specified "as if by snprintf" with these formats; to_wstring produces the
+// same (ASCII) digits widened to wchar_t. The stoi family delegates to the strtol family.
+// The error paths (no conversion / out of range) assert (this layer is -fno-exceptions)
+// instead of throwing invalid_argument / out_of_range — the only deviation.
+namespace __string_detail {
+
+template <typename _Tp>
+inline string __to_string(const char *__fmt, _Tp __v) {
+	const int __n = sprt::snprintf(nullptr, 0, __fmt, __v);
+	string __s;
+	__s.resize(static_cast<size_t>(__n));
+	sprt::snprintf(__s.data(), static_cast<size_t>(__n) + 1, __fmt, __v);
+	return __s;
+}
+
+inline wstring __widen(const string &__s) {
+	wstring __w;
+	__w.resize(__s.size());
+	for (size_t __i = 0; __i < __s.size(); ++__i) {
+		__w[__i] = static_cast<wchar_t>(static_cast<unsigned char>(__s[__i]));
+	}
+	return __w;
+}
+
+} // namespace __string_detail
+
+inline string to_string(int __v) { return __string_detail::__to_string("%d", __v); }
+inline string to_string(unsigned __v) { return __string_detail::__to_string("%u", __v); }
+inline string to_string(long __v) { return __string_detail::__to_string("%ld", __v); }
+inline string to_string(unsigned long __v) { return __string_detail::__to_string("%lu", __v); }
+inline string to_string(long long __v) { return __string_detail::__to_string("%lld", __v); }
+inline string to_string(unsigned long long __v) {
+	return __string_detail::__to_string("%llu", __v);
+}
+inline string to_string(float __v) {
+	return __string_detail::__to_string("%f", static_cast<double>(__v));
+}
+inline string to_string(double __v) { return __string_detail::__to_string("%f", __v); }
+inline string to_string(long double __v) { return __string_detail::__to_string("%Lf", __v); }
+
+inline wstring to_wstring(int __v) { return __string_detail::__widen(to_string(__v)); }
+inline wstring to_wstring(unsigned __v) { return __string_detail::__widen(to_string(__v)); }
+inline wstring to_wstring(long __v) { return __string_detail::__widen(to_string(__v)); }
+inline wstring to_wstring(unsigned long __v) { return __string_detail::__widen(to_string(__v)); }
+inline wstring to_wstring(long long __v) { return __string_detail::__widen(to_string(__v)); }
+inline wstring to_wstring(unsigned long long __v) { return __string_detail::__widen(to_string(__v)); }
+inline wstring to_wstring(float __v) { return __string_detail::__widen(to_string(__v)); }
+inline wstring to_wstring(double __v) { return __string_detail::__widen(to_string(__v)); }
+inline wstring to_wstring(long double __v) { return __string_detail::__widen(to_string(__v)); }
+
+inline int stoi(const string &__s, size_t *__pos = nullptr, int __base = 10) {
+	char *__end = nullptr;
+	const char *__p = __s.c_str();
+	const long __v = sprt::strtol(__p, &__end, __base);
+	sprt_passert(__end != __p, "stoi: no conversion");
+	sprt_passert(__v >= (-__INT_MAX__ - 1) && __v <= __INT_MAX__, "stoi: out of range");
+	if (__pos) {
+		*__pos = static_cast<size_t>(__end - __p);
+	}
+	return static_cast<int>(__v);
+}
+inline long stol(const string &__s, size_t *__pos = nullptr, int __base = 10) {
+	char *__end = nullptr;
+	const char *__p = __s.c_str();
+	const long __v = sprt::strtol(__p, &__end, __base);
+	sprt_passert(__end != __p, "stol: no conversion");
+	if (__pos) {
+		*__pos = static_cast<size_t>(__end - __p);
+	}
+	return __v;
+}
+inline unsigned long stoul(const string &__s, size_t *__pos = nullptr, int __base = 10) {
+	char *__end = nullptr;
+	const char *__p = __s.c_str();
+	const unsigned long __v = sprt::strtoul(__p, &__end, __base);
+	sprt_passert(__end != __p, "stoul: no conversion");
+	if (__pos) {
+		*__pos = static_cast<size_t>(__end - __p);
+	}
+	return __v;
+}
+inline long long stoll(const string &__s, size_t *__pos = nullptr, int __base = 10) {
+	char *__end = nullptr;
+	const char *__p = __s.c_str();
+	const long long __v = sprt::strtoll(__p, &__end, __base);
+	sprt_passert(__end != __p, "stoll: no conversion");
+	if (__pos) {
+		*__pos = static_cast<size_t>(__end - __p);
+	}
+	return __v;
+}
+inline unsigned long long stoull(const string &__s, size_t *__pos = nullptr, int __base = 10) {
+	char *__end = nullptr;
+	const char *__p = __s.c_str();
+	const unsigned long long __v = sprt::strtoull(__p, &__end, __base);
+	sprt_passert(__end != __p, "stoull: no conversion");
+	if (__pos) {
+		*__pos = static_cast<size_t>(__end - __p);
+	}
+	return __v;
+}
+inline float stof(const string &__s, size_t *__pos = nullptr) {
+	char *__end = nullptr;
+	const char *__p = __s.c_str();
+	const float __v = sprt::strtof(__p, &__end);
+	sprt_passert(__end != __p, "stof: no conversion");
+	if (__pos) {
+		*__pos = static_cast<size_t>(__end - __p);
+	}
+	return __v;
+}
+inline double stod(const string &__s, size_t *__pos = nullptr) {
+	char *__end = nullptr;
+	const char *__p = __s.c_str();
+	const double __v = sprt::strtod(__p, &__end);
+	sprt_passert(__end != __p, "stod: no conversion");
+	if (__pos) {
+		*__pos = static_cast<size_t>(__end - __p);
+	}
+	return __v;
+}
+inline long double stold(const string &__s, size_t *__pos = nullptr) {
+	char *__end = nullptr;
+	const char *__p = __s.c_str();
+	const long double __v = sprt::strtold(__p, &__end);
+	sprt_passert(__end != __p, "stold: no conversion");
+	if (__pos) {
+		*__pos = static_cast<size_t>(__end - __p);
+	}
+	return __v;
+}
+
+// [basic.string.literals] operator""s
+inline namespace literals {
+inline namespace string_literals {
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wuser-defined-literals"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wliteral-suffix"
+#endif
+
+inline string operator""s(const char *__s, size_t __n) { return string(__s, __n); }
+inline wstring operator""s(const wchar_t *__s, size_t __n) { return wstring(__s, __n); }
+inline u8string operator""s(const char8_t *__s, size_t __n) { return u8string(__s, __n); }
+inline u16string operator""s(const char16_t *__s, size_t __n) { return u16string(__s, __n); }
+inline u32string operator""s(const char32_t *__s, size_t __n) { return u32string(__s, __n); }
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
+} // namespace string_literals
+} // namespace literals
+
+} // namespace std
+
+#endif // RUNTIME_INCLUDE_LIBC_STL_STRING_H_

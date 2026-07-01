@@ -26,5 +26,8 @@ THE SOFTWARE.
 #include <sprt/cxx/__memory/common.h>
 #include <sprt/cxx/__memory/allocator_traits.h>
 #include <sprt/cxx/__memory/pointer_traits.h>
+#include <sprt/cxx/__memory/uninitialized.h>
+#include <sprt/cxx/__memory/unique_ptr.h>
+#include <sprt/cxx/__memory/shared_ptr.h>
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_MEMORY_H_

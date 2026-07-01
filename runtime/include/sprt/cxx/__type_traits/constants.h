@@ -32,6 +32,7 @@
 	inline constexpr bool Name##_v =  __##Name(Type);
 
 namespace sprt {
+inline namespace __cxx_type_traits {
 
 using nullptr_t = decltype(nullptr);
 
@@ -71,6 +72,7 @@ struct type_identity {
 template <typename Type>
 using type_identity_t = typename type_identity<Type>::type;
 
+} // inline namespace __cxx_type_traits
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_CONSTANTS_H_

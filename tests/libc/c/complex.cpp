@@ -23,6 +23,17 @@ THE SOFTWARE.
 #include <complex.h>
 #include <stdio.h>
 
+// glibc's CMPLX/CMPLXF expand to __builtin_complex, which g++ (unlike clang and the
+// project's clang toolchain) does not provide in C++ mode. For the standalone g++
+// system build, redefine them via _Complex_I; the sprt <complex.h> path and any
+// clang-based build are unaffected (the guard excludes __clang__).
+#if defined(__GNUC__) && !defined(__clang__)
+#undef CMPLX
+#undef CMPLXF
+#define CMPLX(x, y) ((double _Complex) ((double) (x) + _Complex_I * (double) (y)))
+#define CMPLXF(x, y) ((float _Complex) ((float) (x) + _Complex_I * (float) (y)))
+#endif
+
 namespace sprt::test {
 
 // <complex.h>. On the host these are glibc's complex functions; on the

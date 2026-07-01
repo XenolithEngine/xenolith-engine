@@ -30,6 +30,9 @@ THE SOFTWARE.
 
 #include <sprt/cxx/detail/constexpr.h>
 
+#include <sprt/cxx/__string/char_traits.h>
+#include <sprt/cxx/string_view>
+
 #include <sprt/cxx/compare>
 #include <sprt/cxx/initializer_list>
 
@@ -63,13 +66,20 @@ struct is_char_pointer<char32_t *> {
 	using Type = char_pointer_test;
 };
 
-template <typename CharType, typename InputIterator, bool IsIntegral, typename Allocator>
+template <typename CharType, typename InputIterator, bool IsIntegral, typename Allocator,
+		typename Traits>
 struct __basic_string_fill;
 
-template <typename CharType, typename Allocator>
+// Traits is a real template parameter (defaulted to sprt::char_traits<CharType>), so the
+// std <string> wrapper can expose the standard 3-parameter basic_string<charT, Traits,
+// Allocator>. It is appended LAST (std orders it second) to keep every existing 2-argument
+// __basic_string<Char, Alloc> spelling working unchanged via the default. All character
+// comparison/search goes through traits_type == Traits.
+template <typename CharType, typename Allocator, typename Traits = char_traits<CharType>>
 class __basic_string : public Allocator::base_class {
 public:
 	using allocator_type = Allocator;
+	using traits_type = Traits;
 
 	using pointer = CharType *;
 	using const_pointer = const CharType *;
@@ -80,7 +90,7 @@ public:
 	using charT = CharType;
 	using value_type = CharType;
 	using mem_type = detail::linear_memory<CharType, size_t(1), allocator_type>;
-	using self = __basic_string<CharType, allocator_type>;
+	using self = __basic_string<CharType, allocator_type, Traits>;
 
 	using iterator = typename mem_type::iterator;
 	using const_iterator = typename mem_type::const_iterator;
@@ -535,9 +545,48 @@ public:
 		return compare(data() + pos, lhs_sz, s, rhs_sz);
 	}
 
+	// [string.view] interop: implicit conversion to a view + the string_view converting
+	// constructors ([string.cons], the T-convertible-to-string_view ctor is explicit).
+	operator basic_string_view<CharType, Traits>() const noexcept {
+		return basic_string_view<CharType, Traits>(data(), size());
+	}
+
+	explicit __basic_string(basic_string_view<CharType, Traits> __sv,
+			const allocator_type &alloc = allocator_type()) noexcept
+	: _mem(__sv.data(), __sv.size(), alloc) { }
+
+	__basic_string(basic_string_view<CharType, Traits> __sv, size_type __pos, size_type __n = npos,
+			const allocator_type &alloc = allocator_type()) noexcept
+	: _mem(__sv.substr(__pos, __n).data(), __sv.substr(__pos, __n).size(), alloc) { }
+
+	// [string.starts.with] / [string.ends.with] (C++20), [string.contains] (C++23).
+	bool starts_with(basic_string_view<CharType, Traits> __x) const noexcept {
+		return basic_string_view<CharType, Traits>(*this).starts_with(__x);
+	}
+	bool starts_with(CharType __c) const noexcept {
+		return !empty() && traits_type::eq(front(), __c);
+	}
+	bool starts_with(const CharType *__s) const {
+		return basic_string_view<CharType, Traits>(*this).starts_with(__s);
+	}
+	bool ends_with(basic_string_view<CharType, Traits> __x) const noexcept {
+		return basic_string_view<CharType, Traits>(*this).ends_with(__x);
+	}
+	bool ends_with(CharType __c) const noexcept { return !empty() && traits_type::eq(back(), __c); }
+	bool ends_with(const CharType *__s) const {
+		return basic_string_view<CharType, Traits>(*this).ends_with(__s);
+	}
+	bool contains(basic_string_view<CharType, Traits> __x) const noexcept {
+		return basic_string_view<CharType, Traits>(*this).contains(__x);
+	}
+	bool contains(CharType __c) const noexcept { return find(__c) != npos; }
+	bool contains(const CharType *__s) const {
+		return basic_string_view<CharType, Traits>(*this).contains(__s);
+	}
+
 protected:
 	static int compare(const charT *s1, size_type len1, const charT *s2, size_type len2) {
-		int result = (s1 && s2) ? __constexpr_strcompare(s1, s2, min(len1, len2)) : 0;
+		int result = (s1 && s2) ? traits_type::compare(s1, s2, min(len1, len2)) : 0;
 		if (result != 0) {
 			return result;
 		}
@@ -550,23 +599,23 @@ protected:
 		return 0;
 	}
 
-	template <typename C, typename I, bool B, typename A>
+	template <typename C, typename I, bool B, typename A, typename T>
 	friend struct __basic_string_fill;
 
 	mem_type _mem;
 };
 
-template <typename CharType, typename InputIterator, typename Allocator>
-struct __basic_string_fill<CharType, InputIterator, true, Allocator> {
-	static void fill(__basic_string<CharType, Allocator> &str, InputIterator first,
+template <typename CharType, typename InputIterator, typename Allocator, typename Traits>
+struct __basic_string_fill<CharType, InputIterator, true, Allocator, Traits> {
+	static void fill(__basic_string<CharType, Allocator, Traits> &str, InputIterator first,
 			InputIterator last) noexcept {
 		str._mem.fill(size_t(first), CharType(last));
 	}
 };
 
-template <typename CharType, typename InputIterator, typename Allocator>
-struct __basic_string_fill<CharType, InputIterator, false, Allocator> {
-	static void fill(__basic_string<CharType, Allocator> &str, InputIterator first,
+template <typename CharType, typename InputIterator, typename Allocator, typename Traits>
+struct __basic_string_fill<CharType, InputIterator, false, Allocator, Traits> {
+	static void fill(__basic_string<CharType, Allocator, Traits> &str, InputIterator first,
 			InputIterator last) noexcept {
 		auto size = distance(first, last);
 		str.reserve(size);
@@ -574,112 +623,112 @@ struct __basic_string_fill<CharType, InputIterator, false, Allocator> {
 	}
 };
 
-template <typename CharT, typename Allocator>
+template <typename CharT, typename Allocator, typename Traits>
 template <typename InputIterator>
-__basic_string<CharT, Allocator>::__basic_string(InputIterator first, InputIterator last,
+__basic_string<CharT, Allocator, Traits>::__basic_string(InputIterator first, InputIterator last,
 		const allocator_type &alloc) noexcept
 : _mem(alloc) {
-	__basic_string_fill<CharT, InputIterator, sprt::is_integral_v<InputIterator>, Allocator>::fill(
-			*this, first, last);
+	__basic_string_fill<CharT, InputIterator, sprt::is_integral_v<InputIterator>, Allocator,
+			Traits>::fill(*this, first, last);
 }
 
-template <typename CharT, typename Allocator>
-__basic_string<CharT, Allocator> operator+(const __basic_string<CharT, Allocator> &lhs,
-		const __basic_string<CharT, Allocator> &rhs) {
-	__basic_string<CharT, Allocator> ret;
+template <typename CharT, typename Allocator, typename Traits>
+__basic_string<CharT, Allocator, Traits> operator+(const __basic_string<CharT, Allocator, Traits> &lhs,
+		const __basic_string<CharT, Allocator, Traits> &rhs) {
+	__basic_string<CharT, Allocator, Traits> ret;
 	ret.reserve(lhs.size() + rhs.size());
 	ret.assign(lhs);
 	ret.append(rhs);
 	return ret;
 }
 
-template <typename CharT, typename Allocator>
-__basic_string<CharT, Allocator> operator+(const CharT *lhs,
-		const __basic_string<CharT, Allocator> &rhs) {
-	__basic_string<CharT, Allocator> ret;
+template <typename CharT, typename Allocator, typename Traits>
+__basic_string<CharT, Allocator, Traits> operator+(const CharT *lhs,
+		const __basic_string<CharT, Allocator, Traits> &rhs) {
+	__basic_string<CharT, Allocator, Traits> ret;
 	ret.reserve(__constexpr_strlen(lhs) + rhs.size());
 	ret.assign(lhs);
 	ret.append(rhs);
 	return ret;
 }
 
-template <typename CharT, typename Allocator>
-__basic_string<CharT, Allocator> operator+(CharT lhs, const __basic_string<CharT, Allocator> &rhs) {
-	__basic_string<CharT, Allocator> ret;
+template <typename CharT, typename Allocator, typename Traits>
+__basic_string<CharT, Allocator, Traits> operator+(CharT lhs, const __basic_string<CharT, Allocator, Traits> &rhs) {
+	__basic_string<CharT, Allocator, Traits> ret;
 	ret.reserve(rhs.size() + 1);
 	ret.assign(1, lhs);
 	ret.append(rhs);
 	return ret;
 }
 
-template <typename CharT, typename Allocator>
-__basic_string<CharT, Allocator> operator+(const __basic_string<CharT, Allocator> &lhs,
+template <typename CharT, typename Allocator, typename Traits>
+__basic_string<CharT, Allocator, Traits> operator+(const __basic_string<CharT, Allocator, Traits> &lhs,
 		const CharT *rhs) {
-	__basic_string<CharT, Allocator> ret;
+	__basic_string<CharT, Allocator, Traits> ret;
 	ret.reserve(lhs.size() + __constexpr_strlen(rhs));
 	ret.assign(lhs);
 	ret.append(rhs);
 	return ret;
 }
 
-template <typename CharT, typename Allocator>
-__basic_string<CharT, Allocator> operator+(const __basic_string<CharT, Allocator> &lhs, CharT rhs) {
-	__basic_string<CharT, Allocator> ret;
+template <typename CharT, typename Allocator, typename Traits>
+__basic_string<CharT, Allocator, Traits> operator+(const __basic_string<CharT, Allocator, Traits> &lhs, CharT rhs) {
+	__basic_string<CharT, Allocator, Traits> ret;
 	ret.reserve(rhs.size() + 1);
 	ret.assign(lhs);
 	ret.append(1, rhs);
 	return ret;
 }
 
-template <typename CharT, typename Allocator>
-__basic_string<CharT, Allocator> operator+(__basic_string<CharT, Allocator> &&lhs,
-		const __basic_string<CharT, Allocator> &rhs) {
+template <typename CharT, typename Allocator, typename Traits>
+__basic_string<CharT, Allocator, Traits> operator+(__basic_string<CharT, Allocator, Traits> &&lhs,
+		const __basic_string<CharT, Allocator, Traits> &rhs) {
 	return sprt::move_unsafe(lhs.append(rhs));
 }
 
-template <typename CharT, typename Allocator>
-__basic_string<CharT, Allocator> operator+(const __basic_string<CharT, Allocator> &lhs,
-		__basic_string<CharT, Allocator> &&rhs) {
+template <typename CharT, typename Allocator, typename Traits>
+__basic_string<CharT, Allocator, Traits> operator+(const __basic_string<CharT, Allocator, Traits> &lhs,
+		__basic_string<CharT, Allocator, Traits> &&rhs) {
 	return sprt::move_unsafe(rhs.insert(0, lhs));
 }
 
-template <typename CharT, typename Allocator>
-__basic_string<CharT, Allocator> operator+(__basic_string<CharT, Allocator> &&lhs,
-		__basic_string<CharT, Allocator> &&rhs) {
+template <typename CharT, typename Allocator, typename Traits>
+__basic_string<CharT, Allocator, Traits> operator+(__basic_string<CharT, Allocator, Traits> &&lhs,
+		__basic_string<CharT, Allocator, Traits> &&rhs) {
 	return sprt::move_unsafe(lhs.append(rhs));
 }
 
-template <typename CharT, typename Allocator>
-__basic_string<CharT, Allocator> operator+(const CharT *lhs,
-		__basic_string<CharT, Allocator> &&rhs) {
+template <typename CharT, typename Allocator, typename Traits>
+__basic_string<CharT, Allocator, Traits> operator+(const CharT *lhs,
+		__basic_string<CharT, Allocator, Traits> &&rhs) {
 	return sprt::move_unsafe(rhs.insert(0, lhs));
 }
 
-template <typename CharT, typename Allocator>
-__basic_string<CharT, Allocator> operator+(CharT lhs, __basic_string<CharT, Allocator> &&rhs) {
+template <typename CharT, typename Allocator, typename Traits>
+__basic_string<CharT, Allocator, Traits> operator+(CharT lhs, __basic_string<CharT, Allocator, Traits> &&rhs) {
 	return sprt::move_unsafe(rhs.insert(0, 1, lhs));
 }
 
-template <typename CharT, typename Allocator>
-__basic_string<CharT, Allocator> operator+(__basic_string<CharT, Allocator> &&lhs,
+template <typename CharT, typename Allocator, typename Traits>
+__basic_string<CharT, Allocator, Traits> operator+(__basic_string<CharT, Allocator, Traits> &&lhs,
 		const CharT *rhs) {
 	return sprt::move_unsafe(lhs.append(rhs));
 }
 
-template <typename CharT, typename Allocator>
-__basic_string<CharT, Allocator> operator+(__basic_string<CharT, Allocator> &&lhs, CharT rhs) {
+template <typename CharT, typename Allocator, typename Traits>
+__basic_string<CharT, Allocator, Traits> operator+(__basic_string<CharT, Allocator, Traits> &&lhs, CharT rhs) {
 	return sprt::move_unsafe(lhs.append(1, rhs));
 }
 
-template <typename CharT, typename Allocator>
-bool operator==(const __basic_string<CharT, Allocator> &lhs,
-		const __basic_string<CharT, Allocator> &rhs) {
+template <typename CharT, typename Allocator, typename Traits>
+bool operator==(const __basic_string<CharT, Allocator, Traits> &lhs,
+		const __basic_string<CharT, Allocator, Traits> &rhs) {
 	return lhs.compare(rhs) == 0;
 }
 
-template <typename CharT, typename Allocator>
-auto operator<=>(const __basic_string<CharT, Allocator> &lhs,
-		const __basic_string<CharT, Allocator> &rhs) {
+template <typename CharT, typename Allocator, typename Traits>
+auto operator<=>(const __basic_string<CharT, Allocator, Traits> &lhs,
+		const __basic_string<CharT, Allocator, Traits> &rhs) {
 	auto ret = lhs.compare(rhs);
 	if (ret == 0) {
 		return std::strong_ordering::equal;
@@ -690,13 +739,13 @@ auto operator<=>(const __basic_string<CharT, Allocator> &lhs,
 	}
 }
 
-template <typename CharT, typename Allocator>
-bool operator==(const __basic_string<CharT, Allocator> &lhs, const CharT *rhs) {
+template <typename CharT, typename Allocator, typename Traits>
+bool operator==(const __basic_string<CharT, Allocator, Traits> &lhs, const CharT *rhs) {
 	return lhs.compare(rhs) == 0;
 }
 
-template <typename CharT, typename Allocator>
-auto operator<=>(const __basic_string<CharT, Allocator> &lhs, const CharT *rhs) {
+template <typename CharT, typename Allocator, typename Traits>
+auto operator<=>(const __basic_string<CharT, Allocator, Traits> &lhs, const CharT *rhs) {
 	auto ret = lhs.compare(rhs);
 	if (ret == 0) {
 		return std::strong_ordering::equal;
@@ -707,13 +756,13 @@ auto operator<=>(const __basic_string<CharT, Allocator> &lhs, const CharT *rhs) 
 	}
 }
 
-template <typename CharT, typename Allocator>
-bool operator==(const CharT *lhs, const __basic_string<CharT, Allocator> &rhs) {
+template <typename CharT, typename Allocator, typename Traits>
+bool operator==(const CharT *lhs, const __basic_string<CharT, Allocator, Traits> &rhs) {
 	return rhs.compare(lhs) == 0;
 }
 
-template <typename CharT, typename Allocator>
-auto operator<=>(const CharT *lhs, const __basic_string<CharT, Allocator> &rhs) {
+template <typename CharT, typename Allocator, typename Traits>
+auto operator<=>(const CharT *lhs, const __basic_string<CharT, Allocator, Traits> &rhs) {
 	auto ret = rhs.compare(lhs);
 	if (ret == 0) {
 		return std::strong_ordering::equal;
@@ -724,8 +773,8 @@ auto operator<=>(const CharT *lhs, const __basic_string<CharT, Allocator> &rhs) 
 	}
 }
 
-template <typename CharT, typename Allocator>
-auto __basic_string<CharT, Allocator>::find(const charT *__s, size_type __pos, size_type __n) const
+template <typename CharT, typename Allocator, typename Traits>
+auto __basic_string<CharT, Allocator, Traits>::find(const charT *__s, size_type __pos, size_type __n) const
 		-> size_type {
 	const size_type __size = this->size();
 	const CharT *__data = _mem.data();
@@ -734,8 +783,8 @@ auto __basic_string<CharT, Allocator>::find(const charT *__s, size_type __pos, s
 		return __pos <= __size ? __pos : npos;
 	} else if (__n <= __size) {
 		for (; __pos <= __size - __n; ++__pos) {
-			if (__constexpr_chareq(__data[__pos], __s[0])
-					&& __constexpr_strcompare(__data + __pos + 1, __s + 1, __n - 1) == 0) {
+			if (traits_type::eq(__data[__pos], __s[0])
+					&& traits_type::compare(__data + __pos + 1, __s + 1, __n - 1) == 0) {
 				return __pos;
 			}
 		}
@@ -743,14 +792,14 @@ auto __basic_string<CharT, Allocator>::find(const charT *__s, size_type __pos, s
 	return npos;
 }
 
-template <typename CharT, typename Allocator>
-auto __basic_string<CharT, Allocator>::find(charT __c, size_type __pos) const -> size_type {
+template <typename CharT, typename Allocator, typename Traits>
+auto __basic_string<CharT, Allocator, Traits>::find(charT __c, size_type __pos) const -> size_type {
 	size_type __ret = npos;
 	const size_type __size = this->size();
 	if (__pos < __size) {
 		const CharT *__data = _mem.data();
 		const size_type __n = __size - __pos;
-		const CharT *__p = __constexpr_strfind(__data + __pos, __n, __c);
+		const CharT *__p = traits_type::find(__data + __pos, __n, __c);
 		if (__p) {
 			__ret = __p - __data;
 		}
@@ -758,15 +807,15 @@ auto __basic_string<CharT, Allocator>::find(charT __c, size_type __pos) const ->
 	return __ret;
 }
 
-template <typename CharT, typename Allocator>
-auto __basic_string<CharT, Allocator>::rfind(const charT *__s, size_type __pos, size_type __n) const
+template <typename CharT, typename Allocator, typename Traits>
+auto __basic_string<CharT, Allocator, Traits>::rfind(const charT *__s, size_type __pos, size_type __n) const
 		-> size_type {
 	const size_type __size = this->size();
 	if (__n <= __size) {
 		__pos = min(size_type(__size - __n), __pos);
 		const CharT *__data = _mem.data();
 		do {
-			if (__constexpr_strcompare(__data + __pos, __s, __n) == 0) {
+			if (traits_type::compare(__data + __pos, __s, __n) == 0) {
 				return __pos;
 			}
 		} while (__pos-- > 0);
@@ -774,15 +823,15 @@ auto __basic_string<CharT, Allocator>::rfind(const charT *__s, size_type __pos, 
 	return npos;
 }
 
-template <typename CharT, typename Allocator>
-auto __basic_string<CharT, Allocator>::rfind(charT __c, size_type __pos) const -> size_type {
+template <typename CharT, typename Allocator, typename Traits>
+auto __basic_string<CharT, Allocator, Traits>::rfind(charT __c, size_type __pos) const -> size_type {
 	size_type __size = this->size();
 	if (__size) {
 		if (--__size > __pos) {
 			__size = __pos;
 		}
 		for (++__size; __size-- > 0;) {
-			if (__constexpr_chareq(_mem.data()[__size], __c)) {
+			if (traits_type::eq(_mem.data()[__size], __c)) {
 				return __size;
 			}
 		}
@@ -790,11 +839,11 @@ auto __basic_string<CharT, Allocator>::rfind(charT __c, size_type __pos) const -
 	return npos;
 }
 
-template <typename CharT, typename Allocator>
-auto __basic_string<CharT, Allocator>::find_first_of(const charT *__s, size_type __pos,
+template <typename CharT, typename Allocator, typename Traits>
+auto __basic_string<CharT, Allocator, Traits>::find_first_of(const charT *__s, size_type __pos,
 		size_type __n) const -> size_type {
 	for (; __n && __pos < this->size(); ++__pos) {
-		const CharT *__p = __constexpr_strfind(__s, __n, _mem.data()[__pos]);
+		const CharT *__p = traits_type::find(__s, __n, _mem.data()[__pos]);
 		if (__p) {
 			return __pos;
 		}
@@ -802,8 +851,8 @@ auto __basic_string<CharT, Allocator>::find_first_of(const charT *__s, size_type
 	return npos;
 }
 
-template <typename CharT, typename Allocator>
-auto __basic_string<CharT, Allocator>::find_last_of(const charT *__s, size_type __pos,
+template <typename CharT, typename Allocator, typename Traits>
+auto __basic_string<CharT, Allocator, Traits>::find_last_of(const charT *__s, size_type __pos,
 		size_type __n) const -> size_type {
 	size_type __size = this->size();
 	if (__size && __n) {
@@ -811,7 +860,7 @@ auto __basic_string<CharT, Allocator>::find_last_of(const charT *__s, size_type 
 			__size = __pos;
 		}
 		do {
-			if (__constexpr_strfind(__s, __n, _mem.data()[__size])) {
+			if (traits_type::find(__s, __n, _mem.data()[__size])) {
 				return __size;
 			}
 		} while (__size-- != 0);
@@ -819,30 +868,30 @@ auto __basic_string<CharT, Allocator>::find_last_of(const charT *__s, size_type 
 	return npos;
 }
 
-template <typename CharT, typename Allocator>
-auto __basic_string<CharT, Allocator>::find_first_not_of(const charT *__s, size_type __pos,
+template <typename CharT, typename Allocator, typename Traits>
+auto __basic_string<CharT, Allocator, Traits>::find_first_not_of(const charT *__s, size_type __pos,
 		size_type __n) const -> size_type {
 	for (; __pos < this->size(); ++__pos) {
-		if (!__constexpr_strfind(__s, __n, _mem.data()[__pos])) {
+		if (!traits_type::find(__s, __n, _mem.data()[__pos])) {
 			return __pos;
 		}
 	}
 	return npos;
 }
 
-template <typename CharT, typename Allocator>
-auto __basic_string<CharT, Allocator>::find_first_not_of(charT __c, size_type __pos) const
+template <typename CharT, typename Allocator, typename Traits>
+auto __basic_string<CharT, Allocator, Traits>::find_first_not_of(charT __c, size_type __pos) const
 		-> size_type {
 	for (; __pos < this->size(); ++__pos) {
-		if (!__constexpr_chareq(_mem.data()[__pos], __c)) {
+		if (!traits_type::eq(_mem.data()[__pos], __c)) {
 			return __pos;
 		}
 	}
 	return npos;
 }
 
-template <typename CharT, typename Allocator>
-auto __basic_string<CharT, Allocator>::find_last_not_of(const charT *__s, size_type __pos,
+template <typename CharT, typename Allocator, typename Traits>
+auto __basic_string<CharT, Allocator, Traits>::find_last_not_of(const charT *__s, size_type __pos,
 		size_type __n) const -> size_type {
 	size_type __size = this->size();
 	if (__size) {
@@ -850,7 +899,7 @@ auto __basic_string<CharT, Allocator>::find_last_not_of(const charT *__s, size_t
 			__size = __pos;
 		}
 		do {
-			if (!__constexpr_strfind(__s, __n, _mem.data()[__size])) {
+			if (!traits_type::find(__s, __n, _mem.data()[__size])) {
 				return __size;
 			}
 		} while (__size--);
@@ -858,8 +907,8 @@ auto __basic_string<CharT, Allocator>::find_last_not_of(const charT *__s, size_t
 	return npos;
 }
 
-template <typename CharT, typename Allocator>
-auto __basic_string<CharT, Allocator>::find_last_not_of(charT __c, size_type __pos) const
+template <typename CharT, typename Allocator, typename Traits>
+auto __basic_string<CharT, Allocator, Traits>::find_last_not_of(charT __c, size_type __pos) const
 		-> size_type {
 	size_type __size = this->size();
 	if (__size) {
@@ -867,7 +916,7 @@ auto __basic_string<CharT, Allocator>::find_last_not_of(charT __c, size_type __p
 			__size = __pos;
 		}
 		do {
-			if (!__constexpr_chareq(_mem.data()[__size], __c)) {
+			if (!traits_type::eq(_mem.data()[__size], __c)) {
 				return __size;
 			}
 		} while (__size--);
@@ -875,10 +924,10 @@ auto __basic_string<CharT, Allocator>::find_last_not_of(charT __c, size_type __p
 	return npos;
 }
 
-template <typename CharT, typename Allocator>
-constexpr const typename __basic_string<CharT, Allocator>::size_type
-		__basic_string<CharT, Allocator>::npos =
-				Max<typename __basic_string<CharT, Allocator>::size_type>;
+template <typename CharT, typename Allocator, typename Traits>
+constexpr const typename __basic_string<CharT, Allocator, Traits>::size_type
+		__basic_string<CharT, Allocator, Traits>::npos =
+				Max<typename __basic_string<CharT, Allocator, Traits>::size_type>;
 
 using __pool_string = __basic_string<char, detail::AllocatorPool<char>>;
 using __pool_u16string = __basic_string<char16_t, detail::AllocatorPool<char16_t>>;
@@ -894,9 +943,10 @@ using __pool_basic_string = __basic_string<CharType, detail::AllocatorPool<CharT
 template <typename CharType>
 using __malloc_basic_string = __basic_string<CharType, detail::AllocatorMalloc<CharType>>;
 
-template <typename Allocator>
-struct hash<__basic_string<char, Allocator>> {
-	constexpr size_t operator()(const sprt::__basic_string<char, Allocator> &s) const noexcept {
+template <typename Allocator, typename Traits>
+struct hash<__basic_string<char, Allocator, Traits>> {
+	constexpr size_t operator()(
+			const sprt::__basic_string<char, Allocator, Traits> &s) const noexcept {
 		if constexpr (sizeof(size_t) == 8) {
 			return sprt::hash64(s.data(), s.size() * sizeof(char));
 		} else {
@@ -905,9 +955,9 @@ struct hash<__basic_string<char, Allocator>> {
 	}
 };
 
-template <typename CharType, typename Allocator>
-struct hash<__basic_string<CharType, Allocator>> {
-	size_t operator()(const sprt::__basic_string<CharType, Allocator> &s) const noexcept {
+template <typename CharType, typename Allocator, typename Traits>
+struct hash<__basic_string<CharType, Allocator, Traits>> {
+	size_t operator()(const sprt::__basic_string<CharType, Allocator, Traits> &s) const noexcept {
 		if constexpr (sizeof(size_t) == 8) {
 			return sprt::hash64(reinterpret_cast<const char *>(s.data()),
 					s.size() * sizeof(CharType));

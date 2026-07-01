@@ -30,6 +30,7 @@
 */
 
 namespace sprt {
+inline namespace __cxx_bit {
 
 template <signed_or_unsigned_integer _Tp>
 [[nodiscard]]
@@ -184,6 +185,7 @@ enum class endian {
 	network = big,
 };
 
+} // inline namespace __cxx_bit
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_BIT_

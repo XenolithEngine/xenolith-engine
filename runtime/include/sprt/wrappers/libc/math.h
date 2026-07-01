@@ -652,12 +652,6 @@ sprt::detail::promote_t<_A1, _A2, _A3> hypot(_A1 __x, _A2 __y, _A3 __z) noexcept
 #if __STDC_HOSTED__ == 1 && !defined(__SPRT_BUILD)
 using namespace sprt::_cmath;
 #endif
-
-#ifdef __SPRT_AS_STD
-namespace std {
-using namespace sprt::_cmath;
-}
-#endif
 #endif // __cplusplus
 
 
