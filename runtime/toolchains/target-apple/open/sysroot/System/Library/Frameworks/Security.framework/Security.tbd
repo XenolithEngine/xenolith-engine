@@ -1,0 +1,20 @@
+--- !tapi-tbd
+tbd-version:     4
+targets:         [ x86_64-macos, arm64-macos ]
+install-name:    '/System/Library/Frameworks/Security.framework/Versions/A/Security'
+current-version: 0
+compatibility-version: 0
+exports:
+  - targets:         [ x86_64-macos, arm64-macos ]
+    symbols:         [
+        _AuthorizationCopyRights,
+        _AuthorizationCreate,
+        _AuthorizationFree,
+        _AuthorizationMakeExternalForm,
+        _AuthorizationRightGet,
+        _AuthorizationRightSet,
+        _kSecRandomDefault,
+        _SecRandomCopyBytes,
+        _SessionGetInfo,
+    ]
+...

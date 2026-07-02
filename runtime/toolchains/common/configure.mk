@@ -37,6 +37,9 @@ SP_MACOS_SDK ?= $(abspath $(LIB_SRC_DIR))/MacOSX.sdk
 SP_IOS_SDK ?= $(abspath $(LIB_SRC_DIR))/iPhoneOS.sdk
 SP_IOSSIM_SDK ?= $(abspath $(LIB_SRC_DIR))/iPhoneSimulator.sdk
 endif
+ifneq (,$(findstring +open,$(SP_INSTALL_PREFIX)))
+SP_MACOS_SDK := $(SP_INSTALL_PREFIX)
+endif
 endif
 
 export PKG_CONFIG_PATH=$(SP_INSTALL_PREFIX)/usr/lib/pkgconfig
@@ -79,6 +82,12 @@ endif # WINDOWS
 
 
 ifdef DARWIN
+
+# Apple's modern libc ABI in <sys/cdefs.h> (no legacy $UNIX2003 / $INODE64
+# suffixes) needs no -DXNU_PLATFORM_<platform> here: the +open sysroot bakes the
+# macro into <sys/cdefs.h> at assembly time (open-sysroot.mk, mirroring how
+# Apple resolves those branches with unifdef when generating the SDK), and the
+# real SDKs ship the header already resolved.
 
 ifeq ($(SP_SYSNAME),Darwin)
 SP_SDK_DIR := $(SP_MACOS_SDK)
@@ -246,6 +255,25 @@ endif # SP_IOSSIM
 endif # iOS
 
 endif # DARWIN
+
+
+# +open header layout (Linux-target parity): the SDK-like headers — apple-oss libc,
+# the baked overlay, and our libc++ (include_libc/c++/v1, built by libcxx.mk) — live
+# in <sysroot>/include_libc; usr/include holds ONLY the third-party deps' own headers.
+# Deps builds therefore search include_libc via -isystem, AFTER usr/include (a dep's
+# own installed headers win first). C++ ordering: our c++/v1 must come FIRST (before
+# usr/include and include_libc), or libc++'s <climits> -> `#include_next <limits.h>`
+# would hit the C <limits.h> before libc++'s own and error. Detected by the "+open"
+# marker in the install prefix (same idiom as make/os/darwin.mk). Stock SDK targets
+# are unaffected. cmake deps get the include_libc -isystem from toolchain.cmake
+# (emitted by init-target.mk), so only the c++/v1 prepend is mirrored there.
+ifneq (,$(findstring +open,$(SP_INSTALL_PREFIX)))
+SP_CXXFLAGS := -isystem $(SP_INSTALL_PREFIX)/include_libc/c++/v1 $(SP_CXXFLAGS)
+CONFIGURE_CMAKE_CXX_FLAGS_INIT := -isystem $(SP_INSTALL_PREFIX)/include_libc/c++/v1 $(CONFIGURE_CMAKE_CXX_FLAGS_INIT)
+SP_CFLAGS += -isystem $(SP_INSTALL_PREFIX)/include_libc
+SP_CXXFLAGS += -isystem $(SP_INSTALL_PREFIX)/include_libc
+SP_CPPFLAGS += -isystem $(SP_INSTALL_PREFIX)/include_libc
+endif
 
 
 ifdef WINDOWS

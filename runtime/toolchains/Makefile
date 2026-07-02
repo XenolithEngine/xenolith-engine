@@ -110,10 +110,10 @@ host-cross-x86_64-pc-windows-msvc: target-x86_64-pc-windows-msvc
 host-cross-aarch64-pc-windows-msvc: target-aarch64-pc-windows-msvc
 	$(MAKE) -C host-windows-msvc/cross out OUT_SYSROOT=$(abspath hosts/aarch64-pc-windows-msvc) SP_ARCH_HOST=aarch64
 
-host-cross-x86_64-apple-macosx: target-x86_64-apple-macosx
+host-cross-x86_64-apple-macosx: target-x86_64-apple-macosx+open
 	$(MAKE) -C host-macos/cross out OUT_SYSROOT=$(abspath hosts/x86_64-apple-macosx) SP_ARCH_HOST=x86_64
 
-host-cross-aarch64-apple-macosx: target-aarch64-apple-macosx
+host-cross-aarch64-apple-macosx: target-aarch64-apple-macosx+open
 	$(MAKE) -C host-macos/cross out OUT_SYSROOT=$(abspath hosts/aarch64-apple-macosx) SP_ARCH_HOST=aarch64
 
 host-cross-all: $(filter-out host-cross-$(HOST_ID), \
@@ -205,6 +205,12 @@ target-x86_64-apple-macosx+sprt:
 target-aarch64-apple-macosx+sprt:
 	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64-apple-macosx+sprt
 
+target-x86_64-apple-macosx+open:
+	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) x86_64-apple-macosx+open
+
+target-aarch64-apple-macosx+open:
+	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64-apple-macosx+open
+
 target-aarch64-apple-ios:
 	$(MAKE) -C target-apple TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) aarch64-apple-ios
 
@@ -219,6 +225,12 @@ target-macosx: \
 	target-aarch64-apple-macosx \
 	target-x86_64-apple-macosx+sprt \
 	target-aarch64-apple-macosx+sprt
+
+# Xcode-SDK-free macOS sysroots (Apple open-source headers mixed in). Kept out of
+# the default `target-macosx` aggregate for now — build explicitly by name.
+target-macosx-open: \
+	target-x86_64-apple-macosx+open \
+	target-aarch64-apple-macosx+open
 
 target-ios: \
 	target-aarch64-apple-ios \
@@ -306,6 +318,9 @@ targets-export:\
 	target-aarch64-apple-macosx \
 	target-x86_64-apple-macosx+sprt \
 	target-aarch64-apple-macosx+sprt \
+	target-macosx-open \
+	target-x86_64-apple-macosx+open \
+	target-aarch64-apple-macosx+open \
 	target-ios \
 	target-aarch64-apple-ios \
 	target-x86_64-apple-ios-simulator \

@@ -32,6 +32,7 @@
 #include <sprt/cxx/vector>
 #include <sprt/runtime/enum.h>
 #include <sprt/c/__sprt_unistd.h>
+#include <stdlib.h> // ::getenv (was pulled transitively via Foundation.h, now hidden)
 #include "../src/private/SPRTFilesystem.h"
 
 typedef __SPRT_ID(size_t) size_t;

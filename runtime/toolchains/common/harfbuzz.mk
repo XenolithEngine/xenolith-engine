@@ -34,6 +34,14 @@ CONFIGURE := \
 	-DCMAKE_CXX_STANDARD=20 \
 	-DFREETYPE_INCLUDE_DIRS=$(SP_INSTALL_PREFIX)/include
 
+# harfbuzz auto-enables its CoreText backend on Apple, which pulls the
+# <ApplicationServices/…>/<CoreServices/…> umbrella — absent from the SDK-free +open
+# sysroot (it ships only a minimal CoreText.framework stub). The runtime uses harfbuzz
+# via the generic shaping API + freetype, not hb-coretext, so disable it for +open.
+ifneq (,$(findstring +open,$(SP_INSTALL_PREFIX)))
+CONFIGURE += -DHB_HAVE_CORETEXT=Off
+endif
+
 all:
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_mkdir,$(LIBNAME))

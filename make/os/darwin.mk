@@ -20,10 +20,18 @@
 
 OSTYPE_IS_MACOS := 1
 
+# A "+open" target sysroot is self-contained: it carries the Apple open-source
+# headers (compiled via --sysroot) and the generated .tbd link stubs under
+# usr/lib + System/Library/Frameworks (target-apple/open-sysroot.mk). Point the
+# framework/library search there instead of an Xcode SDK — no SDK required.
+ifneq ($(findstring +open,$(TARGET_SYSROOT)),)
+OSTYPE_SDK_PATH := $(TARGET_SYSROOT)
+else
 OSTYPE_SDK_PATH := $(shell xcrun --sdk $(TARGET_SDK_NAME) --show-sdk-path 2> /dev/null)
 
 ifeq ($(OSTYPE_SDK_PATH),)
 OSTYPE_SDK_PATH := $(TARGET_SDK_FALLBACK)
+endif
 endif
 
 OSTYPE_EXEC_SUFFIX :=
@@ -40,6 +48,15 @@ OSTYPE_EXEC_CFLAGS :=
 # -Wno-overloaded-virtual: complains about 'hides overloaded virtual function', that is normal for Stappler/Xenolith
 OSTYPE_GENERAL_CXXFLAGS := -Wall -Wno-vla-cxx-extension -Wno-overloaded-virtual -Wno-elaborated-enum-base \
 	-frtti -fvisibility=hidden -fvisibility-inlines-hidden
+
+# A "+open" sysroot keeps the SDK-like headers in include_libc (usr/include is
+# reserved for the deps' own headers) and, when exported, ships no
+# usr/local/include search-path link — reach include_libc via -idirafter so app
+# TUs resolve the libc/system headers AFTER the runtime's own wrappers.
+ifneq ($(findstring +open,$(TARGET_SYSROOT)),)
+OSTYPE_GENERAL_CFLAGS += -idirafter $(TARGET_SYSROOT)/include_libc
+OSTYPE_GENERAL_CXXFLAGS += -idirafter $(TARGET_SYSROOT)/include_libc
+endif
 OSTYPE_LIB_CXXFLAGS := -fPIC -DPIC
 OSTYPE_EXEC_CXXFLAGS :=
 

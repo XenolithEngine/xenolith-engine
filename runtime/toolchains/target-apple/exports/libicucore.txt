@@ -1,0 +1,6 @@
+# tbd: install-name=/usr/lib/libicucore.A.dylib current-version=74.1 compatibility-version=1.0.0
+# SDK export list — regenerate the stub via `make -f open-sysroot.mk bake-stubs`.
+_uidna_close
+_uidna_nameToASCII_UTF8
+_uidna_nameToUnicodeUTF8
+_uidna_openUTS46

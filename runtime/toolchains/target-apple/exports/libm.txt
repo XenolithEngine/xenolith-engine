@@ -1,0 +1,2 @@
+# tbd: install-name=/usr/lib/libm.dylib current-version=0 compatibility-version=0
+# SDK export list — regenerate the stub via `make -f open-sysroot.mk bake-stubs`.

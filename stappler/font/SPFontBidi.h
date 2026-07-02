@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -76,7 +76,7 @@ public:
 	// per code unit of the paragraph (rules X1-I2). The span is backed by pool memory and is only
 	// valid under the caller contract above.
 	void foreachParagraph(const Callback<void(uint32_t offset, uint32_t length, uint8_t baseLevel,
-			SpanView<uint8_t> levels)> &) const;
+					SpanView<uint8_t> levels)> &) const;
 
 	// Reorder the span [offset, length] (in source code units) into visual order and emit each
 	// visual run (rules L1-L2). The span is treated as a single paragraph + line: pass a whole
@@ -94,7 +94,7 @@ private:
 	bool doInit(const void *buffer, size_t length, uint32_t encoding, TextDirection base);
 
 	const void *_algorithm = nullptr; // SBAlgorithmRef (an opaque const handle; SheenBidi stays out
-									  // of the public header)
+	// of the public header)
 	uint32_t _length = 0;
 	uint32_t _encoding = 0; // SBStringEncoding
 	TextDirection _base = TextDirection::Neutral;

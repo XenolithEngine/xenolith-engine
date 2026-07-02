@@ -82,6 +82,7 @@ OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
 	llvm-pdbutil \
 	llvm-rc \
 	llvm-readobj \
+	llvm-readtapi \
 	llvm-size \
 	llvm-strings \
 	llvm-symbolizer \

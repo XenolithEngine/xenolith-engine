@@ -31,7 +31,7 @@ TOOLCHAIN_TARGETS ?= $(abspath $(MAKE_ROOT)targets)
 
 MKDIR = mkdir -p
 
-SP_MACOS_VER := 14.4
+SP_MACOS_VER := 14.5
 SP_IOS_VER := 17.4
 
 # The Vulkan validation layer is a loadable MODULE (.dylib) on macOS, but on iOS
@@ -113,6 +113,29 @@ SP_aarch64_MACOSX_INFO := \
 	SP_APPLE_ARCH=arm64-macos \
 	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx
 
+# "+open" now builds a STANDALONE sysroot from scratch in its OWN intermediate
+# (intermediate/<arch>-apple-macosx+open) — it is a primary target, no longer an
+# overlay staged from the stock <arch>-apple-macosx build. Same compiler triple
+# (SP_TARGET); only the intermediate dir differs. init-target lays the toolchain
+# there and open-sysroot.mk assembles usr/include from apple-oss + the baked overlay.
+SP_x86_64_MACOSX_OPEN_INFO := \
+	$(SP_ARCH_COMMON) \
+	SP_SYSNAME=Darwin \
+	SP_OSVER=$(SP_MACOS_VER) \
+	SP_TARGET=x86_64-apple-macosx \
+	SP_ARCH=x86_64 \
+	SP_APPLE_ARCH=x86_64-macos \
+	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx+open
+
+SP_aarch64_MACOSX_OPEN_INFO := \
+	$(SP_ARCH_COMMON) \
+	SP_SYSNAME=Darwin \
+	SP_OSVER=$(SP_MACOS_VER) \
+	SP_TARGET=aarch64-apple-macosx \
+	SP_ARCH=arm64 \
+	SP_APPLE_ARCH=arm64-macos \
+	TOOLCHAIN_OUTPUT_DIR=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx+open
+
 SP_aarch64_IOS_INFO := \
 	$(SP_ARCH_COMMON) \
 	SP_SYSNAME=iOS \
@@ -170,6 +193,51 @@ aarch64-apple-macosx+sprt:
 	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_aarch64_MACOSX_INFO) \
 		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx \
 		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-apple-macosx+sprt
+
+# The "+open" variant is a STANDALONE Xcode-SDK-free sysroot, built from scratch
+# in its OWN intermediate (intermediate/<arch>-apple-macosx+open):
+#   1. init-target bootstrap — toolchain.cmake + target.mk (fresh, both SDK-free:
+#                     -isysroot = the sysroot itself, -DXNU_PLATFORM_MacOSX) + host/
+#                     lib-clang symlinks + the CSU checkout (NO crt1 yet);
+#   2. open-sysroot — assemble usr/include from apple-oss + the baked overlay
+#                     (tbds, framework headers, libm) directly in the intermediate;
+#   3. init-target crt1 — compile crt1.o against the now-populated +open sysroot
+#                     (SDK-free; runs AFTER open-sysroot so usr/include exists);
+#   4. libcxx       — cross-built libc++/libc++abi/libunwind (see libcxx.mk); MUST
+#                     precede the C++ deps so usr/include/c++/v1 exists for them;
+#   5. all          — the full third-party dependency set, same per-lib rules as the
+#                     stock targets. Includes lib/clang/lib/darwin/libclang_rt.osx.a
+#                     (compiler-rt builtins + sanitizers via libc++.mk): configure.mk
+#                     redirects SP_MACOS_SDK to the sysroot for +open prefixes, so
+#                     that build is SDK-free too;
+#   6. install      — export the final sysroot into targets/<arch>-apple-macosx+open
+#                     via install-target.mk: include_libc + verbatim usr/lib (tbds,
+#                     dylib chains, crt1.o) + frameworks + usr/local/include link +
+#                     the +sprt packaging (prebuilt libsprt.dylib/.tbd + runtime.mk).
+# The working sysroot IS the intermediate dir; the install step only exports it.
+x86_64-apple-macosx+open:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx+open/usr/include $(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx+open/usr/lib
+	$(MAKE) -f $(TARGET_FILE) $(SP_x86_64_MACOSX_OPEN_INFO) bootstrap
+	$(MAKE) -f $(MAKE_ROOT)open-sysroot.mk $(SP_x86_64_MACOSX_OPEN_INFO) \
+		T_TARGET=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx+open
+	$(MAKE) -f $(TARGET_FILE) $(SP_x86_64_MACOSX_OPEN_INFO) crt1
+	$(MAKE) -f $(THIS_FILE) $(SP_x86_64_MACOSX_OPEN_INFO) libcxx
+	$(MAKE) -f $(THIS_FILE) $(SP_x86_64_MACOSX_OPEN_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_x86_64_MACOSX_OPEN_INFO) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/x86_64-apple-macosx+open \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/x86_64-apple-macosx+open
+
+aarch64-apple-macosx+open:
+	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx+open/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx+open/usr/lib
+	$(MAKE) -f $(TARGET_FILE) $(SP_aarch64_MACOSX_OPEN_INFO) bootstrap
+	$(MAKE) -f $(MAKE_ROOT)open-sysroot.mk $(SP_aarch64_MACOSX_OPEN_INFO) \
+		T_TARGET=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx+open
+	$(MAKE) -f $(TARGET_FILE) $(SP_aarch64_MACOSX_OPEN_INFO) crt1
+	$(MAKE) -f $(THIS_FILE) $(SP_aarch64_MACOSX_OPEN_INFO) libcxx
+	$(MAKE) -f $(THIS_FILE) $(SP_aarch64_MACOSX_OPEN_INFO)
+	$(MAKE) -f $(INSTALL_TARGET_FILE) $(SP_aarch64_MACOSX_OPEN_INFO) \
+		T_INTERMEDIATE=$(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-macosx+open \
+		T_TARGET=$(TOOLCHAIN_TARGETS)/aarch64-apple-macosx+open
 
 aarch64-apple-ios:
 	@mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios/usr/include $(TOOLCHAIN_OUTPUT_DIR)/aarch64-apple-ios/usr/lib
@@ -354,6 +422,17 @@ $(SP_INSTALL_PREFIX)/usr/include/simde/simde-arch.h: ../common/simde.mk
 $(SP_INSTALL_PREFIX)/share/licenses:
 	rm -rf $(SP_INSTALL_PREFIX)/share/licenses
 
-.PHONY: all
+# libc++ / libc++abi / libunwind cross-built from src/llvm-project-17 into the target
+# sysroot (SDK-like: separate abi dylib, /usr/lib install-names, tbds via llvm-readtapi).
+# Invoked as a standalone goal by the +open target rule BEFORE `all` so that
+# usr/include/c++/v1 exists for the C++ deps. Keyed on the final artifact (libc++.tbd,
+# written last by libcxx.mk) so re-running the +open pipeline does not redo the whole
+# LLVM runtimes build every time.
+libcxx: $(SP_INSTALL_PREFIX)/usr/lib/libc++.tbd
+
+$(SP_INSTALL_PREFIX)/usr/lib/libc++.tbd: $(MAKE_ROOT)libcxx.mk
+	$(MAKE) -f $(MAKE_ROOT)libcxx.mk $(FORWARD_VARS)
+
+.PHONY: all libcxx
 
 endif

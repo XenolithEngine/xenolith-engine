@@ -111,93 +111,15 @@ __SPRT_BEGIN_DECL
 typedef __SPRT_ID(fexcept_t) fexcept_t;
 typedef __SPRT_ID(fenv_t) fenv_t;
 
-SPRT_UMBRELLA_FUNC
-int feclearexcept(int v) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_feclearexcept(v);
-}
-#endif
+#define SPRT_FUNC_BEGIN SPRT_UMBRELLA_FUNC
+#define SPRT_FUNC_END SPRT_UMBRELLA_END
+#define SPRT_FUNC_BODY SPRT_UMBRELLA_REQUIRED
 
-SPRT_UMBRELLA_FUNC
-int fegetexceptflag(fexcept_t *ex, int v) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fegetexceptflag(ex, v);
-}
-#endif
-SPRT_UMBRELLA_FUNC
-int feraiseexcept(int v) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_feraiseexcept(v);
-}
-#endif
+#include <sprt/wrappers/libc/fenv_impl.h>
 
-SPRT_UMBRELLA_FUNC
-int fesetexceptflag(const fexcept_t *ex, int v) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fesetexceptflag(ex, v);
-}
-#endif
-SPRT_UMBRELLA_FUNC
-int fetestexcept(int v) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fetestexcept(v);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-int fegetround(void) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fegetround();
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-int fesetround(int v) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fesetround(v);
-}
-#endif
-
-
-SPRT_UMBRELLA_FUNC
-int fegetenv(fenv_t *ex) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fegetenv((fenv_t *)ex);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-int feholdexcept(fenv_t *ex) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_feholdexcept((fenv_t *)ex);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-int fesetenv(const fenv_t *ex) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_fesetenv((const fenv_t *)ex);
-}
-#endif
-
-SPRT_UMBRELLA_FUNC
-int feupdateenv(const fenv_t *ex) SPRT_UMBRELLA_END
-#if SPRT_UMBRELLA_REQUIRED
-{
-	return __sprt_feupdateenv((const fenv_t *)ex);
-}
-#endif
+#undef SPRT_FUNC_BEGIN
+#undef SPRT_FUNC_END
+#undef SPRT_FUNC_BODY
 
 __SPRT_END_DECL
 
