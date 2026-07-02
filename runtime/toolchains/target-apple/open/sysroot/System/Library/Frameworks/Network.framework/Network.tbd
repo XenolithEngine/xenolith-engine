@@ -1,0 +1,23 @@
+--- !tapi-tbd
+tbd-version:     4
+targets:         [ x86_64-macos, arm64-macos ]
+install-name:    '/System/Library/Frameworks/Network.framework/Versions/A/Network'
+current-version: 0
+compatibility-version: 0
+exports:
+  - targets:         [ x86_64-macos, arm64-macos ]
+    symbols:         [
+        _nw_path_get_status,
+        _nw_path_has_dns,
+        _nw_path_has_ipv4,
+        _nw_path_has_ipv6,
+        _nw_path_is_constrained,
+        _nw_path_is_expensive,
+        _nw_path_monitor_cancel,
+        _nw_path_monitor_create,
+        _nw_path_monitor_set_queue,
+        _nw_path_monitor_set_update_handler,
+        _nw_path_monitor_start,
+        _nw_path_uses_interface_type,
+    ]
+...

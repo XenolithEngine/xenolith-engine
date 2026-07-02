@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -42,7 +42,8 @@ namespace STAPPLER_VERSIONIZED stappler::font {
 // is therefore the same context that performed the allocation.
 // ---------------------------------------------------------------------------------------------
 
-static constexpr size_t SB_HEADER_SIZE = 16; // holds the block size, keeps 16-byte payload alignment
+static constexpr size_t SB_HEADER_SIZE =
+		16; // holds the block size, keeps 16-byte payload alignment
 static_assert(SB_HEADER_SIZE >= sizeof(size_t), "allocation header must hold the block size");
 
 static void *poolAllocateBlock(SBUInteger size, void *) {
@@ -50,8 +51,8 @@ static void *poolAllocateBlock(SBUInteger size, void *) {
 	if (!pool) {
 		return nullptr;
 	}
-	auto base = reinterpret_cast<uint8_t *>(
-			memory::pool::palloc(pool, size_t(size) + SB_HEADER_SIZE));
+	auto base =
+			reinterpret_cast<uint8_t *>(memory::pool::palloc(pool, size_t(size) + SB_HEADER_SIZE));
 	if (!base) {
 		return nullptr;
 	}
@@ -219,8 +220,8 @@ char32_t TextBidi::mirrorCodepoint(char32_t cp) {
 	return char32_t(SBCodepointGetMirror(SBCodepoint(cp))); // returns 0 when there is no mirror
 }
 
-void TextBidi::foreachParagraph(const Callback<void(uint32_t, uint32_t, uint8_t,
-		SpanView<uint8_t>)> &cb) const {
+void TextBidi::foreachParagraph(
+		const Callback<void(uint32_t, uint32_t, uint8_t, SpanView<uint8_t>)> &cb) const {
 	if (!_algorithm) {
 		return;
 	}

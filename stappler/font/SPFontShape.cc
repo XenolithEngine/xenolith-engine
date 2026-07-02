@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -123,7 +123,8 @@ bool FontFaceObject::shape(const char32_t *text, size_t length, TextDirection di
 		out.reserve(out.size() + count);
 		for (unsigned int i = 0; i < count; ++i) {
 			ShapedGlyph glyph;
-			glyph.glyphId = info[i].codepoint; // after shaping this is the glyph index, not a code point
+			glyph.glyphId =
+					info[i].codepoint; // after shaping this is the glyph index, not a code point
 			glyph.cluster = info[i].cluster + rstart; // map back to the full run's indices
 			glyph.xAdvance = int16_t(pos[i].x_advance >> 6); // 26.6 fixed-point -> pixels
 			glyph.yAdvance = int16_t(pos[i].y_advance >> 6);
@@ -138,9 +139,7 @@ bool FontFaceObject::shape(const char32_t *text, size_t length, TextDirection di
 	// Lay script runs out left-to-right: logical order for LTR, reversed for RTL (HarfBuzz still
 	// reverses glyphs WITHIN each run), so the caller's left-to-right advance accumulation is correct.
 	if (!rtl) {
-		for (auto &r : sruns) {
-			shapeScriptRun(r.start, r.len, r.script);
-		}
+		for (auto &r : sruns) { shapeScriptRun(r.start, r.len, r.script); }
 	} else {
 		for (size_t i = sruns.size(); i-- > 0;) {
 			shapeScriptRun(sruns[i].start, sruns[i].len, sruns[i].script);

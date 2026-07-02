@@ -56,6 +56,13 @@ CONFIGURE := \
 ifeq ($(SP_SYSNAME),Darwin)
 CONFIGURE += -DCOMPILER_RT_ENABLE_IOS=Off
 SP_RT_OS_DIR := darwin
+# +open: the -nodefaultlibs link probe SUCCEEDS against the +open sysroot (it fails
+# against the real SDK), so cmake would add -nodefaultlibs to the sanitizer dylib
+# links and lose the driver's implicit -lSystem — undefined libc symbols. Force the
+# stock outcome: probe=OFF, sanitizers link libSystem like the SDK build does.
+ifneq (,$(findstring +open,$(SP_INSTALL_PREFIX)))
+CONFIGURE += -DC_SUPPORTS_NODEFAULTLIBS_FLAG=OFF
+endif
 endif # Darwin
 
 ifeq ($(SP_SYSNAME),iOS)

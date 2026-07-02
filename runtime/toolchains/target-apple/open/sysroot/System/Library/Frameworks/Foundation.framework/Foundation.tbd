@@ -1,0 +1,34 @@
+--- !tapi-tbd
+tbd-version:     4
+targets:         [ x86_64-macos, arm64-macos ]
+install-name:    '/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation'
+current-version: 0
+compatibility-version: 0
+reexported-libraries:
+  - targets:         [ x86_64-macos, arm64-macos ]
+    libraries:       [ '/usr/lib/libobjc.A.dylib', '/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation' ]
+exports:
+  - targets:         [ x86_64-macos, arm64-macos ]
+    symbols:         [
+        _NSClassFromString,
+        _NSLog,
+        _NSPointInRect,
+        _NSSearchPathForDirectoriesInDomains,
+        _NSTemporaryDirectory,
+        _OBJC_CLASS_$_NSAppleScript,
+        _OBJC_CLASS_$_NSAttributedString,
+        _OBJC_CLASS_$_NSBundle,
+        _OBJC_CLASS_$_NSError,
+        _OBJC_CLASS_$_NSFileManager,
+        _OBJC_CLASS_$_NSMutableAttributedString,
+        _OBJC_CLASS_$_NSMutableString,
+        _OBJC_CLASS_$_NSNotification,
+        _OBJC_CLASS_$_NSNotificationCenter,
+        _OBJC_CLASS_$_NSNumber,
+        _OBJC_CLASS_$_NSProcessInfo,
+        _OBJC_CLASS_$_NSString,
+        _OBJC_CLASS_$_NSThread,
+        _OBJC_CLASS_$_NSUUID,
+        _OBJC_CLASS_$_NSValue,
+    ]
+...

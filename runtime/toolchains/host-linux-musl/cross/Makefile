@@ -421,6 +421,7 @@ OUT_TOOLS := $(addprefix $(OUT_SYSROOT)/bin/,\
 	llvm-objdump \
 	llvm-rc \
 	llvm-readobj \
+	llvm-readtapi \
 	llvm-size \
 	llvm-strings \
 	llvm-symbolizer \

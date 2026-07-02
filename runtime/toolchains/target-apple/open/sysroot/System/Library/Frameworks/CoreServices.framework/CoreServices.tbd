@@ -1,0 +1,25 @@
+--- !tapi-tbd
+tbd-version:     4
+targets:         [ x86_64-macos, arm64-macos ]
+install-name:    '/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices'
+current-version: 1226.0.0
+compatibility-version: 1.0.0
+reexported-libraries:
+  - targets:         [ x86_64-macos, arm64-macos ]
+    libraries:       [ '/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation' ]
+exports:
+  - targets:         [ x86_64-macos, arm64-macos ]
+    symbols:         [
+        _AECreateDesc,
+        _AEDisposeDesc,
+        _FSEventStreamCreate,
+        _FSEventStreamInvalidate,
+        _FSEventStreamRelease,
+        _FSEventStreamSetDispatchQueue,
+        _FSEventStreamStart,
+        _FSEventStreamStop,
+        _LSFindApplicationForInfo,
+        _LSOpenCFURLRef,
+        _LSOpenURLsWithRole,
+    ]
+...

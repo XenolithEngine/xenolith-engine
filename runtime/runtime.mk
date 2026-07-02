@@ -96,12 +96,30 @@ endif
 # Shared Darwin family (macOS + iOS): same libSystem/Foundation/Metal stack.
 # Differs only in the UI framework (AppKit on macOS, UIKit on iOS), handled below.
 ifneq ($(filter Darwin iOS,$(TARGET_SYSTEM)),)
+ifeq ($(findstring +open,$(TARGET_SYSROOT)),)
+# Stock Xcode-SDK build: the SDK's usr/include is authoritative; the runtime libc
+# wrappers only supplement it — kept AFTER the SDK (-idirafter).
 MODULE_RUNTIME_GENERAL_CFLAGS += \
 	-idirafter $(RUNTIME_MODULE_DIR)/include_libc \
 	-idirafter $(RUNTIME_MODULE_DIR)/include_libc/darwin
 MODULE_RUNTIME_GENERAL_CXXFLAGS += \
 	-idirafter $(RUNTIME_MODULE_DIR)/include_libc \
 	-idirafter $(RUNTIME_MODULE_DIR)/include_libc/darwin
+else
+# +open (Xcode-SDK-free): the sysroot usr/include carries only the apple-oss BASE
+# libc, so the runtime's own libc wrappers (include_libc) must be found BEFORE it:
+#   - the runtime's __SPRT_BUILD sources then #include_next through to the base;
+#   - consumers (tests/apps) get the full SPRT-extended libc API (strverscmp, the
+#     *_l locale variants, ...) routed to <sprt/wrappers/libc/*> instead of the
+#     bare apple-oss headers.
+# -isystem places them ahead of the --sysroot search; GENERAL so consumers inherit.
+MODULE_RUNTIME_GENERAL_CFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/darwin
+MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/darwin
+endif
 MODULE_RUNTIME_GENERAL_LDFLAGS += -L$(TARGET_LIB_DIR) \
 	-F$(OSTYPE_SDK_PATH)/System/Library/Frameworks \
 	-framework CoreFoundation \
@@ -112,9 +130,24 @@ MODULE_RUNTIME_GENERAL_LDFLAGS += -L$(TARGET_LIB_DIR) \
 	-framework Network \
 	-framework IOKit \
 	-framework QuartzCore \
-	-framework Metal \
-	-L$(OSTYPE_SDK_PATH)/usr/lib -lSystem -licucore -lobjc -liconv -lc++abi
+	-framework CoreGraphics \
+	-L$(OSTYPE_SDK_PATH)/usr/lib -lSystem -lobjc -lc++abi
 MODULE_RUNTIME_LIBS += -l:libbacktrace.a
+
+# On a "+open" (Xcode-SDK-free) target, OSTYPE_SDK_PATH points at the target
+# sysroot itself, so the -F/-L above resolve against the generated .tbd link
+# stubs (target-apple/open-sysroot.mk + gen-oss-stubs.sh). The stubs place every
+# symbol in the SAME library as the real SDK, so the link line matches the stock
+# one: libicucore (uidna_*) and libiconv resolve via their own stubs, CoreText is
+# added (font deps pull it in via functions_<arch>.txt); only Metal (provided
+# through MoltenVK) is dropped. The baked stubs are complete, so the link uses
+# the default two-level namespace with NO -undefined dynamic_lookup escape hatch
+# — any symbol not carried by a stub is a hard link error (re-bake to add it).
+ifeq ($(findstring +open,$(TARGET_SYSROOT)),)
+MODULE_RUNTIME_GENERAL_LDFLAGS += -framework Metal -licucore -liconv
+else
+MODULE_RUNTIME_GENERAL_LDFLAGS += -framework CoreText -licucore -liconv
+endif
 endif
 
 ifeq ($(TARGET_SYSTEM),Darwin)
