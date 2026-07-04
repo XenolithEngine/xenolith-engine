@@ -43,14 +43,20 @@ concept __unordered_map_compatible_key =
 			typename Map::hasher()(ek);
 		};
 
-template <typename Key, typename Value, typename Hash, typename Pred, typename Allocator>
+// `Stl` selects the std::unordered_map-conforming backing: when true the flat hash array stores
+// individually heap-allocated nodes (indirect_storage), so element addresses are STABLE across
+// rehash and unrelated erase — the reference/pointer-stability guarantee the standard requires.
+// When false (the default, used by sprt's own __pool_/__malloc_ maps) the value lives inline in the
+// array (faster, but rehash/erase relocate elements). The std wrapper derives with Stl = true.
+template <typename Key, typename Value, typename Hash, typename Pred, typename Allocator,
+		bool Stl = false>
 class __unordered_map : public Allocator::base_class {
 public:
 	using key_type = Key;
 	using mapped_type = Value;
 	using value_type = pair<const Key, Value>;
 
-	using container_type = detail::hash_memory<key_type, value_type, Hash, Pred, Allocator>;
+	using container_type = detail::hash_memory<key_type, value_type, Hash, Pred, Allocator, Stl>;
 
 	// types
 	using hasher = Hash;
@@ -417,9 +423,11 @@ public:
 		return access_token<key_type>(*this, sprt::move_unsafe(k));
 	}
 
+	// Decay the token key so a heterogeneous array/reference key (e.g. a string literal
+	// `m["x"]`) is stored as a value/pointer, not an unstorable reference/array type.
 	template <__unordered_map_compatible_key<__unordered_map> K>
-	access_token<K> operator[](K &&k) {
-		return access_token<K>(*this, sprt::forward<K>(k));
+	access_token<decay_t<K>> operator[](K &&k) {
+		return access_token<decay_t<K>>(*this, sprt::forward<K>(k));
 	}
 	access_token<key_type> at(const key_type &k) { return access_token<key_type>(*this, k); }
 	const_access_token<key_type> at(const key_type &k) const {
@@ -427,15 +435,15 @@ public:
 	}
 
 	template <__unordered_map_compatible_key<__unordered_map> K>
-	access_token<K> at(const K &k) {
-		return access_token<K>(*this, k);
+	access_token<decay_t<const K &>> at(const K &k) {
+		return access_token<decay_t<const K &>>(*this, k);
 	}
 	template <typename K>
 	sprt::enable_if_t<sprt::is_invocable_r_v<key_equal, key_type, K>
 					&& sprt::is_invocable_v<hasher, K>,
-			const_access_token<K>>
+			const_access_token<decay_t<const K &>>>
 	at(const K &k) const {
-		return const_access_token<K>(*this, k);
+		return const_access_token<decay_t<const K &>>(*this, k);
 	}
 
 	// hash policy
@@ -459,15 +467,15 @@ template <typename Key, typename Value, typename Hash = sprt::hash<void>,
 using __malloc_unordered_map =
 		__unordered_map<Key, Value, Hash, Pred, detail::AllocatorMalloc<pair<const Key, Value>>>;
 
-template <typename Key, typename Value, typename Hash, typename Pred, typename Allocator>
-inline void swap(const __unordered_map<Key, Value, Hash, Pred, Allocator> &__x,
-		const __unordered_map<Key, Value, Hash, Pred, Allocator> &__y) noexcept {
+template <typename Key, typename Value, typename Hash, typename Pred, typename Allocator, bool Stl>
+inline void swap(const __unordered_map<Key, Value, Hash, Pred, Allocator, Stl> &__x,
+		const __unordered_map<Key, Value, Hash, Pred, Allocator, Stl> &__y) noexcept {
 	__x.swap(__y);
 }
 
-template <typename Key, typename Value, typename Hash, typename Pred, typename Allocator>
-inline constexpr bool operator==(const __unordered_map<Key, Value, Hash, Pred, Allocator> &__x,
-		const __unordered_map<Key, Value, Hash, Pred, Allocator> &__y) noexcept {
+template <typename Key, typename Value, typename Hash, typename Pred, typename Allocator, bool Stl>
+inline constexpr bool operator==(const __unordered_map<Key, Value, Hash, Pred, Allocator, Stl> &__x,
+		const __unordered_map<Key, Value, Hash, Pred, Allocator, Stl> &__y) noexcept {
 	return (__x.size() == __y.size() && sprt::equal(__x.begin(), __x.end(), __y.begin()));
 }
 

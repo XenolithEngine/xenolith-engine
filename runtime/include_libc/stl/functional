@@ -83,6 +83,28 @@ using sprt::greater;
 using sprt::greater_equal;
 using sprt::identity;
 
+// arithmetic / logical / bitwise function objects (sprt::__functional/operations.h).
+using sprt::plus;
+using sprt::minus;
+using sprt::multiplies;
+using sprt::divides;
+using sprt::modulus;
+using sprt::negate;
+using sprt::logical_and;
+using sprt::logical_or;
+using sprt::logical_not;
+using sprt::bit_and;
+using sprt::bit_or;
+using sprt::bit_xor;
+using sprt::bit_not;
+
+// mem_fn / not_fn / bind_front / bind_back (sprt::__functional/bind.h). NB: the classic
+// std::bind with placeholders is not provided.
+using sprt::mem_fn;
+using sprt::not_fn;
+using sprt::bind_front;
+using sprt::bind_back;
+
 // reference_wrapper and its factories (sprt::__functional/reference_wrapper.h).
 using sprt::reference_wrapper;
 using sprt::ref;

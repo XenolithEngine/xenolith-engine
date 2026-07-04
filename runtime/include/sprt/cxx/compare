@@ -365,6 +365,79 @@ struct compare_three_way {
 	using is_transparent = void;
 };
 
+// [cmp.alg] strong_order / weak_order / partial_order. Floating-point gets the IEEE-754
+// totalOrder for strong_order (and a NaN/-0-aware ordering for weak/partial); everything
+// else dispatches to <=>. NB: the ADL "strong_order(a,b)" customization hook is not wired —
+// only the built-in fallbacks are provided.
+namespace __cmp_order_detail {
+
+template <typename _Tp>
+constexpr strong_ordering __float_strong(_Tp __a, _Tp __b) noexcept {
+	if constexpr (sizeof(_Tp) == 4) {
+		auto __ka = __builtin_bit_cast(unsigned int, __a);
+		auto __kb = __builtin_bit_cast(unsigned int, __b);
+		__ka ^= (static_cast<unsigned int>(-static_cast<int>(__ka >> 31))) | 0x80000000u;
+		__kb ^= (static_cast<unsigned int>(-static_cast<int>(__kb >> 31))) | 0x80000000u;
+		return __ka <=> __kb;
+	} else {
+		auto __ka = __builtin_bit_cast(unsigned long long, __a);
+		auto __kb = __builtin_bit_cast(unsigned long long, __b);
+		__ka ^= (static_cast<unsigned long long>(-static_cast<long long>(__ka >> 63)))
+				| 0x8000000000000000ull;
+		__kb ^= (static_cast<unsigned long long>(-static_cast<long long>(__kb >> 63)))
+				| 0x8000000000000000ull;
+		return __ka <=> __kb;
+	}
+}
+
+struct __strong_order_fn {
+	template <typename _Tp>
+	constexpr strong_ordering operator()(const _Tp &__a, const _Tp &__b) const noexcept {
+		if constexpr (sprt::is_floating_point_v<_Tp>) {
+			return __float_strong(__a, __b);
+		} else {
+			return static_cast<strong_ordering>(__a <=> __b);
+		}
+	}
+};
+struct __weak_order_fn {
+	template <typename _Tp>
+	constexpr weak_ordering operator()(const _Tp &__a, const _Tp &__b) const noexcept {
+		if constexpr (sprt::is_floating_point_v<_Tp>) {
+			// weak_order: -0 equiv +0, all NaNs equivalent and ordered after everything.
+			if (__a < __b) {
+				return weak_ordering::less;
+			}
+			if (__a > __b) {
+				return weak_ordering::greater;
+			}
+			if (__a == __b) {
+				return weak_ordering::equivalent;
+			}
+			const bool __an = __a != __a; // NaN
+			const bool __bn = __b != __b;
+			if (__an && __bn) {
+				return weak_ordering::equivalent;
+			}
+			return __an ? weak_ordering::greater : weak_ordering::less;
+		} else {
+			return static_cast<weak_ordering>(__a <=> __b);
+		}
+	}
+};
+struct __partial_order_fn {
+	template <typename _Tp>
+	constexpr partial_ordering operator()(const _Tp &__a, const _Tp &__b) const noexcept {
+		return __a <=> __b;
+	}
+};
+
+} // namespace __cmp_order_detail
+
+inline constexpr __cmp_order_detail::__strong_order_fn strong_order {};
+inline constexpr __cmp_order_detail::__weak_order_fn weak_order {};
+inline constexpr __cmp_order_detail::__partial_order_fn partial_order {};
+
 } // namespace std
 
 #endif

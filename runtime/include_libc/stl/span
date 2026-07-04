@@ -20,31 +20,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// Standard header backed by the sprt freestanding runtime. Its symbol family is
-// too large (or uses nested namespaces) to enumerate, so it re-exports sprt as a
-// whole via a using-directive (per the agreed exception for trait/algorithm/
-// iterator/atomic/bit and the concurrency & time families).
+// Standard <span>, backed by sprt::span. Deduction guides are found by ADL on sprt::span.
 
-#ifndef RUNTIME_INCLUDE_LIBC_STL_ITERATOR_H_
-#define RUNTIME_INCLUDE_LIBC_STL_ITERATOR_H_
+#ifndef RUNTIME_INCLUDE_LIBC_STL_SPAN_H_
+#define RUNTIME_INCLUDE_LIBC_STL_SPAN_H_
 
-// Always pull the full std implementations when used through the STL layer.
 #include <__sprt_stl_config.h>
 
-#include <sprt/cxx/iterator>
+#include <sprt/cxx/span>
 
 namespace std {
-using namespace sprt::__cxx_iterator;
-
-// The range-access functions (begin/end/size/ssize/empty/data) live directly in
-// namespace sprt, not in the inline __cxx_iterator namespace, so the using-directive
-// above does not reach them. Re-export them explicitly (each pulls all overloads).
-using sprt::begin;
-using sprt::end;
-using sprt::size;
-using sprt::ssize;
-using sprt::empty;
-using sprt::data;
+using sprt::as_bytes;
+using sprt::as_writable_bytes;
+using sprt::dynamic_extent;
+using sprt::span;
 } // namespace std
 
-#endif // RUNTIME_INCLUDE_LIBC_STL_ITERATOR_H_
+#endif // RUNTIME_INCLUDE_LIBC_STL_SPAN_H_
