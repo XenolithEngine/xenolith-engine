@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_assert.h>
 #include <sprt/cxx/__algorithm/bounds.h>
+#include <sprt/cxx/__utility/swap.h>
 #include <sprt/cxx/detail/ctypes.h>
 #include <sprt/cxx/compare>
 
@@ -48,6 +49,10 @@ struct array {
 	// No explicit construct/copy/destroy for aggregate type
 	constexpr void fill(const value_type &v) {
 		for (size_t i = 0; i < Size; ++i) { _elems[i] = v; }
+	}
+
+	constexpr void swap(array &other) noexcept(is_nothrow_swappable_v<Type>) {
+		for (size_t i = 0; i < Size; ++i) { sprt::swap(_elems[i], other._elems[i]); }
 	}
 
 	// iterators:
@@ -105,6 +110,12 @@ constexpr __synth_three_way_result_t<_Tp> operator<=>(const array<_Tp, _Np> &__x
 		}
 	}
 	return static_cast<__synth_three_way_result_t<_Tp>>(strong_ordering::equal);
+}
+
+// C++20 [array.syn]: free swap, found by ADL on sprt::array (mirrors array::swap).
+template <typename _Tp, size_t _Np>
+constexpr void swap(array<_Tp, _Np> &__x, array<_Tp, _Np> &__y) noexcept(noexcept(__x.swap(__y))) {
+	__x.swap(__y);
 }
 
 } // namespace sprt

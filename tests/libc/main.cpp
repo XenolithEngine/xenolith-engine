@@ -107,6 +107,14 @@ static const LibcTest s_tests[] = {
 	{"std_string_conv", &performStringConvTest},
 	// <memory>: unique_ptr / shared_ptr / weak_ptr / make_* / uninitialized_* / align
 	{"std_memory", &performStdMemoryTest},
+	// <numeric>/<span>/<functional> objects+bind/<charconv>/<compare> order CPOs
+	{"std_purelib", &performPureLibTest},
+	// <map>/<set>: rb-tree, CTAD, access_token operator[], erase_if
+	{"std_mapset", &performMapSetTest},
+	// <list>/<forward_list>: CTAD, list ops, erase/erase_if
+	{"std_list", &performListTest},
+	// <unordered_map>/<unordered_set>: node indirection (stable refs), CTAD, erase_if
+	{"std_unordered", &performUnorderedTest},
 
 	{nullptr, nullptr},
 };
