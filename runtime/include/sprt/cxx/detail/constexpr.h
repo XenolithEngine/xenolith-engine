@@ -86,11 +86,19 @@ constexpr int __constexpr_memcmp(const _Tp *__lhs, const _Up *__rhs, size_t __co
 			"_Tp and _Up have to be trivially lexicographically comparable");
 
 	if (is_constant_evaluated()) {
+		// Compare through the unsigned element type so that signed `char` matches
+		// the unsigned, byte-wise ordering of the runtime __builtin_memcmp below
+		// (and of std::char_traits<char>). Among the types that satisfy the trait
+		// above only `char` is signed; the conditional leaves every other type
+		// untouched (and sidesteps make_unsigned<bool>, which is ill-formed).
+		using _UCmp = conditional_t<is_same_v<remove_cv_t<_Tp>, char>, unsigned char, _Tp>;
 		while (__count != 0) {
-			if (*__lhs < *__rhs) {
+			_UCmp __l = static_cast<_UCmp>(*__lhs);
+			_UCmp __r = static_cast<_UCmp>(*__rhs);
+			if (__l < __r) {
 				return -1;
 			}
-			if (*__rhs < *__lhs) {
+			if (__r < __l) {
 				return 1;
 			}
 
@@ -208,9 +216,33 @@ constexpr inline bool __constexpr_charlt<char>(char c1, char c2) {
 	return static_cast<unsigned char>(c1) < static_cast<unsigned char>(c2);
 }
 
+// std::char_traits-style ordering of a character range. Unlike a raw memcmp this
+// orders multi-byte element types (char16_t/char32_t/wchar_t) by element *value*
+// rather than by object bytes, so the result is endianness-independent and matches
+// the standard on little-endian targets.
 template <typename CharType>
 constexpr inline int __constexpr_strcompare(const CharType *s1, const CharType *s2, size_t count) {
-	return __constexpr_memcmp(s1, s2, count);
+	if constexpr (sizeof(CharType) == 1) {
+		// Single-byte elements: byte order == value order, so the (now unsigned)
+		// __constexpr_memcmp already matches char_traits, including signed `char`.
+		return __constexpr_memcmp(s1, s2, count);
+	} else {
+		// Multi-byte elements: a byte-wise memcmp would order by the low vs high
+		// byte on little-endian and diverge from std::char_traits, so compare each
+		// element by its (unsigned) value instead.
+		using U = make_unsigned_t<CharType>;
+		for (size_t i = 0; i < count; ++i) {
+			U a = static_cast<U>(s1[i]);
+			U b = static_cast<U>(s2[i]);
+			if (a < b) {
+				return -1;
+			}
+			if (b < a) {
+				return 1;
+			}
+		}
+		return 0;
+	}
 }
 
 template <typename CharType>
@@ -229,6 +261,17 @@ constexpr inline const CharType *__constexpr_strfind(const CharType *ptr, size_t
 template <>
 constexpr inline const char *__constexpr_strfind<char>(const char *ptr, size_t count,
 		const char &ch) {
+	// __builtin_memchr's void* casts are ill-formed in a constant expression; use the
+	// plain loop there (equality is signedness-independent, so it matches memchr) and the
+	// faster builtin at runtime. This keeps char_traits<char>::find constexpr-usable.
+	if (__builtin_is_constant_evaluated()) {
+		for (size_t __i = 0; __i < count; ++__i) {
+			if (ptr[__i] == ch) {
+				return ptr + __i;
+			}
+		}
+		return nullptr;
+	}
 	return (const char *)__builtin_memchr((void *)ptr, ch, count);
 }
 

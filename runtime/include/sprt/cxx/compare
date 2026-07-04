@@ -24,6 +24,7 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_CXX_COMPARE_
 
 #include <sprt/cxx/__type_traits/queries.h>
+#include <sprt/cxx/type_traits>
 
 #if __SPRT_USE_STL
 
@@ -291,6 +292,152 @@ template <typename _Tp>
 concept __comparison_category = sprt::is_same_v<_Tp, partial_ordering>
 		|| sprt::is_same_v<_Tp, weak_ordering> || sprt::is_same_v<_Tp, strong_ordering>;
 
+// [cmp.common] common_comparison_category
+namespace __cmp_cat_detail {
+
+// 1 == not a comparison category; the category types use distinct higher bits.
+template <typename _Tp>
+inline constexpr unsigned __id = 1;
+template <>
+inline constexpr unsigned __id<partial_ordering> = 2;
+template <>
+inline constexpr unsigned __id<weak_ordering> = 4;
+template <>
+inline constexpr unsigned __id<strong_ordering> = 8;
+
+template <typename... _Ts>
+constexpr auto __common() {
+	constexpr unsigned __cats = (0u | ... | __id<_Ts>);
+	if constexpr (__cats & 1u) {
+		return; // at least one argument is not a comparison category -> void
+	} else if constexpr (__cats & 2u) {
+		return partial_ordering::equivalent;
+	} else if constexpr (__cats & 4u) {
+		return weak_ordering::equivalent;
+	} else {
+		return strong_ordering::equivalent; // also the empty-pack case
+	}
+}
+
+} // namespace __cmp_cat_detail
+
+template <typename... _Ts>
+struct common_comparison_category {
+	using type = decltype(__cmp_cat_detail::__common<_Ts...>());
+};
+
+template <typename... _Ts>
+using common_comparison_category_t = typename common_comparison_category<_Ts...>::type;
+
+// [cmp.alg] named comparison result tests
+constexpr bool is_eq(partial_ordering __c) noexcept { return __c == 0; }
+constexpr bool is_neq(partial_ordering __c) noexcept { return __c != 0; }
+constexpr bool is_lt(partial_ordering __c) noexcept { return __c < 0; }
+constexpr bool is_gt(partial_ordering __c) noexcept { return __c > 0; }
+constexpr bool is_lteq(partial_ordering __c) noexcept { return __c <= 0; }
+constexpr bool is_gteq(partial_ordering __c) noexcept { return __c >= 0; }
+
+// [cmp.concept] three_way_comparable / three_way_comparable_with
+template <typename _Tp, typename _Cat>
+concept __compares_as = sprt::is_same_v<common_comparison_category_t<_Tp, _Cat>, _Cat>;
+
+template <typename _Tp, typename _Cat = partial_ordering>
+concept three_way_comparable = requires(const sprt::remove_reference_t<_Tp> &__a,
+		const sprt::remove_reference_t<_Tp> &__b) {
+	{ __a <=> __b } -> __compares_as<_Cat>;
+};
+
+template <typename _Tp, typename _Up, typename _Cat = partial_ordering>
+concept three_way_comparable_with = three_way_comparable<_Tp, _Cat>
+		&& three_way_comparable<_Up, _Cat>
+		&& requires(const sprt::remove_reference_t<_Tp> &__t, const sprt::remove_reference_t<_Up> &__u) {
+			{ __t <=> __u } -> __compares_as<_Cat>;
+			{ __u <=> __t } -> __compares_as<_Cat>;
+		};
+
+// [comparisons.three.way] compare_three_way
+struct compare_three_way {
+	template <typename _Tp, typename _Up>
+	constexpr auto operator()(_Tp &&__t, _Up &&__u) const
+			-> decltype(static_cast<_Tp &&>(__t) <=> static_cast<_Up &&>(__u)) {
+		return static_cast<_Tp &&>(__t) <=> static_cast<_Up &&>(__u);
+	}
+	using is_transparent = void;
+};
+
+// [cmp.alg] strong_order / weak_order / partial_order. Floating-point gets the IEEE-754
+// totalOrder for strong_order (and a NaN/-0-aware ordering for weak/partial); everything
+// else dispatches to <=>. NB: the ADL "strong_order(a,b)" customization hook is not wired —
+// only the built-in fallbacks are provided.
+namespace __cmp_order_detail {
+
+template <typename _Tp>
+constexpr strong_ordering __float_strong(_Tp __a, _Tp __b) noexcept {
+	if constexpr (sizeof(_Tp) == 4) {
+		auto __ka = __builtin_bit_cast(unsigned int, __a);
+		auto __kb = __builtin_bit_cast(unsigned int, __b);
+		__ka ^= (static_cast<unsigned int>(-static_cast<int>(__ka >> 31))) | 0x80000000u;
+		__kb ^= (static_cast<unsigned int>(-static_cast<int>(__kb >> 31))) | 0x80000000u;
+		return __ka <=> __kb;
+	} else {
+		auto __ka = __builtin_bit_cast(unsigned long long, __a);
+		auto __kb = __builtin_bit_cast(unsigned long long, __b);
+		__ka ^= (static_cast<unsigned long long>(-static_cast<long long>(__ka >> 63)))
+				| 0x8000000000000000ull;
+		__kb ^= (static_cast<unsigned long long>(-static_cast<long long>(__kb >> 63)))
+				| 0x8000000000000000ull;
+		return __ka <=> __kb;
+	}
+}
+
+struct __strong_order_fn {
+	template <typename _Tp>
+	constexpr strong_ordering operator()(const _Tp &__a, const _Tp &__b) const noexcept {
+		if constexpr (sprt::is_floating_point_v<_Tp>) {
+			return __float_strong(__a, __b);
+		} else {
+			return static_cast<strong_ordering>(__a <=> __b);
+		}
+	}
+};
+struct __weak_order_fn {
+	template <typename _Tp>
+	constexpr weak_ordering operator()(const _Tp &__a, const _Tp &__b) const noexcept {
+		if constexpr (sprt::is_floating_point_v<_Tp>) {
+			// weak_order: -0 equiv +0, all NaNs equivalent and ordered after everything.
+			if (__a < __b) {
+				return weak_ordering::less;
+			}
+			if (__a > __b) {
+				return weak_ordering::greater;
+			}
+			if (__a == __b) {
+				return weak_ordering::equivalent;
+			}
+			const bool __an = __a != __a; // NaN
+			const bool __bn = __b != __b;
+			if (__an && __bn) {
+				return weak_ordering::equivalent;
+			}
+			return __an ? weak_ordering::greater : weak_ordering::less;
+		} else {
+			return static_cast<weak_ordering>(__a <=> __b);
+		}
+	}
+};
+struct __partial_order_fn {
+	template <typename _Tp>
+	constexpr partial_ordering operator()(const _Tp &__a, const _Tp &__b) const noexcept {
+		return __a <=> __b;
+	}
+};
+
+} // namespace __cmp_order_detail
+
+inline constexpr __cmp_order_detail::__strong_order_fn strong_order {};
+inline constexpr __cmp_order_detail::__weak_order_fn weak_order {};
+inline constexpr __cmp_order_detail::__partial_order_fn partial_order {};
+
 } // namespace std
 
 #endif
@@ -300,6 +447,23 @@ namespace sprt {
 using std::partial_ordering;
 using std::weak_ordering;
 using std::strong_ordering;
+
+// Exposition-only synth-three-way ([expos.only.entity]) shared by the pair/array
+// (and tuple) operator<=>: order with <=> when both operands are
+// three_way_comparable_with, otherwise synthesize a weak_ordering from operator<.
+template <typename _Tp, typename _Up>
+constexpr auto __synth_three_way(const _Tp &__t, const _Up &__u) {
+	if constexpr (std::three_way_comparable_with<_Tp, _Up>) {
+		return __t <=> __u;
+	} else {
+		return __t < __u ? weak_ordering::less
+						 : (__u < __t ? weak_ordering::greater : weak_ordering::equivalent);
+	}
+}
+
+template <typename _Tp, typename _Up = _Tp>
+using __synth_three_way_result_t =
+		decltype(sprt::__synth_three_way(sprt::declval<const _Tp &>(), sprt::declval<const _Up &>()));
 
 } // namespace sprt
 

@@ -1,0 +1,155 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+// [concepts] the core language + object + callable concepts. NOT provided (they need the
+// common_reference machinery this layer lacks): common_reference_with, common_with. The
+// comparison concepts three_way_comparable[_with] live in <sprt/cxx/compare>.
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_CONCEPTS_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_CONCEPTS_H_
+
+#include <sprt/cxx/type_traits>
+#include <sprt/cxx/__utility/common.h>
+#include <sprt/cxx/__functional/invoke.h>
+
+namespace sprt {
+
+// [concept.same]
+template <typename _Tp, typename _Up>
+concept same_as = is_same_v<_Tp, _Up> && is_same_v<_Up, _Tp>;
+
+// [concept.derived]
+template <typename _Dp, typename _Bp>
+concept derived_from =
+		is_base_of_v<_Bp, _Dp> && is_convertible_v<const volatile _Dp *, const volatile _Bp *>;
+
+// [concept.convertible]
+template <typename _From, typename _To>
+concept convertible_to =
+		is_convertible_v<_From, _To> && requires { static_cast<_To>(sprt::declval<_From>()); };
+
+// [concepts.arithmetic] (floating_point is already defined by <type_traits> in sprt)
+template <typename _Tp>
+concept integral = is_integral_v<_Tp>;
+template <typename _Tp>
+concept signed_integral = integral<_Tp> && is_signed_v<_Tp>;
+template <typename _Tp>
+concept unsigned_integral = integral<_Tp> && !is_signed_v<_Tp>;
+
+// [concept.assignable]
+template <typename _Lhs, typename _Rhs>
+concept assignable_from = is_lvalue_reference_v<_Lhs> && requires(_Lhs __l, _Rhs &&__r) {
+	{ __l = static_cast<_Rhs &&>(__r) } -> same_as<_Lhs>;
+};
+
+// [concept.swappable]
+template <typename _Tp>
+concept swappable = is_swappable_v<_Tp>;
+template <typename _Tp, typename _Up>
+concept swappable_with = is_swappable_with_v<_Tp, _Up>;
+
+// [concept.destructible] / [concept.constructible] / [concept.default.init]
+template <typename _Tp>
+concept destructible = is_nothrow_destructible_v<_Tp>;
+template <typename _Tp, typename... _Args>
+concept constructible_from = destructible<_Tp> && is_constructible_v<_Tp, _Args...>;
+template <typename _Tp>
+concept default_initializable = constructible_from<_Tp> && requires { _Tp {}; };
+
+// [concept.moveconstructible] / [concept.copyconstructible]
+template <typename _Tp>
+concept move_constructible = constructible_from<_Tp, _Tp> && convertible_to<_Tp, _Tp>;
+template <typename _Tp>
+concept copy_constructible = move_constructible<_Tp> && constructible_from<_Tp, _Tp &>
+		&& convertible_to<_Tp &, _Tp> && constructible_from<_Tp, const _Tp &>
+		&& convertible_to<const _Tp &, _Tp> && constructible_from<_Tp, const _Tp>
+		&& convertible_to<const _Tp, _Tp>;
+
+// [concept.booleantestable]
+template <typename _Tp>
+concept __boolean_testable = convertible_to<_Tp, bool> && requires(_Tp &&__t) {
+	{ !static_cast<_Tp &&>(__t) } -> convertible_to<bool>;
+};
+
+// [concept.equalitycomparable]
+template <typename _Tp, typename _Up>
+concept __weakly_equality_comparable_with =
+		requires(const remove_reference_t<_Tp> &__t, const remove_reference_t<_Up> &__u) {
+	{ __t == __u } -> __boolean_testable;
+	{ __t != __u } -> __boolean_testable;
+	{ __u == __t } -> __boolean_testable;
+	{ __u != __t } -> __boolean_testable;
+};
+template <typename _Tp>
+concept equality_comparable = __weakly_equality_comparable_with<_Tp, _Tp>;
+template <typename _Tp, typename _Up>
+concept equality_comparable_with = equality_comparable<_Tp> && equality_comparable<_Up>
+		&& __weakly_equality_comparable_with<_Tp, _Up>;
+
+// [concept.totallyordered]
+template <typename _Tp, typename _Up>
+concept __partially_ordered_with =
+		requires(const remove_reference_t<_Tp> &__t, const remove_reference_t<_Up> &__u) {
+	{ __t < __u } -> __boolean_testable;
+	{ __t > __u } -> __boolean_testable;
+	{ __t <= __u } -> __boolean_testable;
+	{ __t >= __u } -> __boolean_testable;
+};
+template <typename _Tp>
+concept totally_ordered = equality_comparable<_Tp> && __partially_ordered_with<_Tp, _Tp>;
+template <typename _Tp, typename _Up>
+concept totally_ordered_with = totally_ordered<_Tp> && totally_ordered<_Up>
+		&& equality_comparable_with<_Tp, _Up> && __partially_ordered_with<_Tp, _Up>;
+
+// [concepts.object]
+template <typename _Tp>
+concept movable = is_object_v<_Tp> && move_constructible<_Tp> && assignable_from<_Tp &, _Tp>
+		&& swappable<_Tp>;
+template <typename _Tp>
+concept copyable = copy_constructible<_Tp> && movable<_Tp> && assignable_from<_Tp &, _Tp &>
+		&& assignable_from<_Tp &, const _Tp &> && assignable_from<_Tp &, const _Tp>;
+template <typename _Tp>
+concept semiregular = copyable<_Tp> && default_initializable<_Tp>;
+template <typename _Tp>
+concept regular = semiregular<_Tp> && equality_comparable<_Tp>;
+
+// [concept.invocable] / [concept.predicate] / [concept.relation]
+template <typename _Fn, typename... _Args>
+concept invocable = requires(_Fn &&__f, _Args &&...__args) {
+	sprt::__invoke(static_cast<_Fn &&>(__f), static_cast<_Args &&>(__args)...);
+};
+template <typename _Fn, typename... _Args>
+concept regular_invocable = invocable<_Fn, _Args...>;
+template <typename _Fn, typename... _Args>
+concept predicate =
+		regular_invocable<_Fn, _Args...> && __boolean_testable<invoke_result_t<_Fn, _Args...>>;
+template <typename _Rel, typename _Tp, typename _Up>
+concept relation = predicate<_Rel, _Tp, _Tp> && predicate<_Rel, _Up, _Up>
+		&& predicate<_Rel, _Tp, _Up> && predicate<_Rel, _Up, _Tp>;
+template <typename _Rel, typename _Tp, typename _Up>
+concept equivalence_relation = relation<_Rel, _Tp, _Up>;
+template <typename _Rel, typename _Tp, typename _Up>
+concept strict_weak_order = relation<_Rel, _Tp, _Up>;
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_CONCEPTS_H_

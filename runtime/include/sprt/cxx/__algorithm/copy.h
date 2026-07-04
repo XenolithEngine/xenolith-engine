@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__utility/pair.h>
 
 namespace sprt {
+inline namespace __cxx_algorithm {
 
 // Element-wise forward copy, matching std::copy's contract: the behaviour is
 // defined only when `d_first` is not within the range `(first, last]`. Copying
@@ -52,6 +53,7 @@ OutputIt copy_if(InputIt first, InputIt last, OutputIt d_first, UnaryPred pred) 
 	return d_first;
 }
 
+} // inline namespace __cxx_algorithm
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX__ALGORITHM_COPY_H_

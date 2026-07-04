@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__utility/common.h>
 
 namespace sprt {
+inline namespace __cxx_type_traits {
 
 /*
 	Invokable
@@ -326,6 +327,7 @@ struct is_nothrow_invocable : bool_constant<is_nothrow_invocable_v<_Fn, _Args...
 template <typename _Ret, typename _Fn, typename... _Args>
 struct is_nothrow_invocable_r : bool_constant<is_nothrow_invocable_r_v<_Ret, _Fn, _Args...>> { };
 
+} // inline namespace __cxx_type_traits
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___FUNCTIONAL_INVOKE_H_

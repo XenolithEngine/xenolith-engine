@@ -29,6 +29,8 @@ THE SOFTWARE.
 #include <sprt/cxx/__list/forward_list_base.h>
 #include <sprt/cxx/initializer_list>
 #include <sprt/cxx/algorithm>
+#include <sprt/cxx/vector>
+#include <sprt/cxx/__functional/compare.h>
 
 namespace sprt {
 
@@ -148,6 +150,127 @@ public:
 
 	constexpr void shrink_to_fit() { _base.shrink_to_fit(); }
 	void clear_deallocate() { return _base.clear_deallocate(); }
+
+	// [forward.list.ops] the forward_list operations. Like <list>, these transfer/reorder by
+	// MOVING elements (via the public insert_after/erase_after API) rather than relinking nodes:
+	// they require movable elements, splice_after is not O(1), and do not preserve iterators into
+	// the source. Observable results match std::forward_list.
+	size_type remove(const T &value) noexcept {
+		return remove_if([&](const T &v) { return v == value; });
+	}
+	template <typename Predicate>
+	size_type remove_if(Predicate pred) noexcept {
+		size_type removed = 0;
+		auto prev = before_begin();
+		auto cur = begin();
+		while (cur != end()) {
+			if (pred(*cur)) {
+				cur = erase_after(prev);
+				++removed;
+			} else {
+				prev = cur;
+				++cur;
+			}
+		}
+		return removed;
+	}
+
+	size_type unique() noexcept {
+		return unique([](const T &a, const T &b) { return a == b; });
+	}
+	template <typename BinaryPredicate>
+	size_type unique(BinaryPredicate pred) noexcept {
+		if (empty()) {
+			return 0;
+		}
+		size_type removed = 0;
+		auto it = begin();
+		auto next = it;
+		++next;
+		while (next != end()) {
+			if (pred(*it, *next)) {
+				next = erase_after(it);
+				++removed;
+			} else {
+				it = next;
+				++next;
+			}
+		}
+		return removed;
+	}
+
+	void reverse() noexcept {
+		if (empty()) {
+			return;
+		}
+		__malloc_vector<T> buf;
+		for (auto &v : *this) { buf.emplace_back(sprt::move_unsafe(v)); }
+		auto it = begin();
+		for (size_type i = buf.size(); i > 0; --i) {
+			*it = sprt::move_unsafe(buf[i - 1]);
+			++it;
+		}
+	}
+
+	void sort() noexcept { sort(sprt::less<T>()); }
+	template <typename Compare>
+	void sort(Compare comp) noexcept {
+		__malloc_vector<T> buf;
+		for (auto &v : *this) { buf.emplace_back(sprt::move_unsafe(v)); }
+		if (buf.size() < 2) {
+			return;
+		}
+		sprt::sort(buf.begin(), buf.end(), comp);
+		auto it = begin();
+		for (auto &v : buf) {
+			*it = sprt::move_unsafe(v);
+			++it;
+		}
+	}
+
+	void merge(__forward_list &other) noexcept { merge(other, sprt::less<T>()); }
+	template <typename Compare>
+	void merge(__forward_list &other, Compare comp) noexcept {
+		if (this == &other) {
+			return;
+		}
+		auto prev = before_begin();
+		auto it = begin();
+		while (!other.empty()) {
+			if (it != end() && !comp(other.front(), *it)) {
+				prev = it;
+				++it;
+			} else {
+				prev = insert_after(prev, sprt::move_unsafe(other.front()));
+				other.pop_front();
+			}
+		}
+	}
+
+	void splice_after(const_iterator pos, __forward_list &other) noexcept {
+		while (!other.empty()) {
+			pos = insert_after(pos, sprt::move_unsafe(other.front()));
+			other.pop_front();
+		}
+	}
+	void splice_after(const_iterator pos, __forward_list &other, const_iterator it) noexcept {
+		auto next = it;
+		++next;
+		if (next == other.end()) {
+			return;
+		}
+		insert_after(pos, sprt::move_unsafe(const_cast<T &>(*next)));
+		other.erase_after(it);
+	}
+	void splice_after(const_iterator pos, __forward_list &other, const_iterator first,
+			const_iterator last) noexcept {
+		auto cur = first;
+		++cur;
+		while (cur != last) {
+			pos = insert_after(pos, sprt::move_unsafe(const_cast<T &>(*cur)));
+			cur = other.erase_after(first);
+		}
+	}
 
 protected:
 	base_type _base;

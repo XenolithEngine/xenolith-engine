@@ -103,12 +103,6 @@ using namespace sprt::_cstring_dll;
 using namespace sprt::_cstring;
 #endif
 
-#ifdef __SPRT_AS_STD
-namespace std {
-using namespace sprt::_cstring_dll;
-using namespace sprt::_cstring;
-} // namespace std
-#endif
 #endif // __cplusplus
 
 

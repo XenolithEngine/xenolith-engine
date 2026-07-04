@@ -597,10 +597,13 @@ protected:
 		} else if constexpr (sprt::is_same_v<A, B>) {
 			return compareLtKey(l, r);
 		} else {
-			static_assert(
-					"Comparator should be transparent or search key and stored key types must be "
-					"the same");
-			return false;
+			// Non-transparent comparator with a differing search-key type (e.g. looking up a
+			// std::string-keyed map with a const char*): compare after converting both operands
+			// to the stored key type, as the standard containers do for a non-transparent
+			// comparator. NB: the old `static_assert("...")` here had NO boolean condition — a
+			// bare string literal is always truthy, so it never fired — and the following
+			// `return false` silently collapsed every heterogeneous key to "equal".
+			return _comp(static_cast<Key>(l), static_cast<Key>(r));
 		}
 	}
 

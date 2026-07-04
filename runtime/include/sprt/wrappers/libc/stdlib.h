@@ -59,12 +59,6 @@ typedef __SPRT_ID(lldiv_t) lldiv_t;
 using namespace sprt::_cstdlib_types;
 #endif
 
-#ifdef __SPRT_AS_STD
-namespace std {
-using namespace sprt::_cstdlib_types;
-}
-#endif
-
 #endif // __cplusplus
 #endif // defined(__cplusplus) || __STDC_HOSTED__ == 0 || !defined(__SPRT_BUILD)
 
@@ -92,12 +86,6 @@ inline namespace _cstdlib {
 // export functions globally
 #if __STDC_HOSTED__ == 1 && !defined(__SPRT_BUILD)
 using namespace sprt::_cstdlib;
-#endif
-
-#ifdef __SPRT_AS_STD
-namespace std {
-using namespace sprt::_cstdlib;
-}
 #endif
 #endif // __cplusplus
 

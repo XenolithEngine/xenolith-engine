@@ -127,11 +127,16 @@ struct hash_local_iterator {
 	hash_local_iterator(NodeType *ptr) : target(ptr) { }
 };
 
-template <typename Value, typename HashType, typename SizeType>
+// `Indirect` selects the node storage: false → aligned_storage (the value lives inline in the flat
+// array, the fast default) ; true → indirect_storage (the value lives in an individually heap-
+// allocated node, giving a STABLE element address as std::unordered_* requires). Both expose the
+// same value.ref()/ptr()/construct/destroy surface, so the surrounding machinery is unchanged.
+template <typename Value, typename HashType, typename SizeType, bool Indirect = false>
 struct hash_node {
 	using value_type = Value;
+	using storage_type = conditional_t<Indirect, indirect_storage<Value>, aligned_storage<Value>>;
 
-	aligned_storage<Value> value;
+	storage_type value;
 	HashType hash;
 	// `next` is a collision-chain offset taken modulo _capacity. It is two bits
 	// narrower than SizeType (it shares the word with is_first/active), so the
@@ -149,7 +154,7 @@ class hash_memory {
 public:
 	using size_type = size_t;
 	using hash_type = invoke_result_t<HashFn, Key>;
-	using node_type = hash_node<Value, hash_type, size_type>;
+	using node_type = hash_node<Value, hash_type, size_type, ForCxxStl>;
 
 	using allocator_type = Allocator;
 	using node_allocator_type = allocator_type::template rebind<node_type>::other;
@@ -221,9 +226,13 @@ public:
 		}
 	}
 
-	template <typename... Args>
+	// `Adopt` (only used in ForCxxStl mode, during rehash) relocates an existing node into `chain`
+	// by stealing `source`'s heap element pointer instead of constructing from `args` — the element
+	// keeps its address. `source` is only read when Adopt is true; normal inserts pass nullptr.
+	template <bool Adopt = false, typename... Args>
 	pair<node_type *, bool> __try_emplace(node_type *storage, size_type capacity,
-			hash_type hashValue, node_type *chain, const Key &key, Args &&...args) noexcept {
+			hash_type hashValue, node_type *chain, node_type *source, const Key &key,
+			Args &&...args) noexcept {
 		// trace offset from original insert position
 		// to speed-up worth case iteration
 		bool equalNodeFound = false;
@@ -245,6 +254,15 @@ public:
 					chain -= capacity;
 				}
 			}
+		}
+
+		// The while loop only compares nodes with next != 0, so the LAST node in the chain
+		// (which includes a single-node chain) is never checked. Compare it explicitly, mirroring
+		// find_node's tail check, so try_emplace / insert on an existing tail key returns that node
+		// instead of silently inserting a duplicate.
+		if (!equalNodeFound && chain->active && chain->next == 0 && chain->hash == hashValue
+				&& _equal(key, aligned_storage_kv_traits<Key, Value>::extract_key(chain->value))) {
+			equalNodeFound = true;
 		}
 
 		if (equalNodeFound) {
@@ -281,8 +299,14 @@ public:
 			chain->is_first = 1;
 		}
 
-		aligned_storage_kv_traits<Key, Value>::construct(_allocator, chain->value,
-				sprt::forward<Args>(args)...);
+		if constexpr (Adopt) {
+			// Relocate an existing node (rehash): steal its heap element pointer so the element
+			// keeps its address. Only reachable in ForCxxStl (indirect_storage) mode.
+			chain->value.adopt(source->value);
+		} else {
+			aligned_storage_kv_traits<Key, Value>::construct(_allocator, chain->value,
+					sprt::forward<Args>(args)...);
+		}
 
 		chain->active = 1;
 		chain->hash = hashValue;
@@ -310,12 +334,18 @@ public:
 			}
 
 			pair<node_type *, bool> result{nullptr, false};
-			if constexpr (is_move_constructible_v<Value>) {
-				result = __try_emplace(newStorage, newCapacity, source->hash, chain,
+			if constexpr (ForCxxStl) {
+				// Node indirection: relocate the whole node into the new storage by stealing its
+				// heap element pointer — no element move, no re-allocation, references stay valid.
+				// This also removes the move-constructible requirement on Value.
+				result = __try_emplace<true>(newStorage, newCapacity, source->hash, chain, source,
+						aligned_storage_kv_traits<Key, Value>::extract_key(source->value));
+			} else if constexpr (is_move_constructible_v<Value>) {
+				result = __try_emplace(newStorage, newCapacity, source->hash, chain, nullptr,
 						aligned_storage_kv_traits<Key, Value>::extract_key(source->value),
 						sprt::move_unsafe(source->value.ref()));
 			} else {
-				result = __try_emplace(newStorage, newCapacity, source->hash, chain,
+				result = __try_emplace(newStorage, newCapacity, source->hash, chain, nullptr,
 						aligned_storage_kv_traits<Key, Value>::extract_key(source->value),
 						source->value.ref());
 			}
@@ -396,24 +426,40 @@ public:
 
 	template <typename Arg, typename Iterator = iterator>
 	auto insert(Arg &&arg) noexcept -> pair<Iterator, bool> {
+		auto &key = aligned_storage_kv_traits<Key, Value>::extract_key(arg);
+
+		// A lookup must never grow the table. find_bucket_or_grow rehashes preemptively on an
+		// occupied bucket, so if the key already exists, return it directly instead — otherwise
+		// repeated inserts of an existing key would grow the table unboundedly without inserting.
+		if (auto existing = find_node(key)) {
+			return pair<Iterator, bool>(
+					Iterator(_storage, const_cast<node_type *>(existing), _storage + _capacity),
+					false);
+		}
+
 		if (_size == _capacity) {
 			rehash(_capacity * 2);
 		}
 
-		auto &key = aligned_storage_kv_traits<Key, Value>::extract_key(arg);
 		auto hashValue = _hasher(key);
 
 		auto chain = find_bucket_or_grow(hashValue);
 		if (!chain) {
 			return pair<Iterator, bool>(Iterator(nullptr, nullptr, nullptr), false);
-		} else if (chain->active) {
-			++_hashMisses;
 		}
+		// A hash miss (a node not at its home bucket) is only created when we ACTUALLY insert into
+		// an already-occupied bucket. Counting it up-front — before knowing whether the key already
+		// exists — inflates _hashMisses on every no-op insert of an existing key, which corrupts the
+		// load-factor / rehash accounting. Defer the increment to a real insertion.
+		const bool __collision = chain->active;
 
-		auto result =
-				__try_emplace(_storage, _capacity, hashValue, chain, key, sprt::forward<Arg>(arg));
+		auto result = __try_emplace(_storage, _capacity, hashValue, chain, nullptr, key,
+				sprt::forward<Arg>(arg));
 		if (result.second) {
 			++_size;
+			if (__collision) {
+				++_hashMisses;
+			}
 		}
 		return pair<Iterator, bool>(Iterator(_storage, result.first, _storage + _capacity),
 				result.second);
@@ -421,6 +467,13 @@ public:
 
 	template <typename K, typename... Args>
 	pair<iterator, bool> try_emplace(K &&key, Args &&...args) noexcept {
+		// A lookup must never grow the table (see insert()): return an existing key directly.
+		if (auto existing = find_node(key)) {
+			return pair<iterator, bool>(
+					iterator(_storage, const_cast<node_type *>(existing), _storage + _capacity),
+					false);
+		}
+
 		if (_size + 1 >= _capacity) {
 			rehash(_capacity * 2);
 		}
@@ -430,14 +483,17 @@ public:
 		auto chain = find_bucket_or_grow(hashValue);
 		if (!chain) {
 			return pair<iterator, bool>(iterator(nullptr, nullptr, nullptr), false);
-		} else if (chain->active) {
-			++_hashMisses;
 		}
+		// Only an actual insertion into an occupied bucket is a hash miss; see insert() above.
+		const bool __collision = chain->active;
 
-		pair<node_type *, bool> result = __try_emplace(_storage, _capacity, hashValue, chain, key,
-				sprt::forward<K>(key), sprt::forward<Args>(args)...);
+		pair<node_type *, bool> result = __try_emplace(_storage, _capacity, hashValue, chain, nullptr,
+				key, sprt::forward<K>(key), sprt::forward<Args>(args)...);
 		if (result.second) {
 			++_size;
+			if (__collision) {
+				++_hashMisses;
+			}
 		}
 		return pair<iterator, bool>(iterator(_storage, result.first, _storage + _capacity),
 				result.second);
@@ -547,12 +603,20 @@ public:
 			// if prev == node (initial node is the one before end) - it's also valid
 			prev->next = 0;
 
-			// Move value from the last node using move constructor
-			node->value.construct(_allocator, sprt::move_unsafe(chain->value.ref()));
-			node->hash = chain->hash;
+			if constexpr (ForCxxStl) {
+				// Node indirection: relocate the last chain node into this slot by stealing its
+				// heap element pointer. The element keeps its address, so references/pointers to it
+				// stay valid (node->value was already emptied by the destroy() above).
+				node->value.adopt(chain->value);
+				node->hash = chain->hash;
+			} else {
+				// Move value from the last node using move constructor
+				node->value.construct(_allocator, sprt::move_unsafe(chain->value.ref()));
+				node->hash = chain->hash;
 
-			// Clear last node
-			chain->value.destroy(_allocator);
+				// Clear last node
+				chain->value.destroy(_allocator);
+			}
 			chain->active = 0;
 			chain->next = 0;
 
@@ -835,7 +899,13 @@ protected:
 
 			auto prev = find_prev_in_chain(neighbor, erase_pos);
 
-			erase_pos->value.construct(_allocator, sprt::move_unsafe(neighbor->value.ref()));
+			if constexpr (ForCxxStl) {
+				// Node indirection: move the neighbor into the erased slot by stealing its heap
+				// element pointer — the element keeps its address (references stay valid).
+				erase_pos->value.adopt(neighbor->value);
+			} else {
+				erase_pos->value.construct(_allocator, sprt::move_unsafe(neighbor->value.ref()));
+			}
 			erase_pos->next = (neighbor->next == 0) ? 0 : (neighbor->next + offset) % _capacity;
 			erase_pos->hash = neighbor->hash;
 			erase_pos->active = 1;
@@ -857,7 +927,10 @@ protected:
 			}
 			//};
 
-			neighbor->value.destroy(_allocator);
+			if constexpr (!ForCxxStl) {
+				// In ForCxxStl mode adopt() above already stole (and nulled) neighbor's element.
+				neighbor->value.destroy(_allocator);
+			}
 			neighbor->active = 0;
 			neighbor->next = 0;
 

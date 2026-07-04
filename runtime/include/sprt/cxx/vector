@@ -68,7 +68,9 @@ public:
 		_mem.fill(count);
 	}
 
-	template < typename InputIt >
+	// SFINAE-excludes integral InputIt so __vector(n, value) (LWG 438) is not hijacked by
+	// this range overload when both arguments have the same integral type (e.g. (3, 7)).
+	template < typename InputIt, typename = enable_if_t<!is_integral_v<InputIt>> >
 	__vector(InputIt first, InputIt last, const allocator_type &alloc = allocator_type()) noexcept
 	: _mem(alloc) {
 		auto size = sprt::distance(first, last);
@@ -106,7 +108,7 @@ public:
 
 	void assign(size_type count, const Type &value) { _mem.fill(count, value); }
 
-	template < typename InputIt >
+	template < typename InputIt, typename = enable_if_t<!is_integral_v<InputIt>> >
 	void assign(InputIt first,
 			InputIt last) { // @TODO: self-assign protection and modern assignment
 		_mem.clear();
@@ -168,15 +170,23 @@ public:
 	size_type capacity() const noexcept { return _mem.capacity(); }
 	bool empty() const noexcept { return _mem.empty(); }
 
+	size_type max_size() const noexcept { return static_cast<size_type>(-1) / sizeof(Type); }
+
 	// Reserve capcity, that can be effectively reused by pool allocator.
 	// If used carefully, it can provide static memory footprint in memory pool
 	void reserve_block_optimal() { _mem.reserve_block_optimal(); }
 
 	void reserve(size_type new_cap) { _mem.reserve(new_cap); }
 
-	void shrink_to_fit() { }
+	void shrink_to_fit() { _mem.shrink_to_fit(); }
 
 	void clear() { _mem.clear(); }
+
+	void swap(__vector &other) noexcept {
+		auto tmp = sprt::move_unsafe(_mem);
+		_mem = sprt::move_unsafe(other._mem);
+		other._mem = sprt::move_unsafe(tmp);
+	}
 
 	template < typename... Args >
 	iterator emplace(const_iterator pos, Args &&...args) {
@@ -191,7 +201,7 @@ public:
 		return _mem.insert(pos, count, value);
 	}
 
-	template < typename InputIt >
+	template < typename InputIt, typename = enable_if_t<!is_integral_v<InputIt>> >
 	iterator insert(const_iterator pos, InputIt first, InputIt last) {
 		return _mem.insert(pos, first, last);
 	}
@@ -229,6 +239,11 @@ using __pool_vector = __vector<Type, detail::AllocatorPool<Type>>;
 
 template <typename Type>
 using __malloc_vector = __vector<Type, detail::AllocatorMalloc<Type>>;
+
+template <typename _Tp, typename Allocator>
+inline void swap(__vector<_Tp, Allocator> &__x, __vector<_Tp, Allocator> &__y) noexcept {
+	__x.swap(__y);
+}
 
 template <typename _Tp, typename Allocator>
 inline constexpr bool operator==(const __vector<_Tp, Allocator> &__x,

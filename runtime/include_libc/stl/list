@@ -1,0 +1,94 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+// Standard <list>, backed by sprt::__list (doubly linked list). std::list is a thin derived
+// class (not an alias) so it carries its own deduction guides. The list operations
+// remove / remove_if / unique / sort / merge / reverse / splice are provided by sprt::__list
+// and inherited here (note: splice/merge/sort are element-moving, not O(1) node-relink).
+// std::erase / std::erase_if are supplied below. swap / == / <=> via ADL on sprt::__list.
+
+#ifndef RUNTIME_INCLUDE_LIBC_STL_LIST_H_
+#define RUNTIME_INCLUDE_LIBC_STL_LIST_H_
+
+#include <__sprt_stl_config.h>
+
+#include <sprt/cxx/list>
+#include <sprt/cxx/new>
+#include <sprt/cxx/iterator>
+#include <sprt/cxx/initializer_list>
+
+namespace sprt {
+
+template <typename _It>
+using __list_iter_val_t = typename iterator_traits<_It>::value_type;
+
+} // namespace sprt
+
+namespace std {
+
+template <class _Tp, class _Alloc = allocator<_Tp>>
+class list : public sprt::__list<_Tp, _Alloc> {
+	using _Base = sprt::__list<_Tp, _Alloc>;
+
+public:
+	using _Base::_Base;
+	using _Base::operator=;
+	list() = default;
+};
+
+// [list.overview] deduction guides.
+template <class _It, class _Alloc = allocator<sprt::__list_iter_val_t<_It>>>
+list(_It, _It, _Alloc = _Alloc()) -> list<sprt::__list_iter_val_t<_It>, _Alloc>;
+
+template <class _Tp, class _Alloc = allocator<_Tp>>
+list(initializer_list<_Tp>, _Alloc = _Alloc()) -> list<_Tp, _Alloc>;
+
+// [list.erasure] std::erase / std::erase_if (C++20): iterate and erase, returning the count.
+template <class _Tp, class _Alloc, class _Up>
+typename list<_Tp, _Alloc>::size_type erase(list<_Tp, _Alloc> &__c, const _Up &__value) {
+	const auto __old = __c.size();
+	for (auto __i = __c.begin(), __last = __c.end(); __i != __last;) {
+		if (*__i == __value) {
+			__i = __c.erase(__i);
+		} else {
+			++__i;
+		}
+	}
+	return __old - __c.size();
+}
+
+template <class _Tp, class _Alloc, class _Pred>
+typename list<_Tp, _Alloc>::size_type erase_if(list<_Tp, _Alloc> &__c, _Pred __pred) {
+	const auto __old = __c.size();
+	for (auto __i = __c.begin(), __last = __c.end(); __i != __last;) {
+		if (__pred(*__i)) {
+			__i = __c.erase(__i);
+		} else {
+			++__i;
+		}
+	}
+	return __old - __c.size();
+}
+
+} // namespace std
+
+#endif // RUNTIME_INCLUDE_LIBC_STL_LIST_H_

@@ -136,7 +136,12 @@ int thread::__makeThread(__malloc_function<void()> &&fn) {
 
 } // namespace sprt
 
-namespace sprt::this_thread {
+// this_thread is declared inside the inline namespace __cxx_thread in <sprt/cxx/thread>,
+// so its out-of-line definitions must go through that inline namespace to match
+// (the qualified form `namespace sprt::this_thread` would define a different namespace).
+namespace sprt {
+inline namespace __cxx_thread {
+namespace this_thread {
 
 thread::id get_id() noexcept { return {_thread::thread_t::self()->threadId}; }
 
@@ -151,4 +156,6 @@ void sleep_for(const timeout_t &rel_time) {
 	__sprt_nanosleep(&ts, nullptr);
 }
 
-} // namespace sprt::this_thread
+} // namespace this_thread
+} // inline namespace __cxx_thread
+} // namespace sprt

@@ -37,7 +37,13 @@ using source_location = std::source_location;
 
 #else // __SPRT_USE_LIBCXX_SOURCE_LOCATION
 
-// __builtin_source_location requires source_location:: __impl to be defined
+// __builtin_source_location requires source_location:: __impl to be defined.
+//
+// By default (included via <sprt/cxx/source_location>) std::source_location is the
+// minimal builtin shell and the full type is sprt::source_location. When the
+// include_libc/stl <source_location> wrapper includes this header it first defines
+// __SPRT_STD_SOURCE_LOCATION, which makes std::source_location itself the full type
+// (and sprt::source_location an alias of it).
 namespace std {
 class source_location {
 public:
@@ -49,12 +55,49 @@ public:
 		unsigned _M_line;
 		unsigned _M_column;
 	};
+
+#ifdef __SPRT_STD_SOURCE_LOCATION
+	using __bsl_ty = decltype(__builtin_source_location());
+
+	// The defaulted __ptr argument is necessary so that the builtin is evaluated
+	// in the context of the caller. An explicit value should never be provided.
+	static consteval source_location current(
+			__bsl_ty __ptr = __builtin_source_location()) noexcept {
+		source_location __sl;
+		__sl.__ptr_ = static_cast<const __impl *>(__ptr);
+		return __sl;
+	}
+	constexpr source_location() noexcept = default;
+
+	constexpr ::sprt::uint_least32_t line() const noexcept {
+		return __ptr_ != nullptr ? __ptr_->_M_line : 0;
+	}
+	constexpr ::sprt::uint_least32_t column() const noexcept {
+		return __ptr_ != nullptr ? __ptr_->_M_column : 0;
+	}
+	constexpr const char *file_name() const noexcept {
+		return __ptr_ != nullptr ? __ptr_->_M_file_name : "";
+	}
+	constexpr const char *function_name() const noexcept {
+		return __ptr_ != nullptr ? __ptr_->_M_function_name : "";
+	}
+
+protected:
+	const __impl *__ptr_ = nullptr;
+#endif // __SPRT_STD_SOURCE_LOCATION
 };
 } // namespace std
 
 namespace sprt {
 
 class source_location_impl;
+
+#ifdef __SPRT_STD_SOURCE_LOCATION
+
+// std::source_location already carries the full interface; sprt aliases it.
+using source_location = std::source_location;
+
+#else
 
 class source_location {
 protected:
@@ -88,6 +131,8 @@ public:
 		return __ptr_ != nullptr ? __ptr_->_M_function_name : "";
 	}
 };
+
+#endif // __SPRT_STD_SOURCE_LOCATION
 
 // Manually fill source_location fields, used by 'assert' implementation
 class source_location_ext : public source_location {

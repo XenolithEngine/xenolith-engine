@@ -23,6 +23,7 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_DETAIL_POINTER_ITERATOR_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_DETAIL_POINTER_ITERATOR_H_
 
+#include <sprt/cxx/__type_traits/types.h> // is_pointer_v
 #include <sprt/cxx/__type_traits/operations.h>
 #include <sprt/cxx/__type_traits/modifications.h>
 #include <sprt/cxx/__type_traits/queries.h>

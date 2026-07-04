@@ -45,8 +45,6 @@ void performMallocUnorderedSetTests();
 void performMallocListTests();
 void performThreadTests();
 void performMallocForwardListTests();
-void performVariantTests();
-void performOptionalTests();
 void performSortTests();
 void performConstexprTest();
 void performSharedMutexStressTests();

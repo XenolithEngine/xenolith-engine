@@ -29,6 +29,10 @@ THE SOFTWARE.
 
 #include <sprt/cxx/array>
 
+#ifdef __cpp_rtti
+#include <sprt/cxx/typeinfo>
+#endif
+
 namespace sprt {
 
 // Function - реализация std::function, использующая память из pool_t
@@ -45,6 +49,12 @@ struct check_signature<Func, Ret(Args...),
 template <typename Allocator, typename UnusedType>
 class SPRT_API __function;
 
+// Empty marker base of every __function specialization; used to recognize any
+// __function AND its derived wrappers (__pool_function / __malloc_function /
+// std::function) so the converting constructor never tries to wrap one function type
+// in another (which would double-wrap on copy).
+struct __function_base_tag { };
+
 template <typename T>
 class __is_function_type : public false_type { };
 
@@ -52,12 +62,14 @@ template <typename Allocator, typename UnusedType>
 class __is_function_type<__function<Allocator, UnusedType>> : public true_type { };
 
 template <typename T>
-constexpr auto __is_function_type_v = __is_function_type<T>::value;
+constexpr bool __is_function_type_v = sprt::is_base_of_v<__function_base_tag, sprt::remove_cvref_t<T>>;
 
 template <typename Allocator, typename ReturnType, typename... ArgumentTypes>
-class SPRT_API __function<Allocator, ReturnType(ArgumentTypes...)> : public Allocator::base_class {
+class SPRT_API __function<Allocator, ReturnType(ArgumentTypes...)>
+: public Allocator::base_class, public __function_base_tag {
 public:
 	using signature_type = ReturnType(ArgumentTypes...);
+	using result_type = ReturnType;
 	using allocator_type = Allocator;
 
 	~__function() { clear(); }
@@ -126,17 +138,23 @@ public:
 		return *this;
 	}
 
+	// std::function's converting constructor/assignment: participate only when the
+	// (decayed) target is Lvalue-Callable for R(ArgumentTypes...) and is copy
+	// constructible, so move-only callables cleanly do not match (SFINAE) rather
+	// than hard-error inside the copy trait. remove_cvref_t excludes any __function.
 	template <typename FunctionT>
-	requires (!__is_function_type_v<FunctionT>
-			&& sprt::is_invocable_r_v<ReturnType, FunctionT, ArgumentTypes...>)
+	requires (!__is_function_type_v<sprt::remove_cvref_t<FunctionT>>
+			&& sprt::is_invocable_r_v<ReturnType, sprt::decay_t<FunctionT> &, ArgumentTypes...>
+			&& sprt::is_copy_constructible_v<sprt::decay_t<FunctionT>>)
 	__function(FunctionT &&f, const allocator_type &alloc = allocator_type()) noexcept
 	: mAllocator(alloc) {
 		mCallback = makeFreeFunction(sprt::forward<FunctionT>(f), mAllocator, mBuffer.data());
 	}
 
 	template <typename FunctionT>
-	requires (!__is_function_type_v<FunctionT>
-			&& sprt::is_invocable_r_v<ReturnType, FunctionT, ArgumentTypes...>)
+	requires (!__is_function_type_v<sprt::remove_cvref_t<FunctionT>>
+			&& sprt::is_invocable_r_v<ReturnType, sprt::decay_t<FunctionT> &, ArgumentTypes...>
+			&& sprt::is_copy_constructible_v<sprt::decay_t<FunctionT>>)
 	__function &operator=(FunctionT &&f) noexcept {
 		clear();
 		mCallback = makeFreeFunction(sprt::forward<FunctionT>(f), mAllocator, mBuffer.data());
@@ -169,6 +187,43 @@ public:
 
 	const allocator_type &get_allocator() const { return mAllocator; }
 
+	// [func.wrap.func.mod]: exchange the stored targets. Implemented through the
+	// type-erased move machinery (allocation-free for the malloc/pool allocators,
+	// whose instances compare equal), so it is genuinely noexcept.
+	void swap(__function &other) noexcept {
+		if (this == &other) {
+			return;
+		}
+		__function tmp(static_cast<__function &&>(other));
+		other = static_cast<__function &&>(*this);
+		*this = static_cast<__function &&>(tmp);
+	}
+
+#ifdef __cpp_rtti
+	// [func.wrap.func.targ]. RTTI is always enabled in this project (-frtti); the
+	// guard only keeps the header usable in a hypothetical -fno-rtti translation
+	// unit (where these members are simply absent, as target() needs type_info).
+	const type_info &target_type() const noexcept {
+		return mCallback ? *mCallback()->type : typeid(void);
+	}
+
+	template <typename T>
+	T *target() noexcept {
+		if (mCallback && *mCallback()->type == typeid(T)) {
+			return const_cast<T *>(static_cast<const T *>(mCallback()->get_target(mBuffer)));
+		}
+		return nullptr;
+	}
+
+	template <typename T>
+	const T *target() const noexcept {
+		if (mCallback && *mCallback()->type == typeid(T)) {
+			return static_cast<const T *>(mCallback()->get_target(mBuffer));
+		}
+		return nullptr;
+	}
+#endif
+
 protected:
 	static constexpr auto OptBufferSize = 16;
 
@@ -184,6 +239,12 @@ protected:
 		destroy_pointer destroy;
 		copy_pointer copy;
 		move_pointer move;
+#ifdef __cpp_rtti
+		// type erasure metadata for target_type()/target<T>(): the static type_info
+		// of the stored callable, and an accessor returning the object's address.
+		const type_info *type;
+		const void *(*get_target)(const buffer_type &);
+#endif
 	};
 
 	using traits_callback = functor_traits *(*)();
@@ -249,7 +310,9 @@ protected:
 	// ------------------------------------------------------------------------
 	template <typename FunctionT>
 	static functor_traits *makeFunctionTraits() noexcept {
-		using BaseType = typename remove_cv<typename remove_reference<FunctionT>::type>::type;
+		// decay_t (not remove_cvref_t) so a plain function name is stored as a
+		// function pointer, matching std::function's target type.
+		using BaseType = sprt::decay_t<FunctionT>;
 		if constexpr (sizeof(BaseType) <= OptBufferSize) {
 			static functor_traits traits{
 				.invoke = [](const void *arg, ArgumentTypes... args) -> ReturnType {
@@ -285,6 +348,10 @@ protected:
 				sprt::destroy_at(src);
 				return ret;
 			},
+#ifdef __cpp_rtti
+				.type = &typeid(BaseType),
+				.get_target = [](const buffer_type &buf) -> const void * { return buf.data(); },
+#endif
 			};
 
 			return &traits;
@@ -332,6 +399,13 @@ protected:
 				new (sourceBuffer.data(), nothrow)(const StorageType *)(nullptr);
 				return ret;
 			},
+#ifdef __cpp_rtti
+				.type = &typeid(BaseType),
+				.get_target = [](const buffer_type &buf) -> const void * {
+				auto node = *reinterpret_cast<StorageType *const *>(buf.data());
+				return node ? node->ptr() : nullptr;
+			},
+#endif
 			};
 
 			return &traits;
@@ -341,7 +415,7 @@ protected:
 	template <typename FunctionT>
 	static traits_callback makeFreeFunction(FunctionT &&f, allocator_type &alloc,
 			uint8_t *buf) noexcept {
-		using BaseType = remove_cvref_t<FunctionT>;
+		using BaseType = sprt::decay_t<FunctionT>;
 		using StorageType = detail::aligned_storage<BaseType>;
 		if constexpr (sizeof(BaseType) <= OptBufferSize
 				&& alignof(BaseType) <= alignof(max_align_t)) {
@@ -382,6 +456,28 @@ protected:
 	alignas(max_align_t) buffer_type mBuffer;
 };
 
+// Extracts R(Args...) from a functor's operator() for the class-template argument
+// deduction guides below (matches non-const/const, unqualified/lvalue-ref forms).
+template <typename>
+struct __function_guide_helper { };
+
+template <typename _Res, typename _Tp, bool _Nx, typename... _Args>
+struct __function_guide_helper<_Res (_Tp::*)(_Args...) noexcept(_Nx)> {
+	using type = _Res(_Args...);
+};
+template <typename _Res, typename _Tp, bool _Nx, typename... _Args>
+struct __function_guide_helper<_Res (_Tp::*)(_Args...) & noexcept(_Nx)> {
+	using type = _Res(_Args...);
+};
+template <typename _Res, typename _Tp, bool _Nx, typename... _Args>
+struct __function_guide_helper<_Res (_Tp::*)(_Args...) const noexcept(_Nx)> {
+	using type = _Res(_Args...);
+};
+template <typename _Res, typename _Tp, bool _Nx, typename... _Args>
+struct __function_guide_helper<_Res (_Tp::*)(_Args...) const & noexcept(_Nx)> {
+	using type = _Res(_Args...);
+};
+
 template <typename Sig>
 class __pool_function : public __function<detail::AllocatorPool<void *>, Sig> {
 public:
@@ -397,6 +493,10 @@ public:
 template < typename R, typename... ArgTypes >
 __pool_function(R (*)(ArgTypes...)) -> __pool_function<R(ArgTypes...)>;
 
+template <typename _Fn,
+		typename _Sig = typename __function_guide_helper<decltype(&_Fn::operator())>::type>
+__pool_function(_Fn) -> __pool_function<_Sig>;
+
 template <typename Sig>
 class __malloc_function : public __function<detail::AllocatorMalloc<void *>, Sig> {
 public:
@@ -410,6 +510,17 @@ public:
 
 template < typename R, typename... ArgTypes >
 __malloc_function(R (*)(ArgTypes...)) -> __malloc_function<R(ArgTypes...)>;
+
+template <typename _Fn,
+		typename _Sig = typename __function_guide_helper<decltype(&_Fn::operator())>::type>
+__malloc_function(_Fn) -> __malloc_function<_Sig>;
+
+// [func.wrap.func.alg] non-member swap; found by ADL for __function and the
+// __pool_function / __malloc_function derived types (base-class deduction).
+template <typename Allocator, typename Sig>
+void swap(__function<Allocator, Sig> &lhs, __function<Allocator, Sig> &rhs) noexcept {
+	lhs.swap(rhs);
+}
 
 } // namespace sprt
 
