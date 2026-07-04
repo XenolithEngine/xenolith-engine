@@ -26,6 +26,7 @@
 #include <sprt/c/__sprt_assert.h>
 
 namespace sprt {
+inline namespace __cxx_mutex {
 
 /*
 	std::unique_lock
@@ -113,6 +114,7 @@ public:
 	mutex_type *mutex() const noexcept { return __m_; }
 };
 
+} // inline namespace __cxx_mutex
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___MUTEX_UNIQUE_LOCK_H_

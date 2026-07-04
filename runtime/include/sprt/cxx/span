@@ -1,0 +1,203 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+// [views.span] std::span — a non-owning view over a contiguous sequence, static or dynamic
+// extent. at() (C++26) asserts instead of throwing. The C++20 range constructor is reduced
+// to the array / sprt::array / (pointer,size) / (first,last) forms (no ranges concepts here).
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_SPAN_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_SPAN_H_
+
+#include <sprt/c/__sprt_assert.h>
+#include <sprt/cxx/cstddef>
+#include <sprt/cxx/type_traits>
+#include <sprt/cxx/array>
+
+namespace sprt {
+
+inline constexpr size_t dynamic_extent = static_cast<size_t>(-1);
+
+template <typename _Tp, size_t _Extent = dynamic_extent>
+class span;
+
+// minimal constexpr reverse iterator over a raw pointer (the sprt reverse-iterator adaptors
+// read _Iter::pointer etc., which a raw pointer lacks).
+template <typename _Tp>
+class __span_reverse_iterator {
+	_Tp *_base = nullptr; // points one past the referent (std::reverse_iterator convention)
+
+public:
+	using value_type = remove_cv_t<_Tp>;
+	using reference = _Tp &;
+	using pointer = _Tp *;
+	using difference_type = ptrdiff_t;
+
+	constexpr __span_reverse_iterator() noexcept = default;
+	constexpr explicit __span_reverse_iterator(_Tp *__x) noexcept : _base(__x) { }
+	constexpr _Tp *base() const noexcept { return _base; }
+	constexpr reference operator*() const noexcept { return *(_base - 1); }
+	constexpr pointer operator->() const noexcept { return _base - 1; }
+	constexpr __span_reverse_iterator &operator++() noexcept {
+		--_base;
+		return *this;
+	}
+	constexpr __span_reverse_iterator operator++(int) noexcept {
+		auto __t = *this;
+		--_base;
+		return __t;
+	}
+	constexpr __span_reverse_iterator &operator--() noexcept {
+		++_base;
+		return *this;
+	}
+	friend constexpr bool operator==(
+			__span_reverse_iterator __a, __span_reverse_iterator __b) noexcept {
+		return __a._base == __b._base;
+	}
+	friend constexpr bool operator!=(
+			__span_reverse_iterator __a, __span_reverse_iterator __b) noexcept {
+		return __a._base != __b._base;
+	}
+};
+
+template <typename _Tp, size_t _Extent>
+class span {
+public:
+	using element_type = _Tp;
+	using value_type = remove_cv_t<_Tp>;
+	using size_type = size_t;
+	using difference_type = ptrdiff_t;
+	using pointer = _Tp *;
+	using const_pointer = const _Tp *;
+	using reference = _Tp &;
+	using const_reference = const _Tp &;
+	using iterator = _Tp *;
+	using const_iterator = const _Tp *;
+	using reverse_iterator = __span_reverse_iterator<_Tp>;
+	using const_reverse_iterator = __span_reverse_iterator<const _Tp>;
+
+	static constexpr size_type extent = _Extent;
+
+	// [span.cons]
+	template <size_t _Ex = _Extent, enable_if_t<_Ex == 0 || _Ex == dynamic_extent, int> = 0>
+	constexpr span() noexcept : _data(nullptr), _size(0) { }
+
+	constexpr span(pointer __first, size_type __count) : _data(__first), _size(__count) { }
+	constexpr span(pointer __first, pointer __last)
+	: _data(__first), _size(static_cast<size_type>(__last - __first)) { }
+
+	template <size_t _Np>
+	constexpr span(element_type (&__arr)[_Np]) noexcept : _data(__arr), _size(_Np) { }
+	template <typename _Up, size_t _Np, enable_if_t<is_convertible_v<_Up (*)[], _Tp (*)[]>, int> = 0>
+	constexpr span(array<_Up, _Np> &__arr) noexcept : _data(__arr.data()), _size(_Np) { }
+	template <typename _Up, size_t _Np,
+			enable_if_t<is_convertible_v<const _Up (*)[], _Tp (*)[]>, int> = 0>
+	constexpr span(const array<_Up, _Np> &__arr) noexcept : _data(__arr.data()), _size(_Np) { }
+
+	constexpr span(const span &) noexcept = default;
+	constexpr span &operator=(const span &) noexcept = default;
+
+	template <typename _Up, size_t _OExtent,
+			enable_if_t<(_OExtent == dynamic_extent || _Extent == dynamic_extent
+								|| _Extent == _OExtent)
+							&& is_convertible_v<_Up (*)[], _Tp (*)[]>,
+					int> = 0>
+	constexpr span(const span<_Up, _OExtent> &__s) noexcept : _data(__s.data()), _size(__s.size()) { }
+
+	// [span.iterators]
+	constexpr iterator begin() const noexcept { return _data; }
+	constexpr iterator end() const noexcept { return _data + _size; }
+	constexpr const_iterator cbegin() const noexcept { return _data; }
+	constexpr const_iterator cend() const noexcept { return _data + _size; }
+	constexpr reverse_iterator rbegin() const noexcept { return reverse_iterator(end()); }
+	constexpr reverse_iterator rend() const noexcept { return reverse_iterator(begin()); }
+
+	// [span.elem]
+	constexpr reference front() const { return _data[0]; }
+	constexpr reference back() const { return _data[_size - 1]; }
+	constexpr reference operator[](size_type __i) const { return _data[__i]; }
+	constexpr reference at(size_type __i) const {
+		sprt_passert(__i < _size, "span::at: index out of range");
+		return _data[__i];
+	}
+	constexpr pointer data() const noexcept { return _data; }
+
+	// [span.obs]
+	constexpr size_type size() const noexcept { return _size; }
+	constexpr size_type size_bytes() const noexcept { return _size * sizeof(element_type); }
+	[[nodiscard]]
+	constexpr bool empty() const noexcept {
+		return _size == 0;
+	}
+
+	// [span.sub]
+	template <size_t _Count>
+	constexpr span<element_type, _Count> first() const {
+		return span<element_type, _Count>(_data, _Count);
+	}
+	constexpr span<element_type, dynamic_extent> first(size_type __count) const {
+		return span<element_type, dynamic_extent>(_data, __count);
+	}
+	template <size_t _Count>
+	constexpr span<element_type, _Count> last() const {
+		return span<element_type, _Count>(_data + (_size - _Count), _Count);
+	}
+	constexpr span<element_type, dynamic_extent> last(size_type __count) const {
+		return span<element_type, dynamic_extent>(_data + (_size - __count), __count);
+	}
+	constexpr span<element_type, dynamic_extent> subspan(
+			size_type __offset, size_type __count = dynamic_extent) const {
+		return span<element_type, dynamic_extent>(
+				_data + __offset, __count == dynamic_extent ? _size - __offset : __count);
+	}
+
+private:
+	pointer _data;
+	size_type _size;
+};
+
+template <typename _Tp, size_t _Np>
+span(_Tp (&)[_Np]) -> span<_Tp, _Np>;
+template <typename _Tp, size_t _Np>
+span(array<_Tp, _Np> &) -> span<_Tp, _Np>;
+template <typename _Tp, size_t _Np>
+span(const array<_Tp, _Np> &) -> span<const _Tp, _Np>;
+template <typename _Tp>
+span(_Tp *, size_t) -> span<_Tp>;
+template <typename _Tp>
+span(_Tp *, _Tp *) -> span<_Tp>;
+
+template <typename _Tp, size_t _Extent>
+span<const byte, (_Extent == dynamic_extent ? dynamic_extent : sizeof(_Tp) * _Extent)> as_bytes(
+		span<_Tp, _Extent> __s) noexcept {
+	return {reinterpret_cast<const byte *>(__s.data()), __s.size_bytes()};
+}
+template <typename _Tp, size_t _Extent,
+		enable_if_t<!is_const_v<_Tp>, int> = 0>
+span<byte, (_Extent == dynamic_extent ? dynamic_extent : sizeof(_Tp) * _Extent)> as_writable_bytes(
+		span<_Tp, _Extent> __s) noexcept {
+	return {reinterpret_cast<byte *>(__s.data()), __s.size_bytes()};
+}
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_SPAN_H_

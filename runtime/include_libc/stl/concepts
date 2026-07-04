@@ -1,0 +1,68 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+// Standard <concepts>, backed by sprt. The three_way_comparable[_with] comparison concepts
+// come from <compare>. common_reference_with / common_with are not provided (no
+// common_reference machinery in this layer).
+
+#ifndef RUNTIME_INCLUDE_LIBC_STL_CONCEPTS_H_
+#define RUNTIME_INCLUDE_LIBC_STL_CONCEPTS_H_
+
+#include <__sprt_stl_config.h>
+
+#include <sprt/cxx/concepts>
+#include <sprt/cxx/compare>
+
+namespace std {
+using sprt::assignable_from;
+using sprt::constructible_from;
+using sprt::convertible_to;
+using sprt::copy_constructible;
+using sprt::copyable;
+using sprt::default_initializable;
+using sprt::derived_from;
+using sprt::destructible;
+using sprt::equality_comparable;
+using sprt::equality_comparable_with;
+using sprt::equivalence_relation;
+using sprt::floating_point;
+using sprt::integral;
+using sprt::invocable;
+using sprt::movable;
+using sprt::move_constructible;
+using sprt::predicate;
+using sprt::regular;
+using sprt::regular_invocable;
+using sprt::relation;
+using sprt::same_as;
+using sprt::semiregular;
+using sprt::signed_integral;
+using sprt::strict_weak_order;
+using sprt::swappable;
+using sprt::swappable_with;
+using sprt::totally_ordered;
+using sprt::totally_ordered_with;
+using sprt::unsigned_integral;
+// three_way_comparable[_with] are already in namespace std (from <compare>).
+} // namespace std
+
+#endif // RUNTIME_INCLUDE_LIBC_STL_CONCEPTS_H_

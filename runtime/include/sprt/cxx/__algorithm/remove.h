@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__iterator/iterator_ops.h>
 
 namespace sprt {
+inline namespace __cxx_algorithm {
 
 template <class ForwardIt, class T = typename sprt::iterator_traits<ForwardIt>::value_type>
 ForwardIt remove(ForwardIt first, ForwardIt last, const T &value) {
@@ -54,6 +55,7 @@ ForwardIt remove_if(ForwardIt first, ForwardIt last, UnaryPred p) {
 	return first;
 }
 
+} // inline namespace __cxx_algorithm
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___ALGORITHM_REMOVE_H_

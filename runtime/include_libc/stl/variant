@@ -1,0 +1,50 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+// Standard <variant>, backed by sprt::variant. NB: sprt::variant_empty is an
+// sprt-specific extension (the valueless sentinel) and is intentionally NOT
+// exported into namespace std.
+
+#ifndef RUNTIME_INCLUDE_LIBC_STL_VARIANT_H_
+#define RUNTIME_INCLUDE_LIBC_STL_VARIANT_H_
+
+// Always pull the full std implementations when used through the STL layer.
+#include <__sprt_stl_config.h>
+
+#include <sprt/cxx/variant>
+
+namespace std {
+using sprt::variant;
+using sprt::variant_size;
+using sprt::variant_size_v;
+using sprt::variant_alternative;
+using sprt::variant_alternative_t;
+using sprt::variant_npos;
+using sprt::bad_variant_access;
+using sprt::monostate;
+using sprt::holds_alternative;
+using sprt::get;
+using sprt::get_if;
+using sprt::visit;
+} // namespace std
+
+#endif // RUNTIME_INCLUDE_LIBC_STL_VARIANT_H_

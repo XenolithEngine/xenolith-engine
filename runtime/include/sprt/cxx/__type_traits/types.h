@@ -27,6 +27,7 @@
 #include <sprt/cxx/__type_traits/constants.h>
 
 namespace sprt {
+inline namespace __cxx_type_traits {
 
 template <typename Type>
 struct is_void {
@@ -129,6 +130,7 @@ concept io_character = is_same_v<_Tp, char> || is_same_v<_Tp, char16_t> || is_sa
 template <typename _Tp>
 concept enumeration = is_enum_v<_Tp>;
 
+} // inline namespace __cxx_type_traits
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_TYPES_H_

@@ -28,6 +28,7 @@
 #include <sprt/runtime/enum.h>
 
 namespace sprt {
+inline namespace __cxx_atomic {
 
 enum class memory_order : int {
 	relaxed = __ATOMIC_RELAXED,
@@ -231,14 +232,14 @@ struct atomic<Type *> : public __atomic_base<Type *> {
 		// __atomic_fetch_add accepts function pointers, guard against them.
 		static_assert(!is_function<remove_pointer_t<Type> >::value,
 				"Pointer to function isn't allowed");
-		return __c11_atomic_fetch_and(addressof(this->_storage._value), __op, toInt(__m));
+		return __c11_atomic_fetch_add(addressof(this->_storage._value), __op, toInt(__m));
 	}
 
 	Type *fetch_add(ptrdiff_t __op, memory_order __m = memory_order::seq_cst) noexcept {
 		// __atomic_fetch_add accepts function pointers, guard against them.
 		static_assert(!is_function<remove_pointer_t<Type> >::value,
 				"Pointer to function isn't allowed");
-		return __c11_atomic_fetch_and(addressof(this->_storage._value), __op, toInt(__m));
+		return __c11_atomic_fetch_add(addressof(this->_storage._value), __op, toInt(__m));
 	}
 
 	Type *fetch_sub(ptrdiff_t __op, memory_order __m = memory_order::seq_cst) volatile noexcept {
@@ -362,6 +363,7 @@ static inline bool compareSwap(volatile Value *ptr, Value *expected, Value desir
 
 } // namespace _atomic
 
+} // inline namespace __cxx_atomic
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_ATOMIC_H_

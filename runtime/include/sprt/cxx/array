@@ -25,7 +25,9 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_assert.h>
 #include <sprt/cxx/__algorithm/bounds.h>
+#include <sprt/cxx/__utility/swap.h>
 #include <sprt/cxx/detail/ctypes.h>
+#include <sprt/cxx/compare>
 
 namespace sprt {
 
@@ -47,6 +49,10 @@ struct array {
 	// No explicit construct/copy/destroy for aggregate type
 	constexpr void fill(const value_type &v) {
 		for (size_t i = 0; i < Size; ++i) { _elems[i] = v; }
+	}
+
+	constexpr void swap(array &other) noexcept(is_nothrow_swappable_v<Type>) {
+		for (size_t i = 0; i < Size; ++i) { sprt::swap(_elems[i], other._elems[i]); }
 	}
 
 	// iterators:
@@ -91,6 +97,26 @@ struct array {
 		return sprt::equal(begin(), end(), other.begin());
 	}
 };
+
+// C++20 [array.syn]: lexicographical three-way comparison (== is the member above,
+// which also yields the rewritten !=). Uses the shared synth-three-way so element
+// types that have only operator< still order (as a synthesized weak_ordering).
+template <typename _Tp, size_t _Np>
+constexpr __synth_three_way_result_t<_Tp> operator<=>(const array<_Tp, _Np> &__x,
+		const array<_Tp, _Np> &__y) {
+	for (size_t __i = 0; __i < _Np; ++__i) {
+		if (auto __c = sprt::__synth_three_way(__x[__i], __y[__i]); __c != 0) {
+			return __c;
+		}
+	}
+	return static_cast<__synth_three_way_result_t<_Tp>>(strong_ordering::equal);
+}
+
+// C++20 [array.syn]: free swap, found by ADL on sprt::array (mirrors array::swap).
+template <typename _Tp, size_t _Np>
+constexpr void swap(array<_Tp, _Np> &__x, array<_Tp, _Np> &__y) noexcept(noexcept(__x.swap(__y))) {
+	__x.swap(__y);
+}
 
 } // namespace sprt
 

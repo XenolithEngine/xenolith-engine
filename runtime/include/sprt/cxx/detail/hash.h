@@ -124,18 +124,4 @@ struct hash<void> {
 
 } // namespace sprt
 
-#ifdef __SPRT_AS_STD
-namespace std {
-
-template <typename T>
-struct hash {
-	// Key on the struct's T (the standard std::hash contract). The inner
-	// `template <typename T>` previously shadowed it and deduced T from the
-	// argument, so std::hash<Key>{}(lvalue) wrongly used sprt::hash<Key&>.
-	size_t operator()(const T &value) const noexcept { return sprt::hash<T>()(value); }
-};
-
-} // namespace std
-#endif
-
 #endif // RUNTIME_INCLUDE_SPRT_CXX_HASH_H_

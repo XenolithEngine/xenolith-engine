@@ -108,13 +108,25 @@ SPRT_API __SPRT_ID(size_t) __SPRT_ID(
 SPRT_API __SPRT_ID(size_t) __SPRT_ID(mbrlen)(const char *__SPRT_RESTRICT, __SPRT_ID(size_t),
 		__SPRT_MBSTATE_NAME *__SPRT_RESTRICT);
 
-// <uchar.h> conversions. char16_t/char32_t are keywords in C++ and their
-// underlying integer types (__CHAR16_TYPE__/__CHAR32_TYPE__) in C; alias both so
-// the declarations and the C++ implementation agree on the parameter types.
+// <uchar.h> conversions. char8_t/char16_t/char32_t are keywords in C++ (char8_t
+// since C++20) and their underlying integer types (__CHAR8_TYPE__/__CHAR16_TYPE__/
+// __CHAR32_TYPE__) in C; alias all three so the declarations and the C++
+// implementation agree on the parameter types. char8_t is provided unconditionally:
+// the keyword when available, unsigned char (its underlying type) otherwise.
 #ifdef __cplusplus
+#ifdef __cpp_char8_t
+typedef char8_t __SPRT_ID(char8_t);
+#else
+typedef unsigned char __SPRT_ID(char8_t);
+#endif
 typedef char16_t __SPRT_ID(char16_t);
 typedef char32_t __SPRT_ID(char32_t);
 #else
+#ifdef __CHAR8_TYPE__
+typedef __CHAR8_TYPE__ __SPRT_ID(char8_t);
+#else
+typedef unsigned char __SPRT_ID(char8_t);
+#endif
 typedef __CHAR16_TYPE__ __SPRT_ID(char16_t);
 typedef __CHAR32_TYPE__ __SPRT_ID(char32_t);
 #endif

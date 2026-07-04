@@ -31,6 +31,7 @@ THE SOFTWARE.
 #include <sprt/cxx/compare>
 
 namespace sprt {
+inline namespace __cxx_algorithm {
 
 struct lexicographical_type_compare {
 	template <typename Type1, typename Type2>
@@ -145,6 +146,7 @@ inline constexpr bool lexicographical_compare(_InputIterator1 __first1, _InputIt
 			__proj, __proj);
 }
 
+} // inline namespace __cxx_algorithm
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___ALGORITHM_LEXICOGRAPHICAL_COMPARE_H_

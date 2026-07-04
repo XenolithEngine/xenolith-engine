@@ -28,6 +28,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__algorithm/reverse.h>
 
 namespace sprt {
+inline namespace __cxx_algorithm {
 
 template <typename _Compare, typename _BidirectionalIterator, typename _Sentinel>
 constexpr pair<_BidirectionalIterator, bool> __next_permutation(_BidirectionalIterator __first,
@@ -68,6 +69,7 @@ inline constexpr bool next_permutation(_BidirectionalIterator __first,
 	return sprt::next_permutation(__first, __last, less<void>());
 }
 
+} // inline namespace __cxx_algorithm
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___ALGORITHM_NEXT_PERMUTATION_H_

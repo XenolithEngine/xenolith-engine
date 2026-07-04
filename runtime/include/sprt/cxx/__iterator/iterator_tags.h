@@ -30,6 +30,7 @@ THE SOFTWARE.
 #endif
 
 namespace sprt {
+inline namespace __cxx_iterator {
 
 #if __SPRT_USE_STL_ITERATOR_TAGS
 using input_iterator_tag = std::input_iterator_tag;
@@ -47,6 +48,7 @@ struct random_access_iterator_tag : public bidirectional_iterator_tag { };
 struct contiguous_iterator_tag : public random_access_iterator_tag { };
 #endif
 
+} // inline namespace __cxx_iterator
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___ITERATOR_ITERATOR_TAGS_H_

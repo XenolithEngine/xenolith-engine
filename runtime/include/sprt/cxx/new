@@ -38,6 +38,10 @@ SPRT_API extern const nothrow_t nothrow;
 enum class align_val_t : sprt::size_t {
 };
 
+// Forward declaration: std::allocator below names sprt::AllocBase as its
+// container-base policy (base_class); the full definition follows later in this header.
+struct SPRT_API AllocBase;
+
 } // namespace sprt
 
 #if __SPRT_USE_STL
@@ -48,13 +52,32 @@ enum class align_val_t : sprt::size_t {
 
 namespace std {
 
-// Just to use with constexpr allocations
+// std::allocator is BOTH the standard, constexpr-capable allocator AND a full sprt
+// allocator policy, so sprt containers can be spelled `__vector<T, std::allocator<T>>`
+// (i.e. exposed as std::vector<T> / std::basic_string). It therefore carries the sprt
+// extension surface (base_class + __allocate/__deallocate/construct/destroy/...) on top
+// of the standard allocate/deallocate. All entry points share the raw global
+// operator new/delete: those are ALSO the constexpr leaf that sprt::memory::allocate
+// bottoms out to, so they must NOT route back through sprt::memory (that would recurse).
 template <typename _Tp>
 class allocator {
 public:
+	// Empty, stateless malloc base (EBO) — a std::allocator-backed sprt container keeps
+	// standard size/layout. Named by __vector/__basic_string as `Allocator::base_class`.
+	using base_class = sprt::AllocBase;
+
+	using value_type = _Tp;
+	using pointer = _Tp *;
+	using const_pointer = const _Tp *;
+	using reference = _Tp &;
+	using const_reference = const _Tp &;
 	using size_type = sprt::size_t;
 	using difference_type = sprt::ptrdiff_t;
-	using value_type = _Tp;
+
+	template <typename _Up>
+	struct rebind {
+		using other = allocator<_Up>;
+	};
 
 	constexpr allocator() noexcept { }
 
@@ -68,6 +91,59 @@ public:
 	}
 
 	constexpr void deallocate(_Tp *__p, size_type __n) noexcept { ::operator delete(__p); }
+
+	// Extended sprt allocation entry points used by linear_memory / node storage. They
+	// share ::operator new/delete with allocate/deallocate above, so blocks are freely
+	// interchangeable between the standard and extended calls.
+	constexpr _Tp *__allocate(size_type &__n) const {
+		return static_cast<_Tp *>(::operator new(__n * sizeof(_Tp)));
+	}
+	constexpr _Tp *__allocate(size_type __n, size_type &__bytes) const {
+		if (__builtin_mul_overflow(__n, sizeof(_Tp), &__bytes)) {
+			// n * sizeof(T) overflows size_t: never under-allocate.
+			__bytes = 0;
+			return nullptr;
+		}
+		return static_cast<_Tp *>(::operator new(__bytes));
+	}
+	constexpr void __deallocate(_Tp *__p, size_type, size_type) const noexcept {
+		::operator delete(__p);
+	}
+
+	template <typename... _Args>
+	constexpr void construct(_Tp *__p, _Args &&...__args) const noexcept {
+		static_assert(sprt::is_constructible_v<_Tp, _Args...>, "Invalid arguments for constructor");
+		if constexpr (sprt::is_constructible_v<_Tp, _Args...>) {
+			::new (static_cast<void *>(__p)) _Tp(sprt::forward<_Args>(__args)...);
+		}
+	}
+
+	constexpr void destroy(_Tp *__p) const noexcept {
+		if constexpr (sprt::is_destructible_v<_Tp> && !sprt::is_trivially_destructible_v<_Tp>) {
+			__p->~_Tp();
+		}
+	}
+	constexpr void destroy(_Tp *__p, size_type __size) const noexcept {
+		if constexpr (sprt::is_destructible_v<_Tp> && !sprt::is_trivially_destructible_v<_Tp>) {
+			for (size_type __i = 0; __i < __size; ++__i) { (__p + __i)->~_Tp(); }
+		}
+	}
+
+	constexpr pointer address(reference __r) const noexcept { return &__r; }
+	constexpr const_pointer address(const_reference __r) const noexcept { return &__r; }
+
+	constexpr size_type max_size() const noexcept { return sprt::Max<size_type> / sizeof(_Tp); }
+
+	template <typename _Up>
+	constexpr bool operator==(const allocator<_Up> &) const noexcept {
+		return true;
+	}
+	template <typename _Up>
+	constexpr bool operator!=(const allocator<_Up> &) const noexcept {
+		return false;
+	}
+
+	constexpr explicit operator bool() const noexcept { return true; }
 };
 
 struct destroying_delete_t {

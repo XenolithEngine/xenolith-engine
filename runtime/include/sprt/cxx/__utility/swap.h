@@ -32,6 +32,7 @@ THE SOFTWARE.
 #endif
 
 namespace sprt {
+inline namespace __cxx_type_traits {
 
 /*
 	swap
@@ -104,6 +105,7 @@ struct is_nothrow_swappable : bool_constant<is_nothrow_swappable_v<_Tp>> { };
 
 #endif
 
+} // inline namespace __cxx_type_traits
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_CXX___UTILITY_SWAP_H_

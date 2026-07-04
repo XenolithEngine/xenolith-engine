@@ -1,0 +1,123 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+// Standard <memory>, backed by sprt. Exposes the conforming allocator/iterator
+// utilities sprt provides. std::allocator and std::construct_at come from <new>
+// (pulled in here); the smart pointers (unique_ptr / shared_ptr / weak_ptr,
+// make_unique / make_shared, enable_shared_from_this) are backed by sprt and
+// re-exported below.
+
+#ifndef RUNTIME_INCLUDE_LIBC_STL_MEMORY_H_
+#define RUNTIME_INCLUDE_LIBC_STL_MEMORY_H_
+
+// Always pull the full std implementations when used through the STL layer.
+#include <__sprt_stl_config.h>
+
+#include <sprt/cxx/memory>
+#include <sprt/cxx/new>
+
+// For the conforming helpers added below (to_address / assume_aligned /
+// uses_allocator): integer/pointer traits and is_constant_evaluated.
+#include <sprt/cxx/type_traits>
+
+namespace std {
+using sprt::allocator_traits;
+using sprt::pointer_traits;
+using sprt::destroy;
+using sprt::destroy_n;
+using sprt::destroy_at;
+using sprt::addressof;
+
+// [specialized.algorithms] uninitialized memory + [ptr.align]
+using sprt::uninitialized_default_construct;
+using sprt::uninitialized_default_construct_n;
+using sprt::uninitialized_value_construct;
+using sprt::uninitialized_value_construct_n;
+using sprt::uninitialized_copy;
+using sprt::uninitialized_copy_n;
+using sprt::uninitialized_move;
+using sprt::uninitialized_move_n;
+using sprt::uninitialized_fill;
+using sprt::uninitialized_fill_n;
+using sprt::align;
+
+// [unique.ptr] / [util.smartptr]
+using sprt::default_delete;
+using sprt::unique_ptr;
+using sprt::make_unique;
+using sprt::make_unique_for_overwrite;
+using sprt::shared_ptr;
+using sprt::weak_ptr;
+using sprt::enable_shared_from_this;
+using sprt::make_shared;
+using sprt::static_pointer_cast;
+using sprt::dynamic_pointer_cast;
+using sprt::const_pointer_cast;
+using sprt::reinterpret_pointer_cast;
+using sprt::get_deleter;
+
+// [pointer.conversion] std::to_address (C++20). Pure library, no sprt backing.
+template <typename _Tp>
+constexpr _Tp *to_address(_Tp *__p) noexcept {
+	static_assert(!sprt::is_function_v<_Tp>, "to_address must not be called on a function pointer");
+	return __p;
+}
+template <typename _Ptr>
+constexpr auto to_address(const _Ptr &__p) noexcept {
+	if constexpr (requires { pointer_traits<_Ptr>::to_address(__p); }) {
+		return pointer_traits<_Ptr>::to_address(__p);
+	} else {
+		return std::to_address(__p.operator->());
+	}
+}
+
+// [ptr.align] std::assume_aligned (C++20). N must be a power of two.
+template <sprt::size_t _Np, typename _Tp>
+[[nodiscard]]
+constexpr _Tp *assume_aligned(_Tp *__ptr) {
+	static_assert(_Np != 0 && (_Np & (_Np - 1)) == 0, "assume_aligned<N>: N must be a power of two");
+	if (sprt::is_constant_evaluated()) {
+		return __ptr;
+	} else {
+		return static_cast<_Tp *>(__builtin_assume_aligned(__ptr, _Np));
+	}
+}
+
+// [allocator.tag] allocator_arg / [allocator.uses.trait] uses_allocator.
+struct allocator_arg_t {
+	explicit allocator_arg_t() = default;
+};
+inline constexpr allocator_arg_t allocator_arg {};
+
+template <typename _Tp, typename _Alloc, typename = void>
+struct __uses_allocator_impl : sprt::false_type { };
+template <typename _Tp, typename _Alloc>
+struct __uses_allocator_impl<_Tp, _Alloc, sprt::void_t<typename _Tp::allocator_type>>
+: sprt::bool_constant<sprt::is_convertible_v<_Alloc, typename _Tp::allocator_type>> { };
+
+template <typename _Tp, typename _Alloc>
+struct uses_allocator : __uses_allocator_impl<_Tp, _Alloc> { };
+template <typename _Tp, typename _Alloc>
+inline constexpr bool uses_allocator_v = uses_allocator<_Tp, _Alloc>::value;
+} // namespace std
+
+#endif // RUNTIME_INCLUDE_LIBC_STL_MEMORY_H_

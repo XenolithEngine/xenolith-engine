@@ -75,6 +75,46 @@ static const LibcTest s_tests[] = {
 	{"time", &performTimeTest},
 	// inttypes.h
 	{"inttypes", &performInttypesTest},
+	// <sprt/cxx/optional> (C++ standard conformance)
+	{"optional", &performOptionalTest},
+	// <sprt/cxx/variant> (C++ standard conformance)
+	{"variant", &performVariantTest},
+	// <sprt/cxx/any> (C++ standard conformance)
+	{"any", &performAnyTest},
+	// C <-> STL header coexistence + unambiguous global calls + no recursion
+	{"coexist", &performCoexistTest},
+	// <limits> std::numeric_limits conformance
+	{"numeric_limits", &performLimitsTest},
+	// <tuple> std::tuple + structured bindings for tuple/pair/array
+	{"tuple", &performTupleTest},
+
+	{"chrono", &performChronoTest},
+
+	{"char_traits", &performCharTraitsTest},
+	{"hash", &performHashTest},
+	{"function", &performFunctionTest},
+	// sprt::call_once invokes the callable exactly once (qonce mutable-lambda fix)
+	{"call_once", &performCallOnceTest},
+
+	// std::vector / std::string via the full sprt-allocator std::allocator (+ custom Traits)
+	{"std_vector", &performVectorTest},
+	{"std_string", &performStringTest},
+	// std::pair: default ctor, piecewise_construct, <=>, swap, tuple protocol
+	{"std_pair", &performPairTest},
+	// std::string_view + std::string interop (starts_with / ends_with)
+	{"std_string_view", &performStringViewTest},
+	// std::to_string / to_wstring / stoi-family / operator""s
+	{"std_string_conv", &performStringConvTest},
+	// <memory>: unique_ptr / shared_ptr / weak_ptr / make_* / uninitialized_* / align
+	{"std_memory", &performStdMemoryTest},
+	// <numeric>/<span>/<functional> objects+bind/<charconv>/<compare> order CPOs
+	{"std_purelib", &performPureLibTest},
+	// <map>/<set>: rb-tree, CTAD, access_token operator[], erase_if
+	{"std_mapset", &performMapSetTest},
+	// <list>/<forward_list>: CTAD, list ops, erase/erase_if
+	{"std_list", &performListTest},
+	// <unordered_map>/<unordered_set>: node indirection (stable refs), CTAD, erase_if
+	{"std_unordered", &performUnorderedTest},
 
 	{nullptr, nullptr},
 };
