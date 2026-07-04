@@ -177,21 +177,24 @@ public:
 	access_token<key_type> operator[](key_type &&k) {
 		return access_token<key_type>(*this, sprt::move_unsafe(k));
 	}
+	// The token's key type is decayed so a heterogeneous key that is an array or reference
+	// (e.g. a string literal `m["x"]`) is stored as a value/pointer (const char *), not as an
+	// unstorable reference/array type in the token's aligned_storage.
 	template <__map_compatible_key<__map> K>
-	access_token<K> operator[](K &&k) {
-		return access_token<K>(*this, sprt::forward<K>(k));
+	access_token<decay_t<K>> operator[](K &&k) {
+		return access_token<decay_t<K>>(*this, sprt::forward<K>(k));
 	}
 	access_token<key_type> at(const key_type &k) { return access_token<key_type>(*this, k); }
 	const_access_token<key_type> at(const key_type &k) const {
 		return const_access_token<key_type>(*this, k);
 	}
 	template <__map_compatible_key<__map> K>
-	access_token<K> at(const K &k) {
-		return access_token<K>(*this, k);
+	access_token<decay_t<const K &>> at(const K &k) {
+		return access_token<decay_t<const K &>>(*this, k);
 	}
 	template <__map_compatible_key<__map> K>
-	const_access_token<K> at(const K &k) const {
-		return const_access_token<K>(*this, k);
+	const_access_token<decay_t<const K &>> at(const K &k) const {
+		return const_access_token<decay_t<const K &>>(*this, k);
 	}
 
 	// modifiers

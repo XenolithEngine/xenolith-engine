@@ -1,0 +1,162 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+// [charconv] integer to_chars / from_chars (base 2..36). The floating-point forms are NOT
+// provided — the shortest-round-trip algorithm (Ryu/Grisu) is out of scope. `errc` here is a
+// minimal enum (the full std::errc belongs to <system_error>, which this layer does not
+// implement); only the three values charconv reports are defined.
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_CHARCONV_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_CHARCONV_H_
+
+#include <sprt/cxx/cstddef>
+#include <sprt/cxx/type_traits>
+#include <sprt/cxx/detail/ctypes.h>
+
+namespace sprt {
+
+enum class errc {
+	invalid_argument = 22, // EINVAL
+	result_out_of_range = 34, // ERANGE
+	value_too_large = 75, // EOVERFLOW
+};
+
+enum class chars_format {
+	scientific = 1,
+	fixed = 2,
+	hex = 4,
+	general = fixed | scientific,
+};
+
+struct to_chars_result {
+	char *ptr;
+	errc ec;
+	friend bool operator==(const to_chars_result &, const to_chars_result &) = default;
+};
+
+struct from_chars_result {
+	const char *ptr;
+	errc ec;
+	friend bool operator==(const from_chars_result &, const from_chars_result &) = default;
+};
+
+inline int __cc_digit(char __c, int __base) noexcept {
+	int __d;
+	if (__c >= '0' && __c <= '9') {
+		__d = __c - '0';
+	} else if (__c >= 'a' && __c <= 'z') {
+		__d = __c - 'a' + 10;
+	} else if (__c >= 'A' && __c <= 'Z') {
+		__d = __c - 'A' + 10;
+	} else {
+		return -1;
+	}
+	return __d < __base ? __d : -1;
+}
+
+template <typename _Int, enable_if_t<is_integral_v<_Int> && !is_same_v<remove_cv_t<_Int>, bool>, int> = 0>
+to_chars_result to_chars(char *__first, char *__last, _Int __value, int __base = 10) {
+	using _Up = make_unsigned_t<_Int>;
+	char __tmp[sizeof(_Int) * 8 + 1];
+	char *__p = __tmp + sizeof(__tmp);
+	_Up __mag;
+	bool __neg = false;
+	if constexpr (is_signed_v<_Int>) {
+		if (__value < 0) {
+			__neg = true;
+			__mag = static_cast<_Up>(~static_cast<_Up>(__value) + 1u);
+		} else {
+			__mag = static_cast<_Up>(__value);
+		}
+	} else {
+		__mag = static_cast<_Up>(__value);
+	}
+	const _Up __b = static_cast<_Up>(__base);
+	do {
+		const int __d = static_cast<int>(__mag % __b);
+		*--__p = __d < 10 ? static_cast<char>('0' + __d) : static_cast<char>('a' + __d - 10);
+		__mag /= __b;
+	} while (__mag != 0);
+	if (__neg) {
+		*--__p = '-';
+	}
+	const ptrdiff_t __len = (__tmp + sizeof(__tmp)) - __p;
+	if (__len > (__last - __first)) {
+		return {__last, errc::value_too_large};
+	}
+	for (char *__s = __p; __s != __tmp + sizeof(__tmp); ++__s) {
+		*__first++ = *__s;
+	}
+	return {__first, errc {}};
+}
+
+template <typename _Int, enable_if_t<is_integral_v<_Int> && !is_same_v<remove_cv_t<_Int>, bool>, int> = 0>
+from_chars_result from_chars(const char *__first, const char *__last, _Int &__value, int __base = 10) {
+	using _Up = make_unsigned_t<_Int>;
+	const char *__p = __first;
+	bool __neg = false;
+	if constexpr (is_signed_v<_Int>) {
+		if (__p != __last && *__p == '-') {
+			__neg = true;
+			++__p;
+		}
+	}
+	// max magnitude accepted for this type/sign
+	_Up __limit;
+	if constexpr (is_signed_v<_Int>) {
+		__limit = __neg ? static_cast<_Up>(Max<_Int>) + 1u : static_cast<_Up>(Max<_Int>);
+	} else {
+		__limit = static_cast<_Up>(-1);
+	}
+	const _Up __b = static_cast<_Up>(__base);
+	_Up __acc = 0;
+	bool __any = false;
+	bool __overflow = false;
+	for (; __p != __last; ++__p) {
+		const int __d = __cc_digit(*__p, __base);
+		if (__d < 0) {
+			break;
+		}
+		__any = true;
+		if (__acc > (__limit - static_cast<_Up>(__d)) / __b) {
+			__overflow = true;
+		} else {
+			__acc = __acc * __b + static_cast<_Up>(__d);
+		}
+	}
+	if (!__any) {
+		return {__first, errc::invalid_argument};
+	}
+	if (__overflow) {
+		return {__p, errc::result_out_of_range};
+	}
+	if constexpr (is_signed_v<_Int>) {
+		__value = __neg ? static_cast<_Int>(~__acc + 1u) : static_cast<_Int>(__acc);
+	} else {
+		__value = static_cast<_Int>(__acc);
+	}
+	return {__p, errc {}};
+}
+
+} // namespace sprt
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_CHARCONV_H_

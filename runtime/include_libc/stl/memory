@@ -22,8 +22,9 @@ THE SOFTWARE.
 
 // Standard <memory>, backed by sprt. Exposes the conforming allocator/iterator
 // utilities sprt provides. std::allocator and std::construct_at come from <new>
-// (pulled in here); smart pointers (unique_ptr/shared_ptr) have no sprt backing
-// and are therefore not provided.
+// (pulled in here); the smart pointers (unique_ptr / shared_ptr / weak_ptr,
+// make_unique / make_shared, enable_shared_from_this) are backed by sprt and
+// re-exported below.
 
 #ifndef RUNTIME_INCLUDE_LIBC_STL_MEMORY_H_
 #define RUNTIME_INCLUDE_LIBC_STL_MEMORY_H_
