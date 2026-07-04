@@ -148,6 +148,18 @@ void performStringConvTest();
 // <memory> unique_ptr / shared_ptr / weak_ptr / make_* / uninitialized_* / align
 void performStdMemoryTest();
 
+// <numeric> / <span> / <functional> objects+bind / <charconv> / <compare> order CPOs
+void performPureLibTest();
+
+// <map> / <set> (rb-tree, CTAD, access_token operator[], erase_if) vs system
+void performMapSetTest();
+
+// <list> / <forward_list> (CTAD, list ops, erase/erase_if) vs system
+void performListTest();
+
+// <unordered_map> / <unordered_set> (node indirection, reference stability, CTAD, erase_if) vs system
+void performUnorderedTest();
+
 } // namespace sprt::test
 
 #endif // TESTS_LIBC_TESTS_H

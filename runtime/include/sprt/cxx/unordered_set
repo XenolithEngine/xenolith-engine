@@ -41,7 +41,11 @@ concept __unordered_set_compatible_key =
 			typename Set::hasher()(ek);
 		};
 
-template <typename Key, typename Hash, typename Pred, typename Allocator>
+// `Stl` selects the std::unordered_set-conforming backing: when true the flat hash array stores
+// individually heap-allocated nodes (indirect_storage) so element addresses are STABLE across
+// rehash and unrelated erase — the reference/pointer-stability guarantee the standard requires.
+// When false (the default) the value lives inline in the array. The std wrapper derives with Stl = true.
+template <typename Key, typename Hash, typename Pred, typename Allocator, bool Stl = false>
 class __unordered_set : public Allocator::base_class {
 public:
 	// types
@@ -57,7 +61,7 @@ public:
 	using size_type = size_t;
 	using difference_type = ptrdiff_t;
 
-	using container_type = detail::hash_memory<key_type, value_type, Hash, Pred, Allocator>;
+	using container_type = detail::hash_memory<key_type, value_type, Hash, Pred, Allocator, Stl>;
 
 	using iterator = container_type::const_iterator;
 	using const_iterator = container_type::const_iterator;
@@ -112,8 +116,10 @@ public:
 
 	__unordered_set(initializer_list<value_type> il, size_type n = 0, const hasher &hf = hasher(),
 			const key_equal &eql = key_equal(), const allocator_type &a = allocator_type()) noexcept
-	: _container(sprt::max(n, __builtin_floorf(il.size() * container_type::CoverageLoadFactor)), hf,
-			  eql, a) {
+	: _container(sprt::max(static_cast<size_type>(n),
+						 static_cast<size_type>(
+								 __builtin_floorf(il.size() * container_type::CoverageLoadFactor))),
+			  hf, eql, a) {
 		for (auto &it : il) { _container.insert(it); }
 	}
 
@@ -312,15 +318,15 @@ using __pool_unordered_set = __unordered_set<Value, Hash, Pred, detail::Allocato
 template <typename Value, typename Hash = sprt::hash<void>, typename Pred = sprt::equal_to<void>>
 using __malloc_unordered_set = __unordered_set<Value, Hash, Pred, detail::AllocatorMalloc<Value>>;
 
-template <typename Value, typename Hash, typename Pred, typename Allocator>
-inline void swap(const __unordered_set<Value, Hash, Pred, Allocator> &__x,
-		const __unordered_set<Value, Hash, Pred, Allocator> &__y) noexcept {
+template <typename Value, typename Hash, typename Pred, typename Allocator, bool Stl>
+inline void swap(const __unordered_set<Value, Hash, Pred, Allocator, Stl> &__x,
+		const __unordered_set<Value, Hash, Pred, Allocator, Stl> &__y) noexcept {
 	__x.swap(__y);
 }
 
-template <typename Value, typename Hash, typename Pred, typename Allocator>
-inline constexpr bool operator==(const __unordered_set<Value, Hash, Pred, Allocator> &__x,
-		const __unordered_set<Value, Hash, Pred, Allocator> &__y) noexcept {
+template <typename Value, typename Hash, typename Pred, typename Allocator, bool Stl>
+inline constexpr bool operator==(const __unordered_set<Value, Hash, Pred, Allocator, Stl> &__x,
+		const __unordered_set<Value, Hash, Pred, Allocator, Stl> &__y) noexcept {
 	return (__x.size() == __y.size() && sprt::equal(__x.begin(), __x.end(), __y.begin()));
 }
 
