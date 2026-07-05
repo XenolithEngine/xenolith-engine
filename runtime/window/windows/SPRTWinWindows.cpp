@@ -42,8 +42,10 @@ const KeyCodes &KeyCodes::getInstance() {
 }
 
 KeyCodes::KeyCodes() {
-	__constexpr_memset(keycodes, InputKeyCode(0), sizeof(keycodes));
-	__constexpr_memset(scancodes, uint16_t(0), sizeof(scancodes));
+	// __constexpr_memset takes an ELEMENT count, not a byte count -- sizeof(array) would write
+	// sizeof(element)x past the end (keycodes/scancodes hold 2-byte elements).
+	__constexpr_memset(keycodes, InputKeyCode(0), sizeof(keycodes) / sizeof(keycodes[0]));
+	__constexpr_memset(scancodes, uint16_t(0), sizeof(scancodes) / sizeof(scancodes[0]));
 
 	keycodes[0x00B] = InputKeyCode::_0;
 	keycodes[0x002] = InputKeyCode::_1;
