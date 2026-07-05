@@ -29,10 +29,12 @@ THE SOFTWARE.
 
 namespace sprt::_itoa {
 
-// Copies two characters from src to dst.
+// Copies two characters from src to dst. __constexpr_memcpy's count is an ELEMENT count (it
+// scales by sizeof internally), so this is 2, not 2 * sizeof(Char) -- the latter over-copied
+// (and read/wrote out of bounds) for char16_t / char32_t.
 template <typename Char>
 constexpr inline void copy2(Char *dst, const Char *src) {
-	__constexpr_memcpy(dst, src, 2 * sizeof(Char));
+	__constexpr_memcpy(dst, src, 2);
 }
 
 // Converts value in the range [0, 100) to a string.
