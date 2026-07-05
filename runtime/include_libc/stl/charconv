@@ -20,7 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-// Standard <charconv>, backed by sprt (integer to_chars/from_chars only; see the sprt header).
+// Standard <charconv>, backed by sprt. to_chars uses sprt::itoa/dtoa; from_chars uses the
+// portable sprt::_cstdlib::strto* wrappers (+ __sprt_errno for overflow) — see the sprt header.
 // std::errc here is the minimal enum sprt provides (the full errc belongs to <system_error>).
 
 #ifndef RUNTIME_INCLUDE_LIBC_STL_CHARCONV_H_

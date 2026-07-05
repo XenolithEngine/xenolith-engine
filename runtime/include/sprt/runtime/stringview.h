@@ -1662,7 +1662,8 @@ auto StringViewBase<_CharType>::pdup(memory::pool_t *p) const -> Self {
 	if (this->size() > 0) {
 		auto buf =
 				(_CharType *)sprt::memory::pool::palloc(p, (this->size() + 1) * sizeof(_CharType));
-		__constexpr_memcpy(buf, this->data(), this->size() * sizeof(_CharType));
+		// __constexpr_memcpy's count is an ELEMENT count, so copy size() elements (not bytes).
+		__constexpr_memcpy(buf, this->data(), this->size());
 		buf[this->size()] = 0;
 		return Self(buf, this->size());
 	}

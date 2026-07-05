@@ -105,24 +105,29 @@ constexpr inline size_t dtoa(Char *buffer, T value, size_t bufferSize,
 			return 0;
 		}
 	} else if (value == T(0.0)) {
-		if constexpr (sizeof(Char) == sizeof(char)) {
-			__constexpr_memcpy(buffer + bufferSize - 3, "0.0", 3);
-			return 3;
-		} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
-			__constexpr_memcpy(buffer + bufferSize - 3, u"0.0", 3);
-			return 3;
+		// +0.0 and -0.0 both compare equal to 0.0, so the sign bit is what tells them apart.
+		// (The former separate `value == -T(0.0)` branch was dead code -- that comparison can
+		// never be reached, since -0.0 == 0.0 already matches here.) __count is an element count.
+		if (__builtin_signbit(value)) {
+			if constexpr (sizeof(Char) == sizeof(char)) {
+				__constexpr_memcpy(buffer + bufferSize - 4, "-0.0", 4);
+				return 4;
+			} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
+				__constexpr_memcpy(buffer + bufferSize - 4, u"-0.0", 4);
+				return 4;
+			} else {
+				return 0;
+			}
 		} else {
-			return 0;
-		}
-	} else if (value == -T(0.0)) {
-		if constexpr (sizeof(Char) == sizeof(char)) {
-			__constexpr_memcpy(buffer + bufferSize - 4, "-0.0", 3);
-			return 4;
-		} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
-			__constexpr_memcpy(buffer + bufferSize - 4, u"-0.0", 3);
-			return 4;
-		} else {
-			return 0;
+			if constexpr (sizeof(Char) == sizeof(char)) {
+				__constexpr_memcpy(buffer + bufferSize - 3, "0.0", 3);
+				return 3;
+			} else if constexpr (sizeof(Char) == sizeof(char16_t)) {
+				__constexpr_memcpy(buffer + bufferSize - 3, u"0.0", 3);
+				return 3;
+			} else {
+				return 0;
+			}
 		}
 	} else {
 		auto result = jkj::dragonbox::to_decimal(value, jkj::dragonbox::policy::sign::return_sign,
@@ -206,9 +211,8 @@ constexpr size_t dtoa_len(T value, dtoa_options opts = dtoa_options()) {
 	} else if (value == -Infinity<T>) {
 		return 4;
 	} else if (value == T(0.0)) {
-		return 3;
-	} else if (value == -T(0.0)) {
-		return 4;
+		// -0.0 renders as "-0.0" (4), +0.0 as "0.0" (3); keep this in lockstep with dtoa().
+		return __builtin_signbit(value) ? 4 : 3;
 	}
 
 	auto result = jkj::dragonbox::to_decimal(value, jkj::dragonbox::policy::sign::return_sign,
