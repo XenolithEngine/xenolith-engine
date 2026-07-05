@@ -129,6 +129,31 @@ void performPureLibTest() {
 	printf("to_chars small_buf: is_toolarge=%d\n",
 			(int) (frsmall.ec == std::errc::value_too_large));
 
+	// ---- <charconv> (floating point, via sprt::dtoa / __sprt_strtod) ----
+	// Use exactly-representable values so host and freestanding never diverge on rounding.
+	char fbuf[40];
+	auto rf = std::to_chars(fbuf, fbuf + 40, 0.5);
+	*rf.ptr = '\0';
+	double back = 0.0;
+	auto rb = std::from_chars(fbuf, rf.ptr, back);
+	printf("to_chars float: %s roundtrip=%d\n", fbuf,
+			(int) (rf.ec == std::errc {} && rb.ec == std::errc {} && rb.ptr == rf.ptr
+					&& back == 0.5));
+	double parsed = 0.0;
+	const char *fs = "2.5";
+	auto ffr = std::from_chars(fs, fs + 3, parsed);
+	printf("from_chars float: ok=%d exact=%d\n", (int) (ffr.ec == std::errc {}),
+			(int) (parsed == 2.5));
+	double bad_f = 1.0;
+	const char *nf = "abc";
+	auto nfr = std::from_chars(nf, nf + 3, bad_f);
+	printf("from_chars float invalid: is_invalid=%d\n",
+			(int) (nfr.ec == std::errc::invalid_argument));
+	char nzbuf[8];
+	auto nz = std::to_chars(nzbuf, nzbuf + 8, -0.0);
+	*nz.ptr = '\0';
+	printf("to_chars neg_zero: %s\n", nzbuf); // dtoa now renders negative zero with its sign
+
 	// ---- <compare> order CPOs ----
 	printf("order: s12=%d w12=%d p12=%d\n", osgn(std::strong_order(1.0, 2.0)),
 			osgn(std::weak_order(1, 2)), osgn(std::partial_order(1.0, 2.0)));

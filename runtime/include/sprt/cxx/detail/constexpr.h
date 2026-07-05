@@ -488,16 +488,18 @@ constexpr inline bool __constexpr_isxdigit_c(int c) {
 	return 0;
 }
 
+// __constexpr_memset's count is an ELEMENT count (it scales by sizeof internally), so pass the
+// number of elements -- `size`, not `size * sizeof(T)` (which over-wrote 2x/4x for wide chars).
 constexpr inline void __constexpr_nullify(char *ptr, size_t size) {
-	__constexpr_memset(ptr, char(0), size * sizeof(char));
+	__constexpr_memset(ptr, char(0), size);
 }
 
 constexpr inline void __constexpr_nullify(char16_t *ptr, size_t size) {
-	__constexpr_memset(ptr, char16_t(0), size * sizeof(char16_t));
+	__constexpr_memset(ptr, char16_t(0), size);
 }
 
 constexpr inline void __constexpr_nullify(char32_t *ptr, size_t size) {
-	__constexpr_memset(ptr, char32_t(0), size * sizeof(char16_t));
+	__constexpr_memset(ptr, char32_t(0), size);
 }
 
 } // namespace sprt
