@@ -32,6 +32,7 @@
 #include "XL2dSceneContent.h"
 #include "MonitorModeSelectionLayout.h"
 #include "FlexboxLayout.h"
+#include "PugLayout.h"
 #include "ShapingLayout.h"
 #include "XlCoreMonitorInfo.h"
 #include "XLEventListener.h"
@@ -135,6 +136,13 @@ void GeneralLayout::rebuildMenu() {
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
 		return Rc<ButtonWithLabel>::create("Flexbox layout", [this] {
 			getSceneContent()->pushLayout(Rc<FlexboxLayout>::create());
+		});
+	}, 32.0f);
+
+	// Демонстрация сборки графа сцены из pug-шаблона (xenolith_renderer_pug)
+	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
+		return Rc<ButtonWithLabel>::create("Pug template UI", [this] {
+			getSceneContent()->pushLayout(Rc<PugLayout>::create());
 		});
 	}, 32.0f);
 

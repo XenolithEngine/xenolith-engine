@@ -166,6 +166,116 @@ bool css_readAspectRatioValue(StringView str, float &value) {
 	return false;
 }
 
+// CSS Box Alignment keyword; accepts an optional `safe`/`unsafe` overflow-alignment
+// prefix (dropped - it is an overflow strategy, not a distinct alignment)
+static bool css_readAlignValue(StringView value, Align &out) {
+	value.trimChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
+	if (value.starts_with("safe ")) {
+		value += "safe "_len;
+		value.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
+	} else if (value.starts_with("unsafe ")) {
+		value += "unsafe "_len;
+		value.skipChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
+	}
+
+	if (value.equals("auto")) {
+		out = Align::Auto;
+	} else if (value.equals("normal")) {
+		out = Align::Normal;
+	} else if (value.equals("stretch")) {
+		out = Align::Stretch;
+	} else if (value.equals("baseline")) {
+		out = Align::Baseline;
+	} else if (value.equals("first baseline")) {
+		out = Align::FirstBaseline;
+	} else if (value.equals("last baseline")) {
+		out = Align::LastBaseline;
+	} else if (value.equals("center")) {
+		out = Align::Center;
+	} else if (value.equals("start")) {
+		out = Align::Start;
+	} else if (value.equals("end")) {
+		out = Align::End;
+	} else if (value.equals("self-start")) {
+		out = Align::SelfStart;
+	} else if (value.equals("self-end")) {
+		out = Align::SelfEnd;
+	} else if (value.equals("flex-start")) {
+		out = Align::FlexStart;
+	} else if (value.equals("flex-end")) {
+		out = Align::FlexEnd;
+	} else if (value.equals("left")) {
+		out = Align::Left;
+	} else if (value.equals("right")) {
+		out = Align::Right;
+	} else if (value.equals("space-between")) {
+		out = Align::SpaceBetween;
+	} else if (value.equals("space-around")) {
+		out = Align::SpaceAround;
+	} else if (value.equals("space-evenly")) {
+		out = Align::SpaceEvenly;
+	} else {
+		return false;
+	}
+	return true;
+}
+
+template <ParameterName Name>
+static bool css_readAlign(const StringView &value, const StyleCallback &cb) {
+	Align a;
+	if (css_readAlignValue(value, a)) {
+		return cb(StyleParameter::create<Name>(a));
+	}
+	return false;
+}
+
+// `place-*` shorthand: first token -> A, optional second token -> B (else = A)
+template <ParameterName A, ParameterName B>
+static bool css_readPlace(const StringView &value, const StyleCallback &cb) {
+	StringView first, second;
+	value.split<StringView::CharGroup<CharGroupId::WhiteSpace>>([&](const StringView &r) {
+		if (first.empty()) {
+			first = r;
+		} else if (second.empty()) {
+			second = r;
+		}
+	});
+	if (first.empty()) {
+		return false;
+	}
+	Align a, b;
+	if (!css_readAlignValue(first, a)) {
+		return false;
+	}
+	b = a;
+	if (!second.empty() && !css_readAlignValue(second, b)) {
+		return false;
+	}
+	return cb(StyleParameter::create<A>(a)) && cb(StyleParameter::create<B>(b));
+}
+
+// grid line / template values are stored verbatim (interned) - parsing the track-list
+// grammar is deferred to the (future) grid layout consumer
+template <ParameterName Name>
+static bool css_readRawString(const StringView &value, const StyleCallback &cb,
+		const StringCallback &strCb) {
+	StringView v(value);
+	v.trimChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
+	if (v.empty()) {
+		return false;
+	}
+	return cb(StyleParameter::create<Name>(strCb(v)));
+}
+
+static bool css_readGap(const StringView &value, Metric &out) {
+	if (value.equals("normal")) {
+		out.metric = Metric::Units::Auto;
+		out.value = 0.0f;
+		return true;
+	}
+	return parser::readStyleMetric(value, out);
+}
+
 static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameters{
 	pair("font-weight",
 			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
@@ -389,6 +499,14 @@ static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameter
 		return cb(StyleParameter::create<ParameterName::CssDisplay>(Display::InlineBlock));
 	} else if (value.equals("block")) {
 		return cb(StyleParameter::create<ParameterName::CssDisplay>(Display::Block));
+	} else if (value.equals("flex")) {
+		return cb(StyleParameter::create<ParameterName::CssDisplay>(Display::Flex));
+	} else if (value.equals("inline-flex")) {
+		return cb(StyleParameter::create<ParameterName::CssDisplay>(Display::InlineFlex));
+	} else if (value.equals("grid")) {
+		return cb(StyleParameter::create<ParameterName::CssDisplay>(Display::Grid));
+	} else if (value.equals("inline-grid")) {
+		return cb(StyleParameter::create<ParameterName::CssDisplay>(Display::InlineGrid));
 	}
 	return false;
 }),
@@ -628,6 +746,501 @@ static sprt::__malloc_unordered_map<StringView, StyleFunctionPtr> s_cssParameter
 		return cb(StyleParameter::create<ParameterName::CssPaddingLeft>(data));
 	}
 	return false;
+}),
+	pair("position",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	if (value.equals("static")) {
+		return cb(StyleParameter::create<ParameterName::CssPosition>(Position::Static));
+	} else if (value.equals("relative")) {
+		return cb(StyleParameter::create<ParameterName::CssPosition>(Position::Relative));
+	} else if (value.equals("absolute")) {
+		return cb(StyleParameter::create<ParameterName::CssPosition>(Position::Absolute));
+	} else if (value.equals("fixed")) {
+		return cb(StyleParameter::create<ParameterName::CssPosition>(Position::Fixed));
+	} else if (value.equals("sticky")) {
+		return cb(StyleParameter::create<ParameterName::CssPosition>(Position::Sticky));
+	}
+	return false;
+}),
+	pair("top",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssTop>(data));
+	}
+	return false;
+}),
+	pair("right",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssRight>(data));
+	}
+	return false;
+}),
+	pair("bottom",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssBottom>(data));
+	}
+	return false;
+}),
+	pair("left",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssLeft>(data));
+	}
+	return false;
+}),
+	pair("-xl-anchor-point",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	// `-xl-anchor-point: <x> [<y>]` - normalized anchor (0,0 bottom-left .. 1,1 top-right);
+	// a single value applies to both axes
+	float vals[2] = {nan(), nan()};
+	int count = 0;
+	value.split<StringView::CharGroup<CharGroupId::WhiteSpace>>([&](const StringView &r) {
+		if (count < 2) {
+			StringView tmp(r);
+			vals[count] = tmp.readFloat().get(nan());
+		}
+		++count;
+	});
+	if (sprt::isnan(vals[0])) {
+		return false;
+	}
+	if (sprt::isnan(vals[1])) {
+		vals[1] = vals[0];
+	}
+	return cb(StyleParameter::create<ParameterName::CssXlAnchorPointX>(vals[0]))
+			&& cb(StyleParameter::create<ParameterName::CssXlAnchorPointY>(vals[1]));
+}),
+	pair("-xl-position",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	// `-xl-position: <x> [<y>]` - direct node position; relative (percent) values resolve
+	// against the parent size at apply time. A single value applies to both axes
+	Metric vals[2];
+	int count = 0;
+	bool err = false;
+	value.split<StringView::CharGroup<CharGroupId::WhiteSpace>>([&](const StringView &r) {
+		if (count < 2) {
+			if (!parser::readStyleMetric(r, vals[count])) {
+				err = true;
+				return;
+			}
+			++count;
+		}
+	});
+	if (err || count == 0) {
+		return false;
+	}
+	if (count == 1) {
+		vals[1] = vals[0];
+	}
+	return cb(StyleParameter::create<ParameterName::CssXlPositionX>(vals[0]))
+			&& cb(StyleParameter::create<ParameterName::CssXlPositionY>(vals[1]));
+}),
+
+	/* flexbox & grid */
+
+	pair("flex-direction",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	if (value.equals("row")) {
+		return cb(StyleParameter::create<ParameterName::CssFlexDirection>(FlexDirection::Row));
+	} else if (value.equals("row-reverse")) {
+		return cb(StyleParameter::create<ParameterName::CssFlexDirection>(
+				FlexDirection::RowReverse));
+	} else if (value.equals("column")) {
+		return cb(StyleParameter::create<ParameterName::CssFlexDirection>(FlexDirection::Column));
+	} else if (value.equals("column-reverse")) {
+		return cb(StyleParameter::create<ParameterName::CssFlexDirection>(
+				FlexDirection::ColumnReverse));
+	}
+	return false;
+}),
+	pair("flex-wrap",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	if (value.equals("nowrap")) {
+		return cb(StyleParameter::create<ParameterName::CssFlexWrap>(FlexWrap::NoWrap));
+	} else if (value.equals("wrap")) {
+		return cb(StyleParameter::create<ParameterName::CssFlexWrap>(FlexWrap::Wrap));
+	} else if (value.equals("wrap-reverse")) {
+		return cb(StyleParameter::create<ParameterName::CssFlexWrap>(FlexWrap::WrapReverse));
+	}
+	return false;
+}),
+	pair("flex-flow",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	bool ret = false;
+	bool err = false;
+	value.split<StringView::CharGroup<CharGroupId::WhiteSpace>>([&](const StringView &r) {
+		if (r.equals("row")) {
+			cb(StyleParameter::create<ParameterName::CssFlexDirection>(FlexDirection::Row));
+		} else if (r.equals("row-reverse")) {
+			cb(StyleParameter::create<ParameterName::CssFlexDirection>(FlexDirection::RowReverse));
+		} else if (r.equals("column")) {
+			cb(StyleParameter::create<ParameterName::CssFlexDirection>(FlexDirection::Column));
+		} else if (r.equals("column-reverse")) {
+			cb(StyleParameter::create<ParameterName::CssFlexDirection>(
+					FlexDirection::ColumnReverse));
+		} else if (r.equals("nowrap")) {
+			cb(StyleParameter::create<ParameterName::CssFlexWrap>(FlexWrap::NoWrap));
+		} else if (r.equals("wrap")) {
+			cb(StyleParameter::create<ParameterName::CssFlexWrap>(FlexWrap::Wrap));
+		} else if (r.equals("wrap-reverse")) {
+			cb(StyleParameter::create<ParameterName::CssFlexWrap>(FlexWrap::WrapReverse));
+		} else {
+			err = true;
+			return;
+		}
+		ret = true;
+	});
+	return ret && !err;
+}),
+	pair("order",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	StringView tmp(value);
+	auto v = tmp.readInteger(10);
+	if (v) {
+		return cb(StyleParameter::create<ParameterName::CssOrder>(int32_t(v.get())));
+	}
+	return false;
+}),
+	pair("flex-grow",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	float f;
+	if (StringView(value).readFloat().grab(f) && f >= 0.0f) {
+		return cb(StyleParameter::create<ParameterName::CssFlexGrow>(f));
+	}
+	return false;
+}),
+	pair("flex-shrink",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	float f;
+	if (StringView(value).readFloat().grab(f) && f >= 0.0f) {
+		return cb(StyleParameter::create<ParameterName::CssFlexShrink>(f));
+	}
+	return false;
+}),
+	pair("flex-basis",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (value.equals("content")) {
+		data.metric = Metric::Units::Auto;
+		data.value = 0.0f;
+		return cb(StyleParameter::create<ParameterName::CssFlexBasis>(data));
+	}
+	if (parser::readStyleMetric(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssFlexBasis>(data));
+	}
+	return false;
+}),
+	pair("flex",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	if (value.equals("none")) {
+		// none = 0 0 auto
+		return cb(StyleParameter::create<ParameterName::CssFlexGrow>(0.0f))
+				&& cb(StyleParameter::create<ParameterName::CssFlexShrink>(0.0f))
+				&& cb(StyleParameter::create<ParameterName::CssFlexBasis>(
+						Metric(0.0f, Metric::Units::Auto)));
+	}
+	if (value.equals("initial")) {
+		// initial = 0 1 auto
+		return cb(StyleParameter::create<ParameterName::CssFlexGrow>(0.0f))
+				&& cb(StyleParameter::create<ParameterName::CssFlexShrink>(1.0f))
+				&& cb(StyleParameter::create<ParameterName::CssFlexBasis>(
+						Metric(0.0f, Metric::Units::Auto)));
+	}
+
+	// [ <grow> <shrink>? || <basis> ]; pure numbers feed grow then shrink,
+	// a value with a unit (or auto/content) is the basis
+	float nums[2] = {nan(), nan()};
+	int nc = 0;
+	Metric basis;
+	bool hasBasis = false;
+	bool err = false;
+	value.split<StringView::CharGroup<CharGroupId::WhiteSpace>>([&](const StringView &r) {
+		StringView probe(r);
+		float f;
+		if (probe.readFloat().grab(f) && probe.empty()) {
+			if (nc < 2) {
+				nums[nc++] = f;
+			} else {
+				err = true;
+			}
+		} else if (r.equals("auto") || r.equals("content")) {
+			basis.metric = Metric::Units::Auto;
+			basis.value = 0.0f;
+			hasBasis = true;
+		} else if (parser::readStyleMetric(r, basis)) {
+			hasBasis = true;
+		} else {
+			err = true;
+		}
+	});
+	if (err || (nc == 0 && !hasBasis)) {
+		return false;
+	}
+	const float grow = (nc >= 1) ? nums[0] : 1.0f;
+	const float shrink = (nc >= 2) ? nums[1] : 1.0f;
+	// a bare <grow> defaults basis to 0; a bare <basis> defaults grow/shrink to 1
+	const Metric fb = hasBasis ? basis : Metric(0.0f, Metric::Units::Px);
+	return cb(StyleParameter::create<ParameterName::CssFlexGrow>(grow))
+			&& cb(StyleParameter::create<ParameterName::CssFlexShrink>(shrink))
+			&& cb(StyleParameter::create<ParameterName::CssFlexBasis>(fb));
+}),
+	pair("justify-content",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	return css_readAlign<ParameterName::CssJustifyContent>(value, cb);
+}),
+	pair("align-content",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	return css_readAlign<ParameterName::CssAlignContent>(value, cb);
+}),
+	pair("justify-items",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	return css_readAlign<ParameterName::CssJustifyItems>(value, cb);
+}),
+	pair("align-items",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	return css_readAlign<ParameterName::CssAlignItems>(value, cb);
+}),
+	pair("justify-self",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	return css_readAlign<ParameterName::CssJustifySelf>(value, cb);
+}),
+	pair("align-self",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	return css_readAlign<ParameterName::CssAlignSelf>(value, cb);
+}),
+	pair("place-content",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	return css_readPlace<ParameterName::CssAlignContent, ParameterName::CssJustifyContent>(value,
+			cb);
+}),
+	pair("place-items",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	return css_readPlace<ParameterName::CssAlignItems, ParameterName::CssJustifyItems>(value, cb);
+}),
+	pair("place-self",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	return css_readPlace<ParameterName::CssAlignSelf, ParameterName::CssJustifySelf>(value, cb);
+}),
+	pair("row-gap",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (css_readGap(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssRowGap>(data));
+	}
+	return false;
+}),
+	pair("column-gap",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric data;
+	if (css_readGap(value, data)) {
+		return cb(StyleParameter::create<ParameterName::CssColumnGap>(data));
+	}
+	return false;
+}),
+	pair("gap",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	Metric vals[2];
+	int count = 0;
+	bool err = false;
+	value.split<StringView::CharGroup<CharGroupId::WhiteSpace>>([&](const StringView &r) {
+		if (count < 2) {
+			if (!css_readGap(r, vals[count])) {
+				err = true;
+				return;
+			}
+			++count;
+		}
+	});
+	if (err || count == 0) {
+		return false;
+	}
+	if (count == 1) {
+		vals[1] = vals[0];
+	}
+	return cb(StyleParameter::create<ParameterName::CssRowGap>(vals[0]))
+			&& cb(StyleParameter::create<ParameterName::CssColumnGap>(vals[1]));
+}),
+	pair("grid-auto-flow",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &) {
+	bool dense = false;
+	bool column = false;
+	bool axisSet = false;
+	bool err = false;
+	value.split<StringView::CharGroup<CharGroupId::WhiteSpace>>([&](const StringView &r) {
+		if (r.equals("row")) {
+			column = false;
+			axisSet = true;
+		} else if (r.equals("column")) {
+			column = true;
+			axisSet = true;
+		} else if (r.equals("dense")) {
+			dense = true;
+		} else {
+			err = true;
+		}
+	});
+	if (err || (!axisSet && !dense)) {
+		return false;
+	}
+	GridAutoFlow flow = column ? (dense ? GridAutoFlow::ColumnDense : GridAutoFlow::Column)
+							   : (dense ? GridAutoFlow::RowDense : GridAutoFlow::Row);
+	return cb(StyleParameter::create<ParameterName::CssGridAutoFlow>(flow));
+}),
+	pair("grid-template-columns",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readRawString<ParameterName::CssGridTemplateColumns>(value, cb, strCb);
+}),
+	pair("grid-template-rows",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readRawString<ParameterName::CssGridTemplateRows>(value, cb, strCb);
+}),
+	pair("grid-template-areas",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readRawString<ParameterName::CssGridTemplateAreas>(value, cb, strCb);
+}),
+	pair("grid-auto-columns",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readRawString<ParameterName::CssGridAutoColumns>(value, cb, strCb);
+}),
+	pair("grid-auto-rows",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readRawString<ParameterName::CssGridAutoRows>(value, cb, strCb);
+}),
+	pair("grid-column-start",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readRawString<ParameterName::CssGridColumnStart>(value, cb, strCb);
+}),
+	pair("grid-column-end",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readRawString<ParameterName::CssGridColumnEnd>(value, cb, strCb);
+}),
+	pair("grid-row-start",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readRawString<ParameterName::CssGridRowStart>(value, cb, strCb);
+}),
+	pair("grid-row-end",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	return css_readRawString<ParameterName::CssGridRowEnd>(value, cb, strCb);
+}),
+	pair("grid-column",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	// grid-column: <start> [ / <end> ]
+	StringView start, end;
+	bool second = false;
+	value.split<StringView::Chars<'/'>>([&](const StringView &r) {
+		if (!second) {
+			start = r;
+			second = true;
+		} else {
+			end = r;
+		}
+	});
+	start.trimChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
+	end.trimChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
+	bool ret = false;
+	if (!start.empty()) {
+		ret = cb(StyleParameter::create<ParameterName::CssGridColumnStart>(strCb(start)));
+	}
+	if (!end.empty()) {
+		ret = cb(StyleParameter::create<ParameterName::CssGridColumnEnd>(strCb(end))) || ret;
+	}
+	return ret;
+}),
+	pair("grid-row",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	// grid-row: <start> [ / <end> ]
+	StringView start, end;
+	bool second = false;
+	value.split<StringView::Chars<'/'>>([&](const StringView &r) {
+		if (!second) {
+			start = r;
+			second = true;
+		} else {
+			end = r;
+		}
+	});
+	start.trimChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
+	end.trimChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
+	bool ret = false;
+	if (!start.empty()) {
+		ret = cb(StyleParameter::create<ParameterName::CssGridRowStart>(strCb(start)));
+	}
+	if (!end.empty()) {
+		ret = cb(StyleParameter::create<ParameterName::CssGridRowEnd>(strCb(end))) || ret;
+	}
+	return ret;
+}),
+	pair("grid-area",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	// grid-area: <row-start> [ / <col-start> [ / <row-end> [ / <col-end> ] ] ]
+	StringView parts[4];
+	int count = 0;
+	value.split<StringView::Chars<'/'>>([&](const StringView &r) {
+		if (count < 4) {
+			StringView t(r);
+			t.trimChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
+			parts[count++] = t;
+		}
+	});
+	if (count == 0 || parts[0].empty()) {
+		return false;
+	}
+	auto emit = [&](int i, StringView s) -> bool {
+		auto id = strCb(s);
+		switch (i) {
+		case 0: return cb(StyleParameter::create<ParameterName::CssGridRowStart>(id));
+		case 1: return cb(StyleParameter::create<ParameterName::CssGridColumnStart>(id));
+		case 2: return cb(StyleParameter::create<ParameterName::CssGridRowEnd>(id));
+		case 3: return cb(StyleParameter::create<ParameterName::CssGridColumnEnd>(id));
+		default: return false;
+		}
+	};
+	bool ret = false;
+	for (int i = 0; i < count; ++i) {
+		if (!parts[i].empty()) {
+			ret = emit(i, parts[i]) || ret;
+		}
+	}
+	return ret;
+}),
+	pair("grid-template",
+			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {
+	// only the simple `<rows> / <columns>` form (no template-areas strings) is expanded
+	for (size_t i = 0; i < value.size(); ++i) {
+		if (value.data()[i] == '"') {
+			return false;
+		}
+	}
+	StringView rows, columns;
+	bool second = false;
+	value.split<StringView::Chars<'/'>>([&](const StringView &r) {
+		if (!second) {
+			rows = r;
+			second = true;
+		} else {
+			columns = r;
+		}
+	});
+	if (!second) {
+		return false;
+	}
+	rows.trimChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
+	columns.trimChars<StringView::CharGroup<CharGroupId::WhiteSpace>>();
+	bool ret = false;
+	if (!rows.empty()) {
+		ret = cb(StyleParameter::create<ParameterName::CssGridTemplateRows>(strCb(rows)));
+	}
+	if (!columns.empty()) {
+		ret = cb(StyleParameter::create<ParameterName::CssGridTemplateColumns>(strCb(columns)))
+				|| ret;
+	}
+	return ret;
 }),
 	pair("font-family",
 			[](const StringView &value, const StyleCallback &cb, const StringCallback &strCb) {

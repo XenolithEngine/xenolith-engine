@@ -33,7 +33,7 @@ THE SOFTWARE.
 
 #include <sprt/cxx/array>
 
-#include <__tuple/protocol.h>
+#include <sprt/cxx/__tuple/protocol.h>
 #include <sprt/cxx/type_traits>
 // to_array below uses sprt::index_sequence / make_index_sequence; pull their
 // backing header so <array> is independently includable (does not rely on a
@@ -85,23 +85,23 @@ struct tuple_element<_Ip, sprt::array<_Tp, _Np>> {
 using sprt::get; // expose std::get<>(array)
 
 template <typename _Tp, sprt::size_t _Np, sprt::size_t... _Ip>
-constexpr sprt::array<sprt::remove_cv_t<_Tp>, _Np> __to_array_lvalue(
-		_Tp (&__a)[_Np], sprt::index_sequence<_Ip...>) {
+constexpr sprt::array<sprt::remove_cv_t<_Tp>, _Np> __to_array_lvalue(_Tp (&__a)[_Np],
+		sprt::index_sequence<_Ip...>) {
 	return {{__a[_Ip]...}};
 }
 template <typename _Tp, sprt::size_t _Np, sprt::size_t... _Ip>
-constexpr sprt::array<sprt::remove_cv_t<_Tp>, _Np> __to_array_rvalue(
-		_Tp (&&__a)[_Np], sprt::index_sequence<_Ip...>) {
+constexpr sprt::array<sprt::remove_cv_t<_Tp>, _Np> __to_array_rvalue(_Tp (&&__a)[_Np],
+		sprt::index_sequence<_Ip...>) {
 	return {{sprt::move_unsafe(__a[_Ip])...}};
 }
 
 template <typename _Tp, sprt::size_t _Np>
 constexpr sprt::array<sprt::remove_cv_t<_Tp>, _Np> to_array(_Tp (&__a)[_Np]) {
-	return std::__to_array_lvalue(__a, sprt::make_index_sequence<_Np> {});
+	return std::__to_array_lvalue(__a, sprt::make_index_sequence<_Np>{});
 }
 template <typename _Tp, sprt::size_t _Np>
 constexpr sprt::array<sprt::remove_cv_t<_Tp>, _Np> to_array(_Tp (&&__a)[_Np]) {
-	return std::__to_array_rvalue(sprt::move_unsafe(__a), sprt::make_index_sequence<_Np> {});
+	return std::__to_array_rvalue(sprt::move_unsafe(__a), sprt::make_index_sequence<_Np>{});
 }
 } // namespace std
 

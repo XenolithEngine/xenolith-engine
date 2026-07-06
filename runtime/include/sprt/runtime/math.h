@@ -26,6 +26,7 @@
 #include <sprt/runtime/init.h>
 #include <sprt/cxx/functional>
 #include <sprt/c/__sprt_stdlib.h>
+#include <sprt/c/__sprt_locale.h>
 #include <sprt/c/__sprt_float.h>
 
 // numbers::pi replacement from std
@@ -121,7 +122,10 @@ inline auto StringToNumber<long long>(const char *ptr, char **tail, int base) ->
 template <>
 inline auto StringToNumber<float>(const char *ptr, char **tail, int base) -> float {
 	if (ptr) {
-		return __sprt_strtof(ptr, tail);
+		__sprt_locale_t c_locale = __sprt_newlocale(__SPRT_LC_NUMERIC_MASK, "C", nullptr);
+		auto ret = __sprt_strtof_l(ptr, tail, c_locale);
+		__sprt_freelocale(c_locale);
+		return ret;
 	}
 	return 0.0f;
 }
@@ -129,7 +133,10 @@ inline auto StringToNumber<float>(const char *ptr, char **tail, int base) -> flo
 template <>
 inline auto StringToNumber<double>(const char *ptr, char **tail, int base) -> double {
 	if (ptr) {
-		return __sprt_strtod(ptr, tail);
+		__sprt_locale_t c_locale = __sprt_newlocale(__SPRT_LC_NUMERIC_MASK, "C", nullptr);
+		auto ret = __sprt_strtod_l(ptr, tail, c_locale);
+		__sprt_freelocale(c_locale);
+		return ret;
 	}
 	return 0.0;
 }

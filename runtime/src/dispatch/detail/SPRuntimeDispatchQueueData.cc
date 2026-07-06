@@ -334,6 +334,13 @@ Rc<ProcessHandle> QueueData::spawnProcess(ProcessInfo &&info, Ref *ref) {
 	return nullptr;
 }
 
+Rc<WatchHandle> QueueData::watchFile(WatchInfo &&info, Ref *ref) {
+	if (_watchFile) {
+		return _watchFile(this, _platformQueue, move(info), ref);
+	}
+	return nullptr;
+}
+
 Rc<ThreadHandle> QueueData::addThreadHandle() {
 	if (_thread) {
 		return _thread(this, _platformQueue);

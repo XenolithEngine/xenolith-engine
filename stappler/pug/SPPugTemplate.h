@@ -27,6 +27,38 @@
 
 namespace STAPPLER_VERSIONIZED stappler::pug {
 
+/* Structured output sink for templates, compiled with `Template::Options::Nodes`.
+
+Instead of an HTML text stream, such templates emit a tree-shaped event sequence:
+nodes with attributes and text content. All `setAttribute` calls for a node arrive
+between its `pushNode` and the first `pushString`/child `pushNode`/`popNode`
+(attributes can only be defined on the tag line in pug, so no control-flow
+chunk can interpose).
+
+Attribute values are passed as typed pool-allocated `pug::Value` (numbers, bools,
+arrays, dicts survive as-is) - the sink must copy or convert them before returning,
+nothing pool-allocated may be retained past the call. Values are passed by const
+reference: a pool-backed Value must not be copied into a stack temporary (its
+heap parts are pool-allocated and can not be freed individually). */
+class SP_PUBLIC NodeStream : public memory::AllocPool {
+public:
+	virtual ~NodeStream() = default;
+
+	// enter a new node; tag is the template-defined tag name
+	virtual bool pushNode(StringView tag) = 0;
+
+	// leave the current node
+	virtual bool popNode() = 0;
+
+	// define an attribute on the current node; valueless attributes arrive as Value(true)
+	virtual bool setAttribute(StringView name, const Value &, bool escaped) = 0;
+
+	// text content piece for the current node (interpolation may split text into pieces)
+	virtual bool pushString(StringView) = 0;
+
+	virtual void onError(StringView) { }
+};
+
 class SP_PUBLIC Template : public memory::AllocPool {
 public:
 	using OutStream = Callback<void(StringView)>;
@@ -64,6 +96,10 @@ public:
 		MixinCall,
 
 		VirtualTag,
+
+		// structured mode (Options::Nodes) only:
+		NodeTag, // opens a node, value is the tag name
+		NodeTagEnd, // closes a node, value is the tag name (for validation)
 	};
 
 	struct Chunk : public memory::AllocPool {
@@ -79,17 +115,21 @@ public:
 			Pretty,
 			StopOnError,
 			LineFeeds,
+
+			// compile tag structure into node events (NodeStream) instead of HTML text
+			Nodes,
 		};
 
 		static Options getDefault();
 		static Options getPretty();
+		static Options getNodes();
 
 		Options &setFlags(sprt::initializer_list<Flags> &&);
 		Options &clearFlags(sprt::initializer_list<Flags> &&);
 
 		bool hasFlag(Flags) const;
 
-		sprt::bitset<toInt(Flags::LineFeeds) + 1> flags;
+		sprt::bitset<toInt(Flags::Nodes) + 1> flags;
 	};
 
 	struct RunContext {
@@ -97,6 +137,7 @@ public:
 		Vector<Template::Chunk *> tagStack;
 		bool withinHead = false;
 		bool withinBody = false;
+		NodeStream *nodeStream = nullptr;
 		Options opts;
 	};
 
@@ -112,6 +153,10 @@ public:
 	bool run(Context &, const OutStream &) const;
 	bool run(Context &, const OutStream &, const Options &opts) const;
 	bool run(Context &, const OutStream &, RunContext &opts) const;
+
+	// structured mode: requires a template compiled with Options::Nodes
+	bool run(Context &, NodeStream &) const;
+	bool run(Context &, NodeStream &, const Options &opts) const;
 
 	void describe(const OutStream &stream, bool tokens = false) const;
 

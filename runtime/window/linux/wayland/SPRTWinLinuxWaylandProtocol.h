@@ -143,7 +143,12 @@ enum class WaylandDecorationName {
 	IconClose,
 	IconMaximize,
 	IconMinimize,
-	IconRestore
+	IconRestore,
+
+	RightShadowPanel,
+	TopShadowPanel,
+	LeftShadowPanel,
+	BottomShadowPanel,
 };
 
 struct SPRT_API WaylandBuffer : Ref {
@@ -176,6 +181,9 @@ struct ShadowBuffers {
 	Rc<WaylandBuffer> topRightActive;
 	Rc<WaylandBuffer> bottomLeftActive;
 	Rc<WaylandBuffer> bottomRightActive;
+
+	Rc<WaylandBuffer> shadowPanel;
+	Rc<WaylandBuffer> shadowPanelActive;
 
 	Rc<WaylandBuffer> headerLeft;
 	Rc<WaylandBuffer> headerLeftActive;

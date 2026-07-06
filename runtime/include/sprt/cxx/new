@@ -529,7 +529,13 @@ constexpr void destroy_at(_Tp *__loc) noexcept {
 template <typename T>
 inline void __delete(T *t) noexcept {
 	sprt::destroy_at(t);
-	if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
+	// pool-owned storage (sprt::detail::AllocPool subclasses expose __sprt_pool_owned_tag):
+	// the destructor ran above, but the block belongs to a memory pool that reclaims it -
+	// ::free() on a pool pointer is undefined. <new> can't include allocator_pool.h (cycle),
+	// so the marker is detected structurally rather than via is_base_of.
+	if constexpr (requires { typename T::__sprt_pool_owned_tag; }) {
+		return;
+	} else if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
 		__sprt_free(static_cast<void *>(t));
 	} else {
 		__sprt_aligned_free(static_cast<void *>(t));
