@@ -28,6 +28,10 @@
 #include "XLVkPlatform.h"
 #endif
 
+#ifdef MODULE_XENOLITH_BACKEND_WEBGPU
+#include "XLWgpuPlatform.h"
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 Value encodeInstanceInfo(const InstanceInfo &info) {
@@ -70,6 +74,17 @@ Rc<Instance> Instance::create(Rc<InstanceInfo> &&info) {
 		}
 	}
 #endif
+#ifdef MODULE_XENOLITH_BACKEND_WEBGPU
+	if (info->api == InstanceApi::WebGPU) {
+		auto createInstance =
+				SharedModule::acquireTypedSymbol<decltype(&webgpu::platform::createInstance)>(
+						buildconfig::MODULE_XENOLITH_BACKEND_WEBGPU_NAME,
+						"platform::createInstance");
+		if (createInstance) {
+			return createInstance(move(info));
+		}
+	}
+#endif
 	return nullptr;
 }
 
@@ -91,6 +106,7 @@ StringView getInstanceApiName(InstanceApi backend) {
 	switch (backend) {
 	case InstanceApi::None: return "None"; break;
 	case InstanceApi::Vulkan: return "Vulkan"; break;
+	case InstanceApi::WebGPU: return "WebGPU"; break;
 	}
 	return StringView();
 }

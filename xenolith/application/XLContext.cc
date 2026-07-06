@@ -115,6 +115,12 @@ XL_DECLARE_EVENT_CLASS(Context, onRemoteNotification)
 static int Context_runWithConfig(ContextConfig &&config, ContentInitializer &&init) {
 	Rc<Context> ctx;
 
+	auto makeConfigSymbol = SharedModule::acquireTypedSymbol<Context::SymbolMakeConfigSignature>(
+			buildconfig::MODULE_APPCOMMON_NAME, Context::SymbolMakeConfigName);
+	if (makeConfigSymbol) {
+		makeConfigSymbol(config);
+	}
+
 	auto makeContextSymbol = SharedModule::acquireTypedSymbol<Context::SymbolMakeContextSignature>(
 			buildconfig::MODULE_APPCOMMON_NAME, Context::SymbolMakeContextName);
 	if (makeContextSymbol) {
@@ -697,6 +703,15 @@ Rc<sprt::window::gapi::Instance> Context::makeInstance(
 		instanceInfo->backend = move(instanceBackendInfo);
 	}
 #endif
+
+#if MODULE_XENOLITH_BACKEND_WEBGPU
+	if (!instanceInfo && info->api == core::InstanceApi::WebGPU) {
+		instanceInfo = Rc<sprt::window::gapi::InstanceInfo>::alloc();
+		instanceInfo->api = info->api;
+		instanceInfo->flags = info->flags;
+	}
+#endif
+
 	if (instanceInfo) {
 		return core::Instance::create(move(instanceInfo));
 	}
@@ -736,6 +751,15 @@ Rc<sprt::window::gapi::Loop> Context::makeLoop(NotNull<sprt::window::gapi::Insta
 		loopInfo->backend = data;
 	}
 #endif
+
+#if MODULE_XENOLITH_BACKEND_WEBGPU
+	if (!loopInfo && instance->getApi() == core::InstanceApi::WebGPU) {
+		loopInfo = Rc<sprt::window::gapi::LoopInfo>::alloc();
+		loopInfo->deviceIdx = info->deviceIdx;
+		loopInfo->defaultFormat = info->defaultFormat;
+	}
+#endif
+
 	if (loopInfo) {
 		return static_cast<core::Instance *>(instance.get())->makeLoop(_looper, move(loopInfo));
 	}

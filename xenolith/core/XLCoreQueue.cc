@@ -1213,6 +1213,25 @@ bool DescriptorSetBuilder::addDescriptorArray(const AttachmentPassData *attachme
 	return true;
 }
 
+bool DescriptorSetBuilder::addSampler(StringView key, SamplerInfo &&info) {
+	auto pool = _data->layout->pass->queue->pool;
+	memory::context ctx(pool);
+
+	auto p = new (pool) PipelineDescriptor;
+	p->key = key.pdup(pool);
+	p->set = _data;
+	p->attachment = nullptr;
+	p->type = DescriptorType::Sampler;
+	p->layout = AttachmentLayout::Ignored;
+	p->count = 1;
+	p->index = uint32_t(_data->descriptors.size());
+	p->sampler = move(info);
+
+	_data->descriptors.emplace_back(p);
+
+	return true;
+}
+
 DescriptorSetBuilder::DescriptorSetBuilder(DescriptorSetData *data) : _data(data) { }
 
 bool PipelineLayoutBuilder::addSet(const Callback<void(DescriptorSetBuilder &)> &cb) {
