@@ -47,21 +47,6 @@ struct SP_PUBLIC MaterialTransferData {
 	Rc<Buffer> target;
 };
 
-class SP_PUBLIC QueuePass : public core::QueuePass {
-public:
-	virtual ~QueuePass();
-
-	virtual bool init(QueuePassBuilder &passBuilder) override;
-	virtual void invalidate() override;
-
-	virtual Rc<core::QueuePassHandle> makeFrameHandle(const FrameQueue &) override;
-
-	core::QueueFlags getQueueOps() const { return _queueOps; }
-
-protected:
-	core::QueueFlags _queueOps = core::QueueFlags::Graphics;
-};
-
 class SP_PUBLIC QueuePassHandle : public core::QueuePassHandle {
 public:
 	static VkRect2D rotateScissor(const core::FrameConstraints &constraints, const URect &scissor);
@@ -140,6 +125,19 @@ protected:
 	Vector<const core::CommandBuffer *> _buffers;
 	Rc<FrameSync> _sync;
 	core::FrameConstraints _constraints;
+};
+
+class SP_PUBLIC QueuePass : public core::QueuePassTyped<QueuePassHandle> {
+public:
+	virtual ~QueuePass();
+
+	virtual bool init(QueuePassBuilder &passBuilder) override;
+	virtual void invalidate() override;
+
+	core::QueueFlags getQueueOps() const { return _queueOps; }
+
+protected:
+	core::QueueFlags _queueOps = core::QueueFlags::Graphics;
 };
 
 } // namespace stappler::xenolith::vk

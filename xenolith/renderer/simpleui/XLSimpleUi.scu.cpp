@@ -25,4 +25,6 @@
 #include "XLSimpleButton.cc"
 #include "XLSimpleWindowDecorations.cc"
 #include "XLSimpleCloseGuardWidget.cc"
-#include "XLSimpleFlexLayout.cc"
+#include "XLSimpleLayoutSystem.cc"
+#include "XLSimpleStyleSheet.cc"
+#include "XLSimpleStyle.cc"

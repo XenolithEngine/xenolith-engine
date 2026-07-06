@@ -35,3 +35,4 @@
 #include "XLFontShared.cc"
 
 #include "backend/vk/XLVkFontQueue.cc"
+#include "backend/webgpu/XLWgpuFontQueue.cc"

@@ -38,6 +38,11 @@
 #include "XLVkSwapchain.h"
 #endif
 
+#if MODULE_XENOLITH_BACKEND_WEBGPU
+#include "XLWgpuInstance.h"
+#include "XLWgpuPresentation.h"
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 XL_DECLARE_EVENT_CLASS(AppWindow, onWindowState);
@@ -320,6 +325,43 @@ void AppWindow::handleSwapchainUpdated(const core::FrameConstraints &c) {
 }
 
 Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
+#if MODULE_XENOLITH_BACKEND_WEBGPU
+	if (cinstance->getApi() == core::InstanceApi::WebGPU) {
+		auto ifaceInfo = _window->getSurfaceInterfaceInfo();
+		auto instance = static_cast<webgpu::Instance *>(cinstance.get());
+
+		WGPUSurfaceDescriptor desc = WGPU_SURFACE_DESCRIPTOR_INIT;
+
+		WGPUSurfaceSourceXCBWindow xcbSrc = WGPU_SURFACE_SOURCE_XCB_WINDOW_INIT;
+		WGPUSurfaceSourceWaylandSurface waylandSrc = WGPU_SURFACE_SOURCE_WAYLAND_SURFACE_INIT;
+
+		switch (ifaceInfo.backend) {
+		case sprt::window::SurfaceBackend::Xcb:
+			xcbSrc.connection = ifaceInfo.xcb.connection;
+			xcbSrc.window = ifaceInfo.xcb.window;
+			desc.nextInChain = &xcbSrc.chain;
+			break;
+		case sprt::window::SurfaceBackend::Wayland:
+			waylandSrc.display = ifaceInfo.wayland.display;
+			waylandSrc.surface = ifaceInfo.wayland.surface;
+			desc.nextInChain = &waylandSrc.chain;
+			break;
+		default:
+			log::source().error("AppWindow",
+					"Surface backend is not supported for WebGPU: ", toInt(ifaceInfo.backend));
+			return nullptr;
+		}
+
+		auto surface = wgpuInstanceCreateSurface(instance->getInstance(), &desc);
+		if (!surface) {
+			log::source().error("AppWindow", "Fail to create WGPUSurface");
+			return nullptr;
+		}
+
+		return Rc<webgpu::Surface>::create(instance, surface);
+	}
+#endif
+
 #if MODULE_XENOLITH_BACKEND_VK
 	auto info = _window->getSurfaceInterfaceInfo();
 	if (cinstance->getApi() != core::InstanceApi::Vulkan) {
