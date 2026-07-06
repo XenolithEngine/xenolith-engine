@@ -35,6 +35,10 @@
 #include "backend/vk/XL2dVkShadowPass.h"
 #endif
 
+#if MODULE_XENOLITH_RENDERER_BASIC2D_WEBGPU
+#include "XL2dWgpuVertexPass.h"
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
 class Scene2d::FpsDisplay : public Layer {
@@ -192,15 +196,40 @@ bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> wi
 
 		buildQueueResources(queueInfo, builder);
 
-#if MODULE_XENOLITH_BACKEND_VK
-		basic2d::vk::ShadowPass::RenderQueueInfo info{
-			app->getGlLoop(),
-			queueInfo.extent,
-			basic2d::vk::ShadowPass::Flags::None,
-			queueInfo.backgroundColor,
-		};
+		auto api = static_cast<core::Loop *>(app->getGlLoop())->getInstance()->getApi();
+		bool queueBuilt = false;
 
-		basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
+#if MODULE_XENOLITH_BACKEND_VK
+		if (!queueBuilt && api == core::InstanceApi::Vulkan) {
+			basic2d::vk::ShadowPass::RenderQueueInfo info{
+				app->getGlLoop(),
+				queueInfo.extent,
+				basic2d::vk::ShadowPass::Flags::None,
+				queueInfo.backgroundColor,
+			};
+
+			basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
+			queueBuilt = true;
+		}
+#endif
+
+#if MODULE_XENOLITH_RENDERER_BASIC2D_WEBGPU
+		if (!queueBuilt && api == core::InstanceApi::WebGPU) {
+			basic2d::webgpu::MaterialVertexPass::RenderQueueInfo info{
+				app->getGlLoop(),
+				queueInfo.extent,
+				queueInfo.backgroundColor,
+			};
+
+			basic2d::webgpu::MaterialVertexPass::makeRenderQueue(builder, info);
+			queueBuilt = true;
+		}
+#endif
+
+		if (!queueBuilt) {
+			log::source().error("Scene2d", "No available GAPI found");
+			return false;
+		}
 
 		cb(builder);
 
@@ -209,10 +238,6 @@ bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> wi
 		}
 
 		return true;
-#else
-		log::source().error("Scene2d", "No available GAPI found");
-		return false;
-#endif
 	} else {
 		// client mode - we should select a scene, instead of creating it
 		auto serverQueue = selectServerQueue(app, window);

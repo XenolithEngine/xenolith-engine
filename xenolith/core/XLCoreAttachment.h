@@ -297,6 +297,29 @@ protected:
 	FrameAttachmentData *_queueData = nullptr;
 };
 
+/* Typed attachment base: creates HandleType in makeFrameHandle.
+ *
+ * Prefer this over overriding makeFrameHandle by hand: inside a member function
+ * of a derived class, an unqualified handle name resolves via the base class
+ * scope to the core::Attachment::AttachmentHandle alias, silently creating the
+ * base handle. Here the handle type is spelled once at the inheritance site,
+ * where unqualified lookup works in namespace scope.
+ *
+ * HandleType must be complete at the point of class instantiation.
+ */
+template <typename HandleType, typename BaseAttachment = Attachment>
+class AttachmentTyped : public BaseAttachment {
+public:
+	virtual ~AttachmentTyped() = default;
+
+	virtual Rc<AttachmentHandle> makeFrameHandle(const FrameQueue &queue) override {
+		if (this->_frameHandleCallback) {
+			return this->_frameHandleCallback(*this, queue);
+		}
+		return Rc<HandleType>::create(*this, queue);
+	}
+};
+
 } // namespace stappler::xenolith::core
 
 #endif /* XENOLITH_CORE_XLCOREATTACHMENT_H_ */

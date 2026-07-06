@@ -55,13 +55,6 @@ bool QueuePass::init(QueuePassBuilder &passBuilder) {
 
 void QueuePass::invalidate() { }
 
-Rc<core::QueuePassHandle> QueuePass::makeFrameHandle(const FrameQueue &queue) {
-	if (_frameHandleCallback) {
-		return _frameHandleCallback(*this, queue);
-	}
-	return Rc<vk::QueuePassHandle>::create(*this, queue);
-}
-
 VkRect2D QueuePassHandle::rotateScissor(const core::FrameConstraints &constraints,
 		const URect &scissor) {
 	VkRect2D scissorRect{

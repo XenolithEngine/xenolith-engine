@@ -20,13 +20,15 @@
  THE SOFTWARE.
  **/
 
-#include "XLSimpleFlexLayout.h"
+#include "XLSimpleLayoutSystem.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::simpleui {
 
 // Components acquire their unique ids statically during program startup.
 ComponentId FlexLayoutInfo::Id;
 ComponentId FlexItemInfo::Id;
+ComponentId GridLayoutInfo::Id;
+ComponentId GridItemInfo::Id;
 
 namespace {
 
@@ -70,62 +72,317 @@ struct FlexLine {
 	size_t count() const { return end - begin; }
 };
 
+// ---- grid working structs -------------------------------------------------
+
+// resolved half-open interval of 0-based track indices [start, end)
+struct GridSpan {
+	uint32_t start = 0;
+	uint32_t end = 0;
+	bool definite = false;
+
+	uint32_t span() const { return end - start; }
+};
+
+struct GridItem {
+	Node *node = nullptr;
+	GridItemInfo cfg;
+
+	GridSpan col;
+	GridSpan row;
+
+	float natW = 0.0f; // natural (max-content) size along X
+	float natH = 0.0f; // natural size along Y
+
+	// filled during positioning (top-left content-box coordinates)
+	float boxX = 0.0f;
+	float boxY = 0.0f;
+	float boxW = 0.0f;
+	float boxH = 0.0f;
+};
+
+// a resolved track after sizing
+struct GridTrackSize {
+	GridTrack def;
+	float base = 0.0f; // resolved size in px
+	float position = 0.0f; // start offset from the content-box start along its axis
+};
+
+// Read a leading number from `r` (advances r past it). Returns false if there is
+// no number at the head.
+static bool readNumber(StringView &r, float &out) {
+	r.skipChars<StringView::WhiteSpace>();
+	auto res = r.readFloat();
+	if (!res.valid()) {
+		return false;
+	}
+	out = res.get();
+	return true;
+}
+
+// Parse one whitespace-delimited grid track token into `out`. Returns false for
+// an unsupported token (named lines in brackets, minmax(), fit-content(), ...).
+static bool parseGridTrackToken(StringView token, GridTrack &out) {
+	token.trimChars<StringView::WhiteSpace>();
+	if (token.empty()) {
+		return false;
+	}
+	if (token == "auto" || token == "min-content" || token == "max-content") {
+		out.type = GridTrack::Auto;
+		out.value = 0.0f;
+		return true;
+	}
+	StringView r(token);
+	float num = 0.0f;
+	if (!readNumber(r, num)) {
+		return false; // named line "[...]" or unsupported function
+	}
+	r.trimChars<StringView::WhiteSpace>();
+	if (r == "fr") {
+		out.type = GridTrack::Fraction;
+		out.value = num;
+	} else if (r.is('%')) {
+		out.type = GridTrack::Percent;
+		out.value = num;
+	} else { // "px", unit-less, or an unsupported length unit -> best-effort px
+		out.type = GridTrack::Fixed;
+		out.value = num;
+	}
+	return true;
+}
+
 } // namespace
 
-bool FlexLayout::init() {
+// Parse a track list, expanding repeat(). Recursion depth is bounded by the
+// nesting of repeat(), which CSS does not allow, so this is effectively flat.
+Vector<GridTrack> parseGridTemplate(StringView input) {
+	Vector<GridTrack> ret;
+	StringView r(input);
+	while (true) {
+		r.skipChars<StringView::WhiteSpace>();
+		if (r.empty()) {
+			break;
+		}
+		if (r.starts_with("repeat(")) {
+			r += 7; // strlen("repeat(")
+			r.skipChars<StringView::WhiteSpace>();
+			auto cres = r.readFloat();
+			const uint32_t n = cres.valid() ? uint32_t(sprt::max(cres.get(), 0.0f)) : 0u;
+			r.skipChars<StringView::WhiteSpace>();
+			if (r.is(',')) {
+				++r;
+			}
+			// inner track list up to the matching ')'
+			const char *innerStart = r.data();
+			int depth = 1;
+			while (!r.empty() && depth > 0) {
+				if (r.is('(')) {
+					++depth;
+				} else if (r.is(')')) {
+					--depth;
+					if (depth == 0) {
+						break;
+					}
+				}
+				++r;
+			}
+			StringView inner(innerStart, size_t(r.data() - innerStart));
+			if (r.is(')')) {
+				++r;
+			}
+			auto innerTracks = parseGridTemplate(inner);
+			for (uint32_t i = 0; i < n; ++i) {
+				for (auto &t : innerTracks) { ret.emplace_back(t); }
+			}
+			continue;
+		}
+		if (r.is('[')) {
+			// named-line block: skip (unsupported)
+			while (!r.empty() && !r.is(']')) { ++r; }
+			if (r.is(']')) {
+				++r;
+			}
+			continue;
+		}
+		// read a single whitespace-delimited token
+		auto token = r.readUntil<StringView::WhiteSpace>();
+		GridTrack track;
+		if (parseGridTrackToken(token, track)) {
+			ret.emplace_back(track);
+		}
+	}
+	return ret;
+}
+
+// helper for parseGridLine: parse "span N" or "N" or "auto"/empty
+static void parseLineToken(StringView token, uint32_t &line, uint32_t &span, bool &isSpan) {
+	token.trimChars<StringView::WhiteSpace>();
+	line = 0;
+	span = 0;
+	isSpan = false;
+	if (token.empty() || token == "auto") {
+		return;
+	}
+	if (token.starts_with("span")) {
+		isSpan = true;
+		StringView r = token;
+		r += 4; // strlen("span")
+		float n = 0.0f;
+		if (readNumber(r, n)) {
+			span = uint32_t(sprt::max(n, 1.0f));
+		} else {
+			span = 1;
+		}
+		return;
+	}
+	StringView r(token);
+	float n = 0.0f;
+	if (readNumber(r, n)) {
+		line = uint32_t(sprt::max(n, 1.0f));
+	}
+}
+
+bool parseGridLine(StringView input, uint32_t &start, uint32_t &end, uint32_t &span) {
+	StringView r(input);
+	r.trimChars<StringView::WhiteSpace>();
+	if (r.empty()) {
+		return false;
+	}
+
+	StringView left = r;
+	StringView right;
+	auto slash = r.find('/');
+	if (slash < r.size()) {
+		left = r.sub(0, slash);
+		right = r.sub(slash + 1);
+	}
+
+	uint32_t lLine = 0, lSpan = 0, rLine = 0, rSpan = 0;
+	bool lIsSpan = false, rIsSpan = false;
+	parseLineToken(left, lLine, lSpan, lIsSpan);
+
+	if (right.empty()) {
+		// single value: start line or bare span
+		if (lIsSpan) {
+			start = 0;
+			end = 0;
+			span = lSpan;
+		} else {
+			start = lLine;
+			end = 0;
+			span = 1;
+		}
+		return true;
+	}
+
+	parseLineToken(right, rLine, rSpan, rIsSpan);
+	if (lIsSpan) {
+		// "span N / M"
+		start = 0;
+		end = rLine;
+		span = sprt::max(lSpan, 1u);
+	} else if (rIsSpan) {
+		// "N / span M"
+		start = lLine;
+		end = 0;
+		span = sprt::max(rSpan, 1u);
+	} else {
+		start = lLine;
+		end = rLine;
+		span = 1;
+	}
+	return true;
+}
+
+bool LayoutSystem::init() {
 	if (!System::init()) {
 		return false;
 	}
 
 	// We need node geometry events (own content size, child reordering) and
-	// component change events (the container's own FlexLayoutInfo updates).
+	// component change events (the container's own layout info updates).
 	setSystemFlags(SystemFlags::HandleNodeEvents | SystemFlags::HandleComponents
 			| SystemFlags::HandleSceneEvents);
 	return true;
 }
 
-bool FlexLayout::init(const FlexLayoutInfo &info) {
+bool LayoutSystem::init(const FlexLayoutInfo &info) {
 	if (!init()) {
 		return false;
 	}
+	_mode = LayoutMode::Flex;
 	_initialInfo = info;
 	return true;
 }
 
-void FlexLayout::handleAdded(Node *owner) {
+bool LayoutSystem::init(const GridLayoutInfo &info) {
+	if (!init()) {
+		return false;
+	}
+	_mode = LayoutMode::Grid;
+	_initialGridInfo = info;
+	return true;
+}
+
+void LayoutSystem::handleAdded(Node *owner) {
 	System::handleAdded(owner);
 
-	// Make sure the container always carries a FlexLayoutInfo component, so the
-	// "parameters live on the parent node" contract holds even if the caller
-	// never sets one explicitly.
-	if (!owner->getComponent<FlexLayoutInfo>()) {
-		owner->setComponent<FlexLayoutInfo>(_initialInfo);
+	// Make sure the container always carries the matching container info
+	// component, so the "parameters live on the parent node" contract holds even
+	// if the caller never sets one explicitly.
+	if (_mode == LayoutMode::Grid) {
+		if (!owner->getComponent<GridLayoutInfo>()) {
+			owner->setComponent<GridLayoutInfo>(_initialGridInfo);
+		}
+	} else {
+		if (!owner->getComponent<FlexLayoutInfo>()) {
+			owner->setComponent<FlexLayoutInfo>(_initialInfo);
+		}
 	}
 }
 
-void FlexLayout::handleContentSizeDirty() {
+void LayoutSystem::handleContentSizeDirty() {
 	System::handleContentSizeDirty();
 	apply();
 }
 
-void FlexLayout::handleComponentsDirty() {
+void LayoutSystem::handleComponentsDirty() {
 	System::handleComponentsDirty();
 	apply();
 }
 
-void FlexLayout::handleReorderChildDirty() {
+void LayoutSystem::handleReorderChildDirty() {
 	System::handleReorderChildDirty();
 	apply();
 }
 
-const FlexLayoutInfo *FlexLayout::getInfo() const {
+void LayoutSystem::setMode(LayoutMode mode) {
+	if (_mode == mode) {
+		return;
+	}
+	_mode = mode;
+	if (_owner) {
+		// ensure the container carries the component for the new mode
+		if (_mode == LayoutMode::Grid) {
+			if (!_owner->getComponent<GridLayoutInfo>()) {
+				_owner->setComponent<GridLayoutInfo>(_initialGridInfo);
+			}
+		} else {
+			if (!_owner->getComponent<FlexLayoutInfo>()) {
+				_owner->setComponent<FlexLayoutInfo>(_initialInfo);
+			}
+		}
+		apply();
+	}
+}
+
+const FlexLayoutInfo *LayoutSystem::getInfo() const {
 	if (!_owner) {
 		return nullptr;
 	}
 	return _owner->getComponent<FlexLayoutInfo>();
 }
 
-void FlexLayout::setInfo(const FlexLayoutInfo &info) {
+void LayoutSystem::setInfo(const FlexLayoutInfo &info) {
 	if (!_owner) {
 		_initialInfo = info;
 		return;
@@ -133,7 +390,7 @@ void FlexLayout::setInfo(const FlexLayoutInfo &info) {
 	_owner->setComponent<FlexLayoutInfo>(info);
 }
 
-void FlexLayout::updateInfo(const Callback<bool(FlexLayoutInfo &)> &cb) {
+void LayoutSystem::updateInfo(const Callback<bool(FlexLayoutInfo &)> &cb) {
 	if (!_owner) {
 		cb(_initialInfo);
 		return;
@@ -142,7 +399,7 @@ void FlexLayout::updateInfo(const Callback<bool(FlexLayoutInfo &)> &cb) {
 			[&](NotNull<FlexLayoutInfo> info) { return cb(*info); });
 }
 
-void FlexLayout::setDirection(FlexDirection value) {
+void LayoutSystem::setDirection(FlexDirection value) {
 	updateInfo([&](FlexLayoutInfo &info) {
 		if (info.direction == value) {
 			return false;
@@ -152,7 +409,7 @@ void FlexLayout::setDirection(FlexDirection value) {
 	});
 }
 
-void FlexLayout::setWrap(FlexWrap value) {
+void LayoutSystem::setWrap(FlexWrap value) {
 	updateInfo([&](FlexLayoutInfo &info) {
 		if (info.wrap == value) {
 			return false;
@@ -162,7 +419,7 @@ void FlexLayout::setWrap(FlexWrap value) {
 	});
 }
 
-void FlexLayout::setJustifyContent(FlexJustify value) {
+void LayoutSystem::setJustifyContent(FlexJustify value) {
 	updateInfo([&](FlexLayoutInfo &info) {
 		if (info.justifyContent == value) {
 			return false;
@@ -172,7 +429,7 @@ void FlexLayout::setJustifyContent(FlexJustify value) {
 	});
 }
 
-void FlexLayout::setAlignItems(FlexAlign value) {
+void LayoutSystem::setAlignItems(FlexAlign value) {
 	updateInfo([&](FlexLayoutInfo &info) {
 		if (info.alignItems == value) {
 			return false;
@@ -182,7 +439,7 @@ void FlexLayout::setAlignItems(FlexAlign value) {
 	});
 }
 
-void FlexLayout::setAlignContent(FlexAlign value) {
+void LayoutSystem::setAlignContent(FlexAlign value) {
 	updateInfo([&](FlexLayoutInfo &info) {
 		if (info.alignContent == value) {
 			return false;
@@ -192,7 +449,7 @@ void FlexLayout::setAlignContent(FlexAlign value) {
 	});
 }
 
-void FlexLayout::setGap(float row, float column) {
+void LayoutSystem::setGap(float row, float column) {
 	updateInfo([&](FlexLayoutInfo &info) {
 		if (info.rowGap == row && info.columnGap == column) {
 			return false;
@@ -203,7 +460,7 @@ void FlexLayout::setGap(float row, float column) {
 	});
 }
 
-void FlexLayout::setPadding(Padding value) {
+void LayoutSystem::setPadding(Padding value) {
 	updateInfo([&](FlexLayoutInfo &info) {
 		if (info.padding == value) {
 			return false;
@@ -213,19 +470,49 @@ void FlexLayout::setPadding(Padding value) {
 	});
 }
 
-const FlexItemInfo *FlexLayout::getItem(NotNull<Node> node) {
+const FlexItemInfo *LayoutSystem::getItem(NotNull<Node> node) {
 	return node->getComponent<FlexItemInfo>();
 }
 
-void FlexLayout::setItem(NotNull<Node> node, const FlexItemInfo &info) {
+void LayoutSystem::setItem(NotNull<Node> node, const FlexItemInfo &info) {
 	node->setComponent<FlexItemInfo>(info);
 }
 
-void FlexLayout::apply() {
+const GridLayoutInfo *LayoutSystem::getGridInfo() const {
+	if (!_owner) {
+		return nullptr;
+	}
+	return _owner->getComponent<GridLayoutInfo>();
+}
+
+void LayoutSystem::setGridInfo(const GridLayoutInfo &info) {
+	if (!_owner) {
+		_initialGridInfo = info;
+		return;
+	}
+	_owner->setComponent<GridLayoutInfo>(info);
+}
+
+const GridItemInfo *LayoutSystem::getGridItem(NotNull<Node> node) {
+	return node->getComponent<GridItemInfo>();
+}
+
+void LayoutSystem::setGridItem(NotNull<Node> node, const GridItemInfo &info) {
+	node->setComponent<GridItemInfo>(info);
+}
+
+void LayoutSystem::apply() {
 	if (!_owner) {
 		return;
 	}
+	if (_mode == LayoutMode::Grid) {
+		layoutGrid();
+	} else {
+		layoutFlex();
+	}
+}
 
+void LayoutSystem::layoutFlex() {
 	auto infoPtr = _owner->getComponent<FlexLayoutInfo>();
 	const FlexLayoutInfo info = infoPtr ? *infoPtr : FlexLayoutInfo();
 
@@ -514,8 +801,418 @@ void FlexLayout::apply() {
 
 		// honor the child's own anchor point: position is where the anchor sits
 		const Vec2 anchor = item.node->getAnchorPoint();
-		item.node->setPosition(
-				bottomLeft + Vec2(anchor.x * width, anchor.y * height));
+		item.node->setPosition(bottomLeft + Vec2(anchor.x * width, anchor.y * height));
+	}
+}
+
+namespace {
+
+// resolve a per-axis line/span placement into a 0-based half-open track interval
+static GridSpan resolveGridSpan(uint32_t startLine, uint32_t endLine, uint32_t span) {
+	GridSpan out;
+	const uint32_t sp = sprt::max(span, 1u);
+	if (startLine >= 1 && endLine >= 1) {
+		uint32_t s = startLine - 1;
+		uint32_t e = endLine - 1;
+		if (e < s) {
+			const uint32_t t = s;
+			s = e;
+			e = t;
+		}
+		if (e <= s) {
+			e = s + 1;
+		}
+		out = {s, e, true};
+	} else if (startLine >= 1) {
+		const uint32_t s = startLine - 1;
+		out = {s, s + sp, true};
+	} else if (endLine >= 1) {
+		uint32_t e = endLine - 1;
+		if (e < 1) {
+			e = 1;
+		}
+		const uint32_t s = (e > sp) ? (e - sp) : 0u;
+		out = {s, sprt::max(e, s + 1), true};
+	} else {
+		out = {0, sp, false};
+	}
+	return out;
+}
+
+// distribution of leftover space along one axis (justify/align-content)
+static void gridContentDistribution(GridAlign align, float freeSpace, size_t count, float &offset,
+		float &between) {
+	offset = 0.0f;
+	between = 0.0f;
+	if (freeSpace <= 0.0f || count == 0) {
+		return;
+	}
+	const float n = static_cast<float>(count);
+	switch (align) {
+	case GridAlign::End: offset = freeSpace; break;
+	case GridAlign::Center: offset = freeSpace / 2.0f; break;
+	case GridAlign::SpaceBetween: between = (count > 1) ? freeSpace / (n - 1.0f) : 0.0f; break;
+	case GridAlign::SpaceAround: {
+		const float space = freeSpace / n;
+		offset = space / 2.0f;
+		between = space;
+		break;
+	}
+	case GridAlign::SpaceEvenly: {
+		const float space = freeSpace / (n + 1.0f);
+		offset = space;
+		between = space;
+		break;
+	}
+	default: break; // Start / Stretch / Auto
+	}
+}
+
+} // namespace
+
+void LayoutSystem::layoutGrid() {
+	auto infoPtr = _owner->getComponent<GridLayoutInfo>();
+	const GridLayoutInfo info = infoPtr ? *infoPtr : GridLayoutInfo();
+
+	const Size2 containerSize = _owner->getContentSize();
+	const float contentW = sprt::max(containerSize.width - info.padding.horizontal(), 0.0f);
+	const float contentH = sprt::max(containerSize.height - info.padding.vertical(), 0.0f);
+
+	// 1. Collect items.
+	Vector<GridItem> items;
+	for (auto &child : _owner->getChildren()) {
+		if (!child->isVisible()) {
+			continue;
+		}
+		GridItem item;
+		item.node = child;
+		if (auto cfg = child->getComponent<GridItemInfo>()) {
+			item.cfg = *cfg;
+		}
+		const Size2 cs = child->getContentSize();
+		item.natW = (item.cfg.width >= 0.0f) ? item.cfg.width : cs.width;
+		item.natH = (item.cfg.height >= 0.0f) ? item.cfg.height : cs.height;
+		item.col = resolveGridSpan(item.cfg.gridColumnStart, item.cfg.gridColumnEnd,
+				item.cfg.columnSpan);
+		item.row = resolveGridSpan(item.cfg.gridRowStart, item.cfg.gridRowEnd, item.cfg.rowSpan);
+		items.emplace_back(item);
+	}
+	if (items.empty()) {
+		return;
+	}
+
+	// stable-sort by order (insertion sort; tiny counts)
+	for (size_t i = 1; i < items.size(); ++i) {
+		GridItem key = items[i];
+		size_t j = i;
+		while (j > 0 && items[j - 1].cfg.order > key.cfg.order) {
+			items[j] = items[j - 1];
+			--j;
+		}
+		items[j] = key;
+	}
+
+	// 2. Placement. Work in minor (fixed, wrapping) / major (growing) axes.
+	const bool rowFlow = info.autoFlow == GridAutoFlow::Row
+			|| info.autoFlow == GridAutoFlow::RowDense;
+	const bool dense = info.autoFlow == GridAutoFlow::RowDense
+			|| info.autoFlow == GridAutoFlow::ColumnDense;
+
+	const uint32_t minorBase = uint32_t(rowFlow ? info.columnTracks.size()
+											    : info.rowTracks.size());
+	const uint32_t majorBase = uint32_t(rowFlow ? info.rowTracks.size()
+											    : info.columnTracks.size());
+
+	// per-item minor / major spans (as pointers into col/row by flow)
+	auto minorOf = [&](GridItem &it) -> GridSpan & { return rowFlow ? it.col : it.row; };
+	auto majorOf = [&](GridItem &it) -> GridSpan & { return rowFlow ? it.row : it.col; };
+
+	// finalize the minor track count (the wrap dimension)
+	uint32_t W = minorBase;
+	for (auto &it : items) {
+		auto &mn = minorOf(it);
+		W = sprt::max(W, mn.definite ? mn.end : mn.span());
+	}
+	W = sprt::max(W, 1u);
+
+	uint32_t M = majorBase;
+	Vector<uint8_t> occ;
+	occ.resize(size_t(M) * W, 0);
+	auto ensureMajor = [&](uint32_t m) {
+		if (m > M) {
+			occ.resize(size_t(m) * W, 0);
+			M = m;
+		}
+	};
+	auto isFree = [&](uint32_t maj, uint32_t majSpan, uint32_t mn, uint32_t mnSpan) -> bool {
+		for (uint32_t a = maj; a < maj + majSpan; ++a) {
+			for (uint32_t b = mn; b < mn + mnSpan; ++b) {
+				if (occ[size_t(a) * W + b]) {
+					return false;
+				}
+			}
+		}
+		return true;
+	};
+	auto mark = [&](uint32_t maj, uint32_t majSpan, uint32_t mn, uint32_t mnSpan) {
+		for (uint32_t a = maj; a < maj + majSpan; ++a) {
+			for (uint32_t b = mn; b < mn + mnSpan; ++b) { occ[size_t(a) * W + b] = 1; }
+		}
+	};
+	auto commit = [&](GridItem &it, uint32_t maj, uint32_t mn) {
+		auto &mnAxis = minorOf(it);
+		auto &mjAxis = majorOf(it);
+		// capture spans BEFORE mutating start (span() == end - start)
+		const uint32_t mnSp = mnAxis.span();
+		const uint32_t mjSp = mjAxis.span();
+		mnAxis.start = mn;
+		mnAxis.end = mn + mnSp;
+		mjAxis.start = maj;
+		mjAxis.end = maj + mjSp;
+	};
+
+	// Phase 1: items definite in both axes.
+	for (auto &it : items) {
+		auto &mn = minorOf(it);
+		auto &mj = majorOf(it);
+		if (mn.definite && mj.definite) {
+			ensureMajor(mj.end);
+			// clamp minor into the grid (definite W already covers it)
+			mark(mj.start, mj.span(), mn.start, mn.span());
+		}
+	}
+
+	// Phases 2 & 3: everything else in DOM/order sequence, with a shared cursor
+	// for the fully-auto items.
+	uint32_t curMajor = 0, curMinor = 0;
+	for (auto &it : items) {
+		auto &mn = minorOf(it);
+		auto &mj = majorOf(it);
+		if (mn.definite && mj.definite) {
+			continue; // placed in phase 1
+		}
+		const uint32_t mnSpan = mn.span();
+		const uint32_t mjSpan = mj.span();
+
+		if (mn.definite && !mj.definite) {
+			// minor-locked: scan the major axis for a free band
+			uint32_t maj = 0;
+			while (true) {
+				ensureMajor(maj + mjSpan);
+				if (isFree(maj, mjSpan, mn.start, mnSpan)) {
+					break;
+				}
+				++maj;
+			}
+			mark(maj, mjSpan, mn.start, mnSpan);
+			commit(it, maj, mn.start);
+		} else if (!mn.definite && mj.definite) {
+			// major-locked: scan the minor axis within the fixed major band
+			ensureMajor(mj.end);
+			bool placed = false;
+			for (uint32_t b = 0; mnSpan <= W && b + mnSpan <= W; ++b) {
+				if (isFree(mj.start, mjSpan, b, mnSpan)) {
+					mark(mj.start, mjSpan, b, mnSpan);
+					commit(it, mj.start, b);
+					placed = true;
+					break;
+				}
+			}
+			if (!placed) {
+				// overflow: pin to minor 0
+				mark(mj.start, mjSpan, 0, mnSpan);
+				commit(it, mj.start, 0);
+			}
+		} else {
+			// fully auto: cursor packing
+			if (dense) {
+				curMajor = 0;
+				curMinor = 0;
+			}
+			while (true) {
+				if (curMinor + mnSpan > W) {
+					curMinor = 0;
+					++curMajor;
+				}
+				ensureMajor(curMajor + mjSpan);
+				if (isFree(curMajor, mjSpan, curMinor, mnSpan)) {
+					break;
+				}
+				++curMinor;
+			}
+			mark(curMajor, mjSpan, curMinor, mnSpan);
+			commit(it, curMajor, curMinor);
+			if (!dense) {
+				curMinor += mnSpan;
+			}
+		}
+	}
+
+	const uint32_t colCount = rowFlow ? W : M;
+	const uint32_t rowCount = rowFlow ? M : W;
+
+	// 3. Track sizing (independent per axis).
+	auto buildTracks = [&](uint32_t count, const Vector<GridTrack> &explicitTracks,
+							   const GridTrack &autoDefault) {
+		Vector<GridTrackSize> tracks;
+		tracks.resize(count);
+		for (uint32_t i = 0; i < count; ++i) {
+			tracks[i].def = (i < explicitTracks.size()) ? explicitTracks[i] : autoDefault;
+		}
+		return tracks;
+	};
+	Vector<GridTrackSize> cols = buildTracks(colCount, info.columnTracks, info.autoColumn);
+	Vector<GridTrackSize> rows = buildTracks(rowCount, info.rowTracks, info.autoRow);
+
+	auto sizeAxis = [&](Vector<GridTrackSize> &tracks, float axisContent, float gap, bool isColumn) {
+		const size_t n = tracks.size();
+		if (n == 0) {
+			return;
+		}
+		const float gapsTotal = gap * static_cast<float>(n > 0 ? n - 1 : 0);
+
+		// base sizing for Fixed / Percent; Auto and Fraction start at 0
+		for (auto &t : tracks) {
+			switch (t.def.type) {
+			case GridTrack::Fixed: t.base = sprt::max(t.def.value, 0.0f); break;
+			case GridTrack::Percent:
+				t.base = sprt::max(t.def.value / 100.0f * axisContent, 0.0f);
+				break;
+			default: t.base = 0.0f; break;
+			}
+		}
+
+		// content sizing of Auto tracks: single-track items first
+		for (auto &it : items) {
+			const GridSpan &s = isColumn ? it.col : it.row;
+			const float nat = isColumn ? it.natW : it.natH;
+			if (s.span() == 1 && s.start < n && tracks[s.start].def.type == GridTrack::Auto) {
+				tracks[s.start].base = sprt::max(tracks[s.start].base, nat);
+			}
+		}
+		// spanning items: grow the Auto tracks they cover to cover the deficit
+		for (auto &it : items) {
+			const GridSpan &s = isColumn ? it.col : it.row;
+			const float nat = isColumn ? it.natW : it.natH;
+			if (s.span() <= 1 || s.end > n) {
+				continue;
+			}
+			float covered = gap * static_cast<float>(s.span() - 1);
+			uint32_t autoCount = 0;
+			for (uint32_t t = s.start; t < s.end; ++t) {
+				covered += tracks[t].base;
+				if (tracks[t].def.type == GridTrack::Auto) {
+					++autoCount;
+				}
+			}
+			const float deficit = nat - covered;
+			if (deficit > 0.0f && autoCount > 0) {
+				const float add = deficit / static_cast<float>(autoCount);
+				for (uint32_t t = s.start; t < s.end; ++t) {
+					if (tracks[t].def.type == GridTrack::Auto) {
+						tracks[t].base += add;
+					}
+				}
+			}
+		}
+
+		// distribute positive free space across fr tracks
+		float sumBase = 0.0f;
+		float sumFr = 0.0f;
+		for (auto &t : tracks) {
+			sumBase += t.base;
+			if (t.def.type == GridTrack::Fraction) {
+				sumFr += sprt::max(t.def.value, 0.0f);
+			}
+		}
+		const float freeSpace = axisContent - gapsTotal - sumBase;
+		if (freeSpace > 0.0f && sumFr > 0.0f) {
+			for (auto &t : tracks) {
+				if (t.def.type == GridTrack::Fraction) {
+					t.base = freeSpace * sprt::max(t.def.value, 0.0f) / sumFr;
+				}
+			}
+		}
+		for (auto &t : tracks) { t.base = sprt::max(t.base, 0.0f); }
+	};
+	sizeAxis(cols, contentW, info.columnGap, true);
+	sizeAxis(rows, contentH, info.rowGap, false);
+
+	// 4. Positioning: track offsets + content distribution.
+	auto positionAxis = [&](Vector<GridTrackSize> &tracks, float axisContent, float gap,
+							  GridAlign contentAlign) {
+		const size_t n = tracks.size();
+		if (n == 0) {
+			return;
+		}
+		float sumBase = 0.0f;
+		for (auto &t : tracks) { sumBase += t.base; }
+		const float gapsTotal = gap * static_cast<float>(n - 1);
+		const float freeSpace = axisContent - sumBase - gapsTotal;
+
+		float offset = 0.0f, between = 0.0f;
+		gridContentDistribution(contentAlign, freeSpace, n, offset, between);
+
+		float pos = offset;
+		for (auto &t : tracks) {
+			t.position = pos;
+			pos += t.base + gap + between;
+		}
+	};
+	positionAxis(cols, contentW, info.columnGap, info.justifyContent);
+	positionAxis(rows, contentH, info.rowGap, info.alignContent);
+
+	// 5. Per-item cell rect, self-alignment, and projection to bottom-left space.
+	auto selfAlign = [](GridAlign a, GridAlign fallback, float cellStart, float cellSize,
+							 float natural, float &outStart, float &outSize) {
+		GridAlign use = (a == GridAlign::Auto) ? fallback : a;
+		if (use == GridAlign::Stretch || use == GridAlign::Auto) {
+			outStart = cellStart;
+			outSize = cellSize;
+			return;
+		}
+		outSize = natural;
+		switch (use) {
+		case GridAlign::End: outStart = cellStart + (cellSize - natural); break;
+		case GridAlign::Center: outStart = cellStart + (cellSize - natural) / 2.0f; break;
+		default: outStart = cellStart; break; // Start
+		}
+	};
+
+	for (auto &it : items) {
+		if (it.col.end == 0 || it.row.end == 0 || it.col.end > cols.size()
+				|| it.row.end > rows.size()) {
+			continue; // safety: unplaced / out of range
+		}
+		const float cellX = cols[it.col.start].position;
+		const float cellRight = cols[it.col.end - 1].position + cols[it.col.end - 1].base;
+		const float cellY = rows[it.row.start].position;
+		const float cellBottom = rows[it.row.end - 1].position + rows[it.row.end - 1].base;
+
+		// inset the cell by the item margin
+		float availX = cellX + it.cfg.margin.left;
+		float availW = sprt::max((cellRight - cellX) - it.cfg.margin.horizontal(), 0.0f);
+		float availY = cellY + it.cfg.margin.top;
+		float availH = sprt::max((cellBottom - cellY) - it.cfg.margin.vertical(), 0.0f);
+
+		float x = availX, w = availW, y = availY, h = availH;
+		selfAlign(it.cfg.justifySelf, info.justifyItems, availX, availW, it.natW, x, w);
+		selfAlign(it.cfg.alignSelf, info.alignItems, availY, availH, it.natH, y, h);
+		w = sprt::max(w, 0.0f);
+		h = sprt::max(h, 0.0f);
+
+		it.boxX = x;
+		it.boxY = y;
+		it.boxW = w;
+		it.boxH = h;
+
+		Vec2 bottomLeft;
+		bottomLeft.x = info.padding.left + it.boxX;
+		bottomLeft.y = containerSize.height - info.padding.top - it.boxY - it.boxH;
+
+		it.node->setContentSize(Size2(it.boxW, it.boxH));
+		const Vec2 anchor = it.node->getAnchorPoint();
+		it.node->setPosition(bottomLeft + Vec2(anchor.x * it.boxW, anchor.y * it.boxH));
 	}
 }
 

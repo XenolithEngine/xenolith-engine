@@ -110,6 +110,24 @@ CommandLineParser<ContextConfig> ContextConfig::getCommandLineParser() {
 		target.context->bundleName = StringView(args[0]).str<sprt::window::String>();
 		return true;
 	}},
+		CommandLineOption<ContextConfig>{.patterns = {"--gapi <api>"},
+			.description = StringView("Select graphics API backend (vulkan, webgpu)"),
+			.callback = [](ContextConfig &target, StringView pattern,
+								SpanView<StringView> args) -> bool {
+		if (!target.instance) {
+			target.instance = Rc<core::InstanceInfo>::alloc();
+		}
+		auto api = StringView(args[0]);
+		if (api == "vulkan") {
+			target.instance->api = core::InstanceApi::Vulkan;
+		} else if (api == "webgpu") {
+			target.instance->api = core::InstanceApi::WebGPU;
+		} else {
+			log::source().error("ContextConfig", "Unknown gAPI: ", api);
+			return false;
+		}
+		return true;
+	}},
 		CommandLineOption<ContextConfig>{.patterns = {"--renderdoc"},
 			.description = StringView("Open connection for renderdoc"),
 			.callback = [](ContextConfig &target, StringView pattern,

@@ -31,10 +31,13 @@ TOOLKIT_MODULE_LIST += \
 	$(XENOLITH_MODULE_DIR)/remote/remote.mk \
 	$(XENOLITH_MODULE_DIR)/font/font.mk \
 	$(XENOLITH_MODULE_DIR)/backend/vk/vk.mk \
+	$(XENOLITH_MODULE_DIR)/backend/webgpu/webgpu.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/basic2d/basic2d.mk \
+	$(XENOLITH_MODULE_DIR)/renderer/basic2d/backend/webgpu/basic2d-webgpu.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/material2d/material2d.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/richtext/richtext.mk \
 	$(XENOLITH_MODULE_DIR)/renderer/simpleui/simpleui.mk \
+	$(XENOLITH_MODULE_DIR)/renderer/pug/pug.mk \
 	$(XENOLITH_MODULE_DIR)/resources/storage/storage.mk \
 	$(XENOLITH_MODULE_DIR)/resources/network/network.mk \
 	$(XENOLITH_MODULE_DIR)/resources/assets/assets.mk
