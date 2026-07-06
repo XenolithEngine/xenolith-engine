@@ -151,6 +151,19 @@ public:
 	Rc<FileHandle> writeFile(StringView path, BytesView data, OpenFlags,
 			dispatch::Function<void(Status)> &&onDone, Ref * = nullptr);
 
+	// Watch a single file by name for filesystem changes. The completion fires on
+	// each change with the observed WatchFlags in `value` and stays armed until
+	// the handle is cancelled. Returns nullptr where the backend has no file-watch
+	// implementation (currently non-Linux/Android). Uses the Handle userdata slot
+	// for the Ref.
+	Rc<WatchHandle> watchFile(WatchInfo &&, Ref * = nullptr);
+
+	// Convenience form: `onChange` receives the WatchFlags of each change; return
+	// anything other than Status::Ok to cancel the watch. Uses the Handle userdata
+	// slot for private data.
+	Rc<WatchHandle> watchFile(StringView path, WatchFlags,
+			dispatch::Function<Status(WatchFlags)> &&onChange, Ref * = nullptr);
+
 	Rc<ThreadHandle> addThreadHandle();
 
 	// run custom handle

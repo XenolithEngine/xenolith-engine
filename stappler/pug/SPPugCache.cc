@@ -276,6 +276,36 @@ bool Cache::runTemplate(StringView key, const RunCallback &cb, const OutStream &
 	return false;
 }
 
+bool Cache::runTemplate(const FileInfo &ipath, const RunCallback &cb, NodeStream &sink) {
+	Rc<FileRef> tpl = acquireTemplate(ipath, true, _opts);
+	if (!tpl) {
+		tpl = acquireTemplate(ipath, false, _opts);
+	}
+
+	return runTemplate(tpl, cb, sink, tpl->getTemplate()->getOptions());
+}
+
+bool Cache::runTemplate(StringView key, const RunCallback &cb, NodeStream &sink) {
+	Rc<FileRef> tpl = get(key);
+	if (tpl) {
+		return runTemplate(tpl, cb, sink, tpl->getTemplate()->getOptions());
+	}
+
+	onError(mem_pool::toString("No template '", key, "' found"));
+	return false;
+}
+
+bool Cache::runTemplate(StringView key, const RunCallback &cb, NodeStream &sink,
+		Template::Options opts) {
+	Rc<FileRef> tpl = get(key);
+	if (tpl) {
+		return runTemplate(tpl, cb, sink, opts);
+	}
+
+	onError(mem_pool::toString("No template '", key, "' found"));
+	return false;
+}
+
 bool Cache::addFile(const FileInfo &path) {
 	auto key = filepath::canonical<memory::StandartInterface>(path);
 
@@ -412,6 +442,50 @@ bool Cache::runTemplate(Rc<FileRef> tpl, const RunCallback &cb, const OutStream 
 				}
 			}
 			return t->run(exec, out, opts);
+		} else {
+			onError(mem_pool::toString("File '", tpl->getKey(), "' is not executable"));
+		}
+	} else {
+		onError("No template found");
+	}
+	return false;
+}
+
+bool Cache::runTemplate(Rc<FileRef> tpl, const RunCallback &cb, NodeStream &sink,
+		Template::Options opts) {
+	if (tpl) {
+		if (auto t = tpl->getTemplate()) {
+			auto iopts = tpl->getOpts();
+			Context exec;
+			exec.loadDefaults();
+			exec.setIncludeCallback(
+					[this, iopts](const StringView &path, Context &exec, const OutStream &out,
+							Template::RunContext &rctx) -> bool {
+				Rc<FileRef> tpl = acquireTemplate(FileInfo(path), true, iopts);
+				if (!tpl) {
+					tpl = acquireTemplate(FileInfo(path), false, iopts);
+				}
+
+				if (!tpl) {
+					return false;
+				}
+
+				bool ret = false;
+				if (const Template *t = tpl->getTemplate()) {
+					ret = t->run(exec, out, rctx);
+				} else {
+					out << tpl->getContent();
+					ret = true;
+				}
+
+				return ret;
+			});
+			if (cb != nullptr) {
+				if (!cb(exec, *t)) {
+					return false;
+				}
+			}
+			return t->run(exec, sink, opts);
 		} else {
 			onError(mem_pool::toString("File '", tpl->getKey(), "' is not executable"));
 		}

@@ -32,7 +32,7 @@ struct TemplateRender {
 	using String = memory::PoolInterface::StringType;
 	using StringStream = memory::PoolInterface::StringStreamType;
 
-	TemplateRender(Template::Chunk *root, bool pretty);
+	TemplateRender(Template::Chunk *root, bool pretty, bool nodes);
 
 	bool renderControlToken(Token *, Template::ChunkType, bool allowEmpty);
 
@@ -67,6 +67,7 @@ struct TemplateRender {
 	StringStream _buffer;
 	Template::Chunk *_root = nullptr;
 	bool _pretty = false;
+	bool _nodes = false;
 	bool _started = false;
 	size_t _indentation = 0;
 
@@ -77,8 +78,8 @@ struct TemplateRender {
 	Vector<StringView> _includes;
 };
 
-TemplateRender::TemplateRender(Template::Chunk *root, bool pretty)
-: _root(root), _pretty(pretty), _current(root) { }
+TemplateRender::TemplateRender(Template::Chunk *root, bool pretty, bool nodes)
+: _root(root), _pretty(pretty && !nodes), _nodes(nodes), _current(root) { }
 
 bool TemplateRender::renderControlToken(Token *tok, Template::ChunkType type, bool allowEmpty) {
 	if (allowEmpty || tok->child) {
@@ -228,6 +229,10 @@ bool TemplateRender::renderToken(Token *tok) {
 		return true;
 		break;
 	case Token::Doctype:
+		if (_nodes) {
+			// doctype is meaningless for a node tree
+			return true;
+		}
 		if (tok->data == "html") {
 			_buffer << "<!DOCTYPE html>\n";
 		} else if (tok->data == "xml") {
@@ -271,6 +276,10 @@ bool TemplateRender::renderTokenTree(Token *tok) {
 bool TemplateRender::renderComment(Token *tok) {
 	switch (tok->child->type) {
 	case Token::CommentHtml:
+		if (_nodes) {
+			// HTML comments have no representation in a node tree
+			return false;
+		}
 		makeStartIndent(true);
 		_buffer << "<!--";
 		if (tok->child->next) {
@@ -326,18 +335,33 @@ bool TemplateRender::renderTag(Token *tok, Token *nextTok, bool interpolated) {
 	if (!isOutput) {
 		flushBuffer();
 
-		_buffer << "<" << (tok->data.empty() ? StringView("div") : tok->data); // it's a tag
-		auto tagChunk = flushBuffer(Template::HtmlTag);
+		if (_nodes) {
+			auto name = tok->data.empty() ? StringView("node") : tok->data;
+			_current->chunks.emplace_back(new (sprt::nothrow) Template::Chunk{{},
+				Template::NodeTag, String(name.data(), name.size()), nullptr});
 
-		// read attributes
-		tagEval = renderTagAttributes(tok->next);
-		if ((tagEval && tagEval->type == Token::TagTrailingSlash) || isSelfClosing(tok->data)) {
-			_buffer << "/>";
-			tagChunk->type = Template::HtmlInlineTag;
-			return true;
+			// read attributes (emitted as Attribute* chunks right after NodeTag)
+			tagEval = renderTagAttributes(tok->next);
+			if (tagEval && tagEval->type == Token::TagTrailingSlash) {
+				flushBuffer();
+				_current->chunks.emplace_back(new (sprt::nothrow) Template::Chunk{{},
+					Template::NodeTagEnd, String(name.data(), name.size()), nullptr});
+				return true;
+			}
+		} else {
+			_buffer << "<" << (tok->data.empty() ? StringView("div") : tok->data); // it's a tag
+			auto tagChunk = flushBuffer(Template::HtmlTag);
+
+			// read attributes
+			tagEval = renderTagAttributes(tok->next);
+			if ((tagEval && tagEval->type == Token::TagTrailingSlash) || isSelfClosing(tok->data)) {
+				_buffer << "/>";
+				tagChunk->type = Template::HtmlInlineTag;
+				return true;
+			}
+
+			_buffer << ">";
 		}
-
-		_buffer << ">";
 	} else {
 		tagEval = tok->next->next;
 	}
@@ -368,8 +392,14 @@ bool TemplateRender::renderTag(Token *tok, Token *nextTok, bool interpolated) {
 
 	if (!isOutput) {
 		flushBuffer();
-		_buffer << "</" << (tok->data.empty() ? StringView("div") : tok->data) << ">";
-		flushBuffer(Template::HtmlTag);
+		if (_nodes) {
+			auto name = tok->data.empty() ? StringView("node") : tok->data;
+			_current->chunks.emplace_back(new (sprt::nothrow) Template::Chunk{{},
+				Template::NodeTagEnd, String(name.data(), name.size()), nullptr});
+		} else {
+			_buffer << "</" << (tok->data.empty() ? StringView("div") : tok->data) << ">";
+			flushBuffer(Template::HtmlTag);
+		}
 	}
 
 	return shouldIndent;
@@ -390,6 +420,15 @@ Token *TemplateRender::renderTagAttributes(Token *tok) {
 	};
 
 	auto pushAttribute = [&, this](const StringView &name, Expression *expression, bool esc) {
+		if (_nodes) {
+			// keep attributes structured even when const; valueless attr -> null expr
+			flushBuffer();
+			_current->chunks.emplace_back(new (sprt::nothrow) Template::Chunk{{},
+				esc ? Template::AttributeEscaped : Template::AttributeUnescaped,
+				String(name.data(), name.size()), expression});
+			return;
+		}
+
 		if (!expression) {
 			_buffer << " " << name;
 			return;
@@ -428,7 +467,7 @@ Token *TemplateRender::renderTagAttributes(Token *tok) {
 
 	auto processAttrExpr = [&, this](Expression *expr) {
 		if (expr) {
-			if (expr->isConst()) {
+			if (!_nodes && expr->isConst()) {
 				Context::printAttrExpr(*expr, [&](StringView str) { _buffer << str; });
 			} else {
 				flushBuffer();
@@ -462,11 +501,28 @@ Token *TemplateRender::renderTagAttributes(Token *tok) {
 		}
 	}
 
-	if (!id.empty()) {
-		_buffer << " id=\"" << id << "\"";
-	}
-	if (hasClasses) {
-		_buffer << " class=\"" << classes.weak() << "\"";
+	if (_nodes) {
+		// id/class notes become const attribute chunks with literal-value expressions
+		auto pushConstAttribute = [&, this](const StringView &name, String &&value) {
+			flushBuffer();
+			_current->chunks.emplace_back(new (sprt::nothrow) Template::Chunk{{},
+				Template::AttributeEscaped, String(name.data(), name.size()),
+				new (sprt::nothrow)
+						Expression(Expression::NoOp, nullptr, nullptr, Value(move(value)))});
+		};
+		if (!id.empty()) {
+			pushConstAttribute("id", id.str<memory::PoolInterface>());
+		}
+		if (hasClasses) {
+			pushConstAttribute("class", String(classes.str()));
+		}
+	} else {
+		if (!id.empty()) {
+			_buffer << " id=\"" << id << "\"";
+		}
+		if (hasClasses) {
+			_buffer << " class=\"" << classes.weak() << "\"";
+		}
 	}
 
 	return tok;
@@ -511,7 +567,7 @@ bool TemplateRender::pushOutput(Expression *expr, Template::ChunkType type) {
 
 	if (expr->isConst()) {
 		return Context::printConstExpr(*expr, [&](StringView str) { _buffer << str; },
-				type == Template::OutputEscaped);
+				type == Template::OutputEscaped && !_nodes);
 	} else {
 		flushBuffer();
 		_current->chunks.emplace_back(
@@ -594,6 +650,8 @@ Template::Options Template::Options::getDefault() { return Options(); }
 
 Template::Options Template::Options::getPretty() { return Options().setFlags({Pretty}); }
 
+Template::Options Template::Options::getNodes() { return Options().setFlags({Nodes}); }
+
 Template::Options &Template::Options::setFlags(sprt::initializer_list<Flags> &&il) {
 	for (auto &it : il) { flags.set(toInt(it)); }
 	return *this;
@@ -621,7 +679,7 @@ Template::Template(memory::pool_t *p, const StringView &str, const Options &opts
 		const Callback<void(StringView)> &err)
 : _pool(p), _lexer(str, err), _opts(opts) {
 	if (_lexer) {
-		TemplateRender renderer(&_root, opts.hasFlag(Options::Pretty));
+		TemplateRender renderer(&_root, opts.hasFlag(Options::Pretty), opts.hasFlag(Options::Nodes));
 		renderer.renderToken(&_lexer.root);
 		renderer.flushBuffer();
 		renderer.end();
@@ -638,10 +696,26 @@ bool Template::run(Context &ctx, const OutStream &out, const Options &opts) cons
 	return run(ctx, out, rctx);
 }
 
+bool Template::run(Context &ctx, NodeStream &stream) const { return run(ctx, stream, _opts); }
+
+bool Template::run(Context &ctx, NodeStream &stream, const Options &opts) const {
+	if (!_opts.hasFlag(Options::Nodes)) {
+		stream.onError("Template was not compiled with Options::Nodes");
+		return false;
+	}
+
+	RunContext rctx;
+	rctx.tagStack.reserve(8);
+	rctx.opts = opts;
+	rctx.nodeStream = &stream;
+	// text output in structured mode is limited to error reporting
+	return run(ctx, [&](StringView str) { stream.onError(str); }, rctx);
+}
+
 bool Template::run(Context &ctx, const OutStream &out, RunContext &rctx) const {
 	rctx.templateStack.emplace_back(this);
 	auto ret = runChunk(_root, ctx, out, rctx);
-	if (ret) {
+	if (ret && !rctx.nodeStream) {
 		while (!rctx.tagStack.empty() && rctx.tagStack.back()->type == VirtualTag) {
 			out << rctx.tagStack.back()->value;
 			rctx.tagStack.pop_back();
@@ -689,6 +763,8 @@ static void Template_describeChunk(const Template::OutStream &stream, const Temp
 	case Template::ControlMixin: stream << "<mixin> " << chunk.value << "\n"; break;
 	case Template::MixinCall: stream << "<mixin-call> " << chunk.value << "\n"; break;
 	case Template::VirtualTag: stream << "<virtual-tag> " << chunk.value << "\n"; break;
+	case Template::NodeTag: stream << "<node-tag> " << chunk.value << "\n"; break;
+	case Template::NodeTagEnd: stream << "<node-tag-end> " << chunk.value << "\n"; break;
 	}
 	for (auto &it : chunk.chunks) { Template_describeChunk(stream, *it, depth + 1); }
 }
@@ -718,7 +794,11 @@ static void Template_readMixinArgs(Vector<Expression *> &vars, Expression *expr)
 bool Template::runChunk(const Chunk &chunk, Context &exec, const Callback<void(StringView)> &out,
 		RunContext &tagStack) const {
 	auto onError = [&](const StringView &err) SP_COVERAGE_TRIVIAL {
-		out << "<!-- " << "Context error: " << err << " -->";
+		if (tagStack.nodeStream) {
+			tagStack.nodeStream->onError(err);
+		} else {
+			out << "<!-- " << "Context error: " << err << " -->";
+		}
 	};
 
 	auto runIf = [&](auto &it) -> bool {
@@ -970,11 +1050,36 @@ bool Template::runChunk(const Chunk &chunk, Context &exec, const Callback<void(S
 		return true;
 	};
 
+	auto ns = tagStack.nodeStream;
+
 	auto it = chunk.chunks.begin();
 	while (it != chunk.chunks.end()) {
 		auto &c = **it;
 		switch (c.type) {
+		case NodeTag:
+			if (!ns) {
+				// structured chunk in a text run - mode mismatch
+				return false;
+			}
+			if (!ns->pushNode(c.value) && _opts.hasFlag(Options::StopOnError)) {
+				return false;
+			}
+			++it;
+			break;
+		case NodeTagEnd:
+			if (!ns) {
+				return false;
+			}
+			if (!ns->popNode() && _opts.hasFlag(Options::StopOnError)) {
+				return false;
+			}
+			++it;
+			break;
 		case HtmlTag:
+			if (ns) {
+				onError("HTML-mode template can not be run into a NodeStream (missing Options::Nodes)");
+				return false;
+			}
 			if (StringView(c.value).starts_with("</")) {
 				while (!tagStack.tagStack.empty() && tagStack.tagStack.back()->type == VirtualTag) {
 					auto name = StringView(tagStack.tagStack.back()->value, 5)
@@ -1040,6 +1145,10 @@ bool Template::runChunk(const Chunk &chunk, Context &exec, const Callback<void(S
 			++it;
 			break;
 		case HtmlInlineTag: {
+			if (ns) {
+				onError("HTML-mode template can not be run into a NodeStream (missing Options::Nodes)");
+				return false;
+			}
 			auto name = StringView(c.value, 5).str<memory::PoolInterface>();
 			string::apply_tolower_c(name);
 			if (tagStack.tagStack.empty() && name != "<html") {
@@ -1064,12 +1173,24 @@ bool Template::runChunk(const Chunk &chunk, Context &exec, const Callback<void(S
 			break;
 		}
 		case HtmlEntity:
-			out << c.value;
+			if (ns) {
+				if (!ns->pushString(c.value) && _opts.hasFlag(Options::StopOnError)) {
+					return false;
+				}
+			} else {
+				out << c.value;
+			}
 			++it;
 			break;
 		case OutputEscaped:
 		case OutputUnescaped:
-			if (!exec.print(*c.expr, out, c.type == OutputEscaped)
+			if (ns) {
+				// no HTML escaping for node text content
+				if (!exec.print(*c.expr, [&](StringView str) { ns->pushString(str); }, false)
+						&& _opts.hasFlag(Options::StopOnError)) {
+					return false;
+				}
+			} else if (!exec.print(*c.expr, out, c.type == OutputEscaped)
 					&& _opts.hasFlag(Options::StopOnError)) {
 				return false;
 			}
@@ -1077,14 +1198,48 @@ bool Template::runChunk(const Chunk &chunk, Context &exec, const Callback<void(S
 			break;
 		case AttributeEscaped:
 		case AttributeUnescaped:
-			if (!exec.printAttr(c.value, *c.expr, out, c.type == AttributeEscaped)
+			if (ns) {
+				if (!c.expr) {
+					// valueless attribute, like button(enabled)
+					// (a BOOLEAN Value owns no pool memory, the temporary is safe)
+					if (!ns->setAttribute(c.value, Value(true), c.type == AttributeEscaped)
+							&& _opts.hasFlag(Options::StopOnError)) {
+						return false;
+					}
+				} else if (auto var = exec.exec(*c.expr, out)) {
+					if (!ns->setAttribute(c.value, var.readValue(), c.type == AttributeEscaped)
+							&& _opts.hasFlag(Options::StopOnError)) {
+						return false;
+					}
+				} else if (_opts.hasFlag(Options::StopOnError)) {
+					return false;
+				}
+			} else if (!exec.printAttr(c.value, *c.expr, out, c.type == AttributeEscaped)
 					&& _opts.hasFlag(Options::StopOnError)) {
 				return false;
 			}
 			++it;
 			break;
 		case AttributeList:
-			if (!exec.printAttrExprList(*c.expr, out) && _opts.hasFlag(Options::StopOnError)) {
+			if (ns) {
+				if (auto var = exec.exec(*c.expr, out)) {
+					auto &val = var.readValue();
+					if (val.isDictionary()) {
+						for (auto &a_it : val.asDict()) {
+							if (!ns->setAttribute(a_it.first, a_it.second, true)
+									&& _opts.hasFlag(Options::StopOnError)) {
+								return false;
+							}
+						}
+					} else if (_opts.hasFlag(Options::StopOnError)) {
+						onError("&attributes() expression is not a dictionary");
+						return false;
+					}
+				} else if (_opts.hasFlag(Options::StopOnError)) {
+					return false;
+				}
+			} else if (!exec.printAttrExprList(*c.expr, out)
+					&& _opts.hasFlag(Options::StopOnError)) {
 				return false;
 			}
 			++it;
@@ -1134,7 +1289,15 @@ bool Template::runChunk(const Chunk &chunk, Context &exec, const Callback<void(S
 			++it;
 			break;
 		case Include:
-			if (_opts.hasFlag(Options::Pretty)) {
+			if (ns) {
+				// RunContext carries the sink - the included template runs structured
+				// against the same Context; raw (non-template) content becomes node text
+				if (!exec.runInclude((*it)->value, [&](StringView str) { ns->pushString(str); },
+							tagStack)
+						&& _opts.hasFlag(Options::StopOnError)) {
+					return false;
+				}
+			} else if (_opts.hasFlag(Options::Pretty)) {
 				String stream;
 				if (!exec.runInclude((*it)->value,
 							[&](StringView str) { stream.append(str.data(), str.size()); },

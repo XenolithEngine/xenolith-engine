@@ -38,6 +38,7 @@
 
 #include "platform/fd/SPEventEventFd.cc"
 #include "platform/fd/SPEventSignalFd.cc"
+#include "platform/fd/SPEventInotify.cc"
 #include "platform/fd/SPEventTimerFd.cc"
 #include "platform/fd/SPEventPollFd.cc"
 #include "platform/fd/SPEventProcess.cc"

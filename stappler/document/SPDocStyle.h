@@ -105,6 +105,56 @@ enum class Display : EnumSize {
 	TableCell,
 	TableColumn,
 	TableCaption,
+	Flex,
+	InlineFlex,
+	Grid,
+	InlineGrid,
+};
+
+enum class FlexDirection : EnumSize {
+	Row,
+	RowReverse,
+	Column,
+	ColumnReverse,
+};
+
+enum class FlexWrap : EnumSize {
+	NoWrap,
+	Wrap,
+	WrapReverse,
+};
+
+enum class GridAutoFlow : EnumSize {
+	Row,
+	Column,
+	RowDense,
+	ColumnDense,
+};
+
+/* Unified CSS Box Alignment keyword (justify/align - content/items/self).
+
+Covers self-position, content-distribution and baseline values; not every keyword
+is valid for every property, but the parser accepts the full set (validation is a
+consumer concern). */
+enum class Align : EnumSize {
+	Auto,
+	Normal,
+	Stretch,
+	Baseline,
+	FirstBaseline,
+	LastBaseline,
+	Center,
+	Start,
+	End,
+	SelfStart,
+	SelfEnd,
+	FlexStart,
+	FlexEnd,
+	Left,
+	Right,
+	SpaceBetween,
+	SpaceAround,
+	SpaceEvenly,
 };
 
 enum class Float : EnumSize {
@@ -118,6 +168,14 @@ enum class Clear : EnumSize {
 	Left,
 	Right,
 	Both,
+};
+
+enum class Position : EnumSize {
+	Static,
+	Relative,
+	Absolute,
+	Fixed,
+	Sticky,
 };
 
 enum class BackgroundRepeat : EnumSize {
@@ -267,6 +325,44 @@ enum class ParameterName : NameSize {
 	CssCaptionSide, // enum
 	CssOrphans, // uint
 	CssWidows, // uint
+
+	/* xenolith simpleui-only positioning parameters (ignored by the document layout
+	   engine, consumed by simpleui::StyleApplier) */
+	CssPosition, // enum (Position)
+	CssTop, // size
+	CssRight, // size
+	CssBottom, // size
+	CssLeft, // size
+	CssXlAnchorPointX, // float
+	CssXlAnchorPointY, // float
+	CssXlPositionX, // size
+	CssXlPositionY, // size
+
+	/* flexbox & grid (parsed, not yet consumed by any layout) */
+	CssFlexDirection, // enum (FlexDirection)
+	CssFlexWrap, // enum (FlexWrap)
+	CssOrder, // int
+	CssFlexGrow, // float
+	CssFlexShrink, // float
+	CssFlexBasis, // size
+	CssJustifyContent, // enum (Align)
+	CssAlignContent, // enum (Align)
+	CssJustifyItems, // enum (Align)
+	CssAlignItems, // enum (Align)
+	CssJustifySelf, // enum (Align)
+	CssAlignSelf, // enum (Align)
+	CssRowGap, // size
+	CssColumnGap, // size
+	CssGridAutoFlow, // enum (GridAutoFlow)
+	CssGridTemplateColumns, // string id (raw track list)
+	CssGridTemplateRows, // string id (raw track list)
+	CssGridTemplateAreas, // string id (raw)
+	CssGridAutoColumns, // string id (raw track list)
+	CssGridAutoRows, // string id (raw track list)
+	CssGridColumnStart, // string id (raw line)
+	CssGridColumnEnd, // string id (raw line)
+	CssGridRowStart, // string id (raw line)
+	CssGridRowEnd, // string id (raw line)
 	__EndCssParameters,
 
 	/* media - specific */
@@ -387,7 +483,9 @@ struct SP_PUBLIC OutlineParameters {
 
 class SP_PUBLIC StyleInterface {
 public:
+	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 	virtual ~StyleInterface() = default;
+	__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 	virtual bool resolveMediaQuery(MediaQueryId queryId) const = 0;
 	virtual StringView resolveString(StringId) const = 0;
@@ -400,7 +498,9 @@ public:
 
 class SP_PUBLIC SimpleStyleInterface : public StyleInterface {
 public:
+	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 	virtual ~SimpleStyleInterface() = default;
+	__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 	SimpleStyleInterface();
 	SimpleStyleInterface(SpanView<bool>, SpanView<StringView>, float density, float fontScale);
@@ -445,6 +545,11 @@ union SP_PUBLIC StyleValue {
 	ListStylePosition listStylePosition;
 	PageBreak pageBreak;
 	Autofit autofit;
+	Position position;
+	FlexDirection flexDirection;
+	FlexWrap flexWrap;
+	GridAutoFlow gridAutoFlow;
+	Align align;
 	BorderCollapse borderCollapse;
 	CaptionSide captionSide;
 	Color3B color;

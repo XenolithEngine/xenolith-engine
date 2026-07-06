@@ -96,6 +96,18 @@ public:
 	Rc<FileHandle> writeFile(StringView path, BytesView data, OpenFlags,
 			Function<void(Status)> &&onDone, Ref * = nullptr);
 
+	// Watch a single file by name for filesystem changes. The completion fires on
+	// each change with the observed WatchFlags in `value` and stays armed until
+	// the handle is cancelled. On Linux/Android this is inotify-backed and robust
+	// to atomic-replace saves; returns nullptr where no backend implementation
+	// exists (currently non-Linux/Android).
+	Rc<WatchHandle> watchFile(WatchInfo &&, Ref * = nullptr);
+
+	// Convenience form: `onChange` receives the WatchFlags of each change; return
+	// anything other than Status::Ok to cancel the watch.
+	Rc<WatchHandle> watchFile(StringView path, WatchFlags,
+			Function<Status(WatchFlags)> &&onChange, Ref * = nullptr);
+
 	// Perform task on this thread (only Complete callback will be executed)
 	// If current thread is looper thread - performs in place
 	Status performOnThread(Rc<Task> &&task, bool immediate = false);

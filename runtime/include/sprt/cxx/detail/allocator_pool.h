@@ -37,6 +37,11 @@ namespace sprt::detail {
 // Root class for pool allocated objects
 // Use with care
 struct SPRT_GLOBAL AllocPool {
+	// Marks the storage as pool-owned: sprt::__delete() runs the destructor but must
+	// NOT ::free() the block (the memory pool reclaims it). Detected by a `requires`
+	// probe in <sprt/cxx/new>, which cannot include this header (it would cycle).
+	using __sprt_pool_owned_tag = void;
+
 	static void *operator new(size_t size, const nothrow_t &tag) noexcept;
 	static void *operator new(size_t size, align_val_t al, const nothrow_t &tag) noexcept;
 	static void *operator new(size_t size, void *ptr) noexcept;

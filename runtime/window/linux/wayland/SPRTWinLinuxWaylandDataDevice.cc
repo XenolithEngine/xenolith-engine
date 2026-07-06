@@ -125,9 +125,13 @@ static struct wl_data_device_listener s_dataDeviceListener{
 
 	.selection = [](void *data, struct wl_data_device *wl_data_device, struct wl_data_offer *id) {
 		auto device = reinterpret_cast<WaylandDataDevice *>(data);
-		auto offer = reinterpret_cast<WaylandDataOffer *>(
-				wl_data_offer_get_user_data(id));
-		device->setSelection(offer);
+		if (id) {
+			auto offer = reinterpret_cast<WaylandDataOffer *>(
+					wl_data_offer_get_user_data(id));
+			device->setSelection(offer);
+		} else {
+			device->clearSelection();
+		}
 	}
 };
 
@@ -403,6 +407,13 @@ void WaylandDataDevice::setSelection(NotNull<WaylandDataOffer> offer) {
 			offer->attached = true;
 			sprt::release(offer, 0);
 		}
+		seat->root->handleClipboardChanged();
+	}
+}
+
+void WaylandDataDevice::clearSelection() {
+	if (selectionOffer) {
+		selectionOffer = nullptr;
 		seat->root->handleClipboardChanged();
 	}
 }

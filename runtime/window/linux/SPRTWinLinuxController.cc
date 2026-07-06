@@ -293,6 +293,14 @@ void LinuxContextController::handleThemeInfoChanged(ThemeInfo &&newThemeInfo) {
 	newThemeInfo.decorations.borderRadius = 16.0f;
 	newThemeInfo.decorations.shadowWidth = 20.0f;
 	newThemeInfo.decorations.shadowOffset = Vec2(0.0f, 3.0f);
+
+	// disable shadow drawing in gAPI backend for wayland;
+	// On X11, gAPI should draw shadows by itself to fill the gaps in canvas
+	if (_waylandDisplay) {
+		newThemeInfo.decorations.shadowMinValue = 0;
+		newThemeInfo.decorations.shadowMaxValue = 0;
+	}
+
 	if (_themeInfo != newThemeInfo) {
 		if (_waylandDisplay) {
 			_waylandDisplay->updateThemeInfo(newThemeInfo);

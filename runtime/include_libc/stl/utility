@@ -33,7 +33,7 @@ THE SOFTWARE.
 #include <sprt/cxx/utility>
 #include <sprt/cxx/__utility/in_place.h>
 
-#include <__tuple/protocol.h>
+#include <sprt/cxx/__tuple/protocol.h>
 
 // For the [utility.intcmp] helpers below: integer traits and per-type Min/Max.
 #include <sprt/cxx/type_traits>

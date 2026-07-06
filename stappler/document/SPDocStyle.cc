@@ -305,6 +305,138 @@ template <>
 void StyleParameter::set<ParameterName::CssWidows, uint32_t>(const uint32_t &v) {
 	value.uintValue = v;
 }
+template <>
+void StyleParameter::set<ParameterName::CssPosition, Position>(const Position &v) {
+	value.position = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssTop, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssRight, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBottom, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssLeft, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssXlAnchorPointX, float>(const float &v) {
+	value.floatValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssXlAnchorPointY, float>(const float &v) {
+	value.floatValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssXlPositionX, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssXlPositionY, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssFlexDirection, FlexDirection>(const FlexDirection &v) {
+	value.flexDirection = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssFlexWrap, FlexWrap>(const FlexWrap &v) {
+	value.flexWrap = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssOrder, int32_t>(const int32_t &v) {
+	value.intValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssFlexGrow, float>(const float &v) {
+	value.floatValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssFlexShrink, float>(const float &v) {
+	value.floatValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssFlexBasis, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssJustifyContent, Align>(const Align &v) {
+	value.align = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssAlignContent, Align>(const Align &v) {
+	value.align = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssJustifyItems, Align>(const Align &v) {
+	value.align = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssAlignItems, Align>(const Align &v) {
+	value.align = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssJustifySelf, Align>(const Align &v) {
+	value.align = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssAlignSelf, Align>(const Align &v) {
+	value.align = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssRowGap, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssColumnGap, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridAutoFlow, GridAutoFlow>(const GridAutoFlow &v) {
+	value.gridAutoFlow = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridTemplateColumns, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridTemplateRows, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridTemplateAreas, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridAutoColumns, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridAutoRows, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridColumnStart, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridColumnEnd, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridRowStart, StringId>(const StringId &v) {
+	value.stringId = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssGridRowEnd, StringId>(const StringId &v) {
+	value.stringId = v;
+}
 
 template <>
 void StyleParameter::set<ParameterName::CssMediaType, MediaType>(const MediaType &v) {
@@ -1029,6 +1161,30 @@ void writeStyle(memory::PoolInterface::StringStreamType &stream, const StringId 
 	}
 }
 
+static StringView getAlignName(Align a) {
+	switch (a) {
+	case Align::Auto: return StringView("auto"); break;
+	case Align::Normal: return StringView("normal"); break;
+	case Align::Stretch: return StringView("stretch"); break;
+	case Align::Baseline: return StringView("baseline"); break;
+	case Align::FirstBaseline: return StringView("first baseline"); break;
+	case Align::LastBaseline: return StringView("last baseline"); break;
+	case Align::Center: return StringView("center"); break;
+	case Align::Start: return StringView("start"); break;
+	case Align::End: return StringView("end"); break;
+	case Align::SelfStart: return StringView("self-start"); break;
+	case Align::SelfEnd: return StringView("self-end"); break;
+	case Align::FlexStart: return StringView("flex-start"); break;
+	case Align::FlexEnd: return StringView("flex-end"); break;
+	case Align::Left: return StringView("left"); break;
+	case Align::Right: return StringView("right"); break;
+	case Align::SpaceBetween: return StringView("space-between"); break;
+	case Align::SpaceAround: return StringView("space-around"); break;
+	case Align::SpaceEvenly: return StringView("space-evenly"); break;
+	}
+	return StringView("normal");
+}
+
 auto StyleList::css(const StyleInterface *iface) const -> String {
 	memory::PoolInterface::StringStreamType stream;
 	stream << "{\n";
@@ -1160,6 +1316,10 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			case Display::TableCell: stream << "table-cell"; break;
 			case Display::TableColumn: stream << "table-column"; break;
 			case Display::TableCaption: stream << "table-caption"; break;
+			case Display::Flex: stream << "flex"; break;
+			case Display::InlineFlex: stream << "inline-flex"; break;
+			case Display::Grid: stream << "grid"; break;
+			case Display::InlineGrid: stream << "inline-grid"; break;
 			};
 			break; // enum
 		case ParameterName::CssFloat:
@@ -1470,6 +1630,149 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 		case ParameterName::CssWidows:
 			stream << "widows: " << it.value.uintValue;
 			break; // enum
+
+		case ParameterName::CssPosition:
+			stream << "position: ";
+			switch (it.value.position) {
+			case Position::Static: stream << "static"; break;
+			case Position::Relative: stream << "relative"; break;
+			case Position::Absolute: stream << "absolute"; break;
+			case Position::Fixed: stream << "fixed"; break;
+			case Position::Sticky: stream << "sticky"; break;
+			}
+			break; // enum
+		case ParameterName::CssTop:
+			stream << "top: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssRight:
+			stream << "right: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssBottom:
+			stream << "bottom: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssLeft:
+			stream << "left: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssXlAnchorPointX:
+			stream << "-xl-anchor-point-x: " << it.value.floatValue;
+			break; // float
+		case ParameterName::CssXlAnchorPointY:
+			stream << "-xl-anchor-point-y: " << it.value.floatValue;
+			break; // float
+		case ParameterName::CssXlPositionX:
+			stream << "-xl-position-x: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssXlPositionY:
+			stream << "-xl-position-y: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+
+		case ParameterName::CssFlexDirection:
+			stream << "flex-direction: ";
+			switch (it.value.flexDirection) {
+			case FlexDirection::Row: stream << "row"; break;
+			case FlexDirection::RowReverse: stream << "row-reverse"; break;
+			case FlexDirection::Column: stream << "column"; break;
+			case FlexDirection::ColumnReverse: stream << "column-reverse"; break;
+			}
+			break; // enum
+		case ParameterName::CssFlexWrap:
+			stream << "flex-wrap: ";
+			switch (it.value.flexWrap) {
+			case FlexWrap::NoWrap: stream << "nowrap"; break;
+			case FlexWrap::Wrap: stream << "wrap"; break;
+			case FlexWrap::WrapReverse: stream << "wrap-reverse"; break;
+			}
+			break; // enum
+		case ParameterName::CssOrder:
+			stream << "order: " << it.value.intValue;
+			break; // int
+		case ParameterName::CssFlexGrow:
+			stream << "flex-grow: " << it.value.floatValue;
+			break; // float
+		case ParameterName::CssFlexShrink:
+			stream << "flex-shrink: " << it.value.floatValue;
+			break; // float
+		case ParameterName::CssFlexBasis:
+			stream << "flex-basis: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssJustifyContent:
+			stream << "justify-content: " << getAlignName(it.value.align);
+			break; // enum
+		case ParameterName::CssAlignContent:
+			stream << "align-content: " << getAlignName(it.value.align);
+			break; // enum
+		case ParameterName::CssJustifyItems:
+			stream << "justify-items: " << getAlignName(it.value.align);
+			break; // enum
+		case ParameterName::CssAlignItems:
+			stream << "align-items: " << getAlignName(it.value.align);
+			break; // enum
+		case ParameterName::CssJustifySelf:
+			stream << "justify-self: " << getAlignName(it.value.align);
+			break; // enum
+		case ParameterName::CssAlignSelf:
+			stream << "align-self: " << getAlignName(it.value.align);
+			break; // enum
+		case ParameterName::CssRowGap:
+			stream << "row-gap: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssColumnGap:
+			stream << "column-gap: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssGridAutoFlow:
+			stream << "grid-auto-flow: ";
+			switch (it.value.gridAutoFlow) {
+			case GridAutoFlow::Row: stream << "row"; break;
+			case GridAutoFlow::Column: stream << "column"; break;
+			case GridAutoFlow::RowDense: stream << "row dense"; break;
+			case GridAutoFlow::ColumnDense: stream << "column dense"; break;
+			}
+			break; // enum
+		case ParameterName::CssGridTemplateColumns:
+			stream << "grid-template-columns: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridTemplateRows:
+			stream << "grid-template-rows: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridTemplateAreas:
+			stream << "grid-template-areas: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridAutoColumns:
+			stream << "grid-auto-columns: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridAutoRows:
+			stream << "grid-auto-rows: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridColumnStart:
+			stream << "grid-column-start: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridColumnEnd:
+			stream << "grid-column-end: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridRowStart:
+			stream << "grid-row-start: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
+		case ParameterName::CssGridRowEnd:
+			stream << "grid-row-end: ";
+			writeStyle(stream, it.value.stringId, iface);
+			break; // string id
 
 		/* media - specific */
 		case ParameterName::CssMediaType:
@@ -1837,7 +2140,30 @@ bool StyleList::isInheritable(ParameterName name) {
 			|| name == ParameterName::CssBorderBottomColor
 			|| name == ParameterName::CssBorderLeftColor
 			|| name == ParameterName::CssPageBreakBefore || name == ParameterName::CssPageBreakAfter
-			|| name == ParameterName::CssPageBreakInside) {
+			|| name == ParameterName::CssPageBreakInside || name == ParameterName::CssPosition
+			|| name == ParameterName::CssTop || name == ParameterName::CssRight
+			|| name == ParameterName::CssBottom || name == ParameterName::CssLeft
+			|| name == ParameterName::CssXlAnchorPointX
+			|| name == ParameterName::CssXlAnchorPointY
+			|| name == ParameterName::CssXlPositionX
+			|| name == ParameterName::CssXlPositionY
+			|| name == ParameterName::CssFlexDirection || name == ParameterName::CssFlexWrap
+			|| name == ParameterName::CssOrder || name == ParameterName::CssFlexGrow
+			|| name == ParameterName::CssFlexShrink || name == ParameterName::CssFlexBasis
+			|| name == ParameterName::CssJustifyContent || name == ParameterName::CssAlignContent
+			|| name == ParameterName::CssJustifyItems || name == ParameterName::CssAlignItems
+			|| name == ParameterName::CssJustifySelf || name == ParameterName::CssAlignSelf
+			|| name == ParameterName::CssRowGap || name == ParameterName::CssColumnGap
+			|| name == ParameterName::CssGridAutoFlow
+			|| name == ParameterName::CssGridTemplateColumns
+			|| name == ParameterName::CssGridTemplateRows
+			|| name == ParameterName::CssGridTemplateAreas
+			|| name == ParameterName::CssGridAutoColumns
+			|| name == ParameterName::CssGridAutoRows
+			|| name == ParameterName::CssGridColumnStart
+			|| name == ParameterName::CssGridColumnEnd
+			|| name == ParameterName::CssGridRowStart
+			|| name == ParameterName::CssGridRowEnd) {
 		return false;
 	}
 	return true;

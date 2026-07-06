@@ -462,6 +462,7 @@ bool allocateDecorations(WaylandLibrary *wayland, wl_shm *shm, WaylandDecoration
 			* 8; // cornerShadows
 	size += (info.inset * info.inset) * sizeof(Color4B) * 8; // header corners
 	size += 4 * sizeof(Color4B); // header titles
+	size += 2 * sizeof(Color4B); // extra shadow panels
 
 	struct IconData {
 		WaylandDecorationName name;
@@ -677,6 +678,17 @@ bool allocateDecorations(WaylandLibrary *wayland, wl_shm *shm, WaylandDecoration
 	info.ret->headerDarkCenter = Rc<WaylandBuffer>::create(wayland, pool, retA.offset, 1, 1,
 			sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
 	info.ret->headerDarkCenterActive = Rc<WaylandBuffer>::create(wayland, pool, retB.offset, 1, 1,
+			sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+
+	retA = data.allocate<Color4B>(1);
+	retB = data.allocate<Color4B>(1);
+
+	retA.data[0] = Color4B(0, 0, 0, 255.0 * info.shadowMin);
+	retB.data[0] = Color4B(0, 0, 0, 255.0 * info.shadowMax);
+
+	info.ret->shadowPanel = Rc<WaylandBuffer>::create(wayland, pool, retA.offset, 1, 1,
+			sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
+	info.ret->shadowPanelActive = Rc<WaylandBuffer>::create(wayland, pool, retB.offset, 1, 1,
 			sizeof(Color4B), WL_SHM_FORMAT_ARGB8888);
 
 	for (IconData &it : icons) {

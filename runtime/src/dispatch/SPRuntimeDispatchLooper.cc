@@ -230,6 +230,15 @@ Rc<FileHandle> Looper::writeFile(StringView path, BytesView data, OpenFlags flag
 	return _data->queue->writeFile(path, data, flags, sprt::move(onDone), ref);
 }
 
+Rc<WatchHandle> Looper::watchFile(WatchInfo &&info, Ref *ref) {
+	return _data->queue->watchFile(move(info), ref);
+}
+
+Rc<WatchHandle> Looper::watchFile(StringView path, WatchFlags mask,
+		Function<Status(WatchFlags)> &&onChange, Ref *ref) {
+	return _data->queue->watchFile(path, mask, sprt::move(onChange), ref);
+}
+
 Status Looper::performOnThread(Rc<Task> &&task, bool immediate) {
 	bool isOnThread = isOnThisThread();
 	if (immediate && isOnThread) {

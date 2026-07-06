@@ -190,6 +190,25 @@ public:
 	Status appendWrite(BytesView data, Function<void(Status)> &&onDone);
 };
 
+// Handle representing a filesystem file-watch (see Looper/Queue::watchFile).
+// The completion fires each time the watched name changes, with the observed
+// WatchFlags in the completion `value`; it stays armed until the handle is
+// cancelled. getPath() is the watched path as supplied; getLastEvent() is the
+// WatchFlags most recently delivered.
+class SPRT_API WatchHandle : public Handle {
+public:
+	virtual ~WatchHandle() = default;
+
+	StringView getPath() const { return _path; }
+	WatchFlags getMask() const { return _mask; }
+	WatchFlags getLastEvent() const { return _last; }
+
+protected:
+	String _path;
+	WatchFlags _mask = WatchFlags::None;
+	WatchFlags _last = WatchFlags::None;
+};
+
 class SPRT_API ThreadHandle : public Handle, public PerformInterface {
 public:
 	virtual ~ThreadHandle();

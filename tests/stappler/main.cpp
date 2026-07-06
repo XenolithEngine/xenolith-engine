@@ -35,6 +35,9 @@ static sprt::__malloc_unordered_map<sprt::StringView, void (*)()> s_testList{
 	{"filesystem", &stappler::performFilesystemTests},
 	{"bidi", &stappler::performBidiTests},
 	{"shape", &stappler::performShapeTests},
+	{"pug", &stappler::performPugTests},
+	{"css", &stappler::performCssTests},
+	{"css-flexgrid", &stappler::performFlexboxGridCssTests},
 };
 
 int main(int argc, const char *argv[]) {

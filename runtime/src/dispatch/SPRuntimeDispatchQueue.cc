@@ -231,6 +231,40 @@ Rc<FileHandle> Queue::writeFile(StringView path, BytesView wdata, OpenFlags flag
 	return writeFile(move(info), data);
 }
 
+Rc<WatchHandle> Queue::watchFile(WatchInfo &&info, Ref *ref) {
+	auto h = _data->watchFile(move(info), ref);
+	if (h) {
+		_data->runHandle(h);
+	}
+	return h;
+}
+
+Rc<WatchHandle> Queue::watchFile(StringView path, WatchFlags mask,
+		dispatch::Function<Status(WatchFlags)> &&onChange, Ref *ref) {
+	struct WatchCbData : public Ref {
+		dispatch::Function<Status(WatchFlags)> cb;
+		Rc<Ref> ref;
+	};
+
+	auto data = Rc<WatchCbData>::alloc();
+	data->cb = sprt::move(onChange);
+	data->ref = ref;
+
+	WatchInfo info;
+	info.path = path;
+	info.mask = mask;
+	info.completion = WatchInfo::Completion::create<WatchCbData>(data,
+			[](WatchCbData *data, WatchHandle *handle, uint32_t value, Status st) {
+		if (st == Status::Ok) {
+			if (data->cb && data->cb(WatchFlags(value)) != Status::Ok) {
+				handle->cancel();
+			}
+		}
+	});
+
+	return watchFile(move(info), data);
+}
+
 Rc<ThreadHandle> Queue::addThreadHandle() {
 	auto h = _data->addThreadHandle();
 	_data->runHandle(h);

@@ -1616,6 +1616,18 @@ bool WaylandWindow::configureDecorations(Extent2 extent) {
 			it->setGeometry(x + extent.width - (IconSize + 4) * 3, y - IconSize, IconSize,
 					IconSize);
 			break;
+		case WaylandDecorationName::RightShadowPanel:
+			it->setGeometry(x + extent.width - inset, y + topInset, inset, insetHeight);
+			break;
+		case WaylandDecorationName::TopShadowPanel:
+			it->setGeometry(x + inset, y + topOffet + inset, insetWidth, inset);
+			break;
+		case WaylandDecorationName::LeftShadowPanel:
+			it->setGeometry(x - width + inset, y + topInset, inset, insetHeight);
+			break;
+		case WaylandDecorationName::BottomShadowPanel:
+			it->setGeometry(x + inset, y + extent.height - inset, insetWidth, inset);
+			break;
 		default: break;
 		}
 	}
@@ -1728,6 +1740,8 @@ bool WaylandWindow::initWithAppDecor() {
 			move(buf.bottomRightActive), WaylandDecorationName::BottomRightCorner));
 
 	if (!hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)) {
+		// Client-side, but not user-space decorations
+		// Fallbk decorations
 		auto hLeft = _decors.emplace_back(Rc<WaylandDecoration>::create(this, move(buf.headerLeft),
 				move(buf.headerLeftActive), WaylandDecorationName::HeaderLeft));
 		hLeft->setAltBuffers(move(buf.headerDarkLeft), move(buf.headerDarkLeftActive));
@@ -1760,6 +1774,18 @@ bool WaylandWindow::initWithAppDecor() {
 
 		_decors.emplace_back(Rc<WaylandDecoration>::create(this, move(buf.iconMinimize),
 				move(buf.iconMinimizeActive), WaylandDecorationName::IconMinimize));
+	} else {
+		// user-space extra panels
+
+		_decors.emplace_back(Rc<WaylandDecoration>::create(this, Rc<WaylandBuffer>(buf.shadowPanel),
+				Rc<WaylandBuffer>(buf.shadowPanelActive), WaylandDecorationName::RightShadowPanel));
+		_decors.emplace_back(Rc<WaylandDecoration>::create(this, Rc<WaylandBuffer>(buf.shadowPanel),
+				Rc<WaylandBuffer>(buf.shadowPanelActive), WaylandDecorationName::TopShadowPanel));
+		_decors.emplace_back(Rc<WaylandDecoration>::create(this, Rc<WaylandBuffer>(buf.shadowPanel),
+				Rc<WaylandBuffer>(buf.shadowPanelActive), WaylandDecorationName::LeftShadowPanel));
+		_decors.emplace_back(Rc<WaylandDecoration>::create(this, Rc<WaylandBuffer>(buf.shadowPanel),
+				Rc<WaylandBuffer>(buf.shadowPanelActive),
+				WaylandDecorationName::BottomShadowPanel));
 	}
 
 	return true;
