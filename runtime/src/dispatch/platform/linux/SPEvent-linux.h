@@ -30,6 +30,7 @@
 #include "../uring/SPEvent-uring.h"
 #include "../epoll/SPEvent-epoll.h"
 #include "../android/SPEvent-alooper.h"
+#include "../fd/SPEventInotify.h"
 
 namespace sprt::dispatch {
 
@@ -42,6 +43,7 @@ struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _uringPollFdClass;
 	HandleClass _uringProcessFdClass;
 	HandleClass _uringFileClass;
+	HandleClass _uringInotifyReaderClass;
 
 	HandleClass _epollThreadClass;
 	HandleClass _epollTimerFdClass;
@@ -50,6 +52,7 @@ struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _epollPollFdClass;
 	HandleClass _epollProcessFdClass;
 	HandleClass _epollFileClass;
+	HandleClass _epollInotifyReaderClass;
 
 	HandleClass _alooperThreadClass;
 	HandleClass _alooperTimerFdClass;
@@ -57,6 +60,12 @@ struct SPRT_API Queue::Data : public QueueData {
 	HandleClass _alooperEventFdClass;
 	HandleClass _alooperPollFdClass;
 	HandleClass _alooperFileClass;
+	HandleClass _alooperInotifyReaderClass;
+
+	// backend-agnostic per-file watch class + the single shared reader (created
+	// lazily on the first watchFile; one inotify instance for the whole Queue)
+	HandleClass _inotifyWatchClass;
+	Rc<InotifyReaderHandle> _inotifyReader;
 
 	Data(QueueRef *q, const QueueInfo &info);
 };

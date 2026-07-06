@@ -42,9 +42,18 @@ LOCAL_MODULES := \
 	xenolith_application \
 	xenolith_application_main \
 	xenolith_renderer_simpleui \
+	xenolith_renderer_pug \
 	xenolith_backend_vk \
 	xenolith_resources_assets \
 	stappler_makefile
+
+# WebGPU build variant: `make WGPU=1` adds the WebGPU backend and the
+# 2d renderer WebGPU passes; select at runtime with `testapp --gapi webgpu`
+ifeq ($(WGPU),1)
+LOCAL_MODULES += \
+	xenolith_backend_webgpu \
+	xenolith_renderer_basic2d_webgpu
+endif
 
 LOCAL_SRCS_DIRS :=  src
 LOCAL_SRCS_OBJS :=

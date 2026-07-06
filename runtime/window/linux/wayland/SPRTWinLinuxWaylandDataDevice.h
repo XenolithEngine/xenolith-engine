@@ -132,6 +132,7 @@ struct SPRT_API WaylandDataDevice : public Ref {
 	bool init(NotNull<WaylandDataDeviceManager>, NotNull<WaylandSeat>);
 
 	void setSelection(NotNull<WaylandDataOffer>);
+	void clearSelection();
 
 	void enter(NotNull<WaylandDataOffer>);
 	void leave();

@@ -484,9 +484,12 @@ bool StyleContainer::readStyle(StringReader &s) {
 			;
 			_document->queries.emplace_back();
 
-			blockStack.emplace_back(
-					BlockData{_document->addQuery(MediaQuery{readMediaQueryList(buffers, s)}),
-						blockStack.back().disabled});
+			// explicit assignment: MediaQuery is an aggregate with a base class, so
+			// MediaQuery{list} would initialize the AllocPool base, not `list`
+			MediaQuery query;
+			query.list = readMediaQueryList(buffers, s);
+			blockStack.emplace_back(BlockData{_document->addQuery(sp::move(query)),
+				blockStack.back().disabled});
 			continue;
 		} else if (selector.is('@')) {
 			// skip at-rule
@@ -773,10 +776,12 @@ MediaQuery::Query StyleContainer::readMediaQuery(StyleBuffers &buffers, StringRe
 		readCssIdentifier<')'>(buffers.getNameStream(), s);
 		buffers.nameToLower();
 		identifier = buffers.name.get<StringReader>();
+		identifier.trimChars<StringReader::WhiteSpace>();
 
 		readCssValue<')'>(buffers.getValueStream(), s);
 		buffers.valueToLower();
 		value = buffers.value.get<StringReader>();
+		value.trimChars<StringReader::WhiteSpace>();
 
 		if (s.is(')')) {
 			++s;

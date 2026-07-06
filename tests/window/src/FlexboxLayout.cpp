@@ -25,6 +25,8 @@
 #include "FlexboxLayout.h"
 #include "XL2dLabel.h"
 
+#include <stdlib.h> // getenv for the headless start-in-grid hook
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
 
 using namespace simpleui;
@@ -115,9 +117,10 @@ bool FlexboxLayout::init() {
 	controlsInfo.alignItems = FlexAlign::Stretch;
 	controlsInfo.columnGap = 6.0f;
 	controlsInfo.padding = Padding(6.0f);
-	_controlsFlex = _controls->addSystem(Rc<FlexLayout>::create(controlsInfo));
+	_controlsFlex = _controls->addSystem(Rc<LayoutSystem>::create(controlsInfo));
 
 	addControlButton("Back", [this] { pop(); });
+	_btnMode = static_cast<ButtonWithLabel *>(addControlButton("Mode", [this] { cycleMode(); }));
 	_btnDirection = static_cast<ButtonWithLabel *>(
 			addControlButton("Dir", [this] { cycleDirection(); }));
 	_btnWrap = static_cast<ButtonWithLabel *>(addControlButton("Wrap", [this] { cycleWrap(); }));
@@ -139,7 +142,7 @@ bool FlexboxLayout::init() {
 	demoInfo.columnGap = 12.0f;
 	demoInfo.rowGap = 12.0f;
 	demoInfo.padding = Padding(16.0f);
-	_demoFlex = _demo->addSystem(Rc<FlexLayout>::create(demoInfo));
+	_demoFlex = _demo->addSystem(Rc<LayoutSystem>::create(demoInfo));
 
 	// Each box declares an explicit main `basis` and a definite `crossSize`, so
 	// the placement is fully deterministic. With the default alignItems=Stretch
@@ -165,14 +168,18 @@ bool FlexboxLayout::init() {
 		box->setComponent<FlexItemInfo>(item);
 	}
 
-	// Box C: grows twice as fast as B.
+	// Box C: grows twice as fast as B. In grid mode it spans two columns.
 	{
-		auto box = _demo->addChild(makeBox(Color::Green_400, "C grow:2"), ZOrder(1));
+		auto box = _demo->addChild(makeBox(Color::Green_400, "C grow:2 / span2"), ZOrder(1));
 		FlexItemInfo item;
 		item.basis = 90.0f;
 		item.crossSize = 100.0f;
 		item.grow = 2.0f;
 		box->setComponent<FlexItemInfo>(item);
+
+		GridItemInfo grid;
+		grid.columnSpan = 2; // grid-column: span 2
+		box->setComponent<GridItemInfo>(grid);
 	}
 
 	// Box D: aligns itself to the center of the line and keeps an outer margin,
@@ -197,17 +204,27 @@ bool FlexboxLayout::init() {
 		box->setComponent<FlexItemInfo>(item);
 	}
 
-	// Box F: shrinks faster than the others when space runs out.
+	// Box F: shrinks faster than the others when space runs out. In grid mode it
+	// spans two rows.
 	{
-		auto box = _demo->addChild(makeBox(Color::Teal_400, "F shrink:3"), ZOrder(1));
+		auto box = _demo->addChild(makeBox(Color::Teal_400, "F shrink:3 / row-span2"), ZOrder(1));
 		FlexItemInfo item;
 		item.basis = 140.0f;
 		item.crossSize = 110.0f;
 		item.shrink = 3.0f;
 		box->setComponent<FlexItemInfo>(item);
+
+		GridItemInfo grid;
+		grid.rowSpan = 2; // grid-row: span 2
+		box->setComponent<GridItemInfo>(grid);
 	}
 
 	updateControlLabels();
+
+	// headless start-in-grid hook for the screenshot workflow
+	if (::getenv("XL_FLEX_GRID")) {
+		cycleMode();
+	}
 
 	return true;
 }
@@ -220,12 +237,33 @@ basic2d::Layer *FlexboxLayout::addControlButton(StringView title, Function<void(
 	item.basis = 110.0f;
 	item.grow = 1.0f;
 	item.shrink = 1.0f;
-	FlexLayout::setItem(btn, item);
+	LayoutSystem::setItem(btn, item);
 
 	return btn;
 }
 
+GridLayoutInfo FlexboxLayout::makeDemoGridInfo() const {
+	GridLayoutInfo info;
+	// three equal columns and two equal rows; extra rows created by auto-placement
+	// (box F spans two rows) size flexibly as well
+	info.columnTracks = parseGridTemplate("repeat(3, 1fr)");
+	info.rowTracks = parseGridTemplate("1fr 1fr");
+	info.autoRow = GridTrack{GridTrack::Fraction, 1.0f};
+	info.autoFlow = GridAutoFlow::Row;
+	info.columnGap = 12.0f;
+	info.rowGap = 12.0f;
+	info.padding = Padding(16.0f);
+	info.justifyItems = GridAlign::Stretch;
+	info.alignItems = GridAlign::Stretch;
+	return info;
+}
+
 void FlexboxLayout::updateControlLabels() {
+	const bool grid = _demoFlex->getMode() == LayoutMode::Grid;
+	_btnMode->setString(grid ? StringView("Mode: Grid") : StringView("Mode: Flex"));
+
+	// the direction/wrap/justify/align controls only apply in flex mode; keep them
+	// showing the flex configuration
 	auto info = _demoFlex->getInfo();
 	if (!info) {
 		return;
@@ -234,6 +272,16 @@ void FlexboxLayout::updateControlLabels() {
 	_btnWrap->setString(toString("Wrap: ", wrapName(info->wrap)));
 	_btnJustify->setString(toString("Just: ", justifyName(info->justifyContent)));
 	_btnAlign->setString(toString("Align: ", alignName(info->alignItems)));
+}
+
+void FlexboxLayout::cycleMode() {
+	if (_demoFlex->getMode() == LayoutMode::Flex) {
+		_demoFlex->setGridInfo(makeDemoGridInfo());
+		_demoFlex->setMode(LayoutMode::Grid);
+	} else {
+		_demoFlex->setMode(LayoutMode::Flex);
+	}
+	updateControlLabels();
 }
 
 void FlexboxLayout::cycleDirection() {

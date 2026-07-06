@@ -85,6 +85,13 @@ public:
 	bool runTemplate(StringView, const RunCallback &, const OutStream &);
 	bool runTemplate(StringView, const RunCallback &, const OutStream &, Template::Options opts);
 
+	// run into a structured node sink; templates (and their includes) must be compiled
+	// with Template::Options::Nodes - construct the Cache with Options::getNodes()
+	// or add templates via addTemplate(key, content, Template::Options::getNodes())
+	bool runTemplate(const FileInfo &, const RunCallback &, NodeStream &);
+	bool runTemplate(StringView, const RunCallback &, NodeStream &);
+	bool runTemplate(StringView, const RunCallback &, NodeStream &, Template::Options opts);
+
 	bool addFile(const FileInfo &);
 	
 	// add with preloaded data
@@ -112,6 +119,7 @@ protected:
 	Rc<FileRef> openTemplate(const FileInfo &, int wId, const Template::Options &);
 
 	bool runTemplate(Rc<FileRef>, const RunCallback &cb, const OutStream &out, Template::Options opts);
+	bool runTemplate(Rc<FileRef>, const RunCallback &cb, NodeStream &, Template::Options opts);
 	void onError(const StringView &);
 
 	int _inotify = -1;

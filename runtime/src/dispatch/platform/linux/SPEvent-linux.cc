@@ -31,6 +31,7 @@
 #include "../fd/SPEventProcessFd.h"
 #include "../fd/SPEventFile.h"
 #include "../fd/SPEventFileFd.h"
+#include "../fd/SPEventInotify.h"
 #include "../epoll/SPEvent-epoll.h"
 #include "../epoll/SPEventThreadHandle-epoll.h"
 #include "../uring/SPEventThreadHandle-uring.h"
@@ -59,6 +60,9 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				&_alooperSignalFdClass, true);
 		setupALooperHandleClass<PollFdALooperHandle, PollFdSource>(&_info, &_alooperPollFdClass,
 				true);
+		setupALooperHandleClass<InotifyReaderALooperHandle, InotifySource>(&_info,
+				&_alooperInotifyReaderClass, true);
+		setupInotifyWatchClass(&_info, &_inotifyWatchClass);
 		setupInlineFileHandleClass(&_info, &_alooperFileClass);
 
 		auto alooper = new (memory::pool::acquire())
@@ -94,6 +98,25 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return makeFileInlineHandle(d, &data->_alooperFileClass, sprt::move(state));
 			};
 
+			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info, Ref *ref) -> Rc<WatchHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				if (!data->_inotifyReader) {
+					auto reader = Rc<InotifyReaderALooperHandle>::create(
+							&data->_alooperInotifyReaderClass);
+					if (!reader || !reader->isValid()) {
+						return nullptr;
+					}
+					data->runHandle(reader);
+					data->_inotifyReader = reader;
+				}
+				auto h = Rc<InotifyWatchHandle>::create(&data->_inotifyWatchClass, info.path,
+						info.mask, sprt::move(info.completion), data->_inotifyReader.get());
+				if (h && ref) {
+					h->setUserdata(ref);
+				}
+				return h;
+			};
+
 			_platformQueue = alooper;
 			alooper->runInternalHandles();
 			_engine = QueueEngine::ALooper;
@@ -115,6 +138,9 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupUringHandleClass<ProcessFdURingHandle, ProcessFdSource>(&_info, &_uringProcessFdClass,
 				true);
 		setupUringHandleClass<FileURingHandle, FileSource>(&_info, &_uringFileClass, true);
+		setupUringHandleClass<InotifyReaderURingHandle, InotifySource>(&_info,
+				&_uringInotifyReaderClass, true);
+		setupInotifyWatchClass(&_info, &_inotifyWatchClass);
 
 		auto uring = new (memory::pool::acquire())
 				URingData(_info.queue, this, info, SignalsToIntercept);
@@ -170,6 +196,25 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return makeFileUringHandle(d, &data->_uringFileClass, sprt::move(state));
 			};
 
+			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info, Ref *ref) -> Rc<WatchHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				if (!data->_inotifyReader) {
+					auto reader = Rc<InotifyReaderURingHandle>::create(
+							&data->_uringInotifyReaderClass);
+					if (!reader || !reader->isValid()) {
+						return nullptr;
+					}
+					data->runHandle(reader);
+					data->_inotifyReader = reader;
+				}
+				auto h = Rc<InotifyWatchHandle>::create(&data->_inotifyWatchClass, info.path,
+						info.mask, sprt::move(info.completion), data->_inotifyReader.get());
+				if (h && ref) {
+					h->setUserdata(ref);
+				}
+				return h;
+			};
+
 			_platformQueue = uring;
 			uring->runInternalHandles();
 			_engine = QueueEngine::URing;
@@ -189,6 +234,9 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 		setupEpollHandleClass<PollFdEPollHandle, PollFdSource>(&_info, &_epollPollFdClass, true);
 		setupEpollHandleClass<ProcessFdEPollHandle, ProcessFdSource>(&_info, &_epollProcessFdClass,
 				true);
+		setupEpollHandleClass<InotifyReaderEPollHandle, InotifySource>(&_info,
+				&_epollInotifyReaderClass, true);
+		setupInotifyWatchClass(&_info, &_inotifyWatchClass);
 		setupInlineFileHandleClass(&_info, &_epollFileClass);
 
 		auto epoll = new (memory::pool::acquire())
@@ -234,6 +282,25 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 									Rc<FileState> &&state) -> Rc<FileHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
 				return makeFileInlineHandle(d, &data->_epollFileClass, sprt::move(state));
+			};
+
+			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info, Ref *ref) -> Rc<WatchHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				if (!data->_inotifyReader) {
+					auto reader = Rc<InotifyReaderEPollHandle>::create(
+							&data->_epollInotifyReaderClass);
+					if (!reader || !reader->isValid()) {
+						return nullptr;
+					}
+					data->runHandle(reader);
+					data->_inotifyReader = reader;
+				}
+				auto h = Rc<InotifyWatchHandle>::create(&data->_inotifyWatchClass, info.path,
+						info.mask, sprt::move(info.completion), data->_inotifyReader.get());
+				if (h && ref) {
+					h->setUserdata(ref);
+				}
+				return h;
 			};
 
 			_platformQueue = epoll;

@@ -38,6 +38,7 @@ class ThreadHandle;
 class PollHandle;
 class ProcessHandle;
 class FileHandle;
+class WatchHandle;
 
 struct BufferChain;
 
@@ -160,6 +161,43 @@ struct SPRT_API FileWriteInfo {
 	NativeHandle fd = NativeHandle(-1);
 	OpenFlags flags = OpenFlags::Write | OpenFlags::Create | OpenFlags::Truncate;
 	BytesView data;
+	Completion completion;
+};
+
+// Filesystem change events reported by a WatchHandle (see Looper/Queue::watchFile).
+// Delivered as a bitmask in the completion `value`: several kinds may be OR-ed
+// together when they arrive in a single notification batch.
+enum class WatchFlags : uint32_t {
+	None = 0,
+	Created = 1 << 0, // the watched name appeared (created in place)
+	Modified = 1 << 1, // contents were written / the writer closed after writing
+	Deleted = 1 << 2, // the watched name was removed
+	MovedTo = 1 << 3, // something was renamed onto the watched name (atomic replace)
+	MovedFrom = 1 << 4, // the watched name was renamed away
+	Attrib = 1 << 5, // metadata (permissions, timestamps, ...) changed
+	MoveSelf = 1 << 6, // the containing directory was moved
+	DeleteSelf = 1 << 7, // the containing directory was removed (watch becomes dead)
+	Overflow = 1 << 8, // the kernel event queue overflowed; some events were lost
+
+	Any = Created | Modified | Deleted | MovedTo | MovedFrom | Attrib,
+};
+
+SPRT_DEFINE_ENUM_AS_MASK(WatchFlags)
+
+// Parameters for Looper/Queue::watchFile.
+//
+// Watches a single file identified by `path` (name-based): on Linux this is
+// implemented by watching the parent directory and filtering by the file name,
+// so it survives editor "save = write temp + rename" replacements and reports a
+// file that does not exist yet once it is created. `mask` selects which change
+// kinds are reported; `completion` fires on the looper thread with the observed
+// WatchFlags in `value` and stays armed until the handle is cancelled (or the
+// containing directory disappears).
+struct SPRT_API WatchInfo {
+	using Completion = CompletionHandle<WatchHandle>;
+
+	StringView path;
+	WatchFlags mask = WatchFlags::Any;
 	Completion completion;
 };
 

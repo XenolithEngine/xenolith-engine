@@ -1,4 +1,4 @@
-# Copyright (c) 2023-2025 Stappler LLC <admin@stappler.dev>
+# Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -18,47 +18,23 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-# force to rebuild if this makefile changed
-LOCAL_MAKEFILE := $(lastword $(MAKEFILE_LIST))
+MODULE_XENOLITH_RENDERER_PUG_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
+MODULE_XENOLITH_RENDERER_PUG_PRIVATE_INCLUDE_PCH := XLCommon.h
+MODULE_XENOLITH_RENDERER_PUG_LIBS :=
+MODULE_XENOLITH_RENDERER_PUG_SRCS_DIRS := $(XENOLITH_MODULE_DIR)/renderer/pug
+MODULE_XENOLITH_RENDERER_PUG_SRCS_OBJS :=
+MODULE_XENOLITH_RENDERER_PUG_INCLUDES_DIRS := $(XENOLITH_MODULE_DIR)/renderer/pug
+MODULE_XENOLITH_RENDERER_PUG_INCLUDES_OBJS :=
+MODULE_XENOLITH_RENDERER_PUG_DEPENDS_ON := xenolith_renderer_simpleui stappler_pug
 
-STAPPLER_BUILD_ROOT ?= $(dir $(LOCAL_MAKEFILE))../../make
+#spec
 
-LOCAL_OUTDIR := $(dir $(LOCAL_MAKEFILE))stappler-build
-LOCAL_EXECUTABLE := stapplertest
+MODULE_XENOLITH_RENDERER_PUG_SHARED_SPEC_SUMMARY := Xenolith scene-graph builder for PUG templates
 
-LOCAL_PRIVATE_INCLUDE_PCH := SPCommon.h
+define MODULE_XENOLITH_RENDERER_PUG_SHARED_SPEC_DESCRIPTION
+Module libxenolith-renderer-pug builds xenolith node trees from PUG templates
+(stappler_pug structured mode) using an extensible tag factory registry
+endef
 
-LOCAL_MODULES_PATHS = stappler/stappler-modules.mk
-
-LOCAL_MODULES ?= \
-	runtime \
-	stappler_core \
-	stappler_filesystem \
-	stappler_data \
-	stappler_bitmap \
-	stappler_crypto \
-	stappler_db \
-	stappler_document \
-	stappler_font \
-	stappler_vg \
-	stappler_pug \
-	stappler_makefile \
-	stappler_layout \
-	stappler_network
-
-
-LOCAL_ROOT = $(dir $(LOCAL_MAKEFILE))
-
-LOCAL_SRCS_DIRS := mk filesystem font pug document
-LOCAL_SRCS_OBJS :=
-
-LOCAL_INCLUDES_DIRS :=
-LOCAL_INCLUDES_OBJS :=
-
-LOCAL_MAIN := main.cpp
-
-APPCONFIG_APP_NAME := RuntimeTest
-APPCONFIG_BUNDLE_NAME := org.stappler.RuntimeTest
-APPCONFIG_APP_PATH_COMMON := 3
-
-include $(STAPPLER_BUILD_ROOT)/universal.mk
+# module name resolution
+$(call define_module, xenolith_renderer_pug, MODULE_XENOLITH_RENDERER_PUG)
