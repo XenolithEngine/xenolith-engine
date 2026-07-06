@@ -193,7 +193,7 @@ protected:
 
 class SP_PUBLIC GestureTapRecognizer : public GestureRecognizer {
 public:
-	using InputCallback = Function<void(const GestureTap &)>;
+	using InputCallback = Function<bool(const GestureTap &)>;
 	using ButtonMask = sprt::bitset<toInt(InputMouseButton::Max)>;
 
 	virtual ~GestureTapRecognizer() = default;
@@ -280,7 +280,7 @@ protected:
 
 class SP_PUBLIC GesturePinchRecognizer : public GestureRecognizer {
 public:
-	using InputCallback = Function<void(const GesturePinch &)>;
+	using InputCallback = Function<bool(const GesturePinch &)>;
 
 	virtual ~GesturePinchRecognizer() = default;
 

@@ -379,7 +379,7 @@ void Fence::setFrame(Function<bool()> &&schedule, Function<void()> &&release, ui
 
 void Fence::setScheduleCallback(Function<bool()> &&schedule) { _scheduleFn = sp::move(schedule); }
 
-void Fence::setReleaseCallback(Function<bool()> &&release) { _releaseFn = sp::move(release); }
+void Fence::setReleaseCallback(Function<void()> &&release) { _releaseFn = sp::move(release); }
 
 void Fence::bindQueries(NotNull<QueryPool> q) { _queries.emplace_back(q); }
 

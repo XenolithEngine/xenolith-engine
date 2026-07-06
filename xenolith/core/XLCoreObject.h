@@ -410,7 +410,7 @@ public:
 	uint64_t getFrame() const { return _frame; }
 
 	void setScheduleCallback(Function<bool()> &&schedule);
-	void setReleaseCallback(Function<bool()> &&release);
+	void setReleaseCallback(Function<void()> &&release);
 
 	uint64_t getArmedTime() const { return _armedTime; }
 

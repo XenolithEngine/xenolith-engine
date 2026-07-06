@@ -1,5 +1,5 @@
 /**
- Copyright (c) 2026 Stappler Team <admin@stappler.org>
+ Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -50,9 +50,7 @@ bool LocalFrameRequestProxy::addInput(SpanView<const AttachmentData *> atts,
 		Rc<AttachmentInputData> &&data) {
 	// Forward the same input object to each attachment (dedup is free locally).
 	bool ret = true;
-	for (auto a : atts) {
-		ret = _request->addInput(a, Rc<AttachmentInputData>(data)) && ret;
-	}
+	for (auto a : atts) { ret = _request->addInput(a, Rc<AttachmentInputData>(data)) && ret; }
 	return ret;
 }
 

@@ -63,6 +63,13 @@ void QueueData::clear() {
 
 
 void ProgramData::inspect(SpanView<uint32_t> data) {
+	// non-SPIR-V programs (e.g. WGSL text for WebGPU backend) can not be reflected,
+	// their metadata must be provided explicitly via ProgramInfo
+	static constexpr uint32_t SpirVMagicNumber = 0x0723'0203;
+	if (data.empty() || data.front() != SpirVMagicNumber) {
+		return;
+	}
+
 	SpvReflectShaderModule shader;
 
 	spvReflectCreateShaderModule(data.size() * sizeof(uint32_t), data.data(), &shader);

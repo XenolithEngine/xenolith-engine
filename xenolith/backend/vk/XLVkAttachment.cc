@@ -99,14 +99,6 @@ auto BufferAttachment::makeFrameHandle(const FrameQueue &queue) -> Rc<Attachment
 	}
 }
 
-auto ImageAttachment::makeFrameHandle(const FrameQueue &queue) -> Rc<AttachmentHandle> {
-	if (_frameHandleCallback) {
-		return _frameHandleCallback(*this, queue);
-	} else {
-		return Rc<ImageAttachmentHandle>::create(this, queue);
-	}
-}
-
 core::ImageStorage *ImageAttachmentHandle::getImage() const { return _queueData->image; }
 
 bool ImageAttachmentHandle::writeDescriptor(const core::QueuePassHandle &queue,

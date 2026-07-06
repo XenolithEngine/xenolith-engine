@@ -194,6 +194,10 @@ struct SP_PUBLIC PipelineDescriptor : NamedMem {
 	uint32_t count = 1;
 	uint32_t index = maxOf<uint32_t>();
 
+	// for standalone sampler descriptors (DescriptorType::Sampler, attachment == nullptr);
+	// backends without immutable samplers (WebGPU) bind such samplers as separate entries
+	SamplerInfo sampler;
+
 	// note that UpdateAfterBind requested by default, engine uses it to optimize command buffer setup,
 	// executing buffer write and descriptors write in separate threads
 	DescriptorFlags requestFlags = DescriptorFlags::UpdateAfterBind; // what was requested

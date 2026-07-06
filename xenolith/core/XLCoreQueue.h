@@ -205,6 +205,11 @@ public:
 	bool addDescriptorArray(const AttachmentPassData *, uint32_t count, DescriptorFlags,
 			DescriptorType = DescriptorType::Unknown, AttachmentLayout = AttachmentLayout::Ignored);
 
+	// add standalone sampler descriptor (not bound to an attachment)
+	// for backends without immutable samplers (WebGPU) sampler is created from SamplerInfo;
+	// Vulkan backend does not support standalone samplers, use TextureSetLayout instead
+	bool addSampler(StringView key, SamplerInfo && = SamplerInfo());
+
 protected:
 	friend class PipelineLayoutBuilder;
 
