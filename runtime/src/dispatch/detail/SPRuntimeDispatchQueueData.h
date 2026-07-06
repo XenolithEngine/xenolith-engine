@@ -91,6 +91,7 @@ struct SPRT_API QueueData : public PerformEngine {
 	// Per-backend factory: turns a prepared FileState into the right FileHandle
 	// (io_uring native, IOCP/overlapped native, or the portable inline handle).
 	using MakeFileHandleCallback = Rc<FileHandle> (*)(QueueData *, void *, Rc<FileState> &&);
+	using WatchFileCallback = Rc<WatchHandle> (*)(QueueData *, void *, WatchInfo &&, Ref *);
 
 	QueueHandleClassInfo _info;
 	QueueFlags _flags = QueueFlags::None;
@@ -115,6 +116,7 @@ struct SPRT_API QueueData : public PerformEngine {
 	ListenHandleCallback _listenHandle = nullptr;
 	SpawnProcessCallback _spawnProcess = nullptr;
 	MakeFileHandleCallback _makeFileHandle = nullptr;
+	WatchFileCallback _watchFile = nullptr;
 
 	Thread::Id _threadId;
 
@@ -157,6 +159,7 @@ struct SPRT_API QueueData : public PerformEngine {
 	Rc<ProcessHandle> spawnProcess(ProcessInfo &&, Ref *);
 	Rc<FileHandle> readFile(FileReadInfo &&, Ref *);
 	Rc<FileHandle> writeFile(FileWriteInfo &&, Ref *);
+	Rc<WatchHandle> watchFile(WatchInfo &&, Ref *);
 	Rc<ThreadHandle> addThreadHandle();
 
 	~QueueData();

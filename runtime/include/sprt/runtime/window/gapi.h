@@ -34,6 +34,7 @@ static constexpr uint16_t InstanceDefaultDevice = Max<uint16_t>;
 enum class InstanceApi {
 	None = 0,
 	Vulkan = 1,
+	WebGPU = 2,
 };
 
 enum class InstanceFlags : uint32_t {

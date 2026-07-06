@@ -33,6 +33,8 @@
 #include "ExampleScene.h"
 #include "GeneralLayout.h"
 #include "ShapingLayout.h"
+#include "PugLayout.h"
+#include "FlexboxLayout.h"
 #include "LiveReloadAppThread.h" // live-reload session addr+key, when active
 #include "XLRemoteProtocol.h"
 
@@ -71,9 +73,15 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	// но модуль material2d настраивает себе свет сам
 	content->setDefaultLights();
 
-	// Запускаем основной слой интерфейса (или шейпинг-тест, если задан XL_SHAPING_TEST)
+	// Запускаем основной слой интерфейса (или тестовый слой, если задана
+	// одна из переменных окружения XL_SHAPING_TEST / XL_PUG_TEST / XL_FLEX_TEST)
 	if (::getenv("XL_SHAPING_TEST")) {
 		content->pushLayout(Rc<ShapingLayout>::create());
+	} else if (::getenv("XL_PUG_TEST")) {
+		content->pushLayout(Rc<PugLayout>::create());
+	} else if (::getenv("XL_FLEX_TEST")) {
+		// LayoutSystem flexbox/grid demo (toggle with the in-scene "Mode" button)
+		content->pushLayout(Rc<FlexboxLayout>::create());
 	} else {
 		content->pushLayout(Rc<GeneralLayout>::create());
 	}
@@ -121,20 +129,24 @@ void ExampleScene::handlePresented(Director *dir) {
 	basic2d::vk::ShadowPass::makeRenderQueue(builder, info);
 #endif
 
-// Window sharing is Linux-only for now
+// Window sharing is Linux-only for now; the shared queue is vk-based and
+// can not be compiled on a WebGPU device
 #if SPRT_LINUX
-	// When live reload is active, listen on the session's negotiated address + bearer key (the same
-	// pair the server hands each launched client). Otherwise fall back to the shared dev key on a
-	// fixed port, for a manually launched client.
-	StringView shareAddr("127.0.0.1:4480");
-	BytesView shareKey = remote::getDevBearerKey();
-	if (auto lr = dynamic_cast<LiveReloadAppThread *>(dir->getApplication())) {
-		if (!lr->getServerAddress().empty()) {
-			shareAddr = lr->getServerAddress();
-			shareKey = lr->getBearerKey();
+	if (static_cast<core::Loop *>(dir->getApplication()->getGlLoop())->getInstance()->getApi()
+			== core::InstanceApi::Vulkan) {
+		// When live reload is active, listen on the session's negotiated address + bearer key (the same
+		// pair the server hands each launched client). Otherwise fall back to the shared dev key on a
+		// fixed port, for a manually launched client.
+		StringView shareAddr("127.0.0.1:4480");
+		BytesView shareKey = remote::getDevBearerKey();
+		if (auto lr = dynamic_cast<LiveReloadAppThread *>(dir->getApplication())) {
+			if (!lr->getServerAddress().empty()) {
+				shareAddr = lr->getServerAddress();
+				shareKey = lr->getBearerKey();
+			}
 		}
+		dir->shareQueue(sp::move(builder), shareAddr, shareKey);
 	}
-	dir->shareQueue(sp::move(builder), shareAddr, shareKey);
 #endif
 
 	// Безголовый сценарий снятия скриншота, управляемый переменными окружения,
