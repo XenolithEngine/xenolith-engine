@@ -23,6 +23,11 @@
 
 #include <sprt/runtime/dispatch/event.h>
 
+// wasm has no event-loop backend yet (no fds / epoll / kqueue / IOCP, and a single
+// thread), and Queue::Data is completed only by a platform block. Gate the whole
+// dispatch event subsystem out until a browser/OPFS-based loop is implemented.
+#if !SPRT_WASM
+
 #if SPRT_LINUX || SPRT_ANDROID
 
 #include "platform/linux/SPEvent-linux.cc"
@@ -76,3 +81,5 @@
 #include "SPRuntimeDispatchQueue.cc"
 #include "SPRuntimeDispatchLooper.cc"
 #include "SPRuntimeDispatchBus.cc"
+
+#endif // !SPRT_WASM

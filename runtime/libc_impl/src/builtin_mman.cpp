@@ -24,6 +24,8 @@ THE SOFTWARE.
 
 #if SPRT_WINDOWS
 #include "windows/mman.cc"
+#elif SPRT_WASM
+#include "wasm/mman.cc"
 #endif
 
 namespace sprt {

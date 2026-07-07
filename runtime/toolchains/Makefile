@@ -254,11 +254,17 @@ target-windows: \
 	target-x86_64-pc-windows-msvc \
 	target-aarch64-pc-windows-msvc
 
+target-wasm32-unknown-unknown: host
+	$(MAKE) -C target-wasm TOOLCHAIN_TARGETS=$(TOOLCHAIN_TARGETS) wasm32
+
+target-wasm: target-wasm32-unknown-unknown
+
 target-all: \
 	target-linux target-linux-musl \
 	target-android target-android-ndk \
 	target-apple \
-	target-windows
+	target-windows \
+	target-wasm
 
 clean-targets:
 	rm -rf targets

@@ -39,6 +39,7 @@ THE SOFTWARE.
 // backing header so <array> is independently includable (does not rely on a
 // prior <utility>/<tuple> include in the same TU).
 #include <sprt/cxx/__utility/integer_sequence.h>
+#include <utility> // a conforming <array> also makes std::move et al. available
 
 namespace std {
 using sprt::array;

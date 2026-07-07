@@ -44,6 +44,11 @@ THE SOFTWARE.
 
 #include "../../core/include/__plock.h"
 
+// Defined at global scope further down (it embeds sprt::__locale_struct). Forward
+// declared here so the sprt::__get_default_locale_struct() prototype below, which
+// appears before the definition, can name it.
+struct __freestanding_locale_struct;
+
 namespace sprt {
 
 // static limit of 32k
@@ -68,6 +73,13 @@ struct __fd_slot {
 	uint64_t padding;
 	uint32_t flags;
 	uint32_t mode;
+#if __SIZEOF_POINTER__ == 4
+	// On 32-bit targets (wasm32, arm, riscv32) the two pointers above are 4 bytes
+	// each, leaving __fd_slot at 24 bytes — which does not tile FD_MEMORY_PAGE_SIZE
+	// (16K) evenly and breaks the __fd_page static_assert. Pad back to the 32-byte
+	// layout the 64-bit build already has so the page math is arch-independent.
+	uint32_t __ptr_pad[2];
+#endif
 };
 
 enum class __fd_ops_mask : uint32_t {

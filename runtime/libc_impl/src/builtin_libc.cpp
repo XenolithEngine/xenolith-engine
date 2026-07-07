@@ -29,6 +29,11 @@ THE SOFTWARE.
 #include "windows/libc.cc"
 #include "windows/libc_file_ops.cc"
 #include "windows/libc_dir_ops.cc"
+#elif SPRT_WASM
+#include "wasm/libc.cc"
+#include "wasm/libc_file_ops.cc"
+#include "wasm/libc_dir_ops.cc"
+#include "wasm/libc_path.cc"
 #endif
 
 namespace sprt {

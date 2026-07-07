@@ -631,7 +631,7 @@ static Rc<core::Queue> makeMaterialQueue() {
 
 // 2d renderer slice: two quads with red/green materials through the
 // webgpu MaterialVertexPass (command list -> storage buffers -> spans)
-static Rc<core::Queue> makeBasic2dQueue() {
+static Rc<core::Queue> makeBasic2dQueue(webgpu::Device *device) {
 	core::Queue::Builder builder("Basic2dQueue");
 
 	core::ProgramInfo vertInfo;
@@ -641,7 +641,8 @@ static Rc<core::Queue> makeBasic2dQueue() {
 	fragInfo.stage = core::ProgramStage::Fragment;
 
 	auto vertData = packWgsl(basic2d::webgpu::getMaterialVertexShader());
-	auto fragData = packWgsl(basic2d::webgpu::getMaterialFragmentShader());
+	auto fragData = packWgsl(basic2d::webgpu::getMaterialFragmentShader(
+			device->getBackendFeatures().textureBindingArrays));
 
 	auto vertProg = builder.addProgram("Material2dVert", vertData, &vertInfo);
 	auto fragProg = builder.addProgram("Material2dFrag", fragData, &fragInfo);
@@ -706,7 +707,8 @@ static Rc<core::Queue> makeBasic2dQueue() {
 		auto layout = passBuilder.addDescriptorLayout("Vertex2dLayout",
 				[&](core::PipelineLayoutBuilder &layoutBuilder) {
 			layoutBuilder.addSet([&](core::DescriptorSetBuilder &setBuilder) {
-				// vertices, transforms, spans - buffer views of the vertex attachment
+				// vertices, transforms, spans, atlases - views of the vertex attachment
+				setBuilder.addDescriptor(vertexesPassAtt, core::DescriptorType::StorageBuffer);
 				setBuilder.addDescriptor(vertexesPassAtt, core::DescriptorType::StorageBuffer);
 				setBuilder.addDescriptor(vertexesPassAtt, core::DescriptorType::StorageBuffer);
 				setBuilder.addDescriptor(vertexesPassAtt, core::DescriptorType::StorageBuffer);
@@ -1278,9 +1280,26 @@ int main(int argc, const char *argv[]) {
 
 		sprt::cout << "Compute queue: " << (computeResult == 0 ? "OK" : "FAILED") << "\n";
 
+		// asynchronous GPU drain (browser-compatible waitIdle counterpart)
+		{
+			bool drained = false;
+			wgpuLoop->drain([&] { drained = true; });
+
+			uint32_t attempts = 5'000;
+			while (!drained && attempts > 0) {
+				looper->wait(TimeInterval::milliseconds(1));
+				--attempts;
+			}
+
+			sprt::cout << "Drain queue: " << (drained ? "OK" : "FAILED") << "\n";
+			if (!drained) {
+				return -30;
+			}
+		}
+
 		// texture set (binding arrays): fragment samples textures[1] -> green
 		int textureSetResult = 0;
-		if (device->hasFeature(WGPUFeatureName(WGPUNativeFeature_TextureBindingArray))) {
+		if (device->getBackendFeatures().textureBindingArrays) {
 			textureSetResult = runOffscreenQueue(looper, wgpuLoop, makeTextureSetQueue(),
 					"texset.png", [&](const uint8_t *data, uint64_t bytesPerRow) {
 				auto pixelAt =
@@ -1343,7 +1362,7 @@ int main(int argc, const char *argv[]) {
 
 		// material system: predefined red/green materials, render green one
 		int materialResult = 0;
-		if (device->hasFeature(WGPUFeatureName(WGPUNativeFeature_TextureBindingArray))) {
+		if (device->getBackendFeatures().textureBindingArrays) {
 			auto materialQueue = makeMaterialQueue();
 			materialResult = runOffscreenQueue(looper, wgpuLoop, materialQueue,
 					"material.png", [&](const uint8_t *data, uint64_t bytesPerRow) {
@@ -1451,32 +1470,44 @@ int main(int argc, const char *argv[]) {
 			sprt::cout << "Material test skipped (no TextureBindingArray feature)\n";
 		}
 
-		// 2d renderer slice: command list with two material quads
+		// 2d renderer slice: command list with two material quads;
+		// runs in both texture modes (bindless / bind group per material)
 		int basic2dResult = 0;
-		if (device->hasFeature(WGPUFeatureName(WGPUNativeFeature_TextureBindingArray))) {
-			auto basic2dQueue = makeBasic2dQueue();
+		{
+			auto basic2dQueue = makeBasic2dQueue(device);
 			basic2dResult = runOffscreenQueue(looper, wgpuLoop, basic2dQueue, "basic2d.png",
 					[&](const uint8_t *data, uint64_t bytesPerRow) {
 				auto pixelAt =
 						[&](uint32_t x, uint32_t y) { return data + y * bytesPerRow + x * 4; };
 
-				auto left = pixelAt(RenderSize / 4, RenderSize / 2);
-				auto right = pixelAt((RenderSize * 3) / 4, RenderSize / 2);
+				// red quad is scissored to the image-bottom half, green has
+				// no state and must be visible in both halves
+				auto redTop = pixelAt(RenderSize / 4, RenderSize / 4);
+				auto redBottom = pixelAt(RenderSize / 4, (RenderSize * 3) / 4);
+				auto greenTop = pixelAt((RenderSize * 3) / 4, RenderSize / 4);
+				auto greenMid = pixelAt((RenderSize * 3) / 4, RenderSize / 2);
 				auto corner = pixelAt(2, 2);
 
-				bool leftOk = checkPixel(left, 255, 0, 0, 2);
-				bool rightOk = checkPixel(right, 0, 255, 0, 2);
+				bool redTopOk = checkPixel(redTop, 0, 0, 0, 2); // clipped
+				bool redBottomOk = checkPixel(redBottom, 255, 0, 0, 2);
+				bool greenTopOk = checkPixel(greenTop, 0, 255, 0, 2);
+				bool greenMidOk = checkPixel(greenMid, 0, 255, 0, 2);
 				bool cornerOk = checkPixel(corner, 0, 0, 0, 2);
 
-				sprt::cout << "Basic2d left: [" << int(left[0]) << ", " << int(left[1]) << ", "
-						   << int(left[2]) << "] " << (leftOk ? "OK" : "FAILED") << "\n";
-				sprt::cout << "Basic2d right: [" << int(right[0]) << ", " << int(right[1]) << ", "
-						   << int(right[2]) << "] " << (rightOk ? "OK" : "FAILED") << "\n";
+				sprt::cout << "Basic2d scissored-out red: [" << int(redTop[0]) << ", "
+						   << int(redTop[1]) << ", " << int(redTop[2]) << "] "
+						   << (redTopOk ? "OK" : "FAILED") << "\n";
+				sprt::cout << "Basic2d visible red: [" << int(redBottom[0]) << ", "
+						   << int(redBottom[1]) << ", " << int(redBottom[2]) << "] "
+						   << (redBottomOk ? "OK" : "FAILED") << "\n";
+				sprt::cout << "Basic2d unscissored green: [" << int(greenTop[0]) << ", "
+						   << int(greenTop[1]) << ", " << int(greenTop[2]) << "] "
+						   << ((greenTopOk && greenMidOk) ? "OK" : "FAILED") << "\n";
 				sprt::cout << "Basic2d corner: [" << int(corner[0]) << ", " << int(corner[1])
 						   << ", " << int(corner[2]) << "] " << (cornerOk ? "OK" : "FAILED")
 						   << "\n";
 
-				return leftOk && rightOk && cornerOk;
+				return redTopOk && redBottomOk && greenTopOk && greenMidOk && cornerOk;
 			}, nullptr, [&](core::FrameRequest &req) {
 				auto contextHandle = Rc<basic2d::FrameContextHandle2d>::alloc();
 				contextHandle->clock = 0;
@@ -1486,6 +1517,12 @@ int main(int argc, const char *argv[]) {
 
 				basic2d::CmdInfo redInfo;
 				redInfo.material = core::MaterialId(1);
+				// scissor to the scene-bottom half (bottom-left based rect,
+				// the pass converts it to framebuffer coords like vk)
+				DrawStateValues scissorState;
+				scissorState.enabled = core::DynamicState::Scissor;
+				scissorState.scissor = URect{0, 0, RenderSize, RenderSize / 2};
+				redInfo.state = contextHandle->addState(scissorState);
 				contextHandle->commands->pushVertexArray(makeQuad(-0.9f, -0.8f, -0.1f, 0.8f),
 						Mat4::IDENTITY, sp::move(redInfo));
 
@@ -1500,8 +1537,6 @@ int main(int argc, const char *argv[]) {
 
 			s_materialAttachment = nullptr;
 			sprt::cout << "Basic2d queue: " << (basic2dResult == 0 ? "OK" : "FAILED") << "\n";
-		} else {
-			sprt::cout << "Basic2d test skipped (no TextureBindingArray feature)\n";
 		}
 
 		// font atlas queue: underline-only path (no freetype required)

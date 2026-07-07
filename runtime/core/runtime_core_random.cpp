@@ -26,6 +26,8 @@ THE SOFTWARE.
 
 #if SPRT_WINDOWS
 #include "windows/getrandom.cc"
+#elif SPRT_WASM
+#include "wasm/getrandom.cc"
 #else
 #include <stdlib.h>
 #include <unistd.h>
