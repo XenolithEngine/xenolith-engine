@@ -37,3 +37,7 @@ bool __init_exceptions(void) { return true; }
 void __cleanup_exceptions(void) { }
 
 } // namespace sprt
+
+// libbacktrace is unavailable on wasm (no DWARF backtrace state); return a null state so
+// the runtime's SPRuntimeBacktrace degrades to "no symbols" rather than failing to link.
+extern "C" void *backtrace_create_state(const char *, int, void *, void *) { return nullptr; }

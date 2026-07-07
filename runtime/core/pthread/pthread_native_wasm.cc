@@ -52,17 +52,39 @@ __SPRT_C_FUNC int sigprocmask(int how, const __SPRT_ID(sigset_t) * set,
 		__SPRT_ID(sigset_t) * oldset) __SPRT_NOEXCEPT;
 
 extern "C" {
-// T2 host import (browser transport) / no-op under a native wasi host: end the
-// current worker after TLS destructors have run. Unused in the single-threaded
-// skeleton but declared so __exitNativeThread has a real target.
+// T2 host imports (browser transport) / no-ops under a native wasi host.
+//
+// thread_spawn launches a new OS thread: the browser broker creates a Worker that
+// instantiates this same module over the shared memory, sets the instance's stack pointer
+// to `stackTop`, runs __wasm_init_tls, and calls __xl_thread_entry(tid, threadPtr). It
+// returns the new thread id (>= 2), or a negative errno. thread_exit ends the current
+// worker after TLS destructors have run.
+__attribute__((import_module("sprt"), import_name("thread_spawn"))) int __sprt_host_thread_spawn(
+		void *threadPtr, void *stackTop, __SPRT_ID(size_t) stackSize, void *tlsBase);
 __attribute__((import_module("sprt"), import_name("thread_exit"))) void __sprt_host_thread_exit();
 }
 
+// The stack the creator hands each spawned thread (its instance's __stack_pointer is set
+// here by the broker). 1 MiB matches the pthread default guardless stack.
+#ifndef __SPRT_WASM_THREAD_STACK
+#define __SPRT_WASM_THREAD_STACK (1u << 20)
+#endif
+
+extern "C" void *malloc(__SPRT_ID(size_t));
+extern "C" void free(void *);
+
+// sprt::_thread::__runthead (declared in pthread_impl.h, defined later in this TU) is the
+// portable thread trampoline the spawned worker jumps into via __xl_thread_entry.
+
+// Per-thread native id. The main entry thread keeps 1; a spawned thread stamps its broker
+// id here from __xl_thread_entry so __getNativeThreadId / plock agree across the pool.
+static _Thread_local __sprt_uint64_t s_wasm_native_tid = 1;
+
 namespace sprt::_thread::native {
 
-// The single wasm entry thread has host tid 1; wasi-threads will hand real ids to
-// spawned threads via wasi_thread_start once spawning lands.
-static uint64_t __getNativeThreadId() { return 1; }
+// The main entry thread has native id 1; a spawned thread stamps its broker id into the
+// thread-local from __xl_thread_entry, so this reports the calling thread's own id.
+static uint64_t __getNativeThreadId() { return s_wasm_native_tid; }
 
 static void __doDestroy(void *cb) {
 	auto dtor = reinterpret_cast<void (*)(void)>(cb);
@@ -75,8 +97,41 @@ static void __registerForDestruction(void (*cb)(void)) {
 
 static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 		__thread_pool *pool) {
-	// Spawning requires wasi-threads / a Worker broker (see file header).
-	return ENOSYS;
+	// Allocate the new thread's stack in the shared linear memory; the broker sets the
+	// spawned instance's __stack_pointer to its top before entering __xl_thread_entry.
+	__SPRT_ID(size_t) stackSize = (attr && attr->stackSize) ? attr->stackSize
+															 : (__SPRT_ID(size_t))__SPRT_WASM_THREAD_STACK;
+	void *stackBase = malloc(stackSize);
+	if (!stackBase) {
+		return EAGAIN;
+	}
+	void *stackTop = (char *)stackBase + stackSize;
+	// Allocate this thread's TLS block in the creator (it needs a working allocator, which
+	// the not-yet-initialized new thread lacks); the worker just runs __wasm_init_tls on it.
+	__SPRT_ID(size_t) tlsSize = __builtin_wasm_tls_size();
+	__SPRT_ID(size_t) tlsAlign = __builtin_wasm_tls_align();
+	void *tlsBase = nullptr;
+	if (tlsSize) {
+		void *tlsRaw = malloc(tlsSize + tlsAlign);
+		if (!tlsRaw) {
+			free(stackBase);
+			return EAGAIN;
+		}
+		uintptr_t aligned = (reinterpret_cast<uintptr_t>(tlsRaw) + (tlsAlign - 1))
+				& ~(uintptr_t)(tlsAlign - 1);
+		tlsBase = reinterpret_cast<void *>(aligned);
+	}
+	int tid = __sprt_host_thread_spawn(thread, stackTop, stackSize, tlsBase);
+	if (tid < 0) {
+		free(stackBase);
+		return EAGAIN;
+	}
+	thread->handle = reinterpret_cast<void *>(uintptr_t(tid));
+	thread->attr.stack = stackBase; // freed on join/detach teardown
+	thread->attr.stackSize = stackSize;
+	thread->lowStack = reinterpret_cast<uintptr_t>(stackBase);
+	thread->highStack = reinterpret_cast<uintptr_t>(stackTop);
+	return 0;
 }
 
 static bool __initNativeHandle(thread_t *thread) {
@@ -192,5 +247,15 @@ __SPRT_C_FUNC int __SPRT_ID(
 }
 
 } // namespace sprt
+
+// Broker entry for a spawned thread. The worker sets this instance's __stack_pointer and
+// runs __wasm_init_tls, then calls here in the new thread: stamp the native tid and run the
+// portable thread trampoline. When __runthead returns the thread has finalized (state
+// signalled, activeThreads erased) and the worker may terminate.
+extern "C" __attribute__((export_name("__xl_thread_entry"))) void __xl_thread_entry(int tid,
+		void *threadPtr) {
+	s_wasm_native_tid = (__sprt_uint64_t)(unsigned)tid;
+	sprt::_thread::__runthead(threadPtr);
+}
 
 #endif // SPRT_WASM

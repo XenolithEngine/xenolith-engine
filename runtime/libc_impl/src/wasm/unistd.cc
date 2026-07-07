@@ -36,7 +36,37 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_fcntl.h>
 #include <sprt/c/__sprt_unistd.h>
 #include <sprt/c/__sprt_errno.h>
+#include <sprt/c/__sprt_time.h>
 
 // Pulls in __libc, StringView, the fd dispatch tables, and (via sys/stat.h) the
 // utimensat declaration that builtin_unistd.cpp's utime() forwards to.
 #include "../../include/__impl_libc.h"
+
+// Process / user identity. A wasm module is a single sandboxed "process" with no user
+// model, so these report fixed sentinels (pid 1, uid/gid 0) — enough for callers that
+// only compare or log them. libc_impl provides the plain names the wrapper forwards to.
+extern "C" __SPRT_ID(pid_t) getpid(void) __SPRT_NOEXCEPT { return 1; }
+extern "C" __SPRT_ID(pid_t) getppid(void) __SPRT_NOEXCEPT { return 0; }
+extern "C" __SPRT_ID(uid_t) getuid(void) __SPRT_NOEXCEPT { return 0; }
+extern "C" __SPRT_ID(uid_t) geteuid(void) __SPRT_NOEXCEPT { return 0; }
+extern "C" __SPRT_ID(gid_t) getgid(void) __SPRT_NOEXCEPT { return 0; }
+extern "C" __SPRT_ID(gid_t) getegid(void) __SPRT_NOEXCEPT { return 0; }
+
+// usleep over the runtime's futex-timeout sleep (nanosleep).
+extern "C" int usleep(__SPRT_ID(time_t) useconds) __SPRT_NOEXCEPT {
+	struct __SPRT_TIMESPEC_NAME ts;
+	ts.tv_sec = (__SPRT_ID(time_t))(useconds / 1000000);
+	ts.tv_nsec = (long)((useconds % 1000000) * 1000);
+	return __SPRT_ID(nanosleep)(&ts, nullptr);
+}
+
+extern "C" long sysconf(int name) __SPRT_NOEXCEPT {
+	switch (name) {
+	case __SPRT_SC_PAGESIZE: return 65536; // wasm page granularity
+	case __SPRT_SC_NPROCESSORS_CONF:
+	case __SPRT_SC_NPROCESSORS_ONLN: return 1;
+	default: return -1;
+	}
+}
+
+extern "C" long pathconf(const char *, int) __SPRT_NOEXCEPT { return -1; }

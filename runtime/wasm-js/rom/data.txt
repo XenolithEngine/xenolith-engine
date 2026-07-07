@@ -1,0 +1,2 @@
+boevye dannye: external file fetched by the browser
+line 2: xenolith wasm bundled resource
