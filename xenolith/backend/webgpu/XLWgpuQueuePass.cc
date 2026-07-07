@@ -242,13 +242,14 @@ bool CommandBuffer::init(Device &dev) {
 }
 
 void CommandBuffer::beginRenderPass(SpanView<WGPURenderPassColorAttachment> colors,
-		const WGPURenderPassDepthStencilAttachment *depthStencil) {
+		const WGPURenderPassDepthStencilAttachment *depthStencil, Extent2 renderExtent) {
 	WGPURenderPassDescriptor passDesc = WGPU_RENDER_PASS_DESCRIPTOR_INIT;
 	passDesc.colorAttachmentCount = colors.size();
 	passDesc.colorAttachments = colors.data();
 	passDesc.depthStencilAttachment = depthStencil;
 
 	_renderPass = wgpuCommandEncoderBeginRenderPass(_encoder, &passDesc);
+	_renderExtent = renderExtent;
 	_withinRenderpass = true;
 }
 
@@ -307,9 +308,25 @@ void CommandBuffer::cmdBindTextureSet(const core::PipelineLayoutData *layout,
 	}
 }
 
+void CommandBuffer::cmdBindMaterialGroup(const core::PipelineLayoutData *layout,
+		WGPUBindGroup group) {
+	const uint32_t index = uint32_t(layout->sets.size());
+	if (_renderPass) {
+		wgpuRenderPassEncoderSetBindGroup(_renderPass, index, group, 0, nullptr);
+	} else if (_computePass) {
+		wgpuComputePassEncoderSetBindGroup(_computePass, index, group, 0, nullptr);
+	}
+}
+
 void CommandBuffer::cmdDraw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex,
 		uint32_t firstInstance) {
 	wgpuRenderPassEncoderDraw(_renderPass, vertexCount, instanceCount, firstVertex, firstInstance);
+}
+
+void CommandBuffer::cmdSetScissor(uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
+	if (_renderPass) {
+		wgpuRenderPassEncoderSetScissorRect(_renderPass, x, y, width, height);
+	}
 }
 
 void CommandBuffer::cmdBindIndexBuffer(NotNull<Buffer> buffer, WGPUIndexFormat format) {
@@ -551,6 +568,8 @@ Rc<CommandBuffer> QueuePassHandle::recordCommands(core::FrameQueue &q) {
 			return aIt->second->image->getView(viewInfo);
 		};
 
+		Extent2 renderExtent(0, 0);
+
 		for (auto &out : subpass->outputImages) {
 			auto view = getViewForAttachment(out);
 			if (!view) {
@@ -558,6 +577,8 @@ Rc<CommandBuffer> QueuePassHandle::recordCommands(core::FrameQueue &q) {
 						"No image view for attachment: ", out->key);
 				return nullptr;
 			}
+			auto &imgExtent = view->getImage()->getInfo().extent;
+			renderExtent = Extent2(imgExtent.width, imgExtent.height);
 
 			auto imgAttachment = static_cast<core::ImageAttachment *>(
 					out->pass->attachment->attachment.get());
@@ -585,7 +606,7 @@ Rc<CommandBuffer> QueuePassHandle::recordCommands(core::FrameQueue &q) {
 			}
 		}
 
-		buf->beginRenderPass(colors, hasDepthStencil ? &depthStencil : nullptr);
+		buf->beginRenderPass(colors, hasDepthStencil ? &depthStencil : nullptr, renderExtent);
 
 		recordSubpass(q, *subpass, *buf);
 

@@ -43,7 +43,11 @@ public:
 	void setFrameBindGroups(const FrameBindGroups *groups) { _bindGroups = groups; }
 
 	void beginRenderPass(SpanView<WGPURenderPassColorAttachment>,
-			const WGPURenderPassDepthStencilAttachment * = nullptr);
+			const WGPURenderPassDepthStencilAttachment * = nullptr,
+			Extent2 renderExtent = Extent2(0, 0));
+
+	// extent of the current render pass target (for scissor clamping)
+	Extent2 getRenderExtent() const { return _renderExtent; }
 	void endRenderPass();
 
 	void beginComputePass();
@@ -56,8 +60,14 @@ public:
 	// bind texture set as the last bind group of the layout
 	void cmdBindTextureSet(const core::PipelineLayoutData *, NotNull<core::TextureSet>);
 
+	// bind an explicit bind group at the layout's last index (fallback
+	// material path: bind group per material)
+	void cmdBindMaterialGroup(const core::PipelineLayoutData *, WGPUBindGroup);
+
 	void cmdDraw(uint32_t vertexCount, uint32_t instanceCount = 1, uint32_t firstVertex = 0,
 			uint32_t firstInstance = 0);
+	// rect must be pre-clamped to the render target extent (WebGPU validates)
+	void cmdSetScissor(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 	void cmdBindIndexBuffer(NotNull<Buffer>, WGPUIndexFormat = WGPUIndexFormat_Uint32);
 	void cmdDrawIndexed(uint32_t indexCount, uint32_t instanceCount = 1, uint32_t firstIndex = 0,
 			int32_t baseVertex = 0, uint32_t firstInstance = 0);
@@ -75,6 +85,7 @@ protected:
 	Device *_device = nullptr;
 	WGPUCommandEncoder _encoder = nullptr;
 	WGPURenderPassEncoder _renderPass = nullptr;
+	Extent2 _renderExtent = Extent2(0, 0);
 	WGPUComputePassEncoder _computePass = nullptr;
 	WGPUCommandBuffer _commands = nullptr;
 	const FrameBindGroups *_bindGroups = nullptr;

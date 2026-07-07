@@ -111,7 +111,15 @@ bool Shader::init(Device &dev, const core::ProgramData &data) {
 bool Shader::setup(Device &dev, const core::ProgramData &programData, SpanView<uint32_t> data) {
 	if (!data.empty() && data[0] == 0x0723'0203) {
 		// SPIR-V program (e.g. from a shared GLSL-based queue): use the native
-		// extension, naga translates it internally
+		// extension, naga translates it internally; a browser build accepts
+		// WGSL only - such queues must not be compiled there
+		if (!dev.getBackendFeatures().spirvShaders) {
+			log::source().error("webgpu::Shader",
+					"SPIR-V shader modules are not supported by this device: ", _name);
+			return false;
+		}
+
+#if XL_WGPU_NATIVE_API
 		WGPUShaderModuleDescriptorSpirV spirvDesc;
 		spirvDesc.label = WGPUStringView{_name.data(), _name.size()};
 		spirvDesc.sourceSize = uint32_t(data.size());
@@ -128,6 +136,9 @@ bool Shader::setup(Device &dev, const core::ProgramData &programData, SpanView<u
 				[](core::Device *, core::ObjectType, core::ObjectHandle ptr, void *) {
 			wgpuShaderModuleRelease(reinterpret_cast<WGPUShaderModule>(ptr.get()));
 		}, core::ObjectType::ShaderModule, core::ObjectHandle(_shaderModule));
+#else
+		return false;
+#endif
 	}
 
 	// data is WGSL text packed into uint32_t words, trim word-alignment padding

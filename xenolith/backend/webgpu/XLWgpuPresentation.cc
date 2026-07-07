@@ -72,7 +72,6 @@ bool Surface::init(Instance *instance, WGPUSurface surface, Ref *window) {
 	_instance = instance;
 	_window = window;
 	_surface = surface;
-	log::source().debug("webgpu::Surface", "created ", (void *)this, " wgpu ", (void *)surface);
 	return true;
 }
 
@@ -164,10 +163,6 @@ bool Swapchain::init(Device &dev, NotNull<core::Loop> loop, const core::SurfaceI
 	_images.resize(SlotCount);
 	_slotViews.resize(SlotCount);
 
-	log::source().debug("webgpu::Swapchain", "init/configure ", (void *)this, " extent ",
-			_imageInfo.extent, " mode ", toInt(presentMode), " images ", cfg.imageCount,
-			" usage ", _swapchainImageInfo.usage);
-
 	WGPUSurfaceConfiguration surfaceConfig = WGPU_SURFACE_CONFIGURATION_INIT;
 	surfaceConfig.device = dev.getDevice();
 	surfaceConfig.format = getWGPUFormat(cfg.imageFormat);
@@ -184,16 +179,8 @@ bool Swapchain::init(Device &dev, NotNull<core::Loop> loop, const core::SurfaceI
 			core::ObjectType::Swapchain, core::ObjectHandle::zero());
 }
 
-static uint32_t s_acquireLog = 0;
-
 auto Swapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Status &status)
 		-> Rc<SwapchainAcquiredImage> {
-	if (s_acquireLog < 8) {
-		++s_acquireLog;
-		log::source().debug("webgpu::Swapchain", "acquire: deprecated=", _deprecated,
-				" invalid=", _invalid, " acquired=", _acquiredImages);
-	}
-
 	if (_deprecated || _invalid) {
 		status = Status::ErrorCancelled;
 		return nullptr;
@@ -206,8 +193,6 @@ auto Swapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Status &sta
 	}
 
 	WGPUSurfaceTexture surfaceTexture = WGPU_SURFACE_TEXTURE_INIT;
-	log::source().debug("webgpu::Swapchain", "getCurrentTexture surface ",
-			(void *)_surface.get_cast<Surface>()->getSurface());
 	wgpuSurfaceGetCurrentTexture(_surface.get_cast<Surface>()->getSurface(), &surfaceTexture);
 
 	switch (surfaceTexture.status) {
@@ -357,6 +342,212 @@ void Swapchain::releaseSlot(uint32_t index) {
 	slot.image = nullptr;
 }
 
+SimpleSwapchain::~SimpleSwapchain() { releaseCurrent(); }
+
+bool SimpleSwapchain::init(Device &dev, NotNull<core::Loop> loop, const core::SurfaceInfo &info,
+		const core::SwapchainConfig &cfg, core::ImageInfo &&swapchainImageInfo,
+		core::PresentMode presentMode, Surface *surface) {
+	_device = &dev;
+	_loop = loop;
+	_surface = surface;
+	_surfaceInfo = info;
+	_config = cfg;
+	_presentMode = presentMode;
+	_imageInfo = swapchainImageInfo;
+	_swapchainImageInfo = move(swapchainImageInfo);
+
+	WGPUSurfaceConfiguration surfaceConfig = WGPU_SURFACE_CONFIGURATION_INIT;
+	surfaceConfig.device = dev.getDevice();
+	surfaceConfig.format = getWGPUFormat(cfg.imageFormat);
+	surfaceConfig.usage = getWGPUTextureUsage(_swapchainImageInfo.usage);
+	surfaceConfig.width = cfg.extent.width;
+	surfaceConfig.height = cfg.extent.height;
+	surfaceConfig.presentMode = getWGPUPresentMode(presentMode);
+	surfaceConfig.alphaMode = WGPUCompositeAlphaMode_Opaque;
+
+	wgpuSurfaceConfigure(surface->getSurface(), &surfaceConfig);
+
+	return core::Object::init(dev,
+			[](core::Device *, core::ObjectType, core::ObjectHandle, void *) { },
+			core::ObjectType::Swapchain, core::ObjectHandle::zero());
+}
+
+auto SimpleSwapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Status &status)
+		-> Rc<SwapchainAcquiredImage> {
+	if (_deprecated || _invalid) {
+		status = Status::ErrorCancelled;
+		return nullptr;
+	}
+
+	// one current texture per frame; the engine retries via its timer
+	if (_acquiredImages > 0) {
+		status = Status::Timeout;
+		return nullptr;
+	}
+
+	WGPUSurfaceTexture surfaceTexture = WGPU_SURFACE_TEXTURE_INIT;
+	wgpuSurfaceGetCurrentTexture(_surface.get_cast<Surface>()->getSurface(), &surfaceTexture);
+
+	switch (surfaceTexture.status) {
+	case WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal: _deprecated = true; [[fallthrough]];
+	case WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal: {
+		releaseCurrent();
+
+		auto imageInfo = core::ImageInfoData(_swapchainImageInfo);
+		_current.image = Rc<Image>::create(*_device, surfaceTexture.texture, "SwapchainImage",
+				imageInfo);
+		if (!_current.image) {
+			wgpuTextureRelease(surfaceTexture.texture);
+			status = Status::ErrorCancelled;
+			return nullptr;
+		}
+
+		// browser contract: the texture is used within the current frame; its
+		// default view is created right away
+		core::ImageViewInfo defaultViewInfo;
+		switch (imageInfo.imageType) {
+		case core::ImageType::Image1D:
+			defaultViewInfo.type = core::ImageViewType::ImageView1D;
+			break;
+		case core::ImageType::Image2D:
+			defaultViewInfo.type = core::ImageViewType::ImageView2D;
+			break;
+		case core::ImageType::Image3D:
+			defaultViewInfo.type = core::ImageViewType::ImageView3D;
+			break;
+		}
+		defaultViewInfo = imageInfo.getViewInfo(defaultViewInfo);
+		if (auto view = makeView(_current.image, defaultViewInfo)) {
+			_current.views.emplace(defaultViewInfo, move(view));
+		}
+
+		sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
+		++_acquiredImages;
+
+		if (fence) {
+			fence->setTag("webgpu::SimpleSwapchain::acquire");
+			static_cast<Fence *>(fence.get())->signal();
+		}
+
+		status = surfaceTexture.status == WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal
+				? Status::Ok
+				: Status::Suboptimal;
+
+		return Rc<SwapchainAcquiredImage>::alloc(0, &_current, acquireSemaphore(), this);
+		break;
+	}
+	case WGPUSurfaceGetCurrentTextureStatus_Timeout: status = Status::Timeout; break;
+	case WGPUSurfaceGetCurrentTextureStatus_Outdated:
+	case WGPUSurfaceGetCurrentTextureStatus_Lost:
+		_deprecated = true;
+		status = Status::ErrorCancelled;
+		break;
+	default:
+		status = Status::ErrorUnknown;
+		log::source().error("webgpu::SimpleSwapchain", "Fail to acquire surface texture: ",
+				toInt(surfaceTexture.status));
+		break;
+	}
+
+	if (surfaceTexture.texture) {
+		wgpuTextureRelease(surfaceTexture.texture);
+	}
+
+	return nullptr;
+}
+
+Status SimpleSwapchain::present(core::DeviceQueue &, core::ImageStorage *image, uint64_t) {
+	if (_invalid) {
+		return Status::ErrorCancelled;
+	}
+
+	auto result = WGPUStatus_Success;
+
+#if XL_WGPU_NATIVE_API
+	// native seam: browsers present implicitly at the end of the frame task
+	result = wgpuSurfacePresent(_surface.get_cast<Surface>()->getSurface());
+
+	if (_current.image) {
+		// release the wgpu texture wrapper NOW, while the surface still
+		// counts it as presented; a deferred drop (after the next acquire)
+		// would discard the next frame's texture (wgpu-native v29)
+		static_cast<Image *>(_current.image.get())->invalidateTexture();
+	}
+#endif
+
+	sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
+
+	releaseCurrent();
+
+	if (_acquiredImages > 0) {
+		--_acquiredImages;
+	}
+	++_presentedFrames;
+	_presentTime = sp::platform::clock(ClockType::Monotonic);
+
+	if (result != WGPUStatus_Success) {
+		return Status::ErrorCancelled;
+	}
+
+	return Status::Ok;
+}
+
+void SimpleSwapchain::invalidateImage(const core::ImageStorage *image, bool) {
+	sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
+	if (_acquiredImages > 0) {
+		--_acquiredImages;
+	}
+}
+
+void SimpleSwapchain::invalidateImage(uint32_t, bool) {
+	sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
+	if (_acquiredImages > 0) {
+		--_acquiredImages;
+	}
+}
+
+Rc<core::ImageView> SimpleSwapchain::makeView(const Rc<core::ImageObject> &image,
+		const core::ImageViewInfo &info) {
+	// reuse the view created at acquisition when compatible
+	if (_current.image == image) {
+		for (auto &it : _current.views) {
+			if (it.second->getInfo().format == info.format
+					&& it.second->getInfo().type == info.type) {
+				return it.second;
+			}
+		}
+	}
+
+	auto view = Rc<ImageView>::create(*_device, image, info);
+	if (!view) {
+		return nullptr;
+	}
+
+	auto cache = _loop->getFrameCache();
+	cache->addImageView(view->getIndex());
+	view->setReleaseCallback([loop = Rc<core::Loop>(_loop), id = view->getIndex()] {
+		loop->performOnThread([loop, id] { loop->getFrameCache()->removeImageView(id); }, nullptr,
+				true);
+	});
+
+	if (_current.image == image) {
+		_currentViews.emplace_back(view);
+	}
+
+	return view;
+}
+
+void SimpleSwapchain::releaseCurrent() {
+	for (auto &it : _currentViews) { it->runReleaseCallback(); }
+	_currentViews.clear();
+	_current.views.clear();
+	_current.image = nullptr;
+}
+
+Rc<core::Semaphore> SimpleSwapchain::acquireSemaphore() { return Rc<Semaphore>::create(*_device); }
+
+bool SimpleSwapchain::releaseSemaphore(Rc<core::Semaphore> &&) { return true; }
+
 bool PresentationEngine::init(NotNull<core::Loop> loop, NotNull<core::Device> device,
 		NotNull<core::PresentationWindow> window, core::PresentationOptions opts) {
 	// texture acquisition in WebGPU is synchronous, external fence has no meaning
@@ -380,10 +571,10 @@ bool PresentationEngine::run() {
 	auto info = _window->getSurfaceOptions(*_device, _surface);
 	auto cfg = _window->selectConfig(info, false);
 
-	auto swapchainCreated = createSwapchain(info, move(cfg), cfg.presentMode, true);
-
-	log::source().debug("webgpu::PresentationEngine", "run: swapchain: ",
-			swapchainCreated ? "created" : "FAILED", ", extent: ", info.currentExtent);
+	if (!createSwapchain(info, move(cfg), cfg.presentMode, true)) {
+		log::source().error("webgpu::PresentationEngine", "Fail to create swapchain");
+		return false;
+	}
 
 	return core::PresentationEngine::run();
 }
@@ -403,7 +594,11 @@ bool PresentationEngine::recreateSwapchain() {
 		return false;
 	}
 
-	_device->waitIdle();
+	// defensive drain before reconfigure; the standard WebGPU model allows
+	// reconfiguration with frames in flight (a browser cannot block here)
+	if (static_cast<Device *>(_device)->getBackendFeatures().syncPolling) {
+		_device->waitIdle();
+	}
 
 	bool oldSwapchainValid = true;
 	if (hasFlag(_deprecationFlags, core::UpdateConstraintsFlags::SwitchToNext)) {
@@ -477,8 +672,19 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info,
 		log::source().warn("webgpu::PresentationEngine", "Some swapchain images still active");
 	}
 
-	_swapchain = Rc<Swapchain>::create(*dev, _loop.get(), info, cfg, move(swapchainImageInfo),
-			presentMode, _surface.get_cast<Surface>());
+	// browser presentation model (single current texture, implicit present)
+	// is the default when synchronous polling is unavailable; can be forced
+	// for verification on a native device
+	const bool simplePresent =
+			!dev->getBackendFeatures().syncPolling || ::getenv("XL_WGPU_SIMPLE_PRESENT");
+
+	if (simplePresent) {
+		_swapchain = Rc<SimpleSwapchain>::create(*dev, _loop.get(), info, cfg,
+				move(swapchainImageInfo), presentMode, _surface.get_cast<Surface>());
+	} else {
+		_swapchain = Rc<Swapchain>::create(*dev, _loop.get(), info, cfg,
+				move(swapchainImageInfo), presentMode, _surface.get_cast<Surface>());
+	}
 
 	if (!_swapchain) {
 		log::source().error("webgpu::PresentationEngine", "Fail to create swapchain");
