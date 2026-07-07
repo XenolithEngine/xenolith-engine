@@ -27,8 +27,12 @@ MODULE_RUNTIME_MUSL_LIBC_PRIVATE_STANDALONE := 1
 MODULE_RUNTIME_MUSL_LIBC_DEPENDS_ON := runtime_malloc runtime_core
 MODULE_RUNTIME_MUSL_LIBC_SRCS_DIRS := \
 	$(RUNTIME_MODULE_DIR)/musl-adapters
+# wasm32 is not a musl-supported arch, so its arch/ headers live in the adapter
+# (musl-adapters/arch/wasm32) rather than in the untouched musl source tree; this
+# dir is searched before musl-libc/arch/$(TARGET_ARCH) (which is empty for wasm).
 MODULE_RUNTIME_MUSL_LIBC_PRIVATE_INCLUDES := \
 	$(RUNTIME_MODULE_DIR)/musl-adapters/include \
+	$(RUNTIME_MODULE_DIR)/musl-adapters/arch/$(TARGET_ARCH) \
 	$(RUNTIME_MODULE_DIR)/musl-libc/arch/$(TARGET_ARCH) \
 	$(RUNTIME_MODULE_DIR)/musl-libc/arch/generic \
 	$(RUNTIME_MODULE_DIR)/musl-libc/src/internal \
@@ -73,7 +77,7 @@ MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_CFLAGS := \
 	-funwind-tables \
 	-fasynchronous-unwind-tables
 
-MODULE_RUNTIME_MUSL_LIBC_PRIVATE_CFLAGS := $(MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_CFLAGS) 
+MODULE_RUNTIME_MUSL_LIBC_PRIVATE_CFLAGS := $(MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_CFLAGS) \
 	-std=c99 -pipe
 MODULE_RUNTIME_MUSL_LIBC_PRIVATE_CXXFLAGS := $(MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_CFLAGS)
 

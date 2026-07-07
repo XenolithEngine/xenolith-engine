@@ -81,6 +81,25 @@ SP_CXXFLAGS += -Xclang --dependent-lib=sprt -nostdlib  $(SP_WINDOWS_INCLIUDES) -
 endif # WINDOWS
 
 
+ifdef WASM
+# Freestanding WebAssembly. Like the Windows target, the sprt runtime IS the
+# libc — at toolchain-build time only its headers are needed (the archive links
+# per-app), so point the include search at the in-tree runtime headers and force
+# the wasm platform (__SPRT_WASM) + the wasm feature set the app build uses. Kept
+# in sync with the app target.mk (make/os/wasm.mk + target-wasm/init-target.mk).
+SP_WASM_FEATURES := -matomics -mbulk-memory -mmutable-globals -msign-ext -mnontrapping-fptoint
+SP_WASM_INCLUDES := \
+	-isystem $(SP_RUNTIME_ROOT)/include_libc \
+	-isystem $(SP_RUNTIME_ROOT)/include_libc/stl \
+	-isystem $(SP_RUNTIME_ROOT)/include
+
+SP_CFLAGS += -nostdinc -ffreestanding -nostdlib $(SP_WASM_FEATURES) $(SP_WASM_INCLUDES) -D__SPRT_WASM
+SP_CXXFLAGS += -nostdinc -nostdinc++ -ffreestanding -nostdlib $(SP_WASM_FEATURES) $(SP_WASM_INCLUDES) -D__SPRT_WASM
+SP_CPPFLAGS += -nostdinc $(SP_WASM_FEATURES) $(SP_WASM_INCLUDES) -D__SPRT_WASM
+SP_LDFLAGS += -nostdlib $(SP_WASM_FEATURES)
+endif # WASM
+
+
 ifdef DARWIN
 
 # Apple's modern libc ABI in <sys/cdefs.h> (no legacy $UNIX2003 / $INODE64
@@ -153,6 +172,14 @@ CONFIGURE_CMAKE_C_FLAGS_INIT := $(SP_OPT) $(SP_USER_CFLAGS)
 CONFIGURE_CMAKE_CXX_FLAGS_INIT := $(SP_OPT) $(SP_USER_CXXFLAGS)
 CONFIGURE_EXE_LINKER_FLAGS_INIT := $(SP_LIBS_PLATFORM) $(SP_USER_LDFLAGS)
 CONFIGURE_SHARED_LINKER_FLAGS_INIT := $(SP_LIBS_PLATFORM) $(SP_USER_LDFLAGS)
+
+ifdef WASM
+# Freestanding wasm: the cmake runtimes superbuild compiles libunwind/libc++abi/
+# libc++ against the sprt headers with the wasm feature set (see the WASM bridge
+# above). Added after the base *_INIT definitions so the `:=` above cannot wipe it.
+CONFIGURE_CMAKE_C_FLAGS_INIT += -nostdinc -ffreestanding $(SP_WASM_FEATURES) $(SP_WASM_INCLUDES) -D__SPRT_WASM
+CONFIGURE_CMAKE_CXX_FLAGS_INIT += -nostdinc -nostdinc++ -ffreestanding $(SP_WASM_FEATURES) $(SP_WASM_INCLUDES) -D__SPRT_WASM
+endif # WASM
 
 ifdef LINUX
 CONFIGURE_EXE_LINKER_FLAGS_INIT += -Wl,--gc-sections

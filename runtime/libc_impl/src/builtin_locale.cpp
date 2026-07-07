@@ -31,6 +31,8 @@ THE SOFTWARE.
 
 #if SPRT_WINDOWS
 #include "windows/locale.cc"
+#elif SPRT_WASM
+#include "wasm/locale.cc"
 #endif
 
 namespace sprt {

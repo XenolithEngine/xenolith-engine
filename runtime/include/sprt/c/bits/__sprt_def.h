@@ -51,6 +51,9 @@ THE SOFTWARE.
 #define __SPRT_PLATFORM_NAME_LINUX linux_sprt
 #define __SPRT_PLATFORM_ID_LINUX 6
 
+#define __SPRT_PLATFORM_NAME_WASM wasm_sprt
+#define __SPRT_PLATFORM_ID_WASM 7
+
 
 /*
 	Defines one of:
@@ -61,6 +64,7 @@ THE SOFTWARE.
 	SPRT_WINDOWS
 	SPRT_ANDROID
 	SPRT_LINUX
+	SPRT_WASM
 
 	for platform detection.
 
@@ -102,6 +106,15 @@ THE SOFTWARE.
 #define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_LINUX
 #define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_LINUX
 #define SPRT_LINUX __SPRT_PLATFORM_ID_LINUX
+#elif defined(__wasm__) || defined(__SPRT_WASM)
+// Freestanding WebAssembly (browser / wasi host). No host OS defines a platform
+// macro here, so wasm is detected purely from the compiler's __wasm__ predefine
+// (or an explicit __SPRT_WASM override). The platform layer lives in src/wasm/ and
+// runtime/core/wasm/; errno/fcntl/etc. reuse the Linux numeric values (see
+// cross/wasm_sprt).
+#define __SPRT_PLATFORM_NAME __SPRT_PLATFORM_NAME_WASM
+#define __SPRT_PLATFORM_ID __SPRT_PLATFORM_ID_WASM
+#define SPRT_WASM __SPRT_PLATFORM_ID_WASM
 #else
 #error "Unknown platform"
 #endif

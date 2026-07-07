@@ -1,4 +1,10 @@
 #define __SPRT_BUILD
+// The bundled musl string sources call the BSD/GNU extensions (strlcpy/strlcat,
+// wcscasecmp/wcsncasecmp, ...), which musl's <string.h>/<wchar.h> only declare
+// under a feature-test macro. _GNU_SOURCE enables them all. (Windows skips these
+// sources via the !SPRT_WINDOWS guard below, so this only affects the freestanding
+// targets that actually compile them.)
+#define _GNU_SOURCE
 
 #include "../include/defs.h"
 
@@ -12,12 +18,22 @@
 #include "../../musl-libc/src/string/strcmp.c"
 #include "../../musl-libc/src/string/strncmp.c"
 #include "../../musl-libc/src/string/strlen.c"
+// The wcs* collation/compare entry points are owned by the freestanding libc's
+// own builtin_wchar.cpp / builtin_locale.cpp (they route through the locale
+// backend). Windows relies on that; wasm is freestanding the same way, so it
+// skips the musl versions here to avoid duplicate symbols. wcsstr is the one
+// exception — the builtins do not provide it, so musl supplies it everywhere.
+#if !SPRT_WASM
 #include "../../musl-libc/src/string/wcscasecmp_l.c"
 #include "../../musl-libc/src/string/wcsncasecmp_l.c"
 #include "../../musl-libc/src/string/wcscasecmp.c"
 #include "../../musl-libc/src/string/wcsncasecmp.c"
 #include "../../musl-libc/src/string/wcscmp.c"
 #include "../../musl-libc/src/string/wcsncmp.c"
+#endif
+// wcslen/wcscpy/wcsncpy/wcsnlen are the plain copy/length helpers: builtin_wchar.cpp
+// owns only the *cmp/*casecmp collation entry points, and USES these four without
+// defining them, so musl must supply them on every target (wasm included).
 #include "../../musl-libc/src/string/wcsnlen.c"
 #include "../../musl-libc/src/string/wcscpy.c"
 #include "../../musl-libc/src/string/wcslen.c"

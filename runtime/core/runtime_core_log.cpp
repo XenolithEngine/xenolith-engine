@@ -43,7 +43,7 @@
 #include <string.h>
 #endif
 
-#if SPRT_WINDOWS
+#if SPRT_WINDOWS || SPRT_WASM
 __SPRT_C_FUNC int strerror_r(__SPRT_ID(errno_t) errnum, char *buf, __SPRT_ID(rsize_t) bufsz);
 #endif
 
@@ -423,6 +423,14 @@ static void checkLogFeaturesSupport(LogFeaturesInit &ret) {
 
 #if SPRT_ANDROID
 
+static void checkLogFeaturesSupport(LogFeaturesInit &ret) { }
+
+#endif
+
+#if SPRT_WASM
+
+// The browser/DevTools console does not interpret ANSI escape sequences, so no
+// terminal features are advertised (plain text only), matching the Android path.
 static void checkLogFeaturesSupport(LogFeaturesInit &ret) { }
 
 #endif

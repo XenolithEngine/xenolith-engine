@@ -32,6 +32,8 @@ THE SOFTWARE.
 
 #if SPRT_WINDOWS
 #include "windows/unistd.cc"
+#elif SPRT_WASM
+#include "wasm/unistd.cc"
 #endif
 
 __SPRT_C_FUNC char *__strchrnul(const char *s, int c);

@@ -4,7 +4,10 @@
 #include "../include/defs.h"
 
 typedef int (*cmpfun_r)(const void *, const void *, void *);
-void __qsort_r(void *base, size_t nel, size_t width, cmpfun_r cmp, void *arg);
+// Forward-declared before any header that provides the public `size_t`; use the
+// always-defined SPRT spelling (identical type) so the declaration is valid on
+// freestanding targets like wasm where <bits/alltypes.h> is not yet in scope.
+void __qsort_r(void *base, __SPRT_ID(size_t) nel, __SPRT_ID(size_t) width, cmpfun_r cmp, void *arg);
 
 #define cmpfun qsort_nr_cmpfun
 #include "../../musl-libc/src/stdlib/qsort_nr.c"

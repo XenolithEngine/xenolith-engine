@@ -21,9 +21,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
+#include <sprt/c/bits/__sprt_def.h> // SPRT_WASM
+
+// The threading / task-queue / thread-pool subsystem is pthread-backed; wasm is
+// single-threaded for now, so it is gated out alongside the event subsystem.
+#if !SPRT_WASM
+
 #include "SPRuntimeDispatchThreadInfo.cc"
 
 #include "SPRuntimeDispatchTask.cc"
 #include "SPRuntimeDispatchTaskQueue.cc"
 #include "SPRuntimeDispatchThread.cc"
 #include "SPRuntimeDispatchThreadPool.cc"
+
+#endif // !SPRT_WASM

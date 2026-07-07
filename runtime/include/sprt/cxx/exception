@@ -1,0 +1,148 @@
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+#ifndef RUNTIME_INCLUDE_SPRT_CXX_EXCEPTION_H_
+#define RUNTIME_INCLUDE_SPRT_CXX_EXCEPTION_H_
+
+#include <sprt/cxx/detail/ctypes.h>
+
+#if __SPRT_USE_STL
+
+#include <exception>
+
+#else
+
+// The C++ <exception> surface, in the Itanium-ABI layout libc++abi implements
+// (it provides the out-of-line bodies for exception/bad_exception and the
+// terminate/exception_ptr machinery — the declarations here must match). This is
+// the runtime's single std:: source; when __SPRT_USE_STL is set it forwards to a
+// real <exception> instead.
+
+namespace std {
+
+class exception {
+public:
+	exception() noexcept { }
+	exception(const exception &) noexcept = default;
+	exception &operator=(const exception &) noexcept = default;
+	virtual ~exception() noexcept;
+	virtual const char *what() const noexcept;
+};
+
+class bad_exception : public exception {
+public:
+	bad_exception() noexcept { }
+	~bad_exception() noexcept override;
+	const char *what() const noexcept override;
+};
+
+// --- terminate / unexpected handlers -------------------------------------
+
+using unexpected_handler = void (*)();
+unexpected_handler set_unexpected(unexpected_handler) noexcept;
+unexpected_handler get_unexpected() noexcept;
+[[noreturn]] void unexpected();
+
+using terminate_handler = void (*)();
+terminate_handler set_terminate(terminate_handler) noexcept;
+terminate_handler get_terminate() noexcept;
+[[noreturn]] void terminate() noexcept;
+
+// libc++ internal entry points invoked by libc++abi's default handlers.
+[[noreturn]] void __unexpected(unexpected_handler);
+[[noreturn]] void __terminate(terminate_handler) noexcept;
+
+bool uncaught_exception() noexcept;
+int uncaught_exceptions() noexcept;
+
+// --- exception_ptr -------------------------------------------------------
+
+// Forward-declared with their attributes BEFORE the class so the in-class friend
+// declarations (which cannot carry the [[noreturn]] attribute themselves) refer
+// back to these first declarations rather than introducing conflicting ones.
+class exception_ptr;
+bool operator==(const exception_ptr &, const exception_ptr &) noexcept;
+exception_ptr current_exception() noexcept;
+[[noreturn]] void rethrow_exception(exception_ptr);
+
+class exception_ptr {
+	void *__ptr1_;
+	void *__ptr2_;
+
+public:
+	exception_ptr() noexcept;
+	exception_ptr(decltype(nullptr)) noexcept;
+	exception_ptr(const exception_ptr &) noexcept;
+	exception_ptr &operator=(const exception_ptr &) noexcept;
+	exception_ptr &operator=(decltype(nullptr)) noexcept;
+	~exception_ptr() noexcept;
+	explicit operator bool() const noexcept;
+
+	friend bool operator==(const exception_ptr &, const exception_ptr &) noexcept;
+	friend exception_ptr current_exception() noexcept;
+	friend void rethrow_exception(exception_ptr);
+};
+
+inline bool operator!=(const exception_ptr &__x, const exception_ptr &__y) noexcept {
+	return !(__x == __y);
+}
+
+void swap(exception_ptr &, exception_ptr &) noexcept;
+
+exception_ptr __copy_exception_ptr(void *__except, const void *__ptr);
+
+template <class _Ep>
+void *__GetExceptionInfo(_Ep);
+
+template <class _Ep>
+exception_ptr make_exception_ptr(_Ep __e) noexcept {
+	return __copy_exception_ptr(__builtin_addressof(__e), __GetExceptionInfo(__e));
+}
+
+// --- nested_exception ----------------------------------------------------
+
+class nested_exception {
+	exception_ptr __ptr_;
+
+public:
+	nested_exception() noexcept;
+	nested_exception(const nested_exception &) noexcept = default;
+	nested_exception &operator=(const nested_exception &) noexcept = default;
+	virtual ~nested_exception() noexcept;
+
+	[[noreturn]] void rethrow_nested() const;
+	exception_ptr nested_ptr() const noexcept { return __ptr_; }
+};
+
+template <class _Tp>
+[[noreturn]] void throw_with_nested(_Tp &&__t) {
+	throw __t;
+}
+
+template <class _Ep>
+void rethrow_if_nested(const _Ep &) { }
+
+} // namespace std
+
+#endif // __SPRT_USE_STL
+
+#endif // RUNTIME_INCLUDE_SPRT_CXX_EXCEPTION_H_

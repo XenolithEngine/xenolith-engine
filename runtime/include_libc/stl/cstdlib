@@ -31,6 +31,11 @@ THE SOFTWARE.
 #include <__sprt_stl_config.h>
 
 #include <sprt/cxx/cstdlib>
+// C++ <cstdlib> also carries the integer abs overloads; sprt keeps the abs family
+// in the math layer (sprt::_cmath), so pull <cmath> in to expose std::abs here too
+// (libc++'s <cstdlib> likewise routes abs through <math.h>). Same functions as
+// <cmath>, so there is no duplicate declaration / ambiguity when both are included.
+#include <cmath>
 
 namespace std {
 using namespace sprt::_cstdlib_types;

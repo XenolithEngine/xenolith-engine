@@ -76,5 +76,9 @@ __SPRT_C_FUNC void _purecall(void) {
 	abort();
 }
 
-// General C++ ABI function
+// General C++ ABI function. On wasm the linked libc++abi owns __cxa_pure_virtual,
+// so the freestanding libc must not also define it (even weakly) — leave it to
+// libc++abi to avoid duplicating a c++abi entry point.
+#if !SPRT_WASM
 __SPRT_C_FUNC __attribute__((weak)) void __cxa_pure_virtual(void) { _purecall(); }
+#endif

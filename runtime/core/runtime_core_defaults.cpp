@@ -58,6 +58,10 @@ THE SOFTWARE.
 #include "windows/clock_gettime.cc"
 #include "windows/sched.cc"
 #include "windows/libc.h"
+#elif SPRT_WASM
+#include "wasm/clock_gettime.cc"
+#include "wasm/sched.cc"
+#include "wasm/libc.h"
 #else
 #error Not implemented
 #endif
@@ -212,6 +216,10 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
 	return pthread_mach_thread_np(pthread_self());
 #elif SPRT_WINDOWS
 	return GetCurrentThreadId();
+#elif SPRT_WASM
+	// No kernel tid: the pthread layer above already returned the host tid when
+	// the calling thread is attached; a bare wasm entry thread has none.
+	return 0;
 #else
 	return ::gettid();
 #endif
@@ -495,7 +503,7 @@ int __catclose_empty(__SPRT_ID(nl_catd) catd) {
 } // namespace sprt
 
 
-#ifndef SPRT_WINDOWS
+#if !defined(SPRT_WINDOWS) && !defined(SPRT_WASM)
 #include <sys/utsname.h>
 #include <sprt/c/sys/__sprt_utsname.h>
 
@@ -540,6 +548,10 @@ __SPRT_C_FUNC int __SPRT_ID(uname)(struct __SPRT_UTSNAME_NAME *buf) {
 }
 
 } // namespace sprt
+
+#elif SPRT_WASM
+
+#include "wasm/uname.cc"
 
 #else
 

@@ -54,6 +54,8 @@ THE SOFTWARE.
 #include "darwin/sprt_lock.cc"
 #elif SPRT_WINDOWS
 #include "windows/sprt_lock.cc"
+#elif SPRT_WASM
+#include "wasm/sprt_lock.cc"
 #else
 #error Not implemented
 #endif
