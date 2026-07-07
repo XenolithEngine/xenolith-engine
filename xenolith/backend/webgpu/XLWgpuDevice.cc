@@ -77,6 +77,26 @@ bool Device::init(NotNull<Instance> instance, const Instance::AdapterData &adapt
 	}
 	wgpuSupportedFeaturesFreeMembers(features);
 
+	// capability snapshot: standard fallbacks engage when a feature is absent
+	// (see BackendFeatures docs); a browser build reports none of the native ones
+	_backendFeatures.textureComponentSwizzle = hasFeature(WGPUFeatureName_TextureComponentSwizzle);
+#if XL_WGPU_NATIVE_API
+	_backendFeatures.textureBindingArrays =
+			hasFeature(WGPUFeatureName(WGPUNativeFeature_TextureBindingArray));
+	_backendFeatures.partiallyBoundArrays =
+			hasFeature(WGPUFeatureName(WGPUNativeFeature_PartiallyBoundBindingArray));
+	// the SpirV entry point is part of the native API itself (naga translates)
+	_backendFeatures.spirvShaders = true;
+	_backendFeatures.syncPolling = true;
+#endif
+
+	// verification switch: exercise the standard (browser-mode) fallbacks on
+	// a native device
+	if (::getenv("XL_WGPU_NO_BINDING_ARRAYS")) {
+		_backendFeatures.textureBindingArrays = false;
+		_backendFeatures.partiallyBoundArrays = false;
+	}
+
 	// WebGPU guarantees this depth-stencil set on any device
 	_depthFormats.emplace_back(core::ImageFormat::D32_SFLOAT);
 	_depthFormats.emplace_back(core::ImageFormat::D24_UNORM_S8_UINT);
@@ -149,9 +169,59 @@ Rc<core::TextureSet> Device::makeTextureSet(const core::TextureSetLayout &layout
 void Device::waitIdle() const {
 	core::Device::waitIdle();
 
-	if (_device) {
-		wgpuDevicePoll(_device, true, nullptr);
+	if (!_device) {
+		return;
 	}
+
+#if XL_WGPU_NATIVE_API
+	// full drain: wait-polls until work submitted so far reports completion
+	bool done = false;
+
+	WGPUQueueWorkDoneCallbackInfo cbInfo = WGPU_QUEUE_WORK_DONE_CALLBACK_INFO_INIT;
+	cbInfo.mode = WGPUCallbackMode_AllowProcessEvents;
+	cbInfo.callback = [](WGPUQueueWorkDoneStatus, WGPUStringView, void *userdata1, void *) {
+		*reinterpret_cast<bool *>(userdata1) = true;
+	};
+	cbInfo.userdata1 = &done;
+
+	wgpuQueueOnSubmittedWorkDone(_queue, cbInfo);
+
+	while (!done) { wgpuDevicePoll(_device, true, nullptr); }
+#else
+	log::source().warn("webgpu::Device",
+			"waitIdle is not available without synchronous polling, use drain()");
+#endif
+}
+
+void Device::drain(Function<void()> &&cb) const {
+	if (!_device) {
+		if (cb) {
+			cb();
+		}
+		return;
+	}
+
+	struct DrainContext {
+		Function<void()> callback;
+	};
+
+	WGPUQueueWorkDoneCallbackInfo cbInfo = WGPU_QUEUE_WORK_DONE_CALLBACK_INFO_INIT;
+	cbInfo.mode = WGPUCallbackMode_AllowProcessEvents;
+	cbInfo.callback = [](WGPUQueueWorkDoneStatus status, WGPUStringView message, void *userdata1,
+			void *) {
+		auto ctx = reinterpret_cast<DrainContext *>(userdata1);
+		if (status != WGPUQueueWorkDoneStatus_Success) {
+			log::source().warn("webgpu::Device", "drain: OnSubmittedWorkDone failed: ",
+					toStringView(message));
+		}
+		if (ctx->callback) {
+			ctx->callback();
+		}
+		delete ctx;
+	};
+	cbInfo.userdata1 = new DrainContext{sp::move(cb)};
+
+	wgpuQueueOnSubmittedWorkDone(_queue, cbInfo);
 }
 
 } // namespace stappler::xenolith::webgpu

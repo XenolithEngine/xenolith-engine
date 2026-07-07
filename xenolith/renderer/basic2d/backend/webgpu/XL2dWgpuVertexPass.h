@@ -38,9 +38,11 @@ namespace wg = stappler::xenolith::webgpu;
  * buffers (vertex pulling, no buffer device address) and draws material spans;
  * per-span parameters are passed via firstInstance (push constants analog) */
 
-// WGSL programs for the pass (vertex/fragment, entry point `main`)
+// WGSL programs for the pass (vertex/fragment, entry point `main`);
+// the fragment shader has bindless (binding arrays) and standard (one
+// texture per draw) variants, select by Device::getBackendFeatures()
 SP_PUBLIC StringView getMaterialVertexShader();
-SP_PUBLIC StringView getMaterialFragmentShader();
+SP_PUBLIC StringView getMaterialFragmentShader(bool bindlessTextures);
 
 // shader-visible per-span data, addressed by @builtin(instance_index)
 struct SpanData {
@@ -52,6 +54,10 @@ struct SpanData {
 	// painter-order depth of the span (float bits): the vk write plan assigns
 	// depth per command via transform offsets, the slice emulates it per span
 	float depth = 0.0f;
+	// data-atlas region in the combined atlas buffer: element offset (u32
+	// units) and pow2 slot count; 0 slots = material has no atlas
+	uint32_t atlasOffset = 0;
+	uint32_t atlasSlots = 0;
 };
 
 class SP_PUBLIC VertexAttachment : public core::GenericAttachment {
@@ -64,10 +70,22 @@ public:
 
 	const core::AttachmentData *getMaterials() const { return _materials; }
 
+	// combined data-atlas buffer, rebuilt when the set of live atlases
+	// changes (atlases are immutable once compiled, identity implies content);
+	// accessed on the gl thread only
+	struct AtlasBufferCache {
+		Vector<const core::DataAtlas *> atlases;
+		Vector<uint32_t> offsets; // element offsets in u32 units
+		Rc<wg::Buffer> buffer;
+	};
+
+	AtlasBufferCache &getAtlasCache() { return _atlasCache; }
+
 protected:
 	using core::GenericAttachment::init;
 
 	const core::AttachmentData *_materials = nullptr;
+	AtlasBufferCache _atlasCache;
 };
 
 class SP_PUBLIC VertexAttachmentHandle : public wg::BufferAttachmentHandle {
@@ -80,6 +98,11 @@ public:
 	const Rc<wg::Buffer> &getIndexes() const { return _indexes; }
 	SpanView<VertexSpan> getSpans() const { return _spans; }
 
+	// draw states (scissor) copied from the frame context for record time;
+	// the context itself must NOT be retained here - it is frame input data
+	// and holding it creates a frame ownership cycle (frame never completes)
+	SpanView<DrawStateValues> getDrawStates() const { return _drawStates; }
+
 	bool empty() const { return !_indexes || _spans.empty(); }
 
 protected:
@@ -88,6 +111,7 @@ protected:
 	Rc<wg::Buffer> _indexes;
 	Vector<VertexSpan> _spans;
 	Rc<core::MaterialSet> _materialSet;
+	Vector<DrawStateValues> _drawStates;
 };
 
 // passthrough for scene inputs the WebGPU slice does not process yet

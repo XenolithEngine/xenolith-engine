@@ -45,6 +45,8 @@ public:
 
 	bool hasFeature(WGPUFeatureName) const;
 
+	const BackendFeatures &getBackendFeatures() const { return _backendFeatures; }
+
 	uint64_t getNextObjectIndex() { return _objectIndex.fetch_add(1) + 1; }
 
 	// samplers are cached by SamplerInfo
@@ -58,13 +60,22 @@ public:
 			const core::ImageViewInfo &) override;
 	virtual Rc<core::TextureSet> makeTextureSet(const core::TextureSetLayout &) override;
 
-	// blocks until all submitted work is complete
+	// blocks until all submitted work is complete; requires synchronous
+	// polling (native API) - in a browser build it only logs a warning,
+	// use drain() there
 	virtual void waitIdle() const override;
+
+	// asynchronous drain (portable, standard API): the callback fires when
+	// all work submitted to the queue SO FAR is complete; delivered by the
+	// device poll (loop timer) or the browser event loop - NOT necessarily
+	// on the caller's thread, see Loop::drain for a thread-routed variant
+	void drain(Function<void()> &&) const;
 
 protected:
 	Instance::AdapterData _adapterData;
 	WGPUDevice _device = nullptr;
 	WGPUQueue _queue = nullptr;
+	BackendFeatures _backendFeatures;
 	WGPULimits _limits;
 	WGPUNativeLimits _nativeLimits = {};
 	Vector<WGPUFeatureName> _features;

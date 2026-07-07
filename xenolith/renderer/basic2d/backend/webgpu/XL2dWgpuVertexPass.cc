@@ -55,11 +55,27 @@ struct SpanData {
 	instanceTransformIdx : u32,
 	colorMode : u32,
 	depth : f32,
+	atlasOffset : u32,
+	atlasSlots : u32,
 };
 
 @group(0) @binding(0) var<storage, read> vertices : array<Vertex>;
 @group(0) @binding(1) var<storage, read> transforms : array<TransformData>;
 @group(0) @binding(2) var<storage, read> spans : array<SpanData>;
+// combined data-atlas hash tables (core::DataAtlas::getBufferData), slot
+// stride = 6 u32: {key, value, pos.xy, tex.xy}, empty key = 0xffffffff
+@group(0) @binding(3) var<storage, read> atlasData : array<u32>;
+
+// must match the CPU builder (core DataAtlas hash)
+fn atlasHash(key : u32, capacity : u32) -> u32 {
+	var k = key;
+	k ^= k >> 16u;
+	k *= 0x85ebca6bu;
+	k ^= k >> 13u;
+	k *= 0xc2b2ae35u;
+	k ^= k >> 16u;
+	return k & (capacity - 1u);
+}
 
 struct VertexOutput {
 	@builtin(position) position : vec4<f32>,
@@ -85,17 +101,48 @@ fn main(@builtin(vertex_index) vertexIdx : u32, @builtin(instance_index) instanc
 	let transform = transforms[vertex.material >> 16u];
 	let instance = transforms[span.instanceTransformIdx];
 
+	var pos = vertex.pos;
+	var tex = vertex.tex;
+	var color = vertex.color;
+
+	// GPU-side data-atlas lookup (glyph placement), see xl_2d_material.vert
+	if (span.atlasSlots != 0u && vertex.object != 0u) {
+		var slot = atlasHash(vertex.object, span.atlasSlots);
+		var counter = 0u;
+		loop {
+			if (counter >= span.atlasSlots) {
+				color = vec4<f32>(0.0, 1.0, 0.0, 1.0); // lookup overflow marker
+				break;
+			}
+			let base = span.atlasOffset + slot * 6u;
+			let key = atlasData[base];
+			if (key == vertex.object) {
+				pos += vec4<f32>(bitcast<f32>(atlasData[base + 2u]),
+						bitcast<f32>(atlasData[base + 3u]), 0.0, 0.0);
+				tex = vec2<f32>(bitcast<f32>(atlasData[base + 4u]),
+						bitcast<f32>(atlasData[base + 5u]));
+				break;
+			}
+			if (key == 0xffffffffu) {
+				color = vec4<f32>(1.0, 0.0, 0.0, 1.0); // missing object marker
+				break;
+			}
+			slot = (slot + 1u) & (span.atlasSlots - 1u);
+			counter = counter + 1u;
+		}
+	}
+
 	let mask = makeMask(transform.flags);
 
 	var out : VertexOutput;
-	out.position = (transform.transform * instance.transform * (vertex.pos * mask * mask))
+	out.position = (transform.transform * instance.transform * (pos * mask * mask))
 			+ transform.offset + instance.offset;
 	// engine projection targets Vulkan NDC (Y down); WebGPU NDC is Y up
 	out.position.y = -out.position.y;
 	// painter-order depth: later spans win the depth test over earlier ones
 	out.position.z = span.depth * out.position.w;
-	out.color = vertex.color * transform.instanceColor * instance.instanceColor;
-	out.tex = vertex.tex;
+	out.color = color * transform.instanceColor * instance.instanceColor;
+	out.tex = tex;
 	out.samplerImageIdx = span.samplerImageIdx;
 	out.colorMode = span.colorMode;
 	return out;
@@ -147,8 +194,56 @@ fn main(in : VertexOutput) -> @location(0) vec4<f32> {
 }
 )wgsl");
 
+// standard-WebGPU variant (no binding arrays): one texture is bound per
+// material draw, samplerImageIdx is unused
+static constexpr auto s_materialFragWgslSingle = StringView(R"wgsl(
+struct VertexOutput {
+	@builtin(position) position : vec4<f32>,
+	@location(0) color : vec4<f32>,
+	@location(1) tex : vec2<f32>,
+	@location(2) @interpolate(flat) samplerImageIdx : u32,
+	@location(3) @interpolate(flat) colorMode : u32,
+};
+
+@group(1) @binding(0) var texSampler : sampler;
+@group(1) @binding(1) var tex : texture_2d<f32>;
+
+// core::ComponentMapping: 0=identity 1=zero 2=one 3=R 4=G 5=B 6=A
+fn swizzleComponent(c : vec4<f32>, m : u32, identity : f32) -> f32 {
+	switch m {
+		case 1u: { return 0.0; }
+		case 2u: { return 1.0; }
+		case 3u: { return c.r; }
+		case 4u: { return c.g; }
+		case 5u: { return c.b; }
+		case 6u: { return c.a; }
+		default: { return identity; }
+	}
+}
+
+fn applyColorMode(c : vec4<f32>, mode : u32) -> vec4<f32> {
+	if (mode == 0u) {
+		return c;
+	}
+	return vec4<f32>(
+		swizzleComponent(c, mode & 0xFu, c.r),
+		swizzleComponent(c, (mode >> 4u) & 0xFu, c.g),
+		swizzleComponent(c, (mode >> 8u) & 0xFu, c.b),
+		swizzleComponent(c, (mode >> 12u) & 0xFu, c.a));
+}
+
+@fragment
+fn main(in : VertexOutput) -> @location(0) vec4<f32> {
+	let sampled = textureSampleLevel(tex, texSampler, in.tex, 0.0);
+	return in.color * applyColorMode(sampled, in.colorMode);
+}
+)wgsl");
+
 StringView getMaterialVertexShader() { return s_materialVertWgsl; }
-StringView getMaterialFragmentShader() { return s_materialFragWgsl; }
+
+StringView getMaterialFragmentShader(bool bindlessTextures) {
+	return bindlessTextures ? s_materialFragWgsl : s_materialFragWgslSingle;
+}
 
 bool VertexAttachment::init(AttachmentBuilder &builder, const core::AttachmentData *materials) {
 	if (!core::GenericAttachment::init(builder)) {
@@ -200,6 +295,10 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 		return false;
 	}
 
+	// copy draw states (scissor rects) for record time; do not retain the
+	// context - see getDrawStates
+	_drawStates = commands->states;
+
 	auto dev = static_cast<wg::Device *>(fhandle.getDevice());
 
 	Vector<Vertex> vertexes;
@@ -229,9 +328,37 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 		depthOffset -= depthScale;
 	}
 
+	// data atlases referenced by this frame's spans: assign each a region in
+	// the combined atlas buffer (offsets in u32 units, deterministic by first
+	// use, so an unchanged atlas set reuses the cached buffer)
+	Vector<const core::DataAtlas *> frameAtlases;
+	Vector<uint32_t> frameAtlasOffsets;
+	uint32_t atlasTotalWords = 0;
+
+	auto acquireAtlasRegion = [&](const core::DataAtlas *atlas) -> sprt::pair<uint32_t, uint32_t> {
+		constexpr uint32_t SlotStride = 6; // {key, value, pos.xy, tex.xy}
+
+		for (size_t i = 0; i < frameAtlases.size(); ++i) {
+			if (frameAtlases[i] == atlas) {
+				return sprt::pair(frameAtlasOffsets[i],
+						uint32_t(atlas->getBufferData().size() / (SlotStride * 4)));
+			}
+		}
+
+		auto data = atlas->getBufferData();
+		if (data.empty() || (data.size() % (SlotStride * 4)) != 0) {
+			return sprt::pair(uint32_t(0), uint32_t(0));
+		}
+
+		frameAtlases.emplace_back(atlas);
+		frameAtlasOffsets.emplace_back(atlasTotalWords);
+		atlasTotalWords += uint32_t(data.size() / 4);
+		return sprt::pair(frameAtlasOffsets.back(), uint32_t(data.size() / (SlotStride * 4)));
+	};
+
 	// shared span emitter for direct and deferred vertex data
 	auto emitVertexes = [&](core::MaterialId materialId, SpanView<ZOrder> zPath,
-								const Rc<VertexData> &data,
+								StateId state, const Rc<VertexData> &data,
 								SpanView<TransformData> instances) {
 		auto material = _materialSet->getMaterialById(materialId);
 		if (!material || material->getImages().empty()) {
@@ -245,10 +372,9 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 		const uint32_t colorMode = toInt(image.info.r) | (toInt(image.info.g) << 4)
 				| (toInt(image.info.b) << 8) | (toInt(image.info.a) << 12);
 
-		// vk resolves data atlases (e.g. font glyph positions) on the GPU
-		// against the image's CURRENT instance; the slice bakes them into
-		// vertices at pack time - take the atlas from the image data, the
-		// material's cached atlas may lag behind dynamic image updates
+		// data atlases (glyph placement) resolve on the GPU against the
+		// combined atlas buffer, like the vk backend; take the atlas from the
+		// image data - it always matches the bound texture generation
 		const core::DataAtlas *atlas = image.image ? image.image->atlas.get() : nullptr;
 		if (!atlas) {
 			atlas = material->getAtlas();
@@ -257,6 +383,13 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 				&& (atlas->getType() != core::DataAtlas::ImageAtlas
 						|| atlas->getObjectSize() != sizeof(font::FontAtlasValue))) {
 			atlas = nullptr;
+		}
+
+		uint32_t atlasOffset = 0, atlasSlots = 0;
+		if (atlas) {
+			auto region = acquireAtlasRegion(atlas);
+			atlasOffset = region.first;
+			atlasSlots = region.second;
 		}
 
 		float spanDepth = 0.0f;
@@ -273,13 +406,6 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 			auto vertex = v;
 			// per-vertex transform slot: identity (0) in the initial slice
 			vertex.material = vertex.material & 0xFFFF;
-			if (atlas && vertex.object != 0) {
-				if (auto obj = atlas->getObjectByName(vertex.object)) {
-					auto value = reinterpret_cast<const font::FontAtlasValue *>(obj);
-					vertex.pos += Vec4(value->pos.x, value->pos.y, 0.0f, 0.0f);
-					vertex.tex = value->tex;
-				}
-			}
 			vertexes.emplace_back(vertex);
 		}
 		for (auto &index : data->indexes) { indexes.emplace_back(index); }
@@ -289,8 +415,8 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 			transforms.emplace_back(instance);
 
 			const uint32_t spanIdx = uint32_t(spanData.size());
-			spanData.emplace_back(
-					SpanData{samplerImageIdx, instanceIdx, colorMode, spanDepth});
+			spanData.emplace_back(SpanData{samplerImageIdx, instanceIdx, colorMode,
+				spanDepth, atlasOffset, atlasSlots});
 
 			VertexSpan span;
 			span.material = materialId;
@@ -299,6 +425,7 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 			span.firstIndex = firstIndex;
 			span.vertexOffset = vertexOffset;
 			span.firstInstance = spanIdx;
+			span.state = state;
 			_spans.emplace_back(span);
 		}
 	};
@@ -309,7 +436,8 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 			auto vertexCmd = reinterpret_cast<const CmdVertexArray *>(cmd->data);
 
 			for (auto &iv : vertexCmd->vertexes) {
-				emitVertexes(vertexCmd->material, vertexCmd->zPath, iv.data, iv.instances);
+				emitVertexes(vertexCmd->material, vertexCmd->zPath, vertexCmd->state, iv.data,
+						iv.instances);
 			}
 		} else if (cmd->type == CommandType::Deferred) {
 			auto deferredCmd = reinterpret_cast<const CmdDeferred *>(cmd->data);
@@ -348,7 +476,8 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 						}
 					}
 
-					emitVertexes(deferredCmd->material, deferredCmd->zPath, iv.data, instances);
+					emitVertexes(deferredCmd->material, deferredCmd->zPath, deferredCmd->state,
+							iv.data, instances);
 				}
 			});
 		}
@@ -410,11 +539,36 @@ bool VertexAttachmentHandle::loadVertexes(core::FrameHandle &fhandle,
 		return false;
 	}
 
+	// combined data-atlas buffer: reuse the cached one when the frame's
+	// atlas set is unchanged (atlases are immutable after compile())
+	auto &atlasCache = attachment->getAtlasCache();
+	if (!atlasCache.buffer || atlasCache.atlases != frameAtlases) {
+		Bytes combined;
+		combined.resize(sprt::max(uint32_t(1), atlasTotalWords) * sizeof(uint32_t), 0);
+		for (size_t i = 0; i < frameAtlases.size(); ++i) {
+			auto data = frameAtlases[i]->getBufferData();
+			sprt::memcpy(combined.data() + frameAtlasOffsets[i] * sizeof(uint32_t),
+					data.data(), data.size());
+		}
+
+		atlasCache.buffer = Rc<wg::Buffer>::create(*dev,
+				core::BufferInfo(core::BufferUsage::StorageBuffer,
+						uint64_t(combined.size()), StringView("2dAtlases")),
+				combined);
+		atlasCache.atlases = sp::move(frameAtlases);
+		atlasCache.offsets = sp::move(frameAtlasOffsets);
+	}
+
+	if (!atlasCache.buffer) {
+		return false;
+	}
+
 	// order matches storage-buffer descriptors in the pass layout set 0
 	clearBufferViews();
 	addBufferView(Rc<wg::Buffer>(vertexBuffer));
 	addBufferView(Rc<wg::Buffer>(transformBuffer));
 	addBufferView(Rc<wg::Buffer>(spanBuffer));
+	addBufferView(Rc<wg::Buffer>(atlasCache.buffer));
 	return true;
 }
 
@@ -475,8 +629,13 @@ bool MaterialVertexPass::makeRenderQueue(core::Queue::Builder &builder, RenderQu
 		return ret;
 	};
 
+	const bool bindlessTextures = static_cast<wg::Loop *>(info.target.get())
+										  ->getDevice()
+										  ->getBackendFeatures()
+										  .textureBindingArrays;
+
 	auto vertData = packWgsl(getMaterialVertexShader());
-	auto fragData = packWgsl(getMaterialFragmentShader());
+	auto fragData = packWgsl(getMaterialFragmentShader(bindlessTextures));
 
 	auto vertProg = builder.addProgram("2dMaterialVert", vertData, &vertInfo);
 	auto fragProg = builder.addProgram("2dMaterialFrag", fragData, &fragInfo);
@@ -547,6 +706,8 @@ bool MaterialVertexPass::makeRenderQueue(core::Queue::Builder &builder, RenderQu
 		auto layout = passBuilder.addDescriptorLayout("Layout2d",
 				[&](PipelineLayoutBuilder &layoutBuilder) {
 			layoutBuilder.addSet([&](DescriptorSetBuilder &setBuilder) {
+				// vertices, transforms, spans, combined data atlases
+				setBuilder.addDescriptor(vertexesAtt, DescriptorType::StorageBuffer);
 				setBuilder.addDescriptor(vertexesAtt, DescriptorType::StorageBuffer);
 				setBuilder.addDescriptor(vertexesAtt, DescriptorType::StorageBuffer);
 				setBuilder.addDescriptor(vertexesAtt, DescriptorType::StorageBuffer);
@@ -666,7 +827,76 @@ void MaterialVertexPassHandle::recordSubpass(core::FrameQueue &q,
 	uint32_t boundLayoutIndex = maxOf<uint32_t>();
 	const core::GraphicPipelineData *boundPipeline = nullptr;
 
+	// dynamic draw states: scissor (scene rects are bottom-left based and
+	// pre-rotation, like the vk backend - see vk rotateScissor); clamp against
+	// the actual render target, frame constraints may be empty (e.g. tests)
+	const auto &constraints = q.getFrame()->getFrameConstraints();
+	const Extent2 targetExtent = buf.getRenderExtent();
+	StateId boundStateId = maxOf<StateId>();
+	bool scissorActive = false;
+
+	auto applyState = [&](StateId stateId) {
+		if (stateId == boundStateId) {
+			return;
+		}
+		boundStateId = stateId;
+
+		auto drawStates = _vertexHandle->getDrawStates();
+		const DrawStateValues *state = stateId < drawStates.size() ? &drawStates[stateId]
+																   : nullptr;
+		if (!state || !state->isScissorEnabled()) {
+			if (scissorActive) {
+				buf.cmdSetScissor(0, 0, targetExtent.width, targetExtent.height);
+				scissorActive = false;
+			}
+			return;
+		}
+
+		auto &scissor = state->scissor;
+		int32_t x = int32_t(scissor.x);
+		int32_t y = int32_t(targetExtent.height) - int32_t(scissor.y) - int32_t(scissor.height);
+		int32_t w = int32_t(scissor.width);
+		int32_t h = int32_t(scissor.height);
+
+		switch (core::getPureTransform(constraints.transform)) {
+		case core::SurfaceTransformFlags::Rotate90:
+			x = int32_t(scissor.y);
+			y = int32_t(scissor.x);
+			sprt::swap(w, h);
+			break;
+		case core::SurfaceTransformFlags::Rotate180: y = int32_t(scissor.y); break;
+		case core::SurfaceTransformFlags::Rotate270:
+			x = int32_t(targetExtent.width) - int32_t(scissor.y) - int32_t(scissor.height);
+			y = int32_t(targetExtent.height) - int32_t(scissor.x) - int32_t(scissor.width);
+			sprt::swap(w, h);
+			break;
+		default: break;
+		}
+
+		// WebGPU validates the rect against the render target: clamp both sides
+		if (x < 0) {
+			w += x;
+			x = 0;
+		}
+		if (y < 0) {
+			h += y;
+			y = 0;
+		}
+		w = sprt::min(w, int32_t(targetExtent.width) - x);
+		h = sprt::min(h, int32_t(targetExtent.height) - y);
+
+		if (w <= 0 || h <= 0) {
+			// empty region: degenerate scissor still must be valid
+			buf.cmdSetScissor(0, 0, 1, 1);
+		} else {
+			buf.cmdSetScissor(uint32_t(x), uint32_t(y), uint32_t(w), uint32_t(h));
+		}
+		scissorActive = true;
+	};
+
 	for (auto &span : _vertexHandle->getSpans()) {
+		applyState(span.state);
+
 		auto material = _materialSet->getMaterialById(span.material);
 		if (!material) {
 			continue;
@@ -701,15 +931,30 @@ void MaterialVertexPassHandle::recordSubpass(core::FrameQueue &q,
 		}
 
 		auto layoutIndex = material->getLayoutIndex();
-		if (layoutIndex != boundLayoutIndex) {
-			auto layout = _materialSet->getLayout(layoutIndex);
-			if (!layout || !layout->set) {
-				log::source().error("basic2d::webgpu",
-						"No texture set for material layout: ", layoutIndex);
+		auto layout = _materialSet->getLayout(layoutIndex);
+		if (!layout || !layout->set) {
+			log::source().error("basic2d::webgpu",
+					"No texture set for material layout: ", layoutIndex);
+			continue;
+		}
+
+		auto textureSet = static_cast<wg::TextureSet *>(layout->set.get());
+		if (textureSet->isBindless()) {
+			if (layoutIndex != boundLayoutIndex) {
+				buf.cmdBindTextureSet(boundPipeline->layout, textureSet);
+				boundLayoutIndex = layoutIndex;
+			}
+		} else {
+			// standard path: one texture per draw, rebind on material change
+			auto &image = material->getImages().front();
+			const uint32_t samplerImageIdx =
+					image.descriptor | (uint32_t(image.sampler) << 16);
+			if (auto group = textureSet->acquireBindGroup(samplerImageIdx)) {
+				buf.cmdBindMaterialGroup(boundPipeline->layout, group);
+			} else {
 				continue;
 			}
-			buf.cmdBindTextureSet(boundPipeline->layout, layout->set.get());
-			boundLayoutIndex = layoutIndex;
+			boundLayoutIndex = maxOf<uint32_t>();
 		}
 
 		buf.cmdDrawIndexed(span.indexCount, span.instanceCount, span.firstIndex,

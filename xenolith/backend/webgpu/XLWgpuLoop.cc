@@ -647,6 +647,25 @@ void Loop::waitForDependencies(const Vector<Rc<DependencyEvent>> &deps,
 	}, const_cast<Loop *>(this), true);
 }
 
+void Loop::drain(Function<void()> &&cb) {
+	performOnThread([this, cb = sp::move(cb)]() mutable {
+		if (!_device) {
+			if (cb) {
+				cb();
+			}
+			return;
+		}
+		_device->drain([this, cb = sp::move(cb)]() mutable {
+			// the device callback may arrive from any polling context
+			performOnThread([cb = sp::move(cb)] {
+				if (cb) {
+					cb();
+				}
+			}, this, true);
+		});
+	}, this, true);
+}
+
 void Loop::waitIdle() {
 	performOnThread([this] {
 		if (_device) {
@@ -695,44 +714,57 @@ void Loop::captureImage(Function<void(const core::ImageInfoData &info, BytesView
 		wgpuQueueSubmit(_device->getQueue(), 1, &commands);
 		wgpuCommandBufferRelease(commands);
 
-		bool mapComplete = false;
-		bool mapSuccess = false;
+		// fully asynchronous readback (the only model a browser offers): the
+		// map callback is delivered by the loop's regular device poll (or by
+		// the event loop in a browser build), nothing blocks here
+		struct CaptureContext {
+			Rc<Loop> loop;
+			Function<void(const core::ImageInfoData &, BytesView)> callback;
+			WGPUBuffer buffer;
+			core::ImageInfoData info;
+			uint64_t bytesPerRow;
+			uint64_t bufferSize;
+			uint32_t blockSize;
+		};
+
+		auto ctx = new CaptureContext{this, sp::move(cb), buffer, info, bytesPerRow, bufferSize,
+			uint32_t(blockSize)};
 
 		WGPUBufferMapCallbackInfo mapCallback = WGPU_BUFFER_MAP_CALLBACK_INFO_INIT;
 		mapCallback.mode = WGPUCallbackMode_AllowProcessEvents;
 		mapCallback.callback = [](WGPUMapAsyncStatus status, WGPUStringView message,
-				void *userdata1, void *userdata2) {
-			*reinterpret_cast<bool *>(userdata1) = true;
-			*reinterpret_cast<bool *>(userdata2) = (status == WGPUMapAsyncStatus_Success);
+				void *userdata1, void *) {
+			auto ctx = reinterpret_cast<CaptureContext *>(userdata1);
+			ctx->loop->performOnThread([ctx, status] {
+				if (status == WGPUMapAsyncStatus_Success) {
+					auto mapped = reinterpret_cast<const uint8_t *>(
+							wgpuBufferGetConstMappedRange(ctx->buffer, 0, ctx->bufferSize));
+
+					// repack tightly (drop row alignment padding)
+					const auto rowBytes = size_t(ctx->info.extent.width) * ctx->blockSize;
+					Bytes data;
+					data.resize(rowBytes * ctx->info.extent.height);
+					for (uint32_t row = 0; row < ctx->info.extent.height; ++row) {
+						sprt::memcpy(data.data() + size_t(row) * rowBytes,
+								mapped + row * ctx->bytesPerRow, rowBytes);
+					}
+
+					wgpuBufferUnmap(ctx->buffer);
+
+					ctx->callback(ctx->info, data);
+				} else {
+					log::source().error("webgpu::Loop",
+							"captureImage: fail to map readback buffer");
+					ctx->callback(ctx->info, BytesView());
+				}
+
+				wgpuBufferRelease(ctx->buffer);
+				delete ctx;
+			}, ctx->loop.get(), true);
 		};
-		mapCallback.userdata1 = &mapComplete;
-		mapCallback.userdata2 = &mapSuccess;
+		mapCallback.userdata1 = ctx;
 
 		wgpuBufferMapAsync(buffer, WGPUMapMode_Read, 0, bufferSize, mapCallback);
-
-		while (!mapComplete) { wgpuDevicePoll(_device->getDevice(), true, nullptr); }
-
-		if (mapSuccess) {
-			auto mapped = reinterpret_cast<const uint8_t *>(
-					wgpuBufferGetConstMappedRange(buffer, 0, bufferSize));
-
-			// repack tightly (drop row alignment padding)
-			Bytes data;
-			data.resize(size_t(info.extent.width) * blockSize * info.extent.height);
-			for (uint32_t row = 0; row < info.extent.height; ++row) {
-				sprt::memcpy(data.data() + size_t(row) * info.extent.width * blockSize,
-						mapped + row * bytesPerRow, size_t(info.extent.width) * blockSize);
-			}
-
-			wgpuBufferUnmap(buffer);
-
-			cb(info, data);
-		} else {
-			log::source().error("webgpu::Loop", "captureImage: fail to map readback buffer");
-			cb(info, BytesView());
-		}
-
-		wgpuBufferRelease(buffer);
 	}, this, true);
 }
 
