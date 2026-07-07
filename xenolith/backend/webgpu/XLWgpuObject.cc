@@ -319,7 +319,7 @@ bool ImageView::init(Device &dev, const Rc<core::ImageObject> &image,
 	if (info.r != core::ComponentMapping::Identity || info.g != core::ComponentMapping::Identity
 			|| info.b != core::ComponentMapping::Identity
 			|| info.a != core::ComponentMapping::Identity) {
-		if (dev.hasFeature(WGPUFeatureName_TextureComponentSwizzle)) {
+		if (dev.getBackendFeatures().textureComponentSwizzle) {
 			swizzleDesc.swizzle.r = mapSwizzle(info.r);
 			swizzleDesc.swizzle.g = mapSwizzle(info.g);
 			swizzleDesc.swizzle.b = mapSwizzle(info.b);
