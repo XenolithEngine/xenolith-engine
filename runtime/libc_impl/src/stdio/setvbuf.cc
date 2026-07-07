@@ -8,6 +8,9 @@
 
 __SPRT_C_FUNC int setvbuf(FILE *__restrict f, char *__restrict buf, int type,
 		size_t size) __SPRT_NOEXCEPT {
+	if (!f) {
+		return -1;
+	}
 	f->lbf = EOF;
 
 	if (type == _IONBF) {

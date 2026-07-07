@@ -63,6 +63,12 @@ __SPRT_C_FUNC int __SPRT_ID(thrd_create)(__SPRT_ID(thrd_t) *thr, __SPRT_ID(thrd_
 	}, arg, [&](uint8_t *buf, size_t) { new (buf) c11_thrd_storage{func, arg}; });
 
 	if (r != 0) {
+		// Leave a well-defined (null) handle on failure. C11 does not require it,
+		// but callers that unconditionally thrd_join() the array (and platforms
+		// where creation always fails, e.g. wasm with ENOSYS threads) would then
+		// join an uninitialised handle; a null thrd_t makes join return an error
+		// (via __pthread_join's `if (!thread) return ESRCH`) instead of trapping.
+		*thr = nullptr;
 		return (r == EAGAIN) ? __SPRT_THRD_NOMEM : __SPRT_THRD_ERROR;
 	}
 	*thr = reinterpret_cast<__SPRT_ID(thrd_t)>(t);

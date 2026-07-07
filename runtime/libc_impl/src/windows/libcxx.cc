@@ -449,7 +449,10 @@ __SPRT_C_FUNC PVOID __RTDynamicCast(PVOID inptr, LONG VfDelta, PVOID SrcType, PV
 			+ getPointerToMemberOffset(info.object, targetClassDescriptor->where));
 }
 
-namespace sprt {
+// type_info now lives in namespace std (sprt <typeinfo> defines it there and
+// re-exports it into sprt via a using-declaration), so its out-of-line members
+// are defined in namespace std here.
+namespace std {
 
 int type_info::__compare(const type_info &__rhs) const noexcept {
 	return strcmp(__data.__decorated_name, __rhs.__data.__decorated_name);
@@ -467,9 +470,11 @@ size_t type_info::hash_code() const noexcept {
 	return sprt::hash<void>()((const char *)__data.__decorated_name);
 }
 
-} // namespace sprt
+} // namespace std
 
-namespace abi {
+// The Itanium vendor namespace (sprt <typeinfo> declares __cxa_demangle here and
+// aliases `abi` to it); define the entry point in the same namespace.
+namespace __cxxabiv1 {
 
 /*
 	We do not implement Microsoft's standard automatic demangling of class names;
@@ -481,4 +486,4 @@ extern "C" char *__cxa_demangle(const char *mangled_name, char *output_buffer,
 	return llvm::microsoftDemangle(mangled_name, length, status, llvm::MSDF_None);
 }
 
-} // namespace abi
+} // namespace __cxxabiv1

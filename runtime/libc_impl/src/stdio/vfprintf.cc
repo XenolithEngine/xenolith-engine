@@ -953,6 +953,9 @@ static int __vfprintf_l(FILE *__restrict f, const char *__restrict fmt, va_list 
 
 __SPRT_C_FUNC int vfprintf(FILE *__restrict f, const char *__restrict fmt,
 		va_list ap) __SPRT_NOEXCEPT {
+	if (!f) {
+		return -1; // defensive: printing to a null stream reports the error
+	}
 	return __vfprintf_l(f, fmt, ap, sprt::__get_effective_numeric_fmt());
 }
 

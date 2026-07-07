@@ -12,6 +12,9 @@ static int locking_putc(int c, FILE *f) {
 }
 
 static inline int do_putc(int c, FILE *f) {
+	if (!f) {
+		return EOF; // defensive: writing to a null stream reports the error, not a crash
+	}
 	if (f->__lock_pid < 0 || f->__lock_pid == __sprt_gettid()) {
 		return __putc_unlocked(c, f);
 	}

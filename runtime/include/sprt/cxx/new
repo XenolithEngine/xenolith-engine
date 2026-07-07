@@ -26,6 +26,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/cxx/detail/ctypes.h>
 #include <sprt/cxx/__utility/common.h>
+#include <sprt/cxx/exception> // std::exception base for bad_alloc
 
 namespace sprt {
 
@@ -151,6 +152,29 @@ struct destroying_delete_t {
 };
 
 inline constexpr destroying_delete_t destroying_delete{};
+
+// Allocation-failure exceptions. libc++abi implements their out-of-line bodies
+// (stdlib_new_delete.cpp / stdlib_exception.cpp) and throws them from the global
+// operator new; std::exception comes from <sprt/cxx/exception>.
+class SPRT_API bad_alloc : public exception {
+public:
+	bad_alloc() noexcept;
+	bad_alloc(const bad_alloc &) noexcept = default;
+	bad_alloc &operator=(const bad_alloc &) noexcept = default;
+	~bad_alloc() noexcept override;
+	const char *what() const noexcept override;
+};
+
+class SPRT_API bad_array_new_length : public bad_alloc {
+public:
+	bad_array_new_length() noexcept;
+	~bad_array_new_length() noexcept override;
+	const char *what() const noexcept override;
+};
+
+using new_handler = void (*)();
+new_handler set_new_handler(new_handler) noexcept;
+new_handler get_new_handler() noexcept;
 
 // support for a constexpr construct_at
 template <typename _Tp, typename... _Args,

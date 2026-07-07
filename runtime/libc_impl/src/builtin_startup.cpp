@@ -65,4 +65,8 @@ THE SOFTWARE.
 #include "windows/memory.cc"
 #include "windows/except.cc"
 #include "windows/specific.cc"
+#elif SPRT_WASM
+#include "wasm/startup.cc"
+#include "wasm/terminate.cc"
+#include "wasm/except.cc"
 #endif

@@ -83,4 +83,23 @@ MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += $(MODULE_RUNTIME_LIBC_WRAPPER_PRIV
 MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CXXFLAGS += $(MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_COMMON_FLAGS)
 endif # ($(TARGET_SYSTEM),Windows)
 
+
+ifeq ($(TARGET_SYSTEM),WASM)
+# Freestanding wasm libc, like Windows: -ffreestanding makes __STDC_HOSTED__ == 0
+# so the wrapper C units include the runtime's own public libc headers (found in
+# include_libc) instead of a host <complex.h>/<stdio.h>/... There is no target
+# sysroot to add — the runtime provides the whole libc surface.
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_COMMON_FLAGS := \
+	-ffreestanding \
+	-fbuiltin \
+	-funwind-tables \
+	-fasynchronous-unwind-tables
+
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_INCLUDES += \
+	$(RUNTIME_MODULE_DIR)/include_libc
+
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CFLAGS += $(MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_COMMON_FLAGS)
+MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_CXXFLAGS += $(MODULE_RUNTIME_LIBC_WRAPPER_PRIVATE_COMMON_FLAGS)
+endif # ($(TARGET_SYSTEM),WASM)
+
 $(call define_module, runtime_libc_wrapper, MODULE_RUNTIME_LIBC_WRAPPER)

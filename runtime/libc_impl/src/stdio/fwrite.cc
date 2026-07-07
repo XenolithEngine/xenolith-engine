@@ -32,6 +32,9 @@ size_t __fwritex(const unsigned char *__restrict s, size_t l, FILE *__restrict f
 
 __SPRT_C_FUNC size_t fwrite(const void *__restrict src, size_t size, size_t nmemb,
 		FILE *__restrict f) __SPRT_NOEXCEPT {
+	if (!f) {
+		return 0; // defensive: a null stream writes nothing (also makes fputs return EOF)
+	}
 	size_t k, l = size * nmemb;
 	if (!size) {
 		nmemb = 0;

@@ -89,6 +89,9 @@ bool is_debugger_present() noexcept {
 	return (info.kp_proc.p_flag & P_TRACED) != 0;
 #elif SPRT_WINDOWS
 	return IsDebuggerPresent();
+#elif SPRT_WASM
+	// No debugger-detection facility in a wasm sandbox.
+	return false;
 #else
 #error "Not implemented
 #endif
