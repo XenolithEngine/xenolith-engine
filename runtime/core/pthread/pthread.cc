@@ -25,7 +25,9 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_time.h>
 #include <sprt/c/__sprt_sched.h>
 
-#ifndef SPRT_WINDOWS
+#if SPRT_WASM
+#include "pthread_native_wasm.cc"
+#elif !defined(SPRT_WINDOWS)
 #include <pthread.h>
 
 #include "pthread_native_pthread.cc"

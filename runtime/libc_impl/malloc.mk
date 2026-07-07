@@ -24,6 +24,27 @@
 
 MODULE_RUNTIME_MALLOC_DEFINED_IN := $(TOOLKIT_MODULE_PATH)
 MODULE_RUNTIME_MALLOC_PRIVATE_STANDALONE := 1
+
+ifeq ($(TARGET_SYSTEM),WASM)
+
+# wasm has no mmap/VirtualAlloc, so mimalloc's OS primitive layer does not apply.
+# Use the runtime's own simple native allocator built directly on memory.grow
+# (libc_impl/wasm_malloc/wasm_malloc.c). It exposes the same public C entry
+# points the mimalloc SCU did.
+MODULE_RUNTIME_MALLOC_SRCS_OBJS := \
+	$(RUNTIME_MODULE_DIR)/libc_impl/wasm_malloc/wasm_malloc.c
+MODULE_RUNTIME_MALLOC_PRIVATE_INCLUDES := \
+	$(RUNTIME_MODULE_DIR)/include \
+	$(RUNTIME_MODULE_DIR)/include_libc
+
+MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS := \
+	$(MODULE_RUNTIME_COMMON_CFLAGS) \
+	-nostdinc \
+	-ffreestanding \
+	-fbuiltin
+
+else # ($(TARGET_SYSTEM),WASM)
+
 MODULE_RUNTIME_MALLOC_SRCS_OBJS := \
 	$(RUNTIME_MODULE_DIR)/libc_impl/mimalloc/mimalloc.scu.c
 MODULE_RUNTIME_MALLOC_PRIVATE_INCLUDES := \
@@ -39,6 +60,8 @@ MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS := \
 	-fbuiltin \
 	 -funwind-tables -fasynchronous-unwind-tables \
 	-DMALLOC_NO_PRIVATE_NAMESPACE
+
+endif # ($(TARGET_SYSTEM),WASM)
 
 MODULE_RUNTIME_MALLOC_PRIVATE_CFLAGS := $(MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS)
 MODULE_RUNTIME_MALLOC_PRIVATE_CXXFLAGS := $(MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS)

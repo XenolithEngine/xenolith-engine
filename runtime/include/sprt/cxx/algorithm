@@ -23,6 +23,7 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_ALGORITHM_
 #define RUNTIME_INCLUDE_SPRT_CXX_ALGORITHM_
 
+#include <sprt/cxx/__algorithm/all_of.h>
 #include <sprt/cxx/__algorithm/copy.h>
 #include <sprt/cxx/__algorithm/find.h>
 #include <sprt/cxx/__algorithm/bounds.h>

@@ -30,6 +30,13 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/context_api.h>
 
+#elif SPRT_WASM
+
+// Freestanding wasm has no system <setjmp.h>/<unwind.h>. A working setjmp/longjmp
+// requires the wasm exception-handling lowering (-fwasm-exceptions), which is a
+// later milestone (wasm-port-draft.adoc §7); the skeleton only needs to compile,
+// so the entry points below are stubs.
+
 #else
 
 #include <stdlib.h>
@@ -39,7 +46,7 @@ THE SOFTWARE.
 
 #endif
 
-#ifndef SPRT_WINDOWS
+#if !defined(SPRT_WINDOWS) && !defined(SPRT_WASM)
 static_assert(sizeof(jmp_buf) == sizeof(__sprt_native_jmp_buf));
 static_assert(sizeof(sigjmp_buf) == sizeof(__sprt_native_sigjmp_buf));
 #endif
@@ -55,11 +62,25 @@ __SPRT_ID(setjmp_fn) get_setjmp_fn();
 __SPRT_ID(sigsetjmp_fn) get_sigsetjmp_fn();
 #endif
 
+#if SPRT_WASM
+// wasm has no stack-switching setjmp/longjmp yet (it needs the -fwasm-exceptions
+// lowering, a later milestone). Per the runtime contract, setjmp is a no-op that
+// returns 0 — the ordinary "first return" — and longjmp traps (below): a jump
+// into an already-dead frame cannot be honoured. These shims give
+// get_*setjmp_fn() a callable no-op to return instead of a null pointer, which
+// the __sprt_setjmp macro would otherwise call and crash on.
+static int __wasm_setjmp_noop(__SPRT_ID(native_jmp_buf)) { return 0; }
+static int __wasm_sigsetjmp_noop(__SPRT_ID(native_sigjmp_buf), int) { return 0; }
+#endif
+
 __SPRT_C_FUNC __SPRT_ID(setjmp_fn) __SPRT_ID(get_setjmp_fn)() {
 #if SPRT_LINUX || SPRT_ANDROID || SPRT_APPLE
 	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(&setjmp);
 #elif SPRT_WINDOWS
 	return get_setjmp_fn();
+#elif SPRT_WASM
+	// No-op setjmp (returns 0); see __wasm_setjmp_noop above.
+	return reinterpret_cast<__SPRT_ID(setjmp_fn)>(&__wasm_setjmp_noop);
 #else
 #error Not implemented
 #endif
@@ -78,6 +99,9 @@ __SPRT_C_FUNC __SPRT_ID(sigsetjmp_fn) __SPRT_ID(get_sigsetjmp_fn)() {
 	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&sigsetjmp);
 #elif SPRT_WINDOWS
 	return get_sigsetjmp_fn();
+#elif SPRT_WASM
+	// No-op sigsetjmp (returns 0); see __wasm_sigsetjmp_noop above.
+	return reinterpret_cast<__SPRT_ID(sigsetjmp_fn)>(&__wasm_sigsetjmp_noop);
 #else
 #error Not implemented
 #endif
@@ -178,6 +202,12 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(longjmp)(__SPRT_ID(jmp_buf) buf, in
 #elif SPRT_WINDOWS
 	// On windows, longjmp is already an SPRT wrapper (see libc_impl/src/windows/except.cc)
 	longjmp((_JUMP_BUFFER *)buf->__native, ret);
+#elif SPRT_WASM
+	// TODO(wasm-eh): unwind via wasm exceptions. Until then a longjmp cannot be
+	// honored; trap rather than silently returning into a dead frame.
+	(void)buf;
+	(void)ret;
+	__builtin_trap();
 #else
 #error Not implemented
 #endif
@@ -224,6 +254,11 @@ __SPRT_C_FUNC __SPRT_NORETURN void __SPRT_ID(siglongjmp)(__SPRT_ID(sigjmp_buf) b
 		__sprt_sigprocmask(__SPRT_SIG_SETMASK, &restoreMask, nullptr);
 	}
 	longjmp((_JUMP_BUFFER *)buf->__native, ret);
+#elif SPRT_WASM
+	// TODO(wasm-eh): see __sprt_longjmp above.
+	(void)buf;
+	(void)ret;
+	__builtin_trap();
 #else
 #error Not implemented
 #endif

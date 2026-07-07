@@ -40,10 +40,7 @@ LOCAL_MODULES_PATHS =
 
 LOCAL_MODULES ?= \
 	runtime_libc_wrapper \
-	runtime \
-	runtime_window
-	# ^ runtime_window: TEMPORARY — added to compile-test the +open macOS window
-	#   backend (Phase 2 closed-framework ObjC headers). Remove after bring-up.
+	runtime
 
 LOCAL_ROOT = $(abspath $(dir $(LOCAL_MAKEFILE)))
 

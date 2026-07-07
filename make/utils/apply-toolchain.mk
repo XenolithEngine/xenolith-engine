@@ -38,6 +38,8 @@ else ifeq ($(TARGET_SYSTEM),Android)
 	include $(BUILD_ROOT)/os/linux.mk
 else ifeq ($(TARGET_SYSTEM),Android-NDK)
 	include $(BUILD_ROOT)/os/android-ndk.mk
+else ifeq ($(TARGET_SYSTEM),WASM)
+	include $(BUILD_ROOT)/os/wasm.mk
 else
 $(error Unknown TARGET_SYSTEM: $(TARGET_SYSTEM))
 endif

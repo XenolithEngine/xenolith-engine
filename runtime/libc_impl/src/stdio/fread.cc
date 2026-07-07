@@ -5,6 +5,9 @@
 
 __SPRT_C_FUNC size_t fread(void *__restrict destv, size_t size, size_t nmemb,
 		FILE *__restrict f) __SPRT_NOEXCEPT {
+	if (!f) {
+		return 0; // defensive: a null stream reads nothing
+	}
 	unsigned char *dest = (unsigned char *)destv;
 	size_t len = size * nmemb, l = len, k;
 	if (!size) {

@@ -183,6 +183,29 @@ MODULE_RUNTIME_GENERAL_CXXFLAGS +=
 MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
 endif
 
+
+ifeq ($(TARGET_SYSTEM),WASM)
+MODULE_RUNTIME_DEPENDS_ON += runtime_libc_impl
+# The sysroot's usr/include carries simde (SIMD-everywhere), needed by the geom
+# SIMD headers; expose it to the module sources (-nostdinc drops default paths).
+MODULE_RUNTIME_PRIVATE_INCLUDES += $(TARGET_SYSROOT)/usr/include
+# Export the sprt libc + STL headers to consumers (freestanding -nostdinc means
+# <stdio.h>/<optional>/... must resolve here, exactly like the Windows path).
+MODULE_RUNTIME_INCLUDES_OBJS += \
+	$(RUNTIME_MODULE_DIR)/include_libc \
+	$(RUNTIME_MODULE_DIR)/include_libc/stl
+MODULE_RUNTIME_GENERAL_CXXFLAGS += -nostdinc++
+
+# Freestanding link (-nostdlib): pull the toolchain static runtimes explicitly —
+# compiler-rt builtins (out-of-line 128-bit soft-float / int helpers), plus
+# libc++abi + libunwind for the C++ ABI (guards, RTTI, __dynamic_cast, EH). All
+# are static archives, so members are pulled only on demand.
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/lib/clang/lib/wasi/libclang_rt.builtins-$(TARGET_ARCH).a
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libc++abi.a
+MODULE_RUNTIME_LIBS += $(TARGET_SYSROOT)/usr/lib/libunwind.a
+MODULE_RUNTIME_GENERAL_LDFLAGS += -nostdlib
+endif
+
 #spec
 
 MODULE_RUNTIME_SHARED_SPEC_SUMMARY := Xenolith platform-specific runtime

@@ -11,8 +11,12 @@
 #define __GNUC_MINOR__ 17
 #endif
 
+// The <math.h>/<complex.h> constant names (M_PI, M_PI_2, ...) are gated behind
+// feature-test macros in musl's headers; the musl complex/math sources pulled
+// into these adapter SCUs use them directly, so map them onto the always-present
+// SPRT definitions here.
 #ifndef M_E
-/*#define M_E __SPRT_M_E
+#define M_E __SPRT_M_E
 #define M_LOG2E __SPRT_M_LOG2E
 #define M_LOG10E __SPRT_M_LOG10E
 #define M_LN2 __SPRT_M_LN2
@@ -21,10 +25,10 @@
 #define M_PI_2 __SPRT_M_PI_2
 #define M_PI_4 __SPRT_M_PI_4
 #define M_1_PI __SPRT_M_1_PI
-#define M_2_PI__SPRT_M_2_PI
+#define M_2_PI __SPRT_M_2_PI
 #define M_2_SQRTPI __SPRT_M_2_SQRTPI
 #define M_SQRT2 __SPRT_M_SQRT2
-#define M_SQRT1_2 __SPRT_M_SQRT1_2*/
+#define M_SQRT1_2 __SPRT_M_SQRT1_2
 #endif
 
 #ifndef __LONG_MAX
