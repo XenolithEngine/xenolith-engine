@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Xenolith · tests/libc</title>
+<style>:root{color-scheme:dark}body{margin:0;background:#0b0e14;color:#c8d3f5;font:13px/1.55 ui-monospace,Menlo,monospace}
+header{padding:16px 20px;border-bottom:1px solid #1c2333;position:sticky;top:0;background:#0b0e14}
+h1{margin:0;font-size:14px;color:#7aa2f7}header p{margin:4px 0 0;color:#5a668a;font-size:12px}
+#sum{margin:6px 0 0;color:#9ece6a}#sum .bad{color:#f7768e}
+#term{padding:14px 20px;white-space:pre-wrap;font-size:12px}.sec{color:#7aa2f7;font-weight:600}.fail{color:#f7768e}</style></head><body>
+<header><h1>Xenolith Runtime → WebAssembly · tests/libc suite</h1>
+<p>the engine runs in a dedicated Web Worker; the main thread only relays console output</p>
+<div id="sum">running in worker…</div></header>
+<pre id="term"></pre>
+<script type="module">
+import { run } from "./loader.mjs";
+const term = document.getElementById("term"), sum = document.getElementById("sum");
+let buf = "";
+const render = () => {
+	term.innerHTML = buf.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+		.replace(/^(==== .* ====)$/gm, '<span class="sec">$1</span>')
+		.replace(/(FAIL\([^)]*\)|=fail)/g, '<span class="fail">$1</span>');
+};
+try {
+const code = await run("./libctest.wasm", {
+	onStdout: (s) => { buf += s; render(); },
+	onStderr: (s) => { buf += s; render(); },
+	onExit: (c) => { buf += `\n[proc_exit ${c}]\n`; },
+});
+render();
+const secs = (buf.match(/^==== /gm) || []).length, fails = (buf.match(/FAIL\(|=fail/g) || []).length;
+sum.innerHTML = `✓ ${secs} test sections, exit ${code} · <span class="${fails ? "bad" : ""}">${fails} failures</span> — all in a Web Worker`;
+document.title = `libc: ${secs} sections, ${fails} fails`;
+} catch (e) { sum.innerHTML = "ERROR: " + (e && e.message || e); term.textContent = String(e && e.stack || e); }
+</script></body></html>

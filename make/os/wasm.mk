@@ -52,6 +52,11 @@ OSTYPE_EXEC_CFLAGS :=
 # the geom SIMD headers instead of its default native-type detection.
 OSTYPE_GENERAL_CXXFLAGS := $(OSTYPE_CFLAGS) -Wno-vla-cxx-extension -Wno-overloaded-virtual \
 	-frtti -fno-exceptions -DSIMDE_FLOAT16_API=1
+# simde (SIMD-everywhere) headers live in the sysroot usr/include; the geom SIMD headers
+# pull <simde/x86/*.h>. -idirafter keeps this at lowest priority so it only resolves
+# includes not already satisfied by the freestanding libc/STL trees.
+OSTYPE_GENERAL_CFLAGS += -idirafter $(TARGET_SYSROOT)/usr/include
+OSTYPE_GENERAL_CXXFLAGS += -idirafter $(TARGET_SYSROOT)/usr/include
 OSTYPE_LIB_CXXFLAGS :=
 OSTYPE_EXEC_CXXFLAGS :=
 
@@ -59,7 +64,17 @@ OSTYPE_GENERAL_LDFLAGS := $(OSTYPE_LDFLAGS) -fuse-ld=lld
 # The host (JS glue) owns linear memory and shares it with the module: the runtime
 # startup imports env.memory and the T1 host functions read/write through it. Link
 # executables to import (not export/own) memory so host and module see one buffer.
-OSTYPE_EXEC_LDFLAGS := -Wl,--import-memory
+#
+# Threads: --shared-memory makes the imported memory a SharedArrayBuffer and switches
+# thread-local storage to the per-thread model, emitting __wasm_init_tls / __tls_size.
+# Each thread runs in its own Worker with its own module instance over the one shared
+# memory; the broker sets that instance's __stack_pointer to a freshly malloc'd stack and
+# calls __wasm_init_tls before the thread entry (__xl_thread_entry). The exports below are
+# the surface the JS thread broker needs.
+OSTYPE_WASM_MAX_MEMORY := 1073741824 # 1 GiB (16384 pages)
+OSTYPE_EXEC_LDFLAGS := -Wl,--import-memory,--shared-memory,--max-memory=$(OSTYPE_WASM_MAX_MEMORY) \
+	-Wl,--export=__wasm_init_tls,--export=__tls_size,--export=__tls_align,--export=__tls_base \
+	-Wl,--export=__stack_pointer,--export=malloc,--export=free,--export=__xl_thread_entry
 OSTYPE_LIB_LDFLAGS :=
 
 WASM := 1

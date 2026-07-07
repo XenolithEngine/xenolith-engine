@@ -1,0 +1,11 @@
+<!doctype html><html><head><meta charset="utf-8"><title>wthread</title>
+<style>body{background:#0b0e14;color:#c8d3f5;font:13px ui-monospace,monospace;padding:20px;white-space:pre-wrap}</style></head><body>
+<div id="t">running…</div>
+<script type="module">
+import { run } from "./loader.mjs";
+const t=document.getElementById("t"); let buf="";
+try{
+const code=await run("./wthreadtest.wasm",{onStdout:s=>{buf+=s;t.textContent=buf},onStderr:s=>{buf+=s;t.textContent=buf},onExit:c=>{buf+=`[exit ${c}]\n`}});
+buf+=`\n== DONE exit ${code} ==`; t.textContent=buf; document.title="done "+code;
+}catch(e){t.textContent=buf+"\nERROR: "+(e.message||e); document.title="err";}
+</script></body></html>
