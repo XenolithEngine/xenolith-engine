@@ -47,6 +47,11 @@ public:
 	WGPUBindGroupLayout getLayout() const { return _layout; }
 	Device *getDevice() const { return _device; }
 
+	// bindless: sampler/texture binding arrays (wgpu-native extension);
+	// fallback (standard WebGPU / browser): one sampler + one texture binding,
+	// bind group created per material via TextureSet::acquireBindGroup
+	bool isBindless() const { return _bindless; }
+
 	SpanView<Rc<core::Sampler>> getCompiledSamplers() const { return _compiledSamplers; }
 
 protected:
@@ -54,6 +59,7 @@ protected:
 
 	Device *_device = nullptr;
 	WGPUBindGroupLayout _layout = nullptr;
+	bool _bindless = false;
 	Vector<Rc<core::Sampler>> _compiledSamplers;
 };
 
@@ -63,17 +69,32 @@ public:
 
 	bool init(Device &, const TextureSetLayout &);
 
-	// rebuilds the bind group (bind groups are immutable in WebGPU)
+	// rebuilds bind state (bind groups are immutable in WebGPU): bindless -
+	// one bind group with all views; fallback - stores slot views and drops
+	// the per-material bind group cache
 	virtual void write(const core::MaterialLayout &) override;
 
+	bool isBindless() const { return _setLayout->isBindless(); }
+
+	// bindless bind group (whole set)
 	WGPUBindGroup getBindGroup() const { return _bindGroup; }
 
+	// fallback path: bind group for a single material's (sampler, image slot)
+	// pair, created lazily and cached until the next write(); loop thread only
+	WGPUBindGroup acquireBindGroup(uint32_t samplerImageIdx);
+
 protected:
+	void clearMaterialGroups();
+
 	using core::Object::init;
 
 	Device *_device = nullptr;
 	const TextureSetLayout *_setLayout = nullptr;
 	WGPUBindGroup _bindGroup = nullptr;
+
+	// fallback state
+	Vector<Rc<core::ImageView>> _slotViews; // by image slot, may hold nulls
+	Map<uint32_t, WGPUBindGroup> _materialGroups;
 };
 
 } // namespace stappler::xenolith::webgpu

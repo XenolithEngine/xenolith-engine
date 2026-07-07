@@ -93,6 +93,47 @@ protected:
 	uint32_t _nextIndex = 0;
 };
 
+/* Browser-model swapchain: a single current texture per frame, acquired
+ * right before rendering; its default view is created immediately at
+ * acquisition. Present is a native-API seam: wgpu-native requires an explicit
+ * wgpuSurfacePresent, in a browser presentation is implicit at the end of the
+ * rAF task. No slot ring, no deferred texture bookkeeping - the layer follows
+ * the standard WebGPU surface contract and is the browser-mode default
+ * (selected when BackendFeatures::syncPolling is false, or forced with
+ * XL_WGPU_SIMPLE_PRESENT for local verification) */
+class SP_PUBLIC SimpleSwapchain final : public core::Swapchain {
+public:
+	virtual ~SimpleSwapchain();
+
+	bool init(Device &, NotNull<core::Loop>, const core::SurfaceInfo &,
+			const core::SwapchainConfig &, core::ImageInfo &&, core::PresentMode, Surface *);
+
+	virtual Rc<SwapchainAcquiredImage> acquire(bool lockfree, const Rc<core::Fence> &fence,
+			Status &) override;
+
+	virtual Status present(core::DeviceQueue &queue, core::ImageStorage *,
+			uint64_t presentWindow) override;
+	virtual void invalidateImage(const core::ImageStorage *, bool release) override;
+	virtual void invalidateImage(uint32_t, bool release) override;
+
+	virtual Rc<core::ImageView> makeView(const Rc<core::ImageObject> &,
+			const core::ImageViewInfo &) override;
+
+	virtual Rc<core::Semaphore> acquireSemaphore() override;
+	virtual bool releaseSemaphore(Rc<core::Semaphore> &&) override;
+
+protected:
+	using core::Object::init;
+
+	void releaseCurrent();
+
+	Device *_device = nullptr;
+	core::Loop *_loop = nullptr;
+	core::ImageInfo _swapchainImageInfo;
+	SwapchainImageData _current;
+	Vector<Rc<core::ImageView>> _currentViews;
+};
+
 class SP_PUBLIC PresentationEngine final : public core::PresentationEngine {
 public:
 	virtual ~PresentationEngine() = default;

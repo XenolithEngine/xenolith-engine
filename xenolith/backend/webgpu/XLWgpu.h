@@ -26,13 +26,46 @@
 #include "XLCommon.h" // IWYU pragma: keep
 #include "XLCoreInstance.h"
 
+// Native (wgpu-native) API extensions are unavailable in a browser build:
+// no <webgpu/wgpu.h>, no WGPUNativeFeature_*, no binding arrays, no SPIR-V
+// passthrough, no wgpuDevicePoll / wgpuInstanceEnumerateAdapters. Code that
+// depends on them must be gated by XL_WGPU_NATIVE_API and have a fallback
+// driven by Device::getBackendFeatures().
+#if __EMSCRIPTEN__
+#define XL_WGPU_NATIVE_API 0
+#else
+#define XL_WGPU_NATIVE_API 1
+#endif
+
 #include <webgpu/webgpu.h>
+
+#if XL_WGPU_NATIVE_API
 #include <webgpu/wgpu.h>
+#endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::webgpu {
 
 using core::InstanceApi;
 using core::InstanceFlags;
+
+// capability snapshot for feature-dependent paths; a browser device reports
+// all native extensions as unavailable and the standard fallbacks engage
+struct BackendFeatures {
+	// bindless material texture sets (binding_array in WGSL) - wgpu-native
+	// TextureBindingArray; browser fallback: bind group per material
+	bool textureBindingArrays = false;
+	// partially bound binding arrays (array sized by used slots)
+	bool partiallyBoundArrays = false;
+	// SPIR-V shader modules (wgpuDeviceCreateShaderModuleSpirV); browser
+	// accepts WGSL only
+	bool spirvShaders = false;
+	// synchronous device polling (wgpuDevicePoll with wait) - used by
+	// waitIdle and sync readback; browser is callback-only
+	bool syncPolling = false;
+	// component swizzle in texture views (standard optional feature);
+	// fallback: ColorMode swizzle in the fragment shader (SpanData.colorMode)
+	bool textureComponentSwizzle = false;
+};
 
 inline StringView toStringView(const WGPUStringView &str) {
 	if (!str.data) {

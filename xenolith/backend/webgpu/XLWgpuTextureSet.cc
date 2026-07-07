@@ -28,8 +28,14 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::webgpu {
 uint32_t TextureSetLayout::getLayoutImageCount(Device &dev,
 		const core::TextureSetLayoutData &data) {
 	uint32_t maxImageCount = data.imageCount;
-	if (dev.hasFeature(WGPUFeatureName(WGPUNativeFeature_PartiallyBoundBindingArray))) {
+	if (dev.getBackendFeatures().partiallyBoundArrays) {
 		maxImageCount = data.imageCountIndexed;
+	}
+
+	if (!dev.getBackendFeatures().textureBindingArrays) {
+		// fallback: slots are a CPU-side table only (one texture is bound per
+		// draw), no GPU array limits apply
+		return data.imageCountIndexed;
 	}
 
 	auto &limits = dev.getLimits();
@@ -38,30 +44,41 @@ uint32_t TextureSetLayout::getLayoutImageCount(Device &dev,
 		imageLimit -= 2;
 	}
 
+#if XL_WGPU_NATIVE_API
 	// binding array elements are limited separately (wgpu native limit)
 	auto &nativeLimits = dev.getNativeLimits();
 	if (nativeLimits.maxBindingArrayElementsPerShaderStage > 0) {
 		imageLimit = sprt::min(imageLimit, nativeLimits.maxBindingArrayElementsPerShaderStage);
 	}
+#endif
 
 	return sprt::min(maxImageCount, imageLimit);
 }
 
 bool TextureSetLayout::init(Device &dev, const core::TextureSetLayoutData &data) {
-	if (!dev.hasFeature(WGPUFeatureName(WGPUNativeFeature_TextureBindingArray))) {
-		log::source().error("webgpu::TextureSetLayout",
-				"TextureBindingArray feature is not supported by device");
-		return false;
-	}
-
 	_device = &dev;
 	_imageCount = getLayoutImageCount(dev, data);
 	_samplersCount = uint32_t(data.compiledSamplers.size());
-	_partiallyBound =
-			dev.hasFeature(WGPUFeatureName(WGPUNativeFeature_PartiallyBoundBindingArray));
+	_partiallyBound = dev.getBackendFeatures().partiallyBoundArrays;
 
 	for (auto &it : data.compiledSamplers) { _compiledSamplers.emplace_back(it); }
 
+	_bindless = dev.getBackendFeatures().textureBindingArrays;
+
+	WGPUBindGroupLayoutEntry entries[2];
+
+	entries[0] = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
+	entries[0].binding = 0;
+	entries[0].visibility = WGPUShaderStage_Fragment | WGPUShaderStage_Compute;
+	entries[0].sampler.type = WGPUSamplerBindingType_Filtering;
+
+	entries[1] = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
+	entries[1].binding = 1;
+	entries[1].visibility = WGPUShaderStage_Fragment | WGPUShaderStage_Compute;
+	entries[1].texture.sampleType = WGPUTextureSampleType_Float;
+	entries[1].texture.viewDimension = WGPUTextureViewDimension_2D;
+
+#if XL_WGPU_NATIVE_API
 	// wgpu-native still consumes array sizes via the legacy chained struct,
 	// the standard bindingArraySize field is not honored yet
 	WGPUBindGroupLayoutEntryExtras samplersCountExtra{};
@@ -72,22 +89,13 @@ bool TextureSetLayout::init(Device &dev, const core::TextureSetLayoutData &data)
 	imagesCountExtra.chain.sType = (WGPUSType)WGPUSType_BindGroupLayoutEntryExtras;
 	imagesCountExtra.count = _imageCount;
 
-	WGPUBindGroupLayoutEntry entries[2];
-
-	entries[0] = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
-	entries[0].binding = 0;
-	entries[0].visibility = WGPUShaderStage_Fragment | WGPUShaderStage_Compute;
-	entries[0].bindingArraySize = _samplersCount;
-	entries[0].nextInChain = &samplersCountExtra.chain;
-	entries[0].sampler.type = WGPUSamplerBindingType_Filtering;
-
-	entries[1] = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
-	entries[1].binding = 1;
-	entries[1].visibility = WGPUShaderStage_Fragment | WGPUShaderStage_Compute;
-	entries[1].bindingArraySize = _imageCount;
-	entries[1].nextInChain = &imagesCountExtra.chain;
-	entries[1].texture.sampleType = WGPUTextureSampleType_Float;
-	entries[1].texture.viewDimension = WGPUTextureViewDimension_2D;
+	if (_bindless) {
+		entries[0].bindingArraySize = _samplersCount;
+		entries[0].nextInChain = &samplersCountExtra.chain;
+		entries[1].bindingArraySize = _imageCount;
+		entries[1].nextInChain = &imagesCountExtra.chain;
+	}
+#endif
 
 	WGPUBindGroupLayoutDescriptor layoutDesc = WGPU_BIND_GROUP_LAYOUT_DESCRIPTOR_INIT;
 	layoutDesc.label = WGPUStringView{data.key.data(), data.key.size()};
@@ -115,6 +123,12 @@ TextureSet::~TextureSet() {
 		wgpuBindGroupRelease(_bindGroup);
 		_bindGroup = nullptr;
 	}
+	clearMaterialGroups();
+}
+
+void TextureSet::clearMaterialGroups() {
+	for (auto &it : _materialGroups) { wgpuBindGroupRelease(it.second); }
+	_materialGroups.clear();
 }
 
 bool TextureSet::init(Device &dev, const TextureSetLayout &layout) {
@@ -128,6 +142,26 @@ bool TextureSet::init(Device &dev, const TextureSetLayout &layout) {
 }
 
 void TextureSet::write(const core::MaterialLayout &set) {
+	if (!_setLayout->isBindless()) {
+		// fallback: retain the slot views, materials get their bind groups
+		// lazily via acquireBindGroup
+		_slotViews.clear();
+		_slotViews.resize(set.usedImageSlots);
+		_layoutIndexes.clear();
+		_layoutIndexes.resize(set.usedImageSlots, 0);
+		for (uint32_t i = 0; i < set.usedImageSlots; ++i) {
+			if (set.imageSlots[i].image) {
+				_slotViews[i] = set.imageSlots[i].image;
+				_layoutIndexes[i] = set.imageSlots[i].image->getIndex();
+			}
+		}
+		clearMaterialGroups();
+		return;
+	}
+
+#if !XL_WGPU_NATIVE_API
+	log::source().error("webgpu::TextureSet", "bindless write without native API");
+#else
 	Vector<WGPUSampler> samplers;
 	samplers.reserve(_setLayout->getSamplersCount());
 	for (auto &it : _setLayout->getCompiledSamplers()) {
@@ -198,6 +232,62 @@ void TextureSet::write(const core::MaterialLayout &set) {
 		wgpuBindGroupRelease(_bindGroup);
 	}
 	_bindGroup = group;
+#endif // XL_WGPU_NATIVE_API
+}
+
+WGPUBindGroup TextureSet::acquireBindGroup(uint32_t samplerImageIdx) {
+	auto it = _materialGroups.find(samplerImageIdx);
+	if (it != _materialGroups.end()) {
+		return it->second;
+	}
+
+	const uint32_t imageIdx = samplerImageIdx & 0xFFFF;
+	const uint32_t samplerIdx = (samplerImageIdx >> 16) & 0xFFFF;
+
+	auto compiledSamplers = _setLayout->getCompiledSamplers();
+	if (samplerIdx >= compiledSamplers.size()) {
+		log::source().error("webgpu::TextureSet", "Invalid sampler index: ", samplerIdx);
+		return nullptr;
+	}
+
+	WGPUTextureView view = nullptr;
+	if (imageIdx < _slotViews.size() && _slotViews[imageIdx]) {
+		view = _slotViews[imageIdx].get_cast<ImageView>()->getTextureView();
+	} else {
+		auto emptyImage = _setLayout->getEmptyImage();
+		if (emptyImage && !emptyImage->views.empty() && emptyImage->views.front()->view) {
+			view = emptyImage->views.front()->view.get_cast<ImageView>()->getTextureView();
+		}
+	}
+	if (!view) {
+		log::source().error("webgpu::TextureSet", "No view for image slot: ", imageIdx);
+		return nullptr;
+	}
+
+	WGPUBindGroupEntry entries[2];
+	entries[0] = WGPU_BIND_GROUP_ENTRY_INIT;
+	entries[0].binding = 0;
+	entries[0].sampler = compiledSamplers[samplerIdx].get_cast<Sampler>()->getSampler();
+
+	entries[1] = WGPU_BIND_GROUP_ENTRY_INIT;
+	entries[1].binding = 1;
+	entries[1].textureView = view;
+
+	WGPUBindGroupDescriptor groupDesc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+	groupDesc.label = WGPUStringView{"MaterialTexture", WGPU_STRLEN};
+	groupDesc.layout = _setLayout->getLayout();
+	groupDesc.entryCount = 2;
+	groupDesc.entries = entries;
+
+	auto group = wgpuDeviceCreateBindGroup(_device->getDevice(), &groupDesc);
+	if (!group) {
+		log::source().error("webgpu::TextureSet",
+				"Fail to create material bind group: ", samplerImageIdx);
+		return nullptr;
+	}
+
+	_materialGroups.emplace(samplerImageIdx, group);
+	return group;
 }
 
 } // namespace stappler::xenolith::webgpu
