@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Xenolith · WebGPU in worker</title>
+<style>:root{color-scheme:dark}body{margin:0;background:#0b0e14;color:#c8d3f5;font:13px/1.6 ui-monospace,Menlo,monospace;display:flex;flex-direction:column;align-items:center;gap:14px;padding:24px}
+h1{margin:0;font-size:14px;color:#7aa2f7}p{margin:0;color:#5a668a}#status{color:#9ece6a}#status.bad{color:#f7768e}
+canvas{border:1px solid #1c2333;border-radius:8px;background:#000;max-width:100%}</style></head><body>
+<h1>Xenolith → WebAssembly → WebGPU (rendering in a Web Worker)</h1>
+<p>wasm runs in a dedicated worker and drives navigator.gpu against an OffscreenCanvas</p>
+<canvas width="640" height="480"></canvas>
+<div id="status">requesting GPU…</div>
+<script type="module">
+const canvas = document.querySelector("canvas");
+const status = document.getElementById("status");
+if (!("gpu" in navigator)) {
+	status.textContent = "WebGPU not supported by this browser"; status.className = "bad";
+} else {
+	const off = canvas.transferControlToOffscreen();
+	const worker = new Worker(new URL("./gpu-worker.mjs", import.meta.url), { type: "module" });
+	worker.onmessage = (e) => {
+		const m = e.data;
+		if (m.type === "ready") { status.textContent = "▶ rendering in worker · " + m.info; document.title = "WebGPU: rendering"; }
+		else if (m.type === "log") { console.log("[wasm]", m.text); }
+		else if (m.type === "error") { status.textContent = "ERROR: " + m.message; status.className = "bad"; document.title = "WebGPU: error"; }
+	};
+	worker.postMessage({ canvas: off, wasmUrl: "./wgpu-demo.wasm" }, [off]);
+}
+</script></body></html>

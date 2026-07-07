@@ -48,26 +48,46 @@ __attribute__((import_module("sprt"), import_name("fd_write"))) int __sprt_host_
 		const void *buf, __SPRT_ID(size_t) len, double off);
 __attribute__((import_module("sprt"), import_name("fd_read"))) int __sprt_host_fd_read(int h,
 		void *buf, __SPRT_ID(size_t) len, double off);
+
+// Read-only "Bundled" resources the browser pulls (fetch). bundle_size returns the byte
+// size of `path` (or -1 if absent); bundle_read copies up to `cap` bytes into `buf` and
+// returns the byte count (or -1). The JS side preloads these before _start so both calls
+// are synchronous. This backs LocationCategory::Bundled; tmp/persistent use memfs/OPFS.
+__attribute__((import_module("sprt"), import_name("bundle_size"))) int __sprt_host_bundle_size(
+		const char *path, __SPRT_ID(size_t) pathLen);
+__attribute__((import_module("sprt"), import_name("bundle_read"))) int __sprt_host_bundle_read(
+		const char *path, __SPRT_ID(size_t) pathLen, void *buf, __SPRT_ID(size_t) cap);
 }
 
 namespace sprt {
 
-// An open file / stream description.
+// A persistent memfs file (inode): content survives open/close. Nodes live in a global
+// singly-linked registry keyed by absolute path (see the path family in libc_path.cc).
+struct __memfs_inode {
+	char *path; // absolute, normalized
+	unsigned char *data; // payload (heap)
+	__SPRT_ID(size_t) size; // valid bytes
+	__SPRT_ID(size_t) cap; // allocated capacity
+	__SPRT_ID(mode_t) mode; // permission bits
+	bool isDir;
+	__memfs_inode *next;
+};
+
+// An open file / stream description. For console nodes `ino` is null and I/O routes to
+// the host fd_read/fd_write; for memfs nodes `ino` points at the persistent inode and
+// `pos` is the per-open stream position.
 struct __wasm_fnode {
 	bool isConsole;
 	int consoleFd; // 0/1/2 when isConsole
-	unsigned char *data; // memfs payload (heap), null for console
-	__SPRT_ID(size_t) size; // valid bytes
-	__SPRT_ID(size_t) cap; // allocated capacity
+	__memfs_inode *ino; // memfs inode, null for console
 	__SPRT_ID(off_t) pos; // current stream position
-	__SPRT_ID(mode_t) mode; // file mode bits
 };
 
 // The three console descriptions, wired by __init_default_fds() via the accessor.
 static __wasm_fnode s_console[3] = {
-	{true, 0, nullptr, 0, 0, 0, 0},
-	{true, 1, nullptr, 0, 0, 0, 0},
-	{true, 2, nullptr, 0, 0, 0, 0},
+	{true, 0, nullptr, 0},
+	{true, 1, nullptr, 0},
+	{true, 2, nullptr, 0},
 };
 
 void *__wasm_console_handle(int fd) {
@@ -77,8 +97,8 @@ void *__wasm_console_handle(int fd) {
 	return &s_console[fd];
 }
 
-// Grow a memfs node so it can hold at least `need` bytes.
-static bool __memfs_reserve(__wasm_fnode *n, __SPRT_ID(size_t) need) {
+// Grow a memfs inode so it can hold at least `need` bytes.
+static bool __memfs_reserve(__memfs_inode *n, __SPRT_ID(size_t) need) {
 	if (need <= n->cap) {
 		return true;
 	}
@@ -118,12 +138,12 @@ static ssize_t __file_read(struct __fd_slot *fp, void *buf, size_t nbytes, off64
 	}
 	// memfs
 	__SPRT_ID(off_t) at = offset ? *offset : n->pos;
-	if (at < 0 || (__SPRT_ID(size_t))at >= n->size) {
+	if (at < 0 || (__SPRT_ID(size_t))at >= n->ino->size) {
 		return 0; // at/after EOF
 	}
-	__SPRT_ID(size_t) avail = n->size - (__SPRT_ID(size_t))at;
+	__SPRT_ID(size_t) avail = n->ino->size - (__SPRT_ID(size_t))at;
 	__SPRT_ID(size_t) cnt = nbytes < avail ? nbytes : avail;
-	__builtin_memcpy(buf, n->data + at, cnt);
+	__builtin_memcpy(buf, n->ino->data + at, cnt);
 	if (!offset) {
 		n->pos = at + (__SPRT_ID(off_t))cnt;
 	}
@@ -153,23 +173,23 @@ static ssize_t __file_write(struct __fd_slot *fp, const void *buf, size_t nbytes
 	// memfs
 	__SPRT_ID(off_t) at = offset ? *offset : n->pos;
 	if (fp->flags & __SPRT_O_APPEND) {
-		at = (__SPRT_ID(off_t))n->size;
+		at = (__SPRT_ID(off_t))n->ino->size;
 	}
 	if (at < 0) {
 		__sprt_errno = EINVAL;
 		return -1;
 	}
 	__SPRT_ID(size_t) end = (__SPRT_ID(size_t))at + nbytes;
-	if (!__memfs_reserve(n, end)) {
+	if (!__memfs_reserve(n->ino, end)) {
 		return -1;
 	}
 	// Zero any gap created by a seek past EOF.
-	if ((__SPRT_ID(size_t))at > n->size) {
-		__builtin_memset(n->data + n->size, 0, (__SPRT_ID(size_t))at - n->size);
+	if ((__SPRT_ID(size_t))at > n->ino->size) {
+		__builtin_memset(n->ino->data + n->ino->size, 0, (__SPRT_ID(size_t))at - n->ino->size);
 	}
-	__builtin_memcpy(n->data + at, buf, nbytes);
-	if (end > n->size) {
-		n->size = end;
+	__builtin_memcpy(n->ino->data + at, buf, nbytes);
+	if (end > n->ino->size) {
+		n->ino->size = end;
 	}
 	if (!offset) {
 		n->pos = (__SPRT_ID(off_t))end;
@@ -223,7 +243,7 @@ static off_t __file_seek(__fd_slot *fp, off_t off, int whence) {
 	switch (whence) {
 	case __SPRT_SEEK_SET: base = 0; break;
 	case __SPRT_SEEK_CUR: base = n->pos; break;
-	case __SPRT_SEEK_END: base = (__SPRT_ID(off_t))n->size; break;
+	case __SPRT_SEEK_END: base = (__SPRT_ID(off_t))n->ino->size; break;
 	default: __sprt_errno = EINVAL; return -1;
 	}
 	__SPRT_ID(off_t) np = base + off;
@@ -242,9 +262,7 @@ static int __file_close(__fd_slot *fp) {
 		return -1;
 	}
 	if (!n->isConsole) {
-		if (n->data) {
-			__sprt_free(n->data);
-		}
+		// Free only the open description; the inode (content) persists in the registry.
 		__sprt_free(n);
 	}
 	fp->handle = nullptr;
@@ -276,9 +294,9 @@ static int __file_stat(__fd_slot *fp, struct __SPRT_STAT_NAME *st) {
 		st->st_mode = __SPRT_S_IFCHR | 0620;
 		st->st_size = 0;
 	} else {
-		st->st_mode = __SPRT_S_IFREG | (n->mode ? (n->mode & 0777) : 0644);
-		st->st_size = (__SPRT_ID(off_t))n->size;
-		st->st_blocks = (__SPRT_ID(blkcnt_t))((n->size + 511) / 512);
+		st->st_mode = __SPRT_S_IFREG | (n->ino->mode ? (n->ino->mode & 0777) : 0644);
+		st->st_size = (__SPRT_ID(off_t))n->ino->size;
+		st->st_blocks = (__SPRT_ID(blkcnt_t))((n->ino->size + 511) / 512);
 	}
 	return 0;
 }
@@ -290,7 +308,7 @@ static int __file_chmod(__fd_slot *fp, mode_t mode) {
 		return -1;
 	}
 	if (!n->isConsole) {
-		n->mode = mode;
+		n->ino->mode = mode;
 	}
 	return 0;
 }
@@ -354,6 +372,202 @@ int __file_munmap_anon(void *addr, size_t length) {
 	(void)length;
 	__sprt_free(addr);
 	return 0;
+}
+
+// ============================================================================
+// memfs registry + path helpers (used by the path family in libc_path.cc, same TU)
+// ============================================================================
+
+static __memfs_inode *s_memfs = nullptr; // singly-linked list of files/dirs
+
+// Normalize `path` into an absolute, "/"-rooted form in `out`, collapsing "//", "." and
+// resolving "..". cwd is "/" (see getcwd), so a relative path is rooted at "/".
+static bool __memfs_normpath(const char *path, char *out, __SPRT_ID(size_t) cap) {
+	__SPRT_ID(size_t) len = 0;
+	if (cap < 2) {
+		return false;
+	}
+	out[len++] = '/';
+	const char *p = path;
+	while (*p) {
+		while (*p == '/') {
+			++p;
+		}
+		if (!*p) {
+			break;
+		}
+		const char *start = p;
+		while (*p && *p != '/') {
+			++p;
+		}
+		__SPRT_ID(size_t) clen = (__SPRT_ID(size_t))(p - start);
+		if (clen == 1 && start[0] == '.') {
+			continue;
+		}
+		if (clen == 2 && start[0] == '.' && start[1] == '.') {
+			if (len > 1) {
+				while (len > 1 && out[len - 1] != '/') {
+					--len;
+				}
+				if (len > 1) {
+					--len; // drop the separating '/'
+				}
+			}
+			continue;
+		}
+		if (len > 1) {
+			if (len + 1 >= cap) {
+				return false;
+			}
+			out[len++] = '/';
+		}
+		if (len + clen >= cap) {
+			return false;
+		}
+		__builtin_memcpy(out + len, start, clen);
+		len += clen;
+	}
+	out[len] = '\0';
+	return true;
+}
+
+static __memfs_inode *__memfs_find(const char *abspath) {
+	for (auto n = s_memfs; n; n = n->next) {
+		if (__builtin_strcmp(n->path, abspath) == 0) {
+			return n;
+		}
+	}
+	return nullptr;
+}
+
+static __memfs_inode *__memfs_create(const char *abspath, bool isDir, __SPRT_ID(mode_t) mode) {
+	auto n = (__memfs_inode *)__sprt_malloc(sizeof(__memfs_inode));
+	if (!n) {
+		__sprt_errno = ENOMEM;
+		return nullptr;
+	}
+	__SPRT_ID(size_t) plen = __builtin_strlen(abspath);
+	n->path = (char *)__sprt_malloc(plen + 1);
+	if (!n->path) {
+		__sprt_free(n);
+		__sprt_errno = ENOMEM;
+		return nullptr;
+	}
+	__builtin_memcpy(n->path, abspath, plen + 1);
+	n->data = nullptr;
+	n->size = 0;
+	n->cap = 0;
+	n->mode = mode;
+	n->isDir = isDir;
+	n->next = s_memfs;
+	s_memfs = n;
+	return n;
+}
+
+// Try to satisfy a missing path from the read-only Bundled overlay (browser fetch).
+static __memfs_inode *__memfs_load_bundle(const char *abspath) {
+	__SPRT_ID(size_t) plen = __builtin_strlen(abspath);
+	int sz = __sprt_host_bundle_size(abspath, plen);
+	if (sz < 0) {
+		return nullptr; // not a bundled resource
+	}
+	auto ino = __memfs_create(abspath, false, 0444);
+	if (!ino) {
+		return nullptr;
+	}
+	if (sz > 0) {
+		if (!__memfs_reserve(ino, (__SPRT_ID(size_t))sz)) {
+			return nullptr;
+		}
+		int rd = __sprt_host_bundle_read(abspath, plen, ino->data, (__SPRT_ID(size_t))sz);
+		ino->size = (rd > 0) ? (__SPRT_ID(size_t))rd : 0;
+	}
+	return ino;
+}
+
+// Remove a file (dir=false) or empty directory (dir=true) from the registry.
+static bool __memfs_unlink_node(const char *abspath, bool dir) {
+	__memfs_inode **pp = &s_memfs;
+	for (auto n = s_memfs; n; pp = &n->next, n = n->next) {
+		if (__builtin_strcmp(n->path, abspath) != 0) {
+			continue;
+		}
+		if (n->isDir != dir) {
+			__sprt_errno = dir ? ENOTDIR : EISDIR;
+			return false;
+		}
+		if (dir) {
+			// reject non-empty directory
+			__SPRT_ID(size_t) plen = __builtin_strlen(abspath);
+			for (auto m = s_memfs; m; m = m->next) {
+				if (m != n && __builtin_strncmp(m->path, abspath, plen) == 0
+						&& m->path[plen] == '/') {
+					__sprt_errno = ENOTEMPTY;
+					return false;
+				}
+			}
+		}
+		*pp = n->next;
+		if (n->data) {
+			__sprt_free(n->data);
+		}
+		__sprt_free(n->path);
+		__sprt_free(n);
+		return true;
+	}
+	__sprt_errno = ENOENT;
+	return false;
+}
+
+// open() core: resolve, apply O_CREAT/O_TRUNC/O_EXCL, bind an fd to the inode.
+static int __memfs_openfd(const char *path, int flags, __SPRT_ID(mode_t) mode) {
+	char abs[512];
+	if (!__memfs_normpath(path, abs, sizeof(abs))) {
+		__sprt_errno = ENAMETOOLONG;
+		return -1;
+	}
+	auto ino = __memfs_find(abs);
+	if (!ino) {
+		ino = __memfs_load_bundle(abs); // read-only Bundled (browser fetch)
+	}
+	if (!ino) {
+		if (!(flags & __SPRT_O_CREAT)) {
+			__sprt_errno = ENOENT;
+			return -1;
+		}
+		ino = __memfs_create(abs, false, mode & 0777);
+		if (!ino) {
+			return -1;
+		}
+	} else {
+		if ((flags & __SPRT_O_CREAT) && (flags & __SPRT_O_EXCL)) {
+			__sprt_errno = EEXIST;
+			return -1;
+		}
+		if (ino->isDir && ((flags & __SPRT_O_ACCMODE) != __SPRT_O_RDONLY)) {
+			__sprt_errno = EISDIR;
+			return -1;
+		}
+		if (flags & __SPRT_O_TRUNC) {
+			ino->size = 0;
+		}
+	}
+	auto libc = __libc::get();
+	auto fn = (__wasm_fnode *)__sprt_malloc(sizeof(__wasm_fnode));
+	if (!fn) {
+		__sprt_errno = ENOMEM;
+		return -1;
+	}
+	fn->isConsole = false;
+	fn->consoleFd = -1;
+	fn->ino = ino;
+	fn->pos = (flags & __SPRT_O_APPEND) ? (__SPRT_ID(off_t))ino->size : 0;
+	int fd = libc->create_fd(fn, &libc->fdFileOps, (uint32_t)flags, (uint32_t)mode);
+	if (fd < 0) {
+		__sprt_free(fn);
+		return -1;
+	}
+	return fd;
 }
 
 void __libc::load_file_fd_ops(__fd_ops *ops) {

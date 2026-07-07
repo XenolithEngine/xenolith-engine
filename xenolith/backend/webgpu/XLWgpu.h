@@ -31,7 +31,7 @@
 // passthrough, no wgpuDevicePoll / wgpuInstanceEnumerateAdapters. Code that
 // depends on them must be gated by XL_WGPU_NATIVE_API and have a fallback
 // driven by Device::getBackendFeatures().
-#if __EMSCRIPTEN__
+#if __EMSCRIPTEN__ || SPRT_WASM
 #define XL_WGPU_NATIVE_API 0
 #else
 #define XL_WGPU_NATIVE_API 1
