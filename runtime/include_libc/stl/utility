@@ -30,6 +30,14 @@ THE SOFTWARE.
 // Always pull the full std implementations when used through the STL layer.
 #include <__sprt_stl_config.h>
 
+// A conforming <utility> makes the std:: type traits (std::false_type, ...) visible
+// via its transitive <type_traits>. Pull the STL <type_traits> wrapper (which carries
+// the `namespace std { using namespace sprt::__cxx_type_traits; }` bridge) rather than
+// only the raw <sprt/cxx/type_traits>, so third-party code that includes <utility> and
+// uses std::false_type/std::true_type (e.g. harfbuzz's hb-cplusplus.hh) resolves them
+// without needing to include <type_traits> itself.
+#include <type_traits>
+
 #include <sprt/cxx/utility>
 #include <sprt/cxx/__utility/in_place.h>
 

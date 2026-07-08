@@ -34,6 +34,11 @@ THE SOFTWARE.
 // Always pull the full std implementations when used through the STL layer.
 #include <__sprt_stl_config.h>
 
+// Pull the STL <type_traits> wrapper (with its std:: bridge) so third-party code that
+// includes <functional> and uses std::false_type/std::true_type resolves them, matching
+// a conforming <functional>'s transitive <type_traits>. See stl/utility for details.
+#include <type_traits>
+
 #include <sprt/cxx/functional>
 #include <sprt/cxx/function>
 #include <sprt/cxx/type_traits>

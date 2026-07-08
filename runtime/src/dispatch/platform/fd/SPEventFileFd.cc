@@ -34,12 +34,16 @@ void FileURingHandle::submitChunk(URingData *uring, FileState *state) {
 	auto &op = state->ops.front()->op;
 	uint64_t ud = reinterpret_cast<uintptr_t>(this) | URING_USERDATA_RETAIN_BIT
 			| (_timeline & URING_USERDATA_SERIAL_MASK);
+	// Explicit file offset from the cumulative position: io_uring off=-1 does not
+	// reliably advance the OS file position across async chunks (the read would
+	// re-read the same bytes and never hit EOF). Append mode ignores the offset.
+	uint64_t offset = state->appendMode ? uint64_t(-1) : state->filePos;
 	if (op.kind == FileOp::Read) {
-		uring->pushRead(state->fd, state->chunkBuf, FileChunkSize, ud);
+		uring->pushRead(state->fd, state->chunkBuf, FileChunkSize, ud, offset);
 	} else {
 		size_t rem = op.writeData.size() - op.offset;
 		size_t want = rem < FileChunkSize ? rem : FileChunkSize;
-		uring->pushWrite(state->fd, op.writeData.data() + op.offset, want, ud);
+		uring->pushWrite(state->fd, op.writeData.data() + op.offset, want, ud, offset);
 	}
 }
 

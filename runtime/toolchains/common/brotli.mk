@@ -29,10 +29,18 @@ endif
 
 include ../common/configure.mk
 
+# Freestanding wasm cannot link the `brotli` CLI executable / test harness
+# (-nostdlib, no libc archive at dep-build time), so build the libraries only.
+# Other targets link the tool against their sprt/libc and keep building it.
+BROTLI_CONFIGURE := $(CONFIGURE_CMAKE)
+ifdef WASM
+BROTLI_CONFIGURE += -DBROTLI_BUILD_TOOLS=OFF -DBROTLI_DISABLE_TESTS=ON
+endif
+
 all:
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_mkdir,$(LIBNAME))
-	cd $(LIBNAME); cmake -G "Ninja" $(CONFIGURE_CMAKE) $(LIB_SRC_DIR)/$(LIBNAME)
+	cd $(LIBNAME); cmake -G "Ninja" $(BROTLI_CONFIGURE) $(LIB_SRC_DIR)/$(LIBNAME)
 	cd $(LIBNAME); cmake  --build . --config Release --target install --parallel
 	$(if $(LINUX),sed -i -e 's/ -lbrotlidec/ -lbrotlidec -lbrotlicommon/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libbrotlidec.pc)
 	$(if $(LINUX),sed -i -e 's/ -lbrotlienc/ -lbrotlienc -lbrotlicommon/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libbrotlienc.pc)

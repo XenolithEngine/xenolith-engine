@@ -65,6 +65,10 @@ void performUnistdTest();
 void performPathPosixTest();
 void performPathWindowsTest();
 void performDirentTest();
+void performFsExtraTest();
+
+// stdlib.h (environment)
+void performEnvTest();
 
 // wchar.h / multibyte / uchar.h
 void performWcharStringTest();

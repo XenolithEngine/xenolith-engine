@@ -56,7 +56,8 @@ enum class QueueEngine : uint32_t {
 	IOCP = 1 << 3, // Windows IOCP
 	KQueue = 1 << 4, // BSD/MacOS kqueue
 	RunLoop = 1 << 5, // MacOS CFRunLoop
-	Any = URing | EPoll | ALooper | IOCP | KQueue | RunLoop,
+	Wasm = 1 << 6, // WebAssembly futex/condvar reactor (no fds)
+	Any = URing | EPoll | ALooper | IOCP | KQueue | RunLoop | Wasm,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(QueueEngine)

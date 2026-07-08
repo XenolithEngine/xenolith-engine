@@ -193,9 +193,14 @@ struct SPRT_API alignas(32) URingData : public PlatformQueueData {
 	int submitSqe(unsigned sub, unsigned wait, bool waitAvailable, bool force = false);
 	int submitPending(bool force = false);
 
-	Status pushRead(int fd, uint8_t *buf, size_t bsize, uint64_t userdata);
+	// offset is the file offset; -1 uses (but does not reliably advance) the OS file
+	// position, so callers doing multi-chunk regular-file I/O must pass an explicit
+	// offset. eventfd-style callers keep the -1 default.
+	Status pushRead(int fd, uint8_t *buf, size_t bsize, uint64_t userdata,
+			uint64_t offset = uint64_t(-1));
 
-	Status pushWrite(int fd, const uint8_t *buf, size_t bsize, uint64_t userdata);
+	Status pushWrite(int fd, const uint8_t *buf, size_t bsize, uint64_t userdata,
+			uint64_t offset = uint64_t(-1));
 
 	Status cancelOp(uint64_t userdata, URingCancelFlags = URingCancelFlags::None);
 

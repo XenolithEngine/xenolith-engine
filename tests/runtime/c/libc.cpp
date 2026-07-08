@@ -66,10 +66,10 @@ void performUnistdTest() {
 	printf("getegid: %u\n", getegid());
 	printf("getpid: %u\n", getpid());
 	printf("gettid: %u\n", gettid());
-	printf("sysconf(SC_PAGESIZE): %u\n", sysconf(SC_PAGESIZE));
-	printf("pathconf(PC_NAME_MAX): %u\n", pathconf("/", PC_NAME_MAX));
-	printf("pathconf(PC_PATH_MAX): %u\n", pathconf("/", PC_PATH_MAX));
-	printf("pathconf(PC_LINK_MAX): %u\n", pathconf("/", PC_LINK_MAX));
+	printf("sysconf(SC_PAGESIZE): %u\n", sysconf(_SC_PAGESIZE));
+	printf("pathconf(PC_NAME_MAX): %u\n", pathconf("/", _PC_NAME_MAX));
+	printf("pathconf(PC_PATH_MAX): %u\n", pathconf("/", _PC_PATH_MAX));
+	printf("pathconf(PC_LINK_MAX): %u\n", pathconf("/", _PC_LINK_MAX));
 
 	auto buf = getcwd(nullptr, 0);
 	printf("getcwd: %s\n", buf);
