@@ -125,8 +125,10 @@ struct protoent *getprotobynumber(int) { return (struct protoent *)0; }
 void setprotoent(int) { }
 void endprotoent(void) { }
 
-// --- <poll.h> -------------------------------------------------------------------
+// --- <poll.h> / <sys/select.h> --------------------------------------------------
 
 int poll(struct pollfd *, nfds_t, int) { errno = ENOSYS; return -1; }
+
+int select(int, fd_set *, fd_set *, fd_set *, struct timeval *) { errno = ENOSYS; return -1; }
 
 } // extern "C"

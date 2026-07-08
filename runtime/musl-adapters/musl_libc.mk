@@ -71,11 +71,14 @@ MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_CFLAGS := \
 	-ffreestanding \
 	-fbuiltin \
 	-fexcess-precision=standard \
-	-frounding-math \
 	-fno-strict-aliasing \
 	-fomit-frame-pointer \
 	-funwind-tables \
 	-fasynchronous-unwind-tables
+
+ifeq ($(TARGET_SYSTEM),Windows)
+MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_CFLAGS += -frounding-math
+endif
 
 MODULE_RUNTIME_MUSL_LIBC_PRIVATE_CFLAGS := $(MODULE_RUNTIME_MUSL_LIBC_PRIVATE_COMMON_CFLAGS) \
 	-std=c99 -pipe

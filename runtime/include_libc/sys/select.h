@@ -33,10 +33,29 @@ THE SOFTWARE.
 
 typedef __SPRT_ID(fd_set) fd_set;
 
+#ifndef FD_SETSIZE
+#define FD_SETSIZE __SPRT_FD_SETSIZE
+#endif
+
 #define FD_CLR(fd, set) __SPRT_FD_CLR(fd, set)
 #define FD_SET(fd, set) __SPRT_FD_SET(fd, set)
 #define FD_ZERO(set) __SPRT_FD_ZERO(set)
 #define FD_ISSET(fd, set) __SPRT_FD_ISSET(fd, set)
+
+#if SPRT_WASM
+// Public select(). There are no pollable descriptors in the browser sandbox, so the
+// sprt libc backs it with a no-op stub (returns -1/ENOSYS); the declaration exists so
+// code that mandates select() at compile time (e.g. curl's curlx/wait.c) still builds.
+// Scoped to __SPRT_WASM so the Windows freestanding path keeps winsock's select().
+struct timeval;
+
+__SPRT_BEGIN_DECL
+
+int select(int __nfds, fd_set *__SPRT_RESTRICT __readfds, fd_set *__SPRT_RESTRICT __writefds,
+		fd_set *__SPRT_RESTRICT __exceptfds, struct timeval *__SPRT_RESTRICT __timeout);
+
+__SPRT_END_DECL
+#endif // SPRT_WASM
 
 #endif
 

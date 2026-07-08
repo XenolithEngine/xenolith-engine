@@ -38,6 +38,11 @@ typedef __SPRT_ID(sa_family_t) sa_family_t;
 
 #if SPRT_WASM
 
+// fd_set + FD_*/FD_SETSIZE. POSIX keeps these in <sys/select.h>, but a lot of BSD-
+// derived socket code (e.g. curl's cshutdn.c) uses FD_SET/FD_SETSIZE having included
+// only <sys/socket.h>, mirroring the glibc header layout - so surface them here too.
+#include <sys/select.h>
+
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(ssize_t) ssize_t;
 

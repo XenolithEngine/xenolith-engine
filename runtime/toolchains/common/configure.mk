@@ -201,6 +201,14 @@ ifdef WASM
 CONFIGURE_CMAKE_C_FLAGS_INIT += -nostdinc -ffreestanding $(SP_WASM_FEATURES) $(SP_WASM_C_INCLUDES) $(SP_WASM_RESOURCE_INC) -D__SPRT_WASM
 # C++ hosted (no -ffreestanding) — see the SP_CXXFLAGS note above.
 CONFIGURE_CMAKE_CXX_FLAGS_INIT += -nostdinc -nostdinc++ -std=gnu++2a $(SP_WASM_FEATURES) $(SP_WASM_CXX_INCLUDES) $(SP_WASM_RESOURCE_INC) -D__SPRT_WASM
+# Most deps use CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY (set in toolchain-libs.cmake)
+# so their feature probes never link. curl deliberately forces it back to EXECUTABLE
+# (STATIC_LIBRARY "breaks certain checks"), so its check_symbol_exists/try_compile probes
+# must LINK a wasm module — which otherwise fails looking for crt1.o/-lc. These flags let
+# a trivial `int main(){}` link freestanding: no startup/libc, no _start entry, and any
+# unresolved reference (the probed symbol, builtins) becomes a wasm import instead of a
+# link error. The probes then succeed iff the symbol is DECLARED, which is what we want.
+CONFIGURE_EXE_LINKER_FLAGS_INIT += -nostdlib -Wl,--no-entry -Wl,--allow-undefined
 endif # WASM
 
 ifdef LINUX
