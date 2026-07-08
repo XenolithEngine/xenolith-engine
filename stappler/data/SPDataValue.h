@@ -371,7 +371,7 @@ public:
 	void setBool(bool value) { *this = value; }
 	void setInteger(int32_t value) { *this = value; }
 	void setInteger(int64_t value) { *this = value; }
-	void setInteger(size_t value) { *this = value; }
+	void setInteger(size_t value) { *this = int64_t(value); }
 	void setDouble(float value) { *this = value; }
 	void setDouble(double value) { *this = value; }
 	void setString(const char *value) { *this = value; }

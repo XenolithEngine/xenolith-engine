@@ -299,6 +299,13 @@ void AppThread::performUpdate(bool wakeup) {
 	_clock = sp::platform::clock(ClockType::Monotonic);
 
 	_time.delta = _clock - _lastUpdate;
+	// Clamp the frame delta. When the tab is backgrounded the browser throttles/pauses the
+	// worker clock, so on the next tick `_clock - _lastUpdate` can be many seconds; feeding that
+	// into the action/animation system makes it lurch far past the end of an interval and appear
+	// to freeze. Cap the step so time keeps flowing smoothly after a resume.
+	if (_lastUpdate != 0 && _time.delta > 100'000 /* 100 ms */) {
+		_time.delta = 100'000;
+	}
 	_time.global = _clock;
 	_time.app = _startTime - _clock;
 	_time.dt = float(_time.delta) / 1'000'000;

@@ -216,6 +216,7 @@ enum class SurfaceBackend {
 	GoogleGames,
 	IOS,
 	MacOS,
+	Canvas, // browser <canvas> (WebGPU via navigator.gpu)
 	VI,
 	Metal,
 	QNX,
@@ -263,6 +264,9 @@ struct SPRT_API SurfaceInterfaceInfo {
 		struct {
 			void *layer;
 		} metal;
+		struct {
+			void *handle; // opaque; the JS binding owns the OffscreenCanvas
+		} canvas;
 	};
 };
 

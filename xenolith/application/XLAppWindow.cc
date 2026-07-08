@@ -346,6 +346,9 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 			waylandSrc.surface = ifaceInfo.wayland.surface;
 			desc.nextInChain = &waylandSrc.chain;
 			break;
+		case sprt::window::SurfaceBackend::Canvas:
+			desc.nextInChain = nullptr; // the JS binding returns the OffscreenCanvas surface
+			break;
 		default:
 			log::source().error("AppWindow",
 					"Surface backend is not supported for WebGPU: ", toInt(ifaceInfo.backend));
