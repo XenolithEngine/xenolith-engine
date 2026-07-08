@@ -1,5 +1,5 @@
 /**
-Copyright (c) 2025 Stappler Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,13 +20,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SOCKET_H_
-#define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SOCKET_H_
+// Socket / resolver / poll compile unit. The POSIX socket layer is backed only on
+// the freestanding wasm target (as no-op ENOSYS stubs - see wasm/socket.cc); the
+// hosted and Windows targets get their implementations from the platform libc /
+// winsock, so this unit is empty for them.
 
-#include <sprt/c/cross/__sprt_socket.h>
-#include <sprt/c/cross/__sprt_sysid.h>
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_ssize_t.h>
-#include <sprt/c/cross/__sprt_fdset.h>
+#include <sprt/c/bits/__sprt_def.h>
 
-#endif // CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SOCKET_H_
+#if SPRT_WASM
+#include "wasm/socket.cc"
+#endif
