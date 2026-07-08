@@ -49,9 +49,6 @@ GLOBAL_QUIET_LINK_STATIC = $(call verbose_log,"[Static Link] $$(notdir $$@)")
 GLOBAL_QUIET_GLSLC = $(call verbose_log,"[$(notdir $(GLSLC))] $(notdir $(abspath $(dir $(1))))/$(notdir $(1))")
 GLOBAL_QUIET_WIT = $(call verbose_log,"[wit] $(notdir $@)")
 GLOBAL_QUIET_WIT_BINDGEN = $(call verbose_log,"[$(notdir $(WIT_BINDGEN))]")
-GLOBAL_QUIET_WASM_CC = $(call verbose_log,"[wasm:$(notdir $(WASI_SDK_CC))] $(notdir $@)")
-GLOBAL_QUIET_WASM_CXX = $(call verbose_log,"[wasm:$(notdir $(WASI_SDK_CXX))] $(notdir $@)")
-GLOBAL_QUIET_WASM_LINK = $(call verbose_log,"[wasm:Link] $@")
 
 # Progress counter
 BUILD_CURRENT_COUNTER ?= 1
