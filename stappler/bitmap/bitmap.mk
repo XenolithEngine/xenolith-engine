@@ -46,6 +46,10 @@ ifeq ($(TARGET_SYSTEM),Darwin)
 MODULE_STAPPLER_BITMAP_LIBS += -l:libz.a
 endif
 
+ifeq ($(TARGET_SYSTEM),WASM)
+MODULE_STAPPLER_BITMAP_LIBS += -l:libz.a
+endif
+
 ifdef WIN32
 MODULE_STAPPLER_BITMAP_LIBS += -lz
 endif

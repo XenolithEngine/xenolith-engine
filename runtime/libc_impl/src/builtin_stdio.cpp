@@ -92,6 +92,10 @@ int __wfmodeflags(const wchar_t *mode) {
 #include "windows/popen.cc"
 #endif
 
+#if SPRT_WASM
+#include "wasm/popen.cc"
+#endif
+
 #include "stdio/__overflow.cc"
 #include "stdio/__stdio.cc"
 

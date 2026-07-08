@@ -488,7 +488,8 @@ CharShape FontFaceObject::getChar(char32_t c) const {
 	sprt::shared_lock lock(_charsMutex);
 	auto l = _chars.get(ch);
 	if (l && l->charID == ch) {
-		return CharShape{char32_t(l->charID) | (char32_t(_plane) << 16), l->xAdvance, l->glyphIndex};
+		return CharShape{char32_t(l->charID) | (char32_t(_plane) << 16), l->xAdvance,
+			l->glyphIndex};
 	}
 	return CharShape{0};
 }

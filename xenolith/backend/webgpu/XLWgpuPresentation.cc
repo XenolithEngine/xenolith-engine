@@ -83,8 +83,8 @@ void Surface::invalidate() {
 	}
 }
 
-core::SurfaceInfo Surface::getSurfaceOptions(const core::Device &dev,
-		core::FullScreenExclusiveMode, void *) const {
+core::SurfaceInfo Surface::getSurfaceOptions(const core::Device &dev, core::FullScreenExclusiveMode,
+		void *) const {
 	core::SurfaceInfo ret;
 
 	auto &adapterData = static_cast<const Device &>(dev).getAdapterData();
@@ -206,8 +206,8 @@ auto Swapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Status &sta
 		auto imageInfo = core::ImageInfoData(_swapchainImageInfo);
 
 		auto &slot = _images[index];
-		slot.image = Rc<Image>::create(*_device, surfaceTexture.texture, "SwapchainImage",
-				imageInfo);
+		slot.image =
+				Rc<Image>::create(*_device, surfaceTexture.texture, "SwapchainImage", imageInfo);
 		if (!slot.image) {
 			wgpuTextureRelease(surfaceTexture.texture);
 			status = Status::ErrorCancelled;
@@ -238,8 +238,8 @@ auto Swapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Status &sta
 		break;
 	default:
 		status = Status::ErrorUnknown;
-		log::source().error("webgpu::Swapchain", "Fail to acquire surface texture: ",
-				toInt(surfaceTexture.status));
+		log::source().error("webgpu::Swapchain",
+				"Fail to acquire surface texture: ", toInt(surfaceTexture.status));
 		break;
 	}
 
@@ -394,8 +394,8 @@ auto SimpleSwapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 		releaseCurrent();
 
 		auto imageInfo = core::ImageInfoData(_swapchainImageInfo);
-		_current.image = Rc<Image>::create(*_device, surfaceTexture.texture, "SwapchainImage",
-				imageInfo);
+		_current.image =
+				Rc<Image>::create(*_device, surfaceTexture.texture, "SwapchainImage", imageInfo);
 		if (!_current.image) {
 			wgpuTextureRelease(surfaceTexture.texture);
 			status = Status::ErrorCancelled;
@@ -444,8 +444,8 @@ auto SimpleSwapchain::acquire(bool lockfree, const Rc<core::Fence> &fence, Statu
 		break;
 	default:
 		status = Status::ErrorUnknown;
-		log::source().error("webgpu::SimpleSwapchain", "Fail to acquire surface texture: ",
-				toInt(surfaceTexture.status));
+		log::source().error("webgpu::SimpleSwapchain",
+				"Fail to acquire surface texture: ", toInt(surfaceTexture.status));
 		break;
 	}
 
@@ -553,6 +553,7 @@ bool PresentationEngine::init(NotNull<core::Loop> loop, NotNull<core::Device> de
 	// texture acquisition in WebGPU is synchronous, external fence has no meaning
 	opts.acquireImageWithoutFence = true;
 
+#if SPRT_WASM
 	// Use the present window to pace the frame loop. On a real rotating swapchain a deferred
 	// present would consume the NEXT frame's texture, so it had to run immediately — but the
 	// wasm/JS binding has no rotation (wgpuSurfacePresent is a no-op and getCurrentTexture always
@@ -560,6 +561,9 @@ bool PresentationEngine::init(NotNull<core::Loop> loop, NotNull<core::Device> de
 	// So deferring the present is safe here and is what bounds the frame rate to the target
 	// interval; without it the loop (present -> scheduleNextImage -> present) runs unbounded.
 	opts.usePresentWindow = true;
+#else
+	opts.usePresentWindow = false;
+#endif
 
 	return core::PresentationEngine::init(loop, device, window, opts);
 }
@@ -663,8 +667,8 @@ bool PresentationEngine::recreateSwapchain() {
 	return ret;
 }
 
-bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info,
-		core::SwapchainConfig &&cfg, core::PresentMode presentMode, bool) {
+bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::SwapchainConfig &&cfg,
+		core::PresentMode presentMode, bool) {
 	auto dev = static_cast<Device *>(_device);
 
 	auto swapchainImageInfo = _window->getSwapchainImageInfo(cfg);
@@ -685,8 +689,8 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info,
 		_swapchain = Rc<SimpleSwapchain>::create(*dev, _loop.get(), info, cfg,
 				move(swapchainImageInfo), presentMode, _surface.get_cast<Surface>());
 	} else {
-		_swapchain = Rc<Swapchain>::create(*dev, _loop.get(), info, cfg,
-				move(swapchainImageInfo), presentMode, _surface.get_cast<Surface>());
+		_swapchain = Rc<Swapchain>::create(*dev, _loop.get(), info, cfg, move(swapchainImageInfo),
+				presentMode, _surface.get_cast<Surface>());
 	}
 
 	if (!_swapchain) {
