@@ -18,6 +18,8 @@
 #include "../../musl-libc/src/string/strcmp.c"
 #include "../../musl-libc/src/string/strncmp.c"
 #include "../../musl-libc/src/string/strlen.c"
+#undef ALIGN
+
 // The wcs* collation/compare entry points are owned by the freestanding libc's
 // own builtin_wchar.cpp / builtin_locale.cpp (they route through the locale
 // backend). Windows relies on that; wasm is freestanding the same way, so it
@@ -57,7 +59,11 @@
 #include "../../musl-libc/src/string/bzero.c"
 #include "../../musl-libc/src/string/explicit_bzero.c"
 #include "../../musl-libc/src/string/index.c"
+
+
 #include "../../musl-libc/src/string/memccpy.c"
+#undef ALIGN
+
 #include "../../musl-libc/src/string/memchr.c"
 #include "../../musl-libc/src/string/memmem.c"
 #include "../../musl-libc/src/string/mempcpy.c"

@@ -336,12 +336,16 @@ int pthread_atfork(void (*prepare)(void), void (*parent)(void),
 int pthread_getconcurrency(void) __SPRT_NOEXCEPT { return __sprt_pthread_getconcurrency(); }
 int pthread_setconcurrency(int v) __SPRT_NOEXCEPT { return __sprt_pthread_setconcurrency(v); }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wattribute-warning"
 int pthread_getaffinity_np(pthread_t thread, size_t n, cpu_set_t *set) __SPRT_NOEXCEPT {
 	return __sprt_pthread_getaffinity_np(thread, n, set);
 }
 int pthread_setaffinity_np(pthread_t thread, size_t n, const cpu_set_t *set) __SPRT_NOEXCEPT {
 	return __sprt_pthread_setaffinity_np(thread, n, set);
 }
+#pragma clang diagnostic pop
+
 int pthread_getattr_np(pthread_t thread, pthread_attr_t *attr) __SPRT_NOEXCEPT {
 	return __sprt_pthread_getattr_np(thread, attr);
 }

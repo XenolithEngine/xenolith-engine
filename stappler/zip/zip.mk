@@ -37,16 +37,16 @@ MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:libz.a -l:
 endif
 
 ifdef MACOS
-MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a
+MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:liblzma.a -l:libzstd.a
 MODULE_STAPPLER_ZIP_GENERAL_LDFLAGS += -lz
 endif
 
 ifdef ANDROID
-MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:libz.a
+MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:libz.a -l:liblzma.a -l:libzstd.a
 endif
 
 ifdef WIN32
-MODULE_STAPPLER_ZIP_LIBS += -l:libzip.a -lz -llzma
+MODULE_STAPPLER_ZIP_LIBS += -lzip -lz -llzma -lzstd
 endif
 
 #spec

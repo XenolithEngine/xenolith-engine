@@ -74,11 +74,12 @@ static size_t print(char *buf, size_t bufLen, uintptr_t pc, StringView filename,
 		auto name = filepath_lastComponent(filename);
 		if (lineno >= 0) {
 			w = clampWritten(__sprt_snprintf(target, bufLen, " %.*s:%d", int(name.size()),
-								 name.data(), lineno),
+									 name.data(), lineno),
 					bufLen);
 		} else {
 			w = clampWritten(
-					__sprt_snprintf(target, bufLen, " %.*s", int(name.size()), name.data()), bufLen);
+					__sprt_snprintf(target, bufLen, " %.*s", int(name.size()), name.data()),
+					bufLen);
 		}
 		bufLen -= w;
 		target += w;
@@ -94,7 +95,7 @@ static size_t print(char *buf, size_t bufLen, uintptr_t pc, StringView filename,
 			__sprt_free(ptr);
 		} else {
 			w = clampWritten(__sprt_snprintf(target, bufLen, " - %.*s", int(function.size()),
-								 function.data()),
+									 function.data()),
 					bufLen);
 			bufLen -= w;
 			target += w;
@@ -292,7 +293,6 @@ static void performBacktrace(State &state, size_t offset,
 #if __has_include(<backtrace.h>)
 #include <backtrace.h>
 #else
-#warning "No <backtrace.h> available, replacing with forward declaration"
 
 struct backtrace_state;
 
@@ -306,6 +306,25 @@ typedef int (*backtrace_full_callback)(void *data, __SPRT_ID(uintptr_t) pc, cons
 
 extern "C" int backtrace_full(struct backtrace_state *state, int skip,
 		backtrace_full_callback callback, backtrace_error_callback error_callback, void *data);
+
+#ifndef SPRT_WASM
+#warning "No <backtrace.h> available, replacing with forward declaration"
+
+#else
+
+// No backtrace on WASM, no-op stubs
+
+extern "C" struct backtrace_state *backtrace_create_state(const char *filename, int threaded,
+		backtrace_error_callback error_callback, void *data) {
+	return nullptr;
+}
+
+extern "C" int backtrace_full(struct backtrace_state *state, int skip,
+		backtrace_full_callback callback, backtrace_error_callback error_callback, void *data) {
+	return -1;
+}
+
+#endif // SPRT_WASM
 
 
 #endif
@@ -350,8 +369,12 @@ static void termState(State &state) {
 
 static void performBacktrace(State &state, size_t offset,
 		const callback<void(uintptr_t, StringView)> &cb) {
-	backtrace_full(state.state, int(offset), debug_backtrace_full_callback, debug_backtrace_error,
-			(void *)&cb);
+	if (state.state) {
+		backtrace_full(state.state, int(offset), debug_backtrace_full_callback,
+				debug_backtrace_error, (void *)&cb);
+	} else {
+		cb(0, StringView("unavailable"));
+	}
 }
 
 } // namespace sprt::backtrace::detail
