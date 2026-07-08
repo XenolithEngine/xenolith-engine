@@ -1,5 +1,7 @@
 #include "../include/defs.h"
 
+#pragma clang diagnostic ignored "-Wignored-pragmas"
+
 #if __SPRT_ARCH_ID == __SPRT_ARCH_ID_X86_64
 #include "../musl-libc/src/math/x86_64/fabs.c"
 #include "../musl-libc/src/math/x86_64/fma.c"

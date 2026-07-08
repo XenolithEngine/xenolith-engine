@@ -47,17 +47,23 @@ struct Track {
 struct IntDeleter {
 	void operator()(int *__p) const noexcept {
 		++g_deleter_calls;
+		__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 		delete __p;
+		__SPRT_POP_ALLOW_CXXABI_ALLOC
 	}
 };
 
+__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 struct Base {
 	virtual ~Base() { }
+
 	virtual int id() const { return 1; }
 };
+
 struct Derived : Base {
 	int id() const override { return 2; }
 };
+__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 struct Widget : std::enable_shared_from_this<Widget> {
 	int v = 42;
@@ -70,13 +76,16 @@ void performStdMemoryTest() {
 	// ---- unique_ptr ----
 	auto u = std::make_unique<int>(5);
 	*u += 2;
-	printf("uptr: val=%d bool=%d\n", *u, (int) (bool) u);
+	printf("uptr: val=%d bool=%d\n", *u, (int)(bool)u);
 	auto u2 = std::move(u);
-	printf("uptr move: src_empty=%d dst=%d\n", (int) !u, *u2);
+	printf("uptr move: src_empty=%d dst=%d\n", (int)!u, *u2);
 
-	std::unique_ptr<int, IntDeleter> ud(new int(9), IntDeleter {});
+	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
+	std::unique_ptr<int, IntDeleter> ud(new int(9), IntDeleter{});
+	__SPRT_POP_ALLOW_CXXABI_ALLOC
+
 	ud.reset();
-	printf("uptr custom_deleter: calls=%d empty=%d\n", g_deleter_calls, (int) !ud);
+	printf("uptr custom_deleter: calls=%d empty=%d\n", g_deleter_calls, (int)!ud);
 
 	auto ua = std::make_unique<int[]>(4);
 	for (int i = 0; i < 4; ++i) { ua[i] = i * i; }
@@ -93,8 +102,8 @@ void performStdMemoryTest() {
 		// end-of-statement, and printf argument evaluation order is unspecified (differs
 		// between the Itanium and MSVC ABIs), which would otherwise make use_count() race it.
 		bool locked_ok = static_cast<bool>(w.lock());
-		printf("weak: uc=%ld expired=%d locked_ok=%d\n", w.use_count(), (int) w.expired(),
-				(int) locked_ok);
+		printf("weak: uc=%ld expired=%d locked_ok=%d\n", w.use_count(), (int)w.expired(),
+				(int)locked_ok);
 	}
 	printf("sptr after scope: uc=%ld\n", s.use_count());
 
@@ -112,36 +121,39 @@ void performStdMemoryTest() {
 		auto sp = std::make_shared<Track>();
 		wt = sp;
 	}
-	printf("weak expired after owner gone: expired=%d lock_null=%d dtors=%d\n", (int) wt.expired(),
-			(int) !wt.lock(), g_track_dtors);
+	printf("weak expired after owner gone: expired=%d lock_null=%d dtors=%d\n", (int)wt.expired(),
+			(int)!wt.lock(), g_track_dtors);
 
 	// ---- polymorphism + casts ----
 	std::shared_ptr<Base> b = std::make_shared<Derived>();
 	auto d = std::dynamic_pointer_cast<Derived>(b);
-	printf("cast: id=%d dyn_ok=%d\n", b->id(), (int) (bool) d);
+	printf("cast: id=%d dyn_ok=%d\n", b->id(), (int)(bool)d);
 	std::shared_ptr<Base> bb = std::make_shared<Base>();
 	auto dfail = std::dynamic_pointer_cast<Derived>(bb);
-	printf("dyn_fail_null=%d\n", (int) !dfail);
+	printf("dyn_fail_null=%d\n", (int)!dfail);
 	std::shared_ptr<const Base> cb = b;
 	auto ncb = std::const_pointer_cast<Base>(cb);
-	printf("const_cast: same=%d\n", (int) (b.get() == ncb.get()));
+	printf("const_cast: same=%d\n", (int)(b.get() == ncb.get()));
 
 	// ---- get_deleter (named deleter matches, other type does not) ----
-	std::shared_ptr<int> pd(new int(3), IntDeleter {});
+
+	__SPRT_PUSH_ALLOW_CXXABI_ALLOC
+	std::shared_ptr<int> pd(new int(3), IntDeleter{});
+	__SPRT_POP_ALLOW_CXXABI_ALLOC
+
 	IntDeleter *gd = std::get_deleter<IntDeleter>(pd);
 	int *gd2 = std::get_deleter<int>(pd);
-	printf("get_deleter: match=%d mismatch_null=%d\n", (int) (gd != nullptr), (int) (gd2 == nullptr));
+	printf("get_deleter: match=%d mismatch_null=%d\n", (int)(gd != nullptr), (int)(gd2 == nullptr));
 
 	// ---- enable_shared_from_this ----
 	auto wgt = std::make_shared<Widget>();
 	auto again = wgt->self();
-	printf("esft: same=%d uc=%ld v=%d\n", (int) (wgt.get() == again.get()), wgt.use_count(),
-			wgt->v);
+	printf("esft: same=%d uc=%ld v=%d\n", (int)(wgt.get() == again.get()), wgt.use_count(), wgt->v);
 
 	// ---- hash usable (value is address-dependent, so only check it is callable) ----
-	size_t h1 = std::hash<std::shared_ptr<int>> {}(s);
-	size_t h2 = std::hash<std::unique_ptr<int>> {}(u2);
-	printf("hash callable: %d\n", (int) ((h1 | h2) != 0 || (h1 == 0 && h2 == 0)));
+	size_t h1 = std::hash<std::shared_ptr<int>>{}(s);
+	size_t h2 = std::hash<std::unique_ptr<int>>{}(u2);
+	printf("hash callable: %d\n", (int)((h1 | h2) != 0 || (h1 == 0 && h2 == 0)));
 
 	// ---- uninitialized_* algorithms ----
 	alignas(int) unsigned char raw[sizeof(int) * 5];
@@ -163,9 +175,9 @@ void performStdMemoryTest() {
 	void *aptr = abuf + 3; // 3 bytes past a 64-aligned base
 	size_t aspace = 61;
 	void *aligned = std::align(8, 16, aptr, aspace);
-	printf("align: nonnull=%d offset=%d space=%d aligned=%d\n", (int) (aligned != nullptr),
-			(int) (reinterpret_cast<unsigned char *>(aligned) - abuf), (int) aspace,
-			(int) (reinterpret_cast<__UINTPTR_TYPE__>(aligned) % 8 == 0));
+	printf("align: nonnull=%d offset=%d space=%d aligned=%d\n", (int)(aligned != nullptr),
+			(int)(reinterpret_cast<unsigned char *>(aligned) - abuf), (int)aspace,
+			(int)(reinterpret_cast<__UINTPTR_TYPE__>(aligned) % 8 == 0));
 }
 
 } // namespace sprt::test

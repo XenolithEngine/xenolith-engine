@@ -93,6 +93,7 @@ LayoutEngine::LayoutEngine(Document *doc,
 	}, pool);
 }
 
+__SPRT_PUSH_ALLOW_CXXABI_ALLOC
 LayoutEngine::~LayoutEngine() {
 	if (_data) {
 		auto p = _data->pool;
@@ -102,6 +103,7 @@ LayoutEngine::~LayoutEngine() {
 		_data = nullptr;
 	}
 }
+__SPRT_POP_ALLOW_CXXABI_ALLOC
 
 void LayoutEngine::setExternalAssetsMeta(ExternalAssetsMap &&external) {
 	mem_pool::perform([&] {
