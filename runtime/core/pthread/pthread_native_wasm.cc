@@ -121,8 +121,18 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 				& ~(uintptr_t)(tlsAlign - 1);
 		tlsBase = reinterpret_cast<void *>(aligned);
 	}
+	// Register the thread in the pool's active table BEFORE the spawned worker can
+	// run, mirroring the pthread/winapi backends. The worker's early self()/gettid
+	// (before __runthead sets tl_self) looks itself up here; without the entry it
+	// falls back to attachExternalThread and gets a DIFFERENT thread_t whose
+	// threadMemPool is NULL (the worker's pool subsystem is not yet initialized).
+	// Holding pool->mutex across spawn+attach makes that lookup (which takes the
+	// same mutex) block until the thread is registered.
+	unique_lock globalLock(pool->mutex);
+
 	int tid = __sprt_host_thread_spawn(thread, stackTop, stackSize, tlsBase);
 	if (tid < 0) {
+		globalLock.unlock();
 		free(stackBase);
 		return EAGAIN;
 	}
@@ -131,6 +141,10 @@ static int __createThread(thread_t *thread, const attr_t *__SPRT_RESTRICT attr,
 	thread->attr.stackSize = stackSize;
 	thread->lowStack = reinterpret_cast<uintptr_t>(stackBase);
 	thread->highStack = reinterpret_cast<uintptr_t>(stackTop);
+
+	__attachNativeThread(thread, thread->handle,
+			static_cast<uint64_t>(static_cast<unsigned>(tid)), globalLock);
+	globalLock.unlock();
 	return 0;
 }
 

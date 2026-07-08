@@ -48,6 +48,8 @@ __SPRT_C_FUNC int __SPRT_ID(setenv)(const char *n, const char *v, int r) { retur
 
 __SPRT_C_FUNC int __SPRT_ID(unsetenv)(const char *n) { return unsetenv(n); }
 
+__SPRT_C_FUNC int __SPRT_ID(putenv)(char *s) { return putenv(s); }
+
 __SPRT_C_FUNC char *__SPRT_ID(getenv_impl)(const char *name) { return getenv(name); }
 
 __SPRT_C_FUNC int getenv_s(size_t *ret, char *buf, rsize_t bufSize,

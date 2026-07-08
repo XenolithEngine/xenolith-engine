@@ -88,14 +88,35 @@ ifdef WASM
 # the wasm platform (__SPRT_WASM) + the wasm feature set the app build uses. Kept
 # in sync with the app target.mk (make/os/wasm.mk + target-wasm/init-target.mk).
 SP_WASM_FEATURES := -matomics -mbulk-memory -mmutable-globals -msign-ext -mnontrapping-fptoint
-SP_WASM_INCLUDES := \
+# The C++ STL wrappers (include_libc/stl) belong ONLY on the C++ include path — same
+# split as the runtimes toolchain (init-target.mk WASM_C_INCLUDES / WASM_CXX_INCLUDES).
+# Putting them on the C path also perturbs clang's builtin-header search so C builtin
+# headers like <stdatomic.h> stop resolving (breaks e.g. SheenBidi's C11 atomics).
+SP_WASM_C_INCLUDES := \
 	-isystem $(SP_RUNTIME_ROOT)/include_libc \
+	-isystem $(SP_RUNTIME_ROOT)/include
+SP_WASM_CXX_INCLUDES := \
 	-isystem $(SP_RUNTIME_ROOT)/include_libc/stl \
+	-isystem $(SP_RUNTIME_ROOT)/include_libc \
 	-isystem $(SP_RUNTIME_ROOT)/include
 
-SP_CFLAGS += -nostdinc -ffreestanding -nostdlib $(SP_WASM_FEATURES) $(SP_WASM_INCLUDES) -D__SPRT_WASM
-SP_CXXFLAGS += -nostdinc -nostdinc++ -ffreestanding -nostdlib $(SP_WASM_FEATURES) $(SP_WASM_INCLUDES) -D__SPRT_WASM
-SP_CPPFLAGS += -nostdinc $(SP_WASM_FEATURES) $(SP_WASM_INCLUDES) -D__SPRT_WASM
+# clang does not auto-add its builtin/resource include dir for the wasm32 freestanding
+# target, so its builtin headers (<stdatomic.h>, <stdarg.h>, intrinsics) do not resolve.
+# Add the host clang resource include (the -resource-dir's include/, symlinked to the
+# host clang's) at LOWEST priority (-idirafter) so it fills only the clang-builtin gaps
+# without shadowing the sprt libc headers.
+SP_WASM_RESOURCE_INC := -idirafter $(SP_INSTALL_PREFIX)/lib/clang/include
+
+# C++ deps (harfbuzz, ...) parse the sprt STL headers, which require C++20 (concepts,
+# etc.). cmake's CXX_STANDARD does not emit a -std flag here because the toolchain
+# skips compiler detection, so pin it in the flags (matches the app's GLOBAL_STDXX).
+# C++ deps are compiled HOSTED (no -ffreestanding, so __STDC_HOSTED__==1), matching
+# the LLVM C++ runtimes build: the sprt STL then exposes the C library under std::
+# and its __STDC_HOSTED__-gated bridges activate (e.g. <cmath> -> std::isfinite,
+# std::isnan), which third-party C++ (harfbuzz) relies on. C deps stay freestanding.
+SP_CFLAGS += -nostdinc -ffreestanding -nostdlib $(SP_WASM_FEATURES) $(SP_WASM_C_INCLUDES) $(SP_WASM_RESOURCE_INC) -D__SPRT_WASM
+SP_CXXFLAGS += -nostdinc -nostdinc++ -nostdlib -std=gnu++2a $(SP_WASM_FEATURES) $(SP_WASM_CXX_INCLUDES) $(SP_WASM_RESOURCE_INC) -D__SPRT_WASM
+SP_CPPFLAGS += -nostdinc $(SP_WASM_FEATURES) $(SP_WASM_C_INCLUDES) $(SP_WASM_RESOURCE_INC) -D__SPRT_WASM
 SP_LDFLAGS += -nostdlib $(SP_WASM_FEATURES)
 endif # WASM
 
@@ -177,8 +198,9 @@ ifdef WASM
 # Freestanding wasm: the cmake runtimes superbuild compiles libunwind/libc++abi/
 # libc++ against the sprt headers with the wasm feature set (see the WASM bridge
 # above). Added after the base *_INIT definitions so the `:=` above cannot wipe it.
-CONFIGURE_CMAKE_C_FLAGS_INIT += -nostdinc -ffreestanding $(SP_WASM_FEATURES) $(SP_WASM_INCLUDES) -D__SPRT_WASM
-CONFIGURE_CMAKE_CXX_FLAGS_INIT += -nostdinc -nostdinc++ -ffreestanding $(SP_WASM_FEATURES) $(SP_WASM_INCLUDES) -D__SPRT_WASM
+CONFIGURE_CMAKE_C_FLAGS_INIT += -nostdinc -ffreestanding $(SP_WASM_FEATURES) $(SP_WASM_C_INCLUDES) $(SP_WASM_RESOURCE_INC) -D__SPRT_WASM
+# C++ hosted (no -ffreestanding) — see the SP_CXXFLAGS note above.
+CONFIGURE_CMAKE_CXX_FLAGS_INIT += -nostdinc -nostdinc++ -std=gnu++2a $(SP_WASM_FEATURES) $(SP_WASM_CXX_INCLUDES) $(SP_WASM_RESOURCE_INC) -D__SPRT_WASM
 endif # WASM
 
 ifdef LINUX
@@ -329,7 +351,13 @@ CONFIGURE_CMAKE += \
 	-DCMAKE_RC_COMPILER=$(SP_RC) \
 	-DCMAKE_RC_FLAGS_INIT="$(CONFIGURE_CMAKE_RC_FLAGS_INIT)" \
 	-DCMAKE_POLICY_DEFAULT_CMP0091=NEW \
-	-DENABLE_EXPORTS=Off 
+	-DENABLE_EXPORTS=Off
+endif
+
+ifdef WASM
+# Force every C++ dependency to the C++20 the sprt STL requires — see
+# target-wasm/wasm-deps-project-include.cmake for why the toolchain file cannot do it.
+CONFIGURE_CMAKE += -DCMAKE_PROJECT_INCLUDE=$(MAKE_ROOT)wasm-deps-project-include.cmake
 endif
 
 ifeq ($(DEBUG),1)

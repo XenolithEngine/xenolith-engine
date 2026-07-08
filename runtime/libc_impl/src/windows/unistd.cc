@@ -925,17 +925,12 @@ int ftruncate64(int __fd, off64_t length) __SPRT_NOEXCEPT {
 }
 
 
-struct flock {
-	short int l_type; /* Type of lock: F_RDLCK, F_WRLCK, or F_UNLCK.	*/
-	short int l_whence; /* Where `l_start' is relative to (like `lseek').  */
-	off_t l_start; /* Offset where the lock begins.  */
-	off_t l_len; /* Size of the locked area; zero means until EOF.  */
-	__SPRT_ID(pid_t) l_pid; /* Process holding the lock.  */
-};
+// struct flock now comes from <sprt/c/__sprt_fcntl.h> (included above); reference it
+// through __SPRT_FLOCK_NAME since its tag is __SPRT_ID-substituted on the hosted build.
 
 // from musl-libc
 int lockf64(int fd, int op, off_t size) __SPRT_NOEXCEPT {
-	flock l = {
+	struct __SPRT_FLOCK_NAME l = {
 		.l_type = __SPRT_F_WRLCK,
 		.l_whence = __SPRT_SEEK_CUR,
 		.l_len = size,

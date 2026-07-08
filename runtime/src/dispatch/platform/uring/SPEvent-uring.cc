@@ -358,15 +358,16 @@ int URingData::submitSqe(unsigned sub, unsigned wait, bool waitAvailable, bool f
 
 int URingData::submitPending(bool force) { return submitSqe(flushSqe(), 0, false, force); }
 
-Status URingData::pushRead(int fd, uint8_t *buf, size_t bsize, uint64_t userdata) {
+Status URingData::pushRead(int fd, uint8_t *buf, size_t bsize, uint64_t userdata, uint64_t offset) {
 	return pushSqe({IORING_OP_READ}, [&](io_uring_sqe *sqe, uint32_t) {
-		updateIoSqe(sqe, fd, buf, unsigned(bsize), -1, userdata);
+		updateIoSqe(sqe, fd, buf, unsigned(bsize), offset, userdata);
 	}, URingPushFlags::Submit);
 }
 
-Status URingData::pushWrite(int fd, const uint8_t *buf, size_t bsize, uint64_t userdata) {
+Status URingData::pushWrite(int fd, const uint8_t *buf, size_t bsize, uint64_t userdata,
+		uint64_t offset) {
 	return pushSqe({IORING_OP_WRITE}, [&](io_uring_sqe *sqe, uint32_t) {
-		updateIoSqe(sqe, fd, buf, unsigned(bsize), -1, userdata);
+		updateIoSqe(sqe, fd, buf, unsigned(bsize), offset, userdata);
 	}, URingPushFlags::Submit);
 }
 
@@ -680,6 +681,21 @@ Status URingData::run(TimeInterval ival, WakeupFlags flags, TimeInterval wakeupT
 			sqe->addr = reinterpret_cast<uintptr_t>(&ctx);
 			sqe->user_data = URING_USERDATA_IGNORED;
 		}, URingPushFlags::Submit);
+
+		// Reap the removal's completions NOW, while &ctx is still the active context:
+		// the cancelled timeout produces an ECANCELED CQE whose user_data is &ctx (a
+		// stack address). If it lingers past this run, a later run() whose RunContext
+		// lands at the same stack address matches it (hasContext -> stops early), and
+		// at teardown (no active context) processEvent misreads it as a Handle and
+		// dereferences freed stack memory -> SIGSEGV. Draining here consumes it as a
+		// no-op stopContext on the already-stopped ctx. Bounded so a missing CQE
+		// cannot hang the loop.
+		for (int i = 0; i < 4; ++i) {
+			enter(0, 0, IORING_ENTER_GETEVENTS, nullptr);
+			if (doPoll() == 0) {
+				break;
+			}
+		}
 	}
 
 	popContext(&ctx);

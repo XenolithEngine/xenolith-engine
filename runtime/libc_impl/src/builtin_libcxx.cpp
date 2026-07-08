@@ -82,3 +82,17 @@ __SPRT_C_FUNC void _purecall(void) {
 #if !SPRT_WASM
 __SPRT_C_FUNC __attribute__((weak)) void __cxa_pure_virtual(void) { _purecall(); }
 #endif
+
+#if SPRT_WASM
+// RTTI failure paths. libc++abi's __cxa_bad_typeid / __cxa_bad_cast /
+// __cxa_throw_bad_array_new_length THROW, which drags in the Itanium unwinder
+// (_Unwind_RaiseException) that the wasm build does not provide (C++ exceptions
+// are a later milestone). Any RTTI use (e.g. typeid(*this) in dispatch::Thread)
+// references these, so define non-throwing, trapping versions here: for a valid
+// object these paths are unreachable, and without EH a trap is the only correct
+// behavior. Resolving the reference here prevents libc++abi's throwing versions
+// (and cxa_exception.cpp) from being extracted.
+__SPRT_C_FUNC void __cxa_bad_typeid(void) { __builtin_trap(); }
+__SPRT_C_FUNC void __cxa_bad_cast(void) { __builtin_trap(); }
+__SPRT_C_FUNC void __cxa_throw_bad_array_new_length(void) { __builtin_trap(); }
+#endif

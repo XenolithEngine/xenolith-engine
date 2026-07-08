@@ -74,20 +74,44 @@ wasm32:
 .PHONY: all clean wasm32
 
 else # SP_ARCH
-# --- inner pass: build the runtimes against the generated toolchain.cmake ---
+# --- inner pass: build the LLVM runtimes + the third-party dependency libs ---
 SP_INSTALL_PREFIX ?= $(TOOLCHAIN_OUTPUT_DIR)
 SP_CC := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/cc)
 SP_CXX := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/c++)
 SP_AR := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/ar)
 LIB_SRC_DIR := $(abspath $(MAKE_ROOT)../src)
 
+# Third-party dependency libs (media / text / data). Vulkan, networking,
+# cryptography and WAMR are intentionally excluded from the wasm target, so the
+# openssl/mbedtls/curl/nghttp3/gost/zip/iwasm and vulkan/spirv/glslang recipes the
+# other targets carry are all omitted here.
+LIBS := \
+	libz.a \
+	libbz2.a \
+	liblzma.a \
+	libzstd.a \
+	libbrotlienc.a \
+	libjpeg.a \
+	libpng16.a \
+	libgif.a \
+	libwebp.a \
+	libtiff.a \
+	libfreetype.a \
+	libharfbuzz.a \
+	libSheenBidi.a \
+	libsqlite3.a
+
+# Deps are cross-built through common/configure.mk + the SP_C_FLAGS-driven
+# toolchain-libs.cmake. The LLVM runtimes keep the flag-baked toolchain.cmake
+# (compiler_rt.mk drives cmake directly and passes no SP_C_FLAGS), so its rule
+# overrides SP_TOOLCHAIN_FILE below.
 FORWARD_VARS := \
 	WASM=1 \
 	SP_SYSNAME=WASM \
 	SP_ARCH=$(SP_ARCH) \
 	SP_RES_ARCH=$(SP_RES_ARCH) \
 	SP_INSTALL_PREFIX=$(SP_INSTALL_PREFIX) \
-	SP_TOOLCHAIN_FILE=$(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake \
+	SP_TOOLCHAIN_FILE=$(TOOLCHAIN_OUTPUT_DIR)/toolchain-libs.cmake \
 	SP_TOOLCHAIN_PREFIX=$(TOOLCHAIN_OUTPUT_DIR) \
 	SP_TARGET=$(SP_TARGET) \
 	SP_RUNTIME_ROOT=$(SP_RUNTIME_ROOT) \
@@ -98,8 +122,58 @@ FORWARD_VARS := \
 	LIB_SRC_DIR=$(LIB_SRC_DIR) \
 	MAKE_ROOT=$(MAKE_ROOT)
 
-all:
-	$(MAKE) -C $(MAKE_ROOT) -f $(COMPILER_RT_FILE) $(FORWARD_VARS)
+ARCH_LIBS = $(addprefix $(SP_INSTALL_PREFIX)/usr/lib/,$(LIBS))
+
+RUNTIME_LIB := $(SP_INSTALL_PREFIX)/lib/clang/lib/wasi/libclang_rt.builtins-wasm32.a
+
+all: $(RUNTIME_LIB) $(ARCH_LIBS)
+
+# LLVM runtimes: compiler-rt builtins + libunwind + libc++abi, on the flag-baked
+# toolchain.cmake (see COMPILER_RT_FILE header for why it is a separate file).
+$(RUNTIME_LIB): $(COMPILER_RT_FILE)
+	$(MAKE) -f $< $(FORWARD_VARS) SP_TOOLCHAIN_FILE=$(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake
+
+$(SP_INSTALL_PREFIX)/usr/lib/libz.a: ../common/zlib.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libbz2.a: ../common/bzip2.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/liblzma.a: ../common/xz.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libzstd.a: ../common/zstd.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libbrotlienc.a: ../common/brotli.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libjpeg.a: ../common/libjpeg-turbo.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libpng16.a: ../common/libpng.mk $(SP_INSTALL_PREFIX)/usr/lib/libz.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libgif.a: ../common/gif.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libwebp.a: ../common/libwebp.mk $(SP_INSTALL_PREFIX)/usr/lib/libpng16.a $(SP_INSTALL_PREFIX)/usr/lib/libjpeg.a $(SP_INSTALL_PREFIX)/usr/lib/libgif.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libtiff.a: ../common/tiff.mk $(SP_INSTALL_PREFIX)/usr/lib/libwebp.a $(SP_INSTALL_PREFIX)/usr/lib/liblzma.a $(SP_INSTALL_PREFIX)/usr/lib/libzstd.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libfreetype.a: ../common/freetype.mk $(SP_INSTALL_PREFIX)/usr/lib/libbrotlienc.a $(SP_INSTALL_PREFIX)/usr/lib/libpng16.a $(SP_INSTALL_PREFIX)/usr/lib/libbz2.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libharfbuzz.a: ../common/harfbuzz.mk $(SP_INSTALL_PREFIX)/usr/lib/libfreetype.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libSheenBidi.a: ../common/sheenbidi.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+$(SP_INSTALL_PREFIX)/usr/lib/libsqlite3.a: ../common/sqlite.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
 
 .PHONY: all
 

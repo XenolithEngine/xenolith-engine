@@ -199,7 +199,13 @@ namespace sprt::memory {
 
 class OpaquePool;
 
-#if INTPTR_MAX == INT64_MAX
+// Use the compiler-provided pointer width, NOT INTPTR_MAX == INT64_MAX: the
+// latter silently evaluates to 0 == 0 (true, i.e. the 64-bit layout) in any TU
+// that includes this header before <stdint.h> defines those macros. That made
+// allocator_t (and everything after it in thread_base_t, incl. threadMemPool)
+// 88 bytes larger in some TUs than others, corrupting cross-TU struct access.
+// __SIZEOF_POINTER__ is always defined by the compiler.
+#if __SIZEOF_POINTER__ == 8
 struct OpaqueAllocator {
 	uint64_t __opaque[28];
 };

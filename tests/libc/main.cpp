@@ -54,6 +54,8 @@ static const LibcTest s_tests[] = {
 	{"path_posix", &performPathPosixTest},
 	{"path_windows", &performPathWindowsTest},
 	{"dirent", &performDirentTest},
+	{"fs_extra", &performFsExtraTest},
+	{"env", &performEnvTest},
 	// wchar.h / multibyte / uchar.h
 	{"wchar_string", &performWcharStringTest},
 	{"wcstol", &performWcstolTest},

@@ -39,6 +39,10 @@
 #include "SPRuntimeFilesystem-linux.cc"
 #endif
 
+#if SPRT_WASM
+#include "SPRuntimeFilesystem-wasm.cc"
+#endif
+
 #include <sprt/wrappers/windows/file_api.h>
 
 namespace sprt::filesystem {
