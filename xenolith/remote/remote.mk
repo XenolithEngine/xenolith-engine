@@ -29,11 +29,6 @@ MODULE_XENOLITH_REMOTE_INCLUDES_DIRS :=
 MODULE_XENOLITH_REMOTE_INCLUDES_OBJS := $(XENOLITH_MODULE_DIR)/remote
 MODULE_XENOLITH_REMOTE_DEPENDS_ON := xenolith_core stappler_crypto stappler_data
 
-ifeq ($(TARGET_SYSTEM),WASM)
-# Stub OpenSSL/QUIC headers: the native SSL transport compiles but is unused on wasm.
-MODULE_XENOLITH_REMOTE_PRIVATE_INCLUDES += $(XENOLITH_MODULE_DIR)/remote/wasm-stub
-endif
-
 #spec
 
 MODULE_XENOLITH_REMOTE_SHARED_SPEC_SUMMARY := Xenolith remote connection transport (QUIC)

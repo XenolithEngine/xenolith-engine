@@ -132,12 +132,41 @@ ARCH_LIBS = $(addprefix $(SP_INSTALL_PREFIX)/usr/lib/,$(LIBS))
 
 RUNTIME_LIB := $(SP_INSTALL_PREFIX)/lib/clang/lib/wasi/libclang_rt.builtins-wasm32.a
 
-all: $(RUNTIME_LIB) $(ARCH_LIBS)
+# The live sprt runtime archive (libc + core), built the same way target-windows
+# builds sprt.lib. The dependency feature-probes link against it (configure.mk WASM
+# branch: -L.../usr/lib -lsprt, NO --allow-undefined) so check_function_exists /
+# check_symbol_exists resolve an absent function as a hard link error -> detected
+# ABSENT, instead of --allow-undefined masking every missing symbol as present. This
+# is what replaces the hand-maintained -DHAVE_*=OFF flags. Built from a minimal libc
+# module set (no window/GUI) since only the libc symbol set matters for probing.
+SPRT_LIB := $(SP_INSTALL_PREFIX)/usr/lib/libsprt.a
+
+all: $(RUNTIME_LIB) $(SPRT_LIB) $(ARCH_LIBS)
 
 # LLVM runtimes: compiler-rt builtins + libunwind + libc++abi, on the flag-baked
 # toolchain.cmake (see COMPILER_RT_FILE header for why it is a separate file).
 $(RUNTIME_LIB): $(COMPILER_RT_FILE)
 	$(MAKE) -f $< $(FORWARD_VARS) SP_TOOLCHAIN_FILE=$(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake
+
+# Cross-build libsprt.a from the in-tree runtime, driving runtime/Makefile with the
+# generated wasm host.mk/target.mk (mirrors target-windows/init-target.mk's sprt.lib
+# rule). A static-archive build only archives the objects of the modules it is HANDED
+# — it does NOT pull transitive dependencies — so LOCAL_MODULES must spell out the full
+# non-window libc closure (identical to what tests/libc links): the wrapper + the
+# freestanding libc impl + musl adapters + malloc + core + the runtime itself. Window/
+# GUI is left out (no dep probes it). It only archives objects, so it needs just the
+# headers + simde + compiler that RUNTIME_LIB already staged into the sysroot.
+$(SPRT_LIB): $(RUNTIME_LIB)
+	$(call rule_rm,$(abspath build/xlsprt))
+	$(MAKE) -C $(SP_RUNTIME_ROOT) \
+		STAPPLER_HOST_FILE=$(SP_INSTALL_PREFIX)/host/host.mk \
+		STAPPLER_TARGET_FILE=$(SP_INSTALL_PREFIX)/target.mk \
+		STAPPLER_TARGET=$(SP_ARCH_TARGET_CLANG) \
+		LOCAL_MODULES="runtime_libc_wrapper runtime_core runtime_libc_impl runtime_malloc runtime_musl_libc runtime" \
+		LOCAL_OUTDIR=$(abspath build/xlsprt) \
+		RELEASE=1
+	cp -f $(abspath build/xlsprt)/$(SP_ARCH_TARGET_CLANG)/release/cc/libsprt.a $@
+	$(call rule_rm,$(abspath build/xlsprt))
 
 $(SP_INSTALL_PREFIX)/usr/lib/libz.a: ../common/zlib.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
@@ -211,6 +240,7 @@ $(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a: ../common/nghttp3.mk
 # on wasm (disabled in curl.mk's WASM branch). Sockets/resolver come from the sprt
 # libc no-op stubs. Output renamed to libcurl-openssl.a (non-WINDOWS branch of curl.mk).
 $(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk \
+		$(SPRT_LIB) \
 		$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
 		$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a \
 		$(SP_INSTALL_PREFIX)/usr/lib/libz.a

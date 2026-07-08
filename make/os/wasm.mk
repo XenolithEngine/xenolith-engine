@@ -78,8 +78,7 @@ OSTYPE_WASM_MAX_MEMORY := 1073741824 # 1 GiB (16384 pages)
 OSTYPE_EXEC_LDFLAGS := -Wl,--import-memory,--shared-memory,--max-memory=$(OSTYPE_WASM_MAX_MEMORY) \
 	-Wl,--export=__wasm_init_tls,--export=__tls_size,--export=__tls_align,--export=__tls_base \
 	-Wl,--export=__stack_pointer,--export=malloc,--export=free,--export=__xl_thread_entry \
-	-Wl,--export-table \
-	-l:libz.a -l:libzstd.a -l:liblzma.a -l:libbz2.a -l:libbrotlidec.a -l:libbrotlienc.a -l:libbrotlicommon.a
+	-Wl,--export-table
 OSTYPE_LIB_LDFLAGS :=
 
 WASM := 1

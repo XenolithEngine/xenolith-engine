@@ -277,14 +277,8 @@ Rc<FontController> FontComponent::acquireController(sprt::dispatch::Looper *loop
 			}
 			return true;
 		};
-		// The dispatch worker pool (performAsync) does not run tasks under the wasm platform yet,
-		// so font parsing (CPU-only, freetype) would stall forever and the controller never loads.
-		// Run it inline here; native keeps the background load.
-#if SPRT_WASM
-		task();
-#else
+
 		looper->performAsync(sp::move(task));
-#endif
 	}
 
 	return builder->controller;

@@ -49,6 +49,10 @@ ifdef WIN32
 MODULE_STAPPLER_ZIP_LIBS += -lzip -lz -llzma -lzstd
 endif
 
+ifeq ($(TARGET_SYSTEM),WASM)
+MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:libz.a -l:liblzma.a -l:libzstd.a
+endif
+
 #spec
 
 MODULE_STAPPLER_ZIP_SHARED_SPEC_SUMMARY := libstappler ZIP archive interface

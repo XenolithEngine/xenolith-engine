@@ -36,9 +36,14 @@ $(T_TARGET):
 	mkdir -p $(T_TARGET)/usr/lib $(T_TARGET)/share
 
 # Static runtimes: libclang_rt.builtins-wasm32.a, libunwind.a, libc++abi.a, libc++.a
+# libsprt.a is a BUILD-ONLY artifact — it exists in the intermediate sysroot solely so
+# the dependency feature-probes can link the live runtime, and it is built from a
+# minimal libc module set (no window/GUI), so it must not ship as if it were a usable
+# app runtime (apps rebuild the runtime themselves). Drop it from the target sysroot.
 $(T_TARGET)/usr/lib: $(T_INTERMEDIATE)/usr/lib | $(T_TARGET)
 	@mkdir -p $@
 	cp -af $(T_INTERMEDIATE)/usr/lib/*.a $@/ 2>/dev/null || true
+	rm -f $@/libsprt.a
 
 # Installed libc++/libc++abi/libunwind headers.
 # The intermediate usr/include already carries simde (installed by init-target's
