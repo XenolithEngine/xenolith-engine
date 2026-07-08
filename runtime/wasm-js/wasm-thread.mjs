@@ -5,7 +5,7 @@
 import { makeImports } from "./sprt-imports.mjs";
 
 self.onmessage = async (e) => {
-	const { module, memory, tid, threadPtr, stackTop, stackSize, tlsBase, bundle, tidBuf } = e.data;
+	const { module, memory, tid, threadPtr, stackTop, stackSize, tlsBase, bundle, tidBuf, opfsSab } = e.data;
 	const tidCounter = new Int32Array(tidBuf);
 
 	// Nested spawn: like the engine worker, delegate creation to the main thread (this
@@ -18,7 +18,7 @@ self.onmessage = async (e) => {
 	};
 
 	try {
-		const imports = makeImports({ memory, bundle, log: (s, t) => self.postMessage({ type: s, text: t }), spawn });
+		const imports = makeImports({ memory, bundle, opfsSab, log: (s, t) => self.postMessage({ type: s, text: t }), spawn });
 		const instance = await WebAssembly.instantiate(module, imports); // module is compiled → Instance
 		const ex = instance.exports;
 		ex.__stack_pointer.value = stackTop;   // run on this thread's own stack

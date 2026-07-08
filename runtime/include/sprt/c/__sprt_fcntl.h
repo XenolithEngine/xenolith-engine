@@ -29,6 +29,26 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_ssize_t.h>
 #include <sprt/c/cross/__sprt_fstypes.h>
+#include <sprt/c/cross/__sprt_sysid.h> // __SPRT_ID(pid_t)
+
+// POSIX advisory record lock, argument to fcntl(F_GETLK/F_SETLK/F_SETLKW). Layout
+// matches the standard (musl/glibc) one. Like struct timespec (see __sprt_time_t.h),
+// the tag is __SPRT_ID-substituted for the hosted SPRT build so it does not collide
+// with the native libc's `struct flock`; on the freestanding path the plain `flock`
+// tag is used, which the public <fcntl.h> exposes directly.
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
+#define __SPRT_FLOCK_NAME __SPRT_ID(flock)
+#else
+#define __SPRT_FLOCK_NAME flock
+#endif
+
+struct __SPRT_FLOCK_NAME {
+	short l_type;   // F_RDLCK / F_WRLCK / F_UNLCK
+	short l_whence; // SEEK_SET / SEEK_CUR / SEEK_END
+	__SPRT_ID(off_t) l_start;
+	__SPRT_ID(off_t) l_len;
+	__SPRT_ID(pid_t) l_pid;
+};
 
 #define __SPRT_POSIX_FADV_NORMAL     0
 #define __SPRT_POSIX_FADV_RANDOM     1

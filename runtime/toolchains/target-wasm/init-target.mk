@@ -102,6 +102,55 @@ $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake: $(lastword $(MAKEFILE_LIST))
 	mkdir -p $(TOOLCHAIN_OUTPUT_DIR)/lib/clang
 	cd $(TOOLCHAIN_OUTPUT_DIR)/lib/clang; ln -fs ../../host/lib/clang/21/include include
 
+# Second cmake toolchain file, used to cross-build the third-party dependency libs
+# (zlib/png/freetype/harfbuzz/...) — NOT the LLVM runtimes (those use toolchain.cmake
+# above, which bakes the freestanding flags in because compiler_rt.mk drives cmake
+# directly). The deps go through common/configure.mk, which computes the wasm flags
+# and hands them in via -DSP_C_FLAGS/-DSP_CXX_FLAGS/... ; this file consumes them and
+# tacks on -resource-dir + --target, exactly like target-windows/target-linux. Kept
+# separate so the verified runtimes build is never perturbed.
+TOOLCHAIN_LIB_CFLAGS := -resource-dir $${CMAKE_CURRENT_LIST_DIR}/lib/clang --target=$(SP_ARCH_TARGET_CLANG)
+
+$(TOOLCHAIN_OUTPUT_DIR)/toolchain-libs.cmake: $(lastword $(MAKEFILE_LIST))
+	@echo 'Build $@'
+	@echo '# Generic = baremetal (LLVM_ON_UNIX/WIN32 = 0), matching the runtimes toolchain.' > $@
+	@echo 'set(CMAKE_SYSTEM_NAME Generic)' >> $@
+	@echo 'set(CMAKE_SYSTEM_PROCESSOR wasm32)' >> $@
+	@echo '# On Generic the shared-lib suffix defaults to the static ".a"; give shared' >> $@
+	@echo '# libs a distinct suffix so the (never-built) shared targets some deps always' >> $@
+	@echo '# define do not collide with their static archives.' >> $@
+	@echo 'set(CMAKE_SHARED_LIBRARY_SUFFIX ".so")' >> $@
+	@echo 'set(CMAKE_SHARED_LIBRARY_PREFIX "lib")' >> $@
+	@echo 'set(CMAKE_C_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang")' >> $@
+	@echo 'set(CMAKE_CXX_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang++")' >> $@
+	@echo 'set(CMAKE_ASM_COMPILER "$${CMAKE_CURRENT_LIST_DIR}/host/bin/clang")' >> $@
+	@echo 'set(CMAKE_AR "$${CMAKE_CURRENT_LIST_DIR}/host/bin/llvm-ar")' >> $@
+	@echo 'set(CMAKE_RANLIB "$${CMAKE_CURRENT_LIST_DIR}/host/bin/llvm-ranlib")' >> $@
+	@echo 'set(CMAKE_C_COMPILER_TARGET "$(SP_ARCH_TARGET_CLANG)")' >> $@
+	@echo 'set(CMAKE_CXX_COMPILER_TARGET "$(SP_ARCH_TARGET_CLANG)")' >> $@
+	@echo 'set(CMAKE_ASM_COMPILER_TARGET "$(SP_ARCH_TARGET_CLANG)")' >> $@
+	@echo 'set(CMAKE_C_COMPILER_WORKS ON)' >> $@
+	@echo 'set(CMAKE_CXX_COMPILER_WORKS ON)' >> $@
+	@echo '# wasm cannot link an executable during try_compile / feature probes (no crt).' >> $@
+	@echo 'set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)' >> $@
+	@echo 'set(CMAKE_C_FLAGS_INIT "$${SP_C_FLAGS} $(TOOLCHAIN_LIB_CFLAGS)" CACHE STRING "" FORCE)' >> $@
+	@echo 'set(CMAKE_CXX_FLAGS_INIT "$${SP_CXX_FLAGS} $(TOOLCHAIN_LIB_CFLAGS)" CACHE STRING "" FORCE)' >> $@
+	@echo 'set(CMAKE_ASM_FLAGS_INIT "$${SP_C_FLAGS} $(TOOLCHAIN_LIB_CFLAGS)" CACHE STRING "" FORCE)' >> $@
+	@echo 'set(CMAKE_EXE_LINKER_FLAGS_INIT "$${SP_EXE_LINKER_FLAGS} $(TOOLCHAIN_LIB_CFLAGS)" CACHE STRING "" FORCE)' >> $@
+	@echo 'set(CMAKE_SHARED_LINKER_FLAGS_INIT "$${SP_SHARED_LINKER_FLAGS} $(TOOLCHAIN_LIB_CFLAGS)" CACHE STRING "" FORCE)' >> $@
+	@echo 'set(CMAKE_FIND_USE_CMAKE_SYSTEM_PATH Off)' >> $@
+	@echo 'set(CMAKE_FIND_ROOT_PATH "$${CMAKE_CURRENT_LIST_DIR};$${CMAKE_CURRENT_LIST_DIR}/usr")' >> $@
+	@echo 'set(PKG_CONFIG_PATH "$${CMAKE_CURRENT_LIST_DIR}/usr/lib/pkgconfig")' >> $@
+	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)' >> $@
+	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)' >> $@
+	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)' >> $@
+	@echo 'set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)' >> $@
+	@echo 'set(CMAKE_PREFIX_PATH "$${CMAKE_CURRENT_LIST_DIR};$${CMAKE_CURRENT_LIST_DIR}/usr")' >> $@
+	@echo 'set(CMAKE_INSTALL_PREFIX "$${CMAKE_CURRENT_LIST_DIR}")' >> $@
+	@echo 'set(CMAKE_INSTALL_LIBDIR "$${CMAKE_CURRENT_LIST_DIR}/usr/lib")' >> $@
+	@echo 'set(CMAKE_INSTALL_INCLUDEDIR "$${CMAKE_CURRENT_LIST_DIR}/usr/include")' >> $@
+	@echo 'set(CMAKE_POSITION_INDEPENDENT_CODE OFF)' >> $@
+
 # App-facing descriptor (mirrors runtime/toolchains/targets/wasm32-unknown-unknown/
 # target.mk but points -resource-dir at the built compiler-rt in this sysroot).
 $(TOOLCHAIN_OUTPUT_DIR)/target.mk: $(lastword $(MAKEFILE_LIST))
@@ -141,7 +190,8 @@ $(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h: ../common/simde.mk
 	$(call rule_rm,simde)
 	$(call rule_touch,$(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h)
 
-all: $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake $(TOOLCHAIN_OUTPUT_DIR)/target.mk \
+all: $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake $(TOOLCHAIN_OUTPUT_DIR)/toolchain-libs.cmake \
+	$(TOOLCHAIN_OUTPUT_DIR)/target.mk \
 	$(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h
 
 .PHONY: all

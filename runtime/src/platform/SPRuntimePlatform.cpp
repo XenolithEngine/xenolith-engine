@@ -37,6 +37,10 @@
 #include "SPRuntimePlatform-windows.cc"
 #endif
 
+#if SPRT_WASM
+#include "SPRuntimePlatform-wasm.cc"
+#endif
+
 #include <locale.h>
 
 namespace sprt {

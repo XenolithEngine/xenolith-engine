@@ -33,6 +33,13 @@ ifdef WINDOWS
 CONFIGURE += -DCYGWIN=1
 endif
 
+# Freestanding wasm cannot link the pngtest / pngfix executables (-nostdlib), so
+# drop the tests+tools and build the static lib only. Other targets link them
+# against their sprt/libc as before.
+ifdef WASM
+CONFIGURE += -DPNG_TESTS=OFF -DPNG_TOOLS=OFF
+endif
+
 all:
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_mkdir,$(LIBNAME))
@@ -41,5 +48,17 @@ all:
 	$(call rule_rm,$(LIBNAME))
 	$(if $(WINDOWS),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/libpng16_static.lib,$(SP_INSTALL_PREFIX)/usr/lib/png16.lib))
 	$(if $(WINDOWS),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/libpng.lib))
+	@# On the Generic (baremetal) cmake system used for wasm, libpng uses the
+	@# Windows-ish static naming (liblibpng16_static.a) and installs headers under
+	@# libpng16/. Normalise to the Unix layout the app links against: libpng16.a +
+	@# png.h/pngconf.h/pnglibconf.h directly in usr/include (mirrors the linux target).
+	@# Drop the stale name-referencing cmake package so find_package(PNG) resolves via
+	@# FindPNG -> find_library(png16).
+	$(if $(WASM),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/liblibpng16_static.a,$(SP_INSTALL_PREFIX)/usr/lib/libpng16.a))
+	$(if $(WASM),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/libpng.a))
+	$(if $(WASM),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/libpng))
+	$(if $(WASM),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/libpng16/png.h,$(SP_INSTALL_PREFIX)/usr/include/png.h))
+	$(if $(WASM),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/libpng16/pngconf.h,$(SP_INSTALL_PREFIX)/usr/include/pngconf.h))
+	$(if $(WASM),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/include/libpng16/pnglibconf.h,$(SP_INSTALL_PREFIX)/usr/include/pnglibconf.h))
 
 .PHONY: all

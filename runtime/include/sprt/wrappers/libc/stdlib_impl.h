@@ -330,6 +330,14 @@ int unsetenv(const char *n) SPRT_FUNC_END
 #endif
 
 SPRT_FUNC_BEGIN
+int putenv(char *s) SPRT_FUNC_END
+#if SPRT_FUNC_BODY
+{
+	return __sprt_putenv(s);
+}
+#endif
+
+SPRT_FUNC_BEGIN
 int mkstemp(char *tpl) SPRT_FUNC_END
 #if SPRT_FUNC_BODY
 {

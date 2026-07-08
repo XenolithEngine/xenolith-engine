@@ -219,6 +219,7 @@ SPRT_API __SPRT_ID(lldiv_t) __SPRT_ID(lldiv_impl)(long long, long long);
 SPRT_API int __SPRT_ID(posix_memalign)(void **, __SPRT_ID(size_t), __SPRT_ID(size_t));
 SPRT_API int __SPRT_ID(setenv)(const char *, const char *, int);
 SPRT_API int __SPRT_ID(unsetenv)(const char *);
+SPRT_API int __SPRT_ID(putenv)(char *);
 SPRT_API int __SPRT_ID(mkstemp)(char *);
 SPRT_API int __SPRT_ID(mkostemp)(char *, int);
 SPRT_API char *__SPRT_ID(mkdtemp)(char *);

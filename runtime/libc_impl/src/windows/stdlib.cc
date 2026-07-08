@@ -241,6 +241,35 @@ __SPRT_C_FUNC int unsetenv(const char *name) __SPRT_NOEXCEPT {
 	return -1;
 }
 
+__SPRT_C_FUNC int putenv(char *s) __SPRT_NOEXCEPT {
+	if (!s) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	auto eq = __builtin_strchr(s, '=');
+	if (!eq) {
+		return unsetenv(s); // "name" with no '=' removes the variable
+	}
+	auto nl = (__SPRT_ID(size_t))(eq - s);
+	if (nl == 0) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	char stackbuf[256];
+	char *name = nl < sizeof(stackbuf) ? stackbuf : (char *)__sprt_malloc(nl + 1);
+	if (!name) {
+		__sprt_errno = ENOMEM;
+		return -1;
+	}
+	__builtin_memcpy(name, s, nl);
+	name[nl] = '\0';
+	int r = setenv(name, eq + 1, 1);
+	if (name != stackbuf) {
+		__sprt_free(name);
+	}
+	return r;
+}
+
 template <typename Callback>
 static bool __realpath_convert(StringView path, const Callback &cb) {
 	wchar_t *out = nullptr;

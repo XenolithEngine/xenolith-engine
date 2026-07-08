@@ -23,10 +23,7 @@
 
 #include <sprt/runtime/dispatch/event.h>
 
-// wasm has no event-loop backend yet (no fds / epoll / kqueue / IOCP, and a single
-// thread), and Queue::Data is completed only by a platform block. Gate the whole
-// dispatch event subsystem out until a browser/OPFS-based loop is implemented.
-#if !SPRT_WASM
+#include <sprt/c/bits/__sprt_def.h> // SPRT_WASM
 
 #if SPRT_LINUX || SPRT_ANDROID
 
@@ -69,6 +66,13 @@
 #include "platform/darwin/SPEvent-runloop.cc"
 #endif
 
+// WebAssembly: a pure futex/timer-heap reactor (no fds). Completes Queue::Data
+// with the wasm engine + the timer handle. Threads/sockets/processes/files are
+// not wired yet (see wasm-dispatch-design).
+#if SPRT_WASM
+#include "platform/wasm/SPEvent-wasm.cc"
+#endif
+
 // Platform-neutral async file I/O (shared op-state machine + inline handle +
 // QueueData::readFile/writeFile). The io_uring-native handle lives in
 // SPEventFileFd.cc (Linux/Android only); the inline handle here serves every
@@ -81,5 +85,3 @@
 #include "SPRuntimeDispatchQueue.cc"
 #include "SPRuntimeDispatchLooper.cc"
 #include "SPRuntimeDispatchBus.cc"
-
-#endif // !SPRT_WASM
