@@ -67,4 +67,14 @@ MODULE_RUNTIME_WINDOW_PRIVATE_CFLAGS += $(MODULE_RUNTIME_WINDOW_PRIVATE_COMMON_F
 MODULE_RUNTIME_WINDOW_PRIVATE_CXXFLAGS += $(MODULE_RUNTIME_WINDOW_PRIVATE_COMMON_FLAGS)
 endif # ($(TARGET_SYSTEM),Windows)
 
+ifeq ($(TARGET_SYSTEM),WASM)
+# wasm is an internal-libc target like Windows: expose include_libc as a regular include
+# (NOT -idirafter — the freestanding stdint.h does #include_next, which needs the clang
+# resource-dir stdint to sit after include_libc in the search order) and build freestanding.
+MODULE_RUNTIME_WINDOW_PRIVATE_INCLUDES += \
+	$(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_WINDOW_PRIVATE_CFLAGS += -ffreestanding -fbuiltin
+MODULE_RUNTIME_WINDOW_PRIVATE_CXXFLAGS += -ffreestanding -fbuiltin
+endif # ($(TARGET_SYSTEM),WASM)
+
 $(call define_module, runtime_window, MODULE_RUNTIME_WINDOW)

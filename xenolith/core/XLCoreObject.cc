@@ -25,7 +25,12 @@
 #include "XLCoreInfo.h"
 #include "XLCoreDevice.h"
 #include "XLCoreDeviceQueue.h"
+#if !SPRT_WASM
+// SPIR-V shader reflection is not used on wasm (WGSL path; shader extensions resolve
+// through the window-provider interface). SPIRV-Reflect pulls the Khronos SPIRV-Headers,
+// which are not part of the wasm sysroot.
 #include "SPIRV-Reflect/spirv_reflect.h"
+#endif
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
@@ -292,6 +297,10 @@ void CommandBuffer::bindFramebuffer(Framebuffer *fb) {
 }
 
 String Shader::inspectShader(SpanView<uint32_t> data) {
+#if SPRT_WASM
+	(void)data;
+	return String(); // no SPIR-V reflection on wasm
+#else
 	SpvReflectShaderModule shader;
 
 	spvReflectCreateShaderModule(data.size() * sizeof(uint32_t), data.data(), &shader);
@@ -333,6 +342,7 @@ String Shader::inspectShader(SpanView<uint32_t> data) {
 	spvReflectDestroyShaderModule(&shader);
 
 	return out.str();
+#endif
 }
 
 String Shader::inspect(SpanView<uint32_t> data) { return inspectShader(data); }

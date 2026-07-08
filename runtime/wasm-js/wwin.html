@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Xenolith engine → WebAssembly → WebGPU</title>
+<style>:root{color-scheme:dark}
+html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden}
+canvas{position:fixed;inset:0;width:100vw;height:100vh;display:block;background:#000}</style></head>
+<body>
+<canvas id="c"></canvas>
+<script type="module">
+import { run } from "./loader.mjs";
+const canvas = document.getElementById("c");
+
+// Back the canvas with real device pixels for the current viewport, then let CSS stretch it to
+// fill the window. The engine reads these dimensions (display_size host import) so it renders at
+// native resolution instead of upscaling a fixed 800x600.
+const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+canvas.width = Math.max(1, Math.round(window.innerWidth * dpr));
+canvas.height = Math.max(1, Math.round(window.innerHeight * dpr));
+
+if (!("gpu" in navigator)) {
+	console.error("WebGPU not supported by this browser");
+	document.title = "Xenolith wasm: no WebGPU";
+} else {
+	document.title = "Xenolith wasm: running";
+	try {
+		const code = await run("./wwin.wasm", {
+			canvas,
+			density: dpr,
+			bundle: {
+				"/app/resources/xenolith-2-480.png": "./resources/xenolith-2-480.png",
+				"resources/xenolith-2-480.png": "./resources/xenolith-2-480.png",
+			},
+			onStdout: (s) => console.log(s.replace(/\n$/, "")),
+			onStderr: (s) => console.log(s.replace(/\n$/, "")),
+			onExit: (c) => { console.log(`[exit ${c}]`); document.title = `Xenolith wasm: exit ${c}`; },
+		});
+		if (code !== 0) { console.error("engine exited with code", code); }
+	} catch (e) {
+		console.error("ERROR:", e && e.stack || e);
+		document.title = "Xenolith wasm: error";
+	}
+}
+</script></body></html>

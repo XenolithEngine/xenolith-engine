@@ -26,7 +26,11 @@ MODULE_XENOLITH_BACKEND_WEBGPU_SRCS_OBJS :=
 MODULE_XENOLITH_BACKEND_WEBGPU_INCLUDES_DIRS :=
 MODULE_XENOLITH_BACKEND_WEBGPU_INCLUDES_OBJS := $(XENOLITH_MODULE_DIR)/backend/webgpu
 MODULE_XENOLITH_BACKEND_WEBGPU_DEPENDS_ON := xenolith_core
+# On wasm the browser provides WebGPU through navigator.gpu (the wgpu* functions are host
+# imports declared in the vendored webgpu.h); no native wgpu-native library is linked.
+ifneq ($(TARGET_SYSTEM),WASM)
 MODULE_XENOLITH_BACKEND_WEBGPU_LIBS := -lwgpu_native
+endif
 
 # wgpu-native is a shared library, installed next to the application
 ifeq ($(TARGET_SYSTEM),Linux)

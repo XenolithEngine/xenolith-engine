@@ -10,9 +10,19 @@
 //
 // run(wasmUrl, opts) -> Promise<exitCode>
 //   opts.onStdout / onStderr / onExit, opts.bundle (mount->url), opts.argv0
-export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0 } = {}) {
+//   opts.canvas: an on-page <canvas> whose control is transferred to the engine worker as an
+//   OffscreenCanvas (the engine's WebGPU surface). The worker owns it for the app's lifetime.
+export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0, canvas, density } = {}) {
 	return new Promise((resolve, reject) => {
-		let shared = null; // { module, memory, bundle, tidBuf } published by the engine worker
+		let shared = null; // { module, memory, bundle, tidBuf, gpuCtrl } published by the engine worker
+		// Capture the canvas backing size BEFORE transfer (afterwards width/height read back 0) so
+		// the engine can size its swapchain/window to the real viewport (display_size host import).
+		const dispW = canvas ? (canvas.width | 0) : 0;
+		const dispH = canvas ? (canvas.height | 0) : 0;
+		const dispDensity = Math.round((density || 1) * 1000); // devicePixelRatio x1000
+		// Control of the on-page canvas is transferred to an OffscreenCanvas, held here until the
+		// GPU broker worker exists (created on init-threads), then handed to it.
+		let offscreen = canvas ? canvas.transferControlToOffscreen() : null;
 
 		const wire = (w) => {
 			w.onmessage = (e) => handle(e.data);
@@ -31,7 +41,18 @@ export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0 } = {})
 					o.onerror = (ev) => (onStderr || onStdout)?.("[opfs worker] " + (ev.message || ev) + "\n");
 					o.postMessage({ opfsSab: m.opfsSab, mem: m.memory });
 				}
+				// Bring up the GPU broker: it owns the OffscreenCanvas + navigator.gpu and
+				// services every worker's marshalled wgpu* calls off a free event loop (same
+				// no-blocking rule as OPFS). Created here so the transferred canvas lands on it.
+				if (m.gpuCtrl && offscreen) {
+					const g = new Worker(new URL("./gpu-broker.mjs", import.meta.url), { type: "module" });
+					g.onmessage = (e) => handle(e.data);
+					g.onerror = (ev) => (onStderr || onStdout)?.("[gpu broker] " + (ev.message || ev) + "\n");
+					g.postMessage({ memory: m.memory, canvas: offscreen, ctrl: m.gpuCtrl, scratchPtr: m.scratchPtr }, [offscreen]);
+					offscreen = null;
+				}
 				break;
+			case "gpu-ready": onStdout?.("[gpu] ready (" + m.info + ")\n"); break;
 			case "spawn": {
 				// Create the thread worker here (free event loop) and hand it the module,
 				// shared memory and the pre-allocated stack/TLS the requester set up.
@@ -39,7 +60,7 @@ export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0 } = {})
 				wire(w);
 				w.postMessage({
 					module: shared.module, memory: shared.memory, bundle: shared.bundle, tidBuf: shared.tidBuf,
-					opfsSab: shared.opfsSab,
+					opfsSab: shared.opfsSab, gpuCtrl: shared.gpuCtrl, dispW: shared.dispW, dispH: shared.dispH, dispDensity: shared.dispDensity,
 					tid: m.tid, threadPtr: m.threadPtr, stackTop: m.stackTop, stackSize: m.stackSize, tlsBase: m.tlsBase,
 				});
 				break;
@@ -54,6 +75,6 @@ export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0 } = {})
 		const engine = new Worker(new URL("./worker.mjs", import.meta.url), { type: "module" });
 		wire(engine);
 		engine.onerror = (err) => reject(err);
-		engine.postMessage({ wasmUrl, bundleManifest: bundle, argv0 });
+		engine.postMessage({ wasmUrl, bundleManifest: bundle, argv0, hasCanvas: !!offscreen, dispW, dispH, dispDensity });
 	});
 }
