@@ -25,11 +25,6 @@ STAPPLER_VERSION_API := 6
 STAPPLER_VERSION_REV := 1
 STAPPLER_VERSION_BUILD := $(firstword $(call sp_detect_build_number,$(abspath $(STAPPLER_MODULE_DIR)/..)))
 
-# wasm has no TLS backend built (openssl/mbedtls); default to the no-backend crypto so the
-# crypto/remote chain compiles and links (secure operations are unavailable there).
-ifeq ($(TARGET_SYSTEM),WASM)
-STAPPLER_CRYPTO_DEFAULT ?= none
-endif
 STAPPLER_CRYPTO_DEFAULT ?= openssl
 
 TOOLKIT_MODULE_LIST += \

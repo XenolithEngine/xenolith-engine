@@ -60,9 +60,9 @@ public:
 			// Gently bob the label up and down forever (starts once the scene has a real size).
 			if (!_animStarted) {
 				_animStarted = true;
-				_label->runAction(Rc<RepeatForever>::create(Rc<Sequence>::create(
-						Rc<MoveTo>::create(1.4f, center + Vec2(0.0f, 40.0f)),
-						Rc<MoveTo>::create(1.4f, center - Vec2(0.0f, 40.0f)))));
+				_label->runAction(Rc<RepeatForever>::create(
+						Rc<Sequence>::create(Rc<MoveTo>::create(1.4f, center + Vec2(0.0f, 40.0f)),
+								Rc<MoveTo>::create(1.4f, center - Vec2(0.0f, 40.0f)))));
 			}
 		}
 	}
