@@ -186,8 +186,15 @@ export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, o
 			thread_exit() { throw { __thread_exit: true }; },
 			proc_exit(code) { onExit?.(code); throw { __exit: code }; },
 			// Host UI locale (BCP-47) as UTF-8; returns byte length written (0 if unknown).
+			// navigator.language is often language-only ("ru"); the engine's LocaleManager wants a
+			// language-region tag. Intl.Locale.maximize() fills in the likely region via CLDR
+			// (ru -> ru-Cyrl-RU), from which we take language + region ("ru-RU").
 			os_locale(dst, cap) {
-				const loc = (typeof navigator !== "undefined" && navigator.language) || "";
+				let loc = (typeof navigator !== "undefined" && navigator.language) || "";
+				try {
+					const m = new Intl.Locale(loc).maximize();
+					if (m.language && m.region) { loc = m.language + "-" + m.region; }
+				} catch (_) { /* keep navigator.language as-is */ }
 				if (!loc) return 0;
 				const b = enc.encode(loc);
 				const n = Math.min(cap, b.length);
