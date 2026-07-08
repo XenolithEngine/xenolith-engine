@@ -96,10 +96,15 @@ thread::id thread::get_id() const noexcept {
 
 uint32_t thread::hardware_concurrency() noexcept {
 	long result = __sprt_sysconf(__SPRT_SC_NPROCESSORS_ONLN);
-	if (result < 0) {
-		return 0;
+	// > 1, not >= 0: callers size worker pools with integer `hardware_concurrency() / 2`, so a
+	// report of 1 (what the wasm sysconf stub returns) collapses to 0 workers and every
+	// performAsync task (font glyph rasterization, deferred work, ...) is queued but never runs.
+	// Only trust a genuine multi-core report; otherwise default to a small pool.
+	// TODO(wasm): expose navigator.hardwareConcurrency via a host import for an accurate count.
+	if (result > 1) {
+		return static_cast<unsigned>(result);
 	}
-	return static_cast<unsigned>(result);
+	return 4;
 }
 
 struct __ThreadData {

@@ -256,6 +256,14 @@ bool PresentationEngine::init(NotNull<Loop> loop, NotNull<Device> device,
 	_window = window;
 	_originalSurface = _surface = _window->makeSurface(loop->getInstance());
 	_constraints = _window->exportConstraints(_serial);
+
+	// Bound the frame rate. On platforms with a display-link (vsync) callback presentation is
+	// driven by that; without one — e.g. the WebGPU/wasm backend — nothing limits the rate and the
+	// engine renders on every scheduler tick/event (hundreds of fps, wasted work + churn). Fall
+	// back to pacing at the surface's WM frame interval unless a rate was set explicitly.
+	if (!_options.followDisplayLink && _targetFrameInterval == 0 && _constraints.frameInterval) {
+		_targetFrameInterval = _constraints.frameInterval;
+	}
 	return true;
 }
 

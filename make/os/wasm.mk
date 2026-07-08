@@ -61,6 +61,9 @@ OSTYPE_LIB_CXXFLAGS :=
 OSTYPE_EXEC_CXXFLAGS :=
 
 OSTYPE_GENERAL_LDFLAGS := $(OSTYPE_LDFLAGS) -fuse-ld=lld
+# Graphics/font/image dependency libraries (freetype/harfbuzz/gif/png/...) live in the
+# sysroot; add its lib dir to the link search path.
+OSTYPE_GENERAL_LDFLAGS += -L$(TARGET_SYSROOT)/usr/lib
 # The host (JS glue) owns linear memory and shares it with the module: the runtime
 # startup imports env.memory and the T1 host functions read/write through it. Link
 # executables to import (not export/own) memory so host and module see one buffer.
@@ -74,7 +77,9 @@ OSTYPE_GENERAL_LDFLAGS := $(OSTYPE_LDFLAGS) -fuse-ld=lld
 OSTYPE_WASM_MAX_MEMORY := 1073741824 # 1 GiB (16384 pages)
 OSTYPE_EXEC_LDFLAGS := -Wl,--import-memory,--shared-memory,--max-memory=$(OSTYPE_WASM_MAX_MEMORY) \
 	-Wl,--export=__wasm_init_tls,--export=__tls_size,--export=__tls_align,--export=__tls_base \
-	-Wl,--export=__stack_pointer,--export=malloc,--export=free,--export=__xl_thread_entry
+	-Wl,--export=__stack_pointer,--export=malloc,--export=free,--export=__xl_thread_entry \
+	-Wl,--export-table \
+	-l:libz.a -l:libzstd.a -l:liblzma.a -l:libbz2.a -l:libbrotlidec.a -l:libbrotlienc.a -l:libbrotlicommon.a
 OSTYPE_LIB_LDFLAGS :=
 
 WASM := 1
