@@ -1,5 +1,5 @@
 /**
-Copyright (c) 2025 Stappler Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,13 +20,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SOCKET_H_
-#define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SOCKET_H_
+#ifndef CORE_RUNTIME_INCLUDE_LIBC_NETINET_TCP_H_
+#define CORE_RUNTIME_INCLUDE_LIBC_NETINET_TCP_H_
+
+/*
+	POSIX <netinet/tcp.h> - TCP protocol (IPPROTO_TCP) socket option constants.
+	- hosted SPRT build -> forwards to the system <netinet/tcp.h> (#include_next)
+	- otherwise         -> the option constants below (Linux/musl values).
+*/
+
+#if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
+
+#include_next <netinet/tcp.h>
+
+#else
 
 #include <sprt/c/cross/__sprt_socket.h>
-#include <sprt/c/cross/__sprt_sysid.h>
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_ssize_t.h>
-#include <sprt/c/cross/__sprt_fdset.h>
 
-#endif // CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SOCKET_H_
+#endif
+
+#endif // CORE_RUNTIME_INCLUDE_LIBC_NETINET_TCP_H_

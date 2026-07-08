@@ -81,10 +81,11 @@ SP_CXX := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/c++)
 SP_AR := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/ar)
 LIB_SRC_DIR := $(abspath $(MAKE_ROOT)../src)
 
-# Third-party dependency libs (media / text / data). Vulkan, networking,
-# cryptography and WAMR are intentionally excluded from the wasm target, so the
-# openssl/mbedtls/curl/nghttp3/gost/zip/iwasm and vulkan/spirv/glslang recipes the
-# other targets carry are all omitted here.
+# Third-party dependency libs (media / text / data + crypto). Vulkan, networking
+# (curl/nghttp3) and WAMR are intentionally excluded from the wasm target, so the
+# mbedtls/curl/nghttp3/gost/iwasm and vulkan/spirv/glslang recipes the other
+# targets carry are all omitted here. OpenSSL (libcrypto.a/libssl.a) IS built for
+# wasm - see target-wasm/openssl.mk.
 LIBS := \
 	libz.a \
 	libbz2.a \
@@ -99,7 +100,9 @@ LIBS := \
 	libfreetype.a \
 	libharfbuzz.a \
 	libSheenBidi.a \
-	libsqlite3.a
+	libsqlite3.a \
+	libssl.a \
+	libzip-openssl.a
 
 # Deps are cross-built through common/configure.mk + the SP_C_FLAGS-driven
 # toolchain-libs.cmake. The LLVM runtimes keep the flag-baked toolchain.cmake
@@ -174,6 +177,24 @@ $(SP_INSTALL_PREFIX)/usr/lib/libSheenBidi.a: ../common/sheenbidi.mk
 
 $(SP_INSTALL_PREFIX)/usr/lib/libsqlite3.a: ../common/sqlite.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
+
+# OpenSSL drives its own perl Configure (no cmake/autoconf), so it uses the
+# target-local openssl.mk, not a common/ recipe. The single rule builds both
+# libcrypto.a and libssl.a.
+$(SP_INSTALL_PREFIX)/usr/lib/libssl.a: openssl.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+# libzip with the OpenSSL crypto backend (AES). cmake build; depends on the
+# compression backends (zlib/bzip2/lzma/zstd, ENABLE_*=ON) and libcrypto.a. There
+# is no GOST engine on wasm, so unlike target-linux the openssl variant needs only
+# libssl.a. Output is renamed to libzip-openssl.a (WASM branch of common/libzip.mk).
+$(SP_INSTALL_PREFIX)/usr/lib/libzip-openssl.a: ../common/libzip.mk \
+		$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
+		$(SP_INSTALL_PREFIX)/usr/lib/libz.a \
+		$(SP_INSTALL_PREFIX)/usr/lib/libbz2.a \
+		$(SP_INSTALL_PREFIX)/usr/lib/liblzma.a \
+		$(SP_INSTALL_PREFIX)/usr/lib/libzstd.a
+	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
 .PHONY: all
 

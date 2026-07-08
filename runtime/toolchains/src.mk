@@ -217,6 +217,7 @@ $(SRC_ROOT)/openssl: | prepare
 	$(call unpack_tar, https://github.com/openssl/openssl/releases/download/openssl-3.5.7/openssl-3.5.7.tar.gz, openssl)
 	$(call rule_cp,replacements/openssl/async_posix.c,$(SRC_ROOT)/openssl/crypto/async/arch/async_posix.c)
 	$(call rule_cp,replacements/openssl/49-xwin-clang.conf,$(SRC_ROOT)/openssl/Configurations)
+	$(call rule_cp,replacements/openssl/50-wasm-sprt-clang.conf,$(SRC_ROOT)/openssl/Configurations)
 
 # https://github.com/gost-engine/engine # revised: 2 jun 2026
 $(SRC_ROOT)/openssl-gost-engine: | prepare
