@@ -271,3 +271,88 @@
 #define MSG_ZEROCOPY  0x4000000
 #define MSG_FASTOPEN  0x20000000
 #define MSG_CMSG_CLOEXEC 0x40000000
+
+// IP protocol numbers (subset of the IANA registry actually used in practice).
+#define IPPROTO_IP       0
+#define IPPROTO_ICMP     1
+#define IPPROTO_IGMP     2
+#define IPPROTO_IPIP     4
+#define IPPROTO_TCP      6
+#define IPPROTO_EGP      8
+#define IPPROTO_PUP      12
+#define IPPROTO_UDP      17
+#define IPPROTO_IDP      22
+#define IPPROTO_TP       29
+#define IPPROTO_DCCP     33
+#define IPPROTO_IPV6     41
+#define IPPROTO_RSVP     46
+#define IPPROTO_GRE      47
+#define IPPROTO_ESP      50
+#define IPPROTO_AH       51
+#define IPPROTO_ICMPV6   58
+#define IPPROTO_MTP      92
+#define IPPROTO_BEETPH   94
+#define IPPROTO_ENCAP    98
+#define IPPROTO_PIM      103
+#define IPPROTO_COMP     108
+#define IPPROTO_SCTP     132
+#define IPPROTO_UDPLITE  136
+#define IPPROTO_MPLS     137
+#define IPPROTO_RAW      255
+
+// IP-level (IPPROTO_IP) socket options
+#define IP_TOS             1
+#define IP_TTL             2
+#define IP_HDRINCL         3
+#define IP_OPTIONS         4
+#define IP_PKTINFO         8
+#define IP_MTU_DISCOVER    10
+#define IP_MTU             14
+#define IP_MULTICAST_IF    32
+#define IP_MULTICAST_TTL   33
+#define IP_MULTICAST_LOOP  34
+#define IP_ADD_MEMBERSHIP  35
+#define IP_DROP_MEMBERSHIP 36
+
+#define IP_PMTUDISC_DONT   0
+#define IP_PMTUDISC_WANT   1
+#define IP_PMTUDISC_DO     2
+#define IP_PMTUDISC_PROBE  3
+
+// IPv6-level (IPPROTO_IPV6) socket options
+#define IPV6_ADDRFORM       1
+#define IPV6_PKTINFO        50
+#define IPV6_MTU_DISCOVER   23
+#define IPV6_MTU            24
+#define IPV6_MULTICAST_IF   17
+#define IPV6_MULTICAST_HOPS 18
+#define IPV6_MULTICAST_LOOP 19
+#define IPV6_JOIN_GROUP     20
+#define IPV6_LEAVE_GROUP    21
+#define IPV6_UNICAST_HOPS   16
+#define IPV6_V6ONLY         26
+#define IPV6_RECVPKTINFO    49
+
+#define IPV6_PMTUDISC_DONT  0
+#define IPV6_PMTUDISC_WANT  1
+#define IPV6_PMTUDISC_DO    2
+#define IPV6_PMTUDISC_PROBE 3
+
+#define TCP_NODELAY              1
+#define TCP_MAXSEG               2
+#define TCP_CORK                 3
+#define TCP_KEEPIDLE             4
+#define TCP_KEEPINTVL            5
+#define TCP_KEEPCNT              6
+#define TCP_SYNCNT               7
+#define TCP_LINGER2              8
+#define TCP_DEFER_ACCEPT         9
+#define TCP_WINDOW_CLAMP         10
+#define TCP_INFO                 11
+#define TCP_QUICKACK             12
+#define TCP_CONGESTION           13
+#define TCP_MD5SIG               14
+#define TCP_USER_TIMEOUT         18
+#define TCP_FASTOPEN             23
+#define TCP_NOTSENT_LOWAT        25
+#define TCP_FASTOPEN_CONNECT     30

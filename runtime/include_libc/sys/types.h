@@ -1,5 +1,6 @@
 /**
 Copyright (c) 2025 Stappler Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -32,6 +33,8 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_pthread.h>
 #include <sprt/c/cross/__sprt_socket.h>
 #include <sprt/c/cross/__sprt_signal.h>
+#include <sprt/c/cross/__sprt_fstypes.h> // mode_t / nlink_t / ino_t / dev_t / blk*_t
+#include <sprt/c/cross/__sprt_sysid.h> // uid_t / gid_t / pid_t
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_time_t.h>
 #include <sprt/c/bits/__sprt_ssize_t.h>
@@ -48,6 +51,23 @@ typedef __SPRT_ID(ssize_t) ssize_t;
 typedef __SPRT_ID(time_t) time_t;
 typedef __SPRT_ID(clock_t) clock_t;
 typedef __SPRT_ID(clockid_t) clockid_t;
+
+// POSIX id / filesystem types. <sys/types.h> is the canonical home for these;
+// several headers (sys/stat.h, fcntl.h, ...) also re-typedef the ones they need,
+// which is a legal identical redefinition in C/C++. The identifiers resolve to the
+// same __sprt_* aliases from __sprt_fstypes.h / __sprt_sysid.h included above.
+typedef __SPRT_ID(mode_t) mode_t;
+typedef __SPRT_ID(nlink_t) nlink_t;
+typedef __SPRT_ID(ino_t) ino_t;
+typedef __SPRT_ID(ino_t) ino64_t;
+typedef __SPRT_ID(dev_t) dev_t;
+typedef __SPRT_ID(blksize_t) blksize_t;
+typedef __SPRT_ID(blkcnt_t) blkcnt_t;
+typedef __SPRT_ID(blkcnt_t) blkcnt64_t;
+typedef __SPRT_ID(uid_t) uid_t;
+typedef __SPRT_ID(gid_t) gid_t;
+typedef __SPRT_ID(pid_t) pid_t;
+typedef unsigned int id_t;
 typedef __SPRT_ID(pthread_t) pthread_t;
 typedef __SPRT_ID(pthread_once_t) pthread_once_t;
 typedef __SPRT_ID(pthread_key_t) pthread_key_t;

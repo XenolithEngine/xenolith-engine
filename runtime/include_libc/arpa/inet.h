@@ -36,10 +36,19 @@ typedef __SPRT_ID(socklen_t) socklen_t;
 typedef __SPRT_ID(in_addr_t) in_addr_t;
 
 // clang-format off
-#define INADDR_ANY              (__SPRT_ID(uint32_t))0x00000000
-#define INADDR_LOOPBACK         (__SPRT_ID(uint32_t))0x7f000001
-#define INADDR_BROADCAST        (__SPRT_ID(uint32_t))0xffffffff
-#define INADDR_NONE             (__SPRT_ID(uint32_t))0xffffffff
+#define INADDR_ANY              ((in_addr_t)0x00000000)
+#define INADDR_LOOPBACK         ((in_addr_t)0x7f000001)
+#define INADDR_BROADCAST        ((in_addr_t)0xffffffff)
+#define INADDR_NONE             ((in_addr_t)0xffffffff)
+
+#define INADDR_UNSPEC_GROUP    ((in_addr_t)0xe0000000)
+#define INADDR_ALLHOSTS_GROUP  ((in_addr_t)0xe0000001)
+#define INADDR_ALLRTRS_GROUP   ((in_addr_t)0xe0000002)
+#define INADDR_MAX_LOCAL_GROUP ((in_addr_t)0xe00000ff)
+
+#define IN6ADDR_ANY_INIT      { { { 0 } } }
+#define IN6ADDR_LOOPBACK_INIT { { { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1 } } }
+
 // clang-format on
 
 __SPRT_BEGIN_DECL

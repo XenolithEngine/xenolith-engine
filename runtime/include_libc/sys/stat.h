@@ -1,5 +1,6 @@
 /**
 Copyright (c) 2025 Stappler Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -73,6 +74,17 @@ THE SOFTWARE.
 
 #include <sprt/c/sys/__sprt_stat.h>
 
+// Legacy single-time member names. POSIX keeps the nanosecond-resolution timespec
+// members (st_atim/st_mtim/st_ctim) canonical and exposes the historical time_t
+// spellings as macros over their tv_sec, which much portable code (e.g. libzip) still
+// uses. glibc/musl define these unconditionally in <sys/stat.h>; the hosted path gets
+// them from the system header via #include_next above.
+#ifndef st_atime
+#define st_atime st_atim.tv_sec
+#define st_mtime st_mtim.tv_sec
+#define st_ctime st_ctim.tv_sec
+#endif
+
 #ifndef S_IFMT
 #define S_IFMT __SPRT_S_IFMT
 
@@ -125,8 +137,18 @@ THE SOFTWARE.
 
 __SPRT_BEGIN_DECL
 
+// POSIX requires <sys/stat.h> to make these types visible (identical redefinitions
+// of the ones in <sys/types.h>, which C/C++ permit). Several consumers (e.g. libzip's
+// compat.h) rely on off_t appearing after <sys/stat.h>.
 typedef __SPRT_ID(mode_t) mode_t;
 typedef __SPRT_ID(dev_t) dev_t;
+typedef __SPRT_ID(off_t) off_t;
+typedef __SPRT_ID(ino_t) ino_t;
+typedef __SPRT_ID(nlink_t) nlink_t;
+typedef __SPRT_ID(blksize_t) blksize_t;
+typedef __SPRT_ID(blkcnt_t) blkcnt_t;
+typedef __SPRT_ID(uid_t) uid_t;
+typedef __SPRT_ID(gid_t) gid_t;
 
 SPRT_UMBRELLA_FUNC
 int stat(const char *__SPRT_RESTRICT path,

@@ -87,6 +87,28 @@ CONFIGURE += \
 	-DENABLE_OPENSSL=OFF
 endif
 
+ifdef WASM
+# The wasm deps toolchain sets CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY (there is
+# no exe link step), so check_function_exists() only compiles its self-declared probe
+# and reports EVERY symbol as present. That falsely enables the ISO C Annex K bounds-
+# checked functions the sprt libc does NOT provide (memcpy_s / strncpy_s /
+# strerrorlen_s) - libzip then calls the real (undeclared) *_s functions instead of
+# its portable fallbacks. Pre-set those cache vars to OFF so the checks are skipped
+# and compat.h uses its wrappers. strerror_s is left to be detected: the sprt libc
+# genuinely declares it (via <string.h>), and forcing it OFF would make compat.h emit
+# a conflicting strerror_s() fallback macro.
+CONFIGURE += \
+	-DHAVE_MEMCPY_S=OFF \
+	-DHAVE_STRNCPY_S=OFF \
+	-DHAVE_STRERRORLEN_S=OFF \
+	-DHAVE_ARC4RANDOM=OFF \
+	-DHAVE_CLONEFILE=OFF \
+	-DHAVE_EXPLICIT_BZERO=OFF \
+	-DHAVE_EXPLICIT_MEMSET=OFF \
+	-DHAVE_GETPROGNAME=OFF \
+	-DHAVE_STRICMP=OFF
+endif
+
 endif # WINDOWS
 
 all:
@@ -100,5 +122,7 @@ all:
 	$(if $(LINUX),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip)))
 	$(if $(ANDROID),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip-$(VARIANT))))
 	$(if $(ANDROID),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip)))
+	$(if $(WASM),$(call rule_cp,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip),$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip-$(VARIANT))))
+	$(if $(WASM),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/$(call mklibname,zip)))
 
 .PHONY: all

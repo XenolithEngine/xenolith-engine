@@ -1,5 +1,5 @@
 /**
-Copyright (c) 2025 Stappler Team <admin@stappler.org>
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -20,13 +20,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 **/
 
-#ifndef CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SOCKET_H_
-#define CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SOCKET_H_
+// WebAssembly <syslog.h> backend. There is no system logger in the browser sandbox,
+// so the logging calls are silent no-ops and setlogmask() reports an empty prior
+// mask. Full declarations live in <syslog.h>. Included by builtin_syslog.cpp on wasm.
 
-#include <sprt/c/cross/__sprt_socket.h>
-#include <sprt/c/cross/__sprt_sysid.h>
-#include <sprt/c/bits/__sprt_size_t.h>
-#include <sprt/c/bits/__sprt_ssize_t.h>
-#include <sprt/c/cross/__sprt_fdset.h>
+#include <syslog.h>
 
-#endif // CORE_RUNTIME_INCLUDE_C_SYS___SPRT_SOCKET_H_
+extern "C" {
+
+void openlog(const char *, int, int) { }
+void closelog(void) { }
+int setlogmask(int) { return 0; }
+void syslog(int, const char *, ...) { }
+void vsyslog(int, const char *, va_list) { }
+
+} // extern "C"
