@@ -23,8 +23,9 @@ tests_thread="tests/wthread     wthreadtest.wasm  wthreadtest.wasm  wthread.html
 tests_bundled="tests/wasm       wasmtest.wasm     bundled-demo.wasm bundled-demo.html"
 tests_gpu="tests/wgpu           wgpudemo.wasm     wgpu-demo.wasm    gpu.html"
 tests_gpuc="tests/wgpuc         wgpucdemo.wasm    wgpuc-demo.wasm   gpuc.html"
+tests_wwin="tests/wwin          wwin.wasm         wwin.wasm         wwin.html"
 
-list() { echo "available tests: libc thread bundled gpu gpuc"; }
+list() { echo "available tests: libc thread bundled gpu gpuc wwin"; }
 
 [ "${1:-}" = "--list" ] && { list; exit 0; }
 TEST="${1:-libc}"; shift || true
