@@ -23,6 +23,14 @@ export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0 } = {})
 			switch (m.type) {
 			case "init-threads":
 				shared = m;
+				// Bring up the OPFS backend worker here (the main thread can create workers,
+				// and this one does async OPFS + Atomics.waitAsync — it must NOT be a worker
+				// that ever blocks in Atomics.wait). It shares the wasm memory + control block.
+				if (m.opfsSab) {
+					const o = new Worker(new URL("./opfs-worker.mjs", import.meta.url), { type: "module" });
+					o.onerror = (ev) => (onStderr || onStdout)?.("[opfs worker] " + (ev.message || ev) + "\n");
+					o.postMessage({ opfsSab: m.opfsSab, mem: m.memory });
+				}
 				break;
 			case "spawn": {
 				// Create the thread worker here (free event loop) and hand it the module,
@@ -31,6 +39,7 @@ export function run(wasmUrl, { onStdout, onStderr, onExit, bundle, argv0 } = {})
 				wire(w);
 				w.postMessage({
 					module: shared.module, memory: shared.memory, bundle: shared.bundle, tidBuf: shared.tidBuf,
+					opfsSab: shared.opfsSab,
 					tid: m.tid, threadPtr: m.threadPtr, stackTop: m.stackTop, stackSize: m.stackSize, tlsBase: m.tlsBase,
 				});
 				break;

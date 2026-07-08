@@ -38,6 +38,7 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_fcntl.h>
 #include <sprt/c/__sprt_stdlib.h>
+#include <sprt/c/__sprt_time.h>
 #include <sprt/c/sys/__sprt_mman.h>
 
 extern "C" {
@@ -57,6 +58,11 @@ __attribute__((import_module("sprt"), import_name("bundle_size"))) int __sprt_ho
 		const char *path, __SPRT_ID(size_t) pathLen);
 __attribute__((import_module("sprt"), import_name("bundle_read"))) int __sprt_host_bundle_read(
 		const char *path, __SPRT_ID(size_t) pathLen, void *buf, __SPRT_ID(size_t) cap);
+
+// clock_gettime is defined by wasm/time.cc in this same libc. The __sprt_time.h
+// prototype is namespaced when this TU is built without __SPRT_BUILD, so declare
+// the plain entry we call for memfs timestamps.
+int clock_gettime(__SPRT_ID(clockid_t), struct __SPRT_TIMESPEC_NAME *) __SPRT_NOEXCEPT;
 }
 
 namespace sprt {
@@ -70,8 +76,31 @@ struct __memfs_inode {
 	__SPRT_ID(size_t) cap; // allocated capacity
 	__SPRT_ID(mode_t) mode; // permission bits
 	bool isDir;
+	bool opfs; // backed by the persistent /opfs (OPFS) mount
+	bool dirty; // in-memory content differs from OPFS — write back on close/fsync
+	bool readonly; // read-only overlay (JS bundle) — reject writes
+	// POSIX timestamps. The wall clock comes from the host (JS Date, via
+	// clock_gettime REALTIME); set at creation and advanced on write/truncate/
+	// chmod, and settable via utimensat/futimens/utimes.
+	struct __SPRT_TIMESPEC_NAME atim;
+	struct __SPRT_TIMESPEC_NAME mtim;
+	struct __SPRT_TIMESPEC_NAME ctim;
 	__memfs_inode *next;
 };
+
+// OPFS backend (defined in libc_opfs.cc, same TU, included after this unit).
+static __memfs_inode *__opfs_resolve_inode(const char *abs, int flags, __SPRT_ID(mode_t) mode);
+static int __opfs_store(const char *abs, const unsigned char *data, __SPRT_ID(size_t) size);
+static bool __vfs_is_opfs(const char *abs);
+
+// Current wall-clock time from the host (JS side: Date.now via the clock_now
+// import). Falls back to the epoch if the host clock is somehow unavailable.
+static void __memfs_now(struct __SPRT_TIMESPEC_NAME *ts) {
+	if (clock_gettime(__SPRT_CLOCK_REALTIME, ts) != 0) {
+		ts->tv_sec = 0;
+		ts->tv_nsec = 0;
+	}
+}
 
 // An open file / stream description. For console nodes `ino` is null and I/O routes to
 // the host fd_read/fd_write; for memfs nodes `ino` points at the persistent inode and
@@ -191,6 +220,11 @@ static ssize_t __file_write(struct __fd_slot *fp, const void *buf, size_t nbytes
 	if (end > n->ino->size) {
 		n->ino->size = end;
 	}
+	if (nbytes > 0) {
+		__memfs_now(&n->ino->mtim);
+		n->ino->ctim = n->ino->mtim;
+		n->ino->dirty = true; // needs write-back if OPFS-backed
+	}
 	if (!offset) {
 		n->pos = (__SPRT_ID(off_t))end;
 	}
@@ -262,6 +296,13 @@ static int __file_close(__fd_slot *fp) {
 		return -1;
 	}
 	if (!n->isConsole) {
+		// Persist any pending changes to OPFS on close (the durability point of the
+		// load-on-open / write-back-on-close model).
+		if (n->ino && n->ino->opfs && n->ino->dirty && !n->ino->isDir) {
+			if (__opfs_store(n->ino->path, n->ino->data, n->ino->size) == 0) {
+				n->ino->dirty = false;
+			}
+		}
 		// Free only the open description; the inode (content) persists in the registry.
 		__sprt_free(n);
 	}
@@ -297,6 +338,9 @@ static int __file_stat(__fd_slot *fp, struct __SPRT_STAT_NAME *st) {
 		st->st_mode = __SPRT_S_IFREG | (n->ino->mode ? (n->ino->mode & 0777) : 0644);
 		st->st_size = (__SPRT_ID(off_t))n->ino->size;
 		st->st_blocks = (__SPRT_ID(blkcnt_t))((n->ino->size + 511) / 512);
+		st->st_atim = n->ino->atim;
+		st->st_mtim = n->ino->mtim;
+		st->st_ctim = n->ino->ctim;
 	}
 	return 0;
 }
@@ -309,14 +353,44 @@ static int __file_chmod(__fd_slot *fp, mode_t mode) {
 	}
 	if (!n->isConsole) {
 		n->ino->mode = mode;
+		__memfs_now(&n->ino->ctim);
 	}
 	return 0;
 }
 
+// Apply a utimensat/futimens times[2] vector ([0]=atime, [1]=mtime) to an inode.
+// A null `times` sets both to now; per-element UTIME_NOW -> now, UTIME_OMIT -> keep.
+// ctime always advances to now (a metadata change).
+static void __memfs_apply_times(__memfs_inode *ino, const struct __SPRT_TIMESPEC_NAME *times) {
+	struct __SPRT_TIMESPEC_NAME now;
+	__memfs_now(&now);
+	if (!times) {
+		ino->atim = now;
+		ino->mtim = now;
+	} else {
+		if (times[0].tv_nsec == __SPRT_UTIME_NOW) {
+			ino->atim = now;
+		} else if (times[0].tv_nsec != __SPRT_UTIME_OMIT) {
+			ino->atim = times[0];
+		}
+		if (times[1].tv_nsec == __SPRT_UTIME_NOW) {
+			ino->mtim = now;
+		} else if (times[1].tv_nsec != __SPRT_UTIME_OMIT) {
+			ino->mtim = times[1];
+		}
+	}
+	ino->ctim = now;
+}
+
 static int __file_utimens(__fd_slot *fp, const struct __SPRT_TIMESPEC_NAME *times) {
-	// memfs keeps no timestamps yet: accept silently.
-	(void)fp;
-	(void)times;
+	auto n = (__wasm_fnode *)fp->handle;
+	if (!n) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+	if (!n->isConsole) {
+		__memfs_apply_times(n->ino, times);
+	}
 	return 0;
 }
 
@@ -459,6 +533,12 @@ static __memfs_inode *__memfs_create(const char *abspath, bool isDir, __SPRT_ID(
 	n->cap = 0;
 	n->mode = mode;
 	n->isDir = isDir;
+	n->opfs = false;
+	n->dirty = false;
+	n->readonly = false;
+	__memfs_now(&n->mtim);
+	n->atim = n->mtim;
+	n->ctim = n->mtim;
 	n->next = s_memfs;
 	s_memfs = n;
 	return n;
@@ -475,6 +555,7 @@ static __memfs_inode *__memfs_load_bundle(const char *abspath) {
 	if (!ino) {
 		return nullptr;
 	}
+	ino->readonly = true; // Bundled overlay is read-only (JS-served, immutable)
 	if (sz > 0) {
 		if (!__memfs_reserve(ino, (__SPRT_ID(size_t))sz)) {
 			return nullptr;
@@ -526,31 +607,49 @@ static int __memfs_openfd(const char *path, int flags, __SPRT_ID(mode_t) mode) {
 		__sprt_errno = ENAMETOOLONG;
 		return -1;
 	}
-	auto ino = __memfs_find(abs);
-	if (!ino) {
-		ino = __memfs_load_bundle(abs); // read-only Bundled (browser fetch)
-	}
-	if (!ino) {
-		if (!(flags & __SPRT_O_CREAT)) {
-			__sprt_errno = ENOENT;
-			return -1;
-		}
-		ino = __memfs_create(abs, false, mode & 0777);
+	__memfs_inode *ino = __memfs_find(abs);
+	if (!ino && __vfs_is_opfs(abs)) {
+		// Persistent mount: hydrate from OPFS (or create there). Handles O_CREAT/
+		// O_EXCL/O_TRUNC + ENOENT internally and returns a ready cache inode.
+		ino = __opfs_resolve_inode(abs, flags, mode);
 		if (!ino) {
-			return -1;
+			return -1; // errno set by the resolver
 		}
 	} else {
-		if ((flags & __SPRT_O_CREAT) && (flags & __SPRT_O_EXCL)) {
-			__sprt_errno = EEXIST;
-			return -1;
+		if (!ino) {
+			ino = __memfs_load_bundle(abs); // read-only Bundled (browser fetch)
 		}
-		if (ino->isDir && ((flags & __SPRT_O_ACCMODE) != __SPRT_O_RDONLY)) {
-			__sprt_errno = EISDIR;
-			return -1;
+		if (!ino) {
+			if (!(flags & __SPRT_O_CREAT)) {
+				__sprt_errno = ENOENT;
+				return -1;
+			}
+			ino = __memfs_create(abs, false, mode & 0777);
+			if (!ino) {
+				return -1;
+			}
+		} else {
+			if ((flags & __SPRT_O_CREAT) && (flags & __SPRT_O_EXCL)) {
+				__sprt_errno = EEXIST;
+				return -1;
+			}
+			if (ino->isDir && ((flags & __SPRT_O_ACCMODE) != __SPRT_O_RDONLY)) {
+				__sprt_errno = EISDIR;
+				return -1;
+			}
+			if (flags & __SPRT_O_TRUNC) {
+				ino->size = 0;
+			}
 		}
-		if (flags & __SPRT_O_TRUNC) {
-			ino->size = 0;
-		}
+	}
+	if ((flags & __SPRT_O_DIRECTORY) && !ino->isDir) {
+		__sprt_errno = ENOTDIR;
+		return -1;
+	}
+	// Read-only overlay (JS bundle): reject any write access.
+	if (ino->readonly && ((flags & __SPRT_O_ACCMODE) != __SPRT_O_RDONLY)) {
+		__sprt_errno = EROFS;
+		return -1;
 	}
 	auto libc = __libc::get();
 	auto fn = (__wasm_fnode *)__sprt_malloc(sizeof(__wasm_fnode));

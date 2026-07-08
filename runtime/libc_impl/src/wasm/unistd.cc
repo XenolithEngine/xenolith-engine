@@ -69,4 +69,36 @@ extern "C" long sysconf(int name) __SPRT_NOEXCEPT {
 	}
 }
 
-extern "C" long pathconf(const char *, int) __SPRT_NOEXCEPT { return -1; }
+// Filesystem-wide limits for the memfs. Fixed values (there is a single backend),
+// returned by both the path and fd forms.
+static long __wasm_pathconf(int name) {
+	switch (name) {
+	case __SPRT_PC_LINK_MAX: return 1; // no hard links
+	case __SPRT_PC_MAX_CANON: return 255;
+	case __SPRT_PC_MAX_INPUT: return 255;
+	case __SPRT_PC_NAME_MAX: return 255;
+	case __SPRT_PC_PATH_MAX: return 4096;
+	case __SPRT_PC_PIPE_BUF: return 4096;
+	case __SPRT_PC_CHOWN_RESTRICTED: return 1;
+	case __SPRT_PC_NO_TRUNC: return 1; // names longer than NAME_MAX are an error
+	case __SPRT_PC_VDISABLE: return 0;
+	case __SPRT_PC_SYNC_IO: return 1;
+	case __SPRT_PC_FILESIZEBITS: return 64;
+	case __SPRT_PC_SYMLINK_MAX: return -1; // no symlinks
+	case __SPRT_PC_2_SYMLINKS: return 0;
+	default: return -1;
+	}
+}
+
+extern "C" long pathconf(const char *, int name) __SPRT_NOEXCEPT { return __wasm_pathconf(name); }
+
+extern "C" long fpathconf(int fd, int name) __SPRT_NOEXCEPT {
+	if (sprt::__libc::get()->get_fd_handle(fd) == nullptr) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+	return __wasm_pathconf(name);
+}
+
+// fsync/fdatasync live in the memfs TU (wasm/libc_path.cc) where the inode + OPFS
+// backend are in scope: an OPFS-backed file must be written back on fsync.

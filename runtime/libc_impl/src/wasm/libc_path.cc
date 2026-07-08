@@ -60,6 +60,9 @@ static void __memfs_fill_stat(const __memfs_inode *ino, struct __SPRT_STAT_NAME 
 		st->st_size = (__SPRT_ID(off_t))ino->size;
 		st->st_blocks = (__SPRT_ID(blkcnt_t))((ino->size + 511) / 512);
 	}
+	st->st_atim = ino->atim;
+	st->st_mtim = ino->mtim;
+	st->st_ctim = ino->ctim;
 }
 
 // A directory stream: a snapshot of the immediate children taken at opendir().
@@ -68,6 +71,7 @@ struct __dirstream {
 	bool *isdir; // parallel: whether each child is a directory
 	int count;
 	int idx;
+	int fd; // owned fd for fdopendir() (closed by closedir); -1 for opendir()
 	struct __SPRT_DIRENT_NAME ent;
 };
 
@@ -125,6 +129,24 @@ __SPRT_C_FUNC int remove(const char *path) __SPRT_NOEXCEPT {
 		__sprt_errno = ENAMETOOLONG;
 		return -1;
 	}
+	if (sprt::__vfs_is_opfs(abs)) {
+		__SPRT_ID(size_t) sz = 0;
+		bool isdir = false;
+		int r = sprt::__opfs_stat(abs, &sz, &isdir);
+		if (r < 0) {
+			__sprt_errno = -r;
+			return -1;
+		}
+		r = sprt::__opfs_unlink(abs, isdir);
+		if (r < 0) {
+			__sprt_errno = -r;
+			return -1;
+		}
+		if (sprt::__memfs_find(abs)) {
+			sprt::__memfs_unlink_node(abs, isdir);
+		}
+		return 0;
+	}
 	auto ino = sprt::__memfs_find(abs);
 	if (!ino) {
 		__sprt_errno = ENOENT;
@@ -145,6 +167,26 @@ __SPRT_C_FUNC int stat(const char *__SPRT_RESTRICT path,
 		return -1;
 	}
 	auto ino = sprt::__memfs_find(abs);
+	if (!ino && sprt::__vfs_is_opfs(abs)) {
+		__SPRT_ID(size_t) size = 0;
+		bool isdir = false;
+		int r = sprt::__opfs_stat(abs, &size, &isdir);
+		if (r < 0) {
+			__sprt_errno = -r;
+			return -1;
+		}
+		__builtin_memset(st, 0, sizeof(*st));
+		st->st_nlink = 1;
+		st->st_blksize = 65536;
+		if (isdir) {
+			st->st_mode = __SPRT_S_IFDIR | 0755;
+		} else {
+			st->st_mode = __SPRT_S_IFREG | 0644;
+			st->st_size = (__SPRT_ID(off_t))size;
+			st->st_blocks = (__SPRT_ID(blkcnt_t))((size + 511) / 512);
+		}
+		return 0;
+	}
 	if (!ino) {
 		ino = sprt::__memfs_load_bundle(abs);
 	}
@@ -168,6 +210,14 @@ __SPRT_C_FUNC int access(const char *path, int) __SPRT_NOEXCEPT {
 		return -1;
 	}
 	auto ino = sprt::__memfs_find(abs);
+	if (!ino && sprt::__vfs_is_opfs(abs)) {
+		int r = sprt::__opfs_stat(abs, nullptr, nullptr);
+		if (r < 0) {
+			__sprt_errno = -r;
+			return -1;
+		}
+		return 0;
+	}
 	if (!ino) {
 		ino = sprt::__memfs_load_bundle(abs);
 	}
@@ -178,11 +228,34 @@ __SPRT_C_FUNC int access(const char *path, int) __SPRT_NOEXCEPT {
 	return 0; // permission model: everything accessible
 }
 
+// memfs has no per-fd directories and a single permission model, so the dir fd,
+// the requested mode bits and AT_EACCESS are all irrelevant: only existence is
+// checked (AT_FDCWD / absolute paths resolve against "/").
+__SPRT_C_FUNC int faccessat(int, const char *path, int, int) __SPRT_NOEXCEPT {
+	return access(path, 0);
+}
+
+// Remove an /opfs node (file if isDir==false, else directory) and drop any cache inode.
+static int __opfs_unlink_path(const char *abs, bool isDir) {
+	int r = sprt::__opfs_unlink(abs, isDir);
+	if (r < 0) {
+		__sprt_errno = -r;
+		return -1;
+	}
+	if (sprt::__memfs_find(abs)) {
+		sprt::__memfs_unlink_node(abs, isDir);
+	}
+	return 0;
+}
+
 __SPRT_C_FUNC int unlink(const char *path) __SPRT_NOEXCEPT {
 	char abs[512];
 	if (!sprt::__memfs_normpath(path, abs, sizeof(abs))) {
 		__sprt_errno = ENAMETOOLONG;
 		return -1;
+	}
+	if (sprt::__vfs_is_opfs(abs)) {
+		return __opfs_unlink_path(abs, false);
 	}
 	return sprt::__memfs_unlink_node(abs, false) ? 0 : -1;
 }
@@ -193,6 +266,17 @@ __SPRT_C_FUNC int rmdir(const char *path) __SPRT_NOEXCEPT {
 		__sprt_errno = ENAMETOOLONG;
 		return -1;
 	}
+	if (sprt::__vfs_is_opfs(abs)) {
+		int r = sprt::__opfs_unlink(abs, true);
+		if (r < 0) {
+			__sprt_errno = -r;
+			return -1;
+		}
+		if (sprt::__memfs_find(abs)) {
+			sprt::__memfs_unlink_node(abs, true);
+		}
+		return 0;
+	}
 	return sprt::__memfs_unlink_node(abs, true) ? 0 : -1;
 }
 
@@ -201,6 +285,21 @@ __SPRT_C_FUNC int mkdir(const char *path, __SPRT_ID(mode_t) mode) __SPRT_NOEXCEP
 	if (!sprt::__memfs_normpath(path, abs, sizeof(abs))) {
 		__sprt_errno = ENAMETOOLONG;
 		return -1;
+	}
+	if (sprt::__vfs_is_opfs(abs)) {
+		int r = sprt::__opfs_mkdir(abs);
+		if (r < 0) {
+			__sprt_errno = -r;
+			return -1;
+		}
+		// Cache a directory inode so later stat/opendir need no round-trip.
+		if (!sprt::__memfs_find(abs)) {
+			auto d = sprt::__memfs_create(abs, true, mode & 0777);
+			if (d) {
+				d->opfs = true;
+			}
+		}
+		return 0;
 	}
 	if (sprt::__memfs_find(abs)) {
 		__sprt_errno = EEXIST;
@@ -214,6 +313,26 @@ __SPRT_C_FUNC int rename(const char *from, const char *to) __SPRT_NOEXCEPT {
 	if (!sprt::__memfs_normpath(from, a, sizeof(a)) || !sprt::__memfs_normpath(to, b, sizeof(b))) {
 		__sprt_errno = ENAMETOOLONG;
 		return -1;
+	}
+	bool fromOpfs = sprt::__vfs_is_opfs(a), toOpfs = sprt::__vfs_is_opfs(b);
+	if (fromOpfs || toOpfs) {
+		if (fromOpfs != toOpfs) {
+			__sprt_errno = EXDEV; // no cross-mount rename (tmpfs <-> opfs)
+			return -1;
+		}
+		int r = sprt::__opfs_rename(a, b);
+		if (r < 0) {
+			__sprt_errno = -r;
+			return -1;
+		}
+		// Drop stale cache for both endpoints; they re-hydrate from OPFS on next open.
+		if (sprt::__memfs_find(a)) {
+			sprt::__memfs_unlink_node(a, false);
+		}
+		if (sprt::__memfs_find(b)) {
+			sprt::__memfs_unlink_node(b, false);
+		}
+		return 0;
 	}
 	auto ino = sprt::__memfs_find(a);
 	if (!ino) {
@@ -251,6 +370,9 @@ __SPRT_C_FUNC int ftruncate(int fd, __SPRT_ID(off_t) length) __SPRT_NOEXCEPT {
 				(__SPRT_ID(size_t))length - h->ino->size);
 	}
 	h->ino->size = (__SPRT_ID(size_t))length;
+	sprt::__memfs_now(&h->ino->mtim);
+	h->ino->ctim = h->ino->mtim;
+	h->ino->dirty = true; // write back if OPFS-backed
 	return 0;
 }
 
@@ -266,12 +388,10 @@ __SPRT_C_FUNC char *getcwd(char *buf, __SPRT_ID(size_t) size) __SPRT_NOEXCEPT {
 
 // --- directory streams ---------------------------------------------------
 
-__SPRT_C_FUNC __SPRT_ID(DIR) * opendir(const char *path) __SPRT_NOEXCEPT {
-	char abs[512];
-	if (!sprt::__memfs_normpath(path, abs, sizeof(abs))) {
-		__sprt_errno = ENAMETOOLONG;
-		return nullptr;
-	}
+// Build a directory-stream snapshot for an already-normalized absolute path.
+// `ownedFd` is stored so fdopendir()'s DIR closes its backing fd at closedir();
+// opendir() passes -1.
+static __SPRT_ID(DIR) * __memfs_opendir_abs(const char *abs, int ownedFd) {
 	bool isRoot = (abs[0] == '/' && abs[1] == '\0');
 	if (!isRoot) {
 		auto d = sprt::__memfs_find(abs);
@@ -293,6 +413,7 @@ __SPRT_C_FUNC __SPRT_ID(DIR) * opendir(const char *path) __SPRT_NOEXCEPT {
 	s->isdir = nullptr;
 	s->count = 0;
 	s->idx = 0;
+	s->fd = ownedFd;
 	__SPRT_ID(size_t) plen = __builtin_strlen(abs);
 	// A child's path is "<abs>/<basename>" (or "/<basename>" at root) with no more '/'.
 	auto childBase = [&](const char *cp) -> const char * {
@@ -350,6 +471,94 @@ __SPRT_C_FUNC __SPRT_ID(DIR) * opendir(const char *path) __SPRT_NOEXCEPT {
 	return reinterpret_cast<__SPRT_ID(DIR) *>(s);
 }
 
+// Build a directory-stream snapshot for an /opfs directory: one readdir round-trip to
+// the OPFS worker, which serialises entries as "<name>\0<type-byte>". `ownedFd` is the
+// fd fdopendir() must close at closedir() (-1 for opendir()).
+static __SPRT_ID(DIR) * __opfs_opendir(const char *abs, int ownedFd) {
+	__SPRT_ID(size_t) cap = 16 * 1024;
+	auto buf = (unsigned char *)__sprt_malloc(cap);
+	if (!buf) {
+		__sprt_errno = ENOMEM;
+		return nullptr;
+	}
+	int count = sprt::__opfs_readdir(abs, buf, cap);
+	if (count < 0) {
+		__sprt_free(buf);
+		__sprt_errno = -count;
+		return nullptr;
+	}
+	auto s = (sprt::__dirstream *)__sprt_malloc(sizeof(sprt::__dirstream));
+	if (!s) {
+		__sprt_free(buf);
+		__sprt_errno = ENOMEM;
+		return nullptr;
+	}
+	s->idx = 0;
+	s->fd = ownedFd;
+	int total = count + 2; // "." and ".."
+	s->names = (char **)__sprt_malloc((__SPRT_ID(size_t))total * sizeof(char *));
+	s->isdir = (bool *)__sprt_malloc((__SPRT_ID(size_t))total * sizeof(bool));
+	auto dup = [&](const char *d, __SPRT_ID(size_t) l) {
+		char *nm = (char *)__sprt_malloc(l + 1);
+		__builtin_memcpy(nm, d, l);
+		nm[l] = '\0';
+		return nm;
+	};
+	s->names[0] = dup(".", 1);
+	s->isdir[0] = true;
+	s->names[1] = dup("..", 2);
+	s->isdir[1] = true;
+	int i = 2;
+	unsigned char *p = buf;
+	unsigned char *endp = buf + cap;
+	for (int e = 0; e < count && i < total && p < endp; ++e) {
+		auto name = (const char *)p;
+		__SPRT_ID(size_t) nl = __builtin_strlen(name);
+		p += nl + 1;
+		if (p >= endp) {
+			break;
+		}
+		unsigned char type = *p++;
+		s->names[i] = dup(name, nl);
+		s->isdir[i] = (type == 1);
+		++i;
+	}
+	s->count = i;
+	__sprt_free(buf);
+	return reinterpret_cast<__SPRT_ID(DIR) *>(s);
+}
+
+__SPRT_C_FUNC __SPRT_ID(DIR) * opendir(const char *path) __SPRT_NOEXCEPT {
+	char abs[512];
+	if (!sprt::__memfs_normpath(path, abs, sizeof(abs))) {
+		__sprt_errno = ENAMETOOLONG;
+		return nullptr;
+	}
+	if (sprt::__vfs_is_opfs(abs)) {
+		return __opfs_opendir(abs, -1);
+	}
+	return __memfs_opendir_abs(abs, -1);
+}
+
+// Adopt an fd previously opened on a directory: the returned DIR owns `fd` and
+// closedir() will close it. memfs is a flat namespace, so the snapshot is taken
+// from the fd's inode path.
+__SPRT_C_FUNC __SPRT_ID(DIR) * fdopendir(int fd) __SPRT_NOEXCEPT {
+	auto h = (sprt::__wasm_fnode *)sprt::__libc::get()->get_fd_handle(fd);
+	if (!h || h->isConsole || !h->ino) {
+		__sprt_errno = EBADF;
+		return nullptr;
+	}
+	if (!h->ino->isDir) {
+		__sprt_errno = ENOTDIR;
+		return nullptr;
+	}
+	if (h->ino->opfs) {
+		return __opfs_opendir(h->ino->path, fd);
+	}
+	return __memfs_opendir_abs(h->ino->path, fd);
+}
+
 __SPRT_C_FUNC struct __SPRT_DIRENT_NAME *readdir(__SPRT_ID(DIR) * dir) __SPRT_NOEXCEPT {
 	auto s = reinterpret_cast<sprt::__dirstream *>(dir);
 	if (!s || s->idx >= s->count) {
@@ -386,6 +595,9 @@ __SPRT_C_FUNC int closedir(__SPRT_ID(DIR) * dir) __SPRT_NOEXCEPT {
 	if (s->isdir) {
 		__sprt_free(s->isdir);
 	}
+	if (s->fd >= 0) {
+		close(s->fd); // fdopendir(): the DIR owns the backing fd
+	}
 	__sprt_free(s);
 	return 0;
 }
@@ -419,17 +631,60 @@ __SPRT_C_FUNC long telldir(__SPRT_ID(DIR) * dir) __SPRT_NOEXCEPT {
 	return (long)s->idx;
 }
 
-__SPRT_C_FUNC int dirfd(__SPRT_ID(DIR) *) __SPRT_NOEXCEPT {
-	__sprt_errno = ENOTSUP;
+__SPRT_C_FUNC int dirfd(__SPRT_ID(DIR) * dir) __SPRT_NOEXCEPT {
+	auto s = reinterpret_cast<sprt::__dirstream *>(dir);
+	if (!s) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+	if (s->fd >= 0) {
+		return s->fd; // opened via fdopendir(): the DIR owns a real fd
+	}
+	__sprt_errno = ENOTSUP; // opened via opendir(): no backing fd
 	return -1;
 }
 
 // --- *at variants / links / realpath -------------------------------------
-// memfs is a single flat namespace with no per-fd directories and no symlinks; the *at
-// forms therefore ignore the dir fd (paths are resolved against the "/" root, matching
-// AT_FDCWD), and the link family reports the appropriate "unsupported" errno.
+// memfs is a single flat namespace with no symlinks, but the *at forms honor the dir
+// fd for RELATIVE paths (POSIX): a relative path is resolved against the directory the
+// fd refers to (its inode's absolute path), so fd-relative tree walks (openat over an
+// fdopendir'd directory, as ftw/nftw do) address the right children. Absolute paths and
+// AT_FDCWD resolve against the "/" root as before. The link family is unsupported.
 
-__SPRT_C_FUNC int openat(int, const char *path, int flags, ...) __SPRT_NOEXCEPT {
+namespace sprt {
+
+// Resolve `path` relative to `dirfd` into `buf`. Returns the string to open: `path`
+// itself when it is absolute or dirfd is AT_FDCWD/none, else "<dirfd-dir>/<path>".
+// Sets errno + returns nullptr if dirfd is not an open directory, or on overflow.
+static const char *__resolve_at(int dirfd, const char *path, char *buf,
+		__SPRT_ID(size_t) cap) {
+	if (path[0] == '/' || dirfd == __SPRT_AT_FDCWD || dirfd < 0) {
+		return path;
+	}
+	auto h = (__wasm_fnode *)__libc::get()->get_fd_handle(dirfd);
+	if (!h || h->isConsole || !h->ino) {
+		__sprt_errno = EBADF;
+		return nullptr;
+	}
+	if (!h->ino->isDir) {
+		__sprt_errno = ENOTDIR;
+		return nullptr;
+	}
+	__SPRT_ID(size_t) dl = __builtin_strlen(h->ino->path);
+	__SPRT_ID(size_t) pl = __builtin_strlen(path);
+	if (dl + 1 + pl + 1 > cap) {
+		__sprt_errno = ENAMETOOLONG;
+		return nullptr;
+	}
+	__builtin_memcpy(buf, h->ino->path, dl);
+	buf[dl] = '/';
+	__builtin_memcpy(buf + dl + 1, path, pl + 1);
+	return buf;
+}
+
+} // namespace sprt
+
+__SPRT_C_FUNC int openat(int dirfd, const char *path, int flags, ...) __SPRT_NOEXCEPT {
 	__SPRT_ID(mode_t) mode = 0;
 	if (flags & __SPRT_O_CREAT) {
 		va_list ap;
@@ -437,11 +692,47 @@ __SPRT_C_FUNC int openat(int, const char *path, int flags, ...) __SPRT_NOEXCEPT 
 		mode = (__SPRT_ID(mode_t))va_arg(ap, int);
 		va_end(ap);
 	}
-	return sprt::__memfs_openfd(path, flags, mode);
+	char buf[512];
+	auto resolved = sprt::__resolve_at(dirfd, path, buf, sizeof(buf));
+	if (!resolved) {
+		return -1;
+	}
+	return sprt::__memfs_openfd(resolved, flags, mode);
 }
 
-__SPRT_C_FUNC int mkdirat(int, const char *path, __SPRT_ID(mode_t) mode) __SPRT_NOEXCEPT {
-	return mkdir(path, mode);
+__SPRT_C_FUNC int mkdirat(int dirfd, const char *path, __SPRT_ID(mode_t) mode) __SPRT_NOEXCEPT {
+	char buf[512];
+	auto resolved = sprt::__resolve_at(dirfd, path, buf, sizeof(buf));
+	if (!resolved) {
+		return -1;
+	}
+	return mkdir(resolved, mode);
+}
+
+// Set a file's timestamps (the primitive builtin utime()/utimes() forward to). The
+// dir fd and AT_SYMLINK_NOFOLLOW flag are ignored (flat namespace, no symlinks); a
+// null `times` sets both to now, and per-element UTIME_NOW/UTIME_OMIT are honored.
+__SPRT_C_FUNC int utimensat(int, const char *path, const struct __SPRT_TIMESPEC_NAME *times, int)
+		__SPRT_NOEXCEPT {
+	if (!path) {
+		__sprt_errno = EINVAL;
+		return -1;
+	}
+	char abs[512];
+	if (!sprt::__memfs_normpath(path, abs, sizeof(abs))) {
+		__sprt_errno = ENAMETOOLONG;
+		return -1;
+	}
+	auto ino = sprt::__memfs_find(abs);
+	if (!ino) {
+		ino = sprt::__memfs_load_bundle(abs);
+	}
+	if (!ino) {
+		__sprt_errno = ENOENT;
+		return -1;
+	}
+	sprt::__memfs_apply_times(ino, times);
+	return 0;
 }
 
 __SPRT_C_FUNC int linkat(int, const char *, int, const char *, int) __SPRT_NOEXCEPT {
@@ -485,6 +776,29 @@ __SPRT_C_FUNC char *realpath(const char *path, char *resolved) __SPRT_NOEXCEPT {
 	__builtin_memcpy(out, abs, len + 1);
 	return out;
 }
+
+// --- fsync / fdatasync ---------------------------------------------------
+// A tmpfs write is already durable (linear memory); an OPFS-backed write must be
+// pushed to the persistent store. Validate the descriptor either way.
+
+__SPRT_C_FUNC int fsync(int fd) __SPRT_NOEXCEPT {
+	auto h = (sprt::__wasm_fnode *)sprt::__libc::get()->get_fd_handle(fd);
+	if (!h) {
+		__sprt_errno = EBADF;
+		return -1;
+	}
+	if (!h->isConsole && h->ino && h->ino->opfs && h->ino->dirty && !h->ino->isDir) {
+		int r = sprt::__opfs_store(h->ino->path, h->ino->data, h->ino->size);
+		if (r < 0) {
+			__sprt_errno = -r;
+			return -1;
+		}
+		h->ino->dirty = false;
+	}
+	return 0;
+}
+
+__SPRT_C_FUNC int fdatasync(int fd) __SPRT_NOEXCEPT { return fsync(fd); }
 
 // --- collation (C locale) ------------------------------------------------
 

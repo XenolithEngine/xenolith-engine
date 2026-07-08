@@ -374,12 +374,17 @@ THE SOFTWARE.
 // clang-format off
 #if defined(_WIN32) || defined(_WIN64) || defined(__SPRT_WINDOWS)
 #define SPRT_ALIGNAS(N) __declspec(align(N))
-#else
-#if __STDC_VERSION__ >= 201112L
+#elif defined(__GNUC__) || defined(__clang__)
+// GNU/clang: use the attribute form. It is valid where SPRT_ALIGNAS is used
+// (`typedef struct SPRT_ALIGNAS(N) { ... }`), whereas the C11 `_Alignas(N)` keyword
+// is a syntax error between `struct` and `{`. Matters for plain-C freestanding
+// builds (e.g. the wasm third-party deps) where __STDC_VERSION__ >= C11 but the
+// struct-tag position rules out _Alignas.
+#define SPRT_ALIGNAS(N) __SPRT_FALLBACK_ATTR(aligned(N))
+#elif __STDC_VERSION__ >= 201112L
 #define SPRT_ALIGNAS(N) _Alignas(N)
 #else
 #define SPRT_ALIGNAS(N) __SPRT_FALLBACK_ATTR(aligned(N))
-#endif
 #endif
 // clang-format on
 

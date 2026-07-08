@@ -43,3 +43,7 @@ THE SOFTWARE.
 #if SPRT_WINDOWS
 #include "../platform/windows/platform.cc"
 #endif
+
+#if SPRT_WASM
+#include "../platform/wasm/unicode.cc"
+#endif

@@ -28,6 +28,10 @@ self.onmessage = async (e) => {
 		const tidCounter = new Int32Array(tidBuf);
 		Atomics.store(tidCounter, 0, 2); // 1 is the main entry thread
 
+		// Control block for the persistent-filesystem (/opfs) broker: shared by every
+		// worker that issues opfs_call and by the OPFS worker (created on the main thread).
+		const opfsSab = new SharedArrayBuffer(64 * 4);
+
 		// thread_spawn cannot create the worker here: this worker is about to block in
 		// Atomics.wait, which would stall a child worker's startup. Draw a unique tid and
 		// delegate creation to the main thread (see loader.mjs).
@@ -38,13 +42,13 @@ self.onmessage = async (e) => {
 		};
 
 		// Publish the module + shared memory to the main thread so it can create thread
-		// workers on demand, then run the program.
-		post({ type: "init-threads", module, memory, bundle, tidBuf });
+		// workers (and the OPFS worker) on demand, then run the program.
+		post({ type: "init-threads", module, memory, bundle, tidBuf, opfsSab });
 
 		const imports = makeImports({
 			memory, bundle, argv: [argv0 || "app"],
 			log: (s, t) => post({ type: s, text: t }),
-			spawn,
+			spawn, opfsSab,
 			onExit: (c) => post({ type: "exit", code: c }),
 		});
 		const instance = await WebAssembly.instantiate(module, imports); // module is compiled → Instance
