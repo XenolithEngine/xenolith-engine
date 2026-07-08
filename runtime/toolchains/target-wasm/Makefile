@@ -81,11 +81,11 @@ SP_CXX := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/c++)
 SP_AR := $(abspath $(TOOLCHAIN_OUTPUT_DIR)/host/bin/ar)
 LIB_SRC_DIR := $(abspath $(MAKE_ROOT)../src)
 
-# Third-party dependency libs (media / text / data + crypto). Vulkan, networking
-# (curl/nghttp3) and WAMR are intentionally excluded from the wasm target, so the
-# mbedtls/curl/nghttp3/gost/iwasm and vulkan/spirv/glslang recipes the other
-# targets carry are all omitted here. OpenSSL (libcrypto.a/libssl.a) IS built for
-# wasm - see target-wasm/openssl.mk.
+# Third-party dependency libs (media / text / data + crypto + networking). Vulkan
+# and WAMR are intentionally excluded from the wasm target, so the mbedtls/iwasm and
+# vulkan/spirv/glslang recipes the other targets carry are omitted here. OpenSSL
+# (libcrypto.a/libssl.a) + libzip + curl (HTTP/3 via OpenSSL QUIC + nghttp3) ARE
+# built for wasm; the socket layer is the no-op-stub sprt libc (see libc_impl).
 LIBS := \
 	libz.a \
 	libbz2.a \
@@ -102,7 +102,10 @@ LIBS := \
 	libSheenBidi.a \
 	libsqlite3.a \
 	libssl.a \
-	libzip-openssl.a
+	libgost_engine.a \
+	libzip-openssl.a \
+	libnghttp3.a \
+	libcurl-openssl.a
 
 # Deps are cross-built through common/configure.mk + the SP_C_FLAGS-driven
 # toolchain-libs.cmake. The LLVM runtimes keep the flag-baked toolchain.cmake
@@ -184,6 +187,9 @@ $(SP_INSTALL_PREFIX)/usr/lib/libsqlite3.a: ../common/sqlite.mk
 $(SP_INSTALL_PREFIX)/usr/lib/libssl.a: openssl.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
+$(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a:  ../common/gost.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
 # libzip with the OpenSSL crypto backend (AES). cmake build; depends on the
 # compression backends (zlib/bzip2/lzma/zstd, ENABLE_*=ON) and libcrypto.a. There
 # is no GOST engine on wasm, so unlike target-linux the openssl variant needs only
@@ -194,6 +200,20 @@ $(SP_INSTALL_PREFIX)/usr/lib/libzip-openssl.a: ../common/libzip.mk \
 		$(SP_INSTALL_PREFIX)/usr/lib/libbz2.a \
 		$(SP_INSTALL_PREFIX)/usr/lib/liblzma.a \
 		$(SP_INSTALL_PREFIX)/usr/lib/libzstd.a
+	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
+
+# HTTP/3 framing library (cmake, lib-only). No crypto/compression deps of its own;
+# curl consumes it for HTTP/3 on top of OpenSSL's built-in QUIC.
+$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a: ../common/nghttp3.mk
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+# curl with the OpenSSL TLS backend + HTTP/3 (USE_OPENSSL_QUIC + nghttp3). No IDN2
+# on wasm (disabled in curl.mk's WASM branch). Sockets/resolver come from the sprt
+# libc no-op stubs. Output renamed to libcurl-openssl.a (non-WINDOWS branch of curl.mk).
+$(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk \
+		$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
+		$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a \
+		$(SP_INSTALL_PREFIX)/usr/lib/libz.a
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
 .PHONY: all

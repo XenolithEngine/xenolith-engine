@@ -126,14 +126,16 @@ public:
 
 	explicit ValueTemplate(nullptr_t) : _type(Type::EMPTY) { }
 	explicit ValueTemplate(bool v) : _type(Type::BOOLEAN) { boolVal = v; }
-	explicit ValueTemplate(int32_t v) : _type(Type::INTEGER) { intVal = int64_t(v); }
-	explicit ValueTemplate(int64_t v) : _type(Type::INTEGER) { intVal = v; }
-	explicit ValueTemplate(uint32_t v) : _type(Type::INTEGER) { intVal = int64_t(v); }
-	explicit ValueTemplate(uint64_t v) : _type(Type::INTEGER) { intVal = int64_t(v); }
 
-#if SP_HAVE_DEDICATED_SIZE_T
-	explicit ValueTemplate(size_t v) : _type(Type::INTEGER) { intVal = int64_t(v); }
-#endif
+	template <sprt::unsigned_integer IntType>
+	ValueTemplate(IntType v) {
+		intVal = int64_t(v);
+	}
+
+	template <sprt::signed_integer IntType>
+	ValueTemplate(IntType v) {
+		intVal = int64_t(v);
+	}
 
 	explicit ValueTemplate(Time v) : _type(Type::INTEGER) { intVal = int64_t(v.toMicros()); }
 	explicit ValueTemplate(TimeInterval v) : _type(Type::INTEGER) {
@@ -196,33 +198,21 @@ public:
 		boolVal = v;
 		return *this;
 	}
-	Self &operator=(int32_t v) {
+
+	template <sprt::unsigned_integer IntType>
+	Self &operator=(IntType v) {
 		reset(Type::INTEGER);
 		intVal = int64_t(v);
 		return *this;
 	}
-	Self &operator=(uint32_t v) {
+
+	template <sprt::signed_integer IntType>
+	Self &operator=(IntType v) {
 		reset(Type::INTEGER);
 		intVal = int64_t(v);
 		return *this;
 	}
-	Self &operator=(uint64_t v) {
-		reset(Type::INTEGER);
-		intVal = int64_t(v);
-		return *this;
-	}
-	Self &operator=(int64_t v) {
-		reset(Type::INTEGER);
-		intVal = int64_t(v);
-		return *this;
-	}
-#if SP_HAVE_DEDICATED_SIZE_T
-	Self &operator=(size_t v) {
-		reset(Type::INTEGER);
-		intVal = int64_t(v);
-		return *this;
-	}
-#endif
+
 	Self &operator=(float v) {
 		reset(Type::DOUBLE);
 		doubleVal = double(v);
@@ -261,7 +251,9 @@ public:
 	bool operator==(const StringView &v) const {
 		return isString() ? sprt::detail::compare_c(*strVal, v) == 0 : false;
 	}
-	bool operator==(const BytesView &v) const { return isBytes() ? BytesView(*bytesVal) == v : false; }
+	bool operator==(const BytesView &v) const {
+		return isBytes() ? BytesView(*bytesVal) == v : false;
+	}
 	bool operator==(const ArrayType &v) const { return isArray() ? compare(*arrayVal, v) : false; }
 	bool operator==(const DictionaryType &v) const {
 		return isDictionary() ? compare(*dictVal, v) : false;
@@ -1443,10 +1435,12 @@ extern template class __vector<SP_DATA_VALUE_STD,
 		SP_DATA_VALUE_STD::InterfaceType::Allocator<SP_DATA_VALUE_STD>>;
 
 extern template class __map<SP_DATA_VALUE_POOL::InterfaceType::StringType, SP_DATA_VALUE_POOL,
-		less<void>, SP_DATA_VALUE_POOL::InterfaceType::Allocator<
+		less<void>,
+		SP_DATA_VALUE_POOL::InterfaceType::Allocator<
 				pair<const SP_DATA_VALUE_POOL::InterfaceType::StringType, SP_DATA_VALUE_POOL>>>;
 extern template class __map<SP_DATA_VALUE_STD::InterfaceType::StringType, SP_DATA_VALUE_STD,
-		less<void>, SP_DATA_VALUE_STD::InterfaceType::Allocator<
+		less<void>,
+		SP_DATA_VALUE_STD::InterfaceType::Allocator<
 				pair<const SP_DATA_VALUE_STD::InterfaceType::StringType, SP_DATA_VALUE_STD>>>;
 
 #undef SP_DATA_VALUE_POOL

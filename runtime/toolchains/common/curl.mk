@@ -77,6 +77,51 @@ CONFIGURE += \
 	-DUSE_OPENSSL_QUIC=ON
 endif
 
+ifdef WASM
+# Freestanding wasm: point find_package(OpenSSL) at the sprt-built static libs
+# (unix libcrypto.a/libssl.a names, not the crypto.lib/ssl.lib the openssl block
+# above assumes), give it HTTP/3 via nghttp3, and drop the pieces the wasm sysroot
+# does not ship (IDN2, PSL) or that cannot work in the browser sandbox (no raw
+# sockets - the socket API resolves to the libc no-op stubs at link time).
+CONFIGURE += \
+	-DOPENSSL_ROOT_DIR=$(SP_INSTALL_PREFIX)/usr \
+	-DOPENSSL_CRYPTO_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libcrypto.a \
+	-DOPENSSL_SSL_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
+	-DOPENSSL_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/usr/include \
+	-DUSE_NGHTTP3=ON \
+	-DUSE_LIBIDN2=OFF \
+	-DCURL_USE_LIBPSL=OFF \
+	-DENABLE_THREADED_RESOLVER=OFF
+# check_type_size() cannot recover the size from a freestanding wasm exe (the marker
+# array is stripped by the -nostdlib/--no-entry link), so every SIZEOF_* comes back
+# empty. Pre-set the wasm32 values (verified with _Static_assert): ILP32 with a 64-bit
+# ssize_t/off_t/time_t and curl's own 64-bit curl_off_t. Pre-defining the result var
+# makes check_type_size skip its probe (guard: if(NOT DEFINED <var>)).
+CONFIGURE += \
+	-DSIZEOF_SIZE_T=4 \
+	-DSIZEOF_SSIZE_T=8 \
+	-DSIZEOF_LONG=4 \
+	-DSIZEOF_INT=4 \
+	-DSIZEOF_TIME_T=8 \
+	-DSIZEOF_OFF_T=8 \
+	-DSIZEOF_CURL_OFF_T=8 \
+	-DSIZEOF_CURL_SOCKET_T=4 \
+	-DSIZEOF_SA_FAMILY_T=2
+# The EXECUTABLE feature probes link with --allow-undefined (see configure.mk), so
+# check_function_exists() reports absent functions as present (the undefined ref just
+# becomes a wasm import). Force OFF the handful the sprt libc genuinely lacks so curl
+# uses its portable fallbacks instead of calling undeclared functions: fnmatch (curl
+# has its own curl_fnmatch), the rlimit fd-limit tuning, and the passwd/getpass bits.
+CONFIGURE += \
+	-DHAVE_FNMATCH=OFF \
+	-DHAVE_GETRLIMIT=OFF \
+	-DHAVE_SETRLIMIT=OFF \
+	-DHAVE_GETPWUID=OFF \
+	-DHAVE_GETPWUID_R=OFF \
+	-DHAVE_GETPASS_R=OFF \
+	-DHAVE_IF_NAMETOINDEX=OFF
+endif
+
 all:
 	$(call rule_rm,$(LIBNAME))
 	$(call rule_mkdir,$(LIBNAME))
