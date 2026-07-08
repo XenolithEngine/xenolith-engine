@@ -47,6 +47,10 @@
 #include "../ios/SPRTWinIosContextController.h"
 #endif
 
+#if SPRT_WASM
+#include "../wasm/SPRTWinWasmController.h"
+#endif
+
 namespace sprt::window {
 
 Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextConfig &&info,
@@ -65,6 +69,9 @@ Rc<ContextController> ContextController::create(NotNull<Context> ctx, ContextCon
 #endif
 #if SPRT_ANDROID
 	return AndroidContextController::create(ctx, move(info), a);
+#endif
+#if SPRT_WASM
+	return WasmContextController::create(ctx, move(info), a);
 #endif
 	oslog::vperror(__SPRT_LOCATION, "ContextController", "Unknown platform");
 	return nullptr;

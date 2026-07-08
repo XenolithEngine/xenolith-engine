@@ -138,7 +138,7 @@ const OPFS_LOCK = 0, OPFS_REQSEQ = 1, OPFS_RESPSEQ = 2, OPFS_OP = 3, OPFS_RESULT
 	OPFS_A0 = 5, OPFS_A1 = 6, OPFS_A2 = 7, OPFS_A3 = 8;
 const ENOSYS = 38;
 
-export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, onExit, opfsSab }) {
+export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, onExit, opfsSab, dispW = 0, dispH = 0, dispDensity = 0 }) {
 	const opfsCtrl = opfsSab ? new Int32Array(opfsSab) : null;
 	const u8 = () => new Uint8Array(memory.buffer);
 	const dv = () => new DataView(memory.buffer);
@@ -174,6 +174,10 @@ export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, o
 			environ_sizes() { return packed(env); },
 			environ_copy(t, b) { return copy(env)(t, b); },
 			bundle_size(p, l) { const f = bundle[bkey(p, l)]; return f ? f.length : -1; },
+			// Viewport backing size (device px), packed as (width << 16 | height); 0 if unknown.
+			display_size() { return ((dispW & 0xFFFF) << 16) | (dispH & 0xFFFF); },
+			// devicePixelRatio x1000 (so content lays out in CSS px, renders at device px); 0 if unknown.
+			display_density() { return dispDensity & 0xFFFFFF; },
 			bundle_read(p, l, buf, cap) { const f = bundle[bkey(p, l)]; if (!f) return -1; const n = Math.min(cap, f.length); u8().set(f.subarray(0, n), buf); return n; },
 			// Thread spawn: create a worker that runs __xl_thread_entry over the shared memory.
 			// The creator pre-allocated the stack and TLS block; the worker only wires them.
@@ -182,8 +186,15 @@ export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, o
 			thread_exit() { throw { __thread_exit: true }; },
 			proc_exit(code) { onExit?.(code); throw { __exit: code }; },
 			// Host UI locale (BCP-47) as UTF-8; returns byte length written (0 if unknown).
+			// navigator.language is often language-only ("ru"); the engine's LocaleManager wants a
+			// language-region tag. Intl.Locale.maximize() fills in the likely region via CLDR
+			// (ru -> ru-Cyrl-RU), from which we take language + region ("ru-RU").
 			os_locale(dst, cap) {
-				const loc = (typeof navigator !== "undefined" && navigator.language) || "";
+				let loc = (typeof navigator !== "undefined" && navigator.language) || "";
+				try {
+					const m = new Intl.Locale(loc).maximize();
+					if (m.language && m.region) { loc = m.language + "-" + m.region; }
+				} catch (_) { /* keep navigator.language as-is */ }
 				if (!loc) return 0;
 				const b = enc.encode(loc);
 				const n = Math.min(cap, b.length);
