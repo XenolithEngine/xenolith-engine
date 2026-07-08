@@ -88,6 +88,16 @@ void _initSystemPaths(LookupData &data) {
 				});
 			}
 		});
+	} else {
+		// No explicit bundlePath: default the read-only bundle to "/app", matching the platform
+		// resource dir (see SPRuntimePlatform-wasm.cc). Bundled files then resolve to
+		// "/app/<path>" and reach the fetch overlay via the libc bundle_read host import.
+		bundledLoc.paths.emplace_back(LocationInfo{
+			StringView("/app"),
+			LookupFlags::Private,
+			LocationFlags::Locateable,
+			defaultInterface,
+		});
 	}
 
 	StringView bundle = appConfig.bundleName.empty() ? StringView("app") : appConfig.bundleName;

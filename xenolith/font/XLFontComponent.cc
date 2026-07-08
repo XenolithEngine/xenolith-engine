@@ -252,8 +252,7 @@ Rc<FontController> FontComponent::acquireController(sprt::dispatch::Looper *loop
 	builder->pendingData = builder->builder.getDataQueries().size();
 
 	for (auto &it : builder->builder.getDataQueries()) {
-		looper->performAsync(
-				[this, name = it.first, sourcePtr = &it.second, builder]() mutable -> bool {
+		auto task = [this, name = it.first, sourcePtr = &it.second, builder]() mutable -> bool {
 			sourcePtr->data = _library->openFontData(name, sourcePtr->params,
 					sourcePtr->preconfiguredParams, [&]() -> FontLibrary::FontData {
 				if (sourcePtr->fontCallback) {
@@ -277,7 +276,15 @@ Rc<FontController> FontComponent::acquireController(sprt::dispatch::Looper *loop
 				builder->onDataLoaded(false);
 			}
 			return true;
-		});
+		};
+		// The dispatch worker pool (performAsync) does not run tasks under the wasm platform yet,
+		// so font parsing (CPU-only, freetype) would stall forever and the controller never loads.
+		// Run it inline here; native keeps the background load.
+#if SPRT_WASM
+		task();
+#else
+		looper->performAsync(sp::move(task));
+#endif
 	}
 
 	return builder->controller;
