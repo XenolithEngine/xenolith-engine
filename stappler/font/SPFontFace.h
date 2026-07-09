@@ -86,14 +86,14 @@ public:
 	const Rc<FontFaceData> &getData() const { return _data; }
 	const FontSpecializationVector &getSpec() const { return _spec; }
 
-	bool acquireTexture(char32_t, const Callback<void(const CharTexture &)> &);
+	// bool acquireTexture(char32_t, const Callback<void(const CharTexture &)> &);
 	bool acquireTextureUnsafe(char32_t, const Callback<void(const CharTexture &)> &);
 
 	// Shape a run of code points with HarfBuzz over this face. Appends the glyphs HarfBuzz proposes
 	// (the RENDERING set) together with their advances/offsets (the POSITIONING set) to `out`. Locks
 	// the face (FT_Face carries mutable glyph state and is not thread-safe).
-	bool shape(const char32_t *text, size_t length, TextDirection direction, Vector<ShapedGlyph> &out,
-			bool enableLigatures = true);
+	bool shape(const char32_t *text, size_t length, TextDirection direction,
+			Vector<ShapedGlyph> &out, bool enableLigatures = true);
 
 	// FreeType glyph index for a code point (FT_Get_Char_Index), or 0 if the face has no glyph for it.
 	// Used to substitute mirrored glyphs on the non-shaped bidi path (UAX #9 L4).
