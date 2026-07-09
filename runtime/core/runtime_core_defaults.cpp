@@ -203,6 +203,10 @@ __SPRT_C_FUNC __SPRT_ID(uint64_t) __SPRT_ID(clock_gettime_nsec_np)(__SPRT_ID(clo
 			+ static_cast<uint64_t>(__tp.tv_nsec);
 }
 
+#if SPRT_WASM
+extern "C" __SPRT_ID(pid_t) __sprt_wasm_gettid(void);
+#endif
+
 __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
 	auto t = __sprt_pthread_self_noattach_np();
 	if (t) {
@@ -217,9 +221,7 @@ __SPRT_C_FUNC __SPRT_ID(pid_t) __SPRT_ID(gettid)(void) {
 #elif SPRT_WINDOWS
 	return GetCurrentThreadId();
 #elif SPRT_WASM
-	// No kernel tid: the pthread layer above already returned the host tid when
-	// the calling thread is attached; a bare wasm entry thread has none.
-	return 0;
+	return __sprt_wasm_gettid();
 #else
 	return ::gettid();
 #endif

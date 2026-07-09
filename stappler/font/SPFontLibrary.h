@@ -31,6 +31,17 @@ namespace STAPPLER_VERSIONIZED stappler::font {
 
 class FontLibrary;
 
+class SP_PUBLIC FontLibraryHandle : public Ref {
+public:
+	FontLibraryHandle();
+	virtual ~FontLibraryHandle();
+
+	FT_Library getLibrary() const { return _library; }
+
+protected:
+	FT_Library _library = nullptr;
+};
+
 class SP_PUBLIC FontFaceObjectHandle : public Ref,
 									   public InterfaceObject<memory::StandartInterface> {
 public:
@@ -101,7 +112,7 @@ public:
 	Rc<FontFaceObjectHandle> makeThreadHandle(const Rc<FontFaceObject> &);
 
 protected:
-	FT_Face newFontFace(BytesView);
+	FT_Face newFontFace(FontLibraryHandle *, BytesView);
 	void doneFontFace(FT_Face);
 
 	sprt::mutex _mutex;
@@ -109,7 +120,9 @@ protected:
 	Map<StringView, Rc<FontFaceObject>> _faces;
 	Map<StringView, Rc<FontFaceData>> _data;
 	Map<FontFaceObject *, Map<sprt::dispatch::Thread::Id, Rc<FontFaceObjectHandle>>> _threads;
-	FT_Library _library = nullptr;
+
+	Rc<FontLibraryHandle> _library;
+	sprt::__malloc_unordered_map<sprt::thread::id, Rc<FontLibraryHandle>> _threadLibrary;
 
 	sprt::bitset<1'024 * 16> _fontIds;
 };

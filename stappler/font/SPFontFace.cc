@@ -339,21 +339,6 @@ char16_t FontFaceObject::getCharId(char32_t theChar) const {
 	return char16_t(theChar & 0xFFFF);
 }
 
-// FreeType's FT_Library is not reentrant: faces that share a library serialize on internal
-// library state (allocator, modules) inside FT_Load_Glyph. Under the wasm dispatch worker pool
-// several worker threads rasterize per-thread faces of the same library at once (see
-// XLFontDeferredRequest), and the per-face _faceMutex does not cover the shared library — the
-// result is corrupted / missing glyph bitmaps ("no bitmap for glyph"). The rasterization reaches
-// FT through two entry points (this one and FontFaceObjectHandle::acquireTexture, which calls
-// acquireTextureUnsafe directly), so the process-wide guard lives inside acquireTextureUnsafe.
-static sprt::mutex s_freetypeMutex;
-
-bool FontFaceObject::acquireTexture(char32_t theChar,
-		const Callback<void(const CharTexture &)> &cb) {
-	sprt::unique_lock lock(_faceMutex);
-
-	return acquireTextureUnsafe(theChar, cb);
-}
 
 // `glyphIndex` is a FreeType glyph index (the glyph HarfBuzz/the layout selected for rendering), not
 // a code point -- the codepoint->glyph mapping already happened during layout (FontFaceObject::getChar
@@ -363,9 +348,6 @@ bool FontFaceObject::acquireTextureUnsafe(char32_t glyphIndex,
 	if (!glyphIndex) {
 		return false;
 	}
-
-	// Serialize all FreeType glyph work process-wide (FT_Library is not reentrant across faces).
-	sprt::unique_lock ftLock(s_freetypeMutex);
 
 	auto err = FT_Load_Glyph(_face, FT_UInt(glyphIndex), FT_LOAD_DEFAULT | FT_LOAD_RENDER);
 	if (err != FT_Err_Ok) {
