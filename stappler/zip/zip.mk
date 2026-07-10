@@ -36,8 +36,8 @@ ifdef LINUX
 MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:libz.a -l:liblzma.a -l:libzstd.a
 endif
 
-ifdef MACOS
-MODULE_STAPPLER_ZIP_LIBS += -l:libzip-$(STAPPLER_CRYPTO_DEFAULT).a -l:liblzma.a -l:libzstd.a
+ifeq ($(TARGET_SYSTEM),Darwin)
+MODULE_STAPPLER_ZIP_LIBS += -l:libzip.a -l:liblzma.a -l:libzstd.a
 MODULE_STAPPLER_ZIP_GENERAL_LDFLAGS += -lz
 endif
 
