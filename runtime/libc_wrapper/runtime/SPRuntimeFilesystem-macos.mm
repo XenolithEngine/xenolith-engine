@@ -38,8 +38,6 @@
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(rsize_t) rsize_t;
 
-#define NULL __SPRT_NULL
-
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #pragma clang diagnostic ignored "-Wdeprecated-enum-enum-conversion"
@@ -51,6 +49,10 @@ typedef __SPRT_ID(rsize_t) rsize_t;
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include <mach-o/dyld.h>
+
+#ifndef NULL
+#define NULL __SPRT_NULL
+#endif
 
 namespace sprt::filesystem::detail {
 

@@ -44,27 +44,29 @@ THE SOFTWARE.
 
 #ifdef SPRT_WASM
 
-typedef unsigned long nfds_t;
+// struct pollfd, nfds_t and the POLL* constants come from the single, ABI-validated
+// cross definition (SPRuntimeCSysPoll.cpp static_asserts them against the native header).
+#include <sprt/c/cross/__sprt_polltypes.h>
 
-struct pollfd {
-	int fd; // file descriptor
-	short events; // requested events
-	short revents; // returned events
-};
+typedef __SPRT_ID(nfds_t) nfds_t;
 
 // clang-format off
-#define POLLIN     0x001
-#define POLLPRI    0x002
-#define POLLOUT    0x004
-#define POLLERR    0x008
-#define POLLHUP    0x010
-#define POLLNVAL   0x020
-#define POLLRDNORM 0x040
-#define POLLRDBAND 0x080
-#define POLLWRNORM 0x100
-#define POLLWRBAND 0x200
-#define POLLMSG    0x400
-#define POLLRDHUP  0x2000
+#define POLLIN     __SPRT_POLLIN
+#define POLLPRI    __SPRT_POLLPRI
+#define POLLOUT    __SPRT_POLLOUT
+#define POLLERR    __SPRT_POLLERR
+#define POLLHUP    __SPRT_POLLHUP
+#define POLLNVAL   __SPRT_POLLNVAL
+#define POLLRDNORM __SPRT_POLLRDNORM
+#define POLLRDBAND __SPRT_POLLRDBAND
+#define POLLWRNORM __SPRT_POLLWRNORM
+#define POLLWRBAND __SPRT_POLLWRBAND
+#ifdef __SPRT_POLLMSG
+#define POLLMSG    __SPRT_POLLMSG
+#endif
+#ifdef __SPRT_POLLRDHUP
+#define POLLRDHUP  __SPRT_POLLRDHUP
+#endif
 // clang-format on
 
 __SPRT_BEGIN_DECL

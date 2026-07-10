@@ -74,8 +74,10 @@
 #define __SPRT_CONFIG_HAVE_MMAN_MEMFD 0
 #endif
 
+// select()/poll() are served by winsock (ws2_32); the wrappers forward to it. They
+// operate on winsock SOCKETs only, as native winsock does.
 #ifndef __SPRT_CONFIG_HAVE_SELECT
-#define __SPRT_CONFIG_HAVE_SELECT 0
+#define __SPRT_CONFIG_HAVE_SELECT 1
 #endif
 
 #ifndef __SPRT_CONFIG_HAVE_STAT_MKFIFO
