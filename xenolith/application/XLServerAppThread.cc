@@ -629,7 +629,7 @@ bool ServerAppThread::dispatchMessage(const remote::MessageHeader &h, BytesView 
 								// One-shot push: once the client has it (or it failed) we will never
 								// reference it again, so release it to free the client's retained copy.
 								if (ok && _blockTransfer) {
-									_blockTransfer->release(tid);
+									_blockTransfer->releaseObject(tid);
 								}
 							});
 							log::source().info("AppThread", "captured window ", windowId,

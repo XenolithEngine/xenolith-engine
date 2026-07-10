@@ -33,6 +33,7 @@
 #include "MonitorModeSelectionLayout.h"
 #include "FlexboxLayout.h"
 #include "PugLayout.h"
+#include "PugCascadeLayout.h"
 #include "ShapingLayout.h"
 #include "XlCoreMonitorInfo.h"
 #include "XLEventListener.h"
@@ -143,6 +144,13 @@ void GeneralLayout::rebuildMenu() {
 	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
 		return Rc<ButtonWithLabel>::create("Pug template UI", [this] {
 			getSceneContent()->pushLayout(Rc<PugLayout>::create());
+		});
+	}, 32.0f);
+
+	// Каскадное разрешение переменных/функций между вложенными TemplateSystem
+	controller->addItem([this](const ScrollController::Item &) -> Rc<Node> {
+		return Rc<ButtonWithLabel>::create("Pug cascade", [this] {
+			getSceneContent()->pushLayout(Rc<PugCascadeLayout>::create());
 		});
 	}, 32.0f);
 

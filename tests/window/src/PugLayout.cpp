@@ -77,7 +77,38 @@ bool PugLayout::init() {
 	// the stylesheet is attached to THIS node; every descendant resolves against it
 	_styles = addSystem(Rc<StyleSheetSystem>::create(Rc<StyleSheet>(_lightSheet)));
 
-	rebuild();
+	// the pug template is rendered by a TemplateSystem attached to this node; it holds its
+	// Context (variables/functions) persistently and rebuilds the subtree on demand
+	BuilderConfig config;
+	config.enableStyles = true; // attach StyleApplier to every produced node
+	config.resolveHandler = [this](StringView name) -> Function<void()> {
+		if (name == "tap") {
+			return [this] {
+				++_taps;
+				_template->setVariable("taps", Value(_taps));
+				_template->rebuild();
+			};
+		} else if (name == "theme") {
+			return [this] { toggleTheme(); };
+		} else if (name == "accent") {
+			return [this] {
+				if (auto greet = findByName(_tree, "greet")) {
+					simpleui::toggleStyleClass(greet, "accent");
+				}
+			};
+		}
+		return nullptr;
+	};
+	config.onError = [](StringView err) { log::source().warn("PugLayout", err); };
+
+	_template = addSystem(Rc<pugui::TemplateSystem>::create(StringView(s_pugTemplate),
+			move(config)));
+	_template->setVariable("user", Value("Xenolith"));
+	_template->setVariable("taps", Value(_taps));
+	_template->setBuildCallback([this](pugui::TemplateSystem *, SpanView<Rc<Node>> roots) {
+		_tree = roots.empty() ? nullptr : roots.back().get();
+		handleContentSizeDirty();
+	});
 
 	// headless check of post-enter re-resolution: switch the whole stylesheet
 	// after entering the scene, before the XL_SCREENSHOT_FILE capture
@@ -86,54 +117,6 @@ bool PugLayout::init() {
 	}
 
 	return true;
-}
-
-void PugLayout::rebuild() {
-	if (_tree) {
-		_tree->removeFromParent();
-		_tree = nullptr;
-	}
-
-	// one-shot build: the cache and all pool-backed template data live in a
-	// temporary pool; the produced node tree is Rc-managed and outlives it
-	auto pool = memory::pool::create((memory::pool_t *)nullptr);
-	memory::perform([&] {
-		spug::Cache cache(spug::Template::Options::getNodes(),
-				[](const StringView &err) { log::source().warn("PugLayout", err); });
-		cache.addTemplate("example.pug", spug::String(s_pugTemplate));
-
-		BuilderConfig config;
-		config.enableStyles = true; // attach StyleApplier to every produced node
-		config.resolveHandler = [this](StringView name) -> Function<void()> {
-			if (name == "tap") {
-				return [this] {
-					++_taps;
-					rebuild();
-				};
-			} else if (name == "theme") {
-				return [this] { toggleTheme(); };
-			} else if (name == "accent") {
-				return [this] {
-					if (auto greet = findByName(_tree, "greet")) {
-						simpleui::toggleStyleClass(greet, "accent");
-					}
-				};
-			}
-			return nullptr;
-		};
-		config.onError = [](StringView err) { log::source().warn("PugLayout", err); };
-
-		if (makeNodeTree(cache, "example.pug", [&](spug::Context &ctx) {
-			ctx.set("user", spug::Value("Xenolith"));
-			ctx.set("taps", spug::Value(_taps));
-			return true;
-		}, this, move(config))) {
-			_tree = _children.back().get();
-		}
-	}, pool);
-	memory::pool::destroy(pool);
-
-	handleContentSizeDirty();
 }
 
 void PugLayout::toggleTheme() {

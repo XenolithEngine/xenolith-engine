@@ -990,6 +990,7 @@ StringView getSurfaceBackendExtension(SurfaceBackend backend) {
 	case SurfaceBackend::QNX: return StringView("VK_QNX_screen_surface"); break;
 	case SurfaceBackend::OpenHarmony: return StringView("VK_OHOS_surface"); break;
 	case SurfaceBackend::Display: return StringView("VK_KHR_display"); break;
+	case SurfaceBackend::Canvas: break;
 	case SurfaceBackend::Max: break;
 	}
 	return StringView();
