@@ -128,12 +128,12 @@ public:
 	explicit ValueTemplate(bool v) : _type(Type::BOOLEAN) { boolVal = v; }
 
 	template <sprt::unsigned_integer IntType>
-	ValueTemplate(IntType v) {
+	ValueTemplate(IntType v) : _type(Type::INTEGER) {
 		intVal = int64_t(v);
 	}
 
 	template <sprt::signed_integer IntType>
-	ValueTemplate(IntType v) {
+	ValueTemplate(IntType v) : _type(Type::INTEGER) {
 		intVal = int64_t(v);
 	}
 
