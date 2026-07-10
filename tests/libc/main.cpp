@@ -56,6 +56,10 @@ static const LibcTest s_tests[] = {
 	{"dirent", &performDirentTest},
 	{"fs_extra", &performFsExtraTest},
 	{"env", &performEnvTest},
+	// <fnmatch.h> / <regex.h> / <glob.h> forward
+	{"fnmatch", &performFnmatchTest},
+	{"regex", &performRegexTest},
+	{"glob", &performGlobTest},
 	// wchar.h / multibyte / uchar.h
 	{"wchar_string", &performWcharStringTest},
 	{"wcstol", &performWcstolTest},

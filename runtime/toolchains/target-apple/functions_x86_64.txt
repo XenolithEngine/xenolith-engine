@@ -803,6 +803,7 @@
         _regcomp,
         _regexec,
         _regfree,
+        _regerror,
         __xpc_error_connection_interrupted,
         __xpc_error_connection_invalid,
         __xpc_error_key_description,

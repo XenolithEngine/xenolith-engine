@@ -302,6 +302,7 @@ $(SRC_ROOT)/llvm-project: | prepare
 	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-lldb-wine/0002-lldb-Add-DYLD-plugin-for-debugging-Wine.patch
 	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-lldb-wine/0003-lldb-Fix-Wine-preloader-name-in-POSIX-Wine-DYLD.patch
 	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-noulock/0001-replaced-__ulock-with-os_sync_wait_on_address.patch
+	cd $(SRC_ROOT)/llvm-project; git apply -p1 ../../replacements/llvm/21.1.8-libunwind-wasm/0001-libunwind-tolerate-wasm-target-in-assembly.h.patch
 
 # https://download.gnome.org/sources/libxml2  # revised: 2 jun 2026
 $(SRC_ROOT)/libxml2: | prepare

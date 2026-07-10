@@ -66,6 +66,9 @@ void performPathPosixTest();
 void performPathWindowsTest();
 void performDirentTest();
 void performFsExtraTest();
+void performFnmatchTest();
+void performRegexTest();
+void performGlobTest();
 
 // stdlib.h (environment)
 void performEnvTest();
