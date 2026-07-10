@@ -39,6 +39,10 @@
 #include "XL2dWgpuVertexPass.h"
 #endif
 
+#if MODULE_XENOLITH_RENDERER_BASIC2D_MTL
+#include "XL2dMtlVertexPass.h"
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
 class Scene2d::FpsDisplay : public Layer {
@@ -222,6 +226,19 @@ bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> wi
 			};
 
 			basic2d::webgpu::MaterialVertexPass::makeRenderQueue(builder, info);
+			queueBuilt = true;
+		}
+#endif
+
+#if MODULE_XENOLITH_RENDERER_BASIC2D_MTL
+		if (!queueBuilt && api == core::InstanceApi::Metal) {
+			basic2d::mtl::MaterialVertexPass::RenderQueueInfo info{
+				app->getGlLoop(),
+				queueInfo.extent,
+				queueInfo.backgroundColor,
+			};
+
+			basic2d::mtl::MaterialVertexPass::makeRenderQueue(builder, info);
 			queueBuilt = true;
 		}
 #endif
