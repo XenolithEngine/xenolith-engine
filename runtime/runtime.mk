@@ -121,6 +121,7 @@ MODULE_RUNTIME_GENERAL_CFLAGS += \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc/darwin
 MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/stl \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc/darwin
 endif
