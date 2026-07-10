@@ -24,7 +24,7 @@
 #define TESTS_WINDOW_SRC_PUGLAYOUT_H_
 
 #include "XL2dSceneLayout.h"
-#include "XLPugNodeBuilder.h"
+#include "XLPugSystem.h"
 #include "XLSimpleStyle.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
@@ -45,10 +45,10 @@ public:
 	virtual void handleContentSizeDirty() override;
 
 protected:
-	void rebuild();
 	void toggleTheme();
 	Node *findByName(Node *, StringView name) const;
 
+	pugui::TemplateSystem *_template = nullptr;
 	Node *_tree = nullptr;
 	Rc<simpleui::StyleSheet> _lightSheet;
 	Rc<simpleui::StyleSheet> _darkSheet;

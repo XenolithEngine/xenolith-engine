@@ -94,26 +94,9 @@ protected:
 	bool _valid = true;
 };
 
-/* Entry points.
-
-The `Cache` MUST be constructed with `spug::Template::Options::getNodes()` (or
-templates added with these options) - both the template and its includes have
-to be compiled in the structured mode. All templates run in a shared
-`spug::Context` wired by the cache (includes see the caller's variables);
-`populate` fills that context before the run. */
-
-// creates a container Node and appends all template root nodes to it
-SP_PUBLIC Rc<Node> makeNodeTree(spug::Cache &, StringView key,
-		const Callback<bool(spug::Context &)> &populate, BuilderConfig && = BuilderConfig());
-SP_PUBLIC Rc<Node> makeNodeTree(spug::Cache &, const FileInfo &,
-		const Callback<bool(spug::Context &)> &populate, BuilderConfig && = BuilderConfig());
-
-// builds template root nodes directly into an existing parent
-SP_PUBLIC bool makeNodeTree(spug::Cache &, StringView key,
-		const Callback<bool(spug::Context &)> &populate, NotNull<Node> parent,
-		BuilderConfig && = BuilderConfig());
-
-// low-level: run a template with a caller-owned shared Context (no Cache wiring)
+/* Low-level entry point: run a template (compiled with `spug::Template::Options::getNodes()`)
+with a caller-owned Context into a NodeBuilder. `pugui::TemplateSystem` (XLPugSystem.h) is the
+high-level, Node-attached way to render a template source into a node tree. */
 SP_PUBLIC bool runTemplate(const spug::Template &, spug::Context &, NodeBuilder &);
 
 } // namespace stappler::xenolith::pugui

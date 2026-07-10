@@ -1178,6 +1178,14 @@ void Context::pushVarScope(VarScope &scope) {
 
 void Context::popVarScope() { currentScope = currentScope->prev; }
 
+void Context::setParentContext(Context *p) {
+	_parent = p;
+	// getVar/getVarStorage/getMixin walk `scope->prev` until null and never special-case
+	// globalScope, so linking the global scope's `prev` to the ancestor's global scope makes
+	// both variables and functions resolve through the ancestor's scope chain.
+	globalScope.prev = p ? &p->globalScope : nullptr;
+}
+
 static inline bool Context_default_encodeURIChar(char c) {
 	if (('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') || ('0' <= c && c <= '9') || c == '-'
 			|| c == '_' || c == '.' || c == '!' || c == '~' || c == '*' || c == '\'' || c == '#'
