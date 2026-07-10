@@ -66,9 +66,11 @@ THE SOFTWARE.
 
 // __strchrnul: a GNU extension Bionic does not export; provide it for the borrow.
 static char *__strchrnul(const char *__s, int __c) {
-	for (; *__s && *__s != (char) __c; ++__s) { }
-	return (char *) __s;
+	for (; *__s && *__s != (char)__c; ++__s) { }
+	return (char *)__s;
 }
+
+#pragma clang diagnostic ignored "-Wlogical-op-parentheses"
 
 #include "../../musl-libc/src/regex/glob.c"
 

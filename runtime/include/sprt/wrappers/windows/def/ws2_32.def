@@ -33,6 +33,7 @@ EXPORTS
 	WSASocketA
 	WSASocketW
 	WSAIoctl
+	WSAPoll
 	WSAStartup
 	WSACleanup
 	WSASetLastError

@@ -326,6 +326,28 @@ typedef struct _WSANETWORKEVENTS {
 	int iErrorCode[FD_MAX_EVENTS];
 } WSANETWORKEVENTS, *LPWSANETWORKEVENTS;
 
+// WSAPoll() event flags (mstcpip). Guarded so an ambient <poll.h> cannot clash.
+// clang-format off
+#ifndef POLLRDNORM
+#define POLLRDNORM  0x0100
+#define POLLRDBAND  0x0200
+#define POLLIN      (POLLRDNORM | POLLRDBAND)
+#define POLLPRI     0x0400
+#define POLLWRNORM  0x0010
+#define POLLOUT     (POLLWRNORM)
+#define POLLWRBAND  0x0020
+#define POLLERR     0x0001
+#define POLLHUP     0x0002
+#define POLLNVAL    0x0004
+#endif
+// clang-format on
+
+typedef struct __sprt_wsapollfd {
+	SOCKET fd;
+	SHORT events;
+	SHORT revents;
+} WSAPOLLFD, *PWSAPOLLFD, *LPWSAPOLLFD;
+
 __SPRT_BEGIN_DECL
 
 __SPRT_WIN_IMPORT WINAPI INT getaddrinfo(PCSTR pNodeName, PCSTR pServiceName,
@@ -364,6 +386,8 @@ __SPRT_WIN_IMPORT WINAPI int recvfrom(SOCKET s, char *buf, int len, int flags,
 
 __SPRT_WIN_IMPORT WINAPI int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 		const struct timeval *timeout);
+
+__SPRT_WIN_IMPORT WINAPI int WSAPoll(LPWSAPOLLFD fdArray, ULONG fds, INT timeout);
 
 __SPRT_WIN_IMPORT WINAPI int send(SOCKET s, const char *buf, int len, int flags);
 
