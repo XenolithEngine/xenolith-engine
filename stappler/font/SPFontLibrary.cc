@@ -351,8 +351,6 @@ Rc<FontFaceObjectHandle> FontLibrary::makeThreadHandle(const Rc<FontFaceObject> 
 		lib = threadIt->second;
 	}
 
-	slog().debug("FontLibrary", threadId, " ", lib->getLibrary());
-
 	auto face = newFontFace(lib, obj->getData()->getView());
 	lock.unlock();
 	auto target = Rc<FontFaceObject>::create(obj->getName(), obj->getData(), lib->getLibrary(),

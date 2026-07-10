@@ -20,8 +20,34 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h" // IWYU pragma: keep
+#ifndef TESTS_WINDOW_SRC_PUGCASCADELAYOUT_H_
+#define TESTS_WINDOW_SRC_PUGCASCADELAYOUT_H_
 
-#include "XLPugRegistry.cc"
-#include "XLPugNodeBuilder.cc"
-#include "XLPugSystem.cc"
+#include "XL2dSceneLayout.h"
+#include "XLPugSystem.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith::app {
+
+// Demonstrates cascading variable/function resolution between nested pugui::TemplateSystem's.
+// Two nodes are arranged manually (outer -> inner); the OUTER system defines a function brand()
+// and a variable year, the INNER system's template references #{brand()} and #{year} without
+// defining them - they resolve through the ancestor system's Context via the VarScope chain.
+class PugCascadeLayout : public basic2d::SceneLayout2d {
+public:
+	virtual ~PugCascadeLayout() = default;
+
+	virtual bool init() override;
+	virtual void handleContentSizeDirty() override;
+
+protected:
+	Node *_outer = nullptr;
+	Node *_inner = nullptr;
+	Node *_outerTree = nullptr;
+	Node *_innerTree = nullptr;
+	pugui::TemplateSystem *_outerSys = nullptr;
+	pugui::TemplateSystem *_innerSys = nullptr;
+};
+
+} // namespace stappler::xenolith::app
+
+#endif // TESTS_WINDOW_SRC_PUGCASCADELAYOUT_H_

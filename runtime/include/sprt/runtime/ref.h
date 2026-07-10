@@ -1077,7 +1077,8 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(Args &&.
 	if (!ret) {
 		// init failed: release pRet through the SharedRef-aware destructor
 		// (the free __delete() would skip pool + allocator teardown and leak).
-		[[maybe_unused]] Self deleter(pRet, true);
+		[[maybe_unused]]
+		Self deleter(pRet, true);
 	}
 	return ret;
 }
@@ -1096,7 +1097,8 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(memory::
 	if (!ret) {
 		// init failed: release pRet through the SharedRef-aware destructor
 		// (the free __delete() would skip pool + allocator teardown and leak).
-		[[maybe_unused]] Self deleter(pRet, true);
+		[[maybe_unused]]
+		Self deleter(pRet, true);
 	}
 	return ret;
 }
@@ -1115,7 +1117,8 @@ inline typename Rc<SharedRef<_Base>>::Self Rc<SharedRef<_Base>>::create(SharedRe
 	if (!ret) {
 		// init failed: release pRet through the SharedRef-aware destructor
 		// (the free __delete() would skip pool + allocator teardown and leak).
-		[[maybe_unused]] Self deleter(pRet, true);
+		[[maybe_unused]]
+		Self deleter(pRet, true);
 	}
 	return ret;
 }

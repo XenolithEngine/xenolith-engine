@@ -423,6 +423,7 @@ void Loop::stop() {
 			_internal->update(false);
 
 			_internal->updateTimerHandle->cancel();
+			_internal->updateTimerHandle->setUserdata(nullptr);
 			_internal->updateTimerHandle = nullptr;
 
 			_internal->transferQueue = nullptr;
@@ -433,14 +434,14 @@ void Loop::stop() {
 			_internal->defaultFences.clear();
 			_internal->swapchainFences.clear();
 
-#if SP_REF_DEBUG
+#if SPRT_REF_DEBUG
 			if (_internal->loop->getReferenceCount() > 1) {
 				_internal->loop->foreachBacktrace(
-						[](uint64_t id, Time time, const sprt::vector<sprt::string> &backtrace) {
-					StringStream out;
-					out << id << ": " << time.toHttp<Interface>() << ":\n";
-					for (auto &it : backtrace) { out << "\t" << it << "\n"; }
-					log::debug("Contexnt", "Loop refs:\n", out.str());
+						[](uint64_t id, time_t t, const sprt::__pool_list<StringView> &list) {
+					sprt::cout << "(Loop) Ref:" << id << "\n";
+					for (auto &it : list) {
+						sprt::cout << "\t" << it << "\n"; //
+					}
 				});
 			}
 #endif

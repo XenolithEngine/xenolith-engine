@@ -194,46 +194,6 @@ BuilderContext NodeBuilder::makeContext(Node *parent) {
 	return ctx;
 }
 
-Rc<Node> makeNodeTree(spug::Cache &cache, StringView key,
-		const Callback<bool(spug::Context &)> &populate, BuilderConfig &&config) {
-	auto root = Rc<Node>::create();
-	if (makeNodeTree(cache, key, populate, root.get(), move(config))) {
-		return root;
-	}
-	return nullptr;
-}
-
-static bool NodeBuilder_run(spug::Cache &cache, NodeBuilder &builder,
-		const Callback<bool(spug::Context &)> &populate,
-		const Callback<bool(spug::NodeStream &, const spug::Cache::RunCallback &)> &run) {
-	auto ret = run(builder,
-			[&](spug::Context &ctx, const spug::Template &) { return !populate || populate(ctx); });
-	return ret && builder.isValid();
-}
-
-Rc<Node> makeNodeTree(spug::Cache &cache, const FileInfo &path,
-		const Callback<bool(spug::Context &)> &populate, BuilderConfig &&config) {
-	auto root = Rc<Node>::create();
-	NodeBuilder builder(root.get(), move(config));
-	if (NodeBuilder_run(cache, builder, populate,
-				[&](spug::NodeStream &sink, const spug::Cache::RunCallback &cb) {
-		return cache.runTemplate(path, cb, sink);
-	})) {
-		return root;
-	}
-	return nullptr;
-}
-
-bool makeNodeTree(spug::Cache &cache, StringView key,
-		const Callback<bool(spug::Context &)> &populate, NotNull<Node> parent,
-		BuilderConfig &&config) {
-	NodeBuilder builder(parent, move(config));
-	return NodeBuilder_run(cache, builder, populate,
-			[&](spug::NodeStream &sink, const spug::Cache::RunCallback &cb) {
-		return cache.runTemplate(key, cb, sink);
-	});
-}
-
 bool runTemplate(const spug::Template &tpl, spug::Context &ctx, NodeBuilder &builder) {
 	return tpl.run(ctx, builder) && builder.isValid();
 }
