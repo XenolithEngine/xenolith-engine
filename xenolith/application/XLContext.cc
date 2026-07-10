@@ -502,6 +502,7 @@ void Context::handleWillDestroy() {
 		_loop = nullptr;
 	}
 }
+
 void Context::handleDidDestroy() { log::source().info("Context", "handleDidDestroy"); }
 
 void Context::handleWillStop() {

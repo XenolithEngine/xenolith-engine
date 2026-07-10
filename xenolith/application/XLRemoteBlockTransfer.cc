@@ -351,7 +351,7 @@ bool BlockTransferManager::handleUnavailable(const remote::MessageHeader &, Byte
 	return true;
 }
 
-void BlockTransferManager::release(uint64_t id) {
+void BlockTransferManager::releaseObject(uint64_t id) {
 	if (!_outgoing.erase(id)) {
 		return;
 	}

@@ -61,7 +61,7 @@ public:
 			Function<void(uint64_t id, bool ok)> &&onComplete);
 
 	// Sender: announce we will no longer reference id (Release notification) and drop our retained copy.
-	void release(uint64_t id);
+	void releaseObject(uint64_t id);
 
 	// Receiver: announce we can no longer hold id (Unavailable notification) and drop our retained copy.
 	void markUnavailable(uint64_t id);

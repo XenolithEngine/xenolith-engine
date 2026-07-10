@@ -34,6 +34,7 @@
 #include "GeneralLayout.h"
 #include "ShapingLayout.h"
 #include "PugLayout.h"
+#include "PugCascadeLayout.h"
 #include "FlexboxLayout.h"
 #include "LiveReloadAppThread.h" // live-reload session addr+key, when active
 #include "XLRemoteProtocol.h"
@@ -79,6 +80,8 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 		content->pushLayout(Rc<ShapingLayout>::create());
 	} else if (::getenv("XL_PUG_TEST")) {
 		content->pushLayout(Rc<PugLayout>::create());
+	} else if (::getenv("XL_PUG_CASCADE_TEST")) {
+		content->pushLayout(Rc<PugCascadeLayout>::create());
 	} else if (::getenv("XL_FLEX_TEST")) {
 		// LayoutSystem flexbox/grid demo (toggle with the in-scene "Mode" button)
 		content->pushLayout(Rc<FlexboxLayout>::create());
@@ -132,7 +135,7 @@ void ExampleScene::handlePresented(Director *dir) {
 // Window sharing is Linux-only for now; the shared queue is vk-based and
 // can not be compiled on a WebGPU device
 #if SPRT_LINUX
-	if (static_cast<core::Loop *>(dir->getApplication()->getGlLoop())->getInstance()->getApi()
+	/*if (static_cast<core::Loop *>(dir->getApplication()->getGlLoop())->getInstance()->getApi()
 			== core::InstanceApi::Vulkan) {
 		// When live reload is active, listen on the session's negotiated address + bearer key (the same
 		// pair the server hands each launched client). Otherwise fall back to the shared dev key on a
@@ -146,7 +149,7 @@ void ExampleScene::handlePresented(Director *dir) {
 			}
 		}
 		dir->shareQueue(sp::move(builder), shareAddr, shareKey);
-	}
+	}*/
 #endif
 
 	// Безголовый сценарий снятия скриншота, управляемый переменными окружения,
