@@ -152,7 +152,9 @@ bool ContextController::notifyWindowClosed(NotNull<NativeWindow> w, WindowCloseO
 			auto it = _activeWindows.find(w.get());
 			if (it != _activeWindows.end()) {
 				w->unmapWindow();
-				_context->handleNativeWindowDestroyed(w);
+				if (_context) {
+					_context->handleNativeWindowDestroyed(w);
+				}
 				_activeWindows.erase(it);
 			}
 		}

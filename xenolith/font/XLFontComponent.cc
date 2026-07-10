@@ -32,6 +32,7 @@
 #include "XLAppThread.h"
 #include "XLVkFontQueue.h"
 #include "XLWgpuFontQueue.h"
+#include "XLMtlFontQueue.h"
 
 #include <sprt/runtime/dispatch/looper.h>
 
@@ -143,6 +144,15 @@ void FontComponent::handleStart(Context *a) {
 		if (static_cast<core::Loop *>(a->getGlLoop())->getInstance()->getApi()
 				== core::InstanceApi::WebGPU) {
 			_queue = Rc<webgpu::FontQueue>::create("FontQueue");
+		}
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_MTL
+	if (!_queue) {
+		if (static_cast<core::Loop *>(a->getGlLoop())->getInstance()->getApi()
+				== core::InstanceApi::Metal) {
+			_queue = Rc<mtl::FontQueue>::create("FontQueue");
 		}
 	}
 #endif

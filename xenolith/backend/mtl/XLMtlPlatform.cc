@@ -1,5 +1,4 @@
 /**
- Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
  Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,19 +20,35 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h"
+#include "XLMtlPlatform.h"
+#include "XLMtlInstance.h"
 
-#include "XLFontComponent.cc"
-#include "XLFontController.cc"
-#include "XLFontControllerLocal.cc"
-#include "XLFontControllerRemote.cc"
-#include "XLRemoteFontServerEndpoint.cc"
-#include "XLFontGapi.cc"
-#include "XLFontLocale.cc"
-#include "XLFontLabelBase.cc"
-#include "XLFontDeferredRequest.cc"
-#include "XLFontShared.cc"
+namespace STAPPLER_VERSIONIZED stappler::xenolith::mtl::platform {
 
-#include "backend/vk/XLVkFontQueue.cc"
-#include "backend/webgpu/XLWgpuFontQueue.cc"
-#include "backend/mtl/XLMtlFontQueue.cc"
+Rc<core::Instance> createInstance(Rc<core::InstanceInfo> &&info) {
+	if (info->api != core::InstanceApi::Metal) {
+		return nullptr;
+	}
+
+	// Metal has no instance object: devices are enumerated directly.
+	// Validation is controlled by the environment (MTL_DEBUG_LAYER=1) or the
+	// Xcode scheme, InstanceFlags::Validation is accepted but has no effect here
+	auto instance = Rc<Instance>::alloc(info->flags);
+	if (instance->getDeviceCount() == 0) {
+		log::source().error("mtl", "No Metal devices available");
+		return nullptr;
+	}
+
+	return instance;
+}
+
+void *createOffscreenLayer() {
+	@autoreleasepool {
+		CAMetalLayer *layer = [CAMetalLayer layer];
+		return retainHandle(layer);
+	}
+}
+
+void releaseLayerHandle(void *handle) { releaseHandle(handle); }
+
+} // namespace stappler::xenolith::mtl::platform

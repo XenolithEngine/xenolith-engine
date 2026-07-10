@@ -32,6 +32,10 @@
 #include "XLWgpuPlatform.h"
 #endif
 
+#ifdef MODULE_XENOLITH_BACKEND_MTL
+#include "XLMtlPlatform.h"
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith::core {
 
 Value encodeInstanceInfo(const InstanceInfo &info) {
@@ -85,6 +89,16 @@ Rc<Instance> Instance::create(Rc<InstanceInfo> &&info) {
 		}
 	}
 #endif
+#ifdef MODULE_XENOLITH_BACKEND_MTL
+	if (info->api == InstanceApi::Metal) {
+		auto createInstance =
+				SharedModule::acquireTypedSymbol<decltype(&mtl::platform::createInstance)>(
+						buildconfig::MODULE_XENOLITH_BACKEND_MTL_NAME, "platform::createInstance");
+		if (createInstance) {
+			return createInstance(move(info));
+		}
+	}
+#endif
 	return nullptr;
 }
 
@@ -107,6 +121,7 @@ StringView getInstanceApiName(InstanceApi backend) {
 	case InstanceApi::None: return "None"; break;
 	case InstanceApi::Vulkan: return "Vulkan"; break;
 	case InstanceApi::WebGPU: return "WebGPU"; break;
+	case InstanceApi::Metal: return "Metal"; break;
 	}
 	return StringView();
 }

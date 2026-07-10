@@ -111,7 +111,7 @@ CommandLineParser<ContextConfig> ContextConfig::getCommandLineParser() {
 		return true;
 	}},
 		CommandLineOption<ContextConfig>{.patterns = {"--gapi <api>"},
-			.description = StringView("Select graphics API backend (vulkan, webgpu)"),
+			.description = StringView("Select graphics API backend (vulkan, webgpu, metal)"),
 			.callback = [](ContextConfig &target, StringView pattern,
 								SpanView<StringView> args) -> bool {
 		if (!target.instance) {
@@ -122,6 +122,8 @@ CommandLineParser<ContextConfig> ContextConfig::getCommandLineParser() {
 			target.instance->api = core::InstanceApi::Vulkan;
 		} else if (api == "webgpu") {
 			target.instance->api = core::InstanceApi::WebGPU;
+		} else if (api == "metal") {
+			target.instance->api = core::InstanceApi::Metal;
 		} else {
 			log::source().error("ContextConfig", "Unknown gAPI: ", api);
 			return false;

@@ -1,5 +1,4 @@
 /**
- Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
  Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,19 +20,37 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h"
+#include "XLMtlMaterial.h"
+#include "XLMtlDevice.h"
 
-#include "XLFontComponent.cc"
-#include "XLFontController.cc"
-#include "XLFontControllerLocal.cc"
-#include "XLFontControllerRemote.cc"
-#include "XLRemoteFontServerEndpoint.cc"
-#include "XLFontGapi.cc"
-#include "XLFontLocale.cc"
-#include "XLFontLabelBase.cc"
-#include "XLFontDeferredRequest.cc"
-#include "XLFontShared.cc"
+namespace STAPPLER_VERSIONIZED stappler::xenolith::mtl {
 
-#include "backend/vk/XLVkFontQueue.cc"
-#include "backend/webgpu/XLWgpuFontQueue.cc"
-#include "backend/mtl/XLMtlFontQueue.cc"
+void MaterialAttachment::setCompiled(core::Device &dev) {
+	_device = static_cast<Device *>(&dev);
+
+	core::MaterialAttachment::setCompiled(dev);
+}
+
+Rc<core::BufferObject> MaterialAttachment::allocateMaterialPersistentBuffer(
+		NotNull<core::Material> m) const {
+	if (!_device) {
+		log::source().error("mtl::MaterialAttachment",
+				"allocateMaterialPersistentBuffer: attachment is not compiled");
+		return nullptr;
+	}
+
+	auto size = getMaterialSize(m);
+	if (size == 0) {
+		return nullptr;
+	}
+
+	auto buf = Rc<Buffer>::create(*_device,
+			core::BufferInfo(core::BufferUsage::StorageBuffer | core::BufferUsage::TransferDst,
+					uint64_t(size), StringView("MaterialBuffer")));
+	if (buf) {
+		setMaterialBuffer(m, Rc<core::BufferObject>(buf));
+	}
+	return buf;
+}
+
+} // namespace stappler::xenolith::mtl

@@ -1,5 +1,4 @@
 /**
- Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
  Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,19 +20,39 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h"
+#ifndef XENOLITH_FONT_BACKEND_MTL_XLMTLFONTQUEUE_H_
+#define XENOLITH_FONT_BACKEND_MTL_XLMTLFONTQUEUE_H_
 
-#include "XLFontComponent.cc"
-#include "XLFontController.cc"
-#include "XLFontControllerLocal.cc"
-#include "XLFontControllerRemote.cc"
-#include "XLRemoteFontServerEndpoint.cc"
-#include "XLFontGapi.cc"
-#include "XLFontLocale.cc"
-#include "XLFontLabelBase.cc"
-#include "XLFontDeferredRequest.cc"
-#include "XLFontShared.cc"
+#include "XLFontComponent.h"
 
-#include "backend/vk/XLVkFontQueue.cc"
-#include "backend/webgpu/XLWgpuFontQueue.cc"
-#include "backend/mtl/XLMtlFontQueue.cc"
+#if MODULE_XENOLITH_BACKEND_MTL
+
+#include "XLMtlQueuePass.h"
+
+namespace STAPPLER_VERSIONIZED stappler::xenolith::mtl {
+
+/* Font glyph atlas queue for the Metal backend.
+ *
+ * Like the WebGPU variant, there are no persistent glyph buffers and no
+ * transfer command encoding: glyphs are rendered into CPU memory, the atlas
+ * is packed with font::emplaceChars, the composed R8 raster is uploaded into
+ * a shared-storage texture with a single replaceRegion */
+class SP_PUBLIC FontQueue : public core::Queue {
+public:
+	virtual ~FontQueue();
+
+	bool init(StringView name);
+
+	const core::AttachmentData *getAttachment() const { return _attachment; }
+
+protected:
+	using core::Queue::init;
+
+	const core::AttachmentData *_attachment = nullptr;
+};
+
+} // namespace stappler::xenolith::mtl
+
+#endif /* MODULE_XENOLITH_BACKEND_MTL */
+
+#endif /* XENOLITH_FONT_BACKEND_MTL_XLMTLFONTQUEUE_H_ */
