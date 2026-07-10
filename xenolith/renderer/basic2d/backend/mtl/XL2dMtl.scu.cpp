@@ -1,5 +1,4 @@
 /**
- Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
  Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,19 +20,9 @@
  THE SOFTWARE.
  **/
 
+// Plain C++ SCU: the Metal backend's public headers are C++-safe (ObjC only
+// under __OBJC__), all ObjC work happens inside the backend module itself.
+
 #include "XLCommon.h"
 
-#include "XLFontComponent.cc"
-#include "XLFontController.cc"
-#include "XLFontControllerLocal.cc"
-#include "XLFontControllerRemote.cc"
-#include "XLRemoteFontServerEndpoint.cc"
-#include "XLFontGapi.cc"
-#include "XLFontLocale.cc"
-#include "XLFontLabelBase.cc"
-#include "XLFontDeferredRequest.cc"
-#include "XLFontShared.cc"
-
-#include "backend/vk/XLVkFontQueue.cc"
-#include "backend/webgpu/XLWgpuFontQueue.cc"
-#include "backend/mtl/XLMtlFontQueue.cc"
+#include "XL2dMtlVertexPass.cc"

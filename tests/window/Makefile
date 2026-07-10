@@ -55,6 +55,14 @@ LOCAL_MODULES += \
 	xenolith_renderer_basic2d_webgpu
 endif
 
+# Metal build variant (macOS/iOS only): `make MTL=1` adds the Metal backend
+# and the 2d renderer Metal passes; select at runtime with `testapp --gapi metal`
+ifeq ($(MTL),1)
+LOCAL_MODULES += \
+	xenolith_backend_mtl \
+	xenolith_renderer_basic2d_mtl
+endif
+
 LOCAL_SRCS_DIRS :=  src
 LOCAL_SRCS_OBJS :=
 
@@ -75,6 +83,18 @@ include $(STAPPLER_BUILD_ROOT)/universal.mk
 ifneq ($(TARGET_SYSTEM),Android-NDK)
 all:
 	$(MAKE) -C $(LOCAL_ROOT)/client STAPPLER_TARGET=$(STAPPLER_TARGET) all
+endif
+
+# Bundle app resources into the .app: the runtime resolves
+# LocationCategory::Bundled to Contents/Resources when running as a bundle
+# (see SPRuntimeFilesystem-macos.mm), mirroring the Android assets rsync below
+ifeq ($(TARGET_SYSTEM),Darwin)
+.PHONY: bundle-resources
+bundle-resources: $(BUILD_EXECUTABLE)
+	@mkdir -p $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Resources
+	rsync -ar --delete $(LOCAL_ROOT)/resources $(abspath $(dir $(BUILD_EXECUTABLE))/..)/Resources/
+
+all: bundle-resources
 endif
 
 prepare-android:
