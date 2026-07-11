@@ -133,7 +133,8 @@ public:
 
 	// Convenience form: `reader` receives output chunks; `onExit` receives the
 	// exit code and final Status. Uses the Handle userdata slot for private data.
-	Rc<ProcessHandle> spawnProcess(StringView command, dispatch::Function<void(StringView)> &&reader,
+	Rc<ProcessHandle> spawnProcess(StringView command,
+			dispatch::Function<void(StringView)> &&reader,
 			dispatch::Function<void(int exitCode, Status)> &&onExit, Ref * = nullptr);
 
 	// Asynchronous file read: streams the file contents to FileReadInfo::reader
@@ -194,6 +195,10 @@ public:
 	Status wakeup(WakeupFlags = WakeupFlags::ContextDefault);
 
 	void cancel();
+
+	// shutdown any pending async ops in true-async (uring) mode.
+	// noop on non-async modes
+	void shutdown();
 
 	Data *getData() const { return _data; }
 

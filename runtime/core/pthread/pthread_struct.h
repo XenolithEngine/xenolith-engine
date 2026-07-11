@@ -41,6 +41,7 @@ namespace sprt::_thread {
 struct thread_base_t {
 	thread_base_t *next = nullptr;
 	void *handle = nullptr;
+	uint64_t nativeId = 0;
 	__sprt_pid_t threadId = 0;
 
 	void *(*cb)(thread_base_t *) = nullptr;

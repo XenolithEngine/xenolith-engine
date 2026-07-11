@@ -131,6 +131,8 @@ static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg) {
 	// not the kernel tid, otherwise the erase below never removes the entry.
 	auto tid = native::__getNativeThreadId();
 
+	thread->nativeId = tid;
+
 	if (!thread->registerThread()) {
 		unique_lock globalLock(s_handlePool.mutex);
 		s_handlePool.activeThreads.erase(tid);
@@ -246,8 +248,12 @@ static void __detachAndDeallocateThread(thread_t *thread, unique_lock<qmutex> *e
 	if (externalLock && externalLock->owns_lock()) {
 		externalLock->unlock();
 	}
+
+	auto nativeId = thread->nativeId;
+
 	thread->~thread_t();
-	if (native::__getNativeThreadId() != __libc_main_thread) {
+
+	if (nativeId != __libc_main_thread) {
 		thread->next = s_handlePool.free;
 		s_handlePool.free = thread;
 	}
@@ -310,6 +316,8 @@ thread_t *thread_t::self() {
 			// Fail to attach main thread - unrecoverable
 			__sprt_abort();
 		}
+
+		tl_self.thread->nativeId = nativeId;
 		return tl_self.thread;
 	}
 
@@ -335,6 +343,7 @@ thread_t *thread_t::self() {
 			__deallocateThread(nthread);
 			return nullptr;
 		}
+		nthread->nativeId = nativeId;
 	}
 	return tl_self.thread;
 }

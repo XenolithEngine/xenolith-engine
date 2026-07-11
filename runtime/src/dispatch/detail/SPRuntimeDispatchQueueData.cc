@@ -312,6 +312,12 @@ void QueueData::cancel() {
 	cleanup();
 }
 
+void QueueData::shutdown() {
+	if (_shutdown) {
+		_shutdown(_platformQueue);
+	}
+}
+
 Rc<TimerHandle> QueueData::scheduleTimer(TimerInfo &&info) {
 	if (_timer) {
 		return _timer(this, _platformQueue, move(info));
