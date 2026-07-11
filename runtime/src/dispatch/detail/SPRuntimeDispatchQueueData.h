@@ -110,6 +110,7 @@ struct SPRT_API QueueData : public PerformEngine {
 	RunCallback _run = nullptr;
 	WakeupCallback _wakeup = nullptr;
 	CancelCallback _cancel = nullptr;
+	CancelCallback _shutdown = nullptr;
 	DestroyCallback _destroy = nullptr;
 	TimerCallback _timer = nullptr;
 	ThreadCallback _thread = nullptr;
@@ -153,6 +154,7 @@ struct SPRT_API QueueData : public PerformEngine {
 	Status wakeup(WakeupFlags flags);
 
 	void cancel();
+	void shutdown();
 
 	Rc<TimerHandle> scheduleTimer(TimerInfo &&);
 	Rc<PollHandle> listenHandle(NativeHandle, PollFlags, CompletionHandle<PollHandle> &&);

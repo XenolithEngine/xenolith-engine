@@ -145,6 +145,9 @@ static bool __initNativeHandle(thread_t *thread) {
 	pthread_getattr_np(reinterpret_cast<pthread_t>(thread->handle),
 			&attr); // Get current thread's actual attributes
 	pthread_attr_getstack(&attr, &stackptr, &stackSize);
+	// pthread_getattr_np allocates internal storage (e.g. the CPU affinity set);
+	// it must be released with pthread_attr_destroy or it leaks per thread
+	pthread_attr_destroy(&attr);
 #endif
 
 	int sched = 0;
