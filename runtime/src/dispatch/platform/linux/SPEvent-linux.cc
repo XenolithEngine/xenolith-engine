@@ -92,13 +92,13 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return Rc<ThreadEPollHandle>::create(&data->_alooperThreadClass);
 			};
 
-			_makeFileHandle = [](QueueData *d, void *ptr,
-									Rc<FileState> &&state) -> Rc<FileHandle> {
+			_makeFileHandle = [](QueueData *d, void *ptr, Rc<FileState> &&state) -> Rc<FileHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
 				return makeFileInlineHandle(d, &data->_alooperFileClass, sprt::move(state));
 			};
 
-			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info, Ref *ref) -> Rc<WatchHandle> {
+			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info,
+								 Ref *ref) -> Rc<WatchHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
 				if (!data->_inotifyReader) {
 					auto reader = Rc<InotifyReaderALooperHandle>::create(
@@ -157,6 +157,7 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return reinterpret_cast<URingData *>(ptr)->wakeup(flags);
 			};
 			_cancel = [](void *ptr) { reinterpret_cast<URingData *>(ptr)->cancel(); };
+			_shutdown = [](void *ptr) { reinterpret_cast<URingData *>(ptr)->shutdown(); };
 			_destroy = [](void *ptr) { delete reinterpret_cast<URingData *>(ptr); };
 
 			_timer = [](QueueData *d, void *ptr, TimerInfo &&info) -> Rc<TimerHandle> {
@@ -190,17 +191,17 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return spawnProcessFd(d, &data->_uringProcessFdClass, true, sprt::move(info), ref);
 			};
 
-			_makeFileHandle = [](QueueData *d, void *ptr,
-									Rc<FileState> &&state) -> Rc<FileHandle> {
+			_makeFileHandle = [](QueueData *d, void *ptr, Rc<FileState> &&state) -> Rc<FileHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
 				return makeFileUringHandle(d, &data->_uringFileClass, sprt::move(state));
 			};
 
-			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info, Ref *ref) -> Rc<WatchHandle> {
+			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info,
+								 Ref *ref) -> Rc<WatchHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
 				if (!data->_inotifyReader) {
-					auto reader = Rc<InotifyReaderURingHandle>::create(
-							&data->_uringInotifyReaderClass);
+					auto reader =
+							Rc<InotifyReaderURingHandle>::create(&data->_uringInotifyReaderClass);
 					if (!reader || !reader->isValid()) {
 						return nullptr;
 					}
@@ -278,17 +279,17 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return spawnProcessFd(d, &data->_epollProcessFdClass, false, sprt::move(info), ref);
 			};
 
-			_makeFileHandle = [](QueueData *d, void *ptr,
-									Rc<FileState> &&state) -> Rc<FileHandle> {
+			_makeFileHandle = [](QueueData *d, void *ptr, Rc<FileState> &&state) -> Rc<FileHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
 				return makeFileInlineHandle(d, &data->_epollFileClass, sprt::move(state));
 			};
 
-			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info, Ref *ref) -> Rc<WatchHandle> {
+			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info,
+								 Ref *ref) -> Rc<WatchHandle> {
 				auto data = reinterpret_cast<Queue::Data *>(d);
 				if (!data->_inotifyReader) {
-					auto reader = Rc<InotifyReaderEPollHandle>::create(
-							&data->_epollInotifyReaderClass);
+					auto reader =
+							Rc<InotifyReaderEPollHandle>::create(&data->_epollInotifyReaderClass);
 					if (!reader || !reader->isValid()) {
 						return nullptr;
 					}

@@ -159,6 +159,10 @@ struct SPRT_API alignas(32) URingData : public PlatformQueueData {
 	uint16_t _bufferGroupId = 1;
 	Queue::Vector<uint16_t> _unregistredBuffers;
 
+#if DEBUG
+	Map<Handle *, uint32_t> _retainedHandles;
+#endif
+
 	uint16_t registerBufferGroup(uint32_t count, uint32_t size, uint8_t *data,
 			io_uring_sqe *sqe = nullptr);
 
@@ -209,6 +213,10 @@ struct SPRT_API alignas(32) URingData : public PlatformQueueData {
 	uint32_t pop();
 	void processEvent(int32_t res, uint32_t flags, uint64_t userdata);
 
+	// Release a handle's ring retain (URING_USERDATA_RETAIN_BIT) and drop its
+	// bookkeeping entry; used both on CQE completion and on ring teardown.
+	void releaseRetainedHandle(Handle *h);
+
 	uint32_t doPoll();
 
 	Status submit();
@@ -225,6 +233,7 @@ struct SPRT_API alignas(32) URingData : public PlatformQueueData {
 	void runInternalHandles();
 
 	void cancel();
+	void shutdown();
 
 	URingData(QueueRef *, Queue::Data *data, const QueueInfo &info, SpanView<int> sigs);
 	~URingData();
