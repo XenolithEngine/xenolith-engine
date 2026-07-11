@@ -111,6 +111,11 @@ public:
 	virtual bool recreateSwapchain() override;
 	virtual bool createSwapchain(const core::SurfaceInfo &, core::SwapchainConfig &&cfg,
 			core::PresentMode presentMode, bool oldSwapchainValid) override;
+
+protected:
+	// the window's requested display-link barrier; createSwapchain disables it
+	// for Immediate present mode so presentation runs unbounded
+	bool _windowFollowDisplayLinkBarrier = false;
 };
 
 } // namespace stappler::xenolith::mtl
