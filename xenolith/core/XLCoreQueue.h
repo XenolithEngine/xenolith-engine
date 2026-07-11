@@ -79,6 +79,7 @@ public:
 	virtual StringView getName() const override;
 
 	FrameRenderPassState getDefaultSyncPassState() const;
+	PassRecordingMode getRecordingMode() const;
 
 	const HashTable<ProgramData *> &getPrograms() const;
 	const HashTable<QueuePassData *> &getPasses() const;
@@ -345,6 +346,11 @@ public:
 	~Builder();
 
 	void setDefaultSyncPassState(FrameRenderPassState);
+
+	// Select the thread on which passes of this queue record and submit their
+	// command buffers (see PassRecordingMode). Backend-dependent: only Metal
+	// currently honors it.
+	void setRecordingMode(PassRecordingMode);
 
 	const AttachmentData *addAttachemnt(StringView name,
 			const Callback<Rc<Attachment>(AttachmentBuilder &)> &);
