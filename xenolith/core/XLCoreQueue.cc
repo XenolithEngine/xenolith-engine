@@ -811,6 +811,8 @@ StringView Queue::getName() const { return _data->key; }
 
 FrameRenderPassState Queue::getDefaultSyncPassState() const { return _data->defaultSyncPassState; }
 
+PassRecordingMode Queue::getRecordingMode() const { return _data->recordingMode; }
+
 const HashTable<ProgramData *> &Queue::getPrograms() const { return _data->programs; }
 
 const HashTable<QueuePassData *> &Queue::getPasses() const { return _data->passes; }
@@ -1657,6 +1659,8 @@ static sprt::atomic<uint64_t> s_AttachmentCurrentIndex = 1;
 void Queue::Builder::setDefaultSyncPassState(FrameRenderPassState val) {
 	_data->defaultSyncPassState = val;
 }
+
+void Queue::Builder::setRecordingMode(PassRecordingMode val) { _data->recordingMode = val; }
 
 const AttachmentData *Queue::Builder::addAttachemnt(StringView name,
 		const Callback<Rc<Attachment>(AttachmentBuilder &)> &cb) {

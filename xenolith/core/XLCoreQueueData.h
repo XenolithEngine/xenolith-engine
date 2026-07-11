@@ -421,6 +421,19 @@ struct SP_PUBLIC QueuePassData : NamedMem {
 			completeCallbacks;
 };
 
+// Thread on which a backend records and submits command buffers for a queue's
+// passes. Only backends whose recording is otherwise inline on the loop thread
+// honor this (currently Metal); Vulkan already records on the worker pool and
+// WebGPU always records inline, both ignore it.
+enum class PassRecordingMode {
+	// backend default: Metal records on a worker, others keep their own model
+	Default,
+	// force recording + submit on the loop (presentation) thread
+	Inline,
+	// force recording + submit on the worker pool, off the loop thread
+	Threaded,
+};
+
 struct SP_PUBLIC QueueData : NamedMem {
 	memory::pool_t *pool = nullptr;
 	mem_pool::Vector<AttachmentData *> input;
@@ -442,6 +455,7 @@ struct SP_PUBLIC QueueData : NamedMem {
 	uint64_t order = 0;
 	Queue *queue = nullptr;
 	FrameRenderPassState defaultSyncPassState = FrameRenderPassState::Submitted;
+	PassRecordingMode recordingMode = PassRecordingMode::Default;
 
 	mem_pool::HashMap<sprt::type_index, Attachment *> typedInput;
 	mem_pool::HashMap<sprt::type_index, Attachment *> typedOutput;

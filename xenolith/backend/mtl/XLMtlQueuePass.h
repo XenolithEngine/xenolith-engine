@@ -83,6 +83,11 @@ public:
 	void cmdDispatch(uint32_t groupsX, uint32_t groupsY = 1, uint32_t groupsZ = 1,
 			uint32_t threadsX = 1, uint32_t threadsY = 1, uint32_t threadsZ = 1);
 
+	// reserve this buffer's place in the queue's execution order NOW, so it may
+	// be recorded and committed later (on a worker thread) without reordering:
+	// the GPU runs enqueued buffers in enqueue order, not commit order
+	void enqueue();
+
 #if __OBJC__
 	// begins a render command encoder for the given pass descriptor
 	bool beginRenderPass(MTLRenderPassDescriptor *, Extent2 renderExtent);
@@ -131,7 +136,13 @@ protected:
 	// tables (see CommandBuffer::FrameBindings)
 	bool buildBindings(core::FrameQueue &);
 
-	Rc<CommandBuffer> recordCommands(core::FrameQueue &);
+	// record the pass into a freshly created command buffer (thread-agnostic:
+	// only touches frame data settled by prepare)
+	bool recordCommands(core::FrameQueue &, CommandBuffer &);
+
+	// true when this pass records + submits on the worker pool (see
+	// PassRecordingMode; Metal's default)
+	bool isThreadedRecording() const;
 
 	Device *_device = nullptr;
 	CommandBuffer::FrameBindings _bindings;
