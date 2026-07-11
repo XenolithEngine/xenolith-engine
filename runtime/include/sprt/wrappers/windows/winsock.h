@@ -348,6 +348,13 @@ typedef struct __sprt_wsapollfd {
 	SHORT revents;
 } WSAPOLLFD, *PWSAPOLLFD, *LPWSAPOLLFD;
 
+// WSABUF: winsock's scatter/gather buffer (note the {len, buf} order vs iovec's
+// {base, len}); used to carry sendmsg()/recvmsg() iovecs through WSASendTo/WSARecvFrom.
+typedef struct __sprt_wsabuf {
+	ULONG len;
+	CHAR *buf;
+} WSABUF, *LPWSABUF;
+
 __SPRT_BEGIN_DECL
 
 __SPRT_WIN_IMPORT WINAPI INT getaddrinfo(PCSTR pNodeName, PCSTR pServiceName,
@@ -382,17 +389,27 @@ __SPRT_WIN_IMPORT WINAPI int listen(SOCKET s, int backlog);
 __SPRT_WIN_IMPORT WINAPI int recv(SOCKET s, char *buf, int len, int flags);
 
 __SPRT_WIN_IMPORT WINAPI int recvfrom(SOCKET s, char *buf, int len, int flags,
-		struct sockaddr *from, int *fromlen);
+		struct __SPRT_SOCKADDR_NAME *from, int *fromlen);
 
 __SPRT_WIN_IMPORT WINAPI int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
 		const struct timeval *timeout);
 
 __SPRT_WIN_IMPORT WINAPI int WSAPoll(LPWSAPOLLFD fdArray, ULONG fds, INT timeout);
 
+__SPRT_WIN_IMPORT WINAPI int WSASendTo(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount,
+		LPDWORD lpNumberOfBytesSent, DWORD dwFlags, const struct __SPRT_SOCKADDR_NAME *lpTo,
+		int iTolen, LPWSAOVERLAPPED lpOverlapped,
+		LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
+
+__SPRT_WIN_IMPORT WINAPI int WSARecvFrom(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount,
+		LPDWORD lpNumberOfBytesRecvd, LPDWORD lpFlags, struct __SPRT_SOCKADDR_NAME *lpFrom,
+		int *lpFromlen, LPWSAOVERLAPPED lpOverlapped,
+		LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
+
 __SPRT_WIN_IMPORT WINAPI int send(SOCKET s, const char *buf, int len, int flags);
 
 __SPRT_WIN_IMPORT WINAPI int sendto(SOCKET s, const char *buf, int len, int flags,
-		const struct sockaddr *to, int tolen);
+		const struct __SPRT_SOCKADDR_NAME *to, int tolen);
 
 __SPRT_WIN_IMPORT WINAPI int setsockopt(SOCKET s, int level, int optname, const char *optval,
 		int optlen);
