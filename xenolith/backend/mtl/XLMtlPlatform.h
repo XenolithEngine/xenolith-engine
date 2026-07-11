@@ -1,5 +1,4 @@
 /**
- Copyright (c) 2023 Stappler LLC <admin@stappler.dev>
  Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,19 +20,23 @@
  THE SOFTWARE.
  **/
 
-#include "XLCommon.h"
+#ifndef XENOLITH_BACKEND_MTL_XLMTLPLATFORM_H_
+#define XENOLITH_BACKEND_MTL_XLMTLPLATFORM_H_
 
-#include "XLFontComponent.cc"
-#include "XLFontController.cc"
-#include "XLFontControllerLocal.cc"
-#include "XLFontControllerRemote.cc"
-#include "XLRemoteFontServerEndpoint.cc"
-#include "XLFontGapi.cc"
-#include "XLFontLocale.cc"
-#include "XLFontLabelBase.cc"
-#include "XLFontDeferredRequest.cc"
-#include "XLFontShared.cc"
+// This header is included from plain C++ TUs (core::Instance::create), so it
+// must not pull ObjC types - only XLCore declarations
+#include "XLCoreInstance.h"
 
-#include "backend/vk/XLVkFontQueue.cc"
-#include "backend/webgpu/XLWgpuFontQueue.cc"
-#include "backend/mtl/XLMtlFontQueue.cc"
+namespace STAPPLER_VERSIONIZED stappler::xenolith::mtl::platform {
+
+SP_PUBLIC Rc<core::Instance> createInstance(Rc<core::InstanceInfo> &&);
+
+// standalone CAMetalLayer for windowless presentation (tests, offscreen
+// pipelines): nextDrawable works without a backing view, present is a no-op
+// visually; returns a retained ObjC handle for mtl::Surface::init
+SP_PUBLIC void *createOffscreenLayer();
+SP_PUBLIC void releaseLayerHandle(void *);
+
+} // namespace stappler::xenolith::mtl::platform
+
+#endif /* XENOLITH_BACKEND_MTL_XLMTLPLATFORM_H_ */

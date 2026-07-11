@@ -35,6 +35,7 @@ enum class InstanceApi {
 	None = 0,
 	Vulkan = 1,
 	WebGPU = 2,
+	Metal = 3,
 };
 
 enum class InstanceFlags : uint32_t {
