@@ -1646,7 +1646,14 @@ Queue::Builder::Builder(StringView name)
 
 Queue::Builder::~Builder() {
 	if (_data) {
+		// A Builder owns the Rc<> attachments/passes/programs it created (stored in
+		// pool-allocated *Data structs). If the Builder is never consumed by
+		// Queue::init(), destroying the pool alone frees the structs without running
+		// their destructors, orphaning those refcounted objects. Release them
+		// explicitly, mirroring Queue::~Queue().
+		_data->clear();
 		auto p = _data->pool;
+		_data->~QueueData();
 		memory::pool::destroy(p);
 		_data = nullptr;
 	}

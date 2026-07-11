@@ -90,6 +90,8 @@ struct Looper::Data : public detail::AllocPool {
 
 		d->threadPoolInfo.ref = nullptr;
 
+		d->queue->shutdown();
+
 		if (d->threadHandle) {
 			d->threadHandle->cancel();
 			d->threadHandle = nullptr;

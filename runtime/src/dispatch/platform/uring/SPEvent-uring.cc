@@ -271,6 +271,14 @@ Status URingData::pushSqe(sprt::initializer_list<uint8_t> ops,
 				sprt::retain(ptr,
 						reinterpret_cast<uintptr_t>(this)
 								^ reinterpret_cast<uintptr_t>(handlesToRetain[i]));
+				// operator[] on this map is a lazy proxy that traps on a missing
+				// key, so insert-or-increment explicitly.
+				auto it = _retainedHandles.find(ptr);
+				if (it != _retainedHandles.end()) {
+					++it->second;
+				} else {
+					_retainedHandles.emplace(ptr, 1);
+				}
 			}
 		}
 	}
@@ -531,8 +539,7 @@ void URingData::processEvent(int32_t res, uint32_t flags, uint64_t userdata) {
 				// messages from previous submission
 
 				if (retainedByRing && (flags & IORING_CQE_F_MORE) == 0) {
-					sprt::release(h,
-							reinterpret_cast<uintptr_t>(this) ^ reinterpret_cast<uintptr_t>(h));
+					releaseRetainedHandle(h);
 				}
 				return;
 			}
@@ -555,7 +562,7 @@ void URingData::processEvent(int32_t res, uint32_t flags, uint64_t userdata) {
 
 		// do not release handles, if IORING_CQE_F_MORE flags is set, only release if it's last CQE
 		if (retainedByRing && (flags & IORING_CQE_F_MORE) == 0) {
-			sprt::release(h, reinterpret_cast<uintptr_t>(this) ^ reinterpret_cast<uintptr_t>(h));
+			releaseRetainedHandle(h);
 		}
 	} else {
 		oslog::vpinfo(__SPRT_LOCATION, "dispatch::URingData", "no userdata: ", res, " ", flags);
@@ -744,6 +751,36 @@ void URingData::cancel() {
 	if (_runContext) {
 		_eventFd->write(1, toInt(WakeupFlags::ContextDefault) | URING_CANCEL_FLAG);
 	}
+}
+
+void URingData::shutdown() {
+	RunContext ctx;
+	pushContext(&ctx, RunContext::Poll);
+
+	// Disarm every suspendable handle: suspend() -> disarm() cancels the handle's
+	// in-flight op and bumps its serial, so the cancellation completion is treated as a
+	// stale submission in processEvent and releases the ring retain there — without
+	// notifying the handle, so it does not re-arm.
+	_data->suspendAll(nullptr);
+
+	if (hasFlag(_uflags, URingFlags::AsyncCancelAnyAllSupported)) {
+		cancelOp(0, URingCancelFlags::All | URingCancelFlags::Any);
+	}
+
+	submitPending();
+
+	// Reap the resulting completions until the ring is quiescent. Bounded, with short
+	// blocking waits, so a completion that never arrives cannot hang teardown.
+	for (int i = 0; i < 16; ++i) {
+		_linux_timespec ts;
+		setNanoTimespec(ts, TimeInterval::milliseconds(10));
+		enter(0, 1, IORING_ENTER_GETEVENTS, &ts);
+		if (doPoll() == 0) {
+			break;
+		}
+	}
+
+	popContext(&ctx);
 }
 
 URingData::URingData(QueueRef *q, Queue::Data *data, const QueueInfo &info, SpanView<int> sigs)
@@ -1075,7 +1112,31 @@ URingData::URingData(QueueRef *q, Queue::Data *data, const QueueInfo &info, Span
 	_ringFd = ringFd;
 }
 
+void URingData::releaseRetainedHandle(Handle *h) {
+#if DEBUG
+	auto it = _retainedHandles.find(h);
+	if (it != _retainedHandles.end()) {
+		if (--it->second == 0) {
+			_retainedHandles.erase(it);
+		}
+	}
+#endif
+	sprt::release(h, reinterpret_cast<uintptr_t>(this) ^ reinterpret_cast<uintptr_t>(h));
+}
+
 URingData::~URingData() {
+#if DEBUG
+	while (!_retainedHandles.empty()) {
+		auto it = _retainedHandles.begin();
+		auto h = it->first;
+		if (--it->second == 0) {
+			_retainedHandles.erase(it);
+		}
+		oslog::vpdebug(__SPRT_LOCATION, "URingData", "Unreleased handle: ", h);
+		sprt::release(h, reinterpret_cast<uintptr_t>(this) ^ reinterpret_cast<uintptr_t>(h));
+	}
+#endif
+
 	_signalFd = nullptr;
 	_eventFd = nullptr;
 

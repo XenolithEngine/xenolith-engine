@@ -319,6 +319,8 @@ void Queue::cancel() {
 	_data = nullptr;
 }
 
+void Queue::shutdown() { _data->shutdown(); }
+
 QueueFlags Queue::getFlags() const { return _data->_flags; }
 
 QueueEngine Queue::getEngine() const { return _data->_engine; }
