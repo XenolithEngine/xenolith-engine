@@ -77,8 +77,12 @@ public:
 	id<MTLBuffer> getArgumentBuffer() const { return bridgeHandle<id<MTLBuffer>>(_buffer); }
 #endif
 
-	// textures referenced by the argument buffer, for useResource at bind time
-	SpanView<Rc<core::ImageView>> getBoundViews() const { return _boundViews; }
+	// UNIQUE textures referenced by the argument buffer, for useResource at
+	// bind time. Deduplicated: the argument buffer pads unused slots with the
+	// empty image (potentially thousands of them), but residency is per unique
+	// MTLTexture - so this holds each bound texture once (used images + the
+	// empty image), keeping cmdBindTextureSet O(materials) not O(imageCount)
+	SpanView<Rc<core::ImageView>> getResidencyViews() const { return _residencyViews; }
 
 protected:
 	using core::Object::init;
@@ -86,7 +90,7 @@ protected:
 	Device *_device = nullptr;
 	const TextureSetLayout *_setLayout = nullptr;
 	void *_buffer = nullptr; // __bridge_retained id<MTLBuffer>
-	Vector<Rc<core::ImageView>> _boundViews; // by image slot, may hold nulls
+	Vector<Rc<core::ImageView>> _residencyViews; // unique bound textures
 };
 
 } // namespace stappler::xenolith::mtl

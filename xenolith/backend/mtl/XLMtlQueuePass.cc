@@ -188,8 +188,10 @@ void CommandBuffer::cmdBindTextureSet(const core::PipelineLayoutData *,
 	auto compute = getComputeEncoder();
 
 	// argument buffer handles bypass driver residency tracking: the bound
-	// textures are made resident explicitly for this encoder
-	for (auto &view : texSet->getBoundViews()) {
+	// textures are made resident explicitly for this encoder. The set exposes
+	// UNIQUE textures (the empty-image padding collapses to one), so this is
+	// O(materials), not O(imageCount)
+	for (auto &view : texSet->getResidencyViews()) {
 		if (!view) {
 			continue;
 		}
