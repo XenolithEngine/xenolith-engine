@@ -68,6 +68,8 @@ bool CommandBuffer::init(Device &dev) {
 	return true;
 }
 
+void CommandBuffer::enqueue() { [getBuffer() enqueue]; }
+
 bool CommandBuffer::beginRenderPass(MTLRenderPassDescriptor *desc, Extent2 renderExtent) {
 	@autoreleasepool {
 		id<MTLRenderCommandEncoder> encoder =
@@ -370,14 +372,11 @@ bool QueuePassHandle::buildBindings(core::FrameQueue &q) {
 	return true;
 }
 
-Rc<CommandBuffer> QueuePassHandle::recordCommands(core::FrameQueue &q) {
-	auto buf = Rc<CommandBuffer>::create(*_device);
-	if (!buf) {
-		return nullptr;
-	}
+bool QueuePassHandle::recordCommands(core::FrameQueue &q, CommandBuffer &cmdbuf) {
+	auto buf = &cmdbuf;
 
 	if (!buildBindings(q)) {
-		return nullptr;
+		return false;
 	}
 
 	buf->setFrameBindings(&_bindings);
@@ -392,7 +391,7 @@ Rc<CommandBuffer> QueuePassHandle::recordCommands(core::FrameQueue &q) {
 		}
 
 		buf->finish();
-		return buf;
+		return true;
 	}
 
 	for (auto &subpass : _data->subpasses) {
@@ -421,7 +420,7 @@ Rc<CommandBuffer> QueuePassHandle::recordCommands(core::FrameQueue &q) {
 				if (!view) {
 					log::source().error("mtl::QueuePassHandle",
 							"No image view for attachment: ", out->key);
-					return nullptr;
+					return false;
 				}
 				auto &imgExtent = view->getImage()->getInfo().extent;
 				renderExtent = Extent2(imgExtent.width, imgExtent.height);
@@ -456,7 +455,7 @@ Rc<CommandBuffer> QueuePassHandle::recordCommands(core::FrameQueue &q) {
 			}
 
 			if (!buf->beginRenderPass(desc, renderExtent)) {
-				return nullptr;
+				return false;
 			}
 		}
 
@@ -466,48 +465,86 @@ Rc<CommandBuffer> QueuePassHandle::recordCommands(core::FrameQueue &q) {
 	}
 
 	buf->finish();
-	return buf;
+	return true;
+}
+
+bool QueuePassHandle::isThreadedRecording() const {
+	// PassRecordingMode::Default means "backend default", which for Metal is
+	// threaded - moving recording off the loop (presentation) thread so a heavy
+	// command list does not stall presentation
+	switch (_data->queue->recordingMode) {
+	case core::PassRecordingMode::Inline: return false;
+	case core::PassRecordingMode::Threaded: return true;
+	case core::PassRecordingMode::Default: break;
+	}
+	return true;
 }
 
 void QueuePassHandle::submit(core::FrameQueue &q, Rc<core::FrameSync> &&sync,
 		Function<void(bool)> &&onSubmited, Function<void(bool)> &&onComplete) {
-	auto buf = recordCommands(q);
+	auto buf = Rc<CommandBuffer>::create(*_device);
 	if (!buf) {
 		onSubmited(false);
 		return;
 	}
 
-	_fence = _loop->acquireFence(core::FenceType::Default);
-	if (!_fence) {
-		onSubmited(false);
-		return;
+	// finalize the recorded buffer: acquire the fence, commit, advance the
+	// frame state. onSubmited and the FrameQueue complete callback self-hop to
+	// the loop thread, so this may run from a worker; the queue-level
+	// submittedCallbacks + fence schedule are put on the loop thread to match
+	// the Vulkan backend. On a recording failure only onSubmited(false) is
+	// reported (the frame is invalidated), as in the original inline path.
+	auto finalize = [this, buf, q = Rc<core::FrameQueue>(&q), onSubmited = sp::move(onSubmited),
+							onComplete = sp::move(onComplete)](bool recorded) mutable {
+		if (!recorded) {
+			onSubmited(false);
+			return;
+		}
+
+		auto fence = _loop->acquireFence(core::FenceType::Default);
+		if (!fence) {
+			onSubmited(false);
+			return;
+		}
+
+		fence->setTag(getName());
+		fence->addRelease([this, guard = q, onComplete = sp::move(onComplete)](bool success) {
+			for (auto &it : _data->completeCallbacks) { it(*guard, *_data, success); }
+			onComplete(success);
+		}, this, "mtl::QueuePassHandle::submit");
+
+		// keep the recorded command buffer alive until the GPU is done
+		fence->autorelease(buf);
+
+		auto commands = buf->finish();
+		// completed handlers must be registered before commit
+		static_cast<Fence *>(fence.get())->arm(commands);
+		[commands commit];
+
+		auto advance = [this, q, fence, onSubmited = sp::move(onSubmited)]() mutable {
+			for (auto &it : _data->submittedCallbacks) { it(*q, *_data, true); }
+			onSubmited(true);
+			fence->schedule(*_loop);
+		};
+
+		if (_loop->isOnThisThread()) {
+			advance();
+		} else {
+			_loop->performOnThread(sp::move(advance), this, false);
+		}
+	};
+
+	if (isThreadedRecording()) {
+		// reserve GPU execution order NOW (loop thread, in frame-graph order),
+		// then record + commit on the worker pool without stalling presentation
+		buf->enqueue();
+		_loop->performInQueue(
+				[this, q = Rc<core::FrameQueue>(&q), buf, finalize = sp::move(finalize)]() mutable {
+			finalize(recordCommands(*q, *buf));
+		}, this);
+	} else {
+		finalize(recordCommands(q, *buf));
 	}
-
-	_fence->setTag(getName());
-	_fence->addRelease(
-			[this, guard = Rc<core::FrameQueue>(&q), onComplete = sp::move(onComplete)](
-					bool success) {
-		for (auto &it : _data->completeCallbacks) { it(*guard, *_data, success); }
-		onComplete(success);
-	}, this, "mtl::QueuePassHandle::submit");
-
-	// keep the recorded command buffer alive until the GPU is done
-	_fence->autorelease(buf);
-
-	auto commands = buf->finish();
-
-	// completed handlers must be registered before commit
-	static_cast<Fence *>(_fence.get())->arm(commands);
-
-	[commands commit];
-
-	for (auto &it : _data->submittedCallbacks) { it(q, *_data, true); }
-
-	onSubmited(true);
-
-	auto fence = move(_fence);
-	_fence = nullptr;
-	fence->schedule(*_loop);
 }
 
 Rc<core::AttachmentHandle> BufferAttachment::makeFrameHandle(const core::FrameQueue &queue) {
