@@ -142,6 +142,11 @@ bool FontQueue::init(StringView name) {
 		return Rc<FontRenderPass>::create(passBuilder, attachment);
 	});
 
+	// The atlas upload and dependency signaling happen around the (empty)
+	// transfer submit on the loop thread; keep recording inline so their order
+	// is preserved (there is no command list to offload here anyway).
+	builder.setRecordingMode(PassRecordingMode::Inline);
+
 	if (Queue::init(move(builder))) {
 		_attachment = attachment;
 		return true;
