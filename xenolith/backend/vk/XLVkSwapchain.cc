@@ -373,7 +373,12 @@ Status SwapchainHandle::present(core::DeviceQueue &queue, core::ImageStorage *im
 		nullptr,
 	};
 
-	if (dev->hasExtension(OptionalDeviceExtension::DisplayTiming)) {
+	// VK_GOOGLE_display_timing is broken on MoltenVK (portability): a VkPresentTimeGOOGLE with a
+	// desiredPresentTime in our monotonic domain makes MoltenVK schedule the CAMetalDrawable present
+	// so that only the very first frame composites -- the window then freezes on frame 0 while
+	// vkQueuePresentKHR keeps returning VK_SUCCESS. Skip present timing on portability devices; frame
+	// pacing there comes from the OS display link (followDisplayLinkBarrier) anyway.
+	if (!dev->isPortabilityMode() && dev->hasExtension(OptionalDeviceExtension::DisplayTiming)) {
 		presentTimeInfo.pNext = presentInfo.pNext;
 		presentInfo.pNext = &presentTimeInfo;
 	}

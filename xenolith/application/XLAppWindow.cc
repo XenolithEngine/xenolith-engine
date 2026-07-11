@@ -43,6 +43,11 @@
 #include "XLWgpuPresentation.h"
 #endif
 
+#if MODULE_XENOLITH_BACKEND_MTL
+#include "XLMtlInstance.h"
+#include "XLMtlPresentation.h"
+#endif
+
 namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 XL_DECLARE_EVENT_CLASS(AppWindow, onWindowState);
@@ -362,6 +367,20 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 		}
 
 		return Rc<webgpu::Surface>::create(instance, surface);
+	}
+#endif
+
+#if MODULE_XENOLITH_BACKEND_MTL
+	if (cinstance->getApi() == core::InstanceApi::Metal) {
+		auto ifaceInfo = _window->getSurfaceInterfaceInfo();
+		if (ifaceInfo.backend != sprt::window::SurfaceBackend::Metal || !ifaceInfo.metal.layer) {
+			log::source().error("AppWindow",
+					"Surface backend is not supported for Metal: ", toInt(ifaceInfo.backend));
+			return nullptr;
+		}
+
+		return Rc<mtl::Surface>::create(static_cast<mtl::Instance *>(cinstance.get()),
+				ifaceInfo.metal.layer, this);
 	}
 #endif
 
