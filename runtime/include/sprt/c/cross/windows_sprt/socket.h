@@ -136,3 +136,87 @@ typedef struct sockaddr_storage {
 	__SPRT_ID(int64_t) __ss_align;
 	char __ss_pad2[_SS_PAD2SIZE];
 } SOCKADDR_STORAGE_LH, *PSOCKADDR_STORAGE_LH, *LPSOCKADDR_STORAGE_LH;
+
+// --- __SPRT_-prefixed socket constants (winsock values) ----------------------------
+// Not hosted-validated (winsock is not a hosted native header); MSG_TRUNC/CTRUNC/WAITALL/
+// EOR/NOSIGNAL and SO_REUSEPORT have no winsock equivalent and carry the SPRT convention
+// value for API completeness.
+// clang-format off
+#define __SPRT_SHUT_RD        0
+#define __SPRT_SHUT_WR        1
+#define __SPRT_SHUT_RDWR      2
+#define __SPRT_SOCK_STREAM    1
+#define __SPRT_SOCK_DGRAM     2
+#define __SPRT_SOCK_RAW       3
+#define __SPRT_SOCK_SEQPACKET 5
+#define __SPRT_SOCK_CLOEXEC   02000000
+#define __SPRT_SOCK_NONBLOCK  04000
+#define __SPRT_AF_UNSPEC      0
+#define __SPRT_AF_UNIX        1
+#define __SPRT_AF_INET        2
+#define __SPRT_AF_INET6       23
+#define __SPRT_SOL_SOCKET     0xffff
+#define __SPRT_SO_REUSEADDR   0x0004
+#define __SPRT_SO_TYPE        0x1008
+#define __SPRT_SO_ERROR       0x1007
+#define __SPRT_SO_DONTROUTE   0x0010
+#define __SPRT_SO_BROADCAST   0x0020
+#define __SPRT_SO_SNDBUF      0x1001
+#define __SPRT_SO_RCVBUF      0x1002
+#define __SPRT_SO_KEEPALIVE   0x0008
+#define __SPRT_SO_OOBINLINE   0x0100
+#define __SPRT_SO_LINGER      0x0080
+#define __SPRT_SO_REUSEPORT   0x0200
+#define __SPRT_MSG_OOB        0x1
+#define __SPRT_MSG_PEEK       0x2
+#define __SPRT_MSG_DONTROUTE  0x4
+#define __SPRT_MSG_CTRUNC     0x0008
+#define __SPRT_MSG_TRUNC      0x0020
+#define __SPRT_MSG_DONTWAIT   0x0040
+#define __SPRT_MSG_EOR        0x0080
+#define __SPRT_MSG_WAITALL    0x0100
+#define __SPRT_MSG_NOSIGNAL   0x4000
+#define __SPRT_SOMAXCONN      0x7fffffff
+// clang-format on
+
+// --- message / control structs -----------------------------------------------------
+// Windows has no POSIX msghdr; this is the SPRT libc's own portable shape, translated
+// to winsock's WSABUF/WSASendTo in SPRuntimeCSysSocket.cpp. Ancillary data (msg_control)
+// is not carried through winsock.
+
+struct __SPRT_LINGER_NAME {
+	int l_onoff;
+	int l_linger;
+};
+
+struct __SPRT_MSGHDR_NAME {
+	void *msg_name;
+	__SPRT_ID(socklen_t) msg_namelen;
+	struct __SPRT_IOVEC_NAME *msg_iov;
+	__SPRT_ID(size_t) msg_iovlen;
+	void *msg_control;
+	__SPRT_ID(size_t) msg_controllen;
+	int msg_flags;
+};
+
+struct __SPRT_CMSGHDR_NAME {
+	__SPRT_ID(size_t) cmsg_len;
+	int cmsg_level;
+	int cmsg_type;
+};
+
+struct __SPRT_MMSGHDR_NAME {
+	struct __SPRT_MSGHDR_NAME msg_hdr;
+	unsigned int msg_len;
+};
+
+#define __SPRT_CMSG_ALIGN(len) \
+	(((len) + sizeof(__SPRT_ID(size_t)) - 1) & (__SPRT_ID(size_t)) ~(sizeof(__SPRT_ID(size_t)) - 1))
+#define __SPRT_CMSG_DATA(cmsg) ((unsigned char *)((struct __SPRT_CMSGHDR_NAME *)(cmsg) + 1))
+#define __SPRT_CMSG_SPACE(len) \
+	(__SPRT_CMSG_ALIGN(len) + __SPRT_CMSG_ALIGN(sizeof(struct __SPRT_CMSGHDR_NAME)))
+#define __SPRT_CMSG_LEN(len) (__SPRT_CMSG_ALIGN(sizeof(struct __SPRT_CMSGHDR_NAME)) + (len))
+#define __SPRT_CMSG_FIRSTHDR(mhdr) \
+	((__SPRT_ID(size_t))(mhdr)->msg_controllen >= sizeof(struct __SPRT_CMSGHDR_NAME) \
+					? (struct __SPRT_CMSGHDR_NAME *)(mhdr)->msg_control \
+					: (struct __SPRT_CMSGHDR_NAME *)0)
