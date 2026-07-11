@@ -96,27 +96,36 @@ void TextureSet::write(const core::MaterialLayout &set) {
 		return;
 	}
 
-	auto emptyView = emptyImage->views.front()->view.get_cast<ImageView>();
-	auto emptyHandle = emptyView->getTextureView().gpuResourceID;
+	auto &emptyViewRc = emptyImage->views.front()->view;
+	auto emptyHandle = emptyViewRc.get_cast<ImageView>()->getTextureView().gpuResourceID;
 
 	const uint32_t imageCount = _setLayout->getImageCount();
+	const uint32_t usedCount = sprt::min(set.usedImageSlots, imageCount);
 
 	_layoutIndexes.clear();
 	_layoutIndexes.resize(imageCount, 0);
-	_boundViews.clear();
-	_boundViews.resize(imageCount);
 
-	for (uint32_t i = 0; i < imageCount; ++i) {
-		if (i < set.usedImageSlots && set.imageSlots[i].image) {
-			auto view = set.imageSlots[i].image.get_cast<ImageView>();
-			handles[i] = view->getTextureView().gpuResourceID;
-			_layoutIndexes[i] = set.imageSlots[i].image->getIndex();
-			_boundViews[i] = set.imageSlots[i].image;
+	// residency needs each UNIQUE texture once, not one entry per slot: the
+	// padding below points thousands of slots at the same empty image, and
+	// calling useResource per slot (O(imageCount)) dominated frame recording
+	_residencyViews.clear();
+	_residencyViews.emplace_back(emptyViewRc);
+
+	// used slots: real image handles
+	for (uint32_t i = 0; i < usedCount; ++i) {
+		if (set.imageSlots[i].image) {
+			auto &viewRc = set.imageSlots[i].image;
+			handles[i] = viewRc.get_cast<ImageView>()->getTextureView().gpuResourceID;
+			_layoutIndexes[i] = viewRc->getIndex();
+			_residencyViews.emplace_back(viewRc);
 		} else {
 			handles[i] = emptyHandle;
-			_boundViews[i] = emptyImage->views.front()->view;
 		}
 	}
+
+	// unused slots: pad with the empty image handle (already resident via the
+	// single entry above)
+	for (uint32_t i = usedCount; i < imageCount; ++i) { handles[i] = emptyHandle; }
 }
 
 } // namespace stappler::xenolith::mtl

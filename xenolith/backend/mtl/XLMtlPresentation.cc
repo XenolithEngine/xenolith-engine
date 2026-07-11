@@ -243,6 +243,13 @@ void Swapchain::invalidateImage(const core::ImageStorage *image, bool) {
 void Swapchain::invalidateImage(uint32_t index, bool) {
 	sprt::unique_lock<sprt::mutex> lock(_resourceMutex);
 	if (index < _images.size() && _images[index].image) {
+		// an acquired-but-not-presented drawable must be dropped back to the
+		// layer's pool immediately, otherwise it stays checked out until the
+		// slot is reused SlotCount frames later - starving nextDrawable and
+		// capping the frame rate (unpresented drawables are returned to the
+		// pool on release, no present needed)
+		static_cast<Image *>(_images[index].image.get())->invalidateTexture();
+		releaseSlot(index);
 		if (_acquiredImages > 0) {
 			--_acquiredImages;
 		}
@@ -296,6 +303,10 @@ bool PresentationEngine::init(NotNull<core::Loop> loop, NotNull<core::Device> de
 	// CAMetalLayer paces the frame loop itself (nextDrawable blocks while all
 	// drawables are in flight, presentation is vsync-bound by displaySync)
 	opts.usePresentWindow = false;
+
+	// remember the window's requested barrier: createSwapchain toggles it per
+	// present mode (Immediate must run unbounded)
+	_windowFollowDisplayLinkBarrier = opts.followDisplayLinkBarrier;
 
 	return core::PresentationEngine::init(loop, device, window, opts);
 }
@@ -415,6 +426,16 @@ bool PresentationEngine::createSwapchain(const core::SurfaceInfo &info, core::Sw
 		log::source().error("mtl::PresentationEngine", "Fail to create swapchain");
 		return false;
 	}
+
+	// Pacing depends on the present mode. The macOS window requests
+	// followDisplayLinkBarrier (the next frame is gated on the CADisplayLink
+	// tick), which caps the loop at the display refresh - correct for Fifo,
+	// but Immediate must run unbounded. Drop the barrier for Immediate so each
+	// present schedules the next frame right away (the layer's
+	// displaySyncEnabled=NO already lets present skip the vsync wait); restore
+	// it for any vsync-locked mode.
+	_options.followDisplayLinkBarrier =
+			_windowFollowDisplayLinkBarrier && presentMode != core::PresentMode::Immediate;
 
 	auto newConstraints = _window->exportConstraints(_serial);
 	newConstraints.extent = Extent3(cfg.extent, 1);
