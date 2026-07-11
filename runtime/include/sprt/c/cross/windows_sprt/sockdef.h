@@ -70,6 +70,12 @@
 #define SOCK_RDM        4
 #define SOCK_SEQPACKET  5
 
+// winsock has no SOCK_CLOEXEC/SOCK_NONBLOCK; the SPRT libc defines them (Linux values)
+// for accept4()/socket() type flags. accept4 maps SOCK_NONBLOCK to FIONBIO; CLOEXEC is
+// a no-op on Windows.
+#define SOCK_CLOEXEC   02000000
+#define SOCK_NONBLOCK  04000
+
 #define IPPROTO_IP  0
 
 typedef enum {
