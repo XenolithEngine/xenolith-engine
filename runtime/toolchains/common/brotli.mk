@@ -29,13 +29,7 @@ endif
 
 include ../common/configure.mk
 
-# Freestanding wasm cannot link the `brotli` CLI executable / test harness
-# (-nostdlib, no libc archive at dep-build time), so build the libraries only.
-# Other targets link the tool against their sprt/libc and keep building it.
-BROTLI_CONFIGURE := $(CONFIGURE_CMAKE)
-ifdef WASM
-BROTLI_CONFIGURE += -DBROTLI_BUILD_TOOLS=OFF -DBROTLI_DISABLE_TESTS=ON
-endif
+BROTLI_CONFIGURE := $(CONFIGURE_CMAKE) -DBROTLI_BUILD_TOOLS=OFF -DBROTLI_DISABLE_TESTS=ON
 
 all:
 	$(call rule_rm,$(LIBNAME))

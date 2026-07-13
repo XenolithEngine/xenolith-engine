@@ -31,6 +31,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_int64_t.h>
 #include <sprt/c/bits/__sprt_uint8_t.h>
 #include <sprt/c/bits/__sprt_size_t.h>
+#include <sprt/c/bits/__sprt_ssize_t.h>
 #include <sprt/c/bits/iovec.h>
 #include <sprt/c/cross/__sprt_sysid.h>
 
@@ -88,14 +89,12 @@ struct __SPRT_SOCKADDR_IN6_NAME;
 #include <sprt/c/cross/__sprt_config.h>
 
 // clang-format off
-// sockdef.h carries the plain-named constants (AF_*/SOCK_*/SO_*/MSG_*). They collide
-// with the native <sys/socket.h> enums/macros, so they are pulled only where the SPRT
-// libc *is* the libc (freestanding). On a hosted __SPRT_BUILD - the wrapper, which also
-// includes the native header for forwarding - the platform header supplies them, and
-// only the (namespaced) SPRT struct types below are taken from the cross header.
-#if !(defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1)
+// sockdef.h now carries the portable core socket constants NAMESPACED as __SPRT_* (safe to
+// include on every build; the public names are expanded from them in <sys/socket.h>, and the
+// wrapper static_asserts each against native). Its remaining platform-specific extras keep
+// plain public names and are self-guarded to freestanding inside sockdef.h. So it is always
+// included now.
 #include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/sockdef.h)
-#endif
 #include SPRT_CROSS_CONFIG_NAME(sprt/c/cross/__SPRT_PLATFORM_NAME/socket.h)
 // clang-format on
 

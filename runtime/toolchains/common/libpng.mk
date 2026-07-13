@@ -27,17 +27,12 @@ include ../common/configure.mk
 CONFIGURE := \
 	$(CONFIGURE_CMAKE) \
 	-DPNG_SHARED=OFF \
-	-DPNG_TARGET_ARCHITECTURE=$(SP_ARCH)
+	-DPNG_TARGET_ARCHITECTURE=$(SP_ARCH) \
+	-DPNG_TESTS=OFF \
+	-DPNG_TOOLS=OFF
 
 ifdef WINDOWS
 CONFIGURE += -DCYGWIN=1
-endif
-
-# Freestanding wasm cannot link the pngtest / pngfix executables (-nostdlib), so
-# drop the tests+tools and build the static lib only. Other targets link them
-# against their sprt/libc as before.
-ifdef WASM
-CONFIGURE += -DPNG_TESTS=OFF -DPNG_TOOLS=OFF
 endif
 
 all:

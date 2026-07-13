@@ -3,12 +3,17 @@ typedef int __SPRT_ID(socklen_t);
 typedef unsigned short ADDRESS_FAMILY;
 typedef ADDRESS_FAMILY __SPRT_ID(sa_family_t);
 
-struct __SPRT_SOCKADDR_NAME {
+typedef struct __SPRT_SOCKADDR_NAME {
 	ADDRESS_FAMILY sa_family;
 	char sa_data[14];
-};
+} SOCKADDR, *PSOCKADDR, *LPSOCKADDR;
+
+#define INVALID_SOCKET  (SOCKET)(~0)
+#define SOCKET_ERROR            (-1)
 
 typedef unsigned long long SOCKET;
+typedef char sockdata_t;
+typedef int socksize_t;
 
 typedef __SPRT_ID(uint16_t) __SPRT_ID(in_port_t);
 typedef __SPRT_ID(uint32_t) __SPRT_ID(in_addr_t);
@@ -116,8 +121,8 @@ typedef struct addrinfo {
 #define WSASYS_STATUS_LEN       128
 
 typedef struct WSAData {
-	unsigned long wVersion;
-	unsigned long wHighVersion;
+	unsigned short wVersion;
+	unsigned short wHighVersion;
 	unsigned short iMaxSockets;
 	unsigned short iMaxUdpDg;
 	char *lpVendorInfo;
@@ -137,56 +142,16 @@ typedef struct sockaddr_storage {
 	char __ss_pad2[_SS_PAD2SIZE];
 } SOCKADDR_STORAGE_LH, *PSOCKADDR_STORAGE_LH, *LPSOCKADDR_STORAGE_LH;
 
-// --- __SPRT_-prefixed socket constants (winsock values) ----------------------------
-// Not hosted-validated (winsock is not a hosted native header); MSG_TRUNC/CTRUNC/WAITALL/
-// EOR/NOSIGNAL and SO_REUSEPORT have no winsock equivalent and carry the SPRT convention
-// value for API completeness.
-// clang-format off
-#define __SPRT_SHUT_RD        0
-#define __SPRT_SHUT_WR        1
-#define __SPRT_SHUT_RDWR      2
-#define __SPRT_SOCK_STREAM    1
-#define __SPRT_SOCK_DGRAM     2
-#define __SPRT_SOCK_RAW       3
-#define __SPRT_SOCK_SEQPACKET 5
-#define __SPRT_SOCK_CLOEXEC   02000000
-#define __SPRT_SOCK_NONBLOCK  04000
-#define __SPRT_AF_UNSPEC      0
-#define __SPRT_AF_UNIX        1
-#define __SPRT_AF_INET        2
-#define __SPRT_AF_INET6       23
-#define __SPRT_SOL_SOCKET     0xffff
-#define __SPRT_SO_REUSEADDR   0x0004
-#define __SPRT_SO_TYPE        0x1008
-#define __SPRT_SO_ERROR       0x1007
-#define __SPRT_SO_DONTROUTE   0x0010
-#define __SPRT_SO_BROADCAST   0x0020
-#define __SPRT_SO_SNDBUF      0x1001
-#define __SPRT_SO_RCVBUF      0x1002
-#define __SPRT_SO_KEEPALIVE   0x0008
-#define __SPRT_SO_OOBINLINE   0x0100
-#define __SPRT_SO_LINGER      0x0080
-#define __SPRT_SO_REUSEPORT   0x0200
-#define __SPRT_MSG_OOB        0x1
-#define __SPRT_MSG_PEEK       0x2
-#define __SPRT_MSG_DONTROUTE  0x4
-#define __SPRT_MSG_CTRUNC     0x0008
-#define __SPRT_MSG_TRUNC      0x0020
-#define __SPRT_MSG_DONTWAIT   0x0040
-#define __SPRT_MSG_EOR        0x0080
-#define __SPRT_MSG_WAITALL    0x0100
-#define __SPRT_MSG_NOSIGNAL   0x4000
-#define __SPRT_SOMAXCONN      0x7fffffff
-// clang-format on
-
 // --- message / control structs -----------------------------------------------------
 // Windows has no POSIX msghdr; this is the SPRT libc's own portable shape, translated
 // to winsock's WSABUF/WSASendTo in SPRuntimeCSysSocket.cpp. Ancillary data (msg_control)
 // is not carried through winsock.
 
 struct __SPRT_LINGER_NAME {
-	int l_onoff;
-	int l_linger;
+	// winsock's `struct linger` uses u_short fields (4 bytes total), not the POSIX
+	// int/int; setsockopt(SO_LINGER) forwards this straight through, so it must match.
+	unsigned short l_onoff;
+	unsigned short l_linger;
 };
 
 struct __SPRT_MSGHDR_NAME {

@@ -56,6 +56,10 @@ static const LibcTest s_tests[] = {
 	{"dirent", &performDirentTest},
 	{"fs_extra", &performFsExtraTest},
 	{"env", &performEnvTest},
+	// sys/socket.h (loopback UDP + TCP) / poll.h / sys/select.h
+	{"socket", &performSocketTest},
+	{"socket_stream", &performSocketStreamTest},
+	{"select_poll", &performSelectPollTest},
 	// <fnmatch.h> / <regex.h> / <glob.h> forward
 	{"fnmatch", &performFnmatchTest},
 	{"regex", &performRegexTest},

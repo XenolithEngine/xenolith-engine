@@ -29,6 +29,7 @@ rule_rm = powershell 'if (Test-Path "$(1)") { Remove-Item -Recurse -Force -Error
 rule_cp = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force
 rule_cpr = powershell Copy-Item -Path "$(1)" -Destination "$(2)" -Force -Recurse
 rule_hardlink = powershell New-Item -ItemType HardLink -Path "$(2)" -Target "$(1)" -Force | Out-Null
+rule_symlink = powershell New-Item -ItemType SymbolicLink -Path "$(2)" -Target "$(1)" -Force | Out-Null
 rule_mv = powershell Move-Item -Path "$(1)" -Destination "$(2)" -Force
 rule_touch = powershell (Get-Item "$(1)").LastWriteTime = $$(Get-Date)
 
@@ -42,6 +43,7 @@ rule_rm = rm -rf $(1)
 rule_cp = cp -f $(1) $(2)
 rule_cpr = cp -rf $(1) $(2)
 rule_hardlink = ln -f $(1) $(2)
+rule_symlink = ln -sf $(1) $(2)
 rule_mv = mv -f $(1) $(2)
 rule_touch = touch $(1)
 

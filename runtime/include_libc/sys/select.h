@@ -31,6 +31,10 @@ THE SOFTWARE.
 
 #include <sprt/c/sys/__sprt_select.h>
 
+#if SPRT_WINDOWS
+#include <sprt/wrappers/windows/basic_types.h> // __SPRT_WIN_IMPORT WINAPI
+#endif
+
 typedef __SPRT_ID(fd_set) fd_set;
 
 #ifndef FD_SETSIZE
@@ -42,20 +46,40 @@ typedef __SPRT_ID(fd_set) fd_set;
 #define FD_ZERO(set) __SPRT_FD_ZERO(set)
 #define FD_ISSET(fd, set) __SPRT_FD_ISSET(fd, set)
 
-#if SPRT_WASM
-// Public select(). There are no pollable descriptors in the browser sandbox, so the
-// sprt libc backs it with a no-op stub (returns -1/ENOSYS); the declaration exists so
-// code that mandates select() at compile time (e.g. curl's curlx/wait.c) still builds.
-// Scoped to __SPRT_WASM so the Windows freestanding path keeps winsock's select().
-struct timeval;
-
 __SPRT_BEGIN_DECL
 
-int select(int __nfds, fd_set *__SPRT_RESTRICT __readfds, fd_set *__SPRT_RESTRICT __writefds,
-		fd_set *__SPRT_RESTRICT __exceptfds, struct timeval *__SPRT_RESTRICT __timeout);
+#if SPRT_WINDOWS
+// winsock forward declaration
+
+__SPRT_WIN_IMPORT WINAPI int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
+		const struct __SPRT_TIMEVAL_NAME *timeout);
+
+#else
+// sprt own umbrella
+
+SPRT_UMBRELLA_FUNC int select(int __nfds, __SPRT_ID(fd_set) * __SPRT_RESTRICT __rfds,
+		__SPRT_ID(fd_set) * __SPRT_RESTRICT __wfds, __SPRT_ID(fd_set) * __SPRT_RESTRICT __efds,
+		const struct __SPRT_TIMEVAL_NAME *__SPRT_RESTRICT __tv) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(select)(__nfds, __rfds, __wfds, __efds, __tv);
+}
+#endif
+
+#endif // SPRT_WINDOWS
+
+
+SPRT_UMBRELLA_FUNC int pselect(int __nfds, __SPRT_ID(fd_set) * __SPRT_RESTRICT __rfds,
+		__SPRT_ID(fd_set) * __SPRT_RESTRICT __wfds, __SPRT_ID(fd_set) * __SPRT_RESTRICT __efds,
+		const struct __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT __tv,
+		const __SPRT_ID(sigset_t) * __SPRT_RESTRICT __sig) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(pselect)(__nfds, __rfds, __wfds, __efds, __tv, __sig);
+}
+#endif
 
 __SPRT_END_DECL
-#endif // SPRT_WASM
 
 #endif
 

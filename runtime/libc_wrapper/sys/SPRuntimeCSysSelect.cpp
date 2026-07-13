@@ -31,17 +31,19 @@ THE SOFTWARE.
 #if SPRT_WINDOWS
 // select() on Windows is winsock's (ws2_32); its fd_set matches the SPRT winsock fd_set.
 #include <sprt/wrappers/windows/winsock.h>
-#elif __SPRT_CONFIG_HAVE_SELECT
+#else
 #include <sys/select.h>
 #endif
 
 #if SPRT_WINDOWS
-// winsock has no POSIX poll(); WSAPoll() is the equivalent (SOCKET-only, like select()).
-#include <sprt/wrappers/windows/winsock.h>
 #include <stdlib.h>
-#elif __SPRT_CONFIG_HAVE_POLL
-#include <poll.h>
+#else
+// sigset_t for the pselect() forwarder below - needed on every non-Windows target,
+// including wasm where __SPRT_CONFIG_HAVE_POLL is 0 (so it must sit outside that guard).
 #include <signal.h>
+#if __SPRT_CONFIG_HAVE_POLL
+#include <poll.h>
+#endif
 #endif
 
 // ---------------------------------------------------------------------------
@@ -51,7 +53,7 @@ THE SOFTWARE.
 // tv_sec/tv_usec are uniformly 64-bit.
 // ---------------------------------------------------------------------------
 
-#if __STDC_HOSTED__ == 1 && __SPRT_CONFIG_HAVE_SELECT
+#if __STDC_HOSTED__ == 1
 
 static_assert(sizeof(struct __SPRT_ID(pollfd)) == sizeof(struct ::pollfd),
 		"pollfd size differs from native");
@@ -99,24 +101,9 @@ namespace sprt {
 
 __SPRT_C_FUNC int __SPRT_ID(select)(int nfds, __SPRT_ID(fd_set) * __SPRT_RESTRICT readfds,
 		__SPRT_ID(fd_set) * __SPRT_RESTRICT writeFds, __SPRT_ID(fd_set) * __SPRT_RESTRICT errorFds,
-		__SPRT_TIMEVAL_NAME *__SPRT_RESTRICT __timeout) {
-#if !__SPRT_CONFIG_HAVE_SELECT
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (__SPRT_CONFIG_HAVE_SELECT)");
-	*__sprt___errno_location() = ENOSYS;
-	return -1;
-#elif SPRT_WINDOWS
-	// winsock select() expects a 32-bit-long timeval; the SPRT one is 64-bit.
-	struct {
-		long tv_sec;
-		long tv_usec;
-	} nativeTimeout;
-	if (__timeout) {
-		nativeTimeout.tv_sec = (long)__timeout->tv_sec;
-		nativeTimeout.tv_usec = (long)__timeout->tv_usec;
-	}
-	return ::select(nfds, (fd_set *)readfds, (fd_set *)writeFds, (fd_set *)errorFds,
-			__timeout ? (const struct timeval *)&nativeTimeout : nullptr);
+		const __SPRT_TIMEVAL_NAME *__SPRT_RESTRICT __timeout) {
+#if SPRT_WINDOWS
+	return ::select(nfds, (fd_set *)readfds, (fd_set *)writeFds, (fd_set *)errorFds, __timeout);
 #else
 	struct timeval nativeTimeout;
 	if (__timeout) {
@@ -133,25 +120,17 @@ __SPRT_C_FUNC int __SPRT_ID(pselect)(int nfds, __SPRT_ID(fd_set) * __SPRT_RESTRI
 		__SPRT_ID(fd_set) * __SPRT_RESTRICT writeFds, __SPRT_ID(fd_set) * __SPRT_RESTRICT errorFds,
 		const __SPRT_TIMESPEC_NAME *__SPRT_RESTRICT __timeout,
 		const __SPRT_ID(sigset_t) * __SPRT_RESTRICT sigmask) {
-#if !__SPRT_CONFIG_HAVE_SELECT
-	oslog::vprint(oslog::LogType::Info, __SPRT_LOCATION, "rt-libc", __SPRT_FUNCTION__,
-			" not available for this platform (__SPRT_CONFIG_HAVE_SELECT)");
-	*__sprt___errno_location() = ENOSYS;
-	return -1;
-#elif SPRT_WINDOWS
+#if SPRT_WINDOWS
 	// winsock has no pselect(); emulate with select(). The signal mask is not applied
 	// (Windows has no POSIX signals).
-	struct {
-		long tv_sec;
-		long tv_usec;
-	} nativeTimeout;
+	struct timeval nativeTimeout;
 	if (__timeout) {
 		nativeTimeout.tv_sec = (long)__timeout->tv_sec;
 		nativeTimeout.tv_usec = (long)(__timeout->tv_nsec / 1'000);
 	}
 	(void)sigmask;
 	return ::select(nfds, (fd_set *)readfds, (fd_set *)writeFds, (fd_set *)errorFds,
-			__timeout ? (const struct timeval *)&nativeTimeout : nullptr);
+			__timeout ? &nativeTimeout : nullptr);
 #else
 	struct timespec nativeTimeout;
 	if (__timeout) {
@@ -172,29 +151,7 @@ __SPRT_C_FUNC int __SPRT_ID(
 	*__sprt___errno_location() = ENOSYS;
 	return -1;
 #elif SPRT_WINDOWS
-	// Translate the portable int-fd pollfd array into WSAPOLLFD (SOCKET fd). POLL* flags
-	// already match winsock, so events/revents pass through unchanged.
-	WSAPOLLFD __stack[32];
-	WSAPOLLFD *__arr = __nfds <= 32
-			? __stack
-			: (WSAPOLLFD *)::malloc((__SPRT_ID(size_t))__nfds * sizeof(WSAPOLLFD));
-	if (__arr == nullptr) {
-		*__sprt___errno_location() = ENOMEM;
-		return -1;
-	}
-	for (__SPRT_ID(nfds_t) __i = 0; __i < __nfds; ++__i) {
-		__arr[__i].fd = (SOCKET)(unsigned)__fds[__i].fd;
-		__arr[__i].events = __fds[__i].events;
-		__arr[__i].revents = 0;
-	}
-	int __r = ::WSAPoll(__arr, (ULONG)__nfds, __timeout);
-	for (__SPRT_ID(nfds_t) __i = 0; __i < __nfds; ++__i) {
-		__fds[__i].revents = __arr[__i].revents;
-	}
-	if (__arr != __stack) {
-		::free(__arr);
-	}
-	return __r;
+	return ::WSAPoll(__fds, (ULONG)__nfds, __timeout);
 #else
 	return ::poll((struct ::pollfd *)__fds, (::nfds_t)__nfds, __timeout);
 #endif

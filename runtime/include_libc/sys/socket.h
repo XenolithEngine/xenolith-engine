@@ -33,10 +33,17 @@ THE SOFTWARE.
 #include <sprt/c/sys/__sprt_socket.h>
 #include <sprt/c/bits/iovec.h>
 
+#include <sys/__sockdef.h>
+
 typedef __SPRT_ID(socklen_t) socklen_t;
 typedef __SPRT_ID(sa_family_t) sa_family_t;
 typedef __SPRT_ID(size_t) size_t;
 typedef __SPRT_ID(ssize_t) ssize_t;
+
+#if SPRT_WINDOWS
+// __SPRT_WIN_IMPORT / WINAPI for the winsock forward declarations below (socket.h owns them).
+#include <sprt/wrappers/windows/basic_types.h>
+#endif
 
 #if SPRT_WASM
 // fd_set + FD_*/FD_SETSIZE. POSIX keeps these in <sys/select.h>, but a lot of BSD-
@@ -45,10 +52,9 @@ typedef __SPRT_ID(ssize_t) ssize_t;
 #include <sys/select.h>
 #endif
 
-// struct linger / msghdr / cmsghdr / mmsghdr / ucred and the AF_*/SOCK_*/SO_*/MSG_*
-// constants come from the per-platform cross <sys/socket.h> surface pulled in above
-// (sprt/c/sys/__sprt_socket.h). Map the public CMSG_*/SCM_* spellings onto the
-// per-platform __SPRT_CMSG_* helpers.
+// struct linger / msghdr / cmsghdr / mmsghdr / ucred come from the per-platform cross
+// <sys/socket.h> surface pulled in above (sprt/c/sys/__sprt_socket.h). Map the public
+// CMSG_*/SCM_* spellings onto the per-platform __SPRT_CMSG_* helpers.
 // clang-format off
 #define CMSG_DATA(cmsg)     __SPRT_CMSG_DATA(cmsg)
 #define CMSG_ALIGN(len)     __SPRT_CMSG_ALIGN(len)
@@ -57,144 +63,192 @@ typedef __SPRT_ID(ssize_t) ssize_t;
 #define CMSG_FIRSTHDR(mhdr) __SPRT_CMSG_FIRSTHDR(mhdr)
 #define CMSG_NXTHDR(mhdr, cmsg) __cmsg_nxthdr(mhdr, cmsg)
 
-#ifndef SCM_RIGHTS
-#define SCM_RIGHTS 0x01
-#endif
-#ifndef SCM_CREDENTIALS
-#define SCM_CREDENTIALS 0x02
-#endif
-// clang-format on
-
 __SPRT_BEGIN_DECL
 struct cmsghdr *__cmsg_nxthdr(struct msghdr *__mhdr, struct cmsghdr *__cmsg);
 __SPRT_END_DECL
 
 struct timespec; // forward decl for recvmmsg timeout (real def via <time.h>)
 
-#if SPRT_WASM
-
-// wasm: the public socket symbols are ENOSYS stubs in libc_impl/src/wasm/socket.cc.
 __SPRT_BEGIN_DECL
 
-int socket(int __domain, int __type, int __protocol);
-int socketpair(int __domain, int __type, int __protocol, int __sv[2]);
-int bind(int __fd, const struct __SPRT_SOCKADDR_NAME *__addr, socklen_t __len);
-int connect(int __fd, const struct __SPRT_SOCKADDR_NAME *__addr, socklen_t __len);
-int listen(int __fd, int __backlog);
-int accept(int __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
-		socklen_t *__SPRT_RESTRICT __len);
-int accept4(int __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
-		socklen_t *__SPRT_RESTRICT __len, int __flags);
-int getsockname(int __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
-		socklen_t *__SPRT_RESTRICT __len);
-int getpeername(int __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
-		socklen_t *__SPRT_RESTRICT __len);
-int shutdown(int __fd, int __how);
-int getsockopt(int __fd, int __level, int __optname, void *__SPRT_RESTRICT __optval,
-		socklen_t *__SPRT_RESTRICT __optlen);
-int setsockopt(int __fd, int __level, int __optname, const void *__optval, socklen_t __optlen);
-ssize_t send(int __fd, const void *__buf, size_t __n, int __flags);
-ssize_t recv(int __fd, void *__buf, size_t __n, int __flags);
-ssize_t sendto(int __fd, const void *__buf, size_t __n, int __flags,
-		const struct __SPRT_SOCKADDR_NAME *__addr, socklen_t __addr_len);
-ssize_t recvfrom(int __fd, void *__SPRT_RESTRICT __buf, size_t __n, int __flags,
-		struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr, socklen_t *__SPRT_RESTRICT __addr_len);
-ssize_t sendmsg(int __fd, const struct msghdr *__message, int __flags);
-ssize_t recvmsg(int __fd, struct msghdr *__message, int __flags);
-int sendmmsg(int __fd, struct mmsghdr *__msgvec, unsigned int __vlen, unsigned int __flags);
-int recvmmsg(int __fd, struct mmsghdr *__msgvec, unsigned int __vlen, unsigned int __flags,
-		struct timespec *__timeout);
-
-__SPRT_END_DECL
-
-#elif !defined(SPRT_WRAPPERS_WINDOWS_WINSOCK_H_)
-
-// Other controlled targets (Windows): expose portable POSIX sockets as force-inline
-// forwarders onto the __sprt_* backing (winsock on Windows). Guarded against winsock.h,
-// which declares these same names with the native winsock (SOCKET) signatures - a TU
-// wanting the raw winsock API includes that header instead.
-__SPRT_BEGIN_DECL
-
-SPRT_FORCEINLINE int socket(int __domain, int __type, int __protocol) __SPRT_NOEXCEPT {
+SPRT_UMBRELLA_FUNC SOCKET socket(int __domain, int __type, int __protocol) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(socket)(__domain, __type, __protocol);
 }
-SPRT_FORCEINLINE int socketpair(int __domain, int __type, int __protocol, int __sv[2])
-		__SPRT_NOEXCEPT {
-	return __SPRT_ID(socketpair)(__domain, __type, __protocol, __sv);
-}
-SPRT_FORCEINLINE int bind(int __fd, const struct __SPRT_SOCKADDR_NAME *__addr, socklen_t __len)
-		__SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC int bind(SOCKET __fd, const struct __SPRT_SOCKADDR_NAME *__addr,
+		socklen_t __len) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(bind)(__fd, __addr, __len);
 }
-SPRT_FORCEINLINE int connect(int __fd, const struct __SPRT_SOCKADDR_NAME *__addr, socklen_t __len)
-		__SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC int connect(SOCKET __fd, const struct __SPRT_SOCKADDR_NAME *__addr,
+		socklen_t __len) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(connect)(__fd, __addr, __len);
 }
-SPRT_FORCEINLINE int listen(int __fd, int __backlog) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC int listen(SOCKET __fd, int __backlog) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(listen)(__fd, __backlog);
 }
-SPRT_FORCEINLINE int accept(int __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
-		socklen_t *__SPRT_RESTRICT __len) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC SOCKET accept(SOCKET __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
+		socklen_t *__SPRT_RESTRICT __len) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(accept)(__fd, __addr, __len);
 }
-SPRT_FORCEINLINE int accept4(int __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
-		socklen_t *__SPRT_RESTRICT __len, int __flags) __SPRT_NOEXCEPT {
-	return __SPRT_ID(accept4)(__fd, __addr, __len, __flags);
-}
-SPRT_FORCEINLINE int getsockname(int __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
-		socklen_t *__SPRT_RESTRICT __len) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC int getsockname(SOCKET __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
+		socklen_t *__SPRT_RESTRICT __len) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(getsockname)(__fd, __addr, __len);
 }
-SPRT_FORCEINLINE int getpeername(int __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
-		socklen_t *__SPRT_RESTRICT __len) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC int getpeername(SOCKET __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
+		socklen_t *__SPRT_RESTRICT __len) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(getpeername)(__fd, __addr, __len);
 }
-SPRT_FORCEINLINE int shutdown(int __fd, int __how) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC int shutdown(SOCKET __fd, int __how) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(shutdown)(__fd, __how);
 }
-SPRT_FORCEINLINE int getsockopt(int __fd, int __level, int __optname,
-		void *__SPRT_RESTRICT __optval, socklen_t *__SPRT_RESTRICT __optlen) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC int getsockopt(SOCKET __fd, int __level, int __optname,
+		sockdata_t *__SPRT_RESTRICT __optval, socklen_t *__SPRT_RESTRICT __optlen) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(getsockopt)(__fd, __level, __optname, __optval, __optlen);
 }
-SPRT_FORCEINLINE int setsockopt(int __fd, int __level, int __optname, const void *__optval,
-		socklen_t __optlen) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC int setsockopt(SOCKET __fd, int __level, int __optname,
+		const sockdata_t *__optval, socklen_t __optlen) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(setsockopt)(__fd, __level, __optname, __optval, __optlen);
 }
-SPRT_FORCEINLINE ssize_t send(int __fd, const void *__buf, size_t __n, int __flags)
-		__SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC socksize_t send(SOCKET __fd, const sockdata_t *__buf, size_t __n,
+		int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(send)(__fd, __buf, __n, __flags);
 }
-SPRT_FORCEINLINE ssize_t recv(int __fd, void *__buf, size_t __n, int __flags) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC socksize_t recv(SOCKET __fd, sockdata_t *__buf, size_t __n,
+		int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(recv)(__fd, __buf, __n, __flags);
 }
-SPRT_FORCEINLINE ssize_t sendto(int __fd, const void *__buf, size_t __n, int __flags,
-		const struct __SPRT_SOCKADDR_NAME *__addr, socklen_t __addr_len) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC socksize_t sendto(SOCKET __fd, const sockdata_t *__buf, size_t __n, int __flags,
+		const struct __SPRT_SOCKADDR_NAME *__addr, socklen_t __addr_len) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(sendto)(__fd, __buf, __n, __flags, __addr, __addr_len);
 }
-SPRT_FORCEINLINE ssize_t recvfrom(int __fd, void *__SPRT_RESTRICT __buf, size_t __n, int __flags,
-		struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
-		socklen_t *__SPRT_RESTRICT __addr_len) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC socksize_t recvfrom(SOCKET __fd, sockdata_t *__SPRT_RESTRICT __buf, size_t __n,
+		int __flags, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
+		socklen_t *__SPRT_RESTRICT __addr_len) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(recvfrom)(__fd, __buf, __n, __flags, __addr, __addr_len);
 }
-SPRT_FORCEINLINE ssize_t sendmsg(int __fd, const struct msghdr *__message, int __flags)
-		__SPRT_NOEXCEPT {
+#endif
+
+// winsock has no socketpair/accept4/sendmsg/recvmsg/sendmmsg/recvmmsg: umbrella on every target,
+// the __sprt_* wrapper emulating them on Windows (socketpair -> ENOSYS, accept4 -> accept +
+// FIONBIO, sendmsg/recvmsg -> WSASendTo/WSARecvFrom, sendmmsg/recvmmsg -> per-message loop).
+// Same as pselect() in <sys/select.h>.
+
+SPRT_UMBRELLA_FUNC int socketpair(int __domain, int __type, int __protocol,
+		SOCKET __sv[2]) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(socketpair)(__domain, __type, __protocol, __sv);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC SOCKET accept4(SOCKET __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
+		socklen_t *__SPRT_RESTRICT __len, int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(accept4)(__fd, __addr, __len, __flags);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC socksize_t sendmsg(SOCKET __fd, const struct msghdr *__message,
+		int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(sendmsg)(__fd, __message, __flags);
 }
-SPRT_FORCEINLINE ssize_t recvmsg(int __fd, struct msghdr *__message, int __flags) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC socksize_t recvmsg(SOCKET __fd, struct msghdr *__message,
+		int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(recvmsg)(__fd, __message, __flags);
 }
-SPRT_FORCEINLINE int sendmmsg(int __fd, struct mmsghdr *__msgvec, unsigned int __vlen,
-		unsigned int __flags) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC int sendmmsg(SOCKET __fd, struct mmsghdr *__msgvec, unsigned int __vlen,
+		unsigned int __flags) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(sendmmsg)(__fd, __msgvec, __vlen, __flags);
 }
-SPRT_FORCEINLINE int recvmmsg(int __fd, struct mmsghdr *__msgvec, unsigned int __vlen,
-		unsigned int __flags, struct timespec *__timeout) __SPRT_NOEXCEPT {
+#endif
+
+SPRT_UMBRELLA_FUNC int recvmmsg(SOCKET __fd, struct mmsghdr *__msgvec, unsigned int __vlen,
+		unsigned int __flags, struct timespec *__timeout) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
 	return __SPRT_ID(recvmmsg)(__fd, __msgvec, __vlen, __flags, __timeout);
 }
+#endif
+
+SPRT_UMBRELLA_FUNC int closesocket(SOCKET s) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(closesocket)(s);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC int ioctlsocket(SOCKET s, long cmd, unsigned long *argp) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(ioctlsocket)(s, cmd, argp);
+}
+#endif
 
 __SPRT_END_DECL
-
-#endif // SPRT_WASM / winsock guard
 
 #endif
 

@@ -35,7 +35,576 @@ THE SOFTWARE.
 
 #else
 
-#include <sprt/c/cross/__sprt_socket.h>
+#include <sprt/c/cross/__sprt_netinet.h>
+
+// Materialize the public TCP_* option names from the per-platform __SPRT_TCP_*
+// table (netinetdef.h); each is guarded so only the options the target actually
+// defines are exposed.
+#ifdef __SPRT_TCP_AO_ADD_KEY
+#ifndef TCP_AO_ADD_KEY
+#define TCP_AO_ADD_KEY __SPRT_TCP_AO_ADD_KEY
+#endif
+#endif
+#ifdef __SPRT_TCP_AO_DEL_KEY
+#ifndef TCP_AO_DEL_KEY
+#define TCP_AO_DEL_KEY __SPRT_TCP_AO_DEL_KEY
+#endif
+#endif
+#ifdef __SPRT_TCP_AO_GET_KEYS
+#ifndef TCP_AO_GET_KEYS
+#define TCP_AO_GET_KEYS __SPRT_TCP_AO_GET_KEYS
+#endif
+#endif
+#ifdef __SPRT_TCP_AO_INFO
+#ifndef TCP_AO_INFO
+#define TCP_AO_INFO __SPRT_TCP_AO_INFO
+#endif
+#endif
+#ifdef __SPRT_TCP_AO_KEYF_EXCLUDE_OPT
+#ifndef TCP_AO_KEYF_EXCLUDE_OPT
+#define TCP_AO_KEYF_EXCLUDE_OPT __SPRT_TCP_AO_KEYF_EXCLUDE_OPT
+#endif
+#endif
+#ifdef __SPRT_TCP_AO_KEYF_IFINDEX
+#ifndef TCP_AO_KEYF_IFINDEX
+#define TCP_AO_KEYF_IFINDEX __SPRT_TCP_AO_KEYF_IFINDEX
+#endif
+#endif
+#ifdef __SPRT_TCP_AO_MAXKEYLEN
+#ifndef TCP_AO_MAXKEYLEN
+#define TCP_AO_MAXKEYLEN __SPRT_TCP_AO_MAXKEYLEN
+#endif
+#endif
+#ifdef __SPRT_TCP_AO_REPAIR
+#ifndef TCP_AO_REPAIR
+#define TCP_AO_REPAIR __SPRT_TCP_AO_REPAIR
+#endif
+#endif
+#ifdef __SPRT_TCP_ATMARK
+#ifndef TCP_ATMARK
+#define TCP_ATMARK __SPRT_TCP_ATMARK
+#endif
+#endif
+#ifdef __SPRT_TCP_CA_CWR
+#ifndef TCP_CA_CWR
+#define TCP_CA_CWR __SPRT_TCP_CA_CWR
+#endif
+#endif
+#ifdef __SPRT_TCP_CA_D
+#ifndef TCP_CA_D
+#define TCP_CA_D __SPRT_TCP_CA_D
+#endif
+#endif
+#ifdef __SPRT_TCP_CA_L
+#ifndef TCP_CA_L
+#define TCP_CA_L __SPRT_TCP_CA_L
+#endif
+#endif
+#ifdef __SPRT_TCP_CA_O
+#ifndef TCP_CA_O
+#define TCP_CA_O __SPRT_TCP_CA_O
+#endif
+#endif
+#ifdef __SPRT_TCP_CA_R
+#ifndef TCP_CA_R
+#define TCP_CA_R __SPRT_TCP_CA_R
+#endif
+#endif
+#ifdef __SPRT_TCP_CC_INFO
+#ifndef TCP_CC_INFO
+#define TCP_CC_INFO __SPRT_TCP_CC_INFO
+#endif
+#endif
+#ifdef __SPRT_TCP_CLIENT_SND_WND
+#ifndef TCP_CLIENT_SND_WND
+#define TCP_CLIENT_SND_WND __SPRT_TCP_CLIENT_SND_WND
+#endif
+#endif
+#ifdef __SPRT_TCP_CM_INQ
+#ifndef TCP_CM_INQ
+#define TCP_CM_INQ __SPRT_TCP_CM_INQ
+#endif
+#endif
+#ifdef __SPRT_TCP_CONGESTION
+#ifndef TCP_CONGESTION
+#define TCP_CONGESTION __SPRT_TCP_CONGESTION
+#endif
+#endif
+#ifdef __SPRT_TCP_CONGESTION_ALGORITHM
+#ifndef TCP_CONGESTION_ALGORITHM
+#define TCP_CONGESTION_ALGORITHM __SPRT_TCP_CONGESTION_ALGORITHM
+#endif
+#endif
+#ifdef __SPRT_TCP_CONNECTION_INFO
+#ifndef TCP_CONNECTION_INFO
+#define TCP_CONNECTION_INFO __SPRT_TCP_CONNECTION_INFO
+#endif
+#endif
+#ifdef __SPRT_TCP_CONNECTIONTIMEOUT
+#ifndef TCP_CONNECTIONTIMEOUT
+#define TCP_CONNECTIONTIMEOUT __SPRT_TCP_CONNECTIONTIMEOUT
+#endif
+#endif
+#ifdef __SPRT_TCP_COOKIE_IN_ALWAYS
+#ifndef TCP_COOKIE_IN_ALWAYS
+#define TCP_COOKIE_IN_ALWAYS __SPRT_TCP_COOKIE_IN_ALWAYS
+#endif
+#endif
+#ifdef __SPRT_TCP_COOKIE_MAX
+#ifndef TCP_COOKIE_MAX
+#define TCP_COOKIE_MAX __SPRT_TCP_COOKIE_MAX
+#endif
+#endif
+#ifdef __SPRT_TCP_COOKIE_MIN
+#ifndef TCP_COOKIE_MIN
+#define TCP_COOKIE_MIN __SPRT_TCP_COOKIE_MIN
+#endif
+#endif
+#ifdef __SPRT_TCP_COOKIE_OUT_NEVER
+#ifndef TCP_COOKIE_OUT_NEVER
+#define TCP_COOKIE_OUT_NEVER __SPRT_TCP_COOKIE_OUT_NEVER
+#endif
+#endif
+#ifdef __SPRT_TCP_COOKIE_PAIR_SIZE
+#ifndef TCP_COOKIE_PAIR_SIZE
+#define TCP_COOKIE_PAIR_SIZE __SPRT_TCP_COOKIE_PAIR_SIZE
+#endif
+#endif
+#ifdef __SPRT_TCP_COOKIE_TRANSACTIONS
+#ifndef TCP_COOKIE_TRANSACTIONS
+#define TCP_COOKIE_TRANSACTIONS __SPRT_TCP_COOKIE_TRANSACTIONS
+#endif
+#endif
+#ifdef __SPRT_TCP_CORK
+#ifndef TCP_CORK
+#define TCP_CORK __SPRT_TCP_CORK
+#endif
+#endif
+#ifdef __SPRT_TCP_DEFER_ACCEPT
+#ifndef TCP_DEFER_ACCEPT
+#define TCP_DEFER_ACCEPT __SPRT_TCP_DEFER_ACCEPT
+#endif
+#endif
+#ifdef __SPRT_TCP_DELAY_FIN_ACK
+#ifndef TCP_DELAY_FIN_ACK
+#define TCP_DELAY_FIN_ACK __SPRT_TCP_DELAY_FIN_ACK
+#endif
+#endif
+#ifdef __SPRT_TCP_ENABLE_ECN
+#ifndef TCP_ENABLE_ECN
+#define TCP_ENABLE_ECN __SPRT_TCP_ENABLE_ECN
+#endif
+#endif
+#ifdef __SPRT_TCP_EXPEDITED_1122
+#ifndef TCP_EXPEDITED_1122
+#define TCP_EXPEDITED_1122 __SPRT_TCP_EXPEDITED_1122
+#endif
+#endif
+#ifdef __SPRT_TCP_FAIL_CONNECT_ON_ICMP_ERROR
+#ifndef TCP_FAIL_CONNECT_ON_ICMP_ERROR
+#define TCP_FAIL_CONNECT_ON_ICMP_ERROR __SPRT_TCP_FAIL_CONNECT_ON_ICMP_ERROR
+#endif
+#endif
+#ifdef __SPRT_TCP_FASTOPEN
+#ifndef TCP_FASTOPEN
+#define TCP_FASTOPEN __SPRT_TCP_FASTOPEN
+#endif
+#endif
+#ifdef __SPRT_TCP_FASTOPEN_CONNECT
+#ifndef TCP_FASTOPEN_CONNECT
+#define TCP_FASTOPEN_CONNECT __SPRT_TCP_FASTOPEN_CONNECT
+#endif
+#endif
+#ifdef __SPRT_TCP_FASTOPEN_KEY
+#ifndef TCP_FASTOPEN_KEY
+#define TCP_FASTOPEN_KEY __SPRT_TCP_FASTOPEN_KEY
+#endif
+#endif
+#ifdef __SPRT_TCP_FASTOPEN_NO_COOKIE
+#ifndef TCP_FASTOPEN_NO_COOKIE
+#define TCP_FASTOPEN_NO_COOKIE __SPRT_TCP_FASTOPEN_NO_COOKIE
+#endif
+#endif
+#ifdef __SPRT_TCP_H
+#ifndef TCP_H
+#define TCP_H __SPRT_TCP_H
+#endif
+#endif
+#ifdef __SPRT_TCP_H_
+#ifndef TCP_H_
+#define TCP_H_ __SPRT_TCP_H_
+#endif
+#endif
+#ifdef __SPRT_TCP_ICMP_ERROR_INFO
+#ifndef TCP_ICMP_ERROR_INFO
+#define TCP_ICMP_ERROR_INFO __SPRT_TCP_ICMP_ERROR_INFO
+#endif
+#endif
+#ifdef __SPRT_TCP_INFO
+#ifndef TCP_INFO
+#define TCP_INFO __SPRT_TCP_INFO
+#endif
+#endif
+#ifdef __SPRT_TCP_INITIAL_RTO
+#ifndef TCP_INITIAL_RTO
+#define TCP_INITIAL_RTO __SPRT_TCP_INITIAL_RTO
+#endif
+#endif
+#ifdef __SPRT_TCP_INITIAL_RTO_DEFAULT_MAX_SYN_RETRANSMISSIONS
+#ifndef TCP_INITIAL_RTO_DEFAULT_MAX_SYN_RETRANSMISSIONS
+#define TCP_INITIAL_RTO_DEFAULT_MAX_SYN_RETRANSMISSIONS __SPRT_TCP_INITIAL_RTO_DEFAULT_MAX_SYN_RETRANSMISSIONS
+#endif
+#endif
+#ifdef __SPRT_TCP_INITIAL_RTO_DEFAULT_RTT
+#ifndef TCP_INITIAL_RTO_DEFAULT_RTT
+#define TCP_INITIAL_RTO_DEFAULT_RTT __SPRT_TCP_INITIAL_RTO_DEFAULT_RTT
+#endif
+#endif
+#ifdef __SPRT_TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS
+#ifndef TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS
+#define TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS __SPRT_TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS
+#endif
+#endif
+#ifdef __SPRT_TCP_INITIAL_RTO_UNSPECIFIED_MAX_SYN_RETRANSMISSIONS
+#ifndef TCP_INITIAL_RTO_UNSPECIFIED_MAX_SYN_RETRANSMISSIONS
+#define TCP_INITIAL_RTO_UNSPECIFIED_MAX_SYN_RETRANSMISSIONS __SPRT_TCP_INITIAL_RTO_UNSPECIFIED_MAX_SYN_RETRANSMISSIONS
+#endif
+#endif
+#ifdef __SPRT_TCP_INITIAL_RTO_UNSPECIFIED_RTT
+#ifndef TCP_INITIAL_RTO_UNSPECIFIED_RTT
+#define TCP_INITIAL_RTO_UNSPECIFIED_RTT __SPRT_TCP_INITIAL_RTO_UNSPECIFIED_RTT
+#endif
+#endif
+#ifdef __SPRT_TCP_INQ
+#ifndef TCP_INQ
+#define TCP_INQ __SPRT_TCP_INQ
+#endif
+#endif
+#ifdef __SPRT_TCP_IPV4
+#ifndef TCP_IPV4
+#define TCP_IPV4 __SPRT_TCP_IPV4
+#endif
+#endif
+#ifdef __SPRT_TCP_IPV6
+#ifndef TCP_IPV6
+#define TCP_IPV6 __SPRT_TCP_IPV6
+#endif
+#endif
+#ifdef __SPRT_TCP_IS_MPTCP
+#ifndef TCP_IS_MPTCP
+#define TCP_IS_MPTCP __SPRT_TCP_IS_MPTCP
+#endif
+#endif
+#ifdef __SPRT_TCP_KEEPALIVE
+#ifndef TCP_KEEPALIVE
+#define TCP_KEEPALIVE __SPRT_TCP_KEEPALIVE
+#endif
+#endif
+#ifdef __SPRT_TCP_KEEPCNT
+#ifndef TCP_KEEPCNT
+#define TCP_KEEPCNT __SPRT_TCP_KEEPCNT
+#endif
+#endif
+#ifdef __SPRT_TCP_KEEPIDLE
+#ifndef TCP_KEEPIDLE
+#define TCP_KEEPIDLE __SPRT_TCP_KEEPIDLE
+#endif
+#endif
+#ifdef __SPRT_TCP_KEEPINTVL
+#ifndef TCP_KEEPINTVL
+#define TCP_KEEPINTVL __SPRT_TCP_KEEPINTVL
+#endif
+#endif
+#ifdef __SPRT_TCP_LINGER2
+#ifndef TCP_LINGER2
+#define TCP_LINGER2 __SPRT_TCP_LINGER2
+#endif
+#endif
+#ifdef __SPRT_TCP_MAXHLEN
+#ifndef TCP_MAXHLEN
+#define TCP_MAXHLEN __SPRT_TCP_MAXHLEN
+#endif
+#endif
+#ifdef __SPRT_TCP_MAXOLEN
+#ifndef TCP_MAXOLEN
+#define TCP_MAXOLEN __SPRT_TCP_MAXOLEN
+#endif
+#endif
+#ifdef __SPRT_TCP_MAXRT
+#ifndef TCP_MAXRT
+#define TCP_MAXRT __SPRT_TCP_MAXRT
+#endif
+#endif
+#ifdef __SPRT_TCP_MAXRTMS
+#ifndef TCP_MAXRTMS
+#define TCP_MAXRTMS __SPRT_TCP_MAXRTMS
+#endif
+#endif
+#ifdef __SPRT_TCP_MAX_SACK
+#ifndef TCP_MAX_SACK
+#define TCP_MAX_SACK __SPRT_TCP_MAX_SACK
+#endif
+#endif
+#ifdef __SPRT_TCP_MAXSEG
+#ifndef TCP_MAXSEG
+#define TCP_MAXSEG __SPRT_TCP_MAXSEG
+#endif
+#endif
+#ifdef __SPRT_TCP_MAXWIN
+#ifndef TCP_MAXWIN
+#define TCP_MAXWIN __SPRT_TCP_MAXWIN
+#endif
+#endif
+#ifdef __SPRT_TCP_MAX_WINSHIFT
+#ifndef TCP_MAX_WINSHIFT
+#define TCP_MAX_WINSHIFT __SPRT_TCP_MAX_WINSHIFT
+#endif
+#endif
+#ifdef __SPRT_TCP_MD5SIG
+#ifndef TCP_MD5SIG
+#define TCP_MD5SIG __SPRT_TCP_MD5SIG
+#endif
+#endif
+#ifdef __SPRT_TCP_MD5SIG_EXT
+#ifndef TCP_MD5SIG_EXT
+#define TCP_MD5SIG_EXT __SPRT_TCP_MD5SIG_EXT
+#endif
+#endif
+#ifdef __SPRT_TCP_MD5SIG_FLAG_IFINDEX
+#ifndef TCP_MD5SIG_FLAG_IFINDEX
+#define TCP_MD5SIG_FLAG_IFINDEX __SPRT_TCP_MD5SIG_FLAG_IFINDEX
+#endif
+#endif
+#ifdef __SPRT_TCP_MD5SIG_FLAG_PREFIX
+#ifndef TCP_MD5SIG_FLAG_PREFIX
+#define TCP_MD5SIG_FLAG_PREFIX __SPRT_TCP_MD5SIG_FLAG_PREFIX
+#endif
+#endif
+#ifdef __SPRT_TCP_MD5SIG_MAXKEYLEN
+#ifndef TCP_MD5SIG_MAXKEYLEN
+#define TCP_MD5SIG_MAXKEYLEN __SPRT_TCP_MD5SIG_MAXKEYLEN
+#endif
+#endif
+#ifdef __SPRT_TCP_MINMSS
+#ifndef TCP_MINMSS
+#define TCP_MINMSS __SPRT_TCP_MINMSS
+#endif
+#endif
+#ifdef __SPRT_TCP_MSS
+#ifndef TCP_MSS
+#define TCP_MSS __SPRT_TCP_MSS
+#endif
+#endif
+#ifdef __SPRT_TCP_MSS_DEFAULT
+#ifndef TCP_MSS_DEFAULT
+#define TCP_MSS_DEFAULT __SPRT_TCP_MSS_DEFAULT
+#endif
+#endif
+#ifdef __SPRT_TCP_MSS_DESIRED
+#ifndef TCP_MSS_DESIRED
+#define TCP_MSS_DESIRED __SPRT_TCP_MSS_DESIRED
+#endif
+#endif
+#ifdef __SPRT_TCP_NODELAY
+#ifndef TCP_NODELAY
+#define TCP_NODELAY __SPRT_TCP_NODELAY
+#endif
+#endif
+#ifdef __SPRT_TCP_NOOPT
+#ifndef TCP_NOOPT
+#define TCP_NOOPT __SPRT_TCP_NOOPT
+#endif
+#endif
+#ifdef __SPRT_TCP_NOPUSH
+#ifndef TCP_NOPUSH
+#define TCP_NOPUSH __SPRT_TCP_NOPUSH
+#endif
+#endif
+#ifdef __SPRT_TCP_NOSYNRETRIES
+#ifndef TCP_NOSYNRETRIES
+#define TCP_NOSYNRETRIES __SPRT_TCP_NOSYNRETRIES
+#endif
+#endif
+#ifdef __SPRT_TCP_NOTSENT_LOWAT
+#ifndef TCP_NOTSENT_LOWAT
+#define TCP_NOTSENT_LOWAT __SPRT_TCP_NOTSENT_LOWAT
+#endif
+#endif
+#ifdef __SPRT_TCP_NOURG
+#ifndef TCP_NOURG
+#define TCP_NOURG __SPRT_TCP_NOURG
+#endif
+#endif
+#ifdef __SPRT_TCP_OFFLOAD_NO_PREFERENCE
+#ifndef TCP_OFFLOAD_NO_PREFERENCE
+#define TCP_OFFLOAD_NO_PREFERENCE __SPRT_TCP_OFFLOAD_NO_PREFERENCE
+#endif
+#endif
+#ifdef __SPRT_TCP_OFFLOAD_NOT_PREFERRED
+#ifndef TCP_OFFLOAD_NOT_PREFERRED
+#define TCP_OFFLOAD_NOT_PREFERRED __SPRT_TCP_OFFLOAD_NOT_PREFERRED
+#endif
+#endif
+#ifdef __SPRT_TCP_OFFLOAD_PREFERENCE
+#ifndef TCP_OFFLOAD_PREFERENCE
+#define TCP_OFFLOAD_PREFERENCE __SPRT_TCP_OFFLOAD_PREFERENCE
+#endif
+#endif
+#ifdef __SPRT_TCP_OFFLOAD_PREFERRED
+#ifndef TCP_OFFLOAD_PREFERRED
+#define TCP_OFFLOAD_PREFERRED __SPRT_TCP_OFFLOAD_PREFERRED
+#endif
+#endif
+#ifdef __SPRT_TCP_QUEUE_SEQ
+#ifndef TCP_QUEUE_SEQ
+#define TCP_QUEUE_SEQ __SPRT_TCP_QUEUE_SEQ
+#endif
+#endif
+#ifdef __SPRT_TCP_QUICKACK
+#ifndef TCP_QUICKACK
+#define TCP_QUICKACK __SPRT_TCP_QUICKACK
+#endif
+#endif
+#ifdef __SPRT_TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT
+#ifndef TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT
+#define TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT __SPRT_TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT
+#endif
+#endif
+#ifdef __SPRT_TCP_REPAIR
+#ifndef TCP_REPAIR
+#define TCP_REPAIR __SPRT_TCP_REPAIR
+#endif
+#endif
+#ifdef __SPRT_TCP_REPAIR_OFF
+#ifndef TCP_REPAIR_OFF
+#define TCP_REPAIR_OFF __SPRT_TCP_REPAIR_OFF
+#endif
+#endif
+#ifdef __SPRT_TCP_REPAIR_OFF_NO_WP
+#ifndef TCP_REPAIR_OFF_NO_WP
+#define TCP_REPAIR_OFF_NO_WP __SPRT_TCP_REPAIR_OFF_NO_WP
+#endif
+#endif
+#ifdef __SPRT_TCP_REPAIR_ON
+#ifndef TCP_REPAIR_ON
+#define TCP_REPAIR_ON __SPRT_TCP_REPAIR_ON
+#endif
+#endif
+#ifdef __SPRT_TCP_REPAIR_OPTIONS
+#ifndef TCP_REPAIR_OPTIONS
+#define TCP_REPAIR_OPTIONS __SPRT_TCP_REPAIR_OPTIONS
+#endif
+#endif
+#ifdef __SPRT_TCP_REPAIR_QUEUE
+#ifndef TCP_REPAIR_QUEUE
+#define TCP_REPAIR_QUEUE __SPRT_TCP_REPAIR_QUEUE
+#endif
+#endif
+#ifdef __SPRT_TCP_REPAIR_WINDOW
+#ifndef TCP_REPAIR_WINDOW
+#define TCP_REPAIR_WINDOW __SPRT_TCP_REPAIR_WINDOW
+#endif
+#endif
+#ifdef __SPRT_TCP_RXT_CONNDROPTIME
+#ifndef TCP_RXT_CONNDROPTIME
+#define TCP_RXT_CONNDROPTIME __SPRT_TCP_RXT_CONNDROPTIME
+#endif
+#endif
+#ifdef __SPRT_TCP_RXT_FINDROP
+#ifndef TCP_RXT_FINDROP
+#define TCP_RXT_FINDROP __SPRT_TCP_RXT_FINDROP
+#endif
+#endif
+#ifdef __SPRT_TCP_SAVED_SYN
+#ifndef TCP_SAVED_SYN
+#define TCP_SAVED_SYN __SPRT_TCP_SAVED_SYN
+#endif
+#endif
+#ifdef __SPRT_TCP_SAVE_SYN
+#ifndef TCP_SAVE_SYN
+#define TCP_SAVE_SYN __SPRT_TCP_SAVE_SYN
+#endif
+#endif
+#ifdef __SPRT_TCP_S_DATA_IN
+#ifndef TCP_S_DATA_IN
+#define TCP_S_DATA_IN __SPRT_TCP_S_DATA_IN
+#endif
+#endif
+#ifdef __SPRT_TCP_S_DATA_OUT
+#ifndef TCP_S_DATA_OUT
+#define TCP_S_DATA_OUT __SPRT_TCP_S_DATA_OUT
+#endif
+#endif
+#ifdef __SPRT_TCP_SENDMOREACKS
+#ifndef TCP_SENDMOREACKS
+#define TCP_SENDMOREACKS __SPRT_TCP_SENDMOREACKS
+#endif
+#endif
+#ifdef __SPRT_TCP_SET_ACK_FREQUENCY
+#ifndef TCP_SET_ACK_FREQUENCY
+#define TCP_SET_ACK_FREQUENCY __SPRT_TCP_SET_ACK_FREQUENCY
+#endif
+#endif
+#ifdef __SPRT_TCP_SET_ICW
+#ifndef TCP_SET_ICW
+#define TCP_SET_ICW __SPRT_TCP_SET_ICW
+#endif
+#endif
+#ifdef __SPRT_TCP_STDURG
+#ifndef TCP_STDURG
+#define TCP_STDURG __SPRT_TCP_STDURG
+#endif
+#endif
+#ifdef __SPRT_TCP_SYNCNT
+#ifndef TCP_SYNCNT
+#define TCP_SYNCNT __SPRT_TCP_SYNCNT
+#endif
+#endif
+#ifdef __SPRT_TCP_THIN_DUPACK
+#ifndef TCP_THIN_DUPACK
+#define TCP_THIN_DUPACK __SPRT_TCP_THIN_DUPACK
+#endif
+#endif
+#ifdef __SPRT_TCP_THIN_LINEAR_TIMEOUTS
+#ifndef TCP_THIN_LINEAR_TIMEOUTS
+#define TCP_THIN_LINEAR_TIMEOUTS __SPRT_TCP_THIN_LINEAR_TIMEOUTS
+#endif
+#endif
+#ifdef __SPRT_TCP_TIMESTAMP
+#ifndef TCP_TIMESTAMP
+#define TCP_TIMESTAMP __SPRT_TCP_TIMESTAMP
+#endif
+#endif
+#ifdef __SPRT_TCP_TIMESTAMPS
+#ifndef TCP_TIMESTAMPS
+#define TCP_TIMESTAMPS __SPRT_TCP_TIMESTAMPS
+#endif
+#endif
+#ifdef __SPRT_TCP_TX_DELAY
+#ifndef TCP_TX_DELAY
+#define TCP_TX_DELAY __SPRT_TCP_TX_DELAY
+#endif
+#endif
+#ifdef __SPRT_TCP_ULP
+#ifndef TCP_ULP
+#define TCP_ULP __SPRT_TCP_ULP
+#endif
+#endif
+#ifdef __SPRT_TCP_USER_TIMEOUT
+#ifndef TCP_USER_TIMEOUT
+#define TCP_USER_TIMEOUT __SPRT_TCP_USER_TIMEOUT
+#endif
+#endif
+#ifdef __SPRT_TCP_WINDOW_CLAMP
+#ifndef TCP_WINDOW_CLAMP
+#define TCP_WINDOW_CLAMP __SPRT_TCP_WINDOW_CLAMP
+#endif
+#endif
+#ifdef __SPRT_TCP_ZEROCOPY_RECEIVE
+#ifndef TCP_ZEROCOPY_RECEIVE
+#define TCP_ZEROCOPY_RECEIVE __SPRT_TCP_ZEROCOPY_RECEIVE
+#endif
+#endif
 
 #endif
 

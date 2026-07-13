@@ -24,8 +24,8 @@ VARIANT ?= mbedtls
 
 LIBNAME = curl
 
-SP_USER_CFLAGS := -DNGHTTP3_STATICLIB
-SP_USER_CXXFLAGS := -DNGHTTP3_STATICLIB
+SP_USER_CFLAGS := -DNGHTTP3_STATICLIB -DNGTCP2_STATICLIB
+SP_USER_CXXFLAGS := -DNGHTTP3_STATICLIB -DNGTCP2_STATICLIB
 
 ifdef WINDOWS
 SP_USER_CFLAGS += -DSIZEOF_CURL_OFF_T=8 -Wno-incompatible-pointer-types-discards-qualifiers -Wno-cast-function-type-strict
@@ -70,56 +70,45 @@ CONFIGURE += \
 endif
 
 ifeq ($(VARIANT),openssl)
+# HTTP/3 via ngtcp2 (QUIC) + nghttp3 (framing) on the OpenSSL crypto backend. NOTE: curl
+# 8.20 has NO USE_OPENSSL_QUIC option - it is a no-op and does NOT turn on the HTTP3
+# feature (curl_add_if("HTTP3" USE_NGTCP2 OR USE_QUICHE)). USE_NGTCP2 does: with OpenSSL
+# 3.5+ curl calls find_package(NGTCP2 COMPONENTS ossl) -> libngtcp2 + libngtcp2_crypto_ossl
+# (needs ngtcp2 >= 1.12.0) and pulls nghttp3 automatically. The libs are static, so tell
+# FindNGTCP2 to resolve the *_static/.a via pkg-config (NGTCP2_STATICLIB comes from
+# SP_USER_CFLAGS above; the LIB_EAY/SSL_EAY hints were dead in 8.20).
 CONFIGURE += \
 	-DCURL_DEFAULT_SSL_BACKEND="openssl" -DCURL_USE_OPENSSL=ON \
-	-DLIB_EAY=$(SP_INSTALL_PREFIX)/usr/lib/crypto.lib \
-	-DSSL_EAY=$(SP_INSTALL_PREFIX)/usr/lib/ssl.lib \
-	-DUSE_OPENSSL_QUIC=ON
+	-DUSE_NGTCP2=ON \
+	-DNGTCP2_USE_STATIC_LIBS=ON
 endif
 
 ifdef WASM
 # Freestanding wasm: point find_package(OpenSSL) at the sprt-built static libs
 # (unix libcrypto.a/libssl.a names, not the crypto.lib/ssl.lib the openssl block
-# above assumes), give it HTTP/3 via nghttp3, and drop the pieces the wasm sysroot
-# does not ship (IDN2, PSL) or that cannot work in the browser sandbox (no raw
-# sockets - the socket API resolves to the libc no-op stubs at link time).
+# above assumes) - both curl and ngtcp2 need this to locate the wasm OpenSSL. HTTP/3
+# comes from the ngtcp2/nghttp3 stack enabled in the openssl block above (USE_NGTCP2
+# implies USE_NGHTTP3). Drop the pieces the wasm sysroot does not ship (IDN2, PSL) or
+# that cannot work in the browser sandbox (no raw sockets - the socket API resolves to
+# the libc no-op stubs at link time).
 CONFIGURE += \
 	-DOPENSSL_ROOT_DIR=$(SP_INSTALL_PREFIX)/usr \
 	-DOPENSSL_CRYPTO_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libcrypto.a \
 	-DOPENSSL_SSL_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
 	-DOPENSSL_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/usr/include \
-	-DUSE_NGHTTP3=ON \
 	-DUSE_LIBIDN2=OFF \
 	-DCURL_USE_LIBPSL=OFF \
 	-DENABLE_THREADED_RESOLVER=OFF
-# check_type_size() cannot recover the size from a freestanding wasm exe (the marker
-# array is stripped by the -nostdlib/--no-entry link), so every SIZEOF_* comes back
-# empty. Pre-set the wasm32 values (verified with _Static_assert): ILP32 with a 64-bit
-# ssize_t/off_t/time_t and curl's own 64-bit curl_off_t. Pre-defining the result var
-# makes check_type_size skip its probe (guard: if(NOT DEFINED <var>)).
-CONFIGURE += \
-	-DSIZEOF_SIZE_T=4 \
-	-DSIZEOF_SSIZE_T=8 \
-	-DSIZEOF_LONG=4 \
-	-DSIZEOF_INT=4 \
-	-DSIZEOF_TIME_T=8 \
-	-DSIZEOF_OFF_T=8 \
-	-DSIZEOF_CURL_OFF_T=8 \
-	-DSIZEOF_CURL_SOCKET_T=4 \
-	-DSIZEOF_SA_FAMILY_T=2
-# The EXECUTABLE feature probes link with --allow-undefined (see configure.mk), so
-# check_function_exists() reports absent functions as present (the undefined ref just
-# becomes a wasm import). Force OFF the handful the sprt libc genuinely lacks so curl
-# uses its portable fallbacks instead of calling undeclared functions: fnmatch (curl
-# has its own curl_fnmatch), the rlimit fd-limit tuning, and the passwd/getpass bits.
-CONFIGURE += \
-	-DHAVE_FNMATCH=OFF \
-	-DHAVE_GETRLIMIT=OFF \
-	-DHAVE_SETRLIMIT=OFF \
-	-DHAVE_GETPWUID=OFF \
-	-DHAVE_GETPWUID_R=OFF \
-	-DHAVE_GETPASS_R=OFF \
-	-DHAVE_IF_NAMETOINDEX=OFF
+# No -DSIZEOF_* pins here anymore either: curl runs its check_type_size probes inside the
+# same EXECUTABLE region as the function checks, and configure.mk's --export-if-defined=main
+# keeps the probe's main - and the info_size marker it references - alive through
+# gc-sections, so the sizes are recovered from the freestanding wasm exe (ILP32 with 64-bit
+# ssize_t/off_t/time_t/curl_off_t) instead of coming back empty.
+# No -DHAVE_*=OFF list here anymore: curl forces its check_function_exists probes to
+# EXECUTABLE, and configure.mk now links those probes against the sprt libc archive with
+# NO --allow-undefined, so functions the libc genuinely lacks (fnmatch - curl has its own
+# curl_fnmatch; the rlimit fd-limit tuning; the passwd/getpass/if_nametoindex bits) are
+# detected as absent automatically and curl falls back to its portable paths.
 endif
 
 all:

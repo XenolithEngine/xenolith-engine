@@ -8,49 +8,45 @@ struct __SPRT_SOCKADDR_NAME {
 };
 
 typedef __SPRT_ID(uint32_t) __SPRT_ID(in_addr_t);
+typedef __SPRT_ID(uint16_t) __SPRT_ID(in_port_t);
+
+struct __SPRT_IN_ADDR_NAME {
+	__SPRT_ID(in_addr_t) s_addr;
+};
+
+struct __SPRT_IN6_ADDR_NAME {
+	union {
+		unsigned char __s6_addr[16];
+		__SPRT_ID(uint16_t) __s6_addr16[8];
+		__SPRT_ID(uint32_t) __s6_addr32[4];
+	} __u6_addr;
+};
+#if !(defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1)
+#define s6_addr   __u6_addr.__s6_addr
+#define s6_addr16 __u6_addr.__s6_addr16
+#define s6_addr32 __u6_addr.__s6_addr32
+#endif
+
+struct __SPRT_SOCKADDR_IN_NAME {
+	__SPRT_ID(uint8_t) sin_len;
+	__SPRT_ID(sa_family_t) sin_family;
+	__SPRT_ID(in_port_t) sin_port;
+	struct __SPRT_IN_ADDR_NAME sin_addr;
+	unsigned char sin_zero[8];
+};
+
+struct __SPRT_SOCKADDR_IN6_NAME {
+	__SPRT_ID(uint8_t) sin6_len;
+	__SPRT_ID(sa_family_t) sin6_family;
+	__SPRT_ID(in_port_t) sin6_port;
+	__SPRT_ID(uint32_t) sin6_flowinfo;
+	struct __SPRT_IN6_ADDR_NAME sin6_addr;
+	__SPRT_ID(uint32_t) sin6_scope_id;
+};
 
 typedef int SOCKET;
-
-// --- __SPRT_-prefixed socket constants (Darwin BSD values) -------------------------
-// SOCK_CLOEXEC/NONBLOCK have no macOS native (accept4 is emulated); the values are the
-// SPRT convention and are not asserted on macOS (guarded by #ifdef in the wrapper).
-// clang-format off
-#define __SPRT_SHUT_RD        0
-#define __SPRT_SHUT_WR        1
-#define __SPRT_SHUT_RDWR      2
-#define __SPRT_SOCK_STREAM    1
-#define __SPRT_SOCK_DGRAM     2
-#define __SPRT_SOCK_RAW       3
-#define __SPRT_SOCK_SEQPACKET 5
-#define __SPRT_SOCK_CLOEXEC   02000000
-#define __SPRT_SOCK_NONBLOCK  04000
-#define __SPRT_AF_UNSPEC      0
-#define __SPRT_AF_UNIX        1
-#define __SPRT_AF_INET        2
-#define __SPRT_AF_INET6       30
-#define __SPRT_SOL_SOCKET     0xffff
-#define __SPRT_SO_REUSEADDR   0x0004
-#define __SPRT_SO_TYPE        0x1008
-#define __SPRT_SO_ERROR       0x1007
-#define __SPRT_SO_DONTROUTE   0x0010
-#define __SPRT_SO_BROADCAST   0x0020
-#define __SPRT_SO_SNDBUF      0x1001
-#define __SPRT_SO_RCVBUF      0x1002
-#define __SPRT_SO_KEEPALIVE   0x0008
-#define __SPRT_SO_OOBINLINE   0x0100
-#define __SPRT_SO_LINGER      0x0080
-#define __SPRT_SO_REUSEPORT   0x0200
-#define __SPRT_MSG_OOB        0x1
-#define __SPRT_MSG_PEEK       0x2
-#define __SPRT_MSG_DONTROUTE  0x4
-#define __SPRT_MSG_EOR        0x8
-#define __SPRT_MSG_TRUNC      0x10
-#define __SPRT_MSG_CTRUNC     0x20
-#define __SPRT_MSG_WAITALL    0x40
-#define __SPRT_MSG_DONTWAIT   0x80
-#define __SPRT_MSG_NOSIGNAL   0x80000
-#define __SPRT_SOMAXCONN      128
-// clang-format on
+typedef void sockdata_t;
+typedef __SPRT_ID(ssize_t) socksize_t;
 
 // --- message / control structs (Darwin BSD layout: int msg_iovlen, socklen_t
 // control/cmsg lengths, 32-bit CMSG alignment; no ucred - macOS uses xucred) --------
