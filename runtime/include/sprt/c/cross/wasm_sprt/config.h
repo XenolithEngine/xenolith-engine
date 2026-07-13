@@ -155,10 +155,6 @@
 #define __SPRT_CONFIG_HAVE_MMAN_MEMFD 0
 #endif
 
-#ifndef __SPRT_CONFIG_HAVE_SELECT
-#define __SPRT_CONFIG_HAVE_SELECT 0
-#endif
-
 // The browser sandbox has no pollable descriptors; poll() is an ENOSYS stub.
 #ifndef __SPRT_CONFIG_HAVE_POLL
 #define __SPRT_CONFIG_HAVE_POLL 0

@@ -73,23 +73,9 @@ struct in6_pktinfo {
 	unsigned ipi6_ifindex;
 };
 
-// IPv6 address test macros
-#define IN6_IS_ADDR_UNSPECIFIED(a) \
-	(((const __SPRT_ID(uint32_t) *)(a))[0] == 0 && ((const __SPRT_ID(uint32_t) *)(a))[1] == 0 \
-			&& ((const __SPRT_ID(uint32_t) *)(a))[2] == 0 \
-			&& ((const __SPRT_ID(uint32_t) *)(a))[3] == 0)
-#define IN6_IS_ADDR_LOOPBACK(a) \
-	(((const __SPRT_ID(uint32_t) *)(a))[0] == 0 && ((const __SPRT_ID(uint32_t) *)(a))[1] == 0 \
-			&& ((const __SPRT_ID(uint32_t) *)(a))[2] == 0 \
-			&& ((const unsigned char *)(a))[12] == 0 && ((const unsigned char *)(a))[13] == 0 \
-			&& ((const unsigned char *)(a))[14] == 0 && ((const unsigned char *)(a))[15] == 1)
-#define IN6_IS_ADDR_MULTICAST(a) (((const unsigned char *)(a))[0] == 0xff)
-#define IN6_IS_ADDR_LINKLOCAL(a) \
-	((((const unsigned char *)(a))[0]) == 0xfe && (((const unsigned char *)(a))[1] & 0xc0) == 0x80)
-#define IN6_IS_ADDR_V4MAPPED(a) \
-	(((const __SPRT_ID(uint32_t) *)(a))[0] == 0 && ((const __SPRT_ID(uint32_t) *)(a))[1] == 0 \
-			&& ((const unsigned char *)(a))[8] == 0 && ((const unsigned char *)(a))[9] == 0 \
-			&& ((const unsigned char *)(a))[10] == 0xff && ((const unsigned char *)(a))[11] == 0xff)
+// IPv6 address test macros (IN6_IS_ADDR_*), the IPv4 class macros and the
+// IPPROTO_*/IP_*/IPV6_* level constants are materialized from <__sprt_netinet.h>
+// via <arpa/inet.h> (included above).
 
 __SPRT_BEGIN_DECL
 

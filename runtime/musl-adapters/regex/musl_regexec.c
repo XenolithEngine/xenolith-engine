@@ -8,6 +8,9 @@
 
 #include "../include/defs.h"
 
+#pragma clang diagnostic ignored "-Wmacro-redefined"
+#pragma clang diagnostic ignored "-Wlogical-op-parentheses"
+
 // See musl_regcomp.c for the full rationale. On Windows wchar_t/wint_t are 16-bit
 // (MSVC ABI) while TRE needs a 32-bit, equal-width character model; widen both
 // for the TRE sources and route mbtowc through the 32-bit bridge. Must match

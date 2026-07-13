@@ -12,6 +12,8 @@ struct __SPRT_SOCKADDR_NAME {
 };
 
 typedef int SOCKET;
+typedef void sockdata_t;
+typedef __SPRT_ID(ssize_t) socksize_t;
 
 typedef __SPRT_ID(uint16_t) __SPRT_ID(in_port_t);
 typedef __SPRT_ID(uint32_t) __SPRT_ID(in_addr_t);
@@ -20,44 +22,33 @@ struct __SPRT_IN_ADDR_NAME {
 	__SPRT_ID(in_addr_t) s_addr;
 };
 
-// --- __SPRT_-prefixed socket constants (bionic values; see linux_sprt/socket.h) ----
-// clang-format off
-#define __SPRT_SHUT_RD        0
-#define __SPRT_SHUT_WR        1
-#define __SPRT_SHUT_RDWR      2
-#define __SPRT_SOCK_STREAM    1
-#define __SPRT_SOCK_DGRAM     2
-#define __SPRT_SOCK_RAW       3
-#define __SPRT_SOCK_SEQPACKET 5
-#define __SPRT_SOCK_CLOEXEC   02000000
-#define __SPRT_SOCK_NONBLOCK  04000
-#define __SPRT_AF_UNSPEC      0
-#define __SPRT_AF_UNIX        1
-#define __SPRT_AF_INET        2
-#define __SPRT_AF_INET6       10
-#define __SPRT_SOL_SOCKET     1
-#define __SPRT_SO_REUSEADDR   2
-#define __SPRT_SO_TYPE        3
-#define __SPRT_SO_ERROR       4
-#define __SPRT_SO_DONTROUTE   5
-#define __SPRT_SO_BROADCAST   6
-#define __SPRT_SO_SNDBUF      7
-#define __SPRT_SO_RCVBUF      8
-#define __SPRT_SO_KEEPALIVE   9
-#define __SPRT_SO_OOBINLINE   10
-#define __SPRT_SO_LINGER      13
-#define __SPRT_SO_REUSEPORT   15
-#define __SPRT_MSG_OOB        0x0001
-#define __SPRT_MSG_PEEK       0x0002
-#define __SPRT_MSG_DONTROUTE  0x0004
-#define __SPRT_MSG_CTRUNC     0x0008
-#define __SPRT_MSG_TRUNC      0x0020
-#define __SPRT_MSG_DONTWAIT   0x0040
-#define __SPRT_MSG_EOR        0x0080
-#define __SPRT_MSG_WAITALL    0x0100
-#define __SPRT_MSG_NOSIGNAL   0x4000
-#define __SPRT_SOMAXCONN      128
-// clang-format on
+struct __SPRT_IN6_ADDR_NAME {
+	union {
+		unsigned char __s6_addr[16];
+		__SPRT_ID(uint16_t) __s6_addr16[8];
+		__SPRT_ID(uint32_t) __s6_addr32[4];
+	} __in6_u;
+};
+#if !(defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1)
+#define s6_addr   __in6_u.__s6_addr
+#define s6_addr16 __in6_u.__s6_addr16
+#define s6_addr32 __in6_u.__s6_addr32
+#endif
+
+struct __SPRT_SOCKADDR_IN_NAME {
+	__SPRT_ID(sa_family_t) sin_family;
+	__SPRT_ID(in_port_t) sin_port;
+	struct __SPRT_IN_ADDR_NAME sin_addr;
+	unsigned char sin_zero[8];
+};
+
+struct __SPRT_SOCKADDR_IN6_NAME {
+	__SPRT_ID(sa_family_t) sin6_family;
+	__SPRT_ID(in_port_t) sin6_port;
+	__SPRT_ID(uint32_t) sin6_flowinfo;
+	struct __SPRT_IN6_ADDR_NAME sin6_addr;
+	__SPRT_ID(uint32_t) sin6_scope_id;
+};
 
 // --- message / control structs (bionic GNU layout: size_t length fields) ----------
 

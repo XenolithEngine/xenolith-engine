@@ -107,10 +107,21 @@ $(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h: ../common/simde.mk
 
 RUNTIME_IMPORT_DEFS := $(wildcard $(SP_RUNTIME_ROOT)/include/sprt/wrappers/windows/def/*.def)
 RUNTIME_IMPORT_LIBS := $(addprefix $(TOOLCHAIN_OUTPUT_DIR)/lib/,$(notdir $(RUNTIME_IMPORT_DEFS:.def=.lib)))
+# The same per-library import stubs, also placed in usr/lib. The dependency builds only
+# search usr/lib (toolchain.cmake CMAKE_C_STANDARD_LIBRARIES = "-L.../usr/lib -lsprt"), so a
+# feature probe that links a plain system lib by name - e.g. curl / ngtcp2's QUIC checks link
+# ws2_32 + bcrypt + crypt32 - needs to find ws2_32.lib there, not only the merged import.lib.
+RUNTIME_IMPORT_LIBS_USR := $(addprefix $(TOOLCHAIN_OUTPUT_DIR)/usr/lib/,$(notdir $(RUNTIME_IMPORT_DEFS:.def=.lib)))
 
 $(TOOLCHAIN_OUTPUT_DIR)/lib/%.lib : $(SP_RUNTIME_ROOT)/include/sprt/wrappers/windows/def/%.def
 	$(call rule_rm,$@)
 	$(TOOLCHAIN_OUTPUT_DIR)/host/bin/llvm-lib /def:$< /out:$@ /machine:$(SP_ARCH_WIN)
+
+# Static-pattern rule (scoped to the import-lib names only, so it never captures a dependency's
+# own usr/lib/*.lib): mirror each per-library stub from lib/ into usr/lib/.
+$(RUNTIME_IMPORT_LIBS_USR) : $(TOOLCHAIN_OUTPUT_DIR)/usr/lib/%.lib : $(TOOLCHAIN_OUTPUT_DIR)/lib/%.lib
+	@mkdir -p $(dir $@)
+	$(call rule_cp,$<,$@)
 
 # Merge import libs with SPRT for dependencies build
 $(TOOLCHAIN_OUTPUT_DIR)/usr/lib/sprt.lib: $(RUNTIME_IMPORT_LIBS) \
@@ -140,7 +151,8 @@ all: $(TOOLCHAIN_OUTPUT_DIR)/toolchain.cmake \
 	$(TOOLCHAIN_OUTPUT_DIR)/target.mk \
 	$(TOOLCHAIN_OUTPUT_DIR)/usr/include/simde/simde-arch.h \
 	$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/sprt.lib \
-	$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/import.lib
+	$(TOOLCHAIN_OUTPUT_DIR)/usr/lib/import.lib \
+	$(RUNTIME_IMPORT_LIBS_USR)
 
 .PHONY: all
 .DEFAULT_GOAL := all

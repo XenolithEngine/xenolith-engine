@@ -40,6 +40,7 @@ LIBS = \
 	libuidna \
 	mbedtls \
 	nghttp3 \
+	ngtcp2 \
 	libzip \
 	zlib \
 	openssl \
@@ -156,6 +157,10 @@ $(SRC_ROOT)/mbedtls: | prepare
 # https://github.com/ngtcp2/nghttp3/releases # revised: 2 jun 2026
 $(SRC_ROOT)/nghttp3: | prepare
 	$(call unpack_tar, https://github.com/ngtcp2/nghttp3/releases/download/v1.16.0/nghttp3-1.16.0.tar.xz, nghttp3)
+
+# https://github.com/ngtcp2/ngtcp2/releases # revised: 12 jul 2026
+$(SRC_ROOT)/ngtcp2: | prepare
+	$(call unpack_tar, https://github.com/ngtcp2/ngtcp2/releases/download/v1.24.0/ngtcp2-1.24.0.tar.xz, ngtcp2)
 
 # https://curl.se/download.html # revised: 2 jun 2026
 $(SRC_ROOT)/curl: | prepare
