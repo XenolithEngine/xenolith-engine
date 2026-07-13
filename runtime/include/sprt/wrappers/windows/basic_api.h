@@ -299,6 +299,21 @@ SPRT_FORCEINLINE void ZeroMemory(LPVOID Destination, SIZE_T Length) {
 	__sprt_memset(Destination, 0, Length);
 }
 
+// Unlike ZeroMemory, the "Secure" variant must not be optimized away by the compiler
+// (it clears sensitive data), so it writes through a volatile pointer rather than
+// calling memset. Mirrors the SDK's RtlSecureZeroMemory inline.
+SPRT_FORCEINLINE PVOID RtlSecureZeroMemory(PVOID Destination, SIZE_T Length) {
+	volatile char *p = (volatile char *) Destination;
+	while (Length) {
+		*p = 0;
+		++p;
+		--Length;
+	}
+	return Destination;
+}
+
+#define SecureZeroMemory RtlSecureZeroMemory
+
 __SPRT_END_DECL
 
 #endif // SPRT_WRAPPERS_WINDOWS_BASIC_API_H_

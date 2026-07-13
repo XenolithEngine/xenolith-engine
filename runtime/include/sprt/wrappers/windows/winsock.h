@@ -24,11 +24,14 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS_WINSOCK_H_
 
 #include <sprt/wrappers/windows/complex_types.h>
-#include <sprt/wrappers/windows/constants.h>
+#include <sprt/wrappers/windows/__sprt_winsock.h>
 
 #include <sprt/wrappers/unistd/unistd.h>
+
 #include <arpa/inet.h>
+#include <netinet/tcp.h>
 #include <sys/select.h>
+#include <sys/socket.h>
 
 // clang-format off
 #define WSABASEERR 10000
@@ -124,29 +127,6 @@ THE SOFTWARE.
 #define WSA_SECURE_HOST_NOT_FOUND        11032L
 #define WSA_IPSEC_NAME_POLICY_ERROR      11033L
 
-#define FIONREAD    _IOR('f', 127, u_long)
-#define FIONBIO     _IOW('f', 126, u_long)
-#define FIOASYNC    _IOW('f', 125, u_long)
-
-#define IOC_UNIX                      0x00000000
-#define IOC_WS2                       0x08000000
-#define IOC_PROTOCOL                  0x10000000
-#define IOC_VENDOR                    0x18000000
-
-#define IOCPARM_MASK    0x7f            /* parameters must be < 128 bytes */
-#define IOC_VOID        0x20000000      /* no parameters */
-#define IOC_OUT         0x40000000      /* copy out parameters */
-#define IOC_IN          0x80000000      /* copy in parameters */
-#define IOC_INOUT       (IOC_IN|IOC_OUT)
-#define _IO(x, y)        (IOC_VOID|((x)<<8)|(y))
-#define _IOR(x, y, t)     (IOC_OUT|(((long)sizeof(t)&IOCPARM_MASK)<<16)|((x)<<8)|(y))
-#define _IOW(x, y, t)     (IOC_IN|(((long)sizeof(t)&IOCPARM_MASK)<<16)|((x)<<8)|(y))
-
-#define _WSAIO(x, y)                   (IOC_VOID|(x)|(y))
-#define _WSAIOR(x, y)                  (IOC_OUT|(x)|(y))
-#define _WSAIOW(x, y)                  (IOC_IN|(x)|(y))
-#define _WSAIORW(x, y)                 (IOC_INOUT|(x)|(y))
-
 #define SIO_UDP_CONNRESET           _WSAIOW(IOC_VENDOR,12)
 #define SIO_UDP_NETRESET            _WSAIOW(IOC_VENDOR,15)
 
@@ -175,44 +155,9 @@ THE SOFTWARE.
 #define EAI_SOCKTYPE        WSAESOCKTNOSUPPORT
 #define EAI_IPSECPOLICY     WSA_IPSEC_NAME_POLICY_ERROR
 
-#define IPV6_HOPOPTS           1 // Set/get IPv6 hop-by-hop options.
-#define IPV6_HDRINCL           2 // Header is included with data.
-#define IPV6_UNICAST_HOPS      4 // IP unicast hop limit.
-#define IPV6_MULTICAST_IF      9 // IP multicast interface.
-#define IPV6_MULTICAST_HOPS   10 // IP multicast hop limit.
-#define IPV6_MULTICAST_LOOP   11 // IP multicast loopback.
-#define IPV6_ADD_MEMBERSHIP   12 // Add an IP group membership.
-#define IPV6_JOIN_GROUP       IPV6_ADD_MEMBERSHIP
-#define IPV6_DROP_MEMBERSHIP  13 // Drop an IP group membership.
-#define IPV6_LEAVE_GROUP      IPV6_DROP_MEMBERSHIP
-#define IPV6_DONTFRAG         14 // Don't fragment IP datagrams.
-#define IPV6_PKTINFO          19 // Receive packet information.
-#define IPV6_HOPLIMIT         21 // Receive packet hop limit.
-#define IPV6_PROTECTION_LEVEL 23 // Set/get IPv6 protection level.
-#define IPV6_RECVIF           24 // Receive arrival interface.
-#define IPV6_RECVDSTADDR      25 // Receive destination address.
-#define IPV6_CHECKSUM         26 // Offset to checksum for raw IP socket send.
-#define IPV6_V6ONLY           27 // Treat wildcard bind as AF_INET6-only.
-#define IPV6_IFLIST           28 // Enable/Disable an interface list.
-#define IPV6_ADD_IFLIST       29 // Add an interface list entry.
-#define IPV6_DEL_IFLIST       30 // Delete an interface list entry.
-#define IPV6_UNICAST_IF       31 // IP unicast interface.
-#define IPV6_RTHDR            32 // Set/get IPv6 routing header.
-#define IPV6_GET_IFLIST       33 // Get an interface list.
-#define IPV6_RECVRTHDR        38 // Receive the routing header.
-#define IPV6_TCLASS           39 // Packet traffic class.
-#define IPV6_RECVTCLASS       40 // Receive packet traffic class.
-#define IPV6_ECN              50 // IPv6 ECN codepoint.
-#define IPV6_RECVECN          50 // Receive ECN codepoints in the IPv6 header.
-#define IPV6_PKTINFO_EX       51 // Receive extended packet information.
-#define IPV6_WFP_REDIRECT_RECORDS   60 // WFP's Connection Redirect Records
-#define IPV6_WFP_REDIRECT_CONTEXT   70 // WFP's Connection Redirect Context
-#define IPV6_MTU_DISCOVER           71 // Set/get path MTU discover state.
-#define IPV6_MTU                    72 // Get path MTU.
-#define IPV6_NRT_INTERFACE          74 // Set NRT interface constraint (outbound).
-#define IPV6_RECVERR                75 // Receive ICMPv6 errors.
-#define IPV6_USER_MTU               76 // Set/get app defined upper bound IP layer MTU.
-
+// IPV6_* option numbers live in <sprt/c/cross/__sprt_netinet.h> (the Windows
+// values are selected there via SPRT_WINDOWS) and reach here as public names
+// through the <arpa/inet.h> materialization included above.
 
 #define FD_READ_BIT      0
 #define FD_READ          (1 << FD_READ_BIT)
@@ -247,25 +192,23 @@ THE SOFTWARE.
 #define FD_MAX_EVENTS    10
 #define FD_ALL_EVENTS    ((1 << FD_MAX_EVENTS) - 1)
 
-
 // clang-format on
-
-#define WSAEVENT                HANDLE
-#define LPWSAEVENT              LPHANDLE
-#define WSAOVERLAPPED           OVERLAPPED
-typedef struct _OVERLAPPED *LPWSAOVERLAPPED;
-
-#define WSA_INVALID_EVENT       ((WSAEVENT)__SPRT_NULL)
-
-typedef unsigned int GROUP;
-
-typedef unsigned long u_long;
-
-typedef void (*LPWSAOVERLAPPED_COMPLETION_ROUTINE)(DWORD dwError, DWORD cbTransferred,
-		LPWSAOVERLAPPED lpOverlapped, DWORD dwFlags);
 
 #define MAX_PROTOCOL_CHAIN 7
 #define WSAPROTOCOL_LEN  255
+
+/*
+ * WSAMSG -- for WSASendMsg
+ */
+
+typedef struct _WSAMSG {
+	LPSOCKADDR name; /* Remote address */
+	INT namelen; /* Remote address length */
+	LPWSABUF lpBuffers; /* Data buffer array */
+	ULONG dwBufferCount; /* Number of elements in the array */
+	WSABUF Control; /* Control buffer */
+	ULONG dwFlags; /* Flags */
+} WSAMSG, *PWSAMSG, *LPWSAMSG;
 
 typedef struct _WSAPROTOCOLCHAIN {
 	int ChainLen; /* the length of the chain,     */
@@ -326,35 +269,6 @@ typedef struct _WSANETWORKEVENTS {
 	int iErrorCode[FD_MAX_EVENTS];
 } WSANETWORKEVENTS, *LPWSANETWORKEVENTS;
 
-// WSAPoll() event flags (mstcpip). Guarded so an ambient <poll.h> cannot clash.
-// clang-format off
-#ifndef POLLRDNORM
-#define POLLRDNORM  0x0100
-#define POLLRDBAND  0x0200
-#define POLLIN      (POLLRDNORM | POLLRDBAND)
-#define POLLPRI     0x0400
-#define POLLWRNORM  0x0010
-#define POLLOUT     (POLLWRNORM)
-#define POLLWRBAND  0x0020
-#define POLLERR     0x0001
-#define POLLHUP     0x0002
-#define POLLNVAL    0x0004
-#endif
-// clang-format on
-
-typedef struct __sprt_wsapollfd {
-	SOCKET fd;
-	SHORT events;
-	SHORT revents;
-} WSAPOLLFD, *PWSAPOLLFD, *LPWSAPOLLFD;
-
-// WSABUF: winsock's scatter/gather buffer (note the {len, buf} order vs iovec's
-// {base, len}); used to carry sendmsg()/recvmsg() iovecs through WSASendTo/WSARecvFrom.
-typedef struct __sprt_wsabuf {
-	ULONG len;
-	CHAR *buf;
-} WSABUF, *LPWSABUF;
-
 __SPRT_BEGIN_DECL
 
 __SPRT_WIN_IMPORT WINAPI INT getaddrinfo(PCSTR pNodeName, PCSTR pServiceName,
@@ -366,57 +280,13 @@ __SPRT_WIN_IMPORT WINAPI struct hostent *gethostbyname(const char *name);
 
 __SPRT_WIN_IMPORT WINAPI struct servent *getservbyname(const char *name, const char *proto);
 
-__SPRT_WIN_IMPORT WINAPI int getsockname(SOCKET s, struct __SPRT_SOCKADDR_NAME *name, int *namelen);
-
-__SPRT_WIN_IMPORT WINAPI int getsockopt(SOCKET s, int level, int optname, char *optval,
-		int *optlen);
-
-__SPRT_WIN_IMPORT WINAPI SOCKET accept(SOCKET s, struct __SPRT_SOCKADDR_NAME *addr, int *addrlen);
-
-__SPRT_WIN_IMPORT WINAPI int bind(SOCKET s, const struct __SPRT_SOCKADDR_NAME *addr, int namelen);
-
-__SPRT_WIN_IMPORT WINAPI int closesocket(SOCKET s);
-
-__SPRT_WIN_IMPORT WINAPI int connect(SOCKET s, const struct __SPRT_SOCKADDR_NAME *name,
-		int namelen);
-
-__SPRT_WIN_IMPORT WINAPI int ioctlsocket(SOCKET s, long cmd, unsigned long *argp);
-
-__SPRT_WIN_IMPORT WINAPI int getpeername(SOCKET s, struct __SPRT_SOCKADDR_NAME *name, int *namelen);
-
-__SPRT_WIN_IMPORT WINAPI int listen(SOCKET s, int backlog);
-
-__SPRT_WIN_IMPORT WINAPI int recv(SOCKET s, char *buf, int len, int flags);
-
-__SPRT_WIN_IMPORT WINAPI int recvfrom(SOCKET s, char *buf, int len, int flags,
-		struct __SPRT_SOCKADDR_NAME *from, int *fromlen);
-
-__SPRT_WIN_IMPORT WINAPI int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds,
-		const struct timeval *timeout);
+// The POSIX socket calls winsock provides - socket/bind/connect/listen/accept/getsockname/
+// getpeername/shutdown/getsockopt/setsockopt/send/recv/sendto/recvfrom - are declared by
+// <sys/socket.h> (its SPRT_WINDOWS branch emits them as these same ws2_32 imports); it is the
+// primary declarer, the same way <sys/select.h> owns select(). Only the winsock-specific entry
+// points remain here.
 
 __SPRT_WIN_IMPORT WINAPI int WSAPoll(LPWSAPOLLFD fdArray, ULONG fds, INT timeout);
-
-__SPRT_WIN_IMPORT WINAPI int WSASendTo(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount,
-		LPDWORD lpNumberOfBytesSent, DWORD dwFlags, const struct __SPRT_SOCKADDR_NAME *lpTo,
-		int iTolen, LPWSAOVERLAPPED lpOverlapped,
-		LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
-
-__SPRT_WIN_IMPORT WINAPI int WSARecvFrom(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCount,
-		LPDWORD lpNumberOfBytesRecvd, LPDWORD lpFlags, struct __SPRT_SOCKADDR_NAME *lpFrom,
-		int *lpFromlen, LPWSAOVERLAPPED lpOverlapped,
-		LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine);
-
-__SPRT_WIN_IMPORT WINAPI int send(SOCKET s, const char *buf, int len, int flags);
-
-__SPRT_WIN_IMPORT WINAPI int sendto(SOCKET s, const char *buf, int len, int flags,
-		const struct __SPRT_SOCKADDR_NAME *to, int tolen);
-
-__SPRT_WIN_IMPORT WINAPI int setsockopt(SOCKET s, int level, int optname, const char *optval,
-		int optlen);
-
-__SPRT_WIN_IMPORT WINAPI int shutdown(SOCKET s, int how);
-
-__SPRT_WIN_IMPORT WINAPI SOCKET socket(int af, int type, int protocol);
 
 __SPRT_WIN_IMPORT WINAPI SOCKET WSASocketA(int af, int type, int protocol,
 		LPWSAPROTOCOL_INFOA lpProtocolInfo, GROUP g, DWORD dwFlags);

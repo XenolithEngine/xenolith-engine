@@ -88,25 +88,17 @@ CONFIGURE += \
 endif
 
 ifdef WASM
-# The wasm deps toolchain sets CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY (there is
-# no exe link step), so check_function_exists() only compiles its self-declared probe
-# and reports EVERY symbol as present. That falsely enables the ISO C Annex K bounds-
-# checked functions the sprt libc does NOT provide (memcpy_s / strncpy_s /
-# strerrorlen_s) - libzip then calls the real (undeclared) *_s functions instead of
-# its portable fallbacks. Pre-set those cache vars to OFF so the checks are skipped
-# and compat.h uses its wrappers. strerror_s is left to be detected: the sprt libc
-# genuinely declares it (via <string.h>), and forcing it OFF would make compat.h emit
-# a conflicting strerror_s() fallback macro.
-CONFIGURE += \
-	-DHAVE_MEMCPY_S=OFF \
-	-DHAVE_STRNCPY_S=OFF \
-	-DHAVE_STRERRORLEN_S=OFF \
-	-DHAVE_ARC4RANDOM=OFF \
-	-DHAVE_CLONEFILE=OFF \
-	-DHAVE_EXPLICIT_BZERO=OFF \
-	-DHAVE_EXPLICIT_MEMSET=OFF \
-	-DHAVE_GETPROGNAME=OFF \
-	-DHAVE_STRICMP=OFF
+# Unlike curl, libzip does not force its check_function_exists probes to EXECUTABLE, so
+# under the toolchain's STATIC_LIBRARY default they never link and report EVERY symbol as
+# present - which used to force the hand-maintained -DHAVE_*=OFF list below (the ISO C
+# Annex K *_s functions, arc4random, clonefile, getprogname, stricmp the sprt libc lacks).
+# Opt libzip into EXECUTABLE probes via a project-include (a plain -D cannot: the toolchain
+# file's set() shadows it). configure.mk then links each probe against the sprt libc with
+# NO --allow-undefined, so absent functions are detected as such and compat.h uses its
+# wrappers automatically; genuinely-present ones (explicit_bzero, strerror_s, ...) are
+# detected present. check_type_size still works (the probe's main, and thus its size
+# marker, is kept live by --export-if-defined=main).
+CONFIGURE += -DCMAKE_PROJECT_libzip_INCLUDE=$(MAKE_ROOT)wasm-libzip-project-include.cmake
 endif
 
 endif # WINDOWS

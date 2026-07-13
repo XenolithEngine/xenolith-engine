@@ -73,6 +73,14 @@ void performGlobTest();
 // stdlib.h (environment)
 void performEnvTest();
 
+// <sys/socket.h>: socket/bind/connect/getsockname/getpeername/send*/recv*/getsockopt/
+// setsockopt/shutdown over AF_INET loopback UDP (identical host vs winsock/wine)
+void performSocketTest();
+// <sys/socket.h>: listen/accept/connect + stream send/recv over loopback TCP
+void performSocketStreamTest();
+// <poll.h> / <sys/select.h>: poll()/select() readiness on a loopback UDP socket
+void performSelectPollTest();
+
 // wchar.h / multibyte / uchar.h
 void performWcharStringTest();
 void performWcstolTest();

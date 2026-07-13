@@ -30,50 +30,60 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_time_t.h>
 #include <sprt/c/cross/__sprt_fdset.h>
 
-// POSIX <sys/socket.h> entry points, uniform int-fd / void* / cross-typed everywhere.
-// SPRuntimeCSysSocket.cpp forwards each to the platform's native call (winsock on
-// Windows, translating the SOCKET handle and the msghdr/WSAMSG layout).
+// POSIX <sys/socket.h> entry points in one cross-typed form: SOCKET is the descriptor and
+// the socket()/accept() result (int on POSIX, the 64-bit winsock SOCKET on Windows -> no
+// truncation), sockdata_t* is the data buffer (void* on POSIX, char* on Windows), and
+// socklen_t the address/option lengths (int on Windows). One declaration therefore matches
+// both the native libc and winsock. SPRuntimeCSysSocket.cpp forwards each to the platform's
+// native call (winsock on Windows, translating the size_t/int byte counts and the
+// msghdr/WSABUF layout).
 __SPRT_BEGIN_DECL
 
-SPRT_API int __SPRT_ID(socket)(int __domain, int __type, int __protocol);
-SPRT_API int __SPRT_ID(socketpair)(int __domain, int __type, int __protocol, int __sv[2]);
-SPRT_API int __SPRT_ID(bind)(int __fd, const struct __SPRT_SOCKADDR_NAME *__addr,
+SPRT_API SOCKET __SPRT_ID(socket)(int __domain, int __type, int __protocol);
+SPRT_API int __SPRT_ID(socketpair)(int __domain, int __type, int __protocol, SOCKET __sv[2]);
+SPRT_API int __SPRT_ID(
+		bind)(SOCKET __fd, const struct __SPRT_SOCKADDR_NAME *__addr, __SPRT_ID(socklen_t) __len);
+SPRT_API int __SPRT_ID(connect)(SOCKET __fd, const struct __SPRT_SOCKADDR_NAME *__addr,
 		__SPRT_ID(socklen_t) __len);
-SPRT_API int __SPRT_ID(connect)(int __fd, const struct __SPRT_SOCKADDR_NAME *__addr,
-		__SPRT_ID(socklen_t) __len);
-SPRT_API int __SPRT_ID(listen)(int __fd, int __backlog);
-SPRT_API int __SPRT_ID(accept)(int __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
+SPRT_API int __SPRT_ID(listen)(SOCKET __fd, int __backlog);
+SPRT_API SOCKET __SPRT_ID(accept)(SOCKET __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
 		__SPRT_ID(socklen_t) * __SPRT_RESTRICT __len);
-SPRT_API int __SPRT_ID(accept4)(int __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
+SPRT_API SOCKET __SPRT_ID(accept4)(SOCKET __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
 		__SPRT_ID(socklen_t) * __SPRT_RESTRICT __len, int __flags);
-SPRT_API int __SPRT_ID(getsockname)(int __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
+SPRT_API int __SPRT_ID(getsockname)(SOCKET __fd,
+		struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
 		__SPRT_ID(socklen_t) * __SPRT_RESTRICT __len);
-SPRT_API int __SPRT_ID(getpeername)(int __fd, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
+SPRT_API int __SPRT_ID(getpeername)(SOCKET __fd,
+		struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
 		__SPRT_ID(socklen_t) * __SPRT_RESTRICT __len);
-SPRT_API int __SPRT_ID(shutdown)(int __fd, int __how);
+SPRT_API int __SPRT_ID(shutdown)(SOCKET __fd, int __how);
 
-SPRT_API int __SPRT_ID(getsockopt)(int __fd, int __level, int __optname,
-		void *__SPRT_RESTRICT __optval, __SPRT_ID(socklen_t) * __SPRT_RESTRICT __optlen);
-SPRT_API int __SPRT_ID(setsockopt)(int __fd, int __level, int __optname, const void *__optval,
-		__SPRT_ID(socklen_t) __optlen);
+SPRT_API int __SPRT_ID(getsockopt)(SOCKET __fd, int __level, int __optname,
+		sockdata_t *__SPRT_RESTRICT __optval, __SPRT_ID(socklen_t) * __SPRT_RESTRICT __optlen);
+SPRT_API int __SPRT_ID(setsockopt)(SOCKET __fd, int __level, int __optname,
+		const sockdata_t *__optval, __SPRT_ID(socklen_t) __optlen);
 
-SPRT_API __SPRT_ID(ssize_t) __SPRT_ID(send)(int __fd, const void *__buf, __SPRT_ID(size_t) __n,
-		int __flags);
-SPRT_API __SPRT_ID(ssize_t) __SPRT_ID(recv)(int __fd, void *__buf, __SPRT_ID(size_t) __n,
-		int __flags);
-SPRT_API __SPRT_ID(ssize_t) __SPRT_ID(sendto)(int __fd, const void *__buf, __SPRT_ID(size_t) __n,
+SPRT_API socksize_t __SPRT_ID(
+		send)(SOCKET __fd, const sockdata_t *__buf, __SPRT_ID(size_t) __n, int __flags);
+SPRT_API socksize_t __SPRT_ID(
+		recv)(SOCKET __fd, sockdata_t *__buf, __SPRT_ID(size_t) __n, int __flags);
+SPRT_API socksize_t __SPRT_ID(sendto)(SOCKET __fd, const sockdata_t *__buf, __SPRT_ID(size_t) __n,
 		int __flags, const struct __SPRT_SOCKADDR_NAME *__addr, __SPRT_ID(socklen_t) __addr_len);
-SPRT_API __SPRT_ID(ssize_t) __SPRT_ID(recvfrom)(int __fd, void *__SPRT_RESTRICT __buf,
+SPRT_API socksize_t __SPRT_ID(recvfrom)(SOCKET __fd, sockdata_t *__SPRT_RESTRICT __buf,
 		__SPRT_ID(size_t) __n, int __flags, struct __SPRT_SOCKADDR_NAME *__SPRT_RESTRICT __addr,
 		__SPRT_ID(socklen_t) * __SPRT_RESTRICT __addr_len);
-SPRT_API __SPRT_ID(ssize_t) __SPRT_ID(sendmsg)(int __fd, const struct __SPRT_MSGHDR_NAME *__message,
-		int __flags);
-SPRT_API __SPRT_ID(ssize_t) __SPRT_ID(recvmsg)(int __fd, struct __SPRT_MSGHDR_NAME *__message,
-		int __flags);
-SPRT_API int __SPRT_ID(sendmmsg)(int __fd, struct __SPRT_MMSGHDR_NAME *__msgvec,
+SPRT_API socksize_t __SPRT_ID(
+		sendmsg)(SOCKET __fd, const struct __SPRT_MSGHDR_NAME *__message, int __flags);
+SPRT_API socksize_t __SPRT_ID(
+		recvmsg)(SOCKET __fd, struct __SPRT_MSGHDR_NAME *__message, int __flags);
+SPRT_API int __SPRT_ID(sendmmsg)(SOCKET __fd, struct __SPRT_MMSGHDR_NAME *__msgvec,
 		unsigned int __vlen, unsigned int __flags);
-SPRT_API int __SPRT_ID(recvmmsg)(int __fd, struct __SPRT_MMSGHDR_NAME *__msgvec,
+SPRT_API int __SPRT_ID(recvmmsg)(SOCKET __fd, struct __SPRT_MMSGHDR_NAME *__msgvec,
 		unsigned int __vlen, unsigned int __flags, struct __SPRT_TIMESPEC_NAME *__timeout);
+
+// Windows specifics
+SPRT_API int __SPRT_ID(closesocket)(SOCKET s);
+SPRT_API int __SPRT_ID(ioctlsocket)(SOCKET s, long cmd, unsigned long *argp);
 
 __SPRT_END_DECL
 

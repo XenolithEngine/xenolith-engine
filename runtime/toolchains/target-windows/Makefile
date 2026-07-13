@@ -51,6 +51,7 @@ LIBS := \
 	SheenBidi.lib \
 	sqlite3.lib \
 	nghttp3.lib \
+	ngtcp2.lib \
 	ssl.lib \
 	gost_engine.lib \
 	curl-openssl.lib \
@@ -208,13 +209,18 @@ $(SP_INSTALL_PREFIX)/usr/lib/sqlite3.lib: ../common/sqlite.mk
 $(SP_INSTALL_PREFIX)/usr/lib/nghttp3.lib: ../common/nghttp3.mk
 	$(MAKE) -f  $< $(FORWARD_VARS)
 
+# ngtcp2 QUIC transport with the OpenSSL (ossl) crypto backend: ngtcp2.lib +
+# ngtcp2_crypto_ossl.lib, consumed by curl for HTTP/3 (USE_NGTCP2).
+$(SP_INSTALL_PREFIX)/usr/lib/ngtcp2.lib: ../common/ngtcp2.mk $(SP_INSTALL_PREFIX)/usr/lib/ssl.lib
+	$(MAKE) -f  $< $(FORWARD_VARS)
+
 $(SP_INSTALL_PREFIX)/usr/lib/ssl.lib: $(MAKE_ROOT)openssl.mk
 	$(MAKE) -f $(MAKE_ROOT)openssl.mk $(FORWARD_VARS)
 
 $(SP_INSTALL_PREFIX)/usr/lib/gost_engine.lib: ../common/gost.mk $(SP_INSTALL_PREFIX)/usr/lib/ssl.lib
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-$(SP_INSTALL_PREFIX)/usr/lib/curl-openssl.lib: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/ssl.lib
+$(SP_INSTALL_PREFIX)/usr/lib/curl-openssl.lib: ../common/curl.mk $(SP_INSTALL_PREFIX)/usr/lib/ssl.lib $(SP_INSTALL_PREFIX)/usr/lib/ngtcp2.lib $(SP_INSTALL_PREFIX)/usr/lib/nghttp3.lib
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
 $(SP_INSTALL_PREFIX)/usr/lib/curl-mbedtls.lib: $(MAKE_ROOT)curl.mk $(SP_INSTALL_PREFIX)/usr/lib/mbedtls.lib
