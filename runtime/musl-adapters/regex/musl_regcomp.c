@@ -8,6 +8,9 @@
 
 #include "../include/defs.h"
 
+#pragma clang diagnostic ignored "-Wmacro-redefined"
+#pragma clang diagnostic ignored "-Wlogical-op-parentheses"
+
 // TRE's character types are `tre_char_t = wchar_t` (string element, written by
 // mbtowc) and `tre_cint_t = wint_t` (integer char, holds ranges/sentinels), with
 // TRE_CHAR_MAX == 0x10ffff. It assumes BOTH are the same >=21-bit width (as on

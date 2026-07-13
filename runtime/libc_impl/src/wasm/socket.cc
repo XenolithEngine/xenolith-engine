@@ -33,39 +33,51 @@ THE SOFTWARE.
 #include <sys/socket.h>
 #include <netdb.h>
 #include <poll.h>
+#include <signal.h> // sigset_t for pselect()
 #include <errno.h>
 
 extern "C" {
 
 // --- <sys/socket.h> -------------------------------------------------------------
 
-int socket(int, int, int) { errno = ENOSYS; return -1; }
-int socketpair(int, int, int, int[2]) { errno = ENOSYS; return -1; }
-int bind(int, const struct sockaddr *, socklen_t) { errno = ENOSYS; return -1; }
-int connect(int, const struct sockaddr *, socklen_t) { errno = ENOSYS; return -1; }
-int listen(int, int) { errno = ENOSYS; return -1; }
-int accept(int, struct sockaddr *, socklen_t *) { errno = ENOSYS; return -1; }
-int accept4(int, struct sockaddr *, socklen_t *, int) { errno = ENOSYS; return -1; }
-int getsockname(int, struct sockaddr *, socklen_t *) { errno = ENOSYS; return -1; }
-int getpeername(int, struct sockaddr *, socklen_t *) { errno = ENOSYS; return -1; }
-int shutdown(int, int) { errno = ENOSYS; return -1; }
-int getsockopt(int, int, int, void *, socklen_t *) { errno = ENOSYS; return -1; }
-int setsockopt(int, int, int, const void *, socklen_t) { errno = ENOSYS; return -1; }
+// Signatures mirror the <sys/socket.h> umbrella declarations exactly (SOCKET fd/return,
+// sockdata_t* buffers, and the noexcept the umbrella funcs carry), so these ENOSYS stubs
+// bind to those declarations on the freestanding wasm build. On wasm SOCKET == int and
+// sockdata_t == void, so the layouts are the familiar POSIX ones.
+SOCKET socket(int, int, int) noexcept { errno = ENOSYS; return -1; }
+int socketpair(int, int, int, SOCKET[2]) noexcept { errno = ENOSYS; return -1; }
+int bind(SOCKET, const struct sockaddr *, socklen_t) noexcept { errno = ENOSYS; return -1; }
+int connect(SOCKET, const struct sockaddr *, socklen_t) noexcept { errno = ENOSYS; return -1; }
+int listen(SOCKET, int) noexcept { errno = ENOSYS; return -1; }
+SOCKET accept(SOCKET, struct sockaddr *, socklen_t *) noexcept { errno = ENOSYS; return -1; }
+SOCKET accept4(SOCKET, struct sockaddr *, socklen_t *, int) noexcept { errno = ENOSYS; return -1; }
+int getsockname(SOCKET, struct sockaddr *, socklen_t *) noexcept { errno = ENOSYS; return -1; }
+int getpeername(SOCKET, struct sockaddr *, socklen_t *) noexcept { errno = ENOSYS; return -1; }
+int shutdown(SOCKET, int) noexcept { errno = ENOSYS; return -1; }
+int getsockopt(SOCKET, int, int, sockdata_t *, socklen_t *) noexcept { errno = ENOSYS; return -1; }
+int setsockopt(SOCKET, int, int, const sockdata_t *, socklen_t) noexcept {
+	errno = ENOSYS;
+	return -1;
+}
 
-ssize_t send(int, const void *, size_t, int) { errno = ENOSYS; return -1; }
-ssize_t recv(int, void *, size_t, int) { errno = ENOSYS; return -1; }
-ssize_t sendto(int, const void *, size_t, int, const struct sockaddr *, socklen_t) {
+ssize_t send(SOCKET, const sockdata_t *, size_t, int) noexcept { errno = ENOSYS; return -1; }
+ssize_t recv(SOCKET, sockdata_t *, size_t, int) noexcept { errno = ENOSYS; return -1; }
+ssize_t sendto(SOCKET, const sockdata_t *, size_t, int, const struct sockaddr *,
+		socklen_t) noexcept {
 	errno = ENOSYS;
 	return -1;
 }
-ssize_t recvfrom(int, void *, size_t, int, struct sockaddr *, socklen_t *) {
+ssize_t recvfrom(SOCKET, sockdata_t *, size_t, int, struct sockaddr *, socklen_t *) noexcept {
 	errno = ENOSYS;
 	return -1;
 }
-ssize_t sendmsg(int, const struct msghdr *, int) { errno = ENOSYS; return -1; }
-ssize_t recvmsg(int, struct msghdr *, int) { errno = ENOSYS; return -1; }
-int sendmmsg(int, struct mmsghdr *, unsigned int, unsigned int) { errno = ENOSYS; return -1; }
-int recvmmsg(int, struct mmsghdr *, unsigned int, unsigned int, struct timespec *) {
+ssize_t sendmsg(SOCKET, const struct msghdr *, int) noexcept { errno = ENOSYS; return -1; }
+ssize_t recvmsg(SOCKET, struct msghdr *, int) noexcept { errno = ENOSYS; return -1; }
+int sendmmsg(SOCKET, struct mmsghdr *, unsigned int, unsigned int) noexcept {
+	errno = ENOSYS;
+	return -1;
+}
+int recvmmsg(SOCKET, struct mmsghdr *, unsigned int, unsigned int, struct timespec *) noexcept {
 	errno = ENOSYS;
 	return -1;
 }
@@ -127,8 +139,16 @@ void endprotoent(void) { }
 
 // --- <poll.h> / <sys/select.h> --------------------------------------------------
 
-int poll(struct pollfd *, nfds_t, int) { errno = ENOSYS; return -1; }
+int poll(struct pollfd *, nfds_t, int) noexcept { errno = ENOSYS; return -1; }
 
-int select(int, fd_set *, fd_set *, fd_set *, struct timeval *) { errno = ENOSYS; return -1; }
+int select(int, fd_set *, fd_set *, fd_set *, const struct timeval *) noexcept {
+	errno = ENOSYS;
+	return -1;
+}
+
+int pselect(int, fd_set *, fd_set *, fd_set *, const struct timespec *, const sigset_t *) noexcept {
+	errno = ENOSYS;
+	return -1;
+}
 
 } // extern "C"

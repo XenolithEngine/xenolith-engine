@@ -23,6 +23,9 @@
 
 #include "../include/defs.h"
 
+#pragma clang diagnostic ignored "-Wmacro-redefined"
+#pragma clang diagnostic ignored "-Wlogical-op-parentheses"
+
 // fnmatch: private token macros (END/STAR/...) are #undef'd afterwards so they
 // cannot leak into the sources that follow.
 #include "../../musl-libc/src/regex/fnmatch.c"
@@ -53,7 +56,7 @@ int __tre_mbtowc32(unsigned *__out, const char *__s, size_t __n) {
 	wchar_t __wc = 0;
 	int __r = mbtowc(&__wc, __s, __n);
 	if (__out) {
-		*__out = (unsigned) (unsigned short) __wc;
+		*__out = (unsigned)(unsigned short)__wc;
 	}
 	return __r;
 }

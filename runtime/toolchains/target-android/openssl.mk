@@ -81,6 +81,5 @@ all:
 		make -j8; \
 		make install_sw
 	rm -rf $(LIBNAME)
-	sed -i -e 's/ -lssl/ -lssl -lpthread/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc
 
 .PHONY: all

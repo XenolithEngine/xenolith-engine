@@ -595,6 +595,23 @@ off_t lseek(int __fd, off_t __offset, int __whence) SPRT_UMBRELLA_END
 }
 #endif
 
+#if defined(__cplusplus) && SPRT_WINDOWS
+
+SPRT_API int __SPRT_ID(closesocket)(unsigned long long __s);
+
+// Windows SOCKET is a 64-bit handle, not an fd: close(int) would silently truncate it
+// and close an unrelated descriptor.
+extern "C++" {
+
+[[deprecated("SOCKET should be closed with closesocket")]]
+SPRT_FORCEINLINE int close(unsigned long long __s) SPRT_NOEXCEPT {
+	return __SPRT_ID(closesocket)(__s);
+}
+
+} // extern "C++"
+
+#endif
+
 SPRT_UMBRELLA_FUNC
 int close(int __fd) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED

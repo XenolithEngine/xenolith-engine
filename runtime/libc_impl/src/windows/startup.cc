@@ -32,6 +32,7 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/context_api.h>
 #include <sprt/wrappers/windows/process_api.h>
 #include <sprt/wrappers/windows/basic_api.h>
+#include <sprt/wrappers/windows/winsock.h>
 
 #include "stdlib.h"
 #include "stdio.h"
@@ -333,7 +334,22 @@ __SPRT_C_FUNC int mainCRTStartup() {
 			LocalFree(wargv);
 		}
 
+		// load WSA unconditionally so c socket API should work natively
+		WSADATA wsaData;
+		auto wsaStartupResult = WSAStartup(0x0202, &wsaData); // winsock 2.2
+
+		if (wsaStartupResult != 0) {
+			printf("WSAStartup failed: %d\n", wsaStartupResult);
+		} else if (LOBYTE(wsaData.wVersion) != 2 || HIBYTE(wsaData.wVersion) != 2) {
+			printf("Could not find a usable version of Winsock.dll\n");
+			WSACleanup();
+		}
+
 		ret = main(outArgc, (const char **)argvTarget);
+
+		if (wsaStartupResult == 0) {
+			WSACleanup();
+		}
 
 		free(buf); // free(nullptr) is a no-op
 	}

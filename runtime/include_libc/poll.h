@@ -41,12 +41,7 @@ THE SOFTWARE.
 #else
 
 #include <sprt/c/bits/__sprt_def.h>
-
-#ifdef SPRT_WASM
-
-// struct pollfd, nfds_t and the POLL* constants come from the single, ABI-validated
-// cross definition (SPRuntimeCSysPoll.cpp static_asserts them against the native header).
-#include <sprt/c/cross/__sprt_polltypes.h>
+#include <sprt/c/sys/__sprt_poll.h>
 
 typedef __SPRT_ID(nfds_t) nfds_t;
 
@@ -71,11 +66,25 @@ typedef __SPRT_ID(nfds_t) nfds_t;
 
 __SPRT_BEGIN_DECL
 
-SPRT_API int poll(struct pollfd *__fds, nfds_t __nfds, int __timeout);
+SPRT_UMBRELLA_FUNC
+int poll(struct __SPRT_POLLFD_NAME *__fd, __SPRT_ID(nfds_t) __nfd, int __f) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(poll)(__fd, __nfd, __f);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int ppoll(struct __SPRT_POLLFD_NAME *__fd, __SPRT_ID(nfds_t) __nfd,
+		const struct __SPRT_TIMESPEC_NAME *__ts,
+		const __SPRT_ID(sigset_t) * __sig) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __SPRT_ID(ppoll)(__fd, __nfd, __ts, __sig);
+}
+#endif
 
 __SPRT_END_DECL
-
-#endif // SPRT_WASM
 
 #endif
 

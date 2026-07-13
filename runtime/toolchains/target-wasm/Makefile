@@ -105,6 +105,7 @@ LIBS := \
 	libgost_engine.a \
 	libzip-openssl.a \
 	libnghttp3.a \
+	libngtcp2.a \
 	libcurl-openssl.a
 
 # Deps are cross-built through common/configure.mk + the SP_C_FLAGS-driven
@@ -224,6 +225,7 @@ $(SP_INSTALL_PREFIX)/usr/lib/libgost_engine.a:  ../common/gost.mk $(SP_INSTALL_P
 # is no GOST engine on wasm, so unlike target-linux the openssl variant needs only
 # libssl.a. Output is renamed to libzip-openssl.a (WASM branch of common/libzip.mk).
 $(SP_INSTALL_PREFIX)/usr/lib/libzip-openssl.a: ../common/libzip.mk \
+		$(SPRT_LIB) \
 		$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
 		$(SP_INSTALL_PREFIX)/usr/lib/libz.a \
 		$(SP_INSTALL_PREFIX)/usr/lib/libbz2.a \
@@ -232,16 +234,23 @@ $(SP_INSTALL_PREFIX)/usr/lib/libzip-openssl.a: ../common/libzip.mk \
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl
 
 # HTTP/3 framing library (cmake, lib-only). No crypto/compression deps of its own;
-# curl consumes it for HTTP/3 on top of OpenSSL's built-in QUIC.
+# curl consumes it for HTTP/3 together with the ngtcp2 QUIC transport below.
 $(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a: ../common/nghttp3.mk
 	$(MAKE) -f $< $(FORWARD_VARS)
 
-# curl with the OpenSSL TLS backend + HTTP/3 (USE_OPENSSL_QUIC + nghttp3). No IDN2
+# ngtcp2 QUIC transport (cmake, lib-only) with the OpenSSL crypto backend (ossl): builds
+# libngtcp2.a + libngtcp2_crypto_ossl.a against the wasm OpenSSL, which curl consumes for
+# HTTP/3 (USE_NGTCP2). Depends on libssl.a (find_package(OpenSSL) + the ossl QUIC API).
+$(SP_INSTALL_PREFIX)/usr/lib/libngtcp2.a: ../common/ngtcp2.mk $(SP_INSTALL_PREFIX)/usr/lib/libssl.a
+	$(MAKE) -f $< $(FORWARD_VARS)
+
+# curl with the OpenSSL TLS backend + HTTP/3 (USE_NGTCP2 -> ngtcp2 + nghttp3). No IDN2
 # on wasm (disabled in curl.mk's WASM branch). Sockets/resolver come from the sprt
 # libc no-op stubs. Output renamed to libcurl-openssl.a (non-WINDOWS branch of curl.mk).
 $(SP_INSTALL_PREFIX)/usr/lib/libcurl-openssl.a: ../common/curl.mk \
 		$(SPRT_LIB) \
 		$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
+		$(SP_INSTALL_PREFIX)/usr/lib/libngtcp2.a \
 		$(SP_INSTALL_PREFIX)/usr/lib/libnghttp3.a \
 		$(SP_INSTALL_PREFIX)/usr/lib/libz.a
 	$(MAKE) -f $< $(FORWARD_VARS) VARIANT=openssl

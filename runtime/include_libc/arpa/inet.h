@@ -29,34 +29,34 @@ THE SOFTWARE.
 
 #else
 
-#include <sprt/c/cross/__sprt_socket.h>
+#include <arpa/__inet.h>
 #include <stdint.h>
 
 typedef __SPRT_ID(socklen_t) socklen_t;
 typedef __SPRT_ID(in_addr_t) in_addr_t;
 
-// clang-format off
-#define INADDR_ANY              ((in_addr_t)0x00000000)
-#define INADDR_LOOPBACK         ((in_addr_t)0x7f000001)
-#define INADDR_BROADCAST        ((in_addr_t)0xffffffff)
-#define INADDR_NONE             ((in_addr_t)0xffffffff)
-
-#define INADDR_UNSPEC_GROUP    ((in_addr_t)0xe0000000)
-#define INADDR_ALLHOSTS_GROUP  ((in_addr_t)0xe0000001)
-#define INADDR_ALLRTRS_GROUP   ((in_addr_t)0xe0000002)
-#define INADDR_MAX_LOCAL_GROUP ((in_addr_t)0xe00000ff)
-
 #define IN6ADDR_ANY_INIT      { { { 0 } } }
 #define IN6ADDR_LOOPBACK_INIT { { { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1 } } }
 
-// clang-format on
-
 __SPRT_BEGIN_DECL
 
-uint32_t htonl(uint32_t) SPRT_NOEXCEPT;
-uint16_t htons(uint16_t) SPRT_NOEXCEPT;
-uint32_t ntohl(uint32_t) SPRT_NOEXCEPT;
-uint16_t ntohs(uint16_t) SPRT_NOEXCEPT;
+SPRT_FORCEINLINE uint32_t htonl(uint32_t __x) SPRT_NOEXCEPT {
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+	return __x;
+#else
+	return __builtin_bswap32(__x);
+#endif
+}
+SPRT_FORCEINLINE uint16_t htons(uint16_t __x) SPRT_NOEXCEPT {
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+	return __x;
+#else
+	return __builtin_bswap16(__x);
+#endif
+}
+
+SPRT_FORCEINLINE uint32_t ntohl(uint32_t __x) SPRT_NOEXCEPT { return htonl(__x); }
+SPRT_FORCEINLINE uint16_t ntohs(uint16_t __x) SPRT_NOEXCEPT { return htons(__x); }
 
 in_addr_t inet_addr(const char *) SPRT_NOEXCEPT;
 char *inet_ntoa(struct __SPRT_IN_ADDR_NAME) SPRT_NOEXCEPT;
@@ -76,4 +76,4 @@ __SPRT_END_DECL
 
 #endif
 
-#endif // CORE_RUNTIME_INCLUDE_LIBC_ASSERT_H_
+#endif // CORE_RUNTIME_INCLUDE_LIBC_ARPA_INET_H_
