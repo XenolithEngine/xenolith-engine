@@ -220,11 +220,29 @@ static const wl_registry_listener s_WaylandRegistryListener{
 				display->kdeDisplayConfigManager = Rc<WaylandKdeDisplayConfigManager>::create(display);
 			}
 
-			auto output = static_cast<struct kde_output_device_v2 *>(
-				wl_registry_bind(registry, name, &kde_output_device_v2_interface,
+			// per-output globals are superseded by kde_output_device_registry_v2
+			if (!display->kdeDisplayConfigManager->hasDeviceRegistry()) {
+				auto output = static_cast<struct kde_output_device_v2 *>(
+					wl_registry_bind(registry, name, &kde_output_device_v2_interface,
+						targetVersion));
+
+				display->kdeDisplayConfigManager->addOutput(output, name, targetVersion);
+			}
+			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
+
+		} else if (iname == StringView(kde_output_device_registry_v2_interface.name)) {
+			auto availableVersion = sprt::min(version, uint32_t(kde_output_device_registry_v2_interface.version));
+			auto targetVersion = sprt::min(WaylandLibrary::kde_output_device_registry_v2_version_supported, availableVersion);
+
+			if (!display->kdeDisplayConfigManager) {
+				display->kdeDisplayConfigManager = Rc<WaylandKdeDisplayConfigManager>::create(display);
+			}
+
+			auto deviceRegistry = static_cast<struct kde_output_device_registry_v2 *>(
+				wl_registry_bind(registry, name, &kde_output_device_registry_v2_interface,
 					targetVersion));
 
-			display->kdeDisplayConfigManager->addOutput(output, name);
+			display->kdeDisplayConfigManager->setDeviceRegistry(deviceRegistry, targetVersion);
 			XL_WAYLAND_LOG("Init: '", interface, "', version: ", targetVersion, "(", availableVersion, "), name: ", name);
 
 		} else if (iname == StringView(kde_output_order_v1_interface.name)) {

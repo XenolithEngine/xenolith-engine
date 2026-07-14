@@ -37,7 +37,7 @@
 #define XL_WGPU_NATIVE_API 1
 #endif
 
-#include <webgpu/webgpu.h>
+#include "webgpu/webgpu.h"
 
 #if XL_WGPU_NATIVE_API
 #include <webgpu/wgpu.h>

@@ -97,6 +97,9 @@ struct KdeOutputDeviceData {
 	uint32_t sharpness = 0;
 	uint32_t priority = 0;
 	uint32_t auto_brightness = 0;
+	String hdr_icc;
+	uint32_t hdr_color_profile_source = 0;
+	uint32_t abm_level = 0;
 
 	MonitorId getId() const { return MonitorId{name, edid}; }
 };
@@ -111,6 +114,8 @@ struct KdeOutputMode : public Ref {
 
 struct KdeOutputDevice : public Ref {
 	uint32_t index = 0;
+	uint32_t version = 0;
+	bool fromRegistry = false;
 	kde_output_device_v2 *device = nullptr;
 	WaylandKdeDisplayConfigManager *manager = nullptr;
 
@@ -141,8 +146,15 @@ public:
 
 	void setCallback(Function<void(NotNull<DisplayConfigManager>)> &&);
 
-	void addOutput(kde_output_device_v2 *, uint32_t index);
+	void addOutput(kde_output_device_v2 *, uint32_t index, uint32_t version,
+			bool fromRegistry = false);
 	void removeOutput(uint32_t);
+	void handleOutputRemoved(KdeOutputDevice *);
+
+	void setDeviceRegistry(kde_output_device_registry_v2 *, uint32_t version);
+	bool hasDeviceRegistry() const { return _deviceRegistry != nullptr; }
+	void addRegistryOutput(kde_output_device_v2 *);
+	void handleDeviceRegistryFinished(kde_output_device_registry_v2 *);
 
 	void setOrder(kde_output_order_v1 *);
 	void setManager(kde_output_management_v2 *);
@@ -165,6 +177,9 @@ protected:
 	Vector<Rc<KdeOutputDevice>> _devices;
 	Rc<KdeOutputOrder> _order;
 	kde_output_management_v2 *_manager = nullptr;
+	kde_output_device_registry_v2 *_deviceRegistry = nullptr;
+	uint32_t _deviceRegistryVersion = 0;
+	uint32_t _registryDeviceIndex = 0;
 };
 
 } // namespace sprt::window
