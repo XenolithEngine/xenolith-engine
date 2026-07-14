@@ -25,115 +25,42 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
+#include <sprt/wrappers/windows/abi/debug_api.h>
 
-// clang-format off
-#define SYMOPT_CASE_INSENSITIVE          0x00000001
-#define SYMOPT_UNDNAME                   0x00000002
-#define SYMOPT_DEFERRED_LOADS            0x00000004
-#define SYMOPT_NO_CPP                    0x00000008
-#define SYMOPT_LOAD_LINES                0x00000010
-#define SYMOPT_OMAP_FIND_NEAREST         0x00000020
-#define SYMOPT_LOAD_ANYTHING             0x00000040
-#define SYMOPT_IGNORE_CVREC              0x00000080
-#define SYMOPT_NO_UNQUALIFIED_LOADS      0x00000100
-#define SYMOPT_FAIL_CRITICAL_ERRORS      0x00000200
-#define SYMOPT_EXACT_SYMBOLS             0x00000400
-#define SYMOPT_ALLOW_ABSOLUTE_SYMBOLS    0x00000800
-#define SYMOPT_IGNORE_NT_SYMPATH         0x00001000
-#define SYMOPT_INCLUDE_32BIT_MODULES     0x00002000
-#define SYMOPT_PUBLICS_ONLY              0x00004000
-#define SYMOPT_NO_PUBLICS                0x00008000
-#define SYMOPT_AUTO_PUBLICS              0x00010000
-#define SYMOPT_NO_IMAGE_SEARCH           0x00020000
-#define SYMOPT_SECURE                    0x00040000
-#define SYMOPT_NO_PROMPTS                0x00080000
-#define SYMOPT_OVERWRITE                 0x00100000
-#define SYMOPT_IGNORE_IMAGEDIR           0x00200000
-#define SYMOPT_FLAT_DIRECTORY            0x00400000
-#define SYMOPT_FAVOR_COMPRESSED          0x00800000
-#define SYMOPT_ALLOW_ZERO_ADDRESS        0x01000000
-#define SYMOPT_DISABLE_SYMSRV_AUTODETECT 0x02000000
-#define SYMOPT_READONLY_CACHE            0x04000000
-#define SYMOPT_SYMPATH_LAST              0x08000000
-#define SYMOPT_DISABLE_FAST_SYMBOLS      0x10000000
-#define SYMOPT_DISABLE_SYMSRV_TIMEOUT    0x20000000
-#define SYMOPT_DISABLE_SRVSTAR_ON_STARTUP 0x40000000
-#define SYMOPT_DEBUG                     0x80000000
-// clang-format on
+/* Clean public names (materialized __SPRT_ values live in abi/debug_api.h) */
+#define SYMOPT_CASE_INSENSITIVE __SPRT_SYMOPT_CASE_INSENSITIVE
+#define SYMOPT_UNDNAME __SPRT_SYMOPT_UNDNAME
+#define SYMOPT_DEFERRED_LOADS __SPRT_SYMOPT_DEFERRED_LOADS
+#define SYMOPT_NO_CPP __SPRT_SYMOPT_NO_CPP
+#define SYMOPT_LOAD_LINES __SPRT_SYMOPT_LOAD_LINES
+#define SYMOPT_OMAP_FIND_NEAREST __SPRT_SYMOPT_OMAP_FIND_NEAREST
+#define SYMOPT_LOAD_ANYTHING __SPRT_SYMOPT_LOAD_ANYTHING
+#define SYMOPT_IGNORE_CVREC __SPRT_SYMOPT_IGNORE_CVREC
+#define SYMOPT_NO_UNQUALIFIED_LOADS __SPRT_SYMOPT_NO_UNQUALIFIED_LOADS
+#define SYMOPT_FAIL_CRITICAL_ERRORS __SPRT_SYMOPT_FAIL_CRITICAL_ERRORS
+#define SYMOPT_EXACT_SYMBOLS __SPRT_SYMOPT_EXACT_SYMBOLS
+#define SYMOPT_ALLOW_ABSOLUTE_SYMBOLS __SPRT_SYMOPT_ALLOW_ABSOLUTE_SYMBOLS
+#define SYMOPT_IGNORE_NT_SYMPATH __SPRT_SYMOPT_IGNORE_NT_SYMPATH
+#define SYMOPT_INCLUDE_32BIT_MODULES __SPRT_SYMOPT_INCLUDE_32BIT_MODULES
+#define SYMOPT_PUBLICS_ONLY __SPRT_SYMOPT_PUBLICS_ONLY
+#define SYMOPT_NO_PUBLICS __SPRT_SYMOPT_NO_PUBLICS
+#define SYMOPT_AUTO_PUBLICS __SPRT_SYMOPT_AUTO_PUBLICS
+#define SYMOPT_NO_IMAGE_SEARCH __SPRT_SYMOPT_NO_IMAGE_SEARCH
+#define SYMOPT_SECURE __SPRT_SYMOPT_SECURE
+#define SYMOPT_NO_PROMPTS __SPRT_SYMOPT_NO_PROMPTS
+#define SYMOPT_OVERWRITE __SPRT_SYMOPT_OVERWRITE
+#define SYMOPT_IGNORE_IMAGEDIR __SPRT_SYMOPT_IGNORE_IMAGEDIR
+#define SYMOPT_FLAT_DIRECTORY __SPRT_SYMOPT_FLAT_DIRECTORY
+#define SYMOPT_FAVOR_COMPRESSED __SPRT_SYMOPT_FAVOR_COMPRESSED
+#define SYMOPT_ALLOW_ZERO_ADDRESS __SPRT_SYMOPT_ALLOW_ZERO_ADDRESS
+#define SYMOPT_DISABLE_SYMSRV_AUTODETECT __SPRT_SYMOPT_DISABLE_SYMSRV_AUTODETECT
+#define SYMOPT_READONLY_CACHE __SPRT_SYMOPT_READONLY_CACHE
+#define SYMOPT_SYMPATH_LAST __SPRT_SYMOPT_SYMPATH_LAST
+#define SYMOPT_DISABLE_FAST_SYMBOLS __SPRT_SYMOPT_DISABLE_FAST_SYMBOLS
+#define SYMOPT_DISABLE_SYMSRV_TIMEOUT __SPRT_SYMOPT_DISABLE_SYMSRV_TIMEOUT
+#define SYMOPT_DISABLE_SRVSTAR_ON_STARTUP __SPRT_SYMOPT_DISABLE_SRVSTAR_ON_STARTUP
+#define SYMOPT_DEBUG __SPRT_SYMOPT_DEBUG
 
-typedef enum {
-	AddrMode1616,
-	AddrMode1632,
-	AddrModeReal,
-	AddrModeFlat
-} ADDRESS_MODE;
-
-typedef struct _tagADDRESS64 {
-	DWORD64 Offset;
-	WORD Segment;
-	ADDRESS_MODE Mode;
-} ADDRESS64, *LPADDRESS64;
-
-typedef struct _KDHELP64 {
-	DWORD64 Thread;
-	DWORD ThCallbackStack;
-	DWORD ThCallbackBStore;
-	DWORD NextCallback;
-	DWORD FramePointer;
-	DWORD64 KiCallUserMode;
-	DWORD64 KeUserCallbackDispatcher;
-	DWORD64 SystemRangeStart;
-	DWORD64 KiUserExceptionDispatcher;
-	DWORD64 StackBase;
-	DWORD64 StackLimit;
-	DWORD BuildVersion;
-	DWORD RetpolineStubFunctionTableSize;
-	DWORD64 RetpolineStubFunctionTable;
-	DWORD RetpolineStubOffset;
-	DWORD RetpolineStubSize;
-	DWORD64 Reserved0[2];
-} KDHELP64, *PKDHELP64;
-
-typedef struct _tagSTACKFRAME64 {
-	ADDRESS64 AddrPC; // program counter
-	ADDRESS64 AddrReturn; // return address
-	ADDRESS64 AddrFrame; // frame pointer
-	ADDRESS64 AddrStack; // stack pointer
-	ADDRESS64 AddrBStore; // backing store pointer
-	PVOID FuncTableEntry; // pointer to pdata/fpo or NULL
-	DWORD64 Params[4]; // possible arguments to the function
-	BOOL Far; // WOW far call
-	BOOL Virtual; // is this a virtual frame?
-	DWORD64 Reserved[3];
-	KDHELP64 KdHelp;
-} STACKFRAME64, *LPSTACKFRAME64;
-
-typedef struct _IMAGEHLP_SYMBOL64 {
-	DWORD SizeOfStruct; // set to sizeof(IMAGEHLP_SYMBOL64)
-	DWORD64 Address; // virtual address including dll base address
-	DWORD Size; // estimated size of symbol, can be zero
-	DWORD Flags; // info about the symbols, see the SYMF defines
-	DWORD MaxNameLength; // maximum size of symbol name in Name
-	CHAR Name[1]; // symbol name (null terminated string)
-} IMAGEHLP_SYMBOL64, *PIMAGEHLP_SYMBOL64;
-
-typedef struct _IMAGEHLP_LINE64 {
-	DWORD SizeOfStruct; // set to sizeof(IMAGEHLP_LINE64)
-	PVOID Key; // internal
-	DWORD LineNumber; // line number in file
-	PCHAR FileName; // full filename
-	DWORD64 Address; // first instruction of line
-} IMAGEHLP_LINE64, *PIMAGEHLP_LINE64;
-
-typedef BOOL(__stdcall *PREAD_PROCESS_MEMORY_ROUTINE64)(HANDLE hProcess, DWORD64 qwBaseAddress,
-		PVOID lpBuffer, DWORD nSize, LPDWORD lpNumberOfBytesRead);
-
-typedef PVOID(__stdcall *PFUNCTION_TABLE_ACCESS_ROUTINE64)(HANDLE ahProcess, DWORD64 AddrBase);
-
-typedef DWORD64(__stdcall *PGET_MODULE_BASE_ROUTINE64)(HANDLE hProcess, DWORD64 Address);
-
-typedef DWORD64(__stdcall *PTRANSLATE_ADDRESS_ROUTINE64)(HANDLE hProcess, HANDLE hThread,
-		LPADDRESS64 lpaddr);
 
 __SPRT_BEGIN_DECL
 

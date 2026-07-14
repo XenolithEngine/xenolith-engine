@@ -24,63 +24,28 @@ THE SOFTWARE.
 #define SPRT_WRAPPERS_WINDOWS_WINVER_H_
 
 #include <sprt/wrappers/windows/message_api.h>
+#include <sprt/wrappers/windows/abi/winver.h>
+
+/* Clean public names (materialized __SPRT_ values live in abi/winver.h) */
+#define VER_EQUAL __SPRT_VER_EQUAL
+#define VER_GREATER __SPRT_VER_GREATER
+#define VER_GREATER_EQUAL __SPRT_VER_GREATER_EQUAL
+#define VER_LESS __SPRT_VER_LESS
+#define VER_LESS_EQUAL __SPRT_VER_LESS_EQUAL
+#define VER_AND __SPRT_VER_AND
+#define VER_OR __SPRT_VER_OR
+#define VER_CONDITION_MASK __SPRT_VER_CONDITION_MASK
+#define VER_NUM_BITS_PER_CONDITION_MASK __SPRT_VER_NUM_BITS_PER_CONDITION_MASK
+#define VER_MINORVERSION __SPRT_VER_MINORVERSION
+#define VER_MAJORVERSION __SPRT_VER_MAJORVERSION
+#define VER_BUILDNUMBER __SPRT_VER_BUILDNUMBER
+#define VER_PLATFORMID __SPRT_VER_PLATFORMID
+#define VER_SERVICEPACKMINOR __SPRT_VER_SERVICEPACKMINOR
+#define VER_SERVICEPACKMAJOR __SPRT_VER_SERVICEPACKMAJOR
+#define VER_SUITENAME __SPRT_VER_SUITENAME
+#define VER_PRODUCT_TYPE __SPRT_VER_PRODUCT_TYPE
+
 #include <sprt/wrappers/windows/winapifamily.h>
-
-// clang-format off
-
-#define VER_EQUAL                       1
-#define VER_GREATER                     2
-#define VER_GREATER_EQUAL               3
-#define VER_LESS                        4
-#define VER_LESS_EQUAL                  5
-#define VER_AND                         6
-#define VER_OR                          7
-#define VER_CONDITION_MASK              7
-#define VER_NUM_BITS_PER_CONDITION_MASK 3
-
-#define VER_MINORVERSION                0x0000001
-#define VER_MAJORVERSION                0x0000002
-#define VER_BUILDNUMBER                 0x0000004
-#define VER_PLATFORMID                  0x0000008
-#define VER_SERVICEPACKMINOR            0x0000010
-#define VER_SERVICEPACKMAJOR            0x0000020
-#define VER_SUITENAME                   0x0000040
-#define VER_PRODUCT_TYPE                0x0000080
-
-// clang-format on
-
-typedef struct _OSVERSIONINFOEXW {
-	DWORD dwOSVersionInfoSize;
-	DWORD dwMajorVersion;
-	DWORD dwMinorVersion;
-	DWORD dwBuildNumber;
-	DWORD dwPlatformId;
-	WCHAR szCSDVersion[128]; // Maintenance string for PSS usage
-	WORD wServicePackMajor;
-	WORD wServicePackMinor;
-	WORD wSuiteMask;
-	BYTE wProductType;
-	BYTE wReserved;
-} OSVERSIONINFOEXW, *POSVERSIONINFOEXW, *LPOSVERSIONINFOEXW, RTL_OSVERSIONINFOEXW,
-		*PRTL_OSVERSIONINFOEXW;
-
-typedef struct _OSVERSIONINFOW {
-	DWORD dwOSVersionInfoSize;
-	DWORD dwMajorVersion;
-	DWORD dwMinorVersion;
-	DWORD dwBuildNumber;
-	DWORD dwPlatformId;
-	WCHAR szCSDVersion[128];
-} OSVERSIONINFOW, *POSVERSIONINFOW, *LPOSVERSIONINFOW, RTL_OSVERSIONINFOW, *PRTL_OSVERSIONINFOW;
-
-typedef struct _OSVERSIONINFOA {
-	DWORD dwOSVersionInfoSize;
-	DWORD dwMajorVersion;
-	DWORD dwMinorVersion;
-	DWORD dwBuildNumber;
-	DWORD dwPlatformId;
-	CHAR szCSDVersion[128];
-} OSVERSIONINFOA, *POSVERSIONINFOA, *LPOSVERSIONINFOA;
 
 __SPRT_BEGIN_DECL
 

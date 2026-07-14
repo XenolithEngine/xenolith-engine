@@ -51,18 +51,22 @@ CMD=(
 	"$CLANG" --target="$TARGET"
 	-fsyntax-only -fms-compatibility -fms-extensions
 	-Wno-ignored-attributes -Wno-nonportable-include-path -Wno-macro-redefined
+	-Wno-invalid-offsetof   # MONITORINFOEXW derives from MONITORINFO (non-standard-layout) in both abi + SDK
 	-isystem "$SPLAT/crt/include"
 	-isystem "$SPLAT/sdk/include/ucrt"
 	-isystem "$SPLAT/sdk/include/shared"
 	-isystem "$SPLAT/sdk/include/um"
 	-I "$SPRT_INCLUDE"
+	# NB: the abi/ headers are include_libc-free, so no -idirafter overlay is needed.
 )
 
-# check.cpp validates the constants; check-types.cpp validates the struct layouts.
+# check.cpp / check-types.cpp cover the socket table; check-<abi>.cpp pin each
+# wrappers/windows/abi/<name>.h header against the SDK (see abi_check.h).
 rc=0
-for tu in check.cpp check-types.cpp; do
-	[[ "$VERBOSE" == 1 ]] && printf '%s ' "${CMD[@]}" "$HERE/$tu" && echo
-	"${CMD[@]}" "$HERE/$tu" || rc=1
+for tu in "$HERE"/check.cpp "$HERE"/check-types.cpp "$HERE"/check-*.cpp; do
+	[[ -e "$tu" ]] || continue
+	[[ "$VERBOSE" == 1 ]] && printf '%s ' "${CMD[@]}" "$tu" && echo
+	"${CMD[@]}" "$tu" || rc=1
 done
 
 if [[ "$rc" == 0 ]]; then

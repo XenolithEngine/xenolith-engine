@@ -23,19 +23,20 @@ THE SOFTWARE.
 #ifndef SPRT_WRAPPERS_WINDOWS_TCHAR_H_
 #define SPRT_WRAPPERS_WINDOWS_TCHAR_H_
 
+#include <sprt/wrappers/windows/abi/tchar.h>
+
+/* Clean public names (materialized __SPRT_ values live in abi/tchar.h) */
+
+
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_wchar.h>
 
 #if _UNICODE
 
-#define _T(Str) L ## Str
-#define TEXT(Str) L ## Str
-
 #define _tcscpy __sprt_wcscpy
 #define _tcspbrk __sprt_wcspbrk
 #define _tcslen __sprt_wcslen
 #define _tcsncmp __sprt_wcsncmp
-#define LPCTSTR LPCWSTR
 
 SPRT_FORCEINLINE int _vsntprintf(__SPRT_ID(wchar_t) * __SPRT_RESTRICT buf, size_t n,
 		const __SPRT_ID(wchar_t) * __SPRT_RESTRICT fmt, __sprt_va_list arg) SPRT_UMBRELLA_END
@@ -46,11 +47,8 @@ SPRT_FORCEINLINE int _vsntprintf(__SPRT_ID(wchar_t) * __SPRT_RESTRICT buf, size_
 #endif
 
 #else
-#define _T(Str) Str
-#define TEXT(Str) Str
 
 #define _tcscpy strcpy
-#define LPCTSTR LPCSTR
 
 SPRT_FORCEINLINE int _vsntprintf(char *__SPRT_RESTRICT buf, size_t n,
 		const char *__SPRT_RESTRICT fmt, __sprt_va_list arg) SPRT_UMBRELLA_END
