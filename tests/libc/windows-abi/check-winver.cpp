@@ -1,0 +1,61 @@
+// Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+//
+// abi/winver.h <-> Windows SDK parity. Compile-time only; see check.sh.
+
+#define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/winver.h>
+#include "abi_check.h"
+
+#include <windows.h>   // OSVERSIONINFOW / OSVERSIONINFOEXW / OSVERSIONINFOA + VER_* (all in winnt.h)
+
+// === VER_* condition operators =============================================
+SPRT_CONST(VER_EQUAL);
+SPRT_CONST(VER_GREATER);
+SPRT_CONST(VER_GREATER_EQUAL);
+SPRT_CONST(VER_LESS);
+SPRT_CONST(VER_LESS_EQUAL);
+SPRT_CONST(VER_AND);
+SPRT_CONST(VER_OR);
+SPRT_CONST(VER_CONDITION_MASK);
+SPRT_CONST(VER_NUM_BITS_PER_CONDITION_MASK);
+
+// === VER_* type mask bits ==================================================
+SPRT_CONST(VER_MINORVERSION);
+SPRT_CONST(VER_MAJORVERSION);
+SPRT_CONST(VER_BUILDNUMBER);
+SPRT_CONST(VER_PLATFORMID);
+SPRT_CONST(VER_SERVICEPACKMINOR);
+SPRT_CONST(VER_SERVICEPACKMAJOR);
+SPRT_CONST(VER_SUITENAME);
+SPRT_CONST(VER_PRODUCT_TYPE);
+
+// === OSVERSIONINFOW ========================================================
+SPRT_SIZE(OSVERSIONINFOW);
+SPRT_OFFSET(OSVERSIONINFOW, dwOSVersionInfoSize);
+SPRT_OFFSET(OSVERSIONINFOW, dwMajorVersion);
+SPRT_OFFSET(OSVERSIONINFOW, dwMinorVersion);
+SPRT_OFFSET(OSVERSIONINFOW, dwBuildNumber);
+SPRT_OFFSET(OSVERSIONINFOW, dwPlatformId);
+SPRT_OFFSET(OSVERSIONINFOW, szCSDVersion);
+
+// === OSVERSIONINFOEXW ======================================================
+SPRT_SIZE(OSVERSIONINFOEXW);
+SPRT_OFFSET(OSVERSIONINFOEXW, dwOSVersionInfoSize);
+SPRT_OFFSET(OSVERSIONINFOEXW, dwMajorVersion);
+SPRT_OFFSET(OSVERSIONINFOEXW, dwMinorVersion);
+SPRT_OFFSET(OSVERSIONINFOEXW, dwBuildNumber);
+SPRT_OFFSET(OSVERSIONINFOEXW, dwPlatformId);
+SPRT_OFFSET(OSVERSIONINFOEXW, szCSDVersion);
+SPRT_OFFSET(OSVERSIONINFOEXW, wServicePackMajor);
+SPRT_OFFSET(OSVERSIONINFOEXW, wServicePackMinor);
+SPRT_OFFSET(OSVERSIONINFOEXW, wSuiteMask);
+SPRT_OFFSET(OSVERSIONINFOEXW, wProductType);
+SPRT_OFFSET(OSVERSIONINFOEXW, wReserved);
+
+// === OSVERSIONINFOA ========================================================
+SPRT_SIZE(OSVERSIONINFOA);
+SPRT_OFFSET(OSVERSIONINFOA, dwOSVersionInfoSize);
+SPRT_OFFSET(OSVERSIONINFOA, dwMajorVersion);
+SPRT_OFFSET(OSVERSIONINFOA, dwMinorVersion);
+SPRT_OFFSET(OSVERSIONINFOA, dwBuildNumber);
+SPRT_OFFSET(OSVERSIONINFOA, dwPlatformId);
+SPRT_OFFSET(OSVERSIONINFOA, szCSDVersion);

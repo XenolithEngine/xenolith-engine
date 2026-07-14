@@ -42,8 +42,6 @@
 #define __SPRT_WINAPI_INFINITE 0xFFFFFFFF
 // clang-format on
 
-#define __SPRT_INVALID_HANDLE_VALUE ((void *)-1)
-
 typedef struct __SPRT_ID(overlapped) {
 	__SPRT_ID(uintptr_t) Internal;
 	__SPRT_ID(uintptr_t) InternalHigh;
@@ -120,10 +118,6 @@ __SPRT_CONFIG_HAVE_WINAPI_NOTICE
 SPRT_API void __SPRT_ID(WakeByAddressAll)(void *Address);
 
 // clang-format off
-#define __SPRT_LOCALE_NAME_USER_DEFAULT            nullptr
-#define __SPRT_LOCALE_NAME_INVARIANT               u""
-#define __SPRT_LOCALE_NAME_SYSTEM_DEFAULT          u"!x-sys-default-locale"
-
 #define __SPRT_LCMAP_LOWERCASE           0x00000100  // lower case letters
 #define __SPRT_LCMAP_UPPERCASE           0x00000200  // UPPER CASE LETTERS
 #define __SPRT_LCMAP_TITLECASE           0x00000300  // Title Case Letters
@@ -255,23 +249,6 @@ SPRT_API int __SPRT_ID(_DispatchMessage)(const __SPRT_ID(winmsg) * lpMsg);
 #define __SPRT_MWMO_ALERTABLE      0x0002
 #define __SPRT_MWMO_INPUTAVAILABLE 0x0004
 
-#define __SPRT_QS_KEY              0x0001
-#define __SPRT_QS_MOUSEMOVE        0x0002
-#define __SPRT_QS_MOUSEBUTTON      0x0004
-#define __SPRT_QS_POSTMESSAGE      0x0008
-#define __SPRT_QS_TIMER            0x0010
-#define __SPRT_QS_PAINT            0x0020
-#define __SPRT_QS_SENDMESSAGE      0x0040
-#define __SPRT_QS_HOTKEY           0x0080
-#define __SPRT_QS_ALLPOSTMESSAGE   0x0100
-#define __SPRT_QS_RAWINPUT         0x0400
-#define __SPRT_QS_TOUCH            0x0800
-#define __SPRT_QS_POINTER          0x1000
-#define __SPRT_QS_MOUSE (__SPRT_QS_MOUSEMOVE|__SPRT_QS_MOUSEBUTTON)
-#define __SPRT_QS_INPUT (__SPRT_QS_MOUSE|__SPRT_QS_KEY|__SPRT_QS_RAWINPUT|__SPRT_QS_TOUCH|__SPRT_QS_POINTER)
-#define __SPRT_QS_ALLEVENTS (__SPRT_QS_INPUT|__SPRT_QS_POSTMESSAGE|__SPRT_QS_TIMER|__SPRT_QS_PAINT|__SPRT_QS_HOTKEY)
-#define __SPRT_QS_ALLINPUT (__SPRT_QS_INPUT|__SPRT_QS_POSTMESSAGE|__SPRT_QS_TIMER|__SPRT_QS_PAINT|__SPRT_QS_HOTKEY|__SPRT_QS_SENDMESSAGE)
-
 #define __SPRT_WAIT_TIMEOUT 258L
 
 __SPRT_CONFIG_HAVE_WINAPI_NOTICE
@@ -304,11 +281,6 @@ SPRT_API int __SPRT_ID(_CloseHandle)(void *hObject);
 #define __SPRT_SYNCHRONIZE                      (0x00100000L)
 #define __SPRT_STANDARD_RIGHTS_REQUIRED         (0x000F0000L)
 // clang-format on
-
-#define __SPRT_TIMER_QUERY_STATE       0x0001
-#define __SPRT_TIMER_MODIFY_STATE      0x0002
-#define __SPRT_TIMER_ALL_ACCESS (__SPRT_STANDARD_RIGHTS_REQUIRED|__SPRT_SYNCHRONIZE|__SPRT_TIMER_QUERY_STATE|__SPRT_TIMER_MODIFY_STATE)
-
 
 __SPRT_CONFIG_HAVE_WINAPI_NOTICE
 SPRT_API void *__SPRT_ID(_CreateWaitableTimerEx)(__SPRT_ID(security_attributes) * lpTimerAttributes,
