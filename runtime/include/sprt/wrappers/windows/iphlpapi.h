@@ -25,9 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
-
-
-typedef ULONG NET_IFINDEX, *PNET_IFINDEX;
+#include <sprt/wrappers/windows/abi/iphlpapi.h>
 
 __SPRT_BEGIN_DECL
 

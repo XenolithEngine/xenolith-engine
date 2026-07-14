@@ -25,168 +25,84 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
+#include <sprt/wrappers/windows/abi/basic_api.h>
+
+/* Clean public names (materialized __SPRT_ values live in abi/basic_api.h) */
+#define CP_ACP __SPRT_CP_ACP
+#define CP_OEMCP __SPRT_CP_OEMCP
+#define CP_MACCP __SPRT_CP_MACCP
+#define CP_THREAD_ACP __SPRT_CP_THREAD_ACP
+#define CP_SYMBOL __SPRT_CP_SYMBOL
+#define CP_UTF8 __SPRT_CP_UTF8
+#define STD_INPUT_HANDLE __SPRT_STD_INPUT_HANDLE
+#define STD_OUTPUT_HANDLE __SPRT_STD_OUTPUT_HANDLE
+#define STD_ERROR_HANDLE __SPRT_STD_ERROR_HANDLE
+#define ENABLE_PROCESSED_INPUT __SPRT_ENABLE_PROCESSED_INPUT
+#define ENABLE_LINE_INPUT __SPRT_ENABLE_LINE_INPUT
+#define ENABLE_ECHO_INPUT __SPRT_ENABLE_ECHO_INPUT
+#define ENABLE_WINDOW_INPUT __SPRT_ENABLE_WINDOW_INPUT
+#define ENABLE_MOUSE_INPUT __SPRT_ENABLE_MOUSE_INPUT
+#define ENABLE_INSERT_MODE __SPRT_ENABLE_INSERT_MODE
+#define ENABLE_QUICK_EDIT_MODE __SPRT_ENABLE_QUICK_EDIT_MODE
+#define ENABLE_EXTENDED_FLAGS __SPRT_ENABLE_EXTENDED_FLAGS
+#define ENABLE_AUTO_POSITION __SPRT_ENABLE_AUTO_POSITION
+#define ENABLE_VIRTUAL_TERMINAL_INPUT __SPRT_ENABLE_VIRTUAL_TERMINAL_INPUT
+#define ENABLE_PROCESSED_OUTPUT __SPRT_ENABLE_PROCESSED_OUTPUT
+#define ENABLE_WRAP_AT_EOL_OUTPUT __SPRT_ENABLE_WRAP_AT_EOL_OUTPUT
+#define ENABLE_VIRTUAL_TERMINAL_PROCESSING __SPRT_ENABLE_VIRTUAL_TERMINAL_PROCESSING
+#define DISABLE_NEWLINE_AUTO_RETURN __SPRT_DISABLE_NEWLINE_AUTO_RETURN
+#define ENABLE_LVB_GRID_WORLDWIDE __SPRT_ENABLE_LVB_GRID_WORLDWIDE
+#define HEAP_NO_SERIALIZE __SPRT_HEAP_NO_SERIALIZE
+#define HEAP_GROWABLE __SPRT_HEAP_GROWABLE
+#define HEAP_GENERATE_EXCEPTIONS __SPRT_HEAP_GENERATE_EXCEPTIONS
+#define HEAP_ZERO_MEMORY __SPRT_HEAP_ZERO_MEMORY
+#define HEAP_REALLOC_IN_PLACE_ONLY __SPRT_HEAP_REALLOC_IN_PLACE_ONLY
+#define HEAP_TAIL_CHECKING_ENABLED __SPRT_HEAP_TAIL_CHECKING_ENABLED
+#define HEAP_FREE_CHECKING_ENABLED __SPRT_HEAP_FREE_CHECKING_ENABLED
+#define HEAP_DISABLE_COALESCE_ON_FREE __SPRT_HEAP_DISABLE_COALESCE_ON_FREE
+#define HEAP_CREATE_ALIGN_16 __SPRT_HEAP_CREATE_ALIGN_16
+#define HEAP_CREATE_ENABLE_TRACING __SPRT_HEAP_CREATE_ENABLE_TRACING
+#define HEAP_CREATE_ENABLE_EXECUTE __SPRT_HEAP_CREATE_ENABLE_EXECUTE
+#define HEAP_MAXIMUM_TAG __SPRT_HEAP_MAXIMUM_TAG
+#define HEAP_PSEUDO_TAG_FLAG __SPRT_HEAP_PSEUDO_TAG_FLAG
+#define HEAP_TAG_SHIFT __SPRT_HEAP_TAG_SHIFT
+#define HEAP_CREATE_SEGMENT_HEAP __SPRT_HEAP_CREATE_SEGMENT_HEAP
+#define HEAP_CREATE_HARDENED __SPRT_HEAP_CREATE_HARDENED
+#define MEM_COMMIT __SPRT_MEM_COMMIT
+#define MEM_RESERVE __SPRT_MEM_RESERVE
+#define MEM_REPLACE_PLACEHOLDER __SPRT_MEM_REPLACE_PLACEHOLDER
+#define MEM_RESERVE_PLACEHOLDER __SPRT_MEM_RESERVE_PLACEHOLDER
+#define MEM_RESET __SPRT_MEM_RESET
+#define MEM_TOP_DOWN __SPRT_MEM_TOP_DOWN
+#define MEM_WRITE_WATCH __SPRT_MEM_WRITE_WATCH
+#define MEM_PHYSICAL __SPRT_MEM_PHYSICAL
+#define MEM_ROTATE __SPRT_MEM_ROTATE
+#define MEM_DIFFERENT_IMAGE_BASE_OK __SPRT_MEM_DIFFERENT_IMAGE_BASE_OK
+#define MEM_RESET_UNDO __SPRT_MEM_RESET_UNDO
+#define MEM_LARGE_PAGES __SPRT_MEM_LARGE_PAGES
+#define MEM_4MB_PAGES __SPRT_MEM_4MB_PAGES
+#define MEM_64K_PAGES __SPRT_MEM_64K_PAGES
+#define MEM_UNMAP_WITH_TRANSIENT_BOOST __SPRT_MEM_UNMAP_WITH_TRANSIENT_BOOST
+#define MEM_COALESCE_PLACEHOLDERS __SPRT_MEM_COALESCE_PLACEHOLDERS
+#define MEM_PRESERVE_PLACEHOLDER __SPRT_MEM_PRESERVE_PLACEHOLDER
+#define MEM_DECOMMIT __SPRT_MEM_DECOMMIT
+#define MEM_RELEASE __SPRT_MEM_RELEASE
+#define MEM_FREE __SPRT_MEM_FREE
+#define PAGE_NOACCESS __SPRT_PAGE_NOACCESS
+#define PAGE_READONLY __SPRT_PAGE_READONLY
+#define PAGE_READWRITE __SPRT_PAGE_READWRITE
+#define PAGE_WRITECOPY __SPRT_PAGE_WRITECOPY
+#define PAGE_EXECUTE __SPRT_PAGE_EXECUTE
+#define PAGE_EXECUTE_READ __SPRT_PAGE_EXECUTE_READ
+#define PAGE_EXECUTE_READWRITE __SPRT_PAGE_EXECUTE_READWRITE
+#define PAGE_EXECUTE_WRITECOPY __SPRT_PAGE_EXECUTE_WRITECOPY
+#define PAGE_GUARD __SPRT_PAGE_GUARD
+#define PAGE_NOCACHE __SPRT_PAGE_NOCACHE
+#define PAGE_WRITECOMBINE __SPRT_PAGE_WRITECOMBINE
+#define LHND __SPRT_LHND
+#define LPTR __SPRT_LPTR
+
 #include <sprt/c/__sprt_string.h>
-
-typedef HANDLE HGLOBAL;
-typedef HANDLE HLOCAL;
-
-// clang-format off
-#define CP_ACP                    0
-#define CP_OEMCP                  1
-#define CP_MACCP                  2
-#define CP_THREAD_ACP             3
-#define CP_SYMBOL                 42
-#define CP_UTF8                   65001
-
-#define STD_INPUT_HANDLE    ((DWORD)-10)
-#define STD_OUTPUT_HANDLE   ((DWORD)-11)
-#define STD_ERROR_HANDLE    ((DWORD)-12)
-
-#define ENABLE_PROCESSED_INPUT              0x0001
-#define ENABLE_LINE_INPUT                   0x0002
-#define ENABLE_ECHO_INPUT                   0x0004
-#define ENABLE_WINDOW_INPUT                 0x0008
-#define ENABLE_MOUSE_INPUT                  0x0010
-#define ENABLE_INSERT_MODE                  0x0020
-#define ENABLE_QUICK_EDIT_MODE              0x0040
-#define ENABLE_EXTENDED_FLAGS               0x0080
-#define ENABLE_AUTO_POSITION                0x0100
-#define ENABLE_VIRTUAL_TERMINAL_INPUT       0x0200
-
-#define ENABLE_PROCESSED_OUTPUT             0x0001
-#define ENABLE_WRAP_AT_EOL_OUTPUT           0x0002
-#define ENABLE_VIRTUAL_TERMINAL_PROCESSING  0x0004
-#define DISABLE_NEWLINE_AUTO_RETURN         0x0008
-#define ENABLE_LVB_GRID_WORLDWIDE           0x0010
-
-#define HEAP_NO_SERIALIZE               0x00000001
-#define HEAP_GROWABLE                   0x00000002
-#define HEAP_GENERATE_EXCEPTIONS        0x00000004
-#define HEAP_ZERO_MEMORY                0x00000008
-#define HEAP_REALLOC_IN_PLACE_ONLY      0x00000010
-#define HEAP_TAIL_CHECKING_ENABLED      0x00000020
-#define HEAP_FREE_CHECKING_ENABLED      0x00000040
-#define HEAP_DISABLE_COALESCE_ON_FREE   0x00000080
-#define HEAP_CREATE_ALIGN_16            0x00010000
-#define HEAP_CREATE_ENABLE_TRACING      0x00020000
-#define HEAP_CREATE_ENABLE_EXECUTE      0x00040000
-#define HEAP_MAXIMUM_TAG                0x0FFF
-#define HEAP_PSEUDO_TAG_FLAG            0x8000
-#define HEAP_TAG_SHIFT                  18
-#define HEAP_CREATE_SEGMENT_HEAP        0x00000100
-#define HEAP_CREATE_HARDENED            0x00000200
-
-#define MEM_COMMIT                      0x00001000
-#define MEM_RESERVE                     0x00002000
-#define MEM_REPLACE_PLACEHOLDER         0x00004000
-#define MEM_RESERVE_PLACEHOLDER         0x00040000
-#define MEM_RESET                       0x00080000
-#define MEM_TOP_DOWN                    0x00100000
-#define MEM_WRITE_WATCH                 0x00200000
-#define MEM_PHYSICAL                    0x00400000
-#define MEM_ROTATE                      0x00800000
-#define MEM_DIFFERENT_IMAGE_BASE_OK     0x00800000
-#define MEM_RESET_UNDO                  0x01000000
-#define MEM_LARGE_PAGES                 0x20000000
-#define MEM_4MB_PAGES                   0x80000000
-#define MEM_64K_PAGES                   (MEM_LARGE_PAGES | MEM_PHYSICAL)  
-#define MEM_UNMAP_WITH_TRANSIENT_BOOST  0x00000001
-#define MEM_COALESCE_PLACEHOLDERS       0x00000001
-#define MEM_PRESERVE_PLACEHOLDER        0x00000002
-#define MEM_DECOMMIT                    0x00004000
-#define MEM_RELEASE                     0x00008000
-#define MEM_FREE                        0x00010000
-
-#define PAGE_NOACCESS           0x01
-#define PAGE_READONLY           0x02
-#define PAGE_READWRITE          0x04
-#define PAGE_WRITECOPY          0x08
-#define PAGE_EXECUTE            0x10
-#define PAGE_EXECUTE_READ       0x20
-#define PAGE_EXECUTE_READWRITE  0x40
-#define PAGE_EXECUTE_WRITECOPY  0x80
-#define PAGE_GUARD             0x100
-#define PAGE_NOCACHE           0x200
-#define PAGE_WRITECOMBINE      0x400
-
-typedef enum _SYSTEM_CPU_SET_INFORMATION_CLASS {
-	SystemCpuSetInformationBasic = 0,
-	SystemCpuSetInformationGroup = 1
-} SYSTEM_CPU_SET_INFORMATION_CLASS, *PSYSTEM_CPU_SET_INFORMATION_CLASS;
-
-/* Token information classes */
-typedef enum _TOKEN_INFORMATION_CLASS {
-	TokenUser = 1,
-	TokenGroups,
-	TokenPrivileges,
-	TokenOwner,
-	TokenPrimaryGroup,
-	TokenDefaultDacl,
-	TokenSource,
-	TokenType,
-	TokenImpersonationLevel,
-	TokenStatistics,
-	TokenRestrictedSids,
-	TokenSessionId,
-	TokenGroupsAndPrivileges,
-	TokenSessionReference,
-	TokenSandBoxInert,
-	TokenAuditPolicy,
-	TokenOrigin,
-	TokenElevationType,
-	TokenLinkedToken,
-	TokenElevation,
-	TokenHasRestrictions,
-	TokenAccessInformation,
-	TokenVirtualizationAllowed,
-	TokenVirtualizationEnabled,
-	TokenIntegrityLevel,
-	TokenUIAccess,
-	TokenMandatoryPolicy,
-	TokenLogonSid,
-	TokenIsAppContainer,
-	TokenCapabilities,
-	TokenAppContainerSid,
-	TokenAppContainerNumber,
-	TokenUserClaimAttributes,
-	TokenDeviceClaimAttributes,
-	TokenRestrictedUserClaimAttributes,
-	TokenRestrictedDeviceClaimAttributes,
-	TokenDeviceGroups,
-	TokenRestrictedDeviceGroups,
-	TokenSecurityAttributes,
-	TokenIsRestricted,
-	TokenProcessTrustLevel,
-	TokenPrivateNameSpace,
-	TokenSingletonAttributes,
-	TokenBnoIsolation,
-	TokenChildProcessFlags,
-	TokenIsLessPrivilegedAppContainer,
-	TokenIsSandboxed,
-	TokenIsAppSilo,
-	TokenLoggingInformation,
-	TokenLearningMode,
-	MaxTokenInfoClass // MaxTokenInfoClass should always be the last enum
-} TOKEN_INFORMATION_CLASS, *PTOKEN_INFORMATION_CLASS;
-
-typedef enum _WINAPI_PROVIDER {
-	WinApiProviderMicrosoft,
-	WinApiProviderWine,
-	WinApiProviderReactOS,
-} WINAPI_PROVIDER;
-
-// clang-format on
-
-#define LHND  (LMEM_MOVEABLE | LMEM_ZEROINIT)
-#define LPTR  (LMEM_FIXED | LMEM_ZEROINIT)
-
-typedef struct _CONSOLE_SCREEN_BUFFER_INFO {
-	COORD dwSize;
-	COORD dwCursorPosition;
-	WORD wAttributes;
-	SMALL_RECT srWindow;
-	COORD dwMaximumWindowSize;
-} CONSOLE_SCREEN_BUFFER_INFO, *PCONSOLE_SCREEN_BUFFER_INFO;
 
 __SPRT_BEGIN_DECL
 

@@ -25,342 +25,86 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
+#include <sprt/wrappers/windows/abi/dl_api.h>
 
-// clang-format off
-#define IMAGE_NUMBEROF_DIRECTORY_ENTRIES    16
-
-#define IMAGE_DOS_SIGNATURE                 0x5A4D      // MZ
-#define IMAGE_OS2_SIGNATURE                 0x454E      // NE
-#define IMAGE_OS2_SIGNATURE_LE              0x454C      // LE
-#define IMAGE_VXD_SIGNATURE                 0x454C      // LE
-#define IMAGE_NT_SIGNATURE                  0x00004550  // PE00
-
-#define IMAGE_NT_OPTIONAL_HDR64_MAGIC      0x20b
-
-#define MEM_COMMIT                      0x00001000
-#define MEM_RESERVE                     0x00002000
-#define MEM_REPLACE_PLACEHOLDER         0x00004000
-#define MEM_RESERVE_PLACEHOLDER         0x00040000
-#define MEM_RESET                       0x00080000
-#define MEM_TOP_DOWN                    0x00100000
-#define MEM_WRITE_WATCH                 0x00200000
-#define MEM_PHYSICAL                    0x00400000
-#define MEM_ROTATE                      0x00800000
-#define MEM_DIFFERENT_IMAGE_BASE_OK     0x00800000
-#define MEM_RESET_UNDO                  0x01000000
-#define MEM_LARGE_PAGES                 0x20000000
-#define MEM_4MB_PAGES                   0x80000000
-#define MEM_64K_PAGES                   (MEM_LARGE_PAGES | MEM_PHYSICAL)
-#define MEM_UNMAP_WITH_TRANSIENT_BOOST  0x00000001
-#define MEM_COALESCE_PLACEHOLDERS       0x00000001
-#define MEM_PRESERVE_PLACEHOLDER        0x00000002
-#define MEM_DECOMMIT                    0x00004000
-#define MEM_RELEASE                     0x00008000
-#define MEM_FREE                        0x00010000
-
-#define PAGE_NOACCESS           0x01
-#define PAGE_READONLY           0x02
-#define PAGE_READWRITE          0x04
-#define PAGE_WRITECOPY          0x08
-#define PAGE_EXECUTE            0x10
-#define PAGE_EXECUTE_READ       0x20
-#define PAGE_EXECUTE_READWRITE  0x40
-#define PAGE_EXECUTE_WRITECOPY  0x80
-#define PAGE_GUARD             0x100
-#define PAGE_NOCACHE           0x200
-#define PAGE_WRITECOMBINE      0x400
-
-#define IMAGE_DIRECTORY_ENTRY_EXPORT          0   // Export Directory
-#define IMAGE_DIRECTORY_ENTRY_IMPORT          1   // Import Directory
-#define IMAGE_DIRECTORY_ENTRY_RESOURCE        2   // Resource Directory
-#define IMAGE_DIRECTORY_ENTRY_EXCEPTION       3   // Exception Directory
-#define IMAGE_DIRECTORY_ENTRY_SECURITY        4   // Security Directory
-#define IMAGE_DIRECTORY_ENTRY_BASERELOC       5   // Base Relocation Table
-#define IMAGE_DIRECTORY_ENTRY_DEBUG           6   // Debug Directory
-#define IMAGE_DIRECTORY_ENTRY_ARCHITECTURE    7   // Architecture Specific Data
-#define IMAGE_DIRECTORY_ENTRY_GLOBALPTR       8   // RVA of GP
-#define IMAGE_DIRECTORY_ENTRY_TLS             9   // TLS Directory
-#define IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG    10   // Load Configuration Directory
-#define IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT   11   // Bound Import Directory in headers
-#define IMAGE_DIRECTORY_ENTRY_IAT            12   // Import Address Table
-#define IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT   13   // Delay Load Import Descriptors
-#define IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR 14   // COM Runtime descriptor
-
-#define GET_MODULE_HANDLE_EX_FLAG_PIN                 (0x00000001)
-#define GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT  (0x00000002)
-#define GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS        (0x00000004)
-
-#define DLL_PROCESS_ATTACH   1
-#define DLL_THREAD_ATTACH    2
-#define DLL_THREAD_DETACH    3
-#define DLL_PROCESS_DETACH   0
-
-#define UOI_FLAGS       1
-#define UOI_NAME        2
-#define UOI_TYPE        3
-#define UOI_USER_SID    4
-#define UOI_HEAPSIZE    5
-#define UOI_IO          6
-#define UOI_TIMERPROC_EXCEPTION_SUPPRESSION       7
-
-// LoadLibraryEx dwFlags search-path values (see MS "LoadLibraryExW" docs).
-#define LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR 0x00000100
-#define LOAD_LIBRARY_SEARCH_APPLICATION_DIR 0x00000200
-#define LOAD_LIBRARY_SEARCH_USER_DIRS 0x00000400
-#define LOAD_LIBRARY_SEARCH_SYSTEM32 0x00000800
-#define LOAD_LIBRARY_SEARCH_DEFAULT_DIRS 0x00001000
-
-// clang-format on
-
-typedef VOID (*PIMAGE_TLS_CALLBACK)(PVOID DllHandle, DWORD Reason, PVOID Reserved);
-
-typedef struct _IMAGE_IMPORT_DESCRIPTOR {
-	union {
-		DWORD Characteristics; // 0 for terminating null import descriptor
-		DWORD OriginalFirstThunk; // RVA to original unbound IAT (PIMAGE_THUNK_DATA)
-	};
-	DWORD TimeDateStamp; // 0 if not bound,
-	// -1 if bound, and real date\time stamp
-	//     in IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT (new BIND)
-	// O.W. date/time stamp of DLL bound to (Old BIND)
-
-	DWORD ForwarderChain; // -1 if no forwarders
-	DWORD Name;
-	DWORD FirstThunk; // RVA to IAT (if bound this IAT has actual addresses)
-} IMAGE_IMPORT_DESCRIPTOR;
-
-typedef struct _MEMORY_BASIC_INFORMATION {
-	PVOID BaseAddress;
-	PVOID AllocationBase;
-	DWORD AllocationProtect;
-	WORD PartitionId;
-	SIZE_T RegionSize;
-	DWORD State;
-	DWORD Protect;
-	DWORD Type;
-} MEMORY_BASIC_INFORMATION, *PMEMORY_BASIC_INFORMATION;
-
-typedef struct _IMAGE_EXPORT_DIRECTORY {
-	DWORD Characteristics;
-	DWORD TimeDateStamp;
-	WORD MajorVersion;
-	WORD MinorVersion;
-	DWORD Name;
-	DWORD Base;
-	DWORD NumberOfFunctions;
-	DWORD NumberOfNames;
-	DWORD AddressOfFunctions; // RVA from base of image
-	DWORD AddressOfNames; // RVA from base of image
-	DWORD AddressOfNameOrdinals; // RVA from base of image
-} IMAGE_EXPORT_DIRECTORY, *PIMAGE_EXPORT_DIRECTORY;
-
-typedef struct _IMAGE_DOS_HEADER { // DOS .EXE header
-	WORD e_magic; // Magic number
-	WORD e_cblp; // Bytes on last page of file
-	WORD e_cp; // Pages in file
-	WORD e_crlc; // Relocations
-	WORD e_cparhdr; // Size of header in paragraphs
-	WORD e_minalloc; // Minimum extra paragraphs needed
-	WORD e_maxalloc; // Maximum extra paragraphs needed
-	WORD e_ss; // Initial (relative) SS value
-	WORD e_sp; // Initial SP value
-	WORD e_csum; // Checksum
-	WORD e_ip; // Initial IP value
-	WORD e_cs; // Initial (relative) CS value
-	WORD e_lfarlc; // File address of relocation table
-	WORD e_ovno; // Overlay number
-	WORD e_res[4]; // Reserved words
-	WORD e_oemid; // OEM identifier (for e_oeminfo)
-	WORD e_oeminfo; // OEM information; e_oemid specific
-	WORD e_res2[10]; // Reserved words
-	LONG e_lfanew; // File address of new exe header
-} IMAGE_DOS_HEADER, *PIMAGE_DOS_HEADER;
-
-typedef struct _IMAGE_DATA_DIRECTORY {
-	DWORD VirtualAddress;
-	DWORD Size;
-} IMAGE_DATA_DIRECTORY, *PIMAGE_DATA_DIRECTORY;
-
-typedef struct _IMAGE_TLS_DIRECTORY64 {
-	ULONGLONG StartAddressOfRawData;
-	ULONGLONG EndAddressOfRawData;
-	ULONGLONG AddressOfIndex; // PDWORD
-	ULONGLONG AddressOfCallBacks; // PIMAGE_TLS_CALLBACK *;
-	DWORD SizeOfZeroFill;
-	union {
-		DWORD Characteristics;
-		struct {
-			DWORD Reserved0 : 20;
-			DWORD Alignment : 4;
-			DWORD Reserved1 : 8;
-		};
-	};
-} IMAGE_TLS_DIRECTORY64, *PIMAGE_TLS_DIRECTORY64;
-
-#define IMAGE_NUMBEROF_DIRECTORY_ENTRIES    16
-
-typedef struct _IMAGE_OPTIONAL_HEADER {
-	WORD Magic;
-	BYTE MajorLinkerVersion;
-	BYTE MinorLinkerVersion;
-	DWORD SizeOfCode;
-	DWORD SizeOfInitializedData;
-	DWORD SizeOfUninitializedData;
-	DWORD AddressOfEntryPoint;
-	DWORD BaseOfCode;
-	DWORD BaseOfData;
-	DWORD ImageBase;
-	DWORD SectionAlignment;
-	DWORD FileAlignment;
-	WORD MajorOperatingSystemVersion;
-	WORD MinorOperatingSystemVersion;
-	WORD MajorImageVersion;
-	WORD MinorImageVersion;
-	WORD MajorSubsystemVersion;
-	WORD MinorSubsystemVersion;
-	DWORD Win32VersionValue;
-	DWORD SizeOfImage;
-	DWORD SizeOfHeaders;
-	DWORD CheckSum;
-	WORD Subsystem;
-	WORD DllCharacteristics;
-	DWORD SizeOfStackReserve;
-	DWORD SizeOfStackCommit;
-	DWORD SizeOfHeapReserve;
-	DWORD SizeOfHeapCommit;
-	DWORD LoaderFlags;
-	DWORD NumberOfRvaAndSizes;
-	IMAGE_DATA_DIRECTORY DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES];
-} IMAGE_OPTIONAL_HEADER32, *PIMAGE_OPTIONAL_HEADER32;
-
-typedef struct _IMAGE_ROM_OPTIONAL_HEADER {
-	WORD Magic;
-	BYTE MajorLinkerVersion;
-	BYTE MinorLinkerVersion;
-	DWORD SizeOfCode;
-	DWORD SizeOfInitializedData;
-	DWORD SizeOfUninitializedData;
-	DWORD AddressOfEntryPoint;
-	DWORD BaseOfCode;
-	DWORD BaseOfData;
-	DWORD BaseOfBss;
-	DWORD GprMask;
-	DWORD CprMask[4];
-	DWORD GpValue;
-} IMAGE_ROM_OPTIONAL_HEADER, *PIMAGE_ROM_OPTIONAL_HEADER;
-
-typedef struct _IMAGE_OPTIONAL_HEADER64 {
-	WORD Magic;
-	BYTE MajorLinkerVersion;
-	BYTE MinorLinkerVersion;
-	DWORD SizeOfCode;
-	DWORD SizeOfInitializedData;
-	DWORD SizeOfUninitializedData;
-	DWORD AddressOfEntryPoint;
-	DWORD BaseOfCode;
-	ULONGLONG ImageBase;
-	DWORD SectionAlignment;
-	DWORD FileAlignment;
-	WORD MajorOperatingSystemVersion;
-	WORD MinorOperatingSystemVersion;
-	WORD MajorImageVersion;
-	WORD MinorImageVersion;
-	WORD MajorSubsystemVersion;
-	WORD MinorSubsystemVersion;
-	DWORD Win32VersionValue;
-	DWORD SizeOfImage;
-	DWORD SizeOfHeaders;
-	DWORD CheckSum;
-	WORD Subsystem;
-	WORD DllCharacteristics;
-	ULONGLONG SizeOfStackReserve;
-	ULONGLONG SizeOfStackCommit;
-	ULONGLONG SizeOfHeapReserve;
-	ULONGLONG SizeOfHeapCommit;
-	DWORD LoaderFlags;
-	DWORD NumberOfRvaAndSizes;
-	IMAGE_DATA_DIRECTORY DataDirectory[IMAGE_NUMBEROF_DIRECTORY_ENTRIES];
-} IMAGE_OPTIONAL_HEADER64, *PIMAGE_OPTIONAL_HEADER64;
-
-#define IMAGE_NT_OPTIONAL_HDR32_MAGIC      0x10b
-#define IMAGE_NT_OPTIONAL_HDR64_MAGIC      0x20b
-#define IMAGE_ROM_OPTIONAL_HDR_MAGIC       0x107
-
-#ifdef _WIN64
-typedef IMAGE_OPTIONAL_HEADER64 IMAGE_OPTIONAL_HEADER;
-typedef PIMAGE_OPTIONAL_HEADER64 PIMAGE_OPTIONAL_HEADER;
-#define IMAGE_NT_OPTIONAL_HDR_MAGIC         IMAGE_NT_OPTIONAL_HDR64_MAGIC
-#else
-typedef IMAGE_OPTIONAL_HEADER32 IMAGE_OPTIONAL_HEADER;
-typedef PIMAGE_OPTIONAL_HEADER32 PIMAGE_OPTIONAL_HEADER;
-#define IMAGE_NT_OPTIONAL_HDR_MAGIC         IMAGE_NT_OPTIONAL_HDR32_MAGIC
-#endif
-
-typedef struct _IMAGE_FILE_HEADER {
-	WORD Machine;
-	WORD NumberOfSections;
-	DWORD TimeDateStamp;
-	DWORD PointerToSymbolTable;
-	DWORD NumberOfSymbols;
-	WORD SizeOfOptionalHeader;
-	WORD Characteristics;
-} IMAGE_FILE_HEADER, *PIMAGE_FILE_HEADER;
-
-typedef struct _IMAGE_NT_HEADERS64 {
-	DWORD Signature;
-	IMAGE_FILE_HEADER FileHeader;
-	IMAGE_OPTIONAL_HEADER64 OptionalHeader;
-} IMAGE_NT_HEADERS64, *PIMAGE_NT_HEADERS64;
-
-typedef struct _IMAGE_NT_HEADERS {
-	DWORD Signature;
-	IMAGE_FILE_HEADER FileHeader;
-	IMAGE_OPTIONAL_HEADER32 OptionalHeader;
-} IMAGE_NT_HEADERS32, *PIMAGE_NT_HEADERS32;
-
-#ifdef _WIN64
-typedef IMAGE_NT_HEADERS64 IMAGE_NT_HEADERS;
-typedef PIMAGE_NT_HEADERS64 PIMAGE_NT_HEADERS;
-#else
-typedef IMAGE_NT_HEADERS32 IMAGE_NT_HEADERS;
-typedef PIMAGE_NT_HEADERS32 PIMAGE_NT_HEADERS;
-#endif
-
-typedef struct _LDR_DATA_TABLE_ENTRY {
-	struct _LIST_ENTRY InLoadOrderLinks; //0x0
-	struct _LIST_ENTRY InMemoryOrderLinks; //0x10
-	union {
-		struct _LIST_ENTRY InInitializationOrderLinks; //0x20
-		struct _LIST_ENTRY InProgressLinks; //0x20
-	};
-	void *DllBase; //0x30
-	void *EntryPoint; //0x38
-	unsigned long SizeOfImage; //0x40
-	struct _UNICODE_STRING FullDllName; //0x48
-	struct _UNICODE_STRING BaseDllName; //0x58
-} LDR_DATA_TABLE_ENTRY, *PLDR_DATA_TABLE_ENTRY;
-
-typedef struct _PEB_LDR_DATA {
-	DWORD length;
-	DWORD init;
-	void *SsHandle; // Session state handle
-
-	// Linked list of loaded modules
-	LIST_ENTRY InLoadOrderModuleList; // Modules in load order
-	LIST_ENTRY InMemoryOrderModuleList; // Modules in memory order
-	LIST_ENTRY InInitializationOrderModuleList;
-} PEB_LDR_DATA, *PPEB_LDR_DATA;
-
-typedef struct _PEB {
-	BYTE Reserved1[2];
-	BYTE BeingDebugged;
-	BYTE Reserved2[1];
-	BYTE Padding0[4];
-	void *Mutant;
-	void *ImageBaseAddress;
-	PPEB_LDR_DATA Ldr;
-	// ... etc
-} PEB, *PPEB;
+/* Clean public names (materialized __SPRT_ values live in abi/dl_api.h) */
+#define IMAGE_NUMBEROF_DIRECTORY_ENTRIES __SPRT_IMAGE_NUMBEROF_DIRECTORY_ENTRIES
+#define IMAGE_DOS_SIGNATURE __SPRT_IMAGE_DOS_SIGNATURE
+#define IMAGE_OS2_SIGNATURE __SPRT_IMAGE_OS2_SIGNATURE
+#define IMAGE_OS2_SIGNATURE_LE __SPRT_IMAGE_OS2_SIGNATURE_LE
+#define IMAGE_VXD_SIGNATURE __SPRT_IMAGE_VXD_SIGNATURE
+#define IMAGE_NT_SIGNATURE __SPRT_IMAGE_NT_SIGNATURE
+#define IMAGE_NT_OPTIONAL_HDR64_MAGIC __SPRT_IMAGE_NT_OPTIONAL_HDR64_MAGIC
+#define MEM_COMMIT __SPRT_MEM_COMMIT
+#define MEM_RESERVE __SPRT_MEM_RESERVE
+#define MEM_REPLACE_PLACEHOLDER __SPRT_MEM_REPLACE_PLACEHOLDER
+#define MEM_RESERVE_PLACEHOLDER __SPRT_MEM_RESERVE_PLACEHOLDER
+#define MEM_RESET __SPRT_MEM_RESET
+#define MEM_TOP_DOWN __SPRT_MEM_TOP_DOWN
+#define MEM_WRITE_WATCH __SPRT_MEM_WRITE_WATCH
+#define MEM_PHYSICAL __SPRT_MEM_PHYSICAL
+#define MEM_ROTATE __SPRT_MEM_ROTATE
+#define MEM_DIFFERENT_IMAGE_BASE_OK __SPRT_MEM_DIFFERENT_IMAGE_BASE_OK
+#define MEM_RESET_UNDO __SPRT_MEM_RESET_UNDO
+#define MEM_LARGE_PAGES __SPRT_MEM_LARGE_PAGES
+#define MEM_4MB_PAGES __SPRT_MEM_4MB_PAGES
+#define MEM_64K_PAGES __SPRT_MEM_64K_PAGES
+#define MEM_UNMAP_WITH_TRANSIENT_BOOST __SPRT_MEM_UNMAP_WITH_TRANSIENT_BOOST
+#define MEM_COALESCE_PLACEHOLDERS __SPRT_MEM_COALESCE_PLACEHOLDERS
+#define MEM_PRESERVE_PLACEHOLDER __SPRT_MEM_PRESERVE_PLACEHOLDER
+#define MEM_DECOMMIT __SPRT_MEM_DECOMMIT
+#define MEM_RELEASE __SPRT_MEM_RELEASE
+#define MEM_FREE __SPRT_MEM_FREE
+#define PAGE_NOACCESS __SPRT_PAGE_NOACCESS
+#define PAGE_READONLY __SPRT_PAGE_READONLY
+#define PAGE_READWRITE __SPRT_PAGE_READWRITE
+#define PAGE_WRITECOPY __SPRT_PAGE_WRITECOPY
+#define PAGE_EXECUTE __SPRT_PAGE_EXECUTE
+#define PAGE_EXECUTE_READ __SPRT_PAGE_EXECUTE_READ
+#define PAGE_EXECUTE_READWRITE __SPRT_PAGE_EXECUTE_READWRITE
+#define PAGE_EXECUTE_WRITECOPY __SPRT_PAGE_EXECUTE_WRITECOPY
+#define PAGE_GUARD __SPRT_PAGE_GUARD
+#define PAGE_NOCACHE __SPRT_PAGE_NOCACHE
+#define PAGE_WRITECOMBINE __SPRT_PAGE_WRITECOMBINE
+#define IMAGE_DIRECTORY_ENTRY_EXPORT __SPRT_IMAGE_DIRECTORY_ENTRY_EXPORT
+#define IMAGE_DIRECTORY_ENTRY_IMPORT __SPRT_IMAGE_DIRECTORY_ENTRY_IMPORT
+#define IMAGE_DIRECTORY_ENTRY_RESOURCE __SPRT_IMAGE_DIRECTORY_ENTRY_RESOURCE
+#define IMAGE_DIRECTORY_ENTRY_EXCEPTION __SPRT_IMAGE_DIRECTORY_ENTRY_EXCEPTION
+#define IMAGE_DIRECTORY_ENTRY_SECURITY __SPRT_IMAGE_DIRECTORY_ENTRY_SECURITY
+#define IMAGE_DIRECTORY_ENTRY_BASERELOC __SPRT_IMAGE_DIRECTORY_ENTRY_BASERELOC
+#define IMAGE_DIRECTORY_ENTRY_DEBUG __SPRT_IMAGE_DIRECTORY_ENTRY_DEBUG
+#define IMAGE_DIRECTORY_ENTRY_ARCHITECTURE __SPRT_IMAGE_DIRECTORY_ENTRY_ARCHITECTURE
+#define IMAGE_DIRECTORY_ENTRY_GLOBALPTR __SPRT_IMAGE_DIRECTORY_ENTRY_GLOBALPTR
+#define IMAGE_DIRECTORY_ENTRY_TLS __SPRT_IMAGE_DIRECTORY_ENTRY_TLS
+#define IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG __SPRT_IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG
+#define IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT __SPRT_IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT
+#define IMAGE_DIRECTORY_ENTRY_IAT __SPRT_IMAGE_DIRECTORY_ENTRY_IAT
+#define IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT __SPRT_IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT
+#define IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR __SPRT_IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR
+#define GET_MODULE_HANDLE_EX_FLAG_PIN __SPRT_GET_MODULE_HANDLE_EX_FLAG_PIN
+#define GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT __SPRT_GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT
+#define GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS __SPRT_GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+#define DLL_PROCESS_ATTACH __SPRT_DLL_PROCESS_ATTACH
+#define DLL_THREAD_ATTACH __SPRT_DLL_THREAD_ATTACH
+#define DLL_THREAD_DETACH __SPRT_DLL_THREAD_DETACH
+#define DLL_PROCESS_DETACH __SPRT_DLL_PROCESS_DETACH
+#define UOI_FLAGS __SPRT_UOI_FLAGS
+#define UOI_NAME __SPRT_UOI_NAME
+#define UOI_TYPE __SPRT_UOI_TYPE
+#define UOI_USER_SID __SPRT_UOI_USER_SID
+#define UOI_HEAPSIZE __SPRT_UOI_HEAPSIZE
+#define UOI_IO __SPRT_UOI_IO
+#define UOI_TIMERPROC_EXCEPTION_SUPPRESSION __SPRT_UOI_TIMERPROC_EXCEPTION_SUPPRESSION
+#define LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR __SPRT_LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR
+#define LOAD_LIBRARY_SEARCH_APPLICATION_DIR __SPRT_LOAD_LIBRARY_SEARCH_APPLICATION_DIR
+#define LOAD_LIBRARY_SEARCH_USER_DIRS __SPRT_LOAD_LIBRARY_SEARCH_USER_DIRS
+#define LOAD_LIBRARY_SEARCH_SYSTEM32 __SPRT_LOAD_LIBRARY_SEARCH_SYSTEM32
+#define LOAD_LIBRARY_SEARCH_DEFAULT_DIRS __SPRT_LOAD_LIBRARY_SEARCH_DEFAULT_DIRS
+#define IMAGE_NUMBEROF_DIRECTORY_ENTRIES __SPRT_IMAGE_NUMBEROF_DIRECTORY_ENTRIES
+#define IMAGE_NT_OPTIONAL_HDR32_MAGIC __SPRT_IMAGE_NT_OPTIONAL_HDR32_MAGIC
+#define IMAGE_NT_OPTIONAL_HDR64_MAGIC __SPRT_IMAGE_NT_OPTIONAL_HDR64_MAGIC
+#define IMAGE_ROM_OPTIONAL_HDR_MAGIC __SPRT_IMAGE_ROM_OPTIONAL_HDR_MAGIC
+#define IMAGE_NT_OPTIONAL_HDR_MAGIC __SPRT_IMAGE_NT_OPTIONAL_HDR_MAGIC
 
 __SPRT_BEGIN_DECL
 
