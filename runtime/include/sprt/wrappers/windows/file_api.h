@@ -25,414 +25,166 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
+#include <sprt/wrappers/windows/abi/file_api.h>
 
-// clang-format off
-#define CREATE_NEW          1
-#define CREATE_ALWAYS       2
-#define OPEN_EXISTING       3
-#define OPEN_ALWAYS         4
-#define TRUNCATE_EXISTING   5
+/* Clean public names (materialized __SPRT_ values live in abi/file_api.h) */
+#define CREATE_NEW __SPRT_CREATE_NEW
+#define CREATE_ALWAYS __SPRT_CREATE_ALWAYS
+#define OPEN_EXISTING __SPRT_OPEN_EXISTING
+#define OPEN_ALWAYS __SPRT_OPEN_ALWAYS
+#define TRUNCATE_EXISTING __SPRT_TRUNCATE_EXISTING
+#define INVALID_FILE_SIZE __SPRT_INVALID_FILE_SIZE
+#define INVALID_SET_FILE_POINTER __SPRT_INVALID_SET_FILE_POINTER
+#define INVALID_FILE_ATTRIBUTES __SPRT_INVALID_FILE_ATTRIBUTES
+#define FILE_READ_DATA __SPRT_FILE_READ_DATA
+#define FILE_LIST_DIRECTORY __SPRT_FILE_LIST_DIRECTORY
+#define FILE_WRITE_DATA __SPRT_FILE_WRITE_DATA
+#define FILE_ADD_FILE __SPRT_FILE_ADD_FILE
+#define FILE_APPEND_DATA __SPRT_FILE_APPEND_DATA
+#define FILE_ADD_SUBDIRECTORY __SPRT_FILE_ADD_SUBDIRECTORY
+#define FILE_CREATE_PIPE_INSTANCE __SPRT_FILE_CREATE_PIPE_INSTANCE
+#define FILE_READ_EA __SPRT_FILE_READ_EA
+#define FILE_WRITE_EA __SPRT_FILE_WRITE_EA
+#define FILE_EXECUTE __SPRT_FILE_EXECUTE
+#define FILE_TRAVERSE __SPRT_FILE_TRAVERSE
+#define FILE_DELETE_CHILD __SPRT_FILE_DELETE_CHILD
+#define FILE_READ_ATTRIBUTES __SPRT_FILE_READ_ATTRIBUTES
+#define FILE_WRITE_ATTRIBUTES __SPRT_FILE_WRITE_ATTRIBUTES
+#define FILE_ALL_ACCESS __SPRT_FILE_ALL_ACCESS
+#define FILE_GENERIC_READ __SPRT_FILE_GENERIC_READ
+#define FILE_GENERIC_WRITE __SPRT_FILE_GENERIC_WRITE
+#define FILE_GENERIC_EXECUTE __SPRT_FILE_GENERIC_EXECUTE
+#define FILE_SHARE_READ __SPRT_FILE_SHARE_READ
+#define FILE_SHARE_WRITE __SPRT_FILE_SHARE_WRITE
+#define FILE_SHARE_DELETE __SPRT_FILE_SHARE_DELETE
+#define FILE_ATTRIBUTE_READONLY __SPRT_FILE_ATTRIBUTE_READONLY
+#define FILE_ATTRIBUTE_HIDDEN __SPRT_FILE_ATTRIBUTE_HIDDEN
+#define FILE_ATTRIBUTE_SYSTEM __SPRT_FILE_ATTRIBUTE_SYSTEM
+#define FILE_ATTRIBUTE_DIRECTORY __SPRT_FILE_ATTRIBUTE_DIRECTORY
+#define FILE_ATTRIBUTE_ARCHIVE __SPRT_FILE_ATTRIBUTE_ARCHIVE
+#define FILE_ATTRIBUTE_DEVICE __SPRT_FILE_ATTRIBUTE_DEVICE
+#define FILE_ATTRIBUTE_NORMAL __SPRT_FILE_ATTRIBUTE_NORMAL
+#define FILE_ATTRIBUTE_TEMPORARY __SPRT_FILE_ATTRIBUTE_TEMPORARY
+#define FILE_ATTRIBUTE_SPARSE_FILE __SPRT_FILE_ATTRIBUTE_SPARSE_FILE
+#define FILE_ATTRIBUTE_REPARSE_POINT __SPRT_FILE_ATTRIBUTE_REPARSE_POINT
+#define FILE_ATTRIBUTE_COMPRESSED __SPRT_FILE_ATTRIBUTE_COMPRESSED
+#define FILE_ATTRIBUTE_OFFLINE __SPRT_FILE_ATTRIBUTE_OFFLINE
+#define FILE_ATTRIBUTE_NOT_CONTENT_INDEXED __SPRT_FILE_ATTRIBUTE_NOT_CONTENT_INDEXED
+#define FILE_ATTRIBUTE_ENCRYPTED __SPRT_FILE_ATTRIBUTE_ENCRYPTED
+#define FILE_ATTRIBUTE_INTEGRITY_STREAM __SPRT_FILE_ATTRIBUTE_INTEGRITY_STREAM
+#define FILE_ATTRIBUTE_VIRTUAL __SPRT_FILE_ATTRIBUTE_VIRTUAL
+#define FILE_ATTRIBUTE_NO_SCRUB_DATA __SPRT_FILE_ATTRIBUTE_NO_SCRUB_DATA
+#define FILE_ATTRIBUTE_EA __SPRT_FILE_ATTRIBUTE_EA
+#define FILE_ATTRIBUTE_PINNED __SPRT_FILE_ATTRIBUTE_PINNED
+#define FILE_ATTRIBUTE_UNPINNED __SPRT_FILE_ATTRIBUTE_UNPINNED
+#define FILE_ATTRIBUTE_RECALL_ON_OPEN __SPRT_FILE_ATTRIBUTE_RECALL_ON_OPEN
+#define FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS __SPRT_FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS
+#define FILE_VOLUME_IS_COMPRESSED __SPRT_FILE_VOLUME_IS_COMPRESSED
+#define FILE_SUPPORTS_OBJECT_IDS __SPRT_FILE_SUPPORTS_OBJECT_IDS
+#define FILE_SUPPORTS_ENCRYPTION __SPRT_FILE_SUPPORTS_ENCRYPTION
+#define FILE_NAMED_STREAMS __SPRT_FILE_NAMED_STREAMS
+#define FILE_READ_ONLY_VOLUME __SPRT_FILE_READ_ONLY_VOLUME
+#define FILE_SEQUENTIAL_WRITE_ONCE __SPRT_FILE_SEQUENTIAL_WRITE_ONCE
+#define FILE_SUPPORTS_TRANSACTIONS __SPRT_FILE_SUPPORTS_TRANSACTIONS
+#define FILE_SUPPORTS_HARD_LINKS __SPRT_FILE_SUPPORTS_HARD_LINKS
+#define FILE_SUPPORTS_EXTENDED_ATTRIBUTES __SPRT_FILE_SUPPORTS_EXTENDED_ATTRIBUTES
+#define FILE_SUPPORTS_OPEN_BY_FILE_ID __SPRT_FILE_SUPPORTS_OPEN_BY_FILE_ID
+#define FILE_SUPPORTS_USN_JOURNAL __SPRT_FILE_SUPPORTS_USN_JOURNAL
+#define FILE_SUPPORTS_INTEGRITY_STREAMS __SPRT_FILE_SUPPORTS_INTEGRITY_STREAMS
+#define FILE_SUPPORTS_BLOCK_REFCOUNTING __SPRT_FILE_SUPPORTS_BLOCK_REFCOUNTING
+#define FILE_SUPPORTS_SPARSE_VDL __SPRT_FILE_SUPPORTS_SPARSE_VDL
+#define FILE_DAX_VOLUME __SPRT_FILE_DAX_VOLUME
+#define FILE_SUPPORTS_GHOSTING __SPRT_FILE_SUPPORTS_GHOSTING
+#define FILE_FLAG_WRITE_THROUGH __SPRT_FILE_FLAG_WRITE_THROUGH
+#define FILE_FLAG_OVERLAPPED __SPRT_FILE_FLAG_OVERLAPPED
+#define FILE_FLAG_NO_BUFFERING __SPRT_FILE_FLAG_NO_BUFFERING
+#define FILE_FLAG_RANDOM_ACCESS __SPRT_FILE_FLAG_RANDOM_ACCESS
+#define FILE_FLAG_SEQUENTIAL_SCAN __SPRT_FILE_FLAG_SEQUENTIAL_SCAN
+#define FILE_FLAG_DELETE_ON_CLOSE __SPRT_FILE_FLAG_DELETE_ON_CLOSE
+#define FILE_FLAG_BACKUP_SEMANTICS __SPRT_FILE_FLAG_BACKUP_SEMANTICS
+#define FILE_FLAG_POSIX_SEMANTICS __SPRT_FILE_FLAG_POSIX_SEMANTICS
+#define FILE_FLAG_SESSION_AWARE __SPRT_FILE_FLAG_SESSION_AWARE
+#define FILE_FLAG_OPEN_REPARSE_POINT __SPRT_FILE_FLAG_OPEN_REPARSE_POINT
+#define FILE_FLAG_OPEN_NO_RECALL __SPRT_FILE_FLAG_OPEN_NO_RECALL
+#define FILE_FLAG_FIRST_PIPE_INSTANCE __SPRT_FILE_FLAG_FIRST_PIPE_INSTANCE
+#define IO_REPARSE_TAG_RESERVED_INVALID __SPRT_IO_REPARSE_TAG_RESERVED_INVALID
+#define IO_REPARSE_TAG_MOUNT_POINT __SPRT_IO_REPARSE_TAG_MOUNT_POINT
+#define IO_REPARSE_TAG_HSM __SPRT_IO_REPARSE_TAG_HSM
+#define IO_REPARSE_TAG_HSM2 __SPRT_IO_REPARSE_TAG_HSM2
+#define IO_REPARSE_TAG_SIS __SPRT_IO_REPARSE_TAG_SIS
+#define IO_REPARSE_TAG_WIM __SPRT_IO_REPARSE_TAG_WIM
+#define IO_REPARSE_TAG_CSV __SPRT_IO_REPARSE_TAG_CSV
+#define IO_REPARSE_TAG_DFS __SPRT_IO_REPARSE_TAG_DFS
+#define IO_REPARSE_TAG_SYMLINK __SPRT_IO_REPARSE_TAG_SYMLINK
+#define IO_REPARSE_TAG_DFSR __SPRT_IO_REPARSE_TAG_DFSR
+#define IO_REPARSE_TAG_DEDUP __SPRT_IO_REPARSE_TAG_DEDUP
+#define IO_REPARSE_TAG_NFS __SPRT_IO_REPARSE_TAG_NFS
+#define IO_REPARSE_TAG_FILE_PLACEHOLDER __SPRT_IO_REPARSE_TAG_FILE_PLACEHOLDER
+#define IO_REPARSE_TAG_WOF __SPRT_IO_REPARSE_TAG_WOF
+#define IO_REPARSE_TAG_WCI __SPRT_IO_REPARSE_TAG_WCI
+#define IO_REPARSE_TAG_WCI_1 __SPRT_IO_REPARSE_TAG_WCI_1
+#define IO_REPARSE_TAG_GLOBAL_REPARSE __SPRT_IO_REPARSE_TAG_GLOBAL_REPARSE
+#define IO_REPARSE_TAG_CLOUD __SPRT_IO_REPARSE_TAG_CLOUD
+#define IO_REPARSE_TAG_CLOUD_1 __SPRT_IO_REPARSE_TAG_CLOUD_1
+#define IO_REPARSE_TAG_CLOUD_2 __SPRT_IO_REPARSE_TAG_CLOUD_2
+#define IO_REPARSE_TAG_CLOUD_3 __SPRT_IO_REPARSE_TAG_CLOUD_3
+#define IO_REPARSE_TAG_CLOUD_4 __SPRT_IO_REPARSE_TAG_CLOUD_4
+#define IO_REPARSE_TAG_CLOUD_5 __SPRT_IO_REPARSE_TAG_CLOUD_5
+#define IO_REPARSE_TAG_CLOUD_6 __SPRT_IO_REPARSE_TAG_CLOUD_6
+#define IO_REPARSE_TAG_CLOUD_7 __SPRT_IO_REPARSE_TAG_CLOUD_7
+#define IO_REPARSE_TAG_CLOUD_8 __SPRT_IO_REPARSE_TAG_CLOUD_8
+#define IO_REPARSE_TAG_CLOUD_9 __SPRT_IO_REPARSE_TAG_CLOUD_9
+#define IO_REPARSE_TAG_CLOUD_A __SPRT_IO_REPARSE_TAG_CLOUD_A
+#define IO_REPARSE_TAG_CLOUD_B __SPRT_IO_REPARSE_TAG_CLOUD_B
+#define IO_REPARSE_TAG_CLOUD_C __SPRT_IO_REPARSE_TAG_CLOUD_C
+#define IO_REPARSE_TAG_CLOUD_D __SPRT_IO_REPARSE_TAG_CLOUD_D
+#define IO_REPARSE_TAG_CLOUD_E __SPRT_IO_REPARSE_TAG_CLOUD_E
+#define IO_REPARSE_TAG_CLOUD_F __SPRT_IO_REPARSE_TAG_CLOUD_F
+#define IO_REPARSE_TAG_CLOUD_MASK __SPRT_IO_REPARSE_TAG_CLOUD_MASK
+#define IO_REPARSE_TAG_APPEXECLINK __SPRT_IO_REPARSE_TAG_APPEXECLINK
+#define IO_REPARSE_TAG_PROJFS __SPRT_IO_REPARSE_TAG_PROJFS
+#define IO_REPARSE_TAG_STORAGE_SYNC __SPRT_IO_REPARSE_TAG_STORAGE_SYNC
+#define IO_REPARSE_TAG_WCI_TOMBSTONE __SPRT_IO_REPARSE_TAG_WCI_TOMBSTONE
+#define IO_REPARSE_TAG_UNHANDLED __SPRT_IO_REPARSE_TAG_UNHANDLED
+#define IO_REPARSE_TAG_ONEDRIVE __SPRT_IO_REPARSE_TAG_ONEDRIVE
+#define IO_REPARSE_TAG_PROJFS_TOMBSTONE __SPRT_IO_REPARSE_TAG_PROJFS_TOMBSTONE
+#define IO_REPARSE_TAG_AF_UNIX __SPRT_IO_REPARSE_TAG_AF_UNIX
+#define IO_REPARSE_TAG_STORAGE_SYNC_FOLDER __SPRT_IO_REPARSE_TAG_STORAGE_SYNC_FOLDER
+#define IO_REPARSE_TAG_WCI_LINK __SPRT_IO_REPARSE_TAG_WCI_LINK
+#define IO_REPARSE_TAG_WCI_LINK_1 __SPRT_IO_REPARSE_TAG_WCI_LINK_1
+#define IO_REPARSE_TAG_DATALESS_CIM __SPRT_IO_REPARSE_TAG_DATALESS_CIM
+#define MOVEFILE_REPLACE_EXISTING __SPRT_MOVEFILE_REPLACE_EXISTING
+#define MOVEFILE_COPY_ALLOWED __SPRT_MOVEFILE_COPY_ALLOWED
+#define MOVEFILE_DELAY_UNTIL_REBOOT __SPRT_MOVEFILE_DELAY_UNTIL_REBOOT
+#define MOVEFILE_WRITE_THROUGH __SPRT_MOVEFILE_WRITE_THROUGH
+#define MOVEFILE_CREATE_HARDLINK __SPRT_MOVEFILE_CREATE_HARDLINK
+#define MOVEFILE_FAIL_IF_NOT_TRACKABLE __SPRT_MOVEFILE_FAIL_IF_NOT_TRACKABLE
+#define FILE_BEGIN __SPRT_FILE_BEGIN
+#define FILE_CURRENT __SPRT_FILE_CURRENT
+#define FILE_END __SPRT_FILE_END
+#define FILE_NAME_NORMALIZED __SPRT_FILE_NAME_NORMALIZED
+#define FILE_NAME_OPENED __SPRT_FILE_NAME_OPENED
+#define FILE_MAP_WRITE __SPRT_FILE_MAP_WRITE
+#define FILE_MAP_READ __SPRT_FILE_MAP_READ
+#define FILE_MAP_ALL_ACCESS __SPRT_FILE_MAP_ALL_ACCESS
+#define FILE_MAP_EXECUTE __SPRT_FILE_MAP_EXECUTE
+#define FILE_MAP_COPY __SPRT_FILE_MAP_COPY
+#define FILE_MAP_RESERVE __SPRT_FILE_MAP_RESERVE
+#define FILE_MAP_TARGETS_INVALID __SPRT_FILE_MAP_TARGETS_INVALID
+#define FILE_MAP_LARGE_PAGES __SPRT_FILE_MAP_LARGE_PAGES
+#define SYMBOLIC_LINK_FLAG_DIRECTORY __SPRT_SYMBOLIC_LINK_FLAG_DIRECTORY
+#define SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE __SPRT_SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+#define SEC_HUGE_PAGES __SPRT_SEC_HUGE_PAGES
+#define SEC_LARGE_PAGES __SPRT_SEC_LARGE_PAGES
+#define LOCKFILE_FAIL_IMMEDIATELY __SPRT_LOCKFILE_FAIL_IMMEDIATELY
+#define LOCKFILE_EXCLUSIVE_LOCK __SPRT_LOCKFILE_EXCLUSIVE_LOCK
+#define PIPE_ACCESS_INBOUND __SPRT_PIPE_ACCESS_INBOUND
+#define PIPE_ACCESS_OUTBOUND __SPRT_PIPE_ACCESS_OUTBOUND
+#define PIPE_ACCESS_DUPLEX __SPRT_PIPE_ACCESS_DUPLEX
+#define PIPE_TYPE_BYTE __SPRT_PIPE_TYPE_BYTE
+#define PIPE_READMODE_BYTE __SPRT_PIPE_READMODE_BYTE
+#define PIPE_WAIT __SPRT_PIPE_WAIT
 
-#define INVALID_FILE_SIZE ((DWORD)0xFFFFFFFF)
-#define INVALID_SET_FILE_POINTER ((DWORD)-1)
-#define INVALID_FILE_ATTRIBUTES ((DWORD)-1)
-
-#define FILE_READ_DATA            ( 0x0001 )    // file & pipe
-#define FILE_LIST_DIRECTORY       ( 0x0001 )    // directory
-#define FILE_WRITE_DATA           ( 0x0002 )    // file & pipe
-#define FILE_ADD_FILE             ( 0x0002 )    // directory
-#define FILE_APPEND_DATA          ( 0x0004 )    // file
-#define FILE_ADD_SUBDIRECTORY     ( 0x0004 )    // directory
-#define FILE_CREATE_PIPE_INSTANCE ( 0x0004 )    // named pipe
-#define FILE_READ_EA              ( 0x0008 )    // file & directory
-#define FILE_WRITE_EA             ( 0x0010 )    // file & directory
-#define FILE_EXECUTE              ( 0x0020 )    // file
-#define FILE_TRAVERSE             ( 0x0020 )    // directory
-#define FILE_DELETE_CHILD         ( 0x0040 )    // directory
-#define FILE_READ_ATTRIBUTES      ( 0x0080 )    // all
-#define FILE_WRITE_ATTRIBUTES     ( 0x0100 )    // all
-
-#define FILE_ALL_ACCESS (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0x1FF)
-
-#define FILE_GENERIC_READ   (STANDARD_RIGHTS_READ | FILE_READ_DATA | \
-	FILE_READ_ATTRIBUTES | FILE_READ_EA | SYNCHRONIZE)
-
-#define FILE_GENERIC_WRITE  (STANDARD_RIGHTS_WRITE | FILE_WRITE_DATA | \
-	FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA | FILE_APPEND_DATA | SYNCHRONIZE)
-
-#define FILE_GENERIC_EXECUTE (STANDARD_RIGHTS_EXECUTE | FILE_READ_ATTRIBUTES | \
-	FILE_EXECUTE | SYNCHRONIZE)
-
-#define FILE_SHARE_READ                 0x00000001  
-#define FILE_SHARE_WRITE                0x00000002  
-#define FILE_SHARE_DELETE               0x00000004  
-
-/* File attributes */
-#define FILE_ATTRIBUTE_READONLY             0x00000001
-#define FILE_ATTRIBUTE_HIDDEN               0x00000002
-#define FILE_ATTRIBUTE_SYSTEM               0x00000004
-#define FILE_ATTRIBUTE_DIRECTORY            0x00000010
-#define FILE_ATTRIBUTE_ARCHIVE              0x00000020
-#define FILE_ATTRIBUTE_DEVICE               0x00000040
-#define FILE_ATTRIBUTE_NORMAL               0x00000080
-#define FILE_ATTRIBUTE_TEMPORARY            0x00000100
-#define FILE_ATTRIBUTE_SPARSE_FILE          0x00000200
-#define FILE_ATTRIBUTE_REPARSE_POINT        0x00000400
-#define FILE_ATTRIBUTE_COMPRESSED           0x00000800
-#define FILE_ATTRIBUTE_OFFLINE              0x00001000
-#define FILE_ATTRIBUTE_NOT_CONTENT_INDEXED  0x00002000
-#define FILE_ATTRIBUTE_ENCRYPTED            0x00004000
-#define FILE_ATTRIBUTE_INTEGRITY_STREAM     0x00008000
-#define FILE_ATTRIBUTE_VIRTUAL              0x00010000
-#define FILE_ATTRIBUTE_NO_SCRUB_DATA        0x00020000
-#define FILE_ATTRIBUTE_EA                   0x00040000
-#define FILE_ATTRIBUTE_PINNED               0x00080000
-#define FILE_ATTRIBUTE_UNPINNED             0x00100000
-#define FILE_ATTRIBUTE_RECALL_ON_OPEN       0x00040000
-#define FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS 0x00400000
-
-#define FILE_VOLUME_IS_COMPRESSED           0x00008000  
-#define FILE_SUPPORTS_OBJECT_IDS            0x00010000  
-#define FILE_SUPPORTS_ENCRYPTION            0x00020000  
-#define FILE_NAMED_STREAMS                  0x00040000  
-#define FILE_READ_ONLY_VOLUME               0x00080000  
-#define FILE_SEQUENTIAL_WRITE_ONCE          0x00100000  
-#define FILE_SUPPORTS_TRANSACTIONS          0x00200000  
-#define FILE_SUPPORTS_HARD_LINKS            0x00400000  
-#define FILE_SUPPORTS_EXTENDED_ATTRIBUTES   0x00800000  
-#define FILE_SUPPORTS_OPEN_BY_FILE_ID       0x01000000  
-#define FILE_SUPPORTS_USN_JOURNAL           0x02000000  
-#define FILE_SUPPORTS_INTEGRITY_STREAMS     0x04000000  
-#define FILE_SUPPORTS_BLOCK_REFCOUNTING     0x08000000  
-#define FILE_SUPPORTS_SPARSE_VDL            0x10000000  
-#define FILE_DAX_VOLUME                     0x20000000  
-#define FILE_SUPPORTS_GHOSTING              0x40000000 
-
-/* File flags for CreateFileW (winbase.h) */
-#define FILE_FLAG_WRITE_THROUGH         0x80000000
-#define FILE_FLAG_OVERLAPPED            0x40000000
-#define FILE_FLAG_NO_BUFFERING          0x20000000
-#define FILE_FLAG_RANDOM_ACCESS         0x10000000
-#define FILE_FLAG_SEQUENTIAL_SCAN       0x08000000
-#define FILE_FLAG_DELETE_ON_CLOSE       0x04000000
-#define FILE_FLAG_BACKUP_SEMANTICS      0x02000000
-#define FILE_FLAG_POSIX_SEMANTICS       0x01000000
-#define FILE_FLAG_SESSION_AWARE         0x00800000
-#define FILE_FLAG_OPEN_REPARSE_POINT    0x00200000
-#define FILE_FLAG_OPEN_NO_RECALL        0x00100000
-#define FILE_FLAG_FIRST_PIPE_INSTANCE   0x00080000
-
-
-#define IO_REPARSE_TAG_RESERVED_INVALID         (0xC0008000L)       
-#define IO_REPARSE_TAG_MOUNT_POINT              (0xA0000003L)       
-#define IO_REPARSE_TAG_HSM                      (0xC0000004L)       
-#define IO_REPARSE_TAG_HSM2                     (0x80000006L)       
-#define IO_REPARSE_TAG_SIS                      (0x80000007L)       
-#define IO_REPARSE_TAG_WIM                      (0x80000008L)       
-#define IO_REPARSE_TAG_CSV                      (0x80000009L)       
-#define IO_REPARSE_TAG_DFS                      (0x8000000AL)       
-#define IO_REPARSE_TAG_SYMLINK                  (0xA000000CL)       
-#define IO_REPARSE_TAG_DFSR                     (0x80000012L)       
-#define IO_REPARSE_TAG_DEDUP                    (0x80000013L)       
-#define IO_REPARSE_TAG_NFS                      (0x80000014L)       
-#define IO_REPARSE_TAG_FILE_PLACEHOLDER         (0x80000015L)       
-#define IO_REPARSE_TAG_WOF                      (0x80000017L)       
-#define IO_REPARSE_TAG_WCI                      (0x80000018L)       
-#define IO_REPARSE_TAG_WCI_1                    (0x90001018L)       
-#define IO_REPARSE_TAG_GLOBAL_REPARSE           (0xA0000019L)       
-#define IO_REPARSE_TAG_CLOUD                    (0x9000001AL)       
-#define IO_REPARSE_TAG_CLOUD_1                  (0x9000101AL)       
-#define IO_REPARSE_TAG_CLOUD_2                  (0x9000201AL)       
-#define IO_REPARSE_TAG_CLOUD_3                  (0x9000301AL)       
-#define IO_REPARSE_TAG_CLOUD_4                  (0x9000401AL)       
-#define IO_REPARSE_TAG_CLOUD_5                  (0x9000501AL)       
-#define IO_REPARSE_TAG_CLOUD_6                  (0x9000601AL)       
-#define IO_REPARSE_TAG_CLOUD_7                  (0x9000701AL)       
-#define IO_REPARSE_TAG_CLOUD_8                  (0x9000801AL)       
-#define IO_REPARSE_TAG_CLOUD_9                  (0x9000901AL)       
-#define IO_REPARSE_TAG_CLOUD_A                  (0x9000A01AL)       
-#define IO_REPARSE_TAG_CLOUD_B                  (0x9000B01AL)       
-#define IO_REPARSE_TAG_CLOUD_C                  (0x9000C01AL)       
-#define IO_REPARSE_TAG_CLOUD_D                  (0x9000D01AL)       
-#define IO_REPARSE_TAG_CLOUD_E                  (0x9000E01AL)       
-#define IO_REPARSE_TAG_CLOUD_F                  (0x9000F01AL)       
-#define IO_REPARSE_TAG_CLOUD_MASK               (0x0000F000L)       
-#define IO_REPARSE_TAG_APPEXECLINK              (0x8000001BL)       
-#define IO_REPARSE_TAG_PROJFS                   (0x9000001CL)       
-#define IO_REPARSE_TAG_STORAGE_SYNC             (0x8000001EL)       
-#define IO_REPARSE_TAG_WCI_TOMBSTONE            (0xA000001FL)       
-#define IO_REPARSE_TAG_UNHANDLED                (0x80000020L)       
-#define IO_REPARSE_TAG_ONEDRIVE                 (0x80000021L)       
-#define IO_REPARSE_TAG_PROJFS_TOMBSTONE         (0xA0000022L)       
-#define IO_REPARSE_TAG_AF_UNIX                  (0x80000023L)       
-#define IO_REPARSE_TAG_STORAGE_SYNC_FOLDER      (0x90000027L)       
-#define IO_REPARSE_TAG_WCI_LINK                 (0xA0000027L)       
-#define IO_REPARSE_TAG_WCI_LINK_1               (0xA0001027L)       
-#define IO_REPARSE_TAG_DATALESS_CIM             (0xA0000028L)       
-
-#define MOVEFILE_REPLACE_EXISTING       0x00000001
-#define MOVEFILE_COPY_ALLOWED           0x00000002
-#define MOVEFILE_DELAY_UNTIL_REBOOT     0x00000004
-#define MOVEFILE_WRITE_THROUGH          0x00000008
-#define MOVEFILE_CREATE_HARDLINK        0x00000010
-#define MOVEFILE_FAIL_IF_NOT_TRACKABLE  0x00000020
-
-/* File move flags */
-#define FILE_BEGIN                  0
-#define FILE_CURRENT                1
-#define FILE_END                    2
-
-/* Final path name flags */
-#define FILE_NAME_NORMALIZED        0x00000000
-#define FILE_NAME_OPENED            0x00000008
-
-#define FILE_MAP_WRITE            SECTION_MAP_WRITE
-#define FILE_MAP_READ             SECTION_MAP_READ
-#define FILE_MAP_ALL_ACCESS       SECTION_ALL_ACCESS
-
-#define FILE_MAP_EXECUTE          SECTION_MAP_EXECUTE_EXPLICIT  // not included in FILE_MAP_ALL_ACCESS
-
-#define FILE_MAP_COPY             0x00000001
-
-#define FILE_MAP_RESERVE          0x80000000
-#define FILE_MAP_TARGETS_INVALID  0x40000000
-#define FILE_MAP_LARGE_PAGES      0x20000000
-
-#define SYMBOLIC_LINK_FLAG_DIRECTORY                    (0x1)
-#define SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE    (0x2)
-
-#define SEC_HUGE_PAGES              0x00020000  
-#define SEC_LARGE_PAGES             0x80000000
-
-#define LOCKFILE_FAIL_IMMEDIATELY   0x00000001
-#define LOCKFILE_EXCLUSIVE_LOCK     0x00000002
-
-// clang-format on
-
-/* File information classes */
-typedef enum _FILE_INFORMATION_CLASS {
-	FileDirectoryInformation = 1,
-	FileFullDirectoryInformation = 2,
-	FileBothDirectoryInformation = 3,
-	FileBasicInformation = 4,
-	FileStandardInformation = 5,
-	FileInternalInformation = 6,
-	FileEaInformation = 7,
-	FileAccessInformation = 8,
-	FileNameInformation = 9,
-	FileRenameInformation = 10,
-	FileLinkInformation = 11,
-	FileNamesInformation = 12,
-	FileDispositionInformation = 13,
-	FilePositionInformation = 14,
-	FileFullEaInformation = 15,
-	FileModeInformation = 16,
-	FileAlignmentInformation = 17,
-	FileAllInformation = 18,
-	FileAllocationInformation = 19,
-	FileEndOfFileInformation = 20,
-	FileAlternateNameInformation = 21,
-	FileStreamInformation = 22,
-	FilePipeInformation = 23,
-	FilePipeLocalInformation = 24,
-	FilePipeRemoteInformation = 25,
-	FileMailslotQueryInformation = 26,
-	FileMailslotSetInformation = 27,
-	FileCompressionInformation = 28,
-	FileObjectIdInformation = 29,
-	FileCompletionInformation = 30,
-	FileMoveClusterInformation = 31,
-	FileQuotaInformation = 32,
-	FileReparsePointInformation = 33,
-	FileNetworkOpenInformation = 34,
-	FileAttributeTagInformation = 35,
-	FileTrackingInformation = 36,
-	FileIdBothDirectoryInformation = 37,
-	FileIdFullDirectoryInformation = 38,
-	FileValidDataLengthInformation = 39,
-	FileShortNameInformation = 40,
-	FileIoCompletionNotificationInformation = 41,
-	FileIoStatusBlockRangeInformation = 42,
-	FileIoPriorityHintInformation = 43,
-	FileSfioReserveInformation = 44,
-	FileSfioVolumeInformation = 45,
-	FileHardLinkInformation = 46,
-	FileProcessIdsUsingFileInformation = 47,
-	FileNormalizedNameInformation = 48,
-	FileNetworkPhysicalNameInformation = 49,
-	FileIdGlobalTxDirectoryInformation = 50,
-	FileIsRemoteDeviceInformation = 51,
-	FileUnusedInformation = 52,
-	FileNumaNodeInformation = 53,
-	FileStandardLinkInformation = 54,
-	FileRemoteProtocolInformation = 55,
-	FileRenameInformationBypassAccessCheck = 56,
-	FileLinkInformationBypassAccessCheck = 57,
-	FileVolumeNameInformation = 58,
-	FileIdInformation = 59,
-	FileIdExtdDirectoryInformation = 60,
-	FileReplaceCompletionInformation = 61,
-	FileHardLinkFullIdInformation = 62,
-	FileIdExtdBothDirectoryInformation = 63,
-	FileDispositionInformationEx = 64,
-	FileRenameInformationEx = 65,
-	FileRenameInformationExBypassAccessCheck = 66,
-	FileDesiredStorageClassInformation = 67,
-	FileStatInformation = 68,
-	FileMemoryPartitionInformation = 69,
-	FileStatLxInformation = 70,
-	FileCaseSensitiveInformation = 71,
-	FileLinkInformationEx = 72,
-	FileLinkInformationExBypassAccessCheck = 73,
-	FileStorageReserveIdInformation = 74,
-	FileCaseSensitiveInformationForceAccessCheck = 75,
-	FileKnownFolderInformation = 76,
-	FileStatBasicInformation = 77,
-	FileId64ExtdDirectoryInformation = 78,
-	FileId64ExtdBothDirectoryInformation = 79,
-	FileIdAllExtdDirectoryInformation = 80,
-	FileIdAllExtdBothDirectoryInformation = 81,
-	FileStreamReservationInformation,
-	FileMupProviderInfo,
-	FileMaximumInformation
-} FILE_INFORMATION_CLASS, *PFILE_INFORMATION_CLASS;
-
-typedef enum _FILE_INFO_BY_HANDLE_CLASS {
-	FileBasicInfo,
-	FileStandardInfo,
-	FileNameInfo,
-	FileRenameInfo,
-	FileDispositionInfo,
-	FileAllocationInfo,
-	FileEndOfFileInfo,
-	FileStreamInfo,
-	FileCompressionInfo,
-	FileAttributeTagInfo,
-	FileIdBothDirectoryInfo,
-	FileIdBothDirectoryRestartInfo,
-	FileIoPriorityHintInfo,
-	FileRemoteProtocolInfo,
-	FileFullDirectoryInfo,
-	FileFullDirectoryRestartInfo,
-	FileStorageInfo,
-	FileAlignmentInfo,
-	FileIdInfo,
-	FileIdExtdDirectoryInfo,
-	FileIdExtdDirectoryRestartInfo,
-	FileDispositionInfoEx,
-	FileRenameInfoEx,
-	FileCaseSensitiveInfo,
-	FileNormalizedNameInfo,
-	MaximumFileInfoByHandleClass
-} FILE_INFO_BY_HANDLE_CLASS, *PFILE_INFO_BY_HANDLE_CLASS;
-
-typedef enum _GET_FILEEX_INFO_LEVELS {
-	GetFileExInfoStandard,
-	GetFileExMaxInfoLevel
-} GET_FILEEX_INFO_LEVELS;
-
-typedef struct _BY_HANDLE_FILE_INFORMATION {
-	DWORD dwFileAttributes;
-	FILETIME ftCreationTime;
-	FILETIME ftLastAccessTime;
-	FILETIME ftLastWriteTime;
-	DWORD dwVolumeSerialNumber;
-	DWORD nFileSizeHigh;
-	DWORD nFileSizeLow;
-	DWORD nNumberOfLinks;
-	DWORD nFileIndexHigh;
-	DWORD nFileIndexLow;
-} BY_HANDLE_FILE_INFORMATION, *PBY_HANDLE_FILE_INFORMATION, *LPBY_HANDLE_FILE_INFORMATION;
-
-/* File information structures */
-typedef struct _FILE_BASIC_INFO {
-	LARGE_INTEGER CreationTime;
-	LARGE_INTEGER LastAccessTime;
-	LARGE_INTEGER LastWriteTime;
-	LARGE_INTEGER ChangeTime;
-	DWORD FileAttributes;
-} FILE_BASIC_INFO, *PFILE_BASIC_INFO;
-
-typedef struct _FILE_STANDARD_INFO {
-	LARGE_INTEGER AllocationSize;
-	LARGE_INTEGER EndOfFile;
-	DWORD NumberOfLinks;
-	BOOLEAN DeletePending;
-	BOOLEAN Directory;
-} FILE_STANDARD_INFO, *PFILE_STANDARD_INFO;
-
-/* FILE_STORAGE_INFO structure for extended file info */
-typedef struct _FILE_STORAGE_INFO {
-	ULONG LogicalBytesPerSector;
-	ULONG PhysicalBytesPerSectorForAtomicity;
-	ULONG PhysicalBytesPerSectorForPerformance;
-	ULONG FileSystemEffectivePhysicalBytesPerSectorForAtomicity;
-	ULONG Flags;
-	ULONG ByteOffsetForSectorAlignment;
-	ULONG ByteOffsetForPartitionAlignment;
-} FILE_STORAGE_INFO, *PFILE_STORAGE_INFO;
-
-/**
- * File ID Both Directory Info structure used with FileIdBothDirectoryInfo and FileIdBothDirectoryRestartInfo.
- * Used by FindFirstFileEx/FindNextFile to enumerate directory contents.
- */
-typedef struct _FILE_ID_BOTH_DIR_INFO {
-	DWORD NextEntryOffset;
-	DWORD FileIndex;
-	LARGE_INTEGER CreationTime;
-	LARGE_INTEGER LastAccessTime;
-	LARGE_INTEGER LastWriteTime;
-	LARGE_INTEGER ChangeTime;
-	LARGE_INTEGER EndOfFile;
-	LARGE_INTEGER AllocationSize;
-	DWORD FileAttributes;
-	DWORD FileNameLength;
-	DWORD EaSize;
-	CCHAR ShortNameLength;
-	WCHAR ShortName[12];
-	LARGE_INTEGER FileId;
-	WCHAR FileName[1];
-} FILE_ID_BOTH_DIR_INFO, *PFILE_ID_BOTH_DIR_INFO;
-
-typedef union _FILE_SEGMENT_ELEMENT {
-	PVOID Buffer;
-	ULONGLONG Alignment;
-} FILE_SEGMENT_ELEMENT, *PFILE_SEGMENT_ELEMENT;
-
-typedef struct _WIN32_FILE_ATTRIBUTE_DATA {
-	DWORD dwFileAttributes;
-	FILETIME ftCreationTime;
-	FILETIME ftLastAccessTime;
-	FILETIME ftLastWriteTime;
-	DWORD nFileSizeHigh;
-	DWORD nFileSizeLow;
-} WIN32_FILE_ATTRIBUTE_DATA, *LPWIN32_FILE_ATTRIBUTE_DATA;
-
-typedef struct _WIN32_FIND_DATAA {
-	DWORD dwFileAttributes;
-	FILETIME ftCreationTime;
-	FILETIME ftLastAccessTime;
-	FILETIME ftLastWriteTime;
-	DWORD nFileSizeHigh;
-	DWORD nFileSizeLow;
-	DWORD dwReserved0;
-	DWORD dwReserved1;
-	CHAR cFileName[MAX_PATH];
-	CHAR cAlternateFileName[14];
-} WIN32_FIND_DATAA, *PWIN32_FIND_DATAA, *LPWIN32_FIND_DATAA;
-
-typedef struct _WIN32_FIND_DATAW {
-	DWORD dwFileAttributes;
-	FILETIME ftCreationTime;
-	FILETIME ftLastAccessTime;
-	FILETIME ftLastWriteTime;
-	DWORD nFileSizeHigh;
-	DWORD nFileSizeLow;
-	DWORD dwReserved0;
-	DWORD dwReserved1;
-	WCHAR cFileName[MAX_PATH];
-	WCHAR cAlternateFileName[14];
-} WIN32_FIND_DATAW, *PWIN32_FIND_DATAW, *LPWIN32_FIND_DATAW;
 
 __SPRT_BEGIN_DECL
 
@@ -549,15 +301,6 @@ __SPRT_WIN_IMPORT WINAPI BOOLEAN CreateSymbolicLinkW(LPCWSTR lpSymlinkFileName,
 
 __SPRT_WIN_IMPORT WINAPI BOOL CreatePipe(PHANDLE hReadPipe, PHANDLE hWritePipe,
 		LPSECURITY_ATTRIBUTES lpPipeAttributes, DWORD nSize);
-
-// Named-pipe open/mode flags (anonymous CreatePipe handles cannot do overlapped I/O, so an
-// overlapped reader must build its pipe from CreateNamedPipe + CreateFile).
-#define PIPE_ACCESS_INBOUND   0x00000001
-#define PIPE_ACCESS_OUTBOUND  0x00000002
-#define PIPE_ACCESS_DUPLEX    0x00000003
-#define PIPE_TYPE_BYTE        0x00000000
-#define PIPE_READMODE_BYTE    0x00000000
-#define PIPE_WAIT             0x00000000
 
 __SPRT_WIN_IMPORT WINAPI HANDLE CreateNamedPipeW(LPCWSTR lpName, DWORD dwOpenMode, DWORD dwPipeMode,
 		DWORD nMaxInstances, DWORD nOutBufferSize, DWORD nInBufferSize, DWORD nDefaultTimeOut,

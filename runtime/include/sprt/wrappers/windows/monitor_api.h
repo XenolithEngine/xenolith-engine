@@ -25,265 +25,132 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/structures.h>
 #include <sprt/wrappers/windows/constants.h>
+#include <sprt/wrappers/windows/abi/monitor_api.h>
 
-// clang-format off
-#define DPI_AWARENESS_CONTEXT_UNAWARE               ((DPI_AWARENESS_CONTEXT)-1)
-#define DPI_AWARENESS_CONTEXT_SYSTEM_AWARE          ((DPI_AWARENESS_CONTEXT)-2)
-#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE     ((DPI_AWARENESS_CONTEXT)-3)
-#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2  ((DPI_AWARENESS_CONTEXT)-4)
-#define DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED     ((DPI_AWARENESS_CONTEXT)-5)
+/* Clean public names (materialized __SPRT_ values live in abi/monitor_api.h) */
+#define DPI_AWARENESS_CONTEXT_UNAWARE __SPRT_DPI_AWARENESS_CONTEXT_UNAWARE
+#define DPI_AWARENESS_CONTEXT_SYSTEM_AWARE __SPRT_DPI_AWARENESS_CONTEXT_SYSTEM_AWARE
+#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE __SPRT_DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE
+#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 __SPRT_DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+#define DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED __SPRT_DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED
+#define MONITOR_DEFAULTTONULL __SPRT_MONITOR_DEFAULTTONULL
+#define MONITOR_DEFAULTTOPRIMARY __SPRT_MONITOR_DEFAULTTOPRIMARY
+#define MONITOR_DEFAULTTONEAREST __SPRT_MONITOR_DEFAULTTONEAREST
+#define MONITORINFOF_PRIMARY __SPRT_MONITORINFOF_PRIMARY
+#define PHYSICAL_MONITOR_DESCRIPTION_SIZE __SPRT_PHYSICAL_MONITOR_DESCRIPTION_SIZE
+#define CCHFORMNAME __SPRT_CCHFORMNAME
+#define CCHDEVICENAME __SPRT_CCHDEVICENAME
+#define USER_DEFAULT_SCREEN_DPI __SPRT_USER_DEFAULT_SCREEN_DPI
+#define EDD_GET_DEVICE_INTERFACE_NAME __SPRT_EDD_GET_DEVICE_INTERFACE_NAME
+#define DISPLAY_DEVICE_ACTIVE __SPRT_DISPLAY_DEVICE_ACTIVE
+#define DISPLAY_DEVICE_ATTACHED __SPRT_DISPLAY_DEVICE_ATTACHED
+#define DRIVERVERSION __SPRT_DRIVERVERSION
+#define TECHNOLOGY __SPRT_TECHNOLOGY
+#define HORZSIZE __SPRT_HORZSIZE
+#define VERTSIZE __SPRT_VERTSIZE
+#define HORZRES __SPRT_HORZRES
+#define VERTRES __SPRT_VERTRES
+#define BITSPIXEL __SPRT_BITSPIXEL
+#define PLANES __SPRT_PLANES
+#define NUMBRUSHES __SPRT_NUMBRUSHES
+#define NUMPENS __SPRT_NUMPENS
+#define NUMMARKERS __SPRT_NUMMARKERS
+#define NUMFONTS __SPRT_NUMFONTS
+#define NUMCOLORS __SPRT_NUMCOLORS
+#define PDEVICESIZE __SPRT_PDEVICESIZE
+#define CURVECAPS __SPRT_CURVECAPS
+#define LINECAPS __SPRT_LINECAPS
+#define POLYGONALCAPS __SPRT_POLYGONALCAPS
+#define TEXTCAPS __SPRT_TEXTCAPS
+#define CLIPCAPS __SPRT_CLIPCAPS
+#define RASTERCAPS __SPRT_RASTERCAPS
+#define ASPECTX __SPRT_ASPECTX
+#define ASPECTY __SPRT_ASPECTY
+#define ASPECTXY __SPRT_ASPECTXY
+#define LOGPIXELSX __SPRT_LOGPIXELSX
+#define LOGPIXELSY __SPRT_LOGPIXELSY
+#define SIZEPALETTE __SPRT_SIZEPALETTE
+#define NUMRESERVED __SPRT_NUMRESERVED
+#define COLORRES __SPRT_COLORRES
+#define PHYSICALWIDTH __SPRT_PHYSICALWIDTH
+#define PHYSICALHEIGHT __SPRT_PHYSICALHEIGHT
+#define PHYSICALOFFSETX __SPRT_PHYSICALOFFSETX
+#define PHYSICALOFFSETY __SPRT_PHYSICALOFFSETY
+#define SCALINGFACTORX __SPRT_SCALINGFACTORX
+#define SCALINGFACTORY __SPRT_SCALINGFACTORY
+#define VREFRESH __SPRT_VREFRESH
+#define DESKTOPVERTRES __SPRT_DESKTOPVERTRES
+#define DESKTOPHORZRES __SPRT_DESKTOPHORZRES
+#define BLTALIGNMENT __SPRT_BLTALIGNMENT
+#define SHADEBLENDCAPS __SPRT_SHADEBLENDCAPS
+#define COLORMGMTCAPS __SPRT_COLORMGMTCAPS
+#define ENUM_CURRENT_SETTINGS __SPRT_ENUM_CURRENT_SETTINGS
+#define ENUM_REGISTRY_SETTINGS __SPRT_ENUM_REGISTRY_SETTINGS
+#define SM_XVIRTUALSCREEN __SPRT_SM_XVIRTUALSCREEN
+#define SM_YVIRTUALSCREEN __SPRT_SM_YVIRTUALSCREEN
+#define SM_CXVIRTUALSCREEN __SPRT_SM_CXVIRTUALSCREEN
+#define SM_CYVIRTUALSCREEN __SPRT_SM_CYVIRTUALSCREEN
+#define SM_CMONITORS __SPRT_SM_CMONITORS
+#define SM_SAMEDISPLAYFORMAT __SPRT_SM_SAMEDISPLAYFORMAT
+#define DM_ORIENTATION __SPRT_DM_ORIENTATION
+#define DM_PAPERSIZE __SPRT_DM_PAPERSIZE
+#define DM_PAPERLENGTH __SPRT_DM_PAPERLENGTH
+#define DM_PAPERWIDTH __SPRT_DM_PAPERWIDTH
+#define DM_SCALE __SPRT_DM_SCALE
+#define DM_POSITION __SPRT_DM_POSITION
+#define DM_NUP __SPRT_DM_NUP
+#define DM_DISPLAYORIENTATION __SPRT_DM_DISPLAYORIENTATION
+#define DM_COPIES __SPRT_DM_COPIES
+#define DM_DEFAULTSOURCE __SPRT_DM_DEFAULTSOURCE
+#define DM_PRINTQUALITY __SPRT_DM_PRINTQUALITY
+#define DM_COLOR __SPRT_DM_COLOR
+#define DM_DUPLEX __SPRT_DM_DUPLEX
+#define DM_YRESOLUTION __SPRT_DM_YRESOLUTION
+#define DM_TTOPTION __SPRT_DM_TTOPTION
+#define DM_COLLATE __SPRT_DM_COLLATE
+#define DM_FORMNAME __SPRT_DM_FORMNAME
+#define DM_LOGPIXELS __SPRT_DM_LOGPIXELS
+#define DM_BITSPERPEL __SPRT_DM_BITSPERPEL
+#define DM_PELSWIDTH __SPRT_DM_PELSWIDTH
+#define DM_PELSHEIGHT __SPRT_DM_PELSHEIGHT
+#define DM_DISPLAYFLAGS __SPRT_DM_DISPLAYFLAGS
+#define DM_DISPLAYFREQUENCY __SPRT_DM_DISPLAYFREQUENCY
+#define DM_ICMMETHOD __SPRT_DM_ICMMETHOD
+#define DM_ICMINTENT __SPRT_DM_ICMINTENT
+#define DM_MEDIATYPE __SPRT_DM_MEDIATYPE
+#define DM_DITHERTYPE __SPRT_DM_DITHERTYPE
+#define DM_PANNINGWIDTH __SPRT_DM_PANNINGWIDTH
+#define DM_PANNINGHEIGHT __SPRT_DM_PANNINGHEIGHT
+#define DM_DISPLAYFIXEDOUTPUT __SPRT_DM_DISPLAYFIXEDOUTPUT
+#define DIREG_DEV __SPRT_DIREG_DEV
+#define DIREG_DRV __SPRT_DIREG_DRV
+#define DIREG_BOTH __SPRT_DIREG_BOTH
+#define DICS_FLAG_GLOBAL __SPRT_DICS_FLAG_GLOBAL
+#define DICS_FLAG_CONFIGSPECIFIC __SPRT_DICS_FLAG_CONFIGSPECIFIC
+#define DICS_FLAG_CONFIGGENERAL __SPRT_DICS_FLAG_CONFIGGENERAL
+#define DIGCF_DEFAULT __SPRT_DIGCF_DEFAULT
+#define DIGCF_PRESENT __SPRT_DIGCF_PRESENT
+#define DIGCF_ALLCLASSES __SPRT_DIGCF_ALLCLASSES
+#define DIGCF_PROFILE __SPRT_DIGCF_PROFILE
+#define DIGCF_DEVICEINTERFACE __SPRT_DIGCF_DEVICEINTERFACE
+#define CDS_UPDATEREGISTRY __SPRT_CDS_UPDATEREGISTRY
+#define CDS_TEST __SPRT_CDS_TEST
+#define CDS_FULLSCREEN __SPRT_CDS_FULLSCREEN
+#define CDS_GLOBAL __SPRT_CDS_GLOBAL
+#define CDS_SET_PRIMARY __SPRT_CDS_SET_PRIMARY
+#define CDS_VIDEOPARAMETERS __SPRT_CDS_VIDEOPARAMETERS
+#define CDS_RESET __SPRT_CDS_RESET
+#define CDS_RESET_EX __SPRT_CDS_RESET_EX
+#define CDS_NORESET __SPRT_CDS_NORESET
+#define DISP_CHANGE_SUCCESSFUL __SPRT_DISP_CHANGE_SUCCESSFUL
+#define DISP_CHANGE_RESTART __SPRT_DISP_CHANGE_RESTART
+#define DISP_CHANGE_FAILED __SPRT_DISP_CHANGE_FAILED
+#define DISP_CHANGE_BADMODE __SPRT_DISP_CHANGE_BADMODE
+#define DISP_CHANGE_NOTUPDATED __SPRT_DISP_CHANGE_NOTUPDATED
+#define DISP_CHANGE_BADFLAGS __SPRT_DISP_CHANGE_BADFLAGS
+#define DISP_CHANGE_BADPARAM __SPRT_DISP_CHANGE_BADPARAM
+#define DISP_CHANGE_BADDUALVIEW __SPRT_DISP_CHANGE_BADDUALVIEW
 
-#define MONITOR_DEFAULTTONULL       0x00000000
-#define MONITOR_DEFAULTTOPRIMARY    0x00000001
-#define MONITOR_DEFAULTTONEAREST    0x00000002
-#define MONITORINFOF_PRIMARY        0x00000001
-
-#define PHYSICAL_MONITOR_DESCRIPTION_SIZE                   128
-
-#define CCHFORMNAME 32
-#define CCHDEVICENAME 32
-
-#define USER_DEFAULT_SCREEN_DPI 96
-
-#define EDD_GET_DEVICE_INTERFACE_NAME 0x00000001
-
-#define DISPLAY_DEVICE_ACTIVE              0x00000001
-#define DISPLAY_DEVICE_ATTACHED            0x00000002
-
-#define DRIVERVERSION 0     /* Device driver version                    */
-#define TECHNOLOGY    2     /* Device classification                    */
-#define HORZSIZE      4     /* Horizontal size in millimeters           */
-#define VERTSIZE      6     /* Vertical size in millimeters             */
-#define HORZRES       8     /* Horizontal width in pixels               */
-#define VERTRES       10    /* Vertical height in pixels                */
-#define BITSPIXEL     12    /* Number of bits per pixel                 */
-#define PLANES        14    /* Number of planes                         */
-#define NUMBRUSHES    16    /* Number of brushes the device has         */
-#define NUMPENS       18    /* Number of pens the device has            */
-#define NUMMARKERS    20    /* Number of markers the device has         */
-#define NUMFONTS      22    /* Number of fonts the device has           */
-#define NUMCOLORS     24    /* Number of colors the device supports     */
-#define PDEVICESIZE   26    /* Size required for device descriptor      */
-#define CURVECAPS     28    /* Curve capabilities                       */
-#define LINECAPS      30    /* Line capabilities                        */
-#define POLYGONALCAPS 32    /* Polygonal capabilities                   */
-#define TEXTCAPS      34    /* Text capabilities                        */
-#define CLIPCAPS      36    /* Clipping capabilities                    */
-#define RASTERCAPS    38    /* Bitblt capabilities                      */
-#define ASPECTX       40    /* Length of the X leg                      */
-#define ASPECTY       42    /* Length of the Y leg                      */
-#define ASPECTXY      44    /* Length of the hypotenuse                 */
-#define LOGPIXELSX    88    /* Logical pixels/inch in X                 */
-#define LOGPIXELSY    90    /* Logical pixels/inch in Y                 */
-#define SIZEPALETTE  104    /* Number of entries in physical palette    */
-#define NUMRESERVED  106    /* Number of reserved entries in palette    */
-#define COLORRES     108    /* Actual color resolution                  */
-#define PHYSICALWIDTH   110 /* Physical Width in device units           */
-#define PHYSICALHEIGHT  111 /* Physical Height in device units          */
-#define PHYSICALOFFSETX 112 /* Physical Printable Area x margin         */
-#define PHYSICALOFFSETY 113 /* Physical Printable Area y margin         */
-#define SCALINGFACTORX  114 /* Scaling factor x                         */
-#define SCALINGFACTORY  115 /* Scaling factor y                         */
-#define VREFRESH        116  /* Current vertical refresh rate of the    */
-#define DESKTOPVERTRES  117  /* Horizontal width of entire desktop in   */                              */
-#define DESKTOPHORZRES  118  /* Vertical height of entire desktop in    */                                */
-#define BLTALIGNMENT    119  /* Preferred blt alignment                 */
-#define SHADEBLENDCAPS  120  /* Shading and blending caps               */
-#define COLORMGMTCAPS   121  /* Color Management caps                   */
-
-#define ENUM_CURRENT_SETTINGS       ((DWORD)-1)
-#define ENUM_REGISTRY_SETTINGS      ((DWORD)-2)
-
-#define SM_XVIRTUALSCREEN       76
-#define SM_YVIRTUALSCREEN       77
-#define SM_CXVIRTUALSCREEN      78
-#define SM_CYVIRTUALSCREEN      79
-#define SM_CMONITORS            80
-#define SM_SAMEDISPLAYFORMAT    81
-
-#define DM_ORIENTATION          0x00000001L
-#define DM_PAPERSIZE            0x00000002L
-#define DM_PAPERLENGTH          0x00000004L
-#define DM_PAPERWIDTH           0x00000008L
-#define DM_SCALE                0x00000010L
-#define DM_POSITION             0x00000020L
-#define DM_NUP                  0x00000040L
-#define DM_DISPLAYORIENTATION   0x00000080L
-#define DM_COPIES               0x00000100L
-#define DM_DEFAULTSOURCE        0x00000200L
-#define DM_PRINTQUALITY         0x00000400L
-#define DM_COLOR                0x00000800L
-#define DM_DUPLEX               0x00001000L
-#define DM_YRESOLUTION          0x00002000L
-#define DM_TTOPTION             0x00004000L
-#define DM_COLLATE              0x00008000L
-#define DM_FORMNAME             0x00010000L
-#define DM_LOGPIXELS            0x00020000L
-#define DM_BITSPERPEL           0x00040000L
-#define DM_PELSWIDTH            0x00080000L
-#define DM_PELSHEIGHT           0x00100000L
-#define DM_DISPLAYFLAGS         0x00200000L
-#define DM_DISPLAYFREQUENCY     0x00400000L
-#define DM_ICMMETHOD            0x00800000L
-#define DM_ICMINTENT            0x01000000L
-#define DM_MEDIATYPE            0x02000000L
-#define DM_DITHERTYPE           0x04000000L
-#define DM_PANNINGWIDTH         0x08000000L
-#define DM_PANNINGHEIGHT        0x10000000L
-#define DM_DISPLAYFIXEDOUTPUT   0x20000000L
-
-#define DIREG_DEV       0x00000001
-#define DIREG_DRV       0x00000002
-#define DIREG_BOTH      0x00000004
-
-#define DICS_FLAG_GLOBAL         0x00000001
-#define DICS_FLAG_CONFIGSPECIFIC 0x00000002
-#define DICS_FLAG_CONFIGGENERAL  0x00000004
-
-#define DIGCF_DEFAULT           0x00000001
-#define DIGCF_PRESENT           0x00000002
-#define DIGCF_ALLCLASSES        0x00000004
-#define DIGCF_PROFILE           0x00000008
-#define DIGCF_DEVICEINTERFACE   0x00000010
-
-#define CDS_UPDATEREGISTRY           0x00000001
-#define CDS_TEST                     0x00000002
-#define CDS_FULLSCREEN               0x00000004
-#define CDS_GLOBAL                   0x00000008
-#define CDS_SET_PRIMARY              0x00000010
-#define CDS_VIDEOPARAMETERS          0x00000020
-#define CDS_RESET                    0x40000000
-#define CDS_RESET_EX                 0x20000000
-#define CDS_NORESET                  0x10000000
-
-#define DISP_CHANGE_SUCCESSFUL       0
-#define DISP_CHANGE_RESTART          1
-#define DISP_CHANGE_FAILED          -1
-#define DISP_CHANGE_BADMODE         -2
-#define DISP_CHANGE_NOTUPDATED      -3
-#define DISP_CHANGE_BADFLAGS        -4
-#define DISP_CHANGE_BADPARAM        -5
-#define DISP_CHANGE_BADDUALVIEW     -6
-// clang-format on
-
-typedef enum PROCESS_DPI_AWARENESS {
-	PROCESS_DPI_UNAWARE = 0,
-	PROCESS_SYSTEM_DPI_AWARE = 1,
-	PROCESS_PER_MONITOR_DPI_AWARE = 2
-} PROCESS_DPI_AWARENESS;
-
-typedef enum MONITOR_DPI_TYPE {
-	MDT_EFFECTIVE_DPI = 0,
-	MDT_ANGULAR_DPI = 1,
-	MDT_RAW_DPI = 2,
-	MDT_DEFAULT = MDT_EFFECTIVE_DPI
-} MONITOR_DPI_TYPE;
-
-typedef enum DPI_AWARENESS {
-	DPI_AWARENESS_INVALID = -1,
-	DPI_AWARENESS_UNAWARE = 0,
-	DPI_AWARENESS_SYSTEM_AWARE = 1,
-	DPI_AWARENESS_PER_MONITOR_AWARE = 2
-} DPI_AWARENESS;
-
-typedef HANDLE DPI_AWARENESS_CONTEXT, HMONITOR, HDC, HDEVINFO, HWND;
-
-typedef struct _PHYSICAL_MONITOR {
-	HANDLE hPhysicalMonitor;
-	WCHAR szPhysicalMonitorDescription[PHYSICAL_MONITOR_DESCRIPTION_SIZE];
-} PHYSICAL_MONITOR, *LPPHYSICAL_MONITOR;
-
-typedef struct tagMONITORINFO {
-	DWORD cbSize;
-	RECT rcMonitor;
-	RECT rcWork;
-	DWORD dwFlags;
-} MONITORINFO, *LPMONITORINFO;
-
-typedef struct tagMONITORINFOEXW : public MONITORINFO {
-	WCHAR szDevice[CCHDEVICENAME];
-} MONITORINFOEXW, *LPMONITORINFOEXW;
-
-typedef struct _DISPLAY_DEVICEW {
-	DWORD cb;
-	WCHAR DeviceName[32];
-	WCHAR DeviceString[128];
-	DWORD StateFlags;
-	WCHAR DeviceID[128];
-	WCHAR DeviceKey[128];
-} DISPLAY_DEVICEW, *PDISPLAY_DEVICEW, *LPDISPLAY_DEVICEW;
-
-typedef struct _devicemodeW {
-	WCHAR dmDeviceName[CCHDEVICENAME];
-	WORD dmSpecVersion;
-	WORD dmDriverVersion;
-	WORD dmSize;
-	WORD dmDriverExtra;
-	DWORD dmFields;
-	union {
-		/* printer only fields */
-		struct {
-			short dmOrientation;
-			short dmPaperSize;
-			short dmPaperLength;
-			short dmPaperWidth;
-			short dmScale;
-			short dmCopies;
-			short dmDefaultSource;
-			short dmPrintQuality;
-		};
-		/* display only fields */
-		struct {
-			POINTL dmPosition;
-			DWORD dmDisplayOrientation;
-			DWORD dmDisplayFixedOutput;
-		};
-	};
-	short dmColor;
-	short dmDuplex;
-	short dmYResolution;
-	short dmTTOption;
-	short dmCollate;
-	WCHAR dmFormName[CCHFORMNAME];
-	WORD dmLogPixels;
-	DWORD dmBitsPerPel;
-	DWORD dmPelsWidth;
-	DWORD dmPelsHeight;
-	union {
-		DWORD dmDisplayFlags;
-		DWORD dmNup;
-	};
-	DWORD dmDisplayFrequency;
-	DWORD dmICMMethod;
-	DWORD dmICMIntent;
-	DWORD dmMediaType;
-	DWORD dmDitherType;
-	DWORD dmReserved1;
-	DWORD dmReserved2;
-	DWORD dmPanningWidth;
-	DWORD dmPanningHeight;
-} DEVMODEW, *PDEVMODEW, *NPDEVMODEW, *LPDEVMODEW;
-
-typedef struct _SP_DEVINFO_DATA {
-	DWORD cbSize;
-	GUID ClassGuid;
-	DWORD DevInst; // DEVINST handle
-	ULONG_PTR Reserved;
-} SP_DEVINFO_DATA, *PSP_DEVINFO_DATA;
-
-typedef struct _SP_DEVICE_INTERFACE_DATA {
-	DWORD cbSize;
-	GUID InterfaceClassGuid;
-	DWORD Flags;
-	ULONG_PTR Reserved;
-} SP_DEVICE_INTERFACE_DATA, *PSP_DEVICE_INTERFACE_DATA;
-
-typedef struct _SP_DEVICE_INTERFACE_DETAIL_DATA_W {
-	DWORD cbSize;
-	WCHAR DevicePath[ANYSIZE_ARRAY];
-} SP_DEVICE_INTERFACE_DETAIL_DATA_W, *PSP_DEVICE_INTERFACE_DETAIL_DATA_W;
-
-typedef BOOL (*MONITORENUMPROC)(HMONITOR, HDC, LPRECT, LPARAM);
 
 __SPRT_BEGIN_DECL
 
