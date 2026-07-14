@@ -1499,11 +1499,13 @@ Status WaylandWindow::setFullscreenState(FullscreenInfo &&info) {
 					current->currentMode.size.height, current->currentMode.rate};
 
 				auto cfg = _controller->getDisplayConfigManager()->getCurrentConfig();
-				for (auto &it : cfg->monitors) {
-					if (it.id.name == current->name) {
-						info.id = it.id;
-						info.mode = it.getCurrent().mode;
-						break;
+				if (cfg) {
+					for (auto &it : cfg->monitors) {
+						if (it.id.name == current->name) {
+							info.id = it.id;
+							info.mode = it.getCurrent().mode;
+							break;
+						}
 					}
 				}
 

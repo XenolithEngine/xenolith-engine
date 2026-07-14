@@ -43,7 +43,8 @@ public:
 	static constexpr uint32_t wl_shm_version_supported = 2;
 	static constexpr uint32_t wl_seat_version_supported = 10;
 	static constexpr uint32_t zxdg_decoration_manager_v1_version_supported = 2;
-	static constexpr uint32_t kde_output_device_v2_version_supported = 20;
+	static constexpr uint32_t kde_output_device_v2_version_supported = 23;
+	static constexpr uint32_t kde_output_device_registry_v2_version_supported = 23;
 	static constexpr uint32_t kde_output_order_v1_version_supported = 1;
 	static constexpr uint32_t kde_output_management_v2_version_supported = 19;
 	static constexpr uint32_t wp_cursor_shape_manager_v1_version_supported = 1;

@@ -271,14 +271,14 @@ Status URingData::pushSqe(sprt::initializer_list<uint8_t> ops,
 				sprt::retain(ptr,
 						reinterpret_cast<uintptr_t>(this)
 								^ reinterpret_cast<uintptr_t>(handlesToRetain[i]));
-				// operator[] on this map is a lazy proxy that traps on a missing
-				// key, so insert-or-increment explicitly.
+#if DEBUG
 				auto it = _retainedHandles.find(ptr);
 				if (it != _retainedHandles.end()) {
 					++it->second;
 				} else {
 					_retainedHandles.emplace(ptr, 1);
 				}
+#endif
 			}
 		}
 	}
