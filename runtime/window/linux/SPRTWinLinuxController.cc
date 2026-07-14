@@ -333,20 +333,21 @@ SurfaceSupportInfo LinuxContextController::getSupportInfo() const {
 
 void LinuxContextController::tryStart() {
 	if (_dbusController && _dbusController->isConnectied() && (_xcbConnection || _waylandDisplay)) {
-		auto dcm = _dbusController->makeDisplayConfigManager(
-				[this](NotNull<DisplayConfigManager> m) { notifyScreenChange(m); });
-		if (dcm) {
-			_displayConfigManager = dcm;
+		// native KDE output-management protocol reports applied/failed directly from
+		// the compositor, so prefer it over the DBus KScreen path
+		if (_waylandDisplay) {
+			_displayConfigManager = _waylandDisplay->makeDisplayConfigManager(
+					[this](NotNull<DisplayConfigManager> m) { notifyScreenChange(m); });
 		}
 
 		if (!_displayConfigManager) {
-			if (_xcbConnection) {
-				_displayConfigManager = _xcbConnection->makeDisplayConfigManager(
-						[this](NotNull<DisplayConfigManager> m) { notifyScreenChange(m); });
-			} else if (_waylandDisplay) {
-				_displayConfigManager = _waylandDisplay->makeDisplayConfigManager(
-						[this](NotNull<DisplayConfigManager> m) { notifyScreenChange(m); });
-			}
+			_displayConfigManager = _dbusController->makeDisplayConfigManager(
+					[this](NotNull<DisplayConfigManager> m) { notifyScreenChange(m); });
+		}
+
+		if (!_displayConfigManager && _xcbConnection) {
+			_displayConfigManager = _xcbConnection->makeDisplayConfigManager(
+					[this](NotNull<DisplayConfigManager> m) { notifyScreenChange(m); });
 		}
 
 		_looper->performOnThread([this] {

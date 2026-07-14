@@ -319,6 +319,30 @@ static kde_output_device_v2_listener s_kdeOutputListener{
 	auto dev = reinterpret_cast<KdeOutputDevice *>(data);
 	dev->next.auto_brightness = enabled;
 	XL_WAYLAND_KDE_LOG("auto_brightness");
+},
+
+.removed = [](void *data, struct kde_output_device_v2 *kde_output_device_v2) {
+	auto dev = reinterpret_cast<KdeOutputDevice *>(data);
+	XL_WAYLAND_KDE_LOG("removed");
+	dev->manager->handleOutputRemoved(dev);
+},
+
+.hdr_icc_profile_path = [](void *data, struct kde_output_device_v2 *kde_output_device_v2, const char *profile_path) {
+	auto dev = reinterpret_cast<KdeOutputDevice *>(data);
+	dev->next.hdr_icc = profile_path;
+	XL_WAYLAND_KDE_LOG("hdr_icc_profile_path");
+},
+
+.hdr_color_profile_source = [](void *data, struct kde_output_device_v2 *kde_output_device_v2, uint32_t source) {
+	auto dev = reinterpret_cast<KdeOutputDevice *>(data);
+	dev->next.hdr_color_profile_source = source;
+	XL_WAYLAND_KDE_LOG("hdr_color_profile_source");
+},
+
+.abm_level = [](void *data, struct kde_output_device_v2 *kde_output_device_v2, uint32_t level) {
+	auto dev = reinterpret_cast<KdeOutputDevice *>(data);
+	dev->next.abm_level = level;
+	XL_WAYLAND_KDE_LOG("abm_level");
 }
 
 };
@@ -377,6 +401,22 @@ static kde_output_order_v1_listener s_kdeOutputOrderListener{
 	order->dirty = true;
 	XL_WAYLAND_KDE_LOG("output: done");
 }
+
+};
+
+static kde_output_device_registry_v2_listener s_kdeOutputDeviceRegistryListener{
+
+.finished = [](void *data, struct kde_output_device_registry_v2 *registry) {
+	auto manager = reinterpret_cast<WaylandKdeDisplayConfigManager *>(data);
+	XL_WAYLAND_KDE_LOG("device_registry: finished");
+	manager->handleDeviceRegistryFinished(registry);
+},
+
+.output = [](void *data, struct kde_output_device_registry_v2 *registry, struct kde_output_device_v2 *output) {
+	auto manager = reinterpret_cast<WaylandKdeDisplayConfigManager *>(data);
+	XL_WAYLAND_KDE_LOG("device_registry: output");
+	manager->addRegistryOutput(output);
+},
 
 };
 
@@ -444,9 +484,24 @@ void WaylandKdeDisplayConfigManager::setCallback(
 	_onConfigChanged = sprt::move(cb);
 }
 
-void WaylandKdeDisplayConfigManager::addOutput(kde_output_device_v2 *d, uint32_t index) {
+// `release` (destructor request) is only present since version 21
+static void WaylandKdeDisplayConfigManager_destroyDevice(KdeOutputDevice *dev) {
+	if (dev->device) {
+		if (dev->version >= KDE_OUTPUT_DEVICE_V2_RELEASE_SINCE_VERSION) {
+			kde_output_device_v2_release(dev->device);
+		} else {
+			kde_output_device_v2_destroy(dev->device);
+		}
+		dev->device = nullptr;
+	}
+}
+
+void WaylandKdeDisplayConfigManager::addOutput(kde_output_device_v2 *d, uint32_t index,
+		uint32_t version, bool fromRegistry) {
 	auto dev = Rc<KdeOutputDevice>::create();
 	dev->index = index;
+	dev->version = version;
+	dev->fromRegistry = fromRegistry;
 	dev->device = d;
 	dev->manager = this;
 
@@ -456,10 +511,10 @@ void WaylandKdeDisplayConfigManager::addOutput(kde_output_device_v2 *d, uint32_t
 }
 
 void WaylandKdeDisplayConfigManager::removeOutput(uint32_t index) {
+	// wl_registry global names can not match devices announced via device registry
 	for (auto it = _devices.begin(); it != _devices.end(); ++it) {
-		if ((*it)->index == index) {
-			kde_output_device_v2_destroy((*it)->device);
-			(*it)->device = nullptr;
+		if (!(*it)->fromRegistry && (*it)->index == index) {
+			WaylandKdeDisplayConfigManager_destroyDevice(it->get());
 
 			_devices.erase(it);
 			break;
@@ -467,9 +522,59 @@ void WaylandKdeDisplayConfigManager::removeOutput(uint32_t index) {
 	}
 }
 
+void WaylandKdeDisplayConfigManager::handleOutputRemoved(KdeOutputDevice *dev) {
+	for (auto it = _devices.begin(); it != _devices.end(); ++it) {
+		if (it->get() == dev) {
+			WaylandKdeDisplayConfigManager_destroyDevice(dev);
+
+			_devices.erase(it);
+			break;
+		}
+	}
+	handleConfigChanged(makeDisplayConfig());
+}
+
+void WaylandKdeDisplayConfigManager::setDeviceRegistry(kde_output_device_registry_v2 *registry,
+		uint32_t version) {
+	if (_deviceRegistry) {
+		kde_output_device_registry_v2_destroy(_deviceRegistry);
+		_deviceRegistry = nullptr;
+	}
+
+	// per-output kde_output_device_v2 globals duplicate the device registry announcements
+	for (auto it = _devices.begin(); it != _devices.end();) {
+		if (!(*it)->fromRegistry) {
+			WaylandKdeDisplayConfigManager_destroyDevice(it->get());
+			it = _devices.erase(it);
+		} else {
+			++it;
+		}
+	}
+
+	_deviceRegistry = registry;
+	_deviceRegistryVersion = version;
+
+	kde_output_device_registry_v2_add_listener(_deviceRegistry,
+			&s_kdeOutputDeviceRegistryListener, this);
+}
+
+void WaylandKdeDisplayConfigManager::addRegistryOutput(kde_output_device_v2 *d) {
+	addOutput(d, _registryDeviceIndex++, _deviceRegistryVersion, true);
+}
+
+void WaylandKdeDisplayConfigManager::handleDeviceRegistryFinished(
+		kde_output_device_registry_v2 *registry) {
+	if (_deviceRegistry == registry) {
+		kde_output_device_registry_v2_destroy(_deviceRegistry);
+		_deviceRegistry = nullptr;
+	}
+}
+
 void WaylandKdeDisplayConfigManager::setOrder(kde_output_order_v1 *order) {
 	if (_order) {
-		kde_output_order_v1_destroy(order);
+		kde_output_order_v1_destroy(_order->order);
+		_order->order = nullptr;
+		_order = nullptr;
 	}
 
 	auto o = Rc<KdeOutputOrder>::create();
@@ -510,11 +615,13 @@ void WaylandKdeDisplayConfigManager::done() {
 void WaylandKdeDisplayConfigManager::invalidate() {
 	DisplayConfigManager::invalidate();
 
-	for (auto &it : _devices) {
-		kde_output_device_v2_destroy(it->device);
-		it->device = nullptr;
-	}
+	for (auto &it : _devices) { WaylandKdeDisplayConfigManager_destroyDevice(it.get()); }
 	_devices.clear();
+
+	if (_deviceRegistry) {
+		kde_output_device_registry_v2_destroy(_deviceRegistry);
+		_deviceRegistry = nullptr;
+	}
 
 	if (_order) {
 		kde_output_order_v1_destroy(_order->order);
@@ -563,7 +670,8 @@ void WaylandKdeDisplayConfigManager::applyDisplayConfig(NotNull<DisplayConfig> c
 			kde_output_configuration_v2_position(c, d->device, rectX, rectY);
 		}
 
-		if (reqMode.xid.ptr != d->getCurrentMode()->mode) {
+		auto currentMode = d->getCurrentMode();
+		if (!currentMode || reqMode.xid.ptr != currentMode->mode) {
 			auto m = d->getMode(reqMode.xid);
 			if (!m) {
 				cb(Status::ErrorInvalidArguemnt);
@@ -601,11 +709,12 @@ KdeOutputDevice *WaylandKdeDisplayConfigManager::getDevice(NativeId dev) {
 Rc<DisplayConfig> WaylandKdeDisplayConfigManager::makeDisplayConfig() {
 	auto cfg = Rc<DisplayConfig>::create();
 	for (auto &it : _devices) {
-		auto orderIt = sprt::find(_order->data.begin(), _order->data.end(), it->data.name);
-
 		uint32_t index = Max<uint32_t>;
-		if (orderIt != _order->data.end()) {
-			index = _order->data.begin() - orderIt;
+		if (_order) {
+			auto orderIt = sprt::find(_order->data.begin(), _order->data.end(), it->data.name);
+			if (orderIt != _order->data.end()) {
+				index = static_cast<uint32_t>(orderIt - _order->data.begin());
+			}
 		}
 
 		auto &m = cfg->monitors.emplace_back(PhysicalDisplay{
