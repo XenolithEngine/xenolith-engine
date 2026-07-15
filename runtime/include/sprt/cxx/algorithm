@@ -26,6 +26,14 @@ THE SOFTWARE.
 #include <sprt/cxx/__algorithm/all_of.h>
 #include <sprt/cxx/__algorithm/copy.h>
 #include <sprt/cxx/__algorithm/find.h>
+#include <sprt/cxx/__algorithm/adjacent_find.h>
+#include <sprt/cxx/__algorithm/is_permutation.h>
+#include <sprt/cxx/__algorithm/search.h>
+#include <sprt/cxx/__algorithm/heap.h>
+#include <sprt/cxx/__algorithm/merge.h>
+#include <sprt/cxx/__algorithm/generate.h>
+#include <sprt/cxx/__algorithm/nth_element.h>
+#include <sprt/cxx/__algorithm/shuffle.h>
 #include <sprt/cxx/__algorithm/bounds.h>
 #include <sprt/cxx/__algorithm/reverse.h>
 #include <sprt/cxx/__algorithm/next_permutation.h>
@@ -33,5 +41,22 @@ THE SOFTWARE.
 #include <sprt/cxx/__algorithm/lexicographical_compare.h>
 #include <sprt/cxx/__algorithm/sort.h>
 #include <sprt/cxx/__algorithm/remove.h>
+#include <sprt/cxx/__algorithm/fill.h>
+#include <sprt/cxx/__algorithm/move.h>
+#include <sprt/cxx/__algorithm/rotate.h>
+#include <sprt/cxx/__algorithm/swap_ranges.h>
+#include <sprt/cxx/__algorithm/replace.h>
+#include <sprt/cxx/__algorithm/clamp.h>
+#include <sprt/cxx/__algorithm/set_operations.h>
+#include <sprt/cxx/__algorithm/for_each.h>
+#include <sprt/cxx/__algorithm/count.h>
+#include <sprt/cxx/__algorithm/min_max_element.h>
+#include <sprt/cxx/__algorithm/transform.h>
+#include <sprt/cxx/__algorithm/replace_copy.h>
+#include <sprt/cxx/__algorithm/is_sorted.h>
+#include <sprt/cxx/__algorithm/binary_search.h>
+#include <sprt/cxx/__algorithm/partition.h>
+#include <sprt/cxx/__algorithm/unique.h>
+#include <sprt/cxx/__algorithm/stable_sort.h>
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_ALGORITHM_

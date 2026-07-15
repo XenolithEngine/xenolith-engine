@@ -113,6 +113,23 @@ void performStringViewTest() {
 	using namespace std::string_view_literals;
 	auto lit = "literal"sv;
 	printf("literal: %.*s size=%d\n", (int) lit.size(), lit.data(), (int) lit.size());
+
+	// string members accepting a string_view-convertible arg (NOT const char*):
+	// append / operator+= / replace / find / rfind / compare each take a view.
+	std::string base = "alpha-";
+	std::string_view tv = "beta";
+	base.append(tv);            // append(sv)
+	base += "-gamma"sv;         // operator+=(sv)
+	std::string hay = "one two two three";
+	std::string_view nd = "two";
+	std::string rep = "0123456789";
+	rep.replace(2, 3, "XY"sv);  // replace(pos,len,sv)
+	printf("sv_ops: built=%s find=%d rfind=%d replace=%s\n", base.c_str(), (int) hay.find(nd),
+			(int) hay.rfind(nd), rep.c_str());
+	printf("sv_ops: cmp_eq=%d cmp_lt=%d cmp_gt=%d\n",
+			(int) (std::string("abc").compare("abc"sv) == 0),
+			(int) (std::string("abc").compare("abd"sv) < 0),
+			(int) (std::string("abd").compare("abc"sv) > 0));
 }
 
 } // namespace sprt::test

@@ -271,6 +271,40 @@ bool _mi_prim_random_buf(void* buf, size_t buf_len) {
 // Thread init/done
 //----------------------------------------------------------------
 
+#if defined(MI_USE_PTHREADS)
+
+// sprt: the freestanding wasm runtime provides full pthreads, including key
+// destructors that run on thread exit. Detect thread termination with a pthread
+// key exactly like the unix prim, so mimalloc reclaims a thread's heap (abandons
+// its segments for other threads to pick up) when the thread ends instead of
+// leaking it. Without this the wasi prim assumes a single thread and never runs
+// _mi_thread_done.
+static pthread_key_t mi_wasm_heap_done_key = (pthread_key_t)(-1);
+
+static void mi_wasm_pthread_done(void* value) {
+  if (value != NULL) {
+    _mi_thread_done((mi_heap_t*)value);
+  }
+}
+
+void _mi_prim_thread_init_auto_done(void) {
+  pthread_key_create(&mi_wasm_heap_done_key, &mi_wasm_pthread_done);
+}
+
+void _mi_prim_thread_done_auto_done(void) {
+  if (mi_wasm_heap_done_key != (pthread_key_t)(-1)) {  // do not leak the key
+    pthread_key_delete(mi_wasm_heap_done_key);
+  }
+}
+
+void _mi_prim_thread_associate_default_heap(mi_heap_t* heap) {
+  if (mi_wasm_heap_done_key != (pthread_key_t)(-1)) {
+    pthread_setspecific(mi_wasm_heap_done_key, heap);
+  }
+}
+
+#else
+
 void _mi_prim_thread_init_auto_done(void) {
   // nothing
 }
@@ -282,3 +316,5 @@ void _mi_prim_thread_done_auto_done(void) {
 void _mi_prim_thread_associate_default_heap(mi_heap_t* heap) {
   MI_UNUSED(heap);
 }
+
+#endif

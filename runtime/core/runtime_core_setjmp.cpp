@@ -113,7 +113,12 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_setjmp)(int arg, __SPRT_ID(jmp_buf) buf) {
 	}
 
 	struct CFALookup {
-		int offset = 1; // lookup for an address for frame directly above us
+		// Capture the CFA of the frame ONE ABOVE us — the function that called setjmp,
+		// whose frame the jmp_buf belongs to and which longjmp's forced-unwind must find.
+		// _Unwind_Backtrace visits this cfa_setjmp frame first, so with the pre-decrement
+		// (`--offset > 0`) below we need offset=2 to skip our own frame and land on the
+		// caller.
+		int offset = 2;
 		uintptr_t result = 0;
 	} lookup;
 
@@ -138,7 +143,12 @@ __SPRT_C_FUNC int __SPRT_ID(cfa_sigsetjmp)(int arg, __SPRT_ID(sigjmp_buf) buf, i
 	}
 
 	struct CFALookup {
-		int offset = 1; // lookup for an address for frame directly above us
+		// Capture the CFA of the frame ONE ABOVE us — the function that called setjmp,
+		// whose frame the jmp_buf belongs to and which longjmp's forced-unwind must find.
+		// _Unwind_Backtrace visits this cfa_setjmp frame first, so with the pre-decrement
+		// (`--offset > 0`) below we need offset=2 to skip our own frame and land on the
+		// caller.
+		int offset = 2;
 		uintptr_t result = 0;
 	} lookup;
 

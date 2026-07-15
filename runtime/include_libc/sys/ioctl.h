@@ -72,7 +72,7 @@ int ioctl(int fd, int op, ...) SPRT_UMBRELLA_END
 {
 	intptr_t arg;
 	__sprt_va_list ap;
-	__sprt_va_start(ap, __cmd);
+	__sprt_va_start(ap, op);
 	arg = __sprt_va_arg(ap, intptr_t);
 	__sprt_va_end(ap);
 

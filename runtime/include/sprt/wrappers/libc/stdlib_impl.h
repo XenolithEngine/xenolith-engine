@@ -263,7 +263,12 @@ void qsort_r(void *a, size_t b, size_t c, int (*cmp)(const void *, const void *,
 }
 #endif
 
-#if !defined(__cplusplus) || __STDC_HOSTED__ == 0
+// abs/labs/llabs are normally suppressed in hosted C++ (the sprt::_cstdlib C++
+// overloads provide them); but UNDER libc++ the sprt C++ overloads are kept out of
+// the global namespace, and libc++ needs the C-linkage names from the C library
+// (its own _LIBCPP_PREFERRED_OVERLOAD abs dominates without ambiguity, and it does
+// not provide labs/llabs at all). So emit them as extern-C in the libc++ case too.
+#if !defined(__cplusplus) || __STDC_HOSTED__ == 0 || defined(_LIBCPP_VERSION)
 SPRT_FUNC_BEGIN
 int abs(int value) SPRT_FUNC_END
 #if SPRT_FUNC_BODY
@@ -313,6 +318,17 @@ lldiv_t lldiv(long long a, long long value) SPRT_FUNC_END
 }
 #endif
 
+// C++ <cstdlib> overloads div for the wider integer types so that div(long, long)
+// yields ldiv_t and div(long long, long long) yields lldiv_t (in C, div is int-only
+// and ldiv/lldiv are separate names). Windows only: this is the MSVCRT contract —
+// libc++'s <stdlib.h> provides these itself on every other platform (guarded on
+// !_LIBCPP_MSVCRT) and would clash here, so sprt supplies them exactly where libc++
+// defers to the platform.
+#if defined(__cplusplus) && defined(_WIN32)
+SPRT_FORCEINLINE ldiv_t div(long a, long b) { return ldiv(a, b); }
+SPRT_FORCEINLINE lldiv_t div(long long a, long long b) { return lldiv(a, b); }
+#endif
+
 SPRT_FUNC_BEGIN
 int setenv(const char *n, const char *v, int r) SPRT_FUNC_END
 #if SPRT_FUNC_BODY
@@ -331,6 +347,14 @@ int unsetenv(const char *n) SPRT_FUNC_END
 
 SPRT_FUNC_BEGIN
 int putenv(char *s) SPRT_FUNC_END
+#if SPRT_FUNC_BODY
+{
+	return __sprt_putenv(s);
+}
+#endif
+
+SPRT_FUNC_BEGIN
+int _putenv(char *s) SPRT_FUNC_END
 #if SPRT_FUNC_BODY
 {
 	return __sprt_putenv(s);

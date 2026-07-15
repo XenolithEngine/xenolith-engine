@@ -94,8 +94,7 @@ static int sprt_qlock_wake_all(__SPRT_ID(sprt_qlock_t) * value,
 
 static int sprt_rlock_wait(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_rlock_t) * expected,
 		__SPRT_ID(sprt_timeout_t) timeout, __SPRT_ID(sprt_lock_flags_t) flags) {
-	int r = __builtin_wasm_memory_atomic_wait64(
-			reinterpret_cast<long long *>(&value->u64),
+	int r = __builtin_wasm_memory_atomic_wait64(reinterpret_cast<long long *>(&value->u64),
 			static_cast<long long>(expected->u64), __wasm_wait_timeout(timeout));
 	if (r == __WASM_WAIT_TIMED_OUT) {
 		__sprt_errno = ETIMEDOUT;
@@ -113,7 +112,8 @@ static int sprt_rlock_supports(__SPRT_ID(sprt_lock_flags_t) flags) {
 
 static int sprt_rlock_try_wait(__SPRT_ID(sprt_rlock_t) * value,
 		__SPRT_ID(sprt_lock_flags_t) flags) {
-	return 0;
+	__sprt_errno = EBUSY;
+	return -1;
 }
 
 static int sprt_rlock_wake(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_lock_flags_t) flags) {

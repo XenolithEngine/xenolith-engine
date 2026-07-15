@@ -30,9 +30,7 @@ namespace sprt {
 inline namespace __cxx_type_traits {
 
 template <typename TypeA, typename TypeB>
-struct is_same {
-	static constexpr bool value = __is_same(TypeA, TypeB);
-};
+struct is_same : bool_constant<__is_same(TypeA, TypeB)> { };
 
 template <typename TypeA, typename TypeB>
 inline constexpr bool is_same_v = __is_same(TypeA, TypeB);
@@ -43,17 +41,13 @@ is_convertable
 */
 
 template <typename From, typename To>
-struct is_convertible {
-	static constexpr bool value = __is_convertible(From, To);
-};
+struct is_convertible : bool_constant<__is_convertible(From, To)> { };
 
 template <typename From, typename To>
 inline constexpr bool is_convertible_v = __is_convertible(From, To);
 
 template <typename From, typename To>
-struct is_nothrow_convertible {
-	static constexpr auto value = __is_nothrow_convertible(From, To);
-};
+struct is_nothrow_convertible : bool_constant<__is_nothrow_convertible(From, To)> { };
 
 template <typename From, typename To>
 inline constexpr bool is_nothrow_convertible_v = __is_nothrow_convertible(From, To);
@@ -87,9 +81,7 @@ is_base_of
 */
 
 template <typename Base, typename Derived>
-struct is_base_of {
-	static constexpr auto value = __is_base_of(Base, Derived);
-};
+struct is_base_of : bool_constant<__is_base_of(Base, Derived)> { };
 
 template <typename Base, typename Derived>
 inline constexpr bool is_base_of_v = __is_base_of(Base, Derived);
@@ -214,7 +206,12 @@ struct has_unique_object_representations
 template <typename T>
 inline constexpr bool has_unique_object_representations_v = __has_unique_object_representations(T);
 
-} // inline namespace __cxx_type_traits
+
+SPRT_LOCAL inline constexpr bool is_constant_evaluated() noexcept {
+	return __builtin_is_constant_evaluated();
+}
+
+} // namespace __cxx_type_traits
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_QUERIES_H_

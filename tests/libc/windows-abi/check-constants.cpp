@@ -39,6 +39,15 @@ SPRT_CONST(RRF_WOW64_MASK);
 SPRT_CONST(RRF_NOEXPAND);
 SPRT_CONST(RRF_ZEROONFAILURE);
 
+// === REG_* (registry value types, winnt.h) =================================
+SPRT_CONST(REG_NONE);
+SPRT_CONST(REG_SZ);
+SPRT_CONST(REG_EXPAND_SZ);
+SPRT_CONST(REG_BINARY);
+SPRT_CONST(REG_DWORD);
+SPRT_CONST(REG_MULTI_SZ);
+SPRT_CONST(REG_QWORD);
+
 // === VARENUM (VT_*) ========================================================
 SPRT_ENUM(VT_EMPTY);
 SPRT_ENUM(VT_NULL);
@@ -121,6 +130,21 @@ SPRT_ENUM(CLSCTX_RESERVED6);
 SPRT_ENUM(CLSCTX_ACTIVATE_ARM32_SERVER);
 SPRT_ENUM(CLSCTX_ALLOW_LOWER_TRUST_REGISTRATION);
 SPRT_ENUM(CLSCTX_PS_DLL);
+// CLSCTX_ALL is a *macro* in the SDK (combaseapi.h) but an enum member in the abi;
+// the bare identifier would macro-expand, so capture the SDK value, drop the macro,
+// then compare it against the abi enumerator.
+static constexpr long long __sdk_clsctx_all = CLSCTX_ALL;
+#undef CLSCTX_ALL
+static_assert((long long) (sprt_abi::CLSCTX_ALL) == __sdk_clsctx_all,
+		"sprt_abi::CLSCTX_ALL != SDK CLSCTX_ALL");
+
+// === HRESULT helper macros (function-like: check a sample expansion) ========
+// __SPRT_HRESULT_CODE(hr) must extract the low 16 bits exactly like the SDK's
+// HRESULT_CODE. 0x8007000E == E_OUTOFMEMORY -> facility WIN32, code 0x000E.
+static_assert(__SPRT_HRESULT_CODE(0x8007000EL) == HRESULT_CODE(0x8007000EL),
+		"__SPRT_HRESULT_CODE != SDK HRESULT_CODE");
+static_assert(__SPRT_HRESULT_CODE(0x80070005L) == HRESULT_CODE(0x80070005L),
+		"__SPRT_HRESULT_CODE != SDK HRESULT_CODE");
 
 // === handle duplication ====================================================
 SPRT_CONST(DUPLICATE_CLOSE_SOURCE);
@@ -167,7 +191,8 @@ SPRT_CONST(GENERIC_EXECUTE);
 SPRT_CONST(GENERIC_ALL);
 
 // === standard/specific access rights =======================================
-SPRT_CONST_MAP(_DELETE, DELETE);
+// abi now spells this __SPRT_DELETE (was __SPRT__DELETE), matching the SDK DELETE.
+SPRT_CONST(DELETE);
 SPRT_CONST(READ_CONTROL);
 SPRT_CONST(WRITE_DAC);
 SPRT_CONST(WRITE_OWNER);

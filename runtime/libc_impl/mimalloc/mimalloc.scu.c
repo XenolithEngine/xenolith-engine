@@ -29,3 +29,22 @@ int posix_memalign(void **ptr, size_t size, size_t align) {
 void *aligned_alloc(size_t align, size_t size) { return mi_aligned_alloc(align, size); }
 
 size_t malloc_usable_size(void *p) { return mi_usable_size(p); }
+
+// Total bytes currently allocated from the default heap, summed over mimalloc's
+// areas (used-block count * block size). Backs <malloc.h>'s _heapwalk / llvm's
+// Process::GetMallocUsage. Area-level (visit_blocks == false) so the cost is
+// O(areas), not O(individual blocks).
+static bool __sprt_malloc_usage_visit(const mi_heap_t *heap, const mi_heap_area_t *area,
+		void *block, size_t block_size, void *arg) {
+	(void) heap;
+	(void) block;
+	(void) block_size;
+	*(size_t *) arg += area->used * area->block_size;
+	return true; // keep visiting
+}
+
+size_t __sprt_malloc_usage(void) __SPRT_NOEXCEPT {
+	size_t total = 0;
+	mi_heap_visit_blocks(mi_heap_get_default(), false, &__sprt_malloc_usage_visit, &total);
+	return total;
+}

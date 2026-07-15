@@ -105,9 +105,10 @@ THE SOFTWARE.
 	  _msize           - report the usable size of a heap allocation
 	  _wgetenv         - wide-character getenv
 
-	In hosted C++ the ISO functions live in sprt::_cstdlib (and in std:: via the
-	include_libc/stl wrappers); in freestanding / non-SPRT-build mode they are plain C
-	declarations. CRT extensions and the locale-alias macros are always declared.
+	In hosted C++ the ISO functions live in sprt::_cstdlib;
+	in freestanding / non-SPRT-build mode they are plain C
+	declarations. CRT extensions and the locale-alias macros
+	are always declared.
 */
 
 #if defined(__SPRT_BUILD) && __STDC_HOSTED__ == 1
@@ -117,6 +118,21 @@ THE SOFTWARE.
 #else
 
 #include <sprt/wrappers/libc/stdlib.h>
+
+// MSVC's <stdlib.h> transitively pulls in <corecrt_malloc.h>, so the _aligned_*
+// family is reachable through <cstdlib>/<stdlib.h> as well as <malloc.h>. Mirror
+// that on the Windows target so MSVC-flavoured code that includes only <cstdlib>
+// (e.g. libc++'s test-support count_new.h, which calls _aligned_malloc under
+// _LIBCPP_MSVCRT_LIKE) still resolves them. The canonical definitions live in
+// <malloc.h>; these are guarded so including both headers is not a redefinition.
+#if defined(_WIN32)
+#ifndef _aligned_malloc
+#define _aligned_malloc(Size, Align) aligned_alloc(Align, Size)
+#endif
+#ifndef _aligned_free
+#define _aligned_free(Ptr) aligned_free(Ptr)
+#endif
+#endif // _WIN32
 
 #endif
 

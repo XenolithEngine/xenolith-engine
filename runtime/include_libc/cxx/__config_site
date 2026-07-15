@@ -1,0 +1,124 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef _LIBCPP___CONFIG_SITE
+#define _LIBCPP___CONFIG_SITE
+
+#define _LIBCPP_ABI_VERSION 1
+// sprt owns this libc++ tree: put every std symbol in the inline ABI namespace
+// std::__sprt (not the stock std::__1) so it never clashes at link time with a
+// second, foreign libc++ (e.g. a host libc++ using std::__1) pulled into the
+// same image.
+#define _LIBCPP_ABI_NAMESPACE __sprt
+#define _LIBCPP_ABI_FORCE_ITANIUM 0
+#define _LIBCPP_ABI_FORCE_MICROSOFT 0
+#define _LIBCPP_HAS_THREADS 1
+#define _LIBCPP_HAS_MONOTONIC_CLOCK 1
+#define _LIBCPP_HAS_TERMINAL 1
+#define _LIBCPP_HAS_MUSL_LIBC 0
+// sprt overlay: sprt provides a full POSIX pthread implementation on EVERY target
+// (native on Linux/Apple, WinAPI-backed on Windows via pthread_native_winapi.cc, and
+// pthread_native_wasm.cc on wasm), so libc++'s low-level __libcpp_mutex_/__libcpp_cond_
+// API always maps onto sprt pthread. Force _LIBCPP_HAS_THREAD_API_PTHREAD instead of
+// leaving it 0 and letting libc++'s auto-detect (__config) run: that heuristic picks the
+// win32 backend under _LIBCPP_WIN32API (wanting <windows.h> CreateMutex/... sprt does not
+// wrap) and errors "No thread API" on bare wasm32. On Linux the heuristic already lands on
+// pthread, so forcing it here is identical there and merely extends the same wiring to the
+// other targets. The high-level std::mutex/condition_variable overlay (SPRT_STD_THREADING_
+// SPRT) is a separate layer and is unaffected.
+#define _LIBCPP_HAS_THREAD_API_PTHREAD 1
+#define _LIBCPP_HAS_THREAD_API_EXTERNAL 0
+#define _LIBCPP_HAS_THREAD_API_WIN32 0
+#define _LIBCPP_HAS_THREAD_API_C11 0 // FIXME: Is this guarding dead code?
+// sprt overlay: on the *-windows-msvc triple __config auto-defines _LIBCPP_WIN32API (from
+// _WIN32). That switches every OS-service subsystem of libc++ to its <windows.h> backend:
+// the filesystem reimplements stat/statvfs/readlink/... against WinAPI in posix_compat.h,
+// chrono/system_error/ostream-print take their Win32 code paths, and path::value_type
+// becomes wchar_t. sprt already ships a full POSIX libc on Windows (char/UTF-8 stat,
+// statvfs, open, clock_gettime, strerror, fopen — each converts to WinAPI internally), so
+// those reimplementations only duplicate sprt's libc and risk diverging from it. Suppress
+// _LIBCPP_WIN32API (same "override libc++'s wrong Win32 auto-detect" rationale as the
+// _LIBCPP_HAS_THREAD_API_PTHREAD block above) so the whole library takes its POSIX paths and
+// routes through sprt: path becomes char/UTF-8 and files open via the char fopen backend.
+// _LIBCPP_SHORT_WCHAR and _LIBCPP_MSVCRT[_LIKE] are deliberately left as __config sets them
+// — they describe the compiler's 16-bit wchar_t ABI and the C-runtime/locale-backend flavor,
+// not the OS API surface, and the recent locale work depends on the windows locale backend.
+#if defined(_WIN32)
+#define _LIBCPP_SPRT_NO_WIN32API
+#endif
+// Match sprt's own import/export policy (see SPRT_API in <sprt/c/bits/__sprt_def.h>, keyed
+// on SPRT_BUILD_RUNTIME / SPRT_SHARED_RUNTIME): a symbol is dllimport ONLY when the code
+// consumes the runtime as an external shared DLL (SPRT_SHARED_RUNTIME); when building the
+// runtime (SPRT_BUILD_RUNTIME) or in a static application it is defined LOCALLY with no
+// dllimport/dllexport — the runtime DLL publishes its exports through a .def, not via
+// per-symbol annotations. libc++ must follow the same rule: otherwise the library TUs
+// (_LIBCPP_BUILDING_LIBRARY -> dllexport) and the consuming/test TUs (dllimport) disagree
+// inside one static image, corrupting the import/export tables (lld-link LNK4217, "locally
+// defined symbol imported") and letting an import resolve back into the application instead
+// of the intended system DLL (e.g. ntdll's wcslen/wcsnlen). Disabling the annotations makes
+// _LIBCPP_EXPORTED_FROM_ABI empty and takes precedence over _LIBCPP_BUILDING_LIBRARY, so all
+// TU kinds agree on plain local symbols. Only a shared-runtime consumer keeps dllimport.
+#if !defined(SPRT_SHARED_RUNTIME)
+#define _LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS
+#endif
+#define _LIBCPP_HAS_VENDOR_AVAILABILITY_ANNOTATIONS 0
+// sprt overlay: on the *-windows-msvc triple libc++ auto-detects _LIBCPP_ABI_MICROSOFT
+// (_WIN32 && _MSC_VER) and would then enable _LIBCPP_ABI_VCRUNTIME, pulling the real
+// MSVC C++ runtime headers (<new.h>, <vcruntime_exception.h>, ...). sprt is its own
+// C++ ABI layer and ships no vcruntime, so force the "Microsoft ABI without vcruntime"
+// mode: libc++ then supplies placement-new and the exception base inline itself. Harmless
+// on non-Microsoft targets, where _LIBCPP_ABI_VCRUNTIME is never gated on in the first place.
+#define _LIBCPP_NO_VCRUNTIME
+/* #undef _LIBCPP_TYPEINFO_COMPARISON_IMPLEMENTATION */
+#define _LIBCPP_HAS_FILESYSTEM 1
+#define _LIBCPP_HAS_RANDOM_DEVICE 1
+#define _LIBCPP_HAS_LOCALIZATION 1
+#define _LIBCPP_HAS_UNICODE 1
+#define _LIBCPP_HAS_WIDE_CHARACTERS 1
+/* #undef _LIBCPP_HAS_NO_STD_MODULES */
+#define _LIBCPP_HAS_TIME_ZONE_DATABASE 1
+#define _LIBCPP_INSTRUMENTED_WITH_ASAN 0
+
+// PSTL backends
+/* #undef _LIBCPP_PSTL_BACKEND_SERIAL */
+#define _LIBCPP_PSTL_BACKEND_STD_THREAD
+/* #undef _LIBCPP_PSTL_BACKEND_LIBDISPATCH */
+
+// Hardening.
+#define _LIBCPP_HARDENING_MODE_DEFAULT 2
+
+// __USE_MINGW_ANSI_STDIO gets redefined on MinGW
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmacro-redefined"
+#endif
+
+// sprt overlay: sprt is its own (UTF-8-centric) libc and exposes no glibc-style
+// ctype mask table (__ctype_b_loc / _ISalpha), so <__locale>'s per-platform
+// rune-table branches do not match. Use libc++'s own default rune table: Unicode
+// character classification is locale-invariant across UTF-8 locales, so a fixed
+// table is semantically correct; locale-sensitive case mapping is handled
+// separately by the ctype do_toupper/do_tolower facets.
+#define _LIBCPP_PROVIDES_DEFAULT_RUNE_TABLE
+
+// sprt overlay: the sprt libc provides POSIX clock_gettime + CLOCK_MONOTONIC (see
+// include_libc/time.h), so libc++'s out-of-line steady_clock::now (src/chrono.cpp)
+// can use it. This selects the clock_gettime(CLOCK_MONOTONIC) implementation instead
+// of tripping the "Monotonic clock not implemented on this platform" #error. Normally
+// injected by libc++'s CMake check_symbol_exists(clock_gettime); hand-set here.
+#define _LIBCPP_HAS_CLOCK_GETTIME
+
+#ifdef __wasm__
+#define _LIBCPP_ELAST 133
+#endif
+
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+
+#endif // _LIBCPP___CONFIG_SITE

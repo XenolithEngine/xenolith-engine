@@ -533,6 +533,24 @@ bool recursive_timed_mutex::try_lock() noexcept {
 	return false;
 }
 
+bool recursive_timed_mutex::try_lock_for(const timeout_type &rel_time) {
+	// Timed variant of lock(): same recursive re-lock path, but with the recursive-lock
+	// clock (__sprt_sprt_rlock_now) and a finite, mutable timeout that the futex wait
+	// loop decrements. Status::Timeout falls through to `false`.
+	__sprt_sprt_rlock_t tid;
+	*rmutex_base::getNativeValue(tid) = __sprt_gettid();
+
+	timeout_type timeout = rel_time;
+	auto res = rmutex_base::_lock<__sprt_sprt_rlock_wait, __sprt_sprt_rlock_now,
+			bool(__SPRT_SPRT_RLOCK_PI_REQUIRES_EXTENDED_CALL)>(_mutex.value, tid, &timeout, 0);
+	switch (res) {
+	case Status::Ok:
+	case Status::Propagate: ++_mutex.counter; return true;
+	default: break;
+	}
+	return false;
+}
+
 void recursive_timed_mutex::unlock() {
 	// we can not use thread locals until full initialization is complete
 	// becouse some static inits may use mutexes, but thread locals can be initialized after statics

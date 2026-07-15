@@ -28,6 +28,7 @@ THE SOFTWARE.
 #include <sprt/c/sys/__sprt_stat.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 
+#include <sprt/cxx/atomic>
 #include <sprt/cxx/mutex>
 #include <sprt/cxx/unordered_map>
 #include <sprt/cxx/unordered_set>
@@ -204,6 +205,13 @@ __freestanding_locale_struct *__get_default_locale_struct();
 __locale_map *__get_locale(int cat, const char *, size_t);
 void __free_locale(__locale_map *);
 
+// True for the C-family locales — the UTF-8 default ("C.UTF8") AND the single-byte
+// "C"/"POSIX" locale — plus the null/global handle. These use raw ASCII/codepoint
+// ctype and POSIX byte collation, NOT the platform's locale services (their names
+// "C"/"C.UTF8" are not valid Windows locale names, so CompareStringEx/LCMapStringEx
+// would fail). The two differ ONLY in MB_CUR_MAX (1 vs 4); everything else is C/POSIX.
+bool __locale_is_c(const __locale_map *);
+
 bool __init_exceptions();
 void __cleanup_exceptions();
 
@@ -226,6 +234,7 @@ int __wcsncasecmp_l(const wchar_t *, const wchar_t *, __sprt_size_t, const __loc
 int __wcscoll_l(const wchar_t *, const wchar_t *, const __locale_map *);
 size_t __wcsxfrm_l(wchar_t *__restrict, const wchar_t *__restrict, __sprt_size_t,
 		const __locale_map *);
+int __strcoll_l(const char *, const char *, const __locale_map *);
 size_t __strxfrm_l(char *__restrict, const char *__restrict, __sprt_size_t,
 		const __locale_map *);
 

@@ -23,6 +23,26 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_OPTIONAL_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_OPTIONAL_H_
 
+#include <sprt/cxx/detail/__stl_value_provider.h>
+
+#if __SPRT_STL_LIBCXX_VALUETYPES
+// Project libc++'s <optional> into namespace sprt (sprt::optional IS std::optional): a
+// single value-type implementation shared with the vendored libc++ pair/tuple/variant/any,
+// so there is no dual-namespace divergence between a hand-written sprt::optional and the
+// libc++ std::optional the hosted `<optional>` entry already provides.
+#include <libcxx/__sprt_compat.h>
+#include <libcxx/optional>
+
+namespace sprt {
+using std::bad_optional_access;
+using std::make_optional;
+using std::nullopt;
+using std::nullopt_t;
+using std::optional;
+} // namespace sprt
+
+#else // hosted sprt build: hand-written <optional>
+
 // Standard-conforming <optional>, ported from LLVM libc++'s <optional>
 // (runtime/toolchains/src/llvm-project/libcxx/include/optional) into namespace
 // sprt and adapted to this freestanding runtime:
@@ -80,16 +100,26 @@ public:
 	const char *what() const noexcept { return "bad_optional_access"; }
 };
 
-[[noreturn]] inline void __throw_bad_optional_access() noexcept {
+[[noreturn]]
+inline void __throw_bad_optional_access() noexcept {
 	// -fno-exceptions: mirror libc++'s _LIBCPP_VERBOSE_ABORT strategy and turn
 	// the would-be `throw bad_optional_access()` into a defined abort.
 	__builtin_abort();
 }
 
-// [optional.nullopt], no-value state indicator
-struct nullopt_t { };
+// [optional.nullopt], no-value state indicator. The constructor takes a private
+// tag so that `nullopt_t` is NOT constructible from `{}` — otherwise `opt = {}`
+// would be ambiguous between `operator=(nullopt_t)` and the copy/move assignment
+// (both viable for an empty braced-init). This mirrors the standard requirement
+// that nullopt_t be a non-aggregate, non-default-constructible type.
+struct nullopt_t {
+	enum class _Construct {
+		_Token
+	};
+	explicit constexpr nullopt_t(_Construct) noexcept { }
+};
 
-inline constexpr nullopt_t nullopt = nullopt_t();
+inline constexpr nullopt_t nullopt{nullopt_t::_Construct::_Token};
 
 template <typename _Tp>
 class optional;
@@ -192,8 +222,10 @@ struct __optional_storage_base : __optional_destruct_base<_Tp> {
 
 	constexpr value_type &__get() & noexcept { return this->__val_; }
 	constexpr const value_type &__get() const & noexcept { return this->__val_; }
-	constexpr value_type &&__get() && noexcept { return sprt::move(this->__val_); }
-	constexpr const value_type &&__get() const && noexcept { return sprt::move(this->__val_); }
+	constexpr value_type &&__get() && noexcept { return sprt::move_unsafe(this->__val_); }
+	constexpr const value_type &&__get() const && noexcept {
+		return sprt::move_unsafe(this->__val_);
+	}
 
 	template <typename... _Args>
 	constexpr void __construct(_Args &&...__args) noexcept {
@@ -267,8 +299,7 @@ struct __optional_move_base<_Tp, false> : __optional_copy_base<_Tp> {
 };
 
 template <typename _Tp,
-		bool = is_trivially_destructible<_Tp>::value
-				&& is_trivially_copy_constructible<_Tp>::value
+		bool = is_trivially_destructible<_Tp>::value && is_trivially_copy_constructible<_Tp>::value
 				&& is_trivially_copy_assignable<_Tp>::value>
 struct __optional_copy_assign_base : __optional_move_base<_Tp> {
 	using __optional_move_base<_Tp>::__optional_move_base;
@@ -292,8 +323,7 @@ struct __optional_copy_assign_base<_Tp, false> : __optional_move_base<_Tp> {
 };
 
 template <typename _Tp,
-		bool = is_trivially_destructible<_Tp>::value
-				&& is_trivially_move_constructible<_Tp>::value
+		bool = is_trivially_destructible<_Tp>::value && is_trivially_move_constructible<_Tp>::value
 				&& is_trivially_move_assignable<_Tp>::value>
 struct __optional_move_assign_base : __optional_copy_assign_base<_Tp> {
 	using __optional_copy_assign_base<_Tp>::__optional_copy_assign_base;
@@ -309,8 +339,7 @@ struct __optional_move_assign_base<_Tp, false> : __optional_copy_assign_base<_Tp
 	__optional_move_assign_base(__optional_move_assign_base &&) = default;
 	__optional_move_assign_base &operator=(const __optional_move_assign_base &) = default;
 
-	constexpr __optional_move_assign_base &operator=(
-			__optional_move_assign_base &&__opt) noexcept {
+	constexpr __optional_move_assign_base &operator=(__optional_move_assign_base &&__opt) noexcept {
 		this->__assign_from(sprt::move(__opt));
 		return *this;
 	}
@@ -321,9 +350,9 @@ using __optional_sfinae_ctor_base_t =
 		__sfinae_ctor_base<is_copy_constructible<_Tp>::value, is_move_constructible<_Tp>::value>;
 
 template <typename _Tp>
-using __optional_sfinae_assign_base_t = __sfinae_assign_base<
-		(is_copy_constructible<_Tp>::value && is_copy_assignable<_Tp>::value),
-		(is_move_constructible<_Tp>::value && is_move_assignable<_Tp>::value)>;
+using __optional_sfinae_assign_base_t =
+		__sfinae_assign_base< (is_copy_constructible<_Tp>::value && is_copy_assignable<_Tp>::value),
+				(is_move_constructible<_Tp>::value && is_move_assignable<_Tp>::value)>;
 
 // [optional.optional], class template optional -------------------------------
 
@@ -363,9 +392,10 @@ private:
 		}
 	};
 	template <typename _Up>
-	using _CheckOptionalArgsCtor = _If<
-			!is_same_v<remove_cvref_t<_Up>, in_place_t> && !is_same_v<remove_cvref_t<_Up>, optional>
-					&& (!is_same_v<remove_cv_t<_Tp>, bool> || !__is_optional_v<remove_cvref_t<_Up>>),
+	using _CheckOptionalArgsCtor = _If< !is_same_v<remove_cvref_t<_Up>, in_place_t>
+					&& !is_same_v<remove_cvref_t<_Up>, optional>
+					&& (!is_same_v<remove_cv_t<_Tp>, bool>
+							|| !__is_optional_v<remove_cvref_t<_Up>>),
 			_CheckOptionalArgsConstructor, __check_tuple_constructor_fail>;
 
 	template <typename _QualUp>
@@ -385,12 +415,14 @@ private:
 		template <typename _Up, typename _QUp = _QualUp>
 		static constexpr bool __enable_implicit() {
 			return is_convertible_v<_QUp, _Tp>
-					&& (is_same_v<remove_cv_t<_Tp>, bool> || !__check_constructible_from_opt<_Up>());
+					&& (is_same_v<remove_cv_t<_Tp>, bool>
+							|| !__check_constructible_from_opt<_Up>());
 		}
 		template <typename _Up, typename _QUp = _QualUp>
 		static constexpr bool __enable_explicit() {
 			return !is_convertible_v<_QUp, _Tp>
-					&& (is_same_v<remove_cv_t<_Tp>, bool> || !__check_constructible_from_opt<_Up>());
+					&& (is_same_v<remove_cv_t<_Tp>, bool>
+							|| !__check_constructible_from_opt<_Up>());
 		}
 		template <typename _Up, typename _QUp = _QualUp>
 		static constexpr bool __enable_assign() {
@@ -400,13 +432,11 @@ private:
 	};
 
 	template <typename _Up, typename _QualUp>
-	using _CheckOptionalLikeCtor =
-			_If<(!is_same_v<_Up, _Tp> && is_constructible_v<_Tp, _QualUp>),
-					_CheckOptionalLikeConstructor<_QualUp>, __check_tuple_constructor_fail>;
+	using _CheckOptionalLikeCtor = _If<(!is_same_v<_Up, _Tp> && is_constructible_v<_Tp, _QualUp>),
+			_CheckOptionalLikeConstructor<_QualUp>, __check_tuple_constructor_fail>;
 	template <typename _Up, typename _QualUp>
-	using _CheckOptionalLikeAssign = _If<
-			(!is_same_v<_Up, _Tp> && is_constructible_v<_Tp, _QualUp>
-					&& is_assignable_v<_Tp &, _QualUp>),
+	using _CheckOptionalLikeAssign = _If< (!is_same_v<_Up, _Tp> && is_constructible_v<_Tp, _QualUp>
+												  && is_assignable_v<_Tp &, _QualUp>),
 			_CheckOptionalLikeConstructor<_QualUp>, __check_tuple_constructor_fail>;
 
 public:
@@ -439,29 +469,29 @@ public:
 	// LWG2756: conditionally explicit conversion from const optional<_Up> &
 	template <typename _Up,
 			enable_if_t<
-					_CheckOptionalLikeCtor<_Up, const _Up &>::template __enable_implicit<_Up>(), int>
-			= 0>
+					_CheckOptionalLikeCtor<_Up, const _Up &>::template __enable_implicit<_Up>(),
+					int> = 0>
 	constexpr optional(const optional<_Up> &__v) noexcept {
 		this->__construct_from(__v);
 	}
 	template <typename _Up,
 			enable_if_t<
-					_CheckOptionalLikeCtor<_Up, const _Up &>::template __enable_explicit<_Up>(), int>
-			= 0>
+					_CheckOptionalLikeCtor<_Up, const _Up &>::template __enable_explicit<_Up>(),
+					int> = 0>
 	constexpr explicit optional(const optional<_Up> &__v) noexcept {
 		this->__construct_from(__v);
 	}
 
 	// LWG2756: conditionally explicit conversion from optional<_Up> &&
 	template <typename _Up,
-			enable_if_t<_CheckOptionalLikeCtor<_Up, _Up &&>::template __enable_implicit<_Up>(), int>
-			= 0>
+			enable_if_t<_CheckOptionalLikeCtor<_Up, _Up &&>::template __enable_implicit<_Up>(),
+					int> = 0>
 	constexpr optional(optional<_Up> &&__v) noexcept {
 		this->__construct_from(sprt::move(__v));
 	}
 	template <typename _Up,
-			enable_if_t<_CheckOptionalLikeCtor<_Up, _Up &&>::template __enable_explicit<_Up>(), int>
-			= 0>
+			enable_if_t<_CheckOptionalLikeCtor<_Up, _Up &&>::template __enable_explicit<_Up>(),
+					int> = 0>
 	constexpr explicit optional(optional<_Up> &&__v) noexcept {
 		this->__construct_from(sprt::move(__v));
 	}
@@ -470,7 +500,7 @@ public:
 			enable_if_t<is_same_v<_Tag, __optional_construct_from_invoke_tag>, int> = 0>
 	constexpr explicit optional(_Tag, _Fp &&__f, _Args &&...__args) noexcept
 	: __base(__optional_construct_from_invoke_tag{}, sprt::forward<_Fp>(__f),
-			sprt::forward<_Args>(__args)...) { }
+			  sprt::forward<_Args>(__args)...) { }
 
 	// [optional.assign], assignment
 	constexpr optional &operator=(nullopt_t) noexcept {
@@ -501,8 +531,8 @@ public:
 	// LWG2756
 	template <typename _Up,
 			enable_if_t<
-					_CheckOptionalLikeAssign<_Up, const _Up &>::template __enable_assign<_Up>(), int>
-			= 0>
+					_CheckOptionalLikeAssign<_Up, const _Up &>::template __enable_assign<_Up>(),
+					int> = 0>
 	constexpr optional &operator=(const optional<_Up> &__v) noexcept {
 		this->__assign_from(__v);
 		return *this;
@@ -510,15 +540,14 @@ public:
 
 	// LWG2756
 	template <typename _Up,
-			enable_if_t<_CheckOptionalLikeCtor<_Up, _Up &&>::template __enable_assign<_Up>(), int>
-			= 0>
+			enable_if_t<_CheckOptionalLikeCtor<_Up, _Up &&>::template __enable_assign<_Up>(), int> =
+					0>
 	constexpr optional &operator=(optional<_Up> &&__v) noexcept {
 		this->__assign_from(sprt::move(__v));
 		return *this;
 	}
 
-	template <typename... _Args,
-			enable_if_t<is_constructible_v<value_type, _Args...>, int> = 0>
+	template <typename... _Args, enable_if_t<is_constructible_v<value_type, _Args...>, int> = 0>
 	constexpr _Tp &emplace(_Args &&...__args) noexcept {
 		reset();
 		this->__construct(sprt::forward<_Args>(__args)...);
@@ -542,7 +571,7 @@ public:
 			}
 		} else {
 			if (this->has_value()) {
-				__opt.__construct(sprt::move(this->__get()));
+				__opt.__construct(sprt::move_unsafe(this->__get()));
 				reset();
 			} else {
 				this->__construct(sprt::move(__opt.__get()));
@@ -573,8 +602,10 @@ public:
 
 	constexpr const value_type &operator*() const & noexcept { return this->__get(); }
 	constexpr value_type &operator*() & noexcept { return this->__get(); }
-	constexpr value_type &&operator*() && noexcept { return sprt::move(this->__get()); }
-	constexpr const value_type &&operator*() const && noexcept { return sprt::move(this->__get()); }
+	constexpr value_type &&operator*() && noexcept { return sprt::move_unsafe(this->__get()); }
+	constexpr const value_type &&operator*() const && noexcept {
+		return sprt::move_unsafe(this->__get());
+	}
 
 	constexpr explicit operator bool() const noexcept { return has_value(); }
 
@@ -597,13 +628,13 @@ public:
 		if (!this->has_value()) {
 			__throw_bad_optional_access();
 		}
-		return sprt::move(this->__get());
+		return sprt::move_unsafe(this->__get());
 	}
 	constexpr const value_type &&value() const && noexcept {
 		if (!this->has_value()) {
 			__throw_bad_optional_access();
 		}
-		return sprt::move(this->__get());
+		return sprt::move_unsafe(this->__get());
 	}
 
 	template <typename _Up>
@@ -621,7 +652,7 @@ public:
 				"optional<T>::value_or: T must be move constructible");
 		static_assert(is_convertible_v<_Up, value_type>,
 				"optional<T>::value_or: U must be convertible to T");
-		return this->has_value() ? sprt::move(this->__get())
+		return this->has_value() ? sprt::move_unsafe(this->__get())
 								 : static_cast<value_type>(sprt::forward<_Up>(__v));
 	}
 
@@ -652,7 +683,7 @@ public:
 		static_assert(__is_optional_v<remove_cvref_t<_Up>>,
 				"Result of f(move(value())) must be a specialization of optional");
 		if (*this) {
-			return sprt::__invoke(sprt::forward<_Func>(__f), sprt::move(this->__get()));
+			return sprt::__invoke(sprt::forward<_Func>(__f), sprt::move_unsafe(this->__get()));
 		}
 		return remove_cvref_t<_Up>();
 	}
@@ -662,7 +693,7 @@ public:
 		static_assert(__is_optional_v<remove_cvref_t<_Up>>,
 				"Result of f(move(value())) must be a specialization of optional");
 		if (*this) {
-			return sprt::__invoke(sprt::forward<_Func>(__f), sprt::move(this->__get()));
+			return sprt::__invoke(sprt::forward<_Func>(__f), sprt::move_unsafe(this->__get()));
 		}
 		return remove_cvref_t<_Up>();
 	}
@@ -675,8 +706,8 @@ public:
 		static_assert(!is_same_v<_Up, nullopt_t>, "Result of f(value()) should not be nullopt_t");
 		static_assert(is_object_v<_Up>, "Result of f(value()) should be an object type");
 		if (*this) {
-			return optional<_Up>(
-					__optional_construct_from_invoke_tag{}, sprt::forward<_Func>(__f), this->__get());
+			return optional<_Up>(__optional_construct_from_invoke_tag{}, sprt::forward<_Func>(__f),
+					this->__get());
 		}
 		return optional<_Up>();
 	}
@@ -688,8 +719,8 @@ public:
 		static_assert(!is_same_v<_Up, nullopt_t>, "Result of f(value()) should not be nullopt_t");
 		static_assert(is_object_v<_Up>, "Result of f(value()) should be an object type");
 		if (*this) {
-			return optional<_Up>(
-					__optional_construct_from_invoke_tag{}, sprt::forward<_Func>(__f), this->__get());
+			return optional<_Up>(__optional_construct_from_invoke_tag{}, sprt::forward<_Func>(__f),
+					this->__get());
 		}
 		return optional<_Up>();
 	}
@@ -697,14 +728,14 @@ public:
 	constexpr auto transform(_Func &&__f) && noexcept {
 		using _Up = remove_cv_t<invoke_result_t<_Func, value_type &&>>;
 		static_assert(!is_array_v<_Up>, "Result of f(move(value())) should not be an Array");
-		static_assert(
-				!is_same_v<_Up, in_place_t>, "Result of f(move(value())) should not be in_place_t");
-		static_assert(
-				!is_same_v<_Up, nullopt_t>, "Result of f(move(value())) should not be nullopt_t");
+		static_assert(!is_same_v<_Up, in_place_t>,
+				"Result of f(move(value())) should not be in_place_t");
+		static_assert(!is_same_v<_Up, nullopt_t>,
+				"Result of f(move(value())) should not be nullopt_t");
 		static_assert(is_object_v<_Up>, "Result of f(move(value())) should be an object type");
 		if (*this) {
 			return optional<_Up>(__optional_construct_from_invoke_tag{}, sprt::forward<_Func>(__f),
-					sprt::move(this->__get()));
+					sprt::move_unsafe(this->__get()));
 		}
 		return optional<_Up>();
 	}
@@ -712,21 +743,21 @@ public:
 	constexpr auto transform(_Func &&__f) const && noexcept {
 		using _Up = remove_cvref_t<invoke_result_t<_Func, const value_type &&>>;
 		static_assert(!is_array_v<_Up>, "Result of f(move(value())) should not be an Array");
-		static_assert(
-				!is_same_v<_Up, in_place_t>, "Result of f(move(value())) should not be in_place_t");
-		static_assert(
-				!is_same_v<_Up, nullopt_t>, "Result of f(move(value())) should not be nullopt_t");
+		static_assert(!is_same_v<_Up, in_place_t>,
+				"Result of f(move(value())) should not be in_place_t");
+		static_assert(!is_same_v<_Up, nullopt_t>,
+				"Result of f(move(value())) should not be nullopt_t");
 		static_assert(is_object_v<_Up>, "Result of f(move(value())) should be an object type");
 		if (*this) {
 			return optional<_Up>(__optional_construct_from_invoke_tag{}, sprt::forward<_Func>(__f),
-					sprt::move(this->__get()));
+					sprt::move_unsafe(this->__get()));
 		}
 		return optional<_Up>();
 	}
 
 	template <typename _Func>
 	constexpr optional or_else(_Func &&__f) const & noexcept
-		requires (is_copy_constructible_v<value_type> && is_invocable_v<_Func>)
+			requires (is_copy_constructible_v<value_type> && is_invocable_v<_Func>)
 	{
 		static_assert(is_same_v<remove_cvref_t<invoke_result_t<_Func>>, optional>,
 				"Result of f() should be the same type as this optional");
@@ -737,7 +768,7 @@ public:
 	}
 	template <typename _Func>
 	constexpr optional or_else(_Func &&__f) && noexcept
-		requires (is_move_constructible_v<value_type> && is_invocable_v<_Func>)
+			requires (is_move_constructible_v<value_type> && is_invocable_v<_Func>)
 	{
 		static_assert(is_same_v<remove_cvref_t<invoke_result_t<_Func>>, optional>,
 				"Result of f() should be the same type as this optional");
@@ -757,9 +788,9 @@ optional(_Tp) -> optional<_Tp>;
 // [optional.relops], relational operators
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() == sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 == sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator==(const optional<_Tp> &__x, const optional<_Up> &__y) {
 	if (static_cast<bool>(__x) != static_cast<bool>(__y)) {
@@ -772,9 +803,9 @@ constexpr bool operator==(const optional<_Tp> &__x, const optional<_Up> &__y) {
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() != sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 != sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator!=(const optional<_Tp> &__x, const optional<_Up> &__y) {
 	if (static_cast<bool>(__x) != static_cast<bool>(__y)) {
@@ -787,9 +818,9 @@ constexpr bool operator!=(const optional<_Tp> &__x, const optional<_Up> &__y) {
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() < sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 < sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator<(const optional<_Tp> &__x, const optional<_Up> &__y) {
 	if (!static_cast<bool>(__y)) {
@@ -802,9 +833,9 @@ constexpr bool operator<(const optional<_Tp> &__x, const optional<_Up> &__y) {
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() > sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 > sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator>(const optional<_Tp> &__x, const optional<_Up> &__y) {
 	if (!static_cast<bool>(__x)) {
@@ -817,9 +848,9 @@ constexpr bool operator>(const optional<_Tp> &__x, const optional<_Up> &__y) {
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() <= sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 <= sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator<=(const optional<_Tp> &__x, const optional<_Up> &__y) {
 	if (!static_cast<bool>(__x)) {
@@ -832,9 +863,9 @@ constexpr bool operator<=(const optional<_Tp> &__x, const optional<_Up> &__y) {
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() >= sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 >= sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator>=(const optional<_Tp> &__x, const optional<_Up> &__y) {
 	if (!static_cast<bool>(__y)) {
@@ -870,115 +901,114 @@ constexpr strong_ordering operator<=>(const optional<_Tp> &__x, nullopt_t) noexc
 // [optional.comp.with.t], comparison with T
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() == sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 == sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator==(const optional<_Tp> &__x, const _Up &__v) {
 	return static_cast<bool>(__x) ? *__x == __v : false;
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() == sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 == sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator==(const _Tp &__v, const optional<_Up> &__x) {
 	return static_cast<bool>(__x) ? __v == *__x : false;
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() != sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 != sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator!=(const optional<_Tp> &__x, const _Up &__v) {
 	return static_cast<bool>(__x) ? *__x != __v : true;
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() != sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 != sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator!=(const _Tp &__v, const optional<_Up> &__x) {
 	return static_cast<bool>(__x) ? __v != *__x : true;
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() < sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 < sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator<(const optional<_Tp> &__x, const _Up &__v) {
 	return static_cast<bool>(__x) ? *__x < __v : true;
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() < sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 < sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator<(const _Tp &__v, const optional<_Up> &__x) {
 	return static_cast<bool>(__x) ? __v < *__x : false;
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() <= sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 <= sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator<=(const optional<_Tp> &__x, const _Up &__v) {
 	return static_cast<bool>(__x) ? *__x <= __v : true;
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() <= sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 <= sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator<=(const _Tp &__v, const optional<_Up> &__x) {
 	return static_cast<bool>(__x) ? __v <= *__x : false;
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() > sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 > sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator>(const optional<_Tp> &__x, const _Up &__v) {
 	return static_cast<bool>(__x) ? *__x > __v : false;
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() > sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 > sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator>(const _Tp &__v, const optional<_Up> &__x) {
 	return static_cast<bool>(__x) ? __v > *__x : true;
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() >= sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 >= sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator>=(const optional<_Tp> &__x, const _Up &__v) {
 	return static_cast<bool>(__x) ? *__x >= __v : false;
 }
 
 template <typename _Tp, typename _Up,
-		enable_if_t<__is_core_convertible_v<
-							 decltype(sprt::declval<const _Tp &>() >= sprt::declval<const _Up &>()),
-							 bool>,
+		enable_if_t<__is_core_convertible_v< decltype(sprt::declval<const _Tp &>()
+													 >= sprt::declval<const _Up &>()),
+							bool>,
 				int> = 0>
 constexpr bool operator>=(const _Tp &__v, const optional<_Up> &__x) {
 	return static_cast<bool>(__x) ? __v >= *__x : true;
 }
 
-template <typename _Tp, typename _Up,
-		enable_if_t<!__is_optional_v<_Up>, int> = 0>
+template <typename _Tp, typename _Up, enable_if_t<!__is_optional_v<_Up>, int> = 0>
 constexpr auto operator<=>(const optional<_Tp> &__x, const _Up &__v)
 		-> decltype(sprt::declval<const _Tp &>() <=> sprt::declval<const _Up &>()) {
 	return __x.has_value() ? (*__x <=> __v) : strong_ordering::less;
@@ -986,8 +1016,7 @@ constexpr auto operator<=>(const optional<_Tp> &__x, const _Up &__v)
 
 // [optional.specalg], specialized algorithms
 
-template <typename _Tp,
-		enable_if_t<is_move_constructible_v<_Tp> && is_swappable_v<_Tp>, int> = 0>
+template <typename _Tp, enable_if_t<is_move_constructible_v<_Tp> && is_swappable_v<_Tp>, int> = 0>
 constexpr void swap(optional<_Tp> &__x, optional<_Tp> &__y) noexcept {
 	__x.swap(__y);
 }
@@ -1020,5 +1049,7 @@ struct hash<optional<_Tp>> {
 };
 
 } // namespace sprt
+
+#endif // __SPRT_STL_LIBCXX_VALUETYPES
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_OPTIONAL_H_

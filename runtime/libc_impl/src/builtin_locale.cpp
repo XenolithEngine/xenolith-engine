@@ -56,6 +56,14 @@ char __get_effective_numeric_radix() {
 	return __get_numeric_radix(__get_effective_locale_map(__SPRT_LC_NUMERIC));
 }
 
+// MB_CUR_MAX of the effective LC_CTYPE locale: 1 for the single-byte "C"/"POSIX"
+// locale (the program default), 4 for UTF-8. Read by __ctype_get_mb_cur_max() and
+// the mb/wc conversion helpers in builtin_multibyte.cpp.
+size_t __get_effective_mb_cur_max() {
+	auto m = __get_effective_locale_map(__SPRT_LC_CTYPE);
+	return (m && m->mb_cur_max) ? m->mb_cur_max : 1;
+}
+
 __numeric_fmt __get_effective_numeric_fmt() {
 	return __get_numeric_fmt(__get_effective_locale_map(__SPRT_LC_NUMERIC));
 }
@@ -133,7 +141,12 @@ locale_t uselocale(locale_t loc) __SPRT_NOEXCEPT {
 			src = nullptr;
 		}
 	}
-	return src;
+	// POSIX: the previous locale is reported as LC_GLOBAL_LOCALE when the thread was
+	// on the global locale — NEVER as nullptr (that is reserved for errors). Returning
+	// nullptr here breaks callers that save-and-restore only on a non-null result
+	// (libc++'s __locale_guard: `if (__old_loc_) uselocale(__old_loc_)`); they would
+	// skip restoring the global state and leave the thread permanently pinned to `loc`.
+	return src ? src : __SPRT_LC_GLOBAL_LOCALE;
 }
 
 locale_t duplocale(locale_t loc) __SPRT_NOEXCEPT {
@@ -224,6 +237,15 @@ size_t wcsxfrm_l(wchar_t *__restrict dest, const wchar_t *__restrict src, __sprt
 }
 } // namespace sprt
 
+__SPRT_C_FUNC int strcoll_l(const char *s1, const char *s2, locale_t loc) __SPRT_NOEXCEPT {
+	// Mirrors strxfrm_l / wcscoll_l: an absent/global locale resolves to the
+	// user-default collation, otherwise the explicit locale's LC_COLLATE category.
+	if (loc == nullptr || loc == __SPRT_LC_GLOBAL_LOCALE) {
+		return sprt::__strcoll_l(s1, s2, nullptr);
+	}
+	return sprt::__strcoll_l(s1, s2, loc->data.cat[__SPRT_LC_COLLATE]);
+}
+
 __SPRT_C_FUNC size_t strxfrm_l(char *__restrict dest, const char *__restrict src, size_t n,
 		locale_t loc) __SPRT_NOEXCEPT {
 	// Mirrors wcsxfrm_l: an absent/global locale resolves to the user-default
@@ -244,7 +266,7 @@ __SPRT_C_FUNC size_t strxfrm_l(char *__restrict dest, const char *__restrict src
 // strcmp() of two keys agrees with strcoll().
 __SPRT_C_FUNC size_t __strxfrm(char *dest, const char *src, size_t n) __SPRT_NOEXCEPT {
 	auto map = sprt::__get_effective_locale_map(__SPRT_LC_COLLATE);
-	if (map == sprt::__get_default_locale()) {
+	if (sprt::__locale_is_c(map)) {
 		size_t l = sprt::strlen(src);
 		if (n > l) {
 			sprt::strcpy(dest, src);

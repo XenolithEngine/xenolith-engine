@@ -55,7 +55,31 @@ ForwardIt remove_if(ForwardIt first, ForwardIt last, UnaryPred p) {
 	return first;
 }
 
-} // inline namespace __cxx_algorithm
+// [alg.remove] copying variants: copy all elements NOT equal to `value` (resp.
+// NOT satisfying `pred`) into `__result`, returning the end of the output range.
+template <class InputIt, class OutputIt, class T>
+OutputIt remove_copy(InputIt first, InputIt last, OutputIt __result, const T &value) {
+	for (; first != last; ++first) {
+		if (!(*first == value)) {
+			*__result = *first;
+			++__result;
+		}
+	}
+	return __result;
+}
+
+template <class InputIt, class OutputIt, class UnaryPred>
+OutputIt remove_copy_if(InputIt first, InputIt last, OutputIt __result, UnaryPred pred) {
+	for (; first != last; ++first) {
+		if (!pred(*first)) {
+			*__result = *first;
+			++__result;
+		}
+	}
+	return __result;
+}
+
+} // namespace __cxx_algorithm
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___ALGORITHM_REMOVE_H_

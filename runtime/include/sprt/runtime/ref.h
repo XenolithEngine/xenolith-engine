@@ -28,7 +28,6 @@
 
 #include <sprt/cxx/list>
 #include <sprt/cxx/new>
-#include <sprt/cxx/memory>
 #include <sprt/cxx/atomic>
 
 // enable Ref debug mode to track retain/release sources

@@ -90,6 +90,77 @@ static long __wasm_pathconf(int name) {
 	}
 }
 
+// --- brk / sbrk over WebAssembly memory.grow ----------------------------
+//
+// wasm32 has no brk syscall; the "program break" is modelled directly on the
+// linear memory. It starts at the linker-provided __heap_base (just past static
+// data + the shadow stack) and only ever grows upward: memory.grow appends
+// zero-initialised 64 KiB pages, and wasm memory can never shrink, so lowering
+// the break releases nothing (the pages stay reserved for a later raise). This
+// backs mimalloc's wasi OS-primitive layer (src/prim/wasi/prim.c, MI_USE_SBRK),
+// which is why the freestanding wasm libc keeps __SPRT_CONFIG_HAVE_UNISTD_BRK on.
+
+extern "C" unsigned char __heap_base; // linker-provided start of the heap region
+
+namespace {
+
+using __wasm_uptr = __UINTPTR_TYPE__;
+constexpr __wasm_uptr WASM_PAGE_BYTES = 65536u;
+
+// Current program break; 0 means "not yet initialised" (lazily set to the base).
+__wasm_uptr s_wasm_break = 0;
+
+__wasm_uptr __wasm_break_base(void) {
+	// 16-byte (max_align_t) aligned so the very first hand-out is aligned.
+	__wasm_uptr base = reinterpret_cast<__wasm_uptr>(&__heap_base);
+	return (base + 15u) & ~static_cast<__wasm_uptr>(15u);
+}
+
+} // namespace
+
+extern "C" int brk(void *__addr) __SPRT_NOEXCEPT {
+	const __wasm_uptr base = __wasm_break_base();
+	if (s_wasm_break == 0) {
+		s_wasm_break = base;
+	}
+	const __wasm_uptr want = reinterpret_cast<__wasm_uptr>(__addr);
+	if (want < base) {
+		__sprt_errno = ENOMEM; // cannot move the break below the heap base
+		return -1;
+	}
+	const __wasm_uptr have = static_cast<__wasm_uptr>(__builtin_wasm_memory_size(0)) * WASM_PAGE_BYTES;
+	if (want > have) {
+		const __wasm_uptr pages = (want - have + WASM_PAGE_BYTES - 1) / WASM_PAGE_BYTES;
+		if (static_cast<__SIZE_TYPE__>(__builtin_wasm_memory_grow(0, pages))
+				== static_cast<__SIZE_TYPE__>(-1)) {
+			__sprt_errno = ENOMEM;
+			return -1;
+		}
+	}
+	s_wasm_break = want;
+	return 0;
+}
+
+extern "C" void *sbrk(__INTPTR_TYPE__ __incr) __SPRT_NOEXCEPT {
+	if (s_wasm_break == 0) {
+		s_wasm_break = __wasm_break_base();
+	}
+	const __wasm_uptr old = s_wasm_break;
+	if (__incr == 0) {
+		return reinterpret_cast<void *>(old);
+	}
+	const __wasm_uptr want = old + static_cast<__wasm_uptr>(__incr);
+	// Overflow / underflow guard in either direction.
+	if ((__incr > 0 && want < old) || (__incr < 0 && want > old)) {
+		__sprt_errno = ENOMEM;
+		return reinterpret_cast<void *>(static_cast<__INTPTR_TYPE__>(-1));
+	}
+	if (brk(reinterpret_cast<void *>(want)) != 0) {
+		return reinterpret_cast<void *>(static_cast<__INTPTR_TYPE__>(-1));
+	}
+	return reinterpret_cast<void *>(old);
+}
+
 extern "C" long pathconf(const char *, int name) __SPRT_NOEXCEPT { return __wasm_pathconf(name); }
 
 extern "C" long fpathconf(int fd, int name) __SPRT_NOEXCEPT {

@@ -54,6 +54,11 @@ typedef __SPRT_ID(char16_t) char16_t;
 typedef __SPRT_ID(char32_t) char32_t;
 #endif
 
+// C mandates that <uchar.h> declare size_t (and mbstate_t) — the mbrtoc*/c*rtomb
+// signatures use it. Match <wchar.h>'s approach (an identical typedef is allowed to
+// repeat); without it a C++ TU including <cuchar> sees only std::size_t, not global.
+typedef __SPRT_ID(size_t) size_t;
+
 #if !__SPRT_MBSTATE_DIRECT
 typedef __SPRT_MBSTATE_NAME mbstate_t;
 #endif

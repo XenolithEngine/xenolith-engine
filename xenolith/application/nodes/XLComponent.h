@@ -185,7 +185,7 @@ struct ComponentHash {
 	using hash_type = sprt::hash<uint32_t>;
 	using is_transparent = void;
 
-	sprt::size_t operator()(Component c) const { return hash_type{}(c.id); }
+	sprt::size_t operator()(const Component &c) const { return hash_type{}(c.id); }
 	sprt::size_t operator()(ComponentId id) const { return hash_type{}(id.value); }
 	sprt::size_t operator()(uint32_t id) const { return hash_type{}(id); }
 };

@@ -24,15 +24,27 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_CXX_COMPARE_
 
 #include <sprt/cxx/__type_traits/queries.h>
-#include <sprt/cxx/type_traits>
+#include <sprt/cxx/__utility/common.h> // sprt::declval (used by __synth_three_way_result_t below)
 
-#if __SPRT_USE_STL
+// The comparison categories are std-owned, compiler-mandated types: exactly one
+// STL may define them. Project onto <compare> whenever an external STL owns std
+// (__SPRT_STD_EXTERNAL — hosted USE_STL, or libc++ TUs of the runtime build);
+// the hand-written definitions below would be ambiguous against libc++'s
+// std::__sprt ones.
+#if __SPRT_STD_EXTERNAL
 
 #include <compare>
 
 #else
 
+#include <sprt/cxx/type_traits>
+#include <sprt/c/bits/__sprt_config.h> // __SPRT_STD_OWNED_BEGIN/END (unified versioned ABI)
+
+// The comparison categories (and their constants) are versioned into std::__sprt,
+// like every sprt-defined std symbol, so the runtime never emits canonical-namespace
+// symbols that could clash with a system STL in the same process.
 namespace std {
+__SPRT_STD_OWNED_BEGIN
 
 // exposition only
 enum class _OrdResult : signed char {
@@ -348,12 +360,13 @@ concept three_way_comparable = requires(const sprt::remove_reference_t<_Tp> &__a
 };
 
 template <typename _Tp, typename _Up, typename _Cat = partial_ordering>
-concept three_way_comparable_with = three_way_comparable<_Tp, _Cat>
-		&& three_way_comparable<_Up, _Cat>
-		&& requires(const sprt::remove_reference_t<_Tp> &__t, const sprt::remove_reference_t<_Up> &__u) {
-			{ __t <=> __u } -> __compares_as<_Cat>;
-			{ __u <=> __t } -> __compares_as<_Cat>;
-		};
+concept three_way_comparable_with =
+		three_way_comparable<_Tp, _Cat> && three_way_comparable<_Up, _Cat>
+		&& requires(const sprt::remove_reference_t<_Tp> &__t,
+				const sprt::remove_reference_t<_Up> &__u) {
+			   { __t <=> __u } -> __compares_as<_Cat>;
+			   { __u <=> __t } -> __compares_as<_Cat>;
+		   };
 
 // [comparisons.three.way] compare_three_way
 struct compare_three_way {
@@ -376,16 +389,16 @@ constexpr strong_ordering __float_strong(_Tp __a, _Tp __b) noexcept {
 	if constexpr (sizeof(_Tp) == 4) {
 		auto __ka = __builtin_bit_cast(unsigned int, __a);
 		auto __kb = __builtin_bit_cast(unsigned int, __b);
-		__ka ^= (static_cast<unsigned int>(-static_cast<int>(__ka >> 31))) | 0x80000000u;
-		__kb ^= (static_cast<unsigned int>(-static_cast<int>(__kb >> 31))) | 0x80000000u;
+		__ka ^= (static_cast<unsigned int>(-static_cast<int>(__ka >> 31))) | 0x8000'0000u;
+		__kb ^= (static_cast<unsigned int>(-static_cast<int>(__kb >> 31))) | 0x8000'0000u;
 		return __ka <=> __kb;
 	} else {
 		auto __ka = __builtin_bit_cast(unsigned long long, __a);
 		auto __kb = __builtin_bit_cast(unsigned long long, __b);
 		__ka ^= (static_cast<unsigned long long>(-static_cast<long long>(__ka >> 63)))
-				| 0x8000000000000000ull;
+				| 0x8000'0000'0000'0000ull;
 		__kb ^= (static_cast<unsigned long long>(-static_cast<long long>(__kb >> 63)))
-				| 0x8000000000000000ull;
+				| 0x8000'0000'0000'0000ull;
 		return __ka <=> __kb;
 	}
 }
@@ -434,10 +447,11 @@ struct __partial_order_fn {
 
 } // namespace __cmp_order_detail
 
-inline constexpr __cmp_order_detail::__strong_order_fn strong_order {};
-inline constexpr __cmp_order_detail::__weak_order_fn weak_order {};
-inline constexpr __cmp_order_detail::__partial_order_fn partial_order {};
+inline constexpr __cmp_order_detail::__strong_order_fn strong_order{};
+inline constexpr __cmp_order_detail::__weak_order_fn weak_order{};
+inline constexpr __cmp_order_detail::__partial_order_fn partial_order{};
 
+__SPRT_STD_OWNED_END
 } // namespace std
 
 #endif
@@ -462,8 +476,8 @@ constexpr auto __synth_three_way(const _Tp &__t, const _Up &__u) {
 }
 
 template <typename _Tp, typename _Up = _Tp>
-using __synth_three_way_result_t =
-		decltype(sprt::__synth_three_way(sprt::declval<const _Tp &>(), sprt::declval<const _Up &>()));
+using __synth_three_way_result_t = decltype(sprt::__synth_three_way(sprt::declval<const _Tp &>(),
+		sprt::declval<const _Up &>()));
 
 } // namespace sprt
 

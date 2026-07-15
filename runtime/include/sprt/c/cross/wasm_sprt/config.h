@@ -127,8 +127,11 @@
 #define __SPRT_CONFIG_HAVE_UNISTD_SETHOSTNAME 0
 #endif
 
+// brk/sbrk are implemented over WebAssembly memory.grow (libc_impl/src/wasm/
+// unistd.cc); the freestanding wasm allocator (mimalloc's wasi prim) grows the
+// OS heap through them.
 #ifndef __SPRT_CONFIG_HAVE_UNISTD_BRK
-#define __SPRT_CONFIG_HAVE_UNISTD_BRK 0
+#define __SPRT_CONFIG_HAVE_UNISTD_BRK 1
 #endif
 
 #ifndef __SPRT_CONFIG_HAVE_SCHED_SETSCHEDULER

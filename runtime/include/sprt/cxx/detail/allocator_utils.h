@@ -37,6 +37,16 @@ namespace sprt::detail {
 template <typename T, typename Allocator>
 constexpr inline void __allocator_copy(Allocator &allocator, T *dest, const T *source,
 		size_t count) noexcept {
+	if (is_constant_evaluated()) {
+		// In constant evaluation the destination is (possibly) raw storage, where
+		// assignment is ill-formed; construct each element instead. Callers use this
+		// only for disjoint ranges, so iteration order is irrelevant.
+		if (dest == source) {
+			return;
+		}
+		for (size_t i = 0; i < count; ++i) { allocator.construct(dest + i, *(source + i)); }
+		return;
+	}
 	if constexpr (is_trivially_copyable<T>::value) {
 		__constexpr_memmove(dest, source, count);
 	} else {
@@ -57,6 +67,21 @@ constexpr inline void __allocator_copy(Allocator &allocator, T *dest, const T *s
 template <typename T, typename Allocator>
 constexpr inline void __allocator_copy_rewrite(Allocator &allocator, T *dest, size_t dcount,
 		const T *source, size_t count) noexcept {
+	if (is_constant_evaluated()) {
+		// The first dcount elements are live (re-construct over them), the rest are
+		// raw storage. Disjoint source, so forward iteration is safe.
+		if (dest == source) { // self-assign: contents already in place
+			return;
+		}
+		size_t m = min(count, dcount);
+		size_t i = 0;
+		for (; i < m; ++i) {
+			allocator.destroy(dest + i);
+			allocator.construct(dest + i, *(source + i));
+		}
+		for (; i < count; ++i) { allocator.construct(dest + i, *(source + i)); }
+		return;
+	}
 	if constexpr (is_trivially_copyable<T>::value) {
 		__constexpr_memmove(dest, source, count);
 	} else {
@@ -89,6 +114,19 @@ constexpr inline void __allocator_copy_rewrite(Allocator &allocator, T *dest, si
 template <typename T, typename Allocator>
 constexpr inline void __allocator_move(Allocator &allocator, T *dest, T *source,
 		size_t count) noexcept {
+	if (is_constant_evaluated()) {
+		// Relocate element-wise via construction (assignment on raw storage is
+		// ill-formed in constant evaluation). Forward iteration is correct for the
+		// disjoint relocations on the constexpr-exercised path.
+		if (dest == source) {
+			return;
+		}
+		for (size_t i = 0; i < count; ++i) {
+			allocator.construct(dest + i, sprt::move_unsafe(*(source + i)));
+			allocator.destroy(source + i);
+		}
+		return;
+	}
 	if constexpr (is_trivially_copyable<T>::value) {
 		__constexpr_memmove(dest, source, count);
 	} else if constexpr (is_trivially_move_constructible<T>::value) {
@@ -113,6 +151,23 @@ constexpr inline void __allocator_move(Allocator &allocator, T *dest, T *source,
 template <typename T, typename Allocator>
 constexpr inline void __allocator_move_rewrite(Allocator &allocator, T *dest, size_t dcount,
 		T *source, size_t count) noexcept {
+	if (is_constant_evaluated()) {
+		if (dest == source) {
+			return;
+		}
+		size_t m = min(count, dcount);
+		size_t i = 0;
+		for (; i < m; ++i) {
+			allocator.destroy(dest + i);
+			allocator.construct(dest + i, sprt::move_unsafe(*(source + i)));
+			allocator.destroy(source + i);
+		}
+		for (; i < count; ++i) {
+			allocator.construct(dest + i, sprt::move_unsafe(*(source + i)));
+			allocator.destroy(source + i);
+		}
+		return;
+	}
 	if constexpr (is_trivially_copyable<T>::value) {
 		__constexpr_memmove(dest, source, count);
 	} else if constexpr (is_trivially_move_constructible<T>::value) {
@@ -145,6 +200,67 @@ constexpr inline void __allocator_move_rewrite(Allocator &allocator, T *dest, si
 				allocator.destroy(source + i);
 			}
 		}
+	}
+}
+
+// Move `count` elements between two ranges that lie in the SAME allocation (the
+// in-place shifts used by insert/emplace/erase). Because both pointers address the
+// same array object, `dest > source` is a valid comparison in constant evaluation
+// (unlike the disjoint relocations handled by __allocator_move), so the correct
+// iteration direction can be chosen there. At runtime this is a plain overlap-safe
+// memmove for trivially relocatable elements.
+template <typename T, typename Allocator>
+constexpr inline void __allocator_move_within(Allocator &allocator, T *dest, T *source,
+		size_t count) noexcept {
+	if (is_constant_evaluated()) {
+		if (dest == source || count == 0) {
+			return;
+		}
+		if (dest > source) {
+			// shift right: go backward so each source element is read (and each dest
+			// slot has already been vacated by an earlier step) before being touched.
+			for (size_t i = count; i > 0; --i) {
+				allocator.construct(dest + i - 1, sprt::move_unsafe(*(source + i - 1)));
+				allocator.destroy(source + i - 1);
+			}
+		} else {
+			// shift left: forward is the safe direction.
+			for (size_t i = 0; i < count; ++i) {
+				allocator.construct(dest + i, sprt::move_unsafe(*(source + i)));
+				allocator.destroy(source + i);
+			}
+		}
+		return;
+	}
+	__allocator_move(allocator, dest, source, count);
+}
+
+// Detect whether `p` points inside the array [base, base + count). If so, report its
+// index in `off` and return true. Used to keep the source pointer of a self-aliasing
+// append/insert/replace valid across a reallocation: after the buffer moves, the data
+// lives at base_new + off. In constant evaluation only pointer EQUALITY is usable
+// (relational comparison of unrelated pointers is not a constant expression), so scan
+// the range element-by-element there; at runtime a direct range check suffices.
+template <typename T>
+constexpr inline bool __ptr_index_within(const T *base, size_t count, const T *p,
+		size_t &off) noexcept {
+	if (base == nullptr) {
+		return false;
+	}
+	if (is_constant_evaluated()) {
+		for (size_t i = 0; i < count; ++i) {
+			if (base + i == p) {
+				off = i;
+				return true;
+			}
+		}
+		return false;
+	} else {
+		if (p >= base && p < base + count) {
+			off = static_cast<size_t>(p - base);
+			return true;
+		}
+		return false;
 	}
 }
 

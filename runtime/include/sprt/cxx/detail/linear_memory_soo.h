@@ -24,6 +24,7 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_CXX_DETAIL_STORAGE_IMPL_H_
 
 #include <sprt/cxx/detail/allocator_pool.h>
+#include <sprt/cxx/detail/inline_buffer.h>
 #include <sprt/cxx/detail/linear_memory_large.h>
 #include <sprt/cxx/detail/linear_memory_small.h>
 
@@ -47,13 +48,13 @@ public:
 
 	static constexpr size_type get_soo_size() { return 0; }
 
-	linear_memory_soo(const allocator &alloc) : _allocator(alloc) {
+	constexpr linear_memory_soo(const allocator &alloc) : _allocator(alloc) {
 		sprt_passert(_allocator, "Allocator should be defined");
 	}
 
-	~linear_memory_soo() noexcept { clear_dealloc(_allocator); }
+	constexpr ~linear_memory_soo() noexcept { clear_dealloc(_allocator); }
 
-	void assign(const_pointer ptr, size_type size) {
+	constexpr void assign(const_pointer ptr, size_type size) {
 		reserve(size, false);
 		__allocator_copy_rewrite(_allocator, _ptr, _used, ptr, size);
 		if (_used > size) {
@@ -73,12 +74,12 @@ public:
 	// useful for small temporary buffers
 	// this memory block can be reused by next temporary buffer of same size
 	// so, no pool memory will be leaked
-	pointer reserve_block_optimal() {
+	constexpr pointer reserve_block_optimal() {
 		auto target = sprt::memory::config::BlockThreshold / sizeof(Type) + 1;
 		return reserve(target);
 	}
 
-	pointer reserve(size_type s, bool grow = false) {
+	constexpr pointer reserve(size_type s, bool grow = false) {
 		auto _allocated = capacity();
 		if (s > 0 && s > _allocated) {
 			auto newmem = (grow ? max(s, _allocated * 2) : s);
@@ -87,7 +88,7 @@ public:
 		return _ptr;
 	}
 
-	void clear() {
+	constexpr void clear() {
 		auto _allocated = capacity();
 		if (_used > 0 && _allocated > 0) {
 			if (_ptr) {
@@ -105,7 +106,7 @@ public:
 	using base::extract;
 
 protected:
-	void perform_move(linear_memory_soo &&other) { this->replace_content(_allocator, other); }
+	constexpr void perform_move(linear_memory_soo &&other) { this->replace_content(_allocator, other); }
 
 	using base::clear_dealloc;
 	using base::modify_size;
@@ -319,7 +320,7 @@ public:
 
 protected:
 	void perform_move(linear_memory_soo &&other) {
-		if (&other == this) {
+		if (__builtin_addressof(other) == this) {
 			return;
 		}
 
@@ -427,7 +428,7 @@ private:
 	union {
 #endif
 
-	alignas(getMemAlignment()) array<uint8_t, getStorageSize()> _storage;
+	alignas(getMemAlignment()) sprt::detail::inline_buffer<uint8_t, getStorageSize()> _storage;
 
 #if DEBUG
 		large_mem_DEBUG large;

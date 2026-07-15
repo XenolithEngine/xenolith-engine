@@ -175,6 +175,10 @@ __SPRT_WIN_IMPORT WINAPI BOOL AdjustTokenPrivileges(HANDLE TokenHandle, BOOL Dis
 #define LookupPrivilegeValue  LookupPrivilegeValueA
 #endif
 
+#ifndef SE_LOCK_MEMORY_NAME
+#define SE_LOCK_MEMORY_NAME TEXT("SeLockMemoryPrivilege")
+#endif
+
 __SPRT_END_DECL
 
 #endif // SPRT_WRAPPERS_WINDOWS_SECURITY_API_H_

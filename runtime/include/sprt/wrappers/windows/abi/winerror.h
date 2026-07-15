@@ -413,6 +413,13 @@ THE SOFTWARE.
 #define __SPRT_ERROR_INVALID_FLAGS              1004L
 #define __SPRT_ERROR_NO_TOKEN                   1008L
 #define __SPRT_ERROR_CANTOPEN                   1011L
+#define __SPRT_ERROR_CANTREAD                   1012L
+#define __SPRT_ERROR_CANTWRITE                  1013L
+#define __SPRT_ERROR_NOT_FOUND                  1168L
+#define __SPRT_ERROR_NOACCESS                   998L
+#define __SPRT_ERROR_OPEN_FILES                 2401L
+#define __SPRT_ERROR_REPARSE_TAG_INVALID        4393L
+#define __SPRT_ERROR_RETRY                      1237L
 #define __SPRT_ERROR_NO_UNICODE_TRANSLATION     1113L
 #define __SPRT_ERROR_IO_DEVICE                  1117L
 #define __SPRT_ERROR_CONNECTION_UNAVAIL         1201L

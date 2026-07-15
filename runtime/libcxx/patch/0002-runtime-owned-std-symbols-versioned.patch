@@ -1,0 +1,138 @@
+--- a/include/stdexcept
++++ b/include/stdexcept
+@@ -73,8 +73,10 @@
+ 
+ _LIBCPP_END_NAMESPACE_STD
+ 
+-namespace std // purposefully not using versioning namespace
+-{
++// sprt: versioned (std::__sprt) — the sprt runtime provides these classes' out-of-line
++// members and must not define symbols in the canonical namespace (system-libc++
++// coexistence). Upstream keeps them unversioned for its own dylib ABI.
++_LIBCPP_BEGIN_NAMESPACE_STD
+ 
+ class _LIBCPP_EXPORTED_FROM_ABI logic_error : public exception {
+ #  ifndef _LIBCPP_ABI_VCRUNTIME
+@@ -207,7 +209,7 @@
+ #  endif
+ };
+ 
+-} // namespace std
++_LIBCPP_END_NAMESPACE_STD
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+ 
+--- a/include/optional
++++ b/include/optional
+@@ -245,8 +245,8 @@
+ _LIBCPP_PUSH_MACROS
+ #  include <__undef_macros>
+ 
+-namespace std // purposefully not using versioning namespace
+-{
++// sprt: versioned — defined by the sprt runtime (see <stdexcept> note).
++_LIBCPP_BEGIN_NAMESPACE_STD
+ 
+ class _LIBCPP_EXPORTED_FROM_ABI bad_optional_access : public exception {
+ public:
+@@ -258,7 +258,7 @@
+   const char* what() const _NOEXCEPT override;
+ };
+ 
+-} // namespace std
++_LIBCPP_END_NAMESPACE_STD
+ 
+ #  if _LIBCPP_STD_VER >= 17
+ 
+--- a/include/variant
++++ b/include/variant
+@@ -285,14 +285,15 @@
+ _LIBCPP_PUSH_MACROS
+ #  include <__undef_macros>
+ 
+-_LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD
++// sprt: versioned — defined by the sprt runtime (see <stdexcept> note).
++_LIBCPP_BEGIN_NAMESPACE_STD
+ 
+ class _LIBCPP_EXPORTED_FROM_ABI bad_variant_access : public exception {
+ public:
+   const char* what() const _NOEXCEPT override;
+ };
+ 
+-_LIBCPP_END_UNVERSIONED_NAMESPACE_STD
++_LIBCPP_END_NAMESPACE_STD
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+ 
+--- a/include/any
++++ b/include/any
+@@ -119,12 +119,13 @@
+ _LIBCPP_PUSH_MACROS
+ #  include <__undef_macros>
+ 
+-_LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD
++// sprt: versioned — defined by the sprt runtime (see <stdexcept> note).
++_LIBCPP_BEGIN_NAMESPACE_STD
+ class _LIBCPP_EXPORTED_FROM_ABI bad_any_cast : public bad_cast {
+ public:
+   const char* what() const _NOEXCEPT override;
+ };
+-_LIBCPP_END_UNVERSIONED_NAMESPACE_STD
++_LIBCPP_END_NAMESPACE_STD
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+ 
+--- a/include/__new/exceptions.h
++++ b/include/__new/exceptions.h
+@@ -59,7 +59,14 @@
+ 
+ #endif // defined(_LIBCPP_ABI_VCRUNTIME) && defined(_HAS_EXCEPTIONS) && _HAS_EXCEPTIONS == 0
+ 
++_LIBCPP_END_UNVERSIONED_NAMESPACE_STD
++// sprt: versioned — the definition comes from the sprt runtime (new_helpers), which
++// must not define canonical-namespace symbols; the classes above stay canonical
++// (libc++abi provides them).
++_LIBCPP_BEGIN_NAMESPACE_STD
+ [[__noreturn__]] _LIBCPP_EXPORTED_FROM_ABI void __throw_bad_alloc(); // not in C++ spec
++_LIBCPP_END_NAMESPACE_STD
++_LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD
+ 
+ [[__noreturn__]] inline _LIBCPP_HIDE_FROM_ABI void __throw_bad_array_new_length() {
+ #if _LIBCPP_HAS_EXCEPTIONS
+--- a/include/__new/nothrow_t.h
++++ b/include/__new/nothrow_t.h
+@@ -22,8 +22,14 @@
+ struct _LIBCPP_EXPORTED_FROM_ABI nothrow_t {
+   explicit nothrow_t() = default;
+ };
+-extern _LIBCPP_EXPORTED_FROM_ABI const nothrow_t nothrow;
+ _LIBCPP_END_UNVERSIONED_NAMESPACE_STD
++// sprt: the nothrow OBJECT is versioned — its definition comes from the sprt runtime,
++// which must not define canonical-namespace symbols. The nothrow_t TYPE above stays
++// canonical: it participates in the replaceable operator new/delete manglings, which
++// must match libc++abi's weak set.
++_LIBCPP_BEGIN_NAMESPACE_STD
++extern _LIBCPP_EXPORTED_FROM_ABI const nothrow_t nothrow;
++_LIBCPP_END_NAMESPACE_STD
+ #endif // _LIBCPP_ABI_VCRUNTIME
+ 
+ #endif // _LIBCPP___NEW_NOTHROW_T_H
+--- a/src/libcxx/new_helpers.cpp
++++ b/src/libcxx/new_helpers.cpp
+@@ -9,7 +9,9 @@
+ #include <__verbose_abort>
+ #include <new>
+ 
+-namespace std { // purposefully not versioned
++// sprt: versioned — the runtime must not define canonical-namespace symbols
++// (declarations patched accordingly in <__new/nothrow_t.h> / <__new/exceptions.h>).
++_LIBCPP_BEGIN_NAMESPACE_STD
+ 
+ #ifndef __GLIBCXX__
+ const nothrow_t nothrow{};
+@@ -27,4 +29,4 @@
+ 
+ #endif // !LIBSTDCXX
+ 
+-} // namespace std
++_LIBCPP_END_NAMESPACE_STD

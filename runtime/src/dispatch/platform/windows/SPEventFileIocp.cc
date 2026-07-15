@@ -187,7 +187,7 @@ void FileIocpHandle::notify(IocpData *iocp, FileIocpSource *source, const Notify
 }
 
 Rc<FileHandle> makeFileIocpHandle(QueueData *qdata, HandleClass *cl, Rc<FileState> &&state) {
-	auto hFile = _get_osfhandle(state->fd);
+	auto hFile = reinterpret_cast<HANDLE>(_get_osfhandle(state->fd));
 	if (!hFile || hFile == INVALID_HANDLE_VALUE) {
 		return nullptr;
 	}

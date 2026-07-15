@@ -23,7 +23,6 @@
 #ifndef SPRT_WRAPPERS_WINDOWS_ABI_SECURITY_API_H_
 #define SPRT_WRAPPERS_WINDOWS_ABI_SECURITY_API_H_
 
-
 #include <sprt/wrappers/windows/abi/basic_types.h>
 #include <sprt/wrappers/windows/abi/constants.h>
 #include <sprt/wrappers/windows/abi/structures.h>
@@ -88,7 +87,7 @@
 #define __SPRT_SE_GROUP_INTEGRITY_ENABLED         (0x00000040L)
 #define __SPRT_SE_GROUP_LOGON_ID                  (0xC0000000L)
 #define __SPRT_SE_GROUP_RESOURCE                  (0x20000000L)
-
+ 
 #define __SPRT_SE_PRIVILEGE_ENABLED_BY_DEFAULT (0x00000001L)
 #define __SPRT_SE_PRIVILEGE_ENABLED            (0x00000002L)
 #define __SPRT_SE_PRIVILEGE_REMOVED            (0X00000004L)

@@ -47,6 +47,7 @@ typedef __SPRT_ID(double_t) double_t;
 
 #include <sprt/runtime/math.h>
 #include <sprt/cxx/detail/promote.h>
+#include <sprt/cxx/detail/ctypes.h>
 
 namespace sprt {
 inline namespace _cmath {
@@ -229,6 +230,12 @@ SPRT_FORCEINLINE auto log10(double x) { return __builtin_log10(x); }
 SPRT_FORCEINLINE auto log10(long double x) { return __builtin_log10l(x); }
 SPRT_FORCEINLINE auto log10l(long double x) { return __builtin_log10l(x); }
 
+template <typename _Ip>
+requires (__is_integral(_Ip))
+SPRT_FORCEINLINE auto log10(_Ip x) {
+	return __builtin_log10(static_cast<double>(x));
+}
+
 SPRT_FORCEINLINE auto log1p(float x) { return __builtin_log1pf(x); }
 SPRT_FORCEINLINE auto log1pf(float x) { return __builtin_log1pf(x); }
 SPRT_FORCEINLINE auto log1p(double x) { return __builtin_log1p(x); }
@@ -240,6 +247,11 @@ SPRT_FORCEINLINE auto log2f(float x) { return __builtin_log2f(x); }
 SPRT_FORCEINLINE auto log2(double x) { return __builtin_log2(x); }
 SPRT_FORCEINLINE auto log2(long double x) { return __builtin_log2l(x); }
 SPRT_FORCEINLINE auto log2l(long double x) { return __builtin_log2l(x); }
+template <typename _Ip>
+requires (__is_integral(_Ip))
+SPRT_FORCEINLINE auto log2(_Ip x) {
+	return __builtin_log2(static_cast<double>(x));
+}
 
 SPRT_FORCEINLINE auto logb(float x) { return __builtin_logbf(x); }
 SPRT_FORCEINLINE auto logbf(float x) { return __builtin_logbf(x); }
@@ -527,36 +539,72 @@ SPRT_FORCEINLINE auto fpclassify(long double x) {
 SPRT_FORCEINLINE bool isfinite(float x) { return __builtin_isfinite(x); }
 SPRT_FORCEINLINE bool isfinite(double x) { return __builtin_isfinite(x); }
 SPRT_FORCEINLINE bool isfinite(long double x) { return __builtin_isfinite(x); }
+// C++ requires the classification functions to accept integral arguments as if
+// converted to double (over.built); without this an integral call is ambiguous
+// between the three floating-point overloads.
+template <typename _Ip>
+requires (__is_integral(_Ip))
+SPRT_FORCEINLINE bool isfinite(_Ip x) { return __builtin_isfinite((double)x); }
 #endif
 
 #ifndef isinf
 SPRT_FORCEINLINE bool isinf(float x) { return __builtin_isinf(x); }
 SPRT_FORCEINLINE bool isinf(double x) { return __builtin_isinf(x); }
 SPRT_FORCEINLINE bool isinf(long double x) { return __builtin_isinf(x); }
+template <typename _Ip>
+requires (__is_integral(_Ip))
+SPRT_FORCEINLINE bool isinf(_Ip x) { return __builtin_isinf((double)x); }
 #endif
 
 #ifndef isnan
 SPRT_FORCEINLINE bool isnan(float x) { return __builtin_isnan(x); }
 SPRT_FORCEINLINE bool isnan(double x) { return __builtin_isnan(x); }
 SPRT_FORCEINLINE bool isnan(long double x) { return __builtin_isnan(x); }
+template <typename _Ip>
+requires (__is_integral(_Ip))
+SPRT_FORCEINLINE bool isnan(_Ip x) { return __builtin_isnan((double)x); }
 #endif
 
 #ifndef isnormal
 SPRT_FORCEINLINE bool isnormal(float x) { return __builtin_isnormal(x); }
 SPRT_FORCEINLINE bool isnormal(double x) { return __builtin_isnormal(x); }
 SPRT_FORCEINLINE bool isnormal(long double x) { return __builtin_isnormal(x); }
+template <typename _Ip>
+requires (__is_integral(_Ip))
+SPRT_FORCEINLINE bool isnormal(_Ip x) { return __builtin_isnormal((double)x); }
 #endif
 
 #ifndef signbit
 SPRT_FORCEINLINE bool signbit(float x) { return __builtin_signbit(x); }
 SPRT_FORCEINLINE bool signbit(double x) { return __builtin_signbit(x); }
 SPRT_FORCEINLINE bool signbit(long double x) { return __builtin_signbit(x); }
+template <typename _Ip>
+requires (__is_integral(_Ip))
+SPRT_FORCEINLINE bool signbit(_Ip x) { return __builtin_signbit((double)x); }
 #endif
+
+// The two-argument comparison functions take a common real floating type: long
+// double if either operand is long double, otherwise double (integral operands
+// participate as double). C++ requires overloads accepting mixed / integral
+// arguments; without them a call like isgreater(float, double) or isgreater(int,
+// int) is ambiguous between the three same-type floating-point overloads. This
+// template covers every arithmetic pair; when both operands are the same floating
+// type the exact non-template overload above is preferred, so it only fires for
+// the mixed/integral cases. __SPRT_FCMP_MIXED emits it.
+#define __SPRT_FCMP_MIXED(_Name) \
+	template <typename _A1, typename _A2> \
+	requires (__is_arithmetic(_A1) && __is_arithmetic(_A2)) \
+	SPRT_FORCEINLINE bool _Name(_A1 x, _A2 y) { \
+		using _Tp = sprt::conditional_t<sprt::is_same_v<_A1, long double> \
+				|| sprt::is_same_v<_A2, long double>, long double, double>; \
+		return __builtin_##_Name((_Tp)x, (_Tp)y); \
+	}
 
 #ifndef isgreater
 SPRT_FORCEINLINE bool isgreater(float x, float y) { return __builtin_isgreater(x, y); }
 SPRT_FORCEINLINE bool isgreater(double x, double y) { return __builtin_isgreater(x, y); }
 SPRT_FORCEINLINE bool isgreater(long double x, long double y) { return __builtin_isgreater(x, y); }
+__SPRT_FCMP_MIXED(isgreater)
 #endif
 
 #ifndef isgreaterequal
@@ -565,12 +613,14 @@ SPRT_FORCEINLINE bool isgreaterequal(double x, double y) { return __builtin_isgr
 SPRT_FORCEINLINE bool isgreaterequal(long double x, long double y) {
 	return __builtin_isgreaterequal(x, y);
 }
+__SPRT_FCMP_MIXED(isgreaterequal)
 #endif
 
 #ifndef isless
 SPRT_FORCEINLINE bool isless(float x, float y) { return __builtin_isless(x, y); }
 SPRT_FORCEINLINE bool isless(double x, double y) { return __builtin_isless(x, y); }
 SPRT_FORCEINLINE bool isless(long double x, long double y) { return __builtin_isless(x, y); }
+__SPRT_FCMP_MIXED(isless)
 #endif
 
 #ifndef islessequal
@@ -579,6 +629,7 @@ SPRT_FORCEINLINE bool islessequal(double x, double y) { return __builtin_islesse
 SPRT_FORCEINLINE bool islessequal(long double x, long double y) {
 	return __builtin_islessequal(x, y);
 }
+__SPRT_FCMP_MIXED(islessequal)
 #endif
 
 #ifndef islessgreater
@@ -587,6 +638,7 @@ SPRT_FORCEINLINE bool islessgreater(double x, double y) { return __builtin_isles
 SPRT_FORCEINLINE bool islessgreater(long double x, long double y) {
 	return __builtin_islessgreater(x, y);
 }
+__SPRT_FCMP_MIXED(islessgreater)
 #endif
 
 #ifndef isunordered
@@ -595,7 +647,10 @@ SPRT_FORCEINLINE bool isunordered(double x, double y) { return __builtin_isunord
 SPRT_FORCEINLINE bool isunordered(long double x, long double y) {
 	return __builtin_isunordered(x, y);
 }
+__SPRT_FCMP_MIXED(isunordered)
 #endif
+
+#undef __SPRT_FCMP_MIXED
 
 // From libc++, comments preserved
 //
@@ -649,13 +704,30 @@ sprt::detail::promote_t<_A1, _A2, _A3> hypot(_A1 __x, _A2 __y, _A3 __z) noexcept
 } // namespace _cmath
 } // namespace sprt
 
-#if __STDC_HOSTED__ == 1 && !defined(__SPRT_BUILD)
+// Re-export the sprt C++ math overloads into the global namespace only when this
+// header is NOT reached through libc++. libc++ owns <cmath>/<math.h> and already
+// re-exports std::fabs/abs/... globally, so a second, identical overload set makes
+// every unqualified fabs()/abs() call ambiguous. libc++'s <math.h> pulls <__config>
+// (=> _LIBCPP_VERSION) before its #include_next <math.h> reaches us, so that macro
+// being defined is a precise "loaded through libc++" signal.
+#if __STDC_HOSTED__ == 1 && !defined(__SPRT_BUILD) && !defined(_LIBCPP_VERSION)
 using namespace sprt::_cmath;
+#elif defined(_LIBCPP_VERSION) && defined(_LIBCPP_MSVCRT)
+using sprt::_cmath::isfinite;
+using sprt::_cmath::isinf;
+using sprt::_cmath::isnan;
+using sprt::_cmath::isnormal;
+using sprt::_cmath::isgreater;
+using sprt::_cmath::isgreaterequal;
+using sprt::_cmath::isless;
+using sprt::_cmath::islessequal;
+using sprt::_cmath::islessgreater;
+using sprt::_cmath::isunordered;
 #endif
 #endif // __cplusplus
 
-
-#if !defined(__cplusplus) && __STDC_HOSTED__ == 1
+#if !defined(__cplusplus)
+#ifndef fpclassify
 #define fpclassify(x) __sprt_fpclassify(x)
 #define isinf(x) __sprt_isinf(x)
 #define isnan(x) __sprt_isnan(x)
@@ -663,7 +735,7 @@ using namespace sprt::_cmath;
 #define isfinite(x) __sprt_isfinite(x)
 #define signbit(x) __sprt_signbit(x)
 #endif
-
+#endif
 
 #if __STDC_HOSTED__ == 0
 __SPRT_BEGIN_DECL
@@ -677,7 +749,17 @@ __SPRT_END_DECL
 #endif
 
 
-#if __STDC_HOSTED__ == 0 || (!defined(__SPRT_BUILD) && !defined(__cplusplus))
+// Emit the C math surface as extern-C declarations when:
+//   - freestanding, or the hosted C (non-C++) path (the original cases); or
+//   - hosted C++ UNDER libc++ (_LIBCPP_VERSION): libc++ owns the C++ overloads and
+//     re-exports its own std::__math::fabs/acos/... globally as _LIBCPP_PREFERRED_
+//     OVERLOADs. Those dominate a C-linkage acos(double)/fabs(double) without
+//     ambiguity (exactly the glibc coexistence model), while the suffixed C names
+//     (acosf/fabsl/...) libc++ does NOT provide are supplied here for it to
+//     re-export. The sprt C++ overload block above is kept out of the global
+//     namespace in this case (see the _LIBCPP_VERSION guard on its `using`).
+#if __STDC_HOSTED__ == 0 || (!defined(__SPRT_BUILD) && !defined(__cplusplus)) \
+		|| (defined(_LIBCPP_VERSION) && !defined(__SPRT_BUILD))
 __SPRT_BEGIN_DECL
 
 #define SPRT_FUNC_BEGIN SPRT_UMBRELLA_FUNC

@@ -38,22 +38,18 @@ THE SOFTWARE.
 #include <sprt/cxx/compare>
 #include <sprt/cxx/detail/constexpr.h>
 #include <sprt/c/bits/__sprt_wint_t.h>
+#include <sprt/c/cross/__sprt_mbstate.h>
 
 namespace sprt {
 
 using streamoff = long long;
 
-// Minimal multibyte-conversion state. The standard names char_traits::state_type
-// mbstate_t; this freestanding layer has no codecvt that would consume it.
-struct __sprt_mbstate {
-	unsigned long __wch = 0;
-	unsigned char __count = 0;
-};
+using __sprt_mbstate = __SPRT_MBSTATE_NAME;
 
 template <typename _State>
 class fpos {
 	streamoff __off_ = 0;
-	_State __st_ {};
+	_State __st_{};
 
 public:
 	constexpr fpos() noexcept = default;
@@ -84,13 +80,22 @@ public:
 	friend constexpr streamoff operator-(const fpos &__a, const fpos &__b) noexcept {
 		return __a.__off_ - __b.__off_;
 	}
-	friend constexpr bool operator==(const fpos &__a, const fpos &__b) noexcept {
-		return __a.__off_ == __b.__off_;
-	}
-	friend constexpr bool operator!=(const fpos &__a, const fpos &__b) noexcept {
-		return __a.__off_ != __b.__off_;
-	}
 };
+
+template <typename _State>
+constexpr bool operator==(const fpos<_State> &__a, const fpos<_State> &__b) noexcept {
+	return streamoff(__a) == streamoff(__b);
+}
+template <typename _State>
+constexpr bool operator!=(const fpos<_State> &__a, const fpos<_State> &__b) noexcept {
+	return streamoff(__a) != streamoff(__b);
+}
+
+#ifndef __SPRT_BUILD
+using mbstate_t = __sprt_mbstate;
+using streampos = fpos<__sprt_mbstate>;
+using wstreampos = fpos<__sprt_mbstate>;
+#endif
 
 // Shared algorithmic base. _IntT is the int_type; _Eof the eof() value. compare()/find()
 // delegate to the __constexpr_* primitives, which already implement the standard's
@@ -114,13 +119,10 @@ struct __char_traits_base {
 	}
 	static constexpr size_t length(const char_type *__s) {
 		size_t __i = 0;
-		while (!eq(__s[__i], char_type())) {
-			++__i;
-		}
+		while (!eq(__s[__i], char_type())) { ++__i; }
 		return __i;
 	}
-	static constexpr const char_type *find(
-			const char_type *__s, size_t __n, const char_type &__a) {
+	static constexpr const char_type *find(const char_type *__s, size_t __n, const char_type &__a) {
 		return __constexpr_strfind(__s, __n, __a);
 	}
 	static constexpr char_type *move(char_type *__s1, const char_type *__s2, size_t __n) {
@@ -128,26 +130,18 @@ struct __char_traits_base {
 			return __s1;
 		}
 		if (__s1 < __s2) {
-			for (size_t __i = 0; __i < __n; ++__i) {
-				__s1[__i] = __s2[__i];
-			}
+			for (size_t __i = 0; __i < __n; ++__i) { __s1[__i] = __s2[__i]; }
 		} else {
-			for (size_t __i = __n; __i != 0; --__i) {
-				__s1[__i - 1] = __s2[__i - 1];
-			}
+			for (size_t __i = __n; __i != 0; --__i) { __s1[__i - 1] = __s2[__i - 1]; }
 		}
 		return __s1;
 	}
 	static constexpr char_type *copy(char_type *__s1, const char_type *__s2, size_t __n) {
-		for (size_t __i = 0; __i < __n; ++__i) {
-			__s1[__i] = __s2[__i];
-		}
+		for (size_t __i = 0; __i < __n; ++__i) { __s1[__i] = __s2[__i]; }
 		return __s1;
 	}
 	static constexpr char_type *assign(char_type *__s, size_t __n, char_type __a) {
-		for (size_t __i = 0; __i < __n; ++__i) {
-			__s[__i] = __a;
-		}
+		for (size_t __i = 0; __i < __n; ++__i) { __s[__i] = __a; }
 		return __s;
 	}
 

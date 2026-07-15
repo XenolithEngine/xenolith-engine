@@ -31,7 +31,6 @@ THE SOFTWARE.
 namespace sprt {
 inline namespace __cxx_iterator {
 
-
 template <typename Iter>
 struct iterator_traits;
 
@@ -44,18 +43,65 @@ concept __specifies_members = requires {
 	requires __has_member_iterator_category<_Ip>;
 };
 
+// A conforming iterator_traits also exposes `pointer` and `reference`. Some sprt
+// iterators only declare value_type/category/difference_type, so pull the member
+// typedefs when present and otherwise fall back to value_type*/value_type& — this
+// keeps iterator_traits usable by adapters (reverse_iterator, move_iterator, ...).
+template <class _Ip>
+concept __has_member_pointer = requires { typename _Ip::pointer; };
+template <class _Ip>
+concept __has_member_reference = requires { typename _Ip::reference; };
+template <class _Ip>
+concept __iter_dereferenceable = requires(_Ip &__i) { *__i; };
+
+template <class _Ip>
+struct __iter_traits_pointer {
+	using type = typename _Ip::value_type *;
+};
+template <__has_member_pointer _Ip>
+struct __iter_traits_pointer<_Ip> {
+	using type = typename _Ip::pointer;
+};
+
+template <class _Ip>
+struct __iter_traits_reference {
+	using type = typename _Ip::value_type &;
+};
+// No `reference` member, but dereferenceable: the reference is the real result type of
+// *it, which need not be value_type& — e.g. a const char*-backed iterator has
+// value_type char but *it yields const char&. Deriving from value_type& (dropping the
+// const) makes reverse_iterator/move_iterator ill-formed. (Was masked while
+// iterator_traits<const T*>::value_type wrongly kept the const.)
+template <class _Ip>
+	requires(!__has_member_reference<_Ip> && __iter_dereferenceable<_Ip>)
+struct __iter_traits_reference<_Ip> {
+	using type = decltype(*sprt::declval<_Ip &>());
+};
+template <__has_member_reference _Ip>
+struct __iter_traits_reference<_Ip> {
+	using type = typename _Ip::reference;
+};
+
 template <__specifies_members _Ip>
 struct iterator_traits<_Ip> {
 	using iterator_category = typename _Ip::iterator_category;
 	using value_type = typename _Ip::value_type;
 	using difference_type = typename _Ip::difference_type;
+	using pointer = typename __iter_traits_pointer<_Ip>::type;
+	using reference = typename __iter_traits_reference<_Ip>::type;
 };
 
 template <typename Ptr>
 struct iterator_traits<Ptr *> {
 	using iterator_category = random_access_iterator_tag;
-	using value_type = Ptr;
+	// [iterator.traits]: for a pointer T*, value_type is remove_cv_t<T> — the cv
+	// qualifiers are stripped (e.g. iterator_traits<const char*>::value_type == char).
+	// Leaving it as Ptr made value_type const-qualified, which then drove ill-formed
+	// instantiations like basic_string<const char> (e.g. sub_match<const char*>::str).
+	using value_type = remove_cv_t<Ptr>;
 	using difference_type = sprt::ptrdiff_t;
+	using pointer = Ptr *;
+	using reference = Ptr &;
 };
 
 template <typename _InputIter>
@@ -161,7 +207,7 @@ template <typename _InputIter,
 constexpr _InputIter prev(_InputIter __it) {
 	static_assert(__has_bidirectional_iterator_category<_InputIter>::value,
 			"Attempt to prev(it) with a non-bidirectional iterator");
-	return sprt::prev(sprt::move(__it), 1);
+	return sprt::prev(sprt::move_unsafe(__it), 1);
 }
 
 struct _IterOps {
@@ -255,7 +301,7 @@ private:
 	}
 };
 
-} // inline namespace __cxx_iterator
+} // namespace __cxx_iterator
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___ITERATOR_ITERATOR_OPS_H_

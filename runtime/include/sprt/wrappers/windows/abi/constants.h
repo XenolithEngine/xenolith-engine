@@ -57,6 +57,15 @@ THE SOFTWARE.
 
 /* Registry value retrieval flags */
 #define __SPRT_RRF_RT_REG_NONE        0x00000001  // restrict type to REG_NONE      (other data types will not return ERROR_SUCCESS)
+// Registry value types (winnt.h).
+#define __SPRT_REG_NONE                 0
+#define __SPRT_REG_SZ                   1
+#define __SPRT_REG_EXPAND_SZ            2
+#define __SPRT_REG_BINARY              3
+#define __SPRT_REG_DWORD               4
+#define __SPRT_REG_MULTI_SZ            7
+#define __SPRT_REG_QWORD               11
+
 #define __SPRT_RRF_RT_REG_SZ          0x00000002  // restrict type to REG_SZ        (other data types will not return ERROR_SUCCESS) (automatically converts REG_EXPAND_SZ to REG_SZ unless RRF_NOEXPAND is specified)
 #define __SPRT_RRF_RT_REG_EXPAND_SZ   0x00000004  // restrict type to REG_EXPAND_SZ (other data types will not return ERROR_SUCCESS) (must specify RRF_NOEXPAND or RegGetValue will fail with ERROR_INVALID_PARAMETER)
 #define __SPRT_RRF_RT_REG_BINARY      0x00000008  // restrict type to REG_BINARY    (other data types will not return ERROR_SUCCESS)
@@ -161,7 +170,10 @@ typedef enum tagCLSCTX {
 	CLSCTX_ALLOW_LOWER_TRUST_REGISTRATION = 0x4000000,
 	CLSCTX_SERVER_MUST_BE_EQUAL_OR_GREATER_PRIVILEGE = 0x8000000,
 	CLSCTX_DO_NOT_ELEVATE_SERVER = 0x10000000,
-	CLSCTX_PS_DLL = 0x80000000
+	CLSCTX_PS_DLL = 0x80000000,
+
+	CLSCTX_ALL = CLSCTX_INPROC_SERVER | CLSCTX_INPROC_HANDLER
+		| CLSCTX_LOCAL_SERVER | CLSCTX_REMOTE_SERVER
 } CLSCTX;
 
 typedef enum tag_WBEM_GENERIC_FLAG_TYPE {
@@ -201,7 +213,7 @@ typedef enum tag_WBEM_GENERIC_FLAG_TYPE {
 
 #define __SPRT_HANDLE_FLAG_INHERIT             0x00000001
 #define __SPRT_HANDLE_FLAG_PROTECT_FROM_CLOSE  0x00000002
-
+ 
 /* Local Memory Flags */
 #define __SPRT_LMEM_FIXED          0x0000
 #define __SPRT_LMEM_MOVEABLE       0x0002
@@ -226,7 +238,7 @@ typedef enum tag_WBEM_GENERIC_FLAG_TYPE {
 #define __SPRT_GENERIC_ALL                      (0x10000000L)
 
 //#define DELETE                           (0x00010000L)
-#define __SPRT__DELETE                          (0x00010000L)
+#define __SPRT_DELETE                          (0x00010000L)
 #define __SPRT_READ_CONTROL                     (0x00020000L)
 #define __SPRT_WRITE_DAC                        (0x00040000L)
 #define __SPRT_WRITE_OWNER                      (0x00080000L)
@@ -312,6 +324,7 @@ typedef enum tag_WBEM_GENERIC_FLAG_TYPE {
 /* HRESULT helper macros */
 #define __SPRT_SUCCEEDED(hr)   (((long)(hr)) >= 0)
 #define __SPRT_FAILED(hr)      (((long)(hr)) < 0)
+#define __SPRT_HRESULT_CODE(hr) ((hr) & 0xFFFF)
 
 /* ============================================================ */
 /* Memory Functions (memoryapi.h, winbase.h)                    */
@@ -351,5 +364,95 @@ typedef enum tag_WBEM_GENERIC_FLAG_TYPE {
 #define __SPRT_FILE_TYPE_PIPE      0x0003
 #define __SPRT_FILE_TYPE_REMOTE    0x8000
 
+// Processor-feature identifiers for IsProcessorFeaturePresent (winnt.h PF_* values).
+#define __SPRT_PF_FLOATING_POINT_PRECISION_ERRATA           0
+#define __SPRT_PF_FLOATING_POINT_EMULATED                   1
+#define __SPRT_PF_COMPARE_EXCHANGE_DOUBLE                   2
+#define __SPRT_PF_MMX_INSTRUCTIONS_AVAILABLE                3
+#define __SPRT_PF_PPC_MOVEMEM_64BIT_OK                      4
+#define __SPRT_PF_ALPHA_BYTE_INSTRUCTIONS                   5
+#define __SPRT_PF_XMMI_INSTRUCTIONS_AVAILABLE               6
+#define __SPRT_PF_3DNOW_INSTRUCTIONS_AVAILABLE              7
+#define __SPRT_PF_RDTSC_INSTRUCTION_AVAILABLE               8
+#define __SPRT_PF_PAE_ENABLED                               9
+#define __SPRT_PF_XMMI64_INSTRUCTIONS_AVAILABLE            10
+#define __SPRT_PF_SSE_DAZ_MODE_AVAILABLE                   11
+#define __SPRT_PF_NX_ENABLED                               12
+#define __SPRT_PF_SSE3_INSTRUCTIONS_AVAILABLE              13
+#define __SPRT_PF_COMPARE_EXCHANGE128                      14
+#define __SPRT_PF_COMPARE64_EXCHANGE128                    15
+#define __SPRT_PF_CHANNELS_ENABLED                         16
+#define __SPRT_PF_XSAVE_ENABLED                            17
+#define __SPRT_PF_ARM_VFP_32_REGISTERS_AVAILABLE           18
+#define __SPRT_PF_ARM_NEON_INSTRUCTIONS_AVAILABLE          19
+#define __SPRT_PF_SECOND_LEVEL_ADDRESS_TRANSLATION         20
+#define __SPRT_PF_VIRT_FIRMWARE_ENABLED                    21
+#define __SPRT_PF_RDWRFSGSBASE_AVAILABLE                   22
+#define __SPRT_PF_FASTFAIL_AVAILABLE                       23
+#define __SPRT_PF_ARM_DIVIDE_INSTRUCTION_AVAILABLE         24
+#define __SPRT_PF_ARM_64BIT_LOADSTORE_ATOMIC               25
+#define __SPRT_PF_ARM_EXTERNAL_CACHE_AVAILABLE             26
+#define __SPRT_PF_ARM_FMAC_INSTRUCTIONS_AVAILABLE          27
+#define __SPRT_PF_RDRAND_INSTRUCTION_AVAILABLE             28
+#define __SPRT_PF_ARM_V8_INSTRUCTIONS_AVAILABLE            29
+#define __SPRT_PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE     30
+#define __SPRT_PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE      31
+#define __SPRT_PF_RDTSCP_INSTRUCTION_AVAILABLE             32
+#define __SPRT_PF_RDPID_INSTRUCTION_AVAILABLE              33
+#define __SPRT_PF_ARM_V81_ATOMIC_INSTRUCTIONS_AVAILABLE    34
+#define __SPRT_PF_MONITORX_INSTRUCTION_AVAILABLE           35
+#define __SPRT_PF_SSSE3_INSTRUCTIONS_AVAILABLE             36
+#define __SPRT_PF_SSE4_1_INSTRUCTIONS_AVAILABLE            37
+#define __SPRT_PF_SSE4_2_INSTRUCTIONS_AVAILABLE            38
+#define __SPRT_PF_AVX_INSTRUCTIONS_AVAILABLE               39
+#define __SPRT_PF_AVX2_INSTRUCTIONS_AVAILABLE              40
+#define __SPRT_PF_AVX512F_INSTRUCTIONS_AVAILABLE           41
+#define __SPRT_PF_ERMS_AVAILABLE                           42
+#define __SPRT_PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE        43
+#define __SPRT_PF_ARM_V83_JSCVT_INSTRUCTIONS_AVAILABLE     44
+#define __SPRT_PF_ARM_V83_LRCPC_INSTRUCTIONS_AVAILABLE     45
+#define __SPRT_PF_ARM_SVE_INSTRUCTIONS_AVAILABLE           46
+#define __SPRT_PF_ARM_SVE2_INSTRUCTIONS_AVAILABLE          47
+#define __SPRT_PF_ARM_SVE2_1_INSTRUCTIONS_AVAILABLE        48
+#define __SPRT_PF_ARM_SVE_AES_INSTRUCTIONS_AVAILABLE       49
+#define __SPRT_PF_ARM_SVE_PMULL128_INSTRUCTIONS_AVAILABLE  50
+#define __SPRT_PF_ARM_SVE_BITPERM_INSTRUCTIONS_AVAILABLE   51
+#define __SPRT_PF_ARM_SVE_BF16_INSTRUCTIONS_AVAILABLE      52
+#define __SPRT_PF_ARM_SVE_EBF16_INSTRUCTIONS_AVAILABLE     53
+#define __SPRT_PF_ARM_SVE_B16B16_INSTRUCTIONS_AVAILABLE    54
+#define __SPRT_PF_ARM_SVE_SHA3_INSTRUCTIONS_AVAILABLE      55
+#define __SPRT_PF_ARM_SVE_SM4_INSTRUCTIONS_AVAILABLE       56
+#define __SPRT_PF_ARM_SVE_I8MM_INSTRUCTIONS_AVAILABLE      57
+#define __SPRT_PF_ARM_SVE_F32MM_INSTRUCTIONS_AVAILABLE     58
+#define __SPRT_PF_ARM_SVE_F64MM_INSTRUCTIONS_AVAILABLE     59
+#define __SPRT_PF_BMI2_INSTRUCTIONS_AVAILABLE              60
+#define __SPRT_PF_MOVDIR64B_INSTRUCTION_AVAILABLE          61
+#define __SPRT_PF_ARM_LSE2_AVAILABLE                       62
+#define __SPRT_PF_RESERVED_FEATURE                         63
+#define __SPRT_PF_ARM_SHA3_INSTRUCTIONS_AVAILABLE          64
+#define __SPRT_PF_ARM_SHA512_INSTRUCTIONS_AVAILABLE        65
+#define __SPRT_PF_ARM_V82_I8MM_INSTRUCTIONS_AVAILABLE      66
+#define __SPRT_PF_ARM_V82_FP16_INSTRUCTIONS_AVAILABLE      67
+#define __SPRT_PF_ARM_V86_BF16_INSTRUCTIONS_AVAILABLE      68
+#define __SPRT_PF_ARM_V86_EBF16_INSTRUCTIONS_AVAILABLE     69
+#define __SPRT_PF_ARM_SME_INSTRUCTIONS_AVAILABLE           70
+#define __SPRT_PF_ARM_SME2_INSTRUCTIONS_AVAILABLE          71
+#define __SPRT_PF_ARM_SME2_1_INSTRUCTIONS_AVAILABLE        72
+#define __SPRT_PF_ARM_SME2_2_INSTRUCTIONS_AVAILABLE        73
+#define __SPRT_PF_ARM_SME_AES_INSTRUCTIONS_AVAILABLE       74
+#define __SPRT_PF_ARM_SME_SBITPERM_INSTRUCTIONS_AVAILABLE  75
+#define __SPRT_PF_ARM_SME_SF8MM4_INSTRUCTIONS_AVAILABLE    76
+#define __SPRT_PF_ARM_SME_SF8MM8_INSTRUCTIONS_AVAILABLE    77
+#define __SPRT_PF_ARM_SME_SF8DP2_INSTRUCTIONS_AVAILABLE    78
+#define __SPRT_PF_ARM_SME_SF8DP4_INSTRUCTIONS_AVAILABLE    79
+#define __SPRT_PF_ARM_SME_SF8FMA_INSTRUCTIONS_AVAILABLE    80
+#define __SPRT_PF_ARM_SME_F8F32_INSTRUCTIONS_AVAILABLE     81
+#define __SPRT_PF_ARM_SME_F8F16_INSTRUCTIONS_AVAILABLE     82
+#define __SPRT_PF_ARM_SME_F16F16_INSTRUCTIONS_AVAILABLE    83
+#define __SPRT_PF_ARM_SME_B16B16_INSTRUCTIONS_AVAILABLE    84
+#define __SPRT_PF_ARM_SME_F64F64_INSTRUCTIONS_AVAILABLE    85
+#define __SPRT_PF_ARM_SME_I16I64_INSTRUCTIONS_AVAILABLE    86
+#define __SPRT_PF_ARM_SME_LUTv2_INSTRUCTIONS_AVAILABLE     87
+#define __SPRT_PF_ARM_SME_FA64_INSTRUCTIONS_AVAILABLE      88
 
 #endif // SPRT_WRAPPERS_WINDOWS_ABI_CONSTANTS_H_

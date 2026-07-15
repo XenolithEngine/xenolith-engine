@@ -82,6 +82,19 @@ void performTimeTest() {
 	printf("difftime(100,40)=%g\n", difftime((time_t)100, (time_t)40));
 	printf("difftime(40,100)=%g\n", difftime((time_t)40, (time_t)100));
 	printf("difftime(1000000000,0)=%g\n", difftime((time_t)1000000000, (time_t)0));
+
+	// localtime_s (MSVC argument order: tm* first). Its filled fields depend on the
+	// timezone, so only the deterministic contract is checked: 0 on success, nonzero
+	// for a null tm or null time pointer.
+	{
+		time_t t = 1234567890;
+		struct tm lt;
+		lt = {};
+		int ok = localtime_s(&lt, &t);
+		int null_tm = localtime_s((struct tm *)0, &t);
+		int null_t = localtime_s(&lt, (const time_t *)0);
+		printf("localtime_s: ok=%d null_tm=%d null_t=%d\n", ok == 0, null_tm != 0, null_t != 0);
+	}
 }
 
 } // namespace sprt::test

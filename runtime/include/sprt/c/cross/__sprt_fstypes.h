@@ -36,7 +36,24 @@ THE SOFTWARE.
 */
 
 // clang-format off
+#ifdef SPRT_WINDOWS
+typedef unsigned short __SPRT_ID(mode_t);
+#else
 typedef __SPRT_ID(uint32_t) __SPRT_ID(mode_t);
+#endif
+
+// A mode_t passed through a variadic '...' undergoes the default argument
+// promotions: where mode_t is narrower than int (windows: unsigned short) it
+// arrives as int, so `va_arg` must retrieve an int and narrow it — reading it as
+// mode_t directly would be undefined behavior. Where mode_t is already int-width
+// (uint32_t), read it directly. Use this at every open()/openat()/creat() vararg
+// site instead of `va_arg(ap, mode_t)`.
+#ifdef SPRT_WINDOWS
+#define __SPRT_VA_ARG_MODE_T(ap) ((__SPRT_ID(mode_t)) __sprt_va_arg((ap), int))
+#else
+#define __SPRT_VA_ARG_MODE_T(ap) (__sprt_va_arg((ap), __SPRT_ID(mode_t)))
+#endif
+
 typedef __SPRT_ID(uint64_t) __SPRT_ID(nlink_t);
 typedef __SPRT_ID(uint64_t) __SPRT_ID(ino_t);
 typedef __SPRT_ID(uint64_t) __SPRT_ID(dev_t);

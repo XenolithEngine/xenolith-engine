@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 #include <sprt/c/bits/__sprt_cpuset_t.h>
 #include <sprt/cxx/detail/constexpr.h>
+#include <sprt/cxx/__new/nothrow.h>
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_dlfcn.h>
 #include <sprt/c/__sprt_unistd.h>
@@ -73,9 +74,17 @@ SPRT_API void __sprt_assert_fail(const char *cond, const char *file, unsigned in
 		const char *fn, const char *text) __SPRT_NOEXCEPT;
 }
 
-namespace sprt {
+namespace std {
+// Always versioned (unified ABI) — must match the declaration in
+// <sprt/cxx/__new/nothrow.h>; the runtime defines no canonical-namespace symbols.
+__SPRT_STD_OWNED_BEGIN
 
-const nothrow_t nothrow;
+__attribute__((weak)) const nothrow_t nothrow;
+
+__SPRT_STD_OWNED_END
+} // namespace std
+
+namespace sprt {
 
 __SPRT_C_FUNC __SPRT_ID(FILE) * __SPRT_ID(stdin_impl)() {
 	return stdin; //

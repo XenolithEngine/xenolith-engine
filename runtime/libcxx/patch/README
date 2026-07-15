@@ -1,0 +1,51 @@
+# Minimal patches applied to vendored upstream files after copy (see Makefile regen).
+#
+# 0001-exception-ptr-versioned-namespace.patch
+#   Puts std::exception_ptr and the current/rethrow/uncaught_exceptions operations +
+#   nested_exception into the VERSIONED ABI namespace (std::__sprt) instead of the
+#   canonical std that libc++'s _LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD gives them.
+#   Rationale: sprt OWNS its libc++ tree and provides these out of line itself
+#   (libc_wrapper/cxx/SPRTCxxException.cpp, in std::__sprt); leaving them canonical
+#   makes vendored TUs (e.g. src/libcxx/future.cpp) reference a bare std::exception_ptr
+#   that clashes with a foreign/system libc++'s canonical symbols on the ABI-shared
+#   targets (macOS) -- the same reason libstdc++ hides them in std::__exception_ptr.
+#   std::terminate / std::set_terminate / std::type_info stay canonical (libc++abi owns
+#   them). See runtime/libcxx/libcxx.mk and the SPRTCxx threading/future TUs.
+
+# 0002-runtime-owned-std-symbols-versioned.patch
+#   Full canonical-namespace isolation: every symbol the SPRT RUNTIME defines moves to
+#   the versioned namespace (std::__sprt); only libc++abi remains a canonical-std
+#   provider (its job — the platform C++ ABI layer: std::exception hierarchy,
+#   type_info, terminate, new_handler, ...).
+#   - <stdexcept>: the nine exception classes (upstream: "purposefully not using
+#     versioning namespace") -> versioned; their out-of-line members come from
+#     src/SPRTCxxStdexcept.cpp (also versioned).
+#   - <optional>/<variant>/<any>: bad_optional_access / bad_variant_access /
+#     bad_any_cast -> versioned (same TU defines them).
+#   - <__new/exceptions.h>: only __throw_bad_alloc -> versioned (bad_alloc & co stay
+#     canonical: libc++abi provides them).
+#   - <__new/nothrow_t.h>: only the `nothrow` OBJECT -> versioned; the nothrow_t TYPE
+#     stays canonical (it participates in the replaceable operator new/delete
+#     manglings, which must match libc++abi's weak set).
+#   - src/new_helpers.cpp: the nothrow/__throw_bad_alloc definitions follow.
+#   Companion (non-vendored) changes: sprt/cxx/compare and sprt/cxx/__new/nothrow.h
+#   hand-written branches use __SPRT_STD_OWNED_* (inline __sprt on system-ABI
+#   targets) for the strong/weak/partial_ordering constants and the nothrow object;
+#   runtime_core_defaults.cpp defines std::nothrow versioned accordingly.
+
+# 0003-sprt-suppress-win32api.patch
+#   Lets the sprt overlay turn OFF _LIBCPP_WIN32API on the *-windows-msvc target. __config
+#   auto-defines it from _WIN32, which switches every OS-service subsystem of libc++ to its
+#   <windows.h> backend: the filesystem reimplements stat/statvfs/readlink/... against WinAPI
+#   in src/libcxx/filesystem/posix_compat.h, chrono/system_error/ostream-print take their
+#   Win32 paths, and path::value_type becomes wchar_t. sprt already ships a full POSIX libc on
+#   Windows (char/UTF-8 stat, statvfs, open, clock_gettime, strerror, fopen — each converts to
+#   WinAPI internally), so those reimplementations only duplicate sprt's libc and risk
+#   diverging from it (e.g. two statvfs). The patch gates `#define _LIBCPP_WIN32API` (and the
+#   _wfopen wchar-open path via _LIBCPP_HAS_OPEN_WITH_WCHAR) on `!defined(_LIBCPP_SPRT_NO_WIN32API)`,
+#   a macro the overlay sets in <__config_site> for _WIN32. The whole library then takes its
+#   POSIX code paths and routes through sprt: path is char/UTF-8 and files open via char fopen.
+#   _LIBCPP_SHORT_WCHAR / _LIBCPP_MSVCRT[_LIKE] are deliberately left as __config sets them —
+#   they describe the compiler's 16-bit wchar_t ABI and the C-runtime/locale-backend flavor,
+#   not the OS API surface. Companion (non-vendored) change: the _LIBCPP_SPRT_NO_WIN32API
+#   define lives in include_libc/cxx/__config_site (the overlay, not a vendored mirror).

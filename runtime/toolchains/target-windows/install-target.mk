@@ -26,6 +26,7 @@ T_TARGET ?= $(abspath $(LIBS_MAKE_ROOT))/targets/x86_64-unknown-linux-gnu
 $(T_TARGET):
 	mkdir -p $(T_TARGET)/share $(T_TARGET)/usr/lib
 	cp -f $(T_INTERMEDIATE)/usr/lib/*.lib $(T_TARGET)/usr/lib
+	rm $(T_TARGET)/usr/lib/sprt.lib
 
 $(T_TARGET)/usr/include: $(T_INTERMEDIATE)/usr/include | $(T_TARGET)
 	@mkdir -p $(dir $@)

@@ -84,31 +84,15 @@ CONFIGURE += \
 endif
 
 ifdef WASM
-# Freestanding wasm: point find_package(OpenSSL) at the sprt-built static libs
-# (unix libcrypto.a/libssl.a names, not the crypto.lib/ssl.lib the openssl block
-# above assumes) - both curl and ngtcp2 need this to locate the wasm OpenSSL. HTTP/3
-# comes from the ngtcp2/nghttp3 stack enabled in the openssl block above (USE_NGTCP2
-# implies USE_NGHTTP3). Drop the pieces the wasm sysroot does not ship (IDN2, PSL) or
-# that cannot work in the browser sandbox (no raw sockets - the socket API resolves to
-# the libc no-op stubs at link time).
 CONFIGURE += \
 	-DOPENSSL_ROOT_DIR=$(SP_INSTALL_PREFIX)/usr \
 	-DOPENSSL_CRYPTO_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libcrypto.a \
 	-DOPENSSL_SSL_LIBRARY=$(SP_INSTALL_PREFIX)/usr/lib/libssl.a \
 	-DOPENSSL_INCLUDE_DIR=$(SP_INSTALL_PREFIX)/usr/include \
+	-DCURL_DISABLE_NETRC=ON \
 	-DUSE_LIBIDN2=OFF \
 	-DCURL_USE_LIBPSL=OFF \
 	-DENABLE_THREADED_RESOLVER=OFF
-# No -DSIZEOF_* pins here anymore either: curl runs its check_type_size probes inside the
-# same EXECUTABLE region as the function checks, and configure.mk's --export-if-defined=main
-# keeps the probe's main - and the info_size marker it references - alive through
-# gc-sections, so the sizes are recovered from the freestanding wasm exe (ILP32 with 64-bit
-# ssize_t/off_t/time_t/curl_off_t) instead of coming back empty.
-# No -DHAVE_*=OFF list here anymore: curl forces its check_function_exists probes to
-# EXECUTABLE, and configure.mk now links those probes against the sprt libc archive with
-# NO --allow-undefined, so functions the libc genuinely lacks (fnmatch - curl has its own
-# curl_fnmatch; the rlimit fd-limit tuning; the passwd/getpass/if_nametoindex bits) are
-# detected as absent automatically and curl falls back to its portable paths.
 endif
 
 all:

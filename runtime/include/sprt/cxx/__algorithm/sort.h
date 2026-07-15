@@ -29,10 +29,6 @@ THE SOFTWARE.
 #include <sprt/cxx/__iterator/iterator_tags.h>
 #include <sprt/cxx/__type_traits/queries.h>
 
-/*
-	!!!WIBECODED - NEED CHECKS, TESTS and styling
-*/
-
 namespace sprt {
 inline namespace __cxx_algorithm {
 
@@ -40,7 +36,7 @@ template <typename Iter>
 concept is_random_access = sprt::is_base_of_v< sprt::random_access_iterator_tag,
 		typename sprt::iterator_traits<Iter>::iterator_category >;
 
-} // inline namespace __cxx_algorithm
+} // namespace __cxx_algorithm
 
 // 'detail' is the shared sprt::detail namespace, so it must stay outside the
 // per-header inline namespace (otherwise it conflicts with sprt::detail elsewhere).
@@ -163,23 +159,30 @@ RandomIt __partition(RandomIt first, RandomIt last, Compare comp) {
 	// Select pivot deterministically using the custom comparator
 	auto pivot_iter = __get_median_pivot(first, mid, last - 1, comp);
 
-	// Move pivot to the end for easier partitioning
-	sprt::swap(*pivot_iter, *(last - 1));
+	// Move pivot to the end for easier partitioning. Self-swap guards throughout:
+	// swap is move-based, and a self-move-assignment is UB for many value types.
+	if (pivot_iter != last - 1) {
+		sprt::swap(*pivot_iter, *(last - 1));
+	}
 
-	const auto &pivot_value = *(last - 1);
+	auto &pivot_value = *(last - 1);
 
 	RandomIt store_index = first;
 
 	for (RandomIt iter = first; iter < last - 1; ++iter) {
 		// Use the custom comparator to decide if element belongs on the left
 		if (comp(*iter, pivot_value)) {
-			sprt::swap(*store_index, *iter);
+			if (store_index != iter) {
+				sprt::swap(*store_index, *iter);
+			}
 			++store_index;
 		}
 	}
 
 	// Place pivot in correct position
-	sprt::swap(*(last - 1), *store_index);
+	if (store_index != last - 1) {
+		sprt::swap(*(last - 1), *store_index);
+	}
 
 	return store_index;
 }
@@ -228,8 +231,8 @@ inline namespace __cxx_algorithm {
  */
 template <class Iter, class Compare>
 requires is_random_access<Iter>
-		&& sprt::is_invocable_r_v<bool, Compare, typename sprt::iterator_traits<Iter>::value_type,
-				typename sprt::iterator_traits<Iter>::value_type>
+		&& sprt::is_invocable_r_v<bool, Compare, typename sprt::iterator_traits<Iter>::value_type &,
+				typename sprt::iterator_traits<Iter>::value_type &>
 void sort(Iter first, Iter last, Compare comp) {
 	if (first >= last) {
 		return;
@@ -258,7 +261,7 @@ void sort(Iter first, Iter last) {
 	sort(first, last, sprt::less<void>{});
 }
 
-} // inline namespace __cxx_algorithm
+} // namespace __cxx_algorithm
 } // namespace sprt
 
 #endif

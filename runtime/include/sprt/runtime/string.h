@@ -28,7 +28,6 @@ THE SOFTWARE.
 #include <sprt/runtime/detail/dtoa.h>
 #include <sprt/runtime/utils/notnull.h>
 
-#include <sprt/cxx/array>
 
 #include <sprt/c/__sprt_string.h>
 

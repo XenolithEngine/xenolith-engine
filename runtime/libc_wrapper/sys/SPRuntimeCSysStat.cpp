@@ -26,6 +26,7 @@ THE SOFTWARE.
 #define _LARGEFILE64_SOURCE 1
 
 #include <sprt/c/sys/__sprt_stat.h>
+#include <sprt/c/sys/__sprt_statvfs.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_stdio.h>
@@ -33,6 +34,7 @@ THE SOFTWARE.
 
 #include "unistd.h"
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 
 namespace sprt {
 
@@ -242,6 +244,52 @@ __SPRT_C_FUNC int __SPRT_ID(
 	}
 
 	return ::utimensat(fd, path, ts ? nativeTs : nullptr, flags);
+#endif
+}
+
+#if __STDC_HOSTED__ == 1
+static void convertStatvfsFromNative(const struct ::statvfs *native,
+		struct __SPRT_STATVFS_NAME *rt) {
+	rt->f_bsize = native->f_bsize;
+	rt->f_frsize = native->f_frsize;
+	rt->f_blocks = native->f_blocks;
+	rt->f_bfree = native->f_bfree;
+	rt->f_bavail = native->f_bavail;
+	rt->f_files = native->f_files;
+	rt->f_ffree = native->f_ffree;
+	rt->f_favail = native->f_favail;
+	rt->f_fsid = native->f_fsid;
+	rt->f_flag = native->f_flag;
+	rt->f_namemax = native->f_namemax;
+}
+#endif
+
+__SPRT_C_FUNC int __SPRT_ID(statvfs)(const char *__SPRT_RESTRICT path,
+		struct __SPRT_STATVFS_NAME *__SPRT_RESTRICT buf) {
+#if __STDC_HOSTED__ == 0
+	// Freestanding backend: WinAPI on windows, a zeroed no-op on wasm (libc_impl/builtin_stat).
+	return statvfs(path, buf);
+#else
+	struct ::statvfs native;
+	auto ret = ::statvfs(path, &native);
+	if (ret == 0) {
+		convertStatvfsFromNative(&native, buf);
+	}
+	return ret;
+#endif
+}
+
+__SPRT_C_FUNC int __SPRT_ID(fstatvfs)(int fd, struct __SPRT_STATVFS_NAME *buf) {
+#if __STDC_HOSTED__ == 0
+	// Freestanding backend: WinAPI on windows, a zeroed no-op on wasm (libc_impl/builtin_stat).
+	return fstatvfs(fd, buf);
+#else
+	struct ::statvfs native;
+	auto ret = ::fstatvfs(fd, &native);
+	if (ret == 0) {
+		convertStatvfsFromNative(&native, buf);
+	}
+	return ret;
 #endif
 }
 

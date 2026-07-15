@@ -57,21 +57,25 @@ struct hash<Enum> {
 template <>
 struct hash<float> {
 	constexpr size_t operator()(const float &value) const noexcept {
-		return sprt::bit_cast<uint32_t>(value) & Max<size_t>;
+		// equal keys must hash equal: -0.0f == 0.0f but their bit patterns differ
+		return sprt::bit_cast<uint32_t>(value == 0.0f ? 0.0f : value) & Max<size_t>;
 	}
 };
 
 template <>
 struct hash<double> {
 	constexpr size_t operator()(const double &value) const noexcept {
-		return sprt::bit_cast<uint64_t>(value) & Max<size_t>;
+		// equal keys must hash equal: -0.0 == 0.0 but their bit patterns differ
+		return sprt::bit_cast<uint64_t>(value == 0.0 ? 0.0 : value) & Max<size_t>;
 	}
 };
 
 template <>
 struct hash<long double> {
 	size_t operator()(const long double &value) const noexcept {
-		return sprt::hashSize((const char *)&value, sizeof(value));
+		// equal keys must hash equal: -0.0L == 0.0L but their bit patterns differ
+		const long double norm = (value == 0.0L) ? 0.0L : value;
+		return sprt::hashSize((const char *)&norm, sizeof(norm));
 	}
 };
 
@@ -102,8 +106,12 @@ struct hash<const char (&)[N]> {
 template <typename T>
 struct hash<T *> {
 	size_t operator()(const T *value) const noexcept {
-		static const size_t shift = (size_t)__sprt_log2(1 + sizeof(T));
-		return reinterpret_cast<size_t>(value) >> shift;
+		size_t __a = reinterpret_cast<size_t>(value);
+		if constexpr (sizeof(size_t) == 8) {
+			return __a * static_cast<size_t>(0x9E37'79B9'7F4A'7C15ull);
+		} else {
+			return __a * static_cast<size_t>(0x9E37'79B9u);
+		}
 	}
 };
 

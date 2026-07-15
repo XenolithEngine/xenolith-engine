@@ -24,10 +24,11 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_MATH_H_
 
 #include <sprt/runtime/init.h>
-#include <sprt/cxx/functional>
 #include <sprt/c/__sprt_stdlib.h>
 #include <sprt/c/__sprt_locale.h>
 #include <sprt/c/__sprt_float.h>
+#include <sprt/cxx/__type_traits/types.h>
+#include <sprt/cxx/__functional/compare.h>
 
 // numbers::pi replacement from std
 namespace sprt::numbers {

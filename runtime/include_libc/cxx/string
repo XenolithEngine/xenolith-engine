@@ -1,0 +1,198 @@
+// -*- C++ -*-
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+// sprt overlay for <string>: back std::basic_string with sprt's __basic_string
+// (SSO via linear_memory, allocator-aware).
+//
+// OPT-IN, DEFAULT OFF: define SPRT_STD_STRING_SPRT to enable. It is off by default
+// because libc++'s std::string is a C++20 constexpr/literal type and sprt's
+// __basic_string is not (yet) — so the bulk of the [strings] conformance suite, which
+// exercises std::string in constant expressions, does not compile against it. Making
+// sprt's string+linear_memory+char_traits fully constexpr is the prerequisite for
+// turning this on by default.
+//
+// When enabled: std::basic_string<CharT,Traits,Alloc> DERIVES from
+// sprt::__basic_string<CharT,Alloc,Traits> (sprt swaps the Traits/Alloc order).
+// Converting ctors from the base absorb base-typed results (substr, operator+) so no
+// slicing surfaces; comparisons / operator+ / find resolve to sprt's via base-class ADL.
+
+#include <__config>
+
+#if !defined(SPRT_STD_STRING_SPRT)
+
+#include_next <string>
+
+#else // sprt-backed std::basic_string (opt-in)
+
+#ifndef _LIBCPP_STRING
+#define _LIBCPP_STRING
+
+#include <__fwd/string.h>
+#include <__memory/allocator.h>
+#include <__ranges/from_range.h>
+#include <__string/char_traits.h>
+#include <compare>
+#include <cstddef>
+#include <initializer_list>
+
+// libc++'s <string> transitively provides std::basic_string_view (the tests rely on it),
+// and the sprt string exposes string_view-convertible overloads — pull in the matching
+// sprt-backed <string_view> overlay so std::string / std::string_view stay interoperable.
+#include <string_view>
+
+#include <sprt/cxx/string>
+
+#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+#  pragma GCC system_header
+#endif
+
+_LIBCPP_PUSH_MACROS
+#include <__undef_macros>
+
+_LIBCPP_BEGIN_NAMESPACE_STD
+
+template <class _CharT, class _Traits, class _Allocator>
+class basic_string : public ::sprt::__basic_string<_CharT, _Allocator, _Traits, /*UseSoo=*/false> {
+  using __base = ::sprt::__basic_string<_CharT, _Allocator, _Traits, /*UseSoo=*/false>;
+
+public:
+  using typename __base::traits_type;
+  using typename __base::value_type;
+  using typename __base::allocator_type;
+  using typename __base::size_type;
+  using typename __base::difference_type;
+  using typename __base::reference;
+  using typename __base::const_reference;
+  using typename __base::pointer;
+  using typename __base::const_pointer;
+  using typename __base::iterator;
+  using typename __base::const_iterator;
+  using typename __base::reverse_iterator;
+  using typename __base::const_reverse_iterator;
+
+  using __base::npos;
+
+  using __base::__base;      // inherit sprt's ctor set
+
+  _LIBCPP_HIDE_FROM_ABI constexpr basic_string()                             = default;
+  _LIBCPP_HIDE_FROM_ABI constexpr basic_string(const basic_string&)          = default;
+  _LIBCPP_HIDE_FROM_ABI constexpr basic_string(basic_string&&)               = default;
+  _LIBCPP_HIDE_FROM_ABI constexpr basic_string& operator=(const basic_string&) = default;
+  _LIBCPP_HIDE_FROM_ABI constexpr basic_string& operator=(basic_string&&)      = default;
+
+  // Value-type assignments, declared on the derived class returning basic_string& (not the
+  // base's __base&). A `using __base::operator=` would instead pull in the base-typed
+  // copy/move-assign, colliding with the derived defaults (LWG-2946 `s = {ptr, n}` becomes
+  // ambiguous) and returning the wrong reference type.
+  _LIBCPP_HIDE_FROM_ABI constexpr basic_string& operator=(const _CharT* __s) {
+    __base::operator=(__s);
+    return *this;
+  }
+  _LIBCPP_HIDE_FROM_ABI constexpr basic_string& operator=(_CharT __c) {
+    __base::operator=(__c);
+    return *this;
+  }
+  _LIBCPP_HIDE_FROM_ABI constexpr basic_string& operator=(initializer_list<_CharT> __il) {
+    __base::operator=(__il);
+    return *this;
+  }
+  template <class _Tp,
+            __enable_if_t<is_convertible<const _Tp&, ::sprt::basic_string_view<_CharT, _Traits> >::value &&
+                              !is_convertible<const _Tp&, const _CharT*>::value,
+                          int> = 0>
+  _LIBCPP_HIDE_FROM_ABI constexpr basic_string& operator=(const _Tp& __t) {
+    __base::operator=(__t);
+    return *this;
+  }
+
+#if _LIBCPP_STD_VER >= 23
+  // [string.cons] C++23 from_range constructor (forwards std::from_range to the sprt base).
+  template <class _Range,
+            __enable_if_t< ::sprt::__string_compatible_range<_Range, _CharT>, int> = 0>
+  _LIBCPP_HIDE_FROM_ABI constexpr basic_string(
+      from_range_t, _Range&& __rg, const _Allocator& __a = _Allocator())
+      : __base(::sprt::__sprt_from_range, std::forward<_Range>(__rg), __a) {}
+
+  // [string.modifiers] C++23 range members that return a reference: re-declare on the
+  // derived class so they return basic_string& (the base returns __base&, which cannot
+  // bind to a required std::string& result). insert_range (iterator) and
+  // resize_and_overwrite (void) are inherited unchanged.
+  template <class _Range,
+            __enable_if_t< ::sprt::__string_compatible_range<_Range, _CharT>, int> = 0>
+  _LIBCPP_HIDE_FROM_ABI constexpr basic_string& append_range(_Range&& __rg) {
+    __base::append_range(std::forward<_Range>(__rg));
+    return *this;
+  }
+  template <class _Range,
+            __enable_if_t< ::sprt::__string_compatible_range<_Range, _CharT>, int> = 0>
+  _LIBCPP_HIDE_FROM_ABI constexpr basic_string& assign_range(_Range&& __rg) {
+    __base::assign_range(std::forward<_Range>(__rg));
+    return *this;
+  }
+  template <class _Range,
+            __enable_if_t< ::sprt::__string_compatible_range<_Range, _CharT>, int> = 0>
+  _LIBCPP_HIDE_FROM_ABI constexpr basic_string&
+  replace_with_range(const_iterator __i1, const_iterator __i2, _Range&& __rg) {
+    __base::replace_with_range(__i1, __i2, std::forward<_Range>(__rg));
+    return *this;
+  }
+#endif
+
+  // Absorb base-typed results (substr, operator+, ...) without slicing. Must be constexpr:
+  // substr()/operator+ return the base, and these ctors are on the constant-evaluated path.
+  _LIBCPP_HIDE_FROM_ABI constexpr basic_string(const __base& __b) : __base(__b) {}
+  _LIBCPP_HIDE_FROM_ABI constexpr basic_string(__base&& __b) noexcept : __base(std::move(__b)) {}
+
+  // libc++ conformance tests probe this internal consistency hook via LIBCPP_ASSERT.
+  _LIBCPP_HIDE_FROM_ABI constexpr bool __invariants() const { return true; }
+
+  // [string.cons]: implicit, one-step conversion to std::basic_string_view. The sprt base
+  // only exposes a conversion to sprt::basic_string_view, which would make std::string ->
+  // std::string_view a two-user-conversion sequence (ill-formed implicitly); provide the
+  // direct one so string/string_view interop matches the standard.
+  _LIBCPP_HIDE_FROM_ABI constexpr operator basic_string_view<_CharT, _Traits>() const noexcept {
+    return basic_string_view<_CharT, _Traits>(this->data(), this->size());
+  }
+};
+
+// hash — forward to sprt's hash over the base.
+template <class _CharT, class _Traits, class _Allocator>
+struct hash<basic_string<_CharT, _Traits, _Allocator> > {
+  _LIBCPP_HIDE_FROM_ABI size_t operator()(const basic_string<_CharT, _Traits, _Allocator>& __s) const _NOEXCEPT {
+    return ::sprt::hash< ::sprt::__basic_string<_CharT, _Allocator, _Traits, /*UseSoo=*/false> >()(__s);
+  }
+};
+
+template <class _CharT, class _Traits, class _Allocator>
+_LIBCPP_HIDE_FROM_ABI constexpr void
+swap(basic_string<_CharT, _Traits, _Allocator>& __lhs, basic_string<_CharT, _Traits, _Allocator>& __rhs) _NOEXCEPT {
+  __lhs.swap(__rhs);
+}
+
+_LIBCPP_END_NAMESPACE_STD
+
+_LIBCPP_POP_MACROS
+
+#endif // _LIBCPP_STRING
+
+#endif // !SPRT_STD_STRING_SPRT
