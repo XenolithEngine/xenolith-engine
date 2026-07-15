@@ -105,8 +105,11 @@ SPRT_OFFSET(linger, linger, l_linger);
 SPRT_RAW_SIZE(SCOPE_ID);
 
 // === struct sockaddr_storage ===============================================
-SPRT_RAW_SIZE(sockaddr_storage);
-SPRT_RAW_OFFSET(sockaddr_storage, ss_family);
+// Its SPRT tag is __SPRT_SOCKADDR_STORAGE_NAME -> __sprt_sockaddr_storage (a
+// core __sprt_-prefixed struct like sockaddr, not a plain-spelled helper), so it
+// is reached through SPRT_TYPE (not the RAW group).
+SPRT_SIZE(sockaddr_storage, sockaddr_storage);
+SPRT_OFFSET(sockaddr_storage, sockaddr_storage, ss_family);
 
 // === struct hostent ========================================================
 SPRT_RAW_SIZE(hostent);

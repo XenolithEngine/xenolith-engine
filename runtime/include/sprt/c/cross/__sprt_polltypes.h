@@ -23,7 +23,7 @@ THE SOFTWARE.
 #ifndef CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_POLLTYPES_H_
 #define CORE_RUNTIME_INCLUDE_C_CROSS___SPRT_POLLTYPES_H_
 
-#include <sprt/c/bits/__sprt_def.h>
+#include <sprt/c/cross/__sprt_config.h>
 
 #ifdef __SPRT_BUILD
 #define __SPRT_POLLFD_NAME __SPRT_ID(pollfd)

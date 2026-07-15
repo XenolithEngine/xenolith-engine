@@ -23,10 +23,10 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_CALLBACK_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_CALLBACK_H_
 
-#include <sprt/cxx/array>
-#include <sprt/cxx/new>
+#include <sprt/cxx/__new/nothrow.h>
 #include <sprt/cxx/__functional/invoke.h>
 #include <sprt/cxx/detail/constexpr.h>
+#include <sprt/cxx/detail/inline_buffer.h>
 
 namespace sprt {
 
@@ -190,7 +190,7 @@ private:
 	}
 
 	traits_callback mCallback = nullptr;
-	array<uint8_t, FunctionBufferSize> mBuffer;
+	sprt::detail::inline_buffer<uint8_t, FunctionBufferSize> mBuffer;
 };
 
 template <typename Allocator, typename UnusedType>

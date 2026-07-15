@@ -31,17 +31,10 @@ BUILD_DIR := compiler-rt-build
 include ../common/utils/detect-platform.mk
 include ../common/utils/init-shell.mk
 
-# Real Windows CRT + SDK headers/libs (xwin), the same layout the host build uses.
-# Use the clang-cl (MSVC-frontend) driver so CMake detects MSVC and compiler-rt
-# drops the sources that don't apply to MSVC (e.g. 80-bit long double builtins).
 SP_CLANG_CL := $(dir $(SP_CC))clang-cl
 
-SDK_DIR := $(abspath $(LIB_SRC_DIR))/xwin/splat/sdk
-CRT_DIR := $(abspath $(LIB_SRC_DIR))/xwin/splat/crt
-
-# clang's MSVC toolchain resolves headers/libs from the INCLUDE/LIB env vars.
-export INCLUDE := $(CRT_DIR)/include;$(SDK_DIR)/include/shared;$(SDK_DIR)/include/ucrt;$(SDK_DIR)/include/um;$(SDK_DIR)/include/winrt;$(SDK_DIR)/include/cppwinrt
-export LIB := $(CRT_DIR)/lib/$(SP_ARCH);$(SDK_DIR)/lib/ucrt/$(SP_ARCH);$(SDK_DIR)/lib/um/$(SP_ARCH)
+export INCLUDE := $(abspath ../../../runtime/include_libc);$(abspath ../../../runtime/include_libc/cxx);$(abspath ../../../runtime/libcxx/include);$(abspath ../../../runtime/include);$(abspath ../../../runtime/include/sprt/wrappers/windows)
+export LIB := $(SP_INSTALL_PREFIX)/lib
 
 CRT_WARN_FLAGS := \
 	-Wno-nonportable-include-path \
@@ -73,6 +66,7 @@ CRT_CONFIGURE := \
 	-DCMAKE_CXX_FLAGS_INIT="$(CRT_WARN_FLAGS)" \
 	-DCMAKE_INSTALL_PREFIX=$(SP_INSTALL_PREFIX) \
 	-DCMAKE_VERBOSE_MAKEFILE=On \
+	-DCMAKE_CXX_STANDARD=20 \
 	-DLLVM_ENABLE_RUNTIMES=compiler-rt \
 	-DLLVM_ENABLE_PER_TARGET_RUNTIME_DIR=Off \
 	-DLLVM_DEFAULT_TARGET_TRIPLE=$(SP_TARGET) \
@@ -84,7 +78,8 @@ CRT_CONFIGURE := \
 	-DCOMPILER_RT_BUILD_MEMPROF=Off \
 	-DCOMPILER_RT_BUILD_CTX_PROFILE=Off \
 	-DCOMPILER_RT_BUILD_LIBFUZZER=Off \
-	-DCOMPILER_RT_BUILD_GWP_ASAN=Off
+	-DCOMPILER_RT_BUILD_GWP_ASAN=Off \
+	-DCOMPILER_RT_TARGET_HAS_FCNTL_LCK=0
 
 all:
 	$(call rule_rm,$(BUILD_DIR))

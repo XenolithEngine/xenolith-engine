@@ -59,6 +59,15 @@ inline constexpr void reverse(_BidirectionalIterator __first, _BidirectionalIter
 	sprt::__reverse(sprt::move_unsafe(__first), sprt::move_unsafe(__last));
 }
 
+template <typename _BidirectionalIterator, typename _OutputIterator>
+inline constexpr _OutputIterator reverse_copy(_BidirectionalIterator __first,
+		_BidirectionalIterator __last, _OutputIterator __result) {
+	for (; __first != __last; ++__result) {
+		*__result = *(--__last);
+	}
+	return __result;
+}
+
 } // inline namespace __cxx_algorithm
 } // namespace sprt
 

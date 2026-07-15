@@ -32,6 +32,7 @@ THE SOFTWARE.
 #include <sprt/wrappers/windows/context_api.h>
 #include <sprt/wrappers/windows/process_api.h>
 #include <sprt/wrappers/windows/basic_api.h>
+#include <sprt/wrappers/windows/constants.h>
 #include <sprt/wrappers/windows/winsock.h>
 
 #include "stdlib.h"
@@ -227,6 +228,35 @@ sprt::__libc *sprt::__libc::get() { return reinterpret_cast<__libc *>(s_libcBuff
 
 __SPRT_C_FUNC __sprt_uint64_t __libc_main_thread = 0;
 
+// -----------------------------------------------------------------------------
+// Clean-crash policy for headless / non-interactive runs.
+//
+// By default an unhandled hardware fault (an access violation, or the
+// __builtin_trap()/ud2 that backs a default SIGABRT and every failed
+// assertion) propagates to the OS top-level handler, which under Windows pops a
+// modal "program error" dialog (winedbg under wine) and BLOCKS until it is
+// dismissed. A headless harness (CI, the conformance runner, wine without a
+// desktop) then looks hung until an external timeout kills it, and the real
+// exit status is lost. Suppress the fault UI (SetErrorMode) and install a
+// top-level filter that terminates the process immediately, carrying the
+// exception code as a non-zero exit status, so a crash is a clean, promptly
+// observable failure instead of a hang.
+extern "C" __SPRT_WIN_IMPORT WINAPI UINT SetErrorMode(UINT uMode);
+
+static LONG WINAPI __sprt_clean_crash_filter(EXCEPTION_POINTERS *info) {
+	UINT code = (info && info->ExceptionRecord) ? (UINT)info->ExceptionRecord->ExceptionCode : 3u;
+	if (code == 0) {
+		code = 3u; // 3 == C runtime abort() exit convention
+	}
+	TerminateProcess(GetCurrentProcess(), code);
+	return __SPRT_EXCEPTION_EXECUTE_HANDLER; // unreachable: process is already gone
+}
+
+static void __sprt_install_clean_crash() {
+	SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+	SetUnhandledExceptionFilter(&__sprt_clean_crash_filter);
+}
+
 __SPRT_C_FUNC int mainCRTStartup() {
 	// Load all required DLLs for SPRT.
 	// If some DLLs are missed, or some required functions are missed - abort immediately
@@ -235,6 +265,11 @@ __SPRT_C_FUNC int mainCRTStartup() {
 	if (ret != 0) {
 		return ret;
 	}
+
+	// Turn any later unhandled fault into a clean, immediate, non-zero exit rather
+	// than a modal crash dialog that blocks headless runs (see the filter above).
+	// Installed before static initializers and main() so a crash anywhere is covered.
+	__sprt_install_clean_crash();
 
 	// Init security cookie for stack protection
 	{ __security_init_cookie(); }

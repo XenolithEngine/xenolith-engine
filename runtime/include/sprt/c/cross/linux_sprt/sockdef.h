@@ -94,7 +94,12 @@
 #define __SPRT_PF_QIPCRTR      42
 #define __SPRT_PF_SMC          43
 #define __SPRT_PF_XDP          44
+
+#if __SPRT_ARCH_ID == __SPRT_ARCH_ID_RISCV64
+#define __SPRT_PF_MAX          46
+#else
 #define __SPRT_PF_MAX          45
+#endif
 
 #define __SPRT_AF_LOCAL        __SPRT_PF_LOCAL
 #define __SPRT_AF_FILE         __SPRT_AF_LOCAL

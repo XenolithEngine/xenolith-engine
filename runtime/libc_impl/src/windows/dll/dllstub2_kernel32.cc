@@ -1043,6 +1043,11 @@ WINAPI BOOL UnregisterWaitEx(HANDLE WaitHandle, HANDLE CompletionEvent) {
 	return DLL_LOAD_AND_CALL(loader, kernel32, UnregisterWaitEx, WaitHandle, CompletionEvent);
 }
 
+WINAPI BOOL UnregisterWait(HANDLE WaitHandle) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, kernel32, UnregisterWait, WaitHandle);
+}
+
 BOOL WINAPI DeleteTimerQueue(HANDLE TimerQueue) {
 	auto loader = sprt::DllLoader::get();
 	return DLL_LOAD_AND_CALL(loader, kernel32, DeleteTimerQueue, TimerQueue);

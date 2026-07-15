@@ -66,11 +66,15 @@ int rwlock_t::rdlock(timeout_t dtimeout) {
 	}
 
 	// we now read-locked
-	auto it = self->threadRdLocks->find(this);
-	if (it != self->threadRdLocks->end()) {
-		++it->second;
-	} else {
-		self->threadRdLocks->emplace(this, 1);
+	// Bookkeeping map is null past TLS teardown (thread exiting) — lock still
+	// acquired, just untracked.
+	if (self->threadRdLocks) {
+		auto it = self->threadRdLocks->find(this);
+		if (it != self->threadRdLocks->end()) {
+			++it->second;
+		} else {
+			self->threadRdLocks->emplace(this, 1);
+		}
 	}
 
 	return 0;
@@ -99,11 +103,15 @@ int rwlock_t::tryrdlock() {
 
 	// we now read-locked
 
-	auto it = self->threadRdLocks->find(this);
-	if (it != self->threadRdLocks->end()) {
-		++it->second;
-	} else {
-		self->threadRdLocks->emplace(this, 1);
+	// Bookkeeping map is null past TLS teardown (thread exiting) — lock still
+	// acquired, just untracked.
+	if (self->threadRdLocks) {
+		auto it = self->threadRdLocks->find(this);
+		if (it != self->threadRdLocks->end()) {
+			++it->second;
+		} else {
+			self->threadRdLocks->emplace(this, 1);
+		}
 	}
 
 	return 0;
@@ -145,7 +153,10 @@ int rwlock_t::wrlock(timeout_t dtimeout) {
 	}
 
 	// we now write-locked
-	self->threadWrLocks->emplace(this);
+	// Null past TLS teardown — lock still acquired, just untracked.
+	if (self->threadWrLocks) {
+		self->threadWrLocks->emplace(this);
+	}
 
 	return 0;
 }
@@ -173,7 +184,10 @@ int rwlock_t::trywrlock() {
 	}
 
 	// we now write-locked
-	self->threadWrLocks->emplace(this);
+	// Null past TLS teardown — lock still acquired, just untracked.
+	if (self->threadWrLocks) {
+		self->threadWrLocks->emplace(this);
+	}
 
 	return 0;
 }
@@ -188,6 +202,15 @@ int rwlock_t::unlock() {
 	}
 
 	auto self = thread_t::self();
+	if (!self->threadRdLocks || !self->threadWrLocks) {
+		// Past TLS teardown (thread exiting): ownership tracking is gone; perform
+		// the unlock without it instead of dereferencing the dead maps.
+		auto st = qrwlock_base::_unlock_fair(&data, fl);
+		if (st == Status::Propagate || status::isSuccessful(st)) {
+			return 0;
+		}
+		return status::toErrno(st);
+	}
 	auto rd_it = self->threadRdLocks->find(this);
 	auto wr_it = self->threadWrLocks->find(this);
 	auto has_rd = rd_it != self->threadRdLocks->end();

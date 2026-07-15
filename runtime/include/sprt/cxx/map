@@ -32,17 +32,16 @@ THE SOFTWARE.
 #include <sprt/cxx/detail/access_token.h>
 #include <sprt/cxx/detail/allocator_malloc.h>
 #include <sprt/cxx/detail/allocator_pool.h>
+#include <sprt/cxx/detail/allocator_std.h>
 #include <sprt/cxx/detail/rbtree.h>
 
 namespace sprt {
 
 template <typename ExternalKey, typename Map>
-concept __map_compatible_key = requires(const typename Map::key_type &k, const ExternalKey &ek) {
-	typename Map::key_compare()(k, ek);
-};
+concept __map_compatible_key = requires { typename Map::key_compare::is_transparent; };
 
 template <typename Key, typename Value, typename Comp, typename Allocator>
-class __map : public Allocator::base_class {
+class __map : public detail::__allocator_base_t<Allocator> {
 public:
 	using key_type = Key;
 	using mapped_type = Value;
@@ -55,7 +54,8 @@ public:
 	using reference = value_type &;
 	using const_reference = const value_type &;
 
-	using tree_type = detail::RbTree<Key, value_type, Comp, allocator_type>;
+	using __sprt_allocator = detail::__select_sprt_allocator<allocator_type>;
+	using tree_type = detail::RbTree<Key, value_type, Comp, __sprt_allocator>;
 
 	using iterator = typename tree_type::iterator;
 	using const_iterator = typename tree_type::const_iterator;
@@ -92,7 +92,7 @@ public:
 	__map(InputIterator first, InputIterator last, const Comp &comp = Comp(),
 			const allocator_type &alloc = allocator_type()) noexcept
 	: _tree(comp, alloc) {
-		for (auto it = first; it != last; it++) { do_insert(*it); }
+		for (auto it = first; it != last; ++it) { do_insert(*it); }
 	}
 
 	__map(const __map &x) noexcept
@@ -149,7 +149,13 @@ public:
 	}
 
 
-	allocator_type get_allocator() const noexcept { return _tree.get_allocator(); }
+	allocator_type get_allocator() const noexcept {
+		if constexpr (detail::__sprt_extended_allocator<Allocator>) {
+			return _tree.get_allocator();
+		} else {
+			return allocator_type(_tree.get_allocator().get());
+		}
+	}
 
 	// iterators
 	iterator begin() noexcept { return _tree.begin(); }
@@ -200,9 +206,9 @@ public:
 	}
 
 	// modifiers
-	template < typename... Args >
+	template <typename... Args>
 	pair<iterator, bool> emplace(Args &&...args) {
-		return try_emplace(sprt::forward<Args>(args)...);
+		return _tree.emplace(sprt::forward<Args>(args)...);
 	}
 
 	template <typename... Args>
@@ -230,7 +236,7 @@ public:
 
 	template < typename InputIt >
 	void insert(InputIt first, InputIt last) {
-		for (auto it = first; it != last; it++) { do_insert(*it); }
+		for (auto it = first; it != last; ++it) { do_insert(*it); }
 	}
 
 	void insert(initializer_list<value_type> ilist) {
@@ -346,9 +352,10 @@ public:
 	}
 
 	size_type count(const key_type &x) const { return _tree.count_unique(x); }
+
 	template < __map_compatible_key<__map> K >
 	size_type count(const K &x) const {
-		return _tree.count_unique(x);
+		return _tree.count(x);
 	}
 
 	bool contains(const key_type &x) const { return _tree.find(x) != _tree.end(); }

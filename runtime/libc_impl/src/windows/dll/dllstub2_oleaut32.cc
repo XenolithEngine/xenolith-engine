@@ -45,4 +45,14 @@ WINAPI void SysFreeString(BSTR bstrString) {
 	auto loader = sprt::DllLoader::get();
 	DLL_LOAD_AND_CALL(loader, oleaut32, SysFreeString, bstrString);
 }
+
+WINAPI BSTR SysAllocString(const OLECHAR *psz) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, oleaut32, SysAllocString, psz);
+}
+
+WINAPI UINT SysStringLen(BSTR bstrString) {
+	auto loader = sprt::DllLoader::get();
+	return DLL_LOAD_AND_CALL(loader, oleaut32, SysStringLen, bstrString);
+}
 } // extern "C"

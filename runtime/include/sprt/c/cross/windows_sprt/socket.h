@@ -135,7 +135,7 @@ typedef struct WSAData {
 #define _SS_PAD1SIZE (_SS_ALIGNSIZE - sizeof(unsigned short))
 #define _SS_PAD2SIZE (_SS_MAXSIZE - (sizeof(unsigned short) + _SS_PAD1SIZE + _SS_ALIGNSIZE))
 
-typedef struct sockaddr_storage {
+typedef struct __SPRT_SOCKADDR_STORAGE_NAME {
 	ADDRESS_FAMILY ss_family;
 	char __ss_pad1[_SS_PAD1SIZE];
 	__SPRT_ID(int64_t) __ss_align;

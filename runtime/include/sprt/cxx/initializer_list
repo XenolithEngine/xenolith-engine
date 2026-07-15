@@ -29,7 +29,7 @@ THE SOFTWARE.
 #include <sprt/c/bits/__sprt_config.h>
 #include <sprt/cxx/detail/ctypes.h>
 
-#if __SPRT_USE_STL
+#if __SPRT_STD_EXTERNAL // std-owned type: project when an external STL owns std
 
 #include <initializer_list>
 

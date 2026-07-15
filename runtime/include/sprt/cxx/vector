@@ -29,6 +29,7 @@ THE SOFTWARE.
 
 #include <sprt/cxx/detail/allocator_malloc.h>
 #include <sprt/cxx/detail/allocator_pool.h>
+#include <sprt/cxx/detail/allocator_std.h>
 #include <sprt/cxx/detail/linear_memory.h>
 #include <sprt/cxx/detail/hash.h>
 
@@ -36,8 +37,11 @@ THE SOFTWARE.
 
 namespace sprt {
 
+// The storage machinery runs on the extended sprt allocator protocol; a purely
+// standard allocator is wrapped into detail::AllocatorStd (see allocator_std.h),
+// while allocator_type / get_allocator() keep exposing the user's allocator.
 template <typename Type, typename Allocator>
-class __vector : public Allocator::base_class {
+class __vector : public detail::__allocator_base_t<Allocator> {
 public:
 	using allocator_type = Allocator;
 
@@ -48,7 +52,7 @@ public:
 
 	using size_type = size_t;
 	using value_type = Type;
-	using mem_type = detail::linear_memory<Type, 0, allocator_type>;
+	using mem_type = detail::linear_memory<Type, 0, detail::__select_sprt_allocator<Allocator>>;
 	using self = __vector<Type, allocator_type>;
 
 	using iterator = typename mem_type::iterator;
@@ -75,7 +79,7 @@ public:
 	: _mem(alloc) {
 		auto size = sprt::distance(first, last);
 		_mem.reserve(size);
-		for (auto it = first; it != last; it++) { _mem.emplace_back_unsafe(*it); }
+		for (auto it = first; it != last; ++it) { _mem.emplace_back_unsafe(*it); }
 	}
 
 	__vector(const __vector &other) noexcept : _mem(other._mem) { }
@@ -114,7 +118,7 @@ public:
 		_mem.clear();
 		auto size = sprt::distance(first, last);
 		_mem.reserve(size);
-		for (auto it = first; it != last; it++) { _mem.emplace_back_unsafe(*it); }
+		for (auto it = first; it != last; ++it) { _mem.emplace_back_unsafe(*it); }
 	}
 
 	void assign(initializer_list<Type> init) {
@@ -125,7 +129,13 @@ public:
 
 	void assign_strong(Type *t, size_type s) { _mem.assign(t, s); }
 
-	allocator_type get_allocator() const noexcept { return _mem.get_allocator(); }
+	allocator_type get_allocator() const noexcept {
+		if constexpr (detail::__sprt_extended_allocator<Allocator>) {
+			return _mem.get_allocator();
+		} else {
+			return _mem.get_allocator().get();
+		}
+	}
 
 	reference at(size_type pos) noexcept {
 		sprt_passert(pos < _mem.size(), "vector::at: index out of range");
@@ -170,7 +180,11 @@ public:
 	size_type capacity() const noexcept { return _mem.capacity(); }
 	bool empty() const noexcept { return _mem.empty(); }
 
-	size_type max_size() const noexcept { return static_cast<size_type>(-1) / sizeof(Type); }
+	size_type max_size() const noexcept {
+		// [container.reqmts]: bounded by what the allocator can actually provide.
+		const allocator_type __a = get_allocator();
+		return sprt::allocator_traits<Allocator>::max_size(__a);
+	}
 
 	// Reserve capcity, that can be effectively reused by pool allocator.
 	// If used carefully, it can provide static memory footprint in memory pool
@@ -180,7 +194,7 @@ public:
 
 	void shrink_to_fit() { _mem.shrink_to_fit(); }
 
-	void clear() { _mem.clear(); }
+	void clear() noexcept { _mem.clear(); }
 
 	void swap(__vector &other) noexcept {
 		auto tmp = sprt::move_unsafe(_mem);
@@ -251,9 +265,11 @@ inline constexpr bool operator==(const __vector<_Tp, Allocator> &__x,
 	return (__x.size() == __y.size() && sprt::equal(__x.begin(), __x.end(), __y.begin()));
 }
 
+// The __synth_three_way_result_t return type also SFINAEs this overload away for
+// element types that are not three-way/less-than comparable ([tab:container.opt]).
 template <typename _Tp, typename Allocator>
-inline constexpr auto operator<=>(const __vector<_Tp, Allocator> &__x,
-		const __vector<_Tp, Allocator> &__y) {
+inline constexpr sprt::__synth_three_way_result_t<_Tp> operator<=>(
+		const __vector<_Tp, Allocator> &__x, const __vector<_Tp, Allocator> &__y) {
 	return sprt::lexicographical_compare_three_way(__x.begin(), __x.end(), __y.begin(), __y.end());
 }
 

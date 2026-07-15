@@ -31,11 +31,39 @@ THE SOFTWARE.
 
 #else
 
-// The C++ <exception> surface, in the Itanium-ABI layout libc++abi implements
-// (it provides the out-of-line bodies for exception/bad_exception and the
-// terminate/exception_ptr machinery — the declarations here must match). This is
-// the runtime's single std:: source; when __SPRT_USE_STL is set it forwards to a
-// real <exception> instead.
+// The C++ <exception> surface. The entities split into two symbol groups by who
+// DEFINES their out-of-line bodies:
+//
+//   * ABI-library entities — std::exception / std::bad_exception and the whole
+//     terminate/unexpected handler family. sprt only DECLARES them here; the bodies
+//     come from libc++abi wherever it is linked (the prebuilt linux/macos/android
+//     libraries and the wasm build compiled from libcxxabi/src against these
+//     headers). On the MSVC ABI, where there is no libc++abi, libc_impl's
+//     windows/libcxx.cc (exception/bad_exception) and SPRTCxxException.cpp
+//     (terminate/unexpected) supply them. These always keep the canonical std
+//     mangling — sprt emits no definition for them on the system-ABI targets, so
+//     there is nothing to collide with the platform library.
+//
+//   * sprt-DEFINED entities — std::exception_ptr / current_exception /
+//     rethrow_exception / nested_exception / make_exception_ptr / swap /
+//     uncaught_exception[s]. These are libc++ (not libc++abi) symbols; libc++'s
+//     library is never linked here, so sprt defines them itself on EVERY target —
+//     always in `inline namespace __sprt` (unified ABI): one mangling everywhere,
+//     and no symbol ambiguity with a system libstdc++/libc++abi present in the
+//     same process (name lookup still resolves std::exception_ptr transparently).
+//
+// When __SPRT_USE_STL is set this whole block is skipped and a real <exception>
+// is used instead.
+
+// __SPRT_STD_OWNED_BEGIN/END come from <sprt/c/bits/__sprt_config.h>: always the
+// versioned inline namespace __sprt, on every target (unified ABI).
+#include <sprt/c/bits/__sprt_config.h>
+
+// Reserved non-allocating placement operator new, declared (never odr-used) so
+// make_exception_ptr can copy-construct the stored exception without including
+// <sprt/cxx/new> (which includes THIS header — an include cycle). Same signature
+// as the declaration in <new>.
+void *operator new(__SIZE_TYPE__, void *) noexcept;
 
 namespace std {
 
@@ -56,21 +84,36 @@ public:
 };
 
 // --- terminate / unexpected handlers -------------------------------------
+// ABI-library entities: bodies come from libc++abi (cxa_handlers.cpp) wherever it
+// is linked; sprt only defines these on the MSVC ABI (SPRTCxxException.cpp, guarded
+// by SPRT_WINDOWS). Always canonical std.
 
 using unexpected_handler = void (*)();
 unexpected_handler set_unexpected(unexpected_handler) noexcept;
 unexpected_handler get_unexpected() noexcept;
-[[noreturn]] void unexpected();
+[[noreturn]]
+void unexpected();
 
 using terminate_handler = void (*)();
 terminate_handler set_terminate(terminate_handler) noexcept;
 terminate_handler get_terminate() noexcept;
-[[noreturn]] void terminate() noexcept;
+[[noreturn]]
+void terminate() noexcept;
 
-// libc++ internal entry points invoked by libc++abi's default handlers.
-[[noreturn]] void __unexpected(unexpected_handler);
-[[noreturn]] void __terminate(terminate_handler) noexcept;
+// Handler trampolines (libc++ spelling): run the given handler, then abort /
+// terminate if it returns.
+[[noreturn]]
+void __unexpected(unexpected_handler);
+[[noreturn]]
+void __terminate(terminate_handler) noexcept;
 
+// ---- sprt-defined entities ----------------------------------------------
+// Canonical std on ABI-owned targets (wasm/windows), inline namespace __sprt on
+// the system-ABI targets to stay clear of the platform's dynamic C++ runtime.
+__SPRT_STD_OWNED_BEGIN
+
+// std wrappers over __cxa_uncaught_exception[s]; sprt owns them (libc++, not
+// libc++abi, defines these upstream).
 bool uncaught_exception() noexcept;
 int uncaught_exceptions() noexcept;
 
@@ -82,40 +125,93 @@ int uncaught_exceptions() noexcept;
 class exception_ptr;
 bool operator==(const exception_ptr &, const exception_ptr &) noexcept;
 exception_ptr current_exception() noexcept;
-[[noreturn]] void rethrow_exception(exception_ptr);
+[[noreturn]]
+void rethrow_exception(exception_ptr);
+void swap(exception_ptr &, exception_ptr &) noexcept;
 
+// Non-template back-end for make_exception_ptr: allocates a refcounted block,
+// copy-constructs the exception object into it (__copy), and remembers how to
+// destroy it (__destroy). Defined in SPRTCxxException.cpp.
+exception_ptr __make_exception_ptr(__SIZE_TYPE__ __size, __SIZE_TYPE__ __align, void *__src,
+		void (*__copy)(void *, void *), void (*__destroy)(void *)) noexcept;
+
+#if SPRT_WINDOWS
+// MSVC-ABI back-end for make_exception_ptr: libc++ lowers make_exception_ptr(e) to
+// __copy_exception_ptr(&e, __GetExceptionInfo(e)) on the Microsoft ABI. Defined in
+// SPRTCxxException.cpp. (The Itanium path uses __make_exception_ptr above instead.)
+exception_ptr __copy_exception_ptr(void *__except, const void *__ptr);
+#endif
+
+// exception_ptr is a refcounted handle to a copied exception object (a single
+// pointer to an sprt control block, or null). Because the freestanding runtime is
+// built without C++ exceptions it can never be rethrown-and-caught, so this stores
+// a copy and terminates on rethrow — the honest maximum for a no-EH platform, and
+// identical on every target.
 class exception_ptr {
-	void *__ptr1_;
-	void *__ptr2_;
+	void *__ptr_ = nullptr;
 
-public:
-	exception_ptr() noexcept;
-	exception_ptr(decltype(nullptr)) noexcept;
-	exception_ptr(const exception_ptr &) noexcept;
-	exception_ptr &operator=(const exception_ptr &) noexcept;
-	exception_ptr &operator=(decltype(nullptr)) noexcept;
-	~exception_ptr() noexcept;
-	explicit operator bool() const noexcept;
+	explicit exception_ptr(void *__p) noexcept : __ptr_(__p) { }
 
 	friend bool operator==(const exception_ptr &, const exception_ptr &) noexcept;
 	friend exception_ptr current_exception() noexcept;
 	friend void rethrow_exception(exception_ptr);
+	friend void swap(exception_ptr &, exception_ptr &) noexcept;
+	friend exception_ptr __make_exception_ptr(__SIZE_TYPE__, __SIZE_TYPE__, void *,
+			void (*)(void *, void *), void (*)(void *)) noexcept;
+#if SPRT_WINDOWS
+	friend exception_ptr __copy_exception_ptr(void *, const void *);
+#endif
+
+public:
+#if SPRT_WINDOWS
+	// Out-of-line on the MSVC ABI for the same reason as operator bool below: libc++'s
+	// two-pointer std::__sprt::exception_ptr declares the default and nullptr constructors
+	// out-of-line and emits references to them, so they must be real symbols (an inline
+	// definition is emitted weakly in debug but inlined away at -O2, leaving the reference
+	// unresolved — lld-link "undefined symbol" only in RELEASE). Defined in SPRTCxxException.cpp.
+	exception_ptr() noexcept;
+	exception_ptr(decltype(nullptr)) noexcept;
+#else
+	exception_ptr() noexcept = default;
+	exception_ptr(decltype(nullptr)) noexcept { }
+#endif
+	exception_ptr(const exception_ptr &) noexcept;
+	exception_ptr &operator=(const exception_ptr &) noexcept;
+	exception_ptr &operator=(decltype(nullptr)) noexcept;
+	~exception_ptr() noexcept;
+#if SPRT_WINDOWS
+	// Out-of-line on the MSVC ABI. libc++'s <exception> is the primary
+	// std::__sprt::exception_ptr there (two-pointer MS-ABI layout) and declares
+	// operator bool out-of-line, emitting a reference to the symbol; every other
+	// member is already supplied out-of-line from SPRTCxxException.cpp, so operator
+	// bool is defined there too and the two forms share one ABI. Reads only the
+	// offset-0 control-block pointer, valid for both layouts.
+	explicit operator bool() const noexcept;
+#else
+	explicit operator bool() const noexcept { return __ptr_ != nullptr; }
+#endif
 };
+
+#if SPRT_WINDOWS
+// Out-of-line on the MSVC ABI (see the constructors above): libc++'s two-pointer
+// exception_ptr declares operator== out-of-line and references it. Defined in
+// SPRTCxxException.cpp. The forward declaration at the top of this section + the in-class
+// friend declaration already provide the signature.
+#else
+inline bool operator==(const exception_ptr &__x, const exception_ptr &__y) noexcept {
+	return __x.__ptr_ == __y.__ptr_;
+}
+#endif
 
 inline bool operator!=(const exception_ptr &__x, const exception_ptr &__y) noexcept {
 	return !(__x == __y);
 }
 
-void swap(exception_ptr &, exception_ptr &) noexcept;
-
-exception_ptr __copy_exception_ptr(void *__except, const void *__ptr);
-
-template <class _Ep>
-void *__GetExceptionInfo(_Ep);
-
 template <class _Ep>
 exception_ptr make_exception_ptr(_Ep __e) noexcept {
-	return __copy_exception_ptr(__builtin_addressof(__e), __GetExceptionInfo(__e));
+	return std::__make_exception_ptr(sizeof(_Ep), alignof(_Ep), __builtin_addressof(__e),
+			[](void *__dst, void *__src) { ::new (__dst) _Ep(*static_cast<_Ep *>(__src)); },
+			[](void *__obj) { static_cast<_Ep *>(__obj)->~_Ep(); });
 }
 
 // --- nested_exception ----------------------------------------------------
@@ -129,17 +225,21 @@ public:
 	nested_exception &operator=(const nested_exception &) noexcept = default;
 	virtual ~nested_exception() noexcept;
 
-	[[noreturn]] void rethrow_nested() const;
+	[[noreturn]]
+	void rethrow_nested() const;
 	exception_ptr nested_ptr() const noexcept { return __ptr_; }
 };
 
 template <class _Tp>
-[[noreturn]] void throw_with_nested(_Tp &&__t) {
+[[noreturn]]
+void throw_with_nested(_Tp &&__t) {
 	throw __t;
 }
 
 template <class _Ep>
 void rethrow_if_nested(const _Ep &) { }
+
+__SPRT_STD_OWNED_END
 
 } // namespace std
 

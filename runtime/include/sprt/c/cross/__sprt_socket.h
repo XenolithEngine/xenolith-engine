@@ -35,45 +35,27 @@ THE SOFTWARE.
 #include <sprt/c/bits/iovec.h>
 #include <sprt/c/cross/__sprt_sysid.h>
 
-#ifdef __SPRT_BUILD
-#define __SPRT_SOCKADDR_NAME __SPRT_ID(sockaddr)
-#else
-#define __SPRT_SOCKADDR_NAME sockaddr
-#endif
-
-#ifdef __SPRT_BUILD
-#define __SPRT_IN_ADDR_NAME __SPRT_ID(in_addr)
-#else
-#define __SPRT_IN_ADDR_NAME in_addr
-#endif
-
-#ifdef __SPRT_BUILD
-#define __SPRT_IN6_ADDR_NAME __SPRT_ID(in6_addr)
-#else
-#define __SPRT_IN6_ADDR_NAME in6_addr
-#endif
-
-#ifdef __SPRT_BUILD
-#define __SPRT_SOCKADDR_IN_NAME __SPRT_ID(sockaddr_in)
-#else
-#define __SPRT_SOCKADDR_IN_NAME sockaddr_in
-#endif
-
-#ifdef __SPRT_BUILD
-#define __SPRT_SOCKADDR_IN6_NAME __SPRT_ID(sockaddr_in6)
-#else
-#define __SPRT_SOCKADDR_IN6_NAME sockaddr_in6
-#endif
-
 // The message / control structs keep the same portable spelling; their layout is
 // defined per-platform in cross/<platform>/socket.h (SPRuntimeCSysSocket.cpp
 // static_asserts each against the native <sys/socket.h>).
 #ifdef __SPRT_BUILD
+#define __SPRT_SOCKADDR_NAME __SPRT_ID(sockaddr)
+#define __SPRT_SOCKADDR_STORAGE_NAME __SPRT_ID(sockaddr_storage)
+#define __SPRT_IN_ADDR_NAME __SPRT_ID(in_addr)
+#define __SPRT_IN6_ADDR_NAME __SPRT_ID(in6_addr)
+#define __SPRT_SOCKADDR_IN_NAME __SPRT_ID(sockaddr_in)
+#define __SPRT_SOCKADDR_IN6_NAME __SPRT_ID(sockaddr_in6)
 #define __SPRT_MSGHDR_NAME __SPRT_ID(msghdr)
 #define __SPRT_CMSGHDR_NAME __SPRT_ID(cmsghdr)
 #define __SPRT_MMSGHDR_NAME __SPRT_ID(mmsghdr)
 #define __SPRT_LINGER_NAME __SPRT_ID(linger)
 #else
+#define __SPRT_SOCKADDR_NAME sockaddr
+#define __SPRT_SOCKADDR_STORAGE_NAME sockaddr_storage
+#define __SPRT_IN_ADDR_NAME in_addr
+#define __SPRT_IN6_ADDR_NAME in6_addr
+#define __SPRT_SOCKADDR_IN_NAME sockaddr_in
+#define __SPRT_SOCKADDR_IN6_NAME sockaddr_in6
 #define __SPRT_MSGHDR_NAME msghdr
 #define __SPRT_CMSGHDR_NAME cmsghdr
 #define __SPRT_MMSGHDR_NAME mmsghdr
@@ -81,6 +63,7 @@ THE SOFTWARE.
 #endif
 
 struct __SPRT_SOCKADDR_NAME;
+struct __SPRT_SOCKADDR_STORAGE_NAME;
 struct __SPRT_IN_ADDR_NAME;
 struct __SPRT_IN6_ADDR_NAME;
 struct __SPRT_SOCKADDR_IN_NAME;

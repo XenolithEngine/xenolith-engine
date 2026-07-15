@@ -23,7 +23,6 @@ THE SOFTWARE.
 #ifndef SPRT_WRAPPERS_WINDOWS_ABI_WINSOCK_H_
 #define SPRT_WRAPPERS_WINDOWS_ABI_WINSOCK_H_
 
-
 #include <sprt/wrappers/windows/abi/complex_types.h>
 #include <sprt/wrappers/windows/__sprt_winsock.h>
 // LPSOCKADDR (used by WSAMSG) comes from the SPRT socket layer pulled in by
@@ -31,101 +30,8 @@ THE SOFTWARE.
 // no <sys/socket.h> (include_libc) dependency at the abi level.
 
 // clang-format off
-#define __SPRT_WSABASEERR 10000
-#define __SPRT_WSAEINTR                         10004L
-#define __SPRT_WSAEBADF                         10009L
-#define __SPRT_WSAEACCES                        10013L
-#define __SPRT_WSAEFAULT                        10014L
-#define __SPRT_WSAEINVAL                        10022L
-#define __SPRT_WSAEMFILE                        10024L
-#define __SPRT_WSAEWOULDBLOCK                   10035L
-#define __SPRT_WSAEINPROGRESS                   10036L
-#define __SPRT_WSAEALREADY                      10037L
-#define __SPRT_WSAENOTSOCK                      10038L
-#define __SPRT_WSAEDESTADDRREQ                  10039L
-#define __SPRT_WSAEMSGSIZE                      10040L
-#define __SPRT_WSAEPROTOTYPE                    10041L
-#define __SPRT_WSAENOPROTOOPT                   10042L
-#define __SPRT_WSAEPROTONOSUPPORT               10043L
-#define __SPRT_WSAESOCKTNOSUPPORT               10044L
-#define __SPRT_WSAEOPNOTSUPP                    10045L
-#define __SPRT_WSAEPFNOSUPPORT                  10046L
-#define __SPRT_WSAEAFNOSUPPORT                  10047L
-#define __SPRT_WSAEADDRINUSE                    10048L
-#define __SPRT_WSAEADDRNOTAVAIL                 10049L
-#define __SPRT_WSAENETDOWN                      10050L
-#define __SPRT_WSAENETUNREACH                   10051L
-#define __SPRT_WSAENETRESET                     10052L
-#define __SPRT_WSAECONNABORTED                  10053L
-#define __SPRT_WSAECONNRESET                    10054L
-#define __SPRT_WSAENOBUFS                       10055L
-#define __SPRT_WSAEISCONN                       10056L
-#define __SPRT_WSAENOTCONN                      10057L
-#define __SPRT_WSAESHUTDOWN                     10058L
-#define __SPRT_WSAETOOMANYREFS                  10059L
-#define __SPRT_WSAETIMEDOUT                     10060L
-#define __SPRT_WSAECONNREFUSED                  10061L
-#define __SPRT_WSAELOOP                         10062L
-#define __SPRT_WSAENAMETOOLONG                  10063L
-#define __SPRT_WSAEHOSTDOWN                     10064L
-#define __SPRT_WSAEHOSTUNREACH                  10065L
-#define __SPRT_WSAENOTEMPTY                     10066L
-#define __SPRT_WSAEPROCLIM                      10067L
-#define __SPRT_WSAEUSERS                        10068L
-#define __SPRT_WSAEDQUOT                        10069L
-#define __SPRT_WSAESTALE                        10070L
-#define __SPRT_WSAEREMOTE                       10071L
-#define __SPRT_WSASYSNOTREADY                   10091L
-#define __SPRT_WSAVERNOTSUPPORTED               10092L
-#define __SPRT_WSANOTINITIALISED                10093L
-#define __SPRT_WSAEDISCON                       10101L
-#define __SPRT_WSAENOMORE                       10102L
-#define __SPRT_WSAECANCELLED                    10103L
-#define __SPRT_WSAEINVALIDPROCTABLE             10104L
-#define __SPRT_WSAEINVALIDPROVIDER              10105L
-#define __SPRT_WSAEPROVIDERFAILEDINIT           10106L
-#define __SPRT_WSASYSCALLFAILURE                10107L
-#define __SPRT_WSASERVICE_NOT_FOUND             10108L
-#define __SPRT_WSATYPE_NOT_FOUND                10109L
-#define __SPRT_WSA_E_NO_MORE                    10110L
-#define __SPRT_WSA_E_CANCELLED                  10111L
-#define __SPRT_WSAEREFUSED                      10112L
-#define __SPRT_WSAHOST_NOT_FOUND                11001L
-#define __SPRT_WSATRY_AGAIN                     11002L
-#define __SPRT_WSANO_RECOVERY                   11003L
-#define __SPRT_WSANO_DATA                       11004L
-#define __SPRT_WSA_QOS_RECEIVERS                11005L
-#define __SPRT_WSA_QOS_SENDERS                  11006L
-#define __SPRT_WSA_QOS_NO_SENDERS               11007L
-#define __SPRT_WSA_QOS_NO_RECEIVERS             11008L
-#define __SPRT_WSA_QOS_REQUEST_CONFIRMED        11009L
-#define __SPRT_WSA_QOS_ADMISSION_FAILURE        11010L
-#define __SPRT_WSA_QOS_POLICY_FAILURE           11011L
-#define __SPRT_WSA_QOS_BAD_STYLE                11012L
-#define __SPRT_WSA_QOS_BAD_OBJECT               11013L
-#define __SPRT_WSA_QOS_TRAFFIC_CTRL_ERROR       11014L
-#define __SPRT_WSA_QOS_GENERIC_ERROR            11015L
-#define __SPRT_WSA_QOS_ESERVICETYPE             11016L
-#define __SPRT_WSA_QOS_EFLOWSPEC                11017L
-#define __SPRT_WSA_QOS_EPROVSPECBUF             11018L
-#define __SPRT_WSA_QOS_EFILTERSTYLE             11019L
-#define __SPRT_WSA_QOS_EFILTERTYPE              11020L
-#define __SPRT_WSA_QOS_EFILTERCOUNT             11021L
-#define __SPRT_WSA_QOS_EOBJLENGTH               11022L
-#define __SPRT_WSA_QOS_EFLOWCOUNT               11023L
-#define __SPRT_WSA_QOS_EUNKOWNPSOBJ             11024L
-#define __SPRT_WSA_QOS_EPOLICYOBJ               11025L
-#define __SPRT_WSA_QOS_EFLOWDESC                11026L
-#define __SPRT_WSA_QOS_EPSFLOWSPEC              11027L
-#define __SPRT_WSA_QOS_EPSFILTERSPEC            11028L
-#define __SPRT_WSA_QOS_ESDMODEOBJ               11029L
-#define __SPRT_WSA_QOS_ESHAPERATEOBJ            11030L
-#define __SPRT_WSA_QOS_RESERVED_PETYPE          11031L
-#define __SPRT_WSA_SECURE_HOST_NOT_FOUND        11032L
-#define __SPRT_WSA_IPSEC_NAME_POLICY_ERROR      11033L
-
-#define __SPRT_SIO_UDP_CONNRESET           _WSAIOW(IOC_VENDOR,12)
-#define __SPRT_SIO_UDP_NETRESET            _WSAIOW(IOC_VENDOR,15)
+#define __SPRT_SIO_UDP_CONNRESET           _WSAIOW(__SPRT_IOC_VENDOR,12)
+#define __SPRT_SIO_UDP_NETRESET            _WSAIOW(__SPRT_IOC_VENDOR,15)
 
 #define __SPRT_WSA_IO_PENDING          (__SPRT_ERROR_IO_PENDING)
 #define __SPRT_WSA_IO_INCOMPLETE       (__SPRT_ERROR_IO_INCOMPLETE)
@@ -140,6 +46,9 @@ THE SOFTWARE.
 #define __SPRT_WSA_WAIT_IO_COMPLETION  (__SPRT_WAIT_IO_COMPLETION)
 #define __SPRT_WSA_WAIT_TIMEOUT        (__SPRT_WAIT_TIMEOUT)
 #define __SPRT_WSA_INFINITE            (__SPRT_INFINITE)
+
+#define __SPRT_WINSOCK_VERSION         __SPRT_MAKEWORD(2, 2)
+#define __SPRT_FROM_PROTOCOL_INFO      (-1)
 
 #define __SPRT_EAI_AGAIN           __SPRT_WSATRY_AGAIN
 #define __SPRT_EAI_BADFLAGS        __SPRT_WSAEINVAL

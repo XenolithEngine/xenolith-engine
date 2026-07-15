@@ -1186,6 +1186,9 @@ void sync(void) SPRT_UMBRELLA_END
 }
 #endif
 
+// getpagesize conficts with compiler-rt internal declaraion;
+// Disable it for compuiler-rt build
+#ifndef COMPILER_RT_HAS_UNAME
 SPRT_UMBRELLA_FUNC
 int getpagesize(void) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
@@ -1193,6 +1196,7 @@ int getpagesize(void) SPRT_UMBRELLA_END
 	return __sprt_getpagesize();
 }
 #endif
+#endif // COMPILER_RT_HAS_UNAME
 
 SPRT_UMBRELLA_FUNC
 int getdtablesize(void) SPRT_UMBRELLA_END

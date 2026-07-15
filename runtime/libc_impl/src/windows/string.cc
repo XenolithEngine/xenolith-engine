@@ -37,7 +37,7 @@ int __strcoll(const char *l, const char *r) __SPRT_NOEXCEPT {
 	}
 
 	auto map = sprt::__get_effective_locale_map(__SPRT_LC_COLLATE);
-	if (map == sprt::__get_default_locale()) { }
+	if (sprt::__locale_is_c(map)) { }
 
 	int ret = 0;
 	sprt::unicode::toUtf16([&](sprt::WideStringView wl) {

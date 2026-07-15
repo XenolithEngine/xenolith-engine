@@ -14,6 +14,7 @@
 #include <sprt/c/__sprt_unistd.h>
 #include <sprt/c/__sprt_errno.h>
 #include <sprt/c/__sprt_time.h>
+#include <sprt/c/__sprt_stdarg.h>
 
 struct _stat {
 #include <sprt/c/bits/stat_data.h>
@@ -89,7 +90,11 @@ typedef __SPRT_ID(wchar_t) wchar_t;
 
 __SPRT_BEGIN_DECL
 
-SPRT_API void *_get_osfhandle(int) __SPRT_NOEXCEPT;
+SPRT_API __SPRT_ID(intptr_t) _get_osfhandle(int) __SPRT_NOEXCEPT;
+
+SPRT_API int _mktemp_s(char *_TemplateName, __SPRT_ID(size_t) _SizeInChars) __SPRT_NOEXCEPT;
+
+SPRT_API int _open_osfhandle(__SPRT_ID(intptr_t) osfhandle, int flags) __SPRT_NOEXCEPT;
 
 SPRT_API int _wsopen_s(int *pfh, const wchar_t *filename, int oflag, int shflag,
 		...) __SPRT_NOEXCEPT;
@@ -157,6 +162,14 @@ int _fileno(__SPRT_ID(FILE) * f) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_fileno(f);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int _chsize(int fd, long size) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_ftruncate(fd, size);
 }
 #endif
 
@@ -243,6 +256,29 @@ int _close(int __fd) SPRT_UMBRELLA_END
 #endif
 
 SPRT_UMBRELLA_FUNC
+int _open(const char *__path, int __flags, ...) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	__SPRT_ID(mode_t) __mode = 0;
+	if (__flags & __SPRT_O_CREAT) {
+		__sprt_va_list ap;
+		__sprt_va_start(ap, __flags);
+		__mode = __SPRT_VA_ARG_MODE_T(ap);
+		__sprt_va_end(ap);
+	}
+	return __sprt_open(__path, __flags, __mode);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int _dup(int __fd) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_dup(__fd);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
 int _stat(const char *__SPRT_RESTRICT path, struct _stat *__SPRT_RESTRICT __stat) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
@@ -283,6 +319,18 @@ int _chmod(const char *path, __SPRT_ID(mode_t) mode) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_chmod(path, mode);
+}
+#endif
+
+// MSVC _pipe(fds, size, textmode): the buffer-size hint and text/binary mode are
+// advisory; forward to the runtime's POSIX pipe primitive.
+SPRT_UMBRELLA_FUNC
+int _pipe(int *__pfds, unsigned int __psize, int __textmode) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	(void)__psize;
+	(void)__textmode;
+	return __SPRT_ID(pipe)(__pfds);
 }
 #endif
 

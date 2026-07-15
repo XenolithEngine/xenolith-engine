@@ -114,15 +114,16 @@ inline constexpr _ForwardIterator upper_bound(_ForwardIterator __first, _Forward
 		const _Tp &__value, _Compare __comp) {
 	static_assert(is_copy_constructible<_ForwardIterator>::value,
 			"Iterator has to be copy constructible");
-	return sprt::__upper_bound(sprt::move(__first), sprt::move(__last), __value, sprt::move(__comp),
-			sprt::identity());
+	return sprt::__upper_bound(sprt::move_unsafe(__first), sprt::move_unsafe(__last), __value,
+			sprt::move_unsafe(__comp), sprt::identity());
 }
 
 template <typename _ForwardIterator, typename _Tp>
 [[nodiscard]]
 inline constexpr _ForwardIterator upper_bound(_ForwardIterator __first, _ForwardIterator __last,
 		const _Tp &__value) {
-	return sprt::upper_bound(sprt::move(__first), sprt::move(__last), __value, less<void>());
+	return sprt::upper_bound(sprt::move_unsafe(__first), sprt::move_unsafe(__last), __value,
+			less<void>());
 }
 
 
@@ -159,18 +160,20 @@ constexpr pair<_ForwardIterator, _ForwardIterator> equal_range(_ForwardIterator 
 		_ForwardIterator __last, const _Tp &__value, _Compare __comp) {
 	static_assert(is_copy_constructible<_ForwardIterator>::value,
 			"Iterator has to be copy constructible");
-	return sprt::__equal_range(sprt::move(__first), sprt::move(__last), __value, __comp,
-			sprt::identity());
+	return sprt::__equal_range(sprt::move_unsafe(__first), sprt::move_unsafe(__last), __value,
+			__comp, sprt::identity());
 }
 
 template <typename _ForwardIterator, typename _Tp>
 [[nodiscard]]
 constexpr pair<_ForwardIterator, _ForwardIterator> equal_range(_ForwardIterator __first,
 		_ForwardIterator __last, const _Tp &__value) {
-	return sprt::equal_range(sprt::move(__first), sprt::move(__last), __value, less<void>());
+	return sprt::equal_range(sprt::move_unsafe(__first), sprt::move_unsafe(__last), __value,
+			less<void>());
 }
 
-template <typename InputIt1, typename InputIt2, typename BinaryPred>
+template <typename InputIt1, typename InputIt2, typename BinaryPred,
+		enable_if_t<!__has_input_iterator_category<BinaryPred>::value, int> = 0>
 constexpr bool equal(InputIt1 first1, InputIt1 last1, InputIt2 first2, BinaryPred p) {
 	for (; first1 != last1; ++first1, ++first2) {
 		if (!p(*first1, *first2)) {
@@ -186,7 +189,26 @@ constexpr bool equal(InputIt1 first1, InputIt1 last1, InputIt2 first2) {
 	return equal(first1, last1, first2, BinaryPred());
 }
 
-} // inline namespace __cxx_algorithm
+// [alg.equal] two-range form (C++14), no predicate: second range is [first2,last2).
+template <typename InputIt1, typename InputIt2>
+constexpr bool equal(InputIt1 first1, InputIt1 last1, InputIt2 first2, InputIt2 last2) {
+	return equal(first1, last1, first2, last2, equal_to<void>());
+}
+
+// [alg.equal] two-range form (C++14): compares [first1,last1) against
+// [first2,last2). 5 arguments, so unambiguous with the 3-iterator + predicate form.
+template <typename InputIt1, typename InputIt2, typename BinaryPred>
+constexpr bool equal(InputIt1 first1, InputIt1 last1, InputIt2 first2, InputIt2 last2,
+		BinaryPred p) {
+	for (; first1 != last1 && first2 != last2; ++first1, ++first2) {
+		if (!p(*first1, *first2)) {
+			return false;
+		}
+	}
+	return first1 == last1 && first2 == last2;
+}
+
+} // namespace __cxx_algorithm
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___ALGORITHM_BOUNDS_H_

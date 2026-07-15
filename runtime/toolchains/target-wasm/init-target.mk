@@ -29,22 +29,13 @@ include $(dir $(THIS_FILE))../common/utils/init-shell.mk
 
 WASM_FEATURES := -matomics -mbulk-memory -mmutable-globals -msign-ext -mnontrapping-fptoint
 
-# We build only compiler-rt + libunwind + libc++ABI (NOT libc++): the runtime has
-# its own STL (sprt::/std::), exposed to the C++ world through include_libc/stl,
-# which is the single source of std:: for everything (the user's rule). libc++abi
-# is compiled against that same STL so its ABI types share sprt's std:: layout.
-# __SPRT_USE_STL keeps sprt's std:: as the sole provider (=0: sprt defines the
-# std:: primitives itself; =1 would forward to a real <compare>/<iterator>, which
-# do not exist here since libc++ is not built).
 WASM_C_INCLUDES := \
 	-isystem $(SP_RUNTIME_ROOT)/include_libc \
 	-isystem $(SP_RUNTIME_ROOT)/include
-# sprt STL is the single source of std:: (<typeinfo>, <exception>, <new>, ...).
-# The real libc++ headers are NOT mixed in: libc++'s build-internal headers
-# include libc++'s OWN public headers directly, which would create a parallel
-# std:: universe and collide with sprt's (redefinition of std::exception, etc.).
+
 WASM_CXX_INCLUDES := \
-	-isystem $(SP_RUNTIME_ROOT)/include_libc/stl \
+	-isystem $(SP_RUNTIME_ROOT)/libcxx/include \
+	-isystem $(SP_RUNTIME_ROOT)/include_libc/cxx \
 	-isystem $(SP_RUNTIME_ROOT)/include_libc \
 	-isystem $(SP_RUNTIME_ROOT)/include
 

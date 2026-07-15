@@ -23,7 +23,6 @@ THE SOFTWARE.
 #ifndef SPRT_WRAPPERS_WINDOWS_ABI_BASIC_API_H_
 #define SPRT_WRAPPERS_WINDOWS_ABI_BASIC_API_H_
 
-
 #include <sprt/wrappers/windows/abi/structures.h>
 #include <sprt/wrappers/windows/abi/constants.h>
 
@@ -58,6 +57,28 @@ typedef HANDLE HLOCAL;
 #define __SPRT_ENABLE_VIRTUAL_TERMINAL_PROCESSING  0x0004
 #define __SPRT_DISABLE_NEWLINE_AUTO_RETURN         0x0008
 #define __SPRT_ENABLE_LVB_GRID_WORLDWIDE           0x0010
+
+#define __SPRT_FOREGROUND_BLUE                     0x0001
+#define __SPRT_FOREGROUND_GREEN                    0x0002
+#define __SPRT_FOREGROUND_RED                      0x0004
+#define __SPRT_FOREGROUND_INTENSITY                0x0008
+#define __SPRT_BACKGROUND_BLUE                     0x0010
+#define __SPRT_BACKGROUND_GREEN                    0x0020
+#define __SPRT_BACKGROUND_RED                      0x0040
+#define __SPRT_BACKGROUND_INTENSITY                0x0080
+#define __SPRT_COMMON_LVB_LEADING_BYTE             0x0100
+#define __SPRT_COMMON_LVB_TRAILING_BYTE            0x0200
+#define __SPRT_COMMON_LVB_GRID_HORIZONTAL          0x0400
+#define __SPRT_COMMON_LVB_GRID_LVERTICAL           0x0800
+#define __SPRT_COMMON_LVB_GRID_RVERTICAL           0x1000
+#define __SPRT_COMMON_LVB_REVERSE_VIDEO            0x4000
+#define __SPRT_COMMON_LVB_UNDERSCORE               0x8000
+
+#define __SPRT_THREAD_MODE_BACKGROUND_BEGIN        0x00010000
+#define __SPRT_THREAD_MODE_BACKGROUND_END          0x00020000
+#define __SPRT_VER_NT_SERVER                       0x0000003
+#define __SPRT_JOB_OBJECT_LIMIT_PROCESS_MEMORY     0x00000100
+#define __SPRT_LIST_MODULES_64BIT                  0x02
 
 #define __SPRT_HEAP_NO_SERIALIZE               0x00000001
 #define __SPRT_HEAP_GROWABLE                   0x00000002
@@ -108,6 +129,17 @@ typedef HANDLE HLOCAL;
 #define __SPRT_PAGE_GUARD             0x100
 #define __SPRT_PAGE_NOCACHE           0x200
 #define __SPRT_PAGE_WRITECOMBINE      0x400
+
+#define __SPRT_MINCHAR     0x80
+#define __SPRT_MAXCHAR     0x7f
+#define __SPRT_MINSHORT    0x8000
+#define __SPRT_MAXSHORT    0x7fff
+#define __SPRT_MINLONG     0x80000000
+#define __SPRT_MAXLONG     0x7fffffff
+#define __SPRT_MAXBYTE     0xff
+#define __SPRT_MAXWORD     0xffff
+#define __SPRT_MAXDWORD    0xffffffff
+// clang-format on
 
 /* Token information classes */
 typedef enum _TOKEN_INFORMATION_CLASS {
@@ -169,8 +201,6 @@ typedef enum _WINAPI_PROVIDER {
 	WinApiProviderWine,
 	WinApiProviderReactOS,
 } WINAPI_PROVIDER;
-
-// clang-format on
 
 #define __SPRT_LHND  (__SPRT_LMEM_MOVEABLE | __SPRT_LMEM_ZEROINIT)
 #define __SPRT_LPTR  (__SPRT_LMEM_FIXED | __SPRT_LMEM_ZEROINIT)

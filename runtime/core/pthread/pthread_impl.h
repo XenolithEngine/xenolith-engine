@@ -88,7 +88,7 @@ struct alignas(COMMON_ALIGNMENT) mutex_t {
 enum class CondAttrFlags : uint32_t {
 	None = 0,
 	Shared = 1,
-	ClockRealtime = 2,
+	ClockMonotonic = 2,
 };
 
 SPRT_DEFINE_ENUM_AS_MASK(CondAttrFlags)
@@ -170,6 +170,11 @@ struct __thread_slot {
 // application-wide thread pool, with linked list for active and free threads
 struct __thread_pool {
 	static __thread_pool *get();
+
+	// Initial capacity reserved for the per-thread lookup tables (activeThreads /
+	// activeThreadsByTid) at construction, so inserts done under `mutex` from a
+	// newly-spawned thread's registerThread() stay allocation-free (see the ctor).
+	static constexpr uint32_t ThreadTableReserve = 128;
 
 	int fifoPrioMin = 0;
 	int fifoPrioMax = 0;

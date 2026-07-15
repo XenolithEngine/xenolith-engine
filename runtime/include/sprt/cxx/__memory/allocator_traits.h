@@ -116,6 +116,17 @@ template <typename _Alloc>
 using __propagate_on_container_swap =
 		__detected_or_t<false_type, __propagate_on_container_swap_member, _Alloc>;
 
+// __is_always_equal — the allocator's own member if present, otherwise is_empty<Alloc>::type
+// ([allocator.traits.types]). The default is the bool_constant is_empty<Alloc>::type (i.e.
+// true_type/false_type), not the is_empty<Alloc> trait itself: conformance code compares the
+// resulting typedef against std::true_type/false_type by exact type identity.
+template <typename _Tp>
+using __is_always_equal_member = typename _Tp::is_always_equal;
+
+template <typename _Alloc>
+using __is_always_equal =
+		__detected_or_t<typename is_empty<_Alloc>::type, __is_always_equal_member, _Alloc>;
+
 // __allocator_traits_rebind
 template <typename _Tp, typename _Up, typename = void>
 inline const bool __has_rebind_other_v = false;
@@ -203,6 +214,7 @@ struct allocator_traits {
 	using propagate_on_container_move_assignment =
 			__propagate_on_container_move_assignment<allocator_type>;
 	using propagate_on_container_swap = __propagate_on_container_swap<allocator_type>;
+	using is_always_equal = __is_always_equal<allocator_type>;
 
 	template <typename _Tp>
 	using rebind_alloc = __allocator_traits_rebind_t<allocator_type, _Tp>;

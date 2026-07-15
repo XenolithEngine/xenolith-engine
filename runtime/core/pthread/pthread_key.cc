@@ -67,7 +67,9 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_key_delete)(__SPRT_ID(pthread_key_t) key) {
 __SPRT_C_FUNC void *__SPRT_ID(pthread_getspecific)(__SPRT_ID(pthread_key_t) key) {
 	// we dont want to attach this thread
 	auto self = thread_t::self_noattach();
-	if (!self) {
+	// Null storage: the thread is past TLS teardown (key destructors already ran in
+	// __runthead); POSIX leaves values unspecified here, so report "no value".
+	if (!self || !self->threadKeyStorage) {
 		return nullptr;
 	}
 
@@ -82,7 +84,9 @@ __SPRT_C_FUNC void *__SPRT_ID(pthread_getspecific)(__SPRT_ID(pthread_key_t) key)
 __SPRT_C_FUNC int __SPRT_ID(pthread_setspecific)(__SPRT_ID(pthread_key_t) key, const void *val) {
 	auto self = thread_t::self();
 
-	if (!self) {
+	// Null storage: past TLS teardown — a value set now could never have its
+	// destructor run, so refuse instead of resurrecting the map.
+	if (!self || !self->threadKeyStorage) {
 		return EINVAL;
 	}
 

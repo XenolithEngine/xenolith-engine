@@ -13,6 +13,8 @@ EXPORTS
 	OutputDebugStringA
 	OutputDebugStringW
 	RtlLookupFunctionEntry
+	RtlAddFunctionTable
+	RtlDeleteFunctionTable
 	RtlUnwindEx
 	RtlVirtualUnwind
 	RtlCaptureStackBackTrace
@@ -30,6 +32,7 @@ EXPORTS
 	RtlPcToFileHeader
 	ReadFile
 	WriteFile
+	GetOverlappedResult
 	SetFilePointerEx
 	SetEndOfFile
 	SetFileInformationByHandle
@@ -69,6 +72,7 @@ EXPORTS
 	GetCommandLineW
 	CreateProcessW
 	TerminateProcess
+	IsProcessorFeaturePresent
 	CreateThread
 	OpenThread
 	GetCurrentThread
@@ -136,9 +140,14 @@ EXPORTS
 	SetWaitableTimer
 	CancelWaitableTimer
 	RegOpenKeyExW
+	RegOpenKeyExA
 	RegGetValueW
 	RegEnumValueW
 	RegCloseKey
+	ExpandEnvironmentStringsW
+	LoadLibraryExA
+	SetUnhandledExceptionFilter
+	SetConsoleCtrlHandler
 	GetComputerNameW
 	GetActiveProcessorCount
 	GetLogicalProcessorInformation
@@ -180,4 +189,5 @@ EXPORTS
 	DeleteTimerQueueEx
 	RegisterWaitForSingleObject
 	UnregisterWaitEx
+	UnregisterWait
 	CreateNamedPipeW

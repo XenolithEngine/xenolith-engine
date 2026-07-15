@@ -682,22 +682,22 @@ Driver::Driver(pool_t *pool, ApplicationInterface *app, StringView path, const v
 			_handle = nullptr;
 		});
 
-		auto it = _customFields.emplace(FieldIntArray::FIELD_NAME);
+		auto it = _customFields.emplace(FieldIntArray::FIELD_NAME, CustomFieldInfo{});
 		if (!FieldIntArray::registerForPostgres(it.first->second)) {
 			_customFields.erase(it.first);
 		}
 
-		it = _customFields.emplace(FieldBigIntArray::FIELD_NAME);
+		it = _customFields.emplace(FieldBigIntArray::FIELD_NAME, CustomFieldInfo{});
 		if (!FieldBigIntArray::registerForPostgres(it.first->second)) {
 			_customFields.erase(it.first);
 		}
 
-		it = _customFields.emplace(FieldPoint::FIELD_NAME);
+		it = _customFields.emplace(FieldPoint::FIELD_NAME, CustomFieldInfo{});
 		if (!FieldPoint::registerForPostgres(it.first->second)) {
 			_customFields.erase(it.first);
 		}
 
-		it = _customFields.emplace(FieldTextArray::FIELD_NAME);
+		it = _customFields.emplace(FieldTextArray::FIELD_NAME, CustomFieldInfo{});
 		if (!FieldTextArray::registerForPostgres(it.first->second)) {
 			_customFields.erase(it.first);
 		}
@@ -775,8 +775,8 @@ BytesView ResultCursor::toBytes(size_t field) const {
 		if (len > 2 && sprt::memcmp(val, "\\x", 2) == 0) {
 			// DB-PQ-002: decode into a temporary and pdup the bytes into the active pool, so the
 			// buffer is pool-scoped (reclaimed on pool clear) rather than a leaked heap container.
-			return BytesView(stappler::base16::decode<Interface>(
-					stappler::CoderSource(val + 2, len - 2)))
+			return BytesView(
+					stappler::base16::decode<Interface>(stappler::CoderSource(val + 2, len - 2)))
 					.pdup();
 		}
 		return BytesView((uint8_t *)val, len);

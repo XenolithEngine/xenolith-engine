@@ -31,12 +31,18 @@ THE SOFTWARE.
 #include <sprt/cxx/detail/access_token.h>
 #include <sprt/cxx/detail/allocator_pool.h>
 #include <sprt/cxx/detail/allocator_malloc.h>
+#include <sprt/cxx/detail/allocator_std.h>
 
 namespace sprt {
 
+// Heterogeneous lookup is enabled only when BOTH the hasher and the predicate are transparent
+// ([unord.req]); otherwise the argument would be converted to key_type (potentially more than once)
+// inside the lookup, and the standard requires the plain find(const key_type&) overload to be used.
 template <typename ExternalKey, typename Set>
 concept __unordered_set_compatible_key =
 		requires(const typename Set::key_type &k, const ExternalKey &ek) {
+			typename Set::hasher::is_transparent;
+			typename Set::key_equal::is_transparent;
 			typename Set::key_equal()(k, ek);
 			typename Set::hasher()(ek);
 		};
@@ -46,7 +52,7 @@ concept __unordered_set_compatible_key =
 // rehash and unrelated erase — the reference/pointer-stability guarantee the standard requires.
 // When false (the default) the value lives inline in the array. The std wrapper derives with Stl = true.
 template <typename Key, typename Hash, typename Pred, typename Allocator, bool Stl = false>
-class __unordered_set : public Allocator::base_class {
+class __unordered_set : public detail::__allocator_base_t<Allocator> {
 public:
 	// types
 	using key_type = Key;
@@ -61,13 +67,30 @@ public:
 	using size_type = size_t;
 	using difference_type = ptrdiff_t;
 
-	using container_type = detail::hash_memory<key_type, value_type, Hash, Pred, Allocator, Stl>;
+	// The storage machinery runs on the extended sprt allocator protocol; a purely standard
+	// allocator (std::allocator, min_allocator, test_allocator, ...) is wrapped into
+	// detail::AllocatorStd (see allocator_std.h), while allocator_type / get_allocator() keep
+	// exposing the user's own allocator.
+	using container_type = detail::hash_memory<key_type, value_type, Hash, Pred,
+			detail::__select_sprt_allocator<Allocator>, Stl>;
 
 	using iterator = container_type::const_iterator;
 	using const_iterator = container_type::const_iterator;
 	using local_iterator = container_type::const_local_iterator;
 	using const_local_iterator = container_type::const_local_iterator;
 	using node_type = container_type::node_type;
+
+	// [unord.req] noexcept specifications, computed from the user allocator/hasher/predicate traits.
+	using __atraits = allocator_traits<allocator_type>;
+	static constexpr bool __nothrow_swap_v = __atraits::is_always_equal::value
+			&& is_nothrow_swappable_v<hasher> && is_nothrow_swappable_v<key_equal>;
+	static constexpr bool __nothrow_move_v = is_nothrow_move_constructible_v<hasher>
+			&& is_nothrow_move_constructible_v<key_equal>
+			&& is_nothrow_move_constructible_v<allocator_type>;
+	static constexpr bool __nothrow_move_assign_v =
+			(__atraits::propagate_on_container_move_assignment::value
+					|| __atraits::is_always_equal::value)
+			&& is_nothrow_move_assignable_v<hasher> && is_nothrow_move_assignable_v<key_equal>;
 
 	~__unordered_set() { }
 
@@ -80,7 +103,7 @@ public:
 
 	template <typename InputIter,
 			enable_if_t<__has_input_iterator_category<InputIter>::value, int> = 0>
-	__unordered_set(InputIter f, InputIter l, size_type n, const hasher &hf = hasher(),
+	__unordered_set(InputIter f, InputIter l, size_type n = 0, const hasher &hf = hasher(),
 			const key_equal &eql = key_equal(), const allocator_type &a = allocator_type()) noexcept
 	: _container(n, hf, eql, a) {
 		while (f != l) { _container.insert(*f++); }
@@ -94,7 +117,7 @@ public:
 		_container.copy_from(other._container);
 	}
 
-	__unordered_set(__unordered_set &&other) noexcept
+	__unordered_set(__unordered_set &&other) noexcept(__nothrow_move_v)
 	: __unordered_set(0, other.hash_function(), other.key_eq(), other.get_allocator()) {
 		_container.max_load_factor(other.max_load_factor());
 		_container.move_from(sprt::move(other._container));
@@ -149,6 +172,9 @@ public:
 
 
 	__unordered_set &operator=(const __unordered_set &other) noexcept {
+		if (this == sprt::addressof(other)) {
+			return *this; // copy_from clears then re-reads storage, so self-assignment must no-op
+		}
 		using traits = sprt::allocator_traits<allocator_type>;
 
 		if constexpr (traits::propagate_on_container_copy_assignment::value) {
@@ -158,7 +184,7 @@ public:
 		_container.copy_from(other._container);
 		return *this;
 	}
-	__unordered_set &operator=(__unordered_set &&other) noexcept {
+	__unordered_set &operator=(__unordered_set &&other) noexcept(__nothrow_move_assign_v) {
 		using traits = sprt::allocator_traits<allocator_type>;
 
 		if constexpr (traits::propagate_on_container_move_assignment::value) {
@@ -175,7 +201,13 @@ public:
 		return *this;
 	}
 
-	allocator_type get_allocator() const noexcept { return _container.get_allocator(); }
+	allocator_type get_allocator() const noexcept {
+		if constexpr (detail::__sprt_extended_allocator<Allocator>) {
+			return _container.get_allocator();
+		} else {
+			return _container.get_allocator().get();
+		}
+	}
 
 	// iterators
 	const_iterator begin() const noexcept { return _container.begin(); }
@@ -191,38 +223,42 @@ public:
 	// modifiers
 	template <typename... Args>
 	pair<iterator, bool> emplace(Args &&...args) noexcept {
-		auto ret = _container.try_emplace(sprt::forward<Args>(args)...);
-		return pair<iterator, bool>(iterator(ret.first), ret.second);
+		value_type __v(sprt::forward<Args>(args)...);
+		return _container.template insert<value_type, iterator>(sprt::move_unsafe(__v));
 	}
 	template <typename... Args>
 	iterator emplace_hint(const_iterator position, Args &&...args) noexcept {
 		// there is no hinted variant for hash_memory backend
-		return iterator(_container.try_emplace(sprt::forward<Args>(args)...).first);
+		value_type __v(sprt::forward<Args>(args)...);
+		return _container.template insert<value_type, iterator>(sprt::move_unsafe(__v)).first;
 	}
 	pair<iterator, bool> insert(const value_type &obj) noexcept {
-		return _container.template insert<value_type, iterator>(obj);
+		return _container.template insert<const value_type &, iterator>(obj);
 	}
 	pair<iterator, bool> insert(value_type &&obj) noexcept {
-		return _container.template insert<value_type, iterator>(sprt::move(obj));
+		return _container.template insert<value_type, iterator>(sprt::move_unsafe(obj));
 	}
-	template <typename K>
+	template <__unordered_set_compatible_key<__unordered_set> K>
 	pair<iterator, bool> insert(K &&obj) noexcept {
-		return _container.insert(obj);
+		return _container.template insert<K, iterator>(sprt::forward<K>(obj));
 	}
 	iterator insert(const_iterator hint, const value_type &obj) noexcept {
-		return _container.insert(obj).first;
+		return insert(obj).first;
 	}
 	iterator insert(const_iterator hint, value_type &&obj) noexcept {
-		return _container.insert(obj).first;
+		return insert(sprt::move_unsafe(obj)).first;
 	}
-	template <typename K>
+	template <__unordered_set_compatible_key<__unordered_set> K>
 	iterator insert(const_iterator hint, K &&obj) noexcept {
-		return _container.insert(obj).first;
+		return insert(sprt::forward<K>(obj)).first;
 	}
 	template <typename InputIter,
 			enable_if_t<__has_input_iterator_category<InputIter>::value, int> = 0>
 	void insert(InputIter first, InputIter last) noexcept {
-		while (first != last) { _container.insert(*first++); }
+		while (first != last) {
+			_container.insert(*first);
+			++first;
+		}
 	}
 	void insert(initializer_list<value_type> il) noexcept {
 		for (auto &it : il) { _container.insert(it); }
@@ -254,7 +290,9 @@ public:
 		return first;
 	}
 
-	void swap(__unordered_set &other) noexcept { _container.swap(other._container); }
+	void swap(__unordered_set &other) noexcept(__nothrow_swap_v) {
+		_container.swap(other._container);
+	}
 	void clear() noexcept { _container.clear_free(); }
 
 	// observers
@@ -301,6 +339,19 @@ public:
 		return _container.equal_range(k);
 	}
 
+	// bucket interface
+	size_type bucket_count() const noexcept { return _container.bucket_count(); }
+	size_type max_bucket_count() const noexcept { return _container.max_bucket_count(); }
+	size_type bucket_size(size_type n) const { return _container.bucket_size(n); }
+	size_type bucket(const key_type &k) const { return _container.bucket(k); }
+
+	local_iterator begin(size_type n) { return _container.begin(n); }
+	const_local_iterator begin(size_type n) const { return _container.begin(n); }
+	local_iterator end(size_type n) { return _container.end(n); }
+	const_local_iterator end(size_type n) const { return _container.end(n); }
+	const_local_iterator cbegin(size_type n) const { return _container.begin(n); }
+	const_local_iterator cend(size_type n) const { return _container.end(n); }
+
 	// hash policy
 	float load_factor() const noexcept { return _container.load_factor(); }
 	float max_load_factor() const noexcept { return _container.max_load_factor(); }
@@ -319,15 +370,25 @@ template <typename Value, typename Hash = sprt::hash<void>, typename Pred = sprt
 using __malloc_unordered_set = __unordered_set<Value, Hash, Pred, detail::AllocatorMalloc<Value>>;
 
 template <typename Value, typename Hash, typename Pred, typename Allocator, bool Stl>
-inline void swap(const __unordered_set<Value, Hash, Pred, Allocator, Stl> &__x,
-		const __unordered_set<Value, Hash, Pred, Allocator, Stl> &__y) noexcept {
+inline void swap(__unordered_set<Value, Hash, Pred, Allocator, Stl> &__x,
+		__unordered_set<Value, Hash, Pred, Allocator, Stl> &__y) noexcept(noexcept(__x.swap(__y))) {
 	__x.swap(__y);
 }
 
+// [unord.req]: equality is order-independent — equal sizes, and every element of __x is present in
+// __y (keys are unique, so a membership check suffices).
 template <typename Value, typename Hash, typename Pred, typename Allocator, bool Stl>
-inline constexpr bool operator==(const __unordered_set<Value, Hash, Pred, Allocator, Stl> &__x,
+inline bool operator==(const __unordered_set<Value, Hash, Pred, Allocator, Stl> &__x,
 		const __unordered_set<Value, Hash, Pred, Allocator, Stl> &__y) noexcept {
-	return (__x.size() == __y.size() && sprt::equal(__x.begin(), __x.end(), __y.begin()));
+	if (__x.size() != __y.size()) {
+		return false;
+	}
+	for (const auto &__e : __x) {
+		if (__y.find(__e) == __y.end()) {
+			return false;
+		}
+	}
+	return true;
 }
 
 } // namespace sprt

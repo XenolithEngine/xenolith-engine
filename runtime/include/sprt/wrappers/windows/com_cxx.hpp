@@ -550,6 +550,61 @@ public:
 			LPWSTR *ppszError) = 0;
 };
 
+template <typename T>
+void **IID_PPV_ARGS_Helper(T **__pp) {
+	(void)static_cast<IUnknown *>(*__pp); // compile-time check: T derives from IUnknown
+	return reinterpret_cast<void **>(__pp);
+}
+#define IID_PPV_ARGS(ppType) __uuidof(**(ppType)), IID_PPV_ARGS_Helper(ppType)
+
+// ---- IShellItem / IFileOperation ([shobjidl_core]) ------------------------
+MIDL_INTERFACE("43826d1e-e718-42ee-bc55-a1e261c37bfe")
+IShellItem : public IUnknown {
+public:
+	virtual HRESULT STDMETHODCALLTYPE BindToHandler(void *pbc, const GUID &bhid, REFIID riid,
+			void **ppv) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetParent(IShellItem * *ppsi) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetDisplayName(DWORD sigdnName, LPWSTR * ppszName) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetAttributes(ULONG sfgaoMask, ULONG * psfgaoAttribs) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Compare(IShellItem * psi, DWORD hint, int *piOrder) = 0;
+};
+
+MIDL_INTERFACE("947aab5f-0a5c-4c13-b4d6-4bf7836fc9f8")
+IFileOperation : public IUnknown {
+public:
+	virtual HRESULT STDMETHODCALLTYPE Advise(void *pfops, DWORD *pdwCookie) = 0;
+	virtual HRESULT STDMETHODCALLTYPE Unadvise(DWORD dwCookie) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetOperationFlags(DWORD dwOperationFlags) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetProgressMessage(LPCWSTR pszMessage) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetProgressDialog(void *popd) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetProperties(void *pproparray) = 0;
+	virtual HRESULT STDMETHODCALLTYPE SetOwnerWindow(HANDLE hwndOwner) = 0;
+	virtual HRESULT STDMETHODCALLTYPE ApplyPropertiesToItem(IShellItem * psiItem) = 0;
+	virtual HRESULT STDMETHODCALLTYPE ApplyPropertiesToItems(void *punkItems) = 0;
+	virtual HRESULT STDMETHODCALLTYPE RenameItem(IShellItem * psiItem, LPCWSTR pszNewName,
+			void *pfopsItem) = 0;
+	virtual HRESULT STDMETHODCALLTYPE RenameItems(void *pUnkItems, LPCWSTR pszNewName) = 0;
+	virtual HRESULT STDMETHODCALLTYPE MoveItem(IShellItem * psiItem,
+			IShellItem * psiDestinationFolder, LPCWSTR pszNewName, void *pfopsItem) = 0;
+	virtual HRESULT STDMETHODCALLTYPE MoveItems(void *punkItems,
+			IShellItem *psiDestinationFolder) = 0;
+	virtual HRESULT STDMETHODCALLTYPE CopyItem(IShellItem * psiItem,
+			IShellItem * psiDestinationFolder, LPCWSTR pszCopyName, void *pfopsItem) = 0;
+	virtual HRESULT STDMETHODCALLTYPE CopyItems(void *punkItems,
+			IShellItem *psiDestinationFolder) = 0;
+	virtual HRESULT STDMETHODCALLTYPE DeleteItem(IShellItem * psiItem, void *pfopsItem) = 0;
+	virtual HRESULT STDMETHODCALLTYPE DeleteItems(void *punkItems) = 0;
+	virtual HRESULT STDMETHODCALLTYPE NewItem(IShellItem * psiDestinationFolder,
+			DWORD dwFileAttributes, LPCWSTR pszName, LPCWSTR pszTemplateName, void *pfopsItem) = 0;
+	virtual HRESULT STDMETHODCALLTYPE PerformOperations(void) = 0;
+	virtual HRESULT STDMETHODCALLTYPE GetAnyOperationsAborted(BOOL * pfAnyOperationsAborted) = 0;
+};
+
+// coclass {3ad05575-8857-4850-9277-11b85bdb8e09}. inline (C++17) so every including
+// TU shares one definition and it is not flagged unused.
+inline constexpr GUID CLSID_FileOperation = {0x3ad0'5575, 0x8857, 0x4850,
+	{0x92, 0x77, 0x11, 0xb8, 0x5b, 0xdb, 0x8e, 0x09}};
+
 #endif
 
 #endif // SPRT_WRAPPERS_WINDOWS_COM_CXX_H_

@@ -1,0 +1,32 @@
+--- a/include/__config
++++ b/include/__config
+@@ -268,7 +268,13 @@ _LIBCPP_HARDENING_MODE_DEBUG
+ #  endif
+ 
+ #  if defined(_WIN32)
+-#    define _LIBCPP_WIN32API
++// sprt overlay: _LIBCPP_SPRT_NO_WIN32API (set in <__config_site>) keeps _LIBCPP_WIN32API
++// undefined so the library uses its POSIX OS-service paths backed by sprt's libc instead of
++// the <windows.h> reimplementations. _LIBCPP_SHORT_WCHAR / _LIBCPP_MSVCRT[_LIKE] below still
++// apply — they describe the compiler/C-runtime ABI, not the OS API surface.
++#    ifndef _LIBCPP_SPRT_NO_WIN32API
++#      define _LIBCPP_WIN32API
++#    endif
+ #    define _LIBCPP_SHORT_WCHAR 1
+ // Both MinGW and native MSVC provide a "MSVC"-like environment
+ #    define _LIBCPP_MSVCRT_LIKE
+@@ -282,7 +288,13 @@ _LIBCPP_HARDENING_MODE_DEBUG
+ #    else
+ #      define _LIBCPP_HAS_BITSCAN64 0
+ #    endif
+-#    define _LIBCPP_HAS_OPEN_WITH_WCHAR 1
++// sprt overlay: with _LIBCPP_WIN32API suppressed the filesystem is char/UTF-8 and fstream
++// opens through the char fopen backend, so drop the _wfopen wchar-open overloads too.
++#    ifdef _LIBCPP_SPRT_NO_WIN32API
++#      define _LIBCPP_HAS_OPEN_WITH_WCHAR 0
++#    else
++#      define _LIBCPP_HAS_OPEN_WITH_WCHAR 1
++#    endif
+ #  else
+ #    define _LIBCPP_HAS_OPEN_WITH_WCHAR 0
+ #    define _LIBCPP_HAS_BITSCAN64 0

@@ -56,6 +56,9 @@ using make_integer_sequence = integer_sequence<_Tp, __integer_pack(_SequenceSize
 template <size_t _Np>
 using make_index_sequence = make_integer_sequence<size_t, _Np>;
 
+template <typename... _Tp>
+using index_sequence_for = make_index_sequence<sizeof...(_Tp)>;
+
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_CXX___UTILITY_INTEGER_SEQUENCE_H_

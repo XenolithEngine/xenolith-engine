@@ -38,6 +38,23 @@ constexpr auto mismatch(InputIt1 first1, InputIt1 last1, InputIt2 first2, InputI
 	return pair(first1, first2);
 }
 
+// [mismatch] three-iterator overload (second range unbounded); the four-iterator
+// form above bounds it. Distinct arity, so no overload ambiguity.
+template <typename InputIt1, typename InputIt2>
+constexpr auto mismatch(InputIt1 first1, InputIt1 last1, InputIt2 first2) {
+	while (first1 != last1 && *first1 == *first2) { ++first1, ++first2; }
+
+	return pair(first1, first2);
+}
+
+template <typename InputIt1, typename InputIt2, typename BinaryPred>
+constexpr auto mismatch(InputIt1 first1, InputIt1 last1, InputIt2 first2, InputIt2 last2,
+		BinaryPred pred) {
+	while (first1 != last1 && first2 != last2 && pred(*first1, *first2)) { ++first1, ++first2; }
+
+	return pair(first1, first2);
+}
+
 template <typename InputIt, typename Value>
 [[nodiscard]]
 constexpr InputIt find(InputIt first, InputIt last, const Value &value) {
@@ -176,7 +193,7 @@ inline constexpr _ForwardIterator1 find_end(_ForwardIterator1 __first1, _Forward
 }
 
 
-} // inline namespace __cxx_algorithm
+} // namespace __cxx_algorithm
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___ALGORITHM_FIND_H_

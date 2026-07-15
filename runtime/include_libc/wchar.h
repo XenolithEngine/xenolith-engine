@@ -822,6 +822,15 @@ FILE *open_wmemstream(wchar_t **ptr, size_t *value) SPRT_UMBRELLA_END
 #endif
 #endif
 
+// mbsnrtowcs / wcsnrtombs are POSIX, not part of the MSVC C runtime, so libc++'s
+// <wchar.h> declares them itself on the MSVCRT path (extern "C", WITHOUT an exception
+// specification). sprt's declaration carries __SPRT_NOEXCEPT (via SPRT_UMBRELLA_END), and
+// two extern-C declarations with mismatched exception specs are ill-formed. Suppress sprt's
+// declaration for libc++ Windows consumers and let libc++'s stand; the sprt runtime still
+// DEFINES the symbols (a runtime build has no _LIBCPP_VERSION, so this block is emitted
+// there). On every other target libc++ takes them from the system <wchar.h> and does not
+// redeclare, so sprt's declaration is needed and kept.
+#if !(defined(_LIBCPP_VERSION) && defined(_WIN32))
 SPRT_UMBRELLA_FUNC
 size_t mbsnrtowcs(wchar_t *__SPRT_RESTRICT ptr, const char **__SPRT_RESTRICT ret, size_t a,
 		size_t b, mbstate_t *__SPRT_RESTRICT value) SPRT_UMBRELLA_END
@@ -839,6 +848,7 @@ size_t wcsnrtombs(char *__SPRT_RESTRICT dst, const wchar_t **__SPRT_RESTRICT src
 	return __sprt_wcsnrtombs(dst, src, ssize, dsize, value);
 }
 #endif
+#endif // !(libc++ && Windows)
 
 SPRT_UMBRELLA_FUNC
 wchar_t *wcsdup(const wchar_t *value) SPRT_UMBRELLA_END
@@ -896,6 +906,25 @@ int wcsncasecmp(const wchar_t *a, const wchar_t *b, size_t value) SPRT_UMBRELLA_
 {
 	return __sprt_wcsncasecmp(a, b, value);
 }
+#endif
+
+#if defined(_WIN32) || defined(__SPRT_WINDOWS)
+// MSVC-CRT spellings of the case-insensitive wide compares.
+SPRT_UMBRELLA_FUNC
+int _wcsicmp(const wchar_t *a, const wchar_t *b) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcscasecmp(a, b);
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
+int _wcsnicmp(const wchar_t *a, const wchar_t *b, size_t value) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_wcsncasecmp(a, b, value);
+}
+#endif
 #endif
 
 SPRT_UMBRELLA_FUNC
@@ -972,6 +1001,52 @@ SPRT_API int wcstombs_s(size_t *pReturnValue, char *mbstr, size_t sizeInBytes, c
 		size_t count);
 
 __SPRT_END_DECL
+
+// ---------------------------------------------------------------------------
+// C++ const-correct overloads for the wide search functions.
+//
+// In C these entry points take/return `const wchar_t *` (const-in / const-out, the
+// C++98-conformance signature). ISO C++, however, expects the search functions to be
+// overloaded so that a mutable argument yields a mutable result (wchar_t* in -> wchar_t*
+// out) while a const argument stays const — the same pair glibc exposes through
+// __CORRECT_ISO_CPP_WCHAR_H_PROTO. We supply the missing mutable overload here and forward
+// it, via const_cast, to the extern "C" const entry point declared above; together they
+// form the const-correct pair.
+//
+// Providing the pair ourselves is what lets us set _LIBCPP_WCHAR_H_HAS_CONST_OVERLOADS
+// below. Without it, libc++ (which has no glibc/_CRT_CONST_CORRECT_OVERLOADS signal on this
+// libc) synthesizes its own __libcpp_wcschr/... _LIBCPP_PREFERRED_OVERLOAD shims on top of
+// our declarations; on this target that overload set folds back onto itself and recurses,
+// overflowing the stack at runtime. Declaring the overloads here and telling libc++ we
+// already have them keeps it from generating the shims at all.
+#ifdef __cplusplus
+extern "C++" {
+
+SPRT_FORCEINLINE wchar_t *wcschr(wchar_t *__s, wchar_t __c) __SPRT_NOEXCEPT {
+	return const_cast<wchar_t *>(wcschr(static_cast<const wchar_t *>(__s), __c));
+}
+SPRT_FORCEINLINE wchar_t *wcsrchr(wchar_t *__s, wchar_t __c) __SPRT_NOEXCEPT {
+	return const_cast<wchar_t *>(wcsrchr(static_cast<const wchar_t *>(__s), __c));
+}
+SPRT_FORCEINLINE wchar_t *wcspbrk(wchar_t *__s1, const wchar_t *__s2) __SPRT_NOEXCEPT {
+	return const_cast<wchar_t *>(wcspbrk(static_cast<const wchar_t *>(__s1), __s2));
+}
+SPRT_FORCEINLINE wchar_t *wcsstr(wchar_t *__s1, const wchar_t *__s2) __SPRT_NOEXCEPT {
+	return const_cast<wchar_t *>(wcsstr(static_cast<const wchar_t *>(__s1), __s2));
+}
+SPRT_FORCEINLINE wchar_t *wmemchr(wchar_t *__s, wchar_t __c, size_t __n) __SPRT_NOEXCEPT {
+	return const_cast<wchar_t *>(wmemchr(static_cast<const wchar_t *>(__s), __c, __n));
+}
+
+} // extern "C++"
+
+// We now expose the const-correct overload pair libc++'s <wchar.h> looks for, so tell it not
+// to synthesize its own recursive __libcpp_* shims (see the comment above).
+#if defined(_LIBCPP_VERSION) && !defined(_LIBCPP_WCHAR_H_HAS_CONST_OVERLOADS)
+#define _LIBCPP_WCHAR_H_HAS_CONST_OVERLOADS 1
+#endif
+
+#endif // __cplusplus
 
 #endif
 

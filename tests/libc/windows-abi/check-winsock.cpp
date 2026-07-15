@@ -307,3 +307,7 @@ SPRT_OFFSET(WSAPROTOCOL_INFOW, szProtocol); // string contents skipped; offset o
 SPRT_SIZE(WSANETWORKEVENTS);
 SPRT_OFFSET(WSANETWORKEVENTS, lNetworkEvents);
 SPRT_OFFSET(WSANETWORKEVENTS, iErrorCode);
+
+// === new values (wrapper completion) =======================================
+SPRT_CONST(WINSOCK_VERSION);
+SPRT_CONST(FROM_PROTOCOL_INFO);

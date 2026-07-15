@@ -26,6 +26,10 @@ THE SOFTWARE.
 #include <sprt/cxx/detail/ctypes.h>
 #include <sprt/c/__sprt_setjmp.h>
 
+#include <sprt/cxx/new>       // std::bad_alloc / std::bad_array_new_length
+#include <sprt/cxx/typeinfo>  // std::bad_cast / std::bad_typeid
+#include <sprt/cxx/exception> // std::terminate
+
 #include <stdio.h>
 #include <string.h>
 
@@ -266,3 +270,48 @@ void __cleanup_exceptions(void) {
 }
 
 } // namespace sprt
+
+// =========================================================================
+//  C++ exception-ABI entities the ported libc++ needs on the MSVC ABI.
+//
+//  On the Itanium targets these come from libc++abi; the MSVC ABI has no
+//  libc++abi, so the runtime supplies them here (the same place std::exception /
+//  std::bad_exception / std::type_info are provided in windows/libcxx.cc). They
+//  are the canonical, unversioned std:: entities (libc++ declares them
+//  EXPORTED_FROM_ABI, not in the versioned __sprt namespace), so define them in
+//  the canonical namespace std to match the manglings libc++ emits.
+// =========================================================================
+
+namespace std {
+
+// <new> allocation-failure exceptions.
+bad_alloc::bad_alloc() noexcept { }
+bad_alloc::~bad_alloc() noexcept { }
+const char *bad_alloc::what() const noexcept { return "std::bad_alloc"; }
+
+bad_array_new_length::bad_array_new_length() noexcept { }
+bad_array_new_length::~bad_array_new_length() noexcept { }
+const char *bad_array_new_length::what() const noexcept { return "std::bad_array_new_length"; }
+
+// <typeinfo> RTTI exceptions.
+bad_cast::bad_cast() noexcept { }
+bad_cast::~bad_cast() noexcept { }
+const char *bad_cast::what() const noexcept { return "std::bad_cast"; }
+
+bad_typeid::bad_typeid() noexcept { }
+bad_typeid::~bad_typeid() noexcept { }
+const char *bad_typeid::what() const noexcept { return "std::bad_typeid"; }
+
+} // namespace std
+
+// The MSVC C++ ABI throw entry point. clang lowers every `throw` to a call to this
+// symbol. The runtime is built without a C++ exception runtime, so a thrown exception
+// can never be delivered to a catch clause: the only correct behaviour is to terminate
+// (identical to rethrow_exception on the no-EH exception_ptr, see SPRTCxxException.cpp).
+// The parameters (the exception object and its _ThrowInfo) are irrelevant here; using
+// void* keeps this free of any dependency on the MSVC vcruntime throw-info layout.
+extern "C" [[noreturn]] void _CxxThrowException(void *__exception_object, void *__throw_info) {
+	(void)__exception_object;
+	(void)__throw_info;
+	std::terminate();
+}

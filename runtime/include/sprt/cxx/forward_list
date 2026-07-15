@@ -26,6 +26,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__memory/allocator_traits.h>
 #include <sprt/cxx/detail/allocator_malloc.h>
 #include <sprt/cxx/detail/allocator_pool.h>
+#include <sprt/cxx/detail/allocator_std.h>
 #include <sprt/cxx/__list/forward_list_base.h>
 #include <sprt/cxx/initializer_list>
 #include <sprt/cxx/algorithm>
@@ -34,8 +35,11 @@ THE SOFTWARE.
 
 namespace sprt {
 
+// The node machinery runs on the extended sprt allocator protocol; a purely
+// standard allocator is wrapped into detail::AllocatorStd (see allocator_std.h),
+// while allocator_type / get_allocator() keep exposing the user's allocator.
 template <typename T, typename Allocator>
-class SPRT_API __forward_list : public Allocator::base_class {
+class SPRT_API __forward_list : public detail::__allocator_base_t<Allocator> {
 public:
 	using value_type = T;
 	using allocator_type = Allocator;
@@ -43,14 +47,21 @@ public:
 	using difference_type = ptrdiff_t;
 	using reference = value_type &;
 	using const_reference = const value_type &;
-	using pointer = typename allocator_type::pointer;
-	using const_pointer = typename allocator_type::const_pointer;
+	using pointer = typename allocator_traits<Allocator>::pointer;
+	using const_pointer = typename allocator_traits<Allocator>::const_pointer;
 
-	using node_type = detail::ForwardListNode<value_type, Allocator>;
-	using base_type = detail::forward_list_base<value_type, allocator_type>;
+	using __sprt_allocator = detail::__select_sprt_allocator<Allocator>;
+	using node_type = detail::ForwardListNode<value_type, __sprt_allocator>;
+	using base_type = detail::forward_list_base<value_type, __sprt_allocator>;
 
-	using iterator = detail::ForwardListIterator<value_type, Allocator>;
-	using const_iterator = detail::ForwardListConstIterator<value_type, Allocator>;
+	// The value-bound allocator used to construct/destroy elements in node
+	// storage; rebound from the node allocator so both allocator families
+	// (extended and AllocatorStd-wrapped) resolve to the right type.
+	using __value_allocator =
+			typename base_type::node_allocator_type::template rebind<value_type>::other;
+
+	using iterator = detail::ForwardListIterator<value_type, __sprt_allocator>;
+	using const_iterator = detail::ForwardListConstIterator<value_type, __sprt_allocator>;
 
 	constexpr __forward_list() noexcept : __forward_list(allocator_type()) { }
 
@@ -89,7 +100,13 @@ public:
 	constexpr void assign(InputIt first, InputIt last) noexcept;
 	constexpr void assign(initializer_list<T> ilist) noexcept;
 
-	constexpr allocator_type get_allocator() const noexcept { return _base.get_allocator(); }
+	constexpr allocator_type get_allocator() const noexcept {
+		if constexpr (detail::__sprt_extended_allocator<Allocator>) {
+			return _base.get_allocator();
+		} else {
+			return allocator_type(_base.get_allocator().get());
+		}
+	}
 
 	constexpr reference front() noexcept {
 		return static_cast<node_type *>(_base.front())->value.ref();
@@ -106,12 +123,19 @@ public:
 	constexpr const_iterator begin() const noexcept { return const_iterator(_base.front()); }
 	constexpr const_iterator cbegin() const noexcept { return const_iterator(_base.front()); }
 
-	constexpr iterator end() noexcept { return iterator(_base.end()); }
-	constexpr const_iterator end() const noexcept { return const_iterator(_base.end()); }
-	constexpr const_iterator cend() const noexcept { return const_iterator(_base.end()); }
+	// The list is linear: end() is the null successor of the last node, DISTINCT
+	// from before_begin() (which is the sentinel _root node) per [forwardlist.iter].
+	constexpr iterator end() noexcept { return iterator(nullptr); }
+	constexpr const_iterator end() const noexcept { return const_iterator(nullptr); }
+	constexpr const_iterator cend() const noexcept { return const_iterator(nullptr); }
 
-	constexpr bool empty() const noexcept { return _base.front() == _base.end(); }
-	constexpr size_type max_size() const noexcept { return _base.max_size(); }
+	constexpr bool empty() const noexcept { return _base.front() == nullptr; }
+	constexpr size_type max_size() const noexcept {
+		// [container.reqmts]: bounded by both the node-flag limit and the allocator.
+		const allocator_type __a = get_allocator();
+		return sprt::min(_base.max_size(),
+				(size_type)sprt::allocator_traits<Allocator>::max_size(__a));
+	}
 	constexpr size_type size() const noexcept { return _base.size(); }
 
 	constexpr void swap(__forward_list &) noexcept;
@@ -156,23 +180,20 @@ public:
 	// they require movable elements, splice_after is not O(1), and do not preserve iterators into
 	// the source. Observable results match std::forward_list.
 	size_type remove(const T &value) noexcept {
-		return remove_if([&](const T &v) { return v == value; });
+		// LWG 526: `value` may be a reference into this list; erasing that element
+		// mid-pass would leave it dangling, so compare against a local copy.
+		if constexpr (sprt::is_copy_constructible_v<T>) {
+			const T __copy(value);
+			return remove_if([&](const T &v) { return v == __copy; });
+		} else {
+			return remove_if([&](const T &v) { return v == value; });
+		}
 	}
 	template <typename Predicate>
 	size_type remove_if(Predicate pred) noexcept {
-		size_type removed = 0;
-		auto prev = before_begin();
-		auto cur = begin();
-		while (cur != end()) {
-			if (pred(*cur)) {
-				cur = erase_after(prev);
-				++removed;
-			} else {
-				prev = cur;
-				++cur;
-			}
-		}
-		return removed;
+		// Deferred node destruction (LWG 526): the predicate may reference an
+		// element of this very list.
+		return _base.remove_if_nodes([&](node_type *n) { return pred(n->value.ref()); });
 	}
 
 	size_type unique() noexcept {
@@ -215,36 +236,52 @@ public:
 	void sort() noexcept { sort(sprt::less<T>()); }
 	template <typename Compare>
 	void sort(Compare comp) noexcept {
-		__malloc_vector<T> buf;
-		for (auto &v : *this) { buf.emplace_back(sprt::move_unsafe(v)); }
+		// [forwardlist.ops] sort is stable: sprt::sort is not, so tie-break
+		// equivalent elements by their original position.
+		__malloc_vector<pair<size_type, T>> buf;
+		size_type idx = 0;
+		for (auto &v : *this) { buf.emplace_back(idx++, sprt::move_unsafe(v)); }
 		if (buf.size() < 2) {
+			// restore the single moved-from element
+			if (buf.size() == 1) {
+				*begin() = sprt::move_unsafe(buf[0].second);
+			}
 			return;
 		}
-		sprt::sort(buf.begin(), buf.end(), comp);
+		sprt::sort(buf.begin(), buf.end(),
+				[&](const pair<size_type, T> &a, const pair<size_type, T> &b) {
+			if (comp(a.second, b.second)) {
+				return true;
+			}
+			if (comp(b.second, a.second)) {
+				return false;
+			}
+			return a.first < b.first;
+		});
 		auto it = begin();
 		for (auto &v : buf) {
-			*it = sprt::move_unsafe(v);
+			*it = sprt::move_unsafe(v.second);
 			++it;
 		}
 	}
 
 	void merge(__forward_list &other) noexcept { merge(other, sprt::less<T>()); }
+
+	// [forward.list.ops] rvalue forms delegate to the lvalue ones.
+	void merge(__forward_list &&other) noexcept { merge(other, sprt::less<T>()); }
+
+	template <typename Compare>
+	void merge(__forward_list &&other, Compare comp) noexcept {
+		merge(other, sprt::move_unsafe(comp));
+	}
+
 	template <typename Compare>
 	void merge(__forward_list &other, Compare comp) noexcept {
-		if (this == &other) {
-			return;
-		}
-		auto prev = before_begin();
-		auto it = begin();
-		while (!other.empty()) {
-			if (it != end() && !comp(other.front(), *it)) {
-				prev = it;
-				++it;
-			} else {
-				prev = insert_after(prev, sprt::move_unsafe(other.front()));
-				other.pop_front();
-			}
-		}
+		// Relink nodes instead of moving elements ([forwardlist.ops]): iterators
+		// and references into `other` remain valid and refer into *this.
+		_base.merge_nodes(other._base, [&](const node_type *a, const node_type *b) {
+			return comp(a->value.ref(), b->value.ref());
+		});
 	}
 
 	void splice_after(const_iterator pos, __forward_list &other) noexcept {
@@ -262,6 +299,20 @@ public:
 		insert_after(pos, sprt::move_unsafe(const_cast<T &>(*next)));
 		other.erase_after(it);
 	}
+
+	void splice_after(const_iterator pos, __forward_list &&other) noexcept {
+		splice_after(pos, other);
+	}
+
+	void splice_after(const_iterator pos, __forward_list &&other, const_iterator it) noexcept {
+		splice_after(pos, other, it);
+	}
+
+	void splice_after(const_iterator pos, __forward_list &&other, const_iterator first,
+			const_iterator last) noexcept {
+		splice_after(pos, other, first, last);
+	}
+
 	void splice_after(const_iterator pos, __forward_list &other, const_iterator first,
 			const_iterator last) noexcept {
 		auto cur = first;
@@ -282,7 +333,7 @@ constexpr inline __forward_list<T, Allocator>::__forward_list(size_type count,
 : __forward_list(alloc) {
 	_base.expand_front(count,
 			[](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
-		node->value.construct(allocator_type(nalloc)); //
+		node->value.construct(__value_allocator(nalloc)); //
 	});
 }
 
@@ -293,7 +344,7 @@ constexpr inline __forward_list<T, Allocator>::__forward_list(size_type count,
 	_base.expand_front(count,
 			[value = &value](const base_type::node_allocator_type &nalloc, node_type *node)
 					SPRT_LAMBDAINLINE {
-		node->value.construct(allocator_type(nalloc), *value); //
+		node->value.construct(__value_allocator(nalloc), *value); //
 	});
 }
 
@@ -338,7 +389,7 @@ constexpr inline __forward_list<T, Allocator>::__forward_list(initializer_list<T
 	auto source = init.begin();
 	_base.expand_front(init.size(),
 			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
-		node->value.construct(allocator_type(nalloc), *source++); //
+		node->value.construct(__value_allocator(nalloc), *source++); //
 	});
 }
 
@@ -390,7 +441,7 @@ constexpr inline void __forward_list<T, Allocator>::assign(size_type count,
 	_base.expand_front(count,
 			[value = &value](const base_type::node_allocator_type &nalloc, node_type *node)
 					SPRT_LAMBDAINLINE {
-		node->value.construct(allocator_type(nalloc), *value); //
+		node->value.construct(__value_allocator(nalloc), *value); //
 	});
 }
 
@@ -419,7 +470,7 @@ constexpr inline void __forward_list<T, Allocator>::assign(initializer_list<T> i
 	auto source = init.begin();
 	_base.expand_front(init.size(),
 			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
-		node->value.construct(allocator_type(nalloc), *source++); //
+		node->value.construct(__value_allocator(nalloc), *source++); //
 	});
 }
 
@@ -469,7 +520,7 @@ constexpr __forward_list<T, Allocator>::iterator __forward_list<T, Allocator>::i
 	auto node = _base.expand(pos.__target, count,
 			[value = &value](const base_type::node_allocator_type &nalloc, node_type *node)
 					SPRT_LAMBDAINLINE {
-		node->value.construct(allocator_type(nalloc), *value); //
+		node->value.construct(__value_allocator(nalloc), *value); //
 	});
 	return iterator(node);
 }
@@ -493,7 +544,7 @@ constexpr __forward_list<T, Allocator>::iterator __forward_list<T, Allocator>::i
 	// always inserting at the head); mirrors the (pos, count, value) overload.
 	auto node = _base.expand(pos.__target, init.size(),
 			[&](const base_type::node_allocator_type &nalloc, node_type *node) SPRT_LAMBDAINLINE {
-		node->value.construct(allocator_type(nalloc), *source++); //
+		node->value.construct(__value_allocator(nalloc), *source++); //
 	});
 	return iterator(node);
 }
@@ -538,13 +589,15 @@ constexpr void __forward_list<T, Allocator>::resize(size_type count) noexcept {
 			--count;
 		}
 
-		while (target != end()) { target = iterator(_base.erase_after(target.__target)); }
+		// Keep `target` fixed and repeatedly erase its successor: reassigning to
+		// erase_after's return (the node after the erased one) skips every other node.
+		while (target.__target->next != nullptr) { _base.erase_after(target.__target); }
 	} else if (_base.size() < count) {
-		while (target.__target->next != _base.end()) { ++target; }
+		while (target.__target->next != nullptr) { ++target; }
 
 		_base.expand(target.__target, count - _base.size(),
 				[](const base_type::node_allocator_type &nalloc, node_type *node) {
-			node->value.construct(allocator_type(nalloc)); //
+			node->value.construct(__value_allocator(nalloc)); //
 		});
 	}
 }
@@ -559,13 +612,15 @@ constexpr void __forward_list<T, Allocator>::resize(size_type count,
 			--count;
 		}
 
-		while (target != end()) { target = iterator(_base.erase_after(target.__target)); }
+		// Keep `target` fixed and repeatedly erase its successor: reassigning to
+		// erase_after's return (the node after the erased one) skips every other node.
+		while (target.__target->next != nullptr) { _base.erase_after(target.__target); }
 	} else if (_base.size() < count) {
-		while (target.__target->next != _base.end()) { ++target; }
+		while (target.__target->next != nullptr) { ++target; }
 
 		_base.expand(target.__target, count - _base.size(),
 				[value = &value](const base_type::node_allocator_type &nalloc, node_type *node) {
-			node->value.construct(allocator_type(nalloc), *value); //
+			node->value.construct(__value_allocator(nalloc), *value); //
 		});
 	}
 }
@@ -602,9 +657,11 @@ constexpr inline bool operator==(const __forward_list<T, Allocator> &lhs,
 	return first1 == last1 && first2 == last2;
 }
 
+// The __synth_three_way_result_t return type also SFINAEs this overload away for
+// element types that are not three-way/less-than comparable ([tab:container.opt]).
 template <typename T, typename Allocator>
-constexpr inline auto operator<=>(const __forward_list<T, Allocator> &lhs,
-		const __forward_list<T, Allocator> &rhs) {
+constexpr inline sprt::__synth_three_way_result_t<T> operator<=>(
+		const __forward_list<T, Allocator> &lhs, const __forward_list<T, Allocator> &rhs) {
 	return sprt::lexicographical_compare_three_way(lhs.begin(), lhs.end(), rhs.begin(), rhs.end());
 }
 

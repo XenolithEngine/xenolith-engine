@@ -23,10 +23,10 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_DETAIL_CONSTEXPR_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_DETAIL_CONSTEXPR_H_
 
-#include <sprt/cxx/type_traits>
+#include <sprt/cxx/__type_traits/modifications.h>
+#include <sprt/cxx/__type_traits/queries.h>
 #include <sprt/cxx/detail/ctypes.h>
-
-#include <sprt/cxx/array>
+#include <sprt/cxx/detail/inline_buffer.h>
 
 #include <sprt/c/__sprt_string.h>
 #include <sprt/c/__sprt_ctype.h>
@@ -51,7 +51,11 @@ constexpr _Tp *__constexpr_memset(_Tp *dest, const _Tp &source, size_t __count) 
 template <typename _Tp>
 constexpr _Tp *__constexpr_memcpy(_Tp *dest, const _Tp *source, size_t __count) {
 	if (is_constant_evaluated()) {
-		while (__count-- > 0) { *(dest++) = *(source++); }
+		if constexpr (__is_assignable(_Tp &, const _Tp &)) {
+			while (__count-- > 0) { *(dest++) = *(source++); }
+		} else {
+			__builtin_memcpy(dest, source, __count * sizeof(_Tp));
+		}
 	} else {
 		return (_Tp *)__builtin_memcpy(dest, source, __count * sizeof(_Tp));
 	}
@@ -64,14 +68,17 @@ constexpr _Tp *__constexpr_memmove(_Tp *dest, const _Tp *source, size_t __count)
 			return dest; // No copy needed if src and dest are the same
 		}
 
-		// Check for overlap: if destination starts within the source range
-		if (dest > source && dest < source + __count) {
-			dest += __count;
-			source += __count;
+		if constexpr (__is_assignable(_Tp &, const _Tp &)) {
+			if (dest > source && dest < source + __count) {
+				dest += __count;
+				source += __count;
 
-			while (__count-- > 0) { *(--dest) = *(--source); }
+				while (__count-- > 0) { *(--dest) = *(--source); }
+			} else {
+				while (__count-- > 0) { *(dest++) = *(source++); }
+			}
 		} else {
-			while (__count-- > 0) { *(dest++) = *(source++); }
+			__builtin_memmove(dest, source, __count * sizeof(_Tp));
 		}
 
 		return dest; // Return the original destination pointer
@@ -156,6 +163,15 @@ inline constexpr size_t __constexpr_strlen(const char32_t *str) {
 	return static_cast<size_t>(end - str);
 }
 
+inline constexpr size_t __constexpr_strlen(const char8_t *str) {
+	if (str == nullptr) {
+		return 0;
+	}
+	const char8_t *end = str;
+	while (*end != u8'\0') { ++end; }
+	return static_cast<size_t>(end - str);
+}
+
 inline constexpr size_t __constexpr_strnlen(const char *str, size_t c) {
 	if (str == nullptr) {
 		return 0;
@@ -193,6 +209,15 @@ inline constexpr size_t __constexpr_strnlen(const char32_t *str, size_t c) {
 	}
 	const char32_t *end = str;
 	while (c-- > 0 && *end != u'\0') { ++end; }
+	return static_cast<size_t>(end - str);
+}
+
+inline constexpr size_t __constexpr_strnlen(const char8_t *str, size_t c) {
+	if (str == nullptr) {
+		return 0;
+	}
+	const char8_t *end = str;
+	while (c-- > 0 && *end != u8'\0') { ++end; }
 	return static_cast<size_t>(end - str);
 }
 
@@ -347,8 +372,8 @@ static constexpr const char *s_ctable[] = {
 };
 // clang-format on
 
-constexpr sprt::array<uint16_t, 128> __genctable() {
-	sprt::array<uint16_t, 128> ret;
+constexpr sprt::detail::inline_buffer<uint16_t, 128> __genctable() {
+	sprt::detail::inline_buffer<uint16_t, 128> ret{};
 	for (int i = 0; i <= 127; ++i) {
 		uint16_t value = 0;
 		uint16_t idx = 0;

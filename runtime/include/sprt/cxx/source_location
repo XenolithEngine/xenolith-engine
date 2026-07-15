@@ -38,12 +38,6 @@ using source_location = std::source_location;
 #else // __SPRT_USE_LIBCXX_SOURCE_LOCATION
 
 // __builtin_source_location requires source_location:: __impl to be defined.
-//
-// By default (included via <sprt/cxx/source_location>) std::source_location is the
-// minimal builtin shell and the full type is sprt::source_location. When the
-// include_libc/stl <source_location> wrapper includes this header it first defines
-// __SPRT_STD_SOURCE_LOCATION, which makes std::source_location itself the full type
-// (and sprt::source_location an alias of it).
 namespace std {
 class source_location {
 public:

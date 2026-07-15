@@ -217,6 +217,17 @@ struct tm *localtime_r(const time_t *t, struct tm *_tm) SPRT_UMBRELLA_END
 #endif
 
 SPRT_UMBRELLA_FUNC
+int localtime_s(struct tm *_tm, const time_t *t) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	if (!_tm || !t) {
+		return -1;
+	}
+	return __sprt_localtime_r(t, _tm) != __SPRT_NULL ? 0 : -1;
+}
+#endif
+
+SPRT_UMBRELLA_FUNC
 size_t strftime_l(char *__SPRT_RESTRICT buf, size_t size, const char *__SPRT_RESTRICT fmt,
 		const struct tm *__SPRT_RESTRICT ts, locale_t loc) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED

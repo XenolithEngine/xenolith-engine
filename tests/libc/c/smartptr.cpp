@@ -33,6 +33,14 @@ THE SOFTWARE.
 #include <functional>
 #include <utility>
 
+#ifndef __SPRT_PUSH_ALLOW_CXXABI_ALLOC
+#define __SPRT_PUSH_ALLOW_CXXABI_ALLOC
+#endif
+
+#ifndef __SPRT_POP_ALLOW_CXXABI_ALLOC
+#define __SPRT_POP_ALLOW_CXXABI_ALLOC
+#endif
+
 namespace sprt::test {
 
 namespace {

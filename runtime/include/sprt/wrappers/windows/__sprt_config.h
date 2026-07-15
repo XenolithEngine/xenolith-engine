@@ -70,9 +70,11 @@ __SPRT_WIN_STRING_IMPORT char *strncpy(char *__SPRT_RESTRICT dest, const char *_
 
 __SPRT_WIN_STRING_IMPORT size_t strnlen(const char *s, size_t size) __SPRT_NOEXCEPT;
 
+#if !defined(__cplusplus) || defined(__SPRT_BUILD)
 __SPRT_WIN_STRING_IMPORT char *strstr(const char *str, const char *nstr) __SPRT_NOEXCEPT;
 
 __SPRT_WIN_STRING_IMPORT char *strchr(const char *s, int c) __SPRT_NOEXCEPT;
+#endif
 
 __SPRT_WIN_STRING_IMPORT int strcmp(const char *s1, const char *s2) __SPRT_NOEXCEPT;
 

@@ -27,17 +27,10 @@ THE SOFTWARE.
 #include <sprt/cxx/detail/ctypes.h>
 #include <sprt/cxx/__utility/common.h>
 #include <sprt/cxx/exception> // std::exception base for bad_alloc
+#include <sprt/cxx/__new/nothrow.h>
+#include <sprt/cxx/__new/construct.h>
 
 namespace sprt {
-
-struct nothrow_t {
-	explicit nothrow_t() = default;
-};
-
-SPRT_API extern const nothrow_t nothrow;
-
-enum class align_val_t : sprt::size_t {
-};
 
 // Forward declaration: std::allocator below names sprt::AllocBase as its
 // container-base policy (base_class); the full definition follows later in this header.
@@ -45,11 +38,8 @@ struct SPRT_API AllocBase;
 
 } // namespace sprt
 
-#if __SPRT_USE_STL
 
-#include <memory>
-
-#else
+#if !__SPRT_USE_STL
 
 namespace std {
 
@@ -131,16 +121,21 @@ public:
 	}
 
 	constexpr pointer address(reference __r) const noexcept { return &__r; }
-	constexpr const_pointer address(const_reference __r) const noexcept { return &__r; }
+	// For const _Tp the two overloads would collapse into one signature.
+	constexpr const_pointer address(const_reference __r) const noexcept
+			requires (!sprt::is_same_v<reference, const_reference>)
+	{
+		return &__r;
+	}
 
 	constexpr size_type max_size() const noexcept { return sprt::Max<size_type> / sizeof(_Tp); }
 
 	template <typename _Up>
-	constexpr bool operator==(const allocator<_Up> &) const noexcept {
+	friend constexpr bool operator==(const allocator &, const allocator<_Up> &) noexcept {
 		return true;
 	}
 	template <typename _Up>
-	constexpr bool operator!=(const allocator<_Up> &) const noexcept {
+	friend constexpr bool operator!=(const allocator &, const allocator<_Up> &) noexcept {
 		return false;
 	}
 
@@ -175,14 +170,6 @@ public:
 using new_handler = void (*)();
 new_handler set_new_handler(new_handler) noexcept;
 new_handler get_new_handler() noexcept;
-
-// support for a constexpr construct_at
-template <typename _Tp, typename... _Args,
-		typename = decltype(::new (sprt::declval<void *>(), sprt::nothrow)
-						_Tp(sprt::declval<_Args>()...))>
-constexpr _Tp *construct_at(_Tp *__location, _Args &&...__args) {
-	return ::new (static_cast<void *>(__location)) _Tp(sprt::forward<_Args>(__args)...);
-}
 
 } // namespace std
 
@@ -316,8 +303,10 @@ constexpr void local_deallocate(T *t, size_t n, size_t nbytes = 0) {
 #define __SPRT_POP_ALLOW_CXXABI_ALLOC \
     _Pragma("clang diagnostic pop")
 
-// On windows - we in control of default operators, and can make them compatible
-#if SPRT_WINDOWS
+// On Windows and Wasm sprt fully owns the default operators (implemented over
+// mimalloc in libc_impl/builtin_libcxx.cpp), so direct new/delete is safe there
+// and needs no deprecation nudge.
+#if SPRT_WINDOWS || SPRT_WASM
 #define __SPRT_DISALLOW_NEW
 #define __SPRT_DISALLOW_DELETE
 #else
@@ -359,75 +348,58 @@ inline void operator delete(void *, void *) noexcept { }
 inline void operator delete[](void *, void *) noexcept { }
 #endif
 
+namespace sprt {
+
+// [new.delete]: on failure every allocation function keeps retrying while a
+// new_handler is installed (the handler may free memory or deinstall itself).
+inline void *__new_with_handler(sprt::size_t size, sprt::size_t al) noexcept {
+	for (;;) {
+		void *p = (al <= alignof(__sprt_max_align_t)) ? __sprt_malloc(size)
+													  : __sprt_aligned_alloc(al, size);
+		if (p) {
+			return p;
+		}
+		std::new_handler nh = std::get_new_handler();
+		if (!nh) {
+			return nullptr;
+		}
+		nh();
+	}
+}
+
+} // namespace sprt
+
+// The full replaceable operator set (throwing, nothrow, sized and over-aligned
+// forms) is only DECLARED here and DEFINED out-of-line, exactly once, in the
+// runtime: over mimalloc's typed mi_new / mi_free family in
+// libc_impl/builtin_libcxx.cpp on Windows/Wasm, and over the __sprt_ allocator
+// wrappers in libc_wrapper/cxx/SPRTCxxNewDelete.cpp elsewhere. Keeping them
+// non-inline is deliberate — an inline replaceable operator is weak COMDAT and
+// cannot reliably override the platform C++ library's own (weak) operators, so a
+// single strong definition in the runtime is what routes every new/delete through
+// it in the static-, shared- and mixed-library deployments.
+// These global replaceable operators have the standard signatures, so under
+// __SPRT_USE_STL libc++'s <new> already declares them (backed by the same runtime
+// definitions). Declaring sprt's here too made `new (sprt::nothrow)` ambiguous
+// (sprt::nothrow_t == std::nothrow_t). Gate them off in USE_STL, exactly like the
+// plain operator new/delete above.
+#if __SPRT_USE_STL == 0
 [[nodiscard]]
-inline void *operator new(sprt::size_t size, sprt::nothrow_t) noexcept {
-	if (size == 0) {
-		size = 1;
-	}
-	return __sprt_malloc(size);
-}
-
+void *operator new(sprt::size_t, const sprt::nothrow_t &) noexcept;
 [[nodiscard]]
-inline void *operator new[](sprt::size_t size, sprt::nothrow_t) noexcept {
-	if (size == 0) {
-		size = 1;
-	}
-	return __sprt_malloc(size);
-}
-
+void *operator new[](sprt::size_t, const sprt::nothrow_t &) noexcept;
 [[nodiscard]]
-inline void *operator new(sprt::size_t size, sprt::align_val_t al, sprt::nothrow_t) noexcept {
-	if (size == 0) {
-		size = 1;
-	}
-	if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
-		return __sprt_malloc(size);
-	} else {
-		return __sprt_aligned_alloc(sprt::to_underlying(al), size);
-	}
-}
-
+void *operator new(sprt::size_t, sprt::align_val_t, const sprt::nothrow_t &) noexcept;
 [[nodiscard]]
-inline void *operator new[](sprt::size_t size, sprt::align_val_t al, sprt::nothrow_t) noexcept {
-	if (size == 0) {
-		size = 1;
-	}
-	if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
-		return __sprt_malloc(size);
-	} else {
-		return __sprt_aligned_alloc(sprt::to_underlying(al), size);
-	}
-}
+void *operator new[](sprt::size_t, sprt::align_val_t, const sprt::nothrow_t &) noexcept;
 
-inline void operator delete(void *ptr, sprt::align_val_t al) noexcept {
-	if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
-		__sprt_free(ptr);
-	} else {
-		__sprt_aligned_free(ptr);
-	}
-}
-inline void operator delete[](void *ptr, sprt::align_val_t al) noexcept {
-	if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
-		__sprt_free(ptr);
-	} else {
-		__sprt_aligned_free(ptr);
-	}
-}
-
-inline void operator delete(void *ptr, sprt::align_val_t al, const sprt::nothrow_t &) noexcept {
-	if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
-		__sprt_free(ptr);
-	} else {
-		__sprt_aligned_free(ptr);
-	}
-}
-inline void operator delete[](void *ptr, sprt::align_val_t al, const sprt::nothrow_t &) noexcept {
-	if (sprt::to_underlying(al) <= alignof(__sprt_max_align_t)) {
-		__sprt_free(ptr);
-	} else {
-		__sprt_aligned_free(ptr);
-	}
-}
+void operator delete(void *, sprt::align_val_t) noexcept;
+void operator delete[](void *, sprt::align_val_t) noexcept;
+void operator delete(void *, sprt::size_t, sprt::align_val_t) noexcept;
+void operator delete[](void *, sprt::size_t, sprt::align_val_t) noexcept;
+void operator delete(void *, sprt::align_val_t, const sprt::nothrow_t &) noexcept;
+void operator delete[](void *, sprt::align_val_t, const sprt::nothrow_t &) noexcept;
+#endif // __SPRT_USE_STL == 0
 
 [[nodiscard]]
 inline constexpr void *operator new(sprt::size_t size, void *ptr, sprt::nothrow_t) noexcept {
@@ -450,6 +422,11 @@ struct SPRT_API AllocPlacement {
 };
 
 struct SPRT_API AllocBase : public AllocPlacement {
+	using AllocPlacement::operator new;
+	using AllocPlacement::operator new[];
+	using AllocPlacement::operator delete;
+	using AllocPlacement::operator delete[];
+
 	static void *operator new(size_t size) { return __sprt_malloc(size); }
 	static void *operator new[](size_t size) { return __sprt_malloc(size); }
 
@@ -526,57 +503,6 @@ struct Allocator_SelectFirst<A, Args...> {
 };
 } // namespace
 
-
-template <typename _Tp, typename... _Args>
-constexpr _Tp *__construct_at(_Tp *__location, _Args &&...__args) noexcept {
-	return ::new (static_cast<void *>(__location), sprt::nothrow)
-			_Tp(sprt::forward<_Args>(__args)...);
-}
-
-template <typename _Tp, typename... _Args,
-		typename = decltype(::new (sprt::declval<void *>(), sprt::nothrow)
-						_Tp(sprt::declval<_Args>()...))>
-constexpr _Tp *construct_at(_Tp *__location, _Args &&...__args) noexcept {
-	if (__builtin_is_constant_evaluated()) {
-		return std::construct_at(__location, sprt::forward<_Args>(__args)...);
-	} else {
-		return __construct_at(__location, sprt::forward<_Args>(__args)...);
-	}
-}
-
-template <typename _Tp>
-requires (!is_array_v<_Tp>)
-constexpr void destroy_at(_Tp *__loc) noexcept {
-	__loc->~_Tp();
-}
-
-template <typename _Tp>
-requires (is_array_v<_Tp>)
-constexpr void destroy_at(_Tp *__loc) noexcept {
-	for (auto &&__val : *__loc) { sprt::destroy_at(sprt::addressof(__val)); }
-}
-
-template <typename T>
-inline void __delete(T *t) noexcept {
-	sprt::destroy_at(t);
-	// pool-owned storage (sprt::detail::AllocPool subclasses expose __sprt_pool_owned_tag):
-	// the destructor ran above, but the block belongs to a memory pool that reclaims it -
-	// ::free() on a pool pointer is undefined. <new> can't include allocator_pool.h (cycle),
-	// so the marker is detected structurally rather than via is_base_of.
-	if constexpr (requires { typename T::__sprt_pool_owned_tag; }) {
-		return;
-	} else if constexpr (alignof(T) <= alignof(__sprt_max_align_t)) {
-		__sprt_free(static_cast<void *>(t));
-	} else {
-		__sprt_aligned_free(static_cast<void *>(t));
-	}
-}
-
-template <typename T>
-requires (sprt::is_same_v<T, char> || sprt::is_same_v<T, unsigned char>)
-inline void __delete(const T *t) noexcept {
-	__delete(const_cast<T *>(t));
-}
 
 template <typename T>
 inline T *__new_n(size_t sz) {

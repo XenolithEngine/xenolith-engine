@@ -169,6 +169,19 @@ export function makeImports({ memory, bundle = {}, argv = ["app"], log, spawn, o
 			clock_res() { return 1e3; },
 			fd_write(h, buf, len) { log?.(h === 2 ? "stderr" : "stdout", readStr(buf, len)); return len; },
 			fd_read() { return 0; },
+			// Fill [buf, buf+len) with cryptographically-strong random bytes; returns 0 on
+			// success (WASI random_get contract). crypto.getRandomValues rejects views over a
+			// SharedArrayBuffer and caps at 65536 bytes/call, so fill a plain scratch and copy.
+			random_get(buf, len) {
+				const dstU8 = u8();
+				for (let off = 0; off < len; off += 65536) {
+					const n = Math.min(65536, len - off);
+					const tmp = new Uint8Array(n);
+					crypto.getRandomValues(tmp);
+					dstU8.set(tmp, buf + off);
+				}
+				return 0;
+			},
 			args_sizes() { return packed(argv); },
 			args_copy(t, b) { return copy(argv)(t, b); },
 			environ_sizes() { return packed(env); },

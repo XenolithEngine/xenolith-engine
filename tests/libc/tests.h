@@ -175,6 +175,71 @@ void performListTest();
 // <unordered_map> / <unordered_set> (node indirection, reference stability, CTAD, erase_if) vs system
 void performUnorderedTest();
 
+// <sstream>/<fstream>/<ostream>/<istream> skeleton: unformatted transfer, str(),
+// endl/ends, binary file I/O (sprt-backed STL streams vs system)
+void performStreamTest();
+
+// <ostream> formatted numeric insertion + <iomanip> (base/width/fill/precision/
+// showbase/showpos/boolalpha) via ostringstream
+void performStreamNumericTest();
+
+// <algorithm> / <iterator>: algorithms + iterator adapters (reverse/move/insert,
+// rbegin/rend), stable_sort, set ops, copy_n (sprt-backed STL vs system)
+void performAlgorithmTest();
+
+// <system_error>: error_code / error_condition / errc / category / system_error
+// (portable equivalence + trait tags only; sprt-backed STL vs system)
+void performSystemErrorTest();
+
+// small std extras: <atomic> memory_order constants, <utility> index_sequence_for,
+// conforming <type_traits> bool traits (contextual bool), transparent std::less<>
+void performStlExtrasTest();
+
+// <deque>: block-map container, push/pop/emplace both ends across blocks, random
+// access, resize, copy, swap (sprt-backed STL vs itself on the two targets)
+void performDequeTest();
+
+// <random>: engines (standard-mandated 10000th values), seed_seq, distributions,
+// random_device (structural only)
+void performRandomTest();
+
+// <ratio>: compile-time rational arithmetic, comparison traits, SI-prefix typedefs
+void performRatioTest();
+
+// <future>: promise/future/shared_future value transfer (happy path under
+// -fno-exceptions) + future_errc/future_category strings
+void performFutureTest();
+
+// <map> std::multimap: equal-key insertion order, count/equal_range/bounds,
+// erase(key) count, initializer_list ctor
+void performMultimapTest();
+
+// <functional> classic std::bind with placeholders: selection/reorder, nested bind,
+// reference_wrapper, pointer-to-member, is_placeholder/is_bind_expression
+void performBindTest();
+
+// incremental STL additions: initializer_list min/max, reverse_copy, bitset
+// operator[] proxy, tuple=pair, string=string_view, ATOMIC_FLAG_INIT, cmath integer
+// overloads, chrono_literals
+void performStlAdditionsTest();
+
+// <algorithm> additions: heap family, merge/inplace_merge, is_permutation,
+// search/search_n, nth_element, generate/generate_n, copy_backward, minmax
+// (pair/init_list), set_intersection/set_union comparator overloads, equal 4-iter
+void performAlgorithmExtTest();
+
+// <stack> / <queue>: std::stack, std::queue, std::priority_queue (custom
+// container/comparator, range ctor, CTAD)
+void performContainerAdaptorTest();
+
+// <cfenv> / <csignal>: std re-exports (fenv flags + rounding round-trip;
+// signal install/raise round-trip)
+void performFenvSignalTest();
+
+// container/STL correctness fixes: std::multiset, string operator+ char,
+// map::emplace, move-only element support (vector/list/map/set move ctor)
+void performStlFixesTest();
+
 } // namespace sprt::test
 
 #endif // TESTS_LIBC_TESTS_H

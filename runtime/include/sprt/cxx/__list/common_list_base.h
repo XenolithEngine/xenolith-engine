@@ -45,19 +45,21 @@ public:
 		_root.reset();
 	}
 
-	constexpr ~common_list_base() noexcept { clear_deallocate(); }
+	~common_list_base() noexcept { clear_deallocate(); }
 
 	constexpr auto get_allocator() const { return _alloc; }
 
 	constexpr basic_node_type *front() { return _root.next; }
-	constexpr basic_node_type *end() { return &_root; }
+	constexpr basic_node_type *end() { return sprt::addressof(_root); }
 
 	constexpr const basic_node_type *front() const { return _root.next; }
-	constexpr const basic_node_type *end() const { return &_root; }
+	constexpr const basic_node_type *end() const { return sprt::addressof(_root); }
 
 	constexpr void clear() {
+		// Terminator differs per list flavour: the double list is a ring closed on
+		// _root, the forward list is linear and ends at nullptr — stop on either.
 		auto node = _root.next;
-		while (node != &_root) {
+		while (node != sprt::addressof(_root) && node != nullptr) {
 			auto next = node->next;
 			destroyNode(static_cast<node_type *>(node));
 			node = next;

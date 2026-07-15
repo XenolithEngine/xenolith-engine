@@ -23,6 +23,27 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_ARRAY_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_ARRAY_H_
 
+#include <sprt/cxx/detail/__stl_value_provider.h>
+
+#if __SPRT_STL_LIBCXX_VALUETYPES
+// Project libc++'s <array> into namespace sprt (sprt::array IS std::array): a single
+// implementation shared with the vendored value-types. libc++'s <tuple> forward-declares
+// std::array via <__fwd/array.h>, so a hand-written sprt::array re-exported as std::array
+// would be a SECOND array in the owned std and make `std::array` ambiguous — projecting the
+// vendored array is what dissolves that clash. Uses only the cycle-free value-type bridge
+// (array is foundational: <string>/<span>/<function> include it early).
+#include <libcxx/__sprt_valuetype_bridge.h>
+#include <__sprt_valuetype_utility.h>
+#include <libcxx/array>
+
+namespace sprt {
+using std::array;
+using std::get;
+using std::to_array;
+} // namespace sprt
+
+#else // hosted sprt build: hand-written <array>
+
 #include <sprt/c/__sprt_assert.h>
 #include <sprt/cxx/__algorithm/bounds.h>
 #include <sprt/cxx/__utility/swap.h>
@@ -98,6 +119,11 @@ struct array {
 	}
 };
 
+// [array.cons] class template argument deduction: array{a, b, c} deduces the element
+// type from the first argument and the size from the argument count ([array.overview]).
+template <typename _Tp, typename... _Up>
+array(_Tp, _Up...) -> array<_Tp, 1 + sizeof...(_Up)>;
+
 // C++20 [array.syn]: lexicographical three-way comparison (== is the member above,
 // which also yields the rewritten !=). Uses the shared synth-three-way so element
 // types that have only operator< still order (as a synthesized weak_ordering).
@@ -119,5 +145,7 @@ constexpr void swap(array<_Tp, _Np> &__x, array<_Tp, _Np> &__y) noexcept(noexcep
 }
 
 } // namespace sprt
+
+#endif // __SPRT_STL_LIBCXX_VALUETYPES
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_ARRAY_H_
