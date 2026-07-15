@@ -1,0 +1,336 @@
+// -*- C++ -*-
+/**
+Copyright (c) 2026 Xenolith Team <admin@xenolith.studio>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+**/
+
+// sprt overlay for <mutex>: the umbrella-only members of [thread.mutex] retargeted
+// onto sprt's synchronization primitives --
+//   recursive_mutex        -> sprt::rmutex          (futex, recursive, priority-aware)
+//   timed_mutex            -> sprt::timed_mutex     (qmutex + relative timeout)
+//   recursive_timed_mutex  -> sprt::recursive_timed_mutex (rmutex + relative timeout)
+// The granular mutex / unique_lock / lock_guard come from the overlay headers pulled
+// below. scoped_lock and std::lock / std::try_lock are mutex-agnostic library
+// algorithms, provided here so the umbrella is self-contained.
+//
+// libc++'s timed_mutex / recursive_timed_mutex are built on mutex + condition_variable
+// + __thread_id; the sprt versions carry their own timeout support, so this overlay
+// pulls in neither <condition_variable> nor the thread-id machinery for them.
+
+#include <__config>
+#include <sprt/c/bits/__sprt_config.h>
+
+#if !defined(SPRT_STD_THREADING_SPRT)
+
+// OPT-IN, DEFAULT OFF: the sprt::qmutex/timed_mutex swap requires SPRT_STD_THREADING_SPRT.
+// It must never be mixed with the vendored libc++ library TUs (future.cpp,
+// shared_mutex.cpp, condition_variable.cpp): those are built against upstream
+// std::mutex/condition_variable layouts, and header-inline code (future::wait_for,
+// shared_timed_mutex timed ops) would reinterpret library-constructed members as the
+// sprt classes. When building the ported STL itself (__SPRT_USE_STL==0), upstream is
+// always used.
+#include_next <mutex>
+
+#else // sprt-backed threading (opt-in via SPRT_STD_THREADING_SPRT)
+
+#ifndef _LIBCPP_MUTEX
+#define _LIBCPP_MUTEX
+
+#include <__chrono/duration.h>
+#include <__chrono/steady_clock.h>
+#include <__chrono/time_point.h>
+#include <__config>
+#include <__mutex/lock_guard.h>
+#include <__mutex/mutex.h>
+#include <__mutex/once_flag.h>
+#include <__mutex/tag_types.h>
+#include <__mutex/unique_lock.h>
+#include <__thread/id.h>
+#include <__thread/support.h>
+#include <__utility/forward.h>
+#include <limits>
+#include <tuple>
+#include <version>
+
+#include <sprt/runtime/thread/rmutex.h>
+#include <sprt/cxx/__mutex/timed_mutex.h>
+#include <sprt/cxx/__mutex/recursive_timed_mutex.h>
+
+#if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+#  pragma GCC system_header
+#endif
+
+_LIBCPP_PUSH_MACROS
+#include <__undef_macros>
+
+_LIBCPP_BEGIN_NAMESPACE_STD
+
+#if _LIBCPP_HAS_THREADS
+
+// ---- recursive_mutex -------------------------------------------------------
+class recursive_mutex {
+  ::sprt::rmutex __m_;
+
+public:
+  _LIBCPP_HIDE_FROM_ABI recursive_mutex() = default;
+  _LIBCPP_HIDE_FROM_ABI ~recursive_mutex() = default;
+
+  recursive_mutex(const recursive_mutex&)            = delete;
+  recursive_mutex& operator=(const recursive_mutex&) = delete;
+
+  _LIBCPP_HIDE_FROM_ABI void lock() { __m_.lock(); }
+  _LIBCPP_HIDE_FROM_ABI bool try_lock() _NOEXCEPT { return __m_.try_lock(); }
+  _LIBCPP_HIDE_FROM_ABI void unlock() _NOEXCEPT { __m_.unlock(); }
+
+  typedef ::sprt::rmutex* native_handle_type;
+  _LIBCPP_HIDE_FROM_ABI native_handle_type native_handle() { return &__m_; }
+};
+
+// Bridge std::chrono -> sprt's relative timeout unit (uint64 nanoseconds). Negative
+// or zero durations map to a non-blocking (immediate) attempt.
+typedef ::sprt::timed_mutex::timeout_type __sprt_timeout_t;
+inline _LIBCPP_HIDE_FROM_ABI __sprt_timeout_t __to_sprt_rel_timeout(chrono::nanoseconds __ns) {
+  return __ns.count() <= 0 ? __sprt_timeout_t(0) : static_cast<__sprt_timeout_t>(__ns.count());
+}
+
+// ---- timed_mutex -----------------------------------------------------------
+class timed_mutex {
+  ::sprt::timed_mutex __m_;
+
+public:
+  _LIBCPP_HIDE_FROM_ABI timed_mutex() = default;
+  _LIBCPP_HIDE_FROM_ABI ~timed_mutex() = default;
+
+  timed_mutex(const timed_mutex&)            = delete;
+  timed_mutex& operator=(const timed_mutex&) = delete;
+
+  _LIBCPP_HIDE_FROM_ABI void lock() { __m_.lock(); }
+  _LIBCPP_HIDE_FROM_ABI bool try_lock() _NOEXCEPT { return __m_.try_lock(); }
+  _LIBCPP_HIDE_FROM_ABI void unlock() _NOEXCEPT { __m_.unlock(); }
+
+  template <class _Rep, class _Period>
+  _LIBCPP_HIDE_FROM_ABI bool try_lock_for(const chrono::duration<_Rep, _Period>& __d) {
+    return __m_.try_lock_for(std::__to_sprt_rel_timeout(chrono::duration_cast<chrono::nanoseconds>(__d)));
+  }
+
+  template <class _Clock, class _Duration>
+  _LIBCPP_HIDE_FROM_ABI bool try_lock_until(const chrono::time_point<_Clock, _Duration>& __t) {
+    return try_lock_for(__t - _Clock::now());
+  }
+};
+
+// ---- recursive_timed_mutex -------------------------------------------------
+class recursive_timed_mutex {
+  ::sprt::recursive_timed_mutex __m_;
+
+public:
+  _LIBCPP_HIDE_FROM_ABI recursive_timed_mutex() = default;
+  _LIBCPP_HIDE_FROM_ABI ~recursive_timed_mutex() = default;
+
+  recursive_timed_mutex(const recursive_timed_mutex&)            = delete;
+  recursive_timed_mutex& operator=(const recursive_timed_mutex&) = delete;
+
+  _LIBCPP_HIDE_FROM_ABI void lock() { __m_.lock(); }
+  _LIBCPP_HIDE_FROM_ABI bool try_lock() _NOEXCEPT { return __m_.try_lock(); }
+  _LIBCPP_HIDE_FROM_ABI void unlock() _NOEXCEPT { __m_.unlock(); }
+
+  template <class _Rep, class _Period>
+  _LIBCPP_HIDE_FROM_ABI bool try_lock_for(const chrono::duration<_Rep, _Period>& __d) {
+    return __m_.try_lock_for(std::__to_sprt_rel_timeout(chrono::duration_cast<chrono::nanoseconds>(__d)));
+  }
+
+  template <class _Clock, class _Duration>
+  _LIBCPP_HIDE_FROM_ABI bool try_lock_until(const chrono::time_point<_Clock, _Duration>& __t) {
+    return try_lock_for(__t - _Clock::now());
+  }
+};
+
+// ---- std::try_lock / std::lock --------------------------------------------
+template <class _L0, class _L1>
+_LIBCPP_HIDE_FROM_ABI int try_lock(_L0& __l0, _L1& __l1) {
+  unique_lock<_L0> __u0(__l0, try_to_lock_t());
+  if (__u0.owns_lock()) {
+    if (__l1.try_lock()) {
+      __u0.release();
+      return -1;
+    } else
+      return 1;
+  }
+  return 0;
+}
+
+template <class _L0, class _L1, class _L2, class... _L3>
+_LIBCPP_HIDE_FROM_ABI int try_lock(_L0& __l0, _L1& __l1, _L2& __l2, _L3&... __l3) {
+  int __r = 0;
+  unique_lock<_L0> __u0(__l0, try_to_lock);
+  if (__u0.owns_lock()) {
+    __r = std::try_lock(__l1, __l2, __l3...);
+    if (__r == -1)
+      __u0.release();
+    else
+      ++__r;
+  }
+  return __r;
+}
+
+template <class _L0, class _L1>
+_LIBCPP_HIDE_FROM_ABI void lock(_L0& __l0, _L1& __l1) {
+  while (true) {
+    {
+      unique_lock<_L0> __u0(__l0);
+      if (__l1.try_lock()) {
+        __u0.release();
+        break;
+      }
+    }
+    __libcpp_thread_yield();
+    {
+      unique_lock<_L1> __u1(__l1);
+      if (__l0.try_lock()) {
+        __u1.release();
+        break;
+      }
+    }
+    __libcpp_thread_yield();
+  }
+}
+
+template <class _L0, class _L1, class _L2, class... _L3>
+void __lock_first(int __i, _L0& __l0, _L1& __l1, _L2& __l2, _L3&... __l3) {
+  while (true) {
+    switch (__i) {
+    case 0: {
+      unique_lock<_L0> __u0(__l0);
+      __i = std::try_lock(__l1, __l2, __l3...);
+      if (__i == -1) {
+        __u0.release();
+        return;
+      }
+    }
+      ++__i;
+      __libcpp_thread_yield();
+      break;
+    case 1: {
+      unique_lock<_L1> __u1(__l1);
+      __i = std::try_lock(__l2, __l3..., __l0);
+      if (__i == -1) {
+        __u1.release();
+        return;
+      }
+    }
+      if (__i == sizeof...(_L3) + 1)
+        __i = 0;
+      else
+        __i += 2;
+      __libcpp_thread_yield();
+      break;
+    default:
+      std::__lock_first(__i - 2, __l2, __l3..., __l0, __l1);
+      return;
+    }
+  }
+}
+
+template <class _L0, class _L1, class _L2, class... _L3>
+inline _LIBCPP_HIDE_FROM_ABI void lock(_L0& __l0, _L1& __l1, _L2& __l2, _L3&... __l3) {
+  std::__lock_first(0, __l0, __l1, __l2, __l3...);
+}
+
+// ---- scoped_lock -----------------------------------------------------------
+#  if _LIBCPP_STD_VER >= 17
+template <class... _Mutexes>
+class scoped_lock;
+
+template <>
+class scoped_lock<> {
+public:
+  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI explicit scoped_lock() {}
+  ~scoped_lock() = default;
+
+  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI explicit scoped_lock(adopt_lock_t) {}
+
+  scoped_lock(scoped_lock const&)            = delete;
+  scoped_lock& operator=(scoped_lock const&) = delete;
+};
+
+template <class _Mutex>
+class _LIBCPP_SCOPED_LOCKABLE scoped_lock<_Mutex> {
+public:
+  typedef _Mutex mutex_type;
+
+private:
+  mutex_type& __m_;
+
+public:
+  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI explicit scoped_lock(mutex_type& __m) _LIBCPP_ACQUIRE_CAPABILITY(__m)
+      : __m_(__m) {
+    __m_.lock();
+  }
+
+  _LIBCPP_RELEASE_CAPABILITY _LIBCPP_HIDE_FROM_ABI ~scoped_lock() { __m_.unlock(); }
+
+  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI explicit scoped_lock(adopt_lock_t, mutex_type& __m)
+      _LIBCPP_REQUIRES_CAPABILITY(__m)
+      : __m_(__m) {}
+
+  scoped_lock(scoped_lock const&)            = delete;
+  scoped_lock& operator=(scoped_lock const&) = delete;
+};
+
+template <class... _MArgs>
+class scoped_lock {
+  static_assert(sizeof...(_MArgs) > 1, "At least 2 lock types required");
+  typedef tuple<_MArgs&...> _MutexTuple;
+
+public:
+  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI explicit scoped_lock(_MArgs&... __margs) : __t_(__margs...) {
+    std::lock(__margs...);
+  }
+
+  [[__nodiscard__]] _LIBCPP_HIDE_FROM_ABI scoped_lock(adopt_lock_t, _MArgs&... __margs) : __t_(__margs...) {}
+
+  _LIBCPP_HIDE_FROM_ABI ~scoped_lock() {
+    typedef typename __make_tuple_indices<sizeof...(_MArgs)>::type _Indices;
+    __unlock_unpack(_Indices{}, __t_);
+  }
+
+  scoped_lock(scoped_lock const&)            = delete;
+  scoped_lock& operator=(scoped_lock const&) = delete;
+
+private:
+  template <size_t... _Indx>
+  _LIBCPP_HIDE_FROM_ABI static void __unlock_unpack(__tuple_indices<_Indx...>, _MutexTuple& __mt) {
+    (std::get<_Indx>(__mt).unlock(), ...);
+  }
+
+  _MutexTuple __t_;
+};
+_LIBCPP_CTAD_SUPPORTED_FOR_TYPE(scoped_lock);
+#  endif // _LIBCPP_STD_VER >= 17
+
+#endif // _LIBCPP_HAS_THREADS
+
+_LIBCPP_END_NAMESPACE_STD
+
+_LIBCPP_POP_MACROS
+
+#endif // _LIBCPP_MUTEX
+
+#endif // __SPRT_USE_STL

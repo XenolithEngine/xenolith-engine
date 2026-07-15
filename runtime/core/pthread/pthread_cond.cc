@@ -50,19 +50,24 @@ static __sprt_sprt_timeout_t __cond_nano_timeout(const __SPRT_TIMESPEC_NAME &ts)
 	constexpr uint64_t nsPerSec = 1'000'000'000ull;
 	auto sec = static_cast<uint64_t>(ts.tv_sec);
 	auto nsec = static_cast<uint64_t>(ts.tv_nsec);
-	return (sec > (__SPRT_SPRT_TIMEOUT_INFINITE - nsec) / nsPerSec)
-			? __SPRT_SPRT_TIMEOUT_INFINITE
-			: sec * nsPerSec + nsec;
+	return (sec > (__SPRT_SPRT_TIMEOUT_INFINITE - nsec) / nsPerSec) ? __SPRT_SPRT_TIMEOUT_INFINITE
+																	: sec * nsPerSec + nsec;
+}
+
+static __sprt_sprt_lock_flags_t __cond_lock_flags(uint32_t padding) {
+	__sprt_sprt_lock_flags_t condFlag = 0;
+	if (hasFlag(CondAttrFlags(padding), CondAttrFlags::Shared)) {
+		condFlag = __SPRT_SPRT_LOCK_FLAG_SHARED;
+	}
+	if (!hasFlag(CondAttrFlags(padding), CondAttrFlags::ClockMonotonic)
+			&& __sprt_sprt_qlock_supports(__SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME)) {
+		condFlag |= __SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME;
+	}
+	return condFlag;
 }
 
 int cond_t::wait(mutex_t *mutex, __sprt_sprt_timeout_t timeout) {
-	__sprt_sprt_lock_flags_t condFlag = 0;
-	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::Shared)) {
-		condFlag = __SPRT_SPRT_LOCK_FLAG_SHARED;
-	}
-	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::ClockRealtime)) {
-		condFlag |= __SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME;
-	}
+	__sprt_sprt_lock_flags_t condFlag = __cond_lock_flags(data.padding);
 
 	Status ret = Status::Ok;
 	if (timeout == __SPRT_SPRT_TIMEOUT_INFINITE) {
@@ -83,28 +88,14 @@ int cond_t::wait(mutex_t *mutex, __sprt_sprt_timeout_t timeout) {
 }
 
 int cond_t::signal() {
-	__sprt_sprt_lock_flags_t condFlag = 0;
-	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::Shared)) {
-		condFlag = __SPRT_SPRT_LOCK_FLAG_SHARED;
-	}
-	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::ClockRealtime)) {
-		condFlag |= __SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME;
-	}
-
-	auto ret = qcondvar_base::_signal<__sprt_sprt_qlock_wake_one>(&data, condFlag);
+	auto ret = qcondvar_base::_signal<__sprt_sprt_qlock_wake_one>(&data,
+			__cond_lock_flags(data.padding));
 	return status::toErrno(ret);
 }
 
 int cond_t::broadcast() {
-	__sprt_sprt_lock_flags_t condFlag = 0;
-	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::Shared)) {
-		condFlag = __SPRT_SPRT_LOCK_FLAG_SHARED;
-	}
-	if (hasFlag(CondAttrFlags(data.padding), CondAttrFlags::ClockRealtime)) {
-		condFlag |= __SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME;
-	}
-
-	auto ret = qcondvar_base::_signal<__sprt_sprt_qlock_wake_all>(&data, condFlag);
+	auto ret = qcondvar_base::_signal<__sprt_sprt_qlock_wake_all>(&data,
+			__cond_lock_flags(data.padding));
 	return status::toErrno(ret);
 }
 
@@ -133,10 +124,10 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_condattr_setclock)(__SPRT_ID(pthread_condatt
 
 	switch (clock) {
 	case __SPRT_CLOCK_MONOTONIC:
-		reinterpret_cast<_thread::condattr_t *>(attr)->flags &= ~CondAttrFlags::ClockRealtime;
+		reinterpret_cast<_thread::condattr_t *>(attr)->flags |= CondAttrFlags::ClockMonotonic;
 		break;
 	case __SPRT_CLOCK_REALTIME:
-		reinterpret_cast<_thread::condattr_t *>(attr)->flags |= CondAttrFlags::ClockRealtime;
+		reinterpret_cast<_thread::condattr_t *>(attr)->flags &= ~CondAttrFlags::ClockMonotonic;
 		break;
 	}
 
@@ -151,10 +142,10 @@ __SPRT_C_FUNC int __SPRT_ID(
 	}
 
 	if (hasFlag(reinterpret_cast<const _thread::condattr_t *>(attr)->flags,
-				CondAttrFlags::ClockRealtime)) {
-		*clock = __SPRT_CLOCK_REALTIME;
-	} else {
+				CondAttrFlags::ClockMonotonic)) {
 		*clock = __SPRT_CLOCK_MONOTONIC;
+	} else {
+		*clock = __SPRT_CLOCK_REALTIME;
 	}
 	return 0;
 }
@@ -209,7 +200,11 @@ __SPRT_C_FUNC int __SPRT_ID(pthread_cond_destroy)(__SPRT_ID(pthread_cond_t) * co
 		return EINVAL;
 	}
 
-	reinterpret_cast<_thread::cond_t *>(cond)->~cond_t();
+	auto tcond = reinterpret_cast<_thread::cond_t *>(cond);
+	// POSIX: destroying is legal once all waiters were notified, even if they have
+	// not returned from pthread_cond_wait yet — wait out their epilogue writes.
+	qcondvar_base::_destroy(&tcond->data);
+	tcond->~cond_t();
 
 	return 0;
 }
@@ -258,9 +253,12 @@ __SPRT_C_FUNC int __SPRT_ID(
 	}
 
 	__SPRT_TIMESPEC_NAME curTv;
-	auto clockId = hasFlag(CondAttrFlags(tcond->data.padding), CondAttrFlags::ClockRealtime)
-			? __sprt_sprt_qlock_getclock(__SPRT_SPRT_LOCK_FLAG_CLOCK_REALTIME)
-			: __sprt_sprt_qlock_getclock(0);
+	// The deadline is diffed on the condvar's API-visible clock (realtime unless
+	// CLOCK_MONOTONIC was opted in), independent of which clock the lock backend
+	// supports — the wait itself takes the relative result.
+	auto clockId = hasFlag(CondAttrFlags(tcond->data.padding), CondAttrFlags::ClockMonotonic)
+			? __SPRT_CLOCK_MONOTONIC
+			: __SPRT_CLOCK_REALTIME;
 	if (__sprt_clock_gettime(clockId, &curTv) != 0) {
 		return __sprt_errno;
 	}

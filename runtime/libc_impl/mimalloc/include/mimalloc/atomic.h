@@ -17,6 +17,11 @@ terms of the MIT license. A copy of the license can be found in the file
 #elif !defined(__wasi__) && (!defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__))
 #define  MI_USE_PTHREADS
 #include <pthread.h>
+#elif defined(MI_USE_PTHREADS)
+// sprt: the freestanding wasm runtime has full pthreads, so it forces
+// -DMI_USE_PTHREADS even though __wasi__ would otherwise select the
+// single-threaded path — pull in <pthread.h> for the thread-local heap machinery.
+#include <pthread.h>
 #endif
 
 // --------------------------------------------------------------------------------------------

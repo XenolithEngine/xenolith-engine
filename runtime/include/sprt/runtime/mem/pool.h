@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/runtime/status.h>
 #include <sprt/runtime/math.h>
+#include <sprt/cxx/new>
 
 /*
 	The basic functions for working with memory pools are defined here.

@@ -119,6 +119,15 @@ __SPRT_WIN_IMPORT WINAPI void ExitThread(DWORD dwExitCode);
 
 __SPRT_WIN_IMPORT WINAPI DWORD ResumeThread(HANDLE hThread);
 
+__SPRT_WIN_IMPORT WINAPI DWORD SuspendThread(HANDLE hThread);
+
+// GetThreadContext/SetThreadContext live in context_api.h — the CONTEXT type is
+// defined there and that header is included after this one in the umbrella.
+
+__SPRT_WIN_IMPORT WINAPI DWORD QueueUserAPC(PAPCFUNC pfnAPC, HANDLE hThread, ULONG_PTR dwData);
+
+__SPRT_WIN_IMPORT WINAPI DWORD GetProcessId(HANDLE Process);
+
 BOOL QueueUserAPC2(PAPCFUNC ApcRoutine, HANDLE Thread, ULONG_PTR Data, QUEUE_USER_APC_FLAGS Flags);
 
 __SPRT_WIN_IMPORT WINAPI HRESULT SetThreadDescription(HANDLE hThread, PCWSTR lpThreadDescription);
@@ -165,6 +174,9 @@ __SPRT_WIN_IMPORT WINAPI HANDLE CreateSemaphoreA(LPSECURITY_ATTRIBUTES lpSemapho
 
 __SPRT_WIN_IMPORT WINAPI HANDLE CreateEventW(LPSECURITY_ATTRIBUTES lpEventAttributes,
 		BOOL bManualReset, BOOL bInitialState, LPCWSTR lpName);
+
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateEventA(LPSECURITY_ATTRIBUTES lpEventAttributes,
+		BOOL bManualReset, BOOL bInitialState, LPCSTR lpName);
 
 __SPRT_WIN_IMPORT WINAPI BOOL SetEvent(HANDLE hEvent);
 
@@ -219,6 +231,8 @@ __SPRT_WIN_IMPORT WINAPI BOOL RegisterWaitForSingleObject(PHANDLE phNewWaitObjec
 		WAITORTIMERCALLBACK Callback, PVOID Context, ULONG dwMilliseconds, ULONG dwFlags);
 
 __SPRT_WIN_IMPORT WINAPI BOOL UnregisterWaitEx(HANDLE WaitHandle, HANDLE CompletionEvent);
+
+__SPRT_WIN_IMPORT WINAPI BOOL UnregisterWait(HANDLE WaitHandle);
 
 
 #ifdef UNICODE

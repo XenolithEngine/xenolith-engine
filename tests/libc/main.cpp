@@ -57,9 +57,15 @@ static const LibcTest s_tests[] = {
 	{"fs_extra", &performFsExtraTest},
 	{"env", &performEnvTest},
 	// sys/socket.h (loopback UDP + TCP) / poll.h / sys/select.h
+	// wasm32 has no BSD sockets (__sprt_socket/bind/poll are unavailable) — socket() returns
+	// an invalid descriptor, and select_poll's FD_SET(rcv, ...) with rcv == -1 writes out of
+	// the fd_set bounds and traps ("memory access out of bounds"). Skip the whole cluster on
+	// wasm; host/Windows still run it (unaffected by this guard).
+#if !defined(__wasm__)
 	{"socket", &performSocketTest},
 	{"socket_stream", &performSocketStreamTest},
 	{"select_poll", &performSelectPollTest},
+#endif
 	// <fnmatch.h> / <regex.h> / <glob.h> forward
 	{"fnmatch", &performFnmatchTest},
 	{"regex", &performRegexTest},
@@ -125,6 +131,41 @@ static const LibcTest s_tests[] = {
 	{"std_list", &performListTest},
 	// <unordered_map>/<unordered_set>: node indirection (stable refs), CTAD, erase_if
 	{"std_unordered", &performUnorderedTest},
+	// <sstream>/<fstream>/<ostream>/<istream>: unformatted transfer, str(), endl/ends, file I/O
+	{"std_stream", &performStreamTest},
+	// <ostream> formatted numeric insertion + <iomanip>
+	{"std_stream_numeric", &performStreamNumericTest},
+	// <algorithm>/<iterator>: algorithms + iterator adapters, stable_sort, set ops, copy_n
+	{"std_algorithm", &performAlgorithmTest},
+	// <system_error>: error_code/error_condition/errc/category/system_error (portable facts)
+	{"std_system_error", &performSystemErrorTest},
+	// std extras: memory_order constants, index_sequence_for, conforming bool traits, less<>
+	{"std_stl_extras", &performStlExtrasTest},
+
+	// <deque>: block-map container across block boundaries
+	{"std_deque", &performDequeTest},
+	// <random>: engines (mandated 10000th values), seed_seq, distributions, random_device
+	{"std_random", &performRandomTest},
+	// <ratio>: compile-time rational arithmetic + comparison traits + SI typedefs
+	{"std_ratio", &performRatioTest},
+	// <future>: promise/future/shared_future value transfer + future_errc strings
+	{"std_future", &performFutureTest},
+	// <map> std::multimap: equal-key ordering, count/equal_range/bounds, erase(key)
+	{"std_multimap", &performMultimapTest},
+	// <functional> classic std::bind with placeholders / nested / ref / member ptr
+	{"std_bind", &performBindTest},
+	// incremental STL additions (minmax il, reverse_copy, bitset[], tuple=pair, ...)
+	{"std_stl_additions", &performStlAdditionsTest},
+
+	// <algorithm> additions: heap, merge/inplace_merge, is_permutation, search[_n],
+	// nth_element, generate[_n], copy_backward, minmax, set-op comparators, equal 4-iter
+	{"std_algorithm_ext", &performAlgorithmExtTest},
+	// <stack>/<queue>: stack, queue, priority_queue (comparator/container/CTAD)
+	{"std_container_adaptor", &performContainerAdaptorTest},
+	// <cfenv>/<csignal>: std re-exports (fenv flags/rounding; signal install/raise)
+	{"std_cfenv_csignal", &performFenvSignalTest},
+	// container/STL fixes: multiset, string+char, map::emplace, move-only elements
+	{"std_stl_fixes", &performStlFixesTest},
 
 	{nullptr, nullptr},
 };

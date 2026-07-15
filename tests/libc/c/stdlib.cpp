@@ -203,6 +203,17 @@ void performAbsDivTest() {
 	printf("ldiv(100000,7)=%ld,%ld\n", ld.quot, ld.rem);
 	lldiv_t lld = lldiv(-10000000001LL, 3LL);
 	printf("lldiv=%lld,%lld\n", lld.quot, lld.rem);
+
+	// MSVC CRT crash-UI stubs (Windows-only surface). sprt has no abort dialog /
+	// report-fault UI, so these ignore their flags and report the previous value (0).
+	// Guarded so the host and Windows outputs are identical (the host has no such API).
+#if SPRT_WINDOWS
+	unsigned prev_ab = _set_abort_behavior(_CALL_REPORTFAULT, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+	int prev_em = _set_error_mode(_OUT_TO_STDERR);
+	printf("crt_ui: abort=%u errmode=%d\n", prev_ab, prev_em);
+#else
+	printf("crt_ui: abort=%u errmode=%d\n", 0u, 0);
+#endif
 }
 
 } // namespace sprt::test

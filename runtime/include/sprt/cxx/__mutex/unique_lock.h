@@ -24,6 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_CXX___MUTEX_UNIQUE_LOCK_H_
 
 #include <sprt/c/__sprt_assert.h>
+#include <sprt/cxx/__mutex/lock_guard.h> // defer_lock_t / try_to_lock_t / adopt_lock_t
 
 namespace sprt {
 inline namespace __cxx_mutex {
@@ -50,6 +51,20 @@ public:
 	: __m_(addressof(__m)), __owns_(true) {
 		__m_->lock();
 	}
+
+	// Tagged constructors ([thread.lock.unique.cons]): construct without locking,
+	// by try-locking, or by adopting an already-held lock.
+	[[nodiscard]]
+	unique_lock(mutex_type &__m, defer_lock_t) noexcept
+	: __m_(addressof(__m)), __owns_(false) { }
+
+	[[nodiscard]]
+	unique_lock(mutex_type &__m, try_to_lock_t)
+	: __m_(addressof(__m)), __owns_(__m.try_lock()) { }
+
+	[[nodiscard]]
+	unique_lock(mutex_type &__m, adopt_lock_t)
+	: __m_(addressof(__m)), __owns_(true) { }
 
 	~unique_lock() {
 		if (__owns_) {
@@ -114,7 +129,7 @@ public:
 	mutex_type *mutex() const noexcept { return __m_; }
 };
 
-} // inline namespace __cxx_mutex
+} // namespace __cxx_mutex
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___MUTEX_UNIQUE_LOCK_H_

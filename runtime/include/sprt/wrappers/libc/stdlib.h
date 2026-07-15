@@ -33,6 +33,10 @@
 
 #endif // __STDC_HOSTED__ == 0 || !defined(__SPRT_BUILD)
 
+#ifndef _countof
+#define _countof(_Array) (sizeof(_Array) / sizeof(_Array[0]))
+#endif
+
 
 #if __STDC_HOSTED__ == 0
 __SPRT_C_FUNC size_t __ctype_get_mb_cur_max() __SPRT_NOEXCEPT;
@@ -64,8 +68,16 @@ using namespace sprt::_cstdlib_types;
 
 
 // C++ functions
-
-#if defined(__cplusplus) && __STDC_HOSTED__ == 1
+//
+// Suppressed entirely UNDER libc++ (_LIBCPP_VERSION): libc++ owns the hosted C++
+// surface, and these sprt::_cstdlib copies — inline-namespace members of `sprt` —
+// would otherwise clash for any code written inside `namespace sprt`:
+//  - overload sets duplicated against math.h's sprt::_cmath (abs -> ambiguous);
+//  - non-overloadable names found by scope lookup in `sprt` AND by ADL at global
+//    scope as the distinct extern-C definition (free(dirent*) -> ambiguous).
+// Nothing references the sprt::-qualified spellings of these functions; the
+// extern-C block below provides the C names libc++ builds on.
+#if defined(__cplusplus) && __STDC_HOSTED__ == 1 && !defined(_LIBCPP_VERSION)
 namespace sprt {
 inline namespace _cstdlib {
 
@@ -83,16 +95,22 @@ inline namespace _cstdlib {
 } // namespace _cstdlib
 } // namespace sprt
 
-// export functions globally
-#if __STDC_HOSTED__ == 1 && !defined(__SPRT_BUILD)
+// export functions globally — but NOT when reached through libc++, which owns the
+// C++ abs/div overloads and re-exports its own globally; a second, equal-rank set
+// makes abs()/div() ambiguous (same issue as <math.h>). See math.h for the model.
+#if __STDC_HOSTED__ == 1 && !defined(__SPRT_BUILD) && !defined(_LIBCPP_VERSION)
 using namespace sprt::_cstdlib;
 #endif
 #endif // __cplusplus
 
 
 // C functions
-
-#if __STDC_HOSTED__ == 0 || (!defined(__SPRT_BUILD) && !defined(__cplusplus))
+//
+// Also emitted (as extern-C) in the hosted C++ path UNDER libc++: libc++ supplies the
+// abs/div overloads but relies on the C library for the C names (labs/llabs/...), and
+// its _LIBCPP_PREFERRED_OVERLOADs dominate the C-linkage decls without ambiguity.
+#if __STDC_HOSTED__ == 0 || (!defined(__SPRT_BUILD) && !defined(__cplusplus)) \
+		|| (defined(_LIBCPP_VERSION) && !defined(__SPRT_BUILD))
 
 __SPRT_BEGIN_DECL
 
@@ -160,6 +178,32 @@ __SPRT_C_FUNC size_t _msize(void *) __SPRT_NOEXCEPT;
 
 __SPRT_C_FUNC __SPRT_ID(wchar_t) * _wgetenv(const __SPRT_ID(wchar_t) * varname) __SPRT_NOEXCEPT;
 
+#if SPRT_WINDOWS
+
+// MSVC CRT crash-UI controls. sprt has no CRT abort dialog / report-fault UI, so
+// these accept and ignore their flags and report the previous value (0).
+// Inline no-ops: there is no runtime backend to link against.
+#define _WRITE_ABORT_MSG 0x1
+#define _CALL_REPORTFAULT 0x2
+
+#define _OUT_TO_DEFAULT 0
+#define _OUT_TO_STDERR 1
+#define _OUT_TO_MSGBOX 2
+#define _REPORT_ERRMODE 3
+
+static inline unsigned _set_abort_behavior(unsigned _Flags, unsigned _Mask) {
+	(void)_Flags;
+	(void)_Mask;
+	return 0;
+}
+
+static inline int _set_error_mode(int _Mode) {
+	(void)_Mode;
+	return 0;
+}
+
+#endif
+
 __SPRT_END_DECL
 
 #define _strtol_l strtol_l
@@ -171,5 +215,23 @@ __SPRT_END_DECL
 #define _strtold_l strtold_l
 #define _strtoi64_l strtoll_l
 #define _strtoui64_l strtoull_l
+
+// MSVC declares errno in <stdlib.h> (not only in <errno.h>); mirror that on Windows so
+// third-party code that reaches errno through <stdlib.h> alone — e.g. llvm compiler-rt's
+// profile lib on its _WIN32 path — resolves it. Same expansion as <errno.h>.
+#if SPRT_WINDOWS
+#include <sprt/c/__sprt_errno.h>
+#ifndef errno
+#define errno __sprt_errno
+#endif
+#endif
+
+// clang-format off
+#if SPRT_WINDOWS && defined(_LIBCPP_VERSION)
+#ifndef _sys_nerr
+#define _sys_nerr 4096
+#endif
+#endif
+// clang-format on
 
 #endif // CORE_RUNTIME_INCLUDE_SPRT_WRAPPERS_LIBC_STDLIB_H_

@@ -29,6 +29,7 @@ THE SOFTWARE.
 
 #include <sprt/cxx/type_traits>
 #include <sprt/cxx/__utility/common.h>
+#include <sprt/cxx/__utility/swap.h> // is_swappable_v / is_swappable_with_v (swappable concepts)
 #include <sprt/cxx/__functional/invoke.h>
 
 namespace sprt {

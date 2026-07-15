@@ -111,6 +111,9 @@ __SPRT_BEGIN_DECL
 __SPRT_WIN_IMPORT WINAPI SIZE_T VirtualQuery(LPCVOID lpAddress, PMEMORY_BASIC_INFORMATION lpBuffer,
 		SIZE_T dwLength);
 
+__SPRT_WIN_IMPORT WINAPI SIZE_T VirtualQueryEx(HANDLE hProcess, LPCVOID lpAddress,
+		PMEMORY_BASIC_INFORMATION lpBuffer, SIZE_T dwLength);
+
 __SPRT_WIN_IMPORT __declspec(noreturn) WINAPI VOID ExitProcess(UINT uExitCode);
 
 __SPRT_WIN_IMPORT WINAPI HMODULE LoadLibraryW(LPCWSTR lpLibFileName);
@@ -118,6 +121,8 @@ __SPRT_WIN_IMPORT WINAPI HMODULE LoadLibraryW(LPCWSTR lpLibFileName);
 __SPRT_WIN_IMPORT WINAPI HMODULE LoadLibraryA(LPCSTR lpLibFileName);
 
 __SPRT_WIN_IMPORT WINAPI HMODULE LoadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, DWORD dwFlags);
+
+__SPRT_WIN_IMPORT WINAPI HMODULE LoadLibraryExA(LPCSTR lpLibFileName, HANDLE hFile, DWORD dwFlags);
 
 __SPRT_WIN_IMPORT WINAPI BOOL FreeLibrary(HMODULE hModule);
 
@@ -133,13 +138,17 @@ __SPRT_WIN_IMPORT WINAPI BOOL GetModuleHandleExW(DWORD dwFlags, LPCWSTR lpModule
 
 __SPRT_WIN_IMPORT WINAPI DWORD GetModuleFileNameW(HMODULE hModule, LPWSTR lpFilename, DWORD nSize);
 
+__SPRT_WIN_IMPORT WINAPI DWORD GetModuleFileNameA(HMODULE hModule, LPSTR lpFilename, DWORD nSize);
+
 __SPRT_WIN_IMPORT WINAPI PVOID RtlPcToFileHeader(PVOID PcValue, PVOID *BaseOfImage);
 
 #ifdef UNICODE
 #define GetModuleHandle GetModuleHandleW
+#define GetModuleHandleEx GetModuleHandleExW
 #define LoadLibrary LoadLibraryW
 #else
 #define GetModuleHandle GetModuleHandleA
+#define GetModuleHandleEx GetModuleHandleExA
 #endif
 
 __SPRT_END_DECL

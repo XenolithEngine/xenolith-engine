@@ -85,11 +85,6 @@ THE SOFTWARE.
 #define TCP_ATMARK __SPRT_TCP_ATMARK
 #endif
 #endif
-#ifdef __SPRT_TCP_CA_CWR
-#ifndef TCP_CA_CWR
-#define TCP_CA_CWR __SPRT_TCP_CA_CWR
-#endif
-#endif
 #ifdef __SPRT_TCP_CA_D
 #ifndef TCP_CA_D
 #define TCP_CA_D __SPRT_TCP_CA_D

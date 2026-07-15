@@ -79,6 +79,9 @@ __SPRT_C_FUNC off_t ftello(FILE *f) __SPRT_NOEXCEPT {
 	return pos;
 }
 
+// sprt's ftell returns off_t — a deliberate 64-bit extension over ISO C's long, so the
+// default API never silently truncates a large offset (ftello is the explicit 64-bit
+// query). The ISO/MSVCRT `long` prototype is presented to libc++ only, in <stdio.h>.
 __SPRT_C_FUNC off_t ftell(FILE *f) __SPRT_NOEXCEPT { return ftello(f); }
 
 __SPRT_C_FUNC void rewind(FILE *f) __SPRT_NOEXCEPT {

@@ -31,10 +31,31 @@ THE SOFTWARE.
 
 namespace sprt {
 
+// [depr.func.obj.binary]/[depr.negators]: the argument_type/result_type member
+// typedefs on the standard function objects were deprecated in C++17 and removed
+// in C++20. libc++ keeps providing them when the opt-in macro is defined (the
+// negator tests set -D_LIBCPP_ENABLE_CXX20_REMOVED_BINDER_TYPEDEFS), which is what
+// unary_negate/binary_negate read to synthesise their own argument_type. Mirror
+// that: emit the typedefs pre-C++20 or under the opt-in macro, otherwise nothing.
+#if defined(_LIBCPP_ENABLE_CXX20_REMOVED_BINDER_TYPEDEFS) || (__cplusplus < 202'002L)
+#define __SPRT_BINARY_TYPEDEFS(_T1, _T2, _Ret) \
+	using first_argument_type = _T1; \
+	using second_argument_type = _T2; \
+	using result_type = _Ret;
+#define __SPRT_UNARY_TYPEDEFS(_Arg, _Ret) \
+	using argument_type = _Arg; \
+	using result_type = _Ret;
+#else
+#define __SPRT_BINARY_TYPEDEFS(_T1, _T2, _Ret)
+#define __SPRT_UNARY_TYPEDEFS(_Arg, _Ret)
+#endif
+
 // value-returning binary (result type _Tp for the homogeneous form)
 #define __SPRT_BINARY_OP(_Name, _Op) \
 	template <typename _Tp = void> \
 	struct _Name { \
+		__SPRT_BINARY_TYPEDEFS(_Tp, _Tp, _Tp) \
+		typedef _Tp __result_type; /* libc++-internal, always present; used by valarray */ \
 		constexpr _Tp operator()(const _Tp &__x, const _Tp &__y) const { return __x _Op __y; } \
 	}; \
 	template <> \
@@ -51,6 +72,8 @@ namespace sprt {
 #define __SPRT_LOGICAL_OP(_Name, _Op) \
 	template <typename _Tp = void> \
 	struct _Name { \
+		__SPRT_BINARY_TYPEDEFS(_Tp, _Tp, bool) \
+		typedef bool __result_type; /* libc++-internal, always present; used by valarray */ \
 		constexpr bool operator()(const _Tp &__x, const _Tp &__y) const { return __x _Op __y; } \
 	}; \
 	template <> \
@@ -67,6 +90,8 @@ namespace sprt {
 #define __SPRT_UNARY_OP(_Name, _Op, _Ret) \
 	template <typename _Tp = void> \
 	struct _Name { \
+		__SPRT_UNARY_TYPEDEFS(_Tp, _Ret) \
+		typedef _Ret __result_type; /* libc++-internal, always present; used by valarray */ \
 		constexpr _Ret operator()(const _Tp &__x) const { return _Op __x; } \
 	}; \
 	template <> \
@@ -97,6 +122,8 @@ __SPRT_UNARY_OP(bit_not, ~, _Tp);
 #undef __SPRT_BINARY_OP
 #undef __SPRT_LOGICAL_OP
 #undef __SPRT_UNARY_OP
+#undef __SPRT_BINARY_TYPEDEFS
+#undef __SPRT_UNARY_TYPEDEFS
 
 } // namespace sprt
 

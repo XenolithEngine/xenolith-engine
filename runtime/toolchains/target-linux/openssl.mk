@@ -75,7 +75,7 @@ all:
 	mv -f $(SP_INSTALL_PREFIX)/usr/lib64/pkgconfig/libssl.pc $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc
 	mv -f $(SP_INSTALL_PREFIX)/usr/lib64/pkgconfig/libcrypto.pc $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libcrypto.pc
 	rm -rf $(SP_INSTALL_PREFIX)/usr/lib64 $(SP_INSTALL_PREFIX)/bin/c_rehash
-	sed -i -e 's/ -lssl/ -lgost -lssl -lpthread/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc
+	sed -i -e 's/ -lssl/ -lssl -lpthread/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc
 	cp $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/openssl.pc
 	sed -i -e 's/ -lssl/ -lssl -lcrypto/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/openssl.pc
 	sed -i -e 's/{exec_prefix}\/lib64/{exec_prefix}\/lib/g' $(SP_INSTALL_PREFIX)/usr/lib/pkgconfig/libssl.pc

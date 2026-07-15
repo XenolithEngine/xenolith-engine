@@ -276,6 +276,7 @@ static char **__wasm_load_vector(int packed,
 
 } // namespace sprt
 
+extern "C" void __sprt_wasm_reinit_main_thread(void);
 extern "C" void _start(void) {
 	// 1. libc singleton (fd 0/1/2, locale, exceptions).
 	auto libc = new (s_libcBuffer, sprt::nothrow) sprt::__libc;
@@ -284,8 +285,12 @@ extern "C" void _start(void) {
 	// 2. C/C++ static constructors.
 	__wasm_call_ctors();
 
-	// 3. Attach the main thread.
-	__sprt_pthread_self();
+	// 3. Attach the main thread. A ctor above may have attached it early (its first
+	// malloc -> mimalloc thread-init -> pthread_setspecific -> self()), before the
+	// pthread subsystem's s_handlePool global was constructed — whose construction then
+	// clobbered the main thread's registration (see __sprt_wasm_reinit_main_thread). Now
+	// that all ctors have run, (re)register the main thread cleanly.
+	__sprt_wasm_reinit_main_thread();
 
 	// 4. argv / env snapshot from the host.
 	int argc = 0;

@@ -56,7 +56,35 @@ THE SOFTWARE.
 	required for ease of use in application code that already uses the STL.
 */
 #ifndef __SPRT_USE_STL
+#if __STDC_HOSTED__ == 1 && !defined(__SPRT_BUILD) && !defined(SPRT_BUILD_RUNTIME)
+#define __SPRT_USE_STL 1
+#else
 #define __SPRT_USE_STL 0
+#endif
+#endif
+
+/*
+	An external STL owns the std-owned, compiler-mandated symbols (initializer_list,
+	nothrow_t, the comparison categories, ...) in this TU. True in hosted USE_STL mode,
+	and ALSO when libc++ is the active STL even inside a runtime build — e.g. the
+	runtime/libcxx module with the SPRT_STD_THREADING_SPRT overlay, where sprt primitive
+	headers are pulled into libc++ TUs. sprt headers must then project those symbols
+	onto the external STL instead of hand-defining them (which would clash).
+
+	Evaluated ONCE at the first inclusion of this header: any TU where libc++ is
+	active reaches it through a libc++ header (<__config> defines _LIBCPP_VERSION
+	first), so the order is reliable there; do not include sprt headers before the
+	first libc++ header in such TUs.
+*/
+#define __SPRT_STD_OWNED_BEGIN inline namespace __sprt {
+#define __SPRT_STD_OWNED_END }
+
+#ifndef __SPRT_STD_EXTERNAL
+#if __SPRT_USE_STL || defined(_LIBCPP_VERSION)
+#define __SPRT_STD_EXTERNAL 1
+#else
+#define __SPRT_STD_EXTERNAL 0
+#endif
 #endif
 
 /*
@@ -85,3 +113,8 @@ THE SOFTWARE.
 #ifndef __SPRT_USE_STL_COMPARATORS
 #define __SPRT_USE_STL_COMPARATORS __SPRT_USE_STL
 #endif
+
+/*
+	Use SPRT threading by default
+*/
+#define SPRT_STD_THREADING_SPRT 1

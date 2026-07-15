@@ -29,6 +29,12 @@ THE SOFTWARE.
 
 namespace sprt {
 
+// Defined in builtin_locale.cpp: MB_CUR_MAX of the effective LC_CTYPE locale
+// (1 for the single-byte "C"/"POSIX" locale, 4 for UTF-8). The mb/wc conversion
+// functions below switch between a single-byte identity map and UTF-8 on it, so
+// the "C" locale is genuinely single-byte (ISO C) while *.UTF-8 stays multibyte.
+size_t __get_effective_mb_cur_max();
+
 // Largest number of bytes a single valid Unicode scalar value (<= U+10FFFF)
 // occupies in UTF-8. Must not exceed MB_LEN_MAX (4): callers size their
 // conversion buffers `MB_LEN_MAX`, and the C standard requires
@@ -59,6 +65,24 @@ static size_t __wcrtomb(char *__SPRT_RESTRICT __dst, size_t __dstSize, wchar_t _
 			state->_State = STATE_NONE;
 			return -2;
 		}
+	}
+
+	if (__get_effective_mb_cur_max() == 1) {
+		// Single-byte "C"/"POSIX" locale: identity map for scalar values 0..255,
+		// EILSEQ above that. No shift state, so it bypasses the surrogate machine.
+		char32_t __c = (char32_t)__src;
+		if (__c > 0xFF) {
+			errno = EILSEQ;
+			return -1;
+		}
+		if (__dst) {
+			if (__dstSize < 1) {
+				errno = EOVERFLOW;
+				return -1;
+			}
+			__dst[0] = (char)(unsigned char)__c;
+		}
+		return 1;
 	}
 
 	if constexpr (sizeof(wchar_t) == sizeof(char16_t)) {
@@ -239,6 +263,22 @@ static size_t __mbrtowc(wchar_t *__SPRT_RESTRICT __dst, size_t __dstLen,
 		}
 	}
 
+	if (__get_effective_mb_cur_max() == 1) {
+		// Single-byte "C"/"POSIX" locale: each byte is one character (identity
+		// 0..255), so one byte is consumed and one wide unit produced.
+		unsigned char __b = (unsigned char)*ptr;
+		++ptr;
+		--(*__srcLen);
+		if (__dst) {
+			if (__dstLen < 1) {
+				errno = EOVERFLOW;
+				return -1;
+			}
+			*__dst = (wchar_t)__b;
+		}
+		return 1;
+	}
+
 	if (state->_State == STATE_NONE) {
 		// read first
 		uint8_t mask = sprt::unicode::utf8_length_mask[uint8_t(*ptr)];
@@ -378,7 +418,9 @@ __SPRT_C_FUNC int mbsinit(const mbstate_t *value) __SPRT_NOEXCEPT {
 	return 0;
 }
 
-__SPRT_C_FUNC size_t __ctype_get_mb_cur_max() __SPRT_NOEXCEPT { return _MB_CUR_MAX; }
+__SPRT_C_FUNC size_t __ctype_get_mb_cur_max() __SPRT_NOEXCEPT {
+	return __get_effective_mb_cur_max();
+}
 
 __SPRT_C_FUNC int wcwidth(wchar_t wc) __SPRT_NOEXCEPT {
 	return unicode::utf8EncodeLength(char32_t(wc));

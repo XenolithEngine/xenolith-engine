@@ -48,6 +48,9 @@ static __thread_pool s_handlePool;
 __thread_pool *__thread_pool::get() { return &s_handlePool; }
 
 __thread_pool::__thread_pool() {
+	activeThreads.reserve(ThreadTableReserve);
+	activeThreadsByTid.reserve(ThreadTableReserve);
+
 	// Acquire OS schedulers limits on startup to use it with attr_t
 	fifoPrioMin = __sprt_sched_get_priority_min(__SPRT_SCHED_FIFO);
 	fifoPrioMax = __sprt_sched_get_priority_max(__SPRT_SCHED_FIFO);
@@ -160,6 +163,16 @@ static SPRT_RUNTHREAD_CALLCONV thread_result_t __runthead(void *arg) {
 	// (which the OS may reuse) never resolves to a finalized/recycled thread.
 	s_handlePool.activeThreadsByTid.erase(uint32_t(thread->threadId));
 	globalLock.unlock();
+
+	if (thread->threadMemPool) {
+		memory::pool::destroy(thread->threadMemPool);
+		thread->threadMemPool = nullptr;
+	}
+
+	thread->threadKeyStorage = nullptr;
+	thread->threadRobustMutexes = nullptr;
+	thread->threadRdLocks = nullptr;
+	thread->threadWrLocks = nullptr;
 
 	unique_lock lock(thread->mutex);
 
@@ -355,6 +368,22 @@ thread_t *thread_t::self_noattach() {
 	return nullptr;
 }
 
+#if SPRT_WASM
+// wasm static-init-order remedy, called by _start AFTER __wasm_call_ctors().
+//
+// On wasm a static constructor's first heap allocation triggers mimalloc thread-init ->
+// pthread_setspecific -> thread_t::self(), which attaches the main thread BEFORE this TU's
+// s_handlePool global is constructed. When s_handlePool is later constructed, its `main`
+// thread_t member is default-constructed, clobbering the threadId / pool that the early
+// attach set (a static-init-order fiasco: threadId reverts to 0, so std::thread::id() of
+// the main thread compares equal to a default id). Now that s_handlePool is fully built,
+// drop the stale attach and re-register the main thread cleanly.
+__SPRT_C_FUNC void __sprt_wasm_reinit_main_thread() {
+	tl_self.thread = nullptr;
+	(void)thread_t::self();
+}
+#endif
+
 bool thread_t::registerThread() {
 	threadId = __sprt_gettid();
 
@@ -440,6 +469,25 @@ bool thread_t::registerThread() {
 		});
 	}, threadMemPool);
 
+#if SPRT_WASM
+	// Pre-warm this thread's mimalloc heap now, before we take s_handlePool.mutex below.
+	// A brand-new thread's FIRST global-heap touch triggers mimalloc thread-init, which
+	// associates the heap via pthread_setspecific(mi_wasm_heap_done_key, ...) — and that
+	// re-acquires s_handlePool.mutex (pthread_key.cc). If the first touch instead happened
+	// during the activeThreadsByTid insert under the lock below (e.g. on a rehash past the
+	// ctor's reserved capacity), it would re-enter the non-recursive mutex and self-deadlock.
+	// Forcing the first touch here, with no lock held, makes the association run cleanly:
+	// threadKeyStorage exists (created in perform above) so the heap-done key registers with
+	// no leak, and self() publishes tl_self as a side effect. The insert below then finds the
+	// heap already initialized and never re-enters the mutex — unconditionally, regardless of
+	// table growth. (The reserve in the ctor keeps the common-case insert allocation-free;
+	// this makes the guarantee hold even when it isn't.)
+	{
+		void *warm = malloc(1);
+		free(warm);
+	}
+#endif
+
 	// Make this thread discoverable by kernel tid for the PI boost path. Done last so
 	// the thread is fully set up before another thread can find and boost it.
 	{
@@ -506,11 +554,11 @@ void thread_t::removeMutex(mutex_t *mtx) {
 }
 
 bool thread_t::has_wrlock(const rwlock_t *lock) const {
-	return threadWrLocks->find(lock) != threadWrLocks->end();
+	return threadWrLocks && threadWrLocks->find(lock) != threadWrLocks->end();
 }
 
 bool thread_t::has_rdlock(const rwlock_t *lock) const {
-	return threadRdLocks->find(lock) != threadRdLocks->end();
+	return threadRdLocks && threadRdLocks->find(lock) != threadRdLocks->end();
 }
 
 void thread_t::recalculateDynamicPriority(unique_lock<qmutex> &lock) {

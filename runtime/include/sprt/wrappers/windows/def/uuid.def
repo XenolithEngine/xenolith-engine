@@ -1,0 +1,7 @@
+; uuid.lib is a *static* GUID library in the Windows SDK, not a DLL import lib.
+; The only named GUIDs LLVM references (CLSID_FileOperation, FOLDERID_Profile,
+; FOLDERID_LocalAppData) are already provided inline/static by the sprt Windows
+; wrappers (com_cxx.hpp, shlobj.h), so nothing here is actually pulled at link
+; time.
+LIBRARY uuid.dll
+EXPORTS

@@ -23,7 +23,9 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_THREAD_RMUTEX_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_THREAD_RMUTEX_H_
 
-#include <sprt/cxx/atomic>
+#include <sprt/cxx/__atomic/ops.h>
+#include <sprt/runtime/math.h>
+#include <sprt/runtime/callback.h>
 #include <sprt/c/sys/__sprt_sprt.h>
 #include <sprt/runtime/status.h>
 
@@ -149,7 +151,14 @@ public:
 				}
 
 				Status st = Status::Ok;
-				if constexpr (SyscallLock) {
+				// The syscall-lock protocol (kernel acquires the futex word itself,
+				// FUTEX_LOCK_PI) only exists for PI locks. A non-PI lock on a
+				// SyscallLock platform must still use the manual waiters protocol:
+				// its WaitFn is a plain FUTEX_WAIT that acquires nothing, so going
+				// through the syscall branch would sleep WITHOUT announcing the
+				// waiter (no WAITERS_BIT) — the owner's unlock then fast-CASes to 0
+				// and never wakes it.
+				if (SyscallLock && (flags & flags_type(__SPRT_SPRT_LOCK_FLAG_PI)) != 0) {
 					if (WaitFn(&data, &expected, timeout ? *timeout : __SPRT_SPRT_TIMEOUT_INFINITE,
 								flags)
 							!= 0) {
@@ -240,15 +249,17 @@ public:
 			}
 
 			if constexpr (TryLockFn != nullptr) {
-				if (TryLockFn(&data, flags) != 0) {
-					auto st = status::errnoToStatus(__sprt_errno);
-					if (st == Status::ErrorDeadLock) {
-						// The futex word at uaddr is already locked by the caller.
-						return Status::Propagate;
+				if ((flags & __SPRT_SPRT_LOCK_FLAG_PI) != 0) {
+					if (TryLockFn(&data, flags) != 0) {
+						auto st = status::errnoToStatus(__sprt_errno);
+						if (st == Status::ErrorDeadLock) {
+							// The futex word at uaddr is already locked by the caller.
+							return Status::Propagate;
+						}
+						return st;
+					} else {
+						return Status::Ok;
 					}
-					return st;
-				} else {
-					return Status::Ok;
 				}
 			}
 			return Status::ErrorBusy;
@@ -284,6 +295,23 @@ public:
 		if (counter && --*counter > 0) {
 			// some recursive locks still in place
 			return Status::Propagate;
+		}
+
+		if ((flags & flags_type(__SPRT_SPRT_LOCK_FLAG_PI)) != 0) {
+			// PI unlock: the KERNEL performs the handoff (FUTEX_UNLOCK_PI writes the
+			// new owner's tid). The futex word must still hold our tid when the
+			// syscall runs — force-storing 0 first makes the kernel see uval != our
+			// tid (EPERM) and strands the pi_state waiters forever.
+			if ((*getNativeValue(expected) & WAITERS_BIT) == 0
+					&& _atomic::compareSwap(getNativeValue(data), getNativeValue(expected),
+							*getNativeValue(zero))) {
+				return Status::Done;
+			}
+			// Waiters known, or one raced in between the load and the CAS.
+			if (WakeFn(&data, flags) != 0) {
+				return status::errnoToStatus(__sprt_errno);
+			}
+			return Status::Ok;
 		}
 
 		// We check if we already know about the waiting threads.

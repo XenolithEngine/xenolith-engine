@@ -53,7 +53,22 @@ OutputIt copy_if(InputIt first, InputIt last, OutputIt d_first, UnaryPred pred) 
 	return d_first;
 }
 
-} // inline namespace __cxx_algorithm
+template <typename InputIt, typename Size, typename OutputIt>
+OutputIt copy_n(InputIt first, Size n, OutputIt d_first) {
+	for (; n > 0; --n, (void)++first, (void)++d_first) { *d_first = *first; }
+	return d_first;
+}
+
+// [alg.copy] copy_backward: copies [first,last) into the range ending at d_last,
+// proceeding from the back, so it is safe when the output overlaps the tail of the
+// input. Returns the iterator to the first copied element.
+template <typename BidirIt1, typename BidirIt2>
+BidirIt2 copy_backward(BidirIt1 first, BidirIt1 last, BidirIt2 d_last) {
+	while (first != last) { *(--d_last) = *(--last); }
+	return d_last;
+}
+
+} // namespace __cxx_algorithm
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX__ALGORITHM_COPY_H_

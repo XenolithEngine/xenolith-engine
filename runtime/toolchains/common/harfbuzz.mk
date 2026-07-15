@@ -22,13 +22,11 @@
 
 LIBNAME = harfbuzz
 
-# Build HarfBuzz against the sprt freestanding C++ library presented as the
-# standard library: the clean std-namespace wrappers in include_libc/stl resolve
-# bare <utility>/<type_traits>/... and re-export from sprt; the second -isystem
-# lets those wrappers find <sprt/cxx/...> in runtime/include. (Replaces the old
-# "-isystem include/sprt/cxx -D__SPRT_AS_STD" mechanism.)
 ifdef WINDOWS
-SP_USER_CXXFLAGS += -isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include_libc/stl) -isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include)
+SP_USER_CXXFLAGS += \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include_libc/cxx) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../libcxx/include) \
+	-isystem $(realpath $(dir $(CONFIGURE_MAKEFILE))/../../include)
 endif
 
 include ../common/configure.mk

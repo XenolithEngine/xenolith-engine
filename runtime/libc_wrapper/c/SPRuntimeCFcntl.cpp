@@ -215,7 +215,7 @@ __SPRT_C_FUNC int __SPRT_ID(open)(const char *path, int __flags, ...) {
 	) {
 		__sprt_va_list ap;
 		__sprt_va_start(ap, __flags);
-		__mode = __sprt_va_arg(ap, __SPRT_ID(mode_t));
+		__mode = __SPRT_VA_ARG_MODE_T(ap);
 		__sprt_va_end(ap);
 	}
 
@@ -248,7 +248,7 @@ __SPRT_C_FUNC int __SPRT_ID(openat)(int __dir_fd, const char *path, int __flags,
 	) {
 		__sprt_va_list ap;
 		__sprt_va_start(ap, __flags);
-		__mode = __sprt_va_arg(ap, __SPRT_ID(mode_t));
+		__mode = __SPRT_VA_ARG_MODE_T(ap);
 		__sprt_va_end(ap);
 	}
 

@@ -45,6 +45,7 @@ struct is_identity<identity> : true_type { };
 
 template <typename Type = void>
 struct equal_to {
+	typedef bool __result_type; // used by valarray
 	constexpr bool operator()(const Type &__x, const Type &__y) const { return __x == __y; }
 };
 
@@ -74,7 +75,7 @@ struct not_equal_to<void> {
 	using is_transparent = void;
 };
 
-template <typename Type>
+template <typename Type = void>
 struct less {
 	typedef bool __result_type; // used by valarray
 	constexpr bool operator()(const Type &__x, const Type &__y) const { return __x < __y; }

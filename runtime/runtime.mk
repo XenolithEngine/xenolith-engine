@@ -28,18 +28,19 @@
 
 RUNTIME_MODULE_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
-# Communicate with <root>/runtime/Makefile
-ifdef SPRT_BUILD_RUNTIME
+# Communicate with <root>/runtime/Makefile. SPRT_BUILD_RUNTIME marks "this is sprt's own
+# runtime code": it is always set for the runtime module's own sources (so they keep the
+# hand-written value-types via __stl_value_provider.h, rather than the hosted-only libc++
+# projection which is not on the runtime's include path). External consumers that merely
+# link the runtime never see this define and get the libc++ value-type projection.
 MODULE_RUNTIME_COMMON_CFLAGS := -DSPRT_BUILD_RUNTIME
-else
-MODULE_RUNTIME_COMMON_CFLAGS :=
-endif
 
 include $(RUNTIME_MODULE_DIR)/core/core.mk
 include $(RUNTIME_MODULE_DIR)/musl-adapters/musl_libc.mk
 include $(RUNTIME_MODULE_DIR)/libc_impl/malloc.mk
 include $(RUNTIME_MODULE_DIR)/libc_impl/libc.mk
 include $(RUNTIME_MODULE_DIR)/libc_wrapper/libc-wrapper.mk
+include $(RUNTIME_MODULE_DIR)/libcxx/libcxx.mk
 include $(RUNTIME_MODULE_DIR)/window/window.mk
 
 
@@ -63,24 +64,33 @@ MODULE_RUNTIME_PRIVATE_INCLUDES := \
 	$(RUNTIME_MODULE_DIR)/include_libc \
 	$(RUNTIME_MODULE_DIR)/src
 
-MODULE_RUNTIME_DEPENDS_ON := runtime_libc_wrapper runtime_core
+MODULE_RUNTIME_DEPENDS_ON := \
+	runtime_libc_wrapper \
+	runtime_core \
+	runtime_libcxx
 
 MODULE_RUNTIME_PRIVATE_CFLAGS := $(MODULE_RUNTIME_COMMON_CFLAGS) -nostdinc++ -Wno-unused-command-line-argument
 MODULE_RUNTIME_PRIVATE_CXXFLAGS := $(MODULE_RUNTIME_COMMON_CFLAGS) -nostdinc++ -Wno-unused-command-line-argument
 MODULE_RUNTIME_GENERAL_LDFLAGS :=
 
 ifeq ($(TARGET_SYSTEM),Linux)
-MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
-MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc/stl
-MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_LIBS += -l:libbacktrace.a -l:libc++abi.a -lm
 endif
 
 
 ifeq ($(TARGET_SYSTEM),Android)
-MODULE_RUNTIME_GENERAL_CFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
-MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc/stl
-MODULE_RUNTIME_GENERAL_CXXFLAGS += -idirafter $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
+MODULE_RUNTIME_GENERAL_CXXFLAGS += \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a -landroid -llog
 endif
 
@@ -89,7 +99,8 @@ ifeq ($(TARGET_SYSTEM),Android-NDK)
 MODULE_RUNTIME_GENERAL_CFLAGS += -nostdinc++
 MODULE_RUNTIME_GENERAL_CXXFLAGS += -nostdinc++
 MODULE_RUNTIME_INCLUDES_OBJS += \
-	$(RUNTIME_MODULE_DIR)/include_libc/stl \
+	$(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	$(RUNTIME_MODULE_DIR)/libcxx/include \
 	$(RUNTIME_MODULE_DIR)/include_libc \
 	$(RUNTIME_MODULE_DIR)/src
 MODULE_RUNTIME_LIBS += -ldl -l:libbacktrace.a
@@ -100,15 +111,14 @@ endif
 # Differs only in the UI framework (AppKit on macOS, UIKit on iOS), handled below.
 ifneq ($(filter Darwin iOS,$(TARGET_SYSTEM)),)
 ifeq ($(findstring +open,$(TARGET_SYSROOT)),)
-# Stock Xcode-SDK build: the SDK's usr/include is authoritative; the runtime libc
-# wrappers only supplement it — kept AFTER the SDK (-idirafter).
 MODULE_RUNTIME_GENERAL_CFLAGS += \
-	-idirafter $(RUNTIME_MODULE_DIR)/include_libc \
-	-idirafter $(RUNTIME_MODULE_DIR)/include_libc/darwin
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/darwin
 MODULE_RUNTIME_GENERAL_CXXFLAGS += \
-	-idirafter $(RUNTIME_MODULE_DIR)/include_libc/stl \
-	-idirafter $(RUNTIME_MODULE_DIR)/include_libc \
-	-idirafter $(RUNTIME_MODULE_DIR)/include_libc/darwin
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/darwin
 else
 # +open (Xcode-SDK-free): the sysroot usr/include carries only the apple-oss BASE
 # libc, so the runtime's own libc wrappers (include_libc) must be found BEFORE it:
@@ -121,7 +131,8 @@ MODULE_RUNTIME_GENERAL_CFLAGS += \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc/darwin
 MODULE_RUNTIME_GENERAL_CXXFLAGS += \
-	-isystem $(RUNTIME_MODULE_DIR)/include_libc/stl \
+	-isystem $(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	-isystem $(RUNTIME_MODULE_DIR)/libcxx/include \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc \
 	-isystem $(RUNTIME_MODULE_DIR)/include_libc/darwin
 endif
@@ -169,8 +180,9 @@ MODULE_RUNTIME_DEPENDS_ON += runtime_libc_impl
 MODULE_RUNTIME_PRIVATE_INCLUDES += $(TARGET_INCLUDE_DIR)
 MODULE_RUNTIME_INCLUDES_OBJS += $(TARGET_INCLUDE_DIR) \
 	$(RUNTIME_MODULE_DIR)/include/sprt/wrappers/windows \
-	$(RUNTIME_MODULE_DIR)/include_libc \
-	$(RUNTIME_MODULE_DIR)/include_libc/stl
+	$(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	$(RUNTIME_MODULE_DIR)/libcxx/include \
+	$(RUNTIME_MODULE_DIR)/include_libc
 
 MODULE_RUNTIME_LIBS += -limport
 # The runtime links freestanding (-nostdlib), so clang does not auto-link the
@@ -193,8 +205,9 @@ MODULE_RUNTIME_PRIVATE_INCLUDES += $(TARGET_SYSROOT)/usr/include
 # Export the sprt libc + STL headers to consumers (freestanding -nostdinc means
 # <stdio.h>/<optional>/... must resolve here, exactly like the Windows path).
 MODULE_RUNTIME_INCLUDES_OBJS += \
-	$(RUNTIME_MODULE_DIR)/include_libc \
-	$(RUNTIME_MODULE_DIR)/include_libc/stl
+	$(RUNTIME_MODULE_DIR)/include_libc/cxx \
+	$(RUNTIME_MODULE_DIR)/libcxx/include \
+	$(RUNTIME_MODULE_DIR)/include_libc
 MODULE_RUNTIME_GENERAL_CXXFLAGS += -nostdinc++
 
 # Freestanding link (-nostdlib): pull the toolchain static runtimes explicitly —

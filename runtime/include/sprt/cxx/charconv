@@ -62,13 +62,9 @@ THE SOFTWARE.
 #include <sprt/wrappers/libc/stdlib.h> // sprt::_cstdlib::strto{ull,f,d,ld} (host/freestanding safe)
 #include <sprt/c/__sprt_errno.h> // __sprt_errno (forwards to the platform libc errno)
 
-namespace sprt {
+#include <sprt/cxx/__system_error/errc.h> // sprt::errc (full std::errc; charconv reports a subset)
 
-enum class errc {
-	invalid_argument = 22, // EINVAL
-	result_out_of_range = 34, // ERANGE
-	value_too_large = 75, // EOVERFLOW
-};
+namespace sprt {
 
 enum class chars_format {
 	scientific = 1,
@@ -113,7 +109,9 @@ to_chars_result to_chars(char *__first, char *__last, _Int __value, int __base =
 	const size_t __cap = sizeof(__tmp);
 	size_t __len;
 
-	if (__base == 10) {
+	// The itoa fast path is 64-bit; wider types (__int128) always take the generic
+	// divide loop below, which handles any base including 10.
+	if (__base == 10 && sizeof(_Int) <= 8) {
 		// sprt::itoa renders decimal right-aligned, sign included, and returns the length.
 		if constexpr (is_signed_v<_Int>) {
 			__len = sprt::itoa(static_cast<int64_t>(__value), __tmp, __cap);
@@ -143,8 +141,8 @@ to_chars_result to_chars(char *__first, char *__last, _Int __value, int __base =
 			const _Up __b = static_cast<_Up>(__base);
 			do {
 				const int __d = static_cast<int>(__mag % __b);
-				*--__p = __d < 10 ? static_cast<char>('0' + __d)
-								  : static_cast<char>('a' + __d - 10);
+				*--__p =
+						__d < 10 ? static_cast<char>('0' + __d) : static_cast<char>('a' + __d - 10);
 				__mag /= __b;
 			} while (__mag != 0);
 			__mlen = static_cast<size_t>((__tmp + __cap) - __p);
@@ -161,10 +159,8 @@ to_chars_result to_chars(char *__first, char *__last, _Int __value, int __base =
 		return {__last, errc::value_too_large};
 	}
 	const char *__src = __tmp + __cap - __len;
-	for (size_t __i = 0; __i < __len; ++__i) {
-		__first[__i] = __src[__i];
-	}
-	return {__first + __len, errc {}};
+	for (size_t __i = 0; __i < __len; ++__i) { __first[__i] = __src[__i]; }
+	return {__first + __len, errc{}};
 }
 
 // ---- to_chars: floating point (sprt::dtoa) --------------------------------------------------
@@ -177,10 +173,8 @@ inline to_chars_result __dtoa_copy(char *__first, char *__last, size_t __len,
 		return {__last, errc::value_too_large};
 	}
 	const char *__src = __scratch_end - __len;
-	for (size_t __i = 0; __i < __len; ++__i) {
-		__first[__i] = __src[__i];
-	}
-	return {__first + __len, errc {}};
+	for (size_t __i = 0; __i < __len; ++__i) { __first[__i] = __src[__i]; }
+	return {__first + __len, errc{}};
 }
 
 inline _dtoa::dtoa_options __mode_of(chars_format __fmt) noexcept {
@@ -197,9 +191,7 @@ inline _dtoa::dtoa_options __mode_of(chars_format __fmt) noexcept {
 // zeros are dropped so a bounded scratch buffer always suffices. Returns false on overflow.
 inline bool __parse_mag(const char *__ds, const char *__de, int __base,
 		unsigned long long &__out) noexcept {
-	while (__ds < __de && *__ds == '0') {
-		++__ds;
-	}
+	while (__ds < __de && *__ds == '0') { ++__ds; }
 	const size_t __n = static_cast<size_t>(__de - __ds);
 	if (__n == 0) {
 		__out = 0;
@@ -210,9 +202,7 @@ inline bool __parse_mag(const char *__ds, const char *__de, int __base,
 		return false;
 	}
 	char __tmp[65];
-	for (size_t __i = 0; __i < __n; ++__i) {
-		__tmp[__i] = __ds[__i];
-	}
+	for (size_t __i = 0; __i < __n; ++__i) { __tmp[__i] = __ds[__i]; }
 	__tmp[__n] = '\0';
 	__sprt_errno = 0;
 	char *__e = __tmp;
@@ -232,7 +222,8 @@ to_chars_result to_chars(char *__first, char *__last, _Float __value) {
 template <typename _Float, enable_if_t<is_floating_point_v<_Float>, int> = 0>
 to_chars_result to_chars(char *__first, char *__last, _Float __value, chars_format __fmt) {
 	char __tmp[DOUBLE_MAX_DIGITS + 1];
-	const size_t __len = sprt::dtoa(__value, __tmp, DOUBLE_MAX_DIGITS, __charconv::__mode_of(__fmt));
+	const size_t __len =
+			sprt::dtoa(__value, __tmp, DOUBLE_MAX_DIGITS, __charconv::__mode_of(__fmt));
 	return __charconv::__dtoa_copy(__first, __last, __len, __tmp + DOUBLE_MAX_DIGITS);
 }
 
@@ -243,7 +234,7 @@ to_chars_result to_chars(char *__first, char *__last, _Float __value, chars_form
 		int __precision) {
 	_dtoa::dtoa_options __opts = __charconv::__mode_of(__fmt);
 	if (__precision >= 0) {
-		__opts.precision = static_cast<uint16_t>(__precision > 65535 ? 65535 : __precision);
+		__opts.precision = static_cast<uint16_t>(__precision > 65'535 ? 65'535 : __precision);
 	}
 	char __tmp[DOUBLE_MAX_DIGITS + 1];
 	const size_t __len = sprt::dtoa(__value, __tmp, DOUBLE_MAX_DIGITS, __opts);
@@ -267,35 +258,48 @@ from_chars_result from_chars(const char *__first, const char *__last, _Int &__va
 		}
 	}
 	const char *__ds = __p;
-	while (__p != __last && __cc_digit(*__p, __base) >= 0) {
-		++__p;
-	}
+	while (__p != __last && __cc_digit(*__p, __base) >= 0) { ++__p; }
 	if (__p == __ds) {
 		return {__first, errc::invalid_argument};
 	}
 
-	unsigned long long __mag;
-	if (!__charconv::__parse_mag(__ds, __p, __base, __mag)) {
-		return {__p, errc::result_out_of_range};
-	}
-	// Range-check the magnitude against the target type / sign.
+	// Range limit for the magnitude given the target type / sign.
 	_Up __limit;
 	if constexpr (is_signed_v<_Int>) {
 		__limit = __neg ? static_cast<_Up>(Max<_Int>) + 1u : static_cast<_Up>(Max<_Int>);
 	} else {
 		__limit = static_cast<_Up>(-1);
 	}
-	if (__mag > static_cast<unsigned long long>(__limit)) {
-		return {__p, errc::result_out_of_range};
-	}
 
-	const _Up __m = static_cast<_Up>(__mag);
+	_Up __m;
+	if constexpr (sizeof(_Int) <= 8) {
+		unsigned long long __mag;
+		if (!__charconv::__parse_mag(__ds, __p, __base, __mag)) {
+			return {__p, errc::result_out_of_range};
+		}
+		if (__mag > static_cast<unsigned long long>(__limit)) {
+			return {__p, errc::result_out_of_range};
+		}
+		__m = static_cast<_Up>(__mag);
+	} else {
+		// Wider than 64 bits (__int128): accumulate directly in _Up with an
+		// overflow check against the target's limit.
+		__m = 0;
+		const _Up __b = static_cast<_Up>(__base);
+		for (const char *__d = __ds; __d != __p; ++__d) {
+			const int __dv = __cc_digit(*__d, __base);
+			if (__m > (__limit - static_cast<_Up>(__dv)) / __b) {
+				return {__p, errc::result_out_of_range};
+			}
+			__m = __m * __b + static_cast<_Up>(__dv);
+		}
+	}
 	if constexpr (is_signed_v<_Int>) {
 		__value = __neg ? static_cast<_Int>(static_cast<_Up>(~__m + 1u)) : static_cast<_Int>(__m);
 	} else {
 		__value = static_cast<_Int>(__m);
 	}
-	return {__p, errc {}};
+	return {__p, errc{}};
 }
 
 // ---- from_chars: floating point (via strto{f,d,ld}) -----------------------------------------
@@ -303,7 +307,7 @@ from_chars_result from_chars(const char *__first, const char *__last, _Int &__va
 template <typename _Float, enable_if_t<is_floating_point_v<_Float>, int> = 0>
 from_chars_result from_chars(const char *__first, const char *__last, _Float &__value,
 		chars_format __fmt = chars_format::general) {
-	(void) __fmt; // decimal only; hex-float parsing is not supported
+	(void)__fmt; // decimal only; hex-float parsing is not supported
 	const size_t __n = static_cast<size_t>(__last - __first);
 	if (__n == 0) {
 		return {__first, errc::invalid_argument};
@@ -318,9 +322,7 @@ from_chars_result from_chars(const char *__first, const char *__last, _Float &__
 	// leading token, so strto* stops within the copy for any realistic input.
 	char __buf[512];
 	const size_t __m = (__n < sizeof(__buf) - 1) ? __n : (sizeof(__buf) - 1);
-	for (size_t __i = 0; __i < __m; ++__i) {
-		__buf[__i] = __first[__i];
-	}
+	for (size_t __i = 0; __i < __m; ++__i) { __buf[__i] = __first[__i]; }
 	__buf[__m] = '\0';
 
 	char *__end = __buf;
@@ -346,7 +348,7 @@ from_chars_result from_chars(const char *__first, const char *__last, _Float &__
 	}
 
 	__value = __r;
-	return {__first + __consumed, errc {}};
+	return {__first + __consumed, errc{}};
 }
 
 } // namespace sprt

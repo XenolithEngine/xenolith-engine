@@ -91,6 +91,16 @@ THE SOFTWARE.
 #define O_BINARY _O_BINARY
 #endif
 
+#ifndef AT_FDCWD
+#define AT_FDCWD __SPRT_AT_FDCWD
+#define AT_SYMLINK_NOFOLLOW __SPRT_AT_SYMLINK_NOFOLLOW
+#define AT_SYMLINK_FOLLOW __SPRT_AT_SYMLINK_FOLLOW
+#define AT_NO_AUTOMOUNT __SPRT_AT_NO_AUTOMOUNT
+#define AT_EMPTY_PATH __SPRT_AT_EMPTY_PATH
+#define AT_EACCESS __SPRT_AT_EACCESS
+#define AT_REMOVEDIR __SPRT_AT_REMOVEDIR
+#endif
+
 #ifndef O_ACCMODE
 #define O_ACCMODE __SPRT_O_ACCMODE
 #define O_RDONLY __SPRT_O_RDONLY
@@ -102,6 +112,18 @@ THE SOFTWARE.
 #define O_NOCTTY __SPRT_O_NOCTTY
 #define O_TRUNC __SPRT_O_TRUNC
 #define O_APPEND __SPRT_O_APPEND
+
+/* MSVC <fcntl.h> spells the low-level open() flags with a leading underscore
+ * (_wopen/_sopen_s and callers such as libxml2 use these). Mirror the POSIX
+ * names above; _O_BINARY/_O_TEXT are handled below (no text-mode translation). */
+#define _O_RDONLY __SPRT_O_RDONLY
+#define _O_WRONLY __SPRT_O_WRONLY
+#define _O_RDWR __SPRT_O_RDWR
+#define _O_APPEND __SPRT_O_APPEND
+#define _O_CREAT __SPRT_O_CREAT
+#define _O_TRUNC __SPRT_O_TRUNC
+#define _O_EXCL __SPRT_O_EXCL
+
 #define O_NONBLOCK __SPRT_O_NONBLOCK
 #define O_DSYNC __SPRT_O_DSYNC
 #define O_SYNC __SPRT_O_SYNC
@@ -257,7 +279,7 @@ int open(const char *path, int __flags, ...) SPRT_UMBRELLA_END
 	) {
 		__sprt_va_list ap;
 		__sprt_va_start(ap, __flags);
-		__mode = __sprt_va_arg(ap, mode_t);
+		__mode = __SPRT_VA_ARG_MODE_T(ap);
 		__sprt_va_end(ap);
 	}
 
@@ -278,7 +300,7 @@ int openat(int __dir_fd, const char *path, int __flags, ...) SPRT_UMBRELLA_END
 	) {
 		__sprt_va_list ap;
 		__sprt_va_start(ap, __flags);
-		__mode = __sprt_va_arg(ap, mode_t);
+		__mode = __SPRT_VA_ARG_MODE_T(ap);
 		__sprt_va_end(ap);
 	}
 

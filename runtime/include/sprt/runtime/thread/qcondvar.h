@@ -24,6 +24,7 @@
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_THREAD_QCONDVAR_H_
 
 #include <sprt/runtime/thread/qmutex.h>
+#include <sprt/c/__sprt_sched.h>
 
 namespace sprt {
 
@@ -53,8 +54,15 @@ public:
 		} else if (expected == desired) {
 			// comdition was captured by this mutex
 			_atomic::fetchAdd(&data->counter, uint32_t(1));
+		} else if (__atomic_load_n(&data->counter, __ATOMIC_SEQ_CST) == 0
+				&& __atomic_compare_exchange_n(&data->mutexid, &expected, desired, false,
+						__ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+			// The binding is a leftover from a fully-departed waiter generation (the
+			// epilogue no longer resets mutexid — see below); with no active waiters
+			// the condvar may be re-bound to a new mutex.
+			_atomic::fetchAdd(&data->counter, uint32_t(1));
 		} else {
-			// captured by different mutex
+			// captured by different mutex with active waiters
 			return Status::ErrorInvalidArguemnt;
 		}
 
@@ -95,13 +103,17 @@ public:
 			}
 		}
 
+		// LAST touch of the condvar object, BEFORE re-acquiring the user mutex: the
+		// notifier is allowed to destroy the condvar while still holding that mutex
+		// (see _destroy), so nothing below may dereference `data` — and _destroy's
+		// spin on `counter` is what keeps the object alive for the loop re-reads
+		// above. mutexid is deliberately NOT reset here (it would race with a new
+		// waiter's registration once we no longer hold the user mutex); a stale
+		// binding is re-claimed in the registration path when counter == 0.
+		_atomic::fetchSub(&data->counter, 1U);
+
 		// The mutex must be re-acquired before returning, even on timeout.
 		auto lockStatus = LockFn(mutex);
-		if (lockStatus == Status::Ok) {
-			if (_atomic::fetchSub(&data->counter, 1U) == 1) {
-				__atomic_store_n(&data->mutexid, uint64_t(0), __ATOMIC_SEQ_CST);
-			}
-		}
 		// Preserve a timeout from the wait loop (it would otherwise be lost behind the
 		// relock status, making pthread_cond_timedwait report success on timeout).
 		// Only surface a relock failure when the wait itself succeeded.
@@ -117,10 +129,28 @@ public:
 	// below), so a signal issued under the same mutex always observes a waiter
 	// that has fully published its wait state - there is no lost-wakeup window.
 	// Calling _signal without the mutex held breaks that guarantee.
+	// Destruction barrier ([thread.condition]/pthread_cond_destroy): a condvar may
+	// be destroyed as soon as every waiter has been NOTIFIED — but a notified waiter
+	// may still be between the futex wake and its counter decrement (_wait's last
+	// touch of the object, done BEFORE re-acquiring the user mutex — the notifier
+	// may hold that mutex while destroying, so the barrier must not depend on the
+	// relock). Spinning until counter reads zero keeps the memory alive for those
+	// waiters' loop re-reads. A cv destroyed with un-notified waiters still inside
+	// the futex wait is UB by the standard and spins here forever (loudly, rather
+	// than corrupting freed memory silently).
+	static void _destroy(__qcondvar_data *data) {
+		while (__atomic_load_n(&data->counter, __ATOMIC_SEQ_CST) != 0) {
+			__sprt_sched_yield();
+		}
+	}
+
 	template <int (*WakeFn)(value_type *, flags_type)>
 	static Status _signal(__qcondvar_data *data, flags_type flags) {
-		uint64_t mid = __atomic_load_n(&data->mutexid, __ATOMIC_SEQ_CST);
-		if (mid == 0) {
+		// counter, not mutexid: the epilogue no longer clears mutexid, so a stale
+		// binding with zero waiters must still take the fast no-op path. A waiter
+		// publishes counter (fetchAdd) while holding the mutex the signaller holds
+		// now, so an active waiter is always visible here.
+		if (__atomic_load_n(&data->counter, __ATOMIC_SEQ_CST) == 0) {
 			// no waiters
 			return Status::Ok;
 		}

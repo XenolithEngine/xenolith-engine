@@ -40,7 +40,12 @@ public:
 	using timeout_type = __sprt_sprt_timeout_t;
 
 	condition_variable() { }
-	~condition_variable() { notify_all(); }
+	~condition_variable() {
+		notify_all();
+		// Woken waiters may still be inside _wait's epilogue touching this object;
+		// block until the last of them has left before the memory is released.
+		qcondvar_base::_destroy(&data);
+	}
 
 	condition_variable(const condition_variable &) = delete;
 	condition_variable &operator=(const condition_variable &) = delete;

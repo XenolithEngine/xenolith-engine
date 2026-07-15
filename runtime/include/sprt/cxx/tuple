@@ -35,7 +35,40 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_TUPLE_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_TUPLE_H_
 
+#include <sprt/c/bits/__sprt_def.h>
+
+#if __SPRT_USE_STL
+
+// libc++ present: the tuple facility is std's, and sprt's hand-written protocol
+// (<sprt/cxx/__tuple/protocol.h>) would redefine the standard tuple_size/tuple_element
+// customization already provided by libc++. So project std into namespace sprt and
+// re-export the public [tuple] surface for sprt code that names sprt::tuple /
+// sprt::forward_as_tuple / sprt::apply / ... (aligned_storage, function, ...).
+#include <tuple>
+
+namespace sprt {
+
+using std::tuple;
+using std::tuple_element;
+using std::tuple_element_t;
+using std::tuple_size;
+using std::tuple_size_v;
+
+using std::apply;
+using std::forward_as_tuple;
+using std::get;
+using std::ignore;
+using std::make_from_tuple;
+using std::make_tuple;
+using std::tie;
+using std::tuple_cat;
+
+} // namespace sprt
+
+#else
+
 #include <sprt/cxx/__tuple/protocol.h>
+
 #include <sprt/cxx/type_traits>
 #include <sprt/cxx/compare>
 #include <sprt/cxx/utility>
@@ -74,7 +107,8 @@ template <sprt::size_t _Ip, typename _Tp>
 struct __tuple_leaf {
 	_Tp __value_;
 
-	constexpr __tuple_leaf() : __value_() { }
+	constexpr __tuple_leaf() requires sprt::is_default_constructible_v<_Tp>
+	: __value_() { }
 
 	template <typename _Up,
 			__tuple_enable_t<!sprt::is_same_v<sprt::decay_t<_Up>, __tuple_leaf>
@@ -161,6 +195,15 @@ inline constexpr bool __tuple_from_pair_v<tuple<_Tp...>, _U1, _U2, true> =
 		sprt::is_constructible_v<__type_pack_element<0, _Tp...>, _U1>
 		&& sprt::is_constructible_v<__type_pack_element<1, _Tp...>, _U2>;
 
+// enable operator=(pair) only for 2-element tuples ([tuple.assign]); mirrors
+// __tuple_from_pair_v but checks assignability of the element references.
+template <typename _Tuple, typename _U1, typename _U2, bool = (tuple_size_v<_Tuple> == 2)>
+inline constexpr bool __tuple_assign_from_pair_v = false;
+template <typename... _Tp, typename _U1, typename _U2>
+inline constexpr bool __tuple_assign_from_pair_v<tuple<_Tp...>, _U1, _U2, true> =
+		sprt::is_assignable_v<__type_pack_element<0, _Tp...> &, _U1>
+		&& sprt::is_assignable_v<__type_pack_element<1, _Tp...> &, _U2>;
+
 struct __tuple_cvt_tag { };
 
 template <typename... _Tp>
@@ -193,8 +236,8 @@ public:
 					&& (sizeof...(_Tp) != 1
 							|| !sprt::is_same_v<sprt::decay_t<__tuple_first_t<_Up...>>, tuple>)
 					&& (sprt::is_constructible_v<_Tp, _Up> && ...)> = 0>
-	constexpr explicit((!sprt::is_convertible_v<_Up, _Tp> || ...))
-			tuple(_Up &&...__u) : __impl_(sprt::forward<_Up>(__u)...) { }
+	constexpr explicit((!sprt::is_convertible_v<_Up, _Tp> || ...)) tuple(_Up &&...__u)
+	: __impl_(sprt::forward<_Up>(__u)...) { }
 
 	constexpr tuple(const tuple &) = default;
 	constexpr tuple(tuple &&) = default;
@@ -204,15 +247,14 @@ public:
 					&& (sprt::is_constructible_v<_Tp, const _Up &> && ...)> = 0>
 	constexpr explicit((!sprt::is_convertible_v<const _Up &, _Tp> || ...))
 			tuple(const tuple<_Up...> &__o)
-	: tuple(__tuple_cvt_tag {}, sprt::make_index_sequence<sizeof...(_Tp)> {}, __o) { }
+	: tuple(__tuple_cvt_tag{}, sprt::make_index_sequence<sizeof...(_Tp)>{}, __o) { }
 
 	template <typename... _Up,
 			__tuple_enable_t<(sizeof...(_Up) == sizeof...(_Tp))
 					&& (sprt::is_constructible_v<_Tp, _Up> && ...)> = 0>
-	constexpr explicit((!sprt::is_convertible_v<_Up, _Tp> || ...))
-			tuple(tuple<_Up...> &&__o)
-	: tuple(__tuple_cvt_tag {}, sprt::make_index_sequence<sizeof...(_Tp)> {},
-			sprt::move_unsafe(__o)) { }
+	constexpr explicit((!sprt::is_convertible_v<_Up, _Tp> || ...)) tuple(tuple<_Up...> &&__o)
+	: tuple(__tuple_cvt_tag{}, sprt::make_index_sequence<sizeof...(_Tp)>{},
+			  sprt::move_unsafe(__o)) { }
 
 	template <typename _U1, typename _U2,
 			__tuple_enable_t<__tuple_from_pair_v<tuple, const _U1 &, const _U2 &>> = 0>
@@ -230,7 +272,7 @@ public:
 			__tuple_enable_t<(sizeof...(_Up) == sizeof...(_Tp))
 					&& (sprt::is_assignable_v<_Tp &, const _Up &> && ...)> = 0>
 	constexpr tuple &operator=(const tuple<_Up...> &__o) {
-		__assign(sprt::make_index_sequence<sizeof...(_Tp)> {}, __o);
+		__assign(sprt::make_index_sequence<sizeof...(_Tp)>{}, __o);
 		return *this;
 	}
 
@@ -238,7 +280,24 @@ public:
 			__tuple_enable_t<(sizeof...(_Up) == sizeof...(_Tp))
 					&& (sprt::is_assignable_v<_Tp &, _Up> && ...)> = 0>
 	constexpr tuple &operator=(tuple<_Up...> &&__o) {
-		__assign(sprt::make_index_sequence<sizeof...(_Tp)> {}, sprt::move_unsafe(__o));
+		__assign(sprt::make_index_sequence<sizeof...(_Tp)>{}, sprt::move_unsafe(__o));
+		return *this;
+	}
+
+	// [tuple.assign] assignment from a pair; participates only for 2-element tuples.
+	template <typename _U1, typename _U2,
+			__tuple_enable_t<__tuple_assign_from_pair_v<tuple, const _U1 &, const _U2 &>> = 0>
+	constexpr tuple &operator=(const sprt::pair<_U1, _U2> &__p) {
+		sprt::get<0>(*this) = __p.first;
+		sprt::get<1>(*this) = __p.second;
+		return *this;
+	}
+
+	template <typename _U1, typename _U2,
+			__tuple_enable_t<__tuple_assign_from_pair_v<tuple, _U1, _U2>> = 0>
+	constexpr tuple &operator=(sprt::pair<_U1, _U2> &&__p) {
+		sprt::get<0>(*this) = sprt::move_unsafe(__p.first);
+		sprt::get<1>(*this) = sprt::move_unsafe(__p.second);
 		return *this;
 	}
 
@@ -356,21 +415,22 @@ constexpr auto __tuple_cat2_impl(_T1 &&__t1, _T2 &&__t2, sprt::index_sequence<_I
 		sprt::index_sequence<_I2...>) {
 	return tuple<tuple_element_t<_I1, sprt::remove_reference_t<_T1>>...,
 			tuple_element_t<_I2, sprt::remove_reference_t<_T2>>...>(
-			sprt::get<_I1>(sprt::forward<_T1>(__t1))..., sprt::get<_I2>(sprt::forward<_T2>(__t2))...);
+			sprt::get<_I1>(sprt::forward<_T1>(__t1))...,
+			sprt::get<_I2>(sprt::forward<_T2>(__t2))...);
 }
 
 template <typename _T1, typename _T2>
 constexpr auto __tuple_cat2(_T1 &&__t1, _T2 &&__t2) {
 	return __tuple_cat2_impl(sprt::forward<_T1>(__t1), sprt::forward<_T2>(__t2),
-			sprt::make_index_sequence<tuple_size_v<sprt::remove_reference_t<_T1>>> {},
-			sprt::make_index_sequence<tuple_size_v<sprt::remove_reference_t<_T2>>> {});
+			sprt::make_index_sequence<tuple_size_v<sprt::remove_reference_t<_T1>>>{},
+			sprt::make_index_sequence<tuple_size_v<sprt::remove_reference_t<_T2>>>{});
 }
 
 constexpr tuple<> tuple_cat() { return {}; }
 
 template <typename _T1>
 constexpr auto tuple_cat(_T1 &&__t1) {
-	return __tuple_cat2(tuple<> {}, sprt::forward<_T1>(__t1));
+	return __tuple_cat2(tuple<>{}, sprt::forward<_T1>(__t1));
 }
 
 template <typename _T1, typename _T2, typename... _Rest>
@@ -388,7 +448,7 @@ constexpr decltype(auto) __apply_impl(_Fn &&__f, _Tuple &&__t, sprt::index_seque
 template <typename _Fn, typename _Tuple>
 constexpr decltype(auto) apply(_Fn &&__f, _Tuple &&__t) {
 	return sprt::__apply_impl(sprt::forward<_Fn>(__f), sprt::forward<_Tuple>(__t),
-			sprt::make_index_sequence<tuple_size_v<sprt::remove_reference_t<_Tuple>>> {});
+			sprt::make_index_sequence<tuple_size_v<sprt::remove_reference_t<_Tuple>>>{});
 }
 
 template <typename _Tp, typename _Tuple, sprt::size_t... _Ip>
@@ -399,7 +459,7 @@ constexpr _Tp __make_from_tuple_impl(_Tuple &&__t, sprt::index_sequence<_Ip...>)
 template <typename _Tp, typename _Tuple>
 constexpr _Tp make_from_tuple(_Tuple &&__t) {
 	return sprt::__make_from_tuple_impl<_Tp>(sprt::forward<_Tuple>(__t),
-			sprt::make_index_sequence<tuple_size_v<sprt::remove_reference_t<_Tuple>>> {});
+			sprt::make_index_sequence<tuple_size_v<sprt::remove_reference_t<_Tuple>>>{});
 }
 
 // ----------------------------------------------------------- swap / compare
@@ -417,7 +477,7 @@ constexpr bool __tuple_eq(const tuple<_Tp...> &__a, const tuple<_Up...> &__b,
 template <typename... _Tp, typename... _Up>
 constexpr bool operator==(const tuple<_Tp...> &__a, const tuple<_Up...> &__b) {
 	static_assert(sizeof...(_Tp) == sizeof...(_Up), "tuples must be the same size to compare");
-	return sprt::__tuple_eq(__a, __b, sprt::make_index_sequence<sizeof...(_Tp)> {});
+	return sprt::__tuple_eq(__a, __b, sprt::make_index_sequence<sizeof...(_Tp)>{});
 }
 
 template <typename... _Tp, typename... _Up>
@@ -437,7 +497,7 @@ constexpr _Cat __tuple_cmp(const _TT &__a, const _UT &__b, sprt::index_sequence<
 	if (__c != 0) {
 		return __c;
 	}
-	return sprt::__tuple_cmp<_Cat>(__a, __b, sprt::index_sequence<_In...> {});
+	return sprt::__tuple_cmp<_Cat>(__a, __b, sprt::index_sequence<_In...>{});
 }
 
 template <typename... _Tp, typename... _Up>
@@ -445,7 +505,7 @@ constexpr common_comparison_category_t<sprt::__synth_three_way_result_t<_Tp, _Up
 		const tuple<_Tp...> &__a, const tuple<_Up...> &__b) {
 	static_assert(sizeof...(_Tp) == sizeof...(_Up), "tuples must be the same size to compare");
 	using _Cat = common_comparison_category_t<sprt::__synth_three_way_result_t<_Tp, _Up>...>;
-	return sprt::__tuple_cmp<_Cat>(__a, __b, sprt::make_index_sequence<sizeof...(_Tp)> {});
+	return sprt::__tuple_cmp<_Cat>(__a, __b, sprt::make_index_sequence<sizeof...(_Tp)>{});
 }
 
 // ------------------------------------------- pair piecewise_construct constructor
@@ -464,9 +524,11 @@ template <typename... _Args1, typename... _Args2>
 constexpr pair<_T1, _T2>::pair(piecewise_construct_t, tuple<_Args1...> __first_args,
 		tuple<_Args2...> __second_args)
 : pair(piecewise_construct, __first_args, __second_args,
-		sprt::make_index_sequence<sizeof...(_Args1)> {},
-		sprt::make_index_sequence<sizeof...(_Args2)> {}) { }
+		  sprt::make_index_sequence<sizeof...(_Args1)>{},
+		  sprt::make_index_sequence<sizeof...(_Args2)>{}) { }
 
 } // namespace sprt
+
+#endif // __SPRT_USE_STL
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_TUPLE_H_

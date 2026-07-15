@@ -253,6 +253,27 @@ THE SOFTWARE.
 #define MB_USEGLYPHCHARS __SPRT_MB_USEGLYPHCHARS
 #define MB_ERR_INVALID_CHARS __SPRT_MB_ERR_INVALID_CHARS
 
+#define LTP_PC_SMT __SPRT_LTP_PC_SMT
+
+// GetDriveType return values (winbase.h), used by llvm's Path.inc.
+#define DRIVE_UNKNOWN __SPRT_DRIVE_UNKNOWN
+#define DRIVE_NO_ROOT_DIR __SPRT_DRIVE_NO_ROOT_DIR
+#define DRIVE_REMOVABLE __SPRT_DRIVE_REMOVABLE
+#define DRIVE_FIXED __SPRT_DRIVE_FIXED
+#define DRIVE_REMOTE __SPRT_DRIVE_REMOTE
+#define DRIVE_CDROM __SPRT_DRIVE_CDROM
+#define DRIVE_RAMDISK __SPRT_DRIVE_RAMDISK
+
+// GetFinalPathNameByHandle flags (winbase.h).
+#define VOLUME_NAME_DOS __SPRT_VOLUME_NAME_DOS
+#define VOLUME_NAME_GUID __SPRT_VOLUME_NAME_GUID
+#define VOLUME_NAME_NT __SPRT_VOLUME_NAME_NT
+#define VOLUME_NAME_NONE __SPRT_VOLUME_NAME_NONE
+
+#define FIND_FIRST_EX_CASE_SENSITIVE __SPRT_FIND_FIRST_EX_CASE_SENSITIVE
+#define FIND_FIRST_EX_LARGE_FETCH __SPRT_FIND_FIRST_EX_LARGE_FETCH
+#define FIND_FIRST_EX_ON_DISK_ENTRIES_ONLY __SPRT_FIND_FIRST_EX_ON_DISK_ENTRIES_ONLY
+
 
 /* ============================================================ */
 /* WinAPI Function Declarations                                 */
@@ -404,6 +425,23 @@ __SPRT_WIN_IMPORT WINAPI BOOL QueryWorkingSetEx(HANDLE hProcess, PVOID pWsInfo, 
 __SPRT_WIN_IMPORT WINAPI LONG RegOpenKeyExW(HKEY hKey, LPCWSTR lpSubKey, DWORD Reserved,
 		DWORD samDesired, PHANDLE phkResult);
 
+__SPRT_WIN_IMPORT WINAPI LONG RegOpenKeyExA(HKEY hKey, LPCSTR lpSubKey, DWORD ulOptions,
+		DWORD samDesired, PHANDLE phkResult);
+
+__SPRT_WIN_IMPORT WINAPI LSTATUS RegQueryValueExW(HKEY hKey, LPCWSTR lpValueName,
+		LPDWORD lpReserved, LPDWORD lpType, LPBYTE lpData, LPDWORD lpcbData);
+
+__SPRT_WIN_IMPORT WINAPI LSTATUS RegQueryValueExA(HKEY hKey, LPCSTR lpValueName, LPDWORD lpReserved,
+		LPDWORD lpType, LPBYTE lpData, LPDWORD lpcbData);
+
+__SPRT_WIN_IMPORT WINAPI LSTATUS RegEnumKeyExA(HKEY hKey, DWORD dwIndex, LPSTR lpName,
+		LPDWORD lpcchName, LPDWORD lpReserved, LPSTR lpClass, LPDWORD lpcchClass,
+		PFILETIME lpftLastWriteTime);
+
+__SPRT_WIN_IMPORT WINAPI LSTATUS RegEnumKeyExW(HKEY hKey, DWORD dwIndex, LPWSTR lpName,
+		LPDWORD lpcchName, LPDWORD lpReserved, LPWSTR lpClass, LPDWORD lpcchClass,
+		PFILETIME lpftLastWriteTime);
+
 /**
  * Retrieves data from a specified registry value.
  * @param hKey Handle to an open key, or one of the predefined values.
@@ -429,6 +467,8 @@ __SPRT_WIN_IMPORT WINAPI LSTATUS RegEnumValueW(HKEY hKey, DWORD dwIndex, LPWSTR 
  * @see https://docs.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regclosekey
  */
 __SPRT_WIN_IMPORT WINAPI LONG RegCloseKey(HKEY hKey);
+
+__SPRT_WIN_IMPORT WINAPI DWORD ExpandEnvironmentStringsW(LPCWSTR lpSrc, LPWSTR lpDst, DWORD nSize);
 
 /* ============================================================ */
 /* System Information API (winbase.h, sysinfoapi.h)             */
@@ -461,12 +501,67 @@ __SPRT_WIN_IMPORT WINAPI DWORD GetActiveProcessorCount(WORD GroupNumber);
 __SPRT_WIN_IMPORT WINAPI BOOL GetLogicalProcessorInformation(
 		PSYSTEM_LOGICAL_PROCESSOR_INFORMATION Buffer, PDWORD ReturnedLength);
 
+__SPRT_WIN_IMPORT WINAPI BOOL SetFileTime(HANDLE hFile, const FILETIME *lpCreationTime,
+		const FILETIME *lpLastAccessTime, const FILETIME *lpLastWriteTime);
+
+__SPRT_WIN_IMPORT WINAPI HANDLE FindFirstFileExW(LPCWSTR lpFileName,
+		FINDEX_INFO_LEVELS fInfoLevelId, LPVOID lpFindFileData, FINDEX_SEARCH_OPS fSearchOp,
+		LPVOID lpSearchFilter, DWORD dwAdditionalFlags);
+
+__SPRT_WIN_IMPORT WINAPI BOOL GetLogicalProcessorInformationEx(
+		LOGICAL_PROCESSOR_RELATIONSHIP RelationshipType,
+		PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX Buffer, PDWORD ReturnedLength);
+
+__SPRT_WIN_IMPORT WINAPI BOOL GetProcessGroupAffinity(HANDLE hProcess, PUSHORT GroupCount,
+		PUSHORT GroupArray);
+
+__SPRT_WIN_IMPORT WINAPI BOOL FlushInstructionCache(HANDLE hProcess, LPCVOID lpBaseAddress,
+		SIZE_T dwSize);
+
+__SPRT_WIN_IMPORT WINAPI SIZE_T GetLargePageMinimum(VOID);
+
+__SPRT_WIN_IMPORT WINAPI DWORD GetLongPathNameW(LPCWSTR lpszShortPath, LPWSTR lpszLongPath,
+		DWORD cchBuffer);
+
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateJobObjectW(LPSECURITY_ATTRIBUTES lpJobAttributes,
+		LPCWSTR lpName);
+
+__SPRT_WIN_IMPORT WINAPI BOOL AssignProcessToJobObject(HANDLE hJob, HANDLE hProcess);
+
+__SPRT_WIN_IMPORT WINAPI BOOL SetInformationJobObject(HANDLE hJob,
+		JOBOBJECTINFOCLASS JobObjectInformationClass, LPVOID lpJobObjectInformation,
+		DWORD cbJobObjectInformationLength);
+
+__SPRT_WIN_IMPORT WINAPI DWORD GetThreadId(HANDLE Thread);
+
+__SPRT_WIN_IMPORT WINAPI BOOL GetProcessAffinityMask(HANDLE hProcess,
+		PDWORD_PTR lpProcessAffinityMask, PDWORD_PTR lpSystemAffinityMask);
+
+__SPRT_WIN_IMPORT WINAPI BOOL SetProcessAffinityMask(HANDLE hProcess,
+		DWORD_PTR dwProcessAffinityMask);
+
+__SPRT_WIN_IMPORT WINAPI BOOL SetThreadGroupAffinity(HANDLE hThread,
+		const GROUP_AFFINITY *GroupAffinity, PGROUP_AFFINITY PreviousGroupAffinity);
+
+__SPRT_WIN_IMPORT WINAPI BOOL GetThreadGroupAffinity(HANDLE hThread, PGROUP_AFFINITY GroupAffinity);
+
+__SPRT_WIN_IMPORT WINAPI DWORD SearchPathW(LPCWSTR lpPath, LPCWSTR lpFileName, LPCWSTR lpExtension,
+		DWORD nBufferLength, LPWSTR lpBuffer, LPWSTR *lpFilePart);
+
 __SPRT_WIN_IMPORT WINAPI BOOL GlobalMemoryStatusEx(LPMEMORYSTATUSEX lpBuffer);
 
 __SPRT_WIN_IMPORT WINAPI BOOL GetComputerNameExW(COMPUTER_NAME_FORMAT NameType, LPWSTR lpBuffer,
 		LPDWORD nSize);
 
 __SPRT_WIN_IMPORT WINAPI UINT SetErrorMode(UINT uMode);
+
+__SPRT_WIN_IMPORT WINAPI UINT GetErrorMode(void);
+
+__SPRT_WIN_IMPORT WINAPI HANDLE CreateMemoryResourceNotification(
+		MEMORY_RESOURCE_NOTIFICATION_TYPE NotificationType);
+
+__SPRT_WIN_IMPORT WINAPI BOOL QueryMemoryResourceNotification(HANDLE ResourceNotificationHandle,
+		BOOL *ResourceState);
 
 __SPRT_WIN_IMPORT WINAPI HANDLE CreateIoCompletionPort(HANDLE FileHandle,
 		HANDLE ExistingCompletionPort, ULONG_PTR CompletionKey, DWORD NumberOfConcurrentThreads);
@@ -487,6 +582,9 @@ __SPRT_WIN_IMPORT WINAPI int LCMapStringEx(LPCWSTR lpLocaleName, DWORD dwMapFlag
 __SPRT_WIN_IMPORT WINAPI int CompareStringEx(LPCWSTR lpLocaleName, DWORD dwCmpFlags,
 		LPCWCH lpString1, int cchCount1, LPCWCH lpString2, int cchCount2,
 		LPNLSVERSIONINFO lpVersionInformation, LPVOID lpReserved, LPARAM lParam);
+
+__SPRT_WIN_IMPORT WINAPI int CompareStringOrdinal(LPCWCH lpString1, int cchCount1, LPCWCH lpString2,
+		int cchCount2, BOOL bIgnoreCase);
 
 __SPRT_WIN_IMPORT WINAPI int MultiByteToWideChar(UINT CodePage, DWORD dwFlags, LPCCH lpMultiByteStr,
 		int cbMultiByte, LPWSTR lpWideCharStr, int cchWideChar);
@@ -523,6 +621,32 @@ __SPRT_WIN_IMPORT WINAPI BOOL ReadConsoleW(HANDLE hConsoleInput, LPVOID lpBuffer
 __SPRT_WIN_IMPORT WINAPI UINT GetSystemDirectoryA(LPSTR lpBuffer, UINT uSize);
 
 __SPRT_WIN_IMPORT WINAPI UINT GetSystemDirectoryW(LPWSTR lpBuffer, UINT uSize);
+
+__SPRT_WIN_IMPORT WINAPI UINT GetWindowsDirectoryA(LPSTR lpBuffer, UINT uSize);
+
+__SPRT_WIN_IMPORT WINAPI UINT GetWindowsDirectoryW(LPWSTR lpBuffer, UINT uSize);
+
+__SPRT_WIN_IMPORT WINAPI LPWCH GetEnvironmentStringsW(void);
+
+__SPRT_WIN_IMPORT WINAPI BOOL FreeEnvironmentStringsW(LPWCH penv);
+
+__SPRT_WIN_IMPORT WINAPI BOOL ReadProcessMemory(HANDLE hProcess, LPCVOID lpBaseAddress,
+		LPVOID lpBuffer, SIZE_T nSize, SIZE_T *lpNumberOfBytesRead);
+
+__SPRT_WIN_IMPORT WINAPI BOOL WriteProcessMemory(HANDLE hProcess, LPVOID lpBaseAddress,
+		LPCVOID lpBuffer, SIZE_T nSize, SIZE_T *lpNumberOfBytesWritten);
+
+__SPRT_WIN_IMPORT WINAPI DWORD GetLogicalDriveStringsW(DWORD nBufferLength, LPWSTR lpBuffer);
+
+__SPRT_WIN_IMPORT WINAPI DWORD QueryDosDeviceW(LPCWSTR lpDeviceName, LPWSTR lpTargetPath,
+		DWORD ucchMax);
+
+// RIP_INFO / hard-error severity levels ([debugapi] dwType).
+#ifndef SLE_ERROR
+#define SLE_ERROR __SPRT_SLE_ERROR
+#define SLE_MINORERROR __SPRT_SLE_MINORERROR
+#define SLE_WARNING __SPRT_SLE_WARNING
+#endif
 
 __SPRT_WIN_IMPORT WINAPI DWORD WaitForMultipleObjects(DWORD nCount, const HANDLE *lpHandles,
 		BOOL bWaitAll, DWORD dwMilliseconds);

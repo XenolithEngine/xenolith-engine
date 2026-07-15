@@ -96,7 +96,15 @@ THE SOFTWARE.
 #define SEE_MASK_NOCLOSEPROCESS __SPRT_SEE_MASK_NOCLOSEPROCESS
 #define ProcThreadAttributeValue(Number, Thread, Input, Additive) __SPRT_ProcThreadAttributeValue(Number, Thread, Input, Additive)
 #define PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES __SPRT_PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES
+#ifndef PROC_THREAD_ATTRIBUTE_HANDLE_LIST
+#define PROC_THREAD_ATTRIBUTE_HANDLE_LIST __SPRT_PROC_THREAD_ATTRIBUTE_HANDLE_LIST
+#endif
 
+// Neutral STARTUPINFO/STARTUPINFOEX names (this sysroot builds with UNICODE).
+typedef STARTUPINFOW STARTUPINFO;
+typedef LPSTARTUPINFOW LPSTARTUPINFO;
+typedef STARTUPINFOEXW STARTUPINFOEX;
+typedef LPSTARTUPINFOEXW LPSTARTUPINFOEX;
 
 __SPRT_BEGIN_DECL
 
@@ -134,6 +142,14 @@ __SPRT_WIN_IMPORT WINAPI BOOL CreateProcessW(LPCWSTR lpApplicationName, LPWSTR l
 
 __SPRT_WIN_IMPORT WINAPI BOOL TerminateProcess(HANDLE hProcess, UINT uExitCode);
 
+__SPRT_WIN_IMPORT WINAPI BOOL GetProcessMemoryInfo(HANDLE Process,
+		PPROCESS_MEMORY_COUNTERS ppsmemCounters, DWORD cb);
+
+__SPRT_WIN_IMPORT WINAPI BOOL EnumProcessModulesEx(HANDLE hProcess, HMODULE *lphModule, DWORD cb,
+		LPDWORD lpcbNeeded, DWORD dwFilterFlag);
+
+__SPRT_WIN_IMPORT WINAPI BOOL IsProcessorFeaturePresent(DWORD ProcessorFeature);
+
 __SPRT_WIN_IMPORT WINAPI BOOL ShellExecuteExW(SHELLEXECUTEINFOW *pExecInfo);
 
 #if __SPRT_ARCH_ID == __SPRT_ARCH_ID_AARCH64
@@ -141,6 +157,12 @@ SPRT_FORCEINLINE VOID YieldProcessor() { __yield(); }
 #else
 SPRT_FORCEINLINE VOID YieldProcessor() { _mm_pause(); }
 #endif
+
+__SPRT_WIN_IMPORT WINAPI BOOL QueryFullProcessImageNameW(HANDLE hProcess, DWORD dwFlags,
+		LPWSTR lpExeName, PDWORD lpdwSize);
+
+__SPRT_WIN_IMPORT WINAPI BOOL QueryFullProcessImageNameA(HANDLE hProcess, DWORD dwFlags,
+		LPSTR lpExeName, PDWORD lpdwSize);
 
 __SPRT_END_DECL
 

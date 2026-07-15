@@ -27,7 +27,7 @@ THE SOFTWARE.
 #include <sprt/cxx/detail/allocator_malloc.h>
 #include <sprt/cxx/detail/allocator_pool.h>
 
-#include <sprt/cxx/array>
+#include <sprt/cxx/detail/inline_buffer.h>
 
 #ifdef __cpp_rtti
 #include <sprt/cxx/typeinfo>
@@ -62,11 +62,12 @@ template <typename Allocator, typename UnusedType>
 class __is_function_type<__function<Allocator, UnusedType>> : public true_type { };
 
 template <typename T>
-constexpr bool __is_function_type_v = sprt::is_base_of_v<__function_base_tag, sprt::remove_cvref_t<T>>;
+constexpr bool __is_function_type_v =
+		sprt::is_base_of_v<__function_base_tag, sprt::remove_cvref_t<T>>;
 
 template <typename Allocator, typename ReturnType, typename... ArgumentTypes>
-class SPRT_API __function<Allocator, ReturnType(ArgumentTypes...)>
-: public Allocator::base_class, public __function_base_tag {
+class SPRT_API __function<Allocator, ReturnType(ArgumentTypes...)> : public Allocator::base_class,
+																	 public __function_base_tag {
 public:
 	using signature_type = ReturnType(ArgumentTypes...);
 	using result_type = ReturnType;
@@ -143,20 +144,35 @@ public:
 	// constructible, so move-only callables cleanly do not match (SFINAE) rather
 	// than hard-error inside the copy trait. remove_cvref_t excludes any __function.
 	template <typename FunctionT>
-	requires (!__is_function_type_v<sprt::remove_cvref_t<FunctionT>>
+	requires (!sprt::is_same_v<sprt::remove_cvref_t<FunctionT>, __function>
 			&& sprt::is_invocable_r_v<ReturnType, sprt::decay_t<FunctionT> &, ArgumentTypes...>
 			&& sprt::is_copy_constructible_v<sprt::decay_t<FunctionT>>)
 	__function(FunctionT &&f, const allocator_type &alloc = allocator_type()) noexcept
 	: mAllocator(alloc) {
+		// [func.wrap.func.con]: a null function/member pointer produces an EMPTY
+		// wrapper, not a stored null target.
+		if constexpr (sprt::is_pointer_v<sprt::decay_t<FunctionT>>
+				|| sprt::is_member_pointer_v<sprt::decay_t<FunctionT>>) {
+			if (f == nullptr) {
+				return;
+			}
+		}
 		mCallback = makeFreeFunction(sprt::forward<FunctionT>(f), mAllocator, mBuffer.data());
 	}
 
 	template <typename FunctionT>
-	requires (!__is_function_type_v<sprt::remove_cvref_t<FunctionT>>
+	requires (!sprt::is_same_v<sprt::remove_cvref_t<FunctionT>, __function>
 			&& sprt::is_invocable_r_v<ReturnType, sprt::decay_t<FunctionT> &, ArgumentTypes...>
 			&& sprt::is_copy_constructible_v<sprt::decay_t<FunctionT>>)
 	__function &operator=(FunctionT &&f) noexcept {
 		clear();
+		// See the converting constructor: a null pointer target means "empty".
+		if constexpr (sprt::is_pointer_v<sprt::decay_t<FunctionT>>
+				|| sprt::is_member_pointer_v<sprt::decay_t<FunctionT>>) {
+			if (f == nullptr) {
+				return *this;
+			}
+		}
 		mCallback = makeFreeFunction(sprt::forward<FunctionT>(f), mAllocator, mBuffer.data());
 		return *this;
 	}
@@ -227,7 +243,7 @@ public:
 protected:
 	static constexpr auto OptBufferSize = 16;
 
-	using buffer_type = sprt::array<uint8_t, OptBufferSize>;
+	using buffer_type = sprt::detail::inline_buffer<uint8_t, OptBufferSize>;
 
 	using invoke_pointer = ReturnType (*)(const void *, ArgumentTypes...);
 	using destroy_pointer = void (*)(buffer_type &, allocator_type &);
@@ -316,7 +332,7 @@ protected:
 		if constexpr (sizeof(BaseType) <= OptBufferSize) {
 			static functor_traits traits{
 				.invoke = [](const void *arg, ArgumentTypes... args) -> ReturnType {
-				if constexpr (sprt::is_same_v<ReturnType, void>) {
+				if constexpr (sprt::is_void_v<ReturnType>) {
 					sprt::__invoke(*const_cast<BaseType *>(static_cast<const BaseType *>(arg)),
 							sprt::forward<ArgumentTypes>(args)...);
 				} else {
@@ -361,7 +377,7 @@ protected:
 				.invoke = [](const void *arg, ArgumentTypes... args) -> ReturnType {
 				auto node = *static_cast<StorageType *const *>(arg);
 				auto fnPtr = const_cast<BaseType *>(node->ptr());
-				if constexpr (sprt::is_same_v<ReturnType, void>) {
+				if constexpr (sprt::is_void_v<ReturnType>) {
 					sprt::__invoke(*fnPtr, sprt::forward<ArgumentTypes>(args)...);
 				} else {
 					return sprt::__invoke(*fnPtr, sprt::forward<ArgumentTypes>(args)...);
@@ -475,6 +491,41 @@ struct __function_guide_helper<_Res (_Tp::*)(_Args...) const noexcept(_Nx)> {
 };
 template <typename _Res, typename _Tp, bool _Nx, typename... _Args>
 struct __function_guide_helper<_Res (_Tp::*)(_Args...) const & noexcept(_Nx)> {
+	using type = _Res(_Args...);
+};
+// Remaining cv/ref-qualified operator() forms, so CTAD from any callable succeeds
+// (mirrors libc++'s exhaustive __strip_signature: {volatile, const volatile} x {,&,&&}
+// and the rvalue-ref forms of the plain/const cases).
+template <typename _Res, typename _Tp, bool _Nx, typename... _Args>
+struct __function_guide_helper<_Res (_Tp::*)(_Args...) && noexcept(_Nx)> {
+	using type = _Res(_Args...);
+};
+template <typename _Res, typename _Tp, bool _Nx, typename... _Args>
+struct __function_guide_helper<_Res (_Tp::*)(_Args...) const && noexcept(_Nx)> {
+	using type = _Res(_Args...);
+};
+template <typename _Res, typename _Tp, bool _Nx, typename... _Args>
+struct __function_guide_helper<_Res (_Tp::*)(_Args...) volatile noexcept(_Nx)> {
+	using type = _Res(_Args...);
+};
+template <typename _Res, typename _Tp, bool _Nx, typename... _Args>
+struct __function_guide_helper<_Res (_Tp::*)(_Args...) volatile & noexcept(_Nx)> {
+	using type = _Res(_Args...);
+};
+template <typename _Res, typename _Tp, bool _Nx, typename... _Args>
+struct __function_guide_helper<_Res (_Tp::*)(_Args...) volatile && noexcept(_Nx)> {
+	using type = _Res(_Args...);
+};
+template <typename _Res, typename _Tp, bool _Nx, typename... _Args>
+struct __function_guide_helper<_Res (_Tp::*)(_Args...) const volatile noexcept(_Nx)> {
+	using type = _Res(_Args...);
+};
+template <typename _Res, typename _Tp, bool _Nx, typename... _Args>
+struct __function_guide_helper<_Res (_Tp::*)(_Args...) const volatile & noexcept(_Nx)> {
+	using type = _Res(_Args...);
+};
+template <typename _Res, typename _Tp, bool _Nx, typename... _Args>
+struct __function_guide_helper<_Res (_Tp::*)(_Args...) const volatile && noexcept(_Nx)> {
 	using type = _Res(_Args...);
 };
 

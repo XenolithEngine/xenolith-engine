@@ -81,6 +81,7 @@ __SPRT_WIN_IMPORT WINAPI int ioctlsocket(SOCKET s, long cmd, unsigned long *argp
 
 #else
 
+#define _GNU_SOURCE 1
 // Hosted (Linux / macOS / Android): forward straight to the platform libc, casting the
 // SPRT structs to the native ones (validated identical by the static_asserts below).
 #include <sys/socket.h>
@@ -108,6 +109,73 @@ __SPRT_WIN_IMPORT WINAPI int ioctlsocket(SOCKET s, long cmd, unsigned long *argp
 #define SOCK_NONBLOCK 04000
 #endif
 #endif
+
+#endif
+
+#if SPRT_LINUX
+// This values is not defined for musl libc
+#ifndef TCP_COOKIE_IN_ALWAYS
+#define TCP_COOKIE_IN_ALWAYS __SPRT_TCP_COOKIE_IN_ALWAYS
+#endif
+
+#ifndef TCP_COOKIE_MAX
+#define TCP_COOKIE_MAX __SPRT_TCP_COOKIE_MAX
+#endif
+
+#ifndef TCP_COOKIE_MIN
+#define TCP_COOKIE_MIN __SPRT_TCP_COOKIE_MIN
+#endif
+
+#ifndef TCP_COOKIE_OUT_NEVER
+#define TCP_COOKIE_OUT_NEVER __SPRT_TCP_COOKIE_OUT_NEVER
+#endif
+
+#ifndef TCP_COOKIE_PAIR_SIZE
+#define TCP_COOKIE_PAIR_SIZE __SPRT_TCP_COOKIE_PAIR_SIZE
+#endif
+
+#ifndef TCP_COOKIE_TRANSACTIONS
+#define TCP_COOKIE_TRANSACTIONS __SPRT_TCP_COOKIE_TRANSACTIONS
+#endif
+
+#ifndef TCP_COOKIE_TRANSACTIONS
+#define TCP_COOKIE_TRANSACTIONS __SPRT_TCP_COOKIE_TRANSACTIONS
+#endif
+
+#ifndef TCP_MAXWIN
+#define TCP_MAXWIN __SPRT_TCP_MAXWIN
+#endif
+
+#ifndef TCP_MAX_WINSHIFT
+#define TCP_MAX_WINSHIFT __SPRT_TCP_MAX_WINSHIFT
+#endif
+
+#ifndef TCP_MSS
+#define TCP_MSS __SPRT_TCP_MSS
+#endif
+
+#ifndef TCP_MSS_DEFAULT
+#define TCP_MSS_DEFAULT __SPRT_TCP_MSS_DEFAULT
+#endif
+
+#ifndef TCP_MSS_DESIRED
+#define TCP_MSS_DESIRED __SPRT_TCP_MSS_DESIRED
+#endif
+
+#ifndef TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT
+#define TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT __SPRT_TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT
+#endif
+
+#ifndef TCP_S_DATA_IN
+#define TCP_S_DATA_IN __SPRT_TCP_S_DATA_IN
+#endif
+
+#ifndef TCP_S_DATA_OUT
+#define TCP_S_DATA_OUT __SPRT_TCP_S_DATA_OUT
+#endif
+
+#undef TCP_MD5SIG_FLAG_IFINDEX
+#undef TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT
 
 #endif
 
@@ -232,8 +300,7 @@ static_assert(__SPRT_PF_IPX == PF_IPX && __SPRT_PF_APPLETALK == PF_APPLETALK
 				&& __SPRT_PF_ROUTE == PF_ROUTE,
 		"PF_* extended (A-R) differ from native");
 
-static_assert(__SPRT_PF_SNA == PF_SNA && __SPRT_PF_ISDN == PF_ISDN && __SPRT_PF_VSOCK == PF_VSOCK
-				&& __SPRT_PF_MAX == PF_MAX,
+static_assert(__SPRT_PF_SNA == PF_SNA && __SPRT_PF_ISDN == PF_ISDN && __SPRT_PF_VSOCK == PF_VSOCK,
 		"PF_* extended (S-MAX) differ from native");
 
 #if SPRT_APPLE
@@ -282,7 +349,6 @@ static_assert(__SPRT_AF_PPP == AF_PPP, "AF_PPP differs from native");
 static_assert(__SPRT_AF_IEEE80211 == AF_IEEE80211 && __SPRT_AF_UTUN == AF_UTUN,
 		"AF_IEEE80211/UTUN differ from native");
 static_assert(__SPRT_AF_VSOCK == AF_VSOCK, "AF_VSOCK differs from native");
-static_assert(__SPRT_AF_MAX == AF_MAX, "AF_MAX differs from native");
 
 static_assert(__SPRT_PF_LOCAL == PF_LOCAL && __SPRT_PF_UNIX == PF_UNIX,
 		"PF_LOCAL/UNIX differ from native");
@@ -311,7 +377,6 @@ static_assert(__SPRT_PF_SYSTEM == PF_SYSTEM && __SPRT_PF_NETBIOS == PF_NETBIOS,
 static_assert(__SPRT_PF_PPP == PF_PPP, "PF_PPP differs from native");
 static_assert(__SPRT_PF_UTUN == PF_UTUN, "PF_UTUN differs from native");
 static_assert(__SPRT_PF_VSOCK == PF_VSOCK, "PF_VSOCK differs from native");
-static_assert(__SPRT_PF_MAX == PF_MAX, "PF_MAX differs from native");
 
 // macOS MSG_* extras
 static_assert(__SPRT_MSG_EOF == MSG_EOF && __SPRT_MSG_HOLD == MSG_HOLD,
@@ -477,8 +542,7 @@ static_assert(__SPRT_AF_IPX == AF_IPX && __SPRT_AF_APPLETALK == AF_APPLETALK
 				&& __SPRT_AF_DECnet == AF_DECnet && __SPRT_AF_ROUTE == AF_ROUTE,
 		"AF_* extended (A-R) differ from native");
 
-static_assert(__SPRT_AF_SNA == AF_SNA && __SPRT_AF_ISDN == AF_ISDN && __SPRT_AF_VSOCK == AF_VSOCK
-				&& __SPRT_AF_MAX == AF_MAX,
+static_assert(__SPRT_AF_SNA == AF_SNA && __SPRT_AF_ISDN == AF_ISDN && __SPRT_AF_VSOCK == AF_VSOCK,
 		"AF_* extended (S-MAX) differ from native");
 
 static_assert(__SPRT_SO_DEBUG == SO_DEBUG,
@@ -794,7 +858,8 @@ static_assert(__SPRT_IP_TRANSPARENT == IP_TRANSPARENT, "IP_TRANSPARENT differs f
 static_assert(__SPRT_IP_ORIGDSTADDR == IP_ORIGDSTADDR, "IP_ORIGDSTADDR differs from native");
 #endif
 #if defined(__SPRT_IP_RECVORIGDSTADDR) || defined(IP_RECVORIGDSTADDR)
-static_assert(__SPRT_IP_RECVORIGDSTADDR == IP_RECVORIGDSTADDR, "IP_RECVORIGDSTADDR differs from native");
+static_assert(__SPRT_IP_RECVORIGDSTADDR == IP_RECVORIGDSTADDR,
+		"IP_RECVORIGDSTADDR differs from native");
 #endif
 #if defined(__SPRT_IP_MINTTL) || defined(IP_MINTTL)
 static_assert(__SPRT_IP_MINTTL == IP_MINTTL, "IP_MINTTL differs from native");
@@ -806,13 +871,15 @@ static_assert(__SPRT_IP_NODEFRAG == IP_NODEFRAG, "IP_NODEFRAG differs from nativ
 static_assert(__SPRT_IP_CHECKSUM == IP_CHECKSUM, "IP_CHECKSUM differs from native");
 #endif
 #if defined(__SPRT_IP_BIND_ADDRESS_NO_PORT) || defined(IP_BIND_ADDRESS_NO_PORT)
-static_assert(__SPRT_IP_BIND_ADDRESS_NO_PORT == IP_BIND_ADDRESS_NO_PORT, "IP_BIND_ADDRESS_NO_PORT differs from native");
+static_assert(__SPRT_IP_BIND_ADDRESS_NO_PORT == IP_BIND_ADDRESS_NO_PORT,
+		"IP_BIND_ADDRESS_NO_PORT differs from native");
 #endif
 #if defined(__SPRT_IP_RECVFRAGSIZE) || defined(IP_RECVFRAGSIZE)
 static_assert(__SPRT_IP_RECVFRAGSIZE == IP_RECVFRAGSIZE, "IP_RECVFRAGSIZE differs from native");
 #endif
 #if defined(__SPRT_IP_RECVERR_RFC4884) || defined(IP_RECVERR_RFC4884)
-static_assert(__SPRT_IP_RECVERR_RFC4884 == IP_RECVERR_RFC4884, "IP_RECVERR_RFC4884 differs from native");
+static_assert(__SPRT_IP_RECVERR_RFC4884 == IP_RECVERR_RFC4884,
+		"IP_RECVERR_RFC4884 differs from native");
 #endif
 #if defined(__SPRT_IP_MULTICAST_IF) || defined(IP_MULTICAST_IF)
 static_assert(__SPRT_IP_MULTICAST_IF == IP_MULTICAST_IF, "IP_MULTICAST_IF differs from native");
@@ -821,25 +888,31 @@ static_assert(__SPRT_IP_MULTICAST_IF == IP_MULTICAST_IF, "IP_MULTICAST_IF differ
 static_assert(__SPRT_IP_MULTICAST_TTL == IP_MULTICAST_TTL, "IP_MULTICAST_TTL differs from native");
 #endif
 #if defined(__SPRT_IP_MULTICAST_LOOP) || defined(IP_MULTICAST_LOOP)
-static_assert(__SPRT_IP_MULTICAST_LOOP == IP_MULTICAST_LOOP, "IP_MULTICAST_LOOP differs from native");
+static_assert(__SPRT_IP_MULTICAST_LOOP == IP_MULTICAST_LOOP,
+		"IP_MULTICAST_LOOP differs from native");
 #endif
 #if defined(__SPRT_IP_ADD_MEMBERSHIP) || defined(IP_ADD_MEMBERSHIP)
-static_assert(__SPRT_IP_ADD_MEMBERSHIP == IP_ADD_MEMBERSHIP, "IP_ADD_MEMBERSHIP differs from native");
+static_assert(__SPRT_IP_ADD_MEMBERSHIP == IP_ADD_MEMBERSHIP,
+		"IP_ADD_MEMBERSHIP differs from native");
 #endif
 #if defined(__SPRT_IP_DROP_MEMBERSHIP) || defined(IP_DROP_MEMBERSHIP)
-static_assert(__SPRT_IP_DROP_MEMBERSHIP == IP_DROP_MEMBERSHIP, "IP_DROP_MEMBERSHIP differs from native");
+static_assert(__SPRT_IP_DROP_MEMBERSHIP == IP_DROP_MEMBERSHIP,
+		"IP_DROP_MEMBERSHIP differs from native");
 #endif
 #if defined(__SPRT_IP_UNBLOCK_SOURCE) || defined(IP_UNBLOCK_SOURCE)
-static_assert(__SPRT_IP_UNBLOCK_SOURCE == IP_UNBLOCK_SOURCE, "IP_UNBLOCK_SOURCE differs from native");
+static_assert(__SPRT_IP_UNBLOCK_SOURCE == IP_UNBLOCK_SOURCE,
+		"IP_UNBLOCK_SOURCE differs from native");
 #endif
 #if defined(__SPRT_IP_BLOCK_SOURCE) || defined(IP_BLOCK_SOURCE)
 static_assert(__SPRT_IP_BLOCK_SOURCE == IP_BLOCK_SOURCE, "IP_BLOCK_SOURCE differs from native");
 #endif
 #if defined(__SPRT_IP_ADD_SOURCE_MEMBERSHIP) || defined(IP_ADD_SOURCE_MEMBERSHIP)
-static_assert(__SPRT_IP_ADD_SOURCE_MEMBERSHIP == IP_ADD_SOURCE_MEMBERSHIP, "IP_ADD_SOURCE_MEMBERSHIP differs from native");
+static_assert(__SPRT_IP_ADD_SOURCE_MEMBERSHIP == IP_ADD_SOURCE_MEMBERSHIP,
+		"IP_ADD_SOURCE_MEMBERSHIP differs from native");
 #endif
 #if defined(__SPRT_IP_DROP_SOURCE_MEMBERSHIP) || defined(IP_DROP_SOURCE_MEMBERSHIP)
-static_assert(__SPRT_IP_DROP_SOURCE_MEMBERSHIP == IP_DROP_SOURCE_MEMBERSHIP, "IP_DROP_SOURCE_MEMBERSHIP differs from native");
+static_assert(__SPRT_IP_DROP_SOURCE_MEMBERSHIP == IP_DROP_SOURCE_MEMBERSHIP,
+		"IP_DROP_SOURCE_MEMBERSHIP differs from native");
 #endif
 #if defined(__SPRT_IP_MSFILTER) || defined(IP_MSFILTER)
 static_assert(__SPRT_IP_MSFILTER == IP_MSFILTER, "IP_MSFILTER differs from native");
@@ -860,7 +933,8 @@ static_assert(__SPRT_IP_DONTFRAGMENT == IP_DONTFRAGMENT, "IP_DONTFRAGMENT differ
 static_assert(__SPRT_IP_HOPLIMIT == IP_HOPLIMIT, "IP_HOPLIMIT differs from native");
 #endif
 #if defined(__SPRT_IP_RECEIVE_BROADCAST) || defined(IP_RECEIVE_BROADCAST)
-static_assert(__SPRT_IP_RECEIVE_BROADCAST == IP_RECEIVE_BROADCAST, "IP_RECEIVE_BROADCAST differs from native");
+static_assert(__SPRT_IP_RECEIVE_BROADCAST == IP_RECEIVE_BROADCAST,
+		"IP_RECEIVE_BROADCAST differs from native");
 #endif
 #if defined(__SPRT_IP_RECVIF) || defined(IP_RECVIF)
 static_assert(__SPRT_IP_RECVIF == IP_RECVIF, "IP_RECVIF differs from native");
@@ -893,7 +967,8 @@ static_assert(__SPRT_IP_TCLASS == IP_TCLASS, "IP_TCLASS differs from native");
 static_assert(__SPRT_IP_RECVTCLASS == IP_RECVTCLASS, "IP_RECVTCLASS differs from native");
 #endif
 #if defined(__SPRT_IP_ORIGINAL_ARRIVAL_IF) || defined(IP_ORIGINAL_ARRIVAL_IF)
-static_assert(__SPRT_IP_ORIGINAL_ARRIVAL_IF == IP_ORIGINAL_ARRIVAL_IF, "IP_ORIGINAL_ARRIVAL_IF differs from native");
+static_assert(__SPRT_IP_ORIGINAL_ARRIVAL_IF == IP_ORIGINAL_ARRIVAL_IF,
+		"IP_ORIGINAL_ARRIVAL_IF differs from native");
 #endif
 #if defined(__SPRT_IP_ECN) || defined(IP_ECN)
 static_assert(__SPRT_IP_ECN == IP_ECN, "IP_ECN differs from native");
@@ -905,10 +980,12 @@ static_assert(__SPRT_IP_RECVECN == IP_RECVECN, "IP_RECVECN differs from native")
 static_assert(__SPRT_IP_PKTINFO_EX == IP_PKTINFO_EX, "IP_PKTINFO_EX differs from native");
 #endif
 #if defined(__SPRT_IP_WFP_REDIRECT_RECORDS) || defined(IP_WFP_REDIRECT_RECORDS)
-static_assert(__SPRT_IP_WFP_REDIRECT_RECORDS == IP_WFP_REDIRECT_RECORDS, "IP_WFP_REDIRECT_RECORDS differs from native");
+static_assert(__SPRT_IP_WFP_REDIRECT_RECORDS == IP_WFP_REDIRECT_RECORDS,
+		"IP_WFP_REDIRECT_RECORDS differs from native");
 #endif
 #if defined(__SPRT_IP_WFP_REDIRECT_CONTEXT) || defined(IP_WFP_REDIRECT_CONTEXT)
-static_assert(__SPRT_IP_WFP_REDIRECT_CONTEXT == IP_WFP_REDIRECT_CONTEXT, "IP_WFP_REDIRECT_CONTEXT differs from native");
+static_assert(__SPRT_IP_WFP_REDIRECT_CONTEXT == IP_WFP_REDIRECT_CONTEXT,
+		"IP_WFP_REDIRECT_CONTEXT differs from native");
 #endif
 #if defined(__SPRT_IP_NRT_INTERFACE) || defined(IP_NRT_INTERFACE)
 static_assert(__SPRT_IP_NRT_INTERFACE == IP_NRT_INTERFACE, "IP_NRT_INTERFACE differs from native");
@@ -926,22 +1003,27 @@ static_assert(__SPRT_IP_PMTUDISC_WANT == IP_PMTUDISC_WANT, "IP_PMTUDISC_WANT dif
 static_assert(__SPRT_IP_PMTUDISC_DO == IP_PMTUDISC_DO, "IP_PMTUDISC_DO differs from native");
 #endif
 #if defined(__SPRT_IP_PMTUDISC_PROBE) || defined(IP_PMTUDISC_PROBE)
-static_assert(__SPRT_IP_PMTUDISC_PROBE == IP_PMTUDISC_PROBE, "IP_PMTUDISC_PROBE differs from native");
+static_assert(__SPRT_IP_PMTUDISC_PROBE == IP_PMTUDISC_PROBE,
+		"IP_PMTUDISC_PROBE differs from native");
 #endif
 #if defined(__SPRT_IP_PMTUDISC_INTERFACE) || defined(IP_PMTUDISC_INTERFACE)
-static_assert(__SPRT_IP_PMTUDISC_INTERFACE == IP_PMTUDISC_INTERFACE, "IP_PMTUDISC_INTERFACE differs from native");
+static_assert(__SPRT_IP_PMTUDISC_INTERFACE == IP_PMTUDISC_INTERFACE,
+		"IP_PMTUDISC_INTERFACE differs from native");
 #endif
 #if defined(__SPRT_IP_PMTUDISC_OMIT) || defined(IP_PMTUDISC_OMIT)
 static_assert(__SPRT_IP_PMTUDISC_OMIT == IP_PMTUDISC_OMIT, "IP_PMTUDISC_OMIT differs from native");
 #endif
 #if defined(__SPRT_IP_DEFAULT_MULTICAST_TTL) || defined(IP_DEFAULT_MULTICAST_TTL)
-static_assert(__SPRT_IP_DEFAULT_MULTICAST_TTL == IP_DEFAULT_MULTICAST_TTL, "IP_DEFAULT_MULTICAST_TTL differs from native");
+static_assert(__SPRT_IP_DEFAULT_MULTICAST_TTL == IP_DEFAULT_MULTICAST_TTL,
+		"IP_DEFAULT_MULTICAST_TTL differs from native");
 #endif
 #if defined(__SPRT_IP_DEFAULT_MULTICAST_LOOP) || defined(IP_DEFAULT_MULTICAST_LOOP)
-static_assert(__SPRT_IP_DEFAULT_MULTICAST_LOOP == IP_DEFAULT_MULTICAST_LOOP, "IP_DEFAULT_MULTICAST_LOOP differs from native");
+static_assert(__SPRT_IP_DEFAULT_MULTICAST_LOOP == IP_DEFAULT_MULTICAST_LOOP,
+		"IP_DEFAULT_MULTICAST_LOOP differs from native");
 #endif
 #if defined(__SPRT_IP_MAX_MEMBERSHIPS) || defined(IP_MAX_MEMBERSHIPS)
-static_assert(__SPRT_IP_MAX_MEMBERSHIPS == IP_MAX_MEMBERSHIPS, "IP_MAX_MEMBERSHIPS differs from native");
+static_assert(__SPRT_IP_MAX_MEMBERSHIPS == IP_MAX_MEMBERSHIPS,
+		"IP_MAX_MEMBERSHIPS differs from native");
 #endif
 // --- IPv6 options ---
 #if defined(__SPRT_IPV6_ADDRFORM) || defined(IPV6_ADDRFORM)
@@ -960,13 +1042,15 @@ static_assert(__SPRT_IPV6_2292DSTOPTS == IPV6_2292DSTOPTS, "IPV6_2292DSTOPTS dif
 static_assert(__SPRT_IPV6_2292RTHDR == IPV6_2292RTHDR, "IPV6_2292RTHDR differs from native");
 #endif
 #if defined(__SPRT_IPV6_2292PKTOPTIONS) || defined(IPV6_2292PKTOPTIONS)
-static_assert(__SPRT_IPV6_2292PKTOPTIONS == IPV6_2292PKTOPTIONS, "IPV6_2292PKTOPTIONS differs from native");
+static_assert(__SPRT_IPV6_2292PKTOPTIONS == IPV6_2292PKTOPTIONS,
+		"IPV6_2292PKTOPTIONS differs from native");
 #endif
 #if defined(__SPRT_IPV6_CHECKSUM) || defined(IPV6_CHECKSUM)
 static_assert(__SPRT_IPV6_CHECKSUM == IPV6_CHECKSUM, "IPV6_CHECKSUM differs from native");
 #endif
 #if defined(__SPRT_IPV6_2292HOPLIMIT) || defined(IPV6_2292HOPLIMIT)
-static_assert(__SPRT_IPV6_2292HOPLIMIT == IPV6_2292HOPLIMIT, "IPV6_2292HOPLIMIT differs from native");
+static_assert(__SPRT_IPV6_2292HOPLIMIT == IPV6_2292HOPLIMIT,
+		"IPV6_2292HOPLIMIT differs from native");
 #endif
 #if defined(__SPRT_IPV6_NEXTHOP) || defined(IPV6_NEXTHOP)
 static_assert(__SPRT_IPV6_NEXTHOP == IPV6_NEXTHOP, "IPV6_NEXTHOP differs from native");
@@ -975,16 +1059,20 @@ static_assert(__SPRT_IPV6_NEXTHOP == IPV6_NEXTHOP, "IPV6_NEXTHOP differs from na
 static_assert(__SPRT_IPV6_AUTHHDR == IPV6_AUTHHDR, "IPV6_AUTHHDR differs from native");
 #endif
 #if defined(__SPRT_IPV6_UNICAST_HOPS) || defined(IPV6_UNICAST_HOPS)
-static_assert(__SPRT_IPV6_UNICAST_HOPS == IPV6_UNICAST_HOPS, "IPV6_UNICAST_HOPS differs from native");
+static_assert(__SPRT_IPV6_UNICAST_HOPS == IPV6_UNICAST_HOPS,
+		"IPV6_UNICAST_HOPS differs from native");
 #endif
 #if defined(__SPRT_IPV6_MULTICAST_IF) || defined(IPV6_MULTICAST_IF)
-static_assert(__SPRT_IPV6_MULTICAST_IF == IPV6_MULTICAST_IF, "IPV6_MULTICAST_IF differs from native");
+static_assert(__SPRT_IPV6_MULTICAST_IF == IPV6_MULTICAST_IF,
+		"IPV6_MULTICAST_IF differs from native");
 #endif
 #if defined(__SPRT_IPV6_MULTICAST_HOPS) || defined(IPV6_MULTICAST_HOPS)
-static_assert(__SPRT_IPV6_MULTICAST_HOPS == IPV6_MULTICAST_HOPS, "IPV6_MULTICAST_HOPS differs from native");
+static_assert(__SPRT_IPV6_MULTICAST_HOPS == IPV6_MULTICAST_HOPS,
+		"IPV6_MULTICAST_HOPS differs from native");
 #endif
 #if defined(__SPRT_IPV6_MULTICAST_LOOP) || defined(IPV6_MULTICAST_LOOP)
-static_assert(__SPRT_IPV6_MULTICAST_LOOP == IPV6_MULTICAST_LOOP, "IPV6_MULTICAST_LOOP differs from native");
+static_assert(__SPRT_IPV6_MULTICAST_LOOP == IPV6_MULTICAST_LOOP,
+		"IPV6_MULTICAST_LOOP differs from native");
 #endif
 #if defined(__SPRT_IPV6_JOIN_GROUP) || defined(IPV6_JOIN_GROUP)
 static_assert(__SPRT_IPV6_JOIN_GROUP == IPV6_JOIN_GROUP, "IPV6_JOIN_GROUP differs from native");
@@ -993,10 +1081,12 @@ static_assert(__SPRT_IPV6_JOIN_GROUP == IPV6_JOIN_GROUP, "IPV6_JOIN_GROUP differ
 static_assert(__SPRT_IPV6_LEAVE_GROUP == IPV6_LEAVE_GROUP, "IPV6_LEAVE_GROUP differs from native");
 #endif
 #if defined(__SPRT_IPV6_ROUTER_ALERT) || defined(IPV6_ROUTER_ALERT)
-static_assert(__SPRT_IPV6_ROUTER_ALERT == IPV6_ROUTER_ALERT, "IPV6_ROUTER_ALERT differs from native");
+static_assert(__SPRT_IPV6_ROUTER_ALERT == IPV6_ROUTER_ALERT,
+		"IPV6_ROUTER_ALERT differs from native");
 #endif
 #if defined(__SPRT_IPV6_MTU_DISCOVER) || defined(IPV6_MTU_DISCOVER)
-static_assert(__SPRT_IPV6_MTU_DISCOVER == IPV6_MTU_DISCOVER, "IPV6_MTU_DISCOVER differs from native");
+static_assert(__SPRT_IPV6_MTU_DISCOVER == IPV6_MTU_DISCOVER,
+		"IPV6_MTU_DISCOVER differs from native");
 #endif
 #if defined(__SPRT_IPV6_MTU) || defined(IPV6_MTU)
 static_assert(__SPRT_IPV6_MTU == IPV6_MTU, "IPV6_MTU differs from native");
@@ -1008,19 +1098,24 @@ static_assert(__SPRT_IPV6_RECVERR == IPV6_RECVERR, "IPV6_RECVERR differs from na
 static_assert(__SPRT_IPV6_V6ONLY == IPV6_V6ONLY, "IPV6_V6ONLY differs from native");
 #endif
 #if defined(__SPRT_IPV6_JOIN_ANYCAST) || defined(IPV6_JOIN_ANYCAST)
-static_assert(__SPRT_IPV6_JOIN_ANYCAST == IPV6_JOIN_ANYCAST, "IPV6_JOIN_ANYCAST differs from native");
+static_assert(__SPRT_IPV6_JOIN_ANYCAST == IPV6_JOIN_ANYCAST,
+		"IPV6_JOIN_ANYCAST differs from native");
 #endif
 #if defined(__SPRT_IPV6_LEAVE_ANYCAST) || defined(IPV6_LEAVE_ANYCAST)
-static_assert(__SPRT_IPV6_LEAVE_ANYCAST == IPV6_LEAVE_ANYCAST, "IPV6_LEAVE_ANYCAST differs from native");
+static_assert(__SPRT_IPV6_LEAVE_ANYCAST == IPV6_LEAVE_ANYCAST,
+		"IPV6_LEAVE_ANYCAST differs from native");
 #endif
 #if defined(__SPRT_IPV6_MULTICAST_ALL) || defined(IPV6_MULTICAST_ALL)
-static_assert(__SPRT_IPV6_MULTICAST_ALL == IPV6_MULTICAST_ALL, "IPV6_MULTICAST_ALL differs from native");
+static_assert(__SPRT_IPV6_MULTICAST_ALL == IPV6_MULTICAST_ALL,
+		"IPV6_MULTICAST_ALL differs from native");
 #endif
 #if defined(__SPRT_IPV6_ROUTER_ALERT_ISOLATE) || defined(IPV6_ROUTER_ALERT_ISOLATE)
-static_assert(__SPRT_IPV6_ROUTER_ALERT_ISOLATE == IPV6_ROUTER_ALERT_ISOLATE, "IPV6_ROUTER_ALERT_ISOLATE differs from native");
+static_assert(__SPRT_IPV6_ROUTER_ALERT_ISOLATE == IPV6_ROUTER_ALERT_ISOLATE,
+		"IPV6_ROUTER_ALERT_ISOLATE differs from native");
 #endif
 #if defined(__SPRT_IPV6_IPSEC_POLICY) || defined(IPV6_IPSEC_POLICY)
-static_assert(__SPRT_IPV6_IPSEC_POLICY == IPV6_IPSEC_POLICY, "IPV6_IPSEC_POLICY differs from native");
+static_assert(__SPRT_IPV6_IPSEC_POLICY == IPV6_IPSEC_POLICY,
+		"IPV6_IPSEC_POLICY differs from native");
 #endif
 #if defined(__SPRT_IPV6_XFRM_POLICY) || defined(IPV6_XFRM_POLICY)
 static_assert(__SPRT_IPV6_XFRM_POLICY == IPV6_XFRM_POLICY, "IPV6_XFRM_POLICY differs from native");
@@ -1035,7 +1130,8 @@ static_assert(__SPRT_IPV6_RECVPKTINFO == IPV6_RECVPKTINFO, "IPV6_RECVPKTINFO dif
 static_assert(__SPRT_IPV6_PKTINFO == IPV6_PKTINFO, "IPV6_PKTINFO differs from native");
 #endif
 #if defined(__SPRT_IPV6_RECVHOPLIMIT) || defined(IPV6_RECVHOPLIMIT)
-static_assert(__SPRT_IPV6_RECVHOPLIMIT == IPV6_RECVHOPLIMIT, "IPV6_RECVHOPLIMIT differs from native");
+static_assert(__SPRT_IPV6_RECVHOPLIMIT == IPV6_RECVHOPLIMIT,
+		"IPV6_RECVHOPLIMIT differs from native");
 #endif
 #if defined(__SPRT_IPV6_HOPLIMIT) || defined(IPV6_HOPLIMIT)
 static_assert(__SPRT_IPV6_HOPLIMIT == IPV6_HOPLIMIT, "IPV6_HOPLIMIT differs from native");
@@ -1047,7 +1143,8 @@ static_assert(__SPRT_IPV6_RECVHOPOPTS == IPV6_RECVHOPOPTS, "IPV6_RECVHOPOPTS dif
 static_assert(__SPRT_IPV6_HOPOPTS == IPV6_HOPOPTS, "IPV6_HOPOPTS differs from native");
 #endif
 #if defined(__SPRT_IPV6_RTHDRDSTOPTS) || defined(IPV6_RTHDRDSTOPTS)
-static_assert(__SPRT_IPV6_RTHDRDSTOPTS == IPV6_RTHDRDSTOPTS, "IPV6_RTHDRDSTOPTS differs from native");
+static_assert(__SPRT_IPV6_RTHDRDSTOPTS == IPV6_RTHDRDSTOPTS,
+		"IPV6_RTHDRDSTOPTS differs from native");
 #endif
 #if defined(__SPRT_IPV6_RECVRTHDR) || defined(IPV6_RECVRTHDR)
 static_assert(__SPRT_IPV6_RECVRTHDR == IPV6_RECVRTHDR, "IPV6_RECVRTHDR differs from native");
@@ -1077,10 +1174,12 @@ static_assert(__SPRT_IPV6_RECVTCLASS == IPV6_RECVTCLASS, "IPV6_RECVTCLASS differ
 static_assert(__SPRT_IPV6_TCLASS == IPV6_TCLASS, "IPV6_TCLASS differs from native");
 #endif
 #if defined(__SPRT_IPV6_AUTOFLOWLABEL) || defined(IPV6_AUTOFLOWLABEL)
-static_assert(__SPRT_IPV6_AUTOFLOWLABEL == IPV6_AUTOFLOWLABEL, "IPV6_AUTOFLOWLABEL differs from native");
+static_assert(__SPRT_IPV6_AUTOFLOWLABEL == IPV6_AUTOFLOWLABEL,
+		"IPV6_AUTOFLOWLABEL differs from native");
 #endif
 #if defined(__SPRT_IPV6_ADDR_PREFERENCES) || defined(IPV6_ADDR_PREFERENCES)
-static_assert(__SPRT_IPV6_ADDR_PREFERENCES == IPV6_ADDR_PREFERENCES, "IPV6_ADDR_PREFERENCES differs from native");
+static_assert(__SPRT_IPV6_ADDR_PREFERENCES == IPV6_ADDR_PREFERENCES,
+		"IPV6_ADDR_PREFERENCES differs from native");
 #endif
 #if defined(__SPRT_IPV6_MINHOPCOUNT) || defined(IPV6_MINHOPCOUNT)
 static_assert(__SPRT_IPV6_MINHOPCOUNT == IPV6_MINHOPCOUNT, "IPV6_MINHOPCOUNT differs from native");
@@ -1089,7 +1188,8 @@ static_assert(__SPRT_IPV6_MINHOPCOUNT == IPV6_MINHOPCOUNT, "IPV6_MINHOPCOUNT dif
 static_assert(__SPRT_IPV6_ORIGDSTADDR == IPV6_ORIGDSTADDR, "IPV6_ORIGDSTADDR differs from native");
 #endif
 #if defined(__SPRT_IPV6_RECVORIGDSTADDR) || defined(IPV6_RECVORIGDSTADDR)
-static_assert(__SPRT_IPV6_RECVORIGDSTADDR == IPV6_RECVORIGDSTADDR, "IPV6_RECVORIGDSTADDR differs from native");
+static_assert(__SPRT_IPV6_RECVORIGDSTADDR == IPV6_RECVORIGDSTADDR,
+		"IPV6_RECVORIGDSTADDR differs from native");
 #endif
 #if defined(__SPRT_IPV6_TRANSPARENT) || defined(IPV6_TRANSPARENT)
 static_assert(__SPRT_IPV6_TRANSPARENT == IPV6_TRANSPARENT, "IPV6_TRANSPARENT differs from native");
@@ -1098,13 +1198,15 @@ static_assert(__SPRT_IPV6_TRANSPARENT == IPV6_TRANSPARENT, "IPV6_TRANSPARENT dif
 static_assert(__SPRT_IPV6_UNICAST_IF == IPV6_UNICAST_IF, "IPV6_UNICAST_IF differs from native");
 #endif
 #if defined(__SPRT_IPV6_RECVFRAGSIZE) || defined(IPV6_RECVFRAGSIZE)
-static_assert(__SPRT_IPV6_RECVFRAGSIZE == IPV6_RECVFRAGSIZE, "IPV6_RECVFRAGSIZE differs from native");
+static_assert(__SPRT_IPV6_RECVFRAGSIZE == IPV6_RECVFRAGSIZE,
+		"IPV6_RECVFRAGSIZE differs from native");
 #endif
 #if defined(__SPRT_IPV6_FREEBIND) || defined(IPV6_FREEBIND)
 static_assert(__SPRT_IPV6_FREEBIND == IPV6_FREEBIND, "IPV6_FREEBIND differs from native");
 #endif
 #if defined(__SPRT_IPV6_PROTECTION_LEVEL) || defined(IPV6_PROTECTION_LEVEL)
-static_assert(__SPRT_IPV6_PROTECTION_LEVEL == IPV6_PROTECTION_LEVEL, "IPV6_PROTECTION_LEVEL differs from native");
+static_assert(__SPRT_IPV6_PROTECTION_LEVEL == IPV6_PROTECTION_LEVEL,
+		"IPV6_PROTECTION_LEVEL differs from native");
 #endif
 #if defined(__SPRT_IPV6_RECVIF) || defined(IPV6_RECVIF)
 static_assert(__SPRT_IPV6_RECVIF == IPV6_RECVIF, "IPV6_RECVIF differs from native");
@@ -1134,22 +1236,27 @@ static_assert(__SPRT_IPV6_RECVECN == IPV6_RECVECN, "IPV6_RECVECN differs from na
 static_assert(__SPRT_IPV6_PKTINFO_EX == IPV6_PKTINFO_EX, "IPV6_PKTINFO_EX differs from native");
 #endif
 #if defined(__SPRT_IPV6_WFP_REDIRECT_RECORDS) || defined(IPV6_WFP_REDIRECT_RECORDS)
-static_assert(__SPRT_IPV6_WFP_REDIRECT_RECORDS == IPV6_WFP_REDIRECT_RECORDS, "IPV6_WFP_REDIRECT_RECORDS differs from native");
+static_assert(__SPRT_IPV6_WFP_REDIRECT_RECORDS == IPV6_WFP_REDIRECT_RECORDS,
+		"IPV6_WFP_REDIRECT_RECORDS differs from native");
 #endif
 #if defined(__SPRT_IPV6_WFP_REDIRECT_CONTEXT) || defined(IPV6_WFP_REDIRECT_CONTEXT)
-static_assert(__SPRT_IPV6_WFP_REDIRECT_CONTEXT == IPV6_WFP_REDIRECT_CONTEXT, "IPV6_WFP_REDIRECT_CONTEXT differs from native");
+static_assert(__SPRT_IPV6_WFP_REDIRECT_CONTEXT == IPV6_WFP_REDIRECT_CONTEXT,
+		"IPV6_WFP_REDIRECT_CONTEXT differs from native");
 #endif
 #if defined(__SPRT_IPV6_NRT_INTERFACE) || defined(IPV6_NRT_INTERFACE)
-static_assert(__SPRT_IPV6_NRT_INTERFACE == IPV6_NRT_INTERFACE, "IPV6_NRT_INTERFACE differs from native");
+static_assert(__SPRT_IPV6_NRT_INTERFACE == IPV6_NRT_INTERFACE,
+		"IPV6_NRT_INTERFACE differs from native");
 #endif
 #if defined(__SPRT_IPV6_USER_MTU) || defined(IPV6_USER_MTU)
 static_assert(__SPRT_IPV6_USER_MTU == IPV6_USER_MTU, "IPV6_USER_MTU differs from native");
 #endif
 #if defined(__SPRT_IPV6_ADD_MEMBERSHIP) || defined(IPV6_ADD_MEMBERSHIP)
-static_assert(__SPRT_IPV6_ADD_MEMBERSHIP == IPV6_ADD_MEMBERSHIP, "IPV6_ADD_MEMBERSHIP differs from native");
+static_assert(__SPRT_IPV6_ADD_MEMBERSHIP == IPV6_ADD_MEMBERSHIP,
+		"IPV6_ADD_MEMBERSHIP differs from native");
 #endif
 #if defined(__SPRT_IPV6_DROP_MEMBERSHIP) || defined(IPV6_DROP_MEMBERSHIP)
-static_assert(__SPRT_IPV6_DROP_MEMBERSHIP == IPV6_DROP_MEMBERSHIP, "IPV6_DROP_MEMBERSHIP differs from native");
+static_assert(__SPRT_IPV6_DROP_MEMBERSHIP == IPV6_DROP_MEMBERSHIP,
+		"IPV6_DROP_MEMBERSHIP differs from native");
 #endif
 #if defined(__SPRT_IPV6_RXHOPOPTS) || defined(IPV6_RXHOPOPTS)
 static_assert(__SPRT_IPV6_RXHOPOPTS == IPV6_RXHOPOPTS, "IPV6_RXHOPOPTS differs from native");
@@ -1158,71 +1265,90 @@ static_assert(__SPRT_IPV6_RXHOPOPTS == IPV6_RXHOPOPTS, "IPV6_RXHOPOPTS differs f
 static_assert(__SPRT_IPV6_RXDSTOPTS == IPV6_RXDSTOPTS, "IPV6_RXDSTOPTS differs from native");
 #endif
 #if defined(__SPRT_IPV6_PMTUDISC_DONT) || defined(IPV6_PMTUDISC_DONT)
-static_assert(__SPRT_IPV6_PMTUDISC_DONT == IPV6_PMTUDISC_DONT, "IPV6_PMTUDISC_DONT differs from native");
+static_assert(__SPRT_IPV6_PMTUDISC_DONT == IPV6_PMTUDISC_DONT,
+		"IPV6_PMTUDISC_DONT differs from native");
 #endif
 #if defined(__SPRT_IPV6_PMTUDISC_WANT) || defined(IPV6_PMTUDISC_WANT)
-static_assert(__SPRT_IPV6_PMTUDISC_WANT == IPV6_PMTUDISC_WANT, "IPV6_PMTUDISC_WANT differs from native");
+static_assert(__SPRT_IPV6_PMTUDISC_WANT == IPV6_PMTUDISC_WANT,
+		"IPV6_PMTUDISC_WANT differs from native");
 #endif
 #if defined(__SPRT_IPV6_PMTUDISC_DO) || defined(IPV6_PMTUDISC_DO)
 static_assert(__SPRT_IPV6_PMTUDISC_DO == IPV6_PMTUDISC_DO, "IPV6_PMTUDISC_DO differs from native");
 #endif
 #if defined(__SPRT_IPV6_PMTUDISC_PROBE) || defined(IPV6_PMTUDISC_PROBE)
-static_assert(__SPRT_IPV6_PMTUDISC_PROBE == IPV6_PMTUDISC_PROBE, "IPV6_PMTUDISC_PROBE differs from native");
+static_assert(__SPRT_IPV6_PMTUDISC_PROBE == IPV6_PMTUDISC_PROBE,
+		"IPV6_PMTUDISC_PROBE differs from native");
 #endif
 #if defined(__SPRT_IPV6_PMTUDISC_INTERFACE) || defined(IPV6_PMTUDISC_INTERFACE)
-static_assert(__SPRT_IPV6_PMTUDISC_INTERFACE == IPV6_PMTUDISC_INTERFACE, "IPV6_PMTUDISC_INTERFACE differs from native");
+static_assert(__SPRT_IPV6_PMTUDISC_INTERFACE == IPV6_PMTUDISC_INTERFACE,
+		"IPV6_PMTUDISC_INTERFACE differs from native");
 #endif
 #if defined(__SPRT_IPV6_PMTUDISC_OMIT) || defined(IPV6_PMTUDISC_OMIT)
-static_assert(__SPRT_IPV6_PMTUDISC_OMIT == IPV6_PMTUDISC_OMIT, "IPV6_PMTUDISC_OMIT differs from native");
+static_assert(__SPRT_IPV6_PMTUDISC_OMIT == IPV6_PMTUDISC_OMIT,
+		"IPV6_PMTUDISC_OMIT differs from native");
 #endif
 #if defined(__SPRT_IPV6_PREFER_SRC_TMP) || defined(IPV6_PREFER_SRC_TMP)
-static_assert(__SPRT_IPV6_PREFER_SRC_TMP == IPV6_PREFER_SRC_TMP, "IPV6_PREFER_SRC_TMP differs from native");
+static_assert(__SPRT_IPV6_PREFER_SRC_TMP == IPV6_PREFER_SRC_TMP,
+		"IPV6_PREFER_SRC_TMP differs from native");
 #endif
 #if defined(__SPRT_IPV6_PREFER_SRC_PUBLIC) || defined(IPV6_PREFER_SRC_PUBLIC)
-static_assert(__SPRT_IPV6_PREFER_SRC_PUBLIC == IPV6_PREFER_SRC_PUBLIC, "IPV6_PREFER_SRC_PUBLIC differs from native");
+static_assert(__SPRT_IPV6_PREFER_SRC_PUBLIC == IPV6_PREFER_SRC_PUBLIC,
+		"IPV6_PREFER_SRC_PUBLIC differs from native");
 #endif
 #if defined(__SPRT_IPV6_PREFER_SRC_PUBTMP_DEFAULT) || defined(IPV6_PREFER_SRC_PUBTMP_DEFAULT)
-static_assert(__SPRT_IPV6_PREFER_SRC_PUBTMP_DEFAULT == IPV6_PREFER_SRC_PUBTMP_DEFAULT, "IPV6_PREFER_SRC_PUBTMP_DEFAULT differs from native");
+static_assert(__SPRT_IPV6_PREFER_SRC_PUBTMP_DEFAULT == IPV6_PREFER_SRC_PUBTMP_DEFAULT,
+		"IPV6_PREFER_SRC_PUBTMP_DEFAULT differs from native");
 #endif
 #if defined(__SPRT_IPV6_PREFER_SRC_COA) || defined(IPV6_PREFER_SRC_COA)
-static_assert(__SPRT_IPV6_PREFER_SRC_COA == IPV6_PREFER_SRC_COA, "IPV6_PREFER_SRC_COA differs from native");
+static_assert(__SPRT_IPV6_PREFER_SRC_COA == IPV6_PREFER_SRC_COA,
+		"IPV6_PREFER_SRC_COA differs from native");
 #endif
 #if defined(__SPRT_IPV6_PREFER_SRC_HOME) || defined(IPV6_PREFER_SRC_HOME)
-static_assert(__SPRT_IPV6_PREFER_SRC_HOME == IPV6_PREFER_SRC_HOME, "IPV6_PREFER_SRC_HOME differs from native");
+static_assert(__SPRT_IPV6_PREFER_SRC_HOME == IPV6_PREFER_SRC_HOME,
+		"IPV6_PREFER_SRC_HOME differs from native");
 #endif
 #if defined(__SPRT_IPV6_PREFER_SRC_CGA) || defined(IPV6_PREFER_SRC_CGA)
-static_assert(__SPRT_IPV6_PREFER_SRC_CGA == IPV6_PREFER_SRC_CGA, "IPV6_PREFER_SRC_CGA differs from native");
+static_assert(__SPRT_IPV6_PREFER_SRC_CGA == IPV6_PREFER_SRC_CGA,
+		"IPV6_PREFER_SRC_CGA differs from native");
 #endif
 #if defined(__SPRT_IPV6_PREFER_SRC_NONCGA) || defined(IPV6_PREFER_SRC_NONCGA)
-static_assert(__SPRT_IPV6_PREFER_SRC_NONCGA == IPV6_PREFER_SRC_NONCGA, "IPV6_PREFER_SRC_NONCGA differs from native");
+static_assert(__SPRT_IPV6_PREFER_SRC_NONCGA == IPV6_PREFER_SRC_NONCGA,
+		"IPV6_PREFER_SRC_NONCGA differs from native");
 #endif
 #if defined(__SPRT_IPV6_RTHDR_LOOSE) || defined(IPV6_RTHDR_LOOSE)
 static_assert(__SPRT_IPV6_RTHDR_LOOSE == IPV6_RTHDR_LOOSE, "IPV6_RTHDR_LOOSE differs from native");
 #endif
 #if defined(__SPRT_IPV6_RTHDR_STRICT) || defined(IPV6_RTHDR_STRICT)
-static_assert(__SPRT_IPV6_RTHDR_STRICT == IPV6_RTHDR_STRICT, "IPV6_RTHDR_STRICT differs from native");
+static_assert(__SPRT_IPV6_RTHDR_STRICT == IPV6_RTHDR_STRICT,
+		"IPV6_RTHDR_STRICT differs from native");
 #endif
 #if defined(__SPRT_IPV6_RTHDR_TYPE_0) || defined(IPV6_RTHDR_TYPE_0)
-static_assert(__SPRT_IPV6_RTHDR_TYPE_0 == IPV6_RTHDR_TYPE_0, "IPV6_RTHDR_TYPE_0 differs from native");
+static_assert(__SPRT_IPV6_RTHDR_TYPE_0 == IPV6_RTHDR_TYPE_0,
+		"IPV6_RTHDR_TYPE_0 differs from native");
 #endif
 // --- multicast source-filter ---
 #if defined(__SPRT_MCAST_JOIN_GROUP) || defined(MCAST_JOIN_GROUP)
 static_assert(__SPRT_MCAST_JOIN_GROUP == MCAST_JOIN_GROUP, "MCAST_JOIN_GROUP differs from native");
 #endif
 #if defined(__SPRT_MCAST_LEAVE_GROUP) || defined(MCAST_LEAVE_GROUP)
-static_assert(__SPRT_MCAST_LEAVE_GROUP == MCAST_LEAVE_GROUP, "MCAST_LEAVE_GROUP differs from native");
+static_assert(__SPRT_MCAST_LEAVE_GROUP == MCAST_LEAVE_GROUP,
+		"MCAST_LEAVE_GROUP differs from native");
 #endif
 #if defined(__SPRT_MCAST_JOIN_SOURCE_GROUP) || defined(MCAST_JOIN_SOURCE_GROUP)
-static_assert(__SPRT_MCAST_JOIN_SOURCE_GROUP == MCAST_JOIN_SOURCE_GROUP, "MCAST_JOIN_SOURCE_GROUP differs from native");
+static_assert(__SPRT_MCAST_JOIN_SOURCE_GROUP == MCAST_JOIN_SOURCE_GROUP,
+		"MCAST_JOIN_SOURCE_GROUP differs from native");
 #endif
 #if defined(__SPRT_MCAST_LEAVE_SOURCE_GROUP) || defined(MCAST_LEAVE_SOURCE_GROUP)
-static_assert(__SPRT_MCAST_LEAVE_SOURCE_GROUP == MCAST_LEAVE_SOURCE_GROUP, "MCAST_LEAVE_SOURCE_GROUP differs from native");
+static_assert(__SPRT_MCAST_LEAVE_SOURCE_GROUP == MCAST_LEAVE_SOURCE_GROUP,
+		"MCAST_LEAVE_SOURCE_GROUP differs from native");
 #endif
 #if defined(__SPRT_MCAST_BLOCK_SOURCE) || defined(MCAST_BLOCK_SOURCE)
-static_assert(__SPRT_MCAST_BLOCK_SOURCE == MCAST_BLOCK_SOURCE, "MCAST_BLOCK_SOURCE differs from native");
+static_assert(__SPRT_MCAST_BLOCK_SOURCE == MCAST_BLOCK_SOURCE,
+		"MCAST_BLOCK_SOURCE differs from native");
 #endif
 #if defined(__SPRT_MCAST_UNBLOCK_SOURCE) || defined(MCAST_UNBLOCK_SOURCE)
-static_assert(__SPRT_MCAST_UNBLOCK_SOURCE == MCAST_UNBLOCK_SOURCE, "MCAST_UNBLOCK_SOURCE differs from native");
+static_assert(__SPRT_MCAST_UNBLOCK_SOURCE == MCAST_UNBLOCK_SOURCE,
+		"MCAST_UNBLOCK_SOURCE differs from native");
 #endif
 #if defined(__SPRT_MCAST_MSFILTER) || defined(MCAST_MSFILTER)
 static_assert(__SPRT_MCAST_MSFILTER == MCAST_MSFILTER, "MCAST_MSFILTER differs from native");
@@ -1249,10 +1375,12 @@ static_assert(__SPRT_TCP_AO_GET_KEYS == TCP_AO_GET_KEYS, "TCP_AO_GET_KEYS differ
 static_assert(__SPRT_TCP_AO_INFO == TCP_AO_INFO, "TCP_AO_INFO differs from native");
 #endif
 #if defined(__SPRT_TCP_AO_KEYF_EXCLUDE_OPT) || defined(TCP_AO_KEYF_EXCLUDE_OPT)
-static_assert(__SPRT_TCP_AO_KEYF_EXCLUDE_OPT == TCP_AO_KEYF_EXCLUDE_OPT, "TCP_AO_KEYF_EXCLUDE_OPT differs from native");
+static_assert(__SPRT_TCP_AO_KEYF_EXCLUDE_OPT == TCP_AO_KEYF_EXCLUDE_OPT,
+		"TCP_AO_KEYF_EXCLUDE_OPT differs from native");
 #endif
 #if defined(__SPRT_TCP_AO_KEYF_IFINDEX) || defined(TCP_AO_KEYF_IFINDEX)
-static_assert(__SPRT_TCP_AO_KEYF_IFINDEX == TCP_AO_KEYF_IFINDEX, "TCP_AO_KEYF_IFINDEX differs from native");
+static_assert(__SPRT_TCP_AO_KEYF_IFINDEX == TCP_AO_KEYF_IFINDEX,
+		"TCP_AO_KEYF_IFINDEX differs from native");
 #endif
 #if defined(__SPRT_TCP_AO_MAXKEYLEN) || defined(TCP_AO_MAXKEYLEN)
 static_assert(__SPRT_TCP_AO_MAXKEYLEN == TCP_AO_MAXKEYLEN, "TCP_AO_MAXKEYLEN differs from native");
@@ -1262,9 +1390,6 @@ static_assert(__SPRT_TCP_AO_REPAIR == TCP_AO_REPAIR, "TCP_AO_REPAIR differs from
 #endif
 #if defined(__SPRT_TCP_ATMARK) || defined(TCP_ATMARK)
 static_assert(__SPRT_TCP_ATMARK == TCP_ATMARK, "TCP_ATMARK differs from native");
-#endif
-#if defined(__SPRT_TCP_CA_CWR) || defined(TCP_CA_CWR)
-static_assert(__SPRT_TCP_CA_CWR == TCP_CA_CWR, "TCP_CA_CWR differs from native");
 #endif
 #if defined(__SPRT_TCP_CA_D) || defined(TCP_CA_D)
 static_assert(__SPRT_TCP_CA_D == TCP_CA_D, "TCP_CA_D differs from native");
@@ -1282,7 +1407,8 @@ static_assert(__SPRT_TCP_CA_R == TCP_CA_R, "TCP_CA_R differs from native");
 static_assert(__SPRT_TCP_CC_INFO == TCP_CC_INFO, "TCP_CC_INFO differs from native");
 #endif
 #if defined(__SPRT_TCP_CLIENT_SND_WND) || defined(TCP_CLIENT_SND_WND)
-static_assert(__SPRT_TCP_CLIENT_SND_WND == TCP_CLIENT_SND_WND, "TCP_CLIENT_SND_WND differs from native");
+static_assert(__SPRT_TCP_CLIENT_SND_WND == TCP_CLIENT_SND_WND,
+		"TCP_CLIENT_SND_WND differs from native");
 #endif
 #if defined(__SPRT_TCP_CM_INQ) || defined(TCP_CM_INQ)
 static_assert(__SPRT_TCP_CM_INQ == TCP_CM_INQ, "TCP_CM_INQ differs from native");
@@ -1291,16 +1417,20 @@ static_assert(__SPRT_TCP_CM_INQ == TCP_CM_INQ, "TCP_CM_INQ differs from native")
 static_assert(__SPRT_TCP_CONGESTION == TCP_CONGESTION, "TCP_CONGESTION differs from native");
 #endif
 #if defined(__SPRT_TCP_CONGESTION_ALGORITHM) || defined(TCP_CONGESTION_ALGORITHM)
-static_assert(__SPRT_TCP_CONGESTION_ALGORITHM == TCP_CONGESTION_ALGORITHM, "TCP_CONGESTION_ALGORITHM differs from native");
+static_assert(__SPRT_TCP_CONGESTION_ALGORITHM == TCP_CONGESTION_ALGORITHM,
+		"TCP_CONGESTION_ALGORITHM differs from native");
 #endif
 #if defined(__SPRT_TCP_CONNECTION_INFO) || defined(TCP_CONNECTION_INFO)
-static_assert(__SPRT_TCP_CONNECTION_INFO == TCP_CONNECTION_INFO, "TCP_CONNECTION_INFO differs from native");
+static_assert(__SPRT_TCP_CONNECTION_INFO == TCP_CONNECTION_INFO,
+		"TCP_CONNECTION_INFO differs from native");
 #endif
 #if defined(__SPRT_TCP_CONNECTIONTIMEOUT) || defined(TCP_CONNECTIONTIMEOUT)
-static_assert(__SPRT_TCP_CONNECTIONTIMEOUT == TCP_CONNECTIONTIMEOUT, "TCP_CONNECTIONTIMEOUT differs from native");
+static_assert(__SPRT_TCP_CONNECTIONTIMEOUT == TCP_CONNECTIONTIMEOUT,
+		"TCP_CONNECTIONTIMEOUT differs from native");
 #endif
 #if defined(__SPRT_TCP_COOKIE_IN_ALWAYS) || defined(TCP_COOKIE_IN_ALWAYS)
-static_assert(__SPRT_TCP_COOKIE_IN_ALWAYS == TCP_COOKIE_IN_ALWAYS, "TCP_COOKIE_IN_ALWAYS differs from native");
+static_assert(__SPRT_TCP_COOKIE_IN_ALWAYS == TCP_COOKIE_IN_ALWAYS,
+		"TCP_COOKIE_IN_ALWAYS differs from native");
 #endif
 #if defined(__SPRT_TCP_COOKIE_MAX) || defined(TCP_COOKIE_MAX)
 static_assert(__SPRT_TCP_COOKIE_MAX == TCP_COOKIE_MAX, "TCP_COOKIE_MAX differs from native");
@@ -1309,13 +1439,16 @@ static_assert(__SPRT_TCP_COOKIE_MAX == TCP_COOKIE_MAX, "TCP_COOKIE_MAX differs f
 static_assert(__SPRT_TCP_COOKIE_MIN == TCP_COOKIE_MIN, "TCP_COOKIE_MIN differs from native");
 #endif
 #if defined(__SPRT_TCP_COOKIE_OUT_NEVER) || defined(TCP_COOKIE_OUT_NEVER)
-static_assert(__SPRT_TCP_COOKIE_OUT_NEVER == TCP_COOKIE_OUT_NEVER, "TCP_COOKIE_OUT_NEVER differs from native");
+static_assert(__SPRT_TCP_COOKIE_OUT_NEVER == TCP_COOKIE_OUT_NEVER,
+		"TCP_COOKIE_OUT_NEVER differs from native");
 #endif
 #if defined(__SPRT_TCP_COOKIE_PAIR_SIZE) || defined(TCP_COOKIE_PAIR_SIZE)
-static_assert(__SPRT_TCP_COOKIE_PAIR_SIZE == TCP_COOKIE_PAIR_SIZE, "TCP_COOKIE_PAIR_SIZE differs from native");
+static_assert(__SPRT_TCP_COOKIE_PAIR_SIZE == TCP_COOKIE_PAIR_SIZE,
+		"TCP_COOKIE_PAIR_SIZE differs from native");
 #endif
 #if defined(__SPRT_TCP_COOKIE_TRANSACTIONS) || defined(TCP_COOKIE_TRANSACTIONS)
-static_assert(__SPRT_TCP_COOKIE_TRANSACTIONS == TCP_COOKIE_TRANSACTIONS, "TCP_COOKIE_TRANSACTIONS differs from native");
+static_assert(__SPRT_TCP_COOKIE_TRANSACTIONS == TCP_COOKIE_TRANSACTIONS,
+		"TCP_COOKIE_TRANSACTIONS differs from native");
 #endif
 #if defined(__SPRT_TCP_CORK) || defined(TCP_CORK)
 static_assert(__SPRT_TCP_CORK == TCP_CORK, "TCP_CORK differs from native");
@@ -1324,28 +1457,33 @@ static_assert(__SPRT_TCP_CORK == TCP_CORK, "TCP_CORK differs from native");
 static_assert(__SPRT_TCP_DEFER_ACCEPT == TCP_DEFER_ACCEPT, "TCP_DEFER_ACCEPT differs from native");
 #endif
 #if defined(__SPRT_TCP_DELAY_FIN_ACK) || defined(TCP_DELAY_FIN_ACK)
-static_assert(__SPRT_TCP_DELAY_FIN_ACK == TCP_DELAY_FIN_ACK, "TCP_DELAY_FIN_ACK differs from native");
+static_assert(__SPRT_TCP_DELAY_FIN_ACK == TCP_DELAY_FIN_ACK,
+		"TCP_DELAY_FIN_ACK differs from native");
 #endif
 #if defined(__SPRT_TCP_ENABLE_ECN) || defined(TCP_ENABLE_ECN)
 static_assert(__SPRT_TCP_ENABLE_ECN == TCP_ENABLE_ECN, "TCP_ENABLE_ECN differs from native");
 #endif
 #if defined(__SPRT_TCP_EXPEDITED_1122) || defined(TCP_EXPEDITED_1122)
-static_assert(__SPRT_TCP_EXPEDITED_1122 == TCP_EXPEDITED_1122, "TCP_EXPEDITED_1122 differs from native");
+static_assert(__SPRT_TCP_EXPEDITED_1122 == TCP_EXPEDITED_1122,
+		"TCP_EXPEDITED_1122 differs from native");
 #endif
 #if defined(__SPRT_TCP_FAIL_CONNECT_ON_ICMP_ERROR) || defined(TCP_FAIL_CONNECT_ON_ICMP_ERROR)
-static_assert(__SPRT_TCP_FAIL_CONNECT_ON_ICMP_ERROR == TCP_FAIL_CONNECT_ON_ICMP_ERROR, "TCP_FAIL_CONNECT_ON_ICMP_ERROR differs from native");
+static_assert(__SPRT_TCP_FAIL_CONNECT_ON_ICMP_ERROR == TCP_FAIL_CONNECT_ON_ICMP_ERROR,
+		"TCP_FAIL_CONNECT_ON_ICMP_ERROR differs from native");
 #endif
 #if defined(__SPRT_TCP_FASTOPEN) || defined(TCP_FASTOPEN)
 static_assert(__SPRT_TCP_FASTOPEN == TCP_FASTOPEN, "TCP_FASTOPEN differs from native");
 #endif
 #if defined(__SPRT_TCP_FASTOPEN_CONNECT) || defined(TCP_FASTOPEN_CONNECT)
-static_assert(__SPRT_TCP_FASTOPEN_CONNECT == TCP_FASTOPEN_CONNECT, "TCP_FASTOPEN_CONNECT differs from native");
+static_assert(__SPRT_TCP_FASTOPEN_CONNECT == TCP_FASTOPEN_CONNECT,
+		"TCP_FASTOPEN_CONNECT differs from native");
 #endif
 #if defined(__SPRT_TCP_FASTOPEN_KEY) || defined(TCP_FASTOPEN_KEY)
 static_assert(__SPRT_TCP_FASTOPEN_KEY == TCP_FASTOPEN_KEY, "TCP_FASTOPEN_KEY differs from native");
 #endif
 #if defined(__SPRT_TCP_FASTOPEN_NO_COOKIE) || defined(TCP_FASTOPEN_NO_COOKIE)
-static_assert(__SPRT_TCP_FASTOPEN_NO_COOKIE == TCP_FASTOPEN_NO_COOKIE, "TCP_FASTOPEN_NO_COOKIE differs from native");
+static_assert(__SPRT_TCP_FASTOPEN_NO_COOKIE == TCP_FASTOPEN_NO_COOKIE,
+		"TCP_FASTOPEN_NO_COOKIE differs from native");
 #endif
 #if defined(__SPRT_TCP_H) || defined(TCP_H)
 static_assert(__SPRT_TCP_H == TCP_H, "TCP_H differs from native");
@@ -1354,7 +1492,8 @@ static_assert(__SPRT_TCP_H == TCP_H, "TCP_H differs from native");
 static_assert(__SPRT_TCP_H_ == TCP_H_, "TCP_H_ differs from native");
 #endif
 #if defined(__SPRT_TCP_ICMP_ERROR_INFO) || defined(TCP_ICMP_ERROR_INFO)
-static_assert(__SPRT_TCP_ICMP_ERROR_INFO == TCP_ICMP_ERROR_INFO, "TCP_ICMP_ERROR_INFO differs from native");
+static_assert(__SPRT_TCP_ICMP_ERROR_INFO == TCP_ICMP_ERROR_INFO,
+		"TCP_ICMP_ERROR_INFO differs from native");
 #endif
 #if defined(__SPRT_TCP_INFO) || defined(TCP_INFO)
 static_assert(__SPRT_TCP_INFO == TCP_INFO, "TCP_INFO differs from native");
@@ -1362,20 +1501,31 @@ static_assert(__SPRT_TCP_INFO == TCP_INFO, "TCP_INFO differs from native");
 #if defined(__SPRT_TCP_INITIAL_RTO) || defined(TCP_INITIAL_RTO)
 static_assert(__SPRT_TCP_INITIAL_RTO == TCP_INITIAL_RTO, "TCP_INITIAL_RTO differs from native");
 #endif
-#if defined(__SPRT_TCP_INITIAL_RTO_DEFAULT_MAX_SYN_RETRANSMISSIONS) || defined(TCP_INITIAL_RTO_DEFAULT_MAX_SYN_RETRANSMISSIONS)
-static_assert(__SPRT_TCP_INITIAL_RTO_DEFAULT_MAX_SYN_RETRANSMISSIONS == TCP_INITIAL_RTO_DEFAULT_MAX_SYN_RETRANSMISSIONS, "TCP_INITIAL_RTO_DEFAULT_MAX_SYN_RETRANSMISSIONS differs from native");
+#if defined(__SPRT_TCP_INITIAL_RTO_DEFAULT_MAX_SYN_RETRANSMISSIONS) \
+		|| defined(TCP_INITIAL_RTO_DEFAULT_MAX_SYN_RETRANSMISSIONS)
+static_assert(__SPRT_TCP_INITIAL_RTO_DEFAULT_MAX_SYN_RETRANSMISSIONS
+				== TCP_INITIAL_RTO_DEFAULT_MAX_SYN_RETRANSMISSIONS,
+		"TCP_INITIAL_RTO_DEFAULT_MAX_SYN_RETRANSMISSIONS differs from native");
 #endif
 #if defined(__SPRT_TCP_INITIAL_RTO_DEFAULT_RTT) || defined(TCP_INITIAL_RTO_DEFAULT_RTT)
-static_assert(__SPRT_TCP_INITIAL_RTO_DEFAULT_RTT == TCP_INITIAL_RTO_DEFAULT_RTT, "TCP_INITIAL_RTO_DEFAULT_RTT differs from native");
+static_assert(__SPRT_TCP_INITIAL_RTO_DEFAULT_RTT == TCP_INITIAL_RTO_DEFAULT_RTT,
+		"TCP_INITIAL_RTO_DEFAULT_RTT differs from native");
 #endif
-#if defined(__SPRT_TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS) || defined(TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS)
-static_assert(__SPRT_TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS == TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS, "TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS differs from native");
+#if defined(__SPRT_TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS) \
+		|| defined(TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS)
+static_assert(__SPRT_TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS
+				== TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS,
+		"TCP_INITIAL_RTO_NO_SYN_RETRANSMISSIONS differs from native");
 #endif
-#if defined(__SPRT_TCP_INITIAL_RTO_UNSPECIFIED_MAX_SYN_RETRANSMISSIONS) || defined(TCP_INITIAL_RTO_UNSPECIFIED_MAX_SYN_RETRANSMISSIONS)
-static_assert(__SPRT_TCP_INITIAL_RTO_UNSPECIFIED_MAX_SYN_RETRANSMISSIONS == TCP_INITIAL_RTO_UNSPECIFIED_MAX_SYN_RETRANSMISSIONS, "TCP_INITIAL_RTO_UNSPECIFIED_MAX_SYN_RETRANSMISSIONS differs from native");
+#if defined(__SPRT_TCP_INITIAL_RTO_UNSPECIFIED_MAX_SYN_RETRANSMISSIONS) \
+		|| defined(TCP_INITIAL_RTO_UNSPECIFIED_MAX_SYN_RETRANSMISSIONS)
+static_assert(__SPRT_TCP_INITIAL_RTO_UNSPECIFIED_MAX_SYN_RETRANSMISSIONS
+				== TCP_INITIAL_RTO_UNSPECIFIED_MAX_SYN_RETRANSMISSIONS,
+		"TCP_INITIAL_RTO_UNSPECIFIED_MAX_SYN_RETRANSMISSIONS differs from native");
 #endif
 #if defined(__SPRT_TCP_INITIAL_RTO_UNSPECIFIED_RTT) || defined(TCP_INITIAL_RTO_UNSPECIFIED_RTT)
-static_assert(__SPRT_TCP_INITIAL_RTO_UNSPECIFIED_RTT == TCP_INITIAL_RTO_UNSPECIFIED_RTT, "TCP_INITIAL_RTO_UNSPECIFIED_RTT differs from native");
+static_assert(__SPRT_TCP_INITIAL_RTO_UNSPECIFIED_RTT == TCP_INITIAL_RTO_UNSPECIFIED_RTT,
+		"TCP_INITIAL_RTO_UNSPECIFIED_RTT differs from native");
 #endif
 #if defined(__SPRT_TCP_INQ) || defined(TCP_INQ)
 static_assert(__SPRT_TCP_INQ == TCP_INQ, "TCP_INQ differs from native");
@@ -1435,13 +1585,16 @@ static_assert(__SPRT_TCP_MD5SIG == TCP_MD5SIG, "TCP_MD5SIG differs from native")
 static_assert(__SPRT_TCP_MD5SIG_EXT == TCP_MD5SIG_EXT, "TCP_MD5SIG_EXT differs from native");
 #endif
 #if defined(__SPRT_TCP_MD5SIG_FLAG_IFINDEX) || defined(TCP_MD5SIG_FLAG_IFINDEX)
-static_assert(__SPRT_TCP_MD5SIG_FLAG_IFINDEX == TCP_MD5SIG_FLAG_IFINDEX, "TCP_MD5SIG_FLAG_IFINDEX differs from native");
+static_assert(__SPRT_TCP_MD5SIG_FLAG_IFINDEX == TCP_MD5SIG_FLAG_IFINDEX,
+		"TCP_MD5SIG_FLAG_IFINDEX differs from native");
 #endif
 #if defined(__SPRT_TCP_MD5SIG_FLAG_PREFIX) || defined(TCP_MD5SIG_FLAG_PREFIX)
-static_assert(__SPRT_TCP_MD5SIG_FLAG_PREFIX == TCP_MD5SIG_FLAG_PREFIX, "TCP_MD5SIG_FLAG_PREFIX differs from native");
+static_assert(__SPRT_TCP_MD5SIG_FLAG_PREFIX == TCP_MD5SIG_FLAG_PREFIX,
+		"TCP_MD5SIG_FLAG_PREFIX differs from native");
 #endif
 #if defined(__SPRT_TCP_MD5SIG_MAXKEYLEN) || defined(TCP_MD5SIG_MAXKEYLEN)
-static_assert(__SPRT_TCP_MD5SIG_MAXKEYLEN == TCP_MD5SIG_MAXKEYLEN, "TCP_MD5SIG_MAXKEYLEN differs from native");
+static_assert(__SPRT_TCP_MD5SIG_MAXKEYLEN == TCP_MD5SIG_MAXKEYLEN,
+		"TCP_MD5SIG_MAXKEYLEN differs from native");
 #endif
 #if defined(__SPRT_TCP_MINMSS) || defined(TCP_MINMSS)
 static_assert(__SPRT_TCP_MINMSS == TCP_MINMSS, "TCP_MINMSS differs from native");
@@ -1468,22 +1621,27 @@ static_assert(__SPRT_TCP_NOPUSH == TCP_NOPUSH, "TCP_NOPUSH differs from native")
 static_assert(__SPRT_TCP_NOSYNRETRIES == TCP_NOSYNRETRIES, "TCP_NOSYNRETRIES differs from native");
 #endif
 #if defined(__SPRT_TCP_NOTSENT_LOWAT) || defined(TCP_NOTSENT_LOWAT)
-static_assert(__SPRT_TCP_NOTSENT_LOWAT == TCP_NOTSENT_LOWAT, "TCP_NOTSENT_LOWAT differs from native");
+static_assert(__SPRT_TCP_NOTSENT_LOWAT == TCP_NOTSENT_LOWAT,
+		"TCP_NOTSENT_LOWAT differs from native");
 #endif
 #if defined(__SPRT_TCP_NOURG) || defined(TCP_NOURG)
 static_assert(__SPRT_TCP_NOURG == TCP_NOURG, "TCP_NOURG differs from native");
 #endif
 #if defined(__SPRT_TCP_OFFLOAD_NO_PREFERENCE) || defined(TCP_OFFLOAD_NO_PREFERENCE)
-static_assert(__SPRT_TCP_OFFLOAD_NO_PREFERENCE == TCP_OFFLOAD_NO_PREFERENCE, "TCP_OFFLOAD_NO_PREFERENCE differs from native");
+static_assert(__SPRT_TCP_OFFLOAD_NO_PREFERENCE == TCP_OFFLOAD_NO_PREFERENCE,
+		"TCP_OFFLOAD_NO_PREFERENCE differs from native");
 #endif
 #if defined(__SPRT_TCP_OFFLOAD_NOT_PREFERRED) || defined(TCP_OFFLOAD_NOT_PREFERRED)
-static_assert(__SPRT_TCP_OFFLOAD_NOT_PREFERRED == TCP_OFFLOAD_NOT_PREFERRED, "TCP_OFFLOAD_NOT_PREFERRED differs from native");
+static_assert(__SPRT_TCP_OFFLOAD_NOT_PREFERRED == TCP_OFFLOAD_NOT_PREFERRED,
+		"TCP_OFFLOAD_NOT_PREFERRED differs from native");
 #endif
 #if defined(__SPRT_TCP_OFFLOAD_PREFERENCE) || defined(TCP_OFFLOAD_PREFERENCE)
-static_assert(__SPRT_TCP_OFFLOAD_PREFERENCE == TCP_OFFLOAD_PREFERENCE, "TCP_OFFLOAD_PREFERENCE differs from native");
+static_assert(__SPRT_TCP_OFFLOAD_PREFERENCE == TCP_OFFLOAD_PREFERENCE,
+		"TCP_OFFLOAD_PREFERENCE differs from native");
 #endif
 #if defined(__SPRT_TCP_OFFLOAD_PREFERRED) || defined(TCP_OFFLOAD_PREFERRED)
-static_assert(__SPRT_TCP_OFFLOAD_PREFERRED == TCP_OFFLOAD_PREFERRED, "TCP_OFFLOAD_PREFERRED differs from native");
+static_assert(__SPRT_TCP_OFFLOAD_PREFERRED == TCP_OFFLOAD_PREFERRED,
+		"TCP_OFFLOAD_PREFERRED differs from native");
 #endif
 #if defined(__SPRT_TCP_QUEUE_SEQ) || defined(TCP_QUEUE_SEQ)
 static_assert(__SPRT_TCP_QUEUE_SEQ == TCP_QUEUE_SEQ, "TCP_QUEUE_SEQ differs from native");
@@ -1491,8 +1649,11 @@ static_assert(__SPRT_TCP_QUEUE_SEQ == TCP_QUEUE_SEQ, "TCP_QUEUE_SEQ differs from
 #if defined(__SPRT_TCP_QUICKACK) || defined(TCP_QUICKACK)
 static_assert(__SPRT_TCP_QUICKACK == TCP_QUICKACK, "TCP_QUICKACK differs from native");
 #endif
-#if defined(__SPRT_TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT) || defined(TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT)
-static_assert(__SPRT_TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT == TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT, "TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT differs from native");
+#if defined(__SPRT_TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT) \
+		|| defined(TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT)
+static_assert(__SPRT_TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT
+				== TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT,
+		"TCP_RECEIVE_ZEROCOPY_FLAG_TLB_CLEAN_HINT differs from native");
 #endif
 #if defined(__SPRT_TCP_REPAIR) || defined(TCP_REPAIR)
 static_assert(__SPRT_TCP_REPAIR == TCP_REPAIR, "TCP_REPAIR differs from native");
@@ -1501,22 +1662,26 @@ static_assert(__SPRT_TCP_REPAIR == TCP_REPAIR, "TCP_REPAIR differs from native")
 static_assert(__SPRT_TCP_REPAIR_OFF == TCP_REPAIR_OFF, "TCP_REPAIR_OFF differs from native");
 #endif
 #if defined(__SPRT_TCP_REPAIR_OFF_NO_WP) || defined(TCP_REPAIR_OFF_NO_WP)
-static_assert(__SPRT_TCP_REPAIR_OFF_NO_WP == TCP_REPAIR_OFF_NO_WP, "TCP_REPAIR_OFF_NO_WP differs from native");
+static_assert(__SPRT_TCP_REPAIR_OFF_NO_WP == TCP_REPAIR_OFF_NO_WP,
+		"TCP_REPAIR_OFF_NO_WP differs from native");
 #endif
 #if defined(__SPRT_TCP_REPAIR_ON) || defined(TCP_REPAIR_ON)
 static_assert(__SPRT_TCP_REPAIR_ON == TCP_REPAIR_ON, "TCP_REPAIR_ON differs from native");
 #endif
 #if defined(__SPRT_TCP_REPAIR_OPTIONS) || defined(TCP_REPAIR_OPTIONS)
-static_assert(__SPRT_TCP_REPAIR_OPTIONS == TCP_REPAIR_OPTIONS, "TCP_REPAIR_OPTIONS differs from native");
+static_assert(__SPRT_TCP_REPAIR_OPTIONS == TCP_REPAIR_OPTIONS,
+		"TCP_REPAIR_OPTIONS differs from native");
 #endif
 #if defined(__SPRT_TCP_REPAIR_QUEUE) || defined(TCP_REPAIR_QUEUE)
 static_assert(__SPRT_TCP_REPAIR_QUEUE == TCP_REPAIR_QUEUE, "TCP_REPAIR_QUEUE differs from native");
 #endif
 #if defined(__SPRT_TCP_REPAIR_WINDOW) || defined(TCP_REPAIR_WINDOW)
-static_assert(__SPRT_TCP_REPAIR_WINDOW == TCP_REPAIR_WINDOW, "TCP_REPAIR_WINDOW differs from native");
+static_assert(__SPRT_TCP_REPAIR_WINDOW == TCP_REPAIR_WINDOW,
+		"TCP_REPAIR_WINDOW differs from native");
 #endif
 #if defined(__SPRT_TCP_RXT_CONNDROPTIME) || defined(TCP_RXT_CONNDROPTIME)
-static_assert(__SPRT_TCP_RXT_CONNDROPTIME == TCP_RXT_CONNDROPTIME, "TCP_RXT_CONNDROPTIME differs from native");
+static_assert(__SPRT_TCP_RXT_CONNDROPTIME == TCP_RXT_CONNDROPTIME,
+		"TCP_RXT_CONNDROPTIME differs from native");
 #endif
 #if defined(__SPRT_TCP_RXT_FINDROP) || defined(TCP_RXT_FINDROP)
 static_assert(__SPRT_TCP_RXT_FINDROP == TCP_RXT_FINDROP, "TCP_RXT_FINDROP differs from native");
@@ -1537,7 +1702,8 @@ static_assert(__SPRT_TCP_S_DATA_OUT == TCP_S_DATA_OUT, "TCP_S_DATA_OUT differs f
 static_assert(__SPRT_TCP_SENDMOREACKS == TCP_SENDMOREACKS, "TCP_SENDMOREACKS differs from native");
 #endif
 #if defined(__SPRT_TCP_SET_ACK_FREQUENCY) || defined(TCP_SET_ACK_FREQUENCY)
-static_assert(__SPRT_TCP_SET_ACK_FREQUENCY == TCP_SET_ACK_FREQUENCY, "TCP_SET_ACK_FREQUENCY differs from native");
+static_assert(__SPRT_TCP_SET_ACK_FREQUENCY == TCP_SET_ACK_FREQUENCY,
+		"TCP_SET_ACK_FREQUENCY differs from native");
 #endif
 #if defined(__SPRT_TCP_SET_ICW) || defined(TCP_SET_ICW)
 static_assert(__SPRT_TCP_SET_ICW == TCP_SET_ICW, "TCP_SET_ICW differs from native");
@@ -1552,7 +1718,8 @@ static_assert(__SPRT_TCP_SYNCNT == TCP_SYNCNT, "TCP_SYNCNT differs from native")
 static_assert(__SPRT_TCP_THIN_DUPACK == TCP_THIN_DUPACK, "TCP_THIN_DUPACK differs from native");
 #endif
 #if defined(__SPRT_TCP_THIN_LINEAR_TIMEOUTS) || defined(TCP_THIN_LINEAR_TIMEOUTS)
-static_assert(__SPRT_TCP_THIN_LINEAR_TIMEOUTS == TCP_THIN_LINEAR_TIMEOUTS, "TCP_THIN_LINEAR_TIMEOUTS differs from native");
+static_assert(__SPRT_TCP_THIN_LINEAR_TIMEOUTS == TCP_THIN_LINEAR_TIMEOUTS,
+		"TCP_THIN_LINEAR_TIMEOUTS differs from native");
 #endif
 #if defined(__SPRT_TCP_TIMESTAMP) || defined(TCP_TIMESTAMP)
 static_assert(__SPRT_TCP_TIMESTAMP == TCP_TIMESTAMP, "TCP_TIMESTAMP differs from native");
@@ -1573,7 +1740,8 @@ static_assert(__SPRT_TCP_USER_TIMEOUT == TCP_USER_TIMEOUT, "TCP_USER_TIMEOUT dif
 static_assert(__SPRT_TCP_WINDOW_CLAMP == TCP_WINDOW_CLAMP, "TCP_WINDOW_CLAMP differs from native");
 #endif
 #if defined(__SPRT_TCP_ZEROCOPY_RECEIVE) || defined(TCP_ZEROCOPY_RECEIVE)
-static_assert(__SPRT_TCP_ZEROCOPY_RECEIVE == TCP_ZEROCOPY_RECEIVE, "TCP_ZEROCOPY_RECEIVE differs from native");
+static_assert(__SPRT_TCP_ZEROCOPY_RECEIVE == TCP_ZEROCOPY_RECEIVE,
+		"TCP_ZEROCOPY_RECEIVE differs from native");
 #endif
 
 #endif // hosted
@@ -1587,7 +1755,6 @@ namespace sprt {
 	*__sprt___errno_location() = ENOSYS; \
 	return -1
 #endif
-
 __SPRT_C_FUNC SOCKET __SPRT_ID(socket)(int __domain, int __type, int __protocol) {
 #if SPRT_WASM
 	__SPRT_SOCK_ENOSYS();

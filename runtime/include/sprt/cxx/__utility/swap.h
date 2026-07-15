@@ -49,11 +49,18 @@ using swap_result_t =
 		enable_if_t<is_move_constructible<Type>::value && is_move_assignable<Type>::value>;
 
 template <typename Type>
-inline constexpr swap_result_t<Type> swap(Type &left, Type &right) noexcept {
+inline constexpr swap_result_t<Type> swap(Type &left, Type &right) noexcept(
+		is_nothrow_move_constructible<Type>::value && is_nothrow_move_assignable<Type>::value) {
 	Type tmp(sprt::move_unsafe(left));
 	left = sprt::move_unsafe(right);
 	right = sprt::move_unsafe(tmp);
 }
+
+#endif // __SPRT_USE_STL
+
+// The swappable traits are derived from whichever swap() is in scope -- std::swap in
+// __SPRT_USE_STL mode (brought in by the using-declaration above), sprt::swap otherwise
+// -- so they must be defined in both configurations, not only the non-STL branch.
 
 template <typename _Tp, typename _Up, typename = void>
 inline const bool __is_swappable_with_v = false;
@@ -103,9 +110,7 @@ inline constexpr bool is_nothrow_swappable_v =
 template <typename _Tp>
 struct is_nothrow_swappable : bool_constant<is_nothrow_swappable_v<_Tp>> { };
 
-#endif
-
-} // inline namespace __cxx_type_traits
+} // namespace __cxx_type_traits
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_CXX___UTILITY_SWAP_H_

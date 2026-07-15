@@ -43,9 +43,11 @@ public:
 	using non_const_iterator = hash_iterator<remove_const_t<NodeType> *, remove_const_t<ValueType>>;
 	using const_iterator = hash_iterator<add_const_t<NodeType> *, add_const_t<ValueType>>;
 	using difference_type = ptrdiff_t;
-	using value_type = ValueType;
-	using reference = value_type &;
-	using pointer = value_type *;
+	// [container.reqmts]: iterator and const_iterator share the same value_type (no top-level const);
+	// only reference/pointer carry the element's constness, taken from ValueType.
+	using value_type = remove_const_t<ValueType>;
+	using reference = ValueType &;
+	using pointer = ValueType *;
 
 	hash_iterator() noexcept { }
 
@@ -64,8 +66,16 @@ public:
 		end = other.end;
 		return *this;
 	}
-	constexpr bool operator==(const iterator &other) const { return current == other.current; }
-	constexpr bool operator!=(const iterator &other) const { return current != other.current; }
+	// Heterogeneous so a container's iterator and const_iterator (which differ only in node/value
+	// constness) compare directly, as [unord.req] requires.
+	template <typename N2, typename V2>
+	constexpr bool operator==(const hash_iterator<N2, V2> &other) const {
+		return current == other.node();
+	}
+	template <typename N2, typename V2>
+	constexpr bool operator!=(const hash_iterator<N2, V2> &other) const {
+		return current != other.node();
+	}
 	constexpr bool operator<(const iterator &other) const { return current < other.current; }
 	constexpr bool operator>(const iterator &other) const { return current > other.current; }
 	constexpr bool operator<=(const iterator &other) const { return current <= other.current; }
@@ -120,11 +130,58 @@ protected:
 	NodeType *end = nullptr;
 };
 
-template <typename NodeType>
+template <typename NodeType, typename ValueType>
 struct hash_local_iterator {
-	NodeType *target;
+	using iterator_category = forward_iterator_tag;
+	using value_type = remove_const_t<ValueType>;
+	using reference = ValueType &;
+	using pointer = ValueType *;
+	using difference_type = ptrdiff_t;
+	using size_type = size_t;
 
-	hash_local_iterator(NodeType *ptr) : target(ptr) { }
+	using non_const_iterator =
+			hash_local_iterator<remove_const_t<NodeType>, remove_const_t<ValueType>>;
+
+	NodeType *current = nullptr;
+	NodeType *storage = nullptr;
+	size_type capacity = 0;
+
+	hash_local_iterator() noexcept { }
+	hash_local_iterator(NodeType *c, NodeType *s, size_type cap) noexcept
+	: current(c), storage(s), capacity(cap) { }
+
+	// const_local_iterator is constructible from local_iterator
+	hash_local_iterator(const non_const_iterator &o) noexcept
+	: current(o.current), storage(o.storage), capacity(o.capacity) { }
+
+	reference operator*() const { return current->value.ref(); }
+	pointer operator->() const { return current->value.ptr(); }
+
+	hash_local_iterator &operator++() noexcept {
+		if (current && current->next != 0) {
+			current += current->next;
+			if (current >= storage + capacity) {
+				current -= capacity;
+			}
+		} else {
+			current = nullptr; // end of this bucket's chain
+		}
+		return *this;
+	}
+	hash_local_iterator operator++(int) noexcept {
+		auto tmp = *this;
+		++(*this);
+		return tmp;
+	}
+
+	template <typename N2, typename V2>
+	constexpr bool operator==(const hash_local_iterator<N2, V2> &o) const noexcept {
+		return current == o.current;
+	}
+	template <typename N2, typename V2>
+	constexpr bool operator!=(const hash_local_iterator<N2, V2> &o) const noexcept {
+		return current != o.current;
+	}
 };
 
 // `Indirect` selects the node storage: false → aligned_storage (the value lives inline in the flat
@@ -161,8 +218,8 @@ public:
 
 	using iterator = hash_iterator<node_type, Value>;
 	using const_iterator = hash_iterator<add_const_t<node_type>, add_const_t<Value>>;
-	using local_iterator = hash_local_iterator<node_type>;
-	using const_local_iterator = hash_local_iterator<const node_type>;
+	using local_iterator = hash_local_iterator<node_type, Value>;
+	using const_local_iterator = hash_local_iterator<const node_type, add_const_t<Value>>;
 
 	static constexpr float CoverageLoadFactor = 1.5f;
 	static constexpr float DefaultMaxLoadFactor = 1.0f;
@@ -367,6 +424,13 @@ public:
 		}
 		newsize = __builtin_floorf(sprt::max(float(newsize), _size / _maxLoadFactor));
 
+		// [unord.req]: rehash(n) only has to guarantee bucket_count() >= n; it is not required to
+		// shrink. When the current storage already satisfies the target, leave it as is — this also
+		// avoids the open-addressed relocation path for a size the table already covers.
+		if (_storage && _capacity >= newsize) {
+			return true;
+		}
+
 		auto nodeAllocator = node_allocator_type(_allocator);
 
 		size_type allocSize = newsize;
@@ -487,8 +551,8 @@ public:
 		// Only an actual insertion into an occupied bucket is a hash miss; see insert() above.
 		const bool __collision = chain->active;
 
-		pair<node_type *, bool> result = __try_emplace(_storage, _capacity, hashValue, chain, nullptr,
-				key, sprt::forward<K>(key), sprt::forward<Args>(args)...);
+		pair<node_type *, bool> result = __try_emplace(_storage, _capacity, hashValue, chain,
+				nullptr, key, sprt::forward<K>(key), sprt::forward<Args>(args)...);
 		if (result.second) {
 			++_size;
 			if (__collision) {
@@ -500,6 +564,10 @@ public:
 	}
 
 	void copy_from(const hash_memory &other) noexcept {
+		// [container.reqmts]: copy assignment also copies the hasher, predicate and max_load_factor.
+		_hasher = other._hasher;
+		_equal = other._equal;
+		_maxLoadFactor = other._maxLoadFactor;
 		// reuse our storage if it is big enough to hold other's elements but not
 		// excessively oversized. (The old condition `_capacity > other._capacity
 		// && _capacity * 2 < other._capacity` was self-contradictory, so this
@@ -516,6 +584,9 @@ public:
 	}
 
 	void move_from(hash_memory &&other) noexcept {
+		// [container.reqmts]: move assignment also transfers the hasher and predicate.
+		_hasher = sprt::move_unsafe(other._hasher);
+		_equal = sprt::move_unsafe(other._equal);
 		if (_allocator == other._allocator) {
 			clear_deallocate();
 			_storage = other._storage;
@@ -531,8 +602,9 @@ public:
 			other._allocated = 0;
 			other._hashMisses = 0;
 			other._maxLoadFactor = DefaultMaxLoadFactor;
-		} else {
+		} else if constexpr (!sprt::allocator_traits<allocator_type>::is_always_equal::value) {
 			copy_from(other);
+			other.clear_free();
 		}
 	}
 
@@ -627,14 +699,17 @@ public:
 		}
 	}
 
-	const_iterator erase(const_iterator iter) noexcept {
+	// [unord.req]: erase returns a (non-const) iterator to the element after the erased one; the map
+	// wrapper's erase(const_iterator) -> iterator relies on that. The set wrapper, whose iterator is
+	// itself const_iterator, accepts the returned iterator via the iterator -> const_iterator cast.
+	iterator erase(const_iterator iter) noexcept {
 		sprt_passert(iter.init_node() == _storage && iter.final_node() == _storage + _capacity,
 				"Invalid hash_memory iterator: invalid value range");
 		node_type *node = const_cast<node_type *>(iter.node());
 
 		auto nextNode = erase_node(node);
 
-		return const_iterator(_storage, nextNode, _storage + _capacity);
+		return iterator(_storage, nextNode, _storage + _capacity);
 	}
 
 	iterator erase(iterator iter) noexcept {
@@ -645,6 +720,12 @@ public:
 		auto nextNode = erase_node(node);
 
 		return iterator(_storage, nextNode, _storage + _capacity);
+	}
+
+	// Rebuild a non-const iterator from a const_iterator over this same storage. Used by the map
+	// wrapper's erase(first, last) -> iterator, whose cursor is a const_iterator.
+	iterator to_iterator(const_iterator iter) noexcept {
+		return iterator(_storage, const_cast<node_type *>(iter.node()), _storage + _capacity);
 	}
 
 	template <typename K>
@@ -761,42 +842,43 @@ public:
 
 	template <typename K>
 	sprt::pair<const_iterator, const_iterator> equal_range(K &&k) const noexcept {
-		auto nodes = equal_range_nodes(k);
-
-		return sprt::make_pair(const_iterator(_storage, nodes.first, _storage + _capacity),
-				const_iterator(_storage, nodes.second, _storage + _capacity));
+		auto node = find_node(k);
+		if (!node) {
+			return sprt::make_pair(end(), end());
+		}
+		const_iterator first(_storage, node, _storage + _capacity);
+		auto last = first;
+		++last;
+		return sprt::make_pair(first, last);
 	}
 
 	template <typename K>
 	sprt::pair<iterator, iterator> equal_range(K &&k) noexcept {
-		auto nodes = equal_range_nodes(k);
-
-		return sprt::make_pair(
-				iterator(_storage, const_cast<node_type *>(nodes.first), _storage + _capacity),
-				iterator(_storage, const_cast<node_type *>(nodes.second), _storage + _capacity));
+		auto node = find_node(k);
+		if (!node) {
+			return sprt::make_pair(end(), end());
+		}
+		iterator first(_storage, const_cast<node_type *>(node), _storage + _capacity);
+		auto last = first;
+		++last;
+		return sprt::make_pair(first, last);
 	}
 
 	void swap(hash_memory &other) noexcept {
+		// [container.reqmts]: swap always exchanges the hasher, predicate and stored elements; the
+		// allocator is exchanged only under propagate_on_container_swap (guarded with `if constexpr`
+		// so a non-move-assignable wrapped allocator is not required otherwise).
 		if constexpr (sprt::allocator_traits<allocator_type>::propagate_on_container_swap::value) {
 			sprt::swap(_allocator, other._allocator);
-			sprt::swap(_hasher, other._hasher);
-			sprt::swap(_equal, other._equal);
-			sprt::swap(_storage, other._storage);
-			sprt::swap(_size, other._size);
-			sprt::swap(_capacity, other._capacity);
-			sprt::swap(_allocated, other._allocated);
-			sprt::swap(_hashMisses, other._hashMisses);
-			sprt::swap(_maxLoadFactor, other._maxLoadFactor);
-		} else if (other._allocator == _allocator) {
-			sprt::swap(_hasher, other._hasher);
-			sprt::swap(_equal, other._equal);
-			sprt::swap(_storage, other._storage);
-			sprt::swap(_size, other._size);
-			sprt::swap(_capacity, other._capacity);
-			sprt::swap(_allocated, other._allocated);
-			sprt::swap(_hashMisses, other._hashMisses);
-			sprt::swap(_maxLoadFactor, other._maxLoadFactor);
 		}
+		sprt::swap(_hasher, other._hasher);
+		sprt::swap(_equal, other._equal);
+		sprt::swap(_storage, other._storage);
+		sprt::swap(_size, other._size);
+		sprt::swap(_capacity, other._capacity);
+		sprt::swap(_allocated, other._allocated);
+		sprt::swap(_hashMisses, other._hashMisses);
+		sprt::swap(_maxLoadFactor, other._maxLoadFactor);
 	}
 
 	iterator begin() noexcept {
@@ -837,7 +919,61 @@ public:
 	}
 
 	auto size() const noexcept { return _size; }
-	auto max_size() const noexcept { return Max<size_type> >> 1; }
+	// [container.reqmts]: bounded by what the allocator can supply and by difference_type's range.
+	size_type max_size() const noexcept {
+		return sprt::min(size_type(sprt::allocator_traits<allocator_type>::max_size(_allocator)),
+				size_type(Max<size_type> >> 1));
+	}
+
+	// bucket interface: the open-addressed flat array uses one slot per bucket, so the
+	// bucket count is the storage capacity.
+	size_type bucket_count() const noexcept { return _capacity; }
+	size_type max_bucket_count() const noexcept { return max_size(); }
+
+	// The home bucket of a key is hash(key) modulo the capacity.
+	template <typename K>
+	size_type bucket(const K &k) const noexcept {
+		return _capacity ? _hasher(k) % _capacity : 0;
+	}
+
+	// Head node of bucket n's collision chain, or null if the bucket is empty. lookup_bucket_chain
+	// starts at the home slot n and skips slots occupied by other buckets, so an active result whose
+	// home is n is this bucket's chain head.
+	node_type *bucket_chain_head(size_type n) const noexcept {
+		if (!_storage || _capacity == 0 || n >= _capacity) {
+			return nullptr;
+		}
+		auto head = lookup_bucket_chain(const_cast<node_type *>(_storage), _capacity, n);
+		if (head->active && head->hash % _capacity == n) {
+			return head;
+		}
+		return nullptr;
+	}
+
+	size_type bucket_size(size_type n) const noexcept {
+		size_type count = 0;
+		auto node = bucket_chain_head(n);
+		while (node) {
+			++count;
+			node = (node->next != 0) ? node + node->next : nullptr;
+			if (node && node >= _storage + _capacity) {
+				node -= _capacity;
+			}
+		}
+		return count;
+	}
+
+	local_iterator begin(size_type n) noexcept {
+		return local_iterator(bucket_chain_head(n), _storage, _capacity);
+	}
+	const_local_iterator begin(size_type n) const noexcept {
+		return const_local_iterator(bucket_chain_head(n), const_cast<node_type *>(_storage),
+				_capacity);
+	}
+	local_iterator end(size_type) noexcept { return local_iterator(nullptr, _storage, _capacity); }
+	const_local_iterator end(size_type) const noexcept {
+		return const_local_iterator(nullptr, const_cast<node_type *>(_storage), _capacity);
+	}
 
 	auto get_allocator() const noexcept { return _allocator; }
 	void set_allocator(const Allocator &a) noexcept {
@@ -856,11 +992,10 @@ public:
 	auto hash_function() const noexcept { return _hasher; }
 	auto key_eq() const noexcept { return _equal; }
 
+	// [unord.req]: load_factor() is defined as size() / bucket_count(). (The hash-miss ratio the
+	// growth policy uses internally is a separate, private metric — see find_bucket_or_grow.)
 	float load_factor() const noexcept {
-		if (_size > 0) {
-			return float(_size) / (float(_size) - float(_hashMisses));
-		}
-		return 0.0f;
+		return _capacity ? float(_size) / float(_capacity) : 0.0f;
 	}
 
 	float max_load_factor() const noexcept { return _maxLoadFactor; }

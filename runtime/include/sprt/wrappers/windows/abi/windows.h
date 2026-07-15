@@ -256,6 +256,32 @@ THE SOFTWARE.
 #define __SPRT_MB_USEGLYPHCHARS          0x00000004  // DEPRECATED: use glyph chars, not ctrl chars
 #define __SPRT_MB_ERR_INVALID_CHARS      0x00000008  // error for invalid chars
 
+// RIP_INFO / hard-error severity levels ([debugapi] dwType).
+#define __SPRT_SLE_ERROR      0x00000001
+#define __SPRT_SLE_MINORERROR 0x00000002
+#define __SPRT_SLE_WARNING    0x00000003
+
+#define __SPRT_LTP_PC_SMT 0x1
+
+// GetDriveType return values (winbase.h), used by llvm's Path.inc.
+#define __SPRT_DRIVE_UNKNOWN 0
+#define __SPRT_DRIVE_NO_ROOT_DIR 1
+#define __SPRT_DRIVE_REMOVABLE 2
+#define __SPRT_DRIVE_FIXED 3
+#define __SPRT_DRIVE_REMOTE 4
+#define __SPRT_DRIVE_CDROM 5
+#define __SPRT_DRIVE_RAMDISK 6
+
+// GetFinalPathNameByHandle flags (winbase.h).
+#define __SPRT_VOLUME_NAME_DOS 0x0
+#define __SPRT_VOLUME_NAME_GUID 0x1
+#define __SPRT_VOLUME_NAME_NT 0x2
+#define __SPRT_VOLUME_NAME_NONE 0x4
+
+#define __SPRT_FIND_FIRST_EX_CASE_SENSITIVE 0x1
+#define __SPRT_FIND_FIRST_EX_LARGE_FETCH 0x2
+#define __SPRT_FIND_FIRST_EX_ON_DISK_ENTRIES_ONLY 0x4
+
 // clang-format on
 
 typedef DWORD LCTYPE;
@@ -336,6 +362,144 @@ typedef struct _SYSTEM_LOGICAL_PROCESSOR_INFORMATION {
 		ULONGLONG Reserved[2];
 	} DUMMYUNIONNAME;
 } SYSTEM_LOGICAL_PROCESSOR_INFORMATION, *PSYSTEM_LOGICAL_PROCESSOR_INFORMATION;
+
+// SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX family (winnt.h). Layout matches the SDK
+// (the Reserved padding and ANYSIZE_ARRAY [1] tails are load-bearing.
+typedef struct _PROCESSOR_RELATIONSHIP {
+	BYTE Flags;
+	BYTE EfficiencyClass;
+	BYTE Reserved[20];
+	WORD GroupCount;
+	GROUP_AFFINITY GroupMask[1];
+} PROCESSOR_RELATIONSHIP, *PPROCESSOR_RELATIONSHIP;
+
+typedef struct _NUMA_NODE_RELATIONSHIP {
+	DWORD NodeNumber;
+	BYTE Reserved[18];
+	WORD GroupCount;
+	union {
+		GROUP_AFFINITY GroupMask;
+		GROUP_AFFINITY GroupMasks[1];
+	};
+} NUMA_NODE_RELATIONSHIP, *PNUMA_NODE_RELATIONSHIP;
+
+typedef struct _CACHE_RELATIONSHIP {
+	BYTE Level;
+	BYTE Associativity;
+	WORD LineSize;
+	DWORD CacheSize;
+	PROCESSOR_CACHE_TYPE Type;
+	BYTE Reserved[18];
+	WORD GroupCount;
+	union {
+		GROUP_AFFINITY GroupMask;
+		GROUP_AFFINITY GroupMasks[1];
+	};
+} CACHE_RELATIONSHIP, *PCACHE_RELATIONSHIP;
+
+typedef struct _PROCESSOR_GROUP_INFO {
+	BYTE MaximumProcessorCount;
+	BYTE ActiveProcessorCount;
+	BYTE Reserved[38];
+	KAFFINITY ActiveProcessorMask;
+} PROCESSOR_GROUP_INFO, *PPROCESSOR_GROUP_INFO;
+
+typedef struct _GROUP_RELATIONSHIP {
+	WORD MaximumGroupCount;
+	WORD ActiveGroupCount;
+	BYTE Reserved[20];
+	PROCESSOR_GROUP_INFO GroupInfo[1];
+} GROUP_RELATIONSHIP, *PGROUP_RELATIONSHIP;
+
+typedef struct _SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX {
+	LOGICAL_PROCESSOR_RELATIONSHIP Relationship;
+	DWORD Size;
+	union {
+		PROCESSOR_RELATIONSHIP Processor;
+		NUMA_NODE_RELATIONSHIP NumaNode;
+		CACHE_RELATIONSHIP Cache;
+		GROUP_RELATIONSHIP Group;
+	};
+} SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, *PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX;
+
+typedef struct _IO_COUNTERS {
+	ULONGLONG ReadOperationCount;
+	ULONGLONG WriteOperationCount;
+	ULONGLONG OtherOperationCount;
+	ULONGLONG ReadTransferCount;
+	ULONGLONG WriteTransferCount;
+	ULONGLONG OtherTransferCount;
+} IO_COUNTERS, *PIO_COUNTERS;
+
+typedef struct _JOBOBJECT_BASIC_LIMIT_INFORMATION {
+	LARGE_INTEGER PerProcessUserTimeLimit;
+	LARGE_INTEGER PerJobUserTimeLimit;
+	DWORD LimitFlags;
+	SIZE_T MinimumWorkingSetSize;
+	SIZE_T MaximumWorkingSetSize;
+	DWORD ActiveProcessLimit;
+	ULONG_PTR Affinity;
+	DWORD PriorityClass;
+	DWORD SchedulingClass;
+} JOBOBJECT_BASIC_LIMIT_INFORMATION, *PJOBOBJECT_BASIC_LIMIT_INFORMATION;
+
+typedef struct _JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+	JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+	IO_COUNTERS IoInfo;
+	SIZE_T ProcessMemoryLimit;
+	SIZE_T JobMemoryLimit;
+	SIZE_T PeakProcessMemoryUsed;
+	SIZE_T PeakJobMemoryUsed;
+} JOBOBJECT_EXTENDED_LIMIT_INFORMATION, *PJOBOBJECT_EXTENDED_LIMIT_INFORMATION;
+
+typedef enum _JOBOBJECTINFOCLASS {
+	JobObjectBasicAccountingInformation = 1,
+	JobObjectBasicLimitInformation = 2,
+	JobObjectBasicProcessIdList = 3,
+	JobObjectBasicUIRestrictions = 4,
+	JobObjectSecurityLimitInformation = 5,
+	JobObjectEndOfJobTimeInformation = 6,
+	JobObjectAssociateCompletionPortInformation = 7,
+	JobObjectBasicAndIoAccountingInformation = 8,
+	JobObjectExtendedLimitInformation = 9,
+	JobObjectJobSetInformation = 10,
+	JobObjectGroupInformation = 11
+} JOBOBJECTINFOCLASS;
+
+typedef enum _MEMORY_RESOURCE_NOTIFICATION_TYPE {
+	LowMemoryResourceNotification = 0,
+	HighMemoryResourceNotification = 1
+} MEMORY_RESOURCE_NOTIFICATION_TYPE;
+
+// File-information structures for SetFileInformationByHandle (winbase.h)
+// The FileName[1] tail is ANYSIZE_ARRAY.
+typedef struct _FILE_DISPOSITION_INFO {
+	BOOLEAN DeleteFile;
+} FILE_DISPOSITION_INFO, *PFILE_DISPOSITION_INFO;
+
+typedef struct _FILE_RENAME_INFO {
+	union {
+		BOOLEAN ReplaceIfExists;
+		DWORD Flags;
+	};
+	HANDLE RootDirectory;
+	DWORD FileNameLength;
+	WCHAR FileName[1];
+} FILE_RENAME_INFO, *PFILE_RENAME_INFO;
+
+// FindFirstFileEx info levels / search ops (minwinbase.h).
+typedef enum _FINDEX_INFO_LEVELS {
+	FindExInfoStandard,
+	FindExInfoBasic,
+	FindExInfoMaxInfoLevel
+} FINDEX_INFO_LEVELS;
+
+typedef enum _FINDEX_SEARCH_OPS {
+	FindExSearchNameMatch,
+	FindExSearchLimitToDirectories,
+	FindExSearchLimitToDevices,
+	FindExSearchMaxSearchOp
+} FINDEX_SEARCH_OPS;
 
 typedef struct _MEMORYSTATUSEX {
 	DWORD dwLength;

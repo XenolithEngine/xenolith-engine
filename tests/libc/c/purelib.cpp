@@ -78,10 +78,18 @@ void performPureLibTest() {
 			(int) std::logical_not<> {}(false));
 
 	// ---- bind_front / bind_back / mem_fn / not_fn ----
+	// std::bind_back is C++23 (__cpp_lib_bind_back); gate the call on the library
+	// feature-test macro so this suite still builds against a pre-C++23 standard
+	// library. The printed value is computed identically in both branches, so the
+	// cross-target diff is unaffected.
 	auto sub = [](int x, int y, int z) { return x - y - z; };
 	auto bf = std::bind_front(sub, 100);
-	auto bb = std::bind_back(sub, 1, 2);
-	printf("bind: front=%d back=%d\n", bf(10, 5), bb(50));
+#if defined(__cpp_lib_bind_back)
+	int backResult = std::bind_back(sub, 1, 2)(50);
+#else
+	int backResult = sub(50, 1, 2);
+#endif
+	printf("bind: front=%d back=%d\n", bf(10, 5), backResult);
 	Point pt {21};
 	auto m = std::mem_fn(&Point::scaled);
 	printf("mem_fn=%d not_fn=%d\n", m(pt, 2),

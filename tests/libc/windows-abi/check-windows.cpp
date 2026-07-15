@@ -2,6 +2,15 @@
 //
 // abi/windows.h <-> Windows SDK parity. Compile-time only; see check.sh.
 
+// Pin the SDK to Windows 10 so the newer structures (SYSTEM_LOGICAL_PROCESSOR_
+// INFORMATION_EX family, JOBOBJECT_*, FILE_RENAME_INFO, FINDEX_*) are declared.
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0A00
+#endif
+#ifndef WINVER
+#define WINVER 0x0A00
+#endif
+
 #define SPRT_ABI_HEADER <sprt/wrappers/windows/abi/windows.h>
 #include "abi_check.h"
 
@@ -329,3 +338,129 @@ SPRT_OFFSET(NLSVERSIONINFO, dwNLSVersion);
 SPRT_OFFSET(NLSVERSIONINFO, dwDefinedVersion);
 SPRT_OFFSET(NLSVERSIONINFO, dwEffectiveId);
 SPRT_OFFSET(NLSVERSIONINFO, guidCustomVersion);
+
+// === new scalar flags (winbase.h / winnt.h) ================================
+SPRT_CONST(LTP_PC_SMT);
+SPRT_CONST(DRIVE_UNKNOWN);
+SPRT_CONST(DRIVE_NO_ROOT_DIR);
+SPRT_CONST(DRIVE_REMOVABLE);
+SPRT_CONST(DRIVE_FIXED);
+SPRT_CONST(DRIVE_REMOTE);
+SPRT_CONST(DRIVE_CDROM);
+SPRT_CONST(DRIVE_RAMDISK);
+SPRT_CONST(VOLUME_NAME_DOS);
+SPRT_CONST(VOLUME_NAME_GUID);
+SPRT_CONST(VOLUME_NAME_NT);
+SPRT_CONST(VOLUME_NAME_NONE);
+SPRT_CONST(FIND_FIRST_EX_CASE_SENSITIVE);
+SPRT_CONST(FIND_FIRST_EX_LARGE_FETCH);
+SPRT_CONST(FIND_FIRST_EX_ON_DISK_ENTRIES_ONLY);
+
+// === SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX family (winnt.h) ==============
+// NB: the SDK spells the internal unions DUMMYUNIONNAME (named), while abi uses
+// anonymous unions. sizeof/alignment are unaffected, but offsetof cannot reach a
+// member that lives inside the SDK's named union, so only direct (non-union)
+// fields are offset-checked here; SPRT_SIZE covers the union region.
+SPRT_SIZE(PROCESSOR_RELATIONSHIP);
+SPRT_OFFSET(PROCESSOR_RELATIONSHIP, Flags);
+SPRT_OFFSET(PROCESSOR_RELATIONSHIP, EfficiencyClass);
+SPRT_OFFSET(PROCESSOR_RELATIONSHIP, GroupCount);
+SPRT_OFFSET(PROCESSOR_RELATIONSHIP, GroupMask); // direct member in both
+
+SPRT_SIZE(NUMA_NODE_RELATIONSHIP);
+SPRT_OFFSET(NUMA_NODE_RELATIONSHIP, NodeNumber);
+SPRT_OFFSET(NUMA_NODE_RELATIONSHIP, GroupCount);
+
+SPRT_SIZE(CACHE_RELATIONSHIP);
+SPRT_OFFSET(CACHE_RELATIONSHIP, Level);
+SPRT_OFFSET(CACHE_RELATIONSHIP, Associativity);
+SPRT_OFFSET(CACHE_RELATIONSHIP, LineSize);
+SPRT_OFFSET(CACHE_RELATIONSHIP, CacheSize);
+SPRT_OFFSET(CACHE_RELATIONSHIP, Type);
+SPRT_OFFSET(CACHE_RELATIONSHIP, GroupCount);
+
+SPRT_SIZE(PROCESSOR_GROUP_INFO);
+SPRT_OFFSET(PROCESSOR_GROUP_INFO, MaximumProcessorCount);
+SPRT_OFFSET(PROCESSOR_GROUP_INFO, ActiveProcessorCount);
+SPRT_OFFSET(PROCESSOR_GROUP_INFO, ActiveProcessorMask);
+
+SPRT_SIZE(GROUP_RELATIONSHIP);
+SPRT_OFFSET(GROUP_RELATIONSHIP, MaximumGroupCount);
+SPRT_OFFSET(GROUP_RELATIONSHIP, ActiveGroupCount);
+SPRT_OFFSET(GROUP_RELATIONSHIP, GroupInfo); // direct member in both
+
+SPRT_SIZE(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX);
+SPRT_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Relationship);
+SPRT_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Size);
+
+// === IO_COUNTERS + job-object limit structures (winnt.h) ===================
+SPRT_SIZE(IO_COUNTERS);
+SPRT_OFFSET(IO_COUNTERS, ReadOperationCount);
+SPRT_OFFSET(IO_COUNTERS, WriteOperationCount);
+SPRT_OFFSET(IO_COUNTERS, OtherOperationCount);
+SPRT_OFFSET(IO_COUNTERS, ReadTransferCount);
+SPRT_OFFSET(IO_COUNTERS, WriteTransferCount);
+SPRT_OFFSET(IO_COUNTERS, OtherTransferCount);
+
+SPRT_SIZE(JOBOBJECT_BASIC_LIMIT_INFORMATION);
+SPRT_OFFSET(JOBOBJECT_BASIC_LIMIT_INFORMATION, PerProcessUserTimeLimit);
+SPRT_OFFSET(JOBOBJECT_BASIC_LIMIT_INFORMATION, PerJobUserTimeLimit);
+SPRT_OFFSET(JOBOBJECT_BASIC_LIMIT_INFORMATION, LimitFlags);
+SPRT_OFFSET(JOBOBJECT_BASIC_LIMIT_INFORMATION, MinimumWorkingSetSize);
+SPRT_OFFSET(JOBOBJECT_BASIC_LIMIT_INFORMATION, MaximumWorkingSetSize);
+SPRT_OFFSET(JOBOBJECT_BASIC_LIMIT_INFORMATION, ActiveProcessLimit);
+SPRT_OFFSET(JOBOBJECT_BASIC_LIMIT_INFORMATION, Affinity);
+SPRT_OFFSET(JOBOBJECT_BASIC_LIMIT_INFORMATION, PriorityClass);
+SPRT_OFFSET(JOBOBJECT_BASIC_LIMIT_INFORMATION, SchedulingClass);
+
+SPRT_SIZE(JOBOBJECT_EXTENDED_LIMIT_INFORMATION);
+SPRT_OFFSET(JOBOBJECT_EXTENDED_LIMIT_INFORMATION, BasicLimitInformation);
+SPRT_OFFSET(JOBOBJECT_EXTENDED_LIMIT_INFORMATION, IoInfo);
+SPRT_OFFSET(JOBOBJECT_EXTENDED_LIMIT_INFORMATION, ProcessMemoryLimit);
+SPRT_OFFSET(JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobMemoryLimit);
+SPRT_OFFSET(JOBOBJECT_EXTENDED_LIMIT_INFORMATION, PeakProcessMemoryUsed);
+SPRT_OFFSET(JOBOBJECT_EXTENDED_LIMIT_INFORMATION, PeakJobMemoryUsed);
+
+// === SetFileInformationByHandle structs (minwinbase.h) =====================
+// (single-field struct; SPRT_SIZE fully pins it. The lone field is named
+// DeleteFile, which the Win32 DeleteFile->DeleteFileA/W macro would rewrite in an
+// offsetof, so no field offset is taken.)
+SPRT_SIZE(FILE_DISPOSITION_INFO);
+
+// FILE_RENAME_INFO leads with a DUMMYUNIONNAME (ReplaceIfExists / Flags) in the
+// SDK; check size + the fields after the union.
+SPRT_SIZE(FILE_RENAME_INFO);
+SPRT_OFFSET(FILE_RENAME_INFO, RootDirectory);
+SPRT_OFFSET(FILE_RENAME_INFO, FileNameLength);
+SPRT_OFFSET(FILE_RENAME_INFO, FileName);
+
+// === enums (winnt.h / minwinbase.h) ========================================
+SPRT_ENUM(JobObjectBasicAccountingInformation);
+SPRT_ENUM(JobObjectBasicLimitInformation);
+SPRT_ENUM(JobObjectBasicProcessIdList);
+SPRT_ENUM(JobObjectBasicUIRestrictions);
+SPRT_ENUM(JobObjectSecurityLimitInformation);
+SPRT_ENUM(JobObjectEndOfJobTimeInformation);
+SPRT_ENUM(JobObjectAssociateCompletionPortInformation);
+SPRT_ENUM(JobObjectBasicAndIoAccountingInformation);
+SPRT_ENUM(JobObjectExtendedLimitInformation);
+SPRT_ENUM(JobObjectJobSetInformation);
+SPRT_ENUM(JobObjectGroupInformation);
+
+SPRT_ENUM(FindExInfoStandard);
+SPRT_ENUM(FindExInfoBasic);
+SPRT_ENUM(FindExInfoMaxInfoLevel);
+SPRT_ENUM(FindExSearchNameMatch);
+SPRT_ENUM(FindExSearchLimitToDirectories);
+SPRT_ENUM(FindExSearchLimitToDevices);
+SPRT_ENUM(FindExSearchMaxSearchOp);
+
+// === new values (wrapper completion) =======================================
+// RIP_INFO / hard-error severity levels (winbase.h).
+SPRT_CONST(SLE_ERROR);
+SPRT_CONST(SLE_MINORERROR);
+SPRT_CONST(SLE_WARNING);
+
+// MEMORY_RESOURCE_NOTIFICATION_TYPE (memoryapi.h).
+SPRT_ENUM(LowMemoryResourceNotification);
+SPRT_ENUM(HighMemoryResourceNotification);

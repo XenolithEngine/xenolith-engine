@@ -39,6 +39,15 @@ enum class memory_order : int {
 	seq_cst = __ATOMIC_SEQ_CST
 };
 
+// C++20 also keeps the enumerator-style constant names (std::memory_order_relaxed, ...)
+// alongside the scoped enum; a lot of third-party code (LLVM included) uses these.
+inline constexpr memory_order memory_order_relaxed = memory_order::relaxed;
+inline constexpr memory_order memory_order_consume = memory_order::consume;
+inline constexpr memory_order memory_order_acquire = memory_order::acquire;
+inline constexpr memory_order memory_order_release = memory_order::release;
+inline constexpr memory_order memory_order_acq_rel = memory_order::acq_rel;
+inline constexpr memory_order memory_order_seq_cst = memory_order::seq_cst;
+
 template <typename Type>
 struct ___atomic_base_impl {
 	constexpr ___atomic_base_impl() noexcept = default;
@@ -303,6 +312,65 @@ struct atomic_flag {
 	atomic_flag &operator=(const atomic_flag &) volatile = delete;
 };
 
+// [atomics.flag] ATOMIC_FLAG_INIT — value-initializes to the clear state via the
+// clearing default constructor.
+#ifndef ATOMIC_FLAG_INIT
+#define ATOMIC_FLAG_INIT  {}
+#endif
+
+// [atomics.alias] the named atomic specialization aliases. Consumers such as
+// llvm/ExecutionEngine/Orc/Core.h use std::atomic_uintptr_t directly.
+using atomic_bool = atomic<bool>;
+using atomic_char = atomic<char>;
+using atomic_schar = atomic<signed char>;
+using atomic_uchar = atomic<unsigned char>;
+using atomic_short = atomic<short>;
+using atomic_ushort = atomic<unsigned short>;
+using atomic_int = atomic<int>;
+using atomic_uint = atomic<unsigned int>;
+using atomic_long = atomic<long>;
+using atomic_ulong = atomic<unsigned long>;
+using atomic_llong = atomic<long long>;
+using atomic_ullong = atomic<unsigned long long>;
+using atomic_char8_t = atomic<char8_t>;
+using atomic_char16_t = atomic<char16_t>;
+using atomic_char32_t = atomic<char32_t>;
+using atomic_wchar_t = atomic<wchar_t>;
+
+using atomic_int8_t = atomic<int8_t>;
+using atomic_uint8_t = atomic<uint8_t>;
+using atomic_int16_t = atomic<int16_t>;
+using atomic_uint16_t = atomic<uint16_t>;
+using atomic_int32_t = atomic<int32_t>;
+using atomic_uint32_t = atomic<uint32_t>;
+using atomic_int64_t = atomic<int64_t>;
+using atomic_uint64_t = atomic<uint64_t>;
+
+using atomic_int_least8_t = atomic<int_least8_t>;
+using atomic_uint_least8_t = atomic<uint_least8_t>;
+using atomic_int_least16_t = atomic<int_least16_t>;
+using atomic_uint_least16_t = atomic<uint_least16_t>;
+using atomic_int_least32_t = atomic<int_least32_t>;
+using atomic_uint_least32_t = atomic<uint_least32_t>;
+using atomic_int_least64_t = atomic<int_least64_t>;
+using atomic_uint_least64_t = atomic<uint_least64_t>;
+
+using atomic_int_fast8_t = atomic<int_fast8_t>;
+using atomic_uint_fast8_t = atomic<uint_fast8_t>;
+using atomic_int_fast16_t = atomic<int_fast16_t>;
+using atomic_uint_fast16_t = atomic<uint_fast16_t>;
+using atomic_int_fast32_t = atomic<int_fast32_t>;
+using atomic_uint_fast32_t = atomic<uint_fast32_t>;
+using atomic_int_fast64_t = atomic<int_fast64_t>;
+using atomic_uint_fast64_t = atomic<uint_fast64_t>;
+
+using atomic_intptr_t = atomic<intptr_t>;
+using atomic_uintptr_t = atomic<uintptr_t>;
+using atomic_size_t = atomic<size_t>;
+using atomic_ptrdiff_t = atomic<ptrdiff_t>;
+using atomic_intmax_t = atomic<intmax_t>;
+using atomic_uintmax_t = atomic<uintmax_t>;
+
 
 inline void atomic_thread_fence(memory_order __order) noexcept {
 	__c11_atomic_thread_fence(static_cast<int>(__order));
@@ -312,58 +380,23 @@ inline void atomic_signal_fence(memory_order __order) noexcept {
 	__c11_atomic_signal_fence(static_cast<int>(__order));
 }
 
-
-namespace _atomic {
-
-template <typename Value>
-static inline Value loadSeq(volatile Value *ptr) {
-	return __atomic_load_n(ptr, __ATOMIC_SEQ_CST);
+// [atomics.nonmembers] atomic_init (deprecated in C++20): non-atomically seed the
+// object. Implemented as a relaxed store, which is safe before the atomic is shared.
+template <typename _Tp>
+inline void atomic_init(volatile atomic<_Tp> *__o, typename atomic<_Tp>::value_type __d) noexcept {
+	__o->store(__d, memory_order::relaxed);
+}
+template <typename _Tp>
+inline void atomic_init(atomic<_Tp> *__o, typename atomic<_Tp>::value_type __d) noexcept {
+	__o->store(__d, memory_order::relaxed);
 }
 
-template <typename Value>
-static inline Value loadRel(volatile Value *ptr) {
-	return __atomic_load_n(ptr, __ATOMIC_RELAXED);
-}
 
-template <typename Value>
-static inline void storeSeq(volatile Value *ptr, Value value) {
-	__atomic_store_n(ptr, value, __ATOMIC_SEQ_CST);
-}
-
-template <typename Value>
-static inline Value fetchOr(volatile Value *ptr, Value value) {
-	return __atomic_fetch_or(ptr, value, __ATOMIC_SEQ_CST);
-}
-
-template <typename Value>
-static inline Value fetchAnd(volatile Value *ptr, Value value) {
-	return __atomic_fetch_and(ptr, value, __ATOMIC_SEQ_CST);
-}
-
-template <typename Value>
-static inline Value fetchAdd(volatile Value *ptr, Value value) {
-	return __atomic_fetch_add(ptr, value, __ATOMIC_SEQ_CST);
-}
-
-template <typename Value>
-static inline Value fetchSub(volatile Value *ptr, Value value) {
-	return __atomic_fetch_sub(ptr, value, __ATOMIC_SEQ_CST);
-}
-
-template <typename Value>
-static inline Value exchange(volatile Value *ptr, Value value) {
-	return __atomic_exchange_n(ptr, value, __ATOMIC_SEQ_CST);
-}
-
-template <typename Value>
-static inline bool compareSwap(volatile Value *ptr, Value *expected, Value desired) {
-	return __atomic_compare_exchange_n(ptr, expected, desired, false, __ATOMIC_SEQ_CST,
-			__ATOMIC_SEQ_CST);
-}
-
-} // namespace _atomic
-
-} // inline namespace __cxx_atomic
+} // namespace __cxx_atomic
 } // namespace sprt
+
+// sprt::_atomic now lives in its own dependency-free header so the low-level
+// synchronization primitives can use it without the full <atomic> machinery.
+#include <sprt/cxx/__atomic/ops.h>
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_ATOMIC_H_

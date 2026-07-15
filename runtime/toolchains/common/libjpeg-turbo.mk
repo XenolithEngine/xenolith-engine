@@ -54,3 +54,4 @@ all:
 	cd $(LIBNAME); cmake --install .
 	$(call rule_rm,$(LIBNAME))
 	$(if $(WINDOWS),$(call rule_mv,$(SP_INSTALL_PREFIX)/usr/lib/jpeg-static.lib,$(SP_INSTALL_PREFIX)/usr/lib/jpeg.lib))
+	$(if $(WINDOWS),$(call rule_rm,$(SP_INSTALL_PREFIX)/usr/lib/cmake/libjpeg-turbo/libjpeg-turboTargets-release.cmake))

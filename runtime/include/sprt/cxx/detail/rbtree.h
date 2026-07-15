@@ -253,8 +253,26 @@ inline constexpr bool is_detected_v = impl::is_detected<void, A, B...>::value;
 template <typename T>
 using RbTreeDetectTransparent = typename T::is_transparent;
 
+// sprt's pool allocators expose a ::base_class (an EBO hook for the memory-pool
+// context) and an extended __allocate/__deallocate/block surface. Standard
+// allocators (std::allocator, min_allocator, test_allocator, ...) do not; detect
+// that so RbTree can fall back to an empty base and the allocator_traits path.
+template <typename A>
+using RbTreeDetectAllocBase = typename A::base_class;
+
+struct RbTreeEmptyBase { };
+
+template <typename A, bool = impl::is_detected_v<RbTreeDetectAllocBase, A>>
+struct RbTreeAllocBase {
+	using type = RbTreeEmptyBase;
+};
+template <typename A>
+struct RbTreeAllocBase<A, true> {
+	using type = typename A::base_class;
+};
+
 template <typename Key, typename Value, typename Comp, typename Allocator>
-class RbTree : public Allocator::base_class {
+class RbTree : public RbTreeAllocBase<Allocator>::type {
 public:
 	using value_type = Value;
 	using node_type = RbTreeNode<Value>;
@@ -262,8 +280,13 @@ public:
 	using base_type = RbTreeNodeBase *;
 	using const_node_ptr = const node_type *;
 
+	// True for sprt pool allocators (block/prealloc scheme); false for standard
+	// allocators, which take the plain per-node allocator_traits path.
+	static constexpr bool __sprt_pool_alloc = impl::is_detected_v<RbTreeDetectAllocBase, Allocator>;
+
 	using value_allocator_type = Allocator;
-	using node_allocator_type = typename Allocator::template rebind<node_type>::other;
+	using node_allocator_type =
+			typename sprt::allocator_traits<Allocator>::template rebind_alloc<node_type>;
 	using comparator_type = Comp;
 
 	using iterator = RbTreeIterator<Value>;
@@ -284,7 +307,24 @@ public:
 		clone(other);
 	}
 
-	RbTree(RbTree &&other, const value_allocator_type &alloc = value_allocator_type()) noexcept
+	// Plain move construction moves the allocator with the storage ([container.reqmts]:
+	// the new allocator is move-constructed from the source's).
+	RbTree(RbTree &&other) noexcept
+	: _header(RbTreeNodeColor::Black)
+	, _comp(sprt::move_unsafe(other._comp))
+	, _allocator(sprt::move_unsafe(other._allocator))
+	, _size(other._size) {
+		_header = other._header;
+		if (_header.left != nullptr) {
+			_header.left->parent = &_header;
+		}
+		_free = other._free;
+		other._free = nullptr;
+		other._header = RbTreeNodeBase(RbTreeNodeColor::Black);
+		other._size = 0;
+	}
+
+	RbTree(RbTree &&other, const value_allocator_type &alloc) noexcept
 	: _header(RbTreeNodeColor::Black), _comp(other._comp), _allocator(alloc), _size(0) {
 		if (other.get_allocator() == _allocator) {
 			_header = other._header;
@@ -295,16 +335,18 @@ public:
 			}
 			other._header = RbTreeNodeBase(RbTreeNodeColor::Black);
 			other._size = 0;
-		} else {
-			clone(other);
+		} else if constexpr (!sprt::is_empty_v<value_allocator_type>) {
+			clone_move(other);
 		}
 	}
 
 	~RbTree() noexcept {
 		clear_deallocate();
-		if (_header.flag.size > 0 && _free) {
-			allocator_helper::template release_blocks<false>(_allocator, &_free,
-					_header.flag.index);
+		if constexpr (__sprt_pool_alloc) {
+			if (_header.flag.size > 0 && _free) {
+				allocator_helper::template release_blocks<false>(_allocator, &_free,
+						_header.flag.index);
+			}
 		}
 	}
 
@@ -321,8 +363,8 @@ public:
 			}
 			other._header = RbTreeNodeBase(RbTreeNodeColor::Black);
 			other._size = 0;
-		} else {
-			clone(other);
+		} else if constexpr (!sprt::is_empty_v<value_allocator_type>) {
+			clone_move(other);
 		}
 	}
 
@@ -349,6 +391,50 @@ public:
 	template <typename... Args>
 	iterator emplace_hint(const_iterator hint, Args &&...args) noexcept {
 		return iterator(insertNodeUniqueHint(hint, sprt::forward<Args>(args)...));
+	}
+
+	// Multi (equal-key) emplace for multimap / multiset: always inserts.
+	template <typename... Args>
+	iterator emplace_multi(Args &&...args) noexcept {
+		return iterator(insertNodeEqual(sprt::forward<Args>(args)...));
+	}
+
+	template <typename... Args>
+	iterator emplace_hint_multi(const_iterator hint, Args &&...args) noexcept {
+		// [tab:container.hint]: insert as close as possible to the position just
+		// BEFORE hint. The hint is usable when prev(hint) <= value <= hint; the
+		// element then goes immediately before hint (this is what distinguishes a
+		// hinted insert from emplace_multi, which appends AFTER existing equals).
+		InsertData d = constructNode(sprt::forward<Args>(args)...);
+		RbTreeNodeBase *h = const_cast<RbTreeNodeBase *>(hint._node);
+		bool usable = false;
+		if (h == &_header || !compareLtKey(extract(h), *(d.key))) { // value <= *hint
+			if (_header.left == nullptr) {
+				// empty tree
+				return iterator(makeInsert(d.val, nullptr, true));
+			}
+			if (h == left()) {
+				usable = true; // hint is begin(): nothing precedes
+			} else {
+				RbTreeNodeBase *prev = (h == &_header) ? static_cast<RbTreeNodeBase *>(right())
+													   : RbTreeNodeBase::decrement(h);
+				if (!compareLtKey(*(d.key), extract(prev))) { // prev <= value
+					usable = true;
+				}
+			}
+		}
+		if (!usable) {
+			getInsertPositionEqual(d);
+			return iterator(makeInsert(d.val, d.parent, d.isLeft));
+		}
+		// Attach immediately before h: either as h's left child (when free), or as
+		// the right child of h's predecessor (which then has no right child).
+		if (h != &_header && h->left == nullptr) {
+			return iterator(makeInsert(d.val, h, /*isLeft=*/true));
+		}
+		RbTreeNodeBase *prev = (h == &_header) ? static_cast<RbTreeNodeBase *>(right())
+											   : RbTreeNodeBase::decrement(h);
+		return iterator(makeInsert(d.val, prev, /*isLeft=*/false));
 	}
 
 	template <typename K, typename... Args>
@@ -384,8 +470,13 @@ public:
 	}
 
 	iterator erase(const_iterator first, const_iterator last) noexcept {
-		for (auto it = first; it != last; it++) {
-			deleteNode(const_cast<RbTreeNodeBase *>(it._node));
+		// Advance BEFORE deleting: incrementing an iterator whose node has just
+		// been freed (or recycled into the block free-list) is a use-after-free.
+		auto it = first;
+		while (it != last) {
+			auto cur = it;
+			++it;
+			deleteNode(const_cast<RbTreeNodeBase *>(cur._node));
 		}
 		return last.constcast();
 	}
@@ -433,9 +524,11 @@ public:
 	}
 
 	void shrink_to_fit() noexcept {
-		auto nFreed = allocator_helper::template release_blocks<true>(get_allocator(), &_free,
-				_header.flag.index);
-		_header.flag.size -= nFreed;
+		if constexpr (__sprt_pool_alloc) {
+			auto nFreed = allocator_helper::template release_blocks<true>(get_allocator(), &_free,
+					_header.flag.index);
+			_header.flag.size -= nFreed;
+		}
 	}
 
 	void clear_deallocate() noexcept {
@@ -447,7 +540,11 @@ public:
 
 	size_t size() const noexcept { return _size; }
 
-	size_t max_size() const noexcept { return size_t(node_type::Flag::MaxSize); }
+	size_t max_size() const noexcept {
+		// [container.reqmts]: bounded by both the node-flag limit and the allocator.
+		return sprt::min(size_t(node_type::Flag::MaxSize),
+				size_t(sprt::allocator_traits<value_allocator_type>::max_size(_allocator)));
+	}
 
 	bool empty() const noexcept { return _header.left == nullptr; }
 
@@ -521,9 +618,13 @@ public:
 	}
 
 	void reserve(size_t c) noexcept {
-		// if requested count is greater then size + pending preallocated nodes
-		if (c > _size + _header.flag.size) {
-			allocate_block(c - (_size + _header.flag.size));
+		// Bulk pre-allocation is a pool-allocator optimization; with a standard
+		// allocator nodes are allocated one at a time on insert, so reserve is a no-op.
+		if constexpr (__sprt_pool_alloc) {
+			// if requested count is greater then size + pending preallocated nodes
+			if (c > _size + _header.flag.size) {
+				allocate_block(c - (_size + _header.flag.size));
+			}
 		}
 	}
 
@@ -632,7 +733,7 @@ protected:
 		ret->setColor(RbTreeNodeColor::Red);
 		ret->value.construct(_allocator, sprt::forward<Args>(args)...);
 
-		return InsertData{&extract(ret->value), ret, nullptr, nullptr, false};
+		return InsertData<Key>{&extract(ret->value), ret, nullptr, nullptr, false};
 	}
 
 	template <typename K, typename... Args>
@@ -802,6 +903,33 @@ protected:
 			return static_cast<RbTreeNode<Value> *>(d.current);
 		}
 
+		return makeInsert(d.val, d.parent, d.isLeft);
+	}
+
+	// Equal (multi) insertion: never rejects duplicates. Equal keys walk to the right
+	// so a newly inserted equal element lands after the existing ones (multimap/
+	// multiset append order). Used by emplace_multi below.
+	template <typename K>
+	void getInsertPositionEqual(InsertData<K> &d) noexcept {
+		d.current = root();
+		d.parent = nullptr;
+		d.isLeft = true;
+		while (d.current != nullptr) {
+			d.parent = d.current;
+			if (compareLtKey(*(d.key), extract(d.current))) {
+				d.isLeft = true;
+				d.current = static_cast<RbTreeNode<Value> *>(d.current->left);
+			} else {
+				d.isLeft = false;
+				d.current = static_cast<RbTreeNode<Value> *>(d.current->right);
+			}
+		}
+	}
+
+	template <typename... Args>
+	RbTreeNode<Value> *insertNodeEqual(Args &&...args) noexcept {
+		InsertData d = constructNode(sprt::forward<Args>(args)...);
+		getInsertPositionEqual(d);
 		return makeInsert(d.val, d.parent, d.isLeft);
 	}
 
@@ -1026,6 +1154,65 @@ protected:
 		}
 	}
 
+	// Move-variant of clone_visit: transfers each element instead of copying it. Used by
+	// the cross-allocator move paths (move constructor / move_from) so that a tree of a
+	// move-only value_type can still be relocated node-by-node.
+	void clone_visit_move(RbTreeNode<Value> *source, RbTreeNode<Value> *target) noexcept {
+		target->value.construct(_allocator, sprt::move_unsafe(source->value.ref()));
+		target->setColor(source->getColor());
+		if (source->left) {
+			target->left = allocateNode();
+			target->left->parent = target;
+			clone_visit_move(static_cast<RbTreeNode<Value> *>(source->left),
+					static_cast<RbTreeNode<Value> *>(target->left));
+			if (_header.parent == source->left) {
+				_header.parent = target->left;
+			}
+		} else {
+			target->left = nullptr;
+		}
+
+		if (source->right) {
+			target->right = allocateNode();
+			target->right->parent = target;
+			clone_visit_move(static_cast<RbTreeNode<Value> *>(source->right),
+					static_cast<RbTreeNode<Value> *>(target->right));
+			if (_header.right == source->right) {
+				_header.right = target->right;
+			}
+		} else {
+			target->right = nullptr;
+		}
+	}
+
+	void clone_move(RbTree &other) noexcept {
+		auto preallocTmp = memory_persistent();
+		set_memory_persistent(true);
+		clear();
+		set_memory_persistent(preallocTmp);
+
+		reserve(other._size);
+
+		auto flag = _header.flag;
+
+		_size = other._size;
+		_comp = other._comp;
+		_header = other._header;
+		_header.flag = flag;
+		if (other._header.left) {
+			_header.left = allocateNode();
+			_header.left->parent = &_header;
+			if (other._header.left == other._header.parent) {
+				_header.parent = _header.left;
+			}
+			if (other._header.left == other._header.right) {
+				_header.right = _header.left;
+			}
+			clone_visit_move(static_cast<RbTreeNode<Value> *>(other._header.left),
+					static_cast<RbTreeNode<Value> *>(_header.left));
+		}
+	}
+
 	template < typename K >
 	node_ptr find_impl(const K &x) const noexcept {
 		const_node_ptr current = root();
@@ -1061,7 +1248,7 @@ protected:
 	template < typename K >
 	node_ptr upper_bound_ptr(const K &x) const noexcept {
 		const_node_ptr current = root();
-		const_node_ptr saved = current;
+		const_node_ptr saved = nullptr;
 		while (current) {
 			if (compareLtTransparent(x, extract(current))) {
 				saved = current;
@@ -1075,48 +1262,50 @@ protected:
 
 	template < typename K >
 	size_t count_impl(const K &x) const noexcept {
-		auto c = find_impl(x);
-		if (!c) {
-			return 0;
-		} else {
-			size_t ret = 1;
-			const_node_ptr next, current;
-
-			current = c;
-			next = static_cast<const_node_ptr>(RbTreeNodeBase::decrement(current));
-			while (next && !compareLtTransparent(extract(next), extract(current))) {
-				current = next;
-				next = static_cast<const_node_ptr>(RbTreeNodeBase::decrement(current));
-				ret++;
+		// Count the equal-key run as distance(lower_bound, upper_bound). This reuses
+		// the bound searches and the forward increment (which correctly returns the
+		// header at end()), and avoids the manual decrement walk: decrement(begin())
+		// does not yield the header sentinel but loops back to begin() itself, so a
+		// backward scan of a run that starts at begin() would spin forever.
+		const_node_ptr last = upper_bound_ptr(x); // nullptr => run reaches end()
+		size_t ret = 0;
+		for (const_node_ptr c = lower_bound_ptr(x); c && c != &_header;
+				c = static_cast<const_node_ptr>(
+						RbTreeNodeBase::increment(const_cast<node_ptr>(c)))) {
+			if (last && c == last) {
+				break;
 			}
-
-			current = c;
-			next = static_cast<const_node_ptr>(RbTreeNodeBase::increment(current));
-			while (next && next != &_header
-					&& !compareLtTransparent(extract(current), extract(next))) {
-				current = next;
-				next = static_cast<const_node_ptr>(RbTreeNodeBase::increment(current));
-				ret++;
-			}
-			return ret;
+			++ret;
 		}
+		return ret;
 	}
 
 	void destroyNode(RbTreeNode<Value> *n) noexcept {
-		_allocator.destroy(n->value.ptr());
-		if (!_free) {
-			// no saved node - always hold one
-			n->parent = nullptr;
-			_free = n;
-			++_header.flag.size; // increment capacity counter
-		} else if (n->isPrealloc() || _header.flag.prealloc) {
-			// node was preallocated - hold it in chain
-			n->parent = _free;
-			_free = n;
-			++_header.flag.size; // increment capacity counter
+		if constexpr (__sprt_pool_alloc) {
+			_allocator.destroy(n->value.ptr());
+			if (!_free) {
+				// no saved node - always hold one
+				n->parent = nullptr;
+				_free = n;
+				++_header.flag.size; // increment capacity counter
+			} else if (n->isPrealloc() || _header.flag.prealloc) {
+				// node was preallocated - hold it in chain
+				n->parent = _free;
+				_free = n;
+				++_header.flag.size; // increment capacity counter
+			} else {
+				// deallocate node
+				node_allocator_type(_allocator).__deallocate(n, 1, n->getSize());
+			}
 		} else {
-			// deallocate node
-			node_allocator_type(_allocator).__deallocate(n, 1, n->getSize());
+			// Standard allocator: destroy value + node and deallocate immediately;
+			// no free-list caching or pool prealloc (_free stays null). deallocate wants
+			// the allocator's (possibly fancy) pointer, so rebuild it from the raw node.
+			using __nat = sprt::allocator_traits<node_allocator_type>;
+			node_allocator_type na(_allocator);
+			sprt::allocator_traits<value_allocator_type>::destroy(_allocator, n->value.ptr());
+			__nat::destroy(na, n);
+			__nat::deallocate(na, sprt::pointer_traits<typename __nat::pointer>::pointer_to(*n), 1);
 		}
 	}
 
@@ -1126,11 +1315,21 @@ protected:
 			_free = (RbTreeNode<Value> *)ret->parent;
 			--_header.flag.size; // decrement capacity counter
 			return ret;
-		} else {
+		}
+		if constexpr (__sprt_pool_alloc) {
 			size_t s;
 			auto ret = node_allocator_type(_allocator).__allocate(1, s);
 			node_allocator_type(_allocator).construct(ret);
 			ret->setSize(s);
+			ret->setPrealloc(false);
+			return ret;
+		} else {
+			// &*fancy yields the raw node pointer the tree stores internally; works for
+			// both raw-pointer and fancy-pointer (min_allocator) standard allocators.
+			using __nat = sprt::allocator_traits<node_allocator_type>;
+			node_allocator_type na(_allocator);
+			node_ptr ret = &*__nat::allocate(na, 1);
+			__nat::construct(na, ret);
 			ret->setPrealloc(false);
 			return ret;
 		}

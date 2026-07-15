@@ -23,6 +23,25 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_PAIR_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_PAIR_H_
 
+#include <sprt/c/bits/__sprt_def.h>
+
+#if __SPRT_USE_STL
+// libc++ present: project std::pair into namespace sprt (sprt::pair IS std::pair), the
+// same single value-type switch as <sprt/cxx/tuple>. A hand-written sprt::pair would carry
+// its own namespace-std tuple-protocol / make_pair / get that clash (ambiguous ADL) with
+// libc++'s; projecting dissolves that and lets pair's piecewise ctor use std::tuple.
+#include <utility>
+
+namespace sprt {
+using std::get;
+using std::make_pair;
+using std::pair;
+using std::piecewise_construct;
+using std::piecewise_construct_t;
+} // namespace sprt
+
+#else // freestanding / sprt's own build: hand-written pair
+
 #include <sprt/cxx/__utility/swap.h>
 #include <sprt/cxx/__type_traits/types.h>
 #include <sprt/cxx/__type_traits/operations.h>
@@ -238,5 +257,7 @@ template <class T1, class T2>
 pair(T1, T2) -> pair<T1, T2>;
 
 } // namespace sprt
+
+#endif // __SPRT_STL_LIBCXX_VALUETYPES: libc++ projection vs hand-written pair
 
 #endif // RUNTIME_INCLUDE_SPRT_RUNTIME_PAIR_H_

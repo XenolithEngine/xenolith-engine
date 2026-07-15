@@ -52,7 +52,14 @@ static int sprt_qlock_wait(__SPRT_ID(sprt_qlock_t) * value, __SPRT_ID(sprt_qlock
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		}
 	} else {
-		if (!WaitOnAddress(value, &expected, sizeof(uint32_t), timeout / 1'000'000)) {
+		// Round the ns timeout UP to whole milliseconds. WaitOnAddress takes a ms count,
+		// and a timed wait must never return BEFORE the requested duration. Truncating
+		// (timeout / 1e6) dropped the sub-ms remainder, so a wait of e.g. 249.9ms (what
+		// condition_variable_any produces converting its absolute deadline back to a
+		// relative one) ran ~1ms short: cv then saw now() < deadline and reported
+		// no_timeout past the timeout, spinning its wait_for loop (wine exit=124).
+		if (!WaitOnAddress(value, &expected, sizeof(uint32_t),
+					DWORD((timeout + 999'999) / 1'000'000))) {
 			result = -1;
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		}
@@ -86,7 +93,9 @@ static int sprt_rlock_wait(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_rlock
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		}
 	} else {
-		if (!WaitOnAddress(&value->u64, &expected->u64, sizeof(uint64_t), timeout / 1'000'000)) {
+		// Round ns up to whole ms (see sprt_qlock_wait): a timed wait must not return early.
+		if (!WaitOnAddress(&value->u64, &expected->u64, sizeof(uint64_t),
+					DWORD((timeout + 999'999) / 1'000'000))) {
 			result = -1;
 			__sprt_errno = platform::lastErrorToErrno(GetLastError());
 		}
@@ -104,7 +113,17 @@ static int sprt_rlock_supports(__SPRT_ID(sprt_lock_flags_t) flags) {
 
 static int sprt_rlock_try_wait(__SPRT_ID(sprt_rlock_t) * value,
 		__SPRT_ID(sprt_lock_flags_t) flags) {
-	return 0;
+	// Windows has no kernel PI-futex trylock (FUTEX_TRYLOCK_PI). rmutex_base::_try_lock
+	// only calls this AFTER its userspace CAS has already failed and the holder is a
+	// DIFFERENT thread (the same-thread recursive case returns Propagate before reaching
+	// here), and this callback isn't even given the caller's tid to write — so the lock
+	// cannot be acquired. Report busy (EBUSY -> Status::ErrorBusy) so try_lock() returns
+	// false. Returning 0 here falsely claimed acquisition, letting a second thread "lock" a
+	// recursive_mutex already owned by another (thread.mutex.recursive lock/try_lock, wine).
+	// A dead prior owner is handled separately by the robust-mutex cleanup (force_unlock
+	// resets the futex word), so the next CAS succeeds without this path.
+	__sprt_errno = EBUSY;
+	return -1;
 }
 
 static int sprt_rlock_wake(__SPRT_ID(sprt_rlock_t) * value, __SPRT_ID(sprt_lock_flags_t) flags) {

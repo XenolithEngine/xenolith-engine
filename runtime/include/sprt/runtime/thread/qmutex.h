@@ -23,7 +23,8 @@
 #ifndef RUNTIME_INCLUDE_SPRT_RUNTIME_THREAD_QMUTEX_H_
 #define RUNTIME_INCLUDE_SPRT_RUNTIME_THREAD_QMUTEX_H_
 
-#include <sprt/cxx/atomic>
+#include <sprt/cxx/__atomic/ops.h>
+#include <sprt/runtime/math.h>
 #include <sprt/c/sys/__sprt_sprt.h>
 #include <sprt/runtime/status.h>
 
@@ -139,7 +140,9 @@ public:
 
 	~qmutex();
 
-	qmutex() : _data(0) { }
+	// constexpr + noexcept so a std::mutex wrapper embedding a qmutex can offer the
+	// mandated `constexpr mutex() noexcept` and satisfy is_nothrow_default_constructible.
+	constexpr qmutex() noexcept : _data(0) { }
 
 	qmutex(const qmutex &) = delete;
 	qmutex &operator=(const qmutex &) = delete;

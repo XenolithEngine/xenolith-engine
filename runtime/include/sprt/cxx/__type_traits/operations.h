@@ -243,6 +243,9 @@ inline constexpr bool is_nothrow_destructible_v = __is_nothrow_destructible(Type
 template <typename Type>
 struct has_virtual_destructor : public integral_constant<bool, __has_virtual_destructor(Type)> { };
 
+template <typename Type>
+inline constexpr bool has_virtual_destructor_v = __has_virtual_destructor(Type);
+
 
 template <typename Type>
 void __test_implicit_default_constructible(Type);
@@ -260,7 +263,7 @@ struct __is_implicitly_default_constructible<Type,
 		decltype(sprt::__test_implicit_default_constructible<Type const &>({})), false_type>
 : false_type { };
 
-} // inline namespace __cxx_type_traits
+} // namespace __cxx_type_traits
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_OPERATIONS_H_

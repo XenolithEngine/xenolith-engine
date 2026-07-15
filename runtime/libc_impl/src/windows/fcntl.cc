@@ -138,7 +138,7 @@ int open(const char *path, int __flags, ...) __SPRT_NOEXCEPT {
 	if ((__flags & __SPRT_O_CREAT) || (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE) {
 		__sprt_va_list ap;
 		__sprt_va_start(ap, __flags);
-		__mode = __sprt_va_arg(ap, mode_t);
+		__mode = __SPRT_VA_ARG_MODE_T(ap);
 		__sprt_va_end(ap);
 	}
 
@@ -152,7 +152,7 @@ int openat(int __dir_fd, const char *path, int __flags, ...) __SPRT_NOEXCEPT {
 	if ((__flags & __SPRT_O_CREAT) || (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE) {
 		__sprt_va_list ap;
 		__sprt_va_start(ap, __flags);
-		__mode = __sprt_va_arg(ap, mode_t);
+		__mode = __SPRT_VA_ARG_MODE_T(ap);
 		__sprt_va_end(ap);
 	}
 
@@ -185,7 +185,7 @@ int _sopen_s(int *pfh, const char *__path, int __flags, int __sh, ...) __SPRT_NO
 	if ((__flags & __SPRT_O_CREAT) || (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE) {
 		__sprt_va_list ap;
 		__sprt_va_start(ap, __sh);
-		__mode = __sprt_va_arg(ap, mode_t);
+		__mode = __SPRT_VA_ARG_MODE_T(ap);
 		__sprt_va_end(ap);
 	}
 
@@ -205,7 +205,7 @@ int _sopen(const char *__path, int __flags, int __sh, ...) __SPRT_NOEXCEPT {
 	if ((__flags & __SPRT_O_CREAT) || (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE) {
 		__sprt_va_list ap;
 		__sprt_va_start(ap, __sh);
-		__mode = __sprt_va_arg(ap, mode_t);
+		__mode = __SPRT_VA_ARG_MODE_T(ap);
 		__sprt_va_end(ap);
 	}
 
@@ -229,7 +229,7 @@ int _wsopen_s(int *pfh, const wchar_t *__path, int __flags, int __sh, ...) __SPR
 	if ((__flags & __SPRT_O_CREAT) || (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE) {
 		__sprt_va_list ap;
 		__sprt_va_start(ap, __sh);
-		__mode = __sprt_va_arg(ap, mode_t);
+		__mode = __SPRT_VA_ARG_MODE_T(ap);
 		__sprt_va_end(ap);
 	}
 
@@ -256,7 +256,7 @@ int _wsopen(const wchar_t *wpath, int __flags, int __sh, ...) __SPRT_NOEXCEPT {
 	if ((__flags & __SPRT_O_CREAT) || (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE) {
 		__sprt_va_list ap;
 		__sprt_va_start(ap, __sh);
-		__mode = __sprt_va_arg(ap, mode_t);
+		__mode = __SPRT_VA_ARG_MODE_T(ap);
 		__sprt_va_end(ap);
 	}
 
@@ -277,7 +277,7 @@ __SPRT_C_FUNC int _wopen(const wchar_t *wpath, int __flags, ...) __SPRT_NOEXCEPT
 	if ((__flags & __SPRT_O_CREAT) || (__flags & __SPRT_O_TMPFILE) == __SPRT_O_TMPFILE) {
 		__sprt_va_list ap;
 		__sprt_va_start(ap, __flags);
-		__mode = __sprt_va_arg(ap, mode_t);
+		__mode = __SPRT_VA_ARG_MODE_T(ap);
 		__sprt_va_end(ap);
 	}
 

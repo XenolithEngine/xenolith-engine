@@ -157,7 +157,7 @@ typedef struct tagSAFEARRAY {
 	ULONG cLocks;
 	PVOID pvData;
 	SAFEARRAYBOUND rgsabound[1];
-} SAFEARRAY;
+} SAFEARRAY, *LPSAFEARRAY;
 
 /* COM interface forward declarations */
 typedef struct IWbemLocator IWbemLocator;

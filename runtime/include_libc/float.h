@@ -61,4 +61,112 @@ THE SOFTWARE.
 
 #endif
 
+// MSVC's <float.h> also declares the floating-point control/status CRT helpers
+// (_clearfp/_statusfp/_controlfp). UCRT normally provides them, but the SPRT
+// runtime has no UCRT — so we synthesise them on top of the POSIX <fenv.h> API
+// that the runtime does implement. LLVM (e.g. llvm-exegesis) uses _clearfp() to
+// reset the x87/SSE status word; other code may probe/adjust rounding via
+// _controlfp(). Everything below is header-only (static inline) so it needs no
+// CRT object to link against.
+#if defined(_WIN32) || defined(__SPRT_WINDOWS)
+
+#include <fenv.h>
+
+// MSVC status-word (_SW_*) and control-word (_EM_*/_RC_*/_MCW_*) bit layout.
+#ifndef _SW_INEXACT
+#define _SW_INEXACT    0x00000001u // inexact (precision)
+#define _SW_UNDERFLOW  0x00000002u // underflow
+#define _SW_OVERFLOW   0x00000004u // overflow
+#define _SW_ZERODIVIDE 0x00000008u // zero divide
+#define _SW_INVALID    0x00000010u // invalid
+#define _SW_DENORMAL   0x00080000u // denormal status bit
+#endif
+
+#ifndef _MCW_EM
+#define _EM_INEXACT    0x00000001u
+#define _EM_UNDERFLOW  0x00000002u
+#define _EM_OVERFLOW   0x00000004u
+#define _EM_ZERODIVIDE 0x00000008u
+#define _EM_INVALID    0x00000010u
+#define _EM_DENORMAL   0x00080000u
+#define _MCW_EM        0x0008001fu // interrupt exception masks
+
+#define _RC_NEAR       0x00000000u
+#define _RC_DOWN       0x00000100u
+#define _RC_UP         0x00000200u
+#define _RC_CHOP       0x00000300u
+#define _MCW_RC        0x00000300u // rounding control
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Map hardware fenv exception bits (FE_*) -> MSVC status-word bits (_SW_*).
+// FE_DENORMAL is x86-only and not guaranteed by <fenv.h>, so guard it.
+static inline unsigned int __sprt_fe_to_sw(int __fe) {
+	unsigned int __sw = 0u;
+#ifdef FE_INEXACT
+	if (__fe & FE_INEXACT)   __sw |= _SW_INEXACT;
+#endif
+#ifdef FE_UNDERFLOW
+	if (__fe & FE_UNDERFLOW) __sw |= _SW_UNDERFLOW;
+#endif
+#ifdef FE_OVERFLOW
+	if (__fe & FE_OVERFLOW)  __sw |= _SW_OVERFLOW;
+#endif
+#ifdef FE_DIVBYZERO
+	if (__fe & FE_DIVBYZERO) __sw |= _SW_ZERODIVIDE;
+#endif
+#ifdef FE_INVALID
+	if (__fe & FE_INVALID)   __sw |= _SW_INVALID;
+#endif
+#ifdef FE_DENORMAL
+	if (__fe & FE_DENORMAL)  __sw |= _SW_DENORMAL;
+#endif
+	return __sw;
+}
+
+// _statusfp(): report the currently-raised FP exceptions as an MSVC status word.
+static inline unsigned int _statusfp(void) {
+	return __sprt_fe_to_sw(fetestexcept(FE_ALL_EXCEPT));
+}
+
+// _clearfp(): clear all FP exception flags, returning the prior status word.
+static inline unsigned int _clearfp(void) {
+	unsigned int __sw = __sprt_fe_to_sw(fetestexcept(FE_ALL_EXCEPT));
+	feclearexcept(FE_ALL_EXCEPT);
+	return __sw;
+}
+
+// _controlfp(new, mask): read/adjust the FP control word. POSIX <fenv.h> only
+// exposes the rounding direction portably, so we honour _MCW_RC via
+// fe{get,set}round() and report the exception masks as "all masked" (the CRT
+// default). Returns the resulting control word.
+static inline unsigned int _controlfp(unsigned int __new, unsigned int __mask) {
+	unsigned int __cw = _MCW_EM; // default: every exception masked
+
+	if (__mask & _MCW_RC) {
+		unsigned int __rc = __new & _MCW_RC;
+		int __round = FE_TONEAREST;
+		if (__rc == _RC_DOWN)      __round = FE_DOWNWARD;
+		else if (__rc == _RC_UP)   __round = FE_UPWARD;
+		else if (__rc == _RC_CHOP) __round = FE_TOWARDZERO;
+		fesetround(__round);
+	}
+
+	switch (fegetround()) {
+	case FE_DOWNWARD:   __cw |= _RC_DOWN; break;
+	case FE_UPWARD:     __cw |= _RC_UP;   break;
+	case FE_TOWARDZERO: __cw |= _RC_CHOP; break;
+	default:            __cw |= _RC_NEAR; break;
+	}
+	return __cw;
+}
+
+#ifdef __cplusplus
+}
+#endif
+#endif
+
 #endif // CORE_RUNTIME_INCLUDE_LIBC_FLOAT_H_

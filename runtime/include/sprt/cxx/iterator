@@ -29,6 +29,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__iterator/adapters.h>
 #include <sprt/cxx/__iterator/iterator_ops.h>
 #include <sprt/cxx/__iterator/iterator_tags.h>
+#include <sprt/cxx/__iterator/concepts.h>
 
 namespace sprt {
 
@@ -60,6 +61,46 @@ constexpr auto end(const C &c) noexcept -> decltype(c.end()) {
 template <typename T, size_t N>
 T *end(T (&array)[N]) {
 	return (&array[N - 1]) + 1;
+}
+
+template <typename C>
+constexpr auto rbegin(C &c) -> decltype(c.rbegin()) {
+	return c.rbegin();
+}
+
+template <typename C>
+constexpr auto rbegin(const C &c) -> decltype(c.rbegin()) {
+	return c.rbegin();
+}
+
+template <typename C>
+constexpr auto rend(C &c) -> decltype(c.rend()) {
+	return c.rend();
+}
+
+template <typename C>
+constexpr auto rend(const C &c) -> decltype(c.rend()) {
+	return c.rend();
+}
+
+template <typename T, size_t N>
+constexpr reverse_iterator<T *> rbegin(T (&array)[N]) {
+	return reverse_iterator<T *>(array + N);
+}
+
+template <typename T, size_t N>
+constexpr reverse_iterator<T *> rend(T (&array)[N]) {
+	return reverse_iterator<T *>(array);
+}
+
+template <typename C>
+constexpr auto crbegin(const C &c) -> decltype(sprt::rbegin(c)) {
+	return sprt::rbegin(c);
+}
+
+template <typename C>
+constexpr auto crend(const C &c) -> decltype(sprt::rend(c)) {
+	return sprt::rend(c);
 }
 
 template <typename C>

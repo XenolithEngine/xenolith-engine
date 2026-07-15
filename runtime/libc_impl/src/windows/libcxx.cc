@@ -25,6 +25,7 @@ THE SOFTWARE.
 #include <string.h>
 
 #include <sprt/cxx/typeinfo>
+#include <sprt/cxx/exception>
 #include <sprt/cxx/new>
 #include <sprt/cxx/detail/hash.h>
 #include <sprt/wrappers/windows/dl_api.h>
@@ -459,16 +460,56 @@ int type_info::__compare(const type_info &__rhs) const noexcept {
 }
 
 __SPRT_PUSH_ALLOW_CXXABI_ALLOC
-type_info::~type_info() { }
+type_info::~type_info() {
+	// name() lazily caches a malloc'd (demangler OutputBuffer, freed with free()) string in
+	// __undecorated_name; release it. The field is null unless name() ran and demangling
+	// succeeded, and sprt is its only writer, so any non-null value is a free()-able buffer.
+	// (For the compiler's static RTTI descriptors this dtor never runs — the cache lives for
+	// the program and is reclaimed at exit — but honour the field for any owned type_info.)
+	if (__data.__undecorated_name) {
+		free(const_cast<char *>(__data.__undecorated_name));
+	}
+}
 __SPRT_POP_ALLOW_CXXABI_ALLOC
 
 const char *type_info::name() const noexcept {
-	return __data.__decorated_name; //
+	// The compiler stores the RTTI *decorated* type-descriptor name (".?AV...", leading
+	// dot included); MSVC's type_info::name() returns the DEMANGLED, human-readable form
+	// (e.g. "enum std::align_val_t"). There is no vcruntime __std_type_info_name here, so
+	// demangle with the bundled LLVM MS demangler and cache into the mutable
+	// __undecorated_name slot — exactly what vcruntime does lazily on first call.
+	if (__data.__undecorated_name) {
+		return __data.__undecorated_name;
+	}
+	size_t nread = 0;
+	int status = -1;
+	char *dem = llvm::microsoftDemangle(__data.__decorated_name, &nread, &status, llvm::MSDF_None);
+	if (!dem || status != 0) {
+		return __data.__decorated_name;
+	}
+	// Demangling the ".?A" type-descriptor form appends a " `RTTI Type Descriptor Name'"
+	// label that MSVC's name() does not include; trim that trailing suffix.
+	if (char *suf = strstr(dem, " `RTTI Type Descriptor Name'")) {
+		*suf = '\0';
+	}
+	__data.__undecorated_name = dem;
+	return __data.__undecorated_name;
 }
 
 size_t type_info::hash_code() const noexcept {
 	return sprt::hash<void>()((const char *)__data.__decorated_name);
 }
+
+// std::exception / std::bad_exception out-of-line bodies. On the Itanium targets
+// libc++abi supplies these; the MSVC-ABI runtime has no libc++abi, so — like
+// type_info above — provide them here (same unified class layout, no ABI split).
+// The exception hierarchy is first materialised on Windows by <stdexcept> /
+// std::system_error (SPRTCxxStdexcept.cpp), whose vtables reference exception::what().
+exception::~exception() noexcept { }
+const char *exception::what() const noexcept { return "std::exception"; }
+
+bad_exception::~bad_exception() noexcept { }
+const char *bad_exception::what() const noexcept { return "std::bad_exception"; }
 
 } // namespace std
 

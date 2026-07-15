@@ -88,15 +88,12 @@ ifdef WASM
 # the wasm platform (__SPRT_WASM) + the wasm feature set the app build uses. Kept
 # in sync with the app target.mk (make/os/wasm.mk + target-wasm/init-target.mk).
 SP_WASM_FEATURES := -matomics -mbulk-memory -mmutable-globals -msign-ext -mnontrapping-fptoint
-# The C++ STL wrappers (include_libc/stl) belong ONLY on the C++ include path — same
-# split as the runtimes toolchain (init-target.mk WASM_C_INCLUDES / WASM_CXX_INCLUDES).
-# Putting them on the C path also perturbs clang's builtin-header search so C builtin
-# headers like <stdatomic.h> stop resolving (breaks e.g. SheenBidi's C11 atomics).
 SP_WASM_C_INCLUDES := \
 	-isystem $(SP_RUNTIME_ROOT)/include_libc \
 	-isystem $(SP_RUNTIME_ROOT)/include
 SP_WASM_CXX_INCLUDES := \
-	-isystem $(SP_RUNTIME_ROOT)/include_libc/stl \
+	-isystem $(SP_RUNTIME_ROOT)/include_libc/cxx \
+	-isystem $(SP_RUNTIME_ROOT)/libcxx/include \
 	-isystem $(SP_RUNTIME_ROOT)/include_libc \
 	-isystem $(SP_RUNTIME_ROOT)/include
 
@@ -328,8 +325,8 @@ ifdef WINDOWS
 CONFIGURE_CMAKE_C_FLAGS_INIT += -nostdlib $(SP_WINDOWS_INCLIUDES) -D__SPRT_WINDOWS
 CONFIGURE_CMAKE_CXX_FLAGS_INIT += -nostdlib $(SP_WINDOWS_INCLIUDES) -D__SPRT_WINDOWS
 CONFIGURE_CMAKE_RC_FLAGS_INIT += -nostdlib $(SP_WINDOWS_INCLIUDES) -D__SPRT_WINDOWS
-CONFIGURE_EXE_LINKER_FLAGS_INIT += -nostdlib
-CONFIGURE_SHARED_LINKER_FLAGS_INIT += -nostdlib
+CONFIGURE_EXE_LINKER_FLAGS_INIT += -nostdlib -L$(SP_INSTALL_PREFIX)/lib
+CONFIGURE_SHARED_LINKER_FLAGS_INIT += -nostdlib -L$(SP_INSTALL_PREFIX)/lib
 endif
 
 CONFIGURE_CMAKE += \
