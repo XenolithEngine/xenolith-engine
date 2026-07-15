@@ -2,6 +2,7 @@ LIBRARY ntdll.dll
 EXPORTS
 	RtlCaptureContext
 	RtlRestoreContext
+	RtlGetLastNtStatus
 	NtContinueEx
 	NtClose
 	_setjmp

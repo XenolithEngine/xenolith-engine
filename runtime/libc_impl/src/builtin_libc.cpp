@@ -75,13 +75,15 @@ __libc::__libc() {
 
 	localeCache.max_load_factor(2.0);
 
+	// The program default is the UTF-8 locale (native convention across targets);
+	// an explicit setlocale/newlocale("C"/"POSIX") selects the single-byte map.
 	defaultLocale = __locale_struct{
-		__get_locale(__SPRT_LC_CTYPE, "C", 1),
-		__get_locale(__SPRT_LC_NUMERIC, "C", 1),
-		__get_locale(__SPRT_LC_TIME, "C", 1),
-		__get_locale(__SPRT_LC_COLLATE, "C", 1),
-		__get_locale(__SPRT_LC_MONETARY, "C", 1),
-		__get_locale(__SPRT_LC_MESSAGES, "C", 1),
+		__get_locale(__SPRT_LC_CTYPE, "C.UTF8", 6),
+		__get_locale(__SPRT_LC_NUMERIC, "C.UTF8", 6),
+		__get_locale(__SPRT_LC_TIME, "C.UTF8", 6),
+		__get_locale(__SPRT_LC_COLLATE, "C.UTF8", 6),
+		__get_locale(__SPRT_LC_MONETARY, "C.UTF8", 6),
+		__get_locale(__SPRT_LC_MESSAGES, "C.UTF8", 6),
 	};
 
 	plockStorage.plocks.max_load_factor(2.0);

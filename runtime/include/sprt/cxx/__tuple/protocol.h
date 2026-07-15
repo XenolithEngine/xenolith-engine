@@ -32,8 +32,16 @@ THE SOFTWARE.
 
 #include <sprt/cxx/type_traits>
 #include <sprt/cxx/cstddef>
+#include <sprt/cxx/exception> // __SPRT_STD_OWNED_BEGIN/END (owned-ABI namespace fold)
 
+// The tuple_size / tuple_element primaries are the language-recognized customization
+// points; they must live in the SAME owned-std namespace as the rest of the STL
+// (std::__sprt on system-ABI targets, plain std on wasm/windows) so that vendored libc++
+// headers folding into std::__sprt (e.g. a ported <tuple>) can add their own
+// specializations. sprt's pair/array specializations sit in the enclosing std and remain
+// valid across the move.
 namespace std {
+__SPRT_STD_OWNED_BEGIN
 
 template <typename _Tp>
 struct tuple_size;
@@ -77,6 +85,7 @@ struct tuple_element<_Ip, const volatile _Tp> {
 	using type = const volatile tuple_element_t<_Ip, _Tp>;
 };
 
+__SPRT_STD_OWNED_END
 } // namespace std
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___TUPLE_PROTOCOL_H_

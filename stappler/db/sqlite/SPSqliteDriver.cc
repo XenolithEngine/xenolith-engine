@@ -526,22 +526,22 @@ Driver::Driver(pool_t *pool, ApplicationInterface *app, StringView mem, DriverSy
 		_handle = nullptr;
 	});
 
-	auto it = _customFields.emplace(FieldIntArray::FIELD_NAME);
+	auto it = _customFields.emplace(FieldIntArray::FIELD_NAME, CustomFieldInfo{});
 	if (!FieldIntArray::registerForSqlite(it.first->second)) {
 		_customFields.erase(it.first);
 	}
 
-	it = _customFields.emplace(FieldBigIntArray::FIELD_NAME);
+	it = _customFields.emplace(FieldBigIntArray::FIELD_NAME, CustomFieldInfo{});
 	if (!FieldBigIntArray::registerForSqlite(it.first->second)) {
 		_customFields.erase(it.first);
 	}
 
-	it = _customFields.emplace(FieldPoint::FIELD_NAME);
+	it = _customFields.emplace(FieldPoint::FIELD_NAME, CustomFieldInfo{});
 	if (!FieldPoint::registerForSqlite(it.first->second)) {
 		_customFields.erase(it.first);
 	}
 
-	it = _customFields.emplace(FieldTextArray::FIELD_NAME);
+	it = _customFields.emplace(FieldTextArray::FIELD_NAME, CustomFieldInfo{});
 	if (!FieldTextArray::registerForSqlite(it.first->second)) {
 		_customFields.erase(it.first);
 	}

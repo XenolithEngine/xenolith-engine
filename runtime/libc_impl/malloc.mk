@@ -27,21 +27,30 @@ MODULE_RUNTIME_MALLOC_PRIVATE_STANDALONE := 1
 
 ifeq ($(TARGET_SYSTEM),WASM)
 
-# wasm has no mmap/VirtualAlloc, so mimalloc's OS primitive layer does not apply.
-# Use the runtime's own simple native allocator built directly on memory.grow
-# (libc_impl/wasm_malloc/wasm_malloc.c). It exposes the same public C entry
-# points the mimalloc SCU did.
+# wasm has no mmap/VirtualAlloc, but mimalloc ships a "wasi" OS-primitive layer
+# (src/prim/wasi/prim.c) that grows the heap through sbrk — which the freestanding
+# wasm libc now implements over memory.grow (libc_impl/src/wasm/unistd.cc). Build
+# the same mimalloc SCU as every other target; -D__wasi__ selects that prim layer.
+#
+# -DMI_USE_PTHREADS keeps mimalloc MULTI-THREADED: the sprt wasm runtime has full
+# pthreads, so mimalloc uses its normal per-thread heaps, a pthread mutex around
+# memory growth, and a pthread-key destructor to reclaim a thread's heap on exit
+# (see the atomic.h + wasi/prim.c overrides) instead of the wasi single-thread stub.
 MODULE_RUNTIME_MALLOC_SRCS_OBJS := \
-	$(RUNTIME_MODULE_DIR)/libc_impl/wasm_malloc/wasm_malloc.c
+	$(RUNTIME_MODULE_DIR)/libc_impl/mimalloc/mimalloc.scu.c
 MODULE_RUNTIME_MALLOC_PRIVATE_INCLUDES := \
 	$(RUNTIME_MODULE_DIR)/include \
-	$(RUNTIME_MODULE_DIR)/include_libc
+	$(RUNTIME_MODULE_DIR)/include_libc \
+	$(RUNTIME_MODULE_DIR)/libc_impl/mimalloc/include
 
 MODULE_RUNTIME_MALLOC_PRIVATE_COMMON_CFLAGS := \
 	$(MODULE_RUNTIME_COMMON_CFLAGS) \
 	-nostdinc \
 	-ffreestanding \
-	-fbuiltin
+	-fbuiltin \
+	-D__wasi__ \
+	-DMI_USE_PTHREADS \
+	-DMALLOC_NO_PRIVATE_NAMESPACE
 
 else # ($(TARGET_SYSTEM),WASM)
 

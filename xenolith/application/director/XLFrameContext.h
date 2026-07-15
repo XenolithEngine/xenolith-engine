@@ -196,7 +196,7 @@ struct SP_PUBLIC FrameInfo {
 	mem_pool::Vector<Rc<System>> *pushSystem(const Rc<System> &comp) {
 		auto it = systemStack.find(comp->getFrameTag());
 		if (it == systemStack.end()) {
-			it = systemStack.emplace(comp->getFrameTag()).first;
+			it = systemStack.emplace(comp->getFrameTag(), mem_pool::Vector<Rc<System>>()).first;
 		}
 		it->second.emplace_back(comp);
 		return &it->second;

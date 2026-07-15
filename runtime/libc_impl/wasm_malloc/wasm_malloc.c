@@ -240,3 +240,10 @@ void free_aligned_sized(void *ptr, size_t alignment, size_t size) __SPRT_NOEXCEP
 	(void)size;
 	free(ptr);
 }
+
+// Symbol parity with the mimalloc build for <malloc.h>'s _heapwalk. This simple
+// grow-only allocator does not track a live-bytes total, so it reports 0 (the
+// _heapwalk consumer is windows-only anyway).
+size_t __sprt_malloc_usage(void) __SPRT_NOEXCEPT {
+	return 0;
+}

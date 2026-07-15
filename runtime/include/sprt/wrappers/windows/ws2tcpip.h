@@ -25,4 +25,24 @@ THE SOFTWARE.
 
 #include <sprt/wrappers/windows/winsock.h>
 
+// gai_strerror is an inline in the Windows SDK (not an exported symbol). Provide
+// the char form used for diagnostics; the specific WSA error is separately
+// available via WSAGetLastError.
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+SPRT_FORCEINLINE const char *gai_strerrorA(int __ecode) {
+	(void)__ecode;
+	return "getaddrinfo/getnameinfo failed";
+}
+
+#ifdef __cplusplus
+}
+#endif
+
+#ifndef gai_strerror
+#define gai_strerror gai_strerrorA
+#endif
+
 #endif // CORE_RUNTIME_INCLUDE_LIBC_WS2TCPIP_H_

@@ -131,10 +131,24 @@ void __init_default_fds(__libc *libc) {
 } // namespace sprt
 
 __SPRT_C_FUNC
-HANDLE _get_osfhandle(int fd) __SPRT_NOEXCEPT {
+intptr_t _get_osfhandle(int fd) __SPRT_NOEXCEPT {
 	auto slot = sprt::__libc::get()->get_fd_slot(fd);
 	if (!slot) {
-		return nullptr;
+		return reinterpret_cast<intptr_t>(INVALID_HANDLE_VALUE);
 	}
-	return slot->handle;
+	return reinterpret_cast<intptr_t>(slot->handle);
+}
+
+__SPRT_C_FUNC
+int _open_osfhandle(intptr_t osfhandle, int flags) __SPRT_NOEXCEPT {
+	auto handle = reinterpret_cast<HANDLE>(osfhandle);
+	if (handle == nullptr || handle == INVALID_HANDLE_VALUE) {
+		return -1;
+	}
+	// Adopt the handle into a regular file fd. The MSVC _O_* flags are passed through as
+	// the slot's open flags; callers that pass 0 (the common case) get the default r/w
+	// stream behaviour of the file ops table.
+	auto libc = sprt::__libc::get();
+	int fd = libc->create_fd(handle, &libc->fdFileOps, static_cast<uint32_t>(flags), 0);
+	return fd < 0 ? -1 : fd;
 }

@@ -27,8 +27,7 @@ THE SOFTWARE.
 	Dispatch header for <stdio.h>:
 	- hosted SPRT build -> forwards to the system <stdio.h> (#include_next)
 	- otherwise         -> SPRT's own declarations via sprt/wrappers/libc/stdio.h
-	                       (which in turn routes C++ into sprt::_cstdio; the std::
-	                       spelling is provided by the include_libc/stl wrappers)
+	                       (which in turn routes C++ into sprt::_cstdio)
 
 	Public surface provided by the SPRT-own path (internal __sprt_* helpers excluded).
 	A function tagged [gate: X] is declared only when __SPRT_CONFIG_HAVE_X is set for

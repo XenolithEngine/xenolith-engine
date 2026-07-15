@@ -25,7 +25,9 @@ THE SOFTWARE.
 
 #include <sprt/cxx/__utility/pair.h>
 #include <sprt/cxx/__utility/common.h>
+#include <sprt/cxx/__memory/allocator_traits.h> // construct/destroy via the standard indirection
 #include <sprt/cxx/detail/ctypes.h>
+#include <sprt/cxx/type_traits> // is_constructible_v / enable_if_t for the key ctor
 #include <sprt/cxx/tuple> // pair's piecewise_construct ctor + forward_as_tuple
 
 namespace sprt::detail {
@@ -52,14 +54,16 @@ struct aligned_storage {
 	constexpr aligned_storage() noexcept { }
 	constexpr aligned_storage(nullptr_t) noexcept { }
 
-	constexpr void *addr() noexcept { return static_cast<void *>(&_storage.value); }
+	constexpr void *addr() noexcept { return static_cast<void *>(sprt::addressof(_storage.value)); }
 	constexpr const void *addr() const noexcept {
-		return static_cast<const void *>(&_storage.value);
+		return static_cast<const void *>(sprt::addressof(_storage.value));
 	}
 
-	constexpr Value *ptr() noexcept { return static_cast<Value *>(&_storage.value); }
+	constexpr Value *ptr() noexcept {
+		return static_cast<Value *>(sprt::addressof(_storage.value));
+	}
 	constexpr const Value *ptr() const noexcept {
-		return static_cast<const Value *>(&_storage.value);
+		return static_cast<const Value *>(sprt::addressof(_storage.value));
 	}
 
 	constexpr Value &ref() noexcept { return *ptr(); }
@@ -68,13 +72,17 @@ struct aligned_storage {
 	template <typename Allocator, typename... Args>
 	constexpr Value *construct(const Allocator &alloc, Args &&...args) noexcept {
 		auto pointer = ptr();
-		alloc.construct(pointer, sprt::forward<Args>(args)...);
+		// Route through allocator_traits so allocators that only provide the standard
+		// interface (no member construct/destroy, e.g. std::allocator / min_allocator)
+		// are supported; sprt allocators still reach their own construct via the trait.
+		sprt::allocator_traits<Allocator>::construct(const_cast<Allocator &>(alloc), pointer,
+				sprt::forward<Args>(args)...);
 		return pointer;
 	}
 
 	template <typename Allocator>
 	constexpr void destroy(const Allocator &alloc) noexcept {
-		alloc.destroy(ptr());
+		sprt::allocator_traits<Allocator>::destroy(const_cast<Allocator &>(alloc), ptr());
 	}
 };
 
@@ -211,19 +219,37 @@ struct aligned_storage_kv_traits<Key, pair<Key, Value>> {
 		return extract_value(storage.ref());
 	}
 
-	template <typename A, typename... Args>
-	static inline void construct(const A &alloc, __kv_storage auto &storage, const Key &k,
+	template <typename A, typename K2, typename... Args,
+			sprt::enable_if_t<sprt::is_constructible_v<Key, K2 &&>, int> = 0>
+	static inline void construct(const A &alloc, __kv_storage auto &storage, K2 &&k,
 			Args &&...args) noexcept {
-		storage.construct(alloc, sprt::piecewise_construct, sprt::forward_as_tuple(k),
+		storage.construct(alloc, sprt::piecewise_construct,
+				sprt::forward_as_tuple(sprt::forward<K2>(k)),
 				sprt::forward_as_tuple(sprt::forward<Args>(args)...));
 	}
 
-	template <typename A, typename... Args>
-	static inline void construct(const A &alloc, __kv_storage auto &storage, Key &&k,
-			Args &&...args) noexcept {
-		storage.construct(alloc, sprt::piecewise_construct,
-				sprt::forward_as_tuple(sprt::move_unsafe(k)),
-				sprt::forward_as_tuple(sprt::forward<Args>(args)...));
+	// piecewise emplace: pair(piecewise_construct, tuple<Ks...>, tuple<Vs...>). The is_constructible
+	// guard on the K2 overload above removes it here (piecewise_construct_t is not a key), so this is
+	// unambiguous.
+	template <typename A, typename... Args1, typename... Args2>
+	static inline void construct(const A &alloc, __kv_storage auto &storage,
+			sprt::piecewise_construct_t, sprt::tuple<Args1...> t1,
+			sprt::tuple<Args2...> t2) noexcept {
+		storage.construct(alloc, sprt::piecewise_construct, sprt::move_unsafe(t1),
+				sprt::move_unsafe(t2));
+	}
+
+	// A single foreign argument the value_type is constructible from (e.g. pair<int, X> for a
+	// pair<const int, X> map). It is constructed in place — element-wise, without materializing and
+	// moving a value_type — so a pair with a const, move-only key works. Excluded when the argument
+	// is the key or the value_type itself (those have dedicated overloads above/below).
+	template <typename A, typename P,
+			sprt::enable_if_t<sprt::is_constructible_v<value_type, P &&>
+							&& !sprt::is_constructible_v<Key, P &&>
+							&& !sprt::is_same_v<sprt::remove_cvref_t<P>, value_type>,
+					int> = 0>
+	static inline void construct(const A &alloc, __kv_storage auto &storage, P &&p) noexcept {
+		storage.construct(alloc, sprt::forward<P>(p));
 	}
 
 	template <typename A>
@@ -262,19 +288,35 @@ struct aligned_storage_kv_traits<Key, pair<const Key, Value>> {
 		return extract_value(storage.ref());
 	}
 
-	template <typename A, typename... Args>
-	static inline void construct(const A &alloc, __kv_storage auto &storage, const Key &k,
+	template <typename A, typename K2, typename... Args,
+			sprt::enable_if_t<sprt::is_constructible_v<Key, K2 &&>, int> = 0>
+	static inline void construct(const A &alloc, __kv_storage auto &storage, K2 &&k,
 			Args &&...args) noexcept {
-		storage.construct(alloc, sprt::piecewise_construct, sprt::forward_as_tuple(k),
+		storage.construct(alloc, sprt::piecewise_construct,
+				sprt::forward_as_tuple(sprt::forward<K2>(k)),
 				sprt::forward_as_tuple(sprt::forward<Args>(args)...));
 	}
 
-	template <typename A, typename... Args>
-	static inline void construct(const A &alloc, __kv_storage auto &storage, Key &&k,
-			Args &&...args) noexcept {
-		storage.construct(alloc, sprt::piecewise_construct,
-				sprt::forward_as_tuple(sprt::move_unsafe(k)),
-				sprt::forward_as_tuple(sprt::forward<Args>(args)...));
+	// piecewise emplace: pair(piecewise_construct, tuple<Ks...>, tuple<Vs...>). The is_constructible
+	// guard on the K2 overload above removes it here, so this is unambiguous.
+	template <typename A, typename... Args1, typename... Args2>
+	static inline void construct(const A &alloc, __kv_storage auto &storage,
+			sprt::piecewise_construct_t, sprt::tuple<Args1...> t1,
+			sprt::tuple<Args2...> t2) noexcept {
+		storage.construct(alloc, sprt::piecewise_construct, sprt::move_unsafe(t1),
+				sprt::move_unsafe(t2));
+	}
+
+	// A single foreign argument the value_type is constructible from (e.g. pair<int, X> for a
+	// pair<const int, X> map), constructed in place without materializing and moving a value_type,
+	// so a pair with a const, move-only key works. See the pair<Key, Value> specialization above.
+	template <typename A, typename P,
+			sprt::enable_if_t<sprt::is_constructible_v<value_type, P &&>
+							&& !sprt::is_constructible_v<Key, P &&>
+							&& !sprt::is_same_v<sprt::remove_cvref_t<P>, value_type>,
+					int> = 0>
+	static inline void construct(const A &alloc, __kv_storage auto &storage, P &&p) noexcept {
+		storage.construct(alloc, sprt::forward<P>(p));
 	}
 
 	template <typename A>

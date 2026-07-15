@@ -420,6 +420,9 @@ THE SOFTWARE.
 #define __SPRT_SUBLANG_NEUTRAL 0x00
 #define __SPRT_SUBLANG_DEFAULT 0x01
 
+#define __SPRT_LANG_ENGLISH 0x09
+#define __SPRT_SUBLANG_ENGLISH_US 0x01
+
 #define __SPRT_MAKELANGID(p, s)       ((((WORD  )(s)) << 10) | (WORD  )(p))
 
 #define __SPRT_MWMO_WAITALL        0x0001

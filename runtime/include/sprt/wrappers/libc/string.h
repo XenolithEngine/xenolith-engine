@@ -16,20 +16,27 @@ namespace sprt {
 
 inline namespace _cstring_dll {
 
+#if __SPRT_WIN_USE_IMPORT_STRING_LIB
+using ::memcmp;
+using ::memcpy;
+using ::memmove;
+using ::memset;
+#else
 SPRT_FORCEINLINE int memcmp(const void *s1, const void *s2, size_t n) {
 	return __builtin_memcmp(s1, s2, n);
 }
-SPRT_FORCEINLINE void *memcpy(void *s1, const void *s2, size_t n) {
+SPRT_FORCEINLINE void *memcpy(void *__SPRT_RESTRICT s1, const void *__SPRT_RESTRICT s2, size_t n) {
 	return __builtin_memcpy(s1, s2, n);
 }
 SPRT_FORCEINLINE void *memmove(void *s1, const void *s2, size_t n) {
 	return __builtin_memmove(s1, s2, n);
 }
+SPRT_FORCEINLINE void *memset(void *s, int c, size_t n) { return __builtin_memset(s, c, n); }
+#endif
 SPRT_FORCEINLINE char *strcpy(char *s1, const char *s2) { return __builtin_strcpy(s1, s2); }
 SPRT_FORCEINLINE char *strncpy(char *s1, const char *s2, size_t n) {
 	return __builtin_strncpy(s1, s2, n);
 }
-SPRT_FORCEINLINE void *memset(void *s, int c, size_t n) { return __builtin_memset(s, c, n); }
 
 SPRT_FORCEINLINE constexpr size_t strlen(const char *s) { return __constexpr_strlen(s); }
 SPRT_FORCEINLINE constexpr size_t strlen(const char16_t *s) { return __constexpr_strlen(s); }
@@ -99,6 +106,10 @@ SPRT_FORCEINLINE char *strerror(int errnum) { return __sprt_strerror(errnum); }
 #if !defined(__SPRT_BUILD)
 #if !__SPRT_WIN_USE_IMPORT_STRING_LIB
 using namespace sprt::_cstring_dll;
+#else
+using sprt::_cstring_dll::strchr;
+using sprt::_cstring_dll::strstr;
+using sprt::_cstring::strstr;
 #endif
 using namespace sprt::_cstring;
 #endif
@@ -106,7 +117,8 @@ using namespace sprt::_cstring;
 #endif // __cplusplus
 
 
-#if !defined(__SPRT_BUILD) && !defined(__cplusplus)
+#if (!defined(__SPRT_BUILD) && !defined(__cplusplus)) \
+		|| (defined(__SPRT_BUILD) && __STDC_HOSTED__ == 0)
 __SPRT_BEGIN_DECL
 
 
@@ -296,7 +308,7 @@ __SPRT_END_DECL
 #endif
 
 
-#if !defined(__SPRT_BUILD)
+#if !defined(__SPRT_BUILD) || __STDC_HOSTED__ == 0
 __SPRT_BEGIN_DECL
 
 
@@ -336,11 +348,21 @@ char *strdup(const char *str) SPRT_UMBRELLA_END
 }
 #endif
 
+#ifndef strdup
 SPRT_UMBRELLA_FUNC
 char *_strdup(const char *str) SPRT_UMBRELLA_END
 #if SPRT_UMBRELLA_REQUIRED
 {
 	return __sprt_strdup(str);
+}
+#endif
+#endif // strdup
+
+SPRT_UMBRELLA_FUNC
+errno_t strerror_r(errno_t errnum, char *buf, rsize_t bufsz) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strerror_s(buf, bufsz, errnum);
 }
 #endif
 
@@ -397,6 +419,29 @@ SPRT_UMBRELLA_FUNC int strncasecmp_l(const char *s1, const char *s2, __SPRT_ID(r
 }
 #endif
 #endif // __SPRT_DEFINED_strncasecmp_l
+
+#ifndef __SPRT_DEFINED_strcoll_l
+#define __SPRT_DEFINED_strcoll_l
+SPRT_UMBRELLA_FUNC int strcoll_l(const char *s1, const char *s2,
+		__SPRT_ID(locale_t) l) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strcoll_l(s1, s2, l);
+}
+#endif
+#endif // __SPRT_DEFINED_strcoll_l
+
+#ifndef __SPRT_DEFINED_strxfrm_l
+#define __SPRT_DEFINED_strxfrm_l
+SPRT_UMBRELLA_FUNC __SPRT_ID(size_t)
+		strxfrm_l(char *__SPRT_RESTRICT dest, const char *__SPRT_RESTRICT src,
+				__SPRT_ID(size_t) size, __SPRT_ID(locale_t) l) SPRT_UMBRELLA_END
+#if SPRT_UMBRELLA_REQUIRED
+{
+	return __sprt_strxfrm_l(dest, src, size, l);
+}
+#endif
+#endif // __SPRT_DEFINED_strxfrm_l
 
 __SPRT_END_DECL
 #endif

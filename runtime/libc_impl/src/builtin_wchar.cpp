@@ -86,7 +86,7 @@ extern "C" {
 
 __sprt_wint_t towlower(__sprt_wint_t ch) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_CTYPE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		return __towlower(ch);
 	}
 	return __towlower_l(ch, map);
@@ -94,7 +94,7 @@ __sprt_wint_t towlower(__sprt_wint_t ch) __SPRT_NOEXCEPT {
 
 __sprt_wint_t towupper(__sprt_wint_t ch) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_CTYPE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		return __towupper(ch);
 	}
 	return __towupper_l(ch, map);
@@ -123,7 +123,7 @@ __sprt_wint_t towctrans_l(__sprt_wint_t wc, __sprt_wctrans_t desc,
 
 int wcscmp(const wchar_t *l, const wchar_t *r) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_COLLATE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		return __wcscmp(l, r);
 	}
 	return __wcscmp_l(l, r, map);
@@ -131,7 +131,7 @@ int wcscmp(const wchar_t *l, const wchar_t *r) __SPRT_NOEXCEPT {
 
 int wcsncmp(const wchar_t *l, const wchar_t *r, size_t n) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_COLLATE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		return __wcsncmp(l, r, n);
 	}
 	return __wcsncmp_l(l, r, n, map);
@@ -139,7 +139,7 @@ int wcsncmp(const wchar_t *l, const wchar_t *r, size_t n) __SPRT_NOEXCEPT {
 
 int wcscasecmp(const wchar_t *l, const wchar_t *r) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_COLLATE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		return __wcscasecmp(l, r);
 	}
 	return __wcscasecmp_l(l, r, map);
@@ -147,7 +147,7 @@ int wcscasecmp(const wchar_t *l, const wchar_t *r) __SPRT_NOEXCEPT {
 
 int wcsncasecmp(const wchar_t *l, const wchar_t *r, size_t n) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_COLLATE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		return __wcsncasecmp(l, r, n);
 	}
 	return __wcsncasecmp_l(l, r, n, map);
@@ -155,7 +155,7 @@ int wcsncasecmp(const wchar_t *l, const wchar_t *r, size_t n) __SPRT_NOEXCEPT {
 
 int wcscoll(const wchar_t *l, const wchar_t *r) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_COLLATE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		return wcscmp(l, r);
 	}
 	return __wcscoll_l(l, r, map);
@@ -163,7 +163,7 @@ int wcscoll(const wchar_t *l, const wchar_t *r) __SPRT_NOEXCEPT {
 
 size_t wcsxfrm(wchar_t *__restrict dest, const wchar_t *__restrict src, size_t n) __SPRT_NOEXCEPT {
 	auto map = __get_effective_locale_map(__SPRT_LC_COLLATE);
-	if (map == __get_default_locale()) {
+	if (__locale_is_c(map)) {
 		size_t l = wcslen(src);
 		if (l < n) {
 			wmemcpy(dest, src, l + 1);

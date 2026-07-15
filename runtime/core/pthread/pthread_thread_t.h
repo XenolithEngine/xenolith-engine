@@ -26,6 +26,7 @@
 #include "pthread_common.h"
 
 #include <sprt/runtime/thread/qtimeline.h>
+#include <sprt/cxx/atomic>
 #include <sprt/cxx/unordered_map>
 #include <sprt/cxx/unordered_set>
 #include <sprt/cxx/mutex>
@@ -141,7 +142,7 @@ struct thread_t : thread_base_t {
 
 	sprt::atomic<int32_t> dynamicPrio;
 
-	sprt::array<char, __SPRT_PTHREAD_NAMEMAXLEN + 1> threadName;
+	detail::inline_buffer<char, __SPRT_PTHREAD_NAMEMAXLEN + 1> threadName;
 
 	// should be called from thread itself to acquire actual attibutes it running with
 	bool registerThread();

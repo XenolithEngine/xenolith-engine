@@ -208,6 +208,31 @@ THE SOFTWARE.
 #define __SPRT_LOCKFILE_FAIL_IMMEDIATELY   0x00000001
 #define __SPRT_LOCKFILE_EXCLUSIVE_LOCK     0x00000002
 
+// Named-pipe open/mode flags (anonymous CreatePipe handles cannot do overlapped I/O, so an
+// overlapped reader must build its pipe from CreateNamedPipe + CreateFile).
+#define __SPRT_PIPE_ACCESS_INBOUND   0x00000001
+#define __SPRT_PIPE_ACCESS_OUTBOUND  0x00000002
+#define __SPRT_PIPE_ACCESS_DUPLEX    0x00000003
+#define __SPRT_PIPE_TYPE_BYTE        0x00000000
+#define __SPRT_PIPE_READMODE_BYTE    0x00000000
+#define __SPRT_PIPE_WAIT             0x00000000
+
+// ---- ReadDirectoryChangesW ([winbase] directory change notifications) --------
+#define __SPRT_FILE_ACTION_ADDED 0x00000001
+#define __SPRT_FILE_ACTION_REMOVED 0x00000002
+#define __SPRT_FILE_ACTION_MODIFIED 0x00000003
+#define __SPRT_FILE_ACTION_RENAMED_OLD_NAME 0x00000004
+#define __SPRT_FILE_ACTION_RENAMED_NEW_NAME 0x00000005
+
+#define __SPRT_FILE_NOTIFY_CHANGE_FILE_NAME 0x00000001
+#define __SPRT_FILE_NOTIFY_CHANGE_DIR_NAME 0x00000002
+#define __SPRT_FILE_NOTIFY_CHANGE_ATTRIBUTES 0x00000004
+#define __SPRT_FILE_NOTIFY_CHANGE_SIZE 0x00000008
+#define __SPRT_FILE_NOTIFY_CHANGE_LAST_WRITE 0x00000010
+#define __SPRT_FILE_NOTIFY_CHANGE_LAST_ACCESS 0x00000020
+#define __SPRT_FILE_NOTIFY_CHANGE_CREATION 0x00000040
+#define __SPRT_FILE_NOTIFY_CHANGE_SECURITY 0x00000100
+
 // clang-format on
 
 /* File information classes */
@@ -362,6 +387,12 @@ typedef struct _FILE_STANDARD_INFO {
 	BOOLEAN Directory;
 } FILE_STANDARD_INFO, *PFILE_STANDARD_INFO;
 
+/* GetFileInformationByHandleEx(FileAttributeTagInfo): attributes + reparse tag */
+typedef struct _FILE_ATTRIBUTE_TAG_INFO {
+	DWORD FileAttributes;
+	DWORD ReparseTag;
+} FILE_ATTRIBUTE_TAG_INFO, *PFILE_ATTRIBUTE_TAG_INFO;
+
 /* FILE_STORAGE_INFO structure for extended file info */
 typedef struct _FILE_STORAGE_INFO {
 	ULONG LogicalBytesPerSector;
@@ -435,14 +466,15 @@ typedef struct _WIN32_FIND_DATAW {
 	WCHAR cAlternateFileName[14];
 } WIN32_FIND_DATAW, *PWIN32_FIND_DATAW, *LPWIN32_FIND_DATAW;
 
-// Named-pipe open/mode flags (anonymous CreatePipe handles cannot do overlapped I/O, so an
-// overlapped reader must build its pipe from CreateNamedPipe + CreateFile).
-#define __SPRT_PIPE_ACCESS_INBOUND   0x00000001
-#define __SPRT_PIPE_ACCESS_OUTBOUND  0x00000002
-#define __SPRT_PIPE_ACCESS_DUPLEX    0x00000003
-#define __SPRT_PIPE_TYPE_BYTE        0x00000000
-#define __SPRT_PIPE_READMODE_BYTE    0x00000000
-#define __SPRT_PIPE_WAIT             0x00000000
+typedef struct _FILE_NOTIFY_INFORMATION {
+	DWORD NextEntryOffset;
+	DWORD Action;
+	DWORD FileNameLength;
+	WCHAR FileName[1];
+} FILE_NOTIFY_INFORMATION, *PFILE_NOTIFY_INFORMATION;
+
+typedef void(WINAPI *LPOVERLAPPED_COMPLETION_ROUTINE)(DWORD dwErrorCode,
+		DWORD dwNumberOfBytesTransfered, LPOVERLAPPED lpOverlapped);
 
 
 #endif // SPRT_WRAPPERS_WINDOWS_ABI_FILE_API_H_

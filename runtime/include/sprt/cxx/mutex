@@ -26,6 +26,7 @@ THE SOFTWARE.
 #include <sprt/c/__sprt_pthread.h>
 #include <sprt/cxx/__mutex/unique_lock.h>
 #include <sprt/cxx/__mutex/lock_guard.h>
+#include <sprt/cxx/__mutex/lock.h>
 #include <sprt/cxx/__mutex/timed_mutex.h>
 #include <sprt/cxx/__mutex/recursive_timed_mutex.h>
 #include <sprt/runtime/thread/qmutex.h>
@@ -49,7 +50,7 @@ void call_once(sprt::once_flag &flag, Callable &&f, Args &&...args) {
 	});
 }
 
-} // inline namespace __cxx_mutex
+} // namespace __cxx_mutex
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_MUTEX_H_

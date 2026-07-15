@@ -59,7 +59,11 @@ CONFIGURE := android-$(ANDROID_ARCH) \
 	$(SP_OPT)
 
 ifeq ($(SP_ARCH),armv7a)
-CONFIGURE += no-asm
+CONFIGURE += -march=armv7-a
+endif
+
+ifeq ($(SP_ARCH),x86)
+CONFIGURE += -march=i686 -DBROKEN_CLANG_ATOMICS
 endif
 
 NDK_ROOT := $(NDK)

@@ -79,6 +79,21 @@ int fseek(FILE *file, __SPRT_ID(off_t) pos, int when) SPRT_FUNC_END
 }
 #endif
 
+// ftell: sprt deliberately returns off_t (64-bit) rather than ISO C's long, so the
+// default API never silently truncates a large offset (ftello / _ftelli64 are the
+// explicit 64-bit queries; the runtime symbol is off_t — see fseek.cc). libc++ is a
+// strict ISO/MSVCRT conformance layer whose <cstdio> requires ftell() to yield long,
+// so present that narrower prototype ONLY to libc++ consumers — the inline still calls
+// the 64-bit impl and narrows the result. Every other consumer keeps the off_t contract.
+#if defined(_LIBCPP_VERSION)
+SPRT_FUNC_BEGIN
+long ftell(FILE *file) SPRT_FUNC_END
+#if SPRT_FUNC_BODY
+{
+	return (long)__sprt_ftell(file);
+}
+#endif
+#else
 SPRT_FUNC_BEGIN
 __SPRT_ID(off_t)
 ftell(FILE *file) SPRT_FUNC_END
@@ -86,6 +101,7 @@ ftell(FILE *file) SPRT_FUNC_END
 {
 	return __sprt_ftell(file);
 }
+#endif
 #endif
 
 SPRT_FUNC_BEGIN
@@ -254,6 +270,24 @@ int sprintf(char *__SPRT_RESTRICT buf, const char *__SPRT_RESTRICT fmt, ...) SPR
 
 SPRT_FUNC_BEGIN
 int snprintf(char *__SPRT_RESTRICT buf, size_t n, const char *__SPRT_RESTRICT fmt,
+		...) SPRT_FUNC_END
+#if SPRT_FUNC_BODY
+{
+	__sprt_va_list list;
+	__sprt_va_start(list, fmt);
+
+	int ret = __sprt_vsnprintf(buf, n, fmt, list);
+
+	__sprt_va_end(list);
+	return ret;
+}
+#endif
+
+// MSVC CRT spelling used under _MSC_VER.
+// Same backing as snprintf here; the historical no-terminating-NUL-on-overflow
+// quirk is not reproduced (callers size their buffers).
+SPRT_FUNC_BEGIN
+int _snprintf(char *__SPRT_RESTRICT buf, size_t n, const char *__SPRT_RESTRICT fmt,
 		...) SPRT_FUNC_END
 #if SPRT_FUNC_BODY
 {

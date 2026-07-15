@@ -6,6 +6,12 @@ struct __SPRT_SOCKADDR_NAME {
 	char sa_data[14];
 };
 
+struct __SPRT_SOCKADDR_STORAGE_NAME {
+	__SPRT_ID(sa_family_t) ss_family;
+	char __ss_padding[128-sizeof(long)-sizeof(__SPRT_ID(sa_family_t))];
+	unsigned long __ss_align;
+};
+
 typedef int SOCKET;
 typedef void sockdata_t;
 typedef __SPRT_ID(ssize_t) socksize_t;

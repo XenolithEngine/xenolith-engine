@@ -52,19 +52,34 @@ struct __locale_map {
 	// LC_NUMERIC grouping; always absent in the C locale.
 	char thousands_sep;
 	unsigned char grouping;
+	// LC_CTYPE multibyte width (MB_CUR_MAX): 1 for single-byte "C"/"POSIX", 4 for
+	// UTF-8. Per ISO C the program-default "C" locale is single-byte.
+	unsigned char mb_cur_max;
 };
 
 static_assert(sprt::is_trivially_constructible_v<__locale_map>);
 
+// Single-byte "C"/"POSIX" (MB_CUR_MAX==1) vs UTF-8 "C.UTF8" (MB_CUR_MAX==4). The
+// program default stays UTF-8; s_localeMapC backs ONLY an explicit "C"/"POSIX"
+// request, which ISO C defines as single-byte — see the windows sibling.
+static __locale_map s_localeMapC;
 static __locale_map s_localeMapCUtf8;
 static __freestanding_locale_struct s_localeStructCUtf8;
 
 void __init_locale() {
+	__builtin_memcpy(s_localeMapC.name, "C", 2);
+	__builtin_memcpy(s_localeMapC.wname, L"C", 2 * sizeof(wchar_t));
+	s_localeMapC.radix = '.';
+	s_localeMapC.thousands_sep = 0;
+	s_localeMapC.grouping = 0;
+	s_localeMapC.mb_cur_max = 1; // ISO C: the "C" locale is single-byte
+
 	__builtin_memcpy(s_localeMapCUtf8.name, "C.UTF8", 7);
 	__builtin_memcpy(s_localeMapCUtf8.wname, L"C.UTF8", 7 * sizeof(wchar_t));
 	s_localeMapCUtf8.radix = '.';
 	s_localeMapCUtf8.thousands_sep = 0;
 	s_localeMapCUtf8.grouping = 0;
+	s_localeMapCUtf8.mb_cur_max = 4; // UTF-8
 
 	s_localeStructCUtf8 = __freestanding_locale_struct{
 		__locale_struct{
@@ -83,21 +98,29 @@ __locale_map *__get_default_locale() { return &s_localeMapCUtf8; }
 
 __freestanding_locale_struct *__get_default_locale_struct() { return &s_localeStructCUtf8; }
 
-// Only the C locale exists; every other name is unavailable.
+bool __locale_is_c(const __locale_map *m) {
+	return m == nullptr || m == &s_localeMapC || m == &s_localeMapCUtf8;
+}
+
+// Only the C / C.UTF-8 locales exist; every other name is unavailable. Empty name
+// ("" = native environment) maps to UTF-8, the modern default.
 __locale_map *__get_locale(int cat, const char *localeName, size_t len) {
 	if (!localeName) {
 		return nullptr;
 	}
 	auto n = StringView(localeName, len);
-	if (n == "C" || n == "POSIX" || n == "C.UTF8" || n == "C.UTF-8" || localeName[0] == 0) {
+	if (n == "C" || n == "POSIX") {
+		return &s_localeMapC;
+	}
+	if (n == "C.UTF8" || n == "C.UTF-8" || localeName[0] == 0) {
 		return &s_localeMapCUtf8;
 	}
 	return nullptr;
 }
 
 void __free_locale(__locale_map *map) {
-	// The single C map is static; anything else would have been heap-allocated.
-	if (map && map != &s_localeMapCUtf8) {
+	// The static C maps are never heap-allocated; anything else would have been.
+	if (map && map != &s_localeMapC && map != &s_localeMapCUtf8) {
 		sprt::__delete(map);
 	}
 }
@@ -110,7 +133,10 @@ char *setlocale(int cat, const char *name) __SPRT_NOEXCEPT {
 	}
 	if (name) {
 		auto n = StringView(name);
-		if (!(n == "C" || n == "POSIX" || n == "C.UTF8" || n == "C.UTF-8" || name[0] == 0)) {
+		if (n == "C" || n == "POSIX") {
+			return (char *)s_localeMapC.name;
+		}
+		if (!(n == "C.UTF8" || n == "C.UTF-8" || name[0] == 0)) {
 			__sprt_errno = ENOENT;
 			return nullptr;
 		}
@@ -207,6 +233,21 @@ int __wcsncasecmp_l(const wchar_t *l, const wchar_t *r, size_t n, const __locale
 int __wcscoll_l(const wchar_t *l, const wchar_t *r, const __locale_map *loc) {
 	// C locale collates by code unit.
 	return __wcscmp_l(l, r, loc);
+}
+
+int __strcoll_l(const char *l, const char *r, const __locale_map *) {
+	// Only the C/POSIX locale exists here, which collates by byte value — identical to
+	// strcmp (the narrow analogue of __wcscoll_l above). Match the Windows backend's
+	// null-operand tolerance.
+	if (!l || !r) {
+		return 0;
+	}
+	unsigned char cl, cr;
+	do {
+		cl = (unsigned char)*l++;
+		cr = (unsigned char)*r++;
+	} while (cl && cl == cr);
+	return int(cl) - int(cr);
 }
 
 size_t __wcsxfrm_l(wchar_t *__restrict dest, const wchar_t *__restrict src, size_t destSize,

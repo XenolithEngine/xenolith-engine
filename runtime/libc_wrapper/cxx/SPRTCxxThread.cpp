@@ -104,35 +104,26 @@ uint32_t thread::hardware_concurrency() noexcept {
 	if (result > 1) {
 		return static_cast<unsigned>(result);
 	}
+
+#if SPRT_WASM
 	return 4;
+#else
+	return 1;
+#endif
 }
 
-struct __ThreadData {
-	__malloc_function<void()> fn;
-	thread *th = nullptr;
-};
-
-static_assert(sizeof(__ThreadData) <= THREAD_STORAGE_BLOCK_SIZE);
-
-int thread::__makeThread(__malloc_function<void()> &&fn) {
+int thread::__makeThread(void *(*cb)(uint8_t *st, size_t stSize),
+		const Callback<void(uint8_t *st, size_t stSize)> &wcb) {
 	_thread::thread_t *__t = nullptr;
 
 	// sprt::thread should not be affected by default pthread args
 	_thread::attr_t def;
 
 	auto ret = _thread::thread_t::create(&__t, &def, [](_thread::thread_base_t *t) -> void * {
-		auto d = reinterpret_cast<__ThreadData *>(t->storage);
-		if (d->fn) {
-			d->fn();
-		}
-		sprt::destroy_at(d);
+		auto tcb = reinterpret_cast<decltype(cb)>(t->arg);
+		tcb(t->storage, THREAD_STORAGE_BLOCK_SIZE);
 		return (void *)0;
-	}, nullptr, [&](uint8_t *buf, size_t baseSize) {
-		new (buf) __ThreadData{
-			sprt::move(fn),
-			this,
-		};
-	});
+	}, (void *)cb, wcb);
 	if (ret == 0) {
 		__native = __t;
 	}
@@ -162,5 +153,5 @@ void sleep_for(const timeout_t &rel_time) {
 }
 
 } // namespace this_thread
-} // inline namespace __cxx_thread
+} // namespace __cxx_thread
 } // namespace sprt

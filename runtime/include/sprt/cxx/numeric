@@ -188,9 +188,12 @@ constexpr common_type_t<_Mp, _Np> lcm(_Mp __m, _Np __n) {
 		return 0;
 	}
 	_Rp __g = sprt::gcd(__m, __n);
-	_Rp __am = __m < 0 ? static_cast<_Rp>(-__m) : static_cast<_Rp>(__m);
-	_Rp __an = __n < 0 ? static_cast<_Rp>(-__n) : static_cast<_Rp>(__n);
-	return (__am / __g) * __an;
+	// LWG 2837: take |x| via the unsigned negate in the WIDENED type — negating in
+	// the argument's own type overflows for its minimum value (e.g. INT32_MIN).
+	using _Up = make_unsigned_t<_Rp>;
+	_Up __am = __m < 0 ? _Up(~_Up(static_cast<_Rp>(__m)) + 1u) : _Up(static_cast<_Rp>(__m));
+	_Up __an = __n < 0 ? _Up(~_Up(static_cast<_Rp>(__n)) + 1u) : _Up(static_cast<_Rp>(__n));
+	return static_cast<_Rp>((__am / _Up(__g)) * __an);
 }
 
 template <typename _Tp>

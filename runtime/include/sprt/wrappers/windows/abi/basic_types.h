@@ -23,7 +23,6 @@
 #ifndef SPRT_WRAPPERS_WINDOWS_ABI_BASIC_TYPES_H_
 #define SPRT_WRAPPERS_WINDOWS_ABI_BASIC_TYPES_H_
 
-
 #include <sprt/c/bits/__sprt_def.h>
 #include <sprt/c/bits/__sprt_size_t.h>
 #include <sprt/c/bits/__sprt_int64_t.h>
@@ -135,7 +134,8 @@ typedef const void *PCVOID, *LPCVOID;
 
 typedef __SPRT_ID(size_t) SIZE_T, *PSIZE_T;
 
-typedef char CCHAR, *PCCHAR, *LPCCH;
+typedef char CCHAR, *PCCHAR;
+typedef const char *LPCCH, *PCCH;
 typedef short CSHORT, *PCSHORT;
 typedef ULONG CLONG, *PCLONG;
 

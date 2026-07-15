@@ -57,6 +57,10 @@ void performChronoTest() {
 	printf("arith: sum_ms=%lld diff_ms=%lld\n", cnt(ch::duration_cast<ch::milliseconds>(sum)),
 			cnt(ch::duration_cast<ch::milliseconds>(ch::seconds(1) - ch::milliseconds(250))));
 
+	// duration operator% (modulo via the common duration type)
+	printf("mod: same=%lld cross=%lld min=%lld\n", cnt(ch::milliseconds(2500) % ch::milliseconds(1000)),
+			cnt(ch::milliseconds(2500) % ch::seconds(1)), cnt(ch::seconds(100) % ch::minutes(1)));
+
 	// three-way comparison + rewritten relationals
 	printf("ship: lt=%d eq=%d gt=%d rw_lt=%d rw_ge=%d\n", (int) ((ch::seconds(1) <=> ch::seconds(2)) < 0),
 			(int) ((ch::seconds(2) <=> ch::seconds(2)) == 0), (int) ((ch::seconds(3) <=> ch::seconds(2)) > 0),

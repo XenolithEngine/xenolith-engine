@@ -24,11 +24,6 @@ THE SOFTWARE.
 // and their STL counterparts (<cstring>, <cstdlib>, ...) must be includable in the
 // same translation unit, and unqualified global calls must be UNAMBIGUOUS.
 //
-// On the freestanding x86_64-pc-windows-msvc build these resolve to the sprt
-// wrappers (include_libc/stl + sprt/cxx); on the Linux host they resolve to the
-// system headers. compare.sh diffs the two, so identical output proves both stacks
-// behave the same.
-//
 // Two invariants are checked here:
 //  1. AMBIGUITY: this file must COMPILE. Each unqualified call (strlen, abs, sqrt,
 //     isdigit, ...) and its std:: form must resolve to exactly one function. In the
@@ -89,8 +84,8 @@ void performCoexistTest() {
 	// === <ctype.h> + <cctype> ===
 	// Normalize predicates to 0/1: the raw non-zero value is implementation-defined.
 	printf("ctype: digit=%d alpha=%d punct=%d up=%c lo=%c stdup=%c\n", isdigit('7') ? 1 : 0,
-			isalpha('q') ? 1 : 0, ispunct('!') ? 1 : 0, (char) toupper('a'), (char) tolower('Z'),
-			(char) std::toupper('m'));
+			isalpha('q') ? 1 : 0, ispunct('!') ? 1 : 0, (char)toupper('a'), (char)tolower('Z'),
+			(char)std::toupper('m'));
 }
 
 } // namespace sprt::test

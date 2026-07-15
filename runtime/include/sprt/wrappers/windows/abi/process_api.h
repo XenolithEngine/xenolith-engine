@@ -110,6 +110,10 @@ THE SOFTWARE.
 #define __SPRT_PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES \
     __SPRT_ProcThreadAttributeValue (ProcThreadAttributeSecurityCapabilities, __SPRT_FALSE, __SPRT_TRUE, __SPRT_FALSE)
 
+// ProcThreadAttributeHandleList == 2; the attribute value is Value(2, FALSE, TRUE, FALSE).
+#define __SPRT_PROC_THREAD_ATTRIBUTE_HANDLE_LIST \
+    __SPRT_ProcThreadAttributeValue (2, __SPRT_FALSE, __SPRT_TRUE, __SPRT_FALSE)
+
 // clang-format on
 
 typedef enum _PROC_THREAD_ATTRIBUTE_NUM {

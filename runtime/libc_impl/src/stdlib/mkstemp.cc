@@ -116,4 +116,34 @@ __SPRT_C_FUNC char *mkdtemp(char *itpl) __SPRT_NOEXCEPT {
 	return itpl;
 }
 
+#if defined(_WIN32)
+// MSVC <io.h> _mktemp_s: fill the template's trailing "XXXXXX" with a name that does
+// not currently exist and return 0; unlike mkstemp it does NOT create the file (the
+// caller opens it, typically with _O_CREAT|_O_EXCL). Reuses the shared name generator.
+__SPRT_C_FUNC int _mktemp_s(char *itpl, size_t size) __SPRT_NOEXCEPT {
+	if (!itpl) {
+		errno = EINVAL;
+		return EINVAL;
+	}
+	// The name must be NUL-terminated within the declared buffer.
+	StringView sv(itpl);
+	if (sv.size() >= size) {
+		errno = EINVAL;
+		return EINVAL;
+	}
+	if (!__mktmppath(itpl, 0, [](const char *path, size_t) {
+		struct stat st;
+		if (::stat(path, &st) == 0) {
+			errno = EEXIST; // name already taken -> retry
+			return false;
+		}
+		return true; // free name found; leave the file uncreated
+	})) {
+		return errno ? errno : EEXIST;
+	}
+	errno = 0;
+	return 0;
+}
+#endif // _WIN32
+
 } // namespace sprt

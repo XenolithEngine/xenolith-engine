@@ -46,6 +46,12 @@ THE SOFTWARE.
 
 #include "test_util.h"
 
+#ifndef __SPRT_PLATFORM_ID
+typedef int SOCKET;
+typedef void *sockdata_t;
+#define closesocket(fd) close(fd)
+#endif
+
 namespace sprt::test {
 
 // Loopback datagram byte counts fit an int; print via (long long)/%lld so the width

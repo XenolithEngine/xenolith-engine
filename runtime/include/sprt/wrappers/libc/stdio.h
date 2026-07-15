@@ -66,7 +66,7 @@
 #ifdef __SPRT_TMP_MAX
 #define TMP_MAX __SPRT_TMP_MAX
 #else
-#define TMP_MAX 308915776
+#define TMP_MAX 308'915'776
 #endif
 #endif
 
@@ -129,6 +129,9 @@ __SPRT_BEGIN_DECL
 __SPRT_END_DECL
 
 #endif
+
+
+#include <sprt/wrappers/unistd/io.h>
 
 #define _scanf_l(fmt, loc, ...) scanf_l(loc, fmt, __VA_ARGS__)
 #define _fscanf_l(stream, fmt, loc, ...) fscanf_l(stream, loc, fmt, __VA_ARGS__)

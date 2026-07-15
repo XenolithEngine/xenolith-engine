@@ -37,6 +37,7 @@ THE SOFTWARE.
 #include <sprt/cxx/compare>
 #include <sprt/cxx/type_traits>
 #include <sprt/cxx/__algorithm/minmax.h>
+#include <sprt/cxx/__iterator/concepts.h> // contiguous_iterator / sized_sentinel_for (It,End) ctor
 #include <sprt/cxx/__string/char_traits.h>
 #include <sprt/cxx/detail/hash.h>
 
@@ -63,7 +64,9 @@ public:
 	constexpr const _CharT *base() const noexcept { return _base; }
 	constexpr reference operator*() const noexcept { return *(_base - 1); }
 	constexpr pointer operator->() const noexcept { return _base - 1; }
-	constexpr reference operator[](difference_type __n) const noexcept { return *(_base - __n - 1); }
+	constexpr reference operator[](difference_type __n) const noexcept {
+		return *(_base - __n - 1);
+	}
 
 	constexpr __sv_reverse_iterator &operator++() noexcept {
 		--_base;
@@ -93,10 +96,12 @@ public:
 		return __o._base - _base;
 	}
 
-	friend constexpr bool operator==(__sv_reverse_iterator __a, __sv_reverse_iterator __b) noexcept {
+	friend constexpr bool operator==(__sv_reverse_iterator __a,
+			__sv_reverse_iterator __b) noexcept {
 		return __a._base == __b._base;
 	}
-	friend constexpr bool operator!=(__sv_reverse_iterator __a, __sv_reverse_iterator __b) noexcept {
+	friend constexpr bool operator!=(__sv_reverse_iterator __a,
+			__sv_reverse_iterator __b) noexcept {
 		return __a._base != __b._base;
 	}
 };
@@ -136,15 +141,41 @@ public:
 	constexpr basic_string_view &operator=(const basic_string_view &) noexcept = default;
 
 	constexpr basic_string_view(const _CharT *__s) : _data(__s), _size(traits_type::length(__s)) { }
-	constexpr basic_string_view(const _CharT *__s, size_type __count) : _data(__s), _size(__count) { }
+	constexpr basic_string_view(const _CharT *__s, size_type __count)
+	: _data(__s), _size(__count) { }
+
+	// [string.view.cons] (It, End) contiguous-iterator range constructor. Needed by
+	// <sstream>'s basic_stringbuf::view(), which builds a view from two CharT* bounds
+	// (pbase()/eback() .. egptr()), and by the (iterator, sentinel) conformance test.
+	// Constrained so a (ptr, size_type) call still selects the overload above: _End that
+	// is convertible to size_type is excluded here. A minimal to-address (raw pointer or
+	// operator->()) stands in for the missing sprt::to_address.
+	template <typename _It>
+	static constexpr const _CharT *__sv_to_address(const _It &__it) noexcept {
+		if constexpr (is_pointer_v<_It>) {
+			return __it;
+		} else {
+			return __it.operator->();
+		}
+	}
+	template <typename _It, typename _End>
+	requires (contiguous_iterator<_It> && sized_sentinel_for<_End, _It>
+					 && is_same_v<iter_value_t<_It>, _CharT>
+					 && !is_convertible_v<const _End &, size_type>)
+	constexpr basic_string_view(_It __first, _End __last)
+	: _data(__sv_to_address(__first)), _size(static_cast<size_type>(__last - __first)) { }
 
 	// [string.view.iterators]
 	constexpr const_iterator begin() const noexcept { return _data; }
 	constexpr const_iterator end() const noexcept { return _data + _size; }
 	constexpr const_iterator cbegin() const noexcept { return _data; }
 	constexpr const_iterator cend() const noexcept { return _data + _size; }
-	constexpr const_reverse_iterator rbegin() const noexcept { return const_reverse_iterator(end()); }
-	constexpr const_reverse_iterator rend() const noexcept { return const_reverse_iterator(begin()); }
+	constexpr const_reverse_iterator rbegin() const noexcept {
+		return const_reverse_iterator(end());
+	}
+	constexpr const_reverse_iterator rend() const noexcept {
+		return const_reverse_iterator(begin());
+	}
 	constexpr const_reverse_iterator crbegin() const noexcept {
 		return const_reverse_iterator(cend());
 	}
@@ -155,7 +186,9 @@ public:
 	// [string.view.capacity]
 	constexpr size_type size() const noexcept { return _size; }
 	constexpr size_type length() const noexcept { return _size; }
-	constexpr size_type max_size() const noexcept { return static_cast<size_type>(-1) / sizeof(_CharT); }
+	constexpr size_type max_size() const noexcept {
+		return static_cast<size_type>(-1) / sizeof(_CharT);
+	}
 	[[nodiscard]]
 	constexpr bool empty() const noexcept {
 		return _size == 0;
@@ -229,7 +262,9 @@ public:
 	constexpr bool starts_with(_CharT __c) const noexcept {
 		return _size > 0 && traits_type::eq(_data[0], __c);
 	}
-	constexpr bool starts_with(const _CharT *__s) const { return starts_with(basic_string_view(__s)); }
+	constexpr bool starts_with(const _CharT *__s) const {
+		return starts_with(basic_string_view(__s));
+	}
 
 	constexpr bool ends_with(basic_string_view __x) const noexcept {
 		return _size >= __x._size
@@ -326,7 +361,8 @@ public:
 	constexpr size_type find_first_of(_CharT __c, size_type __pos = 0) const noexcept {
 		return find(__c, __pos);
 	}
-	constexpr size_type find_first_of(const _CharT *__s, size_type __pos, size_type __n) const noexcept {
+	constexpr size_type find_first_of(const _CharT *__s, size_type __pos,
+			size_type __n) const noexcept {
 		return find_first_of(basic_string_view(__s, __n), __pos);
 	}
 	constexpr size_type find_first_of(const _CharT *__s, size_type __pos = 0) const noexcept {
@@ -352,14 +388,16 @@ public:
 	constexpr size_type find_last_of(_CharT __c, size_type __pos = npos) const noexcept {
 		return rfind(__c, __pos);
 	}
-	constexpr size_type find_last_of(const _CharT *__s, size_type __pos, size_type __n) const noexcept {
+	constexpr size_type find_last_of(const _CharT *__s, size_type __pos,
+			size_type __n) const noexcept {
 		return find_last_of(basic_string_view(__s, __n), __pos);
 	}
 	constexpr size_type find_last_of(const _CharT *__s, size_type __pos = npos) const noexcept {
 		return find_last_of(basic_string_view(__s), __pos);
 	}
 
-	constexpr size_type find_first_not_of(basic_string_view __s, size_type __pos = 0) const noexcept {
+	constexpr size_type find_first_not_of(basic_string_view __s,
+			size_type __pos = 0) const noexcept {
 		for (size_type __i = __pos; __i < _size; ++__i) {
 			if (!traits_type::find(__s._data, __s._size, _data[__i])) {
 				return __i;
@@ -375,14 +413,16 @@ public:
 		}
 		return npos;
 	}
-	constexpr size_type find_first_not_of(const _CharT *__s, size_type __pos, size_type __n) const noexcept {
+	constexpr size_type find_first_not_of(const _CharT *__s, size_type __pos,
+			size_type __n) const noexcept {
 		return find_first_not_of(basic_string_view(__s, __n), __pos);
 	}
 	constexpr size_type find_first_not_of(const _CharT *__s, size_type __pos = 0) const noexcept {
 		return find_first_not_of(basic_string_view(__s), __pos);
 	}
 
-	constexpr size_type find_last_not_of(basic_string_view __s, size_type __pos = npos) const noexcept {
+	constexpr size_type find_last_not_of(basic_string_view __s,
+			size_type __pos = npos) const noexcept {
 		if (_size == 0) {
 			return npos;
 		}
@@ -414,7 +454,8 @@ public:
 		}
 		return npos;
 	}
-	constexpr size_type find_last_not_of(const _CharT *__s, size_type __pos, size_type __n) const noexcept {
+	constexpr size_type find_last_not_of(const _CharT *__s, size_type __pos,
+			size_type __n) const noexcept {
 		return find_last_not_of(basic_string_view(__s, __n), __pos);
 	}
 	constexpr size_type find_last_not_of(const _CharT *__s, size_type __pos = npos) const noexcept {

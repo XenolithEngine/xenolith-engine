@@ -24,5 +24,6 @@ THE SOFTWARE.
 #define RUNTIME_INCLUDE_SPRT_CXX_CSTRING_H_
 
 #include <sprt/wrappers/libc/string.h>
+#include <sprt/wrappers/libc/ctype.h>
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_CSTRING_H_

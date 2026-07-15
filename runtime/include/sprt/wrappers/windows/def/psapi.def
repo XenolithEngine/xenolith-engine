@@ -1,0 +1,11 @@
+LIBRARY psapi.dll
+EXPORTS
+	EnumProcessModules
+	EnumProcessModulesEx
+	GetProcessMemoryInfo
+	EnumProcesses
+	GetModuleBaseNameA
+	GetModuleBaseNameW
+	GetModuleFileNameExA
+	GetModuleFileNameExW
+	GetModuleInformation

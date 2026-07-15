@@ -23,13 +23,17 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_THREAD_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_THREAD_H_
 
-#include <sprt/cxx/compare>
-#include <sprt/cxx/function>
+#include <sprt/cxx/__utility/common.h>
+#include <sprt/cxx/__utility/swap.h>
+#include <sprt/cxx/__new/construct.h>
 #include <sprt/cxx/detail/ctypes.h>
 #include <sprt/cxx/__type_traits/modifications.h>
+#include <sprt/cxx/__functional/invoke.h>
 #include <sprt/c/cross/__sprt_sysid.h>
 #include <sprt/c/__sprt_pthread.h>
 #include <sprt/c/sys/__sprt_sprt.h>
+#include <sprt/runtime/callback.h>
+#include <sprt/cxx/compare>
 
 namespace sprt {
 inline namespace __cxx_thread {
@@ -50,8 +54,40 @@ public:
 	template <typename F, typename... Args,
 			enable_if_t<!is_same<remove_cvref_t<F>, thread>::value, int> = 0>
 	explicit thread(F &&f, Args &&...args) {
-		__makeThread([f = sprt::forward<F>(f), ... args = sprt::forward<Args>(args)]() mutable {
-			sprt::__invoke(f, sprt::forward<Args>(args)...);
+		auto __call = [f = sprt::forward<F>(f), ... args = sprt::forward<Args>(args)]() mutable {
+			sprt::__invoke(sprt::move_unsafe(f), sprt::move_unsafe(args)...);
+		};
+
+		constexpr static size_t CallSize = sizeof(decltype(__call));
+
+		__makeThread([](uint8_t *buf, size_t bufsize) {
+			// called in thread
+
+			decltype(&__call) ptr = nullptr;
+			if (CallSize <= bufsize) {
+				// lambda is on thread's stack
+				ptr = reinterpret_cast<decltype(ptr)>(buf);
+				(*ptr)();
+				sprt::destroy_at(ptr);
+			} else {
+				// lambda is heap-allocated, buf is pointer-to-pointer
+				ptr = *reinterpret_cast<decltype(&ptr)>(buf);
+				(*ptr)();
+				sprt::__delete(ptr);
+			}
+			return (void *)0;
+		}, [&](uint8_t *buf, size_t bufsize) mutable {
+			// called to prepare buffer
+			if (CallSize <= bufsize) {
+				// write a call lambda itself to buffer
+				new (buf) decltype(__call)(sprt::move_unsafe(__call));
+			} else {
+				// allocate heap storage for lambda
+				auto ptr = new (sprt::nothrow) decltype(__call)(sprt::move_unsafe(__call));
+
+				// write only pointer to lambda with heap storage
+				new (buf) decltype(ptr)(ptr);
+			}
 		});
 	}
 
@@ -80,7 +116,8 @@ public:
 	static unsigned int hardware_concurrency() noexcept;
 
 protected:
-	int __makeThread(__malloc_function<void()> &&);
+	int __makeThread(void *(*cb)(uint8_t *st, size_t stSize),
+			const Callback<void(uint8_t *st, size_t stSize)> &);
 
 	native_handle_type __native = nullptr;
 };
@@ -98,7 +135,7 @@ constexpr inline auto operator<=>(thread::id x, thread::id y) noexcept {
 	return x.__native <=> y.__native;
 }
 
-} // inline namespace __cxx_thread
+} // namespace __cxx_thread
 
 // hash<thread::id> specializes sprt::hash, so it must be declared at sprt scope
 // (not inside the inline namespace, which would create a second, ambiguous hash).
@@ -123,7 +160,7 @@ void yield() noexcept;
 void sleep_for(const timeout_t &rel_time);
 } // namespace this_thread
 
-} // inline namespace __cxx_thread
+} // namespace __cxx_thread
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_THREAD_H_

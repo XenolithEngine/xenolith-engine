@@ -23,6 +23,33 @@ THE SOFTWARE.
 #ifndef RUNTIME_INCLUDE_SPRT_CXX_VARIANT_H_
 #define RUNTIME_INCLUDE_SPRT_CXX_VARIANT_H_
 
+#include <sprt/cxx/detail/__stl_value_provider.h>
+
+#if __SPRT_STL_LIBCXX_VALUETYPES
+// Project libc++'s <variant> into namespace sprt (sprt::variant IS std::variant): a single
+// value-type implementation shared with the vendored libc++ pair/tuple/optional/any, so
+// there is no dual-namespace divergence between a hand-written sprt::variant and the libc++
+// std::variant the hosted `<variant>` entry already provides.
+#include <libcxx/__sprt_compat.h>
+#include <libcxx/variant>
+
+namespace sprt {
+using std::bad_variant_access;
+using std::get;
+using std::get_if;
+using std::holds_alternative;
+using std::monostate;
+using std::variant;
+using std::variant_alternative;
+using std::variant_alternative_t;
+using std::variant_npos;
+using std::variant_size;
+using std::variant_size_v;
+using std::visit;
+} // namespace sprt
+
+#else // hosted sprt build: hand-written <variant>
+
 // Standard-conforming <variant>, ported from LLVM libc++'s <variant>
 // (runtime/toolchains/src/llvm-project/libcxx/include/variant) into namespace
 // sprt and adapted to this freestanding, -fno-exceptions runtime.
@@ -126,7 +153,8 @@ public:
 	const char *what() const noexcept { return "bad_variant_access"; }
 };
 
-[[noreturn]] inline void __throw_bad_variant_access() noexcept {
+[[noreturn]]
+inline void __throw_bad_variant_access() noexcept {
 	// -fno-exceptions: the would-be `throw bad_variant_access()` becomes a
 	// defined abort (mirrors libc++'s _LIBCPP_VERBOSE_ABORT strategy).
 	__builtin_abort();
@@ -219,7 +247,8 @@ template <typename _Tp, typename... _Types>
 struct __find_exactly_one_t {
 	static constexpr size_t __index = __find_index<_Tp, _Types...>();
 	static_assert(__index != __not_found, "the specified type is not a variant alternative");
-	static_assert(__index != __ambiguous, "the specified type is a variant alternative more than once");
+	static_assert(__index != __ambiguous,
+			"the specified type is a variant alternative more than once");
 	static constexpr size_t value = __index;
 };
 
@@ -229,13 +258,17 @@ namespace __variant_detail {
 
 struct __valueless_t { };
 
-enum class _Trait { _TriviallyAvailable, _Available, _Unavailable };
+enum class _Trait {
+	_TriviallyAvailable,
+	_Available,
+	_Unavailable
+};
 
 template <typename _Tp, template <typename> class _IsTriviallyAvailable,
 		template <typename> class _IsAvailable>
 constexpr _Trait __trait = _IsTriviallyAvailable<_Tp>::value ? _Trait::_TriviallyAvailable
-		: _IsAvailable<_Tp>::value                           ? _Trait::_Available
-															  : _Trait::_Unavailable;
+		: _IsAvailable<_Tp>::value							 ? _Trait::_Available
+															 : _Trait::_Unavailable;
 
 constexpr _Trait __common_trait(initializer_list<_Trait> __traits) {
 	_Trait __result = _Trait::_TriviallyAvailable;
@@ -254,11 +287,11 @@ struct __traits {
 	static constexpr _Trait __move_constructible_trait = __common_trait(
 			{__trait<_Types, is_trivially_move_constructible, is_move_constructible>...});
 	static constexpr _Trait __copy_assignable_trait = __common_trait({__copy_constructible_trait,
-			__trait<_Types, is_trivially_copy_assignable, is_copy_assignable>...});
+		__trait<_Types, is_trivially_copy_assignable, is_copy_assignable>...});
 	static constexpr _Trait __move_assignable_trait = __common_trait({__move_constructible_trait,
-			__trait<_Types, is_trivially_move_assignable, is_move_assignable>...});
-	static constexpr _Trait __destructible_trait = __common_trait(
-			{__trait<_Types, is_trivially_destructible, is_destructible>...});
+		__trait<_Types, is_trivially_move_assignable, is_move_assignable>...});
+	static constexpr _Trait __destructible_trait =
+			__common_trait({__trait<_Types, is_trivially_destructible, is_destructible>...});
 };
 
 // "all of these bools are true"
@@ -266,9 +299,8 @@ template <bool... _Preds>
 struct __all : bool_constant<(_Preds && ...)> { };
 
 // Makes a trait dependent on a dummy template parameter so that a defaulted
-// template parameter can gate a non-template special member via SFINAE.
 template <typename _Tp, bool>
-using __dependent_type = _Tp;
+struct __dependent_type : _Tp { };
 
 // variant stores its active index in the smallest practical integer (this runtime
 // does not enable the libc++ index-type ABI optimization, so a plain unsigned).
@@ -348,7 +380,7 @@ private:
 	static constexpr auto __make_farray(_Fs &&...__fs) {
 		__visit_visitor_return_type_check<remove_cvref_t<_Fs>...>();
 		using __result = __farray<common_type_t<remove_cvref_t<_Fs>...>, sizeof...(_Fs)>;
-		return __result {{sprt::forward<_Fs>(__fs)...}};
+		return __result{{sprt::forward<_Fs>(__fs)...}};
 	}
 
 	template <size_t... _Is>
@@ -367,8 +399,7 @@ private:
 
 	template <size_t _Ip, typename _Fp, typename... _Vs>
 	static constexpr auto __make_fdiagonal_impl() {
-		return __make_dispatch<_Fp, _Vs...>(
-				index_sequence<((void) type_identity<_Vs> {}, _Ip)...> {});
+		return __make_dispatch<_Fp, _Vs...>(index_sequence<((void)type_identity<_Vs>{}, _Ip)...>{});
 	}
 
 	template <typename _Fp, typename... _Vs, size_t... _Is>
@@ -380,7 +411,7 @@ private:
 	static constexpr auto __make_fdiagonal() {
 		constexpr size_t __np = remove_cvref_t<_Vp>::__size();
 		static_assert(__all<(__np == remove_cvref_t<_Vs>::__size())...>::value);
-		return __make_fdiagonal_impl<_Fp, _Vp, _Vs...>(make_index_sequence<__np> {});
+		return __make_fdiagonal_impl<_Fp, _Vp, _Vs...>(make_index_sequence<__np>{});
 	}
 
 	template <typename _Fp, typename... _Vs, size_t... _Is>
@@ -392,13 +423,13 @@ private:
 	static constexpr auto __make_fmatrix_impl(index_sequence<_Is...>, index_sequence<_Js...>,
 			_Ls... __ls) {
 		return __base::__make_farray(
-				__make_fmatrix_impl<_Fp, _Vs...>(index_sequence<_Is..., _Js> {}, __ls...)...);
+				__make_fmatrix_impl<_Fp, _Vs...>(index_sequence<_Is..., _Js>{}, __ls...)...);
 	}
 
 	template <typename _Fp, typename... _Vs>
 	static constexpr auto __make_fmatrix() {
-		return __make_fmatrix_impl<_Fp, _Vs...>(
-				index_sequence<> {}, make_index_sequence<remove_cvref_t<_Vs>::__size()> {}...);
+		return __make_fmatrix_impl<_Fp, _Vs...>(index_sequence<>{},
+				make_index_sequence<remove_cvref_t<_Vs>::__size()>{}...);
 	}
 };
 
@@ -473,11 +504,11 @@ private:
 
 	template <typename _Visitor>
 	static constexpr auto __make_value_visitor(_Visitor &&__visitor) {
-		return __value_visitor<_Visitor> {sprt::forward<_Visitor>(__visitor)};
+		return __value_visitor<_Visitor>{sprt::forward<_Visitor>(__visitor)};
 	}
 	template <typename _Rp, typename _Visitor>
 	static constexpr auto __make_value_visitor(_Visitor &&__visitor) {
-		return __value_visitor_return_type<_Rp, _Visitor> {sprt::forward<_Visitor>(__visitor)};
+		return __value_visitor_return_type<_Rp, _Visitor>{sprt::forward<_Visitor>(__visitor)};
 	}
 };
 
@@ -539,7 +570,7 @@ public:
 	using __index_t = __variant_index_t<sizeof...(_Types)>;
 
 	explicit constexpr __base(__valueless_t) noexcept
-	: __data(__valueless_t {}), __index(__variant_npos<__index_t>) { }
+	: __data(__valueless_t{}), __index(__variant_npos<__index_t>) { }
 
 	template <size_t _Ip, typename... _Args>
 	explicit constexpr __base(in_place_index_t<_Ip>, _Args &&...__args)
@@ -589,21 +620,19 @@ class __dtor;
 		destroy;                                                                                   \
 	}
 
-__SPRT_VARIANT_DESTRUCTOR(
-		_Trait::_TriviallyAvailable, constexpr ~__dtor() = default,
-		constexpr void __destroy() noexcept { this->__index = __variant_npos<__index_t>; }
-				__SPRT_EAT_SEMICOLON);
+__SPRT_VARIANT_DESTRUCTOR(_Trait::_TriviallyAvailable, constexpr ~__dtor() = default,
+		constexpr void __destroy() noexcept {
+			this->__index = __variant_npos<__index_t>;
+		} __SPRT_EAT_SEMICOLON);
 
-__SPRT_VARIANT_DESTRUCTOR(
-		_Trait::_Available, constexpr ~__dtor() { __destroy(); } __SPRT_EAT_SEMICOLON,
+__SPRT_VARIANT_DESTRUCTOR(_Trait::_Available,
+		constexpr ~__dtor() { __destroy(); } __SPRT_EAT_SEMICOLON,
 		constexpr void __destroy() noexcept {
 			if (!this->valueless_by_exception()) {
-				__visitation::__base::__visit_alt(
-						[](auto &__alt) noexcept {
-							using __alt_type = remove_cvref_t<decltype(__alt)>;
-							__alt.~__alt_type();
-						},
-						*this);
+				__visitation::__base::__visit_alt([](auto &__alt) noexcept {
+					using __alt_type = remove_cvref_t<decltype(__alt)>;
+					__alt.~__alt_type();
+				}, *this);
 			}
 			this->__index = __variant_npos<__index_t>;
 		} __SPRT_EAT_SEMICOLON);
@@ -627,14 +656,11 @@ protected:
 		__lhs.__destroy();
 		if (!__rhs.valueless_by_exception()) {
 			auto __rhs_index = __rhs.index();
-			__visitation::__base::__visit_alt_at(
-					__rhs_index,
-					[&__lhs](auto &&__rhs_alt) {
-						sprt::construct_at(sprt::addressof(__lhs.__data),
-								in_place_index<remove_cvref_t<decltype(__rhs_alt)>::__index>,
-								sprt::forward<decltype(__rhs_alt)>(__rhs_alt).__value);
-					},
-					sprt::forward<_Rhs>(__rhs));
+			__visitation::__base::__visit_alt_at(__rhs_index, [&__lhs](auto &&__rhs_alt) {
+				sprt::construct_at(sprt::addressof(__lhs.__data),
+						in_place_index<remove_cvref_t<decltype(__rhs_alt)>::__index>,
+						sprt::forward<decltype(__rhs_alt)>(__rhs_alt).__value);
+			}, sprt::forward<_Rhs>(__rhs));
 			__lhs.__index = __rhs_index;
 		}
 	}
@@ -666,8 +692,8 @@ __SPRT_VARIANT_MOVE_CONSTRUCTOR(_Trait::_TriviallyAvailable,
 // valueless (sprt extension — see the design note at the top of this file).
 __SPRT_VARIANT_MOVE_CONSTRUCTOR(_Trait::_Available,
 		constexpr __move_constructor(__move_constructor &&__that) noexcept(
-				__all<is_nothrow_move_constructible_v<_Types>...>::value)
-		: __move_constructor(__valueless_t {}) {
+				__all<is_nothrow_move_constructible_v<_Types>...>::
+						value) : __move_constructor(__valueless_t{}) {
 			this->__generic_construct(*this, sprt::move(__that));
 			__that.__destroy();
 		} __SPRT_EAT_SEMICOLON);
@@ -700,8 +726,8 @@ __SPRT_VARIANT_COPY_CONSTRUCTOR(_Trait::_TriviallyAvailable,
 		constexpr __copy_constructor(const __copy_constructor &__that) = default);
 
 __SPRT_VARIANT_COPY_CONSTRUCTOR(_Trait::_Available,
-		constexpr __copy_constructor(const __copy_constructor &__that)
-		: __copy_constructor(__valueless_t {}) {
+		constexpr __copy_constructor(const __copy_constructor &__that) : __copy_constructor(
+				__valueless_t{}) {
 			this->__generic_construct(*this, __that);
 		} __SPRT_EAT_SEMICOLON);
 
@@ -742,7 +768,7 @@ protected:
 				}
 				__assignment *__this;
 				_Arg &&__arg;
-			} __impl {this, sprt::forward<_Arg>(__arg)};
+			} __impl{this, sprt::forward<_Arg>(__arg)};
 			__impl(bool_constant < is_nothrow_constructible_v<_Tp, _Arg>
 					|| !is_nothrow_move_constructible_v < _Tp >> {});
 		}
@@ -755,13 +781,11 @@ protected:
 		} else if (__that.valueless_by_exception()) {
 			this->__destroy();
 		} else {
-			__visitation::__base::__visit_alt_at(
-					__that.index(),
+			__visitation::__base::__visit_alt_at(__that.index(),
 					[this](auto &__this_alt, auto &&__that_alt) {
-						this->__assign_alt(__this_alt,
-								sprt::forward<decltype(__that_alt)>(__that_alt).__value);
-					},
-					*this, sprt::forward<_That>(__that));
+				this->__assign_alt(__this_alt,
+						sprt::forward<decltype(__that_alt)>(__that_alt).__value);
+			}, *this, sprt::forward<_That>(__that));
 		}
 	}
 };
@@ -859,13 +883,11 @@ public:
 		if (this->valueless_by_exception() && __that.valueless_by_exception()) {
 			// do nothing.
 		} else if (this->index() == __that.index()) {
-			__visitation::__base::__visit_alt_at(
-					this->index(),
+			__visitation::__base::__visit_alt_at(this->index(),
 					[](auto &__this_alt, auto &__that_alt) {
-						using sprt::swap;
-						swap(__this_alt.__value, __that_alt.__value);
-					},
-					*this, __that);
+				using sprt::swap;
+				swap(__this_alt.__value, __that_alt.__value);
+			}, *this, __that);
 		} else {
 			__impl *__lhs = this;
 			__impl *__rhs = sprt::addressof(__that);
@@ -900,9 +922,8 @@ struct __narrowing_check {
 };
 
 template <typename _Dest, typename _Source>
-using __check_for_narrowing =
-		typename _If<is_arithmetic<_Dest>::value, __narrowing_check,
-				__no_narrowing_check>::template _Apply<_Dest, _Source>;
+using __check_for_narrowing = typename _If<is_arithmetic<_Dest>::value, __narrowing_check,
+		__no_narrowing_check>::template _Apply<_Dest, _Source>;
 
 template <typename _Tp, size_t _Idx>
 struct __overload {
@@ -983,11 +1004,10 @@ template <typename... _Types>
 class __SPRT_EMPTY_BASES variant
 : private __sfinae_ctor_base<__variant_detail::__all<is_copy_constructible_v<_Types>...>::value,
 		  __variant_detail::__all<is_move_constructible_v<_Types>...>::value>,
-  private __sfinae_assign_base<
-		  __variant_detail::__all<(is_copy_constructible_v<_Types>
-				  && is_copy_assignable_v<_Types>)...>::value,
-		  __variant_detail::__all<(is_move_constructible_v<_Types>
-				  && is_move_assignable_v<_Types>)...>::value> {
+  private __sfinae_assign_base< __variant_detail::__all<(is_copy_constructible_v<_Types>
+										&& is_copy_assignable_v<_Types>)...>::value,
+		  __variant_detail::__all<(
+				  is_move_constructible_v<_Types> && is_move_assignable_v<_Types>)...>::value> {
 	static_assert(0 < sizeof...(_Types), "variant must consist of at least one alternative.");
 	static_assert(__variant_detail::__all<!is_array_v<_Types>...>::value,
 			"variant can not have an array type as an alternative.");
@@ -1021,32 +1041,30 @@ public:
 	template <size_t _Ip, typename... _Args, enable_if_t<(_Ip < sizeof...(_Types)), int> = 0,
 			typename _Tp = variant_alternative_t<_Ip, variant<_Types...>>,
 			enable_if_t<is_constructible_v<_Tp, _Args...>, int> = 0>
-	explicit constexpr variant(in_place_index_t<_Ip>, _Args &&...__args) noexcept(
-			is_nothrow_constructible_v<_Tp, _Args...>)
+	explicit constexpr variant(in_place_index_t<_Ip>, _Args &&...__args)
+			noexcept(is_nothrow_constructible_v<_Tp, _Args...>)
 	: __impl_(in_place_index<_Ip>, sprt::forward<_Args>(__args)...) { }
 
 	template <size_t _Ip, typename _Up, typename... _Args,
 			enable_if_t<(_Ip < sizeof...(_Types)), int> = 0,
 			typename _Tp = variant_alternative_t<_Ip, variant<_Types...>>,
 			enable_if_t<is_constructible_v<_Tp, initializer_list<_Up> &, _Args...>, int> = 0>
-	explicit constexpr variant(in_place_index_t<_Ip>, initializer_list<_Up> __il,
-			_Args &&...__args) noexcept(is_nothrow_constructible_v<_Tp, initializer_list<_Up> &,
-			_Args...>)
+	explicit constexpr variant(in_place_index_t<_Ip>, initializer_list<_Up> __il, _Args &&...__args)
+			noexcept(is_nothrow_constructible_v<_Tp, initializer_list<_Up> &, _Args...>)
 	: __impl_(in_place_index<_Ip>, __il, sprt::forward<_Args>(__args)...) { }
 
 	template <typename _Tp, typename... _Args,
 			size_t _Ip = __find_detail::__find_unambiguous_index_sfinae<_Tp, _Types...>::value,
 			enable_if_t<is_constructible_v<_Tp, _Args...>, int> = 0>
-	explicit constexpr variant(in_place_type_t<_Tp>, _Args &&...__args) noexcept(
-			is_nothrow_constructible_v<_Tp, _Args...>)
+	explicit constexpr variant(in_place_type_t<_Tp>, _Args &&...__args)
+			noexcept(is_nothrow_constructible_v<_Tp, _Args...>)
 	: __impl_(in_place_index<_Ip>, sprt::forward<_Args>(__args)...) { }
 
 	template <typename _Tp, typename _Up, typename... _Args,
 			size_t _Ip = __find_detail::__find_unambiguous_index_sfinae<_Tp, _Types...>::value,
 			enable_if_t<is_constructible_v<_Tp, initializer_list<_Up> &, _Args...>, int> = 0>
-	explicit constexpr variant(in_place_type_t<_Tp>, initializer_list<_Up> __il,
-			_Args &&...__args) noexcept(is_nothrow_constructible_v<_Tp, initializer_list<_Up> &,
-			_Args...>)
+	explicit constexpr variant(in_place_type_t<_Tp>, initializer_list<_Up> __il, _Args &&...__args)
+			noexcept(is_nothrow_constructible_v<_Tp, initializer_list<_Up> &, _Args...>)
 	: __impl_(in_place_index<_Ip>, __il, sprt::forward<_Args>(__args)...) { }
 
 	constexpr ~variant() = default;
@@ -1100,15 +1118,15 @@ public:
 	constexpr size_t index() const noexcept { return __impl_.index(); }
 
 	template <bool _Dummy = true,
-			enable_if_t<__variant_detail::__all<
-								(__variant_detail::__dependent_type<is_move_constructible<_Types>,
-										 _Dummy>::value
-										&& __variant_detail::__dependent_type<is_swappable<_Types>,
-												_Dummy>::value)...>::value,
+			enable_if_t<
+					__variant_detail::__all< (__variant_detail::__dependent_type<
+													  is_move_constructible<_Types>, _Dummy>::value
+							&& __variant_detail::__dependent_type<is_swappable<_Types>,
+									_Dummy>::value)...>::value,
 					int> = 0>
-	constexpr void swap(variant &__that) noexcept(
-			__variant_detail::__all<(is_nothrow_move_constructible_v<_Types>
-					&& is_nothrow_swappable_v<_Types>)...>::value) {
+	constexpr void swap(variant &__that)
+			noexcept(__variant_detail::__all<(is_nothrow_move_constructible_v<_Types>
+							&& is_nothrow_swappable_v<_Types>)...>::value) {
 		__impl_.__swap(__that.__impl_);
 	}
 
@@ -1242,8 +1260,8 @@ constexpr bool operator==(const variant<_Types...> &__lhs, const variant<_Types.
 	if (__lhs.valueless_by_exception()) {
 		return true;
 	}
-	return __variant::__visit_value_at(
-			__lhs.index(), [](auto &&__a, auto &&__b) -> bool { return __a == __b; }, __lhs, __rhs);
+	return __variant::__visit_value_at(__lhs.index(),
+			[](auto &&__a, auto &&__b) -> bool { return __a == __b; }, __lhs, __rhs);
 }
 
 template <typename... _Types>
@@ -1255,8 +1273,8 @@ constexpr bool operator!=(const variant<_Types...> &__lhs, const variant<_Types.
 	if (__lhs.valueless_by_exception()) {
 		return false;
 	}
-	return __variant::__visit_value_at(
-			__lhs.index(), [](auto &&__a, auto &&__b) -> bool { return __a != __b; }, __lhs, __rhs);
+	return __variant::__visit_value_at(__lhs.index(),
+			[](auto &&__a, auto &&__b) -> bool { return __a != __b; }, __lhs, __rhs);
 }
 
 template <typename... _Types>
@@ -1274,8 +1292,8 @@ constexpr bool operator<(const variant<_Types...> &__lhs, const variant<_Types..
 	if (__lhs.index() > __rhs.index()) {
 		return false;
 	}
-	return __variant::__visit_value_at(
-			__lhs.index(), [](auto &&__a, auto &&__b) -> bool { return __a < __b; }, __lhs, __rhs);
+	return __variant::__visit_value_at(__lhs.index(),
+			[](auto &&__a, auto &&__b) -> bool { return __a < __b; }, __lhs, __rhs);
 }
 
 template <typename... _Types>
@@ -1293,8 +1311,8 @@ constexpr bool operator>(const variant<_Types...> &__lhs, const variant<_Types..
 	if (__lhs.index() < __rhs.index()) {
 		return false;
 	}
-	return __variant::__visit_value_at(
-			__lhs.index(), [](auto &&__a, auto &&__b) -> bool { return __a > __b; }, __lhs, __rhs);
+	return __variant::__visit_value_at(__lhs.index(),
+			[](auto &&__a, auto &&__b) -> bool { return __a > __b; }, __lhs, __rhs);
 }
 
 template <typename... _Types>
@@ -1312,8 +1330,8 @@ constexpr bool operator<=(const variant<_Types...> &__lhs, const variant<_Types.
 	if (__lhs.index() > __rhs.index()) {
 		return false;
 	}
-	return __variant::__visit_value_at(
-			__lhs.index(), [](auto &&__a, auto &&__b) -> bool { return __a <= __b; }, __lhs, __rhs);
+	return __variant::__visit_value_at(__lhs.index(),
+			[](auto &&__a, auto &&__b) -> bool { return __a <= __b; }, __lhs, __rhs);
 }
 
 template <typename... _Types>
@@ -1331,14 +1349,14 @@ constexpr bool operator>=(const variant<_Types...> &__lhs, const variant<_Types.
 	if (__lhs.index() < __rhs.index()) {
 		return false;
 	}
-	return __variant::__visit_value_at(
-			__lhs.index(), [](auto &&__a, auto &&__b) -> bool { return __a >= __b; }, __lhs, __rhs);
+	return __variant::__visit_value_at(__lhs.index(),
+			[](auto &&__a, auto &&__b) -> bool { return __a >= __b; }, __lhs, __rhs);
 }
 
 template <typename... _Types>
-	requires (requires(const _Types &__t) { __t <=> __t; } && ...)
-constexpr __variant_detail::__common_comparison_category_t<
-		decltype(sprt::declval<const _Types &>() <=> sprt::declval<const _Types &>())...>
+requires (requires(const _Types &__t) { __t <=> __t; } && ...)
+constexpr __variant_detail::__common_comparison_category_t< decltype(sprt::declval<const _Types &>()
+		<=> sprt::declval<const _Types &>())...>
 operator<=>(const variant<_Types...> &__lhs, const variant<_Types...> &__rhs) {
 	using __variant_detail::__visitation::__variant;
 	using __result_t = __variant_detail::__common_comparison_category_t<
@@ -1355,9 +1373,8 @@ operator<=>(const variant<_Types...> &__lhs, const variant<_Types...> &__rhs) {
 	if (auto __c = __lhs.index() <=> __rhs.index(); __c != 0) {
 		return __c;
 	}
-	return __variant::__visit_value_at(
-			__lhs.index(), [](auto &&__a, auto &&__b) -> __result_t { return __a <=> __b; }, __lhs,
-			__rhs);
+	return __variant::__visit_value_at(__lhs.index(),
+			[](auto &&__a, auto &&__b) -> __result_t { return __a <=> __b; }, __lhs, __rhs);
 }
 
 // [variant.visit]
@@ -1379,13 +1396,7 @@ constexpr void __throw_if_valueless(_Vs &&...__vs) {
 template <typename _Visitor, typename... _Vs, typename>
 constexpr decltype(auto) visit(_Visitor &&__visitor, _Vs &&...__vs) {
 	using __variant_detail::__visitation::__variant;
-	if constexpr (sizeof...(_Vs) == 1) {
-		if ((... || sprt::__as_variant(__vs).valueless_by_exception())) {
-			return sprt::__invoke(sprt::forward<_Visitor>(__visitor), variant_empty {});
-		}
-	} else {
-		sprt::__throw_if_valueless(__vs...);
-	}
+	sprt::__throw_if_valueless(__vs...);
 	return __variant::__visit_value(sprt::forward<_Visitor>(__visitor),
 			sprt::forward<_Vs>(__vs)...);
 }
@@ -1393,55 +1404,43 @@ constexpr decltype(auto) visit(_Visitor &&__visitor, _Vs &&...__vs) {
 template <typename _Rp, typename _Visitor, typename... _Vs, typename>
 constexpr _Rp visit(_Visitor &&__visitor, _Vs &&...__vs) {
 	using __variant_detail::__visitation::__variant;
-	if constexpr (sizeof...(_Vs) == 1) {
-		if ((... || sprt::__as_variant(__vs).valueless_by_exception())) {
-			if constexpr (is_void_v<_Rp>) {
-				sprt::__invoke(sprt::forward<_Visitor>(__visitor), variant_empty {});
-				return;
-			} else {
-				return sprt::__invoke(sprt::forward<_Visitor>(__visitor), variant_empty {});
-			}
-		}
-	} else {
-		sprt::__throw_if_valueless(__vs...);
-	}
+	sprt::__throw_if_valueless(__vs...);
 	return __variant::__visit_value<_Rp>(sprt::forward<_Visitor>(__visitor),
 			sprt::forward<_Vs>(__vs)...);
 }
 
 template <typename... _Types>
-constexpr auto swap(variant<_Types...> &__lhs,
-		variant<_Types...> &__rhs) noexcept(noexcept(__lhs.swap(__rhs)))
-		-> decltype(__lhs.swap(__rhs)) {
+constexpr auto swap(variant<_Types...> &__lhs, variant<_Types...> &__rhs)
+		noexcept(noexcept(__lhs.swap(__rhs))) -> decltype(__lhs.swap(__rhs)) {
 	return __lhs.swap(__rhs);
 }
 
 // [variant.hash]
 
 inline size_t __hash_combine(size_t __seed, size_t __value) noexcept {
-	return __seed ^ (__value + static_cast<size_t>(0x9e3779b97f4a7c15ULL) + (__seed << 6)
-			+ (__seed >> 2));
+	return __seed
+			^ (__value + static_cast<size_t>(0x9e37'79b9'7f4a'7c15ULL) + (__seed << 6)
+					+ (__seed >> 2));
 }
 
 template <typename... _Types>
 struct hash<variant<_Types...>> {
 	size_t operator()(const variant<_Types...> &__v) const noexcept {
 		using __variant_detail::__visitation::__variant;
-		size_t __res = __v.valueless_by_exception()
-				? static_cast<size_t>(299792458)
-				: __variant::__visit_alt(
-						  [](const auto &__alt) {
-							  using __alt_type = remove_cvref_t<decltype(__alt)>;
-							  using __value_type = remove_const_t<typename __alt_type::__value_type>;
-							  return hash<__value_type> {}(__alt.__value);
-						  },
-						  __v);
-		return sprt::__hash_combine(__res, hash<size_t> {}(__v.index()));
+		size_t __res = __v.valueless_by_exception() ? static_cast<size_t>(299'792'458)
+													: __variant::__visit_alt([](const auto &__alt) {
+			using __alt_type = remove_cvref_t<decltype(__alt)>;
+			using __value_type = remove_const_t<typename __alt_type::__value_type>;
+			return hash<__value_type>{}(__alt.__value);
+		}, __v);
+		return sprt::__hash_combine(__res, hash<size_t>{}(__v.index()));
 	}
 };
 
 #undef __SPRT_EAT_SEMICOLON
 
 } // namespace sprt
+
+#endif // __SPRT_STL_LIBCXX_VALUETYPES
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_VARIANT_H_

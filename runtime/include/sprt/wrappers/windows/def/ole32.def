@@ -1,0 +1,11 @@
+LIBRARY ole32.dll
+EXPORTS
+	CoCreateInstance
+	CoInitialize
+	CoInitializeEx
+	CoUninitialize
+	CoTaskMemAlloc
+	CoTaskMemRealloc
+	CoTaskMemFree
+	CoGetMalloc
+	StringFromGUID2

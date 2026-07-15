@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include <sprt/c/__sprt_assert.h>
 #include <sprt/cxx/detail/ctypes.h>
-#include <sprt/cxx/array>
+#include <sprt/cxx/detail/inline_buffer.h>
 
 namespace sprt::detail {
 
@@ -38,7 +38,7 @@ struct linear_memory_small {
 	using size_type = size_t;
 	using allocator = Allocator;
 
-	using strage_type = array<uint8_t, ByteCount>;
+	using strage_type = sprt::detail::inline_buffer<uint8_t, ByteCount>;
 
 	// For both little and big endians
 	static constexpr uint8_t CommonSmallMask = 0b1000'0001;

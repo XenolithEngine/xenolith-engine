@@ -26,22 +26,24 @@
 #include <sprt/cxx/__type_traits/queries.h>
 #include <sprt/cxx/__type_traits/constants.h>
 
+#define __SPRT_STL_BOOL_BUILTIN(Name) \
+	template <typename Type> \
+	struct Name : bool_constant<__##Name(Type)> { }; \
+	template <typename Type> \
+	inline constexpr bool Name##_v = __##Name(Type);
+
 namespace sprt {
 inline namespace __cxx_type_traits {
 
 template <typename Type>
-struct is_void {
-	static constexpr bool value = __is_same(__remove_cv(Type), void);
-};
+struct is_void : bool_constant<__is_same(__remove_cv(Type), void)> { };
 
 template <typename Type>
 inline constexpr bool is_void_v = __is_same(__remove_cv(Type), void);
 
 
 template <typename Type>
-struct is_null_pointer {
-	static constexpr bool value = __is_same(__remove_cv(Type), nullptr_t);
-};
+struct is_null_pointer : bool_constant<__is_same(__remove_cv(Type), nullptr_t)> { };
 
 template <typename Type>
 inline constexpr bool is_null_pointer_v = is_null_pointer<Type>::value;
@@ -106,6 +108,7 @@ __SPRT_STL_BOOL_BUILTIN(is_final)
 __SPRT_STL_BOOL_BUILTIN(is_abstract)
 __SPRT_STL_BOOL_BUILTIN(is_aggregate)
 __SPRT_STL_BOOL_BUILTIN(is_trivial)
+__SPRT_STL_BOOL_BUILTIN(is_pod) // deprecated in C++20, still required by the tests
 __SPRT_STL_BOOL_BUILTIN(is_trivially_copyable)
 __SPRT_STL_BOOL_BUILTIN(is_standard_layout)
 __SPRT_STL_BOOL_BUILTIN(is_literal_type)
@@ -130,7 +133,7 @@ concept io_character = is_same_v<_Tp, char> || is_same_v<_Tp, char16_t> || is_sa
 template <typename _Tp>
 concept enumeration = is_enum_v<_Tp>;
 
-} // inline namespace __cxx_type_traits
+} // namespace __cxx_type_traits
 } // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX___TYPE_TRAITS_TYPES_H_

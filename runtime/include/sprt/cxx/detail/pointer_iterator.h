@@ -29,7 +29,7 @@ THE SOFTWARE.
 #include <sprt/cxx/__type_traits/queries.h>
 #include <sprt/cxx/__iterator/iterator_tags.h>
 
-namespace sprt::detail {
+namespace sprt {
 
 template <typename Type, typename Pointer, typename Reference>
 class pointer_iterator {
@@ -43,71 +43,99 @@ public:
 	using difference_type = ptrdiff_t;
 	using value_type = typename remove_cv<Type>::type;
 
-	pointer_iterator() noexcept : current(nullptr) { }
-	pointer_iterator(const iterator &other) noexcept : current(other.current) { }
-	explicit pointer_iterator(pointer p) noexcept : current(p) { }
+	constexpr pointer_iterator() noexcept : current(nullptr) { }
+	constexpr pointer_iterator(const iterator &other) noexcept : current(other.current) { }
+	constexpr explicit pointer_iterator(pointer p) noexcept : current(p) { }
 
-	iterator &operator=(const iterator &other) noexcept {
+	constexpr iterator &operator=(const iterator &other) noexcept {
 		current = other.current;
 		return *this;
 	}
-	constexpr bool operator==(const iterator &other) const { return current == other.current; }
-	constexpr bool operator!=(const iterator &other) const { return current != other.current; }
-	constexpr bool operator<(const iterator &other) const { return current < other.current; }
-	constexpr bool operator>(const iterator &other) const { return current > other.current; }
-	constexpr bool operator<=(const iterator &other) const { return current <= other.current; }
-	constexpr bool operator>=(const iterator &other) const { return current >= other.current; }
+	// Public read-only access to the wrapped pointer, so heterogeneous
+	// iterator/const_iterator comparisons (and difference) can reach each other's
+	// pointer without friendship.
+	constexpr pointer base() const noexcept { return current; }
 
-	iterator &operator++() {
+	// Heterogeneous comparisons: a mutable iterator and the matching const_iterator
+	// (same Type) must be comparable ([string.require] / random-access requirements).
+	template <typename P2, typename R2>
+	constexpr bool operator==(const pointer_iterator<Type, P2, R2> &other) const {
+		return current == other.base();
+	}
+	template <typename P2, typename R2>
+	constexpr bool operator!=(const pointer_iterator<Type, P2, R2> &other) const {
+		return current != other.base();
+	}
+	template <typename P2, typename R2>
+	constexpr bool operator<(const pointer_iterator<Type, P2, R2> &other) const {
+		return current < other.base();
+	}
+	template <typename P2, typename R2>
+	constexpr bool operator>(const pointer_iterator<Type, P2, R2> &other) const {
+		return current > other.base();
+	}
+	template <typename P2, typename R2>
+	constexpr bool operator<=(const pointer_iterator<Type, P2, R2> &other) const {
+		return current <= other.base();
+	}
+	template <typename P2, typename R2>
+	constexpr bool operator>=(const pointer_iterator<Type, P2, R2> &other) const {
+		return current >= other.base();
+	}
+
+	constexpr iterator &operator++() {
 		++current;
 		return *this;
 	}
-	iterator operator++(int) {
+	constexpr iterator operator++(int) {
 		auto tmp = *this;
 		++current;
 		return tmp;
 	}
-	iterator &operator--() {
+	constexpr iterator &operator--() {
 		--current;
 		return *this;
 	}
-	iterator operator--(int) {
+	constexpr iterator operator--(int) {
 		auto tmp = *this;
 		--current;
 		return tmp;
 	}
-	iterator &operator+=(size_type n) {
+	constexpr iterator &operator+=(size_type n) {
 		current += n;
 		return *this;
 	}
-	iterator &operator-=(size_type n) {
+	constexpr iterator &operator-=(size_type n) {
 		current -= n;
 		return *this;
 	}
-	difference_type operator-(const iterator &other) const { return current - other.current; }
+	template <typename P2, typename R2>
+	constexpr difference_type operator-(const pointer_iterator<Type, P2, R2> &other) const {
+		return current - other.base();
+	}
 
-	reference operator*() const { return *current; }
-	pointer operator->() const { return current; }
-	reference operator[](size_type n) const { return *(current + n); }
+	constexpr reference operator*() const { return *current; }
+	constexpr pointer operator->() const { return current; }
+	constexpr reference operator[](size_type n) const { return *(current + n); }
 
-	size_type operator-(pointer p) const { return current - p; }
+	constexpr size_type operator-(pointer p) const { return current - p; }
 
 	// const_iterator cast
-	operator pointer_iterator<value_type, const value_type *, const value_type &>() const {
+	constexpr operator pointer_iterator<value_type, const value_type *, const value_type &>() const {
 		return pointer_iterator<value_type, const value_type *, const value_type &>(current);
 	}
 
 	//operator pointer () const { return current; }
 
-	friend auto operator+(size_type n, const iterator &it) -> iterator {
+	friend constexpr auto operator+(size_type n, const iterator &it) -> iterator {
 		return iterator(it.current + n);
 	}
 
-	friend auto operator+(const iterator &it, size_type n) -> iterator {
+	friend constexpr auto operator+(const iterator &it, size_type n) -> iterator {
 		return iterator(it.current + n);
 	}
 
-	friend auto operator-(const iterator &it, size_type n) -> iterator {
+	friend constexpr auto operator-(const iterator &it, size_type n) -> iterator {
 		return iterator(it.current - n);
 	}
 
@@ -196,8 +224,39 @@ public:
 	}
 	constexpr reference operator[](difference_type __n) const { return *(*this + __n); }
 
-	constexpr bool operator==(const pointer_reverse_iterator &) const = default;
-	constexpr bool operator!=(const pointer_reverse_iterator &) const = default;
+	// Distance between two reverse iterators. As with std::reverse_iterator the sense is
+	// flipped: (a - b) == b.base() - a.base(). Heterogeneous (reverse_iterator vs
+	// const_reverse_iterator) so the two are comparable/subtractable.
+	template <typename _Up>
+	constexpr difference_type operator-(const pointer_reverse_iterator<_Up> &__other) const {
+		return __other.base() - current;
+	}
+
+	template <typename _Up>
+	constexpr bool operator==(const pointer_reverse_iterator<_Up> &__o) const {
+		return current == __o.base();
+	}
+	template <typename _Up>
+	constexpr bool operator!=(const pointer_reverse_iterator<_Up> &__o) const {
+		return current != __o.base();
+	}
+	// Ordering is reversed relative to the underlying iterator.
+	template <typename _Up>
+	constexpr bool operator<(const pointer_reverse_iterator<_Up> &__o) const {
+		return current > __o.base();
+	}
+	template <typename _Up>
+	constexpr bool operator>(const pointer_reverse_iterator<_Up> &__o) const {
+		return current < __o.base();
+	}
+	template <typename _Up>
+	constexpr bool operator<=(const pointer_reverse_iterator<_Up> &__o) const {
+		return current >= __o.base();
+	}
+	template <typename _Up>
+	constexpr bool operator>=(const pointer_reverse_iterator<_Up> &__o) const {
+		return current <= __o.base();
+	}
 
 protected:
 	_Iter current;
@@ -276,6 +335,14 @@ protected:
 	_Iter current;
 };
 
-} // namespace sprt::detail
+} // namespace sprt
+
+namespace sprt {
+namespace detail {
+using sprt::common_reverse_iterator;
+using sprt::pointer_iterator;
+using sprt::pointer_reverse_iterator;
+} // namespace detail
+} // namespace sprt
 
 #endif // RUNTIME_INCLUDE_SPRT_CXX_DETAIL_POINTER_ITERATOR_H_

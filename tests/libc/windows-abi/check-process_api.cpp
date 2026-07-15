@@ -171,3 +171,6 @@ SPRT_ENUM(ProcThreadAttributeComponentFilter);
 SPRT_ENUM(ProcThreadAttributeEnableOptionalXStateFeatures);
 SPRT_ENUM(ProcThreadAttributeTrustedApp);
 SPRT_ENUM(ProcThreadAttributeSveVectorLength);
+
+// === new values (wrapper completion) =======================================
+SPRT_CONST(PROC_THREAD_ATTRIBUTE_HANDLE_LIST);

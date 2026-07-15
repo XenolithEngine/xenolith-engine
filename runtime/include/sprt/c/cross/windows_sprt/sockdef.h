@@ -140,4 +140,6 @@
 
 #define __SPRT_IP6T_SO_ORIGINAL_DST __SPRT_SO_ORIGINAL_DST
 
+#define __SPRT_UNIX_PATH_MAX 108
+
 // clang-format on

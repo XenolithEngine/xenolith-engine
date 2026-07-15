@@ -445,6 +445,10 @@ SPRT_CONST(QS_INPUT);
 SPRT_CONST(QS_ALLEVENTS);
 SPRT_CONST(QS_ALLINPUT);
 
+// === new values (wrapper completion) =======================================
+SPRT_CONST(LANG_ENGLISH);
+SPRT_CONST(SUBLANG_ENGLISH_US);
+
 // === OMITTED ===============================================================
 // Function-like macros (skipped per spec): LOWORD, HIWORD, GET_X_LPARAM,
 // GET_Y_LPARAM, GET_KEYSTATE_WPARAM, GET_NCHITTEST_WPARAM, GET_XBUTTON_WPARAM,
