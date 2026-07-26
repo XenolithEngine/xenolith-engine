@@ -262,6 +262,8 @@ typedef NS_OPTIONS(NSUInteger, NSPasteboardContentsOptions) {
 - (void)setContentSize:(NSSize)size;
 @property NSSize minSize;
 @property NSSize maxSize;
+@property NSSize contentMinSize;
+@property NSSize contentMaxSize;
 @property(nullable, readonly) NSScreen *screen;
 @property(readonly) CGFloat backingScaleFactor;
 - (NSRect)contentRectForFrameRect:(NSRect)frameRect;

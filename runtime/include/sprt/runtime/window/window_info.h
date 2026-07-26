@@ -405,7 +405,7 @@ enum class WindowCapabilities : uint32_t {
 	// to next window with this id
 	PreserveDirector = 1 << 19,
 
-	// setPreferredModeSwitch is available
+	// setPreferredFrameRate is available
 	PreferredFrameRate = 1 << 20,
 
 	// Decoration state can be changed by application (mostly Android)
@@ -423,6 +423,15 @@ struct SPRT_API WindowInfo final : public Ref {
 
 	// initial fullscreen mode
 	FullscreenInfo fullscreen = FullscreenInfo::None;
+
+	// Minimum / maximum content size in logical units (same space as `rect`).
+	// Set at creation, immutable at runtime. A dimension of 0 means "unconstrained" for that
+	// dimension (e.g. minExtent = {320, 0} floors width at 320 and leaves height free).
+	// A backend clamps `rect` into [minExtent, maxExtent] and forwards the bounds to the WM/OS,
+	// converting logical units into device pixels / full-window sizes as it does for `rect`.
+	// Note: Android and WASM have no meaningful window size limits and ignore these fields.
+	Extent2 minExtent = Extent2::ZERO;
+	Extent2 maxExtent = Extent2::ZERO;
 
 	// TODO: extra window attributes go here
 
@@ -442,6 +451,10 @@ struct SPRT_API WindowInfo final : public Ref {
 };
 
 SPRT_API void getWindowStateDescription(const callback<void(StringView)> &, WindowState);
+
+// Clamp `e` into [minExtent, maxExtent], honoring the per-dimension "0 = unconstrained" rule.
+// If a maxExtent dimension is non-zero and below the corresponding minExtent, minExtent wins.
+SPRT_API Extent2 clampWindowExtent(Extent2 e, Extent2 minExtent, Extent2 maxExtent);
 
 } // namespace sprt::window
 

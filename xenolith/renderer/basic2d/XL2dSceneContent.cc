@@ -603,7 +603,7 @@ void SceneContent2d::draw(FrameInfo &info, NodeVisitFlags flags) {
 	auto window = _director->getRenderServer();
 	auto state = _director->getRenderServer()->getWindowState();
 
-	if (!hasFlag(state, WindowState::Fullscreen)
+	if (!hasFlag(state, WindowState::Fullscreen) && !hasFlag(state, WindowState::Maximized)
 			&& hasFlag(window->getInfo()->flags, WindowCreationFlags::UserSpaceDecorations)) {
 		ctx->decorations.drawUserShadows =
 				hasFlag(_director->getRenderServer()->getInfo()->capabilities,

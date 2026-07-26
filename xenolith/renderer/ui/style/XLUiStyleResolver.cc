@@ -368,9 +368,8 @@ document::TextTransform ResolvedStyle::textTransform() const {
 
 document::TextDecoration ResolvedStyle::textDecoration() const {
 	document::StyleValue v;
-	return getValue(document::ParameterName::CssTextDecoration, v)
-			? v.textDecoration
-			: document::TextDecoration::None;
+	return getValue(document::ParameterName::CssTextDecoration, v) ? v.textDecoration
+																   : document::TextDecoration::None;
 }
 
 document::WhiteSpace ResolvedStyle::whiteSpace() const {
@@ -381,8 +380,7 @@ document::WhiteSpace ResolvedStyle::whiteSpace() const {
 
 document::Hyphens ResolvedStyle::hyphens() const {
 	document::StyleValue v;
-	return getValue(document::ParameterName::CssHyphens, v) ? v.hyphens
-															: document::Hyphens::Manual;
+	return getValue(document::ParameterName::CssHyphens, v) ? v.hyphens : document::Hyphens::Manual;
 }
 
 document::VerticalAlign ResolvedStyle::verticalAlign() const {
@@ -632,9 +630,11 @@ bool StyleResolver::init(bool recursive) {
 
 	_recursive = recursive;
 
+	// HandleNodeEvents: react to the owner's own resize (handleContentSizeDirty) and to the
+	// owner's PARENT resize (handleLayoutInParent) - percent metrics depend on the parent size
 	auto flags = SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents
-			| SystemFlags::HandleComponents | SystemFlags::HandleAncestorComponents
-			| SystemFlags::HandleLayoutChildren;
+			| SystemFlags::HandleNodeEvents | SystemFlags::HandleComponents
+			| SystemFlags::HandleAncestorComponents | SystemFlags::HandleLayoutChildren;
 
 	if (_recursive) {
 		// publish on the frame stack so every descendant delivers its content-size / layout-children
@@ -678,10 +678,27 @@ void StyleResolver::handleComponentsDirty(const ComponentMask &mask) {
 	apply();
 }
 
+void StyleResolver::handleContentSizeDirty() {
+	System::handleContentSizeDirty();
+
+	// the owner itself was resized: own-size-relative paddings/gaps may need recompute
+	resolveOwnerIfStale();
+}
+
+void StyleResolver::handleLayoutInParent(Node *parent) {
+	System::handleLayoutInParent(parent);
+
+	// the owner's parent was resized (or the owner was just attached): percent metrics
+	// resolve against the parent size, so the applied style may be stale now
+	resolveOwnerIfStale();
+}
+
 void StyleResolver::handleChildContentSizeDirty(Node *child) {
-	// a descendant changed its content size (delivered via the frame stack); resolve its style once
-	// per source version - _nodesUpdated is the freshness set, cleared in apply() on a version change
-	if (_recursive && _owner && _nodesUpdated.count(child) == 0) {
+	// A descendant's content-size phase fired (delivered via the frame stack): its own size
+	// changed, or - for percent-styled nodes carrying NodeEventFlags::HandleParentContentSize -
+	// an ancestor resized. Re-resolve unless the style is still fresh (same version, resolved
+	// against the same parent/own sizes); equality-guarded writes make re-resolution converge.
+	if (_recursive && _owner && !isNodeFresh(child)) {
 		resolveForNode(child);
 	}
 }
@@ -692,7 +709,8 @@ void StyleResolver::handleChildComponentsDirty(Node *child, const ComponentMask 
 	}
 
 	if (_recursive && _owner) {
-		if (_nodesUpdated.count(child) == 0 || mask.count(NodeIdentity::Id.value) != 0
+		if (_nodesUpdated.find(child) == _nodesUpdated.end()
+				|| mask.count(NodeIdentity::Id.value) != 0
 				|| mask.count(InteractiveComponent::Id.value) != 0
 				|| mask.count(StyleSystemState::Id.value) != 0) {
 			resolveForNode(child);
@@ -866,19 +884,75 @@ static GridAlign toGridAlignSelf(Align a) {
 
 } // namespace
 
+// the sizes the style is applied against: percent metrics resolve vs the parent size,
+// paddings/gaps vs the own size - together they form the style's freshness key
+static Pair<Size2, Size2> makeStyleSizeKey(Node *node) {
+	auto p = node->getParent();
+	return pair(p ? p->getContentSize() : Size2::ZERO, node->getContentSize());
+}
+
+// does the resolved style contain a parent-size-relative (Percent) metric? Such nodes must
+// re-resolve when an ancestor resizes - they opt into NodeEventFlags::HandleParentContentSize
+static bool hasParentRelativeMetrics(const ResolvedStyle &s) {
+	using document::ParameterName;
+
+	for (auto name : {ParameterName::CssWidth, ParameterName::CssHeight, ParameterName::CssTop,
+			 ParameterName::CssRight, ParameterName::CssBottom, ParameterName::CssLeft,
+			 ParameterName::CssXlPositionX, ParameterName::CssXlPositionY,
+			 ParameterName::CssMarginTop, ParameterName::CssMarginRight,
+			 ParameterName::CssMarginBottom, ParameterName::CssMarginLeft,
+			 ParameterName::CssFlexBasis}) {
+		document::StyleValue v;
+		if (s.getValue(name, v) && v.sizeValue.metric == document::Metric::Units::Percent) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool StyleResolver::isNodeFresh(Node *node) const {
+	auto it = _nodesUpdated.find(node);
+	return it != _nodesUpdated.end() && it->second == makeStyleSizeKey(node);
+}
+
+void StyleResolver::resolveOwnerIfStale() {
+	if (_owner && !isNodeFresh(_owner)) {
+		resolveForNode(_owner);
+	}
+}
+
 void StyleResolver::resolveForNode(Node *node) {
 	auto style = resolveStyleForNode(node);
 	if (!style.valid()) {
 		return;
 	}
 
-	_nodesUpdated.emplace(node);
+	// pre-mark to guard against re-entry while applying; the final key is recorded below
+	// (applyDefault may change the node's own content size)
+	auto it = _nodesUpdated.find(node);
+	if (it == _nodesUpdated.end()) {
+		it = _nodesUpdated.emplace(node, makeStyleSizeKey(node)).first;
+	}
+
+	// a node whose style depends on the parent size must re-run its content-size phase when an
+	// ancestor resizes, so its frame-stack event reaches this resolver again (the bit is never
+	// cleared - a spurious phase re-run is cut off by the freshness check)
+	if (hasParentRelativeMetrics(style)
+			&& !hasFlag(node->getEventFlags(), NodeEventFlags::HandleParentContentSize)) {
+		node->setEventFlags(node->getEventFlags() | NodeEventFlags::HandleParentContentSize);
+	}
 
 	if (_callback && _callback(node, style)) {
+		it->second = makeStyleSizeKey(node);
 		return;
 	}
 
 	applyDefault(node, style);
+
+	// re-find: applyDefault may have resolved other nodes and rehashed the map
+	if (auto fit = _nodesUpdated.find(node); fit != _nodesUpdated.end()) {
+		fit->second = makeStyleSizeKey(node);
+	}
 }
 
 void StyleResolver::applyTypeAttributes(Node *node, const ResolvedStyle &s,
@@ -947,8 +1021,7 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 		if (def(ParameterName::CssDisplay) && s.display() == document::Display::None) {
 			v.displayNone = true;
 		}
-		if (def(ParameterName::CssVisibility)
-				&& s.visibility() != document::Visibility::Visible) {
+		if (def(ParameterName::CssVisibility) && s.visibility() != document::Visibility::Visible) {
 			v.visibilityHidden = true;
 		}
 		if (v.displayNone || v.visibilityHidden) {
