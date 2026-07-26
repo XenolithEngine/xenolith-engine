@@ -33,6 +33,7 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith {
 
 ComponentId NodeIdentity::Id;
 ComponentId MeasureComponent::Id;
+ComponentId VisibilityComponent::Id;
 
 void ActionStorage::addAction(Rc<Action> &&a) { actionToStart.emplace_back(move(a)); }
 
@@ -954,10 +955,20 @@ void Node::handleMeasure() {
 		}
 	}
 
-	// fallback: use the precomputed size stored in a MeasureComponent, if present
+	// fallback: use the precomputed size stored in a MeasureComponent, if present. A per-axis value
+	// < 0 means "unspecified" (the style resolver only fills the axes CSS gave), so keep the current
+	// size on those axes rather than committing a negative size
 	if (!measured) {
 		if (auto mc = getComponent<MeasureComponent>()) {
-			setContentSize(mc->measure(c));
+			Size2 cs = _contentSize;
+			const Size2 req = mc->measure(c);
+			if (req.width >= 0.0f) {
+				cs.width = req.width;
+			}
+			if (req.height >= 0.0f) {
+				cs.height = req.height;
+			}
+			setContentSize(cs);
 		}
 	}
 
@@ -984,22 +995,28 @@ static void notifyStackChildEvent(FrameInfo &info, SystemFlags flag, const Fn &f
 	}
 }
 
+void Node::handleComponentsDirty(FrameInfo &info, const ComponentMask &mask) {
+	handleComponentsDirty(mask);
+	notifyStackChildEvent(info, SystemFlags::HandleChildComponents,
+			[&](System *sys) { sys->handleChildComponentsDirty(this, mask); });
+}
+
 void Node::handleMeasure(FrameInfo &info) {
 	handleMeasure();
 	notifyStackChildEvent(info, SystemFlags::HandleChildMeasure,
-			[this](System *sys) { sys->handleChildMeasure(this); });
+			[&](System *sys) { sys->handleChildMeasure(this); });
 }
 
 void Node::handleContentSizeDirty(FrameInfo &info) {
 	handleContentSizeDirty();
 	notifyStackChildEvent(info, SystemFlags::HandleChildNodeEvents,
-			[this](System *sys) { sys->handleChildContentSizeDirty(this); });
+			[&](System *sys) { sys->handleChildContentSizeDirty(this); });
 }
 
 void Node::handleLayoutChildren(FrameInfo &info) {
 	handleLayoutChildren();
 	notifyStackChildEvent(info, SystemFlags::HandleChildLayoutChildren,
-			[this](System *sys) { sys->handleChildLayoutChildren(this); });
+			[&](System *sys) { sys->handleChildLayoutChildren(this); });
 }
 
 void Node::handleContentSizeDirty() {
@@ -1014,11 +1031,11 @@ void Node::handleContentSizeDirty() {
 	for (auto &it : tmp) { it->handleLayoutInParent(this); }
 }
 
-void Node::handleComponentsDirty() {
+void Node::handleComponentsDirty(const ComponentMask &mask) {
 	auto tmpSystems = _systems;
 	for (auto &it : tmpSystems) {
 		if (hasFlag(it->getSystemFlags(), SystemFlags::HandleComponents)) {
-			it->handleComponentsDirty();
+			it->handleComponentsDirty(mask);
 		}
 	}
 }
@@ -1028,7 +1045,7 @@ void Node::handleAncestorComponentsDirty() {
 	for (auto &it : tmpSystems) {
 		if (it->isEnabled()
 				&& hasFlag(it->getSystemFlags(), SystemFlags::HandleAncestorComponents)) {
-			it->handleComponentsDirty();
+			it->handleComponentsDirty(ComponentMask());
 		}
 	}
 }
@@ -1463,9 +1480,9 @@ void Node::setContentSizeDirtyCallback(Function<void()> &&cb) {
 			[cb = sp::move(cb)](CallbackSystem *) { cb(); });
 }
 
-void Node::setComponentsDirtyCallback(Function<void()> &&cb) {
+void Node::setComponentsDirtyCallback(Function<void(const ComponentMask &mask)> &&cb) {
 	makeDefaultCallbackSystem()->setComponentsDirtyCallback(
-			[cb = sp::move(cb)](CallbackSystem *) { cb(); });
+			[cb = sp::move(cb)](CallbackSystem *, const ComponentMask &mask) { cb(mask); });
 }
 
 void Node::setTransformDirtyCallback(Function<void(const Mat4 &)> &&cb) {
@@ -1511,17 +1528,19 @@ NodeVisitFlags Node::processParentFlags(FrameInfo &info, NodeVisitFlags parentFl
 		handleAncestorComponentsDirty(); // may set _componentsDirty
 	}
 	for (int guard = 0; _componentsDirty;) {
-		_componentsDirty = false;
-		handleComponentsDirty(); // may re-dirty components / change structure
+		auto mask = _componentsDirtyMask;
+		resetComponentsDirty();
+		handleComponentsDirty(info, mask); // may re-dirty components / change structure
 		if (++guard >= 12) {
 			if (_componentsDirty) {
 				log::source().warn("Node",
 						"handleComponentsDirty did not converge in 12 iterations");
-				_componentsDirty = false;
+				_componentsDirty = false; // do not clear dirty mask
 			}
 			break;
 		}
 	}
+
 	if (ownComponentsDirty || ancestorComponentsDirty) {
 		// propagate downward only into subtrees that actually contain a listener; otherwise
 		// strip the flag so listener-less subtrees are skipped entirely
@@ -1590,6 +1609,26 @@ void Node::visitSelf(FrameInfo &info, NodeVisitFlags flags, bool visibleByCamera
 	}
 }
 
+bool Node::isEffectivelyVisible() const {
+	if (!_visible) {
+		return false;
+	}
+	if (auto c = getComponent<VisibilityComponent>()) {
+		return c->visible();
+	}
+	return true;
+}
+
+bool Node::isDisplayed() const {
+	if (!_visible) {
+		return false;
+	}
+	if (auto c = getComponent<VisibilityComponent>()) {
+		return !c->displayNone;
+	}
+	return true;
+}
+
 bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInfo &visitInfo,
 		bool useContext) {
 	if (!_visible) {
@@ -1607,7 +1646,11 @@ bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInf
 
 	NodeVisitFlags flags = processParentFlags(info, parentFlags);
 
-	if (!_running || !_visible) {
+	// Style-driven visibility (VisibilityComponent) cuts the visit HERE, after the node's own
+	// data phases, not at the top like the explicit _visible flag: nothing below runs (no draw,
+	// no children, no input), yet the hidden node keeps processing its components each frame,
+	// so the styling protocol can still reach it and un-hide it (class change, CSS reload).
+	if (!_running || !isEffectivelyVisible()) {
 		if (hasFrameContext) {
 			info.popContext();
 		}

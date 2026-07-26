@@ -24,6 +24,7 @@
 #include "XLUiStyleSystem.h"
 #include "XLUiLayoutSystem.h"
 #include "XLUiInteractiveComponent.h"
+#include "XLInheritedStyle.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
@@ -359,10 +360,59 @@ document::TextAlign ResolvedStyle::textAlign() const {
 															  : document::TextAlign::Left;
 }
 
+document::TextTransform ResolvedStyle::textTransform() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssTextTransform, v) ? v.textTransform
+																  : document::TextTransform::None;
+}
+
+document::TextDecoration ResolvedStyle::textDecoration() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssTextDecoration, v)
+			? v.textDecoration
+			: document::TextDecoration::None;
+}
+
+document::WhiteSpace ResolvedStyle::whiteSpace() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssWhiteSpace, v) ? v.whiteSpace
+															   : document::WhiteSpace::Normal;
+}
+
+document::Hyphens ResolvedStyle::hyphens() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssHyphens, v) ? v.hyphens
+															: document::Hyphens::Manual;
+}
+
+document::VerticalAlign ResolvedStyle::verticalAlign() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssVerticalAlign, v)
+			? v.verticalAlign
+			: document::VerticalAlign::Baseline;
+}
+
+document::FontVariant ResolvedStyle::fontVariant() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssFontVariant, v) ? v.fontVariant
+																: document::FontVariant::Normal;
+}
+
+document::Metric ResolvedStyle::lineHeight() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssLineHeight, v) ? v.sizeValue : document::Metric();
+}
+
 document::Display ResolvedStyle::display() const {
 	document::StyleValue v;
 	return getValue(document::ParameterName::CssDisplay, v) ? v.display
 															: document::Display::Default;
+}
+
+document::Visibility ResolvedStyle::visibility() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssVisibility, v) ? v.visibility
+															   : document::Visibility::Visible;
 }
 
 document::Metric ResolvedStyle::width() const {
@@ -588,8 +638,11 @@ bool StyleResolver::init(bool recursive) {
 
 	if (_recursive) {
 		// publish on the frame stack so every descendant delivers its content-size / layout-children
-		// event back to this single resolver, which then resolves that descendant's style
-		flags |= SystemFlags::HandleChildNodeEvents | SystemFlags::AddToFrameStack;
+		// event back to this single resolver, which then resolves that descendant's style.
+		// HandleChildComponents additionally catches a descendant's own components change (its
+		// interactive :hover/:focus/:active flip), which the content-size cascade would miss
+		flags |= SystemFlags::HandleChildNodeEvents | SystemFlags::HandleChildComponents
+				| SystemFlags::AddToFrameStack;
 		setFrameTag(SystemFrameTag);
 	}
 
@@ -619,8 +672,8 @@ void StyleResolver::handleEnter(Scene *scene) {
 	_owner->markLayoutChildrenDirty();
 }
 
-void StyleResolver::handleComponentsDirty() {
-	System::handleComponentsDirty();
+void StyleResolver::handleComponentsDirty(const ComponentMask &mask) {
+	System::handleComponentsDirty(mask);
 
 	apply();
 }
@@ -628,8 +681,22 @@ void StyleResolver::handleComponentsDirty() {
 void StyleResolver::handleChildContentSizeDirty(Node *child) {
 	// a descendant changed its content size (delivered via the frame stack); resolve its style once
 	// per source version - _nodesUpdated is the freshness set, cleared in apply() on a version change
-	if (_recursive && _owner && !_nodesUpdated.count(child)) {
+	if (_recursive && _owner && _nodesUpdated.count(child) == 0) {
 		resolveForNode(child);
+	}
+}
+
+void StyleResolver::handleChildComponentsDirty(Node *child, const ComponentMask &mask) {
+	if (!_recursive || !_owner) {
+		return;
+	}
+
+	if (_recursive && _owner) {
+		if (_nodesUpdated.count(child) == 0 || mask.count(NodeIdentity::Id.value) != 0
+				|| mask.count(InteractiveComponent::Id.value) != 0
+				|| mask.count(StyleSystemState::Id.value) != 0) {
+			resolveForNode(child);
+		}
 	}
 }
 
@@ -637,10 +704,10 @@ void StyleResolver::handleChildContentSizeDirty(Node *child) {
 // that makes the nearest recursive resolver re-resolve it. Needed when the stylesheet itself changes
 // (CSS reload): a style-only change moves no geometry, so descendants would otherwise never signal
 // and would keep their stale styles until some unrelated relayout happened to wake them.
-static void markSubtreeContentDirty(Node *node) {
+static void markSubtreeComponentsDirty(Node *node) {
 	for (auto &child : node->getChildren()) {
 		child->markContentSizeDirty();
-		markSubtreeContentDirty(child);
+		markSubtreeComponentsDirty(child);
 	}
 }
 
@@ -690,7 +757,7 @@ void StyleResolver::apply() {
 	if (_recursive && sourceChanged) {
 		// nudge every descendant so it re-fires its child event and gets re-resolved this frame;
 		// resolution is deduped per version via _nodesUpdated, so each descendant runs once
-		markSubtreeContentDirty(_owner);
+		markSubtreeComponentsDirty(_owner);
 	}
 }
 
@@ -805,8 +872,6 @@ void StyleResolver::resolveForNode(Node *node) {
 		return;
 	}
 
-	// track this node as freshly resolved for the current source version (dedup for the recursive
-	// frame-stack cascade); the set is cleared in apply() when the version / interactive state changes
 	_nodesUpdated.emplace(node);
 
 	if (_callback && _callback(node, style)) {
@@ -874,31 +939,153 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 		node->setLocalZOrder(ZOrder(int16_t(s.xlZOrder())));
 	}
 
-	auto label = dynamic_cast<Label *>(node);
-	if (label) {
-		if (def(ParameterName::CssColor)) {
-			label->setColor(Color4F(Color4B(s.color(), 255)), false);
+	// display:none / visibility:hidden -> VisibilityComponent on the node; wrapVisit honors it
+	// like setVisible(false) (whole subtree skipped), layout engines additionally collapse the
+	// display:none box. The node's own explicit setVisible state is never touched.
+	{
+		VisibilityComponent v;
+		if (def(ParameterName::CssDisplay) && s.display() == document::Display::None) {
+			v.displayNone = true;
 		}
+		if (def(ParameterName::CssVisibility)
+				&& s.visibility() != document::Visibility::Visible) {
+			v.visibilityHidden = true;
+		}
+		if (v.displayNone || v.visibilityHidden) {
+			node->setOrUpdateComponent<VisibilityComponent>([&](NotNull<VisibilityComponent> c) {
+				if (*c != v) {
+					*c = v;
+					return true;
+				}
+				return false;
+			});
+		} else {
+			node->removeComponent<VisibilityComponent>();
+		}
+	}
+
+	// Inheritable color/font/text properties -> data components on the node itself. Label and
+	// other consumers accumulate them over the parent chain (see XLInheritedStyle.h), so any
+	// descendant — styled or not — picks them up. Writes are equality-guarded; a component with
+	// nothing defined is removed so consumers revert to their explicit values.
+	{
+		InheritedColorStyle v;
+		if (def(ParameterName::CssColor)) {
+			v.color = s.color();
+			v.defined |= InheritedColorStyle::DefinedColor;
+		}
+		// CSS `opacity` is not inherited; it is applied via Node::setOpacity above
+		if (v.defined != 0) {
+			node->setOrUpdateComponent<InheritedColorStyle>([&](NotNull<InheritedColorStyle> c) {
+				if (*c != v) {
+					*c = v;
+					return true;
+				}
+				return false;
+			});
+		} else {
+			node->removeComponent<InheritedColorStyle>();
+		}
+	}
+	{
+		InheritedFontStyle v;
 		if (def(ParameterName::CssFontSize) || def(ParameterName::CssFontSizeNumeric)) {
-			label->setFontSize(s.fontSize());
+			v.fontSize = s.fontSize(); // includes font-size-increment
+			v.defined |= InheritedFontStyle::DefinedFontSize;
 		}
 		if (def(ParameterName::CssFontFamily)) {
 			if (auto ff = s.fontFamily(); !ff.empty()) {
-				label->setFontFamily(ff);
+				v.fontFamily = sp::move(ff);
+				v.defined |= InheritedFontStyle::DefinedFontFamily;
 			}
 		}
 		if (def(ParameterName::CssFontWeight)) {
-			label->setFontWeight(s.fontWeight());
+			v.fontWeight = s.fontWeight();
+			v.defined |= InheritedFontStyle::DefinedFontWeight;
 		}
 		if (def(ParameterName::CssFontStyle)) {
-			label->setFontStyle(s.fontStyle());
+			v.fontStyle = s.fontStyle();
+			v.defined |= InheritedFontStyle::DefinedFontStyle;
 		}
 		if (def(ParameterName::CssFontStretch)) {
-			label->setFontStretch(s.fontStretch());
+			v.fontStretch = s.fontStretch();
+			v.defined |= InheritedFontStyle::DefinedFontStretch;
 		}
+		if (def(ParameterName::CssFontVariant)) {
+			v.fontVariant = s.fontVariant();
+			v.defined |= InheritedFontStyle::DefinedFontVariant;
+		}
+		if (v.defined != 0) {
+			node->setOrUpdateComponent<InheritedFontStyle>([&](NotNull<InheritedFontStyle> c) {
+				if (*c != v) {
+					*c = v;
+					return true;
+				}
+				return false;
+			});
+		} else {
+			node->removeComponent<InheritedFontStyle>();
+		}
+	}
+	{
+		InheritedTextStyle v;
 		if (def(ParameterName::CssTextAlign)) {
-			label->setAlignment(s.textAlign());
+			v.textAlign = s.textAlign();
+			v.defined |= InheritedTextStyle::DefinedTextAlign;
 		}
+		if (def(ParameterName::CssTextTransform)) {
+			v.textTransform = s.textTransform();
+			v.defined |= InheritedTextStyle::DefinedTextTransform;
+		}
+		if (def(ParameterName::CssTextDecoration)) {
+			v.textDecoration = s.textDecoration();
+			v.defined |= InheritedTextStyle::DefinedTextDecoration;
+		}
+		if (def(ParameterName::CssWhiteSpace)) {
+			v.whiteSpace = s.whiteSpace();
+			v.defined |= InheritedTextStyle::DefinedWhiteSpace;
+		}
+		if (def(ParameterName::CssHyphens)) {
+			v.hyphens = s.hyphens();
+			v.defined |= InheritedTextStyle::DefinedHyphens;
+		}
+		if (def(ParameterName::CssVerticalAlign)) {
+			v.verticalAlign = s.verticalAlign();
+			v.defined |= InheritedTextStyle::DefinedVerticalAlign;
+		}
+		if (def(ParameterName::CssLineHeight)) {
+			const auto lh = s.lineHeight();
+			switch (lh.metric) {
+			case document::Metric::Units::Auto: // unitless number ("line-height: 1.5")
+			case document::Metric::Units::Em:
+			case document::Metric::Units::Percent: // already stored as a /100 factor
+				v.lineHeight = lh.value;
+				v.lineHeightAbsolute = false;
+				break;
+			default:
+				v.lineHeight = computeMetric(lh, fontSize);
+				v.lineHeightAbsolute = true;
+				break;
+			}
+			v.defined |= InheritedTextStyle::DefinedLineHeight;
+		}
+		if (v.defined != 0) {
+			node->setOrUpdateComponent<InheritedTextStyle>([&](NotNull<InheritedTextStyle> c) {
+				if (*c != v) {
+					*c = v;
+					return true;
+				}
+				return false;
+			});
+		} else {
+			node->removeComponent<InheritedTextStyle>();
+		}
+	}
+
+	auto label = dynamic_cast<Label *>(node);
+	if (label) {
+		// only non-inheritable geometry is pushed directly; inheritable color/font/text
+		// properties flow through the Inherited*Style components above
 		if (def(ParameterName::CssWidth) && !width.isAuto()
 				&& width.metric != document::Metric::Units::FitContent) {
 			label->setWidth(computeMetric(width, parentSize.width));
@@ -912,22 +1099,50 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 			}
 		}
 
-		auto size = node->getContentSize();
-		bool sizeDirty = false;
 		// fit-content never writes a static size: it resolves through the
 		// flex item mapping in applyLayout (basis / crossSize) instead
-		if (def(ParameterName::CssWidth) && !width.isAuto()
-				&& width.metric != document::Metric::Units::FitContent) {
-			size.width = computeMetric(width, parentSize.width);
-			sizeDirty = true;
-		}
-		if (def(ParameterName::CssHeight) && !height.isAuto()
-				&& height.metric != document::Metric::Units::FitContent) {
-			size.height = computeMetric(height, parentSize.height);
-			sizeDirty = true;
-		}
-		if (sizeDirty) {
-			node->setContentSize(size);
+		const bool widthExplicit = def(ParameterName::CssWidth) && !width.isAuto()
+				&& width.metric != document::Metric::Units::FitContent;
+		const bool heightExplicit = def(ParameterName::CssHeight) && !height.isAuto()
+				&& height.metric != document::Metric::Units::FitContent;
+
+		// When a parent flex/grid container lays this node out, the LayoutSystem is the SOLE writer of
+		// its ContentSize. Publishing the CSS-requested size here via setContentSize too would create a
+		// cycle (style writes ContentSize <-> layout reads it as the natural size <-> layout writes it):
+		// a re-resolve then re-imposes the CSS size over the laid-out size (the os-button double-height
+		// bug). Instead hand the requested size to the layout as intrinsic INPUT in a MeasureComponent
+		// (a per-axis value < 0 means "unspecified"); the layout reads it and owns ContentSize.
+		auto parent = node->getParent();
+		const bool parentManagesSize = parent
+				&& (parent->getComponent<FlexLayoutInfo>()
+						|| parent->getComponent<GridLayoutInfo>());
+
+		if (parentManagesSize) {
+			if (widthExplicit || heightExplicit) {
+				const float w = widthExplicit ? computeMetric(width, parentSize.width) : -1.0f;
+				const float h = heightExplicit ? computeMetric(height, parentSize.height) : -1.0f;
+				node->setOrUpdateComponent<MeasureComponent>([&](NotNull<MeasureComponent> mc) {
+					if (mc->normal != Size2(w, h)) {
+						mc->normal = Size2(w, h);
+						return true;
+					}
+					return false;
+				});
+			}
+		} else {
+			auto size = node->getContentSize();
+			bool sizeDirty = false;
+			if (widthExplicit) {
+				size.width = computeMetric(width, parentSize.width);
+				sizeDirty = true;
+			}
+			if (heightExplicit) {
+				size.height = computeMetric(height, parentSize.height);
+				sizeDirty = true;
+			}
+			if (sizeDirty) {
+				node->setContentSize(size);
+			}
 		}
 	}
 

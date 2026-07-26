@@ -345,8 +345,8 @@ void LayoutSystem::handleLayoutChildren() {
 	apply();
 }
 
-void LayoutSystem::handleComponentsDirty() {
-	System::handleComponentsDirty();
+void LayoutSystem::handleComponentsDirty(const ComponentMask &mask) {
+	System::handleComponentsDirty(mask);
 	_owner->markLayoutChildrenDirty(); // container params changed -> re-lay-out children
 }
 
@@ -511,8 +511,8 @@ void LayoutSystem::layoutFlex() {
 	auto infoPtr = _owner->getComponent<FlexLayoutInfo>();
 	const FlexLayoutInfo info = infoPtr ? *infoPtr : FlexLayoutInfo();
 
-	const bool isRow = info.direction == FlexDirection::Row
-			|| info.direction == FlexDirection::RowReverse;
+	const bool isRow =
+			info.direction == FlexDirection::Row || info.direction == FlexDirection::RowReverse;
 	const bool mainReverse = info.direction == FlexDirection::RowReverse
 			|| info.direction == FlexDirection::ColumnReverse;
 	const bool crossReverse = info.wrap == FlexWrap::WrapReverse;
@@ -533,7 +533,9 @@ void LayoutSystem::layoutFlex() {
 	// 1. Collect in-flow items and project their parameters onto the flow axes.
 	Vector<FlexItem> items;
 	for (auto &child : _owner->getChildren()) {
-		if (!child->isVisible()) {
+		// collapsed when explicitly invisible or `display: none`; a `visibility: hidden`
+		// child keeps its layout box (isDisplayed stays true)
+		if (!child->isDisplayed()) {
 			continue;
 		}
 
@@ -657,9 +659,7 @@ void LayoutSystem::layoutFlex() {
 		lines[0].crossStart = 0.0f;
 	} else {
 		float totalCross = 0.0f;
-		for (auto &line : lines) {
-			totalCross += line.crossSize;
-		}
+		for (auto &line : lines) { totalCross += line.crossSize; }
 		const float gapsTotal = crossGap * static_cast<float>(lines.size() - 1);
 		const float freeCross = contentCross - totalCross - gapsTotal;
 
@@ -681,9 +681,7 @@ void LayoutSystem::layoutFlex() {
 		case FlexAlign::Stretch:
 			if (freeCross > 0.0f) {
 				const float add = freeCross / count;
-				for (auto &line : lines) {
-					line.crossSize += add;
-				}
+				for (auto &line : lines) { line.crossSize += add; }
 			}
 			break;
 		default: break; // FlexStart / Auto
@@ -702,9 +700,7 @@ void LayoutSystem::layoutFlex() {
 		const size_t n = line.count();
 
 		float usedMain = 0.0f;
-		for (size_t k = line.begin; k < line.end; ++k) {
-			usedMain += items[k].outerMain();
-		}
+		for (size_t k = line.begin; k < line.end; ++k) { usedMain += items[k].outerMain(); }
 		const float gapTotal = (n > 1) ? mainGap * static_cast<float>(n - 1) : 0.0f;
 		float freeMain = sprt::max(contentMain - usedMain - gapTotal, 0.0f);
 
@@ -738,11 +734,11 @@ void LayoutSystem::layoutFlex() {
 			item.mainStart = pos;
 			pos += item.outerMain() + between;
 
-			FlexAlign align = (item.cfg.alignSelf == FlexAlign::Auto) ? info.alignItems
-																	  : item.cfg.alignSelf;
+			FlexAlign align =
+					(item.cfg.alignSelf == FlexAlign::Auto) ? info.alignItems : item.cfg.alignSelf;
 
-			const float availCross = sprt::max(
-					line.crossSize - item.crossMarginStart - item.crossMarginEnd, 0.0f);
+			const float availCross =
+					sprt::max(line.crossSize - item.crossMarginStart - item.crossMarginEnd, 0.0f);
 			// stretched items fill the line's cross extent; everyone else keeps
 			// their hypothetical cross size
 			const float cross = (align == FlexAlign::Stretch) ? availCross : item.naturalCross;
@@ -876,7 +872,9 @@ void LayoutSystem::layoutGrid() {
 	// 1. Collect items.
 	Vector<GridItem> items;
 	for (auto &child : _owner->getChildren()) {
-		if (!child->isVisible()) {
+		// collapsed when explicitly invisible or `display: none`; a `visibility: hidden`
+		// child keeps its layout box (isDisplayed stays true)
+		if (!child->isDisplayed()) {
 			continue;
 		}
 		GridItem item;
@@ -908,15 +906,13 @@ void LayoutSystem::layoutGrid() {
 	}
 
 	// 2. Placement. Work in minor (fixed, wrapping) / major (growing) axes.
-	const bool rowFlow = info.autoFlow == GridAutoFlow::Row
-			|| info.autoFlow == GridAutoFlow::RowDense;
-	const bool dense = info.autoFlow == GridAutoFlow::RowDense
-			|| info.autoFlow == GridAutoFlow::ColumnDense;
+	const bool rowFlow =
+			info.autoFlow == GridAutoFlow::Row || info.autoFlow == GridAutoFlow::RowDense;
+	const bool dense =
+			info.autoFlow == GridAutoFlow::RowDense || info.autoFlow == GridAutoFlow::ColumnDense;
 
-	const uint32_t minorBase = uint32_t(rowFlow ? info.columnTracks.size()
-											    : info.rowTracks.size());
-	const uint32_t majorBase = uint32_t(rowFlow ? info.rowTracks.size()
-											    : info.columnTracks.size());
+	const uint32_t minorBase = uint32_t(rowFlow ? info.columnTracks.size() : info.rowTracks.size());
+	const uint32_t majorBase = uint32_t(rowFlow ? info.rowTracks.size() : info.columnTracks.size());
 
 	// per-item minor / major spans (as pointers into col/row by flow)
 	auto minorOf = [&](GridItem &it) -> GridSpan & { return rowFlow ? it.col : it.row; };
@@ -1059,7 +1055,8 @@ void LayoutSystem::layoutGrid() {
 	Vector<GridTrackSize> cols = buildTracks(colCount, info.columnTracks, info.autoColumn);
 	Vector<GridTrackSize> rows = buildTracks(rowCount, info.rowTracks, info.autoRow);
 
-	auto sizeAxis = [&](Vector<GridTrackSize> &tracks, float axisContent, float gap, bool isColumn) {
+	auto sizeAxis = [&](Vector<GridTrackSize> &tracks, float axisContent, float gap,
+							bool isColumn) {
 		const size_t n = tracks.size();
 		if (n == 0) {
 			return;
@@ -1135,7 +1132,7 @@ void LayoutSystem::layoutGrid() {
 
 	// 4. Positioning: track offsets + content distribution.
 	auto positionAxis = [&](Vector<GridTrackSize> &tracks, float axisContent, float gap,
-							  GridAlign contentAlign) {
+								GridAlign contentAlign) {
 		const size_t n = tracks.size();
 		if (n == 0) {
 			return;

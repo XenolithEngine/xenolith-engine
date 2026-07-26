@@ -324,7 +324,8 @@ bool LayoutSystem::init() {
 	// the shared FrameTag publish us so descendants deliver their resize to the nearest container.
 	setSystemFlags(SystemFlags::HandleLayoutChildren | SystemFlags::HandleComponents
 			| SystemFlags::HandleSceneEvents | SystemFlags::HandleMeasure
-			| SystemFlags::HandleChildNodeEvents | SystemFlags::AddToFrameStack);
+			| SystemFlags::HandleChildNodeEvents | SystemFlags::HandleChildComponents
+			| SystemFlags::AddToFrameStack);
 	setFrameTag(SystemFrameTag);
 	return true;
 }
@@ -369,8 +370,8 @@ void LayoutSystem::handleLayoutChildren() {
 	apply();
 }
 
-void LayoutSystem::handleComponentsDirty() {
-	System::handleComponentsDirty();
+void LayoutSystem::handleComponentsDirty(const ComponentMask &mask) {
+	System::handleComponentsDirty(mask);
 	_owner->markLayoutChildrenDirty(); // container params changed -> re-lay-out children
 }
 
@@ -558,6 +559,18 @@ void LayoutSystem::handleChildContentSizeDirty(Node *child) {
 	}
 }
 
+void LayoutSystem::handleChildComponentsDirty(Node *child, const ComponentMask &mask) {
+	if (_inApply || !_owner) {
+		return;
+	}
+
+	// a direct child flipped between display:none and displayed (VisibilityComponent
+	// written or removed) - the set of in-flow items changes, re-lay-out the container
+	if (child->getParent() == _owner && mask.contains(VisibilityComponent::Id.value)) {
+		_owner->markLayoutChildrenDirty();
+	}
+}
+
 Size2 LayoutSystem::measureNode(Node *node, const MeasureConstraints &c) {
 	// copy the list - a handler may mutate the node's systems while we iterate
 	auto span = node->getSystems();
@@ -570,13 +583,20 @@ Size2 LayoutSystem::measureNode(Node *node, const MeasureConstraints &c) {
 			}
 		}
 	}
-	// fallback: precomputed sizes from a MeasureComponent, if the node carries one
+	// fallback for a node with no measuring system: its intrinsic size - an explicit per-axis size
+	// from a MeasureComponent (published by the style resolver) merged over its current ContentSize
+	// (an axis left unspecified, value < 0, keeps the current size). Mirrors intrinsicSize() above.
+	Size2 cs = node->getContentSize();
 	if (auto mc = node->getComponent<MeasureComponent>()) {
-		return mc->measure(c);
+		const Size2 req = mc->measure(c);
+		if (req.width >= 0.0f) {
+			cs.width = req.width;
+		}
+		if (req.height >= 0.0f) {
+			cs.height = req.height;
+		}
 	}
-	// nodes without a measuring system report their current size - the same
-	// value the legacy flex-basis:auto fallback reads
-	return node->getContentSize();
+	return cs;
 }
 
 // Notify the node's measuring systems that a layout engine committed `size`
@@ -589,6 +609,24 @@ static void dispatchLayoutApplied(Node *node, const Size2 &size) {
 			it->handleLayoutApplied(size);
 		}
 	}
+}
+
+// A child's intrinsic (style-requested) size - the INPUT to layout. An explicit per-axis size that
+// the style resolver published in a MeasureComponent wins; an axis it left unspecified (value < 0)
+// falls back to the child's current ContentSize. Keeping the requested size in a component rather
+// than in ContentSize is what lets the LayoutSystem be the SOLE writer of a child's ContentSize,
+// breaking the cycle where the style both writes ContentSize and has the layout read it back.
+static Size2 intrinsicSize(Node *node) {
+	Size2 cs = node->getContentSize();
+	if (auto mc = node->getComponent<MeasureComponent>()) {
+		if (mc->normal.width >= 0.0f) {
+			cs.width = mc->normal.width;
+		}
+		if (mc->normal.height >= 0.0f) {
+			cs.height = mc->normal.height;
+		}
+	}
+	return cs;
 }
 
 // Steps 1-4 of the flex algorithm, shared by the placement pass (layoutFlex)
@@ -609,7 +647,9 @@ static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float cont
 	// 1. Collect in-flow items and project their parameters onto the flow axes.
 	auto &items = out.items;
 	for (auto &child : owner->getChildren()) {
-		if (!child->isVisible()) {
+		// collapsed when explicitly invisible or `display: none`; a `visibility: hidden`
+		// child keeps its layout box (isDisplayed stays true)
+		if (!child->isDisplayed()) {
 			continue;
 		}
 
@@ -633,7 +673,7 @@ static void computeFlexLines(Node *owner, const FlexLayoutInfo &info, float cont
 			item.crossMarginEnd = item.cfg.margin.right;
 		}
 
-		const Size2 cs = child->getContentSize();
+		const Size2 cs = intrinsicSize(child);
 		const float nodeMain = isRow ? cs.width : cs.height;
 		const float nodeCross = isRow ? cs.height : cs.width;
 
@@ -1092,7 +1132,9 @@ void LayoutSystem::layoutGrid() {
 	// 1. Collect items.
 	Vector<GridItem> items;
 	for (auto &child : _owner->getChildren()) {
-		if (!child->isVisible()) {
+		// collapsed when explicitly invisible or `display: none`; a `visibility: hidden`
+		// child keeps its layout box (isDisplayed stays true)
+		if (!child->isDisplayed()) {
 			continue;
 		}
 		GridItem item;
@@ -1100,7 +1142,7 @@ void LayoutSystem::layoutGrid() {
 		if (auto cfg = child->getComponent<GridItemInfo>()) {
 			item.cfg = *cfg;
 		}
-		const Size2 cs = child->getContentSize();
+		const Size2 cs = intrinsicSize(child);
 		item.natW = (item.cfg.width >= 0.0f) ? item.cfg.width : cs.width;
 		item.natH = (item.cfg.height >= 0.0f) ? item.cfg.height : cs.height;
 		item.col = resolveGridSpan(item.cfg.gridColumnStart, item.cfg.gridColumnEnd,
