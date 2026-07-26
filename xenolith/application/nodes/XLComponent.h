@@ -287,6 +287,26 @@ bool ComponentContainer::removeComponent() {
 	return false;
 }
 
+// Precomputed measurement fallback. When a node has no HandleMeasure system that answers a
+// measure request, the measure phase (Node::handleMeasure) and a parent layout engine
+// (LayoutSystem::measureNode) fall back to the size stored here for the requested mode.
+// Set the sizes you know ahead of time; a mode left at zero resolves to `normal`.
+struct SP_PUBLIC MeasureComponent {
+	static ComponentId Id;
+
+	Size2 normal = Size2::ZERO; // MeasureMode::Normal (preferred size)
+	Size2 minContent = Size2::ZERO; // MeasureMode::MinContent (falls back to normal if unset)
+	Size2 maxContent = Size2::ZERO; // MeasureMode::MaxContent (falls back to normal if unset)
+
+	Size2 measure(const MeasureConstraints &c) const {
+		switch (c.mode) {
+		case MeasureMode::MinContent: return (minContent == Size2::ZERO) ? normal : minContent;
+		case MeasureMode::MaxContent: return (maxContent == Size2::ZERO) ? normal : maxContent;
+		default: return normal;
+		}
+	}
+};
+
 } // namespace stappler::xenolith
 
 namespace sprt {

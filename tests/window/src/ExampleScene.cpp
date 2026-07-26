@@ -36,6 +36,11 @@
 #include "PugLayout.h"
 #include "PugCascadeLayout.h"
 #include "FlexboxLayout.h"
+#include "FitContentLayout.h"
+#include "CombinatorLayout.h"
+#include "WatchCssLayout.h"
+#include "HoverLayout.h"
+#include "SpecificityLayout.h"
 #include "LiveReloadAppThread.h" // live-reload session addr+key, when active
 #include "XLRemoteProtocol.h"
 
@@ -85,6 +90,21 @@ bool ExampleScene::init(NotNull<AppThread> app, NotNull<core::RenderServerChanne
 	} else if (::getenv("XL_FLEX_TEST")) {
 		// LayoutSystem flexbox/grid demo (toggle with the in-scene "Mode" button)
 		content->pushLayout(Rc<FlexboxLayout>::create());
+	} else if (::getenv("XL_FITCONTENT_TEST")) {
+		// fit-content sizing demo for the ui-module LayoutSystem
+		content->pushLayout(Rc<FitContentLayout>::create());
+	} else if (::getenv("XL_COMBINATOR_TEST")) {
+		// CSS combinator selector demo/verification (descendant/child/adjacent/general)
+		content->pushLayout(Rc<CombinatorLayout>::create());
+	} else if (::getenv("XL_WATCH_CSS_TEST")) {
+		// ui::StyleSystem live CSS reload (watchFile) verification
+		content->pushLayout(Rc<WatchCssLayout>::create());
+	} else if (::getenv("XL_HOVER_TEST")) {
+		// interactive pseudo-class (:hover/:active/:checked/:disabled) verification
+		content->pushLayout(Rc<HoverLayout>::create());
+	} else if (::getenv("XL_SPECIFICITY_TEST")) {
+		// CSS specificity-weighted cascade sort verification
+		content->pushLayout(Rc<SpecificityLayout>::create());
 	} else {
 		content->pushLayout(Rc<GeneralLayout>::create());
 	}

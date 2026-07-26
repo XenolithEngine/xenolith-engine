@@ -39,12 +39,17 @@ enum class SystemFlags : uint32_t {
 	HandleNodeEvents = 1 << 2, // ContentSize/Transform/Reorder
 	HandleVisitSelf = 1 << 3, // VisitSelf
 	HandleVisitControl = 1 << 4, // VisitBegin/VisitNodesBelow/VisitNodesAbove/VisitEnd
-	HandleComponents = 1 << 5, // Components
+	HandleComponents = 1 << 5, // Components (owner's own components dirty)
+	HandleMeasure = 1 << 7, // Measure/LayoutApplied (content measurement protocol)
+	HandleChildNodeEvents = 1 << 8, // ChildContentSizeDirty
+	HandleAncestorComponents = 1 << 9, // system wants ancestor (parent) handleComponentsDirty
+	HandleLayoutChildren = 1 << 10, // LayoutChildren (position/size children, own size + order fixed)
 
 	// This flags reflects what kind of Node's events system can handle
 	// To work effectively, set flags you actually needed
 	EventFlagMask = HandleOwnerEvents | HandleSceneEvents | HandleNodeEvents | HandleVisitSelf
-			| HandleVisitControl | HandleComponents,
+			| HandleVisitControl | HandleComponents | HandleMeasure | HandleChildNodeEvents
+			| HandleAncestorComponents | HandleLayoutChildren,
 
 	// When this flag is set and FrameTag != InvalidTag, system will be added to frame stack by it's owner.
 	// It means, that child nodes can access this system with FrameInfo::systemStack and FrameTag
@@ -71,6 +76,11 @@ Regular System examples is:
 
 class SP_PUBLIC System : public Ref {
 public:
+	// Default dispatch priority for a system. Systems are dispatched in ascending
+	// priority order (lower priority receives events earlier). The default sits at the
+	// middle of the range so systems can be ordered both before and after it
+	static constexpr uint32_t DefaultPriority = maxOf<uint32_t>() / 2;
+
 	static uint64_t GetNextSystemId();
 
 	virtual ~System() = default;
@@ -97,7 +107,26 @@ public:
 	virtual void handleComponentsDirty();
 	virtual void handleTransformDirty(const Mat4 &);
 	virtual void handleReorderChildDirty();
-	virtual void handleLayout(Node *);
+	// Position the owner within its parent (parent's content size changed)
+	virtual void handleLayoutInParent(Node *);
+
+	// Content measurement protocol (requires SystemFlags::HandleMeasure).
+	// Return true and fill `result` with the owner's natural content size
+	// under the given constraints; must not commit any node state
+	virtual bool handleMeasure(const MeasureConstraints &, Size2 &result);
+
+	// A layout engine has committed `size` to the owner of this system
+	// (requires SystemFlags::HandleMeasure); adapt content synchronously
+	virtual void handleLayoutApplied(const Size2 &);
+
+	// A direct child of the owner changed its content size
+	// (requires SystemFlags::HandleChildNodeEvents)
+	virtual void handleChildContentSizeDirty(Node *child);
+
+	// Lay out the owner's children (requires SystemFlags::HandleLayoutChildren).
+	// Runs after child reorder with the owner's own size and child order fixed;
+	// this is where a layout engine positions and sizes children
+	virtual void handleLayoutChildren();
 
 	virtual bool isRunning() const;
 
@@ -106,6 +135,13 @@ public:
 
 	virtual void setSystemFlags(SystemFlags);
 	virtual SystemFlags getSystemFlags() const { return _systemFlags; }
+
+	// Dispatch priority within the owner's system list (lower is dispatched earlier).
+	// The priority set before adding is the system's default, used unless an explicit one
+	// is passed to Node::addSystem. Changing it on an already-added system re-sorts it in
+	// the owner's list immediately (live update)
+	virtual void setSystemPriority(uint32_t);
+	virtual uint32_t getSystemPriority() const { return _systemPriority; }
 
 	bool isScheduled() const;
 	void scheduleUpdate();
@@ -116,11 +152,22 @@ public:
 	void setFrameTag(uint64_t);
 	uint64_t getFrameTag() const { return _frameTag; }
 
+	// Whether this system currently contributes to its owner's ancestor-components
+	// listener counter (used by Node's system-removal paths to release the contribution)
+	bool isAncestorComponentsCounted() const { return _ancestorComponentsCounted; }
+	void clearAncestorComponentsCounted() { _ancestorComponentsCounted = false; }
+
 protected:
+	// Reconcile this system's contribution to the owner's ancestor-components listener
+	// counter with its current enabled state and flags. Idempotent.
+	void reconcileAncestorComponents();
+
 	Node *_owner = nullptr;
 	bool _enabled = true;
 	bool _running = false;
 	bool _scheduled = false;
+	bool _ancestorComponentsCounted = false;
+	uint32_t _systemPriority = DefaultPriority;
 	uint64_t _frameTag = InvalidTag;
 	SystemFlags _systemFlags = SystemFlags::Default;
 };
@@ -151,7 +198,11 @@ public:
 	virtual void handleComponentsDirty() override;
 	virtual void handleTransformDirty(const Mat4 &) override;
 	virtual void handleReorderChildDirty() override;
-	virtual void handleLayout(Node *) override;
+	virtual void handleLayoutInParent(Node *) override;
+
+	virtual bool handleMeasure(const MeasureConstraints &, Size2 &result) override;
+	virtual void handleLayoutApplied(const Size2 &) override;
+	virtual void handleLayoutChildren() override;
 
 	virtual void setUserdata(Rc<Ref> &&d) { _userdata = move(d); }
 	virtual Ref *getUserdata() const { return _userdata; }
@@ -234,9 +285,32 @@ public:
 		return _handleReorderChildDirty;
 	}
 
+	// feeds handleLayoutInParent (positions the owner within its parent)
 	virtual void setLayoutCallback(Function<void(CallbackSystem *, Node *)> &&);
 	virtual auto getLayoutCallback() -> const Function<void(CallbackSystem *, Node *)> & {
 		return _handleLayout;
+	}
+
+	// feeds handleLayoutChildren (lay out the owner's children after reorder)
+	virtual void setLayoutChildrenCallback(Function<void(CallbackSystem *)> &&);
+	virtual auto getLayoutChildrenCallback() -> const Function<void(CallbackSystem *)> & {
+		return _handleLayoutChildren;
+	}
+
+	// content measurement protocol (see System::handleMeasure): return true and
+	// fill the Size2 to answer, return false to fall through to other systems
+	virtual void setMeasureCallback(
+			Function<bool(CallbackSystem *, const MeasureConstraints &, Size2 &)> &&);
+	virtual auto getMeasureCallback() -> const
+			Function<bool(CallbackSystem *, const MeasureConstraints &, Size2 &)> & {
+		return _handleMeasure;
+	}
+
+	// a layout engine committed the size to the owner (see System::handleLayoutApplied)
+	virtual void setLayoutAppliedCallback(Function<void(CallbackSystem *, const Size2 &)> &&);
+	virtual auto getLayoutAppliedCallback()
+			-> const Function<void(CallbackSystem *, const Size2 &)> & {
+		return _handleLayoutApplied;
 	}
 
 protected:
@@ -261,6 +335,9 @@ protected:
 	Function<void(CallbackSystem *, const Mat4 &)> _handleTransformDirty;
 	Function<void(CallbackSystem *)> _handleReorderChildDirty;
 	Function<void(CallbackSystem *, Node *)> _handleLayout;
+	Function<bool(CallbackSystem *, const MeasureConstraints &, Size2 &)> _handleMeasure;
+	Function<void(CallbackSystem *, const Size2 &)> _handleLayoutApplied;
+	Function<void(CallbackSystem *)> _handleLayoutChildren;
 };
 
 } // namespace stappler::xenolith

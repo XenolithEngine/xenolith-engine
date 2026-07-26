@@ -165,6 +165,44 @@ public:
 Rc<ProcessHandle> spawnProcessKQueue(QueueData *data, HandleClass *processClass, ProcessInfo &&info,
 		Ref *ref);
 
+// EVFILT_VNODE file-watch: two O_EVTONLY vnode watches under one handle — the
+// parent directory (tracks the watched *name*: create/delete/rename-over, and
+// the directory's own lifecycle) plus the current file inode (tracks content /
+// attribute changes). Both kevents carry `this` as udata; processEvents marshals
+// ident/fflags through NotifyData so notify() can tell which vnode fired.
+struct SPRT_API KQueueWatchSource {
+	int dirFd = -1;
+	int fileFd = -1;
+
+	void cancel();
+};
+
+class SPRT_API KQueueWatchHandle : public WatchHandle {
+public:
+	virtual ~KQueueWatchHandle() = default;
+
+	bool init(HandleClass *, StringView path, WatchFlags, CompletionHandle<WatchHandle> &&);
+
+	Status rearm(KQueueData *, KQueueWatchSource *);
+	Status disarm(KQueueData *, KQueueWatchSource *);
+
+	void notify(KQueueData *, KQueueWatchSource *, const NotifyData &);
+
+protected:
+	// Open the file (if present) and register its vnode kevent; refreshes
+	// _exists/_ino from the opened fd.
+	Status registerFile(KQueueData *, KQueueWatchSource *);
+	// Deregister + close the file vnode watch (the directory watch stays).
+	void closeFile(KQueueData *, KQueueWatchSource *);
+	// Re-stat the watched name after a directory write and reconcile: reports
+	// Created / MovedTo (inode changed) / Deleted and re-targets the file watch.
+	void rescan(KQueueData *, KQueueWatchSource *, WatchFlags &pending);
+
+	String _dir; // parent directory, null-terminated for open()
+	uint64_t _ino = 0; // inode currently occupying the watched name (0 = none)
+	bool _exists = false;
+};
+
 } // namespace sprt::dispatch
 
 #endif /* CORE_EVENT_PLATFORM_DARWIN_SPEVENT_KQUEUE_H_ */

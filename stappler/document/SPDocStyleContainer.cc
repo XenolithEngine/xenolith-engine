@@ -488,8 +488,8 @@ bool StyleContainer::readStyle(StringReader &s) {
 			// MediaQuery{list} would initialize the AllocPool base, not `list`
 			MediaQuery query;
 			query.list = readMediaQueryList(buffers, s);
-			blockStack.emplace_back(BlockData{_document->addQuery(sp::move(query)),
-				blockStack.back().disabled});
+			blockStack.emplace_back(
+					BlockData{_document->addQuery(sp::move(query)), blockStack.back().disabled});
 			continue;
 		} else if (selector.is('@')) {
 			// skip at-rule
@@ -528,11 +528,21 @@ bool StyleContainer::readStyle(StringReader &s) {
 		if (!selector.empty() && !style.data.empty()) {
 			string::split(selector, ",", [&](StringView r) {
 				r.trimChars<StringView::WhiteSpace>();
+				if (selectorNeedsStructured(r)) {
+					// combinator or pseudo-class selector: parse into a structured, bucketed rule
+					addComplexSelector(r, style);
+					return;
+				}
 				auto it = _styles.find(r);
 				if (it == _styles.end()) {
-					_styles.emplace(r.str<Interface>(), style);
+					SimpleRule rule;
+					rule.style = style;
+					rule.specificity = specificityOfSimpleKey(r);
+					rule.order = _ruleOrderCounter++;
+					_styles.emplace(r.str<Interface>(), sp::move(rule));
 				} else {
-					it->second.merge(style);
+					it->second.style.merge(style);
+					it->second.order = _ruleOrderCounter++; // later occurrence wins the tie-break
 				}
 			});
 		}
@@ -832,39 +842,331 @@ void StyleContainer::resolveNodeStyle(StyleList &style, const Node &node,
 		const SpanView<bool> &resolved) const {
 	BufferTemplate<Interface> stringBuffer;
 
-	auto it = _styles.find("*");
-	if (it != _styles.end()) {
-		style.merge(it->second, resolved, true);
-	}
-	it = _styles.find(node.getHtmlName());
-	if (it != _styles.end()) {
-		style.merge(it->second, resolved);
-	}
+	// collect every matching simple rule with its specificity + source order, then apply in
+	// CSS cascade order (ascending specificity, then source order). No `*`-quirk: universal
+	// is just a specificity-0 rule that anything more specific overrides.
+	Vector<MatchedRule> matches;
+	auto add = [&](StringView key) {
+		auto it = _styles.find(key);
+		if (it != _styles.end()) {
+			matches.push_back(
+					MatchedRule{&it->second.style, resolved, it->second.specificity, it->second.order});
+		}
+	};
 
+	add(StringView("*"));
+	add(node.getHtmlName());
 	for (auto &cl : node.getClasses()) {
-		auto it = _styles.find(stringBuffer.resetWithStrings('.', cl));
-		if (it != _styles.end()) {
-			style.merge(it->second, resolved);
-		}
-
-		it = _styles.find(stringBuffer.resetWithStrings(node.getHtmlName(), '.', cl));
-		if (it != _styles.end()) {
-			style.merge(it->second, resolved);
-		}
+		add(stringBuffer.resetWithStrings('.', cl));
+		add(stringBuffer.resetWithStrings(node.getHtmlName(), '.', cl));
 	}
-
 	if (!node.getHtmlId().empty()) {
-		it = _styles.find(stringBuffer.resetWithStrings('#', node.getHtmlId()));
-		if (it != _styles.end()) {
-			style.merge(it->second, resolved);
-		}
-
+		add(stringBuffer.resetWithStrings('#', node.getHtmlId()));
 		stringBuffer.clear();
-		it = _styles.find(stringBuffer.resetWithStrings(node.getHtmlName(), '#', node.getHtmlId()));
-		if (it != _styles.end()) {
-			style.merge(it->second, resolved);
+		add(stringBuffer.resetWithStrings(node.getHtmlName(), '#', node.getHtmlId()));
+	}
+
+	sortMatchedRules(matches);
+	for (auto &m : matches) {
+		style.merge(*m.style, m.media);
+	}
+}
+
+namespace {
+
+static bool isSelSpace(char c) {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f';
+}
+
+static bool isSelIdent(char c) {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+			|| c == '-';
+}
+
+// map a bare interactive pseudo-class name to its require/forbid bits; false = unsupported
+static bool applyPseudoClass(StringView name, StyleContainer::CompoundSelector &out) {
+	using P = InteractiveFlags;
+	if (name == "hover") {
+		out.pseudoRequire |= uint32_t(P::Hover);
+	} else if (name == "focus") {
+		out.pseudoRequire |= uint32_t(P::Focus);
+	} else if (name == "active") {
+		out.pseudoRequire |= uint32_t(P::Active);
+	} else if (name == "checked") {
+		out.pseudoRequire |= uint32_t(P::Checked);
+	} else if (name == "enabled") {
+		out.pseudoRequire |= uint32_t(P::Enabled);
+	} else if (name == "disabled") {
+		out.pseudoForbid |= uint32_t(P::Enabled);
+	} else {
+		// structural/functional pseudo-classes, pseudo-elements, etc. are unsupported
+		return false;
+	}
+	return true;
+}
+
+// parse a single compound run ('*', tag, '.class'..., '#id', ':pseudo'...) into its parts
+static bool parseCompound(StringView t, StyleContainer::CompoundSelector &out) {
+	bool hasTag = false;
+	size_t j = 0;
+	while (j < t.size()) {
+		char c = t[j];
+		if (c == '*') {
+			out.universal = true;
+			++j;
+		} else if (c == '#') {
+			++j;
+			size_t s = j;
+			while (j < t.size() && isSelIdent(t[j])) { ++j; }
+			if (j == s || !out.id.empty()) {
+				return false;
+			}
+			out.id.assign(t.data() + s, j - s);
+		} else if (c == '.') {
+			++j;
+			size_t s = j;
+			while (j < t.size() && isSelIdent(t[j])) { ++j; }
+			if (j == s) {
+				return false;
+			}
+			out.classes.emplace_back(StyleContainer::String(t.data() + s, j - s));
+		} else if (c == ':') {
+			++j;
+			if (j < t.size() && t[j] == ':') {
+				return false; // '::' pseudo-element - unsupported
+			}
+			size_t s = j;
+			while (j < t.size() && isSelIdent(t[j])) { ++j; }
+			if (j == s || !applyPseudoClass(StringView(t.data() + s, j - s), out)) {
+				return false;
+			}
+		} else if (isSelIdent(c)) {
+			size_t s = j;
+			while (j < t.size() && isSelIdent(t[j])) { ++j; }
+			if (hasTag) {
+				return false;
+			}
+			hasTag = true;
+			out.tag.assign(t.data() + s, j - s);
+		} else {
+			return false;
 		}
 	}
+	return true;
+}
+
+} // namespace
+
+uint64_t StyleContainer::selectorTokenBit(uint32_t kind, StringView token) {
+	// FNV-1a over the token, seeded with `kind` so tag/class/id namespaces don't collide
+	uint64_t h = 1'469'598'103'934'665'603ull;
+	h ^= (kind + 1u);
+	h *= 1'099'511'628'211ull;
+	for (size_t i = 0; i < token.size(); ++i) {
+		h ^= static_cast<unsigned char>(token[i]);
+		h *= 1'099'511'628'211ull;
+	}
+	return uint64_t(1) << (h & 63u);
+}
+
+uint32_t StyleContainer::packSpecificity(uint32_t idCount, uint32_t classCount,
+		uint32_t typeCount) {
+	auto clamp8 = [](uint32_t v) -> uint32_t { return v > 0xFFu ? 0xFFu : v; };
+	return (clamp8(idCount) << 16) | (clamp8(classCount) << 8) | clamp8(typeCount);
+}
+
+uint32_t StyleContainer::specificityOfSimpleKey(StringView key) {
+	// simple keys are one compound: '*', 'tag', '.cls', 'tag.cls', '#id', 'tag#id', 'tag.a.b#id'
+	if (key.empty() || key == "*") {
+		return 0;
+	}
+	uint32_t id = 0, cls = 0, type = 0;
+	for (size_t i = 0; i < key.size(); ++i) {
+		char c = key[i];
+		if (c == '#') {
+			++id;
+		} else if (c == '.') {
+			++cls;
+		}
+	}
+	char c0 = key[0];
+	if ((c0 >= 'a' && c0 <= 'z') || (c0 >= 'A' && c0 <= 'Z') || c0 == '_') {
+		type = 1; // a leading identifier char = a type/tag compound
+	}
+	return packSpecificity(id, cls, type);
+}
+
+bool StyleContainer::selectorNeedsStructured(StringView sel) {
+	for (size_t i = 0; i < sel.size(); ++i) {
+		char c = sel[i];
+		// combinator (space/>/+/~) or an interactive pseudo-class (':') - the simple string
+		// keys can express neither, so route the whole selector to the structured path
+		if (isSelSpace(c) || c == '>' || c == '+' || c == '~' || c == ':') {
+			return true;
+		}
+	}
+	return false;
+}
+
+void StyleContainer::addComplexSelector(StringView sel, const StyleList &style) {
+	struct SrcCompound {
+		SelectorCombinator comb =
+				SelectorCombinator::Descendant; // combinator preceding this compound
+		StringView text;
+	};
+
+	Vector<SrcCompound> src;
+	SelectorCombinator pending = SelectorCombinator::Descendant;
+	bool havePending = false; // an explicit '>'/'+'/'~' was seen since the last compound
+	bool sawSpace = false;
+
+	const size_t n = sel.size();
+	size_t i = 0;
+	while (i < n) {
+		char c = sel[i];
+		if (isSelSpace(c)) {
+			sawSpace = true;
+			++i;
+			continue;
+		}
+		if (c == '>' || c == '+' || c == '~') {
+			pending = (c == '>') ? SelectorCombinator::Child
+					: (c == '+') ? SelectorCombinator::AdjacentSibling
+								 : SelectorCombinator::GeneralSibling;
+			havePending = true;
+			sawSpace = false;
+			++i;
+			continue;
+		}
+
+		// start of a compound run ('*', tag, '.class', '#id', ':pseudo')
+		size_t start = i;
+		while (i < n) {
+			char d = sel[i];
+			if (d == '*' || d == '.' || d == '#' || d == ':' || isSelIdent(d)) {
+				++i;
+			} else {
+				break;
+			}
+		}
+		if (i == start) {
+			// unsupported character ('[', '(', ...) - not representable, skip the rule
+			log::source().verbose("document::StyleContainer", "Unsupported selector, skipped: '",
+					sel, "'");
+			return;
+		}
+
+		SrcCompound sc;
+		sc.text = StringView(sel.data() + start, i - start);
+		if (src.empty()) {
+			sc.comb = SelectorCombinator::Descendant; // first compound: no leading combinator
+		} else if (havePending) {
+			sc.comb = pending;
+		} else if (sawSpace) {
+			sc.comb = SelectorCombinator::Descendant;
+		} else {
+			log::source().verbose("document::StyleContainer", "Ill-formed selector, skipped: '",
+					sel, "'");
+			return;
+		}
+		src.emplace_back(sc);
+		havePending = false;
+		sawSpace = false;
+		pending = SelectorCombinator::Descendant;
+	}
+
+	if (havePending || src.empty()) {
+		// trailing combinator, or nothing parsed - nothing to index here
+		return;
+	}
+
+	// build compounds RIGHT-TO-LEFT: compounds[k] = src[cnt-1-k]
+	ComplexSelector cs;
+	const size_t cnt = src.size();
+	cs.compounds.resize(cnt);
+	for (size_t k = 0; k < cnt; ++k) {
+		if (!parseCompound(src[cnt - 1 - k].text, cs.compounds[k])) {
+			log::source().verbose("document::StyleContainer", "Ill-formed compound, skipped: '",
+					sel, "'");
+			return;
+		}
+		if (k >= 1) {
+			// relation of compounds[k] to compounds[k-1] is the combinator preceding src[cnt-k]
+			cs.compounds[k].combinator = src[cnt - k].comb;
+		}
+	}
+
+	if (cnt == 1 && cs.compounds[0].pseudoRequire == 0 && cs.compounds[0].pseudoForbid == 0) {
+		// a single plain compound (no combinator, no pseudo) belongs in the simple-key store,
+		// not here - shouldn't happen (selectorNeedsStructured wouldn't route it), skip safely
+		return;
+	}
+
+	// CSS specificity: a = #id count, b = .class + :pseudo count, c = type/tag count
+	{
+		uint32_t idC = 0, clsC = 0, typeC = 0;
+		for (auto &comp : cs.compounds) {
+			if (!comp.id.empty()) {
+				++idC;
+			}
+			clsC += uint32_t(comp.classes.size())
+					+ uint32_t(__builtin_popcount(comp.pseudoRequire))
+					+ uint32_t(__builtin_popcount(comp.pseudoForbid));
+			if (!comp.universal && !comp.tag.empty()) {
+				++typeC;
+			}
+		}
+		cs.specificity = packSpecificity(idC, clsC, typeC);
+	}
+
+	// Bloom bits over every ancestor-axis (Descendant/Child) compound's required tokens
+	for (size_t k = 1; k < cnt; ++k) {
+		const auto &comp = cs.compounds[k];
+		if (comp.combinator == SelectorCombinator::Descendant
+				|| comp.combinator == SelectorCombinator::Child) {
+			if (!comp.tag.empty()) {
+				cs.ancestorFilterBits |= selectorTokenBit(0, comp.tag);
+			}
+			if (!comp.id.empty()) {
+				cs.ancestorFilterBits |= selectorTokenBit(2, comp.id);
+			}
+			for (auto &cl : comp.classes) { cs.ancestorFilterBits |= selectorTokenBit(1, cl); }
+		}
+	}
+
+	// bucket by the most specific token of the target (rightmost) compound
+	const auto &target = cs.compounds[0];
+	String bucketKey;
+	if (!target.id.empty()) {
+		bucketKey.assign("#");
+		bucketKey.append(target.id.data(), target.id.size());
+	} else if (!target.classes.empty()) {
+		bucketKey.assign(".");
+		bucketKey.append(target.classes.front().data(), target.classes.front().size());
+	} else if (!target.tag.empty()) {
+		bucketKey.assign(target.tag.data(), target.tag.size());
+	} else {
+		bucketKey.assign("*");
+	}
+
+	cs.style = style;
+
+	String text = sel.str<Interface>();
+	auto it = _complexSelectors.find(text);
+	if (it != _complexSelectors.end()) {
+		it->second.style.merge(style); // duplicate selector text: merge declarations
+		it->second.order = _ruleOrderCounter++; // later occurrence wins the tie-break
+		return;
+	}
+
+	cs.order = _ruleOrderCounter++;
+	auto res = _complexSelectors.emplace(sp::move(text), sp::move(cs));
+
+	auto bit = _complexStyles.find(bucketKey);
+	if (bit == _complexStyles.end()) {
+		bit = _complexStyles.emplace(sp::move(bucketKey), Vector<ComplexSelector *>()).first;
+	}
+	bit->second.emplace_back(&res.first->second);
 }
 
 void StyleContainer::import(StringReader &r) {

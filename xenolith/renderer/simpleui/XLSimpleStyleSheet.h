@@ -58,7 +58,7 @@ public:
 
 	MUST be called within a memory pool context (target is pool-backed). */
 	void resolveForIdentity(document::StyleList &target, StringView type, StringView id,
-			SpanView<String> classes, SpanView<bool> mediaResolved) const;
+			const HashSet<String, sprt::hash<void>> &classes, SpanView<bool> mediaResolved) const;
 
 	/* Parse an inline `style="..."` declaration list; parsed once per distinct text,
 	cached for the sheet's lifetime. Returned pointer is valid while the sheet lives. */

@@ -233,7 +233,7 @@ void Sprite::draw(FrameInfo &frame, NodeVisitFlags flags) {
 		emplace_ordered(frame.currentContext->waitDependencies, move(it));
 	}
 
-	if (_linearGradient || _outlineOffset > 0.0f) {
+	if (_linearGradient || _shadedOutlineOffset > 0.0f) {
 		auto context = frame.contextStack.back();
 
 		DrawStateValues state;
@@ -253,9 +253,9 @@ void Sprite::draw(FrameInfo &frame, NodeVisitFlags flags) {
 			newData->gradient = _linearGradient->pop();
 		}
 
-		if (_outlineOffset > 0.0f) {
-			newData->outlineOffset = _outlineOffset * _inputDensity * _textureScale;
-			newData->outlineColor = _outlineColor;
+		if (_shadedOutlineOffset > 0.0f) {
+			newData->outlineOffset = _shadedOutlineOffset * _inputDensity * _textureScale;
+			newData->outlineColor = _shadedOutlineColor;
 		}
 
 		state.data = newData;
@@ -384,9 +384,9 @@ void Sprite::setTextureLoadedCallback(Function<void()> &&cb) {
 	_textureLoadedCallback = sp::move(cb);
 }
 
-void Sprite::setOutlineOffset(float val) { _outlineOffset = val; }
+void Sprite::setShadedOutlineOffset(float val) { _shadedOutlineOffset = val; }
 
-void Sprite::setOutlineColor(const Color4F &color) { _outlineColor = color; }
+void Sprite::setShadedOutlineColor(const Color4F &color) { _shadedOutlineColor = color; }
 
 void Sprite::pushCommands(FrameInfo &frame, NodeVisitFlags flags) {
 	auto data = _vertexes.pop();

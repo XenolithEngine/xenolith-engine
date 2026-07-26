@@ -196,6 +196,12 @@ struct SPRT_API WaylandDecoration : Ref {
 	void setAlternative(bool);
 	void setGeometry(int32_t x, int32_t y, int32_t width, int32_t height);
 
+	// Hide sprite's edge strips (insets in destination units): cropped parts are excluded
+	// from wp_viewport source, surface is moved and shrunk to the remaining sub-rect
+	void setCrop(int32_t left, int32_t top, int32_t right, int32_t bottom);
+
+	void applyGeometry();
+
 	bool commit();
 
 	bool isTouchable() const;
@@ -222,6 +228,10 @@ struct SPRT_API WaylandDecoration : Ref {
 	int32_t _y = 0;
 	int32_t _width = 0;
 	int32_t _height = 0;
+	int32_t _cropLeft = 0;
+	int32_t _cropTop = 0;
+	int32_t _cropRight = 0;
+	int32_t _cropBottom = 0;
 	uint64_t lastTouch = 0;
 	uint32_t serial = 0;
 	wl_fixed_t pointerX;

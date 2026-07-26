@@ -294,9 +294,10 @@ public:
 
 	virtual void handleAdded(Node *owner) override;
 
-	virtual void handleContentSizeDirty() override;
 	virtual void handleComponentsDirty() override;
-	virtual void handleReorderChildDirty() override;
+
+	// layout-children phase: position/size the children (own size + order fixed)
+	virtual void handleLayoutChildren() override;
 
 	// recompute the placement of all children for the current geometry
 	void apply();
