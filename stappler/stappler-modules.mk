@@ -35,6 +35,7 @@ TOOLKIT_MODULE_LIST += \
 	$(STAPPLER_MODULE_DIR)/filesystem/filesystem.mk \
 	$(STAPPLER_MODULE_DIR)/crypto/crypto.mk \
 	$(STAPPLER_MODULE_DIR)/network/network.mk \
+	$(STAPPLER_MODULE_DIR)/git/git.mk \
 	$(STAPPLER_MODULE_DIR)/search/search.mk \
 	$(STAPPLER_MODULE_DIR)/sql/sql.mk \
 	$(STAPPLER_MODULE_DIR)/font/font.mk \
