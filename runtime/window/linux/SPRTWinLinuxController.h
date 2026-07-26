@@ -98,6 +98,10 @@ protected:
 
 	Rc<dispatch::Handle> _xcbPollHandle;
 	Rc<dispatch::Handle> _waylandPollHandle;
+
+	// Direct-to-display (KMS/VK_KHR_display) mode: no Wayland/X11/D-Bus.
+	// Set in run() when no session type is detected but a DRM device exists.
+	bool _kmsMode = false;
 };
 
 } // namespace sprt::window

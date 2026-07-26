@@ -99,6 +99,8 @@ enum class OptionalInstanceExtension {
 	Display,
 	SurfaceCapabilities2,
 	SurfaceMaintenance1,
+	DirectModeDisplay,
+	AcquireDrmDisplay,
 	Max
 };
 
@@ -106,6 +108,8 @@ static const char * const s_optionalExtension[] = {
 	VK_KHR_DISPLAY_EXTENSION_NAME,
 	VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,
 	VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME,
+	VK_EXT_DIRECT_MODE_DISPLAY_EXTENSION_NAME,
+	VK_EXT_ACQUIRE_DRM_DISPLAY_EXTENSION_NAME,
 	nullptr
 };
 

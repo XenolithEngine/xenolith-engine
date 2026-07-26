@@ -479,6 +479,20 @@ Rc<core::Surface> AppWindow::makeSurface(NotNull<core::Instance> cinstance) {
 			return nullptr;
 		}
 #endif
+		break;
+	}
+	case sprt::window::SurfaceBackend::Display: {
+#if defined(VK_KHR_display)
+		// Direct-to-display (no window system): create a plane surface on the
+		// primary display enumerated by VK_KHR_display, picking the display mode
+		// nearest the requested window size.
+		auto ext = _window->getExtent();
+		surface = instance->createDisplayPlaneSurface(ext.width, ext.height);
+		if (surface == VK_NULL_HANDLE) {
+			return nullptr;
+		}
+#endif
+		break;
 	}
 	default: break;
 	}

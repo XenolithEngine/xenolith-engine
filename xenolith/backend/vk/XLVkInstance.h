@@ -104,6 +104,13 @@ public:
 			core::FullScreenExclusiveMode fullscreenMode, void *fullscreenHandle) const;
 	VkExtent2D getSurfaceExtent(VkSurfaceKHR, VkPhysicalDevice) const;
 
+	// Create a VK_KHR_display surface on the primary display of the first device
+	// that drives one. Used for direct-to-display (no window system) startup.
+	// prefW/prefH hint the desired resolution (0 = pick the largest mode); the mode
+	// nearest that size is chosen (QEMU advertises bogus huge modes otherwise).
+	// Returns VK_NULL_HANDLE if no display is available.
+	VkSurfaceKHR createDisplayPlaneSurface(uint32_t prefW = 0, uint32_t prefH = 0) const;
+
 	VkInstance getInstance() const;
 
 	void printDevicesInfo(const CallbackStream &stream, bool initOnly = false) const;
@@ -126,6 +133,11 @@ private:
 			const DeviceInfo::OptVec &, uint32_t) const;
 
 	void getDeviceInfo(DeviceInfo &, VkPhysicalDevice device) const;
+
+	// Build a VK_KHR_display plane surface on a resolved VkDisplayKHR (shared by
+	// the auto-enumerated and acquire-drm-display paths of createDisplayPlaneSurface).
+	VkSurfaceKHR makeDisplayPlaneSurface(VkPhysicalDevice, VkDisplayKHR, StringView name,
+			uint32_t prefW, uint32_t prefH) const;
 
 	SurfaceBackendMask checkPresentationSupport(VkPhysicalDevice device, uint32_t) const;
 
