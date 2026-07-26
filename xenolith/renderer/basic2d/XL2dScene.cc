@@ -200,6 +200,7 @@ bool Scene2d::init(NotNull<AppThread> app, NotNull<core::RenderServerChannel> wi
 
 		buildQueueResources(queueInfo, builder);
 
+		[[maybe_unused]]
 		auto api = static_cast<core::Loop *>(app->getGlLoop())->getInstance()->getApi();
 		bool queueBuilt = false;
 

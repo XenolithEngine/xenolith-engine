@@ -67,6 +67,10 @@ public:
 	// should be after styling
 	static constexpr uint32_t LayoutDefaultPriority = System::DefaultPriority - 100;
 
+	// Frame-stack tag: the container publishes itself here so descendants deliver their
+	// content-size changes to the nearest ancestor LayoutSystem (fit-content invalidation)
+	static uint64_t SystemFrameTag;
+
 	virtual ~LayoutSystem() = default;
 
 	virtual bool init() override; // defaults to flex mode
@@ -86,9 +90,10 @@ public:
 	// the node's current content size is used instead)
 	virtual bool handleMeasure(const MeasureConstraints &, Size2 &result) override;
 
-	// a child resized itself (e.g. a label re-shaped after a text change):
-	// schedule a coalesced re-layout on the next visit and bubble the change
-	// upward so nested fit-content chains re-measure too
+	// a descendant resized itself (e.g. a label re-shaped after a text change), delivered via the
+	// frame stack: schedule a coalesced re-layout on the next visit. Nested fit-content chains
+	// re-measure automatically - the container's own resize is delivered to its ancestor container
+	// via the frame stack during the container's own visit, so no manual re-bubble is needed
 	virtual void handleChildContentSizeDirty(Node *) override;
 
 	// layout-children phase: position/size the children (own size + order fixed)

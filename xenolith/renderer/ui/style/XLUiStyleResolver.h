@@ -41,6 +41,9 @@ while that sheet is alive - it is produced and read within a single apply().
 must not touch widget properties whose parameters are absent. */
 class SP_PUBLIC ResolvedStyle {
 public:
+	using ParameterName = document::ParameterName;
+	using StyleValue = document::StyleValue;
+
 	ResolvedStyle() = default;
 	~ResolvedStyle();
 
@@ -59,18 +62,47 @@ public:
 	const document::StyleList *parameters() const { return _style; }
 
 	// was a parameter defined for this node (media-filtered)?
-	bool has(document::ParameterName) const;
+	bool has(ParameterName) const;
 	// last matching raw value for a parameter (media-filtered); false if absent
-	bool getValue(document::ParameterName, document::StyleValue &out) const;
+	bool getValue(ParameterName, document::StyleValue &out) const;
 	// resolve a string-valued parameter into std memory ("" if absent)
-	String getString(document::ParameterName) const;
+	String getString(ParameterName) const;
 
-	// compiled views - each compiled on demand from the raw parameters
+	void foreach (const Callback<void(ParameterName, const StyleValue &)> &) const;
+
+	// compiled views - each compiled on demand from the raw parameters. These build a WHOLE
+	// parameter block (every field of the struct) in one pass; use them only when a consumer
+	// genuinely needs many fields at once. To read a single property, prefer the individual
+	// accessors below - they resolve just that one parameter instead of expanding the block.
 	document::FontStyleParameters font() const;
 	document::TextLayoutParameters text() const;
 	document::ParagraphLayoutParameters paragraph() const;
 	document::BlockModelParameters block() const;
 	document::BackgroundParameters background() const;
+	document::OutlineParameters outline() const;
+
+	// individual property accessors: resolve exactly one parameter from the raw list (mirroring the
+	// matching field of the compiled block above), so a consumer that needs one value never pays to
+	// expand the whole block. Each returns the CSS default when the parameter is absent.
+	document::FontSize fontSize() const; // font-size (+ font-size-increment, like compileFontStyle)
+	document::FontStyle fontStyle() const;
+	document::FontWeight fontWeight() const;
+	document::FontStretch fontStretch() const;
+	String fontFamily() const; // font-family ("default" when absent/empty)
+	Color3B color() const; // color
+	uint8_t opacity() const; // opacity (0-255)
+	document::TextAlign textAlign() const; // text-align
+	document::Display display() const; // display
+	document::Metric width() const;
+	document::Metric height() const;
+	document::Metric marginTop() const;
+	document::Metric marginRight() const;
+	document::Metric marginBottom() const;
+	document::Metric marginLeft() const;
+	document::Metric paddingTop() const;
+	document::Metric paddingRight() const;
+	document::Metric paddingBottom() const;
+	document::Metric paddingLeft() const;
 
 	// positioning (position/top/right/bottom/left, -xl-anchor-point, -xl-position)
 	document::Position position() const;
@@ -81,6 +113,7 @@ public:
 	Vec2 anchorPoint() const;
 	document::Metric xlPositionX() const;
 	document::Metric xlPositionY() const;
+	int32_t xlZOrder() const; // -xl-z-order (Node ZOrder)
 
 	// flexbox / grid (the raw document enums/metrics; the applier maps them to layout)
 	document::FlexDirection flexDirection() const;
@@ -128,6 +161,13 @@ cascade (the system opts in via SystemFlags::HandleAncestorComponents).
 The optional callback runs before the default property application; returning
 true suppresses the defaults (widget-specific extension point).
 
+Per-type extension without a callback: a widget can statically register per-attribute
+appliers for its node type via registerTypeApplier(type, attr, applier). During apply,
+each attribute the type registered is applied by its handler; every other attribute falls
+through to the default mapping below. A recursive resolver (init(true)) styles its whole
+subtree from one system: it publishes on the frame stack and resolves each descendant as
+that descendant's content-size / layout-children event arrives, once per source version.
+
 Default v1 property mapping:
  - opacity -> Node::setOpacity
  - color -> Label color (node color)
@@ -141,6 +181,21 @@ Component writes are equality-guarded to avoid dirty loops. */
 class SP_PUBLIC StyleResolver : public System {
 public:
 	using ApplyCallback = Function<bool(Node *, const ResolvedStyle &)>;
+
+	// Applies a single CSS attribute to a node (the handler reads its own ParameterName value
+	// from the ResolvedStyle; the StyleResolver is passed so it can reuse media()/helpers)
+	using AttrApplier = Function<bool(StyleResolver &, Node *, const ResolvedStyle &,
+			document::ParameterName, const document::StyleValue &)>;
+
+	using ParameterMask = sprt::bitset<toInt(document::ParameterName::Max)>;
+
+	// Frame-stack tag: a recursive resolver publishes itself here so descendants deliver their
+	// content-size / layout-children events back to it (recursive styling, see init(recursive))
+	static uint64_t SystemFrameTag;
+
+	static void registerTypeApplier(StringView type, AttrApplier &&, ParameterMask &&);
+
+	static ParameterMask makeParameterMask(sprt::initializer_list<document::ParameterName> &&);
 
 	/* Resolve the style for a node against all stylesheet scopes on its ancestor
 	chain (nearest StyleSheetSystem and above).
@@ -158,12 +213,24 @@ public:
 
 	virtual void handleAdded(Node *) override;
 	virtual void handleEnter(Scene *) override;
+
+	// a component changed on this node or (via HandleAncestorComponents) on a styled ancestor - most
+	// importantly the StyleSystemState version bump when the stylesheet reloads. Re-arm the layout-
+	// children phase so apply() re-resolves against the new sheet (sizes are settled by then).
 	virtual void handleComponentsDirty() override;
-	virtual void handleReorderChildDirty() override;
+
+	// recursive styling: a descendant delivered its content-size / layout-children event via the
+	// frame stack; resolve that descendant's style once per source version (dedup via _nodesUpdated)
+	virtual void handleChildContentSizeDirty(Node *) override;
 
 	void apply();
 
 protected:
+	// look up and run the type-registered attribute appliers for `node`; every attribute a handler
+	// consumed is inserted into `handled` so applyDefault can skip its built-in mapping for it
+	void applyTypeAttributes(Node *, const ResolvedStyle &,
+			sprt::bitset<toInt(document::ParameterName::Max)> &handled);
+
 	void resolveForNode(Node *);
 
 	void applyDefault(Node *, const ResolvedStyle &);

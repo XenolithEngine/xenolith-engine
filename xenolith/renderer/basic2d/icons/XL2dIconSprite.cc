@@ -26,6 +26,10 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::basic2d {
 
+bool IconSprite::init() {
+	return IconSprite::init(IconName::None); //
+}
+
 bool IconSprite::init(IconName icon) {
 	if (!VectorSprite::init(Size2(24.0f, 24.0f))) {
 		return false;

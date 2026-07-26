@@ -182,10 +182,12 @@ struct SP_PUBLIC FrameInfo {
 	// to which data will be sent when the context is popped from the stack
 	mem_pool::Vector<Rc<FrameContextHandle>> contextStack;
 
-	// A set of system stacks by their ID
+	// A set of system stacks by their ID (FrameTag)
 	// A node can add a new system of a certain type to the stack;
 	// this system will be placed on the stack corresponding to its ID and thereby replace
-	// for child nodes the system that was added to this stack earlier
+	// for descendant nodes the system that was added to this stack earlier (back() == nearest ancestor).
+	// Descendants read it via getSystem<T>(tag), and also deliver their own layout events back up to
+	// the nearest opted-in ancestor here (see Node::handle{Measure,ContentSizeDirty,LayoutChildren})
 	mem_pool::Map<uint64_t, mem_pool::Vector<Rc<System>>> systemStack;
 
 	// Render queue attachments for which data has already been prepared are added here

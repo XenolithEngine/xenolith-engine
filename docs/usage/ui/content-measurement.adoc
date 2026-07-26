@@ -21,7 +21,7 @@ hooks on [System](../../../xenolith/application/nodes/XLSystem.h), all gated by
 virtual bool handleMeasure(const MeasureConstraints &, Size2 &result);
 virtual void handleLayoutApplied(const Size2 &);
 
-// SystemFlags::HandleChildNodeEvents
+// SystemFlags::HandleChildNodeEvents (+ AddToFrameStack + a FrameTag)
 virtual void handleChildContentSizeDirty(Node *child);
 ----
 
@@ -32,10 +32,13 @@ virtual void handleChildContentSizeDirty(Node *child);
 * `handleLayoutApplied` — "a layout engine has just committed this box to the
   owner". Adapt the content synchronously (a label re-wraps its text to the
   assigned width here). Called only for items the engine actually measured.
-* `handleChildContentSizeDirty` — a direct child of the owner changed its
-  content size. `Node::setContentSize` dispatches this to the parent's systems
-  automatically, which is how "label text changed → container re-layouts"
-  works without any manual wiring.
+* `handleChildContentSizeDirty` — a node inside the owner's subtree changed its
+  content size. Delivered via the frame stack during that descendant's visit
+  (the system must carry `AddToFrameStack` + a `FrameTag`), so the nearest
+  enclosing container gets it directly — this is how "label text changed →
+  container re-layouts" works without any manual wiring. `Node::setContentSize`
+  additionally notifies the direct parent immediately as a fallback. See the
+  design doc's _Child events: frame-stack delivery_ section for the full model.
 
 The query side lives in
 [XLNodeInfo.h](../../../xenolith/application/nodes/XLNodeInfo.h):
@@ -264,14 +267,27 @@ you manage a callback system of your own.
 If you write a container system (a custom layout), run the layout from the
 **layout-children phase** — opt into `SystemFlags::HandleLayoutChildren` and do
 the placement in `handleLayoutChildren`, where the owner's own size and child
-order are already fixed. To re-run it when a child resizes, opt into
-`SystemFlags::HandleChildNodeEvents` and coalesce: schedule a re-layout with
-`markLayoutChildrenDirty()` and let the next visit pass do the work. Bubble
-upward so an enclosing fit-content container re-measures you. Guard against your
-own commits:
+order are already fixed. To re-run it when a descendant resizes, opt into
+`SystemFlags::HandleChildNodeEvents` **and** `SystemFlags::AddToFrameStack` with a
+`FrameTag` (so you are published on the frame stack and reachable from your
+subtree), then coalesce: schedule a re-layout with `markLayoutChildrenDirty()`
+and let the next visit pass do the work. No manual bubble is needed — when this
+re-layout changes your own size, your container node delivers that content-size
+event to the next ancestor container via the frame stack during your own visit,
+so nested fit-content chains re-measure automatically. Guard against your own
+commits:
 
 [source,cpp]
 ----
+bool MyLayoutSystem::init() {
+	// publish on the frame stack so descendants reach us; one shared tag per behaviour
+	static uint64_t FrameTag = System::GetNextSystemId();
+	setSystemFlags(SystemFlags::HandleLayoutChildren | SystemFlags::HandleChildNodeEvents
+			| SystemFlags::AddToFrameStack);
+	setFrameTag(FrameTag);
+	return true;
+}
+
 // SystemFlags::HandleLayoutChildren
 void MyLayoutSystem::handleLayoutChildren() {
 	apply(); // own size + child order are fixed here
@@ -282,9 +298,7 @@ void MyLayoutSystem::handleChildContentSizeDirty(Node *) {
 		return; // our own setContentSize commits during layout
 	}
 	_owner->markLayoutChildrenDirty(); // re-layout on the next visit, coalesced
-	if (auto p = _owner->getParent()) {
-		p->notifyChildContentSizeDirty(_owner); // bubble for nested chains
-	}
+	// no re-bubble: the frame stack propagates our own resize up the ancestor chain
 }
 
 void MyLayoutSystem::apply() {

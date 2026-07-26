@@ -89,6 +89,8 @@ void System::handleLayoutInParent(Node *parent) { }
 bool System::handleMeasure(const MeasureConstraints &, Size2 &) { return false; }
 void System::handleLayoutApplied(const Size2 &) { }
 void System::handleChildContentSizeDirty(Node *child) { }
+void System::handleChildMeasure(Node *child) { }
+void System::handleChildLayoutChildren(Node *child) { }
 void System::handleLayoutChildren() { }
 
 bool System::isRunning() const { return _running; }
@@ -283,6 +285,30 @@ void CallbackSystem::handleLayoutChildren() {
 	}
 }
 
+void CallbackSystem::handleChildContentSizeDirty(Node *child) {
+	System::handleChildContentSizeDirty(child);
+
+	if (_handleChildContentSizeDirty) {
+		_handleChildContentSizeDirty(this, child);
+	}
+}
+
+void CallbackSystem::handleChildMeasure(Node *child) {
+	System::handleChildMeasure(child);
+
+	if (_handleChildMeasure) {
+		_handleChildMeasure(this, child);
+	}
+}
+
+void CallbackSystem::handleChildLayoutChildren(Node *child) {
+	System::handleChildLayoutChildren(child);
+
+	if (_handleChildLayoutChildren) {
+		_handleChildLayoutChildren(this, child);
+	}
+}
+
 void CallbackSystem::setAddedCallback(Function<void(CallbackSystem *, Node *)> &&cb) {
 	_handleAdded = sp::move(cb);
 	updateFlags();
@@ -381,6 +407,23 @@ void CallbackSystem::setLayoutAppliedCallback(
 	updateFlags();
 }
 
+void CallbackSystem::setChildContentSizeDirtyCallback(
+		Function<void(CallbackSystem *, Node *)> &&cb) {
+	_handleChildContentSizeDirty = sp::move(cb);
+	updateFlags();
+}
+
+void CallbackSystem::setChildMeasureCallback(Function<void(CallbackSystem *, Node *)> &&cb) {
+	_handleChildMeasure = sp::move(cb);
+	updateFlags();
+}
+
+void CallbackSystem::setChildLayoutChildrenCallback(
+		Function<void(CallbackSystem *, Node *)> &&cb) {
+	_handleChildLayoutChildren = sp::move(cb);
+	updateFlags();
+}
+
 void CallbackSystem::updateFlags() {
 	if (_handleAdded || _handleRemoved) {
 		_systemFlags |= SystemFlags::HandleOwnerEvents;
@@ -429,6 +472,26 @@ void CallbackSystem::updateFlags() {
 		_systemFlags |= SystemFlags::HandleLayoutChildren;
 	} else {
 		_systemFlags &= ~SystemFlags::HandleLayoutChildren;
+	}
+
+	// Child (descendant) events are delivered via the frame stack: to actually receive them the
+	// system must ALSO carry a FrameTag + SystemFlags::AddToFrameStack (set separately by the app)
+	if (_handleChildContentSizeDirty) {
+		_systemFlags |= SystemFlags::HandleChildNodeEvents;
+	} else {
+		_systemFlags &= ~SystemFlags::HandleChildNodeEvents;
+	}
+
+	if (_handleChildMeasure) {
+		_systemFlags |= SystemFlags::HandleChildMeasure;
+	} else {
+		_systemFlags &= ~SystemFlags::HandleChildMeasure;
+	}
+
+	if (_handleChildLayoutChildren) {
+		_systemFlags |= SystemFlags::HandleChildLayoutChildren;
+	} else {
+		_systemFlags &= ~SystemFlags::HandleChildLayoutChildren;
 	}
 
 	if (_handleUpdate) {
