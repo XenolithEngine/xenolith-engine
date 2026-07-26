@@ -151,6 +151,21 @@ bool MacosWindow::init(NotNull<ContextController> controller, Rc<WindowInfo> &&i
 		[_window setBackgroundColor:[NSColor clearColor]];
 	}
 
+	// Apply immutable min/max content constraints. `_info->rect` is content-space in points,
+	// so the constraints map directly onto contentMin/MaxSize (Cocoa enforces them on resize).
+	// A 0 dimension means "unconstrained": 0 for the minimum, CGFLOAT_MAX for the maximum.
+	if (_info->minExtent != Extent2::ZERO) {
+		_window.contentMinSize = NSMakeSize(static_cast<CGFloat>(_info->minExtent.width),
+				static_cast<CGFloat>(_info->minExtent.height));
+	}
+	if (_info->maxExtent != Extent2::ZERO) {
+		_window.contentMaxSize = NSMakeSize(
+				_info->maxExtent.width != 0 ? static_cast<CGFloat>(_info->maxExtent.width)
+											: CGFLOAT_MAX,
+				_info->maxExtent.height != 0 ? static_cast<CGFloat>(_info->maxExtent.height)
+											 : CGFLOAT_MAX);
+	}
+
 	[_window setReleasedWhenClosed:false];
 	_rootViewController = [[SPRTMacosViewController alloc] init:this window:_window];
 	_window.contentViewController = _rootViewController;

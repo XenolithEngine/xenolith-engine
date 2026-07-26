@@ -256,10 +256,9 @@ void WaylandWindow::handleFrameReady(const PresentationFrameInfo &frame) {
 			&& (hasFlag(_info->state, WindowState::Resizing) || _commitedExtent == _awaitingExtent
 					|| _awaitingExtent == Extent2())) {
 		if (_toplevel) {
-			// TODO: configure it the right way
-			// For now, we define it to keep space for decorations
-			xdg_toplevel_set_min_size(_toplevel, DecorWidth * 2 + IconSize * 3,
-					DecorWidth * 2 + DecorOffset + DecorInset);
+			// Re-assert min/max: decoration insets depend on _serverDecor, which is negotiated
+			// asynchronously after init, so the constraints may need refreshing here.
+			updateSizeConstraints();
 		}
 
 		if (_xdgSurface) {
@@ -1387,6 +1386,26 @@ void WaylandWindow::handleDecorationPress(WaylandDecoration *decor, uint32_t ser
 	}
 }
 
+void WaylandWindow::openWindowMenu(Vec2 pos) {
+	if (!_toplevel || !_display || !_display->seat || !_display->seat->seat) {
+		return;
+	}
+
+	int32_t x, y;
+	if (pos.isValid()) {
+		// pos: bottom-left origin -> surface-local top-left
+		auto ext = getExtent();
+		x = int32_t(pos.x);
+		y = int32_t(int32_t(ext.height) - int32_t(pos.y));
+	} else {
+		x = wl_fixed_to_int(_surfaceFX);
+		y = wl_fixed_to_int(_surfaceFY);
+	}
+
+	cancelPointerEvents();
+	xdg_toplevel_show_window_menu(_toplevel, _display->seat->seat, _display->seat->serial, x, y);
+}
+
 void WaylandWindow::setPreferredScale(int32_t scale) {
 	if (_density != float(scale)) {
 		_density = float(scale);
@@ -1659,6 +1678,46 @@ bool WaylandWindow::configureDecorations(Extent2 extent) {
 	return surfacesDirty;
 }
 
+void WaylandWindow::updateSizeConstraints() {
+	if (!_toplevel) {
+		return;
+	}
+
+	// With client-side decorations the window geometry (what set_min/max_size constrain) is the
+	// content plus the client-drawn title bar, so we add its insets and keep the decoration's own
+	// minimum as a floor. xdg geometry is surface-logical, so no density scaling is needed.
+	int32_t decorContentOffsetH = 0;
+	int32_t decorMinW = 0;
+	int32_t decorMinH = 0;
+	if (!hasFlag(_info->flags, WindowCreationFlags::UserSpaceDecorations)
+			&& !hasFlag(_info->state, WindowState::Fullscreen) && _serverDecor == nullptr) {
+		decorContentOffsetH = DecorInset + DecorOffset;
+		decorMinW = DecorWidth * 2 + IconSize * 3;
+		decorMinH = DecorWidth * 2 + DecorOffset + DecorInset;
+	}
+
+	int32_t minW = decorMinW;
+	int32_t minH = decorMinH;
+	if (_info->minExtent.width != 0) {
+		minW = sprt::max(minW, int32_t(_info->minExtent.width));
+	}
+	if (_info->minExtent.height != 0) {
+		minH = sprt::max(minH, int32_t(_info->minExtent.height) + decorContentOffsetH);
+	}
+	xdg_toplevel_set_min_size(_toplevel, minW, minH);
+
+	// 0 = no limit (xdg spec). Clamp above the minimum to avoid a min>max protocol error.
+	int32_t maxW = 0;
+	int32_t maxH = 0;
+	if (_info->maxExtent.width != 0) {
+		maxW = sprt::max(int32_t(_info->maxExtent.width), minW);
+	}
+	if (_info->maxExtent.height != 0) {
+		maxH = sprt::max(int32_t(_info->maxExtent.height) + decorContentOffsetH, minH);
+	}
+	xdg_toplevel_set_max_size(_toplevel, maxW, maxH);
+}
+
 bool WaylandWindow::initWithServerDecor() {
 	// make server-size decorations
 	_xdgSurface = xdg_wm_base_get_xdg_surface(_display->xdgWmBase, _surface);
@@ -1670,6 +1729,7 @@ bool WaylandWindow::initWithServerDecor() {
 	xdg_toplevel_set_title(_toplevel, _info->title.data());
 	xdg_toplevel_set_app_id(_toplevel, _info->id.data());
 	xdg_toplevel_add_listener(_toplevel, &s_XdgToplevelListener, this);
+	updateSizeConstraints();
 
 	_serverDecor = zxdg_decoration_manager_v1_get_toplevel_decoration(_display->decorationManager,
 			_toplevel);
@@ -1693,6 +1753,7 @@ bool WaylandWindow::initWithAppDecor() {
 	xdg_toplevel_set_title(_toplevel, _info->title.data());
 	xdg_toplevel_set_app_id(_toplevel, _info->id.data());
 	xdg_toplevel_add_listener(_toplevel, &s_XdgToplevelListener, this);
+	updateSizeConstraints();
 
 	if (!_display->viewporter) {
 		oslog::vperror(__SPRT_LOCATION, "WaylandWindow",

@@ -181,6 +181,8 @@ public:
 	virtual bool enableState(WindowState) override;
 	virtual bool disableState(WindowState) override;
 
+	virtual void openWindowMenu(Vec2 pos) override;
+
 protected:
 	virtual bool updateTextInput(const TextInputRequest &,
 			TextInputFlags flags = TextInputFlags::RunIfDisabled) override;
@@ -195,6 +197,10 @@ protected:
 
 	bool initWithServerDecor();
 	bool initWithAppDecor();
+
+	// Forward the immutable min/max size constraints (WindowInfo::minExtent/maxExtent) to the
+	// xdg_toplevel, merged with the client-side decoration minimums.
+	void updateSizeConstraints();
 
 	void cancelPointerEvents();
 
