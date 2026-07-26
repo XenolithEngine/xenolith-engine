@@ -29,6 +29,48 @@ namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
 
 ComponentId StyleManagedLayout::Id;
 
+struct ApplierRegistryNode {
+	StyleResolver::AttrApplier applier;
+	StyleResolver::ParameterMask mask;
+};
+
+// All recursive StyleResolvers share one frame-stack tag, so a descendant's stack lookup resolves
+// to the nearest ancestor recursive resolver (independent of the LayoutSystem tag)
+uint64_t StyleResolver::SystemFrameTag = System::GetNextSystemId();
+
+// Process-global type x attribute applier registry. Function-local static avoids static-init-order
+// issues; widgets register from their own TU at startup. mem_std-backed (persists, no pool needed)
+static HashMap<String, ApplierRegistryNode> &getTypeApplierRegistry() {
+	static HashMap<String, ApplierRegistryNode> registry;
+	return registry;
+}
+
+void StyleResolver::registerTypeApplier(StringView type, AttrApplier &&applier,
+		sprt::bitset<toInt(document::ParameterName::Max)> &&params) {
+	auto &reg = getTypeApplierRegistry();
+	auto typeStr = type.str<Interface>();
+	auto it = reg.find(typeStr);
+	if (it == reg.end()) {
+		reg.emplace(sp::move(typeStr),
+				ApplierRegistryNode{
+					sp::move(applier),
+					sp::move(params),
+				});
+	} else {
+		it->second = ApplierRegistryNode{
+			sp::move(applier),
+			sp::move(params),
+		};
+	}
+}
+
+StyleResolver::ParameterMask StyleResolver::makeParameterMask(
+		sprt::initializer_list<document::ParameterName> &&params) {
+	ParameterMask ret;
+	for (auto &it : params) { ret.set(toInt(it)); }
+	return ret;
+}
+
 namespace {
 
 struct StyleScope {
@@ -202,6 +244,15 @@ String ResolvedStyle::getString(document::ParameterName name) const {
 	return String();
 }
 
+void ResolvedStyle::foreach (const Callback<void(ParameterName, const StyleValue &)> &cb) const {
+	for (auto &it : _style->data) {
+		if ((it.mediaQuery == document::MediaQueryIdNone
+					|| _iface.resolveMediaQuery(it.mediaQuery))) {
+			cb(it.name, it.value);
+		}
+	}
+}
+
 // compiled views: compiled on demand within the owned pool
 
 document::FontStyleParameters ResolvedStyle::font() const {
@@ -242,6 +293,127 @@ document::BackgroundParameters ResolvedStyle::background() const {
 		memory::perform([&] { ret = _style->compileBackground(&_iface); }, _pool);
 	}
 	return ret;
+}
+
+document::OutlineParameters ResolvedStyle::outline() const {
+	document::OutlineParameters ret;
+	if (_style) {
+		memory::perform([&] { ret = _style->compileOutline(&_iface); }, _pool);
+	}
+	return ret;
+}
+
+// individual property accessors: resolve exactly one parameter (mirroring the matching field of the
+// compiled block) so a single-value read never expands a whole block. No allocation, one list scan.
+
+document::FontSize ResolvedStyle::fontSize() const {
+	document::FontSize ret(14); // FontSpecializationVector default
+	document::StyleValue v;
+	if (getValue(document::ParameterName::CssFontSize, v)) {
+		ret = v.fontSize;
+	}
+	// font-size-increment scales the resolved size (mirrors StyleList::modifySize in compileFontStyle)
+	if (getValue(document::ParameterName::CssFontSizeIncrement, v)
+			&& v.sizeValue.metric != document::Metric::Auto) {
+		ret = ret.scale(v.sizeValue.value);
+	}
+	return ret;
+}
+
+document::FontStyle ResolvedStyle::fontStyle() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssFontStyle, v) ? v.fontStyle
+															  : document::FontStyle::Normal;
+}
+
+document::FontWeight ResolvedStyle::fontWeight() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssFontWeight, v) ? v.fontWeight
+															   : document::FontWeight::Normal;
+}
+
+document::FontStretch ResolvedStyle::fontStretch() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssFontStretch, v) ? v.fontStretch
+																: document::FontStretch::Normal;
+}
+
+String ResolvedStyle::fontFamily() const {
+	auto ret = getString(document::ParameterName::CssFontFamily);
+	return ret.empty() ? String("default") : ret;
+}
+
+Color3B ResolvedStyle::color() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssColor, v) ? v.color : Color3B(0, 0, 0);
+}
+
+uint8_t ResolvedStyle::opacity() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssOpacity, v) ? v.opacity : uint8_t(255);
+}
+
+document::TextAlign ResolvedStyle::textAlign() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssTextAlign, v) ? v.textAlign
+															  : document::TextAlign::Left;
+}
+
+document::Display ResolvedStyle::display() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssDisplay, v) ? v.display
+															: document::Display::Default;
+}
+
+document::Metric ResolvedStyle::width() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssWidth, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::height() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssHeight, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::marginTop() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssMarginTop, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::marginRight() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssMarginRight, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::marginBottom() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssMarginBottom, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::marginLeft() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssMarginLeft, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::paddingTop() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssPaddingTop, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::paddingRight() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssPaddingRight, v) ? v.sizeValue : document::Metric();
+}
+
+document::Metric ResolvedStyle::paddingBottom() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssPaddingBottom, v) ? v.sizeValue
+																  : document::Metric();
+}
+
+document::Metric ResolvedStyle::paddingLeft() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssPaddingLeft, v) ? v.sizeValue : document::Metric();
 }
 
 // typed positioning / flex / grid accessors: read the raw value, else the CSS default
@@ -292,6 +464,11 @@ document::Metric ResolvedStyle::xlPositionX() const {
 document::Metric ResolvedStyle::xlPositionY() const {
 	document::StyleValue v;
 	return getValue(document::ParameterName::CssXlPositionY, v) ? v.sizeValue : document::Metric();
+}
+
+int32_t ResolvedStyle::xlZOrder() const {
+	document::StyleValue v;
+	return getValue(document::ParameterName::CssXlZOrder, v) ? v.intValue : 0;
 }
 
 document::FlexDirection ResolvedStyle::flexDirection() const {
@@ -406,9 +583,14 @@ bool StyleResolver::init(bool recursive) {
 	_recursive = recursive;
 
 	auto flags = SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents
-			| SystemFlags::HandleComponents | SystemFlags::HandleAncestorComponents;
+			| SystemFlags::HandleComponents | SystemFlags::HandleAncestorComponents
+			| SystemFlags::HandleLayoutChildren;
+
 	if (_recursive) {
-		flags |= SystemFlags::HandleChildNodeEvents;
+		// publish on the frame stack so every descendant delivers its content-size / layout-children
+		// event back to this single resolver, which then resolves that descendant's style
+		flags |= SystemFlags::HandleChildNodeEvents | SystemFlags::AddToFrameStack;
+		setFrameTag(SystemFrameTag);
 	}
 
 	setSystemFlags(flags);
@@ -434,16 +616,32 @@ void StyleResolver::handleEnter(Scene *scene) {
 
 	// initial application: the ancestor chain is complete here, and the node may have
 	// been added after the sheet owner's dirty frame
-	apply();
+	_owner->markLayoutChildrenDirty();
 }
 
 void StyleResolver::handleComponentsDirty() {
-	apply(); //
+	System::handleComponentsDirty();
+
+	apply();
 }
 
-void StyleResolver::handleReorderChildDirty() {
-	// TODO: impplement actual recursion
-	for (auto &it : _owner->getChildren()) { resolveForNode(it); }
+void StyleResolver::handleChildContentSizeDirty(Node *child) {
+	// a descendant changed its content size (delivered via the frame stack); resolve its style once
+	// per source version - _nodesUpdated is the freshness set, cleared in apply() on a version change
+	if (_recursive && _owner && !_nodesUpdated.count(child)) {
+		resolveForNode(child);
+	}
+}
+
+// Force every descendant to re-run its content-size phase so each fires the frame-stack child event
+// that makes the nearest recursive resolver re-resolve it. Needed when the stylesheet itself changes
+// (CSS reload): a style-only change moves no geometry, so descendants would otherwise never signal
+// and would keep their stale styles until some unrelated relayout happened to wake them.
+static void markSubtreeContentDirty(Node *node) {
+	for (auto &child : node->getChildren()) {
+		child->markContentSizeDirty();
+		markSubtreeContentDirty(child);
+	}
 }
 
 void StyleResolver::apply() {
@@ -473,13 +671,27 @@ void StyleResolver::apply() {
 		return; // no changes to run style resolver
 	}
 
+	// the stylesheet source (id) or its version changed - i.e. the CSS was (re)loaded, not merely a
+	// local interactive-state flip; the whole subtree's resolved styles are now potentially stale
+	const bool sourceChanged =
+			currentSourceId != _sourceSystemId || currentSourceVersion != _sourceSystemVersion;
+
 	_nodesUpdated.clear();
 
 	_interactiveMask = currentInteractiveMask;
 	_sourceSystemId = currentSourceId;
 	_sourceSystemVersion = currentSourceVersion;
 
+	// resolve the owner's own style. A recursive resolver is pushed onto the frame stack only AFTER
+	// its owner's phases, so the owner never delivers its events back to its own resolver - the owner
+	// must be resolved directly here (descendants cascade via their frame-stack child events).
 	resolveForNode(_owner);
+
+	if (_recursive && sourceChanged) {
+		// nudge every descendant so it re-fires its child event and gets re-resolved this frame;
+		// resolution is deduped per version via _nodesUpdated, so each descendant runs once
+		markSubtreeContentDirty(_owner);
+	}
 }
 
 namespace {
@@ -593,13 +805,39 @@ void StyleResolver::resolveForNode(Node *node) {
 		return;
 	}
 
-	_nodesUpdated.emplace(_owner);
+	// track this node as freshly resolved for the current source version (dedup for the recursive
+	// frame-stack cascade); the set is cleared in apply() when the version / interactive state changes
+	_nodesUpdated.emplace(node);
 
 	if (_callback && _callback(node, style)) {
 		return;
 	}
 
 	applyDefault(node, style);
+}
+
+void StyleResolver::applyTypeAttributes(Node *node, const ResolvedStyle &s,
+		sprt::bitset<toInt(document::ParameterName::Max)> &handled) {
+	auto &reg = getTypeApplierRegistry();
+	auto it = reg.find(node->getType());
+	if (it == reg.end()) {
+		return;
+	}
+
+	if (it->second.mask.test(toInt(document::ParameterName::CmdReset))) {
+		document::StyleValue val;
+		if (it->second.applier(*this, node, s, document::ParameterName::CmdReset, val)) {
+			handled.set(toInt(document::ParameterName::CmdReset));
+		}
+	}
+
+	s.foreach ([&](document::ParameterName name, const document::StyleValue &val) {
+		if (it->second.mask.test(toInt(name))) {
+			if (it->second.applier(*this, node, s, name, val)) {
+				handled.set(toInt(name));
+			}
+		}
+	});
 }
 
 void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
@@ -609,54 +847,67 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 	if (auto p = node->getParent()) {
 		parentSize = p->getContentSize();
 	}
-	// compile the views this applier reads broadly; scalars/strings are read on demand
-	const auto font = s.font();
-	const auto text = s.text();
-	const auto block = s.block();
-	const float fontSize = float(font.fontSize.get());
+	// read only the individual properties this applier needs (no whole-block compilation);
+	// font-size is always needed as the em base for computeMetric
+	const float fontSize = float(s.fontSize().get());
+	const auto width = s.width();
+	const auto height = s.height();
 
 	auto computeMetric = [&](const document::Metric &m, float base) {
 		return s.media().computeValueAuto(m, base, fontSize);
 	};
 
-	if (s.has(ParameterName::CssOpacity)) {
-		node->setOpacity(float(text.opacity) / 255.0f);
+	// type phase: attributes a registered per-type applier consumes are recorded in `handled`, so
+	// the default mapping below skips them (a type overrides only the attributes it registered)
+	sprt::bitset<toInt(document::ParameterName::Max)> handled;
+	applyTypeAttributes(node, s, handled);
+	auto def = [&](ParameterName name) { return s.has(name) && !handled.test(toInt(name)); };
+
+	if (def(ParameterName::CssOpacity)) {
+		node->setOpacity(float(s.opacity()) / 255.0f);
+	}
+
+	// -xl-z-order: the node's ZOrder. Set it up front (before applyLayout): changing it marks the
+	// parent's reorder dirty, and the reorder phase runs before handleLayoutChildren, so the flex/grid
+	// LayoutSystem sees the children in the requested order. setLocalZOrder is equality-guarded.
+	if (def(ParameterName::CssXlZOrder)) {
+		node->setLocalZOrder(ZOrder(int16_t(s.xlZOrder())));
 	}
 
 	auto label = dynamic_cast<Label *>(node);
 	if (label) {
-		if (s.has(ParameterName::CssColor)) {
-			label->setColor(Color4F(Color4B(text.color, 255)), false);
+		if (def(ParameterName::CssColor)) {
+			label->setColor(Color4F(Color4B(s.color(), 255)), false);
 		}
-		if (s.has(ParameterName::CssFontSize) || s.has(ParameterName::CssFontSizeNumeric)) {
-			label->setFontSize(font.fontSize);
+		if (def(ParameterName::CssFontSize) || def(ParameterName::CssFontSizeNumeric)) {
+			label->setFontSize(s.fontSize());
 		}
-		if (s.has(ParameterName::CssFontFamily) && !font.fontFamily.empty()) {
-			label->setFontFamily(font.fontFamily);
+		if (def(ParameterName::CssFontFamily)) {
+			if (auto ff = s.fontFamily(); !ff.empty()) {
+				label->setFontFamily(ff);
+			}
 		}
-		if (s.has(ParameterName::CssFontWeight)) {
-			label->setFontWeight(font.fontWeight);
+		if (def(ParameterName::CssFontWeight)) {
+			label->setFontWeight(s.fontWeight());
 		}
-		if (s.has(ParameterName::CssFontStyle)) {
-			label->setFontStyle(font.fontStyle);
+		if (def(ParameterName::CssFontStyle)) {
+			label->setFontStyle(s.fontStyle());
 		}
-		if (s.has(ParameterName::CssFontStretch)) {
-			label->setFontStretch(font.fontStretch);
+		if (def(ParameterName::CssFontStretch)) {
+			label->setFontStretch(s.fontStretch());
 		}
-		if (s.has(ParameterName::CssTextAlign)) {
-			label->setAlignment(s.paragraph().textAlign);
+		if (def(ParameterName::CssTextAlign)) {
+			label->setAlignment(s.textAlign());
 		}
-		if (s.has(ParameterName::CssWidth) && !block.width.isAuto()
-				&& block.width.metric != document::Metric::Units::FitContent) {
-			label->setWidth(computeMetric(block.width, parentSize.width));
+		if (def(ParameterName::CssWidth) && !width.isAuto()
+				&& width.metric != document::Metric::Units::FitContent) {
+			label->setWidth(computeMetric(width, parentSize.width));
 		}
 	} else {
-		if (s.has(ParameterName::CssBackgroundColor)) {
+		if (def(ParameterName::CssBackgroundColor)) {
 			// Layer covers Button as well
 			document::StyleValue styleColor;
 			if (s.getValue(ParameterName::CssBackgroundColor, styleColor)) {
-
-
 				node->setColor(Color4F(styleColor.color4), true);
 			}
 		}
@@ -665,14 +916,14 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 		bool sizeDirty = false;
 		// fit-content never writes a static size: it resolves through the
 		// flex item mapping in applyLayout (basis / crossSize) instead
-		if (s.has(ParameterName::CssWidth) && !block.width.isAuto()
-				&& block.width.metric != document::Metric::Units::FitContent) {
-			size.width = computeMetric(block.width, parentSize.width);
+		if (def(ParameterName::CssWidth) && !width.isAuto()
+				&& width.metric != document::Metric::Units::FitContent) {
+			size.width = computeMetric(width, parentSize.width);
 			sizeDirty = true;
 		}
-		if (s.has(ParameterName::CssHeight) && !block.height.isAuto()
-				&& block.height.metric != document::Metric::Units::FitContent) {
-			size.height = computeMetric(block.height, parentSize.height);
+		if (def(ParameterName::CssHeight) && !height.isAuto()
+				&& height.metric != document::Metric::Units::FitContent) {
+			size.height = computeMetric(height, parentSize.height);
 			sizeDirty = true;
 		}
 		if (sizeDirty) {
@@ -703,8 +954,8 @@ void StyleResolver::applyDefault(Node *node, const ResolvedStyle &s) {
 		// axis are given, the size stretches to fill the gap between them; when all three
 		// (both offsets + explicit size) are set, the end offset (right/bottom) is ignored,
 		// which the position math below already does by preferring left/top
-		const bool widthAuto = !s.has(ParameterName::CssWidth) || block.width.isAuto();
-		const bool heightAuto = !s.has(ParameterName::CssHeight) || block.height.isAuto();
+		const bool widthAuto = !s.has(ParameterName::CssWidth) || width.isAuto();
+		const bool heightAuto = !s.has(ParameterName::CssHeight) || height.isAuto();
 
 		bool sizeDirty = false;
 		if (widthAuto && hasLeft && hasRight) {
@@ -774,46 +1025,48 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 		parentSize = p->getContentSize();
 	}
 	const Size2 ownSize = node->getContentSize();
-	// compile the block model once; flex/grid scalars are read on demand below
-	const auto block = s.block();
-	const float fontSize = float(s.font().fontSize.get());
+	// read only the individual properties this mapping needs (no whole-block compilation)
+	const auto display = s.display();
+	const auto width = s.width();
+	const auto height = s.height();
+	const float fontSize = float(s.fontSize().get());
 	auto computeMetric = [&](const document::Metric &m, float base) {
 		return s.media().computeValueAuto(m, base, fontSize);
 	};
 
 	// map the CSS padding-* onto a container Padding (percent against own width)
 	auto fillPadding = [&](Padding &pad) {
-		if (s.has(ParameterName::CssPaddingTop) && !block.paddingTop.isAuto()) {
-			pad.top = computeMetric(block.paddingTop, ownSize.width);
+		if (auto m = s.paddingTop(); s.has(ParameterName::CssPaddingTop) && !m.isAuto()) {
+			pad.top = computeMetric(m, ownSize.width);
 		}
-		if (s.has(ParameterName::CssPaddingRight) && !block.paddingRight.isAuto()) {
-			pad.right = computeMetric(block.paddingRight, ownSize.width);
+		if (auto m = s.paddingRight(); s.has(ParameterName::CssPaddingRight) && !m.isAuto()) {
+			pad.right = computeMetric(m, ownSize.width);
 		}
-		if (s.has(ParameterName::CssPaddingBottom) && !block.paddingBottom.isAuto()) {
-			pad.bottom = computeMetric(block.paddingBottom, ownSize.width);
+		if (auto m = s.paddingBottom(); s.has(ParameterName::CssPaddingBottom) && !m.isAuto()) {
+			pad.bottom = computeMetric(m, ownSize.width);
 		}
-		if (s.has(ParameterName::CssPaddingLeft) && !block.paddingLeft.isAuto()) {
-			pad.left = computeMetric(block.paddingLeft, ownSize.width);
+		if (auto m = s.paddingLeft(); s.has(ParameterName::CssPaddingLeft) && !m.isAuto()) {
+			pad.left = computeMetric(m, ownSize.width);
 		}
 	};
 	// map the CSS margin-* onto an item Margin (percent against parent width)
-	auto fillMargin = [&](Padding &m) {
-		if (s.has(ParameterName::CssMarginTop) && !block.marginTop.isAuto()) {
-			m.top = computeMetric(block.marginTop, parentSize.width);
+	auto fillMargin = [&](Padding &mrg) {
+		if (auto m = s.marginTop(); s.has(ParameterName::CssMarginTop) && !m.isAuto()) {
+			mrg.top = computeMetric(m, parentSize.width);
 		}
-		if (s.has(ParameterName::CssMarginRight) && !block.marginRight.isAuto()) {
-			m.right = computeMetric(block.marginRight, parentSize.width);
+		if (auto m = s.marginRight(); s.has(ParameterName::CssMarginRight) && !m.isAuto()) {
+			mrg.right = computeMetric(m, parentSize.width);
 		}
-		if (s.has(ParameterName::CssMarginBottom) && !block.marginBottom.isAuto()) {
-			m.bottom = computeMetric(block.marginBottom, parentSize.width);
+		if (auto m = s.marginBottom(); s.has(ParameterName::CssMarginBottom) && !m.isAuto()) {
+			mrg.bottom = computeMetric(m, parentSize.width);
 		}
-		if (s.has(ParameterName::CssMarginLeft) && !block.marginLeft.isAuto()) {
-			m.left = computeMetric(block.marginLeft, parentSize.width);
+		if (auto m = s.marginLeft(); s.has(ParameterName::CssMarginLeft) && !m.isAuto()) {
+			mrg.left = computeMetric(m, parentSize.width);
 		}
 	};
 
-	const bool wantFlex = block.display == Display::Flex || block.display == Display::InlineFlex;
-	const bool wantGrid = block.display == Display::Grid || block.display == Display::InlineGrid;
+	const bool wantFlex = display == Display::Flex || display == Display::InlineFlex;
+	const bool wantGrid = display == Display::Grid || display == Display::InlineGrid;
 
 	auto layout = node->getSystemByType<LayoutSystem>();
 
@@ -1008,9 +1261,9 @@ void StyleResolver::applyLayout(Node *node, const ResolvedStyle &s) {
 			// cross axis lands in crossSize, the main axis becomes the basis
 			// unless an explicit flex-basis was given
 			const bool widthFit = s.has(ParameterName::CssWidth)
-					&& block.width.metric == document::Metric::Units::FitContent;
+					&& width.metric == document::Metric::Units::FitContent;
 			const bool heightFit = s.has(ParameterName::CssHeight)
-					&& block.height.metric == document::Metric::Units::FitContent;
+					&& height.metric == document::Metric::Units::FitContent;
 			if (parentIsRow ? heightFit : widthFit) {
 				next.crossSize = FlexItemInfo::FitContent;
 			}

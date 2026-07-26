@@ -968,6 +968,40 @@ void Node::handleMeasure() {
 	}
 }
 
+// Deliver a descendant event to the nearest opted-in ancestor system on each frame-stack tag.
+// The node's own systems are not on the stack yet during its phase processing (pushed later in
+// wrapVisit), so only strict ancestors are visited - exactly the intended bubble-up semantics
+template <typename Fn>
+static void notifyStackChildEvent(FrameInfo &info, SystemFlags flag, const Fn &fn) {
+	for (auto &it : info.systemStack) {
+		if (it.second.empty()) {
+			continue;
+		}
+		auto &sys = it.second.back();
+		if (sys->isEnabled() && hasFlag(sys->getSystemFlags(), flag)) {
+			fn(sys.get());
+		}
+	}
+}
+
+void Node::handleMeasure(FrameInfo &info) {
+	handleMeasure();
+	notifyStackChildEvent(info, SystemFlags::HandleChildMeasure,
+			[this](System *sys) { sys->handleChildMeasure(this); });
+}
+
+void Node::handleContentSizeDirty(FrameInfo &info) {
+	handleContentSizeDirty();
+	notifyStackChildEvent(info, SystemFlags::HandleChildNodeEvents,
+			[this](System *sys) { sys->handleChildContentSizeDirty(this); });
+}
+
+void Node::handleLayoutChildren(FrameInfo &info) {
+	handleLayoutChildren();
+	notifyStackChildEvent(info, SystemFlags::HandleChildLayoutChildren,
+			[this](System *sys) { sys->handleChildLayoutChildren(this); });
+}
+
 void Node::handleContentSizeDirty() {
 	auto tmpSystems = _systems;
 	for (auto &it : tmpSystems) {
@@ -992,7 +1026,8 @@ void Node::handleComponentsDirty() {
 void Node::handleAncestorComponentsDirty() {
 	auto tmpSystems = _systems;
 	for (auto &it : tmpSystems) {
-		if (it->isEnabled() && hasFlag(it->getSystemFlags(), SystemFlags::HandleAncestorComponents)) {
+		if (it->isEnabled()
+				&& hasFlag(it->getSystemFlags(), SystemFlags::HandleAncestorComponents)) {
 			it->handleComponentsDirty();
 		}
 	}
@@ -1497,7 +1532,15 @@ NodeVisitFlags Node::processParentFlags(FrameInfo &info, NodeVisitFlags parentFl
 		}
 	}
 
-	// Phase 2: transform notifications - the node's position is fixed. The world matrix itself
+	// Phase 2: measure - fix the node's size. Runs before the transform phase so a measure-induced
+	// setContentSize (which re-dirties _contentSizeDirty/_transformDirty) is visible to the transform
+	// notifications below. Must not change components. Feeds phase 4 and the matrix rebuild
+	if (_measureDirty) {
+		_measureDirty = false;
+		handleMeasure(info);
+	}
+
+	// Phase 3: transform notifications - the node's position is fixed. The world matrix itself
 	// is (re)built in phase 5, once the size is final (the matrix depends on content size)
 	if (_transformDirty
 			|| (hasFlag(_eventFlags, NodeEventFlags::HandleParentTransform)
@@ -1509,18 +1552,11 @@ NodeVisitFlags Node::processParentFlags(FrameInfo &info, NodeVisitFlags parentFl
 		handleGlobalTransformDirty(parentWorld);
 	}
 
-	// Phase 3: measure - fix the node's size. Must not change components. May setContentSize
-	// (which re-dirties _contentSizeDirty/_transformDirty, feeding phase 4 and the matrix rebuild)
-	if (_measureDirty) {
-		_measureDirty = false;
-		handleMeasure();
-	}
-
 	// Phase 4: content size - the node's size is now fixed
 	if (_contentSizeDirty
 			|| (hasFlag(_eventFlags, NodeEventFlags::HandleParentContentSize)
 					&& hasFlag(parentFlags, NodeVisitFlags::ContentSizeDirty))) {
-		handleContentSizeDirty();
+		handleContentSizeDirty(info);
 		_contentSizeDirty = false;
 		flags |= NodeVisitFlags::ContentSizeDirty;
 		_layoutChildrenDirty = true; // own size changed -> re-lay-out children
@@ -1591,27 +1627,12 @@ bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInf
 		info.depthStack.push_back(sprt::max(info.depthStack.back(), _depthIndex));
 	}
 
-	mem_pool::Vector< mem_pool::Vector<Rc<System>> * > systems;
-
-	auto tmpSystems = _systems;
-	for (auto &it : tmpSystems) {
-		if (it->isEnabled() && hasFlag(it->getSystemFlags(), SystemFlags::AddToFrameStack)
-				&& it->getFrameTag() != InvalidTag) {
-			systems.emplace_back(info.pushSystem(it));
-		}
-		if (hasFlag(it->getSystemFlags(), SystemFlags::HandleVisitControl)) {
-			visitInfo.visitableSystems.emplace_back(it);
-		}
-	}
-
 	size_t i = 0;
 
 	visitInfo.flags = flags;
 	visitInfo.frameInfo = &info;
 	visitInfo.visibleByCamera = visibleByCamera;
 
-	// Обработка dirty флагов могла изменить набор узлов - пересортируем.
-	// Это нежелательный, но возможный вариант, в этом случае поиск стилей по соседним узлам работает неверно
 	if (sortAllChildren()) {
 		reorderWasDirty = true;
 	}
@@ -1628,7 +1649,26 @@ bool Node::wrapVisit(FrameInfo &info, NodeVisitFlags parentFlags, const VisitInf
 	// Phase 6: lay out children with this node's own size and child order now fixed
 	if (_layoutChildrenDirty) {
 		_layoutChildrenDirty = false;
-		handleLayoutChildren();
+		handleLayoutChildren(info);
+	}
+
+	// End of node-local processing.
+	// Publish AddToFrameStack systems onto info.systemStack AFTER this node's own phases ran, so a
+	// node only ever sees ANCESTOR systems on the stack (never its own) - this is what makes the
+	// child-event dispatch in handle{Measure,ContentSizeDirty,LayoutChildren}(FrameInfo&) bubble up.
+	// The stack stays live while children are visited below, and is popped once they are done
+
+	mem_pool::Vector< mem_pool::Vector<Rc<System>> * > systems;
+
+	auto tmpSystems = _systems;
+	for (auto &it : tmpSystems) {
+		if (it->isEnabled() && hasFlag(it->getSystemFlags(), SystemFlags::AddToFrameStack)
+				&& it->getFrameTag() != InvalidTag) {
+			systems.emplace_back(info.pushSystem(it));
+		}
+		if (hasFlag(it->getSystemFlags(), SystemFlags::HandleVisitControl)) {
+			visitInfo.visitableSystems.emplace_back(it);
+		}
 	}
 
 	if (visitInfo.visitBegin) {

@@ -310,7 +310,7 @@ public:
 	// Node was removed from scene
 	virtual void handleExit();
 
-	// The node's own size is being fixed for this frame (phase 3, requires _measureDirty).
+	// The node's own size is being fixed for this frame (phase 2, requires _measureDirty).
 	// Runs the SystemFlags::HandleMeasure protocol and commits the result via setContentSize.
 	// Must NOT change components. Opt-in: set via markMeasureDirty()
 	virtual void handleMeasure();
@@ -319,6 +319,13 @@ public:
 	// There you can setup Node's appearance and layout it's subnodes
 	// ContentSize processed after Measure/Transform, size is fixed here
 	virtual void handleContentSizeDirty();
+
+	// Frame-stack overloads (phase dispatch, non-virtual plumbing). Run the no-arg virtual, then
+	// deliver the corresponding child event to the nearest ancestor system on FrameInfo::systemStack
+	// that opted in (HandleChildMeasure / HandleChildNodeEvents / HandleChildLayoutChildren).
+	// Called only from Node's own processParentFlags/wrapVisit; subclasses override the no-arg forms
+	void handleMeasure(FrameInfo &);
+	void handleContentSizeDirty(FrameInfo &);
 
 	// Some of node's components was updated
 	// Components processed after ContentSize and Transform, be sure not to modify them here
@@ -347,7 +354,8 @@ public:
 
 	// Node was repositioned or scaled within scene
 	// There global parameters (like pixel density) can be recalculated
-	// Called after `handleTransformDirty` if node's transform was also dirty
+	// Called after `handleTransformDirty` if node's transform was also dirty.
+	// The transform phase runs after Measure, so the node's size is already fixed here
 	virtual void handleGlobalTransformDirty(const Mat4 &);
 
 	// Children array was updated somehow
@@ -359,12 +367,19 @@ public:
 	// SystemFlags::HandleLayoutChildren (this is where a layout engine positions/sizes children)
 	virtual void handleLayoutChildren();
 
+	// Frame-stack overload (see handleMeasure(FrameInfo&)): runs the no-arg virtual, then delivers
+	// the child-layout event to the nearest ancestor system with SystemFlags::HandleChildLayoutChildren
+	void handleLayoutChildren(FrameInfo &);
+
 	// Node should be positioned within parent (parent's content size changed)
 	virtual void handleLayoutInParent(Node *);
 
-	// A direct child changed its content size; dispatched to systems with
-	// SystemFlags::HandleChildNodeEvents. Called from the child's
-	// setContentSize; systems can also call it to bubble a change upward
+	// Immediate direct-parent fallback for a child content-size change: called from the child's
+	// setContentSize/setEventFlags and dispatched to THIS (parent) node's own systems flagged
+	// SystemFlags::HandleChildNodeEvents. The primary channel is the frame stack - during a
+	// descendant's visit, handleContentSizeDirty(FrameInfo&) delivers the event to the nearest
+	// opted-in ancestor system (see handleContentSizeDirty(FrameInfo&) / SystemFlags::AddToFrameStack);
+	// this method stays as a mutation-time notification for changes made outside the visit loop
 	virtual void notifyChildContentSizeDirty(Node *child);
 
 	virtual void cleanup();

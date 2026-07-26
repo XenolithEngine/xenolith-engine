@@ -30,6 +30,10 @@ ComponentId FlexItemInfo::Id;
 ComponentId GridLayoutInfo::Id;
 ComponentId GridItemInfo::Id;
 
+// All LayoutSystems share one frame-stack tag, so a descendant's stack lookup resolves to the
+// nearest ancestor container (back() of the tag's stack)
+uint64_t LayoutSystem::SystemFrameTag = System::GetNextSystemId();
+
 namespace {
 
 // tolerance used when deciding whether the next item still fits on the line
@@ -312,12 +316,16 @@ bool LayoutSystem::init() {
 		return false;
 	}
 
+	_systemPriority = LayoutDefaultPriority;
+
 	// We lay out children in the layout-children phase, react to the container's own
-	// layout-info component updates, child resize events (fit-content invalidation) and
-	// answer the measurement protocol (fit-content of nested containers).
+	// layout-info component updates, descendant resize events (fit-content invalidation) and
+	// answer the measurement protocol (fit-content of nested containers). AddToFrameStack +
+	// the shared FrameTag publish us so descendants deliver their resize to the nearest container.
 	setSystemFlags(SystemFlags::HandleLayoutChildren | SystemFlags::HandleComponents
 			| SystemFlags::HandleSceneEvents | SystemFlags::HandleMeasure
-			| SystemFlags::HandleChildNodeEvents);
+			| SystemFlags::HandleChildNodeEvents | SystemFlags::AddToFrameStack);
+	setFrameTag(SystemFrameTag);
 	return true;
 }
 
@@ -538,13 +546,15 @@ void LayoutSystem::handleChildContentSizeDirty(Node *child) {
 	if (_inApply || !_owner) {
 		return;
 	}
-	// coalesced: any number of child changes per frame ends up as a single
-	// re-layout through the layout-children phase on the next visit; convergence
-	// is guaranteed by setContentSize's equal-size early-out
-	_owner->markLayoutChildrenDirty();
-	if (auto p = _owner->getParent()) {
-		// bubble upward so an enclosing fit-content container re-measures us
-		p->notifyChildContentSizeDirty(_owner);
+
+	if (child->getParent() == _owner) {
+		// coalesced: any number of child changes per frame ends up as a single
+		// re-layout through the layout-children phase on the next visit; convergence
+		// is guaranteed by setContentSize's equal-size early-out.
+		// No manual re-bubble: when this re-layout changes our own size, our container node delivers
+		// that content-size event to the next ancestor LayoutSystem via the frame stack during our
+		// own visit, so nested fit-content chains re-measure automatically
+		_owner->markLayoutChildrenDirty();
 	}
 }
 
