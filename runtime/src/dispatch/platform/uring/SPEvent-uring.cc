@@ -425,6 +425,26 @@ Status URingData::cancelFd(int fd, URingCancelFlags cancelFlags) {
 	}, URingPushFlags::Submit);
 }
 
+void URingData::dropStaleOp(uint64_t userdata) {
+	// Match by the exact user_data the kernel holds for this op (serial included). Both
+	// removal ops complete with URING_USERDATA_IGNORED so their CQEs are no-ops; the op's
+	// own terminal CQE (F_MORE cleared) is what releases the ring retain, in processEvent.
+	pushSqe({IORING_OP_ASYNC_CANCEL}, [&](io_uring_sqe *sqe, uint32_t) {
+		updateIoSqe(sqe, -1, userdata, 0, 0, URING_USERDATA_IGNORED);
+		sqe->cancel_flags = 0;
+	}, URingPushFlags::None);
+
+	// A multishot timeout is not reliably reaped by ASYNC_CANCEL; TIMEOUT_REMOVE goes
+	// straight to io_timeout_cancel. Harmless -ENOENT for non-timeout ops.
+	pushSqe({IORING_OP_TIMEOUT_REMOVE}, [&](io_uring_sqe *sqe, uint32_t) {
+		sqe->addr = userdata;
+		sqe->len = 0;
+		sqe->off = 0;
+		sqe->timeout_flags = 0;
+		sqe->user_data = URING_USERDATA_IGNORED;
+	}, URingPushFlags::Submit);
+}
+
 uint32_t URingData::pop() {
 	uint32_t count = 0;
 	if (_receivedEvents != _processedEvents) {
@@ -536,10 +556,18 @@ void URingData::processEvent(int32_t res, uint32_t flags, uint64_t userdata) {
 		if (h->isResumable()) {
 			if ((h->getTimeline() & URING_USERDATA_SERIAL_MASK)
 					!= (userFlags & URING_USERDATA_SERIAL_MASK)) {
-				// messages from previous submission
-
+				// A CQE from a previous submission: its serial no longer matches the
+				// handle's current timeline.
 				if (retainedByRing && (flags & IORING_CQE_F_MORE) == 0) {
+					// Terminal CQE of the old op — drop the ring retain, op is gone.
 					releaseRetainedHandle(h);
+				} else if (retainedByRing) {
+					// F_MORE still set: a retained multishot op outlived its generation and
+					// keeps firing. The disarm-time cancel never reached it (disarm targets
+					// the handle's *current* serial, not this op's). Tear it down here by its
+					// EXACT user_data, which the kernel definitely holds; its resulting
+					// terminal CQE then releases the retain via the branch above.
+					dropStaleOp(userdata);
 				}
 				return;
 			}
