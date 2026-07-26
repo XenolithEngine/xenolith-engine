@@ -57,6 +57,7 @@
 #include "platform/windows/SPEventPollIocp.cc"
 #include "platform/windows/SPEventProcessIocp.cc"
 #include "platform/windows/SPEventFileIocp.cc"
+#include "platform/windows/SPEventWatchIocp.cc"
 #endif
 
 #if SPRT_APPLE
@@ -78,6 +79,12 @@
 // SPEventFileFd.cc (Linux/Android only); the inline handle here serves every
 // other backend.
 #include "platform/fd/SPEventFile.cc"
+
+// Portable stat-polling file-watch (a repeating reactor timer diffing stat
+// snapshots) for backends without a native filesystem-notification primitive
+// (CFRunLoop, wasm). Linux/Android use inotify, Windows uses
+// ReadDirectoryChangesW, kqueue uses EVFILT_VNODE instead.
+#include "platform/fd/SPEventStatWatch.cc"
 
 #include "detail/SPRuntimeDispatchHandleClass.cc"
 #include "detail/SPRuntimeDispatchQueueData.cc"

@@ -93,7 +93,7 @@ bool PugLayout::init() {
 		} else if (name == "accent") {
 			return [this] {
 				if (auto greet = findByName(_tree, "greet")) {
-					simpleui::toggleStyleClass(greet, "accent");
+					greet->toggleStyleClass("accent");
 				}
 			};
 		}

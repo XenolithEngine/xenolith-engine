@@ -28,21 +28,6 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::simpleui {
 
-/* CSS identity of a scene-graph node: what selectors are matched against.
-
-Attach to any node that should be styleable (the pug builder fills it from
-the template's tag/#id/.class notation). Every mutation goes through the
-helpers below so the node's components-dirty flag is set and styles in the
-subtree re-resolve on the next frame. */
-struct SP_PUBLIC StyleIdentity {
-	static ComponentId Id;
-
-	String type; // element/tag name ("label", "layer", "flex", ...)
-	String id; // css #id
-	Vector<String> classes; // css .classes
-	String inlineCss; // raw `style="..."` declarations, applied last
-};
-
 /* Marker component on a stylesheet owner node.
 
 Serves two purposes: descendants discover stylesheet scopes with
@@ -55,15 +40,12 @@ struct SP_PUBLIC StyleSheetState {
 	uint32_t version = 0;
 };
 
-// identity mutation helpers (mark the node components-dirty)
-SP_PUBLIC void setStyleIdentity(NotNull<Node>, StringView type, StringView id = StringView(),
-		SpanView<StringView> classes = SpanView<StringView>());
-SP_PUBLIC void setInlineStyle(NotNull<Node>, StringView css);
-SP_PUBLIC bool addStyleClass(NotNull<Node>, StringView cl);
-SP_PUBLIC bool removeStyleClass(NotNull<Node>, StringView cl);
-
-// returns true if the class is set after the call
-SP_PUBLIC bool toggleStyleClass(NotNull<Node>, StringView cl);
+// Marker recording that THIS StyleApplier created the node's LayoutSystem. The
+// applier only removes layouts it added, so pug `flex` tags and programmatic
+// LayoutSystems (which carry no marker) are left untouched.
+struct StyleManagedLayout {
+	static ComponentId Id;
+};
 
 /* Attaches a StyleSheet to a node: the sheet applies to the owner and its subtree.
 
@@ -184,7 +166,7 @@ SP_PUBLIC ResolvedStyle resolveStyleForNode(NotNull<Node>);
 
 Add to any styleable node. Initial application happens on scene enter (the
 ancestor chain is complete there); re-application rides the ComponentsDirty
-cascade (the system opts the node into NodeEventFlags::HandleComponents).
+cascade (the system opts in via SystemFlags::HandleAncestorComponents).
 
 The optional callback runs before the default property application; returning
 true suppresses the defaults (widget-specific extension point).

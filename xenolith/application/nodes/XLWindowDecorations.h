@@ -42,7 +42,7 @@ public:
 
 	virtual void handleEnter(Scene *) override;
 	virtual void handleContentSizeDirty() override;
-	virtual void handleLayout(Node *) override;
+	virtual void handleLayoutInParent(Node *) override;
 
 protected:
 	virtual void updateWindowState(WindowState);

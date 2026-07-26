@@ -340,36 +340,26 @@ bool Registry::applyGenericAttribute(const BuilderContext &ctx, Node *node, Stri
 		return true;
 	} else if (name == "id" || name == "name") {
 		if (value.isString()) {
+			// NodeIdentity::name doubles as the css #id for the style systems
 			node->setName(value.getString());
-			if (name == "id") {
-				// css #id for the simpleui style system
-				node->setOrUpdateComponent<StyleIdentity>([&](NotNull<StyleIdentity> identity) {
-					identity->id = value.getString();
-					return true;
-				});
-			}
 			return true;
 		}
 	} else if (name == "tag") {
 		node->setTag(uint64_t(value.asInteger()));
 		return true;
 	} else if (name == "class") {
-		// css classes for the simpleui style system
+		// css classes for the style systems (NodeIdentity::classes)
 		if (value.isString()) {
-			node->setOrUpdateComponent<StyleIdentity>([&](NotNull<StyleIdentity> identity) {
-				identity->classes.clear();
-				StringView(value.getString())
-						.split<StringView::WhiteSpace>([&](StringView cl) {
-					identity->classes.emplace_back(cl.str<memory::StandartInterface>());
-				});
-				return true;
+			StringView(value.getString()).split<StringView::WhiteSpace>([&](StringView cl) {
+				node->addStyleClass(cl);
 			});
 			return true;
 		}
 	} else if (name == "style") {
-		// inline css declarations, applied after stylesheet matches
+		// inline css declarations lost their backend in the StyleIdentity ->
+		// NodeIdentity migration; report instead of dropping them silently
 		if (value.isString()) {
-			setInlineStyle(node, value.getString());
+			ctx.error("pug: inline `style` attribute is not supported yet");
 			return true;
 		}
 	} else if (name.starts_with("data-")) {

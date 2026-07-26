@@ -26,74 +26,9 @@
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::simpleui {
 
-ComponentId StyleIdentity::Id;
 ComponentId StyleSheetState::Id;
 
-// Marker recording that THIS StyleApplier created the node's LayoutSystem. The
-// applier only removes layouts it added, so pug `flex` tags and programmatic
-// LayoutSystems (which carry no marker) are left untouched.
-struct StyleManagedLayout {
-	static ComponentId Id;
-};
 ComponentId StyleManagedLayout::Id;
-
-void setStyleIdentity(NotNull<Node> node, StringView type, StringView id,
-		SpanView<StringView> classes) {
-	node->setOrUpdateComponent<StyleIdentity>([&](NotNull<StyleIdentity> identity) {
-		identity->type = type.str<memory::StandartInterface>();
-		identity->id = id.str<memory::StandartInterface>();
-		identity->classes.clear();
-		for (auto &cl : classes) {
-			identity->classes.emplace_back(cl.str<memory::StandartInterface>());
-		}
-		return true;
-	});
-}
-
-void setInlineStyle(NotNull<Node> node, StringView css) {
-	node->setOrUpdateComponent<StyleIdentity>([&](NotNull<StyleIdentity> identity) {
-		identity->inlineCss = css.str<memory::StandartInterface>();
-		return true;
-	});
-}
-
-bool addStyleClass(NotNull<Node> node, StringView cl) {
-	bool ret = false;
-	node->setOrUpdateComponent<StyleIdentity>([&](NotNull<StyleIdentity> identity) {
-		for (auto &it : identity->classes) {
-			if (cl == it) {
-				return false;
-			}
-		}
-		identity->classes.emplace_back(cl.str<memory::StandartInterface>());
-		ret = true;
-		return true;
-	});
-	return ret;
-}
-
-bool removeStyleClass(NotNull<Node> node, StringView cl) {
-	bool ret = false;
-	node->setOrUpdateComponent<StyleIdentity>([&](NotNull<StyleIdentity> identity) {
-		for (auto it = identity->classes.begin(); it != identity->classes.end(); ++it) {
-			if (cl == *it) {
-				identity->classes.erase(it);
-				ret = true;
-				return true;
-			}
-		}
-		return false;
-	});
-	return ret;
-}
-
-bool toggleStyleClass(NotNull<Node> node, StringView cl) {
-	if (removeStyleClass(node, cl)) {
-		return false;
-	}
-	addStyleClass(node, cl);
-	return true;
-}
 
 bool StyleSheetSystem::init() {
 	if (!System::init()) {
@@ -308,17 +243,12 @@ ResolvedStyle resolveStyleForNode(NotNull<Node> node) {
 
 	// match identity against every scope visible from `chainIndex`, outer sheets
 	// first so nearer sheets override
-	auto resolveLevel = [&](document::StyleList &target, const StyleIdentity *identity,
+	auto resolveLevel = [&](document::StyleList &target, const NodeIdentity *identity,
 								size_t chainIndex) {
 		for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) {
 			if (it->chainIndex >= chainIndex) {
 				it->system->getStyleSheet()->resolveForIdentity(target, identity->type,
-						identity->id, identity->classes, it->media);
-			}
-		}
-		if (!identity->inlineCss.empty()) {
-			if (auto inl = nearest.system->getStyleSheet()->getInlineStyle(identity->inlineCss)) {
-				target.merge(*inl, nearest.media);
+						identity->name, identity->classes, it->media);
 			}
 		}
 	};
@@ -329,7 +259,7 @@ ResolvedStyle resolveStyleForNode(NotNull<Node> node) {
 
 		// inheritable parameters cascade from the outermost styled ancestor down
 		for (size_t i = scopes.back().chainIndex; i >= 1; --i) {
-			if (auto identity = chain[i]->getComponent<StyleIdentity>()) {
+			if (auto identity = chain[i]->getComponent<NodeIdentity>()) {
 				document::StyleList tmp;
 				resolveLevel(tmp, identity, i);
 				style.merge(tmp, true);
@@ -337,7 +267,7 @@ ResolvedStyle resolveStyleForNode(NotNull<Node> node) {
 		}
 
 		// the node's own matches override inherited values
-		if (auto identity = node->getComponent<StyleIdentity>()) {
+		if (auto identity = node->getComponent<NodeIdentity>()) {
 			resolveLevel(style, identity, 0);
 		}
 
@@ -478,7 +408,7 @@ bool StyleApplier::init() {
 		return false;
 	}
 	setSystemFlags(SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents
-			| SystemFlags::HandleComponents);
+			| SystemFlags::HandleComponents | SystemFlags::HandleAncestorComponents);
 	return true;
 }
 
@@ -490,11 +420,7 @@ bool StyleApplier::init(ApplyCallback &&cb) {
 	return true;
 }
 
-void StyleApplier::handleAdded(Node *owner) {
-	System::handleAdded(owner);
-	// opt in to the ancestor ComponentsDirty cascade, preserving other flags
-	owner->setEventFlags(owner->getEventFlags() | NodeEventFlags::HandleComponents);
-}
+void StyleApplier::handleAdded(Node *owner) { System::handleAdded(owner); }
 
 void StyleApplier::handleEnter(Scene *scene) {
 	System::handleEnter(scene);
@@ -755,8 +681,7 @@ void StyleApplier::applyDefault(Node *node, const ResolvedStyle &s) {
 		node->setAnchorPoint(Vec2(0.0f, 1.0f));
 		node->setPosition(Vec2(x, y));
 	} else {
-		if (s.has(ParameterName::CssXlAnchorPointX)
-				|| s.has(ParameterName::CssXlAnchorPointY)) {
+		if (s.has(ParameterName::CssXlAnchorPointX) || s.has(ParameterName::CssXlAnchorPointY)) {
 			node->setAnchorPoint(s.anchorPoint);
 		}
 

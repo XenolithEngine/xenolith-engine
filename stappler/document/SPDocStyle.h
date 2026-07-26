@@ -251,6 +251,17 @@ enum class CaptionSide : EnumSize {
 	Bottom,
 };
 
+enum class InteractiveFlags : uint32_t {
+	None = 0,
+	Enabled = 1 << 0, // :enabled
+	Focus = 1 << 1, // :focus
+	Hover = 1 << 2, // :hover
+	Active = 1 << 3, // :active
+	Checked = 1 << 4, // :checked
+};
+
+SP_DEFINE_ENUM_AS_MASK(InteractiveFlags)
+
 enum class ParameterName : NameSize {
 	/* css-selectors */
 

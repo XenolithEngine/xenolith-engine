@@ -707,7 +707,7 @@ void LabelBase::setStyles(const StyleVec &vec) {
 }
 
 bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledStyles, float density,
-		uint8_t _adjustValue) {
+		uint8_t _adjustValue, font::Formatter::ContentRequest request) {
 	bool success = true;
 	uint16_t adjustValue = maxOf<uint16_t>();
 
@@ -724,6 +724,7 @@ bool LabelBase::updateFormatSpec(TextLayout *format, const StyleVec &compiledSty
 			return format->getLayout(f);
 		}, format->getData());
 		formatter.setWidth(static_cast<uint16_t>(roundf(_width * density)));
+		formatter.setRequest(request);
 		formatter.setTextAlignment(_alignment);
 		formatter.setTextDirection(_direction);
 		formatter.setBidiEnabled(_bidiEnabled);

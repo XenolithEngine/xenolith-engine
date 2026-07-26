@@ -24,6 +24,7 @@
 #include "SPEvent-kqueue.h"
 #include "SPEvent-runloop.h"
 #include "../fd/SPEventFile.h"
+#include "../fd/SPEventStatWatch.h"
 
 #include <signal.h>
 
@@ -76,12 +77,22 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return makeFileInlineHandle(d, &data->_runloopFileClass, sprt::move(state));
 			};
 
+			// No filesystem-notification primitive either (FSEvents is outside the
+			// freestanding CF surface), so file-watch uses the portable stat-polling
+			// watch driven by a repeating reactor timer.
+			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info,
+								 Ref *ref) -> Rc<WatchHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				return makeStatWatchHandle(d, &data->_runloopWatchClass, sprt::move(info), ref);
+			};
+
 			setupRunLoopHandleClass<RunLoopTimerHandle, RunLoopTimerSource>(&_info,
 					&_runloopTimerClass, true);
 			setupRunLoopHandleClass<RunLoopThreadHandle, RunLoopThreadSource>(&_info,
 					&_runloopThreadClass, true);
 			setupRunLoopProcessHandleClass(&_info, &_runloopProcessClass);
 			setupInlineFileHandleClass(&_info, &_runloopFileClass);
+			setupStatWatchClass(&_info, &_runloopWatchClass);
 
 			_platformQueue = runloop;
 			_engine = QueueEngine::RunLoop;
@@ -141,6 +152,17 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 				return makeFileInlineHandle(d, &data->_kqueueFileClass, sprt::move(state));
 			};
 
+			_watchFile = [](QueueData *d, void *ptr, WatchInfo &&info,
+								 Ref *ref) -> Rc<WatchHandle> {
+				auto data = reinterpret_cast<Queue::Data *>(d);
+				auto h = Rc<KQueueWatchHandle>::create(&data->_kqueueWatchClass, info.path,
+						info.mask, sprt::move(info.completion));
+				if (h && ref) {
+					h->setUserdata(ref);
+				}
+				return h;
+			};
+
 			setupKQueueHandleClass<KQueueTimerHandle, KQueueTimerSource>(&_info, &_kqueueTimerClass,
 					true);
 			setupKQueueHandleClass<KQueueThreadHandle, KQueueThreadSource>(&_info,
@@ -149,6 +171,8 @@ Queue::Data::Data(QueueRef *q, const QueueInfo &info) : QueueData(q, info.flags)
 					true);
 			setupKQueueHandleClass<ProcessKQueueHandle, ProcessKQueueSource>(&_info,
 					&_kqueueProcessClass, true);
+			setupKQueueHandleClass<KQueueWatchHandle, KQueueWatchSource>(&_info, &_kqueueWatchClass,
+					true);
 			setupInlineFileHandleClass(&_info, &_kqueueFileClass);
 
 			_platformQueue = queue;

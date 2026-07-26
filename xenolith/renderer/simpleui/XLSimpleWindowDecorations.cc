@@ -76,7 +76,7 @@ bool WindowDecorationsButton::init(WindowDecorationsButtonType type) {
 		return false;
 	}
 
-	setEventFlags(NodeEventFlags::HandleComponents);
+	setWantsAncestorComponents(true);
 
 	_type = type;
 
@@ -144,8 +144,8 @@ void WindowDecorationsButton::handleContentSizeDirty() {
 	}
 }
 
-void WindowDecorationsButton::handleComponentsDirty() {
-	Node::handleComponentsDirty();
+void WindowDecorationsButton::handleAncestorComponentsDirty() {
+	Node::handleAncestorComponentsDirty();
 
 	bool dirty = false;
 

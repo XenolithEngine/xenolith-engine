@@ -39,6 +39,17 @@ class ActionManager;
 class Director;
 class FrameContext;
 
+/* Internal and CSS identity of a scene-graph node: what selectors are matched against. */
+struct SP_PUBLIC NodeIdentity {
+	static ComponentId Id;
+
+	uint64_t tag = InvalidTag;
+	String type; // element/tag name ("label", "layer", "flex", ...)
+	String name; // css #id
+	HashSet<String, sprt::hash<void>> classes; // css .classes
+	Value value;
+};
+
 struct SP_PUBLIC ActionStorage : public Ref {
 	Vector<Rc<Action>> actionToStart;
 
@@ -117,6 +128,18 @@ public:
 	 */
 	virtual void setContentSize(const Size2 &contentSize);
 	virtual Size2 getContentSize() const { return _contentSize; }
+
+	// Force handleContentSizeDirty processing on the next visit without
+	// changing the size (e.g. a layout engine wants to re-run its pass)
+	void markContentSizeDirty() { _contentSizeDirty = true; }
+
+	// Opt into the measure phase: handleMeasure will run on the next visit to (re)fix the
+	// node's own size via the SystemFlags::HandleMeasure protocol
+	void markMeasureDirty() { _measureDirty = true; }
+
+	// Request the layout-children phase on the next visit (a layout engine re-runs its pass
+	// over the children, e.g. after a child's content size changed)
+	void markLayoutChildrenDirty() { _layoutChildrenDirty = true; }
 
 	virtual void setVisible(bool visible);
 	virtual bool isVisible() const { return _visible; }
@@ -219,7 +242,32 @@ public:
 		return nullptr;
 	}
 
+	// Add a system with an explicit dispatch priority (lower is dispatched earlier),
+	// overriding the system's own default priority
+	template <typename C>
+	auto addSystem(C *system, uint32_t priority) -> C * {
+		if (addSystemItem(system, priority)) {
+			return system;
+		}
+		return nullptr;
+	}
+
+	template <typename C>
+	auto addSystem(const Rc<C> &system, uint32_t priority) -> C * {
+		if (addSystemItem(system.get(), priority)) {
+			return system.get();
+		}
+		return nullptr;
+	}
+
+	// Adds the system using its own (default) priority for ordering
 	virtual bool addSystemItem(System *);
+	// Adds the system, assigning the given priority for ordering
+	virtual bool addSystemItem(System *, uint32_t priority);
+
+	// Re-sort an already-added system after its priority changed (called by
+	// System::setSystemPriority; not intended for direct use)
+	void updateSystemPriority(System *);
 	virtual bool removeSystem(System *);
 	virtual bool removeSystemByTag(uint64_t);
 	virtual bool removeAllSystemByTag(uint64_t);
@@ -231,8 +279,19 @@ public:
 	template <typename T>
 	T *getSystemByType(uint64_t tag) const;
 
+	SpanView<Rc<System>> getSystems() const { return _systems; }
+
 	virtual StringView getName() const;
 	virtual void setName(StringView str);
+
+	virtual StringView getType() const;
+	virtual void setType(StringView str);
+
+	virtual void addStyleClass(StringView cl);
+	virtual void removeStyleClass(StringView cl);
+	virtual void toggleStyleClass(StringView cl);
+	virtual bool hasStyleClass(StringView cl) const;
+	virtual const HashSet<String, sprt::hash<void>> *getStyleClasses() const;
 
 	virtual const Value &getDataValue() const;
 	virtual void setDataValue(Value &&val);
@@ -251,14 +310,36 @@ public:
 	// Node was removed from scene
 	virtual void handleExit();
 
+	// The node's own size is being fixed for this frame (phase 3, requires _measureDirty).
+	// Runs the SystemFlags::HandleMeasure protocol and commits the result via setContentSize.
+	// Must NOT change components. Opt-in: set via markMeasureDirty()
+	virtual void handleMeasure();
+
 	// New ContentSize applied for the node
 	// There you can setup Node's appearance and layout it's subnodes
-	// ContentSize processed after Transform, be sure not to modify it there
+	// ContentSize processed after Measure/Transform, size is fixed here
 	virtual void handleContentSizeDirty();
 
 	// Some of node's components was updated
 	// Components processed after ContentSize and Transform, be sure not to modify them here
 	virtual void handleComponentsDirty();
+
+	// Some of an ancestor's components was updated. Dispatched to systems that opted in
+	// via SystemFlags::HandleAncestorComponents; Node subclasses can override (calling base)
+	// to react to ancestor component changes. Only reaches nodes whose subtree contains a
+	// listener (see setWantsAncestorComponents / _ancestorComponentsListeners)
+	virtual void handleAncestorComponentsDirty();
+
+	// Register this node itself as an ancestor-components listener (for Node subclasses that
+	// override handleAncestorComponentsDirty instead of attaching a System). Feeds the same
+	// subtree counter that gates ancestor ComponentsDirty propagation
+	void setWantsAncestorComponents(bool);
+	bool getWantsAncestorComponents() const { return _wantsAncestorComponents; }
+
+	// Apply `delta` to this node's ancestor-components listener counter and to all ancestors.
+	// Called by owned Systems (when their HandleAncestorComponents/enabled state changes) and
+	// by child attach/detach; not intended for direct use
+	void adjustAncestorComponentsListeners(int32_t delta);
 
 	// New Transform applied for the node
 	// Node was repositioned or scaled within it's parent
@@ -273,8 +354,18 @@ public:
 	// Called after all other processing
 	virtual void handleReorderChildDirty();
 
-	// Node should be positioned within parent
-	virtual void handleLayout(Node *);
+	// Lay out this node's children (phase 6, requires _layoutChildrenDirty). Runs after child
+	// reorder with this node's own size and child order fixed; dispatched to systems with
+	// SystemFlags::HandleLayoutChildren (this is where a layout engine positions/sizes children)
+	virtual void handleLayoutChildren();
+
+	// Node should be positioned within parent (parent's content size changed)
+	virtual void handleLayoutInParent(Node *);
+
+	// A direct child changed its content size; dispatched to systems with
+	// SystemFlags::HandleChildNodeEvents. Called from the child's
+	// setContentSize; systems can also call it to bubble a change upward
+	virtual void notifyChildContentSizeDirty(Node *child);
 
 	virtual void cleanup();
 
@@ -320,10 +411,6 @@ public:
 
 	virtual void draw(FrameInfo &, NodeVisitFlags flags);
 
-	// visit on unsorted nodes, commit most of geometry changes
-	// on this step, we process child-to-parent changes (like nodes, based on label's size)
-	virtual bool visitGeometry(FrameInfo &, NodeVisitFlags parentFlags);
-
 	// visit on sorted nodes, push draw commands
 	// on this step, we also process parent-to-child geometry changes
 	virtual bool visitDraw(FrameInfo &, NodeVisitFlags parentFlags);
@@ -346,6 +433,13 @@ public:
 	virtual void setTransformDirtyCallback(Function<void(const Mat4 &)> &&);
 	virtual void setReorderChildDirtyCallback(Function<void()> &&);
 	virtual void setLayoutCallback(Function<void(Node *)> &&);
+
+	// content measurement protocol (see System::handleMeasure): return true and
+	// fill the Size2 to answer, return false to fall through to other systems
+	virtual void setMeasureCallback(Function<bool(const MeasureConstraints &, Size2 &)> &&);
+
+	// a layout engine committed the size to this node (see System::handleLayoutApplied)
+	virtual void setLayoutAppliedCallback(Function<void(const Size2 &)> &&);
 
 	float getInputDensity() const { return _inputDensity; }
 
@@ -422,10 +516,21 @@ protected:
 	bool _contentSizeDirty = true;
 	bool _reorderChildDirty = true;
 	bool _transformDirty = true;
+	bool _measureDirty = false; // opt-in measure phase (see markMeasureDirty)
+	bool _layoutChildrenDirty = true; // run handleLayoutChildren on next visit
 	mutable bool _transformCacheDirty = true; // dynamic value
 	mutable bool _transformInverseDirty = true; // dynamic value
 
 	NodeEventFlags _eventFlags = NodeEventFlags::None;
+
+	// This node's own opt-in as an ancestor-components listener (see setWantsAncestorComponents)
+	bool _wantsAncestorComponents = false;
+
+	// Number of active ancestor-components listeners in this node's subtree (self + all
+	// descendants): enabled Systems with SystemFlags::HandleAncestorComponents plus nodes
+	// with _wantsAncestorComponents. When > 0, ancestor ComponentsDirty is propagated into
+	// this subtree during visit; when 0, the subtree is pruned
+	uint32_t _ancestorComponentsListeners = 0;
 
 	ZOrder _zOrder = ZOrder(0);
 

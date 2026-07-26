@@ -298,9 +298,9 @@ bool LayoutSystem::init() {
 		return false;
 	}
 
-	// We need node geometry events (own content size, child reordering) and
-	// component change events (the container's own layout info updates).
-	setSystemFlags(SystemFlags::HandleNodeEvents | SystemFlags::HandleComponents
+	// We lay out children in the layout-children phase and react to the container's
+	// own layout-info component updates.
+	setSystemFlags(SystemFlags::HandleLayoutChildren | SystemFlags::HandleComponents
 			| SystemFlags::HandleSceneEvents);
 	return true;
 }
@@ -340,19 +340,14 @@ void LayoutSystem::handleAdded(Node *owner) {
 	}
 }
 
-void LayoutSystem::handleContentSizeDirty() {
-	System::handleContentSizeDirty();
+void LayoutSystem::handleLayoutChildren() {
+	System::handleLayoutChildren();
 	apply();
 }
 
 void LayoutSystem::handleComponentsDirty() {
 	System::handleComponentsDirty();
-	apply();
-}
-
-void LayoutSystem::handleReorderChildDirty() {
-	System::handleReorderChildDirty();
-	apply();
+	_owner->markLayoutChildrenDirty(); // container params changed -> re-lay-out children
 }
 
 void LayoutSystem::setMode(LayoutMode mode) {

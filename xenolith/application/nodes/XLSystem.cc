@@ -36,8 +36,22 @@ System::System() : _owner(nullptr), _enabled(true) { }
 
 bool System::init() { return true; }
 
-void System::handleAdded(Node *owner) { _owner = owner; }
+void System::handleAdded(Node *owner) {
+	_owner = owner;
+	reconcileAncestorComponents();
+}
 void System::handleRemoved() { _owner = nullptr; }
+
+void System::reconcileAncestorComponents() {
+	if (!_owner) {
+		return;
+	}
+	bool should = _enabled && hasFlag(_systemFlags, SystemFlags::HandleAncestorComponents);
+	if (should != _ancestorComponentsCounted) {
+		_ancestorComponentsCounted = should;
+		_owner->adjustAncestorComponentsListeners(should ? 1 : -1);
+	}
+}
 
 void System::handleEnter(Scene *sc) {
 	_running = true;
@@ -70,15 +84,36 @@ void System::handleContentSizeDirty() { }
 void System::handleComponentsDirty() { }
 void System::handleTransformDirty(const Mat4 &) { }
 void System::handleReorderChildDirty() { }
-void System::handleLayout(Node *parent) { }
+void System::handleLayoutInParent(Node *parent) { }
+
+bool System::handleMeasure(const MeasureConstraints &, Size2 &) { return false; }
+void System::handleLayoutApplied(const Size2 &) { }
+void System::handleChildContentSizeDirty(Node *child) { }
+void System::handleLayoutChildren() { }
 
 bool System::isRunning() const { return _running; }
 
 bool System::isEnabled() const { return _enabled; }
 
-void System::setEnabled(bool b) { _enabled = b; }
+void System::setEnabled(bool b) {
+	_enabled = b;
+	reconcileAncestorComponents();
+}
 
-void System::setSystemFlags(SystemFlags flags) { _systemFlags = flags; }
+void System::setSystemFlags(SystemFlags flags) {
+	_systemFlags = flags;
+	reconcileAncestorComponents();
+}
+
+void System::setSystemPriority(uint32_t priority) {
+	if (priority == _systemPriority) {
+		return;
+	}
+	_systemPriority = priority;
+	if (_owner) {
+		_owner->updateSystemPriority(this);
+	}
+}
 
 bool System::isScheduled() const { return _scheduled; }
 
@@ -217,11 +252,34 @@ void CallbackSystem::handleReorderChildDirty() {
 	}
 }
 
-void CallbackSystem::handleLayout(Node *parent) {
-	System::handleLayout(parent);
+void CallbackSystem::handleLayoutInParent(Node *parent) {
+	System::handleLayoutInParent(parent);
 
 	if (_handleLayout) {
 		_handleLayout(this, parent);
+	}
+}
+
+bool CallbackSystem::handleMeasure(const MeasureConstraints &c, Size2 &result) {
+	if (_handleMeasure) {
+		return _handleMeasure(this, c, result);
+	}
+	return System::handleMeasure(c, result);
+}
+
+void CallbackSystem::handleLayoutApplied(const Size2 &size) {
+	System::handleLayoutApplied(size);
+
+	if (_handleLayoutApplied) {
+		_handleLayoutApplied(this, size);
+	}
+}
+
+void CallbackSystem::handleLayoutChildren() {
+	System::handleLayoutChildren();
+
+	if (_handleLayoutChildren) {
+		_handleLayoutChildren(this);
 	}
 }
 
@@ -306,6 +364,23 @@ void CallbackSystem::setLayoutCallback(Function<void(CallbackSystem *, Node *)> 
 	updateFlags();
 }
 
+void CallbackSystem::setLayoutChildrenCallback(Function<void(CallbackSystem *)> &&cb) {
+	_handleLayoutChildren = sp::move(cb);
+	updateFlags();
+}
+
+void CallbackSystem::setMeasureCallback(
+		Function<bool(CallbackSystem *, const MeasureConstraints &, Size2 &)> &&cb) {
+	_handleMeasure = sp::move(cb);
+	updateFlags();
+}
+
+void CallbackSystem::setLayoutAppliedCallback(
+		Function<void(CallbackSystem *, const Size2 &)> &&cb) {
+	_handleLayoutApplied = sp::move(cb);
+	updateFlags();
+}
+
 void CallbackSystem::updateFlags() {
 	if (_handleAdded || _handleRemoved) {
 		_systemFlags |= SystemFlags::HandleOwnerEvents;
@@ -342,6 +417,18 @@ void CallbackSystem::updateFlags() {
 		_systemFlags |= SystemFlags::HandleComponents;
 	} else {
 		_systemFlags &= ~SystemFlags::HandleComponents;
+	}
+
+	if (_handleMeasure || _handleLayoutApplied) {
+		_systemFlags |= SystemFlags::HandleMeasure;
+	} else {
+		_systemFlags &= ~SystemFlags::HandleMeasure;
+	}
+
+	if (_handleLayoutChildren) {
+		_systemFlags |= SystemFlags::HandleLayoutChildren;
+	} else {
+		_systemFlags &= ~SystemFlags::HandleLayoutChildren;
 	}
 
 	if (_handleUpdate) {
