@@ -38,12 +38,20 @@ struct mem_sso_test {
 // ill-formed, so value-initialise (construct) the elements instead, keeping them live
 // so c_str()/data() sees a null terminator in the vacated tail slot.
 template <typename Type>
-constexpr inline void __zero_raw_tail(Type *p, size_t n) {
+constexpr inline void __zero_raw_tail(Type *p, size_t n)
+		requires requires(Type *t) { sprt::construct_at(t); }
+{
 	if (sprt::is_constant_evaluated()) {
 		for (size_t i = 0; i < n; ++i) { sprt::construct_at(p + i); }
 	} else {
 		__builtin_memset((void *)p, 0, n * sizeof(Type));
 	}
+}
+template <typename Type>
+inline void __zero_raw_tail(Type *p, size_t n)
+		requires (!requires(Type *t) { sprt::construct_at(t); })
+{
+	__builtin_memset((void *)p, 0, n * sizeof(Type));
 }
 
 template <typename Type, size_t Extra, typename Allocator, bool UseSoo = mem_sso_test<Type>::value>
@@ -72,11 +80,13 @@ public:
 		sprt_passert(_allocator, "Allocator should be defined");
 	}
 
-	constexpr linear_memory(pointer p, size_type s, const allocator &alloc) noexcept : linear_memory(alloc) {
+	constexpr linear_memory(pointer p, size_type s, const allocator &alloc) noexcept
+	: linear_memory(alloc) {
 		assign(p, s);
 	}
 
-	constexpr linear_memory(const_pointer p, size_type s, const allocator &alloc = allocator()) noexcept
+	constexpr linear_memory(const_pointer p, size_type s,
+			const allocator &alloc = allocator()) noexcept
 	: linear_memory(alloc) {
 		assign(p, s);
 	}
@@ -251,7 +261,9 @@ public:
 		modify_size(s);
 	}
 
-	constexpr void insert(size_type pos, const self &other) { insert(pos, other.data(), other.size()); }
+	constexpr void insert(size_type pos, const self &other) {
+		insert(pos, other.data(), other.size());
+	}
 
 	constexpr void insert(size_type spos, const self &other, size_type pos, size_type len) {
 		insert(spos, other.data() + pos, min(other.size() - pos, len));
@@ -356,7 +368,8 @@ public:
 	constexpr void replace(size_type pos, size_type len, const self &other) {
 		replace(pos, len, other.data(), other.size());
 	}
-	constexpr void replace(size_type pos, size_type len, const self &other, size_type npos, size_type nlen) {
+	constexpr void replace(size_type pos, size_type len, const self &other, size_type npos,
+			size_type nlen) {
 		replace(pos, len, other.data() + npos, min(other.size() - npos, nlen));
 	}
 
@@ -378,7 +391,8 @@ public:
 	}
 
 	template < typename InputIt >
-	constexpr iterator replace(const_iterator first, const_iterator last, InputIt first2, InputIt last2) {
+	constexpr iterator replace(const_iterator first, const_iterator last, InputIt first2,
+			InputIt last2) {
 		auto pos = size_t(first - data());
 		auto len = size_t(last - first);
 		auto nlen = sprt::distance(first2, last2);
@@ -456,11 +470,19 @@ public:
 	constexpr reverse_iterator rbegin() noexcept { return reverse_iterator(end()); }
 	constexpr reverse_iterator rend() noexcept { return reverse_iterator(begin()); }
 
-	constexpr const_reverse_iterator rbegin() const noexcept { return const_reverse_iterator(end()); }
-	constexpr const_reverse_iterator rend() const noexcept { return const_reverse_iterator(begin()); }
+	constexpr const_reverse_iterator rbegin() const noexcept {
+		return const_reverse_iterator(end());
+	}
+	constexpr const_reverse_iterator rend() const noexcept {
+		return const_reverse_iterator(begin());
+	}
 
-	constexpr const_reverse_iterator crbegin() const noexcept { return const_reverse_iterator(cend()); }
-	constexpr const_reverse_iterator crend() const noexcept { return const_reverse_iterator(cbegin()); }
+	constexpr const_reverse_iterator crbegin() const noexcept {
+		return const_reverse_iterator(cend());
+	}
+	constexpr const_reverse_iterator crend() const noexcept {
+		return const_reverse_iterator(cbegin());
+	}
 
 	constexpr void shrink_to_fit() noexcept {
 		if (size() == 0) {
