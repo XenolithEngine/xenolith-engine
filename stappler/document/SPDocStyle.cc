@@ -269,6 +269,26 @@ void StyleParameter::set<ParameterName::CssOutlineWidth, Metric>(const Metric &v
 	value.sizeValue = v;
 }
 template <>
+void StyleParameter::set<ParameterName::CssBorderRadius, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderTopLeftRadius, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderTopRightRadius, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderBottomRightRadius, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssBorderBottomLeftRadius, Metric>(const Metric &v) {
+	value.sizeValue = v;
+}
+template <>
 void StyleParameter::set<ParameterName::CssOutlineColor, Color4B>(const Color4B &v) {
 	value.color4 = v;
 }
@@ -351,6 +371,10 @@ void StyleParameter::set<ParameterName::CssFlexWrap, FlexWrap>(const FlexWrap &v
 }
 template <>
 void StyleParameter::set<ParameterName::CssOrder, int32_t>(const int32_t &v) {
+	value.intValue = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssXlZOrder, int32_t>(const int32_t &v) {
 	value.intValue = v;
 }
 template <>
@@ -453,6 +477,10 @@ void StyleParameter::set<ParameterName::CssMediaHover, Hover>(const Hover &v) {
 template <>
 void StyleParameter::set<ParameterName::CssMediaPointer, Pointer>(const Pointer &v) {
 	value.pointer = v;
+}
+template <>
+void StyleParameter::set<ParameterName::CssMediaPlatform, Platform>(const Platform &v) {
+	value.platform = v;
 }
 template <>
 void StyleParameter::set<ParameterName::CssMediaLightLevel, LightLevel>(const LightLevel &v) {
@@ -1136,6 +1164,7 @@ void writeStyle(memory::PoolInterface::StringStreamType &stream, const Metric &s
 	case Metric::Units::Vh: stream << "vh"; break;
 	case Metric::Units::VMin: stream << "vmin"; break;
 	case Metric::Units::VMax: stream << "vmax"; break;
+	case Metric::Units::FitContent: stream << "fit-content"; break;
 	}
 }
 
@@ -1194,7 +1223,11 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 		case ParameterName::__BeginCssParameters:
 		case ParameterName::__EndCssParameters:
 		case ParameterName::__BeginCssMediaParameters:
-		case ParameterName::__EndCssMediaParameters: break;
+		case ParameterName::__EndCssMediaParameters:
+		case ParameterName::__BeginCmds:
+		case ParameterName::CmdReset:
+		case ParameterName::__EndCmds:
+		case ParameterName::Max: break;
 		case ParameterName::Unknown: stream << "unknown"; break;
 		case ParameterName::CssFontStyle:
 			stream << "font-style: ";
@@ -1627,9 +1660,7 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			}
 			break; // enum
 		case ParameterName::CssOrphans: stream << "orphans: " << it.value.uintValue; break; // enum
-		case ParameterName::CssWidows:
-			stream << "widows: " << it.value.uintValue;
-			break; // enum
+		case ParameterName::CssWidows: stream << "widows: " << it.value.uintValue; break; // enum
 
 		case ParameterName::CssPosition:
 			stream << "position: ";
@@ -1671,6 +1702,9 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			stream << "-xl-position-y: ";
 			writeStyle(stream, it.value.sizeValue);
 			break; // size
+		case ParameterName::CssXlZOrder:
+			stream << "-xl-z-order: " << it.value.intValue;
+			break; // int
 
 		case ParameterName::CssFlexDirection:
 			stream << "flex-direction: ";
@@ -1689,9 +1723,7 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			case FlexWrap::WrapReverse: stream << "wrap-reverse"; break;
 			}
 			break; // enum
-		case ParameterName::CssOrder:
-			stream << "order: " << it.value.intValue;
-			break; // int
+		case ParameterName::CssOrder: stream << "order: " << it.value.intValue; break; // int
 		case ParameterName::CssFlexGrow:
 			stream << "flex-grow: " << it.value.floatValue;
 			break; // float
@@ -1774,6 +1806,27 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			writeStyle(stream, it.value.stringId, iface);
 			break; // string id
 
+		case ParameterName::CssBorderRadius:
+			stream << "border-radius: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssBorderTopLeftRadius:
+			stream << "border-top-left-radius: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssBorderTopRightRadius:
+			stream << "border-top-right-radius: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssBorderBottomRightRadius:
+			stream << "border-bottom-right-radius: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+		case ParameterName::CssBorderBottomLeftRadius:
+			stream << "border-bottom-left-radius: ";
+			writeStyle(stream, it.value.sizeValue);
+			break; // size
+
 		/* media - specific */
 		case ParameterName::CssMediaType:
 			stream << "media-type: ";
@@ -1797,6 +1850,18 @@ auto StyleList::css(const StyleInterface *iface) const -> String {
 			case Pointer::None: stream << "none"; break;
 			case Pointer::Fine: stream << "fine"; break;
 			case Pointer::Coarse: stream << "coarse"; break;
+			};
+			break; // enum
+		case ParameterName::CssMediaPlatform:
+			stream << "platform: ";
+			switch (it.value.platform) {
+			case Platform::Unknown: stream << "unknown"; break;
+			case Platform::MacOS: stream << "macos"; break;
+			case Platform::Ios: stream << "ios"; break;
+			case Platform::Windows: stream << "windows"; break;
+			case Platform::Android: stream << "android"; break;
+			case Platform::Linux: stream << "linux"; break;
+			case Platform::Web: stream << "web"; break;
 			};
 			break; // enum
 		case ParameterName::CssMediaHover:
@@ -1939,6 +2004,9 @@ bool MediaParameters::resolveQuery(const MediaQuery &q) const {
 				break;
 			case ParameterName::CssMediaPointer:
 				paramSuccess = param.value.pointer == pointer;
+				break;
+			case ParameterName::CssMediaPlatform:
+				paramSuccess = param.value.platform == platform;
 				break;
 			case ParameterName::CssMediaHover: paramSuccess = param.value.hover == hover; break;
 			case ParameterName::CssMediaLightLevel:
@@ -2143,10 +2211,8 @@ bool StyleList::isInheritable(ParameterName name) {
 			|| name == ParameterName::CssPageBreakInside || name == ParameterName::CssPosition
 			|| name == ParameterName::CssTop || name == ParameterName::CssRight
 			|| name == ParameterName::CssBottom || name == ParameterName::CssLeft
-			|| name == ParameterName::CssXlAnchorPointX
-			|| name == ParameterName::CssXlAnchorPointY
-			|| name == ParameterName::CssXlPositionX
-			|| name == ParameterName::CssXlPositionY
+			|| name == ParameterName::CssXlAnchorPointX || name == ParameterName::CssXlAnchorPointY
+			|| name == ParameterName::CssXlPositionX || name == ParameterName::CssXlPositionY
 			|| name == ParameterName::CssFlexDirection || name == ParameterName::CssFlexWrap
 			|| name == ParameterName::CssOrder || name == ParameterName::CssFlexGrow
 			|| name == ParameterName::CssFlexShrink || name == ParameterName::CssFlexBasis
@@ -2158,12 +2224,9 @@ bool StyleList::isInheritable(ParameterName name) {
 			|| name == ParameterName::CssGridTemplateColumns
 			|| name == ParameterName::CssGridTemplateRows
 			|| name == ParameterName::CssGridTemplateAreas
-			|| name == ParameterName::CssGridAutoColumns
-			|| name == ParameterName::CssGridAutoRows
-			|| name == ParameterName::CssGridColumnStart
-			|| name == ParameterName::CssGridColumnEnd
-			|| name == ParameterName::CssGridRowStart
-			|| name == ParameterName::CssGridRowEnd) {
+			|| name == ParameterName::CssGridAutoColumns || name == ParameterName::CssGridAutoRows
+			|| name == ParameterName::CssGridColumnStart || name == ParameterName::CssGridColumnEnd
+			|| name == ParameterName::CssGridRowStart || name == ParameterName::CssGridRowEnd) {
 		return false;
 	}
 	return true;

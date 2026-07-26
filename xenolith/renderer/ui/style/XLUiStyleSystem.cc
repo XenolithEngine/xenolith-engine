@@ -39,6 +39,7 @@ bool StyleSystem::init() {
 		return false;
 	}
 
+	_systemPriority = StyleDefaultPriority;
 	_systemId = s_styleSystemId.fetch_add(1);
 
 	setSystemFlags(SystemFlags::HandleOwnerEvents | SystemFlags::HandleSceneEvents);

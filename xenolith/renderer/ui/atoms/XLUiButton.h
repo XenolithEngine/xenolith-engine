@@ -25,8 +25,21 @@
 
 #include "XLUiInteractiveComponent.h"
 #include "XL2dIconSprite.h"
+#include "XLUiStyleResolver.h"
 
 namespace STAPPLER_VERSIONIZED stappler::xenolith::ui {
+
+struct ButtonStyleComponent {
+	static ComponentId Id;
+
+	Color4B backgroundColor = Color4B::WHITE;
+	Color4B outlineColor = Color4B::BLACK;
+	float outlineWidth = 0.0f;
+	float borderRadiusTopLeft = 0.0f;
+	float borderRadiusTopRight = 0.0f;
+	float borderRadiusBottomRight = 0.0f;
+	float borderRadiusBottomLeft = 0.0f;
+};
 
 class Button : public basic2d::VectorSprite {
 public:
@@ -42,19 +55,13 @@ public:
 	virtual void setIcon(IconName);
 	virtual IconName getIcon() const;
 
-	//virtual void setBackgroundColor(const Color4B &);
-	virtual Color4B getBackgroundColor() const { return _backgroundColor; }
-
-	//virtual void setOutlineColor(const Color4B &);
-	virtual Color4B getOutlineColor() const { return _outlineColor; }
-
-	//virtual void setOutlineWidth(float);
-	virtual float getOutlineWidth() const { return _outlineWidth; }
+	virtual bool setStyleValue(const ResolvedStyle &, document::ParameterName,
+			const document::StyleValue &);
 
 protected:
-	Color4B _backgroundColor;
-	Color4B _outlineColor;
-	float _outlineWidth = 0.0f;
+	// (re)build the VectorImage: a (optionally rounded) rect filled with _backgroundColor, plus an
+	// outline stroke of _outlineColor/_outlineWidth when the width is > 0
+	virtual void updateBackgroundImage();
 
 	Function<void()> _callback;
 

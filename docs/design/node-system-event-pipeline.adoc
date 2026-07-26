@@ -53,8 +53,8 @@ For each node, per visit (`Node::processParentFlags` then `Node::wrapVisit`):
 | # | Phase | Driven by
 
 | 1 | **Components** | `_componentsDirty` / parent `ComponentsDirty`
-| 2 | **Transform** | `_transformDirty` / parent `TransformDirty`
-| 3 | **Measure** | `_measureDirty`
+| 2 | **Measure** | `_measureDirty`
+| 3 | **Transform** | `_transformDirty` / parent `TransformDirty`
 | 4 | **ContentSize** + **LayoutInParent** | `_contentSizeDirty` / parent `ContentSizeDirty`
 | 5 | **Reorder** | `_reorderChildDirty` / parent `ReorderChildDirty`
 | 6 | **LayoutChildren** | `_layoutChildrenDirty`
@@ -82,14 +82,7 @@ own components**. Because a handler may legitimately react to a component change
 by producing another one, the loop repeats `handleComponentsDirty` until the node
 stops re-dirtying itself, bounded at **12 iterations** as a runaway guard.
 
-### 2. Transform
-
-`handleTransformDirty` + `handleGlobalTransformDirty` — the node's *position*
-within its parent is fixed here. These are notifications only: the world matrix
-that children actually use is (re)built after the size is final (see
-_Model matrix_ below), because it depends on the content size.
-
-### 3. Measure
+### 2. Measure
 
 The node's *size* is fixed here, via `Node::handleMeasure`. This phase is
 **opt-in** — `_measureDirty` defaults `false`; enable it with `markMeasureDirty()`
@@ -99,6 +92,18 @@ components**. It reuses the existing content-measurement protocol
 the answer with `setContentSize`. If no measuring system answers and the node
 carries a `MeasureComponent`, the precomputed size stored there is used as a
 fallback (see _Measure fallback_).
+
+Measure runs **before** Transform so a measure-induced `setContentSize` (which
+re-dirties `_transformDirty`) is already reflected when the transform phase and
+the model-matrix rebuild run this same visit.
+
+### 3. Transform
+
+`handleTransformDirty` + `handleGlobalTransformDirty` — the node's *position*
+within its parent is fixed here (its size is already final from phase 2). These
+are notifications only: the world matrix that children actually use is (re)built
+after the size is final (see _Model matrix_ below), because it depends on the
+content size.
 
 ### 4. ContentSize + LayoutInParent
 
@@ -138,12 +143,18 @@ bit ([XLSystem.h](../../xenolith/application/nodes/XLSystem.h)):
 | `HandleVisitSelf`          | `handleVisitSelf`
 | `HandleVisitControl`       | `handleVisitBegin` / `handleVisitNodesBelow` / `handleVisitNodesAbove` / `handleVisitEnd`
 | `HandleComponents`         | `handleComponentsDirty` (owner's own components)
-| `AddToFrameStack`          | push onto `FrameInfo::systemStack` for descendants
+| `AddToFrameStack`          | push onto `FrameInfo::systemStack` for descendants (lookup *and* up-delivery of child events)
 | `HandleMeasure`            | `handleMeasure` / `handleLayoutApplied`
-| `HandleChildNodeEvents`    | `handleChildContentSizeDirty`
+| `HandleChildNodeEvents`    | `handleChildContentSizeDirty` (descendant resize, via frame stack)
 | `HandleAncestorComponents` | `handleComponentsDirty` when an *ancestor's* components change
 | `HandleLayoutChildren`     | `handleLayoutChildren`
+| `HandleChildMeasure`       | `handleChildMeasure` (descendant measure, via frame stack)
+| `HandleChildLayoutChildren`| `handleChildLayoutChildren` (descendant layout-children, via frame stack)
 |===
+
+The three `HandleChild*` flags are delivered through the **frame stack**: the
+receiving system must also carry `AddToFrameStack` + a valid `FrameTag`. See
+_Child events: frame-stack delivery_ below.
 
 `CallbackSystem` derives its flags automatically from which `set*Callback`
 setters were used (`updateFlags`), so lambda-driven nodes need no manual flags.
@@ -162,11 +173,71 @@ setters were used (`updateFlags`), so lambda-driven nodes need no manual flags.
 | LayoutInParent       | `handleLayoutInParent`          | `handleLayoutInParent` (`HandleNodeEvents`)
 | Reorder              | `handleReorderChildDirty`       | `handleReorderChildDirty` (`HandleNodeEvents`)
 | LayoutChildren       | `handleLayoutChildren`          | `handleLayoutChildren` (`HandleLayoutChildren`)
-| Child resized        | `notifyChildContentSizeDirty`   | `handleChildContentSizeDirty` (`HandleChildNodeEvents`)
+| Descendant resized   | `handleContentSizeDirty(FrameInfo&)` (+ `notifyChildContentSizeDirty` fallback) | `handleChildContentSizeDirty` (`HandleChildNodeEvents`)
+| Descendant measured  | `handleMeasure(FrameInfo&)`     | `handleChildMeasure` (`HandleChildMeasure`)
+| Descendant laid out  | `handleLayoutChildren(FrameInfo&)` | `handleChildLayoutChildren` (`HandleChildLayoutChildren`)
 |===
 
 `handleGlobalTransformDirty` is Node-only (recomputes input density); it is not
 dispatched to systems.
+
+## Child events: frame-stack delivery
+
+A container system (e.g. a fit-content layout engine) needs to react when a node
+*inside its subtree* changes size, re-measures, or re-lays-out its own children.
+Rather than bubbling such an event up one parent at a time, the container
+**publishes itself on the frame stack** and each descendant delivers its own
+events straight to the nearest opted-in ancestor.
+
+How it is wired:
+
+* The container system sets `AddToFrameStack` + a `FrameTag` (systems that share
+  a behaviour share one tag). During the owner's `wrapVisit` — *after* the owner
+  ran its own phases — the system is pushed onto `FrameInfo::systemStack` under
+  that tag, and popped once the owner's children have been visited. So while a
+  descendant runs its phases, the stack holds its **ancestors only, never
+  itself** — exactly the bubble-up direction.
+* `Node` has three non-virtual frame-stack overloads called from the phase
+  drivers: `handleMeasure(FrameInfo&)`, `handleContentSizeDirty(FrameInfo&)`,
+  `handleLayoutChildren(FrameInfo&)`. Each runs the normal no-arg virtual, then
+  walks `systemStack`, takes `back()` per tag (the nearest ancestor) and, if that
+  system is enabled and carries the matching flag, delivers:
+
+[cols="2,2"]
+|===
+| Descendant phase | System hook (flag)
+
+| Measure        | `handleChildMeasure` (`HandleChildMeasure`)
+| ContentSize    | `handleChildContentSizeDirty` (`HandleChildNodeEvents`)
+| LayoutChildren | `handleChildLayoutChildren` (`HandleChildLayoutChildren`)
+|===
+
+Because the nearest ancestor shadows farther ones per tag, a change deep in the
+tree reaches the innermost enclosing container directly; when *that* container
+re-lays-out and its own size changes, its own visit delivers the event to the
+next container up — so multi-level fit-content chains converge without any manual
+re-bubble.
+
+`CallbackSystem` exposes all three as `setChildContentSizeDirtyCallback` /
+`setChildMeasureCallback` / `setChildLayoutChildrenCallback` (each still needs a
+`FrameTag` + `AddToFrameStack` to actually receive, since the tag is app-supplied).
+
+### `notifyChildContentSizeDirty`: the immediate fallback
+
+`Node::setContentSize` / `setEventFlags` still call
+`_parent->notifyChildContentSizeDirty(this)`, which dispatches to the **direct
+parent's own** systems flagged `HandleChildNodeEvents` at mutation time. This is
+kept as an immediate fallback for content-size changes made *outside* the visit
+loop (the frame-stack path only fires while the changed node is being visited).
+The two channels are idempotent — both just schedule a coalesced re-layout — so a
+migrated container may receive both; convergence is unaffected.
+
+One consequence of the stack path: a container's `apply()` commits child sizes in
+its own LayoutChildren phase, but the resulting child event now fires during the
+*child's* later visit (not inside `apply()`), so the container's `_inApply`
+re-entrancy guard no longer suppresses it. A real size change therefore costs one
+extra settle frame before it converges (guaranteed to terminate by
+`setContentSize`'s equal-size early-out). Steady state is unchanged.
 
 ## System dispatch order (priority)
 
@@ -256,3 +327,14 @@ a measuring system when its size is known ahead of time.
 * Nodes that assign their children's sizes directly inside `handleContentSizeDirty`
   (scene content, window decorations, most 2d/material widgets) were left as-is —
   the new measure/layout-children phases are opt-in.
+* **Measure and Transform were swapped**: Measure is now phase 2 and Transform
+  phase 3 (previously Transform 2, Measure 3), so a measure-induced reposition is
+  visible to the transform phase and the model-matrix rebuild the same visit.
+* **Child events moved to the frame stack** (see _Child events_ above). The ui
+  `LayoutSystem` gained `AddToFrameStack` + a shared `SystemFrameTag` and dropped
+  its manual per-level re-bubble in `handleChildContentSizeDirty`; the nearest
+  ancestor now receives descendant resizes directly. `notifyChildContentSizeDirty`
+  is retained as the immediate direct-parent fallback. New flags
+  `HandleChildMeasure` / `HandleChildLayoutChildren` and System hooks
+  `handleChildMeasure` / `handleChildLayoutChildren` are framework plumbing (no
+  consumer wired yet).
